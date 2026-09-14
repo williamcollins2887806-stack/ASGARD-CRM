@@ -214,7 +214,8 @@ fastify.addHook('onRequest', (request, reply, done) => {
   }
 
   // React mobile app: SPA fallback для всех /m/* путей
-  if (url === '/m/' || (url.startsWith('/m/') && !url.match(/\.(js|css|png|jpg|jpeg|gif|svg|ico|woff2?|ttf|eot|webp|json|map)$/i))) {
+  // Включаем glb/gltf — иначе 3D-аватары получают HTML вместо модели
+  if (url === '/m/' || (url.startsWith('/m/') && !url.match(/\.(js|css|png|jpg|jpeg|gif|svg|ico|woff2?|ttf|eot|webp|json|map|glb|gltf|bin|wasm)$/i))) {
     if (reactMobileHtml) {
       reply.type('text/html')
         .header('Cache-Control', 'no-cache, no-store, must-revalidate, max-age=0')
@@ -313,8 +314,8 @@ fastify.register(require('@fastify/static'), {
       res.setHeader('Cache-Control', 'public, max-age=2592000, immutable');
       return;
     }
-    // JS, CSS, images, fonts: cache 30 days (?v= in URL guarantees freshness)
-    if (/\.(js|css|png|jpg|jpeg|gif|svg|ico|woff2?|ttf|eot|webp)$/.test(filePath)) {
+    // JS, CSS, images, fonts, 3D models: cache 30 days (?v= in URL guarantees freshness)
+    if (/\.(js|css|png|jpg|jpeg|gif|svg|ico|woff2?|ttf|eot|webp|glb|gltf)$/.test(filePath)) {
       res.setHeader('Cache-Control', 'public, max-age=2592000, immutable');
       return;
     }
@@ -349,9 +350,12 @@ fastify.register(require('@fastify/static'), {
 
 // Rate limiting
 // SECURITY B8: Per-user rate limit (not just per-IP)
+// Анонимы (сканеры / без Bearer) — жёстче; с Authorization — лимит офисной SPA.
+const RATE_LIMIT_AUTH_MAX = parseInt(process.env.RATE_LIMIT_MAX || '10000', 10);
+const RATE_LIMIT_ANON_MAX = parseInt(process.env.RATE_LIMIT_ANON_MAX || '180', 10);
 fastify.register(require('@fastify/rate-limit'), {
-    hook: 'preHandler',  // Run after authenticate so request.user is available for keyGenerator
-  max: parseInt(process.env.RATE_LIMIT_MAX || '10000', 10),
+  hook: 'preHandler',  // Run after authenticate so request.user is available for keyGenerator
+  max: (request) => (request.headers.authorization ? RATE_LIMIT_AUTH_MAX : RATE_LIMIT_ANON_MAX),
   timeWindow: parseInt(process.env.RATE_LIMIT_WINDOW || '60000', 10),
   keyGenerator: (request) => request.user?.id ? `user_${request.user.id}` : request.ip,
   allowList: ['127.0.0.1', '::1', '::ffff:127.0.0.1'],
@@ -524,12 +528,76 @@ fastify.decorate('fieldAuthenticate', async function(request, reply) {
 
     request.fieldEmployee = employees[0];
 
+    // PIN обязателен для всего Field API, кроме шагов настройки/проверки PIN
+    const pathOnly = String(request.raw?.url || request.url || '').split('?')[0];
+    const pinExempt =
+      pathOnly === '/api/field/auth/setup-pin' ||
+      pathOnly === '/api/field/auth/verify-pin' ||
+      pathOnly === '/api/field/auth/reset-pin' ||
+      pathOnly === '/api/field/auth/logout' ||
+      pathOnly === '/api/field/auth/me' ||
+      pathOnly === '/api/field/auth/push-subscribe';
+
+    if (!pinExempt) {
+      const { rows: pinRows } = await db.query(
+        `SELECT u.pin_hash
+         FROM employees e
+         LEFT JOIN users u ON u.id = e.user_id
+         WHERE e.id = $1`,
+        [payload.employee_id]
+      );
+      if (!pinRows[0]?.pin_hash) {
+        return reply.code(403).send({
+          error: 'Сначала создайте PIN',
+          code: 'NEED_PIN_SETUP',
+        });
+      }
+    }
+
     // Update last_active_at (fire-and-forget)
     db.query(`UPDATE field_sessions SET last_active_at = NOW() WHERE id = $1`, [sessions[0].id])
       .catch(() => {});
   } catch (err) {
     return reply.code(401).send({ error: 'Ошибка авторизации Field' });
   }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Field API error log — все 4xx/5xx /api/field → journalctl [field-api]
+// Не дублирует тело ответа, не пишет токены. 401 оставляем как warn (частота сессий).
+// ─────────────────────────────────────────────────────────────────────────────
+fastify.addHook('onResponse', (request, reply, done) => {
+  try {
+    const rawUrl = request.raw?.url || request.url || '';
+    const pathOnly = rawUrl.split('?')[0];
+    if (pathOnly.startsWith('/api/field')) {
+      const status = reply.statusCode || 0;
+      if (status >= 400) {
+        const meta = {
+          method: request.method,
+          url: pathOnly,
+          statusCode: status,
+          req_id: request.id,
+          responseTime: reply.elapsedTime,
+        };
+        if (request.fieldEmployee?.id) meta.field_employee_id = request.fieldEmployee.id;
+
+        if (status >= 500) {
+          fastify.log.error(meta, '[field-api]');
+        } else {
+          fastify.log.warn(meta, '[field-api]');
+        }
+      }
+    }
+  } catch (_) { /* never break response */ }
+
+  // Автоаудит мутаций desktop CRM (для дайджеста активности и разбора действий)
+  try {
+    const { recordApiMutation } = require('./lib/crm-audit');
+    if (fastify.db) recordApiMutation(fastify.db, request, reply);
+  } catch (_) { /* never break response */ }
+
+  done();
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -548,13 +616,19 @@ fastify.register(require('./routes/field-assembly'), { prefix: '/api/field/assem
 fastify.register(require('./routes/field-stages'), { prefix: '/api/field/stages' });
 fastify.register(require('./routes/field-achievements'), { prefix: '/api/field/achievements' });
 fastify.register(require('./routes/field-gamification'), { prefix: '/api/field/gamification' });
+fastify.register(require('./routes/field-trade'),        { prefix: '/api/field/gamification' });
+fastify.register(require('./routes/field-hall'),         { prefix: '/api/field/hall' });
 fastify.register(require('./routes/field-pipeline'),      { prefix: '/api/field/pipeline' });
+fastify.register(require('./routes/field-chemlab'),       { prefix: '/api/field/chemlab' });
 fastify.register(require('./routes/field-academy'),      { prefix: '/api/field/academy' });
 fastify.register(require('./routes/field-seasonal'),     { prefix: '/api/field/seasonal' });
 fastify.register(require('./routes/field-earnings'),     { prefix: '/api/field/earnings' });
+fastify.register(require('./routes/field-nd'),           { prefix: '/api/field/nd' }); // электронные наряды-допуски (мастер/бригада)
 fastify.register(require('./routes/field-readiness-alias'), { prefix: '/api/field/readiness' }); // bw-compat: старый mobile bundle → редирект на /api/field/worker/readiness
 fastify.register(require('./routes/field-pm'),           { prefix: '/api/pm' });
+fastify.register(require('./routes/academy-nmd'),        { prefix: '/api/pm/academy-nmd' });
 fastify.register(require('./routes/app-updates'),        { prefix: '/api/app' });
+fastify.register(require('./routes/client-errors'),      { prefix: '/api/client-errors' });
 fastify.register(require('./routes/admin-system'),       { prefix: '/api/admin/system' });
 fastify.register(require('./routes/gamification-admin'), { prefix: '/api/gamification/admin' });
 fastify.register(require('./routes/gamification-crud'), { prefix: '/api/gamification/crud' });
@@ -576,6 +650,14 @@ fastify.register(require('./routes/expenses'), { prefix: '/api/expenses' });
 fastify.register(require('./routes/kpi-money'), { prefix: '/api/kpi-money' }); // KPI v2: серверный агрегат /expenses-by-category для donut
 fastify.register(require('./routes/incomes'), { prefix: '/api/incomes' });
 fastify.register(require('./routes/calendar'), { prefix: '/api/calendar' });
+
+// Public guest RSVP page (Outlook-like invite link without auth)
+fastify.register(async function invitePublic(fastify) {
+  fastify.get('/invite/:token', async (request, reply) => {
+    // Reuse calendar invite handler via internal redirect to API HTML
+    return reply.redirect(`/api/calendar/invite/${encodeURIComponent(request.params.token)}`);
+  });
+});
 fastify.register(require('./routes/staff'), { prefix: '/api/staff' });
 fastify.register(require("./routes/employee_collections"), { prefix: "/api/employee-collections" });
 fastify.register(require('./routes/notifications'), { prefix: '/api/notifications' });
@@ -592,17 +674,25 @@ fastify.register(require('./routes/acts'), { prefix: '/api/acts' });
 fastify.register(require('./routes/invoices'), { prefix: '/api/invoices' });
 fastify.register(require('./routes/correspondence'), { prefix: '/api/correspondence' });
 fastify.register(require('./routes/letter'), { prefix: '/api/letter' });
+fastify.register(require('./routes/proxies'), { prefix: '/api/proxies' });
 fastify.register(require('./routes/equipment'), { prefix: '/api/equipment' });
 fastify.register(require('./routes/icons'), { prefix: '/api/icons' }); // V254: реестр SVG-иконок каталога (manifest.json)
 // 24.06.2026: /api/health уже есть в репо (другой route), не дублируем
 fastify.register(require('./routes/data'), { prefix: '/api/data' });
 fastify.register(require('./routes/permissions'), { prefix: '/api/permissions' });
 fastify.register(require('./routes/cash'), { prefix: '/api/cash' });
+fastify.register(require('./routes/cash-mail'), { prefix: '/cash-mail' });
+fastify.register(require('./routes/payment-mail'), { prefix: '/payment-mail' });
+fastify.register(require('./routes/tender-mail'), { prefix: '/tender-mail' });
+fastify.register(require('./routes/tender-files'), { prefix: '/tender-files' });
+fastify.register(require('./routes/payment-invoices'), { prefix: '/api/payment-invoices' });
+fastify.register(require('./routes/doc-registry'), { prefix: '/api/doc-registry' });
 // Stage W: новые модули кассового редизайна.
 fastify.register(require('./routes/handovers'),         { prefix: '/api/handovers' });
 fastify.register(require('./routes/director-payments'), { prefix: '/api/director-payments' });
 fastify.register(require('./routes/tasks'), { prefix: '/api/tasks' });
 fastify.register(require('./routes/permits'), { prefix: '/api/permits' });
+fastify.register(require('./routes/nd'), { prefix: '/api/nd' }); // электронные наряды-допуски (РП / справочник)
 fastify.register(require('./routes/chat_groups'), { prefix: '/api/chat-groups' });
 fastify.register(require('./routes/meetings'), { prefix: '/api/meetings' });
 fastify.register(require('./routes/payroll'), { prefix: '/api/payroll' });
@@ -621,7 +711,8 @@ fastify.register(require('./routes/command-map'), { prefix: '/api/command-map' }
 fastify.register(require('./routes/director-summary'), { prefix: '/api/director-summary' });
 fastify.register(require('./routes/daily-presence'), { prefix: '/api/daily-presence' });
 fastify.register(require('./routes/tkp'),       { prefix: '/api/tkp' });
-fastify.register(require('./routes/tkp_quick'), { prefix: '/api/tkp-quick' });
+  fastify.register(require('./routes/tkp_quick'), { prefix: '/api/tkp-quick' });
+  fastify.register(require('./routes/work-norms'), { prefix: '/api/work-norms' });
 fastify.register(require('./routes/pass_requests'), { prefix: '/api/pass-requests' });
 fastify.register(require('./routes/procurement'), { prefix: '/api/procurement' });
 fastify.register(require('./routes/suppliers'), { prefix: '/api' }); // справочники закупок 2.0: /suppliers /products /product-categories /price-records
@@ -631,6 +722,8 @@ fastify.register(require('./routes/warehouse-locations'), { prefix: '/api/wareho
 fastify.register(require('./routes/stock'), { prefix: '/api/stock' }); // WMS: количественный учёт расходников + движения + quick-каталог
 fastify.register(require('./routes/catalog-import'), { prefix: '/api/catalog-import' }); // импорт УПД/счёт/Excel → каталог/оборудование
 fastify.register(require('./routes/warehouse-cart'), { prefix: '/api/warehouse-cart' }); // маркетплейс-корзина склада → авто-разбивка резерв+закупка
+fastify.register(require('./routes/warehouse-map'), { prefix: '/api/warehouse-map' }); // WMS 3D карта / объекты / sync locations
+fastify.register(require('./routes/warehouse-ops'), { prefix: '/api/warehouse-ops' }); // WMS сессии putaway/pick/unpick/inventory
 fastify.register(require('./routes/tmc_requests'), { prefix: '/api/tmc-requests' });
 fastify.register(require('./routes/sse'), { prefix: '/api/sse' });
 fastify.register(require('./routes/push'), { prefix: '/api/push' });
@@ -650,9 +743,12 @@ fastify.register(require('./routes/max-webhook'),      { prefix: '/api/max' });
 // ── HR Module v2 (Сессия 1) ──
 fastify.register(require('./routes/worker-readiness'),  { prefix: '/api/staff/readiness' });
 fastify.register(require('./routes/planned-engagements'), { prefix: '/api/staff/planned-engagements' });
+fastify.register(require('./routes/brigade-cart'), { prefix: '/api/staff/brigade-cart' });
+fastify.register(require('./routes/mlsp-stays'), { prefix: '/api/staff/mlsp-stays' });
 fastify.register(require('./routes/staff-requests-v2'), { prefix: '/api/staff-requests' });
 fastify.register(require('./routes/global-timesheet'),  { prefix: '/api/timesheet' });
 fastify.register(require('./routes/timesheet-v2'),      { prefix: '/api/timesheet/v2' });
+fastify.register(require('./routes/site-crew'),         { prefix: '/api/site-crew' });
 fastify.register(require('./routes/payroll-dashboard'), { prefix: '/api/payroll-dashboard' });
 fastify.register(require('./routes/training'),          { prefix: '/api/training' });
 fastify.register(require('./routes/telegram'),          { prefix: '/api/telegram' });
@@ -702,6 +798,22 @@ try {
   });
 } catch (telErr) {
   fastify.log.warn('[Telephony] Job queue/escalation init skipped: ' + telErr.message);
+}
+
+// ── Tender OCR Worker (распаковка архивов + кэш documents.ocr_text) ──
+try {
+  const TenderOcrWorker = require('./services/tender-ocr-worker');
+  const tenderOcr = new TenderOcrWorker(db, fastify.log);
+  fastify.decorate('tenderOcr', tenderOcr);
+  fastify.addHook('onReady', async () => {
+    tenderOcr.start();
+    fastify.log.info('[TenderOCR] Background worker started');
+  });
+  fastify.addHook('onClose', async () => {
+    tenderOcr.stop();
+  });
+} catch (ocrErr) {
+  fastify.log.warn('[TenderOCR] Init skipped: ' + ocrErr.message);
 }
 
 // ── Mimir Cron: Daily Digests ──
@@ -792,11 +904,20 @@ try {
   fastify.log.warn('[PersonalKanbanRemindersCron] Init skipped: ' + cronErr.message);
 }
 
+// ── Calendar / Meetings reminders — every minute ──
+try {
+  const calendarRemindersCron = require('./services/calendar-reminders-cron');
+  fastify.addHook('onReady', async () => { calendarRemindersCron.start(fastify.db, fastify.log); });
+  fastify.addHook('onClose', async () => { calendarRemindersCron.stop(); });
+} catch (cronErr) {
+  fastify.log.warn('[CalendarRemindersCron] Init skipped: ' + cronErr.message);
+}
+
 // ── Tasks Deadlines Cron: каждые 10 мин — 1h/24h warnings + overdue marking ──
-// ⚠️ НЕ запускается на тест-БД (иначе шлёт реальные push/Telegram юзерам в клоне).
-// Inline-проверка (не зависит от _IS_PROD_DB ниже по файлу — он определён позже):
-if ((process.env.DB_NAME || 'asgard_crm') !== 'asgard_crm') {
-  fastify.log.warn(`[TasksDeadlinesCron] Skipped — non-prod DB (${process.env.DB_NAME})`);
+// ⚠️ НЕ запускается на тест-/staging (иначе шлёт реальные push/Telegram юзерам в клоне).
+// Inline-проверка (не зависит от _IS_PROD_RUNTIME ниже по файлу — он определён позже):
+if ((process.env.DB_NAME || 'asgard_crm') !== 'asgard_crm' || process.env.NODE_ENV !== 'production') {
+  fastify.log.warn(`[TasksDeadlinesCron] Skipped — non-prod runtime (DB_NAME=${process.env.DB_NAME}, NODE_ENV=${process.env.NODE_ENV})`);
 } else {
   try {
     const tasksDeadlinesCron = require('./services/tasks-deadlines-cron');
@@ -814,6 +935,41 @@ try {
   fastify.addHook('onClose', async () => { kpiSnapshotCron.stop(); });
 } catch (cronErr) {
   fastify.log.warn('[KpiSnapshotCron] Init skipped: ' + cronErr.message);
+}
+
+// ── PM Analysis Rating Cron: 03:00 MSK — суточный рейтинг эффективности анализа РП ──
+try {
+  const pmAnalysisRatingCron = require('./services/pm-analysis-rating-cron');
+  fastify.addHook('onReady', async () => { pmAnalysisRatingCron.start(fastify.db, fastify.log); });
+  fastify.addHook('onClose', async () => { pmAnalysisRatingCron.stop(); });
+} catch (cronErr) {
+  fastify.log.warn('[PmAnalysisRatingCron] Init skipped: ' + cronErr.message);
+}
+
+// ── PM Weekly Digest + Stale Analysis reminders (prod only) ──
+try {
+  const isProdDb = process.env.DB_NAME === 'asgard_crm' && process.env.NODE_ENV === 'production';
+  if (isProdDb) {
+    const pmWeekly = require('./services/pm-analysis-weekly-cron');
+    const pmStale = require('./services/pm-analysis-stale-cron');
+    const permitsWeekly = require('./services/permits-weekly-cron');
+    fastify.addHook('onReady', async () => {
+      pmWeekly.start(fastify.db, fastify.log);
+      pmStale.start(fastify.db, fastify.log);
+      permitsWeekly.start(fastify.db, fastify.log);
+    });
+    fastify.addHook('onClose', async () => {
+      pmWeekly.stop();
+      pmStale.stop();
+      permitsWeekly.stop();
+    });
+  } else {
+    fastify.log.info(
+      `[PmDigest] Skipped — non-prod runtime (DB_NAME=${process.env.DB_NAME}, NODE_ENV=${process.env.NODE_ENV})`
+    );
+  }
+} catch (cronErr) {
+  fastify.log.warn('[PmWeeklyDigest] Init skipped: ' + cronErr.message);
 }
 
 // ── Mimir Letter Reminders Cron: напоминания по письмам заказчику (Сессия 5) ──
@@ -886,7 +1042,7 @@ try {
   const officeAcademyCron = require('./services/office-academy-cron');
   fastify.addHook('onReady', async () => {
     officeAcademyCron.start();
-    fastify.log.info('[OfficAcademyCron] Monthly lesson generation cron started');
+    fastify.log.info('[OfficAcademyCron] Monthly lesson generation + weekly lag reminder cron started');
   });
   fastify.addHook('onClose', async () => {
     officeAcademyCron.stop();
@@ -907,6 +1063,47 @@ try {
   });
 } catch (cronErr) {
   fastify.log.warn('[ReadinessCron] Init skipped: ' + cronErr.message);
+}
+
+// ── Crew inactivity: 5d warn email to PM / 7d auto-depart (date = last mark) ──
+try {
+  const crewInactivityCron = require('./services/crew-inactivity-cron');
+  fastify.addHook('onReady', async () => {
+    crewInactivityCron.start(fastify.db, fastify.log);
+    fastify.log.info('[CrewInactivity] Cron started (warn 5d / depart 7d MSK 08:00)');
+  });
+  fastify.addHook('onClose', async () => {
+    crewInactivityCron.stop();
+  });
+} catch (cronErr) {
+  fastify.log.warn('[CrewInactivity] Init skipped: ' + cronErr.message);
+}
+
+// ── MLSP stay: reconcile + notify 14/7 days before planned depart (08:05 MSK) ──
+try {
+  const mlspStayCron = require('./services/mlsp-stay-cron');
+  fastify.addHook('onReady', async () => {
+    mlspStayCron.start(fastify.db, fastify.log);
+    fastify.log.info('[MlspStay] Cron started (reconcile + notify 14/7 MSK 08:05)');
+  });
+  fastify.addHook('onClose', async () => {
+    mlspStayCron.stop();
+  });
+} catch (cronErr) {
+  fastify.log.warn('[MlspStay] Init skipped: ' + cronErr.message);
+}
+
+// ── Planned engagements: auto-clear arrived / expired / stale undated ──
+try {
+  const plannedEngagementCron = require('./services/planned-engagement-cron');
+  fastify.addHook('onReady', async () => {
+    plannedEngagementCron.start(fastify.db, fastify.log);
+  });
+  fastify.addHook('onClose', async () => {
+    plannedEngagementCron.stop();
+  });
+} catch (cronErr) {
+  fastify.log.warn('[PlannedEngagementCron] Init skipped: ' + cronErr.message);
 }
 
 // ── Embeddings Watch Cron: probe AI-провайдера на доступность embedding-моделей ──
@@ -936,12 +1133,16 @@ try {
 }
 
 // ── Call Report Scheduler ──
-// ⚠️ ВАЖНО: НЕ запускается на тест-/staging-БД! Иначе клон тест-сервера будет
-// слать реальные email-отчёты директорам (инцидент 2026-06-15: 3 одинаковых email
-// от прода + 2 тест-клонов одновременно). Только DB_NAME='asgard_crm' = боевая.
-const _IS_PROD_DB = (process.env.DB_NAME || 'asgard_crm') === 'asgard_crm';
-if (!_IS_PROD_DB) {
-  fastify.log.warn(`[ReportScheduler] Skipped — non-prod DB (${process.env.DB_NAME}). Тест-сервер не шлёт реальные отчёты.`);
+// ⚠️ ВАЖНО: НЕ запускается на тест-/staging! Иначе клон будет слать реальные
+// email-отчёты директорам (инцидент 2026-06-15; повтор 2026-08-01: staging без
+// гейта дублировал daily+monthly). Боевой runtime = DB_NAME + NODE_ENV.
+const _IS_PROD_RUNTIME =
+  (process.env.DB_NAME || 'asgard_crm') === 'asgard_crm' &&
+  process.env.NODE_ENV === 'production';
+if (!_IS_PROD_RUNTIME) {
+  fastify.log.warn(
+    `[ReportScheduler] Skipped — non-prod runtime (DB_NAME=${process.env.DB_NAME}, NODE_ENV=${process.env.NODE_ENV}). Тест/staging не шлёт реальные отчёты.`
+  );
 } else {
   try {
     const ReportScheduler = require('./services/report-scheduler');
@@ -965,7 +1166,20 @@ if (!_IS_PROD_DB) {
 // Additional API aliases for missing dedicated endpoints
 // ─────────────────────────────────────────────────────────────────────────────
 fastify.get('/api/employees', { preHandler: [fastify.authenticate] }, async (request) => {
-  const { rows } = await db.query('SELECT * FROM employees ORDER BY id DESC LIMIT 100');
+  const limit = Math.min(Math.max(parseInt(request.query.limit, 10) || 500, 1), 2000);
+  const { rows } = await db.query(`
+    SELECT * FROM employees
+    WHERE COALESCE(is_active, true) = true
+      AND lower(COALESCE(fio, full_name, '')) NOT LIKE '%тест%'
+      AND lower(COALESCE(fio, full_name, '')) NOT LIKE '%test%'
+      AND lower(COALESCE(fio, full_name, '')) NOT LIKE '%dummy%'
+      AND lower(COALESCE(fio, full_name, '')) NOT LIKE 'cash-stmt%'
+      AND lower(COALESCE(fio, full_name, '')) NOT LIKE '%update users%'
+      AND lower(COALESCE(fio, full_name, '')) NOT LIKE '%union select%'
+      AND lower(COALESCE(fio, full_name, '')) NOT LIKE '%to should not write%'
+    ORDER BY fio ASC NULLS LAST, id ASC
+    LIMIT $1
+  `, [limit]);
   return { employees: rows };
 });
 fastify.get('/api/chats', { preHandler: [fastify.authenticate] }, async (request) => {
@@ -1652,9 +1866,16 @@ const shutdown = async (exitCode = 0) => {
   fastify.log.info(`Shutting down (exit=${exitCode})...`);
   const forceExit = setTimeout(() => {
     fastify.log.warn('Forced exit after 8s timeout');
-    process.exit(1);
+    process.exit(exitCode === 0 ? 0 : 1);
   }, 8000);
   forceExit.unref();
+  // SSE — long-lived; без явного end() fastify.close() висит до force-exit,
+  // nginx отдаёт 502, десктоп «лагает» на каждом рестарте.
+  try { require('./routes/sse').closeAll(); } catch (_) {}
+  try {
+    const srv = fastify.server;
+    if (srv && typeof srv.closeIdleConnections === 'function') srv.closeIdleConnections();
+  } catch (_) {}
   // Останавливаем внешних потребителей ДО fastify.close() — иначе polling/cron
   // успевают сделать запросы в закрытый пул.
   try { const tg = require('./services/telegram'); if (tg.shutdown) await tg.shutdown(); } catch (_) {}

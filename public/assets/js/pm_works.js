@@ -9,6 +9,37 @@ const WORK_STATUS_TRANSITIONS = {
     'Закрыт':           []
   };
 
+  const CANONICAL_WORK_STATUSES = ['Новая', 'Подготовка', 'Мобилизация', 'В работе', 'На паузе', 'Подписание акта', 'Работы сдали', 'Закрыт'];
+
+  function normalizeStatusList(raw) {
+    if (!raw) return [];
+    const arr = Array.isArray(raw) ? raw : (typeof raw === 'string' ? String(raw).split(/\n/) : []);
+    const out = [];
+    for (const item of arr) {
+      if (item == null) continue;
+      const s = (typeof item === 'string') ? item.trim() : String(item.label || item.value || item).trim();
+      if (s && !out.includes(s)) out.push(s);
+    }
+    return out;
+  }
+
+  function workStatusSelectOptions(refs, current, role) {
+    const fromRefs = normalizeStatusList(refs && refs.work_statuses);
+    const isAdmin = ['ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV'].includes(role);
+    let list;
+    if (isAdmin) {
+      list = fromRefs.length ? fromRefs.slice() : CANONICAL_WORK_STATUSES.slice();
+      for (const s of CANONICAL_WORK_STATUSES) {
+        if (!list.includes(s)) list.push(s);
+      }
+    } else {
+      list = [...new Set((WORK_STATUS_TRANSITIONS[current] || []).concat(current ? [current] : []).filter(Boolean))];
+      if (!list.length) list = fromRefs.length ? fromRefs.slice() : CANONICAL_WORK_STATUSES.slice();
+    }
+    if (current && !list.includes(current)) list = [current].concat(list);
+    return list.filter(Boolean);
+  }
+
   function normalizeLinkValue(value){
     const raw = String(value || '').trim();
     if(!raw) return '';
@@ -183,7 +214,7 @@ const WORK_STATUS_TRANSITIONS = {
   }
 
 window.AsgardPmWorksPage=(function(){
-  const { $, $$, esc, toast, showModal, formatDate, money } = AsgardUI;
+  const { $, $$, esc, toast, showModal, formatDate, moneyRub: money } = AsgardUI;
   const { dial, scoreRing } = AsgardCharts;
 
   // Статусы, при которых работа ещё в подготовке (показываем индикатор готовности)
@@ -443,7 +474,7 @@ window.AsgardPmWorksPage=(function(){
             const paid = (Number(w.advance_received||0)+Number(w.balance_received||0));
             const left = (Number(w.contract_value||0)-paid);
             const profit = (Number(w.contract_value||0) - Number(w.cost_fact||w.cost_plan||0));
-            const msg = `${w.customer_name||''} — ${w.work_title||''}\nФакт: конец ${w.end_fact ? formatDate(w.end_fact) : '—'}\nЦена: ${money(w.contract_value)} ₽\nСебест(факт): ${money(w.cost_fact)} ₽\nПрибыль(упр): ${money(Math.round(profit))} ₽\nОплачено: ${money(paid)} ₽ • Осталось: ${money(left)} ₽\nPM: ${pmUser.name||pmUser.login}`;
+            const msg = `${w.customer_name||''} — ${w.work_title||''}\nФакт: конец ${w.end_fact ? formatDate(w.end_fact) : '—'}\nЦена: ${money(w.contract_value)}\nСебест(факт): ${money(w.cost_fact)}\nПрибыль(упр): ${money(Math.round(profit))}\nОплачено: ${money(paid)} • Осталось: ${money(left)}\nPM: ${pmUser.name||pmUser.login}`;
 
             await notifyDirectors('Закрытие контракта (факт)', msg, '#/pm-works');
 
@@ -636,6 +667,14 @@ window.AsgardPmWorksPage=(function(){
   }
 
   async function getRefs(){
+    const tok = (window.AsgardAuth && AsgardAuth.token) || localStorage.getItem('asgard_token') || localStorage.getItem('auth_token');
+    try {
+      const r = await fetch('/api/settings/refs/all', { headers: { Authorization: 'Bearer ' + tok }, cache: 'no-store' });
+      if (r.ok) {
+        const j = await r.json();
+        if (j && j.refs) return j.refs;
+      }
+    } catch (_) { /* fallback IDB */ }
     const refs = await AsgardDB.get("settings","refs");
     return refs ? JSON.parse(refs.value_json||"{}") : { work_statuses:[], tender_statuses:[], reject_reasons:[] };
   }
@@ -786,7 +825,7 @@ window.AsgardPmWorksPage=(function(){
         <td><div>${esc(start)} → ${esc(end)}</div><div class="help">tender #${w.tender_id}</div></td>
         <td>
           <div><b>${money(w.contract_value)}</b> ₽</div>
-          <div class="help">получено: ${money(got)} ₽ • должны: ${money(left)} ₽</div>
+          <div class="help">получено: ${money(got)} • должны: ${money(left)}</div>
         </td>
         <td style="white-space:nowrap">
           <button class="btn" style="padding:6px 10px;background:linear-gradient(135deg,#C8293B,#1E4D8C);color:#fff;border:none;margin-right:6px" data-act="auto_estimate" title="Авто-просчёт Мимиром">⚡ Просчитать</button>
@@ -827,18 +866,18 @@ window.AsgardPmWorksPage=(function(){
         '<div class="m-wc-money">' +
           '<div class="m-wc-contract">' +
             '<span class="m-wc-label">Контракт</span>' +
-            '<span class="m-wc-val">' + money(contractVal) + ' ₽</span>' +
+            '<span class="m-wc-val">' + money(contractVal) + '</span>' +
           '</div>' +
           '<div class="m-wc-received">' +
             '<span class="m-wc-label">Получено</span>' +
-            '<span class="m-wc-val" style="color:var(--ok-t)">' + money(got) + ' ₽</span>' +
+            '<span class="m-wc-val" style="color:var(--ok-t)">' + money(got) + '</span>' +
           '</div>' +
           '<div class="m-wc-progress-bar">' +
             '<div class="m-wc-progress-fill" style="width:' + pct + '%;background:' + esc(color) + '"></div>' +
           '</div>' +
         '</div>' +
         '<div class="m-wc-footer">' +
-          '<span class="m-wc-left">Осталось: ' + money(left) + ' ₽</span>' +
+          '<span class="m-wc-left">Осталось: ' + money(left) + '</span>' +
           '<button class="btn mini" data-act="auto_estimate" style="border-radius:8px;background:linear-gradient(135deg,#C8293B,#1E4D8C);color:#fff;border:none;margin-right:6px">⚡ Просчитать</button>' +
         '<button class="btn mini" data-act="open">Открыть</button>' +
         '</div>' +
@@ -969,7 +1008,13 @@ window.AsgardPmWorksPage=(function(){
     const _pOpts = [{ value: '', label: 'Все' }];
     { const _now = new Date(); for(let i=0;i<24;i++){ const d=new Date(_now.getFullYear(),_now.getMonth()-i,1); const val=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`; _pOpts.push({ value: val, label: d.toLocaleDateString('ru-RU',{month:'long',year:'numeric'}) }); } }
     $('#f_period_w')?.appendChild(CRSelect.create({ id: 'f_period', options: _pOpts, value: '', onChange: apply }));
-    $('#f_status_w')?.appendChild(CRSelect.create({ id: 'f_status', options: [{ value: '', label: 'Все' }, ...(refs.work_statuses||[]).map(s=>({ value: s, label: s }))], onChange: apply }));
+    const _statusFilter = (() => {
+      const fromRefs = normalizeStatusList(refs.work_statuses);
+      const list = fromRefs.length ? fromRefs.slice() : CANONICAL_WORK_STATUSES.slice();
+      for (const s of CANONICAL_WORK_STATUSES) { if (!list.includes(s)) list.push(s); }
+      return list;
+    })();
+    $('#f_status_w')?.appendChild(CRSelect.create({ id: 'f_status', options: [{ value: '', label: 'Все' }, ..._statusFilter.map(s=>({ value: s, label: s }))], onChange: apply }));
 
     apply();
     let _fqTimer = null;
@@ -1119,11 +1164,11 @@ window.AsgardPmWorksPage=(function(){
 
         <hr class="hr"/>
         <div class="kpi" style="grid-template-columns:repeat(5,minmax(130px,1fr))">
-          <div class="k"><div class="t">Получено</div><div class="v">${money(got)} ₽</div><div class="s">Аванс + остаток</div></div>
-          <div class="k"><div class="t">Должны</div><div class="v">${money(left)} ₽</div><div class="s">Остаток к оплате</div></div>
-          <div class="k"><div class="t">Прибыль</div><div class="v" style="color:${profit!=null?(profit>=0?'var(--ok-t)':'var(--err-t)'):''}">${profit==null?"—":money(Math.round(profit))+" ₽"}</div><div class="s">${margin!=null?'чистая · маржа '+margin+'%':'чистая прибыль'}</div></div>
-          <div class="k"><div class="t">₽/день</div><div class="v">${profitPerDay==null?"—":money(Math.round(profitPerDay))+" ₽"}</div><div class="s">по длительности</div></div>
-          <div class="k"><div class="t">₽/чел‑день</div><div class="v">${profitPerManDay==null?"—":money(Math.round(profitPerManDay))+" ₽"}</div><div class="s">по людям×дни</div></div>
+          <div class="k"><div class="t">Получено</div><div class="v">${money(got)}</div><div class="s">Аванс + остаток</div></div>
+          <div class="k"><div class="t">Должны</div><div class="v">${money(left)}</div><div class="s">Остаток к оплате</div></div>
+          <div class="k"><div class="t">Прибыль</div><div class="v" style="color:${profit!=null?(profit>=0?'var(--ok-t)':'var(--err-t)'):''}">${profit==null?"—":money(Math.round(profit))}</div><div class="s">${margin!=null?'чистая · маржа '+margin+'%':'чистая прибыль'}</div></div>
+          <div class="k"><div class="t">₽/день</div><div class="v">${profitPerDay==null?"—":money(Math.round(profitPerDay))}</div><div class="s">по длительности</div></div>
+          <div class="k"><div class="t">₽/чел‑день</div><div class="v">${profitPerManDay==null?"—":money(Math.round(profitPerManDay))}</div><div class="s">по людям×дни</div></div>
         </div>
 
         <hr class="hr"/>
@@ -1135,7 +1180,7 @@ window.AsgardPmWorksPage=(function(){
         </div>
       `;
 
-      showModal({ title: `Работа #${w.id}`, html, icon: '🏗', subtitle: `${esc(w.customer_name||'')} · ${esc(w.work_status||'')}` });
+      showModal({ title: `Работа #${w.id}`, html, icon: '🏗', subtitle: `${w.customer_name||''} · ${w.work_status||''}` });
 
       // ─── Привязка работы-сироты к месту (баннер сверху, только если w.site_id IS NULL) ───
       const _attachBtn = document.getElementById('pmw-attach-btn');
@@ -1168,8 +1213,8 @@ window.AsgardPmWorksPage=(function(){
       }
 
       const _curWorkStatus = w.work_status || '';
-      const _isAdminOrDir = user.role === 'ADMIN' || user.role === 'DIRECTOR_GEN';
-      const _workStatusOpts = _isAdminOrDir ? (refs.work_statuses||[]) : [...new Set((WORK_STATUS_TRANSITIONS[_curWorkStatus] || []).concat([_curWorkStatus]))];
+      const _workStatusOpts = workStatusSelectOptions(refs, _curWorkStatus, user.role);
+      CRSelect.destroy('w_status');
       $('#w_status_w')?.appendChild(CRSelect.create({ id: 'w_status', options: _workStatusOpts.map(s=>({ value: s, label: s })), value: _curWorkStatus, dropdownClass: 'z-modal' }));
 
       // Авторасчёт себестоимости из financial-summary
@@ -1178,7 +1223,7 @@ window.AsgardPmWorksPage=(function(){
         _btnAutoCalc.addEventListener('click', () => {
           const val = Math.round(finData.expenses.total_with_tax);
           document.getElementById('w_cost_fact').value = val;
-          toast('Себестоимость', 'Расходы ' + money(finData.expenses.total) + ' + налоги ' + money(finData.taxes.burden) + ' = ' + money(val) + ' ₽', 'ok');
+          toast('Себестоимость', 'Расходы ' + money(finData.expenses.total) + ' + налоги ' + money(finData.taxes.burden) + ' = ' + money(val), 'ok');
         });
       } else if (_btnAutoCalc) {
         _btnAutoCalc.disabled = true;

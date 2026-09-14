@@ -51,10 +51,11 @@ async function updateQuestProgress(db, employeeId, action, meta = {}) {
   try {
     const boundaries = getPeriodBoundaries();
 
-    // Load matching active quests
+    // Load matching active quests (seasonal: honour season_end so spring doesn't live forever)
     const { rows: quests } = await db.query(
-      `SELECT id, quest_type, target_count, name FROM gamification_quests
-       WHERE is_active = true AND target_action = $1`,
+      `SELECT id, quest_type, target_count, name, season_end FROM gamification_quests
+       WHERE is_active = true AND target_action = $1
+         AND (quest_type <> 'seasonal' OR season_end IS NULL OR season_end >= CURRENT_DATE)`,
       [action]
     );
     if (!quests.length) return;
@@ -107,8 +108,9 @@ async function setQuestProgress(db, employeeId, action, value) {
     const boundaries = getPeriodBoundaries();
 
     const { rows: quests } = await db.query(
-      `SELECT id, quest_type, target_count, name FROM gamification_quests
-       WHERE is_active = true AND target_action = $1`,
+      `SELECT id, quest_type, target_count, name, season_end FROM gamification_quests
+       WHERE is_active = true AND target_action = $1
+         AND (quest_type <> 'seasonal' OR season_end IS NULL OR season_end >= CURRENT_DATE)`,
       [action]
     );
     if (!quests.length) return;

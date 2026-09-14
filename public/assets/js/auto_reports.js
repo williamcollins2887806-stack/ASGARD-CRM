@@ -90,9 +90,7 @@ window.AsgardReports = (function(){
   }
 
   // Форматирование суммы
-  function fmtMoney(val) {
-    return AsgardUI.money(Math.round(Number(val || 0))) + ' ₽';
-  }
+  function fmtMoney(val) { return (AsgardUI.moneyRub || AsgardMoney.formatMoney)(Math.round(Number(val || 0))); }
 
   // Отрисовка страницы отчётов
   async function renderReportsPage(container) {
@@ -124,7 +122,7 @@ window.AsgardReports = (function(){
                 <div id="monthly_month_w" style="flex:1"></div>
               </div>
               <div class="row" style="gap:10px">
-                <button class="btn" data-action="preview" data-type="monthly">👁 Просмотр</button>
+                <button class="btn" data-action="preview" data-type="monthly">Просмотр</button>
                 <button class="btn primary" data-action="download" data-type="monthly">📥 Скачать Excel</button>
               </div>
             </div>
@@ -139,7 +137,7 @@ window.AsgardReports = (function(){
                 <div id="quarterly_quarter_w" style="flex:1"></div>
               </div>
               <div class="row" style="gap:10px">
-                <button class="btn" data-action="preview" data-type="quarterly">👁 Просмотр</button>
+                <button class="btn" data-action="preview" data-type="quarterly">Просмотр</button>
                 <button class="btn primary" data-action="download" data-type="quarterly">📥 Скачать Excel</button>
               </div>
             </div>
@@ -153,7 +151,7 @@ window.AsgardReports = (function(){
                 <div id="yearly_year_w" style="flex:1"></div>
               </div>
               <div class="row" style="gap:10px">
-                <button class="btn" data-action="preview" data-type="yearly">👁 Просмотр</button>
+                <button class="btn" data-action="preview" data-type="yearly">Просмотр</button>
                 <button class="btn primary" data-action="download" data-type="yearly">📥 Скачать Excel</button>
               </div>
             </div>
@@ -241,7 +239,7 @@ window.AsgardReports = (function(){
           const report = await generateReport(type, params);
           
           btn.disabled = false;
-          btn.textContent = '👁 Просмотр';
+          btn.textContent = 'Просмотр';
           
           if (report) {
             renderReportPreview(report);

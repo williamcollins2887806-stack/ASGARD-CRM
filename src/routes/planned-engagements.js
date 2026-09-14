@@ -146,9 +146,15 @@ async function routes(fastify) {
   // PUT /employees/:id — установить/обновить план
   fastify.put('/employees/:id', { preHandler: [fastify.requireRoles(EDIT_ROLES)] }, async (request, reply) => {
     const empId = parseInt(request.params.id, 10);
-    const { work_id, planned_from, planned_to, note } = request.body || {};
+    const { work_id, planned_from, planned_to, note, inbound_transport } = request.body || {};
     if (!Number.isFinite(empId)) return reply.code(400).send({ error: 'Bad employee_id' });
     if (!work_id) return reply.code(400).send({ error: 'work_id обязателен' });
+
+    const hasInbound = Object.prototype.hasOwnProperty.call(request.body || {}, 'inbound_transport');
+    let inbound = hasInbound ? inbound_transport : undefined;
+    if (hasInbound && inbound !== null && !['helicopter', 'ship'].includes(inbound)) {
+      return reply.code(400).send({ error: 'inbound_transport: helicopter|ship|null' });
+    }
 
     const workId = parseInt(work_id, 10);
     const { rows: [emp] } = await db.query('SELECT id, fio, readiness_status FROM employees WHERE id = $1 AND is_active = true', [empId]);
@@ -162,7 +168,22 @@ async function routes(fastify) {
 
     const onSiteWorkId = await getActiveOnSiteWorkId(db, empId);
     if (onSiteWorkId === workId) {
-      return reply.code(409).send({ error: 'Рабочий уже на этом объекте' });
+      const { rows: [onSite] } = await db.query(`
+        SELECT w.work_title, u.name AS pm_name
+        FROM works w
+        LEFT JOIN users u ON u.id = w.pm_id
+        WHERE w.id = $1
+      `, [onSiteWorkId]);
+      const title = (onSite?.work_title || work.work_title || ('#' + onSiteWorkId)).trim();
+      const pm = onSite?.pm_name ? ` (РП: ${onSite.pm_name})` : '';
+      const fio = emp.fio || 'Рабочий';
+      return reply.code(409).send({
+        error: `«${fio}» уже на объекте «${title}»${pm}. План на этот же проект не нужен — он уже в бригаде. Чтобы перевести — оформите отъезд с текущего объекта.`,
+        code: 'already_on_site',
+        current_work_id: onSiteWorkId,
+        current_work_title: title,
+        current_pm_name: onSite?.pm_name || null
+      });
     }
 
     const warnings = [];
@@ -186,17 +207,18 @@ async function routes(fastify) {
       const upd = await db.query(`
         UPDATE employee_planned_engagements SET
           work_id = $1, planned_from = $2, planned_to = $3, note = $4,
-          updated_at = NOW(), created_by = COALESCE(created_by, $5)
-        WHERE id = $6 RETURNING *
-      `, [workId, planned_from || null, planned_to || null, note || null, request.user.id, existing.id]);
+          inbound_transport = CASE WHEN $5::boolean THEN $6 ELSE inbound_transport END,
+          updated_at = NOW(), created_by = COALESCE(created_by, $7)
+        WHERE id = $8 RETURNING *
+      `, [workId, planned_from || null, planned_to || null, note || null, hasInbound, hasInbound ? inbound : null, request.user.id, existing.id]);
       plan = upd.rows[0];
       await writePlanLog(db, empId, `planned_set: ${work.work_title} (work_id=${workId})`, request.user.id);
     } else {
       const ins = await db.query(`
         INSERT INTO employee_planned_engagements
-          (employee_id, work_id, planned_from, planned_to, note, created_by)
-        VALUES ($1, $2, $3, $4, $5, $6) RETURNING *
-      `, [empId, workId, planned_from || null, planned_to || null, note || null, request.user.id]);
+          (employee_id, work_id, planned_from, planned_to, note, inbound_transport, created_by)
+        VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *
+      `, [empId, workId, planned_from || null, planned_to || null, note || null, hasInbound ? inbound : null, request.user.id]);
       plan = ins.rows[0];
       await writePlanLog(db, empId, `planned_set: ${work.work_title} (work_id=${workId})`, request.user.id);
     }
@@ -206,6 +228,104 @@ async function routes(fastify) {
       work_title: work.work_title,
       current_on_site: !!onSiteWorkId,
       warnings,
+    };
+  });
+
+  // POST /bulk — массовое планируемое привлечение из корзины
+  // body: { work_id, planned_from, planned_to, note, employee_ids, mode: 'all'|'free_only' }
+  fastify.post('/bulk', { preHandler: [fastify.requireRoles(EDIT_ROLES)] }, async (request, reply) => {
+    const body = request.body || {};
+    const workId = parseInt(body.work_id, 10);
+    const mode = body.mode === 'free_only' ? 'free_only' : 'all';
+    const ids = [...new Set((Array.isArray(body.employee_ids) ? body.employee_ids : [])
+      .map((x) => parseInt(x, 10)).filter(Number.isFinite))];
+    const planned_from = body.planned_from || null;
+    const planned_to = body.planned_to || null;
+    const note = body.note || null;
+
+    if (!Number.isFinite(workId)) return reply.code(400).send({ error: 'work_id обязателен' });
+    if (!ids.length) return reply.code(400).send({ error: 'employee_ids обязателен' });
+    if (ids.length > 100) return reply.code(400).send({ error: 'Максимум 100 человек за раз' });
+
+    const { rows: [work] } = await db.query(`
+      SELECT w.id, w.work_title, w.pm_id FROM works w
+      WHERE w.id = $1 AND w.deleted_at IS NULL
+    `, [workId]);
+    if (!work) return reply.code(404).send({ error: 'Работа не найдена' });
+
+    const assigned = [];
+    const skipped = [];
+
+    for (const empId of ids) {
+      const { rows: [emp] } = await db.query(
+        'SELECT id, fio FROM employees WHERE id = $1 AND is_active = true',
+        [empId]
+      );
+      if (!emp) {
+        skipped.push({ id: empId, reason: 'not_found', message: 'Сотрудник не найден' });
+        continue;
+      }
+
+      const onSiteWorkId = await getActiveOnSiteWorkId(db, empId);
+      const { rows: [existingPlan] } = await db.query(`
+        SELECT id, work_id FROM employee_planned_engagements
+        WHERE employee_id = $1 AND status = 'active'
+      `, [empId]);
+
+      const isConflict = !!(onSiteWorkId || existingPlan);
+      if (mode === 'free_only' && isConflict) {
+        let reason = 'busy';
+        let message = 'занят';
+        if (onSiteWorkId) {
+          const { rows: [w] } = await db.query('SELECT work_title FROM works WHERE id = $1', [onSiteWorkId]);
+          reason = 'on_site';
+          message = `уже на объекте «${w?.work_title || onSiteWorkId}»`;
+        } else if (existingPlan) {
+          const { rows: [w] } = await db.query('SELECT work_title FROM works WHERE id = $1', [existingPlan.work_id]);
+          reason = 'planned';
+          message = `уже план на «${w?.work_title || existingPlan.work_id}»`;
+        }
+        skipped.push({ id: empId, fio: emp.fio, reason, message });
+        continue;
+      }
+
+      if (onSiteWorkId === workId) {
+        skipped.push({
+          id: empId,
+          fio: emp.fio,
+          reason: 'already_on_site',
+          message: `уже на этом объекте «${work.work_title}»`
+        });
+        continue;
+      }
+
+      if (existingPlan) {
+        await db.query(`
+          UPDATE employee_planned_engagements SET
+            work_id = $1, planned_from = $2, planned_to = $3, note = $4,
+            updated_at = NOW(), created_by = COALESCE(created_by, $5)
+          WHERE id = $6
+        `, [workId, planned_from, planned_to, note, request.user.id, existingPlan.id]);
+      } else {
+        await db.query(`
+          INSERT INTO employee_planned_engagements
+            (employee_id, work_id, planned_from, planned_to, note, created_by)
+          VALUES ($1, $2, $3, $4, $5, $6)
+        `, [empId, workId, planned_from, planned_to, note, request.user.id]);
+      }
+      await writePlanLog(db, empId, `planned_set_bulk: ${work.work_title} (work_id=${workId})`, request.user.id);
+      assigned.push({ id: empId, fio: emp.fio });
+    }
+
+    return {
+      ok: true,
+      work_id: workId,
+      work_title: work.work_title,
+      mode,
+      assigned,
+      skipped,
+      assigned_count: assigned.length,
+      skipped_count: skipped.length
     };
   });
 

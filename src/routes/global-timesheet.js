@@ -11,8 +11,9 @@
  * Просмотр: ADMIN, DIRECTOR_*, TO, HEAD_TO, WAREHOUSE, PROC, BUH, HR, HR_MANAGER
  * Редактирование:
  *   ADMIN/DIRECTOR_*  — все типы
- *   TO/HEAD_TO        — только 'medical'
+ *   TO/HEAD_TO        — 'medical' (+ ship); HEAD_TO также 'travel'
  *   WAREHOUSE         — только 'warehouse'
+ *   OFFICE_MANAGER    — только 'travel'
  *   PROC/BUH/HR/HR_MANAGER — read-only (включая Excel-выгрузку)
  *
  * Типы:
@@ -22,6 +23,27 @@
  * Один день = одна отметка: PUT 409 если на дату уже есть completed checkin
  * ИЛИ активная запись field_trip_stages у этого employee.
  */
+
+/**
+ * Баллы за «свободный» этап — синхрон с pointsFor() в src/routes/timesheet-v2.js.
+ * Нужны, чтобы поле tariff_points в field_trip_stages было честным (⏳ = 6),
+ * а не нулём: иначе worker-табель (field-worker.js читает row.tariff_points)
+ * и отчётные выгрузки показывают 0 баллов за ожидание.
+ */
+const STAGE_POINTS = {
+  warehouse: 10,
+  medical: 7,
+  travel: 6,
+  ship: 12,
+  training: 7,
+  helicopter: 6,
+  waiting: 6,
+  office: 16,
+  remote: 10
+};
+function pointsForStage(type) {
+  return STAGE_POINTS[type] != null ? STAGE_POINTS[type] : 0;
+}
 
 const VIEW_ROLES = [
   'ADMIN',
@@ -56,11 +78,13 @@ function tryDateParts(dateStr) {
   }
   return { year: parseInt(m[1], 10), month: parseInt(m[2], 10) };
 }
-function scopeForRole(role) {
+function scopeForRole(role, type) {
   if (role === 'PM' || role === 'HEAD_PM') return 'pm';
-  if (role === 'TO' || role === 'HEAD_TO') return 'medical';
   if (role === 'WAREHOUSE') return 'warehouse';
   if (role === 'OFFICE_MANAGER') return 'travel';
+  // HEAD_TO: medical по умолчанию, travel — если пишет дорогу или ожидание
+  if (role === 'HEAD_TO' && (type === 'travel' || type === 'waiting')) return 'travel';
+  if (role === 'TO' || role === 'HEAD_TO') return 'medical';
   return 'global';
 }
 
@@ -93,7 +117,8 @@ function canEditType(role, type) {
   // V255: medical-роли (TO/HEAD_TO) ставят МО и Корабль.
   if ((role === 'TO' || role === 'HEAD_TO') && (type === 'medical' || type === 'ship')) return true;
   if (role === 'WAREHOUSE' && type === 'warehouse') return true;
-  if ((role === 'OFFICE_MANAGER' || role === 'HEAD_TO') && type === 'travel') return true;
+  // Дорога и Ожидание (⏳ = 6 баллов) — офис-менеджер и рук ТО.
+  if ((role === 'OFFICE_MANAGER' || role === 'HEAD_TO') && (type === 'travel' || type === 'waiting')) return true;
   return false;
 }
 
@@ -483,7 +508,7 @@ async function routes(fastify, options) {
     try {
       const { year, month } = tryDateParts(date);
       await assertNotLockedSafe(fastify, { id: request.user.id, role: request.user.role }, {
-        year, month, scope_hint: scopeForRole(role), work_id, employee_id, date
+        year, month, scope_hint: scopeForRole(role, type), work_id, employee_id, date, type
       });
     } catch (lockErr) {
       if (lockErr && lockErr.code === 'period_locked') {
@@ -539,12 +564,15 @@ async function routes(fastify, options) {
     }
 
     // warehouse/medical/waiting/travel → field_trip_stages (work_id может быть NULL)
+    // tariff_points — честные баллы за этап (⏳ waiting = 6). status='completed':
+    // только это значение читают worker-табель/ФОТ/суточные (активными их не считают).
+    const stagePoints = pointsForStage(type);
     const { rows: [st] } = await db.query(`
       INSERT INTO field_trip_stages
         (employee_id, work_id, stage_type, date_from, date_to, days_count, tariff_points, rate_per_day, amount_earned, status, created_by, note, entered_by_user_id)
-      VALUES ($1, $2, $3, $4, $4, 1, 0, $5, $6, 'active', $7, $8, $7)
+      VALUES ($1, $2, $3, $4, $4, 1, $5, $6, $7, 'completed', $8, $9, $8)
       RETURNING *
-    `, [employee_id, work_id || null, type, date, amount || 0, amount || 0, request.user.id, note || null]);
+    `, [employee_id, work_id || null, type, date, stagePoints, amount || 0, amount || 0, request.user.id, note || null]);
     return { ok: true, entry: st, kind: 'stage' };
   });
 }

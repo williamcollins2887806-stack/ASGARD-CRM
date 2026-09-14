@@ -432,10 +432,36 @@ function auditRowsAgainstCrm(excelRows, crmRows) {
   return { summary, byPeriod, items, total: excelRows.length };
 }
 
-function buildPeriodFilterSql(periodParam, params) {
+function buildPeriodFilterSql(periodParam, params, dateQuery = {}) {
+  const { buildTenderDateWhere } = require('./tender-date-filter');
   const now = new Date();
   const currentMonth = `${now.getFullYear()}-${pad2(now.getMonth() + 1)}`;
 
+  const dateFrom = dateQuery.date_from;
+  const dateTo = dateQuery.date_to;
+  const dateField = dateQuery.date_field;
+
+  // Новый контракт: диапазон / поле даты (внесение | срок подачи)
+  if (dateFrom || dateTo || dateField) {
+    let period = periodParam;
+    if (period === undefined || period === 'current') period = currentMonth;
+    if (period === '' || period === 'all') period = 'all';
+    const clauseBody = buildTenderDateWhere('t', {
+      date_from: dateFrom,
+      date_to: dateTo,
+      date_field: dateField || 'created_at',
+      period,
+    }, params);
+    return {
+      clause: clauseBody ? ` AND ${clauseBody}` : '',
+      periodLabel: dateFrom || dateTo
+        ? `${dateFrom || '…'}…${dateTo || '…'}`
+        : (period === 'all' ? 'all' : period),
+      applied: period === 'all' ? null : period
+    };
+  }
+
+  // Legacy: фильтр по колонке t.period (YYYY-MM плана)
   if (periodParam === 'all' || periodParam === '') {
     return { clause: '', periodLabel: 'all', applied: null };
   }

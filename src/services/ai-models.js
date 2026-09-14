@@ -16,8 +16,8 @@ const ROUTERAI_CHAT_URL = `${ROUTERAI_BASE_URL}/chat/completions`;
 const MODEL_DEFAULT = 'deepseek/deepseek-v4-pro';
 const MODEL_FAST = 'google/gemini-3.5-flash';
 const MODEL_LONG = 'x-ai/grok-4.20';
-const MODEL_EMBED_PRIMARY = 'voyage/voyage-3-large';
-const MODEL_EMBED_FALLBACK = 'text-embedding-3-large';
+const MODEL_EMBED_PRIMARY = 'openai/text-embedding-3-large';
+const MODEL_EMBED_FALLBACK = 'openai/text-embedding-3-small';
 
 const FALLBACK_CHAIN = [MODEL_DEFAULT, MODEL_FAST, MODEL_LONG];
 
@@ -26,6 +26,9 @@ const ROUTERAI_PRICES = {
   [MODEL_DEFAULT]: { input: 61, output: 123 },
   [MODEL_FAST]: { input: 150, output: 903 },
   [MODEL_LONG]: { input: 118, output: 237 },
+  'google/gemini-3.1-flash-lite': { input: 25, output: 152 },
+  'google/gemini-3.5-flash-lite': { input: 30, output: 253 },
+  'google/gemini-3.5-flash': { input: 154, output: 928 },
   'openai/gpt-5.5': { input: 508, output: 3052 },
   [MODEL_EMBED_PRIMARY]: { input: 13, output: 0 },
   [MODEL_EMBED_FALLBACK]: { input: 13, output: 0 },

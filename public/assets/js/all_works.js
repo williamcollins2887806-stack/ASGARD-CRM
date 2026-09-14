@@ -1,5 +1,5 @@
 window.AsgardAllWorksPage=(function(){
-  const { $, $$, esc, toast, showModal, money } = AsgardUI;
+  const { $, $$, esc, toast, showModal, moneyRub: money } = AsgardUI;
   const { ymNow, sortBy } = window.AsgardWorksShared || {};
   function getApiBase(){
     return (window.AsgardApp && AsgardApp.API_BASE) || localStorage.getItem('asgard_api_base') || '/api';
@@ -175,13 +175,13 @@ window.AsgardAllWorksPage=(function(){
         '<div class="m-wc-money">' +
           '<div class="m-wc-contract">' +
             '<span class="m-wc-label">Контракт</span>' +
-            '<span class="m-wc-val">' + money(contractVal) + ' ₽</span>' +
+            '<span class="m-wc-val">' + money(contractVal) + '</span>' +
           '</div>' +
           '<div class="m-wc-progress-bar">' +
             '<div class="m-wc-progress-fill" style="width:' + pct + '%;background:' + esc(color) + '"></div>' +
           '</div>' +
           '<div style="display:flex;justify-content:space-between;margin-top:4px;font-size:11px;color:var(--t3)">' +
-            '<span>Получено: ' + money(got) + ' ₽</span>' +
+            '<span>Получено: ' + money(got) + '</span>' +
             '<span>' + pct + '%</span>' +
           '</div>' +
         '</div>' +

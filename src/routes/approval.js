@@ -26,7 +26,8 @@ const ALLOWED_ENTITIES = new Set([
   'one_time_payments', 'tmc_requests', 'payroll_sheets',
   'business_trips', 'travel_expenses', 'training_applications',
   'estimates', 'tkp', 'staff_requests', 'pass_requests',
-  'permit_applications', 'site_inspections', 'seal_transfers'
+  'permit_applications', 'site_inspections', 'seal_transfers',
+  'payment_invoices'
 ]);
 
 function validateEntity(entityType) {

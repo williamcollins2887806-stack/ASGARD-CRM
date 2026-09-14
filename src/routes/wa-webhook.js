@@ -7,7 +7,9 @@
  *  POST /wa-webhook/setup          — зарегистрировать вебхук в Green API
  *  POST /wa-webhook/event          — принимать события (публичный)
  *  POST /wa-webhook/sync/:work_id  — синхронизировать состав группы из WA API
- *  POST /wa-webhook/check-phones   — проверить WA-наличие телефонов (с кэшем 24ч)
+ *  POST /wa-webhook/check-phones       — проверить WA-наличие телефонов (с кэшем 24ч)
+ *  POST /wa-webhook/check-max-phones   — проверить MAX-наличие телефонов (с кэшем 24ч)
+ *  GET  /wa-webhook/messenger-stats    — сводка WA/MAX по бригаде (+ опц. ?recheck=1)
  */
 
 const crypto = require('crypto');
@@ -258,6 +260,123 @@ module.exports = async function waWebhookRoutes(fastify, opts) {
       return reply.send({ ok: true, checked: results.length, results: results });
     } catch (err) {
       fastify.log.error('[check-phones] error: ' + err.message);
+      return reply.code(500).send({ error: err.message });
+    }
+  });
+
+  // Проверить MAX-наличие телефонов (Green API v3 CheckAccount, кэш 24ч)
+  fastify.post('/wa-webhook/check-max-phones', { preHandler: [fastify.authenticate] }, async (req, reply) => {
+    try {
+      var body3 = req.body || {};
+      var employee_ids = body3.employee_ids;
+      var force = body3.force || false;
+      const ga = require('../services/green-api');
+      if (!ga.isMaxEnabled()) return reply.send({ ok: false, reason: 'disabled' });
+
+      var qStr = 'SELECT id, phone, phone2, max_phone FROM employees WHERE phone IS NOT NULL';
+      var params = [];
+      if (employee_ids && employee_ids.length > 0) {
+        qStr += ' AND id = ANY($1)'; params.push(employee_ids);
+      }
+      if (!force) {
+        qStr += ' AND (max_phone_checked_at IS NULL OR max_phone_checked_at < NOW() - INTERVAL \'24 hours\')';
+      }
+      const { rows: emps } = await db.query(qStr, params);
+
+      var results = [];
+      for (var k = 0; k < emps.length; k++) {
+        var emp = emps[k];
+        var phones = [emp.phone, emp.phone2].filter(Boolean);
+        var maxPhone = await ga.findMaxPhone(phones, { force: Boolean(force) });
+        await db.query(
+          'UPDATE employees SET max_phone=$1, max_phone_checked_at=NOW() WHERE id=$2',
+          [maxPhone, emp.id]
+        );
+        results.push({ id: emp.id, max_phone: maxPhone, has_max: Boolean(maxPhone) });
+        // rate-limit: небольшая пауза между сотрудниками
+        if (k < emps.length - 1) await new Promise(r => setTimeout(r, 200));
+      }
+      return reply.send({ ok: true, checked: results.length, results: results });
+    } catch (err) {
+      fastify.log.error('[check-max-phones] error: ' + err.message);
+      return reply.code(500).send({ error: err.message });
+    }
+  });
+
+  // Сводка WA / MAX по активным сотрудникам с телефоном
+  fastify.get('/wa-webhook/messenger-stats', { preHandler: [fastify.authenticate] }, async (req, reply) => {
+    try {
+      const ga = require('../services/green-api');
+      const recheck = String((req.query && req.query.recheck) || '') === '1';
+
+      const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+
+      async function loadStats() {
+        const { rows: [row] } = await db.query(`
+          SELECT
+            COUNT(*)::int AS total_with_phone,
+            COUNT(*) FILTER (WHERE wa_phone IS NOT NULL)::int AS wa_has,
+            COUNT(*) FILTER (WHERE wa_phone_checked_at IS NOT NULL AND wa_phone IS NULL)::int AS wa_missing,
+            COUNT(*) FILTER (WHERE wa_phone_checked_at IS NULL)::int AS wa_unchecked,
+            COUNT(*) FILTER (WHERE max_phone IS NOT NULL)::int AS max_has,
+            COUNT(*) FILTER (WHERE max_phone_checked_at IS NOT NULL AND max_phone IS NULL)::int AS max_missing,
+            COUNT(*) FILTER (WHERE max_phone_checked_at IS NULL)::int AS max_unchecked
+          FROM employees
+          WHERE COALESCE(is_active, true) = true
+            AND NULLIF(TRIM(COALESCE(phone, '')), '') IS NOT NULL
+        `);
+        return {
+          total_with_phone: row.total_with_phone,
+          wa: { has: row.wa_has, missing: row.wa_missing, unchecked: row.wa_unchecked },
+          max: { has: row.max_has, missing: row.max_missing, unchecked: row.max_unchecked },
+          max_enabled: ga.isMaxEnabled(),
+          wa_enabled: ga.isEnabled(),
+        };
+      }
+
+      if (recheck) {
+        // Только непроверенные — с паузой 200ms, чтобы не упереться в rate limit Green API
+        if (ga.isEnabled()) {
+          const { rows: waRows } = await db.query(`
+            SELECT id, phone, phone2 FROM employees
+            WHERE COALESCE(is_active, true) = true
+              AND NULLIF(TRIM(COALESCE(phone, '')), '') IS NOT NULL
+              AND wa_phone_checked_at IS NULL
+            ORDER BY id
+          `);
+          for (var i = 0; i < waRows.length; i++) {
+            var w = waRows[i];
+            var waPhone = await ga.findWhatsappPhone([w.phone, w.phone2].filter(Boolean));
+            await db.query(
+              'UPDATE employees SET wa_phone=$1, wa_phone_checked_at=NOW() WHERE id=$2',
+              [waPhone, w.id]
+            );
+            if (i < waRows.length - 1) await sleep(200);
+          }
+        }
+        if (ga.isMaxEnabled()) {
+          const { rows: maxRows } = await db.query(`
+            SELECT id, phone, phone2 FROM employees
+            WHERE COALESCE(is_active, true) = true
+              AND NULLIF(TRIM(COALESCE(phone, '')), '') IS NOT NULL
+              AND max_phone_checked_at IS NULL
+            ORDER BY id
+          `);
+          for (var j = 0; j < maxRows.length; j++) {
+            var m = maxRows[j];
+            var maxPhone = await ga.findMaxPhone([m.phone, m.phone2].filter(Boolean));
+            await db.query(
+              'UPDATE employees SET max_phone=$1, max_phone_checked_at=NOW() WHERE id=$2',
+              [maxPhone, m.id]
+            );
+            if (j < maxRows.length - 1) await sleep(200);
+          }
+        }
+      }
+
+      return reply.send(await loadStats());
+    } catch (err) {
+      fastify.log.error('[messenger-stats] error: ' + err.message);
       return reply.code(500).send({ error: err.message });
     }
   });

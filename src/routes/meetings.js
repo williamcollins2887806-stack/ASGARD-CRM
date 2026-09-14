@@ -5,11 +5,14 @@
  *
  * Функционал:
  * - Планирование совещаний
- * - Приглашение участников (RSVP)
+ * - Приглашение участников (RSVP) + гости по email + ICS
  * - Повестка и протокол
  * - Создание задач из протокола
  * - Напоминания
  */
+
+const { createNotification } = require('../services/notify');
+const { sendMeetingInvites, upsertGuests } = require('../services/calendar-invite-mail');
 
 module.exports = async function(fastify) {
   const db = fastify.db;
@@ -21,20 +24,37 @@ module.exports = async function(fastify) {
   // ═══════════════════════════════════════════════════════════════
   async function notify(userId, title, message, link) {
     try {
-      await db.query(`
-        INSERT INTO notifications (user_id, title, message, type, link, is_read, created_at)
-        VALUES ($1, $2, $3, 'meeting', $4, false, NOW())
-      `, [userId, title, message, link || '#/meetings']);
-
-      try {
-        const telegram = require('../services/telegram');
-        if (telegram && telegram.sendNotification) {
-          await telegram.sendNotification(userId, `📅 *${title}*\n\n${message}`);
-        }
-      } catch (e) {}
+      await createNotification(db, {
+        user_id: userId,
+        title,
+        message,
+        type: 'meeting',
+        link: link || '#/meetings'
+      });
     } catch (e) {
       fastify.log.error('Meeting notification error:', e.message);
     }
+  }
+
+  function normalizeGuests(raw) {
+    if (!Array.isArray(raw)) return [];
+    return raw.map((g) => {
+      if (typeof g === 'string') return { email: g.trim().toLowerCase(), name: null };
+      return {
+        email: String(g.email || '').trim().toLowerCase(),
+        name: g.name ? String(g.name).trim() : null
+      };
+    }).filter((g) => g.email && g.email.includes('@'));
+  }
+
+  function normalizeRecurrence(rule) {
+    if (!rule) return { is_recurring: false, recurrence_rule: null };
+    const r = String(rule).toUpperCase().trim();
+    if (!r || r === 'NONE' || r === 'NEVER') return { is_recurring: false, recurrence_rule: null };
+    if (r === 'DAILY' || r === 'WEEKLY' || r === 'MONTHLY' || r.startsWith('FREQ=')) {
+      return { is_recurring: true, recurrence_rule: r.startsWith('FREQ=') ? r : r };
+    }
+    return { is_recurring: false, recurrence_rule: null };
   }
 
   // ═══════════════════════════════════════════════════════════════
@@ -181,12 +201,18 @@ module.exports = async function(fastify) {
 
     // Получить участников
     const { rows: participants } = await db.query(`
-      SELECT mp.*, u.name, u.role as user_role
+      SELECT mp.*, u.name, u.role as user_role, u.email,
+        CASE WHEN u.email IS NULL OR u.email = '' THEN false ELSE true END as has_email
       FROM meeting_participants mp
       JOIN users u ON mp.user_id = u.id
       WHERE mp.meeting_id = $1
       ORDER BY u.name
     `, [id]);
+
+    const { rows: guests } = await db.query(
+      'SELECT id, email, name, rsvp_status, notified_at, created_at FROM meeting_guests WHERE meeting_id = $1 ORDER BY email',
+      [id]
+    );
 
     // Получить пункты протокола
     const { rows: minutes } = await db.query(`
@@ -198,7 +224,7 @@ module.exports = async function(fastify) {
       ORDER BY mm.item_order
     `, [id]);
 
-    return { meeting, participants, minutes };
+    return { meeting, participants, guests, minutes };
   });
 
   // ───────────────────────────────────────────────────────────────
@@ -209,8 +235,9 @@ module.exports = async function(fastify) {
   }, async (request, reply) => {
     const {
       title, description, location, start_time, end_time,
-      agenda, participant_ids, work_id, tender_id, notify_before_minutes
-    } = request.body;
+      agenda, participant_ids, work_id, tender_id, notify_before_minutes,
+      conference_url, guests, guest_emails, send_invites, recurrence_rule
+    } = request.body || {};
 
     if (!title || !title.trim()) {
       return reply.code(400).send({ error: 'Укажите название совещания' });
@@ -220,13 +247,18 @@ module.exports = async function(fastify) {
     }
 
     const organizerId = request.user.id;
+    const rec = normalizeRecurrence(recurrence_rule);
+    const icsUid = `meeting-pending-${Date.now()}@asgard-crm.ru`;
 
     // Создать совещание
     const { rows: [meeting] } = await db.query(`
       INSERT INTO meetings (
         organizer_id, title, description, location, start_time, end_time,
-        agenda, work_id, tender_id, notify_before_minutes, status, created_at, updated_at
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'scheduled', NOW(), NOW())
+        agenda, work_id, tender_id, notify_before_minutes, status,
+        conference_url, ics_uid, ics_sequence, is_recurring, recurrence_rule,
+        created_at, updated_at
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'scheduled',
+        $11, $12, 0, $13, $14, NOW(), NOW())
       RETURNING *
     `, [
       organizerId,
@@ -238,8 +270,19 @@ module.exports = async function(fastify) {
       agenda || null,
       work_id ? parseInt(work_id) : null,
       tender_id ? parseInt(tender_id) : null,
-      notify_before_minutes || 15
+      notify_before_minutes || 15,
+      conference_url || null,
+      icsUid,
+      rec.is_recurring,
+      rec.recurrence_rule
     ]);
+
+    // Stable ICS UID
+    await db.query(
+      `UPDATE meetings SET ics_uid = $1 WHERE id = $2`,
+      [`meeting-${meeting.id}@asgard-crm.ru`, meeting.id]
+    );
+    meeting.ics_uid = `meeting-${meeting.id}@asgard-crm.ru`;
 
     // Добавить организатора как участника (принято автоматически)
     await db.query(`
@@ -248,11 +291,8 @@ module.exports = async function(fastify) {
       ON CONFLICT (meeting_id, user_id) DO NOTHING
     `, [meeting.id, organizerId]);
 
-    // Добавить участников и отправить приглашения
+    // Добавить участников
     if (Array.isArray(participant_ids)) {
-      const organizerName = request.user.name || request.user.login;
-      const startTimeStr = new Date(start_time).toLocaleString('ru-RU');
-
       for (const pId of participant_ids) {
         if (parseInt(pId) !== organizerId) {
           await db.query(`
@@ -260,18 +300,31 @@ module.exports = async function(fastify) {
             VALUES ($1, $2, 'pending', NOW())
             ON CONFLICT (meeting_id, user_id) DO NOTHING
           `, [meeting.id, parseInt(pId)]);
-
-          await notify(
-            parseInt(pId),
-            '📅 Приглашение на совещание',
-            `${organizerName} приглашает вас на совещание:\n«${title.trim()}»\n📍 ${location || 'Не указано'}\n🕐 ${startTimeStr}`,
-            `#/meetings/${meeting.id}`
-          );
         }
       }
     }
 
-    return { meeting };
+    const guestList = normalizeGuests(guests || guest_emails || []);
+    if (guestList.length) {
+      await upsertGuests(db, meeting.id, guestList);
+    }
+
+    const doSend = send_invites !== false;
+    let inviteResult = { sent: 0, notified: 0 };
+    if (doSend && (Array.isArray(participant_ids) && participant_ids.length || guestList.length)) {
+      try {
+        inviteResult = await sendMeetingInvites(db, meeting.id, {
+          method: 'REQUEST',
+          sendEmail: true,
+          organizerUserId: organizerId
+        });
+      } catch (e) {
+        fastify.log.warn('Meeting invite send failed: ' + e.message);
+      }
+    }
+
+    const { rows: [fresh] } = await db.query('SELECT * FROM meetings WHERE id = $1', [meeting.id]);
+    return { meeting: fresh || meeting, invites: inviteResult };
   });
 
   // ───────────────────────────────────────────────────────────────
@@ -286,55 +339,135 @@ module.exports = async function(fastify) {
     const { rows: [meeting] } = await db.query('SELECT * FROM meetings WHERE id = $1', [id]);
     if (!meeting) return reply.code(404).send({ error: 'Совещание не найдено' });
 
-    // Только организатор или директор может редактировать
     if (meeting.organizer_id !== userId && !DIRECTOR_ROLES.includes(request.user.role)) {
       return reply.code(403).send({ error: 'Только организатор может редактировать' });
     }
 
-    const { title, description, location, start_time, end_time, agenda, status } = request.body;
+    const {
+      title, description, location, start_time, end_time, agenda, status,
+      conference_url, guests, guest_emails, send_invites, recurrence_rule,
+      participant_ids, notify_before_minutes
+    } = request.body || {};
     const updates = [];
     const values = [];
     let idx = 1;
+    let timeChanged = false;
+    let cancelled = false;
 
     if (title !== undefined) { updates.push(`title = $${idx}`); values.push(title.trim()); idx++; }
     if (description !== undefined) { updates.push(`description = $${idx}`); values.push(description); idx++; }
     if (location !== undefined) { updates.push(`location = $${idx}`); values.push(location); idx++; }
-    if (start_time !== undefined) { updates.push(`start_time = $${idx}`); values.push(start_time); idx++; }
-    if (end_time !== undefined) { updates.push(`end_time = $${idx}`); values.push(end_time); idx++; }
+    if (conference_url !== undefined) { updates.push(`conference_url = $${idx}`); values.push(conference_url || null); idx++; }
+    if (notify_before_minutes !== undefined) {
+      updates.push(`notify_before_minutes = $${idx}`);
+      values.push(parseInt(notify_before_minutes, 10) || 15);
+      idx++;
+    }
+    if (start_time !== undefined) {
+      updates.push(`start_time = $${idx}`); values.push(start_time); idx++;
+      timeChanged = true;
+    }
+    if (end_time !== undefined) { updates.push(`end_time = $${idx}`); values.push(end_time); idx++; timeChanged = true; }
     if (agenda !== undefined) { updates.push(`agenda = $${idx}`); values.push(agenda); idx++; }
+    if (recurrence_rule !== undefined) {
+      const rec = normalizeRecurrence(recurrence_rule);
+      updates.push(`is_recurring = $${idx}`); values.push(rec.is_recurring); idx++;
+      updates.push(`recurrence_rule = $${idx}`); values.push(rec.recurrence_rule); idx++;
+    }
     if (status !== undefined && ['scheduled', 'in_progress', 'completed', 'cancelled'].includes(status)) {
       updates.push(`status = $${idx}`); values.push(status); idx++;
+      if (status === 'cancelled') cancelled = true;
     }
 
-    if (updates.length === 0) {
+    if (updates.length === 0 && !guests && !guest_emails && !participant_ids) {
       return reply.code(400).send({ error: 'Нет данных для обновления' });
     }
 
-    updates.push('updated_at = NOW()');
-    values.push(id);
+    const titleChanged = title !== undefined && String(title).trim() !== String(meeting.title || '').trim();
+    const locationChanged = location !== undefined && String(location || '') !== String(meeting.location || '');
+    const confChanged = conference_url !== undefined
+      && String(conference_url || '') !== String(meeting.conference_url || '');
+    const meaningfulChange = timeChanged || cancelled || titleChanged || locationChanged || confChanged;
 
-    await db.query(
-      `UPDATE meetings SET ${updates.join(', ')} WHERE id = $${idx}`,
-      values
-    );
+    if (updates.length) {
+      if (meaningfulChange) {
+        updates.push(`ics_sequence = COALESCE(ics_sequence, 0) + 1`);
+      }
+      updates.push('updated_at = NOW()');
+      values.push(id);
+      await db.query(
+        `UPDATE meetings SET ${updates.join(', ')} WHERE id = $${idx}`,
+        values
+      );
+    }
 
-    // Уведомить участников об изменениях
-    if (start_time !== undefined || status === 'cancelled') {
+    const newlyAddedUserIds = [];
+    if (Array.isArray(participant_ids)) {
+      for (const pId of participant_ids) {
+        if (parseInt(pId) === meeting.organizer_id) continue;
+        const uid = parseInt(pId, 10);
+        if (!uid) continue;
+        const { rowCount } = await db.query(`
+          INSERT INTO meeting_participants (meeting_id, user_id, rsvp_status, created_at)
+          VALUES ($1, $2, 'pending', NOW())
+          ON CONFLICT (meeting_id, user_id) DO NOTHING
+        `, [id, uid]);
+        if (rowCount > 0) newlyAddedUserIds.push(uid);
+      }
+    }
+
+    const guestList = normalizeGuests(guests || guest_emails || []);
+    let newGuests = [];
+    if (guestList.length) {
+      const { rows: existingGuests } = await db.query(
+        'SELECT lower(email) AS email FROM meeting_guests WHERE meeting_id = $1',
+        [id]
+      );
+      const had = new Set(existingGuests.map((g) => g.email));
+      newGuests = guestList.filter((g) => !had.has(String(g.email || '').toLowerCase()));
+      await upsertGuests(db, id, guestList);
+    }
+
+    const doSendAll = send_invites !== false && meaningfulChange;
+    const doSendNew = send_invites !== false && (newlyAddedUserIds.length > 0 || newGuests.length > 0);
+
+    if (doSendAll) {
+      try {
+        await sendMeetingInvites(db, id, {
+          method: cancelled ? 'CANCEL' : 'REQUEST',
+          sendEmail: true,
+          organizerUserId: userId
+        });
+      } catch (e) {
+        fastify.log.warn('Meeting update invite failed: ' + e.message);
+      }
+    } else if (doSendNew) {
+      try {
+        await sendMeetingInvites(db, id, {
+          method: 'REQUEST',
+          sendEmail: true,
+          organizerUserId: userId,
+          onlyUserIds: newlyAddedUserIds,
+          onlyGuestEmails: newGuests.map((g) => g.email)
+        });
+      } catch (e) {
+        fastify.log.warn('Meeting new-participant invite failed: ' + e.message);
+      }
+    } else if (timeChanged || cancelled) {
       const { rows: participants } = await db.query(
         'SELECT user_id FROM meeting_participants WHERE meeting_id = $1',
         [id]
       );
-
-      const msg = status === 'cancelled'
+      const msg = cancelled
         ? `Совещание «${meeting.title}» отменено`
         : `Совещание «${meeting.title}» перенесено на ${new Date(start_time).toLocaleString('ru-RU')}`;
-
       for (const p of participants) {
         await notify(p.user_id, '📅 Изменение совещания', msg, `#/meetings/${id}`);
       }
     }
 
-    return { success: true };
+    const { rows: [fresh] } = await db.query('SELECT * FROM meetings WHERE id = $1', [id]);
+    return { success: true, meeting: fresh };
   });
 
   // ───────────────────────────────────────────────────────────────
@@ -345,7 +478,10 @@ module.exports = async function(fastify) {
   }, async (request, reply) => {
     const id = parseInt(request.params.id);
     const userId = request.user.id;
-    const { user_id } = request.body;
+    const body = request.body || {};
+    const ids = Array.isArray(body.user_ids)
+      ? body.user_ids
+      : (body.user_id != null ? [body.user_id] : []);
 
     const { rows: [meeting] } = await db.query('SELECT * FROM meetings WHERE id = $1', [id]);
     if (!meeting) return reply.code(404).send({ error: 'Совещание не найдено' });
@@ -354,21 +490,49 @@ module.exports = async function(fastify) {
       return reply.code(403).send({ error: 'Только организатор может добавлять участников' });
     }
 
-    await db.query(`
-      INSERT INTO meeting_participants (meeting_id, user_id, rsvp_status, created_at)
-      VALUES ($1, $2, 'pending', NOW())
-      ON CONFLICT (meeting_id, user_id) DO NOTHING
-    `, [id, parseInt(user_id)]);
+    for (const uid of ids) {
+      await db.query(`
+        INSERT INTO meeting_participants (meeting_id, user_id, rsvp_status, created_at)
+        VALUES ($1, $2, 'pending', NOW())
+        ON CONFLICT (meeting_id, user_id) DO NOTHING
+      `, [id, parseInt(uid)]);
 
-    // Уведомить
-    await notify(
-      parseInt(user_id),
-      '📅 Приглашение на совещание',
-      `Вас пригласили на совещание «${meeting.title}»\n🕐 ${new Date(meeting.start_time).toLocaleString('ru-RU')}`,
-      `#/meetings/${id}`
-    );
+      await notify(
+        parseInt(uid),
+        '📅 Приглашение на совещание',
+        `Вас пригласили на совещание «${meeting.title}»\n🕐 ${new Date(meeting.start_time).toLocaleString('ru-RU')}`,
+        `#/meetings/${id}`
+      );
+    }
+
+    if (body.send_invites !== false && ids.length) {
+      try {
+        await sendMeetingInvites(db, id, { method: 'REQUEST', sendEmail: true, organizerUserId: userId });
+      } catch (e) { /* ignore mail errors */ }
+    }
 
     return { success: true };
+  });
+
+  // POST /api/meetings/:id/guests
+  fastify.post('/:id/guests', {
+    preHandler: [fastify.authenticate]
+  }, async (request, reply) => {
+    const id = parseInt(request.params.id);
+    const userId = request.user.id;
+    const { rows: [meeting] } = await db.query('SELECT * FROM meetings WHERE id = $1', [id]);
+    if (!meeting) return reply.code(404).send({ error: 'Совещание не найдено' });
+    if (meeting.organizer_id !== userId && !DIRECTOR_ROLES.includes(request.user.role)) {
+      return reply.code(403).send({ error: 'Только организатор' });
+    }
+    const list = normalizeGuests(request.body?.guests || request.body?.guest_emails || []);
+    const rows = await upsertGuests(db, id, list);
+    if (request.body?.send_invites !== false && rows.length) {
+      try {
+        await sendMeetingInvites(db, id, { method: 'REQUEST', sendEmail: true, organizerUserId: userId });
+      } catch (e) { /* ignore */ }
+    }
+    return { guests: rows };
   });
 
   // ───────────────────────────────────────────────────────────────
@@ -636,8 +800,18 @@ module.exports = async function(fastify) {
       return reply.code(403).send({ error: 'Только организатор или ADMIN' });
     }
 
+    // Send CANCEL before delete
+    try {
+      await db.query(`UPDATE meetings SET status = 'cancelled', ics_sequence = COALESCE(ics_sequence,0)+1 WHERE id = $1`, [id]);
+      await sendMeetingInvites(db, id, { method: 'CANCEL', sendEmail: true, organizerUserId: userId });
+    } catch (e) {
+      fastify.log.warn('Cancel invite on delete failed: ' + e.message);
+    }
+
     await db.query('DELETE FROM meeting_minutes WHERE meeting_id = $1', [id]);
     await db.query('DELETE FROM meeting_participants WHERE meeting_id = $1', [id]);
+    await db.query('DELETE FROM meeting_guests WHERE meeting_id = $1', [id]);
+    await db.query('DELETE FROM meeting_exceptions WHERE meeting_id = $1', [id]);
     await db.query('DELETE FROM meetings WHERE id = $1', [id]);
 
     return { success: true };

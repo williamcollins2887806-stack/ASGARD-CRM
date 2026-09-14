@@ -10,43 +10,18 @@
 const path = require('path');
 const fs = require('fs').promises;
 const { v4: uuidv4 } = require('uuid');
+const { toDateOnly, normalizeRowDates } = require('../lib/date-only');
+
+const PERMIT_DATE_FIELDS = ['issue_date', 'expiry_date'];
+
+function normalizePermitRow(row) {
+  if (row) normalizeRowDates(row, PERMIT_DATE_FIELDS);
+  return row;
+}
 
 module.exports = async function(fastify) {
   const db = fastify.db;
   const uploadDir = process.env.UPLOAD_DIR || './uploads';
-
-  /** YYYY-MM-DD or null; never throws on bad legacy DB values */
-  function toDateOnly(val) {
-    if (val == null || val === '') return null;
-    if (typeof val === 'string') {
-      const trimmed = val.trim();
-      if (!trimmed) return null;
-      const m = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})/);
-      if (m) {
-        const y = +m[1];
-        const mo = +m[2];
-        const day = +m[3];
-        if (mo < 1 || mo > 12 || day < 1 || day > 31) return null;
-        const probe = new Date(Date.UTC(y, mo - 1, day));
-        if (
-          Number.isNaN(probe.getTime()) ||
-          probe.getUTCFullYear() !== y ||
-          probe.getUTCMonth() !== mo - 1 ||
-          probe.getUTCDate() !== day
-        ) {
-          return null;
-        }
-        return `${m[1]}-${m[2]}-${m[3]}`;
-      }
-    }
-    const d = val instanceof Date ? val : new Date(val);
-    if (Number.isNaN(d.getTime())) return null;
-    try {
-      return d.toISOString().slice(0, 10);
-    } catch (_) {
-      return null;
-    }
-  }
 
   // ═══════════════════════════════════════════════════════════════
   // HELPER: Уведомление
@@ -207,6 +182,7 @@ module.exports = async function(fastify) {
         else if (daysLeft <= 30) r.computed_status = 'expiring_30';
         else r.computed_status = 'active';
       }
+      normalizePermitRow(r);
     });
 
     return { permits: rows };
@@ -218,12 +194,25 @@ module.exports = async function(fastify) {
   fastify.get('/matrix', {
     preHandler: [fastify.requirePermission('permits', 'read')]
   }, async (request) => {
-    const { work_id, category } = request.query;
+    const { work_id, category, employee_ids } = request.query;
 
-    // Все активные сотрудники
-    const { rows: employees } = await db.query(
-      'SELECT id, fio, position, is_active FROM employees WHERE is_active = true ORDER BY fio'
-    );
+    let empIds = null;
+    if (employee_ids) {
+      empIds = String(employee_ids).split(',')
+        .map((x) => parseInt(x.trim(), 10))
+        .filter(Number.isFinite);
+      if (!empIds.length) empIds = null;
+    }
+
+    // Активные сотрудники (опционально — только выбранные ids)
+    const { rows: employees } = empIds
+      ? await db.query(
+          'SELECT id, fio, position, is_active FROM employees WHERE is_active = true AND id = ANY($1::int[]) ORDER BY fio',
+          [empIds]
+        )
+      : await db.query(
+          'SELECT id, fio, position, is_active FROM employees WHERE is_active = true ORDER BY fio'
+        );
 
     // Типы допусков (с опциональной фильтрацией по категории)
     let typesSql = 'SELECT * FROM permit_types WHERE is_active = true';
@@ -245,13 +234,20 @@ module.exports = async function(fastify) {
       requiredTypeIds = new Map(reqs.map(r => [r.permit_type_id, r.is_mandatory]));
     }
 
-    // Все действующие допуски (не истёкшие)
-    const { rows: permits } = await db.query(`
-      SELECT employee_id, type_id, expiry_date, id
-      FROM employee_permits
-      WHERE is_active = true
-      ORDER BY expiry_date DESC
-    `);
+    // Действующие допуски (при фильтре ids — только по ним)
+    const { rows: permits } = empIds
+      ? await db.query(`
+          SELECT employee_id, type_id, expiry_date, id
+          FROM employee_permits
+          WHERE is_active = true AND employee_id = ANY($1::int[])
+          ORDER BY expiry_date DESC
+        `, [empIds])
+      : await db.query(`
+          SELECT employee_id, type_id, expiry_date, id
+          FROM employee_permits
+          WHERE is_active = true
+          ORDER BY expiry_date DESC
+        `);
 
     // Строим матрицу
     const permitMap = {}; // key: `${employee_id}_${type_id}` → {expiry_date, status, permit_id}
@@ -341,7 +337,7 @@ module.exports = async function(fastify) {
     `, [id]);
 
     if (!permit) return reply.code(404).send({ error: 'Допуск не найден' });
-    return { permit };
+    return { permit: normalizePermitRow(permit) };
   });
 
   // ═══════════════════════════════════════════════════════════════
@@ -380,6 +376,15 @@ module.exports = async function(fastify) {
     if (!employee_id) return reply.code(400).send({ error: 'Укажите сотрудника' });
     if (!type_id) return reply.code(400).send({ error: 'Укажите тип допуска' });
 
+    const parsedIssue = issue_date != null && issue_date !== '' ? toDateOnly(issue_date) : null;
+    const parsedExpiry = expiry_date != null && expiry_date !== '' ? toDateOnly(expiry_date) : null;
+    if (issue_date != null && issue_date !== '' && !parsedIssue) {
+      return reply.code(400).send({ error: 'Некорректная дата выдачи' });
+    }
+    if (expiry_date != null && expiry_date !== '' && !parsedExpiry) {
+      return reply.code(400).send({ error: 'Некорректная дата окончания' });
+    }
+
     // Сохранить скан если есть
     let scanFile = null;
     let scanOrigName = null;
@@ -404,16 +409,16 @@ module.exports = async function(fastify) {
       `, [
         employee_id, type_id, pt?.category || null,
         doc_number || null, issuer || null,
-        issue_date || null, expiry_date || null,
+        parsedIssue, parsedExpiry,
         scanFile, scanOrigName,
         notes || null, request.user.id
       ]);
 
-      const newPermit = result.rows[0];
+      const newPermit = normalizePermitRow(result.rows[0]);
 
       // Дубли: просроченные записи того же типа архивируются при наличии действующего.
       let archivedDupes = 0;
-      const newIsValid = !expiry_date || new Date(expiry_date) >= new Date(new Date().toDateString());
+      const newIsValid = !parsedExpiry || new Date(parsedExpiry + 'T12:00:00.000Z') >= new Date(new Date().toDateString());
       if (newIsValid && type_id) {
         archivedDupes = await archiveExpiredPermitDupes(db, employee_id, type_id, newPermit.id);
       }
@@ -453,9 +458,19 @@ module.exports = async function(fastify) {
     }
     if (doc_number !== undefined) { updates.push(`doc_number = $${idx}`); values.push(doc_number); idx++; }
     if (issuer !== undefined) { updates.push(`issuer = $${idx}`); values.push(issuer); idx++; }
-    if (issue_date !== undefined) { updates.push(`issue_date = $${idx}`); values.push(issue_date || null); idx++; }
+    if (issue_date !== undefined) {
+      const parsed = issue_date != null && issue_date !== '' ? toDateOnly(issue_date) : null;
+      if (issue_date != null && issue_date !== '' && !parsed) {
+        return reply.code(400).send({ error: 'Некорректная дата выдачи' });
+      }
+      updates.push(`issue_date = $${idx}`); values.push(parsed); idx++;
+    }
     if (expiry_date !== undefined) {
-      updates.push(`expiry_date = $${idx}`); values.push(expiry_date || null); idx++;
+      const parsed = expiry_date != null && expiry_date !== '' ? toDateOnly(expiry_date) : null;
+      if (expiry_date != null && expiry_date !== '' && !parsed) {
+        return reply.code(400).send({ error: 'Некорректная дата окончания' });
+      }
+      updates.push(`expiry_date = $${idx}`); values.push(parsed); idx++;
       // Сбросить флаги уведомлений при изменении даты
       updates.push('notify_30_sent = false', 'notify_14_sent = false', 'notify_expired_sent = false');
     }
@@ -473,7 +488,7 @@ module.exports = async function(fastify) {
     );
     if (!result.rows[0]) return reply.code(404).send({ error: 'Не найден' });
 
-    return { permit: result.rows[0] };
+    return { permit: normalizePermitRow(result.rows[0]) };
   });
 
   // ═══════════════════════════════════════════════════════════════
@@ -575,8 +590,12 @@ module.exports = async function(fastify) {
         }
       });
     } catch (err) {
-      fastify.log.error('[permits] bulk save error: ' + err.message);
       const code = err.statusCode === 400 ? 400 : 500;
+      if (code === 400) {
+        fastify.log.warn('[permits] bulk save validation: ' + err.message);
+      } else {
+        fastify.log.error('[permits] bulk save error: ' + err.message);
+      }
       return reply.code(code).send({
         error: code === 400 ? err.message : 'Ошибка сохранения допусков',
         detail: err.message
@@ -606,6 +625,7 @@ module.exports = async function(fastify) {
         else if (daysLeft <= 30) r.computed_status = 'expiring_30';
         else r.computed_status = 'active';
       }
+      normalizePermitRow(r);
     });
 
     return { permits: rows, stats: { inserted, updated, removed, archived_dupes: archivedDupes } };
@@ -666,6 +686,10 @@ module.exports = async function(fastify) {
 
     if (!expiry_date) return reply.code(400).send({ error: 'Укажите новую дату окончания' });
 
+    const parsedIssue = issue_date != null && issue_date !== '' ? toDateOnly(issue_date) : toDateOnly(new Date());
+    const parsedExpiry = toDateOnly(expiry_date);
+    if (!parsedExpiry) return reply.code(400).send({ error: 'Некорректная дата окончания' });
+
     // Деактивировать старый
     await db.query('UPDATE employee_permits SET is_active = false, updated_at = NOW() WHERE id = $1', [id]);
 
@@ -679,8 +703,8 @@ module.exports = async function(fastify) {
     `, [
       old.employee_id, old.type_id, old.category,
       doc_number || old.doc_number, issuer || old.issuer,
-      issue_date || new Date().toISOString().slice(0, 10),
-      expiry_date,
+      parsedIssue,
+      parsedExpiry,
       old.notes,
       request.user.id, id
     ]);
@@ -689,7 +713,7 @@ module.exports = async function(fastify) {
       db, old.employee_id, old.type_id, result.rows[0].id
     );
 
-    return { permit: result.rows[0], old_id: id, archived_dupes: archivedDupes };
+    return { permit: normalizePermitRow(result.rows[0]), old_id: id, archived_dupes: archivedDupes };
   });
 
   // ═══════════════════════════════════════════════════════════════
@@ -703,6 +727,10 @@ module.exports = async function(fastify) {
       return reply.code(400).send({ error: 'Укажите permit_ids (массив)' });
     }
     if (!expiry_date) return reply.code(400).send({ error: 'Укажите новую дату' });
+
+    const parsedIssue = issue_date != null && issue_date !== '' ? toDateOnly(issue_date) : toDateOnly(new Date());
+    const parsedExpiry = toDateOnly(expiry_date);
+    if (!parsedExpiry) return reply.code(400).send({ error: 'Некорректная дата окончания' });
 
     let renewed = 0;
     for (const pid of permit_ids) {
@@ -720,8 +748,8 @@ module.exports = async function(fastify) {
       `, [
         old.employee_id, old.type_id, old.category,
         old.doc_number, old.issuer,
-        issue_date || new Date().toISOString().slice(0, 10),
-        expiry_date, old.notes, request.user.id, pid
+        parsedIssue,
+        parsedExpiry, old.notes, request.user.id, pid
       ]);
       await archiveExpiredPermitDupes(db, old.employee_id, old.type_id, ins.rows[0].id);
       renewed++;
@@ -741,6 +769,34 @@ module.exports = async function(fastify) {
       `[permits] cleanup-expired-dupes: archived=${report.archived}, groups=${report.groups_affected}, multi_valid=${report.multi_valid_groups}`
     );
     return report;
+  });
+
+  // POST /api/permits/weekly-digest — превью / ручная отправка дайджеста
+  // body: { preview?: true, to?: 'email', send?: true }
+  fastify.post('/weekly-digest', {
+    preHandler: [fastify.requirePermission('permits_admin', 'write')]
+  }, async (request) => {
+    const body = request.body || {};
+    const digest = require('../services/permits-weekly-digest');
+    if (body.send) {
+      const result = await digest.sendDigest(db, fastify.log, {
+        preview: body.preview !== false,
+        toEmail: body.to || undefined
+      });
+      return {
+        ok: result.ok,
+        subject: result.subject,
+        recipients: result.recipients,
+        counts: result.payload?.counts
+      };
+    }
+    const built = await digest.buildDigest(db, { preview: true });
+    return {
+      ok: true,
+      subject: built.subject,
+      counts: built.payload.counts,
+      html: built.html
+    };
   });
 
   // ═══════════════════════════════════════════════════════════════

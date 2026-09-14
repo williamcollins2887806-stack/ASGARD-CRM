@@ -48,6 +48,18 @@ function decrypt(stored) {
 // ── State ────────────────────────────────────────────────────────────────
 const pollingTimers = new Map();   // accountId → timeoutId
 const activeClients = new Map();   // accountId → ImapFlow instance
+const syncBackoff = new Map();     // accountId → { failures, until }
+
+function noteSyncFailure(accountId) {
+  const prev = syncBackoff.get(accountId) || { failures: 0 };
+  const failures = prev.failures + 1;
+  const delayMs = Math.min(5 * 60 * 1000, 30_000 * Math.pow(2, Math.min(failures - 1, 4)));
+  syncBackoff.set(accountId, { failures, until: Date.now() + delayMs });
+}
+
+function clearSyncBackoff(accountId) {
+  syncBackoff.delete(accountId);
+}
 let isShuttingDown = false;
 
 // ── Uploads path helper ─────────────────────────────────────────────────
@@ -111,8 +123,8 @@ async function createClient(account) {
     },
     logger: false,
     emitLogs: false,
-    greetingTimeout: 15000,
-    socketTimeout: 60000
+    greetingTimeout: 20000,
+    socketTimeout: 90000
   });
 
   // Без этого listener'а async-ошибки TLS-socket (Yandex периодически дропает
@@ -132,6 +144,11 @@ async function createClient(account) {
  */
 async function syncAccount(accountId) {
   if (isShuttingDown) return { fetched: 0, newCount: 0 };
+
+  const backoff = syncBackoff.get(accountId);
+  if (backoff && Date.now() < backoff.until) {
+    return { fetched: 0, newCount: 0, skipped: true, reason: 'backoff' };
+  }
 
   // Load account from DB
   const accRes = await db.query('SELECT * FROM email_accounts WHERE id = $1 AND is_active = true', [accountId]);
@@ -228,8 +245,10 @@ async function syncAccount(accountId) {
     );
 
     console.log(`[IMAP] Sync account #${accountId}: ${newCount} new, ${updatedCount} updated, ${attachmentsSaved} attachments`);
+    clearSyncBackoff(accountId);
   } catch (err) {
     console.error(`[IMAP] Sync error account #${accountId}:`, err.message);
+    noteSyncFailure(accountId);
     if (err.message.includes('auth') || err.message.includes('login') || err.message.includes('credentials')) {
       console.error(`[IMAP] ⚠️  Authentication failed for account #${accountId}. Check IMAP_USER/IMAP_PASS or email_accounts credentials.`);
     }
@@ -1481,11 +1500,11 @@ async function processUnanalyzedEmails() {
               COUNT(*) FILTER (WHERE direction = 'inbound' AND is_deleted = false AND ai_processed_at IS NULL) as need_ai,
               COUNT(*) FILTER (WHERE direction = 'inbound' AND is_deleted = false AND ai_processed_at IS NOT NULL) as already_processed,
               COUNT(*) FILTER (WHERE direction = 'inbound' AND is_deleted = false AND ai_summary LIKE '%Пропущено%') as skipped,
-              COUNT(*) FILTER (WHERE direction = 'inbound' AND is_deleted = false AND ai_summary LIKE '%Ошибка%') as errored
+              COUNT(*) FILTER (WHERE direction = 'inbound' AND is_deleted = false AND ai_summary LIKE '%Ошибка%') as failed_ai
             FROM emails
           `);
           const d = diag.rows[0];
-          console.log(`[IMAP-AI] Diagnostic: total_inbound=${d.total_inbound}, not_deleted=${d.inbound_not_deleted}, need_ai=${d.need_ai}, already_processed=${d.already_processed}, skipped=${d.skipped}, errored=${d.errored}`);
+          console.log(`[IMAP-AI] Diagnostic: total_inbound=${d.total_inbound}, not_deleted=${d.inbound_not_deleted}, need_ai=${d.need_ai}, already_processed=${d.already_processed}, skipped=${d.skipped}, failed_ai=${d.failed_ai}`);
         } catch (diagErr) {
           console.warn('[IMAP-AI] Diagnostic query failed:', diagErr.message);
         }

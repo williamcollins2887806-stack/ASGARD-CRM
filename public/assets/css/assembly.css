@@ -2,7 +2,7 @@
 
 .asm-page{padding:var(--sp-4)}
 
-.asm-status{display:inline-flex;align-items:center;gap:var(--sp-1);padding:2px var(--sp-2);border-radius:999px;font-size:12px;font-weight:500;white-space:nowrap}
+.asm-status{display:inline-flex;align-items:center;gap:var(--sp-1);padding:2px 8px;border-radius:6px;font-size:12px;font-weight:500;white-space:nowrap}
 .asm-status--draft{background:var(--bg3);color:var(--t2)}
 .asm-status--confirmed{background:var(--info-bg);color:var(--info-t)}
 .asm-status--packing{background:color-mix(in srgb,var(--gold) 15%,transparent);color:var(--gold)}
@@ -35,8 +35,18 @@
 .asm-checklist__item--packed{opacity:.6;text-decoration:line-through}
 .asm-checklist__checkbox{width:18px;height:18px;cursor:pointer;accent-color:var(--ok)}
 
-.asm-progress{background:var(--bg3);border-radius:999px;height:8px;overflow:hidden;margin:var(--sp-2) 0}
-.asm-progress__bar{height:100%;border-radius:999px;background:linear-gradient(90deg,var(--blue),var(--ok));transition:width .5s ease}
+.asm-progress{background:var(--bg3);border-radius:2px;height:4px;overflow:hidden;margin:var(--sp-2) 0}
+.asm-progress__bar{height:100%;border-radius:2px;background:var(--gold,#c9a84c);transition:width .35s ease}
+
+.asm-queue{display:flex;flex-direction:column;gap:10px}
+.asm-queue__card{padding:14px 16px;border:1px solid var(--brd);border-radius:10px;background:var(--bg1);cursor:pointer;transition:border-color .15s,box-shadow .15s}
+.asm-queue__card:hover{border-color:rgba(201,168,76,.4);box-shadow:0 6px 18px rgba(0,0,0,.12)}
+.asm-queue__top{display:flex;justify-content:space-between;gap:12px;align-items:flex-start}
+.asm-queue__who{font-size:15px;font-weight:700;color:var(--t1);letter-spacing:-.01em}
+.asm-queue__meta{font-size:12px;color:var(--t2);margin-top:4px;line-height:1.4}
+.asm-queue__pct{font-size:12px;font-weight:700;padding:3px 8px;border-radius:6px;border:1px solid var(--brd);white-space:nowrap;display:inline-block}
+.asm-queue__bar{height:4px;border-radius:2px;background:var(--bg3);margin-top:10px;overflow:hidden}
+.asm-queue__bar>i{display:block;height:100%;background:var(--gold,#c9a84c);border-radius:2px}
 
 .asm-detail{padding:var(--sp-4)}
 .asm-detail__header{display:flex;justify-content:space-between;align-items:start;margin-bottom:var(--sp-4);flex-wrap:wrap;gap:var(--sp-2)}
@@ -79,7 +89,7 @@
 .vpb__pool.is-over{border-color:var(--blue);background:color-mix(in srgb,var(--blue) 3%,var(--bg1));animation:vpb-poolGlow 1.2s ease infinite}
 .vpb__pool-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:var(--sp-2);padding-bottom:var(--sp-2);border-bottom:2px solid color-mix(in srgb,var(--blue) 20%,var(--brd))}
 .vpb__pool-title{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--t2)}
-.vpb__pool-badge{background:var(--blue);color:#fff;font-size:11px;font-weight:700;padding:2px 10px;border-radius:999px;min-width:24px;text-align:center;display:inline-block;transition:transform .3s cubic-bezier(.34,1.56,.64,1)}
+.vpb__pool-badge{background:var(--blue);color:#fff;font-size:11px;font-weight:700;padding:2px 10px;border-radius:6px;min-width:24px;text-align:center;display:inline-block;transition:transform .3s cubic-bezier(.34,1.56,.64,1)}
 .vpb__pool-badge.pop{animation:vpb-countBump .35s cubic-bezier(.34,1.56,.64,1)}
 .vpb__pool-empty{padding:var(--sp-6) 0;text-align:center;color:var(--t3);font-size:13px}
 .vpb__pool-empty svg{width:56px;height:56px;opacity:.25;margin-bottom:var(--sp-2);display:block;margin-inline:auto}
@@ -216,3 +226,20 @@
 
 /* -- FLIP -- */
 .vpb__flip{transition:transform .35s cubic-bezier(.2,0,0,1)}
+
+/* premium-gold: primary CTA сборки */
+.asm-page .btn.primary,
+.asm-detail .btn.primary,
+.asm-detail__actions .btn.primary,
+.asm-queue .btn.primary,
+#asm-send.btn.primary,
+#asm-confirm.btn.primary {
+  background: var(--gold,#D4A843) !important;
+  border-color: var(--gold,#D4A843) !important;
+  color: #15110d !important;
+}
+.asm-status--confirmed {
+  background: color-mix(in srgb, var(--gold) 18%, transparent);
+  color: var(--gold);
+}
+.asm-card:hover, .asm-pallet-card:hover { border-color: var(--gold,#D4A843); }

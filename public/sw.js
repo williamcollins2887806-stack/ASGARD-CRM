@@ -2,7 +2,7 @@
 // Shell caching + Push Notifications + Offline Support + Background Sync
 // Session 15: PWA + Push Actions + Badge + Offline
 
-const SHELL_VERSION = '20.26.92';
+const SHELL_VERSION = '20.28.29';
 const CACHE_NAME = `asgard-crm-shell-${SHELL_VERSION}`;
 const API_CACHE_NAME = 'asgard-crm-api-v2';
 
@@ -53,7 +53,7 @@ self.addEventListener('activate', (event) => {
   // Раньше код удалял ВСЁ при каждом обновлении → offline.html не сохранялся
   // → юзеры видели plain "Offline" текст вместо красивой викинг-страницы
   // когда сервер был недоступен. Стандартная ошибка PWA. Исправлено 23.06.2026.
-  // JS/CSS свежесть всё равно гарантируется через `?v=<SHELL_VERSION>` в index.html
+  // JS/CSS свежесть всё равно гарантируется через `?v=<SHELL_VERSION>` in index.html
   // и `cache: 'no-store'` в networkFirstWithOffline — поэтому удалять текущий
   // shell-кэш не нужно для свежести.
   event.waitUntil(

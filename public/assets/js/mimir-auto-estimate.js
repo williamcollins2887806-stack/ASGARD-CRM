@@ -18,11 +18,69 @@
     customer_history: '🏢',
     warehouse: '🏭',
     workers: '👷',
+    permits: '🛡',
     tariffs: '💰',
     collected: '✅',
     ai_thinking: '🧮',
     creating_estimate: '📝',
   };
+
+  // Факты/тизеры по шагам — крутятся, пока шаг «живой» (чтобы не казалось, что зависло).
+  const STEP_FACTS = {
+    start: [
+      'Сначала соберу контекст, потом отдам его ИИ — так смета точнее.',
+      'Чем полнее ТЗ и аналоги, тем меньше «воды» в смете.',
+    ],
+    documents: [
+      'Читаю PDF/DOCX/XLSX из тендера — таблицы объёмов часто спрятаны внутри.',
+      'Если в ТЗ есть «человеко-часы» и «нормо-часы» — это разные вещи, не путаю.',
+      'Крупные архивы разбираю по файлам: сначала ТЗ, потом приложения.',
+    ],
+    analogs: [
+      'Ищу похожие просчёты: тот же заказчик, похожий объём или тип работ.',
+      'Аналог — ориентир по цене, не копия один-в-один.',
+      'Если аналогов мало — опираюсь на тарифы и склад.',
+    ],
+    customer_history: [
+      'Смотрю, как мы уже работали с этим заказчиком: маржа, сроки, сюрпризы.',
+      'Повторный заказчик часто даёт более предсказуемую себестоимость.',
+    ],
+    warehouse: [
+      'Сверяю остатки: что можно взять со склада, а что придётся закупать.',
+      'Дефицит на складе влияет на срок и на закупочную строку сметы.',
+    ],
+    workers: [
+      'Свободный ≠ подходящий: смотрю пересечение дат с другими объектами.',
+      'ИТР и полевые считаются по-разному — разные таблицы в CRM.',
+      'Занятость смотрю по staff_ids и утверждённым составам смен.',
+    ],
+    permits: [
+      'Допуск на высоту и ОТЗП часто решают, кого реально можно поставить на объект.',
+      'Истекающие допуска в ближайшие 30 дней — риск сорвать смену в середине работ.',
+      'НАКС, ЭБ и БОСИЕТ группирую по семействам — так проще увидеть дыры в бригаде.',
+      'Сверяю активные записи employee_permits с датой окончания.',
+      'Если у свободных нет нужного допуска — в смете появится обучение или риск.',
+    ],
+    tariffs: [
+      'Тарифная сетка: МЛСП, земля, тяжёлые работы, склад — разные ставки.',
+      'Баллы и сменные ставки беру из field_tariff_grid, не «с потолка».',
+    ],
+    collected: [
+      'Контекст собран — дальше ИИ соберёт смету и комментарий.',
+    ],
+    ai_thinking: [
+      'Считаю состав, химию, логистику и риски по собранным фактам.',
+      'Долго думаю на сложных ТЗ — таймер тикает, значит процесс жив.',
+    ],
+    creating_estimate: [
+      'Пишу позиции сметы в CRM — ещё чуть-чуть.',
+    ],
+  };
+
+  const STEP_ORDER = [
+    'start', 'documents', 'analogs', 'customer_history', 'warehouse',
+    'workers', 'permits', 'tariffs', 'collected', 'ai_thinking', 'creating_estimate'
+  ];
 
   const fmtMoney = (n) => {
     if (n == null) return '—';
@@ -253,6 +311,12 @@
 
   function closeModal(overlay) {
     _aeRunning = false;
+    _clearLivePanel(false);
+    if (_thinkingEl) {
+      if (_thinkingEl._timerInterval) clearInterval(_thinkingEl._timerInterval);
+      if (_thinkingEl._factInterval) clearInterval(_thinkingEl._factInterval);
+      _thinkingEl = null;
+    }
     try {
       var keys = Object.keys(localStorage);
       for (var i = 0; i < keys.length; i++) {
@@ -265,27 +329,146 @@
     setTimeout(() => overlay.remove(), 200);
   }
 
-  // Очередь шагов — 2.5с задержка между шагами сбора, имитация вдумчивого анализа
+  // Очередь шагов — короткие паузы, чтобы список не мигал, но live-панель уже крутится
   var _stepQueue = [];
   var _stepTimer = null;
   var _stepDelays = {
-    'documents': 3000,    // «Читаю документы» — 3 сек
-    'analogs':   2500,    // «Ищу аналоги» — 2.5 сек
-    'customer_history': 2000,
-    'warehouse': 2000,
-    'workers':   2000,
-    'tariffs':   1500,
-    'collected': 1000,    // «Всё собрано» — быстро
+    'documents': 900,
+    'analogs':   800,
+    'customer_history': 700,
+    'warehouse': 700,
+    'workers':   700,
+    'permits':   600,
+    'tariffs':   500,
+    'collected': 400,
   };
+  var _livePanel = null; // { wrap, step, startAt, timerIv, factIv }
+
+  function _clearLivePanel(markDone) {
+    if (!_livePanel) return;
+    if (_livePanel.timerIv) clearInterval(_livePanel.timerIv);
+    if (_livePanel.factIv) clearInterval(_livePanel.factIv);
+    if (_livePanel.live) {
+      try { _livePanel.live.remove(); } catch (_) {}
+    }
+    if (_thinkingEl) {
+      if (_thinkingEl._timerInterval) clearInterval(_thinkingEl._timerInterval);
+      if (_thinkingEl._factInterval) clearInterval(_thinkingEl._factInterval);
+      _thinkingEl = null;
+    }
+    _livePanel = null;
+  }
+
+  function _pickFact(step, idx) {
+    var list = STEP_FACTS[step] || STEP_FACTS.start;
+    return list[idx % list.length];
+  }
+
+  function _stageLabel(step) {
+    var i = STEP_ORDER.indexOf(step);
+    if (i < 0) return '';
+    return 'Шаг ' + (i + 1) + ' из ' + STEP_ORDER.length;
+  }
+
+  function _mountLivePanel(parent, step, message) {
+    _clearLivePanel(true);
+    var startAt = Date.now();
+    var factIdx = 0;
+
+    var live = el('div', {
+      class: 'mimir-ae-live',
+      style: {
+        margin: '4px 0 14px 38px', padding: '12px 14px', borderRadius: '12px',
+        background: 'linear-gradient(135deg, rgba(212,168,67,0.07), rgba(30,77,140,0.05))',
+        border: '0.5px solid rgba(212,168,67,0.22)',
+        display: 'flex', gap: '12px', alignItems: 'flex-start',
+        animation: 'mimirAeStepIn 0.35s ease both',
+      },
+    });
+
+    var spin = el('div', {
+      class: 'mimir-ae-spin',
+      style: {
+        width: '28px', height: '28px', borderRadius: '50%', flexShrink: '0',
+        border: '2.5px solid rgba(212,168,67,0.18)',
+        borderTopColor: '#D4A843',
+        animation: 'mimirAeSpin 0.75s linear infinite',
+        marginTop: '2px',
+      },
+    });
+
+    var right = el('div', { style: { flex: '1', minWidth: '0' } });
+    right.appendChild(el('div', {
+      class: 'mimir-ae-live-title',
+      style: { fontSize: '13px', fontWeight: '700', color: '#D4A843', lineHeight: '1.35' },
+    }, message || (STEP_ICONS[step] + ' ' + step)));
+
+    var meta = el('div', {
+      style: {
+        display: 'flex', gap: '10px', flexWrap: 'wrap', alignItems: 'center',
+        marginTop: '4px', fontSize: '11px', color: 'rgba(212,168,67,0.55)',
+      },
+    });
+    meta.appendChild(el('span', { class: 'mimir-ae-live-timer' }, '0 сек'));
+    var stage = _stageLabel(step);
+    if (stage) meta.appendChild(el('span', {}, '· ' + stage));
+    meta.appendChild(el('span', { class: 'mimir-ae-live-pulse' }, '· идёт…'));
+    right.appendChild(meta);
+
+    var fact = el('div', {
+      class: 'mimir-ae-fact',
+      style: {
+        marginTop: '8px', fontSize: '12px', color: 'var(--t2)', lineHeight: '1.45',
+        minHeight: '34px', transition: 'opacity 0.25s ease',
+      },
+    }, _pickFact(step, 0));
+    right.appendChild(fact);
+
+    live.appendChild(spin);
+    live.appendChild(right);
+    parent.appendChild(live);
+
+    var timerIv = setInterval(function () {
+      if (!live.parentNode) { clearInterval(timerIv); return; }
+      var sec = Math.round((Date.now() - startAt) / 1000);
+      var tEl = live.querySelector('.mimir-ae-live-timer');
+      if (tEl) tEl.textContent = sec + ' сек';
+      var pulse = live.querySelector('.mimir-ae-live-pulse');
+      if (pulse) {
+        var dots = sec % 3 === 0 ? '· идёт.' : (sec % 3 === 1 ? '· идёт..' : '· идёт...');
+        pulse.textContent = dots;
+      }
+    }, 1000);
+
+    var factIv = setInterval(function () {
+      if (!live.parentNode) { clearInterval(factIv); return; }
+      factIdx++;
+      var fEl = live.querySelector('.mimir-ae-fact');
+      if (!fEl) return;
+      fEl.style.opacity = '0';
+      setTimeout(function () {
+        fEl.textContent = _pickFact(step, factIdx);
+        fEl.style.opacity = '1';
+      }, 180);
+    }, 4500);
+
+    _livePanel = { wrap: parent, step: step, startAt: startAt, timerIv: timerIv, factIv: factIv, live: live };
+    return live;
+  }
 
   function enqueueStep(stepsBox, event) {
     // ai_thinking и после — показываем сразу (Claude думает в реальном времени)
     if (event.step === 'ai_thinking' || event.step === 'creating_estimate') {
-      // Сначала flush всю очередь мгновенно
       while (_stepQueue.length > 0) { var qi = _stepQueue.shift(); appendStepNow(qi.stepsBox, qi.event); }
       if (_stepTimer) { clearTimeout(_stepTimer); _stepTimer = null; }
       _stepQueue = [];
       appendStepNow(stepsBox, event);
+      return;
+    }
+    // Обновление того же шага (permits детализация) — сразу в live-панель
+    if (_livePanel && event.step && event.step === _livePanel.step) {
+      var title = _livePanel.live && _livePanel.live.querySelector('.mimir-ae-live-title');
+      if (title && event.message) title.textContent = event.message;
       return;
     }
     _stepQueue.push({ stepsBox, event });
@@ -296,7 +479,7 @@
     if (_stepQueue.length === 0) { _stepTimer = null; return; }
     var item = _stepQueue.shift();
     if (item && item.event) appendStepNow(item.stepsBox, item.event);
-    var delay = (item && item.event && _stepDelays[item.event.step]) || 2500;
+    var delay = (item && item.event && _stepDelays[item.event.step]) || 700;
     _stepTimer = setTimeout(drainStepQueue, delay);
   }
 
@@ -304,19 +487,28 @@
   var _thinkingEl = null;
 
   function appendStepNow(stepsBox, event) {
-    // Убрать предыдущую "thinking" анимацию если была
+    // Тот же шаг — только обновить текст live-панели
+    if (_livePanel && event.step && event.step === _livePanel.step && event.step !== 'ai_thinking') {
+      var title = _livePanel.live && _livePanel.live.querySelector('.mimir-ae-live-title');
+      if (title && event.message) title.textContent = event.message;
+      return;
+    }
+
+    // Закрыть предыдущую live/thinking панель
     if (_thinkingEl) {
       if (_thinkingEl._timerInterval) clearInterval(_thinkingEl._timerInterval);
       _thinkingEl.remove();
       _thinkingEl = null;
     }
+    _clearLivePanel(true);
 
     const icon = STEP_ICONS[event.step] || '•';
     const isThinking = event.step === 'ai_thinking';
+    const isTerminal = event.step === 'collected' || event.step === 'creating_estimate';
 
     const row = el('div', {
       style: {
-        display: 'flex', alignItems: 'flex-start', gap: '10px', marginBottom: isThinking ? '16px' : '8px',
+        display: 'flex', alignItems: 'flex-start', gap: '10px', marginBottom: isThinking ? '8px' : '6px',
         animation: 'mimirAeStepIn 0.32s ease both',
       },
     });
@@ -341,7 +533,7 @@
     row.appendChild(iconBox);
     row.appendChild(text);
 
-    // Для ai_thinking — добавляем animated thinking widget
+    // Для ai_thinking — полный thinking widget (как раньше)
     if (isThinking) {
       const thinkBox = el('div', {
         style: {
@@ -353,7 +545,6 @@
         },
       });
 
-      // Animated Mimir avatar
       const avatar = el('div', {
         style: {
           width: '48px', height: '48px', borderRadius: '50%', flexShrink: '0',
@@ -366,16 +557,12 @@
         },
       }, '⚡');
 
-      // Right side: text + dots animation
       const rightSide = el('div', { style: { flex: '1' } });
-      // Заголовок — обновляется через SSE heartbeat (evt.message): сюда летят
-      // "🧠 Анализирую ТЗ...", "🔍 Ищу: ...", "✅ Получено N KB фактов..." и т.п.
       rightSide.appendChild(el('div', {
         class: 'mimir-ae-think-label',
         style: { fontSize: '14px', fontWeight: '700', color: '#D4A843', marginBottom: '4px' },
       }, 'Мимир анализирует данные'));
 
-      // Progress dots
       const dotsRow = el('div', {
         style: { display: 'flex', gap: '4px', alignItems: 'center' },
       });
@@ -397,19 +584,23 @@
       }, '0 сек...');
       rightSide.appendChild(timerEl);
 
+      var factEl = el('div', {
+        class: 'mimir-ae-fact',
+        style: { fontSize: '12px', color: 'var(--t2)', marginTop: '8px', lineHeight: '1.45', minHeight: '34px' },
+      }, _pickFact('ai_thinking', 0));
+      rightSide.appendChild(factEl);
+
       thinkBox.appendChild(avatar);
       thinkBox.appendChild(rightSide);
 
-      // Wrap row + thinkBox
       var wrapper = el('div');
       wrapper.appendChild(row);
       wrapper.appendChild(thinkBox);
       stepsBox.appendChild(wrapper);
       _thinkingEl = wrapper;
 
-      // Плавный локальный таймер — тикает каждую секунду без прыжков.
-      // Heartbeat синхронизирует _thinkStartTime с серверным значением.
       _thinkStartTime = Date.now();
+      var _factIdxThink = 0;
       var _localTimerInterval = setInterval(function() {
         if (timerEl.parentNode) {
           timerEl.textContent = Math.round((Date.now() - _thinkStartTime) / 1000) + ' сек...';
@@ -417,9 +608,25 @@
           clearInterval(_localTimerInterval);
         }
       }, 1000);
+      var _factThinkIv = setInterval(function () {
+        if (!factEl.parentNode) { clearInterval(_factThinkIv); return; }
+        _factIdxThink++;
+        factEl.style.opacity = '0';
+        setTimeout(function () {
+          factEl.textContent = _pickFact('ai_thinking', _factIdxThink);
+          factEl.style.opacity = '1';
+        }, 180);
+      }, 5000);
       wrapper._timerInterval = _localTimerInterval;
+      wrapper._factInterval = _factThinkIv;
     } else {
-      stepsBox.appendChild(row);
+      var wrap = el('div');
+      wrap.appendChild(row);
+      stepsBox.appendChild(wrap);
+      // Live-панель на всех «рабочих» шагах — крутится, пока ждём следующий SSE
+      if (!isTerminal) {
+        _mountLivePanel(wrap, event.step || 'start', event.message);
+      }
     }
 
     stepsBox.scrollIntoView({ block: 'end', behavior: 'smooth' });
@@ -718,21 +925,31 @@
       onclick: function() {
         var answers = inputs.map(function(inp) { return inp.value.trim() || 'Без ответа'; });
         submitBtn.disabled = true;
-        submitBtn.textContent = 'Отправляю...';
+        submitBtn.textContent = 'Мимир думает…';
         submitBtn.style.opacity = '0.6';
 
-        // SSE запрос к /auto-estimate-answer
+        // Сразу показать thinking-виджет — не «ответ принят» без жизни
+        enqueueStep(stepsBox, { type: 'progress', step: 'ai_thinking', message: '🧮 Мимир считает с учётом твоих ответов…' });
+        form.style.opacity = '0.45';
+        form.style.pointerEvents = 'none';
+
         var token = getToken();
         fetch('/api/mimir/auto-estimate-answer', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token, 'Accept': 'text/event-stream' },
           body: JSON.stringify({ session_id: sessionId, answers: answers })
-        }).then(function(r) { return r.body.getReader(); }).then(function(reader) {
+        }).then(function(r) {
+          if (!r.ok) throw new Error('HTTP ' + r.status);
+          return r.body.getReader();
+        }).then(function(reader) {
           var decoder = new TextDecoder();
           var buffer = '';
           function read() {
             reader.read().then(function(res) {
-              if (res.done) return;
+              if (res.done) {
+                if (submitBtn.parentNode) submitBtn.textContent = 'Готово';
+                return;
+              }
               buffer += decoder.decode(res.value, { stream: true });
               var parts = buffer.split('\n\n');
               buffer = parts.pop() || '';
@@ -755,7 +972,14 @@
             });
           }
           read();
-        }).catch(function(e) { showError(stepsBox, e.message); });
+        }).catch(function(e) {
+          showError(stepsBox, e.message);
+          submitBtn.disabled = false;
+          submitBtn.textContent = 'Отправить ответы →';
+          submitBtn.style.opacity = '1';
+          form.style.opacity = '1';
+          form.style.pointerEvents = '';
+        });
       }
     }, 'Отправить ответы →');
 
@@ -765,6 +989,12 @@
 
   // ── Главный рендер результата ──
   function showResult(resultBox, event, state, composerWrap, overlay) {
+    _clearLivePanel(false);
+    if (_thinkingEl) {
+      if (_thinkingEl._timerInterval) clearInterval(_thinkingEl._timerInterval);
+      if (_thinkingEl._factInterval) clearInterval(_thinkingEl._factInterval);
+      _thinkingEl = null;
+    }
     state.estimateId = event.estimate_id;
     state.lastCard = event.card;
     state.lastAnalysis = event.analysis;
@@ -920,6 +1150,12 @@
   }
 
   function showError(stepsBox, message) {
+    _clearLivePanel(false);
+    if (_thinkingEl) {
+      if (_thinkingEl._timerInterval) clearInterval(_thinkingEl._timerInterval);
+      if (_thinkingEl._factInterval) clearInterval(_thinkingEl._factInterval);
+      _thinkingEl = null;
+    }
     const card = el('div', {
       style: {
         marginTop: '12px', padding: '12px 14px', borderRadius: '10px',
@@ -1046,6 +1282,7 @@
       @keyframes mimirAeFadeIn { from { opacity: 0 } to { opacity: 1 } }
       @keyframes mimirAeFadeOut { from { opacity: 1 } to { opacity: 0 } }
       @keyframes mimirAeStepIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+      @keyframes mimirAeSpin { to { transform: rotate(360deg); } }
       @keyframes mimirThinkPulse {
         0%, 100% { transform: scale(1); box-shadow: 0 0 8px rgba(212,168,67,0.3); }
         50% { transform: scale(1.1); box-shadow: 0 0 20px rgba(212,168,67,0.5); }

@@ -5,7 +5,7 @@ window.AsgardDashboardPage = (function(){
   const { $, $$, esc, toast } = AsgardUI;
   const { stackedBar, divergent } = AsgardCharts || {};
 
-  function money(x) { return AsgardUI.money(x) + ' ₽'; }
+  function money(x) { return (AsgardUI.moneyRub || AsgardMoney.formatMoney)(x); }
 
   function shortMoney(x){
     const n = Number(x) || 0;
@@ -14,7 +14,7 @@ window.AsgardDashboardPage = (function(){
     if(abs >= 1000000000) return sign + (abs/1000000000).toFixed(1) + ' млрд ₽';
     if(abs >= 1000000) return sign + (abs/1000000).toFixed(1) + ' млн ₽';
     if(abs >= 1000) return sign + (abs/1000).toFixed(0) + ' тыс ₽';
-    return AsgardUI.money(n) + ' ₽';
+    return (AsgardUI.moneyRub || AsgardMoney.formatMoney)(n);
   }
 
   function pct(a, b){

@@ -3,7 +3,7 @@
 /**
  * Embeddings Watch Cron — мониторинг доступности embedding-моделей у RouterAI.
  *
- * Проверяет voyage-3-large и text-embedding-3-large через /v1/embeddings.
+ * Проверяет openai/text-embedding-3-large и openai/text-embedding-3-small через /v1/embeddings.
  * При первом успешном ответе → уведомление в Telegram + notifications для DIRECTOR_GEN/ADMIN.
  *
  * Состояние хранится в settings.embeddings_watch:
@@ -22,7 +22,7 @@ let _telegram = null;
 let _notify = null;
 
 // Модели для проверки. Пытаемся обе подряд — успех любой = embeddings работают.
-const PROBE_MODELS = ['voyage/voyage-3-large', 'text-embedding-3-large'];
+const PROBE_MODELS = ['openai/text-embedding-3-large', 'openai/text-embedding-3-small'];
 const PROBE_TIMEOUT_MS = 15000;
 const SETTINGS_KEY = 'embeddings_watch';
 

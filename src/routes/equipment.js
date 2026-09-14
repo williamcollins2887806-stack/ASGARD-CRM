@@ -98,6 +98,51 @@ async function equipmentRoutes(fastify, options) {
   });
 
   // ============================================
+  // 4b. GET /dims-summary — суммарный объём/вес склада
+  // ============================================
+  fastify.get('/dims-summary', {
+    preHandler: [fastify.authenticate]
+  }, async () => {
+    const eq = await db.query(`
+      SELECT
+        COUNT(*)::int AS items,
+        COUNT(*) FILTER (WHERE length_mm IS NOT NULL AND width_mm IS NOT NULL AND height_mm IS NOT NULL)::int AS with_dims,
+        COUNT(*) FILTER (WHERE weight_g IS NOT NULL)::int AS with_weight,
+        COALESCE(SUM(COALESCE(quantity,1) * COALESCE(volume_mm3,0)),0)::numeric AS volume_mm3_sum,
+        COALESCE(SUM(COALESCE(quantity,1) * COALESCE(weight_g,0)),0)::numeric AS weight_g_sum
+      FROM equipment
+      WHERE deleted_at IS NULL AND COALESCE(status,'') <> 'written_off'
+    `);
+    const prod = await db.query(`
+      SELECT
+        COUNT(*)::int AS items,
+        COUNT(*) FILTER (WHERE length_mm IS NOT NULL AND width_mm IS NOT NULL AND height_mm IS NOT NULL)::int AS with_dims,
+        COUNT(*) FILTER (WHERE weight_g IS NOT NULL)::int AS with_weight,
+        COALESCE(SUM(COALESCE(volume_mm3,0)),0)::numeric AS volume_mm3_sum,
+        COALESCE(SUM(COALESCE(weight_g,0)),0)::numeric AS weight_g_sum
+      FROM products
+      WHERE deleted_at IS NULL AND COALESCE(is_active,true)
+    `);
+    const e = eq.rows[0], p = prod.rows[0];
+    const volMm3 = Number(e.volume_mm3_sum) + Number(p.volume_mm3_sum);
+    const wG = Number(e.weight_g_sum) + Number(p.weight_g_sum);
+    const pack = (vol, wt) => ({
+      volume_m3: Math.round(vol / 1e9 * 1000) / 1000,
+      volume_liters: Math.round(vol / 1e6 * 10) / 10,
+      weight_kg: Math.round(wt / 100) / 10,
+      weight_t: Math.round(wt / 1e5) / 10
+    });
+    return {
+      success: true,
+      equipment: { ...e, ...pack(Number(e.volume_mm3_sum), Number(e.weight_g_sum)) },
+      products: { ...p, ...pack(Number(p.volume_mm3_sum), Number(p.weight_g_sum)) },
+      total: pack(volMm3, wG),
+      total_x3: pack(volMm3 * 3, wG * 3),
+      note: 'volume = L×W×H (мм³); weight_g; ×3 — запас на невнесенное'
+    };
+  });
+
+  // ============================================
   // 5. GET /by-qr/:uuid
   // ============================================
   fastify.get('/by-qr/:uuid', {
@@ -623,7 +668,8 @@ async function equipmentRoutes(fastify, options) {
       useful_life_months, salvage_value, auto_write_off,
       specifications, notes, status, warehouse_id, condition,
       next_maintenance, next_calibration, min_stock_level, reorder_point,
-      custom_icon, icon_slug
+      custom_icon, icon_slug,
+      length_mm, width_mm, height_mm, weight_g, dims_source
     } = request.body;
 
     if (!name) {
@@ -681,6 +727,15 @@ async function equipmentRoutes(fastify, options) {
     // V254: icon_slug опционален; если NULL — триггер БД подставит по нормализованному имени.
     const iconSlug = (typeof icon_slug === 'string' && icon_slug.trim()) ? icon_slug.trim() : null;
 
+    const toPosInt = (v) => {
+      if (v === undefined || v === null || v === '') return null;
+      const n = parseInt(v, 10);
+      return Number.isFinite(n) && n > 0 ? n : null;
+    };
+    const L = toPosInt(length_mm), Wi = toPosInt(width_mm), He = toPosInt(height_mm), Wg = toPosInt(weight_g);
+    const hasDims = L || Wi || He || Wg;
+    const dSrc = hasDims ? ((dims_source === 'estimated' || dims_source === 'manual') ? dims_source : 'manual') : null;
+
     const result = await db.query(`
       INSERT INTO equipment (
         name, category_id, inventory_number, serial_number, barcode, qr_uuid, qr_code,
@@ -689,7 +744,8 @@ async function equipmentRoutes(fastify, options) {
         useful_life_months, salvage_value, auto_write_off,
         specifications, notes, status, warehouse_id, condition,
         next_maintenance, next_calibration, min_stock_level, reorder_point,
-        custom_icon, created_by, icon_slug
+        custom_icon, created_by, icon_slug,
+        length_mm, width_mm, height_mm, weight_g, dims_source, dims_updated_at
       ) VALUES (
         $1, $2, $3, $4, $5, $6, $7,
         $8, $9, $10, $11, $12, $13,
@@ -697,7 +753,8 @@ async function equipmentRoutes(fastify, options) {
         $18, $19, $20,
         $21, $22, $23, $24, $25,
         $26, $27, $28, $29,
-        $30, $31, $32
+        $30, $31, $32,
+        $33, $34, $35, $36, $37, CASE WHEN $37::text IS NOT NULL THEN NOW() ELSE NULL END
       ) RETURNING *
     `, [
       name, catId, invNumber, serial_number || null, barcode || null, qrUuid, qrUuid,
@@ -706,7 +763,8 @@ async function equipmentRoutes(fastify, options) {
       useful_life_months || null, salvage_value || null, auto_write_off || false,
       specifications ? JSON.stringify(specifications) : null, notes || null, eqStatus, whId, condition || 'new',
       next_maintenance || null, next_calibration || null, min_stock_level || 0, reorder_point || 0,
-      custom_icon || null, user.id, iconSlug
+      custom_icon || null, user.id, iconSlug,
+      L, Wi, He, Wg, dSrc
     ]);
 
     return { success: true, equipment: enrichIcon(result.rows[0]) };
@@ -813,7 +871,8 @@ async function equipmentRoutes(fastify, options) {
       specifications, notes, status, warehouse_id, condition,
       icon_slug,
       next_maintenance, next_calibration, min_stock_level, reorder_point,
-      custom_icon
+      custom_icon,
+      length_mm, width_mm, height_mm, weight_g, dims_source
     } = request.body;
 
     // Input validation
@@ -843,6 +902,22 @@ async function equipmentRoutes(fastify, options) {
       ? null
       : (typeof icon_slug === 'string' && icon_slug.trim() ? icon_slug.trim() : null);
     const iconSlugForceSet = (icon_slug !== undefined);
+
+    const toPosInt = (v) => {
+      if (v === undefined) return undefined; // field not sent
+      if (v === null || v === '') return null;
+      const n = parseInt(v, 10);
+      return Number.isFinite(n) && n > 0 ? n : null;
+    };
+    const dimsTouched = length_mm !== undefined || width_mm !== undefined
+      || height_mm !== undefined || weight_g !== undefined || dims_source !== undefined;
+    const L = toPosInt(length_mm), Wi = toPosInt(width_mm), He = toPosInt(height_mm), Wg = toPosInt(weight_g);
+    let dSrc = undefined;
+    if (dims_source !== undefined) {
+      dSrc = (dims_source === 'estimated' || dims_source === 'manual') ? dims_source : 'manual';
+    } else if (dimsTouched) {
+      dSrc = 'manual';
+    }
 
     const result = await db.query(`
       UPDATE equipment SET
@@ -874,6 +949,12 @@ async function equipmentRoutes(fastify, options) {
         reorder_point = COALESCE($26, reorder_point),
         custom_icon = COALESCE($27, custom_icon),
         icon_slug = CASE WHEN $29::boolean THEN $30::varchar ELSE icon_slug END,
+        length_mm = CASE WHEN $31::boolean THEN $32 ELSE length_mm END,
+        width_mm = CASE WHEN $33::boolean THEN $34 ELSE width_mm END,
+        height_mm = CASE WHEN $35::boolean THEN $36 ELSE height_mm END,
+        weight_g = CASE WHEN $37::boolean THEN $38 ELSE weight_g END,
+        dims_source = CASE WHEN $39::boolean THEN $40 ELSE dims_source END,
+        dims_updated_at = CASE WHEN $41::boolean THEN NOW() ELSE dims_updated_at END,
         updated_at = NOW()
       WHERE id = $28
       RETURNING *
@@ -884,7 +965,13 @@ async function equipmentRoutes(fastify, options) {
       useful_life_months, salvage_value, auto_write_off,
       specifications ? JSON.stringify(specifications) : null, notes, status, warehouse_id, condition,
       next_maintenance, next_calibration, min_stock_level, reorder_point,
-      custom_icon || null, id, iconSlugForceSet, iconSlugParam
+      custom_icon || null, id, iconSlugForceSet, iconSlugParam,
+      length_mm !== undefined, L,
+      width_mm !== undefined, Wi,
+      height_mm !== undefined, He,
+      weight_g !== undefined, Wg,
+      dSrc !== undefined, dSrc || null,
+      dimsTouched
     ]);
 
     if (result.rows.length === 0) {

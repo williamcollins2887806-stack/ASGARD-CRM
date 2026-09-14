@@ -22,6 +22,11 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 const { spawn } = require('child_process');
+const crypto = require('crypto');
+
+function cryptoRandom(n) {
+  return crypto.randomBytes(n).toString('hex');
+}
 
 const ARCHIVE_EXT = ['.zip', '.rar', '.7z', '.tar', '.tar.gz', '.tgz', '.tar.bz2', '.gz', '.bz2', '.jar'];
 const ARCHIVE_MIME = [
@@ -262,11 +267,20 @@ async function extractArchive(archivePath, filename, targetDir, opts = {}) {
   }
 
   // Собираем извлечённые файлы
-  const absFiles = listFilesRecursive(targetDir);
+  let absFiles = listFilesRecursive(targetDir);
   if (absFiles.length === 0) {
     return err('EMPTY', 'Архив пустой — нет файлов внутри',
       'Проверьте что архив правильно собран');
   }
+
+  // Рекурсия: вложенные zip/rar/7z (по умолчанию вкл., opts.recursive=false отключает)
+  const wantRecursive = opts.recursive !== false;
+  const maxDepth = Math.min(MAX_DEPTH, Math.max(0, parseInt(opts.maxDepth || MAX_DEPTH, 10) || MAX_DEPTH));
+  if (wantRecursive && maxDepth > 0) {
+    await _unpackNestedArchives(targetDir, maxDepth, 0);
+    absFiles = listFilesRecursive(targetDir);
+  }
+
   if (absFiles.length > (opts.maxFiles || MAX_FILES)) {
     return err('TOO_MANY',
       `В архиве ${absFiles.length} файлов — это превышает лимит ${opts.maxFiles || MAX_FILES}`,
@@ -296,6 +310,38 @@ async function extractArchive(archivePath, filename, targetDir, opts = {}) {
   }
 
   return { ok: true, files: items, totalSize, archiveType: type };
+}
+
+/**
+ * Рекурсивно распаковать вложенные архивы внутри targetDir.
+ * После успеха исходный вложенный архив удаляем.
+ */
+async function _unpackNestedArchives(rootDir, maxDepth, depth) {
+  if (depth >= maxDepth) return;
+  const files = listFilesRecursive(rootDir);
+  for (const abs of files) {
+    const base = path.basename(abs);
+    if (isJunk(base)) continue;
+    if (!isArchive(base)) continue;
+    const nestDir = path.join(path.dirname(abs), `_nest_${depth}_${cryptoRandom(6)}`);
+    try {
+      fs.mkdirSync(nestDir, { recursive: true });
+      const nested = await extractArchive(abs, base, nestDir, {
+        recursive: false,
+        maxFiles: MAX_FILES,
+        maxTotalSize: MAX_TOTAL_SIZE
+      });
+      if (nested.ok) {
+        try { fs.unlinkSync(abs); } catch (_) {}
+        await _unpackNestedArchives(nestDir, maxDepth, depth + 1);
+      } else {
+        console.warn(`[archiveExtractor] nested ${base}: ${nested.error?.code} ${nested.error?.message}`);
+        try { fs.rmSync(nestDir, { recursive: true, force: true }); } catch (_) {}
+      }
+    } catch (e) {
+      console.warn(`[archiveExtractor] nested ${base} failed: ${e.message}`);
+    }
+  }
 }
 
 function detectFileType(filename) {

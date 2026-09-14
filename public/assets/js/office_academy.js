@@ -15,6 +15,16 @@ window.AsgardOfficeAcademyPage = (function () {
   };
   const RANK_ICONS = { 'Мастер': '👑', 'Воин': '⚔️', 'Страж': '🛡️', 'Ученик': '📜' };
 
+  /** Починить литеральные \\uXXXX из старых сидов/AI. */
+  function decodeEsc(s) {
+    if (typeof s !== 'string') return s == null ? '' : String(s);
+    if (!/\\u[0-9a-fA-F]{4}/i.test(s)) return s;
+    return s.replace(/\\u([0-9a-fA-F]{4})/gi, function (_, h) {
+      return String.fromCharCode(parseInt(h, 16));
+    }).replace(/[\uD800-\uDFFF]/g, '');
+  }
+  function escD(s) { return esc(decodeEsc(s)); }
+
   let allLessons = [];
   let currentFilter = null;
   let searchQuery = '';
@@ -35,26 +45,28 @@ window.AsgardOfficeAcademyPage = (function () {
   // ── Block Renderer (all 15 types) ─────────────────────────────
   function renderBlock(b) {
     if (!b) return '';
-    if (typeof b === 'string') return '<div class="oa-block oa-text">' + esc(b) + '</div>';
+    if (typeof b === 'string') return '<div class="oa-block oa-text">' + escD(b) + '</div>';
+    // shadow esc → decode+escape for block content
+    var esc = escD;
 
     switch (b.type) {
       case 'cover':
-        return '<div class="oa-block oa-cover-block" style="text-align:center;padding:20px;background:linear-gradient(135deg,rgba(123,97,255,.1),transparent);border-radius:12px;border:1px solid rgba(123,97,255,.2)">' +
-          '<div style="font-size:48px;margin-bottom:8px">' + esc(b.icon || '🏛️') + '</div>' +
-          '<div style="font-size:18px;font-weight:800;color:var(--t1)">' + esc(b.title || '') + '</div>' +
-          (b.subtitle ? '<div style="font-size:13px;color:var(--t3);margin-top:6px">' + esc(b.subtitle) + '</div>' : '') +
+        return '<div class="oa-block oa-cover-hero" style="text-align:center;padding:36px 24px 28px;background:radial-gradient(ellipse at 50% 0%,rgba(200,168,75,.18),transparent 60%),linear-gradient(160deg,rgba(123,97,255,.16),transparent 70%);border-radius:14px;border:1px solid var(--brd)">' +
+          '<div style="font-size:64px;margin-bottom:10px;line-height:1">' + esc(b.icon || '🏛️') + '</div>' +
+          '<div style="font-size:22px;font-weight:800;color:var(--t1);letter-spacing:-.02em;line-height:1.25">' + esc(b.title || '') + '</div>' +
+          (b.subtitle ? '<div style="font-size:14px;color:var(--t3);margin-top:10px;line-height:1.5">' + esc(b.subtitle) + '</div>' : '') +
           '</div>';
 
       case 'intro':
-        return '<div class="oa-block" style="font-size:14px;line-height:1.8;color:var(--t2);padding-left:14px;border-left:3px solid rgba(200,168,75,.4)">' + esc(b.text || '') + '</div>';
+        return '<div class="oa-block oa-reveal" style="font-size:14px;line-height:1.8;color:var(--t2);padding-left:14px;border-left:3px solid rgba(200,168,75,.55)">' + esc(b.text || '') + '</div>';
 
       case 'text_block':
-        return '<div class="oa-block">' +
+        return '<div class="oa-block oa-reveal">' +
           (b.title ? '<h3 style="margin:0 0 8px;font-size:15px;font-weight:800;color:var(--t1)">' + esc(b.title) + '</h3>' : '') +
           '<div style="font-size:13px;line-height:1.8;color:var(--t2)">' + esc(b.text || '') + '</div></div>';
 
       case 'icon_grid':
-        return '<div class="oa-block" style="background:var(--bg2);border:1px solid var(--brd);border-radius:12px;padding:14px">' +
+        return '<div class="oa-block oa-reveal" style="background:var(--bg2);border:1px solid var(--brd);border-radius:12px;padding:14px">' +
           (b.title ? '<div style="font-size:13px;font-weight:800;color:#c8a84b;margin-bottom:10px">' + esc(b.title) + '</div>' : '') +
           '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">' +
           (b.items || []).map(function (item) {
@@ -67,7 +79,7 @@ window.AsgardOfficeAcademyPage = (function () {
           '</div></div>';
 
       case 'steps':
-        return '<div class="oa-block" style="background:linear-gradient(135deg,rgba(13,26,13,.5),var(--bg2));border:1px solid rgba(34,197,94,.2);border-radius:12px;padding:14px">' +
+        return '<div class="oa-block oa-reveal" style="background:linear-gradient(135deg,rgba(13,26,13,.5),var(--bg2));border:1px solid rgba(34,197,94,.2);border-radius:12px;padding:14px">' +
           (b.title ? '<div style="font-size:13px;font-weight:800;color:#22c55e;margin-bottom:10px">📋 ' + esc(b.title) + '</div>' : '') +
           (b.items || []).map(function (step, i) {
             return '<div style="display:flex;gap:10px;align-items:flex-start;margin-bottom:8px">' +
@@ -77,7 +89,7 @@ window.AsgardOfficeAcademyPage = (function () {
           '</div>';
 
       case 'fact_card':
-        return '<div class="oa-block" style="background:linear-gradient(135deg,rgba(26,21,5,.5),var(--bg2));border:1px solid rgba(200,168,75,.25);border-radius:12px;padding:14px;display:flex;gap:12px;align-items:flex-start">' +
+        return '<div class="oa-block oa-reveal" style="background:linear-gradient(135deg,rgba(26,21,5,.55),var(--bg2));border:1px solid rgba(200,168,75,.45);border-radius:12px;padding:14px;display:flex;gap:12px;align-items:flex-start;box-shadow:0 0 0 1px rgba(200,168,75,.12)">' +
           '<span style="font-size:28px;flex-shrink:0">' + esc(b.icon || '💡') + '</span>' +
           '<div style="font-size:13px;color:#d8d0b8;line-height:1.7;font-style:italic">' + esc(b.text || '') + '</div></div>';
 
@@ -107,19 +119,19 @@ window.AsgardOfficeAcademyPage = (function () {
       case 'warning': {
         var isDanger = b.level === 'danger';
         var wc = isDanger ? '#ef4444' : '#f59e0b';
-        return '<div class="oa-block" style="background:' + wc + '12;border:1px solid ' + wc + '40;border-left:4px solid ' + wc + ';border-radius:12px;padding:12px 14px">' +
+        return '<div class="oa-block oa-reveal" style="background:' + wc + '12;border:1px solid ' + wc + '40;border-left:4px solid ' + wc + ';border-radius:12px;padding:12px 14px">' +
           '<div style="font-size:12px;font-weight:800;color:' + wc + ';margin-bottom:4px">' + (isDanger ? '🚨 ОПАСНО' : '⚠️ ВАЖНО') + '</div>' +
           '<div style="font-size:13px;color:var(--t2);line-height:1.7">' + esc(b.text || '') + '</div></div>';
       }
 
       case 'quote':
-        return '<div class="oa-block" style="background:rgba(200,168,75,.05);border:1px solid rgba(200,168,75,.2);border-left:3px solid #c8a84b;border-radius:10px;padding:12px 14px">' +
+        return '<div class="oa-block oa-reveal" style="background:rgba(200,168,75,.05);border:1px solid rgba(200,168,75,.2);border-left:3px solid #c8a84b;border-radius:10px;padding:12px 14px">' +
           '<div style="font-size:13px;color:var(--t1);line-height:1.7;font-style:italic">«' + esc(b.text || '') + '»</div>' +
           (b.author ? '<div style="font-size:12px;color:var(--t3);margin-top:6px">— ' + esc(b.author) + '</div>' : '') +
           '</div>';
 
       case 'scenario':
-        return '<div class="oa-block" style="background:linear-gradient(135deg,rgba(26,16,48,.5),var(--bg2));border:1px solid rgba(123,97,255,.2);border-radius:12px;padding:14px">' +
+        return '<div class="oa-block oa-reveal" style="background:linear-gradient(135deg,rgba(26,16,48,.5),var(--bg2));border:1px solid rgba(123,97,255,.2);border-radius:12px;padding:14px">' +
           '<div style="font-size:11px;font-weight:800;color:#7b61ff;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px">📋 ' + esc(b.title || 'Ситуация из практики') + '</div>' +
           '<div style="font-size:13px;color:var(--t2);line-height:1.7">' + esc(b.text || '') + '</div>' +
           (b.resolution ? '<div style="background:rgba(34,197,94,.05);border:1px solid rgba(34,197,94,.2);border-radius:8px;padding:10px 12px;margin-top:8px"><div style="font-size:12px;font-weight:700;color:#22c55e;margin-bottom:4px">✓ Правильное решение</div><div style="font-size:12px;color:var(--t2);line-height:1.6">' + esc(b.resolution) + '</div></div>' : '') +
@@ -148,8 +160,64 @@ window.AsgardOfficeAcademyPage = (function () {
       case 'image':
         return b.url ? '<div class="oa-block"><img src="' + esc(b.url) + '" style="max-width:100%;border-radius:8px"/></div>' : '';
 
+      case 'chapter':
+        return '<div class="oa-block oa-chapter oa-reveal" style="display:flex;align-items:baseline;gap:12px;margin:28px 0 16px;padding-bottom:10px;border-bottom:1px solid var(--brd)">' +
+          '<span style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.12em;color:var(--gold,#c8a84b)">Глава ' + esc(String(b.number || '')) + '</span>' +
+          '<span class="oa-chapter-title" style="font-size:18px;font-weight:800;color:var(--t1)">' + esc(b.title || b.text || '') + '</span></div>';
+
+      case 'myth_fact':
+      case 'myth_vs_fact':
+        return '<div class="oa-block oa-reveal">' +
+          (b.title ? '<div style="font-size:13px;font-weight:800;color:var(--gold,#c8a84b);margin-bottom:8px">' + esc(b.title) + '</div>' : '') +
+          (b.items || []).map(function (it) {
+            return '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">' +
+              '<div style="border-radius:12px;padding:12px 14px;background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.25)">' +
+              '<div style="font-size:10px;font-weight:800;color:#ef4444;letter-spacing:.1em;margin-bottom:6px">МИФ</div>' +
+              '<div style="font-size:13px;color:var(--t2);line-height:1.6">' + esc(it.myth || it.false || '') + '</div></div>' +
+              '<div style="border-radius:12px;padding:12px 14px;background:rgba(34,197,94,.08);border:1px solid rgba(34,197,94,.25)">' +
+              '<div style="font-size:10px;font-weight:800;color:#22c55e;letter-spacing:.1em;margin-bottom:6px">ФАКТ</div>' +
+              '<div style="font-size:13px;color:var(--t2);line-height:1.6">' + esc(it.fact || it.true || '') + '</div></div></div>';
+          }).join('') + '</div>';
+
+      case 'key_takeaway':
+      case 'takeaway':
+        return '<div class="oa-block oa-reveal" style="background:linear-gradient(135deg,rgba(200,168,75,.12),var(--bg2));border:1px solid rgba(200,168,75,.45);border-radius:14px;padding:16px 18px">' +
+          '<div style="font-size:14px;font-weight:800;color:#c8a84b;margin-bottom:10px">🎯 ' + esc(b.title || 'Забери с собой') + '</div>' +
+          '<ul style="margin:0;padding-left:18px">' +
+          (b.items || []).map(function (x) {
+            return '<li style="font-size:13px;color:var(--t1);line-height:1.7;margin-bottom:6px">' + esc(x) + '</li>';
+          }).join('') + '</ul></div>';
+
+      case 'timeline':
+        return '<div class="oa-block oa-reveal">' +
+          (b.title ? '<div style="font-size:13px;font-weight:800;color:#7b61ff;margin-bottom:12px">' + esc(b.title) + '</div>' : '') +
+          '<div style="border-left:2px solid var(--brd);margin-left:8px;padding-left:16px">' +
+          (b.items || []).map(function (it, j) {
+            return '<div style="position:relative;margin-bottom:14px">' +
+              '<div style="position:absolute;left:-22px;top:4px;width:10px;height:10px;border-radius:50%;background:#c8a84b"></div>' +
+              '<div style="font-size:12px;font-weight:800;color:var(--t1)">' + esc(it.label || it.title || ('Шаг ' + (j + 1))) + '</div>' +
+              '<div style="font-size:13px;color:var(--t2);line-height:1.6">' + esc(it.text || it.desc || '') + '</div></div>';
+          }).join('') + '</div></div>';
+
+      case 'compare':
+        return '<div class="oa-block oa-reveal">' +
+          (b.title ? '<div style="font-size:13px;font-weight:800;color:var(--t1);margin-bottom:10px">' + esc(b.title) + '</div>' : '') +
+          '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">' +
+          '<div style="border-radius:12px;padding:12px 14px;background:rgba(239,68,68,.06);border:1px solid var(--brd)">' +
+          '<div style="font-size:12px;font-weight:800;color:#ef4444;margin-bottom:8px">' + esc(b.bad_title || 'Плохо') + '</div>' +
+          '<ul style="margin:0;padding-left:16px">' +
+          (b.bad || b.left || []).map(function (x) {
+            return '<li style="font-size:12px;color:var(--t2);line-height:1.6;margin-bottom:4px">' + esc(x) + '</li>';
+          }).join('') + '</ul></div>' +
+          '<div style="border-radius:12px;padding:12px 14px;background:rgba(34,197,94,.06);border:1px solid var(--brd)">' +
+          '<div style="font-size:12px;font-weight:800;color:#22c55e;margin-bottom:8px">' + esc(b.good_title || 'Хорошо') + '</div>' +
+          '<ul style="margin:0;padding-left:16px">' +
+          (b.good || b.right || []).map(function (x) {
+            return '<li style="font-size:12px;color:var(--t2);line-height:1.6;margin-bottom:4px">' + esc(x) + '</li>';
+          }).join('') + '</ul></div></div></div>';
+
       default:
-        return '<div class="oa-block oa-text" style="font-size:13px;line-height:1.7;color:var(--t2)">' + esc(b.text || b.content || '') + '</div>';
+        return '<div class="oa-block oa-text oa-reveal" style="font-size:13px;line-height:1.7;color:var(--t2)">' + esc(b.text || b.content || '') + '</div>';
     }
   }
 
@@ -186,7 +254,13 @@ window.AsgardOfficeAcademyPage = (function () {
         .oa-pill.must { background:rgba(231,76,60,.15); color:#e74c3c; }\
         .oa-pill.track { font-weight:700; }\
         .oa-pill.xp { background:rgba(123,97,255,.15); color:#7b61ff; }\
+        .oa-pill.interest { background:rgba(200,168,75,.15); color:#c8a84b; }\
         .oa-block { margin-bottom:14px; }\
+        .oa-reveal { opacity:0; transform:translateY(12px); transition:opacity .45s ease, transform .45s ease; }\
+        .oa-reveal.oa-revealed { opacity:1; transform:none; }\
+        .oa-read-progress { position:sticky; top:0; z-index:2; height:26px; margin:-4px 0 12px; background:var(--bg2); border:1px solid var(--brd); border-radius:8px; overflow:hidden; }\
+        .oa-read-progress-bar { position:absolute; left:0; top:0; bottom:0; width:0; background:linear-gradient(90deg,rgba(200,168,75,.55),rgba(123,97,255,.45)); transition:width .12s linear; }\
+        .oa-read-progress-meta { position:relative; z-index:1; display:flex; justify-content:space-between; align-items:center; height:100%; padding:0 10px; font-size:11px; font-weight:700; color:var(--t3); }\
         .oa-actions { display:flex; gap:10px; justify-content:flex-end; margin-top:18px; flex-wrap:wrap; }\
         .oa-q { background:var(--bg3); border:1px solid var(--brd); border-radius:12px; padding:14px 16px; margin-bottom:12px; }\
         .oa-q-text { font-weight:600; margin-bottom:10px; font-size:13px; line-height:1.5; }\
@@ -291,10 +365,10 @@ window.AsgardOfficeAcademyPage = (function () {
       return '\
         <div class="oa-card" data-id="' + L.id + '">\
           <div class="oa-cover" style="background:' + esc(L.cover_color || '#1e2840') + '">\
-            <div class="oa-cover-icon">' + esc(L.cover_icon || '🏛️') + '</div>\
+            <div class="oa-cover-icon">' + escD(L.cover_icon || '🏛️') + '</div>\
             <div>\
-              <div class="oa-cover-title">' + esc(L.title || '') + '</div>\
-              ' + (L.saga ? '<div class="oa-cover-saga">' + esc(L.saga) + '</div>' : '') + '\
+              <div class="oa-cover-title">' + escD(L.title || '') + '</div>\
+              ' + (L.saga ? '<div class="oa-cover-saga">' + escD(L.saga) + '</div>' : '') + '\
             </div>\
           </div>\
           <div class="oa-body">\
@@ -303,6 +377,9 @@ window.AsgardOfficeAcademyPage = (function () {
               ' + (L.is_mandatory ? '<span class="oa-pill must">⚠️ Обязательно</span>' : '') + '\
               ' + (L.estimated_minutes ? '<span class="oa-pill">⏱ ' + L.estimated_minutes + ' мин</span>' : '') + '\
               ' + (L.xp_earned > 0 ? '<span class="oa-pill xp">⚡' + L.xp_earned + '</span>' : '') + '\
+              ' + (Number(L.interest_count) >= 3 && L.interest_avg != null
+                ? '<span class="oa-pill interest">★ ' + Number(L.interest_avg).toFixed(1) + '</span>'
+                : (L.my_interest_score > 0 ? '<span class="oa-pill interest">★ ' + L.my_interest_score + '/5</span>' : '')) + '\
             </div>\
             <div style="margin-top:auto;display:flex;gap:6px;flex-wrap:wrap">\
               ' + (passed ? '<span class="oa-pill ok">✓ Пройдено · ' + (L.score || 0) + '%</span>' :
@@ -333,8 +410,23 @@ window.AsgardOfficeAcademyPage = (function () {
     var retry = data.retry || {};
     var passed = !!lesson.passed;
     var needsReread = retry.needs_reread;
+    var dirty = false;
+
+    function refreshPage() {
+      render({ layout: window.AsgardLayout ? AsgardLayout.layout : null, title: 'Залы Асгарда' });
+    }
+
+    function closeLessonModal() {
+      stopReadHeartbeat();
+      closeModal();
+      if (dirty) refreshPage();
+    }
 
     var html = '\
+      <div id="oa_read_progress" class="oa-read-progress">\
+        <div id="oa_read_bar" class="oa-read-progress-bar"></div>\
+        <div class="oa-read-progress-meta"><span id="oa_read_pct">0%</span><span id="oa_read_chapter"></span></div>\
+      </div>\
       <div class="help" style="margin-bottom:14px">\
         ' + (lesson.saga ? '<b>' + esc(lesson.saga) + '</b> · ' : '') + '\
         ' + (lesson.estimated_minutes ? '⏱ ' + lesson.estimated_minutes + ' мин' : '') + '\
@@ -345,13 +437,24 @@ window.AsgardOfficeAcademyPage = (function () {
     if (needsReread) {
       html += '<div style="background:rgba(245,158,11,.1);border:1px solid rgba(245,158,11,.3);border-radius:10px;padding:12px 14px;margin-bottom:14px">\
         <div style="font-weight:700;color:#f59e0b;margin-bottom:4px">📖 Перечитай свиток</div>\
-        <div style="font-size:12px;color:var(--t3)">Все попытки использованы. Прочитай заново (мин. 60 сек) для новых попыток.</div>\
+        <div style="font-size:12px;color:var(--t3)">Все попытки использованы. Прочитай заново (мин. ' + (retry.min_read_seconds || 60) + ' сек) для новых попыток.</div>\
       </div>';
     }
 
     html += '<div id="oa_blocks">' +
       (blocks.map(function (b) { return renderBlock(b); }).join('') || '<div class="help">Контент свитка пока не подготовлен</div>') +
       '</div>';
+
+    var canRate = !!(lesson.read_completed_at || passed);
+    var myScore = Number(lesson.my_interest_score) || 0;
+    html += '<div id="oa_rating_wrap" style="margin-top:16px;padding-top:12px;border-top:1px solid var(--brd);' + (canRate ? '' : 'display:none') + '">' +
+      '<div style="font-size:12px;font-weight:700;color:var(--t3);margin-bottom:6px">Насколько интересно?</div>' +
+      '<div id="oa_rating_stars" style="display:flex;gap:4px;align-items:center">' +
+      [1, 2, 3, 4, 5].map(function (n) {
+        return '<button type="button" class="btn ghost oa-rate-btn" data-score="' + n + '" style="font-size:20px;padding:2px 4px;color:' + (myScore >= n ? 'var(--gold,#c8a84b)' : 'var(--t3)') + '">★</button>';
+      }).join('') +
+      '<span id="oa_rating_val" style="font-size:12px;font-weight:700;color:var(--gold,#c8a84b);margin-left:8px">' + (myScore ? myScore + '/5' : '') + '</span>' +
+      '</div></div>';
 
     html += '<div class="oa-actions">\
       <button class="btn ghost" id="btnLessonClose">Закрыть</button>';
@@ -369,49 +472,129 @@ window.AsgardOfficeAcademyPage = (function () {
 
     showModal({ title: lesson.title || 'Свиток', icon: lesson.cover_icon || '🏛️', html: html, wide: true });
 
-    // Heartbeat — копит read_time_seconds на бэке, без него /complete отказывает
-    // по MIN_READ_SECONDS=60 даже после реального чтения.
     startReadHeartbeat(lessonId);
 
-    document.getElementById('btnLessonClose').onclick = function () { stopReadHeartbeat(); closeModal(); };
+    // Progress + reveal внутри #modalBody
+    setTimeout(function () {
+      var bodies = document.querySelectorAll('#modalBody');
+      var body = bodies.length ? bodies[bodies.length - 1] : null;
+      if (!body) return;
+      var bar = document.getElementById('oa_read_bar');
+      var pctEl = document.getElementById('oa_read_pct');
+      var chEl = document.getElementById('oa_read_chapter');
+      function onScroll() {
+        var max = body.scrollHeight - body.clientHeight;
+        var pct = max > 0 ? Math.min(100, Math.round((body.scrollTop / max) * 100)) : 0;
+        if (bar) bar.style.width = pct + '%';
+        if (pctEl) pctEl.textContent = pct + '%';
+        var chapters = body.querySelectorAll('.oa-chapter-title');
+        var label = '';
+        var bodyTop = body.getBoundingClientRect().top;
+        chapters.forEach(function (ch) {
+          if (ch.getBoundingClientRect().top - bodyTop < 90) label = ch.textContent || '';
+        });
+        if (chEl) chEl.textContent = label;
+      }
+      body.addEventListener('scroll', onScroll, { passive: true });
+      onScroll();
+
+      var nodes = body.querySelectorAll('.oa-reveal');
+      if (!nodes.length) return;
+      if (typeof IntersectionObserver === 'undefined') {
+        nodes.forEach(function (n) { n.classList.add('oa-revealed'); });
+        return;
+      }
+      var io = new IntersectionObserver(function (entries) {
+        entries.forEach(function (en) {
+          if (en.isIntersecting) {
+            en.target.classList.add('oa-revealed');
+            io.unobserve(en.target);
+          }
+        });
+      }, { root: body, threshold: 0.08, rootMargin: '0px 0px -24px 0px' });
+      nodes.forEach(function (n, idx) {
+        n.style.transitionDelay = (Math.min(idx % 6, 5) * 40) + 'ms';
+        io.observe(n);
+      });
+    }, 30);
+
+    document.getElementById('btnLessonClose').onclick = closeLessonModal;
+
+    function paintStars(score) {
+      document.querySelectorAll('.oa-rate-btn').forEach(function (btn) {
+        var n = parseInt(btn.getAttribute('data-score'), 10);
+        btn.style.color = score >= n ? 'var(--gold,#c8a84b)' : 'var(--t3)';
+      });
+      var val = document.getElementById('oa_rating_val');
+      if (val) val.textContent = score ? score + '/5' : '';
+    }
+    document.querySelectorAll('.oa-rate-btn').forEach(function (btn) {
+      btn.onclick = async function () {
+        var score = parseInt(btn.getAttribute('data-score'), 10);
+        try {
+          await api('POST', '/lessons/' + lessonId + '/rate', { score: score });
+          paintStars(score);
+          dirty = true;
+          toast('Спасибо', 'Оценка сохранена', 'ok');
+        } catch (e) { toast('Ошибка', e.message, 'err'); }
+      };
+    });
+
+    async function markComplete(btn) {
+      if (btn) btn.disabled = true;
+      try {
+        var res = await api('POST', '/lessons/' + lessonId + '/complete');
+        if (res && res.ok === false && res.error === 'read_more') {
+          toast('Ещё рано', 'Подержи свиток открытым — нужно ещё ~' +
+            Math.max(0, (res.min_required || 60) - (res.read_time || 0)) + ' сек чтения', 'warn');
+          if (btn) btn.disabled = false;
+          if (!_hbTimer) startReadHeartbeat(lessonId);
+          return;
+        }
+        dirty = true;
+        if (res && res.attempts_reset) {
+          toast('Готово', 'Попытки сброшены! Можешь пройти испытание заново', 'ok');
+          closeLessonModal();
+          return;
+        }
+        toast('Готово', 'Свиток отмечен прочитанным', 'ok');
+        var wrap = document.getElementById('oa_rating_wrap');
+        if (wrap) wrap.style.display = '';
+        if (btn) btn.remove();
+        // локально обновим кэш списка
+        allLessons.forEach(function (L) {
+          if (L.id === lessonId) L.read_completed_at = new Date().toISOString();
+        });
+      } catch (e) {
+        toast('Ошибка', e.message, 'err');
+        if (btn) btn.disabled = false;
+        if (!_hbTimer) startReadHeartbeat(lessonId);
+      }
+    }
 
     var btnC = document.getElementById('btnComplete');
-    if (btnC) btnC.onclick = async function () {
-      try {
-        stopReadHeartbeat();
-        await api('POST', '/lessons/' + lessonId + '/complete');
-        toast('Готово', 'Свиток отмечен прочитанным', 'ok');
-        closeModal();
-        render({ layout: window.AsgardLayout ? AsgardLayout.layout : null, title: 'Залы Асгарда' });
-      } catch (e) { toast('Ошибка', e.message, 'err'); }
-    };
+    if (btnC) btnC.onclick = function () { markComplete(btnC); };
 
     var btnR = document.getElementById('btnReread');
-    if (btnR) btnR.onclick = async function () {
-      try {
-        stopReadHeartbeat();
-        var res = await api('POST', '/lessons/' + lessonId + '/complete');
-        if (res.attempts_reset) {
-          toast('Готово', 'Попытки сброшены! Можешь пройти испытание заново', 'ok');
-        } else {
-          toast('Готово', 'Свиток прочитан', 'ok');
-        }
-        closeModal();
-        render({ layout: window.AsgardLayout ? AsgardLayout.layout : null, title: 'Залы Асгарда' });
-      } catch (e) { toast('Ошибка', e.message, 'err'); }
-    };
+    if (btnR) btnR.onclick = function () { markComplete(btnR); };
 
     var btnQ = document.getElementById('btnQuiz');
-    if (btnQ) btnQ.onclick = function () { stopReadHeartbeat(); closeModal(); openQuiz(lessonId, questions); };
+    if (btnQ) btnQ.onclick = function () {
+      stopReadHeartbeat();
+      closeModal();
+      if (dirty) {
+        // quiz откроется поверх; список обновим после результата
+      }
+      openQuiz(lessonId, questions, dirty);
+    };
   }
 
   // ── Heartbeat: каждые 30 сек POST /lessons/:id/heartbeat ─────
   var _hbTimer = null;
   function startReadHeartbeat(lessonId) {
     stopReadHeartbeat();
-    // первый удар через 30с (по согласованию с MIN_READ_SECONDS=60 хватит двух)
     _hbTimer = setInterval(function () {
-      if (document.hidden) return; // не считаем время если вкладка скрыта
+      if (document.hidden) return;
       api('POST', '/lessons/' + lessonId + '/heartbeat').catch(function () {});
     }, 30000);
   }
@@ -420,7 +603,7 @@ window.AsgardOfficeAcademyPage = (function () {
   }
 
   // ── Quiz with full feedback ───────────────────────────────────
-  async function openQuiz(lessonId, questions) {
+  async function openQuiz(lessonId, questions, dirtyFromLesson) {
     if (!questions.length) { toast('Испытание', 'Вопросов нет', 'warn'); return; }
 
     var html = '<div style="margin-bottom:14px;font-size:13px;color:var(--t3)">Проходной балл: 80% · ' + questions.length + ' вопросов</div>';
@@ -430,9 +613,10 @@ window.AsgardOfficeAcademyPage = (function () {
         <div class="oa-q" data-qid="' + q.id + '">\
           <div class="oa-q-text">' + (i + 1) + '. ' + esc(q.question_text || '') + '</div>\
           ' + opts.map(function (opt, oi) {
+            var t = (typeof opt === 'string') ? opt : (opt && (opt.text || opt.label) || '');
             return '<label class="oa-q-opt" data-oi="' + oi + '">\
               <input type="radio" name="q_' + q.id + '" value="' + oi + '"/>\
-              <span>' + esc(opt.text || '') + '</span>\
+              <span>' + esc(t) + '</span>\
             </label>';
           }).join('') + '\
         </div>';
@@ -445,7 +629,12 @@ window.AsgardOfficeAcademyPage = (function () {
 
     showModal({ title: '⚔️ Испытание', icon: '⚔️', html: html, wide: true });
 
-    document.getElementById('btnQuizCancel').onclick = function () { closeModal(); };
+    document.getElementById('btnQuizCancel').onclick = function () {
+      closeModal();
+      if (dirtyFromLesson) {
+        render({ layout: window.AsgardLayout ? AsgardLayout.layout : null, title: 'Залы Асгарда' });
+      }
+    };
     document.getElementById('btnQuizSubmit').onclick = async function () {
       var answers = {};
       questions.forEach(function (q) {
@@ -453,7 +642,6 @@ window.AsgardOfficeAcademyPage = (function () {
         answers[q.id] = sel ? Number(sel.value) : -1;
       });
 
-      // Check all answered
       var unanswered = questions.filter(function (q) { return answers[q.id] === -1; });
       if (unanswered.length > 0) {
         toast('Испытание', 'Ответь на все вопросы (' + unanswered.length + ' без ответа)', 'warn');
@@ -465,11 +653,13 @@ window.AsgardOfficeAcademyPage = (function () {
         closeModal();
         showQuizResults(lessonId, r, questions, answers);
       } catch (e) {
-        if (e.message && e.message.indexOf('needs_reread') !== -1) {
+        var msg = e.message || '';
+        if (msg.indexOf('needs_reread') !== -1 || msg.indexOf('Перечитай') !== -1) {
           toast('Испытание', 'Перечитай свиток для новых попыток', 'warn');
           closeModal();
+          openLesson(lessonId);
         } else {
-          toast('Испытание', e.message, 'err');
+          toast('Испытание', msg, 'err');
         }
       }
     };
@@ -522,7 +712,7 @@ window.AsgardOfficeAcademyPage = (function () {
         var cls = isCorrOpt ? 'correct' : (isSelected && !isCorrOpt ? 'wrong' : '');
         html += '<div class="oa-q-opt ' + cls + '" style="cursor:default">\
           <span style="font-size:13px;color:' + (isCorrOpt ? '#2ecc71' : isSelected ? '#e74c3c' : 'var(--t3)') + '">' + (isCorrOpt ? '✓' : isSelected ? '✗' : '○') + '</span>\
-          <span style="font-size:13px;color:' + (isCorrOpt || isSelected ? 'var(--t1)' : 'var(--t3)') + ';font-weight:' + (isCorrOpt || isSelected ? '600' : '400') + '">' + esc(opt.text || '') + '</span>\
+          <span style="font-size:13px;color:' + (isCorrOpt || isSelected ? 'var(--t1)' : 'var(--t3)') + ';font-weight:' + (isCorrOpt || isSelected ? '600' : '400') + '">' + esc((typeof opt === 'string') ? opt : (opt && (opt.text || opt.label) || '')) + '</span>\
         </div>';
       });
 
@@ -581,4 +771,75 @@ window.AsgardOfficeAcademyPage = (function () {
   }
 
   return { render: render };
+})();
+
+/** Еженедельное напоминание об отставании в Академии (vanilla shell). */
+window.AsgardAcademyLagReminder = (function () {
+  var TRACK_LABELS = {
+    pm: 'Управление проектами', hr: 'Кадры', finance: 'Финансы',
+    procurement: 'Закупки', management: 'Менеджмент', all: 'Общие знания'
+  };
+
+  function isoWeekKey(d) {
+    d = d || new Date();
+    var date = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+    var dayNum = date.getUTCDay() || 7;
+    date.setUTCDate(date.getUTCDate() + 4 - dayNum);
+    var yearStart = new Date(Date.UTC(date.getUTCFullYear(), 0, 1));
+    var weekNo = Math.ceil((((date - yearStart) / 86400000) + 1) / 7);
+    return date.getUTCFullYear() + '-W' + String(weekNo).padStart(2, '0');
+  }
+
+  async function maybeShow() {
+    try {
+      if (!window.AsgardUI || !AsgardUI.showModal) return;
+      if (!window.AsgardAuth || !AsgardAuth.getAuth) return;
+      var a = AsgardAuth.getAuth();
+      var user = (a && a.user) || JSON.parse(localStorage.getItem('asgard_user') || '{}');
+      if (!user || !user.id) return;
+      var key = 'oa_lag_remind_' + user.id + '_' + isoWeekKey();
+      if (localStorage.getItem(key)) return;
+
+      var token = (a && a.token) || localStorage.getItem('asgard_token');
+      if (!token) return;
+      var resp = await fetch('/api/office-academy/reminder', {
+        headers: { Authorization: 'Bearer ' + token }
+      });
+      // даже при ошибке API не спамим повторными запросами в эту же неделю
+      localStorage.setItem(key, '1');
+      if (!resp.ok) return;
+      var d = await resp.json();
+      if (!d || !d.show) return;
+
+      var lessons = d.lessons || [];
+      var html = '<p style="margin:0 0 12px;font-size:14px;line-height:1.6;color:var(--t2)">В Залах Асгарда ждут обязательные свитки. Пройдите их на этой неделе — так не накопите долг.</p>' +
+        '<div style="display:flex;flex-direction:column;gap:8px">' +
+        lessons.slice(0, 6).map(function (l) {
+          return '<div style="display:flex;gap:10px;padding:10px 12px;border:1px solid var(--brd);border-radius:10px;background:var(--bg2)">' +
+            '<span style="font-size:20px">' + AsgardUI.esc(l.cover_icon || '🏛️') + '</span>' +
+            '<div><div style="font-weight:700;font-size:13px;color:var(--t1)">' + AsgardUI.esc(l.title || '') + '</div>' +
+            '<div style="font-size:11px;color:var(--t3)">' + AsgardUI.esc(TRACK_LABELS[l.track] || l.track || '') +
+            (l.estimated_minutes ? ' · ⏱ ' + l.estimated_minutes + ' мин' : '') + '</div></div></div>';
+        }).join('') + '</div>' +
+        '<div style="display:flex;gap:10px;justify-content:flex-end;margin-top:16px;flex-wrap:wrap">' +
+        '<button class="btn ghost" id="oaLagLater">Позже</button>' +
+        '<button class="btn" id="oaLagGo" style="background:#c8a84e;color:#1a1000;font-weight:700">Пройти сейчас</button></div>';
+
+      AsgardUI.showModal({
+        title: (d.fio || 'Коллега') + ', вы отстаёте',
+        icon: '📜',
+        html: html,
+        wide: false
+      });
+      var later = document.getElementById('oaLagLater');
+      if (later) later.onclick = function () { AsgardUI.closeModal(); };
+      var go = document.getElementById('oaLagGo');
+      if (go) go.onclick = function () {
+        AsgardUI.closeModal();
+        location.hash = '#/office-academy';
+      };
+    } catch (_) { /* ignore */ }
+  }
+
+  return { maybeShow: maybeShow };
 })();

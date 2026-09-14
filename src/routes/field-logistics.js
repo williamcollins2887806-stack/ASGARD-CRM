@@ -208,6 +208,30 @@ async function routes(fastify, options) {
             const days = Math.max(1, Math.round((d2 - d1) / 86400000) + 1);
             const stageAmount = days * tRate;
 
+            // work_id на travel-stage — только если рабочий назначен на эту работу на дату.
+            let stageWorkId = null;
+            if (work_id && employee_id) {
+              const { rows: asg } = await db.query(`
+                SELECT work_id FROM employee_assignments
+                WHERE employee_id = $1 AND work_id = $2
+                  AND COALESCE(date_from, created_at::date) <= $3::date
+                  AND (departure_date IS NULL OR departure_date >= $3::date)
+                LIMIT 1
+              `, [employee_id, work_id, date_from]);
+              if (asg.length) stageWorkId = work_id;
+            }
+            if (stageWorkId == null && employee_id) {
+              const { rows: asg } = await db.query(`
+                SELECT work_id FROM employee_assignments
+                WHERE employee_id = $1
+                  AND COALESCE(date_from, created_at::date) <= $2::date
+                  AND (departure_date IS NULL OR departure_date >= $2::date)
+                ORDER BY COALESCE(is_active, true) DESC NULLS LAST, id DESC
+                LIMIT 1
+              `, [employee_id, date_from]);
+              if (asg.length) stageWorkId = asg[0].work_id;
+            }
+
             await db.query(`
               INSERT INTO field_trip_stages
                 (employee_id, work_id, stage_type, date_from, date_to, days_count,
@@ -215,7 +239,7 @@ async function routes(fastify, options) {
                  logistics_id, source, status, created_by, entered_by_user_id)
               VALUES ($1,$2,'travel',$3,$4,$5,$6,$7,$8,$9,$10,$11,'auto','planned',$12,$12)
               ON CONFLICT DO NOTHING
-            `, [employee_id, work_id, date_from, date_to || null, days,
+            `, [employee_id, stageWorkId, date_from, date_to || null, days,
                 tariff.id || null, tPoints, tRate, stageAmount,
                 JSON.stringify({ transport: 'auto', route: title }),
                 logisticsId, userId]);

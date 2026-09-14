@@ -134,7 +134,8 @@ async function dataRoutes(fastify, options) {
         'equipment', 'equipment_categories', 'equipment_movements',
         'equipment_requests', 'equipment_maintenance', 'equipment_reservations',
         'warehouses', 'objects', 'chats', 'chat_messages', 'notifications',
-        'sync_meta', 'reminders', 'user_dashboard', 'calendar_events'
+        'sync_meta', 'reminders', 'user_dashboard', 'calendar_events',
+        'works', 'products', 'product_categories', 'stock', 'stock_movements'
       ],
       ops: ['read', 'create', 'update']
     },
@@ -380,6 +381,11 @@ async function dataRoutes(fastify, options) {
           whereParts.push('deleted_at IS NULL');
         }
       } catch (_) {}
+
+      // Фоновый OCR: ocr-extract не отдаём в sync/IndexedDB/UI
+      if (table === 'documents' || dbTable === 'documents') {
+        whereParts.push(`COALESCE(type,'') NOT IN ('ocr-extract')`);
+      }
 
       // WHERE условие (простое)
       if (where) {
@@ -781,6 +787,19 @@ async function dataRoutes(fastify, options) {
       if (keys.length === 0) {
         return reply.code(400).send({ error: 'Нет валидных полей для обновления' });
       }
+
+      // Тендеры: снимок до UPDATE — для уведомления РП при переназначении на просчёт
+      let oldTender = null;
+      if (table === 'tenders' && (keys.includes('responsible_pm_id') || keys.includes('calculator_user_id'))) {
+        const prev = await db.query(
+          `SELECT id, customer_name, tender_title, tender_status, registry_status,
+                  responsible_pm_id, calculator_user_id, calculator_kind, handoff_at
+             FROM tenders WHERE id = $1`,
+          [id]
+        );
+        oldTender = prev.rows[0] || null;
+      }
+
       const values = keys.map(k => data[k]);
       const setParts = keys.map((k, i) => `${k} = $${i + 1}`);
 
@@ -796,6 +815,52 @@ async function dataRoutes(fastify, options) {
 
       if (result.rows.length === 0) {
         return reply.code(404).send({ error: 'Запись не найдена' });
+      }
+
+      if (table === 'tenders' && oldTender) {
+        const updated = result.rows[0];
+        const newPm = updated.responsible_pm_id != null ? Number(updated.responsible_pm_id) : null;
+        const oldPm = oldTender.responsible_pm_id != null ? Number(oldTender.responsible_pm_id) : null;
+        const newCalc = updated.calculator_user_id != null ? Number(updated.calculator_user_id) : null;
+        const oldCalc = oldTender.calculator_user_id != null ? Number(oldTender.calculator_user_id) : null;
+        const actorName = request.user?.name || 'Коллега';
+
+        try {
+          const {
+            afterResponsiblePmChanged,
+            notifyPmCalcEvent,
+            notifyPmReleasedFromCalc
+          } = require('../services/tender-assign-notify');
+
+          if (newPm && newPm !== oldPm) {
+            await afterResponsiblePmChanged(db, {
+              tenderId: Number(id),
+              oldTender,
+              newPmId: newPm,
+              actorName,
+              actorUserId: request.user?.id,
+              log: request.log
+            });
+          } else if (newCalc && newCalc !== oldCalc) {
+            await notifyPmCalcEvent(db, {
+              userId: newCalc,
+              kind: oldCalc ? 'reassign' : 'assign',
+              tender: updated,
+              actorName,
+              log: request.log
+            });
+            if (oldCalc && oldCalc !== newCalc) {
+              await notifyPmReleasedFromCalc(db, {
+                userId: oldCalc,
+                tender: updated,
+                actorName,
+                log: request.log
+              });
+            }
+          }
+        } catch (e) {
+          fastify.log.warn(`[DATA API] tender assign notify failed: ${e.message}`);
+        }
       }
 
       return { success: true, item: result.rows[0], approval: approvalRequest };
@@ -897,8 +962,12 @@ async function dataRoutes(fastify, options) {
       // soft-delete: не отдаём удалённые записи (если у таблицы есть deleted_at)
       let softDel = '';
       try { const _c = await getTableColumns(dbTable); if (_c && _c.has('deleted_at')) softDel = ' AND deleted_at IS NULL'; } catch (_) {}
+      let ocrHide = '';
+      if (table === 'documents' || dbTable === 'documents') {
+        ocrHide = ` AND COALESCE(type,'') NOT IN ('ocr-extract')`;
+      }
       const result = await db.query(
-        `SELECT * FROM ${dbTable} WHERE ${index} = $1${softDel} ORDER BY ${getDefaultOrder(table)}`,
+        `SELECT * FROM ${dbTable} WHERE ${index} = $1${softDel}${ocrHide} ORDER BY ${getDefaultOrder(table)}`,
         [value]
       );
 

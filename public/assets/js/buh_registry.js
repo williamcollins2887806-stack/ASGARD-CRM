@@ -3,7 +3,7 @@
 // Фильтры: заказчик, кто внёс, статус счёт-фактуры, год/месяц
 
 window.AsgardBuhRegistryPage = (function(){
-  const { $, $$, esc, toast, showModal, money } = AsgardUI;
+  const { $, $$, esc, toast, showModal, moneyRub: money } = AsgardUI;
 
   // Категории расходов
   const EXPENSE_CATEGORIES = [
@@ -17,13 +17,7 @@ window.AsgardBuhRegistryPage = (function(){
     { key: 'other', label: 'Прочее', color: 'var(--t2)', icon: '📦' }
   ];
   function moneyShort(x){
-    if(x===null||x===undefined||x==="") return "0";
-    const n=Math.abs(Number(x));
-    if(isNaN(n)) return "0";
-    const sign = Number(x) < 0 ? "−" : "";
-    if(n >= 1e9) return sign + (n/1e9).toFixed(1).replace(".",",") + " млрд";
-    if(n >= 1e6) return sign + (n/1e6).toFixed(1).replace(".",",") + " млн";
-    return money(x);
+    return (AsgardUI.moneyShort || AsgardMoney.formatMoneyShort)(x, { empty: '0', noCurrency: true });
   }
 
   function isoNow(){ return new Date().toISOString(); }
@@ -329,7 +323,7 @@ window.AsgardBuhRegistryPage = (function(){
             <td>
               <span class="buh-cat-badge" style="background:${cat.color}22; color:${cat.color}">${cat.icon} ${cat.label}</span>
             </td>
-            <td style="font-weight:700; color:var(--gold)">${money(e.amount)} ₽</td>
+            <td style="font-weight:700; color:var(--gold)">${money(e.amount)}</td>
             <td>
               <div style="font-weight:600">${esc(customerName)}</div>
               <div class="help" style="font-size:11px">${esc(workTitle)}</div>
@@ -416,9 +410,9 @@ window.AsgardBuhRegistryPage = (function(){
           <div class="help"><b>Детализация ФОТ</b></div>
           <div class="formrow" style="pointer-events:none">
             <div><label>Сотрудник</label><input autocomplete="off" value="${esc(expense.fot_employee_name)}" readonly/></div>
-            <div><label>Оклад</label><input autocomplete="off" value="${money(expense.fot_base_pay||0)} ₽" readonly/></div>
-            <div><label>Суточные</label><input autocomplete="off" value="${money(expense.fot_per_diem||0)} ₽" readonly/></div>
-            <div><label>Премия</label><input autocomplete="off" value="${money(expense.fot_bonus||0)} ₽" readonly/></div>
+            <div><label>Оклад</label><input autocomplete="off" value="${money(expense.fot_base_pay||0)}" readonly/></div>
+            <div><label>Суточные</label><input autocomplete="off" value="${money(expense.fot_per_diem||0)}" readonly/></div>
+            <div><label>Премия</label><input autocomplete="off" value="${money(expense.fot_bonus||0)}" readonly/></div>
             <div><label>Период с</label><input autocomplete="off" value="${expense.fot_date_from ? AsgardUI.formatDate(expense.fot_date_from) : '—'}" readonly/></div>
             <div><label>Период по</label><input autocomplete="off" value="${expense.fot_date_to ? AsgardUI.formatDate(expense.fot_date_to) : '—'}" readonly/></div>
           </div>
@@ -430,7 +424,7 @@ window.AsgardBuhRegistryPage = (function(){
         <hr class="hr"/>
         <div class="formrow" style="pointer-events:none">
           <div><label>Дата</label><input autocomplete="off" value="${expense.date ? AsgardUI.formatDate(expense.date) : '—'}" readonly/></div>
-          <div><label>Сумма</label><input autocomplete="off" value="${money(expense.amount)} ₽" readonly/></div>
+          <div><label>Сумма</label><input autocomplete="off" value="${money(expense.amount)}" readonly/></div>
           <div><label>Заказчик</label><input autocomplete="off" value="${esc(w?.company || t?.customer_name || '—')}" readonly/></div>
           <div><label>Работа</label><input autocomplete="off" value="${esc(w?.work_title || t?.tender_title || '—')}" readonly/></div>
           <div><label>Поставщик</label><input autocomplete="off" value="${esc(expense.supplier||'—')}" readonly/></div>
@@ -455,7 +449,7 @@ window.AsgardBuhRegistryPage = (function(){
         <hr class="hr"/>
         <div class="formrow">
           <div><label>Дата</label><input autocomplete="off" value="${expense.date ? AsgardUI.formatDate(expense.date) : ''}" readonly style="opacity:.6"/></div>
-          <div><label>Сумма</label><input autocomplete="off" value="${money(expense.amount)} ₽" readonly style="opacity:.6"/></div>
+          <div><label>Сумма</label><input autocomplete="off" value="${money(expense.amount)}" readonly style="opacity:.6"/></div>
           <div><label>Поставщик</label><input autocomplete="off" value="${esc(expense.supplier||'')}" readonly style="opacity:.6"/></div>
           <div><label>№ документа</label><input id="edit_doc" value="${esc(expense.doc_number||'')}"/></div>
         </div>

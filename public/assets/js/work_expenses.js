@@ -1,6 +1,6 @@
 // Stage 13: Расходы по работам
 window.AsgardWorkExpenses = (function(){
-  const { $, $$, esc, toast, showModal, hideModal, money } = AsgardUI;
+  const { $, $$, esc, toast, showModal, hideModal, moneyRub: money } = AsgardUI;
   const { isoNow } = window.AsgardWorksShared || {};
 
   // Категории расходов по работам
@@ -20,6 +20,25 @@ window.AsgardWorkExpenses = (function(){
     { key: 'equipment', label: 'Оборудование', color: 'var(--info)', icon: '🔧', hidden: true },
     { key: 'transfer', label: 'Трансфер', color: 'var(--cyan)', icon: '🚗', hidden: true },
   ];
+
+  function expensePersonName(e) {
+    const candidates = [
+      e && e.employee_display_name,
+      e && e.employee_fio,
+      e && e.fot_employee_name,
+      e && e.recipient,
+      e && e.supplier
+    ];
+    for (const raw of candidates) {
+      const s = String(raw || '').trim();
+      if (s && !/^ID\s*\d+$/i.test(s)) return s;
+    }
+    for (const raw of candidates) {
+      const s = String(raw || '').trim();
+      if (s) return s;
+    }
+    return 'Без сотрудника';
+  }
 
   // ─────────────────────────────────────────────────────────────────────
   // Data layer — server API (PostgreSQL)
@@ -44,7 +63,7 @@ window.AsgardWorkExpenses = (function(){
   // GET все расходы по работе
   async function getExpensesByWork(workId){
     try {
-      const data = await _api('/api/expenses/work?work_id=' + Number(workId));
+      const data = await _api('/api/expenses/work?work_id=' + Number(workId) + '&limit=5000');
       return data.expenses || [];
     } catch(e){
       console.warn('[work_expenses] getExpensesByWork failed:', e.message);
@@ -188,7 +207,7 @@ window.AsgardWorkExpenses = (function(){
       const visible = order.filter(k => groups[k] && groups[k].length);
       const subTotals = visible.map(k => {
         const sum = groups[k].reduce((a,b) => a + Number(b.amount||0), 0);
-        return `<span class="cash-sub" data-sub="${k}" title="Кликни — отфильтровать">${CASH_SUB_LABELS[k] || k} <b>${money(sum)} ₽</b> · ${groups[k].length}</span>`;
+        return `<span class="cash-sub" data-sub="${k}" title="Кликни — отфильтровать">${CASH_SUB_LABELS[k] || k} <b>${money(sum)}</b> · ${groups[k].length}</span>`;
       }).join('');
       return subTotals ? `<div class="cash-breakdown">${subTotals}</div>` : '';
     }
@@ -205,7 +224,7 @@ window.AsgardWorkExpenses = (function(){
       if (isEmpGroup && items.length) {
         const byEmp = {};
         items.forEach(e => {
-          const name = e.fot_employee_name || e.recipient || e.supplier || 'Без сотрудника';
+          const name = expensePersonName(e);
           (byEmp[name] = byEmp[name] || []).push(e);
         });
         const empRows = Object.entries(byEmp)
@@ -220,14 +239,14 @@ window.AsgardWorkExpenses = (function(){
             <div class="exp-emp-head">
               <span class="exp-emp-name">${esc(emp.name)}</span>
               <span class="exp-emp-meta">${emp.count} вып.</span>
-              <span class="exp-emp-sum">${money(emp.sum)} ₽</span>
+              <span class="exp-emp-sum">${money(emp.sum)}</span>
               <button class="btn ghost mini" data-emp-toggle="${c.key}-${idx}" title="Показать выплаты">▼</button>
             </div>
             <div class="exp-emp-details" id="emp-details-${c.key}-${idx}" style="display:none">
               ${emp.items.sort((a,b) => (a.date||'').localeCompare(b.date||'')).map(e => `
                 <div class="exp-item compact" data-id="${e.id}">
                   <span class="exp-date">${e.date ? AsgardUI.formatDate(e.date) : '—'}</span>
-                  <span class="exp-amount">${money(e.amount)} ₽</span>
+                  <span class="exp-amount">${money(e.amount)}</span>
                   ${e.comment ? `<span class="exp-comment">${esc(e.comment)}</span>` : ''}
                   <span class="exp-item-actions">
                     <button class="btn ghost mini" data-edit="${e.id}">✎</button>
@@ -244,7 +263,7 @@ window.AsgardWorkExpenses = (function(){
               <span class="exp-cat-icon">${c.icon}</span>
               <span class="exp-cat-label">${c.label}</span>
               <span class="exp-cat-meta">${empRows.length} чел · ${items.length} вып.</span>
-              <span class="exp-cat-total">${money(total)} ₽</span>
+              <span class="exp-cat-total">${money(total)}</span>
               <button class="btn ghost mini" data-add-cat="${c.key}">+ Добавить</button>
               ${(c.key === 'fot' || c.key === 'payroll') ? `<button class="btn ghost mini" data-bonus-cat="${c.key}" style="color:var(--amber)">🏆 Премии</button>` : ''}
             </div>
@@ -257,8 +276,8 @@ window.AsgardWorkExpenses = (function(){
         <div class="exp-item" data-id="${e.id}">
           <div class="exp-item-main">
             <span class="exp-date">${e.date ? AsgardUI.formatDate(e.date) : '—'}</span>
-            <span class="exp-amount">${money(e.amount)} ₽</span>
-            ${e.fot_employee_name ? `<span class="exp-emp">${esc(e.fot_employee_name)}</span>` : ''}
+            <span class="exp-amount">${money(e.amount)}</span>
+            ${expensePersonName(e) !== 'Без сотрудника' ? `<span class="exp-emp">${esc(expensePersonName(e))}</span>` : ''}
             ${e.supplier ? `<span class="exp-supplier">${esc(e.supplier)}</span>` : ''}
             ${e.comment ? `<span class="exp-comment">${esc(e.comment)}</span>` : ''}
             ${e.vat_rate ? `<span class="exp-vat" style="color:var(--t2);font-size:11px">НДС ${e.vat_rate}%</span>` : ''}
@@ -283,7 +302,7 @@ window.AsgardWorkExpenses = (function(){
             <span class="exp-cat-icon">${c.icon}</span>
             <span class="exp-cat-label">${c.label}</span>
             ${items.length ? `<span class="exp-cat-meta">${items.length} зап.</span>` : ''}
-            <span class="exp-cat-total">${money(total)} ₽</span>
+            <span class="exp-cat-total">${money(total)}</span>
             <button class="btn ghost mini" data-add-cat="${c.key}">+ Добавить</button>
             ${(c.key === 'fot' || c.key === 'payroll') ? `<button class="btn ghost mini" data-bonus-cat="${c.key}" style="color:var(--amber)">🏆 Премии</button>` : ''}
           </div>
@@ -344,15 +363,15 @@ window.AsgardWorkExpenses = (function(){
       <div class="exp-summary">
         <div class="exp-summary-item">
           <div class="exp-summary-label">Всего расходов</div>
-          <div class="exp-summary-value">${money(grandTotal)} ₽</div>
+          <div class="exp-summary-value">${money(grandTotal)}</div>
         </div>
         <div class="exp-summary-item">
           <div class="exp-summary-label">План себестоимости</div>
-          <div class="exp-summary-value">${money(work.cost_plan || 0)} ₽</div>
+          <div class="exp-summary-value">${money(work.cost_plan || 0)}</div>
         </div>
         <div class="exp-summary-item">
           <div class="exp-summary-label">Отклонение</div>
-          <div class="exp-summary-value" style="color:${grandTotal > Number(work.cost_plan||0) ? 'var(--err-t)' : 'var(--ok-t)'}">${grandTotal > Number(work.cost_plan||0) ? '+' : ''}${money(grandTotal - Number(work.cost_plan||0))} ₽</div>
+          <div class="exp-summary-value" style="color:${grandTotal > Number(work.cost_plan||0) ? 'var(--err-t)' : 'var(--ok-t)'}">${grandTotal > Number(work.cost_plan||0) ? '+' : ''}${money(grandTotal - Number(work.cost_plan||0))}</div>
         </div>
       </div>
 
@@ -473,7 +492,7 @@ window.AsgardWorkExpenses = (function(){
               <td style="padding:3px 4px">${esc(r.name || '—')}</td>
               <td style="text-align:center;padding:3px 4px;color:var(--t2)">${r.quantity || ''} ${esc(r.unit || '')}</td>
               <td style="text-align:right;padding:3px 4px;color:var(--t2)">${r.price ? money(r.price) : ''}</td>
-              <td style="text-align:right;padding:3px 4px;font-weight:500">${r.amount ? money(r.amount) + ' ₽' : ''}</td>
+              <td style="text-align:right;padding:3px 4px;font-weight:500">${r.amount ? money(r.amount) : ''}</td>
             </tr>`;
           });
           html += '</table>';
@@ -502,7 +521,7 @@ window.AsgardWorkExpenses = (function(){
     if(syncBtn) syncBtn.addEventListener('click', async () => {
       const total = await getTotalByWork(work.id);
       work.cost_fact = total;
-      toast('Себестоимость', `Актуально: ${money(total)} ₽`);
+      toast('Себестоимость', `Актуально: ${money(total)}`);
       openExpensesModal(work, user);
     });
   }

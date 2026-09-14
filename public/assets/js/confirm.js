@@ -68,6 +68,18 @@ window.AsgardConfirm=(function(){
     }, 300);
   }
 
+  /** AsgardUI modals use inline z-index 10000+; CSS --z-confirm (700) is below them. */
+  function _liftAboveModals() {
+    let maxZ = 0;
+    document.querySelectorAll('.cr-m-overlay, .cr-d-overlay, .modalback').forEach((el) => {
+      const raw = el.style.zIndex || window.getComputedStyle(el).zIndex;
+      const z = parseInt(raw, 10);
+      if (!Number.isNaN(z)) maxZ = Math.max(maxZ, z);
+    });
+    // Base above modal stack (10000); keep room for stacked modals.
+    _overlay.style.zIndex = String(Math.max(maxZ + 50, 11050));
+  }
+
   function open(opts={}){
     _ensureOverlay();
 
@@ -107,7 +119,8 @@ window.AsgardConfirm=(function(){
     okBtn.className = danger ? 'btn danger' : 'btn primary';
     cancelBtn.textContent = cancelText;
 
-    // Show
+    // Show above any open modal (inline z-index 10000+)
+    _liftAboveModals();
     _overlay.style.display = 'flex';
     void _overlay.offsetHeight;
     _overlay.classList.add('cr-cf-overlay--visible');

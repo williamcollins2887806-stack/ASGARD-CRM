@@ -25,7 +25,7 @@ window.AsgardBigScreen = (function(){
     ? window.AsgardWorksShared.isClosedWork(ws)
     : ['закрыт','закрыта','закрыто','работы сдали','завершена','завершено','завершен','завершён','сдан','сдана','сдано','отменена','отменено','отменён','отменен','отмена'].includes(String(ws||'').trim().toLowerCase());
 
-  function _m(n) { return AsgardUI.money(n) + ' ₽'; }
+  function _m(n) { return (AsgardUI.moneyRub || AsgardMoney.formatMoney)(n); }
   function _short(x) {
     const n = Number(x) || 0;
     if (n >= 1000000000) return (n/1000000000).toFixed(1) + ' млрд';

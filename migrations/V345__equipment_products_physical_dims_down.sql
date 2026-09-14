@@ -1,0 +1,18 @@
+-- V345 down
+BEGIN;
+ALTER TABLE equipment DROP COLUMN IF EXISTS volume_mm3;
+ALTER TABLE equipment DROP COLUMN IF EXISTS length_mm;
+ALTER TABLE equipment DROP COLUMN IF EXISTS width_mm;
+ALTER TABLE equipment DROP COLUMN IF EXISTS height_mm;
+ALTER TABLE equipment DROP COLUMN IF EXISTS weight_g;
+ALTER TABLE equipment DROP COLUMN IF EXISTS dims_source;
+ALTER TABLE equipment DROP COLUMN IF EXISTS dims_updated_at;
+
+ALTER TABLE products DROP COLUMN IF EXISTS volume_mm3;
+ALTER TABLE products DROP COLUMN IF EXISTS length_mm;
+ALTER TABLE products DROP COLUMN IF EXISTS width_mm;
+ALTER TABLE products DROP COLUMN IF EXISTS height_mm;
+ALTER TABLE products DROP COLUMN IF EXISTS weight_g;
+ALTER TABLE products DROP COLUMN IF EXISTS dims_source;
+ALTER TABLE products DROP COLUMN IF EXISTS dims_updated_at;
+COMMIT;

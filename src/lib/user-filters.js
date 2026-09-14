@@ -16,12 +16,15 @@ function isTestLogin(login) {
   return l.startsWith(TEST_LOGIN_PREFIX) || SYSTEM_LOGINS.has(l);
 }
 
-/** Row from users table or minimal { login, name }. */
+/** Row from users table or minimal { login, name, email }. */
 function isTestUserRecord(user) {
   if (!user) return false;
   if (isTestLogin(user.login)) return true;
-  const name = String(user.name || '').trim();
-  return name.startsWith('Test ') || name.startsWith('Тест ');
+  const email = String(user.email || '').trim().toLowerCase();
+  if (email.includes('@test.') || email.endsWith('@test.asgard.local')) return true;
+  if (email.startsWith('test_')) return true;
+  const name = String(user.name || '').trim().toLowerCase();
+  return name.startsWith('test ') || name.startsWith('тест ');
 }
 
 /** Whether list endpoints should omit test users for this request. */

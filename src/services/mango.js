@@ -150,13 +150,17 @@ class MangoService {
   }
 
   async sendSms(fromExtension, toNumber, text, senderName) {
-    return this.request('commands/sms', {
+    const payload = {
       command_id: `sms-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
       from_extension: String(fromExtension),
       to_number: String(toNumber),
       text,
-      sms_sender: senderName || process.env.MANGO_SMS_SENDER || 'ASGARD'
-    });
+    };
+    // Имя вроде ASGARD без регистрации у оператора часто молча дропается.
+    // Пустой sender → дефолт из ЛК Mango (обычно цифровой номер).
+    const sender = (senderName || process.env.MANGO_SMS_SENDER || '').trim();
+    if (sender && !/^ASGARD$/i.test(sender)) payload.sms_sender = sender;
+    return this.request('commands/sms', payload);
   }
 
   // 26.06.2026: Прямая проверка статуса SMS через Mango Office API.

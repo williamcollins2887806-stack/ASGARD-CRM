@@ -4,8 +4,87 @@ window.AsgardEmployeePage=(function(){
 
   function isoNow(){ return new Date().toISOString(); }
 
+  /** Смена паспорта РФ в 20 и 45 лет (+90 дней). */
+  function passportAgeBannerHtml(emp) {
+    function parseYmd(v) {
+      if (!v) return null;
+      const s = String(v).slice(0, 10);
+      const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s);
+      if (!m) return null;
+      return new Date(+m[1], +m[2] - 1, +m[3]);
+    }
+    function addYears(d, y) {
+      const x = new Date(d.getFullYear() + y, d.getMonth(), d.getDate());
+      if (x.getMonth() !== d.getMonth()) return new Date(d.getFullYear() + y, d.getMonth() + 1, 0);
+      return x;
+    }
+    function addDays(d, n) { const x = new Date(d.getTime()); x.setDate(x.getDate() + n); return x; }
+    function fmt(d) {
+      return String(d.getDate()).padStart(2,'0') + '.' + String(d.getMonth()+1).padStart(2,'0') + '.' + d.getFullYear();
+    }
+    const birth = parseYmd(emp.birth_date);
+    const issued = parseYmd(emp.passport_date);
+    if (!birth || !issued) {
+      const msg = !birth ? 'Укажите дату рождения' : 'Укажите дату выдачи паспорта';
+      return `<div class="emp-pass-banner prs-pass--unknown" style="margin:0 0 12px;padding:10px 12px;border:1px dashed var(--brd-2);border-radius:8px;font-size:13px;color:var(--t-3)">${esc(msg)} — рассчитаем смену паспорта в 20 и 45 лет.</div>`;
+    }
+    const today = new Date(); today.setHours(0,0,0,0);
+    const d20 = addYears(birth, 20), d45 = addYears(birth, 45);
+    const deadlines = [];
+    if (issued < d20) deadlines.push({ at: addDays(d20, 90), m: 20 });
+    if (issued < d45) deadlines.push({ at: addDays(d45, 90), m: 45 });
+    if (!deadlines.length) {
+      return `<div class="emp-pass-banner" style="margin:0 0 12px;padding:10px 12px;border-radius:8px;background:var(--ok-bg);color:var(--ok);font-size:13px">Паспорт: по возрасту ок (выдан после 45).</div>`;
+    }
+    const upcoming = deadlines.filter(x => x.at >= today).sort((a,b)=>a.at-b.at);
+    const t = upcoming[0] || deadlines.sort((a,b)=>b.at-a.at)[0];
+    const days = Math.round((t.at - today) / 86400000);
+    let bg = 'var(--ok-bg)', fg = 'var(--ok)', label = `Паспорт до ${fmt(t.at)}`;
+    if (days < 0) { bg = 'var(--danger-bg)'; fg = 'var(--danger)'; label = `Паспорт просрочен (смена в ${t.m})`; }
+    else if (days <= 90) { bg = 'var(--orange-bg)'; fg = 'var(--amber)'; label = `Паспорт: замена до ${fmt(t.at)}`; }
+    else if (days <= 180) { bg = 'var(--gold-bg)'; fg = 'var(--gold)'; label = `Паспорт: замена ~ ${fmt(t.at)}`; }
+    return `<div class="emp-pass-banner" style="margin:0 0 12px;padding:10px 12px;border-radius:8px;background:${bg};color:${fg};font-size:13px"><strong>${esc(label)}</strong><div style="opacity:.9;margin-top:4px">В РФ паспорт меняют в 20 и 45 лет (+90 дней после дня рождения). Осталось: ${days} дн.</div></div>`;
+  }
+
   function getToken() {
     return localStorage.getItem('asgard_token') || localStorage.getItem('auth_token') || '';
+  }
+
+  /** Локальный fetch к /api — apiFetch из personnel.js/db.js сюда не попадает (IIFE). */
+  async function apiFetch(path, options) {
+    options = options || {};
+    const headers = Object.assign({ Authorization: 'Bearer ' + getToken() }, options.headers || {});
+    if (options.body && !headers['Content-Type']) headers['Content-Type'] = 'application/json';
+    const url = path.indexOf('/api') === 0 ? path : ('/api' + path);
+    const r = await fetch(url, Object.assign({}, options, { headers }));
+    const data = await r.json().catch(function() { return {}; });
+    if (!r.ok) throw new Error(data.error || ('HTTP ' + r.status));
+    return data;
+  }
+
+  function ymd(v) {
+    if (!v) return '';
+    const s = String(v);
+    return s.length >= 10 ? s.slice(0, 10) : s;
+  }
+
+  function assignEnd(a) {
+    return ymd(a && a.date_to) || ymd(a && a.departure_date);
+  }
+
+  function isCurrentAssign(a, todayStr) {
+    const end = assignEnd(a);
+    if (end && end < todayStr) return false;
+    if (a && (a.is_active === false || a.is_active === 'f' || a.is_active === 0)) {
+      return !!(end && end >= todayStr);
+    }
+    return !end || end >= todayStr;
+  }
+
+  function fmtAssignDay(v) {
+    const s = ymd(v);
+    if (!s) return '—';
+    return new Date(s + 'T00:00:00').toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric' });
   }
 
   async function employeeApiPut(path, body) {
@@ -30,6 +109,7 @@ window.AsgardEmployeePage=(function(){
     'spouse_name', 'spouse_phone', 'relative_name', 'relative_relation', 'relative_phone',
     'phone2', 'telegram', 'education', 'specialty', 'marital_status', 'children_count',
     'clothing_size', 'shoe_size', 'headwear_size', 'height', 'blood_type', 'medical_notes',
+    'military_id', 'driver_license',
     'docs_url', 'permits',
   ];
 
@@ -103,7 +183,17 @@ window.AsgardEmployeePage=(function(){
     return avg;
   }
 
-  async function render({layout,title}){
+  async function render(opts){
+    if (opts && typeof opts.layout === 'function') {
+      render._layout = opts.layout;
+      if ('title' in opts) render._title = opts.title;
+    }
+    const layout = render._layout;
+    const title = render._title;
+    if (typeof layout !== 'function') {
+      console.warn('[employee] render skipped: no layout');
+      return;
+    }
     const auth=await AsgardAuth.requireUser();
     if(!auth){ location.hash="#/login"; return; }
     const user=auth.user;
@@ -149,6 +239,7 @@ window.AsgardEmployeePage=(function(){
         emp.readiness_date       = empServer.readiness_date   || emp.readiness_date;
         emp.readiness_reason     = empServer.readiness_reason || emp.readiness_reason;
         emp.planned_info         = empServer.planned_info         || null;
+        emp.mlsp_stay            = empServer.mlsp_stay            || null;
       }
     } catch(_) { /* offline / API недоступен — рендерим без блока */ }
 
@@ -191,47 +282,39 @@ window.AsgardEmployeePage=(function(){
     const permits = Array.isArray(refs.permits) ? refs.permits : [];
     const empPermits = Array.isArray(emp.permits) ? emp.permits : [];
 
-    const works = await AsgardDB.all("works");
-    const usersAll = await AsgardDB.all("users");
-    const userMap = new Map((usersAll||[]).map(u=>[u.id, u.name||u.login||'']));
     let assigns = [], revs = [];
     try {
       const detail = await apiFetch('/staff/employees/' + id);
       assigns = (detail && detail.assignments) || [];
       revs = (detail && detail.reviews) || [];
-    } catch(_) {
+    } catch(e) {
+      console.warn('[employee] assignments load failed:', e && e.message);
       assigns = [];
       revs = [];
     }
     assigns.sort((a,b)=> String(b.date_from||"").localeCompare(String(a.date_from||"")));
     revs.sort((a,b)=> String(b.created_at||"").localeCompare(String(a.created_at||"")));
-
-    const workMap = new Map((works||[]).map(w=>[w.id,w]));
-    const tenders = await AsgardDB.all("tenders");
-    const tenderMap = new Map((tenders||[]).map(t=>[t.id,t]));
     const todayStr = new Date().toISOString().slice(0,10);
 
     // Separate current and past assignments
-    const currentAssigns = assigns.filter(a => !a.date_to || a.date_to.slice(0,10) >= todayStr);
-    const pastAssigns = assigns.filter(a => a.date_to && a.date_to.slice(0,10) < todayStr);
+    const currentAssigns = assigns.filter(a => isCurrentAssign(a, todayStr));
+    const pastAssigns = assigns.filter(a => !isCurrentAssign(a, todayStr));
 
     function assignRow(a, isCurrent) {
-      const w = workMap.get(a.work_id);
-      const t = w ? tenderMap.get(w.tender_id) : null;
-      const customer = w?.customer_name || t?.customer_name || '';
-      const city = w?.city || t?.city || w?.object_address || '';
-      const wStatus = w?.work_status || '';
+      const customer = a.customer_name || a.tender_customer_name || '';
+      const city = a.city || a.object_address || a.tender_city || '';
+      const wStatus = a.work_status || '';
       const statusBadge = isCurrent
         ? '<span style="background:rgba(34,197,94,.2);color:var(--ok-t);padding:2px 8px;border-radius:6px;font-size:11px;font-weight:700;white-space:nowrap">Сейчас</span>'
         : (wStatus ? `<span style="background:rgba(100,116,139,.2);color:var(--t2);padding:2px 8px;border-radius:6px;font-size:11px;white-space:nowrap">${esc(wStatus)}</span>` : '');
-      return `<tr${isCurrent?' style="background:rgba(34,197,94,.08)"':''}>
-        <td style="white-space:nowrap">${a.date_from ? new Date(a.date_from).toLocaleDateString('ru-RU',{day:'2-digit',month:'2-digit',year:'numeric'}) : '—'}</td>
-        <td style="white-space:nowrap">${a.date_to ? new Date(a.date_to).toLocaleDateString('ru-RU',{day:'2-digit',month:'2-digit',year:'numeric'}) : '—'}</td>
-        <td><b>${w?esc(w.work_title||""):"—"}</b></td>
+      return `<tr class="emp-assign-row${isCurrent?' is-cur':''}" data-work-id="${a.work_id||''}">
+        <td style="white-space:nowrap">${fmtAssignDay(a.date_from)}</td>
+        <td style="white-space:nowrap">${fmtAssignDay(assignEnd(a))}</td>
+        <td><b>${esc(a.work_title||"—")}</b></td>
         <td>${esc(customer)}</td>
         <td>${esc(city)}</td>
-        <td>${esc(a.role||a.role_on_work||"")}</td>
-        <td>${w?.pm_id ? esc(userMap.get(w.pm_id)||'') : '—'}</td>
+        <td>${esc(a.role||a.role_on_work||({worker:'Рабочий',senior_master:'Ст. мастер',project_lead:'Рук. проекта'}[a.field_role]||a.field_role||""))}</td>
+        <td>${esc(a.pm_name||'—')}</td>
         <td>${statusBadge}</td>
       </tr>`;
     }
@@ -241,29 +324,68 @@ window.AsgardEmployeePage=(function(){
       : `<tr><td colspan="8" class="muted">Истории назначений нет</td></tr>`;
 
     const revHtml = revs.map(r=>{
-      const w = workMap.get(r.work_id);
-      const who = r.pm_id ? `РП #${r.pm_id}` : "РП";
+      const who = r.reviewer_name || (r.pm_id ? `РП #${r.pm_id}` : "РП");
       return `<div class="pill" style="align-items:flex-start; gap:10px">
         <div style="margin-top:3px"><span class="dot" style="background:var(--err-t)"></span></div>
         <div style="flex:1">
           <div class="who"><b>${esc(who)}</b> <span class="help">${esc(new Date(r.created_at).toLocaleString("ru-RU"))}</span></div>
           <div class="row" style="gap:8px; margin-top:6px; flex-wrap:wrap">
             <span class="badge"><span class="dot" style="background:var(--ok-t)"></span>${esc(String(r.score_1_10 ?? '—'))}/10</span>
-            <span class="badge"><span class="dot" style="background:var(--info)"></span>${w?esc(w.work_title||""):"—"}</span>
+            <span class="badge"><span class="dot" style="background:var(--info)"></span>${r.work_title?esc(r.work_title):"—"}</span>
           </div>
           <div class="help" style="margin-top:6px">${esc(r.comment||"")}</div>
         </div>
       </div>`;
     }).join("") || `<div class="help">Пока нет оценок.</div>`;
 
+    const M = window.AsgardRuMasks || {};
+    const phoneDisp = (M.formatRuPhoneDisplay && M.formatRuPhoneDisplay(emp.phone)) || emp.phone || '';
+    const phone2Disp = (M.formatRuPhoneDisplay && M.formatRuPhoneDisplay(emp.phone2)) || emp.phone2 || '';
+    const spousePhoneDisp = (M.formatRuPhoneDisplay && M.formatRuPhoneDisplay(emp.spouse_phone)) || emp.spouse_phone || '';
+    const relativePhoneDisp = (M.formatRuPhoneDisplay && M.formatRuPhoneDisplay(emp.relative_phone)) || emp.relative_phone || '';
+    const snilsDisp = (M.formatSnilsDisplay && M.formatSnilsDisplay(emp.snils)) || emp.snils || '';
+    const passportCodeDisp = (M.formatPassportCodeDisplay && M.formatPassportCodeDisplay(emp.passport_code)) || emp.passport_code || '';
+    const passSeriesDigits = String(emp.pass_series || '').replace(/\D/g, '');
+    const passNumberDigits = String(emp.pass_number || '').replace(/\D/g, '');
+    const innDigits = String(emp.inn || '').replace(/\D/g, '');
+    const WS_SECTIONS = ['overview','contacts','documents','ppe','work','permits','history','notes'];
+    const _secRaw = String(query.section || 'overview').toLowerCase();
+    const initialSection = WS_SECTIONS.includes(_secRaw) ? _secRaw : 'overview';
+    const clothingChips = (window.AsgardPpeSizes && window.AsgardPpeSizes.clothing) || ['44','46','48','50','52','54','56','58','60','62','64'];
+    const shoeChips = (window.AsgardPpeSizes && window.AsgardPpeSizes.shoe) || ['39','40','41','42','43','44','45','46','47','48'];
+    const headwearList = (window.AsgardPpeSizes && window.AsgardPpeSizes.headwear) || ['54','56','58','60','62','стандарт'];
+    const _ppeSelect = (kind, id, cur) => {
+      const list = kind === 'clothing' ? clothingChips : kind === 'shoe' ? shoeChips : headwearList;
+      const curS = String(cur || '').trim();
+      let opts = `<option value="">—</option>`;
+      if (curS && !list.includes(curS)) opts += `<option value="${esc(curS)}" selected>${esc(curS)} (старое)</option>`;
+      for (const s of list) opts += `<option value="${esc(s)}"${curS === s ? ' selected' : ''}>${esc(s)}</option>`;
+      return `<select id="${id}" class="emp-ws-ppe-select"${canEdit ? '' : ' disabled'}>${opts}</select>`;
+    };
+    const _chip = (sizes, cur) => sizes.map(s =>
+      `<button type="button" class="emp-ws-chip${String(cur||'')===String(s)?' is-active':''}" data-size="${esc(s)}">${esc(s)}</button>`
+    ).join('');
+
     const html = `
-      <div class="panel">
-        <div class="row" style="justify-content:space-between; gap:10px; flex-wrap:wrap">
+      <div class="panel emp-ws" id="empWorkspace">
+        <div class="emp-ws-top">
+          <button type="button" class="btn ghost emp-ws-back" id="btnBackPersonnel">← К дружине</button>
+          <div class="emp-ws-completeness">
+            <div class="emp-ws-completeness-bar">
+              <div class="emp-ws-completeness-fill" id="empCompFill" style="width:0%"></div>
+            </div>
+            <span class="emp-ws-completeness-label" id="empCompLabel">Заполнено —</span>
+            <button type="button" class="emp-ws-gap-link" id="empCompGaps" hidden></button>
+          </div>
+          <div class="emp-ws-save-status" id="empSaveStatus"></div>
+        </div>
+
+        <div class="emp-ws-head">
           <div>
             <div class="kpi"><span class="dot" style="background:var(--err-t)"></span>${esc(emp.fio||"")}</div>
             <div class="help">Роль: <b>${esc(emp.role_tag||"—")}</b> · Разряд: <b>${esc(emp.grade||"—")}</b> · Рейтинг: <b>${emp.rating_avg!=null?esc(Number(emp.rating_avg).toFixed(1)):"—"}</b></div>
           </div>
-          <div class="row" style="gap:8px; flex-wrap:wrap">
+          <div class="row emp-ws-head-actions" style="gap:8px; flex-wrap:wrap">
             <button class="btn ghost" id="btnAiSummary" title="Мимир сгенерирует краткую характеристику">\uD83E\uDDD9 Характеристика</button>
             <button class="btn ghost" id="btnSchedule">График</button>
             <button class="btn ghost" id="btnProfile">\uD83D\uDCCB Анкета</button>
@@ -272,518 +394,557 @@ window.AsgardEmployeePage=(function(){
           </div>
         </div>
 
-        ${emp && (emp.on_site_info || emp.approved_info) ? `
-          <div style="margin-top:12px;padding:10px 14px;background:var(--bg2);border-left:3px solid var(--gold);border-radius:6px;font-size:13px;color:var(--t1)">
-            <span style="color:var(--t3)">🏗 ${emp.on_site_info ? "На объекте" : "Согласован"}:</span>
-            <b>${esc((emp.on_site_info || emp.approved_info).work_title || "—")}</b>
-            ${(emp.on_site_info || emp.approved_info).pm_name
-              ? ` &middot; <span style="color:var(--t3)">РП:</span> <b>${esc((emp.on_site_info || emp.approved_info).pm_name)}</b>`
-              : ""}
-          </div>` : ""}
+        <div class="emp-ws-layout">
+          <nav class="emp-ws-nav" id="empWsNav" aria-label="Разделы анкеты">
+            ${[
+              ['overview','Обзор'],
+              ['contacts','Контакты'],
+              ['documents','Документы'],
+              ['ppe','СИЗ'],
+              ['work','Работа'],
+              ['permits','Допуски'],
+              ['history','История'],
+              ['notes','Заметки'],
+            ].map(([sid,lab]) => `
+              <button type="button" class="emp-ws-nav-item${initialSection===sid?' is-active':''}" data-section="${sid}">
+                <span>${lab}</span>
+                <span class="emp-ws-nav-dot" data-gap-for="${sid}" hidden></span>
+              </button>`).join('')}
+          </nav>
 
-        ${(canEdit || emp.planned_info) ? `
-        <details style="margin-top:12px" ${emp.planned_info || canEdit ? 'open' : ''}>
-          <summary class="kpi" style="cursor:pointer"><span style="display:inline-block;width:3px;height:14px;border-radius:2px;background:var(--info);margin-right:8px;vertical-align:middle"></span> Планируемое привлечение</summary>
-          <div style="margin-top:10px;padding:12px 14px;background:var(--bg2);border-radius:8px;border:1px solid var(--brd)">
-            ${emp.planned_info && !canEdit ? `
-              <div style="font-size:13px"><b>📋 План:</b> ${esc(emp.planned_info.work_title || '—')}</div>
-              ${emp.planned_info.pm_name ? `<div class="help" style="margin-top:4px">РП: ${esc(emp.planned_info.pm_name)}</div>` : ''}
-              ${emp.planned_info.planned_from ? `<div class="help" style="margin-top:4px">с ${new Date(emp.planned_info.planned_from).toLocaleDateString('ru-RU')}${emp.planned_info.planned_to ? ' по ' + new Date(emp.planned_info.planned_to).toLocaleDateString('ru-RU') : ''}</div>` : ''}
-              ${emp.planned_info.note ? `<div class="help" style="margin-top:4px">${esc(emp.planned_info.note)}</div>` : ''}
-            ` : canEdit ? `
-              <div class="formrow" style="margin-top:0">
-                <div style="grid-column:1/-1">
-                  <label>Проект</label>
-                  <select id="plan_work_id" class="input"></select>
+          <div class="emp-ws-main">
+            <!-- ── overview ── -->
+            <section class="emp-ws-panel${initialSection==='overview'?' is-active':''}" data-section="overview" id="empPanel_overview">
+              <h3 class="emp-ws-panel-title"><span class="bar"></span> Обзор</h3>
+
+              ${emp && (emp.on_site_info || emp.approved_info) ? `
+                <div class="emp-ws-banner">
+                  <span style="color:var(--t3)">🏗 ${emp.on_site_info ? "На объекте" : "Согласован"}:</span>
+                  <b>${esc((emp.on_site_info || emp.approved_info).work_title || "—")}</b>
+                  ${(emp.on_site_info || emp.approved_info).pm_name
+                    ? ` &middot; <span style="color:var(--t3)">РП:</span> <b>${esc((emp.on_site_info || emp.approved_info).pm_name)}</b>`
+                    : ""}
+                </div>` : ""}
+              ${emp && emp.mlsp_stay && emp.mlsp_stay.is_open ? `
+                <div class="emp-ws-banner" style="margin-top:8px">
+                  <span style="display:inline-block;font-size:10px;font-weight:700;padding:2px 7px;border-radius:4px;background:${
+                    (emp.mlsp_stay.is_overdue || (emp.mlsp_stay.days_left != null && emp.mlsp_stay.days_left <= 7))
+                      ? 'var(--err-bg)' : (emp.mlsp_stay.days_left != null && emp.mlsp_stay.days_left <= 14)
+                        ? 'var(--warn-bg)' : 'var(--ok-bg)'
+                  };color:${
+                    (emp.mlsp_stay.is_overdue || (emp.mlsp_stay.days_left != null && emp.mlsp_stay.days_left <= 7))
+                      ? 'var(--err)' : (emp.mlsp_stay.days_left != null && emp.mlsp_stay.days_left <= 14)
+                        ? 'var(--warn-t)' : 'var(--ok)'
+                  }">МЛСП · ${emp.mlsp_stay.days_on_platform ?? '—'} дн</span>
+                  <span style="color:var(--t3);margin-left:8px">заезд ${esc(String(emp.mlsp_stay.arrived_at || '').slice(0,10))} · вывоз ${esc(String(emp.mlsp_stay.planned_depart_at || '').slice(0,10))}</span>
+                  <a href="#/personnel?status=on_mlsp&focus_emp=${emp.id}" style="margin-left:8px;font-size:12px">В Дружине →</a>
+                </div>` : ""}
+
+              ${(canEdit || emp.planned_info) ? `
+              <details style="margin-top:12px" ${emp.planned_info || canEdit ? 'open' : ''}>
+                <summary class="kpi" style="cursor:pointer"><span style="display:inline-block;width:3px;height:14px;border-radius:2px;background:var(--info);margin-right:8px;vertical-align:middle"></span> Планируемое привлечение</summary>
+                <div style="margin-top:10px;padding:12px 14px;background:var(--bg3);border-radius:8px;border:1px solid var(--brd)">
+                  ${emp.planned_info && !canEdit ? `
+                    <div style="font-size:13px"><b>📋 План:</b> ${esc(emp.planned_info.work_title || '—')}</div>
+                    ${emp.planned_info.pm_name ? `<div class="help" style="margin-top:4px">РП: ${esc(emp.planned_info.pm_name)}</div>` : ''}
+                    ${emp.planned_info.planned_from ? `<div class="help" style="margin-top:4px">с ${new Date(emp.planned_info.planned_from).toLocaleDateString('ru-RU')}${emp.planned_info.planned_to ? ' по ' + new Date(emp.planned_info.planned_to).toLocaleDateString('ru-RU') : ''}</div>` : ''}
+                    ${emp.planned_info.inbound_transport ? `<div class="help" style="margin-top:4px">Завоз: ${emp.planned_info.inbound_transport === 'ship' ? 'корабль' : 'вертолёт'}</div>` : ''}
+                    ${emp.planned_info.note ? `<div class="help" style="margin-top:4px">${esc(emp.planned_info.note)}</div>` : ''}
+                  ` : canEdit ? `
+                    <div class="formrow" style="margin-top:0">
+                      <div style="grid-column:1/-1">
+                        <label>Проект</label>
+                        <select id="plan_work_id" class="input"></select>
+                      </div>
+                      <div>
+                        <label>С даты</label>
+                        <input id="plan_from" type="date" class="input" value="${esc(normalizeDateInput(emp.planned_info?.planned_from))}"/>
+                      </div>
+                      <div>
+                        <label>По дату</label>
+                        <input id="plan_to" type="date" class="input" value="${esc(normalizeDateInput(emp.planned_info?.planned_to))}"/>
+                      </div>
+                      <div style="grid-column:1/-1">
+                        <label>Чем завозим (МЛСП)</label>
+                        <select id="plan_inbound" class="input">
+                          <option value="">— не указано —</option>
+                          <option value="helicopter"${emp.planned_info?.inbound_transport === 'helicopter' ? ' selected' : ''}>Вертолёт</option>
+                          <option value="ship"${emp.planned_info?.inbound_transport === 'ship' ? ' selected' : ''}>Корабль</option>
+                        </select>
+                      </div>
+                      <div style="grid-column:1/-1">
+                        <label>Комментарий</label>
+                        <input id="plan_note" class="input" value="${esc(emp.planned_info?.note || '')}" placeholder="Необязательно"/>
+                      </div>
+                    </div>
+                    <div class="row" style="gap:8px;margin-top:10px;flex-wrap:wrap">
+                      <button class="btn" id="btnPlanSave" type="button">Сохранить план</button>
+                      ${emp.planned_info ? '<button class="btn ghost" id="btnPlanClear" type="button">Снять с плана</button>' : ''}
+                    </div>
+                    ${emp.on_site_info ? `<div class="help" style="margin-top:8px">Сейчас на объекте: <b>${esc(emp.on_site_info.work_title || '')}</b>${emp.on_site_info.pm_name ? ' · РП: <b>' + esc(emp.on_site_info.pm_name) + '</b>' : ''}. План на другой проект не снимает его с текущего — сначала отъезд.</div>` : ''}
+                    <div class="help" style="margin-top:6px">План не создаёт назначение и не меняет статус готовности.</div>
+                  ` : ''}
                 </div>
-                <div>
-                  <label>С даты</label>
-                  <input id="plan_from" type="date" class="input" value="${esc(normalizeDateInput(emp.planned_info?.planned_from))}"/>
-                </div>
-                <div>
-                  <label>По дату</label>
-                  <input id="plan_to" type="date" class="input" value="${esc(normalizeDateInput(emp.planned_info?.planned_to))}"/>
-                </div>
-                <div style="grid-column:1/-1">
-                  <label>Комментарий</label>
-                  <input id="plan_note" class="input" value="${esc(emp.planned_info?.note || '')}" placeholder="Необязательно"/>
-                </div>
-              </div>
-              <div class="row" style="gap:8px;margin-top:10px;flex-wrap:wrap">
-                <button class="btn" id="btnPlanSave" type="button">Сохранить план</button>
-                ${emp.planned_info ? '<button class="btn ghost" id="btnPlanClear" type="button">Снять с плана</button>' : ''}
-              </div>
-              ${emp.on_site_info ? `<div class="help" style="margin-top:8px">Сейчас на объекте: <b>${esc(emp.on_site_info.work_title || '')}</b>. План на другой проект не меняет статус «На объекте».</div>` : ''}
-              <div class="help" style="margin-top:6px">План не создаёт назначение и не меняет статус готовности.</div>
-            ` : ''}
-          </div>
-        </details>` : ''}
+              </details>` : ''}
 
-        ${canEdit && window.AsgardPersonnelPage ? `
-          <div class="row" style="gap:8px;flex-wrap:wrap;margin-top:12px">
-            <span style="color:var(--t2);font-size:13px;align-self:center">Статус готовности:</span>
-            <button class="btn emp-st-btn" data-st="ready"
-              style="background:var(--gold-bg);color:var(--gold)">✓ Готов</button>
-            <button class="btn ghost emp-st-btn" data-st="not_ready"
-              style="border-color:var(--warn);color:var(--warn-t)">✗ Не готов</button>
-            <button class="btn ghost emp-st-btn" data-st="archive"
-              style="border-color:var(--brd);color:var(--t3)">Архив</button>
-            ${emp.readiness_date ? `<span style="font-size:12px;color:var(--t3);align-self:center">с ${new Date(emp.readiness_date).toLocaleDateString('ru-RU')}</span>` : ""}
-          </div>` : ""}
+              ${canEdit && window.AsgardPersonnelPage ? `
+                <div class="row" style="gap:8px;flex-wrap:wrap;margin-top:12px">
+                  <span style="color:var(--t2);font-size:13px;align-self:center">Статус готовности:</span>
+                  <button class="btn emp-st-btn" data-st="ready"
+                    style="background:var(--gold-bg);color:var(--gold)">✓ Готов</button>
+                  <button class="btn ghost emp-st-btn" data-st="not_ready"
+                    style="border-color:var(--warn);color:var(--warn-t)">✗ Не готов</button>
+                  <button class="btn ghost emp-st-btn" data-st="unknown"
+                    style="border-color:var(--brd);color:var(--t2)">Без статуса</button>
+                  <button class="btn ghost emp-st-btn" data-st="archive"
+                    style="border-color:var(--brd);color:var(--t3)">Архив</button>
+                  ${emp.readiness_date ? `<span style="font-size:12px;color:var(--t3);align-self:center">с ${new Date(emp.readiness_date).toLocaleDateString('ru-RU')}</span>` : ""}
+                </div>` : ""}
 
-        <div id="aiSummaryBlock" style="display:none;margin:12px 0;padding:16px;background:rgba(59,130,246,0.06);border-left:3px solid var(--blue-l);border-radius:8px">
-          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-            <span style="font-weight:700;color:var(--blue-l);font-size:13px">\uD83E\uDDD9 Характеристика от Мимира</span>
-            <div style="display:flex;gap:6px">
-              <button id="btnRefreshSummary" class="btn ghost mini" title="Обновить">\uD83D\uDD04</button>
-              <button id="btnCloseSummary" class="btn ghost mini" title="Скрыть">\u00D7</button>
-            </div>
-          </div>
-          <div id="aiSummaryText" style="font-size:13px;line-height:1.6;color:var(--t1)"></div>
-          <div id="aiSummaryMeta" style="margin-top:8px;font-size:11px;color:var(--t3)"></div>
-        </div>
-
-        <!-- Основная информация -->
-        <details open style="margin-top:16px">
-          <summary class="kpi" style="cursor:pointer"><span style="display:inline-block;width:3px;height:14px;border-radius:2px;background:var(--info);margin-right:8px;vertical-align:middle"></span> Основная информация</summary>
-          <div class="formrow" style="margin-top:12px">
-            <div>
-              <label>ФИО (полностью)</label>
-              <input id="fio" value="${esc(emp.fio||"")}" ${canEdit?"":"disabled"}/>
-            </div>
-            <div>
-              <label>Дата рождения</label>
-              <input id="birth" type="date" value="${esc(normalizeDateInput(emp.birth_date))}" ${canEdit?"":"disabled"}/>
-            </div>
-            <div>
-              <label>Пол</label>
-              <div id="gender_w"></div>
-            </div>
-            <div>
-              <label>Должность</label>
-              <select id="role" ${canEdit?"":"disabled"} title="Слесарь — базовая ставка (склад 10б). Мастер — повышенная (склад 12б). РП — руководитель, не попадает в табель как рабочий.">
-                ${(() => {
-                  const cur = (emp.role_tag||"").toLowerCase();
-                  const opts = [
-                    { v: "слесарь", l: "🔧 Слесарь" },
-                    { v: "сварщик", l: "🔥 Сварщик" },
-                    { v: "альпинист", l: "🧗 Альпинист" },
-                    { v: "мастер",  l: "👷 Мастер" },
-                    { v: "РП",      l: "👑 РП (руководитель)" },
-                  ];
-                  const std = opts.map(o => o.v.toLowerCase());
-                  if (cur && !std.includes(cur)) {
-                    opts.push({ v: emp.role_tag, l: `⚠ ${esc(emp.role_tag)} (нестандарт)` });
-                  }
-                  return opts.map(o => `<option value="${esc(o.v)}" ${cur===o.v.toLowerCase()?"selected":""}>${o.l}</option>`).join("");
-                })()}
-              </select>
-            </div>
-            <div>
-              <label>Разряд</label>
-              <input id="grade" value="${esc(emp.grade||"")}" ${canEdit?"":"disabled"}/>
-            </div>
-            <div>
-              <label>Дата приёма</label>
-              <input id="hire_date" type="date" value="${esc(normalizeDateInput(emp.hire_date))}" ${canEdit?"":"disabled"}/>
-            </div>
-          </div>
-        </details>
-
-        <!-- 💼 Самозанятый -->
-        <details style="margin-top:16px" open>
-          <summary class="kpi" style="cursor:pointer"><span style="display:inline-block;width:3px;height:14px;border-radius:2px;background:var(--ok-t);margin-right:8px;vertical-align:middle"></span> 💼 Самозанятый</summary>
-          <div class="formrow" style="margin-top:12px">
-            <div style="grid-column:1/-1">
-              <label title="При включении блок «Официально устроен» будет недоступен (взаимоисключение)">
-                <input id="is_self_employed" type="checkbox" ${emp.is_self_employed?"checked":""} ${canEditHrSensitive?"":"disabled"} ${emp.is_officially_employed?"disabled":""}/>
-                Является самозанятым (плательщик НПД)
-              </label>
-              ${emp.is_officially_employed && canEditHrSensitive ? '<div class="help" style="margin-top:4px">Снимите «Официально устроен», чтобы включить.</div>' : ''}
-            </div>
-            <div>
-              <label title="12 цифр. Используется для проверки лимита самозанятого (2.4M/год).">ИНН</label>
-              <input id="inn" value="${esc(emp.inn||"")}" placeholder="123456789012" inputmode="numeric" ${canEdit?"":"disabled"}/>
-            </div>
-
-            <!-- Получатель НПД-выплат (V240) -->
-            <div style="grid-column:1/-1;border-top:1px dashed var(--brd);padding-top:12px;margin-top:4px">
-              <div class="help" style="margin-bottom:8px;font-weight:600;color:var(--t2);text-transform:uppercase;letter-spacing:0.08em;font-size:11px">— Получатель НПД-выплат —</div>
-              <label title="Выплаты СЗ идут не на самого рабочего, а на родственника-получателя (жена/брат/отец как СЗ). У получателя свои НПД-лимиты.">
-                <input id="use_payee" type="checkbox" ${emp.se_payee_id?"checked":""} ${canEdit?"":"disabled"}/>
-                Выплаты идут не на меня (на родственника-СЗ)
-              </label>
-              <div id="payee_block" style="display:${emp.se_payee_id?'block':'none'};margin-top:10px">
-                <!-- Текущий привязанный payee (если есть) -->
-                <div id="payee_current" style="display:${emp.se_payee_id?'flex':'none'};align-items:center;gap:10px;padding:10px 12px;background:#E8F5E9;border-radius:8px;margin-bottom:10px;flex-wrap:wrap">
-                  <span style="font-size:18px">👤</span>
-                  <div style="flex:1;min-width:200px">
-                    <div style="font-weight:600;color:var(--t1)" id="payee_current_name">${esc(emp.se_payee_fio||('id='+(emp.se_payee_id||'')))}</div>
-                    <div class="help" id="payee_current_meta">${emp.se_payee_id?('id='+esc(String(emp.se_payee_id))+(emp.se_payee_phone?' · '+esc(emp.se_payee_phone):'')):''}</div>
-                  </div>
-                  <div class="row" style="gap:6px;flex-wrap:wrap">
-                    ${canEdit ? '<button type="button" class="btn ghost mini" id="payee_unlink">Открепить</button>' : ''}
-                    <button type="button" class="btn ghost mini" id="payee_open">Открыть карточку</button>
+              <div id="aiSummaryBlock" style="display:none;margin:12px 0;padding:16px;background:rgba(59,130,246,0.06);border-left:3px solid var(--blue-l);border-radius:8px">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+                  <span style="font-weight:700;color:var(--blue-l);font-size:13px">\uD83E\uDDD9 Характеристика от Мимира</span>
+                  <div style="display:flex;gap:6px">
+                    <button id="btnRefreshSummary" class="btn ghost mini" title="Обновить">\uD83D\uDD04</button>
+                    <button id="btnCloseSummary" class="btn ghost mini" title="Скрыть">\u00D7</button>
                   </div>
                 </div>
-                <!-- Поиск + dropdown -->
-                <div id="payee_search_wrap" style="position:relative">
-                  <input id="payee_search" type="text" placeholder="Поиск по ФИО или телефону..." autocomplete="off" ${canEdit?'':'disabled'} style="width:100%"/>
-                  <div id="payee_results" style="display:none;position:absolute;top:100%;left:0;right:0;background:var(--bg1);border:1px solid var(--brd);border-radius:8px;margin-top:4px;max-height:280px;overflow-y:auto;z-index:10;box-shadow:0 4px 16px rgba(0,0,0,0.2)"></div>
-                </div>
-                ${canEditFinance ? `<div style="margin-top:8px"><button type="button" class="btn ghost mini" id="payee_create">+ Создать нового получателя</button></div>` : ``}
-                <input type="hidden" id="payee_id_hidden" value="${esc(String(emp.se_payee_id||''))}"/>
+                <div id="aiSummaryText" style="font-size:13px;line-height:1.6;color:var(--t1)"></div>
+                <div id="aiSummaryMeta" style="margin-top:8px;font-size:11px;color:var(--t3)"></div>
               </div>
-            </div>
 
-            <div>
-              <label title="Если выключено — переводы свыше 350 000 ₽/мес автоматически блокируются. Годовой лимит 2,4 млн ₽ это не отменяет.">
-                <input id="can_exceed_limit" type="checkbox" ${emp.can_exceed_limit?"checked":""} ${canEditFinance?"":"disabled"}/>
-                Разрешить превышение месячного лимита (350k)
-              </label>
-            </div>
-            <div style="grid-column:1/-1">
-              <div class="help" style="margin-bottom:6px">Стартовый offset лимита (для переноса со старой системы):</div>
-              ${canEditFinance ? `
-                <div class="formrow">
+              <div class="kpi" style="margin-top:16px"><span class="dot" style="background:var(--info)"></span> Основная информация</div>
+              <div class="formrow" style="margin-top:12px">
+                <div>
+                  <label>ФИО (полностью)</label>
+                  <input id="fio" value="${esc(emp.fio||"")}" ${canEdit?"":"disabled"}/>
+                </div>
+                <div>
+                  <label>Дата рождения</label>
+                  <input id="birth" type="date" value="${esc(normalizeDateInput(emp.birth_date))}" ${canEdit?"":"disabled"}/>
+                </div>
+                <div>
+                  <label>Пол</label>
+                  <div id="gender_w"></div>
+                </div>
+                <div>
+                  <label>Должность</label>
+                  <select id="role" ${canEdit?"":"disabled"} title="Слесарь — базовая ставка (склад 10б). Мастер — повышенная (склад 12б). РП — руководитель, не попадает в табель как рабочий.">
+                    ${(() => {
+                      const cur = (emp.role_tag||"").toLowerCase();
+                      const opts = [
+                        { v: "слесарь", l: "🔧 Слесарь" },
+                        { v: "сварщик", l: "🔥 Сварщик" },
+                        { v: "альпинист", l: "🧗 Альпинист" },
+                        { v: "мастер",  l: "👷 Мастер" },
+                        { v: "РП",      l: "👑 РП (руководитель)" },
+                      ];
+                      const std = opts.map(o => o.v.toLowerCase());
+                      if (cur && !std.includes(cur)) {
+                        opts.push({ v: emp.role_tag, l: `⚠ ${esc(emp.role_tag)} (нестандарт)` });
+                      }
+                      return opts.map(o => `<option value="${esc(o.v)}" ${cur===o.v.toLowerCase()?"selected":""}>${o.l}</option>`).join("");
+                    })()}
+                  </select>
+                </div>
+                <div>
+                  <label>Разряд</label>
+                  <input id="grade" value="${esc(emp.grade||"")}" ${canEdit?"":"disabled"}/>
+                </div>
+                <div>
+                  <label>Дата приёма</label>
+                  <input id="hire_date" type="date" value="${esc(normalizeDateInput(emp.hire_date))}" ${canEdit?"":"disabled"}/>
+                </div>
+              </div>
+            </section>
+
+            <!-- ── contacts ── -->
+            <section class="emp-ws-panel${initialSection==='contacts'?' is-active':''}" data-section="contacts" id="empPanel_contacts">
+              <h3 class="emp-ws-panel-title"><span class="bar"></span> Контакты</h3>
+              <div class="formrow">
+                <div style="grid-column:1/-1">
+                  <label>Адрес регистрации (прописка)</label>
+                  <input id="registration_address" value="${esc(emp.registration_address||"")}" ${canEdit?"":"disabled"}/>
+                </div>
+                <div style="grid-column:1/-1">
+                  <label>Фактический адрес проживания</label>
+                  <input id="address_fact" value="${esc(emp.address||"")}" ${canEdit?"":"disabled"}/>
+                </div>
+                <div>
+                  <label>Телефон основной</label>
+                  <div class="emp-ws-phone-row">
+                    <input id="phone" value="${esc(phoneDisp)}" ${canEdit?"":"disabled"}/>
+                    <button type="button" class="asg-copy-btn asg-copy-btn--always" id="btnCopyPhone" title="Скопировать телефон" aria-label="Скопировать телефон">
+                      <svg class="asg-copy-btn__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
+                      <svg class="asg-copy-btn__done" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>
+                    </button>
+                  </div>
+                </div>
+                <div>
+                  <label>Телефон дополнительный</label>
+                  <input id="phone2" value="${esc(phone2Disp)}" ${canEdit?"":"disabled"}/>
+                </div>
+                <div>
+                  <label>Email</label>
+                  <input id="email" type="email" value="${esc(emp.email||"")}" ${canEdit?"":"disabled"}/>
+                </div>
+                <div>
+                  <label>Telegram</label>
+                  <input id="telegram" value="${esc(emp.telegram||"")}" placeholder="@username" ${canEdit?"":"disabled"}/>
+                </div>
+              </div>
+              <div class="kpi" style="margin-top:18px"><span class="dot" style="background:var(--err-t)"></span> Экстренные контакты</div>
+              <div class="formrow" style="margin-top:12px">
+                <div>
+                  <label>ФИО супруга(и)</label>
+                  <input id="spouse_name" value="${esc(emp.spouse_name||"")}" ${canEdit?"":"disabled"}/>
+                </div>
+                <div>
+                  <label>Телефон супруга(и)</label>
+                  <input id="spouse_phone" value="${esc(spousePhoneDisp)}" ${canEdit?"":"disabled"}/>
+                </div>
+                <div>
+                  <label>ФИО родственника</label>
+                  <input id="relative_name" value="${esc(emp.relative_name||"")}" ${canEdit?"":"disabled"}/>
+                </div>
+                <div>
+                  <label>Кем приходится</label>
+                  <input id="relative_relation" value="${esc(emp.relative_relation||"")}" placeholder="мать/отец/брат..." ${canEdit?"":"disabled"}/>
+                </div>
+                <div>
+                  <label>Телефон родственника</label>
+                  <input id="relative_phone" value="${esc(relativePhoneDisp)}" ${canEdit?"":"disabled"}/>
+                </div>
+              </div>
+            </section>
+
+            <!-- ── documents ── -->
+            <section class="emp-ws-panel${initialSection==='documents'?' is-active':''}" data-section="documents" id="empPanel_documents">
+              <h3 class="emp-ws-panel-title"><span class="bar"></span> Документы</h3>
+              ${passportAgeBannerHtml(emp)}
+              <div class="formrow">
+                <div>
+                  <label>Паспорт: серия</label>
+                  <input id="pass_series" value="${esc(passSeriesDigits)}" placeholder="1234" inputmode="numeric" ${canEdit?"":"disabled"}/>
+                </div>
+                <div>
+                  <label>Паспорт: номер</label>
+                  <input id="pass_number" value="${esc(passNumberDigits)}" placeholder="567890" inputmode="numeric" ${canEdit?"":"disabled"}/>
+                </div>
+                <div>
+                  <label>Кем выдан</label>
+                  <input id="passport_issued" value="${esc(emp.passport_issued||"")}" ${canEdit?"":"disabled"}/>
+                </div>
+                <div>
+                  <label>Дата выдачи</label>
+                  <input id="passport_date" type="date" value="${esc(normalizeDateInput(emp.passport_date))}" ${canEdit?"":"disabled"}/>
+                </div>
+                <div>
+                  <label>Код подразделения</label>
+                  <input id="passport_code" value="${esc(passportCodeDisp)}" placeholder="123-456" ${canEdit?"":"disabled"}/>
+                </div>
+                <div>
+                  <label>СНИЛС</label>
+                  <input id="snils" value="${esc(snilsDisp)}" ${canEdit?"":"disabled"}/>
+                </div>
+                <div>
+                  <label>Военный билет (№, категория)</label>
+                  <input id="military_id" value="${esc(emp.military_id||"")}" ${canEdit?"":"disabled"}/>
+                </div>
+                <div style="grid-column:1/-1">
+                  <label>Водительское удостоверение</label>
+                  <input id="driver_license" value="${esc(emp.driver_license||"")}" placeholder="Категории, срок" ${canEdit?"":"disabled"}/>
+                </div>
+                <div style="grid-column:1/-1">
+                  <label>Ссылка на папку документов сотрудника</label>
+                  <input id="docs" value="${esc(emp.docs_folder_link||"")}" placeholder="https://drive.google.com/..." ${canEdit?"":"disabled"}/>
+                </div>
+              </div>
+            </section>
+
+            <!-- ── ppe ── -->
+            <section class="emp-ws-panel${initialSection==='ppe'?' is-active':''}" data-section="ppe" id="empPanel_ppe">
+              <h3 class="emp-ws-panel-title"><span class="bar"></span> СИЗ и доп. данные</h3>
+              <div class="formrow">
+                <div>
+                  <label>Размер одежды</label>
+                  ${_ppeSelect('clothing', 'clothing_size', emp.clothing_size)}
+                </div>
+                <div>
+                  <label>Размер обуви</label>
+                  ${_ppeSelect('shoe', 'shoe_size', emp.shoe_size)}
+                </div>
+                <div>
+                  <label>Головной убор (каска)</label>
+                  ${_ppeSelect('headwear', 'headwear_size', emp.headwear_size)}
+                </div>
+                <div>
+                  <label>Рост (см)</label>
+                  <input id="height" type="number" value="${esc(emp.height||"")}" ${canEdit?"":"disabled"}/>
+                </div>
+                <div>
+                  <label>Группа крови</label>
+                  <div id="blood_type_w"></div>
+                </div>
+                <div style="grid-column:1/-1">
+                  <label>Аллергии / мед. ограничения</label>
+                  <input id="medical_notes" value="${esc(emp.medical_notes||"")}" ${canEdit?"":"disabled"}/>
+                </div>
+                <div>
+                  <label>Образование</label>
+                  <input id="education" value="${esc(emp.education||"")}" ${canEdit?"":"disabled"}/>
+                </div>
+                <div>
+                  <label>Специальность по диплому</label>
+                  <input id="specialty" value="${esc(emp.specialty||"")}" ${canEdit?"":"disabled"}/>
+                </div>
+                <div>
+                  <label>Семейное положение</label>
+                  <div id="marital_status_w"></div>
+                </div>
+                <div>
+                  <label>Количество детей</label>
+                  <input id="children_count" type="number" min="0" value="${esc(emp.children_count||"")}" ${canEdit?"":"disabled"}/>
+                </div>
+              </div>
+            </section>
+
+            <!-- ── work ── -->
+            <section class="emp-ws-panel${initialSection==='work'?' is-active':''}" data-section="work" id="empPanel_work">
+              <h3 class="emp-ws-panel-title"><span class="bar"></span> Работа</h3>
+
+              <div class="kpi"><span class="dot" style="background:var(--ok-t)"></span> 💼 Самозанятый</div>
+              <div class="formrow" style="margin-top:12px">
+                <div style="grid-column:1/-1">
+                  <label title="При включении блок «Официально устроен» будет недоступен (взаимоисключение)">
+                    <input id="is_self_employed" type="checkbox" ${emp.is_self_employed?"checked":""} ${canEditHrSensitive?"":"disabled"} ${emp.is_officially_employed?"disabled":""}/>
+                    Является самозанятым (плательщик НПД)
+                  </label>
+                  ${emp.is_officially_employed && canEditHrSensitive ? '<div class="help" style="margin-top:4px">Снимите «Официально устроен», чтобы включить.</div>' : ''}
+                </div>
+                <div>
+                  <label title="12 цифр. Используется для проверки лимита самозанятого (2.4M/год).">ИНН</label>
+                  <input id="inn" value="${esc(innDigits)}" placeholder="123456789012" inputmode="numeric" ${canEdit?"":"disabled"}/>
+                </div>
+
+                <div style="grid-column:1/-1;border-top:1px dashed var(--brd);padding-top:12px;margin-top:4px">
+                  <div class="help" style="margin-bottom:8px;font-weight:600;color:var(--t2);text-transform:uppercase;letter-spacing:0.08em;font-size:11px">— Получатель НПД-выплат —</div>
+                  <label title="Выплаты СЗ идут не на самого рабочего, а на родственника-получателя (жена/брат/отец как СЗ). У получателя свои НПД-лимиты.">
+                    <input id="use_payee" type="checkbox" ${emp.se_payee_id?"checked":""} ${canEdit?"":"disabled"}/>
+                    Выплаты идут не на меня (на родственника-СЗ)
+                  </label>
+                  <div id="payee_block" style="display:${emp.se_payee_id?'block':'none'};margin-top:10px">
+                    <div id="payee_current" class="emp-payee-cur" style="display:${emp.se_payee_id?'flex':'none'}">
+                      <span style="font-size:18px">👤</span>
+                      <div style="flex:1;min-width:200px">
+                        <div style="font-weight:600;color:var(--t1)" id="payee_current_name">${esc(emp.se_payee_fio||('id='+(emp.se_payee_id||'')))}</div>
+                        <div class="help" id="payee_current_meta">${emp.se_payee_id?('id='+esc(String(emp.se_payee_id))+(emp.se_payee_phone?' · '+esc(emp.se_payee_phone):'')):''}</div>
+                      </div>
+                      <div class="row" style="gap:6px;flex-wrap:wrap">
+                        ${canEdit ? '<button type="button" class="btn ghost mini" id="payee_unlink">Открепить</button>' : ''}
+                        <button type="button" class="btn ghost mini" id="payee_open">Открыть карточку</button>
+                      </div>
+                    </div>
+                    <div id="payee_search_wrap" style="position:relative">
+                      <input id="payee_search" type="text" placeholder="Поиск по ФИО или телефону..." autocomplete="off" ${canEdit?'':'disabled'} style="width:100%"/>
+                      <div id="payee_results" style="display:none;position:absolute;top:100%;left:0;right:0;background:var(--bg1);border:1px solid var(--brd);border-radius:8px;margin-top:4px;max-height:280px;overflow-y:auto;z-index:10;box-shadow:0 4px 16px rgba(0,0,0,0.2)"></div>
+                    </div>
+                    ${canEditFinance ? `<div style="margin-top:8px"><button type="button" class="btn ghost mini" id="payee_create">+ Создать нового получателя</button></div>` : ``}
+                    <input type="hidden" id="payee_id_hidden" value="${esc(String(emp.se_payee_id||''))}"/>
+                  </div>
+                </div>
+
+                <div>
+                  <label title="Если выключено — переводы свыше 350 000 ₽/мес автоматически блокируются. Годовой лимит 2,4 млн ₽ это не отменяет.">
+                    <input id="can_exceed_limit" type="checkbox" ${emp.can_exceed_limit?"checked":""} ${canEditFinance?"":"disabled"}/>
+                    Разрешить превышение месячного лимита (350k)
+                  </label>
+                </div>
+                <div style="grid-column:1/-1">
+                  <div class="help" style="margin-bottom:6px">Стартовый offset лимита (для переноса со старой системы):</div>
+                  ${canEditFinance ? `
+                    <div class="formrow">
+                      <div>
+                        <label title="Сумма, которая ушла самозанятому ВНЕ CRM с начала года. Пример: в апреле перевели 400 000 — ставь 400 000.">За год уже потрачено ₽</label>
+                        <input id="se_yearly_used_initial" type="number" min="0" value="${esc(emp.se_yearly_used_initial!=null?emp.se_yearly_used_initial:0)}"/>
+                      </div>
+                      <div style="grid-column:1/-1">
+                        <label title="Заполняй только если в этом конкретном месяце уже были переводы вне CRM.">За текущий месяц (опц.)</label>
+                        <div class="row" style="gap:6px;flex-wrap:wrap">
+                          <input id="se_monthly_used_initial_year"   type="number" min="2020" max="2099" placeholder="год"   value="${esc(emp.se_monthly_used_initial?.year||'')}"  style="max-width:90px"/>
+                          <input id="se_monthly_used_initial_month"  type="number" min="1"    max="12"   placeholder="мес"   value="${esc(emp.se_monthly_used_initial?.month||'')}" style="max-width:70px"/>
+                          <input id="se_monthly_used_initial_amount" type="number" min="0"               placeholder="сумма ₽" value="${esc(emp.se_monthly_used_initial?.amount||'')}" style="flex:1;min-width:160px"/>
+                        </div>
+                      </div>
+                    </div>
+                    <div class="help" style="margin-top:8px">
+                      Подсказка: «Стартовый offset» — это то, что СЗ уже потратил у нас до момента перевода в систему.
+                      Например, если в апреле ему уже перевели 400 000, поставь 400 000 в годовой offset.
+                      Месячный offset нужен только если в этом конкретном месяце уже были переводы вне CRM.
+                    </div>
+                  ` : `
+                    <div class="help" style="font-size:12px;padding:8px;border:1px dashed var(--brd);border-radius:6px;color:var(--t2)">
+                      <div><b>Месячный лимит:</b> ${emp.can_exceed_limit?'снят (разрешено превышение)':'действует (350 000 ₽)'}</div>
+                      <div><b>За год уже потрачено:</b> ${esc(String(Number(emp.se_yearly_used_initial||0).toLocaleString('ru-RU')))} ₽</div>
+                      ${emp.se_monthly_used_initial?.year?`<div><b>Месячный offset:</b> ${esc(emp.se_monthly_used_initial.year)}-${String(emp.se_monthly_used_initial.month||0).padStart(2,'0')} → ${esc(Number(emp.se_monthly_used_initial.amount||0).toLocaleString('ru-RU'))} ₽</div>`:''}
+                      <div style="margin-top:4px;opacity:0.7">Изменить может только бухгалтер/директор/админ.</div>
+                    </div>
+                  `}
+                </div>
+              </div>
+
+              <div class="kpi" style="margin-top:20px"><span class="dot" style="background:var(--info)"></span> 🏢 Официально устроен</div>
+              <div class="formrow" style="margin-top:12px">
+                <div style="grid-column:1/-1">
+                  <label title="При включении блок «Самозанятый» будет недоступен (взаимоисключение)">
+                    <input id="is_officially_employed" type="checkbox" ${emp.is_officially_employed?"checked":""} ${canEditHrSensitive?"":"disabled"} ${emp.is_self_employed?"disabled":""}/>
+                    Является официально устроенным (по ТД)
+                  </label>
+                  ${emp.is_self_employed && canEditHrSensitive ? '<div class="help" style="margin-top:4px">Снимите «Самозанятый», чтобы включить.</div>' : ''}
+                </div>
+                ${canEditFinance ? `
                   <div>
-                    <label title="Сумма, которая ушла самозанятому ВНЕ CRM с начала года. Пример: в апреле перевели 400 000 — ставь 400 000.">За год уже потрачено ₽</label>
-                    <input id="se_yearly_used_initial" type="number" min="0" value="${esc(emp.se_yearly_used_initial!=null?emp.se_yearly_used_initial:0)}"/>
+                    <label title="Месячный оклад по трудовому договору">Оклад ₽</label>
+                    <input id="official_salary" type="number" min="0" value="${esc(emp.official_salary!=null?emp.official_salary:'')}" placeholder="0"/>
                   </div>
-                  <div style="grid-column:1/-1">
-                    <label title="Заполняй только если в этом конкретном месяце уже были переводы вне CRM.">За текущий месяц (опц.)</label>
-                    <div class="row" style="gap:6px;flex-wrap:wrap">
-                      <input id="se_monthly_used_initial_year"   type="number" min="2020" max="2099" placeholder="год"   value="${esc(emp.se_monthly_used_initial?.year||'')}"  style="max-width:90px"/>
-                      <input id="se_monthly_used_initial_month"  type="number" min="1"    max="12"   placeholder="мес"   value="${esc(emp.se_monthly_used_initial?.month||'')}" style="max-width:70px"/>
-                      <input id="se_monthly_used_initial_amount" type="number" min="0"               placeholder="сумма ₽" value="${esc(emp.se_monthly_used_initial?.amount||'')}" style="flex:1;min-width:160px"/>
+                  <div>
+                    <label title="Минимум который компания платит даже если рабочий не отработал. Например: оклад 60k, несгораемая 30k. Если рабочий заработал 0 — компания всё равно платит 30k.">Несгораемая часть ₽</label>
+                    <input id="official_non_burnable" type="number" min="0" value="${esc(emp.official_non_burnable!=null?emp.official_non_burnable:'')}" placeholder="0"/>
+                    <div class="help" style="margin-top:4px;color:var(--t3);font-size:11px;line-height:1.4">
+                      Минимум который компания платит даже если рабочий не отработал.<br>
+                      Пример: оклад 60 000 ₽, несгораемая 30 000 ₽. Если рабочий заработал 0 — компания всё равно платит 30 000 ₽.
                     </div>
                   </div>
-                </div>
-                <div class="help" style="margin-top:8px">
-                  Подсказка: «Стартовый offset» — это то, что СЗ уже потратил у нас до момента перевода в систему.
-                  Например, если в апреле ему уже перевели 400 000, поставь 400 000 в годовой offset.
-                  Месячный offset нужен только если в этом конкретном месяце уже были переводы вне CRM.
-                </div>
-              ` : `
-                <div class="help" style="font-size:12px;padding:8px;border:1px dashed var(--brd);border-radius:6px;color:var(--t2)">
-                  <div><b>Месячный лимит:</b> ${emp.can_exceed_limit?'снят (разрешено превышение)':'действует (350 000 ₽)'}</div>
-                  <div><b>За год уже потрачено:</b> ${esc(String(Number(emp.se_yearly_used_initial||0).toLocaleString('ru-RU')))} ₽</div>
-                  ${emp.se_monthly_used_initial?.year?`<div><b>Месячный offset:</b> ${esc(emp.se_monthly_used_initial.year)}-${String(emp.se_monthly_used_initial.month||0).padStart(2,'0')} → ${esc(Number(emp.se_monthly_used_initial.amount||0).toLocaleString('ru-RU'))} ₽</div>`:''}
-                  <div style="margin-top:4px;opacity:0.7">Изменить может только бухгалтер/директор/админ.</div>
-                </div>
-              `}
-            </div>
-          </div>
-        </details>
-
-        <!-- 🏢 Официально устроен -->
-        <details style="margin-top:16px" open>
-          <summary class="kpi" style="cursor:pointer"><span style="display:inline-block;width:3px;height:14px;border-radius:2px;background:var(--info);margin-right:8px;vertical-align:middle"></span> 🏢 Официально устроен</summary>
-          <div class="formrow" style="margin-top:12px">
-            <div style="grid-column:1/-1">
-              <label title="При включении блок «Самозанятый» будет недоступен (взаимоисключение)">
-                <input id="is_officially_employed" type="checkbox" ${emp.is_officially_employed?"checked":""} ${canEditHrSensitive?"":"disabled"} ${emp.is_self_employed?"disabled":""}/>
-                Является официально устроенным (по ТД)
-              </label>
-              ${emp.is_self_employed && canEditHrSensitive ? '<div class="help" style="margin-top:4px">Снимите «Самозанятый», чтобы включить.</div>' : ''}
-            </div>
-            ${canEditFinance ? `
-              <div>
-                <label title="Месячный оклад по трудовому договору">Оклад ₽</label>
-                <input id="official_salary" type="number" min="0" value="${esc(emp.official_salary!=null?emp.official_salary:'')}" placeholder="0"/>
-              </div>
-              <div>
-                <label title="Минимум который компания платит даже если рабочий не отработал. Например: оклад 60k, несгораемая 30k. Если рабочий заработал 0 — компания всё равно платит 30k.">Несгораемая часть ₽</label>
-                <input id="official_non_burnable" type="number" min="0" value="${esc(emp.official_non_burnable!=null?emp.official_non_burnable:'')}" placeholder="0"/>
-                <div class="help" style="margin-top:4px;color:var(--t3);font-size:11px;line-height:1.4">
-                  Минимум который компания платит даже если рабочий не отработал.<br>
-                  Пример: оклад 60 000 ₽, несгораемая 30 000 ₽. Если рабочий заработал 0 — компания всё равно платит 30 000 ₽.
-                </div>
-              </div>
-              <div>
-                <label title="Дата приёма по трудовому договору">Дата приёма</label>
-                <input id="official_hire_date" type="date" value="${esc(normalizeDateInput(emp.official_hire_date))}"/>
-              </div>
-              <div>
-                <label>Статус занятости</label>
-                <select id="official_status">
-                  <option value="active"        ${(emp.official_status||'active')==='active'?'selected':''}>Активен</option>
-                  <option value="unpaid_leave"  ${emp.official_status==='unpaid_leave'?'selected':''}>Отпуск без сохранения</option>
-                  <option value="maternity"     ${emp.official_status==='maternity'?'selected':''}>Декрет</option>
-                  <option value="sick_leave"    ${emp.official_status==='sick_leave'?'selected':''}>Больничный</option>
-                  <option value="fired"         ${emp.official_status==='fired'?'selected':''}>Уволен</option>
-                </select>
-              </div>
-              <div id="official_leave_block" style="grid-column:1/-1; ${emp.official_status==='unpaid_leave'?'':'display:none'}">
-                <div class="formrow">
                   <div>
-                    <label title="Только если статус = Отпуск без сохранения">Отпуск с</label>
-                    <input id="official_leave_from" type="date" value="${esc(normalizeDateInput(emp.official_leave_from))}"/>
+                    <label title="Дата приёма по трудовому договору">Дата приёма</label>
+                    <input id="official_hire_date" type="date" value="${esc(normalizeDateInput(emp.official_hire_date))}"/>
                   </div>
                   <div>
-                    <label>по</label>
-                    <input id="official_leave_to" type="date" value="${esc(normalizeDateInput(emp.official_leave_to))}"/>
+                    <label>Статус занятости</label>
+                    <select id="official_status">
+                      <option value="active"        ${(emp.official_status||'active')==='active'?'selected':''}>Активен</option>
+                      <option value="unpaid_leave"  ${emp.official_status==='unpaid_leave'?'selected':''}>Отпуск без сохранения</option>
+                      <option value="maternity"     ${emp.official_status==='maternity'?'selected':''}>Декрет</option>
+                      <option value="sick_leave"    ${emp.official_status==='sick_leave'?'selected':''}>Больничный</option>
+                      <option value="fired"         ${emp.official_status==='fired'?'selected':''}>Уволен</option>
+                    </select>
                   </div>
+                  <div id="official_leave_block" style="grid-column:1/-1; ${emp.official_status==='unpaid_leave'?'':'display:none'}">
+                    <div class="formrow">
+                      <div>
+                        <label title="Только если статус = Отпуск без сохранения">Отпуск с</label>
+                        <input id="official_leave_from" type="date" value="${esc(normalizeDateInput(emp.official_leave_from))}"/>
+                      </div>
+                      <div>
+                        <label>по</label>
+                        <input id="official_leave_to" type="date" value="${esc(normalizeDateInput(emp.official_leave_to))}"/>
+                      </div>
+                    </div>
+                  </div>
+                ` : `
+                  <div style="grid-column:1/-1">
+                    <div class="help" style="font-size:12px;padding:8px;border:1px dashed var(--brd);border-radius:6px;color:var(--t2)">
+                      <div><b>Оклад:</b> ${emp.official_salary!=null?esc(Number(emp.official_salary).toLocaleString('ru-RU'))+' ₽':'—'}</div>
+                      <div><b>Несгораемая часть:</b> ${emp.official_non_burnable!=null?esc(Number(emp.official_non_burnable).toLocaleString('ru-RU'))+' ₽':'—'}</div>
+                      <div><b>Дата приёма:</b> ${emp.official_hire_date ? esc(new Date(emp.official_hire_date).toLocaleDateString('ru-RU')) : '—'}</div>
+                      <div><b>Статус:</b> ${esc(({active:'Активен',unpaid_leave:'Отпуск без сохранения',maternity:'Декрет',sick_leave:'Больничный',fired:'Уволен'})[emp.official_status||'active'])}</div>
+                      ${emp.official_status==='unpaid_leave' && (emp.official_leave_from||emp.official_leave_to) ? `<div><b>Отпуск:</b> ${esc(emp.official_leave_from ? new Date(emp.official_leave_from).toLocaleDateString('ru-RU') : '—')} — ${esc(emp.official_leave_to ? new Date(emp.official_leave_to).toLocaleDateString('ru-RU') : '—')}</div>` : ''}
+                      <div style="margin-top:4px;opacity:0.7">Изменить может только бухгалтер/директор/админ.</div>
+                    </div>
+                  </div>
+                `}
+              </div>
+            </section>
+
+            <!-- ── permits ── -->
+            <section class="emp-ws-panel${initialSection==='permits'?' is-active':''}" data-section="permits" id="empPanel_permits">
+              <h3 class="emp-ws-panel-title"><span class="bar"></span> Допуски и разрешения</h3>
+              <div class="row" style="flex-wrap:wrap; gap:8px">
+                ${(permits||[]).map(p=>{
+                  const checked = empPermits.includes(p);
+                  return `<label class="badge" style="display:inline-flex; align-items:center; gap:8px; cursor:${canEdit?"pointer":"default"}">
+                    <input type="checkbox" class="perm" value="${esc(p)}" ${checked?"checked":""} ${canEdit?"":"disabled"}/>
+                    <span>${esc(p)}</span>
+                  </label>`;
+                }).join("") || `<span class="help">Справочник пуст. Добавьте допуски в Настройках.</span>`}
+              </div>
+              <div class="help" style="margin-top:8px">Справочник настраивается в «Кузнице Настроек»</div>
+              <div style="margin-top:16px">
+                <label style="margin:0"><b>Документы и разрешения (подробно)</b></label>
+                <div id="permitsDetailBlock" style="margin-top:8px"><span class="help">Загрузка...</span></div>
+              </div>
+            </section>
+
+            <!-- ── history ── -->
+            <section class="emp-ws-panel${initialSection==='history'?' is-active':''}" data-section="history" id="empPanel_history">
+              <h3 class="emp-ws-panel-title"><span class="bar"></span> История работ</h3>
+              <div class="emp-hist-stats">
+                <div class="emp-hist-stat">
+                  <div class="emp-hist-stat-v gold">${assigns.length}</div>
+                  <div class="emp-hist-stat-l">Всего работ</div>
+                </div>
+                <div class="emp-hist-stat">
+                  <div class="emp-hist-stat-v ok">${currentAssigns.length}</div>
+                  <div class="emp-hist-stat-l">Активных</div>
+                </div>
+                <div class="emp-hist-stat">
+                  <div class="emp-hist-stat-v" id="empFactDays">${(function(){
+                    var total = 0;
+                    assigns.forEach(function(a2){
+                      var d1 = a2.date_from ? new Date(a2.date_from) : null;
+                      var d2 = a2.date_to ? new Date(a2.date_to) : new Date();
+                      if(d1) total += Math.max(0, Math.round((d2-d1)/86400000));
+                    });
+                    return total;
+                  })()}</div>
+                  <div class="emp-hist-stat-l">Дней отработано</div>
+                </div>
+                <div class="emp-hist-stat">
+                  <div class="emp-hist-stat-v info">${new Set(assigns.map(function(a2){return a2.customer_name||a2.tender_customer_name||'';}).filter(Boolean)).size}</div>
+                  <div class="emp-hist-stat-l">Заказчиков</div>
                 </div>
               </div>
-            ` : `
-              <div style="grid-column:1/-1">
-                <div class="help" style="font-size:12px;padding:8px;border:1px dashed var(--brd);border-radius:6px;color:var(--t2)">
-                  <div><b>Оклад:</b> ${emp.official_salary!=null?esc(Number(emp.official_salary).toLocaleString('ru-RU'))+' ₽':'—'}</div>
-                  <div><b>Несгораемая часть:</b> ${emp.official_non_burnable!=null?esc(Number(emp.official_non_burnable).toLocaleString('ru-RU'))+' ₽':'—'}</div>
-                  <div><b>Дата приёма:</b> ${emp.official_hire_date ? esc(new Date(emp.official_hire_date).toLocaleDateString('ru-RU')) : '—'}</div>
-                  <div><b>Статус:</b> ${esc(({active:'Активен',unpaid_leave:'Отпуск без сохранения',maternity:'Декрет',sick_leave:'Больничный',fired:'Уволен'})[emp.official_status||'active'])}</div>
-                  ${emp.official_status==='unpaid_leave' && (emp.official_leave_from||emp.official_leave_to) ? `<div><b>Отпуск:</b> ${esc(emp.official_leave_from ? new Date(emp.official_leave_from).toLocaleDateString('ru-RU') : '—')} — ${esc(emp.official_leave_to ? new Date(emp.official_leave_to).toLocaleDateString('ru-RU') : '—')}</div>` : ''}
-                  <div style="margin-top:4px;opacity:0.7">Изменить может только бухгалтер/директор/админ.</div>
-                </div>
+
+              <div id="empTimeline" class="emp-timeline"></div>
+
+              <div class="tablewrap" style="margin-top:10px">
+                <table class="tbl" id="empAssignTable">
+                  <thead><tr><th>С</th><th>По</th><th>Контракт</th><th>Заказчик</th><th>Город</th><th>Роль</th><th>РП</th><th style="min-width:80px">Статус</th></tr></thead>
+                  <tbody>${assignHtml}</tbody>
+                </table>
               </div>
-            `}
-          </div>
-        </details>
 
-        <!-- Документы -->
-        <details style="margin-top:16px">
-          <summary class="kpi" style="cursor:pointer"><span style="display:inline-block;width:3px;height:14px;border-radius:2px;background:var(--amber);margin-right:8px;vertical-align:middle"></span> Документы</summary>
-          <div class="formrow" style="margin-top:12px">
-            <div>
-              <label>Паспорт: серия</label>
-              <input id="pass_series" value="${esc(emp.pass_series||"")}" placeholder="1234" ${canEdit?"":"disabled"}/>
-            </div>
-            <div>
-              <label>Паспорт: номер</label>
-              <input id="pass_number" value="${esc(emp.pass_number||"")}" placeholder="567890" ${canEdit?"":"disabled"}/>
-            </div>
-            <div>
-              <label>Кем выдан</label>
-              <input id="passport_issued" value="${esc(emp.passport_issued||"")}" ${canEdit?"":"disabled"}/>
-            </div>
-            <div>
-              <label>Дата выдачи</label>
-              <input id="passport_date" type="date" value="${esc(normalizeDateInput(emp.passport_date))}" ${canEdit?"":"disabled"}/>
-            </div>
-            <div>
-              <label>Код подразделения</label>
-              <input id="passport_code" value="${esc(emp.passport_code||"")}" placeholder="123-456" ${canEdit?"":"disabled"}/>
-            </div>
-            <div>
-              <label>СНИЛС</label>
-              <input id="snils" value="${esc(emp.snils||"")}" ${canEdit?"":"disabled"}/>
-            </div>
-            <div>
-              <label>Военный билет (№, категория)</label>
-              <input id="military_id" value="${esc(emp.military_id||"")}" ${canEdit?"":"disabled"}/>
-            </div>
-            <div style="grid-column:1/-1">
-              <label>Водительское удостоверение</label>
-              <input id="driver_license" value="${esc(emp.driver_license||"")}" placeholder="Категории, срок" ${canEdit?"":"disabled"}/>
-            </div>
-          </div>
-        </details>
+              <div class="kpi" style="margin-top:18px"><span class="dot" style="background:var(--ok-t)"></span> Отзывы РП</div>
+              <div style="margin-top:10px">${revHtml}</div>
+              <div class="help" style="margin-top:10px">ᚱ Хороший воин ценится делом, а не словами.</div>
+            </section>
 
-        <!-- Адреса и контакты -->
-        <details style="margin-top:16px">
-          <summary class="kpi" style="cursor:pointer"><span style="display:inline-block;width:3px;height:14px;border-radius:2px;background:var(--ok-t);margin-right:8px;vertical-align:middle"></span> Адреса и контакты</summary>
-          <div class="formrow" style="margin-top:12px">
-            <div style="grid-column:1/-1">
-              <label>Адрес регистрации (прописка)</label>
-              <input id="registration_address" value="${esc(emp.registration_address||"")}" ${canEdit?"":"disabled"}/>
-            </div>
-            <div style="grid-column:1/-1">
-              <label>Фактический адрес проживания</label>
-              <input id="address_fact" value="${esc(emp.address||"")}" ${canEdit?"":"disabled"}/>
-            </div>
-            <div>
-              <label>Телефон основной</label>
-              <input id="phone" value="${esc(emp.phone||"")}" ${canEdit?"":"disabled"}/>
-            </div>
-            <div>
-              <label>Телефон дополнительный</label>
-              <input id="phone2" value="${esc(emp.phone2||"")}" ${canEdit?"":"disabled"}/>
-            </div>
-            <div>
-              <label>Email</label>
-              <input id="email" type="email" value="${esc(emp.email||"")}" ${canEdit?"":"disabled"}/>
-            </div>
-            <div>
-              <label>Telegram</label>
-              <input id="telegram" value="${esc(emp.telegram||"")}" placeholder="@username" ${canEdit?"":"disabled"}/>
-            </div>
-          </div>
-        </details>
-
-        <!-- Экстренные контакты -->
-        <details style="margin-top:16px">
-          <summary class="kpi" style="cursor:pointer"><span style="display:inline-block;width:3px;height:14px;border-radius:2px;background:var(--err-t);margin-right:8px;vertical-align:middle"></span> Экстренные контакты</summary>
-          <div class="formrow" style="margin-top:12px">
-            <div>
-              <label>ФИО супруга(и)</label>
-              <input id="spouse_name" value="${esc(emp.spouse_name||"")}" ${canEdit?"":"disabled"}/>
-            </div>
-            <div>
-              <label>Телефон супруга(и)</label>
-              <input id="spouse_phone" value="${esc(emp.spouse_phone||"")}" ${canEdit?"":"disabled"}/>
-            </div>
-            <div>
-              <label>ФИО родственника</label>
-              <input id="relative_name" value="${esc(emp.relative_name||"")}" ${canEdit?"":"disabled"}/>
-            </div>
-            <div>
-              <label>Кем приходится</label>
-              <input id="relative_relation" value="${esc(emp.relative_relation||"")}" placeholder="мать/отец/брат..." ${canEdit?"":"disabled"}/>
-            </div>
-            <div>
-              <label>Телефон родственника</label>
-              <input id="relative_phone" value="${esc(emp.relative_phone||"")}" ${canEdit?"":"disabled"}/>
-            </div>
-          </div>
-        </details>
-
-        <!-- Дополнительно -->
-        <details style="margin-top:16px">
-          <summary class="kpi" style="cursor:pointer"><span style="display:inline-block;width:3px;height:14px;border-radius:2px;background:var(--purple);margin-right:8px;vertical-align:middle"></span> Дополнительно</summary>
-          <div class="formrow" style="margin-top:12px">
-            <div>
-              <label>Образование</label>
-              <input id="education" value="${esc(emp.education||"")}" ${canEdit?"":"disabled"}/>
-            </div>
-            <div>
-              <label>Специальность по диплому</label>
-              <input id="specialty" value="${esc(emp.specialty||"")}" ${canEdit?"":"disabled"}/>
-            </div>
-            <div>
-              <label>Семейное положение</label>
-              <div id="marital_status_w"></div>
-            </div>
-            <div>
-              <label>Количество детей</label>
-              <input id="children_count" type="number" min="0" value="${esc(emp.children_count||"")}" ${canEdit?"":"disabled"}/>
-            </div>
-            <div>
-              <label>Размер одежды</label>
-              <input id="clothing_size" value="${esc(emp.clothing_size||"")}" placeholder="48-50 / M" ${canEdit?"":"disabled"}/>
-            </div>
-            <div>
-              <label>Размер обуви</label>
-              <input id="shoe_size" value="${esc(emp.shoe_size||"")}" placeholder="43" ${canEdit?"":"disabled"}/>
-            </div>
-            <div>
-              <label>Головной убор (каска)</label>
-              <input id="headwear_size" value="${esc(emp.headwear_size||"")}" placeholder="стандарт / 58-60" ${canEdit?"":"disabled"}/>
-            </div>
-            <div>
-              <label>Рост (см)</label>
-              <input id="height" type="number" value="${esc(emp.height||"")}" ${canEdit?"":"disabled"}/>
-            </div>
-            <div>
-              <label>Группа крови</label>
-              <div id="blood_type_w"></div>
-            </div>
-            <div style="grid-column:1/-1">
-              <label>Аллергии / мед. ограничения</label>
-              <input id="medical_notes" value="${esc(emp.medical_notes||"")}" ${canEdit?"":"disabled"}/>
-            </div>
-          </div>
-        </details>
-
-        <!-- Допуски и разрешения -->
-        <details style="margin-top:16px">
-          <summary class="kpi" style="cursor:pointer"><span style="display:inline-block;width:3px;height:14px;border-radius:2px;background:var(--cyan);margin-right:8px;vertical-align:middle"></span> Допуски и разрешения</summary>
-          <div style="margin-top:12px">
-            <div class="row" style="flex-wrap:wrap; gap:8px">
-              ${(permits||[]).map(p=>{
-                const checked = empPermits.includes(p);
-                return `<label class="badge" style="display:inline-flex; align-items:center; gap:8px; cursor:${canEdit?"pointer":"default"}">
-                  <input type="checkbox" class="perm" value="${esc(p)}" ${checked?"checked":""} ${canEdit?"":"disabled"}/>
-                  <span>${esc(p)}</span>
-                </label>`;
-              }).join("") || `<span class="help">Справочник пуст. Добавьте допуски в Настройках.</span>`}
-            </div>
-            <div class="help" style="margin-top:8px">Справочник настраивается в «Кузнице Настроек»</div>
-            <div style="margin-top:16px">
-              <label style="margin:0"><b>Документы и разрешения (подробно)</b></label>
-              <div id="permitsDetailBlock" style="margin-top:8px"><span class="help">Загрузка...</span></div>
-            </div>
-          </div>
-        </details>
-
-        <!-- Комментарии -->
-        <details style="margin-top:16px">
-          <summary class="kpi" style="cursor:pointer"><span style="display:inline-block;width:3px;height:14px;border-radius:2px;background:var(--t2);margin-right:8px;vertical-align:middle"></span> Комментарии (${(emp.comments||[]).length})</summary>
-          <div style="margin-top:12px">
-            ${canEdit ? `
-              <div class="row" style="gap:8px;margin-bottom:12px">
-                <input id="newComment" class="inp" placeholder="Добавить комментарий..." style="flex:1"/>
-                <button class="btn" id="btnAddComment">Добавить</button>
-              </div>
-            ` : ''}
-            <div id="commentsBlock">
-              ${(emp.comments||[]).slice().reverse().map(c => `
-                <div class="card" style="padding:10px;margin-bottom:8px">
-                  <div style="font-size:12px;opacity:0.7">${esc(c.author||"?")} · ${c.date ? new Date(c.date).toLocaleString("ru-RU") : ""}</div>
-                  <div style="margin-top:4px">${esc(c.text)}</div>
+            <!-- ── notes ── -->
+            <section class="emp-ws-panel${initialSection==='notes'?' is-active':''}" data-section="notes" id="empPanel_notes">
+              <h3 class="emp-ws-panel-title"><span class="bar"></span> Заметки (${(emp.comments||[]).length})</h3>
+              ${canEdit ? `
+                <div class="row" style="gap:8px;margin-bottom:12px">
+                  <input id="newComment" class="inp" placeholder="Добавить комментарий..." style="flex:1"/>
+                  <button class="btn" id="btnAddComment">Добавить</button>
                 </div>
-              `).join("") || '<div class="help">Комментариев нет</div>'}
-            </div>
-          </div>
-        </details>
-
-        <!-- Ссылка на документы -->
-        <details style="margin-top:16px">
-          <summary class="kpi" style="cursor:pointer"><span style="display:inline-block;width:3px;height:14px;border-radius:2px;background:var(--orange);margin-right:8px;vertical-align:middle"></span> Документы (файлы)</summary>
-          <div class="formrow" style="margin-top:12px">
-            <div style="grid-column:1/-1">
-              <label>Ссылка на папку документов сотрудника</label>
-              <input id="docs" value="${esc(emp.docs_folder_link||"")}" placeholder="https://drive.google.com/..." ${canEdit?"":"disabled"}/>
-            </div>
-          </div>
-        </details>
-
-        <hr class="hr"/>
-
-        <div class="kpi"><span class="dot" style="background:var(--info)"></span> История работ</div>
-        <div style="display:flex;gap:16px;flex-wrap:wrap;margin:10px 0">
-          <div style="padding:10px 16px;background:var(--bg3);border-radius:8px;border:1px solid var(--brd);text-align:center">
-            <div style="font-size:20px;font-weight:900;color:var(--gold)">${assigns.length}</div>
-            <div style="font-size:11px;color:var(--t3)">Всего работ</div>
-          </div>
-          <div style="padding:10px 16px;background:var(--bg3);border-radius:8px;border:1px solid var(--brd);text-align:center">
-            <div style="font-size:20px;font-weight:900;color:var(--ok-t)">${currentAssigns.length}</div>
-            <div style="font-size:11px;color:var(--t3)">Активных</div>
-          </div>
-          <div style="padding:10px 16px;background:var(--bg3);border-radius:8px;border:1px solid var(--brd);text-align:center">
-            <div style="font-size:20px;font-weight:900;color:var(--t1)">${(function(){
-              var total = 0;
-              assigns.forEach(function(a2){
-                var d1 = a2.date_from ? new Date(a2.date_from) : null;
-                var d2 = a2.date_to ? new Date(a2.date_to) : new Date();
-                if(d1) total += Math.max(0, Math.round((d2-d1)/86400000));
-              });
-              return total;
-            })()}</div>
-            <div style="font-size:11px;color:var(--t3)">Дней отработано</div>
-          </div>
-          <div style="padding:10px 16px;background:var(--bg3);border-radius:8px;border:1px solid var(--brd);text-align:center">
-            <div style="font-size:20px;font-weight:900;color:var(--info)">${new Set(assigns.map(function(a2){var w2=workMap.get(a2.work_id);return w2?.customer_name||'';}).filter(Boolean)).size}</div>
-            <div style="font-size:11px;color:var(--t3)">Заказчиков</div>
+              ` : ''}
+              <div id="commentsBlock">
+                ${(emp.comments||[]).slice().reverse().map(c => `
+                  <div class="card" style="padding:10px;margin-bottom:8px">
+                    <div style="font-size:12px;opacity:0.7">${esc(c.author||"?")} · ${c.date ? new Date(c.date).toLocaleString("ru-RU") : ""}</div>
+                    <div style="margin-top:4px">${esc(c.text)}</div>
+                  </div>
+                `).join("") || '<div class="help">Комментариев нет</div>'}
+              </div>
+            </section>
           </div>
         </div>
 
-        <!-- Timeline / Gantt -->
-        <div id="empTimeline" style="margin-bottom:16px;position:relative;overflow-x:auto;min-height:60px"></div>
-
-        <div class="tablewrap" style="margin-top:10px">
-          <table class="tbl">
-            <thead><tr><th>С</th><th>По</th><th>Контракт</th><th>Заказчик</th><th>Город</th><th>Роль</th><th>РП</th><th style="min-width:80px">Статус</th></tr></thead>
-            <tbody>${assignHtml}</tbody>
-          </table>
-        </div>
-
-        <hr class="hr"/>
-
-        <div class="kpi"><span class="dot" style="background:var(--ok-t)"></span> Отзывы РП</div>
-        <div style="margin-top:10px">${revHtml}</div>
-
-        <div class="help" style="margin-top:10px">ᚱ Хороший воин ценится делом, а не словами.</div>
+        ${canEdit ? `
+        <div class="emp-ws-sticky">
+          <span class="help" id="empStickyHint">Несохранённые правки сохранятся по кнопке или автосохранением.</span>
+          <button type="button" class="btn" id="btnSaveSticky">Сохранить</button>
+        </div>` : ''}
       </div>
     `;
 
@@ -795,13 +956,256 @@ window.AsgardEmployeePage=(function(){
     const _bloodOpts = [{ value: '', label: '—' }, { value: 'O+', label: 'O(I)+' }, { value: 'O-', label: 'O(I)−' }, { value: 'A+', label: 'A(II)+' }, { value: 'A-', label: 'A(II)−' }, { value: 'B+', label: 'B(III)+' }, { value: 'B-', label: 'B(III)−' }, { value: 'AB+', label: 'AB(IV)+' }, { value: 'AB-', label: 'AB(IV)−' }];
     $('#blood_type_w')?.appendChild(CRSelect.create({ id: 'blood_type', options: _bloodOpts, value: emp.blood_type || '', disabled: !canEdit }));
 
+    // EMP_WS_BINDINGS — section nav, back, copy phone, chips, masks, completeness, dirty, autosave, leave guard
+    (function bindEmpWorkspace(){
+      const root = document.getElementById('empWorkspace');
+      if (!root) return;
+      const RM = window.AsgardRuMasks || {};
+      let dirty = false;
+      let autosaveTimer = null;
+      let leaving = false;
+      const statusEl = document.getElementById('empSaveStatus');
+
+      function setSection(sec){
+        const s = WS_SECTIONS.includes(sec) ? sec : 'overview';
+        root.querySelectorAll('.emp-ws-nav-item').forEach(btn => {
+          btn.classList.toggle('is-active', btn.getAttribute('data-section') === s);
+        });
+        root.querySelectorAll('.emp-ws-panel').forEach(p => {
+          p.classList.toggle('is-active', p.getAttribute('data-section') === s);
+        });
+        try {
+          const q = parseQuery();
+          const parts = [];
+          Object.keys(q).forEach(k => { if (k !== 'section') parts.push(encodeURIComponent(k)+'='+encodeURIComponent(q[k])); });
+          parts.push('section='+encodeURIComponent(s));
+          const base = (location.hash||'#/employee').split('?')[0];
+          history.replaceState(null, '', base + '?' + parts.join('&'));
+        } catch(_) {}
+      }
+
+      document.getElementById('empWsNav')?.addEventListener('click', (e) => {
+        const btn = e.target.closest('.emp-ws-nav-item');
+        if (!btn) return;
+        setSection(btn.getAttribute('data-section') || 'overview');
+      });
+
+      document.getElementById('btnBackPersonnel')?.addEventListener('click', () => {
+        tryLeave('#/personnel');
+      });
+
+      document.getElementById('btnCopyPhone')?.addEventListener('click', async () => {
+        const el = document.getElementById('phone');
+        const btn = document.getElementById('btnCopyPhone');
+        const raw = el ? (RM.phoneDigitsFromInput ? RM.phoneDigitsFromInput(el) : el.value) : '';
+        const text = raw || el?.value || '';
+        if (!text) { toast('Телефон', 'Пусто', 'err'); return; }
+        try {
+          await navigator.clipboard.writeText(text);
+          toast('Скопировано', text);
+          if (btn) {
+            btn.classList.add('is-copied');
+            btn.setAttribute('title', 'Скопировано');
+            clearTimeout(btn._copiedTimer);
+            btn._copiedTimer = setTimeout(() => {
+              btn.classList.remove('is-copied');
+              btn.setAttribute('title', 'Скопировать телефон');
+            }, 1400);
+          }
+        } catch(_) {
+          toast('Ошибка', 'Не удалось скопировать', 'err');
+        }
+      });
+
+      root.querySelectorAll('.emp-ws-chips').forEach(wrap => {
+        const field = wrap.getAttribute('data-chips-for');
+        const inp = field ? document.getElementById(field) : null;
+        if (!inp) return;
+        wrap.addEventListener('click', (e) => {
+          const chip = e.target.closest('.emp-ws-chip');
+          if (!chip || inp.disabled) return;
+          inp.value = chip.getAttribute('data-size') || '';
+          wrap.querySelectorAll('.emp-ws-chip').forEach(c => c.classList.toggle('is-active', c === chip));
+          inp.dispatchEvent(new Event('input', { bubbles: true }));
+          markDirty();
+        });
+      });
+
+      if (RM.bindPhoneInput) {
+        ['phone','phone2','spouse_phone','relative_phone'].forEach(id => RM.bindPhoneInput(document.getElementById(id)));
+      }
+      if (RM.bindDigitsInput) {
+        RM.bindDigitsInput(document.getElementById('pass_series'), 4);
+        RM.bindDigitsInput(document.getElementById('pass_number'), 6);
+        RM.bindDigitsInput(document.getElementById('inn'), 12);
+        RM.bindDigitsInput(document.getElementById('snils'), 11, RM.formatSnilsDisplay);
+        RM.bindDigitsInput(document.getElementById('passport_code'), 6, RM.formatPassportCodeDisplay);
+      }
+
+      function val(id){ return (document.getElementById(id)?.value || '').trim(); }
+      function filled(v){ return v != null && String(v).trim() !== ''; }
+      function refreshCompleteness(){
+        const form = {
+          fio: val('fio'),
+          phone: val('phone'),
+          birth_date: val('birth'),
+          address: val('address_fact'),
+          registration_address: val('registration_address'),
+          passport_series: val('pass_series'),
+          passport_number: val('pass_number'),
+          clothing_size: val('clothing_size'),
+          shoe_size: val('shoe_size'),
+          headwear_size: val('headwear_size'),
+          passport_issued: val('passport_issued'),
+          passport_date: val('passport_date'),
+          passport_code: val('passport_code'),
+          phone2: val('phone2'),
+          spouse_name: val('spouse_name'),
+          spouse_phone: val('spouse_phone'),
+          relative_name: val('relative_name'),
+          relative_phone: val('relative_phone'),
+          snils: val('snils'),
+          blood_type: (typeof CRSelect !== 'undefined' && CRSelect.getValue) ? (CRSelect.getValue('blood_type')||'') : '',
+          inn: val('inn'),
+          is_self_employed: !!document.getElementById('is_self_employed')?.checked,
+        };
+        const critical = [
+          { ok: filled(form.fio), label: 'ФИО', section: 'overview' },
+          { ok: filled(form.phone), label: 'Телефон', section: 'contacts' },
+          { ok: filled(form.birth_date), label: 'Дата рождения', section: 'overview' },
+          { ok: filled(form.address) || filled(form.registration_address), label: 'Адрес', section: 'contacts' },
+          { ok: filled(form.passport_series) && filled(form.passport_number), label: 'Паспорт', section: 'documents' },
+          { ok: filled(form.clothing_size) && filled(form.shoe_size), label: 'СИЗ (одежда+обувь)', section: 'ppe' },
+        ];
+        const soft = [
+          { ok: filled(form.headwear_size), label: 'Каска', section: 'ppe' },
+          { ok: filled(form.passport_issued) && filled(form.passport_date), label: 'Паспорт: кем/когда', section: 'documents' },
+          { ok: filled(form.passport_code), label: 'Код подразделения', section: 'documents' },
+          { ok: filled(form.phone2), label: 'Доп. телефон', section: 'contacts' },
+          { ok: (filled(form.spouse_name) && filled(form.spouse_phone)) || (filled(form.relative_name) && filled(form.relative_phone)), label: 'Экстренный контакт', section: 'contacts' },
+          { ok: filled(form.snils), label: 'СНИЛС', section: 'documents' },
+          { ok: filled(form.blood_type), label: 'Группа крови', section: 'ppe' },
+        ];
+        if (form.is_self_employed) soft.unshift({ ok: filled(form.inn), label: 'ИНН (СЗ)', section: 'work' });
+        const criticalGaps = critical.filter(g => !g.ok).map(g => g.label);
+        const softGaps = soft.filter(g => !g.ok).map(g => g.label);
+        const done = critical.filter(g => g.ok).length + soft.filter(g => g.ok).length;
+        const total = critical.length + soft.length;
+        const pct = total ? Math.round((done / total) * 100) : 100;
+        const fill = document.getElementById('empCompFill');
+        const lab = document.getElementById('empCompLabel');
+        const gapsBtn = document.getElementById('empCompGaps');
+        if (fill) fill.style.width = pct + '%';
+        if (lab) lab.textContent = 'Заполнено ' + pct + '%';
+        const sectionHints = {};
+        [...critical, ...soft].filter(g => !g.ok).forEach(g => {
+          if (!sectionHints[g.section]) sectionHints[g.section] = [];
+          sectionHints[g.section].push(g.label);
+        });
+        root.querySelectorAll('[data-gap-for]').forEach(dot => {
+          const sid = dot.getAttribute('data-gap-for');
+          const gaps = sectionHints[sid];
+          if (gaps && gaps.length) {
+            dot.hidden = false;
+            dot.title = gaps.join(', ');
+          } else {
+            dot.hidden = true;
+            dot.removeAttribute('title');
+          }
+        });
+        if (gapsBtn) {
+          if (criticalGaps[0]) {
+            gapsBtn.hidden = false;
+            gapsBtn.textContent = 'пробелы: ' + criticalGaps.slice(0, 3).join(', ');
+            gapsBtn.onclick = () => {
+              const first = Object.keys(sectionHints)[0];
+              if (first) setSection(first);
+            };
+          } else {
+            gapsBtn.hidden = true;
+            gapsBtn.textContent = '';
+          }
+        }
+      }
+
+      function updateStatus(){
+        if (!statusEl) return;
+        if (dirty) statusEl.textContent = 'есть правки';
+        else statusEl.textContent = '';
+      }
+      function markDirty(){
+        dirty = true;
+        updateStatus();
+        scheduleAutosave();
+        refreshCompleteness();
+      }
+      function markSaved(){
+        dirty = false;
+        if (autosaveTimer) { clearTimeout(autosaveTimer); autosaveTimer = null; }
+        if (statusEl) {
+          const t = new Date();
+          statusEl.textContent = 'сохранено ' + t.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+        }
+        refreshCompleteness();
+      }
+      window.__empWsMarkSaved = markSaved;
+
+      function scheduleAutosave(){
+        if (!canEdit) return;
+        if (autosaveTimer) clearTimeout(autosaveTimer);
+        autosaveTimer = setTimeout(() => {
+          if (!dirty) return;
+          if (statusEl) statusEl.textContent = 'сохраняем…';
+          const btn = document.getElementById('btnSave');
+          if (btn) btn.click();
+        }, 30000);
+      }
+
+      function tryLeave(hash){
+        if (!dirty || leaving) {
+          location.hash = hash;
+          return;
+        }
+        if (confirm('Есть несохранённые изменения. Выйти без сохранения?')) {
+          leaving = true;
+          dirty = false;
+          location.hash = hash;
+        }
+      }
+
+      root.addEventListener('input', (e) => {
+        if (!e.target || !e.target.closest) return;
+        if (e.target.closest('#empWorkspace')) markDirty();
+      });
+      root.addEventListener('change', (e) => {
+        if (!e.target || !e.target.closest) return;
+        if (e.target.closest('#empWorkspace')) markDirty();
+      });
+
+      window.addEventListener('beforeunload', (e) => {
+        if (!dirty) return;
+        e.preventDefault();
+        e.returnValue = '';
+      });
+
+      const onHash = () => {
+        if (!dirty || leaving) return;
+        const h = location.hash || '';
+        if (h.indexOf('#/employee') === 0) return;
+        // hash already changed — warn once via confirm on next back is hard; rely on beforeunload + back button
+      };
+      window.addEventListener('hashchange', onHash);
+
+      refreshCompleteness();
+      setSection(initialSection);
+    })();
+
     // ── Timeline / Gantt (по фактическим чек-инам) ──
     (async function renderTimeline(){
       var container = document.getElementById('empTimeline');
       if (!container) return;
       container.innerHTML = '<div class="help" style="text-align:center;padding:12px">⏳ Загрузка…</div>';
 
-      // Фактические периоды работы по объектам (сегменты по чек-инам, с разрывами).
       var segments = [];
       try {
         var token = localStorage.getItem('asgard_token');
@@ -819,7 +1223,11 @@ window.AsgardEmployeePage=(function(){
       var endOf = function(seg){ return seg.ongoing ? now : (seg.end ? new Date(seg.end) : now); };
       var startOf = function(seg){ return seg.start ? new Date(seg.start) : now; };
 
-      // Диапазон дат
+      var factDays = 0;
+      segments.forEach(function(s){ factDays += Number(s.days) || 0; });
+      var factEl = document.getElementById('empFactDays');
+      if (factEl) factEl.textContent = String(factDays);
+
       var allDates = [];
       segments.forEach(function(s){ allDates.push(startOf(s)); allDates.push(endOf(s)); });
       var minD = new Date(Math.min.apply(null, allDates));
@@ -829,24 +1237,21 @@ window.AsgardEmployeePage=(function(){
       var totalMs = maxD - minD;
       if (totalMs <= 0) { container.innerHTML = '<div class="help" style="text-align:center;padding:12px">Нет данных для таймлайна</div>'; return; }
 
-      // Месяцы-заголовки
       var months = [];
       var cur = new Date(minD);
       while (cur < maxD) { months.push(cur.toLocaleDateString('ru-RU',{month:'short',year:'2-digit'})); cur.setMonth(cur.getMonth()+1); }
       var monthW = Math.max(60, 900 / months.length);
       var totalW = monthW * months.length;
 
-      var headerH = '<div style="display:flex;border-bottom:1px solid var(--brd)">';
-      months.forEach(function(m2){ headerH += '<div style="width:'+monthW+'px;flex-shrink:0;text-align:center;font-size:10px;color:var(--t3);padding:4px 0;border-right:1px solid var(--brd)">'+m2+'</div>'; });
+      var headerH = '<div class="emp-timeline-head">';
+      months.forEach(function(m2){ headerH += '<div class="emp-timeline-month" style="width:'+monthW+'px">'+m2+'</div>'; });
       headerH += '</div>';
 
-      // Группировка сегментов по объекту → одна строка на объект, несколько баров (заезды) с разрывами.
       var rowsMap = new Map();
       segments.forEach(function(s){
         if (!rowsMap.has(s.work_id)) rowsMap.set(s.work_id, []);
         rowsMap.get(s.work_id).push(s);
       });
-      // Порядок строк: по первому заезду
       var rows = Array.from(rowsMap.entries()).map(function(e){
         return { work_id: e[0], segs: e[1].sort(function(a,b){ return startOf(a)-startOf(b); }) };
       }).sort(function(a,b){ return startOf(a.segs[0]) - startOf(b.segs[0]); });
@@ -858,33 +1263,46 @@ window.AsgardEmployeePage=(function(){
           var d1 = startOf(s), d2 = endOf(s);
           var left = ((d1 - minD) / totalMs) * totalW;
           var width = Math.max(5, ((d2 - d1) / totalMs) * totalW);
-          var bg = s.ongoing ? 'linear-gradient(135deg,#d4a825,#c9952a)' : 'linear-gradient(135deg,#22c55e,#1a8a4a)';
+          var barCls = 'emp-timeline-bar ' + (s.ongoing ? 'is-cur' : 'is-done');
           var title = (s.work_title || ('Объект #' + s.work_id));
-          var label = segIdx === 0 ? title.substring(0,25) : (s.days ? (s.days + ' дн.') : '');
+          var label = s.days ? (s.days + ' дн.') : (segIdx === 0 ? title.substring(0, 25) : '');
           var periodTxt = fmtRu(s.start) + ' — ' + (s.ongoing ? 'по н.в. (текущая работа)' : fmtRu(s.end));
           var daysTxt = s.no_checkins ? 'нет отметок о выходах' : (s.days + ' дн. фактически');
           var depTxt = (!s.ongoing && s.departure) ? ('\nОтъезд: ' + fmtRu(s.departure)) : '';
           var tooltip = title + '\n' + (s.customer_name||'') + '\nРП: ' + (s.pm_name||'') + '\n' + periodTxt + '\n' + daysTxt + depTxt;
-          barsH += '<div style="position:absolute;left:'+left+'px;top:'+(idx*rowH+4)+'px;width:'+width+'px;height:'+(rowH-8)+'px;background:'+bg+';border-radius:6px;display:flex;align-items:center;padding:0 6px;font-size:10px;font-weight:600;color:#fff;cursor:pointer;overflow:hidden;white-space:nowrap;transition:transform 0.15s,box-shadow 0.15s;z-index:1" title="'+tooltip.replace(/"/g,'&quot;')+'" onmouseover="this.style.transform=\'translateY(-2px)\';this.style.boxShadow=\'0 4px 12px rgba(0,0,0,0.3)\';this.style.zIndex=10" onmouseout="this.style.transform=\'none\';this.style.boxShadow=\'none\';this.style.zIndex=1">'+label+'</div>';
+          barsH += '<div class="'+barCls+'" data-work-id="'+(s.work_id||'')+'" style="left:'+left+'px;top:'+(idx*rowH+4)+'px;width:'+width+'px;height:'+(rowH-8)+'px" title="'+tooltip.replace(/"/g,'&quot;')+'">'+label+'</div>';
         });
       });
 
       var todayLeft = ((now - minD) / totalMs) * totalW;
-      var todayLine = '<div style="position:absolute;left:'+todayLeft+'px;top:0;bottom:0;width:2px;background:var(--red);z-index:5;opacity:0.6" title="Сегодня"></div>';
+      var todayLine = '<div class="emp-timeline-today" style="left:'+todayLeft+'px" title="Сегодня"></div>';
 
       var totalHeight = rows.length * rowH + 10;
-      container.innerHTML = '<div style="min-width:'+totalW+'px">' +
+      container.innerHTML = '<div class="emp-timeline-inner" style="min-width:'+totalW+'px">' +
         headerH +
-        '<div style="position:relative;height:'+totalHeight+'px;margin-top:4px">' +
-          months.map(function(m2,i2){ return '<div style="position:absolute;left:'+(i2*monthW)+'px;top:0;bottom:0;width:1px;background:var(--brd)"></div>'; }).join('') +
+        '<div class="emp-timeline-body" style="height:'+totalHeight+'px">' +
+          months.map(function(m2,i2){ return '<div class="emp-timeline-grid" style="left:'+(i2*monthW)+'px"></div>'; }).join('') +
           barsH + todayLine +
         '</div>' +
-        '<div style="display:flex;gap:16px;margin-top:8px;font-size:11px;color:var(--t3)">' +
-          '<span><span style="display:inline-block;width:10px;height:10px;border-radius:3px;background:linear-gradient(135deg,#d4a825,#c9952a);margin-right:4px;vertical-align:middle"></span>Текущая работа</span>' +
-          '<span><span style="display:inline-block;width:10px;height:10px;border-radius:3px;background:linear-gradient(135deg,#22c55e,#1a8a4a);margin-right:4px;vertical-align:middle"></span>Завершённый заезд</span>' +
-          '<span style="margin-left:auto"><span style="display:inline-block;width:10px;height:2px;background:var(--red);margin-right:4px;vertical-align:middle"></span>Сегодня</span>' +
+        '<div class="emp-timeline-legend">' +
+          '<span><span class="emp-timeline-legend-sw cur"></span>Текущая работа</span>' +
+          '<span><span class="emp-timeline-legend-sw done"></span>Завершённый заезд</span>' +
+          '<span style="margin-left:auto"><span class="emp-timeline-legend-sw today"></span>Сегодня</span>' +
         '</div>' +
       '</div>';
+
+      container.querySelectorAll('.emp-timeline-bar').forEach(function(bar){
+        bar.addEventListener('click', function(){
+          var wid = bar.getAttribute('data-work-id') || '';
+          container.querySelectorAll('.emp-timeline-bar').forEach(function(b){ b.classList.remove('is-hl'); });
+          document.querySelectorAll('tr.emp-assign-row').forEach(function(tr){ tr.classList.remove('is-hl'); });
+          bar.classList.add('is-hl');
+          document.querySelectorAll('tr.emp-assign-row[data-work-id="'+wid+'"]').forEach(function(tr){
+            tr.classList.add('is-hl');
+            tr.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+          });
+        });
+      });
     })();
 
     // Render detailed permits table
@@ -948,12 +1366,15 @@ window.AsgardEmployeePage=(function(){
           const d = await r.json();
           worksList = (d.works || d.items || []).filter(w => !w.deleted_at && w.work_status !== 'Архив');
         } catch (_) {
-          worksList = (works || []).filter(w => !w.deleted_at && w.work_status !== 'Архив');
+          worksList = [];
         }
         worksList.sort((a, b) => String(a.work_title || '').localeCompare(String(b.work_title || ''), 'ru'));
-        planWorkSel.innerHTML = '<option value="">— выберите работу —</option>' + worksList.map(w =>
-          `<option value="${w.id}"${emp.planned_info && Number(emp.planned_info.work_id) === Number(w.id) ? ' selected' : ''}>${esc((w.work_title || ('#' + w.id)).slice(0, 80))}</option>`
-        ).join('');
+        const onSiteId = emp.on_site_info ? Number(emp.on_site_info.work_id) : null;
+        planWorkSel.innerHTML = '<option value="">— выберите работу —</option>' + worksList.map(w => {
+          const isCurrent = onSiteId && Number(w.id) === onSiteId;
+          const label = (w.work_title || ('#' + w.id)).slice(0, 70) + (isCurrent ? ' · уже на объекте' : '');
+          return `<option value="${w.id}"${emp.planned_info && Number(emp.planned_info.work_id) === Number(w.id) ? ' selected' : ''}>${esc(label)}</option>`;
+        }).join('');
       })();
     }
     const btnPlanSave = document.getElementById("btnPlanSave");
@@ -961,11 +1382,20 @@ window.AsgardEmployeePage=(function(){
       btnPlanSave.onclick = async () => {
         const workId = Number(planWorkSel?.value || 0);
         if (!workId) { toast('План', 'Выберите проект', 'err'); return; }
+        if (emp.on_site_info && Number(emp.on_site_info.work_id) === workId) {
+          toast(
+            'План',
+            `«${emp.fio || 'Сотрудник'}» уже на объекте «${emp.on_site_info.work_title || ''}». Выберите другой проект или оформите отъезд.`,
+            'err'
+          );
+          return;
+        }
         const body = {
           work_id: workId,
           planned_from: document.getElementById('plan_from')?.value || null,
           planned_to: document.getElementById('plan_to')?.value || null,
           note: (document.getElementById('plan_note')?.value || '').trim() || null,
+          inbound_transport: document.getElementById('plan_inbound')?.value || null,
         };
         try {
           const token = localStorage.getItem('asgard_token') || localStorage.getItem('auth_token') || '';
@@ -1003,7 +1433,7 @@ window.AsgardEmployeePage=(function(){
       };
     }
 
-    // ── Кнопки статуса готовности (✓ Готов / ✗ Не готов / Архив) ─────────
+    // ── Кнопки статуса готовности (Готов / Не готов / Без статуса / Архив) ─────────
     // Делегируем в AsgardPersonnelPage.openStatusModal — модалку которая
     // и так умеет менять статус через PUT /staff/readiness/:id/status,
     // показывать форму даты/причины и логировать в historу.
@@ -1061,30 +1491,31 @@ window.AsgardEmployeePage=(function(){
         emp.hire_date=$("#hire_date")?.value || "";
 
         // Документы
-        emp.pass_series=$("#pass_series")?.value?.trim() || "";
-        emp.pass_number=$("#pass_number")?.value?.trim() || "";
+        const _RM = window.AsgardRuMasks || {};
+        emp.pass_series = (_RM.digitsFromInput ? _RM.digitsFromInput($("#pass_series"), 4) : ($("#pass_series")?.value||"").replace(/\D/g,'')) || "";
+        emp.pass_number = (_RM.digitsFromInput ? _RM.digitsFromInput($("#pass_number"), 6) : ($("#pass_number")?.value||"").replace(/\D/g,'')) || "";
         emp.passport_issued=$("#passport_issued")?.value?.trim() || "";
         emp.passport_date=$("#passport_date")?.value || "";
-        emp.passport_code=$("#passport_code")?.value?.trim() || "";
-        emp.inn=$("#inn")?.value?.trim() || "";
-        emp.snils=$("#snils")?.value?.trim() || "";
+        emp.passport_code = (_RM.digitsFromInput ? _RM.digitsFromInput($("#passport_code"), 6) : ($("#passport_code")?.value||"").replace(/\D/g,'')) || "";
+        emp.inn = (_RM.digitsFromInput ? _RM.digitsFromInput($("#inn"), 12) : ($("#inn")?.value||"").replace(/\D/g,'')) || "";
+        emp.snils = (_RM.digitsFromInput ? _RM.digitsFromInput($("#snils"), 11) : ($("#snils")?.value||"").replace(/\D/g,'')) || "";
         emp.military_id=$("#military_id")?.value?.trim() || "";
         emp.driver_license=$("#driver_license")?.value?.trim() || "";
 
         // Адреса и контакты
         emp.registration_address=$("#registration_address")?.value?.trim() || "";
         emp.address=$("#address_fact")?.value?.trim() || "";
-        emp.phone=$("#phone")?.value?.trim() || "";
-        emp.phone2=$("#phone2")?.value?.trim() || "";
+        emp.phone = (_RM.phoneDigitsFromInput ? _RM.phoneDigitsFromInput($("#phone")) : ($("#phone")?.value?.trim() || "")) || "";
+        emp.phone2 = (_RM.phoneDigitsFromInput ? _RM.phoneDigitsFromInput($("#phone2")) : ($("#phone2")?.value?.trim() || "")) || "";
         emp.email=$("#email")?.value?.trim() || "";
         emp.telegram=$("#telegram")?.value?.trim() || "";
 
         // Экстренные контакты
         emp.spouse_name=$("#spouse_name")?.value?.trim() || "";
-        emp.spouse_phone=$("#spouse_phone")?.value?.trim() || "";
+        emp.spouse_phone = (_RM.phoneDigitsFromInput ? _RM.phoneDigitsFromInput($("#spouse_phone")) : ($("#spouse_phone")?.value?.trim() || "")) || "";
         emp.relative_name=$("#relative_name")?.value?.trim() || "";
         emp.relative_relation=$("#relative_relation")?.value?.trim() || "";
-        emp.relative_phone=$("#relative_phone")?.value?.trim() || "";
+        emp.relative_phone = (_RM.phoneDigitsFromInput ? _RM.phoneDigitsFromInput($("#relative_phone")) : ($("#relative_phone")?.value?.trim() || "")) || "";
 
         // Дополнительно
         emp.education=$("#education")?.value?.trim() || "";
@@ -1152,7 +1583,13 @@ window.AsgardEmployeePage=(function(){
         }
         await AsgardDB.put("employees", emp);
         toast("Сохранено","Данные обновлены");
+        if (typeof window.__empWsMarkSaved === 'function') window.__empWsMarkSaved();
       };
+    }
+
+    const btnSaveSticky = document.getElementById("btnSaveSticky");
+    if (btnSaveSticky && btnSave) {
+      btnSaveSticky.onclick = () => btnSave.click();
     }
 
     // Взаимоисключение СЗ/Официально (live, без перерисовки страницы)
@@ -1365,7 +1802,14 @@ window.AsgardEmployeePage=(function(){
 
     const btnReview = document.getElementById("btnReview");
     if(btnReview){
-      btnReview.onclick=()=>{
+      btnReview.onclick=async ()=>{
+        let worksOpts = [];
+        try {
+          const token = localStorage.getItem('asgard_token') || localStorage.getItem('auth_token') || '';
+          const r = await fetch('/api/works?limit=500', { headers: { Authorization: 'Bearer ' + token } });
+          const d = await r.json();
+          worksOpts = (d.works || d.items || []).filter(w => !w.deleted_at && w.work_status !== 'Архив');
+        } catch (_) { worksOpts = []; }
         const body = `
           <div class="formrow">
             <div style="grid-column:1/-1">
@@ -1386,7 +1830,7 @@ window.AsgardEmployeePage=(function(){
           </div>
         `;
         showModal({ title: "Оценка сотрудника", html: body, icon: '👤', subtitle: 'Карточка сотрудника' });
-        $('#w_w')?.appendChild(CRSelect.create({ id: 'w_sel', options: [{ value: '', label: '—' }, ...(works||[]).map(w => ({ value: String(w.id), label: w.work_title || '' }))], searchable: true, dropdownClass: 'z-modal' }));
+        $('#w_w')?.appendChild(CRSelect.create({ id: 'w_sel', options: [{ value: '', label: '—' }, ...worksOpts.map(w => ({ value: String(w.id), label: w.work_title || '' }))], searchable: true, dropdownClass: 'z-modal' }));
         $("#btnSend").onclick = async ()=>{
           const work_id = Number(CRSelect.getValue('w_sel')||0) || null;
           const score = Number($("#score").value||0);

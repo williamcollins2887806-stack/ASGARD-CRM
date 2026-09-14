@@ -163,16 +163,21 @@ window.AsgardOfficeExpensesPage = (function(){
             </div>
             ${isManager ? `<button class="btn" id="btnAddExpense">+ Добавить расход</button>` : ''}
           </div>
+          <div class="cash-alert warning" style="margin:0 0 14px">
+            Это реестр компании, не личная касса. Если платите наличными из подотчёта — откройте
+            <a href="#/cash" style="color:inherit;font-weight:700">Кассу</a>
+            и приложите чек. Иначе сумма останется «на руках».
+          </div>
 
           <div class="oexp-kpi">
             <div class="oexp-kpi-card">
               <div class="oexp-kpi-label">Всего за ${filters.year || 'все годы'}</div>
-              <div class="oexp-kpi-value">${money(totals.all)} ₽</div>
+              <div class="oexp-kpi-value">${money(totals.all)}</div>
               <div class="oexp-kpi-sub">${filtered.length} записей</div>
             </div>
             <div class="oexp-kpi-card">
               <div class="oexp-kpi-label">Среднее/месяц</div>
-              <div class="oexp-kpi-value">${money(Math.round(totals.all / 12))} ₽</div>
+              <div class="oexp-kpi-value">${money(Math.round(totals.all / 12))}</div>
             </div>
             <div class="oexp-kpi-card">
               <div class="oexp-kpi-label">На согласовании</div>
@@ -190,7 +195,7 @@ window.AsgardOfficeExpensesPage = (function(){
                 <div class="oexp-cat-icon">${cat.icon}</div>
                 <div class="oexp-cat-info">
                   <div class="oexp-cat-label">${cat.label}</div>
-                  <div class="oexp-cat-value">${money(totals.byCategory[cat.key] || 0)} ₽</div>
+                  <div class="oexp-cat-value">${money(totals.byCategory[cat.key] || 0)}</div>
                 </div>
               </div>
             `).join('')}
@@ -240,7 +245,7 @@ window.AsgardOfficeExpensesPage = (function(){
                     <tr data-id="${e.id}">
                       <td class="oexp-date">${e.date ? AsgardUI.formatDate(e.date) : '—'}</td>
                       <td class="oexp-cat-badge">${cat.icon} ${cat.label}</td>
-                      <td class="oexp-amount">${money(e.amount)} ₽</td>
+                      <td class="oexp-amount">${money(e.amount)}</td>
                       <td>${esc(e.comment || e.supplier || '—')}</td>
                       <td><span class="oexp-status ${e.status || 'draft'}">${st.label}</span></td>
                       <td>${esc(creator?.name || '—')}</td>
@@ -331,7 +336,7 @@ window.AsgardOfficeExpensesPage = (function(){
             await AsgardDB.put('office_expenses', exp);
             // Уведомление директорам
             await notifyDirectors('Офисный расход на согласовании', 
-              `${getCatInfo(exp.category).label}: ${money(exp.amount)} ₽`, 
+              `${getCatInfo(exp.category).label}: ${money(exp.amount)}`, 
               '#/office-expenses');
             toast('Расход', 'Отправлено на согласование');
             expenses = await AsgardDB.all('office_expenses');
@@ -486,7 +491,7 @@ window.AsgardOfficeExpensesPage = (function(){
 
         if(submit){
           await notifyDirectors('Офисный расход на согласовании', 
-            `${getCatInfo(expense.category).label}: ${money(expense.amount)} ₽`, 
+            `${getCatInfo(expense.category).label}: ${money(expense.amount)}`, 
             '#/office-expenses');
         }
 
@@ -548,7 +553,7 @@ window.AsgardOfficeExpensesPage = (function(){
 
         if(submit){
           await notifyDirectors('Офисный расход на согласовании', 
-            `${getCatInfo(expense.category).label}: ${money(expense.amount)} ₽`, 
+            `${getCatInfo(expense.category).label}: ${money(expense.amount)}`, 
             '#/office-expenses');
         }
 
@@ -572,7 +577,7 @@ window.AsgardOfficeExpensesPage = (function(){
         <div class="formrow">
           <div><label>Дата</label><div class="help">${expense.date ? AsgardUI.formatDate(expense.date) : '—'}</div></div>
           <div><label>Категория</label><div class="help">${cat.icon} ${cat.label}</div></div>
-          <div><label>Сумма</label><div class="help" style="font-weight:700; color:var(--gold)">${money(expense.amount)} ₽</div></div>
+          <div><label>Сумма</label><div class="help" style="font-weight:700; color:var(--gold)">${money(expense.amount)}</div></div>
           <div><label>Статус</label><div class="help"><span class="oexp-status ${expense.status}">${st.label}</span></div></div>
         </div>
         <hr class="hr"/>

@@ -7,8 +7,10 @@
  * POST /lessons/:id/complete — mark reading completed (requires MIN_READ_SECONDS)
  * POST /lessons/:id/heartbeat — reading time tracker (every 30s)
  * POST /lessons/:id/quiz     — submit quiz answers (retry logic: 2 attempts → re-read)
+ * POST /lessons/:id/rate     — оценка интереса 1–5; при >3 оценках и avg<2.5 — автоперевыпуск
  * GET  /leaderboard          — department leaderboard with ranks
  * GET  /stats                — personal stats (rank, streak, xp)
+ * GET  /reminder             — обязательные непройденные (для weekly modal)
  * GET  /articles             — short facts/tips feed
  *
  * ADMIN:
@@ -16,6 +18,8 @@
  * PATCH  /admin/lessons/:id     — update lesson metadata
  * POST   /admin/bulk-publish    — publish all drafts for a month
  * GET    /admin/lessons/:id/preview — full lesson preview for admin
+ * POST   /admin/lessons/:id/mark-rewrite — флаг / сброс needs_rewrite
+ * POST   /admin/lessons/:id/regenerate  — AI-перевыпуск (архив + новый)
  *
  * Auth: fastify.authenticate (session JWT, req.user)
  */
@@ -29,6 +33,9 @@ const PASS_THRESHOLD    = 80; // % to pass
 const XP_FOR_PASS       = 30;
 const XP_PERFECT        = 60;
 const ADMIN_ROLES       = ['ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_DEV'];
+const INTEREST_REWRITE_AVG_MAX = 2.5;
+/** lessonId → уже запущен автоперевыпуск в этом процессе */
+const _autoRewriteInFlight = new Set();
 
 // Role → track mapping
 const ROLE_TRACKS = {
@@ -79,10 +86,13 @@ async function routes(fastify) {
       SELECT l.id, l.month_number, l.track, l.title, l.saga,
              l.cover_icon, l.cover_color, l.estimated_minutes,
              l.is_mandatory, l.release_date, l.published_at, l.tags,
+             l.interest_avg, l.interest_count, l.needs_rewrite,
              p.read_started_at, p.read_completed_at, p.read_time_seconds,
-             p.passed, p.score, p.attempts, p.passed_at, p.xp_earned
+             p.passed, p.score, p.attempts, p.passed_at, p.xp_earned,
+             ur.score as my_interest_score
       FROM office_academy_lessons l
       LEFT JOIN office_academy_user_progress p ON p.lesson_id = l.id AND p.user_id = $1
+      LEFT JOIN office_academy_lesson_ratings ur ON ur.lesson_id = l.id AND ur.user_id = $1
       WHERE l.status = 'published'
         AND l.track = ANY($2::text[])
         AND (l.release_date IS NULL OR l.release_date <= $3)
@@ -111,9 +121,11 @@ async function routes(fastify) {
       `SELECT l.*,
               p.read_started_at, p.read_completed_at, p.read_time_seconds,
               p.passed, p.score, p.attempts, p.passed_at, p.xp_earned,
-              p.last_attempt_at
+              p.last_attempt_at,
+              ur.score as my_interest_score
        FROM office_academy_lessons l
        LEFT JOIN office_academy_user_progress p ON p.lesson_id = l.id AND p.user_id = $2
+       LEFT JOIN office_academy_lesson_ratings ur ON ur.lesson_id = l.id AND ur.user_id = $2
        WHERE l.id = $1 AND l.status = 'published'`,
       [lessonId, userId]
     );
@@ -138,10 +150,14 @@ async function routes(fastify) {
       [lessonId]
     );
 
-    // Sanitize: strip is_correct and correct_explanation if not passed
+    // Sanitize: strip is_correct; coerce legacy string options for UI
     const sanitizedQuestions = questions.map(q => {
       if (lesson.passed) return q;
-      const opts = (q.options || []).map(o => ({ text: o.text })); // strip is_correct
+      const raw = Array.isArray(q.options) ? q.options : [];
+      const opts = raw.map((o, idx) => {
+        if (typeof o === 'string') return { text: o };
+        return { text: o?.text || o?.label || '' };
+      }).filter((o) => o.text);
       return { ...q, options: opts, correct_explanation: null };
     });
 
@@ -330,7 +346,7 @@ async function routes(fastify) {
         try {
           await notifyManagerAboutStruggle(db, userId, lessonId, currentAttempts);
         } catch (e) {
-          fastify.log.error('[OfficeAcademy] Notification error:', e.message);
+          fastify.log.error({ err: e }, '[OfficeAcademy] Notification error');
         }
       }
     }
@@ -348,6 +364,155 @@ async function routes(fastify) {
         min_read_seconds: MIN_READ_SECONDS,
         pass_threshold: PASS_THRESHOLD,
       },
+    };
+  });
+
+  // ── POST /lessons/:id/rate — оценка интереса 1–5 ──────────────
+  fastify.post('/lessons/:id/rate', auth, async (req, reply) => {
+    const userId = req.user.id;
+    const lessonId = parseInt(req.params.id, 10);
+    const score = parseInt(req.body?.score, 10);
+    const comment = req.body?.comment != null ? String(req.body.comment).slice(0, 500) : null;
+
+    if (!Number.isFinite(score) || score < 1 || score > 5) {
+      return reply.code(400).send({ error: 'score must be 1..5' });
+    }
+
+    const { rows: [lesson] } = await db.query(
+      `SELECT id, title, status FROM office_academy_lessons WHERE id = $1`,
+      [lessonId]
+    );
+    if (!lesson || lesson.status !== 'published') {
+      return reply.code(404).send({ error: 'Урок не найден' });
+    }
+
+    const { rows: [progress] } = await db.query(
+      `SELECT read_completed_at, passed FROM office_academy_user_progress
+       WHERE user_id = $1 AND lesson_id = $2`,
+      [userId, lessonId]
+    );
+    if (!progress?.read_completed_at && !progress?.passed) {
+      return reply.code(400).send({ error: 'Сначала отметьте урок прочитанным' });
+    }
+
+    await db.query(`
+      INSERT INTO office_academy_lesson_ratings (lesson_id, user_id, score, comment, created_at, updated_at)
+      VALUES ($1, $2, $3, $4, NOW(), NOW())
+      ON CONFLICT (lesson_id, user_id) DO UPDATE SET
+        score = EXCLUDED.score,
+        comment = COALESCE(EXCLUDED.comment, office_academy_lesson_ratings.comment),
+        updated_at = NOW()
+    `, [lessonId, userId, score, comment]);
+
+    const { rows: [agg] } = await db.query(`
+      SELECT ROUND(AVG(score)::numeric, 2) as interest_avg,
+             COUNT(*)::int as interest_count
+      FROM office_academy_lesson_ratings WHERE lesson_id = $1
+    `, [lessonId]);
+
+    const interestAvg = Number(agg.interest_avg) || 0;
+    const interestCount = agg.interest_count || 0;
+    // Более 3 оценок и средний интерес < 2.5 → автоперевыпуск (без уведомлений)
+    const shouldRewrite = interestCount > 3 && interestAvg < INTEREST_REWRITE_AVG_MAX;
+
+    await db.query(`
+      UPDATE office_academy_lessons
+      SET interest_avg = $2,
+          interest_count = $3,
+          needs_rewrite = CASE WHEN $4 THEN true ELSE needs_rewrite END
+      WHERE id = $1
+    `, [lessonId, interestAvg, interestCount, shouldRewrite]);
+
+    let rewriting = false;
+    if (shouldRewrite && !_autoRewriteInFlight.has(lessonId)) {
+      const { rows: [stillLive] } = await db.query(
+        `SELECT id FROM office_academy_lessons
+         WHERE id = $1 AND status = 'published'
+           AND NOT EXISTS (
+             SELECT 1 FROM office_academy_lessons c WHERE c.rewritten_from_id = $1
+           )`,
+        [lessonId]
+      );
+
+      if (stillLive) {
+        rewriting = true;
+        _autoRewriteInFlight.add(lessonId);
+        setImmediate(() => {
+          const done = () => _autoRewriteInFlight.delete(lessonId);
+          try {
+            const cron = require('../services/office-academy-cron');
+            if (typeof cron.rewriteLesson !== 'function') {
+              fastify.log.warn('[OfficeAcademy] rewriteLesson unavailable');
+              done();
+              return;
+            }
+            cron.rewriteLesson(lessonId, { forcePublish: true })
+              .then((r) => {
+                if (r?.ok) {
+                  fastify.log.info(`[OfficeAcademy] Auto-rewrite #${lessonId} → #${r.new_id} published`);
+                } else {
+                  fastify.log.warn(`[OfficeAcademy] Auto-rewrite #${lessonId} failed: ${r?.error || 'unknown'}`);
+                }
+              })
+              .catch((e) => {
+                fastify.log.error({ err: e }, `[OfficeAcademy] Auto-rewrite #${lessonId} error`);
+              })
+              .finally(done);
+          } catch (e) {
+            fastify.log.error({ err: e }, '[OfficeAcademy] Auto-rewrite bootstrap error');
+            done();
+          }
+        });
+      }
+    }
+
+    const { rows: [updated] } = await db.query(
+      `SELECT interest_avg, interest_count, needs_rewrite FROM office_academy_lessons WHERE id = $1`,
+      [lessonId]
+    );
+
+    return {
+      ok: true,
+      my_score: score,
+      interest_avg: Number(updated?.interest_avg),
+      interest_count: updated?.interest_count || interestCount,
+      needs_rewrite: !!updated?.needs_rewrite,
+      rewriting,
+    };
+  });
+
+  // ── GET /reminder — обязательные непройденные ─────────────────
+  fastify.get('/reminder', auth, async (req) => {
+    // тестовые учётки / явный disable — не блокируем бизнес-UI модалкой «отстаёте»
+    const login = String(req.user.login || req.user.username || '');
+    if (process.env.OFFICE_ACADEMY_REMINDER_DISABLED === '1' || /^test_/i.test(login)) {
+      return { show: false, fio: req.user.name || 'Сотрудник', mandatory_pending: 0, lessons: [] };
+    }
+    const userId = req.user.id;
+    const tracks = getUserTracks(req.user.role);
+    const now = new Date();
+
+    const { rows: pending } = await db.query(`
+      SELECT l.id, l.title, l.track, l.saga, l.cover_icon, l.estimated_minutes
+      FROM office_academy_lessons l
+      LEFT JOIN office_academy_user_progress p ON p.lesson_id = l.id AND p.user_id = $1
+      WHERE l.status = 'published'
+        AND l.is_mandatory = true
+        AND l.track = ANY($2::text[])
+        AND (l.release_date IS NULL OR l.release_date <= $3)
+        AND COALESCE(p.passed, false) = false
+      ORDER BY l.release_date ASC NULLS LAST, l.month_number ASC
+    `, [userId, tracks, now]);
+
+    const { rows: [user] } = await db.query(
+      `SELECT id, name FROM users WHERE id = $1`, [userId]
+    );
+
+    return {
+      show: pending.length > 0,
+      fio: user?.name || req.user.name || 'Сотрудник',
+      mandatory_pending: pending.length,
+      lessons: pending,
     };
   });
 
@@ -448,11 +613,11 @@ async function routes(fastify) {
     const { rows } = await db.query(`
       SELECT l.id, l.month_number, l.track, l.title, l.saga, l.status, l.is_mandatory,
              l.cover_icon, l.cover_color, l.release_date, l.generated_by, l.created_at,
-             l.estimated_minutes,
+             l.estimated_minutes, l.interest_avg, l.interest_count, l.needs_rewrite,
              (SELECT COUNT(*) FROM office_academy_quiz_questions WHERE lesson_id = l.id)::int as questions_count,
              (SELECT COUNT(*) FROM office_academy_user_progress WHERE lesson_id = l.id AND passed = true)::int as passed_count
       FROM office_academy_lessons l
-      ORDER BY l.status, l.month_number DESC, l.track
+      ORDER BY l.needs_rewrite DESC, l.status, l.month_number DESC, l.track
     `);
     return { lessons: rows };
   });
@@ -480,7 +645,7 @@ async function routes(fastify) {
     if (!ADMIN_ROLES.includes(req.user.role)) return reply.code(403).send({ error: 'Нет доступа' });
 
     const lessonId = parseInt(req.params.id, 10);
-    const { status, is_mandatory, release_date } = req.body || {};
+    const { status, is_mandatory, release_date, needs_rewrite } = req.body || {};
 
     const updates = [];
     const vals = [];
@@ -490,12 +655,50 @@ async function routes(fastify) {
     if (status === 'published') { updates.push(`published_at = $${i++}`); vals.push(new Date()); }
     if (is_mandatory !== undefined) { updates.push(`is_mandatory = $${i++}`); vals.push(Boolean(is_mandatory)); }
     if (release_date) { updates.push(`release_date = $${i++}`); vals.push(release_date); }
+    if (needs_rewrite !== undefined) { updates.push(`needs_rewrite = $${i++}`); vals.push(Boolean(needs_rewrite)); }
 
     if (!updates.length) return reply.code(400).send({ error: 'Нет данных для обновления' });
 
     vals.push(lessonId);
     await db.query(`UPDATE office_academy_lessons SET ${updates.join(',')} WHERE id = $${i}`, vals);
     return { ok: true };
+  });
+
+  // ── POST /admin/lessons/:id/mark-rewrite — флаг перевыпуска ───
+  fastify.post('/admin/lessons/:id/mark-rewrite', auth, async (req, reply) => {
+    if (!ADMIN_ROLES.includes(req.user.role)) return reply.code(403).send({ error: 'Нет доступа' });
+
+    const lessonId = parseInt(req.params.id, 10);
+    const clear = Boolean(req.body?.clear);
+
+    const { rows: [lesson] } = await db.query(
+      `UPDATE office_academy_lessons SET needs_rewrite = $2 WHERE id = $1
+       RETURNING id, title, needs_rewrite, interest_avg, interest_count`,
+      [lessonId, !clear]
+    );
+    if (!lesson) return reply.code(404).send({ error: 'Урок не найден' });
+    return { ok: true, lesson };
+  });
+
+  // ── POST /admin/lessons/:id/regenerate — AI-перевыпуск ────────
+  fastify.post('/admin/lessons/:id/regenerate', auth, async (req, reply) => {
+    if (!ADMIN_ROLES.includes(req.user.role)) return reply.code(403).send({ error: 'Нет доступа' });
+
+    const lessonId = parseInt(req.params.id, 10);
+    try {
+      const cron = require('../services/office-academy-cron');
+      if (typeof cron.rewriteLesson !== 'function') {
+        return reply.code(503).send({ error: 'Генератор недоступен' });
+      }
+      const result = await cron.rewriteLesson(lessonId, { forcePublish: Boolean(req.body?.force_publish) });
+      if (!result?.ok) {
+        return reply.code(400).send({ error: result?.error || 'Не удалось перевыпустить' });
+      }
+      return result;
+    } catch (e) {
+      fastify.log.error({ err: e }, '[OfficeAcademy] regenerate error');
+      return reply.code(500).send({ error: e.message || 'Ошибка генерации' });
+    }
   });
 
   // ── POST /admin/bulk-publish — publish all drafts for a month ─
@@ -518,48 +721,46 @@ async function routes(fastify) {
 
 // ── Helper: notify manager about struggling user ────────────────
 async function notifyManagerAboutStruggle(db, userId, lessonId, attempts) {
-  // Get user info
   const { rows: [user] } = await db.query(
     `SELECT name, role FROM users WHERE id = $1`, [userId]
   );
   if (!user) return;
 
-  // Get lesson info
   const { rows: [lesson] } = await db.query(
     `SELECT title FROM office_academy_lessons WHERE id = $1`, [lessonId]
   );
   if (!lesson) return;
 
-  // Find managers to notify
   const managerRoles = ['HEAD_PM', 'HEAD_TO', 'HR_MANAGER', 'DIRECTOR_GEN'];
   const { rows: managers } = await db.query(
     `SELECT id FROM users WHERE role = ANY($1::text[]) AND is_active = true`,
     [managerRoles]
   );
+  if (!managers.length) return;
 
-  // Check dedup — don't spam within 7 days
+  // notifications has dedup_key (no metadata column)
+  const dedupKey = `office_struggle:${userId}:${lessonId}`;
+
   const { rows: recent } = await db.query(`
     SELECT id FROM notifications
-    WHERE user_id = ANY($1::int[])
-      AND type = 'academy_office_struggle'
-      AND metadata->>'target_user_id' = $2
-      AND metadata->>'lesson_id' = $3
+    WHERE type = 'academy_office_struggle'
+      AND dedup_key = $1
       AND created_at > NOW() - INTERVAL '7 days'
     LIMIT 1
-  `, [managers.map(m => m.id), String(userId), String(lessonId)]);
+  `, [dedupKey]);
 
   if (recent.length > 0) return;
 
+  const title = 'Сотрудник застрял в Академии';
+  const message = `${user.name} (${user.role}) не может сдать «${lesson.title}» — ${attempts} попыток`;
+  const link = `/#/office-academy?lesson=${lessonId}`;
+
   for (const mgr of managers) {
     await db.query(`
-      INSERT INTO notifications (user_id, type, title, message, metadata, created_at)
-      VALUES ($1, 'academy_office_struggle', $2, $3, $4, NOW())
-    `, [
-      mgr.id,
-      '🏛️ Сотрудник застрял в Академии',
-      `${user.name} (${user.role}) не может сдать «${lesson.title}» — ${attempts} попыток`,
-      JSON.stringify({ target_user_id: userId, lesson_id: lessonId, attempts }),
-    ]);
+      INSERT INTO notifications
+        (user_id, type, title, message, entity_type, entity_id, link, url, dedup_key, created_at)
+      VALUES ($1, 'academy_office_struggle', $2, $3, 'user', $4, $5, $5, $6, NOW())
+    `, [mgr.id, title, message, userId, link, dedupKey]);
   }
 }
 

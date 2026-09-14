@@ -139,7 +139,7 @@
 
     // Trigger animation
     requestAnimationFrame(function() {
-      overlay.classList.add('visible');
+      if (overlay) overlay.classList.add('visible');
     });
   }
 
@@ -173,10 +173,12 @@
         overlay.parentNode.removeChild(overlay);
         overlay = null;
       }
-      flash.classList.remove('visible');
-      setTimeout(function() {
-        if (flash.parentNode) flash.parentNode.removeChild(flash);
-      }, 300);
+      if (flash) {
+        flash.classList.remove('visible');
+        setTimeout(function() {
+          if (flash && flash.parentNode) flash.parentNode.removeChild(flash);
+        }, 300);
+      }
     }, 1500);
   }
 

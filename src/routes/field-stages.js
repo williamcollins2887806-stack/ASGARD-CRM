@@ -30,9 +30,19 @@
 const { createNotification } = require('../services/notify');
 const { assertNotLocked } = require('../lib/timesheet-locks');
 const { logError } = require('../lib/log-error');
+const { assertNoCheckinConflict, labelOf } = require('../lib/timesheet-day-conflict');
+
+class DayConflictError extends Error {
+  constructor(payload) {
+    super(payload.message || 'day_conflict');
+    this.code = 'day_conflict';
+    this.payload = payload;
+    this.statusCode = 409;
+  }
+}
 
 // V255 (23.06.2026): добавлен 'ship' — альтернатива «Дорога» за повышенную ставку.
-const STAGE_TYPES = ['medical', 'travel', 'ship', 'training', 'helicopter', 'waiting', 'warehouse', 'day_off', 'object'];
+const STAGE_TYPES = ['medical', 'travel', 'ship', 'training', 'helicopter', 'waiting', 'warehouse', 'day_off', 'object', 'office', 'remote'];
 
 // FIX 1: stage_type → scope_hint для лок-чекера.
 // warehouse/medical/travel — отдельные scope; остальные — global (только глобал-лок).
@@ -67,6 +77,8 @@ const STAGE_LABELS = {
   warehouse: 'Склад',
   day_off: 'Выходной',
   object: 'Объект',
+  office: 'Офис',
+  remote: 'Удалённая работа',
 };
 
 const PM_ROLES = ['PM', 'HEAD_PM', 'ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV'];
@@ -124,14 +136,69 @@ async function routes(fastify, options) {
       waiting:   { p: 6,  r: 3000 },
       day_off:   { p: 6,  r: 3000 },
       warehouse: { p: 10, r: 5000 },
-      object:    { p: 11, r: 5500 }
+      object:    { p: 11, r: 5500 },
+      office:    { p: 16, r: 8000 },
+      remote:    { p: 10, r: 5000 }
     };
     const d = defaults[stageType] || { p: 6, r: 3000 };
     return { id: null, points: d.p, rate: d.r };
   }
 
   async function insertStage(params) {
-    const { employee_id, work_id, assignment_id, stage_type, date_from, date_to, tariff_id, tariff_points, rate_per_day, details, logistics_id, source, source_employee_id, status, note, created_by, entered_by_user_id } = params;
+    let { employee_id, work_id, assignment_id, stage_type, date_from, date_to, tariff_id, tariff_points, rate_per_day, details, logistics_id, source, source_employee_id, status, note, created_by, entered_by_user_id, confirm_overwrite } = params;
+
+    // 07.08.2026: нельзя молча поставить этап поверх смены (кейс Ахкямов/Хосе).
+    {
+      const blocked = await assertNoCheckinConflict(db, {
+        employeeId: employee_id,
+        dateFrom: date_from,
+        dateTo: date_to || date_from,
+        confirmOverwrite: !!confirm_overwrite,
+        actionLabel: labelOf(stage_type)
+      });
+      if (blocked) throw new DayConflictError(blocked);
+    }
+
+    // МО / дорога / вертолёт / корабль / склад / обучение / выходной:
+    // Привязка work_id ТОЛЬКО по назначению, активному на date_from.
+    // Нет назначения на дату → work_id = null («вне объекта»), в полевой табель
+    // работы не попадёт. Полмесяца на A / полмесяца на B — этап на дате B
+    // привяжется к B (ORDER BY date_from DESC), не к обеим дружинам.
+    const FREE_STANDING = new Set(['medical', 'travel', 'ship', 'training', 'helicopter', 'warehouse', 'day_off']);
+    if (FREE_STANDING.has(stage_type)) {
+      const dateKey = date_from;
+      let resolved = null;
+      if (work_id) {
+        const { rows } = await db.query(`
+          SELECT id, work_id FROM employee_assignments
+          WHERE employee_id = $1 AND work_id = $2
+            AND COALESCE(date_from, created_at::date) <= $3::date
+            AND (departure_date IS NULL OR departure_date >= $3::date)
+          LIMIT 1
+        `, [employee_id, work_id, dateKey]);
+        if (rows.length) {
+          resolved = Number(rows[0].work_id);
+          assignment_id = assignment_id || rows[0].id;
+        }
+      }
+      if (resolved == null) {
+        const { rows } = await db.query(`
+          SELECT id, work_id FROM employee_assignments
+          WHERE employee_id = $1
+            AND COALESCE(date_from, created_at::date) <= $2::date
+            AND (departure_date IS NULL OR departure_date >= $2::date)
+          ORDER BY COALESCE(date_from, created_at::date) DESC, id DESC
+          LIMIT 1
+        `, [employee_id, dateKey]);
+        if (rows.length) {
+          resolved = Number(rows[0].work_id);
+          assignment_id = assignment_id || rows[0].id;
+        } else {
+          assignment_id = null;
+        }
+      }
+      work_id = resolved;
+    }
     const days = calcDays(date_from, date_to);
     const amount = days * rate_per_day;
 
@@ -154,6 +221,19 @@ async function routes(fastify, options) {
         tariff_id || null, tariff_points, rate_per_day, amount, details ? JSON.stringify(details) : '{}',
         logistics_id || null, source || 'pm', source_employee_id || null, status || 'active',
         note || null, created_by || null, enteredBy]);
+
+    // Новая отметка сбрасывает таймер авто-убытия по простою
+    if (work_id && rows[0]) {
+      try {
+        await db.query(`
+          UPDATE employee_assignments
+             SET inactivity_warned_at = NULL, updated_at = NOW()
+           WHERE employee_id = $1 AND work_id = $2
+             AND departure_date IS NULL AND COALESCE(is_active,true)=true
+             AND inactivity_warned_at IS NOT NULL
+        `, [employee_id, work_id]);
+      } catch (_) { /* column may not exist yet */ }
+    }
 
     return rows[0];
   }
@@ -183,7 +263,7 @@ async function routes(fastify, options) {
   fastify.post('/', crmAuth, async (req, reply) => {
     try {
       const userId = req.user.id;
-      const { employee_id, work_id, stage_type, date_from, date_to, tariff_id, details, note } = req.body || {};
+      const { employee_id, work_id, stage_type, date_from, date_to, tariff_id, details, note, confirm_overwrite } = req.body || {};
 
       if (!employee_id || !work_id || !stage_type || !date_from) {
         return reply.code(400).send({ error: 'Укажите employee_id, work_id, stage_type, date_from' });
@@ -219,10 +299,14 @@ async function routes(fastify, options) {
         employee_id, work_id, stage_type, date_from, date_to,
         tariff_id: tariff.id, tariff_points: tariff.points, rate_per_day: tariff.rate,
         details, source: 'pm', status: 'planned', note, created_by: userId,
+        confirm_overwrite: !!confirm_overwrite
       });
 
       return { stage };
     } catch (err) {
+      if (err instanceof DayConflictError || err.code === 'day_conflict') {
+        return reply.code(409).send(err.payload || err);
+      }
       if (err.code === '23505') return reply.code(409).send({ error: 'Этап такого типа уже существует на эту дату' });
       logError(fastify, '[field-stages] POST / error', err, req);
       return reply.code(500).send({ error: 'Ошибка сервера' });
@@ -445,7 +529,7 @@ async function routes(fastify, options) {
   fastify.put('/:id', crmAuth, async (req, reply) => {
     try {
       const stageId = parseInt(req.params.id);
-      const { date_from, date_to, details, note, stage_type } = req.body || {};
+      const { date_from, date_to, details, note, stage_type, confirm_overwrite } = req.body || {};
 
       const { rows: existing } = await db.query(`SELECT * FROM field_trip_stages WHERE id=$1`, [stageId]);
       if (existing.length === 0) return reply.code(404).send({ error: 'Этап не найден' });
@@ -482,6 +566,27 @@ async function routes(fastify, options) {
         }
         throw lockErr;
       }
+
+      // 07.08.2026: расширение/сдвиг этапа не должен молча накрыть смены.
+      // Проверяем только если даты реально меняются (правка note не должна
+      // предлагать отменить уже существующую смену на той же дате).
+      const datesChanging = (date_from != null && String(date_from).slice(0, 10) !== String(stage.date_from).slice(0, 10))
+        || (date_to !== undefined && String(date_to || '').slice(0, 10) !== String(stage.date_to || stage.date_from).slice(0, 10));
+      if (datesChanging) {
+        const fromStr = typeof newFrom === 'string' ? String(newFrom).slice(0, 10) : new Date(newFrom).toISOString().slice(0, 10);
+        const toStr = newTo
+          ? (typeof newTo === 'string' ? String(newTo).slice(0, 10) : new Date(newTo).toISOString().slice(0, 10))
+          : fromStr;
+        const blocked = await assertNoCheckinConflict(db, {
+          employeeId: stage.employee_id,
+          dateFrom: fromStr,
+          dateTo: toStr,
+          confirmOverwrite: !!confirm_overwrite,
+          actionLabel: labelOf(newType)
+        });
+        if (blocked) return reply.code(409).send(blocked);
+      }
+
       const days = calcDays(newFrom, newTo);
       const amount = days * parseFloat(stage.rate_per_day);
 
@@ -560,7 +665,7 @@ async function routes(fastify, options) {
   fastify.post('/bulk', crmAuth, async (req, reply) => {
     try {
       const userId = req.user.id;
-      const { employee_ids, work_id, stage_type, date_from, date_to, details } = req.body || {};
+      const { employee_ids, work_id, stage_type, date_from, date_to, details, confirm_overwrite } = req.body || {};
 
       if (!employee_ids?.length || !work_id || !stage_type || !date_from) {
         return reply.code(400).send({ error: 'Укажите employee_ids, work_id, stage_type, date_from' });
@@ -585,6 +690,7 @@ async function routes(fastify, options) {
 
       const tariff = await findTariff(stage_type, work_id);
       const created = [];
+      const conflicts = [];
 
       for (const empId of employee_ids) {
         try {
@@ -592,14 +698,34 @@ async function routes(fastify, options) {
             employee_id: empId, work_id, stage_type, date_from, date_to,
             tariff_id: tariff.id, tariff_points: tariff.points, rate_per_day: tariff.rate,
             details, source: 'pm', status: 'planned', created_by: userId,
+            confirm_overwrite: !!confirm_overwrite
           });
           created.push(stage);
         } catch (e) {
+          if (e instanceof DayConflictError || e.code === 'day_conflict') {
+            conflicts.push({ employee_id: empId, ...(e.payload || {}) });
+            continue;
+          }
           if (e.code !== '23505') throw e; // пропустить дубликаты
         }
       }
 
-      return { created_count: created.length, stages: created };
+      if (conflicts.length && !confirm_overwrite && created.length === 0) {
+        return reply.code(409).send({
+          error: 'day_conflict',
+          message: conflicts[0].message || 'На дату уже есть смена у части сотрудников',
+          requires_confirmation: true,
+          conflicts
+        });
+      }
+
+      return {
+        created_count: created.length,
+        stages: created,
+        conflict_count: conflicts.length,
+        conflicts: conflicts.length ? conflicts : undefined,
+        requires_confirmation: conflicts.length > 0 && !confirm_overwrite ? true : undefined
+      };
     } catch (err) {
       logError(fastify, '[field-stages] POST /bulk error', err, req);
       return reply.code(500).send({ error: 'Ошибка сервера' });
@@ -654,7 +780,7 @@ async function routes(fastify, options) {
   fastify.post('/on-behalf', fieldAuth, async (req, reply) => {
     try {
       const masterEmpId = req.fieldEmployee.id;
-      const { employee_id, work_id, stage_type, date_from, date_to, details, note } = req.body || {};
+      const { employee_id, work_id, stage_type, date_from, date_to, details, note, confirm_overwrite } = req.body || {};
 
       if (!employee_id || !work_id || !stage_type || !date_from) {
         return reply.code(400).send({ error: 'Укажите employee_id, work_id, stage_type, date_from' });
@@ -694,10 +820,14 @@ async function routes(fastify, options) {
         tariff_id: tariff.id, tariff_points: tariff.points, rate_per_day: tariff.rate,
         details, source: 'master', source_employee_id: masterEmpId,
         status: 'active', note, created_by: masterEmpId,
+        confirm_overwrite: !!confirm_overwrite
       });
 
       return { stage };
     } catch (err) {
+      if (err instanceof DayConflictError || err.code === 'day_conflict') {
+        return reply.code(409).send(err.payload || err);
+      }
       if (err.code === '23505') return reply.code(409).send({ error: 'Этап уже существует на эту дату' });
       logError(fastify, '[field-stages] POST /on-behalf error', err, req);
       return reply.code(500).send({ error: 'Ошибка сервера' });
@@ -840,7 +970,7 @@ async function routes(fastify, options) {
   fastify.post('/my/start', fieldAuth, async (req, reply) => {
     try {
       const empId = req.fieldEmployee.id;
-      const { work_id, stage_type, details } = req.body || {};
+      const { work_id, stage_type, details, confirm_overwrite } = req.body || {};
 
       if (!work_id || !stage_type) {
         return reply.code(400).send({ error: 'Укажите work_id и stage_type' });
@@ -885,10 +1015,14 @@ async function routes(fastify, options) {
         employee_id: empId, work_id, stage_type, date_from: today,
         tariff_id: tariff.id, tariff_points: tariff.points, rate_per_day: tariff.rate,
         details, source: 'self', status: 'active', created_by: empId,
+        confirm_overwrite: !!confirm_overwrite
       });
 
       return { stage };
     } catch (err) {
+      if (err instanceof DayConflictError || err.code === 'day_conflict') {
+        return reply.code(409).send(err.payload || err);
+      }
       if (err.code === '23505') return reply.code(409).send({ error: 'Этап уже существует на сегодня' });
       logError(fastify, '[field-stages] POST /my/start error', err, req);
       return reply.code(500).send({ error: 'Ошибка сервера' });

@@ -95,7 +95,7 @@ window.AsgardMailboxPage = (function(){
     archived:      { label: 'Архив',          color: 'var(--t2)' }
   };
 
-  function money(x) { return AsgardUI.money(Math.round(Number(x || 0))) + ' ₽'; }
+  function money(x) { return (AsgardUI.moneyRub || AsgardMoney.formatMoney)(Math.round(Number(x || 0))); }
 
   // ═══════════════════════════════════════════════════════════════════
   // RENDER — Main Layout

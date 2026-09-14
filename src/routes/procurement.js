@@ -202,8 +202,12 @@ async function routes(fastify) {
       LEFT JOIN users pc ON pr.proc_id=pc.id LEFT JOIN users da ON pr.dir_approved_by=da.id WHERE pr.id=$1`,[id]);
     if(!rows[0]) return reply.code(404).send({error:'Не найдена'});
     if(!canViewAll(user.role)&&rows[0].pm_id!==user.id) return reply.code(403).send({error:'Нет доступа'});
-    const items=await db.query(`SELECT pi.*,d.download_url as invoice_file_path,d.original_name as invoice_file_name,pc.name as category_name
-      FROM procurement_items pi LEFT JOIN documents d ON pi.invoice_doc_id=d.id LEFT JOIN product_categories pc ON pi.product_category_id=pc.id
+    const items=await db.query(`SELECT pi.*,d.download_url as invoice_file_path,d.original_name as invoice_file_name,pc.name as category_name,
+      pr.icon_slug, pr.article as product_article
+      FROM procurement_items pi
+      LEFT JOIN documents d ON pi.invoice_doc_id=d.id
+      LEFT JOIN product_categories pc ON pi.product_category_id=pc.id
+      LEFT JOIN products pr ON pi.product_id=pr.id
       WHERE pi.procurement_id=$1 ORDER BY pi.sort_order,pi.id`,[id]);
     const payments=await db.query(`SELECT pp.*,d.download_url,d.original_name,u.name as uploader_name
       FROM procurement_payments pp LEFT JOIN documents d ON pp.document_id=d.id LEFT JOIN users u ON pp.uploaded_by=u.id
@@ -211,9 +215,12 @@ async function routes(fastify) {
     const hLim=parseInt(req.query.history_limit)||100, hOff=parseInt(req.query.history_offset)||0;
     const history=await db.query(`SELECT ph.*,u.name as actor_name FROM procurement_history ph LEFT JOIN users u ON ph.actor_id=u.id
       WHERE ph.procurement_id=$1 ORDER BY ph.created_at DESC LIMIT $2 OFFSET $3`,[id,hLim,hOff]);
-    // Загруженные счета поставщиков (для бухгалтера на этапе оплаты + трассировки)
+    // Загруженные счета поставщиков (+ волна согласования по каждому счёту)
     const invoices=await db.query(`SELECT ii.id,ii.supplier_id,ii.supplier_name,ii.delivery_days,ii.file_path,ii.file_name,
-      ii.total_sum,ii.matched_count,ii.created_at,u.name as uploaded_by_name
+      ii.total_sum,ii.matched_count,ii.created_at,ii.approval_status,ii.sent_to_pm_at,ii.pm_approved_at,ii.pm_comment,
+      ii.sent_to_dir_at,ii.dir_approved_at,ii.paid_at,u.name as uploaded_by_name,
+      (SELECT COALESCE(array_agg(pi.id ORDER BY pi.id), '{}') FROM procurement_items pi
+         WHERE pi.invoice_import_id=ii.id AND COALESCE(pi.item_status,'pending')<>'cancelled') as linked_item_ids
       FROM procurement_invoice_imports ii LEFT JOIN users u ON ii.created_by=u.id
       WHERE ii.procurement_id=$1 ORDER BY ii.created_at DESC`,[id]);
     return {item:rows[0],items:items.rows,payments:payments.rows,history:history.rows,invoice_imports:invoices.rows};
@@ -525,11 +532,326 @@ async function routes(fastify) {
           [price,total,supName,supId,delDays,importId||null,itemId,catId]);
         applied++; totalSum+=total;
       }
-      if(importId) await client.query('UPDATE procurement_invoice_imports SET matched_count=$1,total_sum=$2 WHERE id=$3',[applied,totalSum,importId]);
+      if(importId) await client.query(`UPDATE procurement_invoice_imports SET matched_count=$1,total_sum=$2,
+        approval_status=CASE WHEN approval_status IN ('awaiting_pm','pm_approved','awaiting_dir','dir_approved','paid') THEN approval_status ELSE 'draft' END
+        WHERE id=$3`,[applied,totalSum,importId]);
       await recalcTotal(client,id);
       await logHistory(client,id,req.user.id,'invoice_applied',null,null,`Счёт${supName?' '+supName:''}: цены проставлены (${applied} поз.)`,null);
+      // Авто-обогащение каталога / базы цен при apply (не ждать deliver)
+      try {
+        const { enrichCatalogFromLines } = require('../services/catalog-from-invoice');
+        const itemIds = rows.map(r => parseInt(r.item_id)).filter(n => !isNaN(n));
+        let enrichLines = [];
+        if (itemIds.length) {
+          const its = await client.query(
+            `SELECT id, name, article, unit, unit_price FROM procurement_items WHERE id = ANY($1::int[]) AND procurement_id=$2`,
+            [itemIds, id]
+          );
+          enrichLines = its.rows.map(it => ({
+            item_id: it.id,
+            name: it.name,
+            article: it.article,
+            unit: it.unit,
+            unit_price: parseFloat(it.unit_price)
+          })).filter(x => x.name && x.unit_price > 0);
+        }
+        await enrichCatalogFromLines(client, {
+          lines: enrichLines,
+          supplierId: supId,
+          supplierName: supName,
+          userId: req.user.id,
+          source: 'procurement'
+        });
+      } catch (enrErr) {
+        fastify.log.warn('[procurement] catalog enrich on apply: ' + enrErr.message);
+      }
       await client.query('COMMIT');
       return { success:true, applied, total_sum:totalSum };
+    }catch(e){await client.query('ROLLBACK');throw e;}finally{client.release();}
+  });
+
+  // POST /:id/invoice/manual-attach — ручная привязка файла счёта к позиции (без парсинга)
+  fastify.post('/:id/invoice/manual-attach', {preHandler:[fastify.requireRoles([...PROC_ROLES,...PM_ROLES])]}, async(req,reply)=>{
+    const id=parseInt(req.params.id); if(isNaN(id)) return reply.code(400).send({error:'Неверный ID'});
+    const ck=await checkNotLocked(db,id); if(ck.error) return reply.code(ck.code).send({error:ck.error});
+    const b=req.body||{};
+    const itemId=parseInt(b.item_id); const docId=parseInt(b.document_id);
+    if(isNaN(itemId)||isNaN(docId)) return reply.code(400).send({error:'item_id и document_id обязательны'});
+    const it=(await db.query(
+      `SELECT id,quantity,unit_price,total_price,supplier FROM procurement_items
+       WHERE id=$1 AND procurement_id=$2 AND parent_item_id IS NULL`,[itemId,id])).rows[0];
+    if(!it) return reply.code(404).send({error:'Позиция не найдена'});
+    const client=await db.pool.connect();
+    try{
+      await client.query('BEGIN');
+      const ins=await client.query(
+        `INSERT INTO procurement_invoice_imports(procurement_id,supplier_name,file_path,file_name,parsed_json,matched_count,total_sum,created_by,approval_status)
+         VALUES($1,$2,$3,$4,$5,1,$6,$7,'draft') RETURNING id`,
+        [id, b.supplier_name||it.supplier||null, b.file_path||null, b.file_name||null,
+          JSON.stringify([{manual:true,item_id:itemId}]), it.total_price||null, req.user.id]);
+      const importId=ins.rows[0].id;
+      await client.query(
+        `UPDATE procurement_items SET invoice_doc_id=$1, invoice_import_id=$2, updated_at=NOW() WHERE id=$3`,
+        [docId, importId, itemId]);
+      await logHistory(client,id,req.user.id,'invoice_manual',null,null,`Ручная привязка счёта к позиции #${itemId}`,{import_id:importId,item_id:itemId});
+      await client.query('COMMIT');
+      return {success:true, import_id:importId};
+    }catch(e){await client.query('ROLLBACK');throw e;}finally{client.release();}
+  });
+
+  // ── Волны согласования по счёту (частичная отправка без ожидания всех позиций) ──
+  const INV_STAT = {
+    draft:'Черновик', awaiting_pm:'На согласовании РП', pm_approved:'РП согласовал',
+    pm_returned:'Возврат закупщику', awaiting_dir:'На оплату (директор)', dir_approved:'К оплате', paid:'Оплачен'
+  };
+  async function loadInvoiceWave(dbOrClient, procId, importId) {
+    const imp=(await dbOrClient.query(
+      'SELECT * FROM procurement_invoice_imports WHERE id=$1 AND procurement_id=$2',[importId,procId])).rows[0];
+    if(!imp) return null;
+    const linked=(await dbOrClient.query(
+      `SELECT id,name,quantity,unit_price,total_price,item_status FROM procurement_items
+       WHERE procurement_id=$1 AND invoice_import_id=$2 AND COALESCE(item_status,'pending')<>'cancelled' ORDER BY id`,
+      [procId,importId])).rows;
+    return {imp, linked};
+  }
+  async function maybeFlipRequestAfterInvoice(client, procId, actorId) {
+    const st=(await client.query('SELECT status FROM procurement_requests WHERE id=$1',[procId])).rows[0];
+    if(!st) return;
+    const waves=(await client.query(
+      `SELECT approval_status, COUNT(*)::int n FROM procurement_invoice_imports WHERE procurement_id=$1 GROUP BY approval_status`,
+      [procId])).rows;
+    const n = (s) => (waves.find(w => w.approval_status === s)?.n) || 0;
+    const awaitingPm = n('awaiting_pm');
+    const awaitingDir = n('awaiting_dir');
+    const anyActive = awaitingPm + awaitingDir + n('pm_approved') + n('dir_approved') + n('paid');
+    // Есть счета на РП → заявка видна РП
+    if(awaitingPm > 0 && ['sent_to_proc','draft'].includes(st.status)) {
+      await client.query(`UPDATE procurement_requests SET status='proc_responded', updated_at=NOW() WHERE id=$1`,[procId]);
+      await logHistory(client,procId,actorId,'status_change',st.status,'proc_responded','Авто: есть счёт(а) на согласовании РП',null);
+      return;
+    }
+    // Нет awaiting_pm, но есть на оплату → РП уже согласовал волну
+    if(awaitingPm === 0 && awaitingDir > 0 && ['sent_to_proc','proc_responded'].includes(st.status)) {
+      await client.query(`UPDATE procurement_requests SET status='pm_approved', pm_approved_at=COALESCE(pm_approved_at,NOW()), updated_at=NOW() WHERE id=$1`,[procId]);
+      await logHistory(client,procId,actorId,'status_change',st.status,'pm_approved','Авто: счёт(а) ушли на согласование оплаты',null);
+      return;
+    }
+    // Всё оплачено по счетам + нет «голых» позиций без счёта → paid
+    const uncovered=(await client.query(
+      `SELECT COUNT(*)::int n FROM procurement_items
+       WHERE procurement_id=$1 AND parent_item_id IS NULL AND COALESCE(item_status,'pending')<>'cancelled'
+         AND invoice_import_id IS NULL`,[procId])).rows[0].n;
+    const unpaidWaves=(await client.query(
+      `SELECT COUNT(*)::int n FROM procurement_invoice_imports
+       WHERE procurement_id=$1 AND approval_status <> 'paid'`,[procId])).rows[0].n;
+    if(anyActive > 0 && uncovered === 0 && unpaidWaves === 0 && st.status !== 'paid' && !['delivered','closed','partially_delivered'].includes(st.status)) {
+      await client.query(`UPDATE procurement_requests SET status='paid', paid_at=COALESCE(paid_at,NOW()), updated_at=NOW() WHERE id=$1`,[procId]);
+      await logHistory(client,procId,actorId,'status_change',st.status,'paid','Авто: все счета оплачены',null);
+    }
+  }
+
+  // PUT /:id/invoice/:importId/send-to-pm — закупщик отправил счёт (часть заявки) РП
+  fastify.put('/:id/invoice/:importId/send-to-pm', {preHandler:[fastify.requireRoles(PROC_ROLES)]}, async(req,reply)=>{
+    const id=parseInt(req.params.id), importId=parseInt(req.params.importId);
+    if(isNaN(id)||isNaN(importId)) return reply.code(400).send({error:'Неверный ID'});
+    const pack=await loadInvoiceWave(db,id,importId);
+    if(!pack) return reply.code(404).send({error:'Счёт не найден'});
+    const {imp, linked}=pack;
+    if(!['draft','pm_returned'].includes(imp.approval_status||'draft'))
+      return reply.code(400).send({error:`Счёт в статусе «${INV_STAT[imp.approval_status]||imp.approval_status}» — нельзя отправить РП`});
+    if(!linked.length) return reply.code(400).send({error:'К счёту не привязаны позиции — примените парсинг или прикрепите вручную'});
+    const unpriced=linked.filter(x=>!(Number(x.unit_price)>0));
+    if(unpriced.length) return reply.code(400).send({error:`У ${unpriced.length} поз. нет цены — заполните перед отправкой РП`});
+    const client=await db.pool.connect();
+    try{
+      await client.query('BEGIN');
+      await client.query(`UPDATE procurement_invoice_imports SET approval_status='awaiting_pm', sent_to_pm_at=NOW(), pm_comment=NULL WHERE id=$1`,[importId]);
+      await logHistory(client,id,req.user.id,'invoice_send_pm',imp.approval_status,'awaiting_pm',
+        `Счёт #${importId}${imp.supplier_name?' ('+imp.supplier_name+')':''}: ${linked.length} поз., ${imp.total_sum||0} ₽ → РП`, {import_id:importId});
+      await maybeFlipRequestAfterInvoice(client,id,req.user.id);
+      const proc=(await client.query('SELECT * FROM procurement_requests WHERE id=$1',[id])).rows[0];
+      await client.query('COMMIT');
+      if(proc?.pm_id) createNotification(db,{user_id:proc.pm_id,title:`🧾 Счёт по заявке #${id}`,
+        message:`Закупщик отправил счёт${imp.supplier_name?' «'+imp.supplier_name+'»':''}: ${linked.length} поз. на согласование`,type:'procurement',link:`#/procurement?id=${id}`});
+      return {success:true, approval_status:'awaiting_pm', linked_count:linked.length};
+    }catch(e){await client.query('ROLLBACK');throw e;}finally{client.release();}
+  });
+
+  // PUT /:id/invoice/:importId/pm-approve — РП согласовал этот счёт
+  fastify.put('/:id/invoice/:importId/pm-approve', {preHandler:[fastify.requireRoles([...PM_ROLES,...DIR_ROLES])]}, async(req,reply)=>{
+    const id=parseInt(req.params.id), importId=parseInt(req.params.importId);
+    if(isNaN(id)||isNaN(importId)) return reply.code(400).send({error:'Неверный ID'});
+    const pack=await loadInvoiceWave(db,id,importId);
+    if(!pack) return reply.code(404).send({error:'Счёт не найден'});
+    if(pack.imp.approval_status!=='awaiting_pm') return reply.code(400).send({error:'Счёт не на согласовании РП'});
+    const comment=(req.body&&req.body.comment)||null;
+    const client=await db.pool.connect();
+    try{
+      await client.query('BEGIN');
+      await client.query(`UPDATE procurement_invoice_imports SET approval_status='pm_approved', pm_approved_at=NOW(), pm_comment=$2 WHERE id=$1`,[importId,comment]);
+      await logHistory(client,id,req.user.id,'invoice_pm_approve','awaiting_pm','pm_approved',
+        `РП согласовал счёт #${importId}${comment?': '+comment:''}`,{import_id:importId});
+      await client.query('COMMIT');
+      const proc=(await db.query('SELECT * FROM procurement_requests WHERE id=$1',[id])).rows[0];
+      if(proc?.proc_id) createNotification(db,{user_id:proc.proc_id,title:`✅ РП согласовал счёт #${importId}`,
+        message:`Заявка #${id}: можно отправлять на оплату`,type:'procurement',link:`#/procurement?id=${id}`});
+      return {success:true, approval_status:'pm_approved'};
+    }catch(e){await client.query('ROLLBACK');throw e;}finally{client.release();}
+  });
+
+  // PUT /:id/invoice/:importId/pm-return — РП вернул счёт закупщику
+  fastify.put('/:id/invoice/:importId/pm-return', {preHandler:[fastify.requireRoles([...PM_ROLES,...DIR_ROLES])]}, async(req,reply)=>{
+    const id=parseInt(req.params.id), importId=parseInt(req.params.importId);
+    if(isNaN(id)||isNaN(importId)) return reply.code(400).send({error:'Неверный ID'});
+    const pack=await loadInvoiceWave(db,id,importId);
+    if(!pack) return reply.code(404).send({error:'Счёт не найден'});
+    if(pack.imp.approval_status!=='awaiting_pm') return reply.code(400).send({error:'Счёт не на согласовании РП'});
+    const comment=(req.body&&req.body.comment)||'';
+    const client=await db.pool.connect();
+    try{
+      await client.query('BEGIN');
+      await client.query(`UPDATE procurement_invoice_imports SET approval_status='pm_returned', pm_comment=$2 WHERE id=$1`,[importId,comment||null]);
+      await logHistory(client,id,req.user.id,'invoice_pm_return','awaiting_pm','pm_returned',
+        `РП вернул счёт #${importId}${comment?': '+comment:''}`,{import_id:importId});
+      // Если больше нет счетов awaiting_pm — вернём заявку закупщику
+      const left=(await client.query(
+        `SELECT COUNT(*)::int n FROM procurement_invoice_imports WHERE procurement_id=$1 AND approval_status='awaiting_pm'`,[id])).rows[0].n;
+      const st=(await client.query('SELECT status FROM procurement_requests WHERE id=$1',[id])).rows[0];
+      if(left===0 && st && st.status==='proc_responded'){
+        await client.query(`UPDATE procurement_requests SET status='sent_to_proc', updated_at=NOW() WHERE id=$1`,[id]);
+        await logHistory(client,id,req.user.id,'status_change','proc_responded','sent_to_proc','Авто: счета возвращены закупщику',null);
+      }
+      await client.query('COMMIT');
+      const proc=(await db.query('SELECT * FROM procurement_requests WHERE id=$1',[id])).rows[0];
+      if(proc?.proc_id) createNotification(db,{user_id:proc.proc_id,title:`↩ РП вернул счёт #${importId}`,
+        message:comment||`Заявка #${id}`,type:'procurement',link:`#/procurement?id=${id}`});
+      return {success:true, approval_status:'pm_returned'};
+    }catch(e){await client.query('ROLLBACK');throw e;}finally{client.release();}
+  });
+
+  // PUT /:id/invoice/:importId/send-to-dir — «На оплату» → payment_invoices + email DIR
+  fastify.put('/:id/invoice/:importId/send-to-dir', {preHandler:[fastify.requireRoles(PROC_ROLES)]}, async(req,reply)=>{
+    const id=parseInt(req.params.id), importId=parseInt(req.params.importId);
+    if(isNaN(id)||isNaN(importId)) return reply.code(400).send({error:'Неверный ID'});
+    const pack=await loadInvoiceWave(db,id,importId);
+    if(!pack) return reply.code(404).send({error:'Счёт не найден'});
+    if(pack.imp.approval_status!=='pm_approved')
+      return reply.code(400).send({error:'Сначала нужно согласование РП по этому счёту'});
+    const paymentInvoices = require('./payment-invoices');
+    const paymentMail = require('../services/payment-mail');
+    const client=await db.pool.connect();
+    try{
+      await client.query('BEGIN');
+      const pay = await paymentInvoices.createFromProcurementWave(client, {
+        procurementId: id, importId, actorId: req.user.id
+      });
+      // createFromProcurementWave uses db.query — need pool-compatible. Re-run on client if needed.
+      await client.query(`UPDATE procurement_invoice_imports SET approval_status='awaiting_dir', sent_to_dir_at=NOW() WHERE id=$1`,[importId]);
+      await logHistory(client,id,req.user.id,'invoice_send_dir','pm_approved','awaiting_dir',
+        `Счёт #${importId} → payment_invoices #${pay.id}`,{import_id:importId, payment_id:pay.id});
+      await maybeFlipRequestAfterInvoice(client,id,req.user.id);
+      await client.query('COMMIT');
+      const mail = await paymentMail.sendDirectorMail(db, pay.id);
+      const dirs=await db.query("SELECT id FROM users WHERE role IN('DIRECTOR_GEN','DIRECTOR_COMM','DIRECTOR_DEV') AND is_active=true");
+      for(const d of dirs.rows) createNotification(db,{user_id:d.id,title:`💰 Счёт на оплату #${pay.id}`,
+        message:`Заявка #${id}: ${pay.amount||0} ₽${pack.imp.supplier_name?' · '+pack.imp.supplier_name:''}`,type:'payment',link:`#/payment-invoices?id=${pay.id}`});
+      return {success:true, approval_status:'awaiting_dir', payment_invoice_id: pay.id, mail};
+    }catch(e){await client.query('ROLLBACK');throw e;}finally{client.release();}
+  });
+
+  // PUT /:id/invoices/send-to-dir-bulk — группа «На оплату» → одно письмо со всеми PDF
+  fastify.put('/:id/invoices/send-to-dir-bulk', {preHandler:[fastify.requireRoles(PROC_ROLES)]}, async(req,reply)=>{
+    const id=parseInt(req.params.id);
+    const importIds=[...new Set((req.body?.import_ids||[]).map(Number).filter(n=>n>0))];
+    if(isNaN(id)||!importIds.length) return reply.code(400).send({error:'Нужны import_ids'});
+    const paymentInvoices = require('./payment-invoices');
+    const paymentMail = require('../services/payment-mail');
+    const payIds=[];
+    const client=await db.pool.connect();
+    try{
+      await client.query('BEGIN');
+      for(const importId of importIds){
+        const pack=await loadInvoiceWave(db,id,importId);
+        if(!pack) throw Object.assign(new Error('Счёт #'+importId+' не найден'),{statusCode:404});
+        if(pack.imp.approval_status!=='pm_approved')
+          throw Object.assign(new Error('Счёт #'+importId+': нужно согласование РП'),{statusCode:400});
+        if(!pack.imp.file_path && !pack.imp.file_name)
+          throw Object.assign(new Error('Счёт #'+importId+': сначала загрузите файл'),{statusCode:400});
+        const pay = await paymentInvoices.createFromProcurementWave(client, {
+          procurementId: id, importId, actorId: req.user.id
+        });
+        await client.query(`UPDATE procurement_invoice_imports SET approval_status='awaiting_dir', sent_to_dir_at=NOW() WHERE id=$1`,[importId]);
+        await logHistory(client,id,req.user.id,'invoice_send_dir','pm_approved','awaiting_dir',
+          `Счёт #${importId} → payment_invoices #${pay.id} (группа)`,{import_id:importId, payment_id:pay.id});
+        payIds.push(pay.id);
+      }
+      await maybeFlipRequestAfterInvoice(client,id,req.user.id);
+      await client.query('COMMIT');
+    }catch(e){
+      await client.query('ROLLBACK');
+      if(e.statusCode) return reply.code(e.statusCode).send({error:e.message});
+      throw e;
+    }finally{client.release();}
+
+    const mail = await paymentMail.sendDirectorMailBatch(db, payIds);
+    const dirs=await db.query("SELECT id FROM users WHERE role IN('DIRECTOR_GEN','DIRECTOR_COMM','DIRECTOR_DEV') AND is_active=true");
+    for(const d of dirs.rows) createNotification(db,{user_id:d.id,title:`💰 Группа счетов (${payIds.length}) на оплату`,
+      message:`Заявка #${id}: ${payIds.length} сч.`,type:'payment',link:`#/payment-invoices`});
+    return {success:true, approval_status:'awaiting_dir', payment_invoice_ids: payIds, mail};
+  });
+
+  // PUT /:id/invoice/:importId/dir-approve — директор одобрил оплату по счёту
+  fastify.put('/:id/invoice/:importId/dir-approve', {preHandler:[fastify.requireRoles(DIR_ROLES)]}, async(req,reply)=>{
+    const id=parseInt(req.params.id), importId=parseInt(req.params.importId);
+    if(isNaN(id)||isNaN(importId)) return reply.code(400).send({error:'Неверный ID'});
+    const pack=await loadInvoiceWave(db,id,importId);
+    if(!pack) return reply.code(404).send({error:'Счёт не найден'});
+    if(pack.imp.approval_status!=='awaiting_dir') return reply.code(400).send({error:'Счёт не на согласовании оплаты'});
+    const client=await db.pool.connect();
+    try{
+      await client.query('BEGIN');
+      await client.query(`UPDATE procurement_invoice_imports SET approval_status='dir_approved', dir_approved_at=NOW() WHERE id=$1`,[importId]);
+      await logHistory(client,id,req.user.id,'invoice_dir_approve','awaiting_dir','dir_approved',
+        `Директор одобрил счёт #${importId}`,{import_id:importId});
+      // Не блокируем всю заявку — только если не осталось открытых волн/позиций без оплаты
+      const openWaves=(await client.query(
+        `SELECT COUNT(*)::int n FROM procurement_invoice_imports
+         WHERE procurement_id=$1 AND approval_status IN ('draft','pm_returned','awaiting_pm','pm_approved','awaiting_dir')`,[id])).rows[0].n;
+      const uncovered=(await client.query(
+        `SELECT COUNT(*)::int n FROM procurement_items
+         WHERE procurement_id=$1 AND parent_item_id IS NULL AND COALESCE(item_status,'pending')<>'cancelled'
+           AND invoice_import_id IS NULL`,[id])).rows[0].n;
+      if(openWaves===0 && uncovered===0){
+        await client.query(`UPDATE procurement_requests SET status='dir_approved', locked=true, dir_approved_at=NOW(), dir_approved_by=$2, updated_at=NOW() WHERE id=$1`,[id,req.user.id]);
+      } else if(['sent_to_proc','proc_responded','pm_approved'].includes(
+        (await client.query('SELECT status FROM procurement_requests WHERE id=$1',[id])).rows[0]?.status)) {
+        // оставляем заявку живой для остальных счетов; для канбана DIR — pm_approved уже выставлен send-to-dir
+      }
+      await client.query('COMMIT');
+      const buhs=await db.query("SELECT id FROM users WHERE role='BUH' AND is_active=true");
+      for(const b of buhs.rows) createNotification(db,{user_id:b.id,title:`💰 Счёт #${importId} к оплате`,
+        message:`Заявка #${id}: ${pack.imp.total_sum||0} ₽`,type:'procurement',link:`#/procurement?id=${id}`});
+      return {success:true, approval_status:'dir_approved'};
+    }catch(e){await client.query('ROLLBACK');throw e;}finally{client.release();}
+  });
+
+  // PUT /:id/invoice/:importId/mark-paid — бух отметил счёт оплаченным
+  fastify.put('/:id/invoice/:importId/mark-paid', {preHandler:[fastify.requireRoles(BUH_ROLES)]}, async(req,reply)=>{
+    const id=parseInt(req.params.id), importId=parseInt(req.params.importId);
+    if(isNaN(id)||isNaN(importId)) return reply.code(400).send({error:'Неверный ID'});
+    const pack=await loadInvoiceWave(db,id,importId);
+    if(!pack) return reply.code(404).send({error:'Счёт не найден'});
+    if(pack.imp.approval_status!=='dir_approved') return reply.code(400).send({error:'Счёт ещё не одобрен директором'});
+    const client=await db.pool.connect();
+    try{
+      await client.query('BEGIN');
+      await client.query(`UPDATE procurement_invoice_imports SET approval_status='paid', paid_at=NOW() WHERE id=$1`,[importId]);
+      await client.query(`UPDATE procurement_items SET item_status='ordered', updated_at=NOW()
+        WHERE procurement_id=$1 AND invoice_import_id=$2 AND COALESCE(item_status,'pending')='pending'`,[id,importId]);
+      await logHistory(client,id,req.user.id,'invoice_paid','dir_approved','paid',`Счёт #${importId} оплачен`,{import_id:importId});
+      await maybeFlipRequestAfterInvoice(client,id,req.user.id);
+      await client.query('COMMIT');
+      return {success:true, approval_status:'paid'};
     }catch(e){await client.query('ROLLBACK');throw e;}finally{client.release();}
   });
 
@@ -785,14 +1107,19 @@ async function routes(fastify) {
       await client.query(`UPDATE procurement_items SET item_status='delivered',received_by=$1,received_at=NOW(),actual_delivery=CURRENT_DATE,updated_at=NOW() WHERE id=$2`,[user.id,itemId]);
       // Авто-запись в базу цен: фиксируем фактическую закупочную цену для подсказок/анализа
       if(item.unit_price&&parseFloat(item.unit_price)>0){
+        await client.query('SAVEPOINT sp_price');
         try{
           let supName=item.supplier||null;
           if(item.supplier_id&&!supName){const s=await client.query('SELECT name FROM suppliers WHERE id=$1',[item.supplier_id]);supName=s.rows[0]?.name||null;}
           await client.query(`INSERT INTO price_records(product_id,product_category_id,item_name,article,unit,supplier_id,supplier_name,unit_price,source,procurement_item_id,recorded_by)
             VALUES($1,$2,$3,$4,$5,$6,$7,$8,'procurement',$9,$10)`,
             [item.product_id||null,item.product_category_id||null,item.name,item.article||null,item.unit||'шт',
-             item.supplier_id||null,supName,parseFloat(item.unit_price),itemId,pc.row.proc_id||user.id]);
-        }catch(prErr){fastify.log.warn('[procurement] price_record insert failed: '+prErr.message);}
+             item.supplier_id||null,supName,parseFloat(item.unit_price),itemId,user.id]);
+          await client.query('RELEASE SAVEPOINT sp_price');
+        }catch(prErr){
+          await client.query('ROLLBACK TO SAVEPOINT sp_price').catch(()=>{});
+          fastify.log.warn('[procurement] price_record insert failed: '+prErr.message);
+        }
       }
       if(item.delivery_target==='warehouse'){
         const wh=await client.query("SELECT id FROM warehouses WHERE is_main=true LIMIT 1");
@@ -802,8 +1129,13 @@ async function routes(fastify) {
         // W2: учитываем is_consumable только у НЕудалённого каталога.
         let isConsumable=false, validProduct=false;
         if(item.product_id){
+          await client.query('SAVEPOINT sp_prod');
           try{const pr=await client.query('SELECT is_consumable FROM products WHERE id=$1 AND deleted_at IS NULL',[item.product_id]);
-            if(pr.rows[0]){validProduct=true;isConsumable=!!pr.rows[0].is_consumable;}}catch(_){}
+            if(pr.rows[0]){validProduct=true;isConsumable=!!pr.rows[0].is_consumable;}
+            await client.query('RELEASE SAVEPOINT sp_prod');
+          }catch(_){
+            await client.query('ROLLBACK TO SAVEPOINT sp_prod').catch(()=>{});
+          }
         }
         const qty=parseFloat(item.quantity)||0;
         // Раскладка по ячейкам: кладовщик может указать ячейку приёмки (location_id).
@@ -825,7 +1157,7 @@ async function routes(fastify) {
             [item.product_id,whId,locId,qty,item.unit||'шт',procId,'Приёмка из закупки #'+procId,user.id]);
         }else{
           const qr=randomUUID();
-          const invNum='INV-'+Date.now().toString(36).toUpperCase();
+          const invNum='INV-'+Date.now().toString(36).toUpperCase()+'-'+itemId;
           const eq=await client.query(`INSERT INTO equipment(name,inventory_number,category_id,quantity,unit,purchase_price,status,warehouse_id,location_id,qr_uuid,qr_code,product_id,notes)
             VALUES($1,$2,NULL,$3,$4,$5,'on_warehouse',$6,$7,$8,$9,$10,$11) RETURNING id`,
             [item.name,invNum,item.quantity,item.unit,item.unit_price,whId,locId,qr,qr,item.product_id||null,'Из закупки #'+procId]);
@@ -834,9 +1166,16 @@ async function routes(fastify) {
             [eq.rows[0].id,whId,'Приёмка из закупки #'+procId,user.id]);
           // Автобронь — только если работа ещё активна (не закрыта/не завершена).
           if(pc.row.work_id){
-            const wa=await client.query('SELECT 1 FROM works WHERE id=$1 AND closed_at IS NULL AND completed_at IS NULL',[pc.row.work_id]);
-            if(wa.rows[0]) await client.query(`INSERT INTO equipment_reservations(equipment_id,work_id,reserved_by,reserved_from,reserved_to,status,notes)
-              VALUES($1,$2,$3,CURRENT_DATE,CURRENT_DATE+INTERVAL '30 days','active',$4)`,[eq.rows[0].id,pc.row.work_id,pc.row.pm_id||user.id,'Автобронь #'+procId]);
+            await client.query('SAVEPOINT sp_rsv');
+            try{
+              const wa=await client.query('SELECT 1 FROM works WHERE id=$1 AND closed_at IS NULL AND completed_at IS NULL',[pc.row.work_id]);
+              if(wa.rows[0]) await client.query(`INSERT INTO equipment_reservations(equipment_id,work_id,reserved_by,reserved_from,reserved_to,status,notes)
+                VALUES($1,$2,$3,CURRENT_DATE,CURRENT_DATE+INTERVAL '30 days','active',$4)`,[eq.rows[0].id,pc.row.work_id,pc.row.pm_id||user.id,'Автобронь #'+procId]);
+              await client.query('RELEASE SAVEPOINT sp_rsv');
+            }catch(rsvErr){
+              await client.query('ROLLBACK TO SAVEPOINT sp_rsv').catch(()=>{});
+              fastify.log.warn('[procurement] auto-reserve failed: '+rsvErr.message);
+            }
           }
         }
       }
@@ -847,11 +1186,43 @@ async function routes(fastify) {
       if(dCnt+cCnt>=all.rows.length) ns='delivered'; else if(dCnt>0) ns='partially_delivered';
       if(ns) await client.query(`UPDATE procurement_requests SET status=$1,delivered_at=CASE WHEN $1='delivered' THEN NOW() ELSE delivered_at END,updated_at=NOW() WHERE id=$2`,[ns,procId]);
       await logHistory(client,procId,user.id,'item_delivered',null,null,`Принято: ${item.name}`,{item_id:itemId});
-      if(pc.row.pm_id&&pc.row.pm_id!==user.id) createNotification(db,{user_id:pc.row.pm_id,title:`📦 Принято`,message:`${item.name} (${item.quantity} ${item.unit}) #${procId}`,type:'procurement',link:`#/procurement?id=${procId}`});
+      // На стеллаж — НЕ авто-перевод в pick; awaiting_procurement → on_shelf до явной комплектации
+      if(item.delivery_target==='warehouse' && pc.row.work_id){
+        await client.query('SAVEPOINT sp_asm');
+        try{
+          await client.query(
+            `UPDATE assembly_items ai SET line_status=CASE
+               WHEN ai.line_status='awaiting_procurement' THEN 'on_shelf'
+               ELSE ai.line_status END
+             FROM assembly_orders ao
+             WHERE ai.assembly_id=ao.id AND ao.work_id=$1
+               AND ai.line_status='awaiting_procurement'
+               AND (
+                 (ai.product_id IS NOT NULL AND $2::int IS NOT NULL AND ai.product_id=$2)
+                 OR lower(ai.name)=lower($3)
+               )`,
+            [pc.row.work_id, item.product_id||null, item.name]
+          );
+          await client.query('RELEASE SAVEPOINT sp_asm');
+        }catch(_){
+          await client.query('ROLLBACK TO SAVEPOINT sp_asm').catch(()=>{});
+        }
+        const whs=await client.query("SELECT id FROM users WHERE role='WAREHOUSE' AND is_active=true");
+        for(const w of whs.rows){
+          if(w.id!==user.id) createNotification(db,{user_id:w.id,title:'📦 На стеллаже',
+            message:`${item.name} из закупки #${procId} — на складе, ждать комплектацию`,type:'warehouse',
+            link:`#/warehouse-v2?tab=assemblies`});
+        }
+      }
+      if(pc.row.pm_id&&pc.row.pm_id!==user.id) createNotification(db,{user_id:pc.row.pm_id,title:`📦 Принято на стеллаж`,message:`${item.name} (${item.quantity} ${item.unit}) #${procId}`,type:'procurement',link:`#/procurement?id=${procId}`});
       await client.query('COMMIT');
       const upd=await db.query('SELECT * FROM procurement_items WHERE id=$1',[itemId]);
       return{item:upd.rows[0]};
-    }catch(e){await client.query('ROLLBACK');throw e;}finally{client.release();}
+    }catch(e){
+      await client.query('ROLLBACK');
+      fastify.log.error({ err: e, procId, itemId }, '[procurement] deliver failed');
+      return reply.code(500).send({ error: e.message || 'Ошибка приёмки', code: e.code || null });
+    }finally{client.release();}
   });
 
   // ═══ ОТМЕНА ПОЗИЦИИ (V258 / план #06-item-cancel) ═══

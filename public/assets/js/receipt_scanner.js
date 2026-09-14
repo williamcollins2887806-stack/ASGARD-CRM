@@ -712,7 +712,7 @@ window.AsgardReceiptScanner = (function(){
 
   // Helpers
   function esc(s) { return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
-  function formatMoney(n) { return AsgardUI.money(n) + ' ₽'; }
+  function formatMoney(n) { return (AsgardUI.moneyRub || AsgardMoney.formatMoney)(n); }
 
   return {
     openScanner,

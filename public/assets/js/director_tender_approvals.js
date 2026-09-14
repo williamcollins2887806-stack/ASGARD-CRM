@@ -1,8 +1,8 @@
 /**
- * Director tender approvals — очередь согласования просчётов РП >5 млн без НДС
+ * Director tender approvals — очередь согласования просчётов РП ≥10 млн без НДС
  */
 window.AsgardDirectorTenderApprovalsPage = (function () {
-  const API = window.AsgardRegistryAPI;
+  const API = window.AsgardRegistryApi;
   const DIRECTOR_ROLES = ['DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV', 'ADMIN'];
 
   function esc(s) {
@@ -10,10 +10,7 @@ window.AsgardDirectorTenderApprovalsPage = (function () {
   }
 
   function fmtMoney(v) {
-    if (v == null || v === '') return '—';
-    const n = Number(v);
-    if (!Number.isFinite(n)) return String(v);
-    return n.toLocaleString('ru-RU', { maximumFractionDigits: 0 }) + ' ₽';
+    return (AsgardUI.moneyRub || AsgardMoney.formatMoney)(v);
   }
 
   function fmtDate(v) {
@@ -30,7 +27,6 @@ window.AsgardDirectorTenderApprovalsPage = (function () {
   }
 
   function openDetail(row) {
-    if (!window.AsgardRpReviewModal) return;
     if (API.markDirectorReviewSeen) {
       API.markDirectorReviewSeen(row.id).catch(function () {});
       row.director_unread = false;
@@ -47,6 +43,17 @@ window.AsgardDirectorTenderApprovalsPage = (function () {
     const extra = {};
     const hash = location.hash || '';
     if (hash.includes('tab=chat')) extra.initialTab = 'thread';
+    // Решение директора — в RpReviewModal (бар Подавать/Не подавать);
+    // смету смотрим в calc-модалке, если открыли без tab=chat.
+    if (!extra.initialTab && window.AsgardRpCalcModal) {
+      AsgardRpCalcModal.open(tender, [], refresh, Object.assign({
+        role: 'viewer',
+        readOnly: true,
+        mode: 'calc'
+      }, extra));
+      return;
+    }
+    if (!window.AsgardRpReviewModal) return;
     AsgardRpReviewModal.open(tender, [], refresh, Object.assign({
       role: 'director',
       readOnly: true,
@@ -92,18 +99,25 @@ window.AsgardDirectorTenderApprovalsPage = (function () {
     });
   }
 
+  function setRoot(html) {
+    const root = document.getElementById('dirTenderApprovalsRoot');
+    if (root) root.innerHTML = html;
+  }
+
   function refresh() {
-    if (!API?.loadDirectorReviewQueue) return Promise.resolve();
-    return API.loadDirectorReviewQueue().then((d) => {
+    const api = window.AsgardRegistryApi || API;
+    if (!api?.loadDirectorReviewQueue) {
+      setRoot('<div class="card" style="padding:24px"><p class="muted">API реестра не загружен. Обновите страницу (Ctrl+F5).</p></div>');
+      return Promise.resolve();
+    }
+    return api.loadDirectorReviewQueue().then((d) => {
       items = d.items || [];
-      const root = document.getElementById('dirTenderApprovalsRoot');
-      if (root) {
-        root.innerHTML = renderTable();
-        bindTable();
-      }
+      setRoot(renderTable());
+      bindTable();
       const badge = document.getElementById('dirTenderCount');
       if (badge) badge.textContent = String(items.length);
     }).catch((e) => {
+      setRoot('<div class="card" style="padding:24px"><p style="color:var(--danger)">' + esc(e.message || 'Ошибка загрузки') + '</p></div>');
       if (window.toast) toast(e.message, 'err');
     });
   }
@@ -118,23 +132,31 @@ window.AsgardDirectorTenderApprovalsPage = (function () {
     if (row) openDetail(row);
   }
 
-  function render(ctx) {
-    layoutRef = ctx.layout;
+  async function render({ layout, title } = {}) {
+    layoutRef = layout;
     const role = currentRole();
-    if (!DIRECTOR_ROLES.includes(role)) {
-      ctx.layout.setContent('<div class="card"><p>Доступ только для директоров</p></div>');
-      return;
+    const body = !DIRECTOR_ROLES.includes(role)
+      ? '<div class="card"><p>Доступ только для директоров</p></div>'
+      : (
+        '<div class="page-head" style="margin-bottom:16px">' +
+        '<h1 style="margin:0">Согласование тендеров</h1>' +
+        '<p class="muted" style="margin:6px 0 0">Просчёты РП от 10 млн ₽ без НДС · <span id="dirTenderCount">…</span> в очереди</p>' +
+        '<button type="button" class="btn mini ghost" id="dirTenderRefresh" style="margin-top:8px">Обновить</button>' +
+        '</div>' +
+        '<div id="dirTenderApprovalsRoot"><p class="muted">Загрузка…</p></div>'
+      );
+    if (typeof layout === 'function') {
+      await layout(body, { title: title || 'Согласование тендеров' });
+    } else if (layout && typeof layout.setContent === 'function') {
+      layout.setContent(body);
+    } else {
+      const root = document.getElementById('content') || document.querySelector('main') || document.body;
+      root.innerHTML = body;
     }
-    ctx.layout.setContent(
-      '<div class="page-head" style="margin-bottom:16px">' +
-      '<h1 style="margin:0">Согласование тендеров</h1>' +
-      '<p class="muted" style="margin:6px 0 0">Просчёты РП свыше 5 млн ₽ без НДС · <span id="dirTenderCount">…</span> в очереди</p>' +
-      '<button type="button" class="btn mini ghost" id="dirTenderRefresh" style="margin-top:8px">Обновить</button>' +
-      '</div>' +
-      '<div id="dirTenderApprovalsRoot"><p class="muted">Загрузка…</p></div>'
-    );
+    if (!DIRECTOR_ROLES.includes(role)) return;
     document.getElementById('dirTenderRefresh')?.addEventListener('click', () => refresh());
-    refresh().then(() => handleDeepLink());
+    await refresh();
+    handleDeepLink();
     window.addEventListener('asgard:tender:registry:changed', refresh);
   }
 

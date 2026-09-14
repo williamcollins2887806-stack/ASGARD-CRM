@@ -6,16 +6,24 @@
  * POST /refresh    — force-recalculate progress (triggered by client)
  */
 
-const { checkSeasonalProgress } = require('../services/seasonalChecker');
+const { checkSeasonalProgress, refreshAllActiveSeasonWorkers } = require('../services/seasonalChecker');
 
 async function routes(fastify) {
   const db = fastify.db;
   const auth = { preHandler: [fastify.fieldAuthenticate] };
+  const crmAuth = { preHandler: [fastify.authenticate] };
 
   // GET / — active challenges + worker progress
   fastify.get('/', auth, async (req) => {
     const eid = req.fieldEmployee.id;
     const now = new Date();
+
+    // Lazy recompute so profile/quests ribbon is not stuck at 0% until manual refresh
+    try {
+      await checkSeasonalProgress(db, eid);
+    } catch (err) {
+      req.log?.warn?.({ err }, 'seasonal lazy refresh failed');
+    }
 
     // Active challenges (current window)
     const { rows: challenges } = await db.query(
@@ -122,7 +130,7 @@ async function routes(fastify) {
               (SELECT COUNT(*) FROM seasonal_worker_progress WHERE employee_id=$1 AND challenge_id=sc.id AND completed=true)::int as tasks_done
        FROM seasonal_challenges sc
        LEFT JOIN seasonal_worker_completions swc ON swc.challenge_id=sc.id AND swc.employee_id=$1
-       WHERE sc.ends_at < NOW() AND sc.is_active=true
+       WHERE sc.ends_at < NOW()
          AND EXISTS (
            SELECT 1 FROM seasonal_worker_progress swp
            WHERE swp.employee_id=$1 AND swp.challenge_id=sc.id
@@ -139,6 +147,16 @@ async function routes(fastify) {
     const eid = req.fieldEmployee.id;
     await checkSeasonalProgress(db, eid);
     return { ok: true };
+  });
+
+  // POST /admin/refresh-all — office-only bulk recompute after season rollover
+  fastify.post('/admin/refresh-all', crmAuth, async (req, reply) => {
+    const role = req.user?.role || req.user?.role_tag;
+    if (!['admin', 'director', 'head', 'pm'].includes(role) && req.user?.id !== 1) {
+      return reply.code(403).send({ error: 'Forbidden' });
+    }
+    const result = await refreshAllActiveSeasonWorkers(db, { limit: 800 });
+    return { ok: true, ...result };
   });
 }
 

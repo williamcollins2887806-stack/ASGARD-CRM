@@ -42,7 +42,7 @@ window.AsgardKpiMoneyPage = (function(){
   };
 
   // === Утилиты ===
-  function money(x) { return AsgardUI.money(x) + ' ₽'; }
+  function money(x) { return (AsgardUI.moneyRub || AsgardMoney.formatMoney)(x); }
 
   function safeNumber(value){
     const n = Number(value);

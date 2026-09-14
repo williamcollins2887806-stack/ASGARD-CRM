@@ -5,7 +5,7 @@
 window.AsgardEngineerDashboard = (function(){
   const { $, $$, esc, toast } = AsgardUI;
 
-  function money(x) { return AsgardUI.money(x) + ' ₽'; }
+  function money(x) { return (AsgardUI.moneyRub || AsgardMoney.formatMoney)(x); }
 
   function headers(){
     return { 'Content-Type':'application/json', 'Authorization':'Bearer '+(localStorage.getItem('asgard_token')||'') };

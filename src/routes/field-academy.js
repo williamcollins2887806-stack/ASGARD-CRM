@@ -297,10 +297,11 @@ async function routes(fastify) {
       ORDER BY sort_order ASC
     `, [lessonId]);
 
-    // Убираем is_correct из вариантов (клиент не должен знать ответ)
+    // Убираем is_correct из вариантов (клиент не должен знать ответ).
+    const { sanitizeOptionsForClient } = require('../lib/academy-quiz-shape');
     const sanitized = questions.map(q => ({
       ...q,
-      options: (q.options || []).map(o => ({ text: o.text, id: o.id }))
+      options: sanitizeOptionsForClient(q.options),
     }));
 
     return {
@@ -377,6 +378,7 @@ async function routes(fastify) {
     let runesEarned = 0;
     let xpEarned = 0;
     let streakBonus = false;
+    let trophy = null;
 
     if (passed) {
       const streak = await getStreak(eid);
@@ -404,6 +406,37 @@ async function routes(fastify) {
       `, [eid, lessonId, attemptNum, score, runesEarned, xpEarned]);
 
       await markOnboardingPassedIfNeeded(db, eid, lessonId);
+
+      // Trophy of the week: rare common cosmetic drop (~35%)
+      try {
+        if (Math.random() < 0.35) {
+          const { rows: [drop] } = await db.query(`
+            SELECT id, name, description, category, equip_slot, asset_key, icon
+            FROM gamification_shop_items
+            WHERE COALESCE(is_active, true) = true
+              AND category IN ('digital', 'cosmetic')
+              AND equip_slot IS NOT NULL
+              AND price_runes <= 250
+            ORDER BY random()
+            LIMIT 1
+          `);
+          if (drop) {
+            await db.query(`
+              INSERT INTO gamification_inventory
+                (employee_id, item_type, item_name, item_description, item_category, source_id, source_type)
+              VALUES ($1, 'achievement_reward', $2, $3, $4, $5, 'academy')
+            `, [eid, drop.name, drop.description || 'Трофей Мимира', drop.category, drop.id]);
+            trophy = {
+              name: drop.name,
+              icon: drop.icon,
+              equip_slot: drop.equip_slot,
+              asset_key: drop.asset_key,
+            };
+          }
+        }
+      } catch (dropErr) {
+        fastify.log.warn('[academy] trophy drop failed:', dropErr.message);
+      }
 
     } else {
       // Провалил
@@ -489,7 +522,7 @@ async function routes(fastify) {
       // need_reread = провалил последнюю попытку, нужно перечитать
       need_reread: !passed && attemptNum >= MAX_ATTEMPTS,
       answers: resultAnswers,
-      reward: passed ? { runes: runesEarned, xp: xpEarned, streak_bonus: streakBonus } : null
+      reward: passed ? { runes: runesEarned, xp: xpEarned, streak_bonus: streakBonus, trophy } : null
     };
   });
 

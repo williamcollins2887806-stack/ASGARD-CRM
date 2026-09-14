@@ -17,7 +17,7 @@
 
 const db = require('../services/db');
 const preTenderService = require('../services/pre-tender-service');
-const { tagDocumentFolder, ensureDocumentFolders, inferFolderId } = require('../services/pre-tender-doc-folders');
+const { tagDocumentFolder, ensureDocumentFolders, inferFolderId, validateParentFolder, hasChildFolders } = require('../services/pre-tender-doc-folders');
 const { sendToUser, sendToRoles, broadcast } = require('./sse');
 const { createNotification } = require('../services/notify');
 // Wave D: для ensureDefaultSubstages (BUG-7)
@@ -666,7 +666,8 @@ module.exports = async function (fastify) {
   }, async (request, reply) => {
     const { customer_name, customer_email, customer_inn, contact_person, contact_phone,
             work_location, work_deadline, estimated_sum,
-            assigned_to, source_type, ai_work_type, decision_comment } = request.body;
+            assigned_to, source_type, ai_work_type, decision_comment,
+            work_volume, work_volume_unit, work_start_plan, work_end_plan } = request.body;
     let { work_description } = request.body;
     const user = request.user;
 
@@ -679,20 +680,16 @@ module.exports = async function (fastify) {
     const ALLOWED_SOURCE_TYPES = ['manual', 'phone', 'meeting', 'email', 'referral', 'website', 'other'];
     const srcType = ALLOWED_SOURCE_TYPES.includes(source_type) ? source_type : 'manual';
 
-    // BUG #3: колонки ai_work_type в pre_tender_requests НЕТ (есть только в inbox_applications).
-    // TODO: добавить миграцию ALTER TABLE pre_tender_requests ADD COLUMN ai_work_type VARCHAR(100).
-    // Пока — вшиваем тип работ префиксом в work_description (как объём/сроки во фронте).
-    if (ai_work_type && typeof ai_work_type === 'string' && ai_work_type.trim()) {
-      work_description = `Тип работ: ${ai_work_type.trim()}\n\n${work_description || ''}`.trim();
-    }
+    const workTypeVal = (ai_work_type && typeof ai_work_type === 'string') ? ai_work_type.trim().slice(0, 200) : null;
 
     const ins = await db.query(`
       INSERT INTO pre_tender_requests (
         source_type, customer_name, customer_email, customer_inn,
         contact_person, contact_phone, work_description, work_location,
         work_deadline, estimated_sum, ai_color, status, created_by, assigned_to,
-        decision_comment
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'gray', 'new', $11, $12, $13)
+        decision_comment, ai_work_type, work_volume, work_volume_unit,
+        work_start_plan, work_end_plan
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'gray', 'new', $11, $12, $13, $14, $15, $16, $17, $18)
       RETURNING id
     `, [
       srcType,
@@ -701,7 +698,12 @@ module.exports = async function (fastify) {
       work_description || '', work_location || '',
       work_deadline || null, estimated_sum || null,
       user.id, assigned_to || null,
-      decision_comment || null
+      decision_comment || null,
+      workTypeVal,
+      work_volume != null && work_volume !== '' ? Number(work_volume) : null,
+      work_volume_unit ? String(work_volume_unit).slice(0, 30) : null,
+      work_start_plan || null,
+      work_end_plan || null,
     ]);
 
     const newId = ins.rows[0].id;
@@ -992,10 +994,15 @@ module.exports = async function (fastify) {
     const r = await db.query('SELECT document_folders FROM pre_tender_requests WHERE id=$1', [id]);
     if (!r.rows.length) return reply.code(404).send({ error: 'not_found' });
     const folders = ensureDocumentFolders(r.rows[0].document_folders);
+    const parentId = request.body?.parent_id ? String(request.body.parent_id).trim() : null;
+    if (parentId) {
+      const pv = validateParentFolder(folders, parentId);
+      if (!pv.ok) return reply.code(pv.error === 'parent_not_found' ? 404 : 400).send({ error: pv.error });
+    }
     const folderId = 'custom-' + Date.now();
-    folders.push({ id: folderId, name, system: false });
+    folders.push({ id: folderId, name, system: false, parent_id: parentId || null });
     await db.query('UPDATE pre_tender_requests SET document_folders=$1, updated_at=NOW() WHERE id=$2', [JSON.stringify(folders), id]);
-    return { success: true, folder: { id: folderId, name, system: false } };
+    return { success: true, folder: { id: folderId, name, system: false, parent_id: parentId || null } };
   });
 
   // PATCH /:id/folders/:folderId — переименовать пользовательскую папку
@@ -1051,6 +1058,9 @@ module.exports = async function (fastify) {
     if (folder.system) return reply.code(403).send({ error: 'system_folder_readonly' });
 
     const docs = Array.isArray(r.rows[0].manual_documents) ? r.rows[0].manual_documents : [];
+    if (hasChildFolders(folders, folderId)) {
+      return reply.code(409).send({ error: 'folder_has_children' });
+    }
     if (countManualDocsInFolder(docs, folderId) > 0) {
       return reply.code(409).send({ error: 'folder_not_empty' });
     }
@@ -1311,6 +1321,61 @@ module.exports = async function (fastify) {
       .header('Content-Length', buf.length)
       .header('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(dispName)}`)
       .send(buf);
+  });
+
+  // GET /:ptId/documents/:docIdx/archive-list — содержимое ZIP-архива
+  fastify.get('/:ptId/documents/:docIdx/archive-list', {
+    preHandler: [
+      async (request, reply) => {
+        if (!request.headers.authorization && request.query.token) {
+          request.headers.authorization = 'Bearer ' + request.query.token;
+        }
+      },
+      fastify.authenticate
+    ]
+  }, async (request, reply) => {
+    const AdmZip = require('adm-zip');
+    const ptId = Number(request.params.ptId);
+    const docIdx = Number(request.params.docIdx);
+    if (!Number.isFinite(ptId) || !Number.isFinite(docIdx) || docIdx < 0) {
+      return reply.code(400).send({ error: 'invalid_params' });
+    }
+    const acc = await checkPreTenderAccess(request.user, ptId);
+    if (!acc.ok) return reply.code(acc.code).send({ error: acc.error });
+    const r = await db.query(
+      `SELECT manual_documents FROM pre_tender_requests WHERE id = $1 LIMIT 1`,
+      [ptId]);
+    const row = r.rows[0];
+    if (!row) return reply.code(404).send({ error: 'pre_tender_not_found' });
+    const docs = Array.isArray(row.manual_documents) ? row.manual_documents : [];
+    if (docIdx >= docs.length) return reply.code(404).send({ error: 'document_not_found' });
+    const doc = docs[docIdx];
+    if (!doc || !doc.path) return reply.code(404).send({ error: 'document_path_missing' });
+    const candidates = [
+      doc.path,
+      path.join(process.cwd(), doc.path),
+      path.join(__dirname, '..', '..', doc.path),
+    ];
+    let absPath = null;
+    for (const p of candidates) {
+      try { if (fs.existsSync(p) && fs.statSync(p).isFile()) { absPath = p; break; } } catch (_) {}
+    }
+    if (!absPath) return reply.code(404).send({ error: 'file_not_found_on_disk' });
+    const ext = String(path.extname(absPath) || '').toLowerCase();
+    if (ext !== '.zip') return reply.code(400).send({ error: 'not_a_zip_archive' });
+    try {
+      const zip = new AdmZip(absPath);
+      const entries = zip.getEntries()
+        .filter((e) => !e.isDirectory)
+        .map((e) => ({
+          path: e.entryName,
+          size: (e.header && e.header.size) || 0,
+          compressed: (e.header && e.header.compressedSize) || 0,
+        }));
+      return { entries, count: entries.length };
+    } catch (e) {
+      return reply.code(500).send({ error: 'archive_read_failed', detail: String(e.message || e).slice(0, 200) });
+    }
   });
 
   // ═══════════════════════════════════════════════════════════════════

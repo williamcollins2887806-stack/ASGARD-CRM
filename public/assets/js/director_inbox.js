@@ -265,7 +265,7 @@ window.AsgardDirectorInboxPage = (function () {
       </div>
       <div class="di-card-actions">
         ${canAssign ? `<button class="btn primary" data-act="assign" data-id="${it.id}">Назначить РП</button>` : ''}
-        <button class="btn ghost" data-act="view" data-id="${it.id}">👁 Просмотр</button>
+        <button class="btn ghost" data-act="view" data-id="${it.id}">Просмотр</button>
         ${it.email_id ? `<button class="btn ghost" data-act="email" data-id="${it.email_id}">📧 Письмо целиком</button>` : ''}
       </div>
     </div>`;
@@ -315,7 +315,7 @@ window.AsgardDirectorInboxPage = (function () {
           <button class="btn primary di-claim-btn" data-act="pt-claim" data-id="${it.id}">
             🎯 Забрать себе
           </button>` : ''}
-        <button class="btn ghost" data-act="pt-view" data-id="${it.id}">👁 Просмотр</button>
+        <button class="btn ghost" data-act="pt-view" data-id="${it.id}">Просмотр</button>
         ${it.email_id ? `<button class="btn ghost" data-act="email" data-id="${it.email_id}">📧 Письмо целиком</button>` : ''}
       </div>
     </div>`;

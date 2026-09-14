@@ -52,8 +52,7 @@ window.AsgardEstimateReportPage = (function () {
   function isDirector(role) { return DIRECTOR_ROLES.includes(role); }
 
   function fmtMoney(v) {
-    if (v == null || isNaN(v)) return '—';
-    return Number(v).toLocaleString('ru-RU', { maximumFractionDigits: 0 }) + ' ₽';
+    return (AsgardUI.moneyRub || AsgardMoney.formatMoney)(v);
   }
   function fmtNum(v) {
     if (v == null || isNaN(v)) return '—';

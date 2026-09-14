@@ -6,7 +6,7 @@
    ================================================================ */
 window.AsgardEquipment = (function () {
   'use strict';
-  const { $, $$, esc, toast, showModal, closeModal, skeleton, makeResponsiveTable, emptyState, money } = AsgardUI;
+  const { $, $$, esc, toast, showModal, closeModal, skeleton, makeResponsiveTable, emptyState, moneyRub: money } = AsgardUI;
 
   /* --- CLOSURE-SCOPED VARIABLES (A12) --- */
   let _pendingPhoto = null;
@@ -1098,8 +1098,8 @@ window.AsgardEquipment = (function () {
       '</div>' +
       '<div style="background:var(--bg);padding:14px;border-radius:10px">' +
         '<h4 style="margin:0 0 10px;font-size:13px;color:var(--text-muted)">Финансы</h4>' +
-        '<div class="fk-card-row"><span class="fk-label">Стоимость</span><span class="fk-value">' + (eq.purchase_price?money(eq.purchase_price)+' ₽':'—') + '</span></div>' +
-        '<div class="fk-card-row"><span class="fk-label">Балансовая</span><span class="fk-value">' + (eq.book_value?money(eq.book_value)+' ₽':'—') + '</span></div>' +
+        '<div class="fk-card-row"><span class="fk-label">Стоимость</span><span class="fk-value">' + (eq.purchase_price?money(eq.purchase_price):'—') + '</span></div>' +
+        '<div class="fk-card-row"><span class="fk-label">Балансовая</span><span class="fk-value">' + (eq.book_value?money(eq.book_value):'—') + '</span></div>' +
         '<div class="fk-card-row"><span class="fk-label">Дата покупки</span><span class="fk-value">' + fmtDate(eq.purchase_date) + '</span></div>' +
         '<div class="fk-card-row"><span class="fk-label">На балансе</span><span class="fk-value">' + (eq.balance_status==='on_balance'?'Да':'Нет') + '</span></div>' +
       '</div>' +
@@ -1140,7 +1140,7 @@ window.AsgardEquipment = (function () {
         '<span>' + (icons[m.maintenance_type]||'📋') + ' ' + esc(m.maintenance_type||'') + '</span>' +
         '<span>' + esc(m.description||'—') + '</span>' +
         '<span>' + fmtDate(m.performed_date||m.started_at) + '</span>' +
-        '<span style="text-align:right">' + (m.cost?money(m.cost)+' ₽':'—') + '</span></div>';
+        '<span style="text-align:right">' + (m.cost?money(m.cost):'—') + '</span></div>';
     }).join('') + '</div>';
   }
 

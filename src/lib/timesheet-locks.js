@@ -14,8 +14,8 @@
  *                  Запирает ВСЕХ (включая PM/WAREHOUSE/TO/OFFICE_MANAGER).
  *                  Снять может только DIRECTOR_x или ADMIN.
  *   2) warehouse — ставит WAREHOUSE. Запирает редактирование клеток type=warehouse.
- *   3) medical   — ставит TO/HEAD_TO. Запирает type=medical.
- *   4) travel    — ставит OFFICE_MANAGER. Запирает type=travel.
+ *   3) medical   — ставит TO/HEAD_TO. Запирает type=medical/training/ship/helicopter.
+ *   4) travel    — ставит OFFICE_MANAGER и HEAD_TO. Запирает type=travel и waiting.
  *   5) pm        — ставит PM/HEAD_PM на СВОЙ user_id. Запирает редактирование
  *                  чекинов PM, где entered_by_user_id = scope_user_id, ИЛИ
  *                  где work.pm_id = scope_user_id (PM «заморозил свой набор»).
@@ -46,6 +46,14 @@ const DIRECTORS_AND_ADMIN = new Set([
   'DIRECTOR_DEV',
 ]);
 
+/** Роли, которым можно обойти чужой pm-лок работы после явного подтверждения. */
+const PM_LOCK_OVERRIDE_ROLES = new Set([
+  'OFFICE_MANAGER',
+  'WAREHOUSE',
+  'TO',
+  'HEAD_TO',
+]);
+
 const TYPE_TO_SCOPE = {
   // Какой scope-лок блокирует редактирование клетки данного типа.
   day: null,        // дневная смена — не отдельный scope, только pm/global
@@ -55,8 +63,80 @@ const TYPE_TO_SCOPE = {
   travel: 'travel',
   // V255 (23.06.2026): 'ship' (Корабль) ставит ТО как и МО — лочится medical-локом.
   ship:    'medical',
-  waiting: null,    // ожидание — оставляем как pm/global; явного scope нет
+  training: 'medical',
+  helicopter: 'medical',
+  // Ожидание ставится в travel-табеле (офис-менеджер, рук ТО) → лочится travel-локом.
+  // В global (PM/директора) дополнительно блокирует только period/global-лок.
+  waiting: 'travel',
 };
+
+function fmtRuPeriod(year, month) {
+  const y = Number(year);
+  const m = Number(month);
+  if (!Number.isFinite(y) || !Number.isFinite(m) || m < 1 || m > 12) return '';
+  return `${String(m).padStart(2, '0')}.${y}`;
+}
+
+function fmtRuDateTime(v) {
+  if (!v) return '';
+  try {
+    const d = v instanceof Date ? v : new Date(v);
+    if (Number.isNaN(d.getTime())) return '';
+    const dd = String(d.getDate()).padStart(2, '0');
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const yy = d.getFullYear();
+    const hh = String(d.getHours()).padStart(2, '0');
+    const mi = String(d.getMinutes()).padStart(2, '0');
+    return `${dd}.${mm}.${yy} ${hh}:${mi}`;
+  } catch (_) {
+    return '';
+  }
+}
+
+function lockFio(lock) {
+  return (lock && (lock.locked_by_fio || lock.scope_user_fio)) || 'РП';
+}
+
+function buildLockMessageRu(reason, lock, year, month) {
+  const fio = lockFio(lock);
+  const period = fmtRuPeriod(year, month);
+  const when = fmtRuDateTime(lock && lock.locked_at);
+  const whenSuffix = when ? ` (${when})` : '';
+  // Выносим ФИО-вставки из шаблонов: вложенные литералы внутри `${...}` — lint-ошибка.
+  const hasFio = fio !== 'РП';
+  const fioDash = hasFio ? ` — ${fio}` : '';
+  const fioParen = hasFio ? ` (${fio})` : '';
+  switch (reason) {
+    case 'period_locked_global':
+      return period
+        ? `Месяц ${period} закрыт глобально${fioDash}${whenSuffix}. Изменение запрещено.`
+        : `Месяц закрыт глобально${whenSuffix}. Изменение запрещено.`;
+    case 'period_locked_travel':
+      return period
+        ? `Табель дороги за ${period} закрыт${fioParen}${whenSuffix}. Изменение запрещено.`
+        : `Табель дороги закрыт${whenSuffix}. Изменение запрещено.`;
+    case 'period_locked_warehouse':
+      return period
+        ? `Табель склада за ${period} закрыт${fioParen}${whenSuffix}. Изменение запрещено.`
+        : `Табель склада закрыт${whenSuffix}. Изменение запрещено.`;
+    case 'period_locked_medical':
+      return period
+        ? `Табель МО за ${period} закрыт${fioParen}${whenSuffix}. Изменение запрещено.`
+        : `Табель МО закрыт${whenSuffix}. Изменение запрещено.`;
+    case 'period_locked_pm_self':
+      return period
+        ? `Вы уже закрыли свой месяц ${period}${whenSuffix}. Чтобы править — сначала откройте период.`
+        : `Вы уже закрыли свой месяц${whenSuffix}. Чтобы править — сначала откройте период.`;
+    case 'period_locked_pm_work':
+      return period
+        ? `Отметка за ${period} привязана к работе РП ${fio} — он уже закрыл свой месяц${whenSuffix}.`
+        : `Отметка привязана к работе РП ${fio} — он уже закрыл свой месяц${whenSuffix}.`;
+    default:
+      return period
+        ? `Период ${period} закрыт${fioParen}${whenSuffix}. Изменение запрещено.`
+        : `Период закрыт${whenSuffix}. Изменение запрещено.`;
+  }
+}
 
 function getDb(fastify) {
   // Поддерживаем оба стиля: fastify.db (как в work-readiness.js) и fastify.pg
@@ -68,7 +148,7 @@ function getDb(fastify) {
   return db;
 }
 
-function lockedError(activeLocks, hint) {
+function lockedError(activeLocks, hint, opts = {}) {
   // Возвращаем готовый объект с активными локами в payload — фронту удобно
   // показать «период закрыт ФИО (HEAD_PM) в 14:32».
   //
@@ -77,11 +157,17 @@ function lockedError(activeLocks, hint) {
   // приводим к lower; также экспонируем обе формы err.lock + err.locks для
   // обратной совместимости (старые catcher'ы читают err.lock; новые — err.locks).
   const list = Array.isArray(activeLocks) ? activeLocks : (activeLocks ? [activeLocks] : []);
-  const err = new Error(hint || 'period_locked');
+  const reason = hint || 'period_locked';
+  const lock = list[0] || null;
+  const err = new Error(reason);
   err.statusCode = 423;
   err.code = 'period_locked';
+  err.reason = reason;
   err.locks = list;
-  err.lock  = list[0] || null;
+  err.lock = lock;
+  err.overridable = !!opts.overridable;
+  err.message_ru = opts.message_ru
+    || buildLockMessageRu(reason, lock, opts.year, opts.month);
   return err;
 }
 
@@ -130,9 +216,10 @@ async function getActiveLocks(fastify, year, month) {
  *   type?: string,           // type клетки: day|night|warehouse|medical|travel|waiting
  *   work_id?: number,        // для PM: проверяем «свой» лок если работа моя
  *   employee_id?: number,    // зарезервировано (на будущее: лок персонального)
- *   date?: string            // YYYY-MM-DD; пока не используется в логике, оставлено для аудита
+ *   date?: string,           // YYYY-MM-DD; пока не используется в логике, оставлено для аудита
+ *   force_pm_lock?: boolean  // явный обход чужого pm-лока работы (после confirm на UI)
  * }} payload
- * @returns {Promise<{ok:true, locks:Array}>}
+ * @returns {Promise<{ok:true, locks:Array, pm_lock_overridden?: object|null}>}
  */
 async function assertNotLocked(fastify, viewer, payload) {
   if (!viewer || !viewer.id || !viewer.role) {
@@ -140,12 +227,20 @@ async function assertNotLocked(fastify, viewer, payload) {
   }
   const role = String(viewer.role).toUpperCase();
   const { year, month } = payload || {};
+  const forcePmLock = !!payload?.force_pm_lock;
+  const lockMsgOpts = { year, month };
   const locks = await getActiveLocks(fastify, year, month);
 
-  // Уровень 1: global — лочит всех КРОМЕ DIRECTOR_*/ADMIN.
+  // Уровень 1: global — лочит всех КРОМЕ DIRECTOR_*/ADMIN. Обход запрещён.
   const globalLock = locks.find((l) => l.scope === 'global');
   if (globalLock && !DIRECTORS_AND_ADMIN.has(role)) {
-    throw lockedError([globalLock], 'period_locked_global');
+    throw lockedError([globalLock], 'period_locked_global', {
+      ...lockMsgOpts,
+      overridable: false,
+      message_ru: forcePmLock
+        ? `${buildLockMessageRu('period_locked_global', globalLock, year, month)} Обход подтверждением недоступен.`
+        : undefined
+    });
   }
 
   // Уровень 2: scope по type клетки (warehouse/medical/travel).
@@ -153,7 +248,14 @@ async function assertNotLocked(fastify, viewer, payload) {
   if (typeScope) {
     const scopeLock = locks.find((l) => l.scope === typeScope && !l.scope_user_id);
     if (scopeLock && !DIRECTORS_AND_ADMIN.has(role)) {
-      throw lockedError([scopeLock], `period_locked_${typeScope}`);
+      const reason = `period_locked_${typeScope}`;
+      throw lockedError([scopeLock], reason, {
+        ...lockMsgOpts,
+        overridable: false,
+        message_ru: forcePmLock
+          ? `${buildLockMessageRu(reason, scopeLock, year, month)} Обход подтверждением недоступен.`
+          : undefined
+      });
     }
   }
 
@@ -162,17 +264,23 @@ async function assertNotLocked(fastify, viewer, payload) {
   if (payload?.scope_hint && payload.scope_hint !== 'pm') {
     const hintLock = locks.find((l) => l.scope === payload.scope_hint && !l.scope_user_id);
     if (hintLock && !DIRECTORS_AND_ADMIN.has(role)) {
-      throw lockedError([hintLock], `period_locked_${payload.scope_hint}`);
+      const reason = `period_locked_${payload.scope_hint}`;
+      throw lockedError([hintLock], reason, {
+        ...lockMsgOpts,
+        overridable: false,
+        message_ru: forcePmLock
+          ? `${buildLockMessageRu(reason, hintLock, year, month)} Обход подтверждением недоступен.`
+          : undefined
+      });
     }
   }
 
   // Уровень 4: pm-персональный лок.
   // (а) Если viewer — PM/HEAD_PM, его собственный pm-лок запирает любые правки
-  //     этого пользователя (он сам закрыл свой период).
+  //     этого пользователя (он сам закрыл свой период). Обход запрещён.
   // (б) Если payload.work_id указан и работа принадлежит PM, у которого pm-лок —
-  //     никто (кроме DIRECTOR/ADMIN) не должен поверх писать. Реализуем мягко:
-  //     если viewer — НЕ DIRECTOR/ADMIN и НЕ владелец работы, и pm-лок стоит
-  //     ИМЕННО на pm_id работы — отказ.
+  //     никто (кроме DIRECTOR/ADMIN) не должен поверх писать — кроме ролей
+  //     PM_LOCK_OVERRIDE_ROLES после явного force_pm_lock (confirm на UI).
   //
   // FIX 8: WORKER-роль исключена из pm-check. Раньше viewer.id для WORKER —
   // это employees.id, а scope_user_id — это users.id. Сравнение шло в обход
@@ -180,16 +288,22 @@ async function assertNotLocked(fastify, viewer, payload) {
   // (а его pm-чекин ставит он сам — нет смысла блокировать). Pm-check теперь
   // только для CRM-ролей PM/HEAD_PM (а) и не-WORKER не-DIRECTOR ролей (б).
   if (role === 'WORKER') {
-    return { ok: true, locks };
+    return { ok: true, locks, pm_lock_overridden: null };
   }
 
   const pmLocks = locks.filter((l) => l.scope === 'pm');
   if (pmLocks.length) {
     // (а)
     if (ROLE_TO_SCOPE[role] === 'pm') {
-      const mine = pmLocks.find((l) => l.scope_user_id === viewer.id);
+      const mine = pmLocks.find((l) => Number(l.scope_user_id) === Number(viewer.id));
       if (mine) {
-        throw lockedError([mine], 'period_locked_pm_self');
+        throw lockedError([mine], 'period_locked_pm_self', {
+          ...lockMsgOpts,
+          overridable: false,
+          message_ru: forcePmLock
+            ? `${buildLockMessageRu('period_locked_pm_self', mine, year, month)} Обход подтверждением недоступен.`
+            : undefined
+        });
       }
     }
     // (б)
@@ -201,15 +315,34 @@ async function assertNotLocked(fastify, viewer, payload) {
       );
       const pmId = rows[0]?.pm_id || null;
       if (pmId) {
-        const ownerLock = pmLocks.find((l) => l.scope_user_id === pmId);
-        if (ownerLock && pmId !== viewer.id) {
-          throw lockedError([ownerLock], 'period_locked_pm_work');
+        const ownerLock = pmLocks.find((l) => Number(l.scope_user_id) === Number(pmId));
+        if (ownerLock && Number(pmId) !== Number(viewer.id)) {
+          const canOverride = PM_LOCK_OVERRIDE_ROLES.has(role);
+          if (forcePmLock && canOverride) {
+            return { ok: true, locks, pm_lock_overridden: ownerLock };
+          }
+          if (forcePmLock && !canOverride) {
+            throw lockedError([ownerLock], 'period_locked_pm_work', {
+              ...lockMsgOpts,
+              overridable: false,
+              message_ru: `${buildLockMessageRu('period_locked_pm_work', ownerLock, year, month)} У вашей роли нет права обхода.`
+            });
+          }
+          throw lockedError([ownerLock], 'period_locked_pm_work', {
+            ...lockMsgOpts,
+            overridable: canOverride
+          });
         }
       }
     }
   }
 
-  return { ok: true, locks };
+  if (forcePmLock) {
+    // force прислали, но pm-work лока нет — не ошибка, просто игнор.
+    return { ok: true, locks, pm_lock_overridden: null };
+  }
+
+  return { ok: true, locks, pm_lock_overridden: null };
 }
 
 module.exports = {
@@ -219,4 +352,6 @@ module.exports = {
   ROLE_TO_SCOPE,
   TYPE_TO_SCOPE,
   DIRECTORS_AND_ADMIN,
+  PM_LOCK_OVERRIDE_ROLES,
+  buildLockMessageRu,
 };

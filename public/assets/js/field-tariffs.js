@@ -103,7 +103,7 @@ window.AsgardFieldTariffsPage = (function () {
         tr.innerHTML = `
           <td style="padding:6px 8px" class="ft-name">${esc(t.position_name)}</td>
           <td style="padding:6px 8px;text-align:center" class="ft-pts">${t.points}</td>
-          <td style="padding:6px 8px;text-align:right;font-weight:600" class="ft-rate">${money(t.rate_per_shift)} ₽</td>
+          <td style="padding:6px 8px;text-align:right;font-weight:600" class="ft-rate">${money(t.rate_per_shift)}</td>
           <td style="padding:6px 8px;text-align:center">${t.is_combinable ? '✓' : ''}</td>
           <td style="padding:6px 8px;text-align:center">${t.requires_approval ? '✓' : ''}</td>
           <td style="padding:6px 8px;color:var(--t2);font-size:12px">${esc(t.notes || '')}</td>

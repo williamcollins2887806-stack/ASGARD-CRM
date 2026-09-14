@@ -19,6 +19,24 @@ function isEnabled() {
   return Boolean(instance && token);
 }
 
+/**
+ * MAX (Green API v3) config.
+ * GREEN_API_MAX_INSTANCE / GREEN_API_MAX_TOKEN fallback to GREEN_API_* when empty
+ * (shared console credentials; Max still uses api.green-api.com/v3 by default).
+ */
+function getMaxConfig() {
+  return {
+    apiUrl:   process.env.GREEN_API_MAX_URL || 'https://api.green-api.com/v3',
+    instance: process.env.GREEN_API_MAX_INSTANCE || process.env.GREEN_API_INSTANCE || '',
+    token:    process.env.GREEN_API_MAX_TOKEN || process.env.GREEN_API_TOKEN || '',
+  };
+}
+
+function isMaxEnabled() {
+  const { instance, token } = getMaxConfig();
+  return Boolean(instance && token);
+}
+
 function toDigits(phone) {
   if (!phone || typeof phone !== 'string') return null;
   let d = phone.replace(/\D/g, '');
@@ -74,6 +92,51 @@ async function findWhatsappPhone(phones) {
     if (!phone) continue;
     const isWA = await checkWhatsapp(phone);
     if (isWA) return normalizeForCheck(phone);
+  }
+  return null;
+}
+
+async function gaMaxRequest(method, endpoint, body) {
+  const { apiUrl, instance, token } = getMaxConfig();
+  if (!instance || !token) throw new Error('GREEN_API_MAX_INSTANCE / GREEN_API_MAX_TOKEN (или GREEN_API_*) не заданы в .env');
+  const url = `${apiUrl}/waInstance${instance}/${endpoint}/${token}`;
+  const opts = { method, headers: { 'Content-Type': 'application/json' } };
+  if (body && method !== 'GET') opts.body = JSON.stringify(body);
+  const res = await fetch(url, opts);
+  const text = await res.text();
+  let data;
+  try { data = JSON.parse(text); } catch { data = { raw: text }; }
+  if (!res.ok) {
+    const msg = data?.message || data?.error || text;
+    throw new Error(`Green API Max ${method} ${endpoint} → ${res.status}: ${msg}`);
+  }
+  return data;
+}
+
+/** CheckAccount v3 — есть ли аккаунт MAX у номера. Возвращает true/false.
+ *  Rate-limit 469 — бросает ошибку (нельзя писать «нет Max»). Прочие ошибки → false. */
+async function checkMaxAccount(phone, opts = {}) {
+  const digits = normalizeForCheck(phone);
+  if (!digits) return false;
+  try {
+    const body = { phoneNumber: Number(digits) };
+    if (opts.force) body.force = true;
+    const data = await gaMaxRequest('POST', 'checkAccount', body);
+    return Boolean(data.exist);
+  } catch (e) {
+    const msg = String(e.message || e);
+    if (msg.includes('469') || /limit reached/i.test(msg)) throw e;
+    if (/not authorized|instance is starting/i.test(msg)) throw e;
+    console.warn('[Green API Max] checkAccount failed:', msg);
+    return false;
+  }
+}
+
+async function findMaxPhone(phones, opts = {}) {
+  for (const phone of phones) {
+    if (!phone) continue;
+    const hasMax = await checkMaxAccount(phone, opts);
+    if (hasMax) return normalizeForCheck(phone);
   }
   return null;
 }
@@ -153,6 +216,38 @@ async function sendMessage(phone, text) {
   return gaRequest('POST', 'SendMessage', { chatId, message: text });
 }
 
+const maxChatIdCache = new Map(); // digits -> { chatId, exp }
+
+/** Max chatId по телефону (checkAccount). Без chatId sendMessage принимает номер и «успешно» не доставляет. */
+async function resolveMaxChatId(phone, opts = {}) {
+  const digits = normalizeForCheck(phone);
+  if (!digits) return null;
+  const now = Date.now();
+  const hit = maxChatIdCache.get(digits);
+  if (!opts.force && hit && hit.exp > now && hit.chatId) return hit.chatId;
+  const body = { phoneNumber: Number(digits) };
+  if (opts.force) body.force = true;
+  const data = await gaMaxRequest('POST', 'checkAccount', body);
+  if (!data.exist || !data.chatId) {
+    maxChatIdCache.set(digits, { chatId: null, exp: now + 10 * 60 * 1000 });
+    return null;
+  }
+  const chatId = String(data.chatId);
+  maxChatIdCache.set(digits, { chatId, exp: now + 24 * 60 * 60 * 1000 });
+  return chatId;
+}
+
+/** Личное сообщение в MAX (Green API v3). chatId — внутренний Max id из checkAccount. */
+async function sendMaxMessage(phone, text) {
+  const chatId = await resolveMaxChatId(phone);
+  if (!chatId) throw new Error('no max chatId for ' + phone);
+  return gaMaxRequest('POST', 'sendMessage', {
+    chatId,
+    message: text,
+    typingTime: 1000,
+  });
+}
+
 async function sendGroupMessage(groupId, text) {
   return gaRequest('POST', 'SendMessage', { chatId: groupId, message: text });
 }
@@ -182,16 +277,21 @@ async function getQR() {
 
 module.exports = {
   isEnabled,
+  isMaxEnabled,
   toDigits,
   normalizePhone,
   normalizeForCheck,
   checkWhatsapp,
   findWhatsappPhone,
+  checkMaxAccount,
+  resolveMaxChatId,
+  findMaxPhone,
   createGroup,
   addParticipant,
   getGroupMembers,
   getGroupInviteLink,
   sendMessage,
+  sendMaxMessage,
   sendGroupMessage,
   setGroupPicture,
   setWebhook,

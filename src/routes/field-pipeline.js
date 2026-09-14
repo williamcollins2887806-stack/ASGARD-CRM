@@ -3,6 +3,8 @@
  */
 const {
   generateLevel,
+  recoverLevel,
+  computePowerHint,
   validateSubmission,
   computeRewards,
 } = require('../services/pipelineEngine');
@@ -392,6 +394,46 @@ async function routes(fastify) {
     } finally {
       client.release();
     }
+  });
+
+  // Силы / подсказки по solution сессии (client не знает solution)
+  fastify.post('/power', {
+    preHandler: [fastify.fieldAuthenticate],
+    schema: {
+      body: {
+        type: 'object',
+        required: ['session_id', 'power', 'cells'],
+        properties: {
+          session_id: { type: 'string', format: 'uuid' },
+          power: { type: 'string', enum: ['thor', 'heim', 'odin'] },
+          cells: { type: 'array' },
+        },
+      },
+    },
+  }, async (req, reply) => {
+    const eid = req.fieldEmployee.id;
+    const { session_id, power, cells } = req.body;
+
+    const { rows: [session] } = await db.query(
+      `SELECT * FROM gamification_pipeline_sessions
+       WHERE id = $1 AND employee_id = $2`,
+      [session_id, eid]
+    );
+    if (!session) return reply.code(404).send({ error: 'Сессия не найдена' });
+    if (session.completed_at) return reply.code(400).send({ error: 'Уровень уже пройден' });
+
+    const initial = parseGrid(session.initial_grid);
+    if (!initial?.length) return reply.code(500).send({ error: 'Повреждённые данные уровня' });
+    const size = Math.round(Math.sqrt(initial.length));
+
+    const recovered = recoverLevel(session.level_num, eid, initial);
+    if (!recovered?.solution) {
+      return reply.code(400).send({ error: 'Не удалось восстановить решение — начни уровень заново' });
+    }
+
+    const hint = computePowerHint(recovered.solution, size, cells, power);
+    if (!hint.ok) return reply.code(400).send({ error: hint.error || 'Ошибка силы' });
+    return hint;
   });
 }
 

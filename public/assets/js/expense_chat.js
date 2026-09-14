@@ -9,7 +9,7 @@
 
   const CAT_ICONS = { payroll: '👷', cash: '💵', per_diem: '🍽', tickets: '✈', accommodation: '🏨', materials: '📦', subcontract: '🤝', other: '📋' };
   const CAT_LABELS = { payroll: 'ФОТ', cash: 'Наличные', per_diem: 'Суточные', tickets: 'Билеты', accommodation: 'Проживание', materials: 'Материалы', subcontract: 'Субподряд', other: 'Прочее' };
-  const money = (v) => Number(v || 0).toLocaleString('ru-RU', { style: 'currency', currency: 'RUB', maximumFractionDigits: 0 });
+  const money = (v) => (AsgardUI.moneyRub || AsgardMoney.formatMoney)(v, { empty: '0 ₽' });
 
   function getToken() {
     try { return JSON.parse(localStorage.getItem('asgard_session') || '{}').token || localStorage.getItem('asgard_token') || ''; }

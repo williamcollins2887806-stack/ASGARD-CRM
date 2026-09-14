@@ -265,7 +265,14 @@ window.AsgardRegistryApi = (function () {
       const q = new URLSearchParams();
       q.set('subtab', params.subtab || 'registry');
       q.set('limit', String(params.limit != null ? params.limit : 500));
-      if (params.period !== undefined) q.set('period', params.period);
+      if (params.periodFilter && window.TenderPeriodFilter) {
+        window.TenderPeriodFilter.appendSearchParams(q, params.periodFilter);
+      } else if (params.period !== undefined) {
+        q.set('period', params.period);
+      }
+      if (params.date_from) q.set('date_from', params.date_from);
+      if (params.date_to) q.set('date_to', params.date_to);
+      if (params.date_field) q.set('date_field', params.date_field);
       if (params.burn) q.set('burn', '1');
       if (params.q) q.set('q', params.q);
       return api('/api/tenders/registry?' + q);
@@ -273,12 +280,24 @@ window.AsgardRegistryApi = (function () {
     createRegistryRow(body) {
       return api('/api/tenders/registry', { method: 'POST', body: body || {} });
     },
+    findRegistryDuplicates(opts) {
+      const q = new URLSearchParams();
+      if (opts?.title) q.set('title', opts.title);
+      if (opts?.purchase_url) q.set('purchase_url', opts.purchase_url);
+      return api('/api/tenders/registry/find-duplicates?' + q);
+    },
     patchRegistryField(id, field, value) {
       return api('/api/tenders/registry/' + id, { method: 'PATCH', body: { field, value } });
     },
     patchRegistryStatus(id, body) {
       const payload = typeof body === 'string' ? { registry_status: body } : (body || {});
       return api('/api/tenders/registry/' + id + '/status', { method: 'PATCH', body: payload });
+    },
+    archiveRegistryRow(id, archive_reason) {
+      return api('/api/tenders/registry/' + id + '/archive', {
+        method: 'POST',
+        body: { archive_reason: archive_reason || 'РП: не подаём — архив ТО' }
+      });
     },
     acceptPlatformCandidate(id) {
       return api('/api/tenders/registry/platform/' + id + '/accept', { method: 'POST' });
@@ -319,11 +338,49 @@ window.AsgardRegistryApi = (function () {
     loadPmDutyQueue(tab) {
       return api('/api/pm-duty/queue?tab=' + (tab || 'analysis'));
     },
+    loadPmDutyRatingMe(window) {
+      return api('/api/pm-duty/rating/me?window=' + encodeURIComponent(window || 'duty'));
+    },
+    loadPmDutyLeaderboard(window, limit) {
+      return api('/api/pm-duty/rating/leaderboard?window=' + encodeURIComponent(window || '30') +
+        (limit ? '&limit=' + limit : ''));
+    },
+    loadPmDutyRatingBreakdown(userId, window) {
+      return api('/api/pm-duty/rating/' + userId + '/breakdown?window=' + encodeURIComponent(window || 'd30'));
+    },
     loadRpReview(tenderId) {
       return api('/api/tenders/' + tenderId + '/rp-review');
     },
     saveRpReview(tenderId, body) {
       return api('/api/tenders/' + tenderId + '/rp-review', { method: 'PUT', body: body });
+    },
+    saveRpMyDraft(tenderId, body) {
+      return api('/api/tenders/' + tenderId + '/rp-review/my-draft', { method: 'PUT', body: body || {} });
+    },
+    importRpDraft(tenderId, body) {
+      return api('/api/tenders/' + tenderId + '/rp-review/import-draft', { method: 'POST', body: body || {} });
+    },
+    startRpQuick(tenderId, body) {
+      return api('/api/tenders/' + tenderId + '/rp-review/start-quick', { method: 'POST', body: body || {} });
+    },
+    mimirApplyRpReview(tenderId, body) {
+      return api('/api/tenders/' + tenderId + '/rp-review/mimir-apply', { method: 'POST', body: body || {} });
+    },
+    revokeRpCollaborator(tenderId, pmId) {
+      return api('/api/tenders/' + tenderId + '/rp-review/invite/' + pmId, { method: 'DELETE' });
+    },
+    uploadRpDraftFile(tenderId, kind, file, phase) {
+      const fd = new FormData();
+      fd.append('file', file);
+      const q = phase ? ('?phase=' + encodeURIComponent(phase)) : '';
+      return fetch('/api/tenders/' + tenderId + '/rp-review/my-draft/' + kind + q, {
+        method: 'POST',
+        headers: { Authorization: 'Bearer ' + token() },
+        body: fd
+      }).then((r) => r.json().then((d) => {
+        if (!r.ok) throw new Error(d.error || d.message || ('HTTP ' + r.status));
+        return d;
+      }));
     },
     uploadRpEstimate(tenderId, file) {
       const fd = new FormData();

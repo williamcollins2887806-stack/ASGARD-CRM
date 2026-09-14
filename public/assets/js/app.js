@@ -228,8 +228,7 @@ console.log('[ASGARD] Global period functions loaded');
     // У директоров вход в заявки только через «Распределение заявок по РП» (/director-inbox);
     // ТО и HEAD_TO работают на /pre-tenders с reject-формами, документами и статусами обработки.
     // 27.06.2026: пункт «Заявки (ТО)» сведён в /director-inbox (см. ниже).
-    {r:"/funnel",l:"Воронка продаж",d:"Канбан тендеров",roles:["ADMIN","TO","HEAD_TO",...DIRECTOR_ROLES],i:"tenders",p:"funnel",g:"tenders"},
-    {r:"/tenders",l:"Сага Тендеров",d:"Реестр тендеров",roles:["ADMIN","TO","HEAD_TO",...DIRECTOR_ROLES],i:"tenders",p:"tenders",g:"tenders"},
+    {r:"/tenders",l:"Сага Тендеров",d:"Реестр + воронка",roles:["ADMIN","TO","HEAD_TO",...DIRECTOR_ROLES],i:"tenders",p:"tenders",g:"tenders"},
     {r:"/customers",l:"Карта Контрагентов",d:"Справочник организаций",roles:["ADMIN","TO","HEAD_TO","PM","HEAD_PM","OFFICE_MANAGER",...DIRECTOR_ROLES],i:"customers",p:"customers",g:"tenders"},
 
     // ── РАБОТЫ ──
@@ -255,15 +254,17 @@ console.log('[ASGARD] Global period functions loaded');
     // 21.06.2026: переименован «Корзина заявок» → «Распределение заявок по РП» — теперь явно
     // отличается от ТО-страницы /pre-tenders.
     {r:"/director-inbox",l:"Маркетплейс заявок",d:"Свободные заявки + распределение РП",roles:["ADMIN","DIRECTOR_GEN","DIRECTOR_COMM","DIRECTOR_DEV","HEAD_PM","PM"],i:"alerts",p:"director_inbox",g:"tenders"},
-    {r:"/director-tender-approvals",l:"Согласование тендеров",d:"Просчёты РП свыше 5 млн без НДС",roles:["ADMIN","DIRECTOR_GEN","DIRECTOR_COMM","DIRECTOR_DEV"],i:"approvals",p:"director_tender_approvals",g:"tenders"},
+    {r:"/director-tender-approvals",l:"Согласование тендеров",d:"Просчёты РП от 10 млн без НДС",roles:["ADMIN","DIRECTOR_GEN","DIRECTOR_COMM","DIRECTOR_DEV"],i:"approvals",p:"director_tender_approvals",g:"tenders"},
 
     // ── ФИНАНСЫ ──
     {r:"/finances",l:"Финансы",d:"Аналитика и реестр",roles:["ADMIN","BUH",...DIRECTOR_ROLES],i:"finances",p:"finances",g:"finance"},
-    {r:"/invoices",l:"Счета и оплаты",d:"Выставление и отслеживание",roles:["ADMIN","PM","BUH",...DIRECTOR_ROLES],i:"finances",p:"invoices",g:"finance"},
-    {r:"/acts",l:"Акты",d:"Акты выполненных работ",roles:["ADMIN","PM","BUH",...DIRECTOR_ROLES],i:"buh",p:"acts",g:"finance"},
+    {r:"/billing",l:"Счета и акты",d:"Выставление, PDF, оплата",roles:["ADMIN","PM","HEAD_PM","BUH",...DIRECTOR_ROLES],i:"finances",p:"invoices",g:"finance"},
+    {r:"/invoices",l:"Счета и оплаты",d:"Выставление и отслеживание",roles:["ADMIN","PM","HEAD_PM","BUH",...DIRECTOR_ROLES],i:"finances",p:"invoices",g:"finance",navHide:true},
+    {r:"/acts",l:"Акты",d:"Акты выполненных работ",roles:["ADMIN","PM","HEAD_PM","BUH",...DIRECTOR_ROLES],i:"buh",p:"acts",g:"finance",navHide:true},
     {r:"/buh-registry",l:"Реестр расходов",d:"Бухгалтерский реестр",roles:["ADMIN","BUH",...DIRECTOR_ROLES],i:"finances",p:"buh_registry",g:"finance"},
+    {r:"/doc-hub",l:"Реестр документов",d:"Счета, СФ, УПД · хаб",roles:["ADMIN","BUH","PM","HEAD_PM","TO","HEAD_TO","PROC","WAREHOUSE","OFFICE_MANAGER",...DIRECTOR_ROLES],i:"finances",p:"doc_hub",g:"finance"},
     {r:"/office-expenses",l:"Офисные расходы",d:"Управление и согласование",roles:["ADMIN","OFFICE_MANAGER",...DIRECTOR_ROLES],i:"office",p:"office_expenses",g:"finance"},
-    {r:"/cash",l:"Касса",d:"Авансовые отчёты",roles:["ADMIN","PM","HEAD_TO",...DIRECTOR_ROLES],i:"finances",p:"cash",g:"finance"},
+    {r:"/cash",l:"Касса",d:"Авансовые отчёты",roles:[...ALL_ROLES,"FIELD_WORKER"],i:"finances",p:"cash",g:"finance"},
     {r:"/cash-admin",l:"Касса (управление)",d:"Согласование и контроль",roles:["ADMIN","BUH",...DIRECTOR_ROLES],i:"finances",p:"cash_admin",g:"finance"},
     {r:"/approval-payment",l:"Очередь оплаты",d:"Оплата согласованных заявок",roles:["ADMIN","BUH",...DIRECTOR_ROLES],i:"finances",p:"approval_payment",g:"finance"},
     {r:"/my-timesheet",l:"Табель моей дружины",d:"Смены, баллы, суточные · закрытие месяца",roles:["PM","HEAD_PM"],i:"calendar",p:"my_timesheet",g:"personnel"},
@@ -283,21 +284,22 @@ console.log('[ASGARD] Global period functions loaded');
     {r:"/suppliers-catalog",l:"Поставщики и цены",d:"Справочник поставщиков, каталог товаров, база цен",
  roles:["ADMIN","PROC","PM","HEAD_PM","BUH","DIRECTOR_GEN","DIRECTOR_COMM","DIRECTOR_DEV"],
  i:"approvals",p:"procurement",g:"resources"},
-{r:"/assembly",l:"Сбор на складе",d:"Ведомости сборки и мобилизации",
+{r:"/assembly",l:"Сбор на складе",d:"Ведомости сборки и мобилизации → Склад",
  roles:["ADMIN","PM","HEAD_PM","WAREHOUSE","DIRECTOR_GEN","DIRECTOR_COMM","DIRECTOR_DEV"],
- i:"backup",p:"assembly",g:"resources"},
-    {r:"/warehouse-v2",l:"Склад",d:"Каталог, наличие, оборудование, ячейки, сборка",roles:ALL_ROLES,i:"backup",p:"warehouse",g:"resources"},
+ i:"backup",p:"warehouse",g:"resources"},
+    {r:"/warehouse-v2",l:"Склад",d:"Каталог, наличие, оборудование, ячейки, сборка, готовность",roles:ALL_ROLES,i:"backup",p:"warehouse",g:"resources"},
     {r:"/my-equipment",l:"Моё оборудование",d:"Выданное мне",roles:["PM","HEAD_PM","CHIEF_ENGINEER",...DIRECTOR_ROLES,"ADMIN"],i:"pmworks",p:"my_equipment",g:"resources"},
     {r:"/correspondence",l:"Корреспонденция",d:"Входящие и исходящие",roles:["ADMIN","OFFICE_MANAGER","DIRECTOR_COMM","DIRECTOR_GEN","DIRECTOR_DEV","PM","HEAD_PM","TO","HEAD_TO"],i:"correspondence",p:"correspondence",g:"resources"},
     {r:"/contracts",l:"Реестр договоров",d:"Договора поставщиков",roles:["ADMIN","OFFICE_MANAGER","BUH",...DIRECTOR_ROLES],i:"proxies",p:"contracts",g:"resources"},
     {r:"/seals",l:"Реестр печатей",d:"Учёт и передача",roles:["ADMIN","OFFICE_MANAGER",...DIRECTOR_ROLES],i:"proxies",p:"seals",g:"resources"},
-    {r:"/proxies",l:"Доверенности",d:"7 шаблонов документов",roles:["ADMIN","OFFICE_MANAGER",...DIRECTOR_ROLES],i:"proxies",p:"proxies",g:"resources"},
+    {r:"/proxies",l:"Доверенности",d:"Реестр и бланки",roles:["ADMIN","OFFICE_MANAGER",...DIRECTOR_ROLES],i:"proxies",p:"proxies",g:"resources"},
 
     // ── ПЕРСОНАЛ ──
     {r:"/personnel",l:"Дружина",d:"Сотрудники",roles:["ADMIN","HR","HR_MANAGER","PM","HEAD_PM","TO","HEAD_TO","OFFICE_MANAGER",...DIRECTOR_ROLES],i:"workers",p:"personnel",g:"personnel"},
     {r:"/hr-requests",l:"Заявки персонала",d:"HR-заявки",roles:["ADMIN","HR","HR_MANAGER",...DIRECTOR_ROLES],i:"workers",p:"hr_requests",g:"personnel"},
     {r:"/collections",l:"Подборки дружины",d:"Именные списки сотрудников",roles:["ADMIN","HR","HR_MANAGER",...DIRECTOR_ROLES],i:"workers",p:"personnel",g:"personnel"},
     {r:"/permits",l:"Разрешения и допуски",d:"Сроки действия, матрица",roles:["ADMIN","HR","HR_MANAGER","TO","HEAD_TO","PM","CHIEF_ENGINEER",...DIRECTOR_ROLES],i:"workers",p:"permits",g:"personnel"},
+    {r:"/nd-permits",l:"Электронные наряды",d:"Формы 924н/528, риски, конструктор",roles:["ADMIN","PM","HEAD_PM","TO","HEAD_TO","CHIEF_ENGINEER",...DIRECTOR_ROLES],i:"workers",p:"permits",g:"personnel"},
     {r:"/permit-applications",l:"Заявки на оформление",d:"Реестры разрешений подрядчикам",roles:["ADMIN","HR","HR_MANAGER","TO","HEAD_TO",...DIRECTOR_ROLES],i:"workers",p:"permit_applications",g:"personnel"},
     {r:"/training",l:"Обучение",d:"Заявки на обучение",roles:ALL_ROLES,i:"school",p:"training_applications",g:"personnel"},
     {r:"/office-academy",l:"Академия Асгарда",d:"Корпоративное обучение — уроки и квизы",roles:ALL_ROLES,i:"school",p:"office_academy",g:"personnel"},
@@ -309,6 +311,7 @@ console.log('[ASGARD] Global period functions loaded');
     {r:"/timesheet-warehouse",l:"Табель учёта работы на складе",d:"Отметки склада · закрытие месяца",roles:["ADMIN","WAREHOUSE",...DIRECTOR_ROLES],i:"calendar",p:"timesheet_warehouse",g:"personnel"},
     {r:"/timesheet-medical",l:"Табель учёта МО/обучения/иной транспорт",d:"Медосмотры, обучение, корабль, вертолёт",roles:["ADMIN","TO","HEAD_TO",...DIRECTOR_ROLES],i:"calendar",p:"timesheet_medical",g:"personnel"},
     {r:"/timesheet-travel",l:"Табель учёта дороги",d:"Отметки дороги · закрытие месяца",roles:["ADMIN","OFFICE_MANAGER","HEAD_TO",...DIRECTOR_ROLES],i:"calendar",p:"timesheet_travel",g:"personnel"},
+    {r:"/site-crew",l:"Кто на объектах",d:"Матрица бригад: кто где, снять/добавить",roles:["ADMIN","HEAD_TO",...DIRECTOR_ROLES],i:"workers",p:"site_crew",g:"personnel"},
     {r:"/payroll-dashboard",l:"Финансы персонала",d:"Дашборд выплат",roles:["ADMIN","BUH",...DIRECTOR_ROLES],i:"money",p:"payroll_dashboard",g:"personnel"},
     {r:"/official-employees",l:"Официально устроенные",d:"Оклады и статусы",roles:["ADMIN","BUH",...DIRECTOR_ROLES],i:"workers",p:"official_employees",g:"personnel"},
     {r:"/training-board",l:"Обучение и допуски",d:"Допуски и обучение рабочих",roles:["ADMIN","TO","HEAD_TO",...DIRECTOR_ROLES],i:"school",p:"training_board",g:"personnel"},
@@ -603,7 +606,7 @@ try{
     // ═══════════════════════════════════════════════════════════════
     // MOBILE V2 (LEGACY) — полностью отдельный UI при ≤768px
     // ═══════════════════════════════════════════════════════════════
-    const mobileV2Routes = new Set(['/welcome','/login','/register','/home','/dashboard','/my-dashboard','/big-screen','/engineer-dashboard','/pre-tenders','/funnel','/tenders','/customers','/customer','/tkp','/calculator','/pm-calcs','/to-calcs','/head-to-approvals','/approvals','/bonus-approval','/pm-works','/all-works','/all-estimates','/gantt','/gantt-calcs','/gantt-works','/gantt-objects','/kanban','/tasks','/tasks-admin','/pm-consents','/finances','/invoices','/acts','/buh-registry','/office-expenses','/cash','/cash-admin','/payroll','/payroll-sheet','/payroll-grid','/my-timesheet','/timesheet','/timesheet-warehouse','/timesheet-medical','/timesheet-travel','/self-employed','/one-time-pay','/pass-requests','/procurement','/assembly','/warehouse','/my-equipment','/correspondence','/contracts','/seals','/proxies','/personnel','/employee','/hr-requests','/collections','/permits','/permit-applications','/permit-application-form','/training','/office-schedule','/workers-schedule','/hr-rating','/travel','/birthdays','/messenger','/chat','/mail','/my-mail','/mailbox','/alerts','/meetings','/telegram','/telephony','/mail-settings','/integrations','/mango','/kpi-works','/kpi-money','/to-analytics','/pm-analytics','/readiness','/readiness-board','/object-map','/calendar','/settings','/admin/timesheet-settings','/backup','/sync','/diag','/system-panel','/more','/user-requests','/reminders','/inbox-applications','/mimir','/test','/test-table']);
+    const mobileV2Routes = new Set(['/welcome','/login','/register','/home','/dashboard','/my-dashboard','/big-screen','/engineer-dashboard','/pre-tenders','/funnel','/tenders','/customers','/customer','/tkp','/calculator','/pm-calcs','/to-calcs','/head-to-approvals','/approvals','/bonus-approval','/pm-works','/all-works','/all-estimates','/gantt','/gantt-calcs','/gantt-works','/gantt-objects','/kanban','/tasks','/tasks-admin','/pm-consents','/finances','/billing','/invoices','/acts','/buh-registry','/office-expenses','/cash','/cash-admin','/payroll','/payroll-sheet','/payroll-grid','/my-timesheet','/timesheet','/timesheet-warehouse','/timesheet-medical','/timesheet-travel','/self-employed','/one-time-pay','/pass-requests','/procurement','/assembly','/warehouse','/my-equipment','/correspondence','/contracts','/seals','/proxies','/personnel','/employee','/hr-requests','/collections','/permits','/permit-applications','/permit-application-form','/training','/office-schedule','/workers-schedule','/hr-rating','/travel','/birthdays','/messenger','/chat','/mail','/my-mail','/mailbox','/alerts','/meetings','/telegram','/telephony','/mail-settings','/integrations','/mango','/kpi-works','/kpi-money','/to-analytics','/pm-analytics','/readiness','/readiness-board','/object-map','/calendar','/settings','/admin/timesheet-settings','/backup','/sync','/diag','/system-panel','/more','/user-requests','/reminders','/inbox-applications','/mimir','/test','/test-table']);
     if (MOBILE_V2_ENABLED && _isMobile && window.App && window.M && window.DS && mobileV2Routes.has(cur)) {
       try { if (window.AsgardSessionGuard) AsgardSessionGuard.destroy(); } catch(e) {}
       window.removeEventListener('hashchange', window.__ASG_MOBILE_HASH__);
@@ -1827,7 +1830,7 @@ var _setupPinKeypad = null;
     const works=await AsgardDB.all("works");
     const estimates=await AsgardDB.all("estimates");
 
-    const fmtRub = (v) => AsgardUI.money(v) + ' ₽';
+    const fmtRub = (v) => (AsgardUI.moneyRub || AsgardMoney.formatMoney)(v);
     const today = new Date();
     const dayMs = 24*60*60*1000;
 
@@ -1866,7 +1869,7 @@ var _setupPinKeypad = null;
       OFFICE_MANAGER: [ ['#/office-expenses','Офис.расходы'], ['#/contracts','Договоры'], ['#/customers','Контрагенты'], ['#/tasks','Задачи'], ['#/travel','Логистика'], ['#/proxies','Доверенности'], ['#/correspondence','Корреспонденция'] ],
       ADMIN: [ ['#/dashboard','<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px"><line x1="18" x2="18" y1="20" y2="10"/><line x1="12" x2="12" y1="20" y2="4"/><line x1="6" x2="6" y1="20" y2="14"/></svg> Дашборд'], ['#/calculator','ᚱ Калькулятор'], ['#/big-screen','<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px"><rect width="20" height="15" x="2" y="7" rx="2" ry="2"/><polyline points="17 2 12 7 7 2"/></svg> Big Screen'], ['#/gantt','<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px"><line x1="18" x2="18" y1="20" y2="10"/><line x1="12" x2="12" y1="20" y2="4"/><line x1="6" x2="6" y1="20" y2="14"/></svg> Гантт'], ['#/user-requests','Пользователи'], ['#/finances','Деньги'], ['#/settings','Настройки'] ],
       // M15: Новые роли + M16: Big Screen
-      HEAD_TO: [ ['#/tenders','Тендеры'], ['#/personnel','Дружина'], ['#/calculator','ᚱ Калькулятор'], ['#/big-screen','<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px"><rect width="20" height="15" x="2" y="7" rx="2" ry="2"/><polyline points="17 2 12 7 7 2"/></svg> Big Screen'], ['#/to-analytics','Аналитика отдела'], ['#/funnel','Воронка'], ['#/alerts','Уведомления'] ],
+      HEAD_TO: [ ['#/tenders','Тендеры'], ['#/personnel','Дружина'], ['#/calculator','ᚱ Калькулятор'], ['#/big-screen','<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px"><rect width="20" height="15" x="2" y="7" rx="2" ry="2"/><polyline points="17 2 12 7 7 2"/></svg> Big Screen'], ['#/to-analytics','Аналитика отдела'], ['#/alerts','Уведомления'] ],
       HEAD_PM: [ ['#/all-works','Свод работ'], ['#/calculator','ᚱ Калькулятор'], ['#/big-screen','<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px"><rect width="20" height="15" x="2" y="7" rx="2" ry="2"/><polyline points="17 2 12 7 7 2"/></svg> Big Screen'], ['#/pm-analytics','Аналитика РП'], ['#/approvals','Согласование'], ['#/gantt','<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px"><line x1="18" x2="18" y1="20" y2="10"/><line x1="12" x2="12" y1="20" y2="4"/><line x1="6" x2="6" y1="20" y2="14"/></svg> Гантт'] ],
       CHIEF_ENGINEER: [ ['#/warehouse','Склад'], ['#/engineer-dashboard','Аналитика склада'], ['#/my-equipment','Моё оборудование'], ['#/alerts','Уведомления'] ],
       HR_MANAGER: [ ['#/personnel','Персонал'], ['#/calculator','ᚱ Калькулятор'], ['#/travel','Логистика'], ['#/workers-schedule','График'], ['#/permits','Допуски'], ['#/hr-rating','Рейтинг'] ]
@@ -1886,9 +1889,9 @@ var _setupPinKeypad = null;
       </div>
     `;
 
-    // Виджет баланса кассы для PM и HEAD_TO
+    // Виджет баланса кассы — у кого есть cash:read
     let cashWidgetHtml = "";
-    if ((user.role === "PM" || user.role === "HEAD_TO") && window.AsgardAuth && AsgardAuth.hasPermission && AsgardAuth.hasPermission('cash', 'read')) {
+    if (window.AsgardAuth && AsgardAuth.hasPermission && AsgardAuth.hasPermission('cash', 'read')) {
       cashWidgetHtml = `
         <div class="card" id="cashBalanceWidget">
           <h3>${user.role === 'HEAD_TO' ? 'Моя касса' : 'Касса — мой баланс'}</h3>
@@ -2007,8 +2010,8 @@ var _setupPinKeypad = null;
       setTimeout(() => AsgardMango.renderCallToggle('callToggleContainer'), 100);
     }
 
-    // Загружаем баланс кассы для PM и HEAD_TO
-    if ((user.role === "PM" || user.role === "HEAD_TO") && document.getElementById('cashBalanceData')) {
+    // Баланс кассы — у всех с виджетом (cash:read). Quick-expense — только HEAD_TO.
+    if (document.getElementById('cashBalanceData')) {
       (async () => {
         try {
           const auth = AsgardAuth.getAuth();
@@ -2017,7 +2020,7 @@ var _setupPinKeypad = null;
           });
           if (resp.ok) {
             const data = await resp.json();
-            const formatMoney = (v) => AsgardUI.money(v) + ' руб.';
+            const formatMoney = (v) => (AsgardUI.moneyRub || AsgardMoney.formatMoney)(v);
             const spentLabel = user.role === 'HEAD_TO' ? 'Выплачено' : 'Потрачено';
             const spentVal = user.role === 'HEAD_TO' ? (data.cash_payouts_workers ?? data.spent) : data.spent;
             document.getElementById('cashBalanceData').innerHTML = `
@@ -2093,9 +2096,14 @@ var _setupPinKeypad = null;
           const resp = await fetch('/api/tasks/todo', {
             headers: { 'Authorization': 'Bearer ' + (auth?.token || '') }
           });
+          if (resp.status === 403) {
+            document.getElementById('todoWidgetContent').innerHTML = '<div class="text-muted">Нет доступа</div>';
+            return;
+          }
           if (resp.ok) {
             const todos = await resp.json();
-            const activeTodos = todos.filter(t => !t.done).slice(0, 5);
+            const list = Array.isArray(todos) ? todos : (todos.items || todos.todos || []);
+            const activeTodos = list.filter(t => !t.done).slice(0, 5);
             if (activeTodos.length === 0) {
               document.getElementById('todoWidgetContent').innerHTML = '<div class="text-muted">Список дел пуст</div>';
             } else {
@@ -2202,14 +2210,19 @@ var _setupPinKeypad = null;
       // who have can_read=true in role_presets but haven't refreshed their asgard_permissions yet.
       AsgardPermitsPage.render({layout, title:"Разрешения и допуски"});
     }, {auth:true, roles:["ADMIN","HR","HR_MANAGER","TO","HEAD_TO","PM","CHIEF_ENGINEER",...DIRECTOR_ROLES]});
+    AsgardRouter.add("/nd-permits", () => {
+      if (window.AsgardNdPermits) AsgardNdPermits.renderCatalog({layout, title:"Электронные наряды-допуски"});
+      else layout('<div class="help">Модуль nd-permits.js не загружен</div>', {title:"Наряды"});
+    }, {auth:true, roles:["ADMIN","PM","HEAD_PM","TO","HEAD_TO","CHIEF_ENGINEER",...DIRECTOR_ROLES]});
     AsgardRouter.add("/permit-applications", ()=>AsgardPermitApplications.render({layout, title:"Заявки на оформление разрешений"}), {auth:true, roles:["ADMIN","HR","HR_MANAGER","TO","HEAD_TO",...DIRECTOR_ROLES]});
     AsgardRouter.add("/permit-application-form", ({query})=>AsgardPermitApplications.renderForm({layout, title: query?.id ? "Редактирование заявки" : "Новая заявка", query}), {auth:true, roles:["ADMIN","HR","HR_MANAGER","TO","HEAD_TO",...DIRECTOR_ROLES]});
     // 27.06.2026: /pre-tenders сведена в единый маркетплейс /director-inbox.
     AsgardRouter.add("/pre-tenders", ()=>{ location.hash = "#/director-inbox"; }, {auth:true, roles:["ADMIN","TO","HEAD_TO"]});
-    AsgardRouter.add("/funnel", ()=>AsgardFunnelPage.render({layout, title:"Воронка продаж"}), {auth:true, roles:["ADMIN","TO","HEAD_TO",...DIRECTOR_ROLES]});
+    AsgardRouter.add("/funnel", ()=>{ location.hash = '#/tenders'; }, {auth:true, roles:["ADMIN","TO","HEAD_TO",...DIRECTOR_ROLES]});
     AsgardRouter.add("/tenders", ()=>AsgardTendersPage.render({layout, title:"Сага Тендеров"}), {auth:true, roles:["ADMIN","TO","HEAD_TO",...DIRECTOR_ROLES]});
     AsgardRouter.add("/pm-calculations", ({query})=>AsgardPmDutyPage.render({layout, title:"Просчёты РП", query}), {auth:true, roles:["ADMIN","PM","HEAD_PM","TO","HEAD_TO",...DIRECTOR_ROLES]});
     AsgardRouter.add("/pm-duty", ()=>{ location.hash = "#/pm-calculations"; }, {auth:true, roles:["ADMIN","PM","HEAD_PM","TO","HEAD_TO",...DIRECTOR_ROLES]});
+    AsgardRouter.add("/preview-calc-report", ()=>AsgardPreviewCalcReportPage.render({layout, title:"Превью: модалка просчёта"}), {auth:true, roles:["ADMIN"]});
     AsgardRouter.add("/tenderguru-settings", ()=>AsgardTenderGuruSettingsPage.render({layout, title:"TenderGuru — настройки"}), {auth:true, roles:["ADMIN","TO","HEAD_TO"]});
     AsgardRouter.add("/customers", ()=>AsgardCustomersPage.renderList({layout, title:"Карта Контрагентов"}), {auth:true, roles:["ADMIN","TO","HEAD_TO","PM","HEAD_PM","OFFICE_MANAGER",...DIRECTOR_ROLES]});
     AsgardRouter.add("/customer", ({query})=>AsgardCustomersPage.renderCard({layout, title:"Карточка контрагента", query}), {auth:true, roles:["ADMIN","TO","HEAD_TO","PM","HEAD_PM","OFFICE_MANAGER",...DIRECTOR_ROLES]});
@@ -2232,6 +2245,7 @@ var _setupPinKeypad = null;
     AsgardRouter.add("/buh-registry", () => {
       AsgardBuhRegistryPage.render({layout, title:"Реестр расходов • BUH"});
     }, {auth:true, roles:["ADMIN","BUH",...DIRECTOR_ROLES]});
+    AsgardRouter.add("/doc-hub", ({query})=>AsgardDocHubPage.render({layout, title:"Реестр документов", query}), {auth:true, roles:["ADMIN","BUH","PM","HEAD_PM","TO","HEAD_TO","PROC","WAREHOUSE","OFFICE_MANAGER",...DIRECTOR_ROLES]});
     AsgardRouter.add("/office-expenses", ()=>AsgardOfficeExpensesPage.render({layout, title:"Офисные расходы"}), {auth:true, roles:["ADMIN","OFFICE_MANAGER",...DIRECTOR_ROLES]});
     AsgardRouter.add("/correspondence", ({query})=>AsgardCorrespondencePage.render({layout, title:"Корреспонденция", query}), {auth:true, roles:["ADMIN","OFFICE_MANAGER","DIRECTOR_COMM","DIRECTOR_GEN","DIRECTOR_DEV","PM","HEAD_PM","TO","HEAD_TO"]});
     AsgardRouter.add("/telephony", ()=>AsgardTelephonyPage.render({layout, title:"Телефония"}), {auth:true, roles:["ADMIN","TO","HEAD_TO","PM","HEAD_PM",...DIRECTOR_ROLES]});
@@ -2278,6 +2292,7 @@ var _setupPinKeypad = null;
     AsgardRouter.add("/timesheet-warehouse", ()=>AsgardTimesheetV2.renderWarehouse({layout, title:"Табель учёта работы на складе"}), {auth:true, roles:["ADMIN","WAREHOUSE",...DIRECTOR_ROLES]});
     AsgardRouter.add("/timesheet-medical", ()=>AsgardTimesheetV2.renderMedical({layout, title:"Табель учёта МО/обучения/иной транспорт"}), {auth:true, roles:["ADMIN","TO","HEAD_TO",...DIRECTOR_ROLES]});
     AsgardRouter.add("/timesheet-travel", ()=>AsgardTimesheetV2.renderTravel({layout, title:"Табель учёта дороги"}), {auth:true, roles:["ADMIN","OFFICE_MANAGER","HEAD_TO",...DIRECTOR_ROLES]});
+    AsgardRouter.add("/site-crew", ()=>AsgardSiteCrewPage.render({layout, title:"Кто на объектах"}), {auth:true, roles:["ADMIN","HEAD_TO",...DIRECTOR_ROLES]});
     // Старые URL — редиректы
     AsgardRouter.add("/global-timesheet", ()=>{ location.hash = '#/timesheet'; }, {auth:true, roles:ALL_ROLES});
     AsgardRouter.add("/payroll-dashboard", ()=>AsgardPayrollDashboard.render({layout, title:"Финансы персонала"}), {auth:true, roles:["ADMIN","BUH",...DIRECTOR_ROLES]});
@@ -2285,10 +2300,17 @@ var _setupPinKeypad = null;
     AsgardRouter.add("/training-board", ()=>AsgardTrainingBoard.render({layout, title:"Обучение и допуски"}), {auth:true, roles:["ADMIN","TO","HEAD_TO",...DIRECTOR_ROLES]});
     AsgardRouter.add("/pm-balance", ()=>AsgardPmBalancePage.render({layout, title:"Баланс подотчётников"}), {auth:true, roles:["ADMIN","BUH",...DIRECTOR_ROLES]});
     AsgardRouter.add("/pm-balance/:pm_id", ()=>AsgardPmBalancePage.renderDetail({layout, title:"Баланс подотчётников"}), {auth:true, roles:["ADMIN","BUH",...DIRECTOR_ROLES]});
-    AsgardRouter.add("/procurement", ()=>AsgardProcurementPage.render({layout, title:"Закупки"}), {auth:true, roles:["ADMIN","PROC","BUH","DIRECTOR_GEN","DIRECTOR_COMM","DIRECTOR_DEV"]});
+    AsgardRouter.add("/procurement", ()=>AsgardProcurementPage.render({layout, title:"Закупки"}), {auth:true, roles:["ADMIN","PROC","BUH","PM","HEAD_PM","DIRECTOR_GEN","DIRECTOR_COMM","DIRECTOR_DEV"]});
     AsgardRouter.add("/my-procurement", ()=>AsgardProcurementPage.render({layout, title:"Мои заявки"}), {auth:true, roles:["PM","HEAD_PM","WAREHOUSE","ADMIN"]});
     AsgardRouter.add("/suppliers-catalog", ()=>AsgardSuppliersPage.render({layout, title:"Поставщики и цены"}), {auth:true, roles:["ADMIN","PROC","PM","HEAD_PM","DIRECTOR_GEN","DIRECTOR_COMM","DIRECTOR_DEV","BUH"]});
-AsgardRouter.add("/assembly", ()=>AsgardAssemblyPage.render({layout, title:"Сбор"}), {auth:true, roles:["ADMIN","PM","HEAD_PM","WAREHOUSE","DIRECTOR_GEN","DIRECTOR_COMM","DIRECTOR_DEV"]});
+AsgardRouter.add("/assembly", () => {
+      const h = String(location.hash || '');
+      const m = h.match(/[?&]id=(\d+)/);
+      const id = m ? m[1] : null;
+      location.hash = id
+        ? ('#/warehouse-v2?tab=sheet&id=' + id)
+        : '#/warehouse-v2?tab=assemblies';
+    }, {auth:true, roles:["ADMIN","PM","HEAD_PM","WAREHOUSE","DIRECTOR_GEN","DIRECTOR_COMM","DIRECTOR_DEV"]});
     AsgardRouter.add("/training", () => { AsgardTrainingPage.render({layout, title:"Обучение"}); }, {auth:true});
     AsgardRouter.add("/office-academy", () => { AsgardOfficeAcademyPage.render({layout, title:"Академия Асгарда"}); }, {auth:true, roles:ALL_ROLES});
   AsgardRouter.add("/workers-schedule", ()=>AsgardStaffSchedulePage.render({layout, title:"График рабочих"}), {auth:true, roles:["ADMIN","HR","HR_MANAGER",...DIRECTOR_ROLES]});
@@ -2298,9 +2320,10 @@ AsgardRouter.add("/assembly", ()=>AsgardAssemblyPage.render({layout, title:"Сб
     AsgardRouter.add("/gantt", ()=>AsgardGanttFullPage.renderCombined({layout}), {auth:true, roles:["ADMIN","PM","HEAD_PM",...DIRECTOR_ROLES]});
     AsgardRouter.add("/gantt-objects", ()=>AsgardGanttFullPage.renderCombined({layout}), {auth:true, roles:["ADMIN","PM","HEAD_PM",...DIRECTOR_ROLES]});
     
-    // Акты и счета
-    AsgardRouter.add("/acts", ()=>AsgardActsPage.render({layout, title:"Акты выполненных работ"}), {auth:true, roles:["ADMIN","PM","BUH",...DIRECTOR_ROLES]});
-    AsgardRouter.add("/invoices", ()=>AsgardInvoicesPage.render({layout, title:"Счета и оплаты"}), {auth:true, roles:["ADMIN","PM","BUH",...DIRECTOR_ROLES]});
+    // Счета и акты — единый зал (алиасы /invoices и /acts сохраняют старые ссылки)
+    AsgardRouter.add("/billing", ({query})=>AsgardBillingPage.render({layout, title:"Счета и акты", query, tab:"all"}), {auth:true, roles:["ADMIN","PM","HEAD_PM","BUH",...DIRECTOR_ROLES]});
+    AsgardRouter.add("/acts", ({query})=>AsgardBillingPage.render({layout, title:"Счета и акты", query, tab:"acts"}), {auth:true, roles:["ADMIN","PM","HEAD_PM","BUH",...DIRECTOR_ROLES]});
+    AsgardRouter.add("/invoices", ({query})=>AsgardBillingPage.render({layout, title:"Счета и акты", query, tab:"invoices"}), {auth:true, roles:["ADMIN","PM","HEAD_PM","BUH",...DIRECTOR_ROLES]});
     AsgardRouter.add("/reminders", ()=>AsgardReminders.render({layout, title:"Напоминания"}), {auth:true, roles:ALL_ROLES});
     AsgardRouter.add("/warehouse", ()=>{ location.hash = '#/warehouse-v2'; }, {auth:true, roles:ALL_ROLES});
     AsgardRouter.add("/warehouse-v2", ()=>AsgardWarehouseV2.render({layout, title:"Склад"}), {auth:true, roles:ALL_ROLES});
@@ -2310,7 +2333,7 @@ AsgardRouter.add("/assembly", ()=>AsgardAssemblyPage.render({layout, title:"Сб
     AsgardRouter.add("/cash", async ()=>{
       await layout('<div id="cash-page"></div>', {title:"Касса"});
       AsgardCashPage.render(document.getElementById('cash-page'));
-    }, {auth:true, roles:["ADMIN","PM","HEAD_TO",...DIRECTOR_ROLES]});
+    }, {auth:true, roles:[...ALL_ROLES, "FIELD_WORKER"]});
     AsgardRouter.add("/cash-admin", async ()=>{
       await layout('<div id="cash-admin-page"></div>', {title:"Касса (управление)"});
       AsgardCashAdminPage.render(document.getElementById('cash-admin-page'));
@@ -2320,6 +2343,61 @@ AsgardRouter.add("/assembly", ()=>AsgardAssemblyPage.render({layout, title:"Сб
       await layout('<div id="approval-payment-page" data-page="approval-payment"></div>', {title:"Очередь оплаты"});
       AsgardApprovalPaymentPage.render(document.getElementById('approval-payment-page'));
     }, {auth:true, roles:["ADMIN","BUH",...DIRECTOR_ROLES]});
+    AsgardRouter.add("/payment-invoices", async ({query})=>{
+      await layout('<div id="payment-invoices-page"></div>', {title:"Счета на оплату"});
+      const host = document.getElementById('payment-invoices-page');
+      const id = query && (query.id || query.Id);
+      const esc = (window.AsgardUI && AsgardUI.esc) ? AsgardUI.esc : (s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])));
+      const money = (window.AsgardUI && AsgardUI.moneyRub) ? AsgardUI.moneyRub : (n => (Number(n)||0).toLocaleString('ru-RU') + ' ₽');
+      try {
+        const t = localStorage.getItem('asgard_token') || localStorage.getItem('auth_token');
+        const r = await fetch('/api/payment-invoices', { headers: { Authorization: 'Bearer ' + t } });
+        const j = await r.json();
+        const items = (j && j.items) || [];
+        host.innerHTML = `<div class="pi-queue" style="padding:20px 24px;max-width:960px">
+          <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:8px;align-items:flex-end">
+            <div style="flex:1;min-width:200px">
+              <h2 style="margin:0;font-size:20px;font-weight:700">Счета на оплату</h2>
+              <p style="margin:6px 0 0;font-size:13px;color:var(--t2)">Очередь директора: согласовать или отказать. Файл счёта открывается в карточке.</p>
+            </div>
+            <button class="btn primary" id="pi-new">Новое согласование</button>
+            <a class="btn ghost" href="#/approval-payment">Очередь оплаты</a>
+          </div>
+          <div class="pi-queue__list" style="display:flex;flex-direction:column;gap:10px;margin-top:16px">
+            ${items.slice(0,50).map(it => {
+              const st = it.status_label || it.status || '—';
+              const hasFile = !!(it.file_path || it.file_url);
+              const due = it.due_date ? String(it.due_date).slice(0,10) : null;
+              const awaiting = it.status === 'awaiting_dir';
+              return `<button type="button" class="pi-queue__card" data-pay-open="${it.id}" style="text-align:left;display:flex;justify-content:space-between;align-items:center;gap:14px;padding:14px 16px;border:1px solid var(--brd);border-radius:12px;background:var(--bg1);cursor:pointer;width:100%;color:inherit;font:inherit;${awaiting ? 'border-color:color-mix(in srgb,var(--gold,#c9a84c) 45%,var(--brd));' : ''}">
+                <div style="min-width:0;flex:1">
+                  <div style="font-weight:650;font-size:14px">Счёт #${it.id} · ${esc(it.supplier_name || '—')}</div>
+                  <div style="margin-top:4px;font-size:12px;color:var(--t2);display:flex;flex-wrap:wrap;gap:8px">
+                    <span>${esc(st)}</span>
+                    ${due ? `<span>срок ${esc(due)}</span>` : ''}
+                    <span style="color:${hasFile ? 'var(--ok-t, #22c55e)' : 'var(--err-t, #f87171)'}">${hasFile ? 'есть файл счёта' : 'нет файла'}</span>
+                    ${it.basis_text ? `<span title="${esc(it.basis_text)}">${esc(String(it.basis_text).slice(0,48))}</span>` : ''}
+                  </div>
+                </div>
+                <div style="text-align:right;flex-shrink:0">
+                  <div style="font-size:18px;font-weight:750;font-variant-numeric:tabular-nums">${money(it.amount)}</div>
+                  <div style="font-size:11px;color:var(--t3);margin-top:2px">${awaiting ? 'Открыть →' : 'Карточка'}</div>
+                </div>
+              </button>`;
+            }).join('') || '<div class="proc-pay-modal__preview-empty"><strong>Нет счетов</strong><span>Создайте согласование или дождитесь волны из закупок</span></div>'}
+          </div>
+        </div>`;
+        document.getElementById('pi-new').onclick = () => AsgardProcurementPage.openStandalonePaymentModal();
+        host.querySelectorAll('[data-pay-open]').forEach(b => {
+          b.onclick = () => AsgardProcurementPage.openPaymentInvoiceModal(+b.dataset.payOpen);
+        });
+      } catch (e) {
+        host.innerHTML = `<div style="padding:24px;color:var(--red)">Не удалось загрузить счета: ${e.message}</div>`;
+      }
+      if (id && window.AsgardProcurementPage && AsgardProcurementPage.openPaymentInvoiceModal) {
+        setTimeout(() => AsgardProcurementPage.openPaymentInvoiceModal(+id), 200);
+      }
+    }, {auth:true, roles:["ADMIN","PROC","BUH","PM","HEAD_PM","HEAD_TO","TO",...DIRECTOR_ROLES]});
 
     // /payroll и /payroll-sheet удалены 18.06.2026 — заменены workflow «РП закрыл месяц → бух выгружает Excel в /timesheet»
     AsgardRouter.add("/payroll", ()=>{ location.hash = '#/timesheet'; }, {auth:true, roles:ALL_ROLES});
@@ -2639,6 +2717,11 @@ AsgardRouter.add("/assembly", ()=>AsgardAssemblyPage.render({layout, title:"Сб
           var _ga = AsgardAuth.getAuth();
           if (_ga && _ga.user && typeof showPresenceGate === 'function') {
             showPresenceGate().catch(function(e){ console.warn('[PresenceGate] boot:', e); });
+          }
+          if (_ga && _ga.user && window.AsgardAcademyLagReminder) {
+            setTimeout(function () {
+              try { AsgardAcademyLagReminder.maybeShow(); } catch (e) {}
+            }, 2200);
           }
         } catch(e) {}
         AsgardRouter.start();

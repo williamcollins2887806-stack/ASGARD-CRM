@@ -120,3 +120,18 @@ tests/silent_*.js
 tests/audit-screenshots
 tests/reports/silent-*/
 tests/reports/smoke-v2-final/
+
+# Рабочие каталоги исследований/выгрузок и разовый мусор деплоя (14.09.2026, шаг 5a).
+# Без этого `git add -A` утаскивает в историю ~1000 файлов временных выгрузок.
+_tmp_*/
+_tmp_*
+tools/_tz_work/
+tools/_tz_*/
+_v2_deploy.tar
+public/_preview-*.html
+public/prototypes/
+# Разовые архивы выкаток, кэш Python и прочий локальный мусор в корне
+/*.tar
+/*.tar.gz
+__pycache__/
+.cad_mcp/

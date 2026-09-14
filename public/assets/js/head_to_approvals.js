@@ -13,7 +13,7 @@
  */
 'use strict';
 window.AsgardHeadToApprovalsPage = (function () {
-  const { $, esc, toast, showModal, money } = AsgardUI;
+  const { $, esc, toast, showModal, moneyRub: money } = AsgardUI;
 
   function getHeaders() {
     const auth = (typeof AsgardAuth !== 'undefined') ? AsgardAuth.getAuth() : null;
@@ -89,7 +89,7 @@ window.AsgardHeadToApprovalsPage = (function () {
   function row(entry) {
     const { tender: t, estimate: e } = entry;
     const sum = e.price_tkp || e.total_sum || t.tender_price;
-    const sumStr = sum ? money(sum) + ' ₽' : '—';
+    const sumStr = sum ? money(sum) : '—';
     const margin = e.margin_pct || e.margin_percent;
     return `
       <div class="card" style="margin-bottom:10px" data-est="${e.id}">

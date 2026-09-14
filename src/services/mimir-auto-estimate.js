@@ -505,9 +505,11 @@ function emptyBuckets() {
  *   - предупреждения о допусках которые скоро истекают
  */
 async function getEmployeePermitsSummary(db, employeeIds, onProgress) {
-  safeProgress(onProgress, 'permits', '🛡 Проверяю допуска свободных сотрудников...');
+  // Короткие статусы для UI — детальная сводка (топ типов) уходит в промпт, не в прогресс
+  safeProgress(onProgress, 'permits', 'Проверяю кадры и допуска…');
 
   if (!employeeIds || employeeIds.length === 0) {
+    safeProgress(onProgress, 'permits', 'Свободных полевых нет — допуска пропускаю');
     return { by_type: {}, by_employee: {}, total_active: 0, expiring_soon: [] };
   }
 
@@ -556,6 +558,8 @@ async function getEmployeePermitsSummary(db, employeeIds, onProgress) {
       }
     }
 
+    safeProgress(onProgress, 'permits', 'Кадры готовы — дальше считает модель');
+
     return {
       by_type,
       by_employee,
@@ -565,6 +569,7 @@ async function getEmployeePermitsSummary(db, employeeIds, onProgress) {
     };
   } catch (e) {
     console.warn('[AP3] getEmployeePermitsSummary:', e.message);
+    safeProgress(onProgress, 'permits', 'Допуска не прочитались — продолжаю без них');
     return { by_type: {}, by_employee: {}, total_active: 0, expiring_soon: [], error: e.message };
   }
 }
@@ -615,6 +620,14 @@ async function getCalcSettings(db) {
       if (row.key === 'contingency_pct') settings.contingency_pct = parseFloat(v) || settings.contingency_pct;
     }
   } catch (e) { /* fallback to defaults */ }
+  // Справочник норм CRM — перекрывает settings при наличии таблиц V309
+  try {
+    const workNorms = require('./work-norms');
+    const g = await workNorms.loadGlobals(db);
+    if (g && g.map && Object.keys(g.map).length) {
+      Object.assign(settings, workNorms.globalsToCalcSettings(g.map, settings));
+    }
+  } catch (_) { /* таблиц ещё нет */ }
   return settings;
 }
 
@@ -649,14 +662,24 @@ async function buildAutoEstimateContext(db, workId, user, onProgress) {
     warehouse,
     workers,
     tariffs,
-    settings
+    settings,
+    workNormsCatalog
   ] = await Promise.all([
     getAnalogs(db, workType, linkedEstimate?.id || null, titleHint, onProgress),
     getCustomerHistory(db, work.customer_name || tender?.customer_name, onProgress),
     getWarehouseStock(db, onProgress),
     getAvailableWorkers(db, startDate, endDate, onProgress),
     getTariffGrid(db, onProgress),
-    getCalcSettings(db)
+    getCalcSettings(db),
+    (async () => {
+      try {
+        const workNorms = require('./work-norms');
+        const cat = await workNorms.loadCatalog(db);
+        return workNorms.toPromptMarkdown(cat, workType);
+      } catch (_) {
+        return '(справочник норм CRM ещё не развёрнут — V309)';
+      }
+    })()
   ]);
 
   // Шаг 7b: Допуска для свободных полевых сотрудников
@@ -715,6 +738,7 @@ async function buildAutoEstimateContext(db, workId, user, onProgress) {
     permits,
     tariffs,
     settings,
+    work_norms_catalog: workNormsCatalog,
     summary
   };
 }
@@ -890,7 +914,7 @@ function documentsToPrompt(docs) {
   return docs.map(d => {
     const head = `  📄 ${d.original_name} (${d.size_kb}KB)`;
     if (!d.content) return head;
-    const sample = d.content.replace(/\s+/g, ' ').substring(0, 4000);
+    const sample = d.content.replace(/\s+/g, ' ').substring(0, 12000);
     return `${head}\n  Содержимое:\n${sample}`;
   }).join('\n\n');
 }
@@ -980,7 +1004,8 @@ function buildAutoEstimatePrompt(ctx) {
       overhead_pct: settings.overhead_pct ?? 0,
       consumables_pct: settings.consumables_pct ?? 0,
       contingency_pct: settings.contingency_pct ?? 12,
-      itr_rate_per_day: settings.itr_rate_per_day ?? 10000
+      itr_rate_per_day: settings.itr_rate_per_day ?? 10000,
+      work_norms_catalog: ctx.work_norms_catalog || '(справочник норм CRM пуст)'
     };
 
     return promptLoader.buildPrompt('PROMPT-quick-v4.md', substitutions);
@@ -1150,6 +1175,10 @@ ${tariffsToPrompt(ctx.tariffs)}
 📌 Блок "travel" — командировочные (рассчитывай НА КАЖДОГО × ВСЕ ДНИ):
   - Пайковые: 1 000₽/чел/день × total_days (work_days + road_days*2 + моб/демоб).
     ⚠️ В Асгарде НЕТ СУТОЧНЫХ — только пайковые. НЕ добавляй строку "Суточные"!
+    Формат ОБЯЗАТЕЛЬНО: count = численность бригады, price = 1000 × total_days (на 1 чел. за весь период),
+    total = count × price.
+    Пример (27 чел, 162 дня): {"item":"Пайковые (1000₽/чел/день × 162 дн)","count":27,"price":162000,"total":4374000}
+    ⚠️ НЕ ставь в price число дней (162) — это частая ошибка. price = 1000×дни.
   - Проживание: 1 500₽/чел/ночь МАКСИМУМ (арендуем квартиры, не гостиницы). На все ночи.
   - Билеты — расписывай КАЖДЫЙ СЕГМЕНТ ОТДЕЛЬНО:
     Маршрут: Саратов → Москва → город объекта (туда), обратно аналогично.
@@ -1172,8 +1201,9 @@ ${tariffsToPrompt(ctx.tariffs)}
   - Такси/служебный транспорт по городу: 1 500₽/день на бригаду
 
 📌 Блок "chemistry" — химия/материалы:
-  - Только если тип работ CHEM. При HYDRO_MECH химия не нужна.
-  - Расходники: насадки, щётки, прокладки — 30-50 тыс₽ комплект
+  - Только если тип работ CHEM. При HYDRO_MECH / HYDRO_DYN химия обычно не нужна.
+  - Если химия НЕ нужна — верни "chemistry": [] (пустой массив). НЕ пиши заглушку "<нет>" и не оставляй нулевые строки.
+  - Расходники: насадки, щётки, прокладки — 30-50 тыс₽ комплект (это current_costs, не chemistry)
 
 📌 Оборудование (ОБЯЗАТЕЛЬНО УЧТИ — ЭТО КРУПНАЯ СТАТЬЯ):
   ⚡ АЛГОРИТМ:
@@ -1524,7 +1554,63 @@ function parseAIResponse(text) {
  * 4. Считает total_with_margin = total_cost × markup_multiplier
  *
  * Возвращает { calculation, totals, drift } где drift — отклонение от того что прислал AI.
+ * Перед пересчётом санитизирует chemistry «<нет>» и кривые пайковые.
  */
+function _sanitizeCalcArtifacts(calc, settings, est) {
+  const mealsRate = Number(settings?.meals_per_day) || 1000;
+  const totalDays = Number(est?.total_days)
+    || ((Number(est?.work_days) || 0) + 2 * (Number(est?.road_days) || 0) + (Number(est?.mobdemob_days) || 0))
+    || 0;
+
+  calc.chemistry = (calc.chemistry || []).filter((r) => {
+    const name = String(r.item || r.name || r.description || '').trim().toLowerCase();
+    if (!name || name === '<нет>' || name === 'нет' || name === '-' || name === 'n/a' || name === 'none') {
+      return false;
+    }
+    const tot = Number(r.total) || 0;
+    const vol = Number(r.volume_liters) || Number(r.volume_m3) || 0;
+    const ppl = Number(r.price_per_liter) || Number(r.rate) || 0;
+    if (tot <= 0 && vol <= 0 && ppl <= 0) return false;
+    return true;
+  });
+
+  (calc.travel || []).forEach((r) => {
+    const desc = String(r.description || r.item || r.name || '');
+    if (!/пайков/i.test(desc)) return;
+
+    const count = Number(r.count) || Number(r.qty) || 0;
+    let price = Number(r.price) || Number(r.rate) || 0;
+    const rateMatch = desc.match(/(\d[\d\s]*)\s*₽/);
+    const dayRate = rateMatch ? Number(String(rateMatch[1]).replace(/\s/g, '')) : mealsRate;
+    const daysMatch = desc.match(/×\s*(\d+)/) || desc.match(/(\d+)\s*(?:дн|день|дней|сут)/i);
+    const days = daysMatch ? Number(daysMatch[1]) : totalDays;
+
+    if (!(count > 0 && days > 0 && dayRate > 0)) return;
+
+    const expectedPerPerson = dayRate * days;
+    // Типичный баг: price = число дней (162) вместо 1000×162
+    if (price > 0 && price < dayRate * 0.5) {
+      price = expectedPerPerson;
+    } else if (Math.abs(price - dayRate) < 1 && count <= (Number(est?.crew_count) || count) * 1.5) {
+      // price = 1000 (за день), count = люди → нужно × дни
+      price = expectedPerPerson;
+    } else if (price > 0 && price < expectedPerPerson * 0.5 && count < days) {
+      price = expectedPerPerson;
+    } else {
+      return;
+    }
+
+    r.count = count;
+    r.qty = count;
+    r.price = price;
+    r.rate = price;
+    r.total = Math.round(count * price * 100) / 100;
+    const label = `Пайковые (${dayRate}₽/чел/день × ${days} дн)`;
+    r.description = label;
+    r.item = label;
+  });
+}
+
 function validateAndRecomputeMath(ai, settings, ctx = null) {
   const calc = JSON.parse(JSON.stringify(ai.calculation || {}));
   const est = ai.estimate || {};
@@ -1532,6 +1618,9 @@ function validateAndRecomputeMath(ai, settings, ctx = null) {
   // AP5: Серверная обрезка work_days ОТКЛЮЧЕНА — Claude Sonnet сам соблюдает сроки.
   // Сроки есть в данных (work.start_plan→end_plan), Claude видит их и укладывается.
   let timeOverflowFix = null;
+
+  // 0a. Санитайз артефактов модели (заглушки chemistry, кривые пайковые)
+  _sanitizeCalcArtifacts(calc, settings, est);
 
   // 0. Нормализация полей ПЕРЕД пересчётом (Claude пишет qty/rate, сервер ожидает count/rate_per_day)
   (calc.personnel || []).forEach(p => {
@@ -2026,12 +2115,30 @@ async function callMimirForEstimate(aiProvider, ctx, extraUserMessage = null) {
     ? [{ role: 'user', content: extraUserMessage }]
     : [{ role: 'user', content: 'Заполни просчёт по контексту выше. Верни строго JSON.' }];
 
-  const aiResult = await aiProvider.complete({
-    system: systemPrompt,
-    messages,
-    maxTokens: 8000,
-    temperature: 0.2
-  });
+  // deepseek-v4-pro — reasoning-модель: thinking съедает max_tokens раньше content.
+  // 8k часто даёт finish_reason=length и пустой content → поднимаем лимит.
+  const estimateMaxTokens = Math.max(
+    8000,
+    parseInt(process.env.MIMIR_ESTIMATE_MAX_TOKENS || '48000', 10) || 48000
+  );
+
+  async function _completeOnce(maxTokens) {
+    return aiProvider.complete({
+      system: systemPrompt,
+      messages,
+      maxTokens,
+      temperature: 0.2
+    });
+  }
+
+  let aiResult = await _completeOnce(estimateMaxTokens);
+
+  // Один ретрай при пустом content из‑за усечения reasoning
+  if ((!aiResult?.text || !String(aiResult.text).trim()) && aiResult?.stopReason === 'length') {
+    const bump = Math.min(estimateMaxTokens * 2, 65536);
+    console.warn(`[mimir-auto-estimate] empty content (finish=length) — retry maxTokens=${bump}`);
+    aiResult = await _completeOnce(bump);
+  }
 
   if (!aiResult || !aiResult.text) {
     // Структурированная ошибка — caller-обработчик распознает и покажет понятное сообщение

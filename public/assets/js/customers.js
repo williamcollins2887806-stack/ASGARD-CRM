@@ -114,11 +114,13 @@ window.AsgardCustomersPage = (function(){
 
   function normalizeContact(c){
     return {
-      name:    String(c?.name || ""),
-      role:    String(c?.role || c?.position || ""),
-      phone:   String(c?.phone || ""),
-      email:   String(c?.email || ""),
-      comment: String(c?.comment || "")
+      name:       String(c?.name || ""),
+      role:       String(c?.role || c?.position || ""),
+      phone:      String(c?.phone || ""),
+      phone2:     String(c?.phone2 || ""),
+      email:      String(c?.email || ""),
+      comment:    String(c?.comment || ""),
+      is_primary: !!c?.is_primary
     };
   }
 
@@ -136,14 +138,20 @@ window.AsgardCustomersPage = (function(){
   }
 
   function contactsToPayload(contacts){
-    const list = (contacts || []).map((c, i) => ({
+    const list = (contacts || []).map((c) => ({
       name:       String(c.name || "").trim(),
       position:   String(c.role || c.position || "").trim(),
       phone:      String(c.phone || "").trim(),
+      phone2:     String(c.phone2 || "").trim(),
       email:      String(c.email || "").trim(),
-      is_primary: i === 0
-    })).filter((c) => c.name || c.phone || c.email);
-    if (list.length && !list.some((c) => c.is_primary)) list[0].is_primary = true;
+      is_primary: !!c.is_primary
+    })).filter((c) => c.name || c.phone || c.phone2 || c.email);
+    let primaryFound = false;
+    for (const c of list) {
+      if (c.is_primary && !primaryFound) primaryFound = true;
+      else c.is_primary = false;
+    }
+    if (list.length && !primaryFound) list[0].is_primary = true;
     return list;
   }
 
@@ -151,8 +159,12 @@ window.AsgardCustomersPage = (function(){
     const rows = (contacts||[]).map((c,i)=>`
       <div class="pill between customer-contact-row" style="width:100%;margin-bottom:8px;box-sizing:border-box;overflow:visible">
         <div style="flex:1;min-width:0;display:flex;flex-wrap:wrap;gap:6px 14px;align-items:flex-start">
-          <div style="min-width:120px"><b>${esc(c.name||"")}</b><div class="help">${esc(c.role||"")}</div></div>
-          <div class="help">${esc(c.phone||"")}</div>
+          <div style="min-width:120px">
+            <b>${esc(c.name||"")}</b>
+            ${c.is_primary ? '<span class="pill" style="margin-left:6px;font-size:10px;padding:2px 6px">★ главное</span>' : ''}
+            <div class="help">${esc(c.role||"")}</div>
+          </div>
+          <div class="help">${esc([c.phone, c.phone2].filter(Boolean).join(" · ") || "")}</div>
           <div class="help">${esc(c.email||"")}</div>
           ${c.comment ? `<div class="help">${esc(c.comment||"")}</div>` : ""}
         </div>
@@ -165,13 +177,17 @@ window.AsgardCustomersPage = (function(){
     return rows || '<div class="help">Контактов пока нет.</div>';
   }
 
-  function openContactModal({ title, contact, onSave }){
+  function openContactModal({ title, contact, onSave, isFirst }){
+    const isPrimary = contact ? !!contact.is_primary : !!isFirst;
     const html = '<div class="formrow">'
       + '<div><label>ФИО</label><input id="c_name" value="'+esc(contact?.name||'')+'"/></div>'
       + '<div><label>Должность</label><input id="c_role" value="'+esc(contact?.role||'')+'"/></div>'
-      + '<div><label>Телефон</label><input id="c_phone" value="'+esc(contact?.phone||'')+'"/></div>'
+      + '<div><label>Телефон 1</label><input id="c_phone" value="'+esc(contact?.phone||'')+'"/></div>'
+      + '<div><label>Телефон 2</label><input id="c_phone2" value="'+esc(contact?.phone2||'')+'"/></div>'
       + '<div><label>Email</label><input id="c_email" value="'+esc(contact?.email||'')+'"/></div>'
       + '</div>'
+      + '<div style="margin-top:10px"><label style="display:flex;align-items:center;gap:8px;cursor:pointer">'
+      + '<input type="checkbox" id="c_primary"'+(isPrimary ? ' checked' : '')+'/> Главное контактное лицо</label></div>'
       + '<div class="row" style="justify-content:flex-end;gap:8px;margin-top:12px">'
       + '<button type="button" class="btn ghost" id="c_cancel">Отмена</button>'
       + '<button type="button" class="btn" id="c_ok">Сохранить</button>'
@@ -181,11 +197,13 @@ window.AsgardCustomersPage = (function(){
         $("#c_cancel",back).onclick = ()=>AsgardUI.hideModal();
         $("#c_ok",back).onclick = async ()=>{
           const obj = {
-            name:    $("#c_name",back).value.trim(),
-            role:    $("#c_role",back).value.trim(),
-            phone:   $("#c_phone",back).value.trim(),
-            email:   $("#c_email",back).value.trim(),
-            comment: String(contact?.comment || "").trim()
+            name:       $("#c_name",back).value.trim(),
+            role:       $("#c_role",back).value.trim(),
+            phone:      $("#c_phone",back).value.trim(),
+            phone2:     $("#c_phone2",back).value.trim(),
+            email:      $("#c_email",back).value.trim(),
+            comment:    String(contact?.comment || "").trim(),
+            is_primary: !!$("#c_primary",back)?.checked
           };
           if(!obj.name){ toast("Контакт","Укажите ФИО","err"); return; }
           try {
@@ -292,6 +310,8 @@ window.AsgardCustomersPage = (function(){
 
     function buildCustomerRec(){
       const payload = contactsToPayload(contacts);
+      const primary = payload.find((x)=>x.is_primary) || payload[0] || null;
+      const companyPhone = ($("#phone").value || "").trim();
       return {
         inn: normInn($("#inn").value),
         name: $("#name").value,
@@ -299,13 +319,14 @@ window.AsgardCustomersPage = (function(){
         kpp: $("#kpp").value,
         ogrn: $("#ogrn").value,
         address: $("#addr").value,
-        phone: $("#phone").value,
+        // legacy phone: primary contact phone if set, else company field
+        phone: (primary && primary.phone) ? primary.phone : companyPhone,
         email: $("#email").value,
         comment: $("#comment").value,
         contacts_json: JSON.stringify(contacts),
         contacts: payload,
-        contact_person: payload.length
-          ? [payload.find((x)=>x.is_primary) || payload[0]].map((x)=>[x.name, x.position].filter(Boolean).join(" · "))[0]
+        contact_person: primary
+          ? [primary.name, primary.position].filter(Boolean).join(" · ")
           : ""
       };
     }
@@ -336,6 +357,11 @@ window.AsgardCustomersPage = (function(){
             contact: contacts[i],
             onSave: async (obj)=>{
               contacts[i] = obj;
+              if (obj.is_primary) {
+                contacts.forEach((c, j) => { c.is_primary = j === i; });
+              } else if (!contacts.some((c) => c.is_primary)) {
+                contacts[0].is_primary = true;
+              }
               refreshContactsBox();
               try {
                 await saveCustomerContacts("Контакт обновлён");
@@ -366,8 +392,11 @@ window.AsgardCustomersPage = (function(){
     $("#btnAddContact").addEventListener("click", ()=>{
       openContactModal({
         title: "Добавить контакт",
+        isFirst: contacts.length === 0,
         onSave: async (obj)=>{
+          if (obj.is_primary) contacts.forEach((c) => { c.is_primary = false; });
           contacts.push(obj);
+          if (!contacts.some((c) => c.is_primary)) contacts[0].is_primary = true;
           refreshContactsBox();
           try {
             await saveCustomerContacts("Контакт добавлен");

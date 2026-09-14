@@ -28,6 +28,83 @@ async function routes(fastify, options) {
   const { createNotification } = require('../services/notify');
   const mimirTkpQuick = require('../services/mimir-tkp-quick');
   const UPLOAD_DIR = process.env.UPLOAD_DIR || './uploads';
+  // Сколько символов OCR отдаём в промпт Quick (DeepSeek держит большой контекст)
+  const ATTACH_CHARS_CAP = Math.max(
+    80000,
+    parseInt(process.env.MIMIR_QUICK_ATTACH_CHARS || '400000', 10) || 400000
+  );
+  const TENDER_CACHE_MIN_CHARS = 30000;
+  const TENDER_CACHE_MIN_DOCS = 5;
+  const STALE_CALCULATING_MIN = Math.max(
+    2,
+    parseInt(process.env.TKP_QUICK_STALE_CALC_MIN || '3', 10) || 3
+  );
+
+  function docPriorityName(name) {
+    const n = String(name || '').toLowerCase();
+    if (/техническ|тех.?зада|тз\b|задан/.test(n)) return 0;
+    if (/ведомост/.test(n)) return 1;
+    if (/объем|объём|ам-|трубк/.test(n)) return 2;
+    return 3;
+  }
+
+  /** Готовый OCR-кэш документов тендера (фон-воркер) → текст для Quick */
+  async function loadTenderOcrCache(tenderId, maxChars = ATTACH_CHARS_CAP) {
+    if (!tenderId) return { count: 0, chars: 0, text: '', docs: [] };
+    const { rows: ocrDocs } = await db.query(
+      `SELECT original_name, ocr_text
+       FROM documents
+       WHERE tender_id = $1
+         AND ocr_status = 'done'
+         AND ocr_text IS NOT NULL
+         AND length(trim(ocr_text)) > 20
+       ORDER BY
+         CASE
+           WHEN original_name ~* 'техническ|тех.?зада|тз|задан' THEN 0
+           WHEN original_name ~* 'ведомост' THEN 1
+           WHEN original_name ~* 'объем|объём|ам-|трубк' THEN 2
+           ELSE 3
+         END,
+         id`,
+      [tenderId]
+    );
+    let text = '';
+    let used = 0;
+    for (const d of ocrDocs) {
+      const prio = docPriorityName(d.original_name);
+      const perCap = prio <= 1 ? 45000 : (prio === 2 ? 20000 : 12000);
+      const block = `[${d.original_name}]\n${String(d.ocr_text).slice(0, perCap)}`;
+      const sep = text ? '\n\n---\n\n' : '';
+      if (text.length + sep.length + block.length > maxChars) {
+        const room = maxChars - text.length - sep.length;
+        if (room > 800) {
+          text += sep + block.slice(0, room);
+          used += 1;
+        }
+        break;
+      }
+      text += sep + block;
+      used += 1;
+    }
+    return { count: used, chars: text.length, text, docs: ocrDocs };
+  }
+
+  /** Зависший calculating после рестарта/обрыва SSE → draft, чтобы можно было пересчитать */
+  async function reclaimStaleCalculating(sessionUid, authorId) {
+    const { rows } = await db.query(
+      `UPDATE tkp_quick_sessions
+       SET status = 'draft',
+           error_text = COALESCE(error_text, 'Расчёт прерван — можно запустить снова'),
+           updated_at = NOW()
+       WHERE session_uid = $1
+         AND author_id = $2
+         AND status = 'calculating'
+         AND updated_at < NOW() - make_interval(mins => $3::int)
+       RETURNING session_uid`,
+      [sessionUid, authorId, STALE_CALCULATING_MIN]
+    );
+    return rows.length > 0;
+  }
 
   // ─────────────────────────────────────────────────────────────────────────
   // POST /sessions — Создать сессию
@@ -189,6 +266,7 @@ async function routes(fastify, options) {
   fastify.get('/sessions/:uid', {
     preHandler: [fastify.requireRoles(ROLES)]
   }, async (request, reply) => {
+    await reclaimStaleCalculating(request.params.uid, request.user.id);
     const { rows: [session] } = await db.query(
       'SELECT * FROM tkp_quick_sessions WHERE session_uid = $1 AND author_id = $2',
       [request.params.uid, request.user.id]
@@ -229,7 +307,7 @@ async function routes(fastify, options) {
   });
 
   // ─────────────────────────────────────────────────────────────────────────
-  // POST /sessions/:uid/upload — Загрузить файлы ТЗ, OCR → tz_attachments
+  // POST /sessions/:uid/upload — загрузить файлы ТЗ / архивы → OCR в tz_attachments
   // ─────────────────────────────────────────────────────────────────────────
   fastify.post('/sessions/:uid/upload', {
     preHandler: [fastify.requireRoles(ROLES)]
@@ -240,8 +318,11 @@ async function routes(fastify, options) {
     );
     if (!session) return reply.code(404).send({ error: 'Сессия не найдена или нельзя изменить' });
 
-    const pdfOcr = require('../services/pdf-ocr');
     const tkpParser = require('../services/tkp-parser');
+    const archiveExtractor = require('../services/archiveExtractor');
+    const fs = require('fs');
+    const os = require('os');
+    const path = require('path');
 
     const data = await request.file();
     if (!data) return reply.code(400).send({ error: 'Файл не передан' });
@@ -249,24 +330,302 @@ async function routes(fastify, options) {
     const buf = await data.toBuffer();
     if (data.file.truncated) return reply.code(413).send({ error: 'Файл превышает лимит' });
 
-    // Парсим/OCR файл для извлечения текста
-    let ocrText = '';
-    try {
-      const result = await tkpParser.parseTkpBuffer({
-        buf, originalName: data.filename || 'file', mime: data.mimetype
-      });
-      ocrText = result.text_extracted || '';
-    } catch (e) {
-      request.log.warn('[tkp_quick upload] parse failed:', e.message);
+    const filename = data.filename || 'file';
+    const mime = data.mimetype || '';
+    const warnings = [];
+    const chunks = []; // { prio, name, text, usedOcr } — без гонки при параллели
+    let usedOcr = false;
+
+    const TEXT_EXTS = new Set(['.pdf', '.docx', '.doc', '.xlsx', '.xls', '.txt', '.csv', '.rtf']);
+    const MAX_INNER_FILES = 80;
+    const MAX_TOTAL_CHARS = 280000;
+    // Пул файлов; глобальный OCR_CONCURRENCY режет vision rate-limit
+    const FILE_CONCURRENCY = Math.max(1, parseInt(process.env.TKP_QUICK_FILE_CONCURRENCY || '10', 10));
+
+    function filePriority(name) {
+      const n = String(name || '').toLowerCase();
+      if (/техническ|тех\.?\s*зада|тз\b|задан/.test(n)) return 0;
+      if (/объем|объём|ам-\d|трубк/.test(n)) return 1;
+      if (/\.docx?$/.test(n)) return 2;
+      if (/\.pdf$/.test(n)) return 3;
+      return 5;
     }
 
-    // Добавляем к tz_attachments
+    /** .doc → .docx через libreoffice (на проде есть), затем mammoth */
+    async function docToText(innerBuf, innerName) {
+      const { spawnSync } = require('child_process');
+      const stamp = `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+      const tmpDir = path.join(os.tmpdir(), `tkpq-doc-${stamp}`);
+      fs.mkdirSync(tmpDir, { recursive: true });
+      const srcPath = path.join(tmpDir, 'src.doc');
+      try {
+        fs.writeFileSync(srcPath, innerBuf);
+        const bin = ['libreoffice', 'soffice', '/usr/bin/libreoffice', '/usr/bin/soffice']
+          .find((b) => {
+            try {
+              const r = spawnSync(b, ['--version'], { timeout: 5000, encoding: 'utf8' });
+              return r.status === 0;
+            } catch (_) { return false; }
+          });
+        if (!bin) return { text: '', error: 'libreoffice не найден' };
+        const r = spawnSync(bin, ['--headless', '--convert-to', 'docx', '--outdir', tmpDir, srcPath], {
+          timeout: 90000,
+          encoding: 'utf8'
+        });
+        if (r.status !== 0) {
+          return { text: '', error: `libreoffice: ${(r.stderr || r.stdout || '').slice(0, 120)}` };
+        }
+        const docx = fs.readdirSync(tmpDir).find((f) => f.toLowerCase().endsWith('.docx'));
+        if (!docx) return { text: '', error: 'libreoffice не создал docx' };
+        const mammoth = require('mammoth');
+        const m = await mammoth.extractRawText({ buffer: fs.readFileSync(path.join(tmpDir, docx)) });
+        return { text: String(m.value || '').trim() };
+      } finally {
+        try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch (_) {}
+      }
+    }
+
+    async function extractOne(innerBuf, innerName, { allowOcr = true } = {}) {
+      const ext = path.extname(innerName || '').toLowerCase();
+      if (!TEXT_EXTS.has(ext)) {
+        if (ext === '.zip' || ext === '.rar' || ext === '.7z') {
+          warnings.push(`${innerName}: вложенный архив не распакован`);
+        }
+        return null;
+      }
+      try {
+        if (ext === '.doc') {
+          const d = await docToText(innerBuf, innerName);
+          if (d.error) { warnings.push(`${innerName}: ${d.error}`); return null; }
+          const tRaw = String(d.text || '').trim();
+          if (tRaw.length < 30) {
+            warnings.push(`${innerName}: мало текста (${tRaw.length} симв.)`);
+            return null;
+          }
+          const prio = filePriority(innerName);
+          const perCap = prio <= 1 ? 40000 : 15000;
+          return { prio, name: innerName, text: tRaw.slice(0, perCap), usedOcr: false };
+        }
+        const r = await tkpParser.extractTextOnly({
+          buf: innerBuf,
+          originalName: innerName,
+          allowOcr
+        });
+        if (r.unsupported) return null;
+        if (r.error) { warnings.push(`${innerName}: ${r.error}`); return null; }
+        const tRaw = String(r.text || '').trim();
+        const prio = filePriority(innerName);
+        const perCap = prio <= 1 ? 40000 : (prio === 2 ? 15000 : 10000);
+        if (tRaw.length < 30) {
+          warnings.push(`${innerName}: мало текста (${tRaw.length} симв.)`);
+          return null;
+        }
+        return {
+          prio,
+          name: innerName,
+          text: tRaw.slice(0, perCap),
+          usedOcr: !!r.usedOcr
+        };
+      } catch (e) {
+        warnings.push(`${innerName}: ${e.message}`);
+        return null;
+      }
+    }
+
+    async function mapPool(items, concurrency, fn) {
+      const out = new Array(items.length);
+      let ix = 0;
+      async function worker() {
+        while (true) {
+          const i = ix++;
+          if (i >= items.length) return;
+          out[i] = await fn(items[i], i);
+        }
+      }
+      await Promise.all(Array.from({ length: Math.min(concurrency, items.length) }, () => worker()));
+      return out;
+    }
+
+    function joinChunks(list) {
+      list.sort((a, b) => a.prio - b.prio || String(a.name).localeCompare(String(b.name), 'ru'));
+      let ocrText = '';
+      let filesParsed = 0;
+      for (const c of list) {
+        if (!c) continue;
+        if (c.usedOcr) usedOcr = true;
+        filesParsed += 1;
+        const room = MAX_TOTAL_CHARS - ocrText.length;
+        if (room <= 0) {
+          warnings.push(`Лимит ${MAX_TOTAL_CHARS} симв. — обрезано после ${filesParsed - 1} файлов`);
+          break;
+        }
+        ocrText += (ocrText ? '\n\n---\n\n' : '') + `[${c.name}]\n` + c.text.slice(0, room);
+      }
+      return { ocrText, filesParsed };
+    }
+
+    let ocrText = '';
+    let filesParsed = 0;
+    let fromTenderCache = false;
+
+    try {
+      // Архив + готовый OCR-кэш тендера → не гоняем vision повторно
+      if (archiveExtractor.isArchive(filename, mime) && session.tender_id) {
+        try {
+          const cache = await loadTenderOcrCache(session.tender_id, ATTACH_CHARS_CAP);
+          if (cache.chars >= TENDER_CACHE_MIN_CHARS || cache.count >= TENDER_CACHE_MIN_DOCS) {
+            ocrText = cache.text;
+            filesParsed = cache.count;
+            fromTenderCache = true;
+            warnings.push(
+              `Готовый OCR-кэш тендера #${session.tender_id}: ${cache.count} док., ` +
+              `${cache.chars} симв. — повторный OCR архива пропущен`
+            );
+            request.log.info(
+              `[tkp_quick upload] skip OCR — tender #${session.tender_id} cache ` +
+              `${cache.count} docs / ${cache.chars} chars`
+            );
+          }
+        } catch (e) {
+          request.log.warn({ err: e }, '[tkp_quick upload] tender cache read failed');
+        }
+      }
+
+      if (!fromTenderCache && archiveExtractor.isArchive(filename, mime)) {
+        const stamp = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+        const tmpArch = path.join(os.tmpdir(), `tkpq-arch-${stamp}${path.extname(filename) || '.rar'}`);
+        const tmpDir = path.join(os.tmpdir(), `tkpq-ex-${stamp}`);
+        const t0 = Date.now();
+        try {
+          fs.writeFileSync(tmpArch, buf);
+          const extracted = await archiveExtractor.extractArchive(tmpArch, filename, tmpDir, { recursive: true });
+          if (!extracted.ok) {
+            warnings.push(extracted.error?.message || 'Не удалось распаковать архив');
+            if (extracted.error?.hint) warnings.push(extracted.error.hint);
+          } else {
+            let files = (extracted.files || []).filter((f) => !f.isJunk);
+            files.sort((a, b) => filePriority(a.relPath) - filePriority(b.relPath));
+            if (files.length > MAX_INNER_FILES) {
+              warnings.push(`В архиве ${files.length} файлов — беру первые ${MAX_INNER_FILES} по приоритету (ТЗ/объёмы)`);
+              files = files.slice(0, MAX_INNER_FILES);
+            }
+            request.log.info(`[tkp_quick upload] archive ${filename}: ${files.length} files, parallel=${FILE_CONCURRENCY}`);
+
+            // 1) Не-PDF (docx/xlsx/doc/txt) — быстро, пулом
+            const nonPdf = files.filter((f) => path.extname(f.relPath || '').toLowerCase() !== '.pdf');
+            const pdfFiles = files.filter((f) => path.extname(f.relPath || '').toLowerCase() === '.pdf');
+
+            const nonPdfResults = await mapPool(nonPdf, FILE_CONCURRENCY, async (f) => {
+              try {
+                const innerBuf = fs.readFileSync(f.absPath);
+                const name = f.relPath || path.basename(f.absPath);
+                return await extractOne(innerBuf, name, { allowOcr: false });
+              } catch (e) {
+                warnings.push(`${f.relPath || f.absPath}: ${e.message}`);
+                return null;
+              }
+            });
+            for (const r of nonPdfResults) if (r) chunks.push(r);
+
+            // 2) PDF: сначала текстовый слой (мгновенно), скан → общий кросс-файловый OCR
+            const needOcr = [];
+            const pdfLayerResults = await mapPool(pdfFiles, FILE_CONCURRENCY, async (f) => {
+              const name = f.relPath || path.basename(f.absPath);
+              try {
+                const innerBuf = fs.readFileSync(f.absPath);
+                try {
+                  const pdfParse = require('pdf-parse');
+                  const data = await pdfParse(innerBuf);
+                  const text = String(data.text || '').trim();
+                  if (text.length >= 200) {
+                    const prio = filePriority(name);
+                    const perCap = prio <= 1 ? 40000 : 10000;
+                    return { chunk: { prio, name, text: text.slice(0, perCap), usedOcr: false }, ocr: null };
+                  }
+                } catch (_) { /* OCR */ }
+                return {
+                  chunk: null,
+                  ocr: { path: f.absPath, originalName: name, key: name }
+                };
+              } catch (e) {
+                warnings.push(`${name}: ${e.message}`);
+                return { chunk: null, ocr: null };
+              }
+            });
+            for (const r of pdfLayerResults) {
+              if (r?.chunk) chunks.push(r.chunk);
+              if (r?.ocr) needOcr.push(r.ocr);
+            }
+
+            if (needOcr.length) {
+              const pdfOcr = require('../services/pdf-ocr');
+              request.log.info(`[tkp_quick upload] cross-file OCR: ${needOcr.length} scan PDFs`);
+              const ocrRes = await pdfOcr.ocrManyPdfPaths(needOcr, {
+                dpi: 90,
+                batchSize: 8,
+                concurrency: Math.max(8, parseInt(process.env.OCR_CONCURRENCY || '16', 10)),
+                maxPages: 40
+              });
+              usedOcr = true;
+              for (const item of needOcr) {
+                const tRaw = String(ocrRes.byKey[item.key] || '').trim();
+                if (tRaw.length < 30) {
+                  warnings.push(`${item.originalName}: мало текста после OCR (${tRaw.length} симв.)`);
+                  continue;
+                }
+                const prio = filePriority(item.originalName);
+                const perCap = prio <= 1 ? 40000 : 10000;
+                chunks.push({
+                  prio,
+                  name: item.originalName,
+                  text: tRaw.slice(0, perCap),
+                  usedOcr: true
+                });
+              }
+              if (ocrRes.diagnostics?.ms) {
+                warnings.push(
+                  `OCR сканов: ${Math.round(ocrRes.diagnostics.ms / 1000)}с, ` +
+                  `${ocrRes.diagnostics.pages} стр / ${ocrRes.diagnostics.batches} батчей`
+                );
+              }
+            }
+
+            ({ ocrText, filesParsed } = joinChunks(chunks));
+            const sec = Math.round((Date.now() - t0) / 1000);
+            warnings.push(`Архив OCR: ${sec} сек, файлов с текстом: ${filesParsed}, символов: ${ocrText.length}`);
+            if (filesParsed === 0) {
+              warnings.push('В архиве не извлечён текст — проверь формат файлов');
+            }
+            // Параллельно дожимаем фон-кэш тендера
+            if (session.tender_id && fastify.tenderOcr) {
+              try { await fastify.tenderOcr.enqueue(session.tender_id, 'quick-upload'); } catch (_) {}
+            }
+          }
+        } finally {
+          try { fs.unlinkSync(tmpArch); } catch (_) {}
+          try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch (_) {}
+        }
+      } else if (!fromTenderCache) {
+        const one = await extractOne(buf, filename, { allowOcr: true });
+        if (one) chunks.push(one);
+        ({ ocrText, filesParsed } = joinChunks(chunks));
+        if (!ocrText) warnings.push('Текст не извлечён');
+      }
+    } catch (e) {
+      request.log.warn({ err: e }, '[tkp_quick upload] extract failed');
+      warnings.push(e.message || 'ошибка извлечения текста');
+    }
+
     const existing = Array.isArray(session.tz_attachments) ? session.tz_attachments : [];
     const newEntry = {
-      filename: data.filename,
-      mime: data.mimetype,
+      filename,
+      mime,
       size: buf.length,
       ocr_text: ocrText,
+      files_parsed: filesParsed,
+      used_ocr: usedOcr,
+      from_tender_cache: fromTenderCache,
+      warnings,
       added_at: new Date().toISOString()
     };
     existing.push(newEntry);
@@ -276,7 +635,17 @@ async function routes(fastify, options) {
       [JSON.stringify(existing), request.params.uid]
     );
 
-    return { ok: true, filename: data.filename, ocr_chars: ocrText.length };
+    return {
+      ok: true,
+      filename,
+      ocr_chars: ocrText.length,
+      files_parsed: filesParsed,
+      used_ocr: usedOcr,
+      warnings,
+      warning: ocrText.length < 50
+        ? ('Текст из файла почти пустой. ' + (warnings[0] || 'Распакуй архив и приложи PDF/DOCX напрямую.'))
+        : null
+    };
   });
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -411,6 +780,8 @@ async function routes(fastify, options) {
   fastify.post('/sessions/:uid/calculate', {
     preHandler: [fastify.requireRoles(ROLES)]
   }, async (request, reply) => {
+    await reclaimStaleCalculating(request.params.uid, request.user.id);
+
     const { rows: [session] } = await db.query(
       "SELECT * FROM tkp_quick_sessions WHERE session_uid = $1 AND author_id = $2 AND status IN ('draft','error')",
       [request.params.uid, request.user.id]
@@ -420,7 +791,7 @@ async function routes(fastify, options) {
 
     // Пометить как calculating
     await db.query(
-      "UPDATE tkp_quick_sessions SET status='calculating', updated_at=NOW() WHERE session_uid=$1",
+      "UPDATE tkp_quick_sessions SET status='calculating', error_text=NULL, updated_at=NOW() WHERE session_uid=$1",
       [request.params.uid]
     );
 
@@ -434,16 +805,103 @@ async function routes(fastify, options) {
     const sendEvent = (data) => {
       try { reply.raw.write(`data: ${JSON.stringify(data)}\n\n`); } catch (_) {}
     };
+    // Heartbeat updated_at — чтобы stale-reclaim не сбросил живой длинный расчёт
+    let lastTouch = Date.now();
+    const touchCalculating = async () => {
+      if (Date.now() - lastTouch < 25000) return;
+      lastTouch = Date.now();
+      try {
+        await db.query(
+          "UPDATE tkp_quick_sessions SET updated_at=NOW() WHERE session_uid=$1 AND status='calculating'",
+          [request.params.uid]
+        );
+      } catch (_) {}
+    };
+    // SSE comment ping — nginx/прокси не рвут idle-соединение на 2–5 мин AI
+    const sseKeepalive = setInterval(() => {
+      try { reply.raw.write(`: ping ${Date.now()}\n\n`); } catch (_) {}
+      touchCalculating();
+    }, 12000);
 
     try {
-      sendEvent({ type: 'start', message: '🧠 Мимир приступает к составлению ТКП...' });
+      sendEvent({ type: 'start', message: 'Мимир приступает к составлению ТКП…' });
 
-      // Сбираем текст из вложений
+      // Сбираем текст из вложений сессии + кэш OCR документов тендера
       const attachments = Array.isArray(session.tz_attachments) ? session.tz_attachments : [];
-      const attachmentsText = attachments
-        .filter(a => a.ocr_text?.length > 20)
-        .map(a => `[${a.filename}]\n${a.ocr_text}`)
-        .join('\n\n---\n\n');
+      const withText = attachments.filter(a => a.ocr_text?.length > 20);
+      const emptyAtt = attachments.filter(a => !(a.ocr_text?.length > 20));
+
+      let tenderDocsText = '';
+      let tenderDocsCount = 0;
+      if (session.tender_id) {
+        try {
+          const cache = await loadTenderOcrCache(session.tender_id, ATTACH_CHARS_CAP);
+          tenderDocsCount = cache.count;
+          tenderDocsText = cache.text;
+          if (tenderDocsCount) {
+            sendEvent({
+              type: 'progress',
+              message: `📚 Из кэша тендера #${session.tender_id}: ${tenderDocsCount} док., ${tenderDocsText.length} симв.`
+            });
+          } else {
+            const { rows: [st] } = await db.query(
+              `SELECT status, attempts, max_attempts, last_error FROM tender_ocr_jobs WHERE tender_id = $1`,
+              [session.tender_id]
+            );
+            if (st) {
+              sendEvent({
+                type: 'progress',
+                message: `⏳ OCR тендера: ${st.status} (попытка ${st.attempts}/${st.max_attempts})` +
+                  (st.last_error ? ` — ${String(st.last_error).slice(0, 120)}` : '')
+              });
+            }
+            try {
+              if (fastify.tenderOcr) await fastify.tenderOcr.enqueue(session.tender_id, 'quick-calculate');
+            } catch (_) {}
+          }
+        } catch (e) {
+          request.log.warn({ err: e }, '[tkp_quick] tender ocr cache read failed');
+        }
+      }
+
+      if (attachments.length && !withText.length && !tenderDocsText) {
+        sendEvent({
+          type: 'progress',
+          message: '⚠ Вложения есть, но текст не извлечён (архив/скан). Считаю только по краткому описанию — уточни ТЗ или приложи PDF/DOCX.'
+        });
+      } else if (emptyAtt.length) {
+        sendEvent({
+          type: 'progress',
+          message: `⚠ ${emptyAtt.length} файл(ов) без текста: ${emptyAtt.map(a => a.filename).slice(0, 3).join(', ')}`
+        });
+      }
+
+      // Если кэш тендера достаточный — не дублируем OCR вложения (экономия токенов)
+      let attachmentsText = '';
+      let docsInPrompt = 0;
+      if (tenderDocsText.length >= TENDER_CACHE_MIN_CHARS) {
+        const names = withText.map(a => a.filename).filter(Boolean).slice(0, 5).join(', ');
+        attachmentsText = tenderDocsText + (names
+          ? `\n\n[Вложения сессии: ${names} — текст взят из кэша тендера]`
+          : '');
+        docsInPrompt = tenderDocsCount;
+      } else {
+        const sessionAttText = withText
+          .map(a => `[${a.filename}]\n${a.ocr_text}`)
+          .join('\n\n---\n\n');
+        attachmentsText = [tenderDocsText, sessionAttText].filter(Boolean).join('\n\n---\n\n');
+        docsInPrompt = tenderDocsCount + withText.length;
+        if (attachmentsText.length > ATTACH_CHARS_CAP) {
+          attachmentsText = attachmentsText.slice(0, ATTACH_CHARS_CAP);
+        }
+      }
+      sendEvent({
+        type: 'progress',
+        message: attachmentsText.length
+          ? `📄 В промпт: ${docsInPrompt} док., ${attachmentsText.length} симв.`
+          : '📄 Вложений с текстом нет — опираюсь на tz_text'
+      });
+      await touchCalculating();
 
       const settings = await mimirTkpQuick._loadSettings(db);
 
@@ -454,7 +912,10 @@ async function routes(fastify, options) {
         customer_data: session.customer_data,
         attachments_text: attachmentsText,
         settings,
-        onProgress: sendEvent,
+        onProgress: (ev) => {
+          sendEvent(ev);
+          touchCalculating();
+        },
         session_uid: request.params.uid,
         author_id: session.author_id || request.user.id,
         pre_tender_id: session.pre_tender_id || null,
@@ -495,6 +956,7 @@ async function routes(fastify, options) {
       );
       sendEvent({ type: 'error', message: err.message });
     } finally {
+      clearInterval(sseKeepalive);
       reply.raw.end();
     }
   });
@@ -524,9 +986,12 @@ async function routes(fastify, options) {
     const sendEvent = (data) => {
       try { reply.raw.write(`data: ${JSON.stringify(data)}\n\n`); } catch (_) {}
     };
+    const sseKeepalive = setInterval(() => {
+      try { reply.raw.write(`: ping ${Date.now()}\n\n`); } catch (_) {}
+    }, 12000);
 
     try {
-      sendEvent({ type: 'start', message: '🧠 Мимир обрабатывает правку...' });
+      sendEvent({ type: 'start', message: 'Мимир обрабатывает правку…' });
 
       // Восстанавливаем историю сообщений для AI
       const chatMessages = Array.isArray(session.chat_messages) ? session.chat_messages : [];
@@ -548,7 +1013,11 @@ async function routes(fastify, options) {
         customer_data: session.customer_data,
         history,
         settings,
-        onProgress: sendEvent
+        onProgress: sendEvent,
+        session_uid: request.params.uid,
+        author_id: session.author_id || request.user.id,
+        pre_tender_id: session.pre_tender_id || null,
+        tender_id: session.tender_id || null
       });
 
       // Обновляем chat_messages + estimate_draft
@@ -581,16 +1050,91 @@ async function routes(fastify, options) {
         request.params.uid
       ]);
 
-      sendEvent({ type: 'done', chat_response_md: result.chat_response_md, estimate: newEstimate });
+      sendEvent({
+        type: 'done',
+        chat_response_md: result.chat_response_md,
+        estimate: newEstimate,
+        diagnostics: result.diagnostics || null
+      });
     } catch (err) {
       fastify.log.error(err, '[tkp_quick chat]');
       sendEvent({ type: 'error', message: err.message });
     } finally {
+      clearInterval(sseKeepalive);
       reply.raw.end();
     }
   });
 
   // ─────────────────────────────────────────────────────────────────────────
+  // POST /sessions/:uid/export-smeta.xlsx — Excel с формулами (шаблон Сегежа)
+  fastify.post('/sessions/:uid/export-smeta.xlsx', {
+    preHandler: [fastify.requireRoles(ROLES)]
+  }, async (request, reply) => {
+    const { rows: [session] } = await db.query(
+      "SELECT * FROM tkp_quick_sessions WHERE session_uid = $1 AND author_id = $2",
+      [request.params.uid, request.user.id]
+    );
+    if (!session) return reply.code(404).send({ error: 'Сессия не найдена' });
+    const bodyEst = request.body && request.body.estimate;
+    const draft = bodyEst || session.estimate_draft;
+    if (!draft) return reply.code(400).send({ error: 'Нет сметы' });
+
+    // Сохраняем правки РП если прислали estimate
+    if (bodyEst) {
+      const asgardSmeta = require('../services/asgard-smeta');
+      const recalc = asgardSmeta.recalcAsgardSmeta(bodyEst);
+      await db.query(
+        `UPDATE tkp_quick_sessions SET estimate_draft = $1, updated_at = NOW()
+         WHERE session_uid = $2`,
+        [JSON.stringify(recalc), request.params.uid]
+      );
+      session.estimate_draft = recalc;
+    }
+
+    try {
+      const buf = await mimirTkpQuick._xlsxFromEstimateDraft(
+        session.estimate_draft,
+        session.estimate_draft?.ai_meta
+          ? { calculation: session.estimate_draft.ai_meta.calculation, totals: session.estimate_draft.ai_meta.totals, settings: {} }
+          : {},
+        { subject: session.estimate_draft.meta?.title || session.estimate_draft.subject },
+        { name: session.customer_name }
+      );
+      reply.header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      reply.header('Content-Disposition', 'attachment; filename="smeta_asgard.xlsx"');
+      return reply.send(buf);
+    } catch (e) {
+      request.log.error(e);
+      return reply.code(500).send({ error: e.message || 'Excel error' });
+    }
+  });
+
+  // POST /sessions/:uid/patch-estimate — сохранить asgard_v1 после правок UI
+  fastify.post('/sessions/:uid/patch-estimate', {
+    preHandler: [fastify.requireRoles(ROLES)]
+  }, async (request, reply) => {
+    const { rows: [session] } = await db.query(
+      "SELECT * FROM tkp_quick_sessions WHERE session_uid = $1 AND author_id = $2 AND status IN ('chatting','draft')",
+      [request.params.uid, request.user.id]
+    );
+    if (!session) return reply.code(404).send({ error: 'Сессия не найдена' });
+    const bodyEst = request.body && request.body.estimate;
+    if (!bodyEst) return reply.code(400).send({ error: 'estimate обязателен' });
+    const asgardSmeta = require('../services/asgard-smeta');
+    const prev = session.estimate_draft || {};
+    const merged = {
+      ...bodyEst,
+      ai_meta: bodyEst.ai_meta || prev.ai_meta,
+      meta: { ...(prev.meta || {}), ...(bodyEst.meta || {}) }
+    };
+    const recalc = asgardSmeta.recalcAsgardSmeta(merged);
+    await db.query(
+      `UPDATE tkp_quick_sessions SET estimate_draft = $1, updated_at = NOW() WHERE session_uid = $2`,
+      [JSON.stringify(recalc), request.params.uid]
+    );
+    return { ok: true, estimate: recalc };
+  });
+
   // POST /sessions/:uid/direct-edit — Прямая правка estimate_draft (без AI).
   // 21.06.2026: AI continueChat при простых правках типа «маржу 30%» переписывал
   // смету ПОЛНОСТЬЮ с нуля (cost падал в 150 раз). Прямой endpoint обновляет
@@ -849,9 +1393,16 @@ async function routes(fastify, options) {
       const mime = kind === 'smeta'
         ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
         : 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
-      const fname = `${kind === 'smeta' ? 'Смета' : 'Отчёт'}_preview_${request.params.uid.slice(0, 8)}.${ext}`;
+      // CRIT: кириллица в filename= ломает Node setHeader (ERR_INVALID_CHAR).
+      // ASCII fallback + filename* (RFC 6266), как в acts.js.
+      const shortUid = request.params.uid.slice(0, 8);
+      const rawName = `${kind === 'smeta' ? 'Смета' : 'Отчёт'}_preview_${shortUid}.${ext}`;
+      const asciiName = `${kind === 'smeta' ? 'Smeta' : 'Report'}_preview_${shortUid}.${ext}`;
       reply.header('Content-Type', mime);
-      reply.header('Content-Disposition', `attachment; filename="${fname}"; filename*=UTF-8''${encodeURIComponent(fname)}`);
+      reply.header(
+        'Content-Disposition',
+        `attachment; filename="${asciiName}"; filename*=UTF-8''${encodeURIComponent(rawName)}`
+      );
       reply.send(buf);
     } catch (e) {
       request.log.error(e, '[preview-doc] failed');

@@ -12,12 +12,13 @@ const crypto = require('crypto');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 const MangoService = require('../services/mango');
+const greenApi = require('../services/green-api');
 const { logError } = require('../lib/log-error');
 
 const FIELD_JWT_SECRET = process.env.FIELD_JWT_SECRET || (process.env.JWT_SECRET + '_field'); // S7: separate field secret
 const FIELD_JWT_EXPIRES = '90d';
 const SMS_CODE_LENGTH = 4;
-const SMS_CODE_TTL_MIN = 5;
+const SMS_CODE_TTL_MIN = 30;
 const SMS_MAX_ATTEMPTS = 3;
 const SMS_COOLDOWN_SEC = 60;
 const MANGO_SMS_FROM = process.env.MANGO_SMS_EXTENSION || '101';
@@ -30,6 +31,18 @@ function hashToken(token) {
   return crypto.createHash('sha256').update(token).digest('hex');
 }
 
+/** Append-only журнал входа в Field App (для дайджеста / аналитики). */
+async function recordFieldAppLogin(db, { employeeId, userId, method, deviceInfo }) {
+  if (!db || !employeeId) return;
+  try {
+    await db.query(
+      `INSERT INTO field_app_logins (employee_id, user_id, method, device_info)
+       VALUES ($1, $2, $3, $4)`,
+      [employeeId, userId || null, method || 'unknown', (deviceInfo || '').slice(0, 200) || null]
+    );
+  } catch (_) { /* таблица ещё не накатана — не валим логин */ }
+}
+
 function normalizePhone(phone) {
   if (!phone) return '';
   let digits = phone.replace(/\D/g, '');
@@ -40,6 +53,37 @@ function normalizePhone(phone) {
     digits = '7' + digits;
   }
   return '+' + digits;
+}
+
+function digitsTail(phone) {
+  return String(phone || '').replace(/\D/g, '').slice(-10);
+}
+
+function maxDeliveryPhone(employee, loginPhone) {
+  return employee.max_phone || employee.phone2 || loginPhone;
+}
+
+async function findActiveEmployeeByPhone(db, normalized) {
+  const tail = digitsTail(normalized);
+  const { rows } = await db.query(
+    `SELECT e.id, e.fio, e.phone, e.phone2, e.max_phone, e.city, e.position, e.user_id,
+            (u.pin_hash IS NOT NULL) AS has_pin
+     FROM employees e
+     LEFT JOIN users u ON u.id = e.user_id
+     WHERE e.is_active = true
+       AND (
+         REPLACE(REPLACE(REPLACE(REPLACE(COALESCE(e.phone, ''), ' ', ''), '-', ''), '(', ''), ')', '') LIKE $1
+         OR REPLACE(REPLACE(REPLACE(REPLACE(COALESCE(e.phone2, ''), ' ', ''), '-', ''), '(', ''), ')', '') LIKE $1
+         OR REPLACE(REPLACE(REPLACE(REPLACE(COALESCE(e.max_phone, ''), ' ', ''), '-', ''), '(', ''), ')', '') LIKE $1
+       )
+     ORDER BY CASE
+       WHEN REPLACE(REPLACE(REPLACE(REPLACE(COALESCE(e.phone, ''), ' ', ''), '-', ''), '(', ''), ')', '') LIKE $1 THEN 0
+       ELSE 1
+     END
+     LIMIT 1`,
+    ['%' + tail]
+  );
+  return rows[0] || null;
 }
 
 async function routes(fastify, options) {
@@ -61,17 +105,10 @@ async function routes(fastify, options) {
         return reply.code(400).send({ error: 'Некорректный номер телефона' });
       }
 
-      // Find employee by phone
-      const { rows: employees } = await db.query(
-        `SELECT id, fio, phone FROM employees WHERE REPLACE(REPLACE(REPLACE(REPLACE(phone, ' ', ''), '-', ''), '(', ''), ')', '') LIKE $1 AND is_active = true LIMIT 1`,
-        ['%' + normalized.replace('+', '').slice(-10)]
-      );
-
-      if (employees.length === 0) {
+      const employee = await findActiveEmployeeByPhone(db, normalized);
+      if (!employee) {
         return reply.code(404).send({ error: 'Сотрудник с таким номером не найден' });
       }
-
-      const employee = employees[0];
 
       // Rate limit: 1 code per 60 sec per phone
       const { rows: recent } = await db.query(
@@ -95,11 +132,13 @@ async function routes(fastify, options) {
         [normalized, code, employee.id]
       );
 
-      // Send SMS via Mango
-      const smsText = `ASGARD: ваш код ${code}. Действует ${SMS_CODE_TTL_MIN} мин.`;
+      // SMS + дубль в Max. Операторы часто режут SMS; Max доходит стабильнее.
+      const smsText = `Kod ${code}`;
+      const maxText = `Код входа: ${code}`;
       let smsStatus = 'sent';
       let smsResponse = null;
       let commandId = null;
+      let maxResponse = null;
       try {
         smsResponse = await mango.sendSms(MANGO_SMS_FROM, normalized, smsText);
         commandId = smsResponse?.command_id || null;
@@ -110,12 +149,29 @@ async function routes(fastify, options) {
         fastify.log.error(`[field-auth] SMS send error to ${normalized}: ${smsErr.message}`);
       }
 
-      // Log SMS (always — success or failure)
+      if (greenApi.isMaxEnabled()) {
+        const maxTarget = maxDeliveryPhone(employee, normalized);
+        try {
+          maxResponse = await greenApi.sendMaxMessage(maxTarget, maxText);
+          fastify.log.info(`[field-auth] Max code sent to ${maxTarget} (login ${normalized}), idMessage=${maxResponse?.idMessage || ''}`);
+        } catch (maxErr) {
+          maxResponse = { error: maxErr.message, target: maxTarget };
+          fastify.log.warn(`[field-auth] Max code skip/fail ${maxTarget} (login ${normalized}): ${maxErr.message}`);
+        }
+      }
+
       try {
         await db.query(
           `INSERT INTO field_sms_log (employee_id, phone, message_type, message_text, status, mango_response, command_id)
            VALUES ($1, $2, 'auth_code', $3, $4, $5, $6)`,
-          [employee.id, normalized, smsText, smsStatus, JSON.stringify(smsResponse), commandId]
+          [
+            employee.id,
+            normalized,
+            smsText,
+            smsStatus,
+            JSON.stringify({ sms: smsResponse, max: maxResponse }),
+            commandId,
+          ]
         );
       } catch (logErr) {
         fastify.log.error('[field-auth] SMS log error:', logErr.message);
@@ -128,57 +184,102 @@ async function routes(fastify, options) {
     }
   });
 
+  // POST /check-phone — если PIN уже есть, SMS не нужен
+  fastify.post('/check-phone', async (req, reply) => {
+    try {
+      const { phone } = req.body || {};
+      if (!phone) {
+        return reply.code(400).send({ error: 'Укажите номер телефона' });
+      }
+      const normalized = normalizePhone(phone);
+      if (normalized.length < 12) {
+        return reply.code(400).send({ error: 'Некорректный номер телефона' });
+      }
+
+      const employee = await findActiveEmployeeByPhone(db, normalized);
+      if (!employee) {
+        return reply.code(404).send({ error: 'Сотрудник с таким номером не найден' });
+      }
+
+      return {
+        has_pin: !!employee.has_pin,
+        employee: {
+          id: employee.id,
+          fio: employee.fio,
+          phone: employee.phone,
+          city: employee.city,
+          position: employee.position,
+          user_id: employee.user_id,
+        },
+      };
+    } catch (err) {
+      logError(fastify, '[field-auth] check-phone error', err, req);
+      return reply.code(500).send({ error: 'Ошибка сервера' });
+    }
+  });
+
   // ─────────────────────────────────────────────────────────────────────
   // POST /verify-code — verify SMS code, issue JWT
+  // body.reset_pin=true — сброс PIN (забыл код): после SMS обязателен setup-pin
   // ─────────────────────────────────────────────────────────────────────
   fastify.post('/verify-code', async (req, reply) => {
     try {
-      const { phone, code } = req.body || {};
+      const { phone, code, reset_pin: resetPin } = req.body || {};
       if (!phone || !code) {
         return reply.code(400).send({ error: 'Укажите номер и код' });
       }
 
       const normalized = normalizePhone(phone);
+      // Только цифры: «4554», «Код 4554», пробелы из Max — одно и то же
+      const entered = String(code || '').replace(/\D/g, '');
+      if (entered.length < SMS_CODE_LENGTH) {
+        return reply.code(400).send({ error: 'Укажите код из SMS / Max' });
+      }
 
-      // Find valid code
+      // Любой ещё живой код по номеру (не только последний).
+      // Иначе: запросил код дважды → в Max оба сообщения → вводит предыдущее → «неверный код».
       const { rows: codes } = await db.query(
         `SELECT id, code, employee_id, attempts FROM field_auth_codes
          WHERE phone = $1 AND used = false AND expires_at > NOW()
-         ORDER BY created_at DESC LIMIT 1`,
+         ORDER BY created_at DESC`,
         [normalized]
       );
 
       if (codes.length === 0) {
-        return reply.code(401).send({ error: 'Код не найден или истёк' });
+        return reply.code(401).send({ error: 'Код не найден или истёк. Запросите новый' });
       }
 
-      const authCode = codes[0];
+      const match = codes.find((c) => String(c.code) === entered);
+      if (!match) {
+        const latest = codes[0];
+        if (latest.attempts >= SMS_MAX_ATTEMPTS) {
+          return reply.code(429).send({ error: 'Код заблокирован. Запросите новый' });
+        }
+        await db.query(
+          `UPDATE field_auth_codes SET attempts = attempts + 1 WHERE id = $1`,
+          [latest.id]
+        );
+        const remaining = SMS_MAX_ATTEMPTS - latest.attempts - 1;
+        return reply.code(401).send({
+          error: `Неверный код. Осталось попыток: ${remaining}. Введите последний код из Max/SMS`,
+        });
+      }
 
-      // Check attempts
-      if (authCode.attempts >= SMS_MAX_ATTEMPTS) {
+      if (match.attempts >= SMS_MAX_ATTEMPTS) {
         return reply.code(429).send({ error: 'Код заблокирован. Запросите новый' });
       }
 
-      // Verify code
-      if (authCode.code !== code.trim()) {
-        await db.query(
-          `UPDATE field_auth_codes SET attempts = attempts + 1 WHERE id = $1`,
-          [authCode.id]
-        );
-        const remaining = SMS_MAX_ATTEMPTS - authCode.attempts - 1;
-        return reply.code(401).send({ error: `Неверный код. Осталось попыток: ${remaining}` });
-      }
-
-      // Mark code as used
+      // Погасить все живые коды по номеру (включая совпавший)
       await db.query(
-        `UPDATE field_auth_codes SET used = true WHERE id = $1`,
-        [authCode.id]
+        `UPDATE field_auth_codes SET used = true
+         WHERE phone = $1 AND used = false AND expires_at > NOW()`,
+        [normalized]
       );
 
       // Load employee
       const { rows: employees } = await db.query(
         `SELECT id, fio, phone, city, position, role_tag, is_active FROM employees WHERE id = $1`,
-        [authCode.employee_id]
+        [match.employee_id]
       );
 
       if (employees.length === 0 || !employees[0].is_active) {
@@ -213,14 +314,30 @@ async function routes(fastify, options) {
         );
       }
 
-      // Generate JWT (no PIN step — direct login after SMS)
+      // Забыл PIN / принудительный сброс после SMS
+      if (resetPin) {
+        await db.query(
+          `UPDATE users SET pin_hash = NULL, updated_at = NOW() WHERE id = $1`,
+          [userId]
+        );
+      }
+
+      const { rows: pinRows } = await db.query(
+        `SELECT pin_hash FROM users WHERE id = $1`,
+        [userId]
+      );
+      const hasPin = !!pinRows[0]?.pin_hash;
+      // SMS ИЛИ PIN — не оба подряд:
+      // • нет PIN / сброс → создать PIN
+      // • PIN уже есть → сразу в приложение (SMS уже доказал личность)
+      const nextStatus = hasPin ? 'authenticated' : 'need_pin_setup';
+
       const token = jwt.sign(
         { employee_id: employee.id, user_id: userId, type: 'field' },
         FIELD_JWT_SECRET,
         { expiresIn: FIELD_JWT_EXPIRES }
       );
 
-      // Save session
       const tokenHash = hashToken(token);
       const deviceInfo = req.headers['user-agent'] || '';
       const expiresAt = new Date(Date.now() + 90 * 24 * 60 * 60 * 1000); // 90 days
@@ -231,15 +348,22 @@ async function routes(fastify, options) {
         [employee.id, tokenHash, deviceInfo, expiresAt]
       );
 
-      // Update employee last login
       await db.query(
         `UPDATE employees SET field_last_login = NOW(), phone_verified = true WHERE id = $1`,
         [employee.id]
       );
 
+      await recordFieldAppLogin(db, {
+        employeeId: employee.id,
+        userId,
+        method: 'sms',
+        deviceInfo
+      });
+
       return {
         token,
-        status: 'authenticated',
+        status: nextStatus,
+        has_pin: hasPin,
         employee: {
           id: employee.id,
           fio: employee.fio,
@@ -370,14 +494,7 @@ async function routes(fastify, options) {
         return reply.code(400).send({ error: 'Пользователь не привязан' });
       }
 
-      // Check PIN not already set
-      const { rows: userRows } = await db.query(
-        'SELECT pin_hash FROM users WHERE id = $1', [userId]
-      );
-      if (userRows[0]?.pin_hash) {
-        return reply.code(409).send({ error: 'PIN уже установлен. Используйте сброс' });
-      }
-
+      // SMS-сессия может перезаписать PIN (первый вход или «забыл PIN»)
       const pinHash = await bcrypt.hash(req.body.pin, 10);
       await db.query(
         'UPDATE users SET pin_hash = $1, updated_at = NOW() WHERE id = $2',
@@ -517,6 +634,13 @@ async function routes(fastify, options) {
         `UPDATE employees SET field_last_login = NOW() WHERE id = $1`, [employee.id]
       );
 
+      await recordFieldAppLogin(db, {
+        employeeId: employee.id,
+        userId: employee.user_id,
+        method: 'pin',
+        deviceInfo
+      });
+
       return {
         token,
         status: 'ok',
@@ -536,133 +660,16 @@ async function routes(fastify, options) {
   });
 
   // ─────────────────────────────────────────────────────────────────────
-  // POST /login-by-birth — резервный вход по телефону + году рождения.
-  // Используется, когда SMS не доходят (фильтры операторов и т.п.).
-  // Безопасность: жёсткий rate-limit 3 попытки / час на телефон,
-  // одинаковая ошибка на «не найден» и «неверный год» (чтобы не палить,
-  // зарегистрирован ли номер).
+  // POST /login-by-birth — ОТКЛЮЧЁН (небезопасно: сосед знает год + телефон).
+  // Оставлен stub 410, чтобы старые клиенты получили явную ошибку.
   // ─────────────────────────────────────────────────────────────────────
-  const birthAttempts = new Map(); // phone → { count, resetAt }
-  setInterval(() => { const now = Date.now(); for (const [k, v] of birthAttempts) { if (v.resetAt < now) birthAttempts.delete(k); } }, 60000);
-
-  fastify.post('/login-by-birth', {
-    schema: {
-      body: {
-        type: 'object',
-        required: ['phone', 'birth_year'],
-        properties: {
-          phone: { type: 'string' },
-          birth_year: { type: ['integer', 'string'] }
-        }
-      }
-    }
-  }, async (req, reply) => {
-    try {
-      const { phone, birth_year } = req.body;
-      const normalized = normalizePhone(phone);
-      if (normalized.length < 12) {
-        return reply.code(400).send({ error: 'Некорректный номер телефона' });
-      }
-
-      // Rate limit
-      const attempt = birthAttempts.get(normalized) || { count: 0, resetAt: Date.now() + 60 * 60 * 1000 };
-      if (attempt.count >= 3) {
-        const waitMin = Math.ceil((attempt.resetAt - Date.now()) / 60000);
-        return reply.code(429).send({ error: `Слишком много попыток. Подождите ${waitMin} мин или попробуйте SMS` });
-      }
-
-      const yearNum = parseInt(String(birth_year).trim(), 10);
-      if (!yearNum || yearNum < 1930 || yearNum > new Date().getFullYear()) {
-        // Считаем как неудачную попытку
-        attempt.count++;
-        if (!birthAttempts.has(normalized)) attempt.resetAt = Date.now() + 60 * 60 * 1000;
-        birthAttempts.set(normalized, attempt);
-        return reply.code(401).send({ error: 'Неверный телефон или год рождения' });
-      }
-
-      // Ищем сотрудника
-      const { rows: employees } = await db.query(
-        `SELECT id, fio, phone, city, position, role_tag, is_active, user_id,
-                EXTRACT(YEAR FROM birth_date)::int AS birth_year
-         FROM employees
-         WHERE REPLACE(REPLACE(REPLACE(REPLACE(phone, ' ', ''), '-', ''), '(', ''), ')', '') LIKE $1
-           AND is_active = true
-         LIMIT 1`,
-        ['%' + normalized.replace('+', '').slice(-10)]
-      );
-
-      const employee = employees[0];
-      // Единая ошибка для всех случаев неуспеха
-      const invalid = !employee || !employee.birth_year || employee.birth_year !== yearNum;
-      if (invalid) {
-        attempt.count++;
-        if (!birthAttempts.has(normalized)) attempt.resetAt = Date.now() + 60 * 60 * 1000;
-        birthAttempts.set(normalized, attempt);
-        fastify.log.warn(`[field-auth] login-by-birth fail: phone=${normalized} year=${yearNum} match=${!!employee}`);
-        return reply.code(401).send({ error: 'Неверный телефон или год рождения' });
-      }
-
-      // Успех — сбрасываем счётчик
-      birthAttempts.delete(normalized);
-
-      // Auto-create user record (как в verify-code)
-      let userId = employee.user_id;
-      if (!userId) {
-        const login = normalized.replace('+', '');
-        const randomPwd = crypto.randomBytes(32).toString('hex');
-        const pwdHash = await bcrypt.hash(randomPwd, 10);
-        const { rows: newUser } = await db.query(
-          `INSERT INTO users (login, password_hash, role, is_active, name, created_at, updated_at)
-           VALUES ($1, $2, 'FIELD_WORKER', true, $3, NOW(), NOW())
-           ON CONFLICT (login) DO UPDATE SET updated_at = NOW()
-           RETURNING id`,
-          [login, pwdHash, employee.fio || 'Рабочий']
-        );
-        userId = newUser[0].id;
-        await db.query(`UPDATE employees SET user_id = $1 WHERE id = $2`, [userId, employee.id]);
-      }
-
-      // JWT
-      const token = jwt.sign(
-        { employee_id: employee.id, user_id: userId, type: 'field' },
-        FIELD_JWT_SECRET,
-        { expiresIn: FIELD_JWT_EXPIRES }
-      );
-      const tokenHash = hashToken(token);
-      const expiresAt = new Date(Date.now() + 90 * 24 * 60 * 60 * 1000);
-
-      await db.query(
-        `INSERT INTO field_sessions (employee_id, token_hash, device_info, expires_at)
-         VALUES ($1, $2, $3, $4)`,
-        [employee.id, tokenHash, req.headers['user-agent'] || '', expiresAt]
-      );
-
-      await db.query(
-        `UPDATE employees SET field_last_login = NOW(), phone_verified = true WHERE id = $1`,
-        [employee.id]
-      );
-
-      fastify.log.info(`[field-auth] login-by-birth OK: employee=${employee.id} (${employee.fio})`);
-
-      return {
-        token,
-        status: 'authenticated',
-        employee: {
-          id: employee.id,
-          fio: employee.fio,
-          phone: employee.phone,
-          city: employee.city,
-          position: employee.position,
-          user_id: userId
-        }
-      };
-    } catch (err) {
-      logError(fastify, '[field-auth] login-by-birth error', err, req);
-      return reply.code(500).send({ error: 'Ошибка сервера' });
-    }
+  fastify.post('/login-by-birth', async (req, reply) => {
+    return reply.code(410).send({
+      error: 'Вход по году рождения отключён. Войдите по SMS и создайте PIN.',
+      code: 'BIRTH_LOGIN_DISABLED',
+    });
   });
 
-  // ─────────────────────────────────────────────────────────────────────
   // POST /reset-pin — reset PIN (requires valid session from SMS re-verify)
   // ─────────────────────────────────────────────────────────────────────
   fastify.post('/reset-pin', {

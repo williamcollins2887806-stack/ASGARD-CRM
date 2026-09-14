@@ -5,6 +5,20 @@
  * Used across all business event routes.
  */
 
+/** Push / cold-open: desktop `#/path` → mobile `/m/path`. */
+function toPushUrl(link) {
+  if (!link) return '/m/';
+  const s = String(link).trim();
+  if (s.startsWith('/m/') || s === '/m') return s;
+  if (s.startsWith('#/')) return `/m/${s.slice(2)}`;
+  if (s.startsWith('#')) return `/m/${s.slice(1)}`;
+  if (s.startsWith('/') && !s.startsWith('/api') && !s.startsWith('/v2')) {
+    if (s.startsWith('/m')) return s;
+    return `/m${s}`;
+  }
+  return s;
+}
+
 async function createNotification(db, { user_id, title, message, type, link }) {
   try {
     await db.query(`
@@ -38,7 +52,6 @@ async function createNotification(db, { user_id, title, message, type, link }) {
 
     // Push notification (web-push)
     try {
-      const NotificationService = require('./NotificationService');
       // Get unread count for badge
       const countRes = await db.query(
         'SELECT COUNT(*) FROM notifications WHERE user_id = $1 AND is_read = false',
@@ -63,7 +76,7 @@ async function createNotification(db, { user_id, title, message, type, link }) {
           const payload = JSON.stringify({
             title,
             body: message || '',
-            url: link || '/',
+            url: toPushUrl(link),
             tag: type || 'asgard-notification',
             badge_count: badgeCount,
             icon: './assets/img/icon-192.png'
@@ -93,4 +106,4 @@ async function createNotification(db, { user_id, title, message, type, link }) {
   }
 }
 
-module.exports = { createNotification };
+module.exports = { createNotification, toPushUrl };

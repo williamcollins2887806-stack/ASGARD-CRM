@@ -76,20 +76,23 @@ async function routes(fastify, options) {
   // Helper: get day_rate from tariff grid
   // Note: no is_active filter — inactive workers still have tariff data
   async function getDayRate(empId, workId) {
+    const { resolveAssignmentRates } = require('../lib/field-assignment-rate');
     const { rows } = await db.query(`
-      SELECT ea.tariff_id, ea.combination_tariff_id,
-             tg.rate_per_shift as base_rate,
-             ctg.rate_per_shift as combo_rate
+      SELECT ea.tariff_id, ea.combination_tariff_id, ea.combo_tariff_ids, ea.manual_extra_points
       FROM employee_assignments ea
-      LEFT JOIN field_tariff_grid tg ON tg.id = ea.tariff_id
-      LEFT JOIN field_tariff_grid ctg ON ctg.id = ea.combination_tariff_id
       WHERE ea.employee_id = $1 AND ea.work_id = $2
       ORDER BY ea.is_active DESC
       LIMIT 1
     `, [empId, workId]);
 
-    if (rows.length > 0 && rows[0].base_rate) {
-      return parseFloat(rows[0].base_rate) + parseFloat(rows[0].combo_rate || 0);
+    if (rows.length > 0 && rows[0].tariff_id) {
+      const rates = await resolveAssignmentRates(db, {
+        tariff_id: rows[0].tariff_id,
+        combination_tariff_id: rows[0].combination_tariff_id,
+        combo_tariff_ids: rows[0].combo_tariff_ids,
+        manual_extra_points: rows[0].manual_extra_points
+      });
+      if (!rates.error && rates.totalRate > 0) return rates.totalRate;
     }
 
     // Fallback: employees.day_rate
@@ -249,11 +252,12 @@ async function routes(fastify, options) {
 
       const checkin = inserted[0];
 
-      // Quest progress: early_checkin (before 07:00 local time)
+      // Quest progress: early_checkin = morning shift (before 09:00 local).
+      // Was <07; real checkins cluster at 08:00 → quest never progressed.
       try {
         const { updateQuestProgress, updateBrigadeQuestProgress } = require('../services/questProgress');
         const localHourNow = client_local_hour ?? new Date().getHours();
-        if (localHourNow < 7) {
+        if (localHourNow < 9) {
           updateQuestProgress(db, empId, 'early_checkin').catch(() => {});
           updateBrigadeQuestProgress(db, empId, 'early_checkin').catch(() => {});
         }
@@ -284,6 +288,17 @@ async function routes(fastify, options) {
           }
         }
       } catch { /* non-critical */ }
+
+      // Вахта МЛСП: первая смена day/night открывает stay
+      if (shiftType === 'day' || shiftType === 'night') {
+        try {
+          const { ensureOpenStay } = require('../lib/mlsp-stay');
+          await ensureOpenStay(db, empId, work_id, {
+            source: 'field-checkin',
+            log: fastify.log
+          });
+        } catch (_) { /* non-critical */ }
+      }
 
       return {
         checkin_id: checkin.id,
@@ -435,6 +450,17 @@ async function routes(fastify, options) {
       `, [checkin_id, checkoutAt.toISOString(), lat || null, lng || null, accuracy || null,
           Math.round(hoursWorked * 100) / 100, hoursPaid,
           Math.round(amountEarned * 100) / 100, dayRate, note || null]);
+
+      // Вахта МЛСП (на случай если checkin был без day/night shift set)
+      if (['day', 'night'].includes(checkin.shift || checkin.checkin_shift || '')) {
+        try {
+          const { ensureOpenStay } = require('../lib/mlsp-stay');
+          await ensureOpenStay(db, empId, checkin.work_id, {
+            source: 'field-checkout',
+            log: fastify.log
+          });
+        } catch (_) { /* non-critical */ }
+      }
 
       const quote = randomQuote(FIELD_QUOTES_SHIFT_END)
         .replace('{hours}', Math.floor(hoursWorked));
@@ -625,6 +651,16 @@ async function routes(fastify, options) {
         hoursWorked, hoursPaid, dayRate, amountEarned,
         checkinDate, status, reason || null, reason || null
       ]);
+
+      if (status === 'completed' || ['day', 'night'].includes(/* shift from body */ (req.body || {}).shift || 'day')) {
+        try {
+          const { ensureOpenStay } = require('../lib/mlsp-stay');
+          await ensureOpenStay(db, employee_id, work_id, {
+            source: 'field-checkin-manual',
+            log: fastify.log
+          });
+        } catch (_) { /* non-critical */ }
+      }
 
       return {
         checkin_id: inserted[0].id,

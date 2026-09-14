@@ -203,6 +203,8 @@ async function loadEntitySnapshot(entityKind, entityId) {
                 pt.customer_name, pt.customer_email, pt.customer_inn,
                 pt.contact_person, pt.contact_phone,
                 pt.work_description, pt.work_location, pt.work_deadline,
+                pt.ai_work_type, pt.work_volume, pt.work_volume_unit,
+                pt.work_start_plan, pt.work_end_plan,
                 pt.estimated_sum,
                 pt.ai_summary, pt.ai_color, pt.ai_recommendation, pt.ai_work_match_score,
                 pt.has_documents, pt.manual_documents, pt.document_folders,
@@ -268,6 +270,8 @@ async function loadEntitySnapshotsBatch(entityKind, ids) {
                     pt.customer_name, pt.customer_email, pt.customer_inn,
                     pt.contact_person, pt.contact_phone,
                     pt.work_description, pt.work_location, pt.work_deadline,
+                    pt.ai_work_type, pt.work_volume, pt.work_volume_unit,
+                    pt.work_start_plan, pt.work_end_plan,
                     pt.estimated_sum,
                     pt.ai_summary, pt.ai_color, pt.ai_recommendation, pt.ai_work_match_score,
                     pt.has_documents, pt.manual_documents, pt.document_folders,
@@ -1004,6 +1008,8 @@ module.exports = async function (fastify) {
       allowed = ['customer_name', 'customer_inn', 'customer_email',
                  'contact_person', 'contact_phone',
                  'work_description', 'work_location', 'work_deadline',
+                 'ai_work_type', 'work_volume', 'work_volume_unit',
+                 'work_start_plan', 'work_end_plan',
                  'estimated_sum',
                  'cost_planned', 'kp_price_without_vat', 'kp_price_with_vat',
                  'vat_rate_pct', 'margin_planned_pct'];
@@ -1704,28 +1710,38 @@ module.exports = async function (fastify) {
       request.log.warn({ err: e }, '[personal-kanban] start-quick: entity snapshot failed');
     }
 
-    // 3. ДЕДУПЛИКАЦИЯ: ищем активную сессию по pre_tender_id / tender_id.
-    //    Если есть в неконечном статусе (не finalized/abandoned) — возвращаем её,
-    //    чтобы PM продолжил с того места. Если body.fresh=true — сначала помечаем
-    //    старую как 'abandoned' и создаём новую (кнопка «Пересчёт с нуля»).
+    // 3. ДЕДУПЛИКАЦИЯ: author + entity + purpose=kanban (V304 — изоляция от rp-review).
+    const purpose = 'kanban';
     const fresh = !!(request.body && request.body.fresh);
     if (!fresh && (preTenderId || tenderId)) {
       try {
         const dedupeCol = preTenderId ? 'pre_tender_id' : 'tender_id';
         const dedupeVal = preTenderId || tenderId;
-        const exist = await db.query(
-          `SELECT id, session_uid, status FROM tkp_quick_sessions
-            WHERE author_id = $1 AND ${dedupeCol} = $2
-              AND status NOT IN ('finalized','abandoned')
-            ORDER BY id DESC LIMIT 1`,
-          [card.owner_user_id, dedupeVal]);
+        let exist;
+        try {
+          exist = await db.query(
+            `SELECT id, session_uid, status FROM tkp_quick_sessions
+              WHERE author_id = $1 AND ${dedupeCol} = $2
+                AND COALESCE(purpose, 'kanban') = $3
+                AND status NOT IN ('finalized','abandoned')
+              ORDER BY id DESC LIMIT 1`,
+            [card.owner_user_id, dedupeVal, purpose]);
+        } catch (_) {
+          exist = await db.query(
+            `SELECT id, session_uid, status FROM tkp_quick_sessions
+              WHERE author_id = $1 AND ${dedupeCol} = $2
+                AND status NOT IN ('finalized','abandoned')
+              ORDER BY id DESC LIMIT 1`,
+            [card.owner_user_id, dedupeVal]);
+        }
         if (exist.rows[0]) {
           return {
             success: true,
             session_uid: exist.rows[0].session_uid,
             session_id: Number(exist.rows[0].id),
             status: 'existing',
-            session_status: exist.rows[0].status
+            session_status: exist.rows[0].status,
+            purpose
           };
         }
       } catch (e) {
@@ -1733,17 +1749,25 @@ module.exports = async function (fastify) {
       }
     }
     if (fresh && (preTenderId || tenderId)) {
-      // Помечаем все активные сессии этого автора по entity как abandoned —
-      // чтобы дедуп-лукап выше не возвращал их в будущем.
       try {
         const dedupeCol = preTenderId ? 'pre_tender_id' : 'tender_id';
         const dedupeVal = preTenderId || tenderId;
-        await db.query(
-          `UPDATE tkp_quick_sessions
-              SET status = 'abandoned', updated_at = NOW()
-            WHERE author_id = $1 AND ${dedupeCol} = $2
-              AND status NOT IN ('finalized','abandoned')`,
-          [card.owner_user_id, dedupeVal]);
+        try {
+          await db.query(
+            `UPDATE tkp_quick_sessions
+                SET status = 'abandoned', updated_at = NOW()
+              WHERE author_id = $1 AND ${dedupeCol} = $2
+                AND COALESCE(purpose, 'kanban') = $3
+                AND status NOT IN ('finalized','abandoned')`,
+            [card.owner_user_id, dedupeVal, purpose]);
+        } catch (_) {
+          await db.query(
+            `UPDATE tkp_quick_sessions
+                SET status = 'abandoned', updated_at = NOW()
+              WHERE author_id = $1 AND ${dedupeCol} = $2
+                AND status NOT IN ('finalized','abandoned')`,
+            [card.owner_user_id, dedupeVal]);
+        }
       } catch (e) {
         request.log.warn({ err: e }, '[personal-kanban] start-quick: abandon previous failed');
       }
@@ -1752,19 +1776,32 @@ module.exports = async function (fastify) {
     // 4. INSERT новой tkp_quick_sessions.
     const sessionUid = require('crypto').randomUUID();
     try {
-      const ins = await db.query(
-        `INSERT INTO tkp_quick_sessions
-          (session_uid, author_id, customer_inn, customer_name,
-           pre_tender_id, tender_id, tz_text, status)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, 'draft')
-         RETURNING id, session_uid`,
-        [sessionUid, card.owner_user_id, customerInn, customerName,
-         preTenderId, tenderId, tzText]);
+      let ins;
+      try {
+        ins = await db.query(
+          `INSERT INTO tkp_quick_sessions
+            (session_uid, author_id, customer_inn, customer_name,
+             pre_tender_id, tender_id, tz_text, status, purpose)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, 'draft', $8)
+           RETURNING id, session_uid`,
+          [sessionUid, card.owner_user_id, customerInn, customerName,
+           preTenderId, tenderId, tzText, purpose]);
+      } catch (_) {
+        ins = await db.query(
+          `INSERT INTO tkp_quick_sessions
+            (session_uid, author_id, customer_inn, customer_name,
+             pre_tender_id, tender_id, tz_text, status)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, 'draft')
+           RETURNING id, session_uid`,
+          [sessionUid, card.owner_user_id, customerInn, customerName,
+           preTenderId, tenderId, tzText]);
+      }
       return {
         success: true,
         session_uid: ins.rows[0].session_uid,
         session_id: Number(ins.rows[0].id),
-        status: 'created'
+        status: 'created',
+        purpose
       };
     } catch (e) {
       request.log.error({ err: e }, '[personal-kanban] start-quick failed');

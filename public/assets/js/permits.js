@@ -445,8 +445,15 @@ window.AsgardPermitsPage = (function(){
     const dateInputVal = (v) => {
       if (v == null || v === '') return '';
       const s = typeof v === 'string' ? v : String(v);
-      const m = s.match(/^(\d{4}-\d{2}-\d{2})/);
-      return m ? m[1] : '';
+      const iso = s.match(/^(\d{4}-\d{2}-\d{2})/);
+      if (iso) return iso[1];
+      const ru = s.match(/^(\d{1,2})[./](\d{1,2})[./](\d{2,4})/);
+      if (ru) {
+        let d = +ru[1], m = +ru[2], y = +ru[3];
+        if (y < 100) y += y >= 70 ? 1900 : 2000;
+        return `${String(y).padStart(4,'0')}-${String(m).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+      }
+      return '';
     };
 
     const rowHtml = (t) => {

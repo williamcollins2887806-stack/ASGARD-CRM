@@ -29,15 +29,316 @@ async function routes(fastify) {
       await c.query("UPDATE assembly_orders SET status='packing',updated_at=NOW() WHERE id=$1", [asmId]);
   }
 
+  async function computeAssemblyKpi(dbConn, asmId) {
+    const totals = await dbConn.query(
+      `SELECT COUNT(*)::int AS total,
+              COUNT(*) FILTER (WHERE packed)::int AS packed
+       FROM assembly_items WHERE assembly_id=$1`, [asmId]);
+    const pallets = await dbConn.query(
+      `SELECT COUNT(*)::int AS n,
+              COALESCE(SUM(capacity_kg),0)::float AS weight
+       FROM assembly_pallets WHERE assembly_id=$1`, [asmId]);
+    const total = totals.rows[0]?.total || 0;
+    const packed = totals.rows[0]?.packed || 0;
+    const pallets_count = pallets.rows[0]?.n || 0;
+    const packed_weight_kg = Math.round((pallets.rows[0]?.weight || 0) * 10) / 10;
+    const ready_pct = total ? Math.round(100 * packed / total) : 0;
+    return { total, packed, pallets_count, packed_weight_kg, ready_pct };
+  }
+
+  async function buildBoardForAssembly(dbConn, asmId) {
+    const order = await dbConn.query('SELECT * FROM assembly_orders WHERE id=$1', [asmId]);
+    if (!order.rows[0]) return { board: [], live: null };
+    const workId = order.rows[0].work_id;
+    const items = await dbConn.query('SELECT * FROM assembly_items WHERE assembly_id=$1 ORDER BY id', [asmId]);
+    const procs = workId ? await dbConn.query(
+      `SELECT pi.id AS item_id, pi.name, pi.quantity, pi.item_status, pi.product_id,
+              pr.id AS procurement_id, pr.status AS procurement_status,
+              ii.approval_status AS invoice_wave
+       FROM procurement_items pi
+       JOIN procurement_requests pr ON pr.id=pi.procurement_id
+       LEFT JOIN procurement_invoice_imports ii ON ii.id=pi.invoice_import_id
+       WHERE pr.work_id=$1 AND COALESCE(pi.item_status,'pending')<>'cancelled'`, [workId]) : { rows: [] };
+    const board = items.rows.map((it) => {
+      const st = it.line_status || '';
+      const packed = !!(it.packed || it.pallet_id);
+      const onShelf = st === 'on_shelf' || st === 'stock_ready';
+      const inTransit = st === 'in_transit' || order.rows[0].status === 'in_transit';
+      const awaitingProc = st === 'awaiting_procurement';
+      const reserved = st === 'reserved' || st === 'awaiting_wh_approve';
+      const procHit = procs.rows.find((p) =>
+        (it.product_id && p.product_id === it.product_id) ||
+        (p.name && it.name && p.name.toLowerCase() === String(it.name).toLowerCase())
+      );
+      const paid = procHit && (procHit.invoice_wave === 'paid' || ['paid', 'delivered', 'partially_delivered'].includes(procHit.procurement_status));
+      const flags = {
+        reserved: reserved || packed || onShelf,
+        assembled: packed,
+        in_transit: inTransit,
+        in_procurement: awaitingProc || !!(procHit && !paid && procHit.item_status !== 'delivered'),
+        paid: !!paid,
+        on_shelf: onShelf || procHit?.item_status === 'delivered'
+      };
+      let edit_mode = 'delete';
+      if (flags.assembled || flags.in_transit) edit_mode = 'locked';
+      else if (flags.paid || flags.on_shelf || flags.in_procurement) edit_mode = 'decrease';
+      else if (flags.reserved) edit_mode = 'stock';
+      return {
+        assembly_item_id: it.id,
+        assembly_id: asmId,
+        name: it.name,
+        qty: it.quantity,
+        line_status: st,
+        product_id: it.product_id || null,
+        flags,
+        edit_mode
+      };
+    });
+    const kpi = await computeAssemblyKpi(dbConn, asmId);
+    return { board, live: { status: order.rows[0].status, ...kpi }, kpi };
+  }
+
   // ═══ CRUD ═══
+
+  // Доска статусов позиций по работе (РП)
+  fastify.get('/board', { preHandler: [fastify.authenticate] }, async (req, reply) => {
+    const workId = parseInt(req.query.work_id);
+    if (!workId) return reply.code(400).send({ error: 'work_id обязателен' });
+    const asms = await db.query(
+      `SELECT ao.id, ao.title, ao.status, ao.type
+       FROM assembly_orders ao
+       WHERE ao.work_id=$1 AND ao.status NOT IN ('closed','returned')
+       ORDER BY ao.id DESC`, [workId]);
+    const items = await db.query(
+      `SELECT ai.*, ao.id AS assembly_id, ao.status AS assembly_status, ao.title AS assembly_title
+       FROM assembly_items ai
+       JOIN assembly_orders ao ON ao.id=ai.assembly_id
+       WHERE ao.work_id=$1 AND ao.status NOT IN ('closed','returned')
+       ORDER BY ai.id`, [workId]);
+    const procs = await db.query(
+      `SELECT pi.id AS item_id, pi.name, pi.quantity, pi.unit_price, pi.item_status, pi.product_id,
+              pr.id AS procurement_id, pr.status AS procurement_status,
+              ii.id AS invoice_import_id, ii.approval_status AS invoice_wave
+       FROM procurement_items pi
+       JOIN procurement_requests pr ON pr.id=pi.procurement_id
+       LEFT JOIN procurement_invoice_imports ii ON ii.id=pi.invoice_import_id
+       WHERE pr.work_id=$1 AND COALESCE(pi.item_status,'pending')<>'cancelled'
+       ORDER BY pi.id`, [workId]);
+    const pays = await db.query(
+      `SELECT id, amount, status, payment_status, procurement_id, invoice_import_id
+       FROM payment_invoices WHERE work_id=$1 ORDER BY id DESC`, [workId]).catch(() => ({ rows: [] }));
+
+    const board = items.rows.map(it => {
+      const st = it.line_status || '';
+      const packed = !!(it.packed || it.pallet_id);
+      const onShelf = st === 'on_shelf' || st === 'stock_ready';
+      const inTransit = st === 'in_transit' || it.assembly_status === 'in_transit';
+      const awaitingProc = st === 'awaiting_procurement';
+      const reserved = st === 'reserved' || st === 'awaiting_wh_approve';
+      const procHit = procs.rows.find(p =>
+        (it.product_id && p.product_id === it.product_id) ||
+        (p.name && it.name && p.name.toLowerCase() === String(it.name).toLowerCase())
+      );
+      const paid = procHit && (procHit.invoice_wave === 'paid' || ['paid','delivered','partially_delivered'].includes(procHit.procurement_status));
+      const flags = {
+        reserved: reserved || packed || onShelf,
+        assembled: packed,
+        in_transit: inTransit,
+        in_procurement: awaitingProc || !!(procHit && !paid && procHit.item_status !== 'delivered'),
+        paid: !!paid,
+        on_shelf: onShelf || procHit?.item_status === 'delivered'
+      };
+      let edit_mode = 'delete'; // ещё не закуплено
+      if (flags.assembled || flags.in_transit) edit_mode = 'locked';
+      else if (flags.paid || flags.on_shelf) edit_mode = 'decrease';
+      else if (flags.reserved) edit_mode = 'stock';
+      else if (flags.in_procurement) edit_mode = 'decrease';
+      return {
+        assembly_item_id: it.id,
+        assembly_id: it.assembly_id,
+        name: it.name,
+        qty: it.quantity,
+        line_status: st,
+        product_id: it.product_id || null,
+        flags,
+        edit_mode,
+        procurement_id: procHit?.procurement_id || null,
+        invoice_wave: procHit?.invoice_wave || null
+      };
+    });
+
+    // KPI по всем открытым сборкам работы
+    const kpiByAsm = {};
+    for (const a of asms.rows) {
+      kpiByAsm[a.id] = await computeAssemblyKpi(db, a.id);
+    }
+    const kpiAgg = Object.values(kpiByAsm).reduce((acc, k) => {
+      acc.total += k.total || 0;
+      acc.packed += k.packed || 0;
+      acc.pallets_count += k.pallets_count || 0;
+      acc.packed_weight_kg += k.packed_weight_kg || 0;
+      return acc;
+    }, { total: 0, packed: 0, pallets_count: 0, packed_weight_kg: 0 });
+    const ready_pct = kpiAgg.total ? Math.round(100 * kpiAgg.packed / kpiAgg.total) : 0;
+
+    return {
+      work_id: workId,
+      assemblies: asms.rows.map((a) => ({ ...a, kpi: kpiByAsm[a.id] || null })),
+      board,
+      procurement_items: procs.rows,
+      payments: pays.rows,
+      kpi: { ...kpiAgg, ready_pct }
+    };
+  });
+
+  /** Список сборок для мониторинга РП (свои / по роли) + KPI */
+  fastify.get('/monitor', { preHandler: [fastify.authenticate] }, async (req) => {
+    const limit = Math.min(parseInt(req.query.limit, 10) || 40, 100);
+    const mine = String(req.query.mine || '1') !== '0';
+    const role = req.user.role;
+    const isPm = PM_ROLES.includes(role);
+    const p = [];
+    let i = 1;
+    let sql = `SELECT ao.*, w.work_title, w.customer_name, pm.name AS pm_name,
+      (SELECT COUNT(*)::int FROM assembly_items ai WHERE ai.assembly_id=ao.id) AS items_count,
+      (SELECT COUNT(*)::int FROM assembly_items ai WHERE ai.assembly_id=ao.id AND ai.packed) AS packed_count,
+      (SELECT COUNT(*)::int FROM assembly_pallets ap WHERE ap.assembly_id=ao.id) AS pallets_count
+      FROM assembly_orders ao
+      LEFT JOIN works w ON w.id=ao.work_id
+      LEFT JOIN users pm ON pm.id=w.pm_id
+      WHERE ao.status NOT IN ('closed','returned')`;
+    if (mine && isPm && !DIR_ROLES.includes(role) && role !== 'ADMIN') {
+      sql += ` AND (ao.created_by=$${i} OR w.pm_id=$${i})`;
+      p.push(req.user.id); i++;
+    }
+    sql += ` ORDER BY ao.planned_date NULLS LAST, ao.id DESC LIMIT $${i}`;
+    p.push(limit);
+    const { rows } = await db.query(sql, p);
+    const items = [];
+    for (const row of rows) {
+      const kpi = await computeAssemblyKpi(db, row.id);
+      items.push({
+        ...row,
+        ready_pct: kpi.ready_pct,
+        packed_weight_kg: kpi.packed_weight_kg,
+        kpi
+      });
+    }
+    return { items };
+  });
+
+  fastify.get('/monitor/:id', { preHandler: [fastify.authenticate] }, async (req, reply) => {
+    const id = parseInt(req.params.id, 10);
+    if (isNaN(id)) return reply.code(400).send({ error: 'Bad ID' });
+    const { rows } = await db.query(
+      `SELECT ao.*, w.work_title, w.customer_name, w.pm_id, pm.name AS pm_name
+       FROM assembly_orders ao
+       LEFT JOIN works w ON w.id=ao.work_id
+       LEFT JOIN users pm ON pm.id=w.pm_id
+       WHERE ao.id=$1`, [id]);
+    if (!rows[0]) return reply.code(404).send({ error: 'Не найдена' });
+    const boardRes = await buildBoardForAssembly(db, id);
+    const kpi = await computeAssemblyKpi(db, id);
+    return { item: rows[0], board: boardRes.board, kpi, live: boardRes.live };
+  });
+
+  /** PATCH qty с правилами мониторинга */
+  fastify.patch('/:id/items/:itemId/monitor-qty', { preHandler: [fastify.requireRoles(ALL_ROLES)] }, async (req, reply) => {
+    const asmId = parseInt(req.params.id, 10);
+    const itemId = parseInt(req.params.itemId, 10);
+    const qty = parseFloat(req.body && req.body.quantity);
+    if (!(qty > 0)) return reply.code(400).send({ error: 'quantity > 0' });
+    const asm = await db.query('SELECT status FROM assembly_orders WHERE id=$1', [asmId]);
+    if (!asm.rows[0]) return reply.code(404).send({ error: 'Не найдена' });
+    if (['in_transit', 'closed', 'returned'].includes(asm.rows[0].status)) {
+      return reply.code(409).send({ error: 'Сборка уже отправлена/закрыта' });
+    }
+    const it = await db.query('SELECT * FROM assembly_items WHERE id=$1 AND assembly_id=$2', [itemId, asmId]);
+    if (!it.rows[0]) return reply.code(404).send({ error: 'Не найдена' });
+    const row = it.rows[0];
+    const st = row.line_status || '';
+    const packed = !!(row.packed || row.pallet_id);
+    if (packed || st === 'in_transit') return reply.code(409).send({ error: 'Собранную/в пути позицию нельзя менять здесь' });
+    const cur = parseFloat(row.quantity) || 0;
+    const awaitingProc = st === 'awaiting_procurement';
+    const reserved = st === 'reserved' || st === 'awaiting_wh_approve';
+    if (awaitingProc || st === 'on_shelf' || st === 'stock_ready') {
+      if (qty > cur) return reply.code(409).send({ error: 'Закупленное можно только уменьшить' });
+    } else if (reserved) {
+      // в пределах текущего qty (доступный остаток отдельно; не раздуваем выше need)
+      if (qty > cur * 2) return reply.code(409).send({ error: 'Слишком большое увеличение' });
+    } else if (qty > cur) {
+      return reply.code(409).send({ error: 'Можно только уменьшить или удалить' });
+    }
+    const { rows } = await db.query(
+      'UPDATE assembly_items SET quantity=$1 WHERE id=$2 AND assembly_id=$3 RETURNING *',
+      [qty, itemId, asmId]);
+    return { item: rows[0], edit_ok: true };
+  });
+
+  /** Удаление с dry-run mail PROC/WH */
+  fastify.post('/:id/items/:itemId/monitor-remove', { preHandler: [fastify.requireRoles(ALL_ROLES)] }, async (req, reply) => {
+    const { notifyLineRemoved } = require('../services/assembly-mail');
+    const asmId = parseInt(req.params.id, 10);
+    const itemId = parseInt(req.params.itemId, 10);
+    const asm = await db.query(
+      `SELECT ao.*, w.pm_id FROM assembly_orders ao LEFT JOIN works w ON w.id=ao.work_id WHERE ao.id=$1`, [asmId]);
+    if (!asm.rows[0]) return reply.code(404).send({ error: 'Не найдена' });
+    if (['in_transit', 'closed', 'returned'].includes(asm.rows[0].status)) {
+      return reply.code(409).send({ error: 'Сборка уже отправлена/закрыта' });
+    }
+    const it = await db.query('SELECT * FROM assembly_items WHERE id=$1 AND assembly_id=$2', [itemId, asmId]);
+    if (!it.rows[0]) return reply.code(404).send({ error: 'Не найдена' });
+    const row = it.rows[0];
+    if (row.packed || row.pallet_id) {
+      return reply.code(409).send({ error: 'Сначала уберите с паллета (unpick)' });
+    }
+    const st = row.line_status || '';
+    const wasStock = st === 'reserved' || st === 'awaiting_wh_approve' || st === 'on_shelf';
+    const wasProc = st === 'awaiting_procurement';
+    await db.query('DELETE FROM assembly_items WHERE id=$1 AND assembly_id=$2', [itemId, asmId]);
+
+    const emails = [];
+    const userIds = [];
+    if (wasProc) {
+      const procs = await db.query("SELECT id, email FROM users WHERE role='PROC' AND is_active=true");
+      for (const u of procs.rows) { userIds.push(u.id); if (u.email) emails.push(u.email); }
+    }
+    if (wasStock) {
+      const whs = await db.query("SELECT id, email FROM users WHERE role='WAREHOUSE' AND is_active=true");
+      for (const u of whs.rows) { userIds.push(u.id); if (u.email) emails.push(u.email); }
+    }
+    for (const uid of [...new Set(userIds)]) {
+      createNotification(db, {
+        user_id: uid,
+        title: 'Позиция снята со сборки',
+        message: `${row.name} · сборка #${asmId}`,
+        type: 'assembly',
+        link: `#/warehouse-v2?tab=monitor&id=${asmId}`
+      });
+    }
+    const mail = await notifyLineRemoved(db, {
+      toEmails: emails,
+      assemblyId: asmId,
+      itemName: row.name,
+      qty: row.quantity,
+      actor: req.user.name || req.user.login,
+      reason: req.body && req.body.reason
+    });
+    return { success: true, mail };
+  });
 
   fastify.get('/', { preHandler: [fastify.authenticate] }, async (req) => {
     const { work_id, type, status, limit = 50, offset = 0 } = req.query;
-    let sql = `SELECT ao.*,w.work_title,u.name as creator_name,
+    let sql = `SELECT ao.*,w.work_title,u.name as creator_name, pm.name as pm_name,
       (SELECT COUNT(*) FROM assembly_items ai WHERE ai.assembly_id=ao.id) as items_count,
       (SELECT COUNT(*) FROM assembly_pallets ap WHERE ap.assembly_id=ao.id) as pallets_count,
       (SELECT COUNT(*) FROM assembly_items ai WHERE ai.assembly_id=ao.id AND ai.packed=true) as packed_count
-      FROM assembly_orders ao LEFT JOIN works w ON ao.work_id=w.id LEFT JOIN users u ON ao.created_by=u.id WHERE 1=1`;
+      FROM assembly_orders ao
+      LEFT JOIN works w ON ao.work_id=w.id
+      LEFT JOIN users u ON ao.created_by=u.id
+      LEFT JOIN users pm ON w.pm_id=pm.id
+      WHERE 1=1`;
     const p = []; let i = 1;
     if (work_id) { sql += ` AND ao.work_id=$${i++}`; p.push(work_id); }
     if (type) { sql += ` AND ao.type=$${i++}`; p.push(type); }
@@ -189,8 +490,88 @@ async function routes(fastify) {
   });
 
   fastify.delete('/:id/items/:itemId', { preHandler: [fastify.requireRoles(ALL_ROLES)] }, async (req, reply) => {
-    const { rows } = await db.query('DELETE FROM assembly_items WHERE id=$1 AND assembly_id=$2 RETURNING id', [req.params.itemId, req.params.id]);
-    if (!rows[0]) return reply.code(404).send({ error: 'Не найдена' }); return { success: true };
+    const asmId = parseInt(req.params.id);
+    const itemId = parseInt(req.params.itemId);
+    const ck = await db.query('SELECT status FROM assembly_orders WHERE id=$1', [asmId]);
+    if (!ck.rows[0]) return reply.code(404).send({ error: 'Не найдена' });
+    if (['in_transit', 'closed', 'returned'].includes(ck.rows[0].status)) {
+      return reply.code(409).send({ error: 'Сборка уже отправлена/закрыта' });
+    }
+    const it = await db.query('SELECT * FROM assembly_items WHERE id=$1 AND assembly_id=$2', [itemId, asmId]);
+    if (!it.rows[0]) return reply.code(404).send({ error: 'Не найдена' });
+    const row = it.rows[0];
+    // уже на паллете → unpick queue, не hard-delete
+    if (row.packed || row.pallet_id) {
+      const { rows } = await db.query(
+        `UPDATE assembly_items SET line_status='unpick_requested' WHERE id=$1 RETURNING *`, [itemId]);
+      const whs = await db.query("SELECT id FROM users WHERE role='WAREHOUSE' AND is_active=true");
+      for (const w of whs.rows) {
+        createNotification(db, {
+          user_id: w.id, title: '↩ Убрать с паллета',
+          message: row.name, type: 'assembly', link: `#/assembly?id=${asmId}`
+        });
+      }
+      return { success: true, unpick_requested: true, item: rows[0] };
+    }
+    const { rows } = await db.query('DELETE FROM assembly_items WHERE id=$1 AND assembly_id=$2 RETURNING id', [itemId, asmId]);
+    if (!rows[0]) return reply.code(404).send({ error: 'Не найдена' });
+    return { success: true, unpick_requested: false };
+  });
+
+  // Change-order: add from stock / procure after cart submit
+  fastify.post('/:id/change-order', { preHandler: [fastify.requireRoles(ALL_ROLES)] }, async (req, reply) => {
+    const asmId = parseInt(req.params.id);
+    const b = req.body || {};
+    const ck = await db.query('SELECT * FROM assembly_orders WHERE id=$1', [asmId]);
+    if (!ck.rows[0]) return reply.code(404).send({ error: 'Не найдена' });
+    if (['in_transit', 'closed', 'returned'].includes(ck.rows[0].status)) {
+      return reply.code(409).send({ error: 'Слишком поздно для правок' });
+    }
+    const action = b.action; // add_stock | procure | remove
+    if (action === 'remove' && b.item_id) {
+      const it = await db.query('SELECT * FROM assembly_items WHERE id=$1 AND assembly_id=$2', [b.item_id, asmId]);
+      if (!it.rows[0]) return reply.code(404).send({ error: 'Не найдена' });
+      if (it.rows[0].packed || it.rows[0].pallet_id) {
+        const { rows } = await db.query(`UPDATE assembly_items SET line_status='unpick_requested' WHERE id=$1 RETURNING *`, [b.item_id]);
+        const whs = await db.query("SELECT id FROM users WHERE role='WAREHOUSE' AND is_active=true");
+        for (const w of whs.rows) {
+          createNotification(db, { user_id: w.id, title: '↩ Убрать с паллета', message: it.rows[0].name, type: 'assembly', link: '#/warehouse-v2' });
+        }
+        return { item: rows[0], unpick_requested: true };
+      }
+      await db.query('DELETE FROM assembly_items WHERE id=$1', [b.item_id]);
+      return { success: true, unpick_requested: false };
+    }
+    if (action === 'add_stock' || action === 'new_position') {
+      if (!b.name && !b.product_id && !b.equipment_id) return reply.code(400).send({ error: 'Нужна позиция' });
+      const { rows } = await db.query(
+        `INSERT INTO assembly_items(assembly_id,product_id,equipment_id,name,unit,quantity,source,line_status)
+         VALUES($1,$2,$3,$4,$5,$6,'change_order',$7) RETURNING *`,
+        [asmId, b.product_id || null, b.equipment_id || null, b.name || 'Позиция', b.unit || 'шт', b.quantity || 1,
+          action === 'new_position' ? 'awaiting_procurement' : 'reserved']);
+      return { item: rows[0] };
+    }
+    if (action === 'procure') {
+      const { rows } = await db.query(
+        `INSERT INTO assembly_items(assembly_id,product_id,name,unit,quantity,source,line_status)
+         VALUES($1,$2,$3,$4,$5,'change_order','awaiting_procurement') RETURNING *`,
+        [asmId, b.product_id || null, b.name || 'Дозаказ', b.unit || 'шт', b.quantity || 1]);
+      return { item: rows[0] };
+    }
+    return reply.code(400).send({ error: 'action: add_stock | procure | remove' });
+  });
+
+  // bulk site receipt (also on warehouse-ops; mirror for assembly UI)
+  fastify.post('/:id/site-receipt-bulk', { preHandler: [fastify.requireRoles(ALL_ROLES)] }, async (req, reply) => {
+    const { item_ids, note } = req.body || {};
+    const ids = Array.isArray(item_ids) ? item_ids : [];
+    let sql = `UPDATE assembly_items SET received=true, received_at=NOW(), received_by=$1,
+      notes=COALESCE(notes,'') || $2 WHERE assembly_id=$3`;
+    const p = [req.user.id, note ? `\n[site-bulk] ${note}` : '\n[site-bulk]', req.params.id];
+    if (ids.length) { sql += ` AND id = ANY($4)`; p.push(ids); }
+    sql += ' RETURNING id';
+    const { rows } = await db.query(sql, p);
+    return { updated: rows.length, ids: rows.map(r => r.id) };
   });
 
   fastify.put('/:id/items/:itemId/pack', { preHandler: [fastify.requireRoles(ASSEMBLY_MANAGERS)] }, async (req, reply) => {
@@ -555,19 +936,32 @@ async function routes(fastify) {
   // Кто что собрал + сводка по паллетам. Для поллинга с фронта рабочих.
   fastify.get('/:id/live', { preHandler: [fastify.authenticate] }, async (req, reply) => {
     const id = parseInt(req.params.id); if (isNaN(id)) return reply.code(400).send({ error: 'Bad ID' });
-    const o = await db.query('SELECT id,status,updated_at FROM assembly_orders WHERE id=$1', [id]);
+    const o = await db.query('SELECT id,status,updated_at,destination,planned_date,title FROM assembly_orders WHERE id=$1', [id]);
     if (!o.rows[0]) return reply.code(404).send({ error: 'Не найдена' });
     const totals = await db.query(`SELECT COUNT(*) AS total, COUNT(*) FILTER (WHERE packed) AS packed,
       COUNT(*) FILTER (WHERE pallet_id IS NOT NULL) AS assigned FROM assembly_items WHERE assembly_id=$1`, [id]);
     const byUser = await db.query(`SELECT u.id,u.name, COUNT(*) AS packed_count, MAX(ai.packed_at) AS last_at
       FROM assembly_items ai JOIN users u ON ai.packed_by=u.id
       WHERE ai.assembly_id=$1 AND ai.packed=true GROUP BY u.id,u.name ORDER BY packed_count DESC`, [id]);
-    const pallets = await db.query(`SELECT ap.id,ap.pallet_number,ap.status,ap.label,
+    const pallets = await db.query(`SELECT ap.id,ap.pallet_number,ap.status,ap.label,ap.capacity_kg,
       (SELECT COUNT(*) FROM assembly_items ai WHERE ai.pallet_id=ap.id) AS items,
       (SELECT COUNT(*) FROM assembly_items ai WHERE ai.pallet_id=ap.id AND ai.packed) AS packed
       FROM assembly_pallets ap WHERE ap.assembly_id=$1 ORDER BY ap.pallet_number`, [id]);
-    return { status: o.rows[0].status, updated_at: o.rows[0].updated_at,
-      totals: totals.rows[0], by_user: byUser.rows, pallets: pallets.rows };
+    const kpi = await computeAssemblyKpi(db, id);
+    return {
+      status: o.rows[0].status,
+      updated_at: o.rows[0].updated_at,
+      destination: o.rows[0].destination,
+      planned_date: o.rows[0].planned_date,
+      title: o.rows[0].title,
+      totals: totals.rows[0],
+      by_user: byUser.rows,
+      pallets: pallets.rows,
+      ready_pct: kpi.ready_pct,
+      packed_weight_kg: kpi.packed_weight_kg,
+      pallets_count: kpi.pallets_count,
+      kpi
+    };
   });
 
   // ═══ РАЗБОР ВОЗВРАТА С ОБЪЕКТА (план vs факт, расхождения) ═══

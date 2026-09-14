@@ -4,7 +4,7 @@
  * Семантический поиск по нормативам ГЭСН/ФЕР/СТО (таблица mimir_norms_index).
  * Используется агентом resource_planner для привязки работ к расценкам.
  *
- * Embeddings — через ai-provider.embed() (routerai → voyage-3-large, dim 1024).
+ * Embeddings — через ai-provider.embed() (routerai → openai/text-embedding-3-large).
  * В stub-режиме embed() возвращает детерминированный псевдо-вектор → поиск
  * работает структурно (без расхода баланса), но релевантность приблизительная.
  *
@@ -74,7 +74,7 @@ async function searchNorms(query, k = 5, filter = {}) {
 
   // Векторный путь.
   try {
-    const embeds = await aiProvider.embed({ texts: [query], model: 'voyage/voyage-3-large' });
+    const embeds = await aiProvider.embed({ texts: [query], model: 'openai/text-embedding-3-large' });
     const vec = Array.isArray(embeds) && embeds[0] ? embeds[0] : null;
     if (vec) {
       const vlit = toVectorLiteral(vec);
@@ -110,7 +110,7 @@ async function searchNorms(query, k = 5, filter = {}) {
 async function indexNorms(items = []) {
   if (!items.length) return { inserted: 0 };
   const texts = items.map((it) => `${it.code} ${it.name}\n${it.full_text || ''}`.slice(0, 8000));
-  const embeds = await aiProvider.embed({ texts, model: 'voyage/voyage-3-large' });
+  const embeds = await aiProvider.embed({ texts, model: 'openai/text-embedding-3-large' });
 
   let inserted = 0;
   for (let i = 0; i < items.length; i++) {

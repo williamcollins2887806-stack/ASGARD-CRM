@@ -3,6 +3,7 @@
  */
 
 const { closedSql, notClosedSql } = require('../helpers/work-status');
+const { assertPpeSizes } = require('../lib/ppe-sizes');
 
 // SECURITY: Allowlist of columns
 const EMPLOYEE_COLS = new Set([
@@ -36,6 +37,8 @@ const EMPLOYEE_COLS = new Set([
   'education', 'specialty',
   'marital_status', 'children_count',
   'clothing_size', 'shoe_size', 'headwear_size', 'height', 'blood_type', 'medical_notes',
+  // Документы (UI EmployeeDocs) — раньше отфильтровывались allowlist'ом
+  'military_id', 'driver_license',
   // M2-A Phase 2 (19.06.2026): редактирование СЗ/Оф полей с карточки рабочего.
   // V143: финансовые поля СЗ/Оф. V239: НПД-«стартовая корректировка».
   // RBAC и логика INN — в handler PUT /employees/:id (см. ниже).
@@ -47,7 +50,9 @@ const EMPLOYEE_COLS = new Set([
   // is_se_payee — это «помощник», не работающий сам.
   // se_payee_id  — ссылка от рабочего на получателя его НПД-выплат.
   // Финансово важное поле (только FIN_ROLES могут менять привязку).
-  'se_payee_id', 'is_se_payee'
+  'se_payee_id', 'is_se_payee',
+  // V302 — profile_confirmed_at пишется из Field confirm; max_* только batch-check
+  'profile_confirmed_at'
 ]);
 
 // M2-A: финансовые поля — менять могут только ADMIN/DIRECTOR_GEN/BUH.
@@ -134,7 +139,8 @@ async function routes(fastify, options) {
   function formatDates(row) {
     if (!row) return row;
     const dateFields = ['birth_date', 'hire_date', 'employment_date', 'dismissal_date',
-                        'naks_date', 'naks_expiry', 'imt_expires'];
+                        'naks_date', 'naks_expiry', 'imt_expires',
+                        'date_from', 'date_to', 'departure_date'];
     for (const f of dateFields) {
       if (row[f] instanceof Date) {
         row[f] = row[f].toISOString().slice(0, 10);
@@ -155,7 +161,12 @@ async function routes(fastify, options) {
   // Employees
   fastify.get('/employees', { preHandler: [fastify.authenticate] }, async (request) => {
     const { role_tag, search, limit = 100, offset = 0 } = request.query;
-    let sql = 'SELECT * FROM employees WHERE COALESCE(is_active, true) = true';
+    let sql = `SELECT * FROM employees WHERE COALESCE(is_active, true) = true
+      AND COALESCE(is_se_payee, false) = false
+      AND TRIM(COALESCE(fio, full_name, '')) <> ''
+      AND LOWER(COALESCE(fio, full_name, '')) NOT LIKE '%тест%'
+      AND LOWER(COALESCE(fio, full_name, '')) NOT LIKE '%test%'
+      AND LOWER(COALESCE(fio, full_name, '')) NOT LIKE '%hr создал%'`;
     const params = [];
     let idx = 1;
     if (role_tag) { sql += ` AND role_tag = $${idx}`; params.push(role_tag); idx++; }
@@ -281,10 +292,28 @@ async function routes(fastify, options) {
     const result = await db.query('SELECT * FROM employees WHERE id = $1', [empId]);
     if (!result.rows[0]) return reply.code(404).send({ error: 'Сотрудник не найден' });
     const [reviews, assignments, plannedRes, onSiteRes] = await Promise.all([
-      db.query('SELECT * FROM employee_reviews WHERE employee_id = $1 ORDER BY created_at DESC', [empId]),
       db.query(
-        `SELECT * FROM employee_assignments WHERE employee_id = $1
-         ORDER BY date_from DESC NULLS LAST, id DESC`,
+        `SELECT r.*, w.work_title, COALESCE(pm.name, pm.login) AS reviewer_name
+         FROM employee_reviews r
+         LEFT JOIN works w ON w.id = r.work_id
+         LEFT JOIN users pm ON pm.id = r.pm_id
+         WHERE r.employee_id = $1
+         ORDER BY r.created_at DESC`,
+        [empId]
+      ),
+      db.query(
+        `SELECT ea.*,
+                w.work_title, w.work_status, w.city, w.object_address, w.object_name,
+                w.customer_name, w.pm_id,
+                t.customer_name AS tender_customer_name,
+                t.tender_region AS tender_city,
+                COALESCE(pm.name, pm.login) AS pm_name
+         FROM employee_assignments ea
+         LEFT JOIN works w ON w.id = ea.work_id
+         LEFT JOIN tenders t ON t.id = w.tender_id
+         LEFT JOIN users pm ON pm.id = w.pm_id
+         WHERE ea.employee_id = $1
+         ORDER BY ea.date_from DESC NULLS LAST, ea.id DESC`,
         [empId]
       ),
       db.query(`
@@ -500,6 +529,11 @@ async function routes(fastify, options) {
       for (const field of FIN_RESTRICTED_FIELDS) {
         if (field in body) delete body[field];
       }
+    }
+
+    const ppeErrs = assertPpeSizes(body);
+    if (ppeErrs.length) {
+      return reply.code(400).send({ error: ppeErrs[0], details: ppeErrs });
     }
 
     // ── 3) Валидация se_monthly_used_initial: {year, month, amount} или null.
@@ -756,7 +790,11 @@ async function routes(fastify, options) {
   });
 
   // Employee reviews — SECURITY: SQL injection fix — filter keys
-  fastify.post('/employees/:id/review', { preHandler: [fastify.authenticate] }, async (request, reply) => {
+  // Оценка: только PM / HEAD_PM / директора / ADMIN
+  const REVIEW_WRITE_ROLES = ['PM', 'HEAD_PM', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV', 'ADMIN'];
+  fastify.post('/employees/:id/review', {
+    preHandler: [fastify.requireRoles(REVIEW_WRITE_ROLES)]
+  }, async (request, reply) => {
     try {
       const { id } = request.params;
       const body = request.body || {};
@@ -818,6 +856,97 @@ async function routes(fastify, options) {
     } catch (err) {
       return reply.code(500).send({ error: 'Ошибка создания отзыва', detail: err.message });
     }
+  });
+
+  // POST /reviews/bulk — массовая оценка из корзины бригады
+  // body: { work_id, items: [{ employee_id, score, comment }] }
+  const REVIEW_ROLES = ['PM', 'HEAD_PM', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV', 'ADMIN'];
+  fastify.post('/reviews/bulk', {
+    preHandler: [fastify.requireRoles(REVIEW_ROLES)]
+  }, async (request, reply) => {
+    const body = request.body || {};
+    const workId = body.work_id != null ? parseInt(body.work_id, 10) : null;
+    const items = Array.isArray(body.items) ? body.items : [];
+    const pmId = request.user.id;
+
+    if (!Number.isFinite(workId)) {
+      return reply.code(400).send({ error: 'work_id обязателен' });
+    }
+    if (!items.length) {
+      return reply.code(400).send({ error: 'items обязателен' });
+    }
+    if (items.length > 100) {
+      return reply.code(400).send({ error: 'Максимум 100 оценок за раз' });
+    }
+
+    const { rows: [work] } = await db.query(
+      'SELECT id, work_title FROM works WHERE id = $1 AND deleted_at IS NULL',
+      [workId]
+    );
+    if (!work) return reply.code(404).send({ error: 'Работа не найдена' });
+
+    const saved = [];
+    const failed = [];
+    try {
+      await db.transaction(async (client) => {
+        for (const it of items) {
+          const empId = parseInt(it.employee_id, 10);
+          const score = it.score != null ? Number(it.score) : (it.rating != null ? Number(it.rating) : null);
+          const comment = it.comment != null ? String(it.comment) : '';
+          if (!Number.isFinite(empId) || !Number.isFinite(score) || score < 1 || score > 10) {
+            failed.push({ employee_id: empId, error: 'bad score or id' });
+            continue;
+          }
+          const existing = await client.query(
+            `SELECT id FROM employee_reviews
+             WHERE employee_id = $1 AND work_id = $2 AND pm_id = $3
+             ORDER BY id DESC LIMIT 1`,
+            [empId, workId, pmId]
+          );
+          let review;
+          if (existing.rows[0]) {
+            const upd = await client.query(
+              `UPDATE employee_reviews SET score = $1, rating = $1, comment = $2, updated_at = NOW()
+               WHERE id = $3 RETURNING *`,
+              [score, comment, existing.rows[0].id]
+            );
+            review = upd.rows[0];
+          } else {
+            const ins = await client.query(
+              `INSERT INTO employee_reviews (employee_id, work_id, pm_id, score, rating, comment, created_at, updated_at)
+               VALUES ($1, $2, $3, $4, $4, $5, NOW(), NOW()) RETURNING *`,
+              [empId, workId, pmId, score, comment]
+            );
+            review = ins.rows[0];
+          }
+          const avgResult = await client.query(
+            'SELECT AVG(COALESCE(score, rating)) as avg FROM employee_reviews WHERE employee_id = $1',
+            [empId]
+          );
+          await client.query(
+            'UPDATE employees SET rating_avg = $1, updated_at = NOW() WHERE id = $2',
+            [avgResult.rows[0].avg, empId]
+          );
+          saved.push({
+            employee_id: empId,
+            score,
+            rating_avg: avgResult.rows[0].avg,
+            review_id: review.id
+          });
+        }
+      });
+    } catch (err) {
+      return reply.code(500).send({ error: 'Ошибка массовой оценки', detail: err.message });
+    }
+
+    return {
+      ok: true,
+      work_id: workId,
+      work_title: work.work_title,
+      saved,
+      failed,
+      saved_count: saved.length
+    };
   });
 
   // Schedule

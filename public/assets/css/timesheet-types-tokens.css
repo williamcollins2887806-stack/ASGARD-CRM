@@ -50,6 +50,14 @@
   /* ⏰ Ожидание */
   --ts-waiting-bg:   var(--orange-bg, rgba(249,115,22,0.12));
   --ts-waiting-fg:   var(--orange,    #F97316);
+
+  /* 🏢 Офис (легенда Excel — зелёный) */
+  --ts-office-bg:    var(--ok-bg, rgba(146,208,80,0.18));
+  --ts-office-fg:    var(--ok,    #548B2F);
+
+  /* 🏠 Удалённая работа (легенда Excel — золотой/оранжевый) */
+  --ts-remote-bg:    var(--gold-bg, rgba(255,192,0,0.18));
+  --ts-remote-fg:    var(--gold,    #B8860B);
 }
 
 /* Светлая тема — те же переменные источника уже переопределены
@@ -67,4 +75,6 @@
   --ts-training-fg:  var(--err,     #A82030);
   --ts-helicopter-fg:var(--gold,    #B07E12);
   --ts-waiting-fg:   var(--orange,  #E25510);
+  --ts-office-fg:    var(--ok,      #3F6B10);
+  --ts-remote-fg:    var(--gold,    #8B6914);
 }

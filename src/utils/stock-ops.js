@@ -25,21 +25,64 @@ async function logMoveAdjust(client, m) {
  * @returns {Promise<{reservation_id:number, new_reserved:number}>}
  */
 async function reserveStock(client, { product_id, warehouse_id, location_id, qty, work_id, reserved_by, procurement_id, notes }) {
-  const sel = await client.query(
-    `SELECT id, quantity, reserved_qty, unit FROM stock
-     WHERE product_id=$1 AND warehouse_id=$2 AND location_id IS NOT DISTINCT FROM $3 FOR UPDATE`,
-    [product_id, warehouse_id, location_id || null]);
-  const row = sel.rows[0];
-  const available = row ? (parseFloat(row.quantity) - parseFloat(row.reserved_qty || 0)) : 0;
-  if (!row || available < qty) { const err = new Error('RESERVED'); err.code = 'RESERVED'; err.available = available; throw err; }
-  await client.query('UPDATE stock SET reserved_qty = reserved_qty + $1, updated_at=NOW() WHERE id=$2', [qty, row.id]);
-  const r = await client.query(
-    `INSERT INTO stock_reservations(product_id,warehouse_id,qty,work_id,reserved_by,procurement_id,status,notes)
-     VALUES($1,$2,$3,$4,$5,$6,'active',$7) RETURNING id`,
-    [product_id, warehouse_id, qty, work_id || null, reserved_by || null, procurement_id || null, notes || null]);
-  await logMoveAdjust(client, { product_id, warehouse_id, location_id, qty, unit: row.unit,
-    ref_id: r.rows[0].id, reason: notes || 'Резерв из корзины', created_by: reserved_by });
-  return { reservation_id: r.rows[0].id, new_reserved: parseFloat(row.reserved_qty || 0) + qty };
+  const need = parseFloat(qty) || 0;
+  if (need <= 0) return { reservation_id: null, new_reserved: 0 };
+
+  // 1) точное место (если передали) — иначе любая строка склада с свободным остатком
+  let rows;
+  if (location_id != null) {
+    const sel = await client.query(
+      `SELECT id, quantity, reserved_qty, unit, location_id FROM stock
+       WHERE product_id=$1 AND warehouse_id=$2 AND location_id IS NOT DISTINCT FROM $3 FOR UPDATE`,
+      [product_id, warehouse_id, location_id]);
+    rows = sel.rows;
+  } else {
+    const sel = await client.query(
+      `SELECT id, quantity, reserved_qty, unit, location_id FROM stock
+       WHERE product_id=$1 AND warehouse_id=$2
+         AND (quantity - COALESCE(reserved_qty,0)) > 0
+       ORDER BY (quantity - COALESCE(reserved_qty,0)) DESC, id
+       FOR UPDATE`,
+      [product_id, warehouse_id]);
+    rows = sel.rows;
+    // если свободного нет — всё равно залочить агрегат для корректного available в ошибке
+    if (!rows.length) {
+      const all = await client.query(
+        `SELECT id, quantity, reserved_qty, unit, location_id FROM stock
+         WHERE product_id=$1 AND warehouse_id=$2 FOR UPDATE`,
+        [product_id, warehouse_id]);
+      rows = all.rows;
+    }
+  }
+
+  const totalAvail = rows.reduce((s, r) => s + (parseFloat(r.quantity) - parseFloat(r.reserved_qty || 0)), 0);
+  if (!rows.length || totalAvail < need) {
+    const err = new Error('RESERVED'); err.code = 'RESERVED'; err.available = totalAvail; throw err;
+  }
+
+  let left = need;
+  let lastReservationId = null;
+  let unit = 'шт';
+  for (const row of rows) {
+    if (left <= 0) break;
+    const free = parseFloat(row.quantity) - parseFloat(row.reserved_qty || 0);
+    if (free <= 0) continue;
+    const take = Math.min(free, left);
+    await client.query('UPDATE stock SET reserved_qty = reserved_qty + $1, updated_at=NOW() WHERE id=$2', [take, row.id]);
+    const r = await client.query(
+      `INSERT INTO stock_reservations(product_id,warehouse_id,qty,work_id,reserved_by,procurement_id,status,notes)
+       VALUES($1,$2,$3,$4,$5,$6,'active',$7) RETURNING id`,
+      [product_id, warehouse_id, take, work_id || null, reserved_by || null, procurement_id || null, notes || null]);
+    lastReservationId = r.rows[0].id;
+    unit = row.unit || unit;
+    await logMoveAdjust(client, { product_id, warehouse_id, location_id: row.location_id, qty: take, unit,
+      ref_id: lastReservationId, reason: notes || 'Резерв из корзины', created_by: reserved_by });
+    left -= take;
+  }
+  if (left > 0) {
+    const err = new Error('RESERVED'); err.code = 'RESERVED'; err.available = totalAvail - (need - left); throw err;
+  }
+  return { reservation_id: lastReservationId, new_reserved: need };
 }
 
 /**

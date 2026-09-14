@@ -212,6 +212,140 @@ async function processInvoices(db, log) {
 }
 
 /**
+ * 4) Doc Hub — сроки оплаты / СФ / неполнота карточек.
+ *    entity_type='doc_registry', link #/doc-hub?id=
+ */
+async function processDocRegistry(db, log) {
+  let created = 0;
+  const roleRec = await db.query(
+    `SELECT id, role FROM users WHERE COALESCE(is_active,true)=true AND role IN ('BUH','PROC')`
+  );
+  const buhIds = roleRec.rows.filter((r) => r.role === 'BUH').map((r) => Number(r.id));
+  const procIds = roleRec.rows.filter((r) => r.role === 'PROC').map((r) => Number(r.id));
+
+  async function notifyDoc(doc, kind, title, message) {
+    const recipients = new Set([...buhIds, ...procIds]);
+    if (doc.doc_owner_id) recipients.add(Number(doc.doc_owner_id));
+    if (doc.pm_id) recipients.add(Number(doc.pm_id));
+    const link = `#/doc-hub?id=${doc.id}`;
+    for (const uid of recipients) {
+      if (!uid) continue;
+      if (await hasRecentReminder(db, uid, 'doc_registry', doc.id, kind)) continue;
+      await insertReminder(db, {
+        user_id: uid,
+        title,
+        message,
+        link,
+        entity_type: 'doc_registry',
+        entity_id: doc.id,
+        kind
+      });
+      created++;
+    }
+    return link;
+  }
+
+  // pay soon ≤ 3 days
+  const soonQ = await db.query(`
+    SELECT id, invoice_number, counterparty_name, payment_due_at, amount_gross, doc_owner_id, pm_id
+      FROM doc_registry
+     WHERE deleted_at IS NULL
+       AND payment_due_at IS NOT NULL
+       AND payment_due_at::date >= NOW()::date
+       AND payment_due_at::date <= (NOW() + INTERVAL '3 days')::date
+       AND COALESCE(pay_status,'none') NOT IN ('paid','n_a')
+  `);
+  for (const d of soonQ.rows) {
+    const numLabel = d.invoice_number || `#${d.id}`;
+    await notifyDoc(
+      d,
+      'doc_pay_soon',
+      `🔔 Счёт ${numLabel} скоро к оплате`,
+      `Оплата Doc Hub «${d.counterparty_name || ''}» до ${String(d.payment_due_at).slice(0, 10)}.`
+    );
+  }
+
+  const overduePayQ = await db.query(`
+    SELECT id, invoice_number, counterparty_name, payment_due_at, amount_gross, doc_owner_id, pm_id
+      FROM doc_registry
+     WHERE deleted_at IS NULL
+       AND payment_due_at IS NOT NULL
+       AND payment_due_at::date < NOW()::date
+       AND COALESCE(pay_status,'none') NOT IN ('paid','n_a')
+  `);
+  for (const d of overduePayQ.rows) {
+    const numLabel = d.invoice_number || `#${d.id}`;
+    await notifyDoc(
+      d,
+      'doc_pay_overdue',
+      `⚠️ Просрочена оплата ${numLabel}`,
+      `Срок оплаты Doc Hub «${d.counterparty_name || ''}» истёк (${String(d.payment_due_at).slice(0, 10)}).`
+    );
+  }
+
+  const overdueSfQ = await db.query(`
+    SELECT id, invoice_number, counterparty_name, sf_due_at, doc_owner_id, pm_id
+      FROM doc_registry
+     WHERE deleted_at IS NULL
+       AND sf_due_at IS NOT NULL
+       AND sf_due_at::date < NOW()::date
+       AND ops_status IN ('wait_sf','wait_closing')
+  `);
+  for (const d of overdueSfQ.rows) {
+    const numLabel = d.invoice_number || `#${d.id}`;
+    await notifyDoc(
+      d,
+      'doc_sf_overdue',
+      `⚠️ Просрочена СФ ${numLabel}`,
+      `Ожидаем закрывающие по Doc Hub «${d.counterparty_name || ''}» (срок ${String(d.sf_due_at).slice(0, 10)}).`
+    );
+  }
+
+  const incompleteQ = await db.query(`
+    SELECT id, invoice_number, counterparty_name, doc_owner_id, pm_id, incomplete_reasons
+      FROM doc_registry
+     WHERE deleted_at IS NULL AND is_incomplete = true
+     LIMIT 200
+  `);
+  for (const d of incompleteQ.rows) {
+    const numLabel = d.invoice_number || `#${d.id}`;
+    await notifyDoc(
+      d,
+      'doc_incomplete',
+      `📋 Неполная карточка ${numLabel}`,
+      `Doc Hub «${d.counterparty_name || ''}» требует дозаполнения.`
+    );
+  }
+
+  // Best-effort email только на DOC_HUB_MAIL_TO / PAYMENT_MAIL_TO (Андросов), без директоров.
+  const mailTo = String(process.env.DOC_HUB_MAIL_TO || process.env.PAYMENT_MAIL_TO || '').trim();
+  const mailOk = mailTo && (process.env.NODE_ENV !== 'production' || process.env.DOC_HUB_MAIL_FORCE === '1');
+  const totalDocs = soonQ.rows.length + overduePayQ.rows.length + overdueSfQ.rows.length + incompleteQ.rows.length;
+  if (mailOk && totalDocs > 0) {
+    try {
+      const { sendCrmEmail } = require('./crm-mailer');
+      const subject = `[Doc Hub] Напоминания: soon=${soonQ.rows.length} overdue_pay=${overduePayQ.rows.length} sf=${overdueSfQ.rows.length} incomplete=${incompleteQ.rows.length}`;
+      const text = [
+        `Doc Hub reminder tick`,
+        `pay_soon: ${soonQ.rows.length}`,
+        `pay_overdue: ${overduePayQ.rows.length}`,
+        `sf_overdue: ${overdueSfQ.rows.length}`,
+        `incomplete: ${incompleteQ.rows.length}`,
+        `in-app notifications created: ${created}`
+      ].join('\n');
+      await sendCrmEmail(db, null, { to: mailTo, subject, text, skipBcc: true });
+    } catch (e) {
+      log?.warn?.({ err: e }, '[ReminderCron] doc_registry mail failed');
+    }
+  }
+
+  log?.info?.(
+    `[ReminderCron] doc_registry: soon=${soonQ.rows.length} overdue_pay=${overduePayQ.rows.length} sf=${overdueSfQ.rows.length} incomplete=${incompleteQ.rows.length} notify=${created}`
+  );
+  return created;
+}
+
+/**
  * Авто-очистка старых reminder-уведомлений (> 48 часов).
  */
 async function cleanupOld(db, log) {
@@ -226,14 +360,15 @@ async function cleanupOld(db, log) {
 
 async function runOnce(db, log) {
   const t0 = Date.now();
-  let tenders = 0, works = 0, invoices = 0, cleaned = 0;
+  let tenders = 0, works = 0, invoices = 0, docs = 0, cleaned = 0;
   try { tenders = await processTenders(db, log); } catch (e) { log?.error?.({ err: e }, '[ReminderCron] tenders failed'); }
   try { works = await processWorks(db, log); } catch (e) { log?.error?.({ err: e }, '[ReminderCron] works failed'); }
   try { invoices = await processInvoices(db, log); } catch (e) { log?.error?.({ err: e }, '[ReminderCron] invoices failed'); }
+  try { docs = await processDocRegistry(db, log); } catch (e) { log?.error?.({ err: e }, '[ReminderCron] doc_registry failed'); }
   try { cleaned = await cleanupOld(db, log); } catch (e) { log?.error?.({ err: e }, '[ReminderCron] cleanup failed'); }
   const ms = Date.now() - t0;
-  log?.info?.(`[ReminderCron] tick: tenders=${tenders} works=${works} invoices=${invoices} cleaned=${cleaned} (${ms}ms)`);
-  return { tenders, works, invoices, cleaned, ms };
+  log?.info?.(`[ReminderCron] tick: tenders=${tenders} works=${works} invoices=${invoices} docs=${docs} cleaned=${cleaned} (${ms}ms)`);
+  return { tenders, works, invoices, docs, cleaned, ms };
 }
 
 function start(db, log) {
@@ -249,4 +384,4 @@ function stop() {
   if (_job) { _job.stop(); _job = null; }
 }
 
-module.exports = { start, stop, runOnce };
+module.exports = { start, stop, runOnce, processDocRegistry };

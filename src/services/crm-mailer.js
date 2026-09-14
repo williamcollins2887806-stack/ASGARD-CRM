@@ -162,7 +162,8 @@ async function getCrmBccAddress(db) {
  * Отправить письмо от имени пользователя с BCC на CRM
  * @param {Object} db - database pool
  * @param {number} userId - ID пользователя
- * @param {Object} mailOptions - { to, subject, text, html, attachments }
+ * @param {Object} mailOptions - { to, subject, text, html, attachments, icalEvent, skipAttachmentMention, skipBcc }
+ *   icalEvent — iMIP (Outlook/Yandex/Gmail): { method:'REQUEST'|'CANCEL', content, filename? }
  * @returns {Promise<Object>} { success, messageId, from }
  */
 async function sendCrmEmail(db, userId, mailOptions) {
@@ -170,17 +171,26 @@ async function sendCrmEmail(db, userId, mailOptions) {
 
   const from = fromName ? `"${fromName}" <${fromEmail}>` : fromEmail;
 
-  // Добавляем BCC на CRM-ящик
-  const crmBcc = await getCrmBccAddress(db);
+  // BCC на CRM-ящик (можно отключить: skipBcc / noBcc)
+  // Также не дублируем, если To уже = CRM-ящик или совпадает с from.
+  const crmBccRaw = (mailOptions.skipBcc || mailOptions.noBcc) ? null : await getCrmBccAddress(db);
+  const toNorm = String(Array.isArray(mailOptions.to) ? mailOptions.to[0] : (mailOptions.to || ''))
+    .toLowerCase().replace(/^.*<([^>]+)>.*$/, '$1').trim();
+  const fromNorm = String(fromEmail || '').toLowerCase().trim();
+  const crmNorm = String(crmBccRaw || '').toLowerCase().trim();
+  const crmBcc = (crmNorm && crmNorm !== fromNorm && crmNorm !== toNorm) ? crmBccRaw : null;
   let bccList = mailOptions.bcc ? (Array.isArray(mailOptions.bcc) ? [...mailOptions.bcc] : [mailOptions.bcc]) : [];
-  if (crmBcc && crmBcc !== fromEmail) {
+  if (mailOptions.skipBcc || mailOptions.noBcc) {
+    bccList = [];
+  } else if (crmBcc) {
     bccList.push(crmBcc);
   }
 
-  // Авто-упоминание вложений в тексте
+  // Авто-упоминание вложений в тексте (не для iMIP — там клиент сам предлагает «Принять»)
   let textBody = mailOptions.text || '';
   const attachments = mailOptions.attachments || [];
-  if (attachments.length > 0 && textBody && !textBody.match(/вложени/i)) {
+  const skipMention = mailOptions.skipAttachmentMention || !!mailOptions.icalEvent;
+  if (!skipMention && attachments.length > 0 && textBody && !textBody.match(/вложени/i)) {
     const names = attachments.map(a => a.filename || 'файл').join(', ');
     textBody += `\n\nВо вложении: ${names}`;
   }
@@ -194,6 +204,16 @@ async function sendCrmEmail(db, userId, mailOptions) {
     attachments
   };
 
+  // iMIP: nodemailer кладёт text/calendar; method=… в multipart/alternative
+  if (mailOptions.icalEvent && mailOptions.icalEvent.content) {
+    const method = String(mailOptions.icalEvent.method || 'REQUEST').toUpperCase();
+    options.icalEvent = {
+      filename: mailOptions.icalEvent.filename || 'invite.ics',
+      method,
+      content: mailOptions.icalEvent.content
+    };
+  }
+
   if (mailOptions.cc) options.cc = mailOptions.cc;
   if (bccList.length > 0) options.bcc = bccList.join(', ');
 
@@ -201,7 +221,9 @@ async function sendCrmEmail(db, userId, mailOptions) {
 
   // Логируем отправку
   try {
-    const toAddr = Array.isArray(mailOptions.to) ? mailOptions.to[0] : mailOptions.to;
+    const toList = Array.isArray(mailOptions.to)
+      ? mailOptions.to
+      : String(mailOptions.to || '').split(',').map((s) => s.trim()).filter(Boolean);
     await db.query(`
       INSERT INTO emails (
         direction, message_id, from_email, from_name,
@@ -216,7 +238,7 @@ async function sendCrmEmail(db, userId, mailOptions) {
       )
     `, [
       result.messageId, fromEmail, fromName,
-      JSON.stringify([{ address: toAddr, name: '' }]),
+      JSON.stringify(toList.map((address) => ({ address, name: '' }))),
       mailOptions.subject, (mailOptions.text || '').slice(0, 5000), (mailOptions.text || '').slice(0, 250),
       userId, null
     ]);
@@ -290,9 +312,9 @@ const AUTO_REPLY_TEMPLATES = {
           'Спасибо за обращение! Ваш запрос принят, мы свяжемся с вами в течение рабочего дня.\n\n' +
           '— АСГАРД'
   }),
-  // mode='assigned' / mode='rejected' — заглушки (по §2.6 это не клиентское письмо):
-  // assigned — push PM-у (createNotification уже шлётся в /assign-pm). Mail PM-у отключён.
-  // rejected — уже есть отдельная логика в inbox_applications_ai.js:578 (POST /:id/reject).
+  // mode='assigned' / mode='rejected' — не клиентские автоответы на входящее письмо.
+  // Назначение РП на просчёт: письмо шлётся из tender-assign-notify (sendAssignEmail), не отсюда.
+  // rejected — отдельная логика в inbox_applications_ai.js (POST /:id/reject).
   assigned: null,
   rejected: null
 };

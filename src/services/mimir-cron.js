@@ -20,6 +20,10 @@ try {
 // Bot user_id for Mimir messages
 const MIMIR_BOT_USER_ID = 0;
 
+// Per-run flag: after first "Insufficient balance" skip further AI calls (use templates).
+// Reset at the start of each runDigest so a topped-up balance is retried next slot.
+let aiBalanceExhausted = false;
+
 // ═══════════════════════════════════════════════════════════════════════════
 // DATA COLLECTION
 // ═══════════════════════════════════════════════════════════════════════════
@@ -150,15 +154,18 @@ function buildPrompt(userName, timeSlot, data) {
   };
 }
 
+function templateSummary(userName, timeSlot, data) {
+  const fallbacks = {
+    morning: '⚡ Доброе утро, ' + userName + '! Новый день — новые победы. У тебя ' + (data.tasks?.length || 0) + ' активных задач. Вперёд, воин! Skál! 🛡️',
+    afternoon: '⚔️ ' + userName + ', полдень! ' + (data.tasksOverdue > 0 ? 'Есть ' + data.tasksOverdue + ' просроченных задач — время действовать!' : 'Дела идут по плану.') + ' 💪',
+    evening: '🔥 ' + userName + ', день подходит к концу. ' + (data.completedToday > 0 ? 'Закрыто ' + data.completedToday + ' задач — отличная работа!' : 'Завтра будет продуктивнее!') + ' Один гордится тобой. Skál! ⚡'
+  };
+  return fallbacks[timeSlot] || fallbacks.morning;
+}
+
 async function generateSummary(userName, timeSlot, data) {
-  if (!aiProvider) {
-    // Fallback without AI
-    const fallbacks = {
-      morning: '⚡ Доброе утро, ' + userName + '! Новый день — новые победы. У тебя ' + (data.tasks?.length || 0) + ' активных задач. Вперёд, воин! Skál! 🛡️',
-      afternoon: '⚔️ ' + userName + ', полдень! ' + (data.tasksOverdue > 0 ? 'Есть ' + data.tasksOverdue + ' просроченных задач — время действовать!' : 'Дела идут по плану.') + ' 💪',
-      evening: '🔥 ' + userName + ', день подходит к концу. ' + (data.completedToday > 0 ? 'Закрыто ' + data.completedToday + ' задач — отличная работа!' : 'Завтра будет продуктивнее!') + ' Один гордится тобой. Skál! ⚡'
-    };
-    return fallbacks[timeSlot];
+  if (!aiProvider || aiBalanceExhausted) {
+    return templateSummary(userName, timeSlot, data);
   }
 
   try {
@@ -171,8 +178,16 @@ async function generateSummary(userName, timeSlot, data) {
     });
     return result.text || result;
   } catch (e) {
-    console.error('[MimirCron] AI generation error:', e.message);
-    return '⚡ ' + userName + ', Мимир временно в раздумьях, но помни — ты воин АСГАРД! Задач: ' + (data.tasks?.length || 0) + '. Вперёд! 🛡️';
+    const msg = e?.message || String(e);
+    if (/Insufficient balance|balance_rub/i.test(msg)) {
+      if (!aiBalanceExhausted) {
+        console.warn('[MimirCron] AI balance exhausted — templates for the rest of this digest run');
+        aiBalanceExhausted = true;
+      }
+    } else {
+      console.error('[MimirCron] AI generation error:', msg);
+    }
+    return templateSummary(userName, timeSlot, data);
   }
 }
 
@@ -240,6 +255,7 @@ async function sendDigestToUser(userId, text) {
 
 async function runDigest(timeSlot) {
   console.log('[MimirCron] Starting', timeSlot, 'digest at', new Date().toISOString());
+  aiBalanceExhausted = false;
 
   try {
     // Get all active users
@@ -260,15 +276,22 @@ async function runDigest(timeSlot) {
         if (ok) sent++;
         else errors++;
 
-        // Small delay to avoid overwhelming AI API
-        await new Promise(r => setTimeout(r, 500));
+        // Skip delay when AI is off / balance empty — no API to protect
+        if (aiProvider && !aiBalanceExhausted) {
+          await new Promise(r => setTimeout(r, 500));
+        }
       } catch (e) {
         console.error('[MimirCron] Error for user', user.id, ':', e.message);
         errors++;
       }
     }
 
-    console.log('[MimirCron]', timeSlot, 'digest complete: sent=' + sent + ', errors=' + errors);
+    console.log(
+      '[MimirCron]',
+      timeSlot,
+      'digest complete: sent=' + sent + ', errors=' + errors +
+        (aiBalanceExhausted ? ', ai=template_fallback' : '')
+    );
   } catch (e) {
     console.error('[MimirCron] runDigest error:', e.message);
   }

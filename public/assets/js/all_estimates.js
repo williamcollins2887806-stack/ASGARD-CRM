@@ -226,8 +226,8 @@ window.AsgardAllEstimatesPage = (function() {
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px 16px;font-size:13px">
             <div><span style="color:var(--t3)">РП:</span> <b>${esc(pm?.name || '—')}</b></div>
             <div><span style="color:var(--t3)">Версия:</span> <b>v${esc(String(e.version_no || 1))}</b></div>
-            <div><span style="color:var(--t3)">Цена ТКП:</span> <b>${money(e.price_tkp)} ₽</b></div>
-            <div><span style="color:var(--t3)">Себестоимость:</span> <b>${money(e.cost_plan)} ₽</b></div>
+            <div><span style="color:var(--t3)">Цена ТКП:</span> <b>${money(e.price_tkp)}</b></div>
+            <div><span style="color:var(--t3)">Себестоимость:</span> <b>${money(e.cost_plan)}</b></div>
             <div><span style="color:var(--t3)">Отправлено:</span> ${sent}</div>
             ${decided ? `<div><span style="color:var(--t3)">Решение:</span> ${decided}${decidedBy ? ' · ' + esc(decidedBy.name) : ''}</div>` : ''}
           </div>

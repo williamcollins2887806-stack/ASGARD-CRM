@@ -51,9 +51,16 @@ const CRSelect = (() => {
 
     document.addEventListener('mousedown', (e) => {
       _instances.forEach((inst) => {
-        if (inst.isOpen && inst.root && !inst.root.contains(e.target)) {
+        if (!inst.isOpen) return;
+        // Root удалён вместе с модалкой — закрыть и убрать portaled-панель с body
+        if (!inst.root || !document.documentElement.contains(inst.root)) {
           _close(inst);
+          return;
         }
+        // Dropdown может жить на body (portal) — клик по нему не «outside»
+        const inRoot = inst.root.contains(e.target);
+        const inDrop = inst.dropdown && inst.dropdown.contains(e.target);
+        if (!inRoot && !inDrop) _close(inst);
       });
     });
   }
@@ -80,66 +87,84 @@ const CRSelect = (() => {
   }
 
   // ── Open / Close ──────────────────────────────────────────
+  function _portalDropdown(inst) {
+    if (!inst.dropdown) return;
+    // .cr-m: overflow:hidden + transform → fixed внутри модалки клипается.
+    // Портал на body — надёжный способ (как в timesheet-v2).
+    if (inst.dropdown.parentNode !== document.body) {
+      document.body.appendChild(inst.dropdown);
+      inst._dropdownPortaled = true;
+    }
+  }
+
+  function _unportalDropdown(inst) {
+    if (!inst.dropdown) return;
+    inst.dropdown.classList.remove('cr-select__dropdown--open');
+    inst.dropdown.style.position = '';
+    inst.dropdown.style.width = '';
+    inst.dropdown.style.minWidth = '';
+    inst.dropdown.style.maxWidth = '';
+    inst.dropdown.style.zIndex = '';
+    inst.dropdown.style.left = '';
+    inst.dropdown.style.top = '';
+    inst.dropdown.style.right = '';
+    inst.dropdown.style.bottom = '';
+    if (inst._dropdownPortaled && inst.root) {
+      inst.root.appendChild(inst.dropdown);
+      inst._dropdownPortaled = false;
+    } else if (inst._dropdownPortaled) {
+      if (inst.dropdown.parentNode) inst.dropdown.parentNode.removeChild(inst.dropdown);
+      inst._dropdownPortaled = false;
+    }
+  }
+
   function _open(inst) {
     if (inst.disabled || inst.isOpen) return;
     inst.isOpen = true;
     inst.focusedIdx = -1;
     inst.root.classList.add('cr-select--open');
 
-    // Auto-detect dropup and right-overflow
     const rect = inst.root.getBoundingClientRect();
     const spaceBelow = window.innerHeight - rect.bottom;
     const dropUp = spaceBelow < 260 && rect.top > spaceBelow;
     if (dropUp) inst.root.classList.add('cr-select--dropup');
     else        inst.root.classList.remove('cr-select--dropup');
-    // Align right if dropdown would overflow viewport right edge
     const dropWidth = Math.max(rect.width, 260);
     const alignRight = (rect.left + dropWidth > window.innerWidth - 8);
     if (alignRight) inst.root.classList.add('cr-select--align-right');
     else            inst.root.classList.remove('cr-select--align-right');
 
-    // FIX 24.06: position:fixed координаты — чтобы dropdown НЕ обрезался
-    // overflow:hidden родительской модалки/контейнера. CSS теперь fixed,
-    // здесь выставляем абсолютные координаты относительно viewport.
     if (inst.dropdown) {
-      const dropWidth = Math.max(rect.width, 260);
+      _portalDropdown(inst);
+      // Класс на панели: после portal она не потомок .cr-select--open
+      inst.dropdown.classList.add('cr-select__dropdown--open');
       inst.dropdown.style.position = 'fixed';
       inst.dropdown.style.width = dropWidth + 'px';
-      // FIX: при position:fixed CSS-правило min-width:max(100%,260px) считает
-      // 100% от viewport → панель раздувалась на весь экран. Перебиваем min/max-width.
       inst.dropdown.style.minWidth = dropWidth + 'px';
       inst.dropdown.style.maxWidth = dropWidth + 'px';
       inst.dropdown.style.zIndex = '99999';
+      inst.dropdown.style.right = 'auto';
+      inst.dropdown.style.bottom = 'auto';
 
-      // FIX: dropdown лежит внутри модалки. Если у предка есть CSS transform,
-      // position:fixed отсчитывается от этого предка, а не от viewport → панель
-      // уезжала вправо. Замеряем фактическое смещение контейнера (ставим в 0,0
-      // и читаем реальные координаты) и компенсируем его.
-      inst.dropdown.style.left = '0px';
-      inst.dropdown.style.top = '0px';
-      inst.dropdown.style.right = '';
-      inst.dropdown.style.bottom = '';
-      const ddRect = inst.dropdown.getBoundingClientRect();
-      const offX = ddRect.left;            // сдвиг содержащего блока по X
-      const offY = ddRect.top;             // сдвиг содержащего блока по Y
-      const ddH = ddRect.height;
+      const ddH = inst.dropdown.offsetHeight || 0;
+      let wantLeft = alignRight ? (rect.right - dropWidth) : rect.left;
+      wantLeft = Math.max(8, Math.min(wantLeft, window.innerWidth - dropWidth - 8));
+      let wantTop = dropUp ? (rect.top - 4 - ddH) : (rect.bottom + 4);
+      if (wantTop < 8) wantTop = 8;
+      if (wantTop + ddH > window.innerHeight - 8) {
+        wantTop = Math.max(8, window.innerHeight - ddH - 8);
+      }
 
-      // желаемые координаты в системе viewport
-      const wantLeft = alignRight ? (rect.right - dropWidth) : rect.left;
-      const wantTop  = dropUp ? (rect.top - 4 - ddH) : (rect.bottom + 4);
-
-      inst.dropdown.style.left = (wantLeft - offX) + 'px';
-      inst.dropdown.style.top  = (wantTop - offY) + 'px';
+      inst.dropdown.style.left = wantLeft + 'px';
+      inst.dropdown.style.top = wantTop + 'px';
     }
 
-    // Focus search if visible
     if (inst.searchInput) {
       inst.searchInput.value = '';
       _filterOptions(inst, '');
       setTimeout(() => inst.searchInput.focus(), 0);
     }
 
-    // Scroll selected into view
     const selectedEl = inst.optionsList.querySelector('.cr-select__option--selected');
     if (selectedEl) {
       selectedEl.scrollIntoView({ block: 'nearest' });
@@ -147,11 +172,14 @@ const CRSelect = (() => {
   }
 
   function _close(inst) {
-    if (!inst.isOpen) return;
+    if (!inst.isOpen && !inst._dropdownPortaled) return;
     inst.isOpen = false;
-    inst.root.classList.remove('cr-select--open', 'cr-select--dropup', 'cr-select--align-right');
+    if (inst.root) {
+      inst.root.classList.remove('cr-select--open', 'cr-select--dropup', 'cr-select--align-right');
+    }
     inst.focusedIdx = -1;
     _clearFocus(inst);
+    _unportalDropdown(inst);
   }
 
   function _toggle(inst) {
@@ -589,6 +617,10 @@ const CRSelect = (() => {
     destroy(id) {
       const inst = _instances.get(id);
       if (!inst) return;
+      _close(inst);
+      if (inst.dropdown && inst.dropdown.parentNode === document.body) {
+        inst.dropdown.parentNode.removeChild(inst.dropdown);
+      }
       if (inst.root && inst.root.parentNode) {
         inst.root.parentNode.removeChild(inst.root);
       }
@@ -601,6 +633,9 @@ const CRSelect = (() => {
     },
   };
 })();
+
+// Browser global (const/let не попадают в window — иначе window.CRSelect всегда undefined)
+window.CRSelect = CRSelect;
 
 // Export for modules if available
 if (typeof module !== 'undefined' && module.exports) {

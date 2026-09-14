@@ -203,6 +203,15 @@ function getOnlineUserIds() {
 }
 
 // Экспортируем route + функции для использования из других модулей
+function closeAll() {
+  for (const [, conns] of clients) {
+    for (const res of conns) {
+      try { res.end(); } catch (_) { /* already closed */ }
+    }
+  }
+  clients.clear();
+}
+
 module.exports = sseRoutes;
 module.exports.sendToUser = sendToUser;
 module.exports.sendToRoles = sendToRoles;
@@ -211,3 +220,4 @@ module.exports.getStats = getStats;
 module.exports.isUserOnline = isUserOnline;
 module.exports.getOnlineUserIds = getOnlineUserIds;
 module.exports.clients = clients;
+module.exports.closeAll = closeAll;

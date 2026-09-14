@@ -5,6 +5,11 @@ const { normalizePhone, getCallDirection } = require('../services/mango');
 const CallPipeline = require('../services/call-pipeline');
 const createNotification = require('../services/notify');
 const https = require('https');
+const {
+  entryIdAliases,
+  firstRecordingId,
+  isRecordingComplete,
+} = require('../lib/mango-entry-id');
 
 // Роли с доступом к телефонии
 const TEL_ROLES = ['ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV', 'PM', 'HEAD_PM', 'TO', 'HEAD_TO', 'BUH'];
@@ -154,6 +159,62 @@ module.exports = async function telephonyRoutes(fastify, opts) {
     }
   }
 
+  async function findCallByEntryId(entryId) {
+    const aliases = entryIdAliases(entryId);
+    if (!aliases.length) return null;
+    const r = await db.query(
+      `SELECT id, recording_id FROM call_history
+       WHERE mango_entry_id = ANY($1::text[])
+       ORDER BY updated_at DESC NULLS LAST, id DESC
+       LIMIT 1`,
+      [aliases]
+    );
+    return r.rows[0] || null;
+  }
+
+  async function recordingIdFromLog(entryId) {
+    const aliases = entryIdAliases(entryId);
+    if (!aliases.length) return null;
+    const r = await db.query(
+      `SELECT payload FROM telephony_events_log
+       WHERE event_type = 'recording'
+         AND mango_entry_id = ANY($1::text[])
+       ORDER BY id DESC LIMIT 8`,
+      [aliases]
+    );
+    for (const row of r.rows) {
+      let payload = row.payload;
+      if (typeof payload === 'string') {
+        try { payload = JSON.parse(payload); } catch (_) { continue; }
+      }
+      if (!payload || !isRecordingComplete(payload)) continue;
+      const id = firstRecordingId(payload.recording_id);
+      if (id) return id;
+    }
+    return null;
+  }
+
+  async function attachRecordingId(callHistoryId, recordingId) {
+    if (!callHistoryId || !recordingId) return false;
+    const r = await db.query(
+      `UPDATE call_history
+          SET recording_id = $1, updated_at = NOW()
+        WHERE id = $2
+          AND (recording_id IS NULL OR recording_id = '')
+        RETURNING id`,
+      [recordingId, callHistoryId]
+    );
+    return r.rowCount > 0;
+  }
+
+  function enqueueCallProcess(callHistoryId) {
+    const p = getPipeline();
+    if (!p || !callHistoryId) return;
+    setImmediate(() => p.processCall(callHistoryId).catch(e =>
+      console.error('[Telephony] Pipeline error:', e.message)
+    ));
+  }
+
   // --- events/call ---
   fastify.post('/webhook/events/call', {
     config: { rawBody: true }
@@ -291,7 +352,7 @@ module.exports = async function telephonyRoutes(fastify, opts) {
     const talkTime = (rawTalkTime > 1000000000 && rawEndTime > 1000000000) ? (rawEndTime - rawTalkTime) : rawTalkTime;
     const createTime = event.create_time ? new Date(parseInt(event.create_time, 10) * 1000) : new Date();
     const endTime = event.end_time ? new Date(parseInt(event.end_time, 10) * 1000) : new Date();
-    const recordingId = event.recording_id || null;
+    const recordingId = firstRecordingId(event.recording_id);
     const lineNumber = event.line_number || null;
     const disconnectReason = event.disconnect_reason || null;
 
@@ -364,11 +425,15 @@ module.exports = async function telephonyRoutes(fastify, opts) {
     // Fallback 4: для inbound на SIP-транк ищем из active_calls (кто принял)
     if (!userId && direction === 'inbound' && toNum && toNum.startsWith('sip:')) {
       try {
-        const ac = await db.query(
-          `SELECT assigned_user_id FROM active_calls WHERE mango_entry_id = $1 AND assigned_user_id IS NOT NULL LIMIT 1`,
-          [entryId]
-        );
-        if (ac.rows.length) userId = ac.rows[0].assigned_user_id;
+        const acAliases = entryIdAliases(entryId);
+        if (acAliases.length) {
+          const ac = await db.query(
+            `SELECT assigned_user_id FROM active_calls
+             WHERE mango_entry_id = ANY($1::text[]) AND assigned_user_id IS NOT NULL LIMIT 1`,
+            [acAliases]
+          );
+          if (ac.rows.length) userId = ac.rows[0].assigned_user_id;
+        }
       } catch (e) { /* non-critical */ }
     }
 
@@ -383,26 +448,25 @@ module.exports = async function telephonyRoutes(fastify, opts) {
     );
     if (cust.rows.length) clientInn = cust.rows[0].inn;
 
-    // Upsert в call_history
-    const existing = await db.query(
-      'SELECT id FROM call_history WHERE mango_entry_id = $1',
-      [entryId]
-    );
+    // Upsert в call_history (entry_id: raw и numeric/base64 alias)
+    const existing = await findCallByEntryId(entryId);
+    const recFromLog = recordingId || await recordingIdFromLog(entryId);
 
     let callHistoryId;
 
-    if (existing.rows.length) {
-      callHistoryId = existing.rows[0].id;
+    if (existing) {
+      callHistoryId = existing.id;
       await db.query(
         `UPDATE call_history SET
           direction = $1, call_type = $2, from_number = $3, to_number = $4,
           duration = $5, duration_seconds = $5, started_at = $6, ended_at = $7,
-          recording_id = $8, user_id = $9, client_inn = $10,
+          recording_id = COALESCE(NULLIF($8, ''), recording_id),
+          user_id = $9, client_inn = $10,
           line_number = $11, disconnect_reason = $12,
           webhook_payload = $13, updated_at = NOW()
         WHERE id = $14`,
         [direction, callType, fromNum, toNum, talkTime, createTime, endTime,
-         recordingId, userId, clientInn, lineNumber, disconnectReason,
+         recFromLog, userId, clientInn, lineNumber, disconnectReason,
          JSON.stringify(event), callHistoryId]
       );
     } else {
@@ -419,7 +483,7 @@ module.exports = async function telephonyRoutes(fastify, opts) {
         [callIdStr, entryId, direction, callType,
          fromNum, toNum, fromNum, toNum,
          talkTime, talkTime, createTime, endTime, createTime,
-         recordingId, userId, clientInn, clientInn,
+         recFromLog, userId, clientInn, clientInn,
          lineNumber, disconnectReason, callType === 'missed' ? 'missed' : 'completed',
          JSON.stringify(event)]
       );
@@ -442,7 +506,16 @@ module.exports = async function telephonyRoutes(fastify, opts) {
 
     // Удаляем из active_calls
     if (event.call_id) {
-      await db.query("DELETE FROM active_calls WHERE mango_entry_id = $1", [entryId]).catch(() => {});
+      const aliases = entryIdAliases(entryId);
+      if (aliases.length) {
+        await db.query('DELETE FROM active_calls WHERE mango_entry_id = ANY($1::text[])', [aliases]).catch(() => {});
+      } else {
+        await db.query('DELETE FROM active_calls WHERE mango_entry_id = $1', [entryId]).catch(() => {});
+      }
+    }
+
+    if (recFromLog && callType !== 'missed' && talkTime > 0) {
+      enqueueCallProcess(callHistoryId);
     }
 
     // Обработка пропущенных
@@ -483,51 +556,47 @@ module.exports = async function telephonyRoutes(fastify, opts) {
     const event = typeof request.body.json === "string" ? JSON.parse(request.body.json) : request.body.json;
     await logEvent('recording', event);
 
-    const recordingId = event.recording_id;
-    const completionCode = event.completion_code;
-
-    if (completionCode === '1000' || completionCode === 1000) {
-      // Находим звонок по recording_id
-      const call = await db.query(
-        'SELECT id FROM call_history WHERE recording_id = $1',
-        [recordingId]
-      );
-
-      if (call.rows.length) {
-        const p = getPipeline();
-        if (p) {
-          setImmediate(() => p.processCall(call.rows[0].id).catch(e =>
-            console.error('[Telephony] Pipeline error:', e.message)
-          ));
-        }
+    const recordingId = firstRecordingId(event.recording_id);
+    if (recordingId && isRecordingComplete(event)) {
+      let call = event.entry_id ? await findCallByEntryId(event.entry_id) : null;
+      if (!call) {
+        const byRec = await db.query(
+          'SELECT id, recording_id FROM call_history WHERE recording_id = $1 ORDER BY id DESC LIMIT 1',
+          [recordingId]
+        );
+        call = byRec.rows[0] || null;
+      }
+      if (call) {
+        await attachRecordingId(call.id, recordingId);
+        enqueueCallProcess(call.id);
+      } else {
+        console.info('[Telephony] recording webhook before summary, entry_id=' + (event.entry_id || ''));
       }
     }
 
     reply.send({ status: 'ok' });
   });
 
-  // --- events/sms — финальный статус доставки SMS ---
-  // Mango Office шлёт это событие после реальной попытки доставки SMS оператору.
-  // Поля в json: command_id, sms_status / status / delivery_status (delivered|not_delivered|expired|rejected|sent)
-  fastify.post('/webhook/events/sms', {
-    config: { rawBody: true }
-  }, async (request, reply) => {
+  // --- SMS delivery status (shared handler) ---
+  // Canonical: /webhook/events/sms
+  // Alias:    /webhook/result/sms  — Mango Office often posts here (was 404 in nginx logs)
+  // Fields: command_id, sms_status / status / delivery_status
+  async function handleSmsDeliveryWebhook(request, reply) {
     if (!checkWebhookRate(request.ip)) {
       return reply.code(429).send({ error: 'Too many requests' });
     }
     if (!verifyMangoSignature(request, reply)) return;
 
-    const event = typeof request.body.json === "string" ? JSON.parse(request.body.json) : request.body.json;
+    const event = typeof request.body?.json === 'string'
+      ? JSON.parse(request.body.json)
+      : (request.body?.json || request.body || {});
     await logEvent('sms', event);
 
     try {
       const commandId = event.command_id || event.message_id || null;
-      // Mango может прислать статус в разных полях — берём первый непустой
       const rawStatus = event.sms_status ?? event.status ?? event.delivery_status ?? event.state ?? null;
       const statusStr = rawStatus != null ? String(rawStatus).toLowerCase() : null;
 
-      // Нормализуем статус: delivered / not_delivered / expired / rejected / sent / unknown
-      // Mango использует строки + иногда числовые коды (1=delivered, 2=not_delivered, ...)
       let normalized = 'unknown';
       if (statusStr) {
         if (['1', 'delivered', 'success', 'ok'].includes(statusStr)) normalized = 'delivered';
@@ -541,11 +610,11 @@ module.exports = async function telephonyRoutes(fastify, opts) {
       if (commandId) {
         const { rowCount } = await db.query(
           `UPDATE field_sms_log
-             SET delivery_status = $1,
-                 delivered_at = CASE WHEN $1 = 'delivered' THEN NOW() ELSE delivered_at END,
+             SET delivery_status = $1::text,
+                 delivered_at = CASE WHEN $1::text = 'delivered' THEN NOW() ELSE delivered_at END,
                  delivery_payload = $2
-           WHERE command_id = $3`,
-          [normalized, JSON.stringify(event), commandId]
+           WHERE command_id::text = $3::text`,
+          [normalized, JSON.stringify(event), String(commandId)]
         );
         fastify.log.info(`[telephony] SMS delivery status: command_id=${commandId} status=${normalized} matched=${rowCount}`);
       } else {
@@ -556,7 +625,11 @@ module.exports = async function telephonyRoutes(fastify, opts) {
     }
 
     reply.send({ status: 'ok' });
-  });
+  }
+
+  fastify.post('/webhook/events/sms', { config: { rawBody: true } }, handleSmsDeliveryWebhook);
+  // Alias for Mango "result/sms" URL (do not remove — prod traffic hits this path)
+  fastify.post('/webhook/result/sms', { config: { rawBody: true } }, handleSmsDeliveryWebhook);
 
   // --- events/dtmf ---
   fastify.post('/webhook/events/dtmf', {

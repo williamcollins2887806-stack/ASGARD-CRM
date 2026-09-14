@@ -280,8 +280,12 @@ function convertDocxToPdf(docxAbs, outDirAbs) {
       timeout: 60000
     });
     if (r2.status !== 0) return null;
-    const pdfAbs = docxAbs.replace(/\.docx$/i, '.pdf');
-    return fs.existsSync(pdfAbs) ? pdfAbs : null;
+    // LibreOffice пишет PDF в --outdir с тем же basename
+    const baseName = path.basename(docxAbs).replace(/\.docx$/i, '.pdf');
+    const pdfInOut = path.join(outDirAbs, baseName);
+    if (fs.existsSync(pdfInOut)) return pdfInOut;
+    const pdfBeside = docxAbs.replace(/\.docx$/i, '.pdf');
+    return fs.existsSync(pdfBeside) ? pdfBeside : null;
   } catch (_) {
     return null;
   }

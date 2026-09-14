@@ -14,6 +14,7 @@ const {
   MODEL_DEFAULT,
   MODEL_FAST,
   MODEL_EMBED_PRIMARY,
+  MODEL_EMBED_FALLBACK,
   normalizeModelId,
 } = require('./ai-models');
 
@@ -1174,12 +1175,12 @@ async function searchWeb({ query, model, maxResults = 5, includeDomains = [] } =
 
 /**
  * Получить embeddings для массива текстов.
- * Через routerai (модель voyage-3-large, fallback text-embedding-3-large).
+ * Через routerai (openai/text-embedding-3-large, fallback openai/text-embedding-3-small).
  * Используется RAG-агентами (сессия 6).
  *
  * @param {Object} p
  * @param {string[]} p.texts
- * @param {string} [p.model='voyage/voyage-3-large']
+ * @param {string} [p.model]
  * @returns {Promise<number[][]>} — массив векторов (по одному на текст)
  */
 async function embed({ texts, model = MODEL_EMBED_PRIMARY } = {}) {
@@ -1198,42 +1199,66 @@ async function embed({ texts, model = MODEL_EMBED_PRIMARY } = {}) {
   // RouterAI — OpenAI-совместимый embeddings endpoint.
   // OPENAI_URL указывает на /chat/completions — заменяем хвост на /embeddings.
   const embUrl = OPENAI_URL.replace(/\/chat\/completions\/?$/, '/embeddings');
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), AI_TIMEOUT_MS);
-  try {
-    const res = await fetch(embUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + OPENAI_API_KEY },
-      body: JSON.stringify({ model, input: list }),
-      signal: controller.signal
-    });
-    if (!res.ok) {
-      // GRACEFUL: 503 «Model temporarily unavailable». Вместо краша возвращаем
-      // массив null'ов — searchNorms() в norms-index.js при пустой mimir_norms_index
-      // не ходит сюда вовсе, но если кто-то всё же позвал embed() напрямую — он получит
-      // null-вектор и должен это переварить (фолбэк на текстовый ILIKE-поиск).
-      // 401/403 НЕ глушим — это конфиг-ошибка, должна быть видимой.
-      if (res.status === 503 || res.status === 502 || res.status === 504) {
-        console.warn(`[AI Provider] embed() ${res.status} «Model temporarily unavailable» — отдаём null-векторы (RAG fallback)`);
-        return list.map(() => null);
+
+  const tryModel = async (modelId) => {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), AI_TIMEOUT_MS);
+    try {
+      const res = await fetch(embUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + OPENAI_API_KEY },
+        body: JSON.stringify({ model: modelId, input: list }),
+        signal: controller.signal
+      });
+      if (!res.ok) {
+        const errText = await res.text();
+        return { ok: false, status: res.status, errText };
       }
-      const errText = await res.text();
-      const code = _classifyHttpError(res.status, errText);
-      throw new AIProviderError({ code, status: res.status, providerMessage: _extractProviderMessage(errText), body: errText.substring(0, 1000) });
+      const data = await res.json();
+      return { ok: true, vectors: (data.data || []).map(d => d.embedding) };
+    } catch (e) {
+      if (e && e.name === 'AbortError') {
+        return { ok: false, status: 0, errText: 'timeout', abort: true };
+      }
+      throw e;
+    } finally {
+      clearTimeout(timeoutId);
     }
-    const data = await res.json();
-    // OpenAI-совместимый формат: { data: [{ embedding: [...] }, ...] }
-    return (data.data || []).map(d => d.embedding);
-  } catch (e) {
-    // Сетевая ошибка / таймаут — тоже не валим Conductor, отдаём null-векторы
-    if (e && e.name === 'AbortError') {
-      console.warn('[AI Provider] embed() timeout — отдаём null-векторы (RAG fallback)');
-      return list.map(() => null);
-    }
-    throw e;
-  } finally {
-    clearTimeout(timeoutId);
+  };
+
+  const modelsToTry = [model || MODEL_EMBED_PRIMARY];
+  if (!modelsToTry.includes(MODEL_EMBED_FALLBACK)) modelsToTry.push(MODEL_EMBED_FALLBACK);
+  // legacy aliases still seen in callers
+  if (!modelsToTry.includes('openai/text-embedding-3-large')) {
+    modelsToTry.push('openai/text-embedding-3-large');
   }
+
+  let last = null;
+  for (const m of modelsToTry) {
+    last = await tryModel(m);
+    if (last.ok) {
+      if (m !== (model || MODEL_EMBED_PRIMARY)) {
+        console.warn(`[AI Provider] embed() primary failed, used fallback model=${m}`);
+      }
+      return last.vectors;
+    }
+    const notFound = last.status === 400 || last.status === 404
+      || /not found|does not exist|unknown model/i.test(last.errText || '');
+    const unavailable = last.status === 503 || last.status === 502 || last.status === 504 || last.abort;
+    console.warn(`[AI Provider] embed() model=${m} status=${last.status}: ${(last.errText || '').slice(0, 160)}`);
+    if (!notFound && !unavailable && last.status !== 0) {
+      // auth / other hard errors — stop
+      const code = _classifyHttpError(last.status, last.errText || '');
+      throw new AIProviderError({
+        code, status: last.status,
+        providerMessage: _extractProviderMessage(last.errText || ''),
+        body: (last.errText || '').substring(0, 1000)
+      });
+    }
+  }
+
+  console.warn('[AI Provider] embed() all models failed — null vectors (RAG lexical fallback)');
+  return list.map(() => null);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

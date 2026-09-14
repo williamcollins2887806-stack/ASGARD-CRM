@@ -36,8 +36,43 @@ const TRAVEL_ROLES = ['OFFICE_MANAGER', 'HEAD_TO'];
 
 // V255 (23.06.2026): добавлен 'ship' — альтернатива «Дорога» за повышенную ставку
 // (12 баллов × 500 ₽ = 6000 ₽). Ставит ТО/HEAD_TO (как МО/Обучение).
-const STAGE_TYPES = new Set(['warehouse', 'medical', 'travel', 'ship', 'training', 'helicopter', 'waiting']);
+const STAGE_TYPES = new Set(['warehouse', 'medical', 'travel', 'ship', 'training', 'helicopter', 'waiting', 'office', 'remote']);
 const SHIFT_TYPES = new Set(['day', 'night']);
+const { getPerDiemAccruedMap } = require('../lib/worker-per-diem-days');
+// МО/дорога/вертолёт/корабль/склад/обучение/офис/удалёнка — work_id НЕ обязателен, но
+// подставляется ТОЛЬКО если рабочий назначен на работу (на дату отметки).
+// Нельзя брать work_id из фильтра проекта UI — иначе чужие люди липнут к объекту РП.
+const FREE_STANDING_STAGE_TYPES = new Set(['warehouse', 'medical', 'travel', 'ship', 'training', 'helicopter', 'office', 'remote']);
+
+/**
+ * work_id для свободного этапа: только из реального назначения.
+ * 1) requestedWorkId — если на эту дату есть assignment на эту работу
+ * 2) иначе — любая работа, на которую рабочий был назначен на эту дату
+ * 3) иначе null (отметка без объекта — норма)
+ */
+async function resolveFreestandingWorkId(db, employeeId, requestedWorkId, date) {
+  if (requestedWorkId) {
+    const { rows } = await db.query(`
+      SELECT work_id FROM employee_assignments
+      WHERE employee_id = $1 AND work_id = $2
+        AND COALESCE(date_from, created_at::date) <= $3::date
+        AND (departure_date IS NULL OR departure_date >= $3::date)
+      LIMIT 1
+    `, [employeeId, requestedWorkId, date]);
+    if (rows.length) return requestedWorkId;
+  }
+  // На дату несколько назначений (A→B) — берём самое позднее по date_from.
+  // Нет покрытия даты → null (вне объекта).
+  const { rows } = await db.query(`
+    SELECT work_id FROM employee_assignments
+    WHERE employee_id = $1
+      AND COALESCE(date_from, created_at::date) <= $2::date
+      AND (departure_date IS NULL OR departure_date >= $2::date)
+    ORDER BY COALESCE(date_from, created_at::date) DESC, id DESC
+    LIMIT 1
+  `, [employeeId, date]);
+  return rows[0]?.work_id != null ? Number(rows[0].work_id) : null;
+}
 
 // 23.06.2026 BUG-FIX (🟡 T-V230-note): миграция V230__fot_auto_payment_method.sql
 // уже задеплоена на прод и УЖЕ обеспечивает payment_method='auto' в work_expenses
@@ -56,6 +91,13 @@ try {
 } catch (_) {
   lockLib = null;
 }
+
+const {
+  assertNoStageConflict,
+  assertNoCheckinConflict,
+  labelOf: conflictLabelOf,
+  cancelConflicts
+} = require('../lib/timesheet-day-conflict');
 
 async function tableExists(db, name) {
   const { rows } = await db.query(
@@ -154,6 +196,26 @@ function fmtDate(d) {
   return String(d);
 }
 
+function parseDateOnlyToUtcMs(value) {
+  if (!value) return NaN;
+  if (value instanceof Date) {
+    return Date.UTC(value.getFullYear(), value.getMonth(), value.getDate());
+  }
+  const s = String(value).slice(0, 10);
+  const m = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!m) return NaN;
+  const y = Number(m[1]);
+  const mon = Number(m[2]);
+  const day = Number(m[3]);
+  if (!Number.isFinite(y) || !Number.isFinite(mon) || !Number.isFinite(day)) return NaN;
+  return Date.UTC(y, mon - 1, day);
+}
+
+/**
+ * Дефолтный mode роли (для обратной совместимости).
+ * HEAD_TO входит и в MEDICAL_ROLES, и в TRAVEL_ROLES — дефолт medical
+ * (табель МО), а дорогу открывает явно через ?mode=travel / type=travel.
+ */
 function modeOfRole(role) {
   if (GLOBAL_ROLES.includes(role)) return 'global';
   if (PM_ROLES.includes(role)) return 'pm';
@@ -161,6 +223,19 @@ function modeOfRole(role) {
   if (MEDICAL_ROLES.includes(role)) return 'medical';
   if (TRAVEL_ROLES.includes(role)) return 'travel';
   return null;
+}
+
+/** Все mode'ы, доступные роли (HEAD_TO = medical + travel). */
+function modesOfRole(role) {
+  if (GLOBAL_ROLES.includes(role)) {
+    return ['global', 'pm', 'warehouse', 'medical', 'travel'];
+  }
+  const modes = [];
+  if (PM_ROLES.includes(role)) modes.push('pm');
+  if (WAREHOUSE_ROLES.includes(role)) modes.push('warehouse');
+  if (MEDICAL_ROLES.includes(role)) modes.push('medical');
+  if (TRAVEL_ROLES.includes(role)) modes.push('travel');
+  return modes;
 }
 
 function typeAllowedForMode(mode, type) {
@@ -171,16 +246,46 @@ function typeAllowedForMode(mode, type) {
   if (mode === 'medical') {
     return type === 'medical' || type === 'training' || type === 'ship' || type === 'helicopter';
   }
-  if (mode === 'travel') return type === 'travel';
+  // Дорога и Ожидание (⏳ = 6 баллов) — офис-менеджер и рук ТО.
+  if (mode === 'travel') return type === 'travel' || type === 'waiting';
   return false;
 }
 
-/** work_id обязателен только для смен/склада на конкретной работе (PM/global). */
+/** Тип разрешён, если его допускает хотя бы один mode роли. */
+function typeAllowedForRole(role, type) {
+  const modes = modesOfRole(role);
+  if (!modes.length) return false;
+  return modes.some((m) => typeAllowedForMode(m, type));
+}
+
+/**
+ * Эффективный mode для записи: явный requested (если роль имеет доступ),
+ * иначе первый mode роли, который допускает type.
+ */
+function resolveWriteMode(role, type, requestedMode) {
+  const modes = modesOfRole(role);
+  // Глобал-роли (ADMIN/BUH/HR/DIRECTOR_*) всегда пишут в режиме `global`:
+  // явный mode=travel/warehouse/medical понизил бы требовательность контракта
+  // (там work_id не обязателен), т.е. дал бы обход `work_id_required`.
+  if (GLOBAL_ROLES.includes(role)) return 'global';
+  if (requestedMode && modes.includes(requestedMode) && typeAllowedForMode(requestedMode, type)) {
+    return requestedMode;
+  }
+  for (const m of modes) {
+    if (typeAllowedForMode(m, type)) return m;
+  }
+  return modeOfRole(role);
+}
+
+const VALID_MODES = ['pm', 'warehouse', 'medical', 'travel', 'global'];
+
+/** work_id обязателен только для смен day/night/waiting на PM/global.
+ *  Склад / МО / обучение / дорога / корабль / вертолёт — как этапы без привязки к работе. */
 function typeRequiresWorkId(mode, type) {
   if (mode === 'medical' || mode === 'travel' || mode === 'warehouse') return false;
   if (mode === 'pm') return type === 'day' || type === 'night' || type === 'waiting';
-  // global: этапы (ship/helicopter/training/medical/travel) — work_id опционален
-  return type === 'day' || type === 'night' || type === 'waiting' || type === 'warehouse';
+  // global: warehouse/medical/training/travel/ship/helicopter — work_id опционален
+  return type === 'day' || type === 'night' || type === 'waiting';
 }
 
 // field_checkins.shift хранит 4 реальных значения: 'day' / 'night' / 'road' / 'standby'.
@@ -222,6 +327,28 @@ async function loadSettings(db) {
   if (!('training' in out.position_points)) out.position_points['training'] = 7;
   if (!('helicopter' in out.position_points)) out.position_points['helicopter'] = 6;
   if (!('waiting' in out.position_points)) out.position_points['waiting'] = 6;
+  if (!('office' in out.position_points)) out.position_points['office'] = 16;
+  if (!('remote' in out.position_points)) out.position_points['remote'] = 10;
+
+  // Цена балла (₽) — из тарифной сетки или settings
+  out.point_value = 500;
+  try {
+    const { rows: pvRows } = await db.query(`
+      SELECT point_value FROM field_tariff_grid
+      WHERE COALESCE(is_active, true) = true AND point_value IS NOT NULL
+      ORDER BY id DESC LIMIT 1
+    `);
+    if (pvRows[0] && Number(pvRows[0].point_value) > 0) {
+      out.point_value = Number(pvRows[0].point_value);
+    }
+  } catch (_) { /* table may vary */ }
+  try {
+    const { rows } = await db.query(`SELECT value_json FROM settings WHERE key='point_value' LIMIT 1`);
+    if (rows.length) {
+      const v = JSON.parse(rows[0].value_json);
+      if (Number.isFinite(Number(v)) && Number(v) > 0) out.point_value = Number(v);
+    }
+  } catch (_) {}
 
   // per_diem_default — берём из settings.value_json (key='per_diem_default') либо MAX(per_diem) по полю
   try {
@@ -250,6 +377,8 @@ function pointsFor(settings, type, position) {
   // 24.06.2026 fix: ранее возвращал 0 — в общем табеле «⏰ Ожидание» получалось 13
   // (из tariff_points), и юзер жаловался «все ячейки 13 баллов». Правильно: 6.
   if (type === 'waiting') return Number(settings.position_points['waiting'] ?? 6);
+  if (type === 'office') return Number(settings.position_points['office'] ?? 16);
+  if (type === 'remote') return Number(settings.position_points['remote'] ?? 10);
   return 0;
 }
 
@@ -257,7 +386,64 @@ async function routes(fastify) {
   const db = fastify.db;
   const viewAuth = { preHandler: [fastify.requireRoles(ALL_VIEW_ROLES)] };
   const settingsWriteAuth = { preHandler: [fastify.requireRoles(['ADMIN', 'DIRECTOR_GEN'])] };
-  const exportAuth = { preHandler: [fastify.requireRoles(GLOBAL_ROLES)] };
+  const exportAuth = { preHandler: [fastify.requireRoles([...GLOBAL_ROLES, 'HEAD_TO', 'TO'])] };
+
+  // ────────────────────────────────────────────────────────────────
+  // GET /api/timesheet/v2/works-options — список работ для фильтра табеля
+  // ────────────────────────────────────────────────────────────────
+  fastify.get('/works-options', viewAuth, async (request, reply) => {
+    try {
+      const viewer = request.user || {};
+      const role = viewer.role || '';
+      const isPm = role === 'PM';
+      const { rows } = await db.query(`
+        SELECT DISTINCT w.id, w.work_title, w.customer_name, w.city, w.pm_id,
+               u.name AS pm_name,
+               COUNT(ea.id) FILTER (
+                 WHERE COALESCE(ea.is_active, true) = true AND ea.departure_date IS NULL
+               )::int AS crew_count
+        FROM works w
+        LEFT JOIN users u ON u.id = w.pm_id
+        LEFT JOIN employee_assignments ea ON ea.work_id = w.id
+        WHERE w.deleted_at IS NULL
+          AND ($1::boolean = false OR w.pm_id = $2)
+          AND (
+            EXISTS (
+              SELECT 1 FROM employee_assignments a
+              WHERE a.work_id = w.id
+                AND (COALESCE(a.is_active,true) = true OR a.departure_date >= (CURRENT_DATE - INTERVAL '90 days'))
+            )
+            OR EXISTS (
+              SELECT 1 FROM field_checkins fc
+              WHERE fc.work_id = w.id AND fc.date >= (CURRENT_DATE - INTERVAL '90 days')
+            )
+            OR EXISTS (
+              SELECT 1 FROM field_trip_stages fts
+              WHERE fts.work_id = w.id AND fts.date_from >= (CURRENT_DATE - INTERVAL '90 days')
+            )
+          )
+        GROUP BY w.id, w.work_title, w.customer_name, w.city, w.pm_id, u.name
+        ORDER BY w.work_title NULLS LAST, w.id DESC
+        LIMIT 500
+      `, [isPm, viewer.id]);
+      return {
+        works: rows.map((r) => ({
+          id: r.id,
+          title: r.work_title || `Работа #${r.id}`,
+          customer_name: r.customer_name || null,
+          city: r.city || null,
+          pm_id: r.pm_id,
+          pm_name: r.pm_name || null,
+          crew_count: r.crew_count || 0,
+          label: [r.work_title || `#${r.id}`, r.customer_name, r.pm_name ? `РП: ${r.pm_name}` : null]
+            .filter(Boolean).join(' · ')
+        }))
+      };
+    } catch (err) {
+      fastify.log.error('[timesheet-v2] works-options: ' + (err && err.message));
+      return reply.code(500).send({ error: 'Ошибка сервера' });
+    }
+  });
 
   // ────────────────────────────────────────────────────────────────
   // GET /api/timesheet/v2/:year/:month/roster?project_q=&work_id=
@@ -423,11 +609,13 @@ async function routes(fastify) {
       const viewer = request.user || {};
       const requestedMode = (request.query && request.query.mode) || null;
       let mode = modeOfRole(viewer.role);
-      // FIX #5: глобал-роли (ADMIN/DIRECTOR_*/BUH/HR/HR_MANAGER) могут запросить любой mode явно.
-      // Контракт явно относит BUH/HR/HR_MANAGER к global-ролям — раньше override
-      // был только для DIRECTOR_*/ADMIN (через узкий isPriv), это устранено.
-      if (requestedMode && GLOBAL_ROLES.includes(viewer.role) && ['pm','warehouse','medical','travel','global'].includes(requestedMode)) {
-        mode = requestedMode;
+      // FIX #5: глобал-роли могут запросить любой mode.
+      // HEAD_TO (и др. dual-scope): могут запросить любой СВОЙ mode
+      // (medical и travel) — иначе /timesheet-travel отдавал данные medical.
+      if (requestedMode && VALID_MODES.includes(requestedMode)) {
+        if (GLOBAL_ROLES.includes(viewer.role) || modesOfRole(viewer.role).includes(requestedMode)) {
+          mode = requestedMode;
+        }
       }
       if (!mode) return reply.code(403).send({ error: 'role_not_supported' });
 
@@ -491,6 +679,11 @@ async function routes(fastify) {
         `, [viewer.id, periodStart, periodEnd]);
         employees = rows;
       } else {
+        // 08.08.2026: в табеле ТОЛЬКО кто имеет ≥1 отметку (смена/этап) в месяце.
+        // Раньше UNION тянул назначения/выплаты/оформителей без дней → «86» в UI
+        // при «87» с отметками в БД, плюс чужие строки без ячеек (Андросов-employee).
+        // is_active / is_se_payee НЕ режем: иначе пропадают исторические отметки
+        // (Кученков неактивен, Лихачев помечен payee но имеет смены).
         const { rows } = await db.query(`
           SELECT DISTINCT
                  e.id,
@@ -510,7 +703,8 @@ async function routes(fastify) {
                  se.inn AS inn
           FROM employees e
           LEFT JOIN self_employed se ON se.employee_id = e.id AND COALESCE(se.is_active, true) = true
-          WHERE e.id IN (
+          WHERE TRIM(COALESCE(e.fio, e.full_name, '')) <> ''
+            AND e.id IN (
             SELECT fc.employee_id FROM field_checkins fc
             WHERE fc.status = 'completed'
               AND fc.date BETWEEN $1::date AND $2::date
@@ -519,36 +713,9 @@ async function routes(fastify) {
             WHERE COALESCE(fts.status,'active') NOT IN ('rejected','cancelled')
               AND fts.date_from <= $2::date
               AND COALESCE(fts.date_to, fts.date_from) >= $1::date
-            UNION
-            SELECT ea.employee_id FROM employee_assignments ea
-            WHERE ea.is_active = true OR ea.departure_date IS NULL OR ea.departure_date >= $1::date
-            UNION
-            -- R-fix (20.06.2026): рабочий мог получить премию/штраф БЕЗ смен в месяце.
-            -- Раньше Бауков/Шепеткин с премиями за переточку буров не попадали в табель
-            -- (нет смен) → их премии не было видно, total_bonus занижен.
-            SELECT wp.employee_id FROM worker_payments wp
-            WHERE wp.type IN ('bonus','penalty') AND wp.status != 'cancelled'
-              AND COALESCE(wp.pay_year,  EXTRACT(YEAR  FROM wp.created_at)::int) = $3::int
-              AND COALESCE(wp.pay_month, EXTRACT(MONTH FROM wp.created_at)::int) = $4::int
-            UNION
-            -- Stage S (20.06.2026): рабочий мог получить ВЫПЛАТУ из поля (суточные/
-            -- оклад/аванс/премия) БЕЗ смен в видимом месяце. Без этой строки UNION
-            -- его paid_cash/paid_transfer не попадут в total_paid_* у summary и
-            -- блок «УЖЕ ВЫПЛАЧЕНО В ПОЛЕ» в дашборде покажет неполную сумму.
-            SELECT wp.employee_id FROM worker_payments wp
-            WHERE wp.status IN ('paid','confirmed')
-              AND wp.type IN ('per_diem','salary','advance','bonus')
-              AND COALESCE(wp.pay_year,  EXTRACT(YEAR  FROM wp.created_at)::int) = $3::int
-              AND COALESCE(wp.pay_month, EXTRACT(MONTH FROM wp.created_at)::int) = $4::int
-            UNION
-            -- M3 (20.06.2026): официально устроенные ВСЕГДА в табеле, даже без смен —
-            -- компания обязана платить несгораемую часть (по ТК). Без этого их
-            -- transfer/cash_payout не попадают в Σ К переводу/Из кассы.
-            SELECT id FROM employees WHERE COALESCE(is_officially_employed, false) = true
-              AND COALESCE(is_active, true) = true
           )
           ORDER BY fio
-        `, [periodStart, periodEnd, year, month]);
+        `, [periodStart, periodEnd]);
         employees = rows;
       }
 
@@ -560,7 +727,7 @@ async function routes(fastify) {
         const columns = {
           points:  mode === 'global' ? 'always' : 'mine',
           amount:  mode === 'global' ? 'show' : 'none',
-          perDiem: mode === 'pm' ? 'show' : 'none'
+          perDiem: (mode === 'pm' || mode === 'global') ? 'show' : 'none'
         };
         // PHASE 1A: summary при пустом списке — нулевая сводка для global,
         // null для остальных mode. Лимиты компании всё равно дёргаем (могут быть
@@ -655,7 +822,7 @@ async function routes(fastify) {
                fts.date_from, fts.date_to, fts.days_count,
                fts.amount_earned, fts.rate_per_day, fts.tariff_points,
                fts.entered_by_user_id, fts.created_by, fts.source,
-               fts.created_at, fts.updated_at,
+               fts.created_at, fts.updated_at, fts.direction,
                u.name AS entered_by_fio_user, u.role AS entered_by_role_user, u.phone AS entered_by_phone_user,
                w.work_title, w.pm_id AS work_pm_id
         FROM field_trip_stages fts
@@ -667,24 +834,13 @@ async function routes(fastify) {
           AND fts.employee_id = ANY($3::int[])
       `, [periodStart, periodEnd, empIds]);
 
-      // per_diem_total за этот конкретный месяц.
-      // FIX (18.06.2026): записи worker_payments хранят полные командировки (несколько месяцев)
-      // в одной строке с amount за весь период. «Период пересекается» давало double-count
-      // (одна 65-дневная командировка попадала в каждый месяц где пересекалась).
-      // Теперь фильтр строгий — по pay_year/pay_month «когда зарегистрировано»;
-      // если эти поля пусты — fallback на месяц period_from.
-      const { rows: perDiemRows } = await db.query(`
-        SELECT wp.employee_id, SUM(wp.amount)::numeric AS pd_total
-        FROM worker_payments wp
-        WHERE wp.type = 'per_diem' AND wp.status != 'cancelled'
-          AND wp.employee_id = ANY($3::int[])
-          AND wp.period_from <= $2::date  -- безопасная отсечка
-          AND COALESCE(wp.pay_year,  EXTRACT(year  FROM wp.period_from)::int) = EXTRACT(year  FROM $1::date)::int
-          AND COALESCE(wp.pay_month, EXTRACT(month FROM wp.period_from)::int) = EXTRACT(month FROM $1::date)::int
-        GROUP BY wp.employee_id
-      `, [periodStart, periodEnd, empIds]);
-      const perDiemMap = {};
-      for (const p of perDiemRows) perDiemMap[p.employee_id] = Number(p.pd_total) || 0;
+      // per_diem_total — начисление ЗА ЭТОТ календарный месяц (SSoT):
+      // этапы (дорога/МО/склад/обучение/корабль/вертолёт/ожидание) + смены
+      // только на объектах с per_diem_on_checkins=true. МЛСП-вахта не входит.
+      // Не worker_payments: там командировка целиком падала в месяц max(date).
+      const perDiemMap = (mode === 'global' || mode === 'pm')
+        ? await getPerDiemAccruedMap(db, empIds, year, month)
+        : {};
 
       // ── BATCH-резолв FIO для 'self'/'master' источников (FIX #8 + FIX #9) ──
       // FIX #8: раньше resolveEmpFio делал N round-trips (один на каждый чекин).
@@ -840,7 +996,8 @@ async function routes(fastify) {
           updated_at: raw.updated_at || raw.entered_at || null,
           is_mine: !!raw.is_mine,
           work_id: raw.work_id || null,
-          work_title: raw.work_title || null
+          work_title: raw.work_title || null,
+          direction: raw.direction || null
         };
       }
 
@@ -922,16 +1079,8 @@ async function routes(fastify) {
           work_id: c.work_id,
           work_title: c.work_title
         });
-        if (mode === 'global') {
-          // FIX (24.06.2026): после фикса выше `points = pointsFor(...)` для
-          // road/standby/ship — глобальный total_points у директора теперь
-          // корректен (travel=6, ship=12, waiting=6). Раньше для не-day/night
-          // прилетал tariff_points (13/16) и общий табель тоже врал.
-          emp.total_amount += amt;
-          if (Number.isFinite(points)) emp.total_points += Number(points);
-        } else if (mode === 'pm' && isMine) {
-          if (Number.isFinite(points)) emp.total_points += Number(points);
-        }
+        // total_points/amount — после всех placeCell (см. ниже). Иначе stage,
+        // который placeCell пропустил из‑за смены, всё равно попадал в сумму.
       }
 
       // ── stages (warehouse/medical/travel/ship/waiting) ─────────────────
@@ -940,14 +1089,18 @@ async function routes(fastify) {
         const emp = empById[s.employee_id];
         if (!emp) continue;
         const stageType = s.stage_type;
-        if (!['warehouse','medical','travel','ship','training','helicopter','waiting'].includes(stageType)) continue;
+        if (!['warehouse','medical','travel','ship','training','helicopter','waiting','office','remote'].includes(stageType)) continue;
 
-        const fromD = new Date(s.date_from);
-        const toD = s.date_to ? new Date(s.date_to) : fromD;
-        const startMs = Math.max(fromD.getTime(), new Date(periodStart).getTime());
-        const endMs = Math.min(toD.getTime(), new Date(periodEnd).getTime());
+        const fromMs = parseDateOnlyToUtcMs(s.date_from);
+        const toMs = s.date_to ? parseDateOnlyToUtcMs(s.date_to) : fromMs;
+        const periodStartMs = parseDateOnlyToUtcMs(periodStart);
+        const periodEndMs = parseDateOnlyToUtcMs(periodEnd);
+        if (!Number.isFinite(fromMs) || !Number.isFinite(toMs) || !Number.isFinite(periodStartMs) || !Number.isFinite(periodEndMs)) continue;
+        const startMs = Math.max(fromMs, periodStartMs);
+        const endMs = Math.min(toMs, periodEndMs);
+        if (endMs < startMs) continue;
         const oneDay = 24 * 60 * 60 * 1000;
-        const realDays = Math.max(1, Math.round((toD.getTime() - fromD.getTime()) / oneDay) + 1);
+        const realDays = Math.max(1, Math.round((toMs - fromMs) / oneDay) + 1);
         const perDayAmt = Number(s.amount_earned || 0) / Math.max(1, Number(s.days_count || realDays));
         const perDayPts = pointsFor(settings, stageType, emp.position);
 
@@ -982,15 +1135,40 @@ async function routes(fastify) {
             updated_at: s.updated_at || s.created_at,
             is_mine: !!isMine,
             work_id: s.work_id,
-            work_title: s.work_title
+            work_title: s.work_title,
+            direction: s.direction || null
           });
+          // totals — после цикла placeCell (иначе двойной счёт при overlap со сменой)
+        }
+      }
+
+      // 07.08.2026 FIX двойного счёта: сумма только по итоговым ячейкам.
+      // Раньше stage на день со сменой placeCell пропускал, но total_points += всё равно.
+      for (const emp of Object.values(empById)) {
+        let pts = 0;
+        let amt = 0;
+        for (const cell of Object.values(emp.days || {})) {
+          if (!cell) continue;
           if (mode === 'global') {
-            emp.total_amount += perDayAmt;
-            if (Number.isFinite(perDayPts)) emp.total_points += Number(perDayPts);
-          } else if (mode === 'pm' && isMine) {
-            if (Number.isFinite(perDayPts)) emp.total_points += Number(perDayPts);
+            if (Number.isFinite(Number(cell.points))) pts += Number(cell.points);
+            if (Number.isFinite(Number(cell.amount))) amt += Number(cell.amount);
+          } else if (mode === 'pm') {
+            if (cell.is_mine && Number.isFinite(Number(cell.points))) pts += Number(cell.points);
           }
         }
+        emp.total_points = pts;
+        emp.total_amount = mode === 'global' ? amt : 0;
+      }
+
+      // 08.08.2026: без ячеек за месяц — не показываем строку (все mode).
+      // Excel-export уже так фильтровал; GET табеля — нет → расхождение с БД.
+      employees = employees.filter((e) => {
+        const emp = empById[e.id];
+        const days = emp && emp.days ? emp.days : {};
+        return Object.keys(days).some((k) => days[k] && days[k].type);
+      });
+      for (const id of Object.keys(empById)) {
+        if (!employees.some((e) => Number(e.id) === Number(id))) delete empById[id];
       }
 
       // ── per_diem_total ───────────────────────────────────────────────
@@ -1000,15 +1178,15 @@ async function routes(fastify) {
       // должна считаться по реально заработанному, а не по тому, что показывает
       // данный mode.
       for (const emp of Object.values(empById)) {
-        const pd = perDiemMap[emp.id] || 0;
+        const pd = perDiemMap[emp.id] || { accrued: 0, days: 0 };
         // Заморозим реально заработанное ДО проекции
         emp._earned_full = Number(emp.total_amount || 0);
-        if (mode === 'global') {
-          emp.per_diem_total = null; // бух не видит суточные
-        } else if (mode === 'pm') {
-          emp.per_diem_total = Number(pd);
+        if (mode === 'global' || mode === 'pm') {
+          emp.per_diem_total = Number(pd.accrued) || 0;
+          emp.per_diem_days = Number(pd.days) || 0;
         } else {
           emp.per_diem_total = null;
+          emp.per_diem_days = null;
         }
         if (mode === 'pm') {
           emp.total_amount = null;
@@ -1477,7 +1655,7 @@ async function routes(fastify) {
       const columns = {
         points:  mode === 'global' ? 'always' : 'mine',
         amount:  mode === 'global' ? 'show' : 'none',
-        perDiem: mode === 'pm' ? 'show' : 'none'
+        perDiem: (mode === 'pm' || mode === 'global') ? 'show' : 'none'
       };
 
       // ── summary (ТОЛЬКО для global) ───────────────────────────────────
@@ -1608,23 +1786,36 @@ async function routes(fastify) {
   fastify.put('/entry', viewAuth, async (request, reply) => {
     try {
       const viewer = request.user || {};
-      const mode = modeOfRole(viewer.role);
-      if (!mode) return reply.code(403).send({ error: 'role_not_supported' });
+      if (!modeOfRole(viewer.role) && !modesOfRole(viewer.role).length) {
+        return reply.code(403).send({ error: 'role_not_supported' });
+      }
 
       const body = request.body || {};
       const employee_id = parseInt(body.employee_id, 10);
-      const work_id = body.work_id != null ? parseInt(body.work_id, 10) : null;
+      // Сырой work_id из UI; для свободных этапов (МО/дорога/…) ниже принудительно обнулим.
+      let work_id = body.work_id != null ? parseInt(body.work_id, 10) : null;
       const date = body.date;
       const type = body.type;
       const shift = body.shift || null;
       const del = !!body.delete;
+      const confirmOverwrite = !!body.confirm_overwrite;
+      const DIRECTION_TYPES = new Set(['travel', 'ship', 'helicopter']);
+      let direction = body.direction || null;
+      if (direction && !['to_site', 'from_site'].includes(direction)) {
+        return reply.code(400).send({ error: 'direction: to_site | from_site' });
+      }
+      if (!DIRECTION_TYPES.has(type)) direction = null;
 
       if (!employee_id || !date || !type) {
         return reply.code(400).send({ error: 'employee_id, date, type обязательны' });
       }
-      if (!typeAllowedForMode(mode, type)) {
+      // HEAD_TO: medical + travel — проверяем по всем mode роли, не по одному дефолту.
+      if (!typeAllowedForRole(viewer.role, type)) {
         return reply.code(403).send({ error: `Тип "${type}" не разрешён для роли ${viewer.role}` });
       }
+      const requestedMode = body.mode && VALID_MODES.includes(body.mode) ? body.mode : null;
+      const mode = resolveWriteMode(viewer.role, type, requestedMode);
+      if (!mode) return reply.code(403).send({ error: 'role_not_supported' });
 
       // FIX #3: строгая валидация date. Раньше parseInt мог дать NaN/мусор и
       // упасть глубже на ::date кастe → 500. Также никто не валидировал
@@ -1648,19 +1839,62 @@ async function routes(fastify) {
         return reply.code(400).send({ error: 'invalid day' });
       }
 
+      const force_pm_lock = !!body.force_pm_lock;
+
       try {
-        await assertNotLocked(fastify, { id: viewer.id, role: viewer.role }, {
-          year: y, month: m, scope_hint: mode, work_id, employee_id, date
+        const lockRes = await assertNotLocked(fastify, { id: viewer.id, role: viewer.role }, {
+          year: y, month: m, scope_hint: mode, type, work_id, employee_id, date, force_pm_lock
         });
+        if (lockRes && lockRes.pm_lock_overridden) {
+          const ov = lockRes.pm_lock_overridden;
+          try {
+            await db.query(`
+              INSERT INTO audit_log (actor_user_id, entity_type, entity_id, action, payload_json, created_at)
+              VALUES ($1, 'payroll_period_lock', $2, 'timesheet_pm_lock_override', $3::jsonb, NOW())
+            `, [
+              viewer.id,
+              ov.id || null,
+              JSON.stringify({
+                lock_id: ov.id || null,
+                lock_scope: ov.scope || 'pm',
+                lock_scope_user_id: ov.scope_user_id || null,
+                locked_by_fio: ov.locked_by_fio || ov.scope_user_fio || null,
+                year: y,
+                month: m,
+                date,
+                employee_id,
+                work_id,
+                type,
+                delete: del,
+                mode,
+                viewer_role: viewer.role,
+                viewer_name: viewer.name || null
+              })
+            ]);
+          } catch (auditErr) {
+            fastify.log.warn('[timesheet-v2] pm_lock_override audit failed: ' + (auditErr && auditErr.message));
+          }
+        }
       } catch (lockErr) {
         if (lockErr && lockErr.code === 'period_locked') {
-          return reply.code(423).send({ error: 'period_locked', lock: lockErr.lock || null });
+          return reply.code(423).send({
+            error: 'period_locked',
+            reason: lockErr.reason || lockErr.message || 'period_locked',
+            message: lockErr.message_ru || 'Период закрыт. Изменение запрещено.',
+            overridable: !!lockErr.overridable,
+            lock: lockErr.lock || null
+          });
         }
         throw lockErr;
       }
 
-      // 24.06.2026 FIX: work_id обязателен для day/night/waiting/warehouse на PM/global.
-      // medical/travel: ship/helicopter/training — этапы без привязки к работе.
+      // work_id обязателен только для day/night/waiting на PM/global.
+      // Свободные этапы: work_id из UI не доверяем слепо — только если рабочий
+      // назначен на эту работу на дату отметки (иначе берём его активное/датированное
+      // назначение, либо null).
+      if (FREE_STANDING_STAGE_TYPES.has(type)) {
+        work_id = await resolveFreestandingWorkId(db, employee_id, work_id, date);
+      }
       if (typeRequiresWorkId(mode, type) && !work_id) {
         return reply.code(400).send({
           error: 'work_id_required',
@@ -1732,16 +1966,20 @@ async function routes(fastify) {
           ${work_id ? 'AND work_id=$3' : ''}
         LIMIT 1
       `, dupCiParams);
-      const dupStParams = work_id ? [employee_id, date, work_id] : [employee_id, date];
+      // Stages (travel/waiting/medical/warehouse): one active mark per employee+day.
+      // Do NOT require work_id match — UI often sends inferred work_id that differs
+      // from the stored stage, which previously missed the dup and caused INSERT 23505.
       const { rows: dupSt } = await db.query(`
         SELECT id, entered_by_user_id, stage_type, work_id FROM field_trip_stages
         WHERE employee_id=$1
           AND date_from <= $2::date
           AND COALESCE(date_to, date_from) >= $2::date
           AND COALESCE(status,'active') NOT IN ('rejected','cancelled')
-          ${work_id ? 'AND work_id=$3' : ''}
+        ORDER BY
+          CASE WHEN $3::int IS NOT NULL AND work_id IS NOT DISTINCT FROM $3::int THEN 0 ELSE 1 END,
+          updated_at DESC NULLS LAST, id DESC
         LIMIT 1
-      `, dupStParams);
+      `, [employee_id, date, work_id || null]);
 
       // FIX 4: PM IDOR через NULL entered_by_user_id.
       // Раньше: `&& dupCi[0].entered_by_user_id && ...` short-circuit'ил на NULL.
@@ -1766,9 +2004,21 @@ async function routes(fastify) {
         `, [employee_id, work_id]);
         if (!assign.length) return reply.code(400).send({ error: 'Нет назначения на работу' });
 
-        // Запретить дубль stage на эту дату
+        // Запретить дубль stage на эту дату — с подтверждением перезаписи
         if (dupSt.length && !dupCi.length) {
-          return reply.code(409).send({ error: 'На эту дату уже есть этап (' + dupSt[0].stage_type + ')' });
+          if (!confirmOverwrite) {
+            const blocked = await assertNoStageConflict(db, {
+              employeeId: employee_id,
+              date,
+              confirmOverwrite: false,
+              actionLabel: conflictLabelOf(type)
+            });
+            if (blocked) return reply.code(409).send(blocked);
+          } else {
+            await cancelConflicts(db, dupSt.map((s) => ({
+              kind: 'stage', id: s.id, type: s.stage_type
+            })));
+          }
         }
 
         // 25.06.2026 FIX «коллизия чужой работы»: чекин на ту же дату
@@ -1828,6 +2078,17 @@ async function routes(fastify) {
             WHERE id = $1
             RETURNING id, employee_id, work_id, date, shift, amount_earned, day_rate
           `, [dupCi[0].id, type, dayRate, amountEarned, hoursWorked, viewer.id]);
+          // Вахта МЛСП: road→day/night на существующей ячейке тоже открывает stay
+          if (type === 'day' || type === 'night') {
+            try {
+              const { ensureOpenStay } = require('../lib/mlsp-stay');
+              await ensureOpenStay(db, employee_id, work_id, {
+                source: 'timesheet-v2-update',
+                actorUserId: viewer.id,
+                log: fastify.log
+              });
+            } catch (_) { /* non-critical */ }
+          }
           return { ok: true, updated: true, kind: 'checkin', entry: upd[0] };
         }
 
@@ -1842,17 +2103,40 @@ async function routes(fastify) {
           RETURNING id, employee_id, work_id, date, shift, amount_earned, day_rate
         `, [employee_id, work_id, assign[0].id, date, type,
             hoursWorked, dayRate, amountEarned, viewer.id]);
+        // Вахта МЛСП: первая смена day/night открывает stay
+        if (type === 'day' || type === 'night') {
+          try {
+            const { ensureOpenStay } = require('../lib/mlsp-stay');
+            await ensureOpenStay(db, employee_id, work_id, {
+              source: 'timesheet-v2',
+              actorUserId: viewer.id,
+              log: fastify.log
+            });
+          } catch (_) { /* non-critical */ }
+        }
         return reply.code(201).send({ ok: true, created: true, kind: 'checkin', entry: ins[0] });
       }
 
       // ── warehouse/medical/travel/waiting → field_trip_stages ────
-      // запрет дубля чекина
+      // запрет дубля чекина — с подтверждением перезаписи
       if (dupCi.length) {
-        return reply.code(409).send({ error: 'На эту дату уже есть смена (day/night)' });
+        if (!confirmOverwrite) {
+          const blocked = await assertNoCheckinConflict(db, {
+            employeeId: employee_id,
+            dateFrom: date,
+            dateTo: date,
+            confirmOverwrite: false,
+            actionLabel: conflictLabelOf(type)
+          });
+          if (blocked) return reply.code(409).send(blocked);
+        } else {
+          await cancelConflicts(db, dupCi.map((c) => ({ kind: 'checkin', id: c.id, type: 'day' })));
+        }
       }
       // существующий stage на эту дату — замена типа (cancel + insert), не 409
       if (dupSt.length) {
         if (dupSt[0].stage_type !== type) {
+          // Замена типа на ту же дату (✈️→🚢 и т.п.): cancel старой + insert новой.
           await db.query(`
             UPDATE field_trip_stages SET status = 'cancelled', updated_at = NOW()
             WHERE id = $1
@@ -1862,26 +2146,110 @@ async function routes(fastify) {
           await db.query(`
             UPDATE field_trip_stages SET
               entered_by_user_id = $2,
+              direction = COALESCE($3, direction),
+              work_id = $4,
               updated_at = NOW()
             WHERE id = $1
-          `, [dupSt[0].id, viewer.id]);
+          `, [dupSt[0].id, viewer.id, direction, work_id || null]);
           return { ok: true, updated: true, kind: 'stage', stage_id: dupSt[0].id, replaced: false };
         }
       }
 
       const pts = pointsFor(settings, type, position);
-      // Для warehouse/medical/travel work_id опционален
-      const ratePerDay = type === 'waiting' ? 0 : 0; // сумма не считается на этом уровне, придёт из тарифа
+      const pointValue = Number(settings.point_value || 500);
+      // waiting — баллы есть для табеля, деньги 0; остальное: баллы × цена балла
+      const ratePerDay = type === 'waiting' ? 0 : Math.round(Number(pts || 0) * pointValue);
+      const amountEarned = ratePerDay;
 
-      const { rows: ins2 } = await db.query(`
-        INSERT INTO field_trip_stages
-          (employee_id, work_id, stage_type, date_from, date_to, days_count,
-           tariff_points, rate_per_day, amount_earned, status, created_by, entered_by_user_id, source)
-        VALUES ($1, $2, $3, $4::date, $4::date, 1, $5, $6, $7, 'active', $8, $8, 'manual')
-        RETURNING id, employee_id, work_id, stage_type, date_from, tariff_points
-      `, [employee_id, work_id, type, date, pts, ratePerDay, 0, viewer.id]);
-      return reply.code(201).send({ ok: true, created: true, kind: 'stage', entry: ins2[0] });
+      // Свободные этапы: work_id уже резолвнут через resolveFreestandingWorkId
+      // (только при реальном назначении на дату). waiting — из payload / typeRequiresWorkId.
+      const stageWorkId = work_id || null;
+
+      // Точечная защита от unique-коллизий: если запись с тем же ключом уже есть,
+      // обновляем её вместо новой вставки.
+      const { rows: sameStage } = await db.query(`
+        SELECT id FROM field_trip_stages
+        WHERE employee_id = $1
+          AND stage_type = $2
+          AND date_from = $3::date
+          AND work_id IS NOT DISTINCT FROM $4
+          AND COALESCE(status, 'active') NOT IN ('rejected', 'cancelled')
+        ORDER BY updated_at DESC NULLS LAST, id DESC
+        LIMIT 1
+      `, [employee_id, type, date, stageWorkId]);
+      if (sameStage.length) {
+        await db.query(`
+          UPDATE field_trip_stages SET
+            entered_by_user_id = $2,
+            direction = COALESCE($3, direction),
+            tariff_points = $4,
+            rate_per_day = $5,
+            amount_earned = $6,
+            updated_at = NOW()
+          WHERE id = $1
+        `, [sameStage[0].id, viewer.id, direction, pts, ratePerDay, amountEarned]);
+        return { ok: true, updated: true, kind: 'stage', stage_id: sameStage[0].id, replaced: false, deduped: true };
+      }
+
+      try {
+        const { rows: ins2 } = await db.query(`
+          INSERT INTO field_trip_stages
+            (employee_id, work_id, stage_type, date_from, date_to, days_count,
+             tariff_points, rate_per_day, amount_earned, status, created_by, entered_by_user_id, source, direction)
+          VALUES ($1, $2, $3, $4::date, $4::date, 1, $5, $6, $7, 'completed', $8, $8, 'manual', $9)
+          RETURNING id, employee_id, work_id, stage_type, date_from, tariff_points, rate_per_day, amount_earned, direction
+        `, [employee_id, stageWorkId, type, date, pts, ratePerDay, amountEarned, viewer.id, direction]);
+        return reply.code(201).send({ ok: true, created: true, kind: 'stage', entry: ins2[0] });
+      } catch (insErr) {
+        // Race / cancelled-ghost unique: recover via UPDATE, never bare 500
+        if (insErr && insErr.code === '23505') {
+          const { rows: race } = await db.query(`
+            SELECT id FROM field_trip_stages
+            WHERE employee_id=$1 AND stage_type=$2
+              AND date_from <= $3::date AND COALESCE(date_to, date_from) >= $3::date
+              AND work_id IS NOT DISTINCT FROM $4
+              AND COALESCE(status,'active') NOT IN ('rejected','cancelled')
+            ORDER BY updated_at DESC NULLS LAST, id DESC
+            LIMIT 1
+          `, [employee_id, type, date, stageWorkId]);
+          if (race.length) {
+            await db.query(`
+              UPDATE field_trip_stages SET
+                entered_by_user_id = $2,
+                direction = COALESCE($3, direction),
+                work_id = $4,
+                tariff_points = $5,
+                rate_per_day = $6,
+                amount_earned = $7,
+                updated_at = NOW()
+              WHERE id = $1
+            `, [race[0].id, viewer.id, direction, stageWorkId, pts, ratePerDay, amountEarned]);
+            return { ok: true, updated: true, kind: 'stage', stage_id: race[0].id, replaced: false, raced: true };
+          }
+          // Ghost cancelled still blocking (pre-V299) — cancel-all matching keys then retry once
+          await db.query(`
+            UPDATE field_trip_stages SET status='cancelled', updated_at=NOW()
+            WHERE employee_id=$1 AND stage_type=$2
+              AND date_from <= $3::date AND COALESCE(date_to, date_from) >= $3::date
+              AND work_id IS NOT DISTINCT FROM $4
+              AND COALESCE(status,'active') NOT IN ('rejected')
+          `, [employee_id, type, date, stageWorkId]);
+          const { rows: ins3 } = await db.query(`
+            INSERT INTO field_trip_stages
+              (employee_id, work_id, stage_type, date_from, date_to, days_count,
+               tariff_points, rate_per_day, amount_earned, status, created_by, entered_by_user_id, source, direction)
+            VALUES ($1, $2, $3, $4::date, $4::date, 1, $5, $6, $7, 'completed', $8, $8, 'manual', $9)
+            RETURNING id, employee_id, work_id, stage_type, date_from, tariff_points, rate_per_day, amount_earned, direction
+          `, [employee_id, stageWorkId, type, date, pts, ratePerDay, amountEarned, viewer.id, direction]);
+          return reply.code(201).send({ ok: true, created: true, kind: 'stage', entry: ins3[0], recovered: true });
+        }
+        throw insErr;
+      }
     } catch (err) {
+      if (err && err.code === '23505') {
+        fastify.log.warn('[timesheet-v2] PUT /entry unique conflict: ' + err.message);
+        return reply.code(409).send({ error: 'На эту дату уже есть отметка этого типа' });
+      }
       fastify.log.error('[timesheet-v2] PUT /entry error: ' + (err && err.message));
       return reply.code(500).send({ error: 'Ошибка сервера' });
     }
@@ -2173,7 +2541,7 @@ async function routes(fastify) {
       const position = body.position || null;
       const points = parseInt(body.points, 10);
       // V255: добавлен 'ship' — альтернативная дорога с повышенной ставкой (12 баллов).
-      if (!['warehouse','medical','travel','ship','training','helicopter'].includes(type)) {
+      if (!['warehouse','medical','travel','ship','training','helicopter','office','remote'].includes(type)) {
         return reply.code(400).send({ error: 'bad type' });
       }
       if (!Number.isFinite(points) || points < 0) {
@@ -2229,28 +2597,46 @@ async function routes(fastify) {
           request.headers.authorization = 'Bearer ' + request.query.token;
         }
       },
-      fastify.requireRoles(GLOBAL_ROLES)
+      fastify.requireRoles([...GLOBAL_ROLES, 'HEAD_TO', 'TO'])
     ]
   }, async (request, reply) => {
     try {
       const ExcelJS = require('exceljs');
+      const tsExcelStyle = require('../services/timesheet-excel-style');
       const year = parseInt(request.params.year, 10);
       const month = parseInt(request.params.month, 10);
       if (!Number.isFinite(year) || !Number.isFinite(month) || month < 1 || month > 12) {
         return reply.code(400).send({ error: 'Bad year/month' });
       }
 
-      // Реюз бизнес-логики через inject (mode=global → summary заполняется)
+      const viewerRole = request.user?.role || '';
+      const requestedExportMode = (request.query && request.query.mode) || null;
+      let exportMode = modeOfRole(viewerRole) || 'medical';
+      if (GLOBAL_ROLES.includes(viewerRole)) {
+        exportMode = (requestedExportMode && VALID_MODES.includes(requestedExportMode))
+          ? requestedExportMode
+          : 'global';
+      } else if (requestedExportMode && modesOfRole(viewerRole).includes(requestedExportMode)) {
+        exportMode = requestedExportMode;
+      }
+
+      // Реюз бизнес-логики через inject
       const proxy = await fastify.inject({
         method: 'GET',
-        url: `/api/timesheet/v2/${year}/${month}?mode=global`,
+        url: `/api/timesheet/v2/${year}/${month}?mode=${exportMode}`,
         headers: request.headers
       });
       if (proxy.statusCode !== 200) {
         return reply.code(proxy.statusCode).send(proxy.body);
       }
       const data = JSON.parse(proxy.body);
-      const employees = data.employees || [];
+      const include_per_diem_q = String(request.query.include_per_diem == null ? '' : request.query.include_per_diem);
+      let employees = data.employees || [];
+      // Без отметок в месяце — не выгружаем
+      employees = employees.filter((emp) => {
+        const days = emp.days || {};
+        return Object.keys(days).some((k) => days[k] && days[k].type);
+      });
       const dim = data.days_in_month || daysInMonth(year, month);
       const summary = data.summary || null;
 
@@ -2280,8 +2666,11 @@ async function routes(fastify) {
       const zebraFill = { type: 'pattern', pattern: 'solid', fgColor: { argb: FILL_ZEBRA } };
 
       // Цифры: округление до целых, формат «1 234 567 ₽»
+      // RUB_FMT_DASH: ноль показывается как «—» (чтобы формулы работали с числом 0)
       const RUB_FMT = '#,##0" ₽";[Red]-#,##0" ₽"';
+      const RUB_FMT_DASH = '#,##0" ₽";[Red]-#,##0" ₽";"—"';
       const r0 = (x) => (x == null || !Number.isFinite(Number(x))) ? 0 : Math.round(Number(x));
+      const pointValue = Number(data.settings?.point_value || 500) || 500;
 
       // ════════════════════════════════════════════════════════════════
       // ЛИСТ 1: 📊 Сводка (первый, виден при открытии)
@@ -2432,10 +2821,27 @@ async function routes(fastify) {
       // ════════════════════════════════════════════════════════════════
       const ws = wb.addWorksheet('📋 Табель');
 
-      // FIX (история): в global per_diem_total всегда null. Бух не видит суточные.
-      // Сейчас в export всегда mode=global → не рисуем колонку «Суточные».
-      const exportMode = (data && data.mode) || 'global';
-      const showPerDiem = exportMode !== 'global';
+      // Суточные в Excel — начисление за ЭТОТ месяц (SSoT). Default: включены.
+      const showPerDiem = include_per_diem_q === '0' ? false : true;
+      if (showPerDiem && employees.length) {
+        const needIds = employees.filter((e) => e.per_diem_total == null).map((e) => Number(e.id)).filter(Boolean);
+        if (needIds.length) {
+          try {
+            const pdMap = await getPerDiemAccruedMap(db, needIds, year, month);
+            for (const emp of employees) {
+              if (emp.per_diem_total == null) {
+                const pd = pdMap[emp.id] || { accrued: 0, days: 0 };
+                emp.per_diem_total = pd.accrued;
+                emp.per_diem_days = pd.days;
+              }
+            }
+          } catch (e) {
+            for (const emp of employees) {
+              if (emp.per_diem_total == null) emp.per_diem_total = 0;
+            }
+          }
+        }
+      }
       // Q-3 (19.06.2026): Excel-колонки «Город» (между ФИО и Должностью) и
       // «Получает» (сразу после «Тип» в финансовом блоке).
       //   Левая часть: ФИО / Город / Должность / День1...Дd
@@ -2458,6 +2864,16 @@ async function routes(fastify) {
       t.alignment = { horizontal: 'center', vertical: 'middle' };
       t.fill = goldFill;
       ws.getRow(1).height = 24;
+
+      // Row 2: параметры для формул (как в field-manage Excel)
+      ws.getCell('C2').value = '1 балл, ₽';
+      ws.getCell('C2').font = { size: 9, color: { argb: 'FF555555' } };
+      ws.getCell('D2').value = pointValue;
+      ws.getCell('D2').font = { bold: true, size: 10 };
+      ws.getCell('D2').numFmt = '0';
+      ws.getCell('E2').value = 'Формулы: Баллы=SUM(дни); Сумма=Баллы×$D$2; Заработано=Сумма+Премия−Штраф; На карту/Из кассы — по Типу';
+      ws.getCell('E2').font = { size: 8, italic: true, color: { argb: 'FF888888' } };
+      ws.getRow(2).height = 16;
 
       const hdr = ws.getRow(3);
       hdr.getCell(1).value = 'ФИО';
@@ -2538,10 +2954,16 @@ async function routes(fastify) {
       // Заморозка: 3 левые колонки (ФИО / Город / Должность) + строка шапки.
       ws.views = [{ state: 'frozen', xSplit: leadCols, ySplit: 3 }];
 
-      const TYPE_LABEL = { day: 'Д', night: 'Н', warehouse: 'С', medical: 'М', travel: '🚗', waiting: '⏳' };
+      const TYPE_LABEL = {
+        day: 'Д', night: 'Н', warehouse: 'С', medical: 'М',
+        travel: '✈️', ship: '🚢', helicopter: '🚁', waiting: '⏳', training: '🎓',
+        office: 'Оф', remote: 'Уд'
+      };
       const TYPE_FILL  = {
         day: 'FFB8E6B8', night: 'FFADD8E6', warehouse: 'FFFFE4B5',
-        medical: 'FFFFB6C1', travel: 'FFFFE066', waiting: 'FFD3D3D3'
+        medical: 'FFFFB6C1', travel: 'FFFFE066', waiting: 'FFD3D3D3',
+        ship: 'FF81D4FA', helicopter: 'FFCE93D8', training: 'FFFFCC80',
+        office: 'FF92D050', remote: 'FFFFC000'
       };
 
       const firstDataRow = 4;
@@ -2561,10 +2983,11 @@ async function routes(fastify) {
           const cell = (emp.days || {})[String(d)];
           const c = r.getCell(leadCols + d);
           if (cell && cell.type) {
-            c.value = cell.points != null ? Number(cell.points) : (TYPE_LABEL[cell.type] || '');
-            const fill = TYPE_FILL[cell.type];
-            if (fill) c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: fill } };
-            c.alignment = { horizontal: 'center', vertical: 'middle' };
+            const pts = cell.points != null ? Number(cell.points) : 0;
+            tsExcelStyle.applyShiftCell(c, pts, cell.type);
+            if (cell.direction === 'to_site' || cell.direction === 'from_site') {
+              c.note = { texts: [{ text: cell.direction === 'to_site' ? 'Туда (на объект)' : 'Обратно (с объекта)' }] };
+            }
           } else if (rowZebraFill) {
             c.fill = rowZebraFill;
           }
@@ -2573,14 +2996,33 @@ async function routes(fastify) {
         // Формулы по строке
         const startCol = ws.getColumn(leadCols + 1).letter; // первая колонка дня
         const endCol   = ws.getColumn(leadCols + dim).letter;
+        const ptsColL  = ws.getColumn(leadCols + dim + 1).letter;
+        const amtColL  = ws.getColumn(leadCols + dim + 2).letter;
         // Баллы = сумма колонок дня
-        r.getCell(leadCols + dim + 1).value = { formula: `SUM(${startCol}${rowIdx}:${endCol}${rowIdx})` };
-        // Сумма ₽ — фиксированное значение
-        r.getCell(leadCols + dim + 2).value = r0(emp.total_amount);
+        const ptsSum = Object.keys(emp.days || {}).reduce((s, k) => {
+          const cell = (emp.days || {})[k];
+          return s + (cell && cell.points != null ? Number(cell.points) || 0 : 0);
+        }, 0);
+        r.getCell(leadCols + dim + 1).value = {
+          formula: `SUM(${startCol}${rowIdx}:${endCol}${rowIdx})`,
+          result: r0(ptsSum)
+        };
+        // Сумма ₽ = Баллы × цена балла ($D$2)
+        r.getCell(leadCols + dim + 2).value = {
+          formula: `${ptsColL}${rowIdx}*$D$2`,
+          result: r0(emp.total_amount)
+        };
         r.getCell(leadCols + dim + 2).numFmt = RUB_FMT;
         if (showPerDiem) {
-          r.getCell(leadCols + dim + 3).value = r0(emp.per_diem_total);
-          r.getCell(leadCols + dim + 3).numFmt = RUB_FMT;
+          const pdCell = r.getCell(leadCols + dim + 3);
+          pdCell.value = r0(emp.per_diem_total);
+          pdCell.numFmt = RUB_FMT;
+          const nDays = Number(emp.per_diem_days || 0);
+          pdCell.note = {
+            texts: [{
+              text: `Начислено за ${mName} ${year}: ${nDays} дн.\nДорога / МО / склад / обучение / корабль / вертолёт.\nВахта МЛСП не входит. Только этот месяц.`
+            }]
+          };
         }
 
         // ── НОВЫЕ КОЛОНКИ ─────────────────────────────────────────────
@@ -2621,94 +3063,69 @@ async function routes(fastify) {
         }
         // «наличка» — без фона (по требованию)
 
-        // Заработано ₽
-        r.getCell(T.earned).value = r0(emp.earned);
-        r.getCell(T.earned).numFmt = RUB_FMT;
+        const typeL    = ws.getColumn(T.type).letter;
+        const earnedL  = ws.getColumn(T.earned).letter;
+        const bonusL   = ws.getColumn(T.bonus).letter;
+        const penaltyL = ws.getColumn(T.penalty).letter;
+        const salaryL  = ws.getColumn(T.salary).letter;
+        const toCardL  = ws.getColumn(T.toCard).letter;
+        const limYL    = ws.getColumn(T.limYearRem).letter;
+        const limML    = ws.getColumn(T.limMonthRem).letter;
 
-        // 📤 Выплачено ₽ (Stage S) — нежно-оранжевый фон #FFF3E0 если >0,
-        // прочерк если 0. Tooltip-комментарий — разбивка по типам выплат
-        // (per_diem/salary/advance/bonus). Бухгалтер видит сколько РП в поле
-        // УЖЕ выдал нал/перевод, не дублируя оплату.
+        // 📤 Выплачено ₽ — факт из БД (не формула)
         const empPaid = Number(emp.paid_total || 0);
-        if (empPaid > 0) {
+        {
           const pcell = r.getCell(T.paid);
           pcell.value  = r0(empPaid);
-          pcell.numFmt = RUB_FMT;
-          pcell.fill   = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFF3E0' } };
-          pcell.font   = { color: { argb: 'FFE65100' }, bold: true };
-          // Tooltip-комментарий с разбивкой по типам (ExcelJS поддерживает .note).
-          const br = emp.paid_breakdown || {};
-          const parts = [];
-          if (Number(br.per_diem || 0) > 0) parts.push(`суточные: ${r0(br.per_diem)} ₽`);
-          if (Number(br.salary   || 0) > 0) parts.push(`оклад: ${r0(br.salary)} ₽`);
-          if (Number(br.advance  || 0) > 0) parts.push(`аванс: ${r0(br.advance)} ₽`);
-          if (Number(br.bonus    || 0) > 0) parts.push(`премия: ${r0(br.bonus)} ₽`);
-          const cashTxt     = Number(emp.paid_cash     || 0) > 0 ? `нал: ${r0(emp.paid_cash)} ₽` : '';
-          const transferTxt = Number(emp.paid_transfer || 0) > 0 ? `перевод: ${r0(emp.paid_transfer)} ₽` : '';
-          const head = [cashTxt, transferTxt].filter(Boolean).join(' + ');
-          if (parts.length || head) {
-            pcell.note = (head ? head + '\n' : '') + (parts.length ? 'По типам: ' + parts.join(', ') : '');
+          pcell.numFmt = RUB_FMT_DASH;
+          if (empPaid > 0) {
+            pcell.fill   = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFF3E0' } };
+            pcell.font   = { color: { argb: 'FFE65100' }, bold: true };
+            const br = emp.paid_breakdown || {};
+            const parts = [];
+            if (showPerDiem && Number(br.per_diem || 0) > 0) parts.push(`суточные: ${r0(br.per_diem)} ₽`);
+            if (Number(br.salary   || 0) > 0) parts.push(`оклад: ${r0(br.salary)} ₽`);
+            if (Number(br.advance  || 0) > 0) parts.push(`аванс: ${r0(br.advance)} ₽`);
+            if (Number(br.bonus    || 0) > 0) parts.push(`премия: ${r0(br.bonus)} ₽`);
+            const cashTxt     = Number(emp.paid_cash     || 0) > 0 ? `нал: ${r0(emp.paid_cash)} ₽` : '';
+            const transferTxt = Number(emp.paid_transfer || 0) > 0 ? `перевод: ${r0(emp.paid_transfer)} ₽` : '';
+            const head = [cashTxt, transferTxt].filter(Boolean).join(' + ');
+            if (parts.length || head) {
+              pcell.note = (head ? head + '\n' : '') + (parts.length ? 'По типам: ' + parts.join(', ') : '');
+            }
           }
-        } else {
-          r.getCell(T.paid).value = '—';
-          r.getCell(T.paid).alignment = { horizontal: 'center' };
         }
 
-        // 🎁 Премия ₽ — зелёный фон если >0, прочерк если 0
+        // 🎁 Премия / ⚠ Штраф — входные числа (0 → «—» через numFmt), чтобы работала формула Заработано
         const empBonus = Number(emp.bonus || 0);
-        if (empBonus > 0) {
-          r.getCell(T.bonus).value = r0(empBonus);
-          r.getCell(T.bonus).numFmt = RUB_FMT;
-          r.getCell(T.bonus).fill = { type: 'pattern', pattern: 'solid',
-                                       fgColor: { argb: 'FFE8F5E9' } };
-          r.getCell(T.bonus).font = { color: { argb: 'FF1B5E20' }, bold: true };
-        } else {
-          r.getCell(T.bonus).value = '—';
-          r.getCell(T.bonus).alignment = { horizontal: 'center' };
-        }
-
-        // ⚠ Штраф ₽ — розовый фон если >0, прочерк если 0
         const empPenalty = Number(emp.penalty || 0);
-        if (empPenalty > 0) {
-          r.getCell(T.penalty).value = r0(empPenalty);
-          r.getCell(T.penalty).numFmt = RUB_FMT;
-          r.getCell(T.penalty).fill = { type: 'pattern', pattern: 'solid',
-                                         fgColor: { argb: 'FFFFEBEE' } };
-          r.getCell(T.penalty).font = { color: { argb: 'FFC62828' }, bold: true };
-        } else {
-          r.getCell(T.penalty).value = '—';
-          r.getCell(T.penalty).alignment = { horizontal: 'center' };
+        {
+          const bcell = r.getCell(T.bonus);
+          bcell.value = r0(empBonus);
+          bcell.numFmt = RUB_FMT_DASH;
+          if (empBonus > 0) {
+            bcell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE8F5E9' } };
+            bcell.font = { color: { argb: 'FF1B5E20' }, bold: true };
+          }
+        }
+        {
+          const pcell = r.getCell(T.penalty);
+          pcell.value = r0(empPenalty);
+          pcell.numFmt = RUB_FMT_DASH;
+          if (empPenalty > 0) {
+            pcell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFEBEE' } };
+            pcell.font = { color: { argb: 'FFC62828' }, bold: true };
+          }
         }
 
-        // Оклад ₽ (deduct_salary, прочерк для не-оф)
-        if (payType === 'official') {
-          r.getCell(T.salary).value = r0(emp.deduct_salary);
-          r.getCell(T.salary).numFmt = RUB_FMT;
-        } else {
-          r.getCell(T.salary).value = '—';
-          r.getCell(T.salary).alignment = { horizontal: 'center' };
+        // Оклад ₽ — вход для Оф (для формул На карту / Из кассы); иначе 0 → «—»
+        {
+          const scell = r.getCell(T.salary);
+          scell.value = payType === 'official' ? r0(emp.deduct_salary) : 0;
+          scell.numFmt = RUB_FMT_DASH;
         }
 
-        // На карту ₽ (transfer_amount, прочерк для нал)
-        if (payType === 'cash') {
-          r.getCell(T.toCard).value = '—';
-          r.getCell(T.toCard).alignment = { horizontal: 'center' };
-        } else {
-          r.getCell(T.toCard).value = r0(emp.transfer_amount);
-          r.getCell(T.toCard).numFmt = RUB_FMT;
-        }
-
-        // Из кассы ₽ — только cash_payout (доплата налом). Без знака.
-        const cashOut = Number(emp.cash_payout || 0);
-        if (cashOut > 0) {
-          r.getCell(T.cashDelta).value = r0(cashOut);
-          r.getCell(T.cashDelta).numFmt = RUB_FMT;
-        } else {
-          r.getCell(T.cashDelta).value = '—';
-          r.getCell(T.cashDelta).alignment = { horizontal: 'center' };
-        }
-
-        // Лимит СЗ год ост. + Лимит СЗ мес ост.
+        // Лимиты СЗ — входные остатки для формулы «На карту» (MIN)
         if (isSelfEmployedLike) {
           const yrRem = Number(emp.yearly_remaining || 0);
           const moRem = Number(emp.monthly_remaining || 0);
@@ -2718,21 +3135,45 @@ async function routes(fastify) {
           yrCell.numFmt = RUB_FMT;
           moCell.value = r0(moRem);
           moCell.numFmt = RUB_FMT;
-          // Подкрашиваем по правилу контракта:
-          //   >2× месячного лимита остаток — зелёный, иначе бледно-красный.
           const okGreen = yrRem > 2 * limitMonthly;
           yrCell.fill = { type: 'pattern', pattern: 'solid',
                           fgColor: { argb: okGreen ? FILL_LIMIT_OK : FILL_LIMIT_LOW } };
-          // Месячный лимит — той же логикой подкрашиваем (бледно-красный если <30% месячного)
           const moOk = moRem > 0.3 * limitMonthly;
           moCell.fill = { type: 'pattern', pattern: 'solid',
                           fgColor: { argb: moOk ? FILL_LIMIT_OK : FILL_LIMIT_LOW } };
         } else {
-          r.getCell(T.limYearRem).value  = '—';
-          r.getCell(T.limMonthRem).value = '—';
-          r.getCell(T.limYearRem).alignment  = { horizontal: 'center' };
-          r.getCell(T.limMonthRem).alignment = { horizontal: 'center' };
+          r.getCell(T.limYearRem).value = 0;
+          r.getCell(T.limMonthRem).value = 0;
+          r.getCell(T.limYearRem).numFmt = RUB_FMT_DASH;
+          r.getCell(T.limMonthRem).numFmt = RUB_FMT_DASH;
         }
+
+        // Заработано ₽ = Сумма + Премия − Штраф
+        r.getCell(T.earned).value = {
+          formula: `${amtColL}${rowIdx}+${bonusL}${rowIdx}-${penaltyL}${rowIdx}`,
+          result: r0(emp.earned)
+        };
+        r.getCell(T.earned).numFmt = RUB_FMT;
+
+        // На карту ₽:
+        //   СЗ/СЗ→: MIN(Заработано, лимит_мес, лимит_год)
+        //   Оф:     Оклад
+        //   Нал:    0
+        r.getCell(T.toCard).value = {
+          formula: `IF(OR(${typeL}${rowIdx}="СЗ",${typeL}${rowIdx}="СЗ→"),MIN(${earnedL}${rowIdx},${limML}${rowIdx},${limYL}${rowIdx}),IF(${typeL}${rowIdx}="Оф",${salaryL}${rowIdx},0))`,
+          result: payType === 'cash' ? 0 : r0(emp.transfer_amount)
+        };
+        r.getCell(T.toCard).numFmt = RUB_FMT_DASH;
+
+        // Из кассы ₽:
+        //   Нал:    Заработано
+        //   СЗ/СЗ→: MAX(0, Заработано − На карту)
+        //   Оф:     MAX(0, Заработано − Оклад)
+        r.getCell(T.cashDelta).value = {
+          formula: `IF(${typeL}${rowIdx}="Нал",${earnedL}${rowIdx},IF(OR(${typeL}${rowIdx}="СЗ",${typeL}${rowIdx}="СЗ→"),MAX(0,${earnedL}${rowIdx}-${toCardL}${rowIdx}),IF(${typeL}${rowIdx}="Оф",MAX(0,${earnedL}${rowIdx}-${salaryL}${rowIdx}),0)))`,
+          result: r0(emp.cash_payout)
+        };
+        r.getCell(T.cashDelta).numFmt = RUB_FMT_DASH;
 
         // Зебра по новым/правым колонкам — если в клетке нет своего фона
         if (rowZebraFill) {
@@ -2816,6 +3257,9 @@ async function routes(fastify) {
         }
       }
 
+      
+      // Легенда под таблицей на том же листе «Табель» (без отдельного листа)
+      tsExcelStyle.appendLegendBelow(ws, rowIdx, { colSpan: 10 });
       const buf = await wb.xlsx.writeBuffer();
       reply.header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
       const fname = encodeURIComponent(`Табель_${mName}_${year}.xlsx`);

@@ -11,7 +11,7 @@
 window.AsgardPersonnelPage = (function () {
   'use strict';
 
-  const { $, $$, esc, toast, showModal, closeModal } = AsgardUI;
+  const { $, $$, esc, toast, showModal, closeModal, copyToClipboard } = AsgardUI;
   const isDirRole = (r) =>
     (window.AsgardAuth && AsgardAuth.isDirectorRole)
       ? AsgardAuth.isDirectorRole(r)
@@ -22,11 +22,14 @@ window.AsgardPersonnelPage = (function () {
   // ALLOWED_ROLES = просмотр (read) страницы «Дружина». Должен совпадать с ролями роута /personnel в app.js.
   // PM/HEAD_PM видят всю дружину на десктопе (свою бригаду РП видит в полевом модуле, вкладка «Бригада»).
   const ALLOWED_ROLES = ['ADMIN', 'HR', 'HR_MANAGER', 'PM', 'HEAD_PM', 'OFFICE_MANAGER', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'TO', 'HEAD_TO'];
-  // EDIT_ROLES = редактирование.
+  // EDIT_ROLES = редактирование анкеты / «+ Добавить».
   // FIX (23.06.2026): HEAD_PM (руководитель РП) и OFFICE_MANAGER (офис-менеджер) — могут править
   // контактные/паспортные данные и добавлять новых. Финансовые поля и статус увольнения остаются под HR/директорами
   // (см. employee.js: canEditFinance / canEditHrSensitive).
+  // PM анкету не правит — только статус готовности (READINESS_EDIT_ROLES).
   const EDIT_ROLES    = ['ADMIN', 'HR', 'HR_MANAGER', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'HEAD_PM', 'OFFICE_MANAGER', 'TO', 'HEAD_TO'];
+  // READINESS_EDIT_ROLES — смена ready/not_ready/… (зеркало backend READINESS_ROLES).
+  const READINESS_EDIT_ROLES = ['ADMIN', 'HR', 'HR_MANAGER', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'HEAD_PM', 'OFFICE_MANAGER', 'TO', 'HEAD_TO', 'PM'];
   // FIN_ROLES = финансовые операции, в т.ч. импорт остатков СЗ из Excel Озон-Банка.
   // Зеркалит src/routes/staff.js FIN_ROLES (ADMIN/DIRECTOR_GEN/DIRECTOR_COMM/DIRECTOR_DEV/BUH).
   const FIN_ROLES     = ['ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV', 'BUH'];
@@ -39,10 +42,14 @@ window.AsgardPersonnelPage = (function () {
     { code: 'approved',  label: 'Утверждён',  bgVar: '--info-bg', tVar: '--info-t'  },
     { code: 'ready',     label: 'Готов',      bgVar: '--gold-bg', tVar: '--gold'    },
     { code: 'not_ready', label: 'Не готов',   bgVar: '--warn-bg', tVar: '--warn-t'  },
+    { code: 'unknown',   label: 'Без статуса', bgVar: '--bg2',    tVar: '--t2'      },
     { code: 'planned',   label: 'В плане',    bgVar: '--info-bg', tVar: '--info-t'  },
+    { code: 'on_mlsp',   label: 'На МЛСП',    bgVar: '--warn-bg', tVar: '--warn-t'  },
     { code: 'archive',   label: 'Архив',      bgVar: '--bg3',     tVar: '--t3'      },
   ];
-  const TABLE_STATUSES = STATUSES.filter(s => s.code !== 'planned');
+  const TABLE_STATUSES = STATUSES.filter(s => s.code !== 'planned' && s.code !== 'on_mlsp');
+  const MLSP_WRITE_ROLES = ['ADMIN', 'HR', 'HR_MANAGER', 'OFFICE_MANAGER', 'HEAD_TO',
+    'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV', 'PM', 'HEAD_PM'];
 
   const STATUS_MAP = Object.fromEntries(STATUSES.map(s => [s.code, s]));
 
@@ -134,8 +141,7 @@ window.AsgardPersonnelPage = (function () {
   }
 
   function fmtMoney(n) {
-    if (n == null || !isFinite(n)) return '—';
-    return Number(n).toLocaleString('ru-RU', { minimumFractionDigits: 0, maximumFractionDigits: 0 }) + ' ₽';
+    return (AsgardUI.moneyRub || AsgardMoney.formatMoney)(n);
   }
 
   function statusBadge(code) {
@@ -152,6 +158,133 @@ window.AsgardPersonnelPage = (function () {
     return `<span title="Документы в порядке" style="font-size:16px;cursor:default">✅</span>`;
   }
 
+  /** Чип в списке Дружины: смена паспорта РФ в 20 и 45 (+90 дн.). Только warn/urgent/overdue. */
+  function parseFlexibleDate(raw) {
+    if (raw == null || raw === '') return null;
+    const s = String(raw).trim();
+    if (!s) return null;
+    let m = /^(\d{4})-(\d{2})-(\d{2})/.exec(s);
+    if (m) return toYmdParts(+m[1], +m[2], +m[3]);
+    m = /^(\d{1,2})[.\/\-](\d{1,2})[.\/\-](\d{2,4})\b/.exec(s);
+    if (m) {
+      let y = +m[3];
+      if (y < 100) y += y <= 30 ? 2000 : 1900;
+      return toYmdParts(y, +m[2], +m[1]);
+    }
+    const digits = s.replace(/\D/g, '');
+    if (digits.length === 8) {
+      const a = toYmdParts(+digits.slice(0, 4), +digits.slice(4, 6), +digits.slice(6, 8));
+      if (a) return a;
+      return toYmdParts(+digits.slice(4, 8), +digits.slice(2, 4), +digits.slice(0, 2));
+    }
+    return null;
+  }
+  function toYmdParts(y, mo, d) {
+    if (y < 1900 || y > 2100 || mo < 1 || mo > 12 || d < 1 || d > 31) return null;
+    const dt = new Date(y, mo - 1, d);
+    if (dt.getFullYear() !== y || dt.getMonth() !== mo - 1 || dt.getDate() !== d) return null;
+    return `${y}-${String(mo).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+  }
+  function ageFromBirth(birthDate) {
+    const ymd = parseFlexibleDate(birthDate);
+    if (!ymd) return null;
+    const [y, m, d] = ymd.split('-').map(Number);
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    let age = today.getFullYear() - y;
+    if (today.getMonth() + 1 < m || (today.getMonth() + 1 === m && today.getDate() < d)) age -= 1;
+    if (age < 0 || age > 130) return null;
+    return age;
+  }
+  function pluralYears(n) {
+    const abs = Math.abs(n) % 100, n1 = abs % 10;
+    if (abs > 10 && abs < 20) return 'лет';
+    if (n1 === 1) return 'год';
+    if (n1 >= 2 && n1 <= 4) return 'года';
+    return 'лет';
+  }
+  function umoChipHtml(emp) {
+    const age = ageFromBirth(emp.birth_date);
+    if (age == null || age < 45) return '';
+    return `<span class="prs-chip prs-chip--umo" title="Возраст ${age} лет — этому рабочему требуется УМО (информационно)">УМО · 45+</span>`;
+  }
+
+  function fmtPrsPhone(raw) {
+    if (!raw) return '';
+    const M = window.AsgardRuMasks;
+    const digits = (M && typeof M.normalizeRuPhoneDigits === 'function')
+      ? M.normalizeRuPhoneDigits(raw)
+      : String(raw).replace(/\D/g, '');
+    if (digits.length === 11 && digits[0] === '7') {
+      return `+7 ${digits.slice(1, 4)} ${digits.slice(4, 7)}-${digits.slice(7, 9)}-${digits.slice(9)}`;
+    }
+    if (M && typeof M.formatRuPhoneDisplay === 'function') {
+      const f = M.formatRuPhoneDisplay(raw);
+      if (f) return f;
+    }
+    return String(raw);
+  }
+
+  const COPY_ICON_SVG = '<svg class="asg-copy-btn__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>';
+  const COPY_DONE_SVG = '<svg class="asg-copy-btn__done" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>';
+  const PHONE_ICON_SVG = '<svg class="prs-id-phone-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="7" y="2.5" width="10" height="19" rx="2.4"/><path d="M10.5 5h3"/><path d="M10 18.5h4"/></svg>';
+
+  function markCopyBtn(btn) {
+    if (!btn) return;
+    btn.classList.add('is-copied');
+    btn.setAttribute('title', 'Скопировано');
+    clearTimeout(btn._copiedTimer);
+    btn._copiedTimer = setTimeout(() => {
+      btn.classList.remove('is-copied');
+      btn.setAttribute('title', 'Копировать');
+    }, 1400);
+  }
+
+  function passportAgeChipHtml(emp) {
+    function parseYmd(v) {
+      if (!v) return null;
+      const s = String(v).slice(0, 10);
+      const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s);
+      if (!m) return null;
+      return new Date(+m[1], +m[2] - 1, +m[3]);
+    }
+    function addYears(d, y) {
+      const x = new Date(d.getFullYear() + y, d.getMonth(), d.getDate());
+      if (x.getMonth() !== d.getMonth()) return new Date(d.getFullYear() + y, d.getMonth() + 1, 0);
+      return x;
+    }
+    function addDays(d, n) { const x = new Date(d.getTime()); x.setDate(x.getDate() + n); return x; }
+    function fmt(d) {
+      return String(d.getDate()).padStart(2, '0') + '.' + String(d.getMonth() + 1).padStart(2, '0') + '.' + d.getFullYear();
+    }
+    const birth = parseYmd(emp.birth_date);
+    const issued = parseYmd(emp.passport_date);
+    if (!birth || !issued) return '';
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    const d20 = addYears(birth, 20), d45 = addYears(birth, 45);
+    const deadlines = [];
+    if (issued < d20) deadlines.push({ at: addDays(d20, 90), m: 20 });
+    if (issued < d45) deadlines.push({ at: addDays(d45, 90), m: 45 });
+    if (!deadlines.length) return '';
+    const upcoming = deadlines.filter(x => x.at >= today).sort((a, b) => a.at - b.at);
+    const t = upcoming[0] || deadlines.sort((a, b) => b.at - a.at)[0];
+    const days = Math.round((t.at - today) / 86400000);
+    let label = '';
+    if (days < 0) {
+      label = `Паспорт просрочен (${t.m})`;
+    } else if (days <= 90) {
+      label = `Паспорт до ${fmt(t.at)}`;
+    } else if (days <= 180) {
+      label = `Паспорт ~ ${fmt(t.at)}`;
+    } else {
+      return '';
+    }
+    const toneCls = days < 0 ? 'prs-chip--danger' : (days <= 90 ? 'prs-chip--warn' : 'prs-chip--gold');
+    const hint = days < 0
+      ? `Смена паспорта в ${t.m} лет (+90 дн.). Срок истёк.`
+      : `В РФ паспорт меняют в 20 и 45 лет (+90 дн.). Осталось ${days} дн.`;
+    return `<span class="prs-chip ${toneCls}" title="${esc(hint)}">${esc(label)}</span>`;
+  }
+
   function seLimitBar(transferred, limit) {
     const pct = limit > 0 ? Math.min(100, Math.round(transferred / limit * 100)) : 0;
     let barColor = 'var(--ok)';
@@ -165,6 +298,27 @@ window.AsgardPersonnelPage = (function () {
         </div>
         <div style="font-size:10px;color:var(--t3);margin-top:2px;text-align:right">${pct}%</div>
       </div>`;
+  }
+
+  /** Кнопка копирования ячейки (не открывает карточку) */
+  function prsCopyBtn(text) {
+    const t = String(text || '').trim();
+    if (!t || t === '—') return '';
+    return `<button type="button" class="asg-copy-btn prs-copy" data-copy="${esc(t)}" title="Копировать" aria-label="Копировать">${COPY_ICON_SVG}${COPY_DONE_SVG}</button>`;
+  }
+
+  function prsCopyWrap(innerHtml, copyText) {
+    return `<div class="prs-copy-cell" style="display:flex;align-items:flex-start;gap:2px;justify-content:space-between">` +
+      `<div style="min-width:0;flex:1">${innerHtml}</div>${prsCopyBtn(copyText)}</div>`;
+  }
+
+  function prsPhoneLine(raw) {
+    const phone = String(raw || '').trim();
+    if (!phone) return '';
+    return `<div class="prs-id-phone">` +
+      `<span class="prs-id-phone-ic" aria-hidden="true">${PHONE_ICON_SVG}</span>` +
+      `<span class="prs-id-phone-num">${esc(fmtPrsPhone(phone))}</span>` +
+      `${prsCopyBtn(phone)}</div>`;
   }
 
   function ratingHtml(v) {
@@ -213,7 +367,7 @@ window.AsgardPersonnelPage = (function () {
 
     // ── Загрузка данных ────────────────────────────────────────────────────────
     let employees = [];
-    let groups    = { on_site: 0, approved: 0, ready: 0, not_ready: 0, archive: 0, planned: 0 };
+    let groups    = { on_site: 0, approved: 0, ready: 0, not_ready: 0, unknown: 0, archive: 0, planned: 0, on_mlsp: 0 };
 
     try {
       const data = await apiFetch('/staff/readiness');
@@ -223,9 +377,16 @@ window.AsgardPersonnelPage = (function () {
       toast('Ошибка загрузки', e.message, 'err');
     }
 
-    // Справочник специальностей (уникальные role_tag)
+    const canWriteMlsp = MLSP_WRITE_ROLES.includes(user.role) || isDirRole(user.role);
+    const qMlspSeg = (query.mlsp_seg || 'all').trim();
+
+    // Справочник специальностей (уникальные role_tag, без дублей по регистру)
     const specialties = [...new Set(
-      employees.map(e => e.role_tag || '').filter(Boolean)
+      employees.map(e => {
+        const t = (e.role_tag || '').trim();
+        if (!t) return '';
+        return t === 'РП' ? 'РП' : t.toLowerCase();
+      }).filter(Boolean)
     )].sort((a, b) => a.localeCompare(b, 'ru'));
     // 25.06.2026: уникальные города
     const citiesList = [...new Set(
@@ -241,10 +402,20 @@ window.AsgardPersonnelPage = (function () {
       );
     }
     if (qSpec) {
-      rows = rows.filter(e => (e.role_tag || '') === qSpec);
+      rows = rows.filter(e => {
+        const t = (e.role_tag || '').trim();
+        if (qSpec === 'РП') return t === 'РП';
+        return t.toLowerCase() === qSpec.toLowerCase();
+      });
     }
     if (qStatus === 'planned') {
       rows = rows.filter(e => !!e.planned_info);
+    } else if (qStatus === 'on_mlsp') {
+      rows = rows.filter(e => !!e.mlsp_stay);
+      if (qMlspSeg === 'd14') rows = rows.filter(e => e.mlsp_stay.is_open && e.mlsp_stay.days_left != null && e.mlsp_stay.days_left <= 14);
+      else if (qMlspSeg === 'd7') rows = rows.filter(e => e.mlsp_stay.is_open && e.mlsp_stay.days_left != null && e.mlsp_stay.days_left <= 7);
+      else if (qMlspSeg === 'over') rows = rows.filter(e => e.mlsp_stay.is_overdue);
+      else if (qMlspSeg === 'left') rows = rows.filter(e => !e.mlsp_stay.is_open);
     } else if (qStatus) {
       rows = rows.filter(e => (e.effective_status || e.readiness_status || '') === qStatus);
     }
@@ -271,8 +442,8 @@ window.AsgardPersonnelPage = (function () {
       });
     }
 
-    // Сортировка: on_site → approved → ready → not_ready → archive → прочие, внутри — ФИО
-    const statusOrder = { on_site: 0, approved: 1, ready: 2, not_ready: 3, archive: 4 };
+    // Сортировка: on_site → approved → ready → not_ready → unknown → archive → прочие, внутри — ФИО
+    const statusOrder = { on_site: 0, approved: 1, ready: 2, not_ready: 3, unknown: 4, archive: 5 };
     rows.sort((a, b) => {
       const sa = statusOrder[a.effective_status] ?? 9;
       const sb = statusOrder[b.effective_status] ?? 9;
@@ -284,9 +455,9 @@ window.AsgardPersonnelPage = (function () {
     const grouped = {};
     TABLE_STATUSES.forEach(s => { grouped[s.code] = []; });
     rows.forEach(e => {
-      const st = e.effective_status || e.readiness_status || 'archive';
+      const st = e.effective_status || e.readiness_status || 'unknown';
       if (grouped[st]) grouped[st].push(e);
-      else if (grouped['archive']) grouped['archive'].push(e);
+      else if (grouped['unknown']) grouped['unknown'].push(e);
     });
 
     // ── HTML ────────────────────────────────────────────────────────────────────
@@ -358,7 +529,9 @@ window.AsgardPersonnelPage = (function () {
 
     // Бейджи суммарных статусов
     const summaryBadges = STATUSES.map(s => {
-      const cnt = s.code === 'planned' ? (groups.planned || 0) : (groups[s.code] || 0);
+      const cnt = s.code === 'planned' ? (groups.planned || 0)
+        : s.code === 'on_mlsp' ? (groups.on_mlsp || 0)
+          : (groups[s.code] || 0);
       const active = qStatus === s.code ? 'outline:2px solid var(--accent);' : '';
       return `<button class="btn-status-badge" data-status="${s.code}"
         style="background:var(${s.bgVar});color:var(${s.tVar});border:none;border-radius:var(--r-md);
@@ -368,9 +541,331 @@ window.AsgardPersonnelPage = (function () {
       </button>`;
     }).join('');
 
+    function mlspChipTone(stay) {
+      if (!stay || !stay.is_open) return { bg: 'var(--bg3)', fg: 'var(--t3)' };
+      if (stay.is_overdue || (stay.days_left != null && stay.days_left <= 7)) return { bg: 'var(--err-bg)', fg: 'var(--err)' };
+      if (stay.days_left != null && stay.days_left <= 14) return { bg: 'var(--warn-bg)', fg: 'var(--warn-t)' };
+      return { bg: 'var(--ok-bg)', fg: 'var(--ok)' };
+    }
+    function mlspTodayYmd() {
+      try {
+        return new Intl.DateTimeFormat('en-CA', {
+          timeZone: 'Europe/Moscow', year: 'numeric', month: '2-digit', day: '2-digit'
+        }).format(new Date());
+      } catch (_) {
+        const d = new Date();
+        return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+      }
+    }
+    function mlspChipHtml(stay, empId) {
+      if (!stay || !stay.is_open) return '';
+      const toneCls = stay.is_overdue || (stay.days_left != null && stay.days_left <= 7)
+        ? 'prs-chip--danger'
+        : (stay.days_left != null && stay.days_left <= 14)
+          ? 'prs-chip--warn'
+          : 'prs-chip--ok';
+      return `<button type="button" class="prs-chip prs-chip--mlsp ${toneCls} prs-mlsp-chip-btn" data-emp-id="${empId || ''}" title="Фильтр «На МЛСП»">МЛСП · ${stay.days_on_platform ?? '—'} дн</button>`;
+    }
+
+    function prsIdentityCell(e) {
+      const fio = e.fio || '—';
+      const chips = [umoChipHtml(e), passportAgeChipHtml(e), mlspChipHtml(e.mlsp_stay, e.id)].filter(Boolean).join('');
+      return `<div class="prs-id">` +
+        `<div class="prs-id-head"><div class="prs-id-name">${esc(fio)}</div>${prsCopyBtn(e.fio || '')}</div>` +
+        prsPhoneLine(e.phone) +
+        (chips ? `<div class="prs-id-chips">${chips}</div>` : '') +
+        `</div>`;
+    }
+
+    async function mlspAction(path, body) {
+      const r = await fetch('/api/staff/mlsp-stays/' + path, {
+        method: 'POST', headers: authHeaders(true), body: JSON.stringify(body || {})
+      });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(data.error || ('HTTP ' + r.status));
+      return data;
+    }
+
+    function findStayById(stayId) {
+      const emp = employees.find(e => e.mlsp_stay && String(e.mlsp_stay.id) === String(stayId));
+      return emp ? { emp, stay: emp.mlsp_stay } : null;
+    }
+
+    function openMlspExtendModal(stayId) {
+      const found = findStayById(stayId);
+      if (!found) return;
+      const { emp, stay } = found;
+      const min = stay.planned_depart_at ? String(stay.planned_depart_at).slice(0, 10) : '';
+      showModal({
+        title: 'Продлить — ' + (emp.fio || ''),
+        html: `
+          <p class="help" style="margin:0 0 12px">
+            Сейчас вывоз: <b>${esc(fmtDate(stay.planned_depart_at))}</b>
+            ${stay.days_on_platform != null ? ' · на платформе ' + stay.days_on_platform + ' дн.' : ''}.
+            Счётчик дней с заезда не сбрасывается.
+          </p>
+          <div class="formrow">
+            <div style="grid-column:1/-1">
+              <label>Новая дата вывоза</label>
+              <input type="date" id="mlsp_ext_date" class="input" min="${esc(min)}" />
+            </div>
+            <div style="grid-column:1/-1">
+              <label>Заметка (необязательно)</label>
+              <textarea id="mlsp_ext_note" class="input" rows="2" placeholder="Согласовано с начальником МЛСП…"></textarea>
+            </div>
+          </div>
+          <div class="row" style="gap:8px;justify-content:flex-end;margin-top:14px">
+            <button type="button" class="btn ghost" id="mlsp_ext_cancel">Отмена</button>
+            <button type="button" class="btn" id="mlsp_ext_save">Продлить</button>
+          </div>
+        `,
+        onMount: ({ body }) => {
+          body.querySelector('#mlsp_ext_cancel')?.addEventListener('click', () => closeModal());
+          body.querySelector('#mlsp_ext_save')?.addEventListener('click', async () => {
+            const date = body.querySelector('#mlsp_ext_date')?.value || '';
+            const note = (body.querySelector('#mlsp_ext_note')?.value || '').trim() || null;
+            if (!date) { toast('Ошибка', 'Укажите новую дату вывоза', 'err'); return; }
+            if (min && date <= min) { toast('Ошибка', 'Дата должна быть позже текущей плановой', 'err'); return; }
+            try {
+              await mlspAction(stayId + '/extend', { planned_depart_at: date, note });
+              toast('Ок', 'Вывоз продлён', 'ok');
+              closeModal();
+              window.dispatchEvent(new HashChangeEvent('hashchange'));
+            } catch (e) { toast('Ошибка', e.message, 'err'); }
+          });
+        }
+      });
+    }
+
+    function openMlspDepartModal(stayId) {
+      const found = findStayById(stayId);
+      if (!found) return;
+      const { emp, stay } = found;
+      const today = mlspTodayYmd();
+      showModal({
+        title: 'Съехал — ' + (emp.fio || ''),
+        html: `
+          <p class="help" style="margin:0 0 12px">
+            Закроет вахту и все активные назначения на работах МЛСП.
+          </p>
+          <div class="formrow">
+            <div>
+              <label>Дата съезда</label>
+              <input type="date" id="mlsp_dep_date" class="input" max="${esc(today)}" value="${esc(today)}" />
+            </div>
+            <div>
+              <label>Чем вывезли</label>
+              <select id="mlsp_dep_tr" class="input">
+                <option value="">— не указано —</option>
+                <option value="helicopter"${stay.transport === 'helicopter' ? ' selected' : ''}>Вертолёт</option>
+                <option value="ship"${stay.transport === 'ship' ? ' selected' : ''}>Корабль</option>
+              </select>
+            </div>
+          </div>
+          <div class="row" style="gap:8px;justify-content:flex-end;margin-top:14px">
+            <button type="button" class="btn ghost" id="mlsp_dep_cancel">Отмена</button>
+            <button type="button" class="btn" id="mlsp_dep_save">Съехал</button>
+          </div>
+        `,
+        onMount: ({ body }) => {
+          body.querySelector('#mlsp_dep_cancel')?.addEventListener('click', () => closeModal());
+          body.querySelector('#mlsp_dep_save')?.addEventListener('click', async () => {
+            const date = body.querySelector('#mlsp_dep_date')?.value || '';
+            const transport = body.querySelector('#mlsp_dep_tr')?.value || null;
+            if (!date) { toast('Ошибка', 'Укажите дату съезда', 'err'); return; }
+            if (date > today) { toast('Ошибка', 'Дата не позже сегодня', 'err'); return; }
+            try {
+              await mlspAction(stayId + '/depart', { actual_departed_at: date, transport: transport || null });
+              toast('Ок', 'Съезд отмечен', 'ok');
+              closeModal();
+              window.dispatchEvent(new HashChangeEvent('hashchange'));
+            } catch (e) { toast('Ошибка', e.message, 'err'); }
+          });
+        }
+      });
+    }
+
+    function openMlspReopenModal(stayId) {
+      const found = findStayById(stayId);
+      if (!found) return;
+      const { emp, stay } = found;
+      showModal({
+        title: 'Вернуть на платформу — ' + (emp.fio || ''),
+        html: `
+          <p class="help" style="margin:0 0 12px">
+            Автовыезд ${esc(fmtDate(stay.actual_departed_at))}. Откроем stay снова и снимем дату убытия с назначений МЛСП.
+          </p>
+          <div class="row" style="gap:8px;justify-content:flex-end;margin-top:14px">
+            <button type="button" class="btn ghost" id="mlsp_reo_cancel">Отмена</button>
+            <button type="button" class="btn" id="mlsp_reo_save">Вернуть</button>
+          </div>
+        `,
+        onMount: ({ body }) => {
+          body.querySelector('#mlsp_reo_cancel')?.addEventListener('click', () => closeModal());
+          body.querySelector('#mlsp_reo_save')?.addEventListener('click', async () => {
+            try {
+              await mlspAction(stayId + '/reopen', {});
+              toast('Ок', 'Вернули на платформу', 'ok');
+              closeModal();
+              window.dispatchEvent(new HashChangeEvent('hashchange'));
+            } catch (e) { toast('Ошибка', e.message, 'err'); }
+          });
+        }
+      });
+    }
+
+    function openMlspExportModal() {
+      const today = mlspTodayYmd();
+      const d = new Date(today + 'T12:00:00');
+      d.setUTCMonth(d.getUTCMonth() - 3);
+      const defaultFrom = d.toISOString().slice(0, 10);
+      const clampAsOf = (from, to, asOf) => {
+        if (!asOf) return to || today;
+        if (from && asOf < from) return from;
+        if (to && asOf > to) return to;
+        return asOf;
+      };
+      showModal({
+        title: 'Excel — график перевахтовки МЛСП',
+        html: `
+          <p class="help" style="margin:0 0 12px">
+            Один лист: кто на платформе, проект, заезд/транспорт и календарь смен (11 ч) / дороги / корабля / вертолёта.
+            Колонка «На дату» — сколько дней человек уже на МЛСП (или «уехал» / «планируемый заезд»).
+          </p>
+          <div class="formrow">
+            <div>
+              <label>Период с</label>
+              <input type="date" id="mlsp_exp_from" class="input" value="${esc(defaultFrom)}" />
+            </div>
+            <div>
+              <label>Период по</label>
+              <input type="date" id="mlsp_exp_to" class="input" value="${esc(today)}" />
+            </div>
+            <div>
+              <label>На дату</label>
+              <input type="date" id="mlsp_exp_asof" class="input" value="${esc(today)}" />
+            </div>
+          </div>
+          <div class="row" style="gap:8px;justify-content:flex-end;margin-top:14px">
+            <button type="button" class="btn ghost" id="mlsp_exp_cancel">Отмена</button>
+            <button type="button" class="btn" id="mlsp_exp_go">Скачать Excel</button>
+          </div>
+        `,
+        onMount: ({ body }) => {
+          const syncAsOf = () => {
+            const from = body.querySelector('#mlsp_exp_from')?.value || '';
+            const to = body.querySelector('#mlsp_exp_to')?.value || '';
+            const asEl = body.querySelector('#mlsp_exp_asof');
+            if (!asEl) return;
+            asEl.value = clampAsOf(from, to, asEl.value || today);
+            if (from) asEl.min = from;
+            if (to) asEl.max = to;
+          };
+          body.querySelector('#mlsp_exp_from')?.addEventListener('change', syncAsOf);
+          body.querySelector('#mlsp_exp_to')?.addEventListener('change', syncAsOf);
+          syncAsOf();
+          body.querySelector('#mlsp_exp_cancel')?.addEventListener('click', () => closeModal());
+          body.querySelector('#mlsp_exp_go')?.addEventListener('click', async () => {
+            const from = body.querySelector('#mlsp_exp_from')?.value || '';
+            const to = body.querySelector('#mlsp_exp_to')?.value || '';
+            let asOf = body.querySelector('#mlsp_exp_asof')?.value || '';
+            if (!from || !to) { toast('Период', 'Укажите обе даты периода', 'warn'); return; }
+            if (from > to) { toast('Период', 'Дата «с» не позже «по»', 'warn'); return; }
+            asOf = clampAsOf(from, to, asOf || to);
+            if (asOf < from || asOf > to) {
+              toast('На дату', 'Дата должна быть внутри периода', 'warn');
+              return;
+            }
+            const btn = body.querySelector('#mlsp_exp_go');
+            if (btn) { btn.disabled = true; btn.textContent = 'Формируем…'; }
+            try {
+              const r = await fetch('/api/staff/mlsp-stays/export', {
+                method: 'POST',
+                headers: authHeaders(true),
+                body: JSON.stringify({ from, to, as_of: asOf })
+              });
+              if (!r.ok) {
+                const j = await r.json().catch(() => ({}));
+                throw new Error(j.error || ('HTTP ' + r.status));
+              }
+              const blob = await r.blob();
+              const a = document.createElement('a');
+              a.href = URL.createObjectURL(blob);
+              a.download = `perevahtovka_${from}_${to}_na_${asOf}.xlsx`;
+              document.body.appendChild(a);
+              a.click();
+              a.remove();
+              URL.revokeObjectURL(a.href);
+              toast('Готово', 'График перевахтовки скачан', 'ok');
+              closeModal();
+            } catch (e) {
+              toast('Ошибка', e.message, 'err');
+            } finally {
+              if (btn) { btn.disabled = false; btn.textContent = 'Скачать Excel'; }
+            }
+          });
+        }
+      });
+    }
+
     // Строки таблицы по секциям
     let tbodyHtml = '';
     let anyRow = false;
+    const isMlspView = qStatus === 'on_mlsp';
+    const focusEmpId = (query.focus_emp || '').trim();
+
+    if (isMlspView) {
+      anyRow = rows.length > 0;
+      tbodyHtml += `<tr><td colspan="9" style="background:var(--warn-bg);color:var(--warn-t);font-weight:700;font-size:12px;padding:6px 12px;border:none">
+        НА МЛСП · ${rows.length}
+      </td></tr>`;
+      rows.forEach(e => {
+        const stay = e.mlsp_stay;
+        const active = e.on_site_info || e.approved_info || e.last_assignment_info || null;
+        const workTitle = active ? (active.work_title || '') : '';
+        const pmName = active ? (active.pm_name || '') : '';
+        const tone = mlspChipTone(stay);
+        const left = stay?.days_left;
+        const transportSel = stay ? `<select class="prs-mlsp-tr" data-stay-id="${stay.id}" ${(!canWriteMlsp || !stay.is_open) ? 'disabled' : ''}
+          onclick="event.stopPropagation()" style="font-size:12px;padding:3px 4px;border-radius:4px;border:1px solid var(--brd);background:var(--bg2);color:var(--t1)">
+          <option value="">—</option>
+          <option value="helicopter"${stay.transport === 'helicopter' ? ' selected' : ''}>Вертолёт</option>
+          <option value="ship"${stay.transport === 'ship' ? ' selected' : ''}>Корабль</option>
+        </select>` : '—';
+        let actions = '';
+        if (stay?.is_open && canWriteMlsp) {
+          actions = `<div style="display:flex;flex-wrap:wrap;gap:4px">
+            <button type="button" class="btn btn-sm prs-mlsp-extend" data-stay-id="${stay.id}" onclick="event.stopPropagation()"
+              style="font-size:11px;padding:3px 8px;${left != null && left <= 14 ? 'background:var(--accent);color:#fff;border:none;border-radius:4px' : ''}">Продлить</button>
+            <button type="button" class="btn btn-sm prs-mlsp-depart" data-stay-id="${stay.id}" onclick="event.stopPropagation()" style="font-size:11px;padding:3px 8px">Съехал</button>
+          </div>`;
+        } else if (!stay?.is_open && stay?.departed_source === 'auto_travel' && canWriteMlsp) {
+          actions = `<button type="button" class="btn btn-sm prs-mlsp-reopen" data-stay-id="${stay.id}" onclick="event.stopPropagation()" style="font-size:11px;padding:3px 8px">Вернуть</button>`;
+        }
+        const highlight = focusEmpId && String(e.id) === String(focusEmpId)
+          ? 'outline:2px solid var(--accent);outline-offset:-2px;' : '';
+        tbodyHtml += `
+          <tr class="prs-row" data-id="${e.id}" data-emp-id="${e.id}" style="cursor:pointer;${highlight}${stay?.is_overdue ? 'background:var(--err-bg);' : ''}" title="Открыть карточку">
+            <td>
+              <div class="bc-cell">
+                ${(window.AsgardBrigadeCart && AsgardBrigadeCart.cartBtnHtml) ? AsgardBrigadeCart.cartBtnHtml(e.id) : ''}
+                <div class="prs-id bc-cell__body"><div class="prs-id-name">${esc(e.fio || '—')}</div>${prsPhoneLine(e.phone)}</div>
+              </div>
+            </td>
+            <td style="color:var(--t2);font-size:13px">${esc(e.role_tag || e.position || '—')}</td>
+            <td>${statusBadge(e.effective_status || e.readiness_status)}</td>
+            <td><div style="font-size:13px">${esc(workTitle || '—')}</div>${pmName ? `<div style="font-size:11px;color:var(--t3)">РП: ${esc(pmName)}</div>` : ''}</td>
+            <td style="white-space:nowrap">${stay?.arrived_at ? fmtDate(stay.arrived_at) : '—'}</td>
+            <td><span style="font-weight:800;padding:2px 8px;border-radius:4px;background:${tone.bg};color:${tone.fg}">${stay?.days_on_platform ?? '—'}</span></td>
+            <td>${stay?.is_open
+              ? `<div>${fmtDate(stay.planned_depart_at)}</div><div style="font-size:11px;color:${tone.fg}">${stay.is_overdue ? 'просрочен ' + Math.abs(left) + ' дн' : (left != null ? 'осталось ' + left + ' дн' : '')}</div>`
+              : `<span style="color:var(--t3)">съехал ${fmtDate(stay?.actual_departed_at)}</span>`}</td>
+            <td>${transportSel}</td>
+            <td style="white-space:nowrap">${actions}</td>
+          </tr>`;
+      });
+      // empty handled below
+    } else {
     TABLE_STATUSES.forEach(st => {
       const list = grouped[st.code];
       if (!list || !list.length) return;
@@ -422,32 +917,41 @@ window.AsgardPersonnelPage = (function () {
         tbodyHtml += `
           <tr class="prs-row" data-id="${e.id}" style="cursor:pointer" title="Открыть карточку">
             <td>
-              <div style="font-weight:600;color:var(--t1)">${esc(e.fio || '—')}</div>
-              <div style="font-size:12px;color:var(--t3)">${esc(e.phone || '')}</div>
+              <div class="bc-cell">
+                ${(window.AsgardBrigadeCart && AsgardBrigadeCart.cartBtnHtml) ? AsgardBrigadeCart.cartBtnHtml(e.id) : ''}
+                <div class="bc-cell__body">${prsIdentityCell(e)}</div>
+              </div>
             </td>
-            <td style="color:var(--t2);font-size:13px">${esc(e.role_tag || e.position || '—')}</td>
+            <td style="color:var(--t2);font-size:13px">${prsCopyWrap(esc(e.role_tag || e.position || '—'), e.role_tag || e.position || '')}</td>
             <td>${statusBadge(e.effective_status || e.readiness_status)}</td>
             <td>
-              ${titleHtml}
-              ${pmHtml}
+              ${prsCopyWrap(`${titleHtml}${pmHtml}`, [workTitle, pmName].filter(Boolean).join(' · '))}
             </td>
             <td style="font-size:12px;color:var(--t2)">
-              ${e.planned_info ? `<span style="font-size:10px;font-weight:700;color:var(--info-t);background:var(--info-bg);padding:2px 5px;border-radius:4px;margin-right:4px">План</span>${esc(e.planned_info.work_title || '')}${e.planned_info.planned_from ? '<div style="font-size:11px;color:var(--t3)">с '+fmtDate(e.planned_info.planned_from)+'</div>' : ''}` : '<span style="color:var(--t3)">—</span>'}
+              ${e.planned_info
+                ? prsCopyWrap(
+                    `<span style="font-size:10px;font-weight:700;color:var(--info-t);background:var(--info-bg);padding:2px 5px;border-radius:4px;margin-right:4px">План</span>${esc(e.planned_info.work_title || '')}${e.planned_info.planned_from ? '<div style="font-size:11px;color:var(--t3)">с '+fmtDate(e.planned_info.planned_from)+'</div>' : ''}`,
+                    e.planned_info.work_title || ''
+                  )
+                : '<span style="color:var(--t3)">—</span>'}
             </td>
-            <td style="white-space:nowrap;font-size:13px;color:var(--t2)">${startDate}</td>
+            <td style="white-space:nowrap;font-size:13px;color:var(--t2)">${prsCopyWrap(startDate, startDate !== '—' ? startDate : '')}</td>
             <td style="text-align:center">${docIndicator(e.permits)}</td>
             <td style="text-align:center">${keyPermChipsHtml(e.key_permits)}</td>
             <td style="font-size:11px;min-width:110px">${sizSizesHtml(e)}</td>
-            <td style="font-size:12.5px;color:var(--t2)">${e.city ? esc(e.city) : '<span style="color:var(--t3)">—</span>'}</td>
-            <td>${e.is_self_employed ? seLimitBar(seTrans, SE_YEAR_LIMIT) : '<span style="color:var(--t3);font-size:12px">—</span>'}</td>
+            <td style="font-size:12.5px;color:var(--t2)">${prsCopyWrap(e.city ? esc(e.city) : '<span style="color:var(--t3)">—</span>', e.city || '')}</td>
+            <td>${e.is_self_employed
+              ? prsCopyWrap(seLimitBar(seTrans, SE_YEAR_LIMIT), `${Math.round(seTrans)} / ${SE_YEAR_LIMIT}`)
+              : '<span style="color:var(--t3);font-size:12px">—</span>'}</td>
             <td style="text-align:right">${ratingHtml(e.rating_avg)}</td>
           </tr>`;
       });
     });
+    } // end !isMlspView
 
     if (!anyRow) {
-      tbodyHtml = `<tr><td colspan="12" class="muted" style="text-align:center;padding:32px">
-        Нет рабочих, соответствующих фильтрам
+      tbodyHtml = `<tr><td colspan="${isMlspView ? 9 : 12}" class="muted" style="text-align:center;padding:32px">
+        ${isMlspView ? 'Нет вахт МЛСП по фильтру' : 'Нет рабочих, соответствующих фильтрам'}
       </td></tr>`;
     }
 
@@ -467,17 +971,22 @@ window.AsgardPersonnelPage = (function () {
         } else {
           byProjectHtml = projects.map(p => {
             const workersRows = (p.workers || []).map(w => {
-              const st = STATUS_MAP[w.effective_status || w.readiness_status] || STATUS_MAP.not_ready;
+              const st = STATUS_MAP[w.effective_status || w.readiness_status] || STATUS_MAP.unknown;
               const period = [w.planned_from, w.planned_to].filter(Boolean).map(d => fmtDate(d)).join(' — ');
               const nowHtml = w.on_site_info
                 ? `<span style="font-size:10px;font-weight:700;color:var(--ok-t);background:var(--ok-bg);padding:2px 5px;border-radius:4px">На объекте</span><div style="font-size:12px;margin-top:2px">${esc(w.on_site_info.work_title || '')}</div>`
                 : (st ? `<span style="font-size:10px;font-weight:700;color:var(${st.tVar});background:var(${st.bgVar});padding:2px 5px;border-radius:4px">${esc(st.label)}</span>` : '—');
               return `<tr class="prs-row" data-id="${w.employee_id}" style="cursor:pointer">
-                <td><div style="font-weight:600">${esc(w.fio || '—')}</div></td>
-                <td style="font-size:13px;color:var(--t2)">${esc(w.role_tag || w.position || '—')}</td>
+                <td>
+                  <div class="bc-cell">
+                    ${(window.AsgardBrigadeCart && AsgardBrigadeCart.cartBtnHtml) ? AsgardBrigadeCart.cartBtnHtml(w.employee_id) : ''}
+                    <div class="bc-cell__body">${prsCopyWrap(`<div style="font-weight:600">${esc(w.fio || '—')}</div>`, w.fio || '')}</div>
+                  </div>
+                </td>
+                <td style="font-size:13px;color:var(--t2)">${prsCopyWrap(esc(w.role_tag || w.position || '—'), w.role_tag || w.position || '')}</td>
                 <td>${nowHtml}</td>
-                <td style="font-size:12px;color:var(--t2)">${period || '—'}</td>
-                <td style="font-size:12px;color:var(--t3)">${esc(w.note || '—')}</td>
+                <td style="font-size:12px;color:var(--t2)">${prsCopyWrap(period || '—', period || '')}</td>
+                <td style="font-size:12px;color:var(--t3)">${prsCopyWrap(esc(w.note || '—'), w.note || '')}</td>
               </tr>`;
             }).join('');
             return `<details open style="margin-bottom:12px;border:1px solid var(--brd);border-radius:var(--r-md);overflow:hidden">
@@ -500,7 +1009,6 @@ window.AsgardPersonnelPage = (function () {
 
     const html = `
       <div class="panel">
-
         <!-- Шапка -->
         <div class="row" style="justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:16px">
           <div>
@@ -514,6 +1022,10 @@ window.AsgardPersonnelPage = (function () {
                 <span id="prs_seLastImport" class="help" style="font-size:11px;color:var(--t3)"></span>
               </div>` : ''}
             ${canEdit ? '<button class="btn" id="prs_btnAdd">+ Добавить</button>' : ''}
+            <button class="btn ghost" id="prs_bc_open" type="button" title="Корзина бригады">
+              Корзина<span id="prs_bc_badge" class="bc-badge" hidden>0</span>
+            </button>
+            <button class="btn ghost" id="prs_mlsp_export" type="button" title="Excel перевахтовки за период">Excel перевахтовка</button>
             <button class="btn ghost" id="prs_btnSchedule">График</button>
           </div>
         </div>
@@ -549,6 +1061,13 @@ window.AsgardPersonnelPage = (function () {
             <option value="">Пропуска: все</option>
             ${passOptions}
           </select>
+          ${isMlspView ? `<select id="prs_mlsp_seg" class="input" style="min-width:160px">
+            <option value="all"${qMlspSeg === 'all' ? ' selected' : ''}>Все видимые</option>
+            <option value="d14"${qMlspSeg === 'd14' ? ' selected' : ''}>Вывоз ≤14 дн</option>
+            <option value="d7"${qMlspSeg === 'd7' ? ' selected' : ''}>Вывоз ≤7 дн</option>
+            <option value="over"${qMlspSeg === 'over' ? ' selected' : ''}>Просрочен</option>
+            <option value="left"${qMlspSeg === 'left' ? ' selected' : ''}>Съехали (14 дн)</option>
+          </select>` : ''}
           <button class="btn" id="prs_btnFind">Найти</button>
           <button class="btn ghost" id="prs_btnReset">Сброс</button>
         </div>
@@ -563,6 +1082,13 @@ window.AsgardPersonnelPage = (function () {
                 <th>Специальность</th>
                 <th>Статус</th>
                 <th>Объект / РП</th>
+                ${isMlspView ? `
+                <th>Заезд</th>
+                <th>Дней</th>
+                <th>Вывоз</th>
+                <th>Транспорт</th>
+                <th style="width:160px">Действия</th>
+                ` : `
                 <th>→ План</th>
                 <th>Начало работ</th>
                 <th style="text-align:center;width:60px">Документы</th>
@@ -571,6 +1097,7 @@ window.AsgardPersonnelPage = (function () {
                 <th style="width:120px">Город</th>
                 <th style="width:140px">Лимит СЗ</th>
                 <th style="text-align:right;width:70px">Рейтинг</th>
+                `}
               </tr>
             </thead>
             <tbody id="prs_tbody">
@@ -588,6 +1115,15 @@ window.AsgardPersonnelPage = (function () {
       </div>`;
 
     await layout(html, { title: title || 'Дружина • Реестр рабочих' });
+
+    // Корзина бригады (persist + UI)
+    if (window.AsgardBrigadeCart) {
+      try {
+        AsgardBrigadeCart.mount({ user, employees });
+      } catch (e) {
+        console.warn('[brigade-cart]', e);
+      }
+    }
 
     // ── Пагинация ──────────────────────────────────────────────────────────────
     if (window.AsgardPagination) {
@@ -634,7 +1170,16 @@ window.AsgardPersonnelPage = (function () {
         }
       }
 
-      if (dataRows.length > 0) applyPagination(currentPage, pageSize);
+      if (dataRows.length > 0) {
+        // focus_emp: перейти на страницу с целевой строкой (как v2)
+        if (focusEmpId) {
+          const idx = dataRows.findIndex(r => String(r.dataset.empId || r.dataset.id) === String(focusEmpId));
+          if (idx >= 0 && pageSize > 0) {
+            currentPage = Math.floor(idx / pageSize) + 1;
+          }
+        }
+        applyPagination(currentPage, pageSize);
+      }
     }
 
     // ── Обработчики фильтров ──────────────────────────────────────────────────
@@ -645,12 +1190,14 @@ window.AsgardPersonnelPage = (function () {
       const stv = ($('#prs_status')?.value || '').trim();
       const cv  = ($('#prs_city')?.value   || '').trim();
       const pv  = ($('#prs_pass')?.value   || '').trim();
+      const mv  = ($('#prs_mlsp_seg')?.value || '').trim();
       const parts = [];
       if (qv)  parts.push(`q=${encodeURIComponent(qv)}`);
       if (sv)  parts.push(`spec=${encodeURIComponent(sv)}`);
       if (stv) parts.push(`status=${encodeURIComponent(stv)}`);
       if (cv)  parts.push(`city=${encodeURIComponent(cv)}`);
       if (pv)  parts.push(`pass=${encodeURIComponent(pv)}`);
+      if (stv === 'on_mlsp' && mv && mv !== 'all') parts.push(`mlsp_seg=${encodeURIComponent(mv)}`);
       location.hash = '#/personnel' + (parts.length ? '?' + parts.join('&') : '');
     }
 
@@ -660,6 +1207,7 @@ window.AsgardPersonnelPage = (function () {
     // 25.06.2026: автоприменение фильтров по городу и пропускам
     $('#prs_city')?.addEventListener('change', buildFilter);
     $('#prs_pass')?.addEventListener('change', buildFilter);
+    $('#prs_mlsp_seg')?.addEventListener('change', buildFilter);
 
     // Переключатель вида
     $('#prs_viewList')?.addEventListener('click', () => {
@@ -686,12 +1234,74 @@ window.AsgardPersonnelPage = (function () {
 
     // Кнопки навигации
     $('#prs_btnSchedule')?.addEventListener('click', () => { location.hash = '#/workers-schedule'; });
+    $('#prs_mlsp_export')?.addEventListener('click', () => openMlspExportModal());
 
-    // Клик по строке → карточка сотрудника
+    // Клик по строке → карточка сотрудника (кнопка копирования / корзина не открывают)
     $$('.prs-row').forEach(row => {
-      row.addEventListener('click', () => {
+      row.addEventListener('click', (ev) => {
+        if (ev.target.closest('.prs-copy')) return;
+        if (ev.target.closest('.bc-row-btn')) return;
+        if (ev.target.closest('.prs-mlsp-chip-btn, .prs-mlsp-tr, .prs-mlsp-extend, .prs-mlsp-depart, .prs-mlsp-reopen')) return;
         const id = row.dataset.id;
         if (id) location.hash = `#/employee?id=${id}`;
+      });
+    });
+    $$('.prs-mlsp-chip-btn').forEach(btn => {
+      btn.addEventListener('click', (ev) => {
+        ev.preventDefault();
+        ev.stopPropagation();
+        const empId = btn.dataset.empId || '';
+        const parts = ['status=on_mlsp'];
+        if (empId) parts.push('focus_emp=' + encodeURIComponent(empId));
+        location.hash = '#/personnel?' + parts.join('&');
+      });
+    });
+    $$('.prs-mlsp-tr').forEach(sel => {
+      sel.addEventListener('change', async () => {
+        const id = sel.dataset.stayId;
+        try {
+          await fetch('/api/staff/mlsp-stays/' + id, {
+            method: 'PATCH', headers: authHeaders(true),
+            body: JSON.stringify({ transport: sel.value || null })
+          }).then(async r => { if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || r.status); });
+          toast('Сохранено', 'Транспорт обновлён', 'ok');
+        } catch (e) { toast('Ошибка', e.message, 'err'); }
+      });
+    });
+    $$('.prs-mlsp-extend').forEach(btn => {
+      btn.addEventListener('click', (ev) => {
+        ev.stopPropagation();
+        openMlspExtendModal(btn.dataset.stayId);
+      });
+    });
+    $$('.prs-mlsp-depart').forEach(btn => {
+      btn.addEventListener('click', (ev) => {
+        ev.stopPropagation();
+        openMlspDepartModal(btn.dataset.stayId);
+      });
+    });
+    $$('.prs-mlsp-reopen').forEach(btn => {
+      btn.addEventListener('click', (ev) => {
+        ev.stopPropagation();
+        openMlspReopenModal(btn.dataset.stayId);
+      });
+    });
+    if (isMlspView && focusEmpId) {
+      setTimeout(() => {
+        const safe = String(focusEmpId).replace(/[^\d]/g, '');
+        const el = document.querySelector('tr.prs-row[data-emp-id="' + safe + '"]');
+        if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }, 120);
+    }
+    $$('.prs-copy').forEach(btn => {
+      btn.addEventListener('click', (ev) => {
+        ev.preventDefault();
+        ev.stopPropagation();
+        const text = btn.getAttribute('data-copy') || '';
+        if (text && typeof copyToClipboard === 'function') {
+          copyToClipboard(text);
+          markCopyBtn(btn);
+        }
       });
     });
 
@@ -723,18 +1333,24 @@ window.AsgardPersonnelPage = (function () {
 
   function openAddModal(auth) {
     const specialtyOptions = [
-      'Слесарь',
-      'Сварщик',
-      'Альпинист',
-      'Оператор ВД',
-      'Наблюдающий (ВД)',
-      'Слесарь-сантехник',
-      'Электромонтажник',
-      'Стропальщик',
-      'Мастер участка',
-      'Подсобный рабочий',
-      'Монтажник',
-    ].map(s => `<option value="${esc(s)}">${esc(s)}</option>`).join('');
+      'слесарь',
+      'сварщик',
+      'альпинист',
+      'оператор вд',
+      'наблюдающий (вд)',
+      'слесарь-сантехник',
+      'электромонтажник',
+      'стропальщик',
+      'мастер участка',
+      'подсобный рабочий',
+      'монтажник',
+      'мастер',
+      'ПТО',
+      'РП',
+    ].map(s => {
+      const label = (s === 'РП' || s === 'ПТО') ? s : (s.charAt(0).toUpperCase() + s.slice(1));
+      return `<option value="${esc(s)}">${esc(label)}</option>`;
+    }).join('');
 
     const body = `
       <div class="formrow">
@@ -748,7 +1364,8 @@ window.AsgardPersonnelPage = (function () {
         </div>
         <div>
           <label>Дата рождения</label>
-          <input id="ae_birth" type="date" class="input"/>
+          <input id="ae_birth" class="input" placeholder="дд.мм.гггг" autocomplete="bday" title="Можно вставить дату (дд.мм.гггг)"/>
+          <div id="ae_birth_age" style="margin-top:4px;font-size:12px;color:var(--t3)"></div>
         </div>
         <div>
           <label>Специальность</label>
@@ -777,6 +1394,50 @@ window.AsgardPersonnelPage = (function () {
 
     showModal('Новый сотрудник', body);
 
+    const birthInp = $('#ae_birth');
+    const birthAgeEl = $('#ae_birth_age');
+    function refreshBirthAge() {
+      if (!birthAgeEl) return;
+      const iso = parseFlexibleDate(birthInp?.value);
+      if (!iso) { birthAgeEl.textContent = birthInp?.value?.trim() ? 'Не удалось распознать дату' : ''; return; }
+      // нормализуем отображение после распознавания
+      if (birthInp && birthInp.value.trim() && birthInp.value.trim() !== iso) {
+        const [y, mo, d] = iso.split('-');
+        birthInp.dataset.iso = iso;
+        // оставляем то, что ввёл пользователь, если это уже iso — ок; иначе при paste нормализуем ниже
+      } else if (birthInp) {
+        birthInp.dataset.iso = iso || '';
+      }
+      const age = ageFromBirth(iso);
+      if (age == null) { birthAgeEl.textContent = ''; return; }
+      let t = `Возраст: ${age} ${pluralYears(age)}`;
+      if (age >= 45) t += ' · требуется УМО';
+      birthAgeEl.textContent = t;
+      birthAgeEl.style.color = age >= 45 ? 'var(--info)' : 'var(--t3)';
+    }
+    function normalizeBirthInput() {
+      if (!birthInp) return;
+      const iso = parseFlexibleDate(birthInp.value);
+      if (!iso) { birthInp.dataset.iso = ''; refreshBirthAge(); return; }
+      const [y, mo, d] = iso.split('-');
+      birthInp.value = `${d}.${mo}.${y}`;
+      birthInp.dataset.iso = iso;
+      refreshBirthAge();
+    }
+    birthInp?.addEventListener('input', refreshBirthAge);
+    birthInp?.addEventListener('blur', normalizeBirthInput);
+    birthInp?.addEventListener('paste', (ev) => {
+      const text = ev.clipboardData?.getData('text');
+      if (!text) return;
+      const iso = parseFlexibleDate(text);
+      if (!iso) return;
+      ev.preventDefault();
+      const [y, mo, d] = iso.split('-');
+      birthInp.value = `${d}.${mo}.${y}`;
+      birthInp.dataset.iso = iso;
+      refreshBirthAge();
+    });
+
     $('#ae_btnCancel')?.addEventListener('click', () => closeModal());
 
     $('#ae_btnSave')?.addEventListener('click', async () => {
@@ -788,10 +1449,12 @@ window.AsgardPersonnelPage = (function () {
       btn.textContent = 'Сохранение…';
 
       try {
+        const birthRaw = ($('#ae_birth')?.value || '').trim();
+        const birthIso = $('#ae_birth')?.dataset?.iso || parseFlexibleDate(birthRaw) || undefined;
         const payload = {
           fio,
           phone:      ($('#ae_phone')?.value || '').trim() || undefined,
-          birth_date: ($('#ae_birth')?.value || '').trim() || undefined,
+          birth_date: birthIso || undefined,
           role_tag:   ($('#ae_spec')?.value  || '').trim() || undefined,
           grade:      ($('#ae_grade')?.value || '').trim() || undefined,
           city:       ($('#ae_city')?.value  || '').trim() || undefined,
@@ -817,7 +1480,7 @@ window.AsgardPersonnelPage = (function () {
   async function openStatusModal(employeeId, employeeFio, currentStatus, onSuccess) {
     const auth = await AsgardAuth.requireUser();
     if (!auth) return;
-    const canEdit = EDIT_ROLES.includes(auth.user.role) || isDirRole(auth.user.role);
+    const canEditReadiness = READINESS_EDIT_ROLES.includes(auth.user.role) || isDirRole(auth.user.role);
 
     // Подгружаем данные сотрудника
     let emp = null;
@@ -837,12 +1500,14 @@ window.AsgardPersonnelPage = (function () {
       seOps = (seData.log || []).slice(0, 3);
     } catch (_) {}
 
-    const statusSelectorHtml = canEdit ? `
+    const statusSelectorHtml = canEditReadiness ? `
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">
         <button class="btn prs-st-btn" data-st="ready"
           style="background:var(--gold-bg);color:var(--gold)">✓ Готов</button>
         <button class="btn ghost prs-st-btn" data-st="not_ready"
           style="border-color:var(--warn);color:var(--warn-t)">✗ Не готов</button>
+        <button class="btn ghost prs-st-btn" data-st="unknown"
+          style="border-color:var(--brd);color:var(--t2)">Без статуса</button>
         <button class="btn ghost prs-st-btn" data-st="archive"
           style="border-color:var(--brd);color:var(--t3)">Архив</button>
       </div>` : '';
@@ -921,7 +1586,7 @@ window.AsgardPersonnelPage = (function () {
 
         <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:16px">
           <button class="btn ghost" id="prs_btnOpenFull">Полная карточка</button>
-          ${canEdit ? '<button class="btn" id="prs_btnSaveStatus" style="display:none">Сохранить</button>' : ''}
+          ${canEditReadiness ? '<button class="btn" id="prs_btnSaveStatus" style="display:none">Сохранить</button>' : ''}
           <button class="btn ghost" id="prs_btnCloseCard">Закрыть</button>
         </div>
       </div>`;
@@ -958,8 +1623,9 @@ window.AsgardPersonnelPage = (function () {
         Изменить статус на: ${statusBadge(st)}
       </div>`;
 
-      if (st === 'ready') {
-        html += `<label style="font-size:13px;color:var(--t3)">Дата готовности <span style="color:var(--err)">*</span></label>
+      if (st === 'ready' || st === 'not_ready') {
+        const dateLabel = st === 'ready' ? 'Готов с даты' : 'Не готов с даты';
+        html += `<label style="font-size:13px;color:var(--t3)">${dateLabel} <span style="color:var(--err)">*</span></label>
           <input id="prs_rdDate" type="date" class="input" style="margin-top:4px"
             value="${new Date().toISOString().slice(0, 10)}"/>`;
       }
@@ -967,7 +1633,7 @@ window.AsgardPersonnelPage = (function () {
         const reasonOpts = REASONS.map(r =>
           `<option value="${esc(r.key)}">${esc(r.label)}</option>`
         ).join('');
-        html += `<label style="font-size:13px;color:var(--t3)">Причина <span style="color:var(--err)">*</span></label>
+        html += `<label style="font-size:13px;color:var(--t3);margin-top:8px;display:block">Причина <span style="color:var(--err)">*</span></label>
           <select id="prs_rdReason" class="input" style="margin-top:4px">
             <option value="">— выбрать —</option>
             ${reasonOpts}
@@ -985,7 +1651,7 @@ window.AsgardPersonnelPage = (function () {
       pendingDate = $('#prs_rdDate')?.value || null;
     }
 
-    if (canEdit) {
+    if (canEditReadiness) {
       $('#prs_btnSaveStatus')?.addEventListener('click', async () => {
         if (!pendingStatus) { toast('Выберите статус', '', 'err'); return; }
 
@@ -994,8 +1660,8 @@ window.AsgardPersonnelPage = (function () {
         const rdReason  = ($('#prs_rdReason')?.value  || '').trim();
         const rdComment = ($('#prs_rdComment')?.value || '').trim();
 
-        if (pendingStatus === 'ready' && !rdDate) {
-          toast('Укажите дату готовности', '', 'err'); return;
+        if ((pendingStatus === 'ready' || pendingStatus === 'not_ready') && !rdDate) {
+          toast('Укажите дату (с какого числа)', '', 'err'); return;
         }
         if (pendingStatus === 'not_ready' && !rdReason) {
           toast('Укажите причину', '', 'err'); return;
@@ -1007,8 +1673,8 @@ window.AsgardPersonnelPage = (function () {
         try {
           await apiPut(`/staff/readiness/${employeeId}/status`, {
             status:         pendingStatus,
-            readiness_date: rdDate   || null,
-            reason:         rdReason  || null,
+            readiness_date: (pendingStatus === 'ready' || pendingStatus === 'not_ready') ? (rdDate || null) : null,
+            reason:         pendingStatus === 'not_ready' ? (rdReason || null) : null,
             comment:        rdComment || null,
           });
           toast('Сохранено', `Статус изменён на «${STATUS_MAP[pendingStatus]?.label || pendingStatus}»`);

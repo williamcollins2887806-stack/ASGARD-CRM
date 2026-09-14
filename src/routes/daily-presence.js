@@ -18,6 +18,7 @@ const activity = require('../services/presence-activity');
 
 module.exports = async function (fastify, options) {
   const db = fastify.db;
+  try { activity.attachDb(db); } catch (_) { /* ignore */ }
 
   // ─────────────────────────────────────────────────────────────────
   // POST /api/daily-presence/heartbeat — пульс активности для «живого офиса» (Фаза 3)

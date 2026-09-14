@@ -1,0 +1,120 @@
+/* Premium WMS/Pay/Catalog — gold primary (loads AFTER app.css) */
+.proc-page .btn.primary,
+.proc-desk .btn.primary,
+.proc-pay-modal .btn.primary,
+.proc-pay-modal__actions .btn.primary,
+.proc-inv-cta .btn.primary,
+#proc-invoice-top.btn.primary,
+#proc-invoice.btn.primary,
+#proc-invoice-foot.btn.primary,
+#inv-root .btn.primary,
+.pi-queue .btn.primary,
+.cr-m .btn.primary,
+.cr-m-overlay .btn.primary,
+.cr-m-body .btn.primary,
+.asm-page .btn.primary,
+.asm-detail .btn.primary,
+.asm-detail__actions .btn.primary,
+#asm-send.btn.primary,
+#asm-confirm.btn.primary,
+.sup-page .btn.primary,
+#sup-ci-go.btn.primary,
+.wh2-page .btn.primary,
+.wh2-btn--primary {
+  background: var(--gold, #D4A843) !important;
+  border-color: var(--gold, #D4A843) !important;
+  color: #15110d !important;
+  box-shadow: none;
+}
+.proc-page .btn.primary:hover,
+.cr-m .btn.primary:hover,
+.sup-page .btn.primary:hover,
+.asm-detail .btn.primary:hover {
+  filter: brightness(1.06);
+}
+#proc-new-pay.proc-act,
+.proc-act#proc-new-pay {
+  background: var(--gold, #D4A843) !important;
+  border-color: var(--gold, #D4A843) !important;
+  color: #15110d !important;
+}
+.proc-deliver__btn--primary {
+  background: linear-gradient(135deg, var(--gold, #D4A843), #b8923a) !important;
+  color: #15110d !important;
+}
+.wh2-table .wh2-btn,
+.wh2-ops-list .wh2-btn,
+#wh2-ops-list .wh2-btn {
+  border-color: color-mix(in srgb, var(--gold, #D4A843) 55%, var(--brd)) !important;
+  color: var(--gold, #D4A843) !important;
+}
+.wh2-table .wh2-btn:hover {
+  background: color-mix(in srgb, var(--gold, #D4A843) 14%, transparent) !important;
+}
+.asm-status--confirmed {
+  background: color-mix(in srgb, var(--gold, #D4A843) 18%, transparent) !important;
+  color: var(--gold, #D4A843) !important;
+}
+
+/* Склад: сборки + мониторинг РП */
+.wh2-asm { padding: 4px 2px 28px; }
+.wh2-asm-head { display:flex; justify-content:space-between; gap:14px; align-items:flex-start; flex-wrap:wrap; margin-bottom:14px; }
+.wh2-asm-kicker { font-size:11px; letter-spacing:.08em; text-transform:uppercase; color:var(--t2); font-weight:700; }
+.wh2-asm-h { margin:4px 0 0; font-size:20px; letter-spacing:-.02em; }
+.wh2-asm-list { display:flex; flex-direction:column; gap:12px; }
+.wh2-asm-card {
+  border:1px solid color-mix(in srgb, var(--gold, #D4A843) 28%, var(--brd, rgba(255,255,255,.12)));
+  border-radius:14px; padding:14px 16px; background:color-mix(in srgb, var(--bg2, #1a1f2a) 92%, transparent);
+}
+.wh2-asm-card__top { display:flex; justify-content:space-between; gap:12px; align-items:flex-start; }
+.wh2-asm-card__title { font-weight:700; font-size:15px; }
+.wh2-asm-card__meta { font-size:12px; color:var(--t2); margin-top:4px; line-height:1.4; }
+.wh2-asm-card__pct { font-size:18px; font-weight:800; color:var(--gold, #D4A843); margin-top:6px; text-align:right; }
+.wh2-asm-card__bar, .wh2-asm-kpi__bar {
+  height:6px; border-radius:99px; background:rgba(255,255,255,.08); margin:10px 0 8px; overflow:hidden;
+}
+.wh2-asm-card__bar i, .wh2-asm-kpi__bar i {
+  display:block; height:100%; background:linear-gradient(90deg, var(--gold, #D4A843), #e8c56a);
+}
+.wh2-asm-cta { margin-top:10px; }
+.wh2-asm-kpi {
+  display:grid; grid-template-columns:auto 1fr auto; gap:12px; align-items:center;
+  padding:14px 16px; border-radius:14px; margin:12px 0 18px;
+  border:1px solid color-mix(in srgb, var(--gold, #D4A843) 35%, var(--brd));
+  background:color-mix(in srgb, var(--gold, #D4A843) 8%, transparent);
+}
+.wh2-asm-kpi__pct b { font-size:28px; color:var(--gold, #D4A843); }
+.wh2-asm-kpi__pct span { display:block; font-size:11px; color:var(--t2); text-transform:uppercase; letter-spacing:.06em; }
+.wh2-asm-kpi__meta { display:flex; flex-direction:column; gap:4px; font-size:13px; text-align:right; }
+.wh2-asm-kpi__meta b { color:var(--gold, #D4A843); }
+.wh2-asm-sec-h { font-size:12px; font-weight:700; letter-spacing:.06em; text-transform:uppercase; color:var(--t2); margin:18px 0 8px; }
+.wh2-asm-table { display:flex; flex-direction:column; gap:8px; }
+.wh2-asm-row {
+  display:grid; grid-template-columns:1fr auto; gap:10px; align-items:center;
+  padding:10px 12px; border-radius:10px; border:1px solid var(--brd, rgba(255,255,255,.1));
+}
+.wh2-asm-row__name { font-weight:600; font-size:13px; }
+.wh2-asm-row__flags { margin-top:4px; display:flex; flex-wrap:wrap; gap:4px; }
+.wh2-asm-chip {
+  display:inline-block; font-size:10px; padding:2px 7px; border-radius:999px;
+  background:rgba(255,255,255,.08); color:var(--t2);
+}
+.wh2-asm-chip--assembled, .wh2-asm-chip--paid { background:color-mix(in srgb, var(--gold, #D4A843) 22%, transparent); color:var(--gold, #D4A843); }
+.wh2-asm-chip--in_procurement { background:rgba(96,165,250,.18); color:#93c5fd; }
+.wh2-asm-chip--in_transit { background:rgba(251,146,60,.18); color:#fdba74; }
+.wh2-asm-status { font-size:11px; padding:3px 8px; border-radius:999px; background:rgba(255,255,255,.08); }
+.wh2-asm-qty { display:flex; gap:6px; align-items:center; flex-wrap:wrap; }
+.wh2-asm-qty__inp {
+  width:64px; padding:6px 8px; border-radius:8px; border:1px solid var(--brd);
+  background:var(--bg2, rgba(0,0,0,.25)); color:inherit; text-align:center;
+}
+.wh2-asm-empty { text-align:center; padding:48px 20px; }
+.wh2-asm-empty__title { font-size:18px; font-weight:700; margin-bottom:8px; }
+.wh2-asm-empty__verb { color:var(--t2); font-size:14px; max-width:420px; margin:0 auto 16px; line-height:1.45; }
+.wh2-asm-actions { display:flex; gap:8px; flex-wrap:wrap; }
+.wh2-asm-pallet { padding:8px 12px; border-radius:8px; border:1px dashed var(--brd); margin-bottom:6px; font-size:13px; }
+.wh2 .btn.primary, .wh2-asm .btn.primary {
+  background: var(--gold, #D4A843) !important;
+  border-color: var(--gold, #D4A843) !important;
+  color: #15110d !important;
+}

@@ -65,8 +65,36 @@ window.WH2Equipment = (function () {
   const isAdmin = () => ADMIN_ROLES.includes(_user && _user.role);
   const isPM = () => PM_ROLES.includes(_user && _user.role) || isAdmin();
   const dt = d => d ? new Date(d).toLocaleDateString('ru-RU') : '—';
-  const money = n => (n == null || n === '') ? '—' : Number(n).toLocaleString('ru-RU') + ' ₽';
-  const eqIcon = e => e.custom_icon || e.category_icon || '🛠️';
+  const money = (n) => (AsgardUI.moneyRub || AsgardMoney.formatMoney)(n);
+  function humanEqName(e) {
+    const t = String((e && e.name) || '').trim();
+    const id = e && e.id;
+    if (window.AsgardWarehouseV2 && typeof AsgardWarehouseV2.humanCatalogName === 'function') {
+      return AsgardWarehouseV2.humanCatalogName(t, id);
+    }
+    if (!t) return id != null ? ('Позиция #' + id) : '—';
+    if (/FALLBACK|E2E|Gallery\+|FULL-BIZ|\d{10,}/i.test(t)) return id != null ? ('Позиция #' + id) : t.slice(0, 36);
+    return t;
+  }
+  const eqIcon = e => {
+    if (e.custom_icon) return e.custom_icon;
+    if (e.category_icon) return e.category_icon;
+    const n = ((e.name || '') + ' ' + (e.category_name || '') + ' ' + (e.brand || '')).toLowerCase();
+    if (/нивел|лазер|уровень/.test(n)) return '📐';
+    if (/тепловиз|термо/.test(n)) return '🌡️';
+    if (/перфор|дрель|шуруп/.test(n)) return '🔩';
+    if (/генератор|дгу|бензо/.test(n)) return '⚡';
+    if (/ушм|болгар|шлиф/.test(n)) return '⚙️';
+    if (/свар|инвертор|полуавтомат/.test(n)) return '🔥';
+    if (/насос|помп/.test(n)) return '💦';
+    if (/компресс/.test(n)) return '💨';
+    if (/лестниц|стремян/.test(n)) return '🪜';
+    if (/газорез|баллон|кислород/.test(n)) return '🧯';
+    if (/измерит|мультиметр|тестер/.test(n)) return '📏';
+    if (/камер|фото|видео/.test(n)) return '📷';
+    if (/ноутбук|планшет|пк|компьютер/.test(n)) return '💻';
+    return '🛠️';
+  };
   const optHtml = (list, vKey, lKey, sel) => (list || []).map(o => `<option value="${esc(String(o[vKey]))}"${String(o[vKey]) === String(sel) ? ' selected' : ''}>${esc(o[lKey] || '')}</option>`).join('');
   function hl(text) { if (!S.search || !text) return esc(text || ''); const q = S.search.trim(); if (q.length < 2) return esc(text); try { const re = new RegExp('(' + q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + ')', 'gi'); return esc(text).replace(re, '<mark class="wh2-eq-hl">$1</mark>'); } catch (_) { return esc(text); } }
   const modal = (title, html) => UI.showModal && UI.showModal({ title, html });
@@ -77,19 +105,38 @@ window.WH2Equipment = (function () {
   const val = id => { const e = document.getElementById(id); return e ? e.value.trim() : ''; };
 
   function injectCSS() {
-    if (document.getElementById('wh2-eq-css')) return;
-    const s = document.createElement('style'); s.id = 'wh2-eq-css';
+    let s = document.getElementById('wh2-eq-css');
+    if (!s) { s = document.createElement('style'); s.id = 'wh2-eq-css'; document.head.appendChild(s); }
     s.textContent = `
     .wh2-eq-head{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;align-items:center}
-    .wh2-eq-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(290px,1fr));gap:14px}
-    .wh2-eq-card{background:var(--bg-card,#161a22);border:1px solid var(--border,#262c38);border-radius:15px;padding:14px;cursor:pointer;transition:.18s;animation:wh2in .3s both;display:flex;flex-direction:column;gap:10px}
-    .wh2-eq-card:hover{transform:translateY(-3px);border-color:var(--gold,#D4A843);box-shadow:0 8px 24px rgba(0,0,0,.25)}
-    .wh2-eq-card__row{display:flex;gap:12px}
-    .wh2-eq-card__ph{width:56px;height:56px;border-radius:12px;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:28px;background:rgba(212,168,67,.1);object-fit:cover}
-    .wh2-eq-card__name{font-weight:700;font-size:14px;line-height:1.3;color:var(--t1,#e6e9ef)}
-    .wh2-eq-card__inv{font-size:11px;color:var(--t2,#8b93a3);margin-top:2px}
+    .wh2-eq-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:16px}
+    .wh2-eq-card{background:var(--bg-card,#161a22);border:1px solid transparent;border-radius:16px;padding:0;cursor:pointer;transition:transform .18s ease,box-shadow .18s ease,border-color .18s ease;animation:wh2in .3s both;display:flex;flex-direction:column;gap:0;overflow:hidden;box-shadow:0 2px 10px rgba(0,0,0,.18)}
+    .wh2-eq-card:hover{transform:translateY(-4px);border-color:rgba(212,168,67,.45);box-shadow:0 14px 32px rgba(0,0,0,.32)}
+    .wh2-eq-card__media{position:relative;aspect-ratio:1/1;background:linear-gradient(165deg,rgba(212,168,67,.08),rgba(255,255,255,.03) 45%,rgba(0,0,0,.12));display:flex;align-items:stretch;justify-content:stretch;overflow:hidden;flex-shrink:0}
+    .wh2-eq-card__media--t0{background:linear-gradient(160deg,rgba(212,168,67,.16),rgba(255,255,255,.04) 50%,rgba(0,0,0,.1))}
+    .wh2-eq-card__media--t1{background:linear-gradient(160deg,rgba(74,144,217,.18),rgba(255,255,255,.04) 50%,rgba(0,0,0,.1))}
+    .wh2-eq-card__media--t2{background:linear-gradient(160deg,rgba(48,209,88,.14),rgba(255,255,255,.04) 50%,rgba(0,0,0,.1))}
+    .wh2-eq-card__media--t3{background:linear-gradient(160deg,rgba(255,140,66,.16),rgba(255,255,255,.04) 50%,rgba(0,0,0,.1))}
+    .wh2-eq-card__media--t4{background:linear-gradient(160deg,rgba(165,110,255,.16),rgba(255,255,255,.04) 50%,rgba(0,0,0,.1))}
+    .wh2-eq-card__media--t5{background:linear-gradient(160deg,rgba(90,200,216,.16),rgba(255,255,255,.04) 50%,rgba(0,0,0,.1))}
+    html[data-theme="light"] .wh2-eq-card__media--t0{background:linear-gradient(160deg,#f5ebd0,#ebe3d2)}
+    html[data-theme="light"] .wh2-eq-card__media--t1{background:linear-gradient(160deg,#dde9f4,#ebe3d2)}
+    html[data-theme="light"] .wh2-eq-card__media--t2{background:linear-gradient(160deg,#dcefe4,#ebe3d2)}
+    html[data-theme="light"] .wh2-eq-card__media--t3{background:linear-gradient(160deg,#f3e6da,#ebe3d2)}
+    html[data-theme="light"] .wh2-eq-card__media--t4{background:linear-gradient(160deg,#ebe2f3,#ebe3d2)}
+    html[data-theme="light"] .wh2-eq-card__media--t5{background:linear-gradient(160deg,#dceef1,#ebe3d2)}
+    .wh2-eq-card__media img,.wh2-eq-card__ph{width:100%;height:100%;object-fit:cover;display:block;border-radius:0;border:0}
+    .wh2-eq-card__media .goods-icon{position:absolute!important;left:50%!important;top:50%!important;width:124%!important;height:124%!important;max-width:none!important;max-height:none!important;transform:translate(-50%,-50%)!important;border-radius:0!important;box-shadow:none!important;border:0!important;background:transparent!important;display:block!important;padding:0!important;margin:0!important}
+    .wh2-eq-card__media .goods-icon svg{width:100%!important;height:100%!important;display:block}
+    .wh2-eq-card__media-fallback{position:absolute;inset:-8%;display:flex;align-items:center;justify-content:center;font-size:clamp(150px,82%,220px);line-height:1;user-select:none;filter:drop-shadow(0 8px 18px rgba(0,0,0,.28));pointer-events:none}
+    .wh2-eq-card__st{position:absolute;top:10px;right:10px;z-index:2;padding:5px 10px;border-radius:999px;font-size:11px;font-weight:800;backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);box-shadow:0 2px 8px rgba(0,0,0,.25)}
+    .wh2-eq-card__qty{position:absolute;left:10px;top:10px;z-index:2;padding:5px 10px;border-radius:999px;background:rgba(12,14,18,.82);backdrop-filter:blur(8px);color:#fff;font-size:12px;font-weight:800}
+    .wh2-eq-card__caption{position:absolute;left:0;right:0;bottom:0;z-index:2;padding:48px 12px 12px;background:linear-gradient(180deg,transparent 0%,rgba(8,10,14,.5) 40%,rgba(8,10,14,.92) 100%);color:#fff;font-weight:700;font-size:13.5px;line-height:1.3;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+    .wh2-eq-card__body{padding:10px 12px 12px;display:flex;flex-direction:column;gap:6px;flex:0 0 auto;min-height:0}
+    .wh2-eq-card__name{font-weight:700;font-size:14.5px;line-height:1.35;color:var(--t1,#e6e9ef);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;min-height:2.7em}
+    .wh2-eq-card__inv{font-size:12px;color:var(--t2,#8b93a3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
     .wh2-eq-card__meta{font-size:12px;color:var(--t2,#8b93a3);display:flex;flex-direction:column;gap:2px}
-    .wh2-eq-card__foot{display:flex;gap:6px;flex-wrap:wrap;border-top:1px solid var(--border,#1e2430);padding-top:10px;margin-top:auto}
+    .wh2-eq-card__foot{display:flex;gap:6px;flex-wrap:wrap;border-top:none;padding-top:0;margin-top:2px;justify-content:space-between;align-items:center}
     .wh2-eq-act{font-size:12px;font-weight:600;padding:6px 11px;border-radius:9px;border:1px solid var(--border,#262c38);background:var(--bg-input,#10141b);color:var(--t1,#e6e9ef);cursor:pointer;transition:.15s}
     .wh2-eq-act:hover{border-color:var(--gold,#D4A843)}
     .wh2-eq-act--issue{background:rgba(74,144,217,.15);color:#5aa0e0;border-color:transparent}
@@ -129,9 +176,22 @@ window.WH2Equipment = (function () {
     .wh2-eq-icon{font-size:22px;padding:8px;border-radius:9px;cursor:pointer;text-align:center;background:var(--bg-input,#10141b)}
     .wh2-eq-icon:hover{background:rgba(212,168,67,.2)}
     .wh2-eq-loadmore{display:block;margin:18px auto;padding:10px 24px;border-radius:11px;border:1px solid var(--border,#262c38);background:var(--bg-card,#161a22);color:var(--t1,#e6e9ef);cursor:pointer}
-    @media(max-width:480px){.wh2-eq-grid{grid-template-columns:1fr}.wh2-eq-icons{grid-template-columns:repeat(6,1fr)}.wh2-eq-form{min-width:auto}}
+    .wh2-eq-hero{display:flex;gap:18px;align-items:flex-start;margin-bottom:14px}
+    .wh2-eq-hero__ph{width:168px;height:168px;border-radius:16px;overflow:hidden;flex-shrink:0;display:flex;align-items:stretch;justify-content:stretch;font-size:72px;background:linear-gradient(165deg,rgba(212,168,67,.1),rgba(255,255,255,.04));border:1px solid var(--border,#262c38);position:relative;padding:0}
+    .wh2-eq-hero__ph img{width:100%;height:100%;object-fit:cover;border:0}
+    .wh2-eq-hero__ph .goods-icon{position:absolute!important;inset:0!important;width:100%!important;height:100%!important;max-width:none!important;max-height:none!important;border-radius:0!important;box-shadow:none!important;background:transparent!important;border:0!important}
+    .wh2-eq-hero__ph .goods-icon svg{width:100%!important;height:100%!important}
+    html[data-theme="light"] .wh2-eq-card{border-color:transparent;box-shadow:0 2px 14px rgba(40,36,28,.07)}
+    html[data-theme="light"] .wh2-eq-card:hover{box-shadow:0 12px 28px rgba(40,36,28,.14)}
+    html[data-theme="light"] .wh2-eq-card__media{background:linear-gradient(165deg,#f3eee3,#e9e1d2 55%,#e2d9c8)}
+    html[data-theme="light"] .wh2-eq-card__media .goods-icon{background:transparent!important}
+    html[data-theme="light"] .wh2-eq-card__qty{background:rgba(255,255,255,.94);color:#1a1408}
+    html[data-theme="light"] .wh2-eq-card__caption{background:linear-gradient(180deg,transparent 0%,rgba(40,36,28,.22) 38%,rgba(40,36,28,.68) 100%)}
+    html[data-theme="light"] .wh2-eq-card__body{background:var(--bg-card,#fff)}
+    html[data-theme="light"] .wh2-eq-kit{border-color:rgba(40,36,28,.1);box-shadow:0 2px 10px rgba(40,36,28,.06)}
+    html[data-theme="light"] .wh2-eq-hero__ph{background:linear-gradient(165deg,#f3eee3,#ebe3d2);border-color:rgba(40,36,28,.1)}
+    @media(max-width:480px){.wh2-eq-grid{grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px}.wh2-eq-icons{grid-template-columns:repeat(6,1fr)}.wh2-eq-form{min-width:auto}.wh2-eq-hero{flex-direction:column}.wh2-eq-hero__ph{width:100%;height:200px}.wh2-eq-card__media .goods-icon{width:100%!important;height:100%!important}.wh2-eq-card__media-fallback{font-size:72px}}
     `;
-    document.head.appendChild(s);
   }
 
   // ─────────────────────────── ЗАГРУЗКА ───────────────────────────
@@ -190,7 +250,7 @@ window.WH2Equipment = (function () {
       <div class="wh2-eq-filters" id="wh2-eq-filters"></div>
       <div class="wh2-eq-grp-btns" id="wh2-eq-grp"></div>
       <div id="wh2-eq-requests"></div>
-      <div id="wh2-eq-content"><div class="wh2-eq-grid">${Array.from({ length: 8 }).map(() => '<div class="wh2-skel" style="height:130px;border-radius:14px"></div>').join('')}</div></div>
+      <div id="wh2-eq-content"><div class="wh2-eq-grid">${Array.from({ length: 8 }).map(() => '<div class="wh2-skel" style="height:310px;border-radius:16px"></div>').join('')}</div></div>
       <div id="wh2-eq-kits"></div>`;
 
     container.querySelectorAll('[data-eq]').forEach(b => b.onclick = () => {
@@ -278,28 +338,38 @@ window.WH2Equipment = (function () {
     const st = STATUS[e.status] || { l: e.status || '—', c: '#8b93a3' };
     const cond = COND[e.condition];
     const hasSvg = window.AsgardGoodsIcon && (e.icon_path || e.icon_slug);
-    const photo = e.photo_url
-      ? `<img class="wh2-eq-card__ph" src="${esc(e.photo_url)}">`
+    const media = e.photo_url
+      ? `<img class="wh2-eq-card__ph" src="${esc(e.photo_url)}" alt="" loading="lazy">`
       : (hasSvg
-        ? `<div class="wh2-eq-card__ph" style="display:flex;align-items:center;justify-content:center">${window.AsgardGoodsIcon.placeholder({ slug: e.icon_slug, path: e.icon_path, size: 48, alt: e.name })}</div>`
-        : `<div class="wh2-eq-card__ph">${eqIcon(e)}</div>`);
+        ? window.AsgardGoodsIcon.placeholder({ slug: e.icon_slug, path: e.icon_path, size: 160, alt: e.name })
+        : `<span class="wh2-eq-card__media-fallback" aria-hidden="true">${eqIcon(e)}</span>`);
+    const qtyLabel = (e.quantity && Number(e.quantity) !== 1) ? (`Комплект ${fmt(e.quantity)} ${esc(e.unit || 'ед.')}`) : '1 шт.';
     const acts = [];
     if (e.status === 'on_warehouse' && isAdmin()) acts.push(`<button class="wh2-eq-act wh2-eq-act--issue" data-act="issue" data-id="${e.id}">📤 Выдать</button>`);
     if (e.status === 'issued' && (isAdmin() || e.current_holder_id === _user.id)) acts.push(`<button class="wh2-eq-act wh2-eq-act--return" data-act="return" data-id="${e.id}">📥 Вернуть</button>`);
     if (e.status === 'issued' && isPM()) acts.push(`<button class="wh2-eq-act" data-act="transfer" data-id="${e.id}">🔄</button>`);
     if (isAdmin() && !['repair', 'written_off'].includes(e.status)) acts.push(`<button class="wh2-eq-act" data-act="repair" data-id="${e.id}">🔧</button>`);
-    return `<div class="wh2-eq-card" data-eqid="${e.id}" style="position:relative">
-      <div class="wh2-eq-card__row">${photo}
-        <div style="flex:1;min-width:0"><div class="wh2-eq-card__name">${hl(e.name)}</div>
-          <div class="wh2-eq-card__inv">${e.inventory_number ? '№ ' + hl(e.inventory_number) : ''}${e.category_name ? ' · ' + esc(e.category_name) : ''}</div></div>
-        <span class="wh2-chip" style="background:${st.c}22;color:${st.c};align-self:flex-start">${st.i || ''} ${st.l}</span></div>
-      <div class="wh2-eq-card__meta">
-        ${e.holder_name ? `<span>👤 ${esc(e.holder_name)}</span>` : ''}
-        ${e.object_name ? `<span>📍 ${esc(e.object_name)}</span>` : (e.warehouse_name ? `<span>🏬 ${esc(e.warehouse_name)}</span>` : '')}
-        ${e.location_label ? `<span>🗺️ ${esc(e.location_label)}</span>` : ''}
-        ${cond ? `<span style="color:${cond.c}">● ${cond.l}</span>` : ''}</div>
-      <div class="wh2-eq-card__foot" style="justify-content:space-between;align-items:center">
-        <span style="display:flex;gap:6px">${acts.join('')}</span>${_eqStepper(e.id)}</div></div>`;
+    const tint = (e.id || 0) % 6;
+    return `<div class="wh2-eq-card" data-eqid="${e.id}">
+      <div class="wh2-eq-card__media wh2-eq-card__media--t${tint}">
+        ${media}
+        <span class="wh2-eq-card__st" style="background:${st.c}33;color:${st.c}">${st.i || ''} ${st.l}</span>
+        <span class="wh2-eq-card__qty">${qtyLabel}</span>
+        <div class="wh2-eq-card__caption">${hl(humanEqName(e))}</div>
+      </div>
+      <div class="wh2-eq-card__body">
+        <div class="wh2-eq-card__inv">${e.inventory_number ? '№ ' + hl(e.inventory_number) : ''}${e.category_name ? (e.inventory_number ? ' · ' : '') + esc(e.category_name) : ''}${e.brand ? ' · ' + esc(e.brand) : ''}</div>
+        <div class="wh2-eq-card__meta">
+          ${e.holder_name ? `<span>👤 ${esc(e.holder_name)}</span>` : ''}
+          ${e.object_name ? `<span>📍 ${esc(e.object_name)}</span>` : (e.warehouse_name ? `<span>🏬 ${esc(e.warehouse_name)}</span>` : '')}
+          ${e.location_label ? `<span>🗺️ ${esc(e.location_label)}</span>` : ''}
+          ${cond ? `<span style="color:${cond.c}">● ${cond.l}</span>` : ''}
+        </div>
+        <div class="wh2-eq-card__foot">
+          <span style="display:flex;gap:6px;flex-wrap:wrap">${acts.join('')}</span>${_eqStepper(e.id)}
+        </div>
+      </div>
+    </div>`;
   }
 
   function renderTable(items) {
@@ -313,7 +383,7 @@ window.WH2Equipment = (function () {
           : (hasSvg ? window.AsgardGoodsIcon.placeholder({ slug: e.icon_slug, path: e.icon_path, size: 28, alt: e.name }) : eqIcon(e));
         return `<tr data-eqid="${e.id}" style="cursor:pointer">
         <td style="font-size:18px">${iconCell}</td>
-        <td><b>${hl(e.name)}</b></td><td>${hl(e.inventory_number || '—')}</td><td>${esc(e.category_name || '—')}</td>
+        <td><b>${hl(humanEqName(e))}</b></td><td>${hl(e.inventory_number || '—')}</td><td>${esc(e.category_name || '—')}</td>
         <td><span class="wh2-chip" style="background:${st.c}22;color:${st.c}">${st.l}</span></td>
         <td>${esc(e.holder_name || '—')}</td><td>${esc(e.object_name || e.warehouse_name || '—')}</td>${cartCell}</tr>`; }).join('')}</tbody></table>`;
   }
@@ -397,14 +467,18 @@ window.WH2Equipment = (function () {
     let data; try { data = await api('/api/equipment/' + id); } catch (e) { toast('Ошибка', e.message, 'err'); return; }
     const e = data.equipment || data.item || data, moves = data.movements || [], maint = data.maintenance || [];
     const st = STATUS[e.status] || { l: e.status, c: '#8b93a3' };
-    const photo = e.photo_url ? `<img src="${esc(e.photo_url)}" style="width:88px;height:88px;border-radius:14px;object-fit:cover">` : `<div style="width:88px;height:88px;border-radius:14px;display:flex;align-items:center;justify-content:center;font-size:42px;background:rgba(212,168,67,.1)">${eqIcon(e)}</div>`;
+    const photo = e.photo_url
+      ? `<img src="${esc(e.photo_url)}" alt="">`
+      : (window.AsgardGoodsIcon && (e.icon_path || e.icon_slug)
+        ? window.AsgardGoodsIcon.placeholder({ slug: e.icon_slug, path: e.icon_path, size: 88, alt: e.name })
+        : eqIcon(e));
     const foot = [];
     if (e.status === 'on_warehouse' && isAdmin()) foot.push(`<button class="wh2-btn wh2-btn--primary" id="wh2c-issue">📤 Выдать</button>`);
     if (e.status === 'issued' && (isAdmin() || e.current_holder_id === _user.id)) foot.push(`<button class="wh2-btn" id="wh2c-return">📥 Вернуть</button>`);
     if (isAdmin()) foot.push(`<button class="wh2-btn" id="wh2c-edit">✏️ Изменить</button><button class="wh2-btn" id="wh2c-photo">📷 Фото</button>`);
-    modal('Оборудование #' + e.id, `<div style="min-width:380px">
-      <div style="display:flex;gap:14px;margin-bottom:14px">${photo}<div style="flex:1"><div style="font-weight:700;font-size:17px">${esc(e.name)}</div>
-        <div style="font-size:12px;color:var(--t2,#8b93a3);margin:4px 0">${e.inventory_number ? '№ ' + esc(e.inventory_number) : ''}${e.category_name ? ' · ' + esc(e.category_name) : ''}</div>
+    modal('Оборудование #' + e.id, `<div style="min-width:min(420px,92vw)">
+      <div class="wh2-eq-hero"><div class="wh2-eq-hero__ph">${photo}</div><div style="flex:1"><div style="font-weight:700;font-size:18px;line-height:1.3">${esc(e.name)}</div>
+        <div style="font-size:13px;color:var(--t2,#8b93a3);margin:6px 0">${e.inventory_number ? '№ ' + esc(e.inventory_number) : ''}${e.category_name ? ' · ' + esc(e.category_name) : ''}${e.brand ? ' · ' + esc(e.brand) : ''}</div>
         <span class="wh2-chip" style="background:${st.c}22;color:${st.c}">${st.i || ''} ${st.l}</span></div></div>
       <div class="wh2-eq-dtabs" id="wh2c-tabs"><button class="wh2-eq-dtab wh2-eq-dtab--on" data-ct="info">Инфо</button>
         <button class="wh2-eq-dtab" data-ct="moves">Перемещения${moves.length ? ' (' + moves.length + ')' : ''}</button>
@@ -412,6 +486,7 @@ window.WH2Equipment = (function () {
         <button class="wh2-eq-dtab" data-ct="qr">QR</button></div>
       <div id="wh2c-body"></div>
       ${foot.length ? `<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:16px;border-top:1px solid var(--border,#262c38);padding-top:14px">${foot.join('')}</div>` : ''}</div>`);
+    if (window.AsgardGoodsIcon) window.AsgardGoodsIcon.hydrate(document.body);
     const body = document.getElementById('wh2c-body');
     const tabs = { info: () => infoTab(e), moves: () => movesTab(moves), maint: () => maintTab(maint), qr: () => qrTab(e) };
     const show = t => { body.innerHTML = tabs[t](); if (t === 'maint') { const ab = body.querySelector('#wh2c-add-maint'); if (ab) ab.onclick = () => openMaintenanceForm(e.id); } };
@@ -424,6 +499,7 @@ window.WH2Equipment = (function () {
     const amort = (e.book_value != null || e.accumulated_depreciation != null) ? `<div class="wh2-eq-panel"><h4>Амортизация</h4><dt>Балансовая стоимость</dt><dd>${money(e.book_value)}</dd><dt>Накоплено</dt><dd>${money(e.accumulated_depreciation)}</dd></div>` : '';
     return `<div class="wh2-eq-panels">
       <div class="wh2-eq-panel"><h4>Основное</h4><dt>Серийный №</dt><dd>${esc(e.serial_number || '—')}</dd><dt>Штрихкод</dt><dd>${esc(e.barcode || '—')}</dd><dt>Бренд / модель</dt><dd>${esc(e.brand || '—')} ${esc(e.model || '')}</dd><dt>Кол-во</dt><dd>${fmt(e.quantity || 1)} ${esc(e.unit || 'шт')}</dd></div>
+      <div class="wh2-eq-panel"><h4>Габариты / вес</h4><dt>L×W×H</dt><dd>${e.length_mm && e.width_mm && e.height_mm ? `${e.length_mm}×${e.width_mm}×${e.height_mm} мм` : '—'}</dd><dt>Объём</dt><dd>${e.volume_mm3 ? (Number(e.volume_mm3)/1e9).toFixed(4)+' м³' : '—'}</dd><dt>Вес</dt><dd>${e.weight_g != null ? (Number(e.weight_g)/1000).toFixed(2)+' кг ('+e.weight_g+' г)' : '—'}</dd><dt>Источник</dt><dd>${esc(e.dims_source || '—')}</dd></div>
       <div class="wh2-eq-panel"><h4>Местоположение</h4><dt>Склад</dt><dd>${esc(e.warehouse_name || '—')}</dd><dt>Ячейка</dt><dd>${esc(e.location_label || '—')}</dd><dt>Ответственный</dt><dd>${esc(e.holder_name || '—')}</dd><dt>Объект</dt><dd>${esc(e.object_name || '—')}</dd></div>
       <div class="wh2-eq-panel"><h4>Финансы</h4><dt>Стоимость</dt><dd>${money(e.purchase_price)}</dd><dt>Куплено</dt><dd>${dt(e.purchase_date)}</dd></div>
       <div class="wh2-eq-panel"><h4>ТО и гарантия</h4><dt>Гарантия до</dt><dd>${dt(e.warranty_end)}</dd><dt>След. ТО</dt><dd>${dt(e.next_maintenance)}</dd><dt>Поверка</dt><dd>${dt(e.next_calibration)}</dd></div>
@@ -445,15 +521,26 @@ window.WH2Equipment = (function () {
       <div class="row">${inp('wh2f-brand', 'Бренд', e && e.brand)}${inp('wh2f-model', 'Модель', e && e.model)}</div>
       <div class="row">${inp('wh2f-qty', 'Кол-во', (e && e.quantity) || 1, 'number')}${inp('wh2f-unit', 'Ед.', (e && e.unit) || 'шт')}</div>
       <div class="row">${inp('wh2f-price', 'Стоимость ₽', e && e.purchase_price, 'number')}${inp('wh2f-pdate', 'Дата покупки', e && (e.purchase_date || '').slice(0, 10), 'date')}</div>
+      <div style="font-size:12px;font-weight:700;color:var(--t2,#8b93a3);margin-top:4px">📦 Габариты (мм) и вес</div>
+      <div class="row">${inp('wh2f-l', 'Длина мм', e && e.length_mm, 'number')}${inp('wh2f-w', 'Ширина мм', e && e.width_mm, 'number')}${inp('wh2f-h', 'Высота мм', e && e.height_mm, 'number')}</div>
+      <div class="row">${inp('wh2f-wg', 'Вес, г', e && e.weight_g, 'number')}<div class="wh2-btn" style="flex:1;text-align:left;opacity:.85" id="wh2f-vol">Объём: ${e && e.volume_mm3 ? (Number(e.volume_mm3)/1e9).toFixed(4)+' м³' : '— (авто L×W×H)'}</div></div>
       ${ed ? `<select id="wh2f-cond" class="wh2-btn" style="text-align:left"><option value="">Состояние…</option>${Object.entries(COND).map(([k, v]) => `<option value="${k}"${e.condition === k ? ' selected' : ''}>${v.l}</option>`).join('')}</select>` : ''}
       <textarea id="wh2f-notes" class="wh2-btn" style="text-align:left;min-height:60px" placeholder="Примечания">${e && e.notes ? esc(e.notes) : ''}</textarea>
       <button class="wh2-btn wh2-btn--primary" id="wh2f-save">${ed ? 'Сохранить' : 'Создать'}</button></div>`);
+    const bumpVol = () => {
+      const L = parseInt(val('wh2f-l'), 10) || 0, W = parseInt(val('wh2f-w'), 10) || 0, H = parseInt(val('wh2f-h'), 10) || 0;
+      const el = document.getElementById('wh2f-vol');
+      if (el) el.textContent = (L > 0 && W > 0 && H > 0) ? ('Объём: ' + (L * W * H / 1e9).toFixed(4) + ' м³') : 'Объём: — (авто L×W×H)';
+    };
+    ['wh2f-l', 'wh2f-w', 'wh2f-h'].forEach(id => { const el = document.getElementById(id); if (el) el.addEventListener('input', bumpVol); });
     document.getElementById('wh2f-save').onclick = async () => {
       const name = val('wh2f-name'); if (!name) { toast('Внимание', 'Введите наименование', 'warn'); return; }
       const payload = { name, category_id: val('wh2f-cat') || null, inventory_number: val('wh2f-inv') || null, serial_number: val('wh2f-serial') || null,
         barcode: val('wh2f-barcode') || null, brand: val('wh2f-brand') || null, model: val('wh2f-model') || null,
         quantity: parseFloat(val('wh2f-qty')) || 1, unit: val('wh2f-unit') || 'шт', purchase_price: parseFloat(val('wh2f-price')) || null,
-        purchase_date: val('wh2f-pdate') || null, notes: val('wh2f-notes') || null };
+        purchase_date: val('wh2f-pdate') || null, notes: val('wh2f-notes') || null,
+        length_mm: parseInt(val('wh2f-l'), 10) || null, width_mm: parseInt(val('wh2f-w'), 10) || null,
+        height_mm: parseInt(val('wh2f-h'), 10) || null, weight_g: parseInt(val('wh2f-wg'), 10) || null, dims_source: 'manual' };
       if (ed) payload.condition = val('wh2f-cond') || null;
       try {
         const res = ed ? await api('/api/equipment/' + e.id, { method: 'PUT', body: JSON.stringify(payload) })

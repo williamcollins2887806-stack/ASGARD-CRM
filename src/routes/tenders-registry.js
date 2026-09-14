@@ -13,6 +13,10 @@ const {
   ensureReview
 } = require('../services/tender-registry-helpers');
 const { buildPeriodFilterSql } = require('../services/tender-registry-import-utils');
+const {
+  computeAnalysisDeadline,
+  analysisBufferDays
+} = require('../lib/business-days');
 
 const ALLOWED_ROLES = ['ADMIN', 'PM', 'HEAD_PM', 'TO', 'HEAD_TO', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV'];
 
@@ -34,8 +38,30 @@ const PATCHABLE_FIELDS = {
   docs_deadline: 'docs_deadline',
   purchase_url: 'purchase_url',
   comment_to: 'comment_to',
-  reject_reason: 'reject_reason'
+  reject_reason: 'reject_reason',
+  participation_paid: 'participation_paid',
+  participation_fee: 'participation_fee',
+  participation: 'participation'
 };
+
+function parsePaidFlag(raw) {
+  if (raw === true || raw === 'true' || raw === 1 || raw === '1') return true;
+  return false;
+}
+
+function parseFee(raw) {
+  if (raw === '' || raw == null) return null;
+  const n = Number(raw);
+  return Number.isFinite(n) ? n : null;
+}
+
+function validateParticipation(paid, fee) {
+  if (!paid) return { ok: true, fee: null };
+  if (fee == null || !(fee > 0)) {
+    return { ok: false, error: 'Укажите ориентировочную стоимость платного участия' };
+  }
+  return { ok: true, fee };
+}
 
 function buildSearchClause(q, params) {
   const raw = String(q || '').trim();
@@ -99,21 +125,63 @@ async function routes(fastify) {
       row.rp_review = rev.rows[0] || null;
       row.review_unread = false;
       row.director_review_unread = false;
+      row.thread_unread_count = 0;
+      row.thread_last_question_preview = null;
       if (canSeeUnread && viewerId && row.rp_review?.to_notify_at) {
-        const seen = await db.query(
-          'SELECT seen_at FROM tender_registry_review_seen WHERE user_id = $1 AND tender_id = $2',
-          [viewerId, row.id]
-        );
-        const seenAt = seen.rows[0]?.seen_at;
-        row.review_unread = !seenAt || new Date(seenAt) < new Date(row.rp_review.to_notify_at);
+        try {
+          const seen = await db.query(
+            'SELECT seen_at FROM tender_registry_review_seen WHERE user_id = $1 AND tender_id = $2',
+            [viewerId, row.id]
+          );
+          const seenAt = seen.rows[0]?.seen_at;
+          row.review_unread = !seenAt || new Date(seenAt) < new Date(row.rp_review.to_notify_at);
+        } catch (_) {
+          row.review_unread = false;
+        }
       }
       if (canSeeDirectorUnread && viewerId && row.rp_review?.director_notify_at) {
-        const seen = await db.query(
-          'SELECT seen_at FROM tender_registry_director_seen WHERE user_id = $1 AND tender_id = $2',
-          [viewerId, row.id]
-        );
-        const seenAt = seen.rows[0]?.seen_at;
-        row.director_review_unread = !seenAt || new Date(seenAt) < new Date(row.rp_review.director_notify_at);
+        try {
+          const seen = await db.query(
+            'SELECT seen_at FROM tender_registry_director_seen WHERE user_id = $1 AND tender_id = $2',
+            [viewerId, row.id]
+          );
+          const seenAt = seen.rows[0]?.seen_at;
+          row.director_review_unread = !seenAt || new Date(seenAt) < new Date(row.rp_review.director_notify_at);
+        } catch (_) {
+          row.director_review_unread = false;
+        }
+      }
+      if (canSeeUnread && viewerId && row.rp_review) {
+        try {
+          const seen = await db.query(
+            'SELECT last_seen_at FROM tender_rp_review_thread_seen WHERE user_id = $1 AND tender_id = $2',
+            [viewerId, row.id]
+          );
+          const seenAt = seen.rows[0]?.last_seen_at || null;
+          const unread = await db.query(`
+            SELECT COUNT(*)::int AS c FROM tender_rp_review_messages m
+            WHERE m.tender_id = $1 AND m.deleted_at IS NULL AND m.user_id != $2
+              AND ($3::timestamptz IS NULL OR m.created_at > $3)
+          `, [row.id, viewerId, seenAt]);
+          row.thread_unread_count = unread.rows[0]?.c || 0;
+          const lastQ = await db.query(`
+            SELECT left(m.body, 200) AS preview, u.name AS author_name
+            FROM tender_rp_review_messages m
+            JOIN users u ON u.id = m.user_id
+            WHERE m.tender_id = $1 AND m.deleted_at IS NULL
+              AND u.role IN ('PM', 'HEAD_PM')
+              AND length(trim(m.body)) > 0
+            ORDER BY m.created_at DESC
+            LIMIT 1
+          `, [row.id]);
+          if (lastQ.rows[0]?.preview) {
+            row.thread_last_question_preview = lastQ.rows[0].preview;
+            row.thread_last_question_author = lastQ.rows[0].author_name || null;
+          }
+        } catch (_) {
+          row.thread_unread_count = 0;
+          row.thread_last_question_preview = null;
+        }
       }
     }
     return rows;
@@ -155,12 +223,20 @@ async function routes(fastify) {
     const countParams = [];
     const { clause: periodClause, applied: periodApplied } = buildPeriodFilterSql(
       periodParam === undefined ? 'current' : periodParam,
-      countParams
+      countParams,
+      {
+        date_from: request.query.date_from,
+        date_to: request.query.date_to,
+        date_field: request.query.date_field,
+      }
     );
     let burnClause = '';
     if (burnOnly) {
       burnClause = ` AND t.docs_deadline IS NOT NULL AND t.docs_deadline::date <= (CURRENT_DATE + INTERVAL '3 days') AND t.docs_deadline::date >= CURRENT_DATE AND t.registry_status NOT IN ('отмена','проиграли','выиграли')`;
     }
+
+    // ТО видит весь отдел; «Скрыть чужие» — на клиенте.
+    let scopeClause = '';
 
     const excludeClause = buildRegistryExclusionClause('t', 'cb');
     const { clause: searchClause, applied: searchApplied } = buildSearchClause(request.query.q, countParams);
@@ -170,7 +246,9 @@ async function routes(fastify) {
       SELECT t.*,
              cb.name AS created_by_name,
              calc.name AS calculator_user_name,
-             (SELECT COUNT(*)::int FROM documents d WHERE d.tender_id = t.id) AS doc_count,
+             (SELECT COUNT(*)::int FROM documents d
+               WHERE d.tender_id = t.id
+                 AND COALESCE(d.type,'') NOT IN ('ocr-extract')) AS doc_count,
              EXISTS(
                SELECT 1 FROM works w
                WHERE w.tender_id = t.id AND w.deleted_at IS NULL
@@ -178,7 +256,7 @@ async function routes(fastify) {
       FROM tenders t
       LEFT JOIN users cb ON cb.id = t.created_by
       LEFT JOIN users calc ON calc.id = t.calculator_user_id
-      WHERE ${where}${periodClause}${burnClause}${searchClause}${excludeClause}
+      WHERE ${where}${periodClause}${burnClause}${searchClause}${excludeClause}${scopeClause}
       ORDER BY t.created_at DESC
       LIMIT $${listParams.length - 1} OFFSET $${listParams.length}
     `, listParams);
@@ -186,7 +264,7 @@ async function routes(fastify) {
     const cnt = await db.query(
       `SELECT COUNT(*)::int AS c FROM tenders t
        LEFT JOIN users cb ON cb.id = t.created_by
-       WHERE ${where}${periodClause}${burnClause}${searchClause}${excludeClause}`,
+       WHERE ${where}${periodClause}${burnClause}${searchClause}${excludeClause}${scopeClause}`,
       countParams
     );
     return {
@@ -224,6 +302,20 @@ async function routes(fastify) {
     if (!customer_name && !tender_title) {
       return reply.code(400).send({ error: 'Укажите заказчика или название тендера' });
     }
+    const docsDeadline = b.docs_deadline || b.deadline || null;
+    if (!docsDeadline) {
+      return reply.code(400).send({ error: 'Укажите дату подачи (срок)' });
+    }
+    const participation_paid = parsePaidFlag(b.participation_paid);
+    const feeCheck = validateParticipation(participation_paid, parseFee(b.participation_fee));
+    if (!feeCheck.ok) return reply.code(400).send({ error: feeCheck.error });
+    const participation_fee = feeCheck.fee;
+    const analysis_deadline = computeAnalysisDeadline({
+      docs_deadline: docsDeadline,
+      participation_paid,
+      created_at: new Date()
+    });
+
     const role = request.user.role;
     let source_kind = 'to_manual';
     if (role === 'PM' || role === 'HEAD_PM') source_kind = 'pm_manual';
@@ -237,30 +329,77 @@ async function routes(fastify) {
     const r = await db.query(`
       INSERT INTO tenders (
         customer_name, customer_inn, tender_title, tender_price, docs_deadline, purchase_url,
-        registry_status, tender_status, source_kind, created_by, created_by_user_id, period, created_at
-      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$10,$11,NOW())
+        registry_status, tender_status, source_kind, created_by, created_by_user_id, period,
+        participation_paid, participation_fee, analysis_deadline, created_at
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$10,$11,$12,$13,$14,NOW())
       RETURNING *
     `, [
       customer_name || null,
       b.customer_inn || null,
       tender_title || null,
       b.tender_price ?? b.nmc ?? null,
-      b.docs_deadline || b.deadline || null,
+      docsDeadline,
       b.purchase_url || null,
       registry_status,
       syncTenderStatus(registry_status),
       source_kind,
       request.user.id,
-      period
+      period,
+      participation_paid,
+      participation_fee,
+      analysis_deadline
     ]);
 
     const tender = r.rows[0];
+    tender.analysis_buffer_days = analysisBufferDays(participation_paid);
     await writeRegistryAudit(db, {
       actorUserId: request.user.id, tenderId: tender.id,
       action: 'registry_create', before: null, after: tender
     });
     broadcast('tender:registry:changed', { id: tender.id });
     return { tender };
+  });
+
+  // GET /registry/find-duplicates — title and/or purchase_url match before create
+  fastify.get('/registry/find-duplicates', {
+    preHandler: [fastify.requireRoles(ALLOWED_ROLES)]
+  }, async (request) => {
+    const title = String(request.query.title || request.query.tender_title || '').trim();
+    const url = String(request.query.purchase_url || request.query.url || '').trim();
+    if (!title && !url) return { items: [] };
+
+    const params = [];
+    const clauses = ['t.deleted_at IS NULL'];
+    if (title) {
+      params.push(title.toLowerCase());
+      clauses.push(`LOWER(TRIM(COALESCE(t.tender_title, ''))) = $${params.length}`);
+    }
+    if (url) {
+      params.push(url.toLowerCase());
+      clauses.push(`LOWER(TRIM(COALESCE(t.purchase_url, ''))) = $${params.length}`);
+    }
+    // OR between title and url when both provided
+    let where;
+    if (title && url) {
+      where = `t.deleted_at IS NULL AND (
+        LOWER(TRIM(COALESCE(t.tender_title, ''))) = $1
+        OR LOWER(TRIM(COALESCE(t.purchase_url, ''))) = $2
+      )`;
+    } else {
+      where = clauses.join(' AND ');
+    }
+
+    const r = await db.query(`
+      SELECT t.id, t.tender_title, t.customer_name, t.purchase_url,
+             t.registry_status, t.tender_status, t.created_at,
+             cb.name AS created_by_name
+      FROM tenders t
+      LEFT JOIN users cb ON cb.id = t.created_by
+      WHERE ${where}
+      ORDER BY t.id DESC
+      LIMIT 10
+    `, params);
+    return { items: r.rows };
   });
 
   // PATCH /registry/:id — inline single field
@@ -272,13 +411,124 @@ async function routes(fastify) {
     const col = PATCHABLE_FIELDS[field];
     if (!col) return reply.code(400).send({ error: 'Недопустимое поле', allowed: Object.keys(PATCHABLE_FIELDS) });
 
+    if (col === 'docs_deadline' && (value === '' || value == null)) {
+      return reply.code(400).send({ error: 'Дата подачи обязательна' });
+    }
+
     const cur = await db.query('SELECT * FROM tenders WHERE id = $1 AND deleted_at IS NULL', [id]);
     if (!cur.rows[0]) return reply.code(404).send({ error: 'Тендер не найден' });
-    const before = cur.rows[0][col];
+    const beforeRow = cur.rows[0];
+
+    // Compound participation update (paid + fee atomically)
+    if (col === 'participation') {
+      const payload = (value && typeof value === 'object') ? value : {};
+      const participation_paid = parsePaidFlag(
+        payload.participation_paid != null ? payload.participation_paid : payload.paid
+      );
+      const feeCheck = validateParticipation(
+        participation_paid,
+        parseFee(payload.participation_fee != null ? payload.participation_fee : payload.fee)
+      );
+      if (!feeCheck.ok) return reply.code(400).send({ error: feeCheck.error });
+      const participation_fee = feeCheck.fee;
+      const analysis_deadline = computeAnalysisDeadline({
+        docs_deadline: beforeRow.docs_deadline,
+        participation_paid,
+        created_at: beforeRow.created_at
+      });
+      const r = await db.query(`
+        UPDATE tenders SET
+          participation_paid = $1,
+          participation_fee = $2,
+          analysis_deadline = $3,
+          updated_at = NOW()
+        WHERE id = $4 RETURNING *
+      `, [participation_paid, participation_fee, analysis_deadline, id]);
+      await writeRegistryAudit(db, {
+        actorUserId: request.user.id, tenderId: id,
+        action: 'registry_patch', field: 'participation',
+        before: {
+          participation_paid: beforeRow.participation_paid,
+          participation_fee: beforeRow.participation_fee
+        },
+        after: { participation_paid, participation_fee }
+      });
+      broadcast('tender:registry:changed', { id: parseInt(id, 10) });
+      return { tender: r.rows[0] };
+    }
+
+    const before = beforeRow[col];
+
+    let nextValue = value === '' ? null : value;
+    if (col === 'participation_paid') nextValue = parsePaidFlag(value);
+    if (col === 'participation_fee') nextValue = parseFee(value);
+
+    let participation_paid = parsePaidFlag(beforeRow.participation_paid);
+    let participation_fee = beforeRow.participation_fee != null ? Number(beforeRow.participation_fee) : null;
+    let docs_deadline = beforeRow.docs_deadline;
+
+    if (col === 'participation_paid') participation_paid = nextValue;
+    if (col === 'participation_fee') participation_fee = nextValue;
+    if (col === 'docs_deadline') docs_deadline = nextValue;
+
+    if (col === 'participation_paid' || col === 'participation_fee') {
+      if (col === 'participation_paid' && !participation_paid) {
+        participation_fee = null;
+      } else {
+        const feeCheck = validateParticipation(participation_paid, participation_fee);
+        if (!feeCheck.ok) return reply.code(400).send({ error: feeCheck.error });
+        participation_fee = feeCheck.fee;
+      }
+    }
+
+    const needsDeadlineRecalc = ['docs_deadline', 'participation_paid', 'participation_fee'].includes(col);
+    if (needsDeadlineRecalc) {
+      const analysis_deadline = computeAnalysisDeadline({
+        docs_deadline,
+        participation_paid,
+        created_at: beforeRow.created_at
+      });
+      let r;
+      if (col === 'participation_paid') {
+        r = await db.query(`
+          UPDATE tenders SET
+            participation_paid = $1,
+            participation_fee = $2,
+            analysis_deadline = $3,
+            updated_at = NOW()
+          WHERE id = $4 RETURNING *
+        `, [participation_paid, participation_fee, analysis_deadline, id]);
+      } else if (col === 'participation_fee') {
+        r = await db.query(`
+          UPDATE tenders SET
+            participation_fee = $1,
+            analysis_deadline = $2,
+            updated_at = NOW()
+          WHERE id = $3 RETURNING *
+        `, [participation_fee, analysis_deadline, id]);
+      } else {
+        r = await db.query(`
+          UPDATE tenders SET
+            docs_deadline = $1,
+            analysis_deadline = $2,
+            updated_at = NOW()
+          WHERE id = $3 RETURNING *
+        `, [nextValue, analysis_deadline, id]);
+      }
+      await writeRegistryAudit(db, {
+        actorUserId: request.user.id, tenderId: id,
+        action: 'registry_patch', field, before,
+        after: col === 'participation_paid' ? participation_paid
+          : col === 'participation_fee' ? participation_fee
+            : r.rows[0][col]
+      });
+      broadcast('tender:registry:changed', { id: parseInt(id, 10) });
+      return { tender: r.rows[0] };
+    }
 
     const r = await db.query(`
       UPDATE tenders SET ${col} = $1, updated_at = NOW() WHERE id = $2 RETURNING *
-    `, [value === '' ? null : value, id]);
+    `, [nextValue, id]);
 
     await writeRegistryAudit(db, {
       actorUserId: request.user.id, tenderId: id,
@@ -349,12 +599,66 @@ async function routes(fastify) {
     }
 
     const tender_status = syncTenderStatus(registry_status);
+    const isSubmitted = registry_status === 'подались';
+    if (isSubmitted) {
+      const sub = body.submission_price != null && body.submission_price !== ''
+        ? Number(body.submission_price) : null;
+      const subVat = body.submission_price_with_vat != null && body.submission_price_with_vat !== ''
+        ? Number(body.submission_price_with_vat) : null;
+      if (!(Number.isFinite(sub) && sub > 0) && !(Number.isFinite(subVat) && subVat > 0)) {
+        return reply.code(400).send({
+          error: 'Укажите сумму подачи',
+          code: 'submission_price_required'
+        });
+      }
+      const vatPct = body.vat_pct != null && body.vat_pct !== ''
+        ? Number(body.vat_pct)
+        : (cur.rows[0].vat_pct != null ? Number(cur.rows[0].vat_pct) : 22);
+      const finalNoVat = Number.isFinite(sub) && sub > 0
+        ? sub
+        : Math.round((subVat / (1 + (Number.isFinite(vatPct) ? vatPct : 22) / 100)) * 100) / 100;
+      const finalWithVat = Number.isFinite(subVat) && subVat > 0
+        ? subVat
+        : Math.round(finalNoVat * (1 + (Number.isFinite(vatPct) ? vatPct : 22) / 100) * 100) / 100;
+
+      const r = await db.query(`
+        UPDATE tenders SET
+          registry_status = $1,
+          tender_status = $2,
+          submission_price = $3,
+          submission_price_with_vat = $4,
+          vat_pct = $5,
+          submitted_at = COALESCE(submitted_at, NOW()),
+          updated_at = NOW()
+        WHERE id = $6 RETURNING *
+      `, [registry_status, tender_status, finalNoVat, finalWithVat, Number.isFinite(vatPct) ? vatPct : 22, id]);
+
+      await writeRegistryAudit(db, {
+        actorUserId: request.user.id, tenderId: id,
+        action: 'registry_status', field: 'registry_status',
+        before: cur.rows[0].registry_status,
+        after: { registry_status, submission_price: finalNoVat, submission_price_with_vat: finalWithVat }
+      });
+
+      if (KANBAN_REGISTRY_STATUSES.has(registry_status)) {
+        const ownerId = cur.rows[0].created_by_user_id || cur.rows[0].created_by || request.user.id;
+        await ensureTenderKanbanCard(db, parseInt(id, 10), ownerId);
+      }
+
+      broadcast('tender:registry:changed', { id: parseInt(id, 10) });
+      return { tender: r.rows[0] };
+    }
+
     const extra = registry_status === 'отмена'
       ? ', archived_at = NOW(), archived_by = $4, archive_reason = $5'
       : '';
     const params = [registry_status, tender_status, id];
     if (registry_status === 'отмена') {
-      params.push(request.user.id, body.archive_reason || 'Архив реестра');
+      // Soft default only when reason omitted; empty string is intentional.
+      const reason = Object.prototype.hasOwnProperty.call(body, 'archive_reason')
+        ? (body.archive_reason == null ? '' : String(body.archive_reason))
+        : 'Архив реестра';
+      params.push(request.user.id, reason);
     }
 
     const r = await db.query(`
@@ -384,8 +688,10 @@ async function routes(fastify) {
   }, async (request, reply) => {
     const { id } = request.params;
     const { kind, user_id } = request.body || {};
-    if (!['pm', 'to'].includes(kind)) {
-      return reply.code(400).send({ error: 'kind должен быть pm или to' });
+    // Ручное назначение РП убрано — просчёт всегда делает дежурный РП.
+    // Остаётся только «ТО считает сам» (kind=to).
+    if (kind !== 'to') {
+      return reply.code(400).send({ error: 'Назначение РП отключено. Просчёт делает дежурный РП, либо «Считаю сам» (ТО).' });
     }
     const cur = await db.query('SELECT * FROM tenders WHERE id = $1 AND deleted_at IS NULL', [id]);
     if (!cur.rows[0]) return reply.code(404).send({ error: 'Тендер не найден' });
@@ -427,6 +733,8 @@ async function routes(fastify) {
       return reply.code(400).send({ error: 'Для to нужен пользователь ТО' });
     }
 
+    const oldCalcId = tender.calculator_user_id != null ? Number(tender.calculator_user_id) : null;
+
     if (kind === 'pm') {
       await db.query(`
         UPDATE tenders SET
@@ -456,20 +764,33 @@ async function routes(fastify) {
       action: 'assign_calculator', after: { kind, calculator_user_id: calcUserId, calculator_name: calcUser.name }
     });
 
-    if (kind === 'pm') {
-      const { createNotification } = require('../services/notify');
-      const tInfo = await db.query(
-        'SELECT customer_name, tender_title FROM tenders WHERE id = $1',
-        [id]
-      );
-      const ti = tInfo.rows[0] || {};
-      await createNotification(db, {
-        user_id: calcUserId,
-        title: 'Тендер на просчёт',
-        message: `ТО назначил вас считающим: ${ti.customer_name || ''} — ${ti.tender_title || ''}`,
-        type: 'tender',
-        link: '#/pm-duty'
-      }).catch(() => {});
+    if (kind === 'pm' || kind === 'to') {
+      const { notifyPmCalcEvent, notifyPmReleasedFromCalc } = require('../services/tender-assign-notify');
+      const tInfo = {
+        id: Number(id),
+        customer_name: tender.customer_name,
+        tender_title: tender.tender_title,
+        registry_no: tender.registry_no
+      };
+      const actorName = request.user.name || 'ТО';
+      const isReassign = oldCalcId && oldCalcId !== calcUserId;
+      await notifyPmCalcEvent(db, {
+        userId: calcUserId,
+        kind: isReassign ? 'reassign' : 'assign',
+        tender: tInfo,
+        actorName,
+        link: kind === 'to' ? '#/to-calcs' : '#/pm-duty',
+        actorUserId: request.user.id,
+        log: request.log
+      });
+      if (isReassign) {
+        await notifyPmReleasedFromCalc(db, {
+          userId: oldCalcId,
+          tender: tInfo,
+          actorName,
+          log: request.log
+        });
+      }
     }
 
     broadcast('tender:registry:changed', { id: parseInt(id, 10) });
@@ -770,6 +1091,217 @@ async function routes(fastify) {
       page_limit: 3
     });
     return { ok: !r.error, total: r.total, sample: r.items.slice(0, 3), error: r.error || null };
+  });
+
+  // GET /morning-brief — ежедневное напоминание ТО / РП при входе
+  fastify.get('/morning-brief', {
+    preHandler: [fastify.requireRoles(ALLOWED_ROLES)]
+  }, async (request) => {
+    const { getCurrentDuty } = require('../services/tender-registry-helpers');
+    const user = request.user;
+    const role = user.role || '';
+    const uid = user.id;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const brief = {
+      role,
+      date: today.toISOString().slice(0, 10),
+      to: null,
+      pm: null
+    };
+
+    const isTo = ['TO', 'HEAD_TO', 'ADMIN'].includes(role);
+    const isPm = ['PM', 'HEAD_PM', 'ADMIN'].includes(role);
+
+    if (isTo) {
+      // Для HEAD_TO/ADMIN — общеотдельная сводка; для TO — только свои
+      const scopeSql = role === 'TO'
+        ? 'AND (t.created_by_user_id = $1 OR t.created_by = $1 OR t.calculator_user_id = $1)'
+        : '';
+      const params = role === 'TO' ? [uid] : [];
+      const waitingReport = await db.query(`
+        SELECT t.id, t.customer_name, t.tender_title, t.docs_deadline, t.registry_status,
+               t.responsible_pm_id, pm.name AS pm_name, pm.email AS pm_email,
+               r.analysis_finalized_at, r.is_final, r.calculator_user_id
+        FROM tenders t
+        LEFT JOIN tender_rp_reviews r ON r.tender_id = t.id
+        LEFT JOIN users pm ON pm.id = COALESCE(t.responsible_pm_id, t.calculator_user_id)
+        WHERE t.deleted_at IS NULL
+          AND COALESCE(t.registry_status, 'рассмотрение') IN ('рассмотрение', 'готовим')
+          AND t.docs_deadline IS NOT NULL
+          AND t.docs_deadline::date <= CURRENT_DATE + INTERVAL '5 days'
+          AND t.docs_deadline::date >= CURRENT_DATE
+          AND (r.analysis_finalized_at IS NULL OR r.id IS NULL)
+          ${scopeSql}
+        ORDER BY t.docs_deadline ASC
+        LIMIT 50
+      `, params);
+
+      const readyNoSubmit = await db.query(`
+        SELECT t.id, t.customer_name, t.tender_title, t.docs_deadline, t.registry_status,
+               r.is_final, r.analysis_finalized_at, r.work_price, r.work_price_ex_vat
+        FROM tenders t
+        JOIN tender_rp_reviews r ON r.tender_id = t.id
+        WHERE t.deleted_at IS NULL
+          AND COALESCE(t.registry_status, 'рассмотрение') IN ('рассмотрение', 'готовим')
+          AND (r.is_final = true OR r.analysis_finalized_at IS NOT NULL)
+          ${scopeSql}
+        ORDER BY t.docs_deadline ASC NULLS LAST
+        LIMIT 50
+      `, params);
+
+      const needAssign = await db.query(`
+        SELECT t.id, t.customer_name, t.tender_title, t.docs_deadline, t.calculator_user_id,
+               r.analysis_finalized_at, r.is_final
+        FROM tenders t
+        JOIN tender_rp_reviews r ON r.tender_id = t.id
+        WHERE t.deleted_at IS NULL
+          AND COALESCE(t.registry_status, 'рассмотрение') = 'рассмотрение'
+          AND r.analysis_finalized_at IS NOT NULL
+          AND COALESCE(r.is_final, false) = false
+          AND t.calculator_user_id IS NULL
+          ${scopeSql}
+        ORDER BY t.docs_deadline ASC NULLS LAST
+        LIMIT 50
+      `, params);
+
+      brief.to = {
+        waiting_report: waitingReport.rows,
+        ready_no_submit: readyNoSubmit.rows,
+        need_assign: needAssign.rows
+      };
+    }
+
+    if (isPm) {
+      const duty = await getCurrentDuty(db, today);
+      let dutyAnalysis = [];
+      if (duty && Number(duty.pm_user_id) === Number(uid)) {
+        const periodEnd = duty.period_end;
+        const r = await db.query(`
+          SELECT t.id, t.customer_name, t.tender_title, t.docs_deadline, t.registry_status
+          FROM tenders t
+          LEFT JOIN tender_rp_reviews r ON r.tender_id = t.id
+          WHERE t.deleted_at IS NULL
+            AND COALESCE(t.registry_status, 'рассмотрение') = 'рассмотрение'
+            AND t.docs_deadline IS NOT NULL
+            AND t.docs_deadline::date >= $1::date
+            AND t.docs_deadline::date <= ($2::date + INTERVAL '2 days')
+            AND (r.analysis_finalized_at IS NULL OR r.id IS NULL)
+          ORDER BY t.docs_deadline ASC
+          LIMIT 80
+        `, [duty.period_start, periodEnd]);
+        dutyAnalysis = r.rows;
+      }
+
+      const myCalcs = await db.query(`
+        SELECT t.id, t.customer_name, t.tender_title, t.docs_deadline, r.is_final, r.analysis_finalized_at
+        FROM tenders t
+        JOIN tender_rp_reviews r ON r.tender_id = t.id
+        WHERE t.deleted_at IS NULL
+          AND t.calculator_user_id = $1
+          AND COALESCE(r.is_final, false) = false
+          AND COALESCE(t.registry_status, 'рассмотрение') IN ('рассмотрение', 'готовим')
+        ORDER BY t.docs_deadline ASC NULLS LAST
+        LIMIT 50
+      `, [uid]);
+
+      let kanban = { waiting: 0, in_work: 0, overdue: 0, critical: [] };
+      try {
+        const pk = await db.query(`
+          SELECT id, current_main_status AS status, entity_id, entity_kind, flow_type, is_closed, last_moved_at
+          FROM personal_kanban_cards
+          WHERE owner_user_id = $1
+            AND flow_type = 'application'
+            AND COALESCE(is_closed, false) = false
+          ORDER BY last_moved_at ASC NULLS LAST
+          LIMIT 100
+        `, [uid]);
+        const stuckMs = 5 * 86400000;
+        const now = Date.now();
+        for (const c of pk.rows) {
+          const col = String(c.status || '').toLowerCase();
+          if (/wait|ожид|new|нов|incoming|inbox|очеред/.test(col)) kanban.waiting++;
+          else kanban.in_work++;
+          const moved = c.last_moved_at ? new Date(c.last_moved_at).getTime() : 0;
+          if (moved && (now - moved) > stuckMs) {
+            kanban.overdue++;
+            if (kanban.critical.length < 10) {
+              kanban.critical.push({
+                id: c.id,
+                title: `${c.entity_kind} #${c.entity_id}`,
+                status: c.status
+              });
+            }
+          }
+        }
+      } catch (_e) {
+        // personal_kanban schema may vary — soft-fail
+      }
+
+      brief.pm = {
+        is_duty: !!(duty && Number(duty.pm_user_id) === Number(uid)),
+        duty: duty || null,
+        duty_analysis: dutyAnalysis,
+        my_calcs: myCalcs.rows,
+        kanban
+      };
+    }
+
+    const hasTo = brief.to && (
+      brief.to.waiting_report.length || brief.to.ready_no_submit.length || brief.to.need_assign.length
+    );
+    const hasPm = brief.pm && (
+      (brief.pm.duty_analysis && brief.pm.duty_analysis.length) ||
+      (brief.pm.my_calcs && brief.pm.my_calcs.length) ||
+      (brief.pm.kanban && (brief.pm.kanban.waiting || brief.pm.kanban.overdue))
+    );
+
+    return { ...brief, show: !!(hasTo || hasPm) };
+  });
+
+  // POST /morning-brief/nudge-email — ТО шлёт batch-письмо РП по тендерам без отчёта
+  fastify.post('/morning-brief/nudge-email', {
+    preHandler: [fastify.requireRoles(['ADMIN', 'TO', 'HEAD_TO'])]
+  }, async (request, reply) => {
+    const ids = Array.isArray(request.body?.tender_ids) ? request.body.tender_ids.map(Number).filter(Boolean) : [];
+    if (!ids.length) return reply.code(400).send({ error: 'Укажите tender_ids' });
+    const { sendCrmEmail } = require('../services/crm-mailer');
+
+    const r = await db.query(`
+      SELECT t.id, t.customer_name, t.tender_title, t.docs_deadline,
+             COALESCE(pm.email, calc.email) AS email,
+             COALESCE(pm.name, calc.name) AS pm_name
+      FROM tenders t
+      LEFT JOIN users pm ON pm.id = t.responsible_pm_id
+      LEFT JOIN users calc ON calc.id = t.calculator_user_id
+      WHERE t.id = ANY($1::int[]) AND t.deleted_at IS NULL
+    `, [ids]);
+
+    const byEmail = new Map();
+    for (const row of r.rows) {
+      if (!row.email) continue;
+      if (!byEmail.has(row.email)) byEmail.set(row.email, { name: row.pm_name, items: [] });
+      byEmail.get(row.email).items.push(row);
+    }
+
+    let sent = 0;
+    const errors = [];
+    for (const [email, pack] of byEmail.entries()) {
+      const list = pack.items.map((t) =>
+        `#${t.id} ${t.customer_name || ''} — дедлайн ${t.docs_deadline || '—'}`
+      ).join('\n');
+      try {
+        await sendCrmEmail(db, request.user.id, {
+          to: email,
+          subject: `[АСГАРД] Нужны отчёты по ${pack.items.length} тендерам`,
+          text: `Здравствуйте${pack.name ? ', ' + pack.name : ''}!\n\nПросим ускорить анализ/отчёт по тендерам:\n\n${list}\n\n— Тендерный отдел АСГАРД CRM`
+        });
+        sent++;
+      } catch (e) {
+        errors.push({ email, error: e.message });
+      }
+    }
+    return { sent, recipients: byEmail.size, errors };
   });
 }
 

@@ -246,8 +246,7 @@ window.AsgardWorkDocuments = (function () {
   }
 
   function fmtMoney(n) {
-    if (!n && n !== 0) return '0 ₽';
-    return money(Math.round(n)) + ' ₽';
+    return (AsgardUI.moneyRub || AsgardMoney.formatMoney)(n);
   }
 
   function flashTotal(el) {

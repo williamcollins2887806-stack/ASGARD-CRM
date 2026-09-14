@@ -19,7 +19,7 @@
  */
 'use strict';
 window.AsgardToCalcsPage = (function () {
-  const { $, $$, esc, toast, showModal, money } = AsgardUI;
+  const { $, $$, esc, toast, showModal, moneyRub: money } = AsgardUI;
 
   function getHeaders() {
     const auth = (typeof AsgardAuth !== 'undefined') ? AsgardAuth.getAuth() : null;
@@ -120,7 +120,7 @@ window.AsgardToCalcsPage = (function () {
 
   function tenderCard(t, est, tkp, user) {
     const totalSum = est?.price_tkp || est?.total_sum || t.tender_price;
-    const sumStr = totalSum ? money(totalSum) + ' ₽' : '—';
+    const sumStr = totalSum ? money(totalSum) : '—';
     const ddl = t.docs_deadline ? new Date(t.docs_deadline).toLocaleDateString('ru-RU') : '';
     const myRowOk = (user.role !== 'TO') || Number(t.calculator_user_id || t.created_by_user_id || t.created_by) === Number(user.id);
 

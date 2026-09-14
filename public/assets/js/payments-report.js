@@ -4,7 +4,7 @@
  */
 window.AsgardPaymentsReportPage = (function(){
   const { $, $$, esc, toast } = AsgardUI;
-  function money(x) { return AsgardUI.money(x) + ' \u20BD'; }
+  function money(x) { return (AsgardUI.moneyRub || AsgardMoney.formatMoney)(x); }
   function fmtDate(d){ if(!d) return '\u2014'; return new Date(d).toLocaleDateString('ru-RU'); }
 
   const TYPE_LABELS = {

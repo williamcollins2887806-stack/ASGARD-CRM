@@ -1,9 +1,10 @@
-# Worker Finances SSoT — Контракт API v1.3
+# Worker Finances SSoT — Контракт API v1.4
 
 > Единственный источник истины для расчёта финансов рабочего.
 > v1: 19.04.2026. v1.1: 19.04.2026 — статусы чекинов, имя таблицы, edge-cases.
 > v1.2: 19.04.2026 — assignment_id NULL handling, реальные work_status значения.
 > v1.3: 20.04.2026 — assignment_id NOT NULL (V087+V088), убран LATERAL fallback.
+> v1.4: 24.07.2026 — суточные из field_trip_stages + checkins (см. worker-per-diem-days.js).
 
 ---
 
@@ -52,7 +53,11 @@
 
 - `amount_earned IS NULL` → трактуется как `0` (COALESCE в SQL). Не ошибка.
 - `amount_earned = 0` → легитимно (например, стажировочная смена). Считается в ФОТ как 0.
-- Для per_diem_accrued: день считается только если `amount_earned > 0` (стажировка без суточных).
+
+### field_trip_stages (МО / дорога / склад / …)
+
+- ФОТ этапа: `SUM(amount_earned)` где status IN (`active`,`completed`,`approved`,`adjusted`).
+- `work_id` может быть NULL (обучение/МО без объекта) — bucket «Без объекта».
 
 ---
 
@@ -61,16 +66,22 @@
 ### НАЧИСЛЕНО (что заработал по контракту)
 
 ```
-fot              = SUM(COALESCE(field_checkins.amount_earned, 0))
-                   WHERE status = 'completed'
+fot              = SUM(field_checkins.amount_earned WHERE completed)
+                 + SUM(field_trip_stages.amount_earned WHERE status ok)
 
-per_diem_accrued = SUM по работам(COUNT(DISTINCT fc.date) × per_diem_rate)
-                   WHERE fc.status = 'completed'
-                   AND fc.amount_earned > 0
-                   per_diem_rate = ea.per_diem (INNER JOIN по fc.assignment_id)
-                   Группировка по (work_id, per_diem_rate) — у разных работ разные ставки.
-                   ⚠️ Если per_diem NULL → ошибка 422
-                   ✅ Если per_diem = 0 → легитимно, per_diem_accrued = 0
+per_diem_days    = DISTINCT calendar days from:
+                   (A) field_trip_stages types:
+                       warehouse|medical|travel|ship|training|helicopter|waiting
+                       status NOT IN (cancelled, rejected)
+                       → ALWAYS count (включая waiting с amount_earned=0)
+                   (B) field_checkins status=completed
+                       → ONLY if COALESCE(ea.per_diem, fps.per_diem, 0) > 0
+                   One calendar day = 1× rate even if stage+checkin same day.
+
+per_diem_rate    = ea.per_diem → fps.per_diem → settings.per_diem_default → 1000
+                   (orphan days without work_id use default; no 422)
+
+per_diem_accrued = SUM(days × rate) over buckets (work_id or NULL)
 
 bonus_accrued    = SUM(worker_payments.amount)
                    WHERE type = 'bonus' AND status IN ('paid', 'confirmed')
@@ -81,8 +92,10 @@ penalty          = SUM(worker_payments.amount)
 total_earned     = fot + per_diem_accrued + bonus_accrued − penalty
 ```
 
+Реализация дней: `src/lib/worker-per-diem-days.js` → `getPerDiemDays`.
+
 > **Штраф уменьшает начисление** (удержание из ЗП), не выплату.
-> **per_diem = 0** — не ошибка. Рабочий на объекте без суточных (местный, не вахта).
+> **per_diem = 0** на объекте — день checkin не входит в суточные (местный).
 
 ### bonus_accrued vs bonus_paid
 

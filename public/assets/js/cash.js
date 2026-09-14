@@ -187,6 +187,13 @@ window.AsgardCashPage = (function() {
   function _isHeadTo() {
     return _stmtCurrentRole() === HEAD_TO_ROLE;
   }
+  function _isPmLike() {
+    const r = _stmtCurrentRole();
+    return r === 'PM' || r === 'HEAD_PM';
+  }
+  function _isSimpleCash() {
+    return !_isPmLike();
+  }
 
   // Слушатель обновления баланса (виджеты Home / MyDashboard шлют это событие)
   (function bindCashChangedListener() {
@@ -196,7 +203,7 @@ window.AsgardCashPage = (function() {
       if (!document.getElementById('cash-requests-list')) return;
       loadBalance().catch(() => {});
       loadRequests().catch(() => {});
-      if (!_isHeadTo()) loadHandovers().catch(() => {});
+      if (_isPmLike()) loadHandovers().catch(() => {});
     });
   })();
 
@@ -434,6 +441,7 @@ window.AsgardCashPage = (function() {
   async function render(container) {
     currentPage = 1; pageSize = window.AsgardPagination ? AsgardPagination.getPageSize() : 20;
     const isHeadTo = _isHeadTo();
+    const isSimple = _isSimpleCash();
 
     // init statement defaults once per render
     if (!stmtFrom || !stmtTo) {
@@ -448,8 +456,8 @@ window.AsgardCashPage = (function() {
     container.innerHTML = `
       <div class="page-header" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px">
         <div>
-          <h1>${isHeadTo ? 'Моя касса' : 'Казна Дружины'}</h1>
-          <p style="color:var(--text-muted);font-size:var(--text-sm);margin:0">${isHeadTo ? 'Авансы, суточные и расходы' : 'Авансы, расходы и расчёты'}</p>
+          <h1>${isSimple ? 'Моя касса' : 'Казна Дружины'}</h1>
+          <p style="color:var(--text-muted);font-size:var(--text-sm);margin:0">${isSimple ? 'Авансы и расходы' : 'Авансы, расходы и расчёты'}</p>
         </div>
         <div style="display:flex;gap:8px;flex-wrap:wrap">
           ${isHeadTo ? `
@@ -457,7 +465,7 @@ window.AsgardCashPage = (function() {
             <button class="btn ghost" onclick="AsgardCashPage.showCreateModal()">Запросить аванс</button>
           ` : `
             <button class="btn primary" onclick="AsgardCashPage.showCreateModal()">+ Новая заявка</button>
-            <button class="btn ghost" onclick="AsgardCashPage.showManualHandoverModal()">📥 Получил нал от СЗ</button>
+            ${isSimple ? '' : '<button class="btn ghost" onclick="AsgardCashPage.showManualHandoverModal()">📥 Получил нал от СЗ</button>'}
           `}
         </div>
       </div>
@@ -492,7 +500,7 @@ window.AsgardCashPage = (function() {
     await loadBalance();
     await loadWorks();
     await loadRequests();
-    if (!isHeadTo) await loadHandovers();
+    if (_isPmLike()) await loadHandovers();
     renderMerged();
 
     if (activeTab === 'statement') {
@@ -666,7 +674,7 @@ window.AsgardCashPage = (function() {
       { v: 'all',           label: 'Все' },
       { v: 'cash_request',  label: '🏦 Касса' }
     ];
-    if (!_isHeadTo()) chips.push({ v: 'handover', label: '💵 От СЗ' });
+    if (_isPmLike()) chips.push({ v: 'handover', label: '💵 От СЗ' });
     box.innerHTML = chips.map(c =>
       `<button class="btn ${sourceFilter === c.v ? 'primary' : 'ghost'} mini" data-src="${c.v}">${esc(c.label)}</button>`
     ).join('');
@@ -711,14 +719,14 @@ window.AsgardCashPage = (function() {
       currentRequests.forEach(r => items.push({ __source: 'cash_request', __sortDate: r.created_at, data: r }));
     }
     if (sourceFilter === 'all' || sourceFilter === 'handover') {
-      if (!_isHeadTo()) {
+      if (_isPmLike()) {
         currentHandovers.forEach(h => items.push({ __source: 'handover', __sortDate: h.received_at || h.created_at, data: h }));
       }
     }
 
     if (!items.length) {
-      const emptyDesc = _isHeadTo()
-        ? 'Запросите аванс у бухгалтера, затем фиксируйте расходы одной кнопкой'
+      const emptyDesc = _isSimpleCash()
+        ? 'Запросите деньги у директора — после согласования получите их в бухгалтерии'
         : 'Создайте заявку или зафиксируйте получение нала от СЗ';
       const emptyAction = _isHeadTo()
         ? `<div style="display:flex;gap:8px;justify-content:center;margin-top:12px;flex-wrap:wrap">
@@ -867,7 +875,7 @@ window.AsgardCashPage = (function() {
     const projectName = r.work_title || (r.work_id ? '#' + r.work_id : '');
 
     // Quick actions
-    const canReceive = r.status === 'approved' || r.status === 'money_issued';
+    const canReceive = r.status === 'money_issued';
     const canAddExpense = ['received', 'reporting'].includes(r.status);
     const canReturn = ['received', 'reporting'].includes(r.status) && balanceVal > 0;
     const canReply = r.status === 'question';
@@ -924,6 +932,9 @@ window.AsgardCashPage = (function() {
         </div>
 
         ${projectName ? `<div class="cash-card-project">${esc(projectName)}</div>` : ''}
+        ${r.initiated_by && Number(r.initiated_by) !== Number(r.user_id) && r.initiated_by_name
+          ? `<div class="cash-card-project" style="font-size:12px;color:var(--text-muted)">Запросил: ${esc(r.initiated_by_name)}</div>`
+          : ''}
 
         <div class="cash-card-amount">${fmtMoney(r.amount)}</div>
 
@@ -970,7 +981,7 @@ window.AsgardCashPage = (function() {
     _useSePayee = false;
     _sePayee = null;
 
-    if (_isHeadTo()) {
+    if (_isSimpleCash()) {
       showModal({
         title: 'Запросить аванс',
         icon: '💵',
@@ -1172,14 +1183,14 @@ window.AsgardCashPage = (function() {
     const form = document.getElementById('cashCreateForm');
     if (!form) return;
     const data = Object.fromEntries(new FormData(form));
-    const isHeadTo = _isHeadTo();
+    const isSimple = _isSimpleCash();
 
-    if (!isHeadTo && data.type === 'advance' && !data.work_id) {
+    if (!isSimple && data.type === 'advance' && !data.work_id) {
       toast('Выберите проект', '', 'warn');
       return;
     }
 
-    if (isHeadTo) {
+    if (isSimple) {
       const amt = parseFloat(data.amount);
       if (!Number.isFinite(amt) || amt <= 0) {
         toast('Сумма должна быть больше 0', '', 'warn');
@@ -1315,7 +1326,7 @@ window.AsgardCashPage = (function() {
 
   function renderDetail(req) {
     // Stage W — тип loan убран
-    const canReceive = req.status === 'approved' || req.status === 'money_issued';
+    const canReceive = req.status === 'money_issued';
     const canAddExpense = ['received', 'reporting'].includes(req.status);
     const canReturn = ['received', 'reporting'].includes(req.status) && req.balance?.remainder > 0;
     const canReply = req.status === 'question';
@@ -1377,6 +1388,13 @@ window.AsgardCashPage = (function() {
       html += `<div class="cash-alert ${alertType}">`;
       html += `<strong>Баланс:</strong> Выдано: ${fmtMoney(req.balance.approved)} | Потрачено: ${fmtMoney(req.balance.spent)} | Возвращено: ${fmtMoney(req.balance.returned)} | <strong>Остаток: ${fmtMoney(balanceVal)}</strong>`;
       html += '</div>';
+    }
+
+    if (canReceive) {
+      html += `<div class="cash-alert warning">Сначала подтвердите получение. Пока не подтвердите — чек, отчёт и возврат недоступны, хотя сумма уже на балансе.</div>`;
+    }
+    if (req.returns?.some(r => !r.confirmed_at)) {
+      html += `<div class="cash-alert warning">Возврат ожидает подтверждения кассы. Пока не подтвердят — сумма остаётся на вашем балансе.</div>`;
     }
 
     // Actions
@@ -1755,9 +1773,9 @@ window.AsgardCashPage = (function() {
               </select>
             </div>
             <div class="asg-form-group">
-              <label>Работа</label>
+              <label>Работа (необязательно, если этап без объекта)</label>
               <select name="work_id" id="cashQuickWorkId">
-                <option value="">— Выберите работу —</option>
+                <option value="">— Без объекта / выберите работу —</option>
                 ${workOpts}
               </select>
             </div>
@@ -1859,12 +1877,12 @@ window.AsgardCashPage = (function() {
     if (expenseType === 'per_diem') {
       const employeeId = parseInt(data.employee_id || '0', 10);
       const workId = parseInt(data.work_id || '0', 10);
-      if (!employeeId || !workId) {
-        toast('Выберите рабочего и работу', '', 'warn');
+      if (!employeeId) {
+        toast('Выберите рабочего', '', 'warn');
         return;
       }
       body.employee_id = employeeId;
-      body.work_id = workId;
+      if (workId) body.work_id = workId;
     } else if (!(data.description || '').trim()) {
       toast('Укажите описание расхода', '', 'warn');
       return;
@@ -2061,7 +2079,11 @@ window.AsgardCashPage = (function() {
   // HELPERS
   // ─────────────────────────────────────────────────────────────────
   function fmtMoney(val) {
-    return AsgardUI.money(Math.round(Number(val || 0))) + ' \u20BD';
+    const n = Math.round(Number(val || 0));
+    if (window.AsgardUI && typeof AsgardUI.moneyRub === 'function') return AsgardUI.moneyRub(n);
+    if (window.AsgardMoney && typeof AsgardMoney.formatMoney === 'function') return AsgardMoney.formatMoney(n);
+    if (window.AsgardUI && typeof AsgardUI.money === 'function') return AsgardUI.money(n) + ' ₽';
+    return String(n);
   }
 
   function fmtDate(val) {

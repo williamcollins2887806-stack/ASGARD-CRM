@@ -3,13 +3,31 @@
  * Action rows highlighted in-place; column sort with reset; default sort: action-first then deadline
  */
 window.AsgardRegistryTab = (function () {
-  const { esc, toast, showModal, hideModal } = AsgardUI;
+  const { esc, showModal, hideModal } = AsgardUI;
+  const _uiToast = AsgardUI.toast;
+  /** Compat: toast(msg, 'err'|'ok'|'warn') — AsgardUI expects (title, msg, type). */
+  function toast(a, b, c) {
+    if (b === 'err' || b === 'ok' || b === 'warn') {
+      const title = b === 'err' ? 'Ошибка' : b === 'warn' ? 'Внимание' : 'Готово';
+      return _uiToast(title, a, b);
+    }
+    return _uiToast(a, b || '', c || 'ok');
+  }
   const API = AsgardRegistryApi;
+  const M = () => window.AsgardMoney;
   const timers = {};
   let mountEl = null;
-  let state = { subtab: 'registry', period: 'year:2026', burnOnly: false, statusFilter: '', searchQ: '', searchInput: '', limit: 1000, sortKey: null, sortDir: 1 };
+  let state = {
+    subtab: 'registry', period: 'current', burnOnly: false, statusFilter: '',
+    searchQ: '', searchInput: '', limit: 1000, sortKey: null, sortDir: 1,
+    hideOthers: false, hideOthersUserId: null,
+    periodFilter: null,
+    colFilters: { id: '', customer_name: '', tender_title: '', created_by_name: '', created_at: '', docs_deadline: '' }
+  };
+  let periodWidget = null;
   let onRefreshCb = null;
   let onOpenWinCb = null;
+  let onClearBurnCb = null;
   let pmsCache = [];
   let toUsersCache = [];
   let rowsCache = [];
@@ -80,7 +98,6 @@ window.AsgardRegistryTab = (function () {
   const DIRECTOR_ROLES = ['DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV'];
 
   function openRpReviewModal(row, opts) {
-    if (!window.AsgardRpReviewModal) return;
     opts = opts || {};
     if (row.review_unread && API.markRegistryReviewSeen) {
       API.markRegistryReviewSeen(row.id).catch(function () {});
@@ -94,14 +111,21 @@ window.AsgardRegistryTab = (function () {
       opts = Object.assign({ role: 'viewer', readOnly: true, mode: 'calc' }, opts);
     } else if (role === 'HEAD_TO' && !opts.forceEdit) {
       opts = Object.assign({
-        role: final && opts.viewAsTo !== false ? 'to' : 'viewer',
+        role: opts.viewAsTo !== false ? 'to' : 'viewer',
         readOnly: true,
-        mode: 'calc'
+        mode: opts.mode || 'calc'
       }, opts);
-    } else if (isTo && final && opts.viewAsTo !== false) {
-      opts = Object.assign({ role: 'to', readOnly: true, mode: 'calc' }, opts);
+    } else if (isTo && opts.viewAsTo !== false && !opts.forceEdit) {
+      // ТО всегда смотрит как ТО (readOnly), даже до финала — иначе UI коллаба
+      opts = Object.assign({ role: 'to', readOnly: true, mode: opts.mode || 'calc' }, opts);
     }
-    AsgardRpReviewModal.open(row, pmsCache, refresh, opts);
+    const mode = opts.mode || (row.analysis_finalized_at || final ? 'calc' : 'analysis');
+    opts.mode = mode;
+    if (mode === 'calc' && window.AsgardRpCalcModal) {
+      AsgardRpCalcModal.open(row, pmsCache, refresh, opts);
+    } else if (window.AsgardRpReviewModal) {
+      AsgardRpReviewModal.open(row, pmsCache, refresh, opts);
+    }
   }
 
   function debounce(key, fn, delay) {
@@ -110,10 +134,101 @@ window.AsgardRegistryTab = (function () {
   }
 
   function formatMoney(v) {
+    if (M() && M().formatMoney) return M().formatMoney(v);
     if (v == null || v === '') return '—';
     const n = Number(v);
     if (!Number.isFinite(n)) return String(v);
     return n.toLocaleString('ru-RU', { maximumFractionDigits: 0 }) + ' ₽';
+  }
+
+  function formatSubmissionCell(row) {
+    const withV = row.submission_price_with_vat != null ? Number(row.submission_price_with_vat) : null;
+    const exV = row.submission_price != null ? Number(row.submission_price) : null;
+    if ((!withV || !(withV > 0)) && (!exV || !(exV > 0))) return null;
+    const vatPct = Number(row.vat_pct) || (M() && M().VAT_DEFAULT_PCT) || 22;
+    if (M() && M().formatMoneyVat) {
+      return M().formatMoneyVat(withV > 0 ? withV : M().withVat(exV, vatPct), vatPct, { exVat: exV > 0 ? exV : undefined });
+    }
+    const total = withV > 0 ? withV : Math.round(exV * (1 + vatPct / 100));
+    return { withVat: formatMoney(total), vatLine: 'в т.ч. НДС ' + formatMoney(Math.round((total - (exV || total / (1 + vatPct / 100))) * 100) / 100) };
+  }
+
+  function fmtShortDate(value) {
+    if (!value) return '—';
+    const s = String(value).slice(0, 10);
+    const m = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    return m ? (m[3] + '.' + m[2] + '.' + m[1].slice(2)) : (API.fmtDate ? API.fmtDate(value) : s);
+  }
+
+  function fmtFullDate(value) {
+    if (!value) return '—';
+    const s = String(value).slice(0, 10);
+    const m = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    return m ? (m[3] + '.' + m[2] + '.' + m[1]) : fmtShortDate(value);
+  }
+
+  /** Mon–Fri business days (parity with src/lib/business-days.js). */
+  function subBusinessDaysClient(iso, n) {
+    const s = String(iso || '').slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return null;
+    const [y, mo, d] = s.split('-').map(Number);
+    const cur = new Date(y, mo - 1, d);
+    let left = Math.max(0, Math.floor(Number(n) || 0));
+    while (left > 0) {
+      cur.setDate(cur.getDate() - 1);
+      const day = cur.getDay();
+      if (day !== 0 && day !== 6) left -= 1;
+    }
+    const yy = cur.getFullYear();
+    const mm = String(cur.getMonth() + 1).padStart(2, '0');
+    const dd = String(cur.getDate()).padStart(2, '0');
+    return yy + '-' + mm + '-' + dd;
+  }
+
+  function previewAnalysisDeadline(docsDeadline, paid, createdAt) {
+    const docs = String(docsDeadline || '').slice(0, 10);
+    if (!docs) return null;
+    const n = paid ? 5 : 3;
+    let deadline = subBusinessDaysClient(docs, n);
+    const created = String(createdAt || new Date().toISOString()).slice(0, 10);
+    if (deadline && created && deadline < created) deadline = created;
+    return { deadline, days: n, tight: !!(deadline && created && deadline === created && subBusinessDaysClient(docs, n) < created) };
+  }
+
+  function participationCell(row) {
+    if (row.participation_paid) {
+      const fee = row.participation_fee != null ? formatMoney(row.participation_fee) : 'платно';
+      return '<span class="reg-participation-paid" title="Платный сбор за участие (сгорит при проигрыше)">' + esc(fee) + '</span>';
+    }
+    return '<span class="reg-participation-free muted" title="Участие без платы">бесплатно</span>';
+  }
+
+  function analysisDeadlineCell(row) {
+    const dl = row.analysis_deadline ? String(row.analysis_deadline).slice(0, 10) : '';
+    if (!dl) return '<span class="muted">—</span>';
+    const today = new Date();
+    const tIso = today.getFullYear() + '-' + String(today.getMonth() + 1).padStart(2, '0') + '-' + String(today.getDate()).padStart(2, '0');
+    let tone = 'reg-adl-ok';
+    let title = 'Внутренний срок анализа';
+    if (dl < tIso) {
+      tone = 'reg-adl-overdue';
+      title = 'Просрочен внутренний срок анализа';
+    } else {
+      const tomorrow = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+      let left = 0;
+      const cur = new Date(tomorrow);
+      const end = new Date(dl.slice(0, 4), Number(dl.slice(5, 7)) - 1, Number(dl.slice(8, 10)));
+      while (cur < end) {
+        cur.setDate(cur.getDate() + 1);
+        const day = cur.getDay();
+        if (day !== 0 && day !== 6) left += 1;
+      }
+      if (left <= 1) {
+        tone = 'reg-adl-soon';
+        title = 'До внутреннего срока ≤1 раб. день';
+      }
+    }
+    return '<span class="reg-adl-badge ' + tone + '" title="' + esc(title) + '">' + esc(fmtShortDate(dl)) + '</span>';
   }
 
   function tenderHasWork(row) {
@@ -177,26 +292,51 @@ window.AsgardRegistryTab = (function () {
   ];
 
   const SORT_COLUMNS = [
-    { key: 'registry_no', label: '№' },
-    { key: 'customer_name', label: 'Заказчик' },
-    { key: 'tender_title', label: 'Тендер' },
+    { key: 'registry_no', label: '№', filterKey: 'id' },
+    { key: 'customer_name', label: 'Заказчик', filterKey: 'customer_name' },
+    { key: 'tender_title', label: 'Тендер', filterKey: 'tender_title' },
     { key: 'tender_price', label: 'НМЦ' },
-    { key: 'docs_deadline', label: 'Срок' },
+    { key: 'submission_price_with_vat', label: 'Подача' },
+    { key: 'docs_deadline', label: 'Срок', filterKey: 'docs_deadline' },
+    { key: 'participation_fee', label: 'Сбор' },
+    { key: 'analysis_deadline', label: 'Анализ' },
     { key: 'registry_status', label: 'Статус' },
     { key: 'calculator_user_name', label: 'Считает' },
     { key: '_rp_sort', label: 'Отчёт' },
+    { key: 'comment_to', label: 'Коммент' },
     { key: '_score_pct', label: 'Скор' },
-    { key: 'created_by_name', label: 'Внёс' },
-    { key: 'created_at', label: 'Добавлен' },
-    { key: 'comment_to', label: 'Коммент.' },
+    { key: 'created_by_name', label: 'Внёс', filterKey: 'created_by_name' },
+    { key: 'created_at', label: 'Добавлен', filterKey: 'created_at' },
     { key: '_action_sort', label: 'Действие' }
   ];
+
+  const COL_FILTER_KEYS = ['id', 'customer_name', 'tender_title', 'created_by_name', 'created_at', 'docs_deadline'];
+
+  function hasColFilters() {
+    return COL_FILTER_KEYS.some((k) => String(state.colFilters[k] || '').trim());
+  }
+
+  function clearAllFilters() {
+    state.statusFilter = '';
+    state.searchQ = '';
+    state.searchInput = '';
+    state.burnOnly = false;
+    COL_FILTER_KEYS.forEach((k) => { state.colFilters[k] = ''; });
+    if (typeof onClearBurnCb === 'function') onClearBurnCb();
+  }
 
   function getRowActionState(row) {
     const st = row.registry_status || 'рассмотрение';
     const rev = row.rp_review;
     if (st === 'выиграли' && !tenderHasWork(row)) {
       return { needs: true, type: 'won', label: 'Создать работу', tone: 'success' };
+    }
+    if (st === 'отмена' || st === 'проиграли') {
+      return { needs: false, type: null, label: '', tone: null };
+    }
+    // РП закрыл «Не подаём» — тендер остаётся в реестре, ТО сам кидает в архив
+    if (rev && rev.is_final && rev.decision === 'reject' && st !== 'отмена') {
+      return { needs: true, type: 'rp_reject', label: 'РП: не подаём → в архив', tone: 'danger' };
     }
     if (st !== 'рассмотрение') {
       return { needs: false, type: null, label: '', tone: null };
@@ -208,7 +348,7 @@ window.AsgardRegistryTab = (function () {
       return { needs: true, type: 'decide', label: 'Решение по отчёту', tone: 'info' };
     }
     if (rev && rev.analysis_finalized_at && !rev.is_final) {
-      return { needs: true, type: 'analysis_assign', label: 'Анализ готов — назначьте РП', tone: 'info' };
+      return { needs: true, type: 'analysis_assign', label: 'Анализ готов · считает дежурный РП', tone: 'info' };
     }
     return { needs: true, type: 'wait', label: 'Ждёт анализ РП', tone: 'warn' };
   }
@@ -216,7 +356,7 @@ window.AsgardRegistryTab = (function () {
   function actionSortRank(row) {
     const a = getRowActionState(row);
     if (!a.needs) return 99;
-    const ranks = { won: 0, decide: 1, analysis_assign: 2, assign: 3, draft: 4, wait: 5 };
+    const ranks = { won: 0, rp_reject: 1, decide: 2, analysis_assign: 3, assign: 4, draft: 5, wait: 6 };
     return ranks[a.type] != null ? ranks[a.type] : 50;
   }
 
@@ -234,8 +374,19 @@ window.AsgardRegistryTab = (function () {
         return row.registry_no != null ? Number(row.registry_no) : (Number(row.id) || 0);
       case 'tender_price':
         return row.tender_price != null && Number.isFinite(Number(row.tender_price)) ? Number(row.tender_price) : -Infinity;
+      case 'submission_price_with_vat':
+        return row.submission_price_with_vat != null && Number.isFinite(Number(row.submission_price_with_vat))
+          ? Number(row.submission_price_with_vat) : -Infinity;
       case 'docs_deadline':
         return row.docs_deadline ? new Date(row.docs_deadline).getTime() : -Infinity;
+      case 'analysis_deadline':
+        return row.analysis_deadline ? new Date(row.analysis_deadline).getTime() : -Infinity;
+      case 'participation_fee':
+        if (row.participation_paid) {
+          return row.participation_fee != null && Number.isFinite(Number(row.participation_fee))
+            ? Number(row.participation_fee) : 0;
+        }
+        return -1;
       case 'created_at':
         return row.created_at ? new Date(row.created_at).getTime() : -Infinity;
       case 'registry_status':
@@ -279,16 +430,72 @@ window.AsgardRegistryTab = (function () {
     return rows.filter((r) => getRowActionState(r).needs).length;
   }
 
-  function renderSortTh(key, label) {
+  function renderSortTh(key, label, filterKey) {
     const active = state.sortKey === key;
     const ind = active ? (state.sortDir === 1 ? '▲' : '▼') : '';
-    return '<th><button type="button" class="reg-th-sort' + (active ? ' reg-th-sort-active' : '') + '" data-sort="' + key + '">' +
-      esc(label) + (ind ? ' <span class="reg-sort-ind">' + ind + '</span>' : '') + '</button></th>';
+    const extraTh = key === 'participation_fee' ? ' reg-th-participation'
+      : (key === 'analysis_deadline' ? ' reg-th-analysis'
+        : (key === 'docs_deadline' ? ' reg-th-date'
+          : (key === 'tender_price' || key === 'submission_price_with_vat' ? ' reg-th-money'
+            : (key === 'registry_no' ? ' reg-th-no' : ''))));
+    const title = key === 'analysis_deadline'
+      ? 'Внутренний срок анализа (срок подачи минус 3 или 5 раб. дней)'
+      : (key === 'participation_fee' ? 'Сбор за участие в тендере' : '');
+    let h = '<th class="reg-th-wrap' + extraTh + '"' + (title ? ' title="' + esc(title) + '"' : '') + '>' +
+      '<button type="button" class="reg-th-sort' + (active ? ' reg-th-sort-active' : '') + '" data-sort="' + key + '">' +
+      esc(label) + (ind ? ' <span class="reg-sort-ind">' + ind + '</span>' : '') + '</button>';
+    if (filterKey) {
+      const v = state.colFilters[filterKey] || '';
+      h += '<input class="inp reg-col-filter" data-col-filter="' + filterKey + '" value="' + esc(v) + '" placeholder="фильтр…" title="Фильтр по колонке"/>';
+    } else {
+      // Spacer keeps header labels on one baseline when only some columns have filters
+      h += '<span class="reg-col-filter-spacer" aria-hidden="true"></span>';
+    }
+    return h + '</th>';
   }
 
   function filterRows(rows) {
     let list = rows.filter((r) => !isTestGarbage(r));
+    if (state.hideOthers && state.hideOthersUserId) {
+      const me = Number(state.hideOthersUserId);
+      list = list.filter((r) => {
+        const calc = Number(r.calculator_user_id || 0);
+        const created = Number(r.created_by_user_id || r.created_by || 0);
+        return calc === me || created === me;
+      });
+    }
     if (state.statusFilter) list = list.filter((r) => (r.registry_status || 'рассмотрение') === state.statusFilter);
+    const cf = state.colFilters || {};
+    const idQ = String(cf.id || '').trim().toLowerCase();
+    const custQ = String(cf.customer_name || '').trim().toLowerCase();
+    const titleQ = String(cf.tender_title || '').trim().toLowerCase();
+    const byQ = String(cf.created_by_name || '').trim().toLowerCase();
+    const addedQ = String(cf.created_at || '').trim().toLowerCase();
+    const dlQ = String(cf.docs_deadline || '').trim().toLowerCase();
+    if (idQ) {
+      list = list.filter((r) => {
+        const no = String(r.registry_no != null ? r.registry_no : '');
+        const id = String(r.id || '');
+        return no.toLowerCase().includes(idQ) || id.toLowerCase().includes(idQ);
+      });
+    }
+    if (custQ) list = list.filter((r) => String(r.customer_name || '').toLowerCase().includes(custQ));
+    if (titleQ) list = list.filter((r) => String(r.tender_title || '').toLowerCase().includes(titleQ));
+    if (byQ) list = list.filter((r) => String(r.created_by_name || '').toLowerCase().includes(byQ));
+    if (addedQ) {
+      list = list.filter((r) => {
+        const iso = String(r.created_at || '').toLowerCase();
+        const short = fmtShortDate(r.created_at).toLowerCase();
+        return iso.includes(addedQ) || short.includes(addedQ);
+      });
+    }
+    if (dlQ) {
+      list = list.filter((r) => {
+        const iso = String(r.docs_deadline || '').toLowerCase();
+        const short = fmtShortDate(r.docs_deadline).toLowerCase();
+        return iso.includes(dlQ) || short.includes(dlQ);
+      });
+    }
     return list;
   }
 
@@ -307,19 +514,21 @@ window.AsgardRegistryTab = (function () {
     return '<button type="button" class="pill reg-status-pill reg-status-change ' + cls + '" data-id="' + rowId + '" title="Нажмите, чтобы сменить статус">' + esc(statusLabel(st)) + '</button>';
   }
 
-  async function applyStatusChange(row, nextStatus) {
+  async function applyStatusChange(row, nextOrBody) {
+    const payload = typeof nextOrBody === 'string' ? { registry_status: nextOrBody } : (nextOrBody || {});
+    const nextStatus = payload.registry_status;
     const st = row.registry_status || 'рассмотрение';
-    if (nextStatus === st) return;
+    if (nextStatus === st && !payload.submission_price && !payload.submission_price_with_vat) return;
     if (nextStatus === 'проиграли' && window.AsgardLossReasonModal) {
       return new Promise((resolve) => {
-        AsgardLossReasonModal.open(row, (payload) => API.patchRegistryStatus(row.id, payload).then(() => {
+        AsgardLossReasonModal.open(row, (lossPayload) => API.patchRegistryStatus(row.id, lossPayload).then(() => {
           refresh();
           onRefreshCb && onRefreshCb();
           resolve();
         }), () => resolve());
       });
     }
-    await API.patchRegistryStatus(row.id, nextStatus);
+    await API.patchRegistryStatus(row.id, payload);
     if (nextStatus === 'выиграли') {
       openWinModal(row);
     }
@@ -328,13 +537,34 @@ window.AsgardRegistryTab = (function () {
     onRefreshCb && onRefreshCb();
   }
 
-  function openStatusModal(row) {
+  async function openStatusModal(row) {
     const st = row.registry_status || 'рассмотрение';
-    const html = '<p class="muted" style="margin:0 0 10px;font-size:13px">' + esc(row.customer_name || '') + ' — ' + esc((row.tender_title || '').slice(0, 80)) + '</p>' +
+    let vatPct = Number(row.vat_pct) || (M() && M().VAT_DEFAULT_PCT) || 22;
+    try {
+      const vatSetting = await AsgardDB.get('settings', 'vat_default_pct');
+      const v = vatSetting ? parseFloat(vatSetting.value_json) : NaN;
+      if (Number.isFinite(v) && v >= 0 && v <= 100) vatPct = v;
+    } catch (_) { /* keep fallback */ }
+    const suggested = (M() && M().suggestSubmissionPrices) ? M().suggestSubmissionPrices(row, vatPct) : { exVat: null, withVat: null, vatPct };
+    const sugEx = suggested.exVat > 0 ? String(Math.round(suggested.exVat)) : '';
+    const sugWith = suggested.withVat > 0 ? String(Math.round(suggested.withVat)) : '';
+    const sugHint = suggested.withVat != null
+      ? ' Предложена сумма из отчёта РП (' + formatMoney(suggested.withVat) + ').'
+      : '';
+    const html = '<p class="reg-status-modal-hint">' + esc(row.customer_name || '') + ' — ' + esc((row.tender_title || '').slice(0, 80)) + '</p>' +
       '<label>Статус<select class="inp" id="regStatusPick" style="width:100%;margin-top:4px">' +
       API.REGISTRY_STATUSES.map((s) =>
         '<option value="' + s.value + '"' + (st === s.value ? ' selected' : '') + '>' + esc(s.label) + '</option>'
       ).join('') + '</select></label>' +
+      '<div id="regStatusMoney" class="reg-status-money" style="display:none">' +
+      '<p class="reg-status-money-title">С какой суммой подались?' + esc(sugHint) + '</p>' +
+      '<label>Без НДС, ₽<input class="inp" id="regSubEx" type="text" value="' + esc(sugEx) + '" placeholder="цифры или ориентир" style="width:100%;margin-top:4px"/></label>' +
+      '<label style="margin-top:8px;display:block">С НДС ' + vatPct + '%, ₽<input class="inp" id="regSubWith" type="text" value="' + esc(sugWith) + '" placeholder="цифры или ориентир" style="width:100%;margin-top:4px"/></label>' +
+      '<p class="reg-status-vat" id="regSubVatLine"></p>' +
+      '</div>' +
+      '<div id="regStatusCancelReason" style="display:none;margin-top:10px">' +
+      '<label>Причина отмены <small class="muted">(необязательно)</small>' +
+      '<textarea class="inp" id="regArchiveReason" rows="2" placeholder="Напр.: закупка отменена заказчиком" style="width:100%;margin-top:4px"></textarea></label></div>' +
       '<p class="muted" style="font-size:11px;margin:10px 0 0">Отчёт РП «Подаём» → <strong>Готовим</strong>. «Подались» — когда заявку реально подали на площадке.</p>' +
       '<div style="display:flex;gap:8px;margin-top:14px">' +
       '<button type="button" class="btn" id="regStatusSave">Сохранить</button>' +
@@ -343,11 +573,70 @@ window.AsgardRegistryTab = (function () {
       title: 'Статус тендера #' + row.id,
       html,
       onMount: () => {
+        const pick = document.getElementById('regStatusPick');
+        const moneyBox = document.getElementById('regStatusMoney');
+        const cancelBox = document.getElementById('regStatusCancelReason');
+        const exInp = document.getElementById('regSubEx');
+        const withInp = document.getElementById('regSubWith');
+        const vatLine = document.getElementById('regSubVatLine');
+        const syncVis = () => {
+          if (moneyBox) moneyBox.style.display = (pick?.value === 'подались') ? '' : 'none';
+          if (cancelBox) cancelBox.style.display = (pick?.value === 'отмена') ? '' : 'none';
+        };
+        const digits = (v) => String(v || '').replace(/\D/g, '');
+        const updateVat = () => {
+          const w = Number(digits(withInp?.value));
+          const e = Number(digits(exInp?.value));
+          if (!vatLine) return;
+          if (w > 0) {
+            const base = e > 0 ? e : (M() ? M().withoutVat(w, vatPct) : Math.round(w / (1 + vatPct / 100)));
+            vatLine.textContent = 'в т.ч. НДС ' + formatMoney(Math.round((w - base) * 100) / 100);
+          } else vatLine.textContent = '';
+        };
+        pick?.addEventListener('change', syncVis);
+        syncVis();
+        updateVat();
+        exInp?.addEventListener('input', () => {
+          const n = Number(digits(exInp.value));
+          if (n > 0 && withInp) {
+            withInp.value = String(Math.round(M() ? M().withVat(n, vatPct) : n * (1 + vatPct / 100)));
+          }
+          updateVat();
+        });
+        withInp?.addEventListener('input', () => {
+          const n = Number(digits(withInp.value));
+          if (n > 0 && exInp) {
+            exInp.value = String(Math.round(M() ? M().withoutVat(n, vatPct) : n / (1 + vatPct / 100)));
+          }
+          updateVat();
+        });
         document.getElementById('regStatusCancel')?.addEventListener('click', hideModal);
         document.getElementById('regStatusSave')?.addEventListener('click', async () => {
-          const next = document.getElementById('regStatusPick')?.value || st;
+          const next = pick?.value || st;
           try {
-            await applyStatusChange(row, next);
+            if (next === 'подались') {
+              const finalNoVat = Number(digits(exInp?.value)) || 0;
+              const finalWithVat = Number(digits(withInp?.value)) || 0;
+              if (!finalNoVat && !finalWithVat) {
+                toast('Укажите сумму подачи', 'warn');
+                return;
+              }
+              await applyStatusChange(row, {
+                registry_status: next,
+                submission_price: finalNoVat || (M() ? M().withoutVat(finalWithVat, vatPct) : finalWithVat),
+                submission_price_with_vat: finalWithVat || (M() ? M().withVat(finalNoVat, vatPct) : finalNoVat),
+                vat_pct: vatPct
+              });
+            } else if (next === 'отмена') {
+              const reasonEl = document.getElementById('regArchiveReason');
+              const reason = reasonEl ? String(reasonEl.value || '') : '';
+              await applyStatusChange(row, {
+                registry_status: next,
+                archive_reason: reason
+              });
+            } else {
+              await applyStatusChange(row, next);
+            }
             hideModal();
           } catch (e) { toast(e.message, 'err'); }
         });
@@ -439,13 +728,21 @@ window.AsgardRegistryTab = (function () {
       const docsBlock = showDocs
         ? '<div id="regDocsHost"></div>'
         : (isNew ? API.renderRegistryDocsPlaceholderHtml() : '<div id="regDocsHost"></div>');
+      const paid = !!row.participation_paid;
+      const feeVal = row.participation_fee != null ? row.participation_fee : '';
       return '<div class="reg-form-modal" style="display:grid;gap:10px">' +
         '<label style="position:relative">Заказчик <small class="muted">(название или ИНН — подскажем из ДаДата)</small>' +
         '<input class="inp" id="regFormCustomer" data-inn="' + esc(row.customer_inn || '') + '" value="' + esc(row.customer_name || '') + '" placeholder="Начните вводить…" style="width:100%;margin-top:4px"' + (showDocs ? ' disabled' : '') + '/></label>' +
         '<label>Тендер<input class="inp" id="regFormTitle" value="' + esc(row.tender_title || '') + '" style="width:100%;margin-top:4px"' + (showDocs ? ' disabled' : '') + '/></label>' +
         '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">' +
         '<label>НМЦ<input class="inp" id="regFormPrice" type="number" value="' + (row.tender_price != null ? row.tender_price : '') + '" style="width:100%;margin-top:4px"' + (showDocs ? ' disabled' : '') + '/></label>' +
-        '<label>Срок<input class="inp" id="regFormDeadline" type="date" value="' + dl + '" style="width:100%;margin-top:4px"' + (showDocs ? ' disabled' : '') + '/></label></div>' +
+        '<label>Срок подачи <span class="req">*</span><input class="inp" id="regFormDeadline" type="date" value="' + dl + '" required style="width:100%;margin-top:4px"' + (showDocs ? ' disabled' : '') + '/></label></div>' +
+        '<p class="muted" id="regFormAnalysisHint" style="font-size:11px;margin:-4px 0 0"></p>' +
+        '<label style="display:flex;align-items:center;gap:8px;margin:0">' +
+        '<input type="checkbox" id="regFormPaid"' + (paid ? ' checked' : '') + (showDocs ? ' disabled' : '') + '/>' +
+        ' Платное участие</label>' +
+        '<label id="regFormFeeWrap" style="' + (paid ? '' : 'display:none;') + '">Ориентировочная стоимость (сгорит при проигрыше), ₽' +
+        '<input class="inp" id="regFormFee" type="number" min="1" step="0.01" value="' + esc(feeVal) + '" style="width:100%;margin-top:4px"' + (showDocs ? ' disabled' : '') + '/></label>' +
         '<label>Ссылка на закупку<input class="inp" id="regFormPurchaseUrl" type="url" value="' + esc(row.purchase_url || '') + '" placeholder="zakupki.gov.ru / B2B…" style="width:100%;margin-top:4px"' + (showDocs ? ' disabled' : '') + '/></label>' +
         '<label>Статус<select class="inp" id="regFormStatus" style="width:100%;margin-top:4px"' + (showDocs ? ' disabled' : '') + '>' +
         API.REGISTRY_STATUSES.map((s) =>
@@ -460,11 +757,39 @@ window.AsgardRegistryTab = (function () {
         '<button type="button" class="btn ghost" id="regFormCancel">' + (showDocs ? 'Закрыть' : 'Отмена') + '</button></div></div>';
     }
 
+    function syncPaidFeeUi() {
+      const paid = !!document.getElementById('regFormPaid')?.checked;
+      const wrap = document.getElementById('regFormFeeWrap');
+      if (wrap) wrap.style.display = paid ? '' : 'none';
+      updateAnalysisHint();
+    }
+
+    function updateAnalysisHint() {
+      const el = document.getElementById('regFormAnalysisHint');
+      if (!el) return;
+      const docs = document.getElementById('regFormDeadline')?.value || '';
+      const paid = !!document.getElementById('regFormPaid')?.checked;
+      const prev = previewAnalysisDeadline(docs, paid, row.created_at || null);
+      if (!prev || !prev.deadline) {
+        el.textContent = '';
+        return;
+      }
+      let msg = 'Внутренний срок анализа: ' + fmtFullDate(prev.deadline) +
+        ' (' + prev.days + ' раб. дн. до подачи)';
+      if (prev.tight) msg += ' · мало времени до подачи';
+      el.textContent = msg;
+      el.style.color = prev.tight ? 'var(--warn, #b45309)' : '';
+    }
+
     function mountForm(showDocs) {
       const root = document.querySelector('.reg-form-modal')?.closest('.modal-body') || document.querySelector('.reg-form-modal')?.parentElement;
       const modalRoot = document.querySelector('.reg-form-modal');
       if (!showDocs) {
         bindFormCustomerSuggest(document.getElementById('regFormCustomer'));
+        document.getElementById('regFormPaid')?.addEventListener('change', syncPaidFeeUi);
+        document.getElementById('regFormDeadline')?.addEventListener('change', updateAnalysisHint);
+        document.getElementById('regFormDeadline')?.addEventListener('input', updateAnalysisHint);
+        syncPaidFeeUi();
       }
       document.getElementById('regFormCancel')?.addEventListener('click', () => {
         hideModal();
@@ -486,6 +811,13 @@ window.AsgardRegistryTab = (function () {
       });
       document.getElementById('regFormSave')?.addEventListener('click', async () => {
         const custInp = document.getElementById('regFormCustomer');
+        const paid = !!document.getElementById('regFormPaid')?.checked;
+        const feeRaw = document.getElementById('regFormFee')?.value;
+        const fee = feeRaw === '' || feeRaw == null ? null : Number(feeRaw);
+        if (paid && !(fee > 0)) {
+          toast('Укажите ориентировочную стоимость платного участия', 'err');
+          return;
+        }
         const body = {
           customer_name: custInp?.value?.trim() || '',
           customer_inn: custInp?.dataset?.inn?.trim() || null,
@@ -496,17 +828,46 @@ window.AsgardRegistryTab = (function () {
           })(),
           docs_deadline: document.getElementById('regFormDeadline')?.value || null,
           purchase_url: document.getElementById('regFormPurchaseUrl')?.value?.trim() || null,
-          comment_to: document.getElementById('regFormComment')?.value || ''
+          comment_to: document.getElementById('regFormComment')?.value || '',
+          participation_paid: paid,
+          participation_fee: paid ? fee : null
         };
         const nextStatus = document.getElementById('regFormStatus')?.value || st;
+        if (!body.docs_deadline) {
+          toast('Укажите дату подачи (срок)', 'err');
+          return;
+        }
         try {
           if (isNew) {
             if (!body.customer_name && !body.tender_title) {
               toast('Укажите заказчика или тендер', 'err');
               return;
             }
+            if (body.tender_title || body.purchase_url) {
+              try {
+                const dup = await API.findRegistryDuplicates({
+                  title: body.tender_title || '',
+                  purchase_url: body.purchase_url || ''
+                });
+                const items = dup.items || [];
+                if (items.length) {
+                  const lines = items.slice(0, 5).map((d) =>
+                    '#' + d.id + ' · ' + (d.created_by_name || '—') + ' · ' + (d.registry_status || d.tender_status || '—') +
+                    (d.tender_title ? '\n   ' + d.tender_title : '')
+                  ).join('\n');
+                  const ok = confirm('Такой тендер уже есть в CRM:\n\n' + lines + '\n\nВсё равно создать новую строку?');
+                  if (!ok) return;
+                }
+              } catch (_) { /* soft: continue create if dupe check fails */ }
+            }
             const res = await API.createRegistryRow(Object.assign({}, body, { registry_status: nextStatus }));
             tenderId = res.tender?.id || res.id;
+            if (res.tender) {
+              row.participation_paid = res.tender.participation_paid;
+              row.participation_fee = res.tender.participation_fee;
+              row.analysis_deadline = res.tender.analysis_deadline;
+              row.created_at = res.tender.created_at;
+            }
             savedNew = true;
             toast('Строка добавлена — загрузите документы ниже', 'ok');
             if (typeof AsgardUI.replaceModal === 'function') {
@@ -529,9 +890,26 @@ window.AsgardRegistryTab = (function () {
           } else {
             const fields = ['customer_name', 'customer_inn', 'tender_title', 'tender_price', 'docs_deadline', 'purchase_url', 'comment_to'];
             for (const f of fields) {
-              if (body[f] !== (row[f] != null ? row[f] : (f === 'tender_price' || f === 'docs_deadline' ? null : ''))) {
-                await API.patchRegistryField(row.id, f, body[f]);
+              const prev = row[f];
+              let next = body[f];
+              if (f === 'docs_deadline') {
+                if (API.fmtDateIso(prev) === next) continue;
+              } else if (f === 'tender_price') {
+                const pn = prev != null ? Number(prev) : null;
+                const nn = next != null ? Number(next) : null;
+                if (pn === nn) continue;
+              } else if ((prev != null ? prev : '') === (next != null ? next : '')) {
+                continue;
               }
+              await API.patchRegistryField(row.id, f, next);
+            }
+            const prevPaid = !!row.participation_paid;
+            const prevFee = row.participation_fee != null ? Number(row.participation_fee) : null;
+            if (prevPaid !== paid || prevFee !== (paid ? fee : null)) {
+              await API.patchRegistryField(row.id, 'participation', {
+                participation_paid: paid,
+                participation_fee: paid ? fee : null
+              });
             }
             if (nextStatus !== st) {
               await applyStatusChange(row, nextStatus);
@@ -570,19 +948,56 @@ window.AsgardRegistryTab = (function () {
 
   function rpCell(row) {
     const rev = row.rp_review;
+    const qIcon = threadQuestionIcon(row);
+    let core = '';
     if (rev && rev.director_review_status === 'pending') {
-      return '<button type="button" class="pill warn reg-rp-view" data-id="' + row.id + '">У директора</button>';
+      core = '<button type="button" class="pill warn reg-rp-view" data-id="' + row.id + '">У директора</button>';
+    } else if (rev && rev.director_review_status === 'rejected') {
+      core = '<button type="button" class="reg-rp-decision reg-rp-decision-reject reg-rp-view" data-id="' + row.id + '" title="Отклонено директором">✕ Отклонено</button>';
+    } else if (rev && rev.director_review_status === 'approved') {
+      core = '<button type="button" class="pill ok reg-rp-view" data-id="' + row.id + '">Цена согласована</button>';
+    } else if (rev && rev.is_final && rev.decision === 'reject') {
+      core = '<button type="button" class="reg-rp-decision reg-rp-decision-reject reg-rp-view" data-id="' + row.id + '" title="РП рекомендует не подавать">✕ Не подаём</button>';
+    } else if (rev && rev.is_final && rev.decision === 'submit') {
+      // Ниже порога директор не вызывался — цена зафиксирована просчётом РП.
+      core = '<button type="button" class="pill ok reg-rp-view" data-id="' + row.id + '">Цена согласована</button>' +
+        '<div class="muted" style="font-size:10px;margin-top:2px">Отчёт готов</div>';
+    } else if (rev && rev.is_final) {
+      core = '<button type="button" class="pill ok reg-rp-view" data-id="' + row.id + '">Отчёт готов</button>';
+    } else if (rev && rev.analysis_finalized_at && !rev.is_final) {
+      if (rev.decision === 'submit') {
+        core = '<button type="button" class="reg-rp-decision reg-rp-decision-submit reg-rp-view" data-id="' + row.id + '">Подаём</button>' +
+          '<div class="muted" style="font-size:10px;margin-top:2px">Анализ готов</div>';
+      } else if (rev.decision === 'reject') {
+        core = '<button type="button" class="reg-rp-decision reg-rp-decision-reject reg-rp-view" data-id="' + row.id + '">Не подаём</button>' +
+          '<div class="muted" style="font-size:10px;margin-top:2px">Анализ готов</div>';
+      } else {
+        core = '<button type="button" class="pill ok reg-rp-view" data-id="' + row.id + '">Анализ готов</button>';
+      }
+    } else if (rev && !rev.is_final) {
+      let pre = '';
+      if (rev.decision === 'submit') {
+        pre = '<div class="reg-rp-predec reg-rp-predec-submit">предв. Подаём</div>';
+      } else if (rev.decision === 'reject') {
+        pre = '<div class="reg-rp-predec reg-rp-predec-reject">предв. Не подаём</div>';
+      }
+      core = '<button type="button" class="pill warn reg-rp-view" data-id="' + row.id + '">Черновик</button>' + pre;
+    } else {
+      core = '<span class="pill muted">ожидает</span>';
     }
-    if (rev && rev.is_final) {
-      return '<button type="button" class="pill ok reg-rp-view" data-id="' + row.id + '">Отчёт готов</button>';
-    }
-    if (rev && rev.analysis_finalized_at && !rev.is_final) {
-      return '<button type="button" class="pill ok reg-rp-view" data-id="' + row.id + '">Анализ готов</button>';
-    }
-    if (rev && !rev.is_final) {
-      return '<button type="button" class="pill warn reg-rp-view" data-id="' + row.id + '">Черновик</button>';
-    }
-    return '<span class="pill muted">ожидает</span>';
+    return '<div class="reg-rp-cell">' + qIcon + core + '</div>';
+  }
+
+  function threadQuestionIcon(row) {
+    const n = Number(row.thread_unread_count) || 0;
+    const preview = row.thread_last_question_preview;
+    if (!n && !preview) return '';
+    const who = row.thread_last_question_author ? (row.thread_last_question_author + ': ') : '';
+    const tip = preview
+      ? (who + preview)
+      : ('Есть вопросы РП' + (n ? ' (' + n + ')' : ''));
+    const badge = n > 0 ? '<span class="reg-thread-q-badge">' + (n > 9 ? '9+' : n) + '</span>' : '';
+    return '<button type="button" class="reg-thread-q-btn reg-rp-chat" data-id="' + row.id + '" title="' + esc(tip) + '">⚠' + badge + '</button>';
   }
 
   function actionControls(row, action) {
@@ -595,26 +1010,22 @@ window.AsgardRegistryTab = (function () {
     if (action.type === 'decide') {
       return '<button type="button" class="pill ok mini reg-rp-view" data-id="' + row.id + '">Смотреть отчёт</button>';
     }
+    if (action.type === 'rp_reject') {
+      return '<button type="button" class="btn mini ghost reg-rp-view" data-id="' + row.id + '">Открыть</button>' +
+        '<button type="button" class="btn mini reg-to-archive" data-id="' + row.id + '">В архив</button>';
+    }
     if (action.type === 'draft') {
       return '<button type="button" class="btn mini ghost reg-rp-view" data-id="' + row.id + '">Открыть</button>';
     }
-    if (action.type === 'analysis_assign') {
-      const pmOpts = pmsCache.map((p) => '<option value="' + p.id + '">' + esc(p.name) + '</option>').join('');
+    if (action.type === 'analysis_assign' || action.type === 'assign') {
       const calcName = row.calculator_user_name || row.rp_review?.calculator_name || '';
       let h = '<button type="button" class="btn mini ghost reg-rp-view" data-id="' + row.id + '">Открыть</button>';
+      // Просчёт делает дежурный РП; ТО может только «считать сам» в той же модалке.
       h += '<button type="button" class="btn mini ghost reg-self-calc" data-id="' + row.id + '">Считаю сам</button>';
-      h += '<select class="inp reg-assign-pm" data-id="' + row.id + '" style="min-width:120px;font-size:11px"><option value="">РП</option>' + pmOpts + '</select>';
-      h += '<button type="button" class="btn mini reg-assign-go" data-id="' + row.id + '">→</button>';
       if (calcName) {
         h += '<span class="muted" style="font-size:11px;margin-left:4px">' + esc(calcName) + ' считает</span>';
       }
       return h;
-    }
-    if (action.type === 'assign') {
-      const pmOpts = pmsCache.map((p) => '<option value="' + p.id + '">' + esc(p.name) + '</option>').join('');
-      return '<button type="button" class="btn mini ghost reg-self-calc" data-id="' + row.id + '">Считаю сам</button>' +
-        '<select class="inp reg-assign-pm" data-id="' + row.id + '" style="min-width:120px;font-size:11px"><option value="">РП</option>' + pmOpts + '</select>' +
-        '<button type="button" class="btn mini reg-assign-go" data-id="' + row.id + '">→</button>';
     }
     if (action.type === 'director_wait') {
       return '<span class="pill warn">Ожидает директора</span>' +
@@ -702,33 +1113,97 @@ window.AsgardRegistryTab = (function () {
     openRpReviewModal(row, Object.assign({ viewAsTo: true }, extra));
   }
 
+  function ensurePeriodFilter(legacyPeriod) {
+    if (state.periodFilter) return state.periodFilter;
+    if (window.TenderPeriodFilter) {
+      state.periodFilter = window.TenderPeriodFilter.fromLegacyPeriod(
+        legacyPeriod != null ? legacyPeriod : state.period
+      );
+    } else {
+      state.periodFilter = {
+        mode: 'month',
+        month: state.period === 'current' ? '' : (state.period || ''),
+        quick: 'all',
+        dateFrom: '',
+        dateTo: '',
+        dateField: 'created_at'
+      };
+    }
+    return state.periodFilter;
+  }
+
+  function mountPeriodWidget() {
+    const host = document.getElementById('regPeriodHost');
+    if (!host) return;
+    if (periodWidget && periodWidget.destroy) {
+      try { periodWidget.destroy(); } catch (_) {}
+      periodWidget = null;
+    }
+    ensurePeriodFilter();
+    if (!window.TenderPeriodFilterUI) {
+      host.innerHTML = '<select class="inp" id="regPeriodSel"></select>';
+      const sel = host.querySelector('#regPeriodSel');
+      API.buildRegistryPeriodOptions().forEach((o) => {
+        const opt = document.createElement('option');
+        opt.value = o.value;
+        opt.textContent = o.label;
+        if (o.value === state.period) opt.selected = true;
+        sel.appendChild(opt);
+      });
+      sel.addEventListener('change', (e) => {
+        state.period = e.target.value;
+        state.periodFilter = window.TenderPeriodFilter
+          ? window.TenderPeriodFilter.fromLegacyPeriod(state.period)
+          : null;
+        state.burnOnly = false;
+        if (typeof onClearBurnCb === 'function') onClearBurnCb();
+        refresh();
+      });
+      return;
+    }
+    periodWidget = window.TenderPeriodFilterUI.mount(host, {
+      state: state.periodFilter,
+      onChange: (next) => {
+        state.periodFilter = next;
+        if (window.TenderPeriodFilter) {
+          const q = window.TenderPeriodFilter.toQueryParams(next);
+          state.period = q.period || '';
+        }
+        state.burnOnly = false;
+        if (typeof onClearBurnCb === 'function') onClearBurnCb();
+        refresh();
+      }
+    });
+  }
+
   function renderToolbar(total, periodOptions, actionCount) {
-    const opts = periodOptions.map((o) =>
-      '<option value="' + esc(o.value) + '"' + (o.value === state.period ? ' selected' : '') + '>' + esc(o.label) + '</option>'
-    ).join('');
     const statusOpts = '<option value="">Все статусы</option>' + API.REGISTRY_STATUSES.map((s) =>
       '<option value="' + s.value + '"' + (state.statusFilter === s.value ? ' selected' : '') + '>' + esc(s.label) + '</option>'
     ).join('');
-    return '<div class="reg-toolbar" style="margin-bottom:12px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">' +
-      '<input class="inp" id="regSearchInp" placeholder="Заказчик, № реестра, предмет…" value="' + esc(state.searchInput) + '" style="min-width:220px;max-width:320px"/>' +
-      '<label style="display:flex;align-items:center;gap:6px"><span class="muted" style="font-size:13px">Период:</span>' +
-      '<select class="inp" id="regPeriodSel">' + opts + '</select></label>' +
-      '<label style="display:flex;align-items:center;gap:6px"><span class="muted" style="font-size:13px">Статус:</span>' +
+    return '<div class="reg-toolbar">' +
+      '<label class="reg-toolbar-field reg-toolbar-search"><span class="muted">Поиск</span>' +
+      '<input class="inp" id="regSearchInp" placeholder="Заказчик, № реестра, предмет…" value="' + esc(state.searchInput) + '"/></label>' +
+      '<div class="reg-toolbar-field reg-toolbar-period"><span class="muted">Период</span>' +
+      '<div id="regPeriodHost"></div></div>' +
+      '<label class="reg-toolbar-field"><span class="muted">Статус</span>' +
       '<select class="inp" id="regStatusSel">' + statusOpts + '</select></label>' +
-      '<span class="muted" style="font-size:13px">' + total + ' тендеров' +
-      (actionCount ? ' · ' + actionCount + ' нуждают действия' : '') +
-      (state.burnOnly ? ' · горящие' : '') + '</span>' +
-      '<label style="display:flex;align-items:center;gap:6px"><span class="muted" style="font-size:13px">Строк:</span>' +
-      '<select class="inp" id="regLimitSel" style="min-width:72px">' +
+      '<span class="reg-toolbar-meta muted">' + total + ' тендеров' +
+      (actionCount ? ' · ' + actionCount + ' требуют действия' : '') + '</span>' +
+      (state.burnOnly ? '<button type="button" class="reg-burn-chip" id="regBurnClear">🔥 Горящие ×</button>' : '') +
+      '<label class="reg-toolbar-field"><span class="muted">Строк</span>' +
+      '<select class="inp" id="regLimitSel">' +
       [100, 500, 1000, 2000].map((n) =>
         '<option value="' + n + '"' + (state.limit === n ? ' selected' : '') + '>' + (n >= 1000 ? (n / 1000) + 'k' : String(n)) + '</option>'
       ).join('') + '</select></label>' +
       '<button type="button" class="btn mini ghost" id="regSortReset"' + (state.sortKey ? '' : ' hidden') + '>↺ Сброс сортировки</button>' +
+      '<button type="button" class="btn mini ghost" id="regFiltersReset"' +
+      ((state.statusFilter || state.searchQ || hasColFilters() || state.burnOnly) ? '' : ' hidden') +
+      '>Сбросить все фильтры</button>' +
       '<button type="button" class="btn mini" id="regAddRow">+ Строка</button>' +
       '<button type="button" class="btn mini ghost" id="regRefresh">↻</button>' +
       '<a href="#/pm-calculations" class="btn mini ghost">Просчёты РП</a>' +
       '</div>' +
-      '<p class="muted reg-toolbar-hint" style="font-size:12px;margin:-4px 0 10px">ℹ Статус — клик по плашке. Редактирование — двойной клик или ⋯. Сортировка — клик по заголовку колонки.</p>';
+      '<p class="muted reg-toolbar-hint">Период: месяц / даты от–до · фильтр по дате внесения или сроку подачи · статус — клик по плашке</p>';
   }
 
   function renderRow(row) {
@@ -740,26 +1215,39 @@ window.AsgardRegistryTab = (function () {
     const scoreTxt = score ? score.win_chance_pct + '% (' + (score.tenders_count || 0) + ')' : '—';
     const scoreTitle = esc(scoreTooltip(score));
     const calcName = row.calculator_user_name || row.rp_review?.calculator_name || '—';
-    const commentPrev = row.comment_to ? esc(String(row.comment_to).slice(0, 40)) + (String(row.comment_to).length > 40 ? '…' : '') : '';
     const title = row.tender_title || '—';
     const docIcon = (row.doc_count > 0) ? '<span title="Есть документы" style="margin-right:4px">📎</span>' : '';
     const actionCls = action.needs ? ' reg-row-needs-action reg-action-tone-' + action.tone : '';
+    const rejectCls = (row.rp_review && row.rp_review.is_final && row.rp_review.decision === 'reject' && st !== 'отмена')
+      ? ' reg-row-rp-reject' : '';
     const unreadCls = row.review_unread ? ' reg-row-unread' : '';
     const regNo = row.registry_no != null ? row.registry_no : row.id;
-    return '<tr class="reg-row ' + cls + actionCls + unreadCls + '" data-id="' + row.id + '">' +
-      '<td class="reg-no-cell" title="ID: ' + row.id + '"><div class="reg-no-main">' + esc(regNo) + '</div>' +
+    const unreadDot = row.review_unread ? '<span class="reg-unread-dot" title="Новый отчёт"></span>' : '';
+    const submission = formatSubmissionCell(row);
+    const submitHtml = submission
+      ? ('<div class="reg-submit-cell"><div class="reg-submit-main">' + esc(submission.withVat) + '</div>' +
+         '<div class="reg-submit-vat muted">' + esc(submission.vatLine) + '</div></div>')
+      : '<span class="muted">—</span>';
+    const comment = row.comment_to || '';
+    const dlIso = row.docs_deadline ? API.fmtDateIso(row.docs_deadline) : '';
+    return '<tr class="reg-row ' + cls + actionCls + rejectCls + unreadCls + '" data-id="' + row.id + '">' +
+      '<td class="reg-no-cell" title="ID: ' + row.id + '"><div class="reg-no-main">' + unreadDot + esc(regNo) + '</div>' +
       '<div class="reg-no-sub">id ' + row.id + '</div></td>' +
       '<td class="reg-editable">' + renderCustomerCell(row) + '</td>' +
-      '<td class="reg-editable"><span class="reg-cell-text reg-title" title="' + esc(title) + '">' + docIcon + esc(title) + '</span></td>' +
-      '<td class="reg-editable"><span class="reg-cell-text reg-price-text" title="' + esc(formatMoney(row.tender_price)) + '">' + esc(formatMoney(row.tender_price)) + '</span></td>' +
-      '<td class="reg-editable"><span class="reg-cell-text">' + esc(API.fmtDate(row.docs_deadline)) + '</span></td>' +
+      '<td><span class="reg-cell-text reg-title" title="' + esc(title) + '">' + docIcon + esc(title) + '</span></td>' +
+      '<td class="reg-col-money"><span class="reg-cell-text reg-price-text" title="' + esc(formatMoney(row.tender_price)) + '">' + esc(formatMoney(row.tender_price)) + '</span></td>' +
+      '<td class="reg-col-money reg-col-submit">' + submitHtml + '</td>' +
+      '<td class="reg-col-date reg-deadline-cell" data-id="' + row.id + '" data-value="' + esc(dlIso) + '" title="Клик — изменить срок">' +
+      '<span class="reg-cell-text reg-deadline-text">' + esc(fmtShortDate(row.docs_deadline)) + '</span></td>' +
+      '<td class="reg-col-participation">' + participationCell(row) + '</td>' +
+      '<td class="reg-col-analysis">' + analysisDeadlineCell(row) + '</td>' +
       '<td>' + statusPill(st, row.id) + '</td>' +
-      '<td class="muted" style="font-size:12px">' + esc(calcName) + '</td>' +
+      '<td class="muted reg-col-person" style="font-size:12px">' + esc(calcName) + '</td>' +
       '<td>' + rpPill + '</td>' +
-      '<td title="' + scoreTitle + '">' + esc(scoreTxt) + '</td>' +
-      '<td class="muted" style="font-size:11px">' + esc(row.created_by_name || '—') + '</td>' +
-      '<td class="muted" style="font-size:11px;white-space:nowrap" title="' + esc(row.created_at || '') + '">' + esc(fmtAdded(row.created_at)) + '</td>' +
-      '<td class="muted" style="font-size:11px" title="' + esc(row.comment_to || '') + '">' + (commentPrev || '—') + '</td>' +
+      '<td class="reg-col-comment"><div class="reg-comment-full">' + (comment ? esc(comment) : '<span class="muted">—</span>') + '</div></td>' +
+      '<td class="reg-col-score" title="' + scoreTitle + '">' + esc(scoreTxt) + '</td>' +
+      '<td class="muted reg-col-person" style="font-size:11px">' + esc(row.created_by_name || '—') + '</td>' +
+      '<td class="muted reg-col-date" style="font-size:11px" title="' + esc(row.created_at || '') + '">' + esc(fmtShortDate(row.created_at)) + '</td>' +
       '<td class="reg-purchase-cell">' + renderPurchaseCell(row) + '</td>' +
       '<td class="reg-action-cell">' + renderActionCell(row) + '</td>' +
       '<td><button type="button" class="btn mini ghost reg-detail" data-id="' + row.id + '" title="Карточка">⋯</button></td>' +
@@ -767,7 +1255,7 @@ window.AsgardRegistryTab = (function () {
   }
 
   function renderTableHead() {
-    return SORT_COLUMNS.map((c) => renderSortTh(c.key, c.label)).join('') +
+    return SORT_COLUMNS.map((c) => renderSortTh(c.key, c.label, c.filterKey)).join('') +
       '<th class="reg-th-nosort" title="Ссылка на закупку">↗</th>' +
       '<th class="reg-th-nosort"></th>';
   }
@@ -775,22 +1263,37 @@ window.AsgardRegistryTab = (function () {
   function renderTable(rows) {
     const filtered = filterRows(rows);
     const sorted = sortRows(filtered);
-    let html = '<div class="reg-table-wrap" style="overflow-x:auto"><table class="tnd-table asg reg-table" style="width:100%;font-size:13px"><thead><tr>' +
+    if (!filtered.length) {
+      return '<div class="reg-empty">' +
+        '<div class="reg-empty-ic" aria-hidden="true">' + (state.burnOnly ? '🔥' : '📋') + '</div>' +
+        '<div class="reg-empty-title">' + (state.burnOnly ? 'Нет горящих дедлайнов' : 'Нет записей за период') + '</div>' +
+        '<div class="reg-empty-msg">' + (state.burnOnly
+          ? 'Снимите фильтр или смените период — возможно, всё уже обработано.'
+          : 'Смените период или добавьте строку вручную.') + '</div>' +
+        '<div class="reg-empty-actions">' +
+        (state.burnOnly ? '<button type="button" class="btn mini" id="regBurnClearEmpty">Сбросить горящие</button>' : '') +
+        '<button type="button" class="btn mini" id="regAddRowEmpty">+ Строка</button>' +
+        '</div></div>';
+    }
+    let html = '<div class="reg-table-wrap"><table class="tnd-table asg reg-table"><thead><tr>' +
       renderTableHead() +
       '</tr></thead><tbody>';
     sorted.forEach((row) => { html += renderRow(row); });
     html += '</tbody></table></div>';
     const shown = sorted.length;
-    html += '<div class="reg-footer muted" style="display:flex;gap:12px;flex-wrap:wrap;margin-top:8px;font-size:13px">' +
+    html += '<div class="reg-footer muted">' +
       '<span>Всего: <strong>' + (state.totalCount != null ? state.totalCount : shown) + '</strong></span>' +
       '<span>Показано: <strong>' + shown + '</strong> из ' + (state.totalCount != null ? state.totalCount : shown) + '</span>' +
       (state.totalCount != null && state.totalCount > shown
         ? '<span class="muted">· загружено ' + rows.length + ', увеличьте «Строк»</span>' : '') +
       '</div>';
-    if (!rows.length) {
-      html += '<p class="muted">' + (state.burnOnly ? 'Нет горящих дедлайнов' : 'Нет записей за период') + '</p>';
-    }
     return html;
+  }
+
+  function renderSkeleton() {
+    let rows = '';
+    for (let i = 0; i < 8; i++) rows += '<div class="reg-skeleton-row" style="animation-delay:' + (i * 40) + 'ms"></div>';
+    return '<div class="reg-skeleton" aria-busy="true" aria-label="Загрузка реестра">' + rows + '</div>';
   }
 
   function rerenderTable() {
@@ -814,6 +1317,10 @@ window.AsgardRegistryTab = (function () {
       }
       const resetBtn = document.getElementById('regSortReset');
       if (resetBtn) resetBtn.hidden = !state.sortKey;
+      const filtersReset = document.getElementById('regFiltersReset');
+      if (filtersReset) {
+        filtersReset.hidden = !(state.statusFilter || state.searchQ || hasColFilters() || state.burnOnly);
+      }
       const countSpan = mountEl.querySelector('.reg-toolbar .muted');
       if (countSpan) {
         countSpan.innerHTML = (state.totalCount != null ? state.totalCount : rowsCache.length) + ' тендеров' +
@@ -829,12 +1336,14 @@ window.AsgardRegistryTab = (function () {
       }
       bindTable(rowsCache);
       bindSortHandlers();
+      bindColFilterHandlers();
     } else {
       mountEl.innerHTML = renderToolbar(state.totalCount, periodOptions, actionCount) +
         renderLegend() + renderTable(rowsCache);
       bindDetailDelegation();
       bindTable(rowsCache);
       bindSortHandlers();
+      bindColFilterHandlers();
       bindToolbarHandlers(periodOptions);
       bindLegendHandlers();
     }
@@ -874,19 +1383,20 @@ window.AsgardRegistryTab = (function () {
   function bindToolbarHandlers(periodOptions) {
     const searchInp = document.getElementById('regSearchInp');
     if (searchInp) {
+      searchInp.addEventListener('keydown', (e) => {
+        if (e.key !== 'Enter') return;
+        e.preventDefault();
+        state.searchInput = searchInp.value;
+        state.searchQ = state.searchInput.trim();
+        refresh();
+      });
       searchInp.addEventListener('input', (e) => {
         state.searchInput = e.target.value;
-        debounce('search', () => {
-          state.searchQ = state.searchInput.trim();
-          refresh();
-        }, 300);
       });
+      searchInp.setAttribute('placeholder', 'Заказчик, № реестра, предмет… (Enter)');
+      searchInp.title = 'Поиск запускается по Enter';
     }
-    document.getElementById('regPeriodSel')?.addEventListener('change', (e) => {
-      state.period = e.target.value;
-      state.burnOnly = false;
-      refresh();
-    });
+    mountPeriodWidget();
     document.getElementById('regStatusSel')?.addEventListener('change', (e) => {
       state.statusFilter = e.target.value;
       rerenderTable();
@@ -900,7 +1410,15 @@ window.AsgardRegistryTab = (function () {
       }
     });
     document.getElementById('regAddRow')?.addEventListener('click', openAddRowModal);
+    document.getElementById('regAddRowEmpty')?.addEventListener('click', openAddRowModal);
     document.getElementById('regRefresh')?.addEventListener('click', refresh);
+    const clearBurn = () => {
+      state.burnOnly = false;
+      if (typeof onClearBurnCb === 'function') onClearBurnCb();
+      refresh();
+    };
+    document.getElementById('regBurnClear')?.addEventListener('click', clearBurn);
+    document.getElementById('regBurnClearEmpty')?.addEventListener('click', clearBurn);
     document.getElementById('regLimitSel')?.addEventListener('change', (e) => {
       state.limit = Number(e.target.value) || 1000;
       refresh();
@@ -910,12 +1428,39 @@ window.AsgardRegistryTab = (function () {
       state.sortDir = 1;
       rerenderTable();
     });
+    document.getElementById('regFiltersReset')?.addEventListener('click', () => {
+      clearAllFilters();
+      const searchInp2 = document.getElementById('regSearchInp');
+      if (searchInp2) searchInp2.value = '';
+      const statusSel = document.getElementById('regStatusSel');
+      if (statusSel) statusSel.value = '';
+      refresh();
+    });
     document.getElementById('regOpenDutyRoster')?.addEventListener('click', () => {
       if (window.AsgardPmDutyPage && AsgardPmDutyPage.openRosterModal) {
         AsgardPmDutyPage.openRosterModal(() => refresh());
       } else {
         location.hash = '#/pm-calculations';
       }
+    });
+  }
+
+  function bindColFilterHandlers() {
+    mountEl.querySelectorAll('.reg-col-filter').forEach((inp) => {
+      inp.addEventListener('click', (e) => e.stopPropagation());
+      inp.addEventListener('mousedown', (e) => e.stopPropagation());
+      inp.addEventListener('input', (e) => {
+        const key = inp.getAttribute('data-col-filter');
+        if (!key) return;
+        state.colFilters[key] = e.target.value;
+        debounce('col-filter-' + key, () => {
+          rerenderTable();
+          const filtersReset = document.getElementById('regFiltersReset');
+          if (filtersReset) {
+            filtersReset.hidden = !(state.statusFilter || state.searchQ || hasColFilters() || state.burnOnly);
+          }
+        }, 200);
+      });
     });
   }
 
@@ -974,26 +1519,37 @@ window.AsgardRegistryTab = (function () {
         API.assignRegistryCalculator(Number(btn.dataset.id), 'to').then(() => {
           toast('Вы назначены считающим', 'ok');
           const row = rows.find((r) => r.id === Number(btn.dataset.id));
-          if (row && window.AsgardRpReviewModal) AsgardRpReviewModal.open(row, pmsCache, refresh, { mode: 'calc' });
+          if (row && window.AsgardRpCalcModal) AsgardRpCalcModal.open(row, pmsCache, refresh, { mode: 'calc' });
+          else if (row && window.AsgardRpReviewModal) AsgardRpReviewModal.open(row, pmsCache, refresh, { mode: 'calc' });
         }).catch((e) => toast(e.message, 'err'));
       });
     });
-    mountEl.querySelectorAll('.reg-assign-go').forEach((btn) => {
-      btn.addEventListener('click', () => {
+    mountEl.querySelectorAll('.reg-to-archive').forEach((btn) => {
+      btn.addEventListener('click', async (e) => {
+        e.stopPropagation();
         const id = Number(btn.dataset.id);
-        const pmId = Number(mountEl.querySelector('.reg-assign-pm[data-id="' + id + '"]')?.value);
-        if (!pmId) { toast('Выберите РП', 'err'); return; }
-        API.assignRegistryCalculator(id, 'pm', pmId).then(() => {
-          toast('РП назначен на просчёт', 'ok');
+        const row = rows.find((r) => r.id === id);
+        if (!row) return;
+        const ok = window.confirm(
+          'Отправить в архив?\n\n' +
+          (row.customer_name || '') + ' — ' + ((row.tender_title || '').slice(0, 80)) +
+          '\n\nРП рекомендовал не подавать. После архива тендер уйдёт во вкладку «Архив».'
+        );
+        if (!ok) return;
+        try {
+          await API.archiveRegistryRow(id, 'РП: не подаём — подтверждено ТО');
+          toast('Тендер в архиве', 'ok');
           refresh();
-        }).catch((e) => toast(e.message, 'err'));
+          onRefreshCb && onRefreshCb();
+        } catch (err) { toast(err.message || 'Ошибка архива', 'err'); }
       });
     });
     mountEl.querySelectorAll('.reg-rp-edit, .reg-rp-view').forEach((el) => {
       el.addEventListener('click', () => {
         const row = rows.find((r) => r.id === Number(el.dataset.id));
         if (!row) return;
-        const readOnly = el.classList.contains('reg-rp-view') && !!row.rp_review?.is_final;
+        const isView = el.classList.contains('reg-rp-view');
+        const readOnly = isView;
         let mode = 'calc';
         if (!row.rp_review?.analysis_finalized_at) {
           const rj = row.rp_review?.report_json;
@@ -1002,14 +1558,75 @@ window.AsgardRegistryTab = (function () {
             mode = parsed.mode === 'analysis' ? 'analysis' : 'calc';
           } catch (_) { /* ignore */ }
         }
-        openRpReviewModal(row, { readOnly, mode });
+        openRpReviewModal(row, { readOnly, mode, viewAsTo: isView });
+      });
+    });
+    mountEl.querySelectorAll('.reg-rp-chat').forEach((el) => {
+      el.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const row = rows.find((r) => r.id === Number(el.dataset.id));
+        if (!row) return;
+        let mode = 'analysis';
+        if (row.rp_review?.analysis_finalized_at) mode = 'calc';
+        openRpReviewModal(row, { viewAsTo: true, mode, initialTab: 'thread', readOnly: true });
+      });
+    });
+    mountEl.querySelectorAll('.reg-deadline-cell').forEach((cell) => {
+      cell.addEventListener('click', (e) => {
+        if (e.target.closest('input')) return;
+        e.preventDefault();
+        e.stopPropagation();
+        if (cell.querySelector('input')) return;
+        const id = Number(cell.dataset.id);
+        const row = rows.find((r) => r.id === id);
+        if (!row) return;
+        const cur = cell.dataset.value || '';
+        const inp = document.createElement('input');
+        inp.type = 'date';
+        inp.className = 'inp reg-deadline-inp';
+        inp.value = cur;
+        inp.style.cssText = 'width:100%;min-width:120px;font-size:12px';
+        cell.innerHTML = '';
+        cell.appendChild(inp);
+        inp.focus();
+        const save = async () => {
+          const v = inp.value;
+          if (!v) {
+            toast('Дата подачи обязательна', 'err');
+            inp.focus();
+            return;
+          }
+          if (v === cur) {
+            refresh();
+            return;
+          }
+          try {
+            await API.patchRegistryField(id, 'docs_deadline', v);
+            toast('Срок обновлён', 'ok');
+            refresh();
+            onRefreshCb && onRefreshCb();
+          } catch (err) {
+            toast(err.message || 'Ошибка', 'err');
+            refresh();
+          }
+        };
+        inp.addEventListener('blur', () => { setTimeout(save, 100); });
+        inp.addEventListener('keydown', (ev) => {
+          if (ev.key === 'Enter') { ev.preventDefault(); inp.blur(); }
+          if (ev.key === 'Escape') { refresh(); }
+        });
       });
     });
   }
 
   async function refresh() {
     if (!mountEl) return;
-    mountEl.innerHTML = '<p>Загрузка реестра…</p>';
+    if (periodWidget && periodWidget.destroy) {
+      try { periodWidget.destroy(); } catch (_) {}
+      periodWidget = null;
+    }
+    mountEl.innerHTML = renderSkeleton();
     const periodOptions = API.buildRegistryPeriodOptions();
     try {
       if (canViewDutyBar()) {
@@ -1025,6 +1642,7 @@ window.AsgardRegistryTab = (function () {
       const d = await API.loadRegistry({
         subtab: state.subtab,
         period: state.period,
+        periodFilter: ensurePeriodFilter(),
         burn: state.burnOnly,
         limit: state.limit,
         q: state.searchQ || undefined
@@ -1038,6 +1656,7 @@ window.AsgardRegistryTab = (function () {
       bindDetailDelegation();
       bindTable(rows);
       bindSortHandlers();
+      bindColFilterHandlers();
       bindToolbarHandlers(periodOptions);
       bindLegendHandlers();
       handleDeepLink(rows);
@@ -1051,11 +1670,17 @@ window.AsgardRegistryTab = (function () {
       mountEl = el;
       opts = opts || {};
       state.subtab = opts.subtab || 'registry';
-      state.period = opts.period != null ? opts.period : 'year:2026';
+      state.period = opts.period != null ? opts.period : 'current';
+      state.periodFilter = window.TenderPeriodFilter
+        ? window.TenderPeriodFilter.fromLegacyPeriod(state.period)
+        : null;
       state.burnOnly = !!opts.burnOnly;
+      state.hideOthers = !!opts.hideOthers;
+      state.hideOthersUserId = opts.hideOthersUserId != null ? Number(opts.hideOthersUserId) : null;
       state.statusFilter = '';
       onRefreshCb = opts.onRefresh;
       onOpenWinCb = opts.onOpenWin;
+      onClearBurnCb = opts.onClearBurn;
       Promise.all([
         API.loadUsers('PM,HEAD_PM'),
         API.loadUsers('TO,HEAD_TO')
@@ -1071,6 +1696,9 @@ window.AsgardRegistryTab = (function () {
     },
     setPeriod(p) {
       state.period = p;
+      state.periodFilter = window.TenderPeriodFilter
+        ? window.TenderPeriodFilter.fromLegacyPeriod(p)
+        : null;
       state.burnOnly = false;
       if (mountEl) refresh();
     },
@@ -1080,6 +1708,10 @@ window.AsgardRegistryTab = (function () {
     },
     refresh,
     unmount() {
+      if (periodWidget && periodWidget.destroy) {
+        try { periodWidget.destroy(); } catch (_) {}
+      }
+      periodWidget = null;
       mountEl = null;
       rowsCache = [];
       clickBound = false;

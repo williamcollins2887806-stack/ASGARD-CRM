@@ -97,15 +97,15 @@ function escapeHtml(s) {
 }
 
 /**
- * Уведомить ТО (владельца строки реестра) о закрытом анализе или финальном отчёте РП.
- * @param {'analysis'|'report'} kind
+ * Уведомить ТО (владельца строки реестра) о закрытом анализе / отчёте / рекомендации «не подаём».
+ * @param {'analysis'|'report'|'reject'} kind
  */
 async function notifyToOnReviewReady(db, { tenderId, kind, actorName, log }) {
   const tRes = await db.query(`
-    SELECT t.id, t.customer_name, t.tender_title, t.created_by, t.docs_deadline,
+    SELECT t.id, t.registry_no, t.customer_name, t.tender_title, t.created_by, t.created_by_user_id, t.docs_deadline,
            u.id AS owner_id, u.name AS owner_name, u.email AS owner_email, u.role AS owner_role
     FROM tenders t
-    LEFT JOIN users u ON u.id = t.created_by
+    LEFT JOIN users u ON u.id = COALESCE(t.created_by_user_id, t.created_by)
     WHERE t.id = $1 AND t.deleted_at IS NULL
   `, [tenderId]);
   const tender = tRes.rows[0];
@@ -119,21 +119,27 @@ async function notifyToOnReviewReady(db, { tenderId, kind, actorName, log }) {
     FROM tender_rp_reviews WHERE tender_id = $1
   `, [tenderId]);
   const review = revRes.rows[0] || {};
-  const briefLines = buildReportBrief(review, kind);
+  const briefLines = buildReportBrief(review, kind === 'reject' ? 'report' : kind);
   const briefBlock = briefToText(briefLines);
   const priceLine = briefLines.find((l) => l.startsWith('Цена работ')) || briefLines.find((l) => l.startsWith('Ориентир'));
 
   const isAnalysis = kind === 'analysis';
-  const title = isAnalysis
-    ? `Анализ РП готов · #${tenderId}`
-    : `Отчёт РП готов · #${tenderId}`;
+  const isReject = kind === 'reject' || review.decision === 'reject';
+  const regLabel = tender.registry_no != null ? `№${tender.registry_no}` : `#${tenderId}`;
+  const title = isReject
+    ? `РП: не подаём · ${regLabel}`
+    : (isAnalysis
+      ? `Анализ РП готов · ${regLabel}`
+      : `Отчёт РП готов · ${regLabel}`);
   const shortTitle = (tender.tender_title || '').slice(0, 80);
   const customer = tender.customer_name || '—';
   const who = actorName || 'РП';
-  let message = isAnalysis
-    ? `${who} закрыл анализ по тендеру «${shortTitle}» (${customer}).`
-    : `${who} закрыл отчёт просчёта по тендеру «${shortTitle}» (${customer}). Требуется ваше решение.`;
-  if (priceLine) message += ` ${priceLine.split(': ').slice(1).join(': ')}.`;
+  let message = isReject
+    ? `${who} рекомендует НЕ ПОДАВАТЬ по тендеру «${shortTitle}» (${customer}). Подтвердите архив в реестре.`
+    : (isAnalysis
+      ? `${who} закрыл анализ по тендеру «${shortTitle}» (${customer}).`
+      : `${who} закрыл отчёт просчёта по тендеру «${shortTitle}» (${customer}). Требуется ваше решение.`);
+  if (!isReject && priceLine) message += ` ${priceLine.split(': ').slice(1).join(': ')}.`;
   const link = `#/tenders?id=${tenderId}`;
   const appUrl = (process.env.PUBLIC_APP_URL || 'https://asgard-crm.ru').replace(/\/$/, '');
   const fullLink = `${appUrl}/${link}`;
@@ -155,22 +161,28 @@ async function notifyToOnReviewReady(db, { tenderId, kind, actorName, log }) {
 
   try {
     const { sendCrmEmail } = require('./crm-mailer');
-    const subject = isAnalysis
-      ? `АСГАРД CRM: анализ РП готов — #${tenderId} ${customer}`
-      : `АСГАРД CRM: отчёт РП готов — #${tenderId} ${customer}`;
+    const subject = isReject
+      ? `АСГАРД CRM: РП не подаём — ${regLabel} ${customer}`
+      : (isAnalysis
+        ? `АСГАРД CRM: анализ РП готов — ${regLabel} ${customer}`
+        : `АСГАРД CRM: отчёт РП готов — ${regLabel} ${customer}`);
 
     const deadline = tender.docs_deadline
       ? String(tender.docs_deadline).slice(0, 10).split('-').reverse().join('.')
       : null;
 
+    const leadText = isReject
+      ? `${who} рекомендует НЕ ПОДАВАТЬ. Тендер остаётся в активном реестре — подтвердите архив кнопкой «В архив».`
+      : (isAnalysis
+        ? `${who} закрыл анализ по тендеру. Можно назначать просчёт или смотреть рекомендации.`
+        : `${who} закрыл отчёт просчёта. Требуется ваше решение в реестре.`);
+
     const textParts = [
       `Здравствуйте, ${tender.owner_name || 'коллега'}!`,
       '',
-      isAnalysis
-        ? `${who} закрыл анализ по тендеру. Можно назначать просчёт или смотреть рекомендации.`
-        : `${who} закрыл отчёт просчёта. Требуется ваше решение в реестре.`,
+      leadText,
       '',
-      `Тендер: #${tenderId}`,
+      `Тендер: ${regLabel} (id ${tenderId})`,
       `Заказчик: ${customer}`,
       `Предмет: ${tender.tender_title || '—'}`
     ];
@@ -187,11 +199,9 @@ async function notifyToOnReviewReady(db, { tenderId, kind, actorName, log }) {
 
     const htmlParts = [
       `<p>Здравствуйте, ${escapeHtml(tender.owner_name || 'коллега')}!</p>`,
-      `<p>${escapeHtml(isAnalysis
-        ? `${who} закрыл анализ по тендеру. Можно назначать просчёт или смотреть рекомендации.`
-        : `${who} закрыл отчёт просчёта. Требуется ваше решение в реестре.`)}</p>`,
+      `<p>${escapeHtml(leadText)}</p>`,
       '<table style="border-collapse:collapse;font-size:14px;margin:12px 0">',
-      `<tr><td style="padding:4px 12px 4px 0;color:#666">Тендер</td><td><strong>#${tenderId}</strong></td></tr>`,
+      `<tr><td style="padding:4px 12px 4px 0;color:#666">Тендер</td><td><strong>${escapeHtml(regLabel)}</strong> (id ${tenderId})</td></tr>`,
       `<tr><td style="padding:4px 12px 4px 0;color:#666">Заказчик</td><td>${escapeHtml(customer)}</td></tr>`,
       `<tr><td style="padding:4px 12px 4px 0;color:#666;vertical-align:top">Предмет</td><td>${escapeHtml(tender.tender_title || '—')}</td></tr>`
     ];
@@ -243,6 +253,7 @@ async function notifyDirectorsOnReviewPending(db, { tenderId, actorName, workPri
     ? Number(workPriceExVat).toLocaleString('ru-RU', { maximumFractionDigits: 0 }) + ' ₽ без НДС'
     : '';
   const message = `${who} закрыл просчёт: «${title.slice(0, 80)}» (${customer})${priceFmt ? `. Цена: ${priceFmt}` : ''}. Требуется согласование.`;
+  // Desktop in-app: hash-route. Push URL нормализуется в notify.js → /m/…
   const link = `#/director-tender-approvals?id=${tenderId}`;
 
   for (const userId of directorIds) {
@@ -265,10 +276,10 @@ async function notifyDirectorsOnReviewPending(db, { tenderId, actorName, workPri
  */
 async function notifyToOnDirectorPending(db, { tenderId, actorName, log }) {
   const tRes = await db.query(`
-    SELECT t.id, t.customer_name, t.tender_title, t.created_by,
+    SELECT t.id, t.customer_name, t.tender_title, t.created_by, t.created_by_user_id,
            u.id AS owner_id, u.role AS owner_role
     FROM tenders t
-    LEFT JOIN users u ON u.id = t.created_by
+    LEFT JOIN users u ON u.id = COALESCE(t.created_by_user_id, t.created_by)
     WHERE t.id = $1 AND t.deleted_at IS NULL
   `, [tenderId]);
   const tender = tRes.rows[0];
@@ -292,18 +303,19 @@ async function notifyToOnDirectorPending(db, { tenderId, actorName, log }) {
 }
 
 /**
- * Уведомить ТО и РП о решении директора.
+ * Уведомить ТО и РП о решении директора (in-app + email).
  */
 async function notifyOnDirectorDecision(db, { tenderId, action, comment, directorName, log }) {
   const tRes = await db.query(`
-    SELECT t.id, t.customer_name, t.tender_title, t.created_by
+    SELECT t.id, t.registry_no, t.customer_name, t.tender_title, t.created_by,
+           t.docs_deadline, t.tender_price
     FROM tenders t WHERE t.id = $1 AND t.deleted_at IS NULL
   `, [tenderId]);
   const tender = tRes.rows[0];
   if (!tender) return;
 
   const revRes = await db.query(`
-    SELECT calculator_user_id, finalized_by_user_id, started_by_user_id
+    SELECT calculator_user_id, finalized_by_user_id, started_by_user_id, work_price, report_json
     FROM tender_rp_reviews WHERE tender_id = $1
   `, [tenderId]);
   const review = revRes.rows[0] || {};
@@ -313,31 +325,109 @@ async function notifyOnDirectorDecision(db, { tenderId, action, comment, directo
   if (review.finalized_by_user_id) recipientIds.add(Number(review.finalized_by_user_id));
   if (review.started_by_user_id) recipientIds.add(Number(review.started_by_user_id));
 
-  const regNo = tender.id;
+  if (!recipientIds.size) return;
+
+  const usersRes = await db.query(`
+    SELECT id, name, email FROM users
+    WHERE id = ANY($1::int[]) AND COALESCE(is_active, true) = true
+  `, [[...recipientIds]]);
+
+  const regLabel = tender.registry_no != null ? `№${tender.registry_no}` : `#${tenderId}`;
   const customer = tender.customer_name || '—';
   const title = tender.tender_title || '—';
   const who = directorName || 'Директор';
   const approved = action === 'submit';
+  const reason = comment ? String(comment).trim() : '';
   const notifTitle = approved
-    ? `Директор одобрил подачу · #${regNo}`
-    : `Директор отклонил подачу · #${regNo}`;
+    ? `Директор одобрил подачу · ${regLabel}`
+    : `Директор отклонил подачу · ${regLabel}`;
   let message = approved
-    ? `${who} одобрил подачу по «${title.slice(0, 80)}» (${customer}).`
-    : `${who} отклонил подачу по «${title.slice(0, 80)}» (${customer}).`;
-  if (!approved && comment) message += ` Причина: ${String(comment).slice(0, 200)}`;
+    ? `${who} одобрил подачу по «${title.slice(0, 80)}» (${customer}). Статус: Готовим.`
+    : `${who} отклонил подачу по «${title.slice(0, 80)}» (${customer}). Тендер перенесён в архив.`;
+  if (!approved && reason) message += ` Причина: ${reason.slice(0, 200)}`;
   const link = `#/tenders?id=${tenderId}`;
+  const appUrl = (process.env.PUBLIC_APP_URL || 'https://asgard-crm.ru').replace(/\/$/, '');
+  const fullLink = `${appUrl}/${link}`;
+  const priceFmt = fmtMoney(review.work_price);
+  const deadline = tender.docs_deadline
+    ? String(tender.docs_deadline).slice(0, 10).split('-').reverse().join('.')
+    : null;
 
-  for (const userId of recipientIds) {
+  for (const u of usersRes.rows) {
     try {
       await createNotification(db, {
-        user_id: userId,
+        user_id: u.id,
         title: notifTitle,
         message,
         type: approved ? 'tender' : 'warning',
         link
       });
     } catch (e) {
-      log?.warn?.({ err: e, userId, tenderId }, 'director decision notify failed');
+      log?.warn?.({ err: e, userId: u.id, tenderId }, 'director decision notify failed');
+    }
+  }
+
+  let sendCrmEmail;
+  try {
+    ({ sendCrmEmail } = require('./crm-mailer'));
+  } catch (e) {
+    log?.warn?.({ err: e }, 'crm-mailer unavailable for director decision');
+    return;
+  }
+
+  const subject = approved
+    ? `АСГАРД CRM: Директор одобрил подачу — ${regLabel} ${customer}`
+    : `АСГАРД CRM: Директор отклонил подачу — ${regLabel} ${customer}`;
+  const leadText = approved
+    ? `${who} одобрил подачу. Статус тендера: Готовим — можно готовить заявку.`
+    : `${who} отклонил подачу. Тендер перенесён в архив.`;
+
+  for (const u of usersRes.rows) {
+    const email = String(u.email || '').trim();
+    if (!email) continue;
+    try {
+      const textParts = [
+        `Здравствуйте, ${u.name || 'коллега'}!`,
+        '',
+        leadText,
+        '',
+        `Тендер: ${regLabel} (id ${tenderId})`,
+        `Заказчик: ${customer}`,
+        `Предмет: ${title}`
+      ];
+      if (priceFmt) textParts.push(`Сумма подачи (с НДС): ${priceFmt}`);
+      if (deadline) textParts.push(`Срок документов: ${deadline}`);
+      if (!approved && reason) textParts.push(`Причина отказа: ${reason}`);
+      textParts.push('', `Откройте CRM: ${fullLink}`, '', '— АСГАРД CRM (автоуведомление)');
+
+      const htmlParts = [
+        `<p>Здравствуйте, ${escapeHtml(u.name || 'коллега')}!</p>`,
+        `<p>${escapeHtml(leadText)}</p>`,
+        '<table style="border-collapse:collapse;font-size:14px;margin:12px 0">',
+        `<tr><td style="padding:4px 12px 4px 0;color:#666">Тендер</td><td><strong>${escapeHtml(regLabel)}</strong> (id ${tenderId})</td></tr>`,
+        `<tr><td style="padding:4px 12px 4px 0;color:#666">Заказчик</td><td>${escapeHtml(customer)}</td></tr>`,
+        `<tr><td style="padding:4px 12px 4px 0;color:#666;vertical-align:top">Предмет</td><td>${escapeHtml(title)}</td></tr>`
+      ];
+      if (priceFmt) {
+        htmlParts.push(`<tr><td style="padding:4px 12px 4px 0;color:#666">Сумма с НДС</td><td>${escapeHtml(priceFmt)}</td></tr>`);
+      }
+      if (deadline) {
+        htmlParts.push(`<tr><td style="padding:4px 12px 4px 0;color:#666">Срок</td><td>${escapeHtml(deadline)}</td></tr>`);
+      }
+      if (!approved && reason) {
+        htmlParts.push(`<tr><td style="padding:4px 12px 4px 0;color:#666;vertical-align:top">Причина</td><td>${escapeHtml(reason)}</td></tr>`);
+      }
+      htmlParts.push('</table>');
+      htmlParts.push(`<p style="margin-top:16px"><a href="${fullLink}">Открыть тендер #${tenderId} в CRM</a></p>`);
+
+      await sendCrmEmail(db, null, {
+        to: email,
+        subject,
+        text: textParts.join('\n'),
+        html: htmlParts.join('')
+      });
+    } catch (e) {
+      log?.warn?.({ err: e, tenderId, email }, 'director decision email failed');
     }
   }
 }

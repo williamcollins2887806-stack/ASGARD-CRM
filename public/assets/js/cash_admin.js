@@ -35,6 +35,12 @@ window.AsgardCashAdminPage = (function() {
 
   const ADVANCE_STEPS = ['requested', 'approved', 'money_issued', 'received', 'reporting', 'closed'];
   const STEP_LABELS = { requested: 'Заявка', approved: 'Согласов.', money_issued: 'Выдано', received: 'Получено', reporting: 'Отчёт', closed: 'Закрыто' };
+  const APPROVE_ROLES = ['DIRECTOR_COMM', 'ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_DEV'];
+
+  function canDirectorApprove() {
+    const role = (window.AsgardAuth && AsgardAuth.user && AsgardAuth.user.role) || '';
+    return APPROVE_ROLES.includes(role);
+  }
 
   // ─────────────────────────────────────────────────────────────────
   // STAGE W — стили блока «Касса сейчас → После выдачи» (DetailModal)
@@ -92,8 +98,18 @@ window.AsgardCashAdminPage = (function() {
   // ─────────────────────────────────────────────────────────────────
   // HELPERS
   // ─────────────────────────────────────────────────────────────────
+  function initiatorNoteHtml(r) {
+    if (!r || !r.initiated_by_name) return '';
+    if (Number(r.initiated_by) === Number(r.user_id)) return '';
+    return `<div style="font-size:12px;color:var(--text-muted);margin-top:4px">Запросил: ${esc(r.initiated_by_name)}</div>`;
+  }
+
   function fmtMoney(val) {
-    return AsgardUI.money(Math.round(Number(val || 0))) + ' \u20BD';
+    const n = Math.round(Number(val || 0));
+    if (window.AsgardUI && typeof AsgardUI.moneyRub === 'function') return AsgardUI.moneyRub(n);
+    if (window.AsgardMoney && typeof AsgardMoney.formatMoney === 'function') return AsgardMoney.formatMoney(n);
+    if (window.AsgardUI && typeof AsgardUI.money === 'function') return AsgardUI.money(n) + ' ₽';
+    return String(n);
   }
 
   function fmtDate(val) {
@@ -145,9 +161,12 @@ window.AsgardCashAdminPage = (function() {
   async function render(container) {
     currentPage = 1; pageSize = window.AsgardPagination ? AsgardPagination.getPageSize() : 20;
     container.innerHTML = `
-      <div class="page-header">
-        <h1>Казна — Управление</h1>
-        <p style="color:var(--text-muted); font-size:var(--text-sm); margin:0">Согласование и контроль авансовых отчётов</p>
+      <div class="page-header" style="display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:12px">
+        <div>
+          <h1>Казна — Управление</h1>
+          <p style="color:var(--text-muted); font-size:var(--text-sm); margin:0">Согласование и контроль авансовых отчётов</p>
+        </div>
+        <button type="button" class="btn primary" onclick="AsgardCashAdminPage.showOnBehalfModal()">Запросить за сотрудника</button>
       </div>
 
       <div id="cash-admin-balance-widget" style="margin-bottom:24px"></div>
@@ -466,6 +485,7 @@ window.AsgardCashAdminPage = (function() {
           <div>
             <div style="font-weight:700;color:var(--text-primary)">${esc(r.user_name)}</div>
             <div style="font-size:11px;color:var(--text-muted)">${esc(r.user_role || '')}</div>
+            ${initiatorNoteHtml(r)}
           </div>
           <div style="font-size:var(--text-xs);color:var(--text-muted)">${fmtDate(r.created_at)}</div>
         </div>
@@ -518,6 +538,7 @@ window.AsgardCashAdminPage = (function() {
           <div>
             <div style="font-weight:700;color:var(--text-primary)">${esc(r.user_name)}</div>
             <div style="font-size:11px;color:var(--text-muted)">${esc(r.user_role || '')}</div>
+            ${initiatorNoteHtml(r)}
           </div>
           <div style="font-size:var(--text-xs);color:var(--text-muted)">${fmtDate(r.created_at)}</div>
         </div>
@@ -527,9 +548,11 @@ window.AsgardCashAdminPage = (function() {
         </div>
         <div style="font-size:var(--text-xl);font-weight:800;color:var(--gold);margin-bottom:12px">${fmtMoney(r.amount)}</div>
         <div style="display:flex;gap:8px;flex-wrap:wrap" onclick="event.stopPropagation()">
+          ${canDirectorApprove() ? `
           <button class="btn green mini" onclick="AsgardCashAdminPage.approve(${r.id})">&#10003; Согласовать</button>
           <button class="btn red mini" onclick="AsgardCashAdminPage.showRejectModal(${r.id})">&#10007; Отклонить</button>
           <button class="btn amber mini" onclick="AsgardCashAdminPage.showQuestionModal(${r.id})">? Вопрос</button>
+          ` : `<span style="font-size:12px;color:var(--text-muted)">Ожидает директора</span>`}
         </div>
       </div>
     `;
@@ -728,6 +751,7 @@ window.AsgardCashAdminPage = (function() {
           <div>
             <div style="font-weight:700;color:var(--text-primary)">${esc(r.user_name)}</div>
             <div style="font-size:11px;color:var(--text-muted)">${esc(r.user_role || '')}</div>
+            ${initiatorNoteHtml(r)}
           </div>
           <div class="cash-card-date">${fmtDate(r.created_at)}</div>
         </div>
@@ -865,9 +889,9 @@ window.AsgardCashAdminPage = (function() {
   }
 
   function renderDetail(req, currentBalance) {
-    const canApprove = req.status === 'requested';
-    const canReject = ['requested', 'approved'].includes(req.status);
-    const canQuestion = ['requested', 'received', 'reporting'].includes(req.status);
+    const canApprove = canDirectorApprove() && req.status === 'requested';
+    const canReject = canDirectorApprove() && ['requested', 'approved'].includes(req.status);
+    const canQuestion = canDirectorApprove() && ['requested', 'received', 'reporting'].includes(req.status);
     const canClose = ['received', 'reporting'].includes(req.status);
     const canIssue = req.status === 'approved';
     // Stage W — loan убран
@@ -880,6 +904,9 @@ window.AsgardCashAdminPage = (function() {
       <div class="cash-detail-grid">
         <div>
           <div class="cash-detail-item"><span class="label">Сотрудник</span><span class="value">${esc(req.user_name)} (${esc(req.user_role)})</span></div>
+          ${req.initiated_by && Number(req.initiated_by) !== Number(req.user_id) && req.initiated_by_name
+            ? `<div class="cash-detail-item" style="margin-top:12px"><span class="label">Запросил</span><span class="value">${esc(req.initiated_by_name)}</span></div>`
+            : ''}
           <div class="cash-detail-item" style="margin-top:12px"><span class="label">Тип</span><span class="value"><span class="status status-${TYPE_COLORS[req.type] === 'info' ? 'blue' : 'yellow'}">${esc(TYPE_LABELS[req.type] || req.type)}</span></span></div>
           <div class="cash-detail-item" style="margin-top:12px"><span class="label">Проект</span><span class="value">${esc(req.work_title || (req.work_id ? '#' + req.work_id : '-'))}</span></div>
           <div class="cash-detail-item" style="margin-top:12px"><span class="label">Сумма</span><span class="value" style="font-size:var(--text-lg);color:var(--gold)">${fmtMoney(req.amount)}</span></div>
@@ -1206,6 +1233,89 @@ window.AsgardCashAdminPage = (function() {
     }
   }
 
+  async function showOnBehalfModal() {
+    showModal({
+      title: 'Запросить за сотрудника',
+      icon: '💵',
+      subtitle: 'Директору уйдёт письмо. Деньги — на баланс этого человека.',
+      html: '<div style="text-align:center;padding:24px;color:var(--text-muted)">Загрузка сотрудников...</div>'
+    });
+    try {
+      const resp = await fetch('/api/users?is_active=true&limit=400', { headers: getHeaders() });
+      if (!resp.ok) throw new Error('Не удалось загрузить сотрудников');
+      const data = await resp.json();
+      const users = data.users || data || [];
+      const body = document.getElementById('modalBody');
+      if (!body) return;
+      body.innerHTML = `
+        <form id="cashOnBehalfForm">
+          <div class="asg-form-group">
+            <label>Кто просит / кому выдать</label>
+            <input type="hidden" name="for_user_id" id="cashOnBehalfUserHidden" value="">
+            <div id="crselect-cashOnBehalfUser"></div>
+          </div>
+          <div class="asg-form-group">
+            <label>Сумма</label>
+            <input type="number" name="amount" step="0.01" min="1" required placeholder="0.00">
+          </div>
+          <div class="asg-form-group">
+            <label>На что</label>
+            <textarea name="purpose" rows="3" required placeholder="Цель выдачи"></textarea>
+          </div>
+          <div class="asg-form-actions">
+            <button type="button" class="btn ghost" onclick="AsgardUI.hideModal()">Отмена</button>
+            <button type="button" class="btn primary" onclick="AsgardCashAdminPage.submitOnBehalf()">Отправить директору</button>
+          </div>
+        </form>
+      `;
+      const opts = users.map(u => ({
+        value: String(u.id),
+        label: (u.name || u.login || ('#' + u.id)) + (u.role ? ' · ' + u.role : '')
+      }));
+      document.getElementById('crselect-cashOnBehalfUser')?.appendChild(CRSelect.create({
+        id: 'cashOnBehalfUser', fullWidth: true, placeholder: 'Выберите сотрудника',
+        options: opts,
+        onChange: (v) => { const el = document.getElementById('cashOnBehalfUserHidden'); if (el) el.value = v; }
+      }));
+    } catch (e) {
+      toast('Ошибка', e.message, 'err');
+    }
+  }
+
+  async function submitOnBehalf() {
+    const form = document.getElementById('cashOnBehalfForm');
+    if (!form) return;
+    const data = Object.fromEntries(new FormData(form));
+    const uid = parseInt(data.for_user_id, 10);
+    const amt = parseFloat(data.amount);
+    if (!Number.isFinite(uid) || uid <= 0) { toast('Выберите сотрудника', '', 'warn'); return; }
+    if (!Number.isFinite(amt) || amt <= 0) { toast('Сумма должна быть больше 0', '', 'warn'); return; }
+    if (!(data.purpose || '').trim()) { toast('Укажите цель', '', 'warn'); return; }
+    try {
+      const resp = await fetch('/api/cash', {
+        method: 'POST',
+        headers: getHeaders(),
+        body: JSON.stringify({
+          for_user_id: uid,
+          type: 'office',
+          amount: amt,
+          purpose: data.purpose.trim(),
+          category: 'other',
+          category_other_desc: data.purpose.trim()
+        })
+      });
+      if (!resp.ok) {
+        const err = await resp.json().catch(() => ({}));
+        throw new Error(err.error || 'Ошибка');
+      }
+      hideModal();
+      toast('Заявка отправлена директору', '', 'ok');
+      await Promise.all([loadRequests(), loadSummary(), loadCashBalance()]);
+    } catch (e) {
+      toast('Ошибка', e.message, 'err');
+    }
+  }
+
   // ─────────────────────────────────────────────────────────────────
   // PUBLIC API
   // ─────────────────────────────────────────────────────────────────
@@ -1226,6 +1336,8 @@ window.AsgardCashAdminPage = (function() {
     submitClose,
     confirmReturn,
     showBalanceAdjustModal,
-    submitBalanceAdjust
+    submitBalanceAdjust,
+    showOnBehalfModal,
+    submitOnBehalf
   };
 })();

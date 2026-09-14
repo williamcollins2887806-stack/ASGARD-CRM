@@ -13,8 +13,7 @@
  */
 
 const PDFDocument = require('pdfkit');
-const path = require('path');
-const fs = require('fs');
+const { registerDejaVuFonts } = require('../lib/pdf-fonts');
 
 const WRITE_ROLES = ['ADMIN', 'PM', 'HEAD_PM', 'TO', 'HEAD_TO', 'HR', 'HR_MANAGER', 'DIRECTOR_GEN'];
 
@@ -235,17 +234,10 @@ async function routes(fastify, options) {
     if (!rows[0]) return reply.code(404).send({ error: 'Заявка не найдена' });
     const pr = rows[0];
 
-    const fontPath = path.join(__dirname, '..', '..', 'public', 'assets', 'fonts');
-    const regularFont = fs.existsSync(path.join(fontPath, 'DejaVuSans.ttf'))
-      ? path.join(fontPath, 'DejaVuSans.ttf') : undefined;
-    const boldFont = fs.existsSync(path.join(fontPath, 'DejaVuSans-Bold.ttf'))
-      ? path.join(fontPath, 'DejaVuSans-Bold.ttf') : undefined;
-
     const doc = new PDFDocument({ size: 'A4', margin: 50 });
-    if (regularFont) doc.registerFont('Regular', regularFont);
-    if (boldFont) doc.registerFont('Bold', boldFont);
-    const mf = regularFont ? 'Regular' : 'Helvetica';
-    const bf = boldFont ? 'Bold' : 'Helvetica-Bold';
+    const fonts = registerDejaVuFonts(doc);
+    const mf = fonts.regular;
+    const bf = fonts.bold;
 
     const chunks = [];
     doc.on('data', c => chunks.push(c));

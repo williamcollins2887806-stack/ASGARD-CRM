@@ -46,6 +46,16 @@
     if (e.key === 'Escape') _close();
   }
 
+  function _isOffice(url, mime) {
+    const m = (mime || '').toLowerCase();
+    const u = (url || '').toLowerCase();
+    return m.includes('word') || m.includes('sheet') || m.includes('excel')
+      || /\.docx?$/.test(u) || /\.xlsx?$/.test(u);
+  }
+  function _isZip(url, mime) {
+    return (mime || '').includes('zip') || /\.zip$/i.test(url || '');
+  }
+
   async function open(opts) {
     _close();
     const title = opts.title || 'Документ';
@@ -53,6 +63,8 @@
     const downloadUrl = opts.downloadUrl || fileUrl;
     const mime = opts.mime || '';
     const htmlContent = opts.htmlContent || '';
+    const archiveListUrl = opts.archiveListUrl || '';
+    const archiveList = opts.archiveList || null;
 
     _overlay = document.createElement('div');
     _overlay.className = 'asg-doc-preview-overlay';
@@ -84,6 +96,28 @@
       inner.appendChild(iframe);
     } else if (_isImg(fileUrl, mime)) {
       inner.innerHTML = `<img src="${esc(fileUrl)}" alt="${esc(title)}" style="max-width:100%;border-radius:8px;box-shadow:0 8px 32px rgba(0,0,0,.4)"/>`;
+    } else if (archiveList && Array.isArray(archiveList)) {
+      inner.innerHTML = `<div style="width:min(640px,92vw);max-height:70vh;overflow:auto;padding:12px;background:var(--bg-elevated,#1e1e1e);border-radius:8px;text-align:left">
+        <div style="font-weight:700;margin-bottom:10px">Содержимое архива (${archiveList.length})</div>
+        ${archiveList.map((e) => `<div style="padding:4px 0;border-bottom:1px solid rgba(255,255,255,.08);font-size:13px">${esc(e.path || e.name || '')} <span style="opacity:.6">${e.size ? '(' + e.size + ' b)' : ''}</span></div>`).join('')}
+      </div>`;
+    } else if (_isOffice(fileUrl, mime)) {
+      const pdfUrl = fileUrl + (fileUrl.includes('?') ? '&' : '?') + 'format=pdf';
+      inner.innerHTML = `<iframe src="${esc(pdfUrl)}" title="${esc(title)}" style="width:min(960px,92vw);height:75vh;border:0;border-radius:8px;background:#fff"></iframe>`;
+    } else if (_isZip(fileUrl, mime) && archiveListUrl) {
+      try {
+        const r = await fetch(archiveListUrl, { credentials: 'include' });
+        const j = await r.json().catch(() => ({}));
+        const entries = Array.isArray(j.entries) ? j.entries : [];
+        inner.innerHTML = entries.length
+          ? `<div style="width:min(640px,92vw);max-height:70vh;overflow:auto;padding:12px;background:var(--bg-elevated,#1e1e1e);border-radius:8px;text-align:left">
+              <div style="font-weight:700;margin-bottom:10px">Содержимое архива (${entries.length})</div>
+              ${entries.map((e) => `<div style="padding:4px 0;border-bottom:1px solid rgba(255,255,255,.08);font-size:13px">${esc(e.path || '')}</div>`).join('')}
+            </div>`
+          : `<div style="text-align:center;color:#ccc;padding:32px">Архив пуст или не читается.<br><a href="${esc(downloadUrl)}" download>Скачать архив</a></div>`;
+      } catch (_) {
+        inner.innerHTML = `<div style="text-align:center;color:#ccc;padding:32px">Не удалось прочитать архив.<br><a href="${esc(downloadUrl)}" download>Скачать архив</a></div>`;
+      }
     } else if (_isPdf(fileUrl, mime)) {
       inner.innerHTML = `<iframe src="${esc(fileUrl)}" title="${esc(title)}" style="width:min(960px,92vw);height:75vh;border:0;border-radius:8px;background:#fff"></iframe>`;
     } else if (_isText(fileUrl, mime)) {

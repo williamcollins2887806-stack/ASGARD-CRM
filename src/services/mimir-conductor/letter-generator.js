@@ -29,6 +29,7 @@ const fs = require('fs');
 const path = require('path');
 const AdmZip = require('adm-zip');
 const PDFDocument = require('pdfkit');
+const { registerDejaVuFonts } = require('../../lib/pdf-fonts');
 
 const db = require('../db');
 const aiProvider = require('../ai-provider');
@@ -472,13 +473,9 @@ function renderPdf(model, outPath) {
       const stream = fs.createWriteStream(outPath);
       doc.pipe(stream);
 
-      const hasFont = fs.existsSync(FONT_REGULAR);
-      if (hasFont) {
-        doc.registerFont('ru', FONT_REGULAR);
-        if (fs.existsSync(FONT_BOLD)) doc.registerFont('ru-bold', FONT_BOLD);
-      }
-      const F = hasFont ? 'ru' : 'Helvetica';
-      const FB = hasFont && fs.existsSync(FONT_BOLD) ? 'ru-bold' : (hasFont ? 'ru' : 'Helvetica-Bold');
+      const fonts = registerDejaVuFonts(doc, { regularName: 'ru', boldName: 'ru-bold' });
+      const F = fonts.regular;
+      const FB = fonts.bold;
 
       doc.font(FB).fontSize(14).text(SENDER.org);
       doc.font(F).fontSize(9).text(`${SENDER.inn_kpp}\n${SENDER.address}\nТел: ${SENDER.phone}`);

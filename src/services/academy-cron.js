@@ -17,6 +17,11 @@ const cron = require('node-cron');
 const db = require('./db');
 const pushService = require('./pushService');
 const { MODEL_LONG, MODEL_FAST } = require('./ai-models');
+const {
+  normalizeQuestions,
+  assertAllQuestions,
+  BROKEN_QUIZ_SQL,
+} = require('../lib/academy-quiz-shape');
 
 let aiProvider;
 try { aiProvider = require('./ai-provider'); } catch (e) {}
@@ -221,38 +226,40 @@ const CURRICULUM_48 = [
     topic: 'Буровые работы на морском шельфе: типы морских буровых установок (полупогружные, самоподъёмные, буровые суда). Морской стояк (райзер) — удержание скважины. Противовыбросовое оборудование (ПВО/BOP) — 5 рамзов. ГНВП на шельфе: замечание, метод бурильщика, глушение. Метеорологические ограничения. Эвакуация при аварии — шлюпки и вертолёт.',
     tags: ['бурение', 'шельф', 'bop'],
   },
-  // ── БЛОК 9: Изоляция ─────────────────────────────────────────────────────
+  // ── БЛОК 9: Изоляция (1 слот) + Культура безопасности МЛСП ───────────────
   {
     week: 38, mandatory: false, saga: 'Изоляция трубопроводов',
     topic: 'Изоляция трубопроводов: цели (тепловые потери, коррозия, конденсат). Материалы: минеральная вата, пенополиуретан ППУ, пенофол, скорлупы и цилиндры. Заводская изоляция ППУ в полиэтиленовой оболочке — преимущества. Монтаж: стыки, отводы, фланцы, задвижки. Системы ОДК (оперативного дистанционного контроля). ГОСТ 30732-2006 требования.',
     tags: ['изоляция', 'трубопровод', 'ппу'],
   },
+  // ── БЛОК 9b: Культура безопасности МЛСП (обязательные) ───────────────────
+  // weeks 39-43: следующие слоты после текущего цикла (~week_number 135+)
   {
-    week: 39, mandatory: false, saga: 'Изоляция резервуаров',
-    topic: 'Тепловая изоляция резервуаров и вертикальных ёмкостей: перлит, стекловата, пенополиуретан напыляемый, PIR-плиты. Обечайка: наружная изоляция вертикальных стенок. Кровля и днище — особенности. Климатические условия РФ: диапазон температур от -60°C (Сибирь). Промышленные теплотрассы: ГВС и трубопроводы пара. Нормы теплопотерь.',
-    tags: ['изоляция', 'резервуар', 'теплоизоляция'],
+    week: 39, mandatory: true, saga: 'Каркасы безопасности',
+    topic: 'Каркасы безопасности (Safety Framework) на МЛСП и шельфовых объектах: что это такое, зачем нужен единый каркас правил на платформе. Ключевые элементы: политика нулевого травматизма, иерархия контроля опасностей (устранение → замена → инженерия → админ → СИЗ), роли РП/бригадира/рабочего. Связь с нарядом-допуском и stop-work. Практика на МЛСП «Приразломная» и аналогах: ежедневный briefing, зональные правила, «золотые правила» объекта.',
+    tags: ['млсп', 'пб', 'тб', 'каркасы', 'аттестация'], permit: 'offshore',
   },
   {
-    week: 40, mandatory: false, saga: 'Тепловая изоляция',
-    topic: 'Расчёт и монтаж промышленной теплоизоляции: коэффициент теплопроводности λ, толщина изоляции по СП 61.13330. Крепление: скобы, хомуты, мастика, монтажная пена. Защитные покрытия поверх изоляции: алюминиевый лист, оцинкованная сталь, полимерные плёнки. Эксплуатация и ремонт: признаки намокания, плановое освидетельствование. Экономия топлива.',
-    tags: ['изоляция', 'теплопотери', 'монтаж'],
-  },
-  // ── БЛОК 10: Расширенные СИЗ ─────────────────────────────────────────────
-  {
-    week: 41, mandatory: false, saga: 'СИЗ органов дыхания',
-    topic: 'Подробная классификация СИЗОД: противоаэрозольные фильтры (P1/P2/P3), противогазовые (марки A B E K), комбинированные. Требования EN 140, EN 136. Проверка прилегания маски: положительное/отрицательное давление. Бороды, очки, шрамы — нарушают прилегание. Время защитного действия при разных концентрациях. Хранение и утилизация.',
-    tags: ['сизод', 'фильтры', 'маска'],
+    week: 40, mandatory: true, saga: 'ИСОБР',
+    topic: 'ИСОБР — интегрированная система обеспечения безопасности работ на МЛСП: цели, документы, кто за что отвечает. Планирование работ, согласование пересечений бригад, контроль подрядчиков. Аудит и самопроверка. Связь ИСОБР с каркасом безопасности, нарядом-допуском, ЛАРН и аварийными процедурами. Типичные нарушения на платформе и как их предотвращать.',
+    tags: ['млсп', 'пб', 'тб', 'исобр', 'аттестация'], permit: 'offshore',
   },
   {
-    week: 42, mandatory: false, saga: 'СИЗ от падения',
-    topic: 'Системы защиты от падения EN 363: удерживающие (не допускают к краю), позиционирующие (работа на наклонной поверхности), страховочные (останавливают падение). Поглотители энергии: 6 кН max при падении. Самостраховка и ползун — выбор под задачу. Горизонтальные страховочные линии: расчёт нагрузки. Требования: осмотр перед каждым применением, вывод из эксплуатации после срабатывания.',
-    tags: ['страховка', 'антипадение', 'сиз'],
+    week: 41, mandatory: true, saga: 'Оценка рисков',
+    topic: 'Оценка рисков перед работой на МЛСП: когда обязательна, кто проводит, формат (JSA / оценка рисков / toolbox talk). Идентификация опасностей (высота, газ, ЗОП, кран, погода, сопутствующие работы). Матрица вероятность×тяжесть. Остаточный риск и меры контроля. Когда оценку нужно пересмотреть mid-shift. Примеры реальных ситуаций на шельфе.',
+    tags: ['млсп', 'пб', 'тб', 'риски', 'аттестация'], permit: 'work',
   },
   {
-    week: 43, mandatory: false, saga: 'СИЗ химзащиты',
-    topic: 'Средства химической защиты: типы костюмов EN 943 (тип 1 — газонепроницаемые, тип 6 — ограниченные брызги). Химстойкие перчатки: нитрил vs латекс vs неопрен — что для чего. Защитные боты с антихимическим покрытием. Дегазация СИЗ после контакта с агрессивными средами. Сроки эксплуатации. Хранение: отдельно от СУГ и нефтепродуктов.',
-    tags: ['химзащита', 'костюм', 'перчатки'],
+    week: 42, mandatory: true, saga: '5 шагов безопасности',
+    topic: 'Пять шагов безопасного выполнения работ на МЛСП: 1) Остановись и осмотрись 2) Выяви опасности 3) Оцени риски 4) Внедри меры контроля 5) Действуй и контролируй. Как применять на каждой задаче смены. Связь с картой наблюдения и stop-work. Чек-лист перед стартом работы. Ошибки «привык — не смотрю».',
+    tags: ['млсп', 'пб', 'тб', '5 шагов', 'аттестация'], permit: 'safety',
   },
+  {
+    week: 43, mandatory: true, saga: 'Карты наблюдений',
+    topic: 'Карты наблюдений и поведенческий аудит безопасности на МЛСП: зачем фиксировать безопасное и опасное поведение. Как заполнять карту: что видел, где, кто, что сказал, что исправили. Обратная связь без обвинения. Частота наблюдений, роль бригадира и РП. Как карты влияют на культуру вмешательства и снижение травматизма. Практика разбора типичных наблюдений на платформе.',
+    tags: ['млсп', 'пб', 'тб', 'наблюдения', 'аттестация'], permit: 'safety',
+  },
+  // ── БЛОК 10: Расширенные СИЗ / токсины (сдвинуты с недель 41–45) ────────
   {
     week: 44, mandatory: false, saga: 'Виды отравлений',
     topic: 'Отравление хлором (Cl₂): желто-зелёный газ, острый запах, атакует лёгкие. Аммиак NH₃: едкий запах, лёгкие и кожа, промывать водой. Азот N₂: без цвета и запаха, вытесняет кислород в ЗОП — смерть без предупреждения! Углекислый газ CO₂: ямы и подвалы, тяжелее воздуха. Ртуть Hg: пары опасны при Т>20°C. Алгоритм действий при каждом отравлении.',
@@ -389,23 +396,20 @@ function getNextWeekNumber() {
 // Цикл 48 недель: перебираем с (maxWeek+1) пока не найдём слот без урока
 async function getNextCurriculumEntry() {
   const { rows } = await db.query(
-    `SELECT week_number FROM academy_lessons WHERE status != 'rejected' ORDER BY week_number`
+    `SELECT week_number FROM academy_lessons
+     WHERE status NOT IN ('rejected', 'archived')
+     ORDER BY week_number`
   );
   const usedWeeks = new Set(rows.map(r => r.week_number));
-
-  // Начинаем с max+1 и ищем первый незанятый week_number
   const maxWeek = rows.length ? Math.max(...rows.map(r => r.week_number)) : 0;
   let nextWeek = maxWeek + 1;
-
-  // Убедимся что этот week_number не занят (на случай пробелов)
   while (usedWeeks.has(nextWeek)) nextWeek++;
-
   const idx = (nextWeek - 1) % 48;
   return { entry: CURRICULUM_48[idx], nextWeek };
 }
 
 const LESSON_SYSTEM_PROMPT = `Ты — Мимир, хранитель мудрости для рабочих нефтегазовых и строительных компаний.
-Создай ГЛУБОКИЙ образовательный урок (Руну). Цель — рабочий должен читать урок 4-7 минут, реально учиться, а не пробегать глазами за 30 секунд.
+Создай ГЛУБОКИЙ образовательный урок (Руну). Цель — рабочий должен читать урок 5-10 минут, реально учиться, а не пробегать глазами за 30 секунд.
 
 ТЕМА УРОКА задана пользователем. Раскрой её ПОЛНО и КОНКРЕТНО:
 - Ключевые понятия с детальными объяснениями (НЕ одной строкой)
@@ -413,20 +417,22 @@ const LESSON_SYSTEM_PROMPT = `Ты — Мимир, хранитель мудро
 - Конкретные модели оборудования / марки СИЗ / типы инструмента
 - Практические алгоритмы действий — пошагово, каждый шаг с пояснением
 - Типичные ошибки + последствия + как их избежать
-- Реальные случаи из практики (минимум 1, лучше 2)
-- Цифры и факты, которые НЕЛЬЗЯ угадать без чтения текста
+- Реальные случаи из практики (минимум 2)
+- Познавательные факты, которые НЕЛЬЗЯ угадать без чтения текста
 
-ТРЕБОВАНИЯ К ОБЪЁМУ:
-- Минимум 3500 знаков основного текста (без cover/icon_grid labels)
-- 12-18 блоков на урок
-- Каждый text_block: 5-9 предложений (а не 2-3)
+ТРЕБОВАНИЯ К ОБЪЁМУ (жёстко, урок должен быть ИНТЕРЕСНЫМ и ОБЪЁМНЫМ):
+- Минимум 5500 знаков основного текста (без cover/icon_grid labels)
+- 14-20 блоков на урок — чередуй типы, без «воды»
+- Каждый text_block: 6-10 предложений с цифрами/нормами/примерами
 - Каждый icon_grid: 5-7 элементов с осмысленными desc (не одно слово)
 - Минимум 2 блока steps по 5-8 пунктов каждый
 - Минимум 2 warning блока (danger или warning)
-- Минимум 2 fact_card с реальными случаями
+- Минимум 3 fact_card: реальные случаи + неочевидные факты + «что вынести»
+- estimated_minutes: строго от 7 до 10 (короткие «шпаргалки» запрещены)
 
 Тон: уважительный, по-деловому, как опытный мастер передаёт знание младшему. Рабочий — профессионал.
-Язык: русский. Технические термины используй, но кратко расшифровывай при первом упоминании.
+Язык: ТОЛЬКО русский. ЗАПРЕЩЕНО вставлять английские слова, аббревиатуры латиницей и кальки (кроме общепринятых обозначений веществ вроде H₂S, CO — пиши рядом русское название). Технические термины — по-русски, кратко расшифровывай при первом упоминании.
+Крючок: в intro — конкретная боль/авария/штраф; дальше — практика «что делать завтра на объекте».
 
 Типы блоков:
 {"type":"cover","icon":"emoji","title":"...","subtitle":"..."}
@@ -435,17 +441,25 @@ const LESSON_SYSTEM_PROMPT = `Ты — Мимир, хранитель мудро
 {"type":"icon_grid","title":"...","items":[{"icon":"emoji","label":"конкретное значение/название","desc":"что это означает на практике (8-15 слов)"},...]}
 {"type":"warning","level":"danger|warning","text":"опасность + последствия + как избежать (3-5 предложений)"}
 {"type":"steps","title":"...","items":["шаг с конкретикой и пояснением почему","..."]} 5-8 шагов
-{"type":"fact_card","icon":"emoji","text":"реальный случай: место, год, что случилось, причина, что вынести (4-6 предложений)"}
+{"type":"fact_card","icon":"emoji","text":"реальный случай или познавательный факт: место/год/цифры, что вынести (4-6 предложений)"}
 
 Чередуй типы. Начинай с cover + intro, заканчивай fact_card.
 
-ТЕСТ — 12 вопросов (7 choice с 4 вариантами, 2 truefalse, 3 scenario), проходной балл 80%.
+ТЕСТ — РОВНО минимум 15 вопросов (не меньше!): 10 choice с 4 вариантами, 2 truefalse, 3 scenario. Проходной балл 80%.
 КРИТИЧЕСКИ ВАЖНО:
-- Каждый вопрос должен требовать знания КОНКРЕТНОЙ ЦИФРЫ, ФАКТА или АЛГОРИТМА из текста урока
-- Дистракторы (неправильные варианты) должны быть ПРАВДОПОДОБНЫМИ — похожие цифры, близкие действия, частые заблуждения
-- ЗАПРЕЩЕНО: вопросы, на которые можно ответить «здравым смыслом» без чтения текста (типа "нужно ли надевать каску?" — да)
-- Каждый вопрос ОБЯЗАТЕЛЬНО имеет correct_explanation (3-4 предложения с цифрами/ссылками на материал урока)
-- scenario-вопросы: давай реальную ситуацию (3-4 предложения контекста) + варианты действий, где почти все звучат разумно, но правильный учитывает специфику
+- Вопросы СРЕДНЕЙ/ВЫСОКОЙ сложности: без чтения урока угадать нельзя; дистракторы близки к правде
+- ЗАПРЕЩЕНО: «очевидный здравый смысл», подсказки в формулировке, один вариант заметно длиннее/конкретнее остальных
+- Каждый вопрос требует знания КОНКРЕТНОЙ ЦИФРЫ, ФАКТА, НОРМЫ или АЛГОРИТМА из текста урока
+- Дистракторы (неправильные варианты) — правдоподобные, одинаковой длины и стиля
+- correct_explanation обязателен (3-4 предложения)
+- scenario-вопросы: реальная ситуация + варианты действий
+- options — ТОЛЬКО массив объектов вида {"id":"a","text":"...","is_correct":false}, НИКОГДА массив строк
+- Ровно ОДИН вариант с "is_correct": true; у truefalse ровно 2 варианта (Верно/Неверно)
+- id вариантов: уникальные строки "a","b","c","d" внутри вопроса
+- Позиция правильного ответа — РАЗНАЯ по вопросам (не всегда второй!). Пример ниже — НЕ шаблон позиции.
+
+Формат каждого вопроса (позиция is_correct здесь случайная — меняй её):
+{"sort_order":1,"question_type":"choice|truefalse|scenario","question_text":"...","options":[{"id":"a","text":"...","is_correct":false},{"id":"b","text":"...","is_correct":false},{"id":"c","text":"...","is_correct":true},{"id":"d","text":"...","is_correct":false}],"correct_explanation":"..."}
 
 Верни ТОЛЬКО JSON без markdown:
 {
@@ -453,25 +467,201 @@ const LESSON_SYSTEM_PROMPT = `Ты — Мимир, хранитель мудро
   "title": "название Руны (4-7 слов)",
   "cover_icon": "emoji",
   "cover_color": "#hex цвет фона обложки (тёмный)",
-  "estimated_minutes": число от 5 до 8 (реальное время чтения в минутах),
+  "estimated_minutes": число от 5 до 10,
   "is_mandatory": true или false,
   "tags": ["тег1","тег2","тег3"],
   "blocks": [...],
-  "questions": [
-    {
-      "sort_order": 1,
-      "question_type": "choice|truefalse|scenario",
-      "question_text": "...",
-      "options": [
-        {"id":1,"text":"...","is_correct":false},
-        {"id":2,"text":"...","is_correct":true},
-        {"id":3,"text":"...","is_correct":false},
-        {"id":4,"text":"...","is_correct":false}
-      ],
-      "correct_explanation": "Объяснение правильного ответа (2-3 предложения)"
-    }
-  ]
+  "questions": [ /* минимум 15 объектов в формате выше */ ]
 }`;
+
+const REVIEW_SYSTEM_PROMPT = `Ты — независимый редактор Чертогов Мимира. Оцени черновик Руны строго.
+Критерии (каждый 1-10):
+1) interest — интересно ли читать вахтовику (не скучно, есть крючки/кейсы)
+2) edu — познавательность (новые факты, нормы, цифры; без выдуманных номеров ГОСТ/ПОТ/форм)
+3) depth — наполнение (плотность текста, нет воды, достаточно блоков)
+
+Доп. критерий НМД: если в промпте были фрагменты НМД — факты/номера документов в уроке должны им соответствовать; выдуманные нормы = NOT_OK.
+
+Вердикт OK только если:
+- score_interest >= 7 AND score_edu >= 7 AND score_depth >= 7
+- questions_count >= 15
+- estimated_minutes между 7 и 10 включительно
+- есть познавательные факты в блоках (fact_card / конкретные цифры)
+- урок объёмный и интересный (не шпаргалка)
+- нет выдуманных номеров ГОСТ/ПОТ/форм, противоречащих НМД (если НМД был дан)
+
+Иначе verdict = NOT_OK.
+
+Верни ТОЛЬКО JSON:
+{"verdict":"OK"|"NOT_OK","score_interest":N,"score_edu":N,"score_depth":N,"questions_count":N,"estimated_minutes":N,"reasons":"кратко на русском"}`;
+
+function nextReleaseMonday() {
+  const nextMonday = new Date();
+  const dow = nextMonday.getUTCDay();
+  const daysToMonday = dow === 0 ? 1 : 8 - dow;
+  nextMonday.setUTCDate(nextMonday.getUTCDate() + daysToMonday);
+  return nextMonday.toISOString().slice(0, 10);
+}
+
+function parseLessonJson(text) {
+  let cleaned = (text || '').trim();
+  cleaned = cleaned.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+  try {
+    return JSON.parse(cleaned);
+  } catch (parseErr) {
+    const repaired = repairTruncatedJson(cleaned);
+    if (!repaired) throw parseErr;
+    return JSON.parse(repaired);
+  }
+}
+
+function lessonTextLen(lesson) {
+  const parts = [];
+  for (const b of lesson.blocks || []) {
+    if (!b || typeof b !== 'object') continue;
+    if (b.text) parts.push(String(b.text));
+    if (b.title) parts.push(String(b.title));
+    if (Array.isArray(b.items)) {
+      for (const it of b.items) {
+        if (typeof it === 'string') parts.push(it);
+        else if (it) parts.push(String(it.desc || it.label || it.text || ''));
+      }
+    }
+  }
+  return parts.join(' ').replace(/\s+/g, ' ').trim().length;
+}
+
+function hardGateLesson(lesson) {
+  const qCount = (lesson.questions || []).length;
+  const mins = Number(lesson.estimated_minutes) || 0;
+  const blocks = lesson.blocks || [];
+  const chars = lessonTextLen(lesson);
+  const factCards = blocks.filter((b) => b && b.type === 'fact_card').length;
+  const factish = blocks.filter((b) => b && (b.type === 'fact_card' || (b.type === 'text_block' && String(b.text || '').length > 200))).length;
+  const reasons = [];
+  if (qCount < 15) reasons.push(`вопросов ${qCount} < 15`);
+  if (mins < 7 || mins > 10) reasons.push(`estimated_minutes ${mins} вне 7-10`);
+  if (blocks.length < 12) reasons.push(`блоков ${blocks.length} < 12`);
+  if (chars < 5500) reasons.push(`текст ${chars} знаков < 5500`);
+  if (factCards < 3) reasons.push(`fact_card ${factCards} < 3`);
+  if (factish < 3) reasons.push('мало познавательных/фактовых блоков');
+  // Quiz shape — до insert, чтобы битые options никогда не ушли в published
+  const normalized = normalizeQuestions(lesson.questions || []);
+  if (normalized.length < 15) reasons.push(`валидных вопросов ${normalized.length} < 15`);
+  const shapeFails = assertAllQuestions(normalized, { requireId: true });
+  if (shapeFails.length) reasons.push(`quiz shape: ${shapeFails.slice(0, 3).join('; ')}`);
+  return { ok: reasons.length === 0, reasons, qCount, mins, chars };
+}
+
+async function reviewLessonDraft(lesson) {
+  const payload = {
+    title: lesson.title,
+    saga: lesson.saga,
+    estimated_minutes: lesson.estimated_minutes,
+    blocks_count: (lesson.blocks || []).length,
+    questions_count: (lesson.questions || []).length,
+    blocks_preview: (lesson.blocks || []).slice(0, 14).map((b) => ({
+      type: b.type,
+      title: b.title || null,
+      text: String(b.text || '').slice(0, 280),
+    })),
+    questions_preview: (lesson.questions || []).slice(0, 5).map((q) => q.question_text),
+  };
+
+  const response = await aiProvider.complete({
+    model: MODEL_FAST,
+    system: REVIEW_SYSTEM_PROMPT,
+    messages: [{ role: 'user', content: JSON.stringify(payload) }],
+    temperature: 0.2,
+    maxTokens: 2000,
+  });
+
+  let review;
+  try {
+    review = parseLessonJson(response.text || '');
+  } catch (e) {
+    return {
+      verdict: 'NOT_OK',
+      score_interest: 0,
+      score_edu: 0,
+      score_depth: 0,
+      reasons: 'Reviewer JSON parse failed: ' + e.message,
+    };
+  }
+
+  const gate = hardGateLesson(lesson);
+  const scoresOk = Number(review.score_interest) >= 7
+    && Number(review.score_edu) >= 7
+    && Number(review.score_depth) >= 7;
+  const verdictOk = String(review.verdict || '').toUpperCase() === 'OK' && scoresOk && gate.ok;
+
+  return {
+    verdict: verdictOk ? 'OK' : 'NOT_OK',
+    score_interest: Number(review.score_interest) || 0,
+    score_edu: Number(review.score_edu) || 0,
+    score_depth: Number(review.score_depth) || 0,
+    reasons: [review.reasons, ...gate.reasons].filter(Boolean).join('; '),
+  };
+}
+
+async function insertLessonDraft(nextWeek, curriculumEntry, lesson) {
+  const isMandatory = curriculumEntry.mandatory;
+  const mins = Math.max(7, Math.min(10, Number(lesson.estimated_minutes) || 8));
+  const releaseMonday = nextReleaseMonday();
+  const questions = normalizeQuestions(lesson.questions || []);
+
+  if (questions.length < 15) {
+    const err = new Error(`Too few valid questions after normalize: ${questions.length} < 15`);
+    err.code = 'QUALITY_GATE';
+    throw err;
+  }
+
+  const shapeFails = assertAllQuestions(questions, { requireId: true });
+  if (shapeFails.length) {
+    const err = new Error(`Quiz shape invalid: ${shapeFails.slice(0, 5).join('; ')}${shapeFails.length > 5 ? '…' : ''}`);
+    err.code = 'QUALITY_GATE';
+    throw err;
+  }
+
+  const { rows: [inserted] } = await db.query(`
+    INSERT INTO academy_lessons
+      (week_number, saga, title, cover_icon, cover_color, estimated_minutes, tags, status, generated_by, blocks, is_mandatory, release_monday)
+    VALUES ($1, $2, $3, $4, $5, $6, $7, 'draft', 'mimir', $8, $9, $10)
+    RETURNING id
+  `, [
+    nextWeek,
+    lesson.saga || curriculumEntry.saga,
+    lesson.title,
+    lesson.cover_icon || '📖',
+    lesson.cover_color || '#1a1a2e',
+    mins,
+    lesson.tags || curriculumEntry.tags,
+    JSON.stringify(lesson.blocks || []),
+    isMandatory,
+    releaseMonday,
+  ]);
+
+  const lessonId = inserted.id;
+  for (const q of questions) {
+    await db.query(`
+      INSERT INTO academy_quiz_questions
+        (lesson_id, sort_order, question_type, question_text, options, correct_explanation)
+      VALUES ($1, $2, $3, $4, $5, $6)
+    `, [
+      lessonId, q.sort_order, q.question_type,
+      q.question_text, JSON.stringify(q.options),
+      q.correct_explanation,
+    ]);
+  }
+  // Keep normalized questions on lesson for reviewer gates
+  lesson.questions = questions;
+  lesson.estimated_minutes = mins;
+  return { lessonId, isMandatory, releaseMonday, mins };
+}
+
+async function setLessonStatus(lessonId, status) {
+  await db.query(`UPDATE academy_lessons SET status = $1 WHERE id = $2`, [status, lessonId]);
+}
 
 // Попытка восстановить обрезанный JSON: ищем последний валидный объект
 // внутри массивов "questions" и "blocks", закрываем структуры.
@@ -514,129 +704,169 @@ function repairTruncatedJson(text) {
   catch { return null; }
 }
 
-async function generateWeeklyLesson() {
+async function generateWeeklyLesson(opts = {}) {
   if (!aiProvider) throw new Error('AI provider not available');
 
-  const { entry, nextWeek } = await getNextCurriculumEntry();
-  const curriculumEntry = entry || CURRICULUM_48[(nextWeek - 1) % 48];
+  const maxAttempts = opts.maxAttempts || 3;
+  let curriculumEntry;
+  let nextWeek;
 
-  // Проверить — урок уже есть?
-  // Проверка по week_number — главный guard против дублирования
+  if (opts.forceEntry && opts.forceWeek) {
+    curriculumEntry = opts.forceEntry;
+    nextWeek = opts.forceWeek;
+    if (opts.replaceExisting) {
+      await db.query(
+        `UPDATE academy_lessons SET status = 'archived'
+         WHERE week_number = $1 AND status NOT IN ('archived','rejected')`,
+        [nextWeek]
+      );
+    }
+  } else {
+    const next = await getNextCurriculumEntry();
+    curriculumEntry = next.entry || CURRICULUM_48[(next.nextWeek - 1) % 48];
+    nextWeek = next.nextWeek;
+  }
+
   const { rows: existing } = await db.query(
-    `SELECT id FROM academy_lessons WHERE week_number = $1`, [nextWeek]
+    `SELECT id FROM academy_lessons WHERE week_number = $1 AND status NOT IN ('archived','rejected')`,
+    [nextWeek]
   );
   if (existing.length > 0) {
     console.log(`[AcademyCron] Lesson for week ${nextWeek} already exists, skipping`);
-    return;
+    return existing[0].id;
   }
 
-  // Проверка по саге внутри текущего цикла 48 недель — доп. защита от повторов
-  const cycleStart = Math.floor((nextWeek - 1) / 48) * 48 + 1;
-  const cycleEnd = cycleStart + 47;
-  const { rows: sameSaga } = await db.query(
-    `SELECT id FROM academy_lessons
-     WHERE saga = $1 AND week_number >= $2 AND week_number <= $3 AND status != 'rejected'`,
-    [curriculumEntry.saga, cycleStart, cycleEnd]
-  );
-  if (sameSaga.length > 0) {
-    console.log(`[AcademyCron] Topic "${curriculumEntry.saga}" already covered in this cycle (weeks ${cycleStart}-${cycleEnd}), skipping`);
-    return;
+  if (!opts.forceEntry) {
+    const cycleStart = Math.floor((nextWeek - 1) / 48) * 48 + 1;
+    const cycleEnd = cycleStart + 47;
+    const { rows: sameSaga } = await db.query(
+      `SELECT id FROM academy_lessons
+       WHERE saga = $1 AND week_number >= $2 AND week_number <= $3
+         AND status NOT IN ('archived', 'rejected')`,
+      [curriculumEntry.saga, cycleStart, cycleEnd]
+    );
+    if (sameSaga.length > 0) {
+      console.log(`[AcademyCron] Topic "${curriculumEntry.saga}" already covered in this cycle (weeks ${cycleStart}-${cycleEnd}), skipping`);
+      return;
+    }
   }
 
   const topicInfo = `Тема: ${curriculumEntry.topic}
 Раздел: ${curriculumEntry.saga}
 Теги: ${curriculumEntry.tags.join(', ')}
-Обязательный урок: ${curriculumEntry.mandatory ? 'ДА (аттестация, блокирует смены)' : 'НЕТ (добровольно, XP и руны)'}${curriculumEntry.permit ? `\nДопуск: ${curriculumEntry.permit}` : ''}`;
+Обязательный урок: ${curriculumEntry.mandatory ? 'ДА (аттестация, блокирует смены)' : 'НЕТ (добровольно, XP и руны)'}${curriculumEntry.permit ? `\nДопуск: ${curriculumEntry.permit}` : ''}
+ТРЕБОВАНИЕ: минимум 15 вопросов теста; лекция 5-10 минут с познавательными фактами.`;
 
-  // Последние 20 тем — чтобы не повторять детали
+  let nmdNote = '';
+  try {
+    const nmd = require('./academy-nmd');
+    const tag = (curriculumEntry.tags || []).includes('млсп') ? 'mlsp' : 'mlsp';
+    const { context, hits } = await nmd.retrieveNmdContext(db, {
+      query: `${curriculumEntry.saga}\n${curriculumEntry.topic}`,
+      objectTag: tag,
+      limit: 8
+    });
+    if (context) {
+      console.log(`[AcademyCron] NMD RAG hits=${hits.length} for "${curriculumEntry.saga}"`);
+      nmdNote = `\n\nФРАГМЕНТЫ НМД (обязательно опирайся на них; НЕ выдумывай номера документов/форм, которых нет ниже; если данных мало — пиши «по практике объекта» без фейковых ГОСТ):\n${context}`;
+    } else {
+      console.log(`[AcademyCron] NMD RAG empty for "${curriculumEntry.saga}"`);
+    }
+  } catch (e) {
+    console.warn('[AcademyCron] NMD RAG skip:', e.message);
+  }
+
   const { rows: recent } = await db.query(
-    `SELECT title, saga, tags FROM academy_lessons ORDER BY week_number DESC LIMIT 20`
+    `SELECT title, saga, tags FROM academy_lessons
+     WHERE status NOT IN ('archived','rejected')
+     ORDER BY week_number DESC LIMIT 20`
   );
   const recentTopics = recent.map(r => `${r.saga}: ${r.title} [${(r.tags || []).join(',')}]`).join('\n');
   const avoidNote = recentTopics
     ? `\n\nУже изученные темы (не повторяй их содержание, только ссылайся при необходимости):\n${recentTopics}`
     : '';
 
-  console.log(`[AcademyCron] Generating lesson for week ${nextWeek}: "${curriculumEntry.saga}"... (model=${MODEL_LONG})`);
+  let lastReasons = '';
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    console.log(`[AcademyCron] Generating lesson week ${nextWeek}: "${curriculumEntry.saga}" attempt ${attempt}/${maxAttempts} (creator=${MODEL_LONG})`);
 
-  const response = await aiProvider.complete({
-    model: MODEL_LONG,
-    system: LESSON_SYSTEM_PROMPT + avoidNote,
-    messages: [
-      { role: 'user', content: `Создай Руну для недели ${nextWeek}.\n\n${topicInfo}` }
-    ],
-    temperature: 0.7,
-    // Grok 4.20 Fast: до 256K output. Лекция с 12-18 блоками + 12 вопросами
-    // дотягивает до 40K токенов на русском. JSON repair страхует если упрёмся.
-    maxTokens: 64000,
-  });
+    const response = await aiProvider.complete({
+      model: MODEL_LONG,
+      system: LESSON_SYSTEM_PROMPT + avoidNote,
+      messages: [
+        { role: 'user', content: `Создай Руну для недели ${nextWeek}.\n\n${topicInfo}${nmdNote}${lastReasons ? `\n\nПредыдущий черновик отклонён: ${lastReasons}. Исправь слабости.` : ''}` }
+      ],
+      temperature: attempt === 1 ? 0.7 : 0.85,
+      maxTokens: 64000,
+    });
 
-  let text = (response.text || '').trim();
-  text = text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+    let lesson;
+    try {
+      lesson = parseLessonJson(response.text || '');
+      console.log(`[AcademyCron] Parsed: ${(lesson.blocks || []).length} blocks, ${(lesson.questions || []).length} questions`);
+    } catch (parseErr) {
+      lastReasons = 'JSON parse failed: ' + parseErr.message;
+      console.warn(`[AcademyCron] ${lastReasons}`);
+      continue;
+    }
 
-  // Иногда AI обрывает JSON по лимиту токенов. Пробуем repair — обрезать
-  // до последнего полного объекта в массиве questions/blocks.
-  let lesson;
-  try {
-    lesson = JSON.parse(text);
-  } catch (parseErr) {
-    console.warn(`[AcademyCron] JSON parse failed (${parseErr.message}), trying repair...`);
-    const repaired = repairTruncatedJson(text);
-    if (!repaired) throw parseErr;
-    lesson = JSON.parse(repaired);
-    console.log(`[AcademyCron] Repair OK: ${(lesson.blocks||[]).length} blocks, ${(lesson.questions||[]).length} questions`);
+    const preGate = hardGateLesson(lesson);
+    if (!preGate.ok) {
+      lastReasons = preGate.reasons.join('; ');
+      console.warn(`[AcademyCron] Pre-insert gate NOT_OK: ${lastReasons}`);
+      continue;
+    }
+
+    let lessonId;
+    let isMandatory;
+    try {
+      // Unique week_number includes archived rows — clear failed orphans first
+      await db.query(`
+        DELETE FROM academy_quiz_questions
+        WHERE lesson_id IN (
+          SELECT id FROM academy_lessons WHERE week_number = $1 AND status = 'archived'
+        )
+      `, [nextWeek]);
+      await db.query(
+        `DELETE FROM academy_lessons WHERE week_number = $1 AND status = 'archived'`,
+        [nextWeek]
+      );
+      ({ lessonId, isMandatory } = await insertLessonDraft(nextWeek, curriculumEntry, lesson));
+    } catch (insErr) {
+      lastReasons = insErr.message || String(insErr);
+      console.warn(`[AcademyCron] Insert failed: ${lastReasons}`);
+      continue;
+    }
+    console.log(`[AcademyCron] Draft id=${lessonId} created, reviewing (reviewer=${MODEL_FAST})...`);
+
+    let review;
+    try {
+      review = await reviewLessonDraft(lesson);
+    } catch (e) {
+      review = { verdict: 'NOT_OK', reasons: 'Reviewer error: ' + e.message, score_interest: 0, score_edu: 0, score_depth: 0 };
+    }
+
+    console.log(`[AcademyCron] Review id=${lessonId}: ${review.verdict} interest=${review.score_interest} edu=${review.score_edu} depth=${review.score_depth} — ${review.reasons || ''}`);
+
+    if (review.verdict === 'OK') {
+      await setLessonStatus(lessonId, 'published');
+      const mandatoryLabel = isMandatory ? ' [ОБЯЗАТЕЛЬНЫЙ]' : ' [необязательный]';
+      console.log(`[AcademyCron] Lesson "${lesson.title}"${mandatoryLabel} PUBLISHED id=${lessonId}`);
+      await notifyAdmins(lesson.title, lessonId, isMandatory, 'published', review);
+      return lessonId;
+    }
+
+    await setLessonStatus(lessonId, 'archived');
+    lastReasons = review.reasons || 'NOT_OK';
+    console.log(`[AcademyCron] Lesson id=${lessonId} ARCHIVED, will retry`);
   }
 
-  // is_mandatory берём из учебной программы (не из AI — AI может ошибиться)
-  const isMandatory = curriculumEntry.mandatory;
-
-  // release_monday — ближайший будущий понедельник (так UI видит урок с правильной недели)
-  const nextMonday = new Date();
-  const dow = nextMonday.getUTCDay(); // 0 = Sunday
-  const daysToMonday = dow === 0 ? 1 : 8 - dow;
-  nextMonday.setUTCDate(nextMonday.getUTCDate() + daysToMonday);
-
-  const { rows: [inserted] } = await db.query(`
-    INSERT INTO academy_lessons
-      (week_number, saga, title, cover_icon, cover_color, estimated_minutes, tags, status, generated_by, blocks, is_mandatory, release_monday)
-    VALUES ($1, $2, $3, $4, $5, $6, $7, 'draft', 'mimir', $8, $9, $10)
-    RETURNING id
-  `, [
-    nextWeek,
-    lesson.saga || curriculumEntry.saga,
-    lesson.title,
-    lesson.cover_icon || '📖',
-    lesson.cover_color || '#1a1a2e',
-    Math.max(5, Math.min(8, lesson.estimated_minutes || 6)),
-    lesson.tags || curriculumEntry.tags,
-    JSON.stringify(lesson.blocks || []),
-    isMandatory,
-    nextMonday.toISOString().slice(0, 10),
-  ]);
-
-  const lessonId = inserted.id;
-
-  for (const q of (lesson.questions || [])) {
-    await db.query(`
-      INSERT INTO academy_quiz_questions
-        (lesson_id, sort_order, question_type, question_text, options, correct_explanation)
-      VALUES ($1, $2, $3, $4, $5, $6)
-    `, [
-      lessonId, q.sort_order || 0, q.question_type || 'choice',
-      q.question_text, JSON.stringify(q.options || []),
-      q.correct_explanation || '',
-    ]);
-  }
-
-  const mandatoryLabel = isMandatory ? ' [ОБЯЗАТЕЛЬНЫЙ]' : ' [необязательный]';
-  console.log(`[AcademyCron] Lesson "${lesson.title}"${mandatoryLabel} created (draft), id=${lessonId}`);
-
-  await notifyAdmins(lesson.title, lessonId, isMandatory);
-
-  return lessonId;
+  console.error(`[AcademyCron] Week ${nextWeek} "${curriculumEntry.saga}" failed after ${maxAttempts} attempts`);
+  await notifyAdmins(curriculumEntry.saga, null, curriculumEntry.mandatory, 'failed', { reasons: lastReasons });
+  throw new Error(`Academy lesson quality failed for week ${nextWeek}: ${lastReasons}`);
 }
 
-async function notifyAdmins(lessonTitle, lessonId, isMandatory) {
+async function notifyAdmins(lessonTitle, lessonId, isMandatory, outcome = 'published', review = {}) {
   try {
     const { rows: admins } = await db.query(`
       SELECT u.id FROM users u
@@ -645,13 +875,22 @@ async function notifyAdmins(lessonTitle, lessonId, isMandatory) {
       LIMIT 20
     `);
 
-    const label = isMandatory ? '⚠️ ОБЯЗАТЕЛЬНЫЙ урок (аттестация)' : '📖 Необязательный урок';
+    const label = isMandatory ? '⚠️ ОБЯЗАТЕЛЬНЫЙ' : '📖 Необязательный';
+    let title = '🏛️ Мимир: новая Руна';
+    let body = `«${lessonTitle}» — ${label}.`;
+    if (outcome === 'published') {
+      title = '🏛️ Мимир опубликовал Руну';
+      body = `«${lessonTitle}» — ${label}. Dual-AI: OK (${review.score_interest || '?'}/${review.score_edu || '?'}/${review.score_depth || '?'}).`;
+    } else if (outcome === 'failed') {
+      title = '🏛️ Мимир: руна не прошла проверку';
+      body = `«${lessonTitle}» — все попытки NOT_OK. ${review.reasons || ''}`.slice(0, 180);
+    }
 
     for (const admin of admins) {
       await pushService.sendPush(db, admin.id, {
-        title: '🏛️ Мимир создал новую Руну',
-        body: `«${lessonTitle}» — ${label}. Проверь и задай дату публикации.`,
-        tag: 'academy-lesson-draft',
+        title,
+        body,
+        tag: 'academy-lesson',
         url: '/?page=academy-admin',
         data: { type: 'academy_lesson', lesson_id: lessonId },
       }).catch(() => {});
@@ -659,6 +898,94 @@ async function notifyAdmins(lessonTitle, lessonId, isMandatory) {
   } catch (e) {
     console.warn('[AcademyCron] Failed to notify admins:', e.message);
   }
+}
+
+async function generateMlspSeries(count = 5) {
+  const ids = [];
+  for (let i = 0; i < count; i++) {
+    try {
+      const id = await generateWeeklyLesson({ maxAttempts: 3 });
+      if (id) ids.push(id);
+    } catch (e) {
+      console.error(`[AcademyCron] MLSP series item ${i + 1} failed:`, e.message);
+    }
+  }
+  return ids;
+}
+
+/**
+ * Archive existing published MLSP lessons and regenerate with NMD RAG.
+ * Call after uploading НМД packages.
+ */
+async function regenerateMlspWithNmd() {
+  const mlspEntries = CURRICULUM_48.filter(
+    (e) => e.mandatory && (e.tags || []).some((t) => String(t).toLowerCase() === 'млсп')
+  );
+  const sagas = mlspEntries.map((e) => e.saga);
+
+  // Include archived so re-runs still know week slots after a failed mid-regen
+  const { rows: existing } = await db.query(
+    `SELECT id, week_number, saga, title, status
+     FROM academy_lessons
+     WHERE (
+         saga = ANY($1::text[])
+         OR saga ILIKE '%ИСОБР%'
+         OR EXISTS (
+           SELECT 1 FROM unnest(COALESCE(tags, ARRAY[]::text[])) t
+           WHERE lower(t) = 'млсп'
+         )
+       )
+       AND week_number IS NOT NULL
+     ORDER BY week_number, id`,
+    [sagas]
+  );
+
+  // Prefer non-archived rows for week mapping; fall back to archived
+  const bySaga = new Map();
+  for (const r of existing) {
+    const key = sagas.find((s) => s === r.saga)
+      || (String(r.saga || '').includes('ИСОБР') ? 'ИСОБР' : null)
+      || r.saga;
+    if (!key) continue;
+    const prev = bySaga.get(key);
+    if (!prev || (prev.status === 'archived' && r.status !== 'archived')) {
+      bySaga.set(key, r);
+    } else if (!prev) {
+      bySaga.set(key, r);
+    }
+  }
+
+  // Do NOT bulk-archive upfront: generateWeeklyLesson(replaceExisting) archives
+  // only the week being replaced. Mid-failure keeps remaining published lessons live.
+  const ids = [];
+  const replacedWeeks = [];
+  for (const entry of mlspEntries) {
+    const mapped = bySaga.get(entry.saga)
+      || (entry.saga === 'ИСОБР' ? bySaga.get('ИСОБР') : null);
+    let week = mapped?.week_number;
+    if (!week) {
+      const { rows: [{ mx }] } = await db.query(
+        `SELECT COALESCE(MAX(week_number), 0)::int AS mx FROM academy_lessons`
+      );
+      week = mx + 1;
+    }
+    try {
+      console.log(`[AcademyCron] Regenerating MLSP «${entry.saga}» week=${week}`);
+      const id = await generateWeeklyLesson({
+        maxAttempts: 3,
+        forceEntry: entry,
+        forceWeek: week,
+        replaceExisting: true,
+      });
+      if (id) {
+        ids.push(id);
+        replacedWeeks.push(week);
+      }
+    } catch (e) {
+      console.error(`[AcademyCron] Regen «${entry.saga}» failed:`, e.message);
+    }
+  }
+  return { replacedWeeks, created: ids };
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -694,14 +1021,118 @@ async function generateWeeklyLessonWithRetry() {
 // CRON SCHEDULES
 // ═══════════════════════════════════════════════════════════════════════════
 
+/**
+ * Ежедневный health-check: published уроки с битым квизом → archive + push админам.
+ * Не даёт рабочим снова увидеть пустые варианты ответов.
+ */
+async function auditPublishedQuizHealth() {
+  const { rows } = await db.query(BROKEN_QUIZ_SQL);
+  if (!rows.length) {
+    console.log('[AcademyCron] Quiz health OK — no broken published lessons');
+  } else {
+    const ids = rows.map((r) => r.id);
+    await db.query(
+      `UPDATE academy_lessons SET status = 'archived' WHERE id = ANY($1::int[])`,
+      [ids]
+    );
+    console.warn(`[AcademyCron] Quiz health ARCHIVED broken lessons: ${ids.join(', ')}`);
+    try {
+      const { rows: admins } = await db.query(`
+        SELECT u.id FROM users u
+        WHERE u.role IN ('ADMIN', 'PM', 'HEAD_PM', 'HR') AND u.is_active = true
+        LIMIT 20
+      `);
+      const titles = rows.map((r) => `#${r.id} «${r.title}»`).join(', ').slice(0, 160);
+      for (const admin of admins) {
+        await pushService.sendPush(db, admin.id, {
+          title: '🏛️ Мимир: битый квиз убран',
+          body: `Архивированы уроки с невалидными options: ${titles}`,
+          tag: 'academy-quiz-health',
+          url: '/?page=academy-admin',
+          data: { type: 'academy_quiz_health', lesson_ids: ids },
+        }).catch(() => {});
+      }
+    } catch (e) {
+      console.warn('[AcademyCron] health notify failed:', e.message);
+    }
+  }
+  return { archived: rows.length, ids: rows.map((r) => r.id) };
+}
+
+/**
+ * Перетасовать варианты ответов у всех published choice/scenario вопросов.
+ * Чинит исторический bias «правильный ответ всегда второй».
+ */
+async function reshufflePublishedQuizOptions() {
+  const { shuffleQuizOptions } = require('../lib/academy-quiz-shape');
+  const { rows } = await db.query(`
+    SELECT aq.id, aq.options, aq.question_type
+    FROM academy_quiz_questions aq
+    JOIN academy_lessons al ON al.id = aq.lesson_id
+    WHERE al.status = 'published'
+      AND aq.question_type IN ('choice', 'scenario')
+      AND jsonb_typeof(aq.options) = 'array'
+      AND jsonb_array_length(aq.options) >= 2
+  `);
+  let updated = 0;
+  for (const row of rows) {
+    const opts = row.options;
+    if (!Array.isArray(opts) || opts.length < 2) continue;
+    const shuffled = shuffleQuizOptions(opts);
+    await db.query(
+      `UPDATE academy_quiz_questions SET options = $1::jsonb WHERE id = $2`,
+      [JSON.stringify(shuffled), row.id]
+    );
+    updated += 1;
+  }
+  console.log(`[AcademyCron] Reshuffled quiz options: ${updated} questions`);
+  return { updated };
+}
+
+/**
+ * Перегенерация слотов curriculum weeks 39–46 на absolute week_numbers (по умолчанию 135–142).
+ */
+async function regenerateBrokenCurriculumWeeks(opts = {}) {
+  const baseWeek = Number(opts.baseWeek) || 135;
+  const curriculumWeeks = opts.curriculumWeeks || [39, 40, 41, 42, 43, 44, 45, 46];
+  const maxAttempts = opts.maxAttempts || 4;
+  const ids = [];
+  for (const cw of curriculumWeeks) {
+    const entry = CURRICULUM_48.find((e) => e.week === cw);
+    if (!entry) {
+      console.warn(`[AcademyCron] No curriculum entry week=${cw}`);
+      continue;
+    }
+    const forceWeek = baseWeek + (cw - curriculumWeeks[0]);
+    console.log(`[AcademyCron] Regen «${entry.saga}» curriculum=${cw} absoluteWeek=${forceWeek}`);
+    try {
+      const id = await generateWeeklyLesson({
+        maxAttempts,
+        forceEntry: entry,
+        forceWeek,
+        replaceExisting: true,
+      });
+      if (id) ids.push({ week: forceWeek, saga: entry.saga, id });
+    } catch (e) {
+      console.error(`[AcademyCron] Regen week ${forceWeek} failed:`, e.message);
+    }
+  }
+  return ids;
+}
+
 function init() {
-  // Ежедневно в 07:00 MSK — факт дня
+  // Ежедневно в 07:00 MSK — факт дня + health-check квизов
   cron.schedule('0 4 * * *', async () => {
     console.log('[AcademyCron] Generating daily fact...');
     try {
       await generateDailyFact();
     } catch (e) {
       console.error('[AcademyCron] Daily fact error:', e.message);
+    }
+    try {
+      await auditPublishedQuizHealth();
+    } catch (e) {
+      console.error('[AcademyCron] Quiz health error:', e.message);
     }
   }, { timezone: 'Europe/Moscow' });
 
@@ -711,15 +1142,24 @@ function init() {
     try {
       await generateWeeklyLessonWithRetry();
     } catch (e) {
-      // Сюда попадаем только если ВСЕ 4 попытки упали (1мин/5мин/30мин ретраи внутри).
-      // В этом случае нужно ручное вмешательство — например, через админку
-      // или прямой вызов generateWeeklyLessonWithRetry() из shell.
       console.error('[AcademyCron] Weekly lesson FINAL error (after all retries):', e.message);
     }
   }, { timezone: 'Europe/Moscow' });
 
-  console.log('[AcademyCron] Scheduled: daily fact 07:00, weekly lesson Sunday 17:00 MSK');
+  console.log('[AcademyCron] Scheduled: daily fact+quiz-health 07:00, weekly lesson Sunday 17:00 MSK');
   console.log(`[AcademyCron] Curriculum: ${CURRICULUM_48.length} topics, ${CURRICULUM_48.filter(t => t.mandatory).length} mandatory`);
 }
 
-module.exports = { init, generateDailyFact, generateWeeklyLesson, generateWeeklyLessonWithRetry };
+module.exports = {
+  init,
+  generateDailyFact,
+  generateWeeklyLesson,
+  generateWeeklyLessonWithRetry,
+  generateMlspSeries,
+  regenerateMlspWithNmd,
+  regenerateBrokenCurriculumWeeks,
+  auditPublishedQuizHealth,
+  reshufflePublishedQuizOptions,
+  hardGateLesson,
+  CURRICULUM_48,
+};

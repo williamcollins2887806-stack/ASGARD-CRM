@@ -450,12 +450,12 @@ window.AsgardTkpPage = (function() {
       if (sel) sel.addEventListener('change', function() { renderTkpPage(el); });
     });
 
-    el.querySelector('#btnNewTkp').addEventListener('click', function() { openForm(); });
+    el.querySelector('#btnNewTkp').addEventListener('click', function() { openCreateChooser(); });
     el.querySelector('#btnMimirQuickTkp').addEventListener('click', function() { openMimirQuickModal(); });
     el.querySelector('#btnUploadTkp').addEventListener('click', function() { openUploadTkpModal(); });
 
     el.querySelectorAll('[data-action="edit"]').forEach(function(b) {
-      b.addEventListener('click', function() { openForm(b.dataset.id); });
+      b.addEventListener('click', function() { openEditById(b.dataset.id); });
     });
     el.querySelectorAll('[data-action="copy"]').forEach(function(b) {
       b.addEventListener('click', async function() {
@@ -469,7 +469,7 @@ window.AsgardTkpPage = (function() {
             const data = await resp.json();
             toast('Готово', 'ТКП скопировано');
             loadList();
-            if (data.item && data.item.id) openForm(data.item.id);
+            if (data.item && data.item.id) openEditById(data.item.id, data.item);
           } else {
             const err = await resp.json().catch(function() { return {}; });
             toast('Ошибка', err.error || 'Не удалось скопировать', 'err');
@@ -498,6 +498,64 @@ window.AsgardTkpPage = (function() {
 
   // ═══════════════════════════════════════════
     // Форма: сборка HTML
+  // ═══════════════════════════════════════════
+
+  function openCreateChooser() {
+    showModal({
+      title: 'Создать ТКП',
+      icon: '📄',
+      subtitle: 'Какой вариант коммерческого предложения?',
+      html:
+        '<div style="display:grid;gap:12px">' +
+          '<button type="button" id="tkpChooseClassic" class="btn" style="text-align:left;padding:14px 16px;border:1px solid var(--brd);border-radius:10px;background:var(--bg2);cursor:pointer">' +
+            '<div style="font-weight:700;color:var(--t1);margin-bottom:4px">Краткое ТКП</div>' +
+            '<div style="font-size:12px;color:var(--t3)">Стандартная форма: заказчик, описание, таблица работ, условия</div>' +
+          '</button>' +
+          '<button type="button" id="tkpChooseFull" class="btn" style="text-align:left;padding:14px 16px;border:1px solid rgba(212,168,67,0.35);border-radius:10px;background:rgba(212,168,67,0.08);cursor:pointer">' +
+            '<div style="font-weight:700;color:var(--gold);margin-bottom:4px">Полное КП</div>' +
+            '<div style="font-size:12px;color:var(--t3)">Развёрнутый шаблон: условия, периметр, аппараты, сдача, риски, обязанности</div>' +
+          '</button>' +
+        '</div>',
+      onMount: function() {
+        document.getElementById('tkpChooseClassic').addEventListener('click', function() {
+          hideModal();
+          openForm();
+        });
+        document.getElementById('tkpChooseFull').addEventListener('click', function() {
+          hideModal();
+          if (window.AsgardTkpFullForm) {
+            AsgardTkpFullForm.open(null, {}, function() { loadList(); });
+          } else {
+            toast('Ошибка', 'Модуль полного КП не загружен', 'err');
+          }
+        });
+      }
+    });
+  }
+
+  async function openEditById(id, knownItem) {
+    var item = knownItem || null;
+    if (!item) {
+      try {
+        var token = localStorage.getItem('asgard_token');
+        var r = await fetch('/api/tkp/' + id, { headers: { Authorization: 'Bearer ' + token } });
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        var data = await r.json();
+        item = data.item || {};
+      } catch (e) {
+        toast('Ошибка', e.message, 'err');
+        return;
+      }
+    }
+    if (item.kp_variant === 'full' && window.AsgardTkpFullForm) {
+      AsgardTkpFullForm.open(id, {}, function() { loadList(); });
+    } else {
+      openForm(id);
+    }
+  }
+
+  // ═══════════════════════════════════════════
+  // Форма: HTML
   // ═══════════════════════════════════════════
 
   function buildFormHtml(o) {
@@ -551,9 +609,10 @@ window.AsgardTkpPage = (function() {
       '<div class="formrow"><div style="grid-column:1/-1">' +
         '<div style="display:flex;justify-content:space-between;align-items:center">' +
           '<label>Описание работ</label>' +
+          '<button class="mimir-tkp-btn" id="btnPolishDesc" type="button" title="Мимир перепишет текст">✨ Переписать</button>' +
         '</div>' +
         '<textarea id="tkpDescription" rows="4">' + esc(o.desc) + '</textarea>' +
-        '<div style="display:flex;justify-content:flex-end;margin-top:6px">' +
+        '<div style="display:flex;justify-content:flex-end;margin-top:6px;gap:8px">' +
           '<button class="mimir-tkp-btn" id="btnMimirDesc" type="button" title="Мимир сгенерирует описание по названию ТКП">🧙 Мимир заполнит</button>' +
         '</div>' +
       '</div></div>' +
@@ -604,7 +663,10 @@ window.AsgardTkpPage = (function() {
       // --- Секция 5: Подпись ---
       sectionHdr('Подпись и примечания') +
       '<div class="formrow"><div style="grid-column:1/-1">' +
-        '<label>Примечания</label>' +
+        '<div style="display:flex;justify-content:space-between;align-items:center">' +
+          '<label>Примечания</label>' +
+          '<button class="mimir-tkp-btn" id="btnPolishNotes" type="button" title="Мимир перепишет текст">✨ Переписать</button>' +
+        '</div>' +
         '<textarea id="tkpNotes" rows="3">' + esc(o.parsed.notes || o.item.notes || '') + '</textarea>' +
       '</div></div>' +
       '<div class="formrow">' +
@@ -632,6 +694,7 @@ window.AsgardTkpPage = (function() {
           '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14,2 14,8 20,8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>' +
           'Сохранить и скачать PDF' +
         '</button>' +
+        (o.id ? '<button class="tkp-btn-pdf" id="btnSaveDocx" style="color:#1B7340;border-color:rgba(27,115,64,0.35)!important">Word</button>' : '') +
         (o.id ? '<button class="tkp-btn-pdf" id="btnSaveExcel" style="color:#1B7340;border-color:rgba(27,115,64,0.35)!important">' +
           '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14,2 14,8 20,8"/><line x1="9" y1="13" x2="15" y2="19"/><line x1="15" y1="13" x2="9" y2="19"/></svg>' +
           'Скачать Excel' +
@@ -658,6 +721,7 @@ window.AsgardTkpPage = (function() {
     var payType = checkedPay ? checkedPay.value : 'advance';
 
     return {
+      kp_variant: 'classic',
       subject: ($('#tkpSubject') || {}).value || '',
       customer_name: ($('#tkpCustomerSearch') || {}).value || '',
       customer_inn: ($('#tkpInn') || {}).value || '',
@@ -830,6 +894,21 @@ window.AsgardTkpPage = (function() {
           });
         }
 
+        function wirePolish(btnId, taId, label) {
+          var btn = $(btnId);
+          var ta = $(taId);
+          if (!btn || !ta) return;
+          btn.addEventListener('click', function() {
+            if (window.AsgardTkpFullForm && AsgardTkpFullForm.openPolishSheet) {
+              AsgardTkpFullForm.openPolishSheet(ta, label);
+            } else {
+              toast('Ошибка', 'Модуль полировки не загружен', 'err');
+            }
+          });
+        }
+        wirePolish('btnPolishDesc', 'tkpDescription', 'Описание работ');
+        wirePolish('btnPolishNotes', 'tkpNotes', 'Примечания');
+
         // Мимир: генерация строк работ
         var btnMI = $('#btnMimirItems');
         if (btnMI) {
@@ -997,7 +1076,7 @@ window.AsgardTkpPage = (function() {
               ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:10001;display:flex;flex-direction:column;padding:20px';
               ov.innerHTML =
                 '<div style="display:flex;justify-content:space-between;align-items:center;color:#fff;margin-bottom:10px">' +
-                  '<div style="font-weight:700;font-size:16px">👁 Предпросмотр ТКП</div>' +
+                  '<div style="font-weight:700;font-size:16px">Предпросмотр ТКП</div>' +
                   '<div style="display:flex;gap:8px">' +
                     '<a href="' + url + '" download="preview.pdf" class="btn ghost mini" style="color:#fff;border-color:rgba(255,255,255,.3)">⬇ Скачать</a>' +
                     '<button class="btn ghost mini" id="prevClose" style="color:#fff;border-color:rgba(255,255,255,.3)">✕ Закрыть</button>' +
@@ -1107,6 +1186,15 @@ window.AsgardTkpPage = (function() {
             } catch (ex) {
               toast('Ошибка', ex.message, 'err');
             }
+          });
+        }
+
+        const btnDocx = $('#btnSaveDocx');
+        if (btnDocx) {
+          btnDocx.addEventListener('click', function() {
+            if (!currentId) return toast('Сохраните', 'Сначала сохраните ТКП', 'warn');
+            var token = localStorage.getItem('asgard_token');
+            window.open('/api/tkp/' + currentId + '/docx?token=' + token, '_blank');
           });
         }
 
@@ -1223,6 +1311,52 @@ window.AsgardTkpPage = (function() {
       if (el) el.style.background = '';
     });
 
+    function applyCustomerFields(c) {
+      if (!c) return;
+      const custInp = $('#tkpCustomerSearch');
+      if (custInp && c.name) custInp.value = c.name;
+      const innF = $('#tkpInn'); if (innF) innF.value = c.inn || '';
+      const kppF = $('#tkpKpp'); if (kppF) kppF.value = c.kpp || '';
+      const addrF = $('#tkpAddress'); if (addrF) addrF.value = c.address || c.legal_address || '';
+      const cpF = $('#tkpContactPerson'); if (cpF) cpF.value = c.contact_person || '';
+      const phF = $('#tkpContactPhone'); if (phF) phF.value = c.phone || '';
+      const emF = $('#tkpContactEmail'); if (emF) emF.value = c.email || '';
+      const cardWrap = document.getElementById('tkpCustomerCardWrap');
+      if (cardWrap && (c.inn || '') && window.AsgardCustomerCard) {
+        AsgardCustomerCard.mount(cardWrap, c.inn);
+      }
+    }
+
+    async function fillCustomerFromTender(t) {
+      const custInp = $('#tkpCustomerSearch');
+      if (custInp) custInp.value = t.customer_name || '';
+      const innInp = $('#tkpInn');
+      if (innInp) innInp.value = t.customer_inn || '';
+
+      const q = (t.customer_inn || t.customer_name || '').trim();
+      if (!q) return;
+      try {
+        const token = localStorage.getItem('asgard_token');
+        const resp = await fetch('/api/customers?search=' + encodeURIComponent(q) + '&limit=10', {
+          headers: { Authorization: 'Bearer ' + token }
+        });
+        if (!resp.ok) return;
+        const data = await resp.json();
+        const list = data.customers || [];
+        const inn = String(t.customer_inn || '').replace(/\D/g, '');
+        let c = null;
+        if (inn) {
+          c = list.find(function(x) { return String(x.inn || '').replace(/\D/g, '') === inn; }) || null;
+        }
+        if (!c && t.customer_name) {
+          const nameL = String(t.customer_name).toLowerCase();
+          c = list.find(function(x) { return String(x.name || '').toLowerCase() === nameL; }) || null;
+        }
+        if (!c) c = list[0] || null;
+        if (c) applyCustomerFields(c);
+      } catch (_) { /* leave name/inn from tender */ }
+    }
+
     dropdown.addEventListener('click', function(e) {
       const el = e.target.closest('.ac-item');
       if (!el) return;
@@ -1230,15 +1364,8 @@ window.AsgardTkpPage = (function() {
       if (!t) return;
       input.value = t.tender_title || '';
       if (hiddenId) hiddenId.value = t.id;
-      const custInp = $('#tkpCustomerSearch');
-      if (custInp && !custInp.value.trim() && t.customer_name) {
-        custInp.value = t.customer_name;
-      }
-      const innInp = $('#tkpInn');
-      if (innInp && !innInp.value.trim() && t.customer_inn) {
-        innInp.value = t.customer_inn;
-      }
       dropdown.style.display = 'none';
+      fillCustomerFromTender(t);
     });
   }
 
@@ -1363,21 +1490,18 @@ window.AsgardTkpPage = (function() {
             '<span class="pdf-dlg-sw"><span class="pdf-dlg-sw-dot"></span></span>' +
             '<span class="pdf-dlg-lbl">Печать</span>' +
           '</label>' +
-          '<button class="pdf-dlg-go" id="pdfDlgDownload">' +
-            '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">' +
-              '<path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>' +
-              '<polyline points="7,10 12,15 17,10"/><line x1="12" y1="15" x2="12" y2="3"/>' +
-            '</svg>' +
-            'PDF' +
-          '</button>' +
+        '</div>' +
+        '<div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">' +
+          '<button class="pdf-dlg-go" id="pdfDlgDownload" type="button">PDF</button>' +
+          '<button class="btn ghost" id="pdfDlgNoStamp" type="button">PDF без печати</button>' +
+          '<button class="btn ghost" id="pdfDlgDocx" type="button" style="color:#1B7340">Word</button>' +
         '</div>' +
       '</div>';
 
     showModal({
-      title: 'Выгрузка PDF',
+      title: 'Выгрузка',
       html: html,
       onMount: function() {
-        // Toggle
         document.querySelectorAll('.pdf-dlg-opt').forEach(function(opt) {
           opt.addEventListener('click', function(e) {
             if (e.target.tagName === 'INPUT') return;
@@ -1388,13 +1512,19 @@ window.AsgardTkpPage = (function() {
           var cb = opt.querySelector('input');
           cb.addEventListener('change', function() { opt.classList.toggle('active', cb.checked); });
         });
-        // Download
-        document.getElementById('pdfDlgDownload').addEventListener('click', function() {
+        function openPdf(forceNoStamp) {
           var token = localStorage.getItem('asgard_token');
           var url = '/api/tkp/' + tkpId + '/pdf?token=' + token;
           if (document.getElementById('pdfChkSig').checked) url += '&signature=1';
-          if (document.getElementById('pdfChkStamp').checked) url += '&stamp=1';
+          if (!forceNoStamp && document.getElementById('pdfChkStamp').checked) url += '&stamp=1';
           window.open(url, '_blank');
+          hideModal();
+        }
+        document.getElementById('pdfDlgDownload').addEventListener('click', function() { openPdf(false); });
+        document.getElementById('pdfDlgNoStamp').addEventListener('click', function() { openPdf(true); });
+        document.getElementById('pdfDlgDocx').addEventListener('click', function() {
+          var token = localStorage.getItem('asgard_token');
+          window.open('/api/tkp/' + tkpId + '/docx?token=' + token, '_blank');
           hideModal();
         });
       }
@@ -1680,6 +1810,26 @@ window.AsgardTkpPage = (function() {
     prefill = prefill || {};
     var _parsedData = null;
     var _selectedFile = null;
+    var _lastRaw = null;
+
+    function _fmtPct(c) {
+      var n = Math.round((Number(c) || 0) * 100);
+      if (n < 0) n = 0;
+      if (n > 100) n = 100;
+      return n;
+    }
+
+    async function _runParse(opts, btn) {
+      opts = opts || {};
+      var token = localStorage.getItem('asgard_token');
+      var fd = new FormData();
+      fd.append('file', _selectedFile);
+      if (opts.force_ocr) fd.append('force_ocr', '1');
+      if (opts.mode) fd.append('mode', opts.mode);
+      var r = await fetch('/api/tkp/parse-attachment', { method:'POST', headers:{Authorization:'Bearer '+token}, body:fd });
+      if (!r.ok) { var e=await r.json().catch(function(){return{};}); throw new Error(e.error||'HTTP '+r.status); }
+      return await r.json();
+    }
 
     function _phaseA(container) {
       container.innerHTML =
@@ -1688,7 +1838,7 @@ window.AsgardTkpPage = (function() {
           '<div style="font-weight:600;color:var(--t1);margin-bottom:4px">Перетащите файл ТКП сюда</div>' +
           '<div style="font-size:12px">PDF, Excel (.xlsx), Word (.docx)</div>' +
         '</div>' +
-        '<input type="file" id="upFileInput" style="display:none" accept=".pdf,.doc,.docx,.xls,.xlsx"/>' +
+        '<input type="file" id="upFileInput" style="display:none" accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png"/>' +
         '<div id="upFileName" style="margin-top:10px;font-size:13px;font-weight:600;color:var(--t1)"></div>' +
         '<div style="display:flex;justify-content:flex-end;margin-top:14px"><button class="btn primary" id="btnUpParse" disabled>📄 Распознать файл</button></div>';
 
@@ -1711,13 +1861,14 @@ window.AsgardTkpPage = (function() {
         if (!_selectedFile) return;
         btn.disabled=true; btn.textContent='⏳ Распознаю...';
         try {
-          var token = localStorage.getItem('asgard_token');
-          var fd = new FormData(); fd.append('file', _selectedFile);
-          var r = await fetch('/api/tkp/parse-attachment', { method:'POST', headers:{Authorization:'Bearer '+token}, body:fd });
-          if (!r.ok) { var e=await r.json().catch(function(){return{};}); throw new Error(e.error||'HTTP '+r.status); }
-          var raw = await r.json();
-          if (raw && !raw.parsed) { toast('Внимание', 'Не удалось извлечь данные из файла. Заполните вручную.', 'warn'); }
-          _parsedData = (raw && raw.parsed) ? raw.parsed : (raw || {});
+          var raw = await _runParse({ mode: 'initial' }, btn);
+          _lastRaw = raw;
+          if (raw && raw.ok === false) {
+            toast('Распознавание', (raw.warnings && raw.warnings[0]) || raw.reason || 'Не удалось извлечь данные', 'warn');
+          } else if (raw && !raw.parsed) {
+            toast('Внимание', 'Не удалось извлечь данные из файла. Заполните вручную.', 'warn');
+          }
+          _parsedData = (raw && raw.parsed) ? raw.parsed : {};
           _phaseB(container);
         } catch (ex) { toast('Ошибка', ex.message, 'err'); btn.disabled=false; btn.textContent='📄 Распознать файл'; }
       });
@@ -1726,10 +1877,25 @@ window.AsgardTkpPage = (function() {
     function _phaseB(container) {
       var d = _parsedData || {};
       var items = d.items || [];
+      var conf = _lastRaw && _lastRaw.confidence != null ? _lastRaw.confidence : null;
+      var confPct = conf != null ? _fmtPct(conf) : null;
+      var warnings = (_lastRaw && _lastRaw.warnings) || [];
+      var excerpt = (_lastRaw && _lastRaw.text_extracted) ? String(_lastRaw.text_extracted).replace(/\s+/g, ' ').trim().slice(0, 280) : '';
+      var confColor = confPct == null ? 'var(--t3)' : (confPct >= 60 ? 'var(--ok-t)' : (confPct >= 35 ? 'var(--amber)' : 'var(--err-t)'));
       var ddStyle = 'position:absolute;top:100%;left:0;right:0;z-index:100;background:var(--bg2);border:1px solid var(--brd);border-radius:6px;box-shadow:0 4px 12px rgba(0,0,0,.15);display:none;max-height:200px;overflow-y:auto';
 
       container.innerHTML =
-        '<div style="background:rgba(30,77,140,0.06);border:1px solid rgba(30,77,140,0.2);border-radius:8px;padding:9px 14px;margin-bottom:12px;font-size:12px">✅ Файл распознан. Проверьте данные и нажмите «Сохранить».</div>' +
+        '<div style="background:rgba(30,77,140,0.06);border:1px solid rgba(30,77,140,0.2);border-radius:8px;padding:9px 14px;margin-bottom:12px;font-size:12px">' +
+          '<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">' +
+            '<div>✅ Файл обработан. Проверьте данные и нажмите «Сохранить».</div>' +
+            (confPct != null ? '<div style="font-weight:700;color:' + confColor + '">Уверенность: ' + confPct + '%</div>' : '') +
+          '</div>' +
+          (warnings.length ? '<div style="margin-top:6px;color:var(--amber);font-size:11px">' + warnings.map(function(w){ return '⚠ ' + esc(w); }).join('<br/>') + '</div>' : '') +
+          (excerpt ? '<div style="margin-top:8px;font-size:11px;color:var(--t3);line-height:1.4"><b style="color:var(--t2)">Фрагмент текста:</b> ' + esc(excerpt) + (excerpt.length >= 280 ? '…' : '') + '</div>' : '') +
+          '<div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap">' +
+            '<button class="btn ghost" id="btnUpRescan" type="button" title="Повторный OCR с повышенным DPI + уточняющий AI-разбор">🔄 Повторное / уточняющее сканирование</button>' +
+          '</div>' +
+        '</div>' +
         '<div style="margin-bottom:10px">' +
           '<label style="font-size:11px;text-transform:uppercase;color:var(--t3)">Заказчик</label>' +
           '<div style="display:flex;gap:8px;margin-top:6px">' +
@@ -1778,6 +1944,31 @@ window.AsgardTkpPage = (function() {
       });
 
       container.querySelector('#btnUpBack').addEventListener('click', function(){ _phaseA(container); });
+
+      var rescanBtn = container.querySelector('#btnUpRescan');
+      if (rescanBtn) {
+        rescanBtn.addEventListener('click', async function() {
+          if (!_selectedFile) return;
+          rescanBtn.disabled = true;
+          rescanBtn.textContent = '⏳ Уточняющее сканирование…';
+          try {
+            var raw = await _runParse({ force_ocr: true, mode: 'refine' });
+            _lastRaw = raw;
+            if (raw && raw.parsed) {
+              _parsedData = raw.parsed;
+              toast('Готово', 'Повторное сканирование завершено' + (raw.confidence != null ? ' (' + _fmtPct(raw.confidence) + '%)' : ''), 'ok');
+            } else {
+              toast('Внимание', (raw && raw.warnings && raw.warnings[0]) || 'Данные не улучшились — заполните вручную', 'warn');
+              if (raw && raw.parsed) _parsedData = raw.parsed;
+            }
+            _phaseB(container);
+          } catch (ex) {
+            toast('Ошибка', ex.message, 'err');
+            rescanBtn.disabled = false;
+            rescanBtn.textContent = '🔄 Повторное / уточняющее сканирование';
+          }
+        });
+      }
 
       container.querySelector('#btnUpSave').addEventListener('click', async function() {
         var btn=this; btn.disabled=true; btn.textContent='⏳ Сохраняю...';
@@ -1863,8 +2054,8 @@ window.AsgardTkpPage = (function() {
   return {
     render: render,
     openSendTkpModal: openSendTkpModal,
-    openNew: function(prefill) { openForm(null, prefill || {}); },
-    openEdit: function(id) { openForm(id); },
+    openNew: function(prefill) { openCreateChooser(); },
+    openEdit: function(id) { openEditById(id); },
     openMimirQuickModal: openMimirQuickModal,
     openUploadTkpModal: openUploadTkpModal,
     openClientDecisionModal: openClientDecisionModal,

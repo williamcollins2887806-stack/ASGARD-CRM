@@ -60,7 +60,7 @@ window.AsgardFunnelPage = (function(){
     return 'new';
   }
 
-  function money(x) { return AsgardUI.money(x) + ' ₽'; }
+  function money(x) { return (AsgardUI.moneyRub || AsgardMoney.formatMoney)(x); }
 
   // ── Модалка перехода статуса ──────────────────────────────────────────────
   async function showTransitionModal(tenderId, currentStatus, newStatus) {

@@ -16,6 +16,9 @@ window.AsgardDB = (function(){
   // Кэш для уменьшения запросов
   const cache = new Map();
   const CACHE_TTL = 30000; // 30 секунд
+  // Таблицы, на которые сервер ответил 403 — не долбим API до конца сессии
+  // (SLA tick каждые 10 мин иначе спамит /api/data/tenders|estimates для ролей без доступа)
+  const _forbiddenStores = new Set();
   
   // Получить токен авторизации
   function getToken() {
@@ -69,8 +72,12 @@ window.AsgardDB = (function(){
         return null;
       }
 
-      // При 403 — нет доступа, тихо вернуть null (без retry)
+      // При 403 — нет доступа, тихо вернуть null (без retry) + запомнить store
       if (resp.status === 403) {
+        try {
+          var m403 = String(url || '').match(/\/api\/data\/([a-z0-9_]+)/i);
+          if (m403 && m403[1]) _forbiddenStores.add(m403[1].toLowerCase());
+        } catch (_) {}
         return null;
       }
 
@@ -291,6 +298,10 @@ window.AsgardDB = (function(){
     if (store === 'settings') {
       return getAllSettings();
     }
+
+    if (_forbiddenStores.has(String(store || '').toLowerCase())) {
+      return [];
+    }
     
     // Проверяем кэш
     const cacheKey = store + ':all';
@@ -425,7 +436,12 @@ window.AsgardDB = (function(){
       });
       
       if (!data) return [];
-      return data.items || [];
+      let items = data.items || [];
+      // Служебный OCR-кэш не должен светиться в UI (карточка тендера, approvals, docs pack)
+      if (store === 'documents') {
+        items = items.filter((d) => String(d && d.type || '') !== 'ocr-extract');
+      }
+      return items;
     } catch(e) {
       console.warn('[AsgardDB] byIndex() error:', store, indexName, e);
       return [];

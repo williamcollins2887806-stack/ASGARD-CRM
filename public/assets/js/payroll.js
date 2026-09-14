@@ -5,7 +5,7 @@
 window.AsgardPayrollPage = (function(){
   const { $, $$, esc, toast, showModal, hideModal } = AsgardUI;
 
-  function money(x) { return AsgardUI.money(x) + ' ₽'; }
+  function money(x) { return (AsgardUI.moneyRub || AsgardMoney.formatMoney)(x); }
   function moneyShort(x){
     const n=Number(x)||0;
     if(n>=1000000) return (n/1000000).toFixed(1)+'M';

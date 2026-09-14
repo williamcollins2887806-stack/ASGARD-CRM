@@ -8,7 +8,7 @@ const execAsync = promisify(exec);
 let _task = null;
 
 const ERROR_RE = /\b(error|fatal|crash|exception|uncaught|unhandled rejection|ECONNREFUSED|ETIMEDOUT|Cannot find module|module not found|ERR_|SIGTERM|out of memory)\b/i;
-const NOISE_RE  = /RecordingFetcher|TournamentCron|MimirCron|AcademyCron|PerDiem|ShiftAutocomplete|ReportScheduler|request completed/i;
+const NOISE_RE  = /RecordingFetcher|TournamentCron|MimirCron|AcademyCron|PerDiem|ShiftAutocomplete|ReportScheduler|request completed|\[IMAP-AI\] Diagnostic:|failed_ai=/i;
 
 async function checkAndNotify(db, log) {
   try {

@@ -40,7 +40,8 @@ window.AsgardCustomDashboard = (function(){
     gantt_mini: 'works', cash_balance: 'money', my_cash_balance: 'money',
     equipment_alerts: 'works', payroll_pending: 'money', todo: 'action',
     pre_tenders: 'works', bank_summary: 'money', platform_alerts: 'info',
-    my_mail: 'info', academy: 'info'
+    my_mail: 'info', academy: 'info',
+    pm_analysis_rating: 'works', pm_analysis_leaderboard: 'works'
   };
 
   const WIDGET_TYPES = {
@@ -125,15 +126,23 @@ window.AsgardCustomDashboard = (function(){
       name: 'Залы Асгарда', icon: '🏛️', size: 'normal',
       roles: ['*'], render: renderAcademy
     },
+    pm_analysis_rating: {
+      name: 'Мой рейтинг анализа', icon: '📈', size: 'normal', cat: 'works',
+      roles: ['PM', 'HEAD_PM', 'ADMIN'], render: renderPmAnalysisRating
+    },
+    pm_analysis_leaderboard: {
+      name: 'Рейтинг РП (анализ)', icon: '🏆', size: 'wide', cat: 'works',
+      roles: ['ADMIN', 'HEAD_PM', 'TO', 'HEAD_TO', 'DIRECTOR_*'], render: renderPmAnalysisLeaderboard
+    },
 
   };
 
   const DEFAULT_LAYOUTS = {
-    ADMIN: ['kpi_strip','welcome','kpi_summary','pre_tenders','quick_actions','overdue_works','tenders_funnel','my_mail','notifications'],
-    PM: ['kpi_strip','welcome','my_readiness','quick_actions','my_mail','todo','notifications'],
-    TO: ['kpi_strip','welcome','quick_actions','tenders_funnel','tender_dynamics','my_mail','notifications'],
-    HEAD_TO: ['kpi_strip','welcome','my_cash_balance','pre_tenders','platform_alerts','tender_dynamics','tenders_funnel','my_mail','notifications'],
-    HEAD_PM: ['kpi_strip','welcome','director_readiness','team_workload','overdue_works','gantt_mini','my_mail','notifications'],
+    ADMIN: ['kpi_strip','welcome','kpi_summary','pm_analysis_leaderboard','pre_tenders','quick_actions','overdue_works','tenders_funnel','my_mail','notifications'],
+    PM: ['kpi_strip','welcome','pm_analysis_rating','my_readiness','quick_actions','my_mail','todo','notifications'],
+    TO: ['kpi_strip','welcome','quick_actions','pm_analysis_leaderboard','tenders_funnel','tender_dynamics','my_mail','notifications'],
+    HEAD_TO: ['kpi_strip','welcome','my_cash_balance','pm_analysis_leaderboard','pre_tenders','platform_alerts','tender_dynamics','tenders_funnel','my_mail','notifications'],
+    HEAD_PM: ['kpi_strip','welcome','pm_analysis_leaderboard','director_readiness','team_workload','overdue_works','gantt_mini','my_mail','notifications'],
     CHIEF_ENGINEER: ['kpi_strip','welcome','equipment_value','equipment_alerts','my_mail','notifications'],
     HR: ['kpi_strip','welcome','permits_expiry','birthdays','my_mail','notifications'],
     HR_MANAGER: ['kpi_strip','welcome','permits_expiry','birthdays','team_workload','my_mail','notifications'],
@@ -243,10 +252,19 @@ window.AsgardCustomDashboard = (function(){
         el.style.display = '';
         const isMe = meId && duty.pm_user_id === meId;
         const _fmt = (d) => (window.AsgardRegistryApi ? AsgardRegistryApi.fmtDate(d) : String(d || '').slice(0, 10));
-        el.innerHTML = '<div class="alert' + (isMe ? ' ok' : '') + '" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">' +
+        el.innerHTML = '<div class="alert' + (isMe ? ' ok' : '') + ' pm-duty-home-banner" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">' +
           '<span>' + (isMe ? '🛡 <strong>Вы дежурный РП</strong>' : '🛡 Дежурный РП: <strong>' + _esc(duty.pm_name) + '</strong>') +
           ' · ' + _esc(_fmt(duty.period_start)) + ' — ' + _esc(_fmt(duty.period_end)) + '</span>' +
-          '<a href="#/pm-duty" class="btn mini ghost" style="margin-left:auto">Очередь отчётов</a></div>';
+          '<span id="pmDutyBannerRating" class="muted" style="font-size:12px"></span>' +
+          '<a href="#/pm-calculations" class="btn mini ghost" style="margin-left:auto">Просчёты РП</a></div>';
+        if (isMe && AsgardRegistryApi.loadPmDutyRatingMe) {
+          AsgardRegistryApi.loadPmDutyRatingMe('duty').then((res) => {
+            const r = res.rating;
+            const slot = document.getElementById('pmDutyBannerRating');
+            if (!slot || !r) return;
+            slot.innerHTML = 'рейтинг смены <strong>' + _esc(String(r.score)) + '</strong> · ' + _esc(r.grade || '');
+          }).catch(() => {});
+        }
       } catch (_) { /* ignore */ }
     })();
 
@@ -515,7 +533,7 @@ window.AsgardCustomDashboard = (function(){
 
   // ── Виджет РП «Мои проекты»: 2 фазы (подготовка → готовность, в работе → статус) ──
   async function renderMyReadiness(el, user){
-    const esc = AsgardUI.esc, money = AsgardUI.money;
+    const esc = AsgardUI.esc, money = AsgardUI.moneyRub || AsgardMoney.formatMoney;
     const all = (await AsgardDB.getAll('works')||[]).filter(w => w.pm_id===user.id && !_isClosedWork(w.work_status));
     if(!all.length){ el.innerHTML = _dwEmpty('Нет активных проектов'); return; }
     const prep = all.filter(_isPrep);
@@ -617,7 +635,7 @@ window.AsgardCustomDashboard = (function(){
 
   // ── Виджет директора «Готовность по РП» ───────────────────────────────────
   async function renderDirectorReadiness(el, user){
-    const esc = AsgardUI.esc, money = AsgardUI.money;
+    const esc = AsgardUI.esc, money = AsgardUI.moneyRub || AsgardMoney.formatMoney;
     const works = (await AsgardDB.getAll('works')||[]).filter(w=>!_isClosedWork(w.work_status));
     const users = (await AsgardDB.getAll('users')||[]);
     const userMap = new Map(users.map(u=>[u.id,u]));
@@ -1236,7 +1254,7 @@ window.AsgardCustomDashboard = (function(){
         : '<a href="#/cash" class="btn mini ghost" style="margin-top:10px;font-size:11px">Касса →</a>';
       el.innerHTML = '<div style="text-align:center">' +
         '<div style="font-size:28px;font-weight:700;color:' + (hasBalance ? 'var(--amber)' : 'var(--green)') + '">' +
-          formatMoney(d.balance) + ' ₽</div>' +
+          formatMoney(d.balance) + '</div>' +
         '<div class="help" style="margin-top:4px">На руках</div>' +
         '<div style="display:flex;gap:12px;justify-content:center;margin-top:12px;font-size:12px">' +
           '<div><span style="color:var(--t3)">Получено:</span> <b>' + formatMoney(d.issued) + '</b></div>' +
@@ -1440,7 +1458,7 @@ window.AsgardCustomDashboard = (function(){
   }
 
   function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
-  function formatMoney(n){ return AsgardUI.money(n) + ' ₽'; }
+  function formatMoney(n) { return (AsgardUI.moneyRub || AsgardMoney.formatMoney)(n); }
 
 
   // ========== Widget: My Mail ==========
@@ -1643,6 +1661,67 @@ window.AsgardCustomDashboard = (function(){
         document.removeEventListener('visibilitychange', visHandler);
         if (el._academyRefreshTimer) clearInterval(el._academyRefreshTimer);
       };
+    }
+  }
+
+  async function renderPmAnalysisRating(el) {
+    el.innerHTML = '<div class="muted" style="padding:12px;text-align:center">Загрузка…</div>';
+    if (!window.AsgardRegistryApi || !AsgardRegistryApi.loadPmDutyRatingMe) {
+      el.innerHTML = '<div class="muted" style="padding:12px">API рейтинга недоступен</div>';
+      return;
+    }
+    try {
+      const res = await AsgardRegistryApi.loadPmDutyRatingMe('d30');
+      const r = res.rating || {};
+      const rec = (r.recommendations && r.recommendations[0]) || 'Открыть расшифровку на странице дежурства';
+      el.innerHTML =
+        '<div style="cursor:pointer" onclick="location.hash=\'#/pm-calculations\'">' +
+          '<div style="display:flex;align-items:center;gap:12px;margin-bottom:10px">' +
+            '<div class="pm-duty-grade pm-duty-grade--' + AsgardUI.esc(String(r.grade || 'e').toLowerCase()) + '" style="width:36px;height:36px;font-size:16px">' +
+              AsgardUI.esc(r.grade || '—') +
+            '</div>' +
+            '<div>' +
+              '<div style="font-size:28px;font-weight:700;line-height:1">' + AsgardUI.esc(String(r.score != null ? r.score : '—')) + '</div>' +
+              '<div class="muted" style="font-size:11px">рейтинг анализа · 30 дней</div>' +
+            '</div>' +
+          '</div>' +
+          '<div style="font-size:12px;color:var(--t2);line-height:1.4">' + AsgardUI.esc(rec) + '</div>' +
+          '<div style="margin-top:10px;font-size:11px;font-weight:600;color:var(--primary,#5b8def)">Подробнее →</div>' +
+        '</div>';
+    } catch (e) {
+      el.innerHTML = '<div class="muted" style="padding:12px;text-align:center">Нет данных рейтинга</div>';
+    }
+  }
+
+  async function renderPmAnalysisLeaderboard(el) {
+    el.innerHTML = '<div class="muted" style="padding:12px;text-align:center">Загрузка…</div>';
+    if (!window.AsgardRegistryApi || !AsgardRegistryApi.loadPmDutyLeaderboard) {
+      el.innerHTML = '<div class="muted" style="padding:12px">API рейтинга недоступен</div>';
+      return;
+    }
+    try {
+      const res = await AsgardRegistryApi.loadPmDutyLeaderboard('30', 8);
+      const items = res.items || [];
+      if (!items.length) {
+        el.innerHTML = '<div class="muted" style="padding:12px;text-align:center">Пока пусто — откройте «Просчёты РП»</div>';
+        return;
+      }
+      el.innerHTML =
+        '<div style="display:flex;flex-direction:column;gap:6px">' +
+          items.map((row) =>
+            '<div style="display:grid;grid-template-columns:24px 1fr 28px 36px;gap:8px;align-items:center;font-size:13px">' +
+              '<span class="muted">' + AsgardUI.esc(String(row.rank || '')) + '</span>' +
+              '<span style="font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + AsgardUI.esc(row.pm_name || '') + '</span>' +
+              '<span class="pm-duty-grade pm-duty-grade--' + AsgardUI.esc(String(row.grade || 'e').toLowerCase()) + '" style="width:24px;height:24px;font-size:11px">' +
+                AsgardUI.esc(row.grade || '') +
+              '</span>' +
+              '<strong style="text-align:right">' + AsgardUI.esc(String(row.score)) + '</strong>' +
+            '</div>'
+          ).join('') +
+          '<a href="#/pm-calculations" style="margin-top:6px;font-size:11px;font-weight:600;color:var(--primary,#5b8def)">Все на странице дежурства →</a>' +
+        '</div>';
+    } catch (e) {
+      el.innerHTML = '<div class="muted" style="padding:12px;text-align:center">Нет доступа или данных</div>';
     }
   }
 

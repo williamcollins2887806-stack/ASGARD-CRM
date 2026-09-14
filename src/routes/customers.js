@@ -20,10 +20,11 @@ function normalizeContacts(input) {
       name:       String(c?.name || '').trim(),
       position:   String(c?.position || '').trim(),
       phone:      String(c?.phone || '').trim(),
+      phone2:     String(c?.phone2 || '').trim(),
       email:      String(c?.email || '').trim(),
       is_primary: !!c?.is_primary
     }))
-    .filter((c) => c.name || c.phone || c.email);
+    .filter((c) => c.name || c.phone || c.phone2 || c.email);
   let primaryFound = false;
   for (const c of cleaned) {
     if (c.is_primary && !primaryFound) primaryFound = true;

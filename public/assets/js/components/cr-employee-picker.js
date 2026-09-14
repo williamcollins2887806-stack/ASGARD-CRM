@@ -97,6 +97,15 @@ const CREmployeePicker = (() => {
     return name[0].toUpperCase();
   }
 
+  /** Фамилия + полное имя + инициал отчества: «Иванов Иван П.» */
+  function _formatShortFio(name) {
+    if (!name) return '';
+    const parts = String(name).trim().split(/\s+/).filter(Boolean);
+    if (parts.length >= 3) return parts[0] + ' ' + parts[1] + ' ' + parts[2][0] + '.';
+    if (parts.length === 2) return parts[0] + ' ' + parts[1];
+    return parts[0] || String(name);
+  }
+
   function _getRoles(employees) {
     const roles = new Set();
     employees.forEach(e => { if (e.role) roles.add(e.role); });
@@ -156,11 +165,8 @@ const CREmployeePicker = (() => {
 
         const nameSpan = document.createElement('span');
         nameSpan.className = 'cr-emp-picker__chip-name';
-        // Short name: Фамилия И.
-        const parts = emp.name.split(/\s+/);
-        nameSpan.textContent = parts.length >= 2
-          ? `${parts[0]} ${parts[1][0]}.`
-          : emp.name;
+        nameSpan.textContent = _formatShortFio(emp.name);
+        nameSpan.title = emp.name || '';
         chip.appendChild(nameSpan);
 
         const removeBtn = document.createElement('span');

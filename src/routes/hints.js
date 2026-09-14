@@ -1168,7 +1168,7 @@ async function hintsRoutes(fastify) {
           try {
             const expiringProxies = await db.query(`
               SELECT COUNT(*) as cnt FROM proxies
-              WHERE status = 'active' AND valid_until IS NOT NULL
+              WHERE status IN ('issued','sent','created','active') AND valid_until IS NOT NULL
                 AND valid_until <= CURRENT_DATE + INTERVAL '60 days'
                 AND valid_until > CURRENT_DATE
             `);
@@ -1185,7 +1185,7 @@ async function hintsRoutes(fastify) {
           try {
             const expiredProxies = await db.query(`
               SELECT COUNT(*) as cnt FROM proxies
-              WHERE status = 'active' AND valid_until IS NOT NULL
+              WHERE status IN ('issued','sent','created','active') AND valid_until IS NOT NULL
                 AND valid_until < CURRENT_DATE
             `);
             const epCnt = parseInt(expiredProxies.rows[0]?.cnt) || 0;
@@ -1193,14 +1193,14 @@ async function hintsRoutes(fastify) {
               hints.push({
                 id: 'proxies_expired', type: 'error', icon: '📜',
                 text: plural(epCnt, 'доверенность просрочена', 'доверенности просрочены', 'доверенностей просрочено') +
-                  ', но всё ещё в статусе «активна»'
+                  ', но статус ещё не обновлён'
               });
             }
           } catch (_) {}
           // Метрика
           try {
             const activeProxies = await db.query(
-              "SELECT COUNT(*) as cnt FROM proxies WHERE status = 'active'"
+              "SELECT COUNT(*) as cnt FROM proxies WHERE status IN ('issued','sent','active')"
             );
             const apCnt = parseInt(activeProxies.rows[0]?.cnt) || 0;
             hints.push({

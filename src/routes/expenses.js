@@ -48,17 +48,47 @@ async function routes(fastify, options) {
     const EXP_READ_ROLES = new Set(['ADMIN', 'PM', 'HEAD_PM', 'BUH', 'OFFICE_MANAGER', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV']);
     if (!EXP_READ_ROLES.has(request.user.role)) return reply.code(403).send({ error: 'Нет доступа к расходам по работам' });
     const { work_id, category, date_from, date_to, limit = 100, offset = 0 } = request.query;
-    let sql = 'SELECT e.*, w.work_number FROM work_expenses e LEFT JOIN works w ON e.work_id = w.id WHERE 1=1';
+    let sql = `
+      SELECT e.*, w.work_number,
+        COALESCE(
+          NULLIF(TRIM(emp.fio), ''),
+          NULLIF(TRIM(emp.full_name), ''),
+          NULLIF(TRIM(emp_label.fio), ''),
+          NULLIF(TRIM(emp_label.full_name), ''),
+          NULLIF(TRIM(e.fot_employee_name), ''),
+          NULLIF(TRIM(e.supplier), ''),
+          CASE WHEN e.employee_id IS NOT NULL THEN 'ID ' || e.employee_id END
+        ) AS employee_display_name
+      FROM work_expenses e
+      LEFT JOIN works w ON e.work_id = w.id
+      LEFT JOIN employees emp ON emp.id = COALESCE(
+        e.employee_id,
+        e.fot_employee_id,
+        CASE WHEN e.source_key ~ '^[0-9]+:[0-9]+$'
+          THEN NULLIF(split_part(e.source_key, ':', 2), '')::int END
+      )
+      LEFT JOIN employees emp_label
+        ON e.fot_employee_name ~ '^ID [0-9]+$'
+       AND emp_label.id = NULLIF(substring(e.fot_employee_name from '[0-9]+'), '')::int
+      WHERE 1=1`;
     const params = [];
     let idx = 1;
     if (work_id) { sql += ` AND e.work_id = $${idx}`; params.push(work_id); idx++; }
     if (category) { sql += ` AND e.category = $${idx}`; params.push(category); idx++; }
     if (date_from) { sql += ` AND e.date >= $${idx}`; params.push(date_from); idx++; }
     if (date_to) { sql += ` AND e.date <= $${idx}`; params.push(date_to); idx++; }
+    const cap = work_id ? 10000 : 2000;
+    const lim = Math.min(parseInt(limit, 10) || (work_id ? 5000 : 100), cap);
+    const off = Math.max(parseInt(offset, 10) || 0, 0);
     sql += ` ORDER BY e.date DESC LIMIT $${idx} OFFSET $${idx + 1}`;
-    params.push(limit, offset);
+    params.push(lim, off);
     const result = await db.query(sql, params);
-    return { expenses: result.rows };
+    const expenses = (result.rows || []).map((row) => {
+      const resolved = row.employee_display_name || row.fot_employee_name;
+      if (resolved) row.fot_employee_name = resolved;
+      return row;
+    });
+    return { expenses };
   });
 
   // GET /api/expenses/categories — единый словарь для фронтов
@@ -130,7 +160,16 @@ const { logError } = require('../lib/log-error');
     const values = Object.values(data);
     const sql = `INSERT INTO office_expenses (${keys.join(', ')}) VALUES (${keys.map((_, i) => `$${i + 1}`).join(', ')}) RETURNING *`;
     const result = await db.query(sql, values);
-    return { expense: result.rows[0] };
+    const expense = result.rows[0];
+    try {
+      if (expense && expense.amount) {
+        const { suggestFromOfficeExpense } = require('../services/doc-registry-upsert');
+        await suggestFromOfficeExpense(db, expense, request.user.id);
+      }
+    } catch (e) {
+      fastify.log.warn('[expenses] doc_registry office suggest: ' + (e && e.message));
+    }
+    return { expense };
   });
 
   // Generic update/delete

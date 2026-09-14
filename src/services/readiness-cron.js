@@ -6,7 +6,9 @@
  * 3 задачи:
  * 1. Ежемесячная (1-е число, 09:00 МСК): напоминание рабочим обновить статус
  *    → MAX-мессенджер, fallback SMS через Mango
- * 2. Ежедневная (06:00 МСК): авто-архив если последняя активность > 6 месяцев
+ * 2. Ежедневная (06:00 МСК): авто-архив только при полной неактивности > 6 месяцев
+ *    (нет смен, нет назначений, статус не ready/on_site/approved).
+ *    unknown («Без статуса») не архивируется, пока есть смена или назначение за 6 месяцев.
  * 3. Ежедневная (07:00 МСК): departure_date = вчера → readiness_status = 'not_ready'
  */
 
@@ -125,31 +127,45 @@ async function sendReadinessReminders(db, log) {
 }
 
 /**
- * 2. Авто-архив — последняя активность > 6 месяцев
+ * 2. Авто-архив — полная неактивность > 6 месяцев.
+ * Не архивируем: ready / on_site / approved, и любого с недавней сменой или назначением.
+ * unknown и not_ready уходят в архив только если нет следов работы за 6 месяцев.
  */
 async function autoArchive(db, log) {
   try {
     const sixMonthsAgo = new Date();
     sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
+    const since = sixMonthsAgo.toISOString().slice(0, 10);
 
-    // Находим рабочих без активности > 6 месяцев
     const { rows } = await db.query(`
-      UPDATE employees
+      WITH candidates AS (
+        SELECT e.id, e.fio, e.readiness_status AS old_status
+        FROM employees e
+        WHERE e.is_active = true
+          AND COALESCE(e.readiness_status, 'unknown') NOT IN ('ready', 'on_site', 'approved', 'archive')
+          AND (e.readiness_updated_at IS NULL OR e.readiness_updated_at < $1::timestamptz)
+          AND NOT EXISTS (
+            SELECT 1 FROM field_checkins fc
+            WHERE fc.employee_id = e.id
+              AND fc.date >= $1::date
+              AND COALESCE(fc.status, '') IS DISTINCT FROM 'cancelled'
+          )
+          AND NOT EXISTS (
+            SELECT 1 FROM employee_assignments ea
+            WHERE ea.employee_id = e.id
+              AND (
+                (COALESCE(ea.is_active, true) = true AND ea.departure_date IS NULL)
+                OR COALESCE(ea.departure_date, ea.date_from, ea.created_at::date) >= $1::date
+              )
+          )
+      )
+      UPDATE employees e
       SET readiness_status = 'archive',
           readiness_updated_at = NOW()
-      WHERE is_active = true
-        AND readiness_status NOT IN ('ready', 'on_site', 'archive')
-        AND id NOT IN (
-          SELECT DISTINCT employee_id FROM field_checkins
-          WHERE date >= $1::date
-        )
-        AND id NOT IN (
-          SELECT DISTINCT employee_id FROM employee_assignments
-          WHERE is_active = true
-        )
-        AND (readiness_updated_at IS NULL OR readiness_updated_at < $1)
-      RETURNING id, fio, readiness_status AS old_status
-    `, [sixMonthsAgo.toISOString().slice(0, 10)]);
+      FROM candidates c
+      WHERE e.id = c.id
+      RETURNING e.id, e.fio, c.old_status
+    `, [since]);
 
     if (rows.length > 0) {
       log.info(`[readiness-cron] Auto-archived ${rows.length} workers: ${rows.map(r => r.fio).join(', ')}`);

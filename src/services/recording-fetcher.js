@@ -1,16 +1,14 @@
 'use strict';
 
 /**
- * RecordingFetcher — фоновый сервис, который через Mango Stats API
- * забирает recording_id для звонков, у которых он отсутствует.
+ * RecordingFetcher — запасной путь: если webhook recording/summary не принёс
+ * recording_id, забираем его через Mango Stats API.
  *
- * Стратегия:
- * 1. Basic Stats API (stats/request) — быстрый, CSV с полем records
- * 2. Extended Stats API (stats/calls/request) — JSON с recording_id в context_calls
- * Если Basic Stats вернул пустые records, пробуем Extended.
+ * Основной путь — src/routes/telephony.js (events/recording + summary).
  */
 
 const { getMangoService } = require('./mango');
+const { entryIdAliases, firstRecordingId } = require('../lib/mango-entry-id');
 
 class RecordingFetcher {
   constructor(db, logger) {
@@ -20,7 +18,8 @@ class RecordingFetcher {
     this._interval = null;
     this._running = false;
     this._jobQueue = null;
-    this._fetchIntervalMs = 5 * 60 * 1000; // 5 минут
+    this._fetchIntervalMs = 5 * 60 * 1000;
+    this._lastZeroWarnAt = 0;
   }
 
   setJobQueue(jq) {
@@ -56,56 +55,111 @@ class RecordingFetcher {
     this._running = false;
   }
 
+  _buildEntryMap(pending) {
+    const entryMap = new Map();
+    for (const row of pending) {
+      for (const alias of entryIdAliases(row.mango_entry_id)) {
+        entryMap.set(alias, row.id);
+      }
+    }
+    return entryMap;
+  }
+
+  _dayWindows(pending, maxDays) {
+    const keys = [];
+    const seen = new Set();
+    for (const row of pending) {
+      const d = new Date(row.created_at);
+      if (isNaN(d.getTime())) continue;
+      const key = d.getFullYear() + '-' +
+        String(d.getMonth() + 1).padStart(2, '0') + '-' +
+        String(d.getDate()).padStart(2, '0');
+      if (seen.has(key)) continue;
+      seen.add(key);
+      keys.push(key);
+    }
+    keys.sort();
+    keys.reverse();
+    const picked = keys.slice(0, maxDays);
+    return picked.map((key) => {
+      const from = new Date(key + 'T00:00:00');
+      const to = new Date(key + 'T23:59:59');
+      from.setHours(from.getHours() - 6);
+      to.setHours(to.getHours() + 6);
+      return { from, to, key };
+    });
+  }
+
   async _fetchAndMatch() {
-    // 1. Звонки без recording_id (отвеченные, duration > 0)
     const { rows: pending } = await this.db.query(`
-      SELECT id, mango_entry_id, created_at
+      SELECT id, mango_entry_id, created_at,
+             COALESCE((webhook_payload->>'recording_fetch_attempts')::int, 0) AS fetch_attempts
       FROM call_history
       WHERE mango_entry_id IS NOT NULL
         AND (recording_id IS NULL OR recording_id = '')
         AND record_path IS NULL
         AND duration_seconds > 0
-        AND created_at > NOW() - interval '30 days'
+        AND created_at > NOW() - interval '14 days'
+        AND (
+          COALESCE((webhook_payload->>'recording_fetch_attempts')::int, 0) < 5
+          OR COALESCE((webhook_payload->>'recording_fetch_last_at')::timestamptz, '1970-01-01'::timestamptz)
+               < NOW() - interval '7 days'
+        )
       ORDER BY created_at DESC
-      LIMIT 500
+      LIMIT 150
     `);
 
     if (!pending.length) return;
 
     this.logger.info('[RecordingFetcher] Found ' + pending.length + ' calls without recording_id');
 
-    // 2. Карта entry_id → call_history.id
-    const entryMap = new Map();
-    for (const row of pending) {
-      entryMap.set(row.mango_entry_id, row.id);
+    const entryMap = this._buildEntryMap(pending);
+    const pendingIds = pending.map((r) => r.id);
+    const windows = this._dayWindows(pending, 4);
+    if (!windows.length) {
+      const dates = pending.map((r) => new Date(r.created_at)).filter((d) => !isNaN(d.getTime()));
+      if (dates.length) {
+        windows.push({
+          from: new Date(Math.min.apply(null, dates)),
+          to: new Date(Math.max.apply(null, dates)),
+          key: 'span',
+        });
+      }
     }
 
-    // 3. Диапазон дат
-    const dates = pending.map(r => new Date(r.created_at));
-    const minDate = new Date(Math.min.apply(null, dates));
-    const now = new Date();
+    let matched = 0;
+    for (const win of windows) {
+      let n = await this._tryBasicStats(entryMap, win.from, win.to);
+      if (n === 0) {
+        n = await this._tryExtendedStats(entryMap, win.from, win.to);
+      }
+      matched += n;
+    }
 
-    // === Попытка 1: Basic Stats API ===
-    var matched = await this._tryBasicStats(entryMap, minDate, now);
+    await this._bumpFetchAttempts(pendingIds);
 
-    // === Попытка 2: Extended Stats API (если Basic не нашёл записей) ===
     if (matched === 0) {
-      this.logger.info('[RecordingFetcher] Basic Stats found 0 recordings, trying Extended Stats API...');
-      matched = await this._tryExtendedStats(entryMap, minDate, now);
+      const nowMs = Date.now();
+      if (nowMs - this._lastZeroWarnAt > 60 * 60 * 1000) {
+        this._lastZeroWarnAt = nowMs;
+        this.logger.warn(
+          '[RecordingFetcher] Total matched: 0 out of ' + pending.length +
+          ' pending (throttled 1/h). Primary path is webhook events/recording.'
+        );
+      }
+    } else {
+      this.logger.info('[RecordingFetcher] Total matched: ' + matched + ' out of ' + pending.length + ' pending');
     }
 
-    this.logger.info('[RecordingFetcher] Total matched: ' + matched + ' out of ' + pending.length + ' pending');
-
-    // 4. Запуск пайплайна для найденных
     if (matched > 0 && this._jobQueue) {
       const { rows: toProcess } = await this.db.query(`
         SELECT id FROM call_history
         WHERE recording_id IS NOT NULL AND recording_id != ''
           AND record_path IS NULL
-          AND created_at > NOW() - interval '30 days'
+          AND created_at > NOW() - interval '14 days'
         ORDER BY created_at DESC
       `);
-      for (var j = 0; j < toProcess.length; j++) {
+      for (let j = 0; j < toProcess.length; j++) {
         try {
           await this._jobQueue.enqueue('download_recording', toProcess[j].id);
         } catch (err) { /* дубликат — ок */ }
@@ -114,12 +168,31 @@ class RecordingFetcher {
     }
   }
 
-  // ─── Basic Stats API (CSV) ───
+  async _bumpFetchAttempts(ids) {
+    if (!ids || !ids.length) return;
+    try {
+      await this.db.query(`
+        UPDATE call_history
+        SET webhook_payload = COALESCE(webhook_payload, '{}'::jsonb)
+              || jsonb_build_object(
+                   'recording_fetch_attempts',
+                   COALESCE((webhook_payload->>'recording_fetch_attempts')::int, 0) + 1,
+                   'recording_fetch_last_at', to_char(NOW() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"')
+                 ),
+            updated_at = NOW()
+        WHERE id = ANY($1::int[])
+          AND (recording_id IS NULL OR recording_id = '')
+      `, [ids]);
+    } catch (err) {
+      this.logger.warn('[RecordingFetcher] bump attempts failed: ' + err.message);
+    }
+  }
+
   async _tryBasicStats(entryMap, minDate, now) {
     const dateFrom = Math.floor(minDate.getTime() / 1000);
     const dateTo = Math.floor(now.getTime() / 1000);
 
-    var statsKey;
+    let statsKey;
     try {
       const resp = await this.mango.requestStats(dateFrom, dateTo, 'records,entry_id');
       statsKey = resp.key;
@@ -129,10 +202,9 @@ class RecordingFetcher {
     }
     if (!statsKey) return 0;
 
-    // Поллинг CSV (макс 60с)
-    var csvData = null;
-    for (var attempt = 0; attempt < 12; attempt++) {
-      await this._delay(5000);
+    let csvData = null;
+    for (let attempt = 0; attempt < 8; attempt++) {
+      await this._delay(3000);
       try {
         const resp = await this.mango.getStatsResult(statsKey);
         if (resp.statusCode === 204 || (resp.raw !== undefined && resp.raw === '')) continue;
@@ -152,23 +224,25 @@ class RecordingFetcher {
 
     if (!csvData || !csvData.trim()) return 0;
 
-    // Парсинг CSV: [records];[entry_id]
     const lines = csvData.trim().split('\n');
-    var matched = 0;
+    let matched = 0;
 
-    for (var i = 0; i < lines.length; i++) {
+    for (let i = 0; i < lines.length; i++) {
       const parts = lines[i].split(';');
       if (parts.length < 2) continue;
 
-      var recordsStr = (parts[0] || '').trim().replace(/^\[|\]$/g, '');
+      const recordsStr = (parts[0] || '').trim().replace(/^\[|\]$/g, '');
       const entryId = (parts[1] || '').trim();
+      if (!entryId || !recordsStr) continue;
+      if (entryId === 'entry_id' || recordsStr === 'records') continue;
 
-      if (!entryId || !entryMap.has(entryId) || !recordsStr) continue;
+      const callHistoryId = this._lookupCall(entryMap, entryId);
+      if (!callHistoryId) continue;
 
-      const recordingId = recordsStr.split(',')[0].trim();
+      const recordingId = firstRecordingId(recordsStr.split(','));
       if (!recordingId) continue;
 
-      await this._updateRecordingId(entryMap.get(entryId), recordingId);
+      await this._updateRecordingId(callHistoryId, recordingId);
       matched++;
     }
 
@@ -176,105 +250,110 @@ class RecordingFetcher {
     return matched;
   }
 
-  // ─── Extended Stats API (JSON) ───
+  _lookupCall(entryMap, entryId) {
+    if (entryMap.has(entryId)) return entryMap.get(entryId);
+    const aliases = entryIdAliases(entryId);
+    for (let i = 0; i < aliases.length; i++) {
+      if (entryMap.has(aliases[i])) return entryMap.get(aliases[i]);
+    }
+    return null;
+  }
+
   async _tryExtendedStats(entryMap, minDate, now) {
-    // Формат даты: DD.MM.YYYY HH:MM:SS
     const fmtDate = function(d) {
-      var dd = String(d.getDate()).padStart(2, '0');
-      var mm = String(d.getMonth() + 1).padStart(2, '0');
-      var yyyy = d.getFullYear();
+      const dd = String(d.getDate()).padStart(2, '0');
+      const mm = String(d.getMonth() + 1).padStart(2, '0');
+      const yyyy = d.getFullYear();
       return dd + '.' + mm + '.' + yyyy + ' 00:00:00';
     };
     const fmtDateEnd = function(d) {
-      var dd = String(d.getDate()).padStart(2, '0');
-      var mm = String(d.getMonth() + 1).padStart(2, '0');
-      var yyyy = d.getFullYear();
+      const dd = String(d.getDate()).padStart(2, '0');
+      const mm = String(d.getMonth() + 1).padStart(2, '0');
+      const yyyy = d.getFullYear();
       return dd + '.' + mm + '.' + yyyy + ' 23:59:59';
     };
 
-    var statsKey;
-    try {
-      const resp = await this.mango.requestCallStats(fmtDate(minDate), fmtDateEnd(now));
-      this.logger.info('[RecordingFetcher] Extended stats response: ' + JSON.stringify(resp).slice(0, 300));
-      statsKey = resp.key;
-    } catch (err) {
-      this.logger.error('[RecordingFetcher] Extended stats request failed: ' + err.message);
-      return 0;
-    }
-    if (!statsKey) return 0;
+    let matched = 0;
+    let totalEntries = 0;
+    let entriesWithRecording = 0;
+    const sampleMangoIds = [];
+    const sampleDbIds = Array.from(entryMap.keys()).filter((k) => /^\d+$/.test(k) || k.includes('=')).slice(0, 5);
 
-    // Поллинг JSON (макс 60с)
-    var result = null;
-    for (var attempt = 0; attempt < 12; attempt++) {
-      await this._delay(5000);
+    const pageLimit = 1000;
+    for (let page = 0; page < 3; page++) {
+      const offset = page * pageLimit;
+      let statsKey;
       try {
-        const resp = await this.mango.getCallStatsResult(statsKey);
-        if (resp.statusCode === 204 || (resp.raw !== undefined && resp.raw === '')) continue;
-        if (resp.data || resp.status === 'complete') {
-          result = resp;
-          break;
+        const resp = await this.mango.requestCallStats(fmtDate(minDate), fmtDateEnd(now), {
+          limit: pageLimit,
+          offset,
+        });
+        if (page === 0) {
+          this.logger.info('[RecordingFetcher] Extended stats response: ' + JSON.stringify(resp).slice(0, 300));
         }
-        // Может прийти как raw JSON строка
-        if (resp.raw && typeof resp.raw === 'string') {
-          try { result = JSON.parse(resp.raw); break; } catch (e) { /* not JSON */ }
-        }
+        statsKey = resp.key;
       } catch (err) {
-        this.logger.warn('[RecordingFetcher] Extended stats poll error: ' + err.message);
+        this.logger.error('[RecordingFetcher] Extended stats request failed: ' + err.message);
         break;
       }
-    }
+      if (!statsKey) break;
 
-    if (!result) {
-      this.logger.warn('[RecordingFetcher] No Extended Stats result');
-      return 0;
-    }
+      let result = null;
+      for (let attempt = 0; attempt < 8; attempt++) {
+        await this._delay(3000);
+        try {
+          const resp = await this.mango.getCallStatsResult(statsKey);
+          if (resp.statusCode === 204 || (resp.raw !== undefined && resp.raw === '')) continue;
+          if (resp.data || resp.status === 'complete') {
+            result = resp;
+            break;
+          }
+          if (resp.raw && typeof resp.raw === 'string') {
+            try { result = JSON.parse(resp.raw); break; } catch (e) { /* not JSON */ }
+          }
+        } catch (err) {
+          this.logger.warn('[RecordingFetcher] Extended stats poll error: ' + err.message);
+          break;
+        }
+      }
 
-    this.logger.info('[RecordingFetcher] Extended stats status: ' + (result.status || 'unknown') +
-      ', data periods: ' + (result.data ? result.data.length : 0));
+      if (!result) {
+        if (page === 0) this.logger.warn('[RecordingFetcher] No Extended Stats result');
+        break;
+      }
 
-    // Парсинг JSON: data[].list[].entry_id + context_calls[].recording_id[]
-    var matched = 0;
-    var totalEntries = 0;
-    var entriesWithRecording = 0;
-    var sampleMangoIds = [];
-    var sampleDbIds = Array.from(entryMap.keys()).slice(0, 5);
+      let pageRows = 0;
+      if (result.data && Array.isArray(result.data)) {
+        for (let p = 0; p < result.data.length; p++) {
+          const period = result.data[p];
+          if (!period.list) continue;
+          for (let e = 0; e < period.list.length; e++) {
+            const entry = period.list[e];
+            const entryId = entry.entry_id != null ? String(entry.entry_id) : '';
+            totalEntries++;
+            pageRows++;
+            if (sampleMangoIds.length < 5) sampleMangoIds.push(entryId || 'null');
 
-    if (result.data && Array.isArray(result.data)) {
-      for (var p = 0; p < result.data.length; p++) {
-        var period = result.data[p];
-        if (!period.list) continue;
-        for (var e = 0; e < period.list.length; e++) {
-          var entry = period.list[e];
-          var entryId = entry.entry_id;
-          totalEntries++;
-          if (sampleMangoIds.length < 5) sampleMangoIds.push(entryId || 'null');
-
-          // Проверяем recording_id
-          if (entry.context_calls) {
-            for (var cc = 0; cc < entry.context_calls.length; cc++) {
-              if (entry.context_calls[cc].recording_id && entry.context_calls[cc].recording_id.length > 0) {
-                entriesWithRecording++;
-                break;
+            let recId = null;
+            if (entry.context_calls) {
+              for (let c = 0; c < entry.context_calls.length; c++) {
+                recId = firstRecordingId(entry.context_calls[c].recording_id);
+                if (recId) break;
               }
             }
-          }
+            if (!recId) recId = firstRecordingId(entry.recording_id);
+            if (recId) entriesWithRecording++;
 
-          if (!entryId || !entryMap.has(entryId)) continue;
-
-          // Ищем recording_id в context_calls
-          if (!entry.context_calls) continue;
-          for (var c = 0; c < entry.context_calls.length; c++) {
-            var call = entry.context_calls[c];
-            if (call.recording_id && Array.isArray(call.recording_id) && call.recording_id.length > 0) {
-              var recId = call.recording_id[0];
-              await this._updateRecordingId(entryMap.get(entryId), recId);
-              matched++;
-              this.logger.info('[RecordingFetcher] Extended: call #' + entryMap.get(entryId) + ' recording_id = ' + recId);
-              break;
-            }
+            const callHistoryId = this._lookupCall(entryMap, entryId);
+            if (!callHistoryId || !recId) continue;
+            await this._updateRecordingId(callHistoryId, recId);
+            matched++;
+            this.logger.info('[RecordingFetcher] Extended: call #' + callHistoryId + ' recording_id = ' + recId);
           }
         }
       }
+
+      if (pageRows < pageLimit) break;
     }
 
     this.logger.info('[RecordingFetcher] Extended Stats: ' + matched + ' matched, ' + totalEntries + ' total entries, ' + entriesWithRecording + ' with recordings');

@@ -700,6 +700,24 @@ window.AsgardUI = (function(){
     return (isNaN(n) || !isFinite(n)) ? '0' : n.toLocaleString('ru-RU');
   }
 
+  /** Display with ₽ — prefers AsgardMoney when loaded. */
+  function moneyRub(x, opts) {
+    if (window.AsgardMoney && typeof window.AsgardMoney.formatMoney === 'function') {
+      return window.AsgardMoney.formatMoney(x, opts);
+    }
+    if (x === null || x === undefined || x === '') return (opts && opts.empty != null) ? opts.empty : '—';
+    const n = Number(x);
+    if (isNaN(n) || !isFinite(n)) return (opts && opts.empty != null) ? opts.empty : '—';
+    return n.toLocaleString('ru-RU') + ' ₽';
+  }
+
+  function moneyShort(x, opts) {
+    if (window.AsgardMoney && typeof window.AsgardMoney.formatMoneyShort === 'function') {
+      return window.AsgardMoney.formatMoneyShort(x, opts);
+    }
+    return moneyRub(x, opts);
+  }
+
   // ═══════════════════════════════════════════════════════════════
   // OOPS BUBBLE — всплывающая подсказка при клике за пределами модалки
   // ═══════════════════════════════════════════════════════════════
@@ -737,7 +755,7 @@ window.AsgardUI = (function(){
     setTimeout(() => bubble.remove(), 1800);
   }
 
-  return { renderMarkdown, $, $$, esc, toast, showModal, replaceModal, hideModal, closeModal: hideModal, showDrawer, hideDrawer, statusClass, makeResponsiveTable, emptyState, enableTableSort, formField, confirm: async (t,m) => window.confirm(m), copyToClipboard, formatDate, formatDateTime, skeleton, money, oopsBubble: _showOopsBubble };
+  return { renderMarkdown, $, $$, esc, toast, showModal, replaceModal, hideModal, closeModal: hideModal, showDrawer, hideDrawer, statusClass, makeResponsiveTable, emptyState, enableTableSort, formField, confirm: async (t,m) => window.confirm(m), copyToClipboard, formatDate, formatDateTime, skeleton, money, moneyRub, moneyShort, oopsBubble: _showOopsBubble };
 
   /**
    * renderMarkdown(md) — Renders Markdown text as styled HTML

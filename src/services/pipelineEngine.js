@@ -100,7 +100,10 @@ function worldForLevel(level) {
   for (const item of WORLDS) {
     if (level >= item.min) w = item;
   }
-  return w;
+  if (level < 126) return w;
+  const round = Math.floor((level - 101) / 25) + 1;
+  const cycled = WORLDS[(round - 1) % WORLDS.length];
+  return { name: `${cycled.name} · круг ${round}`, icon: cycled.icon };
 }
 
 function seededRng(seed) {
@@ -305,9 +308,13 @@ function endpointsValid(size, path, cells) {
 }
 
 function placeObstacle(cells, path, size, type, rand, used = new Set()) {
+  // Только прямые секции (STR): obstacles всегда чинятся в STR — на ELB ломают путь.
   const candidates = path.slice(1, -1)
     .map((n) => idx(size, n.r, n.c))
-    .filter((pi) => !used.has(pi) && cells[pi].t !== P.SRC && cells[pi].t !== P.DRN);
+    .filter((pi) => !used.has(pi)
+      && cells[pi].t === P.STR
+      && cells[pi].t !== P.SRC
+      && cells[pi].t !== P.DRN);
   if (!candidates.length) return false;
   const pi = candidates[Math.floor(rand() * candidates.length)];
   used.add(pi);
@@ -315,26 +322,77 @@ function placeObstacle(cells, path, size, type, rand, used = new Set()) {
   return true;
 }
 
-/** Расписание препятствий по уровню */
+/**
+ * Расписание препятствий.
+ * Игрок за уровень может снять максимум 2: Тор (ржавчина/засор/трещина) + Фрейя (засор/корни).
+ * Пары только «Тор+Фрейя» — иначе уровень физически непроходим.
+ */
 function obstacleSchedule(levelNum) {
-  const list = [];
-  if (levelNum >= 5 && levelNum % 5 === 0) list.push(P.RUST);
-  if (levelNum >= 8 && levelNum % 4 === 0) list.push(P.CLOG);
-  if (levelNum >= 12 && levelNum % 6 === 0) list.push(P.BROKEN);
-  if (levelNum >= 18 && levelNum % 7 === 0) list.push(P.ROOT);
-  if (levelNum >= 30 && levelNum % 9 === 0) list.push(P.CLOG);
-  if (levelNum >= 40 && levelNum % 11 === 0) list.push(P.BROKEN);
-  if (levelNum >= 55 && levelNum % 5 === 2) list.push(P.ROOT);
-  if (levelNum >= 70 && levelNum % 6 === 1) list.push(P.RUST);
-  // 80+ — чаще и по два типа
+  const candidates = [];
+  if (levelNum >= 5 && levelNum % 5 === 0) candidates.push(P.RUST);
+  if (levelNum >= 8 && levelNum % 4 === 0) candidates.push(P.CLOG);
+  if (levelNum >= 12 && levelNum % 6 === 0) candidates.push(P.BROKEN);
+  if (levelNum >= 18 && levelNum % 7 === 0) candidates.push(P.ROOT);
+  if (levelNum >= 30 && levelNum % 9 === 0) candidates.push(P.CLOG);
+  if (levelNum >= 40 && levelNum % 11 === 0) candidates.push(P.BROKEN);
+  if (levelNum >= 55 && levelNum % 5 === 2) candidates.push(P.ROOT);
+  if (levelNum >= 70 && levelNum % 6 === 1) candidates.push(P.RUST);
   if (levelNum >= 80) {
-    if (levelNum % 3 === 0) list.push(P.CLOG);
-    if (levelNum % 4 === 1) list.push(P.BROKEN);
-    if (levelNum % 5 === 2) list.push(P.ROOT);
-    if (levelNum % 7 === 0) list.push(P.RUST);
+    if (levelNum % 3 === 0) candidates.push(P.CLOG);
+    if (levelNum % 4 === 1) candidates.push(P.BROKEN);
+    if (levelNum % 5 === 2) candidates.push(P.ROOT);
+    if (levelNum % 7 === 0) candidates.push(P.RUST);
   }
-  if (levelNum >= 100 && levelNum % 2 === 0) list.push(P.BROKEN);
-  return list;
+  if (levelNum >= 100 && levelNum % 2 === 0) candidates.push(P.BROKEN);
+
+  const thorOnly = new Set([P.RUST, P.BROKEN]);
+  const freyaOk = new Set([P.CLOG, P.ROOT]);
+  const picked = [];
+  for (const t of candidates) {
+    if (picked.includes(t)) continue;
+    if (picked.length === 0) {
+      picked.push(t);
+      continue;
+    }
+    if (picked.length >= 2) break;
+    const a = picked[0];
+    // Вторая: совместима, если хотя бы одна чистится Фрейей (или обе — засор)
+    const ok = freyaOk.has(a) || freyaOk.has(t)
+      || (a === P.CLOG || t === P.CLOG);
+    if (!ok && thorOnly.has(a) && thorOnly.has(t)) continue;
+    picked.push(t);
+  }
+  // До уровня 25 — не больше одного препятствия (обучение)
+  if (levelNum < 25) return picked.slice(0, 1);
+  return picked.slice(0, 2);
+}
+
+/** Убрать лишние блокеры с solution-пути, если их больше, чем сил (2). */
+function trimPathObstacles(cells, pathSpec, pathSet) {
+  const pathObs = [];
+  for (const pi of pathSet) {
+    if (BLOCKED.has(cells[pi]?.t)) pathObs.push(pi);
+  }
+  if (pathObs.length <= 2) {
+    // Пара только-Тор (ржавчина+трещина) — вторую меняем на корни
+    if (pathObs.length === 2) {
+      const t0 = cells[pathObs[0]].t;
+      const t1 = cells[pathObs[1]].t;
+      const thorOnly = (t) => t === P.RUST || t === P.BROKEN;
+      if (thorOnly(t0) && thorOnly(t1)) {
+        const pi = pathObs[1];
+        const spec = pathSpec.get(pi) || { t: P.STR, r: cells[pi].r || 0 };
+        cells[pi] = { t: P.ROOT, r: cells[pi].r, ice: cells[pi].ice };
+      }
+    }
+    return;
+  }
+  // Оставляем первые 2, остальные → исходная труба пути
+  for (let i = 2; i < pathObs.length; i++) {
+    const pi = pathObs[i];
+    const spec = pathSpec.get(pi) || { t: P.STR, r: 0 };
+    cells[pi] = { t: spec.t === P.SRC || spec.t === P.DRN ? P.STR : (spec.t || P.STR), r: spec.r || 0, ice: !!cells[pi].ice };
+  }
 }
 
 function solutionFlagsForType(type) {
@@ -363,6 +421,9 @@ function analyzeDifficulty(cells, solution, size, pathSet) {
     if ([P.SRC, P.DRN].includes(s.t)) continue;
     if (BLOCKED.has(c.t)) {
       wrongPathCells++;
+      // После очистки остаётся STR с scramble-ротацией — считаем клики.
+      const clicks = (s.r - (c.r || 0) + 4) % 4;
+      if (clicks > 0) minRotations += c.ice ? clicks * 2 : clicks;
       continue;
     }
     const clicks = (s.r - (c.r || 0) + 4) % 4;
@@ -423,21 +484,68 @@ function fallbackLevel(levelNum) {
     cells[i] = { t: decoyTypes[i % 3], r: (i * 5 + 1) % 4 };
   }
   const pathNodes = pathIdx.map((pi) => ({ r: Math.floor(pi / size), c: pi % size }));
-  const rand = seededRng(`fallback:${levelNum}`);
+  const rand = seededRng(`fallback:v7:${levelNum}`);
   const usedObstacles = new Set();
+  const pathSpecMap = new Map(pathIdx.map((pi, i) => [pi, specs[i]]));
   for (const obsType of obstacleSchedule(levelNum)) {
     placeObstacle(cells, pathNodes, size, obsType, rand, usedObstacles);
   }
   const pathSet = new Set(pathIdx);
+  trimPathObstacles(cells, pathSpecMap, pathSet);
   const solution = Array(n).fill(null).map(() => emptySolutionCell());
   pathIdx.forEach((pi, i) => {
+    const spec = specs[i];
     if (BLOCKED.has(cells[pi].t)) {
-      solution[pi] = { t: P.STR, r: cells[pi].r, ice: false, ...solutionFlagsForType(cells[pi].t) };
+      // Obstacle только на STR — solution = исходная прямая + флаги очистки
+      solution[pi] = {
+        t: P.STR,
+        r: spec.r,
+        ice: false,
+        ...solutionFlagsForType(cells[pi].t),
+      };
     } else {
-      solution[pi] = { ...specs[i], ice: false, ...solutionFlagsForType(0) };
+      solution[pi] = { ...spec, ice: false, ...solutionFlagsForType(0) };
     }
   });
   scrambleGrid(cells, solution, rand, Math.max(levelNum, 10));
+  const diff = analyzeDifficulty(cells, solution, size, pathSet);
+  const level = {
+    size,
+    level: levelNum,
+    world: worldForLevel(levelNum),
+    cells,
+    solution,
+    moveLimit: Math.max(diff.minRotations + 3, requiredMinRotations(levelNum) + 2),
+    pressureFactor: pressureForLevel(levelNum),
+  };
+  if (!isConnected(level.solution, level.size)) {
+    // Абсолютный запасной: прямой путь без препятствий и decoy на пути
+    return guaranteedLevel(levelNum);
+  }
+  return level;
+}
+
+/** Гарантированно решаемый уровень (минимум труб, без ломающих obstacles). */
+function guaranteedLevel(levelNum) {
+  const size = gridSizeForLevel(levelNum);
+  const n = size * size;
+  const mid = Math.floor(size / 2);
+  const pathIdx = [];
+  for (let c = 0; c < size; c++) pathIdx.push(idx(size, mid, c));
+  const cells = Array(n).fill(null).map(() => ({ t: P.EMPTY, r: 0 }));
+  const specs = specsForPathIndices(size, pathIdx);
+  pathIdx.forEach((pi, i) => { cells[pi] = { ...specs[i] }; });
+  for (let i = 0; i < n; i++) {
+    if (cells[i].t !== P.EMPTY) continue;
+    cells[i] = { t: P.ELB, r: (i + 1) % 4 };
+  }
+  const pathSet = new Set(pathIdx);
+  const solution = Array(n).fill(null).map(() => emptySolutionCell());
+  pathIdx.forEach((pi, i) => {
+    solution[pi] = { ...specs[i], ice: false, ...solutionFlagsForType(0) };
+  });
+  const rand = seededRng(`guaranteed:v7:${levelNum}`);
+  scrambleGrid(cells, solution, rand, Math.max(levelNum, 5));
   const diff = analyzeDifficulty(cells, solution, size, pathSet);
   return {
     size,
@@ -445,20 +553,21 @@ function fallbackLevel(levelNum) {
     world: worldForLevel(levelNum),
     cells,
     solution,
-    moveLimit: Math.max(diff.minRotations + 2, requiredMinRotations(levelNum) + 2),
+    moveLimit: Math.max(diff.minRotations + 4, 8),
     pressureFactor: pressureForLevel(levelNum),
   };
 }
 
 function buildLevel(levelNum, employeeId, attempt) {
   const size = gridSizeForLevel(levelNum);
-  const rand = seededRng(`${levelNum}:${employeeId}:pipeline:v5:${attempt}`);
+  const rand = seededRng(`${levelNum}:${employeeId}:pipeline:v7:${attempt}`);
   const minLen = minPathLength(levelNum, size);
   const path = generatePath(size, rand, minLen);
   if (!path || path.length < minLen - 1) return null;
 
   const cells = Array(size * size).fill(null).map(() => ({ t: P.EMPTY, r: 0 }));
   const pathSet = new Set();
+  const pathSpec = new Map();
 
   for (let i = 0; i < path.length; i++) {
     const node = path[i];
@@ -470,15 +579,18 @@ function buildLevel(levelNum, employeeId, attempt) {
       const rot = rotationForMask(P.SRC, outDir);
       if (rot < 0) return null;
       cells[pi] = { t: P.SRC, r: rot };
+      pathSpec.set(pi, { t: P.SRC, r: rot });
     } else if (i === path.length - 1) {
       const prev = path[i - 1];
       const inDir = node.inDir || dirBetween(node.r, node.c, prev.r, prev.c);
       const rot = rotationForMask(P.DRN, inDir);
       if (rot < 0) return null;
       cells[pi] = { t: P.DRN, r: rot };
+      pathSpec.set(pi, { t: P.DRN, r: rot });
     } else {
       const p = pipeForDirs(node.inDir, node.outDir);
       cells[pi] = { t: p.t, r: p.r };
+      pathSpec.set(pi, { t: p.t, r: p.r });
     }
   }
 
@@ -500,6 +612,7 @@ function buildLevel(levelNum, employeeId, attempt) {
   for (const obsType of obstacleSchedule(levelNum)) {
     placeObstacle(cells, path, size, obsType, rand, usedObstacles);
   }
+  trimPathObstacles(cells, pathSpec, pathSet);
 
   const iceCount = levelNum >= 100 ? 3 : levelNum >= 60 ? 2 : levelNum >= 20 ? 1 : 0;
   const inner = path.slice(1, -1);
@@ -515,8 +628,14 @@ function buildLevel(levelNum, employeeId, attempt) {
 
   const solution = cells.map((c, i) => {
     if (!pathSet.has(i)) return emptySolutionCell();
+    const spec = pathSpec.get(i);
     if (BLOCKED.has(c.t)) {
-      return { t: P.STR, r: c.r, ice: !!c.ice, ...solutionFlagsForType(c.t) };
+      return {
+        t: P.STR,
+        r: spec.r,
+        ice: !!c.ice,
+        ...solutionFlagsForType(c.t),
+      };
     }
     return { t: c.t, r: c.r, ice: !!c.ice, ...solutionFlagsForType(0) };
   });
@@ -530,8 +649,9 @@ function buildLevel(levelNum, employeeId, attempt) {
   if (diff.alreadySolved) return null;
   if (diff.minRotations < needRot) return null;
   if (diff.wrongPathCells < needWrong) return null;
+  if (!isConnected(solution, size)) return null;
 
-  const buffer = levelNum <= 10 ? 3 : levelNum <= 30 ? 2 : levelNum <= 80 ? 1 : 0;
+  const buffer = levelNum <= 10 ? 4 : levelNum <= 30 ? 3 : levelNum <= 80 ? 2 : 1;
   const obstacleExtra = usedObstacles.size;
   const moveLimit = diff.minRotations + buffer + obstacleExtra + (diff.minRotations > 15 ? 1 : 0);
   const pressureFactor = pressureForLevel(levelNum);
@@ -553,7 +673,167 @@ function generateLevel(levelNum, employeeId) {
     const level = buildLevel(levelNum, employeeId, attempt);
     if (level && isConnected(level.solution, level.size)) return level;
   }
-  return fallbackLevel(levelNum);
+  const fb = fallbackLevel(levelNum);
+  if (isConnected(fb.solution, fb.size)) return fb;
+  return guaranteedLevel(levelNum);
+}
+
+function cellsEqual(a, b) {
+  if (!a || !b || a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    if (a[i].t !== b[i].t || (a[i].r || 0) !== (b[i].r || 0) || !!a[i].ice !== !!b[i].ice) return false;
+  }
+  return true;
+}
+
+/** Восстановить generated level (с solution) по initial_grid сессии. */
+function recoverLevel(levelNum, employeeId, initialCells) {
+  const maxAttempts = levelNum >= 50 ? 80 : 40;
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    const level = buildLevel(levelNum, employeeId, attempt);
+    if (level && cellsEqual(level.cells, initialCells)) return level;
+  }
+  const fb = fallbackLevel(levelNum);
+  if (cellsEqual(fb.cells, initialCells)) return fb;
+  const g = guaranteedLevel(levelNum);
+  if (cellsEqual(g.cells, initialCells)) return g;
+  return null;
+}
+
+function solutionPath(solution, size) {
+  const { src, drn } = findEnds(solution, size);
+  if (src < 0 || drn < 0) return [];
+  const q = [src];
+  const vis = new Set([src]);
+  const parent = new Map();
+  while (q.length) {
+    const cur = q.shift();
+    if (cur === drn) break;
+    const cc = getConns(solution[cur]);
+    for (let d = 0; d < 4; d++) {
+      const [dr, dc, mb, tb] = DIRS[d];
+      const nr = Math.floor(cur / size) + dr;
+      const nc = cur % size + dc;
+      if (!inBounds(size, nr, nc)) continue;
+      const ni = idx(size, nr, nc);
+      if (solution[ni].t === P.EMPTY || isBlocked(solution[ni])) continue;
+      if (!(cc & mb) || !(getConns(solution[ni]) & tb) || vis.has(ni)) continue;
+      vis.add(ni);
+      parent.set(ni, cur);
+      q.push(ni);
+    }
+  }
+  if (!vis.has(drn)) return [];
+  const path = [];
+  let cur = drn;
+  while (cur !== undefined) {
+    path.push(cur);
+    if (cur === src) break;
+    cur = parent.get(cur);
+  }
+  return path.reverse();
+}
+
+/**
+ * Силы по solution сессии.
+ * power: 'thor' | 'heim' | 'odin'
+ */
+function computePowerHint(solution, size, currentGrid, power) {
+  if (!solution || !currentGrid || solution.length !== currentGrid.length) {
+    return { ok: false, error: 'Нет данных уровня' };
+  }
+  const path = solutionPath(solution, size);
+
+  if (power === 'thor') {
+    const ri = currentGrid.findIndex((c) =>
+      (c.t === P.RUST && !c.rustCleared)
+      || (c.t === P.CLOG && !c.clogCleared)
+      || (c.t === P.BROKEN && !c.brokenCleared));
+    if (ri < 0) return { ok: true, spent: false, message: 'Препятствий для Тора нет — береги удар' };
+    return {
+      ok: true,
+      spent: true,
+      clear_index: ri,
+      clear_type: currentGrid[ri].t,
+      message: currentGrid[ri].t === P.RUST ? 'Мьёльнир разбил ржавчину!'
+        : currentGrid[ri].t === P.CLOG ? 'Мьёльнир пробил засор!'
+          : 'Мьёльнир заделал трещину!',
+    };
+  }
+
+  if (power === 'heim') {
+    const obsIdx = currentGrid.findIndex((c) =>
+      (c.t === P.CLOG && !c.clogCleared) || (c.t === P.ROOT && !c.rootCleared));
+    if (obsIdx >= 0) {
+      return {
+        ok: true,
+        spent: true,
+        clear_index: obsIdx,
+        clear_type: currentGrid[obsIdx].t,
+        ghost_path: path,
+        message: currentGrid[obsIdx].t === P.ROOT
+          ? 'Фрейя убрала корни и показала путь!'
+          : 'Фрейя прочистила засор и показала путь!',
+      };
+    }
+    return {
+      ok: true,
+      spent: true,
+      ghost_path: path,
+      message: path.length ? 'Фрейя показывает истинный путь!' : 'Фрейя не видит путь — проверь трубы',
+    };
+  }
+
+  if (power === 'odin') {
+    // Препятствие на пути — бесплатный совет (не тратим Однина: иначе подсказка «для галочки»)
+    for (const i of path) {
+      const c = currentGrid[i];
+      if (isBlocked(c)) {
+        let need = 'Тора';
+        if (c.t === P.ROOT) need = 'Фрейю';
+        else if (c.t === P.CLOG) need = 'Тора или Фрейю';
+        else if (c.t === P.RUST || c.t === P.BROKEN) need = 'Тора';
+        return {
+          ok: true,
+          spent: false,
+          highlight_index: i,
+          message: `Один: здесь ${obstacleName(c.t)} — сначала вызови ${need}`,
+        };
+      }
+    }
+    // Первая клетка с неверной ротацией — подсветка + сколько крутить (держится до верного угла)
+    for (const i of path) {
+      const c = currentGrid[i];
+      const s = solution[i];
+      if ([P.SRC, P.DRN, P.EMPTY].includes(s.t)) continue;
+      const curT = (c.t === P.STR || !BLOCKED.has(c.t)) ? c.t : P.STR;
+      if (curT !== s.t && !BLOCKED.has(c.t)) continue;
+      const clicks = (s.r - (c.r || 0) + 4) % 4;
+      if (clicks > 0) {
+        return {
+          ok: true,
+          spent: true,
+          highlight_index: i,
+          target_rot: s.r,
+          clicks,
+          message: clicks === 1
+            ? 'Один: эту клетку — один поворот по часовой'
+            : `Один: эту клетку поверни ${clicks} раза по часовой`,
+        };
+      }
+    }
+    return { ok: true, spent: false, message: 'Один: путь уже верен — пусти поток!' };
+  }
+
+  return { ok: false, error: 'Неизвестная сила' };
+}
+
+function obstacleName(t) {
+  if (t === P.RUST) return 'ржавчина';
+  if (t === P.CLOG) return 'засор';
+  if (t === P.BROKEN) return 'трещина';
+  if (t === P.ROOT) return 'корни';
+  return 'препятствие';
 }
 
 function findEnds(grid, size) {
@@ -684,6 +964,8 @@ function computeRewards(levelNum, stars, dailyLevels, dailyXp, dailyRunes) {
 module.exports = {
   P,
   generateLevel,
+  recoverLevel,
+  computePowerHint,
   isConnected,
   validateSubmission,
   computeRewards,

@@ -1,0 +1,99 @@
+/**
+ * Asgard Gold checkboxes — единый стиль нативных input[type=checkbox].
+ * Opt-out: class="no-cr-chk" или кастомные обёртки (.inp-check / .inp-switch / .emp-selector-item / .toggle-input).
+ */
+input[type="checkbox"]:not(.no-cr-chk):not(.toggle-input) {
+  --cr-chk-size: 18px;
+  --cr-chk-mark: var(--on-gold, #1a1000);
+  appearance: none;
+  -webkit-appearance: none;
+  width: var(--cr-chk-size);
+  height: var(--cr-chk-size);
+  margin: 0;
+  padding: 0;
+  flex-shrink: 0;
+  border-radius: 6px;
+  border: 1.5px solid color-mix(in srgb, var(--brd, rgba(255, 255, 255, 0.28)) 100%, transparent);
+  background: color-mix(in srgb, var(--t1, #fff) 4%, transparent);
+  display: inline-grid;
+  place-items: center;
+  vertical-align: middle;
+  cursor: pointer;
+  accent-color: transparent;
+  transition: border-color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
+}
+
+input[type="checkbox"]:not(.no-cr-chk):not(.toggle-input):hover:not(:disabled) {
+  border-color: var(--gold, #D4A843);
+  background: var(--gold-bg, rgba(212, 168, 67, 0.14));
+}
+
+input[type="checkbox"]:not(.no-cr-chk):not(.toggle-input):checked,
+input[type="checkbox"]:not(.no-cr-chk):not(.toggle-input):indeterminate {
+  border-color: var(--gold, #D4A843);
+  background: linear-gradient(145deg, var(--gold-l, #E8C35A), var(--gold, #D4A843));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--gold, #D4A843) 18%, transparent);
+}
+
+input[type="checkbox"]:not(.no-cr-chk):not(.toggle-input):checked::after {
+  content: "";
+  width: 10px;
+  height: 6px;
+  border-left: 2px solid var(--cr-chk-mark);
+  border-bottom: 2px solid var(--cr-chk-mark);
+  transform: rotate(-45deg) translateY(-1px);
+  box-sizing: border-box;
+}
+
+input[type="checkbox"]:not(.no-cr-chk):not(.toggle-input):indeterminate::after {
+  content: "";
+  width: 8px;
+  height: 2px;
+  border: 0;
+  background: var(--cr-chk-mark);
+  border-radius: 1px;
+  transform: none;
+}
+
+input[type="checkbox"]:not(.no-cr-chk):not(.toggle-input):focus-visible {
+  outline: 2px solid var(--gold, #D4A843);
+  outline-offset: 2px;
+}
+
+input[type="checkbox"]:not(.no-cr-chk):not(.toggle-input):disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+/* Кастомные пары «скрытый input + свой UI» — не трогаем визуал */
+.inp-check > input[type="checkbox"],
+.inp-switch > input[type="checkbox"],
+.emp-selector-item > input[type="checkbox"],
+.emp-selector-item input[type="checkbox"],
+label.inp-check input[type="checkbox"],
+label.inp-switch input[type="checkbox"] {
+  appearance: none !important;
+  -webkit-appearance: none !important;
+  width: 1px !important;
+  height: 1px !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  opacity: 0 !important;
+  position: absolute !important;
+  border: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  display: block !important;
+  pointer-events: none !important;
+}
+
+.emp-selector-item input[type="checkbox"] {
+  display: none !important;
+}
+
+/* Светлая тема: чуть плотнее рамка в unchecked */
+html[data-theme="light"] input[type="checkbox"]:not(.no-cr-chk):not(.toggle-input):not(:checked):not(:indeterminate) {
+  border-color: color-mix(in srgb, var(--brd, rgba(139, 120, 90, 0.35)) 100%, transparent);
+  background: var(--bg2, #fff);
+}

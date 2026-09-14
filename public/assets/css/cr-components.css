@@ -96,7 +96,9 @@
   pointer-events: none;
 }
 
-.cr-select--open .cr-select__dropdown {
+.cr-select--open .cr-select__dropdown,
+.cr-select__dropdown--open {
+  /* --open: панель на body (portal), не потомок .cr-select--open */
   opacity: 1;
   transform: translateY(0);
   pointer-events: auto;
@@ -289,7 +291,7 @@
   background: var(--bg4);
   border-radius: 12px;
   font-size: 12px;
-  max-width: 160px;
+  max-width: 280px;
 }
 
 .cr-emp-picker__chip-avatar {

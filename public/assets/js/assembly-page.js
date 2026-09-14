@@ -16,6 +16,18 @@ window.AsgardAssemblyPage = (function() {
   const dt=d=>d?new Date(d).toLocaleDateString('ru-RU'):'—';
   const dtF=d=>d?new Date(d).toLocaleString('ru-RU',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}):'—';
   const badge=s=>`<span class="asm-status asm-status--${(s||'').replace(/_/g,'-')}">${STATUSES[s]||s}</span>`;
+  /** Демо/E2E-заголовки сборок → «Сборка #id» + объект при наличии. */
+  function humanAsmTitle(a) {
+    if (!a) return 'Сборка';
+    const raw = String(a.work_title || a.title || a.name || '').trim();
+    const id = a.id != null ? a.id : '';
+    const obj = String(a.destination || a.object_name || '').trim();
+    if (/FULL-BIZ|E2E|Монтаж\s*тест|STORY\s*wave|WAVE\s*partial|\d{10,}/i.test(raw) || !raw) {
+      const base = id !== '' ? ('Сборка #' + id) : 'Сборка';
+      return obj ? (base + ' · ' + obj) : base;
+    }
+    return raw;
+  }
 
   function renderFilters(el){
     el.innerHTML=`<div class="asm-toolbar">
@@ -39,18 +51,31 @@ window.AsgardAssemblyPage = (function() {
   }
 
   function renderCards(items,el){
-    if(!items.length){el.innerHTML='<div style="padding:40px;text-align:center;color:var(--t2)">Ведомостей нет</div>';return;}
-    el.innerHTML=`<div class="asm-cards">${items.map(a=>{
+    if(!items.length){el.innerHTML='<div style="padding:40px;text-align:center;color:var(--t2)">Очередь пуста — нет сборок к комплектации</div>';return;}
+    el.innerHTML=`<div style="margin-bottom:10px;display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
+      <div style="font-size:13px;color:var(--t2)">Что собрать · для кого</div>
+      <button type="button" class="btn primary" id="asm-q-refresh">Обновить очередь</button>
+    </div>
+      <div class="asm-queue">${items.map(a=>{
       const pct=a.items_count>0?Math.round((a.packed_count/a.items_count)*100):0;
-      return `<div class="asm-card" data-id="${a.id}">
-        <div class="asm-card__header"><span class="asm-card__title">${esc(a.title||TYPE_LABELS[a.type]||'')}</span>${badge(a.status)}</div>
-        <div class="asm-card__meta">${TYPE_LABELS[a.type]||a.type} • ${esc(a.work_title||'')} • ${a.items_count||0} поз. • ${a.pallets_count||0} мест</div>
-        <div class="asm-card__meta">${a.destination?'→ '+esc(a.destination):''} ${a.planned_date?'• План: '+dt(a.planned_date):''}</div>
-        <div class="asm-card__progress"><div class="asm-progress"><div class="asm-progress__bar" style="width:${pct}%"></div></div>
-          <span style="font-size:11px;color:var(--t2)">${pct}% собрано</span></div>
+      const who=a.pm_name||a.creator_name||'—';
+      return `<div class="asm-queue__card" data-id="${a.id}">
+        <div class="asm-queue__top">
+          <div>
+            <div class="asm-queue__who">${esc(humanAsmTitle(a))}</div>
+            <div class="asm-queue__meta">Для: <b>${esc(who)}</b> · ${TYPE_LABELS[a.type]||a.type} · ${a.items_count||0} поз.${a.planned_date?' · план '+dt(a.planned_date):''}${a.destination?' · → '+esc(a.destination):''}</div>
+          </div>
+          <div style="text-align:right">
+            ${badge(a.status)}
+            <div class="asm-queue__pct" style="margin-top:6px">${pct}%</div>
+          </div>
+        </div>
+        <div class="asm-queue__bar"><i style="width:${pct}%"></i></div>
       </div>`;
     }).join('')}</div>`;
-    el.querySelectorAll('.asm-card[data-id]').forEach(c=>c.onclick=()=>openDetail(+c.dataset.id));
+    const ref=el.querySelector('#asm-q-refresh');
+    if(ref) ref.onclick=()=>refresh();
+    el.querySelectorAll('.asm-queue__card[data-id]').forEach(c=>c.onclick=()=>openDetail(+c.dataset.id));
   }
 
   async function openDetail(id){
@@ -64,18 +89,22 @@ window.AsgardAssemblyPage = (function() {
     const pct=items.length?Math.round(items.filter(i=>i.packed).length/items.length*100):0;
 
     let html=`<div class="asm-detail">
-      <div class="asm-detail__header"><div><h2 style="margin:0">${esc(a.title||'#'+a.id)}</h2>${badge(a.status)}</div>
-        <span>${TYPE_LABELS[a.type]||a.type}</span></div>
-      <dl class="asm-detail__meta">
-        <dt>Работа</dt><dd>${esc(a.work_title||'—')}</dd>
+      <div class="asm-detail__header" style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start;flex-wrap:wrap">
+        <div>
+          <div style="font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--t2);font-weight:600;margin-bottom:4px">Сборка для работы</div>
+          <h2 style="margin:0;font-size:20px;letter-spacing:-.02em">${esc(humanAsmTitle(a))}</h2>
+          <div style="margin-top:6px;font-size:13px;color:var(--t2)">${TYPE_LABELS[a.type]||a.type} · РП: ${esc(a.creator_name||'—')}</div>
+        </div>
+        ${badge(a.status)}
+      </div>
+      <dl class="asm-detail__meta" style="margin-top:14px">
         <dt>Объект</dt><dd>${esc(a.destination||a.object_name||'—')}</dd>
-        <dt>Создал</dt><dd>${esc(a.creator_name||'')} ${dtF(a.created_at)}</dd>
+        <dt>Создано</dt><dd>${dtF(a.created_at)}</dd>
         ${a.planned_date?`<dt>План</dt><dd>${dt(a.planned_date)}</dd>`:''}
         ${a.actual_sent_at?`<dt>Отправлено</dt><dd>${dtF(a.actual_sent_at)}</dd>`:''}
-        ${a.actual_received_at?`<dt>Принято</dt><dd>${dtF(a.actual_received_at)}</dd>`:''}
       </dl>
-      <div class="asm-progress" style="margin-bottom:16px"><div class="asm-progress__bar" style="width:${pct}%"></div></div>
-      <div style="font-size:12px;color:var(--t2);margin-bottom:16px">Прогресс: ${pct}% (${items.filter(i=>i.packed).length}/${items.length})</div>`;
+      <div class="asm-progress" style="margin:14px 0 8px"><div class="asm-progress__bar" style="width:${pct}%"></div></div>
+      <div style="font-size:12px;color:var(--t2);margin-bottom:16px">Собрано ${items.filter(i=>i.packed).length} из ${items.length} · ${pct}%</div>`;
 
     // ── Compact summary + Visual Pallet Builder mount ──
     html += `<div class="asm-detail__section">
@@ -86,7 +115,7 @@ window.AsgardAssemblyPage = (function() {
           <span>🏷️ ${items.filter(i=>i.pallet_id).length} распределено</span>
         </div>
       </div>
-      ${canEdit ? '<button class="btn ghost" id="asm-add-item" style="font-size:12px;margin-bottom:12px">+ Добавить позицию вручную</button>' : ''}
+      ${canEdit ? '<button class="btn primary" id="asm-add-item" style="font-size:12px;margin-bottom:12px">+ Добавить позицию вручную</button>' : ''}
       <div id="asm-dnd-mount"></div>
     </div>`;
 
@@ -100,11 +129,55 @@ window.AsgardAssemblyPage = (function() {
       html+=`<button class="btn ghost" id="asm-demob">🏠 Создать демоб</button>`;
     if(a.type==='demobilization'&&['in_transit','received'].includes(a.status)&&['WAREHOUSE','ADMIN'].includes(_user.role))
       html+=`<button class="btn primary" id="asm-receive-all">📦 Принять на склад</button>`;
-    html+=`<a href="/api/assembly/${a.id}/checklist-pdf" target="_blank" class="btn ghost">🖨️ Чек-лист</a>`;
-    html+=`<a href="/api/assembly/${a.id}/export-excel" target="_blank" class="btn ghost">📥 Excel</a>`;
-    html+=`</div></div>`;
+    if(a.type==='mobilization'&&['in_transit','packed','received'].includes(a.status)&&['WAREHOUSE','ADMIN','PM','HEAD_PM'].includes(_user.role))
+      html+=`<button class="btn ghost" id="asm-site-bulk">📋 Отметить получение списком (ОПО)</button>`;
+    if(canEdit&&['confirmed','packing','packed','draft'].includes(a.status)&&['PM','HEAD_PM','WAREHOUSE','ADMIN','DIRECTOR_GEN','DIRECTOR_COMM','DIRECTOR_DEV'].includes(_user.role))
+      html+=`<button class="btn ghost" id="asm-change-order">✏️ Изменение состава</button>`;
+    html+=`<button type="button" class="btn ghost" data-asm-pdf="/api/assembly/${a.id}/checklist-pdf">Чек-лист / упак. лист</button>`;
+    html+=`<a href="/api/assembly/${a.id}/export-excel" target="_blank" class="btn ghost">Excel</a>`;
+    if(pallets.length){
+      pallets.slice(0,8).forEach(p=>{
+        html+=`<button type="button" class="btn ghost" data-asm-pdf="/api/assembly/${a.id}/pallets/${p.id}/label-pdf" title="Бирка паллета">Бирка #${p.id}</button>`;
+      });
+    }
+    if(a.type==='demobilization'&&['received','in_transit'].includes(a.status)&&['WAREHOUSE','ADMIN','PM','HEAD_PM'].includes(_user.role))
+      html+=`<button class="btn ghost" id="asm-reconcile">Сверка демоб (variance)</button>`;
+    html+=`</div>
+      <div id="asm-live-bar" style="margin-top:12px;font-size:12px;color:var(--t2)">Онлайн: обновление…</div>
+    </div>`;
 
     showModal({title:`Ведомость #${a.id}`,html:html});
+
+    document.querySelectorAll('[data-asm-pdf]').forEach(btn=>{
+      btn.onclick=async()=>{
+        try{
+          const r=await fetch(btn.getAttribute('data-asm-pdf'),{headers:hdr()});
+          if(!r.ok) throw new Error('HTTP '+r.status);
+          const blob=await r.blob();
+          const u=URL.createObjectURL(blob);
+          window.open(u,'_blank','noopener');
+          setTimeout(()=>URL.revokeObjectURL(u),120000);
+        }catch(e){toast('PDF',e.message||'Не удалось открыть','err');}
+      };
+    });
+
+    // live poll
+    if(window.__asmLiveTimer) clearInterval(window.__asmLiveTimer);
+    async function tickLive(){
+      const bar=document.getElementById('asm-live-bar');
+      if(!bar){clearInterval(window.__asmLiveTimer);return;}
+      try{
+        const live=await apiFetch(`/api/assembly/${a.id}/live`);
+        const packed=live.packed_count!=null?live.packed_count:(live.packed||0);
+        const total=live.total_count!=null?live.total_count:(live.total||items.length);
+        const lp=total?Math.round(100*packed/total):0;
+        bar.textContent=`Онлайн: собрано ${packed} из ${total} (${lp}%) · обновлено ${new Date().toLocaleTimeString('ru-RU')}`;
+        const prog=document.querySelector('.asm-progress__bar');
+        if(prog) prog.style.width=lp+'%';
+      }catch(_){ bar.textContent='Онлайн: нет данных'; }
+    }
+    tickLive();
+    window.__asmLiveTimer=setInterval(tickLive,5000);
 
     // ── Init Visual Pallet Builder (WOW Edition) ──
     setTimeout(() => {
@@ -125,6 +198,21 @@ window.AsgardAssemblyPage = (function() {
     if(confirmBtn)confirmBtn.onclick=async()=>{await apiPut(`/api/assembly/${a.id}/confirm`,{});toast('Подтверждено','','ok');openDetail(a.id);};
     const sendBtn=document.getElementById('asm-send');
     if(sendBtn)sendBtn.onclick=async()=>{const r=await apiPut(`/api/assembly/${a.id}/send`,{});if(r.error){toast('Ошибка',r.error,'err');return;}toast('Отправлено','','ok');openDetail(a.id);};
+    const reconcileBtn=document.getElementById('asm-reconcile');
+    if(reconcileBtn)reconcileBtn.onclick=async()=>{
+      try{
+        const r=await apiPost(`/api/assembly/${a.id}/reconcile`,{});
+        const lost=r.lost||r.missing||[];
+        const ok=r.received||r.ok||[];
+        const still=r.still_on_site||r.on_site||[];
+        showModal({title:'Сверка демоб',html:`<div class="proc-pay-modal" style="max-width:520px">
+          <div class="proc-pay-modal__section"><div class="proc-pay-modal__section-title">Приехало</div><div>${(ok.length||r.received_count||0)} поз.</div></div>
+          <div class="proc-pay-modal__section"><div class="proc-pay-modal__section-title">Утрачено / не найдено</div><div>${Array.isArray(lost)?lost.map(x=>esc(x.name||x)).join('<br>')||'—':esc(String(lost))}</div></div>
+          <div class="proc-pay-modal__section"><div class="proc-pay-modal__section-title">Ещё на объекте</div><div>${Array.isArray(still)?still.map(x=>esc(x.name||x)).join('<br>')||'—':esc(String(still))}</div></div>
+          <pre style="font-size:11px;color:var(--t3);max-height:160px;overflow:auto">${esc(JSON.stringify(r,null,2).slice(0,2000))}</pre>
+        </div>`});
+      }catch(e){toast('Ошибка',e.message,'err');}
+    };
     const demobBtn=document.getElementById('asm-demob');
     if(demobBtn)demobBtn.onclick=async()=>{const r=await apiPost(`/api/assembly/${a.id}/create-demob`,{});if(r.error){toast('Ошибка',r.error,'err');return;}toast('Демоб создана','','ok');openDetail(r.item.id);};
 
@@ -136,9 +224,87 @@ window.AsgardAssemblyPage = (function() {
       toast('Принято',`${r.returned} возвр., ${r.written_off} спис.`,'ok');closeModal();refresh();
     };
 
+    const siteBulk=document.getElementById('asm-site-bulk');
+    if(siteBulk)siteBulk.onclick=()=>openSiteReceiptBulk(a.id, items);
+
+    const coBtn=document.getElementById('asm-change-order');
+    if(coBtn)coBtn.onclick=()=>openChangeOrder(a.id, items);
+
     const addItemBtn=document.getElementById('asm-add-item');
     if(addItemBtn)addItemBtn.onclick=()=>openAddItemDialog(a.id);
     // Паллеты, drag-drop, return_status — всё внутри AsgardAssemblyDnD
+  }
+
+  function openSiteReceiptBulk(asmId, items){
+    const pending=(items||[]).filter(i=>!i.received);
+    const html=`<div style="min-width:340px;max-width:520px">
+      <div style="font-size:13px;color:var(--t2);margin-bottom:10px">ОПО без телефона — отметьте позиции, фактически принятые на объекте.</div>
+      <div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap">
+        <button class="btn ghost" id="asm-sr-all" style="font-size:12px">Выбрать все</button>
+        <button class="btn ghost" id="asm-sr-none" style="font-size:12px">Снять все</button>
+      </div>
+      <div style="max-height:320px;overflow:auto;border:1px solid var(--border,#262c38);border-radius:10px;padding:8px 10px">
+        ${(items||[]).length? (items||[]).map(it=>`<label style="display:flex;gap:8px;align-items:flex-start;padding:7px 0;border-bottom:1px solid var(--border,#1e2430);font-size:13px">
+          <input type="checkbox" data-sri="${it.id}" ${it.received?'disabled':(pending.length?'checked':'')}>
+          <span>${esc(it.name||'')} · ${it.quantity||1} ${esc(it.unit||'шт')}${it.received?' <span style="color:var(--ok-t,#30d158)">✓ получено</span>':''}</span>
+        </label>`).join('') : '<div style="padding:20px;color:var(--t2);text-align:center">Нет позиций</div>'}
+      </div>
+      <button class="btn primary" id="asm-sr-go" style="margin-top:12px;width:100%">Отметить выбранные</button>
+    </div>`;
+    showModal({title:'📋 ОПО — получение списком',html});
+    document.getElementById('asm-sr-all').onclick=()=>document.querySelectorAll('[data-sri]:not(:disabled)').forEach(c=>{c.checked=true;});
+    document.getElementById('asm-sr-none').onclick=()=>document.querySelectorAll('[data-sri]:not(:disabled)').forEach(c=>{c.checked=false;});
+    document.getElementById('asm-sr-go').onclick=async()=>{
+      const ids=[...document.querySelectorAll('[data-sri]:checked')].map(c=>+c.dataset.sri);
+      if(!ids.length){toast('Внимание','Ничего не выбрано','warn');return;}
+      const r=await apiPost(`/api/assembly/${asmId}/site-receipt-bulk`,{item_ids:ids,note:'ОПО без телефона'});
+      if(r.error){toast('Ошибка',r.error,'err');return;}
+      toast('Получение','Отмечено позиций: '+(r.updated||0),'ok');
+      closeModal();openDetail(asmId);
+    };
+  }
+
+  function openChangeOrder(asmId, items){
+    const html=`<div style="min-width:360px;max-width:560px;display:flex;flex-direction:column;gap:12px">
+      <div style="font-size:13px;color:var(--t2)">Корзина уже создала сборку. Здесь — дозаказ / снятие позиции после submit (change-order).</div>
+      <div style="border:1px solid var(--border,#262c38);border-radius:10px;padding:8px 10px;max-height:220px;overflow:auto">
+        ${(items||[]).length?(items||[]).map(it=>`<div style="display:flex;gap:8px;align-items:center;padding:6px 0;border-bottom:1px solid var(--border,#1e2430);font-size:13px">
+          <div style="flex:1;min-width:0">${esc(it.name||'')} · ${it.quantity||1} ${esc(it.unit||'шт')}
+            <div style="font-size:11px;color:var(--t2)">${esc(it.source||'')} · ${esc(it.line_status||'')}${it.packed?' · на паллете':''}</div>
+          </div>
+          <button class="btn ghost" data-co-rm="${it.id}" style="font-size:12px;padding:4px 8px">${it.packed||it.pallet_id?'↩ Unpick':'Убрать'}</button>
+        </div>`).join(''):'<div style="padding:12px;color:var(--t2)">Позиций нет</div>'}
+      </div>
+      <div style="font-weight:600;font-size:13px">Добавить</div>
+      <input id="asm-co-name" placeholder="Наименование" style="padding:10px 12px;border-radius:10px;border:1px solid var(--border,#262c38);background:var(--bg-input,#10141b);color:var(--t1,#e6e9ef)">
+      <div style="display:flex;gap:8px">
+        <input id="asm-co-qty" type="number" value="1" min="0" step="any" style="flex:1;padding:10px 12px;border-radius:10px;border:1px solid var(--border,#262c38);background:var(--bg-input,#10141b);color:var(--t1,#e6e9ef)">
+        <select id="asm-co-act" style="flex:1;padding:10px 12px;border-radius:10px;border:1px solid var(--border,#262c38);background:var(--bg-input,#10141b);color:var(--t1,#e6e9ef)">
+          <option value="add_stock">Со склада (add_stock)</option>
+          <option value="procure">В закупку (procure)</option>
+        </select>
+      </div>
+      <button class="btn primary" id="asm-co-add">Добавить позицию</button>
+      <button class="btn ghost" id="asm-co-back">← К ведомости</button>
+    </div>`;
+    showModal({title:`Изменение состава · #${asmId}`,html});
+    document.querySelectorAll('[data-co-rm]').forEach(b=>b.onclick=async()=>{
+      const r=await apiPost(`/api/assembly/${asmId}/change-order`,{action:'remove',item_id:+b.dataset.coRm});
+      if(r.error){toast('Ошибка',r.error,'err');return;}
+      toast(r.unpick_requested?'Unpick':'Удалено',r.unpick_requested?'В очереди склада':'','ok');
+      openChangeOrder(asmId, (await apiFetch(`/api/assembly/${asmId}`)).items||[]);
+    });
+    document.getElementById('asm-co-add').onclick=async()=>{
+      const name=(document.getElementById('asm-co-name').value||'').trim();
+      if(!name){toast('Внимание','Укажите наименование','warn');return;}
+      const action=document.getElementById('asm-co-act').value;
+      const quantity=parseFloat(document.getElementById('asm-co-qty').value)||1;
+      const r=await apiPost(`/api/assembly/${asmId}/change-order`,{action,name,quantity});
+      if(r.error){toast('Ошибка',r.error,'err');return;}
+      toast('Добавлено','','ok');
+      openChangeOrder(asmId, (await apiFetch(`/api/assembly/${asmId}`)).items||[]);
+    };
+    document.getElementById('asm-co-back').onclick=()=>{closeModal();openDetail(asmId);};
   }
 
   // Быстрое добавление позиции с автокомплитом каталога (вместо prompt)

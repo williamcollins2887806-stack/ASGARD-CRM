@@ -470,8 +470,12 @@ window.AsgardMeetings = (function(){
           </div>
         </div>
         <div class="form-group">
-          <label>Место / Ссылка</label>
-          <input type="text" id="meeting-location" class="input" placeholder="Переговорная №1 или https://meet.google.com/...">
+          <label>Место</label>
+          <input type="text" id="meeting-location" class="input" placeholder="Переговорная №1">
+        </div>
+        <div class="form-group">
+          <label>Ссылка ВКС</label>
+          <input type="text" id="meeting-conference" class="input" placeholder="https://…">
         </div>
         <div class="form-group">
           <label>Повестка дня</label>
@@ -480,6 +484,13 @@ window.AsgardMeetings = (function(){
         <div class="form-group">
           <label>Участники (${activeUsers.length} доступно)</label>
           <div id="meetingPickerWrap"></div>
+        </div>
+        <div class="form-group">
+          <label>Гости (email через запятую)</label>
+          <input type="text" id="meeting-guests" class="input" placeholder="guest@company.ru, other@mail.ru">
+        </div>
+        <div class="muted" style="font-size:12px;margin-bottom:8px">
+          После создания встреча появится в <a href="#/calendar">Календаре</a>. Протокол — здесь.
         </div>
         <div class="row between mt-4">
           <button class="btn" onclick="AsgardUI.closeModal()">Отмена</button>
@@ -519,8 +530,11 @@ window.AsgardMeetings = (function(){
     const startTime = $('#meeting-start')?.value;
     const endTime = $('#meeting-end')?.value;
     const location = $('#meeting-location')?.value?.trim();
+    const conference = $('#meeting-conference')?.value?.trim();
     const agenda = $('#meeting-agenda')?.value?.trim();
     const participantIds = CREmployeePicker.getSelected(MEETING_PICKER_ID);
+    const guestsRaw = $('#meeting-guests')?.value || '';
+    const guests = guestsRaw.split(/[,;\s]+/).map(e => e.trim().toLowerCase()).filter(e => e.includes('@')).map(email => ({ email }));
 
     if (!title) {
       toast('Укажите название', 'error');
@@ -537,8 +551,11 @@ window.AsgardMeetings = (function(){
         start_time: startTime,
         end_time: endTime || null,
         location: location || null,
+        conference_url: conference || null,
         agenda: agenda || null,
-        participant_ids: participantIds
+        participant_ids: participantIds,
+        guests,
+        send_invites: true
       });
       toast('Совещание создано', 'success');
       CREmployeePicker.destroy(MEETING_PICKER_ID);

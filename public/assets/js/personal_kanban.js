@@ -92,14 +92,11 @@ window.AsgardPersonalKanbanPage = (function () {
     { id: 'lose',     ic: '❌', title: 'Проиграно', cls: 'pk3-lose' },
     { id: 'work',     ic: '🏗', title: 'В работе' }
   ];
-  // 8 этапов в drawer (1-в-1 demo)
+  // 8 этапов в drawer (legacy page; V3 uses STAGE_LABELS / COL_TO_STAGE)
   const PK3_STAGES = [
-    { lbl: '📥 Новая' }, { lbl: '🧮 Просчёт' }, { lbl: '⚖️ Согл.' }, { lbl: '📋 КП готов' },
-    { lbl: '📤 КП ушло' }, { lbl: '🏆 Выигр.' }, { lbl: '❌ Проигр.' }, { lbl: '🏗 В работе' }
+    { lbl: 'Новая' }, { lbl: 'Просчёт' }, { lbl: 'Согл.' }, { lbl: 'КП готов' },
+    { lbl: 'КП ушло' }, { lbl: 'Выигр.' }, { lbl: 'Проигр.' }, { lbl: 'В работе' }
   ];
-  const PK3_COL_TO_STAGE = {
-    new: 0, calc: 1, approval: 2, kp_prep: 3, sent: 4, win: 5, lose: 6, work: 7
-  };
   // Маппинг kind → класс badge
   function _pk3KindClass(k) {
     if (!k) return 'pk3-app';
@@ -2125,8 +2122,14 @@ window.AsgardPersonalKanbanV3 = (function () {
     { id: 'tender',      label: '📋 Тендеры' },
     { id: 'work',        label: '🏗 Работы' },
   ];
-  const STAGE_LABELS = ['📥 Новая', '🧮 Просчёт', '❓ Дозапрос', '📋 КП готов', '⚖️ Согл. дир', '📤 КП ушло', '🏆 Выигр.', '❌ Проигр.', '🏗 В работе'];
-  const COL_TO_STAGE = { new: 0, calc: 1, addendum: 2, kp_prep: 3, approval: 4, sent: 5, win: 6, lose: 7, work: 8 };
+  const STAGE_LABELS = ['Новая', 'Просчёт', 'Согласование', 'КП готов', 'КП ушло', 'Дозапрос', 'Выиграно', 'Проиграно', 'В работе'];
+  const COL_TO_STAGE = { new: 0, calc: 1, approval: 2, kp_prep: 3, sent: 4, addendum: 5, win: 6, lose: 7, work: 8 };
+  const PK3_FIN_COLS = new Set(['kp_prep', 'approval', 'sent', 'addendum', 'win', 'work']);
+  let _docExplorerSelKey = null;
+  let _docExplorerSelKeys = [];
+  let _docExplorerSort = { key: 'name', dir: 1 }; // name|size, dir 1|-1
+  let _docExplorerAnchorKey = null;
+  let _docNavHistory = [];
 
   // S-15: scope helpers — определяет режим выборки по роли и (для HEAD_TO) toggle из LS
   function _computeScope() {
@@ -2152,9 +2155,152 @@ window.AsgardPersonalKanbanV3 = (function () {
     return 'Канбан · полный цикл';
   }
 
+  // ── Drawer CSS (стикеры + проводник) — versioned, отдельно от shell ──
+  const PK3_DRAWER_STYLE_VER = 'drawer-v5-20260714';
+  const PK3_SHELL_STYLE_VER = 'pk3-shell-v5-20260714';
+  const PK3_UI_STYLE_VER = 'pk3-ui-v5-20260714';
+
+  const _PK3_ICO = {
+    folder: '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7h5l2 2h11v10H3z"/></svg>',
+    file: '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>',
+    eye: '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>',
+    dl: '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>',
+    edit: '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>',
+    trash: '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/></svg>',
+    back: '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>',
+    up: '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><polyline points="18 15 12 9 6 15"/></svg>',
+    close: '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>',
+    check: '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2"><polyline points="20 6 9 17 4 12"/></svg>',
+    save: '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>',
+    note: '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M8 13h8M8 17h5"/></svg>',
+    clock: '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>',
+    mail: '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16v16H4z"/><path d="M4 7l8 6 8-6"/></svg>',
+    user: '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21a8 8 0 0 0-16 0"/><circle cx="12" cy="8" r="4"/></svg>',
+    bot: '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="8" width="14" height="10" rx="2"/><path d="M12 2v4M9 13h.01M15 13h.01"/></svg>',
+    wrench: '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L3 18v3h3l6.3-6.3a4 4 0 0 0 5.4-5.4z"/></svg>',
+    calc: '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="3" width="14" height="18" rx="2"/><path d="M8 7h8M8 11h2M12 11h2M16 11h0M8 15h2M12 15h2M16 15h0"/></svg>',
+    clip: '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.4 11.6l-8.5 8.5a5 5 0 0 1-7.1-7.1l9.2-9.2a3.5 3.5 0 0 1 5 5l-9.2 9.2a2 2 0 1 1-2.8-2.8l8.1-8.1"/></svg>',
+    coin: '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v10M9.5 9.5c.8-1 2-1.5 2.5-1.5s1.7.5 2.5 1.5M9.5 14.5c.8 1 2 1.5 2.5 1.5s1.7-.5 2.5-1.5"/></svg>',
+    list: '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg>',
+    hist: '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 3-6.7"/><polyline points="3 4 3 9 8 9"/><path d="M12 7v5l3 2"/></svg>',
+    search: '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>',
+    pin: '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 17v5M9 3h6l-1 7h3l-5 6-5-6h3z"/></svg>',
+  };
+
+  function _ensurePk3Fonts() {
+    if (!document.getElementById('asg-pk-fonts')) {
+      const fLink = document.createElement('link');
+      fLink.id = 'asg-pk-fonts';
+      fLink.rel = 'stylesheet';
+      fLink.href = 'https://fonts.googleapis.com/css2?family=Caveat:wght@500;700&display=swap';
+      document.head.appendChild(fLink);
+    }
+  }
+
+  function _injectPk3DrawerStyles() {
+    _ensurePk3Fonts();
+    const prev = document.getElementById('asg-pk3-drawer-styles');
+    if (prev && prev.dataset.pkStyleVer === PK3_DRAWER_STYLE_VER) return;
+    if (prev) prev.remove();
+    const css = `
+/* PK3 drawer: документы + стикеры (v3) */
+.pk3-drawer { --pk3-drawer-w: 920px; }
+.pk3-doc-explorer-wrap { display: flex; flex-direction: column; gap: 10px; }
+.pk3-doc-explorer-grid { display: grid; grid-template-columns: minmax(140px, 32%) 1fr; gap: 12px; min-height: 200px; }
+.pk3-doc-breadcrumb { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; font-size: 11px; color: var(--t3); margin-bottom: 4px; }
+.pk3-doc-breadcrumb button { background: transparent; border: none; color: var(--t2); cursor: pointer; font-size: 11px; padding: 2px 4px; border-radius: 4px; font-family: inherit; }
+.pk3-doc-breadcrumb button:hover { color: var(--gold-l); background: var(--gold-bg); }
+.pk3-doc-breadcrumb .pk3-bc-sep { opacity: .45; user-select: none; }
+.pk3-doc-folders { display: flex; flex-direction: column; gap: 3px; border-right: 1px solid var(--brd-m); padding-right: 10px; max-height: 320px; overflow-y: auto; }
+.pk3-doc-folder { display: flex; align-items: center; justify-content: space-between; gap: 6px; padding: 8px 9px; border-radius: 8px; border: 1px solid transparent; background: var(--bg3); cursor: pointer; font-size: 12px; color: var(--t2); transition: all .15s ease; }
+.pk3-doc-folder:hover { border-color: var(--brd-m); color: var(--t1); background: var(--bg4); }
+.pk3-doc-folder.pk3-active { border-color: var(--gold); background: var(--gold-bg); color: var(--gold-l); box-shadow: inset 0 0 0 1px rgba(212,168,67,.15); }
+.pk3-doc-folder-ic { flex-shrink: 0; font-size: 13px; opacity: .85; }
+.pk3-doc-folder-count { font-size: 10px; color: var(--t3); background: var(--bg4); padding: 1px 6px; border-radius: 999px; font-weight: 600; }
+.pk3-doc-folder .pk3-doc-folder-sys { font-size: 9px; color: var(--t3); opacity: .75; margin-left: 4px; }
+.pk3-doc-folder-actions { display: flex; gap: 2px; opacity: 0; transition: opacity .15s; }
+.pk3-doc-folder:hover .pk3-doc-folder-actions { opacity: 1; }
+.pk3-doc-folder-act { background: transparent; border: none; color: var(--t3); cursor: pointer; font-size: 11px; padding: 2px 5px; border-radius: 4px; }
+.pk3-doc-folder-act:hover { color: var(--gold-l); background: var(--bg4); }
+.pk3-doc-files { min-height: 140px; border-radius: 10px; border: 1.5px dashed transparent; padding: 4px; transition: border-color .15s, background .15s; }
+.pk3-doc-files.pk3-doc-dropzone.pk3-doc-drop-over { border-color: var(--gold); background: var(--gold-bg); }
+.pk3-doc-empty { color: var(--t3); font-size: 12px; padding: 28px 12px; text-align: center; line-height: 1.5; border: 1.5px dashed var(--brd); border-radius: 10px; background: var(--bg3); }
+.pk3-doc-toolbar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.pk3-doc-toolbar .pk3-doc-toolbar-info { margin-left: auto; font-size: 11px; color: var(--t3); }
+.pk3-doc-row { display: flex; align-items: center; gap: 10px; padding: 10px 12px; background: var(--bg3); border: 1px solid var(--brd-m); border-radius: 8px; margin-bottom: 6px; color: var(--t1); font-size: 12.5px; transition: all .12s ease; }
+.pk3-doc-row:hover { border-color: var(--gold); background: var(--bg4); transform: translateX(2px); }
+.pk3-doc-ic { font-size: 16px; width: 22px; text-align: center; flex-shrink: 0; }
+.pk3-doc-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; }
+.pk3-doc-size { font-size: 10.5px; color: var(--t3); flex-shrink: 0; }
+.pk3-doc-actions { display: flex; gap: 4px; flex-shrink: 0; }
+.pk3-doc-btn { width: 30px; height: 30px; border-radius: 7px; border: 1px solid var(--brd-m); background: var(--bg2); color: var(--t2); cursor: pointer; font-size: 12px; display: inline-flex; align-items: center; justify-content: center; transition: all .12s ease; }
+.pk3-doc-btn:hover { color: var(--gold-l); border-color: var(--gold); background: var(--gold-bg); }
+.pk3-doc-ctx { position: fixed; z-index: 100010; background: var(--bg2); border: 1px solid var(--brd-m); border-radius: 10px; padding: 4px; min-width: 168px; box-shadow: 0 12px 32px rgba(0,0,0,.45); }
+.pk3-doc-ctx button { display: block; width: 100%; text-align: left; padding: 8px 12px; border: none; background: transparent; color: var(--t1); font-size: 12px; cursor: pointer; border-radius: 6px; font-family: inherit; }
+.pk3-doc-ctx button:hover { background: var(--gold-bg); color: var(--gold-l); }
+.pk3-doc-ctx button.pk3-danger:hover { background: var(--err-bg); color: var(--err-t); }
+.pk3-doc-move-menu { position: absolute; right: 0; top: 100%; z-index: 20; background: var(--bg2); border: 1px solid var(--brd-m); border-radius: 8px; padding: 4px; min-width: 190px; max-height: 220px; overflow: auto; box-shadow: 0 8px 24px rgba(0,0,0,.4); }
+.pk3-doc-move-menu button { display: block; width: 100%; text-align: left; padding: 7px 10px; border: none; background: transparent; color: var(--t2); font-size: 11.5px; cursor: pointer; border-radius: 5px; font-family: inherit; }
+.pk3-doc-move-menu button:hover { background: var(--bg3); color: var(--t1); }
+
+/* Sticky board — full overlay left of drawer */
+.pk3-sticky-board { position: fixed; top: 0; bottom: 0; left: 0; right: var(--pk3-drawer-w, 920px); width: auto; z-index: 99999; display: none; flex-direction: column; background: transparent; pointer-events: none; overflow: hidden; font-family: var(--font-sans, Inter, system-ui, sans-serif); }
+.pk3-sticky-board.pk3-show { display: block; }
+.pk3-sticky-board-head { position: absolute; top: 18px; left: 20px; z-index: 3; display: flex; align-items: center; gap: 10px; padding: 8px 14px; font-size: 14px; font-weight: 600; color: #fff; letter-spacing: .2px; text-shadow: 0 1px 4px rgba(0,0,0,.6); background: rgba(0,0,0,.38); backdrop-filter: blur(10px); border-radius: 12px; border: 1px solid rgba(255,255,255,.12); pointer-events: auto; }
+.pk3-sticky-board-head .pk3-count-badge { margin-left: 6px; font-size: 11px; color: #2a1f08; font-weight: 700; background: rgba(255,248,161,.96); border: 1px solid rgba(0,0,0,.1); padding: 2px 9px; border-radius: 9999px; box-shadow: 0 2px 6px rgba(0,0,0,.2); text-shadow: none; }
+.pk3-sticky-board-hint { position: absolute; top: 62px; left: 20px; z-index: 3; font-size: 11.5px; color: rgba(255,255,255,.88); padding: 4px 10px; text-shadow: 0 1px 3px rgba(0,0,0,.65); background: rgba(0,0,0,.22); border-radius: 8px; pointer-events: none; max-width: min(420px, calc(100% - 40px)); }
+.pk3-sticky-board .pk3-stk-list { position: absolute; inset: 0; overflow: hidden; display: block; padding: 0; scrollbar-width: none; box-sizing: border-box; pointer-events: auto; }
+.pk3-sticky-board .pk3-stk-list::-webkit-scrollbar { display: none; }
+.pk3-sticky-board .pk3-stk-list-empty { position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); text-align: center; color: rgba(255,255,255,.78); padding: 20px; font-size: 15px; font-family: 'Caveat', cursive; text-shadow: 0 1px 4px rgba(0,0,0,.55); pointer-events: none; }
+
+.pk3-sticker-v2 { position: absolute; box-sizing: border-box; width: var(--stk-w, 200px); height: var(--stk-h, 140px); padding: calc(14px * var(--stk-s,1)) calc(12px * var(--stk-s,1)) calc(10px * var(--stk-s,1)); padding-top: calc(18px * var(--stk-s,1)); display: flex; flex-direction: column; color: #2a1f08; background: #fff782; border: 1px solid rgba(60,40,10,.1); border-radius: calc(10px * var(--stk-s,1)) calc(10px * var(--stk-s,1)) calc(10px * var(--stk-s,1)) calc(4px * var(--stk-s,1)); box-shadow: 2px 5px 16px rgba(0,0,0,.28), 0 1px 0 rgba(255,255,255,.45) inset; cursor: grab; user-select: none; touch-action: none; transition: transform .2s ease, box-shadow .2s ease, width .25s ease, height .25s ease; transform: rotate(-1.5deg); animation: pk3-sticker-pop .35s cubic-bezier(.34,1.56,.64,1); overflow: visible; }
+.pk3-sticker-v2::before { content: ''; position: absolute; top: 0; left: calc(10px * var(--stk-s,1)); right: calc(10px * var(--stk-s,1)); height: calc(6px * var(--stk-s,1)); background: linear-gradient(180deg, rgba(255,255,255,.6), transparent); border-radius: 0 0 4px 4px; pointer-events: none; }
+.pk3-sticker-v2::after { display: none !important; }
+.pk3-sticker-v2:hover { transform: rotate(0) translateY(-4px); box-shadow: 4px 10px 24px rgba(0,0,0,.32); z-index: 5; }
+.pk3-sticker-v2[data-expanded="1"] { z-index: 50 !important; transform: rotate(0) !important; box-shadow: 5px 14px 30px rgba(0,0,0,.42); }
+.pk3-sticker-v2[data-color="0"] { background: #fff782; }
+.pk3-sticker-v2[data-color="1"] { background: #ffd4bc; }
+.pk3-sticker-v2[data-color="2"] { background: #c8ecc8; }
+.pk3-sticker-v2[data-color="3"] { background: #ffd0e0; }
+.pk3-sticker-v2[data-color="4"] { background: #c5e4ff; }
+.pk3-sticker-v2-body { flex: 1; min-height: 0; white-space: pre-wrap; word-break: break-word; font-family: 'Caveat', cursive; font-size: var(--stk-font, 18px); line-height: 1.28; color: #2a1f08; overflow-y: auto; overflow-x: hidden; padding: 2px calc(40px * var(--stk-s,1)) 4px 0; scrollbar-width: thin; scrollbar-color: rgba(60,40,10,.22) transparent; }
+.pk3-sticker-v2-foot { margin-top: auto; display: flex; align-items: center; gap: calc(6px * var(--stk-s,1)); padding-top: calc(8px * var(--stk-s,1)); border-top: 1px dashed rgba(60,40,10,.18); font-size: calc(10px * var(--stk-s,1)); color: rgba(60,40,10,.65); font-family: var(--font-sans, Inter, system-ui, sans-serif); flex-shrink: 0; }
+.pk3-sticker-v2-foot .pk3-sticker-author { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; color: rgba(60,40,10,.85); }
+.pk3-sticker-v2-foot .pk3-sticker-when { flex-shrink: 0; white-space: nowrap; color: rgba(60,40,10,.5); }
+.pk3-sticker-v2-tools { position: absolute; top: calc(10px * var(--stk-s,1)); right: calc(8px * var(--stk-s,1)); display: flex; gap: 4px; opacity: 0; transition: opacity .15s; z-index: 5; }
+.pk3-sticker-v2:hover .pk3-sticker-v2-tools, .pk3-sticker-v2.pk3-editing .pk3-sticker-v2-tools { opacity: 1; }
+.pk3-sticker-v2-tools button { width: 28px; height: 28px; padding: 0; display: inline-flex; align-items: center; justify-content: center; background: rgba(255,255,255,.88); backdrop-filter: blur(6px); border: 1px solid rgba(60,40,10,.12); border-radius: 8px; cursor: pointer; color: #3d2e10; font-family: inherit; transition: all .12s; box-shadow: 0 1px 3px rgba(0,0,0,.08); }
+.pk3-sticker-v2-tools button:hover { border-color: var(--gold, #d4a843); color: var(--gold-h, #b07814); background: #fff; transform: scale(1.05); }
+.pk3-sticker-v2-tools button.pk3-del:hover { background: var(--err, #e74c3c); color: #fff; border-color: var(--err); }
+.pk3-sticker-v2-tools button svg { width: 14px; height: 14px; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.pk3-sticker-v2-expand { margin-top: 4px; background: transparent; border: none; color: rgba(60,40,10,.55); font-size: 10px; cursor: pointer; padding: 0; font-family: inherit; text-align: left; }
+.pk3-sticker-v2.pk3-editing { cursor: text; user-select: text; transform: rotate(0) !important; z-index: 99999 !important; }
+.pk3-sticker-v2.pk3-editing textarea { flex: 1; width: 100%; border: none; outline: none; background: transparent; color: #2a1f08; font-family: 'Caveat', cursive; font-size: var(--stk-font, 18px); line-height: 1.28; resize: none; min-height: 0; padding: 0 calc(40px * var(--stk-s,1)) 0 0; box-sizing: border-box; overflow-y: auto; }
+.pk3-sticker-v2-edit-foot { display: flex; justify-content: space-between; align-items: center; gap: 6px; margin-top: 8px; padding-top: 8px; border-top: 1px dashed rgba(60,40,10,.18); font-family: var(--font-sans, Inter, system-ui, sans-serif); font-size: 11px; flex-shrink: 0; }
+.pk3-sticker-v2-edit-foot button { font-family: inherit; font-size: 12px; padding: 5px 14px; border-radius: 8px; cursor: pointer; border: 1px solid rgba(60,40,10,.22); background: rgba(255,255,255,.7); color: #2a1f08; transition: all .12s; }
+.pk3-sticker-v2-edit-foot button[data-act="save"], .pk3-sticker-v2-edit-foot button[data-act="save-edit"] { background: linear-gradient(180deg, #ffd95e, #e8a93a); border-color: #b07814; font-weight: 600; }
+
+/* Work section */
+.pk3-work-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px 16px; }
+.pk3-work-grid .pk3-row-full { grid-column: 1 / -1; }
+.pk3-work-card { background: var(--bg3); border: 1px solid var(--brd-m); border-radius: 12px; padding: 12px 14px; }
+.pk3-row textarea.pk3-autogrow { resize: none; overflow-y: hidden; min-height: 72px; max-height: 280px; field-sizing: content; line-height: 1.45; }
+
+@keyframes pk3-sticker-pop { from { opacity: 0; transform: rotate(-1.5deg) scale(.9); } to { opacity: 1; transform: rotate(-1.5deg) scale(1); } }
+@media (max-width: 1100px) { .pk3-drawer { --pk3-drawer-w: 96vw; } .pk3-sticky-board { display: none !important; } }
+`;
+    const st = document.createElement('style');
+    st.id = 'asg-pk3-drawer-styles';
+    st.dataset.pkStyleVer = PK3_DRAWER_STYLE_VER;
+    st.textContent = css;
+    document.head.appendChild(st);
+  }
+
   // ── CSS-инжект (наши токены --bg0..--bg5, --t1..--t3, --gold, --ok, etc.) ──
   function _injectV3Styles() {
-    if (document.getElementById('asg-pk3-styles')) return;
+    const prev = document.getElementById('asg-pk3-styles');
+    if (prev && prev.dataset.pkStyleVer === PK3_SHELL_STYLE_VER) return;
+    if (prev) prev.remove();
     const css = `
 /* === PK3: Личный канбан v3 — наша palette === */
 .pk3-shell {
@@ -2704,16 +2850,113 @@ window.AsgardPersonalKanbanV3 = (function () {
 `;
     const st = document.createElement('style');
     st.id = 'asg-pk3-styles';
+    st.dataset.pkStyleVer = PK3_SHELL_STYLE_VER;
     st.textContent = css;
     document.head.appendChild(st);
   }
+  // Нужно Мимир-Quick на #/pm-calculations (RP-review) — без визита на канбан.
+  window.AsgardPK3EnsureStyles = _injectV3Styles;
 
   // === V3-FUNCTIONS-PLACEHOLDER ===
   // (board render, drag&drop, drawer, 5 modals — добавляются ниже отдельными Edit'ами)
 
   // ── Заглушки на render до основной реализации ────────────────────────
+  function _injectPk3UiStyles() {
+    const prev = document.getElementById('asg-pk3-ui-styles');
+    if (prev && prev.dataset.pkStyleVer === PK3_UI_STYLE_VER) return;
+    if (prev) prev.remove();
+    const css = `
+.pk3-section-v2 { margin: 0 24px 14px; background: var(--bg2); border: 1px solid var(--brd-m); border-radius: 14px; overflow: hidden; scroll-margin-top: 170px; }
+.pk3-section-v2 .pk3-section-head { padding: 13px 18px; display: flex; align-items: center; gap: 10px; border-bottom: 1px solid var(--brd-m); cursor: pointer; user-select: none; background: var(--bg3); }
+.pk3-section-v2 .pk3-section-head h3 { margin: 0; flex: 1; font-size: 12px; font-weight: 700; letter-spacing: .4px; text-transform: uppercase; color: var(--t1); }
+.pk3-section-v2 .pk3-section-body { padding: 16px 18px; }
+.pk3-section-v2.pk3-closed .pk3-section-body { display: none; }
+.pk3-chip { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: 999px; font-size: 10.5px; background: var(--bg4); color: var(--t2); border: 1px solid var(--brd-m); }
+.pk3-chip.pk3-gold { background: var(--gold-bg); color: var(--gold-l); border-color: rgba(212,168,67,.25); }
+.pk3-money { font-family: var(--ff-mono, 'JetBrains Mono', monospace); font-variant-numeric: tabular-nums; font-weight: 600; }
+.pk3-card-finance { margin-top: 8px; padding: 8px 10px; border-radius: 8px; background: var(--gold-bg); border: 1px solid rgba(212,168,67,.2); font-size: 11px; line-height: 1.45; }
+.pk3-card-finance .pk3-money { color: var(--gold-l); }
+.pk3-col-sum { font-size: 10.5px; color: var(--t3); margin-top: 2px; line-height: 1.35; }
+.pk3-col-sum .pk3-money { color: var(--gold-l); font-size: 11px; }
+.pk3-btn-icon svg { display: block; }
+.pk3-win-explorer { display: flex; flex-direction: column; gap: 8px; }
+.pk3-win-toolbar { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.pk3-win-address { font-size: 11.5px; color: var(--t3); padding: 6px 10px; background: var(--bg3); border-radius: 8px; border: 1px solid var(--brd-m); }
+.pk3-win-panes { display: grid; grid-template-columns: minmax(150px, 28%) 1fr minmax(180px, 32%); min-height: 300px; border: 1px solid var(--brd-m); border-radius: 12px; overflow: hidden; background: var(--bg2); }
+@media (max-width: 1100px) {
+  .pk3-win-panes { grid-template-columns: 1fr; min-height: 0; }
+  .pk3-win-tree { border-right: none; border-bottom: 1px solid var(--brd-m); max-height: 140px; }
+  .pk3-win-preview { border-left: none; border-top: 1px solid var(--brd-m); max-height: 220px; }
+}
+.pk3-win-tree { border-right: 1px solid var(--brd-m); overflow-y: auto; padding: 6px; }
+.pk3-win-files { overflow-y: auto; }
+.pk3-win-preview { border-left: 1px solid var(--brd-m); overflow-y: auto; padding: 10px; background: var(--bg3); font-size: 12px; }
+.pk3-win-file-hdr { display: grid; grid-template-columns: 28px 1fr 64px 88px; gap: 6px; padding: 6px 10px; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .4px; color: var(--t3); border-bottom: 1px solid var(--brd-m); background: var(--bg3); position: sticky; top: 0; }
+.pk3-win-file-hdr [data-sort] { cursor: pointer; user-select: none; }
+.pk3-win-file-hdr [data-sort]:hover { color: var(--gold-l); }
+.pk3-win-file-hdr [data-sort].pk3-sort-active { color: var(--gold-l); }
+.pk3-win-file-row { display: grid; grid-template-columns: 28px 1fr 64px 88px; gap: 6px; padding: 8px 10px; font-size: 12px; cursor: pointer; border-bottom: 1px solid var(--brd-m); align-items: center; transition: background .12s; }
+.pk3-win-file-acts { display: flex; gap: 2px; flex-wrap: wrap; justify-content: flex-end; }
+.pk3-win-file-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pk3-win-subfolder .pk3-win-file-ic { color: var(--gold-l); }
+.pk3-win-file-row:hover { background: var(--bg4); }
+.pk3-win-file-row.pk3-selected { background: var(--gold-bg); }
+.pk3-win-file-row.pk3-dragging { opacity: .45; }
+.pk3-win-folder.pk3-drop-over { outline: 2px dashed var(--gold); background: var(--gold-bg); }
+.pk3-win-preview-title { font-weight: 600; color: var(--t1); margin-bottom: 8px; font-size: 12.5px; }
+.pk3-win-preview iframe { width: 100%; height: 220px; border: 1px solid var(--brd-m); border-radius: 8px; background: #fff; }
+.pk3-win-preview-entry { padding: 4px 0; color: var(--t2); font-size: 11.5px; cursor: default; }
+.pk3-ico svg, .pk3-dnav-link svg, .pk3-btn svg { display: inline-block; vertical-align: -2px; }
+.pk3-dnav-link { display: inline-flex; align-items: center; gap: 5px; }
+.pk3-btn.pk3-btn-svg { display: inline-flex; align-items: center; gap: 6px; }
+.pk3-doc-move-menu { position: absolute; z-index: 40; min-width: 180px; max-height: 260px; overflow: auto; background: var(--bg2); border: 1px solid var(--brd-m); border-radius: 10px; box-shadow: 0 12px 28px rgba(0,0,0,.35); padding: 4px; }
+.pk3-doc-move-menu button { display: block; width: 100%; text-align: left; border: 0; background: transparent; color: var(--t1); padding: 8px 10px; border-radius: 8px; cursor: pointer; font-size: 12px; }
+.pk3-doc-move-menu button:hover { background: var(--gold-bg); color: var(--gold-l); }
+.pk3-sticker-tape { position: absolute; top: calc(-9px * var(--stk-s,1)); left: 50%; transform: translateX(-50%) rotate(-2deg); width: calc(52px * var(--stk-s,1)); height: calc(18px * var(--stk-s,1)); background: linear-gradient(180deg, rgba(255,255,255,.82), rgba(255,255,255,.45)); border: 1px solid rgba(200,200,200,.45); border-radius: 2px; pointer-events: none; z-index: 4; box-shadow: 0 1px 0 rgba(255,255,255,.5) inset; }
+html[data-theme="light"] .pk3-sticker-tape { background: linear-gradient(180deg, rgba(255,255,255,.92), rgba(240,240,240,.6)); }
+.pk3-sticky-board {
+  background-color: #c5c9ce;
+  background-image:
+    linear-gradient(180deg, rgba(255,255,255,.35), rgba(255,255,255,0) 28%, rgba(0,0,0,.06) 100%),
+    repeating-linear-gradient(90deg, rgba(255,255,255,.08) 0 1px, transparent 1px 7px),
+    radial-gradient(circle at 18% 22%, rgba(255,255,255,.22), transparent 42%);
+  border: 1px solid rgba(120,125,130,.45);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.4), inset 0 -2px 8px rgba(0,0,0,.08);
+}
+html[data-theme="light"] .pk3-sticky-board {
+  background-color: #d2d6db;
+  background-image:
+    linear-gradient(180deg, rgba(255,255,255,.55), rgba(255,255,255,0) 30%, rgba(0,0,0,.04) 100%),
+    repeating-linear-gradient(90deg, rgba(255,255,255,.12) 0 1px, transparent 1px 8px),
+    radial-gradient(circle at 22% 18%, rgba(255,255,255,.35), transparent 45%);
+}
+.pk3-stk-float-bar {
+  position: absolute; left: 50%; bottom: 8px; transform: translateX(-50%);
+  display: flex; gap: 6px; align-items: center; padding: 4px 6px;
+  background: rgba(20,22,26,.88); border: 1px solid rgba(255,255,255,.12); border-radius: 999px;
+  box-shadow: 0 8px 20px rgba(0,0,0,.35); z-index: 6;
+}
+html[data-theme="light"] .pk3-stk-float-bar { background: rgba(255,255,255,.94); border-color: rgba(0,0,0,.08); }
+.pk3-stk-float-bar button {
+  width: 28px; height: 28px; border-radius: 50%; border: 0; cursor: pointer;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: transparent; color: var(--t1);
+}
+.pk3-stk-float-bar button[data-act*="save"], .pk3-stk-float-bar button.pk3-stk-save { background: var(--gold-bg); color: var(--gold-l); }
+.pk3-stk-float-bar button:hover { filter: brightness(1.08); }
+.pk3-sticker-v2-edit-foot { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-top: 6px; }
+`;
+    const st = document.createElement('style');
+    st.id = 'asg-pk3-ui-styles';
+    st.dataset.pkStyleVer = PK3_UI_STYLE_VER;
+    st.textContent = css;
+    document.head.appendChild(st);
+  }
+
   async function render(opts) {
     _injectV3Styles();
+    _injectPk3DrawerStyles();
+    _injectPk3UiStyles();
     _layout = opts.layout;
     try {
       const auth = await window.AsgardAuth.requireUser();
@@ -2768,6 +3011,7 @@ window.AsgardPersonalKanbanV3 = (function () {
       Object.keys(_columns).forEach(colKey => {
         (_columns[colKey] || []).forEach(c => {
           if (!c.col) c.col = c.v3_column || colKey;
+          c.meta = _v3BuildCardMeta(c);
         });
       });
     }
@@ -2828,6 +3072,47 @@ window.AsgardPersonalKanbanV3 = (function () {
     Object.values(_columns).forEach(arr => arr.forEach(c => { if (c.flow_type === flowId) n++; }));
     return n;
   }
+  function _v3GetCardFinance(c) {
+    const fin = c.finance || {};
+    let noVat = Number(fin.kp_price_without_vat || c.kp_price_without_vat) || 0;
+    let withVat = Number(fin.kp_price_with_vat || c.kp_price_with_vat) || 0;
+    if (!noVat && c._tkp_max_sum) noVat = Number(c._tkp_max_sum) || 0;
+    if (noVat && !withVat) {
+      const vat = Number(fin.vat_rate_pct) || 20;
+      withVat = Math.round(noVat * (1 + vat / 100));
+    }
+    return { noVat, withVat };
+  }
+  function _v3FmtMoneyShort(n) {
+    if (!n || !isFinite(Number(n))) return '—';
+    const v = Number(n);
+    if (v >= 1e6) return (v / 1e6).toLocaleString('ru-RU', { maximumFractionDigits: 1 }) + ' млн ₽';
+    return v.toLocaleString('ru-RU', { maximumFractionDigits: 0 }) + ' ₽';
+  }
+  function _v3ColFinanceSum(cards) {
+    let noVat = 0; let withVat = 0; let n = 0;
+    (cards || []).forEach((c) => {
+      const f = _v3GetCardFinance(c);
+      if (f.noVat > 0) { noVat += f.noVat; withVat += f.withVat || f.noVat; n++; }
+    });
+    return { noVat, withVat, count: n };
+  }
+  function _v3BuildCardMeta(c) {
+    const meta = [];
+    if (c.work_deadline) {
+      try {
+        const d = new Date(c.work_deadline);
+        if (!isNaN(d)) meta.push('до ' + d.toLocaleDateString('ru-RU'));
+      } catch (_) {}
+    }
+    const wt = c.ai_work_type || c.work_type;
+    if (wt) meta.push(String(wt).slice(0, 32));
+    const fin = _v3GetCardFinance(c);
+    if (PK3_FIN_COLS.has(c.col) && fin.noVat > 0) {
+      meta.push(_v3FmtMoneyShort(fin.noVat) + ' б/НДС');
+    }
+    return meta;
+  }
   function _v3RenderBoard() {
     const board = $('#pk3-noteboard');
     if (!board) return;
@@ -2846,11 +3131,18 @@ window.AsgardPersonalKanbanV3 = (function () {
     };
     board.innerHTML = COLS.map(col => {
       const cards = (_columns[col.id] || []).filter(c => cardMatchesFlow(c) && cardMatchesSearch(c));
+      const colSum = PK3_FIN_COLS.has(col.id) ? _v3ColFinanceSum(cards) : null;
+      const sumHtml = (colSum && colSum.noVat > 0)
+        ? `<div class="pk3-col-sum">Σ <span class="pk3-money">${esc(_v3FmtMoneyShort(colSum.noVat))}</span> без НДС · <span class="pk3-money">${esc(_v3FmtMoneyShort(colSum.withVat))}</span> с НДС <span style="color:var(--t3)">(${colSum.count})</span></div>`
+        : '';
       return `
         <div class="pk3-col ${col.cls || ''}">
           <div class="pk3-col-head">
             <span class="pk3-col-icon">${col.ic}</span>
-            <span class="pk3-col-title">${esc(col.title)}</span>
+            <div style="flex:1;min-width:0">
+              <span class="pk3-col-title">${esc(col.title)}</span>
+              ${sumHtml}
+            </div>
             <span class="pk3-col-count">${cards.length}</span>
           </div>
           <div class="pk3-col-body" data-col-id="${col.id}">
@@ -2899,7 +3191,14 @@ window.AsgardPersonalKanbanV3 = (function () {
     const kindShort = (c.kind || c.entity_kind || '').split('_')[0];
     const color = c.color || 'green';
     const winCls = c.col === 'win' ? ' pk3-win' : (c.col === 'lose' ? ' pk3-lose' : '');
-    const meta = c.meta || [];
+    const meta = c.meta && c.meta.length ? c.meta : _v3BuildCardMeta(c);
+    const fin = _v3GetCardFinance(c);
+    const finHtml = (PK3_FIN_COLS.has(c.col) && fin.noVat > 0)
+      ? `<div class="pk3-card-finance">
+          <div>Без НДС: <span class="pk3-money">${esc(_v3FmtMoneyShort(fin.noVat))}</span></div>
+          <div>С НДС: <span class="pk3-money">${esc(_v3FmtMoneyShort(fin.withVat))}</span></div>
+        </div>`
+      : '';
     // S-15: 9-этапная шкала прогресса (раньше 8); поддерживаем и legacy 8-элементный массив
     const progress = c.progress || [0,0,0,0,0,0,0,0,0];
     // S-15: маркер дозапроса (если backend пришлёт addendum_days или карта в колонке addendum)
@@ -2918,6 +3217,7 @@ window.AsgardPersonalKanbanV3 = (function () {
         <div class="pk3-card-meta">
           ${meta.map(m => `<span class="pk3-pill">${esc(m)}</span>`).join('')}
         </div>
+        ${finHtml}
         <div class="pk3-card-progress">
           ${progress.map(s => `<div class="pk3-dot ${s === 2 ? 'pk3-done' : (s === 1 ? 'pk3-now' : '')}"></div>`).join('')}
         </div>
@@ -3072,23 +3372,14 @@ window.AsgardPersonalKanbanV3 = (function () {
           <div class="pk3-row"><label>Контактное лицо</label><input id="pk3mc-contact" placeholder="ФИО"></div>
           <div class="pk3-row"><label>Должность</label><input id="pk3mc-position" placeholder="например, главный механик"></div>
           <div class="pk3-row"><label>Email клиента</label><input id="pk3mc-email" type="email" placeholder="email для отправки КП"></div>
-          <div class="pk3-row"><label>Телефон *</label><input id="pk3mc-phone" placeholder="+7 (___) ___-__-__"></div>
+          <div class="pk3-row"><label>Телефон 1 *</label><input id="pk3mc-phone" placeholder="+7 (___) ___-__-__"></div>
+          <div class="pk3-row"><label>Телефон 2</label><input id="pk3mc-phone2" placeholder="+7 (___) ___-__-__"></div>
           <div class="pk3-row"><label>Город</label><input id="pk3mc-city" placeholder="город объекта"></div>
           <div class="pk3-row"><label>Адрес объекта</label><input id="pk3mc-location" placeholder="полный адрес"></div>
 
           <h4 style="font-size:11px;color:var(--t3);text-transform:uppercase;letter-spacing:.5px;margin:14px 0 8px">Работа</h4>
           <div class="pk3-row"><label>Тип работ</label>
-            <select id="pk3mc-worktype">
-              <option value="">— не выбрано —</option>
-              <option>Гидромеханическая очистка</option>
-              <option>Химическая промывка</option>
-              <option>Антикоррозионная обработка</option>
-              <option>Монтажные работы</option>
-              <option>ПНР (пуско-наладочные работы)</option>
-              <option>Диагностика</option>
-              <option>Вентиляция и кондиционирование</option>
-              <option>Другое</option>
-            </select>
+            <select id="pk3mc-worktype">${_workTypeOptions('')}</select>
           </div>
           <div class="pk3-row"><label>Описание работ *</label><textarea id="pk3mc-desc" rows="3" placeholder="что нужно сделать, на каком оборудовании, особенности"></textarea></div>
           <div class="pk3-row"><label>Объём</label>
@@ -3161,6 +3452,7 @@ window.AsgardPersonalKanbanV3 = (function () {
             setIfEmpty('pk3mc-position', (primary.position || primary.role || ''));
             setIfEmpty('pk3mc-email',    (primary.email || c.email || ''));
             setIfEmpty('pk3mc-phone',    (primary.phone || c.phone || ''));
+            setIfEmpty('pk3mc-phone2',   (primary.phone2 || ''));
             setIfEmpty('pk3mc-location', (c.address || ''));
             cardFilled = !!(c.name || c.full_name);
             if (cardFilled) {
@@ -3239,6 +3531,10 @@ window.AsgardPersonalKanbanV3 = (function () {
           assigned_to:      _user && _user.id ? _user.id : null,  // на себя
           // BUG #3: тип работ — у pre_tender_requests есть колонка ai_work_type
           ai_work_type:    $f('pk3mc-worktype').value || null,
+          work_volume:     parseFloat($f('pk3mc-volume').value) || null,
+          work_volume_unit: $f('pk3mc-vunit').value || null,
+          work_start_plan: startp || null,
+          work_end_plan:   endp || null,
           // Bonus: fallback notes в decision_comment, чтобы текст не потерялся если карта не создастся
           decision_comment: notes || null,
         };
@@ -3294,6 +3590,8 @@ window.AsgardPersonalKanbanV3 = (function () {
 
   // ── Drawer (открытие/закрытие + рендер 8 секций) ──
   function _openDrawer(card) {
+    _docNavHistory = [];
+    _docExplorerSelKey = null;
     _currentCard = card;
     if (_drawerEl) _closeDrawer();
     const overlay = document.createElement('div');
@@ -3367,13 +3665,13 @@ window.AsgardPersonalKanbanV3 = (function () {
         <div class="pk3-row1">
           <span class="pk3-badge pk3-${(card.kind || card.entity_kind || '').split('_')[0]}">${esc(card.kindLabel || _kindLabelFromEntity(card.entity_kind))}</span>
           <h2>${esc(card.title || card.work_description || '(без названия)')}</h2>
-          <button class="pk3-btn-icon" id="pk3-drawer-close" title="Закрыть (Esc)">✕</button>
+          <button class="pk3-btn-icon" id="pk3-drawer-close" title="Закрыть (Esc)">${_PK3_ICO.close}</button>
         </div>
         <div class="pk3-meta">
-          <span>📅 ${esc(dateLabel)}</span>
-          <span>👤 РП: ${esc(ownerLabel)}</span>
-          <span>📨 ${esc(customerLine)}</span>
-          <span>🆔 ${esc(card.code || '#' + card.id)}</span>
+          <span>${_PK3_ICO.clock} ${esc(dateLabel)}</span>
+          <span>${_PK3_ICO.user} РП: ${esc(ownerLabel)}</span>
+          <span>${_PK3_ICO.mail} ${esc(customerLine)}</span>
+          <span>ID ${esc(card.code || '#' + card.id)}</span>
         </div>
       </div>
       <div class="pk3-stages">
@@ -3383,15 +3681,15 @@ window.AsgardPersonalKanbanV3 = (function () {
         }).join('')}
       </div>
       <div class="pk3-drawer-nav">
-        <span class="pk3-dnav-link" data-anchor="sec-ai">🤖 AI</span>
-        <span class="pk3-dnav-link" data-anchor="sec-client">👤 Клиент</span>
-        <span class="pk3-dnav-link" data-anchor="sec-work">🔧 Работа</span>
-        <span class="pk3-dnav-link" data-anchor="sec-calc">🧮 Просчёт</span>
-        <span class="pk3-dnav-link" data-anchor="sec-docs">📎 Документы</span>
-        <span class="pk3-dnav-link" data-anchor="sec-fin">💰 Финансы</span>
-        <span class="pk3-dnav-link" data-anchor="sec-tkp">📋 ТКП</span>
-        <span class="pk3-dnav-link" data-anchor="sec-hist">🕘 История</span>
-        <span class="pk3-dnav-link" data-anchor="sec-reminders">⏰ Напоминания</span>
+        <span class="pk3-dnav-link" data-anchor="sec-ai">${_PK3_ICO.bot} AI</span>
+        <span class="pk3-dnav-link" data-anchor="sec-client">${_PK3_ICO.user} Клиент</span>
+        <span class="pk3-dnav-link" data-anchor="sec-work">${_PK3_ICO.wrench} Работа</span>
+        <span class="pk3-dnav-link" data-anchor="sec-calc">${_PK3_ICO.calc} Просчёт</span>
+        <span class="pk3-dnav-link" data-anchor="sec-docs">${_PK3_ICO.clip} Документы</span>
+        <span class="pk3-dnav-link" data-anchor="sec-fin">${_PK3_ICO.coin} Финансы</span>
+        <span class="pk3-dnav-link" data-anchor="sec-tkp">${_PK3_ICO.list} ТКП</span>
+        <span class="pk3-dnav-link" data-anchor="sec-hist">${_PK3_ICO.hist} История</span>
+        <span class="pk3-dnav-link" data-anchor="sec-reminders">${_PK3_ICO.clock} Напоминания</span>
       </div>
       ${_secAI(card, aiSummary)}
       ${_secClient(card)}
@@ -3413,7 +3711,7 @@ window.AsgardPersonalKanbanV3 = (function () {
   // Появляется вместе с открытием карты, исчезает при закрытии. Свой DOM-элемент.
   // 22.06.2026 v5: голая доска с absolute-стикерами (drag&drop). Inline width 100%.
   function _renderNotesBoardHtml(card) {
-    return `<div class="pk3-sticky-board-head"><span>📌 Заметки</span><span class="pk3-count-badge" id="pk3-notes-count">0</span></div>
+    return `<div class="pk3-sticky-board-head"><span class="pk3-dnav-link">${_PK3_ICO.pin} Заметки</span><span class="pk3-count-badge" id="pk3-notes-count">0</span></div>
             <div class="pk3-sticky-board-hint">Перетащите · двойной клик — крупнее · размер растёт пропорционально тексту</div>
             <div class="pk3-stk-list" id="pk3-stk-list"></div>`;
   }
@@ -3439,6 +3737,80 @@ window.AsgardPersonalKanbanV3 = (function () {
   const STK_BASE_FONT = 18;
   const STK_SCALE_MAX = 1.85;
   const STK_SCALE_EXPAND = 2.15;
+
+  const PK3_WORK_TYPES = [
+    'Гидромеханическая очистка', 'Химическая промывка', 'Очистка АВО',
+    'Очистка теплообменников', 'Очистка резервуаров', 'Очистка трубопроводов',
+    'Очистка котлов', 'Очистка градирен', 'Вентиляция и кондиционирование',
+    'Промывка систем отопления', 'Антикоррозионная обработка', 'ПНР (пуско-наладочные работы)',
+    'Диагностика', 'Монтажные работы', 'Другое'
+  ];
+  const PK3_VOLUME_UNITS = ['м³', 'м²', 'п.м.', 'часов', 'точек', 'тонн', 'шт', 'компл'];
+
+  const _stkSvgEdit = '<svg viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>';
+  const _stkSvgDel = '<svg viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>';
+
+  function _workTypeOptions(selected) {
+    const sel = selected || '';
+    return '<option value="">— не выбрано —</option>' + PK3_WORK_TYPES.map((t) =>
+      `<option value="${esc(t)}"${t === sel ? ' selected' : ''}>${esc(t)}</option>`
+    ).join('');
+  }
+  function _volumeUnitOptions(selected) {
+    const sel = selected || 'м³';
+    return PK3_VOLUME_UNITS.map((u) =>
+      `<option${u === sel ? ' selected' : ''}>${esc(u)}</option>`
+    ).join('');
+  }
+  function _parseLegacyWorkMeta(desc) {
+    const d = String(desc || '');
+    let workType = null; let volume = null; let unit = null; let start = null; let end = null;
+    const typeM = d.match(/^Тип работ:\s*(.+?)(?:\n|$)/m);
+    if (typeM) workType = typeM[1].trim();
+    const volM = d.match(/^Объём:\s*([\d.,]+)\s*(.+?)(?:\n|$)/m);
+    if (volM) { volume = volM[1].replace(',', '.'); unit = volM[2].trim(); }
+    const datesM = d.match(/^Сроки работ:\s*(\S+)\s*[—\-]\s*(\S+)/m);
+    if (datesM) { start = datesM[1] === '?' ? null : datesM[1]; end = datesM[2] === '?' ? null : datesM[2]; }
+    return { workType, volume, unit, start, end };
+  }
+  function _buildFolderTree(folders) {
+    const byParent = {};
+    (folders || []).forEach((f) => {
+      const pid = f.parent_id || '__root__';
+      if (!byParent[pid]) byParent[pid] = [];
+      byParent[pid].push(f);
+    });
+    const out = [];
+    const walk = (parentId, depth) => {
+      (byParent[parentId] || []).forEach((f) => {
+        out.push({ ...f, depth });
+        walk(f.id, depth + 1);
+      });
+    };
+    walk('__root__', 0);
+    return out;
+  }
+  function _folderBreadcrumb(folders, folderId) {
+    const byId = Object.fromEntries((folders || []).map((f) => [f.id, f]));
+    const crumbs = [];
+    let cur = byId[folderId];
+    while (cur) {
+      crumbs.unshift(cur);
+      cur = cur.parent_id ? byId[cur.parent_id] : null;
+    }
+    return crumbs;
+  }
+  function _bindAutogrowTextarea(el) {
+    if (!el || el.dataset.pk3Autogrow) return;
+    el.dataset.pk3Autogrow = '1';
+    el.classList.add('pk3-autogrow');
+    const resize = () => {
+      el.style.height = 'auto';
+      el.style.height = Math.min(280, Math.max(72, el.scrollHeight)) + 'px';
+    };
+    el.addEventListener('input', resize);
+    resize();
+  }
 
   function _stkScale(text, expanded) {
     const t = String(text || '');
@@ -3501,9 +3873,10 @@ window.AsgardPersonalKanbanV3 = (function () {
     return `
       <div class="pk3-sticker-v2" data-note-id="${n.id || ''}" data-pk3-sticker="1" data-rot="${rot}" data-z="${zIdx}" data-expanded="0" data-color="${variant}" data-stk-scale="${sz.scale}"
            style="left:${posX}px;top:${posY}px;z-index:${zIdx};width:${sz.w}px;height:${sz.h}px;--stk-w:${sz.w}px;--stk-h:${sz.h}px;--stk-font:${sz.font}px;--stk-s:${sz.scale};transform:rotate(${rot}deg)">
+        <div class="pk3-sticker-tape" aria-hidden="true"></div>
         <div class="pk3-sticker-v2-tools">
-          <button type="button" data-note-act="edit" title="Редактировать">✏</button>
-          <button type="button" class="pk3-del" data-note-act="delete" title="Удалить">🗑</button>
+          <button type="button" data-note-act="edit" title="Редактировать" aria-label="Редактировать">${_stkSvgEdit}</button>
+          <button type="button" class="pk3-del" data-note-act="delete" title="Удалить" aria-label="Удалить">${_stkSvgDel}</button>
         </div>
         <div class="pk3-sticker-v2-body">${body}</div>
         ${needsExpand ? '<button type="button" class="pk3-sticker-v2-expand" data-note-act="expand">развернуть ↗</button>' : ''}
@@ -3565,8 +3938,11 @@ window.AsgardPersonalKanbanV3 = (function () {
       if (!dragging) return;
       const dx = e.clientX - startX;
       const dy = e.clientY - startY;
-      const newX = Math.max(0, elStartX + dx);
-      const newY = Math.max(0, elStartY + dy);
+      const parent = stk.parentElement;
+      const maxX = Math.max(0, (parent ? parent.clientWidth : 800) - stk.offsetWidth);
+      const maxY = Math.max(0, (parent ? parent.clientHeight : 600) - stk.offsetHeight);
+      const newX = Math.min(maxX, Math.max(0, elStartX + dx));
+      const newY = Math.min(maxY, Math.max(0, elStartY + dy));
       stk.style.left = newX + 'px';
       stk.style.top  = newY + 'px';
     };
@@ -3619,10 +3995,13 @@ window.AsgardPersonalKanbanV3 = (function () {
   }
 
   function _section(id, ic, title, count, body) {
+    const iconHtml = ic
+      ? `<span class="pk3-ico">${(typeof ic === 'string' && ic.includes('<svg')) ? ic : esc(ic)}</span>`
+      : '';
     return `
-      <div class="pk3-section" id="${id}">
+      <div class="pk3-section pk3-section-v2" id="${id}">
         <div class="pk3-section-head" data-toggle="${id}">
-          <span class="pk3-ico">${ic}</span>
+          ${iconHtml}
           <h3>${esc(title)}</h3>
           ${count != null ? `<span class="pk3-count">${count}</span>` : ''}
           <span class="pk3-chev">▾</span>
@@ -3637,7 +4016,7 @@ window.AsgardPersonalKanbanV3 = (function () {
   function _secAI(card, aiSummary) {
     const color = card.color === 'green' ? '🟢' : (card.color === 'yellow' ? '🟡' : (card.color === 'red' ? '🔴' : '⚪'));
     const cls  = card.color === 'green' ? 'pk3-ok' : (card.color === 'yellow' ? 'pk3-warn' : (card.color === 'red' ? 'pk3-err' : 'pk3-info'));
-    return _section('sec-ai', '🤖', 'AI разбор', null, `
+    return _section('sec-ai', _PK3_ICO.bot, 'AI разбор', null, `
       <div style="display:flex;align-items:center;gap:9px;margin-bottom:10px">
         <span class="pk3-tag ${cls}">${color} ${esc(card.ai_classification || card.kind || '')}</span>
         ${card.ai_confidence != null ? `<span class="pk3-tag pk3-info">confidence ${Math.round((card.ai_confidence||0)*100)}%</span>` : ''}
@@ -3652,19 +4031,25 @@ window.AsgardPersonalKanbanV3 = (function () {
     // 22.06.2026: Заказчик теперь ТОЛЬКО из справочника контрагентов.
     // Input — readonly «pill», клик → пикер поиска (по имени/ИНН). Рядом «+ Новый».
     const customerName = card.customer_name || card.customer || '';
-    return _section('sec-client', '👤', 'Клиент и контакты', null, `
+    return _section('sec-client', _PK3_ICO.user, 'Клиент и контакты', null, `
       ${_row('Заказчик', `
         <div style="display:flex;gap:6px;align-items:stretch">
           <input id="pk3-f-customer" value="${esc(customerName)}" readonly placeholder="Кликни — выбрать из справочника"
                  style="cursor:pointer;flex:1" data-action="customer-pick" title="Выбрать контрагента из справочника" />
-          <button class="pk3-btn pk3-ghost pk3-sm" data-action="customer-pick" title="Найти в справочнике">🔍</button>
+          <button class="pk3-btn pk3-ghost pk3-sm pk3-btn-icon" data-action="customer-pick" title="Найти в справочнике">${_PK3_ICO.search}</button>
           <button class="pk3-btn pk3-gold pk3-sm" data-action="customer-new" title="Создать нового контрагента">＋ Новый</button>
         </div>
       `)}
       ${_row('ИНН', `<input id="pk3-f-inn" value="${esc(card.customer_inn || '')}" readonly placeholder="будет подставлен" style="background:var(--bg3);color:var(--t2)" />`)}
-      ${_row('Контактное лицо', `<input id="pk3-f-contact" value="${esc(card.contact_person || '')}" />`)}
+      ${_row('Карточка', `
+        <button type="button" class="pk3-btn pk3-sm pk3-ghost" data-action="customer-open-card" ${card.customer_inn ? '' : 'disabled style="opacity:.5;cursor:not-allowed"'} title="Открыть в справочнике контрагентов">
+          Открыть карточку клиента ↗
+        </button>
+      `)}
+      ${_row('Главное контактное лицо', `<input id="pk3-f-contact" value="${esc(card.contact_person || '')}" />`)}
       ${_row('Email', `<input id="pk3-f-email" value="${esc(card.customer_email || '')}" />`)}
-      ${_row('Телефон', `<input id="pk3-f-phone" value="${esc(card.contact_phone || '')}" placeholder="+7 (___) ___-__-__" />`)}
+      ${_row('Телефон 1', `<input id="pk3-f-phone" value="${esc(card.contact_phone || '')}" placeholder="+7 (___) ___-__-__" />`)}
+      ${_row('Телефон 2', `<input id="pk3-f-phone2" value="${esc(card.contact_phone2 || '')}" placeholder="+7 (___) ___-__-__" />`)}
       ${_row('Город / Объект', `<input id="pk3-f-city" value="${esc(card.customer_city || card.work_location || '')}" />`)}
     `);
   }
@@ -3672,12 +4057,35 @@ window.AsgardPersonalKanbanV3 = (function () {
   // 22.06.2026: универсальные функции для подстановки контрагента в карту
   function _fillCustomerFields(c) {
     const set = (id, val) => { const el = document.getElementById(id); if (el) el.value = val || ''; };
+    let phone = c.phone || c.contact_phone || '';
+    let phone2 = c.phone2 || c.contact_phone2 || '';
+    let contactName = c.contact_person || '';
+    let email = c.email || c.customer_email || '';
+    try {
+      const contacts = Array.isArray(c.contacts) ? c.contacts
+        : (c.contacts_json ? JSON.parse(String(c.contacts_json)) : null);
+      if (Array.isArray(contacts) && contacts.length) {
+        const primary = contacts.find((x) => x && x.is_primary) || contacts[0] || {};
+        if (primary.name) contactName = primary.name;
+        if (primary.phone) phone = primary.phone;
+        if (primary.phone2) phone2 = primary.phone2;
+        if (primary.email) email = primary.email;
+      }
+    } catch (_) {}
     set('pk3-f-customer', c.name || c.customer_name || '');
     set('pk3-f-inn',      c.inn || c.customer_inn || '');
-    set('pk3-f-email',    c.email || c.customer_email || '');
-    set('pk3-f-phone',    c.phone || c.contact_phone || '');
-    set('pk3-f-contact',  c.contact_person || '');
+    set('pk3-f-email',    email);
+    set('pk3-f-phone',    phone);
+    set('pk3-f-phone2',   phone2);
+    set('pk3-f-contact',  contactName);
     set('pk3-f-city',     c.address || c.customer_address || '');
+    const inn = (c.inn || c.customer_inn || '').trim();
+    const btn = document.querySelector('[data-action="customer-open-card"]');
+    if (btn) {
+      btn.disabled = !inn;
+      btn.style.opacity = inn ? '' : '.5';
+      btn.style.cursor = inn ? '' : 'not-allowed';
+    }
   }
 
   function _openCustomerPicker(card) {
@@ -3782,9 +4190,11 @@ window.AsgardPersonalKanbanV3 = (function () {
           <div style="display:flex;gap:8px">
             <input id="nc-email" placeholder="Email" type="email"
                    style="flex:1;padding:9px 11px;border:1px solid var(--brd-m);border-radius:7px;background:var(--bg1);color:var(--t1);font-size:14px" />
-            <input id="nc-phone" placeholder="Телефон"
+            <input id="nc-phone" placeholder="Телефон 1"
                    style="flex:1;padding:9px 11px;border:1px solid var(--brd-m);border-radius:7px;background:var(--bg1);color:var(--t1);font-size:14px" />
           </div>
+          <input id="nc-phone2" placeholder="Телефон 2"
+                 style="padding:9px 11px;border:1px solid var(--brd-m);border-radius:7px;background:var(--bg1);color:var(--t1);font-size:14px" />
           <input id="nc-contact" placeholder="Контактное лицо"
                  style="padding:9px 11px;border:1px solid var(--brd-m);border-radius:7px;background:var(--bg1);color:var(--t1);font-size:14px" />
         </div>
@@ -3830,13 +4240,27 @@ window.AsgardPersonalKanbanV3 = (function () {
         const name = m.querySelector('#nc-name').value.trim();
         if (!/^\d{10}$|^\d{12}$/.test(inn)) { toast('ИНН', '10 или 12 цифр', 'warn'); return; }
         if (!name) { toast('Название', 'Обязательно', 'warn'); return; }
+        const contactName = m.querySelector('#nc-contact').value.trim();
+        const phone1 = m.querySelector('#nc-phone').value.trim();
+        const phone2 = m.querySelector('#nc-phone2').value.trim();
+        const emailVal = m.querySelector('#nc-email').value.trim();
         const body = {
           inn, name,
-          email:          m.querySelector('#nc-email').value.trim() || null,
-          phone:          m.querySelector('#nc-phone').value.trim() || null,
-          contact_person: m.querySelector('#nc-contact').value.trim() || null,
+          email:          emailVal || null,
+          phone:          phone1 || null,
+          contact_person: contactName || null,
           address:        m.querySelector('#nc-address').value.trim() || null
         };
+        if (contactName || phone1 || phone2) {
+          body.contacts = [{
+            name: contactName,
+            position: '',
+            phone: phone1,
+            phone2: phone2,
+            email: emailVal,
+            is_primary: true
+          }];
+        }
         saveBtn.disabled = true; saveBtn.textContent = '⏳ Сохраняю…';
         try {
           const r = await api('/api/customers', { method: 'POST', body });
@@ -3870,24 +4294,31 @@ window.AsgardPersonalKanbanV3 = (function () {
     });
   }
   function _secWork(card) {
-    return _section('sec-work', '🔧', 'Что делать', null, `
-      ${_row('Тип работ', `<select id="pk3-f-worktype">
-        <option>Гидромеханическая очистка</option>
-        <option>Химическая промывка</option>
-        <option>Антикоррозионная обработка</option>
-        <option>Монтажные работы</option>
-        <option>Диагностика</option>
-        <option>Вентиляция</option>
-        <option>Другое</option>
-      </select>`)}
-      ${_row('Описание', `<textarea id="pk3-f-desc">${esc(card.work_description || '')}</textarea>`)}
-      ${_row('Объём', `<div class="pk3-twocol"><input id="pk3-f-vol" placeholder="число" /><select id="pk3-f-volunit"><option>м³</option><option>часов</option><option>точек</option><option>тонн</option></select></div>`)}
-      ${_row('Дедлайн КП', `<input type="date" id="pk3-f-kpdeadline" value="${esc(_toDateInputValue(card.work_deadline))}" />`)}
-      ${_row('Сроки работ', `<div class="pk3-twocol"><input type="date" id="pk3-f-startp" /><input type="date" id="pk3-f-endp" /></div>`)}
+    const wt = card.ai_work_type || '';
+    const vol = card.work_volume != null ? String(card.work_volume) : '';
+    const vu = card.work_volume_unit || 'м³';
+    return _section('sec-work', _PK3_ICO.wrench, 'Что делать', null, `
+      <div class="pk3-work-grid">
+        <div class="pk3-work-card pk3-row-full">
+          ${_row('Тип работ', `<select id="pk3-f-worktype">${_workTypeOptions(wt)}</select>`)}
+        </div>
+        <div class="pk3-work-card pk3-row-full">
+          ${_row('Описание', `<textarea id="pk3-f-desc" class="pk3-autogrow" rows="3">${esc(card.work_description || '')}</textarea>`)}
+        </div>
+        <div class="pk3-work-card">
+          ${_row('Объём', `<div class="pk3-twocol"><input id="pk3-f-vol" type="number" min="0" step="any" placeholder="число" value="${esc(vol)}" /><select id="pk3-f-volunit">${_volumeUnitOptions(vu)}</select></div>`)}
+        </div>
+        <div class="pk3-work-card">
+          ${_row('Дедлайн КП', `<input type="date" id="pk3-f-kpdeadline" value="${esc(_toDateInputValue(card.work_deadline))}" />`)}
+        </div>
+        <div class="pk3-work-card pk3-row-full">
+          ${_row('Сроки работ', `<div class="pk3-twocol"><input type="date" id="pk3-f-startp" value="${esc(_toDateInputValue(card.work_start_plan))}" placeholder="с" /><input type="date" id="pk3-f-endp" value="${esc(_toDateInputValue(card.work_end_plan))}" placeholder="по" /></div>`)}
+        </div>
+      </div>
     `);
   }
   function _secCalc(card) {
-    return _section('sec-calc', '🧮', 'Просчёт сметы', null, `
+    return _section('sec-calc', _PK3_ICO.calc, 'Просчёт сметы', null, `
       <div class="pk3-calc-panel">
         <div class="pk3-calc-card pk3-q" data-action="open-quick">
           <span class="pk3-ic">🚀</span>
@@ -4021,72 +4452,305 @@ window.AsgardPersonalKanbanV3 = (function () {
     });
   }
 
-  function _secDocs(card) {
+  function _hydrateWorkFields(card) {
+    if (!card) return;
+    const legacy = _parseLegacyWorkMeta(card.work_description);
+    const set = (id, val) => { const el = document.getElementById(id); if (el && val != null && val !== '' && !el.value) el.value = val; };
+    const setSel = (id, val) => {
+      const el = document.getElementById(id);
+      if (!el || !val) return;
+      if (!el.value) {
+        const opt = [...el.options].find((o) => o.value === val || o.textContent === val);
+        if (opt) el.value = opt.value;
+        else { const o = document.createElement('option'); o.value = val; o.textContent = val; el.appendChild(o); el.value = val; }
+      }
+    };
+    setSel('pk3-f-worktype', card.ai_work_type || legacy.workType);
+    if (card.work_volume != null) set('pk3-f-vol', String(card.work_volume));
+    else set('pk3-f-vol', legacy.volume);
+    if (card.work_volume_unit) setSel('pk3-f-volunit', card.work_volume_unit);
+    else if (legacy.unit) setSel('pk3-f-volunit', legacy.unit);
+    set('pk3-f-startp', _toDateInputValue(card.work_start_plan || legacy.start));
+    set('pk3-f-endp', _toDateInputValue(card.work_end_plan || legacy.end));
+    const descEl = document.getElementById('pk3-f-desc');
+    if (descEl) _bindAutogrowTextarea(descEl);
+  }
+
+  async function _patchCardFromBoard(cardId) {
+    if (!cardId) return null;
+    try {
+      const scope = _scopeMode || 'auto';
+      const flowParam = _isToRole() ? '' : ('&flow_filter=' + encodeURIComponent(_flowFilter));
+      const scopeParam = '&scope=' + encodeURIComponent(scope);
+      const r = await api('/api/personal-kanban/board?_=1' + flowParam + scopeParam);
+      if (!r.ok || !r.data?.columns) return null;
+      const all = Object.values(r.data.columns).flat();
+      const fresh = all.find(c => c.id === cardId);
+      if (!fresh) return null;
+      if (!fresh.col) fresh.col = fresh.v3_column;
+      fresh.meta = _v3BuildCardMeta(fresh);
+      if (_currentCard && _currentCard.id === cardId) {
+        Object.assign(_currentCard, fresh);
+      }
+      Object.keys(_columns).forEach(colKey => {
+        const idx = (_columns[colKey] || []).findIndex(c => c.id === cardId);
+        if (idx >= 0) Object.assign(_columns[colKey][idx], fresh);
+      });
+      return fresh;
+    } catch (_) { return null; }
+  }
+
+  async function _refreshDocsExplorer(card) {
+    await _patchCardFromBoard(card.id);
+    const drawer = _drawerEl?.drawer;
+    if (!drawer) return;
+    const sec = drawer.querySelector('#sec-docs');
+    if (!sec) return;
+    const body = sec.querySelector('.pk3-section-body');
+    if (!body) return;
+    const { buckets } = _collectDocsExplorer(card);
+    const totalCount = Object.values(buckets).reduce((n, arr) => n + arr.length, 0);
+    const countEl = sec.querySelector('.pk3-count');
+    if (countEl) countEl.textContent = String(totalCount);
+    const filesScroll = body.querySelector('.pk3-win-files')?.scrollTop || 0;
+    body.innerHTML = _secDocsBody(card);
+    const filesPane = body.querySelector('.pk3-win-files');
+    if (filesPane) filesPane.scrollTop = filesScroll;
+    _bindDocsExplorerEvents(card, body);
+  }
+
+  function _winExplorerFileRow(card, d, selected) {
+    const canManage = d.src === 'manual' && d.idx != null;
+    const isEmail = d.src === 'email';
+    const selCls = selected ? ' pk3-selected' : '';
+    const mailBadge = isEmail ? ' <span class="pk3-chip" title="Вложение из почты">почта</span>' : '';
+    const acts = `
+      <div class="pk3-win-file-acts">
+        <button type="button" class="pk3-btn pk3-sm pk3-ghost pk3-btn-icon" data-action="doc-view" data-src="${d.src}" data-id="${d.id}" data-mime="${esc(d.mime || '')}" title="Открыть">${_PK3_ICO.eye}</button>
+        <button type="button" class="pk3-btn pk3-sm pk3-ghost pk3-btn-icon" data-action="doc-dl" data-src="${d.src}" data-id="${d.id}" title="Скачать">${_PK3_ICO.dl}</button>
+        ${canManage ? `<button type="button" class="pk3-btn pk3-sm pk3-ghost pk3-btn-icon" data-action="doc-rename" data-src="manual" data-id="${d.idx}" title="Переименовать">${_PK3_ICO.edit}</button>` : ''}
+        ${canManage ? `<button type="button" class="pk3-btn pk3-sm pk3-ghost pk3-btn-icon" data-action="doc-move" data-src="manual" data-id="${d.idx}" title="Переместить">${_PK3_ICO.folder}</button>` : ''}
+        ${canManage ? `<button type="button" class="pk3-btn pk3-sm pk3-ghost pk3-btn-icon" data-action="doc-delete" data-src="manual" data-id="${d.idx}" title="Удалить">${_PK3_ICO.trash}</button>` : ''}
+      </div>`;
+    return `<div class="pk3-win-file-row${selCls}" data-action="doc-file-select" data-doc-key="${esc(d.key)}" data-src="${d.src}" data-id="${d.id}" data-mime="${esc(d.mime || '')}"${canManage ? ' draggable="true"' : ''}>
+      <span class="pk3-win-file-ic">${_PK3_ICO.file}</span>
+      <span class="pk3-win-file-name" title="${esc(d.name)}">${esc(d.name)}${mailBadge}</span>
+      <span class="pk3-win-file-size">${d.size ? _fmtBytes(d.size) : ''}</span>
+      ${acts}
+    </div>`;
+  }
+
+  function _secDocsBody(card) {
     const selFolder = _getDocFolder(card);
     const { folders, buckets } = _collectDocsExplorer(card);
-    const items = buckets[selFolder] || [];
-    const totalCount = Object.values(buckets).reduce((n, arr) => n + arr.length, 0);
+    let items = (buckets[selFolder] || []).slice();
+    const sk = _docExplorerSort.key;
+    const dir = _docExplorerSort.dir || 1;
+    items.sort((a, b) => {
+      if (sk === 'size') {
+        const av = Number(a.size) || 0, bv = Number(b.size) || 0;
+        return (av - bv) * dir;
+      }
+      const an = String(a.name || '').toLowerCase();
+      const bn = String(b.name || '').toLowerCase();
+      return an.localeCompare(bn, 'ru') * dir;
+    });
+    const sortMark = (key) => (_docExplorerSort.key === key
+      ? ` class="pk3-sort-active" data-sort="${key}" title="Сортировка"`
+      : ` data-sort="${key}" title="Сортировка"`);
+    const sortArrow = (key) => (_docExplorerSort.key === key ? (_docExplorerSort.dir > 0 ? ' ↑' : ' ↓') : '');
     const canUpload = _docFolderCanUpload(selFolder, folders);
-    const selFolderName = (folders.find(f => f.id === selFolder) || {}).name || selFolder;
+    const treeFolders = _buildFolderTree(folders);
+    const crumbs = _folderBreadcrumb(folders, selFolder);
+    const childFolders = folders.filter((f) => f.parent_id === selFolder);
+    const breadcrumbHtml = crumbs.map((c, i) =>
+      (i ? '<span class="pk3-bc-sep">›</span>' : '') +
+      `<button type="button" data-action="doc-folder-pick" data-folder-id="${esc(c.id)}">${esc(c.name)}</button>`
+    ).join('');
 
-    const folderList = folders.map((f) => {
+    const folderTree = treeFolders.map((f) => {
       const cnt = (buckets[f.id] || []).length;
       const active = f.id === selFolder ? ' pk3-active' : '';
-      const sysBadge = f.system ? '<span class="pk3-doc-folder-sys">· системная</span>' : '';
+      const pad = 6 + (f.depth || 0) * 12;
       const customActs = !f.system ? `
         <span class="pk3-doc-folder-actions">
-          <button type="button" class="pk3-doc-folder-act" data-action="doc-folder-rename" data-folder-id="${esc(f.id)}" title="Переименовать">✏</button>
-          <button type="button" class="pk3-doc-folder-act" data-action="doc-folder-delete" data-folder-id="${esc(f.id)}" title="Удалить">🗑</button>
+          <button type="button" class="pk3-doc-folder-act" data-action="doc-folder-rename" data-folder-id="${esc(f.id)}" title="Переименовать">${_PK3_ICO.edit}</button>
+          <button type="button" class="pk3-doc-folder-act" data-action="doc-folder-delete" data-folder-id="${esc(f.id)}" title="Удалить">${_PK3_ICO.trash}</button>
         </span>` : '';
-      return `<div class="pk3-doc-folder${active}" data-action="doc-folder-pick" data-folder-id="${esc(f.id)}" title="${esc(f.name)}">
-        <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(f.name)}${sysBadge}</span>
+      return `<div class="pk3-win-folder pk3-doc-folder${active}" data-action="doc-folder-pick" data-folder-id="${esc(f.id)}" data-folder-drop="1" title="${esc(f.name)}" style="padding-left:${pad}px">
+        <span class="pk3-doc-folder-ic">${_PK3_ICO.folder}</span>
+        <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(f.name)}</span>
         <span class="pk3-doc-folder-count">${cnt}</span>
         ${customActs}
       </div>`;
     }).join('');
 
-    const renderExplorerDoc = (d) => {
-      const canManage = d.src === 'manual' && d.idx != null;
-      return `<div class="pk3-doc-row" data-doc-key="${esc(d.key)}">
-        <span class="pk3-doc-ic">${esc(_docIcon(d.mime || d.name))}</span>
-        <span class="pk3-doc-name" title="${esc(d.name)}">${esc(d.name)}</span>
-        <span class="pk3-doc-size">${d.size ? _fmtBytes(d.size) : ''}</span>
-        <div class="pk3-doc-actions" style="position:relative">
-          <button class="pk3-doc-btn" data-action="doc-view" data-src="${d.src}" data-id="${d.id}" title="Открыть">👁</button>
-          <button class="pk3-doc-btn" data-action="doc-dl" data-src="${d.src}" data-id="${d.id}" title="Скачать">⬇</button>
-          ${canManage ? `<button class="pk3-doc-btn" data-action="doc-rename" data-src="manual" data-id="${d.idx}" title="Переименовать">✏</button>` : ''}
-          ${canManage ? `<button class="pk3-doc-btn" data-action="doc-move" data-src="manual" data-id="${d.idx}" title="Переместить">📁</button>` : ''}
-          ${canManage ? `<button class="pk3-doc-btn" data-action="doc-delete" data-src="manual" data-id="${d.idx}" title="Удалить">🗑</button>` : ''}
-          ${d.mimir && (d.kind === 'smeta' || (d.kind || '').includes('director_report')) ? `<button class="pk3-doc-btn" data-action="doc-preview-edit" data-src="manual" data-id="${d.idx}" data-kind="${esc(d.kind || '')}" title="Правки">📝</button>` : ''}
-        </div>
-      </div>`;
-    };
+    const subfolderRows = childFolders.map((f) =>
+      `<div class="pk3-win-file-row pk3-win-subfolder" data-action="doc-folder-enter" data-folder-id="${esc(f.id)}">
+        <span class="pk3-win-file-ic">${_PK3_ICO.folder}</span>
+        <span class="pk3-win-file-name">${esc(f.name)}</span>
+        <span class="pk3-win-file-size">${(buckets[f.id] || []).length} файл.</span>
+        <span></span>
+      </div>`
+    ).join('');
 
-    const filesHtml = items.length
-      ? items.map(renderExplorerDoc).join('')
+    const fileRows = items.map((d) => _winExplorerFileRow(card, d, _docExplorerSelKeys.includes(d.key) || _docExplorerSelKey === d.key)).join('');
+    const filesHtml = (subfolderRows || fileRows)
+      ? subfolderRows + fileRows
       : '<div class="pk3-doc-empty">В этой папке пока нет файлов. Перетащите файлы сюда или нажмите «Загрузить».</div>';
 
     const uploadBtn = canUpload
-      ? `<button type="button" class="pk3-btn pk3-sm pk3-gold" data-action="doc-explorer-upload" data-folder-id="${esc(selFolder)}">⬆ Загрузить</button>`
-      : `<span class="pk3-doc-toolbar-info" style="font-size:11px;color:var(--t3)">Загрузка только в «От заказчика», «Загружено РП» и свои папки</span>`;
+      ? `<button type="button" class="pk3-btn pk3-sm pk3-gold" data-action="doc-explorer-upload" data-folder-id="${esc(selFolder)}">Загрузить</button>`
+      : `<span class="pk3-doc-toolbar-info" style="font-size:11px;color:var(--t3)">Загрузка в «От заказчика», «Загружено РП» и свои папки</span>`;
+    const selCount = _docExplorerSelKeys.filter((k) => items.some((d) => d.key === k && d.src === 'manual')).length;
+    const moveBtn = selCount
+      ? `<button type="button" class="pk3-btn pk3-sm pk3-ghost" data-action="doc-explorer-move-sel">Переместить (${selCount})</button>`
+      : '';
 
-    return _section('sec-docs', '📎', 'Документы', totalCount, `
-      <div class="pk3-doc-explorer" id="pk3-doc-explorer">
-        <div class="pk3-doc-toolbar">
+    return `
+      <div class="pk3-win-explorer" id="pk3-doc-explorer">
+        <div class="pk3-win-toolbar">
+          <button type="button" class="pk3-btn pk3-sm pk3-ghost pk3-btn-icon" data-action="doc-explorer-back" title="Назад">${_PK3_ICO.back}</button>
+          <button type="button" class="pk3-btn pk3-sm pk3-ghost pk3-btn-icon" data-action="doc-explorer-up" title="Вверх">${_PK3_ICO.up}</button>
           <button type="button" class="pk3-btn pk3-sm pk3-ghost" data-action="doc-folder-new">＋ Папка</button>
           ${uploadBtn}
-          <span class="pk3-doc-toolbar-info">${items.length} файл(ов) · «${esc(selFolderName)}»</span>
+          ${moveBtn}
+          <span class="pk3-doc-toolbar-info">${items.length} файл(ов)${selCount ? ' · выбрано ' + selCount : ''}</span>
         </div>
-        <div class="pk3-doc-explorer" style="display:grid;grid-template-columns:minmax(120px,34%) 1fr;gap:10px;min-height:180px">
-          <div class="pk3-doc-folders">
-            ${folderList}
-          </div>
-          <div class="pk3-doc-files pk3-doc-dropzone" data-drop-folder="${esc(selFolder)}">
+        <div class="pk3-win-address">${breadcrumbHtml || 'Корень'}</div>
+        <div class="pk3-win-panes">
+          <div class="pk3-win-tree">${folderTree}</div>
+          <div class="pk3-win-files pk3-doc-dropzone" data-drop-folder="${esc(selFolder)}">
+            <div class="pk3-win-file-hdr"><span></span><span${sortMark('name')}>Имя${sortArrow('name')}</span><span${sortMark('size')}>Размер${sortArrow('size')}</span><span></span></div>
             ${filesHtml}
+          </div>
+          <div class="pk3-win-preview" id="pk3-win-preview-pane">
+            <div id="pk3-win-preview-body"><div style="color:var(--t3);font-size:12px">Выберите файл для предпросмотра</div></div>
           </div>
         </div>
       </div>
-    `);
+    `;
+  }
+
+  function _bindDocsExplorerEvents(card, root) {
+    if (!root) return;
+    root.querySelectorAll('.pk3-win-file-hdr [data-sort]').forEach((el) => {
+      el.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const key = el.dataset.sort;
+        if (_docExplorerSort.key === key) _docExplorerSort.dir *= -1;
+        else { _docExplorerSort.key = key; _docExplorerSort.dir = 1; }
+        _refreshDocsExplorer(card);
+      });
+    });
+    root.querySelectorAll('.pk3-win-folder[data-folder-drop]').forEach((node) => {
+      node.addEventListener('dragover', (e) => {
+        if (!e.dataTransfer?.types?.includes('text/pk3-doc-idx')) return;
+        e.preventDefault();
+        node.classList.add('pk3-drop-over');
+      });
+      node.addEventListener('dragleave', () => node.classList.remove('pk3-drop-over'));
+      node.addEventListener('drop', async (e) => {
+        e.preventDefault();
+        node.classList.remove('pk3-drop-over');
+        const idx = Number(e.dataTransfer.getData('text/pk3-doc-idx'));
+        const folderId = node.dataset.folderId;
+        if (!Number.isFinite(idx) || !folderId) return;
+        await _moveDocToFolder(card, idx, folderId);
+      });
+    });
+    root.querySelectorAll('.pk3-win-file-row[draggable="true"]').forEach((row) => {
+      row.addEventListener('dragstart', (e) => {
+        const idx = row.dataset.src === 'manual' ? row.dataset.id : '';
+        if (!idx) return;
+        e.dataTransfer.setData('text/pk3-doc-idx', idx);
+        row.classList.add('pk3-dragging');
+      });
+      row.addEventListener('dragend', () => row.classList.remove('pk3-dragging'));
+    });
+    root.querySelectorAll('[data-action="doc-folder-enter"]').forEach((row) => {
+      row.addEventListener('dblclick', (e) => {
+        e.stopPropagation();
+        const fid = row.dataset.folderId;
+        if (!fid) return;
+        const prev = _getDocFolder(card);
+        if (prev !== fid) _docNavHistory.push(prev);
+        _setDocFolder(card, fid);
+        _docExplorerSelKey = null;
+        _refreshDocsExplorer(card);
+      });
+    });
+    const dropZone = root.querySelector('.pk3-doc-dropzone');
+    if (dropZone) {
+      dropZone.addEventListener('dragover', (e) => {
+        if (e.dataTransfer?.types?.includes('Files')) { e.preventDefault(); dropZone.classList.add('pk3-doc-drop-over'); }
+      });
+      dropZone.addEventListener('dragleave', () => dropZone.classList.remove('pk3-doc-drop-over'));
+      dropZone.addEventListener('drop', async (e) => {
+        if (!e.dataTransfer?.types?.includes('Files')) return;
+        e.preventDefault();
+        dropZone.classList.remove('pk3-doc-drop-over');
+        const folderId = dropZone.dataset.dropFolder || _getDocFolder(card);
+        const files = Array.from(e.dataTransfer?.files || []);
+        if (files.length) await _uploadDocFiles(card, folderId, files);
+      });
+    }
+  }
+
+  async function _loadDocPreviewPane(card, doc) {
+    const pane = _drawerEl?.drawer?.querySelector('#pk3-win-preview-body');
+    if (!pane || !doc) return;
+    const ptId = card.entity_id;
+    if (!ptId) return;
+    const token = encodeURIComponent(localStorage.getItem('asgard_token') || '');
+    let url;
+    if (doc.src === 'email') {
+      url = `/api/pre-tenders/${ptId}/email-attachments/${encodeURIComponent(doc.id)}/download?token=${token}`;
+    } else if (doc.src === 'manual') {
+      url = `/api/pre-tenders/${ptId}/documents/${encodeURIComponent(doc.idx)}/download?token=${token}`;
+    } else {
+      pane.innerHTML = '<div style="color:var(--t3)">Предпросмотр недоступен для расчётных файлов</div>';
+      return;
+    }
+    const name = (doc.name || '').toLowerCase();
+    const mime = (doc.mime || '').toLowerCase();
+    const isZip = mime.includes('zip') || name.endsWith('.zip');
+    const isDocx = mime.includes('word') || /\.docx?$/.test(name);
+    const isXlsx = mime.includes('sheet') || mime.includes('excel') || /\.xlsx?$/.test(name);
+    const isPdf = mime.includes('pdf') || name.endsWith('.pdf');
+    const isImg = mime.startsWith('image') || /\.(png|jpe?g|webp|gif)$/.test(name);
+    pane.innerHTML = `<div class="pk3-win-preview-title">${esc(doc.name)}</div><div class="pk3-win-preview-content">Загрузка…</div>`;
+    const content = pane.querySelector('.pk3-win-preview-content');
+    if (isZip && doc.src === 'manual') {
+      try {
+        const r = await api(`/api/pre-tenders/${ptId}/documents/${doc.idx}/archive-list`);
+        const entries = (r.ok && r.data?.entries) ? r.data.entries : [];
+        content.innerHTML = entries.length
+          ? entries.map((e) => `<div class="pk3-win-preview-entry">${esc(e.path)} <span style="color:var(--t3)">${e.size ? _fmtBytes(e.size) : ''}</span></div>`).join('')
+          : '<div style="color:var(--t3)">Архив пуст</div>';
+      } catch (_) {
+        content.innerHTML = `<div>Не удалось прочитать архив. <a href="${esc(url)}" target="_blank">Скачать</a></div>`;
+      }
+    } else if (isPdf) {
+      content.innerHTML = `<iframe src="${esc(url)}"></iframe>`;
+    } else if (isImg) {
+      content.innerHTML = `<img src="${esc(url)}" style="max-width:100%;border-radius:8px" alt="">`;
+    } else if (isDocx || isXlsx) {
+      const pdfUrl = url + (url.includes('?') ? '&' : '?') + 'format=pdf';
+      content.innerHTML = `<iframe src="${esc(pdfUrl)}"></iframe>`;
+    } else if (mime.includes('text') || /\.(txt|md|csv)$/.test(name)) {
+      const txt = await fetch(url, { credentials: 'include' }).then((r) => r.text()).catch(() => '');
+      content.innerHTML = `<pre style="white-space:pre-wrap;font-size:11px;max-height:260px;overflow:auto;margin:0">${esc(txt)}</pre>`;
+    } else {
+      content.innerHTML = `<div style="color:var(--t3)">Предпросмотр недоступен.<br><a href="${esc(url)}" target="_blank" download>Скачать файл</a></div>`;
+    }
+  }
+
+  function _secDocs(card) {
+    const { buckets } = _collectDocsExplorer(card);
+    const totalCount = Object.values(buckets).reduce((n, arr) => n + arr.length, 0);
+    return _section('sec-docs', _PK3_ICO.clip, 'Документы', totalCount, _secDocsBody(card));
   }
   function _docIcon(s) {
     s = (s || '').toLowerCase();
@@ -4105,7 +4769,7 @@ window.AsgardPersonalKanbanV3 = (function () {
   function _secFin(card, fin) {
     const v = (n) => n != null ? (Number(n).toLocaleString('ru-RU') + ' ₽') : '— ₽';
     const m = fin.margin_planned_pct != null ? Number(fin.margin_planned_pct).toFixed(1) + '%' : '— %';
-    return _section('sec-fin', '💰', 'Финансы', null, `
+    return _section('sec-fin', _PK3_ICO.coin, 'Финансы', null, `
       <div class="pk3-fin-grid">
         <div class="pk3-fin-card"><label>Плановая с/с</label><div class="pk3-v">${esc(v(fin.cost_planned))}</div></div>
         <div class="pk3-fin-card"><label>Цена КП без НДС</label><div class="pk3-v">${esc(v(fin.kp_price_without_vat))}</div></div>
@@ -4121,7 +4785,7 @@ window.AsgardPersonalKanbanV3 = (function () {
   function _secTKP(card) {
     const tkpAttached = !!card.tkp_attached;
     const stat = _tkpStatus(card, tkpAttached);
-    return _section('sec-tkp', '📋', 'ТКП клиенту', null, `
+    return _section('sec-tkp', _PK3_ICO.list, 'ТКП клиенту', null, `
       <div style="display:flex;align-items:center;gap:8px;margin-bottom:11px">
         <span class="pk3-tag ${stat.cls}">${stat.tag}</span>
         <span style="font-size:12px;color:var(--t2)">${stat.text}</span>
@@ -4268,7 +4932,7 @@ window.AsgardPersonalKanbanV3 = (function () {
   }
   function _secHist(card) {
     const hist = card.history || [];
-    return _section('sec-hist', '🕘', 'История', hist.length || null, hist.length ? `
+    return _section('sec-hist', _PK3_ICO.hist, 'История', hist.length || null, hist.length ? `
       ${hist.map(h => `
         <div style="padding:6px 0;border-bottom:1px solid var(--brd-m);font-size:12px;color:var(--t2)">
           <b>${esc(h.when || '')}</b> · ${esc(h.who || '')} — ${esc(h.action || '')}${h.note ? '<div style="color:var(--t3);font-size:11px;margin-top:2px">' + esc(h.note) + '</div>' : ''}
@@ -4336,7 +5000,7 @@ window.AsgardPersonalKanbanV3 = (function () {
 
   function _secReminders(card) {
     const open = ((card && card._reminders) || []).filter(r => !r.is_done).length;
-    return _section('sec-reminders', '⏰', 'Напоминания', open || null, `
+    return _section('sec-reminders', _PK3_ICO.clock, 'Напоминания', open || null, `
       <div id="pk3-reminders-list" style="display:flex;flex-direction:column;gap:8px">
         <div style="color:var(--t3);font-size:12px">Загрузка…</div>
       </div>
@@ -4470,10 +5134,10 @@ window.AsgardPersonalKanbanV3 = (function () {
       ? `<span class="pk3-rem-badge" style="margin-left:6px;background:var(--gold,#c9a227);color:#111;border-radius:10px;padding:1px 7px;font-size:10px;font-weight:700">${openRem}</span>`
       : '';
     const ghost = `
-      <button class="pk3-btn pk3-ghost" data-action="save">💾 Сохранить</button>
-      <button class="pk3-btn pk3-ghost" data-action="note">📝 Заметка</button>
-      <button class="pk3-btn pk3-ghost" data-action="remind">⏰ Напоминание${remBadge}</button>
-      <button class="pk3-btn pk3-ghost" data-action="letter">✉ Письмо</button>
+      <button class="pk3-btn pk3-ghost pk3-btn-svg" data-action="save">${_PK3_ICO.save} Сохранить</button>
+      <button class="pk3-btn pk3-ghost pk3-btn-svg" data-action="note">${_PK3_ICO.note} Заметка</button>
+      <button class="pk3-btn pk3-ghost pk3-btn-svg" data-action="remind">${_PK3_ICO.clock} Напоминание${remBadge}</button>
+      <button class="pk3-btn pk3-ghost pk3-btn-svg" data-action="letter">${_PK3_ICO.mail} Письмо</button>
       <div style="flex:1"></div>
     `;
     let context = '';
@@ -4643,25 +5307,14 @@ window.AsgardPersonalKanbanV3 = (function () {
       });
     }
     // Грузим заметки асинхронно — drawer уже виден
+    _hydrateWorkFields(card);
     _loadAndRenderNotes(card);
     _loadAndRenderReminders(card);
     // 22.06.2026: подгружаем прикреплённые ТКП в секции 📋 (с кнопками PDF/Excel)
     _loadAndRenderTkpList(card);
-    // Drag & drop файлов в проводник
-    const dropZone = _drawerEl && _drawerEl.drawer && _drawerEl.drawer.querySelector('.pk3-doc-dropzone');
-    if (dropZone) {
-      dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.classList.add('pk3-doc-drop-over'); });
-      dropZone.addEventListener('dragleave', () => dropZone.classList.remove('pk3-doc-drop-over'));
-      dropZone.addEventListener('drop', async (e) => {
-        e.preventDefault();
-        dropZone.classList.remove('pk3-doc-drop-over');
-        const folderId = dropZone.dataset.dropFolder || _getDocFolder(card);
-        const files = Array.from(e.dataTransfer?.files || []);
-        if (files.length) await _uploadDocFiles(card, folderId, files);
-      });
-    }
-    // Контекстное меню папок (ПКМ)
-    const folderPanel = _drawerEl && _drawerEl.drawer && _drawerEl.drawer.querySelector('.pk3-doc-folders');
+    const docsBody = _drawerEl?.drawer?.querySelector('#sec-docs .pk3-section-body');
+    if (docsBody) _bindDocsExplorerEvents(card, docsBody);
+    const folderPanel = _drawerEl && _drawerEl.drawer && _drawerEl.drawer.querySelector('.pk3-win-tree');
     if (folderPanel) {
       folderPanel.addEventListener('contextmenu', (e) => {
         const row = e.target.closest('.pk3-doc-folder[data-folder-id]');
@@ -4706,15 +5359,121 @@ window.AsgardPersonalKanbanV3 = (function () {
     if (act === 'egrul-lookup')    return _doEgrulLookup();
     if (act === 'customer-pick')   return _openCustomerPicker(card);
     if (act === 'customer-new')    return _openCreateCustomerModal(card);
-    if (act === 'doc-view' || act === 'doc-dl' || act === 'doc-dl-pdf') return _onDocClick(card, act);
-    if (act === 'doc-preview-edit') return _onDocPreviewEditClick(card);
+    if (act === 'customer-open-card') {
+      const inn = (document.getElementById('pk3-f-inn')?.value || card.customer_inn || '').trim();
+      if (!inn) { toast('Нет ИНН', 'Сначала выберите контрагента', 'warn'); return; }
+      location.hash = '#/customer?inn=' + encodeURIComponent(inn);
+      return;
+    }
+    if (act === 'doc-view' || act === 'doc-dl' || act === 'doc-dl-pdf') return _onDocClick(card, act, ev);
+    if (act === 'doc-preview-edit') return _onDocPreviewEditClick(card, ev);
     if (act === 'doc-upload' || act === 'doc-explorer-upload') return _openDocUploadPicker(card, ev?.target?.dataset?.folderId);
-    if (act === 'doc-folder-pick') {
+    if (act === 'doc-folder-pick' || act === 'doc-folder-enter') {
       const fid = ev?.target?.closest('[data-folder-id]')?.dataset?.folderId;
       if (fid && !ev?.target?.closest('[data-action="doc-folder-rename"],[data-action="doc-folder-delete"]')) {
+        const prev = _getDocFolder(card);
+        if (prev !== fid) _docNavHistory.push(prev);
         _setDocFolder(card, fid);
-        return _reopenCurrentCard();
+        _docExplorerSelKey = null;
+        _docExplorerSelKeys = [];
+        return _refreshDocsExplorer(card);
       }
+      return;
+    }
+    if (act === 'doc-explorer-back') {
+      const prev = _docNavHistory.pop();
+      if (prev != null) {
+        _setDocFolder(card, prev);
+        _docExplorerSelKey = null;
+        return _refreshDocsExplorer(card);
+      }
+      return;
+    }
+    if (act === 'doc-explorer-up') {
+      const { folders } = _collectDocsExplorer(card);
+      const cur = folders.find((f) => f.id === _getDocFolder(card));
+      if (cur?.parent_id) {
+        _docNavHistory.push(_getDocFolder(card));
+        _setDocFolder(card, cur.parent_id);
+        _docExplorerSelKey = null;
+        return _refreshDocsExplorer(card);
+      }
+      return;
+    }
+    if (act === 'doc-file-select') {
+      const row = ev?.target?.closest('[data-doc-key]');
+      if (!row || ev?.target?.closest('[data-action="doc-view"],[data-action="doc-dl"],[data-action="doc-rename"],[data-action="doc-move"],[data-action="doc-delete"]')) return;
+      const key = row.dataset.docKey;
+      const { buckets } = _collectDocsExplorer(card);
+      const items = buckets[_getDocFolder(card)] || [];
+      const orderedKeys = items.map((d) => d.key);
+      const multi = !!(ev && (ev.ctrlKey || ev.metaKey));
+      const range = !!(ev && ev.shiftKey);
+      if (range && _docExplorerAnchorKey) {
+        const a = orderedKeys.indexOf(_docExplorerAnchorKey);
+        const b = orderedKeys.indexOf(key);
+        if (a >= 0 && b >= 0) {
+          const lo = Math.min(a, b), hi = Math.max(a, b);
+          _docExplorerSelKeys = orderedKeys.slice(lo, hi + 1);
+          _docExplorerSelKey = key;
+        } else {
+          _docExplorerSelKeys = [key];
+          _docExplorerSelKey = key;
+          _docExplorerAnchorKey = key;
+        }
+      } else if (multi) {
+        if (_docExplorerSelKeys.includes(key)) {
+          _docExplorerSelKeys = _docExplorerSelKeys.filter((k) => k !== key);
+        } else {
+          _docExplorerSelKeys = _docExplorerSelKeys.concat(key);
+        }
+        _docExplorerSelKey = _docExplorerSelKeys[_docExplorerSelKeys.length - 1] || null;
+        _docExplorerAnchorKey = key;
+      } else {
+        _docExplorerSelKeys = [key];
+        _docExplorerSelKey = key;
+        _docExplorerAnchorKey = key;
+      }
+      _drawerEl?.drawer?.querySelectorAll('.pk3-win-file-row').forEach((r) => {
+        r.classList.toggle('pk3-selected', _docExplorerSelKeys.includes(r.dataset.docKey));
+      });
+      const toolbarInfo = _drawerEl?.drawer?.querySelector('.pk3-win-toolbar .pk3-doc-toolbar-info');
+      if (toolbarInfo) {
+        const n = _docExplorerSelKeys.length;
+        const base = toolbarInfo.textContent.split(' ·')[0];
+        toolbarInfo.textContent = n > 1 ? `${base} · выбрано ${n}` : base;
+      }
+      let moveBtn = _drawerEl?.drawer?.querySelector('[data-action="doc-explorer-move-sel"]');
+      const manualSel = _docExplorerSelKeys.filter((k) => items.some((d) => d.key === k && d.src === 'manual'));
+      if (manualSel.length) {
+        if (!moveBtn) {
+          const tb = _drawerEl?.drawer?.querySelector('.pk3-win-toolbar');
+          if (tb) {
+            moveBtn = document.createElement('button');
+            moveBtn.type = 'button';
+            moveBtn.className = 'pk3-btn pk3-sm pk3-ghost';
+            moveBtn.dataset.action = 'doc-explorer-move-sel';
+            tb.insertBefore(moveBtn, toolbarInfo || null);
+          }
+        }
+        if (moveBtn) moveBtn.textContent = `Переместить (${manualSel.length})`;
+      } else if (moveBtn) {
+        moveBtn.remove();
+      }
+      const doc = items.find((d) => d.key === _docExplorerSelKey);
+      if (doc && !multi && !range) _loadDocPreviewPane(card, doc);
+      return;
+    }
+    if (act === 'doc-explorer-move-sel') {
+      const { buckets } = _collectDocsExplorer(card);
+      const items = buckets[_getDocFolder(card)] || [];
+      const idxs = _docExplorerSelKeys
+        .map((k) => items.find((d) => d.key === k))
+        .filter((d) => d && d.src === 'manual' && d.idx != null)
+        .map((d) => d.idx);
+      if (!idxs.length) { toast('Выберите файлы', 'Ctrl/Shift+клик по строкам', 'warn'); return; }
+      const anchor = ev?.target?.closest('button') || ev?.target;
+      _showDocMoveMenuBulk(card, idxs, anchor);
       return;
     }
     if (act === 'doc-folder-new') return _createDocFolder(card);
@@ -4787,18 +5546,31 @@ window.AsgardPersonalKanbanV3 = (function () {
   }
   async function _saveDrawerFields(card) {
     const get = (id) => { const el = $(id); return el ? (el.value || '').trim() : null; };
+    const getNum = (id) => {
+      const el = $(id);
+      if (!el || el.value === '') return null;
+      const n = Number(el.value);
+      return Number.isFinite(n) ? n : null;
+    };
     const body = {
       customer_name:    get('#pk3-f-customer') || null,
       customer_inn:     get('#pk3-f-inn')      || null,
       contact_person:   get('#pk3-f-contact')  || null,
       customer_email:   get('#pk3-f-email')    || null,
       contact_phone:    get('#pk3-f-phone')    || null,
+      contact_phone2:   get('#pk3-f-phone2')   || null,
       work_description: get('#pk3-f-desc')     || null,
       work_location:    get('#pk3-f-city')     || null,
+      ai_work_type:     get('#pk3-f-worktype') || null,
+      work_volume:      getNum('#pk3-f-vol'),
+      work_volume_unit: get('#pk3-f-volunit')  || null,
+      work_deadline:    get('#pk3-f-kpdeadline') || null,
+      work_start_plan:  get('#pk3-f-startp')   || null,
+      work_end_plan:    get('#pk3-f-endp')     || null,
     };
     const r = await api(`/api/personal-kanban/cards/${card.id}/update`, { method: 'POST', body });
     if (r.ok) {
-      toast('Сохранено', 'Карточка клиента обновлена', 'ok');
+      toast('Сохранено', 'Клиент и работа обновлены', 'ok');
       Object.assign(card, body);
     } else {
       toast('Не сохранилось', (r.data && r.data.error) || 'Ошибка', 'err');
@@ -4843,12 +5615,13 @@ window.AsgardPersonalKanbanV3 = (function () {
   // pt id берём из card.entity_id (это pre_tender_request id).
   // doc-dl-pdf — добавляет format=pdf к URL: если data-from-parent='1' (нет PDF-сиблинга),
   // backend сконвертит исходник XLSX/DOCX в PDF on-demand; иначе data-id уже указывает на сиблинг.
-  function _onDocClick(card, act) {
-    const ev = window.event;
+  function _onDocClick(card, act, ev) {
     const btn = ev && ev.target && ev.target.closest('[data-action="doc-view"], [data-action="doc-dl"], [data-action="doc-dl-pdf"]');
     if (!btn) return;
     const src = btn.dataset.src || 'email';
     const docId = btn.dataset.id;
+    const row = btn.closest('.pk3-win-file-row, .pk3-doc-row');
+    const mime = btn.dataset.mime || row?.dataset?.mime || '';
     const ptId = card.entity_id || card.entity_id_pt || (card.entity && card.entity.id);
     if (!ptId) { toast('Нет привязки', 'Открой pre-tender', 'warn'); return; }
     const token = encodeURIComponent(localStorage.getItem('asgard_token') || '');
@@ -4872,8 +5645,18 @@ window.AsgardPersonalKanbanV3 = (function () {
       a.href = url; a.download = ''; a.target = '_blank';
       document.body.appendChild(a); a.click(); a.remove();
     } else if (window.AsgardDocPreview) {
-      const fname = btn.closest('.pk3-doc-row')?.querySelector('.pk3-doc-name')?.textContent || 'документ';
-      window.AsgardDocPreview.open({ title: fname.trim(), fileUrl: url, downloadUrl: url });
+      const fname = btn.closest('.pk3-win-file-row, .pk3-doc-row')?.querySelector('.pk3-win-file-name, .pk3-doc-name')?.textContent || 'документ';
+      let previewUrl = url;
+      const nameLow = fname.toLowerCase();
+      const mimeLow = mime.toLowerCase();
+      const needsPdf = act === 'doc-view' && (
+        mimeLow.includes('word') || mimeLow.includes('sheet') || mimeLow.includes('excel')
+        || /\.docx?$/.test(nameLow) || /\.xlsx?$/.test(nameLow)
+      );
+      if (needsPdf) previewUrl += (url.indexOf('?') >= 0 ? '&' : '?') + 'format=pdf';
+      const archiveListUrl = (mimeLow.includes('zip') || nameLow.endsWith('.zip')) && src === 'manual'
+        ? `/api/pre-tenders/${ptId}/documents/${encodeURIComponent(docId)}/archive-list` : null;
+      window.AsgardDocPreview.open({ title: fname.trim(), fileUrl: previewUrl, mime, downloadUrl: url, archiveListUrl });
     } else {
       window.open(url, '_blank', 'noopener');
     }
@@ -4885,8 +5668,7 @@ window.AsgardPersonalKanbanV3 = (function () {
   // (_onDrawerAction → 'doc-preview-edit') достаём data-id/data-kind с кнопки
   // и зовём _openDocPreviewEdit(card, idx, kind).
   // ─────────────────────────────────────────────────────────────────────────
-  function _onDocPreviewEditClick(card) {
-    const ev = window.event;
+  function _onDocPreviewEditClick(card, ev) {
     const btn = ev && ev.target && ev.target.closest('[data-action="doc-preview-edit"]');
     if (!btn) return;
     const idx  = Number(btn.dataset.id);
@@ -5014,7 +5796,7 @@ window.AsgardPersonalKanbanV3 = (function () {
           toast('Сохранено', 'Документ обновлён в карте', 'ok');
           dlBtn.textContent = '✅ Сохранено';
           // Релоад карты, чтобы новый файл появился в списке.
-          _reopenCurrentCard();
+          _refreshDocsExplorer(card);
         } else {
           const blob = await res.blob();
           const url = URL.createObjectURL(blob);
@@ -5654,7 +6436,7 @@ window.AsgardPersonalKanbanV3 = (function () {
       if (res.ok) {
         toast('Загружено', `${files.length} файл(ов) в папку`, 'ok');
         _setDocFolder(card, targetFolder);
-        _reopenCurrentCard();
+        _refreshDocsExplorer(card);
       } else {
         const msg = data.message || data.error || ('HTTP ' + res.status);
         toast('Не загрузилось', msg, 'err');
@@ -5709,16 +6491,21 @@ window.AsgardPersonalKanbanV3 = (function () {
         overlay.querySelector('#pk3-fld-save')?.addEventListener('click', async () => {
           const name = (overlay.querySelector('#pk3-fld-name')?.value || '').trim();
           if (!name) { toast('Ошибка', 'Введите название', 'err'); return; }
+          const parentId = _getDocFolder(card) || null;
+          const { folders } = _collectDocsExplorer(card);
+          const parentFolder = parentId ? folders.find((x) => x.id === parentId) : null;
+          const payload = { name };
+          if (parentFolder) payload.parent_id = parentId;
           try {
             const res = await fetch(`/api/pre-tenders/${ptId}/folders`, {
-              method: 'POST', headers: _authHeaders(), body: JSON.stringify({ name })
+              method: 'POST', headers: _authHeaders(), body: JSON.stringify(payload)
             });
             const data = await res.json().catch(() => ({}));
             if (!res.ok) { toast('Ошибка', data.error || 'Не создать папку', 'err'); return; }
             if (data.folder?.id) _setDocFolder(card, data.folder.id);
             close();
             toast('Готово', 'Папка создана', 'ok');
-            _reopenCurrentCard();
+            _refreshDocsExplorer(card);
           } catch (e) { toast('Сеть', e.message, 'err'); }
         });
         setTimeout(() => overlay.querySelector('#pk3-fld-name')?.focus(), 50);
@@ -5741,7 +6528,7 @@ window.AsgardPersonalKanbanV3 = (function () {
       const data = await res.json().catch(() => ({}));
       if (!res.ok) { toast('Ошибка', data.error || 'Не переименовать', 'err'); return; }
       toast('Готово', 'Папка переименована', 'ok');
-      _reopenCurrentCard();
+      _refreshDocsExplorer(card);
     } catch (e) { toast('Сеть', e.message, 'err'); }
   }
 
@@ -5758,13 +6545,15 @@ window.AsgardPersonalKanbanV3 = (function () {
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        const msg = data.error === 'folder_not_empty' ? 'Сначала переместите или удалите файлы из папки' : (data.error || 'Не удалить');
+        const msg = data.error === 'folder_not_empty' ? 'Сначала переместите или удалите файлы из папки'
+          : data.error === 'folder_has_children' ? 'Сначала удалите вложенные папки'
+          : (data.error || 'Не удалить');
         toast('Ошибка', msg, 'err');
         return;
       }
       if (_getDocFolder(card) === folderId) _setDocFolder(card, 'pm_upload');
       toast('Готово', 'Папка удалена', 'ok');
-      _reopenCurrentCard();
+      _refreshDocsExplorer(card);
     } catch (e) { toast('Сеть', e.message, 'err'); }
   }
 
@@ -5772,7 +6561,7 @@ window.AsgardPersonalKanbanV3 = (function () {
     const idx = Number(idxStr);
     if (!Number.isFinite(idx) || !anchorEl) return;
     document.querySelectorAll('.pk3-doc-move-menu').forEach((el) => el.remove());
-    const wrap = anchorEl.closest('.pk3-doc-actions');
+    const wrap = anchorEl.closest('.pk3-doc-actions') || anchorEl.parentElement;
     if (!wrap) return;
     const { folders } = _collectDocsExplorer(card);
     const menu = document.createElement('div');
@@ -5780,6 +6569,7 @@ window.AsgardPersonalKanbanV3 = (function () {
     menu.innerHTML = folders.map((f) =>
       `<button type="button" data-folder-id="${esc(f.id)}">${esc(f.name)}</button>`
     ).join('');
+    wrap.style.position = wrap.style.position || 'relative';
     wrap.appendChild(menu);
     const close = (e) => {
       if (menu.contains(e.target)) return;
@@ -5796,6 +6586,40 @@ window.AsgardPersonalKanbanV3 = (function () {
     });
   }
 
+  function _showDocMoveMenuBulk(card, idxs, anchorEl) {
+    if (!idxs || !idxs.length || !anchorEl) return;
+    document.querySelectorAll('.pk3-doc-move-menu').forEach((el) => el.remove());
+    const { folders } = _collectDocsExplorer(card);
+    const menu = document.createElement('div');
+    menu.className = 'pk3-doc-move-menu';
+    menu.style.position = 'fixed';
+    const rect = anchorEl.getBoundingClientRect();
+    menu.style.left = Math.min(rect.left, window.innerWidth - 220) + 'px';
+    menu.style.top = Math.min(rect.bottom + 4, window.innerHeight - 120) + 'px';
+    menu.innerHTML = folders.map((f) =>
+      `<button type="button" data-folder-id="${esc(f.id)}">${esc(f.name)}</button>`
+    ).join('');
+    document.body.appendChild(menu);
+    const close = (e) => {
+      if (menu.contains(e.target)) return;
+      menu.remove();
+      document.removeEventListener('click', close);
+    };
+    setTimeout(() => document.addEventListener('click', close), 0);
+    menu.addEventListener('click', async (e) => {
+      const btn = e.target.closest('button[data-folder-id]');
+      if (!btn) return;
+      menu.remove();
+      document.removeEventListener('click', close);
+      for (const idx of idxs) {
+        await _moveDocToFolder(card, idx, btn.dataset.folderId);
+      }
+      _docExplorerSelKeys = [];
+      _docExplorerSelKey = null;
+      _docExplorerAnchorKey = null;
+    });
+  }
+
   async function _moveDocToFolder(card, idx, folderId) {
     const ptId = card.entity_id;
     if (!ptId || !Number.isFinite(idx) || !folderId) return;
@@ -5807,7 +6631,7 @@ window.AsgardPersonalKanbanV3 = (function () {
       if (!res.ok) { toast('Ошибка', data.error || 'Не переместить', 'err'); return; }
       _setDocFolder(card, folderId);
       toast('Готово', 'Документ перемещён', 'ok');
-      _reopenCurrentCard();
+      _refreshDocsExplorer(card);
     } catch (e) { toast('Сеть', e.message, 'err'); }
   }
 
@@ -5828,7 +6652,7 @@ window.AsgardPersonalKanbanV3 = (function () {
       const data = await res.json().catch(() => ({}));
       if (!res.ok) { toast('Ошибка', data.error || 'Не переименовать', 'err'); return; }
       toast('Готово', 'Файл переименован', 'ok');
-      _reopenCurrentCard();
+      _refreshDocsExplorer(card);
     } catch (e) { toast('Сеть', e.message, 'err'); }
   }
 
@@ -5852,19 +6676,30 @@ window.AsgardPersonalKanbanV3 = (function () {
         return;
       }
       toast('Готово', 'Файл удалён', 'ok');
-      _reopenCurrentCard();
+      _refreshDocsExplorer(card);
     } catch (e) { toast('Сеть', e.message, 'err'); }
   }
 
   async function _reopenCurrentCard() {
     if (!_currentCard) return;
     try {
-      const r = await api(`/api/personal-kanban/board?flow_filter=all`);
-      if (!r.ok || !r.data || !r.data.columns) return;
-      // Найти карту с тем же id в обновлённом board.
-      const all = Object.values(r.data.columns).flat();
-      const fresh = all.find(c => c.id === _currentCard.id);
-      if (fresh) _openDrawer(fresh);
+      const fresh = await _patchCardFromBoard(_currentCard.id);
+      if (!fresh) return;
+      if (!fresh.col) fresh.col = fresh.v3_column;
+      Object.assign(_currentCard, fresh);
+      const drawer = _drawerEl?.drawer;
+      if (!drawer) { _openDrawer(fresh); return; }
+      const stages = drawer.querySelector('.pk3-stages');
+      if (stages) {
+        const active = COL_TO_STAGE[fresh.col] ?? 0;
+        stages.innerHTML = STAGE_LABELS.map((lbl, i) => {
+          const cls = i < active ? 'pk3-done' : (i === active ? 'pk3-now' : '');
+          return `<div class="pk3-stage ${cls}">${esc(lbl)}</div>`;
+        }).join('');
+      }
+      const bar = drawer.querySelector('#pk3-actions-bar');
+      if (bar) bar.innerHTML = _renderActionsBar(fresh);
+      // soft-premium: keep sections open; only unlock/lock via rebinding if needed
     } catch (_) {}
   }
 
@@ -6018,10 +6853,10 @@ window.AsgardPersonalKanbanV3 = (function () {
       <textarea placeholder="Пиши…" maxlength="${NOTE_MAX}" rows="5"></textarea>
       <div class="pk3-sticker-v2-edit-foot">
         <span data-cnt>${initialLen}/${NOTE_MAX}</span>
-        <div class="pk3-stk-btns">
-          <button type="button" data-act="${cancelAct}">Отмена</button>
-          <button type="button" data-act="${saveAct}">💾</button>
-        </div>
+      </div>
+      <div class="pk3-stk-float-bar" role="toolbar">
+        <button type="button" data-act="${cancelAct}" title="Отмена">${_PK3_ICO.close}</button>
+        <button type="button" class="pk3-stk-save" data-act="${saveAct}" title="Сохранить">${_PK3_ICO.check}</button>
       </div>`;
   }
   function _bindNoteEditInput(stk, ta) {
@@ -6484,6 +7319,11 @@ window.AsgardPKv3Modals = (function () {
     const t = (() => { try { return localStorage.getItem('asgard_token'); } catch (_) { return null; } })();
     return t ? { 'Authorization': 'Bearer ' + t, 'Content-Type': 'application/json' } : { 'Content-Type': 'application/json' };
   }
+  // Без Content-Type — для FormData/multipart upload и SSE (Bearer only).
+  function _authHeader() {
+    const t = (() => { try { return localStorage.getItem('asgard_token'); } catch (_) { return null; } })();
+    return t ? { 'Authorization': 'Bearer ' + t } : {};
+  }
   async function api(path, opts) {
     const init = { method: (opts && opts.method) || 'GET', headers: authHeaders() };
     if (opts && opts.body) init.body = JSON.stringify(opts.body);
@@ -6493,7 +7333,50 @@ window.AsgardPKv3Modals = (function () {
   }
 
   // ── Modal helpers ────────────────────────────────────────────────────
+  function _ensureQuickModalStylesFallback() {
+    if (document.getElementById('asg-pk3-quick-fallback-styles')) return;
+    const st = document.createElement('style');
+    st.id = 'asg-pk3-quick-fallback-styles';
+    st.textContent = `
+.pk3-modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.72);z-index:20100;display:none;align-items:center;justify-content:center;padding:28px;backdrop-filter:blur(6px)}
+.pk3-modal-overlay.show{display:flex!important}
+.pk3-modal{background:var(--bg1,#16161f);border:1px solid var(--brd,#333);border-radius:14px;width:92vw;max-width:1100px;height:88vh;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 24px 60px rgba(0,0,0,.6);color:var(--t1,#e8e8f0)}
+.pk3-modal-head{padding:14px 20px;border-bottom:1px solid var(--brd-m,#2a2a35);display:flex;align-items:center;gap:10px}
+.pk3-modal-head h3{font-size:16px;flex:1;margin:0}
+.pk3-modal-body{flex:1;overflow-y:auto;padding:18px 22px}
+.pk3-modal-foot{padding:12px 20px;border-top:1px solid var(--brd-m,#2a2a35);display:flex;gap:9px;align-items:center;background:var(--bg2,#1c1c28)}
+.pk3-btn{border:1px solid var(--brd-m,#333);background:var(--bg2,#1c1c28);color:var(--t1,#eee);border-radius:8px;padding:8px 14px;cursor:pointer;font:inherit}
+.pk3-btn.pk3-gold{background:linear-gradient(135deg,#d4a843,#b8860b);border-color:transparent;color:#1a1200;font-weight:700}
+.pk3-btn.pk3-ghost{background:transparent}
+.pk3-btn.pk3-sm{padding:4px 9px;font-size:11px}
+.pk3-btn-icon{background:transparent;border:none;color:var(--t2,#aaa);cursor:pointer;font-size:18px}
+.pk3-wiz-steps{display:flex;gap:0;margin-bottom:18px;background:var(--brd-m,#2a2a35);border-radius:10px;overflow:hidden}
+.pk3-wiz-step{flex:1;padding:10px 6px;text-align:center;font-size:11.5px;background:var(--bg2,#1c1c28);color:var(--t3,#888)}
+.pk3-wiz-step.pk3-now{background:rgba(212,168,67,.15);color:#e8c96a;font-weight:700}
+.pk3-wiz-step.pk3-done{background:rgba(45,134,89,.15);color:#6dcb96}
+.pk3-tag{font-size:11px;padding:2px 8px;border-radius:999px;background:rgba(59,130,246,.15);color:#93c5fd}
+.pk3-ai-block{padding:12px 14px;border:1px solid var(--brd-m,#2a2a35);border-radius:10px;background:var(--bg2,#1c1c28);line-height:1.5}
+.pk3-row{display:flex;flex-direction:column;gap:6px;margin-bottom:10px}
+.pk3-row label{font-size:12px;color:var(--t3,#888)}
+.pk3-row textarea,.pk3-row input,.pk3-row select{background:var(--bg3,#12121a);border:1px solid var(--brd-m,#2a2a35);border-radius:8px;color:var(--t1,#eee);padding:8px 10px;font:inherit}
+.pk3-busy{position:absolute;inset:0;background:rgba(15,15,18,.88);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;z-index:80;border-radius:14px}
+.pk3-busy-spin{width:46px;height:46px;border-radius:50%;border:3px solid rgba(255,255,255,.08);border-top-color:#D4A843;animation:pk3-spin .8s linear infinite;flex-shrink:0}
+.pk3-busy-text{color:#E8C35A;font-size:14px;font-weight:600;text-align:center;max-width:90%;line-height:1.5}
+.pk3-busy-sub{color:rgba(255,255,255,.55);font-size:12px;text-align:center;max-width:90%}
+@keyframes pk3-spin{to{transform:rotate(360deg)}}
+`;
+    document.head.appendChild(st);
+  }
+  function ensurePk3Styles() {
+    try {
+      if (typeof window.AsgardPK3EnsureStyles === 'function') window.AsgardPK3EnsureStyles();
+    } catch (_) {}
+    // Fallback всегда — иначе на #/pm-calculations без визита на канбан
+    // модалка рендерится «голым» DOM внизу страницы.
+    _ensureQuickModalStylesFallback();
+  }
   function mountModal(html) {
+    ensurePk3Styles();
     const overlay = document.createElement('div');
     overlay.className = 'pk3-modal-overlay show';
     overlay.innerHTML = html;
@@ -6533,6 +7416,9 @@ window.AsgardPKv3Modals = (function () {
     if (!resp.ok || !resp.body) {
       let errText = '';
       try { const j = await resp.json(); errText = j.error || JSON.stringify(j); } catch (_) {}
+      if (resp.status === 401) {
+        throw new Error('Сессия истекла (401). Обнови страницу и войди снова.');
+      }
       throw new Error('HTTP ' + resp.status + (errText ? ': ' + errText : ''));
     }
     const reader = resp.body.getReader();
@@ -6580,6 +7466,11 @@ window.AsgardPKv3Modals = (function () {
    * ──────────────────────────────────────────────────────────────────── */
   function openQuick(card, opts) {
     opts = opts || {};
+    const isRp = opts.mode === 'rp_review';
+    // Не плодить окна поверх RP-review: закрыть предыдущий Quick.
+    document.querySelectorAll('.pk3-modal-overlay[data-mimir-quick="1"]').forEach((el) => {
+      try { close(el); } catch (_) { try { el.remove(); } catch (__) {} }
+    });
     // Состояние сессии
     let step = 0; // 0 загрузка, 1 расчёт, 2 диалог, 3 финал
     let sessionUid = card._quickSession || null;
@@ -6593,6 +7484,17 @@ window.AsgardPKv3Modals = (function () {
     let vatEdited = false;          // то же для НДС
     let running = false;            // блокирует кнопки во время AI-вызовов
 
+    async function _startSession(body) {
+      if (typeof opts.startSession === 'function') {
+        return opts.startSession(body || {});
+      }
+      const r = await api(`/api/personal-kanban/cards/${card.id}/start-quick`, {
+        method: 'POST', body: body || {}
+      });
+      if (!r.ok) return null;
+      return r.data;
+    }
+
     // Подтянем дефолтный НДС из настроек
     api('/api/settings/vat_default_pct').then(r => {
       const v = (r && r.ok && r.data && r.data.value != null) ? Number(r.data.value) : null;
@@ -6603,16 +7505,66 @@ window.AsgardPKv3Modals = (function () {
       }
     }).catch(() => {});
 
+    function _ensureAsgardEstimate() {
+      const S = window.AsgardSmeta;
+      if (!S) return lastEstimate;
+      if (lastEstimate && lastEstimate.template === 'asgard_v1' && Array.isArray(lastEstimate.rows)) {
+        lastEstimate = S.recalcAsgardSmeta(lastEstimate);
+        return lastEstimate;
+      }
+      // Миграция плоского items → asgard_v1 skeleton + override lines
+      const base = S.recalcAsgardSmeta({
+        template: 'asgard_v1',
+        meta: {
+          title: (lastEstimate && (lastEstimate.subject || lastEstimate.meta?.title)) || 'Просчёт ТКП',
+          customer: card.customer_name || '',
+          object: '',
+          executor: 'ООО «АСГАРД-Сервис»'
+        },
+        params: {
+          vat: (Number(vatPct) || 22) / 100,
+          markup: 1 + (Number(marginPct) || 50) / 100
+        },
+        rows: S.skeletonRows(),
+        ai_meta: lastEstimate && lastEstimate.ai_meta
+      });
+      if (lastEstimate && Array.isArray(lastEstimate.items)) {
+        // Кладём старые позиции в секцию B как override (чтобы не потерять)
+        const insertAt = base.rows.findIndex((r) => r.id === 'b_tot');
+        lastEstimate.items.filter((it) => !it.virtual).forEach((it, i) => {
+          base.rows.splice(insertAt + i, 0, {
+            id: 'legacy_' + i,
+            kind: 'line',
+            section: 'B',
+            code: 'L' + (i + 1),
+            name: it.name || 'Позиция',
+            unit: it.unit || '',
+            qty: Number(it.qty) || 0,
+            price: Number(it.price) || 0,
+            override: true,
+            editable: { qty: true, price: true, name: true }
+          });
+        });
+      }
+      lastEstimate = S.recalcAsgardSmeta(base);
+      return lastEstimate;
+    }
+
     function _calcTotals(est) {
       if (!est) return { cost: 0, kp_no_vat: 0, kp_with_vat: 0 };
+      if (est.template === 'asgard_v1' && est.totals) {
+        return {
+          cost: Math.round(Number(est.totals.cost) || 0),
+          kp_no_vat: Math.round(Number(est.totals.price_no_vat) || 0),
+          kp_with_vat: Math.round(Number(est.totals.price_with_vat) || 0)
+        };
+      }
       const items = Array.isArray(est.items) ? est.items : [];
       const cost = items.reduce((s, it) => {
         const q = Number(it.qty || it.quantity || 0);
         const p = Number(it.price || it.unit_price || 0);
         return s + (isFinite(q * p) ? q * p : 0);
       }, 0);
-      // Если юзер руками изменил маржу — наше значение приоритет, total_without_vat от AI
-      // игнорируется. Иначе используем AI-расчёт (он точнее, учитывает накладные/налоги).
       const kpNoVat = (!marginEdited && est.total_without_vat != null)
         ? Number(est.total_without_vat)
         : Math.round(cost * (1 + marginPct / 100));
@@ -6672,18 +7624,21 @@ window.AsgardPKv3Modals = (function () {
     }
     function _renderStep1() {
       return `
-        <p style="margin-bottom:12px;color:var(--t2)">🧠 Мимир анализирует ТЗ. Это может занять до минуты.</p>
+        <p style="margin-bottom:12px;color:var(--t2)">Мимир анализирует ТЗ. На большом пакете документов обычно <b>2–5 минут</b> — не закрывай окно.</p>
         <div id="pk3-q-progress" class="pk3-ai-block">
           <p id="pk3-q-prog-line">Подключаюсь…</p>
         </div>
       `;
     }
     function _renderStep2() {
+      const saveBtn = isRp
+        ? `<button data-act="apply-to-report" class="pk3-btn pk3-gold pk3-sm" type="button" title="Применить смету и отчёт к форме RP-review" style="margin-left:auto">✅ Применить к отчёту</button>`
+        : `<button data-act="save-to-card" class="pk3-btn pk3-gold pk3-sm" type="button" title="Сохранить смету и отчёт в карточку заявки" style="margin-left:auto">💾 Сохранить в карточку</button>`;
       return `
         <div class="pk3-quick-actions" style="display:flex;gap:8px;margin-bottom:10px;padding:8px;background:var(--bg2);border-radius:6px;border:1px solid var(--brd-m);flex-wrap:wrap;align-items:center">
           <button data-act="dl-smeta-preview" class="pk3-btn pk3-ghost pk3-sm" type="button" title="Скачать промежуточную смету как Excel">📊 Скачать смету (предпросмотр)</button>
           <button data-act="dl-report-preview" class="pk3-btn pk3-ghost pk3-sm" type="button" title="Скачать промежуточный отчёт как DOCX">📋 Скачать отчёт (предпросмотр)</button>
-          <button data-act="save-to-card" class="pk3-btn pk3-gold pk3-sm" type="button" title="Сохранить смету и отчёт в карточку заявки" style="margin-left:auto">💾 Сохранить в карточку</button>
+          ${saveBtn}
         </div>
         <p style="margin-bottom:8px;color:var(--t2)">🤖 Ответ AI:</p>
         <div class="pk3-ai-block">
@@ -6697,30 +7652,61 @@ window.AsgardPKv3Modals = (function () {
       `;
     }
     function _renderStep3() {
-      // Нормализуем items в единый формат до мутаций — чтобы input'ы работали стабильно.
-      if (lastEstimate && Array.isArray(lastEstimate.items)) {
-        lastEstimate.items = lastEstimate.items.map(it => ({
-          name:  it.name != null ? it.name : (it.title || it.description || ''),
-          unit:  it.unit != null ? it.unit : (it.unit_name || ''),
-          qty:   it.qty != null ? Number(it.qty) : (it.quantity != null ? Number(it.quantity) : 0),
-          price: it.price != null ? Number(it.price) : (it.unit_price != null ? Number(it.unit_price) : 0),
-        }));
+      _ensureAsgardEstimate();
+      const S = window.AsgardSmeta;
+      const est = lastEstimate;
+      const totals = _calcTotals(est);
+      const p = (est && est.params) || {};
+      if (est.totals) {
+        marginPct = Math.round(((Number(p.markup) || 1.5) - 1) * 1000) / 10;
+        vatPct = Math.round((Number(p.vat) || 0.22) * 1000) / 10;
       }
-      const items = (lastEstimate && Array.isArray(lastEstimate.items)) ? lastEstimate.items : [];
-      const totals = _calcTotals(lastEstimate);
-      const inp = (val, attrs) => `<input ${attrs} value="${esc(String(val == null ? '' : val))}" style="width:100%;background:transparent;border:1px solid transparent;padding:4px 6px;color:var(--t1);font:inherit;border-radius:4px"/>`;
-      const rows = items.length ? items.map((it, i) => {
-        const sum = (Number(it.qty) * Number(it.price)) || 0;
-        return `<tr data-row-idx="${i}" style="border-bottom:1px solid var(--brd-m)">
-          <td style="padding:4px;color:var(--t3);font-size:11px">${i+1}</td>
-          <td style="padding:4px">${inp(it.name, 'data-fld="name"')}</td>
-          <td style="padding:4px;width:64px">${inp(it.unit, 'data-fld="unit"')}</td>
-          <td style="padding:4px;width:80px">${inp(it.qty, 'data-fld="qty" type="number" min="0" step="0.01" style="text-align:right;width:100%;background:transparent;border:1px solid transparent;padding:4px 6px;color:var(--t1);font:inherit;border-radius:4px"')}</td>
-          <td style="padding:4px;width:110px">${inp(it.price, 'data-fld="price" type="number" min="0" step="1" style="text-align:right;width:100%;background:transparent;border:1px solid transparent;padding:4px 6px;color:var(--t1);font:inherit;border-radius:4px"')}</td>
-          <td style="padding:6px;text-align:right;color:var(--gold-l);font-family:monospace" data-fld="sum">${_fmtMoneyRub(sum)}</td>
-          <td style="padding:4px;width:32px"><button class="pk3-btn pk3-ghost pk3-sm" data-act="row-del" data-row-idx="${i}" title="Удалить строку" style="padding:4px 8px">🗑</button></td>
+
+      const paramRows = (S && S.PARAM_LABELS || []).map((meta) => {
+        let val = p[meta.key];
+        let show = val;
+        let step = 'any';
+        let unit = meta.unit || '';
+        if (['fot_tax', 'overhead', 'contingency', 'vat'].includes(meta.key)) {
+          show = Math.round(Number(val) * 10000) / 100; // %
+          step = '0.1';
+          unit = '%';
+        }
+        return `<tr>
+          <td style="padding:4px 6px;font-size:12px">${esc(meta.label)}</td>
+          <td style="padding:4px;width:110px">
+            <input data-param="${esc(meta.key)}" type="number" step="${step}" value="${show}"
+              style="width:100%;background:#dce6f1;border:1px solid #8faadc;padding:4px 6px;color:var(--t1);font:inherit;border-radius:4px;text-align:right"/>
+          </td>
+          <td style="padding:4px;color:var(--t3);font-size:11px">${esc(unit)}</td>
+          <td style="padding:4px;color:var(--t3);font-size:11px">${esc(meta.note || '')}</td>
         </tr>`;
-      }).join('') : '<tr><td colspan="7" style="padding:14px;color:var(--t3);text-align:center">AI не вернул позиции сметы</td></tr>';
+      }).join('');
+
+      const bodyRows = (est.rows || []).map((row, i) => {
+        if (row.kind === 'section') {
+          return `<tr style="background:var(--bg3,#2a2218)"><td colspan="7" style="padding:8px 6px;font-weight:700;color:var(--gold-l)">${esc(row.name)}</td></tr>`;
+        }
+        if (row.kind === 'line') {
+          const sum = Number(row.sum) || 0;
+          return `<tr data-row-id="${esc(row.id)}" data-row-kind="line" style="border-bottom:1px solid var(--brd-m)">
+            <td style="padding:4px;color:var(--t3);font-size:11px">${esc(row.code || '')}</td>
+            <td style="padding:4px"><input data-fld="name" value="${esc(row.name || '')}" style="width:100%;background:transparent;border:1px solid transparent;padding:4px 6px;color:var(--t1);font:inherit"/></td>
+            <td style="padding:4px;width:64px"><input data-fld="unit" value="${esc(row.unit || '')}" style="width:100%;background:transparent;border:1px solid transparent;padding:4px;color:var(--t1);font:inherit"/></td>
+            <td style="padding:4px;width:90px"><input data-fld="qty" type="number" step="0.01" value="${Number(row.qty) || 0}" style="width:100%;background:#dce6f1;border:1px solid #8faadc;padding:4px;color:var(--t1);font:inherit;text-align:right;border-radius:4px"/></td>
+            <td style="padding:4px;width:110px"><input data-fld="price" type="number" step="1" value="${Number(row.price) || 0}" style="width:100%;background:#dce6f1;border:1px solid #8faadc;padding:4px;color:var(--t1);font:inherit;text-align:right;border-radius:4px"/></td>
+            <td style="padding:6px;text-align:right;color:var(--gold-l);font-family:monospace" data-fld="sum">${_fmtMoneyRub(sum)}</td>
+            <td style="padding:4px;width:32px"><button class="pk3-btn pk3-ghost pk3-sm" data-act="row-del" data-row-id="${esc(row.id)}" title="Удалить" style="padding:4px 8px">🗑</button></td>
+          </tr>`;
+        }
+        // subtotal / rollup
+        const strong = row.sumExpr === 'cost' || row.sumExpr === 'price_with_vat';
+        return `<tr style="border-top:1px solid var(--brd-m);background:${strong ? 'rgba(212,168,67,.12)' : 'transparent'}">
+          <td colspan="5" style="padding:7px 6px;text-align:right;font-weight:600">${esc(row.name)}</td>
+          <td style="padding:7px;text-align:right;font-weight:700;font-family:monospace;color:var(--gold-l)" data-rollup="${esc(row.id)}">${_fmtMoneyRub(row.sum)}</td>
+          <td></td>
+        </tr>`;
+      }).join('');
 
       const aiBlock = lastChatMd ? `
         <details style="margin-top:12px;background:var(--bg2);border:1px solid var(--brd-m);border-radius:10px;padding:8px 12px">
@@ -6730,90 +7716,183 @@ window.AsgardPKv3Modals = (function () {
 
       return `
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;gap:10px;flex-wrap:wrap">
-          <p style="margin:0;color:var(--t2)">Смета — <b>правь прямо в таблице</b>: имя / кол-во / цена / ед. Сумма пересчитывается автоматически.</p>
-          <div style="display:flex;gap:6px">
+          <p style="margin:0;color:var(--t2)">Смета Асгарда — <b>синие ячейки редактируемые</b>, итоги пересчитываются как в Excel.</p>
+          <div style="display:flex;gap:6px;flex-wrap:wrap">
             <button class="pk3-btn pk3-ghost pk3-sm" data-act="row-add">+ Позиция</button>
-            <button class="pk3-btn pk3-gold pk3-sm" data-act="dl-xlsx" title="Excel с формулами и дашбордом">📊 Excel</button>
-            <button class="pk3-btn pk3-ghost pk3-sm" data-act="preview-html" title="HTML-отчёт в новой вкладке">👁 Превью</button>
-            <button class="pk3-btn pk3-ghost pk3-sm" data-act="dl-csv" title="CSV для импорта в Excel/1С">📄 CSV</button>
-            <button class="pk3-btn pk3-ghost pk3-sm" data-act="dl-md" title="Markdown-отчёт">📋 MD</button>
+            <button class="pk3-btn pk3-gold pk3-sm" data-act="dl-xlsx" title="Excel с формулами">📊 Excel</button>
+            <button class="pk3-btn pk3-ghost pk3-sm" data-act="preview-html">Превью</button>
+            <button class="pk3-btn pk3-ghost pk3-sm" data-act="dl-csv">📄 CSV</button>
+            <button class="pk3-btn pk3-ghost pk3-sm" data-act="dl-md">📋 MD</button>
           </div>
         </div>
+
+        <div style="background:var(--bg2);border:1px solid var(--brd-m);border-radius:10px;padding:8px 10px;margin-bottom:12px">
+          <div style="font-size:12px;font-weight:700;color:var(--gold-l);margin-bottom:6px">1. Исходные параметры</div>
+          <table style="width:100%;border-collapse:collapse;font-size:12px">
+            <thead><tr style="border-bottom:1px solid var(--brd-m)">
+              <th style="text-align:left;padding:6px;color:var(--t3)">Параметр</th>
+              <th style="text-align:right;padding:6px;color:var(--t3)">Значение</th>
+              <th style="text-align:left;padding:6px;color:var(--t3)">Ед.</th>
+              <th style="text-align:left;padding:6px;color:var(--t3)">Примечание</th>
+            </tr></thead>
+            <tbody>${paramRows}</tbody>
+          </table>
+        </div>
+
         <div style="background:var(--bg2);border:1px solid var(--brd-m);border-radius:10px;padding:8px 10px">
+          <div style="font-size:12px;font-weight:700;color:var(--gold-l);margin-bottom:6px">2. Калькуляция</div>
           <table id="pk3-q-smeta-tbl" style="width:100%;border-collapse:collapse;font-size:12px">
             <thead><tr style="border-bottom:1px solid var(--brd-m)">
               <th style="text-align:left;padding:7px 6px;color:var(--t3);font-size:11px">№</th>
-              <th style="text-align:left;padding:7px 6px;color:var(--t3);font-size:11px">Позиция</th>
+              <th style="text-align:left;padding:7px 6px;color:var(--t3);font-size:11px">Статья</th>
               <th style="text-align:left;padding:7px 6px;color:var(--t3);font-size:11px">Ед</th>
               <th style="text-align:right;padding:7px 6px;color:var(--t3);font-size:11px">Кол-во</th>
               <th style="text-align:right;padding:7px 6px;color:var(--t3);font-size:11px">Цена</th>
               <th style="text-align:right;padding:7px 6px;color:var(--t3);font-size:11px">Сумма</th>
               <th></th>
-            </tr></thead><tbody>${rows}
+            </tr></thead>
+            <tbody>${bodyRows || '<tr><td colspan="7" style="padding:14px;color:var(--t3);text-align:center">Нет строк</td></tr>'}
               <tr style="border-top:2px solid var(--brd)">
-                <td colspan="5" style="padding:9px;text-align:right;color:var(--t1);font-weight:600">Итого с/с:</td>
-                <td id="pk3-q-smeta-total" style="padding:9px;text-align:right;color:var(--gold-l);font-weight:700;font-family:monospace">${_fmtMoneyRub(totals.cost)}</td>
+                <td colspan="5" style="padding:9px;text-align:right;font-weight:600">Итого с/с / КП без НДС / с НДС:</td>
+                <td id="pk3-q-smeta-total" style="padding:9px;text-align:right;color:var(--gold-l);font-weight:700;font-family:monospace;font-size:11px">
+                  ${_fmtMoneyRub(totals.cost)}<br/>
+                  ${_fmtMoneyRub(totals.kp_no_vat)}<br/>
+                  ${_fmtMoneyRub(totals.kp_with_vat)}
+                </td>
                 <td></td>
               </tr>
             </tbody>
           </table>
         </div>
-        <div class="pk3-row" style="margin-top:14px"><label>Маржа, %</label><input id="pk3-q-margin" type="number" value="${marginPct}" /></div>
-        <div class="pk3-row"><label>НДС, %</label><input id="pk3-q-vat" type="number" value="${vatPct}" /></div>
-        <p style="font-size:11.5px;color:var(--t3);margin-top:10px">💡 Если правил позиции — Мимир увидит твою версию когда вернёшься в «← К диалогу» и нажмёшь «💬 Отправить AI».</p>
+        <p style="font-size:11.5px;color:var(--t3);margin-top:10px">💡 Правки параметров и строк увидит Мимир в «← К диалогу» → «💬 Отправить AI». Excel выгружается с формулами и синей заливкой.</p>
         ${aiBlock}
       `;
     }
 
     // Пересчёт суммы строки и итога при изменении inputs в таблице сметы.
     function _bindSmetaEditing() {
-      const tbl = overlay.querySelector('#pk3-q-smeta-tbl');
-      if (!tbl) return;
-      tbl.querySelectorAll('tr[data-row-idx]').forEach(tr => {
-        const idx = Number(tr.dataset.rowIdx);
-        const it = lastEstimate && lastEstimate.items && lastEstimate.items[idx];
-        if (!it) return;
-        tr.querySelectorAll('input[data-fld]').forEach(inp => {
-          inp.addEventListener('input', () => {
-            const fld = inp.dataset.fld;
-            if (fld === 'qty' || fld === 'price') it[fld] = Number(inp.value) || 0;
-            else it[fld] = inp.value;
-            const sum = (Number(it.qty) * Number(it.price)) || 0;
-            const sumCell = tr.querySelector('[data-fld="sum"]');
-            if (sumCell) sumCell.textContent = _fmtMoneyRub(sum);
-            // Итог
-            const totals = _calcTotals(lastEstimate);
-            const totEl = overlay.querySelector('#pk3-q-smeta-total');
-            if (totEl) totEl.textContent = _fmtMoneyRub(totals.cost);
+      const S = window.AsgardSmeta;
+      if (!lastEstimate || lastEstimate.template !== 'asgard_v1' || !S) {
+        // legacy fallback
+        const tbl = overlay.querySelector('#pk3-q-smeta-tbl');
+        if (!tbl) return;
+        tbl.querySelectorAll('tr[data-row-idx]').forEach(tr => {
+          const idx = Number(tr.dataset.rowIdx);
+          const it = lastEstimate && lastEstimate.items && lastEstimate.items[idx];
+          if (!it) return;
+          tr.querySelectorAll('input[data-fld]').forEach(inp => {
+            inp.addEventListener('input', () => {
+              const fld = inp.dataset.fld;
+              if (fld === 'qty' || fld === 'price') it[fld] = Number(inp.value) || 0;
+              else it[fld] = inp.value;
+              const sum = (Number(it.qty) * Number(it.price)) || 0;
+              const sumCell = tr.querySelector('[data-fld="sum"]');
+              if (sumCell) sumCell.textContent = _fmtMoneyRub(sum);
+              const totals = _calcTotals(lastEstimate);
+              const totEl = overlay.querySelector('#pk3-q-smeta-total');
+              if (totEl) totEl.textContent = _fmtMoneyRub(totals.cost);
+            });
           });
         });
+        return;
+      }
+
+      function applyAndRefresh(keepFocusSel) {
+        lastEstimate = S.recalcAsgardSmeta(lastEstimate);
+        marginPct = Math.round(((Number(lastEstimate.params.markup) || 1.5) - 1) * 1000) / 10;
+        vatPct = Math.round((Number(lastEstimate.params.vat) || 0.22) * 1000) / 10;
+        const active = keepFocusSel && document.activeElement;
+        const activeParam = active && active.getAttribute && active.getAttribute('data-param');
+        const activeRow = active && active.closest && active.closest('[data-row-id]');
+        const activeFld = active && active.getAttribute && active.getAttribute('data-fld');
+        const activeRowId = activeRow && activeRow.getAttribute('data-row-id');
+        rerender();
+        // restore focus
+        setTimeout(() => {
+          if (activeParam) {
+            const el = overlay.querySelector(`[data-param="${activeParam}"]`);
+            if (el) { el.focus(); el.select && el.select(); }
+          } else if (activeRowId && activeFld) {
+            const el = overlay.querySelector(`tr[data-row-id="${activeRowId}"] input[data-fld="${activeFld}"]`);
+            if (el) { el.focus(); }
+          }
+        }, 0);
+        // autosave patch
+        if (sessionUid) {
+          api(`/api/tkp-quick/sessions/${sessionUid}/patch-estimate`, {
+            method: 'POST', body: { estimate: lastEstimate }
+          }).catch(() => {});
+        }
+      }
+
+      overlay.querySelectorAll('input[data-param]').forEach((inp) => {
+        inp.addEventListener('change', () => {
+          const key = inp.dataset.param;
+          let v = Number(inp.value);
+          if (['fot_tax', 'overhead', 'contingency', 'vat'].includes(key)) v = v / 100;
+          lastEstimate.params = lastEstimate.params || {};
+          lastEstimate.params[key] = v;
+          // сброс override на линиях с qtyExpr/priceExpr при смене params — только если не override
+          applyAndRefresh(true);
+        });
       });
-      // Маржа/НДС — отмечаем как edited при первом изменении и пересчитываем live.
-      const mEl = overlay.querySelector('#pk3-q-margin');
-      if (mEl) mEl.addEventListener('input', () => {
-        const v = Number(mEl.value);
-        if (isFinite(v)) { marginPct = v; marginEdited = true; }
-      });
-      const vEl = overlay.querySelector('#pk3-q-vat');
-      if (vEl) vEl.addEventListener('input', () => {
-        const v = Number(vEl.value);
-        if (isFinite(v)) { vatPct = v; vatEdited = true; }
+
+      overlay.querySelectorAll('tr[data-row-id] input[data-fld]').forEach((inp) => {
+        inp.addEventListener('change', () => {
+          const tr = inp.closest('tr[data-row-id]');
+          const id = tr && tr.dataset.rowId;
+          const row = (lastEstimate.rows || []).find((r) => r.id === id);
+          if (!row) return;
+          const fld = inp.dataset.fld;
+          if (fld === 'qty' || fld === 'price') {
+            row[fld] = Number(inp.value) || 0;
+            row.override = true;
+          } else {
+            row[fld] = inp.value;
+          }
+          applyAndRefresh(true);
+        });
       });
     }
 
     function _addEstimateRow() {
-      if (!lastEstimate) lastEstimate = { items: [] };
-      if (!Array.isArray(lastEstimate.items)) lastEstimate.items = [];
-      lastEstimate.items.push({ name: '', unit: '', qty: 1, price: 0 });
+      _ensureAsgardEstimate();
+      const S = window.AsgardSmeta;
+      if (!lastEstimate.rows) lastEstimate.rows = S.skeletonRows();
+      const insertAt = lastEstimate.rows.findIndex((r) => r.id === 'b_tot');
+      const idx = insertAt >= 0 ? insertAt : lastEstimate.rows.length;
+      lastEstimate.rows.splice(idx, 0, {
+        id: 'custom_' + Date.now(),
+        kind: 'line',
+        section: 'B',
+        code: 'BX',
+        name: 'Новая позиция',
+        unit: 'компл',
+        qty: 1,
+        price: 0,
+        override: true,
+        editable: { qty: true, price: true, name: true }
+      });
+      lastEstimate = S.recalcAsgardSmeta(lastEstimate);
       rerender();
     }
-    function _removeEstimateRow(idx) {
-      if (!lastEstimate || !Array.isArray(lastEstimate.items)) return;
-      lastEstimate.items.splice(idx, 1);
+    function _removeEstimateRow(idxOrId) {
+      _ensureAsgardEstimate();
+      const S = window.AsgardSmeta;
+      if (typeof idxOrId === 'string') {
+        lastEstimate.rows = (lastEstimate.rows || []).filter((r) => r.id !== idxOrId);
+      } else if (lastEstimate.items) {
+        lastEstimate.items.splice(idxOrId, 1);
+      }
+      lastEstimate = S.recalcAsgardSmeta(lastEstimate);
       rerender();
     }
 
     function _estimateAsText() {
+      const S = window.AsgardSmeta;
+      if (S && lastEstimate && lastEstimate.template === 'asgard_v1') {
+        return S.toText(lastEstimate);
+      }
       const items = (lastEstimate && Array.isArray(lastEstimate.items)) ? lastEstimate.items : [];
       if (!items.length) return '(смета пустая)';
       const lines = items.map((it, i) => {
@@ -6828,391 +7907,33 @@ window.AsgardPKv3Modals = (function () {
       return lines.join('\n');
     }
 
-    // Lazy-load ExcelJS из CDN — ~600KB, поэтому только когда юзер реально жмёт.
-    async function _loadExcelJS() {
-      if (window.ExcelJS) return window.ExcelJS;
-      await new Promise((resolve, reject) => {
-        const s = document.createElement('script');
-        s.src = 'https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js';
-        s.async = true;
-        s.onload = resolve;
-        s.onerror = () => reject(new Error('ExcelJS CDN недоступен'));
-        document.head.appendChild(s);
-      });
-      return window.ExcelJS;
-    }
-
     async function _downloadXlsx() {
-      toast('Excel', 'Готовлю файл с формулами и дашбордом…', 'info');
-      let ExcelJS;
-      try { ExcelJS = await _loadExcelJS(); }
-      catch (e) { toast('Excel', 'Не удалось загрузить движок: ' + e.message, 'err'); return; }
-
-      const items = (lastEstimate && Array.isArray(lastEstimate.items)) ? lastEstimate.items : [];
-      const wb = new ExcelJS.Workbook();
-      wb.creator = 'ASGARD CRM · Мимир';
-      wb.created = new Date();
-
-      // ── Лист 1: Дашборд ──
-      const dash = wb.addWorksheet('Дашборд', {
-        properties: { tabColor: { argb: 'FFD4A843' } },
-        views: [{ showGridLines: false }]
-      });
-      dash.columns = [
-        { width: 32 }, { width: 22 }, { width: 22 }, { width: 22 }
-      ];
-      // Шапка
-      dash.mergeCells('A1:D1');
-      const head = dash.getCell('A1');
-      head.value = `Просчёт ТКП — ${card.customer_name || 'клиент'}`;
-      head.font = { name: 'Cinzel', size: 18, bold: true, color: { argb: 'FFE8C35A' } };
-      head.alignment = { horizontal: 'center', vertical: 'middle' };
-      head.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF15110D' } };
-      dash.getRow(1).height = 38;
-      dash.mergeCells('A2:D2');
-      const sub = dash.getCell('A2');
-      sub.value = `Карта #${card.id || ''} · ${new Date().toLocaleString('ru-RU')}`;
-      sub.font = { italic: true, color: { argb: 'FF888888' } };
-      sub.alignment = { horizontal: 'center' };
-
-      // KPI-карточки (4×1)
-      const kpiTitles = ['Себестоимость', 'КП без НДС', `С НДС (=НДС% из B7)`, 'Маржа'];
-      kpiTitles.forEach((t, i) => {
-        const c = dash.getCell(4, i + 1);
-        c.value = t;
-        c.font = { bold: true, color: { argb: 'FFB89860' }, size: 11 };
-        c.alignment = { horizontal: 'center' };
-        c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1F1A14' } };
-        c.border = { top: { style: 'thin', color: { argb: 'FF3E3729' } } };
-      });
-      // Значения через формулы из листа «Смета»
-      dash.getCell('A5').value = { formula: 'SUM(Смета!F8:F1000)' };
-      dash.getCell('B5').value = { formula: 'A5*(1+B7/100)' };
-      dash.getCell('C5').value = { formula: 'B5*(1+D7/100)' };
-      dash.getCell('D5').value = { formula: `${marginPct}` };
-      ['A5','B5','C5','D5'].forEach((addr, i) => {
-        const c = dash.getCell(addr);
-        c.numFmt = i === 3 ? '0.0"%"' : '# ##0 " ₽"';
-        c.font = { bold: true, size: 18, color: { argb: 'FFE8C35A' } };
-        c.alignment = { horizontal: 'center', vertical: 'middle' };
-        c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF15110D' } };
-        c.border = {
-          top: { style: 'thin', color: { argb: 'FF3E3729' } },
-          left: { style: 'thin', color: { argb: 'FF3E3729' } },
-          right: { style: 'thin', color: { argb: 'FF3E3729' } },
-          bottom: { style: 'medium', color: { argb: 'FFD4A843' } }
-        };
-      });
-      dash.getRow(5).height = 38;
-
-      // Параметры
-      dash.getCell('A7').value = 'Маржа, %';   dash.getCell('A7').font = { bold: true };
-      dash.getCell('B7').value = marginPct;    dash.getCell('B7').numFmt = '0.0';
-      dash.getCell('C7').value = 'НДС, %';     dash.getCell('C7').font = { bold: true };
-      dash.getCell('D7').value = vatPct;       dash.getCell('D7').numFmt = '0.0';
-      // Обновление формул при изменении B7/D7 (Excel сам пересчитает).
-      // Связка маржи: D5 = B7 (формула)
-      dash.getCell('D5').value = { formula: 'B7' };
-
-      // Заказчик блок
-      dash.getCell('A9').value = 'Заказчик';        dash.getCell('A9').font = { bold: true };
-      dash.getCell('B9').value = card.customer_name || '—';
-      dash.mergeCells('B9:D9');
-      dash.getCell('A10').value = 'ИНН';            dash.getCell('A10').font = { bold: true };
-      dash.getCell('B10').value = card.customer_inn || '—';
-      dash.getCell('A11').value = 'Контакт';        dash.getCell('A11').font = { bold: true };
-      dash.getCell('B11').value = (card.contact_person || '—') + (card.contact_phone ? ' · ' + card.contact_phone : '');
-      dash.mergeCells('B11:D11');
-
-      // Анализ Мимира (если есть)
-      if (lastChatMd) {
-        dash.getCell('A13').value = 'Анализ Мимира';
-        dash.getCell('A13').font = { bold: true, color: { argb: 'FFD4A843' }, size: 13 };
-        dash.mergeCells('A13:D13');
-        // Конвертим markdown в plain (убираем **)
-        const plain = lastChatMd.replace(/\*\*/g, '').replace(/^#+\s*/gm, '');
-        dash.getCell('A14').value = plain;
-        dash.mergeCells('A14:D14');
-        dash.getCell('A14').alignment = { wrapText: true, vertical: 'top' };
-        dash.getRow(14).height = Math.min(400, plain.split('\n').length * 16);
-      }
-
-      // ── Лист 2: Смета ──
-      const sm = wb.addWorksheet('Смета', { properties: { tabColor: { argb: 'FF8B7339' } } });
-      sm.columns = [
-        { header: '№', key: 'idx', width: 5 },
-        { header: 'Позиция', key: 'name', width: 56 },
-        { header: 'Ед.', key: 'unit', width: 10 },
-        { header: 'Кол-во', key: 'qty', width: 12 },
-        { header: 'Цена ₽', key: 'price', width: 14 },
-        { header: 'Сумма ₽', key: 'sum', width: 16 }
-      ];
-      // Стиль шапки колонок
-      sm.getRow(1).font = { bold: true, color: { argb: 'FFE8C35A' } };
-      sm.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF15110D' } };
-      sm.getRow(1).alignment = { horizontal: 'center' };
-      sm.getRow(1).height = 26;
-
-      // Заголовок раздела (строка 2-6) — связь с дашбордом
-      sm.mergeCells('A2:F2');
-      sm.getCell('A2').value = `Смета по работе для ${card.customer_name || ''}`;
-      sm.getCell('A2').font = { bold: true, size: 14, color: { argb: 'FFD4A843' } };
-      sm.getCell('A2').alignment = { horizontal: 'center' };
-      sm.getRow(2).height = 28;
-
-      sm.getCell('A4').value = 'Дата:';
-      sm.getCell('B4').value = new Date().toLocaleDateString('ru-RU');
-      sm.getCell('A5').value = 'Карта:';
-      sm.getCell('B5').value = '#' + (card.id || '');
-      sm.getCell('A6').value = 'Заказчик:';
-      sm.getCell('B6').value = card.customer_name || '—';
-
-      // Шапка таблицы заново (на строке 7)
-      const tblHead = sm.getRow(7);
-      ['№','Позиция','Ед.','Кол-во','Цена ₽','Сумма ₽'].forEach((v, i) => {
-        const c = tblHead.getCell(i + 1);
-        c.value = v;
-        c.font = { bold: true, color: { argb: 'FFFFFFFF' } };
-        c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF2A2218' } };
-        c.alignment = { horizontal: i < 2 ? 'left' : (i === 2 ? 'center' : 'right'), vertical: 'middle' };
-        c.border = { bottom: { style: 'thin', color: { argb: 'FFD4A843' } } };
-      });
-      tblHead.height = 22;
-
-      // Строки сметы — позиции с ФОРМУЛАМИ для суммы
-      items.forEach((it, i) => {
-        const r = sm.getRow(8 + i);
-        r.getCell(1).value = i + 1;
-        r.getCell(2).value = it.name || '';
-        r.getCell(3).value = it.unit || '';
-        r.getCell(4).value = Number(it.qty) || 0;
-        r.getCell(5).value = Number(it.price) || 0;
-        r.getCell(6).value = { formula: `D${8 + i}*E${8 + i}` };
-        // Стили
-        r.getCell(1).alignment = { horizontal: 'center', vertical: 'top' };
-        r.getCell(2).alignment = { wrapText: true, vertical: 'top' };
-        r.getCell(3).alignment = { horizontal: 'center', vertical: 'top' };
-        r.getCell(4).numFmt = '# ##0.##';
-        r.getCell(5).numFmt = '# ##0 " ₽"';
-        r.getCell(6).numFmt = '# ##0 " ₽"';
-        r.getCell(6).font = { bold: true, color: { argb: 'FFD4A843' } };
-        [1,2,3,4,5,6].forEach(ci => {
-          r.getCell(ci).border = { bottom: { style: 'hair', color: { argb: 'FFCCCCCC' } } };
+      if (!sessionUid) return toast('Excel', 'Сессия не запущена', 'err');
+      if (!lastEstimate) return toast('Excel', 'Нет сметы', 'err');
+      _ensureAsgardEstimate();
+      toast('Excel', 'Формирую файл с формулами…', 'info');
+      try {
+        const res = await fetch('/api/tkp-quick/sessions/' + encodeURIComponent(sessionUid) + '/export-smeta.xlsx', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + _getToken() },
+          body: JSON.stringify({ estimate: lastEstimate })
         });
-        // Высота под wrap
-        const nameLen = (it.name || '').length;
-        if (nameLen > 60) r.height = 28;
-        if (nameLen > 100) r.height = 38;
-      });
-
-      // Итоги (сразу после последней строки)
-      const total = 8 + items.length;
-      const totalRow = sm.getRow(total);
-      totalRow.getCell(5).value = 'Итого с/с:';
-      totalRow.getCell(5).font = { bold: true };
-      totalRow.getCell(5).alignment = { horizontal: 'right' };
-      totalRow.getCell(6).value = { formula: `SUM(F8:F${total - 1})` };
-      totalRow.getCell(6).numFmt = '# ##0 " ₽"';
-      totalRow.getCell(6).font = { bold: true, color: { argb: 'FFE8C35A' }, size: 13 };
-      totalRow.getCell(6).border = {
-        top: { style: 'double', color: { argb: 'FFD4A843' } }
-      };
-
-      const margR = total + 1;
-      sm.getCell(`E${margR}`).value = `КП без НДС (маржа ${marginPct}%):`;
-      sm.getCell(`E${margR}`).font = { bold: true };
-      sm.getCell(`E${margR}`).alignment = { horizontal: 'right' };
-      sm.getCell(`F${margR}`).value = { formula: `F${total}*(1+${marginPct}/100)` };
-      sm.getCell(`F${margR}`).numFmt = '# ##0 " ₽"';
-
-      const vatR = total + 2;
-      sm.getCell(`E${vatR}`).value = `С НДС ${vatPct}%:`;
-      sm.getCell(`E${vatR}`).font = { bold: true };
-      sm.getCell(`E${vatR}`).alignment = { horizontal: 'right' };
-      sm.getCell(`F${vatR}`).value = { formula: `F${margR}*(1+${vatPct}/100)` };
-      sm.getCell(`F${vatR}`).numFmt = '# ##0 " ₽"';
-      sm.getCell(`F${vatR}`).font = { bold: true, color: { argb: 'FF4ADE80' }, size: 14 };
-
-      // Autofilter на таблицу
-      sm.autoFilter = `A7:F${total - 1}`;
-      // Freeze шапку
-      sm.views = [{ state: 'frozen', ySplit: 7 }];
-
-      // ── Лист 3: Анализ AI ──
-      if (lastChatMd) {
-        const an = wb.addWorksheet('Анализ Мимира', { properties: { tabColor: { argb: 'FF553A18' } } });
-        an.columns = [{ width: 120 }];
-        an.getCell('A1').value = '📝 Анализ от Мимира';
-        an.getCell('A1').font = { bold: true, size: 16, color: { argb: 'FFD4A843' } };
-        an.getRow(1).height = 30;
-        const plain = lastChatMd.replace(/\*\*([^*]+)\*\*/g, '$1');
-        an.getCell('A3').value = plain;
-        an.getCell('A3').alignment = { wrapText: true, vertical: 'top' };
-        an.getRow(3).height = Math.min(600, plain.split('\n').length * 16);
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          throw new Error(err.error || ('HTTP ' + res.status));
+        }
+        const blob = await res.blob();
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = 'smeta_' + (card.customer_name || 'tkp').replace(/[^\w\u0400-\u04FF]+/g, '_') + '.xlsx';
+        a.click();
+        URL.revokeObjectURL(a.href);
+        toast('Excel', 'Скачан шаблон ASGARD (формулы + параметры)', 'ok');
+      } catch (e) {
+        toast('Excel', e.message || String(e), 'err');
       }
-
-      // Сохраняем
-      const buf = await wb.xlsx.writeBuffer();
-      _downloadFile(`mimir-quick-${card.id || 'report'}.xlsx`,
-        new Blob([buf]),
-        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-      toast('Excel', 'Файл скачан — в нём дашборд + смета с формулами + анализ', 'ok');
     }
 
-    function _previewHtml() {
-      const totals = _calcTotals(lastEstimate);
-      const items = (lastEstimate && Array.isArray(lastEstimate.items)) ? lastEstimate.items : [];
-      const ai = lastChatMd ? _markdownToHtml(lastChatMd) : '';
-      const rows = items.map((it, i) => {
-        const sum = (Number(it.qty) * Number(it.price)) || 0;
-        return `<tr>
-          <td class="num">${i + 1}</td>
-          <td>${esc(it.name || '')}</td>
-          <td class="ce">${esc(it.unit || '')}</td>
-          <td class="ri">${Number(it.qty || 0).toLocaleString('ru-RU')}</td>
-          <td class="ri">${Number(it.price || 0).toLocaleString('ru-RU')} ₽</td>
-          <td class="ri sum">${sum.toLocaleString('ru-RU')} ₽</td>
-        </tr>`;
-      }).join('');
-      const html = `<!doctype html>
-<html lang="ru"><head><meta charset="utf-8"/>
-<title>Мимир-Quick · отчёт #${card.id || ''}</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;700&family=Inter:wght@400;500;700&display=swap" rel="stylesheet">
-<style>
-:root{--bg:#0d0a07;--bg2:#15110d;--bg3:#1f1a14;--gold:#d4a843;--gold-l:#e8c35a;--gold-d:#8b7339;--ok:#4ade80;--t1:#f5e9c8;--t2:#bfb195;--t3:#7a6f54;--brd:#3e3729}
-*{box-sizing:border-box}
-body{margin:0;background:var(--bg);color:var(--t1);font-family:Inter,system-ui,sans-serif;font-size:14px;line-height:1.55}
-.wrap{max-width:1080px;margin:0 auto;padding:32px 28px}
-.hd{display:flex;align-items:center;justify-content:space-between;gap:20px;padding-bottom:18px;border-bottom:2px solid var(--gold)}
-.hd .logo{font-family:Cinzel,serif;font-size:28px;font-weight:700;color:var(--gold-l);letter-spacing:1px}
-.hd .meta{text-align:right;color:var(--t3);font-size:12px}
-.hd .meta b{display:block;color:var(--t2);font-size:14px;margin-bottom:3px}
-h1{font-family:Cinzel,serif;color:var(--gold-l);margin:24px 0 10px;font-size:22px;font-weight:700}
-.cust{display:grid;grid-template-columns:repeat(2,1fr);gap:8px 24px;background:var(--bg2);border:1px solid var(--brd);border-radius:12px;padding:16px 20px;margin-top:16px}
-.cust div{display:flex;justify-content:space-between;font-size:13px}
-.cust label{color:var(--t3);text-transform:uppercase;letter-spacing:.5px;font-size:11px}
-.cust span{color:var(--t1);font-weight:500;text-align:right}
-.kpi{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin:22px 0}
-.kpi .card{background:linear-gradient(180deg,var(--bg2),var(--bg3));border:1px solid var(--brd);border-radius:14px;padding:14px 14px;border-bottom:3px solid var(--gold)}
-.kpi .lbl{font-size:10.5px;text-transform:uppercase;letter-spacing:.6px;color:var(--gold-d);font-weight:600;margin-bottom:6px}
-.kpi .val{font-family:'Cinzel',serif;font-size:22px;font-weight:700;color:var(--gold-l);font-variant-numeric:tabular-nums}
-.kpi .card.marg{border-bottom-color:var(--ok)}
-.kpi .card.marg .val{color:var(--ok)}
-table{width:100%;border-collapse:collapse;background:var(--bg2);border:1px solid var(--brd);border-radius:12px;overflow:hidden;margin-top:8px}
-thead{background:#221c14}
-th{padding:11px 12px;text-align:left;font-size:11.5px;color:var(--gold-l);text-transform:uppercase;letter-spacing:.5px;border-bottom:2px solid var(--gold)}
-th.ri{text-align:right} th.ce{text-align:center}
-td{padding:10px 12px;font-size:13px;color:var(--t1);border-bottom:1px solid var(--brd)}
-td.num{color:var(--t3);width:32px;text-align:center}
-td.ri{text-align:right;font-variant-numeric:tabular-nums}
-td.ce{text-align:center;color:var(--t2)}
-td.sum{color:var(--gold-l);font-weight:600}
-tr:last-child td{border-bottom:none}
-tfoot td{padding:14px 12px;font-weight:700;background:var(--bg3);border-top:2px solid var(--gold)}
-tfoot .label{color:var(--gold-d);text-align:right}
-tfoot .total{color:var(--gold-l);font-size:16px;text-align:right}
-tfoot .vat{color:var(--ok);font-size:18px}
-.ai{margin-top:30px;background:var(--bg2);border:1px solid var(--brd);border-left:4px solid var(--gold);border-radius:12px;padding:18px 22px}
-.ai h2{margin:0 0 10px;font-family:Cinzel,serif;font-size:18px;color:var(--gold-l)}
-.ai .content{color:var(--t2);font-size:13px;line-height:1.65}
-.ai .content b,.ai .content strong{color:var(--t1)}
-.foot{margin-top:32px;text-align:center;color:var(--t3);font-size:11px;padding-top:18px;border-top:1px solid var(--brd)}
-.print{display:inline-block;background:var(--gold);color:var(--bg);border:none;padding:9px 18px;border-radius:8px;font-weight:700;cursor:pointer;margin:18px 4px 0}
-.print:hover{background:var(--gold-l)}
-@media print{body{background:#fff;color:#000}.print,.hd .meta{display:none}.hd{border-color:#000}.kpi .card,table,.ai{box-shadow:none;border-color:#999;background:#fff}.kpi .lbl{color:#666}.kpi .val,h1,.hd .logo,.ai h2{color:#000}th{color:#000;border-bottom-color:#000}td{color:#000;border-bottom-color:#ccc}}
-</style>
-</head><body>
-<div class="wrap">
-  <div class="hd">
-    <div>
-      <div class="logo">⚔ АСГАРД · Мимир</div>
-      <div style="color:var(--t3);font-size:12px;margin-top:4px">Quick-просчёт ТКП</div>
-    </div>
-    <div class="meta">
-      <b>Карта #${card.id || ''}</b>
-      ${new Date().toLocaleString('ru-RU')}
-    </div>
-  </div>
-
-  <h1>Заказчик</h1>
-  <div class="cust">
-    <div><label>Заказчик</label><span>${esc(card.customer_name || '—')}</span></div>
-    <div><label>ИНН</label><span>${esc(card.customer_inn || '—')}</span></div>
-    <div><label>Контактное лицо</label><span>${esc(card.contact_person || '—')}</span></div>
-    <div><label>Телефон</label><span>${esc(card.contact_phone || '—')}</span></div>
-    <div><label>Email</label><span>${esc(card.customer_email || '—')}</span></div>
-    <div><label>Объект</label><span>${esc(card.work_location || '—')}</span></div>
-  </div>
-
-  <h1>Финансовая сводка</h1>
-  <div class="kpi">
-    <div class="card"><div class="lbl">Себестоимость</div><div class="val">${totals.cost.toLocaleString('ru-RU')} ₽</div></div>
-    <div class="card"><div class="lbl">КП без НДС</div><div class="val">${totals.kp_no_vat.toLocaleString('ru-RU')} ₽</div></div>
-    <div class="card"><div class="lbl">С НДС ${vatPct}%</div><div class="val">${totals.kp_with_vat.toLocaleString('ru-RU')} ₽</div></div>
-    <div class="card marg"><div class="lbl">Маржа</div><div class="val">${(marginPct.toFixed ? marginPct.toFixed(1) : marginPct)}%</div></div>
-  </div>
-
-  <h1>Смета — ${items.length} позиций</h1>
-  <table>
-    <thead><tr>
-      <th>№</th><th>Позиция</th><th class="ce">Ед.</th><th class="ri">Кол-во</th><th class="ri">Цена</th><th class="ri">Сумма</th>
-    </tr></thead>
-    <tbody>${rows}</tbody>
-    <tfoot>
-      <tr><td colspan="5" class="label">Итого с/с:</td><td class="total">${totals.cost.toLocaleString('ru-RU')} ₽</td></tr>
-      <tr><td colspan="5" class="label">КП без НДС (маржа ${marginPct}%):</td><td class="total">${totals.kp_no_vat.toLocaleString('ru-RU')} ₽</td></tr>
-      <tr><td colspan="5" class="label">КП с НДС ${vatPct}%:</td><td class="vat total">${totals.kp_with_vat.toLocaleString('ru-RU')} ₽</td></tr>
-    </tfoot>
-  </table>
-
-  ${ai ? `<div class="ai"><h2>📝 Анализ Мимира</h2><div class="content">${ai}</div></div>` : ''}
-
-  <div class="foot">
-    Сформировано ASGARD CRM · Мимир-Quick · ${new Date().toLocaleString('ru-RU')}<br>
-    <button class="print" onclick="window.print()">🖨 Печать / PDF</button>
-    <button class="print" onclick="window.close()">Закрыть</button>
-  </div>
-</div>
-</body></html>`;
-      const w = window.open('', '_blank');
-      if (!w) { toast('Превью', 'Браузер заблокировал новое окно. Разреши попап-ы.', 'warn'); return; }
-      w.document.write(html);
-      w.document.close();
-      w.focus();
-    }
-
-    function _pickExtraFiles() {
-      const input = document.createElement('input');
-      input.type = 'file';
-      input.multiple = true;
-      input.accept = '.pdf,.docx,.xlsx,.xls,.txt,.csv,.rtf,.jpg,.jpeg,.png,.webp,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,image/*';
-      input.style.display = 'none';
-      input.addEventListener('change', () => {
-        const files = Array.from(input.files || []);
-        files.forEach(f => extraFiles.push(f));
-        input.remove();
-        rerender();
-        if (files.length) toast('Quick', `Добавлено ${files.length} файл(ов). Жми «▶ Запустить».`, 'ok');
-      });
-      document.body.appendChild(input);
-      input.click();
-    }
-    function _fmtBytes(n) {
-      if (!n && n !== 0) return '';
-      if (n < 1024) return n + ' Б';
-      if (n < 1024 * 1024) return Math.round(n / 1024) + ' КБ';
-      return (n / (1024 * 1024)).toFixed(1) + ' МБ';
-    }
-
-    function _downloadFile(filename, content, mime) {
-      const blob = new Blob([content], { type: mime || 'text/plain;charset=utf-8' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url; a.download = filename;
-      document.body.appendChild(a); a.click();
-      setTimeout(() => { try { document.body.removeChild(a); URL.revokeObjectURL(url); } catch(_){} }, 100);
-    }
     function _downloadCsv() {
       const items = (lastEstimate && Array.isArray(lastEstimate.items)) ? lastEstimate.items : [];
       const rows = [['№','Позиция','Ед.','Кол-во','Цена ₽','Сумма ₽']];
@@ -7346,7 +8067,11 @@ tfoot .vat{color:var(--ok);font-size:18px}
       if (s === 1) return `<button class="pk3-btn pk3-ghost" data-act="close">Закрыть</button>${resetBtn}<div style="flex:1"></div><button class="pk3-btn" data-act="calc" ${disabled}>🧠 Запросить расчёт у AI</button>`;
       if (s === 2) return `<button class="pk3-btn pk3-ghost" data-act="back">← Назад</button>${resetBtn}<div style="flex:1"></div><button class="pk3-btn" data-act="send-reply" ${disabled}>💬 Отправить AI</button><button class="pk3-btn pk3-gold" data-act="to-smeta" ${disabled}>📊 К смете →</button>`;
       if (s === 3) return `<button class="pk3-btn pk3-ghost" data-act="back" title="Вернуться в диалог с AI">← К диалогу</button>${resetBtn}<div style="flex:1"></div><button class="pk3-btn" data-act="ai-again" ${disabled}>🔁 Уточнить AI заново</button><button class="pk3-btn pk3-gold" data-act="to-final" ${disabled}>→ Финал</button>`;
-      /* s === 4 */ return `<button class="pk3-btn pk3-ghost" data-act="back">← Назад</button>${resetBtn}<div style="flex:1"></div><button class="pk3-btn" data-act="save-tkp" ${disabled}>🛠 Сохранить и собрать ТКП</button><button class="pk3-btn pk3-ok" data-act="save" ${disabled}>✅ Сохранить и на согласование</button>`;
+      /* s === 4 */
+      if (isRp) {
+        return `<button class="pk3-btn pk3-ghost" data-act="back">← Назад</button>${resetBtn}<div style="flex:1"></div><button class="pk3-btn pk3-ok" data-act="apply-to-report" ${disabled}>✅ Применить к отчёту</button>`;
+      }
+      return `<button class="pk3-btn pk3-ghost" data-act="back">← Назад</button>${resetBtn}<div style="flex:1"></div><button class="pk3-btn" data-act="save-tkp" ${disabled}>🛠 Сохранить и собрать ТКП</button><button class="pk3-btn pk3-ok" data-act="save" ${disabled}>✅ Сохранить и на согласование</button>`;
     }
     function _renderBody(s) {
       if (s === 0) return _renderStep0();
@@ -7356,11 +8081,14 @@ tfoot .vat{color:var(--ok);font-size:18px}
       return _renderStep4();
     }
     function wizardHtml() {
+      const title = isRp
+        ? ('Мимир-Quick · ' + (opts.phase === 'calc' ? 'просчёт тендера' : 'анализ тендера'))
+        : 'Быстрый просчёт через Мимир-Quick';
       return `
         <div class="pk3-modal">
           <div class="pk3-modal-head">
             <span style="font-size:20px;color:var(--info)">🚀</span>
-            <h3>Быстрый просчёт через Мимир-Quick</h3>
+            <h3>${esc(title)}</h3>
             <span class="pk3-tag pk3-info" id="pk3-q-tag">${sessionUid ? 'сессия ' + esc(sessionUid.substring(0, 8)) : 'AI ~10 мин'}</span>
             <button class="pk3-btn-icon" data-act="close">✕</button>
           </div>
@@ -7374,42 +8102,138 @@ tfoot .vat{color:var(--ok);font-size:18px}
     }
 
     const overlay = mountModal(wizardHtml());
+    overlay.dataset.mimirQuick = '1';
+    // AsgardUI.modal = 10000+; без этого Quick открывается ПОД модалкой отчёта.
+    overlay.style.zIndex = isRp ? '20100' : '13000';
+    // Keepalive SessionGuard на весь lifetime модалки (скачивание/SSE без progress-событий)
+    const _keepAliveIv = setInterval(() => {
+      try {
+        if (window.AsgardSessionGuard && typeof window.AsgardSessionGuard.reset === 'function') {
+          window.AsgardSessionGuard.reset();
+        }
+      } catch (_) {}
+    }, 60 * 1000);
+    const _origCloseFn = overlay._closeFn;
+    overlay._closeFn = () => {
+      clearInterval(_keepAliveIv);
+      _stopBusyTick();
+      if (_origCloseFn) _origCloseFn();
+    };
     const rerender = () => { overlay.innerHTML = wizardHtml(); bindAll(); };
-    const setProgress = (text) => {
-      // Если busy-overlay показан — пишем ТОЛЬКО в него (иначе текст дублируется
-      // и виден под полупрозрачным фоном). Без busy — обычный inline progress-line.
-      const busy = overlay.querySelector('.pk3-busy');
-      if (busy) {
-        const bt = busy.querySelector('.pk3-busy-text');
-        if (bt) bt.textContent = text;
-        return;
+    let _busyTickIv = null;
+    let _busyStartedAt = 0;
+    let _busyBaseSub = '';
+
+    function _ensureSpinKeyframes() {
+      if (document.getElementById('asg-pk3-spin-kf')) return;
+      const st = document.createElement('style');
+      st.id = 'asg-pk3-spin-kf';
+      st.textContent = '@keyframes pk3-spin{to{transform:rotate(360deg)}}';
+      document.head.appendChild(st);
+    }
+    function _stopBusyTick() {
+      if (_busyTickIv) { clearInterval(_busyTickIv); _busyTickIv = null; }
+    }
+    function _formatBusySub(base, sec) {
+      const b = (base || '').trim();
+      return (b ? b + ' · ' : '') + sec + ' сек';
+    }
+
+    const setProgress = (text, opts) => {
+      // keepBusy=false — только строка статуса (idle: «жми Запустить»).
+      // keepBusy=true (по умолчанию) — статус в busy-overlay внутри модалки.
+      const keepBusy = !(opts && opts.keepBusy === false);
+      if (keepBusy) {
+        const sub = (opts && opts.sub != null) ? opts.sub : null;
+        // Новый этап → полный _setBusy с таймером; иначе только обновляем заголовок
+        if (!overlay.querySelector('.pk3-busy') || (opts && opts.restart)) {
+          _setBusy(text || 'Мимир работает', sub != null ? sub : '');
+        } else {
+          const busy = overlay.querySelector('.pk3-busy');
+          const bt = busy && busy.querySelector('.pk3-busy-text');
+          if (bt) bt.textContent = text || '';
+          if (sub != null) {
+            _busyBaseSub = sub;
+            const subEl = busy && busy.querySelector('.pk3-busy-sub:not(.pk3-busy-dots)');
+            if (subEl) {
+              const sec = _busyStartedAt ? Math.round((Date.now() - _busyStartedAt) / 1000) : 0;
+              subEl.textContent = _formatBusySub(_busyBaseSub, sec);
+            }
+          }
+        }
+      } else {
+        _clearBusy();
       }
       const el = overlay.querySelector('#pk3-q-prog-line');
-      if (el) el.innerHTML = esc(text);
+      if (el) el.innerHTML = esc(text || '');
+      try {
+        if (window.AsgardSessionGuard && typeof window.AsgardSessionGuard.reset === 'function') {
+          window.AsgardSessionGuard.reset();
+        } else {
+          document.dispatchEvent(new Event('mousemove', { bubbles: true }));
+        }
+      } catch (_) {}
     };
 
-    // ── Busy-overlay поверх модалки (показываем пока ждём AI) ──
+    // ── Busy-overlay поверх модалки (спиннер + таймер секунд) ──
     function _setBusy(title, subtitle) {
+      _ensureSpinKeyframes();
       const modalEl = overlay.querySelector('.pk3-modal');
       if (!modalEl) return;
+      modalEl.style.position = 'relative';
+      modalEl.style.overflow = 'hidden';
       let busy = modalEl.querySelector('.pk3-busy');
       if (!busy) {
-        // pk3-modal обязан быть position:relative — иначе inset не сработает.
-        modalEl.style.position = 'relative';
         busy = document.createElement('div');
         busy.className = 'pk3-busy';
         busy.innerHTML = `
-          <div class="pk3-busy-spin"></div>
+          <div class="pk3-busy-spin" style="width:46px;height:46px;border-radius:50%;border:3px solid rgba(255,255,255,.12);border-top-color:#D4A843;animation:pk3-spin .75s linear infinite;flex-shrink:0;box-sizing:border-box"></div>
           <div class="pk3-busy-text"></div>
           <div class="pk3-busy-sub"></div>
           <div class="pk3-busy-sub pk3-busy-dots"></div>
         `;
         modalEl.appendChild(busy);
+      } else {
+        // Гарантируем анимацию спиннера (на случай старого DOM)
+        const spin = busy.querySelector('.pk3-busy-spin');
+        if (spin) {
+          spin.style.cssText = 'width:46px;height:46px;border-radius:50%;border:3px solid rgba(255,255,255,.12);border-top-color:#D4A843;animation:pk3-spin .75s linear infinite;flex-shrink:0;box-sizing:border-box';
+        }
       }
-      busy.querySelector('.pk3-busy-text').textContent = title || 'Мимир работает';
-      busy.querySelectorAll('.pk3-busy-sub')[0].textContent = subtitle || '';
+      busy.style.cssText = [
+        'position:absolute', 'inset:0', 'background:rgba(15,15,18,.9)',
+        'backdrop-filter:blur(3px)', 'display:flex', 'flex-direction:column',
+        'align-items:center', 'justify-content:center', 'gap:14px',
+        'z-index:80', 'border-radius:14px', 'pointer-events:auto',
+        'padding:24px', 'box-sizing:border-box'
+      ].join(';');
+      const bt = busy.querySelector('.pk3-busy-text');
+      if (bt) {
+        bt.style.cssText = 'color:#E8C35A;font-size:14px;font-weight:600;text-align:center;max-width:90%;line-height:1.5';
+        bt.textContent = title || 'Мимир работает';
+      }
+      _busyBaseSub = subtitle || '';
+      _busyStartedAt = Date.now();
+      const sub0 = busy.querySelector('.pk3-busy-sub:not(.pk3-busy-dots)');
+      if (sub0) {
+        sub0.style.cssText = 'color:rgba(255,255,255,.6);font-size:12px;text-align:center;max-width:90%;min-height:1.2em';
+        sub0.textContent = _formatBusySub(_busyBaseSub, 0);
+      }
+      _stopBusyTick();
+      _busyTickIv = setInterval(() => {
+        const el = overlay.querySelector('.pk3-busy .pk3-busy-sub:not(.pk3-busy-dots)');
+        if (!el) { _stopBusyTick(); return; }
+        const sec = Math.round((Date.now() - _busyStartedAt) / 1000);
+        el.textContent = _formatBusySub(_busyBaseSub, sec);
+        try {
+          if (window.AsgardSessionGuard && typeof window.AsgardSessionGuard.reset === 'function') {
+            window.AsgardSessionGuard.reset();
+          }
+        } catch (_) {}
+      }, 1000);
     }
     function _clearBusy() {
+      _stopBusyTick();
       const busy = overlay.querySelector('.pk3-busy');
       if (busy) busy.remove();
     }
@@ -7420,20 +8244,29 @@ tfoot .vat{color:var(--ok);font-size:18px}
     async function _initSession() {
       try {
         setProgress('Проверяю предыдущую сессию…');
-        const r = await api(`/api/personal-kanban/cards/${card.id}/start-quick`, { method: 'POST', body: {} });
-        if (!r.ok || !r.data || !r.data.session_uid) return; // ничего — юзер жмёт «Запустить»
-        sessionUid = r.data.session_uid;
+        const data = await _startSession({});
+        if (!data || !data.session_uid) return;
+        sessionUid = data.session_uid;
         card._quickSession = sessionUid;
-        const isExisting = r.data.status === 'existing';
+        if (Array.isArray(data.tender_attachments) && data.tender_attachments.length) {
+          card.email_attachments = data.tender_attachments.map((d) => ({
+            id: d.id,
+            filename: d.filename,
+            original_filename: d.filename,
+            download_url: d.download_url,
+            mime_type: d.mime_type
+          }));
+        }
+        const isExisting = data.status === 'existing';
         if (!isExisting) {
-          setProgress('Сессия готова. Жми «▶ Запустить» чтобы скачать ТЗ.');
+          setProgress('Сессия готова. Жми «▶ Запустить» чтобы скачать ТЗ.', { keepBusy: false });
           return;
         }
         // Существующая — тянем полное состояние и восстанавливаем шаг.
         setProgress('Восстанавливаю предыдущий расчёт…');
         const g = await api(`/api/tkp-quick/sessions/${encodeURIComponent(sessionUid)}`);
         if (!g.ok || !g.data) {
-          setProgress('Не удалось подгрузить — нажми «🔄 С нуля» или «▶ Запустить».');
+          setProgress('Не удалось подгрузить — нажми «🔄 С нуля» или «▶ Запустить».', { keepBusy: false });
           return;
         }
         const sess = g.data.session || g.data;
@@ -7458,10 +8291,18 @@ tfoot .vat{color:var(--ok);font-size:18px}
         } else {
           step = 0; // draft без расчёта
         }
+        _clearBusy();
         rerender();
+        if (step === 0) {
+          setProgress('Сессия найдена. Жми «▶ Запустить».', { keepBusy: false });
+        } else if (step === 1) {
+          setProgress('Сессия в расчёте — можно дождаться или «🔄 С нуля».', { keepBusy: false });
+        }
       } catch (e) {
-        // молча, юзер всё равно увидит шаг 0 с кнопкой «Запустить»
-        try { console.warn('[Quick] init failed:', e && e.message); } catch (_) {}
+        const msg = (e && e.message) || 'Ошибка инициализации сессии';
+        try { console.warn('[Quick] init failed:', msg); } catch (_) {}
+        setProgress('⚠ ' + msg + ' — нажми «🔄 С нуля» или обнови страницу.', { keepBusy: false });
+        try { toast('Мимир-Quick', msg, 'err'); } catch (_) {}
       }
     }
     // Не блокируем рендер модалки — _initSession асинхронен.
@@ -7473,12 +8314,12 @@ tfoot .vat{color:var(--ok);font-size:18px}
       if (!window.confirm('Полный пересчёт с нуля? Текущая сессия будет помечена как abandoned.')) return;
       running = true;
       try {
-        const r = await api(`/api/personal-kanban/cards/${card.id}/start-quick`, { method: 'POST', body: { fresh: true } });
-        if (!r.ok || !r.data || !r.data.session_uid) {
+        const data = await _startSession({ fresh: true });
+        if (!data || !data.session_uid) {
           toast('Quick', 'Не удалось создать новую сессию', 'err');
           return;
         }
-        sessionUid = r.data.session_uid;
+        sessionUid = data.session_uid;
         card._quickSession = sessionUid;
         lastEstimate = null;
         lastChatMd = '';
@@ -7501,12 +8342,21 @@ tfoot .vat{color:var(--ok);font-size:18px}
         // 1. Создать (или переиспользовать) сессию
         if (!sessionUid) {
           setProgress('Создаю Quick-сессию…');
-          const r = await api(`/api/personal-kanban/cards/${card.id}/start-quick`, { method: 'POST', body: {} });
-          if (!r.ok || !r.data || !r.data.session_uid) {
-            throw new Error((r.data && r.data.error) || 'start-quick failed');
+          const data = await _startSession({});
+          if (!data || !data.session_uid) {
+            throw new Error((data && data.error) || 'start-quick failed');
           }
-          sessionUid = r.data.session_uid;
+          sessionUid = data.session_uid;
           card._quickSession = sessionUid;
+          if (Array.isArray(data.tender_attachments) && data.tender_attachments.length) {
+            card.email_attachments = data.tender_attachments.map((d) => ({
+              id: d.id,
+              filename: d.filename,
+              original_filename: d.filename,
+              download_url: d.download_url,
+              mime_type: d.mime_type
+            }));
+          }
         }
         // 1.5 Если юзер ввёл ручной текст — добавим в сессию
         const manualEl = overlay.querySelector('#pk3-q-manual-tz');
@@ -7547,29 +8397,60 @@ tfoot .vat{color:var(--ok);font-size:18px}
         for (let i = 0; i < atts.length; i++) {
           const att = atts[i];
           const fname = att.original_filename || att.filename || ('att_' + att.id);
-          setProgress(`Качаю файл ${i+1}/${atts.length}: ${fname}`);
+          setProgress(`Качаю файл ${i+1}/${atts.length}: ${fname}`, {
+            restart: true,
+            sub: 'скачиваю с сервера'
+          });
           let blob;
           try {
-            const dlUrl = `/api/pre-tenders/${ptId}/email-attachments/${att.id}/download?token=${encodeURIComponent(_getToken())}`;
+            let dlUrl;
+            if (att.download_url) {
+              dlUrl = att.download_url + (att.download_url.includes('?') ? '&' : '?') + 'token=' + encodeURIComponent(_getToken());
+            } else if (isRp && att.id) {
+              dlUrl = `/api/documents/${att.id}/download?token=${encodeURIComponent(_getToken())}`;
+            } else {
+              dlUrl = `/api/pre-tenders/${ptId}/email-attachments/${att.id}/download?token=${encodeURIComponent(_getToken())}`;
+            }
             const dlResp = await fetch(dlUrl);
+            if (dlResp.status === 401 || dlResp.status === 403) {
+              throw new Error('нет доступа к файлу (HTTP ' + dlResp.status + ') — перелогинься и попробуй снова');
+            }
             if (!dlResp.ok) throw new Error('HTTP ' + dlResp.status);
             blob = await dlResp.blob();
           } catch (e) {
             attachWarn.push(fname + ' (download: ' + e.message + ')');
             continue;
           }
-          setProgress(`Загружаю в AI-сессию: ${fname}`);
+          const isArch = /\.(rar|zip|7z)$/i.test(fname);
+          setProgress(`Загружаю в AI-сессию: ${fname}`, {
+            restart: true,
+            sub: isArch
+              ? 'архив: распаковка + OCR страниц (может занять 1–5 мин)'
+              : 'отправляю файл, извлекаю текст'
+          });
           try {
             const fd = new FormData();
             fd.append('files', blob, fname);
             const upResp = await fetch(`/api/tkp-quick/sessions/${encodeURIComponent(sessionUid)}/upload`, {
               method: 'POST',
-              headers: _authHeader(), // НЕ ставим Content-Type — браузер выставит multipart с boundary
+              headers: _authHeader(),
               body: fd
             });
             if (!upResp.ok) {
               let j = {}; try { j = await upResp.json(); } catch (_) {}
               throw new Error(j.error || ('HTTP ' + upResp.status));
+            }
+            let uj = {};
+            try { uj = await upResp.json(); } catch (_) {}
+            if (uj && (uj.ocr_chars == null || uj.ocr_chars < 50)) {
+              attachWarn.push(fname + ' (текст не извлечён'
+                + (uj.warning ? ': ' + uj.warning : uj.warnings && uj.warnings[0] ? ': ' + uj.warnings[0] : '')
+                + ')');
+            } else if (uj && uj.files_parsed) {
+              setProgress(`✅ ${fname}: ${uj.files_parsed} файл(ов), ${uj.ocr_chars} симв.`, {
+                restart: true,
+                sub: 'готово'
+              });
             }
           } catch (e) {
             attachWarn.push(fname + ' (upload: ' + e.message + ')');
@@ -7578,32 +8459,48 @@ tfoot .vat{color:var(--ok);font-size:18px}
         setProgress(atts.length
           ? `✅ Загружено ${atts.length - attachWarn.length} из ${atts.length} файлов в сессию.`
           : '⚠ В карте нет вложений — AI будет работать только по описанию работ.');
+        if (attachWarn.length) {
+          toast('Мимир-Quick', 'Часть файлов не загрузилась: ' + attachWarn.slice(0, 3).join('; '), 'warn');
+        }
         step = 1;
+        running = false;
         rerender();
+        // Сразу busy на шаге «AI читает» — иначе между rerender и _doCalculate пустота
+        _setBusy('Мимир анализирует ТЗ', 'обычно 2–5 мин на большой пакет — не закрывай окно');
+        _doCalculate();
+        return;
       } catch (e) {
-        toast('Quick: запуск не удался', String(e.message || e), 'err');
-        setProgress('❌ ' + (e.message || 'ошибка'));
+        const msg = String((e && e.message) || e || 'ошибка');
+        toast('Мимир-Quick: запуск не удался', msg, 'err');
+        setProgress('❌ ' + msg);
         _clearBusy();
         running = false;
         return;
       }
-      // running=false до _doCalculate (см. коммент в шаге calculate).
-      running = false;
-      _doCalculate(); // _doCalculate сам обновит busy на «AI читает ТЗ»
     }
 
     async function _doCalculate() {
       if (!sessionUid) return;
       if (running) return;
       running = true;
-      _setBusy('🧠 Мимир анализирует ТЗ', 'Claude читает документ и собирает смету (до 60 сек)');
+      const calcStarted = Date.now();
+      const calcLabel = () => {
+        const sec = Math.round((Date.now() - calcStarted) / 1000);
+        return `уже ${sec} сек · обычно 2–5 мин — не закрывай окно`;
+      };
+      _setBusy('Мимир считает смету', calcLabel());
+      const calcIv = setInterval(() => {
+        _setBusy('Мимир считает смету', calcLabel());
+      }, 1000);
       try {
-        setProgress('AI читает ТЗ…');
+        setProgress('Подключаюсь к модели…');
         const ssr = await _streamSSE(`/api/tkp-quick/sessions/${encodeURIComponent(sessionUid)}/calculate`, {});
         ssr.onEach(ev => {
           const d = ev.data || {};
-          if (d.type === 'start' || d.type === 'progress') {
-            setProgress(d.message || 'AI работает…');
+          if (d.type === 'start' || d.type === 'progress' || d.type === 'status') {
+            const msg = d.message || 'AI работает…';
+            setProgress(msg);
+            _setBusy(msg.length > 72 ? msg.slice(0, 70) + '…' : msg, calcLabel());
           } else if (d.type === 'done') {
             lastChatMd = d.chat_response_md || '';
             lastEstimate = d.estimate || null;
@@ -7616,12 +8513,18 @@ tfoot .vat{color:var(--ok);font-size:18px}
           throw new Error('AI ничего не вернул');
         }
       } catch (e) {
-        toast('Quick: расчёт не удался', String(e.message || e), 'err');
-        setProgress('❌ ' + (e.message || 'ошибка'));
+        const msg = String((e && e.message) || e || 'ошибка');
+        const nice = /network|Failed to fetch|fetch|aborted|ECONNRESET/i.test(msg)
+          ? 'Связь оборвалась (долгий расчёт). Закрой окно и запусти просчёт ещё раз — сессия могла сохраниться.'
+          : msg;
+        toast('Мимир-Quick: расчёт не удался', nice, 'err');
+        setProgress('❌ ' + nice);
         _clearBusy();
+        clearInterval(calcIv);
         running = false;
         return;
       }
+      clearInterval(calcIv);
       _clearBusy();
       // running=false ДО rerender, иначе кнопки step=2 рендерятся disabled.
       running = false;
@@ -7637,38 +8540,51 @@ tfoot .vat{color:var(--ok);font-size:18px}
       if (running) { toast('Quick', 'Подожди — AI ещё думает', 'warn'); return; }
       running = true;
 
-      // Если PM правил позиции в шаге «Смета» — добавляем актуальную смету в preamble,
-      // чтобы Claude увидел ИЗМЕНЕНИЯ (а не повторно работал по своей старой версии).
       let msg = userMsg;
       const items = (lastEstimate && Array.isArray(lastEstimate.items)) ? lastEstimate.items : [];
       if (items.length) {
         msg = `Ниже моя текущая смета (с моими правками — учти их при пересчёте):\n\n${_estimateAsText()}\n\nМой комментарий:\n${userMsg}`;
       }
 
-      _setBusy('🧠 Мимир обрабатывает уточнение', 'пересчитываю смету с учётом твоего ответа (до 60 сек)');
+      // Явный «думаю» — не тост «принято», а busy до конца SSE
+      _setBusy('🧠 Мимир думает над твоим ответом', 'пересчитываю смету — обычно 20–90 сек');
+      const thinkStarted = Date.now();
+      const thinkIv = setInterval(() => {
+        const sec = Math.round((Date.now() - thinkStarted) / 1000);
+        _setBusy('🧠 Мимир думает над твоим ответом', `уже ${sec} сек — не закрывай окно`);
+      }, 1000);
+
       try {
         const ssr = await _streamSSE(`/api/tkp-quick/sessions/${encodeURIComponent(sessionUid)}/chat`, { message: msg });
         ssr.onEach(ev => {
           const d = ev.data || {};
           if (d.type === 'start' || d.type === 'progress') {
-            _setBusy('🧠 ' + (d.message || 'Мимир думает'), 'пересчитываю смету');
+            _setBusy('🧠 ' + (d.message || 'Мимир думает'), `уже ${Math.round((Date.now() - thinkStarted) / 1000)} сек`);
           } else if (d.type === 'done') {
             lastChatMd = d.chat_response_md || lastChatMd;
             if (d.estimate) lastEstimate = d.estimate;
+            if (d.diagnostics && d.diagnostics.mode === 'direct-edit') {
+              toast('Прямая правка', 'Изменены только цифры: ' + (d.diagnostics.applied || []).join(', '), 'info');
+            }
           } else if (d.type === 'error') {
             _setBusy('❌ ' + (d.message || 'ошибка AI'), 'попробуй переотправить');
           }
         });
         await ssr.stream;
       } catch (e) {
+        clearInterval(thinkIv);
         toast('Quick: ответ AI не получен', String(e.message || e), 'err');
         _clearBusy();
         running = false;
         return;
       }
+      clearInterval(thinkIv);
       _clearBusy();
       running = false;
-      toast('Готово', 'AI обновил ответ — смотри новый текст', 'ok');
+      const sec = Math.round((Date.now() - thinkStarted) / 1000);
+      toast('Мимир ответил', `Пересчёт за ${sec} сек — смотри обновлённый текст и смету`, 'ok');
+      // Сразу на шаг диалога с новым текстом
+      if (step < 2) step = 2;
       rerender();
     }
 
@@ -7745,7 +8661,7 @@ tfoot .vat{color:var(--ok);font-size:18px}
         if (a === 'to-smeta')    { step = 3; return rerender(); }
         if (a === 'reset')       return _resetSession();
         if (a === 'row-add')     return _addEstimateRow();
-        if (a === 'row-del')     return _removeEstimateRow(Number(b.dataset.rowIdx));
+        if (a === 'row-del')     return _removeEstimateRow(b.dataset.rowId || Number(b.dataset.rowIdx));
         if (a === 'dl-csv')      return _downloadCsv();
         if (a === 'dl-md')       return _downloadMd();
         if (a === 'dl-xlsx')     return _downloadXlsx();
@@ -7760,6 +8676,36 @@ tfoot .vat{color:var(--ok);font-size:18px}
           if (!sessionUid) return toast('Предпросмотр', 'Сессия не запущена', 'err');
           const tk = encodeURIComponent(_getToken());
           window.open(`/api/tkp-quick/sessions/${encodeURIComponent(sessionUid)}/preview-doc/report?token=${tk}`, '_blank');
+          return;
+        }
+        if (a === 'apply-to-report') {
+          if (!sessionUid) return toast('Применить', 'Сессия не запущена', 'err');
+          if (typeof opts.onApplyToReport !== 'function') {
+            return toast('Применить', 'Обработчик не задан', 'err');
+          }
+          const btn = b;
+          const origText = btn.textContent;
+          btn.disabled = true;
+          btn.textContent = '⏳ Применяю…';
+          try {
+            const totals = _calcTotals(lastEstimate);
+            await opts.onApplyToReport({
+              sessionUid,
+              estimate: lastEstimate,
+              chatMd: lastChatMd,
+              totals,
+              marginPct,
+              vatPct,
+              target: opts.isFinalOwner ? 'final' : 'draft'
+            });
+            toast('✓ Применено', 'Смета и отчёт перенесены в форму', 'ok');
+            close(overlay);
+          } catch (e) {
+            toast('Ошибка', e.message || String(e), 'err');
+          } finally {
+            btn.disabled = false;
+            btn.textContent = origText;
+          }
           return;
         }
         if (a === 'save-to-card') {

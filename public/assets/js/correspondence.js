@@ -835,7 +835,13 @@ window.AsgardCorrespondencePage = (function(){
     }
 
     function bindEvents(){
-      // ─── CRSelect filters ───
+      // Clear filter wrappers before (re)creating CRSelect — avoids stacked widgets
+      // when layout/render races or CRSelect leaves siblings in the same node.
+      ['#f_year_w', '#f_month_w', '#f_direction_w', '#f_docType_w', '#f_signingStatus_w'].forEach((sel) => {
+        const w = $(sel);
+        if (w) w.innerHTML = '';
+      });
+
       const _yrOpts = [{ value: '', label: 'Все' }, ...[currentYear, currentYear-1, currentYear-2, currentYear-3, currentYear-4].map(y => ({ value: String(y), label: String(y) }))];
       const _moOpts = [{ value: '', label: 'Все' }, ...MONTHS.map((m, i) => ({ value: String(i), label: m }))];
       const _dirOpts = [{ value: '', label: 'Все' }, { value: 'incoming', label: '📥 Входящие' }, { value: 'outgoing', label: '📤 Исходящие' }];
@@ -846,7 +852,12 @@ window.AsgardCorrespondencePage = (function(){
       $('#f_direction_w')?.appendChild(CRSelect.create({ id: 'f_direction', options: _dirOpts, value: filters.direction || '', onChange: v => { filters.direction = v; corrCurrentPage = 1; renderPage(); } }));
       $('#f_docType_w')?.appendChild(CRSelect.create({ id: 'f_docType', options: _dtOpts, value: filters.docType || '', onChange: v => { filters.docType = v; corrCurrentPage = 1; renderPage(); } }));
       $('#f_signingStatus_w')?.appendChild(CRSelect.create({ id: 'f_signingStatus', options: _ssOpts, value: filters.signingStatus || '', onChange: v => { filters.signingStatus = v; corrCurrentPage = 1; renderPage(); } }));
-      $('#f_search')?.addEventListener('input', e => { filters.search = e.target.value; corrCurrentPage = 1; renderPage(); });
+
+      const searchEl = $('#f_search');
+      if (searchEl && searchEl.dataset.corrBound !== '1') {
+        searchEl.dataset.corrBound = '1';
+        searchEl.addEventListener('input', e => { filters.search = e.target.value; corrCurrentPage = 1; renderPage(); });
+      }
 
       // Pagination controls
       if (window.AsgardPagination) {
@@ -856,65 +867,85 @@ window.AsgardCorrespondencePage = (function(){
         );
       }
 
-      $('#btnRefreshCorr')?.addEventListener('click', async () => {
-        items = await reloadItems();
-        await loadOutgoingNumberStatus();
-        renderPage();
-      });
+      // Toolbar + row actions: one document-level delegation (survives re-render).
+      // Handlers live in a bag refreshed every bindEvents — SPA re-enters render().
+      window.__corrPageApi = {
+        refreshList: async () => {
+          items = await reloadItems();
+          await loadOutgoingNumberStatus();
+          renderPage();
+        },
+        refreshNumbers: async () => {
+          await loadOutgoingNumberStatus();
+          renderPage();
+        },
+        openRegisterExternalModal, openAddModal, openViewModal, openEditModal,
+        resolveItem, canEditItem, hasParentFilter, parentType, parentId, user, toast
+      };
+      if (!window.__corrClickDelegated) {
+        window.__corrClickDelegated = true;
+        document.addEventListener('click', async (ev) => {
+          const api = window.__corrPageApi;
+          if (!api) return;
+          const t = ev.target;
+          if (!t || !t.closest) return;
+          if (!document.getElementById('f_year_w') && !document.getElementById('btnAddIncoming')) return;
 
-      $('#btnRefreshNumbers')?.addEventListener('click', async () => {
-        await loadOutgoingNumberStatus();
-        renderPage();
-      });
-
-      $('#btnRegisterExternal')?.addEventListener('click', () => openRegisterExternalModal());
-      $('#btnClearParentFilter')?.addEventListener('click', () => {
-        location.hash = '#/correspondence';
-      });
-
-      // ✉ Написать письмо — переход в React v2 Composer (composer существует только в v2).
-      // Если открыли реестр с parent-фильтром, прокидываем привязку в composer чтобы он
-      // pre-fill'ил тендер/работу/просчёт/заявку.
-      $('#btnComposeLetter')?.addEventListener('click', () => {
-        const params = new URLSearchParams();
-        if (hasParentFilter) {
-          params.set('parent_entity_type', parentType);
-          params.set('parent_entity_id', String(parentId));
-        }
-        // return_to: чтобы после finalize/Close композер вернул юзера в vanilla.
-        params.set('return_to', window.location.href);
-        window.location.href = '/v2/#/correspondence/composer?' + params.toString();
-      });
-
-      // Добавить входящее
-      $('#btnAddIncoming')?.addEventListener('click', () => openAddModal('incoming'));
-
-      // Добавить исходящее
-      $('#btnAddOutgoing')?.addEventListener('click', () => openAddModal('outgoing'));
-
-      // Просмотр
-      $$('[data-view]').forEach(btn => {
-        btn.addEventListener('click', async () => {
-          const id = Number(btn.dataset.view);
-          const item = await resolveItem(id);
-          if(item) openViewModal(item);
-          else toast('Просмотр', 'Документ не найден', 'err');
-        });
-      });
-
-      // Редактирование
-      $$('[data-edit]').forEach(btn => {
-        btn.addEventListener('click', async () => {
-          const id = Number(btn.dataset.edit);
-          const item = await resolveItem(id);
-          if(!item) return;
-          if(!canEditItem(user, item)){
-            openViewModal(item);
+          if (t.closest('#btnRefreshCorr')) {
+            await api.refreshList();
             return;
           }
-          openEditModal(item);
+          if (t.closest('#btnRefreshNumbers')) {
+            await api.refreshNumbers();
+            return;
+          }
+          if (t.closest('#btnRegisterExternal')) {
+            api.openRegisterExternalModal();
+            return;
+          }
+          if (t.closest('#btnClearParentFilter')) {
+            location.hash = '#/correspondence';
+            return;
+          }
+          if (t.closest('#btnComposeLetter')) {
+            const params = new URLSearchParams();
+            if (api.hasParentFilter) {
+              params.set('parent_entity_type', api.parentType);
+              params.set('parent_entity_id', String(api.parentId));
+            }
+            params.set('return_to', window.location.href);
+            window.location.href = '/v2/#/correspondence/composer?' + params.toString();
+            return;
+          }
+          if (t.closest('#btnAddIncoming')) {
+            api.openAddModal('incoming');
+            return;
+          }
+          if (t.closest('#btnAddOutgoing')) {
+            api.openAddModal('outgoing');
+            return;
+          }
+          const viewBtn = t.closest('[data-view]');
+          if (viewBtn) {
+            const id = Number(viewBtn.dataset.view);
+            const item = await api.resolveItem(id);
+            if (item) api.openViewModal(item);
+            else api.toast('Просмотр', 'Документ не найден', 'err');
+            return;
+          }
+          const editBtn = t.closest('[data-edit]');
+          if (editBtn) {
+            const id = Number(editBtn.dataset.edit);
+            const item = await api.resolveItem(id);
+            if (!item) return;
+            if (!api.canEditItem(api.user, item)) {
+              api.openViewModal(item);
+              return;
+            }
+            api.openEditModal(item);
+          }
         });
-      });
+      }
     }
 
     async function openAddModal(direction){
@@ -1630,32 +1661,33 @@ window.AsgardCorrespondencePage = (function(){
 
       showModal({ title: `Документ #${item.id}`, html, icon: '📨', subtitle: item.direction === 'outgoing' ? 'Исходящая корреспонденция' : 'Входящая корреспонденция' });
 
-      // Кнопки скачивания PDF/Word — защищённые (Bearer токен).
+      // Scope listeners to the active modal overlay (not document.querySelector first match)
+      const modalRoot = document.querySelector('.cr-m-overlay--visible') || document;
       const fileBase = (item.number || ('letter-' + item.id)).replace(/[\\\/\:\*\?"<>\|]/g, '_');
-      $('[data-dl-pdf]')?.addEventListener('click', () => {
+      modalRoot.querySelector('[data-dl-pdf]')?.addEventListener('click', () => {
         openProtected('/api/letter/' + item.id + '/render/pdf?with_signature=1&with_stamp=1', fileBase + '.pdf');
       });
-      $('[data-dl-docx]')?.addEventListener('click', () => {
+      modalRoot.querySelector('[data-dl-docx]')?.addEventListener('click', () => {
         openProtected('/api/letter/' + item.id + '/render/docx', fileBase + '.docx');
       });
 
       attachments.forEach((att, i) => {
-        $(`[data-att-preview="${i}"]`)?.addEventListener('click', () => {
+        modalRoot.querySelector(`[data-att-preview="${i}"]`)?.addEventListener('click', () => {
           const url = att.url || att.file_path;
           if(url) previewProtected(url, att.filename || 'Вложение', att.mime_type || att.mime || '');
         });
       });
 
-      $('#btnPreviewBlank')?.addEventListener('click', () => {
+      modalRoot.querySelector('#btnPreviewBlank')?.addEventListener('click', () => {
         previewProtected('/api/letter/' + item.id + '/render/pdf?with_signature=1&with_stamp=1', 'Бланк ' + (item.number || item.id), 'application/pdf');
       });
 
-      $('#btnViewEdit')?.addEventListener('click', () => {
+      modalRoot.querySelector('#btnViewEdit')?.addEventListener('click', () => {
         AsgardUI.closeModal && AsgardUI.closeModal();
         openEditModal(item);
       });
 
-      $('#btnViewFinalize')?.addEventListener('click', async () => {
+      modalRoot.querySelector('#btnViewFinalize')?.addEventListener('click', async () => {
         if(!confirm('Финализировать письмо?')) return;
         try {
           const resp = await apiFetch('/api/correspondence/' + item.id + '/finalize', { method: 'POST', body: JSON.stringify({}) });
@@ -1666,7 +1698,7 @@ window.AsgardCorrespondencePage = (function(){
         } catch(e){ toast('Ошибка', e.message || 'Не удалось финализировать', 'err'); }
       });
 
-      $('#btnViewDelete')?.addEventListener('click', async () => {
+      modalRoot.querySelector('#btnViewDelete')?.addEventListener('click', async () => {
         if(!confirm('Удалить документ?')) return;
         try {
           await apiFetch('/api/correspondence/' + item.id, { method: 'DELETE' });
@@ -1677,7 +1709,7 @@ window.AsgardCorrespondencePage = (function(){
         } catch(e){ toast('Ошибка', e.message || 'Не удалось удалить', 'err'); }
       });
 
-      $('#btnViewSendEmail')?.addEventListener('click', async () => {
+      modalRoot.querySelector('#btnViewSendEmail')?.addEventListener('click', async () => {
         const to = (prompt('Email получателя (через запятую для нескольких):', '') || '').trim();
         if(!to) return;
         const emails = to.split(/[,;]+/).map(s => s.trim()).filter(Boolean);
@@ -1693,7 +1725,7 @@ window.AsgardCorrespondencePage = (function(){
         } catch(e){ toast('Ошибка', e.message || 'Не удалось отправить', 'err'); }
       });
 
-      $('#btnViewMarkSent')?.addEventListener('click', async () => {
+      modalRoot.querySelector('#btnViewMarkSent')?.addEventListener('click', async () => {
         const sentAt = prompt('Дата отправки (YYYY-MM-DD):', today()) || today();
         const note = (prompt('Примечание (опц.):', '') || '').trim();
         try {

@@ -22,6 +22,7 @@
 const fs = require('fs');
 const path = require('path');
 const PDFDocument = require('pdfkit');
+const { registerDejaVuFonts } = require('../../lib/pdf-fonts');
 const cr = require('./conductor-run');
 const db = require('../db');
 const { formatRub } = require('./agents/_util');
@@ -58,15 +59,8 @@ function workLabel(w) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 function makeFonts(doc) {
-  const hasFont = fs.existsSync(FONT_REGULAR);
-  if (hasFont) {
-    doc.registerFont('ru', FONT_REGULAR);
-    if (fs.existsSync(FONT_BOLD)) doc.registerFont('ru-bold', FONT_BOLD);
-  }
-  return {
-    F: hasFont ? 'ru' : 'Helvetica',
-    FB: hasFont && fs.existsSync(FONT_BOLD) ? 'ru-bold' : (hasFont ? 'ru' : 'Helvetica-Bold')
-  };
+  const fonts = registerDejaVuFonts(doc, { regularName: 'ru', boldName: 'ru-bold' });
+  return { F: fonts.regular, FB: fonts.bold };
 }
 
 function heading(doc, F, num, title) {

@@ -190,33 +190,13 @@ async function _mergeCalcSettings(baseSettings) {
 }
 
 /**
- * Собрать ctx в точности том формате который buildAutoEstimatePrompt + valida-
- * teAndRecomputeMath + resolveEquipmentFromWarehouse ожидают.
- *
- * Для Quick:
- *   - work — синтетический (минимум полей)
- *   - tender — null (Quick не привязан к тендеру; даже если auto-создался
- *     технический tender_draft — это не реальная заявка, не подменяем)
- *   - documents — из OCR вложений
- *   - analogs — []  (Quick не привязан к work_type/work — поиск аналогов
- *     по тексту ТЗ бесполезен без типизации; AI довольствуется только историей клиента
- *     и тарифной сеткой. Это сознательное упрощение.)
- *   - customer_history — заполняется упрощённо: формат из dashboard уже
- *     встроен в session.customer_data, но buildAutoEstimatePrompt ждёт rows
- *     из mimir.customer_tender_history — у нас их нет, передаём [].
- *     История клиента всё равно идёт в extraUserMessage отдельным блоком.
- *   - warehouse — реальный getWarehouseStock(db)
- *   - workers — реальный getAvailableWorkers(db, null, null) — все активные
- *     (Quick не имеет start_plan/end_plan, значит фильтра по занятости нет)
- *   - permits — getEmployeePermitsSummary(db, fieldEmpIds)
- *   - tariffs — getTariffGrid(db)
- *   - settings — _mergeCalcSettings(opts.settings)
- *   - workType — inferWorkType(tz_text + attachments_text)
+ * Собрать ctx в формате Auto-Estimate.
+ * Если передан tender_id — подгружаем тендер (иначе ложный флаг «без тендера»).
  */
 async function _buildQuickCtx(opts, onProgress) {
   const {
     tz_text, customer_name, attachments_text, attachments,
-    session_uid, settings: rawSettings
+    session_uid, settings: rawSettings, tender_id
   } = opts;
 
   const safe = (step, msg) => {
@@ -231,8 +211,28 @@ async function _buildQuickCtx(opts, onProgress) {
 
   safe('quick_ctx_start', '📦 Подгружаю склад, рабочих, тарифы…');
 
-  // Параллельно подгружаем тяжёлые источники (как делает buildAutoEstimateContext).
-  const [warehouse, workers, tariffs, settingsFromDb] = await Promise.all([
+  let tender = null;
+  if (tender_id) {
+    try {
+      const { rows } = await db.query(
+        `SELECT id, tender_title, customer_name, tender_region, estimated_sum,
+                status AS tender_status, group_tag, docs_deadline AS deadline,
+                tender_comment_to, comment_to, tender_description,
+                work_start_plan, work_end_plan
+         FROM tenders WHERE id = $1`,
+        [Number(tender_id)]
+      );
+      tender = rows[0] || null;
+      if (tender) {
+        work.customer_name = work.customer_name || tender.customer_name;
+        work.tender_id = tender.id;
+      }
+    } catch (e) {
+      console.warn('[mimir-tkp-quick] load tender:', e.message);
+    }
+  }
+
+  const [warehouse, workers, tariffs, settingsFromDb, workNormsCatalog] = await Promise.all([
     mimirAutoEstimate.getWarehouseStock(db, onProgress).catch(() => []),
     mimirAutoEstimate.getAvailableWorkers(db, null, null, onProgress).catch(() => ({
       itr_available: [], field_available: [], itr_busy_count: 0, field_busy_count: 0,
@@ -240,17 +240,25 @@ async function _buildQuickCtx(opts, onProgress) {
                  tinsmiths: 0, assemblers: 0, masters: 0, drivers: 0, chemists: 0, other: 0 }
     })),
     mimirAutoEstimate.getTariffGrid(db, onProgress).catch(() => ({ rows: [], grouped: {} })),
-    _mergeCalcSettings(rawSettings)
+    _mergeCalcSettings(rawSettings),
+    (async () => {
+      try {
+        const workNorms = require('./work-norms');
+        const cat = await workNorms.loadCatalog(db);
+        return workNorms.toPromptMarkdown(cat, workType);
+      } catch (_) {
+        return '(справочник норм CRM ещё не развёрнут — V309)';
+      }
+    })()
   ]);
 
-  // Допуска свободных полевых — после того как мы знаем их id'шники.
   const fieldEmpIds = (workers.field_available || []).map(e => e.id).filter(x => x);
   const permits = await mimirAutoEstimate.getEmployeePermitsSummary(db, fieldEmpIds, onProgress)
     .catch(() => ({ by_type: {}, by_employee: {}, total_active: 0, employees_with_permits: 0, expiring_soon: [] }));
 
   return {
     work,
-    tender: null,
+    tender,
     documents,
     linkedEstimate: null,
     workType,
@@ -260,7 +268,8 @@ async function _buildQuickCtx(opts, onProgress) {
     workers,
     permits,
     tariffs,
-    settings: settingsFromDb
+    settings: settingsFromDb,
+    work_norms_catalog: workNormsCatalog
   };
 }
 
@@ -271,10 +280,14 @@ async function _buildQuickCtx(opts, onProgress) {
  * формат "истории клиента" (как было в старом TKP_QUICK).
  */
 function _buildQuickUserMessage(opts) {
-  const { tz_text, customer_name, customer_inn, customer_data, attachments_text } = opts;
+  const { tz_text, customer_name, customer_inn, customer_data, attachments_text, tender_id } = opts;
 
   const parts = [];
-  parts.push('Это запрос быстрого ТКП (Quick). Реальной работы и тендера ещё нет, рассчитай по ТЗ из письма клиента.');
+  if (tender_id) {
+    parts.push(`Это запрос быстрого ТКП (Quick) по тендеру #${tender_id}. Используй данные тендера и вложения; не считай «работу без тендера».`);
+  } else {
+    parts.push('Это запрос быстрого ТКП (Quick). Реальной работы и тендера ещё нет, рассчитай по ТЗ из письма клиента.');
+  }
   parts.push('');
 
   if (customer_name || customer_inn) {
@@ -299,7 +312,11 @@ function _buildQuickUserMessage(opts) {
   if (attachments_text && String(attachments_text).trim()) {
     parts.push('');
     parts.push('═══ OCR ВЛОЖЕНИЙ (ТЗ, спецификации) ═══');
-    parts.push(String(attachments_text).slice(0, 20000));
+    const maxAttach = Math.max(
+      80000,
+      parseInt(process.env.MIMIR_QUICK_ATTACH_CHARS || '400000', 10) || 400000
+    );
+    parts.push(String(attachments_text).slice(0, maxAttach));
   }
 
   parts.push('');
@@ -348,9 +365,12 @@ function _flattenCalcToItems(recomputed) {
   const pushFlat = (rows, defaultUnit) => {
     (rows || []).forEach(r => {
       const name = r.description || r.name || r.item || 'Позиция';
+      const nameL = String(name).trim().toLowerCase();
+      if (!nameL || nameL === '<нет>' || nameL === 'нет' || nameL === '-') return;
       const qty = Number(r.count) || Number(r.qty) || Number(r.volume_liters) || 1;
       const price = Number(r.price) || Number(r.unit_price) || Number(r.price_per_liter) || 0;
       const total = Number(r.total) || Number(r.amount) || qty * price;
+      if (!(total > 0) && !(price > 0)) return;
       items.push({
         name,
         unit: r.unit || defaultUnit || 'шт',
@@ -436,41 +456,28 @@ function _buildChatMd(ai, recomputed) {
 }
 
 /**
- * Собрать legacy estimate-объект который ждёт UI Quick из recomputed +
- * ai.estimate. Сохраняем оба «диалекта» (items + дополнительные поля).
+ * Собрать estimate для UI Quick: asgard_v1 + legacy items.
  */
 function _composeLegacyEstimate(ai, recomputed) {
+  const asgardSmeta = require('./asgard-smeta');
+  const composed = asgardSmeta.composeFromRecomputed(ai, recomputed);
   const est = (ai && ai.estimate) || {};
-  const totals = (recomputed && recomputed.totals) || {};
-  const items = _flattenCalcToItems(recomputed);
-
-  const subtotal = Math.round(Number(totals.total_cost) || 0);
-  const totalWithoutVat = Math.round(Number(totals.total_with_margin) || subtotal);
-  const totalWithVat = Math.round(Number(totals.total_with_vat) || totalWithoutVat);
-  const vatPct = Number(totals.vat_pct) || 20;
-  const vatSum = totalWithVat - totalWithoutVat;
 
   return {
-    // Legacy-формат для UI
-    subject: est.title || 'Просчёт ТКП',
+    ...composed,
+    subject: composed.meta?.title || est.title || 'Просчёт ТКП',
     work_description: est.comment || '',
-    items,
-    subtotal,
-    total_without_vat: totalWithoutVat,
-    vat_pct: vatPct,
-    vat_sum: vatSum,
-    total_with_vat: totalWithVat,
-    deadline: (est.work_days && est.road_days != null)
-      ? `${est.work_days} рабочих смен + ${est.road_days * 2} дн дороги`
-      : 'По согласованию',
-    payment_terms: 'Аванс 50%, остаток по подписании акта',
+    deadline: composed.meta?.work_schedule
+      || ((est.work_days && est.road_days != null)
+        ? `${est.work_days} рабочих смен + ${est.road_days * 2} дн дороги`
+        : 'По согласованию'),
+    payment_terms: est.payment_terms || 'Аванс 50%, остаток по подписании акта',
     notes: '',
     validity_days: 30,
-    // Полный AI-объект — чтобы можно было собрать ТКП-черновик / отладить
     ai_meta: {
       estimate: est,
       calculation: recomputed && recomputed.calculation,
-      totals,
+      totals: recomputed && recomputed.totals,
       equipment_status: ai && ai.equipment_status,
       permits_status: ai && ai.permits_status,
       route_plan: ai && ai.route_plan,
@@ -611,8 +618,16 @@ async function _generateAndSaveQuickDocs({ recomputed, ai, pre_tender_id, tender
 
   let xlsxBuf, docxBuf;
   try {
+    const asgardSmeta = require('./asgard-smeta');
+    const asgardXlsx = require('./asgard-smeta-xlsx');
+    const composed = asgardSmeta.composeFromRecomputed(
+      { ...(ai || {}), customer_name },
+      recomputed
+    );
+    if (customer?.name) composed.meta.customer = customer.name;
+    if (project?.subject) composed.meta.title = project.subject;
     [xlsxBuf, docxBuf] = await Promise.all([
-      docGen.generateSmetaXlsx(recomputed, project, customer, opts),
+      asgardXlsx.buildAsgardSmetaXlsx(composed),
       docGen.generateDirectorReportDocx(recomputed, project, customer, ai && ai.analysis, opts)
     ]);
   } catch (e) {
@@ -664,18 +679,18 @@ async function generateEstimate(opts) {
   // самые старые реплики (FIFO), оставляя последние MAX_HISTORY_TOKENS токенов.
   const history = _applySlidingWindow(rawHistory, `tkp_quick:${session_uid || 'no-uid'}`);
 
-  onProgress({ type: 'status', message: '🧠 Мимир анализирует ТЗ и подгружает данные компании…' });
+  onProgress({ type: 'progress', step: 'ctx', message: 'Собираю данные компании (склад, кадры, тарифы)…' });
 
   // 1. Собрать ctx в формате Auto-Estimate (склад/рабочие/тарифы/допуска/настройки).
   const ctx = await _buildQuickCtx({
     tz_text, customer_name, attachments_text, attachments,
-    session_uid, settings
+    session_uid, settings, tender_id
   }, onProgress);
 
   // 2. Кэш — детерминированный по системному промпту + user-сообщению.
   //    Если тот же ТЗ → возвращаем сохранённый estimate.
   const userMessage = _buildQuickUserMessage({
-    tz_text, customer_name, customer_inn, customer_data, attachments_text
+    tz_text, customer_name, customer_inn, customer_data, attachments_text, tender_id
   });
   const systemPrompt = mimirAutoEstimate.buildAutoEstimatePrompt(ctx);
 
@@ -729,7 +744,7 @@ async function generateEstimate(opts) {
       [cacheKey]
     );
     if (cached.rows[0]) {
-      onProgress({ type: 'status', message: '💾 Расчёт из кэша (детерминированно)' });
+      onProgress({ type: 'progress', step: 'cache', message: 'Расчёт из кэша' });
       await db.query(
         "UPDATE mimir_ai_cache SET hit_count=hit_count+1, last_used_at=NOW() WHERE input_hash=$1",
         [cacheKey]
@@ -738,11 +753,30 @@ async function generateEstimate(opts) {
     }
   } catch (_) { /* нет таблицы — игнор */ }
 
-  // 3. Вызов AI — ровно как в Auto-Estimate (тот же systemPrompt, тот же
-  //    парсер, тот же recompute, тот же matching склада).
-  onProgress({ type: 'status', message: '🧠 Запрашиваю расчёт у Мимир-Sonnet…' });
-
-  const aiCall = await mimirAutoEstimate.callMimirForEstimate(aiProvider, ctx, dialogMessage);
+  // 3. Вызов AI — длинный (часто 2–5 мин на большой пакет). Heartbeat в UI,
+  // иначе залипает последняя строка про кадры и прокси рвёт SSE (network error).
+  const aiStarted = Date.now();
+  const tickAi = () => {
+    const sec = Math.round((Date.now() - aiStarted) / 1000);
+    onProgress({
+      type: 'progress',
+      step: 'ai',
+      message: `Модель считает смету… уже ${sec} сек (обычно 2–5 мин на большой пакет)`
+    });
+  };
+  tickAi();
+  const aiHb = setInterval(tickAi, 8000);
+  let aiCall;
+  try {
+    aiCall = await mimirAutoEstimate.callMimirForEstimate(aiProvider, ctx, dialogMessage);
+  } finally {
+    clearInterval(aiHb);
+  }
+  onProgress({
+    type: 'progress',
+    step: 'ai_done',
+    message: `Модель ответила за ${Math.round((Date.now() - aiStarted) / 1000)} сек — собираю смету…`
+  });
 
   // 4. Маппинг в legacy-формат Quick.
   const estimate = _composeLegacyEstimate(aiCall.ai, aiCall.recomputed);
@@ -790,8 +824,28 @@ async function continueChat(opts) {
   // (cost → 0). Перехватываем простые числовые правки regex'ом и применяем direct
   // к baseline (последнему estimate из history). AI вызывается только для сложных
   // запросов (правка текста, добавление позиции, изменение состава работ).
-  const message = String(opts.tz_text || '').trim();
+  //
+  // 31.07.2026 FIX: UI часто шлёт «Ниже моя текущая смета… НДС 22% … Мой комментарий: <отчёт>».
+  // Regex ловил «НДС 22%» из дампа сметы и отвечал «Применил прямую правку: vat=22%»
+  // за секунду — отчёт пользователя игнорировался. Считаем intent ТОЛЬКО из
+  // комментария пользователя и только если он короткий.
+  const rawMessage = String(opts.tz_text || '').trim();
   const history = Array.isArray(opts.history) ? opts.history : [];
+
+  let intentText = rawMessage;
+  const commentSplit = rawMessage.split(/\nМой комментарий:\s*\n/i);
+  if (commentSplit.length >= 2) {
+    intentText = commentSplit.slice(1).join('\n').trim();
+  } else if (/^Ниже моя текущая смета/i.test(rawMessage)) {
+    // нет маркера — не рискуем: это почти наверняка длинный контекст со сметой
+    intentText = rawMessage;
+  }
+
+  const SIMPLE_EDIT_MAX = 280;
+  // \b не работает с кириллицей — ищем подстроки без word-boundary
+  const complexHint = /(отч[её]т|смет[аеуы]|бригад|график|режим\s+работ|срок|труб|секци|пересчит|учти|исправ|добав|объем|объём|фоулинг| fouling)/i;
+  const looksLikeSimpleEdit = intentText.length > 0 && intentText.length <= SIMPLE_EDIT_MAX
+    && !complexHint.test(intentText);
 
   // Извлечь baseline estimate из истории (последний assistant с ```json```).
   let baseline = null;
@@ -802,7 +856,8 @@ async function continueChat(opts) {
     }
   }
 
-  if (baseline && baseline.ai_meta && baseline.ai_meta.totals) {
+  if (looksLikeSimpleEdit && baseline && baseline.ai_meta && baseline.ai_meta.totals) {
+    const message = intentText;
     const totals = JSON.parse(JSON.stringify(baseline.ai_meta.totals));
     let applied = [];
 
@@ -824,8 +879,9 @@ async function continueChat(opts) {
         applied.push(`markup=${k}`);
       }
     }
-    // НДС
-    const mVat = message.match(/НДС\s*(?:сделай|поставь|измени|=)?\s*(?:на\s+)?(\d+(?:[.,]\d+)?)\s*(?:%|процент)/i);
+    // НДС — только с явным глаголом/«=», чтобы «НДС 22%» из таблицы не срабатывало
+    const mVat = message.match(/НДС\s*(?:сделай|поставь|измени|=|на)\s*(\d+(?:[.,]\d+)?)\s*(?:%|процент)?/i)
+      || message.match(/^(?:поставь|сделай|измени)\s+НДС\s*(?:на\s+)?(\d+(?:[.,]\d+)?)\s*(?:%|процент)?$/i);
     if (mVat) {
       totals.vat_pct = Number(mVat[1].replace(',', '.'));
       applied.push(`vat=${totals.vat_pct}%`);
@@ -837,7 +893,7 @@ async function continueChat(opts) {
       totals.total_with_margin = +(cost * (totals.markup_multiplier || 2.2)).toFixed(2);
       totals.total_with_vat = +(totals.total_with_margin * (1 + vat / 100)).toFixed(2);
 
-      const newEstimate = JSON.parse(JSON.stringify(baseline));
+      let newEstimate = JSON.parse(JSON.stringify(baseline));
       newEstimate.ai_meta.totals = totals;
       // КРИТИЧНО: дублируем markup в ai_meta.estimate (generator берёт его первым).
       if (newEstimate.ai_meta.estimate) {
@@ -849,15 +905,37 @@ async function continueChat(opts) {
           newEstimate.ai_meta.estimate.vat_pct = totals.vat_pct;
         }
       }
+      // asgard_v1: синхронизируем params + пересчитываем дерево A–E
+      if (newEstimate.template === 'asgard_v1' || Array.isArray(newEstimate.rows)) {
+        const asgardSmeta = require('./asgard-smeta');
+        newEstimate.params = newEstimate.params || {};
+        if (totals.markup_multiplier) newEstimate.params.markup = totals.markup_multiplier;
+        if (totals.vat_pct != null) newEstimate.params.vat = Number(totals.vat_pct) / 100;
+        if (totals.material_markup != null) newEstimate.params.material_markup = totals.material_markup;
+        newEstimate = asgardSmeta.recalcAsgardSmeta(newEstimate);
+        newEstimate.ai_meta = newEstimate.ai_meta || {};
+        newEstimate.ai_meta.totals = {
+          ...(newEstimate.ai_meta.totals || {}),
+          ...totals,
+          total_cost: newEstimate.totals.cost,
+          total_with_margin: newEstimate.totals.price_no_vat,
+          total_with_vat: newEstimate.totals.price_with_vat,
+          markup_multiplier: newEstimate.params.markup,
+          vat_pct: newEstimate.totals.vat_pct
+        };
+      }
       // Сбрасываем кэш summary/section2 — будут пересозданы Generator'ом.
       if (newEstimate.ai_meta.analysis) {
         newEstimate.ai_meta.analysis.summary = null;
         newEstimate.ai_meta.analysis.section_2_text = null;
       }
 
+      const costOut = (newEstimate.totals && newEstimate.totals.cost) || cost;
+      const priceOut = (newEstimate.totals && newEstimate.totals.price_with_vat) || totals.total_with_vat;
+      const mk = (newEstimate.params && newEstimate.params.markup) || totals.markup_multiplier;
       const responseMd = `✓ Применил прямую правку: ${applied.join(', ')}.\n\n` +
-        `Себестоимость осталась ${(cost / 1e6).toFixed(2)} млн ₽ без НДС.\n` +
-        `Новая цена с НДС: ${(totals.total_with_vat / 1e6).toFixed(2)} млн ₽ (наценка ×${totals.markup_multiplier}).`;
+        `Себестоимость осталась ${(costOut / 1e6).toFixed(2)} млн ₽ без НДС.\n` +
+        `Новая цена с НДС: ${(priceOut / 1e6).toFixed(2)} млн ₽ (наценка ×${mk}).`;
 
       return {
         chat_response_md: responseMd,
@@ -868,7 +946,7 @@ async function continueChat(opts) {
     }
   }
 
-  // Для сложных правок — обычный AI flow.
+  // Для сложных правок / длинных отчётов — обычный AI flow.
   return generateEstimate(opts);
 }
 
@@ -986,6 +1064,26 @@ async function _prepareForGenerator({ estimate_draft, pre_tender_id, tender_id, 
   return { recomputed, project, customer, pmUser };
 }
 
+async function _xlsxFromEstimateDraft(estimate_draft, recomputed, project, customer) {
+  const asgardSmeta = require('./asgard-smeta');
+  const asgardXlsx = require('./asgard-smeta-xlsx');
+  let composed;
+  if (estimate_draft && estimate_draft.template === 'asgard_v1' && Array.isArray(estimate_draft.rows)) {
+    composed = asgardSmeta.recalcAsgardSmeta(estimate_draft);
+  } else {
+    composed = asgardSmeta.composeFromRecomputed(
+      {
+        estimate: estimate_draft?.ai_meta?.estimate || estimate_draft,
+        customer_name: customer?.name
+      },
+      recomputed
+    );
+  }
+  if (customer?.name) composed.meta = { ...(composed.meta || {}), customer: customer.name };
+  if (project?.subject) composed.meta = { ...(composed.meta || {}), title: project.subject };
+  return asgardXlsx.buildAsgardSmetaXlsx(composed);
+}
+
 // Buffer-only генерация документов (для preview): возвращает {xlsxBuf, docxBuf, recomputed}
 // БЕЗ сохранения в pre_tender_requests. Используется в /sessions/:uid/preview-doc.
 async function generatePreviewBuffers({ estimate_draft, pre_tender_id, tender_id, customer_name, customer_inn, author_id, work_type }) {
@@ -1001,7 +1099,7 @@ async function generatePreviewBuffers({ estimate_draft, pre_tender_id, tender_id
   };
 
   const [xlsxBuf, docxBuf] = await Promise.all([
-    docGen.generateSmetaXlsx(recomputed, project, customer, opts),
+    _xlsxFromEstimateDraft(estimate_draft, recomputed, project, customer),
     docGen.generateDirectorReportDocx(recomputed, project, customer, recomputed.analysis, opts)
   ]);
   return { xlsxBuf, docxBuf, recomputed, project, customer };
@@ -1023,7 +1121,7 @@ async function saveDocsToCard({ estimate_draft, pre_tender_id, tender_id, custom
   let xlsxBuf, docxBuf;
   try {
     [xlsxBuf, docxBuf] = await Promise.all([
-      docGen.generateSmetaXlsx(recomputed, project, customer, opts),
+      _xlsxFromEstimateDraft(estimate_draft, recomputed, project, customer),
       docGen.generateDirectorReportDocx(recomputed, project, customer, recomputed.analysis, opts)
     ]);
   } catch (e) {
@@ -1051,11 +1149,14 @@ module.exports = {
   generateEstimate,
   continueChat,
   _loadSettings,
+  _composeLegacyEstimate,
+  _buildChatMd,
   // Sliding-window helpers (reusable Conductor / другие чат-сервисы)
   _applySlidingWindow,
   _estimateHistoryTokens,
   MAX_HISTORY_TOKENS,
   // 21.06.2026: preview + save
   generatePreviewBuffers,
-  saveDocsToCard
+  saveDocsToCard,
+  _xlsxFromEstimateDraft
 };

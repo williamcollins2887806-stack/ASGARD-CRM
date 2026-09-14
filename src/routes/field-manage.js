@@ -7,6 +7,7 @@
  * PUT  /tariffs/:id                   — update tariff (ADMIN)
  * DELETE /tariffs/:id                 — delete tariff (ADMIN)
  * POST /projects/:work_id/crew        — assign crew with tariffs
+ * DELETE /projects/:work_id/crew/:employee_id — hard-remove from brigade
  * POST /projects/:work_id/send-invites — SMS invites to crew
  * POST /projects/:work_id/broadcast   — broadcast message
  * GET  /projects/:work_id/dashboard   — live dashboard
@@ -18,10 +19,14 @@
  */
 
 const ExcelJS = require('exceljs');
+const tsExcelStyle = require('../services/timesheet-excel-style');
 const MangoService = require('../services/mango');
 const { createNotification } = require('../services/notify');
 const { getWorkerFinances } = require('../lib/worker-finances');
 const { logError } = require('../lib/log-error');
+const { assertNoStageConflict, labelOf } = require('../lib/timesheet-day-conflict');
+const { clearPlannedOnCrewAssign } = require('../lib/planned-engagement-auto');
+const { loadFieldTimesheetRoster } = require('../lib/field-timesheet-roster');
 const MANGO_SMS_FROM = process.env.MANGO_SMS_EXTENSION || '101';
 
 const MANAGE_ROLES = ['PM', 'HEAD_PM', 'TO', 'HEAD_TO', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV'];
@@ -80,7 +85,8 @@ async function routes(fastify, options) {
       const {
         report_template_id, site_category, schedule_type, shift_hours,
         per_diem, geo_lat, geo_lng, geo_radius, geo_required,
-        shift_start_reminder, daily_report_reminder, rounding_rule, rounding_step
+        shift_start_reminder, daily_report_reminder, rounding_rule, rounding_step,
+        per_diem_on_checkins, role_base_rates
       } = req.body || {};
 
       if (!workId) return reply.code(400).send({ error: 'Укажите work_id' });
@@ -88,6 +94,9 @@ async function routes(fastify, options) {
       // Check work exists
       const { rows: work } = await db.query(`SELECT id, work_title FROM works WHERE id = $1`, [workId]);
       if (work.length === 0) return reply.code(404).send({ error: 'Проект не найден' });
+
+      const pdOnCheckins = per_diem_on_checkins == null ? null : !!per_diem_on_checkins;
+      const roleRatesJson = role_base_rates != null ? JSON.stringify(role_base_rates) : null;
 
       // Upsert project settings
       const { rows: existing } = await db.query(
@@ -111,6 +120,8 @@ async function routes(fastify, options) {
             daily_report_reminder = COALESCE($12, daily_report_reminder),
             rounding_rule = COALESCE($13, rounding_rule),
             rounding_step = COALESCE($14, rounding_step),
+            per_diem_on_checkins = COALESCE($16, per_diem_on_checkins),
+            role_base_rates = COALESCE($17::jsonb, role_base_rates),
             activated_at = NOW(), activated_by = $15,
             updated_at = NOW()
           WHERE work_id = $1
@@ -119,21 +130,34 @@ async function routes(fastify, options) {
             geo_lat || null, geo_lng || null, geo_radius || null,
             geo_required != null ? geo_required : null,
             shift_start_reminder || null, daily_report_reminder || null,
-            rounding_rule || null, rounding_step || null, userId]);
+            rounding_rule || null, rounding_step || null, userId, pdOnCheckins,
+            roleRatesJson]);
       } else {
         await db.query(`
           INSERT INTO field_project_settings (work_id, is_active, activated_at, activated_by,
             report_template_id, site_category, schedule_type, shift_hours, per_diem,
             object_lat, object_lng, geo_radius_meters, geo_required,
-            shift_start_reminder, daily_report_reminder, rounding_rule, rounding_step)
-          VALUES ($1, true, NOW(), $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+            shift_start_reminder, daily_report_reminder, rounding_rule, rounding_step,
+            per_diem_on_checkins, role_base_rates)
+          VALUES ($1, true, NOW(), $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17::jsonb)
         `, [workId, userId,
             report_template_id || null, site_category || 'ground',
-            schedule_type || 'shift', shift_hours || 11, per_diem || 0,
+            schedule_type || 'shift', shift_hours || 11, per_diem != null ? per_diem : 0,
             geo_lat || null, geo_lng || null, geo_radius || 500,
             geo_required || false,
             shift_start_reminder || null, daily_report_reminder || null,
-            rounding_rule || 'half_up', rounding_step || 0.5]);
+            rounding_rule || 'half_up', rounding_step || 0.5,
+            pdOnCheckins != null ? pdOnCheckins : true,
+            roleRatesJson]);
+      }
+
+      // Ставка на проекте — источник правды для бригады: синхронизируем назначения,
+      // иначе COALESCE(ea.per_diem, …) продолжает брать старое значение у людей.
+      if (per_diem != null && Number.isFinite(Number(per_diem))) {
+        await db.query(
+          `UPDATE employee_assignments SET per_diem = $2, updated_at = NOW() WHERE work_id = $1`,
+          [workId, Number(per_diem)]
+        );
       }
 
       return { ok: true, work_id: workId };
@@ -173,6 +197,96 @@ async function routes(fastify, options) {
   });
 
   // ─────────────────────────────────────────────────────────────────────
+  // GET/PUT /projects/:work_id/role-base-rates — базовые ставки по ролям
+  // ─────────────────────────────────────────────────────────────────────
+  fastify.get('/projects/:work_id/role-base-rates', roleCheck, async (req, reply) => {
+    try {
+      const workId = parseInt(req.params.work_id, 10);
+      if (!workId) return reply.code(400).send({ error: 'Укажите work_id' });
+      const { rows } = await db.query(
+        `SELECT site_category, role_base_rates, is_active, per_diem
+         FROM field_project_settings WHERE work_id = $1`,
+        [workId]
+      );
+      if (!rows.length) {
+        return {
+          work_id: workId,
+          site_category: 'ground',
+          role_base_rates: null,
+          is_active: false,
+          per_diem: 0
+        };
+      }
+      return {
+        work_id: workId,
+        site_category: rows[0].site_category || 'ground',
+        role_base_rates: rows[0].role_base_rates || null,
+        is_active: !!rows[0].is_active,
+        per_diem: rows[0].per_diem != null ? Number(rows[0].per_diem) : 0
+      };
+    } catch (err) {
+      logError(fastify, '[field-manage] role-base-rates GET error', err, req);
+      return reply.code(500).send({ error: 'Ошибка сервера' });
+    }
+  });
+
+  fastify.put('/projects/:work_id/role-base-rates', roleCheck, async (req, reply) => {
+    try {
+      const workId = parseInt(req.params.work_id, 10);
+      if (!workId) return reply.code(400).send({ error: 'Укажите work_id' });
+      const body = req.body || {};
+      const siteCategory = body.site_category || null;
+      const roleBaseRates = body.role_base_rates != null ? body.role_base_rates : null;
+
+      const { rows: work } = await db.query(`SELECT id FROM works WHERE id = $1`, [workId]);
+      if (!work.length) return reply.code(404).send({ error: 'Проект не найден' });
+
+      const { rows: existing } = await db.query(
+        `SELECT id FROM field_project_settings WHERE work_id = $1`, [workId]
+      );
+
+      if (existing.length) {
+        await db.query(`
+          UPDATE field_project_settings SET
+            role_base_rates = COALESCE($2::jsonb, role_base_rates),
+            site_category = COALESCE($3, site_category),
+            updated_at = NOW()
+          WHERE work_id = $1
+        `, [
+          workId,
+          roleBaseRates != null ? JSON.stringify(roleBaseRates) : null,
+          siteCategory
+        ]);
+      } else {
+        await db.query(`
+          INSERT INTO field_project_settings
+            (work_id, is_active, site_category, role_base_rates, activated_at, activated_by)
+          VALUES ($1, false, $2, $3::jsonb, NULL, NULL)
+        `, [
+          workId,
+          siteCategory || 'ground',
+          roleBaseRates != null ? JSON.stringify(roleBaseRates) : null
+        ]);
+      }
+
+      const { rows } = await db.query(
+        `SELECT site_category, role_base_rates, is_active FROM field_project_settings WHERE work_id = $1`,
+        [workId]
+      );
+      return {
+        ok: true,
+        work_id: workId,
+        site_category: rows[0]?.site_category || siteCategory || 'ground',
+        role_base_rates: rows[0]?.role_base_rates || roleBaseRates,
+        is_active: !!rows[0]?.is_active
+      };
+    } catch (err) {
+      logError(fastify, '[field-manage] role-base-rates PUT error', err, req);
+      return reply.code(500).send({ error: 'Ошибка сервера' });
+    }
+  });
+
+  // ─────────────────────────────────────────────────────────────────────
   // POST /projects/:work_id/crew — assign crew with tariffs
   // ─────────────────────────────────────────────────────────────────────
   fastify.post('/projects/:work_id/crew', roleCheck, async (req, reply) => {
@@ -192,50 +306,55 @@ async function routes(fastify, options) {
       const projectPerDiem = settings[0]?.per_diem || 0;
 
       const results = [];
+      const { resolveAssignmentRates } = require('../lib/field-assignment-rate');
+
+      const {
+        FIELD_CREW_ROLE_VALUES,
+        isValidFieldRole
+      } = require('../lib/employee-role-tags');
 
       for (const emp of employees) {
-        const { employee_id, field_role, tariff_id, combination_tariff_id, shift_type } = emp;
+        const { employee_id, tariff_id, combination_tariff_id, shift_type } = emp;
+        const combo_tariff_ids = emp.combo_tariff_ids;
+        const manual_extra_points = emp.manual_extra_points;
 
         if (!employee_id) continue;
 
-        // Validate tariff
-        let baseRate = 0;
-        let basePoints = 0;
-        let comboRate = 0;
-        let comboPoints = 0;
-
-        if (tariff_id) {
-          const { rows: tariff } = await db.query(
-            `SELECT * FROM field_tariff_grid WHERE id = $1 AND is_active = true`, [tariff_id]
-          );
-          if (tariff.length === 0) {
-            results.push({ employee_id, error: 'Тариф не найден' });
-            continue;
-          }
-          // Category validation
-          if (tariff[0].category !== siteCategory && tariff[0].category !== 'special') {
-            results.push({ employee_id, error: `Категория тарифа (${tariff[0].category}) не совпадает с проектом (${siteCategory})` });
-            continue;
-          }
-          baseRate = parseFloat(tariff[0].rate_per_shift);
-          basePoints = tariff[0].points;
+        let field_role = emp.field_role || 'worker';
+        if (!isValidFieldRole(field_role)) {
+          results.push({
+            employee_id,
+            error: `Недопустимая роль: ${field_role}. Допустимо: ${FIELD_CREW_ROLE_VALUES.join(', ')}`
+          });
+          continue;
         }
 
-        if (combination_tariff_id) {
-          const { rows: combo } = await db.query(
-            `SELECT * FROM field_tariff_grid WHERE id = $1 AND is_combinable = true AND is_active = true`, [combination_tariff_id]
-          );
-          if (combo.length > 0) {
-            comboRate = parseFloat(combo[0].rate_per_shift);
-            // FIX 24.06 (#107): combination_tariff_id даёт ДОП. БАЛЛЫ (например водитель +1).
-            // Раньше это поле игнорировалось — в табеле и при чекине показывались только
-            // базовые баллы, рабочий недополучал по совмещению.
-            comboPoints = combo[0].points || 0;
-          }
+        const rates = await resolveAssignmentRates(db, {
+          tariff_id,
+          combination_tariff_id,
+          combo_tariff_ids,
+          manual_extra_points
+        });
+        if (rates.error) {
+          results.push({ employee_id, error: rates.error });
+          continue;
         }
 
-        const totalRate = baseRate + comboRate;
-        const totalPoints = (basePoints || 0) + (comboPoints || 0);
+        if (rates.tariffRow
+            && rates.tariffRow.category !== siteCategory
+            && rates.tariffRow.category !== 'special') {
+          results.push({
+            employee_id,
+            error: `Категория тарифа (${rates.tariffRow.category}) не совпадает с проектом (${siteCategory})`
+          });
+          continue;
+        }
+
+        const totalRate = rates.totalRate;
+        const totalPoints = rates.totalPoints;
+        const primaryComboId = rates.primaryComboId;
+        const comboIds = rates.comboIds;
+        const manualPts = rates.manualPoints;
         const perDiem = emp.per_diem != null ? emp.per_diem : projectPerDiem;
 
         // Upsert assignment
@@ -245,21 +364,28 @@ async function routes(fastify, options) {
         );
 
         if (existing.length > 0) {
+          // keep_inactive: обновить тариф уехавшему, не возвращая на объект
+          const keepInactive = !!emp.keep_inactive;
           await db.query(`
             UPDATE employee_assignments SET
               field_role = $3, tariff_id = $4, tariff_points = $5,
               combination_tariff_id = $6, per_diem = $7, shift_type = $8,
-              is_active = true, updated_at = NOW()
+              combo_tariff_ids = $10::int[], manual_extra_points = $11,
+              is_active = CASE WHEN $9::boolean THEN is_active ELSE true END,
+              updated_at = NOW()
             WHERE employee_id = $1 AND work_id = $2
           `, [employee_id, workId, field_role || 'worker', tariff_id || null,
-              totalPoints || null, combination_tariff_id || null, perDiem, shift_type || 'day']);
+              totalPoints || null, primaryComboId, perDiem, shift_type || 'day',
+              keepInactive, comboIds, manualPts]);
         } else {
           await db.query(`
             INSERT INTO employee_assignments (employee_id, work_id, field_role, tariff_id,
-              tariff_points, combination_tariff_id, per_diem, shift_type, is_active)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, true)
+              tariff_points, combination_tariff_id, per_diem, shift_type, is_active,
+              combo_tariff_ids, manual_extra_points)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, true, $9::int[], $10)
           `, [employee_id, workId, field_role || 'worker', tariff_id || null,
-              totalPoints || null, combination_tariff_id || null, perDiem, shift_type || 'day']);
+              totalPoints || null, primaryComboId, perDiem, shift_type || 'day',
+              comboIds, manualPts]);
         }
 
         // Update employees.day_rate for backward compatibility
@@ -267,7 +393,27 @@ async function routes(fastify, options) {
           await db.query(`UPDATE employees SET day_rate = $1 WHERE id = $2`, [totalRate, employee_id]);
         }
 
-        results.push({ employee_id, field_role: field_role || 'worker', day_rate: totalRate, per_diem: perDiem, ok: true });
+        results.push({
+          employee_id,
+          field_role: field_role || 'worker',
+          day_rate: totalRate,
+          tariff_points: totalPoints,
+          manual_extra_points: manualPts,
+          combo_tariff_ids: comboIds,
+          per_diem: perDiem,
+          ok: true
+        });
+
+        // Автоснятие плана: прибыл на план ИЛИ ушёл на третий объект вместо плана
+        if (!emp.keep_inactive) {
+          try {
+            await clearPlannedOnCrewAssign(db, employee_id, workId, {
+              userId: req.user?.id || null,
+            });
+          } catch (peErr) {
+            fastify.log.warn(`[field-manage] planned clear failed emp=${employee_id}: ${peErr.message}`);
+          }
+        }
       }
 
       // Авто-SMS с приглашением в MAX чат для новых рабочих
@@ -312,6 +458,42 @@ async function routes(fastify, options) {
         }
       } catch (maxErr) {
         fastify.log.warn('[MAX] crew invite error:', maxErr.message);
+      }
+
+      // Email РП: в бригаду добавлены рабочие
+      try {
+        const { rows: workPm } = await db.query(`
+          SELECT w.work_title, w.pm_id, u.name AS pm_name, u.email AS pm_email
+          FROM works w LEFT JOIN users u ON u.id = w.pm_id WHERE w.id = $1
+        `, [workId]);
+        const wp = workPm[0];
+        const okIds = results.filter((r) => r.ok).map((r) => r.employee_id);
+        if (wp?.pm_id && okIds.length) {
+          const { rows: names } = await db.query(
+            `SELECT id, COALESCE(fio, full_name) AS fio FROM employees WHERE id = ANY($1::int[])`,
+            [okIds]
+          );
+          const list = names.map((n) => n.fio).join(', ');
+          const { createNotification } = require('../services/notify');
+          await createNotification(db, {
+            user_id: wp.pm_id,
+            title: `В бригаду добавлен(ы) рабочий`,
+            message: `«${wp.work_title || workId}»: ${list}`,
+            type: 'crew',
+            link: `#/works?id=${workId}`
+          });
+          if (wp.pm_email) {
+            const { sendCrmEmail } = require('../services/crm-mailer');
+            await sendCrmEmail(db, null, {
+              to: wp.pm_email,
+              subject: `АСГАРД CRM: в бригаду добавлен(ы) — ${list.slice(0, 80)}`,
+              text: `Здравствуйте${wp.pm_name ? `, ${wp.pm_name}` : ''}!\n\nПо вашей работе «${wp.work_title || workId}» в бригаду добавлен(ы):\n${list}\n\n— АСГАРД CRM`,
+              html: `<p>По вашей работе <strong>${wp.work_title || workId}</strong> в бригаду добавлен(ы):</p><p>${list}</p>`
+            });
+          }
+        }
+      } catch (mailErr) {
+        fastify.log.warn('[field-manage] crew email: ' + mailErr.message);
       }
 
       return { results, count: results.filter(r => r.ok).length };
@@ -654,43 +836,46 @@ async function routes(fastify, options) {
         ORDER BY e.fio, fc.date
       `, params);
 
-      // Все рабочие из бригады работы (включая тех у кого нет чекинов)
-      const { rows: crew } = await db.query(`
-        SELECT DISTINCT ea.employee_id, e.fio
-          FROM employee_assignments ea
-          JOIN employees e ON e.id = ea.employee_id
-         WHERE ea.work_id = $1
-         ORDER BY e.fio
-      `, [workId]);
+      // Roster за период: бригада ∪ пересечение назначения с месяцем ∪ отметки ∪ план.
+      // (раньше брали ВСЕ когда-либо назначенные → уехавшие болтались во всех месяцах.)
+      const roster = await loadFieldTimesheetRoster(db, workId, dateFrom || null, dateTo || null);
+      const rosterIds = roster.map((r) => r.employee_id);
 
       // Чужие чекины этих рабочих в том же периоде — для подсветки в UI
-      let foreignFilter = '';
-      const foreignParams = [workId];
-      let fidx = 2;
-      if (dateFrom) { foreignFilter += ` AND fc.date >= $${fidx}`; foreignParams.push(dateFrom); fidx++; }
-      if (dateTo)   { foreignFilter += ` AND fc.date <= $${fidx}`; foreignParams.push(dateTo);   fidx++; }
-      const { rows: foreign } = await db.query(`
-        SELECT fc.id, fc.employee_id, fc.work_id, fc.date, fc.shift,
-               fc.day_rate, fc.amount_earned, fc.status, fc.checkin_source,
-               w.work_title, u.name AS pm_fio, w.pm_id
-          FROM field_checkins fc
-          LEFT JOIN works w ON w.id = fc.work_id
-          LEFT JOIN users u ON u.id = w.pm_id
-         WHERE fc.work_id <> $1
-           AND fc.status = 'completed'
-           AND fc.employee_id IN (SELECT employee_id FROM employee_assignments WHERE work_id = $1)
-           ${foreignFilter}
-      `, foreignParams);
+      let foreign = [];
+      if (rosterIds.length) {
+        let foreignFilter = '';
+        const foreignParams = [workId, rosterIds];
+        let fidx = 3;
+        if (dateFrom) { foreignFilter += ` AND fc.date >= $${fidx}`; foreignParams.push(dateFrom); fidx++; }
+        if (dateTo)   { foreignFilter += ` AND fc.date <= $${fidx}`; foreignParams.push(dateTo);   fidx++; }
+        const fr = await db.query(`
+          SELECT fc.id, fc.employee_id, fc.work_id, fc.date, fc.shift,
+                 fc.day_rate, fc.amount_earned, fc.status, fc.checkin_source,
+                 w.work_title, u.name AS pm_fio, w.pm_id
+            FROM field_checkins fc
+            LEFT JOIN works w ON w.id = fc.work_id
+            LEFT JOIN users u ON u.id = w.pm_id
+           WHERE fc.work_id <> $1
+             AND fc.status = 'completed'
+             AND fc.employee_id = ANY($2::int[])
+             ${foreignFilter}
+        `, foreignParams);
+        foreign = fr.rows;
+      }
 
       // Get project settings for per_diem
       const { rows: settings } = await db.query(
-        `SELECT per_diem, shift_hours FROM field_project_settings WHERE work_id = $1`, [workId]
+        `SELECT per_diem, shift_hours, site_category, per_diem_on_checkins FROM field_project_settings WHERE work_id = $1`, [workId]
       );
       const perDiem = parseFloat(settings[0]?.per_diem || 0);
+      const siteCategory = settings[0]?.site_category || 'ground';
+      // Флаг: суточные за смены на объекте (false → только этапы)
+      const checkinsCountForPerDiem = settings[0]?.per_diem_on_checkins !== false;
 
-      // Group by employee — стартуем со ВСЕХ рабочих бригады
+      // Group by employee — стартуем с roster периода
       const byEmployee = {};
-      for (const c of crew) {
+      for (const c of roster) {
         byEmployee[c.employee_id] = {
           employee_id: c.employee_id,
           fio: c.fio,
@@ -700,11 +885,15 @@ async function routes(fastify, options) {
           total_paid_hours: 0,
           total_earned: 0,
           days_count: 0,
+          per_diem_days: 0,
+          roster_reasons: c.roster_reasons || [],
+          planned_info: c.planned_info || null,
+          is_planned_only: !!c.is_planned_only,
         };
       }
       for (const row of checkins) {
         if (!byEmployee[row.employee_id]) {
-          // На всякий: рабочий когда-то отметился, но сейчас в бригаде нет
+          // На всякий: отметка в периоде, но не попал в SQL roster (редко)
           byEmployee[row.employee_id] = {
             employee_id: row.employee_id,
             fio: row.fio,
@@ -714,11 +903,16 @@ async function routes(fastify, options) {
             total_paid_hours: 0,
             total_earned: 0,
             days_count: 0,
+            per_diem_days: 0,
+            roster_reasons: ['marks'],
+            planned_info: null,
+            is_planned_only: false,
           };
         }
         const emp = byEmployee[row.employee_id];
         emp.days.push({
           id: row.id,
+          kind: 'checkin',
           date: row.date,
           shift: row.shift,
           hours_worked: parseFloat(row.hours_worked || 0),
@@ -732,6 +926,7 @@ async function routes(fastify, options) {
         emp.total_paid_hours += parseFloat(row.hours_paid || 0);
         emp.total_earned += parseFloat(row.amount_earned || 0);
         emp.days_count++;
+        if (checkinsCountForPerDiem && perDiem > 0) emp.per_diem_days++;
       }
       for (const f of foreign) {
         const emp = byEmployee[f.employee_id];
@@ -748,21 +943,136 @@ async function routes(fastify, options) {
         });
       }
 
-      const timesheet = Object.values(byEmployee).map(emp => ({
-        ...emp,
-        per_diem_total: emp.days_count * perDiem,
-        grand_total: Math.round((emp.total_earned + emp.days_count * perDiem) * 100) / 100,
-        total_hours: Math.round(emp.total_hours * 100) / 100,
-        total_paid_hours: Math.round(emp.total_paid_hours * 100) / 100,
-        total_earned: Math.round(emp.total_earned * 100) / 100,
-      }));
+      // 07.08.2026: этапы (дорога/корабль/вертолёт/…) в полевом табеле.
+      // ТОЛЬКО work_id = эта работа. Этапы без объекта (work_id IS NULL) — «вне объекта»,
+      // в полевой табель работы не попадают (иначе полмесяца на A / полмесяца на B
+      // тянуло бы чужие/общие этапы в обе дружины).
+      // Смена на дату побеждает этап при показе (без двойного счёта).
+      const STAGE_SHIFT = {
+        travel: 'road', ship: 'ship', helicopter: 'helicopter',
+        waiting: 'standby', warehouse: 'warehouse', medical: 'medical', training: 'training'
+      };
+      const stageParams = [workId];
+      let stageDateFilter = '';
+      let sidx = 2;
+      if (dateFrom) {
+        stageDateFilter += ` AND COALESCE(fts.date_to, fts.date_from) >= $${sidx}::date`;
+        stageParams.push(dateFrom);
+        sidx++;
+      }
+      if (dateTo) {
+        stageDateFilter += ` AND fts.date_from <= $${sidx}::date`;
+        stageParams.push(dateTo);
+        sidx++;
+      }
+      const { rows: stages } = await db.query(`
+        SELECT fts.id, fts.employee_id, e.fio, fts.stage_type,
+               fts.date_from, fts.date_to, fts.days_count,
+               fts.tariff_points, fts.rate_per_day, fts.amount_earned,
+               fts.work_id, fts.status, fts.source
+          FROM field_trip_stages fts
+          JOIN employees e ON e.id = fts.employee_id
+         WHERE COALESCE(fts.status, 'active') NOT IN ('rejected', 'cancelled')
+           AND fts.stage_type IN ('travel','ship','helicopter','waiting','warehouse','medical','training')
+           AND fts.work_id = $1
+           ${stageDateFilter}
+         ORDER BY e.fio, fts.date_from, fts.id
+      `, stageParams);
+
+      function ymdOnly(v) {
+        if (!v) return null;
+        if (typeof v === 'string') return v.slice(0, 10);
+        try { return new Date(v).toISOString().slice(0, 10); } catch (_) { return null; }
+      }
+      function eachYmd(fromYmd, toYmd, fn) {
+        const cur = new Date(fromYmd + 'T12:00:00Z');
+        const end = new Date(toYmd + 'T12:00:00Z');
+        while (cur <= end) {
+          fn(cur.toISOString().slice(0, 10));
+          cur.setUTCDate(cur.getUTCDate() + 1);
+        }
+      }
+
+      for (const s of stages) {
+        let emp = byEmployee[s.employee_id];
+        if (!emp) {
+          byEmployee[s.employee_id] = {
+            employee_id: s.employee_id,
+            fio: s.fio,
+            days: [],
+            foreign_days: [],
+            total_hours: 0,
+            total_paid_hours: 0,
+            total_earned: 0,
+            days_count: 0,
+            per_diem_days: 0,
+            roster_reasons: ['marks'],
+            planned_info: null,
+            is_planned_only: false,
+          };
+          emp = byEmployee[s.employee_id];
+        }
+        let fromY = ymdOnly(s.date_from);
+        let toY = ymdOnly(s.date_to) || fromY;
+        if (!fromY) continue;
+        if (dateFrom && fromY < dateFrom) fromY = dateFrom;
+        if (dateTo && toY > dateTo) toY = dateTo;
+        if (fromY > toY) continue;
+
+        const spanDays = Math.max(1, Math.round(
+          (new Date(ymdOnly(s.date_to) || ymdOnly(s.date_from) + 'T12:00:00Z') -
+            new Date(ymdOnly(s.date_from) + 'T12:00:00Z')) / 86400000
+        ) + 1);
+        const perDayAmt = Number(s.amount_earned || 0) / Math.max(1, Number(s.days_count || spanDays));
+        const shift = STAGE_SHIFT[s.stage_type] || 'road';
+
+        eachYmd(fromY, toY, (dayYmd) => {
+          const hasCheckin = emp.days.some((d) =>
+            ymdOnly(d.date) === dayYmd && d.kind !== 'stage'
+          );
+          if (hasCheckin) return; // смена побеждает этап
+          if (emp.days.some((d) => ymdOnly(d.date) === dayYmd)) return;
+
+          emp.days.push({
+            id: null,
+            stage_id: s.id,
+            kind: 'stage',
+            date: dayYmd,
+            shift,
+            stage_type: s.stage_type,
+            hours_worked: 0,
+            hours_paid: 0,
+            day_rate: perDayAmt,
+            amount: perDayAmt,
+            status: s.status,
+            source: 'stage',
+            work_id: s.work_id
+          });
+          emp.total_earned += perDayAmt;
+          emp.days_count++;
+          if (perDiem > 0) emp.per_diem_days++;
+        });
+      }
+
+      const timesheet = Object.values(byEmployee).map(emp => {
+        const pdDays = emp.per_diem_days || 0;
+        return {
+          ...emp,
+          per_diem_days: pdDays,
+          per_diem_total: pdDays * perDiem,
+          grand_total: Math.round((emp.total_earned + pdDays * perDiem) * 100) / 100,
+          total_hours: Math.round(emp.total_hours * 100) / 100,
+          total_paid_hours: Math.round(emp.total_paid_hours * 100) / 100,
+          total_earned: Math.round(emp.total_earned * 100) / 100,
+        };
+      });
 
       // ── XLSX export ──
       if (req.query.format === 'xlsx') {
+        const includePerDiem = String(req.query.include_per_diem == null ? '1' : req.query.include_per_diem) !== '0';
         const { rows: workInfo } = await db.query(`SELECT work_title FROM works WHERE id = $1`, [workId]);
         const workTitle = workInfo[0]?.work_title || `Работа #${workId}`;
 
-        // point_value из тарифа (для пересчёта: баллы = day_rate / point_value)
         let pointValue = 500;
         try {
           const pvRes = await db.query(`
@@ -772,9 +1082,9 @@ async function routes(fastify, options) {
           if (pvRes.rows[0]?.point_value) pointValue = parseFloat(pvRes.rows[0].point_value);
         } catch (_) {}
 
-        // Генерируем ВСЕ даты от dateFrom до dateTo (не только с checkin'ами).
-        // FIX 29.06.2026: парсить как UTC (с 'Z'), иначе сервер в MSK сдвигал
-        // последний день назад на 1 (29.06 показывался вместо 30.06).
+        // Все строки roster (бригада / был / отметки / план), не только с ячейками
+        const exportSheet = timesheet.slice();
+
         const dates = [];
         if (dateFrom && dateTo) {
           const cur = new Date(dateFrom + 'T00:00:00Z');
@@ -785,54 +1095,68 @@ async function routes(fastify, options) {
           }
         } else {
           const allDates = new Set();
-          timesheet.forEach(emp => (emp.days || []).forEach(d => allDates.add(String(d.date).slice(0,10))));
+          exportSheet.forEach((emp) => (emp.days || []).forEach((d) => allDates.add(String(d.date).slice(0, 10))));
           dates.push(...[...allDates].sort());
         }
 
-        const DAY_NAMES = ['Вс','Пн','Вт','Ср','Чт','Пт','Сб'];
-        const TOTAL_COLS = 5; // Дней | Баллов | Заработок | Суточные | ИТОГО
+        const colLetter = (n) => {
+          let s = '';
+          let x = n;
+          while (x > 0) {
+            const m = (x - 1) % 26;
+            s = String.fromCharCode(65 + m) + s;
+            x = Math.floor((x - 1) / 26);
+          }
+          return s;
+        };
+
+        const DAY_NAMES = ['Вс', 'Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб'];
+        const summaryHdrs = includePerDiem
+          ? ['Дней', 'Баллов', 'Заработок', 'Суточные', 'ИТОГО']
+          : ['Дней', 'Баллов', 'Заработок', 'ИТОГО'];
+        const TOTAL_COLS = summaryHdrs.length;
         const totalCols = 2 + dates.length + TOTAL_COLS;
 
         const wb = new ExcelJS.Workbook();
         wb.creator = 'АСГАРД CRM';
         wb.created = new Date();
         const ws = wb.addWorksheet('Табель');
+        const C = tsExcelStyle.CHROME;
 
-        // ── Строка 1: заголовок ──
-        ws.mergeCells(1, 1, 1, totalCols);
-        const t1 = ws.getCell('A1');
-        t1.value = `ТАБЕЛЬ — ${workTitle}`;
-        t1.font = { bold: true, size: 14, color: { argb: 'FF1A2B4A' } };
-        t1.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD5E8F0' } };
-        t1.alignment = { horizontal: 'center', vertical: 'middle' };
-        ws.getRow(1).height = 28;
+        // Row 1 title
+        tsExcelStyle.applyTitleRow(ws, totalCols, `ТАБЕЛЬ — ${workTitle}`);
 
-        // ── Строка 2: период + суточные ──
-        ws.mergeCells(2, 1, 2, totalCols);
-        const t2 = ws.getCell('A2');
-        t2.value = `Период: ${dateFrom || '—'} — ${dateTo || '—'}  |  Суточные: ${perDiem} ₽/смену  |  1 балл = ${pointValue} ₽`;
-        t2.font = { size: 10, italic: true, color: { argb: 'FF555555' } };
-        t2.alignment = { horizontal: 'center' };
-        ws.getRow(2).height = 16;
+        // Row 2: period + params (B2 = point_value, D2 = per_diem for formulas)
+        ws.getCell('A2').value = `Период: ${dateFrom || '—'} — ${dateTo || '—'}`;
+        ws.getCell('A2').font = { size: 10, italic: true, color: { argb: C.FONT_MUTED } };
+        ws.getCell('C2').value = '1 балл, ₽';
+        ws.getCell('C2').font = { size: 9, color: { argb: C.FONT_MUTED } };
+        ws.getCell('D2').value = pointValue;
+        ws.getCell('D2').font = { bold: true, size: 10 };
+        ws.getCell('D2').numFmt = '0';
+        if (includePerDiem) {
+          ws.getCell('E2').value = 'Суточные, ₽/смену';
+          ws.getCell('E2').font = { size: 9, color: { argb: C.FONT_MUTED } };
+          ws.getCell('F2').value = perDiem;
+          ws.getCell('F2').font = { bold: true, size: 10 };
+          ws.getCell('F2').numFmt = '0';
+        } else {
+          ws.getCell('E2').value = 'Суточные не учитываются';
+          ws.getCell('E2').font = { size: 9, italic: true, color: { argb: 'FF888888' } };
+        }
+        ws.getRow(2).height = 18;
 
-        // ── Строка 3: легенда ──
-        ws.mergeCells(3, 1, 3, totalCols);
-        const t3 = ws.getCell('A3');
-        t3.value = 'Д — дневная смена (белый)  |  Н — ночная смена (синий)  |  цифра = количество баллов';
-        t3.font = { size: 9, color: { argb: 'FF888888' } };
-        t3.alignment = { horizontal: 'center' };
-        ws.getRow(3).height = 14;
+        // Row 3 spacer (legend goes below table)
+        ws.getRow(3).height = 8;
 
-        // ── Строка 4: заголовки столбцов ──
+        // Row 4 headers
         ws.getRow(4).height = 30;
-        const hdrStyle = {
-          font: { bold: true, size: 10, color: { argb: 'FF1A2B4A' } },
-          fill: { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFB8D4E8' } },
-          alignment: { horizontal: 'center', vertical: 'middle', wrapText: true },
-          border: { top: { style: 'thin' }, bottom: { style: 'medium' }, left: { style: 'thin' }, right: { style: 'thin' } }
-        };
-        ws.getCell(4, 1).value = '№'; Object.assign(ws.getCell(4, 1), hdrStyle);
-        ws.getCell(4, 2).value = 'ФИО'; Object.assign(ws.getCell(4, 2), { ...hdrStyle, alignment: { ...hdrStyle.alignment, horizontal: 'left' } });
+        const numHdr = ws.getCell(4, 1);
+        numHdr.value = '№';
+        tsExcelStyle.applyHeaderCell(numHdr);
+        const fioHdr = ws.getCell(4, 2);
+        fioHdr.value = 'ФИО';
+        tsExcelStyle.applyHeaderCell(fioHdr, { alignment: { horizontal: 'left', vertical: 'middle', wrapText: true } });
         dates.forEach((d, i) => {
           const dt = new Date(d + 'T00:00:00');
           const dayNum = String(dt.getDate()).padStart(2, '0');
@@ -840,46 +1164,39 @@ async function routes(fastify, options) {
           const isWeekend = dt.getDay() === 0 || dt.getDay() === 6;
           const cell = ws.getCell(4, 3 + i);
           cell.value = `${dayNum}\n${dayName}`;
-          Object.assign(cell, {
-            ...hdrStyle,
-            font: { ...hdrStyle.font, color: { argb: isWeekend ? 'FFCC0000' : 'FF1A2B4A' } },
-            fill: { type: 'pattern', pattern: 'solid', fgColor: { argb: isWeekend ? 'FFFDE8E8' : 'FFB8D4E8' } }
-          });
+          tsExcelStyle.applyHeaderCell(cell, { weekend: isWeekend });
         });
-        const summaryHdrs = ['Дней', 'Баллов', 'Заработок', 'Суточные', 'ИТОГО'];
         summaryHdrs.forEach((h, i) => {
           const cell = ws.getCell(4, 3 + dates.length + i);
           cell.value = h;
-          Object.assign(cell, {
-            ...hdrStyle,
-            fill: { type: 'pattern', pattern: 'solid', fgColor: { argb: i === 4 ? 'FFD4A843' : 'FFB8D4E8' } },
-            font: { ...hdrStyle.font, color: { argb: i === 4 ? 'FF1A2B4A' : 'FF1A2B4A' } }
-          });
+          const isTotal = i === summaryHdrs.length - 1;
+          tsExcelStyle.applyHeaderCell(cell);
+          if (isTotal) {
+            cell.fill = tsExcelStyle.solidFill(C.FILL_TOTAL_ACCENT);
+            cell.font = { bold: true, size: 10, color: { argb: C.FONT_ACCENT } };
+          }
         });
 
-        // ── Ширины столбцов ──
         ws.getColumn(1).width = 5;
         ws.getColumn(2).width = 32;
         for (let i = 0; i < dates.length; i++) ws.getColumn(3 + i).width = 6;
-        ws.getColumn(3 + dates.length).width = 7;      // Дней
-        ws.getColumn(4 + dates.length).width = 9;      // Баллов
-        ws.getColumn(5 + dates.length).width = 14;     // Заработок
-        ws.getColumn(6 + dates.length).width = 12;     // Суточные
-        ws.getColumn(7 + dates.length).width = 16;     // ИТОГО
+        for (let i = 0; i < TOTAL_COLS; i++) {
+          ws.getColumn(3 + dates.length + i).width = i >= 2 ? 14 : 8;
+        }
 
-        // ── Данные сотрудников ──
-        let grandDays = 0, grandPoints = 0, grandEarned = 0, grandPd = 0, grandTotal = 0;
         const dataStartRow = 5;
+        const firstDayCol = 3;
+        const lastDayCol = 2 + dates.length;
+        const firstDayL = colLetter(firstDayCol);
+        const lastDayL = colLetter(lastDayCol);
 
-        timesheet.forEach((emp, idx) => {
+        exportSheet.forEach((emp, idx) => {
           const rowNum = dataStartRow + idx;
           const dayMap = {};
-          (emp.days || []).forEach(d => { dayMap[String(d.date).slice(0, 10)] = d; });
-
+          (emp.days || []).forEach((d) => { dayMap[String(d.date).slice(0, 10)] = d; });
           const isEven = idx % 2 === 0;
           const rowBg = isEven ? 'FFFFFFFF' : 'FFF7FAFD';
 
-          // № и ФИО
           const numCell = ws.getCell(rowNum, 1);
           numCell.value = idx + 1;
           numCell.alignment = { horizontal: 'center', vertical: 'middle' };
@@ -892,90 +1209,130 @@ async function routes(fastify, options) {
           fioCell.alignment = { vertical: 'middle' };
           fioCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: rowBg } };
 
-          // Ячейки по дням
           dates.forEach((d, i) => {
             const day = dayMap[d];
             const cell = ws.getCell(rowNum, 3 + i);
             if (day) {
               const pts = Math.round(parseFloat(day.day_rate || 0) / pointValue) || 0;
-              const isNight = day.shift === 'night';
-              cell.value = pts > 0 ? (isNight ? `Н${pts}` : `Д${pts}`) : (isNight ? 'Н' : 'Д');
-              // Ночная — синеватый фон, дневная — светло-зелёный
-              cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: isNight ? 'FFD6E4FF' : 'FFE8F5E9' } };
-              cell.font = { size: 9, bold: pts >= 18, color: { argb: isNight ? 'FF1E40AF' : 'FF166534' } };
-              cell.note = `${isNight ? 'Ночная' : 'Дневная'} смена\n${pts} балл. × ${pointValue} ₽ = ${pts * pointValue} ₽`;
+              tsExcelStyle.applyShiftCell(cell, pts, day.shift);
             } else {
               const dt = new Date(d + 'T00:00:00');
               const isWeekend = dt.getDay() === 0 || dt.getDay() === 6;
               cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: isWeekend ? 'FFFDE8E8' : rowBg } };
-              cell.value = '';
+              cell.value = null;
+              cell.alignment = { horizontal: 'center', vertical: 'middle' };
             }
-            cell.alignment = { horizontal: 'center', vertical: 'middle' };
             cell.border = { left: { style: 'hair' }, right: { style: 'hair' } };
           });
 
-          // Итоговые ячейки
-          const daysCount = emp.days_count || 0;
-          const totalPoints = Math.round((emp.total_earned || 0) / pointValue);
-          const earned = Math.round(emp.total_earned || 0);
-          const pd = Math.round(emp.per_diem_total || 0);
-          const total = Math.round(emp.grand_total || 0);
+          const daysCol = 3 + dates.length;
+          const ptsCol = daysCol + 1;
+          const earnCol = daysCol + 2;
+          const daysL = colLetter(daysCol);
+          const ptsL = colLetter(ptsCol);
+          const earnL = colLetter(earnCol);
+          const dayRange = `${firstDayL}${rowNum}:${lastDayL}${rowNum}`;
 
-          grandDays += daysCount;
-          grandPoints += totalPoints;
-          grandEarned += earned;
-          grandPd += pd;
-          grandTotal += total;
+          const cDays = ws.getCell(rowNum, daysCol);
+          cDays.value = { formula: `COUNT(${dayRange})` };
+          cDays.alignment = { horizontal: 'right', vertical: 'middle' };
+          cDays.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: rowBg } };
+          cDays.font = { size: 10 };
+          cDays.border = { left: { style: 'medium' } };
 
-          const summaryCol = 3 + dates.length;
-          const summaryVals = [daysCount, totalPoints, earned, pd, total];
-          summaryVals.forEach((v, si) => {
-            const cell = ws.getCell(rowNum, summaryCol + si);
-            cell.value = v;
-            cell.alignment = { horizontal: 'right', vertical: 'middle' };
-            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: si === 4 ? 'FFFFF9E6' : rowBg } };
-            if (si >= 2) { cell.numFmt = '#,##0 "₽"'; }
-            if (si === 4) { cell.font = { bold: true, size: 10, color: { argb: 'FF92610A' } }; }
-            else { cell.font = { size: 10 }; }
-            cell.border = { left: { style: si === 0 ? 'medium' : 'hair' }, right: { style: si === 4 ? 'medium' : 'hair' } };
-          });
+          const cPts = ws.getCell(rowNum, ptsCol);
+          cPts.value = { formula: `SUM(${dayRange})` };
+          cPts.alignment = { horizontal: 'right', vertical: 'middle' };
+          cPts.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: rowBg } };
+          cPts.font = { size: 10 };
+
+          const cEarn = ws.getCell(rowNum, earnCol);
+          cEarn.value = { formula: `${ptsL}${rowNum}*$D$2` };
+          cEarn.numFmt = '#,##0 "₽"';
+          cEarn.alignment = { horizontal: 'right', vertical: 'middle' };
+          cEarn.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: rowBg } };
+          cEarn.font = { size: 10 };
+
+          if (includePerDiem) {
+            const pdCol = earnCol + 1;
+            const totCol = earnCol + 2;
+            const pdL = colLetter(pdCol);
+            const cPd = ws.getCell(rowNum, pdCol);
+            // Если суточные только за этапы — число из SSoT, иначе формула COUNT×ставка
+            if (!checkinsCountForPerDiem) {
+              cPd.value = Number(emp.per_diem_days || 0) * perDiem;
+            } else {
+              cPd.value = { formula: `${daysL}${rowNum}*$F$2` };
+            }
+            cPd.numFmt = '#,##0 "₽"';
+            cPd.alignment = { horizontal: 'right', vertical: 'middle' };
+            cPd.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: rowBg } };
+            cPd.font = { size: 10 };
+
+            const cTot = ws.getCell(rowNum, totCol);
+            cTot.value = { formula: `${earnL}${rowNum}+${pdL}${rowNum}` };
+            cTot.numFmt = '#,##0 "₽"';
+            cTot.alignment = { horizontal: 'right', vertical: 'middle' };
+            cTot.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFF9E6' } };
+            cTot.font = { bold: true, size: 10, color: { argb: 'FF92610A' } };
+            cTot.border = { right: { style: 'medium' } };
+          } else {
+            const totCol = earnCol + 1;
+            const cTot = ws.getCell(rowNum, totCol);
+            cTot.value = { formula: `${earnL}${rowNum}` };
+            cTot.numFmt = '#,##0 "₽"';
+            cTot.alignment = { horizontal: 'right', vertical: 'middle' };
+            cTot.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFF9E6' } };
+            cTot.font = { bold: true, size: 10, color: { argb: 'FF92610A' } };
+            cTot.border = { right: { style: 'medium' } };
+          }
 
           ws.getRow(rowNum).height = 18;
-          // Боковые границы строки
-          ws.getCell(rowNum, 1).border = { left: { style: 'medium' } };
-          ws.getCell(rowNum, totalCols).border = { right: { style: 'medium' } };
         });
 
-        // ── Итоговая строка ──
-        const totalRowNum = dataStartRow + timesheet.length;
+        const totalRowNum = dataStartRow + exportSheet.length;
+        const dataEndRow = Math.max(dataStartRow, totalRowNum - 1);
         ws.getRow(totalRowNum).height = 22;
-        ws.mergeCells(totalRowNum, 1, totalRowNum, 2 + dates.length);
+        if (dates.length > 0) {
+          ws.mergeCells(totalRowNum, 1, totalRowNum, 2 + dates.length);
+        } else {
+          ws.mergeCells(totalRowNum, 1, totalRowNum, 2);
+        }
         const totalLabel = ws.getCell(totalRowNum, 1);
-        totalLabel.value = 'ИТОГО ПО ОБЪЕКТУ:';
+        totalLabel.value = exportSheet.length
+          ? 'ИТОГО ПО ОБЪЕКТУ:'
+          : 'ИТОГО ПО ОБЪЕКТУ: (нет отметок за период)';
         totalLabel.font = { bold: true, size: 11, color: { argb: 'FF1A2B4A' } };
         totalLabel.alignment = { horizontal: 'right', vertical: 'middle' };
         totalLabel.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFF3CD' } };
 
-        const grandVals = [grandDays, grandPoints, grandEarned, grandPd, grandTotal];
-        grandVals.forEach((v, si) => {
-          const cell = ws.getCell(totalRowNum, 3 + dates.length + si);
-          cell.value = v;
-          cell.alignment = { horizontal: 'right', vertical: 'middle' };
-          cell.font = { bold: true, size: 11, color: { argb: si === 4 ? 'FF92610A' : 'FF1A2B4A' } };
-          cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: si === 4 ? 'FFD4A843' : 'FFFFF3CD' } };
-          if (si >= 2) cell.numFmt = '#,##0 "₽"';
-          cell.border = {
-            top: { style: 'medium' }, bottom: { style: 'medium' },
-            left: { style: si === 0 ? 'medium' : 'thin' }, right: { style: si === 4 ? 'medium' : 'thin' }
-          };
-        });
+        if (exportSheet.length) {
+          for (let si = 0; si < TOTAL_COLS; si++) {
+            const col = 3 + dates.length + si;
+            const L = colLetter(col);
+            const cell = ws.getCell(totalRowNum, col);
+            cell.value = { formula: `SUM(${L}${dataStartRow}:${L}${dataEndRow})` };
+            cell.alignment = { horizontal: 'right', vertical: 'middle' };
+            const isTot = si === TOTAL_COLS - 1;
+            cell.font = { bold: true, size: 11, color: { argb: isTot ? 'FF92610A' : 'FF1A2B4A' } };
+            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: isTot ? 'FFD4A843' : 'FFFFF3CD' } };
+            if (si >= 2) cell.numFmt = '#,##0 "₽"';
+            cell.border = {
+              top: { style: 'medium' }, bottom: { style: 'medium' },
+              left: { style: si === 0 ? 'medium' : 'thin' },
+              right: { style: isTot ? 'medium' : 'thin' }
+            };
+          }
+        }
 
-        // ── Freeze panes: закрепить строки 1-4 и столбец ФИО ──
         ws.views = [{ state: 'frozen', xSplit: 2, ySplit: 4 }];
+
+        // Легенда под таблицей на том же листе
+        tsExcelStyle.appendLegendBelow(ws, totalRowNum + 1, { colSpan: Math.min(10, Math.max(6, totalCols)) });
 
         const buffer = await wb.xlsx.writeBuffer();
         reply.header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-        const fname = encodeURIComponent(`Табель_${workTitle.replace(/[^\wа-яА-Я ]/g, '')}_${dateFrom||''}–${dateTo||''}.xlsx`);
+        const fname = encodeURIComponent(`Табель_${workTitle.replace(/[^\wа-яА-Я ]/g, '')}_${dateFrom || ''}–${dateTo || ''}.xlsx`);
         reply.header('Content-Disposition', `attachment; filename*=UTF-8''${fname}`);
         return reply.send(Buffer.from(buffer));
       }
@@ -1074,7 +1431,7 @@ async function routes(fastify, options) {
     try {
       const workId = parseInt(req.params.work_id);
       const { employee_id, date, shift: shiftRaw, hours_worked, hours_paid, day_rate,
-              amount_earned, status, note } = req.body || {};
+              amount_earned, status, note, confirm_overwrite: confirmOverwrite } = req.body || {};
       if (!employee_id || !date) {
         return reply.code(400).send({ error: 'employee_id и date обязательны' });
       }
@@ -1115,6 +1472,18 @@ async function routes(fastify, options) {
       }
 
       const assignmentId = assignRows[0].id;
+
+      // 07.08.2026: конфликт с этапами (дорога/вертолёт/…) на ту же дату.
+      // Без этого полевой табель и «Маршруты» писали в разные таблицы молча → двойной счёт.
+      {
+        const blocked = await assertNoStageConflict(db, {
+          employeeId: employee_id,
+          date,
+          confirmOverwrite: !!confirmOverwrite,
+          actionLabel: labelOf(shift || 'day')
+        });
+        if (blocked) return reply.code(409).send(blocked);
+      }
 
       // 25.06.2026 FIX «коллизия чужой работы»: если у этого employee_id уже
       // есть НЕ-cancelled чекин на ту же дату, но на ДРУГОЙ работе — отказ.
@@ -1194,6 +1563,15 @@ async function routes(fastify, options) {
             : ({ day: 11, night: 11, half: 6, road: 0, standby: 0, waiting: 0 }[shift || 'day'] ?? 11)),
           pts, amt,
           status || 'completed', note || null, req.user.id]);
+      try {
+        await db.query(`
+          UPDATE employee_assignments
+             SET inactivity_warned_at = NULL, updated_at = NOW()
+           WHERE employee_id = $1 AND work_id = $2
+             AND departure_date IS NULL AND COALESCE(is_active,true)=true
+             AND inactivity_warned_at IS NOT NULL
+        `, [employee_id, workId]);
+      } catch (_) { /* V316 column may be missing on old deploys */ }
       return { ok: true, checkin: rows[0] };
     } catch (err) {
       fastify.log.error({ err }, '[field-manage] create checkin error');
@@ -1208,19 +1586,35 @@ async function routes(fastify, options) {
     try {
       const id = parseInt(req.params.id);
       const workId = parseInt(req.params.work_id);
-      const { shift: shiftRaw, hours_worked, hours_paid, day_rate, amount_earned, status, note } = req.body || {};
+      const { shift: shiftRaw, hours_worked, hours_paid, day_rate, amount_earned, status, note,
+              confirm_overwrite: confirmOverwrite } = req.body || {};
       // 23.06.2026 BUG-FIX (🟡 T-shift-aliases): тот же маппинг что в POST.
       // 'road'→'travel', 'standby'→'waiting'.
       const SHIFT_ALIASES = { road: 'travel', standby: 'waiting' };
       const shift = SHIFT_ALIASES[shiftRaw] || shiftRaw;
       // Period lock — берём дату из чекина
       try {
-        const { rows: ci0 } = await db.query(`SELECT date, employee_id FROM field_checkins WHERE id=$1`, [id]);
+        const { rows: ci0 } = await db.query(`SELECT date, employee_id, status FROM field_checkins WHERE id=$1`, [id]);
+        if (!ci0.length) return reply.code(404).send({ error: 'Запись не найдена' });
         const lockDate = ci0[0] && ci0[0].date ? (typeof ci0[0].date === 'string' ? ci0[0].date.slice(0, 10) : new Date(ci0[0].date).toISOString().slice(0, 10)) : null;
+        const empId = ci0[0].employee_id;
         const { year, month } = tryDateParts(lockDate);
         await assertNotLockedSafe(fastify, { id: req.user.id, role: req.user.role }, {
-          year, month, scope_hint: scopeForRole(req.user.role), work_id: workId, employee_id: ci0[0] && ci0[0].employee_id, date: lockDate
+          year, month, scope_hint: scopeForRole(req.user.role), work_id: workId, employee_id: empId, date: lockDate
         });
+        // Конфликт с этапами — только при реактивации cancelled→completed
+        // (обычная правка баллов не должна каждый раз предлагать снести вертолёт).
+        const reactivating = ci0[0].status === 'cancelled'
+          && (status == null || status === 'completed');
+        if (reactivating) {
+          const blocked = await assertNoStageConflict(db, {
+            employeeId: empId,
+            date: lockDate,
+            confirmOverwrite: !!confirmOverwrite,
+            actionLabel: labelOf(shift || 'day')
+          });
+          if (blocked) return reply.code(409).send(blocked);
+        }
       } catch (lockErr) {
         if (lockErr && lockErr.code === 'period_locked') {
           return reply.code(423).send({ error: 'period_locked', lock: lockErr.lock || null });
@@ -1392,7 +1786,27 @@ async function routes(fastify, options) {
       const empId = parseInt(req.params.employee_id);
       const { reason, departure_date } = req.body || {};
 
-      const depDate = departure_date || new Date().toISOString().slice(0, 10);
+      // Дата убытия по умолчанию = последняя отметка на этой работе
+      // (смена ИЛИ этап дорога/корабль/вертолёт/…), не «сегодня» и не только смена.
+      let depDate = departure_date || null;
+      if (!depDate) {
+        const { rows: lastRows } = await db.query(`
+          SELECT GREATEST(
+            COALESCE((
+              SELECT MAX(fc.date)::date FROM field_checkins fc
+               WHERE fc.employee_id = $1 AND fc.work_id = $2 AND fc.status = 'completed'
+            ), '1900-01-01'::date),
+            COALESCE((
+              SELECT MAX(COALESCE(fts.date_to, fts.date_from))::date
+                FROM field_trip_stages fts
+               WHERE fts.employee_id = $1 AND fts.work_id = $2
+                 AND COALESCE(fts.status, 'active') NOT IN ('rejected', 'cancelled')
+            ), '1900-01-01'::date)
+          ) AS last_mark
+        `, [empId, workId]);
+        const lm = lastRows[0]?.last_mark ? String(lastRows[0].last_mark).slice(0, 10) : null;
+        depDate = (lm && lm !== '1900-01-01') ? lm : new Date().toISOString().slice(0, 10);
+      }
 
       const { rowCount } = await db.query(`
         UPDATE employee_assignments
@@ -1402,6 +1816,14 @@ async function routes(fastify, options) {
       `, [depDate, reason || null, workId, empId]);
 
       if (!rowCount) return reply.code(404).send({ error: 'Назначение не найдено или уже отмечен отъезд' });
+
+      try {
+        await db.query(`
+          UPDATE site_crew_removal_requests
+          SET status = 'cancelled', updated_at = NOW()
+          WHERE work_id = $1 AND employee_id = $2 AND status = 'warned'
+        `, [workId, empId]);
+      } catch (_) { /* table may not exist yet on old deploys */ }
 
       // Снят с объекта → сбросить готовность в 'unknown' (если был 'on_site'),
       // чтобы рабочему снова показался вопрос «готов на объект?». Не трогаем явные ready/not_ready/archive.
@@ -1423,6 +1845,71 @@ async function routes(fastify, options) {
       return { ok: true, departure_date: depDate };
     } catch (err) {
       logError(fastify, '[field-manage] departure error', err, req);
+      return reply.code(500).send({ error: 'Ошибка сервера' });
+    }
+  });
+
+  // ─────────────────────────────────────────────────────────────────────
+  // DELETE /projects/:work_id/crew/:employee_id
+  //   Hard-remove from brigade (as if never assigned). Soft leave = departure.
+  // ─────────────────────────────────────────────────────────────────────
+  fastify.delete('/projects/:work_id/crew/:employee_id', roleCheck, async (req, reply) => {
+    try {
+      const workId = parseInt(req.params.work_id, 10);
+      const empId = parseInt(req.params.employee_id, 10);
+      if (!workId || !empId) {
+        return reply.code(400).send({ error: 'work_id и employee_id обязательны' });
+      }
+
+      const { rows: assignRows } = await db.query(
+        `SELECT id FROM employee_assignments WHERE work_id = $1 AND employee_id = $2`,
+        [workId, empId]
+      );
+      if (!assignRows.length) {
+        return reply.code(404).send({ error: 'Назначение не найдено' });
+      }
+      const assignmentIds = assignRows.map((r) => r.id);
+
+      // stages: detach FK (логистику Хосе оставляем)
+      await db.query(
+        `UPDATE field_trip_stages SET assignment_id = NULL, updated_at = NOW()
+         WHERE assignment_id = ANY($1::int[])`,
+        [assignmentIds]
+      );
+
+      // checkins: assignment_id NOT NULL → удаляем смены на этом объекте
+      const { rowCount: checkinsDeleted } = await db.query(
+        `DELETE FROM field_checkins
+          WHERE work_id = $1 AND employee_id = $2`,
+        [workId, empId]
+      );
+
+      const { rowCount: deleted } = await db.query(
+        `DELETE FROM employee_assignments WHERE work_id = $1 AND employee_id = $2`,
+        [workId, empId]
+      );
+
+      try {
+        await db.query(`
+          UPDATE site_crew_removal_requests
+          SET status = 'cancelled', updated_at = NOW()
+          WHERE work_id = $1 AND employee_id = $2 AND status = 'warned'
+        `, [workId, empId]);
+      } catch (_) { /* optional table */ }
+
+      const { rows: empRows } = await db.query(`SELECT fio FROM employees WHERE id = $1`, [empId]);
+      fastify.log.info(
+        `[crew-hard-delete] ${empRows[0]?.fio || empId} removed from work #${workId} ` +
+        `(assignments=${deleted}, checkins=${checkinsDeleted || 0}) by user ${req.user?.id}`
+      );
+
+      return {
+        ok: true,
+        deleted_assignments: deleted,
+        deleted_checkins: checkinsDeleted || 0
+      };
+    } catch (err) {
+      logError(fastify, '[field-manage] crew hard-delete error', err, req);
       return reply.code(500).send({ error: 'Ошибка сервера' });
     }
   });

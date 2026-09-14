@@ -237,7 +237,7 @@ async function generateTkpPdf(tkpId, opts) {
 <style>
 ${BASE_CSS}
 /* ── Header ── */
-.hdr { display: flex; align-items: flex-start; gap: 16px; margin-top: -10mm; }
+.hdr { display: flex; align-items: flex-start; gap: 16px; margin-top: 0; }
 .hdr-logo { width: 165px; flex-shrink: 0; }
 .hdr-logo img { width: 100%; }
 .hdr-info { flex: 1; font-size: 9pt; color: #4B5563; line-height: 1.6; }
@@ -291,13 +291,11 @@ ${BASE_CSS}
 .footer { margin-top: 10px; text-align: center; font-size: 7.5pt; color: #9CA3AF; border-top: 1px solid #E5E7EB; padding-top: 4px; }
 
 /* ── Print / page control ── */
-html, body { height: auto !important; }
+html, body { height: auto !important; overflow: visible; }
 tr { page-break-inside: avoid; }
 .card { page-break-inside: avoid; }
 .sign-block { page-break-inside: avoid; }
 .footer { page-break-inside: avoid; page-break-before: avoid; margin-top: 4px; }
-/* Предотвращаем пустые страницы от overflow */
-body { overflow: hidden; }
 </style>
 </head>
 <body>
@@ -406,7 +404,8 @@ ${(signatureImg || stampImg) ? `  <div class="sign-images">
   const pdfBuffer = await page.pdf({
     format: 'A4',
     printBackground: true,
-    margin: { top: '10mm', bottom: '10mm', left: '18mm', right: '18mm' },
+    // Без отрицательных margin в HTML; поля достаточные, чтобы логотип/шапка не обрезались
+    margin: { top: '14mm', bottom: '12mm', left: '16mm', right: '16mm' },
     displayHeaderFooter: false
   });
   await page.close();
@@ -428,8 +427,23 @@ async function generateInvoicePdf(invoiceId) {
   let items = [];
   try {
     const { rows } = await db.query('SELECT * FROM invoice_items WHERE invoice_id = $1 ORDER BY position', [invoiceId]);
-    items = rows;
-  } catch (e) {
+    if (rows.length) items = rows;
+  } catch (_) { /* table may not exist */ }
+
+  if (!items.length && inv.items_json) {
+    const ij = typeof inv.items_json === 'string' ? JSON.parse(inv.items_json) : inv.items_json;
+    const arr = Array.isArray(ij) ? ij : (ij?.items || []);
+    items = arr.map((it, i) => ({
+      position: i + 1,
+      name: it.name || it.description || 'Позиция',
+      unit: it.unit || 'усл.',
+      quantity: it.qty || it.quantity || 1,
+      price: it.price || 0,
+      total: (Number(it.qty || it.quantity || 1) * Number(it.price || 0))
+    }));
+  }
+
+  if (!items.length) {
     items = [{
       position: 1,
       name: inv.description || inv.comment || 'Оплата по счёту',
@@ -594,6 +608,9 @@ module.exports = {
   generateTkpPdf,
   generateInvoicePdf,
   getCompanyProfile,
+  getLogoBase64,
+  getSignatureBase64,
+  getStampBase64,
   closeBrowser,
   formatMoney,
   formatDate,

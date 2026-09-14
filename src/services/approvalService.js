@@ -109,7 +109,8 @@ const SAFE_TABLES = new Set([
   'one_time_payments', 'procurement_requests', 'payroll_sheets',
   'business_trips', 'travel_expenses', 'training_applications',
   'estimates', 'tkp', 'staff_requests', 'pass_requests',
-  'permit_applications', 'site_inspections', 'seal_transfers'
+  'permit_applications', 'site_inspections', 'seal_transfers',
+  'payment_invoices'
 ]);
 
 const DIRECTOR_ROLES = ['ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV'];
@@ -189,6 +190,7 @@ const ENTITY_LABELS = {
   expenses: 'Расход',
   one_time_payments: 'Разовая выплата',
   procurement_requests: 'Заявка на закупку',
+  payment_invoices: 'Счёт на оплату',
   payroll_sheets: 'Ведомость ЗП',
   business_trips: 'Командировка',
   travel_expenses: 'Командировочный расход',
@@ -221,6 +223,7 @@ const COLUMN_MAP = {
   expenses:               { approved_by: null,              approved_at: 'approved_at',   comment_field: null },
   one_time_payments:      { approved_by: 'approved_by',     approved_at: 'approved_at',   comment_field: 'director_comment' },
   procurement_requests:   { approved_by: 'dir_approved_by', approved_at: 'dir_approved_at', comment_field: null },
+  payment_invoices:       { approved_by: 'dir_approved_by', approved_at: 'dir_approved_at', comment_field: 'dir_comment' },
   payroll_sheets:         { approved_by: 'approved_by',     approved_at: 'approved_at',   comment_field: 'director_comment' },
   business_trips:         { approved_by: 'approved_by',     approved_at: 'approved_at',   comment_field: null },
   travel_expenses:        { approved_by: 'approved_by',     approved_at: 'approved_at',   comment_field: null },
@@ -292,6 +295,15 @@ function getLabel(entityType) {
 // Действие 1: Директор согласовывает
 // ─────────────────────────────────────────────────────────────────
 async function directorApprove(db, { entityType, entityId, actor, comment }) {
+  // payment_invoices — отдельный поток (не status=approved)
+  if (entityType === 'payment_invoices') {
+    const paymentMail = require('./payment-mail');
+    const { rows } = await db.query('SELECT * FROM payment_invoices WHERE id=$1', [entityId]);
+    if (!rows[0]) throw Object.assign(new Error('Запись не найдена'), { statusCode: 404 });
+    if (!isDirector(actor.role)) throw Object.assign(new Error('Только директор может согласовать'), { statusCode: 403 });
+    return paymentMail.applyDecision(db, rows[0], 'approve', actor);
+  }
+
   const statusField = getStatusField(entityType);
   const cols = getColumns(entityType);
   const record = await getRecord(db, entityType, entityId);
@@ -910,6 +922,14 @@ async function payByBankTransfer(db, { entityType, entityId, actor, comment, doc
     [comment || null, documentId || null, actor.id, entityId]
   );
 
+  if (entityType === 'payment_invoices') {
+    await db.query(`UPDATE payment_invoices SET status='paid' WHERE id=$1`, [entityId]);
+    try {
+      const payMod = require('../routes/payment-invoices');
+      if (payMod.afterPaid) await payMod.afterPaid(db, record);
+    } catch (_) { /* ignore */ }
+  }
+
   const label = `${getLabel(entityType)} #${entityId}`;
   const initiatorId = getInitiatorId(record, entityType);
   if (initiatorId && initiatorId !== actor.id) {
@@ -1235,20 +1255,30 @@ async function getPendingForBuh(db) {
     'pre_tender_requests', 'bonus_requests', 'work_expenses',
     'office_expenses', 'expenses', 'one_time_payments',
     'procurement_requests', 'payroll_sheets', 'business_trips',
-    'travel_expenses', 'training_applications'
+    'travel_expenses', 'training_applications', 'payment_invoices'
   ];
 
   const items = [];
   for (const table of tables) {
     try {
+      const extra = table === 'payment_invoices'
+        ? ', amount, supplier_name, basis_text, basis_type, file_name, file_path, due_date, work_id, procurement_id, invoice_import_id, line_items_json, payment_doc_id'
+        : '';
       const result = await db.query(
-        `SELECT id, payment_status, requires_payment, updated_at FROM ${table}
+        `SELECT id, payment_status, requires_payment, updated_at${extra} FROM ${table}
          WHERE requires_payment = true AND payment_status = $1
          ORDER BY updated_at DESC`,
         [PAYMENT_STATUSES.PENDING]
       );
       for (const row of result.rows) {
-        items.push({ ...row, entity_type: table, label: getLabel(table) });
+        items.push({
+          ...row,
+          entity_type: table,
+          label: getLabel(table),
+          title: table === 'payment_invoices'
+            ? (`Счёт #${row.id}` + (row.supplier_name ? ' · ' + row.supplier_name : '') + (row.amount != null ? ' · ' + Number(row.amount).toLocaleString('ru-RU') + ' ₽' : ''))
+            : undefined
+        });
       }
     } catch (e) {
       // Таблица может не иметь нужных колонок ещё

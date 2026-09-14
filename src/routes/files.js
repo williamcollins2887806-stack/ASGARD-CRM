@@ -204,6 +204,15 @@ async function routes(fastify, options) {
       fastify.log.warn(`[files/upload conductor-hook] ${e.message}`);
     }
 
+    // Фоновый OCR по тендеру (распаковка архива / текст в documents.ocr_text)
+    try {
+      if (tenderId && fastify.tenderOcr) {
+        await fastify.tenderOcr.enqueue(Number(tenderId), 'files-upload');
+      }
+    } catch (e) {
+      fastify.log.warn(`[files/upload tenderOcr] ${e.message}`);
+    }
+
     return { success: true, file: result.rows[0], download_url: `/api/files/download/${filename}` };
   });
 
@@ -355,6 +364,8 @@ async function routes(fastify, options) {
 
       let sql = `SELECT * FROM documents WHERE (${conditions.join(' OR ')})`;
       if (type) { sql += ` AND type = $${idx}`; params.push(type); idx++; }
+      // Служебный OCR-кэш (ocr-extract) — не в UI; archive-extracted от confirm — оставляем
+      sql += ` AND COALESCE(type,'') NOT IN ('ocr-extract')`;
       sql += ` ORDER BY created_at DESC LIMIT $${idx}`;
       params.push(parseInt(limit));
       const result = await db.query(sql, params);
@@ -366,6 +377,9 @@ async function routes(fastify, options) {
     if (tender_id) { sql += ` AND tender_id = $${idx}`; params.push(tender_id); idx++; }
     if (work_id) { sql += ` AND work_id = $${idx}`; params.push(work_id); idx++; }
     if (type) { sql += ` AND type = $${idx}`; params.push(type); idx++; }
+    else {
+      sql += ` AND COALESCE(type,'') NOT IN ('ocr-extract')`;
+    }
     sql += ` ORDER BY created_at DESC LIMIT $${idx}`;
     params.push(parseInt(limit));
     const result = await db.query(sql, params);
@@ -441,6 +455,7 @@ async function routes(fastify, options) {
          LEFT JOIN works w ON w.id = d.work_id
          LEFT JOIN tenders t ON t.id = COALESCE(d.tender_id, w.tender_id)
         WHERE COALESCE(d.tender_id, w.tender_id) = ANY($1::int[])
+          AND COALESCE(d.type,'') NOT IN ('ocr-extract')
         ORDER BY tid, d.created_at`,
       [visibleIds]
     );

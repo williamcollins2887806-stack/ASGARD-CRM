@@ -16,6 +16,49 @@
 const crypto = require('crypto');
 const notificationDispatcher = require('../services/notificationDispatcher'); // D-1: activate dead code
 
+/** Temporary pause: physical merch/food + real-world privileges (day-off / shift pick). */
+const PHYSICAL_PAUSED = true;
+const PAUSE_MESSAGE_SHORT =
+  'Список призов обновляется: еда, мерч и выходные на паузе. Уже оформленное — выдадим. Скоро новые призы.';
+const PAUSE_MESSAGE_FULL = {
+  title: 'Залы Норн обновляются',
+  body: [
+    'Пока собираем новый список призов, временно не разыгрываем еду, одежду, мерч, выходной и выбор смены.',
+    'Всё, что вы уже выиграли и оформили на выдачу — отдадим как положено. Ничего не сгорает.',
+    'Сейчас на Колесе — руны, облик воина, рамки и бусты. Скоро вернёмся с новыми крутыми призами.',
+  ],
+};
+const PAUSE_BADGE = 'Обновление призов';
+const PAUSE_PM_NOTE =
+  'Новые заявки на физ. и privilege не создаём. Старые fulfillment — закрываем до конца.';
+
+const PAUSED_PRIZE_TYPES = new Set(['merch']);
+const PAUSED_SHOP_CATEGORIES = new Set(['merch', 'privilege']);
+
+function isPausedShopItem(item) {
+  if (!item) return true;
+  if (item.requires_delivery) return true;
+  if (PAUSED_SHOP_CATEGORIES.has(item.category)) return true;
+  return false;
+}
+
+function isPausedPrize(prize) {
+  if (!prize) return true;
+  if (prize.requires_delivery) return true;
+  if (PAUSED_PRIZE_TYPES.has(prize.prize_type)) return true;
+  return false;
+}
+
+function pausePayload() {
+  return {
+    physical_paused: PHYSICAL_PAUSED,
+    pause_message: PAUSE_MESSAGE_SHORT,
+    pause_message_full: PAUSE_MESSAGE_FULL,
+    pause_badge: PAUSE_BADGE,
+    pause_pm_note: PAUSE_PM_NOTE,
+  };
+}
+
 async function routes(fastify) {
 const db = fastify.db;
 
@@ -279,6 +322,7 @@ const db = fastify.db;
       free: freeLeft, checkin: checkinLeft, purchased: purchasedLeft, total,
       checkin_expires_at: checkinExpiresAt,
       title: titleInfo,
+      ...pausePayload(),
     };
   });
 
@@ -372,12 +416,23 @@ const db = fastify.db;
         );
       }
 
-      // Load prizes (join shop_items for icon_svg when prize_type='shop_item')
-      const { rows: prizes } = await client.query(
-        `SELECT p.*, s.icon_svg FROM gamification_prizes p
+      // Load prizes (join shop_items for icon_svg / equip meta when prize_type='shop_item')
+      // Defense-in-depth: exclude physical/privilege even if a row stayed active
+      const { rows: prizeRows } = await client.query(
+        `SELECT p.*, s.icon_svg, s.category AS shop_category, s.requires_delivery AS shop_requires_delivery,
+                s.equip_slot AS shop_equip_slot, s.asset_key AS shop_asset_key, s.id AS shop_item_id
+         FROM gamification_prizes p
          LEFT JOIN gamification_shop_items s ON s.id = p.value AND p.prize_type = 'shop_item'
-         WHERE p.is_active = true AND p.weight > 0`
+         WHERE p.is_active = true AND p.weight > 0
+           AND p.prize_type <> 'merch'
+           AND COALESCE(p.requires_delivery, false) = false
+           AND (s.id IS NULL OR (
+             s.is_active = true
+             AND COALESCE(s.requires_delivery, false) = false
+             AND s.category NOT IN ('merch', 'privilege')
+           ))`
       );
+      const prizes = prizeRows.filter((p) => !isPausedPrize(p));
       if (!prizes.length) { await client.query('ROLLBACK'); return reply.code(500).send({ error: 'Нет доступных призов' }); }
 
       // Pity values (row already locked above via pity variable)
@@ -421,33 +476,72 @@ const db = fastify.db;
       let rewardAmount = selectedPrize.prize_type === 'shop_item'
         ? 0
         : Math.max(0, (selectedPrize.value || 0) * pendingMultiplier);
+      let inventoryId = null;
+      let equipSlot = selectedPrize.shop_equip_slot || null;
+      let assetKey = selectedPrize.shop_asset_key || null;
+      let shopItemId = selectedPrize.shop_item_id || null;
+
+      // Resolve shop link for non-shop_item cosmetics (by value or name) so equip works
+      async function resolveShopMeta() {
+        if (shopItemId && (equipSlot || assetKey)) return;
+        const { rows: [byId] } = await client.query(
+          `SELECT id, equip_slot, asset_key, category FROM gamification_shop_items
+           WHERE id = $1 AND category IN ('digital','cosmetic') LIMIT 1`,
+          [selectedPrize.value]
+        ).catch(() => ({ rows: [] }));
+        if (byId) {
+          shopItemId = byId.id;
+          equipSlot = equipSlot || byId.equip_slot;
+          assetKey = assetKey || byId.asset_key;
+          return;
+        }
+        const { rows: [byName] } = await client.query(
+          `SELECT id, equip_slot, asset_key, category FROM gamification_shop_items
+           WHERE name = $1 AND category IN ('digital','cosmetic') LIMIT 1`,
+          [selectedPrize.name]
+        ).catch(() => ({ rows: [] }));
+        if (byName) {
+          shopItemId = byName.id;
+          equipSlot = equipSlot || byName.equip_slot;
+          assetKey = assetKey || byName.asset_key;
+        }
+      }
+
       if (selectedPrize.prize_type === 'runes' && rewardAmount > 0) {
         await creditWalletTx(client, eid, 'runes', rewardAmount, 'spin_win', selectedPrize.id);
       } else if (selectedPrize.prize_type === 'xp' && rewardAmount > 0) {
         await creditWalletTx(client, eid, 'xp', rewardAmount, 'spin_win', selectedPrize.id);
       } else if (selectedPrize.prize_type === 'extra_spin') {
         // Create inventory item with "спин" in name so spin-allowance check picks it up
-        await client.query(
+        const { rows: [inv] } = await client.query(
           `INSERT INTO gamification_inventory (employee_id, item_type, item_name, item_description, item_category, source_id, source_type)
-           VALUES ($1, 'spin_prize', 'Доп. спин', 'Дополнительное вращение Колеса Норн', 'digital', $2, 'spin')`,
+           VALUES ($1, 'spin_prize', 'Доп. спин', 'Дополнительное вращение Колеса Норн', 'digital', $2, 'spin')
+           RETURNING id`,
           [eid, selectedPrize.id]
         );
+        inventoryId = inv?.id || null;
         rewardAmount = 1;
       } else if (['sticker', 'avatar_frame', 'vip', 'cosmetic_item'].includes(selectedPrize.prize_type)) {
-        // Digital cosmetic/privilege — add to inventory directly, no PM delivery needed
-        await client.query(
+        await resolveShopMeta();
+        const { rows: [inv] } = await client.query(
           `INSERT INTO gamification_inventory (employee_id, item_type, item_name, item_category, source_id, source_type)
-           VALUES ($1, 'spin_prize', $2, 'digital', $3, 'spin')`,
-          [eid, selectedPrize.name, selectedPrize.id]
+           VALUES ($1, 'spin_prize', $2, 'digital', $3, 'spin') RETURNING id`,
+          [eid, selectedPrize.name, shopItemId || selectedPrize.id]
         );
+        inventoryId = inv?.id || null;
       } else if (selectedPrize.prize_type === 'shop_item' || selectedPrize.prize_type === 'merch' || selectedPrize.requires_delivery) {
         // Look up shop item category to set item_category correctly
-        let itemCategory = 'merch';
-        if (selectedPrize.prize_type === 'shop_item' && selectedPrize.value) {
+        let itemCategory = selectedPrize.shop_category || 'merch';
+        if (!selectedPrize.shop_category && selectedPrize.prize_type === 'shop_item' && selectedPrize.value) {
           const { rows: [si] } = await client.query(
-            'SELECT category FROM gamification_shop_items WHERE id = $1', [selectedPrize.value]
+            'SELECT category, equip_slot, asset_key FROM gamification_shop_items WHERE id = $1', [selectedPrize.value]
           );
-          if (si) itemCategory = si.category;
+          if (si) {
+            itemCategory = si.category;
+            equipSlot = equipSlot || si.equip_slot;
+            assetKey = assetKey || si.asset_key;
+            shopItemId = selectedPrize.value;
+          }
         }
         const isDigitalCosmetic = ['digital', 'cosmetic'].includes(itemCategory);
 
@@ -465,16 +559,20 @@ const db = fastify.db;
           const compRunes = 50;
           await creditWalletTx(client, eid, 'runes', compRunes, 'duplicate_prize', selectedPrize.id);
           rewardAmount = compRunes;
+          equipSlot = null;
+          assetKey = null;
           selectedPrize = Object.assign({}, selectedPrize, {
             name: selectedPrize.name + ' → руны ×' + compRunes,
             prize_type: 'runes'
           });
         } else {
+          const srcId = shopItemId || selectedPrize.value || selectedPrize.id;
           const { rows: [inv] } = await client.query(
             `INSERT INTO gamification_inventory (employee_id, item_type, item_name, item_category, source_id, source_type)
              VALUES ($1, 'spin_prize', $2, $3, $4, 'spin') RETURNING id`,
-            [eid, selectedPrize.name, itemCategory, selectedPrize.value]
+            [eid, selectedPrize.name, itemCategory, srcId]
           );
+          inventoryId = inv?.id || null;
           // Only create fulfillment for physical items that need delivery
           const needsDelivery = selectedPrize.requires_delivery || selectedPrize.prize_type === 'merch';
           if (needsDelivery && !isDigitalCosmetic) {
@@ -506,10 +604,24 @@ const db = fastify.db;
         checkSeasonalProgress(db, eid).catch(() => {});
       } catch { /* non-critical */ }
 
+      const canEquip = !!(inventoryId && equipSlot && assetKey
+        && ['helmet', 'weapon', 'armor', 'cape', 'boots', 'face_paint', 'avatar'].includes(equipSlot));
+
       return {
-        prize: { id: selectedPrize.id, tier: selectedPrize.tier, type: selectedPrize.prize_type,
-          name: selectedPrize.name, description: selectedPrize.description, value: rewardAmount,
-          icon: selectedPrize.icon, icon_svg: selectedPrize.icon_svg || null },
+        prize: {
+          id: selectedPrize.id,
+          tier: selectedPrize.tier,
+          type: selectedPrize.prize_type,
+          name: selectedPrize.name,
+          description: selectedPrize.description,
+          value: rewardAmount,
+          icon: selectedPrize.icon,
+          icon_svg: selectedPrize.icon_svg || null,
+          inventory_id: inventoryId,
+          equip_slot: canEquip ? equipSlot : null,
+          asset_key: canEquip ? assetKey : null,
+          can_equip: canEquip,
+        },
         multiplier_applied: pendingMultiplier,
         pity_counter: isRare ? 0 : spinsSinceRare + 1,
       };
@@ -527,17 +639,54 @@ const db = fastify.db;
       `SELECT p.id, p.tier, p.prize_type, p.name, p.description, p.icon, p.weight, p.value, s.icon_svg
        FROM gamification_prizes p
        LEFT JOIN gamification_shop_items s ON s.id = p.value AND p.prize_type = 'shop_item'
-       WHERE p.is_active = true ORDER BY p.tier, p.weight DESC`
+       WHERE p.is_active = true
+         AND p.prize_type <> 'merch'
+         AND COALESCE(p.requires_delivery, false) = false
+         AND (s.id IS NULL OR (
+           s.is_active = true
+           AND COALESCE(s.requires_delivery, false) = false
+           AND s.category NOT IN ('merch', 'privilege')
+         ))
+       ORDER BY p.tier, p.weight DESC`
     );
-    return { prizes: rows };
+    return { prizes: rows, ...pausePayload() };
   });
 
   // ── GET /shop — shop items ──
   fastify.get('/shop', { preHandler: [fastify.fieldAuthenticate] }, async () => {
     const { rows } = await db.query(
-      'SELECT id, name, description, price_runes, category, icon, icon_svg, image_url, requires_delivery, current_stock, max_stock, rarity, is_limited FROM gamification_shop_items WHERE is_active = true ORDER BY category, price_runes'
+      `SELECT id, name, description, price_runes, category, icon, icon_svg, image_url,
+              requires_delivery, current_stock, max_stock, rarity, is_limited,
+              equip_slot, asset_key, set_tag
+       FROM gamification_shop_items
+       WHERE is_active = true
+         AND COALESCE(requires_delivery, false) = false
+         AND category NOT IN ('merch', 'privilege')
+       ORDER BY category, price_runes`
     );
-    return { items: rows };
+    const AVATAR3D = new Set(['helmet', 'weapon', 'armor', 'cape', 'boots', 'face_paint', 'avatar']);
+    const PROFILE = new Set(['frame', 'theme', 'badge']);
+    const SLOT_LABELS = {
+      helmet: 'Шлем', weapon: 'Оружие', armor: 'Броня', cape: 'Плащ', boots: 'Сапоги',
+      face_paint: 'Раскраска', avatar: 'Облик',
+      frame: 'Рамка профиля', theme: 'Тема профиля', badge: 'Бейдж профиля',
+    };
+    const items = rows.map((it) => {
+      const isVirtual = ['digital', 'cosmetic'].includes(it.category) && !it.requires_delivery;
+      const stockUnlimited = isVirtual || it.current_stock == null;
+      let wear_target = 'unknown';
+      if (AVATAR3D.has(it.equip_slot)) wear_target = 'avatar3d';
+      else if (PROFILE.has(it.equip_slot)) wear_target = 'profile';
+      return {
+        ...it,
+        unlimited: stockUnlimited,
+        wear_target,
+        wear_label: wear_target === 'avatar3d' ? (SLOT_LABELS[it.equip_slot] || 'На воина')
+          : (wear_target === 'profile' ? (SLOT_LABELS[it.equip_slot] || 'Профиль') : null),
+        can_equip: !!(it.equip_slot && (it.asset_key || wear_target === 'profile')),
+      };
+    });
+    return { items, ...pausePayload() };
   });
 
   // ── POST /shop/buy — purchase item ──
@@ -558,7 +707,17 @@ const db = fastify.db;
         'SELECT * FROM gamification_shop_items WHERE id = $1 AND is_active = true FOR UPDATE', [item_id]
       );
       if (!item) { await client.query('ROLLBACK'); return reply.code(404).send({ error: 'Товар не найден' }); }
-      if (item.max_stock !== null && item.current_stock <= 0) {
+      if (PHYSICAL_PAUSED && isPausedShopItem(item)) {
+        await client.query('ROLLBACK');
+        return reply.code(403).send({
+          error: PAUSE_MESSAGE_SHORT,
+          ...pausePayload(),
+        });
+      }
+      // Virtual cosmetics/digital: always in stock (no physical limit)
+      const isVirtualWearable = ['digital', 'cosmetic'].includes(item.category)
+        && !item.requires_delivery;
+      if (!isVirtualWearable && item.max_stock !== null && item.current_stock <= 0) {
         await client.query('ROLLBACK'); return reply.code(400).send({ error: 'Товар закончился' });
       }
 
@@ -570,8 +729,8 @@ const db = fastify.db;
       );
       if (!wallet) { await client.query('ROLLBACK'); return reply.code(400).send({ error: 'Недостаточно рун' }); }
 
-      // Decrement stock
-      if (item.max_stock !== null) {
+      // Decrement stock only for limited physical-ish SKUs
+      if (!isVirtualWearable && item.max_stock !== null) {
         await client.query(
           'UPDATE gamification_shop_items SET current_stock = current_stock - 1 WHERE id = $1', [item_id]
         );
@@ -690,6 +849,7 @@ const db = fastify.db;
       FROM gamification_quests q
       LEFT JOIN gamification_quest_progress qp ON qp.quest_id = q.id AND qp.employee_id = $1
       WHERE q.is_active = true
+        AND (q.quest_type <> 'seasonal' OR q.season_end IS NULL OR q.season_end >= CURRENT_DATE)
         AND (q.allowed_roles IS NULL OR q.allowed_roles = ''
           OR EXISTS (
             SELECT 1 FROM employee_assignments ea
@@ -908,75 +1068,104 @@ const db = fastify.db;
     const eid = req.fieldEmployee.id;
     const invId = parseInt(req.params.id, 10);
 
-    // Get inventory item with shop category
+    // Get inventory item; shop meta via source_id (shop purchase OR spin→shop link)
     const { rows: [inv] } = await db.query(
-      `SELECT gi.*, gsi.category, gsi.name as shop_name
+      `SELECT gi.*, gsi.category, gsi.name as shop_name, gsi.equip_slot, gsi.asset_key
        FROM gamification_inventory gi
-       LEFT JOIN gamification_shop_items gsi ON gsi.id = gi.source_id AND gi.item_type = 'shop_purchase'
+       LEFT JOIN gamification_shop_items gsi ON gsi.id = gi.source_id
        WHERE gi.id = $1 AND gi.employee_id = $2`,
       [invId, eid]
     );
     if (!inv) return reply.code(404).send({ error: 'Предмет не найден' });
 
-    const category = inv.item_category || inv.category || 'merch';
+    // Prefer catalog equip_slot / asset_key; fallback to name heuristics
+    let shop = (inv.equip_slot || inv.asset_key)
+      ? { equip_slot: inv.equip_slot, asset_key: inv.asset_key, category: inv.category, name: inv.shop_name }
+      : null;
+    if (!shop && inv.source_id) {
+      const { rows: [shopRow] } = await db.query(
+        `SELECT equip_slot, asset_key, category, name FROM gamification_shop_items WHERE id = $1`,
+        [inv.source_id]
+      ).catch(() => ({ rows: [] }));
+      if (shopRow) shop = shopRow;
+    }
+
+    const NAME_COL = {
+      avatar: 'active_avatar',
+      frame: 'active_frame',
+      theme: 'active_theme',
+      badge: 'active_badge',
+      helmet: 'active_helmet',
+      weapon: 'active_weapon',
+      armor: 'active_armor',
+      // cape / boots / face_paint: only asset_* columns (do NOT overwrite badge/armor)
+    };
+    const ASSET_COL = {
+      helmet: 'asset_helmet',
+      weapon: 'asset_weapon',
+      armor: 'asset_armor',
+      cape: 'asset_cape',
+      boots: 'asset_boots',
+      face_paint: 'asset_face_paint',
+      avatar: 'asset_body',
+    };
+
+    let slotKey = shop?.equip_slot || inv.equip_slot || null;
+    let assetKey = shop?.asset_key || inv.asset_key || null;
+    if (!slotKey) {
+      const name = (inv.item_name || '').toLowerCase();
+      if (name.includes('аватар')) slotKey = 'avatar';
+      else if (name.includes('рамк')) slotKey = 'frame';
+      else if (name.includes('тема')) slotKey = 'theme';
+      else if (name.includes('бейдж') || name.includes('эффект')) slotKey = 'badge';
+      else if (name.includes('раскраск') || name.includes('краск')) slotKey = 'face_paint';
+      else if (name.includes('шлем') || name.includes('маска')) slotKey = 'helmet';
+      else if (name.includes('оружие') || name.includes('топор') || name.includes('молот') || name.includes('копь') || name.includes('меч')) slotKey = 'weapon';
+      else if (name.includes('плащ')) slotKey = 'cape';
+      else if (name.includes('сапог') || name.includes('ботин')) slotKey = 'boots';
+      else if (name.includes('броня') || name.includes('кольчуг') || name.includes('нагрудник')) slotKey = 'armor';
+      else slotKey = 'badge';
+    }
+
+    const nameCol = NAME_COL[slotKey] || null;
+    const assetCol = ASSET_COL[slotKey] || null;
+    if (!nameCol && !assetCol) {
+      return reply.code(400).send({ error: 'Неизвестный слот' });
+    }
+
+    const category = inv.item_category || inv.category || shop?.category || 'merch';
     if (!['digital', 'cosmetic'].includes(category)) {
       return reply.code(400).send({ error: 'Этот предмет нельзя надеть' });
     }
 
-    // Determine equipment slot from item name
-    const name = (inv.item_name || '').toLowerCase();
-    let slot = 'active_badge';
-    if      (name.includes('аватар'))                                   slot = 'active_avatar';
-    else if (name.includes('рамк'))                                     slot = 'active_frame';
-    else if (name.includes('тема') || /^тем[^а]/.test(name) || name === 'тема') slot = 'active_theme';
-    else if (name.includes('шлем') || name.includes('маска'))           slot = 'active_helmet';
-    else if (name.includes('оружие') || name.includes('топор') ||
-             name.includes('молот') || name.includes('копьё') ||
-             name.includes('копье') || name.includes('меч'))            slot = 'active_weapon';
-    else if (name.includes('броня') || name.includes('кольчуг') ||
-             name.includes('нагрудник') || name.includes('плащ'))       slot = 'active_armor';
-    else if (name.includes('бейдж') || name.includes('кубок'))         slot = 'active_badge';
-
-    // Validate slot exists as column
-    const VALID_SLOTS = ['active_avatar','active_frame','active_theme','active_badge','active_helmet','active_weapon','active_armor'];
-    if (!VALID_SLOTS.includes(slot)) slot = 'active_badge';
-
-    // Unequip previous item in same slot for this employee
+    // Unequip previous in same employee slot column
     await db.query(
       `UPDATE gamification_inventory SET is_equipped = false
-       WHERE employee_id = $1 AND is_equipped = true
-         AND id IN (
-           SELECT id FROM gamification_inventory
-           WHERE employee_id = $1
-             AND CASE
-               WHEN item_name ILIKE '%аватар%'                                                         THEN 'active_avatar'
-               WHEN item_name ILIKE '%рамк%'                                                           THEN 'active_frame'
-               WHEN item_name ILIKE '%шлем%' OR item_name ILIKE '%маска%'                             THEN 'active_helmet'
-               WHEN item_name ILIKE '%оружие%' OR item_name ILIKE '%топор%' OR
-                    item_name ILIKE '%молот%'  OR item_name ILIKE '%копьё%' OR
-                    item_name ILIKE '%меч%'                                                            THEN 'active_weapon'
-               WHEN item_name ILIKE '%броня%' OR item_name ILIKE '%кольчуг%' OR
-                    item_name ILIKE '%нагрудник%' OR item_name ILIKE '%плащ%'                         THEN 'active_armor'
-               WHEN item_name ILIKE '%тема%' OR item_name ILIKE '%тём%'                               THEN 'active_theme'
-               ELSE 'active_badge'
-             END = $2
+       WHERE employee_id = $1 AND is_equipped = true AND id != $2`,
+      [eid, invId]
+    ).catch(() => {});
+
+    // Narrow unequip: only items that map to same slot via shop.equip_slot or name
+    await db.query(
+      `UPDATE gamification_inventory gi SET is_equipped = false
+       WHERE gi.employee_id = $1 AND gi.is_equipped = true AND gi.id != $2
+         AND EXISTS (
+           SELECT 1 FROM gamification_shop_items s
+           WHERE s.id = gi.source_id AND s.equip_slot = $3
          )`,
-      [eid, slot]
-    );
+      [eid, invId, slotKey]
+    ).catch(() => {});
 
-    // Equip this item
-    await db.query(
-      'UPDATE gamification_inventory SET is_equipped = true WHERE id = $1',
-      [invId]
-    );
+    await db.query('UPDATE gamification_inventory SET is_equipped = true WHERE id = $1', [invId]);
 
-    // Update employee profile slot
-    await db.query(
-      `UPDATE employees SET ${slot} = $1 WHERE id = $2`,
-      [inv.item_name, eid]
-    );
+    if (nameCol) {
+      await db.query(`UPDATE employees SET ${nameCol} = $1 WHERE id = $2`, [inv.item_name, eid]);
+    }
+    if (assetCol && assetKey) {
+      await db.query(`UPDATE employees SET ${assetCol} = $1 WHERE id = $2`, [assetKey, eid]).catch(() => {});
+    }
 
-    return { ok: true, slot, item_name: inv.item_name };
+    return { ok: true, slot: nameCol, equip_slot: slotKey, asset_key: assetKey, item_name: inv.item_name };
   });
 
   // ── POST /inventory/:id/unequip — unequip cosmetic/digital item ──
@@ -991,23 +1180,47 @@ const db = fastify.db;
     if (!inv) return reply.code(404).send({ error: 'Предмет не найден' });
     if (!inv.is_equipped) return reply.code(400).send({ error: 'Предмет не надет' });
 
-    // Determine slot by item_name (same logic as equip)
-    const name = (inv.item_name || '').toLowerCase();
-    let slot = 'active_badge';
-    if      (name.includes('аватар'))                                   slot = 'active_avatar';
-    else if (name.includes('рамк'))                                     slot = 'active_frame';
-    else if (name.includes('тема') || /^тем[^а]/.test(name))           slot = 'active_theme';
-    else if (name.includes('шлем') || name.includes('маска'))           slot = 'active_helmet';
-    else if (name.includes('оружие') || name.includes('топор') ||
-             name.includes('молот') || name.includes('копьё') ||
-             name.includes('копье') || name.includes('меч'))            slot = 'active_weapon';
-    else if (name.includes('броня') || name.includes('кольчуг') ||
-             name.includes('нагрудник') || name.includes('плащ'))       slot = 'active_armor';
+    const { rows: [shop] } = await db.query(
+      `SELECT equip_slot, asset_key FROM gamification_shop_items WHERE id = $1`,
+      [inv.source_id]
+    ).catch(() => ({ rows: [] }));
+
+    const NAME_COL = {
+      avatar: 'active_avatar', frame: 'active_frame', theme: 'active_theme', badge: 'active_badge',
+      helmet: 'active_helmet', weapon: 'active_weapon', armor: 'active_armor',
+    };
+    const ASSET_COL = {
+      helmet: 'asset_helmet', weapon: 'asset_weapon', armor: 'asset_armor',
+      cape: 'asset_cape', boots: 'asset_boots', face_paint: 'asset_face_paint', avatar: 'asset_body',
+    };
+
+    let slotKey = shop?.equip_slot || null;
+    if (!slotKey) {
+      const name = (inv.item_name || '').toLowerCase();
+      if (name.includes('аватар')) slotKey = 'avatar';
+      else if (name.includes('рамк')) slotKey = 'frame';
+      else if (name.includes('тема')) slotKey = 'theme';
+      else if (name.includes('бейдж') || name.includes('эффект')) slotKey = 'badge';
+      else if (name.includes('раскраск') || name.includes('краск')) slotKey = 'face_paint';
+      else if (name.includes('шлем') || name.includes('маска')) slotKey = 'helmet';
+      else if (name.includes('оружие') || name.includes('топор') || name.includes('молот') || name.includes('копь') || name.includes('меч')) slotKey = 'weapon';
+      else if (name.includes('плащ')) slotKey = 'cape';
+      else if (name.includes('сапог') || name.includes('ботин')) slotKey = 'boots';
+      else if (name.includes('броня') || name.includes('кольчуг') || name.includes('нагрудник')) slotKey = 'armor';
+      else slotKey = 'badge';
+    }
+    const nameCol = NAME_COL[slotKey] || null;
+    const assetCol = ASSET_COL[slotKey] || null;
 
     await db.query('UPDATE gamification_inventory SET is_equipped = false WHERE id = $1', [invId]);
-    await db.query(`UPDATE employees SET ${slot} = NULL WHERE id = $1`, [eid]);
+    if (nameCol) {
+      await db.query(`UPDATE employees SET ${nameCol} = NULL WHERE id = $1`, [eid]);
+    }
+    if (assetCol) {
+      await db.query(`UPDATE employees SET ${assetCol} = NULL WHERE id = $1`, [eid]).catch(() => {});
+    }
 
-    return { ok: true, slot };
+    return { ok: true, slot: nameCol, equip_slot: slotKey };
   });
 
   // ── POST /inventory/:id/request — worker requests physical prize delivery ──
@@ -1589,40 +1802,135 @@ const db = fastify.db;
   // ═══════════════════════════════════════════════════════════════════
 
   // ── GET /journey-map — all projects worker has been deployed to ──
+  // FIX 11.09.2026: раньше JOIN assignments × checkins давал fan-out
+  // (у Трухина 24 вахты на архив × 550 чекинов = 13200 «смен»).
+  // Считаем чекины отдельно по work_id, назначения только для роли.
+  // + этапы field_trip_stages на объекте и блок «Вне объекта» (work_id IS NULL).
   fastify.get('/journey-map', { preHandler: [fastify.fieldAuthenticate] }, async (req) => {
     const eid = req.fieldEmployee.id;
     const { rows } = await db.query(`
-      SELECT
-        w.id as work_id, w.work_title, w.object_name, COALESCE(w.object_name, w.city) AS city,
-        fps.object_lat as latitude, fps.object_lng as longitude,
-        ea.field_role,
-        MIN(fc.date) as first_shift,
-        MAX(fc.date) as last_shift,
-        COUNT(fc.id)::int as total_shifts,
-        COALESCE(SUM(fc.amount_earned), 0)::numeric as total_earned,
-        COALESCE(SUM(fc.hours_worked), 0)::numeric as total_hours
-      FROM employee_assignments ea
-      JOIN works w ON w.id = ea.work_id
-      LEFT JOIN field_project_settings fps ON fps.work_id = w.id
-      LEFT JOIN field_checkins fc ON fc.employee_id = ea.employee_id AND fc.work_id = ea.work_id AND fc.status = 'completed'
-      WHERE ea.employee_id = $1
-      GROUP BY w.id, w.work_title, w.object_name, w.city, fps.object_lat, fps.object_lng, ea.field_role
+      WITH checks AS (
+        SELECT
+          fc.work_id,
+          MIN(fc.date) AS first_shift,
+          MAX(fc.date) AS last_shift,
+          COUNT(*)::int AS total_shifts,
+          COALESCE(SUM(fc.amount_earned), 0)::numeric AS total_earned,
+          COALESCE(SUM(fc.hours_worked), 0)::numeric AS total_hours
+        FROM field_checkins fc
+        WHERE fc.employee_id = $1
+          AND fc.status = 'completed'
+        GROUP BY fc.work_id
+      ),
+      stages AS (
+        SELECT
+          fts.work_id,
+          MIN(fts.date_from) AS first_shift,
+          MAX(COALESCE(fts.date_to, fts.date_from)) AS last_shift,
+          COUNT(*)::int AS total_shifts,
+          COALESCE(SUM(fts.amount_earned), 0)::numeric AS total_earned,
+          0::numeric AS total_hours
+        FROM field_trip_stages fts
+        WHERE fts.employee_id = $1
+          AND fts.status = 'completed'
+          AND fts.work_id IS NOT NULL
+        GROUP BY fts.work_id
+      ),
+      merged AS (
+        SELECT
+          COALESCE(c.work_id, s.work_id) AS work_id,
+          CASE
+            WHEN c.first_shift IS NULL THEN s.first_shift
+            WHEN s.first_shift IS NULL THEN c.first_shift
+            ELSE LEAST(c.first_shift, s.first_shift)
+          END AS first_shift,
+          CASE
+            WHEN c.last_shift IS NULL THEN s.last_shift
+            WHEN s.last_shift IS NULL THEN c.last_shift
+            ELSE GREATEST(c.last_shift, s.last_shift)
+          END AS last_shift,
+          COALESCE(c.total_shifts, 0) + COALESCE(s.total_shifts, 0) AS total_shifts,
+          COALESCE(c.total_earned, 0) + COALESCE(s.total_earned, 0) AS total_earned,
+          COALESCE(c.total_hours, 0) AS total_hours
+        FROM checks c
+        FULL OUTER JOIN stages s ON s.work_id = c.work_id
+      ),
+      roles AS (
+        SELECT DISTINCT ON (ea.work_id)
+          ea.work_id,
+          ea.field_role
+        FROM employee_assignments ea
+        WHERE ea.employee_id = $1
+        ORDER BY ea.work_id,
+          CASE WHEN COALESCE(ea.is_active, true) = true AND ea.departure_date IS NULL THEN 0 ELSE 1 END,
+          COALESCE(ea.departure_date, ea.date_from, ea.created_at) DESC NULLS LAST,
+          ea.id DESC
+      ),
+      work_rows AS (
+        SELECT
+          w.id AS work_id,
+          w.work_title,
+          w.object_name,
+          COALESCE(w.object_name, w.city) AS city,
+          fps.object_lat AS latitude,
+          fps.object_lng AS longitude,
+          r.field_role,
+          m.first_shift,
+          m.last_shift,
+          m.total_shifts,
+          m.total_earned,
+          m.total_hours,
+          false AS is_orphan
+        FROM merged m
+        JOIN works w ON w.id = m.work_id
+        LEFT JOIN field_project_settings fps ON fps.work_id = w.id
+        LEFT JOIN roles r ON r.work_id = w.id
+      ),
+      orphan AS (
+        SELECT
+          NULL::int AS work_id,
+          'Вне объекта'::text AS work_title,
+          'Вне объекта'::text AS object_name,
+          'Вне объекта'::text AS city,
+          NULL::numeric AS latitude,
+          NULL::numeric AS longitude,
+          NULL::text AS field_role,
+          MIN(fts.date_from) AS first_shift,
+          MAX(COALESCE(fts.date_to, fts.date_from)) AS last_shift,
+          COUNT(*)::int AS total_shifts,
+          COALESCE(SUM(fts.amount_earned), 0)::numeric AS total_earned,
+          0::numeric AS total_hours,
+          true AS is_orphan
+        FROM field_trip_stages fts
+        WHERE fts.employee_id = $1
+          AND fts.status = 'completed'
+          AND fts.work_id IS NULL
+        HAVING COUNT(*) > 0
+      )
+      SELECT * FROM work_rows
+      UNION ALL
+      SELECT * FROM orphan
       ORDER BY first_shift DESC NULLS LAST
     `, [eid]);
 
-    // Compute achievements
-    const cities = new Set(rows.map(r => r.city).filter(Boolean));
+    const realProjects = rows.filter((r) => !r.is_orphan);
+    const cities = new Set(realProjects.map((r) => r.city).filter(Boolean));
     const achievements = [];
     if (cities.size >= 3) achievements.push({ id: 'traveler_3', name: 'Путник', desc: '3 города', icon: '🗺️' });
     if (cities.size >= 5) achievements.push({ id: 'traveler_5', name: 'Странник', desc: '5 городов', icon: '🧭' });
     if (cities.size >= 9) achievements.push({ id: 'nine_worlds', name: 'Девять миров', desc: '9 городов', icon: '🌍' });
 
-    const totalShifts = rows.reduce((s, r) => s + r.total_shifts, 0);
-    const totalEarned = rows.reduce((s, r) => s + parseFloat(r.total_earned), 0);
+    const totalShifts = rows.reduce((s, r) => s + (parseInt(r.total_shifts, 10) || 0), 0);
+    const totalEarned = rows.reduce((s, r) => s + parseFloat(r.total_earned || 0), 0);
 
     return {
       projects: rows,
-      stats: { total_projects: rows.length, total_cities: cities.size, total_shifts: totalShifts, total_earned: totalEarned },
+      stats: {
+        total_projects: realProjects.length,
+        total_cities: cities.size,
+        total_shifts: totalShifts,
+        total_earned: totalEarned,
+      },
       achievements,
     };
   });

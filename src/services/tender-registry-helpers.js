@@ -36,6 +36,31 @@ function syncRegistryStatus(tenderStatus) {
   return TENDER_TO_REGISTRY_STATUS[tenderStatus] || null;
 }
 
+// registry_status — источник истины нового реестра. legacy tender_status не трогаем,
+// если анализ уже закрыт: syncTenderStatus('готовим') = 'На анализе' откатывал бы статус назад.
+function tenderStatusUpdateFor(registryStatus, analysisFinalized) {
+  if (registryStatus === 'готовим' && analysisFinalized) return null;
+  return syncTenderStatus(registryStatus);
+}
+
+/** Обновляет registry_status; tender_status пишет только если это не откат назад. */
+async function applyRegistryStatus(db, tenderId, registryStatus, analysisFinalized) {
+  const ts = tenderStatusUpdateFor(registryStatus, analysisFinalized);
+  if (ts) {
+    await db.query(
+      `UPDATE tenders SET registry_status = $1, tender_status = $2, updated_at = NOW()
+       WHERE id = $3 AND registry_status NOT IN ('отмена', 'проиграли')`,
+      [registryStatus, ts, tenderId]
+    );
+  } else {
+    await db.query(
+      `UPDATE tenders SET registry_status = $1, updated_at = NOW()
+       WHERE id = $2 AND registry_status NOT IN ('отмена', 'проиграли')`,
+      [registryStatus, tenderId]
+    );
+  }
+}
+
 const KANBAN_REGISTRY_STATUSES = new Set(['готовим', 'подались']);
 
 /** Строки, которые не показываем в реестре ТО и дежурной очереди РП */
@@ -129,12 +154,44 @@ async function writeReviewLog(db, { reviewId, tenderId, actorUserId, action, pay
 
 async function ensureReview(db, tenderId, actorUserId) {
   let r = await db.query('SELECT * FROM tender_rp_reviews WHERE tender_id = $1', [tenderId]);
-  if (r.rows[0]) return r.rows[0];
-  r = await db.query(`
-    INSERT INTO tender_rp_reviews (tender_id, started_by_user_id, updated_at)
-    VALUES ($1, $2, NOW()) RETURNING *
-  `, [tenderId, actorUserId || null]);
-  return r.rows[0];
+  if (r.rows[0]) {
+    // Backfill analysis_owner ONLY from started_by (never from arbitrary viewer)
+    if (!r.rows[0].analysis_owner_user_id && r.rows[0].started_by_user_id) {
+      try {
+        const u = await db.query(`
+          UPDATE tender_rp_reviews
+          SET analysis_owner_user_id = COALESCE(analysis_owner_user_id, started_by_user_id)
+          WHERE id = $1 AND analysis_owner_user_id IS NULL
+          RETURNING *
+        `, [r.rows[0].id]);
+        if (u.rows[0]) return u.rows[0];
+      } catch (_) { /* column may not exist before migration */ }
+    }
+    return r.rows[0];
+  }
+  // Empty shell row — ownership назначается при первой записи дежурного/хозяина
+  // ON CONFLICT: параллельные GET не должны ронять 500 (duplicate tender_id)
+  try {
+    r = await db.query(`
+      INSERT INTO tender_rp_reviews (tender_id, updated_at)
+      VALUES ($1, NOW())
+      ON CONFLICT (tender_id) DO UPDATE SET updated_at = tender_rp_reviews.updated_at
+      RETURNING *
+    `, [tenderId]);
+    return r.rows[0];
+  } catch (err) {
+    if (err && (err.code === '23505' || /on conflict/i.test(String(err.message || '')))) {
+      r = await db.query('SELECT * FROM tender_rp_reviews WHERE tender_id = $1', [tenderId]);
+      if (r.rows[0]) return r.rows[0];
+      // ON CONFLICT unsupported (no unique) — plain insert + reselect
+      r = await db.query(`
+        INSERT INTO tender_rp_reviews (tender_id, updated_at)
+        VALUES ($1, NOW()) RETURNING *
+      `, [tenderId]);
+      return r.rows[0];
+    }
+    throw err;
+  }
 }
 
 async function getCurrentDuty(db, date = new Date()) {
@@ -203,6 +260,8 @@ module.exports = {
   KANBAN_REGISTRY_STATUSES,
   syncTenderStatus,
   syncRegistryStatus,
+  tenderStatusUpdateFor,
+  applyRegistryStatus,
   isValidRegistryStatus,
   writeRegistryAudit,
   writeTenderGuruEnrichAudit,

@@ -20,6 +20,8 @@
 
 'use strict';
 
+const { buildTenderDateWhere } = require('../services/tender-date-filter');
+
 const DIRECTOR_LIKE_ROLES = ['ADMIN','DIRECTOR_GEN','DIRECTOR_COMM','DIRECTOR_DEV','HEAD_TO','HEAD_PM'];
 const ALLOWED_ROLES = ['ADMIN','DIRECTOR_GEN','DIRECTOR_COMM','DIRECTOR_DEV','HEAD_TO','HEAD_PM','TO','PM'];
 
@@ -62,40 +64,13 @@ const INBOX_STATUS_LABEL_SQL = `
     ELSE ia.status
   END::text`;
 
-/** period query param → SQL date filter fragments (push params into array). */
-function applyPeriodFilter(tableAlias, createdCol, period, params) {
-  if (period === '3d') {
-    params.push('3 days');
-    return `${tableAlias}.${createdCol} >= NOW() - $${params.length}::interval`;
-  }
-  if (period === '7d') {
-    params.push('7 days');
-    return `${tableAlias}.${createdCol} >= NOW() - $${params.length}::interval`;
-  }
-  if (period === '30d') {
-    params.push('30 days');
-    return `${tableAlias}.${createdCol} >= NOW() - $${params.length}::interval`;
-  }
-  if (period === 'year') {
-    params.push('1 year');
-    return `${tableAlias}.${createdCol} >= NOW() - $${params.length}::interval`;
-  }
-  if (period.startsWith('year:')) {
-    const y = parseInt(period.slice(5), 10);
-    if (Number.isFinite(y) && y > 2000 && y < 2100) {
-      params.push(`${y}-01-01`);
-      params.push(`${y + 1}-01-01`);
-      const a = params.length - 1;
-      const b = params.length;
-      return `${tableAlias}.${createdCol} >= $${a}::date AND ${tableAlias}.${createdCol} < $${b}::date`;
-    }
-  }
-  if (/^\d{4}-\d{2}$/.test(period)) {
-    params.push(period);
-    const p = params.length;
-    return `${tableAlias}.${createdCol} >= ($${p} || '-01')::date AND ${tableAlias}.${createdCol} < (($${p} || '-01')::date + interval '1 month')`;
-  }
-  return null;
+function applyPeriodFilter(tableAlias, createdCol, period, params, dateQuery = {}) {
+  return buildTenderDateWhere(tableAlias, {
+    period,
+    date_from: dateQuery.date_from,
+    date_to: dateQuery.date_to,
+    date_field: dateQuery.date_field,
+  }, params, { createdCol });
 }
 
 /**
@@ -104,8 +79,10 @@ function applyPeriodFilter(tableAlias, createdCol, period, params) {
  */
 function buildFeedParts({
   tab, subtab, period, search, status, typeStr, source, respUserId,
+  date_from, date_to, date_field,
   user, isDirectorLike, isPM, isTO
 }) {
+  const dateQuery = { date_from, date_to, date_field };
   const wantTenders = (tab === 'all' || tab === 'tenders');
   const wantApps    = (tab === 'all' || tab === 'applications');
 
@@ -126,16 +103,12 @@ function buildFeedParts({
       't.deleted_at IS NULL',
       "(t.tender_title IS NULL OR t.tender_title NOT ILIKE 'Auto-tender%')"
     ];
-    const periodClause = applyPeriodFilter('t', 'created_at', period, params);
+    const periodClause = applyPeriodFilter('t', 'created_at', period, params, dateQuery);
     if (periodClause) w.push(periodClause);
     if (isPM) {
       params.push(user.id);
       const u = params.length;
       w.push(`(t.responsible_pm_id = $${u} OR t.work_assigned_pm_id = $${u} OR EXISTS (SELECT 1 FROM works wk WHERE wk.tender_id = t.id AND wk.pm_id = $${u}))`);
-    } else if (isTO) {
-      params.push(user.id);
-      const u = params.length;
-      w.push(`(t.calculator_user_id = $${u} OR t.created_by_user_id = $${u})`);
     }
     if (status) {
       params.push(status);
@@ -212,7 +185,7 @@ function buildFeedParts({
       if (dedupPreTenderOnAll) {
         w.push(`(pt.created_tender_id IS NULL OR pt.status NOT IN ('accepted', 'approved', 'paid'))`);
       }
-      const periodClause = applyPeriodFilter('pt', 'created_at', period, params);
+      const periodClause = applyPeriodFilter('pt', 'created_at', period, params, dateQuery);
       if (periodClause) w.push(periodClause);
       if (isPM || isTO) {
         params.push(user.id);
@@ -245,7 +218,7 @@ function buildFeedParts({
           w.id::int                                       AS work_id,
           CASE WHEN w.id IS NOT NULL
                THEN ('W-' || w.id::text) ELSE NULL END::text AS work_code,
-          wu.name::text                                   AS work_pm_name,
+          COALESCE(wu.name, au.name)::text                AS work_pm_name,
           w.work_status::text                             AS work_status
         FROM pre_tender_requests pt
         LEFT JOIN tenders tch ON tch.id = pt.created_tender_id
@@ -254,6 +227,7 @@ function buildFeedParts({
          AND w.work_kind = 'main'
          AND w.deleted_at IS NULL
         LEFT JOIN users wu ON wu.id = w.pm_id
+        LEFT JOIN users au ON au.id = pt.assigned_to
         WHERE ${w.join(' AND ')}
       `);
     }
@@ -261,11 +235,15 @@ function buildFeedParts({
 
   // ─── 3. inbox_applications (subtab mail) ─────────────────────────────
   if (wantApps && appSubtabMail) {
-    const w = [
-      "ia.status <> 'archived'",
-      "ia.status NOT IN ('assigned','accepted','converted','rejected')"
-    ];
-    const periodClause = applyPeriodFilter('ia', 'created_at', period, params);
+    // Для руководства / HEAD_*: показываем и уже назначенные на РП заявки.
+    // Для PM/TO — только «живые» в inbox (ещё не у РП), иначе дубль с канбаном.
+    const w = isDirectorLike
+      ? ["ia.status <> 'archived'", "ia.status NOT IN ('converted','rejected')"]
+      : [
+          "ia.status <> 'archived'",
+          "ia.status NOT IN ('assigned','accepted','converted','rejected')"
+        ];
+    const periodClause = applyPeriodFilter('ia', 'created_at', period, params, dateQuery);
     if (periodClause) w.push(periodClause);
     if (isPM) {
       params.push(user.id);
@@ -304,9 +282,10 @@ function buildFeedParts({
         ia.created_at::timestamp                        AS event_at,
         NULL::int                                       AS work_id,
         NULL::text                                      AS work_code,
-        NULL::text                                      AS work_pm_name,
+        au.name::text                                   AS work_pm_name,
         NULL::text                                      AS work_status
       FROM inbox_applications ia
+      LEFT JOIN users au ON au.id = ia.assigned_pm_id
       WHERE ${w.join(' AND ')}
     `);
   }
@@ -314,7 +293,7 @@ function buildFeedParts({
   // ─── 4. call_history (subtab phone) ──────────────────────────────────
   if (wantApps && appSubtabPhone) {
     const w = ['ch.ai_is_target = true', 'ch.lead_id IS NULL'];
-    const periodClause = applyPeriodFilter('ch', 'created_at', period, params);
+    const periodClause = applyPeriodFilter('ch', 'created_at', period, params, dateQuery);
     if (periodClause) w.push(periodClause);
     if (!isDirectorLike || user.role === 'HEAD_TO') {
       params.push(user.id);
@@ -381,12 +360,15 @@ async function routes(fastify, opts) {
     const tab     = (q.tab    || 'all').toString();
     const subtab  = (q.subtab || '').toString();
     const period  = (q.period || 'all').toString();
+    const date_from = q.date_from;
+    const date_to = q.date_to;
+    const date_field = q.date_field;
     const search  = (q.search || '').toString().slice(0, 200).replace(/\0/g, '');
     const status  = (q.status || '').toString().slice(0, 100);
     const typeStr = (q.type   || '').toString().slice(0, 100);
     const source  = (q.source || '').toString().slice(0, 100);
     const respRaw = (q.resp   || '').toString();
-    const limit   = Math.max(1, Math.min(200, parseInt(q.limit, 10) || 50));
+    const limit   = Math.max(1, Math.min(500, parseInt(q.limit, 10) || 50));
     const offset  = Math.max(0, parseInt(q.offset, 10) || 0);
 
     let respUserId = null;
@@ -399,6 +381,7 @@ async function routes(fastify, opts) {
 
     const ctx = {
       tab, subtab, period, search, status, typeStr, source, respUserId,
+      date_from, date_to, date_field,
       user, isDirectorLike, isPM, isTO
     };
 
@@ -473,6 +456,462 @@ async function routes(fastify, opts) {
       period
     };
   });
+
+  /**
+   * GET /funnel-apps — агрегатор режима «Заявки» воронки хаба.
+   * marketplace: свободные pre_tender + inbox (как director-inbox)
+   * kanban: карты personal-kanban scope=all|owner, flow ∈ application|pre_tender
+   */
+  fastify.get('/funnel-apps', {
+    preHandler: [fastify.authenticate]
+  }, async (req, reply) => {
+    const user = req.user || {};
+    if (!ALLOWED_ROLES.includes(user.role)) {
+      return reply.code(403).send({ error: 'forbidden_role', role: user.role });
+    }
+
+    const isDirectorLike = DIRECTOR_LIKE_ROLES.includes(user.role);
+    const scope = isDirectorLike ? 'all' : 'owner';
+
+    try {
+      const marketplace = await loadFunnelMarketplace(db);
+      const kanban = await loadFunnelKanban(db, user, scope);
+      return {
+        success: true,
+        marketplace,
+        kanban,
+        columns: FUNNEL_APP_COLUMNS,
+        scope,
+        role: user.role,
+        counts: {
+          marketplace: marketplace.length,
+          kanban: kanban.length,
+          total: marketplace.length + kanban.length
+        }
+      };
+    } catch (e) {
+      req.log.error({ err: e }, '[tenders-hub] funnel-apps failed');
+      return reply.code(500).send({ error: 'funnel_apps_failed', message: e.message });
+    }
+  });
+}
+
+const MARKETPLACE_CLAIMABLE = ['new', 'in_review', 'need_docs'];
+const INBOX_FREE_STATUSES = ['new', 'ai_processed', 'under_review'];
+const FUNNEL_APP_COLUMNS = [
+  'marketplace', 'new', 'calc', 'approval', 'kp_prep', 'sent', 'addendum', 'win', 'lose', 'work'
+];
+const PK3_COLUMNS = ['new', 'calc', 'approval', 'kp_prep', 'sent', 'addendum', 'win', 'lose', 'work'];
+
+function clipText(s, n) {
+  const t = String(s || '').trim().replace(/\s+/g, ' ');
+  if (!t) return '';
+  if (t.length <= n) return t;
+  return t.slice(0, Math.max(1, n - 1)) + '…';
+}
+
+function buildAppTitle(customerName, workTitle, fallbackId) {
+  const c = String(customerName || '').trim();
+  const w = clipText(workTitle, 80);
+  if (c && w) return `${c} · ${w}`;
+  if (c) return c;
+  if (w) return w;
+  return `Заявка #${fallbackId}`;
+}
+
+function normalizeManualDocs(manualDocuments, preTenderId) {
+  let arr = manualDocuments;
+  if (typeof arr === 'string') {
+    try { arr = JSON.parse(arr); } catch (_) { arr = []; }
+  }
+  if (!Array.isArray(arr)) return [];
+  return arr.map((d, idx) => ({
+    kind: 'manual',
+    id: d.id || idx,
+    idx,
+    filename: d.original_filename || d.filename || d.name || `Документ ${idx + 1}`,
+    mime_type: d.mime_type || null,
+    size: d.size || null,
+    download_url: `/api/pre-tenders/${preTenderId}/documents/${idx}/download`
+  }));
+}
+
+function normalizeEmailDocs(emailAttachments, preTenderId) {
+  let arr = emailAttachments;
+  if (typeof arr === 'string') {
+    try { arr = JSON.parse(arr); } catch (_) { arr = []; }
+  }
+  if (!Array.isArray(arr)) return [];
+  return arr.map((d) => ({
+    kind: 'email',
+    id: d.id,
+    filename: d.original_filename || d.filename || `Вложение #${d.id}`,
+    mime_type: d.mime_type || null,
+    size: d.size || null,
+    download_url: preTenderId
+      ? `/api/pre-tenders/${preTenderId}/email-attachments/${d.id}/download`
+      : null
+  }));
+}
+
+async function loadFunnelMarketplace(db) {
+  const ptRes = await db.query(
+    `SELECT pt.id,
+            pt.customer_name,
+            pt.customer_inn,
+            pt.customer_email,
+            pt.contact_person,
+            pt.contact_phone,
+            pt.work_description,
+            pt.ai_work_type,
+            pt.work_deadline,
+            pt.estimated_sum,
+            pt.status,
+            pt.source_type,
+            pt.email_id,
+            pt.created_at,
+            pt.updated_at,
+            pt.manual_documents,
+            pt.has_documents,
+            e.subject AS email_subject,
+            COALESCE((
+              SELECT jsonb_agg(jsonb_build_object(
+                'id', ea.id,
+                'filename', ea.filename,
+                'original_filename', ea.original_filename,
+                'mime_type', ea.mime_type,
+                'size', ea.size
+              ) ORDER BY ea.id)
+              FROM email_attachments ea WHERE ea.email_id = pt.email_id
+            ), '[]'::jsonb) AS email_attachments,
+            (SELECT COUNT(*)::int FROM email_attachments ea WHERE ea.email_id = pt.email_id) AS email_attachments_count
+       FROM pre_tender_requests pt
+       LEFT JOIN emails e ON e.id = pt.email_id
+       LEFT JOIN tenders t ON t.source_pre_tender_id = pt.id
+      WHERE pt.assigned_to IS NULL
+        AND pt.status = ANY($1::text[])
+        AND t.id IS NULL
+      ORDER BY pt.created_at ASC
+      LIMIT 300`,
+    [MARKETPLACE_CLAIMABLE]
+  );
+
+  const inboxRes = await db.query(
+    `SELECT ia.id,
+            ia.subject,
+            ia.source_name,
+            ia.source_email,
+            ia.extracted_customer_name,
+            ia.extracted_customer_inn,
+            ia.extracted_customer_contact_person,
+            ia.extracted_customer_phone,
+            ia.ai_summary,
+            ia.ai_work_type,
+            ia.status,
+            ia.email_id,
+            ia.attachment_count,
+            ia.created_at,
+            ia.updated_at,
+            COALESCE((
+              SELECT jsonb_agg(jsonb_build_object(
+                'id', ea.id,
+                'filename', ea.filename,
+                'original_filename', ea.original_filename,
+                'mime_type', ea.mime_type,
+                'size', ea.size
+              ) ORDER BY ea.id)
+              FROM email_attachments ea WHERE ea.email_id = ia.email_id
+            ), '[]'::jsonb) AS email_attachments
+       FROM inbox_applications ia
+      WHERE ia.assigned_pm_id IS NULL
+        AND ia.status = ANY($1::text[])
+        AND NOT EXISTS (
+          SELECT 1 FROM pre_tender_requests pt
+           WHERE pt.email_id IS NOT NULL AND pt.email_id = ia.email_id
+        )
+      ORDER BY ia.created_at ASC
+      LIMIT 300`,
+    [INBOX_FREE_STATUSES]
+  );
+
+  const items = [];
+
+  for (const pt of ptRes.rows) {
+    const customer = pt.customer_name || null;
+    const work = pt.work_description || pt.ai_work_type || pt.email_subject || null;
+    const docs = [
+      ...normalizeEmailDocs(pt.email_attachments, pt.id),
+      ...normalizeManualDocs(pt.manual_documents, pt.id)
+    ];
+    items.push({
+      kind: 'pre_tender',
+      source_bucket: 'marketplace',
+      funnel_column: 'marketplace',
+      id: pt.id,
+      entity_id: pt.id,
+      card_id: null,
+      customer_name: customer,
+      customer_inn: pt.customer_inn || null,
+      contact_person: pt.contact_person || null,
+      contact_phone: pt.contact_phone || null,
+      customer_email: pt.customer_email || null,
+      work_title: clipText(work, 120) || null,
+      work_description: pt.work_description || null,
+      title: buildAppTitle(customer, work, pt.id),
+      status: pt.status,
+      source_label: pt.source_type || 'pre_tender',
+      owner_name: null,
+      owner_user_id: null,
+      deadline: pt.work_deadline || null,
+      estimated_sum: pt.estimated_sum != null ? Number(pt.estimated_sum) : null,
+      docs_count: docs.length,
+      documents: docs,
+      created_at: pt.created_at,
+      event_at: pt.created_at,
+      last_moved_at: pt.updated_at || pt.created_at,
+      open_hash: '#/director-inbox'
+    });
+  }
+
+  for (const ia of inboxRes.rows) {
+    const customer = ia.extracted_customer_name || null;
+    const work = ia.ai_work_type || ia.ai_summary || ia.subject || null;
+    const emailDocs = normalizeEmailDocs(ia.email_attachments, null).map((d) => ({
+      ...d,
+      download_url: `/api/inbox-applications/${ia.id}/attachments/${d.id}/download`
+    }));
+    items.push({
+      kind: 'inbox',
+      source_bucket: 'marketplace',
+      funnel_column: 'marketplace',
+      id: ia.id,
+      entity_id: ia.id,
+      card_id: null,
+      customer_name: customer,
+      customer_inn: ia.extracted_customer_inn || null,
+      contact_person: ia.extracted_customer_contact_person || null,
+      contact_phone: ia.extracted_customer_phone || null,
+      customer_email: ia.source_email || null,
+      work_title: clipText(work, 120) || null,
+      work_description: ia.ai_summary || ia.subject || null,
+      title: buildAppTitle(customer, work, ia.id),
+      status: ia.status,
+      source_label: 'inbox',
+      owner_name: null,
+      owner_user_id: null,
+      deadline: null,
+      estimated_sum: null,
+      docs_count: emailDocs.length || Number(ia.attachment_count) || 0,
+      documents: emailDocs,
+      created_at: ia.created_at,
+      event_at: ia.created_at,
+      last_moved_at: ia.updated_at || ia.created_at,
+      open_hash: '#/director-inbox'
+    });
+  }
+
+  return items;
+}
+
+async function loadFunnelKanban(db, user, scope) {
+  const where = [
+    'c.is_closed = FALSE',
+    `c.flow_type = ANY(ARRAY['application','pre_tender']::text[])`
+  ];
+  const params = [];
+  if (scope === 'owner') {
+    params.push(user.id);
+    where.push(`c.owner_user_id = $${params.length}`);
+  }
+
+  let rows;
+  try {
+    const r = await db.query(
+      `SELECT c.id AS card_id,
+              c.owner_user_id,
+              c.flow_type,
+              c.entity_kind,
+              c.entity_id,
+              c.current_main_status,
+              c.v3_column,
+              c.last_moved_at,
+              c.created_at,
+              c.updated_at,
+              u.name AS owner_name
+         FROM v_unified_kanban_cards c
+         LEFT JOIN users u ON u.id = c.owner_user_id
+        WHERE ${where.join(' AND ')}
+        ORDER BY c.v3_column, c.last_moved_at DESC NULLS LAST
+        LIMIT 800`,
+      params
+    );
+    rows = r.rows;
+  } catch (e) {
+    if (e && (e.code === '42P01' || /v_unified_kanban_cards/i.test(e.message || ''))) {
+      return [];
+    }
+    throw e;
+  }
+
+  const ptIds = [];
+  const iaIds = [];
+  for (const row of rows) {
+    if (row.entity_kind === 'pre_tender' && row.entity_id) ptIds.push(row.entity_id);
+    if (row.entity_kind === 'inbox_application' && row.entity_id) iaIds.push(row.entity_id);
+  }
+
+  const ptMap = new Map();
+  const iaMap = new Map();
+
+  if (ptIds.length) {
+    const ptRes = await db.query(
+      `SELECT pt.id,
+              pt.customer_name,
+              pt.customer_inn,
+              pt.customer_email,
+              pt.contact_person,
+              pt.contact_phone,
+              pt.work_description,
+              pt.ai_work_type,
+              pt.work_deadline,
+              pt.estimated_sum,
+              pt.status,
+              pt.source_type,
+              pt.manual_documents,
+              pt.email_id,
+              COALESCE((
+                SELECT jsonb_agg(jsonb_build_object(
+                  'id', ea.id,
+                  'filename', ea.filename,
+                  'original_filename', ea.original_filename,
+                  'mime_type', ea.mime_type,
+                  'size', ea.size
+                ) ORDER BY ea.id)
+                FROM email_attachments ea WHERE ea.email_id = pt.email_id
+              ), '[]'::jsonb) AS email_attachments
+         FROM pre_tender_requests pt
+        WHERE pt.id = ANY($1::int[])`,
+      [ptIds]
+    );
+    for (const row of ptRes.rows) ptMap.set(row.id, row);
+  }
+
+  if (iaIds.length) {
+    const iaRes = await db.query(
+      `SELECT ia.id,
+              ia.subject,
+              ia.source_name,
+              ia.source_email,
+              ia.extracted_customer_name,
+              ia.extracted_customer_inn,
+              ia.extracted_customer_contact_person,
+              ia.extracted_customer_phone,
+              ia.ai_summary,
+              ia.ai_work_type,
+              ia.status,
+              ia.attachment_count,
+              ia.email_id,
+              COALESCE((
+                SELECT jsonb_agg(jsonb_build_object(
+                  'id', ea.id,
+                  'filename', ea.filename,
+                  'original_filename', ea.original_filename,
+                  'mime_type', ea.mime_type,
+                  'size', ea.size
+                ) ORDER BY ea.id)
+                FROM email_attachments ea WHERE ea.email_id = ia.email_id
+              ), '[]'::jsonb) AS email_attachments
+         FROM inbox_applications ia
+        WHERE ia.id = ANY($1::int[])`,
+      [iaIds]
+    );
+    for (const row of iaRes.rows) iaMap.set(row.id, row);
+  }
+
+  const items = [];
+  for (const row of rows) {
+    const col = PK3_COLUMNS.includes(row.v3_column) ? row.v3_column : 'new';
+    let customer = null;
+    let work = null;
+    let workDescription = null;
+    let customerInn = null;
+    let contactPerson = null;
+    let contactPhone = null;
+    let customerEmail = null;
+    let deadline = null;
+    let estimatedSum = null;
+    let status = row.current_main_status;
+    let sourceLabel = row.flow_type;
+    let docs = [];
+    let kind = row.entity_kind === 'inbox_application' ? 'inbox' : 'pre_tender';
+
+    if (row.entity_kind === 'pre_tender') {
+      const pt = ptMap.get(row.entity_id) || {};
+      customer = pt.customer_name || null;
+      work = pt.work_description || pt.ai_work_type || null;
+      workDescription = pt.work_description || null;
+      customerInn = pt.customer_inn || null;
+      contactPerson = pt.contact_person || null;
+      contactPhone = pt.contact_phone || null;
+      customerEmail = pt.customer_email || null;
+      deadline = pt.work_deadline || null;
+      estimatedSum = pt.estimated_sum != null ? Number(pt.estimated_sum) : null;
+      status = pt.status || status;
+      sourceLabel = pt.source_type || 'pre_tender';
+      docs = [
+        ...normalizeEmailDocs(pt.email_attachments, pt.id),
+        ...normalizeManualDocs(pt.manual_documents, pt.id)
+      ];
+    } else if (row.entity_kind === 'inbox_application') {
+      const ia = iaMap.get(row.entity_id) || {};
+      customer = ia.extracted_customer_name || null;
+      work = ia.ai_work_type || ia.ai_summary || ia.subject || null;
+      workDescription = ia.ai_summary || ia.subject || null;
+      customerInn = ia.extracted_customer_inn || null;
+      contactPerson = ia.extracted_customer_contact_person || null;
+      contactPhone = ia.extracted_customer_phone || null;
+      customerEmail = ia.source_email || null;
+      status = ia.status || status;
+      sourceLabel = 'inbox';
+      docs = normalizeEmailDocs(ia.email_attachments, null).map((d) => ({
+        ...d,
+        download_url: `/api/inbox-applications/${ia.id}/attachments/${d.id}/download`
+      }));
+    }
+
+    items.push({
+      kind,
+      source_bucket: 'kanban',
+      funnel_column: col,
+      id: row.entity_id,
+      entity_id: row.entity_id,
+      card_id: row.card_id,
+      customer_name: customer,
+      customer_inn: customerInn,
+      contact_person: contactPerson,
+      contact_phone: contactPhone,
+      customer_email: customerEmail,
+      work_title: clipText(work, 120) || null,
+      work_description: workDescription,
+      title: buildAppTitle(customer, work, row.entity_id || row.card_id),
+      status,
+      source_label: sourceLabel,
+      owner_name: row.owner_name || null,
+      owner_user_id: row.owner_user_id || null,
+      deadline,
+      estimated_sum: estimatedSum,
+      docs_count: docs.length,
+      documents: docs,
+      v3_column: col,
+      flow_type: row.flow_type,
+      created_at: row.created_at,
+      event_at: row.last_moved_at || row.created_at,
+      last_moved_at: row.last_moved_at || row.created_at,
+      open_hash: row.card_id ? `#/personal-kanban-v3?card=${row.card_id}` : '#/personal-kanban-v3'
+    });
+  }
+
+  return items;
 }
 
 module.exports = routes;

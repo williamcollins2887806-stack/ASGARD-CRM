@@ -94,6 +94,23 @@
   max-height: none;
 }
 
+/* Просчёт / анализ РП: не просвечивать дежурство/реестр под fullscreen */
+.cr-m-overlay:has(.rp-calc-modal),
+.cr-m-overlay:has(.rp-review-modal) {
+  background: var(--bg1, #0b0f14);
+  padding: 0;
+  /* 14.09: было stretch — фиксировало высоту модалки и убивало скролл overlay
+     (см. premium-tender-gold.css, тот же фикс). */
+  align-items: flex-start;
+  justify-content: stretch;
+}
+.cr-m-overlay:has(.rp-calc-modal) .cr-m--fullscreen,
+.cr-m-overlay:has(.rp-review-modal) .cr-m--fullscreen {
+  width: 100%;
+  min-height: 100%;
+  background: var(--bg2);
+}
+
 /* ─────────────────────────────────────────────────────────────────────────────
    TOP ACCENT LINE (gradient)
    ───────────────────────────────────────────────────────────────────────────── */
@@ -316,7 +333,8 @@
   background: var(--overlay);
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
-  z-index: var(--z-confirm);
+  /* AsgardUI showModal sets inline z-index 10000+; token --z-confirm (700) is below that. */
+  z-index: 11050;
   opacity: 0;
   transition: opacity 0.3s cubic-bezier(0.16, 1, 0.3, 1);
 }

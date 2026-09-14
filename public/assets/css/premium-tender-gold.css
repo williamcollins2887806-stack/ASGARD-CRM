@@ -1,0 +1,550 @@
+/* ═══════════════════════════════════════════════════════════════════════════════
+   ASGARD CRM — Premium Tender Gold Layer
+   Скоуп: .rp-calc-* · .rp-review-* · .rp-calc-modal · .rp-review-modal · .pm-duty-*
+   Зависимости: design-tokens.css → rp-calc-modal.css → rp-review-modal.css → app.css
+   Подключать ПОСЛЕ базовых стилей. Только var() / color-mix — без #hex и rgb().
+   ═══════════════════════════════════════════════════════════════════════════════ */
+
+.rp-calc-modal, .rp-calc-modal--embedded, .rp-review-modal, .pm-duty-page {
+  --ptg-r: 13px;
+  --ptg-rl: 14px;
+  --ptg-elev: var(--shadow-md);
+  --ptg-elev-h: var(--shadow-lg);
+  --ptg-line: linear-gradient(90deg, transparent, var(--gold) 18%, var(--gold-l) 50%, var(--gold) 82%, transparent);
+  --ptg-surf: color-mix(in srgb, var(--bg2) 92%, var(--gold-bg));
+}
+
+/* ── 1. Hero + статус-пиллы ─────────────────────────────────────────────────── */
+.rp-calc-hero, .pm-duty-hero {
+  position: relative; overflow: hidden;
+  border-radius: var(--ptg-rl);
+  border: 1px solid color-mix(in srgb, var(--gold) 22%, var(--brd));
+  background:
+    radial-gradient(ellipse 120% 90% at 0% -30%, color-mix(in srgb, var(--gold) 14%, transparent), transparent 58%),
+    radial-gradient(ellipse 80% 70% at 100% 110%, color-mix(in srgb, var(--blue) 10%, transparent), transparent 52%),
+    linear-gradient(165deg, color-mix(in srgb, var(--bg4) 55%, var(--bg2)), var(--bg2) 48%, color-mix(in srgb, var(--bg2) 88%, var(--bg1)));
+  box-shadow: var(--ptg-elev);
+}
+.rp-calc-hero::after, .pm-duty-hero::after {
+  content: ''; position: absolute; left: 0; right: 0; bottom: 0; height: 2px;
+  background: var(--ptg-line); opacity: .85; pointer-events: none;
+}
+.rp-calc-hero { border-left: 4px solid var(--gold); padding: 18px 20px 16px; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px 20px; }
+.pm-duty-hero { padding: 24px 26px; }
+.rp-calc-hero__main { flex: 1 1 240px; min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 4px; }
+.rp-calc-hero__kicker { margin: 0; line-height: 1.2; }
+.rp-calc-hero__title { margin: 0; line-height: 1.15; }
+.rp-calc-hero__sub { margin: 2px 0 0; }
+.rp-calc-hero__side { display: flex; flex-direction: row; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px; }
+.pm-duty-hero.is-you {
+  border-color: color-mix(in srgb, var(--ok) 38%, var(--gold) 12%, var(--brd));
+  box-shadow: var(--ptg-elev), 0 0 0 1px color-mix(in srgb, var(--ok) 18%, transparent);
+}
+
+/* Просчёт/анализ: плотный fullscreen — страница под модалкой не просвечивает */
+.cr-m-overlay:has(.rp-calc-modal),
+.cr-m-overlay:has(.rp-review-modal) {
+  background: var(--bg1) !important;
+  padding: 0 !important;
+  /* 14.09: было stretch — модалка фиксировалась в высоту overlay, а overflow:hidden
+     внутри прятал остаток контента (модалку просчёта РП нельзя было проскроллить).
+     flex-start возвращает рост по контенту: скроллит overlay (overflow-y:auto). */
+  align-items: flex-start !important;
+  justify-content: stretch !important;
+}
+.cr-m-overlay:has(.rp-calc-modal) .cr-m--fullscreen,
+.cr-m-overlay:has(.rp-review-modal) .cr-m--fullscreen {
+  width: 100% !important;
+  min-height: 100% !important;
+  background: var(--bg2) !important;
+}
+
+.pm-duty-hero-glow {
+  opacity: .65;
+  background: radial-gradient(circle, color-mix(in srgb, var(--gold) 32%, transparent), transparent 68%);
+}
+.rp-calc-hero__kicker, .pm-duty-hero-kicker { color: var(--gold); letter-spacing: .11em; font-weight: var(--fw-bold); }
+.rp-calc-hero__title, .pm-duty-hero-title { font-weight: var(--fw-extra); letter-spacing: -.025em; text-wrap: balance; }
+.pm-duty-progress > i { background: var(--grad-gold); box-shadow: 0 0 12px color-mix(in srgb, var(--gold) 35%, transparent); }
+
+.rp-calc-dl, .pm-duty-chip, .pm-duty-live-tag, .pm-duty-preview-tag, .pm-duty-hot-tag, .pm-duty-stale-tag {
+  border-radius: var(--r-full); font-weight: var(--fw-bold); letter-spacing: .03em; backdrop-filter: blur(8px);
+}
+.rp-calc-dl--ok  { color: var(--ok-t);  border-color: color-mix(in srgb, var(--ok) 42%, var(--brd));  background: color-mix(in srgb, var(--ok-bg) 75%, var(--bg2)); }
+.rp-calc-dl--hot { color: var(--warn-t); border-color: color-mix(in srgb, var(--warn) 42%, var(--brd)); background: color-mix(in srgb, var(--warn-bg) 75%, var(--bg2)); }
+.rp-calc-dl--over { color: var(--err-t); border-color: color-mix(in srgb, var(--err) 42%, var(--brd)); background: color-mix(in srgb, var(--err-bg) 75%, var(--bg2)); }
+.rp-calc-badge {
+  background: color-mix(in srgb, var(--gold) 16%, var(--bg2)); color: var(--gold-l);
+  border-color: color-mix(in srgb, var(--gold) 38%, var(--brd));
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--gold) 8%, transparent);
+}
+.pm-duty-livebar.is-duty { border-color: color-mix(in srgb, var(--ok) 45%, var(--brd)); background: color-mix(in srgb, var(--ok-bg) 80%, var(--bg3)); }
+.pm-duty-live-tag  { background: color-mix(in srgb, var(--gold) 18%, var(--bg3)); color: var(--gold-l); }
+.pm-duty-hot-tag   { background: color-mix(in srgb, var(--err) 16%, var(--bg3)); color: var(--err-t); }
+.pm-duty-stale-tag { background: color-mix(in srgb, var(--warn) 18%, var(--bg3)); color: var(--warn-t); }
+
+/* ── 2. Сегментированные вкладки ──────────────────────────────────────────── */
+.rp-calc-tabs-wrap, .pm-duty-tabs-wrap { padding-top: var(--sp-3); }
+.rp-calc-tabs, .pm-duty-tabs, .rp-review-tabs {
+  display: inline-flex; flex-wrap: wrap; gap: 3px; padding: 4px;
+  border-radius: var(--ptg-r);
+  background: color-mix(in srgb, var(--bg3) 70%, var(--bg2));
+  border: 1px solid color-mix(in srgb, var(--gold) 14%, var(--brd));
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--t1) 4%, transparent);
+}
+.rp-review-tabs { border-bottom: none; padding-bottom: 4px; margin-bottom: var(--sp-4); }
+.rp-calc-tab, .pm-duty-tab, .rp-review-tab {
+  border-radius: calc(var(--ptg-r) - 3px);
+  transition: background var(--base), color var(--base), box-shadow var(--base), transform var(--base);
+}
+.rp-calc-tab.is-active, .pm-duty-tab.is-active {
+  background: color-mix(in srgb, var(--bg2) 88%, var(--gold-bg)); color: var(--t1); font-weight: var(--fw-bold);
+  box-shadow: 0 1px 3px color-mix(in srgb, var(--bg0) 28%, transparent), 0 0 0 1px color-mix(in srgb, var(--gold) 22%, var(--brd));
+}
+.rp-review-tab.active {
+  background: color-mix(in srgb, var(--gold-bg) 90%, var(--bg3)); color: var(--gold-l);
+  box-shadow: inset 0 -2px 0 var(--gold);
+}
+.rp-calc-tab em, .pm-duty-tab em { background: var(--gold); color: var(--bg0); font-weight: var(--fw-bold); }
+.rp-calc-tab.is-active em, .pm-duty-tab.is-active em {
+  background: color-mix(in srgb, var(--gold-h) 75%, var(--gold));
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--gold) 40%, transparent);
+}
+.rp-review-tab-badge { background: var(--blue); color: var(--text-on-accent); }
+
+/* ── 3. Карточки / панели ─────────────────────────────────────────────────── */
+.rp-calc-modal, .rp-calc-modal--embedded { border-radius: var(--ptg-rl); box-shadow: var(--shadow-xl); }
+/* fullscreen-модалка растёт по контенту (cr-m--fullscreen: height auto) — overflow:hidden
+   её обрезал. embedded-вариант оставляет hidden ниже (rp-calc-modal.css:30, свои скругления). */
+.rp-calc-modal { overflow: visible; }
+.rp-calc-body { background: color-mix(in srgb, var(--bg1) 55%, var(--bg2)); }
+
+.rp-calc-card, .rp-calc-preview-sec, .rp-review-meta, .rp-review-section, .rp-review-summary-card,
+.rp-review-decision-card, .rp-review-estimate, .rp-review-analysis-ref,
+.pm-duty-roster-panel, .pm-duty-lb-panel, .pm-duty-queue-panel, .pm-duty-assign, .pm-duty-banner {
+  border-radius: var(--ptg-r);
+  border: 1px solid color-mix(in srgb, var(--brd) 88%, var(--gold) 12%);
+  background: var(--ptg-surf); box-shadow: var(--ptg-elev);
+  transition: border-color var(--base), box-shadow var(--base), transform var(--base);
+}
+.rp-calc-card:hover, .rp-review-decision-card:hover:not(:disabled), .pm-duty-assign:hover {
+  border-color: color-mix(in srgb, var(--gold) 28%, var(--brd)); box-shadow: var(--ptg-elev-h);
+}
+.rp-calc-card__head, .rp-review-section-head { color: var(--gold-l); letter-spacing: .06em; }
+.rp-review-summary-card { border-left: 4px solid var(--gold); }
+.rp-review-summary-card.submit { border-left-color: var(--ok);  background: color-mix(in srgb, var(--ok-bg) 55%, var(--bg2)); }
+.rp-review-summary-card.reject { border-left-color: var(--err); background: color-mix(in srgb, var(--err-bg) 55%, var(--bg2)); }
+.rp-review-decision-card.selected.submit {
+  border-color: var(--ok); background: color-mix(in srgb, var(--ok-bg) 70%, var(--bg2));
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--ok) 25%, transparent);
+}
+.rp-review-decision-card.selected.reject {
+  border-color: var(--err); background: color-mix(in srgb, var(--err-bg) 70%, var(--bg2));
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--err) 25%, transparent);
+}
+.rp-review-decision-card:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--gold) 35%, var(--brd));
+  background: color-mix(in srgb, var(--gold-bg) 40%, var(--bg2));
+}
+.rp-review-badge.draft        { background: color-mix(in srgb, var(--warn-bg) 85%, var(--bg3)); color: var(--warn-t); }
+.rp-review-badge.final        { background: color-mix(in srgb, var(--ok-bg) 85%, var(--bg3));  color: var(--ok-t); }
+.rp-review-badge.mode-analysis { background: color-mix(in srgb, var(--info-bg) 85%, var(--bg3)); color: var(--info-t); }
+.rp-review-badge.mode-calc    { background: color-mix(in srgb, var(--gold-bg) 85%, var(--bg3)); color: var(--gold-l); }
+.rp-review-analysis-ref { border-color: color-mix(in srgb, var(--gold) 32%, var(--brd)); background: color-mix(in srgb, var(--gold-bg) 45%, var(--bg2)); }
+.rp-review-estimate.has-file { border-color: color-mix(in srgb, var(--ok) 38%, var(--brd)); background: color-mix(in srgb, var(--ok-bg) 35%, var(--bg2)); }
+.rp-review-to-bar { background: color-mix(in srgb, var(--info-bg) 70%, var(--bg2)); border-color: color-mix(in srgb, var(--blue-l) 35%, var(--brd)); }
+.rp-review-to-bar h4 { color: var(--info-t); }
+
+/* ── 4. KPI ─────────────────────────────────────────────────────────────────── */
+/* Рамки/заливка — только у дежурства (.pm-duty-kpi). В просчёте РП (итоги сметы и
+   футер) числа идут без «круглых рамок»: снимаем frame-стили, размер берётся из
+   rp-calc-modal.css (смета b=16px, футер b=15px, tabular-nums там же). */
+.pm-duty-kpi {
+  border-radius: var(--ptg-r);
+  border: 1px solid color-mix(in srgb, var(--brd) 90%, var(--gold) 10%);
+  background: color-mix(in srgb, var(--bg3) 55%, var(--bg2));
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--t1) 5%, transparent);
+}
+.pm-duty-kpi b {
+  font-size: 24px; font-weight: var(--fw-extra); font-variant-numeric: tabular-nums;
+  letter-spacing: -.02em; line-height: 1.05;
+}
+.rp-calc-smeta-totals .kpi b, .rp-calc-footer__kpi b {
+  font-weight: var(--fw-extra); font-variant-numeric: tabular-nums;
+}
+.pm-duty-kpi.is-hot  { border-color: color-mix(in srgb, var(--warn) 50%, var(--brd)); background: color-mix(in srgb, var(--warn-bg) 65%, var(--bg2)); }
+.pm-duty-kpi.is-hot b  { color: var(--warn-t); }
+.pm-duty-kpi.is-over { border-color: color-mix(in srgb, var(--err) 50%, var(--brd));  background: color-mix(in srgb, var(--err-bg) 65%, var(--bg2)); }
+.pm-duty-kpi.is-over b { color: var(--err-t); }
+.rp-calc-smeta-totals .kpi.is-gold b, .rp-calc-footer__kpi.is-gold b {
+  color: var(--gold-l); text-shadow: 0 0 24px color-mix(in srgb, var(--gold) 35%, transparent);
+}
+.rp-calc-smeta-totals {
+  border-top: 1px solid color-mix(in srgb, var(--gold) 22%, var(--brd));
+  background: color-mix(in srgb, var(--gold-bg) 55%, var(--bg2));
+}
+.pm-duty-rating-badge {
+  border-radius: calc(var(--ptg-r) + 4px);
+  background: color-mix(in srgb, var(--bg2) 90%, var(--gold-bg)); box-shadow: var(--ptg-elev);
+}
+.pm-duty-rating-badge:hover {
+  border-color: color-mix(in srgb, var(--gold) 48%, var(--brd));
+  box-shadow: var(--ptg-elev-h), var(--shadow-glow-gold);
+}
+.pm-duty-rating-score, .pm-duty-drawer-score { font-variant-numeric: tabular-nums; color: var(--gold-l); }
+
+/* ── 5. Таблица сметы ─────────────────────────────────────────────────────── */
+.rp-calc-smeta-wrap { border-radius: var(--ptg-r); border-color: color-mix(in srgb, var(--gold) 12%, var(--brd)); box-shadow: var(--ptg-elev); }
+.rp-calc-smeta thead th {
+  position: sticky; top: 0; z-index: 2;
+  background: color-mix(in srgb, var(--bg4) 82%, var(--bg2)); backdrop-filter: blur(10px);
+  box-shadow: 0 1px 0 var(--brd); color: var(--t2);
+}
+.rp-calc-smeta tbody tr:nth-child(even):not(.rp-calc-sec):not(.rp-calc-rollup):not(.rp-calc-subtotal) td {
+  background: color-mix(in srgb, var(--bg3) 28%, transparent);
+}
+.rp-calc-smeta tbody tr:hover:not(.rp-calc-sec) td { background: color-mix(in srgb, var(--gold-bg) 35%, var(--bg2)); }
+.rp-calc-smeta th.num, .rp-calc-smeta td.num {
+  text-align: right; font-variant-numeric: tabular-nums; font-feature-settings: 'tnum' 1;
+}
+.rp-calc-smeta tr.rp-calc-sec td {
+  background: color-mix(in srgb, var(--gold-bg) 75%, var(--bg2)); color: var(--gold-l);
+  border-bottom-color: color-mix(in srgb, var(--gold) 30%, var(--brd));
+}
+.rp-calc-smeta tr.rp-calc-rollup.is-strong td {
+  background: color-mix(in srgb, var(--gold-bg) 85%, var(--bg2)); color: var(--gold-l); font-size: 13px;
+}
+.rp-calc-smeta input.rp-calc-cell {
+  background: color-mix(in srgb, var(--gold-bg) 45%, var(--bg)); border-color: color-mix(in srgb, var(--gold) 32%, var(--brd));
+}
+.rp-calc-smeta input.rp-calc-cell:focus {
+  border-color: var(--gold); box-shadow: 0 0 0 3px color-mix(in srgb, var(--gold) 18%, transparent);
+}
+.rp-calc-smeta select.rp-calc-unit {
+  background: color-mix(in srgb, var(--gold-bg) 40%, var(--bg));
+  border-color: color-mix(in srgb, var(--gold) 35%, var(--brd));
+  color: var(--t1);
+}
+.rp-calc-smeta select.rp-calc-unit:focus {
+  border-color: var(--gold);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--gold) 18%, transparent);
+}
+
+/* ── 6. Dropzones + файлы ─────────────────────────────────────────────────── */
+.rp-calc-drop {
+  border-radius: var(--ptg-r); border-color: color-mix(in srgb, var(--gold) 28%, var(--brd));
+  background: color-mix(in srgb, var(--gold-bg) 35%, var(--bg2));
+}
+.rp-calc-drop:hover, .rp-calc-drop.is-drag {
+  border-color: var(--gold); background: color-mix(in srgb, var(--gold-bg) 65%, var(--bg2)); box-shadow: var(--shadow-glow-gold);
+}
+.rp-calc-drop.has-file { border-color: color-mix(in srgb, var(--ok) 45%, var(--brd)); background: color-mix(in srgb, var(--ok-bg) 55%, var(--bg2)); }
+.rp-calc-file-list li { border-radius: calc(var(--ptg-r) - 2px); transition: border-color var(--base), transform var(--base); }
+.rp-calc-file-list li:hover { border-color: color-mix(in srgb, var(--gold) 30%, var(--brd)); transform: translateY(-1px); }
+.rp-calc-file-list .tag { background: color-mix(in srgb, var(--gold-bg) 80%, var(--bg)); color: var(--gold-l); }
+
+/* ── 7. Sticky footer + золотая CTA ───────────────────────────────────────── */
+.rp-calc-footer, .rp-review-footer {
+  position: sticky; bottom: 0; z-index: var(--z-sticky);
+  border-top: 1px solid color-mix(in srgb, var(--gold) 18%, var(--brd));
+  background: color-mix(in srgb, var(--bg2) 94%, var(--bg3)); backdrop-filter: blur(12px);
+  box-shadow: 0 -8px 24px color-mix(in srgb, var(--bg0) 22%, transparent), inset 0 1px 0 color-mix(in srgb, var(--t1) 4%, transparent);
+}
+.rp-calc-footer .btn.primary, .rp-review-footer .btn.primary, .rp-review-footer #rpFinal,
+.rp-calc-mail-preview__acts .btn.primary {
+  background: var(--gold) !important; border-color: var(--gold-h) !important; color: var(--bg0) !important;
+  font-weight: var(--fw-bold); min-width: 168px;
+  box-shadow: 0 1px 0 color-mix(in srgb, var(--gold-l) 55%, transparent), 0 4px 14px color-mix(in srgb, var(--gold) 28%, transparent);
+  transition: filter var(--base), transform var(--base), box-shadow var(--base);
+}
+.rp-calc-footer .btn.primary:hover, .rp-review-footer .btn.primary:hover, .rp-calc-mail-preview__acts .btn.primary:hover {
+  filter: brightness(1.07); transform: translateY(-1px);
+  box-shadow: 0 2px 0 color-mix(in srgb, var(--gold-l) 55%, transparent), 0 8px 22px color-mix(in srgb, var(--gold) 35%, transparent);
+}
+.rp-calc-footer .btn.ghost, .rp-review-footer .btn.ghost { border-color: color-mix(in srgb, var(--gold) 22%, var(--brd)); }
+.rp-calc-footer .btn.ghost:hover {
+  background: color-mix(in srgb, var(--gold-bg) 55%, transparent);
+  border-color: color-mix(in srgb, var(--gold) 38%, var(--brd)); color: var(--gold-l);
+}
+
+/* ── 8. Предпросмотр письма ───────────────────────────────────────────────── */
+.rp-calc-mail-preview {
+  /* Плотный фон — без «просвечивания» дежурства/реестра */
+  background: var(--bg1);
+  backdrop-filter: none;
+}
+.rp-calc-mail-preview__bar {
+  border-bottom: 1px solid color-mix(in srgb, var(--gold) 16%, var(--brd));
+  background: color-mix(in srgb, var(--bg2) 96%, var(--gold-bg));
+  box-shadow: 0 1px 0 color-mix(in srgb, var(--t1) 4%, transparent);
+}
+.rp-calc-mail-preview__frame {
+  flex: 1; margin: var(--sp-3) var(--sp-4) var(--sp-4); width: calc(100% - var(--sp-8));
+  border: 1px solid var(--brd); border-radius: calc(var(--ptg-r) - 2px);
+  background: color-mix(in srgb, var(--bg5) 35%, var(--bg2));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--brd) 80%, transparent), var(--shadow-md);
+  min-height: 420px;
+}
+.rp-calc-mail-preview__to {
+  margin: var(--sp-3) var(--sp-4) 0; padding: var(--sp-3) var(--sp-4);
+  border-radius: var(--ptg-r);
+  border: 1px solid color-mix(in srgb, var(--blue-l) 28%, var(--brd));
+  background: color-mix(in srgb, var(--info-bg) 55%, var(--bg2));
+}
+.rp-calc-mail-preview__to-head {
+  display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--sp-2) var(--sp-3);
+  font-size: var(--text-md); font-weight: var(--fw-bold); color: var(--t1); margin-bottom: var(--sp-3);
+}
+.rp-calc-mail-preview__to-hint { font-size: var(--text-xs); font-weight: var(--fw-med); color: var(--t2); letter-spacing: .02em; }
+.rp-calc-mail-preview__to-list {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
+}
+.rp-calc-mail-preview__to-item {
+  display: inline-flex; align-items: center; gap: 0; padding: 0;
+  border: none; background: transparent; cursor: pointer;
+  font-size: var(--text-sm); color: var(--t1);
+  transition: transform var(--base);
+}
+.rp-calc-mail-preview__to-item input[type="checkbox"] {
+  position: absolute; opacity: 0; width: 1px; height: 1px; pointer-events: none;
+}
+.rp-calc-mail-preview__chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 6px 12px; border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--brd) 85%, var(--gold));
+  background: color-mix(in srgb, var(--bg3) 55%, var(--bg2));
+  font-weight: var(--fw-semi); line-height: 1.2;
+  transition: border-color var(--base), background var(--base), box-shadow var(--base), color var(--base);
+}
+.rp-calc-mail-preview__chip::before {
+  content: ''; width: 8px; height: 8px; border-radius: 50%;
+  background: color-mix(in srgb, var(--t3) 70%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--brd) 80%, transparent);
+}
+.rp-calc-mail-preview__to-item:hover .rp-calc-mail-preview__chip {
+  border-color: color-mix(in srgb, var(--gold) 40%, var(--brd));
+  background: color-mix(in srgb, var(--gold-bg) 40%, var(--bg2));
+}
+.rp-calc-mail-preview__to-item.is-on .rp-calc-mail-preview__chip {
+  border-color: color-mix(in srgb, var(--gold) 60%, var(--brd));
+  background: color-mix(in srgb, var(--gold-bg) 80%, var(--bg2));
+  color: var(--gold-l);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--gold) 22%, transparent), 0 4px 14px color-mix(in srgb, var(--gold) 14%, transparent);
+}
+.rp-calc-mail-preview__to-item.is-on .rp-calc-mail-preview__chip::before {
+  background: var(--gold);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--gold) 28%, transparent);
+}
+.rp-calc-mail-preview__to-item:hover {
+  border-color: transparent; background: transparent;
+}
+.rp-calc-mail-preview__to-item.is-on {
+  border-color: transparent; background: transparent; box-shadow: none;
+}
+.rp-calc-mail-preview__to-item.is-on input[type="checkbox"] { accent-color: var(--gold); }
+.rp-calc-mail-preview__to-warn {
+  margin-top: var(--sp-2); padding: var(--sp-2) var(--sp-3); border-radius: var(--r-sm);
+  font-size: var(--text-sm); font-weight: var(--fw-semi); color: var(--err-t);
+  background: color-mix(in srgb, var(--err-bg) 80%, var(--bg2));
+  border: 1px solid color-mix(in srgb, var(--err) 35%, var(--brd));
+}
+.rp-calc-mail-preview__to-warn:not([hidden]) { animation: ptg-warn-in var(--slow) ease; }
+.rp-calc-mail-preview__skip {
+  margin: var(--sp-3) var(--sp-4) 0; padding: var(--sp-3) var(--sp-4); border-radius: var(--ptg-r);
+  font-size: var(--text-base); color: var(--t2);
+  border: 1px dashed color-mix(in srgb, var(--ok) 35%, var(--brd));
+  background: color-mix(in srgb, var(--ok-bg) 45%, var(--bg2));
+}
+.rp-calc-mail-preview__skip b { color: var(--ok-t); font-weight: var(--fw-bold); }
+.rp-calc-email-frame { border-radius: var(--ptg-r); border-color: color-mix(in srgb, var(--gold) 14%, var(--brd)); background: color-mix(in srgb, var(--bg5) 40%, var(--bg2)); }
+
+@keyframes ptg-warn-in { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
+
+/* ── 9. RP Review — чипы, прогресс, инпуты ───────────────────────────────── */
+.rp-review-chip.on { border-color: var(--gold); background: color-mix(in srgb, var(--gold-bg) 85%, var(--bg3)); color: var(--gold-l); }
+.rp-review-chip:hover:not(:disabled) { border-color: color-mix(in srgb, var(--gold) 45%, var(--brd)); }
+.rp-review-seg button.on { background: color-mix(in srgb, var(--gold-bg) 90%, var(--bg3)); color: var(--gold-l); }
+.rp-review-progress bar i { background: var(--grad-gold); }
+.rp-review-timeline { border-left-color: color-mix(in srgb, var(--gold) 35%, var(--brd)); }
+.rp-review-timeline li::before { background: var(--gold); box-shadow: 0 0 0 3px color-mix(in srgb, var(--gold-bg) 90%, transparent); }
+.rp-review-thread-feed { border-bottom-color: color-mix(in srgb, var(--gold) 12%, var(--brd)); }
+.rp-review-field .inp:focus, .rp-calc-field .inp:focus {
+  border-color: color-mix(in srgb, var(--gold) 50%, var(--brd));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--gold) 16%, transparent);
+}
+.rp-review-field label .req { color: var(--err-t); }
+
+/* ── 10. PM Duty — очередь, лидерборд, гantt ───────────────────────────────── */
+.pm-duty-row {
+  border-radius: var(--ptg-r); background: color-mix(in srgb, var(--bg2) 88%, var(--bg3)); box-shadow: var(--shadow-sm);
+}
+.pm-duty-row:hover { border-color: color-mix(in srgb, var(--gold) 28%, var(--brd)); box-shadow: var(--ptg-elev-h); }
+.pm-duty-row.pm-duty-dl--ok   { border-left-color: var(--ok); }
+.pm-duty-row.pm-duty-dl--hot  { border-left-color: var(--warn); }
+.pm-duty-row.pm-duty-dl--over { border-left-color: var(--err); }
+.pm-duty-lb-item { border-radius: var(--ptg-r); background: color-mix(in srgb, var(--bg2) 90%, var(--bg3)); }
+.pm-duty-lb-item:hover { border-color: color-mix(in srgb, var(--gold) 32%, var(--brd)); box-shadow: var(--ptg-elev); }
+.pm-duty-lb-rank { color: var(--gold); font-variant-numeric: tabular-nums; }
+.pm-duty-lb-score { color: var(--gold-l); font-size: 15px; }
+.pm-duty-lb-item:first-child .pm-duty-lb-rank { color: var(--gold-l); font-weight: var(--fw-extra); }
+.pm-duty-gantt-track { border-radius: calc(var(--ptg-r) - 2px); background: color-mix(in srgb, var(--bg3) 80%, var(--bg2)); }
+.pm-duty-gantt-bar { background: color-mix(in srgb, var(--blue-l) 65%, var(--blue)); border-radius: 6px; }
+.pm-duty-gantt-bar.active { background: var(--grad-gold); box-shadow: 0 0 12px color-mix(in srgb, var(--gold) 30%, transparent); }
+.pm-duty-gantt-today { background: var(--err); box-shadow: 0 0 8px color-mix(in srgb, var(--err) 40%, transparent); }
+.pm-duty-gantt-row.is-active .pm-duty-gantt-name { color: var(--gold-l); }
+.pm-duty-gantt--empty {
+  border-radius: var(--ptg-r); border-style: dashed; color: var(--t2);
+  background: color-mix(in srgb, var(--gold-bg) 25%, var(--bg2));
+}
+.pm-duty-banner.warn { border-color: color-mix(in srgb, var(--warn) 42%, var(--brd)); background: color-mix(in srgb, var(--warn-bg) 70%, var(--bg3)); }
+.pm-duty-break-bar > i { background: var(--grad-gold); }
+
+/* ── 11. Empty / skeleton ───────────────────────────────────────────────────── */
+.pm-duty-empty {
+  border-radius: var(--ptg-rl); border-style: dashed; border-color: color-mix(in srgb, var(--gold) 22%, var(--brd));
+  background: radial-gradient(ellipse 70% 50% at 50% 0%, color-mix(in srgb, var(--gold-bg) 80%, transparent), transparent 72%), color-mix(in srgb, var(--bg2) 90%, var(--bg3));
+}
+.pm-duty-empty-icon {
+  border-color: color-mix(in srgb, var(--gold) 30%, var(--brd));
+  background: color-mix(in srgb, var(--gold-bg) 55%, var(--bg3)); color: var(--gold-l); box-shadow: var(--shadow-sm);
+}
+.rp-calc-empty, .rp-review-empty {
+  padding: var(--sp-10) var(--sp-6); text-align: center;
+  border: 1px dashed color-mix(in srgb, var(--gold) 22%, var(--brd)); border-radius: var(--ptg-rl); color: var(--t2);
+  background: radial-gradient(ellipse 60% 45% at 50% 0%, color-mix(in srgb, var(--gold-bg) 70%, transparent), transparent 70%), var(--bg2);
+}
+.rp-calc-empty h4, .rp-review-empty h4 { margin: 0 0 var(--sp-2); color: var(--t1); font-size: var(--text-lg); font-weight: var(--fw-bold); }
+
+.rp-calc-skeleton, .pm-duty-skeleton, .rp-review-skeleton {
+  display: flex; flex-direction: column; gap: var(--sp-3); padding: var(--sp-4);
+  border-radius: var(--ptg-r); border: 1px solid var(--brd-m); background: var(--bg2);
+}
+.rp-calc-skeleton__line, .pm-duty-skeleton__line, .rp-review-skeleton__line,
+.rp-calc-skeleton__block, .pm-duty-skeleton__block {
+  border-radius: var(--r-sm);
+  background: linear-gradient(90deg, var(--bg3), color-mix(in srgb, var(--gold-bg) 90%, var(--bg3)) 35%, color-mix(in srgb, var(--blue-bg) 80%, var(--bg3)) 55%, var(--bg3));
+  background-size: 400% 100%; animation: ptg-shimmer 1.6s ease-in-out infinite;
+}
+.rp-calc-skeleton__line, .pm-duty-skeleton__line, .rp-review-skeleton__line { height: 14px; }
+.rp-calc-skeleton__line--title, .pm-duty-skeleton__line--title { height: 22px; width: 55%; }
+.rp-calc-skeleton__line--short, .pm-duty-skeleton__line--short { width: 38%; }
+.rp-calc-skeleton__block, .pm-duty-skeleton__block { height: 88px; border-radius: var(--ptg-r); }
+@keyframes ptg-shimmer { 0% { background-position: 100% 0; } 100% { background-position: -100% 0; } }
+
+.rp-calc-panel.is-active { animation: ptg-panel-in var(--slow) ease; }
+@keyframes ptg-panel-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+
+.rp-calc-tab:focus-visible, .pm-duty-tab:focus-visible, .rp-review-tab:focus-visible,
+.rp-calc-mail-preview__to-item:focus-within, .pm-duty-rating-badge:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--gold) 70%, transparent); outline-offset: 2px;
+}
+
+/* ── Registry TO badges (Цена согласована / У директора) ─────────────────── */
+.reg-table .pill.ok.reg-rp-view,
+.registry-table .pill.ok.reg-rp-view,
+.pill.ok.reg-rp-view {
+  border-radius: var(--r-full);
+  font-weight: var(--fw-bold);
+  letter-spacing: .02em;
+  color: var(--ok-t);
+  border: 1px solid color-mix(in srgb, var(--ok) 42%, var(--gold) 18%, var(--brd));
+  background:
+    linear-gradient(165deg, color-mix(in srgb, var(--ok-bg) 70%, var(--gold-bg)), color-mix(in srgb, var(--ok-bg) 88%, var(--bg2)));
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--gold) 12%, transparent),
+    0 1px 3px color-mix(in srgb, var(--bg0) 22%, transparent);
+}
+.reg-table .pill.warn.reg-rp-view,
+.registry-table .pill.warn.reg-rp-view,
+.pill.warn.reg-rp-view {
+  border-radius: var(--r-full);
+  font-weight: var(--fw-bold);
+  letter-spacing: .02em;
+  color: var(--warn-t);
+  border: 1px solid color-mix(in srgb, var(--warn) 45%, var(--brd));
+  background: color-mix(in srgb, var(--warn-bg) 78%, var(--bg2));
+  box-shadow: 0 1px 2px color-mix(in srgb, var(--bg0) 18%, transparent);
+}
+.reg-self-calc {
+  border-radius: var(--r-full) !important;
+  font-weight: var(--fw-bold);
+  border-color: color-mix(in srgb, var(--gold) 28%, var(--brd)) !important;
+  background: color-mix(in srgb, var(--gold-bg) 55%, var(--bg2)) !important;
+  color: var(--gold-l) !important;
+}
+.reg-self-calc:hover {
+  border-color: color-mix(in srgb, var(--gold) 48%, var(--brd)) !important;
+  background: color-mix(in srgb, var(--gold-bg) 75%, var(--bg2)) !important;
+}
+
+/* ── Registry table: читаемые колонки Отчёт / Действие (без вертикальной «лесенки») ── */
+.reg-table-wrap {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+table.reg-table {
+  table-layout: auto;
+  min-width: 1480px;
+}
+table.reg-table td.reg-action-cell,
+table.reg-table th:nth-last-child(2) {
+  min-width: 210px !important;
+  width: 230px;
+  max-width: 280px;
+  white-space: normal !important;
+  writing-mode: horizontal-tb !important;
+  text-orientation: mixed !important;
+  word-break: normal !important;
+  overflow-wrap: anywhere;
+  vertical-align: top;
+}
+table.reg-table .reg-action-head,
+table.reg-table .reg-action-label {
+  writing-mode: horizontal-tb !important;
+  white-space: normal !important;
+  word-break: normal !important;
+  line-height: 1.35;
+}
+table.reg-table .reg-action-controls {
+  flex-wrap: wrap;
+  gap: 6px;
+}
+table.reg-table .reg-rp-cell {
+  min-width: 148px !important;
+  white-space: normal !important;
+  writing-mode: horizontal-tb !important;
+  vertical-align: middle;
+}
+table.reg-table .reg-rp-cell .pill,
+table.reg-table .reg-rp-cell .reg-rp-view {
+  white-space: nowrap !important;
+  writing-mode: horizontal-tb !important;
+  display: inline-flex !important;
+  align-items: center;
+  max-width: none;
+}
+table.reg-table .reg-col-money,
+table.reg-table .reg-price-text {
+  white-space: nowrap !important;
+  min-width: 104px;
+}
+table.reg-table .reg-col-date,
+table.reg-table .reg-col-analysis,
+table.reg-table .reg-deadline-cell,
+table.reg-table .reg-deadline-text {
+  white-space: nowrap !important;
+  min-width: 78px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rp-calc-tab, .rp-calc-drop, .rp-calc-panel.is-active, .rp-calc-mail-preview__to-warn:not([hidden]),
+  .rp-calc-skeleton__line, .rp-calc-skeleton__block, .pm-duty-skeleton__line, .pm-duty-skeleton__block,
+  .rp-review-skeleton__line, .pm-duty-row, .pm-duty-lb-item, .pm-duty-live-dot {
+    animation: none !important; transition: none !important;
+  }
+  .rp-calc-tab:hover, .rp-calc-drop:hover, .rp-calc-file-list li:hover, .pm-duty-tab:hover,
+  .pm-duty-row:hover, .pm-duty-lb-item:hover, .pm-duty-rating-badge:hover,
+  .rp-calc-footer .btn.primary:hover, .rp-review-footer .btn.primary:hover,
+  .rp-calc-mail-preview__acts .btn.primary:hover { transform: none; }
+  .rp-calc-hero::after, .pm-duty-hero::after { opacity: .6; }
+}

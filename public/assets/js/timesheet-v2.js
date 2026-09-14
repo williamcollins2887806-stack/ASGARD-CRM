@@ -35,7 +35,9 @@ window.AsgardTimesheetV2 = (function () {
     travel:    { icon: '✈️', label: 'Дорога',        color: 'var(--ts-travel-bg)',    textColor: 'var(--ts-travel-fg)' },
     ship:      { icon: '🚢', label: 'Корабль',       color: 'var(--ts-ship-bg)',      textColor: 'var(--ts-ship-fg)' },
     helicopter:{ icon: '🚁', label: 'Вертолёт',      color: 'var(--ts-helicopter-bg)',textColor: 'var(--ts-helicopter-fg)' },
-    waiting:   { icon: '⏰', label: 'Ожидание',      color: 'var(--ts-waiting-bg)',   textColor: 'var(--ts-waiting-fg)' }
+    waiting:   { icon: '⏳', label: 'Ожидание',      color: 'var(--ts-waiting-bg)',   textColor: 'var(--ts-waiting-fg)' },
+    office:    { icon: '🏢', label: 'Офис',          color: 'var(--ts-office-bg)',    textColor: 'var(--ts-office-fg)' },
+    remote:    { icon: '🏠', label: 'Удалёнка',      color: 'var(--ts-remote-bg)',    textColor: 'var(--ts-remote-fg)' }
   };
 
   // FIX 11 — локализация ролей
@@ -66,8 +68,9 @@ window.AsgardTimesheetV2 = (function () {
     pm:        ['day','night','waiting'],
     warehouse: ['warehouse'],
     medical:   ['medical','training','ship','helicopter'],
-    travel:    ['travel'],
-    global:    ['day','night','warehouse','medical','training','travel','ship','helicopter','waiting']
+    // Ожидание (⏳ = 6 баллов) ставит офис-менеджер и рук ТО — как дорогу.
+    travel:    ['travel','waiting'],
+    global:    ['day','night','warehouse','medical','training','travel','ship','helicopter','waiting','office','remote']
   };
 
   // По какому scope мы запираем месяц
@@ -78,6 +81,14 @@ window.AsgardTimesheetV2 = (function () {
     travel:    'travel',
     global:    'global'
   };
+
+  function localIsoDate(d) {
+    const dt = d instanceof Date ? d : new Date(d);
+    const y = dt.getFullYear();
+    const m = String(dt.getMonth() + 1).padStart(2, '0');
+    const day = String(dt.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+  }
 
   let _stylesInjected = false;
   let _refreshTimer = null;
@@ -235,7 +246,7 @@ window.AsgardTimesheetV2 = (function () {
       .tsv2-sum   { color:var(--ok-t); font-weight:700; text-align:right; }
 
       .tsv2-popover {
-        position:absolute; z-index:120; background:var(--bg2); border:1px solid var(--brd);
+        position:fixed; z-index:12000; background:var(--bg2); border:1px solid var(--brd);
         border-radius:var(--r-md); padding:6px; box-shadow:var(--shadow-md); min-width:170px;
       }
       .tsv2-popover button {
@@ -706,11 +717,89 @@ window.AsgardTimesheetV2 = (function () {
       body: body ? JSON.stringify(body) : undefined
     });
     if (!r.ok) {
-      const err = await r.json().catch(() => ({}));
-      const e = new Error(err.error || ('HTTP ' + r.status));
-      e.status = r.status; throw e;
+      const errBody = await r.json().catch(() => ({}));
+      const e = new Error(errBody.message || errBody.error || ('HTTP ' + r.status));
+      e.status = r.status;
+      e.data = errBody;
+      e.serverMsg = errBody.error || errBody.message || '';
+      throw e;
     }
     return r.json().catch(() => ({}));
+  }
+
+  function periodLockInfo(e) {
+    const data = (e && e.data) || {};
+    return {
+      reason: data.reason || data.error || '',
+      message: data.message || e.message || 'Период закрыт. Изменение запрещено.',
+      overridable: !!data.overridable,
+      lock: data.lock || null
+    };
+  }
+
+  /** Confirm обхода чужого pm-лока. resolve(true/false). */
+  function askPmLockOverride(info, payload) {
+    return new Promise((resolve) => {
+      const date = payload && payload.date ? String(payload.date).slice(0, 10) : '';
+      const dateRu = /^\d{4}-\d{2}-\d{2}$/.test(date)
+        ? (date.slice(8, 10) + '.' + date.slice(5, 7) + '.' + date.slice(0, 4))
+        : '';
+      const msg = [
+        (info && info.message) || 'Отметка находится в периоде, который уже закрыл РП.',
+        dateRu ? ('Дата отметки: ' + dateRu + '.') : '',
+        'Вы точно уверены, что хотите изменить? Если да — изменение будет сохранено с записью в журнал.'
+      ].filter(Boolean).join('<br><br>');
+      showModal({
+        title: 'Период закрыт у РП',
+        html:
+          '<p style="font-size:13px;line-height:1.5;margin:0 0 12px">' + msg + '</p>' +
+          '<div style="display:flex;gap:8px;justify-content:flex-end">' +
+          '<button type="button" class="btn mini ghost" id="tsv2PmLockNo">Отмена</button>' +
+          '<button type="button" class="btn mini" id="tsv2PmLockYes">Да, изменить</button></div>',
+        onMount: () => {
+          document.getElementById('tsv2PmLockNo')?.addEventListener('click', () => {
+            closeModal();
+            resolve(false);
+          });
+          document.getElementById('tsv2PmLockYes')?.addEventListener('click', () => {
+            closeModal();
+            resolve(true);
+          });
+        }
+      });
+    });
+  }
+
+  /** PUT entry с авто-confirm при overridable pm-локе и day_conflict. */
+  async function editCellWithLockConfirm(payload) {
+    try {
+      return await editCell(payload);
+    } catch (e) {
+      if (e.status === 423) {
+        const info = periodLockInfo(e);
+        if (info.overridable && !payload.force_pm_lock) {
+          const ok = await askPmLockOverride(info, payload);
+          if (!ok) {
+            const cancelErr = new Error('cancelled');
+            cancelErr.cancelled = true;
+            throw cancelErr;
+          }
+          return await editCell(Object.assign({}, payload, { force_pm_lock: true }));
+        }
+      }
+      // 07.08.2026: смена ↔ этап на одну дату — спросить и перезаписать
+      if (e.status === 409 && e.data && e.data.requires_confirmation && !payload.confirm_overwrite) {
+        const msg = e.data.message || e.message || 'На эту дату уже есть отметка. Перезаписать?';
+        const ok = window.confirm(msg);
+        if (!ok) {
+          const cancelErr = new Error('cancelled');
+          cancelErr.cancelled = true;
+          throw cancelErr;
+        }
+        return await editCell(Object.assign({}, payload, { confirm_overwrite: true }));
+      }
+      throw e;
+    }
   }
 
   async function fetchData(year, month, mode) {
@@ -740,9 +829,10 @@ window.AsgardTimesheetV2 = (function () {
   async function editCell(payload) {
     return apiSend('PUT', `${API_BASE}/entry`, payload);
   }
-  async function exportExcel(year, month) {
+  async function exportExcel(year, month, includePerDiem) {
     const auth = await AsgardAuth.getAuth();
-    const r = await fetch(`${API_BASE}/${year}/${month}/export?format=xlsx`, {
+    const pd = includePerDiem ? '1' : '0';
+    const r = await fetch(`${API_BASE}/${year}/${month}/export?format=xlsx&include_per_diem=${pd}`, {
       headers: { 'Authorization': 'Bearer ' + auth.token }
     });
     if (!r.ok) throw new Error('Не удалось скачать Excel');
@@ -753,6 +843,32 @@ window.AsgardTimesheetV2 = (function () {
     a.download = `табель_${year}_${String(month).padStart(2,'0')}.xlsx`;
     a.click();
     URL.revokeObjectURL(url);
+  }
+
+  function promptExportExcel(year, month) {
+    return new Promise((resolve) => {
+      showModal({
+        title: 'Выгрузка табеля Excel',
+        html:
+          '<p class="muted" style="font-size:12px;margin:0 0 10px">В ячейках — только баллы, цвет = тип смены. Легенда под таблицей на том же листе.</p>' +
+          '<label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer">' +
+          '<input type="checkbox" id="tsv2ExpPd" checked/> Учитывать суточные</label>' +
+          '<div style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px">' +
+          '<button type="button" class="btn mini ghost" id="tsv2ExpCnl">Отмена</button>' +
+          '<button type="button" class="btn mini" id="tsv2ExpGo">Скачать Excel</button></div>',
+        onMount: () => {
+          document.getElementById('tsv2ExpCnl')?.addEventListener('click', () => {
+            closeModal();
+            resolve(null);
+          });
+          document.getElementById('tsv2ExpGo')?.addEventListener('click', () => {
+            const includePd = document.getElementById('tsv2ExpPd')?.checked !== false;
+            closeModal();
+            resolve(includePd);
+          });
+        }
+      });
+    });
   }
 
   // ─────────────────────────────────────────────────────────────────
@@ -770,7 +886,8 @@ window.AsgardTimesheetV2 = (function () {
     const dt = new Date(dateISO).toLocaleDateString('ru-RU');
     const lines = [];
     lines.push(`<div class="tt-title">${esc(emp.fio || '—')} · ${esc(dt)}</div>`);
-    let row1 = `${meta.icon || ''} ${esc(meta.label || entry.type)}`;
+    const dirLbl = entry.direction === 'to_site' ? ' · Туда' : (entry.direction === 'from_site' ? ' · Обратно' : '');
+    let row1 = `${meta.icon || ''} ${esc(meta.label || entry.type)}${dirLbl}`;
     if (entry.points != null) row1 += ` · ${esc(String(entry.points))} баллов`;
     if (entry.amount != null) row1 += ` · ${esc(fmt(entry.amount))} ₽`;
     lines.push(`<div class="tt-row">${row1}</div>`);
@@ -948,7 +1065,26 @@ window.AsgardTimesheetV2 = (function () {
     return html;
   }
 
-  function renderCellHtml(emp, dateISO, entry, canEdit, dayNum) {
+  // Наборы «одна дата = одна отметка». Чужую отметку из набора можно заменить,
+  // если в режиме есть свой тип из того же набора (✈️→🚢, ✈️→⏳).
+  const CROSS_EDIT_GROUPS = [
+    new Set(['travel', 'ship', 'helicopter']), // транспорт
+    new Set(['travel', 'waiting']),            // дорога / ожидание
+  ];
+
+  function cellIsEditable(canEdit, entry, mode) {
+    if (!canEdit) return false;
+    if (!entry || !entry.type) return true;
+    if (entry.is_mine) return true;
+    // PM-режим правит только свои смены на своей работе — чужие дороги/ожидания не трогаем.
+    if (mode === 'pm') return false;
+    const allowed = MODE_ALLOWED_TYPES[mode] || [];
+    return CROSS_EDIT_GROUPS.some(
+      (g) => g.has(entry.type) && allowed.some((t) => g.has(t))
+    );
+  }
+
+  function renderCellHtml(emp, dateISO, entry, canEdit, dayNum, mode) {
     const dayAttr = dayNum != null ? ` data-day="${dayNum}"` : '';
     if (!entry || !entry.type) {
       const editAttr = canEdit
@@ -960,8 +1096,9 @@ window.AsgardTimesheetV2 = (function () {
     }
     const meta = TYPE_META[entry.type] || TYPE_META.day;
     const bg = meta.color, fg = meta.textColor;
-    const content = (entry.points != null) ? String(entry.points) : meta.icon;
-    const editClass = (canEdit && entry.is_mine) ? ' editable' : '';
+    const dirArrow = entry.direction === 'to_site' ? '→' : (entry.direction === 'from_site' ? '←' : '');
+    const content = ((entry.points != null) ? String(entry.points) : meta.icon) + dirArrow;
+    const editClass = cellIsEditable(canEdit, entry, mode) ? ' editable' : '';
     // FIX 9 — title= больше не используется. Передаём данные через data-tt-json (escaped JSON).
     const ttHtml = tooltipLinesForEntry(emp, dateISO, entry);
     const ttData = encodeURIComponent(ttHtml);
@@ -1008,8 +1145,9 @@ window.AsgardTimesheetV2 = (function () {
         </div>
         <div class="tsv2-filters" id="tsv2_filters">
           <input type="search" id="tsv2_fio_search" placeholder="Найти рабочего…" autocomplete="off">
-          <input type="search" id="tsv2_project_q" placeholder="Объект: МЛСП, Пуровский…" autocomplete="off">
-          <button class="btn ghost" id="tsv2_project_apply">Фильтр</button>
+          <select id="tsv2_project_sel" style="min-width:260px;max-width:420px">
+            <option value="">Все объекты</option>
+          </select>
           <button class="btn ghost" id="tsv2_project_clear" style="display:none">× Сбросить</button>
         </div>
         <div class="tsv2-project-chip" id="tsv2_project_chip" style="display:none"></div>
@@ -1028,6 +1166,49 @@ window.AsgardTimesheetV2 = (function () {
       </div>
     `;
     await layout(html, { title: title || 'Табель' });
+
+    // Dropdown объектов
+    (async function loadWorksOptions() {
+      const sel = document.getElementById('tsv2_project_sel');
+      if (!sel) return;
+      try {
+        const j = await apiGet('/api/timesheet/v2/works-options');
+        const works = j.works || [];
+        sel.innerHTML = '<option value=\"\">Все объекты</option>' +
+          works.map(w => `<option value=\"${w.id}\">${esc(w.label || w.title)}</option>`).join('');
+      } catch (e) { /* ignore */ }
+      sel.addEventListener('change', async () => {
+        const id = sel.value ? Number(sel.value) : null;
+        if (!id) {
+          projectFilter = null;
+          const clr = document.getElementById('tsv2_project_clear');
+          if (clr) clr.style.display = 'none';
+          renderProjectChip();
+          renderTable();
+          return;
+        }
+        const title = sel.options[sel.selectedIndex].text;
+        try {
+          const j = await apiGet(`${API_BASE}/${curYear}/${curMonth}/roster?work_id=${id}`);
+          projectFilter = {
+            work_id: id,
+            query: title,
+            title,
+            work_matches: j.work_matches || [{ work_id: id, work_title: title }],
+            employees: j.employees || []
+          };
+          if (!(j.employees || []).length) toast('Фильтр', 'По этому объекту никого не нашли', 'warn');
+        } catch (e) {
+          toast('Ошибка', e.message || 'Не удалось отфильтровать', 'err');
+          return;
+        }
+        const clr = document.getElementById('tsv2_project_clear');
+        if (clr) clr.style.display = '';
+        renderProjectChip();
+        renderTable();
+      });
+    })();
+
 
     // ── Stage W — HANDOVERS TAB (только в PM-режиме) ─────────────────────
     let _activeTab = 'grid';
@@ -1254,7 +1435,7 @@ window.AsgardTimesheetV2 = (function () {
     }
 
     async function applyProjectFilter() {
-      const inp = $('#tsv2_project_q');
+      const inp = $('#tsv2_project_sel');
       const q = (inp && inp.value || '').trim();
       if (q.length < 2) { toast('Фильтр', 'Введите минимум 2 символа', 'err'); return; }
       rosterLoading = true;
@@ -1274,7 +1455,7 @@ window.AsgardTimesheetV2 = (function () {
 
     function clearProjectFilter() {
       projectFilter = null;
-      const inp = $('#tsv2_project_q');
+      const inp = $('#tsv2_project_sel');
       if (inp) inp.value = '';
       renderProjectChip();
       renderTable();
@@ -1320,7 +1501,7 @@ window.AsgardTimesheetV2 = (function () {
           }
         });
       }
-      const applyBtn = $('#tsv2_project_apply');
+      const applyBtn = null; // replaced by select
       if (applyBtn && !applyBtn.dataset.bound) {
         applyBtn.dataset.bound = '1';
         applyBtn.addEventListener('click', applyProjectFilter);
@@ -1330,7 +1511,7 @@ window.AsgardTimesheetV2 = (function () {
         clrBtn.dataset.bound = '1';
         clrBtn.addEventListener('click', clearProjectFilter);
       }
-      const pq = $('#tsv2_project_q');
+      const pq = $('#tsv2_project_sel');
       if (pq && !pq.dataset.bound) {
         pq.dataset.bound = '1';
         pq.addEventListener('keydown', (e) => { if (e.key === 'Enter') applyProjectFilter(); });
@@ -1388,7 +1569,12 @@ window.AsgardTimesheetV2 = (function () {
       if (lockBtn) lockBtn.addEventListener('click', onLockClick);
       const xlsBtn = $('#tsv2_excel');
       if (xlsBtn) xlsBtn.addEventListener('click', async () => {
-        try { await exportExcel(curYear, curMonth); toast('Экспорт','Файл скачан','ok'); }
+        try {
+          const includePd = await promptExportExcel(curYear, curMonth);
+          if (includePd == null) return;
+          await exportExcel(curYear, curMonth, includePd);
+          toast('Экспорт','Файл скачан','ok');
+        }
         catch (e) { toast('Ошибка', e.message, 'err'); }
       });
       const refBtn = $('#tsv2_refresh');
@@ -1950,8 +2136,8 @@ window.AsgardTimesheetV2 = (function () {
       });
       // ФОТ видит только директор/бух/HR/админ (global). РП не видит ФОТ — по ТЗ.
       const showAmount = (mode === 'global');
-      // Суточные скрыты везде — расчёт ненадёжен (источник worker_payments хранит длинные командировки).
-      const showPerDiem = false;
+      // Суточные — начисление за этот календарный месяц (этапы + земля; МЛСП-вахта нет).
+      const showPerDiem = (mode === 'global' || mode === 'pm');
       const items = [
         `<div class="tsv2-kpi-card k-workers">👥 ${workers} рабочих</div>`,
         `<div class="tsv2-kpi-card k-shifts">📅 ${shifts} чел-дней</div>`
@@ -1978,6 +2164,7 @@ window.AsgardTimesheetV2 = (function () {
       }
       const daysInMonth = data.days_in_month || new Date(curYear, curMonth, 0).getDate();
       const todayD = (new Date().getFullYear() === curYear && new Date().getMonth() + 1 === curMonth) ? new Date().getDate() : -1;
+      const showPerDiem = (mode === 'global' || mode === 'pm');
 
       // Header
       let header = '<thead><tr><th>ФИО / Должность</th>';
@@ -1994,6 +2181,7 @@ window.AsgardTimesheetV2 = (function () {
       header += `<th class="tsv2-total">Дни</th>`;
       if (mode === 'pm' || mode === 'global') header += `<th class="tsv2-total">Баллы</th>`;
       if (mode === 'global') header += `<th class="tsv2-total">Сумма ₽</th>`;
+      if (showPerDiem) header += `<th class="tsv2-total" title="Начислено суточных за этот месяц: дорога, МО, склад, обучение, корабль, вертолёт. Вахта МЛСП не входит.">Суточные ₽</th>`;
       // Phase 1B — 9 финансовых колонок (только global)
       // 1B+: между «Заработано» и «Оклад» добавлены 🎁 Премия и ⚠ Штраф
       if (mode === 'global') {
@@ -2012,7 +2200,7 @@ window.AsgardTimesheetV2 = (function () {
         header += `<th class="tsv2-total" title="Остаток годового лимита самозанятого">Лимит СЗ год ост.</th>`;
         header += `<th class="tsv2-total" title="Остаток месячного лимита самозанятого">Лимит СЗ мес ост.</th>`;
       }
-      // Колонка «Суточные» убрана — см. renderKpi.
+      // Колонка «Суточные» — после Суммы, до финансовых.
       header += `</tr></thead>`;
 
       // Body — группируем по объекту (если PM, иначе по умолчанию)
@@ -2038,14 +2226,20 @@ window.AsgardTimesheetV2 = (function () {
         for (let d = 1; d <= daysInMonth; d++) {
           const dateISO = `${curYear}-${String(curMonth).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
           const entry = days[String(d)] || days[d];
-          row += renderCellHtml(emp, dateISO, entry, canEdit, d);
+          row += renderCellHtml(emp, dateISO, entry, canEdit, d, mode);
         }
         row += `<td class="tsv2-total">${emp.days_count != null ? emp.days_count : '—'}</td>`;
         if (mode === 'pm' || mode === 'global') row += `<td class="tsv2-total">${emp.total_points != null ? emp.total_points : '—'}</td>`;
         if (mode === 'global') row += `<td class="tsv2-sum">${emp.total_amount != null ? fmt(emp.total_amount) + ' ₽' : '—'}</td>`;
-        // Phase 1B — 7 финансовых колонок (только global)
+        if (showPerDiem) {
+          const pd = Number(emp.per_diem_total || 0);
+          const pdDays = Number(emp.per_diem_days || 0);
+          const pdTitle = pd > 0
+            ? `Начислено за этот месяц: ${fmt(pd)} ₽ (${pdDays} дн.). Дорога/МО/склад/обучение. Вахта МЛСП не входит.`
+            : 'Нет дней суточных в этом месяце (вахта МЛСП без суточных, либо нет дороги/МО/склада).';
+          row += `<td class="tsv2-sum" title="${esc(pdTitle)}">${pd ? fmt(pd) + ' ₽' : '—'}</td>`;
+        }
         if (mode === 'global') row += renderPayCells(emp);
-        // Колонка «Суточные» убрана из таблицы.
         row += '</tr>';
         return row;
       };
@@ -2056,6 +2250,7 @@ window.AsgardTimesheetV2 = (function () {
                           1 +                                        // Дни
                           ((mode === 'pm' || mode === 'global') ? 1 : 0) + // Баллы
                           ((mode === 'global') ? 1 : 0) +            // Сумма ₽
+                          (showPerDiem ? 1 : 0) +                    // Суточные ₽
                           ((mode === 'global') ? 11 : 0) +           // Phase 1B+ Stage S: Тип/Получает/Заработ./Выплачено/Премия/Штраф/Оклад/Карта/Касса±/Лим.год/Лим.мес
                           ((mode === 'global') ? 1 : 0);             // Q3: Город
         groupKeys.forEach(k => {
@@ -2093,11 +2288,13 @@ window.AsgardTimesheetV2 = (function () {
     }
 
     // Типы требующие work_id (синхрон с backend typeRequiresWorkId)
+    // Склад / МО / обучение / дорога / корабль / вертолёт — work_id не шлём.
     function typeRequiresWorkIdLocal(t) {
       if (mode === 'medical' || mode === 'travel' || mode === 'warehouse') return false;
       if (mode === 'pm') return t === 'day' || t === 'night' || t === 'waiting';
-      return t === 'day' || t === 'night' || t === 'waiting' || t === 'warehouse';
+      return t === 'day' || t === 'night' || t === 'waiting';
     }
+    const FREE_STANDING = { warehouse:1, medical:1, training:1, travel:1, ship:1, helicopter:1, office:1, remote:1 };
 
     // Кэш списка работ (по empId или 'pm' для глобального)
     const _worksCache = new Map();
@@ -2211,17 +2408,22 @@ window.AsgardTimesheetV2 = (function () {
 
       // Сохраняет отметку. Если backend вернёт 400 work_id_required —
       // откроем picker и попробуем снова с выбранным workId.
-      async function saveEntry(t, effectiveWorkId) {
+      async function saveEntry(t, effectiveWorkId, direction) {
         try {
-          await editCell({
-            employee_id: empId, work_id: effectiveWorkId || null, date: dateISO,
+          // Свободные этапы — никогда не привязываем к работе (даже если в ячейке/фильтре есть work_id).
+          const wid = (FREE_STANDING[t] || !typeRequiresWorkIdLocal(t)) ? null : (effectiveWorkId || null);
+          const payload = {
+            employee_id: empId, work_id: wid, date: dateISO,
             type: t, shift: (t === 'night') ? 'night' : 'day', delete: false
-          });
+          };
+          if (direction) payload.direction = direction;
+          await editCellWithLockConfirm(payload);
           cell.classList.add('tsv2-saved');
           setTimeout(() => cell.classList.remove('tsv2-saved'), 700);
           toast('Табель','Отметка сохранена','ok');
           await refresh();
         } catch (e) {
+          if (e.cancelled) return;
           // Backend сигналит что нужен work_id — показываем picker.
           // apiSend кладёт err.error в e.message (см. apiSend).
           if (e.status === 400 && /work_id_required|work_id/i.test(e.message || '')) {
@@ -2231,10 +2433,45 @@ window.AsgardTimesheetV2 = (function () {
             });
             return;
           }
-          if (e.status === 423) toast('Заперто', 'Месяц закрыт — редактирование запрещено', 'err');
+          if (e.status === 423) toast('Заперто', periodLockInfo(e).message, 'err');
           else if (e.status === 409) toast('Уже есть отметка', e.message, 'err');
           else toast('Ошибка', e.message, 'err');
         }
+      }
+
+      function askDirectionThenSave(t, effectiveWorkId) {
+        if (!['travel','ship','helicopter'].includes(t)) {
+          return saveEntry(t, effectiveWorkId, null);
+        }
+        return new Promise((resolve) => {
+          const dirPop = document.createElement('div');
+          dirPop.className = 'tsv2-popover';
+          dirPop.style.zIndex = '10001';
+          const title = document.createElement('div');
+          title.style.cssText = 'padding:8px 12px;font-weight:700;font-size:13px';
+          title.textContent = 'Направление';
+          dirPop.appendChild(title);
+          [['to_site','→ Туда (на объект)'],['from_site','← Обратно (с объекта)']].forEach(([val, lab]) => {
+            const b = document.createElement('button');
+            b.textContent = lab;
+            b.addEventListener('click', async () => {
+              dirPop.remove();
+              await saveEntry(t, effectiveWorkId, val);
+              resolve();
+            });
+            dirPop.appendChild(b);
+          });
+          document.body.appendChild(dirPop);
+          const r = cell.getBoundingClientRect();
+          dirPop.style.left = Math.min(r.left, window.innerWidth - 220) + 'px';
+          dirPop.style.top = (r.bottom + 4) + 'px';
+          setTimeout(() => {
+            const closer = (ev) => {
+              if (!dirPop.contains(ev.target)) { dirPop.remove(); document.removeEventListener('mousedown', closer); resolve(); }
+            };
+            document.addEventListener('mousedown', closer);
+          }, 0);
+        });
       }
 
       allowedTypes.forEach(t => {
@@ -2247,16 +2484,21 @@ window.AsgardTimesheetV2 = (function () {
           // Если тип требует work_id и нет — открыть picker
           if (typeRequiresWorkIdLocal(t) && !workId) {
             openWorkPicker(empId, meta.label, async (pickedId) => {
-              await saveEntry(t, pickedId);
+              await askDirectionThenSave(t, pickedId);
             });
             return;
           }
-          await saveEntry(t, workId);
+          await askDirectionThenSave(t, workId);
         });
         pop.appendChild(btn);
       });
 
-      if (curType && allowedTypes.includes(curType)) {
+      if (curType && (
+        allowedTypes.includes(curType)
+        || (mode !== 'pm' && CROSS_EDIT_GROUPS.some(
+          (g) => g.has(curType) && allowedTypes.some((t) => g.has(t))
+        ))
+      )) {
         const del = document.createElement('button');
         del.className = 'ts-del';
         del.innerHTML = `🗑 Удалить отметку`;
@@ -2264,11 +2506,18 @@ window.AsgardTimesheetV2 = (function () {
           pop.remove();
           _editing = false; // FIX 13
           try {
-            await editCell({ employee_id: empId, work_id: workId, date: dateISO, type: curType, delete: true });
+            await editCellWithLockConfirm({
+              employee_id: empId,
+              work_id: FREE_STANDING[curType] ? null : workId,
+              date: dateISO,
+              type: curType,
+              delete: true
+            });
             toast('Готово','Отметка удалена','ok');
             await refresh();
           } catch (e) {
-            if (e.status === 423) toast('Заперто', 'Месяц закрыт', 'err');
+            if (e.cancelled) return;
+            if (e.status === 423) toast('Заперто', periodLockInfo(e).message, 'err');
             else toast('Ошибка', e.message, 'err');
           }
         });
@@ -2280,13 +2529,21 @@ window.AsgardTimesheetV2 = (function () {
         return;
       }
 
-      const wrap = $('#tsv2_scroll');
+      // Portal to body with position:fixed — not clipped by .tsv2-scroll { overflow:auto }
+      // (short table after FIO filter left the popover invisible inside the scroll box).
+      document.body.appendChild(pop);
       const r = cell.getBoundingClientRect();
-      const wr = wrap.getBoundingClientRect();
-      pop.style.left = (r.left - wr.left + wrap.scrollLeft) + 'px';
-      pop.style.top  = (r.bottom - wr.top + wrap.scrollTop + 2) + 'px';
-      wrap.style.position = 'relative';
-      wrap.appendChild(pop);
+      const popH = pop.offsetHeight || 180;
+      const spaceBelow = window.innerHeight - r.bottom;
+      const spaceAbove = r.top;
+      const placeTop = spaceBelow < popH + 8 && spaceAbove > spaceBelow;
+      let top = placeTop ? (r.top - popH - 2) : (r.bottom + 2);
+      let left = r.left;
+      const popW = pop.offsetWidth || 170;
+      if (left + popW > window.innerWidth - 8) left = Math.max(8, window.innerWidth - popW - 8);
+      if (top < 8) top = 8;
+      pop.style.left = left + 'px';
+      pop.style.top = top + 'px';
 
       const closeOnOut = (e) => {
         if (!pop.contains(e.target)) {
@@ -2300,7 +2557,7 @@ window.AsgardTimesheetV2 = (function () {
 
     // ── Модалка «+ Добавить рабочего» ────────────────────────────────
     function openAddWorkerModal() {
-      const todayStr = new Date().toISOString().slice(0, 10);
+      const todayStr = localIsoDate(new Date());
       // BUG #5: для PM показываем ВСЕ allowedTypes (включая day/night), но при сабмите
       // требуем выбор работы. PM-day/night требуют work_id — раньше скрывали тип,
       // что прятало основной сценарий «РП добавляет рабочего на смену».
@@ -2445,17 +2702,20 @@ window.AsgardTimesheetV2 = (function () {
               if (!selected) { toast('Не выбран рабочий','Сначала найдите и выберите','err'); return; }
               const type = btn.dataset.type;
               const date = dInp.value || todayStr;
-              // BUG #5: PM-режим — work_id обязателен (контракт)
+              // BUG #5: PM-режим — work_id обязателен только для day/night/waiting.
+              // Свободные этапы (МО/дорога/…) — без work_id.
               let workIdForCell = null;
-              if (mode === 'pm') {
+              if (FREE_STANDING[type]) {
+                workIdForCell = null;
+              } else if (mode === 'pm') {
                 workIdForCell = wSel && wSel.value ? Number(wSel.value) : null;
-                if (!workIdForCell && (type === 'day' || type === 'night')) {
+                if (!workIdForCell && (type === 'day' || type === 'night' || type === 'waiting')) {
                   toast('Нет работы','Выберите работу из списка','err');
                   return;
                 }
               }
               try {
-                await editCell({
+                await editCellWithLockConfirm({
                   employee_id: selected.employee_id,
                   work_id: workIdForCell,
                   date, type,
@@ -2466,7 +2726,8 @@ window.AsgardTimesheetV2 = (function () {
                 closeModal();
                 await refresh();
               } catch (e) {
-                if (e.status === 423) toast('Заперто', 'Месяц закрыт', 'err');
+                if (e.cancelled) return;
+                if (e.status === 423) toast('Заперто', periodLockInfo(e).message, 'err');
                 else if (e.status === 409) toast('Уже есть отметка', e.message, 'err');
                 else toast('Ошибка', e.message, 'err');
               }
@@ -2582,7 +2843,7 @@ window.AsgardTimesheetV2 = (function () {
       layout: opts.layout,
       title: opts.title || 'Табель учёта МО/обучения/иной транспорт',
       mode: 'medical',
-      toolbarExtra: ['lock', 'add-worker']
+      toolbarExtra: ['lock', 'add-worker', 'excel']
     });
   }
   async function renderTravel(opts) {
@@ -2590,7 +2851,7 @@ window.AsgardTimesheetV2 = (function () {
       layout: opts.layout,
       title: opts.title || 'Табель учёта дороги',
       mode: 'travel',
-      toolbarExtra: ['lock', 'add-worker']
+      toolbarExtra: ['lock', 'add-worker', 'excel']
     });
   }
   async function renderGlobal(opts) {

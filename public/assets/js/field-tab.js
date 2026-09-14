@@ -8,7 +8,7 @@
 window.AsgardFieldTab = (function () {
   'use strict';
 
-  const { $, $$, esc, toast, money, formatDate } = AsgardUI;
+  const { $, $$, esc, toast, moneyRub: money, formatDate } = AsgardUI;
 
   function hdr() {
     const t = localStorage.getItem('asgard_token') || localStorage.getItem('auth_token');
@@ -16,7 +16,43 @@ window.AsgardFieldTab = (function () {
   }
   async function api(path, opts) {
     const r = await fetch('/api/field/manage' + path, { headers: hdr(), ...opts });
-    return r.json();
+    const data = await r.json().catch(() => ({}));
+    // Сохраняем совместимость: многие вызовы смотрят data.error без throw.
+    // Для checkin с конфликтом используйте apiCheckinWithConflictConfirm.
+    if (!r.ok && data && typeof data === 'object') {
+      data._httpStatus = r.status;
+      data._ok = false;
+    }
+    return data;
+  }
+
+  /** POST/PUT checkin с confirm при day_conflict (смена ↔ этап). */
+  async function apiCheckinWithConflictConfirm(path, bodyObj, method) {
+    const send = async (body) => {
+      const r = await fetch('/api/field/manage' + path, {
+        method: method || 'POST',
+        headers: hdr(),
+        body: JSON.stringify(body)
+      });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok) {
+        const e = new Error(data.message || data.error || ('HTTP ' + r.status));
+        e.status = r.status;
+        e.data = data;
+        throw e;
+      }
+      return data;
+    };
+    try {
+      return await send(bodyObj);
+    } catch (e) {
+      if (e.status === 409 && e.data && e.data.requires_confirmation && !bodyObj.confirm_overwrite) {
+        const ok = window.confirm(e.data.message || e.message || 'На дату уже есть отметка. Перезаписать?');
+        if (!ok) throw Object.assign(new Error('cancelled'), { cancelled: true });
+        return await send(Object.assign({}, bodyObj, { confirm_overwrite: true }));
+      }
+      throw e;
+    }
   }
   async function apiRaw(path, opts) {
     return fetch('/api/field/manage' + path, { headers: hdr(), ...opts });
@@ -51,13 +87,128 @@ window.AsgardFieldTab = (function () {
 
   const ROLES = [
     { value: 'worker', label: 'Рабочий' },
+    { value: 'welder', label: 'Сварщик' },
+    { value: 'pto', label: 'ПТО' },
     { value: 'shift_master', label: 'Мастер смены' },
     { value: 'senior_master', label: 'Ст. мастер' },
+    { value: 'project_lead', label: 'Рук. проекта' },
   ];
   const SHIFTS = [
     { value: 'day', label: '☀ День' },
     { value: 'night', label: '🌙 Ночь' },
   ];
+
+  function mapRoleTagToFieldRole(roleTag) {
+    const t = String(roleTag || '').trim().toLowerCase();
+    if (t === 'сварщик') return 'welder';
+    if (t === 'пто' || t === 'pto') return 'pto';
+    if (t === 'мастер') return 'shift_master';
+    if (t === 'рп' || t === 'руководитель' || t.indexOf('рп') === 0) return 'project_lead';
+    return 'worker';
+  }
+
+  function isWelderTariffName(name) {
+    return /^Сварщик\s*\(/i.test(String(name || '').trim());
+  }
+
+  function isPtoTariffName(name) {
+    return /^ПТО\s*\(/i.test(String(name || '').trim());
+  }
+
+  function filterTariffsForFieldRole(tariffs, fieldRole, siteCategory) {
+    const list = Array.isArray(tariffs) ? tariffs : [];
+    const role = String(fieldRole || 'worker');
+    const inCat = (t) => !siteCategory || t.category === siteCategory || t.category === 'special';
+    if (role === 'welder') {
+      return list.filter(t => isWelderTariffName(t.position_name) && inCat(t));
+    }
+    if (role === 'pto') {
+      return list.filter(t => isPtoTariffName(t.position_name) && inCat(t));
+    }
+    if (role === 'shift_master') {
+      return list.filter(t => {
+        const n = t.position_name || '';
+        return !t.is_combinable && /Мастер сменный/i.test(n) && inCat(t);
+      });
+    }
+    if (role === 'senior_master') {
+      return list.filter(t => {
+        const n = t.position_name || '';
+        return !t.is_combinable && /Мастер ответственный/i.test(n) && inCat(t);
+      });
+    }
+    return list.filter(t => {
+      const n = t.position_name || '';
+      if (isWelderTariffName(n) || isPtoTariffName(n)) return false;
+      if (/Мастер сменный|Мастер ответственный|Мастер ПТО/i.test(n)) return false;
+      if (siteCategory && t.category && t.category !== siteCategory) return false;
+      return !t.is_combinable;
+    });
+  }
+
+  function defaultTariffIdForRole(tariffs, fieldRole, siteCategory) {
+    const filtered = filterTariffsForFieldRole(tariffs, fieldRole, siteCategory)
+      .slice()
+      .sort((a, b) => (Number(a.points) || 0) - (Number(b.points) || 0));
+    const fourteen = filtered.find(t => Number(t.points) === 14);
+    return fourteen ? String(fourteen.id) : (filtered[0] ? String(filtered[0].id) : '');
+  }
+
+  function renumberCrewRows(tbody) {
+    if (!tbody) return;
+    let n = 0;
+    tbody.querySelectorAll('tr[data-crew-row]').forEach(row => {
+      const cell = row.querySelector('[data-field="row-num"]');
+      if (row.style.display === 'none') {
+        if (cell) cell.textContent = '';
+        return;
+      }
+      n += 1;
+      if (cell) cell.textContent = String(n);
+    });
+  }
+
+  /** ФИО выбранного сотрудника в строке бригады (для поиска/сортировки). */
+  function getCrewRowFio(row, allEmployees) {
+    const pickerWrap = row.querySelector('[data-field="employee"]');
+    const pId = pickerWrap?.dataset.pickerId;
+    const empIds = pId && window.CREmployeePicker ? CREmployeePicker.getSelected(pId) : [];
+    const empId = empIds && empIds[0];
+    if (!empId) return '';
+    const emp = (allEmployees || []).find(e => Number(e.id) === Number(empId));
+    return String(emp?.fio || emp?.full_name || `${emp?.last_name || ''} ${emp?.first_name || ''}`.trim() || '').trim();
+  }
+
+  /** Сортировка строк бригады по ФИО (А→Я), пустые строки — в конец. */
+  function sortCrewRowsByFio(tbody, allEmployees) {
+    if (!tbody) return;
+    const rows = Array.from(tbody.querySelectorAll('tr[data-crew-row]'));
+    rows.sort((a, b) => {
+      const na = getCrewRowFio(a, allEmployees).toLocaleLowerCase('ru');
+      const nb = getCrewRowFio(b, allEmployees).toLocaleLowerCase('ru');
+      if (!na && nb) return 1;
+      if (na && !nb) return -1;
+      return na.localeCompare(nb, 'ru');
+    });
+    rows.forEach(row => tbody.appendChild(row));
+    renumberCrewRows(tbody);
+  }
+
+  function stopCrewAutosave() {
+    if (_crewAutosaveTimer) {
+      clearInterval(_crewAutosaveTimer);
+      _crewAutosaveTimer = null;
+    }
+  }
+
+  function tariffSelectOptions(tariffs) {
+    return [{ value: '', label: '— выберите —' }].concat(
+      tariffs.map(t => ({
+        value: String(t.id),
+        label: `${t.position_name} (${t.points}б · ${money(t.rate_per_shift)})`
+      }))
+    );
+  }
 
   const LOG_TYPES = [
     { value: 'ticket_to', label: '✈️ Туда', short: 'Билет туда' },
@@ -77,6 +228,8 @@ window.AsgardFieldTab = (function () {
   /* ── CRSelect row counter for crew selects ── */
   let _ftRowId = 0;
   const _ftTariffIds = [];  // track tariff CRSelect IDs for category-change re-population
+  let _crewAutosaveTimer = null;
+  let _crewAutosaveBusy = false;
 
   // ═══════════════════════════════════════════════════════════════════
   // MAIN ENTRY POINT
@@ -122,6 +275,10 @@ window.AsgardFieldTab = (function () {
       { id: 'disputes', label: '⚠️ Разногласия', render: () => renderDisputesTab(content, work, user) },
       { id: 'funds', label: '💰 Подотчёт', render: () => renderFundsTab(content, work, user) },
       { id: 'packing', label: '📦 Сборы', render: () => renderPackingTab(content, work, user) },
+      { id: 'nd', label: '📜 Наряды', render: () => {
+        if (window.AsgardNdPermits) AsgardNdPermits.renderFieldTab(content, work, user);
+        else content.innerHTML = '<div class="help">Модуль нарядов не загружен (nd-permits.js)</div>';
+      } },
       { id: 'stages', label: '🗺 Маршруты', render: () => renderStagesTab(content, work, user) },
       { id: 'payments', label: '💳 Выплаты', render: () => renderPaymentsTab(content, work, user) },
       { id: 'prizes', label: '🎁 Призы', render: () => renderPrizesTab(content, work, user) },
@@ -182,6 +339,7 @@ window.AsgardFieldTab = (function () {
   // TAB 1: БРИГАДА (CREW)
   // ═══════════════════════════════════════════════════════════════════
   async function renderCrewTab(container, work, user, settingsData, isActive) {
+    stopCrewAutosave();
     // Clean up previous CRSelect instances for crew rows
     _ftTariffIds.forEach(id => { try { CRSelect.destroy(id); } catch (_) {} });
     _ftTariffIds.length = 0;
@@ -241,9 +399,70 @@ window.AsgardFieldTab = (function () {
 
     const pdInput = document.createElement('input');
     pdInput.id = 'fieldPerDiem';
-    pdInput.value = settingsData?.per_diem || '0';
+    // 0 — валидное значение; нельзя `|| '0'` (0 falsy → путаница при отладке)
+    pdInput.value = (settingsData?.per_diem != null && settingsData.per_diem !== '')
+      ? String(settingsData.per_diem)
+      : '0';
     pdInput.style.cssText = 'width:80px;padding:6px 10px;border-radius:6px;background:var(--bg1);color:var(--t1);border:1px solid var(--brd);font-size:13px';
     settingsBar.appendChild(pdInput);
+
+    function readPerDiemInput() {
+      const n = parseFloat(pdInput.value);
+      return Number.isFinite(n) && n >= 0 ? n : 0;
+    }
+
+    pdInput.addEventListener('change', () => { persistProjectSettings(); });
+
+    // Флаг: суточные за смены на объекте (выкл = только дорога/этапы)
+    const pdCheckLabel = document.createElement('label');
+    pdCheckLabel.style.cssText = 'display:inline-flex;align-items:center;gap:6px;margin-left:16px;font-size:13px;color:var(--t2);cursor:pointer;user-select:none';
+    const pdCheck = document.createElement('input');
+    pdCheck.type = 'checkbox';
+    pdCheck.id = 'fieldPerDiemOnCheckins';
+    // default true; для МЛСП в settings уже false
+    pdCheck.checked = settingsData?.per_diem_on_checkins !== false && settingsData?.per_diem_on_checkins !== 'f';
+    const pdCheckText = document.createElement('span');
+    pdCheckText.textContent = 'Суточные за смены на объекте';
+    pdCheckLabel.appendChild(pdCheck);
+    pdCheckLabel.appendChild(pdCheckText);
+    settingsBar.appendChild(pdCheckLabel);
+
+    function readPerDiemOnCheckins() {
+      return !!pdCheck.checked;
+    }
+
+    async function persistProjectSettings() {
+      if (!isActive) return;
+      const per_diem = readPerDiemInput();
+      const per_diem_on_checkins = readPerDiemOnCheckins();
+      try {
+        await fetch(`/api/field/manage/projects/${work.id}/activate`, {
+          method: 'POST', headers: hdr(),
+          body: JSON.stringify({
+            site_category: CRSelect.getValue('fieldCategory'),
+            per_diem,
+            per_diem_on_checkins,
+          })
+        });
+        settingsData = {
+          ...(settingsData || {}),
+          site_category: CRSelect.getValue('fieldCategory'),
+          per_diem,
+          per_diem_on_checkins,
+          is_active: true,
+        };
+        toast(
+          'Суточные',
+          per_diem_on_checkins
+            ? `Ставка ${per_diem} ₽/день · смены на объекте учитываются`
+            : `Ставка ${per_diem} ₽/день · только дорога/этапы (смены на объекте — нет)`,
+          'ok'
+        );
+      } catch (e) {
+        toast('Ошибка', String(e), 'err');
+      }
+    }
+    pdCheck.addEventListener('change', () => { persistProjectSettings(); });
 
     // Activate button
     if (!isActive) {
@@ -259,15 +478,23 @@ window.AsgardFieldTab = (function () {
             method: 'POST', headers: hdr(),
             body: JSON.stringify({
               site_category: CRSelect.getValue('fieldCategory'),
-              per_diem: parseFloat(pdInput.value) || 0,
+              per_diem: readPerDiemInput(),
+              per_diem_on_checkins: readPerDiemOnCheckins(),
               schedule_type: 'shift',
               shift_hours: 11,
             })
           });
           toast('Field', 'Полевой модуль активирован! ⚔️', 'ok');
           isActive = true;
-          settingsData = { site_category: CRSelect.getValue('fieldCategory'), per_diem: parseFloat(pdInput.value) || 0, is_active: true };
-          renderCrewTab(container, work, user, settingsData, true);
+          settingsData = {
+            site_category: CRSelect.getValue('fieldCategory'),
+            per_diem: readPerDiemInput(),
+            per_diem_on_checkins: readPerDiemOnCheckins(),
+            is_active: true,
+          };
+          showBaseRatesModal(work, settingsData, function() {
+            renderCrewTab(container, work, user, settingsData, true);
+          });
         } catch (e) {
           toast('Ошибка', String(e), 'err');
           activateBtn.disabled = false;
@@ -280,9 +507,47 @@ window.AsgardFieldTab = (function () {
       badge.textContent = '✅ Активен';
       badge.style.cssText = 'margin-left:auto;color:#10b981;font-size:13px;font-weight:600';
       settingsBar.appendChild(badge);
+      const baseRatesBtn = document.createElement('button');
+      baseRatesBtn.className = 'btn ghost';
+      baseRatesBtn.textContent = '💰 Базовые ставки';
+      baseRatesBtn.style.marginLeft = '8px';
+      baseRatesBtn.addEventListener('click', () => {
+        showBaseRatesModal(work, settingsData, function(upd) {
+          if (upd?.site_category) {
+            try { CRSelect.setValue('fieldCategory', upd.site_category); } catch (_) {}
+            settingsData = Object.assign({}, settingsData || {}, { site_category: upd.site_category });
+          }
+        });
+      });
+      settingsBar.appendChild(baseRatesBtn);
     }
 
     container.appendChild(settingsBar);
+
+    // ── Поиск / сортировка по ФИО ──
+    const filterBar = document.createElement('div');
+    filterBar.style.cssText = 'display:flex;gap:10px;align-items:center;margin-bottom:12px;flex-wrap:wrap';
+
+    const searchInput = document.createElement('input');
+    searchInput.type = 'search';
+    searchInput.id = 'fieldCrewSearch';
+    searchInput.placeholder = '🔍 Поиск по ФИО…';
+    searchInput.autocomplete = 'off';
+    searchInput.style.cssText = 'flex:1;min-width:200px;max-width:360px;padding:8px 12px;border-radius:8px;background:var(--bg1);color:var(--t1);border:1px solid var(--brd);font-size:13px';
+    filterBar.appendChild(searchInput);
+
+    const sortBtn = document.createElement('button');
+    sortBtn.className = 'btn ghost';
+    sortBtn.type = 'button';
+    sortBtn.textContent = 'А→Я по ФИО';
+    sortBtn.title = 'Отсортировать бригаду по фамилии';
+    filterBar.appendChild(sortBtn);
+
+    const filterHint = document.createElement('span');
+    filterHint.style.cssText = 'font-size:12px;color:var(--t3)';
+    filterBar.appendChild(filterHint);
+
+    container.appendChild(filterBar);
 
     // ── Crew table ──
     // FIX 24.06 (#108, итерация 2): overflow-x:auto появляется только когда
@@ -298,8 +563,10 @@ window.AsgardFieldTab = (function () {
     // Header
     const thead = document.createElement('thead');
     thead.innerHTML = `<tr style="background:var(--bg2)">
+      <th style="padding:8px 6px;text-align:center;border-bottom:1px solid var(--brd);color:var(--t2);font-weight:500;font-size:12px;width:36px">#</th>
       <th style="padding:8px 10px;text-align:left;border-bottom:1px solid var(--brd);color:var(--t2);font-weight:500;font-size:12px">ФИО</th>
       <th style="padding:8px 10px;text-align:left;border-bottom:1px solid var(--brd);color:var(--t2);font-weight:500;font-size:12px">Роль</th>
+      <th style="padding:8px 10px;text-align:left;border-bottom:1px solid var(--brd);color:var(--t2);font-weight:500;font-size:12px">Смена</th>
       <th style="padding:8px 10px;text-align:left;border-bottom:1px solid var(--brd);color:var(--t2);font-weight:500;font-size:12px">Тариф</th>
       <th style="padding:8px 6px;text-align:center;border-bottom:1px solid var(--brd);color:var(--t2);font-weight:500;font-size:12px">Баллы</th>
       <th style="padding:8px 6px;text-align:right;border-bottom:1px solid var(--brd);color:var(--t2);font-weight:500;font-size:12px">₽/смену</th>
@@ -317,61 +584,118 @@ window.AsgardFieldTab = (function () {
     tableWrap.appendChild(table);
     container.appendChild(tableWrap);
 
-    // Populate existing assignments
+    // Populate existing assignments — сразу по ФИО А→Я
     const currentCat = CRSelect.getValue('fieldCategory');
+    // Базовый пул по категории; per-row фильтр по роли — в addCrewRow / refreshRowTariffs
     const filteredTariffs = allTariffs.filter(t => t.category === currentCat);
     const comboTariffs = specials.concat(allTariffs.filter(t => t.is_combinable));
 
-    for (const a of assignments) {
+    const sortedAssignments = assignments.slice().sort((a, b) => {
+      const ea = allEmployees.find(e => Number(e.id) === Number(a.employee_id));
+      const eb = allEmployees.find(e => Number(e.id) === Number(b.employee_id));
+      const na = String(ea?.fio || ea?.full_name || '').toLocaleLowerCase('ru');
+      const nb = String(eb?.fio || eb?.full_name || '').toLocaleLowerCase('ru');
+      return na.localeCompare(nb, 'ru');
+    });
+
+    for (const a of sortedAssignments) {
       const emp = allEmployees.find(e => e.id === a.employee_id);
       if (!emp) continue;
-      addCrewRow(tbody, emp, a, filteredTariffs, comboTariffs, allEmployees, work);
+      addCrewRow(tbody, emp, a, filteredTariffs, comboTariffs, allEmployees, work, allTariffs);
+    }
+    renumberCrewRows(tbody);
+
+    function applyCrewFioFilter() {
+      const q = (searchInput.value || '').trim().toLowerCase();
+      let shown = 0;
+      let total = 0;
+      tbody.querySelectorAll('tr[data-crew-row]').forEach(row => {
+        total += 1;
+        const fio = getCrewRowFio(row, allEmployees).toLowerCase();
+        const match = !q || fio.includes(q);
+        row.style.display = match ? '' : 'none';
+        if (match) shown += 1;
+      });
+      renumberCrewRows(tbody);
+      filterHint.textContent = q
+        ? `Найдено: ${shown} из ${total}`
+        : (total ? `${total} чел.` : '');
     }
 
-    // Category change → re-filter tariffs (CRSelect onChange)
+    searchInput.addEventListener('input', applyCrewFioFilter);
+    sortBtn.addEventListener('click', () => {
+      sortCrewRowsByFio(tbody, allEmployees);
+      applyCrewFioFilter();
+    });
+    applyCrewFioFilter();
+
+    // Category change → re-filter tariffs per row role
     function _onCategoryChange() {
       const newCat = CRSelect.getValue('fieldCategory');
       const newFiltered = allTariffs.filter(t => t.category === newCat);
-      const newOpts = [{ value: '', label: '— выберите —' }].concat(
-        newFiltered.map(t => ({ value: String(t.id), label: `${t.position_name} (${t.points}б · ${money(t.rate_per_shift)}₽)` }))
-      );
-      // Update all tariff CRSelect instances
-      _ftTariffIds.forEach(crId => {
-        try {
-          const curVal = CRSelect.getValue(crId);
-          CRSelect.setOptions(crId, newOpts);
-          if (curVal) CRSelect.setValue(crId, curVal);
-        } catch (_) { /* row may have been removed */ }
-      });
-      // Re-populate filteredTariffs reference for addCrewRow
       filteredTariffs.length = 0;
       filteredTariffs.push(...newFiltered);
+      tbody.querySelectorAll('tr[data-crew-row]').forEach(row => {
+        const rid = row.dataset.crewRid;
+        if (rid == null) return;
+        const role = CRSelect.getValue('ft-role-' + rid) || 'worker';
+        const roleTariffs = filterTariffsForFieldRole(newFiltered, role, newCat);
+        const opts = tariffSelectOptions(roleTariffs);
+        try {
+          const curVal = CRSelect.getValue('ft-tariff-' + rid);
+          CRSelect.setOptions('ft-tariff-' + rid, opts);
+          if (curVal && roleTariffs.some(t => String(t.id) === curVal)) {
+            CRSelect.setValue('ft-tariff-' + rid, curVal);
+          } else if (role === 'welder' || role === 'pto') {
+            const def = defaultTariffIdForRole(newFiltered, role, newCat);
+            if (def) CRSelect.setValue('ft-tariff-' + rid, def);
+          }
+        } catch (_) { /* row may have been removed */ }
+      });
     }
 
     // ── Action buttons ──
     const actions = document.createElement('div');
-    actions.style.cssText = 'display:flex;gap:10px;flex-wrap:wrap';
+    actions.style.cssText = 'display:flex;gap:10px;flex-wrap:wrap;align-items:center';
 
-    // Add employee button — добавляет пустую inline-строку в таблицу.
-    // FIX 24.06 (#108): юзер вернул прежний вариант — нравится больше, чем
-    // модалка. Скролл уже убран (overflow-x с tableWrap снят). Модалка
-    // openAddCrewModal оставлена в коде но не вызывается отсюда.
+    // Add employee — окно «База + доплата» (openAddCrewModal). Inline-строка
+    // остаётся для редактирования уже назначенных (галочки + ручные баллы в ячейке).
     const addBtn = document.createElement('button');
     addBtn.className = 'btn ghost';
     addBtn.textContent = '➕ Добавить сотрудника';
     addBtn.addEventListener('click', () => {
-      addCrewRow(tbody, null, null, filteredTariffs, comboTariffs, allEmployees, work);
+      const assignedIds = new Set();
+      tbody.querySelectorAll('tr[data-crew-row]').forEach(row => {
+        const pickerWrap = row.querySelector('[data-field="employee"]');
+        const pId = pickerWrap?.dataset.pickerId;
+        const empIds = pId ? CREmployeePicker.getSelected(pId) : [];
+        if (empIds[0]) assignedIds.add(Number(empIds[0]));
+      });
+      openAddCrewModal({
+        work, user, settingsData, container,
+        allEmployees,
+        filteredTariffs,
+        comboTariffs,
+        assignedIds,
+        defaultPerDiem: readPerDiemInput(),
+        isActive
+      });
     });
     actions.appendChild(addBtn);
 
-    // Save crew button
+    // Save crew + autosave каждые 30 сек
     const saveBtn = document.createElement('button');
     saveBtn.className = 'btn';
     saveBtn.textContent = '💾 Сохранить бригаду';
-    saveBtn.addEventListener('click', async () => {
-      const rows = tbody.querySelectorAll('tr[data-crew-row]');
+
+    const autoStatus = document.createElement('span');
+    autoStatus.id = 'crewAutosaveStatus';
+    autoStatus.style.cssText = 'font-size:12px;color:var(--t3);margin-left:4px';
+    autoStatus.textContent = 'Автосохранение каждые 30 сек';
+
+    function collectCrewEmployees() {
       const employees = [];
-      rows.forEach(row => {
+      tbody.querySelectorAll('tr[data-crew-row]').forEach(row => {
         const pickerWrap = row.querySelector('[data-field="employee"]');
         const pId = pickerWrap?.dataset.pickerId;
         const empIds = pId ? CREmployeePicker.getSelected(pId) : [];
@@ -380,52 +704,120 @@ window.AsgardFieldTab = (function () {
         const role = rid != null ? CRSelect.getValue('ft-role-' + rid) : null;
         const shiftType = rid != null ? CRSelect.getValue('ft-shift-' + rid) : null;
         const tariffId = rid != null ? CRSelect.getValue('ft-tariff-' + rid) : null;
-        const comboId = rid != null ? CRSelect.getValue('ft-combo-' + rid) : null;
+        const comboIds = [];
+        row.querySelectorAll('.ft-combo-check:checked').forEach(cb => {
+          const n = parseInt(cb.value, 10);
+          if (n) comboIds.push(n);
+        });
+        // fallback: старый CRSelect combo, если чекбоксов нет
+        if (!comboIds.length && rid != null) {
+          try {
+            const cVal = CRSelect.getValue('ft-combo-' + rid);
+            if (cVal) comboIds.push(parseInt(cVal, 10));
+          } catch (_) {}
+        }
+        let manual = parseFloat(String(row.querySelector('.ft-manual-extra')?.value || '').replace(',', '.'));
+        if (!isFinite(manual) || manual < 0) manual = 0;
         if (empId) {
           employees.push({
             employee_id: empId,
             field_role: role || 'worker',
             shift_type: shiftType || 'day',
             tariff_id: tariffId ? parseInt(tariffId) : null,
-            combination_tariff_id: comboId ? parseInt(comboId) : null,
+            combination_tariff_id: comboIds[0] || null,
+            combo_tariff_ids: comboIds,
+            manual_extra_points: manual
           });
         }
       });
+      return employees;
+    }
 
+    function crewPersistSnapshot(employees) {
+      return JSON.stringify({
+        employees,
+        site_category: (() => { try { return CRSelect.getValue('fieldCategory'); } catch (_) { return null; } })(),
+        per_diem: readPerDiemInput(),
+        per_diem_on_checkins: (() => { try { return readPerDiemOnCheckins(); } catch (_) { return true; } })(),
+      });
+    }
+
+    let lastSavedSnapshot = crewPersistSnapshot(collectCrewEmployees());
+
+    async function persistCrew(opts) {
+      const silent = !!(opts && opts.silent);
+      const forceRefresh = !!(opts && opts.forceRefresh);
+      if (!tbody.isConnected) {
+        stopCrewAutosave();
+        return false;
+      }
+      const employees = collectCrewEmployees();
       if (employees.length === 0) {
-        toast('Бригада', 'Нет сотрудников для сохранения', 'err');
-        return;
+        if (!silent) toast('Бригада', 'Нет сотрудников для сохранения', 'err');
+        return false;
+      }
+      const snap = crewPersistSnapshot(employees);
+      if (silent && snap === lastSavedSnapshot) return false;
+      if (_crewAutosaveBusy) return false;
+      _crewAutosaveBusy = true;
+
+      if (!silent) {
+        saveBtn.disabled = true;
+        saveBtn.textContent = 'Сохранение…';
+      } else {
+        autoStatus.textContent = 'Сохраняем…';
+        autoStatus.style.color = 'var(--t2)';
       }
 
-      // First ensure project is activated with current settings
-      if (isActive) {
-        await fetch(`/api/field/manage/projects/${work.id}/activate`, {
-          method: 'POST', headers: hdr(),
-          body: JSON.stringify({
-            site_category: CRSelect.getValue('fieldCategory'),
-            per_diem: parseFloat(pdInput.value) || 0,
-          })
-        });
-      }
-
-      saveBtn.disabled = true;
-      saveBtn.textContent = 'Сохранение…';
       try {
+        if (isActive) {
+          await fetch(`/api/field/manage/projects/${work.id}/activate`, {
+            method: 'POST', headers: hdr(),
+            body: JSON.stringify({
+              site_category: CRSelect.getValue('fieldCategory'),
+              per_diem: readPerDiemInput(),
+              per_diem_on_checkins: readPerDiemOnCheckins(),
+            })
+          });
+        }
+
         const result = await api(`/projects/${work.id}/crew`, {
           method: 'POST',
           body: JSON.stringify({ employees }),
         });
         const ok = result.count || 0;
-        toast('Бригада', `Сохранено: ${ok} из ${employees.length}`, 'ok');
-        // Refresh
-        renderCrewTab(container, work, user, settingsData, isActive);
+        lastSavedSnapshot = snap;
+        const ts = new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+        autoStatus.textContent = '✓ Автосохранено ' + ts;
+        autoStatus.style.color = '#10b981';
+        if (!silent) {
+          toast('Бригада', `Сохранено: ${ok} из ${employees.length}`, 'ok');
+        }
+        if (forceRefresh) {
+          renderCrewTab(container, work, user, settingsData, isActive);
+        }
+        return true;
       } catch (e) {
-        toast('Ошибка', String(e), 'err');
+        autoStatus.textContent = '⚠ Ошибка автосохранения';
+        autoStatus.style.color = '#ef4444';
+        if (!silent) toast('Ошибка', String(e), 'err');
+        return false;
+      } finally {
+        _crewAutosaveBusy = false;
+        if (!silent && saveBtn.isConnected) {
+          saveBtn.disabled = false;
+          saveBtn.textContent = '💾 Сохранить бригаду';
+        }
       }
-      saveBtn.disabled = false;
-      saveBtn.textContent = '💾 Сохранить бригаду';
-    });
+    }
+
+    saveBtn.addEventListener('click', () => persistCrew({ silent: false, forceRefresh: true }));
     actions.appendChild(saveBtn);
+    actions.appendChild(autoStatus);
+
+    _crewAutosaveTimer = setInterval(() => {
+      persistCrew({ silent: true, forceRefresh: false });
+    }, 30000);
 
     // SMS button
     const smsBtn = document.createElement('button');
@@ -514,11 +906,233 @@ window.AsgardFieldTab = (function () {
           }
         });
         row.appendChild(retBtn);
+
+        // Тариф у уехавших тоже можно менять (иначе «нельзя поменять ставку Радику»)
+        const tarBtn = document.createElement('button');
+        tarBtn.textContent = '💰 Тариф';
+        tarBtn.title = a.tariff_id
+          ? ('Тариф #' + a.tariff_id + (a.tariff_points != null ? ' · ' + a.tariff_points + 'б' : ''))
+          : 'Тариф не задан';
+        tarBtn.style.cssText = 'background:none;border:1px solid var(--brd);color:var(--t2);border-radius:6px;padding:3px 10px;font-size:12px;cursor:pointer;margin-left:8px';
+        tarBtn.addEventListener('click', () => {
+          openDepartedTariffModal({
+            work, emp, assignment: a, allTariffs, specials, settingsData,
+            onSaved: () => renderCrewTab(container, work, user, settingsData, isActive)
+          });
+        });
+        row.appendChild(tarBtn);
         depSection.appendChild(row);
       }
 
       container.appendChild(depSection);
     }
+  }
+
+  // Модалка тарифа для уехавшего (без возврата на объект)
+  function openDepartedTariffModal({ work, emp, assignment, allTariffs, specials, settingsData, onSaved }) {
+    const cat = settingsData?.site_category || 'mlsp';
+    const role = assignment.field_role || 'worker';
+    const pool = filterTariffsForFieldRole(
+      (allTariffs || []).filter(t => t.category === cat || t.category === 'special'),
+      role,
+      cat
+    );
+    const comboPool = (specials || []).concat((allTariffs || []).filter(t => t.is_combinable));
+    let opts = '<option value="">— без тарифа —</option>';
+    pool.forEach(t => {
+      const sel = Number(t.id) === Number(assignment.tariff_id) ? ' selected' : '';
+      opts += `<option value="${t.id}"${sel}>${esc(t.position_name)} (${t.points || 0}б · ${money(t.rate_per_shift)})</option>`;
+    });
+    let comboOpts = '<option value="">— нет —</option>';
+    comboPool.filter(t => t.is_combinable).forEach(t => {
+      const sel = Number(t.id) === Number(assignment.combination_tariff_id) ? ' selected' : '';
+      comboOpts += `<option value="${t.id}"${sel}>${esc(t.position_name)} (+${t.points || 1}б)</option>`;
+    });
+
+    AsgardUI.showModal({
+      title: 'Тариф — ' + (emp.fio || ''),
+      html:
+        '<p class="muted" style="font-size:12px;margin:0 0 12px">Уехавший остаётся в истории бригады — тариф можно задать без возврата на объект.</p>' +
+        '<label style="font-size:12px;color:var(--t2);display:block;margin-bottom:6px">Основной тариф</label>' +
+        '<select id="depTariff" class="inp" style="width:100%;margin-bottom:12px">' + opts + '</select>' +
+        '<label style="font-size:12px;color:var(--t2);display:block;margin-bottom:6px">Совмещение</label>' +
+        '<select id="depCombo" class="inp" style="width:100%;margin-bottom:14px">' + comboOpts + '</select>' +
+        '<div style="display:flex;gap:8px;justify-content:flex-end">' +
+        '<button type="button" class="btn ghost" id="depTarCnl">Отмена</button>' +
+        '<button type="button" class="btn" id="depTarOk">Сохранить</button></div>',
+      onMount: () => {
+        document.getElementById('depTarCnl')?.addEventListener('click', () => AsgardUI.hideModal());
+        document.getElementById('depTarOk')?.addEventListener('click', async () => {
+          const tariffId = document.getElementById('depTariff')?.value || null;
+          const comboId = document.getElementById('depCombo')?.value || null;
+          const btn = document.getElementById('depTarOk');
+          if (btn) { btn.disabled = true; btn.textContent = '…'; }
+          try {
+            await api('/projects/' + work.id + '/crew', {
+              method: 'POST',
+              body: JSON.stringify({
+                employees: [{
+                  employee_id: emp.id,
+                  field_role: role,
+                  tariff_id: tariffId ? parseInt(tariffId, 10) : null,
+                  combination_tariff_id: comboId ? parseInt(comboId, 10) : null,
+                  shift_type: assignment.shift_type || 'day',
+                  keep_inactive: true
+                }]
+              })
+            });
+            AsgardUI.hideModal();
+            toast('Тариф', 'Сохранено для ' + (emp.fio || 'сотрудника'), 'ok');
+            if (typeof onSaved === 'function') onSaved();
+          } catch (e) {
+            toast('Ошибка', String(e.message || e), 'err');
+            if (btn) { btn.disabled = false; btn.textContent = 'Сохранить'; }
+          }
+        });
+      }
+    });
+  }
+
+  // ─── Базовые ставки по ролям (после создания / активации Field) ───────
+  async function showBaseRatesModal(work, settingsData, onSaved) {
+    const siteCat0 = settingsData?.site_category || 'ground';
+    let tariffs = [];
+    let saved = null;
+    try {
+      const [tRes, rRes] = await Promise.all([
+        api('/tariffs?category=all'),
+        fetch('/api/field/manage/projects/' + work.id + '/role-base-rates', { headers: hdr() }).then(r => r.json())
+      ]);
+      tariffs = (tRes.tariffs || []).filter(t => !t.is_combinable);
+      saved = rRes;
+    } catch (e) {
+      toast('Ошибка', String(e.message || e), 'err');
+      return;
+    }
+    const cat = saved?.site_category || siteCat0;
+    const roleDefs = [
+      { key: 'worker', label: 'Слесарь / монтажник', def: true },
+      { key: 'shift_master', label: 'Мастер сменный', def: true },
+      { key: 'senior_master', label: 'Мастер ответственный', def: true },
+      { key: 'welder', label: 'Сварщик', def: false },
+      { key: 'pto', label: 'ПТО', def: false },
+      { key: 'project_lead', label: 'Рук. проекта', def: false }
+    ];
+    const byKey = {};
+    (saved?.role_base_rates?.roles || []).forEach(r => { if (r?.role_key) byKey[r.role_key] = r; });
+
+    let catOpts = ['mlsp', 'ground', 'ground_hard', 'warehouse'].map(c => {
+      const labels = { mlsp: 'МЛСП', ground: 'Земля', ground_hard: 'Земля тяж.', warehouse: 'Склад' };
+      return '<option value="' + c + '"' + (c === cat ? ' selected' : '') + '>' + labels[c] + '</option>';
+    }).join('');
+
+    let rowsHtml = roleDefs.map(def => {
+      const prev = byKey[def.key];
+      const enabled = prev ? !!prev.enabled : def.def;
+      const list = filterTariffsForFieldRole(tariffs, def.key, cat);
+      let tid = prev?.tariff_id ? String(prev.tariff_id) : '';
+      if (!tid || !list.some(t => String(t.id) === tid)) {
+        tid = defaultTariffIdForRole(list, def.key, cat) || (list[0] ? String(list[0].id) : '');
+      }
+      const opts = '<option value="">—</option>' + list.map(t =>
+        '<option value="' + t.id + '"' + (String(t.id) === tid ? ' selected' : '') + '>' +
+        esc(t.position_name + ' · ' + t.points + 'б') + '</option>'
+      ).join('');
+      const pts = (list.find(t => String(t.id) === tid) || {}).points || 0;
+      return '<tr data-role="' + def.key + '">' +
+        '<td style="text-align:center"><input type="checkbox" class="br-en"' + (enabled ? ' checked' : '') + '></td>' +
+        '<td><strong>' + esc(def.label) + '</strong></td>' +
+        '<td><select class="inp br-tariff" style="width:100%">' + opts + '</select></td>' +
+        '<td class="br-pts" style="text-align:center">' + (enabled ? pts : '—') + '</td>' +
+        '<td class="br-rub" style="text-align:right;color:var(--gold)">' + (enabled && pts ? money(pts * 500) : '—') + '</td>' +
+        '</tr>';
+    }).join('');
+
+    const html = '<div style="padding:4px">' +
+      '<div style="padding:10px 12px;margin-bottom:12px;border-radius:8px;background:rgba(245,158,11,.15);border:1px solid rgba(245,158,11,.45);font-size:13px;line-height:1.45">' +
+      'Это <strong>базовые ставки объекта</strong>. Индивидуальную доплату ставят при назначении в бригаду.' +
+      '</div>' +
+      '<label style="font-size:12px;font-weight:600;display:block;margin-bottom:12px">Категория' +
+      '<select id="brCat" class="inp" style="width:240px;margin-top:6px;display:block">' + catOpts + '</select></label>' +
+      '<div style="overflow:auto;max-height:50vh"><table class="t-list" style="width:100%"><thead><tr>' +
+      '<th>Нужен</th><th>Роль</th><th>Тариф</th><th>Баллы</th><th>₽/смена</th></tr></thead><tbody id="brBody">' +
+      rowsHtml + '</tbody></table></div>' +
+      '<div style="display:flex;justify-content:space-between;margin-top:16px">' +
+      '<button type="button" class="btn ghost" id="brSkip">Пропустить</button>' +
+      '<button type="button" class="btn" id="brSave" style="background:linear-gradient(135deg,#D4A843,#b8922e);color:#000;font-weight:700">Сохранить</button>' +
+      '</div></div>';
+
+    AsgardUI.showModal({
+      title: '💰 Базовые ставки по ролям',
+      subtitle: work.work_title || ('Работа #' + work.id),
+      icon: '💰',
+      wide: true,
+      html: html
+    });
+
+    const body = document.querySelector('.cr-m-overlay--visible:last-child #modalBody') || document.getElementById('modalBody');
+    function refreshPts() {
+      const c = (body.querySelector('#brCat') || {}).value || cat;
+      body.querySelectorAll('#brBody tr').forEach(tr => {
+        const en = tr.querySelector('.br-en')?.checked;
+        const sel = tr.querySelector('.br-tariff');
+        const t = tariffs.find(x => String(x.id) === String(sel?.value));
+        const pts = t ? (t.points || 0) : 0;
+        const ptsEl = tr.querySelector('.br-pts');
+        const rubEl = tr.querySelector('.br-rub');
+        if (ptsEl) ptsEl.textContent = en ? pts : '—';
+        if (rubEl) rubEl.textContent = en && pts ? money(pts * 500) : '—';
+        if (sel) sel.disabled = !en;
+      });
+    }
+    body.querySelector('#brCat')?.addEventListener('change', () => {
+      const c = body.querySelector('#brCat').value;
+      body.querySelectorAll('#brBody tr').forEach(tr => {
+        const role = tr.dataset.role;
+        const list = filterTariffsForFieldRole(tariffs, role, c);
+        const sel = tr.querySelector('.br-tariff');
+        if (!sel) return;
+        const cur = sel.value;
+        sel.innerHTML = '<option value="">—</option>' + list.map(t =>
+          '<option value="' + t.id + '">' + esc(t.position_name + ' · ' + t.points + 'б') + '</option>'
+        ).join('');
+        if (list.some(t => String(t.id) === cur)) sel.value = cur;
+        else sel.value = defaultTariffIdForRole(list, role, c) || (list[0] ? String(list[0].id) : '');
+      });
+      refreshPts();
+    });
+    body.querySelectorAll('.br-en, .br-tariff').forEach(el => el.addEventListener('change', refreshPts));
+    refreshPts();
+
+    body.querySelector('#brSkip')?.addEventListener('click', () => AsgardUI.hideModal());
+    body.querySelector('#brSave')?.addEventListener('click', async () => {
+      const site_category = body.querySelector('#brCat')?.value || cat;
+      const roles = [];
+      body.querySelectorAll('#brBody tr').forEach(tr => {
+        const role_key = tr.dataset.role;
+        const enabled = !!tr.querySelector('.br-en')?.checked;
+        const tariff_id = tr.querySelector('.br-tariff')?.value;
+        const t = tariffs.find(x => String(x.id) === String(tariff_id));
+        roles.push({
+          role_key,
+          enabled,
+          tariff_id: tariff_id ? parseInt(tariff_id, 10) : null,
+          points: t ? Number(t.points) || 0 : 0
+        });
+      });
+      try {
+        await fetch('/api/field/manage/projects/' + work.id + '/role-base-rates', {
+          method: 'PUT',
+          headers: Object.assign({ 'Content-Type': 'application/json' }, hdr()),
+          body: JSON.stringify({ site_category, role_base_rates: { site_category, roles } })
+        }).then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); });
+        toast('Базовые ставки', 'Сохранены', 'ok');
+        AsgardUI.hideModal();
+        if (typeof onSaved === 'function') onSaved({ site_category, role_base_rates: { roles } });
+      } catch (e) {
+        toast('Ошибка', String(e.message || e), 'err');
+      }
+    });
   }
 
   // ─── Модалка: добавить сотрудника в бригаду (24.06.2026) ─────────────
@@ -546,20 +1160,22 @@ window.AsgardFieldTab = (function () {
       if (e.is_busy && e.busy_with && e.busy_with.length) {
         var w = e.busy_with[0];
         var endStr = w.end_date ? new Date(w.end_date).toLocaleDateString('ru-RU') : '';
-        busyTag = ' 🔴 занят (до ' + endStr + ')';
+        var titleShort = (w.work_title || 'другой объект').slice(0, 36);
+        busyTag = ' 🔴 ' + titleShort + (endStr ? ' (до ' + endStr + ')' : '');
       }
       empOptsHtml += '<option value="' + e.id + '" data-busy="' + (e.is_busy ? '1' : '0') + '">' + esc(baseName + busyTag) + '</option>';
     });
 
     var tariffOptsHtml = '<option value="">— выберите —</option>';
     filteredTariffs.forEach(function(t) {
-      tariffOptsHtml += '<option value="' + t.id + '">' + esc(t.position_name + ' (' + t.points + 'б · ' + money(t.rate_per_shift) + '₽)') + '</option>';
+      tariffOptsHtml += '<option value="' + t.id + '" data-role-filter="1">' + esc(t.position_name + ' (' + t.points + 'б · ' + money(t.rate_per_shift) + ')') + '</option>';
     });
 
-    var comboOptsHtml = '<option value="">— Нет —</option>';
-    comboTariffs.forEach(function(t) {
-      comboOptsHtml += '<option value="' + t.id + '">' + esc(t.position_name + ' (+' + (t.points || 1) + 'б)') + '</option>';
-    });
+    var comboChecksHtml = comboTariffs.map(function(t) {
+      return '<label style="display:flex;align-items:flex-start;gap:8px;font-size:12.5px;margin:4px 0;cursor:pointer">' +
+        '<input type="checkbox" class="ac-combo" value="' + t.id + '">' +
+        '<span>' + esc(t.position_name + ' (+' + (t.points || 1) + 'б)') + '</span></label>';
+    }).join('');
 
     var html = '' +
       '<div style="padding:6px 4px 4px">' +
@@ -569,16 +1185,6 @@ window.AsgardFieldTab = (function () {
           '<select id="acEmp" class="inp" style="width:100%;margin-top:6px;font-weight:400;text-transform:none;letter-spacing:0;color:var(--t1)">' + empOptsHtml + '</select>' +
         '</label>' +
         '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px">' +
-          '<label style="font-size:12px;font-weight:600;color:var(--t2);text-transform:uppercase;letter-spacing:.5px">' +
-            'Тариф' +
-            '<select id="acTariff" class="inp" style="width:100%;margin-top:6px;font-weight:400;text-transform:none;letter-spacing:0;color:var(--t1)">' + tariffOptsHtml + '</select>' +
-          '</label>' +
-          '<label style="font-size:12px;font-weight:600;color:var(--t2);text-transform:uppercase;letter-spacing:.5px">' +
-            'Совмещение' +
-            '<select id="acCombo" class="inp" style="width:100%;margin-top:6px;font-weight:400;text-transform:none;letter-spacing:0;color:var(--t1)">' + comboOptsHtml + '</select>' +
-          '</label>' +
-        '</div>' +
-        '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:14px">' +
           '<label style="font-size:12px;font-weight:600;color:var(--t2);text-transform:uppercase;letter-spacing:.5px">' +
             'Роль' +
             '<select id="acRole" class="inp" style="width:100%;margin-top:6px;font-weight:400;text-transform:none;letter-spacing:0;color:var(--t1)">' +
@@ -591,10 +1197,23 @@ window.AsgardFieldTab = (function () {
               SHIFTS.map(function(s) { return '<option value="' + s.value + '">' + esc(s.label) + '</option>'; }).join('') +
             '</select>' +
           '</label>' +
-          '<label style="font-size:12px;font-weight:600;color:var(--t2);text-transform:uppercase;letter-spacing:.5px">' +
-            'Суточные, ₽/день' +
-            '<input id="acPerDiem" type="number" min="0" step="50" class="inp" value="' + defaultPerDiem + '" style="width:100%;margin-top:6px;font-weight:400;text-transform:none;letter-spacing:0;color:var(--t1)">' +
-          '</label>' +
+        '</div>' +
+        '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px">' +
+          '<div style="padding:10px;border-radius:8px;border:1px solid var(--brd);background:var(--bg2)">' +
+            '<div style="font-weight:700;font-size:13px;margin-bottom:4px">База</div>' +
+            '<div style="font-size:11.5px;color:var(--t3);margin-bottom:8px">Из базовых ставок / сетки</div>' +
+            '<label style="font-size:12px;font-weight:600;color:var(--t2)">Тариф' +
+              '<select id="acTariff" class="inp" style="width:100%;margin-top:6px">' + tariffOptsHtml + '</select>' +
+            '</label>' +
+          '</div>' +
+          '<div style="padding:10px;border-radius:8px;border:1px solid rgba(245,158,11,.4);background:var(--bg2)">' +
+            '<div style="font-weight:700;font-size:13px;margin-bottom:4px">Доплата</div>' +
+            '<div style="font-size:11.5px;color:var(--t3);margin-bottom:8px">Только этому человеку · 2 / 3 / 3.5…</div>' +
+            '<label style="font-size:12px;font-weight:600;color:var(--t2)">Ручные баллы' +
+              '<input id="acManual" type="number" min="0" step="0.5" class="inp" placeholder="0" style="width:100%;margin-top:6px">' +
+            '</label>' +
+            '            <div style="margin-top:8px;max-height:140px;overflow:auto">' + (comboChecksHtml || '<div style="color:var(--t3);font-size:12px">Нет совмещений</div>') + '</div>' +
+          '</div>' +
         '</div>' +
         (freeEmps.length === 0
           ? '<div style="padding:14px;text-align:center;color:var(--t3);font-size:13px;background:var(--bg2);border-radius:8px;margin-bottom:14px">Все доступные сотрудники уже в бригаде</div>'
@@ -631,28 +1250,72 @@ window.AsgardFieldTab = (function () {
     var closeBtn = body ? body.querySelector('.ac-close') : null;
     if (closeBtn) closeBtn.addEventListener('click', function() { AsgardUI.hideModal(); });
 
-    // Предупреждение если выбрали занятого
     var empSel = body ? body.querySelector('#acEmp') : null;
+    var roleSel = body ? body.querySelector('#acRole') : null;
+    var tariffSel = body ? body.querySelector('#acTariff') : null;
+    var siteCat = settingsData?.site_category || 'ground';
+
+    function refillAcTariffs(role, setDefault) {
+      if (!tariffSel) return;
+      var list = filterTariffsForFieldRole(filteredTariffs, role, siteCat);
+      var cur = tariffSel.value;
+      tariffSel.innerHTML = '<option value="">— выберите —</option>';
+      list.forEach(function(t) {
+        var opt = document.createElement('option');
+        opt.value = t.id;
+        opt.textContent = t.position_name + ' (' + t.points + 'б · ' + money(t.rate_per_shift) + ')';
+        tariffSel.appendChild(opt);
+      });
+      if (cur && list.some(function(t) { return String(t.id) === String(cur); })) {
+        tariffSel.value = cur;
+      } else if (setDefault && (role === 'welder' || role === 'pto')) {
+        tariffSel.value = defaultTariffIdForRole(filteredTariffs, role, siteCat) || '';
+      } else {
+        tariffSel.value = '';
+      }
+    }
+
+    // Предупреждение если выбрали занятого + автомап роли
     if (empSel) empSel.addEventListener('change', function() {
       var opt = empSel.options[empSel.selectedIndex];
       if (opt && opt.dataset.busy === '1') {
-        var ok = window.confirm('⚠️ Этот сотрудник уже занят на другой работе.\nНазначить всё равно?');
-        if (!ok) empSel.value = '';
+        var emp = freeEmps.find(function(e) { return Number(e.id) === Number(empSel.value); });
+        var w = emp && emp.busy_with && emp.busy_with[0] ? emp.busy_with[0] : null;
+        var msg = w
+          ? ('⚠️ «' + (emp.fio || 'Сотрудник') + '» уже на объекте:\n«' + (w.work_title || '?') + '»\n\nНазначить всё равно?')
+          : '⚠️ Этот сотрудник уже занят на другой работе.\nНазначить всё равно?';
+        var ok = window.confirm(msg);
+        if (!ok) { empSel.value = ''; return; }
+      }
+      var chosen = freeEmps.find(function(e) { return Number(e.id) === Number(empSel.value); });
+      if (chosen && roleSel) {
+        var mapped = mapRoleTagToFieldRole(chosen.role_tag);
+        roleSel.value = mapped;
+        refillAcTariffs(mapped, true);
       }
     });
+
+    if (roleSel) roleSel.addEventListener('change', function() {
+      refillAcTariffs(roleSel.value || 'worker', true);
+    });
+    refillAcTariffs((roleSel && roleSel.value) || 'worker', false);
 
     var submitBtn = body ? body.querySelector('#acSubmit') : null;
     if (submitBtn) submitBtn.addEventListener('click', async function() {
       var empId = empSel ? parseInt(empSel.value) : 0;
       var tariffId = parseInt((body.querySelector('#acTariff') || {}).value || '');
-      var comboId = parseInt((body.querySelector('#acCombo') || {}).value || '');
+      var comboIds = [];
+      (body.querySelectorAll('.ac-combo:checked') || []).forEach(function(cb) {
+        var n = parseInt(cb.value, 10);
+        if (n) comboIds.push(n);
+      });
+      var manualExtra = parseFloat(String((body.querySelector('#acManual') || {}).value || '').replace(',', '.'));
+      if (!isFinite(manualExtra) || manualExtra < 0) manualExtra = 0;
       var role = (body.querySelector('#acRole') || {}).value || 'worker';
       var shift = (body.querySelector('#acShift') || {}).value || 'day';
-      var perDiem = parseFloat((body.querySelector('#acPerDiem') || {}).value);
 
       if (!empId) { acErr('Выберите сотрудника'); return; }
       if (!tariffId) { acErr('Выберите тариф'); return; }
-      if (isNaN(perDiem) || perDiem < 0) { acErr('Некорректные суточные'); return; }
 
       submitBtn.disabled = true;
       var origText = submitBtn.innerHTML;
@@ -665,7 +1328,7 @@ window.AsgardFieldTab = (function () {
             method: 'POST', headers: hdr(),
             body: JSON.stringify({
               site_category: settingsData?.site_category || 'ground',
-              per_diem: perDiem,
+              per_diem: defaultPerDiem,
               schedule_type: 'shift',
               shift_hours: 11,
             })
@@ -680,8 +1343,10 @@ window.AsgardFieldTab = (function () {
               field_role: role,
               shift_type: shift,
               tariff_id: tariffId,
-              combination_tariff_id: comboId || null,
-              per_diem: perDiem,
+              combination_tariff_id: comboIds[0] || null,
+              combo_tariff_ids: comboIds,
+              manual_extra_points: manualExtra
+              // per_diem не шлём — бэк берёт ставку из настроек проекта
             }]
           })
         });
@@ -704,7 +1369,7 @@ window.AsgardFieldTab = (function () {
   }
 
   // ── Add a crew row ──
-  function addCrewRow(tbody, employee, assignment, tariffs, comboTariffs, allEmployees, work) {
+  function addCrewRow(tbody, employee, assignment, tariffs, comboTariffs, allEmployees, work, allTariffsPool) {
     const rid = _ftRowId++;
     const tr = document.createElement('tr');
     tr.dataset.crewRow = '1';
@@ -712,10 +1377,26 @@ window.AsgardFieldTab = (function () {
     tr.style.cssText = 'border-bottom:1px solid var(--brd-m)';
 
     const cellStyle = 'padding:6px 8px;vertical-align:middle';
+    const siteCat = (() => {
+      try { return CRSelect.getValue('fieldCategory'); } catch (_) { return null; }
+    })();
+    const categoryPool = (Array.isArray(tariffs) && tariffs.length)
+      ? tariffs
+      : (allTariffsPool || []).filter(t => !siteCat || t.category === siteCat);
+
+    const initialRole = assignment?.field_role
+      || (employee ? mapRoleTagToFieldRole(employee.role_tag) : 'worker');
+
+    // #
+    const tdNum = document.createElement('td');
+    tdNum.style.cssText = cellStyle + ';text-align:center;color:var(--t3);font-variant-numeric:tabular-nums';
+    tdNum.dataset.field = 'row-num';
+    tdNum.textContent = '';
+    tr.appendChild(tdNum);
 
     // Employee picker (CREmployeePicker, single-select)
     const tdEmp = document.createElement('td');
-    tdEmp.style.cssText = cellStyle + ';min-width:200px';
+    tdEmp.style.cssText = cellStyle + ';min-width:240px';
     const pickerId = 'crew-emp-' + (employee ? employee.id : Date.now() + '-' + Math.random().toString(36).slice(2, 6));
     CREmployeePicker.destroy(pickerId);
     const pickerEl = CREmployeePicker.create({
@@ -745,7 +1426,6 @@ window.AsgardFieldTab = (function () {
       showChips: true,
       title: 'Выбор сотрудника',
       onChange: (ids) => {
-        // Предупреждение если выбрали занятого рабочего
         if (!ids || !ids.length) return;
         const empId = ids[0];
         const emp = allEmployees.find(x => x.id === empId);
@@ -762,9 +1442,17 @@ window.AsgardFieldTab = (function () {
             'Назначить всё равно?'
           );
           if (!ok) {
-            // Откатываем выбор
             CREmployeePicker.setSelected(pickerId, employee ? [employee.id] : []);
+            return;
           }
+        }
+        // Автомап роли из role_tag дружины (селект остаётся редактируемым)
+        if (emp && !assignment) {
+          const mapped = mapRoleTagToFieldRole(emp.role_tag);
+          try {
+            CRSelect.setValue('ft-role-' + rid, mapped);
+          } catch (_) {}
+          refreshRowTariffs(mapped, true);
         }
       },
     });
@@ -781,9 +1469,13 @@ window.AsgardFieldTab = (function () {
     const selRoleEl = CRSelect.create({
       id: roleId,
       options: ROLES.map(r => ({ value: r.value, label: r.label })),
-      value: assignment?.field_role || 'worker',
+      value: initialRole,
       searchable: false,
       clearable: false,
+      onChange: () => {
+        const role = CRSelect.getValue(roleId) || 'worker';
+        refreshRowTariffs(role, true);
+      },
     });
     tdRole.appendChild(selRoleEl);
     tr.appendChild(tdRole);
@@ -803,18 +1495,20 @@ window.AsgardFieldTab = (function () {
     tdShift.appendChild(selShiftEl);
     tr.appendChild(tdShift);
 
-    // Tariff select (CRSelect)
+    // Tariff select (CRSelect) — фильтр по роли
     const tdTariff = document.createElement('td');
     tdTariff.style.cssText = cellStyle + ';min-width:200px';
     const tariffId = 'ft-tariff-' + rid;
     CRSelect.destroy(tariffId);
-    const tariffOpts = [{ value: '', label: '— выберите —' }].concat(
-      tariffs.map(t => ({ value: String(t.id), label: `${t.position_name} (${t.points}б · ${money(t.rate_per_shift)}₽)` }))
-    );
+    const roleTariffs0 = filterTariffsForFieldRole(categoryPool, initialRole, siteCat);
+    let initialTariff = assignment?.tariff_id ? String(assignment.tariff_id) : '';
+    if (!initialTariff && (initialRole === 'welder' || initialRole === 'pto')) {
+      initialTariff = defaultTariffIdForRole(categoryPool, initialRole, siteCat);
+    }
     const selTariffEl = CRSelect.create({
       id: tariffId,
-      options: tariffOpts,
-      value: assignment?.tariff_id ? String(assignment.tariff_id) : '',
+      options: tariffSelectOptions(roleTariffs0),
+      value: initialTariff,
       placeholder: '— выберите —',
       clearable: false,
       onChange: () => updatePointsRate(),
@@ -822,6 +1516,27 @@ window.AsgardFieldTab = (function () {
     tdTariff.appendChild(selTariffEl);
     tr.appendChild(tdTariff);
     _ftTariffIds.push(tariffId);
+
+    function refreshRowTariffs(role, setDefault) {
+      const cat = (() => {
+        try { return CRSelect.getValue('fieldCategory'); } catch (_) { return siteCat; }
+      })();
+      const pool = (allTariffsPool || categoryPool).filter(t => !cat || t.category === cat);
+      const filtered = filterTariffsForFieldRole(pool.length ? pool : categoryPool, role, cat);
+      const opts = tariffSelectOptions(filtered);
+      const cur = CRSelect.getValue(tariffId);
+      CRSelect.setOptions(tariffId, opts);
+      if (cur && filtered.some(t => String(t.id) === cur)) {
+        CRSelect.setValue(tariffId, cur);
+      } else if (setDefault && (role === 'welder' || role === 'pto')) {
+        const def = defaultTariffIdForRole(pool.length ? pool : categoryPool, role, cat);
+        if (def) CRSelect.setValue(tariffId, def);
+        else CRSelect.setValue(tariffId, '');
+      } else if (!filtered.some(t => String(t.id) === cur)) {
+        CRSelect.setValue(tariffId, '');
+      }
+      updatePointsRate();
+    }
 
     // Points (auto)
     const tdPoints = document.createElement('td');
@@ -837,23 +1552,44 @@ window.AsgardFieldTab = (function () {
     tdRate.textContent = '—';
     tr.appendChild(tdRate);
 
-    // Combination select (CRSelect)
+    // Combination: галочки + ручные баллы (не один dropdown)
     const tdCombo = document.createElement('td');
-    tdCombo.style.cssText = cellStyle + ';text-align:center';
-    const comboId = 'ft-combo-' + rid;
-    CRSelect.destroy(comboId);
-    const comboOpts = [{ value: '', label: 'Нет' }].concat(
-      comboTariffs.filter(t => t.is_combinable).map(t => ({ value: String(t.id), label: `${t.position_name} (+${t.points || 1}б)` }))
-    );
-    const selComboEl = CRSelect.create({
-      id: comboId,
-      options: comboOpts,
-      value: assignment?.combination_tariff_id ? String(assignment.combination_tariff_id) : '',
-      placeholder: 'Нет',
-      clearable: false,
-      onChange: () => updatePointsRate(),
+    tdCombo.style.cssText = cellStyle + ';text-align:left;min-width:160px;max-width:220px';
+    tdCombo.dataset.field = 'combo';
+    const selectedComboIds = Array.isArray(assignment?.combo_tariff_ids) && assignment.combo_tariff_ids.length
+      ? assignment.combo_tariff_ids.map(String)
+      : (assignment?.combination_tariff_id ? [String(assignment.combination_tariff_id)] : []);
+    const comboWrap = document.createElement('div');
+    comboWrap.style.cssText = 'display:flex;flex-direction:column;gap:3px;max-height:110px;overflow:auto';
+    comboTariffs.filter(t => t.is_combinable).forEach(t => {
+      const lab = document.createElement('label');
+      lab.style.cssText = 'display:flex;align-items:flex-start;gap:5px;font-size:11px;cursor:pointer;line-height:1.25';
+      const cb = document.createElement('input');
+      cb.type = 'checkbox';
+      cb.className = 'ft-combo-check';
+      cb.value = String(t.id);
+      cb.checked = selectedComboIds.includes(String(t.id));
+      cb.addEventListener('change', () => updatePointsRate());
+      lab.appendChild(cb);
+      const sp = document.createElement('span');
+      sp.textContent = (t.position_name || '') + ' (+' + (t.points || 1) + 'б)';
+      lab.appendChild(sp);
+      comboWrap.appendChild(lab);
     });
-    tdCombo.appendChild(selComboEl);
+    const manualInp = document.createElement('input');
+    manualInp.type = 'number';
+    manualInp.min = '0';
+    manualInp.step = '0.5';
+    manualInp.className = 'inp ft-manual-extra';
+    manualInp.placeholder = '+б вручную';
+    manualInp.title = 'Ручная доплата в баллах (можно 3.5)';
+    manualInp.value = assignment?.manual_extra_points != null && Number(assignment.manual_extra_points) !== 0
+      ? String(assignment.manual_extra_points)
+      : '';
+    manualInp.style.cssText = 'width:100%;margin-top:4px;font-size:11px;padding:3px 6px';
+    manualInp.addEventListener('input', () => updatePointsRate());
+    tdCombo.appendChild(comboWrap);
+    tdCombo.appendChild(manualInp);
     tr.appendChild(tdCombo);
 
     // SMS status + individual send button
@@ -989,42 +1725,92 @@ window.AsgardFieldTab = (function () {
       tdActions.appendChild(depBtn);
     }
 
-    // Remove button
+    // Remove button — hard-delete из БД (с confirm). Только убрать строку с экрана = баг «не сохраняется».
     const delBtn = document.createElement('button');
     delBtn.textContent = '✕';
     delBtn.title = 'Удалить из бригады';
     delBtn.style.cssText = 'background:none;border:none;color:#ef4444;cursor:pointer;font-size:16px;padding:4px 6px';
-    delBtn.addEventListener('click', () => {
-      CREmployeePicker.destroy(pickerId);
-      CRSelect.destroy('ft-role-' + rid);
-      CRSelect.destroy('ft-tariff-' + rid);
-      CRSelect.destroy('ft-combo-' + rid);
-      const idx = _ftTariffIds.indexOf('ft-tariff-' + rid);
-      if (idx !== -1) _ftTariffIds.splice(idx, 1);
-      tr.remove();
+    delBtn.addEventListener('click', async () => {
+      const empIdsSel = pickerId ? (CREmployeePicker.getSelected(pickerId) || []) : [];
+      const empId = empIdsSel[0] || (employee && employee.id) || (assignment && assignment.employee_id) || null;
+      const fio = (employee && (employee.fio || employee.full_name))
+        || (empId && (allEmployees || []).find(e => Number(e.id) === Number(empId)) || {}).fio
+        || ('#' + (empId || '?'));
+
+      function removeRowFromUi() {
+        CREmployeePicker.destroy(pickerId);
+        CRSelect.destroy('ft-role-' + rid);
+        CRSelect.destroy('ft-tariff-' + rid);
+        CRSelect.destroy('ft-combo-' + rid);
+        CRSelect.destroy('ft-shift-' + rid);
+        const idx = _ftTariffIds.indexOf('ft-tariff-' + rid);
+        if (idx !== -1) _ftTariffIds.splice(idx, 1);
+        tr.remove();
+        renumberCrewRows(tbody);
+      }
+
+      // Новая несохранённая строка — только UI
+      if (!assignment || !assignment.id) {
+        if (empId && !confirm('Убрать «' + fio + '» из списка? Строка ещё не сохранена в бригаду.')) return;
+        removeRowFromUi();
+        return;
+      }
+
+      const ok = confirm(
+        'Убрать «' + fio + '» из бригады этой работы?\n\n' +
+        '• Карточка сотрудника в справочнике останется.\n' +
+        '• Будет удалено только назначение на этот объект.\n' +
+        '• Смены на этом объекте тоже удалятся (иначе нельзя снять с бригады).\n' +
+        '• Дорога/корабль Хосе сохранятся.\n\n' +
+        'Если нужен обычный отъезд с датой в истории — нажмите Отмена и используйте 🚪 Отъезд.'
+      );
+      if (!ok) return;
+
+      delBtn.disabled = true;
+      try {
+        const res = await api('/projects/' + work.id + '/crew/' + empId, { method: 'DELETE' });
+        if (res && res.error) throw new Error(res.error);
+        toast('Бригада', fio + ' убран из бригады', 'ok');
+        removeRowFromUi();
+      } catch (e) {
+        delBtn.disabled = false;
+        toast('Ошибка', String(e.message || e), 'err');
+      }
     });
     tdActions.appendChild(delBtn);
     tr.appendChild(tdActions);
 
-    // Tariff/combo change → auto update points & rate (CRSelect onChange)
+    // Tariff/combo change → auto update points & rate
     function updatePointsRate() {
       const tVal = CRSelect.getValue('ft-tariff-' + rid);
-      const tariff = tariffs.find(t => String(t.id) === tVal);
-      const cVal = CRSelect.getValue('ft-combo-' + rid);
-      const combo = comboTariffs.find(t => String(t.id) === cVal);
+      const pool = (allTariffsPool || categoryPool);
+      const tariff = pool.find(t => String(t.id) === tVal) || categoryPool.find(t => String(t.id) === tVal);
 
       const basePoints = tariff ? (tariff.points || 0) : 0;
-      const comboPoints = combo ? (combo.points || 1) : 0;
       const baseRate = tariff ? parseFloat(tariff.rate_per_shift || 0) : 0;
-      const comboRate = combo ? parseFloat(combo.rate_per_shift || 0) : 0;
+      const pv = tariff && tariff.point_value != null ? parseFloat(tariff.point_value) : 500;
 
-      const totalPoints = basePoints + (combo ? comboPoints : 0);
-      const totalRate = baseRate + comboRate;
+      let comboPoints = 0;
+      let comboRate = 0;
+      let needsApproval = false;
+      tr.querySelectorAll('.ft-combo-check:checked').forEach(cb => {
+        const c = comboTariffs.find(t => String(t.id) === String(cb.value));
+        if (!c) return;
+        comboPoints += Number(c.points) || 0;
+        comboRate += parseFloat(c.rate_per_shift || 0);
+        if (c.requires_approval) needsApproval = true;
+      });
+
+      let manual = parseFloat(String(tr.querySelector('.ft-manual-extra')?.value || '').replace(',', '.'));
+      if (!isFinite(manual) || manual < 0) manual = 0;
+
+      const totalPoints = basePoints + comboPoints + manual;
+      const totalRate = baseRate + comboRate + manual * pv;
 
       tdPoints.textContent = totalPoints || '—';
-      tdRate.textContent = totalRate ? money(totalRate) + ' ₽' : '—';
+      tdRate.textContent = totalRate ? money(totalRate) : '—';
 
-      if (combo && combo.requires_approval) {
+      if (needsApproval) {
         tdCombo.style.background = 'rgba(245,158,11,0.1)';
         tdCombo.title = 'Требует согласования';
       } else {
@@ -1034,13 +1820,8 @@ window.AsgardFieldTab = (function () {
     }
 
     // Initial calc
-    if (assignment?.tariff_id) {
-      const t = tariffs.find(t => t.id === assignment.tariff_id);
-      if (t) {
-        const comboT = assignment.combination_tariff_id ? comboTariffs.find(c => c.id === assignment.combination_tariff_id) : null;
-        const rate = parseFloat(t.rate_per_shift || 0) + (comboT ? parseFloat(comboT.rate_per_shift || 0) : 0);
-        tdRate.textContent = rate ? money(rate) + ' ₽' : '—';
-      }
+    if (initialTariff || assignment?.tariff_id) {
+      updatePointsRate();
     }
 
     tbody.appendChild(tr);
@@ -1284,7 +2065,7 @@ window.AsgardFieldTab = (function () {
       { title: 'Сейчас на объекте', value: (data.online_now || []).length, sub: `из ${data.total_crew || 0}`, color: '#10b981' },
       { title: 'Сегодня отмечено', value: data.today_count || 0, sub: 'чекинов', color: '#3b82f6' },
       { title: 'Часов сегодня', value: (data.today_hours || 0).toFixed(1), sub: 'всего', color: '#8b5cf6' },
-      { title: 'Заработок сегодня', value: money(Math.round(data.today_earned || 0)) + ' ₽', sub: 'по бригаде', color: '#D4A843' },
+      { title: 'Заработок сегодня', value: money(Math.round(data.today_earned || 0)), sub: 'по бригаде', color: '#D4A843' },
     ];
 
     cards.forEach(c => {
@@ -1362,7 +2143,7 @@ window.AsgardFieldTab = (function () {
           <td style="padding:6px 8px">${formatDate ? formatDate(d.date) : d.date}</td>
           <td style="padding:6px 8px;text-align:center">${d.workers}</td>
           <td style="padding:6px 8px;text-align:center">${parseFloat(d.hours).toFixed(1)}</td>
-          <td style="padding:6px 8px;text-align:right;color:var(--gold)">${money(Math.round(parseFloat(d.earned)))} ₽</td>
+          <td style="padding:6px 8px;text-align:right;color:var(--gold)">${money(Math.round(parseFloat(d.earned)))}</td>
         `;
         weekBody.appendChild(tr);
       });
@@ -1394,39 +2175,37 @@ window.AsgardFieldTab = (function () {
       else if (dash?.crew?.[0]?.point_value) pointValue = parseFloat(dash.crew[0].point_value);
     } catch (_) {}
 
-    // Default: start_plan - 7 дней → end_plan + 7 дней (или last 30 days fallback)
+    // По умолчанию — ТЕКУЩИЙ МЕСЯЦ (как в общем табеле), а не весь срок работы.
+    // Иначе на длинных объектах (Приразломная 2026–2027) получается 600+ колонок
+    // и UI «замирает» — отсюда «невозможно что-то сделать».
+    const MONTHS_RU = ['Январь','Февраль','Март','Апрель','Май','Июнь','Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'];
+    function monthBounds(y, m) {
+      const from = y + '-' + String(m).padStart(2, '0') + '-01';
+      const last = new Date(y, m, 0).getDate();
+      const to = y + '-' + String(m).padStart(2, '0') + '-' + String(last).padStart(2, '0');
+      return { from, to };
+    }
     const today = new Date();
-    const workStart = work.start_in_work_date || work.start_plan || work.start_fact;
-    const workEnd = work.end_plan || work.end_fact;
-    let dfFromDate, dfToDate;
-    if (workStart) {
-      dfFromDate = new Date(String(workStart).slice(0,10) + 'T12:00:00Z');
-      dfFromDate.setDate(dfFromDate.getDate() - 7);
-    } else {
-      dfFromDate = new Date(today); dfFromDate.setDate(dfFromDate.getDate() - 30);
-    }
-    if (workEnd) {
-      dfToDate = new Date(String(workEnd).slice(0,10) + 'T12:00:00Z');
-      dfToDate.setDate(dfToDate.getDate() + 7);
-    } else {
-      dfToDate = new Date(today);
-    }
-    const dfFrom = dfFromDate.toISOString().slice(0, 10);
-    const dfTo = dfToDate.toISOString().slice(0, 10);
+    let viewY = today.getFullYear();
+    let viewM = today.getMonth() + 1;
+    let { from: dfFrom, to: dfTo } = monthBounds(viewY, viewM);
 
     container.innerHTML = '';
 
-    // Date filters
+    // Date filters + month nav
     const filters = document.createElement('div');
     filters.style.cssText = 'display:flex;gap:12px;align-items:center;margin-bottom:16px;flex-wrap:wrap';
     filters.innerHTML = `
-      <button class="btn ghost" id="tsDayLeft" style="font-size:13px;padding:6px 10px" title="Добавить день слева">← День</button>
+      <button class="btn ghost" id="tsMonthPrev" style="font-size:13px;padding:6px 10px" title="Предыдущий месяц">←</button>
+      <span id="tsMonthLabel" style="font-size:14px;font-weight:600;min-width:140px;text-align:center">${MONTHS_RU[viewM - 1]} ${viewY}</span>
+      <button class="btn ghost" id="tsMonthNext" style="font-size:13px;padding:6px 10px" title="Следующий месяц">→</button>
+      <button class="btn ghost" id="tsThisMonth" style="font-size:12px;padding:6px 10px">Этот месяц</button>
+      <span style="width:1px;height:22px;background:var(--brd);margin:0 4px"></span>
       <label style="font-size:13px;color:var(--t2)">С:</label>
-      <input id="tsFrom" type="date" value="${dfFrom}" style="padding:6px 10px;border-radius:6px;background:var(--bg1);color:var(--t1);border:1px solid var(--brd);font-size:13px" />
+      <input id="tsFrom" type="date" value="${dfFrom}" style="padding:6px 10px;border-radius:6px;background:var(--bg1);color:var(--t1);border:1px solid var(--brd);font-size:13px" title="Можно выбрать произвольный период (больше месяца)" />
       <label style="font-size:13px;color:var(--t2)">По:</label>
-      <input id="tsTo" type="date" value="${dfTo}" style="padding:6px 10px;border-radius:6px;background:var(--bg1);color:var(--t1);border:1px solid var(--brd);font-size:13px" />
-      <button class="btn ghost" id="tsDayRight" style="font-size:13px;padding:6px 10px" title="Добавить день справа">День →</button>
-      <button class="btn ghost" id="tsLoad" style="font-size:13px">Загрузить</button>
+      <input id="tsTo" type="date" value="${dfTo}" style="padding:6px 10px;border-radius:6px;background:var(--bg1);color:var(--t1);border:1px solid var(--brd);font-size:13px" title="Можно выбрать произвольный период (больше месяца)" />
+      <button class="btn ghost" id="tsLoad" style="font-size:13px" title="Загрузить выбранный период С–По">Загрузить</button>
       <button class="btn" id="tsEdit" style="font-size:13px;background:linear-gradient(135deg,#D4A843,#b8922e);color:#fff">Редактировать</button>
       <button class="btn" id="tsExport" style="font-size:13px;margin-left:auto;background:linear-gradient(135deg,#2563eb,#1d4ed8);color:#fff">📥 Выгрузить Excel</button>
     `;
@@ -1439,9 +2218,51 @@ window.AsgardFieldTab = (function () {
     tableWrap.style.cssText = 'overflow-x:auto';
     container.appendChild(tableWrap);
 
+    function todayYmd() {
+      const t = new Date();
+      return t.getFullYear() + '-' + String(t.getMonth() + 1).padStart(2, '0') + '-' + String(t.getDate()).padStart(2, '0');
+    }
+
+    function fmtRuShort(ymd) {
+      const p = String(ymd || '').slice(0, 10).split('-');
+      if (p.length < 3) return String(ymd || '');
+      return p[2] + '.' + p[1] + '.' + p[0].slice(2);
+    }
+
+    function syncMonthLabel(from, to) {
+      const lab = document.getElementById('tsMonthLabel');
+      if (!lab) return;
+      const b = monthBounds(viewY, viewM);
+      if (from === b.from && to === b.to) {
+        lab.textContent = MONTHS_RU[viewM - 1] + ' ' + viewY;
+      } else {
+        lab.textContent = fmtRuShort(from) + ' — ' + fmtRuShort(to);
+      }
+    }
+
+    function applyMonthToInputs() {
+      const b = monthBounds(viewY, viewM);
+      const fromInp = document.getElementById('tsFrom');
+      const toInp = document.getElementById('tsTo');
+      if (fromInp) fromInp.value = b.from;
+      if (toInp) toInp.value = b.to;
+      dfFrom = b.from;
+      dfTo = b.to;
+      syncMonthLabel(b.from, b.to);
+    }
+
     async function loadTimesheet() {
       const from = document.getElementById('tsFrom')?.value || dfFrom;
       const to = document.getElementById('tsTo')?.value || dfTo;
+      // Произвольный период > месяца — ок. Предупреждаем только при экстремальной длине
+      // (весь срок объекта ~600+ колонок делает UI практически непригодным).
+      const d0 = new Date(from + 'T12:00:00Z');
+      const d1 = new Date(to + 'T12:00:00Z');
+      const daysSpan = Math.round((d1 - d0) / 86400000) + 1;
+      if (daysSpan > 186) {
+        toast('Табель', 'Длинный период (' + daysSpan + ' дн.) — таблица может тормозить. Для правок удобнее месяц ← → или «Этот месяц».', 'warn');
+      }
+      syncMonthLabel(from, to);
       tableWrap.innerHTML = '<div class="help">Загрузка…</div>';
 
       try {
@@ -1478,21 +2299,22 @@ window.AsgardFieldTab = (function () {
       }
     }
 
-    // Кнопки «← День» / «День →»
-    document.getElementById('tsDayLeft')?.addEventListener('click', () => {
-      const inp = document.getElementById('tsFrom');
-      if (!inp) return;
-      const d = new Date(inp.value + 'T12:00:00Z');
-      d.setDate(d.getDate() - 1);
-      inp.value = d.toISOString().slice(0, 10);
+    document.getElementById('tsMonthPrev')?.addEventListener('click', () => {
+      viewM -= 1;
+      if (viewM < 1) { viewM = 12; viewY -= 1; }
+      applyMonthToInputs();
       loadTimesheet();
     });
-    document.getElementById('tsDayRight')?.addEventListener('click', () => {
-      const inp = document.getElementById('tsTo');
-      if (!inp) return;
-      const d = new Date(inp.value + 'T12:00:00Z');
-      d.setDate(d.getDate() + 1);
-      inp.value = d.toISOString().slice(0, 10);
+    document.getElementById('tsMonthNext')?.addEventListener('click', () => {
+      viewM += 1;
+      if (viewM > 12) { viewM = 1; viewY += 1; }
+      applyMonthToInputs();
+      loadTimesheet();
+    });
+    document.getElementById('tsThisMonth')?.addEventListener('click', () => {
+      viewY = today.getFullYear();
+      viewM = today.getMonth() + 1;
+      applyMonthToInputs();
       loadTimesheet();
     });
 
@@ -1508,28 +2330,44 @@ window.AsgardFieldTab = (function () {
 
     document.getElementById('tsLoad')?.addEventListener('click', loadTimesheet);
 
-    document.getElementById('tsExport')?.addEventListener('click', async () => {
+    document.getElementById('tsExport')?.addEventListener('click', () => {
       const from = document.getElementById('tsFrom')?.value || dfFrom;
       const to = document.getElementById('tsTo')?.value || dfTo;
-      const btn = document.getElementById('tsExport');
-      btn.disabled = true;
-      btn.textContent = 'Генерация…';
-      try {
-        const resp = await apiRaw(`/projects/${work.id}/timesheet?from=${from}&to=${to}&format=xlsx`);
-        if (!resp.ok) throw new Error('Ошибка генерации');
-        const blob = await resp.blob();
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `timesheet_work${work.id}_${from}_${to}.xlsx`;
-        a.click();
-        URL.revokeObjectURL(url);
-        toast('Табель', 'Excel скачан', 'ok');
-      } catch (e) {
-        toast('Ошибка', String(e), 'err');
-      }
-      btn.disabled = false;
-      btn.textContent = '📥 Выгрузить Excel';
+      AsgardUI.showModal({
+        title: 'Выгрузка табеля Excel',
+        html:
+          '<p class="muted" style="font-size:12px;margin:0 0 10px">В ячейках — только баллы, цвет = тип смены. Легенда под таблицей на том же листе.</p>' +
+          '<label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer">' +
+          '<input type="checkbox" id="tsExpPd" checked/> Учитывать суточные</label>' +
+          '<div style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px">' +
+          '<button type="button" class="btn mini ghost" id="tsExpCnl">Отмена</button>' +
+          '<button type="button" class="btn mini" id="tsExpGo">Скачать Excel</button></div>',
+        onMount: () => {
+          document.getElementById('tsExpCnl')?.addEventListener('click', () => AsgardUI.hideModal());
+          document.getElementById('tsExpGo')?.addEventListener('click', async () => {
+            const includePd = document.getElementById('tsExpPd')?.checked !== false;
+            AsgardUI.hideModal();
+            const btn = document.getElementById('tsExport');
+            if (btn) { btn.disabled = true; btn.textContent = 'Генерация…'; }
+            try {
+              const q = `from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&format=xlsx&include_per_diem=${includePd ? '1' : '0'}`;
+              const resp = await apiRaw(`/projects/${work.id}/timesheet?${q}`);
+              if (!resp.ok) throw new Error('Ошибка генерации');
+              const blob = await resp.blob();
+              const url = URL.createObjectURL(blob);
+              const a = document.createElement('a');
+              a.href = url;
+              a.download = `timesheet_work${work.id}_${from}_${to}.xlsx`;
+              a.click();
+              URL.revokeObjectURL(url);
+              toast('Табель', 'Excel скачан', 'ok');
+            } catch (e) {
+              toast('Ошибка', String(e.message || e), 'err');
+            }
+            if (btn) { btn.disabled = false; btn.textContent = '📥 Выгрузить Excel'; }
+          });
+        }
+      });
     });
 
     // Initial load
@@ -1571,16 +2409,29 @@ window.AsgardFieldTab = (function () {
     const table = document.createElement('table');
     table.style.cssText = 'width:100%;border-collapse:collapse;font-size:12px';
 
-    // Header
+    // Header: # + ФИО + дни…
     const thStyle = 'padding:6px 8px;border-bottom:1px solid var(--brd);color:var(--t2);font-weight:500;font-size:11px;white-space:nowrap;position:sticky;top:0;background:var(--bg2)';
-    let headerHtml = `<tr><th style="${thStyle};text-align:left;min-width:150px">ФИО</th>`;
+    const todayStr = (() => {
+      const t = new Date();
+      return t.getFullYear() + '-' + String(t.getMonth() + 1).padStart(2, '0') + '-' + String(t.getDate()).padStart(2, '0');
+    })();
+    let headerHtml = `<tr><th style="${thStyle};text-align:center;width:36px">#</th><th style="${thStyle};text-align:left;min-width:150px">ФИО</th>`;
     dates.forEach(d => {
       // d может быть 'YYYY-MM-DD' или 'YYYY-MM-DDT12:00:00.000Z' (после TZ-фикса)
       // Извлекаем ровно YYYY-MM-DD и парсим как локальную дату
-      const ymd = String(d).slice(0, 10).split('-');
-      const day = new Date(Number(ymd[0]), Number(ymd[1]) - 1, Number(ymd[2]));
+      const ymd = String(d).slice(0, 10);
+      const parts = ymd.split('-');
+      const day = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
       const label = String(day.getDate()).padStart(2, '0') + '.' + String(day.getMonth() + 1).padStart(2, '0');
-      headerHtml += `<th style="${thStyle};text-align:center">${label}</th>`;
+      const isToday = ymd === todayStr;
+      const isWe = day.getDay() === 0 || day.getDay() === 6;
+      let extra = '';
+      if (isToday) {
+        extra = ';background:rgba(212,168,67,0.22);color:var(--gold);box-shadow:inset 0 -2px 0 var(--gold);font-weight:700';
+      } else if (isWe) {
+        extra = ';color:var(--err);background:rgba(239,68,68,0.08)';
+      }
+      headerHtml += `<th data-ymd="${ymd}" style="${thStyle};text-align:center${extra}"${isToday ? ' title="Сегодня"' : ''}>${label}</th>`;
     });
     headerHtml += `<th style="${thStyle};text-align:center">Дней</th>`;
     headerHtml += `<th style="${thStyle};text-align:right">Баллов</th>`;
@@ -1598,14 +2449,61 @@ window.AsgardFieldTab = (function () {
 
     let grandHours = 0, grandEarned = 0, grandPerDiem = 0, grandTotal = 0;
 
-    timesheet.forEach(emp => {
+    // Сортировка: сначала бригада/отметки, затем «только план»; внутри А→Я
+    const sortedTs = timesheet.slice().sort((a, b) => {
+      const ap = a.is_planned_only ? 1 : 0;
+      const bp = b.is_planned_only ? 1 : 0;
+      if (ap !== bp) return ap - bp;
+      return String(a.fio || '').localeCompare(String(b.fio || ''), 'ru', { sensitivity: 'base' });
+    });
+
+    sortedTs.forEach((emp, empIdx) => {
       const tr = document.createElement('tr');
       tr.style.borderBottom = '1px solid var(--brd-m)';
 
-      // Name
+      // #
+      const tdNum = document.createElement('td');
+      tdNum.style.cssText = 'padding:6px 4px;text-align:center;color:var(--t3);font-size:11px';
+      tdNum.textContent = String(empIdx + 1);
+      tr.appendChild(tdNum);
+
+      // Name + roster badges
       const tdName = document.createElement('td');
-      tdName.style.cssText = 'padding:6px 8px;font-weight:500;white-space:nowrap';
-      tdName.textContent = emp.fio || '—';
+      tdName.style.cssText = 'padding:6px 8px;font-weight:500;white-space:nowrap;min-width:160px';
+      const reasons = emp.roster_reasons || [];
+      const planFrom = emp.planned_info && emp.planned_info.planned_from
+        ? String(emp.planned_info.planned_from).slice(0, 10) : null;
+      const planTo = emp.planned_info && emp.planned_info.planned_to
+        ? String(emp.planned_info.planned_to).slice(0, 10) : null;
+      const nameMain = document.createElement('div');
+      nameMain.textContent = emp.fio || '—';
+      tdName.appendChild(nameMain);
+      if (reasons.length) {
+        const badgeRow = document.createElement('div');
+        badgeRow.style.cssText = 'display:flex;flex-wrap:wrap;gap:4px;margin-top:4px';
+        const mkBadge = (text, bg, fg, bd) => {
+          const s = document.createElement('span');
+          s.textContent = text;
+          s.style.cssText = 'display:inline-block;padding:1px 7px;border-radius:999px;font-size:10px;font-weight:700;background:' + bg + ';color:' + fg + ';border:1px solid ' + bd;
+          return s;
+        };
+        if (reasons.includes('on_site')) {
+          badgeRow.appendChild(mkBadge('в бригаде', 'var(--ok-bg)', 'var(--ok)', 'var(--ok)'));
+        }
+        if (reasons.includes('was_on') && !reasons.includes('on_site')) {
+          badgeRow.appendChild(mkBadge('был', 'var(--bg3)', 'var(--t2)', 'var(--brd)'));
+        }
+        if (reasons.includes('planned')) {
+          const planLbl = planFrom
+            ? ('в плане · ' + planFrom.slice(8, 10) + '.' + planFrom.slice(5, 7))
+            : 'в плане';
+          badgeRow.appendChild(mkBadge(planLbl, 'var(--gold-bg)', 'var(--gold)', 'var(--gold)'));
+        }
+        tdName.appendChild(badgeRow);
+      }
+      if (emp.is_planned_only) {
+        tr.style.background = 'color-mix(in srgb, var(--gold) 5%, transparent)';
+      }
       tr.appendChild(tdName);
 
       // Day cells — нормализуем ключи к YYYY-MM-DD (checkin.date может быть ISO timestamp)
@@ -1618,10 +2516,32 @@ window.AsgardFieldTab = (function () {
       dates.forEach(d => {
         const td = document.createElement('td');
         td.style.cssText = 'padding:4px 6px;text-align:center';
-        const day = dayMap[d];
-        const foreign = !day ? foreignMap[d] : null;
+        const ymd = String(d).slice(0, 10);
+        const isToday = ymd === todayStr;
+        if (isToday) {
+          td.style.boxShadow = 'inset 0 0 0 1.5px rgba(212,168,67,0.55)';
+          td.style.background = 'rgba(212,168,67,0.08)';
+          td.dataset.today = '1';
+        }
+        const day = dayMap[ymd] || dayMap[d];
+        const foreign = !day ? (foreignMap[ymd] || foreignMap[d]) : null;
+        const isPlanArrive = !!(planFrom && ymd === planFrom);
+        const isPlanSpan = !!(planFrom && planTo && ymd > planFrom && ymd <= planTo && !day);
 
-        if (day) {
+        if (isPlanArrive && !day) {
+          td.textContent = '◆';
+          td.style.color = 'var(--gold)';
+          td.style.fontWeight = '800';
+          td.style.background = 'color-mix(in srgb, var(--gold) 22%, transparent)';
+          td.style.boxShadow = 'inset 0 0 0 1.5px var(--gold)';
+          td.title = 'Планируемый заезд';
+          if (emp.is_planned_only) {
+            td.style.cursor = 'help';
+            td.addEventListener('click', () => {
+              if (window.toast) window.toast('В плане', 'Отметки появятся после назначения в бригаду.', 'warn');
+            });
+          }
+        } else if (day) {
           // Свой чекин — обычный рендер.
           // Баллы считаем из amount_earned (всегда в рублях), НЕ из day_rate:
           // в БД day_rate местами загрязнён баллами (13/17) вместо рублей (6500/8500),
@@ -1632,12 +2552,24 @@ window.AsgardFieldTab = (function () {
           td.innerHTML = si.icon + pts;
           td.style.color = pts >= 18 ? '#D4A843' : pts >= 12 ? '#10b981' : pts >= 6 ? '#3b82f6' : 'var(--t2)';
           if (si.bg) td.style.background = si.bg;
-          td.title = `${si.label} ${pts} бал. = ${money(pts * pv)} ₽` + (editMode ? '. Клик для редактирования' : '');
+          td.title = `${si.label} ${pts} бал. = ${money(pts * pv)}`
+            + (day.kind === 'stage' ? ' (этап / маршрут)' : '')
+            + (editMode ? (day.kind === 'stage' ? '. Редактируется во вкладке «Маршруты» или «Мой табель»' : '. Клик для редактирования') : '');
           if (editMode) {
             td.style.cursor = 'pointer';
             td.style.border = '1px dashed var(--brd)';
             td.style.borderRadius = '4px';
-            td.addEventListener('click', () => editCheckinCell(td, day, emp, d, work, pv));
+            if (day.kind === 'stage') {
+              td.addEventListener('click', () => {
+                if (window.toast) {
+                  window.toast('Этап', si.label + ' из маршрутов — правьте во вкладке «Маршруты» или в «Мой табель».', 'warn');
+                } else {
+                  alert(si.label + ' — этап из маршрутов');
+                }
+              });
+            } else {
+              td.addEventListener('click', () => editCheckinCell(td, day, emp, d, work, pv));
+            }
           }
         } else if (foreign) {
           // Чужой чекин — замок + tooltip с РП/работой, клик не открывает попап
@@ -1655,6 +2587,18 @@ window.AsgardFieldTab = (function () {
               else alert(td.title);
             });
           }
+        } else if (emp.is_planned_only) {
+          if (isPlanSpan) {
+            td.style.background = 'color-mix(in srgb, var(--gold) 8%, transparent)';
+            td.title = 'Период плана привлечения';
+          } else {
+            td.textContent = '';
+            td.title = 'В плане — отметки после назначения в бригаду';
+          }
+          td.style.cursor = 'help';
+          td.addEventListener('click', () => {
+            if (window.toast) window.toast('В плане', 'Смены появятся после назначения в бригаду.', 'warn');
+          });
         } else if (editMode) {
           td.textContent = '+';
           td.style.cursor = 'pointer';
@@ -1665,8 +2609,13 @@ window.AsgardFieldTab = (function () {
           td.title = 'Добавить смену';
           td.addEventListener('click', () => addCheckinCell(td, emp, d, work, pv));
         } else {
-          td.textContent = '—';
-          td.style.color = 'var(--t3)';
+          if (isPlanSpan) {
+            td.style.background = 'color-mix(in srgb, var(--gold) 8%, transparent)';
+            td.title = 'Период плана привлечения';
+          } else {
+            td.textContent = '—';
+            td.style.color = 'var(--t3)';
+          }
         }
         tr.appendChild(td);
       });
@@ -1686,9 +2635,9 @@ window.AsgardFieldTab = (function () {
       [
         { v: daysCount, align: 'center' },
         { v: totalPoints, align: 'right' },
-        { v: money(Math.round(earned)) + ' ₽', align: 'right' },
-        { v: money(Math.round(pd)) + ' ₽', align: 'right' },
-        { v: money(Math.round(total)) + ' ₽', align: 'right', gold: true },
+        { v: money(Math.round(earned)), align: 'right' },
+        { v: money(Math.round(pd)), align: 'right' },
+        { v: money(Math.round(total)), align: 'right', gold: true },
       ].forEach(c => {
         const td = document.createElement('td');
         td.style.cssText = `padding:6px 8px;text-align:${c.align};font-weight:${c.gold ? '700' : '500'}`;
@@ -1710,16 +2659,16 @@ window.AsgardFieldTab = (function () {
     const totalTr = document.createElement('tr');
     totalTr.style.cssText = 'border-top:2px solid var(--brd);font-weight:700;background:var(--bg2)';
     const tdTotalLabel = document.createElement('td');
-    tdTotalLabel.colSpan = dates.length + 1;
+    tdTotalLabel.colSpan = dates.length + 2; // # + ФИО + дни
     tdTotalLabel.style.cssText = 'padding:8px 10px;text-align:right';
     tdTotalLabel.textContent = 'ИТОГО:';
     totalTr.appendChild(tdTotalLabel);
 
     [
       { v: grandHours },
-      { v: money(Math.round(grandEarned)) + ' ₽' },
-      { v: money(Math.round(grandPerDiem)) + ' ₽' },
-      { v: money(Math.round(grandTotal)) + ' ₽', gold: true },
+      { v: money(Math.round(grandEarned)) },
+      { v: money(Math.round(grandPerDiem)) },
+      { v: money(Math.round(grandTotal)), gold: true },
     ].forEach(c => {
       const td = document.createElement('td');
       td.style.cssText = `padding:8px 8px;text-align:right;${c.gold ? 'color:var(--gold)' : ''}`;
@@ -1732,6 +2681,14 @@ window.AsgardFieldTab = (function () {
     table.appendChild(tbody);
     wrap.innerHTML = '';
     wrap.appendChild(table);
+
+    // Прокрутить к сегодняшнему дню (если колонка есть в периоде)
+    const todayTh = wrap.querySelector('th[data-ymd="' + todayStr + '"]');
+    if (todayTh && typeof todayTh.scrollIntoView === 'function') {
+      try { todayTh.scrollIntoView({ inline: 'center', block: 'nearest', behavior: 'smooth' }); } catch (_) {
+        try { todayTh.scrollIntoView(false); } catch (__) {}
+      }
+    }
 
     // Edit mode legend
     if (editMode) {
@@ -1746,21 +2703,29 @@ window.AsgardFieldTab = (function () {
     const summary = document.createElement('div');
     summary.className = 'help';
     summary.style.cssText = 'margin-top:8px;font-size:12px';
-    summary.textContent = `${timesheet.length} сотрудников · суточные ${money(perDiem)} ₽/день`;
+    summary.textContent = `${timesheet.length} сотрудников · суточные ${money(perDiem)}/день`;
     wrap.appendChild(summary);
   }
 
   // ── Inline edit checkin cell ──
   // ── Shift type helpers ──
   const SHIFT_TYPES = [
-    { value: 'day',     icon: '☀',  label: 'День',       bg: '', hours: 11, defaultPts: 13 },
-    { value: 'night',   icon: '🌙', label: 'Ночь',       bg: 'rgba(59,130,246,0.12)', hours: 11, defaultPts: 13 },
-    { value: 'half',    icon: '½',  label: 'Полдня',     bg: 'rgba(107,114,128,0.1)', hours: 6, defaultPts: 6 },
-    { value: 'road',    icon: '🚗', label: 'Дорога',     bg: 'rgba(96,165,250,0.1)', hours: 0, defaultPts: 6 },
-    { value: 'standby', icon: '⏳', label: 'Ожидание',   bg: 'rgba(245,158,11,0.1)', hours: 0, defaultPts: 6 },
+    { value: 'day',        icon: '☀',  label: 'День',       bg: '', hours: 11, defaultPts: 13 },
+    { value: 'night',      icon: '🌙', label: 'Ночь',       bg: 'rgba(59,130,246,0.12)', hours: 11, defaultPts: 13 },
+    { value: 'half',       icon: '½',  label: 'Полдня',     bg: 'rgba(107,114,128,0.1)', hours: 6, defaultPts: 6 },
+    { value: 'road',       icon: '🚗', label: 'Дорога',     bg: 'rgba(96,165,250,0.1)', hours: 0, defaultPts: 6 },
+    { value: 'standby',    icon: '⏳', label: 'Ожидание',   bg: 'rgba(245,158,11,0.1)', hours: 0, defaultPts: 6 },
+    // display-only (этапы из маршрутов)
+    { value: 'ship',       icon: '🚢', label: 'Корабль',    bg: 'rgba(56,189,248,0.12)', hours: 0, defaultPts: 12, displayOnly: true },
+    { value: 'helicopter', icon: '🚁', label: 'Вертолёт',   bg: 'rgba(167,139,250,0.12)', hours: 0, defaultPts: 6, displayOnly: true },
+    { value: 'warehouse',  icon: '📦', label: 'Склад',      bg: 'rgba(148,163,184,0.12)', hours: 0, defaultPts: 10, displayOnly: true },
+    { value: 'medical',    icon: '🏥', label: 'Медосмотр',  bg: 'rgba(244,114,182,0.12)', hours: 0, defaultPts: 7, displayOnly: true },
+    { value: 'training',   icon: '🎓', label: 'Обучение',   bg: 'rgba(251,191,36,0.12)', hours: 0, defaultPts: 7, displayOnly: true },
   ];
   function _shiftIcon(shift) {
-    return SHIFT_TYPES.find(s => s.value === shift) || SHIFT_TYPES[0];
+    // travel (канон stages) → road (иконка полевого табеля)
+    const key = shift === 'travel' ? 'road' : shift;
+    return SHIFT_TYPES.find(s => s.value === key) || SHIFT_TYPES[0];
   }
 
   // ── Inline shift+points editor (replaces cell content) ──
@@ -1769,14 +2734,14 @@ window.AsgardFieldTab = (function () {
     td.innerHTML = '';
     td.style.padding = '2px';
     const wrap = document.createElement('div');
-    wrap.style.cssText = 'display:flex;flex-direction:column;gap:2px;align-items:center;min-width:62px';
+    wrap.style.cssText = 'display:flex;flex-direction:column;gap:3px;align-items:center;min-width:88px';
 
     // Shift type buttons row
     const btnsRow = document.createElement('div');
     btnsRow.style.cssText = 'display:flex;gap:1px;flex-wrap:wrap;justify-content:center';
     let selectedShift = currentShift || 'day';
 
-    SHIFT_TYPES.forEach(st => {
+    SHIFT_TYPES.filter((st) => !st.displayOnly).forEach(st => {
       const btn = document.createElement('button');
       btn.type = 'button';
       btn.textContent = st.icon;
@@ -1795,14 +2760,39 @@ window.AsgardFieldTab = (function () {
     });
     wrap.appendChild(btnsRow);
 
-    // Points input
+    // Points input — минимум 2 цифры читаемы (26/30), без spin-стрелок Windows
     const input = document.createElement('input');
-    input.type = 'number';
-    input.value = currentPts;
-    input.min = 0;
-    input.max = 30;
-    input.style.cssText = 'width:44px;padding:2px;font-size:12px;text-align:center;border:1px solid var(--gold);border-radius:4px;background:var(--bg1);color:var(--t1);outline:none';
-    input.addEventListener('input', () => { input.dataset.userEdited = '1'; });
+    input.type = 'text';
+    input.inputMode = 'numeric';
+    input.pattern = '[0-9]*';
+    input.value = String(currentPts ?? '');
+    input.setAttribute('aria-label', 'Баллы');
+    input.style.cssText = [
+      'width:72px',
+      'min-width:72px',
+      'height:30px',
+      'padding:4px 8px',
+      'font-size:16px',
+      'font-weight:700',
+      'line-height:1.2',
+      'letter-spacing:0.02em',
+      'text-align:center',
+      'border:1.5px solid var(--gold)',
+      'border-radius:4px',
+      'background:var(--bg0,#fff)',
+      'color:var(--t1,#111)',
+      'outline:none',
+      'box-sizing:border-box',
+      '-moz-appearance:textfield',
+      'appearance:textfield'
+    ].join(';');
+    input.addEventListener('input', () => {
+      input.dataset.userEdited = '1';
+      const raw = String(input.value).replace(/\D/g, '');
+      if (raw !== input.value) input.value = raw;
+      const n = parseInt(raw, 10);
+      if (Number.isFinite(n) && n > 30) input.value = '30';
+    });
     wrap.appendChild(input);
 
     // Кнопка «удалить смену» (только при редактировании существующего чекина)
@@ -1874,7 +2864,8 @@ window.AsgardFieldTab = (function () {
         freshTd.addEventListener('click', () => addCheckinCell(freshTd, emp, date, work, pv));
         toast('Табель', `Смена ${date} удалена`, 'ok');
       } catch (e) {
-        toast('Ошибка', 'Не удалось удалить смену', 'err');
+        const msg = (e && (e.message_ru || e.message || e.error)) || 'Не удалось удалить смену';
+        toast('Ошибка', String(msg), 'err');
         restore();
       }
     }
@@ -1887,10 +2878,10 @@ window.AsgardFieldTab = (function () {
         const newRate = newPts * pv;
         const shiftDef = SHIFT_TYPES.find(s => s.value === newShift) || SHIFT_TYPES[0];
         try {
-          await api(`/projects/${work.id}/checkin/${day.id}`, {
-            method: 'PUT',
-            body: JSON.stringify({ day_rate: newRate, amount_earned: newRate, shift: newShift, hours_worked: shiftDef.hours, hours_paid: shiftDef.hours }),
-          });
+          await apiCheckinWithConflictConfirm(`/projects/${work.id}/checkin/${day.id}`, {
+            day_rate: newRate, amount_earned: newRate, shift: newShift,
+            hours_worked: shiftDef.hours, hours_paid: shiftDef.hours
+          }, 'PUT');
           td.innerHTML = si.icon + newPts;
           td.style.color = newPts >= 18 ? '#D4A843' : newPts >= 12 ? '#10b981' : '#3b82f6';
           td.style.background = si.bg || '';
@@ -1898,7 +2889,9 @@ window.AsgardFieldTab = (function () {
           td.style.outline = '2px solid rgba(16,185,129,0.5)';
           setTimeout(() => { td.style.outline = ''; }, 800);
         } catch (e) {
-          toast('Ошибка', 'Не удалось сохранить', 'err');
+          if (e && e.cancelled) { restore(); return; }
+          const msg = (e && (e.message_ru || e.message || e.error)) || 'Не удалось сохранить';
+          toast('Ошибка', String(msg), 'err');
           restore();
         }
       },
@@ -1924,18 +2917,15 @@ window.AsgardFieldTab = (function () {
         const rate = pts * pv;
         const shiftDef = SHIFT_TYPES.find(s => s.value === shift) || SHIFT_TYPES[0];
         try {
-          await api(`/projects/${work.id}/checkin`, {
-            method: 'POST',
-            body: JSON.stringify({
-              employee_id: emp.employee_id,
-              date: date,
-              shift: shift,
-              hours_worked: shiftDef.hours,
-              hours_paid: shiftDef.hours,
-              day_rate: rate,
-              amount_earned: rate,
-            }),
-          });
+          await apiCheckinWithConflictConfirm(`/projects/${work.id}/checkin`, {
+            employee_id: emp.employee_id,
+            date: date,
+            shift: shift,
+            hours_worked: shiftDef.hours,
+            hours_paid: shiftDef.hours,
+            day_rate: rate,
+            amount_earned: rate,
+          }, 'POST');
           td.innerHTML = si.icon + pts;
           td.style.color = pts >= 18 ? '#D4A843' : pts >= 12 ? '#10b981' : '#3b82f6';
           td.style.background = si.bg || '';
@@ -1945,7 +2935,8 @@ window.AsgardFieldTab = (function () {
           setTimeout(() => { td.style.outline = ''; }, 800);
           toast('Табель', `${si.label} ${date} добавлена`, 'ok');
         } catch (e) {
-          toast('Ошибка', 'Не удалось создать запись', 'err');
+          if (e && e.cancelled) { restore(); return; }
+          toast('Ошибка', (e && e.message) || 'Не удалось создать запись', 'err');
           restore();
         }
       },
@@ -2265,10 +3256,10 @@ window.AsgardFieldTab = (function () {
       tr.innerHTML = `
         <td>${esc(f.master_name || '—')}</td>
         <td>${esc(f.purpose || '—')}</td>
-        <td style="text-align:right">${money(f.amount)} ₽</td>
-        <td style="text-align:right;color:#ef4444">${money(f.spent)} ₽</td>
-        <td style="text-align:right;color:#22c55e">${money(f.returned)} ₽</td>
-        <td style="text-align:right;color:var(--gold);font-weight:600">${money(remainder)} ₽</td>
+        <td style="text-align:right">${money(f.amount)}</td>
+        <td style="text-align:right;color:#ef4444">${money(f.spent)}</td>
+        <td style="text-align:right;color:#22c55e">${money(f.returned)}</td>
+        <td style="text-align:right;color:var(--gold);font-weight:600">${money(remainder)}</td>
         <td><span style="font-size:11px">${FUND_STATUS_LABELS[f.status] || f.status}</span></td>
         <td>${f.status !== 'closed' ? '<button class="btn ghost close-fund" data-id="' + f.id + '" style="font-size:11px;padding:4px 8px">Закрыть</button>' : ''}</td>
       `;
@@ -2304,7 +3295,7 @@ window.AsgardFieldTab = (function () {
     const summaryDiv = document.createElement('div');
     summaryDiv.className = 'help';
     summaryDiv.style.cssText = 'margin-top:8px;font-size:12px';
-    summaryDiv.textContent = `Итого: выдано ${money(totalIssued)}₽ · потрачено ${money(totalSpent)}₽ · возврат ${money(totalReturned)}₽ · остаток ${money(totalIssued - totalSpent - totalReturned)}₽`;
+    summaryDiv.textContent = `Итого: выдано ${money(totalIssued)} · потрачено ${money(totalSpent)} · возврат ${money(totalReturned)} · остаток ${money(totalIssued - totalSpent - totalReturned)}`;
     container.appendChild(summaryDiv);
   }
 
@@ -2404,7 +3395,7 @@ window.AsgardFieldTab = (function () {
       expensesHtml = '<table class="fk-table fk-table-small" style="width:100%;font-size:11px;margin-top:12px"><thead><tr><th>Дата</th><th>Описание</th><th>Категория</th><th style="text-align:right">Сумма</th><th>Источник</th><th>Чек</th></tr></thead><tbody>';
       for (const e of data.expenses) {
         const receiptLink = e.receipt_filename ? `<a href="/uploads/receipts/${esc(e.receipt_filename)}" target="_blank">📎</a>` : '—';
-        expensesHtml += `<tr><td>${formatDate(e.expense_date)}</td><td>${esc(e.description)}</td><td>${esc(e.category || '—')}</td><td style="text-align:right">${money(e.amount)}₽</td><td>${e.source === 'own' ? '💳 Свои' : '💰 Аванс'}</td><td>${receiptLink}</td></tr>`;
+        expensesHtml += `<tr><td>${formatDate(e.expense_date)}</td><td>${esc(e.description)}</td><td>${esc(e.category || '—')}</td><td style="text-align:right">${money(e.amount)}</td><td>${e.source === 'own' ? '💳 Свои' : '💰 Аванс'}</td><td>${receiptLink}</td></tr>`;
       }
       expensesHtml += '</tbody></table>';
     }
@@ -2413,7 +3404,7 @@ window.AsgardFieldTab = (function () {
     if (data.returns && data.returns.length > 0) {
       returnsHtml = '<div style="margin-top:12px;font-weight:600;font-size:13px">Возвраты:</div><table class="fk-table fk-table-small" style="width:100%;font-size:11px"><thead><tr><th>Дата</th><th style="text-align:right">Сумма</th><th>Примечание</th></tr></thead><tbody>';
       for (const r of data.returns) {
-        returnsHtml += `<tr><td>${formatDate(r.created_at)}</td><td style="text-align:right">${money(r.amount)}₽</td><td>${esc(r.note || '—')}</td></tr>`;
+        returnsHtml += `<tr><td>${formatDate(r.created_at)}</td><td style="text-align:right">${money(r.amount)}</td><td>${esc(r.note || '—')}</td></tr>`;
       }
       returnsHtml += '</tbody></table>';
     }
@@ -2425,19 +3416,19 @@ window.AsgardFieldTab = (function () {
           <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px">
             <div style="background:var(--bg3);padding:12px;border-radius:10px;text-align:center">
               <div style="font-size:11px;color:var(--t2);text-transform:uppercase">Выдано</div>
-              <div style="font-size:18px;font-weight:700;margin-top:4px">${money(f.amount)}₽</div>
+              <div style="font-size:18px;font-weight:700;margin-top:4px">${money(f.amount)}</div>
             </div>
             <div style="background:var(--bg3);padding:12px;border-radius:10px;text-align:center">
               <div style="font-size:11px;color:var(--t2);text-transform:uppercase">Потрачено</div>
-              <div style="font-size:18px;font-weight:700;color:#ef4444;margin-top:4px">${money(f.spent)}₽</div>
+              <div style="font-size:18px;font-weight:700;color:#ef4444;margin-top:4px">${money(f.spent)}</div>
             </div>
             <div style="background:var(--bg3);padding:12px;border-radius:10px;text-align:center">
               <div style="font-size:11px;color:var(--t2);text-transform:uppercase">Возврат</div>
-              <div style="font-size:18px;font-weight:700;color:#22c55e;margin-top:4px">${money(f.returned)}₽</div>
+              <div style="font-size:18px;font-weight:700;color:#22c55e;margin-top:4px">${money(f.returned)}</div>
             </div>
             <div style="background:var(--bg3);padding:12px;border-radius:10px;text-align:center">
               <div style="font-size:11px;color:var(--t2);text-transform:uppercase">Остаток</div>
-              <div style="font-size:18px;font-weight:700;color:var(--gold);margin-top:4px">${money(remainder)}₽</div>
+              <div style="font-size:18px;font-weight:700;color:var(--gold);margin-top:4px">${money(remainder)}</div>
             </div>
           </div>
           <div style="font-size:12px;color:var(--t2);margin-bottom:4px">Мастер: <strong>${esc(f.master_name || '—')}</strong> · Статус: ${FUND_STATUS_LABELS[f.status] || f.status}</div>
@@ -2792,7 +3783,7 @@ window.AsgardFieldTab = (function () {
 
       const header = document.createElement('div');
       header.style.cssText = 'display:flex;justify-content:space-between;align-items:center;margin-bottom:8px';
-      header.innerHTML = `<strong>${esc(emp.fio)}</strong><span style="color:var(--gold);font-size:12px">${emp.total_days} дн. · ${money(emp.total_earned)}₽</span>`;
+      header.innerHTML = `<strong>${esc(emp.fio)}</strong><span style="color:var(--gold);font-size:12px">${emp.total_days} дн. · ${money(emp.total_earned)}</span>`;
       card.appendChild(header);
 
       for (const s of emp.stages) {
@@ -2805,7 +3796,7 @@ window.AsgardFieldTab = (function () {
         sRow.innerHTML = `<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${col}"></span>` +
           `<span>${esc(STAGE_LABELS_DT[s.stage_type] || s.stage_type)}</span>` +
           `<span style="color:var(--t2)">${df2}${dt2} · ${s.days_count || 1}д.</span>` +
-          `<span style="margin-left:auto;font-weight:600">${money(s.amount_earned)}₽ ${statusBadge}</span>`;
+          `<span style="margin-left:auto;font-weight:600">${money(s.amount_earned)} ${statusBadge}</span>`;
 
         // Action buttons for non-approved
         if (!['approved', 'adjusted', 'rejected'].includes(s.status)) {
@@ -3006,7 +3997,7 @@ window.AsgardFieldTab = (function () {
       const card = document.createElement('div');
       card.style.cssText = 'background:var(--bg3);padding:12px;border-radius:10px;text-align:center';
       card.innerHTML = `<div style="font-size:11px;opacity:.6">${k.label}</div>
-        <div style="font-size:18px;font-weight:700;color:${k.color};margin-top:4px">${money(k.value)} ₽${k.suffix ? ' <span style="font-size:11px;opacity:.7">' + k.suffix + '</span>' : ''}</div>`;
+        <div style="font-size:18px;font-weight:700;color:${k.color};margin-top:4px">${money(k.value)}${k.suffix ? ' <span style="font-size:11px;opacity:.7">' + k.suffix + '</span>' : ''}</div>`;
       kpiRow.appendChild(card);
     }
     container.appendChild(kpiRow);
@@ -3061,14 +4052,14 @@ window.AsgardFieldTab = (function () {
         tr.innerHTML = `
           <td>${esc(e.employee_name)}</td>
           <td style="text-align:right">${e.days_worked || 0}</td>
-          <td style="text-align:right">${money(e.fot_accrued)} ₽</td>
-          <td style="text-align:right">${money(e.per_diem_accrued)} ₽</td>
-          <td style="text-align:right">${money(e.per_diem_paid)} ₽</td>
-          <td style="text-align:right;color:${balColor}">${balSign}${money(bal)} ₽</td>
-          <td style="text-align:right">${money(e.advance_paid)} ₽</td>
-          <td style="text-align:right">${money(e.bonus_paid)} ₽</td>
-          <td style="text-align:right">${money(e.penalty)} ₽</td>
-          <td style="text-align:right;font-weight:600;color:var(--gold)">${money(e.net_to_pay)} ₽</td>
+          <td style="text-align:right">${money(e.fot_accrued)}</td>
+          <td style="text-align:right">${money(e.per_diem_accrued)}</td>
+          <td style="text-align:right">${money(e.per_diem_paid)}</td>
+          <td style="text-align:right;color:${balColor}">${balSign}${money(bal)}</td>
+          <td style="text-align:right">${money(e.advance_paid)}</td>
+          <td style="text-align:right">${money(e.bonus_paid)}</td>
+          <td style="text-align:right">${money(e.penalty)}</td>
+          <td style="text-align:right;font-weight:600;color:var(--gold)">${money(e.net_to_pay)}</td>
           <td><button class="btn primary pay-worker" data-employee-id="${e.employee_id}" data-fio="${esc(e.employee_name||'')}" style="font-size:10px;padding:3px 8px;white-space:nowrap">💰 Выплатить</button></td>
         `;
         tbody.appendChild(tr);
@@ -3085,7 +4076,7 @@ window.AsgardFieldTab = (function () {
     }
 
     // ─── All payments list ───────────────────────────────────────
-    const payments = allPayments?.payments || [];
+    const payments = (allPayments?.payments || []).filter(p => p.status !== 'cancelled');
     if (payments.length > 0) {
       const hd = document.createElement('div');
       hd.style.cssText = 'font-weight:600;font-size:13px;margin:12px 0 8px';
@@ -3102,29 +4093,51 @@ window.AsgardFieldTab = (function () {
       const tbody2 = document.createElement('tbody');
       for (const p of payments) {
         const tr = document.createElement('tr');
+        const canAct = p.status === 'pending' || p.status === 'paid' || p.status === 'confirmed';
+        const payNow = p.status === 'pending'
+          ? '<button class="btn ghost pay-now" data-id="' + p.id + '" data-amount="' + p.amount + '" data-type="' + (p.type||'') + '" data-employee="' + esc(p.employee_name||'') + '" style="font-size:10px;padding:3px 6px;color:#10b981" title="Выплатить">💰</button>'
+          : '';
+        const editBtn = canAct
+          ? '<button class="btn ghost edit-pay" data-id="' + p.id + '" style="font-size:10px;padding:3px 6px" title="Редактировать">✎</button>'
+          : '';
+        const delBtn = canAct
+          ? '<button class="btn ghost cancel-pay" data-id="' + p.id + '" style="font-size:10px;padding:3px 6px;color:#ef4444" title="Удалить">✕</button>'
+          : '';
         tr.innerHTML = `
-          <td>${formatDate(p.created_at)}</td>
+          <td>${formatDate(p.paid_at || p.created_at)}</td>
           <td>${PAY_TYPE_LABELS[p.type] || p.type}</td>
           <td>${esc(p.employee_name || '—')}</td>
-          <td style="text-align:right;font-weight:600">${money(p.amount)} ₽</td>
+          <td style="text-align:right;font-weight:600">${money(p.amount)}</td>
           <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(p.comment || '—')}</td>
           <td>${PAY_STATUS_LABELS[p.status] || p.status}</td>
-          <td>${p.status === 'pending' ? '<button class="btn ghost pay-now" data-id="' + p.id + '" data-amount="' + p.amount + '" data-type="' + (p.type||'') + '" data-employee="' + esc(p.employee_name||'') + '" style="font-size:10px;padding:3px 6px;color:#10b981" title="Выплатить">💰</button><button class="btn ghost cancel-pay" data-id="' + p.id + '" style="font-size:10px;padding:3px 6px;color:#ef4444">✕</button>' : ''}</td>
+          <td style="white-space:nowrap">${payNow}${editBtn}${delBtn}</td>
         `;
         tbody2.appendChild(tr);
       }
       tbl2.appendChild(tbody2);
       container.appendChild(tbl2);
 
-      // Cancel handlers
+      // Cancel / delete handlers
       container.querySelectorAll('.cancel-pay').forEach(btn => {
         btn.addEventListener('click', async () => {
-          if (!confirm('Отменить эту выплату?')) return;
+          const row = payments.find(x => String(x.id) === String(btn.dataset.id));
+          const label = row ? ((PAY_TYPE_LABELS[row.type] || row.type) + ' ' + money(row.amount)) : 'операцию';
+          if (!confirm('Удалить ' + label + '?\n\nВыплата пропадёт из баланса рабочего, кассы РП и расходов по работе. Начисление ФОТ по табелю не трогаем.')) return;
           try {
-            await fetch('/api/worker-payments/' + btn.dataset.id, { method: 'DELETE', headers: hdr() });
-            toast('Выплата отменена');
+            const resp = await fetch('/api/worker-payments/' + btn.dataset.id, { method: 'DELETE', headers: hdr() });
+            const data = await resp.json().catch(() => ({}));
+            if (!resp.ok) { toast(data.error || data.details || 'Ошибка удаления', '', 'err'); return; }
+            const extra = data.warning ? (' ' + data.warning) : '';
+            toast('Выплата удалена' + extra);
             renderPaymentsTab(container, work, user);
-          } catch (err) { toast('Ошибка: ' + err.message); }
+          } catch (err) { toast('Ошибка: ' + err.message, '', 'err'); }
+        });
+      });
+
+      container.querySelectorAll('.edit-pay').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const row = payments.find(x => String(x.id) === String(btn.dataset.id));
+          if (row) openEditPaymentModal(row, work, user, container);
         });
       });
 
@@ -3144,7 +4157,7 @@ window.AsgardFieldTab = (function () {
     const typeLabel = (PAY_TYPE_LABELS[type] || type).replace(/^[^\s]+\s/, '');
     const html = `
       <div style="text-align:center;margin-bottom:16px">
-        <div style="font-size:28px;font-weight:800;color:var(--gold)">${AsgardUI.money(amount)} ₽</div>
+        <div style="font-size:28px;font-weight:800;color:var(--gold)">${(AsgardUI.moneyRub || AsgardMoney.formatMoney)(amount)}</div>
         <div style="font-size:13px;color:var(--t2);margin-top:4px">${esc(typeLabel)} — ${esc(employeeName)}</div>
       </div>
       <div class="cr-f-field">
@@ -3168,7 +4181,7 @@ window.AsgardFieldTab = (function () {
       </div>
     `;
 
-    AsgardUI.showModal({ title: 'Выплата', html, icon: '💰', subtitle: esc(employeeName) });
+    AsgardUI.showModal({ title: 'Выплата', html, icon: '💰', subtitle: employeeName || '' });
 
     // Radio chip toggle
     const _visOvs2 = document.querySelectorAll('.cr-m-overlay--visible');
@@ -3214,13 +4227,90 @@ window.AsgardFieldTab = (function () {
     });
   }
 
+  function _payDateValue(p) {
+    const raw = p && (p.paid_at || p.period_to || p.created_at);
+    if (!raw) return '';
+    const s = String(raw);
+    return s.length >= 10 ? s.slice(0, 10) : s;
+  }
+
+  // ─── Модалка: редактировать выплату / суточные / удержание ─────────
+  function openEditPaymentModal(payment, work, user, container) {
+    const typeLabel = PAY_TYPE_LABELS[payment.type] || payment.type;
+    const method = payment.payment_method || 'cash';
+    const html = `
+      <div style="margin-bottom:12px;font-size:13px;color:var(--t2)">${esc(typeLabel)} — ${esc(payment.employee_name || '')}</div>
+      <div class="cr-f-field">
+        <div class="cr-f-label">Сумма, ₽ <span class="cr-f-label__req">*</span></div>
+        <input id="editPayAmount" type="number" step="0.01" value="${esc(String(payment.amount ?? ''))}"/>
+      </div>
+      <div class="cr-f-field">
+        <div class="cr-f-label">Дата</div>
+        <input id="editPayDate" type="date" value="${esc(_payDateValue(payment))}"/>
+      </div>
+      <div class="cr-f-field">
+        <div class="cr-f-label">Способ</div>
+        <select id="editPayMethod" class="inp" style="width:100%">
+          <option value="cash" ${method === 'cash' ? 'selected' : ''}>💵 Наличные</option>
+          <option value="card" ${method === 'card' ? 'selected' : ''}>💳 Карта</option>
+          <option value="transfer" ${method === 'transfer' ? 'selected' : ''}>🏦 Перевод</option>
+          <option value="bank" ${method === 'bank' ? 'selected' : ''}>🏦 Банк компании</option>
+          <option value="self" ${method === 'self' ? 'selected' : ''}>👤 Самозанятый</option>
+        </select>
+      </div>
+      <div class="cr-f-field">
+        <div class="cr-f-label">Комментарий</div>
+        <input id="editPayNote" value="${esc(payment.comment || '')}" placeholder="Необязательно"/>
+      </div>
+      <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:16px">
+        <button class="btn ghost" id="editPayCancel">Отмена</button>
+        <button class="btn primary" id="editPaySave">Сохранить</button>
+      </div>
+    `;
+    AsgardUI.showModal({ title: 'Редактировать операцию', html, icon: '✎', subtitle: payment.employee_name || '' });
+
+    document.getElementById('editPayCancel')?.addEventListener('click', () => AsgardUI.hideModal());
+    document.getElementById('editPaySave')?.addEventListener('click', async () => {
+      const amount = parseFloat(document.getElementById('editPayAmount')?.value);
+      if (!Number.isFinite(amount) || (amount <= 0 && payment.type !== 'penalty')) {
+        toast('Укажите сумму', '', 'err'); return;
+      }
+      const btn = document.getElementById('editPaySave');
+      if (btn) { btn.disabled = true; btn.textContent = '⏳ Сохранение...'; }
+      const payload = {
+        amount,
+        comment: document.getElementById('editPayNote')?.value?.trim() || '',
+        payment_method: document.getElementById('editPayMethod')?.value || method
+      };
+      const dt = document.getElementById('editPayDate')?.value;
+      if (dt) payload.paid_at = dt;
+      try {
+        const resp = await fetch('/api/worker-payments/' + payment.id, {
+          method: 'PUT', headers: hdr(), body: JSON.stringify(payload)
+        });
+        const data = await resp.json().catch(() => ({}));
+        if (!resp.ok) {
+          toast(data.details || data.error || 'Ошибка', '', 'err');
+          if (btn) { btn.disabled = false; btn.textContent = 'Сохранить'; }
+          return;
+        }
+        toast('Сохранено');
+        AsgardUI.hideModal();
+        renderPaymentsTab(container, work, user);
+      } catch (err) {
+        toast('Ошибка: ' + err.message, '', 'err');
+        if (btn) { btn.disabled = false; btn.textContent = 'Сохранить'; }
+      }
+    });
+  }
+
   // ─── Модалка: выплата рабочему (SSoT сводка + свободная сумма) ────
   function openPayWorkerModal(employeeId, fio, work, user, container) {
     // Единая модалка с placeholder, потом replaceModal перерисовывает содержимое.
     // (showModal стакает overlays — hideModal убирает только верхний.)
     AsgardUI.showModal({
       title: 'Выплата рабочему',
-      subtitle: esc(fio),
+      subtitle: fio,
       icon: '💰',
       wide: true,
       html: '<div style="text-align:center;padding:60px"><div style="font-size:40px;margin-bottom:12px">⏳</div><div style="color:var(--t2)">Загружаем баланс…</div></div>'
@@ -3249,7 +4339,7 @@ window.AsgardFieldTab = (function () {
         if (!res.ok) {
           var msg = (res.data && (res.data.error || res.data.details)) || ('HTTP ' + res.status);
           var errHtml = '<div style="padding:20px"><div style="background:rgba(239,68,68,0.15);border:1px solid #ef4444;color:#ef4444;padding:12px;border-radius:8px;font-size:14px">⚠ ' + esc(msg) + '</div><div style="margin-top:16px;text-align:right"><button class="btn ghost" onclick="window.AsgardUI.hideModal()">Закрыть</button></div></div>';
-          if (AsgardUI.replaceModal) AsgardUI.replaceModal({ title: 'Ошибка', subtitle: esc(fio), icon: '⚠', html: errHtml });
+          if (AsgardUI.replaceModal) AsgardUI.replaceModal({ title: 'Ошибка', subtitle: fio, icon: '⚠', html: errHtml });
           else { AsgardUI.hideModal(); toast('Ошибка: ' + msg, '', 'err'); }
           return;
         }
@@ -3262,7 +4352,7 @@ window.AsgardFieldTab = (function () {
       .catch(function(err) {
         console.error('[pay-worker] summary error', err);
         var errHtml = '<div style="padding:20px"><div style="background:rgba(239,68,68,0.15);border:1px solid #ef4444;color:#ef4444;padding:12px;border-radius:8px;font-size:14px">⚠ Сеть: ' + esc(err.message || 'no response') + '</div><div style="margin-top:16px;text-align:right"><button class="btn ghost" onclick="window.AsgardUI.hideModal()">Закрыть</button></div></div>';
-        if (AsgardUI.replaceModal) AsgardUI.replaceModal({ title: 'Ошибка сети', subtitle: esc(fio), icon: '⚠', html: errHtml });
+        if (AsgardUI.replaceModal) AsgardUI.replaceModal({ title: 'Ошибка сети', subtitle: fio, icon: '⚠', html: errHtml });
         else { AsgardUI.hideModal(); toast('Ошибка сети: ' + err.message, '', 'err'); }
       });
   }
@@ -3339,17 +4429,17 @@ window.AsgardFieldTab = (function () {
         '<div class="pw-bal-row">' +
           '<div>' +
             '<div class="lbl">🌙 Суточные</div>' +
-            '<div class="pw-bal-sub">Начислено ' + money(pd.accrued) + ' ₽ · выдано ' + money(pd.paid) + ' ₽ (' + summary.checkins_days + ' дн)</div>' +
+            '<div class="pw-bal-sub">Начислено ' + money(pd.accrued) + ' · выдано ' + money(pd.paid) + ' (' + summary.checkins_days + ' дн)</div>' +
           '</div>' +
-          '<div class="val" style="color:' + pdColor + '">' + (pd.balance >= 0 ? '' : '−') + money(Math.abs(pd.balance)) + ' ₽</div>' +
+          '<div class="val" style="color:' + pdColor + '">' + (pd.balance >= 0 ? '' : '−') + money(Math.abs(pd.balance)) + '</div>' +
         '</div>' +
         // ЗП
         '<div class="pw-bal-row">' +
           '<div>' +
             '<div class="lbl">💼 Зарплата</div>' +
-            '<div class="pw-bal-sub">Заработано ' + money(sal.fot_accrued) + ' ₽ · аванс ' + money(sal.advance_paid) + ' ₽ · ЗП ' + money(sal.salary_paid) + ' ₽</div>' +
+            '<div class="pw-bal-sub">Заработано ' + money(sal.fot_accrued) + ' · аванс ' + money(sal.advance_paid) + ' · ЗП ' + money(sal.salary_paid) + '</div>' +
           '</div>' +
-          '<div class="val" style="color:' + salColor + '">' + (sal.balance >= 0 ? '' : '−') + money(Math.abs(sal.balance)) + ' ₽</div>' +
+          '<div class="val" style="color:' + salColor + '">' + (sal.balance >= 0 ? '' : '−') + money(Math.abs(sal.balance)) + '</div>' +
         '</div>' +
         // Прочее (премии/удержания)
         ((summary.bonus.paid || summary.penalty.paid) ?
@@ -3357,9 +4447,9 @@ window.AsgardFieldTab = (function () {
             '<div>' +
               '<div class="lbl">⭐ Прочее</div>' +
               '<div class="pw-bal-sub">' +
-                (summary.bonus.paid ? 'Премии ' + money(summary.bonus.paid) + ' ₽' : '') +
+                (summary.bonus.paid ? 'Премии ' + money(summary.bonus.paid) : '') +
                 (summary.bonus.paid && summary.penalty.paid ? ' · ' : '') +
-                (summary.penalty.paid ? 'Удержания ' + money(summary.penalty.paid) + ' ₽' : '') +
+                (summary.penalty.paid ? 'Удержания ' + money(summary.penalty.paid) : '') +
               '</div>' +
             '</div>' +
             '<div class="val" style="color:var(--t2)">—</div>' +
@@ -3445,9 +4535,9 @@ window.AsgardFieldTab = (function () {
     var html = css + '<div class="pw-grid">' + balLeftHtml + formRightHtml + actionsHtml + '</div>';
 
     if (AsgardUI.replaceModal) {
-      AsgardUI.replaceModal({ title: 'Выплата рабочему', subtitle: esc(fio), icon: '💰', html: html, wide: true });
+      AsgardUI.replaceModal({ title: 'Выплата рабочему', subtitle: fio, icon: '💰', html: html, wide: true });
     } else {
-      AsgardUI.showModal({ title: 'Выплата рабочему', subtitle: esc(fio), icon: '💰', html: html, wide: true });
+      AsgardUI.showModal({ title: 'Выплата рабочему', subtitle: fio, icon: '💰', html: html, wide: true });
     }
 
     // Field-tab itself runs inside a modal, so there are ≥2 elements with id="modalBody".
@@ -3474,10 +4564,10 @@ window.AsgardFieldTab = (function () {
       var buttons = [];
       if (type === 'per_diem') {
         buttons = [{ lbl: '+1 день', val: rate }, { lbl: '+5 дней', val: rate * 5 }, { lbl: '+10 дней', val: rate * 10 }];
-        if (pd.balance > 0) buttons.push({ lbl: 'Весь долг (' + money(pd.balance) + ' ₽)', val: pd.balance });
+        if (pd.balance > 0) buttons.push({ lbl: 'Весь долг (' + money(pd.balance) + ')', val: pd.balance });
       } else if (type === 'advance' || type === 'salary') {
         buttons = [{ lbl: '5 000', val: 5000 }, { lbl: '10 000', val: 10000 }, { lbl: '20 000', val: 20000 }];
-        if (sal.balance > 0) buttons.push({ lbl: 'Весь долг (' + money(sal.balance) + ' ₽)', val: sal.balance });
+        if (sal.balance > 0) buttons.push({ lbl: 'Весь долг (' + money(sal.balance) + ')', val: sal.balance });
       } else {
         buttons = [{ lbl: '1 000', val: 1000 }, { lbl: '3 000', val: 3000 }, { lbl: '5 000', val: 5000 }];
       }
@@ -3502,17 +4592,17 @@ window.AsgardFieldTab = (function () {
       if (type === 'per_diem') {
         var nb = pd.balance - amt;
         var lbl = nb < 0 ? 'Аванс по суточным' : nb > 0 ? 'Останется долг' : 'Суточные закрыты ✓';
-        h = '<div class="row"><span style="font-weight:700">' + lbl + '</span><span style="font-weight:800;font-variant-numeric:tabular-nums">' + money(Math.abs(nb)) + ' ₽</span></div>' +
-            '<div class="was">Было: ' + money(Math.abs(pd.balance)) + ' ₽</div>';
+        h = '<div class="row"><span style="font-weight:700">' + lbl + '</span><span style="font-weight:800;font-variant-numeric:tabular-nums">' + money(Math.abs(nb)) + '</span></div>' +
+            '<div class="was">Было: ' + money(Math.abs(pd.balance)) + '</div>';
       } else if (type === 'advance' || type === 'salary') {
         var nb2 = sal.balance - amt;
         var lbl2 = nb2 > 0 ? 'Останется долг по ЗП' : nb2 < 0 ? 'Переплата по ЗП' : 'ЗП закрыта ✓';
-        h = '<div class="row"><span style="font-weight:700">' + lbl2 + '</span><span style="font-weight:800;font-variant-numeric:tabular-nums">' + money(Math.abs(nb2)) + ' ₽</span></div>' +
-            '<div class="was">Было: ' + money(Math.abs(sal.balance)) + ' ₽</div>';
+        h = '<div class="row"><span style="font-weight:700">' + lbl2 + '</span><span style="font-weight:800;font-variant-numeric:tabular-nums">' + money(Math.abs(nb2)) + '</span></div>' +
+            '<div class="was">Было: ' + money(Math.abs(sal.balance)) + '</div>';
       } else if (type === 'bonus') {
-        h = '<div class="row"><span style="font-weight:700">Премий всего</span><span style="font-weight:800">' + money(summary.bonus.paid + amt) + ' ₽</span></div>';
+        h = '<div class="row"><span style="font-weight:700">Премий всего</span><span style="font-weight:800">' + money(summary.bonus.paid + amt) + '</span></div>';
       } else if (type === 'penalty') {
-        h = '<div class="row"><span style="font-weight:700">Удержаний всего</span><span style="font-weight:800">' + money(summary.penalty.paid + amt) + ' ₽</span></div>';
+        h = '<div class="row"><span style="font-weight:700">Удержаний всего</span><span style="font-weight:800">' + money(summary.penalty.paid + amt) + '</span></div>';
       }
       content.innerHTML = h;
       preview.style.display = 'block';
@@ -3625,7 +4715,7 @@ window.AsgardFieldTab = (function () {
           return;
         }
         AsgardUI.hideModal();
-        toast('✅ Выплата записана: ' + money(amount) + ' ₽', '', 'ok');
+        toast('✅ Выплата записана: ' + money(amount), '', 'ok');
         renderPaymentsTab(container, work, user);
       } catch (err) {
         console.error('[pay-worker] error', err);
@@ -4335,7 +5425,7 @@ window.AsgardFieldTab = (function () {
           <div>
             <div style="font-weight:600;font-size:16px">${esc(empName)}</div>
             <div style="color:var(--t2);font-size:13px">
-              ${asgn?.position_name || 'Рабочий'} · ${daysOnSite} дн. на объекте · ${money(perDiemRate)} ₽/день суточные
+              ${asgn?.position_name || 'Рабочий'} · ${daysOnSite} дн. на объекте · ${money(perDiemRate)}/день суточные
             </div>
           </div>
         </div>
@@ -4343,36 +5433,36 @@ window.AsgardFieldTab = (function () {
         <!-- Main balance -->
         <div class="dep-card" style="border-color:${pendingColor}33;background:${pendingColor}08">
           <div class="dep-big-label" style="color:${pendingColor}">${pendingLabel}</div>
-          <div class="dep-big" style="color:${pendingColor}">${money(Math.abs(totalPending))} ₽</div>
+          <div class="dep-big" style="color:${pendingColor}">${money(Math.abs(totalPending))}</div>
         </div>
 
         <!-- Per diem card -->
         <div class="dep-card">
           <h4>🌙 Суточные</h4>
-          <div class="dep-row"><span class="lbl">Начислено (${fin?.by_work?.[0]?.days_worked || 0} дн. × ${money(perDiemRate)} ₽)</span><span class="val">${money(perDiemAccrued)} ₽</span></div>
-          <div class="dep-row"><span class="lbl">Выплачено</span><span class="val">${money(perDiemPaid)} ₽</span></div>
+          <div class="dep-row"><span class="lbl">Начислено (${fin?.by_work?.[0]?.days_worked || 0} дн. × ${money(perDiemRate)})</span><span class="val">${money(perDiemAccrued)}</span></div>
+          <div class="dep-row"><span class="lbl">Выплачено</span><span class="val">${money(perDiemPaid)}</span></div>
           <div class="dep-divider"></div>
-          <div class="dep-row"><span class="lbl" style="color:${perDiemColor};font-weight:600">${perDiemLabel}</span><span class="val" style="color:${perDiemColor};font-size:16px">${money(Math.abs(perDiemBalance))} ₽</span></div>
+          <div class="dep-row"><span class="lbl" style="color:${perDiemColor};font-weight:600">${perDiemLabel}</span><span class="val" style="color:${perDiemColor};font-size:16px">${money(Math.abs(perDiemBalance))}</span></div>
         </div>
 
         <!-- Earnings card -->
         <div class="dep-card">
           <h4>💰 Заработок</h4>
-          <div class="dep-row"><span class="lbl">ФОТ (отработано)</span><span class="val">${money(fot)} ₽</span></div>
-          ${bonusPaid ? `<div class="dep-row"><span class="lbl">Премии</span><span class="val" style="color:#10b981">+${money(bonusPaid)} ₽</span></div>` : ''}
-          ${penalty ? `<div class="dep-row"><span class="lbl">Штрафы</span><span class="val" style="color:#ef4444">−${money(penalty)} ₽</span></div>` : ''}
+          <div class="dep-row"><span class="lbl">ФОТ (отработано)</span><span class="val">${money(fot)}</span></div>
+          ${bonusPaid ? `<div class="dep-row"><span class="lbl">Премии</span><span class="val" style="color:#10b981">+${money(bonusPaid)}</span></div>` : ''}
+          ${penalty ? `<div class="dep-row"><span class="lbl">Штрафы</span><span class="val" style="color:#ef4444">−${money(penalty)}</span></div>` : ''}
           <div class="dep-divider"></div>
-          <div class="dep-row"><span class="lbl" style="font-weight:600">Итого начислено</span><span class="val" style="font-size:16px;color:var(--gold)">${money(totalEarned)} ₽</span></div>
+          <div class="dep-row"><span class="lbl" style="font-weight:600">Итого начислено</span><span class="val" style="font-size:16px;color:var(--gold)">${money(totalEarned)}</span></div>
         </div>
 
         <!-- Payments card -->
         <div class="dep-card">
           <h4>💳 Выплаты</h4>
-          <div class="dep-row"><span class="lbl">Зарплата</span><span class="val">${money(salaryPaid)} ₽</span></div>
-          <div class="dep-row"><span class="lbl">Суточные</span><span class="val">${money(perDiemPaid)} ₽</span></div>
-          ${advancePaid ? `<div class="dep-row"><span class="lbl">Авансы</span><span class="val" style="color:#f59e0b">${money(advancePaid)} ₽</span></div>` : ''}
+          <div class="dep-row"><span class="lbl">Зарплата</span><span class="val">${money(salaryPaid)}</span></div>
+          <div class="dep-row"><span class="lbl">Суточные</span><span class="val">${money(perDiemPaid)}</span></div>
+          ${advancePaid ? `<div class="dep-row"><span class="lbl">Авансы</span><span class="val" style="color:#f59e0b">${money(advancePaid)}</span></div>` : ''}
           <div class="dep-divider"></div>
-          <div class="dep-row"><span class="lbl" style="font-weight:600">Итого выплачено</span><span class="val" style="font-size:16px">${money(totalPaid)} ₽</span></div>
+          <div class="dep-row"><span class="lbl" style="font-weight:600">Итого выплачено</span><span class="val" style="font-size:16px">${money(totalPaid)}</span></div>
         </div>
 
         <!-- Departure form -->

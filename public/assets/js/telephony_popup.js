@@ -37,9 +37,12 @@ window.AsgardTelephonyPopup = (function () {
   var STYLE_ID = 'asgard-telephony-popup-styles';
 
   function injectStyles() {
-    if (document.getElementById(STYLE_ID)) return;
-    var el = document.createElement('style');
-    el.id = STYLE_ID;
+    var el = document.getElementById(STYLE_ID);
+    if (!el) {
+      el = document.createElement('style');
+      el.id = STYLE_ID;
+      document.head.appendChild(el);
+    }
     el.textContent = [
 
       /* ── Root container ── */
@@ -52,7 +55,7 @@ window.AsgardTelephonyPopup = (function () {
 
       /* ── Popup ── */
       '.tp-popup {',
-      '  pointer-events: auto;',
+      '  pointer-events: none;',
       '  width: 340px;',
       '  background: var(--bg1);',
       '  border-radius: 40px;',
@@ -62,8 +65,8 @@ window.AsgardTelephonyPopup = (function () {
       '  transform: translateY(120px) scale(0.92); opacity: 0;',
       '  transition: transform 350ms cubic-bezier(0.34,1.56,0.64,1), opacity 300ms ease, width 300ms ease;',
       '}',
-      '.tp-popup.tp-visible { transform: translateY(0) scale(1); opacity: 1; }',
-      '.tp-popup.tp-hiding  { transform: translateY(120px) scale(0.92); opacity: 0;',
+      '.tp-popup.tp-visible { transform: translateY(0) scale(1); opacity: 1; pointer-events: auto; }',
+      '.tp-popup.tp-hiding  { transform: translateY(120px) scale(0.92); opacity: 0; pointer-events: none;',
       '  transition: transform 250ms ease-in, opacity 200ms ease-in; }',
       '.tp-popup.tp-expanded { width: 360px; }',
 
@@ -351,7 +354,6 @@ window.AsgardTelephonyPopup = (function () {
 
       ''
     ].join('\n');
-    document.head.appendChild(el);
   }
 
   /* ════════════════════════════════════════════════════════════════════

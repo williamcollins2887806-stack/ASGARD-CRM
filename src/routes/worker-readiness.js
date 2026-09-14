@@ -9,18 +9,21 @@
  * GET  /log/:employee_id    — история изменений статуса
  * PUT  /:employee_id/status — HR обновляет статус (ready/not_ready + дата/причина)
  *
- * Доступ: ADMIN, HR, HR_MANAGER, DIRECTOR_GEN, DIRECTOR_COMM
+ * Доступ: VIEW — как Дружина; запись статуса — READINESS_ROLES (в т.ч. PM).
  */
 
-// READINESS_ROLES — смена статуса готовности (запись). PM сюда НЕ входит (read-only).
-// 23.06.2026 BUG-FIX (D-09): добавлены HEAD_PM и OFFICE_MANAGER.
-// v2 Personnel/api.js:74 EDIT_ROLES уже включает их и показывает кнопки «✓ Готов» / «Не готов»,
-// а backend отвечал 403 при клике → у HEAD_PM и Офис-менеджера переход неактивен в реальности.
-// Сейчас оба могут менять статус готовности сотрудника, паритет с UI.
-const READINESS_ROLES = ['ADMIN', 'HR', 'HR_MANAGER', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'HEAD_PM', 'OFFICE_MANAGER', 'TO', 'HEAD_TO'];
+// READINESS_ROLES — смена статуса готовности (запись).
+// 23.06.2026 BUG-FIX (D-09): HEAD_PM и OFFICE_MANAGER.
+// 08.09.2026: PM — РП ставит готов/не готов по своим рабочим в Дружине (анкету по-прежнему не правит).
+const READINESS_ROLES = ['ADMIN', 'HR', 'HR_MANAGER', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'HEAD_PM', 'OFFICE_MANAGER', 'TO', 'HEAD_TO', 'PM'];
 // VIEW_ROLES — просмотр списка дружины. PM/HEAD_PM видят всех (свою бригаду — в полевом модуле).
 // OFFICE_MANAGER ведёт картотеку рабочих (телефоны, документы), нужен read-доступ к «Моей дружине».
 const VIEW_ROLES      = ['ADMIN', 'HR', 'HR_MANAGER', 'PM', 'HEAD_PM', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'TO', 'HEAD_TO', 'OFFICE_MANAGER'];
+
+const EMPTY_GROUPS = {
+  on_site: 0, approved: 0, ready: 0, not_ready: 0,
+  unknown: 0, archive: 0, planned: 0, on_mlsp: 0,
+};
 
 const READINESS_REASONS = [
   { key: 'illness',    label: 'Болезнь' },
@@ -40,8 +43,6 @@ async function routes(fastify, options) {
 
   // ─── GET / — список рабочих с группировкой по статусу ─────────────────────
   fastify.get('/', { preHandler: [fastify.requireRoles(VIEW_ROLES)] }, async (request, reply) => {
-    const today = new Date().toISOString().slice(0, 10);
-
     const { rows: employees } = await db.query(`
       SELECT
         e.id, e.fio, e.phone, e.role_tag, e.position,
@@ -51,6 +52,7 @@ async function routes(fastify, options) {
         e.readiness_comment, e.readiness_updated_at,
         e.last_pm_id, e.last_work_id,
         e.city,
+        e.birth_date, e.passport_date,
         e.clothing_size, e.shoe_size, e.headwear_size, e.height,
         pm.name AS last_pm_name,
         lw.work_title AS last_work_title
@@ -62,7 +64,7 @@ async function routes(fastify, options) {
     `);
 
     if (!employees.length) {
-      return { employees: [], groups: { on_site: 0, approved: 0, ready: 0, not_ready: 0, archive: 0, planned: 0 } };
+      return { employees: [], groups: { ...EMPTY_GROUPS } };
     }
 
     const empIds = employees.map(e => e.id);
@@ -130,11 +132,14 @@ async function routes(fastify, options) {
     const { rows: plannedRows } = await db.query(`
       SELECT
         pe.employee_id, pe.work_id, pe.planned_from, pe.planned_to, pe.note,
+        pe.inbound_transport,
         w.work_title,
-        wpm.name AS pm_name
+        wpm.name AS pm_name,
+        fps.site_category
       FROM employee_planned_engagements pe
       JOIN works w ON w.id = pe.work_id AND w.deleted_at IS NULL
       LEFT JOIN users wpm ON wpm.id = w.pm_id
+      LEFT JOIN field_project_settings fps ON fps.work_id = pe.work_id
       WHERE pe.employee_id = ANY($1::int[]) AND pe.status = 'active'
     `, [empIds]);
 
@@ -148,9 +153,21 @@ async function routes(fastify, options) {
           planned_from: p.planned_from,
           planned_to: p.planned_to,
           note: p.note,
+          inbound_transport: p.inbound_transport || null,
+          site_category: p.site_category || null,
         };
       }
     }
+
+    // Вахты МЛСП (видимые: открытые + закрытые ≤14д)
+    const mlspByEmp = {};
+    try {
+      const { listVisibleStays } = require('../lib/mlsp-stay');
+      const stays = await listVisibleStays(db, { seg: 'all' });
+      for (const s of stays) {
+        mlspByEmp[s.employee_id] = s;
+      }
+    } catch (_) { /* table may not exist yet */ }
 
     // Последняя завершённая работа
     // Показываем в колонке «Объект/РП» как «история», и в «Начало работ» — дату начала
@@ -250,8 +267,8 @@ async function routes(fastify, options) {
     const seByEmp = {};
     for (const r of seSum) seByEmp[r.employee_id] = Number(r.transferred_year || 0);
 
-    // Группировка
-    const groups = { on_site: 0, approved: 0, ready: 0, not_ready: 0, archive: 0, planned: 0 };
+    // Группировка. unknown = «Без статуса»: не готов/не на объекте, но и не архив.
+    const groups = { ...EMPTY_GROUPS };
     const enriched = employees.map(e => {
       let effective_status = e.readiness_status || 'unknown';
       let on_site_info = null;
@@ -280,17 +297,16 @@ async function routes(fastify, options) {
         // → Егоров (готов с 22.06) пропадал из списка. Если нужно отличить —
         // у клиента есть readiness_date (на frontend подписываем «с DD.MM.YYYY»).
         effective_status = 'ready';
+      } else if (!e.readiness_status || e.readiness_status === 'unknown') {
+        effective_status = 'unknown';
       }
 
-      // Силовой fallback: если effective_status не входит в известные группы
-      // ({on_site, approved, ready, not_ready, archive}) — НЕ silent-drop'аем
-      // (раньше так пропадал ready_future, и любой будущий новый статус), а
-      // считаем как not_ready (надёжное место для «непонятного» статуса).
+      // Неизвестный код статуса → «Без статуса», не архив и не «Не готов».
       if (groups[effective_status] !== undefined) {
         groups[effective_status]++;
       } else {
-        groups.not_ready++;
-        effective_status = 'not_ready';
+        groups.unknown++;
+        effective_status = 'unknown';
       }
 
       // last_assignment_info — последняя работа сотрудника (даже завершённая).
@@ -307,6 +323,9 @@ async function routes(fastify, options) {
       const planned_info = plannedByEmp[e.id] || null;
       if (planned_info) groups.planned++;
 
+      const mlsp_stay = mlspByEmp[e.id] || null;
+      if (mlsp_stay && mlsp_stay.is_open) groups.on_mlsp++;
+
       return {
         ...e,
         effective_status,
@@ -314,6 +333,7 @@ async function routes(fastify, options) {
         approved_info,
         last_assignment_info,
         planned_info,
+        mlsp_stay,
         permits: permitsByEmp[e.id] || { expired: 0, expiring: 0 },
         key_permits: keyPermitsByEmp[e.id] || {},
         se_transferred_year: seByEmp[e.id] || 0,
@@ -335,6 +355,7 @@ async function routes(fastify, options) {
         )) AS on_site,
         COUNT(*) FILTER (WHERE e.readiness_status = 'ready' AND (e.readiness_date IS NULL OR e.readiness_date <= CURRENT_DATE)) AS ready,
         COUNT(*) FILTER (WHERE e.readiness_status = 'not_ready') AS not_ready,
+        COUNT(*) FILTER (WHERE e.readiness_status IS NULL OR e.readiness_status = 'unknown') AS unknown,
         COUNT(*) FILTER (WHERE e.readiness_status = 'archive')   AS archive,
         COUNT(*) FILTER (WHERE EXISTS (
           SELECT 1 FROM employee_planned_engagements pe
@@ -348,6 +369,7 @@ async function routes(fastify, options) {
       on_site:   Number(r.on_site || 0),
       ready:     Number(r.ready || 0),
       not_ready: Number(r.not_ready || 0),
+      unknown:   Number(r.unknown || 0),
       archive:   Number(r.archive || 0),
       planned:   Number(r.planned || 0),
     };
@@ -383,11 +405,12 @@ async function routes(fastify, options) {
     if (!['ready', 'not_ready', 'archive', 'unknown'].includes(status)) {
       return reply.code(400).send({ error: 'Недопустимый статус. Ожидается ready|not_ready|archive|unknown' });
     }
+    // ready / not_ready: дата «с какого числа» обязательна; у not_ready ещё причина.
+    if ((status === 'ready' || status === 'not_ready') && !readiness_date) {
+      return reply.code(400).send({ error: 'Укажите дату (с какого числа готов / не готов)' });
+    }
     if (status === 'not_ready' && !reason) {
       return reply.code(400).send({ error: 'Для not_ready обязательна причина' });
-    }
-    if (status === 'ready' && !readiness_date) {
-      return reply.code(400).send({ error: 'Для ready обязательна дата готовности' });
     }
     if (reason && !READINESS_REASONS.find(r => r.key === reason)) {
       return reply.code(400).send({ error: 'Неизвестная причина' });
@@ -400,6 +423,8 @@ async function routes(fastify, options) {
     if (!existing) return reply.code(404).send({ error: 'Сотрудник не найден' });
 
     const oldStatus = existing.readiness_status;
+    const storeDate = (status === 'ready' || status === 'not_ready') ? readiness_date : null;
+    const storeReason = status === 'not_ready' ? reason : null;
 
     await db.query(`
       UPDATE employees SET
@@ -411,13 +436,13 @@ async function routes(fastify, options) {
         readiness_updated_by = $5,
         updated_at           = NOW()
       WHERE id = $6
-    `, [status, status === 'ready' ? readiness_date : null, status === 'not_ready' ? reason : null, comment || null, request.user.id, empId]);
+    `, [status, storeDate, storeReason, comment || null, request.user.id, empId]);
 
     await db.query(`
       INSERT INTO worker_readiness_log
         (employee_id, old_status, new_status, readiness_date, reason, comment, source, changed_by)
       VALUES ($1, $2, $3, $4, $5, $6, 'hr', $7)
-    `, [empId, oldStatus, status, readiness_date || null, reason || null, comment || null, request.user.id]);
+    `, [empId, oldStatus, status, storeDate, storeReason, comment || null, request.user.id]);
 
     const { rows: [updated] } = await db.query('SELECT * FROM employees WHERE id = $1', [empId]);
     return { employee: updated };

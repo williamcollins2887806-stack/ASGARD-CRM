@@ -91,7 +91,7 @@ function _shortErr(e) {
  *   .doc   → libreoffice→docx→mammoth
  *   .xls/.xlsx → exceljs
  *   .txt/.csv/.rtf → utf-8 readFile
- *   .jpg/.png/.webp/.bmp/.tiff → image_vision_ocr
+ *   .jpg/.png/.webp/.bmp/.tif/.tiff → image_vision_ocr
  *   ВСЕГДА (если предыдущие <MIN_TEXT_CHARS и размер<10MB):
  *     gpt55_vision_fallback (универсальный vision на blob)
  */
@@ -122,7 +122,8 @@ async function parseDocumentSafe(absPath, mime, originalName) {
     try {
       const pdfOcr = require('../../pdf-ocr');
       if (typeof pdfOcr.ocrPdfPath === 'function') {
-        const ocrText = await pdfOcr.ocrPdfPath(absPath, originalName);
+        const ocrResult = await pdfOcr.ocrPdfPath(absPath, originalName);
+        const ocrText = typeof ocrResult === 'string' ? ocrResult : (ocrResult && ocrResult.text) || '';
         if (ocrText && ocrText.trim().length >= MIN_TEXT_CHARS) {
           strategies.push('pdf_ocr_vision_ok');
           return _ret(ocrText, 'pdf_ocr_vision');
@@ -268,13 +269,13 @@ async function parseDocumentSafe(absPath, mime, originalName) {
     } catch (e) { strategies.push('plaintext_failed:' + _shortErr(e)); }
   }
 
-  if (['.jpg', '.jpeg', '.png', '.webp', '.bmp', '.tiff', '.gif'].includes(ext) || mimeLc.startsWith('image/')) {
+  if (['.jpg', '.jpeg', '.png', '.webp', '.bmp', '.tif', '.tiff', '.gif'].includes(ext) || mimeLc.startsWith('image/')) {
     try {
       const pdfOcr = require('../../pdf-ocr');
       if (typeof pdfOcr.ocrImageBuffer === 'function') {
         const buf = fs.readFileSync(absPath);
-        const mimeReal = mime || (ext === '.png' ? 'image/png' : ext === '.webp' ? 'image/webp' : 'image/jpeg');
-        const ocrText = await pdfOcr.ocrImageBuffer(buf, mimeReal, originalName);
+        // MIME резолвит pdf-ocr (sniff + расширение) — не угадываем jpeg для всего подряд
+        const ocrText = await pdfOcr.ocrImageBuffer(buf, mime || null, originalName);
         // Для картинок порог ниже — может быть подпись/штамп с короткой надписью
         if (ocrText && ocrText.trim().length >= 50) {
           strategies.push('image_vision_ocr_ok');

@@ -242,7 +242,7 @@ window.AsgardTravelPage = (function(){
             </div>
             <div class="tl-kpi-card" style="--acc:var(--blue)">
               <div class="tl-kpi-label">Сумма расходов</div>
-              <div class="tl-kpi-value" style="color:var(--blue)">${AsgardUI.money(totalAmount)} ₽</div>
+              <div class="tl-kpi-value" style="color:var(--blue)">${(AsgardUI.moneyRub || AsgardMoney.formatMoney)(totalAmount)}</div>
               <div class="tl-kpi-icon">💰</div>
             </div>
             <div class="tl-kpi-card" style="--acc:var(--ok)">
@@ -295,7 +295,7 @@ window.AsgardTravelPage = (function(){
                       </div>
                     </div>
                     <div class="tl-card-actions">
-                      ${item.amount ? `<div class="tl-card-amount">${AsgardUI.money(item.amount)} ₽</div>` : ''}
+                      ${item.amount ? `<div class="tl-card-amount">${(AsgardUI.moneyRub || AsgardMoney.formatMoney)(item.amount)}</div>` : ''}
                       ${item.vat_included ? `<div class="tl-card-vat">С НДС</div>` : ''}
                       <button class="tl-btn" data-upload="${item.id}">📎 Файл</button>
                       ${(item.status !== 'purchased' && item.status !== 'sent') ? `<button class="tl-btn tl-btn-buy" data-buy="${item.id}">✅ Куплено</button>` : ''}

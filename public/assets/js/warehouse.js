@@ -98,7 +98,7 @@ window.AsgardWarehouse = (function(){
     const stats = data.stats || {};
     
     // Форматирование денег
-    const formatMoney = (v) => AsgardUI.money(v) + ' ₽';
+    const formatMoney = (v) => (AsgardUI.moneyRub || AsgardMoney.formatMoney)(v);
     
     // Опции фильтров
     const categoryOptions = categories.map(c => 
@@ -237,7 +237,7 @@ window.AsgardWarehouse = (function(){
           <td><span style="color:${condition.color}">${condition.label}</span></td>
           <td style="font-size:13px">${location}</td>
           <td style="font-size:13px">${holder}</td>
-          ${isDirector ? `<td style="font-size:13px;text-align:right">${formatMoney(eq.book_value)} ₽</td>` : ''}
+          ${isDirector ? `<td style="font-size:13px;text-align:right">${formatMoney(eq.book_value)}</td>` : ''}
           <td>
             <div class="row" style="gap:4px">
               ${canEdit && eq.status === 'on_warehouse' ? `
@@ -753,6 +753,18 @@ window.AsgardWarehouse = (function(){
         </div>
         
         <hr style="border-color:var(--border)"/>
+        <div style="font-weight:600;color:var(--accent)">📦 Габариты и вес (склад)</div>
+        <div class="formrow">
+          <div><label>Длина, мм</label><input class="inp" id="eq_len" type="number" min="1" value="${eq.length_mm || ''}"/></div>
+          <div><label>Ширина, мм</label><input class="inp" id="eq_wid" type="number" min="1" value="${eq.width_mm || ''}"/></div>
+          <div><label>Высота, мм</label><input class="inp" id="eq_hei" type="number" min="1" value="${eq.height_mm || ''}"/></div>
+        </div>
+        <div class="formrow">
+          <div><label>Вес, граммы</label><input class="inp" id="eq_wgt" type="number" min="1" value="${eq.weight_g || ''}"/><div style="font-size:10px;color:var(--text-muted)">В карточке также как кг (÷1000)</div></div>
+          <div><label>Объём (авто)</label><input class="inp" id="eq_vol" readonly value="${eq.volume_mm3 ? (Number(eq.volume_mm3)/1e9).toFixed(6)+' м³' : '—'}"/><div style="font-size:10px;color:var(--text-muted)">L × W × H</div></div>
+        </div>
+
+        <hr style="border-color:var(--border)"/>
         <div style="font-weight:600;color:var(--accent)">💰 Финансы и амортизация</div>
         
         <div class="formrow">
@@ -852,7 +864,12 @@ window.AsgardWarehouse = (function(){
         auto_write_off: $('#eq_auto_writeoff').checked,
         warranty_end: $('#eq_warranty').value || null,
         maintenance_interval_days: parseInt($('#eq_maintenance').value) || null,
-        notes: $('#eq_notes').value || null
+        notes: $('#eq_notes').value || null,
+        length_mm: parseInt($('#eq_len')?.value, 10) || null,
+        width_mm: parseInt($('#eq_wid')?.value, 10) || null,
+        height_mm: parseInt($('#eq_hei')?.value, 10) || null,
+        weight_g: parseInt($('#eq_wgt')?.value, 10) || null,
+        dims_source: 'manual'
       };
       
       const auth = await AsgardAuth.getAuth();

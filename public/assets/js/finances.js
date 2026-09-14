@@ -1,6 +1,6 @@
 // Stage 12: Финансовая аналитика (Расходы/Поступления) — как в Сбере/МТС
 window.AsgardFinancesPage = (function(){
-  const { $, $$, esc, toast, showModal, money } = AsgardUI;
+  const { $, $$, esc, toast, showModal, moneyRub: money } = AsgardUI;
 
   const MONTHS_SHORT = ['Янв','Фев','Мар','Апр','Май','Июн','Июл','Авг','Сен','Окт','Ноя','Дек'];
   const MONTHS_FULL = ['Январь','Февраль','Март','Апрель','Май','Июнь','Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'];
@@ -34,14 +34,7 @@ window.AsgardFinancesPage = (function(){
     { key: 'other_office', label: 'Прочее', color: 'var(--t2)', icon: '📦' }
   ];
   function moneyShort(x){
-    if(x===null||x===undefined||x==="") return "0";
-    const n=Math.abs(Number(x));
-    if(isNaN(n)) return "0";
-    const sign = Number(x) < 0 ? '−' : '';
-    if(n >= 1e9) return sign + (n/1e9).toFixed(1).replace('.0','') + ' млрд';
-    if(n >= 1e6) return sign + (n/1e6).toFixed(1).replace('.0','') + 'М';
-    if(n >= 1e3) return sign + (n/1e3).toFixed(0) + 'К';
-    return sign + n.toFixed(0);
+    return (AsgardUI.moneyShort || AsgardMoney.formatMoneyShort)(x, { empty: '0' });
   }
 
   async function render({layout, title}){
@@ -280,17 +273,17 @@ window.AsgardFinancesPage = (function(){
           <div class="fin-summary">
             <div class="fin-card">
               <div class="fin-card-label">${mode==='expenses'?'Расходы за год':'Поступления за год'}</div>
-              <div class="fin-card-value">${money(Math.round(totalYear))} ₽</div>
+              <div class="fin-card-value">${money(Math.round(totalYear))}</div>
               <div class="fin-card-sub">${selectedYear} год</div>
             </div>
             <div class="fin-card">
               <div class="fin-card-label">Среднее в месяц</div>
-              <div class="fin-card-value">${money(Math.round(totalYear/12))} ₽</div>
+              <div class="fin-card-value">${money(Math.round(totalYear/12))}</div>
               <div class="fin-card-sub">за ${selectedYear}</div>
             </div>
             <div class="fin-card">
               <div class="fin-card-label">Максимум</div>
-              <div class="fin-card-value">${money(Math.round(maxMonthDisplay))} ₽</div>
+              <div class="fin-card-value">${money(Math.round(maxMonthDisplay))}</div>
               <div class="fin-card-sub">${maxMonthLabel} ${selectedYear}</div>
             </div>
           </div>
@@ -387,7 +380,7 @@ window.AsgardFinancesPage = (function(){
                   <div class="fin-legend-color" style="background:${s.color}"></div>
                   <div class="fin-legend-icon">${s.icon}</div>
                   <div class="fin-legend-label">${s.label}</div>
-                  <div class="fin-legend-value">${money(Math.round(s.value))} ₽</div>
+                  <div class="fin-legend-value">${money(Math.round(s.value))}</div>
                   <div class="fin-legend-pct">${(s.pct*100).toFixed(1)}%</div>
                 </div>
               `).join('')}
@@ -454,7 +447,7 @@ window.AsgardFinancesPage = (function(){
                   <div class="fin-legend-color" style="background:${s.color}"></div>
                   <div class="fin-legend-icon">${s.icon}</div>
                   <div class="fin-legend-label">${s.label}</div>
-                  <div class="fin-legend-value">${money(Math.round(s.value))} ₽</div>
+                  <div class="fin-legend-value">${money(Math.round(s.value))}</div>
                   <div class="fin-legend-pct">${(s.pct*100).toFixed(1)}%</div>
                 </div>
               `).join('') : '<div class="help">Нет данных</div>'}
@@ -473,7 +466,7 @@ window.AsgardFinancesPage = (function(){
           <div class="fin-summary" style="margin-top:16px">
             <div class="fin-card">
               <div class="fin-card-label">${mode==='expenses'?'Расходы за месяц':'Поступления за месяц'}</div>
-              <div class="fin-card-value">${money(Math.round(monthValue))} ₽</div>
+              <div class="fin-card-value">${money(Math.round(monthValue))}</div>
             </div>
           </div>
 

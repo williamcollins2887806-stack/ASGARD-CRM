@@ -73,6 +73,7 @@ async function routes(fastify, options) {
   const { sendToUser, broadcast } = require('./sse');
   const { ensureSiteByPlace } = require('../helpers/site-geocode');
 const { logError } = require('../lib/log-error');
+const { buildTenderDateWhere } = require('../services/tender-date-filter');
 
   // ─────────────────────────────────────────────────────────────────────────────
   // GET /api/tenders - List all tenders
@@ -130,11 +131,17 @@ const { logError } = require('../lib/log-error');
       idx++;
     }
 
-    if (period) {
-      sql += ` AND t.period = $${idx}`;
-      params.push(period);
-      idx++;
+    const dateClause = buildTenderDateWhere('t', {
+      date_from: request.query.date_from,
+      date_to: request.query.date_to,
+      date_field: request.query.date_field,
+      period,
+    }, params);
+    if (dateClause) {
+      sql += ` AND ${dateClause}`;
     }
+    // date-filter пушит в params свои $N — синхронизируем idx (иначе LIMIT берёт text period)
+    idx = params.length + 1;
 
     if (status) {
       sql += ` AND t.tender_status = $${idx}`;
@@ -144,7 +151,7 @@ const { logError } = require('../lib/log-error');
 
     if (pm_id) {
       sql += ` AND t.responsible_pm_id = $${idx}`;
-      params.push(pm_id);
+      params.push(parseInt(pm_id, 10) || pm_id);
       idx++;
     }
 
@@ -164,7 +171,7 @@ const { logError } = require('../lib/log-error');
       idx++;
     }
 
-    sql += ` ORDER BY t.id DESC LIMIT $${idx} OFFSET $${idx + 1}`;
+    sql += ` ORDER BY t.id DESC LIMIT $${idx}::int OFFSET $${idx + 1}::int`;
     params.push(limit, offset);
 
     const result = await db.query(sql, params);
@@ -183,11 +190,16 @@ const { logError } = require('../lib/log-error');
       countIdx++;
     }
 
-    if (period) {
-      countSql += ` AND t.period = $${countIdx}`;
-      countParams.push(period);
-      countIdx++;
+    const countDateClause = buildTenderDateWhere('t', {
+      date_from: request.query.date_from,
+      date_to: request.query.date_to,
+      date_field: request.query.date_field,
+      period,
+    }, countParams);
+    if (countDateClause) {
+      countSql += ` AND ${countDateClause}`;
     }
+    countIdx = countParams.length + 1;
     if (status) {
       countSql += ` AND t.tender_status = $${countIdx}`;
       countParams.push(status);
@@ -195,7 +207,7 @@ const { logError } = require('../lib/log-error');
     }
     if (pm_id) {
       countSql += ` AND t.responsible_pm_id = $${countIdx}`;
-      countParams.push(pm_id);
+      countParams.push(parseInt(pm_id, 10) || pm_id);
       countIdx++;
     }
     if (type) {
@@ -707,15 +719,44 @@ const { logError } = require('../lib/log-error');
         link: `#/tenders?id=${updated.id}`
       });
     }
-    // Notify new PM on reassignment
-    if (data.responsible_pm_id && data.responsible_pm_id !== oldTender.responsible_pm_id && data.responsible_pm_id !== request.user.id) {
-      createNotification(db, {
-        user_id: data.responsible_pm_id,
-        title: '📋 Тендер назначен вам',
-        message: `Вам назначен тендер: ${updated.customer_name || ''} — ${updated.tender_title || ''}`,
-        type: 'tender',
-        link: `#/tenders?id=${updated.id}`
-      });
+    // Notify + sync calculator when РП переназначен (в т.ч. на просчёт)
+    if (data.responsible_pm_id && data.responsible_pm_id !== oldTender.responsible_pm_id) {
+      try {
+        const { afterResponsiblePmChanged } = require('../services/tender-assign-notify');
+        await afterResponsiblePmChanged(db, {
+          tenderId: updated.id,
+          oldTender,
+          newPmId: data.responsible_pm_id,
+          actorName: request.user.name || 'Коллега',
+          actorUserId: request.user.id,
+          log: request.log
+        });
+      } catch (e) {
+        fastify.log.warn(`tender reassign notify failed: ${e.message}`);
+      }
+    } else if (data.calculator_user_id && data.calculator_user_id !== oldTender.calculator_user_id) {
+      try {
+        const { notifyPmCalcEvent, notifyPmReleasedFromCalc } = require('../services/tender-assign-notify');
+        const newCalc = Number(data.calculator_user_id);
+        const oldCalc = oldTender.calculator_user_id != null ? Number(oldTender.calculator_user_id) : null;
+        await notifyPmCalcEvent(db, {
+          userId: newCalc,
+          kind: oldCalc ? 'reassign' : 'assign',
+          tender: updated,
+          actorName: request.user.name || 'Коллега',
+          log: request.log
+        });
+        if (oldCalc && oldCalc !== newCalc) {
+          await notifyPmReleasedFromCalc(db, {
+            userId: oldCalc,
+            tender: updated,
+            actorName: request.user.name || 'Коллега',
+            log: request.log
+          });
+        }
+      } catch (e) {
+        fastify.log.warn(`tender calculator notify failed: ${e.message}`);
+      }
     }
 
     // SSE: уведомляем об изменении тендера
@@ -1323,9 +1364,17 @@ const { logError } = require('../lib/log-error');
     await db.query(`
       UPDATE tenders SET
         tender_status = 'Не подходит', archived_at = NOW(), archived_by = $1,
-        archive_reason = $2, archive_comment = $3, updated_at = NOW()
+        archive_reason = $2, archive_comment = $3, updated_at = NOW(),
+        registry_status = COALESCE(registry_status, 'отмена')
       WHERE id = $4
     `, [user.id, reason, comment.trim(), id]);
+
+    try {
+      const { finalizeOpenAnalysisOnTerminal } = require('../services/rp-review-drafts');
+      await finalizeOpenAnalysisOnTerminal(db, id, user.id, 'tender_archived');
+    } catch (e) {
+      request.log.warn({ err: e, id }, 'finalize open analysis on archive failed');
+    }
 
     await db.query(`
       INSERT INTO audit_log (actor_user_id, entity_type, entity_id, action, payload_json, created_at)
@@ -1571,13 +1620,17 @@ const { logError } = require('../lib/log-error');
       VALUES ($1, 'tender', $2, 'send_to_pm', $3, NOW())
     `, [user.id, id, JSON.stringify({ pm_id, pm_name: pm.name, from_status: 'На анализе' })]);
 
-    createNotification(db, {
-      user_id: pm_id,
-      title: '📋 Тендер на просчёт',
-      message: `${user.name || 'Рук. ТО'} назначил тендер: ${tender.customer_name || ''} — ${tender.tender_title || ''}`,
-      type: 'tender',
-      link: `#/pm-calcs`
-    });
+    {
+      const { notifyPmCalcEvent } = require('../services/tender-assign-notify');
+      await notifyPmCalcEvent(db, {
+        userId: pm_id,
+        kind: 'assign',
+        tender,
+        actorName: user.name || 'Рук. ТО',
+        link: '#/pm-duty',
+        log: request.log
+      });
+    }
 
     broadcast('tender:updated', {
       id, customer_name: tender.customer_name || '',
@@ -1680,14 +1733,19 @@ const { logError } = require('../lib/log-error');
       VALUES ($1, 'tender', $2, 'assign_calculator', $3, NOW())
     `, [user.id, id, JSON.stringify({ kind, calculator_user_id: calcUserId, calculator_name: calcUser.name, calculator_role: calcUser.role, from_status: 'На анализе' })]);
 
-    const linkPath = kind === 'to' ? '#/to-calcs' : '#/pm-calcs';
-    createNotification(db, {
-      user_id: calcUserId,
-      title: kind === 'to' ? '📊 Просчёт за вами' : '📋 Тендер на просчёт',
-      message: `${user.name || 'Рук. ТО'} назначил тендер: ${tender.customer_name || ''} — ${tender.tender_title || ''}`,
-      type: 'tender',
-      link: linkPath
-    });
+    const linkPath = kind === 'to' ? '#/to-calcs' : '#/pm-duty';
+    {
+      const { notifyPmCalcEvent } = require('../services/tender-assign-notify');
+      await notifyPmCalcEvent(db, {
+        userId: calcUserId,
+        kind: 'assign',
+        tender,
+        actorName: user.name || 'Рук. ТО',
+        link: linkPath,
+        actorUserId: user.id,
+        log: request.log
+      });
+    }
 
     broadcast('tender:updated', {
       id, customer_name: tender.customer_name || '',
@@ -2404,6 +2462,7 @@ const { logError } = require('../lib/log-error');
     }
 
     // Опционально — сам исходный архив прикрепить тоже
+    let archiveDocId = null;
     if (include_archive_too) {
       const srcArchive = fsLib.readdirSync(sessionDir).find(n => n.startsWith('src_'));
       if (srcArchive) {
@@ -2415,17 +2474,48 @@ const { logError } = require('../lib/log-error');
           const mime = guessMimeType(meta.archive_name);
           const downloadUrl = `/uploads/tender_archives/${tenderId}/${safeName}`;
           const { rows: [doc] } = await db.query(`
-            INSERT INTO documents (filename, original_name, mime_type, size, type, tender_id, uploaded_by, download_url, created_at)
-            VALUES ($1, $2, $3, $4, 'archive', $5, $6, $7, NOW())
+            INSERT INTO documents (filename, original_name, mime_type, size, type, tender_id, uploaded_by, download_url, ocr_status, created_at)
+            VALUES ($1, $2, $3, $4, 'archive', $5, $6, $7, 'skipped', NOW())
             RETURNING id, original_name, download_url
           `, [safeName, meta.archive_name, mime, size, tenderId, request.user.id, downloadUrl]);
+          archiveDocId = doc.id;
           inserted.push(doc);
         } catch (_) {}
       }
     }
 
+    // Связать извлечённые файлы с родителем-архивом (чтобы воркер не распаковывал повторно)
+    if (archiveDocId) {
+      const childIds = inserted.filter((d) => d.id !== archiveDocId).map((d) => d.id);
+      if (childIds.length) {
+        await db.query(
+          `UPDATE documents SET parent_document_id = $1 WHERE id = ANY($2::int[])`,
+          [archiveDocId, childIds]
+        );
+      }
+    } else {
+      // Файлы уже лежат как archive-extracted — пометить pending для OCR
+      const childIds = inserted.map((d) => d.id);
+      if (childIds.length) {
+        await db.query(
+          `UPDATE documents SET ocr_status = COALESCE(ocr_status, 'pending')
+           WHERE id = ANY($1::int[]) AND type = 'archive-extracted'`,
+          [childIds]
+        );
+      }
+    }
+
     // Чистим сессию
     try { fsLib.rmSync(sessionDir, { recursive: true, force: true }); } catch (_) {}
+
+    // Фоновый OCR: распаковка вложенных + текст в documents.ocr_text
+    try {
+      if (fastify.tenderOcr && inserted.length) {
+        await fastify.tenderOcr.enqueue(tenderId, 'archive-confirm');
+      }
+    } catch (e) {
+      console.warn('[archive confirm] tenderOcr enqueue:', e.message);
+    }
 
     return { success: true, attached: inserted.length, documents: inserted };
   });

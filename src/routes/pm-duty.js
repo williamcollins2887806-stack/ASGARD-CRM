@@ -9,18 +9,28 @@ const {
   writeReviewLog,
   writeRegistryAudit,
   syncTenderStatus,
+  applyRegistryStatus,
   buildRegistryExclusionClause
 } = require('../services/tender-registry-helpers');
 const { createNotification } = require('../services/notify');
 const { notifyToOnReviewReady, notifyDirectorsOnReviewPending, notifyToOnDirectorPending, notifyOnDirectorDecision } = require('../services/rp-review-notify');
 const { notifyOnThreadMessage } = require('../services/rp-review-thread-notify');
 const { broadcast } = require('./sse');
+const {
+  resolveFinalOwner,
+  ensureAnalysisOwner,
+  transferOpenAnalysesToDuty,
+  getMyDraft,
+  listTeamDrafts,
+  enrichDraft
+} = require('../services/rp-review-drafts');
+const { registerRpReviewCollabRoutes } = require('./rp-review-collab');
 
 const PM_ROLES = ['ADMIN', 'PM', 'HEAD_PM', 'TO', 'HEAD_TO', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV'];
 const TO_DECISION_ROLES = ['ADMIN', 'TO', 'HEAD_TO'];
 const DIRECTOR_DECISION_ROLES = ['ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV'];
 const ASSIGN_ROLES = ['ADMIN', 'TO', 'HEAD_TO', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV'];
-const DEFAULT_DIRECTOR_THRESHOLD = 5_000_000;
+const DEFAULT_DIRECTOR_THRESHOLD = 10_000_000;
 const VAT_DIVISOR = 1.22;
 
 async function getDirectorThreshold(db) {
@@ -43,6 +53,22 @@ function computeWorkPriceExVat(workPrice) {
 
 function needsDirectorApproval(workPriceExVat, threshold) {
   return workPriceExVat != null && workPriceExVat >= threshold;
+}
+
+// Получатели адресного согласования: ровно 4 допустимых кода.
+const APPROVAL_RECIPIENT_CODES = ['DIRECTOR_GEN', 'DIRECTOR_DEV', 'DIRECTOR_COMM', 'HEAD_TO'];
+
+function normalizeApprovalRecipients(raw) {
+  if (!Array.isArray(raw)) return null;
+  const seen = new Set();
+  const out = [];
+  for (const item of raw) {
+    const code = String(item || '').trim().toUpperCase();
+    if (!APPROVAL_RECIPIENT_CODES.includes(code) || seen.has(code)) continue;
+    seen.add(code);
+    out.push(code);
+  }
+  return out.length ? out : null;
 }
 
 function threadOpenDuringDirectorReview(directorReviewStatus) {
@@ -118,7 +144,85 @@ async function isCollaborator(db, tenderId, userId) {
   return r.rows.length > 0;
 }
 
-/** РП/дежурный при работе с отчётом становится считающим (кроме ТО «считаю сам»). */
+/** Участник ревью: owner / starter / calculator / collab / писал в лог. */
+async function isReviewParticipant(db, tenderId, userId) {
+  const r = await db.query(`
+    SELECT 1
+    FROM tender_rp_reviews rev
+    JOIN tenders t ON t.id = rev.tender_id
+    WHERE rev.tender_id = $1
+      AND (
+        rev.analysis_owner_user_id = $2
+        OR rev.started_by_user_id = $2
+        OR rev.calculator_user_id = $2
+        OR t.calculator_user_id = $2
+        OR EXISTS (
+          SELECT 1 FROM tender_rp_review_collaborators c
+          WHERE c.review_id = rev.id AND c.pm_user_id = $2 AND c.revoked_at IS NULL
+        )
+        OR EXISTS (
+          SELECT 1 FROM tender_rp_review_log l
+          WHERE l.review_id = rev.id AND l.actor_user_id = $2
+        )
+      )
+    LIMIT 1
+  `, [tenderId, userId]);
+  return r.rows.length > 0;
+}
+
+/** SQL: пользователь участвовал в ревью (rev + t уже в FROM). $param — userId. */
+function participatedSql(param = '$1') {
+  return `(
+    rev.analysis_owner_user_id = ${param}
+    OR rev.started_by_user_id = ${param}
+    OR rev.calculator_user_id = ${param}
+    OR t.calculator_user_id = ${param}
+    OR EXISTS (
+      SELECT 1 FROM tender_rp_review_collaborators c
+      WHERE c.review_id = rev.id AND c.pm_user_id = ${param} AND c.revoked_at IS NULL
+    )
+    OR EXISTS (
+      SELECT 1 FROM tender_rp_review_log l
+      WHERE l.review_id = rev.id AND l.actor_user_id = ${param}
+    )
+  )`;
+}
+
+/**
+ * Доступ к загрузке финальных файлов (смета/отчёт/ТКП).
+ * Пока анализ открыт — дежурный + участник; после — хозяин фазы / calc.
+ */
+function assertFinalFileUploadAccess({
+  review, isDuty, isParticipant, collab, isCalc, isWide, isFinalOwner
+}) {
+  if (review.is_final) {
+    return { ok: false, code: 409, body: { error: 'Отчёт уже закрыт' } };
+  }
+  const analysisOpen = !review.analysis_finalized_at;
+  if (analysisOpen) {
+    if (isDuty || isParticipant || collab || isCalc || isWide) {
+      return { ok: true };
+    }
+    return { ok: false, code: 403, body: { error: 'Нет доступа к загрузке файла' } };
+  }
+  if (!isFinalOwner) {
+    return {
+      ok: false,
+      code: 403,
+      body: {
+        error: 'Файлы финала может грузить только хозяин фазы. Используйте загрузку в личный черновик.',
+        use_my_draft: true
+      }
+    };
+  }
+  if (!isDuty && !collab && !isCalc && !isWide) {
+    return { ok: false, code: 403, body: { error: 'Нет доступа к загрузке файла' } };
+  }
+  return { ok: true };
+}
+
+/** РП/дежурный при работе с отчётом становится считающим (кроме ТО «считаю сам»).
+ *  Просчёт всегда закрепляется за ДЕЖУРНЫМ РП, а не за тем, кто открыл форму. */
 async function syncCalculatorActor(db, tenderId, userId, userRole, tenderRow, { isDuty }) {
   if (!tenderRow) return;
   const isPmActor = isDuty || ['PM', 'HEAD_PM', 'ADMIN'].includes(userRole);
@@ -126,18 +230,23 @@ async function syncCalculatorActor(db, tenderId, userId, userRole, tenderRow, { 
     && Number(tenderRow.calculator_user_id) === userId
     && ['TO', 'HEAD_TO'].includes(userRole);
   if (!isPmActor || isToSelf) return;
+  // Дежурный РП — владелец просчёта; если дежурный не назначен, остаётся актор.
+  const duty = await getCurrentDuty(db);
+  const ownerId = (duty && duty.pm_user_id) ? Number(duty.pm_user_id) : userId;
   await db.query(`
     UPDATE tenders SET calculator_user_id = $1, calculator_kind = 'pm', updated_at = NOW() WHERE id = $2
-  `, [userId, tenderId]);
+  `, [ownerId, tenderId]);
   await db.query(`
     UPDATE tender_rp_reviews SET calculator_user_id = $1, updated_at = NOW() WHERE tender_id = $2
-  `, [userId, tenderId]);
+  `, [ownerId, tenderId]);
 }
 
 async function canAccessReviewThread(db, tenderId, user) {
   const userId = user.id;
   const role = user.role || '';
-  if (['ADMIN', 'HEAD_TO', 'HEAD_PM', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV'].includes(role)) {
+  // Чат отчёта: все ТО и все РП видят и отвечают (подмена при болезни и т.п.).
+  // Письмо на почту — только создателю тендера (см. rp-review-thread-notify).
+  if (['ADMIN', 'TO', 'HEAD_TO', 'PM', 'HEAD_PM', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV'].includes(role)) {
     return true;
   }
   const tRes = await db.query(
@@ -146,33 +255,31 @@ async function canAccessReviewThread(db, tenderId, user) {
   );
   if (!tRes.rows[0]) return false;
   const tender = tRes.rows[0];
-  if (['TO', 'HEAD_TO'].includes(role)) {
-    if (Number(tender.created_by) === userId) return true;
-  }
+  if (Number(tender.created_by) === userId) return true;
   if (Number(tender.calculator_user_id) === userId) return true;
   if (await isCollaborator(db, tenderId, userId)) return true;
   if (await isDutyPm(db, userId)) return true;
-  const rev = await db.query(
-    'SELECT started_by_user_id FROM tender_rp_reviews WHERE tender_id = $1',
-    [tenderId]
-  );
-  if (rev.rows[0] && Number(rev.rows[0].started_by_user_id) === userId) return true;
-  if (['PM', 'HEAD_PM'].includes(role)) return true;
+  if (await isReviewParticipant(db, tenderId, userId)) return true;
   return false;
 }
 
 async function loadThreadUnreadCount(db, tenderId, userId) {
-  const seen = await db.query(
-    'SELECT last_seen_at FROM tender_rp_review_thread_seen WHERE user_id = $1 AND tender_id = $2',
-    [userId, tenderId]
-  );
-  const seenAt = seen.rows[0]?.last_seen_at;
-  const r = await db.query(`
-    SELECT COUNT(*)::int AS c FROM tender_rp_review_messages m
-    WHERE m.tender_id = $1 AND m.deleted_at IS NULL AND m.user_id != $2
-      AND ($3::timestamptz IS NULL OR m.created_at > $3)
-  `, [tenderId, userId, seenAt || null]);
-  return r.rows[0]?.c || 0;
+  // Schema-drift safe: V283 tables may be missing on local clones.
+  try {
+    const seen = await db.query(
+      'SELECT last_seen_at FROM tender_rp_review_thread_seen WHERE user_id = $1 AND tender_id = $2',
+      [userId, tenderId]
+    );
+    const seenAt = seen.rows[0]?.last_seen_at;
+    const r = await db.query(`
+      SELECT COUNT(*)::int AS c FROM tender_rp_review_messages m
+      WHERE m.tender_id = $1 AND m.deleted_at IS NULL AND m.user_id != $2
+        AND ($3::timestamptz IS NULL OR m.created_at > $3)
+    `, [tenderId, userId, seenAt || null]);
+    return r.rows[0]?.c || 0;
+  } catch (_) {
+    return 0;
+  }
 }
 
 async function markThreadSeen(db, tenderId, userId, lastMessageId) {
@@ -205,11 +312,24 @@ function resolveThreadDocPath(uploadRoot, doc) {
 }
 
 async function loadThreadDocument(db, tenderId, docId) {
+  // Чат-вложения + смета/отчёт/ТКП просчёта РП (для предпросмотра директору и РП)
   const r = await db.query(`
     SELECT d.* FROM documents d
-    JOIN tender_rp_review_message_files mf ON mf.document_id = d.id
-    JOIN tender_rp_review_messages m ON m.id = mf.message_id
-    WHERE d.id = $1 AND m.tender_id = $2
+    WHERE d.id = $1 AND d.tender_id = $2
+      AND (
+        d.type IN ('rp_estimate', 'rp_report', 'rp_tkp', 'rp_thread')
+        OR EXISTS (
+          SELECT 1
+          FROM tender_rp_review_message_files mf
+          JOIN tender_rp_review_messages m ON m.id = mf.message_id
+          WHERE mf.document_id = d.id AND m.tender_id = $2
+        )
+        OR EXISTS (
+          SELECT 1 FROM tender_rp_reviews r
+          WHERE r.tender_id = $2
+            AND d.id IN (r.estimate_file_id, r.report_file_id, r.tkp_file_id)
+        )
+      )
   `, [docId, tenderId]);
   return r.rows[0] || null;
 }
@@ -247,26 +367,30 @@ async function buildThreadFilePreviewHtml(buffer, mime, originalName) {
     const ExcelJS = require('exceljs');
     const wb = new ExcelJS.Workbook();
     await wb.xlsx.load(buffer);
-    const ws = wb.worksheets[0];
-    if (!ws) return wrapPreviewHtml(originalName, '<p>Лист пуст</p>');
-    let table = '<table><tbody>';
-    const maxRows = Math.min(ws.rowCount || 0, 200);
-    for (let ri = 1; ri <= maxRows; ri++) {
-      const row = ws.getRow(ri);
-      table += '<tr>';
-      const maxCols = Math.min(row.cellCount || 0, 30);
-      for (let ci = 1; ci <= maxCols; ci++) {
-        const cell = row.getCell(ci);
-        const val = cell.text != null ? String(cell.text) : '';
-        table += `<td>${escPreviewHtml(val)}</td>`;
+    if (!wb.worksheets.length) return wrapPreviewHtml(originalName, '<p>Книга пуста</p>');
+    let html = '';
+    for (const ws of wb.worksheets) {
+      html += `<h3 style="margin:16px 0 8px;font-size:14px">${escPreviewHtml(ws.name || 'Лист')}</h3>`;
+      let table = '<table><tbody>';
+      const maxRows = Math.min(ws.rowCount || 0, 200);
+      for (let ri = 1; ri <= maxRows; ri++) {
+        const row = ws.getRow(ri);
+        table += '<tr>';
+        const maxCols = Math.min(Math.max(row.cellCount || 0, ws.columnCount || 0), 30);
+        for (let ci = 1; ci <= maxCols; ci++) {
+          const cell = row.getCell(ci);
+          const val = cell.text != null ? String(cell.text) : '';
+          table += `<td>${escPreviewHtml(val)}</td>`;
+        }
+        table += '</tr>';
       }
-      table += '</tr>';
+      table += '</tbody></table>';
+      if ((ws.rowCount || 0) > maxRows) {
+        table += `<p style="color:#6b7280;font-size:12px">Показаны первые ${maxRows} строк</p>`;
+      }
+      html += table;
     }
-    table += '</tbody></table>';
-    if ((ws.rowCount || 0) > maxRows) {
-      table += `<p style="color:#6b7280;font-size:12px">Показаны первые ${maxRows} строк</p>`;
-    }
-    return wrapPreviewHtml(originalName, table);
+    return wrapPreviewHtml(originalName, html);
   }
 
   if (m.startsWith('text/') || ext === '.txt' || ext === '.md') {
@@ -336,7 +460,17 @@ async function routes(fastify) {
       INSERT INTO pm_duty_roster (pm_user_id, period_start, period_end, assigned_by_user_id)
       VALUES ($1, $2, $3, $4) RETURNING *
     `, [pm_user_id, period_start, period_end, request.user.id]);
-    return { roster: r.rows[0] };
+    let handoff = { transferred: 0 };
+    try {
+      // Если период уже активен (или начинается сегодня) — передать открытые анализы.
+      const today = new Date().toISOString().slice(0, 10);
+      if (String(period_start).slice(0, 10) <= today && String(period_end).slice(0, 10) >= today) {
+        handoff = await transferOpenAnalysesToDuty(db, Number(pm_user_id));
+      }
+    } catch (e) {
+      request.log.warn({ err: e }, 'duty handoff transfer failed');
+    }
+    return { roster: r.rows[0], analysis_handoff: handoff };
   });
 
   // PUT /roster/:id
@@ -366,7 +500,20 @@ async function routes(fastify) {
         period_end = COALESCE($3, period_end)
       WHERE id = $4 RETURNING *
     `, [pm_user_id, period_start, period_end, request.params.id]);
-    return { roster: r.rows[0] };
+    const roster = r.rows[0];
+    let handoff = { transferred: 0 };
+    try {
+      const today = new Date().toISOString().slice(0, 10);
+      const ps = String(roster.period_start).slice(0, 10);
+      const pe = String(roster.period_end).slice(0, 10);
+      if (ps <= today && pe >= today) {
+        // Все открытые «рассмотрение» с чужим analysis_owner → новому дежурному
+        handoff = await transferOpenAnalysesToDuty(db, Number(roster.pm_user_id));
+      }
+    } catch (e) {
+      request.log.warn({ err: e }, 'duty handoff transfer failed');
+    }
+    return { roster, analysis_handoff: handoff };
   });
 
   // DELETE /roster/:id
@@ -378,7 +525,7 @@ async function routes(fastify) {
     return { ok: true };
   });
 
-  // GET /queue?tab=analysis|calc|archive (calc = просчёты + черновики)
+  // GET /queue?tab=analysis|calc|mine|archive (calc = просчёты + черновики)
   fastify.get('/queue', {
     preHandler: [fastify.requireRoles(PM_ROLES)]
   }, async (request) => {
@@ -392,9 +539,11 @@ async function routes(fastify) {
 
     const baseSelect = `
       SELECT t.*, rev.decision, rev.is_final, rev.id AS review_id, rev.updated_at AS review_updated_at,
-             rev.analysis_finalized_at,
+             rev.analysis_finalized_at, rev.analysis_owner_user_id,
              calc.name AS calculator_user_name, cb.name AS created_by_name,
              starter.name AS started_by_name,
+             owneru.name AS analysis_owner_name,
+             CASE WHEN rev.analysis_finalized_at IS NULL THEN 'analysis' ELSE 'calc' END AS phase,
              CASE
                WHEN rev.started_by_user_id IS NOT NULL AND rev.calculator_user_id IS NOT NULL
                  AND rev.started_by_user_id != rev.calculator_user_id THEN 'Назначил ТО'
@@ -408,6 +557,7 @@ async function routes(fastify) {
       LEFT JOIN users calc ON calc.id = COALESCE(rev.calculator_user_id, t.calculator_user_id)
       LEFT JOIN users cb ON cb.id = t.created_by
       LEFT JOIN users starter ON starter.id = rev.started_by_user_id
+      LEFT JOIN users owneru ON owneru.id = rev.analysis_owner_user_id
     `;
 
     const excludeClause = buildRegistryExclusionClause('t', 'cb');
@@ -431,13 +581,44 @@ async function routes(fastify) {
       return { items: r.rows, tab, duty, is_duty: isDuty };
     }
 
+    // Cancelled / lost tenders must leave RP working queues (calc + collab analysis).
+    const notArchivedStatuses = `AND t.registry_status IS DISTINCT FROM 'отмена'
+          AND t.registry_status IS DISTINCT FROM 'проиграли'`;
+
+    if (tab === 'mine') {
+      const r = await db.query(`
+        ${baseSelect}
+        WHERE t.deleted_at IS NULL
+          AND rev.id IS NOT NULL
+          AND (rev.is_final IS NULL OR rev.is_final = false)
+          AND ${participatedSql('$1')}
+          ${notArchivedStatuses}
+          ${excludeClause}
+        ORDER BY rev.updated_at DESC NULLS LAST, t.created_at DESC
+        LIMIT 300
+      `, [userId]);
+      const items = r.rows.map((row) => ({
+        ...row,
+        // Участник списка «Мои»: править общий отчёт, пока анализ не закрыт
+        can_edit: !row.analysis_finalized_at
+      }));
+      return { items, tab, duty, is_duty: isDuty };
+    }
+
     if (tab === 'calc') {
       const r = await db.query(`
         ${baseSelect}
         WHERE t.deleted_at IS NULL
           AND (rev.is_final IS NULL OR rev.is_final = false)
           AND rev.analysis_finalized_at IS NOT NULL
-          AND t.calculator_user_id = $1
+          AND (
+            t.calculator_user_id = $1
+            OR EXISTS (
+              SELECT 1 FROM tender_rp_review_collaborators c
+              WHERE c.review_id = rev.id AND c.pm_user_id = $1 AND c.revoked_at IS NULL
+            )
+          )
+          ${notArchivedStatuses}
           ${excludeClause}
         ORDER BY
           CASE WHEN rev.id IS NOT NULL AND rev.is_final IS NOT TRUE THEN 0 ELSE 1 END,
@@ -449,34 +630,111 @@ async function routes(fastify) {
       return { items: r.rows, tab, duty, is_duty: isDuty };
     }
 
-    // analysis — очередь дежурного / коллабораторов (исключить «ТО считает сам»)
+    // analysis — очередь дежурного / коллабораторов / preview для остальных
     const analysisOnlyClause = `AND COALESCE(t.calculator_kind, '') != 'to'`;
+    const userRole = request.user.role || '';
+    const oversight = ASSIGN_ROLES.includes(userRole) || userRole === 'HEAD_PM' || userRole === 'ADMIN';
     let items = [];
+    let queueMode = 'duty'; // duty | collab | preview | oversight
+
+    const analysisQueueSql = `
+      ${baseSelect}
+      WHERE t.deleted_at IS NULL
+        AND t.registry_status = 'рассмотрение'
+        AND (rev.is_final IS NULL OR rev.is_final = false)
+        AND rev.analysis_finalized_at IS NULL
+        ${analysisOnlyClause}
+        ${excludeClause}
+      ORDER BY t.docs_deadline ASC NULLS LAST, t.created_at ASC
+      LIMIT 500
+    `;
+
     if (isDuty) {
-      const r = await db.query(`
-        ${baseSelect}
-        WHERE t.deleted_at IS NULL
-          AND t.registry_status = 'рассмотрение'
-          AND (rev.is_final IS NULL OR rev.is_final = false)
-          AND rev.analysis_finalized_at IS NULL
-          ${analysisOnlyClause}
-          ${excludeClause}
-        ORDER BY t.docs_deadline ASC NULLS LAST, t.created_at ASC
-        LIMIT 500
-      `);
-      items = r.rows;
+      const r = await db.query(analysisQueueSql);
+      items = r.rows.map((row) => ({ ...row, can_report: true, queue_mode: 'duty' }));
+      queueMode = 'duty';
+    } else if (oversight) {
+      const r = await db.query(analysisQueueSql);
+      items = r.rows.map((row) => ({
+        ...row,
+        can_report: true,
+        queue_mode: 'oversight',
+        queue_source: row.queue_source || 'Дежурная очередь'
+      }));
+      queueMode = 'oversight';
     } else {
-      const r = await db.query(`
+      const collab = await db.query(`
         ${baseSelect}
         JOIN tender_rp_review_collaborators c ON c.review_id = rev.id AND c.revoked_at IS NULL
         WHERE t.deleted_at IS NULL AND c.pm_user_id = $1
           AND (rev.is_final IS NULL OR rev.is_final = false)
           AND rev.analysis_finalized_at IS NULL
+          ${notArchivedStatuses}
           ${analysisOnlyClause}
           ${excludeClause}
-        ORDER BY t.created_at ASC
+        ORDER BY t.docs_deadline ASC NULLS LAST, t.created_at ASC
       `, [userId]);
-      items = r.rows;
+      const collabIds = new Set(collab.rows.map((x) => x.id));
+
+      // Live preview of duty queue so page is never "blind empty"
+      const preview = await db.query(analysisQueueSql);
+      const byId = new Map();
+      preview.rows.forEach((row) => {
+        byId.set(row.id, {
+          ...row,
+          can_report: false,
+          queue_mode: 'preview',
+          preview: true
+        });
+      });
+      collab.rows.forEach((row) => {
+        byId.set(row.id, {
+          ...row,
+          can_report: true,
+          queue_mode: 'collab',
+          preview: false,
+          queue_source: row.queue_source || 'Приглашён'
+        });
+      });
+      items = Array.from(byId.values()).sort((a, b) => {
+        const da = a.docs_deadline ? String(a.docs_deadline).slice(0, 10) : '9999';
+        const db_ = b.docs_deadline ? String(b.docs_deadline).slice(0, 10) : '9999';
+        if (da !== db_) return da < db_ ? -1 : 1;
+        return Number(a.id) - Number(b.id);
+      });
+      queueMode = collabIds.size ? 'collab+preview' : 'preview';
+    }
+
+    const banner = !isDuty && tab === 'analysis' && duty
+      ? {
+          message: oversight
+            ? `Обзор очереди дежурного: ${duty.pm_name}, ${fmtRuDate(duty.period_start)} — ${fmtRuDate(duty.period_end)}.`
+            : `Вы не дежурный. Сейчас: ${duty.pm_name} (${fmtRuDate(duty.period_start)} — ${fmtRuDate(duty.period_end)}). Очередь ниже — просмотр; править можно свои приглашения.`
+        }
+      : (!isDuty && tab === 'analysis' && !duty
+        ? { message: oversight
+            ? 'Дежурный не назначен. Ниже — полная очередь «рассмотрение».'
+            : 'Дежурный не назначен. Очередь «рассмотрение» ниже (просмотр).' }
+        : null);
+
+    if (tab === 'analysis' && items.length) {
+      const now = Date.now();
+      const dayMs = 86400000;
+      items = items.map((row) => {
+        const ddl = row.docs_deadline ? new Date(String(row.docs_deadline).slice(0, 10) + 'T12:00:00') : null;
+        const daysToDdl = ddl && Number.isFinite(ddl.getTime())
+          ? Math.round((ddl.getTime() - now) / dayMs)
+          : null;
+        const touch = row.review_updated_at ? new Date(row.review_updated_at).getTime() : null;
+        const idleHours = touch && Number.isFinite(touch)
+          ? Math.round((now - touch) / 3600000)
+          : null;
+        return {
+          ...row,
+          deadline_hot: daysToDdl != null && daysToDdl <= 2,
+          stale_idle: idleHours != null && idleHours >= 24 && !row.analysis_finalized_at
+        };
+      });
     }
 
     return {
@@ -484,11 +742,214 @@ async function routes(fastify) {
       tab,
       duty,
       is_duty: isDuty,
-      banner: !isDuty && tab === 'analysis' && items.length === 0 && duty
-        ? {
-            message: `Вы не дежурный. Дежурный: ${duty.pm_name}, период ${fmtRuDate(duty.period_start)} — ${fmtRuDate(duty.period_end)}. При ошибке обратитесь к ${duty.assigned_by_name}.`
-          }
-        : null
+      queue_mode: queueMode,
+      banner
+    };
+  });
+
+  const rating = require('../services/pm-analysis-rating');
+  const LEADERBOARD_ROLES = ['ADMIN', 'HEAD_PM', 'TO', 'HEAD_TO', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV'];
+
+  function normalizeWindow(q) {
+    const w = String(q || 'd30');
+    if (w === '90' || w === 'd90') return 'd90';
+    if (w === 'duty' || w === 'shift') return 'duty';
+    return 'd30';
+  }
+
+  async function ensureFreshRating(userId, windowKind) {
+    let snap = await rating.getLatestSnapshot(db, userId, windowKind);
+    const today = new Date().toISOString().slice(0, 10);
+    if (!snap || String(snap.as_of_date).slice(0, 10) !== today) {
+      await rating.upsertSnapshots(db, userId, today);
+      snap = await rating.getLatestSnapshot(db, userId, windowKind);
+    }
+    return snap;
+  }
+
+  // GET /rating/me?window=duty|30|90
+  fastify.get('/rating/me', {
+    preHandler: [fastify.requireRoles(PM_ROLES)]
+  }, async (request) => {
+    const windowKind = normalizeWindow(request.query.window);
+    const userId = request.user.id;
+    try {
+      const snap = await ensureFreshRating(userId, windowKind);
+      if (snap) return { rating: rating.snapshotToPayload(snap), live: false };
+      const live = await rating.computeUserRating(db, userId, windowKind);
+      return { rating: live, live: true };
+    } catch (err) {
+      // Table may be missing before migration — compute live without persist
+      request.log.warn({ err }, 'pm-duty rating/me snapshot failed');
+      const live = await rating.computeUserRating(db, userId, windowKind);
+      return { rating: live, live: true };
+    }
+  });
+
+  // GET /rating/leaderboard?window=30|90&limit=
+  fastify.get('/rating/leaderboard', {
+    preHandler: [fastify.requireRoles(LEADERBOARD_ROLES)]
+  }, async (request) => {
+    const windowKind = normalizeWindow(request.query.window);
+    if (windowKind === 'duty') {
+      return replySafeLeaderboardDuty(request);
+    }
+    const limit = Math.min(parseInt(request.query.limit || '50', 10) || 50, 100);
+    const today = new Date().toISOString().slice(0, 10);
+    try {
+      let r = await db.query(`
+        SELECT s.*, u.name AS pm_name, u.role AS pm_role
+        FROM pm_analysis_rating_daily s
+        JOIN users u ON u.id = s.user_id
+        WHERE s.window_kind = $1
+          AND s.as_of_date = (
+            SELECT MAX(as_of_date) FROM pm_analysis_rating_daily WHERE window_kind = $1
+          )
+        ORDER BY s.score DESC, u.name ASC
+        LIMIT $2
+      `, [windowKind, limit]);
+      if (!r.rows.length) {
+        await rating.recomputeAll(db, today, request.log);
+        r = await db.query(`
+          SELECT s.*, u.name AS pm_name, u.role AS pm_role
+          FROM pm_analysis_rating_daily s
+          JOIN users u ON u.id = s.user_id
+          WHERE s.window_kind = $1 AND s.as_of_date = $2::date
+          ORDER BY s.score DESC, u.name ASC
+          LIMIT $3
+        `, [windowKind, today, limit]);
+      }
+      return {
+        window: windowKind,
+        items: r.rows.map((row, idx) => ({
+          rank: idx + 1,
+          ...rating.snapshotToPayload(row, { pm_name: row.pm_name, pm_role: row.pm_role })
+        }))
+      };
+    } catch (err) {
+      request.log.warn({ err }, 'pm-duty rating/leaderboard failed');
+      const ids = await rating.listPmUserIds(db);
+      const items = [];
+      for (const id of ids.slice(0, limit)) {
+        const live = await rating.computeUserRating(db, id, windowKind, today);
+        const u = await db.query(`SELECT name, role FROM users WHERE id = $1`, [id]);
+        items.push({
+          ...live,
+          pm_name: u.rows[0]?.name || ('#' + id),
+          pm_role: u.rows[0]?.role || null
+        });
+      }
+      items.sort((a, b) => b.score - a.score || String(a.pm_name).localeCompare(String(b.pm_name)));
+      return {
+        window: windowKind,
+        items: items.map((x, idx) => ({ rank: idx + 1, ...x }))
+      };
+    }
+  });
+
+  async function replySafeLeaderboardDuty(request) {
+    // Duty leaderboard: latest duty snapshot per user
+    const limit = Math.min(parseInt(request.query.limit || '50', 10) || 50, 100);
+    try {
+      const r = await db.query(`
+        SELECT DISTINCT ON (s.user_id) s.*, u.name AS pm_name, u.role AS pm_role
+        FROM pm_analysis_rating_daily s
+        JOIN users u ON u.id = s.user_id
+        WHERE s.window_kind = 'duty'
+        ORDER BY s.user_id, s.as_of_date DESC
+      `);
+      const items = r.rows
+        .sort((a, b) => b.score - a.score || String(a.pm_name).localeCompare(String(b.pm_name)))
+        .slice(0, limit)
+        .map((row, idx) => ({
+          rank: idx + 1,
+          ...rating.snapshotToPayload(row, { pm_name: row.pm_name, pm_role: row.pm_role })
+        }));
+      return { window: 'duty', items };
+    } catch (err) {
+      request.log.warn({ err }, 'pm-duty duty leaderboard failed');
+      return { window: 'duty', items: [] };
+    }
+  }
+
+  // GET /rating/:userId/breakdown?window=
+  fastify.get('/rating/:userId/breakdown', {
+    preHandler: [fastify.requireRoles(PM_ROLES)]
+  }, async (request, reply) => {
+    const targetId = parseInt(request.params.userId, 10);
+    if (!Number.isFinite(targetId)) return reply.code(400).send({ error: 'userId' });
+    const windowKind = normalizeWindow(request.query.window);
+    const me = request.user.id;
+    const role = request.user.role || '';
+    const canSeeOthers = LEADERBOARD_ROLES.includes(role) || role === 'ADMIN';
+    if (targetId !== me && !canSeeOthers) {
+      return reply.code(403).send({ error: 'Нельзя смотреть чужой рейтинг' });
+    }
+    try {
+      const snap = await ensureFreshRating(targetId, windowKind);
+      const u = await db.query(`SELECT id, name, role FROM users WHERE id = $1`, [targetId]);
+      const payload = snap
+        ? rating.snapshotToPayload(snap)
+        : await rating.computeUserRating(db, targetId, windowKind);
+      return {
+        rating: payload,
+        user: u.rows[0] || { id: targetId },
+        live: !snap
+      };
+    } catch (err) {
+      request.log.warn({ err }, 'pm-duty rating breakdown failed');
+      const live = await rating.computeUserRating(db, targetId, windowKind);
+      const u = await db.query(`SELECT id, name, role FROM users WHERE id = $1`, [targetId]);
+      return { rating: live, user: u.rows[0] || { id: targetId }, live: true };
+    }
+  });
+
+  // POST /rating/recompute — ADMIN only (manual refresh)
+  fastify.post('/rating/recompute', {
+    preHandler: [fastify.requireRoles(['ADMIN'])]
+  }, async (request) => {
+    const result = await rating.recomputeAll(db, new Date(), request.log);
+    return { ok: true, ...result };
+  });
+
+  // GET /weekly-report/preview — HTML+JSON дайджеста (ADMIN)
+  fastify.get('/weekly-report/preview', {
+    preHandler: [fastify.requireRoles(['ADMIN'])]
+  }, async (request) => {
+    const { buildWeeklyDigest } = require('../services/pm-analysis-weekly-report');
+    const { generatePmAnalysisWeeklyEmail } = require('../services/pm-analysis-weekly-email');
+    const q = request.query || {};
+    const forceWeek = (q.from && q.to)
+      ? { start: String(q.from).slice(0, 10), end: String(q.to).slice(0, 10) }
+      : { start: '2026-08-31', end: '2026-09-06' };
+    const payload = await buildWeeklyDigest(db, { preview: true, forceWeek });
+    const html = generatePmAnalysisWeeklyEmail(payload);
+    return { ok: true, payload, html };
+  });
+
+  // POST /weekly-report/send — ADMIN; body: { to?, from?, to?, kind?, preview? }
+  fastify.post('/weekly-report/send', {
+    preHandler: [fastify.requireRoles(['ADMIN'])]
+  }, async (request) => {
+    const weekly = require('../services/pm-analysis-weekly-cron');
+    const b = request.body || {};
+    const forceWeek = (b.from && b.to)
+      ? { start: String(b.from).slice(0, 10), end: String(b.to).slice(0, 10) }
+      : (b.preview && b.kind !== 'monthly' ? { start: '2026-08-31', end: '2026-09-06' } : undefined);
+    const result = await weekly.runOnce(db, request.log, {
+      kind: b.kind === 'monthly' ? 'monthly' : 'weekly',
+      preview: b.preview !== false,
+      toEmail: b.to || null,
+      toName: b.to_name || null,
+      forceWeek,
+      onlyUserId: b.user_id || null
+    });
+    return {
+      ok: true,
+      subject: result.subject,
+      results: result.results,
+      recipients: result.recipients || null,
+      week: { start: result.payload.weekStart, end: result.payload.weekEnd }
     };
   });
 }
@@ -567,9 +1028,20 @@ async function reviewRoutes(fastify) {
     preHandler: [fastify.requireRoles(PM_ROLES)]
   }, async (request, reply) => {
     const tenderId = request.params.id;
-    const review = await ensureReview(db, tenderId, request.user.id);
-    const userIds = [review.started_by_user_id, review.analysis_finalized_by_user_id, review.finalized_by_user_id]
-      .filter(Boolean);
+    const userId = request.user.id;
+    const userRole = request.user.role || '';
+    let review = await ensureReview(db, tenderId, userId);
+    const duty = await getCurrentDuty(db);
+    try {
+      review = await ensureAnalysisOwner(db, review, userId, duty?.pm_user_id);
+    } catch (_) { /* V304 may not be applied yet */ }
+
+    const userIds = [
+      review.started_by_user_id,
+      review.analysis_finalized_by_user_id,
+      review.finalized_by_user_id,
+      review.analysis_owner_user_id
+    ].filter(Boolean);
     let userMap = {};
     if (userIds.length) {
       const ur = await db.query(
@@ -613,17 +1085,85 @@ async function reviewRoutes(fastify) {
       tkp_file = tf.rows[0] || null;
     }
     const enriched = enrichReviewRow(review, userMap);
+    if (review.analysis_owner_user_id) {
+      enriched.analysis_owner_name = userMap[review.analysis_owner_user_id] || null;
+    }
     const rj = parseReportJson(review.report_json);
-    const thread_unread = await loadThreadUnreadCount(db, tenderId, request.user.id);
+    const thread_unread = await loadThreadUnreadCount(db, tenderId, userId);
+    const tenderRow = await db.query(`
+      SELECT t.id, t.customer_name, t.tender_title, t.tender_price, t.docs_deadline,
+             t.registry_status, t.purchase_url, t.calculator_user_id, t.created_by,
+             cb.name AS created_by_name,
+             calc.name AS calculator_user_name
+      FROM tenders t
+      LEFT JOIN users cb ON cb.id = t.created_by
+      LEFT JOIN users calc ON calc.id = t.calculator_user_id
+      WHERE t.id = $1
+    `, [tenderId]);
+    const tender = tenderRow.rows[0] || null;
+
+    const { phase, ownerUserId } = await resolveFinalOwner(db, review, tender, duty?.pm_user_id);
+    const isFinalOwner = ownerUserId != null && Number(ownerUserId) === userId;
+    const isToRole = ['TO', 'HEAD_TO'].includes(userRole);
+    const isWide = ['ADMIN', 'HEAD_PM', 'HEAD_TO', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV'].includes(userRole);
+
+    let my_draft = null;
+    let team_drafts = [];
+    try {
+      const rawMine = await getMyDraft(db, review.id, userId, phase);
+      my_draft = rawMine ? await enrichDraft(db, rawMine) : null;
+      // TO sees team drafts only via history labels — not full content in main payload
+      if (!isToRole || isWide || isFinalOwner || await isCollaborator(db, tenderId, userId) || (duty && Number(duty.pm_user_id) === userId)) {
+        if (!isToRole || isWide) {
+          const rawTeam = await listTeamDrafts(db, review.id, phase, { excludeAuthorId: userId });
+          team_drafts = await Promise.all(rawTeam.map((d) => enrichDraft(db, d)));
+          // Strip draft_json content for pure TO (not wide) — only meta
+          if (isToRole && !isWide) {
+            team_drafts = team_drafts.map((d) => ({
+              id: d.id,
+              author_user_id: d.author_user_id,
+              author_name: d.author_name,
+              phase: d.phase,
+              status: d.status,
+              updated_at: d.updated_at,
+              has_estimate: !!d.estimate_file_id,
+              has_report: !!d.report_file_id
+            }));
+          }
+        } else {
+          const rawTeam = await listTeamDrafts(db, review.id, phase, { excludeAuthorId: userId });
+          team_drafts = await Promise.all(rawTeam.map((d) => enrichDraft(db, d)));
+        }
+      }
+    } catch (err) {
+      request.log.warn({ err }, 'rp-review drafts load skipped (migration?)');
+    }
+
+    const team_summary = {
+      collaborators_count: collabs.rows.length,
+      drafts_count: team_drafts.length + (my_draft ? 1 : 0),
+      ready_count: [my_draft, ...team_drafts].filter((d) => d && d.status === 'ready').length
+    };
+
     return {
       review: enriched,
+      tender,
       analysis_snapshot: rj.analysis_snapshot || null,
       logs: logs.rows,
       collaborators: collabs.rows,
       estimate_file,
       report_file,
       tkp_file,
-      thread_unread
+      thread_unread,
+      phase,
+      final_owner_user_id: ownerUserId,
+      final_owner_name: ownerUserId ? (userMap[ownerUserId] || (Number(tender?.calculator_user_id) === ownerUserId ? tender?.calculator_user_name : null) || null) : null,
+      is_final_owner: isFinalOwner || isWide,
+      is_real_final_owner: isFinalOwner,
+      can_finalize: (isFinalOwner || isWide) && !review.is_final,
+      my_draft,
+      team_drafts,
+      team_summary
     };
   });
 
@@ -642,14 +1182,74 @@ async function reviewRoutes(fastify) {
     const tender = tenderRow.rows[0];
     const isCalc = tender && Number(tender.calculator_user_id) === userId;
     const userRole = request.user.role || '';
+    const isWide = ['ADMIN', 'HEAD_TO', 'HEAD_PM'].includes(userRole);
 
-    const review = await ensureReview(db, tenderId, userId);
+    let review = await ensureReview(db, tenderId, userId);
+    const b = request.body || {};
+
+    // Optimistic lock до любых мутаций — иначе ensureAnalysisOwner ломает токен
+    if (b.expected_updated_at && review.updated_at) {
+      const cur = new Date(review.updated_at).toISOString();
+      const exp = new Date(b.expected_updated_at).toISOString();
+      if (cur !== exp) {
+        return reply.code(409).send({
+          error: 'Отчёт изменился у другого пользователя. Обновите форму и повторите.',
+          code: 'REVIEW_CONFLICT',
+          updated_at: review.updated_at
+        });
+      }
+    }
+
+    const isParticipant = await isReviewParticipant(db, tenderId, userId);
+
+    try {
+      // При записи дежурный/считающий/участник может стать analysis_owner, если ещё не назначен
+      review = await ensureAnalysisOwner(db, review, userId, duty?.pm_user_id, {
+        allowActorFallback: !!(isDuty || isCalc || isParticipant)
+      });
+    } catch (_) { /* ignore */ }
     if (review.is_final) {
       return reply.code(409).send({ error: 'Отчёт уже закрыт' });
     }
 
-    const b = request.body || {};
+    const { ownerUserId, phase: ownerPhase } = await resolveFinalOwner(db, review, tender, duty?.pm_user_id);
+    const isRealOwner = ownerUserId != null && Number(ownerUserId) === userId;
+    // Текущий дежурный всегда может закрыть открытый анализ (handoff при смене смены).
+    const isFinalOwner = isRealOwner || isWide
+      || (ownerPhase === 'analysis' && isDuty && !review.analysis_finalized_at);
+
     const isFinal = !!b.finalize;
+    const analysisOpen = !review.analysis_finalized_at;
+    // Пока анализ открыт — общий отчёт правят дежурный, участник, collab, wide
+    const canSharedAnalysisEdit = analysisOpen
+      && (isDuty || isParticipant || collab || isWide || isCalc);
+
+    if (isFinal) {
+      if (!isFinalOwner) {
+        return reply.code(403).send({
+          error: 'Вы готовите личный черновик. Сохраняйте через «Мой черновик». Закрыть анализ/отчёт может только хозяин фазы.',
+          use_my_draft: true
+        });
+      }
+    } else if (!canSharedAnalysisEdit && !isFinalOwner) {
+      return reply.code(403).send({
+        error: 'Вы готовите личный черновик. Сохраняйте через «Мой черновик». Закрыть анализ/отчёт может только хозяин фазы.',
+        use_my_draft: true
+      });
+    }
+
+    // ADMIN/HEAD пишет чужой финал — только с явным override_as_admin
+    // (для совместного редактирования открытого анализа override не нужен)
+    if (isWide && !isRealOwner && ownerUserId && !b.override_as_admin) {
+      if (isFinal || !canSharedAnalysisEdit) {
+        return reply.code(403).send({
+          error: 'Вы не хозяин фазы. Подтвердите перезапись финального отчёта.',
+          need_override: true,
+          final_owner_user_id: ownerUserId
+        });
+      }
+    }
+
     let report_json = b.report_json !== undefined ? b.report_json : review.report_json;
     if (typeof report_json === 'string') {
       try { report_json = JSON.parse(report_json); } catch (_) { report_json = {}; }
@@ -659,18 +1259,26 @@ async function reviewRoutes(fastify) {
     const decision = b.decision || review.decision;
 
     if (review.analysis_finalized_at && mode === 'calc') {
-      const canEditCalc = isCalc || collab || ['ADMIN', 'HEAD_PM', 'TO', 'HEAD_TO'].includes(userRole);
+      const canEditCalc = isCalc || collab || isWide || ['HEAD_PM'].includes(userRole);
       if (!canEditCalc) {
         return reply.code(403).send({
           error: 'Полный просчёт ведёт назначенный РП. Дождитесь назначения от ТО.'
         });
       }
-    } else if (!isDuty && !collab && !isCalc && !['ADMIN', 'HEAD_TO', 'HEAD_PM', 'TO'].includes(userRole)) {
+    } else if (!canSharedAnalysisEdit && !isDuty && !collab && !isCalc && !isWide && !isParticipant) {
       return reply.code(403).send({ error: 'Нет доступа к редактированию отчёта' });
     }
 
     if (review.analysis_finalized_at && mode === 'analysis') {
       return reply.code(409).send({ error: 'Анализ уже закрыт. Откройте вкладку «Просчёты» для полного просчёта.' });
+    }
+
+    if (isFinal && !isRealOwner && !isWide) {
+      return reply.code(403).send({
+        error: ownerPhase === 'analysis'
+          ? 'Закрыть анализ может только хозяин анализа (дежурный / инициатор)'
+          : 'Закрыть отчёт может только назначенный считающий'
+      });
     }
 
     if (isFinal && decision === 'submit') {
@@ -703,14 +1311,21 @@ async function reviewRoutes(fastify) {
     let notifyToAt = review.to_notify_at;
     let directorReviewStatus = review.director_review_status || null;
     let directorNotifyAt = review.director_notify_at || null;
-    let workPriceExVat = review.work_price_ex_vat || null;
-    let pendingDirector = false;
+  let workPriceExVat = review.work_price_ex_vat || null;
+  let pendingDirector = false;
+  let approvalRecipients = null;
 
     if (isFinal && mode === 'analysis') {
       const userName = request.user.name || '';
       if (decision === 'reject') {
+        // Не кидаем в архив сразу: ТО видит «не подаём» в активном реестре и сам жмёт «В архив».
+        // Анализ при этом ЗАКРЫТ — иначе рейтинг/фаза считают отказ «брошенным».
         setFinal = true;
-        registry_status = 'отмена';
+        registry_status = null;
+        analysisFinalizedAt = new Date();
+        analysisFinalizedBy = userId;
+        notifyToAt = new Date();
+        logAction = 'finalize_reject';
         report_json = { ...rj, mode: 'analysis' };
       } else {
         const snapshot = buildAnalysisSnapshot(rj, decision, userId, userName);
@@ -732,12 +1347,27 @@ async function reviewRoutes(fastify) {
     } else if (isFinal) {
       setFinal = true;
       notifyToAt = new Date();
+      // Без закрытого анализа is_final=true даёт зомби: API «отчёт закрыт»,
+      // а напоминалки/фаза анализа смотрят analysis_finalized_at → вечный черновик.
+      if (!analysisFinalizedAt) {
+        analysisFinalizedAt = new Date();
+        analysisFinalizedBy = userId;
+      }
       if (decision === 'reject') {
-        registry_status = 'отмена';
+        // Аналогично: финальный отказ РП → рекомендация ТО, не авто-архив.
+        registry_status = null;
+        logAction = 'finalize_reject';
       } else if (decision === 'submit') {
         const threshold = await getDirectorThreshold(db);
         workPriceExVat = computeWorkPriceExVat(work_price);
+        // Порог 10 млн без НДС — единственный триггер согласования (force_director убран).
         if (needsDirectorApproval(workPriceExVat, threshold)) {
+          approvalRecipients = normalizeApprovalRecipients(b.approval_recipients);
+          if (!approvalRecipients) {
+            return reply.code(400).send({
+              error: 'Выберите хотя бы одного получателя согласования (ген. директор / развитие / коммерческий / рук. ТО)'
+            });
+          }
           directorReviewStatus = 'pending';
           directorNotifyAt = new Date();
           pendingDirector = true;
@@ -748,38 +1378,66 @@ async function reviewRoutes(fastify) {
       report_json = { ...rj, mode: 'calc' };
     }
 
-    const r = await db.query(`
-      UPDATE tender_rp_reviews SET
-        decision = $1,
-        report_kind = $2,
-        report_json = $3,
-        missing_info_flags = $4,
-        work_price = $5,
-        estimate_file_id = COALESCE($6, estimate_file_id),
-        tkp_file_id = COALESCE($13, tkp_file_id),
-        is_final = $7,
-        analysis_finalized_at = COALESCE($8, analysis_finalized_at),
-        analysis_finalized_by_user_id = COALESCE($9, analysis_finalized_by_user_id),
-        started_by_user_id = COALESCE(started_by_user_id, $10),
-        finalized_by_user_id = CASE WHEN $7 THEN $10 ELSE finalized_by_user_id END,
-        calculator_user_id = CASE WHEN $7 THEN $10 ELSE calculator_user_id END,
-        to_notify_at = COALESCE($12, to_notify_at),
-        director_review_status = COALESCE($14, director_review_status),
-        director_notify_at = COALESCE($15, director_notify_at),
-        work_price_ex_vat = COALESCE($16, work_price_ex_vat),
-        updated_at = NOW()
-      WHERE tender_id = $11
-      RETURNING *
-    `, [
-      decision, report_kind, JSON.stringify(report_json),
-      missing_info_flags, work_price, b.estimate_file_id || null,
-      setFinal, analysisFinalizedAt, analysisFinalizedBy,
-      userId, tenderId, notifyToAt,
-      b.tkp_file_id || null,
-      directorReviewStatus,
-      directorNotifyAt,
-      workPriceExVat
-    ]);
+    // Explicit casts on every $1 use — without them Postgres fails with
+    // "inconsistent types deduced for parameter $1" (varchar vs text) when
+    // the same param is assigned to a varchar column AND compared to a text literal.
+    const expectedAt = b.expected_updated_at
+      ? new Date(b.expected_updated_at)
+      : null;
+    const expectedAtValid = expectedAt && Number.isFinite(expectedAt.getTime()) ? expectedAt : null;
+    let r;
+    try {
+      r = await db.query(`
+        UPDATE tender_rp_reviews SET
+          decision = $1::varchar,
+          report_kind = $2,
+          report_json = $3,
+          missing_info_flags = $4,
+          work_price = $5,
+          estimate_file_id = COALESCE($6, estimate_file_id),
+          tkp_file_id = COALESCE($13, tkp_file_id),
+          is_final = $7,
+          analysis_finalized_at = COALESCE($8, analysis_finalized_at),
+          analysis_finalized_by_user_id = COALESCE($9, analysis_finalized_by_user_id),
+          started_by_user_id = COALESCE(started_by_user_id, $10),
+          analysis_started_at = COALESCE(analysis_started_at, NOW()),
+          finalized_by_user_id = CASE WHEN $7 THEN $10 ELSE finalized_by_user_id END,
+          calculator_user_id = CASE
+            WHEN $7 AND $1::text = 'submit' THEN $10
+            ELSE calculator_user_id
+          END,
+          to_notify_at = COALESCE($12, to_notify_at),
+          director_review_status = COALESCE($14, director_review_status),
+          director_notify_at = COALESCE($15, director_notify_at),
+          work_price_ex_vat = COALESCE($16, work_price_ex_vat),
+          updated_at = NOW()
+        WHERE tender_id = $11
+          -- JSON/JS Date only has ms; PG NOW() keeps µs → exact '=' never matches after round-trip
+          AND ($17::timestamptz IS NULL
+               OR date_trunc('milliseconds', updated_at)
+                  = date_trunc('milliseconds', $17::timestamptz))
+        RETURNING *
+      `, [
+        decision, report_kind, JSON.stringify(report_json),
+        missing_info_flags, work_price, b.estimate_file_id || null,
+        setFinal, analysisFinalizedAt, analysisFinalizedBy,
+        userId, tenderId, notifyToAt,
+        b.tkp_file_id || null,
+        directorReviewStatus,
+        directorNotifyAt,
+        workPriceExVat,
+        expectedAtValid
+      ]);
+    } catch (err) {
+      request.log.error({ err }, 'rp-review save failed');
+      return reply.code(500).send({ error: err.message || 'Ошибка сохранения отчёта' });
+    }
+    if (!r.rows[0]) {
+      return reply.code(409).send({
+        error: 'Отчёт изменился у другого пользователя. Обновите форму и повторите.',
+        code: 'REVIEW_CONFLICT'
+      });
+    }
 
     await writeReviewLog(db, {
       reviewId: review.id, tenderId, actorUserId: userId,
@@ -788,26 +1446,26 @@ async function reviewRoutes(fastify) {
     });
 
     if (logAction === 'finalize_analysis' && decision !== 'reject') {
+      // Анализ закрыт «подаём»: просчёт сразу за дежурным РП — тот же человек продолжает,
+      // без ручного назначения. Если дежурный не назначен, оставляем актора владельцем.
+      const ownerId = (duty && duty.pm_user_id) ? Number(duty.pm_user_id) : userId;
       await db.query(`
-        UPDATE tenders SET calculator_user_id = NULL, calculator_kind = NULL, updated_at = NOW()
-        WHERE id = $1
-      `, [tenderId]);
+        UPDATE tenders SET calculator_user_id = $1, calculator_kind = 'pm', updated_at = NOW()
+        WHERE id = $2
+      `, [ownerId, tenderId]);
       await db.query(`
-        UPDATE tender_rp_reviews SET calculator_user_id = NULL, updated_at = NOW()
-        WHERE tender_id = $1
-      `, [tenderId]);
+        UPDATE tender_rp_reviews SET calculator_user_id = $1, updated_at = NOW()
+        WHERE tender_id = $2
+      `, [ownerId, tenderId]);
     } else if (mode === 'calc' && logAction !== 'finalize_analysis') {
       await syncCalculatorActor(db, tenderId, userId, userRole, tender, { isDuty });
     }
 
     if (registry_status) {
-      await db.query(`
-        UPDATE tenders SET registry_status = $1, tender_status = $2, updated_at = NOW()
-        WHERE id = $3
-      `, [registry_status, syncTenderStatus(registry_status), tenderId]);
+      await applyRegistryStatus(db, tenderId, registry_status, !!analysisFinalizedAt);
     }
 
-    if (notifyToAt && (logAction === 'finalize_analysis' || (isFinal && setFinal))) {
+    if (notifyToAt && (logAction === 'finalize_analysis' || logAction === 'finalize_reject' || (isFinal && setFinal))) {
       if (pendingDirector) {
         notifyDirectorsOnReviewPending(db, {
           tenderId: parseInt(tenderId, 10),
@@ -820,10 +1478,21 @@ async function reviewRoutes(fastify) {
           actorName: request.user.name || request.user.login,
           log: request.log
         }).catch(() => {});
+        try {
+          const tenderDirectorMail = require('../services/tender-director-mail');
+          // Ждём запись получателей/токенов; SMTP dry_run быстрый. Fire-and-forget ломал адресное согласование.
+          await tenderDirectorMail.sendDirectorMail(db, parseInt(tenderId, 10), {
+            log: request.log,
+            recipients: approvalRecipients
+          });
+        } catch (e) {
+          request.log.warn({ err: e, tenderId }, 'tender director mail failed');
+        }
       } else {
         notifyToOnReviewReady(db, {
           tenderId: parseInt(tenderId, 10),
-          kind: logAction === 'finalize_analysis' ? 'analysis' : 'report',
+          kind: logAction === 'finalize_analysis' ? 'analysis'
+            : (logAction === 'finalize_reject' ? 'reject' : 'report'),
           actorName: request.user.name || request.user.login,
           log: request.log
         }).catch(() => {});
@@ -842,16 +1511,23 @@ async function reviewRoutes(fastify) {
     const duty = await getCurrentDuty(db);
     const isDuty = duty && duty.pm_user_id === userId;
     const collab = await isCollaborator(db, tenderId, userId);
+    const isParticipant = await isReviewParticipant(db, tenderId, userId);
     const tenderRow = await db.query('SELECT calculator_user_id FROM tenders WHERE id = $1', [tenderId]);
-    const isCalc = tenderRow.rows[0] && Number(tenderRow.rows[0].calculator_user_id) === userId;
-    if (!isDuty && !collab && !isCalc && !['ADMIN', 'HEAD_TO', 'HEAD_PM', 'TO'].includes(request.user.role)) {
-      return reply.code(403).send({ error: 'Нет доступа к загрузке сметы' });
-    }
-
-    const review = await ensureReview(db, tenderId, userId);
-    if (review.is_final) {
-      return reply.code(409).send({ error: 'Отчёт уже закрыт' });
-    }
+    const tender = tenderRow.rows[0];
+    const isCalc = tender && Number(tender.calculator_user_id) === userId;
+    const isWide = ['ADMIN', 'HEAD_TO', 'HEAD_PM'].includes(request.user.role);
+    let review = await ensureReview(db, tenderId, userId);
+    try {
+      review = await ensureAnalysisOwner(db, review, userId, duty?.pm_user_id, {
+        allowActorFallback: !!(isDuty || isCalc || isParticipant)
+      });
+    } catch (_) { /* ignore */ }
+    const { ownerUserId } = await resolveFinalOwner(db, review, tender, duty?.pm_user_id);
+    const isFinalOwner = (ownerUserId && Number(ownerUserId) === userId) || isWide;
+    const access = assertFinalFileUploadAccess({
+      review, isDuty, isParticipant, collab, isCalc, isWide, isFinalOwner
+    });
+    if (!access.ok) return reply.code(access.code).send(access.body);
 
     const data = await request.file();
     if (!data) return reply.code(400).send({ error: 'Файл обязателен' });
@@ -889,16 +1565,23 @@ async function reviewRoutes(fastify) {
     const duty = await getCurrentDuty(db);
     const isDuty = duty && duty.pm_user_id === userId;
     const collab = await isCollaborator(db, tenderId, userId);
+    const isParticipant = await isReviewParticipant(db, tenderId, userId);
     const tenderRow = await db.query('SELECT calculator_user_id FROM tenders WHERE id = $1', [tenderId]);
-    const isCalc = tenderRow.rows[0] && Number(tenderRow.rows[0].calculator_user_id) === userId;
-    if (!isDuty && !collab && !isCalc && !['ADMIN', 'HEAD_TO', 'HEAD_PM', 'TO'].includes(request.user.role)) {
-      return reply.code(403).send({ error: 'Нет доступа к загрузке отчёта' });
-    }
-
-    const review = await ensureReview(db, tenderId, userId);
-    if (review.is_final) {
-      return reply.code(409).send({ error: 'Отчёт уже закрыт' });
-    }
+    const tender = tenderRow.rows[0];
+    const isCalc = tender && Number(tender.calculator_user_id) === userId;
+    const isWide = ['ADMIN', 'HEAD_TO', 'HEAD_PM'].includes(request.user.role);
+    let review = await ensureReview(db, tenderId, userId);
+    try {
+      review = await ensureAnalysisOwner(db, review, userId, duty?.pm_user_id, {
+        allowActorFallback: !!(isDuty || isCalc || isParticipant)
+      });
+    } catch (_) { /* ignore */ }
+    const { ownerUserId } = await resolveFinalOwner(db, review, tender, duty?.pm_user_id);
+    const isFinalOwner = (ownerUserId && Number(ownerUserId) === userId) || isWide;
+    const access = assertFinalFileUploadAccess({
+      review, isDuty, isParticipant, collab, isCalc, isWide, isFinalOwner
+    });
+    if (!access.ok) return reply.code(access.code).send(access.body);
 
     const data = await request.file();
     if (!data) return reply.code(400).send({ error: 'Файл обязателен' });
@@ -936,16 +1619,23 @@ async function reviewRoutes(fastify) {
     const duty = await getCurrentDuty(db);
     const isDuty = duty && duty.pm_user_id === userId;
     const collab = await isCollaborator(db, tenderId, userId);
+    const isParticipant = await isReviewParticipant(db, tenderId, userId);
     const tenderRow = await db.query('SELECT calculator_user_id FROM tenders WHERE id = $1', [tenderId]);
-    const isCalc = tenderRow.rows[0] && Number(tenderRow.rows[0].calculator_user_id) === userId;
-    if (!isDuty && !collab && !isCalc && !['ADMIN', 'HEAD_TO', 'HEAD_PM', 'TO'].includes(request.user.role)) {
-      return reply.code(403).send({ error: 'Нет доступа к загрузке ТКП' });
-    }
-
-    const review = await ensureReview(db, tenderId, userId);
-    if (review.is_final) {
-      return reply.code(409).send({ error: 'Отчёт уже закрыт' });
-    }
+    const tender = tenderRow.rows[0];
+    const isCalc = tender && Number(tender.calculator_user_id) === userId;
+    const isWide = ['ADMIN', 'HEAD_TO', 'HEAD_PM'].includes(request.user.role);
+    let review = await ensureReview(db, tenderId, userId);
+    try {
+      review = await ensureAnalysisOwner(db, review, userId, duty?.pm_user_id, {
+        allowActorFallback: !!(isDuty || isCalc || isParticipant)
+      });
+    } catch (_) { /* ignore */ }
+    const { ownerUserId } = await resolveFinalOwner(db, review, tender, duty?.pm_user_id);
+    const isFinalOwner = (ownerUserId && Number(ownerUserId) === userId) || isWide;
+    const access = assertFinalFileUploadAccess({
+      review, isDuty, isParticipant, collab, isCalc, isWide, isFinalOwner
+    });
+    if (!access.ok) return reply.code(access.code).send(access.body);
 
     const data = await request.file();
     if (!data) return reply.code(400).send({ error: 'Файл обязателен' });
@@ -995,13 +1685,22 @@ async function reviewRoutes(fastify) {
     if (!pm_user_id) return reply.code(400).send({ error: 'pm_user_id обязателен' });
 
     const duty = await getCurrentDuty(db);
-    if (!duty || duty.pm_user_id !== request.user.id) {
-      if (!['ADMIN', 'HEAD_TO'].includes(request.user.role)) {
-        return reply.code(403).send({ error: 'Приглашать может только дежурный РП' });
-      }
+    const isDuty = duty && Number(duty.pm_user_id) === request.user.id;
+    const tenderRow = await db.query(
+      'SELECT calculator_user_id FROM tenders WHERE id = $1',
+      [tenderId]
+    );
+    const isCalc = tenderRow.rows[0] && Number(tenderRow.rows[0].calculator_user_id) === request.user.id;
+    const review = await ensureReview(db, tenderId, request.user.id);
+    try {
+      await ensureAnalysisOwner(db, review, request.user.id, duty?.pm_user_id);
+    } catch (_) { /* ignore */ }
+    const { ownerUserId } = await resolveFinalOwner(db, review, tenderRow.rows[0], duty?.pm_user_id);
+    const isOwner = ownerUserId && Number(ownerUserId) === request.user.id;
+    if (!isDuty && !isCalc && !isOwner && !['ADMIN', 'HEAD_TO'].includes(request.user.role)) {
+      return reply.code(403).send({ error: 'Приглашать может хозяин фазы, дежурный или считающий' });
     }
 
-    const review = await ensureReview(db, tenderId, request.user.id);
     const r = await db.query(`
       INSERT INTO tender_rp_review_collaborators (review_id, tender_id, pm_user_id, invited_by_user_id)
       VALUES ($1, $2, $3, $4)
@@ -1014,12 +1713,18 @@ async function reviewRoutes(fastify) {
       action: 'invite_collaborator', payload: { pm_user_id }
     });
 
-    createNotification(db, {
-      user_id: pm_user_id,
-      title: 'Приглашение к проверке тендера',
-      message: `${request.user.name || 'РП'} пригласил вас к проверке тендера #${tenderId}`,
-      type: 'tender',
-      link: '#/pm-calculations'
+    const tInfo = await db.query(
+      'SELECT id, customer_name, tender_title FROM tenders WHERE id = $1',
+      [tenderId]
+    );
+    const { notifyPmCalcEvent } = require('../services/tender-assign-notify');
+    await notifyPmCalcEvent(db, {
+      userId: pm_user_id,
+      kind: 'invite',
+      tender: tInfo.rows[0] || { id: tenderId },
+      actorName: request.user.name || 'РП',
+      link: '#/pm-calculations',
+      log: request.log
     });
 
     return { collaborator: r.rows[0] };
@@ -1028,11 +1733,25 @@ async function reviewRoutes(fastify) {
   fastify.delete('/:id/rp-review/invite/:pmId', {
     preHandler: [fastify.requireRoles(PM_ROLES)]
   }, async (request, reply) => {
-    const review = await ensureReview(db, request.params.id, request.user.id);
+    const tenderId = request.params.id;
+    const duty = await getCurrentDuty(db);
+    const isDuty = duty && Number(duty.pm_user_id) === request.user.id;
+    const tenderRow = await db.query('SELECT calculator_user_id FROM tenders WHERE id = $1', [tenderId]);
+    const isCalc = tenderRow.rows[0] && Number(tenderRow.rows[0].calculator_user_id) === request.user.id;
+    const review = await ensureReview(db, tenderId, request.user.id);
+    const { ownerUserId } = await resolveFinalOwner(db, review, tenderRow.rows[0], duty?.pm_user_id);
+    const isOwner = ownerUserId && Number(ownerUserId) === request.user.id;
+    if (!isDuty && !isCalc && !isOwner && !['ADMIN', 'HEAD_TO'].includes(request.user.role)) {
+      return reply.code(403).send({ error: 'Отозвать приглашение может хозяин фазы' });
+    }
     await db.query(`
       UPDATE tender_rp_review_collaborators SET revoked_at = NOW()
       WHERE review_id = $1 AND pm_user_id = $2
     `, [review.id, request.params.pmId]);
+    await writeReviewLog(db, {
+      reviewId: review.id, tenderId, actorUserId: request.user.id,
+      action: 'revoke_collaborator', payload: { pm_user_id: Number(request.params.pmId) }
+    });
     return { ok: true };
   });
 
@@ -1055,10 +1774,7 @@ async function reviewRoutes(fastify) {
     }
 
     if (action === 'accept') {
-      await db.query(`
-        UPDATE tenders SET registry_status = 'готовим', tender_status = $1, updated_at = NOW()
-        WHERE id = $2 AND registry_status NOT IN ('отмена', 'проиграли')
-      `, [syncTenderStatus('готовим'), tenderId]);
+      await applyRegistryStatus(db, tenderId, 'готовим', true);
       await writeReviewLog(db, {
         reviewId: review.id, tenderId, actorUserId: userId,
         action: 'to_accept', payload: { comment: comment || null }
@@ -1077,11 +1793,15 @@ async function reviewRoutes(fastify) {
         action: 'to_reject', payload: { comment: comment || null, reject_reason: reject_reason || null }
       });
     } else if (action === 'rework') {
+      // Возврат на доработку: отчёт снова черновик, считающий сбрасывается —
+      // иначе в реестре «назначьте РП», а в колонке «Считает» остаётся прежний.
       await db.query(`
-        UPDATE tender_rp_reviews SET is_final = false, updated_at = NOW() WHERE tender_id = $1
+        UPDATE tender_rp_reviews SET is_final = false, calculator_user_id = NULL, updated_at = NOW()
+        WHERE tender_id = $1
       `, [tenderId]);
       await db.query(`
-        UPDATE tenders SET registry_status = 'рассмотрение', tender_status = $1, updated_at = NOW()
+        UPDATE tenders SET registry_status = 'рассмотрение', tender_status = $1,
+          calculator_user_id = NULL, calculator_kind = NULL, updated_at = NOW()
         WHERE id = $2
       `, [syncTenderStatus('рассмотрение'), tenderId]);
       await writeReviewLog(db, {
@@ -1127,10 +1847,7 @@ async function reviewRoutes(fastify) {
           updated_at = NOW()
         WHERE tender_id = $4
       `, [director_status, userId, comment || null, tenderId]);
-      await db.query(`
-        UPDATE tenders SET registry_status = $1, tender_status = $2, updated_at = NOW()
-        WHERE id = $3 AND registry_status NOT IN ('отмена', 'проиграли')
-      `, [registry_status, syncTenderStatus(registry_status), tenderId]);
+      await applyRegistryStatus(db, tenderId, registry_status, true);
       await writeReviewLog(db, {
         reviewId: review.id, tenderId, actorUserId: userId,
         action: 'director_submit', payload: { comment: comment || null }
@@ -1146,11 +1863,17 @@ async function reviewRoutes(fastify) {
           updated_at = NOW()
         WHERE tender_id = $4
       `, [director_status, userId, String(comment).trim(), tenderId]);
-      await db.query(`
-        UPDATE tenders SET registry_status = 'отмена', tender_status = 'Не подходит',
-          reject_reason = $1, updated_at = NOW()
-        WHERE id = $2
-      `, [String(comment).trim(), tenderId]);
+      {
+        const reason = String(comment).trim();
+        const archiveReason = `Отказ директора: ${reason}`.slice(0, 500);
+        await db.query(`
+          UPDATE tenders SET registry_status = 'отмена', tender_status = 'Не подходит',
+            reject_reason = $1,
+            archived_at = NOW(), archived_by = $2, archive_reason = $3,
+            updated_at = NOW()
+          WHERE id = $4
+        `, [reason, userId, archiveReason, tenderId]);
+      }
       await writeReviewLog(db, {
         reviewId: review.id, tenderId, actorUserId: userId,
         action: 'director_reject', payload: { comment: String(comment).trim() }
@@ -1377,6 +2100,8 @@ async function reviewRoutes(fastify) {
 
     return reply.code(415).send({ error: 'Предпросмотр недоступен для этого типа файла' });
   });
+
+  registerRpReviewCollabRoutes(fastify);
 }
 
 module.exports = routes;

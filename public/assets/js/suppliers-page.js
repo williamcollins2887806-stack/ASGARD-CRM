@@ -24,10 +24,24 @@ window.AsgardSuppliersPage = (function() {
   async function apiDel(url)        { return apiFetch(url, { method: 'DELETE' }); }
 
   /* ─── Formatters ─── */
-  const money = v  => v != null ? Number(v).toLocaleString('ru-RU') + ' ₽' : '—';
+  const money = (v) => (AsgardUI.moneyRub || AsgardMoney.formatMoney)(v);
   const dt    = d  => d ? new Date(d).toLocaleDateString('ru-RU') : '—';
   const dtFull= d  => d ? new Date(d).toLocaleString('ru-RU', { day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit' }) : '—';
 
+  function humanProductName(name, id) {
+    const t = String(name || '').trim();
+    if (!t) return id != null ? ('Позиция #' + id) : '—';
+    if (/FALLBACK|E2E|Gallery\+|FULL-BIZ|\d{10,}/i.test(t)) return id != null ? ('Позиция #' + id) : (t.length > 36 ? t.slice(0, 33) + '…' : t);
+    return t;
+  }
+  function humanSupplierName(name, id) {
+    const t = String(name || '').trim();
+    if (/^STORY\b/i.test(t)) return id != null ? ('Поставщик #' + id) : t;
+    return t || (id != null ? ('Поставщик #' + id) : '—');
+  }
+  function humanPriceItemName(r) {
+    return humanProductName(r.item_name || r.product_ref_name, r.product_id || r.id);
+  }
   const CAT_LABELS = { materials: 'Материалы', equipment_rental: 'Аренда техники', services: 'Услуги', other: 'Прочее' };
   const SRC_LABELS = { manual: 'Вручную', quote: 'КП', ai_search: 'AI-поиск', market_monitoring: 'Мониторинг', procurement: 'Из закупки' };
 
@@ -75,6 +89,7 @@ window.AsgardSuppliersPage = (function() {
     if (!content) return;
     if (tab === 'suppliers')  renderSuppliersTab(content);
     else if (tab === 'prices')  renderPricesTab(content);
+    else if (tab === 'products') renderProductsTab(content);
   }
 
   /* ═══════════════════════════════════════════════════════════
@@ -143,13 +158,13 @@ window.AsgardSuppliersPage = (function() {
 
   function renderSuppliersTable(items, el) {
     if (!items.length) { el.innerHTML = '<div class="sup-empty">Поставщиков нет</div>'; return; }
-    el.innerHTML = `<div class="sup-table-wrap"><table class="sup-table proc-items-table">
+    el.innerHTML = `<div class="sup-table-wrap"><table class="sup-table">
       <thead><tr>
         <th>Название</th><th>ИНН</th><th>Телефон</th><th>Категория</th>
         <th>Рейтинг</th><th>Контакты</th><th>Статус</th>
       </tr></thead>
       <tbody>${items.map(r => `<tr data-id="${r.id}">
-        <td><strong>${esc(r.name)}</strong></td>
+        <td><strong>${esc(humanSupplierName(r.name, r.id))}</strong></td>
         <td style="color:var(--t2)">${esc(r.inn || '—')}</td>
         <td>${esc(r.phone || '—')}</td>
         <td>${catBadge(r.category)}</td>
@@ -175,7 +190,7 @@ window.AsgardSuppliersPage = (function() {
       let html = `<div class="sup-detail">
         <div class="sup-detail__header">
           <div>
-            <h2 class="sup-detail__title">${esc(s.name)}</h2>
+            <h2 class="sup-detail__title">${esc(humanSupplierName(s.name, s.id))}</h2>
             <div style="margin-top:4px;display:flex;gap:var(--sp-2);flex-wrap:wrap">
               ${catBadge(s.category)} ${activeBadge(s.is_active !== false)}
             </div>
@@ -253,7 +268,7 @@ window.AsgardSuppliersPage = (function() {
           html += `<div class="sup-detail__section-title" style="margin-top:var(--sp-2)">Топ товаров</div>`;
           topItems.forEach(ti => {
             html += `<div class="sup-top-item">
-              <span class="sup-top-item__name">${esc(ti.item_name)}</span>
+              <span class="sup-top-item__name">${esc(humanProductName(ti.item_name, ti.product_id))}</span>
               <span class="sup-top-item__meta">
                 <span>${ti.cnt} поз.</span>
                 <span>${money(ti.avg_price)}</span>
@@ -272,7 +287,7 @@ window.AsgardSuppliersPage = (function() {
 
       html += `</div>`;
 
-      showModal({ title: 'Поставщик: ' + s.name, html: html });
+      showModal({ title: 'Поставщик: ' + humanSupplierName(s.name, s.id), html: html });
 
       /* Рейтинг / категория в форме */
       const catW = document.getElementById('sup-edit-cat_w');
@@ -367,7 +382,7 @@ window.AsgardSuppliersPage = (function() {
         phEl.innerHTML = `<div class="sup-table-wrap"><table class="sup-ph-table">
           <thead><tr><th>Товар</th><th>Ед.</th><th>Цена</th><th>Источник</th><th>Дата</th></tr></thead>
           <tbody>${rows.slice(0, 50).map(r => `<tr>
-            <td>${esc(r.item_name || r.product_ref_name || '—')}</td>
+            <td>${esc(humanPriceItemName(r))}</td>
             <td>${esc(r.unit || '—')}</td>
             <td><strong>${money(r.unit_price)}</strong></td>
             <td>${srcBadge(r.source)}</td>
@@ -498,7 +513,7 @@ window.AsgardSuppliersPage = (function() {
         <div id="sup-p-src_w" style="display:inline-block;min-width:160px"></div>
         <input type="date" id="sup-p-from" value="${esc(_priceFilters.date_from)}" title="Дата с">
         <input type="date" id="sup-p-to"   value="${esc(_priceFilters.date_to)}"   title="Дата по">
-        ${canWrite() ? '<button class="btn primary" id="sup-p-create">+ Цена вручную</button>' : ''}
+        ${canWrite() ? '<button class="btn primary" id="sup-p-create">+ Цена вручную</button><button class="btn ghost" id="sup-p-import" title="Загрузить Excel прайс в каталог">Загрузить Excel / прайс</button>' : ''}
       </div>
       <div id="sup-p-table"></div>`;
 
@@ -526,11 +541,102 @@ window.AsgardSuppliersPage = (function() {
 
     const createBtn = el.querySelector('#sup-p-create');
     if (createBtn) createBtn.onclick = () => openPriceCreateModal(() => loadPrices(el.querySelector('#sup-p-table')));
+    const importBtn = el.querySelector('#sup-p-import');
+    if (importBtn) importBtn.onclick = () => openCatalogImportModal(() => loadPrices(el.querySelector('#sup-p-table')));
 
     await loadPrices(el.querySelector('#sup-p-table'));
   }
 
+  function openCatalogImportModal(onDone) {
+    const html = `<div class="proc-pay-modal" style="max-width:480px">
+      <p class="proc-pay-modal__hint">Загрузка базы товаров и цен (Excel). Используется тот же импорт, что и на складе: товары, поставщики и цены.</p>
+      <label class="proc-pay-modal__label">Файл Excel</label>
+      <div class="proc-file" style="margin-bottom:12px">
+        <label class="proc-file__btn" for="sup-ci-file">Выбрать файл</label>
+        <span class="proc-file__name" id="sup-ci-name">файл не выбран</span>
+        <input type="file" id="sup-ci-file" accept=".xlsx,.xls,.csv">
+      </div>
+      <button class="btn primary" id="sup-ci-go" style="width:100%">Загрузить и применить</button>
+    </div>`;
+    showModal({ title: 'Импорт прайса / номенклатуры', html });
+    const inp = document.getElementById('sup-ci-file');
+    if (inp) inp.onchange = () => {
+      const n = document.getElementById('sup-ci-name');
+      if (n) n.textContent = (inp.files[0] && inp.files[0].name) || 'файл не выбран';
+    };
+    document.getElementById('sup-ci-go').onclick = async () => {
+      const f = document.getElementById('sup-ci-file').files[0];
+      if (!f) { toast('Файл', 'Выберите Excel', 'err'); return; }
+      try {
+        const fd = new FormData();
+        fd.append('file', f);
+        const up = await fetch('/api/catalog-import/excel', { method: 'POST', headers: { Authorization: hdr().Authorization }, body: fd });
+        const uj = await up.json();
+        if (!up.ok) throw new Error(uj.error || 'Ошибка загрузки');
+        const id = uj.id || uj.import_id;
+        if (!id) throw new Error('Нет id импорта');
+        const ap = await apiPost('/api/catalog-import/' + id + '/apply', {});
+        toast('Импорт', `Готово${ap.products != null ? ': товаров ' + ap.products : ''}`, 'ok');
+        closeModal();
+        if (onDone) onDone();
+      } catch (e) { toast('Ошибка', e.message, 'err'); }
+    };
+  }
+
+  /* ═══════════════════════════════════════════════════════════
+     TAB — НОМЕНКЛАТУРА (keyword search)
+  ═══════════════════════════════════════════════════════════ */
+  let _prodSearch = '';
+  async function renderProductsTab(el) {
+    el.innerHTML = `
+      <div class="sup-toolbar">
+        <input type="text" id="sup-prod-search" placeholder="Поиск по ключевым словам / артикулу..." value="${esc(_prodSearch)}">
+        ${canWrite() ? '<button class="btn ghost" id="sup-prod-import">Загрузить Excel / прайс</button>' : ''}
+      </div>
+      <p class="proc-pay-modal__hint" style="margin:0 0 10px">Номенклатура из каталога products. Цены подтягиваются из базы цен и счетов.</p>
+      <div id="sup-prod-table"></div>`;
+    let tmr;
+    el.querySelector('#sup-prod-search').oninput = e => {
+      clearTimeout(tmr);
+      tmr = setTimeout(() => { _prodSearch = e.target.value; loadProducts(el.querySelector('#sup-prod-table')); }, 280);
+    };
+    const ib = el.querySelector('#sup-prod-import');
+    if (ib) ib.onclick = () => openCatalogImportModal(() => loadProducts(el.querySelector('#sup-prod-table')));
+    await loadProducts(el.querySelector('#sup-prod-table'));
+  }
+
+  async function loadProducts(tableEl) {
+    if (!tableEl) return;
+    tableEl.innerHTML = '<div class="sup-empty">Загрузка...</div>';
+    try {
+      const q = (_prodSearch || '').trim();
+      const url = q
+        ? '/api/products/search?q=' + encodeURIComponent(q)
+        : '/api/products?limit=80';
+      const d = await apiFetch(url);
+      const items = d.items || d.products || d.results || (Array.isArray(d) ? d : []);
+      if (!items.length) {
+        tableEl.innerHTML = '<div class="sup-empty">Ничего не найдено. Загрузите прайс или добавьте счёт в закупку.</div>';
+        return;
+      }
+      tableEl.innerHTML = `<div class="sup-table-wrap"><table class="sup-table">
+        <thead><tr><th>Название</th><th>Артикул</th><th>Ед.</th><th>ID</th></tr></thead>
+        <tbody>${items.slice(0, 100).map(p => `<tr>
+          <td>${esc(humanProductName(p.name, p.id))}</td>
+          <td>${esc(p.article || '—')}</td>
+          <td>${esc(p.unit || 'шт')}</td>
+          <td>${p.id}</td>
+        </tr>`).join('')}</tbody></table></div>`;
+    } catch (e) {
+      tableEl.innerHTML = '<div class="sup-empty" style="color:var(--err)">' + esc(e.message) + '</div>';
+    }
+  }
+
+  /* ═══════════════════════════════════════════════════════════
+     LOAD PRICES
+  ═══════════════════════════════════════════════════════════ */
   async function loadPrices(tableEl) {
+    if (!tableEl) return;
     tableEl.innerHTML = '<div class="sup-empty">Загрузка...</div>';
     try {
       const params = new URLSearchParams();
@@ -547,16 +653,16 @@ window.AsgardSuppliersPage = (function() {
 
   function renderPricesTable(items, el) {
     if (!items.length) { el.innerHTML = '<div class="sup-empty">Записей нет</div>'; return; }
-    el.innerHTML = `<div class="sup-table-wrap"><table class="sup-table proc-items-table">
+    el.innerHTML = `<div class="sup-table-wrap"><table class="sup-table">
       <thead><tr>
         <th>Товар</th><th>Ед.</th><th>Цена</th><th>Поставщик</th>
         <th>Источник</th><th>Дата</th><th>Кто внёс</th>
       </tr></thead>
       <tbody>${items.map(r => `<tr>
-        <td><strong>${esc(r.item_name || r.product_ref_name || '—')}</strong></td>
+        <td><strong>${esc(humanPriceItemName(r))}</strong></td>
         <td>${esc(r.unit || '—')}</td>
         <td><strong>${money(r.unit_price)}</strong></td>
-        <td style="color:var(--t2)">${esc(r.supplier_name || r.supplier_ref_name || '—')}</td>
+        <td style="color:var(--t2)">${esc(humanSupplierName(r.supplier_name || r.supplier_ref_name, r.supplier_id))}</td>
         <td>${srcBadge(r.source)}</td>
         <td style="color:var(--t2)">${dt(r.recorded_at)}</td>
         <td style="color:var(--t3)">${esc(r.recorded_by_name || '—')}</td>
@@ -651,7 +757,8 @@ window.AsgardSuppliersPage = (function() {
     /* Tab bar */
     _pageEl.innerHTML = `
       <div class="sup-tabs">
-        <button class="sup-tab sup-tab--active" data-tab="suppliers">Поставщики</button>
+        <button class="sup-tab ${_activeTab==='suppliers'?'sup-tab--active':''}" data-tab="suppliers">Поставщики</button>
+        <button class="sup-tab" data-tab="products">Номенклатура</button>
         <button class="sup-tab" data-tab="prices">База цен</button>
       </div>
       <div id="sup-tab-content"></div>`;

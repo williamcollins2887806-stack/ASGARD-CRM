@@ -5,7 +5,7 @@
 window.AsgardTOAnalytics = (function(){
   const { $, $$, esc, toast } = AsgardUI;
 
-  function money(x) { return AsgardUI.money(x) + ' ₽'; }
+  function money(x) { return (AsgardUI.moneyRub || AsgardMoney.formatMoney)(x); }
   function shortMoney(x){
     const n=Number(x)||0;
     if(n>=1000000) return (n/1000000).toFixed(1)+'М';

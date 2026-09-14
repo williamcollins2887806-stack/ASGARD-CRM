@@ -4,9 +4,9 @@
  * CRM endpoints (PM/HEAD_PM/DIRECTOR/BUH/ADMIN):
  *   GET    /                              — список выплат (фильтры)
  *   POST   /                              — создать выплату
- *   PUT    /:id                           — обновить (если pending)
+ *   PUT    /:id                           — обновить pending/paid/confirmed (не cancelled)
  *   PUT    /:id/pay                       — отметить выплату (pending→paid)
- *   DELETE /:id                           — отменить (status=cancelled)
+ *   DELETE /:id                           — отменить (status=cancelled) + снять хвосты в work_expenses
  *   GET    /employee-summary              — сводка по рабочему (SSoT, для модалки)
  *   POST   /pay-worker                    — выплатить рабочему (новая запись paid)
  *   POST   /bulk-per-diem                 — массовые суточные
@@ -57,6 +57,57 @@ function scopeForRole(role) {
 
 const MANAGE_ROLES = ['PM', 'HEAD_PM', 'TO', 'HEAD_TO', 'PROC', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV', 'BUH', 'ADMIN'];
 const DIRECTOR_ROLES = ['DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV', 'BUH', 'ADMIN'];
+const PAYMENT_EDITABLE_STATUSES = ['pending', 'paid', 'confirmed'];
+
+function empDisplayNameSql(alias) {
+  const a = alias || 'e';
+  return `COALESCE(NULLIF(TRIM(${a}.fio), ''), NULLIF(TRIM(${a}.full_name), ''), 'ID ' || ${a}.id)`;
+}
+
+/** Снять авто-расходы, порождённые выплатой. Финализированные — только для director/admin/buh. */
+async function cleanWorkerPaymentTails(db, paymentId, { forceFinalized } = {}) {
+  const bonusKey = 'wp_bonus:' + paymentId;
+  const { rows: deleted } = await db.query(`
+    DELETE FROM work_expenses
+    WHERE source_table = 'worker_payments'
+      AND (source_id = $1 OR source_key = $2)
+      AND COALESCE(is_finalized, FALSE) = FALSE
+    RETURNING id, category, amount
+  `, [paymentId, bonusKey]);
+
+  let forced = [];
+  const { rows: leftover } = await db.query(`
+    SELECT id, category, amount, is_finalized
+    FROM work_expenses
+    WHERE source_table = 'worker_payments'
+      AND (source_id = $1 OR source_key = $2)
+  `, [paymentId, bonusKey]);
+
+  if (forceFinalized && leftover.length) {
+    const ids = leftover.map((r) => r.id);
+    const { rows: gone } = await db.query(
+      `DELETE FROM work_expenses WHERE id = ANY($1::int[]) RETURNING id, category, amount`,
+      [ids]
+    );
+    forced = gone;
+  }
+
+  let handovers = [];
+  try {
+    const h = await db.query(
+      `SELECT id FROM worker_to_pm_handovers WHERE source_worker_payment_id = $1`,
+      [paymentId]
+    );
+    handovers = h.rows;
+  } catch (_) { /* таблица может отсутствовать на старом клоне */ }
+
+  return {
+    deleted_expenses: deleted,
+    forced_expenses: forced,
+    leftover_expenses: forceFinalized ? [] : leftover,
+    related_handovers: handovers
+  };
+}
 
 async function routes(fastify, options) {
   const db = fastify.db;
@@ -111,7 +162,7 @@ async function routes(fastify, options) {
       const offPh = `$${lparams.length}`;
 
       const { rows } = await db.query(`
-        SELECT wp.*, e.fio as employee_name, e.phone as employee_phone,
+        SELECT wp.*, ${empDisplayNameSql('e')} as employee_name, e.phone as employee_phone,
                w.work_title, w.work_number,
                cb.fio as created_by_name,
                pb.fio as paid_by_name
@@ -209,27 +260,37 @@ async function routes(fastify, options) {
     }
   });
 
-  // ─── PUT /:id — обновить выплату (если pending) ────────────────────
+  // ─── PUT /:id — обновить выплату (pending / paid / confirmed) ──────
   fastify.put('/:id', crmAuth, async (req, reply) => {
     try {
       const paymentId = parseInt(req.params.id);
       const { rows: existing } = await db.query('SELECT * FROM worker_payments WHERE id = $1', [paymentId]);
       if (existing.length === 0) return reply.code(404).send({ error: 'Выплата не найдена' });
-      if (existing[0].status !== 'pending') {
-        return reply.code(400).send({ error: 'Можно редактировать только pending выплаты' });
+      const prev = existing[0];
+      if (!PAYMENT_EDITABLE_STATUSES.includes(prev.status)) {
+        return reply.code(400).send({ error: 'Нельзя редактировать отменённую выплату' });
+      }
+
+      const body = req.body || {};
+      if (body.amount !== undefined) {
+        const amt = parseFloat(body.amount);
+        if (!Number.isFinite(amt)) return reply.code(400).send({ error: 'Некорректная сумма' });
+        if (amt <= 0 && prev.type !== 'penalty') {
+          return reply.code(400).send({ error: 'Сумма должна быть больше 0' });
+        }
       }
 
       const allowed = ['amount', 'days', 'rate_per_day', 'total_points', 'point_value',
         'payment_method', 'comment', 'period_from', 'period_to', 'pay_month', 'pay_year',
-        'works_detail', 'work_id'];
+        'works_detail', 'work_id', 'paid_at'];
       const sets = [];
       const params = [];
       let idx = 1;
 
       for (const key of allowed) {
-        if (req.body[key] !== undefined) {
+        if (body[key] !== undefined) {
           sets.push(`${key} = $${idx++}`);
-          const val = req.body[key];
+          const val = body[key];
           params.push(key === 'works_detail' && val ? JSON.stringify(val) : val === '' ? null : val);
         }
       }
@@ -241,8 +302,38 @@ async function routes(fastify, options) {
       const { rows } = await db.query(
         `UPDATE worker_payments SET ${sets.join(', ')} WHERE id = $${idx} RETURNING *`, params
       );
+      const updatedPay = rows[0];
 
-      return { payment: rows[0] };
+      // Триггер V259 сам синхронизирует per_diem/bonus. Дублируем UPDATE на случай
+      // старого тела функции: иначе правка суммы оставит хвост в себестоимости.
+      try {
+        await db.query(`
+          UPDATE work_expenses
+          SET amount = $1,
+              date = COALESCE($2::date, date),
+              updated_at = NOW()
+          WHERE source_table = 'worker_payments'
+            AND (source_id = $3 OR source_key = $4)
+            AND COALESCE(is_finalized, FALSE) = FALSE
+        `, [
+          updatedPay.amount,
+          updatedPay.paid_at || null,
+          paymentId,
+          'wp_bonus:' + paymentId
+        ]);
+      } catch (_) { /* work_expenses может отсутствовать на старом клоне */ }
+
+      try {
+        await db.query(`
+          INSERT INTO audit_log (actor_user_id, entity_type, entity_id, action, payload_json, created_at)
+          VALUES ($1, 'worker_payments', $2, 'payment_updated', $3::jsonb, NOW())
+        `, [req.user.id, paymentId, JSON.stringify({
+          before: { amount: prev.amount, comment: prev.comment, payment_method: prev.payment_method, status: prev.status },
+          after: { amount: updatedPay.amount, comment: updatedPay.comment, payment_method: updatedPay.payment_method }
+        })]);
+      } catch (_) { /* audit_log опционален */ }
+
+      return { payment: updatedPay };
     } catch (err) {
       logError(fastify, '[worker-payments] PUT /:id error', err, req);
       return reply.code(500).send({ error: 'Ошибка сервера' });
@@ -362,20 +453,58 @@ async function routes(fastify, options) {
     }
   });
 
-  // ─── DELETE /:id — отменить выплату ────────────────────────────────
+  // ─── DELETE /:id — отменить выплату и снять хвосты ─────────────────
+  // Soft-cancel (status=cancelled): балансы SSoT и касса РП считают только
+  // paid/confirmed. Триггер V259 снимает per_diem/bonus из work_expenses.
+  // Здесь дополнительно чистим любые авто-расходы source_table=worker_payments.
   fastify.delete('/:id', crmAuth, async (req, reply) => {
     try {
       const paymentId = parseInt(req.params.id);
       const { rows: existing } = await db.query('SELECT * FROM worker_payments WHERE id = $1', [paymentId]);
       if (existing.length === 0) return reply.code(404).send({ error: 'Выплата не найдена' });
-      if (existing[0].status === 'cancelled') return reply.code(400).send({ error: 'Уже отменена' });
+      const prev = existing[0];
+      if (prev.status === 'cancelled') return reply.code(400).send({ error: 'Уже отменена' });
 
+      const forceFinalized = DIRECTOR_ROLES.includes(req.user.role);
       await db.query(
         `UPDATE worker_payments SET status = 'cancelled', updated_at = NOW() WHERE id = $1`,
         [paymentId]
       );
 
-      return { ok: true };
+      const tails = await cleanWorkerPaymentTails(db, paymentId, { forceFinalized });
+
+      try {
+        await db.query(`
+          INSERT INTO audit_log (actor_user_id, entity_type, entity_id, action, payload_json, created_at)
+          VALUES ($1, 'worker_payments', $2, 'payment_cancelled', $3::jsonb, NOW())
+        `, [req.user.id, paymentId, JSON.stringify({
+          amount: prev.amount,
+          type: prev.type,
+          employee_id: prev.employee_id,
+          work_id: prev.work_id,
+          prev_status: prev.status,
+          payment_method: prev.payment_method,
+          deleted_expenses: tails.deleted_expenses.length + tails.forced_expenses.length,
+          leftover_expenses: tails.leftover_expenses.length,
+          related_handovers: tails.related_handovers.length
+        })]);
+      } catch (_) { /* audit_log опционален */ }
+
+      const leftover = tails.leftover_expenses;
+      return {
+        ok: true,
+        cancelled_id: paymentId,
+        cleaned: {
+          work_expenses: tails.deleted_expenses.length + tails.forced_expenses.length,
+          leftover_finalized: leftover.length,
+          related_handovers: tails.related_handovers.length
+        },
+        warning: leftover.length
+          ? 'Остались зафиксированные расходы по работе — обратитесь к директору, чтобы снять их из себестоимости'
+          : (tails.related_handovers.length
+            ? 'Есть связанная сдача наличных РП — проверьте кассу вручную'
+            : null)
+      };
     } catch (err) {
       logError(fastify, '[worker-payments] DELETE /:id error', err, req);
       return reply.code(500).send({ error: 'Ошибка сервера' });
@@ -820,7 +949,7 @@ async function routes(fastify, options) {
       }
 
       const { rows: onSite } = await db.query(`
-        SELECT DISTINCT e.id AS employee_id, e.fio AS employee_name, e.position,
+        SELECT DISTINCT e.id AS employee_id, ${empDisplayNameSql('e')} AS employee_name, e.position,
                0 AS per_diem_rate
         FROM employees e
         LEFT JOIN employee_assignments ea ON ea.employee_id = e.id AND ea.work_id = $1
@@ -831,7 +960,7 @@ async function routes(fastify, options) {
 
       const onSiteIds = onSite.map((r) => r.employee_id);
       const { rows: others } = await db.query(`
-        SELECT e.id AS employee_id, e.fio AS employee_name, e.position,
+        SELECT e.id AS employee_id, ${empDisplayNameSql('e')} AS employee_name, e.position,
                0 AS per_diem_rate
         FROM employees e
         WHERE COALESCE(e.is_active, true) = true

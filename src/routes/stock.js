@@ -100,16 +100,22 @@ async function routes(fastify) {
    * «в наличии 2 шт на складе X, ячейка A-12»).
    * GET /stock/availability/:productId
    */
-  fastify.get('/availability/:productId', { preHandler: [fastify.requireRoles(WMS_READ)] }, async (req) => {
+  fastify.get('/availability/:productId', { preHandler: [fastify.requireRoles(WMS_READ)] }, async (req, reply) => {
     const pid = parseInt(req.params.productId);
-    const { rows } = await db.query(
-      `SELECT s.warehouse_id, w.name AS warehouse_name, s.location_id, l.label AS location_label,
-        s.quantity, s.reserved_qty, s.unit
-       FROM stock s LEFT JOIN warehouses w ON s.warehouse_id=w.id
-       LEFT JOIN warehouse_locations l ON s.location_id=l.id
-       WHERE s.product_id=$1 AND s.quantity>0 ORDER BY w.name, l.label`, [pid]);
-    const total = rows.reduce((a, r) => a + parseFloat(r.quantity), 0);
-    return { product_id: pid, total, slots: rows };
+    if (!pid || isNaN(pid)) return { product_id: pid, total: 0, slots: [] };
+    try {
+      const { rows } = await db.query(
+        `SELECT s.warehouse_id, w.name AS warehouse_name, s.location_id, l.label AS location_label,
+          s.quantity, s.reserved_qty, s.unit
+         FROM stock s LEFT JOIN warehouses w ON s.warehouse_id=w.id
+         LEFT JOIN warehouse_locations l ON s.location_id=l.id
+         WHERE s.product_id=$1 AND s.quantity>0 ORDER BY w.name, l.label`, [pid]);
+      const total = rows.reduce((a, r) => a + parseFloat(r.quantity), 0);
+      return { product_id: pid, total, slots: rows };
+    } catch (e) {
+      req.log.warn({ err: e }, 'stock/availability failed');
+      return reply.code(200).send({ product_id: pid, total: 0, slots: [], degraded: true });
+    }
   });
 
   /**

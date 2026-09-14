@@ -22,36 +22,49 @@ async function routes(fastify) {
   fastify.get('/monthly', auth, async (req) => {
     const empId = req.fieldEmployee.id;
 
-    // 1. Сменный заработок (FOT) — группировка по календарному месяцу смены
+    // 1. Сменный заработок (FOT) — checkins + stages
     const { rows: shiftRows } = await db.query(`
-      SELECT
-        EXTRACT(YEAR  FROM date)::int AS year,
-        EXTRACT(MONTH FROM date)::int AS month,
-        COALESCE(SUM(amount_earned), 0)::numeric AS fot,
-        COUNT(*)::int                              AS shifts_count
-      FROM field_checkins
-      WHERE employee_id = $1 AND status = 'completed'
-      GROUP BY 1, 2
+      SELECT year, month, SUM(fot)::numeric AS fot, SUM(shifts_count)::int AS shifts_count
+      FROM (
+        SELECT
+          EXTRACT(YEAR  FROM date)::int AS year,
+          EXTRACT(MONTH FROM date)::int AS month,
+          COALESCE(SUM(amount_earned), 0)::numeric AS fot,
+          COUNT(*)::int AS shifts_count
+        FROM field_checkins
+        WHERE employee_id = $1 AND status = 'completed'
+        GROUP BY 1, 2
+        UNION ALL
+        SELECT
+          EXTRACT(YEAR  FROM date_from)::int AS year,
+          EXTRACT(MONTH FROM date_from)::int AS month,
+          COALESCE(SUM(amount_earned), 0)::numeric AS fot,
+          COUNT(*)::int AS shifts_count
+        FROM field_trip_stages
+        WHERE employee_id = $1
+          AND COALESCE(status, 'active') IN ('active', 'completed', 'approved', 'adjusted')
+        GROUP BY 1, 2
+      ) x
+      GROUP BY year, month
     `, [empId]);
 
-    // 2. Суточные — по дате смены × ставка из назначения
-    //    Одна смена = один ряд field_checkins (уникальность employee+date),
-    //    поэтому SUM(per_diem) == days × rate без дублей
-    const { rows: pdRows } = await db.query(`
-      SELECT
-        EXTRACT(YEAR  FROM fc.date)::int AS year,
-        EXTRACT(MONTH FROM fc.date)::int AS month,
-        COALESCE(SUM(COALESCE(ea.per_diem, fps.per_diem, 0)), 0)::numeric AS per_diem_accrued,
-        COUNT(*)::int                                                       AS per_diem_days
-      FROM field_checkins fc
-      LEFT JOIN employee_assignments ea      ON ea.id  = fc.assignment_id
-      LEFT JOIN field_project_settings fps   ON fps.work_id = fc.work_id
-      WHERE fc.employee_id = $1
-        AND fc.status = 'completed'
-        AND fc.amount_earned > 0
-        AND COALESCE(ea.per_diem, fps.per_diem, 0) > 0
-      GROUP BY 1, 2
-    `, [empId]);
+    // 2. Суточные — единый хелпер
+    const { getPerDiemDays } = require('../lib/worker-per-diem-days');
+    const pdAll = await getPerDiemDays(db, empId, {});
+    const pdByMonth = new Map();
+    for (const d of pdAll.days) {
+      const dt = new Date(d.day);
+      const y = dt.getUTCFullYear();
+      const m = dt.getUTCMonth() + 1;
+      const key = `${y}-${m}`;
+      if (!pdByMonth.has(key)) pdByMonth.set(key, { year: y, month: m, per_diem_accrued: 0, per_diem_days: 0 });
+      const row = pdByMonth.get(key);
+      row.per_diem_days += 1;
+      // 0 — валидная ставка («суточные выключены»)
+      const r = Number(d.rate);
+      row.per_diem_accrued += Number.isFinite(r) && r >= 0 ? r : pdAll.default_rate;
+    }
+    const pdRows = [...pdByMonth.values()];
 
     // 3. Выплаченные суммы — группируем по расчётному периоду (pay_year/pay_month)
     //    Аванс, зарплата, суточные оплаченные, бонусы — все по отдельности

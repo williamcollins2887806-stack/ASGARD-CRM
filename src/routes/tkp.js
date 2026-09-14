@@ -54,7 +54,7 @@ if (!numberToWordsRu) {
 }
 
 // Создавать ТКП может: РП (responsible_pm_id тендера), HEAD_PM, директора и ADMIN.
-// TO/HEAD_TO допущены УСЛОВНО — только для тендеров с calculator_kind='to' (ТО считал сам).
+// TO/HEAD_TO — любой существующий тендер (обязательна привязка tender_id).
 // Проверка делается в assertCanCreateTkpForTender по конкретному тендеру.
 const WRITE_ROLES = ['ADMIN', 'PM', 'HEAD_PM', 'TO', 'HEAD_TO', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV'];
 // Видеть список ТКП могут все, кто работает с тендером
@@ -68,14 +68,14 @@ async function assertCanCreateTkpForTender(db, user, tenderId) {
     // ТКП без тендера разрешён только классическому WRITE_ROLES (не ТО/HEAD_TO)
     if (['TO','HEAD_TO'].includes(user.role)) {
       throw Object.assign(
-        new Error('Тендерный отдел может создавать ТКП только привязанные к своему тендеру'),
+        new Error('Тендерный отдел может создавать ТКП только привязанные к тендеру'),
         { statusCode: 403 }
       );
     }
     return;
   }
   const { rows } = await db.query(
-    'SELECT responsible_pm_id, calculator_kind, calculator_user_id, created_by_user_id, created_by FROM tenders WHERE id = $1',
+    'SELECT responsible_pm_id FROM tenders WHERE id = $1',
     [tenderId]
   );
   if (!rows[0]) {
@@ -83,24 +83,8 @@ async function assertCanCreateTkpForTender(db, user, tenderId) {
   }
   const t = rows[0];
 
-  // ТО/HEAD_TO допущены ТОЛЬКО если тендер помечен «считает ТО»
+  // ТО/HEAD_TO — любой тендер CRM (нужен только валидный tender_id)
   if (['TO','HEAD_TO'].includes(user.role)) {
-    if (t.calculator_kind !== 'to') {
-      throw Object.assign(
-        new Error('Тендерный отдел может создавать ТКП только для своих просчётов (calculator_kind=to)'),
-        { statusCode: 403 }
-      );
-    }
-    // ТО — только для своего тендера (своего расчёта); HEAD_TO — для любого ТО-тендера
-    if (user.role === 'TO') {
-      const owner = Number(t.calculator_user_id || t.created_by_user_id || t.created_by);
-      if (owner !== Number(user.id)) {
-        throw Object.assign(
-          new Error('ТКП по этому тендеру создаёт только сам ТО, который его считал'),
-          { statusCode: 403 }
-        );
-      }
-    }
     return;
   }
 
@@ -188,7 +172,7 @@ async function routes(fastify, options) {
             contact_person, contact_phone, contact_email, customer_email,
             items, content_json, services, deadline, validity_days,
             source, estimate_id, link_type, pre_tender_id, purpose_reason,
-            tkp_number, tkp_type } = b;
+            tkp_number, tkp_type, kp_variant } = b;
     // Frontend-aliases — фронт шлёт total_amount/address/description, БД хранит total_sum/customer_address/work_description.
     // Без этих маппингов сумма КП всегда писалась как 0, адрес и описание уходили в null.
     const total_sum         = b.total_sum         ?? b.total_amount ?? 0;
@@ -225,6 +209,8 @@ async function routes(fastify, options) {
        work_id       ? 'work'           :
        pre_tender_id ? 'direct_request' : 'standalone');
 
+    const resolvedKpVariant = (kp_variant === 'full') ? 'full' : 'classic';
+
     const { rows } = await db.query(`
       INSERT INTO tkp (subject, tender_id, work_id, customer_name, customer_inn,
                         contact_person, contact_phone, contact_email,
@@ -232,8 +218,8 @@ async function routes(fastify, options) {
                         items, services, total_sum, deadline, validity_days,
                         author_id, source, estimate_id,
                         link_type, pre_tender_id, purpose_reason,
-                        tkp_number, tkp_type, payment_terms)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24)
+                        tkp_number, tkp_type, payment_terms, kp_variant)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25)
       RETURNING *
     `, [
       subj.trim(), tender_id || null, work_id || null,
@@ -245,7 +231,7 @@ async function routes(fastify, options) {
       deadline || null, validity_days || 30, request.user.id,
       source || null, estimate_id || null,
       resolvedLinkType, pre_tender_id || null, purpose_reason || null,
-      tkp_number || null, tkp_type || null, payment_terms
+      tkp_number || null, tkp_type || null, payment_terms, resolvedKpVariant
     ]);
 
     const newTkp = rows[0];
@@ -559,7 +545,7 @@ async function routes(fastify, options) {
                      'source', 'customer_address', 'work_description', 'estimate_id',
                      'link_type', 'pre_tender_id', 'purpose_reason',
                      'client_decision', 'client_decision_comment',
-                     'tkp_number', 'payment_terms', 'status'];
+                     'tkp_number', 'payment_terms', 'status', 'kp_variant'];
     // Frontend-aliases при PUT — обрабатываем те же что в POST.
     const b = request.body || {};
     if (b.total_amount != null && b.total_sum == null) b.total_sum = b.total_amount;
@@ -580,7 +566,13 @@ async function routes(fastify, options) {
 
     for (const key of allowed) {
       if (b[key] !== undefined) {
-        const val = key === 'items' ? JSON.stringify(b[key]) : b[key];
+        let val = b[key];
+        if (key === 'items') {
+          val = typeof val === 'string' ? val : JSON.stringify(val);
+        }
+        if (key === 'kp_variant') {
+          val = val === 'full' ? 'full' : 'classic';
+        }
         updates.push(`${key} = $${idx++}`);
         values.push(val);
       }
@@ -694,8 +686,8 @@ async function routes(fastify, options) {
                         customer_address, work_description,
                         items, services, total_sum, deadline, validity_days,
                         author_id, source, estimate_id, tkp_type,
-                        link_type, pre_tender_id, purpose_reason)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22)
+                        link_type, pre_tender_id, purpose_reason, kp_variant)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23)
       RETURNING *
     `, [
       '(Копия) ' + (src.subject || ''), src.tender_id, src.work_id,
@@ -705,7 +697,8 @@ async function routes(fastify, options) {
       src.items ? (typeof src.items === 'string' ? src.items : JSON.stringify(src.items)) : '{}',
       src.services, src.total_sum, src.deadline, src.validity_days || 30,
       request.user.id, src.source, src.estimate_id, src.tkp_type,
-      src.link_type || 'standalone', src.pre_tender_id || null, src.purpose_reason || null
+      src.link_type || 'standalone', src.pre_tender_id || null, src.purpose_reason || null,
+      src.kp_variant === 'full' ? 'full' : 'classic'
     ]);
 
     return { item: copy };
@@ -736,8 +729,19 @@ async function routes(fastify, options) {
 
     let pdfBuffer;
 
-    // Try Puppeteer-based generator first
-    if (pdfGenerator) {
+    // Полное КП (Ника) — отдельный рендерер
+    if (tkp.kp_variant === 'full') {
+      try {
+        const fullKp = require('../services/tkp-full-kp');
+        pdfBuffer = await fullKp.generateFullKpPdf(tkp.id, pdfOpts);
+      } catch (err) {
+        request.log.warn(`[TKP PDF] full KP failed for ${tkp.id}: ${err.message}`);
+        pdfBuffer = null;
+      }
+    }
+
+    // Try Puppeteer-based generator first (classic)
+    if (!pdfBuffer && pdfGenerator) {
       try {
         pdfBuffer = await pdfGenerator.generateTkpPdf(tkp.id, pdfOpts);
       } catch (err) {
@@ -822,7 +826,8 @@ async function routes(fastify, options) {
       total_sum: b.total_sum || 0,
       deadline: b.deadline || null,
       validity_days: b.validity_days || 30,
-      tkp_number: null,
+      tkp_number: b.tkp_number || null,
+      kp_variant: b.kp_variant === 'full' ? 'full' : 'classic',
       created_at: new Date().toISOString()
     };
 
@@ -831,7 +836,26 @@ async function routes(fastify, options) {
       stamp: b.with_stamp === true || b.with_stamp === '1'
     };
 
-    const pdfBuf = await generateTkpPdfKit(tkpVirtual, db, pdfOpts);
+    let pdfBuf;
+    if (tkpVirtual.kp_variant === 'full') {
+      try {
+        const fullKp = require('../services/tkp-full-kp');
+        let company = {};
+        if (pdfGenerator && pdfGenerator.getCompanyProfile) {
+          try { company = await pdfGenerator.getCompanyProfile(); } catch (_) {}
+        }
+        pdfBuf = await fullKp.generateFullKpPdfBuffer(tkpVirtual, {
+          ...pdfOpts,
+          company
+        });
+      } catch (err) {
+        request.log.warn('[TKP preview-pdf full] ' + err.message);
+        pdfBuf = null;
+      }
+    }
+    if (!pdfBuf) {
+      pdfBuf = await generateTkpPdfKit(tkpVirtual, db, pdfOpts);
+    }
 
     reply.header('Content-Type', 'application/pdf');
     reply.header('Content-Disposition', 'inline; filename="preview.pdf"');
@@ -857,7 +881,16 @@ async function routes(fastify, options) {
     };
 
     let pdfBuf;
-    if (pdfGenerator) {
+    if (tkp.kp_variant === 'full') {
+      try {
+        const fullKp = require('../services/tkp-full-kp');
+        pdfBuf = await fullKp.generateFullKpPdf(tkp.id, pdfOpts);
+      } catch (err) {
+        fastify.log.warn(`[TKP Send] full KP failed: ${err.message}`);
+        pdfBuf = null;
+      }
+    }
+    if (!pdfBuf && pdfGenerator) {
       try {
         pdfBuf = await pdfGenerator.generateTkpPdf(tkp.id, pdfOpts);
       } catch (err) {
@@ -1595,31 +1628,46 @@ module.exports = async function routesWithExtensions(fastify, options) {
   fastify.post('/parse-attachment', {
     preHandler: [fastify.requireRoles(EDIT_ROLES)]
   }, async (request, reply) => {
-    let data;
+    let fileBuf = null;
+    let filename = 'file';
+    let mimetype = '';
+    const fields = {};
+
     try {
-      data = await request.file();
+      for await (const part of request.parts()) {
+        if (part.type === 'file') {
+          try {
+            fileBuf = await part.toBuffer();
+            filename = part.filename || 'file';
+            mimetype = part.mimetype || '';
+            if (part.file && part.file.truncated) {
+              return reply.code(413).send({ error: 'Файл превышает 200 МБ' });
+            }
+          } catch (e) {
+            return reply.code(400).send({ error: 'Не удалось прочитать файл: ' + e.message });
+          }
+        } else {
+          fields[part.fieldname] = part.value;
+        }
+      }
     } catch (e) {
       return reply.code(400).send({ error: 'Файл не передан или превышен лимит размера (200 МБ)' });
     }
-    if (!data) return reply.code(400).send({ error: 'Файл не передан' });
 
-    let buf;
-    try {
-      buf = await data.toBuffer();
-    } catch (e) {
-      return reply.code(400).send({ error: 'Не удалось прочитать файл: ' + e.message });
-    }
+    if (!fileBuf) return reply.code(400).send({ error: 'Файл не передан' });
 
-    if (data.file.truncated) {
-      return reply.code(413).send({ error: 'Файл превышает 200 МБ' });
-    }
+    const forceOcr = fields.force_ocr;
+    const mode = fields.mode || 'initial';
 
     try {
       const result = await tkpParser.parseTkpBuffer({
-        buf,
-        originalName: data.filename || 'file',
-        mime: data.mimetype
+        buf: fileBuf,
+        originalName: filename,
+        mime: mimetype,
+        force_ocr: forceOcr,
+        mode
       });
+      // success:true сохраняем для совместимости; ok отражает реальный успех парсинга
       return { success: true, ...result };
     } catch (err) {
       request.log.error(err, '[TKP parse-attachment]');
@@ -1758,6 +1806,69 @@ module.exports = async function routesWithExtensions(fastify, options) {
 
     const { rows: [full] } = await db.query('SELECT * FROM tkp WHERE id = $1', [newTkp.id]);
     return { item: full };
+  });
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // POST /api/tkp/polish-text — Мимир переписывает текст поля (без записи в БД)
+  // body: { text, field_label?, context? }
+  // ─────────────────────────────────────────────────────────────────────────────
+  fastify.post('/polish-text', {
+    preHandler: [fastify.requireRoles(EDIT_ROLES)]
+  }, async (request, reply) => {
+    const text = String((request.body && request.body.text) || '').trim();
+    if (!text) return reply.code(400).send({ error: 'Пустой текст' });
+    if (text.length > 20000) return reply.code(400).send({ error: 'Текст слишком длинный' });
+    const fieldLabel = (request.body && request.body.field_label) || 'раздел КП';
+    const context = (request.body && request.body.context) || '';
+    const aiProvider = require('../services/ai-provider');
+    try {
+      const ai = await aiProvider.complete({
+        system: 'Ты — редактор коммерческих предложений промышленной компании АСГАРД-Сервис. Улучшаешь юридически-технический русский язык. Не выдумывай цифры, ИНН, суммы, сроки, проценты и названия оборудования — сохраняй их дословно. Не добавляй факты, которых нет в исходнике. Верни ТОЛЬКО переписанный текст без markdown и без пояснений.',
+        messages: [{
+          role: 'user',
+          content: `Перепиши текст поля «${fieldLabel}» коммерческого предложения: исправь грамматику, сделай язык более точным и профессиональным, при необходимости чуть детализируй формулировки (без новых цифр и фактов).${context ? '\nКонтекст КП: ' + context : ''}\n\nИСХОДНЫЙ ТЕКСТ:\n${text}`
+        }],
+        maxTokens: 4000,
+        temperature: 0.3
+      });
+      let polished = (ai.text || '').trim();
+      polished = polished.replace(/^```(?:\w+)?\s*/i, '').replace(/\s*```$/i, '').trim();
+      if (!polished) return reply.code(502).send({ error: 'Пустой ответ Мимира' });
+      return { polished, model: ai.model };
+    } catch (err) {
+      request.log.error(err, '[TKP polish-text]');
+      return reply.code(500).send({ error: err.message || 'Ошибка полировки' });
+    }
+  });
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // GET /api/tkp/:id/docx — Word-выгрузка (classic или full)
+  // ─────────────────────────────────────────────────────────────────────────────
+  fastify.get('/:id/docx', {
+    preHandler: [
+      async (request, reply) => {
+        if (!request.headers.authorization && request.query.token) {
+          request.headers.authorization = 'Bearer ' + request.query.token;
+        }
+      },
+      fastify.authenticate
+    ]
+  }, async (request, reply) => {
+    const { rows } = await db.query('SELECT * FROM tkp WHERE id = $1', [request.params.id]);
+    if (!rows[0]) return reply.code(404).send({ error: 'TKP not found' });
+    const tkp = rows[0];
+    const fullKp = require('../services/tkp-full-kp');
+    let company = { name: 'ООО «АСГАРД-Сервис»', phone: '+7 499 322-30-62' };
+    try {
+      const r = await db.query('SELECT * FROM company_profile ORDER BY id LIMIT 1');
+      if (r.rows[0]) company = r.rows[0];
+    } catch (_) {}
+    const buf = tkp.kp_variant === 'full'
+      ? fullKp.generateFullKpDocxBuffer(tkp, company)
+      : fullKp.generateClassicDocxBuffer(tkp, company);
+    reply.header('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+    reply.header('Content-Disposition', `attachment; filename="TKP_${tkp.id}.docx"`);
+    return reply.send(buf);
   });
 
   // ─────────────────────────────────────────────────────────────────────────────

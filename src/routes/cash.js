@@ -20,6 +20,7 @@ const fs = require('fs').promises;
 const { randomUUID } = require('crypto');
 const { calcPmBalance, isHeadToHolder } = require('../lib/pm-balance');
 const pmStatementXlsx = require('../services/pm-statement-xlsx');
+const cashMail = require('../services/cash-mail');
 
 module.exports = async function(fastify) {
   const db = fastify.db;
@@ -57,11 +58,21 @@ module.exports = async function(fastify) {
     return APPROVE_ROLES.includes(role);
   }
 
-  const CASH_HOLDER_ROLES = ['PM', 'HEAD_PM', 'HEAD_TO'];
-
-  function isCashHolderRole(role) {
-    return CASH_HOLDER_ROLES.includes(role);
-  }
+  const REQUEST_DETAIL_SQL = `
+    SELECT cr.*,
+           w.work_title,
+           u.name as user_name,
+           u.role as user_role,
+           d.name as director_name,
+           ib.name as issued_by_name,
+           init.name as initiated_by_name
+    FROM cash_requests cr
+    LEFT JOIN works w ON w.id = cr.work_id
+    LEFT JOIN users u ON u.id = cr.user_id
+    LEFT JOIN users d ON d.id = cr.director_id
+    LEFT JOIN users ib ON ib.id = cr.issued_by
+    LEFT JOIN users init ON init.id = cr.initiated_by
+  `;
 
   // Подсчёт баланса заявки
   async function calcRequestBalance(requestId) {
@@ -109,9 +120,10 @@ module.exports = async function(fastify) {
   }, async (request) => {
     const userId = request.user.id;
     const { rows } = await db.query(`
-      SELECT cr.*, w.work_title
+      SELECT cr.*, w.work_title, init.name as initiated_by_name
       FROM cash_requests cr
       LEFT JOIN works w ON w.id = cr.work_id
+      LEFT JOIN users init ON init.id = cr.initiated_by
       WHERE cr.user_id = $1
       ORDER BY cr.created_at DESC
     `, [userId]);
@@ -130,11 +142,13 @@ module.exports = async function(fastify) {
       SELECT cr.*,
              w.work_title,
              u.name as director_name,
-             ib.name as issued_by_name
+             ib.name as issued_by_name,
+             init.name as initiated_by_name
       FROM cash_requests cr
       LEFT JOIN works w ON w.id = cr.work_id
       LEFT JOIN users u ON u.id = cr.director_id
       LEFT JOIN users ib ON ib.id = cr.issued_by
+      LEFT JOIN users init ON init.id = cr.initiated_by
       WHERE cr.user_id = $1
       ORDER BY cr.created_at DESC
     `, [userId]);
@@ -160,20 +174,7 @@ module.exports = async function(fastify) {
   }, async (request) => {
     const { status, user_id } = request.query;
 
-    let sql = `
-      SELECT cr.*,
-             w.work_title,
-             u.name as user_name,
-             u.role as user_role,
-             d.name as director_name,
-             ib.name as issued_by_name
-      FROM cash_requests cr
-      LEFT JOIN works w ON w.id = cr.work_id
-      LEFT JOIN users u ON u.id = cr.user_id
-      LEFT JOIN users d ON d.id = cr.director_id
-      LEFT JOIN users ib ON ib.id = cr.issued_by
-      WHERE 1=1
-    `;
+    let sql = REQUEST_DETAIL_SQL + ` WHERE 1=1 `;
     const params = [];
     let idx = 1;
 
@@ -253,23 +254,30 @@ module.exports = async function(fastify) {
   // ─────────────────────────────────────────────────────────────────
   fastify.get('/my-balance', {
     preHandler: [fastify.requirePermission('cash', 'read')]
-  }, async (request) => {
+  }, async (request, reply) => {
     const userId = request.user.id;
-    const b = await calcPmBalance(db, userId);
-    return {
-      // backwards-compat (старые виджеты)
-      issued:          b.cash_advances_issued,
-      spent:           b.cash_expenses,
-      returned:        b.cash_returns_confirmed,
-      balance:         b.balance,
-      active_requests: b.active_requests,
-      // новые поля
-      handovers_received:    b.handovers_received,
-      se_cash_legacy:        b.se_cash_legacy,
-      cash_payouts_workers:  b.cash_payouts_workers,
-      cash_returns_confirmed: b.cash_returns_confirmed,
-      cash_returns_pending:  b.cash_returns_pending
-    };
+    try {
+      const b = await calcPmBalance(db, userId);
+      return {
+        issued:          b.cash_advances_issued,
+        spent:           b.cash_expenses,
+        returned:        b.cash_returns_confirmed,
+        balance:         b.balance,
+        active_requests: b.active_requests,
+        handovers_received:    b.handovers_received,
+        se_cash_legacy:        b.se_cash_legacy,
+        cash_payouts_workers:  b.cash_payouts_workers,
+        cash_returns_confirmed: b.cash_returns_confirmed,
+        cash_returns_pending:  b.cash_returns_pending
+      };
+    } catch (e) {
+      request.log.warn({ err: e }, 'cash/my-balance failed — empty balance');
+      return {
+        issued: 0, spent: 0, returned: 0, balance: 0, active_requests: 0,
+        handovers_received: 0, se_cash_legacy: 0, cash_payouts_workers: 0,
+        cash_returns_confirmed: 0, cash_returns_pending: 0
+      };
+    }
   });
 
   // ─────────────────────────────────────────────────────────────────
@@ -301,14 +309,18 @@ module.exports = async function(fastify) {
     } catch (_) { /* default */ }
 
     const { rows } = await db.query(`
-      WITH travel_days AS (
+      WITH stage_days AS (
         SELECT fts.employee_id, fts.work_id,
-               SUM(GREATEST(COALESCE(fts.days_count, 1), 1))::numeric AS trip_days
+               COUNT(DISTINCT d.day)::int AS trip_days
         FROM field_trip_stages fts
+        CROSS JOIN LATERAL generate_series(
+          fts.date_from::date,
+          COALESCE(fts.date_to, fts.date_from)::date,
+          '1 day'::interval
+        ) AS d(day)
         WHERE COALESCE(fts.status, 'active') NOT IN ('rejected', 'cancelled')
-          AND fts.stage_type IN ('travel', 'ship')
-          AND fts.date_from <= $2::date
-          AND COALESCE(fts.date_to, fts.date_from) >= $1::date
+          AND fts.stage_type IN ('warehouse','medical','travel','ship','training','helicopter','waiting')
+          AND d.day >= $1::date AND d.day <= $2::date
         GROUP BY fts.employee_id, fts.work_id
       ),
       paid AS (
@@ -331,11 +343,11 @@ module.exports = async function(fastify) {
           0,
           (td.trip_days * $5) - COALESCE(p.paid_amount, 0)
         )::numeric AS suggested_amount
-      FROM travel_days td
+      FROM stage_days td
       JOIN employees e ON e.id = td.employee_id
       LEFT JOIN works w ON w.id = td.work_id
       LEFT JOIN paid p ON p.employee_id = td.employee_id
-        AND COALESCE(p.work_id, 0) = COALESCE(td.work_id, 0)
+        AND p.work_id IS NOT DISTINCT FROM td.work_id
       WHERE td.trip_days > 0
       ORDER BY employee_fio, w.work_title NULLS LAST
     `, [periodStart, periodEnd, year, month, perDiemRate]);
@@ -382,7 +394,8 @@ module.exports = async function(fastify) {
     }
 
     const bal = await calcPmBalance(db, userId, request.user.role);
-    if (amt > bal.balance) {
+    // HEAD_TO (Рук. ТО) может уходить в минус по подотчёту — остальные роли нет.
+    if (request.user.role !== 'HEAD_TO' && amt > bal.balance) {
       return reply.code(400).send({
         error: 'Недостаточно средств на руках',
         balance: bal.balance,
@@ -392,32 +405,45 @@ module.exports = async function(fastify) {
 
     if (expense_type === 'per_diem') {
       const eId = parseInt(employee_id, 10);
-      const wId = parseInt(work_id, 10);
-      if (!eId || !wId) {
-        return reply.code(400).send({ error: 'employee_id и work_id обязательны для суточных' });
+      // work_id опционален: этапы дороги/МО часто без объекта (HEAD_TO)
+      const wId = work_id != null && String(work_id).trim() !== ''
+        ? parseInt(work_id, 10)
+        : null;
+      if (!eId) {
+        return reply.code(400).send({ error: 'employee_id обязателен для суточных' });
+      }
+      if (work_id != null && String(work_id).trim() !== '' && !Number.isFinite(wId)) {
+        return reply.code(400).send({ error: 'work_id некорректен' });
       }
 
-      const { rows: ctx } = await db.query(`
-        SELECT w.pm_id, w.work_title, e.fio, e.user_id AS employee_user_id
-        FROM works w, employees e
-        WHERE w.id = $1 AND e.id = $2
-      `, [wId, eId]);
-      if (!ctx.length) return reply.code(404).send({ error: 'Работа или сотрудник не найдены' });
-      const c = ctx[0];
+      const { rows: empRows } = await db.query(`
+        SELECT e.id, e.fio, e.user_id AS employee_user_id
+        FROM employees e WHERE e.id = $1
+      `, [eId]);
+      if (!empRows.length) return reply.code(404).send({ error: 'Сотрудник не найден' });
+      const c = empRows[0];
+
+      if (wId) {
+        const { rows: wRows } = await db.query(
+          `SELECT id, work_title FROM works WHERE id = $1`, [wId]
+        );
+        if (!wRows.length) return reply.code(404).send({ error: 'Работа не найдена' });
+      }
 
       if (!confirm_duplicate) {
         const now = new Date();
         const py = now.getFullYear();
         const pm = now.getMonth() + 1;
         const { rows: existing } = await db.query(`
-          SELECT id, amount, paid_at, payment_method
+          SELECT id, amount, paid_at, payment_method, work_id
           FROM worker_payments
           WHERE employee_id = $1 AND type = 'per_diem'
             AND status IN ('paid', 'confirmed')
             AND COALESCE(pay_year, EXTRACT(YEAR FROM created_at)::int) = $2
             AND COALESCE(pay_month, EXTRACT(MONTH FROM created_at)::int) = $3
+            AND work_id IS NOT DISTINCT FROM $4::int
           ORDER BY id DESC
-        `, [eId, py, pm]);
+        `, [eId, py, pm, wId]);
         if (existing.length > 0) {
           const totalAlreadyPaid = existing.reduce((s, r) => s + Number(r.amount || 0), 0);
           return reply.code(409).send({
@@ -530,21 +556,22 @@ module.exports = async function(fastify) {
     preHandler: [fastify.authenticate]
   }, async (request, reply) => {
     const role = request.user.role;
-    const isCashHolder = isCashHolderRole(role);
     const isPrivilegedFn = isBuhOrDirector(role);
 
-    // ── pm_id resolution ─────────────────────────────────────────
+    // Своя выписка — любой сотрудник. Чужую — BUH/директор/админ.
     let pmId = null;
-    if (isCashHolder) {
-      pmId = parseInt(request.user.id, 10);
-    } else if (isPrivilegedFn) {
+    if (isPrivilegedFn) {
       const raw = request.query.pm_id;
-      pmId = parseInt(raw, 10);
-      if (!Number.isFinite(pmId)) {
-        return reply.code(400).send({ error: 'Параметр pm_id обязателен для ADMIN/DIRECTOR/BUH' });
+      if (raw === undefined || raw === null || raw === '') {
+        pmId = parseInt(request.user.id, 10);
+      } else {
+        pmId = parseInt(raw, 10);
+        if (!Number.isFinite(pmId)) {
+          return reply.code(400).send({ error: 'Параметр pm_id некорректен' });
+        }
       }
     } else {
-      return reply.code(403).send({ error: 'Нет доступа к выписке' });
+      pmId = parseInt(request.user.id, 10);
     }
 
     // ── period ───────────────────────────────────────────────────
@@ -1091,9 +1118,12 @@ module.exports = async function(fastify) {
     const {
       work_id, type = 'advance', amount, purpose, cover_letter,
       category, category_other_desc,
-      use_se_payee, se_payee_employee_id
-    } = request.body;
-    const userId = request.user.id;
+      use_se_payee, se_payee_employee_id,
+      for_user_id
+    } = request.body || {};
+    const initiatorId = request.user.id;
+    let ownerId = initiatorId;
+    let ownerName = request.user.name || 'сотрудник';
 
     // Stage W: тип loan полностью убран. Только advance/office/other.
     const ALLOWED_TYPES = ['advance', 'office', 'other'];
@@ -1108,6 +1138,32 @@ module.exports = async function(fastify) {
     }
     if (!purpose || !purpose.trim()) {
       return reply.code(400).send({ error: 'Укажите цель' });
+    }
+
+    if (for_user_id != null && for_user_id !== '') {
+      const parsed = parseInt(for_user_id, 10);
+      if (!Number.isFinite(parsed) || parsed <= 0) {
+        return reply.code(400).send({ error: 'Некорректный сотрудник' });
+      }
+      if (parsed !== initiatorId) {
+        if (!isBuhOrDirector(request.user.role)) {
+          return reply.code(403).send({
+            error: 'Запросить за другого сотрудника может только бухгалтерия или директор'
+          });
+        }
+        const { rows: [holder] } = await db.query(
+          'SELECT id, name, role, is_active FROM users WHERE id = $1',
+          [parsed]
+        );
+        if (!holder || !holder.is_active) {
+          return reply.code(404).send({ error: 'Сотрудник не найден или неактивен' });
+        }
+        if (holder.role === 'BOT') {
+          return reply.code(400).send({ error: 'Нельзя запросить кассу на системного бота' });
+        }
+        ownerId = holder.id;
+        ownerName = holder.name || 'сотрудник';
+      }
     }
 
     // Если advance — work_id обязателен
@@ -1164,32 +1220,29 @@ module.exports = async function(fastify) {
     const { rows } = await db.query(`
       INSERT INTO cash_requests (
         user_id, work_id, type, amount, purpose, cover_letter, status,
-        category, category_other_desc, use_se_payee, se_payee_employee_id
+        category, category_other_desc, use_se_payee, se_payee_employee_id,
+        initiated_by
       )
-      VALUES ($1, $2, $3, $4, $5, $6, 'requested', $7, $8, $9, $10)
+      VALUES ($1, $2, $3, $4, $5, $6, 'requested', $7, $8, $9, $10, $11)
       RETURNING *
     `, [
-      userId, work_id || null, type, amount, purpose.trim(), cover_letter || null,
-      categoryNorm, categoryOtherDescNorm, useSePayee, sePayeeEmployeeId
+      ownerId, work_id || null, type, amount, purpose.trim(), cover_letter || null,
+      categoryNorm, categoryOtherDescNorm, useSePayee, sePayeeEmployeeId,
+      initiatorId
     ]);
 
-    // Notify directors about new cash request
-    const directors = await db.query(
-      `SELECT id FROM users WHERE role IN ('ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV') AND is_active = true`
-    );
-    for (const dir of directors.rows) {
-      if (dir.id !== userId) {
-        createNotification(db, {
-          user_id: dir.id,
-          title: '💰 Новая заявка на аванс',
-          message: `${request.user.name || 'РП'} запрашивает ${amount} ₽: ${purpose.trim().substring(0, 100)}`,
-          type: 'cash',
-          link: `#/cash?id=${rows[0].id}`
-        });
-      }
-    }
+    const created = rows[0];
+    created.user_name = ownerName;
+    created.initiated_by_name = request.user.name || null;
 
-    return rows[0];
+    cashMail.notifyDirectorsNewRequest(db, created, request.user).catch((e) => {
+      fastify.log.error({ err: e }, '[cash] notify directors failed');
+    });
+    cashMail.sendDirectorRequestEmail(db, created, { log: fastify.log }).catch((e) => {
+      fastify.log.error({ err: e }, '[cash] director email failed');
+    });
+
+    return created;
   });
 
   // ─────────────────────────────────────────────────────────────────
@@ -1201,20 +1254,10 @@ module.exports = async function(fastify) {
     const id = parseInt(request.params.id);
     if (isNaN(id)) return reply.code(400).send({ error: 'Invalid id' });
 
-    const { rows } = await db.query(`
-      SELECT cr.*,
-             w.work_title,
-             u.name as user_name,
-             u.role as user_role,
-             d.name as director_name,
-             ib.name as issued_by_name
-      FROM cash_requests cr
-      LEFT JOIN works w ON w.id = cr.work_id
-      LEFT JOIN users u ON u.id = cr.user_id
-      LEFT JOIN users d ON d.id = cr.director_id
-      LEFT JOIN users ib ON ib.id = cr.issued_by
-      WHERE cr.id = $1
-    `, [id]);
+    const { rows } = await db.query(
+      REQUEST_DETAIL_SQL + ' WHERE cr.id = $1',
+      [id]
+    );
 
     if (!rows[0]) {
       return reply.code(404).send({ error: 'Заявка не найдена' });
@@ -1223,7 +1266,9 @@ module.exports = async function(fastify) {
     const req = rows[0];
 
     // IDOR: только владелец, директор или BUH может смотреть
-    if (req.user_id !== request.user.id && !isBuhOrDirector(request.user.role)) {
+    if (Number(req.user_id) !== Number(request.user.id)
+        && Number(req.initiated_by) !== Number(request.user.id)
+        && !isBuhOrDirector(request.user.role)) {
       return reply.code(403).send({ error: 'Нет доступа' });
     }
 
@@ -1284,48 +1329,13 @@ module.exports = async function(fastify) {
     if (isNaN(id)) return reply.code(400).send({ error: 'Invalid id' });
 
     const { comment } = request.body || {};
-
-    const check = await db.query('SELECT status FROM cash_requests WHERE id = $1', [id]);
-    if (!check.rows[0]) return reply.code(404).send({ error: 'Заявка не найдена' });
-    if (check.rows[0].status !== 'requested') {
-      return reply.code(400).send({ error: 'Заявку можно согласовать только в статусе "requested"' });
-    }
-
-    await db.query(`
-      UPDATE cash_requests
-      SET status = 'approved',
-          director_id = $1,
-          director_comment = $2,
-          updated_at = NOW()
-      WHERE id = $3
-    `, [request.user.id, comment || null, id]);
-
-    // Notify requesting user about approval
-    const { rows: [req] } = await db.query('SELECT * FROM cash_requests WHERE id = $1', [id]);
-    if (req && req.user_id && req.user_id !== request.user.id) {
-      createNotification(db, {
-        user_id: req.user_id,
-        title: '✅ Заявка на аванс согласована',
-        message: `${request.user.name || 'Директор'} согласовал вашу заявку на ${req.amount || 0} ₽`,
-        type: 'cash',
-        link: `#/cash?id=${id}`
-      });
-    }
-
-    // Notify BUH about approved request (needs to issue money)
-    const buhUsers = await db.query(
-      `SELECT id FROM users WHERE role = 'BUH' AND is_active = true`
-    );
-    for (const buh of buhUsers.rows) {
-      createNotification(db, {
-        user_id: buh.id,
-        title: '💰 Заявка согласована — ожидает выдачи',
-        message: `${request.user.name || 'Директор'} согласовал заявку на ${req.amount || 0} ₽ для ${req.user_id === request.user.id ? 'себя' : 'РП'}`,
-        type: 'cash',
-        link: `#/cash-admin?id=${id}`
-      });
-    }
-
+    const result = await cashMail.applyApprove(db, {
+      requestId: id,
+      actor: request.user,
+      comment: comment || null,
+      log: fastify.log
+    });
+    if (!result.ok) return reply.code(result.status || 400).send({ error: result.error });
     return { success: true, message: 'Заявка согласована' };
   });
 
@@ -1378,7 +1388,7 @@ module.exports = async function(fastify) {
           pmUserId, req.work_id || null
         ]);
 
-        await db.query(`
+        const { rows: claimed } = await db.query(`
           UPDATE cash_requests
           SET status = 'money_issued',
               issued_by = $1,
@@ -1387,8 +1397,14 @@ module.exports = async function(fastify) {
               overdue_notified = false,
               se_transfer_id = $2,
               updated_at = NOW()
-          WHERE id = $3
+          WHERE id = $3 AND status = 'approved'
+          RETURNING id
         `, [request.user.id, t.id, id]);
+
+        if (!claimed[0]) {
+          await db.query('ROLLBACK');
+          return reply.code(409).send({ error: 'Заявка уже выдана или снята с согласования' });
+        }
 
         await db.query('COMMIT');
 
@@ -1419,6 +1435,23 @@ module.exports = async function(fastify) {
       await db.query('BEGIN');
       await db.query('SELECT pg_advisory_xact_lock($1)', [CASH_ADVISORY_LOCK_KEY]);
 
+      const { rows: claimed } = await db.query(`
+        UPDATE cash_requests
+        SET status = 'money_issued',
+            issued_by = $1,
+            issued_at = NOW(),
+            receipt_deadline = NOW() + INTERVAL '12 hours',
+            overdue_notified = false,
+            updated_at = NOW()
+        WHERE id = $2 AND status = 'approved'
+        RETURNING id
+      `, [request.user.id, id]);
+
+      if (!claimed[0]) {
+        await db.query('ROLLBACK');
+        return reply.code(409).send({ error: 'Заявка уже выдана или снята с согласования' });
+      }
+
       const { rows: [bal] } = await db.query(
         'SELECT amount FROM cash_balance_log ORDER BY created_at DESC, id DESC LIMIT 1'
       );
@@ -1429,17 +1462,6 @@ module.exports = async function(fastify) {
         INSERT INTO cash_balance_log (amount, change_amount, change_type, description, related_request_id, user_id)
         VALUES ($1, $2, 'cash_issued', $3, $4, $5)
       `, [newBalance, -amount, `Выдача по заявке #${id}`, id, request.user.id]);
-
-      await db.query(`
-        UPDATE cash_requests
-        SET status = 'money_issued',
-            issued_by = $1,
-            issued_at = NOW(),
-            receipt_deadline = NOW() + INTERVAL '12 hours',
-            overdue_notified = false,
-            updated_at = NOW()
-        WHERE id = $2
-      `, [request.user.id, id]);
 
       await db.query('COMMIT');
     } catch (e) {
@@ -1484,41 +1506,24 @@ module.exports = async function(fastify) {
   fastify.put('/:id/reject', {
     preHandler: [fastify.requirePermission('cash_admin', 'write')]
   }, async (request, reply) => {
+    if (!canApprove(request.user.role)) {
+      return reply.code(403).send({
+        error: 'Отклонять заявки могут только директор (DIRECTOR_COMM) и админ'
+      });
+    }
+
     const id = parseInt(request.params.id);
     if (isNaN(id)) return reply.code(400).send({ error: 'Invalid id' });
 
     const { comment } = request.body || {};
-    if (!comment || !comment.trim()) {
-      return reply.code(400).send({ error: 'Укажите причину отклонения' });
-    }
-
-    const check = await db.query('SELECT status FROM cash_requests WHERE id = $1', [id]);
-    if (!check.rows[0]) return reply.code(404).send({ error: 'Заявка не найдена' });
-    if (!['requested', 'approved'].includes(check.rows[0].status)) {
-      return reply.code(400).send({ error: 'Заявку нельзя отклонить в текущем статусе' });
-    }
-
-    await db.query(`
-      UPDATE cash_requests
-      SET status = 'rejected',
-          director_id = $1,
-          director_comment = $2,
-          updated_at = NOW()
-      WHERE id = $3
-    `, [request.user.id, comment.trim(), id]);
-
-    // Notify requesting user about rejection
-    const { rows: [rejReq] } = await db.query('SELECT * FROM cash_requests WHERE id = $1', [id]);
-    if (rejReq && rejReq.user_id && rejReq.user_id !== request.user.id) {
-      createNotification(db, {
-        user_id: rejReq.user_id,
-        title: '❌ Заявка на аванс отклонена',
-        message: `${request.user.name || 'Директор'} отклонил заявку. Причина: ${comment.trim()}`,
-        type: 'cash',
-        link: `#/cash?id=${id}`
-      });
-    }
-
+    const result = await cashMail.applyReject(db, {
+      requestId: id,
+      actor: request.user,
+      comment,
+      requireComment: true,
+      log: fastify.log
+    });
+    if (!result.ok) return reply.code(result.status || 400).send({ error: result.error });
     return { success: true, message: 'Заявка отклонена' };
   });
 
@@ -1528,6 +1533,12 @@ module.exports = async function(fastify) {
   fastify.put('/:id/question', {
     preHandler: [fastify.requirePermission('cash_admin', 'write')]
   }, async (request, reply) => {
+    if (!canApprove(request.user.role)) {
+      return reply.code(403).send({
+        error: 'Задавать вопросы по заявке могут только директор и админ'
+      });
+    }
+
     const id = parseInt(request.params.id);
     if (isNaN(id)) return reply.code(400).send({ error: 'Invalid id' });
 
@@ -1603,14 +1614,26 @@ module.exports = async function(fastify) {
     }
 
     // Notify director about reply
-    const { rows: [rReq] } = await db.query('SELECT director_id FROM cash_requests WHERE id = $1', [id]);
+    const { rows: [rReq] } = await db.query(`
+      SELECT cr.*, u.name as user_name, init.name as initiated_by_name, w.work_title
+      FROM cash_requests cr
+      LEFT JOIN users u ON u.id = cr.user_id
+      LEFT JOIN users init ON init.id = cr.initiated_by
+      LEFT JOIN works w ON w.id = cr.work_id
+      WHERE cr.id = $1
+    `, [id]);
     if (rReq && rReq.director_id && rReq.director_id !== request.user.id) {
       createNotification(db, {
         user_id: rReq.director_id,
         title: '💬 Ответ по заявке на аванс',
         message: `${request.user.name || 'РП'} ответил на вопрос: ${message.trim().substring(0, 100)}`,
         type: 'cash',
-        link: `#/cash?id=${id}`
+        link: `#/cash-admin?id=${id}`
+      });
+    }
+    if (rReq && rReq.status === 'requested') {
+      cashMail.sendDirectorRequestEmail(db, rReq, { log: fastify.log }).catch((e) => {
+        fastify.log.error({ err: e }, '[cash] director email after reply failed');
       });
     }
 
@@ -1626,26 +1649,26 @@ module.exports = async function(fastify) {
     const id = parseInt(request.params.id);
     if (isNaN(id)) return reply.code(400).send({ error: 'Invalid id' });
 
-    const check = await db.query('SELECT user_id, status FROM cash_requests WHERE id = $1', [id]);
-    if (!check.rows[0]) return reply.code(404).send({ error: 'Заявка не найдена' });
-
-    if (Number(check.rows[0].user_id) !== Number(request.user.id)) {
-      return reply.code(403).send({ error: 'Это не ваша заявка' });
-    }
-
-    // Обратная совместимость: принимаем approved и money_issued
-    if (!['approved', 'money_issued'].includes(check.rows[0].status)) {
-      return reply.code(400).send({ error: 'Подтвердить получение можно только после согласования или выдачи' });
-    }
-
-    await db.query(`
+    const { rows: [claimed] } = await db.query(`
       UPDATE cash_requests
       SET status = 'received',
           received_at = NOW(),
           receipt_deadline = NULL,
           updated_at = NOW()
-      WHERE id = $1
-    `, [id]);
+      WHERE id = $1 AND user_id = $2 AND status = 'money_issued'
+      RETURNING id
+    `, [id, request.user.id]);
+
+    if (!claimed) {
+      const check = await db.query('SELECT user_id, status FROM cash_requests WHERE id = $1', [id]);
+      if (!check.rows[0]) return reply.code(404).send({ error: 'Заявка не найдена' });
+      if (Number(check.rows[0].user_id) !== Number(request.user.id)) {
+        return reply.code(403).send({ error: 'Это не ваша заявка' });
+      }
+      return reply.code(400).send({
+        error: 'Подтвердить получение можно только после выдачи денег бухгалтерией'
+      });
+    }
 
     return { success: true, message: 'Получение подтверждено' };
   });
@@ -1892,18 +1915,21 @@ module.exports = async function(fastify) {
       [id]
     );
 
-    // Notify directors
-    const { rows: directors } = await db.query(
-      "SELECT id FROM users WHERE role IN ('ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_FIN') AND active = true"
-    );
-    for (const d of directors) {
-      createNotification(db, {
-        user_id: d.id,
-        title: 'Авансовый отчёт подан',
-        message: (request.user.name || 'Сотрудник') + ' подал авансовый отчёт по заявке #' + id,
-        type: 'cash',
-        link: '#/cash?id=' + id
-      });
+    try {
+      const { rows: directors } = await db.query(
+        "SELECT id FROM users WHERE role IN ('ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV') AND is_active = true"
+      );
+      for (const d of directors) {
+        createNotification(db, {
+          user_id: d.id,
+          title: 'Авансовый отчёт подан',
+          message: (request.user.name || 'Сотрудник') + ' подал авансовый отчёт по заявке #' + id,
+          type: 'cash',
+          link: '#/cash?id=' + id
+        });
+      }
+    } catch (e) {
+      fastify.log.warn({ err: e }, '[cash] submit-report notify failed');
     }
 
     return { success: true, message: 'Отчёт подан' };

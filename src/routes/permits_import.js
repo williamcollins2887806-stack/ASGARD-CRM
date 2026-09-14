@@ -156,7 +156,7 @@ module.exports = function registerImportRoutes(fastify, db) {
         'высот': 'HEIGHT', 'электро': 'EB', 'отзп': 'OTZP', 'замкн': 'OTZP',
         'босиет': 'BOSIET', 'рукав': 'SLEEVE', 'мед.осмотр': 'MEDCHECK', 'медицинский': 'MEDCHECK',
         'охран': 'OT', 'пожар': 'PTM', 'птм': 'PTM', 'сиз': 'SIZ',
-        'бмпо': 'BMPO', 'бмпво': 'BMPVO', 'накс': 'NAKS',
+        'бмпо': 'BMPO', 'бмпво': 'BMPVO', 'накс': 'NAKS', 'рмрс': 'RMRS',
         'промбез': 'PROMBEZ', 'промышл': 'PROMBEZ',
         'драгер': 'DRAGER', 'фсб': 'FSB', 'пропуск': 'FSB',
         'score': 'SCORE', 'вик': 'VIK', 'пмп': 'PMP', 'первая помощь': 'PMP',
