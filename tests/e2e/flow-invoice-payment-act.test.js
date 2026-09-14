@@ -18,7 +18,7 @@ module.exports = {
       run: async () => {
         const resp = await api('POST', '/api/works', {
           role: 'PM',
-          body: { work_title: 'E2E: Financial Flow Test Work', customer_name: 'E2E Test Customer', contract_value: TOTAL_AMOUNT, start_plan: '2026-01-15' }
+          body: { work_title: 'E2E: Financial Flow Test Work', customer_name: 'E2E Test Customer', contract_value: TOTAL_AMOUNT, start_plan: '2026-01-15', object_place: 'Усинск' }
         });
         if (resp.status === 404) skip('Works endpoint not available');
         assertOk(resp, 'PM creates work');

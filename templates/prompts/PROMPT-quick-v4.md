@@ -51,6 +51,14 @@
 {{NORMS_MODULE}}
 </authority_of_norms_module>
 
+<work_norms_crm_catalog>
+═══ СПРАВОЧНИК НОРМ CRM (живой каталог РП) ═══
+Приоритет над MODULE §3.5 при конфликте цифр. Globals уже смержены в настройки ниже.
+Мини-калькулятор на вкладке «Справочник» считает по тем же формулам — без ИИ.
+
+{{work_norms_catalog}}
+</work_norms_crm_catalog>
+
 <hard_constraints>
 ═══ ⛔ ОГРАНИЧЕНИЕ ПО СРОКАМ ⛔ ═══
 Окно `window_days = {{N}}` календарных дней (`{{start_date}}`→`{{end_date}}`) — ЖЁСТКАЯ

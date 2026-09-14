@@ -1,0 +1,1118 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>ASGARD WMS — карта склада</title>
+  <style>
+    :root {
+      --bg:#12151b; --panel:rgba(22,28,36,.97); --solid:#1a212c;
+      --line:rgba(255,255,255,.1); --t1:#e9eef5; --t2:#8d99aa;
+      --accent:#c9a84c; --ok:#2bab62;
+    }
+    *{box-sizing:border-box}
+    html,body{margin:0;height:100%;overflow:hidden;background:var(--bg);color:var(--t1);font-family:"Segoe UI",system-ui,sans-serif;user-select:none}
+    #app{position:relative;width:100%;height:100%}
+    canvas{display:block;touch-action:none}
+    .topbar{position:absolute;inset:0 0 auto;z-index:20;display:flex;align-items:center;gap:12px;padding:10px 16px;background:linear-gradient(180deg,rgba(10,12,16,.95),transparent);pointer-events:none}
+    .brand{font:700 11px/1 Segoe UI;letter-spacing:.18em;color:var(--accent)}
+    .title{font-size:13px;font-weight:600}.title small{color:var(--t2);margin-left:8px;font-weight:500}
+    .links{margin-left:auto;pointer-events:auto}
+    .links a{color:var(--t2);text-decoration:none;font-size:12px;border:1px solid var(--line);padding:6px 10px;border-radius:6px;background:var(--panel)}
+    .legend{position:absolute;left:14px;top:52px;z-index:20;width:200px;padding:10px 12px;border-radius:8px;background:var(--panel);border:1px solid var(--line);font-size:11px;color:var(--t2)}
+    .legend b{color:var(--accent);font-size:16px;letter-spacing:.08em}
+    .pill{display:inline-block;margin-top:6px;padding:2px 7px;border-radius:4px;font-size:10px;letter-spacing:.08em;text-transform:uppercase;background:rgba(201,168,76,.12);color:var(--accent)}
+    .side{position:absolute;top:52px;right:14px;bottom:88px;width:min(300px,28vw);z-index:20;pointer-events:none}
+    .card{pointer-events:auto;height:100%;display:flex;flex-direction:column;background:var(--panel);border:1px solid var(--line);border-radius:8px;overflow:hidden}
+    .card .hd{padding:12px;border-bottom:1px solid var(--line)}
+    .card .hd h2{margin:0;font-size:14px}
+    .card .code{display:none;margin-top:6px;padding:3px 8px;border-radius:4px;background:rgba(201,168,76,.12);color:var(--accent);font:700 16px Segoe UI;letter-spacing:.08em}
+    .card .hd p{margin:6px 0 0;color:var(--t2);font-size:11px;line-height:1.4}
+    .card .bd{padding:8px 10px 12px;overflow:auto;flex:1}
+    .place-btn{width:100%;text-align:left;margin:0 0 5px;padding:8px 10px;border-radius:6px;border:1px solid var(--line);background:rgba(255,255,255,.02);color:var(--t1);cursor:pointer}
+    .place-btn:hover,.place-btn.on{border-color:rgba(201,168,76,.45);background:rgba(201,168,76,.08)}
+    .place-btn.find{border-color:var(--ok);box-shadow:0 0 0 2px rgba(43,171,98,.2)}
+    .place-btn b{display:block;font-size:12px}.place-btn span{color:var(--t2);font-size:10px}
+    .item{padding:8px 10px;border-radius:6px;margin-bottom:5px;border:1px solid var(--line);background:rgba(255,255,255,.02)}
+    .item.hi{border-color:var(--ok);background:rgba(43,171,98,.08)}
+    .item b{display:block;font-size:12px}.item span{color:var(--t2);font-size:10px}
+    .dock{position:absolute;left:50%;bottom:12px;transform:translateX(-50%);z-index:20;display:flex;gap:6px;align-items:center;flex-wrap:wrap;justify-content:center;padding:8px 10px;border-radius:8px;background:var(--panel);border:1px solid var(--line);max-width:calc(100% - 20px)}
+    .btn{border:1px solid var(--line);background:var(--solid);color:var(--t1);border-radius:6px;padding:8px 12px;font-size:12px;font-weight:600;cursor:pointer}
+    .btn.primary{background:var(--accent);color:#1a1408;border:none}
+    .btn:disabled{opacity:.35;cursor:default}
+    .step{color:var(--t2);font-size:11px;min-width:170px;text-align:center}
+    .hint{position:absolute;left:50%;top:12%;transform:translateX(-50%);z-index:15;text-align:center;pointer-events:none;opacity:0;transition:.25s}
+    .hint.show{opacity:1}
+    .hint h3{margin:0;font-size:18px;text-shadow:0 4px 18px #000}
+    .hint p{margin:4px 0 0;color:var(--t2);font-size:12px}
+    .modal{position:absolute;inset:0;z-index:40;display:none;place-items:center;background:rgba(8,10,14,.75)}
+    .modal.on{display:grid}
+    .modal .box{width:min(380px,92vw);background:var(--solid);border:1px solid var(--line);border-radius:8px;padding:14px;max-height:70vh;overflow:auto}
+    .modal .code{color:var(--accent);font:700 18px Segoe UI;letter-spacing:.08em;margin:4px 0 10px}
+    .label3d{padding:2px 6px;border-radius:3px;background:rgba(14,16,20,.88);border:1px solid rgba(201,168,76,.4);color:#e0c078;font:700 10px/1.2 Segoe UI;letter-spacing:.03em;white-space:nowrap;pointer-events:none}
+    .label3d.open{pointer-events:auto;cursor:pointer;margin-top:2px;display:inline-block;border-color:rgba(201,168,76,.55);background:rgba(201,168,76,.15)}
+    .pct3d{padding:1px 4px;border-radius:2px;background:rgba(10,12,16,.75);border:1px solid rgba(255,255,255,.12);font:700 9px Segoe UI;pointer-events:none}
+  </style>
+</head>
+<body>
+<div id="app">
+  <div class="topbar">
+    <div class="brand">ASGARD WMS</div>
+    <div class="title">Адресная карта <small>2D план → 3D фасад</small></div>
+    <div class="links"><a href="./warehouse-map-tablet.html">Планшет →</a></div>
+  </div>
+  <div class="legend">
+    <div>Код места</div><b>2F2</b>
+    <div style="margin-top:5px;line-height:1.35">стеллаж · полка A↑ · место</div>
+    <div class="pill" id="mode-pill">режим: план 2D</div>
+  </div>
+  <div class="side"><div class="card">
+    <div class="hd">
+      <h2 id="detail-title">Склад</h2>
+      <div class="code" id="detail-code"></div>
+      <p id="detail-sub">План в масштабе. Стены, проходы, стеллажи.</p>
+    </div>
+    <div class="bd" id="detail-body"></div>
+  </div></div>
+  <div class="hint" id="hint"><h3></h3><p></p></div>
+  <div class="dock">
+    <button class="btn primary" id="btn-find">Найти · Анкер М12</button>
+    <button class="btn" id="btn-prev" disabled>←</button>
+    <button class="btn" id="btn-next" disabled>→</button>
+    <div class="step" id="step-label">1 · План</div>
+    <button class="btn" id="btn-reset">Сброс</button>
+  </div>
+  <div class="modal" id="modal"><div class="box">
+    <h3 id="modal-title" style="margin:0;font-size:14px">Место</h3>
+    <div class="code" id="modal-code"></div>
+    <div id="modal-body"></div>
+    <button class="btn" id="modal-close" style="width:100%;margin-top:10px">Закрыть</button>
+  </div></div>
+</div>
+<script type="importmap">{ "imports": {
+  "three":"https://unpkg.com/three@0.160.0/build/three.module.js",
+  "three/addons/":"https://unpkg.com/three@0.160.0/examples/jsm/"
+}}</script>
+<script type="module">
+import * as THREE from 'three';
+import { CSS2DRenderer, CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
+
+/* ═══ scale: 1 unit = 1 meter ═══ */
+const LETTERS = ['A','B','C','D','E','F'];
+const STEP = 0.55, BASE = 0.38;
+const RW = 2.7, RD = 0.95; // rack face width / depth meters
+const codeOf = (r,s,p) => `${r}${LETTERS[s]}${p}`;
+const slot = (f,t,items) => ({ fill: Math.max(0,Math.min(1,f)), type:t, items });
+const shelfY = i => BASE + i * STEP;
+const rackH = d => BASE + (d.shelves.length-1)*STEP + 0.75;
+const fillCol = f => f < .2 ? 0x5a6575 : f < .65 ? 0xb8913d : 0xb84f42;
+
+function N(n, fn){ return Array.from({length:n},(_,i)=>fn(i)); }
+function tallTarget(){
+  return [
+    [slot(.88,'c',[{n:'Болт М10',q:'200 шт'}]), slot(.72,'c',[{n:'Гайка М10',q:'200 шт'}]), slot(.5,'c',[{n:'Шайба',q:'500 шт'}])],
+    [slot(.48,'c',[{n:'Дюбель 6',q:'200 шт'}]), slot(.38,'c',[{n:'Дюбель 8',q:'100 шт'}])],
+    [slot(.62,'c',[{n:'Хомут',q:'40 шт'}])],
+    [slot(.52,'e',[{n:'УШМ 125',q:'1 шт'}]), slot(.28,'c',[{n:'Саморез',q:'1 кор'}])],
+    [slot(.4,'c',[{n:'Изолента',q:'20 шт'}]), slot(.22,'c',[{n:'Скотч',q:'10 шт'}])],
+    [slot(.68,'c',[{n:'Анкер М8',q:'60 шт'}]), slot(.9,'c',[{n:'Анкер М12',q:'48 шт',hi:true},{n:'Анкер М10',q:'24 шт'}]), slot(.32,'c',[{n:'Хим. анкер',q:'6 шт'}])],
+  ];
+}
+const RACKS = [
+  { no:1, x:-9.5, z:-5.8, shelves:N(4,i=>[slot(.3+i*.08,'c',[{n:'Хомут',q:`${6+i}`}]), slot(.18,'c',[])]) },
+  { no:2, x:-6.2, z:-5.8, shelves:tallTarget() },
+  { no:3, x:-2.9, z:-5.8, shelves:N(3,()=>[slot(.04,'c',[]), slot(0,'c',[])]) },
+  { no:4, x:0.4, z:-5.8, shelves:N(5,i=>[slot(.52,'c',[{n:'Пена',q:`${i+1}`}]), slot(.36,'c',[{n:'Скотч',q:'4'}])]) },
+  { no:5, x:-9.5, z:-1.2, shelves:N(4,i=>[slot(.42,'e',[{n:'Каска',q:`${3+i}`}]), slot(.3,'c',[{n:'Перчатки',q:'8'}])]) },
+  { no:6, x:-6.2, z:-1.2, shelves:N(3,i=>[slot(.46,'c',[{n:'Краска',q:'2'}])]) },
+  { no:7, x:-2.9, z:-1.2, shelves:N(6,i=>[slot(.78,'e',[{n:'СИЗ',q:`${4+i}`}]), slot(.6,'c',[{n:'Маски',q:'12'}])]) },
+  { no:8, x:0.4, z:-1.2, shelves:N(4,i=>[slot(.28,'c',[{n:'Смазка',q:'2'}])]) },
+  { no:9, x:-9.5, z:3.4, shelves:N(3,i=>[slot(.44,'c',[{n:'Кабель',q:'12 м'}])]) },
+  { no:10,x:-6.2, z:3.4, shelves:N(4,()=>[slot(.06,'c',[]), slot(0,'c',[])]) },
+  { no:11,x:-2.9, z:3.4, shelves:N(5,i=>[slot(.48,'c',[{n:'Фитинг',q:`${8+i}`}])]) },
+  { no:12,x:0.4, z:3.4, shelves:N(6,i=>[slot(.86,'c',[{n:'Трос',q:'15 м'}]), slot(.66,'e',[{n:'Таль',q:'1'}])]) },
+];
+const FIND = { rackNo:2, shelfIdx:5, placeIdx:1, item:'Анкер М12' };
+const OUT = [
+  { id:'K1', x:8.4, z:-4.5, fill:.7 },
+  { id:'K2', x:8.4, z:-1.0, fill:.38 },
+  { id:'K3', x:11.2, z:-4.5, fill:.0 },
+  { id:'K4', x:11.2, z:-1.0, fill:.55 },
+];
+
+/* ── three ── */
+const app = document.getElementById('app');
+const renderer = new THREE.WebGLRenderer({ antialias:true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setSize(innerWidth, innerHeight);
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.02;
+app.insertBefore(renderer.domElement, app.firstChild);
+['wheel','contextmenu','pointerdown','touchstart','touchmove'].forEach(ev =>
+  renderer.domElement.addEventListener(ev, e => e.preventDefault(), { passive:false }));
+
+const labelR = new CSS2DRenderer();
+labelR.setSize(innerWidth, innerHeight);
+Object.assign(labelR.domElement.style, { position:'absolute', inset:'0', pointerEvents:'none', zIndex:'2' });
+app.insertBefore(labelR.domElement, app.children[1]);
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x12151b);
+scene.fog = new THREE.Fog(0x12151b, 45, 75);
+
+const aspect = () => innerWidth / innerHeight;
+const ortho = new THREE.OrthographicCamera(-1,1,1,-1,0.1,200);
+const persp = new THREE.PerspectiveCamera(36, aspect(), 0.1, 120);
+let cam = ortho, mode3d = false;
+const look = new THREE.Vector3(-4, 0, 0);
+
+scene.add(new THREE.AmbientLight(0xb0bac8, 0.4));
+scene.add(new THREE.HemisphereLight(0xd8dee8, 0x1a1712, 0.32));
+const sun = new THREE.DirectionalLight(0xf5f1ea, 0.95);
+sun.position.set(12, 22, 10); sun.castShadow = true;
+sun.shadow.mapSize.set(2048,2048);
+Object.assign(sun.shadow.camera, { near:2, far:60, left:-28, right:28, top:28, bottom:-28 });
+scene.add(sun);
+const spot = new THREE.SpotLight(0xc9a84c, 0, 30, Math.PI/8, 0.4, 1);
+scene.add(spot); scene.add(spot.target);
+
+const M = {
+  floor: new THREE.MeshStandardMaterial({ color:0x3a424e, roughness:0.9, metalness:0.04 }),
+  floorIn: new THREE.MeshStandardMaterial({ color:0x454e5c, roughness:0.85, metalness:0.05 }),
+  wall: new THREE.MeshStandardMaterial({ color:0x5c6573, roughness:0.75, metalness:0.15 }),
+  wallIn: new THREE.MeshStandardMaterial({ color:0x6e7888, roughness:0.7, metalness:0.1 }),
+  upright: new THREE.MeshStandardMaterial({ color:0x3d6fa8, roughness:0.45, metalness:0.55 }), // industrial blue
+  beam: new THREE.MeshStandardMaterial({ color:0xc4782a, roughness:0.5, metalness:0.4 }), // orange beams
+  deck: new THREE.MeshStandardMaterial({ color:0x6a7380, roughness:0.65, metalness:0.35 }),
+  dark: new THREE.MeshStandardMaterial({ color:0x2e3540, roughness:0.6, metalness:0.4 }),
+  yard: new THREE.MeshStandardMaterial({ color:0x2a3038, roughness:1 }),
+  cont: new THREE.MeshStandardMaterial({ color:0x2f6d7c, roughness:0.45, metalness:0.35 }),
+  green: new THREE.MeshStandardMaterial({ color:0x2bab62, emissive:0x2bab62, emissiveIntensity:0.5, transparent:true, opacity:0.28 }),
+};
+
+const world = new THREE.Group(); scene.add(world);
+const outdoor = new THREE.Group(); world.add(outdoor);
+const pathGroup = new THREE.Group(); scene.add(pathGroup);
+
+/* building 22×16 m, walls 0.25 m, height 5.5 m */
+const BUILD = { w:22, d:16, h:5.5, x:-4.2, z:0 };
+function box(mat, w,h,d, x,y,z, parent=world, cast=true) {
+  const m = new THREE.Mesh(new THREE.BoxGeometry(w,h,d), mat);
+  m.position.set(x,y,z); m.castShadow = cast; m.receiveShadow = true; parent.add(m); return m;
+}
+// floor indoor
+const floor = box(M.floorIn, BUILD.w, 0.08, BUILD.d, BUILD.x, 0.04, BUILD.z, world, false);
+// yard
+box(M.yard, 8, 0.06, 12, 9.8, 0.03, -1.5, outdoor, false);
+
+const walls = [];
+function addWall(w,h,d,x,y,z, tags = {}) {
+  const m = box(M.wall, w,h,d, x,y,z);
+  m.userData.isWall = true;
+  Object.assign(m.userData, tags);
+  walls.push(m); return m;
+}
+addWall(BUILD.w, BUILD.h, 0.25, BUILD.x, BUILD.h/2, BUILD.z - BUILD.d/2, { backWall: true });
+addWall(0.25, BUILD.h, BUILD.d, BUILD.x - BUILD.w/2, BUILD.h/2, BUILD.z, { sideWall: true, side: 'L' });
+addWall(0.25, BUILD.h, BUILD.d, BUILD.x + BUILD.w/2, BUILD.h/2, BUILD.z, { sideWall: true, side: 'R' });
+const doorW = 2.4;
+addWall((BUILD.w - doorW)/2, BUILD.h, 0.25, BUILD.x - (doorW/2 + (BUILD.w-doorW)/4), BUILD.h/2, BUILD.z + BUILD.d/2, { frontWall: true });
+addWall((BUILD.w - doorW)/2, BUILD.h, 0.25, BUILD.x + (doorW/2 + (BUILD.w-doorW)/4), BUILD.h/2, BUILD.z + BUILD.d/2, { frontWall: true });
+addWall(doorW, 0.35, 0.25, BUILD.x, BUILD.h - 0.2, BUILD.z + BUILD.d/2, { frontWall: true });
+box(M.beam, doorW, 0.04, 1.1, BUILD.x, 0.06, BUILD.z + BUILD.d/2 + 0.4, world, false);
+// wall stripe / skirting for visibility
+walls.forEach(w => { /* keep */ });
+box(M.wallIn, BUILD.w, 0.35, 0.12, BUILD.x, 0.2, BUILD.z - BUILD.d/2 + 0.05);
+box(M.wallIn, 0.12, 0.35, BUILD.d, BUILD.x - BUILD.w/2 + 0.05, 0.2, BUILD.z);
+box(M.wallIn, 0.12, 0.35, BUILD.d, BUILD.x + BUILD.w/2 - 0.05, 0.2, BUILD.z);
+
+const grid = new THREE.GridHelper(BUILD.w, Math.round(BUILD.w), 0x4a5565, 0x3a4452);
+grid.position.set(BUILD.x, 0.09, BUILD.z);
+grid.material.transparent = true; grid.material.opacity = 0.35;
+world.add(grid);
+
+/* ── коридоры только для расчёта маршрута (без «дорожной» разметки на полу) ── */
+const AISLE_X = [-7.85, -4.55, -1.25];
+const AISLE_Z = [-3.5, 1.1, 5.6];
+const DOOR = { x: BUILD.x, z: BUILD.z + BUILD.d / 2 - 0.2 };
+const doorMark = new THREE.Mesh(
+  new THREE.PlaneGeometry(2.2, 0.55),
+  new THREE.MeshBasicMaterial({ color: 0xc9a84c, transparent: true, opacity: 0.4 })
+);
+doorMark.rotation.x = -Math.PI / 2;
+doorMark.position.set(DOOR.x, 0.1, DOOR.z);
+world.add(doorMark);
+
+function el(html, cls='label3d') {
+  const d = document.createElement('div'); d.className = cls; d.innerHTML = html; return d;
+}
+function label(html, cls) {
+  return new CSS2DObject(el(html, cls));
+}
+
+/* ── industrial tote bin ── */
+function makeTote(fill, W, D, H = 0.36) {
+  const g = new THREE.Group();
+  const t = 0.018;
+  const plastic = new THREE.MeshPhysicalMaterial({
+    color: 0x6a8a9e, metalness: 0.08, roughness: 0.22,
+    transparent: true, opacity: fill < 0.05 ? 0.2 : 0.42,
+    side: THREE.DoubleSide, transmission: 0.15, thickness: 0.5,
+  });
+  const plasticRim = new THREE.MeshStandardMaterial({ color: 0x8aa4b4, metalness: 0.2, roughness: 0.3 });
+
+  // bottom
+  const bottom = new THREE.Mesh(new THREE.BoxGeometry(W - t*2, t, D - t*2), plastic);
+  bottom.position.y = t/2; g.add(bottom);
+  // walls
+  const wallH = H - t;
+  [[0, wallH/2+t, D/2 - t/2, W, wallH, t],
+   [0, wallH/2+t, -D/2 + t/2, W, wallH, t],
+   [W/2 - t/2, wallH/2+t, 0, t, wallH, D - t*2],
+   [-W/2 + t/2, wallH/2+t, 0, t, wallH, D - t*2]].forEach(([x,y,z,w,h,d]) => {
+    const m = new THREE.Mesh(new THREE.BoxGeometry(w,h,d), plastic);
+    m.position.set(x,y,z); m.castShadow = true; g.add(m);
+  });
+  // rim lip
+  const rim = new THREE.Mesh(new THREE.BoxGeometry(W + 0.01, 0.02, D + 0.01), plasticRim);
+  rim.position.y = H - 0.005; g.add(rim);
+  // corner feet
+  [[1,1],[1,-1],[-1,1],[-1,-1]].forEach(([sx,sz]) => {
+    const foot = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.025, 0.04), plasticRim);
+    foot.position.set(sx*(W/2-0.05), 0.012, sz*(D/2-0.05)); g.add(foot);
+  });
+
+  // fill volume inside
+  if (fill > 0.03) {
+    const fillH = (H - t*2 - 0.02) * fill;
+    const fillMesh = new THREE.Mesh(
+      new THREE.BoxGeometry(W - t*4, fillH, D - t*4),
+      new THREE.MeshStandardMaterial({
+        color: fillCol(fill), roughness: 0.75, metalness: 0.05,
+        emissive: fillCol(fill), emissiveIntensity: 0.06,
+      })
+    );
+    fillMesh.position.y = t + 0.01 + fillH/2;
+    fillMesh.castShadow = true;
+    g.add(fillMesh);
+    // content top surface detail (grid of small packs)
+    const packs = Math.min(6, Math.ceil(fill * 6));
+    for (let i = 0; i < packs; i++) {
+      const pw = (W - t*5) / 3 * 0.85, pd = (D - t*5) / 2 * 0.85;
+      const p = new THREE.Mesh(
+        new THREE.BoxGeometry(pw, 0.03, pd),
+        new THREE.MeshStandardMaterial({ color: 0x9a7a4a, roughness: 0.85 })
+      );
+      const col = i % 3, row = Math.floor(i / 3);
+      p.position.set(-((W-t*5)/3) + col*((W-t*5)/3) + (W-t*5)/6, t+0.01+fillH+0.015, -((D-t*5)/4) + row*((D-t*5)/2));
+      g.add(p);
+    }
+  }
+
+  // % badge on FRONT face of tote (not floating above rack)
+  const pct = Math.round(fill * 100);
+  const col = pct < 20 ? '#7dcea0' : pct < 65 ? '#e0c078' : '#e09084';
+  const pctLab = label(`<span style="color:${col}">${pct}%</span>`, 'pct3d');
+  pctLab.position.set(0, H * 0.55, D/2 + 0.01);
+  pctLab.userData.frontOnly = true;
+  pctLab.element.style.opacity = '0';
+  pctLab.element.style.transition = 'opacity .2s';
+  g.add(pctLab);
+  return g;
+}
+
+/* ── pallet rack ── */
+function buildRack(data) {
+  const root = new THREE.Group();
+  root.position.set(data.x, 0, data.z);
+  root.userData = { no: data.no, data };
+  const H = rackH(data);
+  const tall = new THREE.Group(); tall.userData.tall = true; root.add(tall);
+
+  // upright frames (front/back posts + bracing)
+  const postW = 0.07, postD = 0.07;
+  const posts = [
+    [-RW/2, RD/2], [RW/2, RD/2], [-RW/2, -RD/2], [RW/2, -RD/2]
+  ];
+  posts.forEach(([x,z]) => {
+    const p = new THREE.Mesh(new THREE.BoxGeometry(postW, H, postD), M.upright);
+    p.position.set(x, H/2, z); p.castShadow = true; tall.add(p);
+    // base plate
+    const base = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.03, 0.14), M.dark);
+    base.position.set(x, 0.015, z); tall.add(base);
+  });
+  // side bracing X
+  [-RW/2, RW/2].forEach(x => {
+    for (let i = 0; i < 2; i++) {
+      const y0 = 0.4 + i * (H/2.5);
+      const brace = new THREE.Mesh(new THREE.BoxGeometry(0.025, H/2.2, 0.025), M.upright);
+      brace.position.set(x, y0 + H/4.5, 0);
+      brace.rotation.x = (i % 2 ? 1 : -1) * 0.55;
+      tall.add(brace);
+    }
+  });
+  // back mesh panel
+  const back = new THREE.Mesh(new THREE.BoxGeometry(RW - 0.1, H - 0.15, 0.03), M.dark);
+  back.position.set(0, H/2, -RD/2 + 0.02); tall.add(back);
+
+  // top beam + number plate
+  const topBeam = new THREE.Mesh(new THREE.BoxGeometry(RW + 0.1, 0.08, RD + 0.08), M.beam);
+  topBeam.position.set(0, H + 0.02, 0); tall.add(topBeam);
+
+  const num = label(`<b style="font-size:12px">№ ${data.no}</b>`);
+  num.position.set(0, H + 0.45, RD/2);
+  num.userData.always = true;
+  root.add(num);
+
+  // plan footprint
+  const avg = data.shelves.flat().reduce((a,s)=>a+s.fill,0) / data.shelves.flat().length;
+  const slab = new THREE.Mesh(
+    new THREE.BoxGeometry(RW, 0.14, RD),
+    new THREE.MeshStandardMaterial({ color: fillCol(avg), roughness: 0.65, metalness: 0.1, emissive: fillCol(avg), emissiveIntensity: 0.15 })
+  );
+  slab.position.y = 0.07; slab.userData.planSlab = true; root.add(slab);
+  const planNum = label(`<b style="font-size:14px">${data.no}</b>`);
+  planNum.position.set(0, 0.35, 0); planNum.userData.planOnly = true; root.add(planNum);
+
+  // зелёное сияние цели: полупрозрачная сфера вокруг стеллажа (не кольцо на полу)
+  const glowMat = (c, op) => new THREE.MeshBasicMaterial({
+    color: c, transparent: true, opacity: op, depthWrite: false, depthTest: true,
+  });
+  const glow = new THREE.Mesh(
+    new THREE.SphereGeometry(Math.max(RW * 0.72, 1.6), 32, 24),
+    glowMat(0x2bab62, 0)
+  );
+  glow.position.y = Math.max(1.1, H * 0.42);
+  glow.userData.hlSphere = true;
+  glow.userData.glowBase = 0.22;
+  root.add(glow);
+  const glowCore = new THREE.Mesh(
+    new THREE.SphereGeometry(Math.max(RW * 0.38, 0.85), 20, 16),
+    glowMat(0x5fe09a, 0)
+  );
+  glowCore.position.y = glow.position.y;
+  glowCore.userData.hlSphere = true;
+  glowCore.userData.glowBase = 0.38;
+  root.add(glowCore);
+
+  data.shelves.forEach((places, si) => {
+    const y = shelfY(si);
+    // orange step beams front/back
+    [-RD/2 + 0.06, RD/2 - 0.06].forEach(z => {
+      const beam = new THREE.Mesh(new THREE.BoxGeometry(RW - 0.08, 0.06, 0.05), M.beam);
+      beam.position.set(0, y, z); beam.castShadow = true; tall.add(beam);
+    });
+    // wire deck
+    const deck = new THREE.Mesh(new THREE.BoxGeometry(RW - 0.12, 0.025, RD - 0.14), M.deck);
+    deck.position.set(0, y + 0.035, 0); deck.receiveShadow = true; tall.add(deck);
+
+    // shelf letter — under front beam, small
+    const shLab = label(`полка ${LETTERS[si]}`);
+    shLab.position.set(-RW/2 - 0.55, y + 0.05, 0);
+    shLab.userData.frontOnly = true;
+    shLab.element.style.opacity = '0';
+    tall.add(shLab);
+
+    const hl = new THREE.Mesh(
+      new THREE.PlaneGeometry(RW - 0.05, 0.72),
+      new THREE.MeshBasicMaterial({ color: 0x2bab62, transparent: true, opacity: 0.5, depthWrite: false, depthTest: false, side: THREE.DoubleSide })
+    );
+    hl.position.set(0, y + 0.36, RD / 2 + 0.2); hl.visible = false; hl.renderOrder = 20;
+    hl.userData.shelfHL = true; hl.userData.shelfIdx = si; tall.add(hl);
+
+    const n = places.length, gap = 0.04, usable = RW - 0.2;
+    const sw = (usable - gap*(n-1)) / n;
+    places.forEach((place, pi) => {
+      const x0 = -usable/2 + sw/2 + pi*(sw+gap);
+      if (pi > 0) {
+        const div = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.42, RD - 0.2), M.dark);
+        div.position.set(x0 - sw/2 - gap/2, y + 0.28, 0); tall.add(div);
+      }
+      const tote = makeTote(place.fill, sw * 0.9, RD * 0.55, 0.34);
+      tote.position.set(x0, y + 0.05, 0); tall.add(tote);
+
+      // коды/открыть — только в правой панели (3D не засоряем)
+      const hit = new THREE.Mesh(new THREE.BoxGeometry(sw, 0.55, RD-0.1), new THREE.MeshBasicMaterial({ visible:false }));
+      hit.position.set(x0, y + 0.32, 0);
+      hit.userData = { kind:'place', rackNo:data.no, shelfIdx:si, placeIdx:pi };
+      tall.add(hit); clickables.push(hit);
+    });
+  });
+
+  const proxy = new THREE.Mesh(new THREE.BoxGeometry(RW, Math.max(H,1), RD), new THREE.MeshBasicMaterial({ visible:false }));
+  proxy.position.y = Math.max(H,1)/2;
+  proxy.userData = { kind:'rack', rackNo:data.no };
+  root.add(proxy); clickables.push(proxy);
+
+  world.add(root);
+  rackGroups.set(data.no, root);
+  setPlan(root, true);
+}
+
+const rackGroups = new Map();
+const clickables = [];
+
+function setPlan(root, plan) {
+  root.traverse(o => {
+    if (o.userData?.tall) o.visible = !plan;
+    if (o.userData?.planSlab) o.visible = plan;
+    if (o.isCSS2DObject && o.userData.planOnly) o.element.style.opacity = plan ? '1' : '0';
+    if (o.isCSS2DObject && o.userData.always) o.element.style.opacity = plan ? '0' : '1';
+  });
+}
+
+RACKS.forEach(buildRack);
+
+OUT.forEach(c => {
+  const g = new THREE.Group(); g.position.set(c.x, 0, c.z);
+  const body = box(M.cont, 2.2, 2.15, 1.5, 0, 1.075, 0, g);
+  for (let i = 0; i < 6; i++) {
+    const r = new THREE.Mesh(new THREE.BoxGeometry(2.22, 0.06, 1.52), M.dark);
+    r.position.y = 0.3 + i * 0.32; g.add(r);
+  }
+  const top = new THREE.Mesh(new THREE.BoxGeometry(2.0, 0.06, 1.35),
+    new THREE.MeshStandardMaterial({ color: fillCol(c.fill), emissive: fillCol(c.fill), emissiveIntensity: 0.15 }));
+  top.position.y = 2.2; g.add(top);
+  const lab = label(c.id); lab.position.set(0, 2.45, 0); g.add(lab);
+  outdoor.add(g);
+});
+
+/* ── navigator-style route ── */
+let pulseArrow = null, camTween = null, selectedNo = null, frontMode = false;
+let routeAnim = null;
+
+function clearPath() {
+  if (routeAnim) { routeAnim.cancelled = true; routeAnim = null; }
+  while (pathGroup.children.length) {
+    const o = pathGroup.children.pop();
+    o.geometry?.dispose?.();
+  }
+}
+
+/** Ближайший пешеходный коридор */
+function nearestAisleX(x) {
+  return AISLE_X.reduce((best, v) => Math.abs(v - x) < Math.abs(best - x) ? v : best, AISLE_X[0]);
+}
+function nearestAisleZ(z) {
+  return AISLE_Z.reduce((best, v) => Math.abs(v - z) < Math.abs(best - z) ? v : best, AISLE_Z[0]);
+}
+
+/**
+ * Маршрут строго по пешеходным коридорам (ортогонально, без диагоналей через стеллажи):
+ * дверь → ближайший N–S проход → E–W проход перед рядом → к фасаду стеллажа.
+ */
+function pathWaypoints(rack) {
+  const y = 0.13;
+  const door = new THREE.Vector3(DOOR.x, y, DOOR.z);
+  // коридор у выбранного стеллажа (правый или левый межстеллажный)
+  const leftA = AISLE_X.filter(ax => ax < rack.x).pop();
+  const rightA = AISLE_X.find(ax => ax > rack.x);
+  const faceZ = rack.z + RD / 2 + 0.65;
+  // E–W проход с южной стороны ряда (между рядами / у двери)
+  const viaZ = AISLE_Z.reduce((best, v) => {
+    // берём проход южнее фасада (больше z), ближайший
+    if (v >= faceZ - 0.05) return Math.abs(v - faceZ) < Math.abs(best - faceZ) ? v : best;
+    return best;
+  }, AISLE_Z[AISLE_Z.length - 1]);
+
+  // от двери идём по spine, ближайшему к двери, затем при необходимости переходим на aisle у стеллажа по viaZ
+  const doorSpine = nearestAisleX(DOOR.x);
+  // предпочитаем aisle рядом со стеллажом, к которому короче от doorSpine вдоль ряда
+  let rackAisle = doorSpine;
+  if (leftA != null && rightA != null) {
+    rackAisle = Math.abs(leftA - doorSpine) <= Math.abs(rightA - doorSpine) ? leftA : rightA;
+  } else if (leftA != null) rackAisle = leftA;
+  else if (rightA != null) rackAisle = rightA;
+
+  const pts = [door];
+  // к spine у двери
+  if (Math.abs(door.x - doorSpine) > 0.12) pts.push(new THREE.Vector3(doorSpine, y, door.z));
+  // вдоль spine к E–W проходу
+  pts.push(new THREE.Vector3(doorSpine, y, viaZ));
+  // если aisle у стеллажа другой — сдвиг по E–W проходу
+  if (Math.abs(doorSpine - rackAisle) > 0.12) pts.push(new THREE.Vector3(rackAisle, y, viaZ));
+  // вдоль aisle к оси стеллажа
+  if (Math.abs(rackAisle - rack.x) > 0.12) pts.push(new THREE.Vector3(rack.x, y, viaZ));
+  // короткий заход к фасаду (остаёмся перед стеллажом)
+  pts.push(new THREE.Vector3(rack.x, y, faceZ));
+
+  const clean = [pts[0]];
+  for (let i = 1; i < pts.length; i++) {
+    if (clean[clean.length - 1].distanceTo(pts[i]) > 0.12) clean.push(pts[i]);
+  }
+  return clean;
+}
+
+/**
+ * Сглаживание как в навигаторе: только локальные дуги на углах.
+ * Без CatmullRom — он срезает углы и проходит сквозь стеллажи.
+ */
+function smoothNavigatorPath(waypoints, spacing = 0.12) {
+  if (waypoints.length < 2) return waypoints.map(p => p.clone());
+  const R = 0.55; // скругление поворота — чтобы труба не ломалась на 90°
+  const out = [waypoints[0].clone()];
+
+  function lineTo(target) {
+    const from = out[out.length - 1];
+    const dist = from.distanceTo(target);
+    if (dist < 0.01) return;
+    const nSeg = Math.max(1, Math.round(dist / spacing));
+    for (let s = 1; s <= nSeg; s++) out.push(from.clone().lerp(target, s / nSeg));
+  }
+
+  for (let i = 1; i < waypoints.length - 1; i++) {
+    const prev = waypoints[i - 1], cur = waypoints[i], next = waypoints[i + 1];
+    const d1 = new THREE.Vector3().subVectors(cur, prev);
+    const d2 = new THREE.Vector3().subVectors(next, cur);
+    const len1 = d1.length(), len2 = d2.length();
+    d1.normalize(); d2.normalize();
+    const r = Math.min(R, len1 * 0.42, len2 * 0.42);
+    const a = cur.clone().addScaledVector(d1, -r);
+    const b = cur.clone().addScaledVector(d2, r);
+    lineTo(a);
+    // дуга поворота — много точек, труба идёт гладко
+    const arcN = Math.max(10, Math.round((Math.PI / 2) * r / (spacing * 0.7)));
+    for (let s = 1; s <= arcN; s++) {
+      const t = s / arcN;
+      out.push(new THREE.Vector3()
+        .addScaledVector(a, (1 - t) * (1 - t))
+        .addScaledVector(cur, 2 * (1 - t) * t)
+        .addScaledVector(b, t * t));
+    }
+  }
+  lineTo(waypoints[waypoints.length - 1]);
+  return out;
+}
+
+function makeFloorChevron(dir) {
+  const shape = new THREE.Shape();
+  shape.moveTo(0, 0.18);
+  shape.lineTo(0.11, -0.1);
+  shape.lineTo(0, -0.03);
+  shape.lineTo(-0.11, -0.1);
+  shape.closePath();
+  const m = new THREE.Mesh(
+    new THREE.ShapeGeometry(shape),
+    new THREE.MeshBasicMaterial({ color: 0xffffff, side: THREE.DoubleSide, transparent: true, opacity: 0.9 })
+  );
+  m.rotation.x = -Math.PI / 2;
+  m.rotation.y = Math.atan2(dir.x, dir.z);
+  return m;
+}
+
+function setRackGlow(rackNo, on) {
+  const root = rackGroups.get(rackNo);
+  if (!root) return;
+  root.traverse(o => {
+    if (o.userData.hlSphere) {
+      o.material.opacity = on ? (o.userData.glowBase || 0.25) : 0;
+      o.userData.pulse = on;
+      o.scale.set(1, on ? 1.08 : 1, 1);
+    }
+    if (o.userData.planSlab) {
+      if (on) {
+        if (!o.userData._slabBackup) {
+          o.userData._slabBackup = {
+            color: o.material.color.clone(),
+            emissive: o.material.emissive.clone(),
+            ei: o.material.emissiveIntensity,
+          };
+        }
+        o.material.color.setHex(0x2bab62);
+        o.material.emissive.setHex(0x2bab62);
+        o.material.emissiveIntensity = 0.7;
+      } else if (o.userData._slabBackup) {
+        o.material.color.copy(o.userData._slabBackup.color);
+        o.material.emissive.copy(o.userData._slabBackup.emissive);
+        o.material.emissiveIntensity = o.userData._slabBackup.ei;
+        delete o.userData._slabBackup;
+      }
+    }
+    // НЕ трогаем M.upright/M.beam — это общие материалы, иначе зеленеют ВСЕ стеллажи
+  });
+}
+
+function clearRings() {
+  // страховка: общие материалы могли остаться зелёными после старых версий
+  [M.upright, M.beam, M.deck, M.dark].forEach(mat => {
+    if (mat.emissive) { mat.emissive.setHex(0x000000); mat.emissiveIntensity = 0; }
+  });
+  rackGroups.forEach((_, no) => setRackGlow(no, false));
+}
+
+/** Сплошная лента маршрута (плоско на полу) — без стыков TubeGeometry */
+function drawRouteAnimated(waypoints, highlightRackNo, duration = 2200) {
+  clearPath();
+  const pts = smoothNavigatorPath(waypoints, 0.06).map(p => new THREE.Vector3(p.x, 0.12, p.z));
+  if (pts.length < 2) return Promise.resolve();
+
+  const glowMat = new THREE.MeshBasicMaterial({ color: 0x2bab62, transparent: true, opacity: 0.3, depthWrite: false, side: THREE.DoubleSide });
+  const roadMat = new THREE.MeshBasicMaterial({ color: 0x4ae08a, transparent: true, opacity: 0.95, depthWrite: false, side: THREE.DoubleSide });
+  let glowMesh = null, roadMesh = null;
+
+  function ribbonGeo(slice, halfW) {
+    const n = slice.length;
+    const pos = new Float32Array(n * 2 * 3);
+    const idx = [];
+    for (let i = 0; i < n; i++) {
+      const p = slice[i];
+      const prev = slice[Math.max(0, i - 1)];
+      const next = slice[Math.min(n - 1, i + 1)];
+      const dir = new THREE.Vector3(next.x - prev.x, 0, next.z - prev.z);
+      if (dir.lengthSq() < 1e-8) dir.set(1, 0, 0); else dir.normalize();
+      const px = -dir.z * halfW, pz = dir.x * halfW;
+      pos[(i * 2) * 3] = p.x + px; pos[(i * 2) * 3 + 1] = p.y; pos[(i * 2) * 3 + 2] = p.z + pz;
+      pos[(i * 2 + 1) * 3] = p.x - px; pos[(i * 2 + 1) * 3 + 1] = p.y; pos[(i * 2 + 1) * 3 + 2] = p.z - pz;
+      if (i < n - 1) {
+        const a = i * 2, b = a + 1, c = a + 2, d = a + 3;
+        idx.push(a, b, c, b, d, c);
+      }
+    }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+    g.setIndex(idx);
+    return g;
+  }
+
+  function setRibbon(upto) {
+    const slice = pts.slice(0, Math.max(2, upto + 1));
+    if (glowMesh) { pathGroup.remove(glowMesh); glowMesh.geometry.dispose(); }
+    if (roadMesh) { pathGroup.remove(roadMesh); roadMesh.geometry.dispose(); }
+    glowMesh = new THREE.Mesh(ribbonGeo(slice, 0.22), glowMat);
+    roadMesh = new THREE.Mesh(ribbonGeo(slice, 0.09), roadMat);
+    roadMesh.position.y = 0.01;
+    pathGroup.add(glowMesh); pathGroup.add(roadMesh);
+  }
+
+  const head = new THREE.Mesh(
+    new THREE.SphereGeometry(0.14, 14, 14),
+    new THREE.MeshBasicMaterial({ color: 0xffffff })
+  );
+  head.position.copy(pts[0]);
+  pathGroup.add(head);
+
+  if (highlightRackNo != null) setRackGlow(highlightRackNo, true);
+
+  return new Promise(resolve => {
+    const tw = { cancelled: false }; routeAnim = tw;
+    const t0 = performance.now();
+    let lastIdx = 1;
+    setRibbon(1);
+    (function frame(now) {
+      if (tw.cancelled) return;
+      const u = Math.min(1, (now - t0) / duration);
+      const e = 1 - Math.pow(1 - u, 2.4);
+      const idx = Math.max(1, Math.floor(e * (pts.length - 1)));
+      if (idx !== lastIdx) { setRibbon(idx); lastIdx = idx; }
+      head.position.copy(pts[idx]);
+      if (u < 1) requestAnimationFrame(frame);
+      else {
+        setRibbon(pts.length - 1);
+        const a = pts[pts.length - 2], b = pts[pts.length - 1];
+        const big = makeFloorChevron(new THREE.Vector3(b.x - a.x, 0, b.z - a.z).normalize());
+        big.scale.setScalar(2.2);
+        big.position.set(b.x, 0.16, b.z);
+        pathGroup.add(big);
+        pathGroup.remove(head);
+        routeAnim = null;
+        resolve();
+      }
+    })(t0);
+  });
+}
+
+function pathPointsTo(rack) { return pathWaypoints(rack); }
+
+function setFrontLabels(on, only) {
+  rackGroups.forEach((root, no) => {
+    root.traverse(o => {
+      if (!o.isCSS2DObject && !(o.element && o.userData)) return;
+      if (o.userData?.frontOnly || o.element?.classList?.contains('open') || (o.isCSS2DObject && o.userData?.frontOnly)) {
+        const show = on && no === only;
+        if (o.element) o.element.style.opacity = show ? '1' : '0';
+      }
+      // also open buttons stored as CSS2D with frontOnly
+    });
+    root.traverse(o => {
+      if (o.isCSS2DObject && o.userData.frontOnly) {
+        o.element.style.opacity = (on && no === only) ? '1' : '0';
+      }
+    });
+  });
+}
+
+function setWorldPlan(plan) {
+  mode3d = !plan;
+  document.getElementById('mode-pill').textContent = plan ? 'режим: план 2D' : 'режим: 3D';
+  rackGroups.forEach(r => setPlan(r, plan));
+  walls.forEach(w => { w.visible = !plan; });
+  grid.visible = plan;
+  outdoor.visible = true;
+  scene.fog.near = plan ? 55 : 30;
+  scene.fog.far = plan ? 95 : 58;
+}
+
+function setLabelsVisible(root, on) {
+  root.traverse(o => {
+    if (o.isCSS2DObject && o.element) o.element.style.visibility = on ? 'visible' : 'hidden';
+  });
+}
+
+function isolate(no) {
+  selectedNo = no; frontMode = true;
+  rackGroups.forEach((r,n) => {
+    const show = n === no;
+    r.visible = show;
+    setLabelsVisible(r, show);
+  });
+  outdoor.visible = false;
+  // переднюю стену (со стороны камеры) полностью убираем — иначе камера «за стеной»
+  walls.forEach(w => {
+    if (w.userData.frontWall) { w.visible = false; return; }
+    w.visible = true;
+    w.material = w.material.clone();
+    w.material.color = new THREE.Color(0x8a94a4);
+    w.material.transparent = true;
+    w.material.opacity = 0.35;
+  });
+  grid.visible = false;
+  clearPath(); clearRings();
+  scene.fog.near = 16; scene.fog.far = 48;
+}
+
+function showWorld() {
+  selectedNo = null; frontMode = false;
+  rackGroups.forEach(r => { r.visible = true; setLabelsVisible(r, true); });
+  outdoor.visible = true; clearPath(); clearRings(); clearFind();
+  setFrontLabels(false); spot.intensity = 0;
+  // restore wall materials
+  walls.forEach(w => { w.material.transparent = false; w.material.opacity = 1; });
+  setWorldPlan(true);
+}
+
+function showShelfHL(rackNo, si, on) {
+  const root = rackGroups.get(rackNo);
+  if (!root) return;
+  root.traverse(o => {
+    if (o.userData.shelfHL) o.visible = on && o.userData.shelfIdx === si;
+  });
+}
+
+function showPlaceHL(rackNo, si, pi) {
+  clearFind();
+  showShelfHL(rackNo, si, true);
+  const root = rackGroups.get(rackNo);
+  const data = root.userData.data;
+  let tall = null;
+  root.traverse(o => { if (o.userData?.tall) tall = o; });
+  const y = shelfY(si);
+  const places = data.shelves[si];
+  const n = places.length, gap = 0.04, usable = RW - 0.2, sw = (usable - gap * (n - 1)) / n;
+  const x0 = -usable / 2 + sw / 2 + pi * (sw + gap);
+
+  const box = new THREE.Mesh(
+    new THREE.BoxGeometry(sw * 0.95, 0.55, RD * 0.85),
+    new THREE.MeshBasicMaterial({ color: 0x2bab62, transparent: true, opacity: 0.42, depthWrite: false })
+  );
+  box.position.set(x0, y + 0.32, 0);
+  box.userData.placeHL = true;
+  (tall || root).add(box);
+
+  const arrow = new THREE.Group();
+  const cone = new THREE.Mesh(
+    new THREE.ConeGeometry(0.14, 0.32, 6),
+    new THREE.MeshStandardMaterial({ color: 0x2bab62, emissive: 0x2bab62, emissiveIntensity: 0.8 })
+  );
+  cone.rotation.x = Math.PI;
+  arrow.add(cone);
+  const stem = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.04, 0.04, 0.28, 8),
+    new THREE.MeshStandardMaterial({ color: 0x2bab62, emissive: 0x2bab62, emissiveIntensity: 0.5 })
+  );
+  stem.position.y = 0.28; arrow.add(stem);
+  arrow.position.set(root.position.x + x0, y + 0.85, root.position.z + RD / 2 + 0.25);
+  arrow.userData.pulseArrow = true;
+  scene.add(arrow); pulseArrow = arrow;
+  const tag = label(`<b style="color:#2bab62">${codeOf(rackNo, si, pi + 1)}</b>`);
+  tag.position.set(0, 0.55, 0); arrow.add(tag);
+  return { x0, y };
+}
+
+function placeCam(rack, si, pi) {
+  const H = rackH(rack);
+  const y = shelfY(si);
+  const places = rack.shelves[si];
+  const n = places.length, gap = 0.04, usable = RW - 0.2, sw = (usable - gap * (n - 1)) / n;
+  const x0 = -usable / 2 + sw / 2 + pi * (sw + gap);
+  return {
+    pos: new THREE.Vector3(rack.x + x0 * 0.35, y + 0.55, rack.z + Math.max(4.2, H * 0.9)),
+    target: new THREE.Vector3(rack.x + x0, y + 0.25, rack.z),
+  };
+}
+
+function clearFind() {
+  if (pulseArrow) { scene.remove(pulseArrow); pulseArrow = null; }
+  rackGroups.forEach(r => {
+    const doomed = [];
+    r.traverse(o => {
+      if (o.userData.shelfHL) o.visible = false;
+      if (o.userData.placeHL) doomed.push(o);
+    });
+    doomed.forEach(o => { o.parent?.remove(o); o.geometry?.dispose?.(); });
+  });
+}
+
+function showFind(rackNo, si, pi) {
+  showPlaceHL(rackNo, si, pi);
+}
+
+/* camera */
+function fitOrtho() {
+  const a = aspect(); const f = 12;
+  ortho.left = -f*a; ortho.right = f*a; ortho.top = f; ortho.bottom = -f;
+  ortho.updateProjectionMatrix();
+  ortho.position.set(BUILD.x, 32, BUILD.z + 11);
+  look.set(BUILD.x, 0, BUILD.z);
+  ortho.up.set(0,1,0); ortho.lookAt(look);
+  cam = ortho;
+}
+function ease(t){ return t<.5?2*t*t:-1+(4-2*t)*t; }
+function animCam(toPos, toTarget, ms=1100) {
+  return new Promise(resolve => {
+    if (camTween) camTween.cancelled = true;
+    cam = persp;
+    const from = cam.position.clone(), fromT = look.clone();
+    const tw = { cancelled:false }; camTween = tw;
+    const t0 = performance.now();
+    (function frame(now) {
+      if (tw.cancelled) return;
+      const u = Math.min(1,(now-t0)/ms), e = ease(u);
+      cam.position.lerpVectors(from, toPos, e);
+      look.lerpVectors(fromT, toTarget, e);
+      cam.lookAt(look);
+      if (u < 1) requestAnimationFrame(frame); else { camTween=null; resolve(); }
+    })(t0);
+  });
+}
+function frontCam(rack) {
+  const H = rackH(rack), n = rack.shelves.length;
+  const dist = Math.max(8.5, H * 2.0 + n * 0.55);
+  const camY = Math.min(H * 0.48, H - 0.35);
+  return {
+    pos: new THREE.Vector3(rack.x, camY, rack.z + dist),
+    target: new THREE.Vector3(rack.x, H * 0.38, rack.z),
+  };
+}
+
+function hint(t,s,ms=1200) {
+  const el = document.getElementById('hint');
+  el.querySelector('h3').textContent = t; el.querySelector('p').textContent = s||'';
+  el.classList.add('show'); clearTimeout(hint._t); hint._t = setTimeout(()=>el.classList.remove('show'), ms);
+}
+
+const STEPS = [
+  '1 · План 2D',
+  '2 · Маршрут',
+  '3 · Подлёт · 3D',
+  '4 · Фасад · полка',
+  '5 · Место',
+];
+let step = 0, tourRack = FIND.rackNo, autoTimer = null;
+function ui() {
+  document.getElementById('step-label').textContent = STEPS[step];
+  document.getElementById('btn-prev').disabled = step <= 0;
+  document.getElementById('btn-next').disabled = step >= STEPS.length - 1;
+}
+
+async function goStep(i, opts = {}) {
+  if (routeAnim) { routeAnim.cancelled = true; routeAnim = null; }
+  if (camTween) { camTween.cancelled = true; camTween = null; }
+  step = i; ui();
+  const rack = RACKS.find(r => r.no === (opts.rackNo || tourRack));
+
+  if (i === 0) {
+    showWorld(); fitOrtho();
+    document.getElementById('detail-title').textContent = 'Склад';
+    document.getElementById('detail-code').style.display = 'none';
+    document.getElementById('detail-sub').textContent = `План ${BUILD.w}×${BUILD.d} м · стеллажи по загрузке.`;
+    document.getElementById('detail-body').innerHTML = '';
+    hint('План склада', 'вид сверху');
+  }
+
+  if (i === 1) {
+    showWorld(); fitOrtho();
+    clearRings();
+    hint('Строим маршрут', 'по проходам между стеллажами');
+    document.getElementById('detail-title').textContent = `Маршрут → ${rack.no}`;
+    document.getElementById('detail-code').style.display = 'inline-block';
+    document.getElementById('detail-code').textContent = String(rack.no);
+    document.getElementById('detail-sub').textContent = 'Линия рисуется по проходам. Цель — зелёное сияние только на выбранном стеллаже.';
+    document.getElementById('detail-body').innerHTML = '';
+    await drawRouteAnimated(pathWaypoints(rack), rack.no, 2200);
+  }
+
+  if (i === 2) {
+    if (!pathGroup.children.length) await drawRouteAnimated(pathWaypoints(rack), rack.no, 400);
+    else setRackGlow(rack.no, true);
+    setWorldPlan(false);
+    rackGroups.forEach(r => setPlan(r, false));
+    walls.forEach(w => { w.visible = true; w.material.transparent = false; w.material.opacity = 1; });
+    setRackGlow(rack.no, true);
+    const H = rackH(rack);
+    hint(`Стеллаж ${rack.no}`, 'подлёт · 3D');
+    document.getElementById('detail-title').textContent = `Стеллаж ${rack.no}`;
+    document.getElementById('detail-code').style.display = 'inline-block';
+    document.getElementById('detail-code').textContent = String(rack.no);
+    document.getElementById('detail-sub').textContent = `Переход в 3D. H≈${H.toFixed(1)} м · ${rack.shelves.length} полок.`;
+    document.getElementById('detail-body').innerHTML = '';
+    cam = persp;
+    persp.position.copy(ortho.position);
+    look.set(BUILD.x, 0, BUILD.z);
+    await animCam(
+      new THREE.Vector3(rack.x + 4.5, Math.max(7, H + 3.5), rack.z + 6.5),
+      new THREE.Vector3(rack.x, H * 0.35, rack.z),
+      1400
+    );
+  }
+
+  if (i === 3) {
+    isolate(rack.no);
+    setPlan(rackGroups.get(rack.no), false);
+    setFrontLabels(true, rack.no);
+    clearFind();
+    showShelfHL(rack.no, FIND.shelfIdx, true);
+    const fc = frontCam(rack); const H = rackH(rack);
+    spot.intensity = 1.25;
+    spot.position.set(rack.x, H + 1.2, rack.z + (fc.pos.z - rack.z) * 0.55);
+    spot.target.position.copy(fc.target);
+    hint(`Полка ${LETTERS[FIND.shelfIdx]}`, 'подсветка полки');
+    panel(rack);
+    await animCam(fc.pos, fc.target, 1200);
+  }
+
+  if (i === 4) {
+    if (!frontMode || selectedNo !== FIND.rackNo) {
+      tourRack = FIND.rackNo;
+      await goStep(3, { rackNo: FIND.rackNo });
+    }
+    const places = rack.shelves[FIND.shelfIdx];
+    showPlaceHL(FIND.rackNo, FIND.shelfIdx, FIND.placeIdx);
+    const c = codeOf(FIND.rackNo, FIND.shelfIdx, FIND.placeIdx + 1);
+    hint('Место ' + c, places.length > 1 ? 'приближение к месту на полке' : 'одна ячейка на полке');
+    panel(rack);
+    document.getElementById('detail-title').textContent = FIND.item;
+    document.getElementById('detail-code').style.display = 'inline-block';
+    document.getElementById('detail-code').textContent = c;
+    document.getElementById('detail-sub').textContent = places.length > 1
+      ? `На полке ${places.length} места — камера ближе к ${c}.`
+      : `Место ${c}.`;
+    const btn = document.querySelector(`.place-btn[data-s="${FIND.shelfIdx}"][data-p="${FIND.placeIdx}"]`);
+    if (btn) btn.classList.add('find', 'on');
+    if (places.length >= 2) {
+      const pc = placeCam(rack, FIND.shelfIdx, FIND.placeIdx);
+      await animCam(pc.pos, pc.target, 1100);
+    }
+  }
+}
+
+function panel(rack) {
+  const body = document.getElementById('detail-body');
+  document.getElementById('detail-title').textContent = `Стеллаж ${rack.no}`;
+  document.getElementById('detail-code').style.display = 'inline-block';
+  document.getElementById('detail-code').textContent = String(rack.no);
+  let html = '';
+  rack.shelves.forEach((places, si) => {
+    html += `<div style="margin:6px 0 3px;font-size:10px;color:var(--t2);letter-spacing:.08em">ПОЛКА ${LETTERS[si]}</div>`;
+    places.forEach((p, pi) => {
+      html += `<button class="place-btn" data-s="${si}" data-p="${pi}"><b>${codeOf(rack.no,si,pi+1)}</b><span>${Math.round(p.fill*100)}% · ${p.items.length?p.items.length+' поз.':'пусто'}</span></button>`;
+    });
+  });
+  body.innerHTML = html;
+  body.querySelectorAll('.place-btn').forEach(b => b.onclick = () => openModal(rack.no, +b.dataset.s, +b.dataset.p));
+}
+
+function openModal(rackNo, si, pi) {
+  const rack = RACKS.find(r => r.no === rackNo);
+  const place = rack.shelves[si][pi];
+  const c = codeOf(rackNo, si, pi+1);
+  document.getElementById('modal-title').textContent = `Полка ${LETTERS[si]} · место ${pi+1}`;
+  document.getElementById('modal-code').textContent = c;
+  document.getElementById('modal-body').innerHTML =
+    `<div class="item"><b>Загрузка контейнера</b><span>${Math.round(place.fill*100)}%</span></div>` +
+    (place.items.length
+      ? place.items.map(it => `<div class="item${it.hi?' hi':''}"><b>${it.n}</b><span>${it.q}</span></div>`).join('')
+      : `<div class="item"><b>Пусто</b><span>Контейнер прозрачный</span></div>`);
+  document.getElementById('modal').classList.add('on');
+}
+
+document.getElementById('modal-close').onclick = () => document.getElementById('modal').classList.remove('on');
+document.getElementById('btn-find').onclick = async () => {
+  clearInterval(autoTimer); tourRack = FIND.rackNo;
+  let cancelled = false;
+  autoTimer = { _c: () => { cancelled = true; } };
+  const sleep = ms => new Promise(r => setTimeout(r, ms));
+  for (let i = 0; i < STEPS.length; i++) {
+    if (cancelled) break;
+    await goStep(i);
+    if (i < STEPS.length - 1) await sleep(700);
+  }
+  autoTimer = null;
+};
+document.getElementById('btn-reset').onclick = () => { if (autoTimer?._c) autoTimer._c(); clearInterval(autoTimer); autoTimer=null; tourRack=FIND.rackNo; goStep(0); };
+document.getElementById('btn-prev').onclick = () => { if (autoTimer?._c) autoTimer._c(); clearInterval(autoTimer); autoTimer=null; goStep(Math.max(0,step-1)); };
+document.getElementById('btn-next').onclick = () => { if (autoTimer?._c) autoTimer._c(); clearInterval(autoTimer); autoTimer=null; goStep(Math.min(STEPS.length-1,step+1)); };
+
+const ray = new THREE.Raycaster(), ptr = new THREE.Vector2();
+renderer.domElement.addEventListener('click', async e => {
+  if (step !== 0 && !frontMode) return;
+  const rect = renderer.domElement.getBoundingClientRect();
+  ptr.x = ((e.clientX-rect.left)/rect.width)*2-1;
+  ptr.y = -((e.clientY-rect.top)/rect.height)*2+1;
+  ray.setFromCamera(ptr, cam);
+  const hits = ray.intersectObjects(clickables, false);
+  if (!hits.length) return;
+  const ud = hits[0].object.userData;
+  if (step===0 && ud.kind==='rack') {
+    tourRack = ud.rackNo; await goStep(1); // остаёмся на 2D с маршрутом
+  } else if (frontMode && ud.kind==='place' && ud.rackNo===selectedNo) {
+    openModal(ud.rackNo, ud.shelfIdx, ud.placeIdx);
+  }
+});
+
+window.addEventListener('resize', () => {
+  persp.aspect = aspect(); persp.updateProjectionMatrix();
+  if (!mode3d) fitOrtho();
+  renderer.setSize(innerWidth, innerHeight); labelR.setSize(innerWidth, innerHeight);
+});
+
+// expose for screenshot automation
+window.__wms = { goStep, STEPS, FIND };
+
+(function loop(){
+  requestAnimationFrame(loop);
+  const t = performance.now() * 0.004;
+  rackGroups.forEach(r => r.traverse(o => {
+    if (o.userData.shelfHL && o.visible && o.material) {
+      o.material.opacity = 0.45 + Math.sin(t)*0.15;
+    }
+    if (o.userData.placeHL && o.visible && o.material) {
+      o.material.opacity = 0.32 + Math.sin(t) * 0.14;
+    }
+    if (o.userData.pulse && o.userData.hlSphere && o.material) {
+      const base = o.userData.glowBase || 0.25;
+      o.material.opacity = base + Math.sin(t) * 0.1;
+    }
+  }));
+  if (pulseArrow) pulseArrow.position.y += Math.sin(t)*0.002;
+  cam.lookAt(look);
+  renderer.render(scene, cam);
+  labelR.render(scene, cam);
+})();
+
+goStep(0);
+</script>
+</body>
+</html>

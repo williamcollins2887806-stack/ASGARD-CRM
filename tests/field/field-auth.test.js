@@ -130,6 +130,23 @@ test('T2: POST /request-code with unknown phone -> 404', async () => {
   assertStatus(resp, 404, 'unknown phone');
 });
 
+test('T2b: POST /check-phone with unknown phone -> 404', async () => {
+  const resp = await rawFetch('POST', FIELD_AUTH + '/check-phone', {
+    body: { phone: '+79999999999' }
+  });
+  assertStatus(resp, 404, 'check-phone unknown');
+});
+
+test('T2c: POST /check-phone with valid phone -> has_pin boolean + employee.id', async () => {
+  if (!testEmployeeId) throw new Error('No test employee');
+  const resp = await rawFetch('POST', FIELD_AUTH + '/check-phone', {
+    body: { phone: testPhone }
+  });
+  assertStatus(resp, 200, 'check-phone');
+  assert(typeof resp.data.has_pin === 'boolean', 'has_pin boolean');
+  assert(resp.data.employee && resp.data.employee.id === testEmployeeId, 'employee.id');
+});
+
 // ===================================================
 // TEST 3: Request code again within 60s -> 429
 // ===================================================

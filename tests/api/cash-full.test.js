@@ -19,7 +19,8 @@
  *   PUT  /api/cash/:id/return/:rid/confirm — requirePermission('cash_admin', 'write')
  *   PUT  /api/cash/:id/close       — requirePermission('cash_admin', 'write')
  */
-const { api, assert, assertOk, assertForbidden, assertHasFields, assertArray, skip } = require('../config');
+const { api, assert, assertOk, assertForbidden, assertHasFields, assertArray, skip, rawFetch } = require('../config');
+const crypto = require('crypto');
 
 let testCashId = null;
 let testWorkId = null;
@@ -95,7 +96,7 @@ module.exports = {
             amount: 25000,
             purpose: 'E2E autotest: закупка материалов',
             work_id: testWorkId || null,
-            type: testWorkId ? 'advance' : 'expense'
+            type: testWorkId ? 'advance' : 'office'
           }
         });
         assertOk(resp, 'create cash request');
@@ -144,6 +145,29 @@ module.exports = {
         const resp = await api('GET', `/api/cash/${testCashId}`, { role: 'ADMIN' });
         assertOk(resp, 'read-back after approve');
         assert(resp.data.status === 'approved', `expected "approved", got "${resp.data.status}"`);
+      }
+    },
+
+    // ── 8b. Issue money (касса) ──
+    {
+      name: 'ADMIN issues cash (PUT /:id/issue)',
+      run: async () => {
+        if (!testCashId) skip('no testCashId');
+        const resp = await api('PUT', `/api/cash/${testCashId}/issue`, {
+          role: 'ADMIN',
+          body: {}
+        });
+        assertOk(resp, 'issue cash');
+      }
+    },
+
+    {
+      name: 'Verify status is "money_issued" after issue',
+      run: async () => {
+        if (!testCashId) skip('no testCashId');
+        const resp = await api('GET', `/api/cash/${testCashId}`, { role: 'ADMIN' });
+        assertOk(resp, 'read-back after issue');
+        assert(resp.data.status === 'money_issued', `expected "money_issued", got "${resp.data.status}"`);
       }
     },
 
@@ -224,27 +248,27 @@ module.exports = {
       }
     },
 
-    // ── 15. NEGATIVE: HR cannot create cash request (no cash.write) ──
+    // ── 15. HR can create own cash request (V336) ──
     {
-      name: 'NEGATIVE: HR cannot create cash request → 403',
+      name: 'HR can create own cash request (POST office)',
       run: async () => {
         const resp = await api('POST', '/api/cash', {
           role: 'HR',
-          body: { amount: 1000, purpose: 'forbidden', type: 'expense' }
+          body: { amount: 1000, purpose: 'hr own cash request autotest', type: 'office' }
         });
-        assertForbidden(resp, 'HR create cash');
+        assertOk(resp, 'HR create cash');
       }
     },
 
-    // ── 16. NEGATIVE: WAREHOUSE cannot create cash request (no cash.write) ──
+    // ── 16. WAREHOUSE can create own cash request (V336) ──
     {
-      name: 'NEGATIVE: WAREHOUSE cannot create cash request → 403',
+      name: 'WAREHOUSE can create own cash request (POST office)',
       run: async () => {
         const resp = await api('POST', '/api/cash', {
           role: 'WAREHOUSE',
-          body: { amount: 1000, purpose: 'forbidden', type: 'expense' }
+          body: { amount: 1000, purpose: 'warehouse own cash request autotest', type: 'office' }
         });
-        assertForbidden(resp, 'WAREHOUSE create cash');
+        assertOk(resp, 'WAREHOUSE create cash');
       }
     },
 
@@ -273,7 +297,7 @@ module.exports = {
         // Create a fresh request to attempt approval on
         const create = await api('POST', '/api/cash', {
           role: 'ADMIN',
-          body: { amount: 500, purpose: 'neg-test approve', type: 'expense' }
+          body: { amount: 500, purpose: 'neg-test approve', type: 'office' }
         });
         const negId = create.data?.id;
         if (!negId) skip('could not create cash request for negative test');
@@ -298,7 +322,7 @@ module.exports = {
       run: async () => {
         const create = await api('POST', '/api/cash', {
           role: 'ADMIN',
-          body: { amount: 500, purpose: 'neg-test close', type: 'expense' }
+          body: { amount: 500, purpose: 'neg-test close', type: 'office' }
         });
         const negId = create.data?.id;
         if (!negId) skip('could not create cash request for negative test');
@@ -336,7 +360,7 @@ module.exports = {
         // Create a fresh request
         const create = await api('POST', '/api/cash', {
           role: 'ADMIN',
-          body: { amount: 3000, purpose: 'question-reply lifecycle test', type: 'expense' }
+          body: { amount: 3000, purpose: 'question-reply lifecycle test', type: 'office' }
         });
         assertOk(create, 'create for question test');
         const qId = create.data?.id;
@@ -380,7 +404,7 @@ module.exports = {
       run: async () => {
         const create = await api('POST', '/api/cash', {
           role: 'ADMIN',
-          body: { amount: 1000, purpose: 'reject lifecycle test', type: 'expense' }
+          body: { amount: 1000, purpose: 'reject lifecycle test', type: 'office' }
         });
         assertOk(create, 'create for reject test');
         const rId = create.data?.id;
@@ -416,6 +440,157 @@ module.exports = {
         const resp = await api('GET', '/api/cash/summary', { role: 'WAREHOUSE' });
         if (resp.status === 404) skip('cash/summary endpoint not available');
         assertForbidden(resp, 'WAREHOUSE cash/summary');
+      }
+    },
+
+    {
+      name: 'Office roles can create cash request (POST office)',
+      run: async () => {
+        const roles = ['OFFICE_MANAGER', 'WAREHOUSE', 'TO', 'HR', 'HR_MANAGER', 'PROC', 'CHIEF_ENGINEER', 'HEAD_PM', 'HEAD_TO', 'BUH', 'PM', 'DIRECTOR_COMM', 'DIRECTOR_GEN', 'DIRECTOR_DEV'];
+        for (const role of roles) {
+          const resp = await api('POST', '/api/cash', {
+            role,
+            body: {
+              amount: 700,
+              purpose: `autotest cash access ${role} office`,
+              type: 'office',
+              category: 'other',
+              category_other_desc: 'autotest'
+            }
+          });
+          assert(
+            resp.status >= 200 && resp.status < 300,
+            `${role} POST /api/cash got ${resp.status}: ${JSON.stringify(resp.data)}`
+          );
+          assert(resp.data && resp.data.id, `${role} should return id`);
+          assert(resp.data.status === 'requested', `${role} status requested, got ${resp.data.status}`);
+        }
+      }
+    },
+
+    {
+      name: 'BUH creates cash request on behalf of OFFICE_MANAGER',
+      run: async () => {
+        const me = await api('GET', '/api/auth/me', { role: 'OFFICE_MANAGER' });
+        assertOk(me, 'office me');
+        const uid = me.data?.id || me.data?.user?.id;
+        assert(uid, 'office manager id');
+
+        const create = await api('POST', '/api/cash', {
+          role: 'BUH',
+          body: {
+            for_user_id: uid,
+            amount: 3200,
+            purpose: 'Срочная выдача офис-менеджеру на хознужды',
+            type: 'office',
+            category: 'other',
+            category_other_desc: 'срочно'
+          }
+        });
+        assertOk(create, 'buh on-behalf create');
+        assert(Number(create.data.user_id) === Number(uid), `owner should be office manager, got ${create.data.user_id}`);
+        assert(Number(create.data.initiated_by) !== Number(uid), 'initiator should be buh, not owner');
+
+        const mine = await api('GET', '/api/cash/my', { role: 'OFFICE_MANAGER' });
+        assertOk(mine, 'office my list');
+        const list = Array.isArray(mine.data) ? mine.data : [];
+        assert(list.some((r) => r.id === create.data.id), 'request must appear in owner history');
+
+        const approve = await api('PUT', `/api/cash/${create.data.id}/approve`, {
+          role: 'ADMIN',
+          body: { comment: 'on-behalf autotest' }
+        });
+        assertOk(approve, 'approve on-behalf');
+
+        const issue = await api('PUT', `/api/cash/${create.data.id}/issue`, {
+          role: 'BUH',
+          body: {}
+        });
+        assertOk(issue, 'issue on-behalf to office manager');
+
+        const receive = await api('PUT', `/api/cash/${create.data.id}/receive`, {
+          role: 'OFFICE_MANAGER',
+          body: {}
+        });
+        assertOk(receive, 'office manager receive');
+
+        const after = await api('GET', `/api/cash/${create.data.id}`, { role: 'OFFICE_MANAGER' });
+        assertOk(after, 'owner read after receive');
+        assert(after.data.status === 'received', `expected received, got ${after.data.status}`);
+        assert(Number(after.data.user_id) === Number(uid), 'money stays on office manager');
+
+        const pmForbid = await api('POST', '/api/cash', {
+          role: 'PM',
+          body: {
+            for_user_id: uid,
+            amount: 100,
+            purpose: 'pm cannot create for others xx',
+            type: 'office'
+          }
+        });
+        assert(pmForbid.status === 403, `PM on-behalf should 403, got ${pmForbid.status}`);
+      }
+    },
+
+    {
+      name: 'GET /cash-mail does not mutate; POST approve changes status',
+      run: async () => {
+        const create = await api('POST', '/api/cash', {
+          role: 'OFFICE_MANAGER',
+          body: {
+            amount: 1100,
+            purpose: 'autotest cash-mail landing page',
+            type: 'office',
+            category: 'other',
+            category_other_desc: 'mail'
+          }
+        });
+        assertOk(create, 'create for mail token');
+        const id = create.data.id;
+
+        const bad = await rawFetch('GET', '/cash-mail/not-a-valid-token');
+        assert(bad.status >= 400, `invalid token should fail, got ${bad.status}`);
+
+        const before = await api('GET', `/api/cash/${id}`, { role: 'ADMIN' });
+        assertOk(before, 'read before GET token');
+        assert(before.data.status === 'requested', 'still requested before GET');
+
+        let db;
+        try {
+          require('dotenv').config();
+          db = require('../../src/services/db');
+        } catch (e) {
+          skip('no db module for token insert: ' + e.message);
+        }
+        const raw = crypto.randomBytes(32).toString('hex');
+        const hash = crypto.createHash('sha256').update(raw).digest('hex');
+        try {
+          await db.query(
+            `INSERT INTO cash_email_tokens (request_id, token_hash, expires_at)
+             VALUES ($1, $2, NOW() + interval '48 hours')`,
+            [id, hash]
+          );
+        } catch (e) {
+          skip('cash_email_tokens missing — apply V336: ' + e.message);
+        }
+
+        const page = await rawFetch('GET', '/cash-mail/' + raw);
+        assert(page.status === 200, `landing GET ${page.status}`);
+        const html = typeof page.data === 'string' ? page.data : page.text;
+        assert(/Согласовать/.test(html), 'landing should contain Согласовать');
+
+        const still = await api('GET', `/api/cash/${id}`, { role: 'ADMIN' });
+        assert(still.data.status === 'requested', `GET must not approve, got ${still.data.status}`);
+
+        const post = await rawFetch('POST', '/cash-mail/' + raw, {
+          body: { action: 'approve' },
+          headers: { Accept: 'application/json' }
+        });
+        assert(post.status >= 200 && post.status < 300, `POST approve ${post.status} ${JSON.stringify(post.data)}`);
+
+        const after = await api('GET', `/api/cash/${id}`, { role: 'ADMIN' });
+        assertOk(after, 'read after mail approve');
+        assert(after.data.status === 'approved', `expected approved, got ${after.data.status}`);
       }
     }
   ]

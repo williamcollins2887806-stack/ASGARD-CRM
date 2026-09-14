@@ -36,17 +36,17 @@ module.exports = {
       }
     },
     {
-      name: 'FLOW-13.3: BUH can approve cash request (V035: BUH has cash_admin.write)',
+      name: 'FLOW-13.3: BUH cannot approve cash request (only director/admin)',
       run: async () => {
         const cash = await api('POST', '/api/cash', {
           role: 'ADMIN',
-          body: { amount: 1000, purpose: 'FLOW13-3 Test', type: 'expense' }
+          body: { amount: 1000, purpose: 'FLOW13-3 Test', type: 'other' }
         });
         const id = cash.data?.cashRequest?.id || cash.data?.request?.id || cash.data?.id;
         if (!id) { skip('Could not create cash request'); return; }
         try {
           const approve = await api('PUT', `/api/cash/${id}/approve`, { role: 'BUH', body: {} });
-          assert(approve.status === 200, `BUH should be able to approve cash (V035), got ${approve.status}`);
+          assert(approve.status === 403, `BUH must not approve cash, got ${approve.status}`);
         } finally {
           await api('PUT', `/api/cash/${id}/reject`, { role: 'ADMIN', body: { comment: 'cleanup' } }).catch(() => {});
         }

@@ -1,6 +1,7 @@
 'use strict';
 
 const suites = [
+  require("./mango-entry-id.test"),
   require("./mango-service.test"),
   require("./pipeline.test"),
   require("./webhook-handler.test"),

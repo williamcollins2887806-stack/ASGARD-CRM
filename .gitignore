@@ -134,6 +134,17 @@ public/prototypes/
 # Копия public/assets/css/rp-review-modal.css; из-за него падает `git add -A`
 # по всему public/desktop-v2-src (fatal: unable to index file). 14.09.2026.
 public/desktop-v2-src/nul.css
+# Разовые (не для истории) рабочие файлы конвенции «_…»: для .py правило уже было
+# выше, здесь — остальные типы (249 .sql выгрузок, 26 .out, .sh/.js/.csv/.json/.txt).
+_*.sql
+_*.sh
+_*.out
+_*.txt
+_*.csv
+_*.json
+_*.js
+prototypes/_shots/
+/=
 # Разовые архивы выкаток, кэш Python и прочий локальный мусор в корне
 /*.tar
 /*.tar.gz

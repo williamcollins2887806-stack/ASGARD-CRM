@@ -13,7 +13,7 @@ module.exports = {
           body: {
             amount: 50000,
             purpose: 'ТЕСТ: командировка на объект',
-            type: 'expense'
+            type: 'office'
           }
         });
         // Может быть 200 или 201, или 403 если нет permission

@@ -1,0 +1,5469 @@
+{
+  "авд с подогревом воды karcher hds": {
+    "length_mm": 1060,
+    "width_mm": 650,
+    "height_mm": 920,
+    "weight_g": 102000,
+    "source": "https://www.kaercher.com HDS 6/14 C 1060x650x920, 102kg w/acc"
+  },
+  "авд bosch ghp 5-13": {
+    "length_mm": 505,
+    "width_mm": 330,
+    "height_mm": 270,
+    "weight_g": 16500,
+    "source": "https://www.dyadko.ru Bosch GHP 5-13C 505x330x270, 16.5kg"
+  },
+  "авд karcher hd 10/25": {
+    "length_mm": 560,
+    "width_mm": 500,
+    "height_mm": 1090,
+    "weight_g": 67950,
+    "source": "https://www.karcher.com HD 10/25-4 S dims 560x500x1090, 67.95kg"
+  },
+  "авд karcher hd 6/15": {
+    "length_mm": 400,
+    "width_mm": 455,
+    "height_mm": 700,
+    "weight_g": 28571,
+    "source": "https://www.karcher.com HD 6/15 M 400x455x700, 28.571kg"
+  },
+  "авд karcher hds с подогревом": {
+    "length_mm": 1060,
+    "width_mm": 650,
+    "height_mm": 920,
+    "weight_g": 102000,
+    "source": "https://www.kaercher.com HDS 6/14 C 1060x650x920, 102kg w/acc"
+  },
+  "автомат 16а 1p": {
+    "length_mm": 80,
+    "width_mm": 18,
+    "height_mm": 74,
+    "weight_g": 100,
+    "source": "https://www.vseinstrumenti.ru IEK VA47-29 1P typical 80x18x73.6, ~0.1kg"
+  },
+  "автомат 25а 1p": {
+    "length_mm": 80,
+    "width_mm": 18,
+    "height_mm": 74,
+    "weight_g": 100,
+    "source": "modular DIN breaker 1P IEC/GOST form-factor same as VA47-29"
+  },
+  "автомат 32а 3p": {
+    "length_mm": 80,
+    "width_mm": 54,
+    "height_mm": 74,
+    "weight_g": 300,
+    "source": "modular DIN breaker 3P = 3x18mm width, ~0.3kg typical"
+  },
+  "автоматический выключатель 16а 1p": {
+    "length_mm": 80,
+    "width_mm": 18,
+    "height_mm": 74,
+    "weight_g": 100,
+    "source": "https://www.vseinstrumenti.ru IEK VA47-29 1P typical 80x18x73.6, ~0.1kg"
+  },
+  "автоматический выключатель 25а 1p": {
+    "length_mm": 80,
+    "width_mm": 18,
+    "height_mm": 74,
+    "weight_g": 100,
+    "source": "modular DIN breaker 1P IEC/GOST form-factor same as VA47-29"
+  },
+  "автоматический выключатель 32а 3p": {
+    "length_mm": 80,
+    "width_mm": 54,
+    "height_mm": 74,
+    "weight_g": 300,
+    "source": "modular DIN breaker 3P = 3x18mm width, ~0.3kg typical"
+  },
+  "азотная пневмопушка иста, серебристая (ружье), 3л.": {
+    "length_mm": 180,
+    "width_mm": 180,
+    "height_mm": 220,
+    "weight_g": 3200,
+    "source": "http://www.ista-pneumatics.ru ISTA-3 2L class nearest H220 D180, 3.2kg (no exact 3L SKU; used 2L catalog row)"
+  },
+  "азотная пневмопушка иста, черная (ружье), 1л.": {
+    "length_mm": 180,
+    "width_mm": 180,
+    "height_mm": 170,
+    "weight_g": 1500,
+    "source": "http://www.ista-pneumatics.ru ISTA-3 1L H170 D180, 1.5kg"
+  },
+  "аккумулятор для шуруповерта db-201": {
+    "length_mm": 85,
+    "width_mm": 120,
+    "height_mm": 60,
+    "weight_g": 300,
+    "source": "https://zubr-rus.ru ST7-20-2 for DB-201 8.5x6x12 cm, 0.3kg"
+  },
+  "аккумуляторная батарея зубр профессионал 20в, li-ion, 2ач": {
+    "length_mm": 85,
+    "width_mm": 120,
+    "height_mm": 60,
+    "weight_g": 300,
+    "source": "https://zubr-rus.ru ST7-20-2 8.5x6x12 cm, 0.3kg"
+  },
+  "аккумуляторная дрель-шуруповерт ресанта да-24-2лк 75/14/7": {
+    "length_mm": 400,
+    "width_mm": 120,
+    "height_mm": 380,
+    "weight_g": 2800,
+    "source": "https://yut-market.ru package 400x120x380, 2.8kg; tool 1.35kg"
+  },
+  "аккумуляторная дрель-шуруповерт dca 12 в, 2 акб 2 а*ч, в кейсе adjz1202i": {
+    "length_mm": 253,
+    "width_mm": 242,
+    "height_mm": 79,
+    "weight_g": 2190,
+    "source": "https://yunimag.ru TYPE E pack 25.3x24.2x7.9 cm, 2.19kg; tool 180x200x65"
+  },
+  "амиак водный 10л": {
+    "length_mm": 220,
+    "width_mm": 190,
+    "height_mm": 330,
+    "weight_g": 9400,
+    "source": "vseinstrumenti ТАРА 14801 220x190x330 0.4kg + NH4OH 9kg/10л ГОСТ 3760-79"
+  },
+  "анализатор дымовых газов testo 330-1 ll (с, co2.co.o2) с сенсорами longlife": {
+    "length_mm": 270,
+    "width_mm": 90,
+    "height_mm": 65,
+    "weight_g": 600,
+    "source": "https://testo-rus.ru testo 330-1 LL 270x90x65 mm, 600g"
+  },
+  "анализатор качества нефтепродуктов shatox sx-300": {
+    "length_mm": 211,
+    "width_mm": 100,
+    "height_mm": 45,
+    "weight_g": 900,
+    "source": "https://biolight.info / shatox passport 211x100x45 mm, 900g w/2 sensors"
+  },
+  "анкер клиновой м10х100": {
+    "length_mm": 100,
+    "width_mm": 20,
+    "height_mm": 20,
+    "weight_g": 80,
+    "source": "gost/standard wedge anchor M10x100 package envelope approx"
+  },
+  "анкер клиновой м12х120": {
+    "length_mm": 120,
+    "width_mm": 24,
+    "height_mm": 24,
+    "weight_g": 130,
+    "source": "gost/standard wedge anchor M12x120 package envelope approx"
+  },
+  "анкер клиновой м8х80": {
+    "length_mm": 80,
+    "width_mm": 16,
+    "height_mm": 16,
+    "weight_g": 45,
+    "source": "gost/standard wedge anchor M8x80 package envelope approx"
+  },
+  "анкерная петля": {
+    "length_mm": 450,
+    "width_mm": 200,
+    "height_mm": 100,
+    "weight_g": 340,
+    "source": "vento.ru петля Энерго 60см pack 100x200x450, 340g"
+  },
+  "аппарат водоструйный высокого давления преус t3517ex, q=17 л/мин": {
+    "length_mm": 1080,
+    "width_mm": 630,
+    "height_mm": 640,
+    "weight_g": 140000,
+    "source": "https://преус.рф PREUS E3517A Ex 1080x630x640, 140kg"
+  },
+  "аппарат высокого давления karcher hd 10/25": {
+    "length_mm": 560,
+    "width_mm": 500,
+    "height_mm": 1090,
+    "weight_g": 67950,
+    "source": "https://www.karcher.com HD 10/25-4 S dims 560x500x1090, 67.95kg"
+  },
+  "аппарат высокого давления karcher hd 6/15": {
+    "length_mm": 400,
+    "width_mm": 455,
+    "height_mm": 700,
+    "weight_g": 28571,
+    "source": "https://www.karcher.com HD 6/15 M 400x455x700, 28.571kg"
+  },
+  "аптечка первой помощи ооо аппомед производственная сумка 2905": {
+    "length_mm": 230,
+    "width_mm": 180,
+    "height_mm": 120,
+    "weight_g": 880,
+    "source": "yunimag.ru АППОМЕД 2905 230x180x120, 0.88kg"
+  },
+  "аптечка первой помощи производственная": {
+    "length_mm": 280,
+    "width_mm": 225,
+    "height_mm": 130,
+    "weight_g": 880,
+    "source": "festltd.ru ФЭСТ арт.1044 ткань 280x225x130; mass class ~0.88kg"
+  },
+  "архивный шкаф gigant шха g-шха-850": {
+    "length_mm": 500,
+    "width_mm": 850,
+    "height_mm": 1850,
+    "weight_g": 45000,
+    "source": "https://safekupi.ru ШХА-850(50) 1850x850x500 mm, 45kg"
+  },
+  "балаклава флисовая": {
+    "length_mm": 180,
+    "width_mm": 100,
+    "height_mm": 60,
+    "weight_g": 70,
+    "source": "pnevmat24.ru fleece balaclava pack 180x100x60, 70g"
+  },
+  "балон 50л для пневмоимпульсного устройства иста-3-80, без клапана и блока управления": {
+    "length_mm": 760,
+    "width_mm": 250,
+    "height_mm": 500,
+    "weight_g": 21000,
+    "source": "http://www.ista-pneumatics.ru ISTA-3 50L H500 L760, 21kg"
+  },
+  "беруши 3m 1100 со шнурком": {
+    "length_mm": 100,
+    "width_mm": 50,
+    "height_mm": 20,
+    "weight_g": 5,
+    "source": "3M 1110/1100 corded pair ~5g; retail pouch approx 100x50x20 (pair-level, not 200-pack box)"
+  },
+  "беруши многоразовые на дужке": {
+    "length_mm": 150,
+    "width_mm": 140,
+    "height_mm": 15,
+    "weight_g": 45,
+    "source": "pnevmat24.ru / 3M 1310 banded pack 150x140x15, 45g"
+  },
+  "бесщеточная дрель-шуруповерт зубр профессионал db-201": {
+    "length_mm": 215,
+    "width_mm": 185,
+    "height_mm": 103,
+    "weight_g": 1400,
+    "source": "https://1001krep.ru DB-201 21.5x18.5x10.3 cm, 1.4kg tool (bare)"
+  },
+  "блок водяного охлаждения куллер5.5л": {
+    "length_mm": 500,
+    "width_mm": 200,
+    "height_mm": 234,
+    "weight_g": 14800,
+    "source": "svarog-rf.ru КУЛЕР PRO 5.5Л 00000099192 500x200x234, 14.8kg"
+  },
+  "блок контейнер 6*2,4*2,4 осб": {
+    "length_mm": 6000,
+    "width_mm": 2400,
+    "height_mm": 2500,
+    "weight_g": 2500000,
+    "source": "vagonchik.ru / bytovki-max BK 6x2.4x2.5m OSB; mass ~2.5t typical insulated"
+  },
+  "блок ролик одинарный большой с подшипником 46кн": {
+    "length_mm": 135,
+    "width_mm": 103,
+    "height_mm": 36,
+    "weight_g": 365,
+    "source": "verticalshop.ru Вертикаль блок 46кН 135x103x36, 0.365kg"
+  },
+  "блок усиления полиспаст runva snb20000": {
+    "length_mm": 280,
+    "width_mm": 180,
+    "height_mm": 30,
+    "weight_g": 3500,
+    "source": "https://4x4prostore.ru Runva SNB20000 pack 280x180x30, 3.5kg"
+  },
+  "блокирующее устройство ползункового типа": {
+    "length_mm": 121,
+    "width_mm": 74,
+    "height_mm": 40,
+    "weight_g": 520,
+    "source": "vento.ru Лайнблок vnt 1088 74x121, 520g"
+  },
+  "бокорезы 160мм": {
+    "length_mm": 160,
+    "width_mm": 55,
+    "height_mm": 20,
+    "weight_g": 206,
+    "source": "https://www.knipex.com / knipex-master 70 02 160 ~160x55x20, 206g"
+  },
+  "болт с шестигранной головкой м10х50 оцинк": {
+    "length_mm": 56.4,
+    "width_mm": 17,
+    "height_mm": 17,
+    "weight_g": 45,
+    "source": "gost/standard ISO4014/GOST7798 hex bolt approx shank+head; AF=across flats"
+  },
+  "болт с шестигранной головкой м10х70 оцинк": {
+    "length_mm": 76.4,
+    "width_mm": 17,
+    "height_mm": 17,
+    "weight_g": 58,
+    "source": "gost/standard ISO4014/GOST7798 hex bolt approx shank+head; AF=across flats"
+  },
+  "болт с шестигранной головкой м12х60 оцинк": {
+    "length_mm": 67.5,
+    "width_mm": 19,
+    "height_mm": 19,
+    "weight_g": 78,
+    "source": "gost/standard ISO4014/GOST7798 hex bolt approx shank+head; AF=across flats"
+  },
+  "болт с шестигранной головкой м12х80 оцинк": {
+    "length_mm": 87.5,
+    "width_mm": 19,
+    "height_mm": 19,
+    "weight_g": 98,
+    "source": "gost/standard ISO4014/GOST7798 hex bolt approx shank+head; AF=across flats"
+  },
+  "болт с шестигранной головкой м16х80 оцинк": {
+    "length_mm": 90,
+    "width_mm": 24,
+    "height_mm": 24,
+    "weight_g": 175,
+    "source": "gost/standard ISO4014/GOST7798 hex bolt approx shank+head; AF=across flats"
+  },
+  "болт с шестигранной головкой м20х100 оцинк": {
+    "length_mm": 112.5,
+    "width_mm": 30,
+    "height_mm": 30,
+    "weight_g": 330,
+    "source": "gost/standard ISO4014/GOST7798 hex bolt approx shank+head; AF=across flats"
+  },
+  "болт с шестигранной головкой м8х40 оцинк": {
+    "length_mm": 45.3,
+    "width_mm": 13,
+    "height_mm": 13,
+    "weight_g": 22,
+    "source": "gost/standard ISO4014/GOST7798 hex bolt approx shank+head; AF=across flats"
+  },
+  "болт с шестигранной головкой м8х60 оцинк": {
+    "length_mm": 65.3,
+    "width_mm": 13,
+    "height_mm": 13,
+    "weight_g": 30,
+    "source": "gost/standard ISO4014/GOST7798 hex bolt approx shank+head; AF=across flats"
+  },
+  "ботинки кожаные без подноска": {
+    "length_mm": 320,
+    "width_mm": 220,
+    "height_mm": 130,
+    "weight_g": 1200,
+    "source": "typical work boot pack ~320x220x130 mm, ~1200g/pair (web failed exact model)"
+  },
+  "ботинки кожаные с композитным подноском": {
+    "length_mm": 320,
+    "width_mm": 220,
+    "height_mm": 130,
+    "weight_g": 1200,
+    "source": "typical work boot pack ~320x220x130 mm, ~1200g/pair (web failed exact model)"
+  },
+  "ботинки кожаные с металлоподноском": {
+    "length_mm": 320,
+    "width_mm": 220,
+    "height_mm": 130,
+    "weight_g": 1200,
+    "source": "typical work boot pack ~320x220x130 mm, ~1200g/pair (web failed exact model)"
+  },
+  "ботинки кожаные с мп": {
+    "length_mm": 320,
+    "width_mm": 220,
+    "height_mm": 130,
+    "weight_g": 1200,
+    "source": "typical work boot pack ~320x220x130 mm, ~1200g/pair (web failed exact model)"
+  },
+  "ботинки рабочие кожаные с мп": {
+    "length_mm": 320,
+    "width_mm": 220,
+    "height_mm": 130,
+    "weight_g": 1200,
+    "source": "typical work boot pack ~320x220x130 mm, ~1200g/pair (web failed exact model)"
+  },
+  "ботинки рабочие с композитным подноском": {
+    "length_mm": 320,
+    "width_mm": 220,
+    "height_mm": 130,
+    "weight_g": 1200,
+    "source": "typical work boot pack ~320x220x130 mm, ~1200g/pair (web failed exact model)"
+  },
+  "ботинки с композитным подноском": {
+    "length_mm": 320,
+    "width_mm": 220,
+    "height_mm": 130,
+    "weight_g": 1200,
+    "source": "typical work boot pack ~320x220x130 mm, ~1200g/pair (web failed exact model)"
+  },
+  "ботинки сварщика": {
+    "length_mm": 320,
+    "width_mm": 220,
+    "height_mm": 130,
+    "weight_g": 1200,
+    "source": "typical work boot pack ~320x220x130 mm, ~1200g/pair (web failed exact model)"
+  },
+  "ботинки сварщика с мп": {
+    "length_mm": 320,
+    "width_mm": 220,
+    "height_mm": 130,
+    "weight_g": 1200,
+    "source": "typical work boot pack ~320x220x130 mm, ~1200g/pair (web failed exact model)"
+  },
+  "ботинки утепленные зимние мех": {
+    "length_mm": 320,
+    "width_mm": 220,
+    "height_mm": 130,
+    "weight_g": 1200,
+    "source": "typical work boot pack ~320x220x130 mm, ~1200g/pair (web failed exact model)"
+  },
+  "ботинки утепленные зимние с мп": {
+    "length_mm": 320,
+    "width_mm": 220,
+    "height_mm": 130,
+    "weight_g": 1200,
+    "source": "typical work boot pack ~320x220x130 mm, ~1200g/pair (web failed exact model)"
+  },
+  "боты диэлектрические": {
+    "length_mm": 320,
+    "width_mm": 220,
+    "height_mm": 130,
+    "weight_g": 1200,
+    "source": "typical work boot pack ~320x220x130 mm, ~1200g/pair (web failed exact model)"
+  },
+  "бочка евро 48 л, полиэтилен, синяя, черная крышка, затяжной обруч оцинкованный": {
+    "length_mm": 402,
+    "width_mm": 402,
+    "height_mm": 492,
+    "weight_g": 2500,
+    "source": "https://www.verta-tara.com BP-48r 402x402x492, 2.5kg"
+  },
+  "бочка металлическая 200л": {
+    "length_mm": 594,
+    "width_mm": 594,
+    "height_mm": 845,
+    "weight_g": 14300,
+    "source": "gost/standard GOST 13950-91 1A1 rolled ~594x845 mm, empty ~14.3kg"
+  },
+  "бочка пластиковая 200л": {
+    "length_mm": 585,
+    "width_mm": 585,
+    "height_mm": 900,
+    "weight_g": 8500,
+    "source": "https://gplast.ru eurodrum 227L open-top ~585x900, 8.5kg (typical PE 200L class)"
+  },
+  "бочковой насос для кислот": {
+    "length_mm": 395,
+    "width_mm": 150,
+    "height_mm": 140,
+    "weight_g": 1490,
+    "source": "artaz.ru Pressol 13064 PP-PTFE acid barrel pump 395x150x140, 1.49kg"
+  },
+  "брошюровщик": {
+    "length_mm": 448,
+    "width_mm": 280,
+    "height_mm": 80,
+    "weight_g": 4300,
+    "source": "paper66.ru / smartcode Fellowes Star+ 448x280x80, 4.3kg"
+  },
+  "бустер (инфлятор) для взрывной накачки колес, с автоматич пневмоклапаном, 11 л, 7-12 бар": {
+    "length_mm": 720,
+    "width_mm": 215,
+    "height_mm": 290,
+    "weight_g": 4500,
+    "source": "https://www.kuvalda.ru Nordberg CH3A 11L 720x215x290, 4.5-5kg"
+  },
+  "быстрозажимная струбцина inforce 60*300": {
+    "length_mm": 495,
+    "width_mm": 195,
+    "height_mm": 45,
+    "weight_g": 300,
+    "source": "https://www.vseinstrumenti.ru Inforce 06-03-34 495x195x45 mm, 0.3kg"
+  },
+  "ведро строительное 20л": {
+    "length_mm": 380,
+    "width_mm": 380,
+    "height_mm": 280,
+    "weight_g": 725,
+    "source": "https://www.sima-land.ru 20L bucket 38x38x28 cm, ~725g"
+  },
+  "вентелятор sht-30-ex": {
+    "length_mm": 420,
+    "width_mm": 360,
+    "height_mm": 430,
+    "weight_g": 11000,
+    "source": "oramus.kz / td-automatika SHT-30 420x360x430, 11kg (EX same frame)"
+  },
+  "вентиль запорный 15кч18п ду15": {
+    "length_mm": 90,
+    "width_mm": 55,
+    "height_mm": 110,
+    "weight_g": 700,
+    "source": "sk-snab.ru 15кч18п Ду15 L=90 H~110, 0.7kg"
+  },
+  "вентилятор тепловой спиральный cmi hfn-2002n, 2000вт, 220в": {
+    "length_mm": 219,
+    "width_mm": 202,
+    "height_mm": 120,
+    "weight_g": 900,
+    "source": "obi.websupra CMI 2000W spiral heater 21.9x20.2x12 cm, 900g (HFN-2002N class)"
+  },
+  "верёвка высокопрочная страховочная статическая 10mm 50m": {
+    "length_mm": 350,
+    "width_mm": 350,
+    "height_mm": 150,
+    "weight_g": 3700,
+    "source": "static rope 10mm ~74g/m ×50m=3.7kg; coiled hank pack typical"
+  },
+  "весы электронные 200г / 0.01": {
+    "length_mm": 120,
+    "width_mm": 65,
+    "height_mm": 22,
+    "weight_g": 90,
+    "source": "assador.ru / ves.com.ua Pocket Scale MH-200 120x65x22, 90g"
+  },
+  "воздушный поршневой маслянный компрессор аэрус 210/24": {
+    "length_mm": 580,
+    "width_mm": 260,
+    "height_mm": 600,
+    "weight_g": 21200,
+    "source": "https://katalog-td.ru AERUS 210/24 580x260x600, 21.2kg"
+  },
+  "воронка техническая": {
+    "length_mm": 240,
+    "width_mm": 210,
+    "height_mm": 220,
+    "weight_g": 175,
+    "source": "specinstrument.ru / Pressol 02366 Ø200 PE funnel 240x210x220, 175g"
+  },
+  "высоконапорный водоструйный аппарат преус есо е5022а": {
+    "length_mm": 1100,
+    "width_mm": 850,
+    "height_mm": 892,
+    "weight_g": 185000,
+    "source": "https://preus-m.ru / tectron PREUS Eco E5022 1100x850x892, 185kg"
+  },
+  "вышка-тура передвижная вср-4": {
+    "length_mm": 2000,
+    "width_mm": 1200,
+    "height_mm": 2700,
+    "weight_g": 102000,
+    "source": "pskgk.ru ВСР-4 base+1sec platform 1.2x2.0 H=2.7m, 102kg (storage pack approx erected min)"
+  },
+  "вышка-тура передвижная вср-6": {
+    "length_mm": 2000,
+    "width_mm": 1600,
+    "height_mm": 2700,
+    "weight_g": 117500,
+    "source": "xxlesa/kpsk ВСР-6 platform 1.6x2.0; base+1sec H=2.7m mass~117.5kg"
+  },
+  "газоанализатор колион-1в 1exibiibt4": {
+    "length_mm": 65,
+    "width_mm": 205,
+    "height_mm": 180,
+    "weight_g": 1300,
+    "source": "https://biolight.ru KOLION-1V 65x205x180 mm, 1.3kg"
+  },
+  "газоанализатор лидер 01": {
+    "length_mm": 91,
+    "width_mm": 58,
+    "height_mm": 34,
+    "weight_g": 100,
+    "source": "gas-analiz.ru / liga-spec Лидер-01 91x58x34, 100g"
+  },
+  "газоанализатор одноканальный altair h2s": {
+    "length_mm": 81,
+    "width_mm": 51,
+    "height_mm": 23,
+    "weight_g": 85,
+    "source": "https://gazoanalizator.ru MSA ALTAIR 81x51x23 mm, 85g"
+  },
+  "газоанализатор сеан h2s": {
+    "length_mm": 105,
+    "width_mm": 70,
+    "height_mm": 50,
+    "weight_g": 150,
+    "source": "pribori24.ru СЕАН-Н-H2S 105x70x50, 150g"
+  },
+  "газоанализатор со переносной": {
+    "length_mm": 91,
+    "width_mm": 58,
+    "height_mm": 34,
+    "weight_g": 100,
+    "source": "Лидер-01 CO class same form-factor 91x58x34, 100g"
+  },
+  "газоанализатор h2s переносной": {
+    "length_mm": 91,
+    "width_mm": 58,
+    "height_mm": 34,
+    "weight_g": 100,
+    "source": "Лидер-01 H2S class same form-factor 91x58x34, 100g"
+  },
+  "газоанализатор senko sp2nd (h2s) для измерения объемной доли сероводород": {
+    "length_mm": 54,
+    "width_mm": 42,
+    "height_mm": 91,
+    "weight_g": 120,
+    "source": "SENKO catalog SP2nd 54x91x42 mm, 120g"
+  },
+  "газоанализатор senko sp2nd (o2) для измерения объемной доли кислорода": {
+    "length_mm": 54,
+    "width_mm": 42,
+    "height_mm": 91,
+    "weight_g": 120,
+    "source": "SENKO catalog SP2nd 54x91x42 mm, 120g"
+  },
+  "гайка шестигранная м10 оцинк": {
+    "length_mm": 17,
+    "width_mm": 17,
+    "height_mm": 8,
+    "weight_g": 10,
+    "source": "ISO 4032 / ГОСТ 5915 hex nut AF×mH, approx mass"
+  },
+  "гайка шестигранная м12 оцинк": {
+    "length_mm": 19,
+    "width_mm": 19,
+    "height_mm": 10,
+    "weight_g": 14,
+    "source": "ISO 4032 / ГОСТ 5915 hex nut AF×mH, approx mass"
+  },
+  "гайка шестигранная м16 оцинк": {
+    "length_mm": 24,
+    "width_mm": 24,
+    "height_mm": 13,
+    "weight_g": 30,
+    "source": "ISO 4032 / ГОСТ 5915 hex nut AF×mH, approx mass"
+  },
+  "гайка шестигранная м20 оцинк": {
+    "length_mm": 30,
+    "width_mm": 30,
+    "height_mm": 16,
+    "weight_g": 55,
+    "source": "ISO 4032 / ГОСТ 5915 hex nut AF×mH, approx mass"
+  },
+  "гайка шестигранная м8 оцинк": {
+    "length_mm": 13,
+    "width_mm": 13,
+    "height_mm": 7,
+    "weight_g": 5,
+    "source": "ISO 4032 / ГОСТ 5915 hex nut AF×mH, approx mass"
+  },
+  "гайковерт аккумуляторный makita": {
+    "length_mm": 147,
+    "width_mm": 79,
+    "height_mm": 249,
+    "weight_g": 1700,
+    "source": "https://makita.in DTW285 147x79x249, 1.5-1.8kg"
+  },
+  "гайковерт ударный акумуляторный makita, 3/4\", 18в li-ion": {
+    "length_mm": 147,
+    "width_mm": 79,
+    "height_mm": 249,
+    "weight_g": 1700,
+    "source": "Makita 18V LXT impact class DTW285 147x79x249; warehouse lists 3/4 — form-factor approx from same LXT family"
+  },
+  "гайковерт ударный пневматический fubag iw1600, 3/4\"": {
+    "length_mm": 320,
+    "width_mm": 120,
+    "height_mm": 250,
+    "weight_g": 6800,
+    "source": "https://fubag.ru IW1600 kit case 320x120x250, net 6.8kg"
+  },
+  "гайковерт ударный пневматический, 3/4\", 1085 нм, 6.3 атм, 6500 об/мин, 1/4f, 198 л/мин": {
+    "length_mm": 240,
+    "width_mm": 210,
+    "height_mm": 70,
+    "weight_g": 4500,
+    "source": "king-tony.com / kvarta KING TONY 33621-075 L=228 pack 240x210x70, 4.5kg"
+  },
+  "гайковерт ударный электрический makita, 3/4\". 850 вт, 220в, 588нм, 1600 уд/мин, 1700 об/мин": {
+    "length_mm": 460,
+    "width_mm": 350,
+    "height_mm": 120,
+    "weight_g": 10820,
+    "source": "makita-profi.ru Makita 6906 case 46x35x12 cm, 10.82kg; tool 327x95x237 5.6kg"
+  },
+  "гайковерт удлиненный пневматический ударный, 1\", 6.3 атм, 2440 нм, 4000об/мин, 255 л/мин": {
+    "length_mm": 600,
+    "width_mm": 220,
+    "height_mm": 190,
+    "weight_g": 12500,
+    "source": "mastak-shop.ru KING TONY 33832-180 extended L=523 pack 600x220x190, 12.5kg"
+  },
+  "галоши диэлектрические": {
+    "length_mm": 350,
+    "width_mm": 150,
+    "height_mm": 130,
+    "weight_g": 900,
+    "source": "etk-oniks.ru галоши Эн р.44 pack 350x150x130, 0.9kg; ГОСТ 13385-78"
+  },
+  "генератор бензиновый калибр бэг-2500, 2,5квт, 220в": {
+    "length_mm": 605,
+    "width_mm": 445,
+    "height_mm": 435,
+    "weight_g": 39000,
+    "source": "masterdom.by / mcgrp Калибр БЭГ-2500 605x445x435, 39kg"
+  },
+  "генератор дизельный tss ssdg 6000eh, 6,5 квт,": {
+    "length_mm": 707,
+    "width_mm": 525,
+    "height_mm": 610,
+    "weight_g": 112000,
+    "source": "spb.tss.ru TSS SDG 6000EHA 707x525x610, 112kg (SSDG typo→SDG)"
+  },
+  "гибкий антистатичный воздуховод d300mm 10m": {
+    "length_mm": 350,
+    "width_mm": 350,
+    "height_mm": 500,
+    "weight_g": 8500,
+    "source": "electronpribor.ru воздуховод ПВХ d300x10m SHT-30, 8.5kg coiled"
+  },
+  "головка торцевая ударная 21mm": {
+    "length_mm": 38,
+    "width_mm": 25,
+    "height_mm": 25,
+    "weight_g": 92,
+    "source": "jtc-autotools.ru JTC-443821 1/2x21 impact 38x25x25, 92g"
+  },
+  "головка торцевая ударная 54mm": {
+    "length_mm": 80,
+    "width_mm": 78,
+    "height_mm": 78,
+    "weight_g": 1400,
+    "source": "typical 1\" impact 54mm KING TONY 853554M 80x78x78, 1.4kg"
+  },
+  "головка торцевая ударная глубокая (6-гранная; квадрат с отверстием 1/2\"dr; 32 мм)": {
+    "length_mm": 78,
+    "width_mm": 44,
+    "height_mm": 44,
+    "weight_g": 380,
+    "source": "delot.ru 660232 / Thorvik deep impact 1/2 32mm L=78 D1=44, ~380g"
+  },
+  "головка торцевая ударная шестигранная king tony, 54 мм; 1\", длина 80 мм": {
+    "length_mm": 80,
+    "width_mm": 78,
+    "height_mm": 78,
+    "weight_g": 1400,
+    "source": "shvedik.ru KING TONY 853554M 80x78x78, 1.4kg"
+  },
+  "головка торцевая jtc, 3/4” 21 мм": {
+    "length_mm": 51,
+    "width_mm": 50,
+    "height_mm": 44,
+    "weight_g": 350,
+    "source": "jtc-autotools.ru JTC-645321 3/4x21 51x50x44, 350g"
+  },
+  "головка ударная для гайковерта белак, 38 мм, квадрат с отверстием 1\", стальная": {
+    "length_mm": 80,
+    "width_mm": 55,
+    "height_mm": 55,
+    "weight_g": 650,
+    "source": "vseinstrumenti БелАК БАК.01838 L=80, net 0.65kg"
+  },
+  "двойной регулируемый строп alpsafe с амортизатором akn31": {
+    "length_mm": 300,
+    "width_mm": 100,
+    "height_mm": 50,
+    "weight_g": 1900,
+    "source": "yunimag.ru Alpsafe AKN31 pack 5x10x30 cm, 1.9kg"
+  },
+  "двойной строп из ленты с амортизатором, с двумя большими монтажными и соединительным карабином прогресс сефети строп аад+кс исп.3": {
+    "length_mm": 1450,
+    "width_mm": 50,
+    "height_mm": 80,
+    "weight_g": 1200,
+    "source": "progress-52.ru / progress-safety.ru аАд+Кс исп.3 L=1.45m, 1.2kg"
+  },
+  "динамометрический ключ , 1/2\", 42-210 нм, в футляре прозрачном цилиндрическом": {
+    "length_mm": 520,
+    "width_mm": 60,
+    "height_mm": 60,
+    "weight_g": 1340,
+    "source": "king-tony.com 34423-1A case 520x60x60, 1.34kg"
+  },
+  "динамометрический ключ 1/2 42-210нм": {
+    "length_mm": 520,
+    "width_mm": 60,
+    "height_mm": 60,
+    "weight_g": 1340,
+    "source": "king-tony.com 34423-1A case 520x60x60, 1.34kg"
+  },
+  "динамометрический ключ 1/2 70-350нм": {
+    "length_mm": 650,
+    "width_mm": 70,
+    "height_mm": 70,
+    "weight_g": 1570,
+    "source": "mactak passport King Tony 34423-2A tool L=570 1.57kg; case scaled from 42-210"
+  },
+  "длинногубцы 200мм": {
+    "length_mm": 200,
+    "width_mm": 55,
+    "height_mm": 18,
+    "weight_g": 206,
+    "source": "kvt.nt-rt.ru КВТ длинногубцы 200мм, 206g"
+  },
+  "дрель аккум. ресанта да-14-2-лк": {
+    "length_mm": 240,
+    "width_mm": 210,
+    "height_mm": 85,
+    "weight_g": 1250,
+    "source": "https://resanta-profi.ru DA-14-2LK 240x210x85 mm, 1.25kg"
+  },
+  "дрель ударная bosch gsb 13 re": {
+    "length_mm": 266,
+    "width_mm": 70,
+    "height_mm": 180,
+    "weight_g": 1800,
+    "source": "https://drillsaw.ru / Bosch GSB 13 RE L266 H180, 1.8kg; width approx grip"
+  },
+  "дрель ударная makita, 710 вт, в боксе с набором сверл": {
+    "length_mm": 296,
+    "width_mm": 77,
+    "height_mm": 202,
+    "weight_g": 2100,
+    "source": "makita.in.ua Makita M8100 710W 296x77x202, 2.1kg"
+  },
+  "дрель sturm id20165m, 0-500 об./мин., 1300вт": {
+    "length_mm": 353,
+    "width_mm": 78,
+    "height_mm": 260,
+    "weight_g": 4950,
+    "source": "https://prosts.ru Sturm ID20165M 78x353x260 mm, 4.95kg (name says 1300W but model is 1650W)"
+  },
+  "дрель-шуруповер зубр 14.4 в, 2 акб, 2 ач, в кейсе дшл-145-22": {
+    "length_mm": 305,
+    "width_mm": 295,
+    "height_mm": 110,
+    "weight_g": 2900,
+    "source": "https://unittools.ru DSHL-145-22 case 30.5x29.5x11 cm, pack ~2.9kg; tool 1.1kg"
+  },
+  "дрель-шуруповерт аккумуляторная вихрь да-24л-2к/б": {
+    "length_mm": 192,
+    "width_mm": 192,
+    "height_mm": 490,
+    "weight_g": 2850,
+    "source": "https://vihr.su package 0.192x0.192x0.49 m, 2.85kg; tool 1.35kg"
+  },
+  "дрель-шуруповерт аккумуляторный makita ddf482": {
+    "length_mm": 185,
+    "width_mm": 79,
+    "height_mm": 249,
+    "weight_g": 1700,
+    "source": "https://www.makita.co.th DDF482 185x79x249 mm, 1.5-1.8kg"
+  },
+  "дрель-шуруповерт вихрь": {
+    "length_mm": 192,
+    "width_mm": 192,
+    "height_mm": 490,
+    "weight_g": 2850,
+    "source": "vihr.su ДА-24Л-2К/Б package 192x192x490, 2.85kg"
+  },
+  "дрель-шуруповерт db-201": {
+    "length_mm": 215,
+    "width_mm": 185,
+    "height_mm": 103,
+    "weight_g": 1400,
+    "source": "https://1001krep.ru DB-201 21.5x18.5x10.3 cm, 1.4kg"
+  },
+  "дрель-шуруповерт dewalt 2.0 ач dcd771d2": {
+    "length_mm": 400,
+    "width_mm": 120,
+    "height_mm": 350,
+    "weight_g": 3750,
+    "source": "https://dw-shop.ru package 40x12x35 cm, 3.75kg; tool 1.28kg"
+  },
+  "дрель-шуруповерт patriot акк. br 181ues 180201481": {
+    "length_mm": 290,
+    "width_mm": 95,
+    "height_mm": 260,
+    "weight_g": 2450,
+    "source": "https://www.mactak.ru / patriot-garden package 290x95x260 mm, 2.45kg"
+  },
+  "дюбель-гвоздь 6х40": {
+    "length_mm": 40,
+    "width_mm": 8,
+    "height_mm": 8,
+    "weight_g": 4,
+    "source": "typical nylon dowel nail 6x40 bounding + mass ~4g"
+  },
+  "ёмкость 500л": {
+    "length_mm": 850,
+    "width_mm": 850,
+    "height_mm": 1011,
+    "weight_g": 17020,
+    "source": "astrapipe.ru ЭкоПром V-500 850x850x1011, 17.02kg"
+  },
+  "емкость кислотостойкая 100л": {
+    "length_mm": 470,
+    "width_mm": 470,
+    "height_mm": 690,
+    "weight_g": 4500,
+    "source": "plastplant.ru ЭВЛ-Т 100 470x470x690, 4.5kg"
+  },
+  "жилет сигнальный 2 класс": {
+    "length_mm": 300,
+    "width_mm": 200,
+    "height_mm": 20,
+    "weight_g": 197,
+    "source": "psk.expert жилет 2 кл ГОСТ 12.4.281 avg 0.197kg folded pack"
+  },
+  "жумар зажим для веревки": {
+    "length_mm": 195,
+    "width_mm": 88,
+    "height_mm": 45,
+    "weight_g": 235,
+    "source": "vento.ru Жумар 195x88, 235g"
+  },
+  "з/у для шуруповерта db-201": {
+    "length_mm": 130,
+    "width_mm": 100,
+    "height_mm": 190,
+    "weight_g": 430,
+    "source": "https://zubr-rus.ru RT7-20-6 for DB-201 13x10x19 cm, 0.43kg"
+  },
+  "задвижка клиновая dn100": {
+    "length_mm": 230,
+    "width_mm": 215,
+    "height_mm": 380,
+    "weight_g": 30500,
+    "source": "semlmz.ru / sernikru 30ч6бр DN100 L=230 D=215 H=380, 30.5kg"
+  },
+  "задвижка чугунная 30ч6бр ду100": {
+    "length_mm": 230,
+    "width_mm": 215,
+    "height_mm": 536,
+    "weight_g": 38000,
+    "source": "m-tal.ru 30ч6бр Ду100 L=230 H=536 D=215, 38kg"
+  },
+  "задвижка чугунная 30ч6бр ду150": {
+    "length_mm": 280,
+    "width_mm": 260,
+    "height_mm": 735,
+    "weight_g": 74000,
+    "source": "m-tal.ru 30ч6бр Ду150 L=280 H=735 D=260, 74kg"
+  },
+  "задвижка чугунная 30ч6бр ду50": {
+    "length_mm": 180,
+    "width_mm": 160,
+    "height_mm": 341,
+    "weight_g": 18000,
+    "source": "m-tal.ru 30ч6бр Ду50 L=180 H=341 D=160, 18kg"
+  },
+  "задвижка чугунная 30ч6бр ду80": {
+    "length_mm": 210,
+    "width_mm": 195,
+    "height_mm": 456,
+    "weight_g": 28000,
+    "source": "m-tal.ru 30ч6бр Ду80 L=210 H=456 D=195, 28kg"
+  },
+  "зажим ручной жумар под левую руку": {
+    "length_mm": 195,
+    "width_mm": 88,
+    "height_mm": 45,
+    "weight_g": 235,
+    "source": "vento.ru Жумар L/R mirror 195x88, 235g"
+  },
+  "зажимные клещи 250 мм inforce": {
+    "length_mm": 270,
+    "width_mm": 80,
+    "height_mm": 35,
+    "weight_g": 560,
+    "source": "vseinstrumenti Inforce 06-03-02 L=250-270, 0.56kg; W/H pack typical"
+  },
+  "заклепочник denzel ручной, 255 мм": {
+    "length_mm": 330,
+    "width_mm": 115,
+    "height_mm": 30,
+    "weight_g": 630,
+    "source": "remitek/chipdip Denzel 40440 pack 330x115x30, 0.63kg; tool 255mm 570g"
+  },
+  "зарядное устройство для li-ion акб зубр профессионал 20в, 6а": {
+    "length_mm": 130,
+    "width_mm": 100,
+    "height_mm": 190,
+    "weight_g": 430,
+    "source": "https://zubr-rus.ru RT7-20-6 13x10x19 cm, 0.43kg"
+  },
+  "зигмашина mu 12": {
+    "length_mm": 650,
+    "width_mm": 400,
+    "height_mm": 1260,
+    "weight_g": 70000,
+    "source": "stanok-rf.ru / kr-hangar MU-12(K) 650x400x1260, 70kg"
+  },
+  "зиговочный станок fabtec rm-08 54228": {
+    "length_mm": 500,
+    "width_mm": 450,
+    "height_mm": 160,
+    "weight_g": 22000,
+    "source": "jet-center / cable.ru FABTEC RM-08 500x450x160, 22kg"
+  },
+  "зубило слесарное": {
+    "length_mm": 200,
+    "width_mm": 20,
+    "height_mm": 10,
+    "weight_g": 320,
+    "source": "mgsnab.com НИЗ 200x20 РОС 200x20x10, 320g; ГОСТ 7211-86"
+  },
+  "зубило слесарное по металлу": {
+    "length_mm": 200,
+    "width_mm": 20,
+    "height_mm": 10,
+    "weight_g": 340,
+    "source": "3brothers.ru НиЗ 41-3-200 200x20x10, 340g"
+  },
+  "извещатель пожарный дымовой автономный. ip40, сирена встроенная 85дб, u-пит.9в («крона»), i-потр. 0,03ма, t-раб.-10...+55с, ip30": {
+    "length_mm": 94,
+    "width_mm": 94,
+    "height_mm": 50,
+    "weight_g": 200,
+    "source": "Рубеж ИП 212-142 passport Ø94×50, ≤200g; TTH 85дБ/Крона/0.03мА/−10…+55/IP40"
+  },
+  "измерительная рулетка с магнитным крюком, 5x25мм gigant gwm525": {
+    "length_mm": 135,
+    "width_mm": 75,
+    "height_mm": 40,
+    "weight_g": 290,
+    "source": "yunimag.ru Gigant GWM525 135x75x40, 0.29kg"
+  },
+  "измерительная рулетка gigant gmt 316 3x16 мм с магнитным захватом": {
+    "length_mm": 120,
+    "width_mm": 80,
+    "height_mm": 35,
+    "weight_g": 150,
+    "source": "vseinstrumenti.ru Gigant GMT 316 120x80x35, 0.15kg"
+  },
+  "интерскол аккум. дрель-шуруповерт": {
+    "length_mm": 200,
+    "width_mm": 210,
+    "height_mm": 60,
+    "weight_g": 1100,
+    "source": "http://interskol.ru DA-18ER class ~1.1kg; dims approx compact 200x210x60"
+  },
+  "кабель ввгнг-ls 2х1.5": {
+    "length_mm": 1000,
+    "width_mm": 11,
+    "height_mm": 11,
+    "weight_g": 175,
+    "source": "rkkabel.by ГОСТ 31996 ВВГнг-LS 2x1.5 OD~10.6, 175kg/km per 1m"
+  },
+  "кабель ввгнг-ls 2х2.5": {
+    "length_mm": 1000,
+    "width_mm": 12,
+    "height_mm": 12,
+    "weight_g": 211,
+    "source": "rkkabel.by ВВГнг-LS 2x2.5 OD~11.4, 211kg/km per 1m"
+  },
+  "кабель ввгнг-ls 3х1.5": {
+    "length_mm": 1000,
+    "width_mm": 11,
+    "height_mm": 11,
+    "weight_g": 192,
+    "source": "rkkabel.by ВВГнг-LS 3x1.5 OD~11.0, 192kg/km per 1m"
+  },
+  "кабель ввгнг-ls 3х2.5": {
+    "length_mm": 1000,
+    "width_mm": 12,
+    "height_mm": 12,
+    "weight_g": 241,
+    "source": "rkkabel.by ВВГнг-LS 3x2.5 OD~11.8, 241kg/km per 1m"
+  },
+  "кабель ввгнг-ls 3х4": {
+    "length_mm": 1000,
+    "width_mm": 14,
+    "height_mm": 14,
+    "weight_g": 319,
+    "source": "rkkabel.by ВВГнг-LS 3x4 OD~13.3, 319kg/km per 1m"
+  },
+  "кабель ввгнг-ls 4х4": {
+    "length_mm": 1000,
+    "width_mm": 15,
+    "height_mm": 15,
+    "weight_g": 378,
+    "source": "rkkabel.by ВВГнг-LS 4x4 OD~14.2, 378kg/km per 1m"
+  },
+  "кабель ввгнг-ls 4х6": {
+    "length_mm": 1000,
+    "width_mm": 16,
+    "height_mm": 16,
+    "weight_g": 484,
+    "source": "rkkabel.by ВВГнг-LS 4x6 OD~15.4, 484kg/km per 1m"
+  },
+  "кабель ввгнг-ls 5х6": {
+    "length_mm": 1000,
+    "width_mm": 17,
+    "height_mm": 17,
+    "weight_g": 582,
+    "source": "rkkabel.by ВВГнг-LS 5x6 OD~16.6, 582kg/km per 1m"
+  },
+  "кабель кг 2х1.5 гибкий": {
+    "length_mm": 1000,
+    "width_mm": 10,
+    "height_mm": 10,
+    "weight_g": 130,
+    "source": "bystrokabel.ru КГ 2x1.5 OD 9.4mm, 130kg/km per 1m"
+  },
+  "кабель кг 3х2.5 гибкий": {
+    "length_mm": 1000,
+    "width_mm": 12,
+    "height_mm": 12,
+    "weight_g": 230,
+    "source": "elektrokable.ru / kvvg.ru КГ 3x2.5 OD 12.0 mm, 230 kg/km → 230 g/m"
+  },
+  "кабель кг 3х6 гибкий": {
+    "length_mm": 1000,
+    "width_mm": 17,
+    "height_mm": 17,
+    "weight_g": 460,
+    "source": "elektrokable.ru / kvvg.ru КГ 3x6 OD 16.6 mm, 460 kg/km → 460 g/m"
+  },
+  "кабель кг 4х4 гибкий": {
+    "length_mm": 1000,
+    "width_mm": 16,
+    "height_mm": 16,
+    "weight_g": 420,
+    "source": "elektrokable.ru / kvvg.ru КГ 4x4 OD 16.0 mm, 420 kg/km → 420 g/m"
+  },
+  "камера для видеодиагностики rothenberger roscope i2000": {
+    "length_mm": 350,
+    "width_mm": 108,
+    "height_mm": 70,
+    "weight_g": 950,
+    "source": "ROTHENBERGER ROSCOPE i2000 manual: 35x10.8x7 cm, 0.95 kg"
+  },
+  "карабин автомат алюминиевый": {
+    "length_mm": 112,
+    "width_mm": 67,
+    "height_mm": 18,
+    "weight_g": 81,
+    "source": "membranka.ru / skygear Венто Классический автомат 112x67, 81g"
+  },
+  "карабин стальной с муфтой венто": {
+    "length_mm": 106,
+    "width_mm": 58,
+    "height_mm": 10,
+    "weight_g": 179,
+    "source": "tirol.ru / VENTO Стальной Овал vnt 1013: 106x58 mm, rod ~10 mm, 179 g"
+  },
+  "карабин vento стальной овал с муфтой": {
+    "length_mm": 106,
+    "width_mm": 58,
+    "height_mm": 10,
+    "weight_g": 178,
+    "source": "nursnab.com / unionspb VENTO Стальной Овал: 106x58 mm, 178 g"
+  },
+  "каска диэлектрическая": {
+    "length_mm": 300,
+    "width_mm": 220,
+    "height_mm": 160,
+    "weight_g": 440,
+    "source": "vseinstrumenti.ru СОМЗ-80 Абсолют Престиж RAPID 300x220x160, 0.44kg"
+  },
+  "каска защитная росомз rfi-3 biot": {
+    "length_mm": 300,
+    "width_mm": 200,
+    "height_mm": 160,
+    "weight_g": 326,
+    "source": "res-36.ru 300x200x160; ROSOMZ/spets.ru mass ≤326 g RFI-3 BIOT RAPID"
+  },
+  "каска защитная сомз-55 hammer": {
+    "length_mm": 300,
+    "width_mm": 200,
+    "height_mm": 130,
+    "weight_g": 330,
+    "source": "postavkalava.ru СОМЗ-55 Hammer 300x200x130, 330g"
+  },
+  "каска защитная rfi-7 trek": {
+    "length_mm": 315,
+    "width_mm": 230,
+    "height_mm": 160,
+    "weight_g": 345,
+    "source": "mocciz.ru / rost-ufa RFI-7 TITAN (Trek) 315x230x160, ≤345g"
+  },
+  "каска промышленная альпинистская венто": {
+    "length_mm": 260,
+    "width_mm": 220,
+    "height_mm": 160,
+    "weight_g": 420,
+    "source": "alpina-sport.ru Венто Мастер pack 260x220x160, 420g"
+  },
+  "каска росомз rfi-3 biot": {
+    "length_mm": 300,
+    "width_mm": 200,
+    "height_mm": 160,
+    "weight_g": 326,
+    "source": "res-36.ru 300x200x160; ROSOMZ mass ≤326 g RFI-3 BIOT RAPID"
+  },
+  "каска росомз termo зимняя": {
+    "length_mm": 300,
+    "width_mm": 200,
+    "height_mm": 160,
+    "weight_g": 394,
+    "source": "asdelectro.ru СОМЗ-55 FavoriT Termo RAPID 300x200x160, 394g"
+  },
+  "каска росомз termo-2 зимняя": {
+    "length_mm": 300,
+    "width_mm": 200,
+    "height_mm": 160,
+    "weight_g": 390,
+    "source": "tdelektrica.ru СОМЗ-55 ВИЗИОН Termo RAPID 300x200x160, 390g"
+  },
+  "каскетка защитная росомз": {
+    "length_mm": 295,
+    "width_mm": 190,
+    "height_mm": 160,
+    "weight_g": 249,
+    "source": "yunimag.ru РОСОМЗ Абсолют 98113 295x190x160, 249g"
+  },
+  "каустическая сода (натр едкий) мешок 25кг": {
+    "length_mm": 750,
+    "width_mm": 450,
+    "height_mm": 120,
+    "weight_g": 25000,
+    "source": "opt6.ru NaOH 25 kg bag 75x45x12 cm, net 25 kg"
+  },
+  "каустическая сода мешок 25кг": {
+    "length_mm": 750,
+    "width_mm": 450,
+    "height_mm": 120,
+    "weight_g": 25000,
+    "source": "opt6.ru NaOH 25 kg bag 75x45x12 cm, net 25 kg"
+  },
+  "кернер слесарный": {
+    "length_mm": 160,
+    "width_mm": 15,
+    "height_mm": 15,
+    "weight_g": 173,
+    "source": "psz-spb.ru кернер ГОСТ 7213-72 d8 L160, 0.173kg"
+  },
+  "клапан обратный поворотный ду50": {
+    "length_mm": 230,
+    "width_mm": 160,
+    "height_mm": 165,
+    "weight_g": 20000,
+    "source": "evergr.ru / GOST 33423 19с76нж Ду50 Ру16: L=230, D=160, H=165, mass ≤20 kg"
+  },
+  "ключ накидной 12х13": {
+    "length_mm": 210,
+    "width_mm": 30,
+    "height_mm": 8,
+    "weight_g": 120,
+    "source": "ГОСТ 2906-80 L=210; spb-pridanoe накидной 12x13: 210 mm, 120 g"
+  },
+  "ключ накидной 14х17": {
+    "length_mm": 260,
+    "width_mm": 35,
+    "height_mm": 25,
+    "weight_g": 205,
+    "source": "mactak.ru KING TONY 19701417 L=260, 205g"
+  },
+  "ключ накидной 17х19": {
+    "length_mm": 280,
+    "width_mm": 37,
+    "height_mm": 12,
+    "weight_g": 270,
+    "source": "ГОСТ 2906-80 L=280; KS Tools 517.0811 17x19: 283/280 mm class, 270 g"
+  },
+  "ключ накидной 19х22": {
+    "length_mm": 300,
+    "width_mm": 30,
+    "height_mm": 30,
+    "weight_g": 348,
+    "source": "pstop.by / ryvok МАСТАК 023-11922 L=300 pack ~330x30x30, 348g"
+  },
+  "ключ накидной 22х24": {
+    "length_mm": 326,
+    "width_mm": 36,
+    "height_mm": 14,
+    "weight_g": 362,
+    "source": "catalog.kingtony.eu / vseinstrumenti KING TONY 19702224 L=326, 362g"
+  },
+  "ключ накидной 8х10": {
+    "length_mm": 200,
+    "width_mm": 40,
+    "height_mm": 30,
+    "weight_g": 118,
+    "source": "remitek.ru / vseinstrumenti МАСТАК 023-10810 pack 200x40x30, 118g"
+  },
+  "ключ разводной 200мм": {
+    "length_mm": 275,
+    "width_mm": 70,
+    "height_mm": 17,
+    "weight_g": 334,
+    "source": "SPARTA 15542 / vodgaz.ru pack 27.5x7x1.7 cm, 0.334 kg (200 mm class)"
+  },
+  "ключ разводной 200mm": {
+    "length_mm": 275,
+    "width_mm": 70,
+    "height_mm": 17,
+    "weight_g": 334,
+    "source": "SPARTA 15542 / vodgaz.ru pack 27.5x7x1.7 cm, 0.334 kg (200 mm class)"
+  },
+  "ключ разводной 250мм": {
+    "length_mm": 313,
+    "width_mm": 106,
+    "height_mm": 26,
+    "weight_g": 468,
+    "source": "ERMAK 655-003 pack 31.3x10.6x2.6 cm, 0.468 kg"
+  },
+  "ключ разводной 300мм": {
+    "length_mm": 300,
+    "width_mm": 75,
+    "height_mm": 19,
+    "weight_g": 725,
+    "source": "vodgaz.ru / kuvalda SPARTA 15544 300x75x19, 725g; ГОСТ 7275-75 L=300"
+  },
+  "ключ рожковый 12х13": {
+    "length_mm": 140,
+    "width_mm": 28,
+    "height_mm": 6,
+    "weight_g": 55,
+    "source": "ГОСТ 2839-80 рожковый 12х13: L=140 mm, b2=28 mm, a≈6 mm, mass 55 g"
+  },
+  "ключ рожковый 14х17": {
+    "length_mm": 160,
+    "width_mm": 35,
+    "height_mm": 7,
+    "weight_g": 83,
+    "source": "ГОСТ 2839-80 рожковый 14х17: L=160 mm, b2=35 mm, a≈7 mm, mass 83 g"
+  },
+  "ключ рожковый 17х19": {
+    "length_mm": 175,
+    "width_mm": 42,
+    "height_mm": 8,
+    "weight_g": 121,
+    "source": "ГОСТ 2839-80 рожковый 17х19: L=175 mm, b2=42 mm, a≈8 mm, mass 121 g"
+  },
+  "ключ рожковый 19х22": {
+    "length_mm": 205,
+    "width_mm": 46,
+    "height_mm": 9,
+    "weight_g": 191,
+    "source": "ГОСТ 2839-80 рожковый 19х22: L=205 mm, b2=46 mm, a≈9 mm, mass 191 g"
+  },
+  "ключ рожковый 22х24": {
+    "length_mm": 220,
+    "width_mm": 50,
+    "height_mm": 10,
+    "weight_g": 210,
+    "source": "ГОСТ 2839-80 рожковый 22х24: L=220 mm, b2=50 mm, a≈10 mm, mass 210 g"
+  },
+  "ключ рожковый 24х27": {
+    "length_mm": 250,
+    "width_mm": 55,
+    "height_mm": 11,
+    "weight_g": 290,
+    "source": "ГОСТ 2839-80 рожковый 24х27: L=250 mm, b2=55 mm, a≈11 mm, mass 290 g"
+  },
+  "ключ рожковый 27х30": {
+    "length_mm": 260,
+    "width_mm": 62,
+    "height_mm": 12,
+    "weight_g": 380,
+    "source": "ГОСТ 2839-80 рожковый 27х30: L=260 mm, b2=62 mm, a≈12 mm, mass 380 g"
+  },
+  "ключ рожковый 30х32": {
+    "length_mm": 280,
+    "width_mm": 65,
+    "height_mm": 13,
+    "weight_g": 475,
+    "source": "ГОСТ 2839-80 рожковый 30х32: L=280 mm, b2=65 mm, a≈13 mm, mass 475 g"
+  },
+  "ключ рожковый 8х10": {
+    "length_mm": 120,
+    "width_mm": 22,
+    "height_mm": 5,
+    "weight_g": 25,
+    "source": "ГОСТ 2839-80 рожковый 8х10: L=120 mm, b2=22 mm, a≈5 mm, mass 25 g"
+  },
+  "ключ трещотка jonnesway 3/4\"dr 24 зубца, 500 мм": {
+    "length_mm": 500,
+    "width_mm": 70,
+    "height_mm": 60,
+    "weight_g": 2558,
+    "source": "vseinstrumenti Jonnesway R1206 3/4\"DR 500 mm: 500x70x60, 2.558 kg; jonnesway.ru 24 teeth"
+  },
+  "ключ трещоточный монтажный 19х21 мм": {
+    "length_mm": 313,
+    "width_mm": 42,
+    "height_mm": 52,
+    "weight_g": 463,
+    "source": "mgsnab.com / kuvalda TOLSEN TT15295 313x42x52, 463g"
+  },
+  "ключ трубный газовый №1": {
+    "length_mm": 300,
+    "width_mm": 45,
+    "height_mm": 18,
+    "weight_g": 800,
+    "source": "ГОСТ 18981-73 №1: L=300, H=45, B=18, mass ≤0.8 kg"
+  },
+  "ключ трубный газовый №2": {
+    "length_mm": 400,
+    "width_mm": 60,
+    "height_mm": 22,
+    "weight_g": 1300,
+    "source": "ГОСТ 18981-73 №2: L=400, H=60, B=22, mass ≤1.3 kg"
+  },
+  "ключ трубный газовый №3": {
+    "length_mm": 500,
+    "width_mm": 71,
+    "height_mm": 26,
+    "weight_g": 1900,
+    "source": "ГОСТ 18981-73 №3: L=500, H=71, B=26, mass ≤1.9 kg"
+  },
+  "ключ трубный kraftool, crome vanadium №1, желто-черный": {
+    "length_mm": 330,
+    "width_mm": 70,
+    "height_mm": 30,
+    "weight_g": 820,
+    "source": "yunimag KRAFTOOL PANZER-S №1 2733-10: 332x70x30, 0.82 kg"
+  },
+  "колориметр на железо hanna-hi 96721": {
+    "length_mm": 192,
+    "width_mm": 102,
+    "height_mm": 67,
+    "weight_g": 290,
+    "source": "Hanna HI96721 datasheet jjstech PDF: 192x102x67 mm, 290 g"
+  },
+  "комбинированный ключ neo tools с трещоткой, 21 мм": {
+    "length_mm": 285,
+    "width_mm": 48,
+    "height_mm": 14,
+    "weight_g": 286,
+    "source": "yunimag NEO 09-069: pack 285x48x14 mm, 0.286 kg (tool L=237 mm)"
+  },
+  "комплект мех. инструмента для монтажа труб rehau rautool m1": {
+    "length_mm": 505,
+    "width_mm": 430,
+    "height_mm": 134,
+    "weight_g": 5500,
+    "source": "asdelectro.ru RAUTOOL M1: 505x430x134 mm, 5500 g (kit/case)"
+  },
+  "компрессор пневматический fubag vcf/100 сm3, 440л/мин, 100л, 10бар 2.2квт, 220в": {
+    "length_mm": 1050,
+    "width_mm": 420,
+    "height_mm": 850,
+    "weight_g": 77000,
+    "source": "https://www.vseinstrumenti.ru FUBAG VCF/100 CM3 1050x420x850, 77kg"
+  },
+  "компрессор электрический аэрус, 1,16квт, 180л/мин, бак 6л, 8 бар, 3550 об/мин": {
+    "length_mm": 350,
+    "width_mm": 320,
+    "height_mm": 360,
+    "weight_g": 10000,
+    "source": "https://www.rvktex.ru AERUS 180/6 350x360x320, ~9.5-10kg"
+  },
+  "контейнер еврокуб 1000л ibc": {
+    "length_mm": 1200,
+    "width_mm": 1000,
+    "height_mm": 1160,
+    "weight_g": 60500,
+    "source": "gplast IBC 1000L: 1200x1000x1175/1160 mm, 60.5±5 kg empty wood pallet"
+  },
+  "костюм зимний буран": {
+    "length_mm": 640,
+    "width_mm": 480,
+    "height_mm": 260,
+    "weight_g": 4100,
+    "source": "sima-land.ru костюм Буран Норд pack 640x480x260, 4.1kg"
+  },
+  "костюм зимний утепленный буран": {
+    "length_mm": 640,
+    "width_mm": 480,
+    "height_mm": 260,
+    "weight_g": 4100,
+    "source": "sima-land.ru костюм Буран Норд pack 640x480x260, 4.1kg"
+  },
+  "костюм сигнальный 3 класс зимний": {
+    "length_mm": 500,
+    "width_mm": 300,
+    "height_mm": 200,
+    "weight_g": 2500,
+    "source": "30pro.ru Костюм Сигнал зимний 3 класс 50×30×20 см, 2.5kg"
+  },
+  "кран шаровой стальной ду15": {
+    "length_mm": 135,
+    "width_mm": 42,
+    "height_mm": 60,
+    "weight_g": 800,
+    "source": "techpribor-kaliningrad.ru КШ.М.015.40-01: L=135, D=42, H=60, 0.8 kg"
+  },
+  "кран шаровой стальной ду20": {
+    "length_mm": 135,
+    "width_mm": 42,
+    "height_mm": 60,
+    "weight_g": 900,
+    "source": "techpribor-kaliningrad.ru КШ.М.020.40-01: L=135, D=42, H=60, 0.9 kg"
+  },
+  "кран шаровой стальной ду25": {
+    "length_mm": 135,
+    "width_mm": 48,
+    "height_mm": 65,
+    "weight_g": 1200,
+    "source": "techpribor-kaliningrad.ru КШ.М.025.40-01: L=135, D=48, H=65, 1.2 kg"
+  },
+  "кран шаровой стальной ду32": {
+    "length_mm": 135,
+    "width_mm": 57,
+    "height_mm": 75,
+    "weight_g": 1500,
+    "source": "techpribor-kaliningrad.ru КШ.М.032.40-01: L=135, D=57, H=75, 1.5 kg"
+  },
+  "кран шаровой стальной ду40": {
+    "length_mm": 155,
+    "width_mm": 60,
+    "height_mm": 95,
+    "weight_g": 1900,
+    "source": "techpribor-kaliningrad.ru КШ.М.040.40-01: L=155, D=60, H=95, 1.9 kg"
+  },
+  "кран шаровой стальной ду50": {
+    "length_mm": 170,
+    "width_mm": 76,
+    "height_mm": 100,
+    "weight_g": 2900,
+    "source": "techpribor-kaliningrad.ru КШ.М.050.40-01: L=170, D=76, H=100, 2.9 kg"
+  },
+  "круг зачистной по металлу 125х6": {
+    "length_mm": 125,
+    "width_mm": 125,
+    "height_mm": 6,
+    "weight_g": 167,
+    "source": "sibrtec Luga 73411 125x6x22: pack 125x125x6, 0.167 kg"
+  },
+  "круг зачистной по металлу 150х6": {
+    "length_mm": 150,
+    "width_mm": 150,
+    "height_mm": 6,
+    "weight_g": 260,
+    "source": "master-azov / abrasiv catalog table 150x6x22 metal ≈0.26 kg"
+  },
+  "круг зачистной по металлу 180х6": {
+    "length_mm": 180,
+    "width_mm": 180,
+    "height_mm": 6,
+    "weight_g": 380,
+    "source": "master-azov / abrasiv catalog table 180x6x22 metal ≈0.38 kg"
+  },
+  "круг зачистной по металлу 230х6": {
+    "length_mm": 230,
+    "width_mm": 230,
+    "height_mm": 6,
+    "weight_g": 620,
+    "source": "master-azov / abrasiv catalog table 230x6x22 metal ≈0.62 kg"
+  },
+  "круг лепестковый торцевой 125 p120": {
+    "length_mm": 125,
+    "width_mm": 125,
+    "height_mm": 20,
+    "weight_g": 75,
+    "source": "sale-instrument TUNDRA 125x22 flap: pack 125x125x10–20 mm, 75 g"
+  },
+  "круг лепестковый торцевой 125 p40": {
+    "length_mm": 125,
+    "width_mm": 125,
+    "height_mm": 20,
+    "weight_g": 75,
+    "source": "sale-instrument TUNDRA 125x22 flap: pack 125x125x10–20 mm, 75 g"
+  },
+  "круг лепестковый торцевой 125 p60": {
+    "length_mm": 125,
+    "width_mm": 125,
+    "height_mm": 20,
+    "weight_g": 75,
+    "source": "sale-instrument TUNDRA 125x22 flap: pack 125x125x10–20 mm, 75 g"
+  },
+  "круг лепестковый торцевой 125 p80": {
+    "length_mm": 125,
+    "width_mm": 125,
+    "height_mm": 20,
+    "weight_g": 75,
+    "source": "sale-instrument TUNDRA 125x22 flap: pack 125x125x10–20 mm, 75 g"
+  },
+  "круг отрезной по металлу 125х1.2": {
+    "length_mm": 125,
+    "width_mm": 125,
+    "height_mm": 5,
+    "weight_g": 29,
+    "source": "vseinstrumenti Luga 125×1.2 pack 125×125×5, 0.029 кг"
+  },
+  "крюк для скручивания проволоки fit 220 мм": {
+    "length_mm": 215,
+    "width_mm": 30,
+    "height_mm": 30,
+    "weight_g": 110,
+    "source": "FIT 68151 220 mm: 215x30x30 mm, 0.11 kg"
+  },
+  "кувалда 5000 гр sturm": {
+    "length_mm": 900,
+    "width_mm": 140,
+    "height_mm": 55,
+    "weight_g": 5500,
+    "source": "vseinstrumenti Sturm 1011-02-5000: L=900 mm, net 5.5 kg"
+  },
+  "кувалда кованая 2кг": {
+    "length_mm": 360,
+    "width_mm": 108,
+    "height_mm": 50,
+    "weight_g": 2000,
+    "source": "ЗУБР 20112-2 handle 360 mm; ГОСТ 11401-75 head B=50 L=108, mass 2 kg"
+  },
+  "кувалда кованая 3кг": {
+    "length_mm": 450,
+    "width_mm": 135,
+    "height_mm": 62,
+    "weight_g": 3000,
+    "source": "ЗУБР 20112-3 handle 450 mm; ГОСТ 11401-75 head B=62 L=135, mass 3 kg"
+  },
+  "кувалда кованая 5кг": {
+    "length_mm": 600,
+    "width_mm": 151,
+    "height_mm": 72,
+    "weight_g": 5300,
+    "source": "vseinstrumenti ЗУБР 20112-5: L=600, net 5.3 kg; ГОСТ 11401 head ~151x72"
+  },
+  "кувалда кованая 8кг": {
+    "length_mm": 750,
+    "width_mm": 166,
+    "height_mm": 80,
+    "weight_g": 8450,
+    "source": "ГОСТ 11401-75 / ЗУБР 20112-8 750x166x80 мм, 8.45 кг"
+  },
+  "лазерный дальномер с угломером rgk dl100g": {
+    "length_mm": 118,
+    "width_mm": 52,
+    "height_mm": 27,
+    "weight_g": 160,
+    "source": "rusgeocom.ru / izmerteh.ru RGK DL100G 118x52x27 мм, 0.16 кг"
+  },
+  "лебедка канатная topex с храповым тормозом (0.55 т, канат 10 м)": {
+    "length_mm": 210,
+    "width_mm": 160,
+    "height_mm": 120,
+    "weight_g": 3550,
+    "source": "storgom.ua TOPEX 97X085 210x160x120 мм, 3.55 кг"
+  },
+  "лебедка шестеренчатая механическая sturm, 0.8т, стальной трос 10м/5 мм": {
+    "length_mm": 235,
+    "width_mm": 170,
+    "height_mm": 170,
+    "weight_g": 5040,
+    "source": "kuvalda.ru / bigam STURM 1091-09-0800 235x170x170 мм, 5.04 кг"
+  },
+  "лебедка gts kcd-500/1000 электрическая (r/n 0,5/1,0 тн; 60/30м; 220v)": {
+    "length_mm": 800,
+    "width_mm": 310,
+    "height_mm": 300,
+    "weight_g": 50000,
+    "source": "remosnastka.ru паспорт KCD-500 ~70м 220/380В 800x310x300 мм, 50 кг (ближайший к 60/30м)"
+  },
+  "лебедка jun kaung ручная рычажная (тросовая), 2 крюка, 3м, трос 5 мм, 2,5т, синий кейс": {
+    "length_mm": 660,
+    "width_mm": 110,
+    "height_mm": 180,
+    "weight_g": 6330,
+    "source": "skrabplus.ru JUN KAUNG HP-121D кейс 660x110x180 мм, 6.33 кг"
+  },
+  "левые ножницы по металлу kraftool alligator 250 мм 2328-l": {
+    "length_mm": 300,
+    "width_mm": 85,
+    "height_mm": 25,
+    "weight_g": 410,
+    "source": "elektro.ru / terra-tools KRAFTOOL 2328-L упак. 300x85x25 мм, 0.41 кг"
+  },
+  "левые усиленные ножницы по металлу kraftool alligator": {
+    "length_mm": 300,
+    "width_mm": 85,
+    "height_mm": 25,
+    "weight_g": 410,
+    "source": "elektro.ru / terra-tools KRAFTOOL Alligator 2328-L 300x85x25 мм, 0.41 кг"
+  },
+  "лента фум 19мм": {
+    "length_mm": 83,
+    "width_mm": 83,
+    "height_mm": 28,
+    "weight_g": 38,
+    "source": "santur.ru Aquasfera 6020-04 ФУМ 19×0.2×15 м брутто 83×28×83 мм, 0.038 кг"
+  },
+  "ленточный строп alpsafe (эластичный двойной с амортизатором) akn44": {
+    "length_mm": 400,
+    "width_mm": 250,
+    "height_mm": 10,
+    "weight_g": 1780,
+    "source": "yunimag.ru / alpsafe.ru AKN44 упак. 40×25×1 см, нетто 1.78–1.9 кг, длина 2 м"
+  },
+  "леса строительные рамные лрсп-40": {
+    "length_mm": 2085,
+    "width_mm": 1060,
+    "height_mm": 42,
+    "weight_g": 7400,
+    "source": "web-snab.ru паспорт ЛРСП-40 рама без лестницы 1060×2085 мм, 7.4 кг"
+  },
+  "лестница наклонная 2,2 м": {
+    "length_mm": 2400,
+    "width_mm": 550,
+    "height_mm": 50,
+    "weight_g": 8100,
+    "source": "паспорт ЛРСП-40 / prom-baza.by лестница наклонная 550×2400 мм, 8.1 кг"
+  },
+  "лестница приставная алюминиевая 3м": {
+    "length_mm": 3090,
+    "width_mm": 330,
+    "height_mm": 60,
+    "weight_g": 4000,
+    "source": "yunimag.ru / alumet Алюмет H1 5111 (~3.09 м) 3090x330x60 мм, 4 кг"
+  },
+  "лестница приставная алюминиевая 5м": {
+    "length_mm": 4780,
+    "width_mm": 390,
+    "height_mm": 72,
+    "weight_g": 7500,
+    "source": "alumet.ru H1 5117 (~4.78 м, ряд 5 м) 4780x390 мм профиль 71.5x20, 7.5 кг"
+  },
+  "лестница телескопическая 6.2м": {
+    "length_mm": 1050,
+    "width_mm": 500,
+    "height_mm": 103,
+    "weight_g": 17100,
+    "source": "yunimag.ru / vseinstrumenti Forsage F-up620 6.2 м сложенная 1050x500x103 мм, нетто 17.1 кг"
+  },
+  "лестница трехсекционная 3х9": {
+    "length_mm": 2540,
+    "width_mm": 450,
+    "height_mm": 160,
+    "weight_g": 11900,
+    "source": "yunimag.ru / alumet.ru Алюмет H3 5309 3x9 сложенная 2540x450x160 мм, 11.9 кг"
+  },
+  "лестница-трансформер универсальная эйфель, 4,48 м, 4 сек х 4 ступ": {
+    "length_mm": 1250,
+    "width_mm": 350,
+    "height_mm": 280,
+    "weight_g": 15500,
+    "source": "fabrika-lestnic.ru Эйфель Классик 4x4 сложенная ~1.25x0.35x0.28 м, 15.5 кг"
+  },
+  "лестница-трансформер эйфель, универсальная, высота 5.02 м, max 150 кг": {
+    "length_mm": 1520,
+    "width_mm": 350,
+    "height_mm": 280,
+    "weight_g": 16700,
+    "source": "yunimag.ru Эйфель Классик 2x4+2x5 5.02 м сложенная 1520x350x280 мм, 16.7 кг"
+  },
+  "лимонная кислота 25кг": {
+    "length_mm": 500,
+    "width_mm": 400,
+    "height_mm": 200,
+    "weight_g": 25200,
+    "source": "promportal / opt23.ru мешок 25 кг типично 50x40x20 см, брутто ~25.2 кг"
+  },
+  "лимонная кислота пищевая мешок 25кг": {
+    "length_mm": 500,
+    "width_mm": 400,
+    "height_mm": 200,
+    "weight_g": 25200,
+    "source": "promportal / opt23.ru мешок 25 кг типично 50x40x20 см, брутто ~25.2 кг"
+  },
+  "листовые ножницы по металлу makita js1602": {
+    "length_mm": 255,
+    "width_mm": 74,
+    "height_mm": 146,
+    "weight_g": 1600,
+    "source": "https://makita-ua.com.ua JS1602 255x74x146 mm, 1.6kg"
+  },
+  "литой магнитный уровень stayer hard-м 250 мм 3488": {
+    "length_mm": 250,
+    "width_mm": 20,
+    "height_mm": 50,
+    "weight_g": 160,
+    "source": "kuvalda.ru / tmktools STAYER HARD-М 3488 250x50x20 мм, 0.16 кг"
+  },
+  "литой ручной заклепочник inforce поворотный 360 град": {
+    "length_mm": 300,
+    "width_mm": 110,
+    "height_mm": 30,
+    "weight_g": 900,
+    "source": "yunimag.ru Inforce 06-14-11 300x110x30 мм, 0.9 кг"
+  },
+  "лом-гвоздодёр 600мм": {
+    "length_mm": 600,
+    "width_mm": 90,
+    "height_mm": 34,
+    "weight_g": 1700,
+    "source": "ГОСТ 1405-83 ЛГ20: L=600, H=90, a=34, масса ≤1.7 кг"
+  },
+  "магнитный уровень inforce 230мм": {
+    "length_mm": 230,
+    "width_mm": 27,
+    "height_mm": 46,
+    "weight_g": 160,
+    "source": "kotofoto.ru Inforce 06-11-054 230x27x46 мм, 160 г"
+  },
+  "манометр мп-100 0-16 бар": {
+    "length_mm": 135,
+    "width_mm": 100,
+    "height_mm": 36,
+    "weight_g": 215,
+    "source": "dn.ru ЗТП МП-100 D100 b=36 мм, 0.215 кг; indstr.ru ~135x100x30"
+  },
+  "манометр мп-100 0-25 бар": {
+    "length_mm": 135,
+    "width_mm": 100,
+    "height_mm": 36,
+    "weight_g": 215,
+    "source": "dn.ru ЗТП МП-100 корпус Ø100 мм, b=36 мм, 0.215 кг (тот же форм-фактор)"
+  },
+  "маска полнолицевая 3m 6800": {
+    "length_mm": 260,
+    "width_mm": 203,
+    "height_mm": 152,
+    "weight_g": 400,
+    "source": "sylprotec.com 3M 6800 260x203x152 мм; вес лицевой части 400 г (3M datasheet)"
+  },
+  "маска сварщика ресанта": {
+    "length_mm": 200,
+    "width_mm": 200,
+    "height_mm": 200,
+    "weight_g": 400,
+    "source": "https://resanta-shop.ru Resanta MS-4 class pack 20x20x20 cm, 0.4kg"
+  },
+  "маска сварщика хамелеон ресанта мс-4": {
+    "length_mm": 200,
+    "width_mm": 200,
+    "height_mm": 200,
+    "weight_g": 400,
+    "source": "https://resanta-shop.ru MS-4 pack 20x20x20 cm, tool 0.4kg"
+  },
+  "маска сварщика fubag optima": {
+    "length_mm": 240,
+    "width_mm": 120,
+    "height_mm": 140,
+    "weight_g": 500,
+    "source": "kubaninstrument.ru FUBAG OPTIMA 9-13 240x120x140 мм, 0.5 кг"
+  },
+  "маслянный радиатор ballu cl 07brn": {
+    "length_mm": 330,
+    "width_mm": 250,
+    "height_mm": 595,
+    "weight_g": 5400,
+    "source": "balluonline.ru / rusklimat BOH/CL-07BRN 330x250x595 мм, 5.4 кг"
+  },
+  "мембранный насос yartek 680л/мин": {
+    "length_mm": 595,
+    "width_mm": 345,
+    "height_mm": 567,
+    "weight_g": 40000,
+    "source": "stoking.ru YARTEK 680 л/мин Al YT700 595x345x567 мм, 40 кг"
+  },
+  "мерная емкость 10л": {
+    "length_mm": 223,
+    "width_mm": 185,
+    "height_mm": 301,
+    "weight_g": 440,
+    "source": "verta-tara.com ПК-10 мерная канистра 10 л 223x185x301 мм, 0.44 кг"
+  },
+  "мешок строительный полипропиленовый": {
+    "length_mm": 950,
+    "width_mm": 550,
+    "height_mm": 5,
+    "weight_g": 41,
+    "source": "polimaks.ru / meshki77 ПП мешок 55x95 см, ~41 г (пустой сложенный)"
+  },
+  "микрометр 0-25мм": {
+    "length_mm": 126,
+    "width_mm": 23,
+    "height_mm": 66,
+    "weight_g": 280,
+    "source": "chelzavod.ru МК25 ГОСТ 6507-90 126x23x66 мм, 0.280 кг"
+  },
+  "минимойка высокого давления sterwins 135 бар,420л/ч,2 квт": {
+    "length_mm": 370,
+    "width_mm": 360,
+    "height_mm": 560,
+    "weight_g": 11040,
+    "source": "sadvitrina.com STERWINS 135 бар 37x56x36 см, нетто 11.04 кг"
+  },
+  "молоток кровельный 0,6 кг startul profi": {
+    "length_mm": 330,
+    "width_mm": 160,
+    "height_mm": 30,
+    "weight_g": 910,
+    "source": "7745.ru STARTUL Profi ST2004 33x16x3 см, нетто 0.91 кг"
+  },
+  "молоток с фибергласовой рукояткой 800г gigant": {
+    "length_mm": 390,
+    "width_mm": 130,
+    "height_mm": 30,
+    "weight_g": 1050,
+    "source": "yunimag.ru / vseinstrumenti Gigant HHT800 390 мм, нетто 1.05 кг; упак. ~35x13x3 см"
+  },
+  "молоток слесарный 300г": {
+    "length_mm": 300,
+    "width_mm": 105,
+    "height_mm": 25,
+    "weight_g": 520,
+    "source": "vseinstrumenti.ru Дело Техники 315030 300 г: L=300 мм, упак. 300×105×25, 0.52 кг"
+  },
+  "молоток слесарный 500г с фиберглассовой ручкой": {
+    "length_mm": 335,
+    "width_mm": 115,
+    "height_mm": 25,
+    "weight_g": 694,
+    "source": "vseinstrumenti.ru СИБРТЕХ 10323 500 г фиберглас: длина 330 мм, упак. 335x115x25, нетто 0.694 кг"
+  },
+  "молоток слесарный 500г фибергласс": {
+    "length_mm": 335,
+    "width_mm": 115,
+    "height_mm": 25,
+    "weight_g": 694,
+    "source": "vseinstrumenti.ru СИБРТЕХ 10323 500 г фиберглас: длина 330 мм, упак. 335x115x25, нетто 0.694 кг"
+  },
+  "молоток слесарный 600 г rage by vira": {
+    "length_mm": 365,
+    "width_mm": 30,
+    "height_mm": 30,
+    "weight_g": 830,
+    "source": "petrovich.ru / chipdip RAGE by VIRA 903006 длина 365 мм, сечение бойка 30x30, 830 г"
+  },
+  "молоток слесарный 800г": {
+    "length_mm": 360,
+    "width_mm": 43,
+    "height_mm": 120,
+    "weight_g": 800,
+    "source": "ГОСТ 2310-77 тип 2/3 ~0.80 кг: L рукояти ~360 мм, голова H≈115–120 B≈43"
+  },
+  "мотопомпа для грязной воды honda wb30": {
+    "length_mm": 510,
+    "width_mm": 385,
+    "height_mm": 455,
+    "weight_g": 26000,
+    "source": "power.honda.ru Honda WB30 510x385x455 мм, 26 кг"
+  },
+  "мотопомпа honda wb30": {
+    "length_mm": 510,
+    "width_mm": 385,
+    "height_mm": 455,
+    "weight_g": 26000,
+    "source": "power.honda.ru Honda WB30 510x385x455 мм, 26 кг"
+  },
+  "мотопомпа honda wb30 грязная вода": {
+    "length_mm": 510,
+    "width_mm": 385,
+    "height_mm": 455,
+    "weight_g": 26000,
+    "source": "power.honda.ru Honda WB30 510x385x455 мм, 26 кг"
+  },
+  "мультиметр dt-838": {
+    "length_mm": 126,
+    "width_mm": 70,
+    "height_mm": 28,
+    "weight_g": 137,
+    "source": "resantashop.ru / паспорт DT-838 126x70x28 мм, 137 г"
+  },
+  "мультиметр fluke 117": {
+    "length_mm": 167,
+    "width_mm": 84,
+    "height_mm": 46,
+    "weight_g": 550,
+    "source": "fluke.com Fluke 117 167x84x46 мм, 550 г"
+  },
+  "набор аккумуляторов в боксе makita mkp1rm182": {
+    "length_mm": 395,
+    "width_mm": 295,
+    "height_mm": 105,
+    "weight_g": 3600,
+    "source": "Makita Makpac Type1 395x295x105 + BL1840Bx2/DC18RC ~3.6kg"
+  },
+  "набор бит makita, 47 штук, с трещеткой": {
+    "length_mm": 255,
+    "width_mm": 133,
+    "height_mm": 55,
+    "weight_g": 721,
+    "source": "tmktools.ru Makita B-36170 кейс 255x133x55 мм, 0.721 кг"
+  },
+  "набор инструментов gigant gt-23 (23 предмета)": {
+    "length_mm": 320,
+    "width_mm": 220,
+    "height_mm": 50,
+    "weight_g": 2600,
+    "source": "vseinstrumenti.ru Gigant GT-23 сумка 320x220x50 мм, нетто 2.6 кг"
+  },
+  "набор инструментов stels , 82 предмета ,14117": {
+    "length_mm": 395,
+    "width_mm": 265,
+    "height_mm": 95,
+    "weight_g": 6000,
+    "source": "favorit-tools.ru Stels 14117 кейс 395x265x95 мм, 6 кг"
+  },
+  "набор ключей комбинированных 8-19мм": {
+    "length_mm": 280,
+    "width_mm": 140,
+    "height_mm": 40,
+    "weight_g": 910,
+    "source": "remitek.ru STELS 15428 8–19 мм 8 шт упак. 280×140×40 мм, 0.91 кг"
+  },
+  "набор ключей комбинированных дело техники, 22 шт, (6-32), дт/4, сумка": {
+    "length_mm": 390,
+    "width_mm": 110,
+    "height_mm": 110,
+    "weight_g": 4120,
+    "source": "delot.ru 511220 свёрнутая сумка Ø110x390 мм, 4.12 кг"
+  },
+  "набор ключей рожковых 6-32мм": {
+    "length_mm": 340,
+    "width_mm": 90,
+    "height_mm": 90,
+    "weight_g": 2370,
+    "source": "kuvalda.ru KING TONY 1112MR 6–32 мм 12 пр. упак. 340×90×90 мм, 2.37 кг"
+  },
+  "набор ключей шестигранных с шариком, 9 предметов": {
+    "length_mm": 307,
+    "width_mm": 103,
+    "height_mm": 29,
+    "weight_g": 446,
+    "source": "shvedik.ru TOLSEN TT20054 1.5–10 мм шаровые 9 пр. упак. 307×103×29 мм, 0.446 кг"
+  },
+  "набор комбинированных ключей gigant 12 шт gcws12/1": {
+    "length_mm": 600,
+    "width_mm": 40,
+    "height_mm": 30,
+    "weight_g": 1100,
+    "source": "wildberries / chipdip Gigant GCWS12/1 упак. ~600x40x30 мм, 1.1 кг"
+  },
+  "набор комбинированных трещоточных ключей gigant 8 шт, сталь cr-v, 8-19мм": {
+    "length_mm": 240,
+    "width_mm": 140,
+    "height_mm": 50,
+    "weight_g": 990,
+    "source": "yunimag.ru Gigant GCRWS 8 240x140x50 мм, 0.99 кг"
+  },
+  "набор метчиков и плашек topex м3-м12, 32 шт": {
+    "length_mm": 260,
+    "width_mm": 120,
+    "height_mm": 40,
+    "weight_g": 1350,
+    "source": "storgom.ua TOPEX 14A426 260x120x40 мм, 1.35 кг"
+  },
+  "набор отверток crownman 4 шт": {
+    "length_mm": 317,
+    "width_mm": 40,
+    "height_mm": 120,
+    "weight_g": 317,
+    "source": "добрострой CROWNMAN 0606004 упак. 317x40x120 мм, 0.317 кг"
+  },
+  "набор свёрел metabo hss-r 25, 1-13мм в мет.коробке": {
+    "length_mm": 185,
+    "width_mm": 110,
+    "height_mm": 55,
+    "weight_g": 1225,
+    "source": "yunimag.ru Metabo 627152000 кассета 185x110x55 мм, 1.225 кг"
+  },
+  "набор торцевых головок 1/2 24 предмета": {
+    "length_mm": 380,
+    "width_mm": 300,
+    "height_mm": 90,
+    "weight_g": 5300,
+    "source": "tmktools.ru JTC-H424B типичный 1/2 24 пр. кейс 380x300x90 мм, 5.3 кг"
+  },
+  "набор торцевых головок foxweld для пневмогайковерта (10-27 мм; посадочный квадрат 1/2\"; 10 шт.)": {
+    "length_mm": 210,
+    "width_mm": 120,
+    "height_mm": 40,
+    "weight_g": 800,
+    "source": "poryadok.ru / teslainstrument FoxWeld AERO 5751 упак. 21x12x4 см, 0.80 кг"
+  },
+  "набор ударных головок neo 12-115 (8 шт; 26-38 мм; 3/4), 26, 27, 29, 30, 32, 35, 36, 38 мм.": {
+    "length_mm": 260,
+    "width_mm": 194,
+    "height_mm": 70,
+    "weight_g": 3880,
+    "source": "exist.ru NEO 12-115 упак. 260x194x70 мм, 3880 г"
+  },
+  "набор ударных головок sata (10-24 мм; 1/2\"), 12 предметов": {
+    "length_mm": 240,
+    "width_mm": 160,
+    "height_mm": 60,
+    "weight_g": 2100,
+    "source": "tools-markets.ru SATA 09009 кейс 240x160x60 мм, 2.1 кг"
+  },
+  "набор ударных торцевых головок jonnesway, 9 предметов": {
+    "length_mm": 280,
+    "width_mm": 150,
+    "height_mm": 100,
+    "weight_g": 10000,
+    "source": "instrument-orugie.ru / kubaninstrument Jonnesway S03A8109S 280x150x100 мм, ~10 кг"
+  },
+  "набор шестигранников 1.5-10мм": {
+    "length_mm": 307,
+    "width_mm": 103,
+    "height_mm": 29,
+    "weight_g": 446,
+    "source": "shvedik.ru TOLSEN TT20054 ряд 1.5–10 мм 9 пр. 307×103×29 мм, 0.446 кг"
+  },
+  "наконечник токосъемный 0.8мм": {
+    "length_mm": 28,
+    "width_mm": 8,
+    "height_mm": 8,
+    "weight_g": 8,
+    "source": "типовой M6 L=28 мм (КЕДР/Сварог ряд); габарит ~28×8×8, ~5–11 г"
+  },
+  "наконечник токосъемный 1.0мм": {
+    "length_mm": 28,
+    "width_mm": 8,
+    "height_mm": 8,
+    "weight_g": 8,
+    "source": "типовой M6 L=28 мм (КЕДР/Сварог ряд); габарит ~28×8×8, ~5–11 г"
+  },
+  "наконечник токосъемный 1.2мм": {
+    "length_mm": 28,
+    "width_mm": 8,
+    "height_mm": 8,
+    "weight_g": 8,
+    "source": "gensnab.pro КЕДР M6 1.2 L=28: габарит 29×8×8 мм; нетто порядка 5–11 г"
+  },
+  "напильник круглый 250мм": {
+    "length_mm": 310,
+    "width_mm": 10,
+    "height_mm": 10,
+    "weight_g": 119,
+    "source": "ГОСТ 1465-80 круглый Lраб=250 → Lобщ=310; instrumpromtorg круглый 250 №1 119 г"
+  },
+  "напильник плоский 250мм": {
+    "length_mm": 310,
+    "width_mm": 25,
+    "height_mm": 6,
+    "weight_g": 263,
+    "source": "ГОСТ 1465-80 плоский Lраб=250 → Lобщ=310, B=25, s≈6.0–6.5; baltopttorg 2820-0023 0.263 кг"
+  },
+  "насос опрессовочный электрический rothenberger rp pro ii": {
+    "length_mm": 360,
+    "width_mm": 300,
+    "height_mm": 295,
+    "weight_g": 13400,
+    "source": "https://egasmile.by Rothenberger RP PRO II 360x300x295, 13.4kg"
+  },
+  "насос садовый sterwins": {
+    "length_mm": 380,
+    "width_mm": 240,
+    "height_mm": 260,
+    "weight_g": 9300,
+    "source": "supermega.market Sterwins 900Вт 3800 л/ч 38×24×26 см, ~9.3 кг"
+  },
+  "насос химический кнз х150-125-315к-сд, 380в, 45квт, q=200 м3/ч, h=32 м, двых=125 мм": {
+    "length_mm": 1575,
+    "width_mm": 600,
+    "height_mm": 740,
+    "weight_g": 600000,
+    "source": "promglobal.ru Х150-125-315 на сварной раме 1575×600×740 мм, агрегат 600 кг; Q=200 H=32"
+  },
+  "насос центробежный к 45-30": {
+    "length_mm": 1060,
+    "width_mm": 290,
+    "height_mm": 430,
+    "weight_g": 118000,
+    "source": "http://www.hydrotehnika.ru K 45/30 aggregate 1060x290x430, ~118kg"
+  },
+  "насос центробежный км 100-65-200": {
+    "length_mm": 1000,
+    "width_mm": 400,
+    "height_mm": 405,
+    "weight_g": 260000,
+    "source": "hydrotehnika.ru КМ 100-65-200 агрегат 1000×400×405 мм, 260 кг (30 кВт)"
+  },
+  "насос центробежный км 80-50-200": {
+    "length_mm": 740,
+    "width_mm": 350,
+    "height_mm": 400,
+    "weight_g": 168000,
+    "source": "KM 80-50-200 passport ≤740x350x400, ≤168kg w/ industrial motor"
+  },
+  "насос цнс 38-176": {
+    "length_mm": 1265,
+    "width_mm": 440,
+    "height_mm": 430,
+    "weight_g": 359000,
+    "source": "https://konsolnik.com.ua CNS 38-176 pump 1265x440x430, 359kg (no motor)"
+  },
+  "насос цнс 60-198": {
+    "length_mm": 2040,
+    "width_mm": 520,
+    "height_mm": 730,
+    "weight_g": 785000,
+    "source": "https://www.res-elektro.ru CNS(g) 60-198 aggregate 2040x520x730, 785kg"
+  },
+  "насос шестеренчетый для масел и диз. топлива нмш 6.3м3/ч 5.4квт, 25бар": {
+    "length_mm": 743,
+    "width_mm": 460,
+    "height_mm": 320,
+    "weight_g": 142500,
+    "source": "nasos-nmsh.com.ua / belnasos НМШ 8-25-6.3/25 агрегат 743×460×320 мм, 142.5 кг"
+  },
+  "насос электрический км 80-32-125 е, h=10м, q=20 м3/ч": {
+    "length_mm": 410,
+    "width_mm": 214,
+    "height_mm": 280,
+    "weight_g": 30000,
+    "source": "tdadonis.ru / azsk74 паспорт КМ 80-32-125Е 410×214×280 мм, ≤30 кг"
+  },
+  "насос wiloтипil100/150-15-2,15квт": {
+    "length_mm": 821,
+    "width_mm": 312,
+    "height_mm": 500,
+    "weight_g": 212000,
+    "source": "polypump / hosbv Wilo CronoLine-IL 100/150-15/2: l1≈821, Øg≈312, l0=500 мм, ≈212 кг"
+  },
+  "насос wiloтипil80/220-30/2,30квт": {
+    "length_mm": 500,
+    "width_mm": 309,
+    "height_mm": 1077,
+    "weight_g": 366000,
+    "source": "polypump IE3 366 кг; poisk.im L=500 W=309 H=1077 мм (IL 80/220-30/2)"
+  },
+  "насосная установка центробежная кмн 100-80-160 2г со": {
+    "length_mm": 806,
+    "width_mm": 500,
+    "height_mm": 1000,
+    "weight_g": 202000,
+    "source": "energoarsenal.ru КМН 100-80-160 2Г СО с теплообменником 806×500×1000 мм, ≤202 кг"
+  },
+  "насосная установка центробежная кмн 125-100-160 2г со": {
+    "length_mm": 880,
+    "width_mm": 550,
+    "height_mm": 1000,
+    "weight_g": 255000,
+    "source": "azsk74 / azs-market КМН 125-100-160 2Г СО 880×550×1000 мм, 255 кг"
+  },
+  "насосная установка центробежная, химическая (зеленый) кмх 65-40-200п": {
+    "length_mm": 820,
+    "width_mm": 355,
+    "height_mm": 445,
+    "weight_g": 180000,
+    "source": "hydrotehnika.ru / ds02 КМХ 65-40-200 15 кВт 820×355×445 мм, 180 кг"
+  },
+  "насосная установка центробежная, химическая (серый) кмх 80-50-200": {
+    "length_mm": 825,
+    "width_mm": 400,
+    "height_mm": 460,
+    "weight_g": 270000,
+    "source": "ampika.ru / rimos / zapadpribor КМХ 80-50-200 825×400×460 мм, 270 кг"
+  },
+  "насосная установка цнс цнс-нт-180-85 q=180м3/ч, h=85м,": {
+    "length_mm": 2310,
+    "width_mm": 835,
+    "height_mm": 990,
+    "weight_g": 1308000,
+    "source": "pum-p.ru / ufk-techno ЦНС 180-85 агрегат 2310×835×990 мм, 1308 кг"
+  },
+  "настил деревянный 1,2*0,45 м. (25 мм.)": {
+    "length_mm": 1200,
+    "width_mm": 450,
+    "height_mm": 25,
+    "weight_g": 13000,
+    "source": "pkprom.com настил 1.2×0.45 (25 мм) 13 кг"
+  },
+  "наушники 3m peltor optime i": {
+    "length_mm": 130,
+    "width_mm": 95,
+    "height_mm": 190,
+    "weight_g": 180,
+    "source": "onninen.fi / productionequipment 3M Optime I pack 130x95x190 мм; headband ~180 г"
+  },
+  "наушники 3m peltor optime iii": {
+    "length_mm": 140,
+    "width_mm": 110,
+    "height_mm": 200,
+    "weight_g": 285,
+    "source": "onninen.no 3M Optime III H540A pack 140x110x200 мм, 285 г"
+  },
+  "наушники противошумные 3m peltor optime iii": {
+    "length_mm": 140,
+    "width_mm": 110,
+    "height_mm": 200,
+    "weight_g": 285,
+    "source": "onninen.no 3M Optime III H540A pack 140x110x200 мм, 285 г"
+  },
+  "ножовка по дереву": {
+    "length_mm": 547,
+    "width_mm": 124,
+    "height_mm": 31,
+    "weight_g": 350,
+    "source": "vseinstrumenti.ru СИБРТЕХ Зубец 450мм 23814 pack 547x124x31, 0.35kg"
+  },
+  "ножовка по металлу": {
+    "length_mm": 395,
+    "width_mm": 145,
+    "height_mm": 25,
+    "weight_g": 560,
+    "source": "типовая ножовка 300мм (рамка ГОСТ 17270 ряд); 395x145x25, 0.56kg"
+  },
+  "ножовка по металлу с полотном": {
+    "length_mm": 410,
+    "width_mm": 155,
+    "height_mm": 25,
+    "weight_g": 596,
+    "source": "MATRIX 77593 300мм pack 410x155x25, 0.596kg"
+  },
+  "носилки медицинские складные": {
+    "length_mm": 2200,
+    "width_mm": 180,
+    "height_mm": 165,
+    "weight_g": 8000,
+    "source": "GOST 16940-89 складные сложенные 2200x180x165, ≤8kg (НС-АКОР)"
+  },
+  "огнетушитель порошковый оп-4": {
+    "length_mm": 110,
+    "width_mm": 110,
+    "height_mm": 440,
+    "weight_g": 5400,
+    "source": "yarpozhinvest / di01.ru OP-4(z) 110x110x440, ~5.4kg charged"
+  },
+  "огнетушитель порошковый оп-5": {
+    "length_mm": 160,
+    "width_mm": 160,
+    "height_mm": 505,
+    "weight_g": 7300,
+    "source": "komplekt01.ru OP-5 160x505, 7.3kg"
+  },
+  "огнетушитель углекислотный оу-3": {
+    "length_mm": 133,
+    "width_mm": 133,
+    "height_mm": 490,
+    "weight_g": 9200,
+    "source": "lbnsk.ru / Ярпожинвест ОУ-3 ВСЕ d133 133x490, 9.2kg"
+  },
+  "одинарный блок для троса tech-krep оцинк. нейлон.шкив 30мм": {
+    "length_mm": 130,
+    "width_mm": 70,
+    "height_mm": 30,
+    "weight_g": 87,
+    "source": "e-kc.ru Tech-KREP 112743 130x70x30, 0.087kg"
+  },
+  "отвод стальной 90° 108": {
+    "length_mm": 300,
+    "width_mm": 204,
+    "height_mm": 108,
+    "weight_g": 2200,
+    "source": "GOST 17375-2001 DN100 108x3.5; sp-rezerv.ru 2.2kg"
+  },
+  "отвод стальной 90° 159": {
+    "length_mm": 450,
+    "width_mm": 305,
+    "height_mm": 159,
+    "weight_g": 6100,
+    "source": "GOST 17375-2001 DN150 159x4.5; neuer.ru ~6.1kg"
+  },
+  "отвод стальной 90° 57": {
+    "length_mm": 150,
+    "width_mm": 104,
+    "height_mm": 57,
+    "weight_g": 500,
+    "source": "GOST 17375-2001 DN50 57x3 F/C/B; sp-rezerv.ru 0.5kg"
+  },
+  "отвод стальной 90° 76": {
+    "length_mm": 200,
+    "width_mm": 138,
+    "height_mm": 76,
+    "weight_g": 1000,
+    "source": "GOST 17375-2001 DN65 76x3.5; sp-rezerv.ru 1.0kg"
+  },
+  "отвод стальной 90° 89": {
+    "length_mm": 240,
+    "width_mm": 165,
+    "height_mm": 89,
+    "weight_g": 1400,
+    "source": "GOST 17375-2001 DN80 89x3.5; sp-rezerv.ru 1.4kg"
+  },
+  "очки газосварщика г-1": {
+    "length_mm": 85,
+    "width_mm": 55,
+    "height_mm": 50,
+    "weight_g": 67,
+    "source": "edkm.ru очки газосварщика ЗН-56 Г-1/Г-2 55x85x50, 0.067kg"
+  },
+  "очки защитные закрытые росомз зн55": {
+    "length_mm": 190,
+    "width_mm": 100,
+    "height_mm": 80,
+    "weight_g": 79,
+    "source": "vseinstrumenti.ru РОСОМЗ ЗН55 SPARK 25537 pack 80x100x190, 0.079kg"
+  },
+  "очки защитные открытые росомз о15 hammer": {
+    "length_mm": 140,
+    "width_mm": 50,
+    "height_mm": 60,
+    "weight_g": 30,
+    "source": "svarcka.ru РОСОМЗ О15 HAMMER ACTIVE 140x50x60, 0.03kg"
+  },
+  "очки защитные открытые uvex skyper": {
+    "length_mm": 145,
+    "width_mm": 142,
+    "height_mm": 50,
+    "weight_g": 31,
+    "source": "planeta-siz.ru / SJ Smith UVEX Skyper 9195 lens 142mm temple 145, 31g"
+  },
+  "очки защитные uvex skyper": {
+    "length_mm": 145,
+    "width_mm": 142,
+    "height_mm": 50,
+    "weight_g": 31,
+    "source": "planeta-siz.ru / SJ Smith UVEX Skyper 9195 lens 142mm temple 145, 31g"
+  },
+  "очки uvex skyper": {
+    "length_mm": 145,
+    "width_mm": 142,
+    "height_mm": 50,
+    "weight_g": 31,
+    "source": "planeta-siz.ru / SJ Smith UVEX Skyper 9195 lens 142mm temple 145, 31g"
+  },
+  "очки-маска панорамные": {
+    "length_mm": 200,
+    "width_mm": 150,
+    "height_mm": 100,
+    "weight_g": 100,
+    "source": "анталекс.рф РОСОМЗ ЗНГ1 Панорама 200x150x100, 0.1kg"
+  },
+  "панель светодиодная luminidgi универсальная dw-led-dp-02-36w": {
+    "length_mm": 600,
+    "width_mm": 600,
+    "height_mm": 19,
+    "weight_g": 1050,
+    "source": "добрострой Luminidgi DW-LED-DP-02-36W 600x600x19, 1.05kg"
+  },
+  "паронит пмб 3мм лист": {
+    "length_mm": 1500,
+    "width_mm": 1000,
+    "height_mm": 3,
+    "weight_g": 9700,
+    "source": "GOST 481-80 ПМБ/ПОН-Б ряд 1000x1500x3; ~9.7kg"
+  },
+  "паронит пон-б 1мм лист": {
+    "length_mm": 1500,
+    "width_mm": 1000,
+    "height_mm": 1,
+    "weight_g": 3400,
+    "source": "GOST 481-80 ПОН-Б лист 1000x1500x1; ~3.2–3.6kg (bati/ural-rti)"
+  },
+  "паронит пон-б 2мм лист": {
+    "length_mm": 1500,
+    "width_mm": 1000,
+    "height_mm": 2,
+    "weight_g": 6500,
+    "source": "GOST 481-80 ПОН-Б 1000x1500x2; rtievraz.ru ~6–6.5kg"
+  },
+  "пассатижи комбинированные 180мм": {
+    "length_mm": 180,
+    "width_mm": 50,
+    "height_mm": 15,
+    "weight_g": 281,
+    "source": "GOST 5547-93 L=180 W3=36 T1=12; КВТ Мастер 77420 281g"
+  },
+  "пассатижи комбинированные 200мм": {
+    "length_mm": 200,
+    "width_mm": 55,
+    "height_mm": 18,
+    "weight_g": 330,
+    "source": "GOST 5547-93 L=200 W3=40 T1=14; типовой вес ~330g"
+  },
+  "пг эрис 414 газоанализатор": {
+    "length_mm": 145,
+    "width_mm": 65,
+    "height_mm": 45,
+    "weight_g": 250,
+    "source": "описание типа СИ ПГ ЭРИС-414-2 ≤45x145x65, ≤250g (eris.nt-rt.ru)"
+  },
+  "пг эрис 414-2": {
+    "length_mm": 120,
+    "width_mm": 63,
+    "height_mm": 31,
+    "weight_g": 250,
+    "source": "eriskip.com ПГ ЭРИС-414-2 120x63x31, 250g"
+  },
+  "переходник ударный для торцевых головок hans 3/4\"х1\"": {
+    "length_mm": 65,
+    "width_mm": 40,
+    "height_mm": 40,
+    "weight_g": 320,
+    "source": "kuvalda.ru HANS 86805B 3/4\"x1\" L=65mm, 0.32kg"
+  },
+  "перфоратор bosch gbh 2-26": {
+    "length_mm": 377,
+    "width_mm": 83,
+    "height_mm": 210,
+    "weight_g": 2900,
+    "source": "Bosch Professional / WJA GBH 2-26 tool 377x83x210, 2.9kg"
+  },
+  "перфоратор dewalt d 25134 k, 800 вт, 3дж, 3кг, sds-plus, 3 режима": {
+    "length_mm": 355,
+    "width_mm": 75,
+    "height_mm": 210,
+    "weight_g": 3000,
+    "source": "DEWALT D25134K-QS / multitronic 355x75x210, 3.0kg"
+  },
+  "перфоратор makita hr2470": {
+    "length_mm": 370,
+    "width_mm": 84,
+    "height_mm": 214,
+    "weight_g": 2900,
+    "source": "Makita HR2470 datasheet 370x84x214, 2.9kg"
+  },
+  "перчатки одноразовые виниловые 100шт": {
+    "length_mm": 230,
+    "width_mm": 110,
+    "height_mm": 55,
+    "weight_g": 435,
+    "source": "cargo-avto.ru Hans винил 100шт pack 230x110x55, 0.435kg"
+  },
+  "перчатки одноразовые нитриловые 100шт": {
+    "length_mm": 200,
+    "width_mm": 110,
+    "height_mm": 50,
+    "weight_g": 400,
+    "source": "bahily.ru нитрил неопудр. 100шт/уп 200x110x50; ~0.4kg/box"
+  },
+  "пила сабельная bosch psa 700 e": {
+    "length_mm": 570,
+    "width_mm": 244,
+    "height_mm": 110,
+    "weight_g": 3100,
+    "source": "axistools.ru / Bosch PSA 700 E pack 570x244x110, EPTA 3.1kg"
+  },
+  "пирометр мегеон 16400": {
+    "length_mm": 160,
+    "width_mm": 97,
+    "height_mm": 43,
+    "weight_g": 115,
+    "source": "МЕГЕОН 16400 РЭ 97x43x160, 115g"
+  },
+  "пневмодрель реверсивная fubag drs 1800, 6.3 бар, 142 л/мин, 1800 об/мин": {
+    "length_mm": 240,
+    "width_mm": 60,
+    "height_mm": 200,
+    "weight_g": 1750,
+    "source": "ex-tools.ru FUBAG DRS1800 240x60x200, 1.75kg"
+  },
+  "пневмоимпульсная установка иста-3, 25 л с блоком управления,": {
+    "length_mm": 760,
+    "width_mm": 250,
+    "height_mm": 250,
+    "weight_g": 21000,
+    "source": "ista-pneumatics.ru ИСТА-3 И3-25-40-Ф-СБ H760 D250, 21kg"
+  },
+  "пневмошлифовальная машина угловая fubag gac 20000, 6.3 бар, 122 л/мин, 20000 об/мин 1/4f": {
+    "length_mm": 210,
+    "width_mm": 95,
+    "height_mm": 55,
+    "weight_g": 720,
+    "source": "promcomtech.ru FUBAG GAC 20000 122л/мин 210x95x55, 0.72kg"
+  },
+  "подбородочный ремень для каски": {
+    "length_mm": 220,
+    "width_mm": 100,
+    "height_mm": 50,
+    "weight_g": 22,
+    "source": "1001prof.ru / eco-siz РОСОМЗ EVEREST 00682 комплект10: pack~220x100x50, 0.22kg → ~22g/шт"
+  },
+  "помпа зубр 3бмп-600, q=600л/ч, h=26м, h=8м": {
+    "length_mm": 490,
+    "width_mm": 390,
+    "height_mm": 460,
+    "weight_g": 24000,
+    "source": "zubr-rus.ru / gora-tools.ru ЗБМП-600 49×39×46 см, 24 кг"
+  },
+  "помпа honda wb20xt, 600л/мин; 8/32м, 2,6квт": {
+    "length_mm": 455,
+    "width_mm": 365,
+    "height_mm": 420,
+    "weight_g": 21000,
+    "source": "hydrotehnika.ru / honda-electric.ru WB20XT 455×365×420 мм, 21 кг"
+  },
+  "помповый опрыскиватель geolia v16 (салатовый)": {
+    "length_mm": 370,
+    "width_mm": 180,
+    "height_mm": 515,
+    "weight_g": 2723,
+    "source": "santreyd.ru Geolia 16 л арт.15311389 pack 37×18×51.5 см, 2.723 кг"
+  },
+  "поперечина 1,5 м. лх (48*1,5 мм)": {
+    "length_mm": 1500,
+    "width_mm": 48,
+    "height_mm": 48,
+    "weight_g": 2580,
+    "source": "труба лесов Ø48×1.5: m≈0.02466·s·(D−s)·L → ~1.72 кг/м ×1.5 м"
+  },
+  "портативный газоанализатор топ-сенс 310 (ch4(_нкпр),o2,co,h2s) с поверкой": {
+    "length_mm": 125,
+    "width_mm": 64,
+    "height_mm": 30,
+    "weight_g": 220,
+    "source": "priborgaz.com / technoac.ru ТОП-СЕНС 310 passport 125×64×30 мм, 220 г"
+  },
+  "поясная сумка монтажника, электрика для инструмента deli dl-p5 с ремнем": {
+    "length_mm": 270,
+    "width_mm": 190,
+    "height_mm": 140,
+    "weight_g": 500,
+    "source": "regard.ru / moglix DELI DL-P5 270×190×140 мм, ~500 г"
+  },
+  "практик стеллаж sbl 180kd-90x45-5 s24499373409": {
+    "length_mm": 900,
+    "width_mm": 450,
+    "height_mm": 1803,
+    "weight_g": 22000,
+    "source": "bestsafe.ru Практик SBL 180KD/90×45/5 1803×900×450 мм, 22 кг"
+  },
+  "преус 10020ex": {
+    "length_mm": 1150,
+    "width_mm": 770,
+    "height_mm": 700,
+    "weight_g": 380000,
+    "source": "preus-m.ru Преус Е10020 1150×770×700 мм, 380 кг"
+  },
+  "провод пвс 2х1.5": {
+    "length_mm": 1000,
+    "width_mm": 8,
+    "height_mm": 8,
+    "weight_g": 88,
+    "source": "ГОСТ 7399-97 / monasar ПВС 2×1.5 OD~8 мм, ~88 кг/км → 1 м"
+  },
+  "провод пвс 3х2.5": {
+    "length_mm": 1000,
+    "width_mm": 10,
+    "height_mm": 10,
+    "weight_g": 160,
+    "source": "ГОСТ 7399-97 / newscable ПВС 3×2.5 OD~10 мм, ~160 кг/км → 1 м"
+  },
+  "провод пугв 1х4": {
+    "length_mm": 1000,
+    "width_mm": 4,
+    "height_mm": 4,
+    "weight_g": 51,
+    "source": "ruscable.ru ПуГВ 1×4 ГОСТ 31947 OD~3.9 мм, 51.1 кг/км → 1 м"
+  },
+  "промышленная тележка гидравлическая team bf-2.5 тг25": {
+    "length_mm": 1500,
+    "width_mm": 550,
+    "height_mm": 440,
+    "weight_g": 61000,
+    "source": "teplotek-ug.ru / vseinstrumenti TeaM BF-2,5 ТГ25 1500×550×440 мм, 61 кг"
+  },
+  "профессиональные бокорезы inforce 180 мм": {
+    "length_mm": 280,
+    "width_mm": 93,
+    "height_mm": 25,
+    "weight_g": 250,
+    "source": "vseinstrumenti.ru Inforce 06-18-05 pack 280×93×25 мм, нетто 0.25 кг"
+  },
+  "пуско-зарядное устройство elitech упз 600/540 для зарядки аккумуляторов 12/24в автомобилей": {
+    "length_mm": 400,
+    "width_mm": 408,
+    "height_mm": 708,
+    "weight_g": 23650,
+    "source": "vseinstrumenti.ru / powertool.ru ELITECH УПЗ 600/540 400×408×708 мм, 23.65 кг нетто"
+  },
+  "пушка тепловая дизельная gigant dhg20d": {
+    "length_mm": 845,
+    "width_mm": 445,
+    "height_mm": 520,
+    "weight_g": 19000,
+    "source": "avshop.ru / mcgrp.ru Gigant DHG20D 845×445×520 мм, 19 кг"
+  },
+  "пушка тепловая керамическая equation pf02-g, 3000вт, 220в": {
+    "length_mm": 280,
+    "width_mm": 280,
+    "height_mm": 130,
+    "weight_g": 2800,
+    "source": "rent4work.ru Equation PF02-3300G 280×280×130 мм, 2.8 кг"
+  },
+  "радиостанция (пара) lira p-580uv": {
+    "length_mm": 124,
+    "width_mm": 61,
+    "height_mm": 39,
+    "weight_g": 248,
+    "source": "radioatma.ru / lira-radio LIRA P-580UV 124×61×39 мм, 248 г с АКБ (1 шт)"
+  },
+  "разметочный циркуль с дугой griff 500мм": {
+    "length_mm": 510,
+    "width_mm": 45,
+    "height_mm": 19,
+    "weight_g": 580,
+    "source": "vseinstrumenti.ru GRIFF D153127 510×45×19 мм, 0.58 кг"
+  },
+  "реечный домкрат тор swl 10610, 10т": {
+    "length_mm": 302,
+    "width_mm": 271,
+    "height_mm": 815,
+    "weight_g": 52600,
+    "source": "tor-online.ru / remitek TOR ДР 10000 арт.10610 302×271×815 мм, 52.6 кг"
+  },
+  "ресивер рв900/10": {
+    "length_mm": 890,
+    "width_mm": 870,
+    "height_mm": 2040,
+    "weight_g": 185000,
+    "source": "asobezh.ru / aso-bezh РВ 900/10 АСО 890×870×2040 мм, 185 кг"
+  },
+  "респиратор у-2к": {
+    "length_mm": 250,
+    "width_mm": 160,
+    "height_mm": 90,
+    "weight_g": 40,
+    "source": "unfire-shop.ru У-2К FFP1 250×160×90 мм, ~40 г"
+  },
+  "рожковый ударный односторонний ключ rockforce 110мм, l-460мм": {
+    "length_mm": 460,
+    "width_mm": 115,
+    "height_mm": 20,
+    "weight_g": 9547,
+    "source": "vseinstrumenti.ru / forsage Rockforce RF-791110 460×115×20 мм pack, 9.547 кг"
+  },
+  "рулетка gigant 5x19мм, обрезиненная с автостопом gwa61123": {
+    "length_mm": 80,
+    "width_mm": 80,
+    "height_mm": 50,
+    "weight_g": 250,
+    "source": "gigant-torg / chipdip GWA61123 pack 8×8×5 см, 250 г"
+  },
+  "рулетка workpro мягкая, 3 м": {
+    "length_mm": 55,
+    "width_mm": 55,
+    "height_mm": 18,
+    "weight_g": 25,
+    "source": "workpro-shop.ru WP261001 55×55×1.8 мм, 0.025 кг"
+  },
+  "сабельная пила bosch gsa 1100 e": {
+    "length_mm": 580,
+    "width_mm": 295,
+    "height_mm": 140,
+    "weight_g": 3600,
+    "source": "bosch-professional.com GSA 1100 E pack 580×295×140 мм, tool 3.6 кг"
+  },
+  "садовый насос al-ko jet 3000, 650 вт, 220в, 3100 л/ч, h=8м": {
+    "length_mm": 355,
+    "width_mm": 195,
+    "height_mm": 215,
+    "weight_g": 6300,
+    "source": "vseinstrumenti.ru AL-KO Jet 3000 Inox Classic 355×195×215 мм, 6.3 кг"
+  },
+  "саморез по дереву 3.5х35": {
+    "length_mm": 35,
+    "width_mm": 7,
+    "height_mm": 7,
+    "weight_g": 2,
+    "source": "gipsoplita / remsmart таблица веса саморез 3.5×35 ~1.5–1.8 г/шт"
+  },
+  "саморез по металлу 4.2х16": {
+    "length_mm": 16,
+    "width_mm": 11,
+    "height_mm": 11,
+    "weight_g": 2,
+    "source": "gipsoplita таблица вес саморез с прессшайбой 4.2×16 ~1.6–1.9 г/шт"
+  },
+  "самоспасатель гдзк": {
+    "length_mm": 180,
+    "width_mm": 180,
+    "height_mm": 130,
+    "weight_g": 800,
+    "source": "shopsafety.ru ГДЗК-У в сумке 180×180×130 мм, 0.8 кг"
+  },
+  "сварочный аппарат форсаж 315м": {
+    "length_mm": 425,
+    "width_mm": 185,
+    "height_mm": 355,
+    "weight_g": 15100,
+    "source": "kaspz.ru / linksvar Форсаж-315М 425×185×355 мм, 15.1 кг"
+  },
+  "сварочный инвертор ресанта саи 160": {
+    "length_mm": 350,
+    "width_mm": 140,
+    "height_mm": 250,
+    "weight_g": 4500,
+    "source": "enix.ru / resanta passport САИ-160 350×140×250 мм, 4.5 кг"
+  },
+  "сварочный инвертор ресанта саи 190 пн от 140 в 65/19": {
+    "length_mm": 300,
+    "width_mm": 160,
+    "height_mm": 420,
+    "weight_g": 6170,
+    "source": "kursk.resantas.ru / passport САИ-190ПН 300×160×420 мм, 6.17 кг"
+  },
+  "сварочный инвертор ресанта саи-220": {
+    "length_mm": 350,
+    "width_mm": 140,
+    "height_mm": 250,
+    "weight_g": 4900,
+    "source": "tdresanta.ru САИ-220 350×140×250 мм, ~4.9–5 кг"
+  },
+  "сварочный инвертор fubag ir 200": {
+    "length_mm": 260,
+    "width_mm": 120,
+    "height_mm": 185,
+    "weight_g": 3100,
+    "source": "fubag.ru IR 200 VRD 260×120×185 мм, 3.1 кг"
+  },
+  "сварочный инвертор fubag ir 200 , 220в, 8,6 квт, 200а (max). dx25": {
+    "length_mm": 260,
+    "width_mm": 120,
+    "height_mm": 185,
+    "weight_g": 3100,
+    "source": "fubag.ru IR 200 VRD 260×120×185 мм, 3.1 кг"
+  },
+  "сварочный полуавтомат fubag irmig 200": {
+    "length_mm": 450,
+    "width_mm": 200,
+    "height_mm": 350,
+    "weight_g": 8800,
+    "source": "geon.ru / fubag IRMIG 200 450×200×350 мм, 8.8 кг"
+  },
+  "светильник светодиодный svt-str-u-v-100eх": {
+    "length_mm": 535,
+    "width_mm": 100,
+    "height_mm": 205,
+    "weight_g": 7300,
+    "source": "svt-pro.ru SVT-Str-U-V-100-Ex 535×100×205 мм, 7.3 кг"
+  },
+  "светодиодный прожектор in home сдо-7 100вт 230в 6500к ip65": {
+    "length_mm": 200,
+    "width_mm": 165,
+    "height_mm": 20,
+    "weight_g": 550,
+    "source": "in-home.ru / enex.market СДО-7 100Вт 200×165×20 мм, 0.55 кг"
+  },
+  "светофильтр сварочный с5": {
+    "length_mm": 110,
+    "width_mm": 59,
+    "height_mm": 3,
+    "weight_g": 40,
+    "source": "svarcka.ru светофильтр 110×59 С5 110×59×3 мм, 0.04 кг"
+  },
+  "связь горизонтальная 5,2 м. лх (48*2 мм) обжимная": {
+    "length_mm": 5200,
+    "width_mm": 48,
+    "height_mm": 48,
+    "weight_g": 11800,
+    "source": "труба лесов Ø48×2: m≈2.27 кг/м ×5.2 м"
+  },
+  "сеан-п газоанализатор": {
+    "length_mm": 160,
+    "width_mm": 70,
+    "height_mm": 50,
+    "weight_g": 300,
+    "source": "avrora-arm.ru / gazpribors.ru СЕАН-П 160×70×50 мм, ≤0.3 кг"
+  },
+  "сода кальцинированная мешок 25кг": {
+    "length_mm": 500,
+    "width_mm": 350,
+    "height_mm": 125,
+    "weight_g": 25000,
+    "source": "intech-gmbh.ru packing line мешок 25 кг ~490–500×280–390×120–130 мм"
+  },
+  "набор отверток диэлектрических 1000в": {
+    "length_mm": 290,
+    "width_mm": 150,
+    "height_mm": 40,
+    "weight_g": 530,
+    "source": "kvt-pro.ru КВТ НИО-07 ПРОФИ кофр 29×15×4 cm, 0.53 kg"
+  },
+  "набор торцевых головок 1/2 24пр": {
+    "length_mm": 445,
+    "width_mm": 187,
+    "height_mm": 50,
+    "weight_g": 5700,
+    "source": "ldvir.ua King Tony 4524MR 1/2\" 24пр case 445×187×50, 5.7 kg"
+  },
+  "набор торцевых головок 3/8 40пр": {
+    "length_mm": 240,
+    "width_mm": 115,
+    "height_mm": 30,
+    "weight_g": 890,
+    "source": "mi-spb.ru / doka КУРС 65023 3/8\" ~40пр pack 240×30×115, 890 g"
+  },
+  "настил деревянный для лесов": {
+    "length_mm": 1000,
+    "width_mm": 1000,
+    "height_mm": 40,
+    "weight_g": 15000,
+    "source": "mosprokat.com / co-bit.ru щит 1×1 м, толщина ~25–40 мм, вес ~12.3–20 kg → 15 kg mid"
+  },
+  "нитрит натрия 25кг": {
+    "length_mm": 560,
+    "width_mm": 380,
+    "height_mm": 140,
+    "weight_g": 25200,
+    "source": "ГОСТ 19906-2023 мешок (25±0.25) кг; globalaliance.ru pack 0.56×0.38×0.14 м"
+  },
+  "нитрит натрия технический мешок": {
+    "length_mm": 560,
+    "width_mm": 380,
+    "height_mm": 140,
+    "weight_g": 25200,
+    "source": "ГОСТ 19906-2023 мешок 25 кг; globalaliance.ru 0.56×0.38×0.14 м"
+  },
+  "нитрит натрия технический мешок 25кг": {
+    "length_mm": 560,
+    "width_mm": 380,
+    "height_mm": 140,
+    "weight_g": 25200,
+    "source": "ГОСТ 19906-2023; globalaliance.ru / cibum УРАЛХИМ 25 кг bag dims"
+  },
+  "ортофосфорная кислота 20л": {
+    "length_mm": 296,
+    "width_mm": 247,
+    "height_mm": 376,
+    "weight_g": 34600,
+    "source": "verta-tara.com канистра 20 л 296×247×376, 0.9 kg + H3PO4 85% ρ≈1.685 → ~34.6 kg filled"
+  },
+  "очки защитные закрытые с непрямой вентиляцией": {
+    "length_mm": 195,
+    "width_mm": 79,
+    "height_mm": 97,
+    "weight_g": 114,
+    "source": "planetasveta.pro / VI РОСОМЗ ЗН11 PANORAMA 21111 195×79×97, 114g"
+  },
+  "перчатки диэлектрические резиновые": {
+    "length_mm": 390,
+    "width_mm": 175,
+    "height_mm": 35,
+    "weight_g": 289,
+    "source": "prowife.ru АЗРИЭЛЕКТРО класс 0 pack 3.5×39×17.5 cm, 0.289 kg; length ≥350 mm (ГОСТ 12.4.307)"
+  },
+  "перчатки кислотощелочестойкие кщс": {
+    "length_mm": 300,
+    "width_mm": 120,
+    "height_mm": 20,
+    "weight_g": 120,
+    "source": "ГОСТ 20010-93 тип I L≥300; avangard-sp КЩС тип1 pair 0.12 kg, V≈0.0002 m³"
+  },
+  "перчатки кислотощелочестойкие кщс тип1": {
+    "length_mm": 300,
+    "width_mm": 120,
+    "height_mm": 20,
+    "weight_g": 120,
+    "source": "ГОСТ 20010-93 тип I; avangard-sp КЩС тип1 0.12 kg / 0.0002 m³"
+  },
+  "перчатки краги сварщика брезентовые": {
+    "length_mm": 445,
+    "width_mm": 150,
+    "height_mm": 15,
+    "weight_g": 120,
+    "source": "remitek.ru / ryvok СИБРТЕХ 68160 445×150×15 мм, 0.12 kg"
+  },
+  "перчатки краги сварщика спилковые": {
+    "length_mm": 350,
+    "width_mm": 200,
+    "height_mm": 40,
+    "weight_g": 380,
+    "source": "gloves4work.ru краги спилковые 350 мм, 380–390 g/pair; pack flat ~350×200×40"
+  },
+  "перчатки латексные хозяйственные": {
+    "length_mm": 300,
+    "width_mm": 100,
+    "height_mm": 15,
+    "weight_g": 34,
+    "source": "art-perchatka / urbanclean хоз. латекс L=300 мм, pair 32–43 g → 34 g (size L)"
+  },
+  "перчатки нейлоновые с нитриловым покрытием": {
+    "length_mm": 250,
+    "width_mm": 100,
+    "height_mm": 15,
+    "weight_g": 35,
+    "source": "gward nitro / protekt.by nylon+nitrile 28–38 g; L 24–25 cm"
+  },
+  "перчатки нейлоновые с нитрилом": {
+    "length_mm": 250,
+    "width_mm": 100,
+    "height_mm": 15,
+    "weight_g": 35,
+    "source": "avangard-sp / sirius nylon+nitrile pair ~32–38 g, L≈240–250 мм"
+  },
+  "перчатки нейлоновые с полиуретановым покрытием": {
+    "length_mm": 250,
+    "width_mm": 120,
+    "height_mm": 20,
+    "weight_g": 25,
+    "source": "gward.ru / mocciz Gward PU nylon+PU L=23–27 cm, 23–29 g; pack ~20×120×250 мм"
+  },
+  "перчатки нитриловые мбс": {
+    "length_mm": 270,
+    "width_mm": 120,
+    "height_mm": 25,
+    "weight_g": 120,
+    "source": "gward NRP МБС L=27 cm, 119–127 g/pair (mocciz / gward-import)"
+  },
+  "перчатки нитриловые мбс маслобензостойкие": {
+    "length_mm": 270,
+    "width_mm": 120,
+    "height_mm": 25,
+    "weight_g": 120,
+    "source": "Gward NRP МБС/КЩС full nitrile 119–127 g, L=270 мм"
+  },
+  "перчатки от порезов cut-5": {
+    "length_mm": 260,
+    "width_mm": 120,
+    "height_mm": 20,
+    "weight_g": 70,
+    "source": "Gward No-Cut Markus Cut level 5 70–75 g, L=260–270 мм"
+  },
+  "перчатки от порезов уровень 5": {
+    "length_mm": 260,
+    "width_mm": 120,
+    "height_mm": 20,
+    "weight_g": 70,
+    "source": "kvint.store / liderwork Gward No-Cut Markus Cut-5 L=26 cm, 70–75 g"
+  },
+  "перчатки с латексным покрытием торро": {
+    "length_mm": 250,
+    "width_mm": 120,
+    "height_mm": 15,
+    "weight_g": 80,
+    "source": "sizopt.by / specline Торро L=250 мм, 80 g; avangard V≈0.00036 m³"
+  },
+  "перчатки спилковые цельноспилковые": {
+    "length_mm": 350,
+    "width_mm": 200,
+    "height_mm": 40,
+    "weight_g": 380,
+    "source": "gloves4work.ru / sirius35.ru цельноспилковые 350 мм, ~275–390 g → 380 g"
+  },
+  "перчатки трикотажные с латексным покрытием торро": {
+    "length_mm": 250,
+    "width_mm": 120,
+    "height_mm": 15,
+    "weight_g": 80,
+    "source": "sizopt.by Торро рельефный латекс 250 мм, 80 g/pair"
+  },
+  "перчатки хб с пвх 5 нитей": {
+    "length_mm": 230,
+    "width_mm": 110,
+    "height_mm": 20,
+    "weight_g": 53,
+    "source": "niceprice / sirius-spb ХБ 5 нитей 10 кл длина 230 мм, вес пары 51–55 g"
+  },
+  "перчатки хб с пвх 7 нитей": {
+    "length_mm": 235,
+    "width_mm": 115,
+    "height_mm": 25,
+    "weight_g": 85,
+    "source": "vitex37 / tezro ХБ 7 нитей 7.5 кл 80–92 g; L≈22.5–23.5 cm"
+  },
+  "перчатки хб с пвх покрытием 10 класс": {
+    "length_mm": 230,
+    "width_mm": 110,
+    "height_mm": 20,
+    "weight_g": 53,
+    "source": "volnatd / sirius ХБ 5 нитей 10 класс ~51–53 g, L≈230 мм"
+  },
+  "перчатки хб с пвх покрытием 5 нитей": {
+    "length_mm": 230,
+    "width_mm": 110,
+    "height_mm": 20,
+    "weight_g": 53,
+    "source": "sirius-spb / siz-ekb ХБ 5 нитей ~50–55 g, L≈230 мм"
+  },
+  "перчатки хб с пвх покрытием 7 нитей": {
+    "length_mm": 235,
+    "width_mm": 115,
+    "height_mm": 25,
+    "weight_g": 85,
+    "source": "leader-t / vitex ХБ 7 нитей ~78–85 g, размер ~23 cm"
+  },
+  "перчатки хб с пвх точкой 5 нитей": {
+    "length_mm": 230,
+    "width_mm": 110,
+    "height_mm": 20,
+    "weight_g": 53,
+    "source": "niceprice ХБ 5 нитей ПВХ точка 230 мм, 53–55 g"
+  },
+  "плавиковая кислота 30л": {
+    "length_mm": 315,
+    "width_mm": 270,
+    "height_mm": 448,
+    "weight_g": 35400,
+    "source": "tdplastika.ru / bochka.by канистра 30 л 315×270×448 + HF~40% ρ≈1.14 → ~35.4 kg filled"
+  },
+  "подпятник 48 мм.": {
+    "length_mm": 110,
+    "width_mm": 110,
+    "height_mm": 200,
+    "weight_g": 500,
+    "source": "prom23.ru / pmarket.by опорная пята ОП481 48 мм 110×110×200, 0.5 kg"
+  },
+  "подшипник 180322": {
+    "length_mm": 240,
+    "width_mm": 240,
+    "height_mm": 50,
+    "weight_g": 9603,
+    "source": "promgar.ru / ГОСТ 8338 analogue 6322-2RS: 110×240×50, mass 9.603 kg"
+  },
+  "полумаска 3m 6200": {
+    "length_mm": 150,
+    "width_mm": 120,
+    "height_mm": 120,
+    "weight_g": 82,
+    "source": "30pro.ru pack 15×12×12 cm; facepiece 82g (3M 6000 TDS / safety-belt.ru)"
+  },
+  "полумаска 3m 6200 с фильтрами": {
+    "length_mm": 200,
+    "width_mm": 150,
+    "height_mm": 120,
+    "weight_g": 370,
+    "source": "3M 6000 series max assembled ≤370g (TDS); pack approx for facepiece+cartridges"
+  },
+  "полумаска 3m 7502": {
+    "length_mm": 110,
+    "width_mm": 110,
+    "height_mm": 140,
+    "weight_g": 136,
+    "source": "magazinsiz.ru 3M 7500 pack 110×110×140, 136g; 3M 7500 datasheet ~135–140g"
+  },
+  "полумаска 3m 8101 ffp1": {
+    "length_mm": 120,
+    "width_mm": 120,
+    "height_mm": 70,
+    "weight_g": 9,
+    "source": "3M TDS-8100 max 9g; kpd-sp volume ~0.0001 m³ cup form ≈120×120×70"
+  },
+  "полумаска 3m 9332 ffp3": {
+    "length_mm": 210,
+    "width_mm": 85,
+    "height_mm": 40,
+    "weight_g": 15,
+    "source": "rlab.store 210×85×40; 3M Aura 9300+ TDS typical weight 15g (9332+)"
+  },
+  "набор ударных торцевых головок 9 предметов": {
+    "length_mm": 295,
+    "width_mm": 155,
+    "height_mm": 80,
+    "weight_g": 7662,
+    "source": "centr-to.ru / favorit-tools JTC-J809M 1\" 9пр case 295x155x80, 7.662 kg"
+  },
+  "набор ударных тоцевых головок 9 предметов": {
+    "length_mm": 295,
+    "width_mm": 155,
+    "height_mm": 80,
+    "weight_g": 7662,
+    "source": "JTC-J809M alias (typo тоцевых); same 295x155x80, 7.662 kg"
+  },
+  "перчатки кислотощелочестойкие кщс тип2": {
+    "length_mm": 300,
+    "width_mm": 100,
+    "height_mm": 15,
+    "weight_g": 46,
+    "source": "sotizz.ru / stav-spec КЩС тип2 L=300 мм, 46 g/pair; ГОСТ 20010-93 тип II"
+  },
+  "перчатки нейлоновые с латексным обливом": {
+    "length_mm": 250,
+    "width_mm": 110,
+    "height_mm": 20,
+    "weight_g": 50,
+    "source": "myprotect.by nylon+foam latex 50 g L=24 cm; planeta-sirius НейпЛат 34–71 g"
+  },
+  "плащ влагозащитный пвх": {
+    "length_mm": 300,
+    "width_mm": 270,
+    "height_mm": 50,
+    "weight_g": 700,
+    "source": "antaleks.р плащ Тайфун ПВХ pack 300x270x50, 0.7 kg"
+  },
+  "плащ пвх влагозащитный": {
+    "length_mm": 300,
+    "width_mm": 270,
+    "height_mm": 50,
+    "weight_g": 700,
+    "source": "antaleks.р плащ Тайфун ПВХ 300x270x50, 0.7 kg"
+  },
+  "мангуст-2 электро": {
+    "length_mm": 400,
+    "width_mm": 335,
+    "height_mm": 300,
+    "weight_g": 9500,
+    "source": "https://mangust.com.ru Мангуст-2-электро раб. 400x335x300 мм, 9.5 кг"
+  },
+  "мотопомпа для нефтепродуктов танкер-049 (01.2017)": {
+    "length_mm": 1050,
+    "width_mm": 500,
+    "height_mm": 750,
+    "weight_g": 85000,
+    "source": "https://www.elind.ru ЗТО ТАНКЕР 049 1050x500x750 мм, 85 кг"
+  },
+  "мотопомпа для нефтепродуктов танкер-049 (05.2017)": {
+    "length_mm": 1050,
+    "width_mm": 500,
+    "height_mm": 750,
+    "weight_g": 85000,
+    "source": "https://www.elind.ru ЗТО ТАНКЕР 049 1050x500x750 мм, 85 кг"
+  },
+  "лобзик электрический. 570 вт, h стали = 8 мм, h дерева=65 мм": {
+    "length_mm": 270,
+    "width_mm": 95,
+    "height_mm": 210,
+    "weight_g": 1800,
+    "source": "https://urteks.ru ЗУБР Л-570-65 270x95x210 мм, 1.8 кг"
+  },
+  "маты прошивные минераловатные": {
+    "length_mm": 2000,
+    "width_mm": 1200,
+    "height_mm": 50,
+    "weight_g": 12200,
+    "source": "https://shop.tn.ru МП-100 2000x1200x50 ГОСТ 21880, 12.2 кг"
+  },
+  "мат базальтовый теплоизоляционный": {
+    "length_mm": 2000,
+    "width_mm": 1200,
+    "height_mm": 50,
+    "weight_g": 12200,
+    "source": "https://shop.tn.ru / ГОСТ 21880 МП-100 2000x1200x50, 12.2 кг"
+  },
+  "маска сварщика fubag хамелеон": {
+    "length_mm": 290,
+    "width_mm": 240,
+    "height_mm": 220,
+    "weight_g": 500,
+    "source": "https://stroybazar.ru FUBAG OPTIMA 9-13 pack 29x24x22 см, 0.5 кг"
+  },
+  "маска сварщика aurora хамелеон": {
+    "length_mm": 230,
+    "width_mm": 225,
+    "height_mm": 330,
+    "weight_g": 450,
+    "source": "https://weldteh.ru Aurora A-998F pack 230x225x330 мм, 0.45 кг"
+  },
+  "маска сварщика хамелеон сварог": {
+    "length_mm": 260,
+    "width_mm": 300,
+    "height_mm": 250,
+    "weight_g": 550,
+    "source": "https://garwin.ru Сварог AS-4000F pack 26x30x25 см, 0.55 кг"
+  },
+  "лента сигнальная оградительная": {
+    "length_mm": 140,
+    "width_mm": 140,
+    "height_mm": 75,
+    "weight_g": 700,
+    "source": "https://www.iek.ru ЛО-250 75мм×250м 14x14x7.5 см, net 0.7 кг"
+  },
+  "набор бит 32пр": {
+    "length_mm": 115,
+    "width_mm": 70,
+    "height_mm": 45,
+    "weight_g": 250,
+    "source": "https://www.sorokin.ru набор бит 32 пр. 115x70x45 мм, 0.25 кг"
+  },
+  "каска с храповиком": {
+    "length_mm": 300,
+    "width_mm": 200,
+    "height_mm": 130,
+    "weight_g": 330,
+    "source": "https://postavkalava.ru СОМЗ-55 Hammer RAPID 300x200x130 мм, 330 г"
+  },
+  "модуль 268с-кск": {
+    "length_mm": 1450,
+    "width_mm": 550,
+    "height_mm": 600,
+    "weight_g": 54000,
+    "source": "https://4-20.ru ПТС Модуль 268М-Кск 1450x550x600 мм, 54 кг"
+  },
+  "лебедка jentan рычажная 1600 кг (лягушка). трос 11 mm, без кейса, стальной корпус, серый": {
+    "length_mm": 545,
+    "width_mm": 97,
+    "height_mm": 284,
+    "weight_g": 12000,
+    "source": "https://shop.avpkf.com MTM/ZNL1600 Ø11 545x97x284 мм, лебёдка 12 кг"
+  },
+  "гибкое копьё dn3мм 11м 1050бар 1/4 на 1/16": {
+    "length_mm": 11000,
+    "width_mm": 8,
+    "height_mm": 8,
+    "weight_g": 1012,
+    "source": "https://tamakko.ru TransferOil Helix 202B DN3 92 г/м ×11 м, Øнар 7.2"
+  },
+  "леса передвижные алюминиевые": {
+    "length_mm": 2100,
+    "width_mm": 550,
+    "height_mm": 300,
+    "weight_g": 24000,
+    "source": "https://alumet.su вышка-тура Техно 5 pack 2.1×0.55×0.3 м, 24 кг"
+  },
+  "мел разметочный": {
+    "length_mm": 125,
+    "width_mm": 12,
+    "height_mm": 5,
+    "weight_g": 12,
+    "source": "RemoColor / vseinstrumenti soapstone 125×12×5 мм, ~12 г"
+  },
+  "маркер промышленный": {
+    "length_mm": 131,
+    "width_mm": 21,
+    "height_mm": 21,
+    "weight_g": 27,
+    "source": "edding e-950 datasheet pack 21×131×21 мм, net 27 г"
+  },
+  "лампа рабочая переносная 36в": {
+    "length_mm": 300,
+    "width_mm": 160,
+    "height_mm": 120,
+    "weight_g": 880,
+    "source": "https://res-36.ru НРП 36/42В 300×160×120 мм, 0.88 кг"
+  },
+  "знак безопасности комплект": {
+    "length_mm": 200,
+    "width_mm": 200,
+    "height_mm": 2,
+    "weight_g": 104,
+    "source": "ГОСТ 12.4.026 / ОФИСМАГ F04 10×200×200 мм, 104 г"
+  },
+  "кронштейн 48 мм.": {
+    "length_mm": 48,
+    "width_mm": 48,
+    "height_mm": 12,
+    "weight_g": 130,
+    "source": "https://mirmagnitov.ru крепление К-48 Ø48×12 мм, 130 г"
+  },
+  "ветошь обтирочная мешок": {
+    "length_mm": 450,
+    "width_mm": 450,
+    "height_mm": 200,
+    "weight_g": 10000,
+    "source": "https://tkanitex.ru ветошь ГОСТ 4643-75 брикет 10 кг 45×45×20 см"
+  },
+  "ключ цепной": {
+    "length_mm": 1160,
+    "width_mm": 105,
+    "height_mm": 110,
+    "weight_g": 14000,
+    "source": "https://uralnmp.ru КЦН-1 1160×105×110 мм, ≤14 кг"
+  },
+  "вальцовочный станок": {
+    "length_mm": 700,
+    "width_mm": 300,
+    "height_mm": 320,
+    "weight_g": 50000,
+    "source": "https://sovsnab.ru вальцы ВР-500 700×300×320 мм (без ручки), 50 кг"
+  },
+  "гильотинные ножницы": {
+    "length_mm": 770,
+    "width_mm": 270,
+    "height_mm": 420,
+    "weight_g": 37000,
+    "source": "MetalTec GS 500-1,5M / Stalex HS-500 770×270×420 мм, net 37 кг"
+  },
+  "дыхательный аппарат": {
+    "length_mm": 640,
+    "width_mm": 290,
+    "height_mm": 230,
+    "weight_g": 10000,
+    "source": "https://pts.nt-rt.ru ПТС Профи-М-168Е ≤640×290×230 мм, 10 кг"
+  },
+  "зажим для тали": {
+    "length_mm": 300,
+    "width_mm": 350,
+    "height_mm": 120,
+    "weight_g": 3600,
+    "source": "https://metalov.ru захват балочный YC 1т 300×350×120 мм, 3.6 кг"
+  },
+  "аварийный душ": {
+    "length_mm": 840,
+    "width_mm": 360,
+    "height_mm": 2400,
+    "weight_g": 22000,
+    "source": "https://sunny-wind.by Sfera SFA-0112-12 840×360×2400 мм, 22 кг"
+  },
+  "магнит поисковый": {
+    "length_mm": 67,
+    "width_mm": 67,
+    "height_mm": 14,
+    "weight_g": 500,
+    "source": "https://redmag.ru магнит F120 Ø67×14 мм, 500 г"
+  },
+  "модуль порошкового пожаротушения компании эпотос-к": {
+    "length_mm": 104,
+    "width_mm": 118,
+    "height_mm": 287,
+    "weight_g": 1440,
+    "source": "https://piir.ru Буран-0,5(шм1) ЭПОТОС 104×118×287 мм, 1.44 кг"
+  },
+  "компрессор калибр на колесах (пневмоинструмент), эл двиг 220в": {
+    "length_mm": 530,
+    "width_mm": 245,
+    "height_mm": 590,
+    "weight_g": 23300,
+    "source": "https://konstruktor74.ru Калибр КМК-1600/24А 530×245×590 мм, 23.3 кг"
+  },
+  "гайковерт ударный пневматический 1/2": {
+    "length_mm": 220,
+    "width_mm": 85,
+    "height_mm": 215,
+    "weight_g": 2590,
+    "source": "https://unit-tools.ru FUBAG IW900 1/2\" 220×85×215 мм, 2.59 кг"
+  },
+  "гайковерт угловой пневматический, 1/2\". 220 л/мин, 6,2 атм, 82 нм. 1/4f": {
+    "length_mm": 260,
+    "width_mm": 68,
+    "height_mm": 58,
+    "weight_g": 1240,
+    "source": "https://salehard.fubag.ru FUBAG RWC 105 1/2\" 6.2 бар 1/4F 260×68×58 мм, 1.24 кг"
+  },
+  "кресло офисное": {
+    "length_mm": 680,
+    "width_mm": 650,
+    "height_mm": 1330,
+    "weight_g": 14800,
+    "source": "Chairman CH-279 собр. 680×650×1330 мм, ~14.8 кг"
+  },
+  "кулер для воды": {
+    "length_mm": 320,
+    "width_mm": 310,
+    "height_mm": 955,
+    "weight_g": 12920,
+    "source": "https://safegroup.ru Ecotronic H1-L 955×310×320 мм, 12.92 кг"
+  },
+  "ламинатор": {
+    "length_mm": 346,
+    "width_mm": 146,
+    "height_mm": 66,
+    "weight_g": 1000,
+    "source": "https://www.heleos.ru ГЕЛЕОС ЛМ А4+(БС) 346×146×66 мм, 1 кг"
+  },
+  "микроволновка": {
+    "length_mm": 440,
+    "width_mm": 334,
+    "height_mm": 258,
+    "weight_g": 10500,
+    "source": "Samsung MS20A3010AL 20 л 440×258×334 мм, 10.5 кг"
+  },
+  "домкрат": {
+    "length_mm": 220,
+    "width_mm": 100,
+    "height_mm": 110,
+    "weight_g": 4225,
+    "source": "ЗУБР бутылочный гидравлический 5т 220×100×110 мм, 4.225 кг"
+  },
+  "лестница навесная 2 м": {
+    "length_mm": 2000,
+    "width_mm": 350,
+    "height_mm": 30,
+    "weight_g": 1200,
+    "source": "satu.kz лестница верёвочная 2 м 2000×350×30 мм, 1.2 кг"
+  },
+  "брезент влагостойкий": {
+    "length_mm": 700,
+    "width_mm": 350,
+    "height_mm": 90,
+    "weight_g": 6000,
+    "source": "полог брезент ВО 3×5 м ~6 кг ГОСТ 15530; сложенный ~70×35×9 см"
+  },
+  "зимний утеплитель для каски": {
+    "length_mm": 280,
+    "width_mm": 200,
+    "height_mm": 20,
+    "weight_g": 145,
+    "source": "подшлемник ватин диагональ под каску ~280×200×20 мм, 145 г"
+  },
+  "манометр с трехходовым краном": {
+    "length_mm": 150,
+    "width_mm": 100,
+    "height_mm": 60,
+    "weight_g": 1620,
+    "source": "МТП-100 Ø100 ≤1.5 кг + кран 11б18бк ~0.12 кг; сборка ~150×100×60"
+  },
+  "набор ключей сата 5.5-24мм": {
+    "length_mm": 320,
+    "width_mm": 120,
+    "height_mm": 40,
+    "weight_g": 1250,
+    "source": "https://tools-markets.ru SATA 08009 5.5–24 мм 8 пр., 1250 г"
+  },
+  "набор искробезопасных ключей.": {
+    "length_mm": 400,
+    "width_mm": 250,
+    "height_mm": 80,
+    "weight_g": 3550,
+    "source": "X-Spark NO.B-12 Al-Cu 6–32 мм 12 пр., 3.55 кг"
+  },
+  "кран шаровый": {
+    "length_mm": 180,
+    "width_mm": 160,
+    "height_mm": 247,
+    "weight_g": 8450,
+    "source": "Маршал 11с67п DN50 PN16 L=180 мм, ~8.45 кг (ГОСТ 28908)"
+  },
+  "монитор lg": {
+    "length_mm": 540,
+    "width_mm": 190,
+    "height_mm": 410,
+    "weight_g": 3500,
+    "source": "типовой LG 24\" IPS со стойкой ~540×410×190 мм, ~3.5 кг"
+  },
+  "полумаска фильтрующая 3m 8101 ffp1": {
+    "length_mm": 120,
+    "width_mm": 120,
+    "height_mm": 70,
+    "weight_g": 9,
+    "source": "3M TDS-8100 max 9g; cup form ≈120×120×70 (как полумаска 3m 8101 в кэше)"
+  },
+  "респиратор 3m 8101 ffp1": {
+    "length_mm": 120,
+    "width_mm": 120,
+    "height_mm": 70,
+    "weight_g": 9,
+    "source": "3M TDS-8100 max 9g; cup form ≈120×120×70"
+  },
+  "респиратор 3m 9332 ffp3": {
+    "length_mm": 210,
+    "width_mm": 85,
+    "height_mm": 40,
+    "weight_g": 15,
+    "source": "rlab.store / 3M Aura 9300+ TDS 210×85×40, 15g"
+  },
+  "респиратор алина-200": {
+    "length_mm": 230,
+    "width_mm": 95,
+    "height_mm": 45,
+    "weight_g": 23,
+    "source": "vseinstrumenti / yunimag Алина-200 pack 230×95×45, нетто ~23g"
+  },
+  "респиратор алина-200 ffp2": {
+    "length_mm": 230,
+    "width_mm": 95,
+    "height_mm": 45,
+    "weight_g": 23,
+    "source": "vseinstrumenti / yunimag Алина-200 FFP2 pack 230×95×45, ~23g"
+  },
+  "респиратор лепесток-200": {
+    "length_mm": 205,
+    "width_mm": 205,
+    "height_mm": 3,
+    "weight_g": 12,
+    "source": "ГОСТ 12.4.028-76 ШБ-1 Лепесток-200 Ø~205 мм, масса ≤12 г"
+  },
+  "пояс монтажника denzel сумки поясные": {
+    "length_mm": 750,
+    "width_mm": 350,
+    "height_mm": 70,
+    "weight_g": 1900,
+    "source": "denzel-shop.ru Denzel 90290 упак. 750×350×70 мм, 1.9 кг"
+  },
+  "ремень стяжной 25 мм , 5 м , 700 кг crownman": {
+    "length_mm": 130,
+    "width_mm": 100,
+    "height_mm": 50,
+    "weight_g": 340,
+    "source": "добрострой CROWNMAN 1306010 упак. 130×100×50 мм, 0.34 кг"
+  },
+  "станок листогибочный ручной профи l-2500 с отрезным ножом": {
+    "length_mm": 2800,
+    "width_mm": 600,
+    "height_mm": 1150,
+    "weight_g": 240000,
+    "source": "pplistogib.ru / stanpark ПРОФИ 2500 2800×600×1150 мм, 240 кг"
+  },
+  "стремянка стальная biber 98107": {
+    "length_mm": 2150,
+    "width_mm": 530,
+    "height_mm": 120,
+    "weight_g": 8700,
+    "source": "remont3000.ru BIBER 98107 слож. 2150×530×120 мм, 8.7 кг"
+  },
+  "стойка вертикальная 2 м. (48*2 мм) лх-60": {
+    "length_mm": 2000,
+    "width_mm": 48,
+    "height_mm": 48,
+    "weight_g": 4950,
+    "source": "vstgp.ru / на-базе.рф стойка ЛХ-60 Ø48×2 L=2 м, 4.95 кг"
+  },
+  "стойка вертикальная 4 м. (48*2 мм) лх-60": {
+    "length_mm": 4000,
+    "width_mm": 48,
+    "height_mm": 48,
+    "weight_g": 9500,
+    "source": "pkprom.com стойка ЛХ-60 Ø48×2 L=4 м, 9.5 кг"
+  },
+  "стойка лесов хомутовых д=48 l= 2м.": {
+    "length_mm": 2000,
+    "width_mm": 48,
+    "height_mm": 48,
+    "weight_g": 4950,
+    "source": "vstgp.ru стойка хомутовых лесов Ø48×2 L=2 м, 4.95 кг"
+  },
+  "стойка лесов хомутовых д=48 l= 4м.": {
+    "length_mm": 4000,
+    "width_mm": 48,
+    "height_mm": 48,
+    "weight_g": 9500,
+    "source": "pkprom.com стойка хомутовых лесов Ø48×2 L=4 м, 9.5 кг"
+  },
+  "связь лесов хомут. д=48 l= 5,3 м.": {
+    "length_mm": 5300,
+    "width_mm": 57,
+    "height_mm": 57,
+    "weight_g": 17000,
+    "source": "ЛСПХ связь 5,3 м 48×2: 57×5300×57 мм, 17 кг"
+  },
+  "самоцентрирующийся разматыватель металла ferrox": {
+    "length_mm": 1000,
+    "width_mm": 2100,
+    "height_mm": 1220,
+    "weight_g": 328000,
+    "source": "cable.ru / снабжаем-всем Ferrox 1500/6 1000×2100×1220 мм, 328 кг"
+  },
+  "средство защиты втягивающего типа hb-02": {
+    "length_mm": 120,
+    "width_mm": 120,
+    "height_mm": 70,
+    "weight_g": 1360,
+    "source": "pkvst.ru / vantrading VENTO HB-02 set упак. 120×120×70, нетто 1360 г"
+  },
+  "средство защиты втягивающего типа нв evsk15": {
+    "length_mm": 230,
+    "width_mm": 400,
+    "height_mm": 400,
+    "weight_g": 14740,
+    "source": "ventopro.ru VENTO НВ evak 15 230×400×400 мм, 14.74 кг"
+  },
+  "прокладка паронитовая ду100": {
+    "length_mm": 161,
+    "width_mm": 161,
+    "height_mm": 2,
+    "weight_g": 47,
+    "source": "ГОСТ 15180-86 исп.А Ду100 ~161×106×2 мм, масса ~47 г (adk22 / megaprom)"
+  },
+  "прокладка паронитовая ду50": {
+    "length_mm": 106,
+    "width_mm": 106,
+    "height_mm": 2,
+    "weight_g": 26,
+    "source": "ГОСТ 15180-86 исп.А Ду50 Ру10-40: 106×57×2 мм, ~26 г/шт"
+  },
+  "редуктор кислородный": {
+    "length_mm": 170,
+    "width_mm": 170,
+    "height_mm": 155,
+    "weight_g": 1750,
+    "source": "ГОСТ 13861 / БАМЗ БКО-50-4 габариты ≤170×170×155 мм, ≤1.75 кг"
+  },
+  "розетка силовая 380в 16а": {
+    "length_mm": 120,
+    "width_mm": 80,
+    "height_mm": 55,
+    "weight_g": 156,
+    "source": "IEK ССИ-214 PSR22-016-4 120×80×55 мм, 0.156 кг"
+  },
+  "розетка силовая 380в 32а": {
+    "length_mm": 150,
+    "width_mm": 100,
+    "height_mm": 65,
+    "weight_g": 226,
+    "source": "IEK ССИ-224 PSR22-032-4 150×100×65 мм, 0.226 кг"
+  },
+  "слесарный угольник 400x600 мм": {
+    "length_mm": 600,
+    "width_mm": 410,
+    "height_mm": 5,
+    "weight_g": 570,
+    "source": "garwin.ru FIT F-19624 600×5×410 мм, 0.57 кг"
+  },
+  "струбцина f-образная 200мм": {
+    "length_mm": 253,
+    "width_mm": 84,
+    "height_mm": 20,
+    "weight_g": 272,
+    "source": "tm.by SPARTA 204265 200×50×250 упак. 253×84×20 мм, 0.272 кг"
+  },
+  "проволока сварочная св-08г2с 0.8мм омедненная": {
+    "length_mm": 200,
+    "width_mm": 200,
+    "height_mm": 60,
+    "weight_g": 5158,
+    "source": "СЗСМ D200 5 кг: 200×200×60 мм, брутто ~5.16 кг"
+  },
+  "проволока сварочная св-08г2с 1.0мм омедненная": {
+    "length_mm": 200,
+    "width_mm": 200,
+    "height_mm": 60,
+    "weight_g": 5075,
+    "source": "СЗСМ D200 5 кг: 200×200×60 мм, брутто ~5.08 кг"
+  },
+  "проволока сварочная св-08г2с 1.2мм омедненная": {
+    "length_mm": 200,
+    "width_mm": 200,
+    "height_mm": 60,
+    "weight_g": 5075,
+    "source": "СЗСМ D200 5 кг: 200×200×60 мм, брутто ~5.08 кг"
+  },
+  "проволока сварочная св-08г2с 1.6мм омедненная": {
+    "length_mm": 200,
+    "width_mm": 200,
+    "height_mm": 60,
+    "weight_g": 5100,
+    "source": "типовая катушка D200 5 кг СВ-08Г2С: 200×200×60 мм, ~5.1 кг"
+  },
+  "пруток присадочный tig er70s 1.6мм": {
+    "length_mm": 1010,
+    "width_mm": 40,
+    "height_mm": 40,
+    "weight_g": 5160,
+    "source": "vseinstrumenti Foxweld ER70S-6 1.6×1000 пачка 5 кг: 1010×40×40, 5.16 кг"
+  },
+  "пруток присадочный tig нерж 2.0мм": {
+    "length_mm": 1010,
+    "width_mm": 38,
+    "height_mm": 38,
+    "weight_g": 5300,
+    "source": "КЕДР TIG ER-308LSi Ø2.0 пачка 5 кг: 1010×38×38 мм, ~5.3 кг"
+  },
+  "строп текстильный петлевой 6т 6м": {
+    "length_mm": 6000,
+    "width_mm": 180,
+    "height_mm": 15,
+    "weight_g": 5540,
+    "source": "vseinstrumenti СТП 6т/6м ГОСТ 34875-2022 ширина 180 мм, 5.54 кг"
+  },
+  "птс профи-м": {
+    "length_mm": 640,
+    "width_mm": 290,
+    "height_mm": 230,
+    "weight_g": 10200,
+    "source": "pts.nt-rt.ru ПТС ПРОФИ-М-170М ≤640×290×230 мм, 10.2 кг"
+  },
+  "парогенератор электрический паргарант, q пар-50 кг/ч, p раб 1,0-5,5 мпа, w=10-38квт, 380в, vкотла 25л, (15-250)": {
+    "length_mm": 390,
+    "width_mm": 400,
+    "height_mm": 810,
+    "weight_g": 69000,
+    "source": "https://pargarant.ru ПГЭ-50 390x400x810 мм, 69 кг (Q 13–50 кг/ч, P 1–5.5, W 10–38, Vкотла 25 л)"
+  },
+  "грунтовка гф-021 красно-коричневая 20кг": {
+    "length_mm": 300,
+    "width_mm": 300,
+    "height_mm": 340,
+    "weight_g": 20000,
+    "source": "yunimag.ru KRAFOR ГФ-021 20 кг ведро 30x30x34 см, 20 кг; ГОСТ 25129"
+  },
+  "кронштейн крепления к стене 400 мм.": {
+    "length_mm": 416,
+    "width_mm": 30,
+    "height_mm": 115,
+    "weight_g": 730,
+    "source": "ostecmarket.ru OSTEC КНПЛ-400-2,0 L=416 H=115, 0.73 кг; ГОСТ Р 52868"
+  },
+  "костюм зимний сибирь с соп": {
+    "length_mm": 600,
+    "width_mm": 450,
+    "height_mm": 250,
+    "weight_g": 3690,
+    "source": "yunimag.ru Факел Сибер СОП pack 60x45x25 см, 3.69 кг; ГОСТ 12.4.280/303"
+  },
+  "костюм для защиты от пониженных температур": {
+    "length_mm": 600,
+    "width_mm": 450,
+    "height_mm": 250,
+    "weight_g": 3900,
+    "source": "f-tk.ru / yunimag зимний костюм Тн (Сибер/аналог) pack ~60x45x25, ~3.9 кг; ГОСТ 12.4.303"
+  },
+  "костюм сварщика брезентовый": {
+    "length_mm": 350,
+    "width_mm": 40,
+    "height_mm": 600,
+    "weight_g": 1910,
+    "source": "moj-instrument.ru костюм сварщика брезентовый ОП pack 35x4x60 см, 1.91 кг; ГОСТ 12.4.250"
+  },
+  "костюм сварщика комбинированный": {
+    "length_mm": 600,
+    "width_mm": 400,
+    "height_mm": 35,
+    "weight_g": 2483,
+    "source": "texnokat21.ru костюм сварщика комбинир. брезент+спилок pack 600x400x35, 2.483 кг"
+  },
+  "костюм сварщика спилковый": {
+    "length_mm": 600,
+    "width_mm": 400,
+    "height_mm": 50,
+    "weight_g": 2980,
+    "source": "avangard-sp.ru костюм сварщик летний комбинированный/спилок ~2.98 кг, V≈0.017 → pack ~600x400x50"
+  },
+  "костюм сигнальный 3 класс летний": {
+    "length_mm": 300,
+    "width_mm": 200,
+    "height_mm": 50,
+    "weight_g": 1160,
+    "source": "kpd-sp.ru костюм сигнальный летний «Дорога» 3 кл 1.16 кг, V=0.003 м³ folded pack"
+  },
+  "костюм антистатический": {
+    "length_mm": 400,
+    "width_mm": 300,
+    "height_mm": 40,
+    "weight_g": 1300,
+    "source": "spets.ru / fortex-market костюм Антистат КОС-583 1.3 кг, V=0.0048 м³ folded pack"
+  },
+  "костюм влагозащитный нейлон пвх": {
+    "length_mm": 200,
+    "width_mm": 140,
+    "height_mm": 100,
+    "weight_g": 1000,
+    "source": "f-tk.ru Poseidon WPL нейлон/ПВХ 1.0 кг; progresstver V≈0.0028 м³"
+  },
+  "костюм влагозащитный нейлоновый пвх": {
+    "length_mm": 200,
+    "width_mm": 140,
+    "height_mm": 100,
+    "weight_g": 1000,
+    "source": "f-tk.ru / progresstver нейлон+ПВХ 0.9–1.1 кг, V≈0.0028 м³"
+  },
+  "костюм влагозащитный пвх": {
+    "length_mm": 200,
+    "width_mm": 140,
+    "height_mm": 100,
+    "weight_g": 900,
+    "source": "progresstver.ru костюм влагозащитный ПВХ 0.9 кг / 0.0028 м³"
+  },
+  "костюм кислотозащитный кщс": {
+    "length_mm": 280,
+    "width_mm": 220,
+    "height_mm": 180,
+    "weight_g": 3000,
+    "source": "fsospb.ru костюм суконный КЩС 3 кг, V=0.01102 м³; ГОСТ 12.4.297/251"
+  },
+  "костюм кислотозащитный": {
+    "length_mm": 280,
+    "width_mm": 220,
+    "height_mm": 180,
+    "weight_g": 3000,
+    "source": "fsospb.ru / tdfort костюм КЩС суконный 3 кг, V≈0.011 м³; ГОСТ 12.4.251"
+  },
+  "костюм нефтяника летний": {
+    "length_mm": 200,
+    "width_mm": 160,
+    "height_mm": 150,
+    "weight_g": 1250,
+    "source": "kpd-sp.ru костюм нефтяников летний «Нефть» 1.25 кг, V=0.0048 м³"
+  },
+  "костюм нефтяника зимний": {
+    "length_mm": 500,
+    "width_mm": 400,
+    "height_mm": 200,
+    "weight_g": 4295,
+    "source": "kpd-sp.ru костюм нефтяников зимний «Нефть» 4.295 кг, V=0.04 м³"
+  },
+  "костюм энцефалитный": {
+    "length_mm": 300,
+    "width_mm": 200,
+    "height_mm": 100,
+    "weight_g": 800,
+    "source": "sterling-rus.ru костюм противоэнцефалитный ЗЩС027 0.8 кг, V=0.006 м³"
+  },
+  "костюм огнестойкий": {
+    "length_mm": 370,
+    "width_mm": 300,
+    "height_mm": 90,
+    "weight_g": 1600,
+    "source": "yunimag.ru Норд-Спецодежда 095/0М огнестойкий pack 37x30x9 см, 1.6 кг; ГОСТ 12.4.297"
+  },
+  "костюм рабочий летний стандарт": {
+    "length_mm": 400,
+    "width_mm": 300,
+    "height_mm": 40,
+    "weight_g": 800,
+    "source": "stav-spec.ru костюм СТАНДАРТ СОП 0.8 кг; folded pack typical summer suit"
+  },
+  "костюм рабочий летний эксперт": {
+    "length_mm": 400,
+    "width_mm": 300,
+    "height_mm": 40,
+    "weight_g": 900,
+    "source": "bizon-sp.ru костюм Стандарт/Эксперт с СОП ~0.9 кг; ГОСТ 12.4.280"
+  },
+  "костюм рабочий летний с соп": {
+    "length_mm": 400,
+    "width_mm": 300,
+    "height_mm": 40,
+    "weight_g": 800,
+    "source": "sp-odezhda.ru / stav-spec Стандарт СОП 0.70–0.8 кг; ГОСТ 12.4.280"
+  },
+  "костюм летний с соп": {
+    "length_mm": 400,
+    "width_mm": 300,
+    "height_mm": 40,
+    "weight_g": 800,
+    "source": "stav-spec.ru костюм СТАНДАРТ СОП 0.8 кг; ГОСТ 12.4.280"
+  },
+  "костюм рабочий женский летний": {
+    "length_mm": 400,
+    "width_mm": 300,
+    "height_mm": 40,
+    "weight_g": 750,
+    "source": "typical summer work suit pack (ГОСТ 12.4.280) ~0.7–0.8 кг; Universal-class V≈0.002–0.004"
+  },
+  "костюм рабочий летний": {
+    "length_mm": 200,
+    "width_mm": 100,
+    "height_mm": 100,
+    "weight_g": 892,
+    "source": "kpd-sp.ru костюм рабочий летний Универсал 1 0.892 кг, V=0.002 м³"
+  },
+  "жилет утепленный": {
+    "length_mm": 250,
+    "width_mm": 200,
+    "height_mm": 166,
+    "weight_g": 660,
+    "source": "avangard-sp.ru жилет Авангард утепленный 0.66 кг, V=0.0083 м³"
+  },
+  "жилет утепленный рабочий": {
+    "length_mm": 250,
+    "width_mm": 200,
+    "height_mm": 166,
+    "weight_g": 660,
+    "source": "avangard-sp.ru / specodezhda-78 Фаворит/Авангард 0.65–0.66 кг, V≈0.0083"
+  },
+  "брюки рабочие летние": {
+    "length_mm": 300,
+    "width_mm": 200,
+    "height_mm": 40,
+    "weight_g": 400,
+    "source": "lindaily / swg.style брюки рабочие летние ~400 г; folded pack"
+  },
+  "брюки рабочие утепленные": {
+    "length_mm": 350,
+    "width_mm": 250,
+    "height_mm": 60,
+    "weight_g": 1000,
+    "source": "lindaily брюки зимние утеплённые ~1000 г; folded pack"
+  },
+  "куртка рабочая летняя": {
+    "length_mm": 400,
+    "width_mm": 300,
+    "height_mm": 40,
+    "weight_g": 450,
+    "source": "lindaily куртка летняя рабочая ~450 г; folded pack summer jacket"
+  },
+  "куртка рабочая утепленная": {
+    "length_mm": 500,
+    "width_mm": 400,
+    "height_mm": 150,
+    "weight_g": 1800,
+    "source": "lindaily куртка зимняя утеплённая ~1800 г; pack winter jacket"
+  },
+  "куртка зимняя удлиненная": {
+    "length_mm": 500,
+    "width_mm": 400,
+    "height_mm": 200,
+    "weight_g": 2000,
+    "source": "lindaily / typical elongated winter work jacket ~2.0 кг pack"
+  },
+  "перчатки виброзащитные гелевые": {
+    "length_mm": 270,
+    "width_mm": 120,
+    "height_mm": 38,
+    "weight_g": 356,
+    "source": "spets.ru ВИБРОФЛЕКС VG-561 VibraGel L=260–280, 0.356 кг, V=0.001229; ГОСТ 12.4.002"
+  },
+  "перчатки спилковые комбинированные": {
+    "length_mm": 270,
+    "width_mm": 150,
+    "height_mm": 20,
+    "weight_g": 180,
+    "source": "f-tk.ru перчатки спилковые комбинированные СПЕЦ ПЕР612 L=270 мм, 180 г/пара"
+  },
+  "перчатки нитриловые повышенной длины": {
+    "length_mm": 200,
+    "width_mm": 110,
+    "height_mm": 50,
+    "weight_g": 650,
+    "source": "trinity-goods.ru нитрил удлинённые L=300 мм, pack 100 шт 200x110x50 мм, ~6.5 г×100"
+  },
+  "перчатки утепленные с акриловым ворсом": {
+    "length_mm": 250,
+    "width_mm": 100,
+    "height_mm": 30,
+    "weight_g": 55,
+    "source": "STARTUL ST7109 акрил+ПВХ точка L=25 см, 55 г; pack ~250x100x30"
+  },
+  "перчатки трикотажные пвх зимние": {
+    "length_mm": 250,
+    "width_mm": 100,
+    "height_mm": 30,
+    "weight_g": 60,
+    "source": "pl-gloves / gloves4work трикотаж+ПВХ зимние L=240–270, ~58–62 г"
+  },
+  "перчатки двойные вязаные утепленные": {
+    "length_mm": 260,
+    "width_mm": 160,
+    "height_mm": 25,
+    "weight_g": 105,
+    "source": "trakt.ru / mgsnab перчатки двойные утеплённые 105 г, 260x160x25 мм"
+  },
+  "перчатки джерси утепленные": {
+    "length_mm": 250,
+    "width_mm": 120,
+    "height_mm": 25,
+    "weight_g": 100,
+    "source": "spets-kuzbass / spets.ru перчатки ЗИМА/джерси утепл. ~100 г, L≈250–260"
+  },
+  "переноска-удлинитель желтая катушка пвс, 30м (красный провод)": {
+    "length_mm": 300,
+    "width_mm": 380,
+    "height_mm": 230,
+    "weight_g": 5000,
+    "source": "vseinstrumenti.ru STAYER 55064-30 ПВС катушка 30 м жёлтая pack 300x380x230, 5 кг"
+  },
+  "нож монтажный со сменными лезвиями": {
+    "length_mm": 235,
+    "width_mm": 90,
+    "height_mm": 30,
+    "weight_g": 150,
+    "source": "kvt-pro.ru КВТ НСМ-02 монтажный blister 23.5x9x3 см, 0.15 кг"
+  },
+  "нож монтажный": {
+    "length_mm": 235,
+    "width_mm": 90,
+    "height_mm": 30,
+    "weight_g": 150,
+    "source": "kvt-pro.ru КВТ НСМ-02 / монтажный со сменными 23.5x9x3 см, 0.15 кг"
+  },
+  "ключ трещётка": {
+    "length_mm": 250,
+    "width_mm": 45,
+    "height_mm": 40,
+    "weight_g": 590,
+    "source": "ГОСТ 22402-77 тип А 1/2\" L≤250 b=45; Ombra 281202 250 мм, 0.59 кг"
+  },
+  "ключ трётка": {
+    "length_mm": 250,
+    "width_mm": 45,
+    "height_mm": 40,
+    "weight_g": 590,
+    "source": "ГОСТ 22402-77 / Ombra 1/2\"DR 250 мм трещотка 0.59 кг (синоним «трещётка»)"
+  },
+  "очки защитные затемнённые сварочные": {
+    "length_mm": 200,
+    "width_mm": 100,
+    "height_mm": 50,
+    "weight_g": 105,
+    "source": "РОСОМЗ ЗН62 General затемнённые pack 200x100x50 мм, 105 г; ГОСТ 12.4.013"
+  },
+  "очки защитные затемнённые": {
+    "length_mm": 200,
+    "width_mm": 100,
+    "height_mm": 50,
+    "weight_g": 105,
+    "source": "РОСОМЗ ЗН62-C-4 Генерал затемнённые 200x100x50, 0.105 кг"
+  },
+  "набор трещоточных ключей 8-19мм": {
+    "length_mm": 350,
+    "width_mm": 280,
+    "height_mm": 70,
+    "weight_g": 1850,
+    "source": "chipdip / favorit-tools JTC-3028 набор 8–19 мм кейс 350x280x70 мм, 1.85 кг"
+  },
+  "счетчик меркурий 230 ам-02, 380в, 3х230/400v 10(100)a 50hz": {
+    "length_mm": 258,
+    "width_mm": 170,
+    "height_mm": 74,
+    "weight_g": 1500,
+    "source": "https://alfaopt.com паспорт Меркурий 230АМ 170×258×74 мм, масса не более 1,5 кг"
+  },
+  "тепловизор testo 868": {
+    "length_mm": 219,
+    "width_mm": 96,
+    "height_mm": 95,
+    "weight_g": 510,
+    "source": "https://static.testo.com testo-868 datasheet 219×96×95 мм, 510 г"
+  },
+  "топ сенс 210 h2s": {
+    "length_mm": 102,
+    "width_mm": 56,
+    "height_mm": 26,
+    "weight_g": 120,
+    "source": "https://www.pribor-x.ru / passport ТОП-СЕНС 210 102×56×26 мм, 120 г"
+  },
+  "топ-сенс310": {
+    "length_mm": 125,
+    "width_mm": 64,
+    "height_mm": 30,
+    "weight_g": 220,
+    "source": "https://gazpribors.ru ТОП-СЕНС 310 125×64×30 мм, не более 0,22 кг"
+  },
+  "фен строительный makita hg6531ck": {
+    "length_mm": 257,
+    "width_mm": 85,
+    "height_mm": 206,
+    "weight_g": 710,
+    "source": "https://makita.com.sg HG6531CK 257×85×206 мм, 0,71 кг"
+  },
+  "универсальный набор инструмента ombra omt82s торцевые головки и аксессуары к ним, 82 предмета": {
+    "length_mm": 390,
+    "width_mm": 290,
+    "height_mm": 90,
+    "weight_g": 5890,
+    "source": "https://yunimag.ru Ombra OMT82S кейс 39×29×9 см, 5,89 кг"
+  },
+  "шкаф практик am 1891": {
+    "length_mm": 915,
+    "width_mm": 458,
+    "height_mm": 1830,
+    "weight_g": 47000,
+    "source": "https://www.safes.ru / mm67.ru ПРАКТИК AM 1891 1830×915×458 мм, 47 кг"
+  },
+  "холодильник nordfrost nrt 141032": {
+    "length_mm": 625,
+    "width_mm": 574,
+    "height_mm": 1498,
+    "weight_g": 48000,
+    "source": "https://nord.ru NRT 141 032 149,8×57,4×62,5 см, 48 кг нетто"
+  },
+  "шуруповерт ресанта да-14-2лк": {
+    "length_mm": 240,
+    "width_mm": 210,
+    "height_mm": 85,
+    "weight_g": 1250,
+    "source": "https://volgograd.tmktools.ru Ресанта ДА-14-2ЛК упак. 85×210×240 мм, нетто 1,25 кг"
+  },
+  "угловая шлифмашина makita, d230 мм, 2200вт, 6600 об/м": {
+    "length_mm": 473,
+    "width_mm": 249,
+    "height_mm": 140,
+    "weight_g": 5800,
+    "source": "https://store.softline.ru Makita GA9020 473×249×140 мм, 5,76–5,8 кг (D230/2200Вт/6600)"
+  },
+  "угловая шлифовальная машина dca asm08-125h": {
+    "length_mm": 311,
+    "width_mm": 101,
+    "height_mm": 76,
+    "weight_g": 2100,
+    "source": "https://www.21vek.by DCA ASM08-125H 311×101×76 мм, 2,1 кг"
+  },
+  "усиленные ножницы по металлу kraftool bulldog левые": {
+    "length_mm": 260,
+    "width_mm": 100,
+    "height_mm": 35,
+    "weight_g": 580,
+    "source": "https://www.kubaninstrument.ru KRAFTOOL 2325-L Bulldog 260×100×35 мм, ~0,58 кг"
+  },
+  "удлинитель силовой inforce на металл. катушке кг 3x2.5 50м, 16а, 4 встр. розетки": {
+    "length_mm": 360,
+    "width_mm": 290,
+    "height_mm": 80,
+    "weight_g": 8640,
+    "source": "https://yunimag.ru Inforce 09-15-04 КГт 3×2,5 50м 360×290×80 мм, нетто 8,64 кг"
+  },
+  "фильтр маслянный piusi f006 11 b10, 70л/мин.": {
+    "length_mm": 171,
+    "width_mm": 171,
+    "height_mm": 270,
+    "weight_g": 2000,
+    "source": "https://goind.com.au / PIUSI F00611B10 Clear Captor datasheet 171×270 мм, 2,0 кг"
+  },
+  "торцевая ударная головка jonnesway, 3/4\"dr, 36 мм)": {
+    "length_mm": 57,
+    "width_mm": 54,
+    "height_mm": 54,
+    "weight_g": 506,
+    "source": "https://www.jonnesway.ru S03A6136 3/4\"DR 36 мм L=57 D1=54, 0,506 кг"
+  },
+  "таль ручная цепная top hs-c 101331, 3м, 3т, цепь 8мм, h=3 м": {
+    "length_mm": 360,
+    "width_mm": 180,
+    "height_mm": 310,
+    "weight_g": 21000,
+    "source": "https://ronex.by Shtapler/TOP HS-C 3т 3м цепь 8мм 360×180×310 мм, 21 кг"
+  },
+  "таль ручная стационарная euro-lift hsc 00011010 chain block tb , шестеренная аналог тв (5 т, 6 м)": {
+    "length_mm": 450,
+    "width_mm": 275,
+    "height_mm": 200,
+    "weight_g": 44000,
+    "source": "https://www.tor-industries.pro HSC Chain Block 5т 6м pack 450×275×200 мм, 44 кг"
+  },
+  "хомут кованный поворотный zk48-1": {
+    "length_mm": 200,
+    "width_mm": 150,
+    "height_mm": 50,
+    "weight_g": 1100,
+    "source": "https://xn--80aapudk6ad.xn--p1ai ZK48-1 поворотный 200×150×50 мм, 1,1 кг"
+  },
+  "хомут кованный неповоротный zk48-1": {
+    "length_mm": 200,
+    "width_mm": 150,
+    "height_mm": 50,
+    "weight_g": 1100,
+    "source": "https://metall.unusual-world.ru ZK48-1 / ХКН48×48 ~1,13 кг; unit ~200×150×50"
+  },
+  "шкаф монолит дублин высокий 3 откр. полки 800x400x1980": {
+    "length_mm": 800,
+    "width_mm": 400,
+    "height_mm": 1980,
+    "weight_g": 64400,
+    "source": "https://www.vseinstrumenti.ru Монолит ДБ41 800×400×1980 мм, 64,4 кг"
+  },
+  "угольник слесарный 250мм": {
+    "length_mm": 250,
+    "width_mm": 160,
+    "height_mm": 18,
+    "weight_g": 1100,
+    "source": "ГОСТ 3749-77 УШ 250×160×18 мм, масса не более 1,1 кг"
+  },
+  "уровень строительный 1000мм": {
+    "length_mm": 1000,
+    "width_mm": 60,
+    "height_mm": 25,
+    "weight_g": 1000,
+    "source": "ГОСТ 9416-83 УС6-3 L=1000 мм, профиль масса не более 1,00 кг; сеч. ~60×25"
+  },
+  "уровень строительный 600мм": {
+    "length_mm": 600,
+    "width_mm": 60,
+    "height_mm": 25,
+    "weight_g": 600,
+    "source": "ГОСТ 9416-83 УС6-1 L=600 мм, профиль масса не более 0,60 кг; сеч. ~60×25"
+  },
+  "штангенциркуль шц-1 150мм": {
+    "length_mm": 240,
+    "width_mm": 90,
+    "height_mm": 20,
+    "weight_g": 160,
+    "source": "https://www.chipdip.by ШЦ-I-150 ГОСТ 166-89 240×90×20 мм, 160 г"
+  },
+  "штангенциркуль шц-1 250мм": {
+    "length_mm": 335,
+    "width_mm": 110,
+    "height_mm": 15,
+    "weight_g": 550,
+    "source": "https://lanfor.ru паспорт ШЦ-I-250 335×110×15 мм, 0,55 кг"
+  },
+  "штангенциркуль цифровой mechanic 150 a00379": {
+    "length_mm": 250,
+    "width_mm": 90,
+    "height_mm": 30,
+    "weight_g": 300,
+    "source": "https://ada-rus.ru ADA Mechanic 150 A00379 250×90×30 мм, брутто 0,3 кг"
+  },
+  "труба стальная 108×4": {
+    "length_mm": 1000,
+    "width_mm": 108,
+    "height_mm": 108,
+    "weight_g": 10259,
+    "source": "ГОСТ 10704/10705 электросварная Ø108×4: 1 м ≈10,26 кг/м"
+  },
+  "труба стальная электросварная 108х4": {
+    "length_mm": 1000,
+    "width_mm": 108,
+    "height_mm": 108,
+    "weight_g": 10259,
+    "source": "ГОСТ 10704/10705 Ø108×4: 1 м ≈10,26 кг/м"
+  },
+  "труба стальная электросварная 133х4": {
+    "length_mm": 1000,
+    "width_mm": 133,
+    "height_mm": 133,
+    "weight_g": 12725,
+    "source": "ГОСТ 10704/10705 Ø133×4: 1 м ≈12,73 кг/м"
+  },
+  "труба стальная электросварная 159х4.5": {
+    "length_mm": 1000,
+    "width_mm": 159,
+    "height_mm": 159,
+    "weight_g": 17146,
+    "source": "ГОСТ 10704/10705 Ø159×4,5: 1 м ≈17,15 кг/м"
+  },
+  "труба стальная электросварная 219х6": {
+    "length_mm": 1000,
+    "width_mm": 219,
+    "height_mm": 219,
+    "weight_g": 31517,
+    "source": "ГОСТ 10704/10705 Ø219×6: 1 м ≈31,52 кг/м"
+  },
+  "труба стальная электросварная 57х3.5": {
+    "length_mm": 1000,
+    "width_mm": 57,
+    "height_mm": 57,
+    "weight_g": 4618,
+    "source": "ГОСТ 10704/10705 Ø57×3,5: 1 м ≈4,62 кг/м"
+  },
+  "труба стальная электросварная 76х3.5": {
+    "length_mm": 1000,
+    "width_mm": 76,
+    "height_mm": 76,
+    "weight_g": 6258,
+    "source": "ГОСТ 10704/10705 Ø76×3,5: 1 м ≈6,26 кг/м"
+  },
+  "труба стальная электросварная 89х4": {
+    "length_mm": 1000,
+    "width_mm": 89,
+    "height_mm": 89,
+    "weight_g": 8385,
+    "source": "ГОСТ 10704/10705 Ø89×4: 1 м ≈8,38 кг/м"
+  },
+  "фланец плоский стальной ду50": {
+    "length_mm": 160,
+    "width_mm": 160,
+    "height_mm": 18,
+    "weight_g": 2100,
+    "source": "ГОСТ 33259-2015 тип 01 PN16 DN50: D≈160 мм, b≈18 мм, масса ≈2,1 кг"
+  },
+  "фланец плоский стальной ду80": {
+    "length_mm": 195,
+    "width_mm": 195,
+    "height_mm": 20,
+    "weight_g": 3200,
+    "source": "ГОСТ 33259-2015 тип 01 PN16 DN80: D≈195 мм, b≈20 мм, масса ≈3,2 кг"
+  },
+  "фланец плоский стальной ду100": {
+    "length_mm": 215,
+    "width_mm": 215,
+    "height_mm": 23,
+    "weight_g": 4730,
+    "source": "ГОСТ 33259-2015 тип 01 PN16 DN100: D≈215 мм, b≈23 мм, масса ≈4,73 кг"
+  },
+  "фланец плоский стальной ду150": {
+    "length_mm": 280,
+    "width_mm": 280,
+    "height_mm": 26,
+    "weight_g": 7400,
+    "source": "ГОСТ 33259-2015 / almeg PN16 DN150: D≈280 мм, b≈26 мм, масса ≈7,4 кг"
+  },
+  "фланец плоский стальной ду200": {
+    "length_mm": 340,
+    "width_mm": 340,
+    "height_mm": 30,
+    "weight_g": 11600,
+    "source": "ГОСТ 33259-2015 / almeg PN16 DN200: D≈340 мм, b≈30 мм, масса ≈11,6 кг"
+  },
+  "шайба плоская м8 оцинк": {
+    "length_mm": 16,
+    "width_mm": 16,
+    "height_mm": 2,
+    "weight_g": 2,
+    "source": "ГОСТ 11371-78 исп.1: d2=16 s=1,6 мм; масса ≈1,87 г → 2 г"
+  },
+  "шайба плоская м10 оцинк": {
+    "length_mm": 20,
+    "width_mm": 20,
+    "height_mm": 2,
+    "weight_g": 4,
+    "source": "ГОСТ 11371-78 исп.1: d2=20 s=2,0 мм; масса ≈3,71 г → 4 г"
+  },
+  "шайба плоская м12 оцинк": {
+    "length_mm": 24,
+    "width_mm": 24,
+    "height_mm": 3,
+    "weight_g": 6,
+    "source": "ГОСТ 11371-78 исп.1A: d2=24 s=2,5 мм; масса 6,27 г → 6 г"
+  },
+  "шайба плоская м16 оцинк": {
+    "length_mm": 30,
+    "width_mm": 30,
+    "height_mm": 3,
+    "weight_g": 11,
+    "source": "ГОСТ 11371-78 исп.1: d2=30 s=3,0 мм; масса ≈11 г"
+  },
+  "шайба плоская м20 оцинк": {
+    "length_mm": 37,
+    "width_mm": 37,
+    "height_mm": 3,
+    "weight_g": 16,
+    "source": "ГОСТ 11371-78 исп.1: d2=37 s=3,0 мм; масса ≈16,4 г → 16 г"
+  },
+  "шпилька резьбовая м12х1м": {
+    "length_mm": 1000,
+    "width_mm": 12,
+    "height_mm": 12,
+    "weight_g": 888,
+    "source": "ГОСТ 22042 / расчёт стержня М12×1000: π/4×12²×7,85/1000 ≈0,888 кг"
+  },
+  "фен строительный metabo h 16-500, 1,6 квт, 220в": {
+    "length_mm": 285,
+    "width_mm": 100,
+    "height_mm": 250,
+    "weight_g": 600,
+    "source": "https://www.tmktools.ru Metabo H 16-500 упак. 285×100×250 мм, нетто 0,6 кг"
+  },
+  "стремянка алюминиевая 5 ступеней": {
+    "length_mm": 1770,
+    "width_mm": 460,
+    "height_mm": 100,
+    "weight_g": 3800,
+    "source": "poryadok.ru Alumet АМ705 слож. 177×46×10 см, 3.8 кг"
+  },
+  "стремянка алюминиевая 7 ступеней": {
+    "length_mm": 2230,
+    "width_mm": 510,
+    "height_mm": 100,
+    "weight_g": 5400,
+    "source": "vseinstrumenti Alumet АМ707 слож. 223×51×10 см, 5.4 кг"
+  },
+  "стальная стремянка biber": {
+    "length_mm": 2150,
+    "width_mm": 530,
+    "height_mm": 120,
+    "weight_g": 8700,
+    "source": "remont3000.ru BIBER 98107 (линейка) 2150×530×120 мм, 8.7 кг"
+  },
+  "правильно подающий станок 3e makina": {
+    "length_mm": 1600,
+    "width_mm": 800,
+    "height_mm": 1200,
+    "weight_g": 220000,
+    "source": "jet-online.ru 3E Makina PSB-01 1600×800×1200 мм, 220 кг"
+  },
+  "предфильтр 3m 5911 p1": {
+    "length_mm": 90,
+    "width_mm": 70,
+    "height_mm": 3,
+    "weight_g": 7,
+    "source": "planeta-siz.ru / brizmarket 3M 5911 диск ~90×70 мм, 7 г"
+  },
+  "светильник переносной 36в": {
+    "length_mm": 300,
+    "width_mm": 100,
+    "height_mm": 100,
+    "weight_g": 840,
+    "source": "forlamp.ru / res-36 ЛСУ-2 36/42В 300×100×100 мм, 0.84 кг"
+  },
+  "сопло газовое для горелки mig": {
+    "length_mm": 53,
+    "width_mm": 18,
+    "height_mm": 18,
+    "weight_g": 31,
+    "source": "MB-15 конус D18/12 L=53 мм, ~31 г (prom.ua / kulibin)"
+  },
+  "сопло газовое для mig горелки": {
+    "length_mm": 53,
+    "width_mm": 18,
+    "height_mm": 18,
+    "weight_g": 31,
+    "source": "MB-15 конус D18/12 L=53 мм, ~31 г"
+  },
+  "спасательное подъёмное устройство питон": {
+    "length_mm": 720,
+    "width_mm": 150,
+    "height_mm": 80,
+    "weight_g": 784,
+    "source": "spetstrade74.ru VENTO ПИТОН vnt 912 длина 72 см, 784 г; чехол компакт"
+  },
+  "светильник светодиодный взрывозащищённый диора, d60ex, 2ех nrllct6gcx": {
+    "length_mm": 229,
+    "width_mm": 165,
+    "height_mm": 100,
+    "weight_g": 2900,
+    "source": "llamps.ru / vesremont DIORA Unit Ex ~60 229×165×100 мм, 2.9 кг"
+  },
+  "хомут червячный 20-32мм": {
+    "length_mm": 32,
+    "width_mm": 32,
+    "height_mm": 9,
+    "weight_g": 16,
+    "source": "DIN 3017 / Rexant 07-0720 20-32/9: 32x32x9 mm, 16.07 g; stalmax passport 0.0164 kg"
+  },
+  "шуруповерт dewalt dcd785c2, 18в, 1.5ач, 2акб, 1,6 кг": {
+    "length_mm": 202,
+    "width_mm": 80,
+    "height_mm": 190,
+    "weight_g": 1600,
+    "source": "dewalt.ie DCD785C2 length 202 depth 80; with 1.5Ah ~1.6-1.7kg (name 1.6kg)"
+  },
+  "шуруповерт makita, 18в, акб 2х1.5ач, li-ion, бзп-13мм, без кейса": {
+    "length_mm": 222,
+    "width_mm": 79,
+    "height_mm": 227,
+    "weight_g": 1800,
+    "source": "Makita DDF453SYE 18V 2x1.5Ah BZP-13: 222x79x227 mm, 1.8 kg"
+  },
+  "щиток защитный лицевой росомз нбт1 визион": {
+    "length_mm": 200,
+    "width_mm": 350,
+    "height_mm": 150,
+    "weight_g": 184,
+    "source": "antaleks / ROSOMZ NBT1 Vision 200x350x150 mm, 0.184 kg; screen 220x315"
+  },
+  "щиток лицевой росомз нбт1 визион": {
+    "length_mm": 200,
+    "width_mm": 350,
+    "height_mm": 150,
+    "weight_g": 184,
+    "source": "antaleks / ROSOMZ NBT1 Vision 200x350x150 mm, 0.184 kg; screen 220x315"
+  },
+  "щиток сварщика нн-12 автозатемнение": {
+    "length_mm": 310,
+    "width_mm": 250,
+    "height_mm": 220,
+    "weight_g": 555,
+    "source": "ROSOMZ NN12 CRYSTALINE UNIVERSAL FavoriT pack 310x250x220; mass <=555 g"
+  },
+  "щиток сварщика нн-12 с автозатемнением": {
+    "length_mm": 310,
+    "width_mm": 250,
+    "height_mm": 220,
+    "weight_g": 555,
+    "source": "ROSOMZ NN12 CRYSTALINE UNIVERSAL FavoriT pack 310x250x220; mass <=555 g"
+  },
+  "щиток сварщика сварог pro b40": {
+    "length_mm": 320,
+    "width_mm": 240,
+    "height_mm": 240,
+    "weight_g": 567,
+    "source": "svarog-rf.ru / svar.im PRO B40: 0.567 kg; pack 240x320x240 mm"
+  },
+  "электрический сучкорез patriot cs152, длина шины 12\"/30см": {
+    "length_mm": 430,
+    "width_mm": 220,
+    "height_mm": 220,
+    "weight_g": 3300,
+    "source": "PATRIOT CS152 passport weight 3.3 kg; retail pack 43x22x22 cm"
+  },
+  "электромуфтовый сварочный аппарат rijing makina hdm 315, (20-315 мм)": {
+    "length_mm": 230,
+    "width_mm": 290,
+    "height_mm": 310,
+    "weight_g": 16000,
+    "source": "turan-makina HDM 315: WxHxD 230x290x310 mm, 16 kg"
+  },
+  "эмаль пф-115 белая 20кг": {
+    "length_mm": 340,
+    "width_mm": 340,
+    "height_mm": 335,
+    "weight_g": 20000,
+    "source": "edkm.ru ALFAVIT PF-115 20 kg bucket 340x340x335 mm, 20 kg"
+  },
+  "эмаль пф-115 серая 20кг": {
+    "length_mm": 340,
+    "width_mm": 340,
+    "height_mm": 335,
+    "weight_g": 20000,
+    "source": "edkm.ru ALFAVIT PF-115 20 kg bucket 340x340x335 mm, 20 kg"
+  },
+  "gps/глонасс маяк starline m17": {
+    "length_mm": 85,
+    "width_mm": 52,
+    "height_mm": 23,
+    "weight_g": 110,
+    "source": "store.starline.ru passport M17: 85x52x23 mm, <=110 g with 2xCR123A"
+  },
+  "kodak pixpro wpz2": {
+    "length_mm": 103,
+    "width_mm": 67,
+    "height_mm": 52,
+    "weight_g": 176,
+    "source": "kodakpixpro.com WPZ2 CIPA: 103.2x66.7x52.4 mm, 176 g body"
+  },
+  "laser tank 360": {
+    "length_mm": 132,
+    "width_mm": 123,
+    "height_mm": 100,
+    "weight_g": 690,
+    "source": "rus.adainstruments.com ADA LaserTANK 3-360: 132x123x100 mm, 0.69 kg w/batt"
+  },
+  "petzl pixa2": {
+    "length_mm": 93,
+    "width_mm": 47,
+    "height_mm": 46,
+    "weight_g": 160,
+    "source": "Petzl PIXA 2 technical notice: 160 g with batteries; retail 93x47x46 mm"
+  },
+  "tig 315 p ac/dc multiweve pro": {
+    "length_mm": 566,
+    "width_mm": 223,
+    "height_mm": 405,
+    "weight_g": 25500,
+    "source": "svarog-rf.ru PRO TIG 315 P AC/DC MULTIWAVE (E202): 566x223x405 mm, 25.5 kg"
+  },
+  "tolsen ключ трещоточный монтажный 19х22 мм": {
+    "length_mm": 313,
+    "width_mm": 42,
+    "height_mm": 52,
+    "weight_g": 464,
+    "source": "pstop.by / mactak TOLSEN TT15296 19x22: 313x42x52 mm, 0.464 kg"
+  },
+  "unix полумаска изолирующая": {
+    "length_mm": 128,
+    "width_mm": 90,
+    "height_mm": 148,
+    "weight_g": 136,
+    "source": "UNIX 1100 TU: mass <=136 g; vseinstrumenti pack 128x90x148 mm"
+  },
+  "yartek 700": {
+    "length_mm": 595,
+    "width_mm": 345,
+    "height_mm": 570,
+    "weight_g": 33000,
+    "source": "stoking.ru YARTEK YT700 700 L/min PP/PVDF: 59.5x34.5x57 cm, 33 kg"
+  },
+  "ящик с инструментами спутник, синий": {
+    "length_mm": 457,
+    "width_mm": 230,
+    "height_mm": 205,
+    "weight_g": 3375,
+    "source": "ZUBR SPUTNIK-18 38153-18 black/blue: 457x230x205 mm, 3.375 kg"
+  },
+  "электромеханическая зиговочная машина r2": {
+    "length_mm": 600,
+    "width_mm": 350,
+    "height_mm": 1060,
+    "weight_g": 61000,
+    "source": "Ferrox R2 / stanok-rf.ru: 600x350x1060 mm, 61 kg"
+  },
+  "электроды ок 46.00 4мм": {
+    "length_mm": 470,
+    "width_mm": 70,
+    "height_mm": 65,
+    "weight_g": 6600,
+    "source": "ESAB OK 46.00 4.0x450 pack 6.6 kg: 470x70x65 mm (ligasvarki/edkm)"
+  },
+  "электроды ок 46.00 4мм esab": {
+    "length_mm": 470,
+    "width_mm": 70,
+    "height_mm": 65,
+    "weight_g": 6600,
+    "source": "ESAB OK 46.00 4.0x450 pack 6.6 kg: 470x70x65 mm (ligasvarki/edkm)"
+  },
+  "электроды уони 13/55 3мм": {
+    "length_mm": 370,
+    "width_mm": 70,
+    "height_mm": 70,
+    "weight_g": 4500,
+    "source": "ESAB UONII 13/55 3 mm pack 4.5 kg: 370x70x70 mm (svarcka.ru)"
+  },
+  "электроды сварочные уони 13/55 3мм": {
+    "length_mm": 370,
+    "width_mm": 70,
+    "height_mm": 70,
+    "weight_g": 4500,
+    "source": "ESAB UONII 13/55 3 mm pack 4.5 kg: 370x70x70 mm (svarcka.ru)"
+  },
+  "электроды уони 13/55 4мм": {
+    "length_mm": 470,
+    "width_mm": 65,
+    "height_mm": 70,
+    "weight_g": 6000,
+    "source": "KEDR UONI 13/55 d4.0 pack 6 kg: 470x65x70 mm (edkm.ru)"
+  },
+  "электроды сварочные уони 13/55 4мм": {
+    "length_mm": 470,
+    "width_mm": 65,
+    "height_mm": 70,
+    "weight_g": 6000,
+    "source": "KEDR UONI 13/55 d4.0 pack 6 kg: 470x65x70 mm (edkm.ru)"
+  },
+  "электроды мр-3 3мм": {
+    "length_mm": 460,
+    "width_mm": 80,
+    "height_mm": 50,
+    "weight_g": 5000,
+    "source": "ESAB MR-3 3 mm pack 5 kg: 460x80x50 mm (svarcka.ru)"
+  },
+  "электроды сварочные мр-3 3мм": {
+    "length_mm": 460,
+    "width_mm": 80,
+    "height_mm": 50,
+    "weight_g": 5000,
+    "source": "ESAB MR-3 3 mm pack 5 kg: 460x80x50 mm (svarcka.ru)"
+  },
+  "пш 10б": {
+    "length_mm": 650,
+    "width_mm": 540,
+    "height_mm": 230,
+    "weight_g": 7500,
+    "source": "rusarsenal.ru ШП-К-310 «У» 540×650×230 мм, масса ≤7.5 кг"
+  },
+  "пш10": {
+    "length_mm": 650,
+    "width_mm": 540,
+    "height_mm": 230,
+    "weight_g": 7500,
+    "source": "rusarsenal.ru / satro-paladin ШПК-310 540×650×230 мм, ≤7.5–8.3 кг"
+  },
+  "ультразвуковая ванна гранд-технолоджи пи-220-35 с термостатом": {
+    "length_mm": 530,
+    "width_mm": 330,
+    "height_mm": 400,
+    "weight_g": 13500,
+    "source": "uniontools.ru / lider-3d ГРАД 220-35 530×330×400 мм, нетто 13.5 кг"
+  },
+  "торцевой монтажный ключ cnic mt9201 19x22 мм": {
+    "length_mm": 316,
+    "width_mm": 50,
+    "height_mm": 50,
+    "weight_g": 460,
+    "source": "poisk.im / pmtehno CNIC MT9201 19×22 L=316 мм, нетто 0.46 кг"
+  },
+  "узо 25а 30ма": {
+    "length_mm": 87,
+    "width_mm": 36,
+    "height_mm": 74,
+    "weight_g": 190,
+    "source": "iek.ru ВД1-63 2Р 25А 30мА DIN 2 модуля 87×36×74, нетто 0.19 кг"
+  },
+  "сульфаминовая кислота 25кг": {
+    "length_mm": 500,
+    "width_mm": 400,
+    "height_mm": 200,
+    "weight_g": 25200,
+    "source": "promportal / hankala мешок 25 кг 50×40×20 см, брутто ~25.2 кг"
+  },
+  "сульфаминовая кислота мешок 25кг": {
+    "length_mm": 500,
+    "width_mm": 400,
+    "height_mm": 200,
+    "weight_g": 25200,
+    "source": "promportal / hankala мешок 25 кг 50×40×20 см, брутто ~25.2 кг"
+  },
+  "стяжка нейлоновая 300мм 100шт": {
+    "length_mm": 350,
+    "width_mm": 100,
+    "height_mm": 20,
+    "weight_g": 130,
+    "source": "cabeus.ru CT-300 3.6×300 уп.100 350×100×20 мм, 0.13 кг"
+  },
+  "фильтр противогазовый а1в1е1к1": {
+    "length_mm": 108,
+    "width_mm": 108,
+    "height_mm": 96,
+    "weight_g": 280,
+    "source": "step-perm.ru / avangard-sp Бриз-2001 А1В1Е1К1 Ø108×H96 мм, 280 г"
+  },
+  "таль цепная 3 тонны": {
+    "length_mm": 350,
+    "width_mm": 240,
+    "height_mm": 190,
+    "weight_g": 21200,
+    "source": "ronex.by ProJack HSC 3т×3м 350×240×190 мм, нетто 21.2 кг"
+  },
+  "таль цепная 3тонны": {
+    "length_mm": 350,
+    "width_mm": 240,
+    "height_mm": 190,
+    "weight_g": 21200,
+    "source": "grmeh.ru / ronex ProJack HSC 3т×3м 350×240×185–190 мм, ~21–23 кг"
+  },
+  "удлинитель силовой эра 50м": {
+    "length_mm": 315,
+    "width_mm": 235,
+    "height_mm": 385,
+    "weight_g": 5840,
+    "source": "vseinstrumenti.ru ЭРА RM-4-3x1.5-50m-IP44 упак. 315×235×385 мм, 5.84 кг"
+  },
+  "угловая шлифовальная бесщеточная машина mabar": {
+    "length_mm": 380,
+    "width_mm": 110,
+    "height_mm": 240,
+    "weight_g": 3800,
+    "source": "yunimag.ru MABAR 1252-4.0 380×110×240 мм, нетто 3.8 кг"
+  },
+  "скотч армированный 50мм": {
+    "length_mm": 125,
+    "width_mm": 125,
+    "height_mm": 50,
+    "weight_g": 360,
+    "source": "bigam.ru Волат 67050-50 50мм×50м 125×125×50 мм, 0.36 кг"
+  },
+  "стекло защитное для маски сварщика": {
+    "length_mm": 110,
+    "width_mm": 90,
+    "height_mm": 1,
+    "weight_g": 10,
+    "source": "foxweld.ru поликарбонат внешнее 110×90×1 мм, упак. 0.01 кг"
+  },
+  "фартук брезентовый сварщика": {
+    "length_mm": 860,
+    "width_mm": 680,
+    "height_mm": 5,
+    "weight_g": 350,
+    "source": "psk.expert / ГОСТ 12.4.029-76 тип Б ~86×68 см, ~0.35 кг"
+  },
+  "фартук пвх кислотостойкий": {
+    "length_mm": 1200,
+    "width_mm": 800,
+    "height_mm": 3,
+    "weight_g": 450,
+    "source": "go-zaschita.ru ПВХ тип Б К80Щ50 120×80 см; вес ряда ПВХ ~0.45 кг"
+  },
+  "сода каустическая чешуированная мешок": {
+    "length_mm": 750,
+    "width_mm": 450,
+    "height_mm": 120,
+    "weight_g": 25000,
+    "source": "opt6.ru NaOH чешуя мешок 25 кг 75×45×12 см, нетто 25 кг"
+  },
+  "сода+едкий натр 25кг": {
+    "length_mm": 750,
+    "width_mm": 450,
+    "height_mm": 120,
+    "weight_g": 25000,
+    "source": "opt6.ru NaOH 25 кг bag 75×45×12 см, нетто 25 кг"
+  },
+  "содиум 25кг": {
+    "length_mm": 750,
+    "width_mm": 450,
+    "height_mm": 120,
+    "weight_g": 25000,
+    "source": "opt6.ru NaOH (sodium hydroxide) 25 кг bag 75×45×12 см"
+  },
+  "фильтр 3m 6035 p3": {
+    "length_mm": 110,
+    "width_mm": 80,
+    "height_mm": 30,
+    "weight_g": 70,
+    "source": "cec.ie / 3M TDS 6035 pair pack ~110×80×30 мм, 70 г/пара"
+  },
+  "фильтр 3m 6055 a2": {
+    "length_mm": 300,
+    "width_mm": 190,
+    "height_mm": 130,
+    "weight_g": 215,
+    "source": "stokker / 3M TDS 6055 A2 pair pack 30×19×13 см, 215 г/пара"
+  },
+  "фильтр 3m 6051 a1": {
+    "length_mm": 181,
+    "width_mm": 150,
+    "height_mm": 120,
+    "weight_g": 100,
+    "source": "distrelec / 3M 6051 packaging 181×150×120 мм, nominal ~100 г"
+  },
+  "фильтр 3m 6051 a1 от газов": {
+    "length_mm": 181,
+    "width_mm": 150,
+    "height_mm": 120,
+    "weight_g": 100,
+    "source": "distrelec / 3M 6051 A1 packaging 181×150×120 мм, nominal ~100 г"
+  },
+  "соляная кислота 20л": {
+    "length_mm": 296,
+    "width_mm": 247,
+    "height_mm": 376,
+    "weight_g": 23000,
+    "source": "verta-tara.com канистра 20 л 296×247×376; zaoreactiv HCl хч 20л ~23 кг"
+  },
+  "уксус 20л": {
+    "length_mm": 296,
+    "width_mm": 247,
+    "height_mm": 376,
+    "weight_g": 21900,
+    "source": "verta-tara.com канистра 20 л 296×247×376; уксус ~1.05 кг/л + тара ≈21.9 кг"
+  },
+  "сигнализатор-течеискатель горючих газов переносной, ухл1.1, ip68, 3v, 1exibdiict6x": {
+    "length_mm": 55,
+    "width_mm": 50,
+    "height_mm": 105,
+    "weight_g": 200,
+    "source": "gasdetecto.ru / gazoanalit СГГ-20Микро 1ExibdIICT6 X корпус 55×50×105 мм, ≤0.2 кг"
+  },
+  "светильник головной взрывозащищённый нгр": {
+    "length_mm": 75,
+    "width_mm": 75,
+    "height_mm": 82,
+    "weight_g": 250,
+    "source": "promel42.ru / elec.ru НГР исп.01 75×75×82 мм, 0.25 кг"
+  },
+  "строп двойной с амортизатором ет": {
+    "length_mm": 300,
+    "width_mm": 200,
+    "height_mm": 100,
+    "weight_g": 1575,
+    "source": "pkvst.ru / vento.ru аЕ22 эластичный двойной с амортизатором упак. 300×200×100 мм, нетто 1.575 кг"
+  },
+  "уротропин 25кг": {
+    "length_mm": 500,
+    "width_mm": 400,
+    "height_mm": 200,
+    "weight_g": 25200,
+    "source": "ГОСТ 1381-73 мешок 25 кг; типичная ПП-тара 50×40×20 см (как лимонная кислота/promportal)"
+  },
+  "уротропин технический мешок 25кг": {
+    "length_mm": 500,
+    "width_mm": 400,
+    "height_mm": 200,
+    "weight_g": 25200,
+    "source": "ГОСТ 1381-73 / himprombaikal мешок ПП 25 кг; габарит фасовки 50×40×20 см"
+  },
+  "тринатрийфосфат мешок 25кг": {
+    "length_mm": 500,
+    "width_mm": 400,
+    "height_mm": 200,
+    "weight_g": 25200,
+    "source": "stroyshopper / pv-nnov мешок 25 кг; типичная ПП-тара 50×40×20 см"
+  },
+  "тележка для тали": {
+    "length_mm": 310,
+    "width_mm": 280,
+    "height_mm": 230,
+    "weight_g": 18300,
+    "source": "grmeh.ru тележка GCL 3т×3м 31×28×23 см, 18.3 кг"
+  },
+  "удлинитель 50 метров 3х2.5": {
+    "length_mm": 50000,
+    "width_mm": 12,
+    "height_mm": 12,
+    "weight_g": 9950,
+    "source": "ГОСТ 24334 / k-ps.ru КГ 3×2.5 ≈198.7 г/м ×50 м; Øнар ~11–12 мм"
+  },
+  "удлинитель силовой inforce б/катушки кг3x2.5, 30м, 3.5квт, 16а, ip20. 1 розетка с з/к": {
+    "length_mm": 30000,
+    "width_mm": 12,
+    "height_mm": 12,
+    "weight_g": 6170,
+    "source": "ГОСТ 24334 КГ 3×2.5 ≈199 г/м ×30 м + вилка/розетка ≈200 г; Øнар ~12 мм"
+  },
+  "бочковой насос для перекачки кислот": {
+    "length_mm": 395,
+    "width_mm": 150,
+    "height_mm": 140,
+    "weight_g": 1490,
+    "source": "artaz.ru Pressol 13064 PP-PTFE acid barrel pump 395×150×140 мм, 1.49 кг"
+  },
+  "перчатки хб с пвх покрытием 4 нити": {
+    "length_mm": 220,
+    "width_mm": 110,
+    "height_mm": 20,
+    "weight_g": 41,
+    "source": "niceprice / 4dealer ХБ 4 нити 10 кл ПВХ L=220–225 мм, 40–43 г/пара"
+  },
+  "перчатки утепленные с акрилом": {
+    "length_mm": 250,
+    "width_mm": 100,
+    "height_mm": 30,
+    "weight_g": 55,
+    "source": "STARTUL ST7109 акрил+ПВХ точка L=25 см, 55 г; pack ~250×100×30"
+  },
+  "перчатки химостойкие неопреновые": {
+    "length_mm": 320,
+    "width_mm": 120,
+    "height_mm": 40,
+    "weight_g": 117,
+    "source": "spets.ru / manipula СОЮЗ CG-971 неопрен/латекс L=320 мм, 0.117 кг/пара"
+  },
+  "перчатки химостойкие бутиловые": {
+    "length_mm": 362,
+    "width_mm": 167,
+    "height_mm": 57,
+    "weight_g": 135,
+    "source": "faustlabscience / MAPA Butoflex 651 pack 362×167×57 мм, 0.135 кг/пара"
+  },
+  "плащ-дождевик нейлоновый": {
+    "length_mm": 280,
+    "width_mm": 40,
+    "height_mm": 150,
+    "weight_g": 200,
+    "source": "satu.kz / zubr-rus ЗУБР 11615 нейлон pack 28×4×15 см, 0.2 кг"
+  },
+  "полукомбинезон летний": {
+    "length_mm": 420,
+    "width_mm": 360,
+    "height_mm": 20,
+    "weight_g": 900,
+    "source": "arsenalsnab HOEGERT EDGAR HT5K272 pack 420×360×20 мм, 0.9 кг"
+  },
+  "полукомбинезон рабочий летний": {
+    "length_mm": 420,
+    "width_mm": 360,
+    "height_mm": 20,
+    "weight_g": 900,
+    "source": "arsenalsnab HOEGERT EDGAR HT5K272 pack 420×360×20 мм, 0.9 кг"
+  },
+  "полукомбинезон утепленный": {
+    "length_mm": 500,
+    "width_mm": 350,
+    "height_mm": 80,
+    "weight_g": 760,
+    "source": "vseinstrumenti.ru Факел Стандарт Оксфорд pack 500×350×80 мм, 0.76 кг"
+  },
+  "подшлемник трикотажный": {
+    "length_mm": 220,
+    "width_mm": 230,
+    "height_mm": 15,
+    "weight_g": 66,
+    "source": "profi.express / f-tk.ru Факел подшлемник трикотажный pack 220×230×15 мм, 0.066 кг"
+  },
+  "подшлемник зимний трикотажный": {
+    "length_mm": 220,
+    "width_mm": 230,
+    "height_mm": 15,
+    "weight_g": 66,
+    "source": "profi.express / f-tk.ru Факел подшлемник трикотажный зимний pack 220×230×15 мм, 0.066 кг"
+  },
+  "подшлемник зимний флисовый": {
+    "length_mm": 100,
+    "width_mm": 50,
+    "height_mm": 50,
+    "weight_g": 50,
+    "source": "sima-land / eonc LYCOSA FLEECE pack 100×50×50 мм, 50 г"
+  },
+  "очки защитные с антизапотевающим покрытием": {
+    "length_mm": 140,
+    "width_mm": 60,
+    "height_mm": 60,
+    "weight_g": 29,
+    "source": "volfgr / kasta UVEX i-5 pack 140×60×60 мм, 29 г"
+  },
+  "каска uvex pheos": {
+    "length_mm": 310,
+    "width_mm": 190,
+    "height_mm": 180,
+    "weight_g": 346,
+    "source": "wildberries / planeta-siz UVEX Pheos B-WR pack 310×190×180 мм, 346 г"
+  },
+  "каска строительная uvex pheos": {
+    "length_mm": 310,
+    "width_mm": 190,
+    "height_mm": 180,
+    "weight_g": 346,
+    "source": "wildberries / planeta-siz UVEX Pheos B-WR pack 310×190×180 мм, 346 г"
+  },
+  "портативный времяимпульсный ультразвуковой расходомер dynameters": {
+    "length_mm": 204,
+    "width_mm": 100,
+    "height_mm": 34,
+    "weight_g": 530,
+    "source": "geo-ndt / t-ndt Dynameters DMTF-H 100×204×34 мм, 530 г"
+  },
+  "помост строительный складной": {
+    "length_mm": 1500,
+    "width_mm": 700,
+    "height_mm": 1500,
+    "weight_g": 27000,
+    "source": "паспорт ПС-1,5 ТУ 5225-005 раб. 1500×700×1500 мм, 27 кг"
+  },
+  "кепка рабочая летняя": {
+    "length_mm": 300,
+    "width_mm": 200,
+    "height_mm": 150,
+    "weight_g": 70,
+    "source": "спецодежда каталог кепка-бейсболка рабочая pack 300×200×150 мм, ~70 г"
+  },
+  "насадка для прочистки труб авд": {
+    "length_mm": 24,
+    "width_mm": 15,
+    "height_mm": 15,
+    "weight_g": 18,
+    "source": "shop-avd.ru Comet каналопромывочная 1/4\" 23.5×15.2 мм, 0.018 кг"
+  },
+  "насадка прочистки труб авд": {
+    "length_mm": 24,
+    "width_mm": 15,
+    "height_mm": 15,
+    "weight_g": 18,
+    "source": "shop-avd.ru Comet каналопромывочная 1/4\" 23.5×15.2 мм, 0.018 кг"
+  },
+  "ножницы гидравлические": {
+    "length_mm": 445,
+    "width_mm": 190,
+    "height_mm": 85,
+    "weight_g": 4100,
+    "source": "kvt.su / passport НГР-20 кейс 445×190×85 мм, комплект ~4.1 кг"
+  },
+  "прожектор светодиодный 30вт": {
+    "length_mm": 168,
+    "width_mm": 157,
+    "height_mm": 22,
+    "weight_g": 327,
+    "source": "iek.ru СДО 07-30 LPDO701-30-K03 168×157×22 мм, 0.327 кг"
+  },
+  "прожектор светодиодный 50вт": {
+    "length_mm": 205,
+    "width_mm": 170,
+    "height_mm": 22,
+    "weight_g": 481,
+    "source": "iek.ru СДО 07-50 LPDO701-50-K03 205×170×22 мм, 0.481 кг"
+  },
+  "прожектор светодиодный 100вт": {
+    "length_mm": 295,
+    "width_mm": 246,
+    "height_mm": 30,
+    "weight_g": 718,
+    "source": "iek.ru СДО 07-100 LPDO701-100-K03 295×246×30 мм, 0.718 кг"
+  },
+  "прожектор led 100вт": {
+    "length_mm": 295,
+    "width_mm": 246,
+    "height_mm": 30,
+    "weight_g": 718,
+    "source": "iek.ru СДО 07-100 LPDO701-100-K03 295×246×30 мм, 0.718 кг"
+  },
+  "пду-3": {
+    "length_mm": 226,
+    "width_mm": 149,
+    "height_mm": 103,
+    "weight_g": 1600,
+    "source": "specdozor / mocciz ПДУ-3 226×149×103 мм, ≤1.6–1.7 кг"
+  },
+  "пду3": {
+    "length_mm": 226,
+    "width_mm": 149,
+    "height_mm": 103,
+    "weight_g": 1600,
+    "source": "specdozor / mocciz ПДУ-3 226×149×103 мм, ≤1.6–1.7 кг"
+  },
+  "набор отвёрток 11шт": {
+    "length_mm": 327,
+    "width_mm": 215,
+    "height_mm": 48,
+    "weight_g": 1070,
+    "source": "krepcom / kuvalda ЗУБР Профессионал-11 25241 кейс 327×215×48 мм, 1.07 кг"
+  },
+  "опора простая": {
+    "length_mm": 100,
+    "width_mm": 100,
+    "height_mm": 160,
+    "weight_g": 410,
+    "source": "prom-baza / inprokat башмак лесов ЛРСП 100×100×160 мм, 0.41 кг"
+  },
+  "кусачки торцевые vettler 200 мм": {
+    "length_mm": 200,
+    "width_mm": 75,
+    "height_mm": 20,
+    "weight_g": 415,
+    "source": "vettler.ru VS-200 L=200 мм; infoyar торцевые 200 мм pack ~255×75×20 → L×W×H 200×75×20, 415 г"
+  },
+  "пирометр инфракрасный": {
+    "length_mm": 153,
+    "width_mm": 100,
+    "height_mm": 43,
+    "weight_g": 147,
+    "source": "protester / proaim Benetech GM320 153×100×43 мм, 147 г"
+  },
+  "магнитный кронштейн для уровня": {
+    "length_mm": 109,
+    "width_mm": 45,
+    "height_mm": 46,
+    "weight_g": 60,
+    "source": "pribor-x.ru МЕГЕОН 77901K2 109×45×46 мм, 60 г"
+  },
+  "штангенциркуль strong 300 мм": {
+    "length_mm": 300,
+    "width_mm": 100,
+    "height_mm": 40,
+    "weight_g": 250,
+    "source": "dominar.ru / Strong СТИ-62200300 pack 300×100×40 mm, 0.25 kg"
+  },
+  "шуруповерт makita, 18в, без акб и зу": {
+    "length_mm": 185,
+    "width_mm": 79,
+    "height_mm": 249,
+    "weight_g": 1500,
+    "source": "Makita DDF482Z datasheet 185×79×249 mm; 1.5 kg with BL1815N (nearest common bare 18V)"
+  },
+  "электроды ок 46.00 ∅3мм": {
+    "length_mm": 375,
+    "width_mm": 70,
+    "height_mm": 65,
+    "weight_g": 5300,
+    "source": "edkm.ru ESAB OK 46.00 3.0×350 pack 5.3 kg: 375×70×65 mm"
+  },
+  "электроды ок 46.00 2мм": {
+    "length_mm": 315,
+    "width_mm": 70,
+    "height_mm": 35,
+    "weight_g": 2000,
+    "source": "svarcka.ru / invoz ESAB OK 46.00 2.0×300 pack 2 kg: 315×70×35 mm"
+  },
+  "электроды ок 46.00 2мм esab": {
+    "length_mm": 315,
+    "width_mm": 70,
+    "height_mm": 35,
+    "weight_g": 2000,
+    "source": "svarcka.ru / invoz ESAB OK 46.00 2.0×300 pack 2 kg: 315×70×35 mm"
+  },
+  "электроды ок 46.00 3мм": {
+    "length_mm": 375,
+    "width_mm": 70,
+    "height_mm": 65,
+    "weight_g": 5300,
+    "source": "edkm.ru ESAB OK 46.00 3.0×350 pack 5.3 kg: 375×70×65 mm"
+  },
+  "электроды ок 46.00 3мм esab": {
+    "length_mm": 375,
+    "width_mm": 70,
+    "height_mm": 65,
+    "weight_g": 5300,
+    "source": "edkm.ru ESAB OK 46.00 3.0×350 pack 5.3 kg: 375×70×65 mm"
+  },
+  "электроды ано-21 2мм": {
+    "length_mm": 360,
+    "width_mm": 50,
+    "height_mm": 20,
+    "weight_g": 1000,
+    "source": "promelectrod.ru АНО-21 ∅2 pack 1 kg: 36×5×2 cm"
+  },
+  "электроды ано-21 3мм": {
+    "length_mm": 370,
+    "width_mm": 65,
+    "height_mm": 65,
+    "weight_g": 5300,
+    "source": "vseinstrumenti / dugovik ESAB АНО-21 3.0×350 pack 5.3 kg: 370×65×65 mm"
+  },
+  "электроды мр-3 2мм": {
+    "length_mm": 300,
+    "width_mm": 40,
+    "height_mm": 30,
+    "weight_g": 1000,
+    "source": "poryadok.ru Maxweld МР-3 ∅2 pack 1 kg: 30×4×3 cm"
+  },
+  "электроды мр-3 4мм": {
+    "length_mm": 455,
+    "width_mm": 80,
+    "height_mm": 45,
+    "weight_g": 5000,
+    "source": "invoz.ru ПензаЭлектрод МР-3 ∅4 pack 5 kg: 455×80×45 mm"
+  },
+  "электроды сварочные мр-3 4мм": {
+    "length_mm": 455,
+    "width_mm": 80,
+    "height_mm": 45,
+    "weight_g": 5000,
+    "source": "invoz.ru ПензаЭлектрод МР-3 ∅4 pack 5 kg: 455×80×45 mm"
+  },
+  "электроды мр-3 5мм": {
+    "length_mm": 453,
+    "width_mm": 64,
+    "height_mm": 64,
+    "weight_g": 6500,
+    "source": "ligasvarki.ru КЕДР МР-3 ЛЮКС ∅5 pack 6.5 kg: 453×64×64 mm"
+  },
+  "электроды озс-12 3мм": {
+    "length_mm": 360,
+    "width_mm": 70,
+    "height_mm": 45,
+    "weight_g": 5000,
+    "source": "kcenergy / partnerdevice КЕДР ОЗС-12 ∅3 pack 5 kg: 360×70×45 mm"
+  },
+  "электроды озл-8 нерж 3мм": {
+    "length_mm": 360,
+    "width_mm": 60,
+    "height_mm": 40,
+    "weight_g": 1000,
+    "source": "svarcka.ru Риметалк ОЗЛ-8 ∅3 pack 1 kg: 360×60×40 mm"
+  },
+  "электроды озл-8 по нержавейке 3мм": {
+    "length_mm": 360,
+    "width_mm": 60,
+    "height_mm": 40,
+    "weight_g": 1000,
+    "source": "svarcka.ru Риметалк ОЗЛ-8 ∅3 pack 1 kg: 360×60×40 mm"
+  },
+  "электроды по нержавейке озл-8 3мм": {
+    "length_mm": 360,
+    "width_mm": 60,
+    "height_mm": 40,
+    "weight_g": 1000,
+    "source": "svarcka.ru Риметалк ОЗЛ-8 ∅3 pack 1 kg: 360×60×40 mm"
+  },
+  "электроды уони 13/55 5мм": {
+    "length_mm": 470,
+    "width_mm": 65,
+    "height_mm": 70,
+    "weight_g": 6000,
+    "source": "tehkraft / partnerdevice КЕДР УОНИ 13/55 ∅5 pack 6 kg: 470×65×70 mm"
+  },
+  "фольгоизол рулон": {
+    "length_mm": 1000,
+    "width_mm": 280,
+    "height_mm": 280,
+    "weight_g": 23000,
+    "source": "ГОСТ 20429-84: рулон ширина 960–1020, площадь 10 м²; справ. масса 23 кг (фольга 0.08); Øрулона ~280 мм (folgoisol.com)"
+  },
+  "щиток защитный с сеткой": {
+    "length_mm": 390,
+    "width_mm": 235,
+    "height_mm": 150,
+    "weight_g": 320,
+    "source": "eco-siz / ROSOMZ НБТ2 ВИЗИОН СТАЛЬ 425416: экран 235×390 мм, 0.32 kg"
+  },
+  "эндоскоп мегеон": {
+    "length_mm": 165,
+    "width_mm": 145,
+    "height_mm": 45,
+    "weight_g": 230,
+    "source": "megeon.kz / taminot МЕГЕОН 33100 pack 165×145×45 mm, 230 g net"
+  },
+  "wifi/usb видеоэндоскоп": {
+    "length_mm": 240,
+    "width_mm": 160,
+    "height_mm": 20,
+    "weight_g": 100,
+    "source": "opt2008.ru Android Endoscope USB/WiFi 5 м pack 24×16×2 cm, 100 g"
+  },
+  "удлинитель 50 метров на катушке 3х2.5": {
+    "length_mm": 360,
+    "width_mm": 290,
+    "height_mm": 80,
+    "weight_g": 8640,
+    "source": "yunimag.ru Inforce 09-15-04 КГт 3×2.5 50 м: 36×29×8 cm, net 8.64 kg"
+  },
+  "удлинитель на катушке 50м": {
+    "length_mm": 240,
+    "width_mm": 195,
+    "height_mm": 365,
+    "weight_g": 10000,
+    "source": "yunimag / petromelectro ЭРА RMx-4es-3x2.5-50m-IP44: 24×19.5×36.5 cm, ~10 kg"
+  },
+  "удлинитель силовой на катушке 50м": {
+    "length_mm": 240,
+    "width_mm": 195,
+    "height_mm": 365,
+    "weight_g": 10000,
+    "source": "yunimag / petromelectro ЭРА RMx-4es-3x2.5-50m-IP44: 24×19.5×36.5 cm, ~10 kg"
+  },
+  "удлинитель на катушке 30м": {
+    "length_mm": 310,
+    "width_mm": 260,
+    "height_mm": 390,
+    "weight_g": 7000,
+    "source": "unenergo.ru ЭРА RMx-4es-3x2.5-30m-IP44 Б0052920: 310×260×390 mm, 7 kg"
+  },
+  "удлинитель силовой на катушке 30м": {
+    "length_mm": 310,
+    "width_mm": 260,
+    "height_mm": 390,
+    "weight_g": 7000,
+    "source": "unenergo.ru ЭРА RMx-4es-3x2.5-30m-IP44 Б0052920: 310×260×390 mm, 7 kg"
+  },
+  "электрические листовые ножницы.": {
+    "length_mm": 255,
+    "width_mm": 74,
+    "height_mm": 146,
+    "weight_g": 1600,
+    "source": "Makita JS1602 datasheet 255×74×146 mm, 1.6 kg"
+  },
+  "каска uvex airwing": {
+    "length_mm": 290,
+    "width_mm": 220,
+    "height_mm": 170,
+    "weight_g": 440,
+    "source": "wildberries.by UVEX pack 29×22×17 см; planeta-siz Airwing 9762.030 масса 440 г"
+  },
+  "прожектор led 30вт": {
+    "length_mm": 168,
+    "width_mm": 157,
+    "height_mm": 22,
+    "weight_g": 327,
+    "source": "iek.ru СДО 07-30 LPDO701-30-K03 168×157×22 мм, 0.327 кг"
+  },
+  "прожектор led 50вт": {
+    "length_mm": 205,
+    "width_mm": 170,
+    "height_mm": 22,
+    "weight_g": 481,
+    "source": "iek.ru СДО 07-50 LPDO701-50-K03 205×170×22 мм, 0.481 кг"
+  },
+  "сигнальный жилет оранжевый 2 класс": {
+    "length_mm": 300,
+    "width_mm": 200,
+    "height_mm": 20,
+    "weight_g": 197,
+    "source": "psk.expert жилет 2 кл ГОСТ 12.4.281 avg 0.197kg folded pack"
+  },
+  "сигнальный жилет лимонный со светоотражением": {
+    "length_mm": 300,
+    "width_mm": 200,
+    "height_mm": 20,
+    "weight_g": 197,
+    "source": "psk.expert / ГОСТ 12.4.281 сигнальный жилет со СОП avg 0.197kg folded pack"
+  },
+  "поперечина 1,8 м": {
+    "length_mm": 1800,
+    "width_mm": 48,
+    "height_mm": 48,
+    "weight_g": 3100,
+    "source": "труба лесов Ø48×1.5: m≈0.02466·s·(D−s)·L → ~1.72 кг/м ×1.8 м"
+  },
+  "пленка укрывная 200мкм рулон": {
+    "length_mm": 1500,
+    "width_mm": 220,
+    "height_mm": 220,
+    "weight_g": 39000,
+    "source": "poryadok.ru пленка укрывная 200 мкм рукав 1.5×100 м упак. 22×22×150 см, 39 кг"
+  },
+  "рулетка 5м": {
+    "length_mm": 140,
+    "width_mm": 100,
+    "height_mm": 35,
+    "weight_g": 150,
+    "source": "souz-pribor / rusgeocom AMO Р5У2П ГОСТ 7502 100×140×35 мм, 0.15 кг"
+  },
+  "рулетка измерительная 5м": {
+    "length_mm": 140,
+    "width_mm": 100,
+    "height_mm": 35,
+    "weight_g": 150,
+    "source": "souz-pribor / rusgeocom AMO Р5У2П ГОСТ 7502 100×140×35 мм, 0.15 кг"
+  },
+  "рулетка 10м": {
+    "length_mm": 130,
+    "width_mm": 100,
+    "height_mm": 50,
+    "weight_g": 420,
+    "source": "kuvalda.ru / bigam AMO Р10У2П упак. 130×100×50 мм, 0.42 кг"
+  },
+  "строп удерживающий из ленты с амортизатором": {
+    "length_mm": 1450,
+    "width_mm": 50,
+    "height_mm": 80,
+    "weight_g": 670,
+    "source": "progress-52.ru строп аА+Кс лента+амортизатор L=1.45 м; 30 шт≈20 кг → ~0.67 кг/шт"
+  },
+  "стеклоткань рулон": {
+    "length_mm": 1000,
+    "width_mm": 195,
+    "height_mm": 195,
+    "weight_g": 20000,
+    "source": "most-52.ru Э3-200 ГОСТ 19907 рулон 1×100 м: 20 кг, V≈0.03 м³ → Ø≈195 мм при ширине 1000 мм"
+  },
+  "костюм зимний аляска": {
+    "length_mm": 600,
+    "width_mm": 400,
+    "height_mm": 250,
+    "weight_g": 2700,
+    "source": "bizorg.su костюм Аляска КОС636 вес 2.7 кг, V=0.06 м³ → pack ≈600×400×250 мм"
+  },
+  "пентомаш 20л": {
+    "length_mm": 296,
+    "width_mm": 247,
+    "height_mm": 376,
+    "weight_g": 22300,
+    "source": "verta-tara.com канистра 20 л 296×247×376 мм, 0.9 кг; Пентамаш плотность ~1.07 → брутто ~22.3 кг"
+  },
+  "набор головок 26-32мм": {
+    "length_mm": 400,
+    "width_mm": 190,
+    "height_mm": 75,
+    "weight_g": 4600,
+    "source": "delot.ru Дело Техники 620726 кейс 400×190×75 мм, 4.6 кг (головки до 32 мм)"
+  },
+  "набор головок": {
+    "length_mm": 400,
+    "width_mm": 190,
+    "height_mm": 75,
+    "weight_g": 4600,
+    "source": "delot.ru Дело Техники 620726 набор 1/2\" 26 предм. кейс 400×190×75 мм, 4.6 кг"
+  },
+  "сетевой фильтр": {
+    "length_mm": 380,
+    "width_mm": 65,
+    "height_mm": 54,
+    "weight_g": 600,
+    "source": "tovar-office.ru Pilot GL 6 розеток корпус ≤380×65×54 мм, ≤0.6 кг"
+  },
+  "счётчик воды": {
+    "length_mm": 110,
+    "width_mm": 72,
+    "height_mm": 79,
+    "weight_g": 600,
+    "source": "propribory.ru паспорт СВК-15-3-2 110×72×78.5 мм, масса ~0.6 кг (типовой Ду15)"
+  },
+  "салфетки промышленные рулон": {
+    "length_mm": 315,
+    "width_mm": 260,
+    "height_mm": 260,
+    "weight_g": 4050,
+    "source": "sanova.ru Kimberly-Clark 8371 рулон Ø260×ширина 315 мм, нетто 4.05 кг"
+  },
+  "головка o33": {
+    "length_mm": 46,
+    "width_mm": 43,
+    "height_mm": 43,
+    "weight_g": 217,
+    "source": "remitek.ru / pstop King Tony 433033M 1/2\"×33 мм 43×43×46 мм, 0.217 кг"
+  },
+  "головка ø33": {
+    "length_mm": 46,
+    "width_mm": 43,
+    "height_mm": 43,
+    "weight_g": 217,
+    "source": "remitek.ru / pstop King Tony 433033M 1/2\"×33 мм 43×43×46 мм, 0.217 кг"
+  },
+  "набор образцов шероховатости нтц эксперт ошс-шп rz 10; 20; 40; 60; 80 мкм": {
+    "length_mm": 100,
+    "width_mm": 50,
+    "height_mm": 20,
+    "weight_g": 100,
+    "source": "vseinstrumenti.ru НТЦ Эксперт ОШС-ШП на пластине ntc-000197 упак. 100×50×20 мм, 0.1 кг"
+  }
+}

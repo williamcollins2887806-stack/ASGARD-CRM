@@ -33,6 +33,13 @@ module.exports = {
         });
         assertOk(approve, 'approve');
 
+        // 2b. BUH/ADMIN issues money from cash register
+        const issued = await api('PUT', `/api/cash/${cashId}/issue`, {
+          role: 'ADMIN',
+          body: {}
+        });
+        assertOk(issued, 'issue');
+
         // 3. PM marks as received
         const received = await api('PUT', `/api/cash/${cashId}/receive`, {
           role: 'PM',

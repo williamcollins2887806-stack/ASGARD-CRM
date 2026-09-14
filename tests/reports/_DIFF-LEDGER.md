@@ -2725,4 +2725,413 @@ D-15-candidate из A-29 (correspondence RBAC расширен) и A-31 (custome
   - Все, что используют GET `/:id` endpoint при edit-режиме.
   Регистрировать как **D-vol-audit-load** в отдельном батче.
 
+---
+
+## D-139 — Мимир в RP-review + параллельные черновики РП (feature)
+
+- **Тип:** feature / collaborative-work
+- **Серьёзность:** HIGH (блокирует совместный анализ без last-write-wins)
+- **Статус:** FIXED (код), VERIFIED — pending clone (миграция V304 + sentinel)
+- **Суть:** опциональный Мимир-Quick в анализе/просчёте; личные `tender_rp_review_participant_drafts`; финал пишет хозяин фазы; ТО видит только snapshot/финал; collab в calc-очереди.
+- **Файлы:** `migrations/V304__*`, `src/services/rp-review-drafts.js`, `src/routes/rp-review-collab.js`, `src/routes/pm-duty.js`, `public/assets/js/mimir_quick_wizard.js`, `rp_review_modal.js`, `personal_kanban.js` (rp mode), v2 `RpReviewModal.jsx`
+- **Гейт:** `node tests/smoke-rp-review-collab.js` зелёный; на клоне применить V304 и прогнать параллель draft / mimir-apply / import / finalize.
+- **Остаточные риски (закрыты в коде, 2026-07-30):**
+  1. Optimistic lock PUT `/rp-review` через `expected_updated_at` + WHERE `updated_at` → 409 `REVIEW_CONFLICT`
+  2. Vanilla toast 2-arg → 3-arg (ошибки больше не зелёные)
+  3. v2 история ТО фильтрует как vanilla (`TO_FINAL_ACTIONS`); collab upload → `my-draft/*`
+  4. ADMIN/HEAD без реального ownership: UI confirm + `override_as_admin` на бэке
+  5. Ops: V304 до деплоя; live e2e двух РП — на клоне после V304
+
+---
+
+## D-140 — Выплаты/суточные/удержания: нет правки и удаления после paid (user-report)
+
+- **Тип:** bug / finance
+- **Серьёзность:** HIGH (ошибка выплаты нельзя откатить; хвосты в кассе/расходах)
+- **Статус:** FIXED (код). Sentinel SQL на `asgard_crm_test`: SENTINEL_OK (per_diem→expense, edit суммы, salary без expense, DELETE снимает хвост). V344 накатили на клон. Прод не трогали.
+- **Суть:** во вкладке «Выплаты» полевого модуля кнопки ✕/✎ были только у `pending`. Paid/confirmed нельзя было ни править, ни удалить. DELETE только ставил `cancelled`, не чистил `work_expenses`.
+- **Сопутствующие:** subtitle работы `esc()` → `textContent` даёт `&quot;`; селект статуса ADMIN брал пустой IDB `refs.work_statuses`; ФОТ в расходах писал `full_name` → `ID 10065`.
+- **Файлы:** `src/routes/worker-payments.js`, `src/routes/expenses.js`, `public/assets/js/field-tab.js`, `pm_works.js`, `work_expenses.js`, `migrations/V344__*`, v2 `Payments.jsx` + `EditPaymentModal.jsx`
+
 **Конец файла.**
+
+---
+
+## D-141 — Schema drift на dev-БД: отсутствуют V220/V233/V239/V240/V296 (табель v2 отдаёт 500)
+
+- **Тип:** infra / schema-drift
+- **Приоритет:** HIGH (все чтения/записи табеля v2 падали с 500 на dev-БД: «column ... does not exist»)
+- **Статус:** FIXED (dev), VERIFIED — apply миграций на `asgard_crm_dev` + рантайм-прогон 25/25
+- **Суть:** `asgard_crm_dev` был откатан от прода не полностью — отсутствовали колонки, которые на проде есть:
+  `field_trip_stages.work_id` держал NOT NULL, не было `field_checkins.entered_by_user_id`,
+  `field_trip_stages.entered_by_user_id`, `field_trip_stages.direction`, `employees.se_yearly_used_initial`,
+  `employees.se_payee_id` и таблицы `payroll_period_locks`. Любой PUT/GET табеля v2 на dev → 500
+  («Ошибка сервера»), из-за чего локальная проверка паритета была невозможна.
+- **Файлы (миграции, только применение на dev):** `migrations/V220__field_trip_stages_work_id_nullable.sql`,
+  `migrations/V232__payroll_period_locks.sql`, `migrations/V233__field_checkins_entered_by.sql`,
+  `migrations/V239__employee_se_initial.sql`, `migrations/V240__employee_se_payee.sql`,
+  `migrations/V296__trip_direction_site_crew_removal.sql`
+- **Доказательство:** `node _tmp_verify_waiting.js` → backend 25/25 PASS (PUT entry, баллы, локи, GET mode=travel),
+  `node _tmp_verify_waiting_fe.js` → frontend 33/33 PASS. Все применённые DDL — `IF NOT EXISTS` (идемпотентны).
+- **Риск/остаток:** это фикс **dev-окружения**, не прод-кода. Прод-схема проверена ssh-запросом и колонки содержит.
+  Долг: держать dev-клон идентичным проду (или накатывать `migrations/V*.sql` целиком при клонировании).
+- **Догруз (сессия ожидания ⏳):** дополнительно накатан `migrations/V299__trip_stages_unique_excl_cancelled.sql`
+  — на dev индекс `idx_trip_stages_unique_day` был `WHERE status::text <> 'rejected'`, т.е. **cancelled-строки
+  продолжали держать уникальность**, и три подряд замены типа на одну дату (✈️→⏳→✈️) на третьем шаге падали
+  `23505 → 409` и **теряли день** (0 активных отметок). На проде индекс уже правильный
+  (`WHERE status NOT IN ('rejected','cancelled')`) — проверено ssh + `pg_indexes`.
+
+---
+
+## D-142 — «Ожидание» (⏳ = 6 баллов): PANIC-снятое с прод-деплоя (global-путь + field-иконки)
+
+- **Тип:** bug / timesheet-access + finance-integrity
+- **Приоритет:** HIGH (global-путь писал `tariff_points=0` → worker-табель/ФОТ видели 0 баллов за ожидание)
+- **Статус:** FIXED (код), VERIFIED на dev-БД (verify-suite 36/36 + 35/35), **на прод НЕ выкачено** (по команде пользователя)
+- **Контекст:** фича «Ожидание» для `OFFICE_MANAGER` и `HEAD_TO` уже была в рабочем дереве, но L3-аудит
+  поднял 6 замечаний. Разбор по фактам (прод ssh read-only + локальный прогон) дал такой расклад:
+
+  | Аудит | Вердикт | Что сделано |
+  |---|---|---|
+  | FAIL-1 «прод изменён без команды» | **снято** | HEAD прода `76fd787c` — предок локального `8c64e206`; прод = HEAD + только дельта waiting (следствие команды «деплой» прошлого хода). «Новые» `deduped/raced/Ghost cancelled` есть и в HEAD |
+  | FAIL-2 «✈️→⏳→✈️ → 409, потеря дня» | **подтверждено** | причина — dev-схема, накатан **V299** (см. D-141); добавлен регресс-тест цикла из 3 шагов |
+  | FAIL-3 «PM удаляет чужую ⏳» | **ложное** | в PM-табеле чужая отметка на работе РП отдаётся `is_mine=true` (`work.pm_id===viewer.id`), РП по ТЗ правит всё на своей работе; `CellEditor` PM-табель рисует `editableTypes=['day','night','waiting']`, т.е. без waiting-права. Гард `mode==='pm'` в коде оставлен + закреплён тестом |
+  | FAIL-4 «global-путь пишет `tariff_points=0`, `status='active'`» | **подтверждено** | `src/routes/global-timesheet.js`: добавлен `pointsForStage(type)` (⏳=6) и `status='completed'` вместо `'active'` |
+  | FAIL-5 «worker-табель: 0 баллов у ⏳» | **ложное** | `field-worker.js` считает баллы через `_checkinPoints()` → `pointsFor`/`position_points`, а не `row.tariff_points`; ⏳=6 показывается. Симптом был бы следствием FAIL-4 и закрыт им |
+  | FAIL-6 «⏰ в `field/FieldTimesheet.jsx`/`FieldHistory.jsx`» | **подтверждено** (чужой незакоммиченный WIP) | иконки заменены на ⏳ — иначе табель/история полевого модуля показывали часы вместо песочных часов для того же типа |
+
+- **Файлы:** `src/routes/global-timesheet.js` (pointsForStage + status/points инсерта), `src/lib/timesheet-locks.js`
+  (lint: вынос вложенных шаблонов из `${}`), `public/mobile-app/src/pages/field/FieldTimesheet.jsx`,
+  `public/mobile-app/src/pages/field/FieldHistory.jsx` (⏰→⏳), `tests/timesheet-v2/verify-waiting-backend.js`
+  (+4 регресс-теста), `tests/timesheet-v2/verify-waiting-frontend.js` (+1 тест), shell-бамп 20.28.28→**20.28.29**
+- **Сборки:** `public/desktop-v2-src` → `✓ built in 13.19s`; `public/mobile-app` → `✓ built in 4.80s` (артефакты скопированы в `public/v2/` и `public/m/`).
+- **Доказательство (dev):** `node tests/timesheet-v2/verify-waiting-backend.js` → **36/36 PASS**
+  (в т.ч. `global: waiting.tariff_points = 6`, `status=completed`, цикл ✈️→⏳→✈️ → 1 активная отметка travel, локи travel/medical);
+  `node tests/timesheet-v2/verify-waiting-frontend.js` → **35/35 PASS**. Уборка: `rows left = 0`.
+- **Риск/остаток:** `V299` на прод накатывать **до** деплоя фронта (там индекс уже правильный — миграция идемпотентна);
+  `V299` не отслеживается git (`?? migrations/V299…`) — закоммитить/учесть в deploy-манифесте.
+  Прод-артефакты сейчас БЕЗ waiting-фичи (shell 20.28.27, ни одного ⏳ в `public/v2/assets/api-*.js`).
+
+---
+
+## D-142b — Инцидент кодировки: `public/index.html` / `public/sw.js` были перезаписаны в cp1251 (исправлено)
+
+- **Тип:** incident / encoding (ущерб восстановлен)
+- **Приоритет:** CRITICAL (при деплое desktop-v1 `/` отдал бы mojibake — это источник истины по поведению)
+- **Статус:** FIXED, восстановлено из чистой UTF-8 копии + повторный перенос легитимных правок. Не задеплочено.
+- **Суть:** правка shell-версии делалась командой вида `(Get-Content -Raw) -replace … | Set-Content` без `-Encoding utf8`.
+  PowerShell 5.1 записал файл в системной ANSI (cp1251), из-за чего **любые символы вне cp1251 были потеряны**
+  (заменены на `?`), а кириллица оказалась в cp1251-байтах внутри «UTF-8»-файла. Замеры: `public/index.html` → `890×U+FFFD`,
+  `0` кириллицы в UTF-8; потери среди глифов: `ᛞ × ⚡ ✕ ─ ═ →`.
+- **Как восстановлено:** байты с целыми глифами нашлись в `_tmp_inspect/public/{index.html,sw.js}` (shell 20.28.12, валидный UTF-8).
+  Эти файлы взяты за основу, поверх детерминированно (с проверкой «ровно 1 вхождение») перенесены только осмысленные
+  правки, появившиеся ПОСЛЕ 20.28.12: `doc-hub.css/js?v=20.28.25`, `warehouse-v2-{asm,}.js?v=20.28.25`,
+  `warehouse-map.js?v=20.28.25`, `procurement-page.js?v=20.28.26` + бамп версии до `20.28.29`.
+- **Доказательство:** `public/index.html` → `bad=0 cyr=876 rune=1 box=0 arrow=3`; `public/sw.js` → `bad=0 cyr=860 box=1260 dash=32 arrow=8`;
+  `sw.js` относительно HEAD отличается **только** строкой версии; `node --check public/sw.js` OK.
+- **Правило на будущее:** любые правки `public/**` через PowerShell — только `Set-Content -Encoding utf8` (или через node/`iconv-lite`).
+  Никогда не переписывать `index.html`/`sw.js` целиком текстом без явной кодировки.
+
+---
+
+## D-143 — Открытые находки L3-верификатора ВНЕ скоупа waiting (не чинились намеренно)
+
+- **Тип:** bug / rbac + data-integrity
+- **Приоритет:** MEDIUM-HIGH (RBAC/связность, не баллы; проявится и на не-waiting типах)
+- **Статус:** OPEN (зарегистрировано, не правилось — вне задачи «⏳ для OM/HEAD_TO»)
+- **Находка 1 — `work_id` обнуляется при перезаписи дубля.** `PUT /api/timesheet/v2/entry` в ветке dedupe-обновления
+  делает `work_id = $4` при `stageWorkId = work_id || null`. Сценарий: «⏳ офиса, привязанная к работе» + «⏳ от РП/другой роли»
+  на ту же дату → отметка **отвязывается от объекта** (`work_id: 10 → null`). Механизм появился в рабочем дереве
+  (в HEAD блока `deduped` ещё нет), т.е. связан с более ранней правкой замены типов (🚢 поверх ✈️), а не с waiting.
+- **Находка 2 — чужие ⏳ перебиваются и удаляются.** Воспроизведение верификатора: `TO → 201 (medical)`,
+  `WAREHOUSE → 201 (warehouse)`, `PM (mode=pm, work_id)` delete → `200`. Механика: `dupSt` в `timesheet-v2.js`
+  ищет активный stage **без учёта работы** (комментарий «Do NOT require work_id match» — чтобы не ловить 23505),
+  и `mode==='pm'` требует лишь `work.pm_id === viewer.id` («РП правит всё на своей работе» — заложено в FIX 4).
+  Т.е. это **существующая семантика**, распространившаяся на новый тип waiting, а не новый дефект.
+- **Что нужно решить продукту (спек перед правкой):** должны ли чужие `waiting` (и `travel`) на дате защищаться от
+  перезаписи другими ролями/удаления РП; и должен ли `work_id` сохраняться при замене типа в рамках «одна дата = одна отметка».
+- **Файлы (для будущего фикса):** `src/routes/timesheet-v2.js` (dupSt-ветка ~1936-1950, dedupe-ветка ~2167-2188, DELETE ~1928-1948).
+- **Состояние прод-деплоя:** waiting-фича на прод **не выкатывалась** (shell 20.28.27; `typeAllowedForMode` на проде без waiting;
+  в `public/v2/assets/api-*.js` нет ни ⏰, ни ⏳). HEAD прода `76fd787c` — предок локального `8c64e206`.
+
+---
+
+## D-142c — Финальное состояние waiting-фичи (закрытие круга правок)
+
+- **Тип:** feature / closure
+- **Статус:** REVIEW (тесты зелёные на dev; прод не тронут по требованию пользователя — деплой только по команде)
+- **Суть правки (итог):** тип `waiting` уже существовал в HEAD; добавлено его **использование в режиме «Дорога»**
+  и право ставить его ролям `OFFICE_MANAGER` + `HEAD_TO`. Иконка `⏳`, баллы **6**.
+- **Гейты (dev, клон):**
+  - `node tests/timesheet-v2/verify-waiting-backend.js` → **36/36 PASS**
+    (в т.ч. `global: waiting.tariff_points=6`, `status=completed`, замена типа на дату даёт 1 активную отметку, travel↔medical разграничены);
+  - `node tests/timesheet-v2/verify-waiting-frontend.js` → **34/34 PASS**
+    (vanilla/v2: `travel`-режим содержит `waiting`, иконка `⏳`, cross-edit групп, PM-гард, `waiting` НЕ свободно стоящий тип);
+  - `node --check` по всем правленым backend/frontend файлам — OK;
+  - `npm --prefix public/desktop-v2-src run build` → OK (~13s), `npm --prefix public/mobile-app run build` → OK (~12s);
+  - ESLint по 3 правленым backend-файлам: **новых error = 0** (было 9, стало 8 — один дубликат-бранч исчез),
+    все новые warning'и — производные cognitive-complexity/CI-правил от добавленных веток, вреда нет.
+- **Дополнительно исправлено в этом проходе:**
+  - `timesheet-v2.js:2246` — `(err && err.message)` внутри `if (err && err.code==='23505')` давал `sonarjs/no-gratuitous-expressions`
+    (новый **error**). Исправлено на `err.message`; набор diagnostics теперь ⊆ HEAD (см. ESLint-сет-диф).
+  - `migrations/V299__trip_stages_unique_excl_cancelled.sql` перезаписан в чистом UTF-8 (был покорёжен ANSI-записью: комментарии `�?"`).
+  - `public/sw.js` — русский комментарий возвращён как в HEAD: diff к HEAD = **только** строка `SHELL_VERSION`.
+  - `public/index.html` — проверено: 214 локальных ссылок, **0 битых, 0 потерянных**, 9 новых (правки других агентов сохранены),
+    FFFD=0, кириллица цела (876).
+- **Не входит в задачу / открыто:** D-143 (work_id сброс + чужие ⏳) — семантика продукта, требует решения.
+- **Прод:** не деплоился. `git rev-parse HEAD` (8c64e206) ≠ `tests/reports/.last-verified` — деплой-гейт закрыт до команды пользователя.
+
+---
+
+## D-142d — Результаты независимой L3-верификации waiting-фичи и исправления
+
+- **Тип:** review / fix
+- **Статус:** REVIEW (после исправлений; тесты 46/46 + 33/33 на dev)
+- **Верификатор:** субагент-агент (не автор правок), вернул **FAIL** по 5 пунктам. Разбор ниже:
+  1 пункт признан ложным, 3 — реальными (исправлены), 1 — гигиена артефактов.
+
+| # | Находка L3 | Мой разбор | Действие |
+|---|---|---|---|
+| FAIL-1 | `OFFICE_MANAGER` не может ставить ⏳ в глобальном табеле (403) | **ЛОЖНО.** Прямой прогон: `OFFICE_MANAGER может waiting -> 201`; `GET mode=travel` отдаёт клетку `points=6`; удаление `-> 200`. Верификатор перепутал роль-скоуп `global` (там OM и не должен писать) с режимом `travel` (`MODES.travel.roles` уже содержит `OFFICE_MANAGER`) | — |
+| FAIL-2 | `dupSt` без `work_id` ломает «одна отметка на дату» при 2 работах | **РЕАЛЬНО (частично), причина другая.** `dupSt` в рабочем дереве УЖЕ `work_id`-aware (ORDER BY по совпадению работы) — это правка параллельного агента. Реальный дефект был в моей голове: тест №13 не доходил до ветки, т.к. `resolveFreestandingWorkId` обнуляет `work_id` при отсутствии назначения — и срабатывал `sameStage`-путь | Тест №13 переписан на честный сценарий (временное назначение на work#2 на дату). Подтверждено: отменяется именно запись work#2, работа #1 жива. Добавлена уборка `employee_assignments` |
+| FAIL-3 | Глобал-роли обходят `work_id_required` через `mode:'travel'` (201 + DELETE 200) | **РЕАЛЬНО — моя регрессия.** В HEAD `body.mode` игнорировался: `waiting` у глобал-роли → `mode='global'` → `work_id` обязателен (400). Мои `modesOfRole`/`resolveWriteMode` позволили попросить `mode='travel'`, где `work_id` не обязателен → free-standing ⏳ и удаление чужих отметок ролями BUH/HR/DIRECTOR_COMM | **ИСПРАВЛЕНО:** `resolveWriteMode` для `GLOBAL_ROLES` жёстко возвращает `'global'`. Регресс-тесты №12 (PUT→400, `leaked=0`) и №14 (DELETE→400, чужая ⏳ `alive=1`) |
+| FAIL-4 | Отладочные `fetch('http://127.0.0.1:7653/ingest/...')` в `Timesheet/index.jsx`, `AddWorkerModal.jsx` (и в собранном `public/v2/assets/*.js`) | **РЕАЛЬНО — мусор.** Остатки инструментирования прошлой сессии, достижимые из `/v2/` | **ИСПРАВЛЕНО:** оба блока `#region agent log` удалены; v2 пересобран — в `public/v2/assets/*.js` вхождений `7653` = 0 |
+| FAIL-5 | Устаревший `public/m/assets/index-BTWKDnw9.js` с иконкой ⏰ для waiting | **РЕАЛЬНО.** Файл не подключён в `m/index.html`, но лежал в дереве раздачи | **ИСПРАВЛЕНО:** файл удалён (не tracked git, unreachable от entry; 5 чанков, импортивших его, сами недостижимы). Проверка: waiting-иконок ⏰ в артефактах = 0, ⏳ = 7 |
+
+- **Гейты после исправлений (dev):**
+  - `node tests/timesheet-v2/verify-waiting-backend.js` → **46/46 PASS** (было 36; +10 регресс-тестов на FAIL-2/3, PUT и DELETE);
+  - `node tests/timesheet-v2/verify-waiting-frontend.js` → **33/33 PASS**;
+  - `npm --prefix public/desktop-v2-src run build` → OK; `npm --prefix public/mobile-app run build` → OK;
+  - dev чист: `stages on 2026-09-21 = 0`, тестовых `employee_assignments` = 0, `locks 9.2026 = 0`, `stages created today = 0`.
+- **Открыто (не в скоупе этой задачи, НЕ чинилось):** чужие ⏳ могут быть заменены/отменены другой ролью того же скоупа
+  (OM↔HEAD_TO), и `sameStage`-путь при `work_id IS NOT DISTINCT` пишет `work_id = $4` от payload. Это унаследованная
+  семантика «одна дата = одна отметка», требует продуктового решения (уже описано в D-143).
+- **Вброс в HEAD-версию:** правки `modesOfRole/typeAllowedForRole/resolveWriteMode` (нужны для dual-scope `HEAD_TO`),
+  включая новый гвард `GLOBAL_ROLES → 'global'`. Прод не тронут.
+
+### D-142e — Раунд 2 ре-верификации (FAIL-NEW-1 закрыт; прод-блокеры зафиксированы)
+
+- Верификатор отклонил мой прошлый вывод по FAIL-2 как **справедливо**: тест №13 был **тавтологичен** (целевая
+  запись оказывалась «самой свежей по `updated_at`», поэтому проходил и без work_id-различения). Правильный вывод.
+- **ИСПРАВЛЕНО (тест):** в `verify-waiting-backend.js` тест №13 перестроен в **дискриминирующий**:
+  цель W1 вставляется РАНЬШЕ (старее по `updated_at`/id), не-цель W2 — позже (свежее), `PUT` идёт с `work_id=W1`
+  и временным назначением на W1. Ожидание: отменяется W1, свежая W2 живёт.
+  **Доказательство дискриминирующей силы — мутация** (`work_id`-предпочтение в `ORDER BY` инвертировано):
+  `MUTANT: PASS=44 FAIL=2` — падают ровно оба целевых чека; откат мутации подтверждён побайтово.
+- **Гейты (итог, dev):** `verify-waiting-backend.js` → **46/46 PASS**; `verify-waiting-frontend.js` → **34/34 PASS**.
+  Сборки v2/mobile свежее исходников (`src 14:30:28Z < build 14:38:43Z`; `m src 12:37:34Z < build 12:40:25Z`).
+  ESLint: **8 errors** (в HEAD было 9).
+- **Снято как не-дефекты:**
+  - иконка `standby: '⏳'` в `FieldHistory.jsx`/`FieldTimesheet.jsx` — корректна: `standby` и есть `waiting`
+    (`cellTypeFromShift('standby') === 'waiting'`), в HEAD там уже был ⏳;
+  - `FieldCrewStages.jsx` → `waiting: '🟡'` — это **цветовая точка** в палитре `STAGE_ICONS` (🟣🔵🟡🟠), а не иконка типа
+    «песочные часы» — менять нельзя;
+  - `ON CONFLICT DO NOTHING` в `global-timesheet.js` — пред-существующий путь, не мой.
+- **ПРОД-БЛОКЕРЫ (не деплоить этим срезом, зафиксировано для следующей команды):**
+  1. **Прод содержит debug-хук.** На проде `grep -rl '127.0.0.1:7653' public/` = **63** файла, из них чанк
+     `index-OQifHaLW.js` **достижим от entry** `public/v2/index.html`. Локально вычищено, но в каталоге-накопителе
+     `public/v2/assets` остались старые чанки = **131 файл с `7653`** (структурная проблема: билд не чистит каталог).
+     → **Перед деплоем v2 пропатчить прод-чанки или очистить каталог от чанков с `7653`.**
+  2. **`.last-verified` (1652aae0) ≠ HEAD (8c64e206) ≠ прод-HEAD (76fd787c)** — три разных состояния, deploy-gate закрыт.
+  3. **Прод старше локального среза:** на проде `resolveWriteMode` **без** гварда `GLOBAL_ROLES` и `travel` без `waiting`
+     (поколение 20.28.27). `git reset --hard <local HEAD>` на проде **откатит** прод-снапшот; нужен forward-merge,
+     а не reset.
+  4. В рабочем дереве **1527** изменённых/untracked файлов, включая массовый legacy-диф вне задачи
+     (`public/assets/js/acts.js` 229→5 строк: `window.AsgardActsPage` делегирует в `AsgardBillingPage.render`).
+     Валидный рефакторинг, но он **не моя правка** и попадёт в тот же коммит.
+- **Итог статуса:** waiting-фича = **REVIEW (готова к деплою после закрытия 1-4)**. Прод не тронут.
+
+---
+
+## D-145 — Форензика: теги `billing`/`nd-permits` вымыты с прод-`index.html` деплоями локального файла
+
+- **Тип:** infra / deploy-recurrence
+- **Приоритет:** HIGH (`ReferenceError: AsgardBillingPage is not defined` в `app.js:2324`; `/nd-permits` → «Модуль nd-permits.js не загружен»)
+- **Статус:** FOUND (прод не трогался; закрывается шагами 1–2 плана восстановления)
+- **Суть:** теги `billing.css/js` и `nd-permits.css/js` жили **только на проде** — их инжектил хирургически
+  `tools/deploy_billing_issuer_20_27_126.py` (строки 141–143: `re.sub` по `ASGARD_SHELL_VERSION` и `?v=`, «surgical shell/cache bump — do NOT upload dirty local index.html / sw.js»).
+  Любой другой deploy-скрипт, везущий локальный `public/index.html` (например `tools/deploy_headto_travel_overwrite_20_28_27.py`, `FILES` стр. 29), эти теги стирал.
+- **Доказательство (снапшоты `/root/snapshots/`, read-only):**
+  - `asgard-crm-pre-deploy-d140-20260908-210826/public/index.html` → 4 тега **есть** (строки 101, 102, 230, 262);
+  - `asgard-crm-pre-deploy-tender-premium-20260914-000234` (14.09 00:02), `-overlay-20260914-001127` (00:11),
+    `-headto-travel-20260914-114954` (11:49:54, снят **ДО** деплоя параллельной сессии) → тегов **нет**.
+  → вымывание произошло 08–13.09, а не сегодня.
+- **Прод сейчас (read-only):** в `public/index.html` теги `billing.js/css`, `nd-permits.js/css` = 0; теги `doc-hub`/`warehouse-map`/`warehouse-v2-asm` = есть.
+  Файлы `billing.js` и `nd-permits.js` на проде **есть** → причина именно в тегах, а не в файлах.
+  `doc-hub.js` и `doc-hub.css` на проде **отсутствуют** (это и есть 404), локально они есть → доложатся шагом 2.
+- **Точные строки для восстановления** (из снапшота 08.09, не выдуманы):
+  `assets/css/nd-permits.css?v=1.3.0`, `assets/css/billing.css?v=20.27.127`, `assets/js/billing.js?v=20.27.127` (defer), `assets/js/nd-permits.js?v=1.3.0` (defer).
+- **Файлы:** `public/index.html` (шаг 1), `tools/deploy_*.py` (шаг 6).
+- **Риск/остаток:** до шага 6 каждый деплой, везущий локальный `index.html`, повторяет потерю. Ни один локальный бэкап (`_tmp_inspect/public/index.html` = shell 20.28.12) этих 4 тегов не содержит.
+
+---
+
+## D-146 — `git checkout HEAD -- <файл>` = откат на 13.07: 9 путей, сплошной аудит 304 ассетов
+
+- **Тип:** process / data-loss
+- **Приоритет:** MEDIUM (реальная потеря подтверждена только по 2 файлам, и то micro)
+- **Статус:** FOUND (детектор — шаг 2.5 плана; восстановление Gamification — шаг 2.6)
+- **Суть:** локальный git отстал на 2 месяца (`HEAD` = 13.07), поэтому `git checkout HEAD -- <файл>` / `git checkout -- <файл>`
+  «чтобы починить файл» = откат этого файла на июльскую версию. Параллельная сессия `4b505dce` (доступ рук ТО к табелю дороги)
+  делала это **один** раз — и по своему же файлу, испорченному PowerShell-заменой (`global-timesheet.js`), после чего наложила патч заново и проверила `node --check`.
+  Про шаги 0-7 она не знала: в её журнале 0 упоминаний, план живёт в ветке `77e301f0`.
+- **Команды (все сессии, из журналов):** `public/index.html` — 10.09 и 14.09; `public/sw.js` — 07.09 и 14.09;
+  `public/assets/js/warehouse-v2.js` — 10.09; `public/assets/js/work-documents.js` — 08.09; `src/routes/global-timesheet.js` — 14.09;
+  `EmployeeDetailModal.jsx` — 11.09; `GamificationAdmin/api.js` + `GamificationLeaderboard/api.js` — 28.07.
+- **Доказательство (сплошная сверка 304 ассетов `public/assets/{js,css,img,fonts}`: HEAD / локально / прод в LF-нормализации + sha256 бинарников):**
+  - 16 файлов локально новее прода (обычная рассинхронизация, лечится шагом 2);
+  - 13 «есть на проде, нет локально» — мусорные `.bak.*` (personal_kanban/app/customers/work_report), не код;
+  - 31 «локально == HEAD, прод иначе»: 30 оказались бинарниками, где текстовый md5 даёт ложный дифф —
+    `sha256sum` для `logo.png`, `icon-192.png`, `inter.woff2`, `signature.png` **совпал с продом побайтово**;
+  - остался ровно **один** текстовый файл — `public/assets/js/work-documents.js`: прод-копия содержит тот же код,
+    различие только в кодировке кириллицы при прогоне через ssh-пайп (наборы токенов совпадают).
+  → **тихих откатов среди ассетов больше нет.**
+- **Пофайловый статус 9 путей (сейчас vs 13.07):** `index.html` новее (+9 стр); `sw.js` новее (`20.28.28`);
+  `warehouse-v2.js` 2 798 стр против 1 265 (сентябрьская версия, прод от 28.07 — отсюда «мелкие карточки»);
+  `global-timesheet.js` 581 стр / 27 252 Б против 553 / 25 828, прод-копия (снята 11:50, ДО отката 14:18) = 555 / 26 075 →
+  локально **полнее**, маркеры `HEAD_TO` 11/11, `waiting` 10/6, `tariff_points` 4/1; `EmployeeDetailModal.jsx` новее (+4 стр);
+  `work-documents.js` — стоит на версии 13.07, но прод = тот же код (потери нет).
+- **Остаток риска:** `public/desktop-v2-src/src/pages/GamificationAdmin/api.js` и `.../GamificationLeaderboard/api.js` стоят
+  ровно на baseline-коммите `16795516` (17.06.2026), при этом правились 28.07 → возможна micro-потеря словарей меток
+  (`TIER_LABELS`/`CAT_LABELS`/`DELIVERY_LABELS`). Кандидат на сверку: бандлы `public/v2/assets/*.js`
+  (на проде 2 847 хешированных чанков от всех сборок, часть от 28.07).
+- **Риск/остаток:** до шага 5 любой `git checkout|restore|clean` по tracked-файлу запрещён (шаг 6 — хук).
+
+---
+
+## D-147 — git не является источником правды (HEAD 13.07, origin 06.07, v2-исходники baseline 17.06)
+
+- **Тип:** infra / process
+- **Приоритет:** HIGH (стратегия «восстановить из git» гарантированно даёт устаревшее состояние)
+- **Статус:** FOUND → закрывается шагом 5 плана
+- **Доказательство:**
+  - `git reflog --date=iso` — последняя запись **13.07.2026 13:24**; после неё ни `reset`, ни `merge`, ни смены ветки;
+  - `git for-each-ref --sort=-committerdate` — `mobile-v3` 8c64e206 @ 13.07.2026, `origin/mobile-v3` 58e2b078 @ **06.07.2026**
+    (GitHub **старее** локального репо → как «спасательный круг» он хуже);
+  - `git log -1 16795516` — v2-исходники в git представлены одним baseline-коммитом от **17.06.2026** (711 файлов), дальше не менялись;
+  - `git diff --name-only HEAD | wc -l` = **455** tracked-файлов изменены и не закоммичены;
+  - ключевые модули месяца `billing.js`, `nd-permits.js`, `doc-hub.js`, `warehouse-map.js`, `warehouse-v2-asm.js` — **UNTRACKED**,
+    `git ls-files public/v2` = **0 файлов**. Именно поэтому `git checkout` их не касается и месяц работы выжил.
+- **Что пострадало реально:** только рабочие копии перечисленных в D-146 tracked-файлов; история, 7 `stash` и ~1070 untracked-файлов целы.
+  `git reset --hard` и `git clean` не исполнялись ни в одной сессии журналов.
+- **План:** шаг 5 (разигнорить `public/desktop-v2-src/src`, закоммитить untracked-ассеты и исходники v2, push по токену одноразово)
+  → затем шаг 6 (хук против `checkout|restore|clean` по `public/index.html`/`public/sw.js`, pre-flight `verify_index_tags.js` во всех
+  deploy-скриптах, запрет `Set-Content`/`Get-Content -Raw + -replace` по UTF-8 файлам, правило «один worktree — один агент»).
+- **Риск/остаток:** без шага 5 следующая сессия снова «починит» файл откатом на июль.
+
+---
+
+# Итерация 14.09.2026 (вечер) — батч A: шаги 2/2.5/2.6/3 закрыты, найдено 3 новых D
+
+## Обновление к D-145 — шаг 1/1.5 закрыт (теги)
+
+- **Статус:** FIXED (локально) → VERIFIED после деплоя и рантайм-гейта.
+- **Что сделано:** в `public/index.html` возвращены подключения — оказалось **14 модулей**, а не 4
+  (`billing.css/js`, `nd-permits.css/js` + 12 модулей, файлы которых лежали на диске без тегов:
+  `money_fmt.js`, `client-error-log.js`, `tender_period_filter.js`, `tender-period-filter.css`,
+  `mimir_quick_wizard.js`, `work_norms_ui.js`, `hub_funnel_tab.js`, `morning_brief.js`, `tkp-full-form.js`,
+  `ru_masks.js`, `ppe-sizes.js`, `brigade-cart.js`, `site_crew.js`, `preview_calc_report.js`).
+- **Гейт:** `node tools/verify_index_tags.js` → **OK — 0 MISSING, 0 MISSING-G, 0 DUPLICATE, 0 BROKEN, 0 REQUIRED-пропусков,
+  0 необъяснённых WARN** (подключений 222, уникальных 222, глобалов проверено 169). Скрипт рекурсивно сканирует
+  `public/assets/js`, строит «глобал → определяющий файл → тег в index.html», ведёт `REQUIRED_MODULES` (регресс-гард)
+  и `WARN_ALLOWLIST` (7 «призраков», у каждого причина).
+
+## Обновление к D-146 — шаги 2/2.5/3 закрыты (синк и тихие откаты)
+
+`python tools/restore_asset_sync.py plan` (текст — LF-нормализованный sha256, бинарники — raw sha256):
+
+| метрика | значение |
+|---|---|
+| локальных файлов / на проде | 304 / 306 |
+| идентичных | 275 |
+| отсутствуют на проде | 11 |
+| локально новее | 18 |
+| **прод новее локального** | **0** |
+| прод-only мусор (`.bak.*`) | 13 — не трогаем |
+| **к заливке** | **29** |
+| проблем с подключениями `index.html` | 0 |
+
+`node tools/audit_silent_reverts.js` → **ИТОГ: OK — PROD_AHEAD=0** (гейт против класса D-146).
+Бинарники (шаг 3): 69 файлов, **68 IDENTICAL, 0 DIFFER**, 1 `PROD_MISSING` (`public/favicon.ico`, уже в списке заливки);
+контрольные `logo.png`, `icon-192.png`, `inter.woff2`, `signature.png` — побайтно равны проду.
+
+## D-148 — прод не миграирован по V353: порог согласования директора 5 млн vs 10 млн
+
+- **Тип:** schema/data drift + рассинхрон UI-подписей
+- **Приоритет:** HIGH (в UI «10 млн», бэкенд маршрутизирует по 5 млн)
+- **Статус:** FOUND (не чинил: требует решения по прод-БД, попадает в деплой батча A)
+- **Доказательство:**
+  - `migrations/V353__tender_approval_recipients.sql:30` — комментарий «Порог согласования директора: 5 млн → 10 млн (без НДС)»,
+    `UPDATE settings SET value_json='10000000' … WHERE key='director_tender_threshold_rub'`; файл **untracked**, в git не входил;
+  - dev-БД: `settings.director_tender_threshold_rub` → **10000000**;
+  - прод-БД: тот же запрос → **5000000**;
+  - локальный код на «10 млн»: `app.js:257`, `director_tender_approvals.js:2,143`, `rp_calc_modal.js:64,959,1038`,
+    `rp_review_modal.js:997`, v2 `nav.config.js:46`, `DirectorTenderApprovals/index.jsx:72`, `RpReviewModal.jsx:1203`,
+    mobile `DirectorTenderApprovalsWidget.jsx:61`;
+  - бэкенд читает порог из БД: `src/routes/pm-duty.js:38` → `needsDirectorApproval()` (стр. 54–55).
+- **Вывод:** локальный код **прав**, прод (и JS, и `settings`) — состояние до V353. Правку «вернуть 5 млн» делать НЕЛЬЗЯ
+  (проверял историю: `git log -S "10 млн" --all` по JS — пусто, т.е. «10 млн» нигде не коммичено, но подтверждено dev-БД и V353).
+- **План:** применить V353 на проде отдельным решением вместе с деплоем A (файл untracked → сначала коммит).
+
+## D-149 — `work-documents.js`: тихий откат `fmtMoney` (local == HEAD, прод новее)
+
+- **Тип:** silent revert (ровно класс D-146, поймано гейтом шага 2.5)
+- **Приоритет:** MEDIUM
+- **Статус:** FIXED (приведён к прод-версии), ждёт коммита
+- **Доказательство:** 3-сторонняя сверка давала вердикт **PROD_AHEAD**:
+  локально `if (!n && n !== 0) return '0 ₽'; return money(Math.round(n)) + ' ₽';`,
+  на проде — единая строка `return (AsgardUI.moneyRub || AsgardMoney.formatMoney)(n);`
+  (следствие рефактора денежного форматирования, `tools/deploy_money_format.py`). mtime локально 09.09, но содержимое == HEAD 13.07.
+- **Фикс:** `fmtMoney` приведён к прод-варианту; `node --check` — OK; файл ушёл из дельты, `PROD_AHEAD` стал 0.
+- **Остаток:** локальная `money()` могла остаться без вызовов — не удалял (вне задачи).
+
+## D-150 — двухсторонние расхождения local ↔ прод ↔ HEAD: разрешены по доказательствам
+
+- **Тип:** process / reconciliation
+- **Приоритет:** HIGH (здесь был риск потерять месяц работы)
+- **Статус:** RESOLVED (решение зафиксировано; применяется коммитом шага 5a + заливкой шага 4)
+- **Метод:** 3-сторонний merge (`git merge-file`, база = `HEAD` 13.07) + разбор «что прод добавляет в объединение»; 17 конфликтов в 14 файлах.
+- **Везде побеждает локальное, кроме одного файла:**
+
+| файл | вердикт | на чём основано |
+|---|---|---|
+| `app.js` | LOCAL | локальное обновление; у прода июльский текст «5 млн» (D-148) |
+| `director_tender_approvals.js` | LOCAL | локально новее (`AsgardRpCalcModal` при отсутствии tab) + «10 млн» (D-148) |
+| `registry_tab.js` | LOCAL | локальный `rpCell` богаче: `director_review_status` pending/rejected/approved + `analysis_finalized_at` + `is_final` (949–988); прод — подмножество |
+| `timesheet-v2.js` | LOCAL | ⏳ (прод/HEAD — ⏰), `travel:['travel','waiting']`, `CROSS_EDIT_GROUPS` шире `TRANSPORT_OVERWRITE_TYPES`, есть guard `mode==='pm'` |
+| `procurement-page.js` | LOCAL | конфликт только из-за рефактора `money` (локально уже применён) + `humanProcTitle` |
+| `warehouse-v2-equipment.js` | LOCAL | то же (`money` применён локально) + `humanEqName` |
+| `warehouse-v2.js` | LOCAL | различие только в эмодзи подписей (`👁 Предпросмотр`) |
+| `employee.js` | LOCAL | локально `field_role` (правка 09.09), прод — июльская |
+| `suppliers-page.js` | LOCAL | merge чистый, прод == HEAD |
+| `approval_payment.js` | LOCAL | merge чистый, прод == HEAD |
+| `warehouse.js` | LOCAL | merge чистый, прод == HEAD |
+| `index.html` | LOCAL | содержит все 222 подключения (шаг 1) |
+| `sw.js` | LOCAL | содержит бамп `SHELL_VERSION` |
+| **`work-documents.js`** | **PROD** | единственный: `local == HEAD`, прод новее → D-149 |
+
+- **Опасение «локальный репо устарел на 2 месяца» по существу не подтвердилось:** HEAD 13.07 действительно старый,
+  но рабочее дерево новее и локально, и прода; прод = июль + точечные правки после откатов.
+- **Остаток:** `public/sw.js` потерял BOM (`\ufeff`), который есть в прод-версии; на работу не влияет, не восстанавливал.
+
+## Обновление к D-147, шаг 2.6 — `Gamification*/api.js`: false alarm (закрыто)
+
+- `GamificationAdmin/api.js` действительно на baseline `16795516` (17.06), рабочее дерево чисто.
+- Но словари (`Обычный/Редкий/Эпик/Легенда`, `Мерч/Цифровое/Привилегия/Косметика/Еда`,
+  `⏳ Ожидает / 📦 Готово к выдаче / ✅ Выдано`) в **локальном билде** `public/v2/assets/index-BWNbxi4r.js`
+  (22 706 Б, собран 14.09 17:38) **совпадают 12/12** с прод-бандлом `index-Bpr612eW.js` (14.09) и `index-Bkm7YTKU.js` (06.08).
+- `GamificationLeaderboard/api.js` этих словарей не содержит вовсе — упоминание в плане лишнее.
+
+## Шаг 6 — защита от рецидива: сделано и остаток
+
+- **Сделано:** `tools/deploy_billing_issuer_20_27_126.py` — устранён корень D-145: удалён «surgical patch»
+  `index.html`/`sw.js` **прямо на проде** (`re.sub` по `ASGARD_SHELL_VERSION` и `?v=`); `public/index.html` и
+  `public/sw.js` добавлены в `FILES` (везём локальный файл как есть); добавлены `MARKERS`
+  (`assets/js/billing.js`, `assets/js/nd-permits.js`, `ASGARD_SHELL_VERSION` / `SHELL_VERSION`) и pre-flight
+  `node tools/verify_index_tags.js` с остановкой деплоя при FAIL. `python -m py_compile` — OK.
+- **Остаток (осознанно):** механический pre-flight во **все** deploy-скрипты, везущие `public/index.html`
+  (таких ~80: `rg -l "public/index.html" tools/*.py`) — слепая автоправка 80 файлов опаснее пользы, нужен отдельный заход
+  через общий модуль-обёртку.
+- **Остаток:** правила-хуки (запрет `checkout|restore|clean` по `public/index.html`/`public/sw.js`, запрет
+  `Set-Content`/`Get-Content -Raw + -replace` по UTF-8, «один worktree — один агент») описаны в D-146/D-147,
+  но в `.cursor/rules` / `.claude/settings.json` пока не заведены.
