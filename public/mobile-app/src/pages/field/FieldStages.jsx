@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { fieldApi } from '@/api/fieldClient';
 import { useHaptic } from '@/hooks/useHaptic';
 import { ArrowLeft, Truck, Play, Square, MapPin, Plane, Building, Clock, Camera } from 'lucide-react';
+import { formatMoney as fmt } from '@/lib/utils';
 
 const STAGE_CONFIG = {
   medical: { label: 'Медосмотр', icon: '🏥', color: '#9333EA' },
@@ -10,6 +11,8 @@ const STAGE_CONFIG = {
   // V255 (23.06.2026): Корабль — альтернатива дороги за 12 баллов × 500 ₽.
   // Рабочему сам ставить нельзя — только отображение, если поставили сверху.
   ship: { label: 'Корабль', icon: '🚢', color: '#0EA5E9' },
+  helicopter: { label: 'Вертолёт', icon: '🚁', color: '#06B6D4' },
+  training: { label: 'Обучение', icon: '📚', color: '#A855F7' },
   waiting: { label: 'Ожидание', icon: '⏳', color: '#F59E0B' },
   warehouse: { label: 'Склад', icon: '📦', color: '#F97316' },
   day_off: { label: 'Выходной', icon: '🛏', color: '#9CA3AF' },
@@ -24,11 +27,12 @@ const QUOTES = {
   travel: '✈️ Дорога зовёт! Удачного пути, воин',
   // V255: морская цитата для рабочего, которому поставили этап ship.
   ship: '🚢 Морской переход — попутного ветра, воин!',
+  helicopter: '🚁 Вертолётный перелёт — мягкой посадки!',
+  training: '📚 Обучение — сила дружины!',
   warehouse: '📦 Склад ждёт крепких рук!',
   waiting: '⏳ Ожидание — тоже часть похода',
 };
 
-const fmt = (n) => (n || 0).toLocaleString('ru-RU');
 const fmtDate = (d) => d ? new Date(d).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' }) : '';
 
 function stageDay(dateFrom) {
@@ -123,7 +127,7 @@ export default function FieldStages() {
           <p className="text-xs font-semibold uppercase tracking-widest mb-1" style={{ color: 'var(--text-tertiary)' }}>
             Заработано до объекта
           </p>
-          <p className="text-3xl font-bold" style={{ color: 'var(--gold)' }}>{fmt(heroEarned)} ₽</p>
+          <p className="text-3xl font-bold" style={{ color: 'var(--gold)' }}>{fmt(heroEarned)}</p>
           <p className="text-sm mt-1" style={{ color: 'var(--text-secondary)' }}>
             {heroDays} дней · {preObject.length} этапов
           </p>
@@ -254,8 +258,8 @@ function StageCard({ stage, isActive, onEnd }) {
     : `${stage.days_count || 1} дн.`;
   const earned = parseFloat(stage.amount_earned || 0);
   const earnStr = isActive
-    ? `~${fmt(stageDay(stage.date_from) * parseFloat(stage.rate_per_day || 0))} ₽`
-    : `${fmt(earned)} ₽`;
+    ? `~${fmt(stageDay(stage.date_from) * parseFloat(stage.rate_per_day || 0))}`
+    : `${fmt(earned)}`;
   const icon = isActive ? cfg.icon : (STATUS_ICONS[stage.status] || '✅');
 
   return (

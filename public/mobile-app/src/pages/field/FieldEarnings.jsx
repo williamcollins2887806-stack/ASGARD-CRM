@@ -3,8 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { fieldApi } from '@/api/fieldClient';
 import { useHaptic } from '@/hooks/useHaptic';
 import { ArrowLeft, Banknote, Calendar, Star, AlertTriangle, ArrowDownCircle, CheckCircle } from 'lucide-react';
+import { formatMoney as fmt } from '@/lib/utils';
 
-const fmt = (n) => (n || 0).toLocaleString('ru-RU') + ' ₽';
 const fmtDate = (d) => d ? new Date(d).toLocaleDateString('ru-RU') : '—';
 
 const TYPE_ICONS = { salary: Banknote, advance: ArrowDownCircle, per_diem: Calendar, bonus: Star, penalty: AlertTriangle };

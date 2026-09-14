@@ -2,10 +2,35 @@ import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { fieldApi } from '@/api/fieldClient';
 import { useHaptic } from '@/hooks/useHaptic';
+import { createPipelineBoard3D } from '@/lib/game3d/pipelineBoard3D';
+import './pipeline-game.css';
 
 const P = { EMPTY: 0, STR: 1, ELB: 2, TEE: 3, SRC: 5, DRN: 6, RUST: 7, CLOG: 8, BROKEN: 9, ROOT: 10 };
 const CONN = [0, 0b1010, 0b1100, 0b1110, 0, 0b0100, 0b1000, 0b1010, 0b1010, 0b1010, 0b1010];
 const DIRS = [[-1, 0, 1, 4], [0, 1, 2, 8], [1, 0, 4, 1], [0, -1, 8, 2]];
+
+const TUTORIAL_KEY = 'pipeline_tutorial_v2';
+const TUTORIAL_STEPS = [
+  { icon: '🔧', title: 'Поворачивай трубы', text: 'Тап по секции — поворот. Соедини 💧 с 🏆 жирным металлическим путём.' },
+  { icon: '🌊', title: 'Пусти поток', text: 'Когда путь готов — жми «Пустить поток» и смотри, как бежит вода.' },
+  { icon: '⚡', title: 'Силы богов', text: 'Тор чинит, Фрейя показывает путь, Один подсвечивает клетку.' },
+];
+
+const GODS = {
+  thor: { emoji: '🔨', name: 'ТОР', line: 'Мьёльнир крушит препятствия!' },
+  heim: { emoji: '🌀', name: 'ФРЕЙЯ', line: 'Видит истинный путь потока' },
+  odin: { emoji: '🧠', name: 'ОДИН', line: 'Шепчет, куда крутить' },
+};
+
+function worldClass(name = '') {
+  const n = String(name).toUpperCase();
+  if (n.includes('УТГАРД')) return 'world-utgard';
+  if (n.includes('МИДГАРД')) return 'world-midgard';
+  if (n.includes('НИФЛЬ')) return 'world-nifl';
+  if (n.includes('МУСПЕЛЬ')) return 'world-muspel';
+  if (n.includes('АСГАРД')) return 'world-asgard';
+  return 'world-midgard';
+}
 
 function rotMask(mask, rot) {
   let m = mask;
@@ -36,14 +61,6 @@ function isObstacle(cell) {
     || (cell.t === P.CLOG && !cell.clogCleared)
     || (cell.t === P.BROKEN && !cell.brokenCleared)
     || (cell.t === P.ROOT && !cell.rootCleared);
-}
-
-function obstacleLabel(t) {
-  if (t === P.RUST) return 'ржавчину';
-  if (t === P.CLOG) return 'засор';
-  if (t === P.BROKEN) return 'трещину';
-  if (t === P.ROOT) return 'корни';
-  return 'препятствие';
 }
 
 function clearObstacle(cell, wasType) {
@@ -83,23 +100,27 @@ function initCell(c) {
 }
 
 function frameSize(size) {
-  if (size >= 8) return { maxWidth: 360, gap: 2, icon: 13, obstacle: 9 };
-  if (size >= 7) return { maxWidth: 340, gap: 2, icon: 14, obstacle: 9 };
-  if (size >= 6) return { maxWidth: 320, gap: 3, icon: 15, obstacle: 10 };
-  return { maxWidth: 300, gap: 3, icon: 16, obstacle: 10 };
+  if (size >= 8) return { maxWidth: 360, gap: 2, icon: 15, obstacle: 18 };
+  if (size >= 7) return { maxWidth: 344, gap: 2, icon: 16, obstacle: 19 };
+  if (size >= 6) return { maxWidth: 328, gap: 3, icon: 17, obstacle: 20 };
+  return { maxWidth: 312, gap: 3, icon: 18, obstacle: 22 };
 }
 
-function pipeSVG(cell, idx, connected, flowing) {
+/** Толстые металлические трубы (bevel). */
+function pipeSVG(cell, connected, flowing) {
   const c = getConns(cell);
-  const cx = 50, cy = 50;
-  const arms = [{ b: 1, x: 50, y: 12 }, { b: 2, x: 88, y: 50 }, { b: 4, x: 50, y: 88 }, { b: 8, x: 12, y: 50 }];
+  const arms = [{ b: 1, x: 50, y: 8 }, { b: 2, x: 92, y: 50 }, { b: 4, x: 50, y: 92 }, { b: 8, x: 8, y: 50 }];
   const active = arms.filter((d) => c & d.b);
-  if (!active.length) return null;
+  if (!active.length) return '';
   const cls = flowing ? 'flowing' : connected ? 'connected' : '';
-  const paths = active.map((d) =>
-    `<line class="pp-body pb-${idx} ${cls}" x1="${cx}" y1="${cy}" x2="${d.x}" y2="${d.y}"/>`
+  const lines = (layer) => active.map((d) =>
+    `<line class="pp-pipe-${layer} ${cls}" x1="50" y1="50" x2="${d.x}" y2="${d.y}"/>`
   ).join('');
-  return `<svg class="pp-svg" viewBox="0 0 100 100">${paths}<circle class="pp-joint pj-${idx} ${cls}" cx="${cx}" cy="${cy}" r="8"/></svg>`;
+  return `<svg class="pp-svg" viewBox="0 0 100 100">
+    ${lines('outer')}${lines('mid')}${lines('inner')}
+    <circle class="pp-joint-ring ${cls}" cx="50" cy="50" r="11"/>
+    <circle class="pp-joint-core ${cls}" cx="50" cy="50" r="7"/>
+  </svg>`;
 }
 
 function bfs(grid, size) {
@@ -118,11 +139,10 @@ function bfs(grid, size) {
     for (let d = 0; d < 4; d++) {
       const [dr, dc, mb, tb] = DIRS[d];
       const nr = Math.floor(cur / size) + dr;
-      const nc = cur % size + dc;
-      if (nr < 0 || nr >= size || nc < 0 || nc >= size) continue;
+      const nc = (cur % size) + dc;
+      if (nr < 0 || nc < 0 || nr >= size || nc >= size) continue;
       const ni = nr * size + nc;
-      if (grid[ni].t === P.EMPTY) continue;
-      if (isBlocked(grid[ni])) continue;
+      if (grid[ni].t === P.EMPTY || isBlocked(grid[ni])) continue;
       if (!(cc & mb) || !(getConns(grid[ni]) & tb) || vis.has(ni)) continue;
       vis.add(ni);
       parent.set(ni, cur);
@@ -136,80 +156,43 @@ function bfs(grid, size) {
   return { reachable, path, ok: path.length > 0 };
 }
 
-const CSS = `
-.pp-root{--bg:#0b0e1a;--card:#141828;--card2:#1a2040;--gold:#F0C850;--cyan:#38bdf8;--red:#E84057;
-  --t1:#fff;--t2:rgba(255,255,255,.7);--t3:rgba(255,255,255,.4);
-  background:var(--bg);color:var(--t1);font-family:-apple-system,BlinkMacSystemFont,'SF Pro Round',system-ui,sans-serif;
-  height:100dvh;overflow:hidden;display:flex;flex-direction:column;max-width:430px;margin:0 auto;position:relative}
-.pp-bg{position:absolute;inset:0;z-index:0;overflow:hidden;pointer-events:none}
-.pp-glow{position:absolute;border-radius:50%;filter:blur(80px);opacity:.25}
-.pp-g1{width:300px;height:300px;top:-50px;left:-50px;background:var(--cyan)}
-.pp-g2{width:250px;height:250px;bottom:-30px;right:-60px;background:#A56EFF}
-.pp-page{position:relative;z-index:5;display:flex;flex-direction:column;height:100%;min-height:0}
-.pp-scroll{flex:1;min-height:0;overflow-y:auto;overflow-x:hidden;-webkit-overflow-scrolling:touch}
-.pp-top{display:flex;align-items:center;justify-content:space-between;padding:10px 16px;padding-top:max(env(safe-area-inset-top),10px)}
-.pp-back{width:36px;height:36px;border-radius:12px;background:rgba(255,255,255,.06);display:flex;align-items:center;justify-content:center;border:none;cursor:pointer}
-.pp-title{font-family:Cinzel,serif;font-size:15px;font-weight:900;letter-spacing:.12em;color:var(--gold)}
-.pp-sub{font-size:8px;color:var(--t3);letter-spacing:.16em;text-align:center;margin-top:2px}
-.pp-wallet{display:flex;align-items:center;gap:5px;padding:5px 11px;background:linear-gradient(135deg,#2a2008,#1a1505);border:1.5px solid rgba(240,200,80,.28);border-radius:20px}
-.pp-bal{font-size:14px;font-weight:800;color:var(--gold)}
-.pp-bar{margin:4px 16px;padding:8px 12px;border-radius:16px;background:var(--card);border:1px solid rgba(255,255,255,.04)}
-.pp-bar-row{display:flex;align-items:center;justify-content:space-between;margin-bottom:4px}
-.pp-world{font-size:12px;font-weight:800;color:var(--cyan)}
-.pp-lvl{font-family:Cinzel,serif;font-size:13px;font-weight:900;color:var(--gold)}
-.pp-star{font-size:16px;opacity:.2;transition:all .3s}
-.pp-star.on{opacity:1;filter:drop-shadow(0 0 6px rgba(240,200,80,.6))}
-.pp-press-track{height:8px;border-radius:5px;background:rgba(255,255,255,.06);overflow:hidden;margin-top:4px}
-.pp-press-fill{height:100%;border-radius:5px;transition:width .15s linear}
-.pp-meta{font-size:10px;color:var(--t3);margin-top:4px;display:flex;gap:8px;flex-wrap:wrap}
-.pp-hint{margin:4px 16px 6px;padding:7px 12px;border-radius:14px;background:var(--card2);border:1px solid rgba(255,255,255,.06);font-size:11px;color:var(--t2)}
-.pp-hint.err{border-color:rgba(232,64,87,.4);color:#fca5a5}
-.pp-game{display:flex;align-items:center;justify-content:center;padding:4px 16px 8px}
-.pp-frame{position:relative;width:min(100%,320px);aspect-ratio:1;padding:8px;flex-shrink:0;
-  background:linear-gradient(180deg,#1a2535,#0d1520);border-radius:20px;border:2px solid rgba(56,189,248,.2);
-  box-shadow:0 8px 32px rgba(0,0,0,.45)}
-.pp-grid{width:100%;height:100%;display:grid;gap:3px;border-radius:12px}
-.pp-cell{position:relative;border-radius:8px;background:rgba(0,0,0,.35);border:1px solid rgba(255,255,255,.04);cursor:pointer;transition:transform .12s,box-shadow .2s;touch-action:manipulation}
-.pp-cell:active{transform:scale(.93)}
-.pp-cell.conn{border-color:rgba(56,189,248,.35);background:rgba(56,189,248,.06)}
-.pp-cell.flow{border-color:rgba(56,189,248,.6);box-shadow:0 0 12px rgba(56,189,248,.25)}
-.pp-cell.rust{opacity:.8}
-.pp-cell.rust::after{content:'';position:absolute;inset:0;background:repeating-linear-gradient(45deg,transparent,transparent 3px,rgba(180,83,9,.25) 3px,rgba(180,83,9,.25) 6px);border-radius:8px;pointer-events:none}
-.pp-cell.clog{opacity:.85}
-.pp-cell.clog::after{content:'';position:absolute;inset:0;background:radial-gradient(circle at 50% 50%,rgba(34,197,94,.15),rgba(21,128,61,.35));border-radius:8px;pointer-events:none}
-.pp-cell.broken{opacity:.82}
-.pp-cell.broken::after{content:'';position:absolute;inset:0;background:repeating-linear-gradient(-45deg,transparent,transparent 2px,rgba(239,68,68,.2) 2px,rgba(239,68,68,.2) 5px);border-radius:8px;pointer-events:none}
-.pp-cell.root{opacity:.85}
-.pp-cell.root::after{content:'';position:absolute;inset:0;background:radial-gradient(circle at 30% 70%,rgba(34,197,94,.2),rgba(22,101,52,.4));border-radius:8px;pointer-events:none}
-.pp-cell.ice{box-shadow:inset 0 0 0 2px rgba(186,230,253,.35)}
-.pp-cell.ice::before{content:'❄';position:absolute;top:1px;right:2px;font-size:9px;opacity:.7;pointer-events:none;z-index:3}
-.pp-svg{width:100%;height:100%;display:block;pointer-events:none}
-.pp-body{stroke:rgba(100,116,139,.85);stroke-width:10;stroke-linecap:round;fill:none;transition:stroke .3s}
-.pp-body.connected{stroke:rgba(56,189,248,.9)}
-.pp-body.flowing{stroke:var(--cyan);filter:drop-shadow(0 0 6px rgba(56,189,248,.8))}
-.pp-joint{fill:rgba(148,163,184,.6)}
-.pp-joint.connected,.pp-joint.flowing{fill:#7dd3fc}
-.pp-icon{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:16px;pointer-events:none;z-index:2}
-.pp-obstacle{position:absolute;bottom:1px;left:2px;font-size:10px;pointer-events:none;z-index:3;line-height:1}
-.pp-moves{position:absolute;top:-6px;right:-6px;padding:3px 8px;border-radius:10px;font-size:10px;font-weight:800;background:var(--card2);border:1px solid rgba(255,255,255,.08);z-index:10}
-.pp-bottom{flex-shrink:0;background:linear-gradient(180deg,transparent,var(--bg) 20%);padding-top:4px}
-.pp-powers{display:flex;gap:6px;padding:0 16px 4px;justify-content:center}
-.pp-power{flex:1;max-width:110px;padding:7px 4px;border-radius:12px;text-align:center;background:var(--card);border:1px solid rgba(255,255,255,.05);cursor:pointer;font-size:8px;font-weight:700;color:var(--t3)}
-.pp-power.off{opacity:.35;pointer-events:none}
-.pp-power-ic{font-size:18px;display:block;margin-bottom:2px}
-.pp-actions{padding:4px 16px;padding-bottom:max(env(safe-area-inset-bottom),10px)}
-.pp-btn{width:100%;padding:14px;border-radius:16px;border:none;font-size:15px;font-weight:800;color:#fff;cursor:pointer;
-  background:linear-gradient(135deg,#0369a1,var(--cyan));box-shadow:0 4px 0 #0c4a6e}
-.pp-btn:disabled{opacity:.4;pointer-events:none}
-.pp-btn:active:not(:disabled){transform:translateY(3px);box-shadow:0 1px 0 #0c4a6e}
-.pp-ov{position:fixed;inset:0;z-index:200;background:rgba(0,0,0,.75);backdrop-filter:blur(8px);display:flex;align-items:flex-end;justify-content:center}
-.pp-win{width:100%;max-width:430px;background:linear-gradient(180deg,var(--card2),var(--card));border-radius:28px 28px 0 0;padding:20px;padding-bottom:max(env(safe-area-inset-bottom),28px);text-align:center}
-.pp-win-title{font-family:Cinzel,serif;font-size:22px;font-weight:900;color:var(--gold);margin:8px 0}
-.pp-win-btn{width:100%;margin-top:14px;padding:16px;border-radius:16px;border:none;font-size:16px;font-weight:800;color:#fff;cursor:pointer;background:linear-gradient(135deg,#C8940A,var(--gold));box-shadow:0 5px 0 #8B6914}
-.pp-win-link{width:100%;margin-top:8px;padding:12px;border-radius:14px;border:1px solid rgba(56,189,248,.25);background:transparent;font-size:13px;font-weight:700;color:var(--cyan);cursor:pointer}
-.pp-bonus{margin-top:10px;padding:10px 14px;border-radius:12px;background:rgba(56,189,248,.08);border:1px solid rgba(56,189,248,.2);font-size:12px;color:var(--cyan);text-align:left}
-.pp-loading{flex:1;display:flex;align-items:center;justify-content:center;color:var(--t3);font-size:14px}
-`;
+function playTone(freq = 440, dur = 0.08, type = 'sine', gain = 0.08) {
+  try {
+    const Ctx = window.AudioContext || window.webkitAudioContext;
+    if (!Ctx) return;
+    if (!playTone._ctx) playTone._ctx = new Ctx();
+    const ctx = playTone._ctx;
+    const o = ctx.createOscillator();
+    const g = ctx.createGain();
+    o.type = type;
+    o.frequency.value = freq;
+    g.gain.value = gain;
+    o.connect(g);
+    g.connect(ctx.destination);
+    o.start();
+    g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + dur);
+    o.stop(ctx.currentTime + dur);
+  } catch { /* silent */ }
+}
+
+function useCountUp(target, active, duration = 900) {
+  const [val, setVal] = useState(0);
+  useEffect(() => {
+    if (!active) { setVal(0); return; }
+    const end = Number(target) || 0;
+    const start = performance.now();
+    let raf;
+    const step = (now) => {
+      const t = Math.min(1, (now - start) / duration);
+      const ease = 1 - (1 - t) ** 3;
+      setVal(Math.round(ease * end));
+      if (t < 1) raf = requestAnimationFrame(step);
+    };
+    raf = requestAnimationFrame(step);
+    return () => cancelAnimationFrame(raf);
+  }, [target, active, duration]);
+  return val;
+}
 
 export default function PipelineGame() {
   const navigate = useNavigate();
@@ -217,6 +200,7 @@ export default function PipelineGame() {
   const gridRef = useRef([]);
   const movesUsedRef = useRef(0);
   const sessionRef = useRef(null);
+  const linkedRef = useRef(false);
 
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState(null);
@@ -227,17 +211,82 @@ export default function PipelineGame() {
   const [movesLeft, setMovesLeft] = useState(0);
   const [hint, setHint] = useState('Поворачивай секции — соедини 💧 со сливом 🏆');
   const [hintErr, setHintErr] = useState(false);
+  const [hintOk, setHintOk] = useState(false);
   const [pressure, setPressure] = useState(0);
   const [flowing, setFlowing] = useState(false);
   const [flowPath, setFlowPath] = useState([]);
+  const [ghostPath, setGhostPath] = useState([]);
+  const [highlight, setHighlight] = useState(-1);
+  const [odinClicks, setOdinClicks] = useState(0);
+  const [odinTargetRot, setOdinTargetRot] = useState(null);
+  const [flashIdx, setFlashIdx] = useState(-1);
+  const [pulseCells, setPulseCells] = useState([]);
   const [win, setWin] = useState(null);
+  const [failed, setFailed] = useState(false);
+  const [shake, setShake] = useState(false);
+  const [linked, setLinked] = useState(false);
+  const [boardEnter, setBoardEnter] = useState(false);
+  const [showIntro, setShowIntro] = useState(false);
+  const [godFx, setGodFx] = useState(null);
+  const [screenFlash, setScreenFlash] = useState(false);
+  const [winStarsOn, setWinStarsOn] = useState(0);
+  const [particles, setParticles] = useState([]);
   const [powers, setPowers] = useState({ thor: true, heim: true, odin: true });
   const [busy, setBusy] = useState(false);
   const [pressureFactor, setPressureFactor] = useState(1);
+  const [tutStep, setTutStep] = useState(() => {
+    try { return localStorage.getItem(TUTORIAL_KEY) ? -1 : 0; } catch { return 0; }
+  });
+  const srcTapsRef = useRef({ n: 0, t: 0 });
+  const drnTapsRef = useRef({ n: 0, t: 0 });
+  const [raven, setRaven] = useState(false);
+  const [valhalla, setValhalla] = useState(false);
+  const boardCanvasRef = useRef(null);
+  const boardApiRef = useRef(null);
+  const [board3d, setBoard3d] = useState(false);
+
+  const xpShown = useCountUp(win?.total_xp ?? win?.xp ?? 0, !!win, 950);
+  const runesShown = useCountUp(win?.total_runes ?? win?.runes ?? 0, !!win, 950);
+
+  const burst = useCallback((count = 14) => {
+    const items = Array.from({ length: count }, (_, i) => ({
+      id: `${Date.now()}-${i}`,
+      left: 35 + Math.random() * 30,
+      top: 35 + Math.random() * 30,
+      dx: `${(Math.random() - 0.5) * 160}px`,
+      dy: `${-50 - Math.random() * 100}px`,
+      color: i % 3 === 0 ? '#F0C850' : i % 3 === 1 ? '#38bdf8' : '#a78bfa',
+    }));
+    setParticles(items);
+    setTimeout(() => setParticles([]), 800);
+  }, []);
+
+  const playIntro = useCallback(() => {
+    setShowIntro(true);
+    setBoardEnter(false);
+    playTone(280, 0.08, 'triangle', 0.06);
+    setTimeout(() => playTone(420, 0.1, 'triangle', 0.07), 120);
+    setTimeout(() => {
+      setShowIntro(false);
+      setBoardEnter(true);
+      playTone(560, 0.08, 'sine', 0.05);
+    }, 1350);
+  }, []);
 
   const load = useCallback(async () => {
     setLoading(true);
     setHintErr(false);
+    setHintOk(false);
+    setFailed(false);
+    setHighlight(-1);
+    setOdinClicks(0);
+    setOdinTargetRot(null);
+    setGhostPath([]);
+    setFlashIdx(-1);
+    setPulseCells([]);
+    setLinked(false);
+    linkedRef.current = false;
+    setWinStarsOn(0);
     try {
       const [st, w] = await Promise.all([
         fieldApi.get('/pipeline/stats'),
@@ -261,17 +310,110 @@ export default function PipelineGame() {
       setFlowing(false);
       setFlowPath([]);
       setHint('Поворачивай секции — соедини 💧 со сливом 🏆');
+      setLoading(false);
+      playIntro();
     } catch {
       setHint('Не удалось загрузить уровень. Проверь связь.');
       setHintErr(true);
-    } finally {
       setLoading(false);
     }
-  }, []);
+  }, [playIntro]);
 
   useEffect(() => { load(); }, [load]);
 
+  useEffect(() => {
+    if (loading) return undefined;
+    const canvas = boardCanvasRef.current;
+    if (!canvas || !board3d) return undefined;
+    let alive = true;
+    createPipelineBoard3D(canvas).then((api) => {
+      if (!alive) {
+        api?.dispose?.();
+        return;
+      }
+      if (!api) {
+        setBoard3d(false);
+        return;
+      }
+      boardApiRef.current = api;
+      api.setState({
+        grid: gridRef.current,
+        size,
+        reachable: new Set(),
+        flowPath: [],
+        ghostPath: [],
+        worldName: sessionRef.current?.world?.name,
+      });
+    });
+    return () => {
+      alive = false;
+      boardApiRef.current?.dispose?.();
+      boardApiRef.current = null;
+    };
+  }, [board3d, loading, size]);
+
+  useEffect(() => {
+    if (movesLeft === 0 && !win && !flowing && !loading && session && !failed) {
+      const { ok } = bfs(gridRef.current, size);
+      if (!ok) {
+        setFailed(true);
+        setShake(true);
+        setTimeout(() => setShake(false), 400);
+      }
+    }
+  }, [movesLeft, win, flowing, loading, session, failed, size]);
+
   const conn = useMemo(() => bfs(grid, size), [grid, size]);
+
+  useEffect(() => {
+    boardApiRef.current?.setState?.({
+      grid,
+      size,
+      reachable: conn.reachable,
+      flowPath,
+      ghostPath,
+      highlight,
+      flashIdx,
+      pulseCells,
+      worldName: session?.world?.name,
+    });
+  }, [grid, size, conn.reachable, flowPath, ghostPath, highlight, flashIdx, pulseCells, session]);
+
+  useEffect(() => {
+    if (conn.ok && !linkedRef.current && !flowing && !win) {
+      linkedRef.current = true;
+      setLinked(true);
+      setPulseCells(conn.path);
+      setHintOk(true);
+      setHintErr(false);
+      setHint('Путь собран! 🌊 Жми «Пустить поток»');
+      haptic.success();
+      playTone(480, 0.07, 'triangle', 0.07);
+      setTimeout(() => playTone(640, 0.1, 'triangle', 0.07), 90);
+      burst(10);
+      setTimeout(() => setPulseCells([]), 700);
+    } else if (!conn.ok && linkedRef.current) {
+      linkedRef.current = false;
+      setLinked(false);
+      setHintOk(false);
+    }
+  }, [conn.ok, conn.path, flowing, win, haptic, burst]);
+
+  useEffect(() => {
+    if (!win) { setWinStarsOn(0); return; }
+    setWinStarsOn(0);
+    const stars = win.stars || 1;
+    const timers = [];
+    for (let i = 1; i <= stars; i++) {
+      timers.push(setTimeout(() => {
+        setWinStarsOn(i);
+        playTone(400 + i * 120, 0.1, 'triangle', 0.08);
+        haptic.medium();
+      }, 280 * i));
+    }
+    timers.push(setTimeout(() => burst(22), 200));
+    return () => timers.forEach(clearTimeout);
+  }, [win, haptic, burst]);
 
   const spendMoves = (cost) => {
     movesUsedRef.current += cost;
@@ -279,21 +421,56 @@ export default function PipelineGame() {
   };
 
   const rotate = (i) => {
-    if (busy || flowing || win) return;
+    if (busy || flowing || win || failed || showIntro) return;
     const cell = grid[i];
-    if (!cell || [P.EMPTY, P.SRC, P.DRN].includes(cell.t)) return;
+    if (cell?.t === P.SRC) {
+      const now = Date.now();
+      if (now - srcTapsRef.current.t > 1400) srcTapsRef.current.n = 0;
+      srcTapsRef.current.t = now;
+      srcTapsRef.current.n += 1;
+      if (srcTapsRef.current.n >= 5) {
+        srcTapsRef.current.n = 0;
+        setRaven(true);
+        setHint('Ворон Одина пролетел над трубами. Он видел путь.');
+        setHintOk(true);
+        setHintErr(false);
+        playTone(880, 0.12, 'triangle', 0.06);
+        setTimeout(() => setRaven(false), 2500);
+      }
+      return;
+    }
+    if (cell?.t === P.DRN) {
+      const now = Date.now();
+      if (now - drnTapsRef.current.t > 1600) drnTapsRef.current.n = 0;
+      drnTapsRef.current.t = now;
+      drnTapsRef.current.n += 1;
+      if (drnTapsRef.current.n >= 4) {
+        drnTapsRef.current.n = 0;
+        setValhalla(true);
+        setHint('Слив Вальгаллы открылся на миг. Трубы запели.');
+        setHintOk(true);
+        setHintErr(false);
+        burst(18);
+        playTone(520, 0.1, 'triangle', 0.07);
+        setTimeout(() => playTone(780, 0.14, 'triangle', 0.06), 90);
+        setTimeout(() => setValhalla(false), 1600);
+      }
+      return;
+    }
+    if (!cell || [P.EMPTY, P.DRN].includes(cell.t)) return;
     if (isObstacle(cell)) {
-      const msg = cell.t === P.RUST ? '🪨 Ржавчина! Используй 🔨 Удар Тора'
-        : cell.t === P.CLOG ? '🧱 Засор! Прочисти 🔨 Тором или 🌀 Фрейей'
+      const msg = cell.t === P.RUST ? '🪨 Ржавчина! Используй 🔨 Тора'
+        : cell.t === P.CLOG ? '🧱 Засор! Тор или Фрейя'
           : cell.t === P.BROKEN ? '💔 Трещина! Почини 🔨 Тором'
             : '🌿 Корни! Убери 🌀 Фрейей';
-      setHint(msg);
-      setHintErr(true);
+      setHint(msg); setHintErr(true); setHintOk(false);
       haptic.error();
+      playTone(180, 0.1, 'sawtooth', 0.04);
       return;
     }
     if (movesLeft <= 0) {
-      setHint('Ходы закончились — нажми «Пустить поток» или начни уровень заново');
+      setFailed(true);
+      setHint('Ходы закончились — нажми «Заново»');
       setHintErr(true);
       haptic.error();
       return;
@@ -306,67 +483,111 @@ export default function PipelineGame() {
       return;
     }
     haptic.light();
-    const next = grid.map((c, idx) => idx === i ? { ...c, r: (c.r + 1) % 4 } : c);
+    playTone(360 + (cell.r || 0) * 40, 0.05, 'square', 0.045);
+    const newRot = ((cell.r || 0) + 1) % 4;
+    const next = grid.map((c, idx) => (idx === i ? { ...c, r: newRot } : c));
     setGrid(next);
     gridRef.current = next;
     spendMoves(cost);
     setHintErr(false);
-    setHint(cell.ice ? '❄ Ледяная труба — поворот стоит 2 хода' : 'Поворачивай секции — соедини 💧 со сливом 🏆');
+    // Подсветка Одина держится, пока клетка не дойдёт до целевого угла
+    if (highlight === i && odinTargetRot != null) {
+      const left = (odinTargetRot - newRot + 4) % 4;
+      if (left === 0) {
+        setHighlight(-1);
+        setOdinClicks(0);
+        setOdinTargetRot(null);
+        setHint('Один: клетка верна — продолжай путь');
+        setHintOk(true);
+      } else {
+        setOdinClicks(left);
+        setHint(left === 1 ? 'Один: ещё один поворот' : `Один: ещё ${left} поворота`);
+        setHintOk(true);
+      }
+    } else if (highlight !== i) {
+      // крутим другую клетку — подсветку Одина не сбрасываем
+      if (!cell.ice) setHint('Поворачивай секции — соедини 💧 со сливом 🏆');
+      else setHint('❄ Ледяная труба — поворот стоит 2 хода');
+    } else {
+      setHighlight(-1);
+      setOdinClicks(0);
+      setOdinTargetRot(null);
+      if (!cell.ice) setHint('Поворачивай секции — соедини 💧 со сливом 🏆');
+      else setHint('❄ Ледяная труба — поворот стоит 2 хода');
+    }
   };
 
-  const usePower = (type) => {
-    if (busy || flowing || win) return;
-    if (type === 'thor' && powers.thor) {
-      const ri = grid.findIndex((c) => (c.t === P.RUST && !c.rustCleared)
-        || (c.t === P.CLOG && !c.clogCleared) || (c.t === P.BROKEN && !c.brokenCleared));
-      if (ri >= 0) {
-        const was = grid[ri].t;
-        const next = grid.map((c, i) => i === ri ? clearObstacle(c, was) : c);
+  const flashGod = (type) => {
+    setGodFx(type);
+    setScreenFlash(true);
+    setTimeout(() => setScreenFlash(false), 320);
+    setTimeout(() => setGodFx(null), 700);
+  };
+
+  const usePower = async (type) => {
+    if (busy || flowing || win || failed || !powers[type] || !sessionRef.current || showIntro) return;
+    setBusy(true);
+    flashGod(type);
+    haptic.medium();
+    playTone(520, 0.1, 'triangle', 0.07);
+    try {
+      const res = await fieldApi.post('/pipeline/power', {
+        session_id: sessionRef.current.session_id,
+        power: type,
+        cells: gridRef.current.map(normalizeCell),
+      });
+      if (Number.isInteger(res.clear_index)) {
+        const was = gridRef.current[res.clear_index].t;
+        const next = gridRef.current.map((c, i) => (i === res.clear_index ? clearObstacle(c, was) : c));
         setGrid(next);
         gridRef.current = next;
-        const labels = { [P.RUST]: 'ржавчину', [P.CLOG]: 'засор', [P.BROKEN]: 'трещину' };
-        setHint(`Мьёльнir устранил ${labels[was] || 'препятствие'}!`);
-      } else setHint('Препятствий нет — береги удар');
-      setPowers((p) => ({ ...p, thor: false }));
-      haptic.medium();
-    } else if (type === 'heim' && powers.heim) {
-      const obsIdx = grid.findIndex((c) => (c.t === P.CLOG && !c.clogCleared) || (c.t === P.ROOT && !c.rootCleared));
-      if (obsIdx >= 0) {
-        const was = grid[obsIdx].t;
-        const next = grid.map((c, i) => i === obsIdx ? clearObstacle(c, was) : c);
-        setGrid(next);
-        gridRef.current = next;
-        setHint(was === P.ROOT ? '🌀 Фрейя убрала корни!' : '🌀 Фрейя прочистила засор!');
-      } else {
-        const { path } = bfs(grid, size);
-        setFlowPath(path);
-        setTimeout(() => setFlowPath([]), 2000);
-        setHint('Фрейя видит путь!');
+        setFlashIdx(res.clear_index);
+        setTimeout(() => setFlashIdx(-1), 500);
+        burst(12);
+        playTone(660, 0.12, 'triangle', 0.08);
       }
-      setPowers((p) => ({ ...p, heim: false }));
-    } else if (type === 'odin' && powers.odin) {
-      const blocked = grid.findIndex((c) => isObstacle(c));
-      const target = blocked >= 0 ? blocked : grid.findIndex((c) => c.t === P.ELB || c.t === P.STR);
-      if (target >= 0) {
-        setHint(`Один шепчет: ${obstacleLabel(grid[target].t)} — клетка ${target + 1}`);
+      if (Array.isArray(res.ghost_path) && res.ghost_path.length) {
+        setGhostPath(res.ghost_path);
+        setFlowPath(res.ghost_path);
+        setTimeout(() => { setGhostPath([]); setFlowPath([]); }, 3000);
+        playTone(480, 0.14, 'sine', 0.07);
       }
-      setPowers((p) => ({ ...p, odin: false }));
+      if (Number.isInteger(res.highlight_index)) {
+        setHighlight(res.highlight_index);
+        setOdinClicks(res.clicks || 1);
+        setOdinTargetRot(Number.isInteger(res.target_rot) ? res.target_rot : null);
+        playTone(720, 0.1, 'sine', 0.06);
+      }
+      setHint(res.message || 'Готово');
+      setHintErr(false);
+      setHintOk(true);
+      if (res.spent !== false) setPowers((p) => ({ ...p, [type]: false }));
+    } catch (e) {
+      setHint(e?.body?.error || e?.message || 'Сила недоступна');
+      setHintErr(true);
+      setHintOk(false);
+      haptic.error();
+    } finally {
+      setBusy(false);
     }
-    setHintErr(false);
   };
 
   const startFlow = async () => {
-    if (busy || flowing || win || !sessionRef.current) return;
+    if (busy || flowing || win || !sessionRef.current || showIntro) return;
     const currentGrid = gridRef.current;
     const { ok, path } = bfs(currentGrid, size);
     if (!ok) {
       setHint('Сначала соедини все трубы!');
-      setHintErr(true);
+      setHintErr(true); setHintOk(false);
+      setShake(true);
+      setTimeout(() => setShake(false), 350);
       haptic.error();
+      playTone(160, 0.12, 'sawtooth', 0.05);
       return;
     }
     if (movesUsedRef.current > sessionRef.current.move_limit) {
-      setHint('Превышен лимит ходов — попробуй эффективнее');
+      setFailed(true);
+      setHint('Превышен лимит ходов');
       setHintErr(true);
       haptic.error();
       return;
@@ -374,23 +595,29 @@ export default function PipelineGame() {
     setFlowing(true);
     setBusy(true);
     setHintErr(false);
+    setFailed(false);
+    setShake(true);
+    setTimeout(() => setShake(false), 280);
     haptic.medium();
-    const stepMs = Math.max(55, Math.round(100 / pressureFactor));
+    const stepMs = Math.max(50, Math.round(95 / pressureFactor));
     for (let s = 0; s <= path.length; s++) {
       setFlowPath(path.slice(0, s));
       setPressure(Math.min(100, (s / Math.max(path.length, 1)) * 100));
+      if (s > 0) playTone(280 + s * 20, 0.04, 'sine', 0.04);
       await new Promise((r) => setTimeout(r, stepMs));
     }
     try {
-      const payload = {
+      const res = await fieldApi.post('/pipeline/complete', {
         session_id: sessionRef.current.session_id,
         cells: currentGrid.map(normalizeCell),
         moves_used: movesUsedRef.current,
-      };
-      const res = await fieldApi.post('/pipeline/complete', payload);
+      });
       setWin(res);
       setPressure(100);
+      burst(24);
       haptic.success();
+      playTone(520, 0.1, 'triangle', 0.09);
+      setTimeout(() => playTone(780, 0.14, 'triangle', 0.08), 100);
       const w = await fieldApi.get('/gamification/wallet').catch(() => wallet);
       if (w) setWallet(w);
     } catch (e) {
@@ -401,160 +628,273 @@ export default function PipelineGame() {
       setFlowing(false);
       setFlowPath([]);
       setPressure(0);
+      if (/лимит|ходы/i.test(msg)) setFailed(true);
     } finally {
       setBusy(false);
     }
   };
 
-  const nextLevel = () => {
-    haptic.medium();
-    load();
+  const nextLevel = () => { haptic.medium(); load(); };
+  const restartLevel = () => { haptic.medium(); playTone(400, 0.06, 'triangle', 0.05); load(); };
+  const finishTutorial = () => {
+    try { localStorage.setItem(TUTORIAL_KEY, '1'); } catch { /* */ }
+    setTutStep(-1);
   };
+
+  const world = session?.world;
+  const wCls = worldClass(world?.name);
+  const layout = frameSize(size);
+  const showTut = !showIntro && tutStep >= 0 && tutStep < TUTORIAL_STEPS.length && (session?.level || 1) <= 3;
 
   if (loading) {
     return (
-      <>
-        <style>{CSS}</style>
-        <div className="pp-root"><div className="pp-loading">Загрузка Рунопровода…</div></div>
-      </>
+      <div className={`pp-root ${wCls}`}>
+        <div className="pp-loading">
+          <div className="pp-loading-orb" />
+          Загрузка Рунопровода…
+        </div>
+      </div>
     );
   }
 
-  const world = session?.world;
-  const layout = frameSize(size);
-
   return (
-    <>
-      <style>{CSS}</style>
-      <div className="pp-root">
-        <div className="pp-bg">
-          <div className="pp-glow pp-g1" />
-          <div className="pp-glow pp-g2" />
-        </div>
-        <div className="pp-page">
-          <div className="pp-scroll">
-            <header className="pp-top">
-              <button type="button" className="pp-back" onClick={() => navigate(-1)} aria-label="Назад">
-                <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="rgba(255,255,255,.7)" strokeWidth="2.2"><path d="M15 18l-6-6 6-6" /></svg>
-              </button>
-              <div>
-                <div className="pp-title">РУНОПРОВОД</div>
-                <div className="pp-sub">ГИДРОМЕХАНИК АСГАРДА</div>
-              </div>
-              <div className="pp-wallet"><span style={{ fontSize: 11, fontWeight: 900, color: '#5a3e00' }}>ᚱ</span><span className="pp-bal">{wallet?.runes ?? '—'}</span></div>
-            </header>
+    <div className={`pp-root ${wCls}`}>
+      <div className="pp-bg">
+        <div className="pp-glow pp-g1" />
+        <div className="pp-glow pp-g2" />
+        <div className="pp-glow pp-g3" />
+        <div className="pp-pattern" />
+      </div>
+      <div className="pp-fx" aria-hidden>
+        {particles.map((p) => (
+          <span
+            key={p.id}
+            className="pp-particle"
+            style={{ left: `${p.left}%`, top: `${p.top}%`, background: p.color, '--dx': p.dx, '--dy': p.dy }}
+          />
+        ))}
+      </div>
 
-            <div className="pp-bar">
-              <div className="pp-bar-row">
-                <span className="pp-world">{world?.icon} {world?.name}</span>
-                <span className="pp-lvl">УР. {session?.level}</span>
-                <span>{[0, 1, 2].map((i) => <span key={i} className={`pp-star ${(win?.stars || 0) > i ? 'on' : ''}`}>⭐</span>)}</span>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, fontWeight: 700, color: 'var(--t3)' }}>
-                <span>ДАВЛЕНИЕ</span><span style={{ color: 'var(--cyan)' }}>{Math.round(pressure)}%</span>
-              </div>
-              <div className="pp-press-track">
-                <div className="pp-press-fill" style={{
-                  width: `${pressure}%`,
-                  background: pressure > 85 ? 'linear-gradient(90deg,#991b1b,var(--red))' : pressure > 60 ? 'linear-gradient(90deg,#b45309,#f59e0b)' : 'linear-gradient(90deg,#0369a1,var(--cyan))',
-                }} />
-              </div>
-              {stats && (
-                <div className="pp-meta">
-                  <span>Сетка: {session?.grid_label || `${size}×${size}`}</span>
-                  <span>Ходы: {movesLeft}/{session?.move_limit}</span>
-                  <span>Серия: {stats.current_streak}</span>
-                  <span>Макс: {stats.max_level}</span>
-                </div>
-              )}
+      <div className="pp-page">
+        <div className="pp-scroll">
+          <header className="pp-top">
+            <button type="button" className="pp-back" onClick={() => navigate(-1)} aria-label="Назад">
+              <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="rgba(255,255,255,.75)" strokeWidth="2.2"><path d="M15 18l-6-6 6-6" /></svg>
+            </button>
+            <div style={{ flex: 1, textAlign: 'center' }}>
+              <div className="pp-title">РУНОПРОВОД</div>
+              <div className="pp-sub">ГИДРОМЕХАНИК АСГАРДА</div>
             </div>
+            <button type="button" className="pp-restart" onClick={restartLevel} disabled={busy || flowing}>↻ Заново</button>
+            <div className="pp-wallet"><span style={{ fontSize: 11, fontWeight: 900, color: '#5a3e00' }}>ᚱ</span><span className="pp-bal">{wallet?.runes ?? '—'}</span></div>
+          </header>
 
-            <div className={`pp-hint ${hintErr ? 'err' : ''}`}>{hint}</div>
-
-            <div className="pp-game">
-              <div className="pp-frame" style={{ maxWidth: layout.maxWidth }}>
-                <div className="pp-moves">{movesLeft} ход.</div>
-                <div className="pp-grid" style={{ gridTemplateColumns: `repeat(${size}, 1fr)`, gridTemplateRows: `repeat(${size}, 1fr)`, gap: layout.gap }}>
-                  {grid.map((cell, i) => {
-                    const isConn = conn.reachable.has(i);
-                    const isFlow = flowPath.includes(i);
-                    const isRust = cell.t === P.RUST && !cell.rustCleared;
-                    const isClog = cell.t === P.CLOG && !cell.clogCleared;
-                    const isBroken = cell.t === P.BROKEN && !cell.brokenCleared;
-                    const isRoot = cell.t === P.ROOT && !cell.rootCleared;
-                    const isIce = !!cell.ice;
-                    let inner = '';
-                    if (cell.t === P.SRC) inner = `<div class="pp-icon" style="font-size:${layout.icon}px">💧</div>${pipeSVG(cell, i, isConn, isFlow) || ''}`;
-                    else if (cell.t === P.DRN) inner = `<div class="pp-icon" style="font-size:${layout.icon}px">🏆</div>${pipeSVG(cell, i, isConn, isFlow) || ''}`;
-                    else if (cell.t !== P.EMPTY) {
-                      inner = (pipeSVG(cell, i, isConn, isFlow) || '');
-                      if (isRust) inner += `<span class="pp-obstacle" style="font-size:${layout.obstacle}px">🪨</span>`;
-                      if (isClog) inner += `<span class="pp-obstacle" style="font-size:${layout.obstacle}px">🧱</span>`;
-                      if (isBroken) inner += `<span class="pp-obstacle" style="font-size:${layout.obstacle}px">💔</span>`;
-                      if (isRoot) inner += `<span class="pp-obstacle" style="font-size:${layout.obstacle}px">🌿</span>`;
-                    }
-                    return (
-                      <div
-                        key={i}
-                        className={`pp-cell ${isConn ? 'conn' : ''} ${isFlow ? 'flow' : ''} ${isRust ? 'rust' : ''} ${isClog ? 'clog' : ''} ${isBroken ? 'broken' : ''} ${isRoot ? 'root' : ''} ${isIce ? 'ice' : ''}`}
-                        style={cell.t === P.EMPTY ? { opacity: 0.1, pointerEvents: 'none' } : undefined}
-                        onClick={() => rotate(i)}
-                        dangerouslySetInnerHTML={{ __html: inner }}
-                      />
-                    );
-                  })}
+          <div className="pp-hud">
+            <div className="pp-hud-row">
+              <span className="pp-world-pill">{world?.icon || '🌊'} {world?.name || 'МИДГАРД'}</span>
+              <span className="pp-lvl">УР. {session?.level}</span>
+              <span>{[0, 1, 2].map((i) => <span key={i} className={`pp-star ${(win?.stars || 0) > i ? 'on' : ''}`}>⭐</span>)}</span>
+            </div>
+            <div className="pp-gauge">
+              <div className="pp-gauge-dial" style={{ '--p': pressure }}>
+                <span>{Math.round(pressure)}%</span>
+              </div>
+              <div className="pp-gauge-meta">
+                <div><b>Давление потока</b></div>
+                <div>
+                  Ходы <b>{movesLeft}</b>/{session?.move_limit}
+                  {stats ? <> · Серия <b>{stats.current_streak}</b> · Макс <b>{stats.max_level}</b></> : null}
                 </div>
               </div>
             </div>
           </div>
 
-          <div className="pp-bottom">
-            <div className="pp-powers">
-              {[
-                { k: 'thor', ic: '🔨', label: 'ТОР', sub: 'ржав/засор/трещ' },
-                { k: 'heim', ic: '🌀', label: 'ФРЕЙЯ', sub: 'путь/засор/корни' },
-                { k: 'odin', ic: '🧠', label: 'ОДИН', sub: 'подсказка' },
-              ].map(({ k, ic, label }) => (
-                <button key={k} type="button" className={`pp-power ${powers[k] ? '' : 'off'}`} onClick={() => usePower(k)}>
-                  <span className="pp-power-ic">{ic}</span>{label}
-                </button>
+          <div className={`pp-hint ${hintErr ? 'err' : ''} ${hintOk ? 'ok' : ''}`}>{hint}</div>
+
+          <div className="pp-game">
+            <div
+              className={`pp-frame ${boardEnter ? 'enter' : ''} ${shake ? 'shake' : ''} ${linked ? 'linked' : ''} ${failed ? 'fail-vignette' : ''}`}
+              style={{ maxWidth: layout.maxWidth }}
+            >
+              {board3d && <canvas ref={boardCanvasRef} className="pp-board3d" aria-hidden />}
+              <div className={`pp-moves ${movesLeft <= 2 ? 'low' : ''}`}>{movesLeft} ход.</div>
+              <div
+                className={`pp-grid${board3d ? ' is-3d' : ''}`}
+                style={{
+                  gridTemplateColumns: `repeat(${size}, 1fr)`,
+                  gridTemplateRows: `repeat(${size}, 1fr)`,
+                  gap: layout.gap,
+                }}
+              >
+                {grid.map((cell, i) => {
+                  const isConn = conn.reachable.has(i);
+                  const isFlow = flowPath.includes(i);
+                  const isFlowHead = flowing && flowPath.length > 0 && i === flowPath[flowPath.length - 1];
+                  const isGhost = ghostPath.includes(i);
+                  const isRust = cell.t === P.RUST && !cell.rustCleared;
+                  const isClog = cell.t === P.CLOG && !cell.clogCleared;
+                  const isBroken = cell.t === P.BROKEN && !cell.brokenCleared;
+                  const isRoot = cell.t === P.ROOT && !cell.rootCleared;
+                  const isIce = !!cell.ice;
+                  let inner = '';
+                  if (cell.t === P.SRC) {
+                    inner = `${pipeSVG(cell, isConn, isFlow)}<div class="pp-icon" style="font-size:${layout.icon}px">💧</div>`;
+                  } else if (cell.t === P.DRN) {
+                    inner = `${pipeSVG(cell, isConn, isFlow)}<div class="pp-icon" style="font-size:${layout.icon}px">🏆</div>`;
+                  } else if (cell.t !== P.EMPTY) {
+                    inner = pipeSVG(cell, isConn, isFlow);
+                    if (isRust) inner += `<span class="pp-obstacle" style="font-size:${layout.obstacle}px">🪨</span>`;
+                    if (isClog) inner += `<span class="pp-obstacle" style="font-size:${layout.obstacle}px">🧱</span>`;
+                    if (isBroken) inner += `<span class="pp-obstacle" style="font-size:${layout.obstacle}px">💔</span>`;
+                    if (isRoot) inner += `<span class="pp-obstacle" style="font-size:${layout.obstacle}px">🌿</span>`;
+                  }
+                  if (highlight === i && odinClicks > 0) {
+                    inner += `<span class="pp-arrow">${odinClicks === 1 ? '↻' : odinClicks}</span>`;
+                  }
+                  return (
+                    <div
+                      key={i}
+                      className={[
+                        'pp-cell',
+                        isConn ? 'conn' : '',
+                        isFlow ? 'flow' : '',
+                        isFlowHead ? 'flow-head' : '',
+                        (cell.t === P.SRC && isConn) ? 'src-live' : '',
+                        isGhost ? 'ghost' : '',
+                        highlight === i ? 'hl' : '',
+                        flashIdx === i ? 'flash' : '',
+                        pulseCells.includes(i) ? 'pulse-link' : '',
+                        isRust ? 'rust' : '',
+                        isClog ? 'clog' : '',
+                        isBroken ? 'broken' : '',
+                        isRoot ? 'root' : '',
+                        isIce ? 'ice' : '',
+                      ].filter(Boolean).join(' ')}
+                      style={cell.t === P.EMPTY ? { opacity: 0.08, pointerEvents: 'none' } : undefined}
+                      onClick={() => rotate(i)}
+                      dangerouslySetInnerHTML={{ __html: inner }}
+                    />
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="pp-bottom">
+          <div className="pp-powers">
+            {[
+              { k: 'thor', ic: '🔨', label: 'ТОР', sub: 'Чинит ржав / засор / трещину' },
+              { k: 'heim', ic: '🌀', label: 'ФРЕЙЯ', sub: 'Корни + показывает путь' },
+              { k: 'odin', ic: '🧠', label: 'ОДИН', sub: 'Подсветит нужную клетку' },
+            ].map(({ k, ic, label, sub }) => (
+              <button key={k} type="button" className={`pp-power ${powers[k] ? '' : 'off'}`} onClick={() => usePower(k)}>
+                <span className="pp-power-ic">{ic}</span>
+                <span className="pp-power-name">{label}</span>
+                <span className="pp-power-sub">{sub}</span>
+              </button>
+            ))}
+          </div>
+          <div className="pp-actions">
+            <button type="button" className="pp-btn" disabled={busy || flowing || !!win || failed || showIntro} onClick={startFlow}>
+              {flowing ? '🌊 ПОТОК ИДЁТ…' : linked ? '🌊 ПУСТИТЬ ПОТОК!' : '🌊 ПУСТИТЬ ПОТОК'}
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {showIntro && (
+        <div className="pp-intro">
+          <div className="pp-intro-card">
+            <div className="pp-intro-icon">{world?.icon || '🌊'}</div>
+            <div className="pp-intro-world">{world?.name || 'МИР'}</div>
+            <div className="pp-intro-lvl">УРОВЕНЬ {session?.level}</div>
+          </div>
+        </div>
+      )}
+
+      {screenFlash && <div className="pp-screen-flash" />}
+      {raven && <div className="pp-raven" aria-hidden>🐦‍⬛</div>}
+      {valhalla && <div className="pp-valhalla" aria-hidden />}
+      {godFx && GODS[godFx] && (
+        <div className="pp-god">
+          <div className="pp-god-card">
+            <span className="pp-god-emoji">{GODS[godFx].emoji}</span>
+            <div className="pp-god-name">{GODS[godFx].name}</div>
+            <div className="pp-god-line">{GODS[godFx].line}</div>
+          </div>
+        </div>
+      )}
+
+      {failed && !win && (
+        <div className="pp-ov">
+          <div className="pp-win fail">
+            <div style={{ fontSize: 52 }}>💥</div>
+            <div className="pp-win-title" style={{ color: 'var(--red)' }}>ХОДЫ КОНЧИЛИСЬ</div>
+            <div style={{ fontSize: 13, color: 'var(--t2)', marginBottom: 8 }}>
+              Уровень ещё можно пройти — полный запас ходов ждёт.
+            </div>
+            <button type="button" className="pp-win-btn" onClick={restartLevel}>↻ ЗАНОВО</button>
+            <button type="button" className="pp-win-link" onClick={() => navigate('/field/home')}>В Зал Рабочих</button>
+          </div>
+        </div>
+      )}
+
+      {win && (
+        <div className="pp-ov">
+          <div className="pp-win">
+            <div className="pp-chest" />
+            <div style={{ fontSize: 11, fontWeight: 900, color: 'var(--cyan)', letterSpacing: '.14em' }}>ПОТОК ВОССТАНОВЛЕН</div>
+            <div className="pp-win-title">УРОВЕНЬ ПРОЙДЕН!</div>
+            <div className="pp-star-row">
+              {[1, 2, 3].map((i) => (
+                <span key={i} className={`pp-star-big ${winStarsOn >= i ? 'on' : ''}`}>⭐</span>
               ))}
             </div>
-            <div className="pp-actions">
-              <button type="button" className="pp-btn" disabled={busy || flowing || !!win} onClick={startFlow}>
-                {flowing ? '🌊 ПОТОК ИДЁТ…' : '🌊 ПУСТИТЬ ПОТОК'}
-              </button>
+            <div style={{ fontSize: 13, color: 'var(--t2)', marginBottom: 10 }}>
+              {world?.name} · Уровень {win.level}
             </div>
+            <div style={{ display: 'flex', justifyContent: 'center', gap: 10, flexWrap: 'wrap' }}>
+              <div className="pp-reward" style={{ background: 'rgba(165,110,255,.16)', color: '#C4B5FD' }}>+{xpShown} XP</div>
+              <div className="pp-reward" style={{ background: 'rgba(240,200,80,.14)', color: 'var(--gold)' }}>+{runesShown} ᚱ</div>
+            </div>
+            {(win.bonus_xp > 0 || win.bonus_runes > 0) && (
+              <div className="pp-bonus">
+                🎁 Бонусы: {win.bonus_xp > 0 ? `+${win.bonus_xp} XP` : ''}
+                {win.bonus_xp > 0 && win.bonus_runes > 0 ? ' · ' : ''}
+                {win.bonus_runes > 0 ? `+${win.bonus_runes} ᚱ` : ''}
+              </div>
+            )}
+            {win.current_streak >= 3 && (
+              <div style={{ marginTop: 10, fontSize: 13, color: 'var(--gold)', fontWeight: 800 }}>🔥 Серия {win.current_streak} уровней!</div>
+            )}
+            <button type="button" className="pp-win-btn" onClick={nextLevel}>СЛЕДУЮЩИЙ УРОВЕНЬ →</button>
+            <button type="button" className="pp-win-link" onClick={() => navigate('/field/leaderboard?tab=pipeline')}>🏆 Рейтинг Рунопровода</button>
           </div>
         </div>
+      )}
 
-        {win && (
-          <div className="pp-ov" onClick={(e) => e.target.className === 'pp-ov' && setWin(null)}>
-            <div className="pp-win">
-              <div style={{ fontSize: 56 }}>🌊</div>
-              <div style={{ fontSize: 10, fontWeight: 800, color: 'var(--cyan)', letterSpacing: '.1em' }}>ПОТОК ВОССТАНОВЛЕН</div>
-              <div className="pp-win-title">УРОВЕНЬ ПРОЙДЕН!</div>
-              <div style={{ fontSize: 13, color: 'var(--t2)', marginBottom: 12 }}>
-                {world?.name} · Уровень {win.level} · {'⭐'.repeat(win.stars)}
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'center', gap: 12, flexWrap: 'wrap' }}>
-                <div style={{ padding: '10px 18px', borderRadius: 14, background: 'rgba(165,110,255,.12)', color: '#A56EFF', fontWeight: 800 }}>+{win.total_xp ?? win.xp} XP</div>
-                <div style={{ padding: '10px 18px', borderRadius: 14, background: 'rgba(240,200,80,.1)', color: 'var(--gold)', fontWeight: 800 }}>+{win.total_runes ?? win.runes} ᚱ</div>
-              </div>
-              {(win.bonus_xp > 0 || win.bonus_runes > 0) && (
-                <div className="pp-bonus">
-                  🎁 Бонусы: {win.bonus_xp > 0 ? `+${win.bonus_xp} XP` : ''}{win.bonus_xp > 0 && win.bonus_runes > 0 ? ' · ' : ''}{win.bonus_runes > 0 ? `+${win.bonus_runes} ᚱ` : ''}
-                </div>
-              )}
-              {win.current_streak >= 3 && (
-                <div style={{ marginTop: 10, fontSize: 12, color: 'var(--gold)' }}>🔥 Серия {win.current_streak} уровней!</div>
-              )}
-              <button type="button" className="pp-win-btn" onClick={nextLevel}>СЛЕДУЮЩИЙ УРОВЕНЬ →</button>
-              <button type="button" className="pp-win-link" onClick={() => navigate('/field/leaderboard?tab=pipeline')}>🏆 Рейтинг Рунопровода</button>
-            </div>
+      {showTut && (
+        <div className="pp-tut">
+          <div className="pp-tut-card">
+            <div style={{ fontSize: 42, marginBottom: 8 }}>{TUTORIAL_STEPS[tutStep].icon}</div>
+            <h3>{TUTORIAL_STEPS[tutStep].title}</h3>
+            <p>{TUTORIAL_STEPS[tutStep].text}</p>
+            <button
+              type="button"
+              className="pp-win-btn"
+              style={{ marginTop: 0 }}
+              onClick={() => {
+                if (tutStep >= TUTORIAL_STEPS.length - 1) finishTutorial();
+                else setTutStep((s) => s + 1);
+              }}
+            >
+              {tutStep >= TUTORIAL_STEPS.length - 1 ? 'ИГРАТЬ!' : 'ДАЛЬШЕ →'}
+            </button>
+            <button type="button" className="pp-win-link" onClick={finishTutorial}>Пропустить</button>
           </div>
-        )}
-      </div>
-    </>
+        </div>
+      )}
+    </div>
   );
 }

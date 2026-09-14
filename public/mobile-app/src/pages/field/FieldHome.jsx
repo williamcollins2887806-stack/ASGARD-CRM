@@ -4,16 +4,26 @@ import {
   Clock, Wallet, History, Users, Truck, UserCircle,
   MapPin, AlertCircle, RefreshCw, Play, Square,
   Phone, Briefcase, Camera, FileText, AlertTriangle, Package, DollarSign, Map,
-  Calendar, Shield, PackageCheck, ClipboardList,
+  Calendar, Shield, PackageCheck, ClipboardList, ScrollText,
 } from 'lucide-react';
 import { fieldApi } from '@/api/fieldClient';
 import { useFieldAuthStore } from '@/stores/fieldAuthStore';
 import { useHaptic } from '@/hooks/useHaptic';
+import RankUpCeremony, { checkRankCeremony } from '@/components/field/RankUpCeremony';
+import { getLevel, getRank, rankIndex } from '@/lib/fieldRanks';
 import { usePushSubscription } from '@/hooks/usePushSubscription';
+import { NornsPauseStrip, PAUSE_BADGE } from '@/components/field/NornsPauseBanner';
 
 const PUSH_DISMISSED_KEY = 'asgard_field_push_dismissed_v1';
 const IOS_HINT_DISMISSED_KEY = 'asgard_ios_hint_dismissed_v1';
-const PIPELINE_BANNER_KEY = 'asgard_pipeline_launch_v1';
+const CHEMLAB_BANNER_KEY = 'asgard_chemlab_banner_v1';
+
+const GAMES_FOLDER = [
+  { emoji: '🎰', label: 'Рулетка', path: '/field/wheel', bg: 'linear-gradient(135deg,#3a0a10,#1a0508)', border: 'rgba(232,64,87,.35)', badge: PAUSE_BADGE },
+  { emoji: '🌊', label: 'Рунопровод', path: '/field/pipeline', bg: 'linear-gradient(135deg,#0a1a2a,#051018)', border: 'rgba(56,189,248,.4)' },
+  { emoji: '🧪', label: 'Химцех', path: '/field/chemlab', bg: 'linear-gradient(135deg,#1a1408,#0e0c08)', border: 'rgba(232,168,56,.45)', badge: 'NEW' },
+  { emoji: '＋', label: 'Скоро', path: null, bg: 'rgba(255,255,255,0.04)', border: 'rgba(255,255,255,0.1)', soon: true },
+];
 
 // Detect iOS Safari (not standalone)
 function detectIOSSafari() {
@@ -25,8 +35,6 @@ function detectIOSSafari() {
     window.matchMedia('(display-mode: standalone)').matches;
   return isIOS && isSafari && !isStandalone;
 }
-
-const fmtMoney = (n) => n != null ? Math.round(n).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' ') + ' ₽' : null;
 
 const VIKING_QUOTES = [
   'Не бойся медленного продвижения — бойся остановки',
@@ -90,12 +98,11 @@ function fmtPlanPeriod(from, to) {
 
 function shortFio(fio) {
   if (!fio) return '';
-  const p = fio.trim().split(/\s+/);
-  if (p.length >= 3) return `${p[0]} ${p[1][0]}.${p[2][0]}.`;
-  if (p.length === 2) return `${p[0]} ${p[1][0]}.`;
+  const p = fio.trim().split(/\s+/).filter(Boolean);
+  if (p.length >= 3) return `${p[0]} ${p[1]} ${p[2][0]}.`;
+  if (p.length === 2) return `${p[0]} ${p[1]}`;
   return p[0];
 }
-
 function getGeo() {
   return new Promise((resolve) => {
     if (!navigator.geolocation) return resolve({});
@@ -110,17 +117,55 @@ function getGeo() {
 // 23.06.2026 BUG-FIX (🟡 S-FIELD-05): добавлен ключ `object` (Объект) — канон stage_type бэкенда
 // (src/routes/field-stages.js:33 STAGE_TYPES = ['medical','travel','waiting','warehouse','day_off','object']).
 // Без этого ключа баннер "current stage" рисовал бы сырой 'object' при stage_type='object'.
-const STAGE_LABELS = { medical: 'Медосмотр', travel: 'Дорога', waiting: 'Ожидание', warehouse: 'Склад', day_off: 'Выходной', object: 'Объект' };
-const STAGE_COLORS = { medical: '#9333EA', travel: '#3B82F6', waiting: '#F59E0B', warehouse: '#F97316', day_off: '#9CA3AF', object: '#22C55E' };
-const STAGE_ICONS = { medical: '🏥', travel: '✈️', waiting: '⏳', warehouse: '📦', day_off: '🛏', object: '🏗' };
+const STAGE_LABELS = {
+  medical: 'Медосмотр', travel: 'Дорога', waiting: 'Ожидание', warehouse: 'Склад',
+  day_off: 'Выходной', object: 'Объект', ship: 'Корабль', helicopter: 'Вертолёт', training: 'Обучение',
+};
+
+const STAGE_COLORS = {
+  medical: '#9333EA', travel: '#3B82F6', waiting: '#F59E0B', warehouse: '#F97316',
+  day_off: '#9CA3AF', object: '#22C55E', ship: '#0EA5E9', helicopter: '#06B6D4', training: '#A855F7',
+};
+const STAGE_ICONS = {
+  medical: '🏥', travel: '✈️', waiting: '⏳', warehouse: '📦',
+  day_off: '🛏', object: '🏗', ship: '🚢', helicopter: '🚁', training: '📚',
+};
+
+/** Read-only блок вахты МЛСП (токены темы поля). */
+function MlspStayBanner({ stay }) {
+  if (!stay?.is_open) return null;
+  const hot = stay.is_overdue || (stay.days_left != null && stay.days_left <= 7);
+  const warn = !hot && stay.days_left != null && stay.days_left <= 14;
+  const tone = hot ? 'var(--danger, #ef4444)' : warn ? 'var(--warning, #f59e0b)' : 'var(--success, #22c55e)';
+  const bg = hot ? 'rgba(239,68,68,0.12)' : warn ? 'rgba(245,158,11,0.12)' : 'rgba(34,197,94,0.10)';
+  const bd = hot ? 'rgba(239,68,68,0.35)' : warn ? 'rgba(245,158,11,0.35)' : 'rgba(34,197,94,0.3)';
+  return (
+    <div className="mt-3 rounded-lg px-3 py-2" style={{ backgroundColor: bg, border: `1px solid ${bd}` }}>
+      <p className="text-xs font-semibold uppercase tracking-wide" style={{ color: tone }}>
+        МЛСП · {stay.days_on_platform ?? '—'} дн. на платформе
+      </p>
+      <p className="text-xs mt-1" style={{ color: 'var(--text-secondary)' }}>
+        Заезд: {stay.arrived_at ? new Date(stay.arrived_at).toLocaleDateString('ru-RU') : '—'}
+        {' · '}Вывоз: {stay.planned_depart_at ? new Date(stay.planned_depart_at).toLocaleDateString('ru-RU') : '—'}
+        {stay.days_left != null && !stay.is_overdue ? ` · осталось ${stay.days_left} дн` : ''}
+        {stay.is_overdue ? ` · просрочен ${Math.abs(stay.days_left)} дн` : ''}
+      </p>
+      {stay.transport && (
+        <p className="text-xs mt-1" style={{ color: 'var(--text-tertiary)' }}>
+          Вывоз: {stay.transport === 'ship' ? 'корабль' : 'вертолёт'}
+        </p>
+      )}
+    </div>
+  );
+}
 
 const GAMIFICATION_TILES = [
-  { emoji: '🎰', label: 'Рулетка', path: '/field/wheel', bg: 'linear-gradient(135deg,#3a0a10,#1a0508)', border: 'rgba(232,64,87,.25)' },
-  { emoji: '🌊', label: 'Рунопровод', path: '/field/pipeline', bg: 'linear-gradient(135deg,#0a1a2a,#051018)', border: 'rgba(56,189,248,.35)', badge: 'NEW' },
+  { emoji: '🎮', label: 'Игры', path: '__games_folder__', bg: 'linear-gradient(135deg,#1a1520,#0c0a12)', border: 'rgba(232,168,56,.35)', badge: 'NEW', folder: true },
   { emoji: '🛍', label: 'Магазин', path: '/field/shop', bg: 'linear-gradient(135deg,#2a2008,#1a1505)', border: 'rgba(240,200,80,.25)' },
   { emoji: '🎁', label: 'Инвентарь', path: '/field/inventory', bg: 'linear-gradient(135deg,#0a1a2a,#081020)', border: 'rgba(74,144,255,.25)' },
   { emoji: '🏛️', label: 'Чертоги Мимира', path: '/field/academy', bg: 'linear-gradient(135deg,#1a0d2e,#0d0a1a)', border: 'rgba(123,97,255,.35)' },
   { emoji: '⚔️', label: 'Квесты', path: '/field/quests', bg: 'linear-gradient(135deg,#1a0a2a,#100818)', border: 'rgba(165,110,255,.25)' },
+  { emoji: '🍂', label: 'Сезон', path: '/field/seasonal', bg: 'linear-gradient(135deg,#2a1208,#1a0c05)', border: 'rgba(234,88,12,.35)', badge: 'NEW' },
   { emoji: '🏆', label: 'Рейтинг', path: '/field/leaderboard', bg: 'linear-gradient(135deg,#1a1400,#0e0c00)', border: 'rgba(212,168,67,.35)' },
   { emoji: '🗺️', label: 'Подвиги', path: '/field/journey', bg: 'linear-gradient(135deg,#0a2020,#081818)', border: 'rgba(61,220,132,.25)' },
 ];
@@ -143,12 +188,20 @@ export default function FieldHome() {
   const [showPushPrompt, setShowPushPrompt] = useState(false);
   const [showIOSHint, setShowIOSHint] = useState(false);
   const [showReadinessPrompt, setShowReadinessPrompt] = useState(false);
-  const [showPipelineBanner, setShowPipelineBanner] = useState(false);
+  const [showChemLabBanner, setShowChemLabBanner] = useState(false);
+  const [showGamesFolder, setShowGamesFolder] = useState(false);
+  const [showProfileConfirm, setShowProfileConfirm] = useState(false);
+  const [profileCompleteness, setProfileCompleteness] = useState(null);
+  const [profileConfirming, setProfileConfirming] = useState(false);
   const [readinessStatus, setReadinessStatus] = useState(null); // ready|not_ready|on_site|unknown|archive
+  const [rankCeremony, setRankCeremony] = useState(null);
+  const [meAssets, setMeAssets] = useState({});
+  const [meCosmetics, setMeCosmetics] = useState({});
   const push = usePushSubscription();
   const timerRef = useRef(null);
   const touchStartY = useRef(0);
   const [pulling, setPulling] = useState(false);
+  const ceremonyShownRef = useRef(false);
 
   const delay = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -189,6 +242,42 @@ export default function FieldHome() {
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
+  // Rank-up ceremony (shared session guard with FieldProfile)
+  useEffect(() => {
+    if (ceremonyShownRef.current) return;
+    try {
+      if (sessionStorage.getItem('field_rank_ceremony_session')) return;
+    } catch { /* */ }
+    let cancelled = false;
+    fieldApi.get('/worker/me').then((me) => {
+      if (cancelled || !me) return;
+      setMeAssets(me.assets || {});
+      setMeCosmetics({
+        active_avatar: me.active_avatar,
+        active_frame: me.active_frame,
+        active_badge: me.active_badge,
+        active_theme: me.active_theme,
+        active_helmet: me.active_helmet,
+        active_weapon: me.active_weapon,
+        active_armor: me.active_armor,
+      });
+      const lvl = getLevel(me.xp || 0);
+      const rank = getRank(lvl);
+      const chk = checkRankCeremony(me.id || employee?.id, rank.title);
+      if (!chk.show) return;
+      if (chk.prevTitle && rankIndex(rank.title) <= rankIndex(chk.prevTitle)) return;
+      ceremonyShownRef.current = true;
+      try { sessionStorage.setItem('field_rank_ceremony_session', '1'); } catch { /* */ }
+      setRankCeremony({
+        rank,
+        prevTitle: chk.prevTitle,
+        level: lvl,
+        welcome: !!chk.welcome,
+      });
+    }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [employee?.id]);
+
   // Загрузить статус готовности всегда (для постоянного баннера) + показать промпт когда нужно
   useEffect(() => {
     if (loading || !data) return;
@@ -200,6 +289,15 @@ export default function FieldHome() {
       if (!hasProject && (st === 'unknown' || st === 'on_site')) {
         setShowReadinessPrompt(true);
       }
+    }).catch(() => {});
+  }, [loading, data]);
+
+  // Ежемесячное подтверждение анкеты (отдельно от readiness)
+  useEffect(() => {
+    if (loading || !data) return;
+    fieldApi.get('/worker/personal/completeness').then((res) => {
+      setProfileCompleteness(res);
+      if (res?.needsConfirm) setShowProfileConfirm(true);
     }).catch(() => {});
   }, [loading, data]);
 
@@ -219,10 +317,10 @@ export default function FieldHome() {
     return () => clearTimeout(t);
   }, []);
 
-  // Новая игра «Рунопровод» — баннер при входе
+  // Новая игра «Химцех» — баннер при входе (приоритет над старым pipeline)
   useEffect(() => {
-    if (localStorage.getItem(PIPELINE_BANNER_KEY)) return;
-    const t = setTimeout(() => setShowPipelineBanner(true), 800);
+    if (localStorage.getItem(CHEMLAB_BANNER_KEY)) return;
+    const t = setTimeout(() => setShowChemLabBanner(true), 800);
     return () => clearTimeout(t);
   }, []);
 
@@ -355,6 +453,7 @@ export default function FieldHome() {
   const firstName = (!isInitial && rawSecond) ? rawSecond : (fioParts[0] || 'Воин');
   const project = data?.project;
   const plannedEngagement = data?.planned_engagement;
+  const mlspStay = data?.mlsp_stay || project?.mlsp_stay || null;
   const checkin = data?.today_checkin || project?.today_checkin;
   const isActive = checkin && !checkin.checkout_at;
   const hasDeparted = !!project?.departure_date;
@@ -423,11 +522,6 @@ export default function FieldHome() {
   const titles = isMaster ? MASTER_TITLES : WARRIOR_TITLES;
   const vikingTitle = titles[dayIndex % titles.length];
 
-  // Earnings breakdown
-  const perDiem = parseFloat(project?.per_diem || 0);
-  const checkinAmount = checkin?.status === 'completed' ? parseFloat(checkin.amount_earned || 0) : 0;
-  const todayEarned = checkinAmount > 0 ? checkinAmount + perDiem : 0;
-
   if (loading) {
     return (
       <div className="p-4 space-y-4">
@@ -441,14 +535,13 @@ export default function FieldHome() {
   // Build quick actions
   const actions = [
     { icon: Briefcase, label: 'Мои работы', path: '/field/my-works' },
+    { icon: History, label: 'Табель', path: '/field/timesheet' },
     { icon: Users, label: 'Бригада', path: '/field/crew' },
-    { icon: Wallet, label: 'Сейчас', path: '/field/money' },
     { icon: Map, label: 'Маршрут', path: '/field/stages' },
     { icon: Truck, label: 'Поездки и направления', path: '/field/logistics' },
     { icon: Camera, label: 'Фото', path: '/field/photos' },
     { icon: Package, label: 'Сбор паллет', path: '/field/assembly' },
-    { icon: History, label: 'История', path: '/field/history' },
-    { icon: Calendar, label: 'Зарплата по месяцам', path: '/field/earnings/monthly' },
+    { icon: ScrollText, label: 'Наряды', path: '/field/permits' },
   ];
   if (isMaster) {
     actions.push(
@@ -463,6 +556,20 @@ export default function FieldHome() {
 
   return (
     <div className="p-4 pb-24 min-h-screen" onTouchStart={onTouchStart} onTouchEnd={onTouchEnd} style={{ backgroundColor: 'var(--bg-primary)' }}>
+      {rankCeremony && (
+        <RankUpCeremony
+          open
+          rank={rankCeremony.rank}
+          prevRank={rankCeremony.prevTitle}
+          level={rankCeremony.level}
+          assets={meAssets}
+          cosmetics={meCosmetics}
+          employeeId={employee?.id}
+          haptic={haptic}
+          welcome={!!rankCeremony.welcome}
+          onClose={() => setRankCeremony(null)}
+        />
+      )}
       {pulling && (
         <div className="flex justify-center py-2">
           <RefreshCw size={20} className="animate-spin" style={{ color: 'var(--gold)' }} />
@@ -476,22 +583,22 @@ export default function FieldHome() {
         <p className="text-xs italic mt-2" style={{ color: 'var(--text-tertiary)' }}>«{quote}»</p>
       </div>
 
-      {/* Рунопровод — launch banner */}
-      {showPipelineBanner && (
+      {/* Химцех — launch banner */}
+      {showChemLabBanner && (
         <div style={{
           position: 'relative',
           display: 'flex', alignItems: 'center', gap: 14,
-          background: 'linear-gradient(135deg, rgba(14,116,144,0.35) 0%, rgba(56,189,248,0.12) 50%, rgba(165,110,255,0.08) 100%)',
-          border: '1.5px solid rgba(56,189,248,0.45)',
+          background: 'linear-gradient(135deg, rgba(232,168,56,0.28) 0%, rgba(245,158,11,0.1) 50%, rgba(20,24,32,0.5) 100%)',
+          border: '1.5px solid rgba(232,168,56,0.5)',
           borderRadius: 18, padding: '14px 16px', marginBottom: 20,
-          boxShadow: '0 8px 32px rgba(56,189,248,0.15), inset 0 1px 0 rgba(255,255,255,0.06)',
+          boxShadow: '0 8px 32px rgba(232,168,56,0.18), inset 0 1px 0 rgba(255,255,255,0.06)',
           animation: 'fadeInUp var(--motion-normal) var(--ease-spring) both',
         }}>
           <button
             type="button"
             onClick={() => {
-              setShowPipelineBanner(false);
-              localStorage.setItem(PIPELINE_BANNER_KEY, '1');
+              setShowChemLabBanner(false);
+              localStorage.setItem(CHEMLAB_BANNER_KEY, '1');
             }}
             style={{
               position: 'absolute', top: 8, right: 10, background: 'none', border: 'none',
@@ -501,39 +608,40 @@ export default function FieldHome() {
           >×</button>
           <div style={{
             width: 52, height: 52, borderRadius: 16, flexShrink: 0,
-            background: 'linear-gradient(135deg, rgba(56,189,248,0.35), rgba(14,116,144,0.2))',
-            border: '1px solid rgba(56,189,248,0.5)',
+            background: 'linear-gradient(135deg, rgba(232,168,56,0.4), rgba(120,80,20,0.25))',
+            border: '1px solid rgba(232,168,56,0.55)',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
-            fontSize: 28, filter: 'drop-shadow(0 0 12px rgba(56,189,248,0.5))',
-          }}>🌊</div>
+            fontSize: 28, filter: 'drop-shadow(0 0 12px rgba(232,168,56,0.45))',
+          }}>🧪</div>
           <div style={{ flex: 1, minWidth: 0, paddingRight: 20 }}>
-            <p style={{ fontSize: 10, fontWeight: 800, letterSpacing: '.14em', color: 'rgba(56,189,248,0.9)', marginBottom: 4 }}>
-              НОВИНКА АСГАРДА
+            <p style={{ fontSize: 10, fontWeight: 800, letterSpacing: '.14em', color: '#F0C850', marginBottom: 4 }}>
+              НОВАЯ ИГРА · ХИМЦЕХ
             </p>
             <p style={{ fontSize: 15, fontWeight: 800, color: '#fff', marginBottom: 4, lineHeight: 1.25 }}>
-              Рунопровод — попробуй, воин!
+              Переливай реагенты по протоколу
             </p>
             <p style={{ fontSize: 11, color: 'rgba(255,255,255,0.65)', lineHeight: 1.4 }}>
-              Проложи поток на объекте — бесконечные уровни, XP и руны ᚱ
+              Ошибка = взрыв на весь экран. Учись на реальных правилах смены
             </p>
           </div>
           <button
             type="button"
             onClick={() => {
               haptic.medium();
-              localStorage.setItem(PIPELINE_BANNER_KEY, '1');
-              setShowPipelineBanner(false);
-              navigate('/field/pipeline');
+              localStorage.setItem(CHEMLAB_BANNER_KEY, '1');
+              setShowChemLabBanner(false);
+              navigate('/field/chemlab');
             }}
             style={{
-              fontSize: 12, fontWeight: 800, color: '#0b0e1a',
-              background: 'linear-gradient(135deg, #38bdf8, #7dd3fc)',
+              fontSize: 11, fontWeight: 900, color: '#0b0e1a',
+              background: 'linear-gradient(135deg, #F0C850, #e8a838)',
               border: 'none', borderRadius: 12,
-              padding: '10px 14px', whiteSpace: 'nowrap', flexShrink: 0, cursor: 'pointer',
-              boxShadow: '0 4px 16px rgba(56,189,248,0.35)',
+              padding: '12px 12px', whiteSpace: 'nowrap', flexShrink: 0, cursor: 'pointer',
+              boxShadow: '0 4px 18px rgba(240,200,80,0.4)',
+              letterSpacing: '0.02em',
             }}
           >
-            Играть
+            ИГРАТЬ
           </button>
         </div>
       )}
@@ -686,6 +794,11 @@ export default function FieldHome() {
             {[project.city, project.object_name].filter(Boolean).join(' · ')}
           </p>
 
+          {/* Вахта МЛСП — только чтение, вшито в баннер объекта */}
+          {mlspStay?.is_open && (
+            <MlspStayBanner stay={mlspStay} />
+          )}
+
           {/* PM + Masters call buttons */}
           <div className="flex flex-wrap gap-2 mt-3">
             {project.pm?.fio && (
@@ -705,6 +818,17 @@ export default function FieldHome() {
               </a>
             ))}
           </div>
+        </div>
+      ) : mlspStay?.is_open ? (
+        <div className="rounded-xl p-4 mb-4"
+          style={{ backgroundColor: 'var(--bg-elevated)', border: '1px solid var(--border-norse)' }}>
+          <div className="flex items-center gap-2 mb-2">
+            <MapPin size={16} style={{ color: 'var(--gold)' }} />
+            <span className="text-xs font-medium uppercase tracking-wide" style={{ color: 'var(--text-tertiary)' }}>
+              На платформе МЛСП
+            </span>
+          </div>
+          <MlspStayBanner stay={mlspStay} />
         </div>
       ) : (
         <div className="rounded-xl p-6 mb-4 text-center"
@@ -735,6 +859,13 @@ export default function FieldHome() {
             <Calendar size={12} className="inline mr-1" style={{ verticalAlign: '-2px' }} />
             {fmtPlanPeriod(plannedEngagement.planned_from, plannedEngagement.planned_to)}
           </p>
+          {(plannedEngagement.site_category === 'mlsp' || plannedEngagement.inbound_transport) && (
+            <p className="text-sm mt-1" style={{ color: 'var(--text-secondary)' }}>
+              Завоз{plannedEngagement.planned_from ? ` ${new Date(plannedEngagement.planned_from).toLocaleDateString('ru-RU')}` : ''}
+              {plannedEngagement.inbound_transport === 'ship' ? ' · корабль'
+                : plannedEngagement.inbound_transport === 'helicopter' ? ' · вертолёт' : ''}
+            </p>
+          )}
           <p className="text-xs mt-2 italic" style={{ color: 'var(--text-tertiary)' }}>
             Это план, не назначение. Смена начнётся после выезда на объект.
           </p>
@@ -777,7 +908,6 @@ export default function FieldHome() {
           </p>
           <p className="text-sm mt-1" style={{ color: 'var(--text-secondary)' }}>
             {Math.max(1, Math.floor((Date.now() - new Date(currentStage.date_from).getTime()) / 86400000) + 1)}-й день
-            {currentStage.rate_per_day ? ` · ~${fmtMoney(Math.max(1, Math.floor((Date.now() - new Date(currentStage.date_from).getTime()) / 86400000) + 1) * parseFloat(currentStage.rate_per_day))}` : ''}
           </p>
           <p className="text-xs mt-1" style={{ color: 'var(--gold)' }}>Подробнее →</p>
         </button>
@@ -796,6 +926,11 @@ export default function FieldHome() {
           )}
           {project.departure_reason && (
             <p className="text-xs mt-1" style={{ color: 'var(--text-tertiary)' }}>{project.departure_reason}</p>
+          )}
+          {(mlspStay?.transport || project?.mlsp_stay?.transport) && (
+            <p className="text-xs mt-1" style={{ color: 'var(--text-tertiary)' }}>
+              Вывезли: {(mlspStay?.transport || project.mlsp_stay.transport) === 'ship' ? 'корабль' : 'вертолёт'}
+            </p>
           )}
         </div>
       )}
@@ -847,11 +982,6 @@ export default function FieldHome() {
                 <p className="text-xs uppercase tracking-wide mb-1" style={{ color: 'var(--text-tertiary)' }}>Смена идёт</p>
                 <p className="text-3xl font-mono font-bold" style={{ color: 'var(--gold)' }}>{fmtTimer(elapsed)}</p>
               </div>
-              {checkin.amount_earned != null && (
-                <p className="text-center text-sm mb-3" style={{ color: 'var(--text-secondary)' }}>
-                  Заработано: <span className="font-semibold" style={{ color: 'var(--text-primary)' }}>{fmtMoney(checkin.amount_earned)}</span>
-                </p>
-              )}
               {!shiftEndInfo.allowed && (
                 <p className="text-center text-xs mb-2" style={{ color: 'var(--text-secondary)' }}>
                   Смена до {shiftEndInfo.endLabel} · осталось {shiftEndInfo.remainingLabel}
@@ -865,16 +995,6 @@ export default function FieldHome() {
             </>
           ) : (
             <>
-              {checkin?.checkout_at && checkin.amount_earned != null && (
-                <div className="text-center text-sm mb-3" style={{ color: 'var(--text-secondary)' }}>
-                  <p>Сегодня: <span className="font-semibold" style={{ color: 'var(--gold)' }}>{fmtMoney(todayEarned)}</span></p>
-                  {checkinAmount > 0 && perDiem > 0 && (
-                    <p className="text-xs mt-1" style={{ color: 'var(--text-tertiary)' }}>
-                      {fmtMoney(checkinAmount)} смена + {fmtMoney(perDiem)} пайковые
-                    </p>
-                  )}
-                </div>
-              )}
               <button disabled={actionLoading} onClick={handleCheckin}
                 className="w-full py-3 rounded-xl font-semibold text-white text-sm disabled:opacity-50"
                 style={{ background: 'linear-gradient(135deg, var(--gold), #b8860b)' }}>
@@ -906,24 +1026,135 @@ export default function FieldHome() {
         <p className="text-xs font-semibold uppercase tracking-wide px-1 mb-2" style={{ color: 'var(--text-tertiary)', letterSpacing: '.1em' }}>
           ⚔ Геймификация
         </p>
+        <NornsPauseStrip style={{ margin: '0 0 10px' }} />
         <div className="grid grid-cols-2 gap-3">
-          {GAMIFICATION_TILES.map(({ emoji, label, path, bg, border, badge }) => (
-            <button key={path} onClick={() => { haptic.medium(); navigate(path); }}
+          {GAMIFICATION_TILES.map(({ emoji, label, path, bg, border, badge, folder }) => (
+            <button
+              key={path}
+              onClick={() => {
+                haptic.medium();
+                if (folder) setShowGamesFolder(true);
+                else navigate(path);
+              }}
               className="flex items-center gap-3 p-4 rounded-2xl active:scale-95 transition-transform relative"
-              style={{ background: bg, border: `1.5px solid ${border}`, boxShadow: '0 4px 16px rgba(0,0,0,.2)' }}>
+              style={{ background: bg, border: `1.5px solid ${border}`, boxShadow: '0 4px 16px rgba(0,0,0,.2)' }}
+            >
               {badge && (
                 <span style={{
                   position: 'absolute', top: 8, right: 8, fontSize: 8, fontWeight: 800,
-                  padding: '2px 6px', borderRadius: 6, background: 'rgba(56,189,248,0.9)', color: '#0b0e1a',
+                  padding: '2px 6px', borderRadius: 6,
+                  background: badge === PAUSE_BADGE ? 'rgba(240,200,80,0.92)' : 'rgba(232,168,56,0.95)',
+                  color: '#0b0e1a',
                   letterSpacing: '.06em',
+                  maxWidth: '55%',
+                  whiteSpace: 'nowrap',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
                 }}>{badge}</span>
               )}
-              <span style={{ fontSize: 28, filter: 'drop-shadow(0 2px 6px rgba(0,0,0,.3))' }}>{emoji}</span>
+              {folder ? (
+                <div style={{
+                  width: 40, height: 40, borderRadius: 10, flexShrink: 0,
+                  background: 'rgba(0,0,0,0.35)',
+                  border: '1px solid rgba(255,255,255,0.1)',
+                  display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 2, padding: 4,
+                }}>
+                  {['🎰', '🌊', '🧪', '·'].map((e, i) => (
+                    <div key={i} style={{
+                      borderRadius: 4, fontSize: 11, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      background: 'rgba(255,255,255,0.06)',
+                    }}>{e}</div>
+                  ))}
+                </div>
+              ) : (
+                <span style={{ fontSize: 28, filter: 'drop-shadow(0 2px 6px rgba(0,0,0,.3))' }}>{emoji}</span>
+              )}
               <span className="text-sm font-bold" style={{ color: '#fff' }}>{label}</span>
             </button>
           ))}
         </div>
       </div>
+
+      {/* iOS-style Games folder */}
+      {showGamesFolder && (
+        <div
+          role="dialog"
+          aria-label="Игры"
+          onClick={() => setShowGamesFolder(false)}
+          style={{
+            position: 'fixed', inset: 0, zIndex: 80,
+            background: 'rgba(8,10,14,0.55)',
+            backdropFilter: 'blur(18px)',
+            WebkitBackdropFilter: 'blur(18px)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            padding: 24,
+            animation: 'fadeInUp 0.25s var(--ease-spring) both',
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              width: '100%', maxWidth: 320,
+              borderRadius: 28,
+              padding: '22px 18px 18px',
+              background: 'linear-gradient(160deg, rgba(40,44,56,0.92), rgba(18,20,28,0.96))',
+              border: '1px solid rgba(255,255,255,0.12)',
+              boxShadow: '0 24px 80px rgba(0,0,0,0.55)',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16, padding: '0 4px' }}>
+              <p style={{ margin: 0, fontSize: 17, fontWeight: 900, color: '#fff' }}>Игры</p>
+              <button
+                type="button"
+                onClick={() => setShowGamesFolder(false)}
+                style={{
+                  width: 32, height: 32, borderRadius: 16, border: 'none',
+                  background: 'rgba(255,255,255,0.1)', color: '#fff', fontSize: 18, cursor: 'pointer',
+                }}
+              >×</button>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+              {GAMES_FOLDER.map((g) => (
+                <button
+                  key={g.label}
+                  type="button"
+                  disabled={g.soon}
+                  onClick={() => {
+                    if (g.soon || !g.path) return;
+                    haptic.medium();
+                    setShowGamesFolder(false);
+                    navigate(g.path);
+                  }}
+                  style={{
+                    display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8,
+                    padding: 10, border: 'none', background: 'transparent', cursor: g.soon ? 'default' : 'pointer',
+                    opacity: g.soon ? 0.45 : 1,
+                  }}
+                >
+                  <div style={{
+                    width: 64, height: 64, borderRadius: 16, position: 'relative',
+                    background: g.bg, border: `1.5px solid ${g.border}`,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    fontSize: 30,
+                    boxShadow: '0 8px 24px rgba(0,0,0,0.35)',
+                  }}>
+                    {g.emoji}
+                    {g.badge && (
+                      <span style={{
+                        position: 'absolute', top: -4, right: -4, fontSize: 8, fontWeight: 800,
+                        padding: '2px 5px', borderRadius: 6,
+                        background: g.badge === PAUSE_BADGE ? 'rgba(240,200,80,0.95)' : 'rgba(232,168,56,0.95)',
+                        color: '#0b0e1a',
+                      }}>{g.badge}</span>
+                    )}
+                  </div>
+                  <span style={{ fontSize: 12, fontWeight: 700, color: '#fff' }}>{g.label}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Mimir tip */}
       {mimirTip && (
@@ -975,24 +1206,28 @@ export default function FieldHome() {
 
       {/* Readiness prompt BottomSheet */}
       {showReadinessPrompt && (
-        <div style={{
-          position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 600,
-          animation: 'fadeInUp 300ms var(--ease-spring) both',
-        }}>
+        <>
           <div
+            role="presentation"
             style={{
-              position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)',
-              zIndex: 599,
+              position: 'fixed', inset: 0, zIndex: 10050,
+              background: 'rgba(0,0,0,0.5)',
             }}
             onClick={() => setShowReadinessPrompt(false)}
           />
-          <div style={{
-            position: 'relative', zIndex: 601,
-            background: 'var(--bg-elevated)',
-            borderTopLeftRadius: 24, borderTopRightRadius: 24,
-            padding: '24px 20px 32px',
-            boxShadow: '0 -8px 32px rgba(0,0,0,0.3)',
-          }}>
+          <div
+            role="dialog"
+            aria-modal="true"
+            style={{
+              position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 10051,
+              background: 'var(--bg-elevated)',
+              borderTopLeftRadius: 24, borderTopRightRadius: 24,
+              padding: '24px 20px 32px',
+              paddingBottom: 'max(32px, env(safe-area-inset-bottom))',
+              boxShadow: '0 -8px 32px rgba(0,0,0,0.3)',
+              animation: 'fadeInUp 300ms var(--ease-spring) both',
+            }}
+          >
             <div style={{ width: 36, height: 4, borderRadius: 2, background: 'var(--border-norse)', margin: '0 auto 20px' }} />
             <div className="text-center mb-5">
               <Shield size={40} style={{ color: 'var(--gold)', margin: '0 auto 12px' }} />
@@ -1005,6 +1240,7 @@ export default function FieldHome() {
             </div>
             <div className="flex gap-3">
               <button
+                type="button"
                 onClick={() => { haptic.medium(); setShowReadinessPrompt(false); navigate('/field/readiness'); }}
                 className="flex-1 py-3.5 rounded-xl font-semibold text-sm active:scale-95 transition-transform"
                 style={{ background: 'linear-gradient(135deg, var(--green), #166534)', color: '#fff' }}
@@ -1012,6 +1248,7 @@ export default function FieldHome() {
                 ⚔️ Готов
               </button>
               <button
+                type="button"
                 onClick={() => { haptic.light(); setShowReadinessPrompt(false); navigate('/field/readiness'); }}
                 className="flex-1 py-3.5 rounded-xl font-semibold text-sm active:scale-95 transition-transform"
                 style={{
@@ -1024,7 +1261,141 @@ export default function FieldHome() {
               </button>
             </div>
           </div>
-        </div>
+        </>
+      )}
+
+      {/* Monthly profile confirm — после readiness, если оба нужны.
+          z-index выше FieldLayout-баннеров (999/1000) и changelog (9999),
+          иначе кнопки «Открыть профиль» перехватываются оверлеями сверху.
+          Backdrop и sheet — siblings без transform-родителя (иначе fixed ломается на iOS). */}
+      {!showReadinessPrompt && showProfileConfirm && profileCompleteness && (
+        <>
+          <div
+            role="presentation"
+            style={{
+              position: 'fixed', inset: 0, zIndex: 10050,
+              background: 'rgba(0,0,0,0.5)',
+            }}
+            onClick={() => setShowProfileConfirm(false)}
+          />
+          <div
+            role="dialog"
+            aria-modal="true"
+            style={{
+              position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 10051,
+              background: 'var(--bg-elevated)',
+              borderTopLeftRadius: 24, borderTopRightRadius: 24,
+              padding: '24px 20px 32px',
+              paddingBottom: 'max(32px, env(safe-area-inset-bottom))',
+              boxShadow: '0 -8px 32px rgba(0,0,0,0.3)',
+              maxHeight: '85vh',
+              overflowY: 'auto',
+              animation: 'fadeInUp 300ms var(--ease-spring) both',
+            }}
+          >
+            <div style={{ width: 36, height: 4, borderRadius: 2, background: 'var(--border-norse)', margin: '0 auto 20px' }} />
+            <div className="text-center mb-4">
+              <UserCircle size={40} style={{ color: 'var(--gold)', margin: '0 auto 12px' }} />
+              <p className="text-lg font-bold" style={{ color: 'var(--text-primary)' }}>
+                {profileCompleteness.criticalOk ? 'Данные не изменились?' : 'Проверь анкету'}
+              </p>
+              <p className="text-sm mt-2" style={{ color: 'var(--text-secondary)' }}>
+                {profileCompleteness.criticalOk
+                  ? 'Раз в месяц подтверждаем, что личные данные актуальны'
+                  : 'Зайди в Профиль и нажми «Исправить данные»'}
+              </p>
+            </div>
+
+            {profileCompleteness.criticalGaps?.length > 0 && (
+              <div className="mb-3 rounded-xl p-3"
+                style={{
+                  background: 'color-mix(in srgb, var(--danger, #dc2626) 10%, transparent)',
+                  border: '1px solid color-mix(in srgb, var(--danger, #dc2626) 28%, transparent)',
+                }}>
+                <p className="text-xs font-semibold mb-1" style={{ color: 'var(--danger, #dc2626)' }}>
+                  Обязательно заполнить
+                </p>
+                <ul className="text-sm space-y-0.5" style={{ color: 'var(--text-primary)' }}>
+                  {profileCompleteness.criticalGaps.map((g) => (
+                    <li key={g}>• {g}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {profileCompleteness.softGaps?.length > 0 && (
+              <div className="mb-4 rounded-xl p-3"
+                style={{
+                  background: 'color-mix(in srgb, var(--warn-t, #ca8a04) 10%, transparent)',
+                  border: '1px solid color-mix(in srgb, var(--warn-t, #ca8a04) 28%, transparent)',
+                }}>
+                <p className="text-xs font-semibold mb-1" style={{ color: 'var(--warn-t, #ca8a04)' }}>
+                  Желательно
+                </p>
+                <ul className="text-sm space-y-0.5" style={{ color: 'var(--text-secondary)' }}>
+                  {profileCompleteness.softGaps.map((g) => (
+                    <li key={g}>• {g}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {profileCompleteness.criticalOk ? (
+              <div className="flex gap-3">
+                <button
+                  type="button"
+                  disabled={profileConfirming}
+                  onClick={async () => {
+                    haptic.medium();
+                    setProfileConfirming(true);
+                    try {
+                      await fieldApi.post('/worker/personal/confirm', { changed: false });
+                      setShowProfileConfirm(false);
+                    } catch (e) {
+                      haptic.error();
+                      setError(e.message || 'Не удалось подтвердить');
+                    } finally {
+                      setProfileConfirming(false);
+                    }
+                  }}
+                  className="flex-1 py-3.5 rounded-xl font-semibold text-sm active:scale-95 transition-transform"
+                  style={{ background: 'linear-gradient(135deg, var(--green), #166534)', color: '#fff' }}
+                >
+                  {profileConfirming ? '…' : 'Всё верно'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    haptic.light();
+                    setShowProfileConfirm(false);
+                    navigate('/field/profile');
+                  }}
+                  className="flex-1 py-3.5 rounded-xl font-semibold text-sm active:scale-95 transition-transform"
+                  style={{
+                    background: 'color-mix(in srgb, var(--gold) 15%, transparent)',
+                    border: '1px solid color-mix(in srgb, var(--gold) 35%, transparent)',
+                    color: 'var(--gold)',
+                  }}
+                >
+                  Есть изменения
+                </button>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => {
+                  haptic.medium();
+                  setShowProfileConfirm(false);
+                  navigate('/field/profile');
+                }}
+                className="w-full py-3.5 rounded-xl font-semibold text-sm active:scale-95 transition-transform"
+                style={{ backgroundColor: 'var(--gold)', color: 'var(--bg-primary)' }}
+              >
+                Открыть профиль
+              </button>
+            )}
+          </div>
+        </>
       )}
     </div>
   );

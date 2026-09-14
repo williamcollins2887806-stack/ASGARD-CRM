@@ -210,11 +210,17 @@ export default function FieldAcademyQuiz() {
       setAttemptNumber(data.attempt_number || 1);
       setTimeLeft(TIME_LIMIT);
     } catch (e) {
-      setError(e.message);
+      const msg = e?.message || '';
+      // Уже сдал — не ошибка, уводим в летопись
+      if (e?.status === 400 && /уже пройден/i.test(msg)) {
+        navigate('/field/academy', { replace: true });
+        return;
+      }
+      setError(msg || 'Ошибка загрузки');
     } finally {
       setLoading(false);
     }
-  }, [lessonId]);
+  }, [lessonId, navigate]);
 
   useEffect(() => { load(); }, [load]);
 

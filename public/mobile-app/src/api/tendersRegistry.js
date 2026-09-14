@@ -48,6 +48,13 @@ export function patchRegistryStatus(id, registry_status) {
   });
 }
 
+export function archiveRegistryRow(id, archive_reason) {
+  return api.request(`/tenders/registry/${id}/archive`, {
+    method: 'POST',
+    body: JSON.stringify({ archive_reason: archive_reason || 'РП: не подаём — архив ТО' }),
+  });
+}
+
 export function createRegistryWork(tenderId, pm_id) {
   return api.post(`/tenders/registry/${tenderId}/create-work`, { pm_id });
 }
@@ -167,4 +174,19 @@ export function postRpReviewMessage(tenderId, body, files = []) {
 
 export function loadTenderFiles(tenderId) {
   return api.get(`/files?tender_id=${tenderId}`).then((d) => d.files || d.items || []);
+}
+
+/** Превью файла из thread просчёта (blob URL — вызвать URL.revokeObjectURL после закрытия). */
+export async function previewRpReviewFile(tenderId, docId) {
+  const token = api.getToken?.() || localStorage.getItem('asgard_token');
+  const r = await fetch(`/api/tenders/${tenderId}/rp-review/files/${docId}/preview`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  });
+  if (!r.ok) {
+    const d = await r.json().catch(() => ({}));
+    throw new Error(d.error || d.message || `HTTP ${r.status}`);
+  }
+  const blob = await r.blob();
+  const blobUrl = URL.createObjectURL(blob);
+  return { blobUrl, contentType: r.headers.get('content-type') || blob.type };
 }

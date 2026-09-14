@@ -1,0 +1,144 @@
+{
+  "asset": {
+    "generator": "ASGARD build_dragon_helmet",
+    "version": "2.0"
+  },
+  "scene": 0,
+  "scenes": [
+    {
+      "name": "Scene",
+      "nodes": [
+        0
+      ]
+    }
+  ],
+  "nodes": [
+    {
+      "mesh": 0,
+      "name": "hat_dragon",
+      "translation": [
+        4.76837158203125e-7,
+        -0.025534328351245028,
+        -1.0854230936274689e-7
+      ]
+    }
+  ],
+  "materials": [
+    {
+      "doubleSided": true,
+      "name": "knight_texture",
+      "pbrMetallicRoughness": {
+        "baseColorTexture": {
+          "index": 0
+        },
+        "metallicFactor": 0.15,
+        "roughnessFactor": 0.45
+      }
+    }
+  ],
+  "meshes": [
+    {
+      "name": "hat_dragon",
+      "primitives": [
+        {
+          "attributes": {
+            "POSITION": 0,
+            "NORMAL": 1,
+            "TEXCOORD_0": 2
+          },
+          "indices": 3,
+          "material": 0
+        }
+      ]
+    }
+  ],
+  "textures": [
+    {
+      "sampler": 0,
+      "source": 0
+    }
+  ],
+  "images": [
+    {
+      "mimeType": "image/png",
+      "name": "knight_texture",
+      "uri": "knight_texture.png"
+    }
+  ],
+  "samplers": [
+    {
+      "magFilter": 9729,
+      "minFilter": 9987,
+      "wrapS": 10497,
+      "wrapT": 10497
+    }
+  ],
+  "accessors": [
+    {
+      "bufferView": 0,
+      "componentType": 5126,
+      "count": 1590,
+      "type": "VEC3",
+      "max": [
+        0.7200000286102295,
+        1.5331611633300781,
+        0.7114353179931641
+      ],
+      "min": [
+        -0.7200000286102295,
+        -0.10521914064884186,
+        -0.542184591293335
+      ]
+    },
+    {
+      "bufferView": 1,
+      "componentType": 5126,
+      "count": 1590,
+      "type": "VEC3"
+    },
+    {
+      "bufferView": 2,
+      "componentType": 5126,
+      "count": 1590,
+      "type": "VEC2"
+    },
+    {
+      "bufferView": 3,
+      "componentType": 5123,
+      "count": 1590,
+      "type": "SCALAR"
+    }
+  ],
+  "bufferViews": [
+    {
+      "buffer": 0,
+      "byteOffset": 0,
+      "byteLength": 19080,
+      "target": 34962
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 19080,
+      "byteLength": 19080,
+      "target": 34962
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 38160,
+      "byteLength": 12720,
+      "target": 34962
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 50880,
+      "byteLength": 3180,
+      "target": 34963
+    }
+  ],
+  "buffers": [
+    {
+      "byteLength": 54060,
+      "uri": "hat_dragon.bin"
+    }
+  ]
+}

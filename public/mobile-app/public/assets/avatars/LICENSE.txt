@@ -1,0 +1,26 @@
+﻿Avatar GLB assets for ASGARD field profile.
+
+Rank models (KayKit Character Pack: Adventurers, Free tier, CC0):
+- ranks/rank_thrall.glb   — Rogue
+- ranks/rank_karl.glb     — Rogue_Hooded
+- ranks/rank_huskarl.glb  — Knight
+- ranks/rank_druzhina.glb — Barbarian
+- ranks/rank_vityaz.glb   — Mage
+- ranks/rank_jarl.glb     — kitbash from Knight (gold tint / accessories at runtime)
+- ranks/rank_konung.glb   — kitbash from Barbarian (scale / heavy weapon at runtime)
+
+Weapons/accessories: weapons/* from the same Free pack (CC0).
+
+Source: https://kaylousberg.itch.io/kaykit-adventurers
+https://github.com/KayKit-Game-Assets/KayKit-Character-Pack-Adventures-1.0
+License: CC0 1.0 Universal — free for personal and commercial use, no attribution required.
+
+Legacy:
+- viking_barbarian.glb — same Barbarian as rank_druzhina (kept for fallback)
+- cesium_man.glb — Khronos sample (unused)
+- base_humanoid.glb — unused
+
+Notes:
+- Play Idle (or Unarmed_Idle) only — never auto-play Walking_* clips.
+- Cosmetics tint KayKit atlas via material.color multiply (maps preserved).
+- Extra tier (Druid / Barbarian Large) can later replace rank_jarl / rank_konung files in place.

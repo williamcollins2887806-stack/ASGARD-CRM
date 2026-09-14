@@ -11,6 +11,16 @@ import {
 import { fieldApi } from '@/api/fieldClient';
 import { useFieldAuthStore } from '@/stores/fieldAuthStore';
 import { useHaptic } from '@/hooks/useHaptic';
+import { VikingAvatarLazy } from '@/components/field/VikingAvatar3D';
+import RankUpCeremony, { checkRankCeremony } from '@/components/field/RankUpCeremony';
+import { getLevel, getRank, getXpProgress, rankIndex } from '@/lib/fieldRanks';
+import { BottomSheet } from '@/components/shared/BottomSheet';
+import {
+  formatRuPhoneDisplay, normalizeRuPhoneDigits,
+  formatSnilsDisplay, formatPassportCodeDisplay, digitsOf,
+  phoneError, snilsError, passportSeriesError, passportNumberError, passportCodeError,
+} from '@/lib/ruMasks';
+import { ppeSizeOptions } from '@/lib/ppeSizes';
 
 /* ═══════════════════════════════════════════════════════════════════
    CSS ANIMATIONS
@@ -20,9 +30,10 @@ const ANIM_CSS = `
   from { transform: translate(-50%,-50%) rotate(0deg); }
   to   { transform: translate(-50%,-50%) rotate(360deg); }
 }
+/* box-shadow only — CSS filter on WebGL parent blanks the canvas on mobile */
 @keyframes goldPulse {
-  0%,100% { filter: drop-shadow(0 0 6px rgba(240,200,80,.35)); }
-  50%     { filter: drop-shadow(0 0 20px rgba(240,200,80,.8)) drop-shadow(0 0 40px rgba(240,200,80,.3)); }
+  0%,100% { box-shadow: 0 0 16px rgba(240,200,80,.25), 0 0 32px rgba(240,200,80,.1); }
+  50%     { box-shadow: 0 0 28px rgba(240,200,80,.55), 0 0 56px rgba(240,200,80,.22); }
 }
 @keyframes rankGlow {
   0%,100% { text-shadow: 0 0 6px rgba(240,200,80,.3); }
@@ -49,12 +60,12 @@ const ANIM_CSS = `
   from { width:0; }
 }
 @keyframes iceFrost {
-  0%,100%{ filter:drop-shadow(0 0 6px rgba(140,200,255,.4)); }
-  50%    { filter:drop-shadow(0 0 18px rgba(140,200,255,.9)) drop-shadow(0 0 32px rgba(100,160,255,.4)); }
+  0%,100%{ box-shadow: 0 0 12px rgba(140,200,255,.4), 0 0 28px rgba(100,160,255,.12); }
+  50%    { box-shadow: 0 0 22px rgba(140,200,255,.85), 0 0 48px rgba(100,160,255,.35); }
 }
 @keyframes fireFrost {
-  0%,100%{ filter:drop-shadow(0 0 6px rgba(255,120,30,.4)); }
-  50%    { filter:drop-shadow(0 0 20px rgba(255,80,0,.9)) drop-shadow(0 0 36px rgba(255,120,30,.5)); }
+  0%,100%{ box-shadow: 0 0 12px rgba(255,120,30,.4), 0 0 28px rgba(255,80,0,.12); }
+  50%    { box-shadow: 0 0 22px rgba(255,80,0,.85), 0 0 48px rgba(255,120,30,.4); }
 }
 `;
 
@@ -77,9 +88,9 @@ function getInitials(fio) {
 }
 function shortFio(fio) {
   if (!fio) return '';
-  const p = fio.trim().split(/\s+/);
-  if (p.length >= 3) return `${p[0]} ${p[1][0]}.${p[2][0]}.`;
-  if (p.length === 2) return `${p[0]} ${p[1][0]}.`;
+  const p = fio.trim().split(/\s+/).filter(Boolean);
+  if (p.length >= 3) return `${p[0]} ${p[1]} ${p[2][0]}.`;
+  if (p.length === 2) return `${p[0]} ${p[1]}`;
   return p[0];
 }
 function formatPhone(p) {
@@ -100,427 +111,67 @@ const EXP_COLORS = {
 };
 
 /* ═══════════════════════════════════════════════════════════════════
-   GAMIFICATION CONSTANTS
-═══════════════════════════════════════════════════════════════════ */
-const XP_LEVELS = [0,100,250,450,700,1000,1400,1900,2500,3200,4000,5000,6200,7500,9000,10800,12800,15000,17500,20000];
-const RANKS = [
-  {min:1, max:2,  title:'Трэль',     rune:'ᚦ'},
-  {min:3, max:4,  title:'Карл',      rune:'ᚲ'},
-  {min:5, max:7,  title:'Хускарл',   rune:'ᚹ'},
-  {min:8, max:11, title:'Дружинник', rune:'ᛏ'},
-  {min:12,max:15, title:'Витязь',    rune:'ᛒ'},
-  {min:16,max:19, title:'Ярл',       rune:'ᛖ'},
-  {min:20,max:Infinity,title:'Конунг',rune:'ᛟ'},
-];
-function getLevel(xp=0) {
-  for (let i = XP_LEVELS.length-1; i >= 0; i--) if (xp >= XP_LEVELS[i]) return i+1;
-  return 1;
-}
-function getRank(level) { return RANKS.find(r=>level>=r.min && level<=r.max)||RANKS[0]; }
-
-/* ═══════════════════════════════════════════════════════════════════
-   CHARACTER SVGs — full-body Norse warriors (100×200 viewBox)
-═══════════════════════════════════════════════════════════════════ */
-const AVATAR_SVGS = {
-
-  'Аватар "Один"': `<svg viewBox="0 0 100 200" width="100%" height="100%" preserveAspectRatio="xMidYMin slice" fill="none" xmlns="http://www.w3.org/2000/svg">
-<defs>
-  <radialGradient id="ob" cx="50%" cy="35%" r="65%"><stop offset="0%" stop-color="#1e2848"/><stop offset="100%" stop-color="#060810"/></radialGradient>
-  <linearGradient id="oc" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#18203a"/><stop offset="100%" stop-color="#0e1428"/></linearGradient>
-  <linearGradient id="os" x1="0" y1="0" x2="1" y2="0"><stop offset="0%" stop-color="#3a4858"/><stop offset="100%" stop-color="#2a3848"/></linearGradient>
-  <linearGradient id="osk" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#c8a478"/><stop offset="100%" stop-color="#a8845a"/></linearGradient>
-</defs>
-<!-- atmosphere -->
-<rect width="100" height="200" fill="url(#ob)"/>
-<!-- spear shaft -->
-<line x1="14" y1="180" x2="18" y2="20" stroke="#706048" stroke-width="2.5" stroke-linecap="round"/>
-<path d="M16 16 L20 6 L24 16 L20 26Z" fill="#C8940A" stroke="#F0C850" stroke-width=".6"/>
-<!-- raven left -->
-<path d="M8 52 Q5 45 9 42 Q12 48 8 53Z" fill="#101828"/>
-<path d="M9 42 L16 48" stroke="#101828" stroke-width="1.5" stroke-linecap="round"/>
-<!-- raven right -->
-<path d="M88 56 Q92 49 88 46 Q85 52 90 57Z" fill="#101828"/>
-<path d="M88 46 L82 52" stroke="#101828" stroke-width="1.5" stroke-linecap="round"/>
-<!-- boots -->
-<path d="M34 170 L30 197 L25 197 Q24 192 27 184 L30 170Z" fill="#201810"/>
-<path d="M66 170 L70 197 L75 197 Q76 192 73 184 L70 170Z" fill="#201810"/>
-<path d="M28 182 L33 182" stroke="#3a2818" stroke-width="1.5"/>
-<path d="M72 182 L67 182" stroke="#3a2818" stroke-width="1.5"/>
-<!-- trousers -->
-<path d="M32 140 L28 170 L38 170 L40 152 L50 155 L60 152 L62 170 L72 170 L68 140Z" fill="#282038"/>
-<!-- cloak back -->
-<path d="M20 80 Q15 120 16 165 L34 170 L30 140 L32 80Z" fill="#141c38" stroke="rgba(240,200,80,.1)" stroke-width=".5"/>
-<path d="M80 80 Q85 120 84 165 L66 170 L70 140 L68 80Z" fill="#141c38" stroke="rgba(240,200,80,.1)" stroke-width=".5"/>
-<!-- body / armor -->
-<path d="M32 80 Q32 68 50 66 Q68 68 68 80 L68 140 L32 140Z" fill="url(#os)"/>
-<!-- chainmail lines -->
-<path d="M34 88 Q37 86 40 88 Q43 86 46 88 Q49 86 52 88 Q55 86 58 88 Q61 86 64 88 Q67 86 66 88" stroke="rgba(240,200,80,.18)" stroke-width=".6" fill="none"/>
-<path d="M34 96 Q37 94 40 96 Q43 94 46 96 Q49 94 52 96 Q55 94 58 96 Q61 94 64 96 Q67 94 66 96" stroke="rgba(240,200,80,.15)" stroke-width=".6" fill="none"/>
-<path d="M34 104 Q37 102 40 104 Q43 102 46 104 Q49 102 52 104 Q55 102 58 104 Q61 102 64 104 Q67 102 66 104" stroke="rgba(240,200,80,.12)" stroke-width=".6" fill="none"/>
-<!-- armor chest rune -->
-<text x="50" y="118" text-anchor="middle" font-size="12" fill="rgba(240,200,80,.25)" font-family="serif">ᚨ</text>
-<!-- belt -->
-<rect x="32" y="136" width="36" height="5" rx="2" fill="#303848" stroke="rgba(240,200,80,.35)" stroke-width=".5"/>
-<rect x="47" y="135" width="6" height="7" rx="1" fill="#404858" stroke="rgba(240,200,80,.5)" stroke-width=".5"/>
-<!-- fur shoulder trim -->
-<path d="M22 80 Q30 72 50 68 Q70 72 78 80" fill="#5a4030" opacity=".9"/>
-<!-- LEFT arm (hand holds spear) -->
-<path d="M32 82 Q22 96 18 110" stroke="#3a4858" stroke-width="10" stroke-linecap="round" fill="none"/>
-<path d="M32 82 Q22 96 18 110" stroke="#c8a060" stroke-width="7" stroke-linecap="round" fill="none"/>
-<circle cx="18" cy="112" r="5" fill="#c8a060"/>
-<!-- RIGHT arm (raised slightly) -->
-<path d="M68 82 Q78 90 82 106" stroke="#3a4858" stroke-width="10" stroke-linecap="round" fill="none"/>
-<path d="M68 82 Q78 90 82 106" stroke="#c8a060" stroke-width="7" stroke-linecap="round" fill="none"/>
-<circle cx="83" cy="108" r="5" fill="#c8a060"/>
-<!-- neck -->
-<rect x="44" y="62" width="12" height="7" rx="3" fill="#c8a478"/>
-<!-- head -->
-<ellipse cx="50" cy="46" rx="18" ry="20" fill="url(#osk)"/>
-<!-- white beard -->
-<path d="M33 54 Q30 66 32 76 Q38 86 50 88 Q62 86 68 76 Q70 66 67 54" fill="#d4d4cc"/>
-<path d="M36 58 Q34 68 36 76 Q42 84 50 86 Q58 84 64 76 Q66 68 64 58" fill="#c4c4bc" opacity=".5"/>
-<!-- mustache -->
-<path d="M39 55 Q44 50 50 51 Q56 50 61 55" stroke="#c8c8c0" stroke-width="2.5" fill="none" stroke-linecap="round"/>
-<!-- eye patch -->
-<path d="M32 43 L44 45" stroke="#5a4020" stroke-width="2" stroke-linecap="round"/>
-<ellipse cx="37" cy="44" rx="5.5" ry="3.5" fill="#150e08" stroke="#3a2010" stroke-width=".6"/>
-<!-- right eye -->
-<ellipse cx="60" cy="43" rx="5" ry="4" fill="#f0ece4"/>
-<circle cx="60" cy="43" r="2.8" fill="#1e50a8"/>
-<circle cx="60" cy="43" r="1.6" fill="#0e3070"/>
-<circle cx="61" cy="42" r=".8" fill="#fff"/>
-<!-- eyebrow right -->
-<path d="M55 39 Q60 36 65 39" stroke="#9a8060" stroke-width="1.8" fill="none" stroke-linecap="round"/>
-<!-- helmet -->
-<path d="M32 42 Q33 22 50 18 Q67 22 68 42 Q62 32 56 34 Q53 24 50 23 Q47 24 44 34 Q38 32 32 42Z" fill="#3a4050" stroke="#50586a" stroke-width=".5"/>
-<!-- wings -->
-<path d="M32 42 Q20 34 16 20 Q24 28 34 40Z" fill="#464e60"/>
-<path d="M68 42 Q80 34 84 20 Q76 28 66 40Z" fill="#464e60"/>
-<!-- helmet gold band -->
-<path d="M32 42 Q37 36 43 35 Q46 27 50 26 Q54 27 57 35 Q63 36 68 42" stroke="#C8940A" stroke-width="1.3" fill="none"/>
-<!-- nasal guard -->
-<path d="M48.5 40 L50 50 L51.5 40" fill="#303845"/>
-<!-- forehead rune -->
-<text x="50" y="36" text-anchor="middle" font-size="7" fill="rgba(240,200,80,.55)" font-family="serif">ᚨ</text>
-<!-- hair sides -->
-<path d="M33 42 Q28 52 29 62" stroke="#7a6040" stroke-width="3.5" stroke-linecap="round" fill="none"/>
-<path d="M67 42 Q72 52 71 62" stroke="#7a6040" stroke-width="3.5" stroke-linecap="round" fill="none"/>
-</svg>`,
-
-  'Аватар "Тор"': `<svg viewBox="0 0 100 200" width="100%" height="100%" preserveAspectRatio="xMidYMin slice" fill="none" xmlns="http://www.w3.org/2000/svg">
-<defs>
-  <radialGradient id="tb" cx="50%" cy="35%" r="65%"><stop offset="0%" stop-color="#1a2040"/><stop offset="100%" stop-color="#060810"/></radialGradient>
-  <linearGradient id="tl" x1=".5" y1="0" x2=".5" y2="1"><stop offset="0%" stop-color="#F0C850"/><stop offset="100%" stop-color="#ff6800"/></linearGradient>
-  <linearGradient id="ts" x1="0" y1="0" x2="1" y2="0"><stop offset="0%" stop-color="#3a4860"/><stop offset="100%" stop-color="#2a3850"/></linearGradient>
-</defs>
-<rect width="100" height="200" fill="url(#tb)"/>
-<!-- lightning hints -->
-<path d="M70 4 L64 22 L70 22 L56 50" stroke="url(#tl)" stroke-width="1.8" fill="none" opacity=".18" stroke-linecap="round"/>
-<path d="M28 8 L24 24 L30 24 L18 48" stroke="url(#tl)" stroke-width="1.2" fill="none" opacity=".12" stroke-linecap="round"/>
-<!-- boots -->
-<path d="M34 170 L30 197 L25 197 Q24 192 27 184 L30 170Z" fill="#201810"/>
-<path d="M66 170 L70 197 L75 197 Q76 192 73 184 L70 170Z" fill="#201810"/>
-<path d="M28 182 L33 182" stroke="#3a2818" stroke-width="1.5"/>
-<path d="M72 182 L67 182" stroke="#3a2818" stroke-width="1.5"/>
-<!-- trousers -->
-<path d="M32 140 L28 170 L38 170 L40 152 L50 156 L60 152 L62 170 L72 170 L68 140Z" fill="#1e1830"/>
-<!-- red cape back -->
-<path d="M18 80 Q12 120 14 168 L30 170 L28 140 L30 80Z" fill="#3a0e0e" opacity=".8"/>
-<path d="M82 80 Q88 120 86 168 L70 170 L72 140 L70 80Z" fill="#3a0e0e" opacity=".8"/>
-<!-- cape gold trim -->
-<path d="M18 80 Q15 100 14 120" stroke="rgba(240,200,80,.3)" stroke-width="1" fill="none" stroke-dasharray="3 3"/>
-<path d="M82 80 Q85 100 86 120" stroke="rgba(240,200,80,.3)" stroke-width="1" fill="none" stroke-dasharray="3 3"/>
-<!-- body / plate armor -->
-<path d="M30 80 Q30 68 50 65 Q70 68 70 80 L70 140 L30 140Z" fill="url(#ts)"/>
-<!-- plate bands -->
-<path d="M30 90 L70 90" stroke="rgba(240,200,80,.2)" stroke-width=".8"/>
-<path d="M30 100 L70 100" stroke="rgba(240,200,80,.18)" stroke-width=".8"/>
-<path d="M30 110 L70 110" stroke="rgba(240,200,80,.15)" stroke-width=".8"/>
-<!-- chest emblem: hammer -->
-<path d="M44 115 L56 115 L56 110 L44 110Z" fill="rgba(240,200,80,.3)"/>
-<path d="M48 110 L52 110 L52 98 L48 98Z" fill="rgba(240,200,80,.25)"/>
-<!-- belt -->
-<rect x="30" y="136" width="40" height="5" rx="2" fill="#303848" stroke="rgba(240,200,80,.35)" stroke-width=".5"/>
-<rect x="46" y="135" width="8" height="7" rx="1" fill="#404858" stroke="rgba(240,200,80,.5)" stroke-width=".5"/>
-<!-- fur shoulder -->
-<path d="M20 82 Q30 72 50 68 Q70 72 80 82" fill="#5a4030" opacity=".9"/>
-<!-- LEFT arm -->
-<path d="M30 84 Q20 98 16 114" stroke="#3a4858" stroke-width="10" stroke-linecap="round" fill="none"/>
-<path d="M30 84 Q20 98 16 114" stroke="#c88458" stroke-width="7" stroke-linecap="round" fill="none"/>
-<circle cx="15" cy="116" r="5" fill="#c88458"/>
-<!-- RIGHT arm (holding hammer) -->
-<path d="M70 84 Q82 94 86 110" stroke="#3a4858" stroke-width="10" stroke-linecap="round" fill="none"/>
-<path d="M70 84 Q82 94 86 110" stroke="#c88458" stroke-width="7" stroke-linecap="round" fill="none"/>
-<!-- Mjolnir handle -->
-<line x1="86" y1="112" x2="86" y2="85" stroke="#605040" stroke-width="3" stroke-linecap="round"/>
-<!-- Mjolnir head -->
-<path d="M78 78 L94 78 L94 90 L90 92 L82 92 L78 90Z" fill="#484858" stroke="#F0C850" stroke-width=".7"/>
-<path d="M80 84 L84 82 L84 88" stroke="rgba(240,200,80,.4)" stroke-width=".6" fill="none"/>
-<!-- neck -->
-<rect x="44" y="60" width="12" height="7" rx="3" fill="#c88458"/>
-<!-- head -->
-<ellipse cx="50" cy="44" rx="19" ry="21" fill="#c88458"/>
-<!-- red-blond beard -->
-<path d="M31 52 Q28 64 30 74 Q36 86 50 88 Q64 86 70 74 Q72 64 69 52" fill="#b06828"/>
-<path d="M34 56 Q32 66 34 74 Q40 84 50 86 Q60 84 66 74 Q68 66 66 56" fill="#c07838" opacity=".5"/>
-<!-- mustache -->
-<path d="M38 53 Q44 48 50 49 Q56 48 62 53" stroke="#a05820" stroke-width="3" fill="none" stroke-linecap="round"/>
-<!-- left eye -->
-<ellipse cx="43" cy="43" rx="5" ry="4" fill="#f0ece4"/>
-<circle cx="43" cy="43" r="2.8" fill="#1a60cc"/>
-<circle cx="43" cy="43" r="1.6" fill="#0a3080"/>
-<circle cx="44" cy="42" r=".8" fill="#fff"/>
-<!-- right eye -->
-<ellipse cx="57" cy="43" rx="5" ry="4" fill="#f0ece4"/>
-<circle cx="57" cy="43" r="2.8" fill="#1a60cc"/>
-<circle cx="57" cy="43" r="1.6" fill="#0a3080"/>
-<circle cx="58" cy="42" r=".8" fill="#fff"/>
-<!-- eyebrows -->
-<path d="M37 38 Q43 35 48 38" stroke="#a05820" stroke-width="2.5" fill="none" stroke-linecap="round"/>
-<path d="M52 38 Q57 35 63 38" stroke="#a05820" stroke-width="2.5" fill="none" stroke-linecap="round"/>
-<!-- winged helmet -->
-<path d="M31 42 Q31 20 50 16 Q69 20 69 42 Q62 30 56 32 Q53 22 50 21 Q47 22 44 32 Q38 30 31 42Z" fill="#3a4860" stroke="#505870" stroke-width=".5"/>
-<path d="M31 42 Q18 34 14 18 Q23 28 33 40Z" fill="#505e72"/>
-<path d="M69 42 Q82 34 86 18 Q77 28 67 40Z" fill="#505e72"/>
-<!-- helmet gold trim -->
-<path d="M31 42 Q37 36 44 35 Q47 26 50 25 Q53 26 56 35 Q63 36 69 42" stroke="#C8940A" stroke-width="1.3" fill="none"/>
-<!-- nasal -->
-<path d="M48.5 40 L50 50 L51.5 40" fill="#303848"/>
-<!-- forehead rune -->
-<text x="50" y="34" text-anchor="middle" font-size="7" fill="rgba(240,200,80,.55)" font-family="serif">ᚦ</text>
-<!-- red-blond hair sides -->
-<path d="M31 42 Q26 52 27 62" stroke="#b06828" stroke-width="4" stroke-linecap="round" fill="none"/>
-<path d="M69 42 Q74 52 73 62" stroke="#b06828" stroke-width="4" stroke-linecap="round" fill="none"/>
-<!-- lightning glow eyes hint -->
-<ellipse cx="43" cy="43" rx="6" ry="5" fill="none" stroke="rgba(100,160,255,.25)" stroke-width="1"/>
-<ellipse cx="57" cy="43" rx="6" ry="5" fill="none" stroke="rgba(100,160,255,.25)" stroke-width="1"/>
-</svg>`,
-
-  'Аватар "Воин"': `<svg viewBox="0 0 100 200" width="100%" height="100%" preserveAspectRatio="xMidYMin slice" fill="none" xmlns="http://www.w3.org/2000/svg">
-<defs>
-  <radialGradient id="wbg" cx="50%" cy="35%" r="65%"><stop offset="0%" stop-color="#1a2218"/><stop offset="100%" stop-color="#070c06"/></radialGradient>
-  <linearGradient id="wla" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#7a4a20"/><stop offset="100%" stop-color="#4a2810"/></linearGradient>
-  <radialGradient id="wsk" cx="45%" cy="38%" r="55%"><stop offset="0%" stop-color="#d4a870"/><stop offset="50%" stop-color="#c09050"/><stop offset="100%" stop-color="#8a5830"/></radialGradient>
-</defs>
-<rect width="100" height="200" fill="url(#wbg)"/>
-<path d="M34 170 L30 197 L25 197 Q24 192 27 184 L30 170Z" fill="#1a1008"/>
-<path d="M66 170 L70 197 L75 197 Q76 192 73 184 L70 170Z" fill="#1a1008"/>
-<path d="M27 184 L32 184" stroke="#302010" stroke-width="1.5"/>
-<path d="M73 184 L68 184" stroke="#302010" stroke-width="1.5"/>
-<path d="M32 140 L28 170 L38 170 L40 152 L50 155 L60 152 L62 170 L72 170 L68 140Z" fill="#282218"/>
-<path d="M32 80 Q32 68 50 66 Q68 68 68 80 L68 140 L32 140Z" fill="url(#wla)"/>
-<path d="M38 80 L38 140" stroke="#301808" stroke-width=".8" opacity=".6"/>
-<path d="M62 80 L62 140" stroke="#301808" stroke-width=".8" opacity=".6"/>
-<path d="M34 95 Q50 92 66 95" stroke="#301808" stroke-width=".7" fill="none" opacity=".5"/>
-<path d="M34 115 Q50 112 66 115" stroke="#301808" stroke-width=".7" fill="none" opacity=".5"/>
-<circle cx="40" cy="88" r="1.5" fill="#b08838" opacity=".7"/>
-<circle cx="60" cy="88" r="1.5" fill="#b08838" opacity=".7"/>
-<circle cx="40" cy="108" r="1.5" fill="#b08838" opacity=".5"/>
-<circle cx="60" cy="108" r="1.5" fill="#b08838" opacity=".5"/>
-<rect x="32" y="136" width="36" height="5" rx="2" fill="#3a2810" stroke="rgba(200,160,60,.4)" stroke-width=".5"/>
-<rect x="47" y="135" width="6" height="7" rx="1" fill="#503820" stroke="rgba(200,160,60,.5)" stroke-width=".5"/>
-<path d="M22 82 Q30 72 50 68 Q70 72 78 82" fill="#6a5040" opacity=".8"/>
-<path d="M32 82 Q22 96 18 112" stroke="#7a4a20" stroke-width="10" stroke-linecap="round" fill="none"/>
-<path d="M32 82 Q22 96 18 112" stroke="#c8a060" stroke-width="7" stroke-linecap="round" fill="none"/>
-<circle cx="17" cy="114" r="5" fill="#c8a060"/>
-<path d="M68 82 Q80 92 84 108" stroke="#7a4a20" stroke-width="10" stroke-linecap="round" fill="none"/>
-<path d="M68 82 Q80 92 84 108" stroke="#c8a060" stroke-width="7" stroke-linecap="round" fill="none"/>
-<line x1="85" y1="114" x2="82" y2="74" stroke="#604828" stroke-width="2.5" stroke-linecap="round"/>
-<path d="M78 68 Q70 60 72 74 Q78 76 86 74 Q88 62 78 68Z" fill="#686880" stroke="rgba(240,200,80,.6)" stroke-width=".7"/>
-<path d="M76 70 Q78 66 80 70" stroke="rgba(255,255,255,.2)" stroke-width=".5" fill="none"/>
-<rect x="44" y="62" width="12" height="7" rx="3" fill="#c8a060"/>
-<ellipse cx="50" cy="46" rx="18" ry="20" fill="url(#wsk)"/>
-<path d="M33 54 Q30 66 32 76 Q38 86 50 88 Q62 86 68 76 Q70 66 67 54" fill="#8a4818"/>
-<path d="M36 58 Q34 68 36 76 Q42 84 50 86 Q58 84 64 76 Q66 68 64 58" fill="#a05820" opacity=".4"/>
-<path d="M38 55 Q44 50 50 51 Q56 50 62 55" stroke="#7a3810" stroke-width="2.5" fill="none" stroke-linecap="round"/>
-<ellipse cx="42" cy="43" rx="5" ry="4" fill="#f0ece4"/>
-<circle cx="42" cy="43" r="2.8" fill="#3a6820"/>
-<circle cx="42" cy="43" r="1.6" fill="#1a4010"/>
-<circle cx="43" cy="42" r=".8" fill="#fff"/>
-<ellipse cx="58" cy="43" rx="5" ry="4" fill="#f0ece4"/>
-<circle cx="58" cy="43" r="2.8" fill="#3a6820"/>
-<circle cx="58" cy="43" r="1.6" fill="#1a4010"/>
-<circle cx="59" cy="42" r=".8" fill="#fff"/>
-<path d="M36 38 Q42 35 47 38" stroke="#6a3810" stroke-width="2" fill="none" stroke-linecap="round"/>
-<path d="M53 38 Q58 35 64 38" stroke="#6a3810" stroke-width="2" fill="none" stroke-linecap="round"/>
-<path d="M32 36 Q34 18 50 16 Q66 18 68 36" fill="#7a3a10"/>
-<path d="M33 38 Q28 50 29 62" stroke="#7a3a10" stroke-width="4" stroke-linecap="round" fill="none"/>
-<path d="M67 38 Q72 50 71 62" stroke="#7a3a10" stroke-width="4" stroke-linecap="round" fill="none"/>
-<circle cx="29" cy="62" r="3" fill="#4a2010"/>
-<circle cx="71" cy="62" r="3" fill="#4a2010"/>
-<path d="M44 34 L48 38" stroke="#7a5030" stroke-width=".8" stroke-linecap="round" opacity=".7"/>
-</svg>`,
-
-  'Аватар "Берсерк"': `<svg viewBox="0 0 100 200" width="100%" height="100%" preserveAspectRatio="xMidYMin slice" fill="none" xmlns="http://www.w3.org/2000/svg">
-<defs>
-  <radialGradient id="bbg" cx="50%" cy="35%" r="65%"><stop offset="0%" stop-color="#1a0808"/><stop offset="100%" stop-color="#080404"/></radialGradient>
-  <radialGradient id="bsk" cx="45%" cy="38%" r="55%"><stop offset="0%" stop-color="#d4906a"/><stop offset="50%" stop-color="#c07850"/><stop offset="100%" stop-color="#8a5030"/></radialGradient>
-  <linearGradient id="bch" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#c8907a"/><stop offset="100%" stop-color="#a06048"/></linearGradient>
-</defs>
-<rect width="100" height="200" fill="url(#bbg)"/>
-<path d="M34 170 L30 197 L25 197 Q24 192 27 184 L30 170Z" fill="#241008"/>
-<path d="M66 170 L70 197 L75 197 Q76 192 73 184 L70 170Z" fill="#241008"/>
-<path d="M32 140 L28 170 L38 170 L40 152 L50 155 L60 152 L62 170 L72 170 L68 140Z" fill="#2a1a10"/>
-<path d="M32 80 Q32 70 50 68 Q68 70 68 80 L68 140 L32 140Z" fill="url(#bch)"/>
-<path d="M36 80 L38 140" stroke="rgba(180,80,40,.3)" stroke-width="1" opacity=".5"/>
-<path d="M64 80 L62 140" stroke="rgba(180,80,40,.3)" stroke-width="1" opacity=".5"/>
-<path d="M34 88 L44 96" stroke="#cc2020" stroke-width="1.8" stroke-linecap="round" opacity=".7"/>
-<path d="M66 88 L56 96" stroke="#cc2020" stroke-width="1.8" stroke-linecap="round" opacity=".7"/>
-<path d="M38 104 L48 112" stroke="#cc2020" stroke-width="1.5" stroke-linecap="round" opacity=".6"/>
-<path d="M62 104 L52 112" stroke="#cc2020" stroke-width="1.5" stroke-linecap="round" opacity=".6"/>
-<rect x="32" y="136" width="36" height="5" rx="2" fill="#3a1810" stroke="rgba(200,80,40,.4)" stroke-width=".5"/>
-<rect x="47" y="135" width="6" height="7" rx="1" fill="#501820" stroke="rgba(200,80,40,.5)" stroke-width=".5"/>
-<path d="M22 82 Q30 70 50 66 Q70 70 78 82" fill="#8a5030" opacity=".7"/>
-<path d="M30 82 Q18 94 14 110" stroke="#8a5030" stroke-width="10" stroke-linecap="round" fill="none"/>
-<path d="M30 82 Q18 94 14 110" stroke="#c8806a" stroke-width="7" stroke-linecap="round" fill="none"/>
-<line x1="13" y1="114" x2="8" y2="75" stroke="#5a3820" stroke-width="2" stroke-linecap="round"/>
-<path d="M4 65 Q-1 57 3 70 Q8 72 14 70 Q14 57 4 65Z" fill="#585868" stroke="rgba(220,80,40,.7)" stroke-width=".8"/>
-<path d="M70 82 Q82 92 87 108" stroke="#8a5030" stroke-width="10" stroke-linecap="round" fill="none"/>
-<path d="M70 82 Q82 92 87 108" stroke="#c8806a" stroke-width="7" stroke-linecap="round" fill="none"/>
-<line x1="88" y1="112" x2="92" y2="74" stroke="#5a3820" stroke-width="2" stroke-linecap="round"/>
-<path d="M96 64 Q101 56 97 70 Q92 72 86 70 Q86 57 96 64Z" fill="#585868" stroke="rgba(220,80,40,.7)" stroke-width=".8"/>
-<rect x="44" y="62" width="12" height="7" rx="3" fill="#c8806a"/>
-<ellipse cx="50" cy="46" rx="18" ry="20" fill="url(#bsk)"/>
-<path d="M34 52 Q30 64 32 74 Q38 86 50 88 Q62 86 68 74 Q70 64 66 52" fill="#a03010"/>
-<path d="M36 55 Q34 66 36 74 Q42 84 50 86 Q58 84 64 74 Q66 66 64 55" fill="#c04020" opacity=".4"/>
-<path d="M39 53 Q44 48 50 49 Q56 48 61 53" stroke="#8a2010" stroke-width="3" fill="none" stroke-linecap="round"/>
-<ellipse cx="42" cy="42" rx="5.5" ry="4.5" fill="#f0ece4"/>
-<circle cx="42" cy="42" r="3" fill="#cc2020"/>
-<circle cx="42" cy="42" r="1.8" fill="#800000"/>
-<circle cx="43" cy="41" r=".9" fill="#ffaaaa"/>
-<ellipse cx="58" cy="42" rx="5.5" ry="4.5" fill="#f0ece4"/>
-<circle cx="58" cy="42" r="3" fill="#cc2020"/>
-<circle cx="58" cy="42" r="1.8" fill="#800000"/>
-<circle cx="59" cy="41" r=".9" fill="#ffaaaa"/>
-<path d="M35 37 Q42 33 48 37" stroke="#8a2010" stroke-width="2.5" fill="none" stroke-linecap="round"/>
-<path d="M52 37 Q58 33 65 37" stroke="#8a2010" stroke-width="2.5" fill="none" stroke-linecap="round"/>
-<path d="M32 36 Q34 14 50 10 Q66 14 68 36" fill="#b03010"/>
-<path d="M33 36 Q22 46 20 62 L28 60" stroke="#b03010" stroke-width="5" stroke-linecap="round" fill="none"/>
-<path d="M67 36 Q78 46 80 62 L72 60" stroke="#b03010" stroke-width="5" stroke-linecap="round" fill="none"/>
-<path d="M40 38 Q38 26 36 16" stroke="#c04020" stroke-width="2.2" stroke-linecap="round" fill="none" opacity=".6"/>
-<path d="M60 38 Q62 26 64 16" stroke="#c04020" stroke-width="2.2" stroke-linecap="round" fill="none" opacity=".6"/>
-<path d="M34 42 L42 46" stroke="#cc2020" stroke-width="1.5" stroke-linecap="round" opacity=".8"/>
-<path d="M58 46 L66 42" stroke="#cc2020" stroke-width="1.5" stroke-linecap="round" opacity=".8"/>
-</svg>`,
-
-  'Аватар "Вёльва"': `<svg viewBox="0 0 100 200" width="100%" height="100%" preserveAspectRatio="xMidYMin slice" fill="none" xmlns="http://www.w3.org/2000/svg">
-<defs>
-  <radialGradient id="vbg" cx="50%" cy="35%" r="65%"><stop offset="0%" stop-color="#12101e"/><stop offset="100%" stop-color="#060408"/></radialGradient>
-  <linearGradient id="vrb" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#3a2860"/><stop offset="100%" stop-color="#1e1438"/></linearGradient>
-  <radialGradient id="vsk" cx="45%" cy="38%" r="55%"><stop offset="0%" stop-color="#d4c4b8"/><stop offset="50%" stop-color="#b8a898"/><stop offset="100%" stop-color="#8a7868"/></radialGradient>
-</defs>
-<rect width="100" height="200" fill="url(#vbg)"/>
-<path d="M50 170 L50 197" stroke="#2a1e48" stroke-width="18" stroke-linecap="round"/>
-<path d="M38 170 L34 197 L28 197 Q28 190 32 182Z" fill="#2a1e48"/>
-<path d="M62 170 L66 197 L72 197 Q72 190 68 182Z" fill="#2a1e48"/>
-<path d="M30 84 Q28 110 32 140 Q38 165 50 172 Q62 165 68 140 Q72 110 70 84 Q60 78 50 76 Q40 78 30 84Z" fill="url(#vrb)"/>
-<path d="M30 84 Q25 100 24 130 Q26 155 38 168 L38 170 L30 170 Q24 145 24 120 Q24 98 30 82Z" fill="#2a1e50" opacity=".9"/>
-<path d="M70 84 Q75 100 76 130 Q74 155 62 168 L62 170 L70 170 Q76 145 76 120 Q76 98 70 82Z" fill="#2a1e50" opacity=".9"/>
-<path d="M32 100 L68 100" stroke="rgba(180,140,255,.12)" stroke-width=".7"/>
-<path d="M30 120 L70 120" stroke="rgba(180,140,255,.1)" stroke-width=".7"/>
-<path d="M32 140 L68 140" stroke="rgba(180,140,255,.08)" stroke-width=".7"/>
-<text x="50" y="112" text-anchor="middle" font-size="10" fill="rgba(180,140,255,.18)" font-family="serif">ᛟ</text>
-<text x="42" y="128" text-anchor="middle" font-size="7" fill="rgba(180,140,255,.14)" font-family="serif">ᚨ</text>
-<text x="58" y="128" text-anchor="middle" font-size="7" fill="rgba(180,140,255,.14)" font-family="serif">ᚱ</text>
-<path d="M22 84 Q30 74 50 70 Q70 74 78 84 Q60 78 50 76 Q40 78 22 84Z" fill="#28204a" opacity=".9"/>
-<path d="M26 82 Q22 70 24 55 Q26 45 32 44 Q28 55 30 68Z" fill="#2a1e50"/>
-<path d="M74 82 Q78 70 76 55 Q74 45 68 44 Q72 55 70 68Z" fill="#2a1e50"/>
-<path d="M30 82 Q20 94 18 112" stroke="#3a2860" stroke-width="10" stroke-linecap="round" fill="none"/>
-<path d="M30 82 Q20 94 18 112" stroke="#8878b8" stroke-width="7" stroke-linecap="round" fill="none"/>
-<line x1="17" y1="115" x2="12" y2="170" stroke="#403050" stroke-width="2.5" stroke-linecap="round"/>
-<path d="M8 162 Q6 150 12 148 Q16 150 12 170Z" fill="#7858c8" opacity=".8"/>
-<circle cx="12" cy="148" r="3" fill="#9878e8" opacity=".7"/>
-<path d="M70 82 Q80 94 82 112" stroke="#3a2860" stroke-width="10" stroke-linecap="round" fill="none"/>
-<path d="M70 82 Q80 94 82 112" stroke="#8878b8" stroke-width="7" stroke-linecap="round" fill="none"/>
-<circle cx="83" cy="114" r="5" fill="#8878b8"/>
-<rect x="44" y="62" width="12" height="8" rx="3" fill="#b0a0c0"/>
-<ellipse cx="50" cy="47" rx="16" ry="18" fill="url(#vsk)"/>
-<path d="M35 54 Q32 66 34 76 Q40 86 50 88 Q60 86 66 76 Q68 66 65 54" fill="#d0c8d8" opacity=".9"/>
-<path d="M36 58 Q34 68 36 76 Q42 84 50 86 Q58 84 64 76 Q66 68 64 58" fill="#e0d8e8" opacity=".35"/>
-<path d="M40 56 Q44 52 50 53 Q56 52 60 56" stroke="#b0a8c0" stroke-width="1.5" fill="none" stroke-linecap="round"/>
-<ellipse cx="43" cy="44" rx="5" ry="4" fill="#f0ece8"/>
-<circle cx="43" cy="44" r="2.8" fill="#7858c8"/>
-<circle cx="43" cy="44" r="1.6" fill="#5038a8"/>
-<circle cx="44" cy="43" r=".9" fill="#ddd8ff"/>
-<ellipse cx="57" cy="44" rx="5" ry="4" fill="#f0ece8"/>
-<circle cx="57" cy="44" r="2.8" fill="#7858c8"/>
-<circle cx="57" cy="44" r="1.6" fill="#5038a8"/>
-<circle cx="58" cy="43" r=".9" fill="#ddd8ff"/>
-<path d="M37 39 Q43 36 48 39" stroke="#a090b0" stroke-width="1.5" fill="none" stroke-linecap="round"/>
-<path d="M52 39 Q57 36 63 39" stroke="#a090b0" stroke-width="1.5" fill="none" stroke-linecap="round"/>
-<path d="M34 40 Q36 22 50 18 Q64 22 66 40" fill="#c8c0d8"/>
-<path d="M34 42 Q26 52 24 66 L28 68 Q26 55 34 45Z" stroke="#d0c8e0" stroke-width="3" stroke-linecap="round" fill="none"/>
-<path d="M66 42 Q74 52 76 66 L72 68 Q74 55 66 45Z" stroke="#d0c8e0" stroke-width="3" stroke-linecap="round" fill="none"/>
-<text x="50" y="38" text-anchor="middle" font-size="6" fill="rgba(180,140,255,.55)" font-family="serif">᛹</text>
-</svg>`,
-
-  'Аватар "Скальд"': `<svg viewBox="0 0 100 200" width="100%" height="100%" preserveAspectRatio="xMidYMin slice" fill="none" xmlns="http://www.w3.org/2000/svg">
-<defs>
-  <radialGradient id="sbg" cx="50%" cy="35%" r="65%"><stop offset="0%" stop-color="#1a1408"/><stop offset="100%" stop-color="#080602"/></radialGradient>
-  <linearGradient id="stu" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#2e6040"/><stop offset="50%" stop-color="#1a4828"/><stop offset="100%" stop-color="#3a1e08"/></linearGradient>
-  <radialGradient id="ssk" cx="45%" cy="38%" r="55%"><stop offset="0%" stop-color="#d4aa78"/><stop offset="50%" stop-color="#c09060"/><stop offset="100%" stop-color="#8a6035"/></radialGradient>
-</defs>
-<rect width="100" height="200" fill="url(#sbg)"/>
-<path d="M34 170 L30 197 L25 197 Q24 192 27 184 L30 170Z" fill="#1a1208"/>
-<path d="M66 170 L70 197 L75 197 Q76 192 73 184 L70 170Z" fill="#1a1208"/>
-<path d="M27 184 L32 184" stroke="#302010" stroke-width="1.5"/>
-<path d="M73 184 L68 184" stroke="#302010" stroke-width="1.5"/>
-<path d="M32 140 L28 170 L38 170 L40 152 L50 155 L60 152 L62 170 L72 170 L68 140Z" fill="#241c10"/>
-<path d="M32 80 Q32 68 50 66 Q68 68 68 80 L68 140 L32 140Z" fill="url(#stu)"/>
-<path d="M35 78 Q38 90 38 140" stroke="rgba(200,160,60,.15)" stroke-width=".8" fill="none"/>
-<path d="M65 78 Q62 90 62 140" stroke="rgba(200,160,60,.15)" stroke-width=".8" fill="none"/>
-<path d="M34 94 L66 94" stroke="rgba(240,180,60,.15)" stroke-width=".6"/>
-<path d="M34 110 L66 110" stroke="rgba(240,180,60,.12)" stroke-width=".6"/>
-<path d="M34 126 L66 126" stroke="rgba(240,180,60,.1)" stroke-width=".6"/>
-<path d="M42 80 L42 94 M50 80 L50 94 M58 80 L58 94" stroke="rgba(240,160,40,.2)" stroke-width="1"/>
-<rect x="32" y="136" width="36" height="5" rx="2" fill="#302010" stroke="rgba(240,180,60,.45)" stroke-width=".5"/>
-<rect x="47" y="135" width="6" height="7" rx="1" fill="#483020" stroke="rgba(240,180,60,.55)" stroke-width=".5"/>
-<path d="M22 82 Q30 72 50 68 Q70 72 78 82" fill="#5a4428" opacity=".8"/>
-<path d="M32 82 Q22 96 18 112" stroke="#4a3820" stroke-width="10" stroke-linecap="round" fill="none"/>
-<path d="M32 82 Q22 96 18 112" stroke="#c8a060" stroke-width="7" stroke-linecap="round" fill="none"/>
-<circle cx="17" cy="114" r="5" fill="#c8a060"/>
-<path d="M68 82 Q80 92 83 108" stroke="#4a3820" stroke-width="10" stroke-linecap="round" fill="none"/>
-<path d="M68 82 Q80 92 83 108" stroke="#c8a060" stroke-width="7" stroke-linecap="round" fill="none"/>
-<ellipse cx="90" cy="100" rx="9" ry="14" fill="#1a120a" stroke="rgba(240,180,60,.5)" stroke-width=".8"/>
-<line x1="84" y1="94" x2="84" y2="106" stroke="rgba(240,180,60,.35)" stroke-width=".6"/>
-<line x1="87" y1="92" x2="87" y2="108" stroke="rgba(240,180,60,.4)" stroke-width=".6"/>
-<line x1="90" y1="91" x2="90" y2="109" stroke="rgba(240,180,60,.4)" stroke-width=".6"/>
-<line x1="93" y1="92" x2="93" y2="108" stroke="rgba(240,180,60,.4)" stroke-width=".6"/>
-<line x1="96" y1="94" x2="96" y2="106" stroke="rgba(240,180,60,.35)" stroke-width=".6"/>
-<path d="M82 94 L98 94" stroke="rgba(240,180,60,.4)" stroke-width=".7"/>
-<path d="M82 106 L98 106" stroke="rgba(240,180,60,.4)" stroke-width=".7"/>
-<circle cx="90" cy="88" r="3" fill="#1a120a" stroke="rgba(240,180,60,.6)" stroke-width=".8"/>
-<rect x="44" y="62" width="12" height="7" rx="3" fill="#c8a060"/>
-<ellipse cx="50" cy="46" rx="18" ry="20" fill="url(#ssk)"/>
-<path d="M33 54 Q30 66 32 76 Q38 86 50 88 Q62 86 68 76 Q70 66 67 54" fill="#6a4020"/>
-<path d="M36 58 Q34 68 36 76 Q42 84 50 86 Q58 84 64 76 Q66 68 64 58" fill="#7a4828" opacity=".45"/>
-<path d="M38 55 Q44 50 50 51 Q56 50 62 55" stroke="#5a3010" stroke-width="2" fill="none" stroke-linecap="round"/>
-<ellipse cx="42" cy="43" rx="5" ry="4" fill="#f0ece4"/>
-<circle cx="42" cy="43" r="2.8" fill="#a85820"/>
-<circle cx="42" cy="43" r="1.6" fill="#6a3410"/>
-<circle cx="43" cy="42" r=".8" fill="#fff"/>
-<ellipse cx="58" cy="43" rx="5" ry="4" fill="#f0ece4"/>
-<circle cx="58" cy="43" r="2.8" fill="#a85820"/>
-<circle cx="58" cy="43" r="1.6" fill="#6a3410"/>
-<circle cx="59" cy="42" r=".8" fill="#fff"/>
-<path d="M36 38 Q42 35 47 38" stroke="#5a3010" stroke-width="2" fill="none" stroke-linecap="round"/>
-<path d="M53 38 Q58 35 64 38" stroke="#5a3010" stroke-width="2" fill="none" stroke-linecap="round"/>
-<path d="M32 36 Q33 18 50 14 Q67 18 68 36" fill="#5a3818"/>
-<path d="M33 36 Q28 48 29 60" stroke="#5a3818" stroke-width="4" stroke-linecap="round" fill="none"/>
-<path d="M67 36 Q72 48 71 60" stroke="#5a3818" stroke-width="4" stroke-linecap="round" fill="none"/>
-<path d="M32 37 Q50 34 68 37" fill="none" stroke="#c89030" stroke-width="2.5"/>
-<circle cx="50" cy="35" r="2.5" fill="#c89030"/>
-</svg>`
-};
-
-/* ═══════════════════════════════════════════════════════════════════
    BADGE SVGs (40×40)
 ═══════════════════════════════════════════════════════════════════ */
 const BADGE_SVGS = {
   'Бейдж "Берсерк"': `<svg viewBox="0 0 40 40" fill="none"><circle cx="20" cy="20" r="19" fill="#150808" stroke="#cc2222" stroke-width="1.5"/><line x1="20" y1="5" x2="20" y2="35" stroke="#6a3820" stroke-width="2.5" stroke-linecap="round"/><path d="M13 9 L19 7 L19 18 L13 20Z" fill="#cc2222"/><path d="M27 9 L21 7 L21 18 L27 20Z" fill="#aa1818"/><path d="M14 20 Q20 24 26 20 Q20 28 14 20Z" fill="#cc2222"/><text x="20" y="37" text-anchor="middle" font-size="4" fill="#cc4444" font-family="sans-serif" font-weight="700" letter-spacing=".3">БЕРСЕРК</text></svg>`,
   'Бейдж "Скальд"': `<svg viewBox="0 0 40 40" fill="none"><circle cx="20" cy="20" r="19" fill="#141208" stroke="#F0C850" stroke-width="1.5"/><path d="M12 8 Q20 5 28 8 Q30 22 20 28 Q10 22 12 8Z" fill="#1e1a0a" stroke="#C8940A" stroke-width=".8"/><path d="M15 14 L25 14" stroke="#F0C850" stroke-width="1" stroke-linecap="round"/><path d="M14 18 L26 18" stroke="#F0C850" stroke-width="1" stroke-linecap="round"/><path d="M16 22 L24 22" stroke="#F0C850" stroke-width="1" stroke-linecap="round"/><circle cx="27" cy="11" r="3" fill="#1e1a0a" stroke="#F0C850" stroke-width=".8"/><line x1="27" y1="14" x2="27" y2="24" stroke="#F0C850" stroke-width="1"/><circle cx="27" cy="24" r="2.5" fill="#F0C850"/><text x="20" y="37" text-anchor="middle" font-size="4" fill="#C8A800" font-family="sans-serif" font-weight="700" letter-spacing=".3">СКАЛЬД</text></svg>`,
   'Эффект "Молния"': `<svg viewBox="0 0 40 40" fill="none"><circle cx="20" cy="20" r="19" fill="#08081a" stroke="#F0C850" stroke-width="1.5"/><path d="M22 4 L16 20 L22 20 L18 36 L26 17 L20 17 Z" fill="#F0C850" stroke="#ff6a00" stroke-width=".5"/><circle cx="20" cy="20" r="15" fill="none" stroke="rgba(240,200,80,.15)" stroke-width=".5"/><text x="20" y="37" text-anchor="middle" font-size="4" fill="#C8A800" font-family="sans-serif" font-weight="700" letter-spacing=".3">МОЛНИЯ</text></svg>`,
+  'Бейдж "Страж"': `<svg viewBox="0 0 40 40" fill="none"><circle cx="20" cy="20" r="19" fill="#0a1220" stroke="#60a5fa" stroke-width="1.5"/><path d="M20 6 L32 12 V22 C32 30 20 35 20 35 C20 35 8 30 8 22 V12 Z" fill="#1e3a5f" stroke="#60a5fa" stroke-width="1.2"/><path d="M20 14 L26 17 V23 C26 27 20 30 20 30 C20 30 14 27 14 23 V17 Z" fill="#60a5fa" opacity=".85"/><text x="20" y="37" text-anchor="middle" font-size="4" fill="#93c5fd" font-family="sans-serif" font-weight="700">СТРАЖ</text></svg>`,
+  'Бейдж "Ярл"': `<svg viewBox="0 0 40 40" fill="none"><circle cx="20" cy="20" r="19" fill="#1a1408" stroke="#F0C850" stroke-width="1.5"/><path d="M10 18 L14 10 L20 14 L26 10 L30 18 L28 26 L12 26 Z" fill="#D4A843"/><circle cx="20" cy="18" r="3" fill="#1a1408"/><text x="20" y="37" text-anchor="middle" font-size="4" fill="#F0C850" font-family="sans-serif" font-weight="700">ЯРЛ</text></svg>`,
+  badge_berserk: null, // filled below via alias
+  badge_skald: null,
+  badge_guard: null,
+  badge_jarl: null,
+  paint_lightning: null,
 };
+BADGE_SVGS.badge_berserk = BADGE_SVGS['Бейдж "Берсерк"'];
+BADGE_SVGS.badge_skald = BADGE_SVGS['Бейдж "Скальд"'];
+BADGE_SVGS.badge_guard = BADGE_SVGS['Бейдж "Страж"'];
+BADGE_SVGS.badge_jarl = BADGE_SVGS['Бейдж "Ярл"'];
+BADGE_SVGS.paint_lightning = BADGE_SVGS['Эффект "Молния"'];
+BADGE_SVGS['Эффект "Молния"'] = BADGE_SVGS['Эффект "Молния"'];
+
+function resolveBadgeSvg(activeBadge, assetKey) {
+  if (!activeBadge && !assetKey) return null;
+  // Face-paint wrongly stored as badge — ignore
+  const name = normalizeCosmeticName(activeBadge || '');
+  if (/раскраск|краск|paint_/i.test(name) || /раскраск/i.test(assetKey || '')) return null;
+  if (BADGE_SVGS[name]) return BADGE_SVGS[name];
+  if (assetKey && BADGE_SVGS[assetKey]) return BADGE_SVGS[assetKey];
+  // Generic fallback so any equipped badge still shows
+  if (name) {
+    const short = name.replace(/^Бейдж\s*[«"']?/i, '').replace(/[»"'].*$/, '').slice(0, 8).toUpperCase() || '★';
+    return `<svg viewBox="0 0 40 40" fill="none"><circle cx="20" cy="20" r="19" fill="#141828" stroke="#F0C850" stroke-width="1.5"/><text x="20" y="23" text-anchor="middle" font-size="7" fill="#F0C850" font-family="sans-serif" font-weight="800">${short}</text></svg>`;
+  }
+  return null;
+}
+
+function resolveFrameStyle(activeFrame, assetKey) {
+  const s = `${activeFrame || ''} ${assetKey || ''}`.toLowerCase();
+  if (s.includes('fire') || s.includes('огонь') || s.includes('тор')) return { kind: 'fire', color: '#ff8c30' };
+  if (s.includes('ice') || s.includes('лёд') || s.includes('лед') || s.includes('мороз')) return { kind: 'ice', color: '#88ccff' };
+  if (activeFrame || assetKey) return { kind: 'gold', color: '#F0C850' };
+  return null;
+}
+
+function resolveThemeStyle(activeTheme, assetKey) {
+  const s = `${activeTheme || ''} ${assetKey || ''}`.toLowerCase();
+  if (s.includes('fire') || s.includes('огонь') || s.includes('красн')) {
+    return { accent: '#ff6030', bg: 'linear-gradient(180deg,#150808 0%,#1e0c0c 50%,#0a0606 100%)', anim: 'fireFrost' };
+  }
+  if (s.includes('ice') || s.includes('лёд') || s.includes('лед') || s.includes('мороз')) {
+    return { accent: '#88ccff', bg: 'linear-gradient(180deg,#080e1a 0%,#0e1828 50%,#060c14 100%)', anim: 'iceFrost' };
+  }
+  if (s.includes('dark') || s.includes('тёмн') || s.includes('темн') || s.includes('berserk') || s.includes('берсерк')) {
+    return { accent: '#F0C850', bg: 'linear-gradient(180deg,#0a0a0a 0%,#100808 50%,#080808 100%)', anim: 'goldPulse' };
+  }
+  return {
+    accent: '#F0C850',
+    bg: 'linear-gradient(180deg,#0a0e1a 0%,#111827 60%,#0a0a0a 100%)',
+    anim: 'goldPulse',
+  };
+}
 
 function normalizeCosmeticName(s) {
   if (!s || typeof s !== 'string') return '';
@@ -531,29 +182,13 @@ function normalizeCosmeticName(s) {
     .replace(/\s+/g, ' ');
 }
 
-/** Имя аватара из БД → ключ в AVATAR_SVGS (разные кавычки / пробелы / ё-е). */
-function resolveAvatarKey(raw) {
-  if (!raw) return null;
-  if (AVATAR_SVGS[raw]) return raw;
-  const n = normalizeCosmeticName(raw);
-  if (AVATAR_SVGS[n]) return n;
-  const keys = Object.keys(AVATAR_SVGS);
-  const hit = keys.find((k) => normalizeCosmeticName(k) === n);
-  if (hit) return hit;
-  const loose = (s) => normalizeCosmeticName(s).replace(/ё/g, 'е').replace(/Ё/g, 'е');
-  const nl = loose(raw);
-  return keys.find((k) => loose(k) === nl) || null;
-}
 
 /* ═══════════════════════════════════════════════════════════════════
    RUNE ORBIT RING — animates around character card
 ═══════════════════════════════════════════════════════════════════ */
 const FRAME_RUNES = 'ᚠᚢᚦᚨᚱᚲᚷᚹᚺᚾᛁᛃᛈᛇᛉᛊ'.split('');
 
-function RuneOrbitRing({ size, frameType }) {
-  const isFire = frameType?.includes('Огонь') || frameType?.includes('Тор');
-  const isIce  = frameType?.includes('Лёд')   || frameType?.includes('Мороз');
-  const color  = isFire ? '#ff8c30' : isIce ? '#88ccff' : '#F0C850';
+function RuneOrbitRing({ size, color = '#F0C850' }) {
   const R = size * 0.48;
   const C = size / 2;
   return (
@@ -641,37 +276,26 @@ function StatPill({ icon, value, label, delay = 0 }) {
 /* ═══════════════════════════════════════════════════════════════════
    VIKING HERO CARD — the WOW section
 ═══════════════════════════════════════════════════════════════════ */
-function VikingHeroCard({ profile, runes, xp, level, totalShifts, cosmetics, title }) {
+function VikingHeroCard({ profile, runes, xp, level, totalShifts, cosmetics, title, assets }) {
   const navigate = useNavigate();
   const haptic = useHaptic();
   const rank = getRank(level);
 
-  const isThemeDark = cosmetics?.active_theme?.includes('Тёмный') || cosmetics?.active_theme?.includes('Берсерк');
-  const isThemeFire = cosmetics?.active_theme?.includes('Огонь') || cosmetics?.active_theme?.includes('Красный');
-  const isThemeIce  = cosmetics?.active_theme?.includes('Лёд') || cosmetics?.active_theme?.includes('Мороз');
+  const theme = resolveThemeStyle(cosmetics?.active_theme, assets?.theme || null);
+  const frame = resolveFrameStyle(cosmetics?.active_frame, assets?.frame || null);
+  const badgeSvg = resolveBadgeSvg(cosmetics?.active_badge, assets?.badge || null);
 
-  const accent = isThemeFire ? '#ff6030' : isThemeIce ? '#88ccff' : '#F0C850';
-  const bg = isThemeFire
-    ? 'linear-gradient(180deg,#150808 0%,#1e0c0c 50%,#0a0606 100%)'
-    : isThemeIce
-    ? 'linear-gradient(180deg,#080e1a 0%,#0e1828 50%,#060c14 100%)'
-    : isThemeDark
-    ? 'linear-gradient(180deg,#0a0a0a 0%,#100808 50%,#080808 100%)'
-    : 'linear-gradient(180deg,#0a0e1a 0%,#111827 60%,#0a0a0a 100%)';
+  const accent = theme.accent;
+  const bg = theme.bg;
+  const frameAnim = theme.anim;
 
-  const xpFloor = XP_LEVELS[level - 1] || 0;
-  const xpCeil  = XP_LEVELS[level]     || XP_LEVELS[XP_LEVELS.length - 1];
-  const xpCurrent = xp - xpFloor;
-  const xpNext    = xpCeil - xpFloor;
+  const { current: xpCurrent, next: xpNext } = getXpProgress(xp);
 
-  const avatarKey = resolveAvatarKey(cosmetics?.active_avatar);
-  const hasAvatar = !!avatarKey && AVATAR_SVGS[avatarKey];
-  const hasFrame  = !!cosmetics?.active_frame;
-  const hasBadge  = !!cosmetics?.active_badge  && BADGE_SVGS[cosmetics.active_badge];
-  const frameAnim = isThemeFire ? 'fireFrost' : isThemeIce ? 'iceFrost' : 'goldPulse';
+  const hasFrame  = !!frame;
+  const hasBadge  = !!badgeSvg;
 
-  const PORTRAIT_W = 120;
-  const ORBIT_SZ   = PORTRAIT_W + 50;
+  const PORTRAIT_W = 300;
+  const ORBIT_SZ   = PORTRAIT_W + 48;
 
   return (
     <div style={{ background: bg, borderRadius: '0 0 28px 28px', overflow: 'hidden', position: 'relative', paddingBottom: 28 }}>
@@ -689,55 +313,50 @@ function VikingHeroCard({ profile, runes, xp, level, totalShifts, cosmetics, tit
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', paddingTop: 32, gap: 0 }}>
         {/* Portrait + orbit container */}
         <div style={{ position: 'relative', width: ORBIT_SZ, height: ORBIT_SZ, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          {/* Rune orbit (if frame equipped) */}
-          {hasFrame && <RuneOrbitRing size={ORBIT_SZ} frameType={cosmetics.active_frame} />}
+          {hasFrame && <RuneOrbitRing size={ORBIT_SZ} color={frame.color} />}
 
-          {/* Character portrait card */}
           <div style={{
-            width: PORTRAIT_W, height: 170, borderRadius: 16,
-            background: 'linear-gradient(180deg, rgba(255,255,255,.04) 0%, rgba(0,0,0,.3) 100%)',
-            border: `1.5px solid ${hasFrame ? accent : 'rgba(240,200,80,.2)'}`,
-            overflow: 'hidden', position: 'relative',
+            borderRadius: 22,
+            overflow: 'hidden',
             animation: `${frameAnim} 3s ease-in-out infinite`,
+            /* static glow lives in keyframes — do not put filter here (kills WebGL) */
             boxShadow: hasFrame
-              ? `0 0 24px ${accent}60, 0 0 50px ${accent}20, inset 0 0 30px rgba(0,0,0,.5)`
-              : `0 0 16px rgba(240,200,80,.15), inset 0 0 30px rgba(0,0,0,.5)`,
+              ? `0 0 24px ${accent}60, 0 0 50px ${accent}20`
+              : undefined,
           }}>
-            {hasAvatar ? (
-              <div style={{ width: '100%', height: '100%' }}
-                dangerouslySetInnerHTML={{ __html: AVATAR_SVGS[avatarKey] }} />
-            ) : (
-              /* Default: stylized initials portrait */
-              <div style={{
-                width: '100%', height: '100%',
-                background: 'linear-gradient(180deg,#1e2840,#0a0e1a)',
-                display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 8,
-              }}>
-                <div style={{
-                  width: 70, height: 70, borderRadius: '50%',
-                  background: `linear-gradient(135deg, ${accent}40, ${accent}15)`,
-                  border: `2px solid ${accent}60`,
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                }}>
-                  <span style={{ fontSize: 28, fontWeight: 900, color: accent }}>{getInitials(profile?.fio)}</span>
-                </div>
-                <span style={{ fontSize: 9, color: 'rgba(255,255,255,.3)', textAlign: 'center', padding: '0 8px', lineHeight: 1.4 }}>
-                  Нет аватара{'\n'}Купи в магазине ᚱ
-                </span>
-              </div>
-            )}
-
-            {/* Gradient vignette bottom */}
-            <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: 40, background: 'linear-gradient(transparent, rgba(0,0,0,.6))', pointerEvents: 'none' }} />
+            <VikingAvatarLazy
+              assets={assets || profile?.assets || {}}
+              cosmetics={cosmetics || {}}
+              level={level}
+              size={PORTRAIT_W}
+              interactive
+            />
           </div>
 
-          {/* Badge */}
+          {/* Badge — profile chrome (not on 3D mesh). Bottom-right of portrait. */}
           {hasBadge && (
-            <div style={{
-              position: 'absolute', bottom: ORBIT_SZ/2 - 85 - 20, right: ORBIT_SZ/2 - PORTRAIT_W/2 - 22,
-              width: 36, height: 36,
-              animation: 'badgePop .5s cubic-bezier(.34,1.56,.64,1) .9s both',
-            }} dangerouslySetInnerHTML={{ __html: BADGE_SVGS[cosmetics.active_badge] }} />
+            <div
+              title="Бейдж профиля"
+              style={{
+                position: 'absolute',
+                right: 8,
+                bottom: 18,
+                width: 56,
+                height: 56,
+                borderRadius: 14,
+                background: 'rgba(10,14,24,.88)',
+                border: `1.5px solid ${accent}`,
+                boxShadow: `0 0 16px ${accent}55, 0 4px 12px rgba(0,0,0,.45)`,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                padding: 4,
+                zIndex: 4,
+                animation: 'badgePop .5s cubic-bezier(.34,1.56,.64,1) .9s both',
+              }}
+            >
+              <div style={{ width: 48, height: 48 }} dangerouslySetInnerHTML={{ __html: badgeSvg }} />
+            </div>
           )}
         </div>
 
@@ -917,6 +536,7 @@ function Skeleton() {
 export default function FieldProfile() {
   const navigate = useNavigate();
   const haptic = useHaptic();
+  const employee = useFieldAuthStore((s) => s.employee);
   const [profile, setProfile] = useState(null);
   const [permits, setPermits] = useState([]);
   const [personal, setPersonal] = useState(null);
@@ -925,10 +545,14 @@ export default function FieldProfile() {
   const [seasonalData, setSeasonalData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [personalOpen, setPersonalOpen] = useState(false);
-  const [editing, setEditing] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
   const [editData, setEditData] = useState({});
+  const [editErrors, setEditErrors] = useState({});
+  const [saveError, setSaveError] = useState('');
   const [saving, setSaving] = useState(false);
   const [darkMode, setDarkMode] = useState(() => document.documentElement.classList.contains('dark'));
+  const [rankCeremony, setRankCeremony] = useState(null);
+  const ceremonyShownRef = useRef(false);
 
   const delay = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -973,6 +597,22 @@ export default function FieldProfile() {
     return () => document.removeEventListener('visibilitychange', onVis);
   }, [loadProfile]);
 
+  useEffect(() => {
+    if (!profile || ceremonyShownRef.current) return;
+    try {
+      if (sessionStorage.getItem('field_rank_ceremony_session')) return;
+    } catch { /* */ }
+    const lvl = getLevel(profile.xp || 0);
+    const rank = getRank(lvl);
+    const empId = profile.id || employee?.id;
+    const chk = checkRankCeremony(empId, rank.title);
+    if (!chk.show) return;
+    if (chk.prevTitle && rankIndex(rank.title) <= rankIndex(chk.prevTitle)) return;
+    ceremonyShownRef.current = true;
+    try { sessionStorage.setItem('field_rank_ceremony_session', '1'); } catch { /* */ }
+    setRankCeremony({ rank, prevTitle: chk.prevTitle, level: lvl, welcome: !!chk.welcome });
+  }, [profile, employee?.id]);
+
   const toggleTheme = () => {
     haptic.light();
     const next = !darkMode;
@@ -985,12 +625,41 @@ export default function FieldProfile() {
     useFieldAuthStore.getState().logout();
     navigate('/field-login');
   };
-  const startEdit  = () => { haptic.light(); setEditing(true); setEditData(personal || {}); };
-  const cancelEdit = () => { setEditing(false); setEditData({}); };
-  const saveEdit   = async () => {
-    haptic.medium(); setSaving(true);
-    try { await fieldApi.put('/worker/personal', editData); setPersonal(editData); setEditing(false); } catch {}
-    setSaving(false);
+  const startEdit = () => {
+    haptic.light();
+    setEditErrors({});
+    setSaveError('');
+    setEditData(buildEditForm(personal || {}));
+    setEditOpen(true);
+  };
+  const cancelEdit = () => {
+    setEditOpen(false);
+    setEditData({});
+    setEditErrors({});
+    setSaveError('');
+  };
+  const saveEdit = async () => {
+    haptic.medium();
+    const errs = validatePersonalForm(editData);
+    setEditErrors(errs);
+    if (Object.values(errs).some(Boolean)) {
+      setSaveError('Исправь ошибки в форме');
+      return;
+    }
+    setSaving(true);
+    setSaveError('');
+    try {
+      const payload = buildPersonalPayload(editData);
+      const res = await fieldApi.put('/worker/personal', payload);
+      setPersonal({ ...(personal || {}), ...payload, ...(res?.employee || {}) });
+      setEditOpen(false);
+      haptic.success();
+    } catch (e) {
+      setSaveError(e?.message || 'Не удалось сохранить');
+      haptic.error();
+    } finally {
+      setSaving(false);
+    }
   };
 
   if (loading) return <Skeleton />;
@@ -1012,12 +681,27 @@ export default function FieldProfile() {
   return (
     <>
       <style>{ANIM_CSS}</style>
+      {rankCeremony && (
+        <RankUpCeremony
+          open
+          rank={rankCeremony.rank}
+          prevRank={rankCeremony.prevTitle}
+          level={rankCeremony.level}
+          assets={profile?.assets || {}}
+          cosmetics={cosmetics}
+          employeeId={profile?.id || employee?.id}
+          haptic={haptic}
+          welcome={!!rankCeremony.welcome}
+          onClose={() => setRankCeremony(null)}
+        />
+      )}
       <div className="pb-24" style={{ backgroundColor: 'var(--bg-primary)', minHeight: '100%' }}>
 
         {/* ═══ HERO CARD ══════════════════════════════════════════════ */}
         <VikingHeroCard
           profile={profile} runes={runes} xp={xp} level={level}
           totalShifts={totalShifts} cosmetics={cosmetics}
+          assets={profile?.assets || {}}
           title={profile?.title || achievementsData?.title || null}
         />
 
@@ -1072,7 +756,7 @@ export default function FieldProfile() {
                   </div>
                 )}
                 <div className="flex gap-2 mt-2">
-                  <button onClick={() => navigate('/field/history')} className="flex-1 py-2.5 rounded-lg text-sm font-medium text-center"
+                  <button onClick={() => navigate('/field/timesheet')} className="flex-1 py-2.5 rounded-lg text-sm font-medium text-center"
                     style={{ backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-norse)', color: 'var(--text-primary)' }}>
                     📋 Табель
                   </button>
@@ -1279,7 +963,9 @@ export default function FieldProfile() {
                   </div>
                 </div>
                 <p className="text-xs" style={{ color: ch.color + 'cc' }}>
-                  Награда: {ch.reward_label} → {ch.reward_value} очков
+                  Награда: {ch.reward_label || (
+                    `${ch.reward_value} ${ch.reward_type === 'runes' ? 'рун' : ch.reward_type === 'xp' ? 'XP' : 'очков'}`
+                  )}
                 </p>
               </button>
             );
@@ -1317,79 +1003,50 @@ export default function FieldProfile() {
               {personalOpen ? <ChevronUp size={18} style={{ color: 'var(--text-tertiary)' }} /> : <ChevronDown size={18} style={{ color: 'var(--text-tertiary)' }} />}
             </button>
             {personalOpen && (
-              <div className="px-4 pb-4 space-y-2">
-                {editing ? (
-                  <>
-                    {PERSONAL_FIELDS.map(f => (
-                      <div key={f.key}>
-                        <label className="text-xs" style={{ color: 'var(--text-tertiary)' }}>{f.label}</label>
-                        {f.key === 'is_self_employed' ? (
-                          <select className="w-full rounded-lg px-3 py-2 text-sm mt-0.5 outline-none"
-                            style={{ backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-norse)', color: 'var(--text-primary)' }}
-                            value={editData[f.key] || ''} onChange={e => setEditData({ ...editData, [f.key]: e.target.value })}>
-                            <option value="">—</option><option value="true">Да</option><option value="false">Нет</option>
-                          </select>
-                        ) : f.key === 'gender' ? (
-                          <select className="w-full rounded-lg px-3 py-2 text-sm mt-0.5 outline-none"
-                            style={{ backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-norse)', color: 'var(--text-primary)' }}
-                            value={editData[f.key] || ''} onChange={e => setEditData({ ...editData, [f.key]: e.target.value })}>
-                            <option value="">—</option><option value="male">Мужской</option><option value="female">Женский</option>
-                          </select>
-                        ) : (
-                          <input className="w-full rounded-lg px-3 py-2 text-sm mt-0.5 outline-none"
-                            style={{ backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-norse)', color: 'var(--text-primary)' }}
-                            type={f.type || 'text'}
-                            value={f.type === 'date' && editData[f.key] ? String(editData[f.key]).slice(0, 10) : (editData[f.key] || '')}
-                            onChange={e => setEditData({ ...editData, [f.key]: e.target.value })} />
-                        )}
+              <div className="px-4 pb-4 space-y-3">
+                {personal ? (
+                  PERSONAL_GROUPS.map((group) => {
+                    const rows = group.fields
+                      .map((f) => ({ f, val: formatPersonalViewValue(personal, f) }))
+                      .filter((r) => r.val != null && r.val !== '');
+                    if (!rows.length) return null;
+                    return (
+                      <div key={group.id} className="space-y-2">
+                        <p className="text-xs font-semibold uppercase tracking-widest pt-1"
+                          style={{ color: 'var(--text-tertiary)' }}>{group.title}</p>
+                        {rows.map(({ f, val }) => (
+                          <div key={f.key}>
+                            <p className="text-xs" style={{ color: 'var(--text-tertiary)' }}>{f.label}</p>
+                            <p className="text-sm" style={{ color: 'var(--text-primary)' }}>{val}</p>
+                          </div>
+                        ))}
                       </div>
-                    ))}
-                    <div className="flex gap-2 pt-2">
-                      <button className="flex-1 flex items-center justify-center gap-1 rounded-lg py-2 text-sm font-medium"
-                        style={{ backgroundColor: 'var(--gold)', color: 'var(--bg-primary)' }} onClick={saveEdit} disabled={saving}>
-                        <Check size={16} /> {saving ? '...' : 'Сохранить'}
-                      </button>
-                      <button className="flex-1 flex items-center justify-center gap-1 rounded-lg py-2 text-sm font-medium"
-                        style={{ border: '1px solid var(--border-norse)', color: 'var(--text-secondary)' }} onClick={cancelEdit}>
-                        <X size={16} /> Отмена
-                      </button>
-                    </div>
-                  </>
+                    );
+                  })
                 ) : (
-                  <>
-                    {personal ? (
-                      <div className="space-y-2">
-                        {PERSONAL_FIELDS.map(f => {
-                          let val = personal[f.key];
-                          if (val == null || val === '') return null;
-                          if (f.key === 'is_self_employed') val = val === true || val === 'true' ? 'Да' : 'Нет';
-                          if (f.key === 'gender') {
-                            const g = String(val).toLowerCase();
-                            val = g === 'male' || g === 'm' || g === 'м' ? 'Мужской'
-                              : g === 'female' || g === 'f' || g === 'ж' ? 'Женский' : val;
-                          }
-                          if (f.type === 'date' && val) {
-                            try { val = new Date(val).toLocaleDateString('ru-RU', { day:'2-digit', month:'2-digit', year:'numeric' }); } catch {}
-                          }
-                          return (
-                            <div key={f.key}>
-                              <p className="text-xs" style={{ color: 'var(--text-tertiary)' }}>{f.label}</p>
-                              <p className="text-sm" style={{ color: 'var(--text-primary)' }}>{val}</p>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    ) : (
-                      <p className="text-sm" style={{ color: 'var(--text-tertiary)' }}>Данные не заполнены</p>
-                    )}
-                    <button className="flex items-center gap-1 mt-3 text-sm font-medium" style={{ color: 'var(--gold)' }} onClick={startEdit}>
-                      <Edit3 size={14} /> Редактировать
-                    </button>
-                  </>
+                  <p className="text-sm" style={{ color: 'var(--text-tertiary)' }}>Данные не заполнены</p>
                 )}
+                <button
+                  className="flex items-center gap-1 mt-2 text-sm font-medium"
+                  style={{ color: 'var(--gold)' }}
+                  onClick={startEdit}
+                >
+                  <Edit3 size={14} /> Исправить данные
+                </button>
               </div>
             )}
           </div>
+
+          <PersonalEditSheet
+            open={editOpen}
+            editData={editData}
+            setEditData={setEditData}
+            editErrors={editErrors}
+            saveError={saveError}
+            saving={saving}
+            onClose={cancelEdit}
+            onSave={saveEdit}
+          />
 
           {/* ═══ THEME TOGGLE ═════════════════════════════════════════ */}
           <button className="w-full flex items-center justify-between rounded-xl p-4"
@@ -1411,23 +1068,327 @@ export default function FieldProfile() {
   );
 }
 
-const PERSONAL_FIELDS = [
-  { key: 'fio',             label: 'ФИО' },
-  { key: 'phone',           label: 'Телефон' },
-  { key: 'email',           label: 'Email' },
-  { key: 'birth_date',      label: 'Дата рождения', type: 'date' },
-  { key: 'gender',          label: 'Пол' },
-  { key: 'city',            label: 'Город' },
-  { key: 'address',         label: 'Адрес регистрации' },
-  { key: 'passport_data',   label: 'Паспорт (серия номер)' },
-  { key: 'inn',             label: 'ИНН' },
-  { key: 'snils',           label: 'СНИЛС' },
-  { key: 'is_self_employed',label: 'Самозанятый' },
-  { key: 'naks',            label: 'НАКС' },
-  { key: 'naks_expiry',     label: 'НАКС до', type: 'date' },
-  { key: 'imt_number',      label: 'Удостоверение ИТР' },
-  { key: 'imt_expires',     label: 'ИТР до', type: 'date' },
-  { key: 'clothing_size',   label: 'Размер одежды' },
-  { key: 'shoe_size',       label: 'Размер обуви' },
-  { key: 'employment_date', label: 'Дата трудоустройства', type: 'date' },
+const PERSONAL_GROUPS = [
+  {
+    id: 'contacts',
+    title: 'Контакты',
+    fields: [
+      { key: 'fio', label: 'ФИО' },
+      { key: 'phone', label: 'Телефон', mask: 'phone' },
+      { key: 'phone2', label: 'Доп. телефон', mask: 'phone' },
+      { key: 'email', label: 'Email', type: 'email' },
+      { key: 'telegram', label: 'Telegram' },
+      { key: 'birth_date', label: 'Дата рождения', type: 'date' },
+      { key: 'gender', label: 'Пол', type: 'gender' },
+      { key: 'city', label: 'Город' },
+      { key: 'address', label: 'Адрес' },
+      { key: 'registration_address', label: 'Адрес регистрации' },
+    ],
+  },
+  {
+    id: 'documents',
+    title: 'Документы',
+    fields: [
+      { key: 'passport_series', label: 'Серия паспорта', mask: 'passport_series' },
+      { key: 'passport_number', label: 'Номер паспорта', mask: 'passport_number' },
+      { key: 'passport_issued', label: 'Кем выдан' },
+      { key: 'passport_date', label: 'Дата выдачи', type: 'date' },
+      { key: 'passport_code', label: 'Код подразделения', mask: 'passport_code' },
+      { key: 'inn', label: 'ИНН', mask: 'digits', maxLen: 12 },
+      { key: 'snils', label: 'СНИЛС', mask: 'snils' },
+      { key: 'is_self_employed', label: 'Самозанятый', type: 'bool' },
+      { key: 'naks', label: 'НАКС' },
+      { key: 'naks_expiry', label: 'НАКС до', type: 'date' },
+      { key: 'imt_number', label: 'Удостоверение ИТР' },
+      { key: 'imt_expires', label: 'ИТР до', type: 'date' },
+    ],
+  },
+  {
+    id: 'ppe',
+    title: 'СИЗ',
+    fields: [
+      { key: 'clothing_size', label: 'Размер одежды', type: 'ppe_size' },
+      { key: 'shoe_size', label: 'Размер обуви', type: 'ppe_size' },
+      { key: 'headwear_size', label: 'Размер каски', type: 'ppe_size' },
+      { key: 'blood_type', label: 'Группа крови', maxLen: 40 },
+      { key: 'height', label: 'Рост', type: 'number' },
+      { key: 'medical_notes', label: 'Мед. заметки' },
+    ],
+  },
+  {
+    id: 'emergency',
+    title: 'Экстренные контакты',
+    fields: [
+      { key: 'spouse_name', label: 'Супруг(а)' },
+      { key: 'spouse_phone', label: 'Телефон супруга(и)', mask: 'phone' },
+      { key: 'relative_name', label: 'Родственник' },
+      { key: 'relative_relation', label: 'Кем приходится' },
+      { key: 'relative_phone', label: 'Телефон родственника', mask: 'phone' },
+    ],
+  },
+  {
+    id: 'bank',
+    title: 'Банк',
+    fields: [
+      { key: 'bank_name', label: 'Банк' },
+      { key: 'bik', label: 'БИК', mask: 'digits', maxLen: 9 },
+      { key: 'account_number', label: 'Счёт', mask: 'digits', maxLen: 20 },
+      { key: 'card_number', label: 'Карта', mask: 'digits', maxLen: 19 },
+    ],
+  },
+  {
+    id: 'education',
+    title: 'Образование и семья',
+    fields: [
+      { key: 'education', label: 'Образование' },
+      { key: 'specialty', label: 'Специальность' },
+      { key: 'marital_status', label: 'Семейное положение' },
+      { key: 'children_count', label: 'Детей', type: 'number' },
+    ],
+  },
 ];
+
+function dateOnly(v) {
+  if (!v) return '';
+  return String(v).slice(0, 10);
+}
+
+function buildEditForm(p) {
+  const form = {};
+  for (const g of PERSONAL_GROUPS) {
+    for (const f of g.fields) {
+      let v = p[f.key];
+      if (f.key === 'passport_series') v = p.passport_series || p.pass_series || '';
+      if (f.key === 'passport_number') v = p.passport_number || p.pass_number || '';
+      if (f.type === 'date') v = dateOnly(v);
+      if (f.type === 'bool') {
+        if (v === true || v === 'true') v = 'true';
+        else if (v === false || v === 'false') v = 'false';
+        else v = '';
+      }
+      if (f.mask === 'phone') v = normalizeRuPhoneDigits(v || '') || (v || '');
+      if (f.mask === 'snils' || f.mask === 'passport_code' || f.mask === 'passport_series' || f.mask === 'passport_number' || f.mask === 'digits') {
+        v = digitsOf(v || '');
+        if (f.maxLen) v = v.slice(0, f.maxLen);
+        if (f.mask === 'passport_series') v = v.slice(0, 4);
+        if (f.mask === 'passport_number') v = v.slice(0, 6);
+        if (f.mask === 'passport_code') v = v.slice(0, 6);
+        if (f.mask === 'snils') v = v.slice(0, 11);
+      }
+      form[f.key] = v == null ? '' : v;
+    }
+  }
+  return form;
+}
+
+function formatPersonalViewValue(personal, f) {
+  let val = personal[f.key];
+  if (f.key === 'passport_series') val = personal.passport_series || personal.pass_series;
+  if (f.key === 'passport_number') val = personal.passport_number || personal.pass_number;
+  if (val == null || val === '') return null;
+  if (f.type === 'bool') return val === true || val === 'true' ? 'Да' : (val === false || val === 'false' ? 'Нет' : String(val));
+  if (f.type === 'gender') {
+    const g = String(val).toLowerCase();
+    if (g === 'male' || g === 'm' || g === 'м') return 'Мужской';
+    if (g === 'female' || g === 'f' || g === 'ж') return 'Женский';
+    return val;
+  }
+  if (f.type === 'date' && val) {
+    try {
+      return new Date(val).toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric' });
+    } catch {
+      return String(val).slice(0, 10);
+    }
+  }
+  if (f.mask === 'phone') return formatRuPhoneDisplay(val) || val;
+  if (f.mask === 'snils') return formatSnilsDisplay(val) || val;
+  if (f.mask === 'passport_code') return formatPassportCodeDisplay(val) || val;
+  return String(val);
+}
+
+function validatePersonalForm(form) {
+  return {
+    phone: phoneError(form.phone),
+    phone2: phoneError(form.phone2),
+    spouse_phone: phoneError(form.spouse_phone),
+    relative_phone: phoneError(form.relative_phone),
+    snils: snilsError(form.snils),
+    passport_series: passportSeriesError(form.passport_series),
+    passport_number: passportNumberError(form.passport_number),
+    passport_code: passportCodeError(form.passport_code),
+    bik: form.bik && digitsOf(form.bik).length !== 9 ? 'БИК — 9 цифр' : null,
+    account_number: form.account_number && digitsOf(form.account_number).length !== 20 ? 'Счёт — 20 цифр' : null,
+  };
+}
+
+function buildPersonalPayload(form) {
+  const payload = {};
+  for (const g of PERSONAL_GROUPS) {
+    for (const f of g.fields) {
+      let v = form[f.key];
+      if (typeof v === 'string') v = v.trim();
+      if (f.mask === 'phone') v = normalizeRuPhoneDigits(v) || null;
+      if (f.mask === 'snils' || f.mask === 'passport_code' || f.mask === 'passport_series' || f.mask === 'passport_number' || f.mask === 'digits') {
+        v = digitsOf(v);
+        if (f.maxLen) v = v.slice(0, f.maxLen);
+        if (f.mask === 'passport_series') v = v.slice(0, 4);
+        if (f.mask === 'passport_number') v = v.slice(0, 6);
+        if (f.mask === 'passport_code') v = v.slice(0, 6);
+        if (f.mask === 'snils') v = v.slice(0, 11);
+      }
+      if (f.type === 'bool') {
+        if (v === 'true') v = true;
+        else if (v === 'false') v = false;
+        else v = null;
+      }
+      if (f.type === 'number') {
+        if (v === '' || v == null) v = null;
+        else v = Number(v);
+      }
+      if (f.maxLen && typeof v === 'string') v = v.slice(0, f.maxLen);
+      payload[f.key] = v === '' ? null : v;
+    }
+  }
+  return payload;
+}
+
+function fieldDisplayValue(f, editData) {
+  const raw = editData[f.key] ?? '';
+  if (f.mask === 'phone') return formatRuPhoneDisplay(raw);
+  if (f.mask === 'snils') return formatSnilsDisplay(raw);
+  if (f.mask === 'passport_code') return formatPassportCodeDisplay(raw);
+  if (f.type === 'date') return dateOnly(raw);
+  return raw;
+}
+
+function onFieldChange(f, raw, editData, setEditData) {
+  let v = raw;
+  if (f.mask === 'phone') v = normalizeRuPhoneDigits(raw);
+  else if (f.mask === 'snils' || f.mask === 'passport_code' || f.mask === 'passport_series' || f.mask === 'passport_number' || f.mask === 'digits') {
+    v = digitsOf(raw);
+    if (f.maxLen) v = v.slice(0, f.maxLen);
+    if (f.mask === 'passport_series') v = v.slice(0, 4);
+    if (f.mask === 'passport_number') v = v.slice(0, 6);
+    if (f.mask === 'passport_code') v = v.slice(0, 6);
+    if (f.mask === 'snils') v = v.slice(0, 11);
+  } else if (f.maxLen) {
+    v = String(raw).slice(0, f.maxLen);
+  }
+  setEditData({ ...editData, [f.key]: v });
+}
+
+function PersonalEditSheet({ open, editData, setEditData, editErrors, saveError, saving, onClose, onSave }) {
+  const inputStyle = {
+    backgroundColor: 'var(--bg-primary)',
+    border: '1px solid var(--border-norse)',
+    color: 'var(--text-primary)',
+  };
+  return (
+    <BottomSheet
+      open={open}
+      onClose={onClose}
+      title="Исправить данные"
+      maxHeight="90vh"
+      footer={(
+        <div className="flex gap-2">
+          <button
+            className="flex-1 flex items-center justify-center gap-1 rounded-xl py-3 text-sm font-semibold"
+            style={{ backgroundColor: 'var(--gold)', color: 'var(--bg-primary)', opacity: saving ? 0.7 : 1 }}
+            onClick={onSave}
+            disabled={saving}
+          >
+            <Check size={16} /> {saving ? 'Сохранение…' : 'Сохранить'}
+          </button>
+          <button
+            className="flex-1 flex items-center justify-center gap-1 rounded-xl py-3 text-sm font-semibold"
+            style={{ border: '1px solid var(--border-norse)', color: 'var(--text-secondary)' }}
+            onClick={onClose}
+            disabled={saving}
+          >
+            <X size={16} /> Отмена
+          </button>
+        </div>
+      )}
+    >
+      <div className="space-y-4 pb-2">
+        {saveError && (
+          <p className="text-sm rounded-lg px-3 py-2"
+            style={{
+              color: 'var(--danger, #dc2626)',
+              background: 'color-mix(in srgb, var(--danger, #dc2626) 12%, transparent)',
+              border: '1px solid color-mix(in srgb, var(--danger, #dc2626) 30%, transparent)',
+            }}>
+            {saveError}
+          </p>
+        )}
+        {PERSONAL_GROUPS.map((group) => (
+          <div key={group.id} className="space-y-2">
+            <p className="text-xs font-semibold uppercase tracking-widest"
+              style={{ color: 'var(--gold)' }}>{group.title}</p>
+            {group.fields.map((f) => {
+              const err = editErrors?.[f.key];
+              return (
+                <div key={f.key}>
+                  <label className="text-xs" style={{ color: 'var(--text-tertiary)' }}>{f.label}</label>
+                  {f.type === 'bool' ? (
+                    <select
+                      className="w-full rounded-lg px-3 py-2.5 text-sm mt-0.5 outline-none"
+                      style={inputStyle}
+                      value={editData[f.key] || ''}
+                      onChange={(e) => setEditData({ ...editData, [f.key]: e.target.value })}
+                    >
+                      <option value="">—</option>
+                      <option value="true">Да</option>
+                      <option value="false">Нет</option>
+                    </select>
+                  ) : f.type === 'gender' ? (
+                    <select
+                      className="w-full rounded-lg px-3 py-2.5 text-sm mt-0.5 outline-none"
+                      style={inputStyle}
+                      value={editData[f.key] || ''}
+                      onChange={(e) => setEditData({ ...editData, [f.key]: e.target.value })}
+                    >
+                      <option value="">—</option>
+                      <option value="male">Мужской</option>
+                      <option value="female">Женский</option>
+                    </select>
+                  ) : f.type === 'ppe_size' ? (
+                    <select
+                      className="w-full rounded-lg px-3 py-2.5 text-sm mt-0.5 outline-none"
+                      style={{
+                        ...inputStyle,
+                        borderColor: err ? 'var(--danger, #dc2626)' : 'var(--border-norse)',
+                      }}
+                      value={editData[f.key] || ''}
+                      onChange={(e) => setEditData({ ...editData, [f.key]: e.target.value })}
+                    >
+                      {ppeSizeOptions(f.key, editData[f.key]).map((o) => (
+                        <option key={o.value || '__empty'} value={o.value}>{o.label}</option>
+                      ))}
+                    </select>
+                  ) : (
+                    <input
+                      className="w-full rounded-lg px-3 py-2.5 text-sm mt-0.5 outline-none"
+                      style={{
+                        ...inputStyle,
+                        borderColor: err ? 'var(--danger, #dc2626)' : 'var(--border-norse)',
+                      }}
+                      type={f.type === 'date' ? 'date' : f.type === 'number' ? 'number' : f.type === 'email' ? 'email' : 'text'}
+                      inputMode={f.mask === 'phone' || f.mask === 'digits' || f.mask === 'snils' || f.mask?.startsWith('passport') ? 'numeric' : undefined}
+                      maxLength={f.maxLen || undefined}
+                      value={fieldDisplayValue(f, editData)}
+                      onChange={(e) => onFieldChange(f, e.target.value, editData, setEditData)}
+                    />
+                  )}
+                  {err && (
+                    <p className="text-xs mt-0.5" style={{ color: 'var(--danger, #dc2626)' }}>{err}</p>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        ))}
+      </div>
+    </BottomSheet>
+  );
+}

@@ -120,8 +120,10 @@ function getInitials(name) {
 }
 
 function shortName(name) {
-  const parts = (name || '').split(/\s+/);
-  return parts.length >= 2 ? `${parts[0]} ${parts[1][0]}.` : name;
+  const parts = (name || '').trim().split(/\s+/).filter(Boolean);
+  if (parts.length >= 3) return `${parts[0]} ${parts[1]} ${parts[2][0]}.`;
+  if (parts.length === 2) return `${parts[0]} ${parts[1]}`;
+  return name || '';
 }
 
 const CheckIcon = () => (

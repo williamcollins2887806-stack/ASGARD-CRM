@@ -1,11 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useAuthStore } from '@/stores/authStore';
 import { toast } from 'sonner';
-
-function fmtMoney(n) {
-  if (n === null || n === undefined || n === '') return '—';
-  return Number(n).toLocaleString('ru-RU') + ' ₽';
-}
+import { formatMoney as fmtMoney } from '@/lib/utils';
 
 export default function HeadToApprovals() {
   const { user, token } = useAuthStore();

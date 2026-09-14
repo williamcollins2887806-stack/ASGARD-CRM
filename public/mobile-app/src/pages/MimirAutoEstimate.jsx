@@ -7,6 +7,7 @@ import {
 import { useHaptic } from '@/hooks/useHaptic';
 import { api } from '@/api/client';
 import { MarkdownText } from '@/components/chat/MarkdownText';
+import { formatMoney as fmtMoney, formatMoneyShort as fmtMln } from '@/lib/utils';
 
 /**
  * MimirAutoEstimate (AP2)
@@ -32,19 +33,6 @@ const STEP_ICONS = {
   collected: CheckCircle2,
   ai_thinking: Sparkles,
   creating_estimate: FileText,
-};
-
-const fmtMoney = (n) => {
-  if (n == null) return '—';
-  return Math.round(Number(n)).toLocaleString('ru-RU') + ' ₽';
-};
-
-const fmtMln = (n) => {
-  if (n == null || n === 0) return '—';
-  const v = Number(n);
-  if (Math.abs(v) >= 1e6) return (v / 1e6).toFixed(2).replace(/\.?0+$/, '') + ' М₽';
-  if (Math.abs(v) >= 1e3) return Math.round(v / 1e3) + ' тыс₽';
-  return Math.round(v) + ' ₽';
 };
 
 export default function MimirAutoEstimate() {

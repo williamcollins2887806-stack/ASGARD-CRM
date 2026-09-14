@@ -1,0 +1,155 @@
+{
+  "asset": {
+    "generator": "ASGARD extract_kaykit_helmets",
+    "version": "2.0"
+  },
+  "scene": 0,
+  "scenes": [
+    {
+      "name": "Scene",
+      "nodes": [
+        0
+      ]
+    }
+  ],
+  "nodes": [
+    {
+      "mesh": 0,
+      "name": "hat_skel_warrior",
+      "translation": [
+        1.9322939109238726e-21,
+        -0.02555268658183585,
+        -1.3597309589385986e-7
+      ],
+      "rotation": [
+        -7.85025605384411e-37,
+        -7.1054265105680546e-15,
+        1.1048254461819734e-22,
+        1
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    }
+  ],
+  "materials": [
+    {
+      "doubleSided": true,
+      "name": "skeleton_texture",
+      "pbrMetallicRoughness": {
+        "baseColorTexture": {
+          "index": 0
+        },
+        "metallicFactor": 0,
+        "roughnessFactor": 0.5
+      }
+    }
+  ],
+  "meshes": [
+    {
+      "name": "hat_skel_warrior",
+      "primitives": [
+        {
+          "attributes": {
+            "POSITION": 0,
+            "NORMAL": 1,
+            "TEXCOORD_0": 2
+          },
+          "indices": 3,
+          "material": 0
+        }
+      ]
+    }
+  ],
+  "textures": [
+    {
+      "sampler": 0,
+      "source": 0
+    }
+  ],
+  "images": [
+    {
+      "mimeType": "image/png",
+      "name": "skeleton_texture",
+      "uri": "skeleton_texture.png"
+    }
+  ],
+  "samplers": [
+    {
+      "magFilter": 9729,
+      "minFilter": 9987,
+      "wrapS": 10497,
+      "wrapT": 10497
+    }
+  ],
+  "accessors": [
+    {
+      "bufferView": 0,
+      "componentType": 5126,
+      "count": 1069,
+      "type": "VEC3",
+      "max": [
+        0.763252854347229,
+        1.3745626211166382,
+        0.7005370259284973
+      ],
+      "min": [
+        -0.7553061246871948,
+        0.03757275640964508,
+        -0.7582338452339172
+      ]
+    },
+    {
+      "bufferView": 1,
+      "componentType": 5126,
+      "count": 1069,
+      "type": "VEC3"
+    },
+    {
+      "bufferView": 2,
+      "componentType": 5126,
+      "count": 1069,
+      "type": "VEC2"
+    },
+    {
+      "bufferView": 3,
+      "componentType": 5123,
+      "count": 2490,
+      "type": "SCALAR"
+    }
+  ],
+  "bufferViews": [
+    {
+      "buffer": 0,
+      "byteOffset": 0,
+      "byteLength": 12828,
+      "target": 34962
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 12828,
+      "byteLength": 12828,
+      "target": 34962
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 25656,
+      "byteLength": 8552,
+      "target": 34962
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 34208,
+      "byteLength": 4980,
+      "target": 34963
+    }
+  ],
+  "buffers": [
+    {
+      "byteLength": 39188,
+      "uri": "hat_skel_warrior.bin"
+    }
+  ]
+}

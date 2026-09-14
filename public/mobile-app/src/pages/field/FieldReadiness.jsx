@@ -25,7 +25,7 @@ const STATUS_CONFIG = {
   ready:     { label: 'Готов к походу',   color: 'var(--green)',  icon: CheckCircle, emoji: '⚔️' },
   not_ready: { label: 'Отдыхаю',         color: 'var(--warn-t)', icon: XCircle,     emoji: '🛏' },
   on_site:   { label: 'На объекте',       color: 'var(--blue)',   icon: Shield,      emoji: '🏗' },
-  unknown:   { label: 'Не указан',        color: 'var(--text-tertiary)', icon: Shield, emoji: '❓' },
+  unknown:   { label: 'Без статуса',      color: 'var(--text-tertiary)', icon: Shield, emoji: '○' },
   archive:   { label: 'Архив',            color: 'var(--text-tertiary)', icon: Shield, emoji: '📦' },
 };
 
@@ -74,8 +74,9 @@ export default function FieldReadiness() {
       try {
         const empId = employee?.id;
         if (empId) {
-          const docs = await fieldApi.get('/permits');
-          if (Array.isArray(docs)) {
+          const res = await fieldApi.get('/worker/permits');
+          const docs = Array.isArray(res) ? res : (res?.permits || []);
+          if (Array.isArray(docs) && docs.length) {
             const now = Date.now();
             const thirtyDays = 30 * 86400000;
             const expiring = docs.filter(d => {

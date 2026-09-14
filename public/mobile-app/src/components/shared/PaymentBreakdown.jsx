@@ -18,8 +18,7 @@ import { useEffect, useState } from 'react';
 import { api } from '@/api/client';
 import { BottomSheet } from './BottomSheet';
 import { Loader2 } from 'lucide-react';
-
-const fmt = (n) => (n != null ? Math.round(Number(n) || 0).toLocaleString('ru-RU') + ' ₽' : '—');
+import { formatMoney as fmt } from '@/lib/utils';
 
 /* ── Палитра источников (через токены темы) ───────────────────────── */
 const SOURCE_META = {

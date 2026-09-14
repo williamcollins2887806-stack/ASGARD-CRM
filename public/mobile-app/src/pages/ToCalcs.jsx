@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useAuthStore } from '@/stores/authStore';
 import { toast } from 'sonner';
+import { formatMoney as fmtMoney } from '@/lib/utils';
 
 const STATUS_COLORS = {
   'Отправлено на просчёт': '#5b8def',
@@ -17,11 +18,6 @@ const APR_COLORS = {
   question: ['#f39c12','Вопрос'],
   rejected: ['#e74c3c','Отклонено']
 };
-
-function fmtMoney(n) {
-  if (n === null || n === undefined || n === '') return '—';
-  return Number(n).toLocaleString('ru-RU') + ' ₽';
-}
 
 export default function ToCalcs() {
   const { user, token } = useAuthStore();

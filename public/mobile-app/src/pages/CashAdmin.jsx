@@ -6,7 +6,7 @@ import { BottomSheet } from '@/components/shared/BottomSheet';
 import { EmptyState } from '@/components/shared/EmptyState';
 import { SkeletonList } from '@/components/shared/SkeletonKit';
 import { PullToRefresh } from '@/components/shared/PullToRefresh';
-import { Vault, ChevronRight, Check, X as XIcon, Banknote, MessageCircle, AlertTriangle } from 'lucide-react';
+import { Vault, ChevronRight, Check, X as XIcon, Banknote, MessageCircle, AlertTriangle, Plus } from 'lucide-react';
 import { formatMoney, relativeTime } from '@/lib/utils';
 
 const STATUS_MAP = {
@@ -51,6 +51,7 @@ export default function CashAdmin() {
   const [filter,     setFilter]     = useState('all');
   const [detail,     setDetail]     = useState(null);
   const [issueModal, setIssueModal] = useState(null);
+  const [showOnBehalf, setShowOnBehalf] = useState(false);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -115,7 +116,19 @@ export default function CashAdmin() {
   };
 
   return (
-    <PageShell title="Касса (упр.)">
+    <PageShell
+      title="Касса (упр.)"
+      headerRight={
+        <button
+          onClick={() => { haptic.light(); setShowOnBehalf(true); }}
+          className="flex items-center justify-center spring-tap"
+          style={{ width: 44, height: 44, color: 'var(--blue)' }}
+          aria-label="Запросить за сотрудника"
+        >
+          <Plus size={22} />
+        </button>
+      }
+    >
       <PullToRefresh onRefresh={fetchData}>
         {balance && !loading && (
           <div className="card-hero mb-3" style={{ animation: 'fadeInUp var(--motion-normal) var(--ease-spring) forwards' }}>
@@ -201,6 +214,14 @@ export default function CashAdmin() {
           window.dispatchEvent(new CustomEvent('asgard:cash:changed'));
         }}
       />
+      <OnBehalfSheet
+        open={showOnBehalf}
+        onClose={() => setShowOnBehalf(false)}
+        onCreated={() => {
+          fetchData();
+          window.dispatchEvent(new CustomEvent('asgard:cash:changed'));
+        }}
+      />
     </PageShell>
   );
 }
@@ -222,6 +243,7 @@ function CashAdminDetailSheet({ request, cashBalance, onClose, onApprove, onReje
     r.category === 'other' && r.category_other_desc && { label: 'Описание', value: r.category_other_desc, full: true },
     { label: 'Сумма',      value: formatMoney(amount) },
     r.user_name && { label: 'Сотрудник', value: r.user_name },
+    r.initiated_by && Number(r.initiated_by) !== Number(r.user_id) && r.initiated_by_name && { label: 'Запросил', value: r.initiated_by_name },
     r.work_title && { label: 'Проект',   value: r.work_title },
     r.created_at && { label: 'Создано',  value: relativeTime(r.created_at) },
     r.cover_letter && { label: 'Пояснительная записка', value: r.cover_letter, full: true },
@@ -418,6 +440,78 @@ function IssueCashSheet({ request, cashBalance, onClose, onIssued }) {
 
         <button onClick={handleSubmit} disabled={!amount || saving} className="btn-primary spring-tap mt-1">
           {saving ? 'Выдаём...' : 'Выдать'}
+        </button>
+      </div>
+    </BottomSheet>
+  );
+}
+
+function OnBehalfSheet({ open, onClose, onCreated }) {
+  const haptic = useHaptic();
+  const [users, setUsers] = useState([]);
+  const [userId, setUserId] = useState('');
+  const [amount, setAmount] = useState('');
+  const [purpose, setPurpose] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (!open) return;
+    api.get('/users?is_active=true&limit=400')
+      .then((d) => setUsers(d?.users || d?.data || (Array.isArray(d) ? d : [])))
+      .catch(() => setUsers([]));
+  }, [open]);
+
+  const handleSubmit = async () => {
+    if (!userId || !amount || Number(amount) <= 0 || !purpose.trim()) return;
+    haptic.light();
+    setSaving(true);
+    try {
+      await api.post('/cash', {
+        for_user_id: Number(userId),
+        type: 'office',
+        amount: Number(amount),
+        purpose: purpose.trim(),
+        category: 'other',
+        category_other_desc: purpose.trim()
+      });
+      haptic.success();
+      setUserId(''); setAmount(''); setPurpose('');
+      onClose();
+      onCreated?.();
+    } catch (e) {
+      haptic.error();
+      window.alert(e?.message || 'Не удалось создать заявку');
+    }
+    setSaving(false);
+  };
+
+  return (
+    <BottomSheet open={open} onClose={onClose} title="Запросить за сотрудника">
+      <div className="flex flex-col gap-3 pb-4">
+        <p className="text-[13px] c-secondary">Директору уйдёт письмо. Деньги — на баланс выбранного человека.</p>
+        <div>
+          <label className="input-label">Кто просит</label>
+          <select className="input-field" value={userId} onChange={(e) => setUserId(e.target.value)}>
+            <option value="">— Выберите —</option>
+            {users.map((u) => (
+              <option key={u.id} value={u.id}>{u.name || u.login}{u.role ? ` · ${u.role}` : ''}</option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label className="input-label">Сумма</label>
+          <input className="input-field" type="number" min="1" step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0" />
+        </div>
+        <div>
+          <label className="input-label">На что</label>
+          <textarea className="input-field resize-none" rows={3} value={purpose} onChange={(e) => setPurpose(e.target.value)} placeholder="Цель выдачи" />
+        </div>
+        <button
+          onClick={handleSubmit}
+          disabled={saving || !userId || !amount || !purpose.trim()}
+          className="btn-primary spring-tap mt-1"
+        >
+          {saving ? 'Отправляем...' : 'Отправить директору'}
         </button>
       </div>
     </BottomSheet>

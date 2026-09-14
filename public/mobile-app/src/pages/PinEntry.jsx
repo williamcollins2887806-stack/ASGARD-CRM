@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '@/stores/authStore';
 import { useHaptic } from '@/hooks/useHaptic';
 import { AsgardLogo } from '@/components/shared/AsgardLogo';
+import { takePinReturnTo } from '@/lib/navUrl';
 import { Delete, LogOut } from 'lucide-react';
 
 const PIN_LENGTH = 4;
@@ -33,9 +34,10 @@ export default function PinEntry() {
         await verifyPin(next);
         setSuccess(true);
         haptic.success();
+        const returnTo = takePinReturnTo('/');
         // Golden flash delay then navigate
         setTimeout(() => {
-          navigate('/', { replace: true });
+          navigate(returnTo, { replace: true });
         }, 700);
       } catch {
         setError('Неверный PIN-код');

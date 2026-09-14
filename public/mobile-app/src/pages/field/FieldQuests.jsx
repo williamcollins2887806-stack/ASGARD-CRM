@@ -111,6 +111,7 @@ export default function FieldQuests() {
   const [brigadeQuests, setBrigadeQuests] = useState([]);
   const [odinChallenge, setOdinChallenge] = useState(null);
   const [duels, setDuels] = useState([]);
+  const [seasonBanner, setSeasonBanner] = useState(null);
 
   /* ── Load from API ── */
   useEffect(() => {
@@ -125,7 +126,7 @@ export default function FieldQuests() {
         state: q.reward_claimed ? 'claimed' : q.completed ? 'ready' : 'active',
         timerType: q.quest_type === 'daily' ? 'daily' : q.quest_type === 'weekly' ? 'weekly' :
           q.quest_type === 'monthly' ? 'monthly' : q.quest_type === 'seasonal' ? 'seasonal' : 'none',
-        seasonEnd: q.season_end || '2026-05-31',
+        seasonEnd: q.season_end || null,
         requiredLevel: q.required_level, currentLevel: q.current_level,
       })));
       if (typeof d?.streak === 'number') setUserStreak(d.streak);
@@ -135,6 +136,17 @@ export default function FieldQuests() {
     fieldApi.get('/gamification/brigade-quests').then(d => setBrigadeQuests(d?.quests || [])).catch(() => {});
     fieldApi.get('/gamification/odin-challenge').then(d => setOdinChallenge(d?.challenge || null)).catch(() => {});
     fieldApi.get('/gamification/duels').then(d => setDuels(d?.duels || [])).catch(() => {});
+    fieldApi.get('/seasonal/').then(d => {
+      const ch = d?.active?.[0] || null;
+      setSeasonBanner(ch ? {
+        name: ch.season_name,
+        icon: ch.icon || '🍂',
+        daysLeft: ch.days_left,
+        tasksDone: ch.tasks_done,
+        tasksTotal: ch.tasks_total,
+        endsAt: ch.ends_at,
+      } : null);
+    }).catch(() => setSeasonBanner(null));
   }, []);
 
   /* ── Night mode ── */
@@ -282,9 +294,14 @@ export default function FieldQuests() {
     if (timerType === 'daily') return formatCountdown(getEndOfDay().getTime() - now);
     if (timerType === 'weekly') return formatCountdown(getEndOfWeek().getTime() - now);
     if (timerType === 'monthly') return formatCountdown(getEndOfMonth().getTime() - now);
-    if (timerType === 'seasonal' && seasonEnd) return formatCountdown(new Date(seasonEnd + 'T23:59:59').getTime() - now);
+    if (timerType === 'seasonal') {
+      const end = seasonEnd
+        ? new Date(String(seasonEnd).includes('T') ? seasonEnd : `${seasonEnd}T23:59:59`)
+        : (seasonBanner?.endsAt ? new Date(seasonBanner.endsAt) : null);
+      if (end) return formatCountdown(end.getTime() - now);
+    }
     return null;
-  }, [timerTick]); // eslint-disable-line
+  }, [timerTick, seasonBanner]); // eslint-disable-line
 
   /* ── Ribbon ── */
   const renderRibbon = useCallback(() => {
@@ -350,17 +367,27 @@ export default function FieldQuests() {
       );
     }
     if (activeTab === 'seasonal') {
-      const totalT = q.reduce((a, q) => a + q.target, 0);
-      const totalC = q.reduce((a, q) => a + q.current, 0);
+      const totalT = q.reduce((a, qq) => a + qq.target, 0) || 1;
+      const totalC = q.reduce((a, qq) => a + Math.min(qq.current, qq.target), 0);
       const pct = Math.round(totalC / totalT * 100);
+      const seasonLabel = seasonBanner?.name || 'Осень 2026';
+      const daysLeft = seasonBanner?.daysLeft;
       return (
-        <div className="fq-ribbon">
+        <div className="fq-ribbon" onClick={() => navigate('/field/seasonal')} style={{ cursor: 'pointer' }}>
           <div className="fq-ribbon-row">
-            <span className="fq-ribbon-label">Сезон «Весна 2026»:</span>
+            <span className="fq-ribbon-label">{seasonBanner?.icon || '🍂'} Сезон «{seasonLabel}»:</span>
             <span className="fq-ribbon-val" style={{ color: 'var(--fq-seasonal)' }}>{pct}%</span>
           </div>
           <div style={{ marginTop: 6 }}>
             <div className="fq-bar-track" style={{ height: 8 }}><div className="fq-bar-fill seasonal" style={{ width: `${pct}%` }} /></div>
+          </div>
+          <div className="fq-ribbon-streak" style={{ borderTopColor: 'rgba(234,88,12,.15)' }}>
+            <span style={{ fontSize: 14 }}>⚔️</span>
+            <span className="fq-streak-txt">
+              {typeof daysLeft === 'number'
+                ? <>Испытания сезона · осталось <b style={{ color: 'var(--fq-seasonal)' }}>{daysLeft}</b> дн. · нажми</>
+                : 'Открыть испытания сезона'}
+            </span>
           </div>
         </div>
       );
@@ -385,7 +412,7 @@ export default function FieldQuests() {
         </div>
       </div>
     );
-  }, [activeTab, tabQuests]);
+  }, [activeTab, tabQuests, seasonBanner, navigate]);
 
   /* ── Stars ── */
   const stars = useMemo(() => Array.from({ length: 30 }, () => ({

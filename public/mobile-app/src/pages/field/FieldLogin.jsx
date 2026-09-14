@@ -1,12 +1,12 @@
 import { useState, useRef, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useFieldAuthStore } from '@/stores/fieldAuthStore';
 import '@/styles/field-auth.css';
 
 function playGateOpen() {
   try {
     const ctx = new (window.AudioContext || window.webkitAudioContext)();
-    const notes = [523.25, 659.25, 783.99, 1046.5]; // C5 E5 G5 C6
+    const notes = [523.25, 659.25, 783.99, 1046.5];
     notes.forEach((freq, i) => {
       const o = ctx.createOscillator();
       const g = ctx.createGain();
@@ -22,7 +22,6 @@ function playGateOpen() {
   } catch (_) {}
 }
 
-// Stars (shared with Welcome)
 function Stars() {
   const stars = useRef(
     Array.from({ length: 30 }, () => ({
@@ -51,32 +50,101 @@ function formatPhone(raw) {
   return `(${d.slice(0,3)}) ${d.slice(3,6)}-${d.slice(6,8)}-${d.slice(8)}`;
 }
 
+function phoneDigitsFromStored(phone) {
+  if (!phone) return '';
+  const d = String(phone).replace(/\D/g, '');
+  if (d.length >= 10) return d.slice(-10);
+  return d;
+}
+
 export default function FieldLogin() {
   const navigate = useNavigate();
-  const { requestCode, verifyCode, loginByBirth, loading, error, clearError } = useFieldAuthStore();
+  const [searchParams] = useSearchParams();
+  const {
+    requestCode, verifyCode, checkPhone, rememberForPin,
+    loading, error, clearError,
+    employee, pendingResetPin,
+  } = useFieldAuthStore();
 
-  const [step, setStep] = useState('phone'); // phone | code | birth | success
-  const [phone, setPhone] = useState('');
+  const [step, setStep] = useState('phone'); // phone | code | success
+  const [phone, setPhone] = useState(() => phoneDigitsFromStored(employee?.phone));
   const [otp, setOtp] = useState(['', '', '', '']);
-  const [birthYear, setBirthYear] = useState('');
   const [cooldown, setCooldown] = useState(0);
   const [employeeName, setEmployeeName] = useState('');
   const otpRefs = [useRef(), useRef(), useRef(), useRef()];
+  const autoSmsSent = useRef(false);
 
-  // Countdown timer
   useEffect(() => {
     if (cooldown <= 0) return;
     const t = setInterval(() => setCooldown(c => c <= 1 ? 0 : c - 1), 1000);
     return () => clearInterval(t);
   }, [cooldown]);
 
+  // Устройство уже помнит PIN — не SMS, а ввод PIN (кроме «забыл PIN»)
+  useEffect(() => {
+    const wantReset = pendingResetPin || searchParams.get('reset') === '1';
+    if (wantReset) return;
+    const emp = employee || (() => {
+      try { return JSON.parse(localStorage.getItem('field_employee') || 'null'); }
+      catch { return null; }
+    })();
+    if (localStorage.getItem('field_has_pin') === '1' && emp?.id) {
+      navigate('/field/pin-entry', { replace: true });
+    }
+  }, [employee, pendingResetPin, searchParams, navigate]);
+
+  // Забыл PIN / сброс: сразу шлём SMS на сохранённый номер
+  useEffect(() => {
+    if (autoSmsSent.current) return;
+    const wantReset = pendingResetPin || searchParams.get('reset') === '1';
+    const digits = phoneDigitsFromStored(employee?.phone) || phone;
+    if (wantReset && digits.length >= 10) {
+      autoSmsSent.current = true;
+      setPhone(digits);
+      (async () => {
+        try {
+          await requestCode('+7' + digits);
+          setStep('code');
+          setCooldown(60);
+        } catch (_) {
+          setStep('phone');
+        }
+      })();
+    }
+  }, [pendingResetPin, employee, phone, requestCode, searchParams]);
+
   const rawPhone = phone.replace(/\D/g, '');
   const fullPhone = '+7' + rawPhone;
+
+  const goAfterAuth = (nextStatus, fio, hasPin) => {
+    setEmployeeName(fio || '');
+    playGateOpen();
+    if (navigator.vibrate) navigator.vibrate([100, 50, 100]);
+    setStep('success');
+    setTimeout(() => {
+      // SMS уже доказал личность: либо создать PIN, либо сразу в приложение
+      // (не просим PIN после SMS — PIN только при следующем входе без SMS)
+      if (nextStatus === 'need_pin_setup' || (!hasPin && nextStatus !== 'authenticated')) {
+        navigate('/field/pin-setup', { replace: true });
+      } else {
+        navigate('/field/home', { replace: true });
+      }
+    }, 1200);
+  };
 
   const handleRequestCode = async () => {
     if (rawPhone.length < 10) return;
     clearError();
+    const wantReset = pendingResetPin || searchParams.get('reset') === '1';
     try {
+      if (!wantReset) {
+        const looked = await checkPhone(fullPhone);
+        if (looked?.has_pin && looked.employee?.id) {
+          rememberForPin(looked.employee);
+          navigate('/field/pin-entry', { replace: true });
+          return;
+        }
+      }
       await requestCode(fullPhone);
       setStep('code');
       setCooldown(60);
@@ -90,17 +158,10 @@ export default function FieldLogin() {
     const newOtp = [...otp];
     newOtp[index] = digit;
     setOtp(newOtp);
-
-    if (digit && index < 3) {
-      otpRefs[index + 1].current?.focus();
-    }
-
-    // Auto-verify on last digit
+    if (digit && index < 3) otpRefs[index + 1].current?.focus();
     if (digit && index === 3) {
       const code = newOtp.join('');
-      if (code.length === 4) {
-        handleVerify(code);
-      }
+      if (code.length === 4) handleVerify(code);
     }
   };
 
@@ -112,17 +173,14 @@ export default function FieldLogin() {
 
   const handleVerify = async (code) => {
     try {
-      const result = await verifyCode(fullPhone, code);
-      setEmployeeName(result?.employee?.fio || '');
-
-      // Success animation
-      playGateOpen();
-      if (navigator.vibrate) navigator.vibrate([100, 50, 100]);
-      setStep('success');
-
-      setTimeout(() => {
-        navigate('/field/home', { replace: true });
-      }, 1800);
+      const result = await verifyCode(fullPhone, code, {
+        resetPin: pendingResetPin || searchParams.get('reset') === '1',
+      });
+      goAfterAuth(
+        result?.status || useFieldAuthStore.getState().status,
+        result?.employee?.fio,
+        !!result?.has_pin,
+      );
     } catch (_) {}
   };
 
@@ -136,20 +194,6 @@ export default function FieldLogin() {
     } catch (_) {}
   };
 
-  const handleBirthLogin = async () => {
-    if (rawPhone.length < 10 || birthYear.length !== 4) return;
-    clearError();
-    try {
-      const result = await loginByBirth(fullPhone, parseInt(birthYear, 10));
-      setEmployeeName(result?.employee?.fio || '');
-      playGateOpen();
-      if (navigator.vibrate) navigator.vibrate([100, 50, 100]);
-      setStep('success');
-      setTimeout(() => navigate('/field/home', { replace: true }), 1800);
-    } catch (_) {}
-  };
-
-  // ═══ SUCCESS SCREEN ═══
   if (step === 'success') {
     return (
       <div className="fa-success-overlay">
@@ -170,7 +214,6 @@ export default function FieldLogin() {
       <div className="fa-login-header">
         <button className="fa-back-btn" onClick={() => {
           if (step === 'code') { setStep('phone'); setOtp(['','','','']); clearError(); }
-          else if (step === 'birth') { setStep('phone'); setBirthYear(''); clearError(); }
           else navigate('/field/welcome');
         }}>←</button>
         <img
@@ -185,11 +228,14 @@ export default function FieldLogin() {
       </div>
 
       <div className="fa-login-body">
-        {/* ═══ PHONE STEP ═══ */}
         {step === 'phone' && (
           <div className="fa-slide-in" style={{ width: '100%', maxWidth: 320 }}>
             <h2 className="fa-heading">Назови себя,<br />воин</h2>
-            <p className="fa-desc">Введи свой номер телефона</p>
+            <p className="fa-desc">
+              {pendingResetPin
+                ? 'Подтверди номер — пришлём SMS для нового PIN'
+                : 'Введи номер. Если PIN уже есть — сразу его, иначе придёт SMS'}
+            </p>
 
             <div className="fa-phone-wrap">
               <span className="fa-phone-prefix">+7</span>
@@ -212,12 +258,13 @@ export default function FieldLogin() {
               disabled={rawPhone.length < 10 || loading}
               onClick={handleRequestCode}
             >
-              {loading ? '⏳ Валькирия посылает знак...' : '⚔ Отправить знак'}
+              {loading
+                ? '⏳ Проверяем...'
+                : (pendingResetPin ? '⚔ Отправить SMS-код' : '⚔ Продолжить')}
             </button>
           </div>
         )}
 
-        {/* Ссылка для офисных сотрудников */}
         {step === 'phone' && (
           <div style={{ marginTop: 32, textAlign: 'center' }}>
             <button
@@ -238,11 +285,10 @@ export default function FieldLogin() {
           </div>
         )}
 
-        {/* ═══ CODE STEP ═══ */}
         {step === 'code' && (
           <div className="fa-slide-in" style={{ width: '100%', maxWidth: 320 }}>
-            <h2 className="fa-heading">Валькирия<br />отправила знак</h2>
-            <p className="fa-desc">Введи 4 руны с неба</p>
+            <h2 className="fa-heading">Код из SMS</h2>
+            <p className="fa-desc">Введи 4 цифры. Если есть Max — код мог прийти туда.</p>
 
             <div className="fa-otp-wrap">
               {otp.map((digit, i) => (
@@ -261,72 +307,15 @@ export default function FieldLogin() {
             </div>
 
             {error && <div className="fa-error">{error}</div>}
-            {loading && <div className="fa-loading-text">Валькирия проверяет руны...</div>}
+            {loading && <div className="fa-loading-text">Проверяем код...</div>}
 
             <div className="fa-countdown">
               {cooldown > 0 ? (
-                <span>Повторить знак через {String(Math.floor(cooldown / 60)).padStart(2, '0')}:{String(cooldown % 60).padStart(2, '0')}</span>
+                <span>Повторить через {String(Math.floor(cooldown / 60)).padStart(2, '0')}:{String(cooldown % 60).padStart(2, '0')}</span>
               ) : (
-                <button className="fa-countdown-link" onClick={handleResend}>Повторить знак</button>
+                <button className="fa-countdown-link" onClick={handleResend}>Отправить снова</button>
               )}
             </div>
-
-            <div style={{ marginTop: 24, textAlign: 'center' }}>
-              <button
-                type="button"
-                onClick={() => { setStep('birth'); setOtp(['','','','']); clearError(); }}
-                style={{
-                  background: 'transparent',
-                  border: '1px dashed rgba(255,255,255,0.18)',
-                  borderRadius: 12, padding: '10px 16px',
-                  color: 'rgba(255,255,255,0.55)', fontSize: 13,
-                  cursor: 'pointer',
-                }}
-              >
-                Знак не пришёл? Войти по году рождения
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* ═══ BIRTH STEP — резервный вход (фоллбэк когда SMS не доходят) ═══ */}
-        {step === 'birth' && (
-          <div className="fa-slide-in" style={{ width: '100%', maxWidth: 320 }}>
-            <h2 className="fa-heading">Назови год<br />своего рождения</h2>
-            <p className="fa-desc">Резервный вход — если знак не пришёл</p>
-
-            <div className="fa-phone-wrap" style={{ marginTop: 12 }}>
-              <input
-                className="fa-phone-input"
-                type="tel"
-                inputMode="numeric"
-                placeholder="например, 1985"
-                maxLength={4}
-                value={birthYear}
-                onChange={(e) => setBirthYear(e.target.value.replace(/\D/g, '').slice(0, 4))}
-                autoFocus
-                style={{ textAlign: 'center', letterSpacing: 4, fontSize: 22 }}
-              />
-            </div>
-
-            <p style={{
-              marginTop: 12, textAlign: 'center',
-              color: 'rgba(255,255,255,0.45)', fontSize: 12, lineHeight: 1.5
-            }}>
-              💡 Подсказка: твой пароль — это год твоего рождения (4 цифры).<br />
-              Используется, если SMS не доходит.
-            </p>
-
-            {error && <div className="fa-error">{error}</div>}
-
-            <button
-              className="fa-btn-gold"
-              style={{ marginTop: 20 }}
-              disabled={birthYear.length !== 4 || loading}
-              onClick={handleBirthLogin}
-            >
-              {loading ? '⏳ Проверка...' : '⚔ Войти'}
-            </button>
           </div>
         )}
       </div>

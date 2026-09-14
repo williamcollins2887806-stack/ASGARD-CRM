@@ -5,7 +5,7 @@ import { Lock, Loader2 } from 'lucide-react';
 
 export default function FieldPinEntry() {
   const navigate = useNavigate();
-  const { verifyPin, pinLogin, token, employee, loading, error, clearError } = useFieldAuthStore();
+  const { verifyPin, pinLogin, token, employee, loading, error, clearError, beginForgotPin } = useFieldAuthStore();
 
   const [pin, setPin] = useState('');
 
@@ -19,22 +19,40 @@ export default function FieldPinEntry() {
   };
 
   const handleSubmit = async (pinVal) => {
+    const p = pinVal || pin;
     try {
       if (token) {
-        // We have a valid session token — just verify PIN
-        await verifyPin(pinVal || pin);
+        try {
+          await verifyPin(p);
+        } catch (e) {
+          // JWT протух / сессия сброшена — вход только PIN, без SMS
+          if (e?.status === 401 || /сесси|истёк|истек|авториз/i.test(String(e?.message || ''))) {
+            useFieldAuthStore.getState().clearExpiredToken();
+            await pinLogin(p);
+          } else {
+            throw e;
+          }
+        }
       } else {
-        // Token expired — do PIN login
-        await pinLogin(pinVal || pin);
+        await pinLogin(p);
       }
       navigate('/field/home', { replace: true });
-    } catch {
+    } catch (e) {
       setPin('');
+      const msg = String(e?.message || useFieldAuthStore.getState().error || '');
+      if (/PIN не установлен|SMS/i.test(msg)) {
+        beginForgotPin();
+        navigate('/field-login?reset=1', { replace: true });
+      }
     }
   };
 
   const handleForgotPin = () => {
-    // Clear stored data, go back to SMS login
+    beginForgotPin();
+    navigate('/field-login?reset=1', { replace: true });
+  };
+
+  const handleOtherAccount = () => {
     useFieldAuthStore.getState().logout();
     navigate('/field-login', { replace: true });
   };
@@ -59,10 +77,12 @@ export default function FieldPinEntry() {
             {employee.fio}
           </p>
         )}
+        <p className="text-xs mt-2" style={{ color: 'var(--text-tertiary)' }}>
+          4 цифры — как код блокировки телефона
+        </p>
       </div>
 
       <div className="w-full max-w-sm">
-        {/* PIN dots */}
         <div className="flex justify-center gap-4 mb-6">
           {[0, 1, 2, 3].map((i) => (
             <div
@@ -90,6 +110,8 @@ export default function FieldPinEntry() {
             caretColor: 'transparent',
           }}
           autoFocus
+          inputMode="numeric"
+          autoComplete="one-time-code"
         />
 
         {loading && (
@@ -99,11 +121,21 @@ export default function FieldPinEntry() {
         )}
 
         <button
+          type="button"
           onClick={handleForgotPin}
           className="w-full mt-6 text-sm text-center"
           style={{ color: 'var(--text-tertiary)' }}
         >
           Забыли PIN? Войти через SMS
+        </button>
+
+        <button
+          type="button"
+          onClick={handleOtherAccount}
+          className="w-full mt-3 text-xs text-center"
+          style={{ color: 'var(--text-tertiary)', opacity: 0.7 }}
+        >
+          Другой аккаунт
         </button>
       </div>
 

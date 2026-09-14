@@ -401,7 +401,7 @@ export default function PersonalKanban() {
         setInboxAppId(id);
       }
     }
-    else if (kind === 'pre_tender')        navigate(`/funnel`);
+    else if (kind === 'pre_tender')        navigate(`/tenders`);
   }, [navigate, role]);
 
   // ─── Header right ─────────────────────────────────────────────────────

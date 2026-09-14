@@ -976,3 +976,66 @@ body {
   flex-direction: column;
   gap: 2px;
 }
+
+/* Asgard Gold — нативные checkbox (не shadcn Button-checkbox) */
+input[type="checkbox"]:not(.no-cr-chk):not(.toggle-input) {
+  --cr-chk-size: 18px;
+  --cr-chk-mark: var(--text-on-gold, #1a1300);
+  appearance: none;
+  -webkit-appearance: none;
+  width: var(--cr-chk-size);
+  height: var(--cr-chk-size);
+  margin: 0;
+  padding: 0;
+  flex-shrink: 0;
+  border-radius: 6px;
+  border: 1.5px solid var(--border-light, #2a2a36);
+  background: rgba(255, 255, 255, 0.04);
+  display: inline-grid;
+  place-items: center;
+  vertical-align: middle;
+  cursor: pointer;
+  accent-color: transparent;
+  transition: border-color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
+}
+input[type="checkbox"]:not(.no-cr-chk):not(.toggle-input):hover:not(:disabled) {
+  border-color: var(--gold, #c8a84e);
+  background: var(--gold-glow, rgba(200, 168, 78, 0.15));
+}
+input[type="checkbox"]:not(.no-cr-chk):not(.toggle-input):checked,
+input[type="checkbox"]:not(.no-cr-chk):not(.toggle-input):indeterminate {
+  border-color: var(--gold, #c8a84e);
+  background: var(--gold-gradient, linear-gradient(135deg, #c8a84e, #a08030));
+  box-shadow: 0 0 0 3px rgba(200, 168, 78, 0.18);
+}
+input[type="checkbox"]:not(.no-cr-chk):not(.toggle-input):checked::after {
+  content: "";
+  width: 10px;
+  height: 6px;
+  border-left: 2px solid var(--cr-chk-mark);
+  border-bottom: 2px solid var(--cr-chk-mark);
+  transform: rotate(-45deg) translateY(-1px);
+  box-sizing: border-box;
+}
+input[type="checkbox"]:not(.no-cr-chk):not(.toggle-input):indeterminate::after {
+  content: "";
+  width: 8px;
+  height: 2px;
+  border: 0;
+  background: var(--cr-chk-mark);
+  border-radius: 1px;
+  transform: none;
+}
+input[type="checkbox"]:not(.no-cr-chk):not(.toggle-input):focus-visible {
+  outline: 2px solid var(--gold, #c8a84e);
+  outline-offset: 2px;
+}
+input[type="checkbox"]:not(.no-cr-chk):not(.toggle-input):disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+.light input[type="checkbox"]:not(.no-cr-chk):not(.toggle-input):not(:checked):not(:indeterminate) {
+  border-color: var(--border-norse, #d4d0c8);
+  background: #fff;
+}

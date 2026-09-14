@@ -24,6 +24,7 @@ import { api } from '@/api/client';
 import { PageShell } from '@/components/layout/PageShell';
 import { EmptyState } from '@/components/shared/EmptyState';
 import { SkeletonList } from '@/components/shared/SkeletonKit';
+import { formatMoney as fmtMoney } from '@/lib/utils';
 
 const MARKETPLACE_LIMIT = null;
 const FETCH_LIMIT = 50;
@@ -36,13 +37,6 @@ function aiColorTokens(c) {
   if (v === 'yellow' || v === 'orange') return { border: 'var(--orange)', bg: 'color-mix(in srgb, var(--orange) 16%, transparent)', label: '🟡 Требует оценки' };
   if (v === 'red')    return { border: 'var(--red-soft)',  bg: 'color-mix(in srgb, var(--red-soft) 16%, transparent)',  label: '🔴 Не наш профиль' };
   return null;
-}
-
-function fmtMoney(n) {
-  if (n == null || n === '') return '';
-  const num = Number(n);
-  if (!Number.isFinite(num)) return '';
-  return num.toLocaleString('ru-RU') + ' ₽';
 }
 
 function fmtDateTime(s) {

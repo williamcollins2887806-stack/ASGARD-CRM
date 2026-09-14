@@ -9,7 +9,7 @@ import { SkeletonList } from '@/components/shared/SkeletonKit';
 import { PullToRefresh } from '@/components/shared/PullToRefresh';
 import { StatCard, StatRow } from '@/components/shared/StatCard';
 import { PaymentBreakdown } from '@/components/shared/PaymentBreakdown';
-import { formatMoney as fmtMoneyShort } from '@/lib/utils';
+import { formatMoney as fmtMoneyShort, formatMoney as fmtMoney } from '@/lib/utils';
 import {
   BarChart3, ChevronLeft, ChevronRight, Plus, CheckCircle,
   Wallet, ArrowDownCircle, ArrowUpCircle, Banknote, Users,
@@ -17,8 +17,6 @@ import {
 } from 'lucide-react';
 
 const MONTHS = ['Январь','Февраль','Март','Апрель','Май','Июнь','Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'];
-const fmtMoney = (n) => n != null ? Math.round(n).toLocaleString('ru-RU') + ' ₽' : '—';
-
 // Лимит строк в bulk-операции на мобиле (совпадает с серверным лимитом 100).
 const MOBILE_BULK_LIMIT = 100;
 

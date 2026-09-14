@@ -1,14 +1,13 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { api } from '@/api/client';
+import { formatMoney as fmt } from '@/lib/utils';
 
 const C = {
   bg: '#0d0d12', card: '#16161f', gold: '#c8a84b',
   green: '#22c55e', red: '#ef4444', amber: '#f59e0b',
   blue: '#3b82f6', rune: '#7b61ff', text: '#e8e8f0', muted: '#6b7280',
 };
-
-const fmt = (n) => n != null ? Math.round(n).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' ') + ' ₽' : '—';
 
 const MONTHS = ['', 'Янв', 'Фев', 'Мар', 'Апр', 'Май', 'Июн', 'Июл', 'Авг', 'Сен', 'Окт', 'Ноя', 'Дек'];
 const PAY_TYPES = { salary: 'Зарплата', advance: 'Аванс', per_diem: 'Суточные', bonus: 'Бонус', penalty: 'Штраф' };

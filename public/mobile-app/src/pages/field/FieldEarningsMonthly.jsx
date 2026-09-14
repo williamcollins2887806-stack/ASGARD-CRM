@@ -11,6 +11,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { fieldApi } from '@/api/fieldClient';
 import DisputeForm from '@/components/field/DisputeForm';
+import { formatMoney as fmtMoney } from '@/lib/utils';
 
 const C = {
   bg: '#0d0d12', card: '#16161f', gold: '#c8a84b',
@@ -18,9 +19,6 @@ const C = {
   blue: '#3b82f6', rune: '#7b61ff',
   text: '#e8e8f0', muted: '#6b7280',
 };
-
-const fmtMoney = (n) =>
-  n != null ? Math.round(n).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' ') + ' ₽' : '—';
 
 const STATUS_CFG = {
   paid:      { label: 'Выплачено',           color: C.green,  icon: '✓' },
@@ -234,6 +232,7 @@ export default function FieldEarningsMonthly() {
   const [disputes, setDisputes] = useState([]);
   const [activeWorkId, setActiveWorkId] = useState(null);
   const [activeWorkTitle, setActiveWorkTitle] = useState(null);
+  const [perDiemStagesOnly, setPerDiemStagesOnly] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError]     = useState(null);
 
@@ -256,6 +255,7 @@ export default function FieldEarningsMonthly() {
         setActiveWorkId(p.work_id);
         setActiveWorkTitle(p.work_title || p.title);
       }
+      setPerDiemStagesOnly(p?.per_diem_on_checkins === false);
     } catch (e) {
       setError(e.message);
     } finally {
@@ -336,6 +336,11 @@ export default function FieldEarningsMonthly() {
             {totals.per_diem_accrued > 0 && (
               <div>
                 <div style={{ fontSize: 11, color: C.amber, fontWeight: 700, marginBottom: 4 }}>🌙 СУТОЧНЫЕ</div>
+                {perDiemStagesOnly && (
+                  <p style={{ fontSize: 11, color: C.muted, margin: '0 0 8px' }}>
+                    На текущем объекте — за дорогу и этапы, не за смены
+                  </p>
+                )}
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
                   <Tile label="Начислено" value={fmtMoney(totals.per_diem_accrued)} color={C.amber} />
                   <Tile label="Получено"  value={fmtMoney(totals.per_diem_paid)}    color={C.green} />

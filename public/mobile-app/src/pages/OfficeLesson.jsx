@@ -318,6 +318,93 @@ function Block({ block }) {
     case 'divider':
       return <div style={{ height: 1, background: '#ffffff0a', margin: '20px 0' }} />;
 
+    case 'chapter':
+      return (
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, margin: '24px 0 14px', paddingBottom: 8, borderBottom: '1px solid #ffffff12' }}>
+          <span style={{ fontSize: 11, fontWeight: 800, color: C.gold, textTransform: 'uppercase', letterSpacing: 1 }}>
+            Глава {block.number || ''}
+          </span>
+          <span style={{ fontSize: 17, fontWeight: 800, color: C.text }}>{block.title || block.text || ''}</span>
+        </div>
+      );
+
+    case 'myth_fact':
+    case 'myth_vs_fact':
+      return (
+        <div style={{ margin: '14px 0' }}>
+          {block.title && <div style={{ fontSize: 13, fontWeight: 800, color: C.gold, marginBottom: 8 }}>{block.title}</div>}
+          {(block.items || []).map((it, j) => (
+            <div key={j} style={{ display: 'grid', gap: 8, marginBottom: 10 }}>
+              <div style={{ borderRadius: 12, padding: '12px 14px', background: C.red + '12', border: `1px solid ${C.red}40` }}>
+                <div style={{ fontSize: 10, fontWeight: 800, color: C.red, marginBottom: 4 }}>МИФ</div>
+                <div style={{ fontSize: 13, color: '#c8c8d8', lineHeight: 1.6 }}>{it.myth || it.false || ''}</div>
+              </div>
+              <div style={{ borderRadius: 12, padding: '12px 14px', background: C.green + '12', border: `1px solid ${C.green}40` }}>
+                <div style={{ fontSize: 10, fontWeight: 800, color: C.green, marginBottom: 4 }}>ФАКТ</div>
+                <div style={{ fontSize: 13, color: '#c8c8d8', lineHeight: 1.6 }}>{it.fact || it.true || ''}</div>
+              </div>
+            </div>
+          ))}
+        </div>
+      );
+
+    case 'key_takeaway':
+    case 'takeaway':
+      return (
+        <div style={{
+          background: `linear-gradient(135deg, ${C.gold}18 0%, ${C.card} 100%)`,
+          border: `1px solid ${C.gold}50`, borderRadius: 14, padding: '14px 16px', margin: '14px 0',
+        }}>
+          <div style={{ fontSize: 14, fontWeight: 800, color: C.gold, marginBottom: 10 }}>🎯 {block.title || 'Забери с собой'}</div>
+          <ul style={{ margin: 0, paddingLeft: 18 }}>
+            {(block.items || []).map((x, j) => (
+              <li key={j} style={{ fontSize: 13, color: C.text, lineHeight: 1.7, marginBottom: 6 }}>{x}</li>
+            ))}
+          </ul>
+        </div>
+      );
+
+    case 'timeline':
+      return (
+        <div style={{ margin: '14px 0' }}>
+          {block.title && <div style={{ fontSize: 13, fontWeight: 800, color: C.rune, marginBottom: 10 }}>{block.title}</div>}
+          <div style={{ borderLeft: '2px solid #ffffff18', marginLeft: 8, paddingLeft: 14 }}>
+            {(block.items || []).map((it, j) => (
+              <div key={j} style={{ position: 'relative', marginBottom: 12 }}>
+                <div style={{ position: 'absolute', left: -20, top: 4, width: 10, height: 10, borderRadius: '50%', background: C.gold }} />
+                <div style={{ fontSize: 12, fontWeight: 800, color: C.text }}>{it.label || it.title || `Шаг ${j + 1}`}</div>
+                <div style={{ fontSize: 13, color: '#c8c8d8', lineHeight: 1.6 }}>{it.text || it.desc || ''}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      );
+
+    case 'compare':
+      return (
+        <div style={{ margin: '14px 0' }}>
+          {block.title && <div style={{ fontSize: 13, fontWeight: 800, color: C.text, marginBottom: 8 }}>{block.title}</div>}
+          <div style={{ display: 'grid', gap: 8 }}>
+            <div style={{ borderRadius: 12, padding: 12, background: C.red + '10', border: '1px solid #ffffff12' }}>
+              <div style={{ fontSize: 12, fontWeight: 800, color: C.red, marginBottom: 6 }}>{block.bad_title || 'Плохо'}</div>
+              <ul style={{ margin: 0, paddingLeft: 16 }}>
+                {(block.bad || block.left || []).map((x, j) => (
+                  <li key={j} style={{ fontSize: 12, color: '#c8c8d8', marginBottom: 4 }}>{x}</li>
+                ))}
+              </ul>
+            </div>
+            <div style={{ borderRadius: 12, padding: 12, background: C.green + '10', border: '1px solid #ffffff12' }}>
+              <div style={{ fontSize: 12, fontWeight: 800, color: C.green, marginBottom: 6 }}>{block.good_title || 'Хорошо'}</div>
+              <ul style={{ margin: 0, paddingLeft: 16 }}>
+                {(block.good || block.right || []).map((x, j) => (
+                  <li key={j} style={{ fontSize: 12, color: '#c8c8d8', marginBottom: 4 }}>{x}</li>
+                ))}
+              </ul>
+            </div>
+          </div>
+        </div>
+      );
+
     default:
       if (block.text || block.content) {
         return (
@@ -381,6 +468,8 @@ export default function OfficeLesson() {
   const [completed, setDone]  = useState(false);
   const [error, setError]     = useState('');
   const [readSeconds, setReadSeconds] = useState(0);
+  const [myScore, setMyScore] = useState(0);
+  const [ratingBusy, setRatingBusy] = useState(false);
   const timerRef = useRef(null);
   const heartbeatRef = useRef(null);
 
@@ -390,6 +479,7 @@ export default function OfficeLesson() {
         setData(d);
         setDone(!!d.lesson?.read_completed_at);
         setReadSeconds(d.lesson?.read_time_seconds || 0);
+        setMyScore(Number(d.lesson?.my_interest_score) || 0);
       })
       .catch(e => setError(e.message))
       .finally(() => setLoad(false));
@@ -434,7 +524,19 @@ export default function OfficeLesson() {
     }
   }, [id]);
 
-  if (loading) return (
+  const handleRate = useCallback(async (score) => {
+    setRatingBusy(true);
+    try {
+      const res = await api.post(`/office-academy/lessons/${id}/rate`, { score });
+      setMyScore(res?.my_score || score);
+    } catch (e) {
+      setError(e.message || 'Не удалось сохранить оценку');
+    } finally {
+      setRatingBusy(false);
+    }
+  }, [id]);
+
+    if (loading) return (
     <div style={{ minHeight: '100vh', background: C.bg, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
       <div style={{ fontSize: 36 }}>📖</div>
     </div>
@@ -605,6 +707,32 @@ export default function OfficeLesson() {
             textAlign: 'center', padding: '12px 0',
             fontSize: 13, color: C.green, fontWeight: 600,
           }}>✓ Свиток прочитан</div>
+        )}
+
+        {(completed || isPassed) && (
+          <div style={{
+            background: C.card, border: `1px solid ${C.gold}30`, borderRadius: 14,
+            padding: '12px 14px', textAlign: 'center',
+          }}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: C.muted, marginBottom: 8 }}>Насколько интересно?</div>
+            <div style={{ display: 'flex', justifyContent: 'center', gap: 6 }}>
+              {[1, 2, 3, 4, 5].map((n) => (
+                <button
+                  key={n}
+                  type="button"
+                  disabled={ratingBusy}
+                  onClick={() => handleRate(n)}
+                  style={{
+                    background: 'none', border: 'none', fontSize: 24, cursor: 'pointer',
+                    color: myScore >= n ? C.gold : '#ffffff40', padding: '0 2px',
+                  }}
+                >★</button>
+              ))}
+            </div>
+            {myScore > 0 && (
+              <div style={{ fontSize: 12, color: C.gold, fontWeight: 700, marginTop: 6 }}>{myScore}/5</div>
+            )}
+          </div>
         )}
 
         {/* Quiz button */}

@@ -153,11 +153,25 @@ export default function Customers() {
   );
 }
 
+function primaryContactPhones(c) {
+  let arr = [];
+  const raw = c?.contacts;
+  if (Array.isArray(raw)) arr = raw;
+  else if (typeof raw === 'string' && raw.trim()) {
+    try { arr = JSON.parse(raw); } catch { arr = []; }
+  }
+  const primary = (Array.isArray(arr) ? arr : []).find((x) => x?.is_primary) || arr?.[0];
+  return {
+    phone2: primary?.phone2 || '',
+  };
+}
+
 function CustomerDetailSheet({ customer, onClose }) {
   const [copied, setCopied] = useState(null);
 
   if (!customer) return null;
   const c = customer;
+  const extraPhones = primaryContactPhones(c);
 
   const copyInn = () => {
     if (!c.inn) return;
@@ -177,7 +191,8 @@ function CustomerDetailSheet({ customer, onClose }) {
     { label: 'Название', value: c.name || c.short_name || '—' },
     c.full_name && { label: 'Полное название', value: c.full_name, full: true },
     c.contact_person && { label: 'Контактное лицо', value: c.contact_person },
-    c.phone && { label: 'Телефон', value: c.phone, link: `tel:${c.phone}` },
+    c.phone && { label: 'Телефон 1', value: c.phone, link: `tel:${c.phone}` },
+    extraPhones.phone2 && { label: 'Телефон 2', value: extraPhones.phone2, link: `tel:${extraPhones.phone2}` },
     c.email && { label: 'Email', value: c.email, link: `mailto:${c.email}` },
     (c.address || c.legal_address) && { label: 'Адрес', value: c.address || c.legal_address, full: true },
     c.kpp && { label: 'КПП', value: c.kpp },
@@ -220,6 +235,7 @@ function CreateCustomerSheet({ open, onClose, onCreated }) {
   const [fullName, setFullName] = useState('');
   const [contact, setContact] = useState('');
   const [phone, setPhone] = useState('');
+  const [phone2, setPhone2] = useState('');
   const [email, setEmail] = useState('');
   const [address, setAddress] = useState('');
   const [saving, setSaving] = useState(false);
@@ -227,7 +243,7 @@ function CreateCustomerSheet({ open, onClose, onCreated }) {
 
   const reset = () => {
     setInn(''); setName(''); setFullName('');
-    setContact(''); setPhone(''); setEmail(''); setAddress('');
+    setContact(''); setPhone(''); setPhone2(''); setEmail(''); setAddress('');
   };
 
   const lookupInn = async () => {
@@ -251,15 +267,29 @@ function CreateCustomerSheet({ open, onClose, onCreated }) {
     haptic.light();
     setSaving(true);
     try {
-      await api.post('/customers', {
+      const contactName = contact.trim();
+      const phone1 = phone.trim();
+      const phone2val = phone2.trim();
+      const payload = {
         inn: inn.trim(),
         name: name.trim(),
         full_name: fullName.trim() || null,
-        contact_person: contact.trim() || null,
-        phone: phone.trim() || null,
+        contact_person: contactName || null,
+        phone: phone1 || null,
         email: email.trim() || null,
         address: address.trim() || null,
-      });
+      };
+      if (contactName || phone1 || phone2val) {
+        payload.contacts = [{
+          name: contactName,
+          position: '',
+          phone: phone1,
+          phone2: phone2val,
+          email: email.trim(),
+          is_primary: true,
+        }];
+      }
+      await api.post('/customers', payload);
       haptic.success();
       reset();
       onClose();
@@ -317,7 +347,7 @@ function CreateCustomerSheet({ open, onClose, onCreated }) {
               className="input-field"
             />
           </FormField>
-          <FormField label="Телефон">
+          <FormField label="Телефон 1">
             <input
               type="tel" value={phone} onChange={(e) => setPhone(e.target.value)}
               placeholder="+7-900-000-00-00"
@@ -325,6 +355,14 @@ function CreateCustomerSheet({ open, onClose, onCreated }) {
             />
           </FormField>
         </div>
+
+        <FormField label="Телефон 2">
+          <input
+            type="tel" value={phone2} onChange={(e) => setPhone2(e.target.value)}
+            placeholder="+7-900-000-00-01"
+            className="input-field"
+          />
+        </FormField>
 
         <FormField label="Email">
           <input

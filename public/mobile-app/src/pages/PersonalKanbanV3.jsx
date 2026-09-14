@@ -36,6 +36,7 @@ import { BottomSheet } from '@/components/shared/BottomSheet';
 import { EmptyState } from '@/components/shared/EmptyState';
 import { SkeletonList } from '@/components/shared/SkeletonKit';
 import { PullToRefresh } from '@/components/shared/PullToRefresh';
+import { formatMoney as fmt, formatMoneyShort as fmtMoneyShort } from '@/lib/utils';
 
 // 9 колонок: addendum вставлен МЕЖДУ sent и win (S-24 / V250 / HANDOFF.md §3.6).
 const COLS = [
@@ -794,7 +795,6 @@ function ReferencesSheet({ card, onClose }) {
   }, [card]);
 
   const top = items[0];
-  const fmtMoneyShort = (n) => n != null ? (Math.round(Number(n) / 1000).toLocaleString('ru-RU') + ' К') : '—';
   const fmtPct        = (n) => n != null ? (Number(n).toFixed(1) + '%') : '—';
 
   return (
@@ -1328,8 +1328,6 @@ function SmetaListEditable({ data, onChange }) {
   const total         = items.reduce((s, it) => s + ((Number(it.qty) || 0) * (Number(it.price) || 0)), 0);
   const vatAmount     = total * vatPct / 100;
   const totalWithVat  = total + vatAmount;
-  const fmt           = (n) => Math.round(n).toLocaleString('ru-RU');
-
   const rowInput = {
     width:'100%', boxSizing:'border-box',
     background:'rgba(255,255,255,0.08)', border:'1px solid rgba(255,255,255,0.1)',
@@ -1349,7 +1347,7 @@ function SmetaListEditable({ data, onChange }) {
       }}>
         <div style={{flex:1, fontSize:11, color:'rgba(255,255,255,0.6)'}}>Итого без НДС</div>
         <div style={{fontSize:15, fontWeight:700, fontFamily:'monospace', color:'#E8C35A'}}>
-          {fmt(total)} ₽
+          {fmt(total)}
         </div>
       </div>
 
@@ -1405,7 +1403,7 @@ function SmetaListEditable({ data, onChange }) {
             }}>
               <span>Сумма</span>
               <span style={{fontFamily:'monospace', fontWeight:600, color:'#E8C35A', fontSize:13}}>
-                {fmt(sum)} ₽
+                {fmt(sum)}
               </span>
             </div>
           </div>
@@ -1438,12 +1436,12 @@ function SmetaListEditable({ data, onChange }) {
         </div>
         <div style={{display:'flex', justifyContent:'space-between', fontSize:11.5, color:'rgba(255,255,255,0.6)'}}>
           <span>НДС</span>
-          <span style={{fontFamily:'monospace'}}>{fmt(vatAmount)} ₽</span>
+          <span style={{fontFamily:'monospace'}}>{fmt(vatAmount)}</span>
         </div>
         <div style={{display:'flex', justifyContent:'space-between', marginTop:5, paddingTop:5, borderTop:'1px solid rgba(255,255,255,0.06)'}}>
           <span style={{fontSize:12.5, fontWeight:600}}>Итого с НДС</span>
           <span style={{fontFamily:'monospace', fontWeight:700, color:'#E8C35A', fontSize:14}}>
-            {fmt(totalWithVat)} ₽
+            {fmt(totalWithVat)}
           </span>
         </div>
       </div>
@@ -1487,7 +1485,7 @@ function FinTile({ label, v, margin }) {
     <div style={{background:'rgba(255,255,255,0.04)',borderRadius:8,padding:'10px 12px'}}>
       <div style={{fontSize:9.5,color:'rgba(255,255,255,0.4)',textTransform:'uppercase',marginBottom:3,letterSpacing:.4}}>{label}</div>
       <div style={{fontSize:14.5,fontWeight:600,fontFamily:'monospace',color: margin ? '#4ADE80' : '#E8C35A'}}>
-        {v != null ? (typeof v === 'number' ? Number(v).toLocaleString('ru-RU') + ' ₽' : v) : '—'}
+        {v != null ? (typeof v === 'number' ? fmt(v) : v) : '—'}
       </div>
     </div>
   );

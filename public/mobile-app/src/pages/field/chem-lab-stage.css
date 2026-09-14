@@ -1,0 +1,161 @@
+/* ChemLab Canvas stage */
+
+.cl-stage {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.cl-stage-canvas,
+.cl-stage-gl,
+.cl-stage-glass {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.cl-stage-gl {
+  z-index: 3;
+}
+
+.cl-stage-glass {
+  z-index: 4;
+}
+
+.cl-stage-hits {
+  position: relative;
+  z-index: 5;
+  flex: 1;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 12px 14px;
+  padding: 18px 6px 40px;
+  min-height: 0;
+}
+
+.cl-hit {
+  width: 76px;
+  height: 178px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+}
+.cl-hit-pad {
+  flex: 1;
+  min-height: 0;
+}
+
+.cl-hit:disabled {
+  cursor: default;
+}
+
+.cl-hit-label {
+  height: 32px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 1px;
+  pointer-events: none;
+  margin-top: 4px;
+}
+
+.cl-stage-hits.cl-hits-many {
+  gap: 8px 8px;
+  padding: 10px 4px 8px;
+  align-content: flex-end;
+}
+.cl-stage-hits.cl-hits-many .cl-hit {
+  width: 58px;
+  height: 148px;
+}
+.cl-stage-hits.cl-hits-many .cl-hit-label strong { font-size: 10px; }
+
+.cl-stage-hits.cl-hits-dense {
+  gap: 5px 4px;
+  padding: 4px 2px 2px;
+  align-content: flex-end;
+}
+.cl-stage-hits.cl-hits-dense .cl-hit {
+  width: 46px;
+  height: 126px;
+}
+.cl-stage-hits.cl-hits-dense .cl-hit-label strong { font-size: 9px; }
+.cl-stage-hits.cl-hits-dense .cl-hit-label span { font-size: 8px; max-width: 46px; }
+
+.cl-hit-label strong {
+  font-size: 11px;
+  font-weight: 800;
+  color: rgba(245, 245, 247, 0.92);
+  letter-spacing: 0.02em;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.65);
+}
+
+.cl-hit-label span {
+  font-size: 9px;
+  font-weight: 600;
+  color: rgba(245, 245, 247, 0.45);
+  max-width: 72px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cl-stage-hits.is-3d {
+  position: absolute;
+  inset: 0;
+  display: block;
+  pointer-events: none;
+  padding: 0;
+}
+.cl-stage-hits.is-3d .cl-hit {
+  position: absolute;
+  pointer-events: auto;
+  width: 64px;
+  height: 160px;
+  margin: 0;
+}
+.cl-stage-hits.is-3d .cl-hit-label {
+  position: absolute;
+  left: 50%;
+  bottom: -2px;
+  transform: translateX(-50%);
+}
+
+.cl-hit--selected .cl-hit-label strong {
+  color: #e8a838;
+}
+
+.cl-stage-surface {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 56px;
+  background:
+    linear-gradient(180deg, transparent, rgba(28, 32, 40, 0.75) 30%, #141820),
+    repeating-linear-gradient(
+      90deg,
+      transparent,
+      transparent 4px,
+      rgba(255, 255, 255, 0.015) 4px,
+      rgba(255, 255, 255, 0.015) 5px
+    );
+  border-top: 1px solid rgba(232, 168, 56, 0.12);
+  pointer-events: none;
+  z-index: 0;
+}

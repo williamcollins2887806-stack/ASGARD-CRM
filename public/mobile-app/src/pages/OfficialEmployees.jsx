@@ -7,8 +7,7 @@ import { EmptyState } from '@/components/shared/EmptyState';
 import { SkeletonList } from '@/components/shared/SkeletonKit';
 import { PullToRefresh } from '@/components/shared/PullToRefresh';
 import { Briefcase, ChevronRight } from 'lucide-react';
-
-const fmtMoney = (n) => n != null ? Math.round(n).toLocaleString('ru-RU') + ' ₽' : '—';
+import { formatMoney as fmtMoney } from '@/lib/utils';
 
 const STATUS_LABELS = {
   active: 'Работает', unpaid_leave: 'Отпуск за свой счёт',

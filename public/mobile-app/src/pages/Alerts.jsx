@@ -1,14 +1,16 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useHaptic } from '@/hooks/useHaptic';
 import { api } from '@/api/client';
 import { PageShell } from '@/components/layout/PageShell';
 import { EmptyState } from '@/components/shared/EmptyState';
 import { SkeletonList } from '@/components/shared/SkeletonKit';
 import { PullToRefresh } from '@/components/shared/PullToRefresh';
-import { Bell, CheckCheck, Trash2, X } from 'lucide-react';
+import { Bell, CheckCheck, Trash2 } from 'lucide-react';
 import { relativeTime } from '@/lib/utils';
+import { normalizeMobileNavUrl } from '@/lib/navUrl';
 
-const TYPE_ICONS = { info: 'ℹ️', success: '✅', warning: '⚠️', danger: '🚨', task: '📋', chat: '💬', money: '💰', system: '⚙️' };
+const TYPE_ICONS = { info: 'ℹ️', success: '✅', warning: '⚠️', danger: '🚨', task: '📋', chat: '💬', money: '💰', system: '⚙️', tender: '📑' };
 const FILTERS = [
   { id: 'all', label: 'Все' },
   { id: 'unread', label: 'Непрочитанные' },
@@ -19,6 +21,7 @@ const FILTERS = [
 
 export default function Alerts() {
   const haptic = useHaptic();
+  const navigate = useNavigate();
   const [notifications, setNotifications] = useState([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState('all');
@@ -56,6 +59,17 @@ export default function Alerts() {
       await api.post('/notifications/read-all');
       setNotifications((p) => p.map((n) => ({ ...n, read: true, is_read: true })));
     } catch {}
+  };
+
+  const openNotif = async (n) => {
+    haptic.light();
+    if (!n.read && !n.is_read) {
+      markRead(n.id).catch(() => {});
+    }
+    const path = normalizeMobileNavUrl(n.link || n.url);
+    if (path && path !== '/') {
+      navigate(path);
+    }
   };
 
   const unreadCount = notifications.filter((n) => !n.read && !n.is_read).length;
@@ -98,30 +112,37 @@ export default function Alerts() {
             {filtered.map((n, i) => {
               const isRead = n.read || n.is_read;
               const icon = TYPE_ICONS[n.type || n.category] || '🔔';
+              const body = n.message || n.text || n.body;
               return (
-                <div key={n.id} className="rounded-2xl px-4 py-3" style={{
-                  background: 'color-mix(in srgb, var(--bg-surface) 85%, transparent)',
-                  border: '0.5px solid var(--border-norse)',
-                  borderLeft: isRead ? undefined : '3px solid var(--blue)',
-                  opacity: isRead ? 0.7 : 1,
-                  animation: `fadeInUp var(--motion-normal) var(--ease-spring) ${i * 30}ms both`,
-                }}>
+                <button
+                  key={n.id}
+                  type="button"
+                  onClick={() => openNotif(n)}
+                  className="rounded-2xl px-4 py-3 text-left spring-tap"
+                  style={{
+                    background: 'color-mix(in srgb, var(--bg-surface) 85%, transparent)',
+                    border: '0.5px solid var(--border-norse)',
+                    borderLeft: isRead ? undefined : '3px solid var(--blue)',
+                    opacity: isRead ? 0.7 : 1,
+                    animation: `fadeInUp var(--motion-normal) var(--ease-spring) ${i * 30}ms both`,
+                  }}
+                >
                   <div className="flex items-start gap-2.5">
                     <span className="text-[16px] shrink-0 mt-0.5">{icon}</span>
                     <div className="flex-1 min-w-0">
                       <p className="text-[14px] font-semibold leading-tight c-primary">
-                        {n.title || n.message || 'Уведомление'}
+                        {n.title || body || 'Уведомление'}
                       </p>
-                      {(n.text || n.body) && (
+                      {body && n.title && (
                         <p className="text-[12px] mt-0.5 line-clamp-2 c-secondary">
-                          {n.text || n.body}
+                          {body}
                         </p>
                       )}
                       <p className="text-[10px] mt-1 c-tertiary">
                         {n.created_at ? relativeTime(n.created_at) : ''}
                       </p>
                     </div>
-                    <div className="flex items-center gap-1 shrink-0">
+                    <div className="flex items-center gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
                       {!isRead && (
                         <button onClick={() => markRead(n.id)} className="flex items-center justify-center spring-tap c-blue" style={{ width: 30, height: 30 }}>
                           <CheckCheck size={16} />
@@ -132,7 +153,7 @@ export default function Alerts() {
                       </button>
                     </div>
                   </div>
-                </div>
+                </button>
               );
             })}
           </div>

@@ -5,11 +5,14 @@ import { fieldApi } from '@/api/fieldClient';
 import { api } from '@/api/client';
 import { useHaptic } from '@/hooks/useHaptic';
 import { BottomSheet } from '@/components/shared/BottomSheet';
+import { formatMoney as fmt } from '@/lib/utils';
 
-function fmt(n) { return (n || 0).toLocaleString('ru-RU'); }
 function fmtDate(d) { return d ? new Date(d).toLocaleDateString('ru-RU') : '—'; }
 
-const STAGE_LABELS = { medical: 'Медосмотр', travel: 'Дорога', waiting: 'Ожидание', warehouse: 'Склад', day_off: 'Выходной' };
+const STAGE_LABELS = {
+  medical: 'Медосмотр', travel: 'Дорога', waiting: 'Ожидание', warehouse: 'Склад',
+  day_off: 'Выходной', object: 'Объект', ship: 'Корабль', helicopter: 'Вертолёт', training: 'Обучение',
+};
 const STATUS_ICONS = { completed: '✅', approved: '✅', adjusted: '✅', active: '🔵', planned: '⚬', rejected: '❌' };
 
 function Skeleton() {
@@ -67,14 +70,14 @@ function MoneyDetail({ workId, onBack }) {
   }
 
   const rows = [];
-  rows.push({ label: `Базовая ставка (${data.days_worked || 0} см.)`, value: `${fmt(data.base_amount)} ₽` });
-  if (data.per_diem_total) rows.push({ label: `Пайковые (${data.per_diem_days || 0} дн. × ${fmt(data.per_diem_rate)}₽)`, value: `${fmt(data.per_diem_total)} ₽` });
-  if (data.bonuses) rows.push({ label: 'Бонусы', value: `+${fmt(data.bonuses)} ₽`, color: '#22c55e' });
-  if (data.stages_earned) rows.push({ label: 'Маршрут до объекта', value: `+${fmt(data.stages_earned)} ₽`, color: 'var(--gold)' });
-  if (data.penalties) rows.push({ label: 'Штрафы', value: `−${fmt(data.penalties)} ₽`, color: '#ef4444' });
-  rows.push({ label: 'Итого начислено', value: `${fmt(data.total_earned)} ₽`, bold: true, sep: true });
-  if (data.total_paid) rows.push({ label: 'Выплачено (авансы)', value: `−${fmt(data.total_paid)} ₽`, color: '#ef4444' });
-  rows.push({ label: 'К выплате', value: `${fmt(data.remaining)} ₽`, bold: true, sep: true, color: 'var(--gold)' });
+  rows.push({ label: `Базовая ставка (${data.days_worked || 0} см.)`, value: `${fmt(data.base_amount)}` });
+  if (data.per_diem_total) rows.push({ label: `Пайковые (${data.per_diem_days || 0} дн. × ${fmt(data.per_diem_rate)})`, value: `${fmt(data.per_diem_total)}` });
+  if (data.bonuses) rows.push({ label: 'Бонусы', value: `+${fmt(data.bonuses)}`, color: '#22c55e' });
+  if (data.stages_earned) rows.push({ label: 'Маршрут до объекта', value: `+${fmt(data.stages_earned)}`, color: 'var(--gold)' });
+  if (data.penalties) rows.push({ label: 'Штрафы', value: `−${fmt(data.penalties)}`, color: '#ef4444' });
+  rows.push({ label: 'Итого начислено', value: `${fmt(data.total_earned)}`, bold: true, sep: true });
+  if (data.total_paid) rows.push({ label: 'Выплачено (авансы)', value: `−${fmt(data.total_paid)}`, color: '#ef4444' });
+  rows.push({ label: 'К выплате', value: `${fmt(data.remaining)}`, bold: true, sep: true, color: 'var(--gold)' });
 
   return (
     <div className="p-4 pb-24 space-y-4" style={{ backgroundColor: 'var(--bg-primary)' }}>
@@ -89,8 +92,8 @@ function MoneyDetail({ workId, onBack }) {
       {/* Hero */}
       <div className="rounded-xl p-5 text-center" style={{ backgroundColor: 'var(--bg-elevated)', border: '1px solid var(--border-norse)' }}>
         <p className="text-xs uppercase tracking-wide mb-1" style={{ color: 'var(--text-tertiary)' }}>Начислено</p>
-        <p className="text-3xl font-bold" style={{ color: 'var(--gold)' }}>{fmt(data.total_earned)} ₽</p>
-        <p className="text-sm mt-1" style={{ color: 'var(--text-secondary)' }}>{data.days_worked} смен × {fmt(data.day_rate)}₽</p>
+        <p className="text-3xl font-bold" style={{ color: 'var(--gold)' }}>{fmt(data.total_earned)}</p>
+        <p className="text-sm mt-1" style={{ color: 'var(--text-secondary)' }}>{data.days_worked} смен × {fmt(data.day_rate)}</p>
       </div>
 
       {/* Tariff */}
@@ -100,13 +103,13 @@ function MoneyDetail({ workId, onBack }) {
           <div className="flex justify-between text-sm py-1">
             <span style={{ color: 'var(--text-secondary)' }}>{data.tariff.position_name}</span>
             <span className="font-medium" style={{ color: 'var(--text-primary)' }}>
-              {data.tariff.points} бал. × {fmt(data.tariff.point_value || 500)}₽ = {fmt(data.tariff.rate_per_shift)}₽/см
+              {data.tariff.points} бал. × {fmt(data.tariff.point_value || 500)} = {fmt(data.tariff.rate_per_shift)}/см
             </span>
           </div>
           {data.combination && (
             <div className="flex justify-between text-sm py-1">
               <span style={{ color: 'var(--gold)' }}>+ Совмещение: {data.combination.position_name}</span>
-              <span className="font-medium" style={{ color: 'var(--gold)' }}>+{fmt(data.combination.rate_per_shift)}₽</span>
+              <span className="font-medium" style={{ color: 'var(--gold)' }}>+{fmt(data.combination.rate_per_shift)}</span>
             </div>
           )}
         </div>
@@ -124,11 +127,11 @@ function MoneyDetail({ workId, onBack }) {
           <p className="text-xs font-semibold uppercase tracking-widest mb-3" style={{ color: 'var(--text-tertiary)' }}>Маршрут до объекта</p>
           {data.stages_breakdown.map((s, i) => (
             <Row key={i}
-              label={`${STAGE_LABELS[s.type] || s.type}: ${s.days} дн. × ${fmt(s.rate)}₽`}
-              value={`${fmt(s.amount)} ₽`}
+              label={`${STAGE_LABELS[s.type] || s.type}: ${s.days} дн. × ${fmt(s.rate)}`}
+              value={`${fmt(s.amount)}`}
             />
           ))}
-          <Row label="Итого маршрут" value={`${fmt(data.stages_earned)} ₽`} bold sep color="var(--gold)" />
+          <Row label="Итого маршрут" value={`${fmt(data.stages_earned)}`} bold sep color="var(--gold)" />
         </div>
       )}
 
@@ -139,7 +142,7 @@ function MoneyDetail({ workId, onBack }) {
           {data.payroll_items.map((a, i) => (
             <Row key={i}
               label={a.comment || `Начисление #${i + 1}`}
-              value={a.advance_paid ? `−${fmt(a.advance_paid)} ₽` : `${fmt(a.payout)} ₽`}
+              value={a.advance_paid ? `−${fmt(a.advance_paid)}` : `${fmt(a.payout)}`}
               color={a.advance_paid ? '#ef4444' : undefined}
             />
           ))}
@@ -269,7 +272,7 @@ export default function FieldMoney() {
               Текущий проект: {cur.work_title}
             </p>
           )}
-          <p className="text-3xl font-bold" style={{ color: 'var(--gold)' }}>{fmt(cur.total_earned)} ₽</p>
+          <p className="text-3xl font-bold" style={{ color: 'var(--gold)' }}>{fmt(cur.total_earned)}</p>
 
           {daysWorked > 0 && (
             <>
@@ -295,24 +298,31 @@ export default function FieldMoney() {
             <div className="flex justify-between text-sm py-1">
               <span style={{ color: 'var(--text-secondary)' }}>{tariff.position_name}</span>
               <span className="font-medium" style={{ color: 'var(--text-primary)' }}>
-                {tariff.points} бал. × {fmt(pointValue)}₽ = {fmt(tariff.rate_per_shift)}₽/см
+                {tariff.points} бал. × {fmt(pointValue)} = {fmt(tariff.rate_per_shift)}/см
               </span>
             </div>
           )}
           {tariff.combination && (
             <div className="flex justify-between text-sm py-1">
               <span style={{ color: 'var(--gold)' }}>+ Совмещение: {tariff.combination.position_name}</span>
-              <span className="font-medium" style={{ color: 'var(--gold)' }}>+1 балл (+{fmt(pointValue)}₽)</span>
+              <span className="font-medium" style={{ color: 'var(--gold)' }}>+1 балл (+{fmt(pointValue)})</span>
             </div>
           )}
           {proj.per_diem > 0 && (
-            <div className="flex justify-between text-sm py-1">
-              <span style={{ color: 'var(--text-secondary)' }}>Пайковые</span>
-              <span className="font-medium" style={{ color: 'var(--text-primary)' }}>{fmt(proj.per_diem)}₽/сут</span>
-            </div>
+            <>
+              <div className="flex justify-between text-sm py-1">
+                <span style={{ color: 'var(--text-secondary)' }}>Пайковые</span>
+                <span className="font-medium" style={{ color: 'var(--text-primary)' }}>{fmt(proj.per_diem)}/сут</span>
+              </div>
+              {proj.per_diem_on_checkins === false && (
+                <p className="text-xs mt-0.5" style={{ color: 'var(--text-tertiary)' }}>
+                  Суточные — за дорогу и этапы, не за смены на объекте
+                </p>
+              )}
+            </>
           )}
           <p className="text-xs mt-2 italic" style={{ color: 'var(--text-tertiary)', borderTop: '1px solid var(--border-norse)', paddingTop: '8px' }}>
-            Тарифная сетка утверждена. 1 балл = {fmt(pointValue)}₽
+            Тарифная сетка утверждена. 1 балл = {fmt(pointValue)}
           </p>
         </div>
       )}
@@ -330,16 +340,16 @@ export default function FieldMoney() {
           </div>
           {stagesList.map((st) => {
             const earned = parseFloat(st.amount_earned || 0);
-            const label = `${STAGE_LABELS[st.stage_type] || st.stage_type}: ${st.days_count || 1} дн. × ${fmt(parseFloat(st.rate_per_day || 0))}₽`;
+            const label = `${STAGE_LABELS[st.stage_type] || st.stage_type}: ${st.days_count || 1} дн. × ${fmt(parseFloat(st.rate_per_day || 0))}`;
             const icon = STATUS_ICONS[st.status] || '';
             return (
               <div key={st.id} className="flex justify-between py-1 text-sm">
                 <span style={{ color: 'var(--text-secondary)' }}>{label}</span>
-                <span className="font-semibold" style={{ color: 'var(--text-primary)' }}>{fmt(earned)}₽ {icon}</span>
+                <span className="font-semibold" style={{ color: 'var(--text-primary)' }}>{fmt(earned)} {icon}</span>
               </div>
             );
           })}
-          <Row label="Итого до объекта" value={`${fmt(stagesTotal)} ₽`} bold sep color="var(--gold)" />
+          <Row label="Итого до объекта" value={`${fmt(stagesTotal)}`} bold sep color="var(--gold)" />
         </div>
       )}
 
@@ -351,9 +361,23 @@ export default function FieldMoney() {
           <Clock size={16} style={{ color: 'var(--gold)' }} />
           <span className="text-xs font-semibold uppercase tracking-widest" style={{ color: 'var(--text-tertiary)' }}>Заработок на объекте</span>
         </div>
-        <Row label={`Зарплата (${daysWorked} см.)`} value={`${fmt(cur.fot)} ₽`} bold color="var(--gold)" />
+        <Row label={`Зарплата (${daysWorked} см.)`} value={`${fmt(cur.fot)}`} bold color="var(--gold)" />
         {cur.per_diem_accrued > 0 && (
-          <Row label={`Суточные (${daysWorked} дн. × ${fmt(cur.per_diem_rate)}₽)`} value={`${fmt(cur.per_diem_accrued)} ₽`} bold color="#f59e0b" />
+          <Row
+            label={
+              proj.per_diem_on_checkins === false
+                ? `Суточные (${cur.per_diem_days || Math.round((cur.per_diem_accrued || 0) / Math.max(cur.per_diem_rate || 1, 1))} дн. × ${fmt(cur.per_diem_rate)})`
+                : `Суточные (${daysWorked} дн. × ${fmt(cur.per_diem_rate)})`
+            }
+            value={`${fmt(cur.per_diem_accrued)}`}
+            bold
+            color="#f59e0b"
+          />
+        )}
+        {proj.per_diem_on_checkins === false && cur.per_diem_accrued > 0 && (
+          <p className="text-xs mt-1" style={{ color: 'var(--text-tertiary)' }}>
+            Только дорога и этапы — смены на объекте без суточных
+          </p>
         )}
         <p className="text-xs mt-3 italic" style={{ color: 'var(--text-tertiary)', borderTop: '1px solid var(--border-norse)', paddingTop: '8px' }}>
           Полная разбивка по месяцам с авансами и фактом выплаты — в разделе «Зарплата по месяцам»
@@ -410,7 +434,7 @@ export default function FieldMoney() {
                     {p.days_worked} смен · {isPaid ? '✅ Выплачено' : 'В процессе'}
                   </p>
                 </div>
-                <span className="text-sm font-semibold whitespace-nowrap" style={{ color: 'var(--gold)' }}>{fmt(p.total_earned)} ₽</span>
+                <span className="text-sm font-semibold whitespace-nowrap" style={{ color: 'var(--gold)' }}>{fmt(p.total_earned)}</span>
                 <ChevronRight size={16} style={{ color: 'var(--text-tertiary)', flexShrink: 0 }} />
               </button>
             );
@@ -455,7 +479,8 @@ function WorkerHandoversSection() {
     if (!hasCrmToken) { setLoading(false); return; }
     setLoading(true);
     try {
-      const res = await api.get(`/timesheet/v2/handovers/${year}/${month}`);
+      // skipAuthRedirect: на /m/field* протухший CRM-токен не должен выкидывать из Зала
+      const res = await api.get(`/timesheet/v2/handovers/${year}/${month}`, { skipAuthRedirect: true });
       // Формат: [{worker_id, fio, work_id, expected_amount, source_se_transfer_id, existing_handover?}]
       const rows = api.extractRows(res) || [];
       setItems(rows);
@@ -501,7 +526,7 @@ function WorkerHandoversSection() {
         if (note) payload.note = note;
         haptic.light();
       }
-      await api.post('/handovers/', payload);
+      await api.post('/handovers/', payload, { skipAuthRedirect: true });
       setItems((prev) => prev.filter((r) => r.worker_id !== opened.worker_id || r.work_id !== opened.work_id));
       setOpened(null);
     } catch (e) {
@@ -564,7 +589,7 @@ function WorkerHandoversSection() {
                 {h.fio || `Рабочий #${h.worker_id}`}
               </p>
               <p className="text-xs mt-0.5" style={{ color: 'var(--text-tertiary)' }}>
-                Ожидается {fmt(h.expected_amount)} ₽
+                Ожидается {fmt(h.expected_amount)}
                 {h.work_title && ` · ${h.work_title}`}
               </p>
             </div>
@@ -605,7 +630,7 @@ function HandoverConfirmSheet({ handover, busy, onConfirm, onClose }) {
               Ожидаемая сумма
             </p>
             <p style={{ fontSize: 22, fontWeight: 800, color: '#FF9800', marginTop: 2 }}>
-              {fmt(expected)} ₽
+              {fmt(expected)}
             </p>
           </div>
           {handover.work_title && (
@@ -631,7 +656,7 @@ function HandoverConfirmSheet({ handover, busy, onConfirm, onClose }) {
                 opacity: busy ? 0.6 : 1,
               }}
             >
-              <Check size={20} /> Получил полностью ({fmt(expected)} ₽)
+              <Check size={20} /> Получил полностью ({fmt(expected)})
             </button>
 
             <button

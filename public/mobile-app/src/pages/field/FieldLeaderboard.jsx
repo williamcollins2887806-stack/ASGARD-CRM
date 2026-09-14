@@ -125,7 +125,7 @@ function XpBar({ xp }) {
 }
 
 /* ═══ Podium card ═══ */
-function PodiumCard({ player, rank, isSelf, countersActive }) {
+function PodiumCard({ player, rank, isSelf, countersActive, onOpen }) {
   const COLORS = { 1: '#FFD700', 2: '#C0C0C0', 3: '#CD7F32' };
   const c = COLORS[rank];
   const height = rank === 1 ? 130 : rank === 2 ? 108 : 95;
@@ -135,11 +135,17 @@ function PodiumCard({ player, rank, isSelf, countersActive }) {
   const firstName = (player.fio || '').split(' ')[0] || '?';
 
   return (
-    <div style={{
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={() => onOpen?.(player.employee_id)}
+      onKeyDown={(e) => e.key === 'Enter' && onOpen?.(player.employee_id)}
+      style={{
       flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center',
       gap: 6, minHeight: height, justifyContent: 'flex-end',
       position: 'relative', paddingBottom: 6,
       animation: `lb-slide-up ${0.3 + rank * 0.1}s ease both`,
+      cursor: 'pointer',
     }}>
       {rank === 1 && (
         <>
@@ -181,14 +187,19 @@ function PodiumCard({ player, rank, isSelf, countersActive }) {
 }
 
 /* ═══ Player row in list ═══ */
-function PlayerRow({ player, isSelf, idx, visible }) {
+function PlayerRow({ player, isSelf, idx, visible, onOpen }) {
   const rank = parseInt(player.rank);
   const isTop3 = rank <= 3;
   const MEDAL = { 1: '🥇', 2: '🥈', 3: '🥉' };
   const rt = player.rank_title || {};
 
   return (
-    <div style={{
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={() => onOpen?.(player.employee_id)}
+      onKeyDown={(e) => e.key === 'Enter' && onOpen?.(player.employee_id)}
+      style={{
       display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px',
       borderRadius: 14,
       backgroundColor: isSelf ? 'rgba(212,168,67,0.1)' : isTop3 ? `rgba(255,255,255,0.04)` : 'rgba(255,255,255,0.025)',
@@ -198,6 +209,7 @@ function PlayerRow({ player, isSelf, idx, visible }) {
       animationDelay: `${idx * 0.04}s`,
       position: 'relative',
       overflow: 'hidden',
+      cursor: 'pointer',
     }}>
       {/* Left ping for self */}
       {isSelf && (
@@ -442,13 +454,16 @@ function PipelineRow({ player, isSelf, idx, visible }) {
 export default function FieldLeaderboard() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const initialTab = searchParams.get('tab') === 'pipeline' ? 'pipeline' : searchParams.get('tab') === 'tournament' ? 'tournament' : 'rating';
+  const tabParam = searchParams.get('tab');
+  const initialTab = tabParam === 'pipeline' || tabParam === 'chemlab' || tabParam === 'tournament' ? tabParam : 'rating';
   const [leaderboard, setLeaderboard] = useState([]);
   const [myRank, setMyRank] = useState(null);
   const [tournament, setTournament] = useState(null);
   const [pipelineBoard, setPipelineBoard] = useState([]);
   const [pipelineMyRank, setPipelineMyRank] = useState(null);
-  const [tab, setTab] = useState(initialTab);       // 'rating' | 'tournament' | 'pipeline'
+  const [chemlabBoard, setChemlabBoard] = useState([]);
+  const [chemlabMyRank, setChemlabMyRank] = useState(null);
+  const [tab, setTab] = useState(initialTab);       // 'rating' | 'tournament' | 'pipeline' | 'chemlab'
   const [sortBy, setSortBy] = useState('power');  // 'power' | 'runes' | 'xp' | 'shifts'
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -459,13 +474,16 @@ export default function FieldLeaderboard() {
     Promise.all([
       fieldApi.get('/gamification/leaderboard'),
       fieldApi.get('/pipeline/leaderboard').catch(() => ({ leaderboard: [], my_rank: null })),
+      fieldApi.get('/chemlab/leaderboard').catch(() => ({ leaderboard: [], my_rank: null })),
     ])
-      .then(([data, pipe]) => {
+      .then(([data, pipe, chem]) => {
         setLeaderboard(data?.leaderboard || []);
         setMyRank(data?.my_rank || null);
         setTournament(data?.tournament || null);
         setPipelineBoard(pipe?.leaderboard || []);
         setPipelineMyRank(pipe?.my_rank || null);
+        setChemlabBoard(chem?.leaderboard || []);
+        setChemlabMyRank(chem?.my_rank || null);
         setTimeout(() => setCountersActive(true), 200);
         setTimeout(() => setRowsVisible(true), 400);
       })
@@ -474,6 +492,10 @@ export default function FieldLeaderboard() {
   }, []);
 
   const myId = myRank?.employee_id;
+  const openHall = (employeeId) => {
+    if (!employeeId) return;
+    navigate(`/field/hall/${employeeId}`);
+  };
 
   const sorted = [...leaderboard].sort((a, b) => {
     if (sortBy === 'runes')  return parseInt(b.earned_runes) - parseInt(a.earned_runes);
@@ -515,16 +537,17 @@ export default function FieldLeaderboard() {
         </div>
 
         {/* Tab selector */}
-        <div style={{ display: 'flex', gap: 6 }}>
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
           {[
-            { key: 'rating', label: '⚔️ Рейтинг' },
-            { key: 'pipeline', label: '🌊 Рунопровод' },
-            { key: 'tournament', label: '🏆 Турнир' },
+            { key: 'rating', label: '⚔️ Рейтинг', color: '#D4A843' },
+            { key: 'pipeline', label: '🌊 Трубы', color: '#38bdf8' },
+            { key: 'chemlab', label: '🧪 Химцех', color: '#e8a838' },
+            { key: 'tournament', label: '🏆 Турнир', color: '#D4A843' },
           ].map(t => (
             <button key={t.key} onClick={() => setTab(t.key)} style={{
-              flex: 1, padding: '8px 0', borderRadius: 12, fontSize: 11, fontWeight: 700,
+              flex: '1 1 40%', padding: '8px 0', borderRadius: 12, fontSize: 11, fontWeight: 700,
               border: 'none', cursor: 'pointer', transition: 'all .2s',
-              backgroundColor: tab === t.key ? (t.key === 'pipeline' ? '#38bdf8' : '#D4A843') : 'rgba(255,255,255,0.06)',
+              backgroundColor: tab === t.key ? t.color : 'rgba(255,255,255,0.06)',
               color: tab === t.key ? '#000' : '#9ca3af',
             }}>
               {t.label}
@@ -588,6 +611,53 @@ export default function FieldLeaderboard() {
                 </div>
               )}
             </>
+          ) : tab === 'chemlab' ? (
+            /* ══════════ CHEMLAB TAB ══════════ */
+            <>
+              {chemlabMyRank && (
+                <div style={{
+                  padding: '10px 14px', borderRadius: 14, marginBottom: 8,
+                  background: 'linear-gradient(135deg, rgba(232,168,56,0.16), rgba(232,168,56,0.06))',
+                  border: '1.5px solid rgba(232,168,56,0.45)',
+                  display: 'flex', alignItems: 'center', gap: 12,
+                }}>
+                  <div style={{ fontSize: 22 }}>🧪</div>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: 12, color: '#e8a838', fontWeight: 700 }}>Ваша позиция в Химцехе</div>
+                    <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 1 }}>
+                      #{chemlabMyRank} · сортировка по ⭐ за неделю
+                    </div>
+                  </div>
+                  <button onClick={() => navigate('/field/chemlab')} style={{
+                    padding: '8px 12px', borderRadius: 10, border: 'none', cursor: 'pointer',
+                    background: '#e8a838', color: '#000', fontSize: 11, fontWeight: 800,
+                  }}>
+                    Играть
+                  </button>
+                </div>
+              )}
+              {chemlabBoard.length === 0 ? (
+                <div style={{ textAlign: 'center', padding: 48 }}>
+                  <span style={{ fontSize: 40 }}>🧪</span>
+                  <p style={{ color: '#6b7280', marginTop: 10 }}>Пока никто не закрыл наряды</p>
+                  <button onClick={() => navigate('/field/chemlab')} style={{
+                    marginTop: 12, padding: '10px 20px', borderRadius: 12, border: 'none',
+                    background: '#e8a838', color: '#000', fontWeight: 800, cursor: 'pointer',
+                  }}>
+                    Быть первым!
+                  </button>
+                </div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  <p style={{ fontSize: 10, color: '#6b7280', textAlign: 'center', marginBottom: 4 }}>
+                    Недельный рейтинг Химцеха · ⭐ за наряды
+                  </p>
+                  {chemlabBoard.map((player, idx) => (
+                    <PipelineRow key={player.employee_id} player={player} isSelf={false} idx={idx} visible={rowsVisible} />
+                  ))}
+                </div>
+              )}
+            </>
           ) : tab === 'tournament' ? (
             /* ══════════ TOURNAMENT TAB ══════════ */
             <div style={{
@@ -620,9 +690,9 @@ export default function FieldLeaderboard() {
                     — ВАЛГАЛЛА —
                   </div>
                   <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8, justifyContent: 'center' }}>
-                    <PodiumCard player={sorted[1]} rank={2} isSelf={sorted[1]?.employee_id === myId} countersActive={countersActive} />
-                    <PodiumCard player={sorted[0]} rank={1} isSelf={sorted[0]?.employee_id === myId} countersActive={countersActive} />
-                    <PodiumCard player={sorted[2]} rank={3} isSelf={sorted[2]?.employee_id === myId} countersActive={countersActive} />
+                    <PodiumCard player={sorted[1]} rank={2} isSelf={sorted[1]?.employee_id === myId} countersActive={countersActive} onOpen={openHall} />
+                    <PodiumCard player={sorted[0]} rank={1} isSelf={sorted[0]?.employee_id === myId} countersActive={countersActive} onOpen={openHall} />
+                    <PodiumCard player={sorted[2]} rank={3} isSelf={sorted[2]?.employee_id === myId} countersActive={countersActive} onOpen={openHall} />
                   </div>
                 </div>
               )}
@@ -658,7 +728,7 @@ export default function FieldLeaderboard() {
                     const isSelf = player.employee_id === myId;
                     return (
                       <div key={player.employee_id} style={isSelf ? { scrollMarginTop: 100 } : {}}>
-                        <PlayerRow player={player} isSelf={isSelf} idx={idx} visible={rowsVisible} />
+                        <PlayerRow player={player} isSelf={isSelf} idx={idx} visible={rowsVisible} onOpen={openHall} />
                       </div>
                     );
                   })}
@@ -671,7 +741,7 @@ export default function FieldLeaderboard() {
                         <span style={{ fontSize: 10, color: '#4b5563' }}>ваша позиция</span>
                         <div style={{ flex: 1, height: 1, backgroundColor: 'rgba(255,255,255,0.06)' }} />
                       </div>
-                      <PlayerRow player={myRank} isSelf idx={999} visible={rowsVisible} />
+                      <PlayerRow player={myRank} isSelf idx={999} visible={rowsVisible} onOpen={openHall} />
                     </>
                   )}
                 </div>

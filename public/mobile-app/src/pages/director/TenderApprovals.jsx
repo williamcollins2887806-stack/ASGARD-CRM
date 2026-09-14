@@ -7,13 +7,14 @@ import { BottomSheet } from '@/components/shared/BottomSheet';
 import { EmptyState } from '@/components/shared/EmptyState';
 import { SkeletonList } from '@/components/shared/SkeletonKit';
 import { PullToRefresh } from '@/components/shared/PullToRefresh';
-import { Check, X as XIcon, MessageCircle, Clock, ChevronRight } from 'lucide-react';
+import DocPreviewSheet from '@/components/tenders/DocPreviewSheet';
+import { Check, X as XIcon, MessageCircle, Clock, ChevronRight, Eye, Download } from 'lucide-react';
 import { formatMoney } from '@/lib/utils';
 import {
   loadDirectorReviewQueue, markDirectorReviewSeen, directorDecisionRpReview,
   loadRpReview, loadTenderFiles, loadRpReviewMessages, postRpReviewMessage
 } from '@/api/tendersRegistry';
-import { fileDownloadUrl } from '@/lib/fileDownload';
+import { fileDownloadUrl, downloadProtected } from '@/lib/fileDownload';
 
 const DIRECTOR_ROLES = ['DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV', 'ADMIN'];
 const TABS = [
@@ -34,6 +35,62 @@ function parseRj(raw) {
   if (!raw) return {};
   if (typeof raw === 'object') return raw;
   try { return JSON.parse(raw || '{}'); } catch { return {}; }
+}
+
+function isArchiveFile(f) {
+  if (!f) return true;
+  const name = String(f.original_name || f.filename || '').toLowerCase();
+  const mime = String(f.mime_type || '').toLowerCase();
+  return mime.includes('zip') || mime.includes('rar') || mime.includes('7z')
+    || /\.(zip|rar|7z)$/i.test(name);
+}
+
+function BriefKv({ label, value, highlight }) {
+  return (
+    <div style={{
+      padding: '10px 12px',
+      borderRadius: 12,
+      background: highlight
+        ? 'color-mix(in srgb, var(--gold) 12%, transparent)'
+        : 'color-mix(in srgb, var(--bg-surface) 90%, transparent)',
+      border: '0.5px solid var(--border-norse)',
+    }}>
+      <div className="muted" style={{ fontSize: 11, marginBottom: 4 }}>{label}</div>
+      <div style={{ fontSize: 14, fontWeight: highlight ? 700 : 600, lineHeight: 1.35 }}>{value}</div>
+    </div>
+  );
+}
+
+function DocRow({ label, file, onPreview, onDownload }) {
+  if (!file) return null;
+  const arch = isArchiveFile(file);
+  const kb = file.size ? `${Math.round(file.size / 1024)} КБ` : '';
+  return (
+    <div
+      className="m-card"
+      style={{ padding: 12, marginBottom: 8, display: 'flex', gap: 8, alignItems: 'center' }}
+    >
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontSize: 12 }} className="muted">{label}</div>
+        <div style={{ fontSize: 13, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          {file.original_name || label}
+        </div>
+        {kb ? <div className="muted" style={{ fontSize: 11 }}>{kb}</div> : null}
+      </div>
+      <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
+        {!arch && file.id && (
+          <button type="button" className="btn mini" onClick={() => onPreview(file, label)}>
+            <Eye size={14} style={{ marginRight: 4 }} /> Просмотр
+          </button>
+        )}
+        {(file.download_url || file.file_url) && (
+          <button type="button" className="btn mini ghost" onClick={() => onDownload(file)}>
+            <Download size={14} />
+          </button>
+        )}
+      </div>
+    </div>
+  );
 }
 
 function TenderCard({ row, onOpen }) {
@@ -68,15 +125,16 @@ function TenderCard({ row, onOpen }) {
   );
 }
 
-function DetailSheet({ row, open, onClose, onChanged }) {
+function DetailSheet({ row, open, onClose, onChanged, initialTab }) {
   const haptic = useHaptic();
-  const [tab, setTab] = useState('summary');
+  const [tab, setTab] = useState(initialTab || 'summary');
   const [reviewData, setReviewData] = useState(null);
   const [docs, setDocs] = useState([]);
   const [messages, setMessages] = useState([]);
   const [chatText, setChatText] = useState('');
   const [comment, setComment] = useState('');
   const [busy, setBusy] = useState(false);
+  const [preview, setPreview] = useState(null);
 
   const loadDetail = useCallback(async () => {
     if (!row?.id) return;
@@ -94,13 +152,16 @@ function DetailSheet({ row, open, onClose, onChanged }) {
     if (open && row) {
       markDirectorReviewSeen(row.id).catch(() => {});
       loadDetail();
-      setTab('summary');
+      setTab(initialTab && TABS.some((t) => t.id === initialTab) ? initialTab : 'summary');
       setComment('');
     }
-  }, [open, row, loadDetail]);
+  }, [open, row, loadDetail, initialTab]);
 
   const decide = async (action) => {
-    if (action === 'reject' && !comment.trim()) return;
+    if (action === 'reject' && !comment.trim()) {
+      haptic?.error?.();
+      return;
+    }
     setBusy(true);
     haptic?.impact?.('medium');
     try {
@@ -128,6 +189,15 @@ function DetailSheet({ row, open, onClose, onChanged }) {
     }
   };
 
+  const onDownload = async (file) => {
+    try {
+      await downloadProtected(file.download_url || file, file.original_name || file.filename);
+    } catch {
+      const href = fileDownloadUrl(file);
+      if (href) window.open(href, '_blank', 'noopener');
+    }
+  };
+
   if (!row) return null;
   const review = reviewData?.review;
   const rj = parseRj(review?.report_json);
@@ -136,132 +206,220 @@ function DetailSheet({ row, open, onClose, onChanged }) {
   const report = reviewData?.report_file;
   const chatOpen = !review?.is_final || ['pending', 'approved'].includes(review?.director_review_status || '');
 
-  return (
-    <BottomSheet open={open} onClose={onClose} title={`Тендер #${row.registry_no || row.id}`} height="92vh">
-      <div style={{ display: 'flex', gap: 6, marginBottom: 12, overflowX: 'auto' }}>
-        {TABS.map((t) => (
-          <button
-            key={t.id}
-            type="button"
-            className={'btn mini' + (tab === t.id ? '' : ' ghost')}
-            onClick={() => setTab(t.id)}
-          >{t.label}</button>
-        ))}
+  const calcName = review?.finalized_by_name
+    || review?.calculator_name
+    || row.calculator_name
+    || '—';
+  const priceInc = review?.work_price != null ? Number(review.work_price) : null;
+  const priceEx = review?.work_price_ex_vat != null
+    ? Number(review.work_price_ex_vat)
+    : (row.work_price_ex_vat != null
+      ? Number(row.work_price_ex_vat)
+      : (Number.isFinite(priceInc) ? Math.round((priceInc / 1.22) * 100) / 100 : null));
+  const duration = rj.duration_days ?? row.duration_days;
+  const dec = review?.decision;
+  const decLabel = dec === 'submit' ? 'РП: подаём' : (dec === 'reject' ? 'РП: не подаём' : 'Решение РП не зафиксировано');
+  const showDecision = !review || review.director_review_status === 'pending' || row.director_review_status === 'pending';
+
+  const footer = showDecision ? (
+    <div>
+      <label className="muted" style={{ fontSize: 12 }}>Комментарий (обязателен при отказе)</label>
+      <textarea
+        className="inp"
+        rows={2}
+        style={{ width: '100%', marginTop: 6, marginBottom: 10 }}
+        value={comment}
+        onChange={(e) => setComment(e.target.value)}
+        placeholder="Причина отказа…"
+      />
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+        <button
+          type="button"
+          className="btn"
+          style={{ minHeight: 52, background: 'var(--success)' }}
+          disabled={busy}
+          onClick={() => decide('submit')}
+        >
+          <Check size={18} style={{ marginRight: 6 }} /> Подавать
+        </button>
+        <button
+          type="button"
+          className="btn ghost"
+          style={{ minHeight: 52, color: 'var(--danger)' }}
+          disabled={busy || !comment.trim()}
+          onClick={() => decide('reject')}
+        >
+          <XIcon size={18} style={{ marginRight: 6 }} /> Не подавать
+        </button>
       </div>
+    </div>
+  ) : null;
 
-      {tab === 'summary' && (
-        <div style={{ fontSize: 14, lineHeight: 1.5 }}>
-          <p><strong>Заказчик:</strong> {row.customer_name || '—'}</p>
-          <p><strong>Работа:</strong> {row.tender_title || '—'}</p>
-          <p><strong>НМЦ:</strong> {formatMoney(row.tender_price)}</p>
-          <p><strong>Цена РП без НДС:</strong> {formatMoney(row.work_price_ex_vat)}</p>
-          <p><strong>Срок подачи:</strong> {fmtDate(row.docs_deadline)}</p>
-          <p><strong>Срок работ:</strong> {row.duration_days != null ? `${row.duration_days} дн.` : '—'}</p>
-          <p><strong>РП:</strong> {row.calculator_name || '—'}</p>
-        </div>
-      )}
-
-      {tab === 'report' && (
-        <div style={{ fontSize: 14 }}>
-          {!reviewData ? <p className="muted">Загрузка…</p> : (
-            <>
-              <p><strong>Суть:</strong> {rj.summary || '—'}</p>
-              <p><strong>Риски:</strong> {rj.risks || '—'}</p>
-              <p><strong>Рекомендация:</strong> {rj.recommendation || '—'}</p>
-              <p><strong>Цена с НДС:</strong> {formatMoney(review?.work_price)}</p>
-              <p><strong>Себестоимость без НДС:</strong> {formatMoney(rj.cost_without_vat)}</p>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 12 }}>
-                {estimate?.download_url && (
-                  <a className="btn mini" href={fileDownloadUrl(estimate.download_url)} target="_blank" rel="noreferrer">Смета</a>
-                )}
-                {tkp?.download_url && (
-                  <a className="btn mini" href={fileDownloadUrl(tkp.download_url)} target="_blank" rel="noreferrer">ТКП</a>
-                )}
-                {report?.download_url && (
-                  <a className="btn mini" href={fileDownloadUrl(report.download_url)} target="_blank" rel="noreferrer">Отчёт</a>
-                )}
-              </div>
-            </>
-          )}
-        </div>
-      )}
-
-      {tab === 'tz' && (
-        <div>
-          {!docs.length ? <p className="muted">Документы ТО не загружены</p> : docs.map((d) => (
-            <a
-              key={d.id}
-              href={fileDownloadUrl(d.download_url || d)}
-              target="_blank"
-              rel="noreferrer"
-              className="m-card"
-              style={{ display: 'block', padding: 12, marginBottom: 8, fontSize: 14 }}
-            >📄 {d.original_name || d.filename}</a>
+  return (
+    <>
+      <BottomSheet
+        open={open}
+        onClose={onClose}
+        title={`Тендер #${row.registry_no || row.id}`}
+        maxHeight="92vh"
+        footer={footer}
+      >
+        <div style={{ display: 'flex', gap: 6, marginBottom: 12, overflowX: 'auto' }}>
+          {TABS.map((t) => (
+            <button
+              key={t.id}
+              type="button"
+              className={'btn mini' + (tab === t.id ? '' : ' ghost')}
+              onClick={() => setTab(t.id)}
+            >{t.label}</button>
           ))}
         </div>
-      )}
 
-      {tab === 'chat' && (
-        <div>
-          <div style={{ maxHeight: '40vh', overflowY: 'auto', marginBottom: 12 }}>
-            {!messages.length ? <p className="muted">Нет сообщений</p> : messages.map((m) => (
-              <div key={m.id} style={{ marginBottom: 10, fontSize: 13 }}>
-                <div className="muted" style={{ fontSize: 11 }}>{m.user_name} · {new Date(m.created_at).toLocaleString('ru-RU')}</div>
-                <div>{m.body}</div>
+        {tab === 'summary' && (
+          <div style={{ paddingBottom: 8 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+              <div style={{ fontWeight: 700, fontSize: 15 }}>Просчёт на согласование</div>
+              <span
+                className="pill mini"
+                style={{
+                  background: dec === 'submit'
+                    ? 'color-mix(in srgb, var(--success) 18%, transparent)'
+                    : dec === 'reject'
+                      ? 'color-mix(in srgb, var(--danger) 18%, transparent)'
+                      : 'var(--bg-surface)',
+                }}
+              >{decLabel}</span>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+              <BriefKv label="РП (считал)" value={calcName} />
+              <BriefKv label="Заказчик" value={row.customer_name || '—'} />
+              <BriefKv label="Себестоимость без НДС" value={formatMoney(rj.cost_without_vat)} />
+              <BriefKv label="Сумма подачи с НДС" value={formatMoney(priceInc)} highlight />
+              <BriefKv label="Сумма подачи без НДС" value={formatMoney(priceEx)} />
+              <BriefKv label="Срок выполнения" value={duration != null && duration !== '' ? `${duration} дн.` : '—'} />
+              <BriefKv label="Срок подачи документов" value={fmtDate(row.docs_deadline)} />
+              <BriefKv label="НМЦ" value={formatMoney(row.tender_price)} />
+            </div>
+            <div style={{ marginTop: 10 }}>
+              <BriefKv label="Предмет" value={row.tender_title || '—'} />
+            </div>
+            {(rj.recommendation || rj.summary) && (
+              <div style={{
+                marginTop: 12, padding: 12, borderRadius: 12,
+                border: '0.5px solid var(--border-norse)', fontSize: 13, lineHeight: 1.45,
+              }}>
+                <div className="muted" style={{ fontSize: 11, marginBottom: 4 }}>
+                  {rj.recommendation ? 'Рекомендация РП' : 'Суть'}
+                </div>
+                {rj.recommendation || String(rj.summary || '').slice(0, 280)}
               </div>
+            )}
+
+            <div style={{ marginTop: 16, marginBottom: 8, fontWeight: 600, fontSize: 14 }}>Документы</div>
+            {!estimate && !report && !tkp ? (
+              <p className="muted" style={{ fontSize: 13 }}>Файлы просчёта не прикреплены</p>
+            ) : (
+              <>
+                <DocRow
+                  label="Смета"
+                  file={estimate}
+                  onPreview={(f, label) => setPreview({ docId: f.id, title: label })}
+                  onDownload={onDownload}
+                />
+                <DocRow
+                  label="Отчёт"
+                  file={report}
+                  onPreview={(f, label) => setPreview({ docId: f.id, title: label })}
+                  onDownload={onDownload}
+                />
+                <DocRow
+                  label="ТКП"
+                  file={tkp}
+                  onPreview={(f, label) => setPreview({ docId: f.id, title: label })}
+                  onDownload={onDownload}
+                />
+              </>
+            )}
+            {row.purchase_url && (
+              <a
+                className="btn mini ghost"
+                href={row.purchase_url}
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{ marginTop: 8, display: 'inline-flex' }}
+              >↗ Закупка</a>
+            )}
+          </div>
+        )}
+
+        {tab === 'report' && (
+          <div style={{ fontSize: 14, paddingBottom: 8 }}>
+            {!reviewData ? <p className="muted">Загрузка…</p> : (
+              <>
+                <p><strong>Суть:</strong> {rj.summary || '—'}</p>
+                <p><strong>Риски:</strong> {rj.risks || '—'}</p>
+                <p><strong>Рекомендация:</strong> {rj.recommendation || '—'}</p>
+                <p><strong>Цена с НДС:</strong> {formatMoney(review?.work_price)}</p>
+                <p><strong>Себестоимость без НДС:</strong> {formatMoney(rj.cost_without_vat)}</p>
+              </>
+            )}
+          </div>
+        )}
+
+        {tab === 'tz' && (
+          <div style={{ paddingBottom: 8 }}>
+            {!docs.length ? <p className="muted">Документы ТО не загружены</p> : docs.map((d) => (
+              <a
+                key={d.id}
+                href={fileDownloadUrl(d.download_url || d)}
+                target="_blank"
+                rel="noreferrer"
+                className="m-card"
+                style={{ display: 'block', padding: 12, marginBottom: 8, fontSize: 14 }}
+              >📄 {d.original_name || d.filename}</a>
             ))}
           </div>
-          {chatOpen ? (
-            <div style={{ display: 'flex', gap: 8 }}>
-              <textarea
-                className="inp"
-                rows={2}
-                style={{ flex: 1 }}
-                placeholder="Сообщение…"
-                value={chatText}
-                onChange={(e) => setChatText(e.target.value)}
-              />
-              <button type="button" className="btn" disabled={busy} onClick={sendChat}>
-                <MessageCircle size={18} />
-              </button>
-            </div>
-          ) : (
-            <p className="muted">Чат закрыт</p>
-          )}
-        </div>
-      )}
+        )}
 
-      <div style={{ marginTop: 20, paddingTop: 16, borderTop: '1px solid var(--border)' }}>
-        <label className="muted" style={{ fontSize: 12 }}>Комментарий (обязателен при отказе)</label>
-        <textarea
-          className="inp"
-          rows={2}
-          style={{ width: '100%', marginTop: 6, marginBottom: 12 }}
-          value={comment}
-          onChange={(e) => setComment(e.target.value)}
-        />
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-          <button
-            type="button"
-            className="btn"
-            style={{ minHeight: 56, background: 'var(--success)' }}
-            disabled={busy}
-            onClick={() => decide('submit')}
-          >
-            <Check size={20} style={{ marginRight: 6 }} /> Подавать
-          </button>
-          <button
-            type="button"
-            className="btn ghost"
-            style={{ minHeight: 56, color: 'var(--danger)' }}
-            disabled={busy}
-            onClick={() => decide('reject')}
-          >
-            <XIcon size={20} style={{ marginRight: 6 }} /> Не подавать
-          </button>
-        </div>
-      </div>
-    </BottomSheet>
+        {tab === 'chat' && (
+          <div style={{ paddingBottom: 8 }}>
+            <div style={{ maxHeight: '36vh', overflowY: 'auto', marginBottom: 12 }}>
+              {!messages.length ? <p className="muted">Нет сообщений</p> : messages.map((m) => (
+                <div key={m.id} style={{ marginBottom: 10, fontSize: 13 }}>
+                  <div className="muted" style={{ fontSize: 11 }}>{m.user_name} · {new Date(m.created_at).toLocaleString('ru-RU')}</div>
+                  <div>{m.body}</div>
+                </div>
+              ))}
+            </div>
+            {chatOpen ? (
+              <div style={{ display: 'flex', gap: 8 }}>
+                <textarea
+                  className="inp"
+                  rows={2}
+                  style={{ flex: 1 }}
+                  placeholder="Сообщение…"
+                  value={chatText}
+                  onChange={(e) => setChatText(e.target.value)}
+                />
+                <button type="button" className="btn" disabled={busy} onClick={sendChat}>
+                  <MessageCircle size={18} />
+                </button>
+              </div>
+            ) : (
+              <p className="muted">Чат закрыт</p>
+            )}
+          </div>
+        )}
+      </BottomSheet>
+
+      <DocPreviewSheet
+        open={!!preview}
+        onClose={() => setPreview(null)}
+        tenderId={row.id}
+        docId={preview?.docId}
+        title={preview?.title}
+      />
+    </>
   );
 }
 
@@ -310,6 +468,8 @@ export default function DirectorTenderApprovals() {
     navigate(`/director-tender-approvals?id=${row.id}`, { replace: true });
   };
 
+  const initialTab = params.get('tab') || 'summary';
+
   return (
     <PageShell
       title="Согласование тендеров"
@@ -330,6 +490,7 @@ export default function DirectorTenderApprovals() {
       <DetailSheet
         row={opened}
         open={!!opened}
+        initialTab={initialTab}
         onClose={() => {
           setOpened(null);
           navigate('/director-tender-approvals', { replace: true });

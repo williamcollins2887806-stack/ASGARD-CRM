@@ -2,14 +2,13 @@ import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '@/api/client';
 import PmTabBar from '@/components/pm/PmTabBar';
+import { formatMoney as fmt } from '@/lib/utils';
 
 const C = {
   bg: '#0d0d12', card: '#16161f', gold: '#c8a84b',
   green: '#22c55e', red: '#ef4444', amber: '#f59e0b',
   blue: '#3b82f6', rune: '#7b61ff', text: '#e8e8f0', muted: '#6b7280',
 };
-const fmt = (n) => n != null ? Math.round(n).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' ') + ' ₽' : '—';
-
 const PAY_TYPES  = { salary: 'Зарплата', advance: 'Аванс', per_diem: 'Суточные', bonus: 'Бонус', penalty: 'Штраф' };
 const PAY_COLORS = { salary: C.green, advance: C.blue, per_diem: C.amber, bonus: C.rune, penalty: C.red };
 
@@ -174,11 +173,11 @@ export default function PmPayments() {
         const b = e.body;
         const lines = (b.already_paid || []).map(p => {
           const when = p.paid_at ? new Date(p.paid_at).toLocaleDateString('ru-RU') : '—';
-          const amt  = Number(p.amount || 0).toLocaleString('ru-RU') + ' ₽';
+          const amt  = fmt(p.amount || 0);
           return `• ${when} — ${amt} (${p.payment_method || '—'})`;
         }).join('\n');
         const totalTxt = b.total_already_paid
-          ? `\nВсего уже выплачено: ${Number(b.total_already_paid).toLocaleString('ru-RU')} ₽`
+          ? `\nВсего уже выплачено: ${fmt(b.total_already_paid)}`
           : '';
         const msg = `⚠ Возможно двойная выплата\n\n${b.message || ''}${lines ? '\n\n' + lines : ''}${totalTxt}\n\nПодтвердить новую выплату?`;
         if (!confirm(msg)) { setMsg('Отменено'); return; }

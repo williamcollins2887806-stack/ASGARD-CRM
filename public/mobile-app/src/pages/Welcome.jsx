@@ -172,16 +172,15 @@ export default function Welcome() {
       {/* Spacer bottom */}
       <div className="flex-1" />
 
-      {/* Bottom section */}
+      {/* Bottom section — кнопки сразу видны (без долгой задержки) */}
       <div
-        className="flex flex-col items-center gap-5 relative z-10 w-full px-8"
+        className="flex flex-col items-center gap-3 relative z-10 w-full px-8"
         style={{
           opacity: mounted ? 1 : 0,
-          transform: mounted ? 'translateY(0)' : 'translateY(20px)',
-          transition: 'all 0.6s ease 0.5s',
+          transform: mounted ? 'translateY(0)' : 'translateY(12px)',
+          transition: 'all 0.35s ease 0.08s',
         }}
       >
-        {/* Glass button */}
         <button
           onClick={() => navigate('/login')}
           className="w-full max-w-xs h-[52px] rounded-2xl text-[15px] font-bold spring-tap relative overflow-hidden"
@@ -193,7 +192,6 @@ export default function Welcome() {
             boxShadow: '0 4px 24px rgba(30,77,140,0.4), 0 0 40px rgba(200,41,59,0.15)',
           }}
         >
-          {/* Shimmer sweep */}
           <div
             className="absolute inset-0 pointer-events-none"
             style={{
@@ -201,12 +199,24 @@ export default function Welcome() {
               animation: 'welcomeShimmer 3s ease-in-out infinite',
             }}
           />
-          <span className="relative z-10">Войти</span>
+          <span className="relative z-10">Войти в офис</span>
         </button>
 
-        {/* Version */}
+        <button
+          onClick={() => navigate('/field-login')}
+          className="w-full max-w-xs h-[52px] rounded-2xl text-[15px] font-semibold spring-tap"
+          style={{
+            background: 'rgba(255,255,255,0.06)',
+            color: 'rgba(255,255,255,0.92)',
+            border: '1px solid rgba(212,168,67,0.45)',
+            letterSpacing: '0.02em',
+          }}
+        >
+          Я рабочий — Зал Рабочих
+        </button>
+
         <p
-          className="text-[10px] font-medium tracking-wider uppercase"
+          className="text-[10px] font-medium tracking-wider uppercase mt-2"
           style={{ color: 'rgba(255,255,255,0.15)' }}
         >
           ASGARD Mobile v2.0.0

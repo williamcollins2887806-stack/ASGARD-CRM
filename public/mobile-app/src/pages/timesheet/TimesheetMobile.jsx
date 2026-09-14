@@ -31,6 +31,7 @@ import { EmptyState } from '@/components/shared/EmptyState';
 import { SkeletonList } from '@/components/shared/SkeletonKit';
 import { PullToRefresh } from '@/components/shared/PullToRefresh';
 import { toast } from 'sonner';
+import { formatMoney as fmtMoney } from '@/lib/utils';
 import {
   CalendarDays, ChevronLeft, ChevronRight, Download,
   Lock, Unlock, Search, X, UserPlus, Settings as SettingsIcon,
@@ -54,7 +55,9 @@ const CELL_TYPES = {
   travel:    { icon: '✈️', label: 'Дорога',          color: 'var(--ts-travel-fg, var(--orange))',     bg: 'var(--ts-travel-bg)',     short: 'Д' },
   ship:      { icon: '🚢', label: 'Корабль',         color: 'var(--ts-ship-fg, #0EA5E9)',             bg: 'var(--ts-ship-bg)',       short: 'КР' },
   helicopter:{ icon: '🚁', label: 'Вертолёт',        color: 'var(--ts-helicopter-fg, #C49A2E)',       bg: 'var(--ts-helicopter-bg)', short: 'Вр' },
-  waiting:   { icon: '⏰', label: 'Ожидание',        color: 'var(--ts-waiting-fg, var(--orange))',    bg: 'var(--ts-waiting-bg)',    short: '⏰' },
+  waiting:   { icon: '⏳', label: 'Ожидание',        color: 'var(--ts-waiting-fg, var(--orange))',    bg: 'var(--ts-waiting-bg)',    short: '⏳' },
+  office:    { icon: '🏢', label: 'Офис',            color: 'var(--ts-office-fg, var(--green))',     bg: 'var(--ts-office-bg)',     short: 'Оф' },
+  remote:    { icon: '🏠', label: 'Удалёнка',        color: 'var(--ts-remote-fg, #B8860B)',           bg: 'var(--ts-remote-bg)',     short: 'Уд' },
 };
 
 /* FIX 3 — полные заголовки. На узких экранах CSS обрежет ellipsis в шапке. */
@@ -73,8 +76,9 @@ const MODE_TYPES = {
   pm:        ['day', 'night', 'waiting'],
   warehouse: ['warehouse'],
   medical:   ['medical', 'training', 'ship', 'helicopter'],
-  travel:    ['travel'],
-  global:    ['day', 'night', 'warehouse', 'medical', 'training', 'travel', 'ship', 'helicopter', 'waiting'],
+  // Ожидание (⏳ = 6 баллов) — офис-менеджер и рук ТО, как дорога.
+  travel:    ['travel', 'waiting'],
+  global:    ['day', 'night', 'warehouse', 'medical', 'training', 'travel', 'ship', 'helicopter', 'waiting', 'office', 'remote'],
 };
 
 /* ── Кто может закрыть этот scope ─────────────────────────────── */
@@ -82,11 +86,10 @@ const SCOPE_LOCK_ROLES = {
   pm:        ['PM', 'HEAD_PM'],
   warehouse: ['WAREHOUSE'],
   medical:   ['TO', 'HEAD_TO'],
-  travel:    ['OFFICE_MANAGER'],
+  travel:    ['OFFICE_MANAGER', 'HEAD_TO'],
   global:    ['DIRECTOR_GEN','DIRECTOR_COMM','DIRECTOR_DEV','ADMIN','BUH','HR','HR_MANAGER'],
 };
 
-const fmtMoney = (n) => n == null ? '—' : `${Math.round(n).toLocaleString('ru-RU')} ₽`;
 const fmtNum   = (n) => n == null ? '—' : Math.round(n).toLocaleString('ru-RU');
 
 function daysInMonth(y, m) { return new Date(y, m, 0).getDate(); }
@@ -420,13 +423,30 @@ export default function TimesheetMobile({ mode = 'global' }) {
   /* ── PUT entry ───────────────────────────────────────────── */
   const handleSaveEntry = async (payload) => {
     haptic.medium();
-    try {
-      await api.put('/timesheet/v2/entry', payload);
-      toast.success(payload.delete ? 'Удалено' : 'Сохранено');
+    const save = async (p) => {
+      await api.put('/timesheet/v2/entry', p);
+      toast.success(p.delete ? 'Удалено' : 'Сохранено');
       setEditingCell(null);
       fetchData();
+    };
+    try {
+      await save(payload);
     } catch (e) {
       haptic.heavy(); /* FIX 11 — ошибка сохранения = heavy */
+      if (e.status === 409 && (e.data?.requires_confirmation || e.body?.requires_confirmation) && !payload.confirm_overwrite) {
+        const detail = e.data || e.body || {};
+        const ok = window.confirm(detail.message || e.message || 'На дату уже есть отметка. Перезаписать?');
+        if (ok) {
+          try {
+            await save({ ...payload, confirm_overwrite: true });
+            return;
+          } catch (e2) {
+            toast.error(e2.message || 'Ошибка сохранения');
+            return;
+          }
+        }
+        return;
+      }
       if (e.status === 423) {
         toast.error(LOCK_TOAST_TEXT); /* FIX 14 — унифицированный текст */
       } else {
@@ -1289,9 +1309,12 @@ function EditCellSheet({ emp, day, year, month, current, mode, onSave, onClose }
     if (submitting) return;
     setSubmitting(true);
     try {
+      const FREE = new Set(['warehouse', 'medical', 'training', 'travel', 'ship', 'helicopter']);
+      const needsWork = !FREE.has(type) && (type === 'day' || type === 'night' || type === 'waiting')
+        && (mode === 'pm' || mode === 'global');
       const payload = {
         employee_id: emp.id,
-        work_id: workId ? parseInt(workId) : null,
+        work_id: needsWork && workId ? parseInt(workId) : null,
         date: dateStr,
         type,
         shift: type === 'night' ? 'night' : 'day',
@@ -1308,9 +1331,10 @@ function EditCellSheet({ emp, day, year, month, current, mode, onSave, onClose }
     if (!confirm('Удалить отметку?')) return;
     setSubmitting(true);
     try {
+      const FREE = new Set(['warehouse', 'medical', 'training', 'travel', 'ship', 'helicopter']);
       await onSave({
         employee_id: emp.id,
-        work_id: workId ? parseInt(workId) : null,
+        work_id: FREE.has(type) ? null : (workId ? parseInt(workId) : null),
         date: dateStr,
         type,
         delete: true,
@@ -1540,12 +1564,14 @@ function AddWorkerSheet({ year, month, mode = 'pm', onClose, onAdded }) {
     setSubmitting(true);
     try {
       const date = `${year}-${String(month).padStart(2, '0')}-01`;
+      const addType = typeByMode[mode] || 'day';
+      const FREE = new Set(['warehouse', 'medical', 'training', 'travel', 'ship', 'helicopter']);
       const payload = {
         employee_id: emp.id,
-        work_id: selectedWorkId ? Number(selectedWorkId) : null,
+        work_id: FREE.has(addType) ? null : (selectedWorkId ? Number(selectedWorkId) : null),
         date,
-        type: typeByMode[mode] || 'day',
-        shift: (typeByMode[mode] === 'night') ? 'night' : 'day',
+        type: addType,
+        shift: (addType === 'night') ? 'night' : 'day',
         delete: false,
       };
       await api.put('/timesheet/v2/entry', payload);

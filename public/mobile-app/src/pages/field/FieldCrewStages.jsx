@@ -3,11 +3,22 @@ import { useNavigate } from 'react-router-dom';
 import { fieldApi } from '@/api/fieldClient';
 import { useHaptic } from '@/hooks/useHaptic';
 import { ArrowLeft, Search, UserPlus, FileEdit } from 'lucide-react';
+import { formatMoney as fmt } from '@/lib/utils';
 
 // V255 (23.06.2026): добавлен 'ship' — Корабль (альтернатива «Дороги» за 12 баллов).
-const STAGE_LABELS = { medical: 'Медосмотр', travel: 'Дорога', ship: 'Корабль', waiting: 'Ожидание', warehouse: 'Склад', day_off: 'Выходной', object: 'Объект' };
-const STAGE_ICONS = { medical: '🟣', travel: '🔵', ship: '🚢', waiting: '🟡', warehouse: '🟠', day_off: '⚪', object: '🟢' };
-const STAGE_COLORS = { medical: '#9333EA', travel: '#3B82F6', ship: '#0EA5E9', waiting: '#F59E0B', warehouse: '#F97316', day_off: '#9CA3AF', object: '#22C55E' };
+const STAGE_LABELS = {
+  medical: 'Медосмотр', travel: 'Дорога', ship: 'Корабль', helicopter: 'Вертолёт',
+  training: 'Обучение', waiting: 'Ожидание', warehouse: 'Склад', day_off: 'Выходной', object: 'Объект',
+};
+
+const STAGE_ICONS = {
+  medical: '🟣', travel: '🔵', ship: '🚢', helicopter: '🚁', training: '📚',
+  waiting: '🟡', warehouse: '🟠', day_off: '⚪', object: '🟢',
+};
+const STAGE_COLORS = {
+  medical: '#9333EA', travel: '#3B82F6', ship: '#0EA5E9', helicopter: '#06B6D4',
+  training: '#A855F7', waiting: '#F59E0B', warehouse: '#F97316', day_off: '#9CA3AF', object: '#22C55E',
+};
 
 // V255: 'ship' — медицинский scope (ставит ТО/HEAD_TO). В мобильном поле мастер сам
 // не CRM-роль, реальный RBAC — на бэкенде (deriveScope→medical). В UI кнопку «Корабль»
@@ -15,7 +26,6 @@ const STAGE_COLORS = { medical: '#9333EA', travel: '#3B82F6', ship: '#0EA5E9', w
 // либо если ship уже встречается у бригады (старший ставил с десктопа).
 const SHIP_VISIBLE_FIELD_ROLES = ['senior_master', 'shift_master'];
 
-const fmt = (n) => (n || 0).toLocaleString('ru-RU');
 function stageDay(dateFrom) { return Math.max(1, Math.floor((Date.now() - new Date(dateFrom).getTime()) / 86400000) + 1); }
 
 export default function FieldCrewStages() {
@@ -144,7 +154,7 @@ export default function FieldCrewStages() {
             <p className="font-semibold text-sm" style={{ color: 'var(--text-primary)' }}>{emp.fio}</p>
             {active ? (
               <p className="text-xs mt-1" style={{ color }}>
-                {STAGE_ICONS[active.stage_type]} {STAGE_LABELS[active.stage_type]} · {stageDay(active.date_from)}-й день · ~{fmt(stageDay(active.date_from) * parseFloat(active.rate_per_day || 0))} ₽
+                {STAGE_ICONS[active.stage_type]} {STAGE_LABELS[active.stage_type]} · {stageDay(active.date_from)}-й день · ~{fmt(stageDay(active.date_from) * parseFloat(active.rate_per_day || 0))}
               </p>
             ) : (
               <p className="text-xs mt-1" style={{ color: 'var(--text-tertiary)' }}>Нет активных этапов</p>

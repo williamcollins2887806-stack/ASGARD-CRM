@@ -1,5 +1,5 @@
 import { useEffect, useCallback, useRef, lazy, Suspense } from 'react';
-import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { useAuthStore } from '@/stores/authStore';
 import { useThemeStore } from '@/stores/themeStore';
 import { ProtectedRoute } from '@/components/layout/ProtectedRoute';
@@ -7,6 +7,7 @@ import { TabBar } from '@/components/layout/TabBar';
 import { useSSE } from '@/hooks/useSSE';
 import { useChatStore } from '@/stores/chatStore';
 import { features } from '@/config/features';
+import { normalizeMobileNavUrl, savePinReturnTo } from '@/lib/navUrl';
 import PresenceGateMobile from '@/components/PresenceGateMobile';
 import FieldLayout from '@/layouts/FieldLayout';
 import FieldWelcome from '@/pages/field/FieldWelcome';
@@ -15,11 +16,9 @@ import FieldPinSetup from '@/pages/field/FieldPinSetup';
 import FieldPinEntry from '@/pages/field/FieldPinEntry';
 import FieldHome from '@/pages/field/FieldHome';
 import FieldShift from '@/pages/field/FieldShift';
-import FieldHistory from '@/pages/field/FieldHistory';
+import FieldTimesheet from '@/pages/field/FieldTimesheet';
 import FieldProfile from '@/pages/field/FieldProfile';
 import FieldMyWorks from '@/pages/field/FieldMyWorks';
-import FieldMoney from '@/pages/field/FieldMoney';
-import FieldEarnings from '@/pages/field/FieldEarnings';
 import FieldFunds from '@/pages/field/FieldFunds';
 import FieldLogistics from '@/pages/field/FieldLogistics';
 import FieldCrew from '@/pages/field/FieldCrew';
@@ -27,10 +26,13 @@ import FieldReport from '@/pages/field/FieldReport';
 import FieldIncidents from '@/pages/field/FieldIncidents';
 import FieldPhotos from '@/pages/field/FieldPhotos';
 import FieldPacking from '@/pages/field/FieldPacking';
+import FieldPermits from '@/pages/field/FieldPermits';
+import FieldPermitDetail from '@/pages/field/FieldPermitDetail';
 import FieldStages from '@/pages/field/FieldStages';
 import FieldCrewStages from '@/pages/field/FieldCrewStages';
 import FieldAchievements from '@/pages/field/FieldAchievements';
 import FieldLeaderboard from '@/pages/field/FieldLeaderboard';
+import FieldHall from '@/pages/field/FieldHall';
 import WheelOfNorns from '@/pages/field/WheelOfNorns';
 import FieldShop from '@/pages/field/FieldShop';
 import FieldInventory from '@/pages/field/FieldInventory';
@@ -43,11 +45,11 @@ import FieldAcademy from '@/pages/field/FieldAcademy';
 import FieldLesson from '@/pages/field/FieldLesson';
 import FieldAcademyQuiz from '@/pages/field/FieldAcademyQuiz';
 import FieldAcademyLibrary from '@/pages/field/FieldAcademyLibrary';
-import FieldEarningsMonthly from '@/pages/field/FieldEarningsMonthly';
 import FieldSeasonal from '@/pages/field/FieldSeasonal';
 import FieldDiary from '@/pages/field/FieldDiary';
 import FieldReadiness from '@/pages/field/FieldReadiness';
 import PipelineGame from '@/pages/field/PipelineGame';
+import ChemLabGame from '@/pages/field/ChemLabGame';
 import PmDashboard from '@/pages/pm/PmDashboard';
 import PmWorkers from '@/pages/pm/PmWorkers';
 import PmWorkerProfile from '@/pages/pm/PmWorkerProfile';
@@ -85,7 +87,6 @@ import Travel from '@/pages/Travel';
 import Procurement from '@/pages/Procurement';
 import Permits from '@/pages/Permits';
 import Proxies from '@/pages/Proxies';
-import Funnel from '@/pages/Funnel';
 import AllEstimates from '@/pages/AllEstimates';
 import PmCalcs from '@/pages/PmCalcs';
 import PmDuty from '@/pages/pm/PmDuty';
@@ -96,6 +97,7 @@ import OfficeExpenses from '@/pages/OfficeExpenses';
 import CashAdmin from '@/pages/CashAdmin';
 import TasksAdmin from '@/pages/TasksAdmin';
 import Warehouse from '@/pages/Warehouse';
+import WarehouseMapHelper from '@/pages/WarehouseMapHelper';
 import Assembly from '@/pages/Assembly';
 import Gantt from '@/pages/Gantt';
 import WorkersSchedule from '@/pages/WorkersSchedule';
@@ -184,10 +186,39 @@ function PinRoute() {
 
 function PinGuard({ children }) {
   const pinStatus = useAuthStore((s) => s.pinStatus);
+  const location = useLocation();
   if (pinStatus === 'need_pin' || pinStatus === 'need_setup') {
+    const returnTo = `${location.pathname}${location.search || ''}`;
+    savePinReturnTo(returnTo);
     return <Navigate to="/pin" replace />;
   }
   return children;
+}
+
+/** Push / SW → открытие нужного экрана после клика по уведомлению. */
+function NotificationClickListener() {
+  const navigate = useNavigate();
+  const pinStatus = useAuthStore((s) => s.pinStatus);
+
+  useEffect(() => {
+    if (!('serviceWorker' in navigator)) return undefined;
+    const onMessage = (event) => {
+      const data = event.data;
+      if (!data || data.type !== 'NOTIFICATION_CLICK') return;
+      const path = normalizeMobileNavUrl(data.url);
+      if (!path) return;
+      if (pinStatus === 'need_pin' || pinStatus === 'need_setup') {
+        savePinReturnTo(path);
+        navigate('/pin', { replace: true });
+        return;
+      }
+      navigate(path);
+    };
+    navigator.serviceWorker.addEventListener('message', onMessage);
+    return () => navigator.serviceWorker.removeEventListener('message', onMessage);
+  }, [navigate, pinStatus]);
+
+  return null;
 }
 
 function AppLayout() {
@@ -232,6 +263,7 @@ function AppLayout() {
     <div className="h-full relative" style={{ backgroundColor: 'var(--bg-primary)' }}>
       {showPresenceGate && <PresenceGateMobile />}
       <OfficePushBootstrap />
+      <NotificationClickListener />
       <div
         key={location.pathname}
         style={{
@@ -263,7 +295,7 @@ function AppLayout() {
           <Route path="/correspondence" element={<ProtectedRoute section="works"><PinGuard><Correspondence /></PinGuard></ProtectedRoute>} />
           <Route path="/alerts" element={<ProtectedRoute section="dashboard"><PinGuard><Alerts /></PinGuard></ProtectedRoute>} />
           <Route path="/meetings" element={<ProtectedRoute section="dashboard"><PinGuard><Meetings /></PinGuard></ProtectedRoute>} />
-          <Route path="/cash" element={<ProtectedRoute section="finances"><PinGuard><Cash /></PinGuard></ProtectedRoute>} />
+          <Route path="/cash" element={<ProtectedRoute section="cash"><PinGuard><Cash /></PinGuard></ProtectedRoute>} />
           <Route path="/acts" element={<ProtectedRoute section="finances"><PinGuard><Acts /></PinGuard></ProtectedRoute>} />
           <Route path="/invoices" element={<ProtectedRoute section="finances"><PinGuard><Invoices /></PinGuard></ProtectedRoute>} />
           <Route path="/hr-requests" element={<ProtectedRoute section="personnel"><PinGuard><HrRequests /></PinGuard></ProtectedRoute>} />
@@ -274,7 +306,7 @@ function AppLayout() {
           <Route path="/proc-requests" element={<Navigate to="/procurement" replace />} />
           <Route path="/permits" element={<ProtectedRoute section="personnel"><PinGuard><Permits /></PinGuard></ProtectedRoute>} />
           <Route path="/proxies" element={<ProtectedRoute section="works"><PinGuard><Proxies /></PinGuard></ProtectedRoute>} />
-          <Route path="/funnel" element={<ProtectedRoute section="tenders"><PinGuard><Funnel /></PinGuard></ProtectedRoute>} />
+          <Route path="/funnel" element={<Navigate to="/tenders" replace />} />
           <Route path="/all-estimates" element={<ProtectedRoute section="tenders"><PinGuard><AllEstimates /></PinGuard></ProtectedRoute>} />
           <Route path="/pm-duty" element={<ProtectedRoute section="tenders"><PinGuard><PmDuty /></PinGuard></ProtectedRoute>} />
           <Route path="/pm-calcs" element={<ProtectedRoute section="tenders"><PinGuard><PmCalcs /></PinGuard></ProtectedRoute>} />
@@ -285,6 +317,7 @@ function AppLayout() {
           <Route path="/cash-admin" element={<ProtectedRoute section="finances"><PinGuard><CashAdmin /></PinGuard></ProtectedRoute>} />
           <Route path="/tasks-admin" element={<ProtectedRoute section="settings"><PinGuard><TasksAdmin /></PinGuard></ProtectedRoute>} />
           <Route path="/warehouse" element={<ProtectedRoute section="dashboard"><PinGuard><Warehouse /></PinGuard></ProtectedRoute>} />
+          <Route path="/warehouse-wms" element={<ProtectedRoute section="dashboard"><PinGuard><WarehouseMapHelper /></PinGuard></ProtectedRoute>} />
           <Route path="/assembly" element={<ProtectedRoute section="works"><PinGuard><Assembly /></PinGuard></ProtectedRoute>} />
           <Route path="/gantt" element={<ProtectedRoute section="works"><PinGuard><Gantt /></PinGuard></ProtectedRoute>} />
           <Route path="/workers-schedule" element={<ProtectedRoute section="personnel"><PinGuard><WorkersSchedule /></PinGuard></ProtectedRoute>} />
@@ -391,10 +424,11 @@ function AppLayout() {
               <Route path="/field" element={<FieldLayout />}>
                 <Route path="home" element={<FieldHome />} />
                 <Route path="shift" element={<FieldShift />} />
-                <Route path="money" element={<FieldMoney />} />
-                <Route path="earnings" element={<FieldEarnings />} />
+                <Route path="money" element={<Navigate to="/field/timesheet" replace />} />
+                <Route path="earnings" element={<Navigate to="/field/timesheet" replace />} />
                 <Route path="funds" element={<FieldFunds />} />
-                <Route path="history" element={<FieldHistory />} />
+                <Route path="history" element={<FieldTimesheet />} />
+                <Route path="timesheet" element={<FieldTimesheet />} />
                 <Route path="my-works" element={<FieldMyWorks />} />
                 <Route path="profile" element={<FieldProfile />} />
                 <Route path="crew" element={<FieldCrew />} />
@@ -403,6 +437,8 @@ function AppLayout() {
                 <Route path="incidents" element={<FieldIncidents />} />
                 <Route path="photos" element={<FieldPhotos />} />
                 <Route path="packing" element={<FieldPacking />} />
+                <Route path="permits" element={<FieldPermits />} />
+                <Route path="permits/:id" element={<FieldPermitDetail />} />
                 <Route path="assembly" element={<FieldAssembly />} />
                 <Route path="assembly/:id" element={<FieldPalletBuilder />} />
                 <Route path="receiving" element={<FieldReceiving />} />
@@ -410,8 +446,10 @@ function AppLayout() {
                 <Route path="crew-stages" element={<FieldCrewStages />} />
                 <Route path="achievements" element={<FieldAchievements />} />
                 <Route path="leaderboard" element={<FieldLeaderboard />} />
+                <Route path="hall/:id" element={<FieldHall />} />
                 <Route path="wheel" element={<WheelOfNorns />} />
                 <Route path="pipeline" element={<PipelineGame />} />
+                <Route path="chemlab" element={<ChemLabGame />} />
                 <Route path="shop" element={<FieldShop />} />
                 <Route path="inventory" element={<FieldInventory />} />
                 <Route path="quests" element={<FieldQuests />} />
@@ -423,7 +461,7 @@ function AppLayout() {
                 <Route path="academy/library" element={<FieldAcademyLibrary />} />
                 <Route path="academy/lesson/:lessonId" element={<FieldLesson />} />
                 <Route path="academy/quiz/:lessonId" element={<FieldAcademyQuiz />} />
-                <Route path="earnings/monthly" element={<FieldEarningsMonthly />} />
+                <Route path="earnings/monthly" element={<Navigate to="/field/timesheet" replace />} />
                 <Route index element={<Navigate to="home" replace />} />
               </Route>
             </>

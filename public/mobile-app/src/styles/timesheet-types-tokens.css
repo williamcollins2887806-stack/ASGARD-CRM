@@ -33,6 +33,30 @@
   /* ⏰ Ожидание — оранжевый (UX #13: серый = пустая клетка) */
   --ts-waiting-bg:   color-mix(in srgb, var(--orange) 14%, transparent);
   --ts-waiting-fg:   var(--orange);
+
+  /* 🚢 Корабль */
+  --ts-ship-bg:      color-mix(in srgb, var(--gold) 14%, transparent);
+  --ts-ship-fg:      var(--gold);
+
+  /* 🎓 Обучение */
+  --ts-training-bg:  color-mix(in srgb, var(--purple, #a855f7) 14%, transparent);
+  --ts-training-fg:  var(--purple, #a855f7);
+
+  /* 🚁 Вертолёт */
+  --ts-helicopter-bg: color-mix(in srgb, var(--cyan) 14%, transparent);
+  --ts-helicopter-fg: var(--cyan);
+
+  /* 🏢 Офис */
+  --ts-office-bg:    color-mix(in srgb, var(--green) 18%, transparent);
+  --ts-office-fg:    var(--green);
+
+  /* 🏠 Удалёнка */
+  --ts-remote-bg:    color-mix(in srgb, #FFC000 22%, transparent);
+  --ts-remote-fg:    #B8860B;
+
+  /* 🏖 Выходной */
+  --ts-dayoff-bg:    color-mix(in srgb, var(--text-tertiary) 14%, transparent);
+  --ts-dayoff-fg:    var(--text-tertiary);
 }
 
 /* Светлая тема — если переменные --green/--blue/... переопределены,

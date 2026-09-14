@@ -9,6 +9,7 @@ import { PullToRefresh } from '@/components/shared/PullToRefresh';
 import { Building2, Plus, ChevronRight } from 'lucide-react';
 import { formatMoney, relativeTime } from '@/lib/utils';
 import AsgardSelect from '@/components/ui/AsgardSelect';
+import { useNavigate } from 'react-router-dom';
 
 const CATEGORIES = [
   'Аренда', 'Коммунальные', 'Связь/Интернет', 'Канцелярия', 'Хоз. нужды',
@@ -17,6 +18,7 @@ const CATEGORIES = [
 
 export default function OfficeExpenses() {
   const haptic = useHaptic();
+  const navigate = useNavigate();
   const [expenses, setExpenses] = useState([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState('all');
@@ -50,6 +52,21 @@ export default function OfficeExpenses() {
   return (
     <PageShell title="Офис расходы" headerRight={<button onClick={() => { haptic.light(); setShowCreate(true); }} className="btn-icon c-blue spring-tap"><Plus size={22} /></button>}>
       <PullToRefresh onRefresh={fetchData}>
+        <button
+          type="button"
+          className="w-full text-left rounded-2xl px-4 py-3 mb-3 spring-tap"
+          style={{
+            background: 'color-mix(in srgb, var(--gold) 12%, transparent)',
+            border: '0.5px solid color-mix(in srgb, var(--gold) 28%, transparent)',
+            color: 'var(--gold)',
+          }}
+          onClick={() => { haptic.light(); navigate('/cash'); }}
+        >
+          <p className="text-[13px] font-semibold leading-snug">
+            Это реестр компании, не ваша касса. Наличные из подотчёта — в Кассе с фото чека, иначе сумма останется «на руках».
+          </p>
+          <p className="text-[12px] mt-1" style={{ color: 'var(--text-secondary)' }}>Открыть кассу →</p>
+        </button>
         {!loading && expenses.length > 0 && (
           <div className="card-hero mb-3" style={{ animation: 'fadeInUp var(--motion-normal) var(--ease-spring) forwards' }}>
             <p className="input-label">Итого расходов</p>
@@ -130,6 +147,9 @@ function CreateExpenseSheet({ open, onClose, onCreated }) {
   return (
     <BottomSheet open={open} onClose={onClose} title="Новый расход">
       <div className="flex flex-col gap-3 pb-4">
+        <p className="text-[12px] leading-snug" style={{ color: 'var(--gold)' }}>
+          Запись пойдёт в реестр компании и не спишет личную кассу. Если платите из подотчёта — закройте этот экран и приложите чек в Кассе.
+        </p>
         <div><label className="input-label">Категория *</label><AsgardSelect options={CATEGORIES.map((c) => ({ value: c, label: c }))} value={category} onChange={(val) => setCategory(val)} placeholder="Категория" /></div>
         <div><label className="input-label">Сумма (₽) *</label><input type="number" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0" className="input-field" /></div>
         <div><label className="input-label">Описание *</label><input type="text" value={description} onChange={(e) => setDescription(e.target.value)} placeholder="За что" className="input-field" /></div>

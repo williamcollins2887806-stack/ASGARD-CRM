@@ -1,0 +1,155 @@
+{
+  "asset": {
+    "generator": "ASGARD extract_kaykit_helmets",
+    "version": "2.0"
+  },
+  "scene": 0,
+  "scenes": [
+    {
+      "name": "Scene",
+      "nodes": [
+        0
+      ]
+    }
+  ],
+  "nodes": [
+    {
+      "mesh": 0,
+      "name": "hat_barbarian",
+      "translation": [
+        1.9767114499443745e-21,
+        -0.025551852116808993,
+        -1.3909870233419497e-7
+      ],
+      "rotation": [
+        -7.85025605384411e-37,
+        -7.1054265105680546e-15,
+        1.1048254461819734e-22,
+        1
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    }
+  ],
+  "materials": [
+    {
+      "doubleSided": true,
+      "name": "barbarian_texture",
+      "pbrMetallicRoughness": {
+        "baseColorTexture": {
+          "index": 0
+        },
+        "metallicFactor": 0,
+        "roughnessFactor": 0.5
+      }
+    }
+  ],
+  "meshes": [
+    {
+      "name": "hat_barbarian",
+      "primitives": [
+        {
+          "attributes": {
+            "POSITION": 0,
+            "NORMAL": 1,
+            "TEXCOORD_0": 2
+          },
+          "indices": 3,
+          "material": 0
+        }
+      ]
+    }
+  ],
+  "textures": [
+    {
+      "sampler": 0,
+      "source": 0
+    }
+  ],
+  "images": [
+    {
+      "mimeType": "image/png",
+      "name": "barbarian_texture",
+      "uri": "barbarian_texture.png"
+    }
+  ],
+  "samplers": [
+    {
+      "magFilter": 9729,
+      "minFilter": 9987,
+      "wrapS": 10497,
+      "wrapT": 10497
+    }
+  ],
+  "accessors": [
+    {
+      "bufferView": 0,
+      "componentType": 5126,
+      "count": 529,
+      "type": "VEC3",
+      "max": [
+        0.5545327663421631,
+        1.1819007396697998,
+        0.738594651222229
+      ],
+      "min": [
+        -0.5545327663421631,
+        0.1644383817911148,
+        -0.5253044366836548
+      ]
+    },
+    {
+      "bufferView": 1,
+      "componentType": 5126,
+      "count": 529,
+      "type": "VEC3"
+    },
+    {
+      "bufferView": 2,
+      "componentType": 5126,
+      "count": 529,
+      "type": "VEC2"
+    },
+    {
+      "bufferView": 3,
+      "componentType": 5123,
+      "count": 1962,
+      "type": "SCALAR"
+    }
+  ],
+  "bufferViews": [
+    {
+      "buffer": 0,
+      "byteOffset": 0,
+      "byteLength": 6348,
+      "target": 34962
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 6348,
+      "byteLength": 6348,
+      "target": 34962
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 12696,
+      "byteLength": 4232,
+      "target": 34962
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 16928,
+      "byteLength": 3924,
+      "target": 34963
+    }
+  ],
+  "buffers": [
+    {
+      "byteLength": 20852,
+      "uri": "hat_barbarian.bin"
+    }
+  ]
+}

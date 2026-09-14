@@ -7,6 +7,7 @@ import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { fieldApi } from '@/api/fieldClient';
 import { useHaptic } from '@/hooks/useHaptic';
+import { NornsPauseStrip } from '@/components/field/NornsPauseBanner';
 
 /* ═══ SVG ILLUSTRATIONS — 12 unique Norse geometric ═══ */
 const SVGS = {
@@ -389,6 +390,8 @@ export default function FieldInventory() {
               <span>{items.length} предметов</span>
             </div>
           </div>
+
+          <NornsPauseStrip />
 
           {/* ═══ FILTER PILLS ═══ */}
           <div className="finv-status-bar">

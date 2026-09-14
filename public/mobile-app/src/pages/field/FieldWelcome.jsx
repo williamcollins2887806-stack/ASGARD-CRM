@@ -88,10 +88,18 @@ export default function FieldWelcome() {
   const [showContent, setShowContent] = useState(false);
   const [showButton, setShowButton] = useState(false);
 
-  // If already authenticated → home
+  // Уже разблокирован / нужен PIN / нужен setup — иначе остаёмся на welcome
   useEffect(() => {
     if (token && status === 'authenticated') {
       navigate('/field/home', { replace: true });
+      return;
+    }
+    if (status === 'need_pin') {
+      navigate('/field/pin-entry', { replace: true });
+      return;
+    }
+    if (status === 'need_pin_setup') {
+      navigate('/field/pin-setup', { replace: true });
     }
   }, [token, status, navigate]);
 
@@ -114,6 +122,20 @@ export default function FieldWelcome() {
   const handleEnter = () => {
     playHammerStrike();
     if (navigator.vibrate) navigator.vibrate(50);
+    const st = useFieldAuthStore.getState();
+    if (st.status === 'authenticated') {
+      navigate('/field/home', { replace: true });
+      return;
+    }
+    if (st.status === 'need_pin_setup') {
+      navigate('/field/pin-setup', { replace: true });
+      return;
+    }
+    if (st.status === 'need_pin') {
+      navigate('/field/pin-entry', { replace: true });
+      return;
+    }
+    // Нет PIN → SMS (телефон подставится из employee, если устройство помнит)
     navigate('/field-login');
   };
 

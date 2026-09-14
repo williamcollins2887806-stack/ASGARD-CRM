@@ -142,7 +142,10 @@ function ChallengeCard({ ch, onRefresh }) {
             ? <Trophy size={20} style={{ color: ch.color }} />
             : <span className="text-xs px-2 py-1 rounded-lg font-medium"
                 style={{ backgroundColor: ch.color + '15', color: ch.color }}>
-                +{ch.reward_value} очков
+                +{ch.reward_value}{' '}
+                {ch.reward_type === 'runes' || ch.reward_type === 'xp'
+                  ? (ch.reward_type === 'runes' ? 'рун' : 'XP')
+                  : 'очков'}
               </span>}
         </div>
 
@@ -165,16 +168,19 @@ export default function FieldSeasonal() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
-  useEffect(() => { load(); }, []);
-
-  async function load() {
+  async function load({ recompute = false } = {}) {
     try {
       setLoading(true);
+      if (recompute) {
+        try { await fieldApi.post('/seasonal/refresh', {}); } catch { /* non-fatal */ }
+      }
       const result = await fieldApi.get('/seasonal/');
       setData(result);
     } catch { /* silent */ }
     finally { setLoading(false); }
   }
+
+  useEffect(() => { load({ recompute: true }); }, []);
 
   async function refresh() {
     try {

@@ -3,19 +3,15 @@ import { useNavigate } from 'react-router-dom';
 import { Briefcase, MapPin, Phone, ArrowRight, ClipboardList } from 'lucide-react';
 import { fieldApi } from '@/api/fieldClient';
 import { useHaptic } from '@/hooks/useHaptic';
-
-function formatMoney(val) {
-  if (!val && val !== 0) return '0 \u20BD';
-  return Number(val).toLocaleString('ru-RU', { maximumFractionDigits: 0 }) + ' \u20BD';
-}
+import { formatMoney } from '@/lib/utils';
 
 function shortenName(fio) {
   if (!fio) return '';
-  const parts = fio.trim().split(/\s+/);
-  if (parts.length < 2) return fio;
-  return `${parts[0]} ${parts.slice(1).map(p => p[0] + '.').join('')}`;
+  const parts = fio.trim().split(/\s+/).filter(Boolean);
+  if (parts.length >= 3) return `${parts[0]} ${parts[1]} ${parts[2][0]}.`;
+  if (parts.length === 2) return `${parts[0]} ${parts[1]}`;
+  return fio;
 }
-
 function Skeleton() {
   return (
     <div className="p-4 space-y-4 animate-pulse">
@@ -103,7 +99,7 @@ function ProjectCard({ project, isActive, navigate, haptic }) {
         <button
           className="w-full flex items-center justify-center gap-2 rounded-lg py-2.5 text-sm font-medium"
           style={{ border: '1px solid var(--border-norse)', color: 'var(--text-secondary)' }}
-          onClick={() => { haptic.light(); navigate('/field/history'); }}
+          onClick={() => { haptic.light(); navigate('/field/timesheet'); }}
         >
           <ClipboardList size={16} /> Табель
         </button>

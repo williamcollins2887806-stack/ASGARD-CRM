@@ -6,6 +6,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { fieldApi } from '@/api/fieldClient';
+import { formatMoney } from '@/lib/utils';
 
 export default function FieldJourney() {
   const navigate = useNavigate();
@@ -112,20 +113,25 @@ export default function FieldJourney() {
             <div style={{ fontSize: 13, color: 'rgba(255,255,255,.3)', marginTop: 4 }}>Первый объект появится после чекина</div>
           </div>
         ) : projects.map((p, idx) => {
-          const isFirst = idx === 0;
+          const isOrphan = !!p.is_orphan;
+          const isFirst = !isOrphan && projects.findIndex((x) => !x.is_orphan) === idx;
           return (
-            <div key={p.work_id} style={{
+            <div key={p.work_id ?? 'orphan'} style={{
               marginBottom: 12, borderRadius: 18, overflow: 'hidden', position: 'relative',
-              background: isFirst
+              background: isOrphan
+                ? 'linear-gradient(135deg, rgba(96,165,250,.06), rgba(96,165,250,.02))'
+                : isFirst
                 ? 'linear-gradient(135deg, rgba(240,200,80,.06), rgba(240,200,80,.02))'
                 : '#141828',
-              border: `1px solid ${isFirst ? 'rgba(240,200,80,.2)' : 'rgba(255,255,255,.04)'}`,
+              border: `1px solid ${isOrphan ? 'rgba(96,165,250,.2)' : isFirst ? 'rgba(240,200,80,.2)' : 'rgba(255,255,255,.04)'}`,
               boxShadow: isFirst ? '0 4px 20px rgba(240,200,80,.08)' : '0 4px 16px rgba(0,0,0,.2)',
             }}>
               {/* Left accent */}
               <div style={{
                 position: 'absolute', left: 0, top: 0, bottom: 0, width: 4,
-                background: isFirst ? 'linear-gradient(180deg, #F0C850, #C8940A)' : 'rgba(255,255,255,.06)',
+                background: isOrphan
+                  ? 'linear-gradient(180deg, #60A5FA, #3B82F6)'
+                  : isFirst ? 'linear-gradient(180deg, #F0C850, #C8940A)' : 'rgba(255,255,255,.06)',
                 borderRadius: '4px 0 0 4px',
               }} />
 
@@ -135,17 +141,17 @@ export default function FieldJourney() {
                   <div style={{
                     width: 44, height: 44, borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'center',
                     fontSize: 22,
-                    background: isFirst ? 'rgba(240,200,80,.1)' : 'rgba(255,255,255,.04)',
-                    border: `1px solid ${isFirst ? 'rgba(240,200,80,.2)' : 'rgba(255,255,255,.06)'}`,
+                    background: isOrphan ? 'rgba(96,165,250,.1)' : isFirst ? 'rgba(240,200,80,.1)' : 'rgba(255,255,255,.04)',
+                    border: `1px solid ${isOrphan ? 'rgba(96,165,250,.2)' : isFirst ? 'rgba(240,200,80,.2)' : 'rgba(255,255,255,.06)'}`,
                   }}>
-                    {isFirst ? '🏗' : '📍'}
+                    {isOrphan ? '🧳' : isFirst ? '🏗' : '📍'}
                   </div>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontSize: 14, fontWeight: 800, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                       {p.object_name || p.work_title}
                     </div>
                     <div style={{ fontSize: 11, color: 'rgba(255,255,255,.5)', display: 'flex', alignItems: 'center', gap: 4 }}>
-                      <span>📍</span> {p.city || 'Не указан'}
+                      <span>{isOrphan ? '🛣' : '📍'}</span> {isOrphan ? 'МО, дорога, склад, remote…' : (p.city || 'Не указан')}
                     </div>
                   </div>
                   {isFirst && (
@@ -159,16 +165,18 @@ export default function FieldJourney() {
                 {/* Stats row */}
                 <div style={{ display: 'flex', gap: 12, fontSize: 12 }}>
                   <div>
-                    <span style={{ color: 'rgba(255,255,255,.4)' }}>Смен: </span>
+                    <span style={{ color: 'rgba(255,255,255,.4)' }}>{isOrphan ? 'Дней: ' : 'Смен: '}</span>
                     <span style={{ fontWeight: 700 }}>{p.total_shifts}</span>
                   </div>
-                  <div>
-                    <span style={{ color: 'rgba(255,255,255,.4)' }}>Часов: </span>
-                    <span style={{ fontWeight: 700 }}>{Math.round(parseFloat(p.total_hours))}</span>
-                  </div>
+                  {!isOrphan && (
+                    <div>
+                      <span style={{ color: 'rgba(255,255,255,.4)' }}>Часов: </span>
+                      <span style={{ fontWeight: 700 }}>{Math.round(parseFloat(p.total_hours) || 0)}</span>
+                    </div>
+                  )}
                   <div style={{ marginLeft: 'auto' }}>
                     <span style={{ fontWeight: 700, color: '#3DDC84' }}>
-                      {parseFloat(p.total_earned).toLocaleString('ru-RU')} ₽
+                      {formatMoney(parseFloat(p.total_earned))}
                     </span>
                   </div>
                 </div>
@@ -177,7 +185,9 @@ export default function FieldJourney() {
                 {p.first_shift && (
                   <div style={{ fontSize: 10, color: 'rgba(255,255,255,.3)', marginTop: 6 }}>
                     {new Date(p.first_shift).toLocaleDateString('ru-RU')} — {p.last_shift ? new Date(p.last_shift).toLocaleDateString('ru-RU') : 'н.в.'}
-                    <span style={{ marginLeft: 8, color: 'rgba(255,255,255,.2)' }}>{p.field_role === 'worker' ? '⚔️ Рабочий' : '👑 Мастер'}</span>
+                    {!isOrphan && (
+                      <span style={{ marginLeft: 8, color: 'rgba(255,255,255,.2)' }}>{p.field_role === 'worker' ? '⚔️ Рабочий' : '👑 Мастер'}</span>
+                    )}
                   </div>
                 )}
               </div>
@@ -196,7 +206,7 @@ export default function FieldJourney() {
               Всего заработано за все объекты
             </div>
             <div style={{ fontSize: 26, fontWeight: 900, color: '#3DDC84' }}>
-              {Math.round(stats.total_earned).toLocaleString('ru-RU')} ₽
+              {formatMoney(Math.round(stats.total_earned))}
             </div>
           </div>
         )}

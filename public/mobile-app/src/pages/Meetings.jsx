@@ -84,6 +84,8 @@ export default function Meetings() {
 }
 
 function MeetingDetailSheet({ meeting, onClose }) {
+  const haptic = useHaptic();
+  const [rsvpBusy, setRsvpBusy] = useState(false);
   if (!meeting) return null;
   const m = meeting;
   const fields = [
@@ -92,9 +94,25 @@ function MeetingDetailSheet({ meeting, onClose }) {
     m.start_time && { label: 'Время', value: new Date(m.start_time).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }) },
     m.organizer_name && { label: 'Организатор', value: m.organizer_name },
     m.location && { label: 'Место', value: m.location },
+    m.conference_url && { label: 'ВКС', value: m.conference_url },
     m.description && { label: 'Описание', value: m.description, full: true },
     (m.protocol || m.minutes) && { label: 'Протокол', value: m.protocol || m.minutes, full: true },
   ].filter(Boolean);
+
+  const sendRsvp = async (status) => {
+    if (!m.id || rsvpBusy) return;
+    setRsvpBusy(true);
+    try {
+      await api.put(`/meetings/${m.id}/rsvp`, { status });
+      haptic.success();
+      onClose();
+    } catch {
+      haptic.error?.();
+    } finally {
+      setRsvpBusy(false);
+    }
+  };
+
   return (
     <BottomSheet open={!!meeting} onClose={onClose} title={m.topic || m.title || 'Совещание'}>
       <div className="flex flex-col gap-3 pb-4">
@@ -104,6 +122,11 @@ function MeetingDetailSheet({ meeting, onClose }) {
             <p className={`text-[14px] c-primary ${f.full ? 'whitespace-pre-wrap' : ''}`}>{f.value}</p>
           </div>
         ))}
+        <div className="flex gap-2 mt-2">
+          <button disabled={rsvpBusy} onClick={() => sendRsvp('accepted')} className="flex-1 btn-primary spring-tap text-[13px]">Приму</button>
+          <button disabled={rsvpBusy} onClick={() => sendRsvp('tentative')} className="flex-1 spring-tap rounded-xl px-3 py-2.5 text-[13px] font-semibold" style={{ background: 'var(--bg-surface-alt)', border: '0.5px solid var(--border-norse)' }}>Возможно</button>
+          <button disabled={rsvpBusy} onClick={() => sendRsvp('declined')} className="flex-1 spring-tap rounded-xl px-3 py-2.5 text-[13px] font-semibold c-danger" style={{ background: 'var(--bg-surface-alt)', border: '0.5px solid var(--border-norse)' }}>Отказ</button>
+        </div>
       </div>
     </BottomSheet>
   );

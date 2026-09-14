@@ -5,7 +5,7 @@ import { BottomSheet } from '@/components/shared/BottomSheet';
 import { SkeletonList } from '@/components/shared/SkeletonKit';
 import { StatusBadge } from '@/components/shared/StatusBadge';
 import { api } from '@/api/client';
-import { patchRegistryField, patchRegistryStatus, suggestCustomers } from '@/api/tendersRegistry';
+import { patchRegistryField, patchRegistryStatus, suggestCustomers, archiveRegistryRow } from '@/api/tendersRegistry';
 import {
   REGISTRY_STATUSES,
   REGISTRY_STATUS_LABELS,
@@ -82,6 +82,25 @@ export default function RegistryDetailSheet({ tender, open, onClose, onChanged }
 
   const t = { ...tender, ...(full?.tender || {}) };
   const price = Number(t.tender_price) || 0;
+  const submissionWithVat = Number(t.submission_price_with_vat) || Number(t.submission_price) || 0;
+  const rev = t.rp_review;
+  const isRpReject = !!(rev && rev.is_final && rev.decision === 'reject' && t.registry_status !== 'отмена');
+
+  const archiveReject = async () => {
+    if (!window.confirm('Отправить тендер в архив? Статус станет «отмена».')) return;
+    setActing(true);
+    haptic.light();
+    try {
+      await archiveRegistryRow(t.id, 'РП: не подаём — подтверждено ТО');
+      haptic.success();
+      onChanged?.();
+      onClose?.();
+    } catch (e) {
+      window.alert(e?.body?.error || e?.message || 'Не удалось архивировать');
+    } finally {
+      setActing(false);
+    }
+  };
 
   const changeRegistryStatus = async (next) => {
     if (next === t.registry_status) return;
@@ -213,6 +232,28 @@ export default function RegistryDetailSheet({ tender, open, onClose, onChanged }
             </div>
           )}
 
+          {isRpReject && (
+            <div
+              className="rounded-xl px-3 py-3 text-[12px] flex flex-col gap-2"
+              style={{
+                background: 'color-mix(in srgb, var(--red, #ef4444) 10%, transparent)',
+                border: '0.5px solid color-mix(in srgb, var(--red, #ef4444) 35%, transparent)',
+              }}
+            >
+              <p className="font-semibold" style={{ color: 'var(--red, #ef4444)' }}>РП: не подаём</p>
+              <p className="c-tertiary text-[11px]">Тендер остаётся в реестре, пока ТО не отправит в архив.</p>
+              <button
+                type="button"
+                disabled={acting}
+                onClick={archiveReject}
+                className="px-3 py-2 rounded-xl text-[13px] font-semibold spring-tap"
+                style={{ background: 'var(--red, #ef4444)', color: '#fff' }}
+              >
+                В архив
+              </button>
+            </div>
+          )}
+
           {t.rp_review && (
             <div
               className="rounded-xl px-3 py-2 text-[12px]"
@@ -231,6 +272,11 @@ export default function RegistryDetailSheet({ tender, open, onClose, onChanged }
                 { label: 'Заказчик', field: 'customer_name', value: t.customer_name, raw: t.customer_name },
                 { label: 'Название', field: 'tender_title', value: t.tender_title },
                 { label: 'Сумма', field: 'tender_price', value: price > 0 ? formatMoney(price) : '—', raw: t.tender_price },
+                {
+                  label: 'Подача',
+                  value: submissionWithVat > 0 ? formatMoney(submissionWithVat) : '—',
+                  readonly: true,
+                },
                 { label: 'Дедлайн', field: 'docs_deadline', value: t.docs_deadline ? formatDate(t.docs_deadline) : '—', raw: t.docs_deadline?.slice?.(0, 10) },
                 { label: 'Период', value: t.period, readonly: true },
                 { label: 'Ссылка', field: 'purchase_url', value: t.purchase_url || '—', raw: t.purchase_url },

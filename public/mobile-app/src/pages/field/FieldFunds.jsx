@@ -3,8 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { ArrowLeft, Landmark, CheckCircle, CornerDownLeft, Inbox, Plus, Receipt, Camera } from 'lucide-react';
 import { fieldApi } from '@/api/fieldClient';
 import { useHaptic } from '@/hooks/useHaptic';
-
-function fmtMoney(n) { return (n || 0).toLocaleString('ru-RU') + ' ₽'; }
+import { formatMoney as fmtMoney } from '@/lib/utils';
 
 const STATUS_MAP = {
   issued: { label: 'Выдан', bg: 'rgba(234,179,8,0.15)', color: '#eab308' },

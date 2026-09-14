@@ -71,11 +71,21 @@ export const useAuthStore = create((set, get) => ({
   fetchUser: async () => {
     try {
       set({ loading: true });
-      const response = await api.get('/auth/me');
+      // skipAuthRedirect: bootstrap сам решает PIN vs wipe; /auth/me разрешён при pinVerified=false
+      const response = await api.get('/auth/me', { skipAuthRedirect: true });
       // API returns { user: { ... } }
       const user = response.user || response;
       set({ user, loading: false });
-    } catch {
+    } catch (error) {
+      const msg = `${error?.message || ''} ${error?.body?.message || ''} ${error?.body?.error || ''}`;
+      const pinRequired =
+        error?.code === 'NEED_PIN' ||
+        (error?.status === 403 && /PIN|пин/i.test(msg));
+      if (pinRequired && get().token) {
+        // Токен жив, нужен PIN — не сбрасываем сессию
+        set({ pinStatus: 'need_pin', loading: false });
+        return;
+      }
       set({ user: null, token: null, pinStatus: null, loading: false });
       api.clearToken();
     }

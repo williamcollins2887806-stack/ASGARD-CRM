@@ -2,8 +2,8 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { ArrowLeft, Briefcase, ChevronRight, TrendingUp, Calendar, Zap, Lock } from 'lucide-react';
 import { fieldApi } from '@/api/fieldClient';
-import { api } from '@/api/client';
 import { useHaptic } from '@/hooks/useHaptic';
+import { formatMoney as fmtMoney, formatMoneyShort as fmtMoneyShort } from '@/lib/utils';
 
 /* ── Long-press helper: 550мс держим — показываем tooltip с «Внёс: …» ─ */
 function useLongPressTooltip(callback, ms = 550) {
@@ -29,15 +29,25 @@ function useLongPressTooltip(callback, ms = 550) {
   };
 }
 
-function fmtMoney(n) { return (n || 0).toLocaleString('ru-RU') + ' ₽'; }
-function fmtMoneyShort(n) { return (n || 0).toLocaleString('ru-RU'); }
 function fmtDate(iso) { if (!iso) return ''; const d = new Date(iso); return `${String(d.getDate()).padStart(2,'0')}.${String(d.getMonth()+1).padStart(2,'0')}.${d.getFullYear()}`; }
 function fmtDateShort(iso) { if (!iso) return ''; const d = new Date(iso); return `${String(d.getDate()).padStart(2,'0')}.${String(d.getMonth()+1).padStart(2,'0')}`; }
 function fmtHours(h) { return h ? `${Math.floor(h)}ч ${Math.round((h % 1) * 60)}м` : '—'; }
 
-const SHIFT_LABELS = { day: 'Дневная', night: 'Ночная', half: 'Полсмены', travel: 'Дорога', standby: 'Дежурство', road: 'Дорога' };
-const SHIFT_ICONS = { day: '☀️', night: '🌙', road: '🚗', travel: '✈️', half: '½', standby: '⏳' };
-const SHIFT_COLORS = { day: '#f59e0b', night: '#6366f1', road: '#3b82f6', travel: '#3b82f6', half: '#8b5cf6', standby: '#6b7280' };
+const SHIFT_LABELS = {
+  day: 'Дневная', night: 'Ночная', half: 'Полсмены',
+  travel: 'Дорога', road: 'Дорога', standby: 'Дежурство',
+  warehouse: 'Склад', medical: 'МО', training: 'Обучение',
+  ship: 'Корабль', helicopter: 'Вертолёт', waiting: 'Ожидание',
+  day_off: 'Выходной', object: 'Объект',
+};
+const SHIFT_ICONS = {
+  day: '☀️', night: '🌙', road: '🚗', travel: '✈️', half: '½', standby: '⏳',
+  warehouse: '🏭', medical: '🏥', training: '📚', ship: '🚢', helicopter: '🚁', waiting: '⏳',
+};
+const SHIFT_COLORS = {
+  day: '#f59e0b', night: '#6366f1', road: '#3b82f6', travel: '#3b82f6', half: '#8b5cf6', standby: '#6b7280',
+  warehouse: '#0ea5e9', medical: '#22c55e', training: '#a855f7', ship: '#0284c7', helicopter: '#06b6d4', waiting: '#64748b',
+};
 const ROLE_LABELS = { senior_master: 'Ст. мастер', shift_master: 'Мастер', worker: 'Рабочий' };
 
 // ── CountUp hook ──────────────────────────────────────────────────
@@ -75,21 +85,28 @@ function HistoryDetail({ workId, onBack }) {
   const navigate = useNavigate();
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [locks, setLocks] = useState([]); // [{scope, locked_at, locked_by_fio}]
+  // Office locks API недоступен рабочим (и выкидывал на /welcome) — UI баннера скрыт.
+  const locks = [];
   const [tooltip, setTooltip] = useState(null);
+  const isOrphan = workId === 'orphan';
 
   useEffect(() => {
     (async () => {
       try {
-        const [tsData, projData] = await Promise.all([
-          fieldApi.get(`/worker/timesheet/${workId}`),
-          fieldApi.get(`/worker/projects/${workId}`).catch(() => null),
-        ]);
-        setData({ ...tsData, projWork: projData?.work || null });
+        if (isOrphan) {
+          const tsData = await fieldApi.get('/worker/timesheet-orphan');
+          setData({ ...tsData, projWork: null });
+        } else {
+          const [tsData, projData] = await Promise.all([
+            fieldApi.get(`/worker/timesheet/${workId}`),
+            fieldApi.get(`/worker/projects/${workId}`).catch(() => null),
+          ]);
+          setData({ ...tsData, projWork: projData?.work || null });
+        }
       } catch {}
       setLoading(false);
     })();
-  }, [workId]);
+  }, [workId, isOrphan]);
 
   // Auto-dismiss tooltip (FIX 7 — 4000мс, чтобы прочитать ФИО + телефон)
   useEffect(() => {
@@ -97,25 +114,6 @@ function HistoryDetail({ workId, onBack }) {
     const t = setTimeout(() => setTooltip(null), 4000);
     return () => clearTimeout(t);
   }, [tooltip]);
-
-  // Грузим локи периода для месяцов, которые упоминаются в данных табеля
-  useEffect(() => {
-    if (!data?.days?.length) return;
-    const dates = data.days.map(d => d.date).filter(Boolean).sort();
-    if (!dates.length) return;
-    const last = new Date(dates[dates.length - 1]);
-    const y = last.getFullYear();
-    const m = last.getMonth() + 1;
-    // Этот endpoint существует если backend (агент B) уже задеплоил v2
-    api.get(`/timesheet/v2/locks/${y}/${m}`)
-      .then((r) => {
-        const arr = Array.isArray(r) ? r : (r?.locks || []);
-        // Берём только активные глобальные локи (затрагивают рабочего)
-        const active = arr.filter(l => l.scope === 'global' && l.locked_at && !l.unlocked_at);
-        setLocks(active);
-      })
-      .catch(() => setLocks([])); // 404 — нет endpointа = нет лока, тихо
-  }, [data]);
 
   if (loading) return (
     <div className="p-4 space-y-4 animate-pulse">
@@ -139,6 +137,7 @@ function HistoryDetail({ workId, onBack }) {
   const days = (data.days || []).slice().sort((a, b) => (a.date || '').localeCompare(b.date || ''));
   const summary = data.summary || {};
   const projWork = data.projWork || {};
+  const perDiem = data.per_diem || {};
 
   const totalEarned = summary.total_earned || days.reduce((s, c) => s + (parseFloat(c.amount_earned) || 0), 0);
   const totalHours = summary.total_hours || days.reduce((s, c) => s + (parseFloat(c.hours_worked) || 0), 0);
@@ -204,7 +203,7 @@ function HistoryDetail({ workId, onBack }) {
                 {dayRate > 0 && (
                   <div className="flex items-center gap-1.5">
                     <TrendingUp size={13} style={{ color: 'rgba(255,255,255,0.4)' }} />
-                    <span className="text-xs font-medium" style={{ color: 'rgba(255,255,255,0.6)' }}>{fmtMoneyShort(dayRate)}₽/см</span>
+                    <span className="text-xs font-medium" style={{ color: 'rgba(255,255,255,0.6)' }}>{fmtMoneyShort(dayRate)}/см</span>
                   </div>
                 )}
               </div>
@@ -223,11 +222,30 @@ function HistoryDetail({ workId, onBack }) {
             )}
             <div className="flex gap-4 mt-3 pt-3" style={{ borderTop: '1px solid var(--border-norse)' }}>
               <InfoPill label="Период" value={`${periodStart ? fmtDateShort(periodStart) : '?'} – ${periodEnd ? fmtDateShort(periodEnd) : '?'}`} />
-              <InfoPill label="Ставка" value={dayRate ? `${fmtMoneyShort(dayRate)}₽` : '—'} gold />
+              <InfoPill label="Ставка" value={dayRate ? `${fmtMoneyShort(dayRate)}` : '—'} gold />
               <InfoPill label="Смена" value={work.shift_type === 'night' ? '🌙 Ночь' : work.shift_type === 'day' ? '☀️ День' : work.shift_type || '—'} />
             </div>
           </div>
         </SlideIn>
+
+        {/* ─── Per diem ─────────────────────────────────────── */}
+        {(perDiem.accrued_days > 0 || perDiem.paid > 0 || perDiem.pending > 0) && (
+          <SlideIn delay={0.12}>
+            <div className="rounded-xl p-4" style={{ backgroundColor: 'var(--bg-elevated)', border: '1px solid var(--border-norse)' }}>
+              <p className="text-xs font-bold uppercase tracking-widest mb-2" style={{ color: 'var(--text-tertiary)' }}>💸 Суточные</p>
+              <div className="flex gap-3">
+                <InfoPill label="Дней" value={`${perDiem.accrued_days || 0}`} />
+                <InfoPill label="Ставка" value={perDiem.rate ? `${fmtMoneyShort(perDiem.rate)}` : '—'} />
+                <InfoPill label="Выплачено" value={fmtMoneyShort(perDiem.paid || 0)} gold />
+              </div>
+              {perDiem.pending > 0 && (
+                <p className="text-xs mt-2" style={{ color: 'var(--text-tertiary)' }}>
+                  Ожидает выплаты: {fmtMoney(perDiem.pending)}
+                </p>
+              )}
+            </div>
+          </SlideIn>
+        )}
 
         {/* ─── Lock badge ─────────────────────────────────── */}
         {locks.length > 0 && (
@@ -341,10 +359,12 @@ function HistoryDetail({ workId, onBack }) {
 /* DayRow — строка в табеле с поддержкой long-press tooltip */
 function DayRow({ day, idx, onLongPress }) {
   const shift = day.shift || 'day';
-  const icon = SHIFT_ICONS[shift] || '☀️';
-  const label = SHIFT_LABELS[shift] || 'День';
+  const icon = SHIFT_ICONS[shift] || (day.entry_kind === 'stage' ? '📋' : '☀️');
+  const label = SHIFT_LABELS[shift] || shift || 'День';
   const color = SHIFT_COLORS[shift] || '#f59e0b';
-  const points = day.day_rate ? Math.round(parseFloat(day.day_rate) / 500) : 0;
+  const points = day.tariff_points != null
+    ? Math.round(Number(day.tariff_points) || 0)
+    : (day.day_rate ? Math.round(parseFloat(day.day_rate) / 500) : 0);
   const earned = parseFloat(day.amount_earned) || 0;
   const isOdd = idx % 2 === 1;
 
@@ -386,7 +406,7 @@ function HeroAmount({ target }) {
   const val = useCountUp(target);
   return (
     <p className="font-black mt-1" style={{ color: 'var(--gold)', fontSize: '2.75rem', lineHeight: 1.1, textShadow: '0 2px 20px rgba(196,154,42,0.3)' }}>
-      {val.toLocaleString('ru-RU')} <span style={{ fontSize: '1.5rem', fontWeight: 700 }}>₽</span>
+      {fmtMoney(val)}
     </p>
   );
 }
@@ -410,14 +430,21 @@ export default function FieldHistory() {
   const detailWorkId = searchParams.get('detail');
 
   const [projects, setProjects] = useState([]);
+  const [orphan, setOrphan] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
   useEffect(() => {
     (async () => {
       try {
-        const res = await fieldApi.get('/worker/projects');
+        const [res, orphanRes] = await Promise.all([
+          fieldApi.get('/worker/projects'),
+          fieldApi.get('/worker/timesheet-orphan').catch(() => null),
+        ]);
         setProjects(Array.isArray(res) ? res : res.projects || []);
+        if (orphanRes && (orphanRes.days?.length > 0 || orphanRes.per_diem?.accrued_days > 0)) {
+          setOrphan(orphanRes);
+        }
       } catch (e) { setError(e.message); }
       finally { setLoading(false); }
     })();
@@ -472,7 +499,27 @@ export default function FieldHistory() {
 
       {error && <div className="p-3 rounded-lg text-sm" style={{ backgroundColor: 'rgba(239,68,68,0.1)', color: '#ef4444' }}>{error}</div>}
 
-      {projects.length === 0 && !error && (
+      {orphan && (
+        <button
+          onClick={() => { haptic.light(); setSearchParams({ detail: 'orphan' }); }}
+          className="w-full rounded-xl p-4 text-left flex items-center gap-3"
+          style={{ backgroundColor: 'var(--bg-elevated)', border: '1px solid rgba(196,154,42,0.35)' }}
+        >
+          <div className="w-10 h-10 rounded-lg flex items-center justify-center text-lg" style={{ background: 'rgba(196,154,42,0.15)' }}>📋</div>
+          <div className="flex-1 min-w-0">
+            <p className="font-semibold text-sm" style={{ color: 'var(--text-primary)' }}>Без объекта</p>
+            <p className="text-xs mt-0.5" style={{ color: 'var(--text-tertiary)' }}>
+              {(orphan.summary?.total_days || orphan.days?.length || 0)} отм. · суточные {(orphan.per_diem?.accrued_days || 0)} дн.
+            </p>
+          </div>
+          <span className="text-sm font-bold" style={{ color: 'var(--gold)' }}>
+            {fmtMoneyShort((orphan.summary?.total_earned || 0) + (orphan.per_diem?.accrued || 0))}
+          </span>
+          <ChevronRight size={18} style={{ color: 'var(--text-tertiary)' }} />
+        </button>
+      )}
+
+      {projects.length === 0 && !orphan && !error && (
         <div className="rounded-xl p-8 text-center" style={{ backgroundColor: 'var(--bg-elevated)' }}>
           <Briefcase size={36} className="mx-auto mb-2" style={{ color: 'var(--text-tertiary)' }} />
           <p style={{ color: 'var(--text-secondary)' }}>Пока нет завершённых проектов</p>

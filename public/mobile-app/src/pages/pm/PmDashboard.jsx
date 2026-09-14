@@ -2,14 +2,13 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '@/api/client';
 import PmTabBar from '@/components/pm/PmTabBar';
+import { formatMoney as fmt } from '@/lib/utils';
 
 const C = {
   bg: '#0d0d12', card: '#16161f', gold: '#c8a84b',
   green: '#22c55e', red: '#ef4444', amber: '#f59e0b',
   blue: '#3b82f6', rune: '#7b61ff', text: '#e8e8f0', muted: '#6b7280',
 };
-
-const fmt = (n) => n != null ? Math.round(n).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' ') : '—';
 
 export default function PmDashboard() {
   const navigate = useNavigate();
@@ -41,7 +40,7 @@ export default function PmDashboard() {
   const metricCards = [
     { label: 'Рабочих на объектах', value: metrics?.active_workers ?? 0, icon: '👷', color: C.blue },
     { label: 'Отметились сегодня', value: metrics?.checked_in_today ?? 0, icon: '✅', color: C.green },
-    { label: 'Выплаты в ожидании', value: metrics?.pending_payments_sum > 0 ? fmt(metrics.pending_payments_sum) + ' ₽' : '—', icon: '💳', color: C.amber },
+    { label: 'Выплаты в ожидании', value: metrics?.pending_payments_sum > 0 ? fmt(metrics.pending_payments_sum) : '—', icon: '💳', color: C.amber },
     { label: 'Не прошли Мимира', value: metrics?.academy_not_passed ?? 0, icon: '🏛️', color: metrics?.academy_not_passed > 0 ? C.red : C.muted },
   ];
 

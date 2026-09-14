@@ -3,9 +3,9 @@ import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, Clock, MapPin, Play, Square, CheckCircle } from 'lucide-react';
 import { fieldApi } from '@/api/fieldClient';
 import { useHaptic } from '@/hooks/useHaptic';
+import { formatMoney as fmtMoney } from '@/lib/utils';
 
 function fmt(n) { return String(n).padStart(2, '0'); }
-function fmtMoney(n) { return (n || 0).toLocaleString('ru-RU') + ' \u20BD'; }
 function fmtTime(iso) { return iso ? new Date(iso).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }) : '--:--'; }
 
 export default function FieldShift() {

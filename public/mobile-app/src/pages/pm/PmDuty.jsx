@@ -11,10 +11,22 @@ import { formatDate } from '@/lib/utils';
 const ALLOWED = ['ADMIN', 'PM', 'HEAD_PM', 'TO', 'HEAD_TO', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV'];
 const ASSIGN = ['ADMIN', 'TO', 'HEAD_TO', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV'];
 
+const TABS = [
+  { id: 'analysis', label: 'Анализ' },
+  { id: 'mine', label: 'Мои' },
+  { id: 'archive', label: 'Архив' }
+];
+
+function normalizeTab(tab) {
+  if (tab === 'need_report') return 'analysis';
+  if (tab === 'my_reviewed') return 'archive';
+  return TABS.some((t) => t.id === tab) ? tab : 'analysis';
+}
+
 export default function PmDuty() {
   const user = useAuthStore((s) => s.user);
   const navigate = useNavigate();
-  const [tab, setTab] = useState('need_report');
+  const [tab, setTab] = useState('analysis');
   const [items, setItems] = useState([]);
   const [duty, setDuty] = useState(null);
   const [isDuty, setIsDuty] = useState(false);
@@ -22,9 +34,11 @@ export default function PmDuty() {
   const [decision, setDecision] = useState('submit');
   const [summary, setSummary] = useState('');
   const [workPrice, setWorkPrice] = useState('');
+  const [readOnly, setReadOnly] = useState(false);
 
   const refresh = useCallback(() => {
-    loadPmDutyQueue(tab).then((d) => {
+    const apiTab = normalizeTab(tab);
+    loadPmDutyQueue(apiTab).then((d) => {
       setItems(d.items || []);
       setDuty(d.duty);
       setIsDuty(!!d.is_duty);
@@ -43,8 +57,9 @@ export default function PmDuty() {
     );
   }
 
-  const openReview = async (t) => {
+  const openReview = async (t, locked = false) => {
     setReviewTender(t);
+    setReadOnly(locked || !!t.is_final || (tab === 'mine' && !t.can_edit));
     try {
       const d = await loadRpReview(t.id);
       setDecision(d.review?.decision === 'reject' ? 'reject' : 'submit');
@@ -58,12 +73,12 @@ export default function PmDuty() {
   };
 
   const finalizeReview = async (finalize) => {
-    if (!reviewTender) return;
+    if (!reviewTender || readOnly) return;
     try {
       await saveRpReview(reviewTender.id, {
         decision,
         report_kind: decision === 'reject' ? 'reject' : 'work',
-        report_json: decision === 'submit' ? { summary, missing_info: [] } : { points: [{ point: 'Отказ', reason: summary || '—' }] },
+        report_json: decision === 'submit' ? { summary, missing_info: [], mode: 'analysis' } : { points: [{ point: 'Отказ', reason: summary || '—' }], mode: 'analysis' },
         work_price: workPrice ? Number(workPrice) : null,
         finalize: !!finalize,
       });
@@ -72,6 +87,13 @@ export default function PmDuty() {
     } catch (e) {
       window.alert(e?.body?.error || e?.message || 'Ошибка');
     }
+  };
+
+  const canOpenReport = (row) => {
+    if (tab === 'analysis') return isDuty && !row.is_final;
+    if (tab === 'mine') return true;
+    if (tab === 'archive') return true;
+    return false;
   };
 
   return (
@@ -85,16 +107,33 @@ export default function PmDuty() {
           </div>
         )}
         <div className="flex gap-2">
-          <button type="button" className={`btn-secondary flex-1 ${tab === 'need_report' ? 'opacity-100' : 'opacity-60'}`} onClick={() => setTab('need_report')}>Нужен отчёт</button>
-          <button type="button" className={`btn-secondary flex-1 ${tab === 'my_reviewed' ? 'opacity-100' : 'opacity-60'}`} onClick={() => setTab('my_reviewed')}>Мои</button>
+          {TABS.map((t) => (
+            <button
+              key={t.id}
+              type="button"
+              className={`btn-secondary flex-1 ${tab === t.id ? 'opacity-100' : 'opacity-60'}`}
+              onClick={() => setTab(t.id)}
+            >
+              {t.label}
+            </button>
+          ))}
         </div>
+        {tab === 'mine' && (
+          <p className="text-[11px] c-tertiary">Пока анализ не закрыт — можно править вместе с дежурным.</p>
+        )}
         {items.map((row) => (
           <div key={row.id} className="rounded-xl p-3" style={{ background: 'var(--bg-surface)', border: '0.5px solid var(--border-norse)' }}>
             <p className="font-semibold text-[14px]">{row.customer_name}</p>
             <p className="text-[12px] c-tertiary truncate">{row.tender_title}</p>
             <p className="text-[11px] c-tertiary mt-1">#{row.id} · {formatDate(row.docs_deadline)}</p>
-            {(isDuty || tab === 'my_reviewed') && !row.is_final && tab === 'need_report' && (
-              <button type="button" className="btn-primary w-full mt-2 spring-tap" onClick={() => openReview(row)}>Отчёт</button>
+            {canOpenReport(row) && (
+              <button
+                type="button"
+                className={`w-full mt-2 spring-tap ${tab === 'archive' || (tab === 'mine' && !row.can_edit) ? 'btn-secondary' : 'btn-primary'}`}
+                onClick={() => openReview(row, tab === 'archive' || (tab === 'mine' && !row.can_edit))}
+              >
+                {tab === 'archive' || (tab === 'mine' && !row.can_edit) ? 'Открыть' : 'Отчёт'}
+              </button>
             )}
           </div>
         ))}
@@ -105,18 +144,29 @@ export default function PmDuty() {
         <div className="fixed inset-0 z-50 flex items-end" style={{ background: 'rgba(0,0,0,0.45)' }} onClick={() => setReviewTender(null)}>
           <div className="w-full rounded-t-2xl p-4 max-h-[80vh] overflow-y-auto" style={{ background: 'var(--bg-surface)' }} onClick={(e) => e.stopPropagation()}>
             <h3 className="font-bold mb-2">Отчёт #{reviewTender.id}</h3>
-            <div className="flex gap-3 mb-3">
-              <label className="flex items-center gap-1 text-[13px]"><input type="radio" checked={decision === 'submit'} onChange={() => setDecision('submit')} /> Подаём</label>
-              <label className="flex items-center gap-1 text-[13px]"><input type="radio" checked={decision === 'reject'} onChange={() => setDecision('reject')} /> Не подаём</label>
-            </div>
-            <textarea className="input-field w-full mb-2" rows={3} value={summary} onChange={(e) => setSummary(e.target.value)} placeholder={decision === 'submit' ? 'Суть работ' : 'Причина отказа'} />
-            {decision === 'submit' && (
-              <input className="input-field w-full mb-2" type="number" value={workPrice} onChange={(e) => setWorkPrice(e.target.value)} placeholder="Цена работ" />
+            {readOnly ? (
+              <div className="space-y-2 text-[13px]">
+                <p>Решение: {decision === 'reject' ? 'Не подаём' : 'Подаём'}</p>
+                {summary && <p className="c-tertiary whitespace-pre-wrap">{summary}</p>}
+                {workPrice !== '' && workPrice != null && <p>Цена: {workPrice}</p>}
+                <button type="button" className="btn-secondary w-full mt-2" onClick={() => setReviewTender(null)}>Закрыть</button>
+              </div>
+            ) : (
+              <>
+                <div className="flex gap-3 mb-3">
+                  <label className="flex items-center gap-1 text-[13px]"><input type="radio" checked={decision === 'submit'} onChange={() => setDecision('submit')} /> Подаём</label>
+                  <label className="flex items-center gap-1 text-[13px]"><input type="radio" checked={decision === 'reject'} onChange={() => setDecision('reject')} /> Не подаём</label>
+                </div>
+                <textarea className="input-field w-full mb-2" rows={3} value={summary} onChange={(e) => setSummary(e.target.value)} placeholder={decision === 'submit' ? 'Суть работ' : 'Причина отказа'} />
+                {decision === 'submit' && (
+                  <input className="input-field w-full mb-2" type="number" value={workPrice} onChange={(e) => setWorkPrice(e.target.value)} placeholder="Цена работ" />
+                )}
+                <div className="flex gap-2">
+                  <button type="button" className="btn-secondary flex-1" onClick={() => finalizeReview(false)}>Черновик</button>
+                  <button type="button" className="btn-primary flex-1" onClick={() => finalizeReview(true)}>Закрыть</button>
+                </div>
+              </>
             )}
-            <div className="flex gap-2">
-              <button type="button" className="btn-secondary flex-1" onClick={() => finalizeReview(false)}>Черновик</button>
-              <button type="button" className="btn-primary flex-1" onClick={() => finalizeReview(true)}>Закрыть</button>
-            </div>
           </div>
         </div>
       )}

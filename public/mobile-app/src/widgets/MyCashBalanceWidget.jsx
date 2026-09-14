@@ -4,6 +4,7 @@ import { api } from '@/api/client';
 import { WidgetShell } from './WidgetShell';
 import { formatMoney } from '@/lib/utils';
 import { useHaptic } from '@/hooks/useHaptic';
+import { useAuthStore } from '@/stores/authStore';
 
 /**
  * MyCashBalanceWidget — мои подотчётные
@@ -19,6 +20,8 @@ export default function MyCashBalanceWidget() {
   const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
   const haptic = useHaptic();
+  const role = useAuthStore((s) => s.user?.role);
+  const isHeadTo = role === 'HEAD_TO';
 
   useEffect(() => {
     (async () => {
@@ -38,6 +41,7 @@ export default function MyCashBalanceWidget() {
   const activeCount = Number(data?.active_requests ?? data?.active_count) || 0;
   const handoversReceived = Number(data?.handovers_received) || 0;
   const cashPayoutsWorkers = Number(data?.cash_payouts_workers) || 0;
+  const returnsPending = Number(data?.cash_returns_pending) || 0;
 
   // 4-колоночная разбивка появляется когда сервер вернул новое поле
   // handovers_received (даже =0 → пользователь видит «От СЗ: 0 ₽», что норма).
@@ -88,6 +92,28 @@ export default function MyCashBalanceWidget() {
           </div>
         ))}
       </div>
+      {returnsPending > 0 && (
+        <p className="text-[11px] mt-2 leading-snug" style={{ color: 'var(--gold)' }}>
+          Возврат {formatMoney(returnsPending)} ждёт кассу — с баланса ещё не списан.
+        </p>
+      )}
+      {isHeadTo && (
+        <button
+          type="button"
+          className="w-full mt-2 py-2 rounded-xl text-[13px] font-semibold spring-tap"
+          style={{
+            background: 'color-mix(in srgb, var(--gold) 14%, transparent)',
+            color: 'var(--gold)',
+          }}
+          onClick={(e) => {
+            e.stopPropagation();
+            haptic.light();
+            navigate('/cash?quick=1');
+          }}
+        >
+          + Добавить расход
+        </button>
+      )}
     </WidgetShell>
   );
 }

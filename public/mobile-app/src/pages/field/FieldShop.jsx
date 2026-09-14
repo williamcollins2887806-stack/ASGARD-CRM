@@ -6,6 +6,24 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { fieldApi } from '@/api/fieldClient';
+import { NornsPauseStrip } from '@/components/field/NornsPauseBanner';
+import ShopWarriorThumb from '@/components/field/ShopWarriorThumb';
+import VikingAvatar3D, { canUseWebGL } from '@/components/field/VikingAvatar3D';
+import { SLOT_LABEL_RU } from '@/lib/cosmeticColors';
+
+function tryOnOverrides(item) {
+  if (!item?.asset_key || !item?.equip_slot) return {};
+  const map = {
+    helmet: 'helmet', weapon: 'weapon', armor: 'armor', cape: 'cape',
+    boots: 'boots', face_paint: 'face_paint', avatar: 'body',
+  };
+  const slot = map[item.equip_slot];
+  return slot ? { [slot]: item.asset_key } : {};
+}
+
+function isWarriorItem(item) {
+  return item?.wear_target === 'avatar3d' || ['helmet', 'weapon', 'armor', 'cape', 'boots', 'face_paint', 'avatar'].includes(item?.equip_slot);
+}
 
 /* ═══ MOCK DATA (fallback when API has no items yet) ═══ */
 const MOCK_ITEMS = [
@@ -31,13 +49,10 @@ const RARITY_LABELS = { legendary:'ЛЕГЕНДА', epic:'ЭПИК', rare:'РЕ�
 const RARITY_LABELS_FULL = { legendary:'ЛЕГЕНДАРНЫЙ', epic:'ЭПИЧЕСКИЙ', rare:'РЕДКИЙ', common:'ОБЫЧНЫЙ' };
 const CAT_CONFIG = [
   { key:'all', icon:'🏪', label:'Все' },
-  { key:'food', icon:'🍞', label:'Еда' },
-  { key:'merch', icon:'👕', label:'Мерч' },
   { key:'digital', icon:'🎨', label:'Цифровое' },
-  { key:'privilege', icon:'⭐', label:'Привилегии' },
   { key:'cosmetic', icon:'✨', label:'Косметика' },
 ];
-const SECTION_TITLES = { all:'Все товары', food:'Еда', merch:'Мерч', digital:'Цифровое', privilege:'Привилегии', cosmetic:'Косметика' };
+const SECTION_TITLES = { all:'Все товары', digital:'Цифровое', cosmetic:'Косметика' };
 
 function plural(n, forms) {
   return forms[n % 10 === 1 && n % 100 !== 11 ? 0 : n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 10 || n % 100 >= 20) ? 1 : 2];
@@ -78,18 +93,48 @@ export default function FieldShop() {
   const [showSuccess, setShowSuccess] = useState(false);
   const [successItem, setSuccessItem] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [meAssets, setMeAssets] = useState({});
+  const [meCosmetics, setMeCosmetics] = useState({});
+  const [meLevel, setMeLevel] = useState(1);
+  const [force2d, setForce2d] = useState(false);
+  const use3dModal = useMemo(() => !force2d && canUseWebGL(), [force2d]);
+  const on3dFail = useCallback(() => setForce2d(true), []);
 
   /* ── Load data ── */
   useEffect(() => {
     Promise.all([
-      fieldApi.get('/gamification/wallet').catch(() => ({ runes: 0 })),
+      fieldApi.get('/gamification/wallet').catch(() => ({ runes: 0, level: 1 })),
       fieldApi.get('/gamification/shop').catch(() => ({ items: [] })),
-    ]).then(([wallet, shop]) => {
+      fieldApi.get('/worker/me').catch(() => null),
+    ]).then(([wallet, shop, me]) => {
       setBalance(wallet.runes || 0);
+      setMeLevel(wallet.level || 1);
       const apiItems = shop.items || [];
-      setItems(apiItems.map(it => ({
-        ...it, rarity: it.rarity || 'common', stock: it.current_stock ?? it.stock ?? 99, limited: it.is_limited || it.limited || false,
-      })));
+      setItems(apiItems.map(it => {
+        const unlimited = it.unlimited === true
+          || it.current_stock == null
+          || ['digital', 'cosmetic'].includes(it.category);
+        return {
+          ...it,
+          rarity: it.rarity || 'common',
+          stock: unlimited ? 9999 : (it.current_stock ?? it.stock ?? 0),
+          unlimited,
+          limited: unlimited ? false : (it.is_limited || it.limited || false),
+        };
+      }));
+      if (me) {
+        setMeAssets(me.assets || {});
+        setMeCosmetics({
+          active_avatar: me.active_avatar,
+          active_frame: me.active_frame,
+          active_badge: me.active_badge,
+          active_theme: me.active_theme,
+          active_helmet: me.active_helmet,
+          active_weapon: me.active_weapon,
+          active_armor: me.active_armor,
+        });
+        if (me.level) setMeLevel(me.level);
+      }
     }).finally(() => setLoading(false));
   }, []);
 
@@ -234,7 +279,7 @@ export default function FieldShop() {
 
   /* ── Category counts ── */
   const counts = useMemo(() => {
-    const c = { all: items.length, food: 0, merch: 0, digital: 0, privilege: 0, cosmetic: 0 };
+    const c = { all: items.length, digital: 0, cosmetic: 0 };
     items.forEach(i => { if (c[i.category] !== undefined) c[i.category]++; });
     return c;
   }, [items]);
@@ -312,19 +357,45 @@ export default function FieldShop() {
             </div>
           </div>
 
+          <NornsPauseStrip />
+
           {/* ═══ BANNER ═══ */}
           {featured && (
             <div className="fshop-banner" onClick={() => openModal(featured)}>
               {featured.limited && <div className="fshop-banner-tag">ЛИМИТКА</div>}
               <div className="fshop-banner-row">
-                <div className="fshop-banner-icon">
-                  {featured.icon_svg
-                    ? <span className="fshop-svg-icon" dangerouslySetInnerHTML={{ __html: featured.icon_svg }} />
-                    : featured.icon}
+                <div className="fshop-banner-icon" style={{ width: 88, height: 88, flexShrink: 0 }}>
+                  {use3dModal && isWarriorItem(featured) ? (
+                    <ShopWarriorThumb
+                      assets={meAssets}
+                      cosmetics={meCosmetics}
+                      overrides={tryOnOverrides(featured)}
+                      level={meLevel}
+                      size={88}
+                      onFail={on3dFail}
+                      fallback={featured.icon_svg
+                        ? <span className="fshop-svg-icon" dangerouslySetInnerHTML={{ __html: featured.icon_svg }} />
+                        : <span style={{ fontSize: 40 }}>{featured.icon}</span>}
+                    />
+                  ) : use3dModal ? (
+                    <ShopWarriorThumb
+                      assets={meAssets}
+                      cosmetics={meCosmetics}
+                      overrides={{}}
+                      level={meLevel}
+                      size={88}
+                      onFail={on3dFail}
+                      fallback={featured.icon_svg
+                        ? <span className="fshop-svg-icon" dangerouslySetInnerHTML={{ __html: featured.icon_svg }} />
+                        : <span style={{ fontSize: 40 }}>{featured.icon}</span>}
+                    />
+                  ) : featured.icon_svg ? (
+                    <span className="fshop-svg-icon" dangerouslySetInnerHTML={{ __html: featured.icon_svg }} />
+                  ) : featured.icon}
                 </div>
                 <div className="fshop-banner-text">
                   <div className="fshop-banner-title">{featured.name}</div>
-                  <div className="fshop-banner-desc">{featured.description}{featured.stock < 10 ? ` Осталось ${featured.stock} шт.` : ''}</div>
+                  <div className="fshop-banner-desc">{featured.description}{featured.stock < 10 && !featured.unlimited ? ` Осталось ${featured.stock} шт.` : ''}</div>
                 </div>
               </div>
             </div>
@@ -357,25 +428,41 @@ export default function FieldShop() {
               </div>
             ) : filtered.map((item) => {
               const canAfford = balance >= item.price_runes;
-              const soldOut = item.stock <= 0;
+              const soldOut = !item.unlimited && item.stock <= 0;
               const deficit = item.price_runes - balance;
               const cls = ['fshop-card', item.category, !canAfford && !soldOut ? 'locked' : '', soldOut ? 'soldout' : ''].filter(Boolean).join(' ');
               return (
                 <div key={item.id} className={cls} onClick={() => !soldOut && openModal(item)}>
                   <div className="fshop-card-img">
                     <div className="fshop-card-glow" />
-                    <div className="fshop-card-icon">
-                      {item.icon_svg
-                        ? <span className="fshop-svg-icon" dangerouslySetInnerHTML={{ __html: item.icon_svg }} />
-                        : item.icon}
+                    <div className="fshop-card-icon fshop-card-3d">
+                      {use3dModal ? (
+                        <ShopWarriorThumb
+                          assets={meAssets}
+                          cosmetics={meCosmetics}
+                          overrides={isWarriorItem(item) ? tryOnOverrides(item) : {}}
+                          level={meLevel}
+                          size={104}
+                          onFail={on3dFail}
+                          fallback={item.icon_svg
+                            ? <span className="fshop-svg-icon" dangerouslySetInnerHTML={{ __html: item.icon_svg }} />
+                            : <span style={{ fontSize: 40 }}>{item.icon}</span>}
+                        />
+                      ) : item.icon_svg ? (
+                        <span className="fshop-svg-icon" dangerouslySetInnerHTML={{ __html: item.icon_svg }} />
+                      ) : (
+                        <span style={{ fontSize: 40 }}>{item.icon}</span>
+                      )}
                     </div>
                     <div className={`fshop-card-rarity ${item.rarity}`}>{RARITY_LABELS[item.rarity]}</div>
-                    {item.limited && <div className="fshop-card-limited">ЛИМИТКА</div>}
+                    {item.limited && !item.unlimited && <div className="fshop-card-limited">ЛИМИТКА</div>}
                   </div>
                   {soldOut && <div className="fshop-card-soldout-badge">РАСКУПЛЕНО</div>}
                   <div className="fshop-card-body">
                     <div className="fshop-card-name">{item.name}</div>
-                    <div className="fshop-card-desc">{item.description}</div>
+                    <div className="fshop-card-desc">
+                      {item.wear_label || SLOT_LABEL_RU[item.equip_slot] || item.description}
+                    </div>
                     <div className="fshop-card-price-row">
                       <div className="fshop-card-price">
                         <span className="fshop-cp-coin">ᚱ</span>
@@ -410,18 +497,49 @@ export default function FieldShop() {
               <>
                 <div className="fshop-modal-icon-area">
                   <div className={`fshop-modal-glow ${selectedItem.category}`} />
-                  <div className="fshop-modal-emoji" key={selectedItem.id}>
-                    {selectedItem.icon_svg
-                      ? <span className="fshop-svg-icon fshop-svg-icon--lg" dangerouslySetInnerHTML={{ __html: selectedItem.icon_svg }} />
-                      : selectedItem.icon}
+                  <div className="fshop-modal-emoji" key={selectedItem.id} style={{ fontSize: 0, minHeight: 160 }}>
+                    {use3dModal ? (
+                      <VikingAvatar3D
+                        assets={meAssets}
+                        cosmetics={meCosmetics}
+                        overrides={isWarriorItem(selectedItem) ? tryOnOverrides(selectedItem) : {}}
+                        level={meLevel}
+                        size={160}
+                        interactive={false}
+                        transparentBg
+                        mood="idle"
+                        onFail={on3dFail}
+                      />
+                    ) : selectedItem.icon_svg ? (
+                      <span className="fshop-svg-icon fshop-svg-icon--lg" dangerouslySetInnerHTML={{ __html: selectedItem.icon_svg }} />
+                    ) : (
+                      <span style={{ fontSize: 64 }}>{selectedItem.icon}</span>
+                    )}
                   </div>
                 </div>
                 <div style={{ textAlign: 'center' }}>
                   <div className={`fshop-modal-rarity ${selectedItem.rarity}`}>{RARITY_LABELS_FULL[selectedItem.rarity]}</div>
+                  {(selectedItem.wear_label || SLOT_LABEL_RU[selectedItem.equip_slot]) && (
+                    <div style={{ fontSize: 11, fontWeight: 700, color: 'rgba(240,200,80,.85)', marginBottom: 4 }}>
+                      {selectedItem.wear_label || SLOT_LABEL_RU[selectedItem.equip_slot]}
+                    </div>
+                  )}
+                  {['badge', 'frame', 'theme'].includes(selectedItem.equip_slot) && (
+                    <div style={{
+                      fontSize: 12, fontWeight: 600, color: 'rgba(255,255,255,.65)',
+                      background: 'rgba(240,200,80,.08)', border: '1px solid rgba(240,200,80,.25)',
+                      borderRadius: 10, padding: '8px 12px', margin: '0 0 10px', lineHeight: 1.35,
+                    }}>
+                      Это оформление профиля — смотри на карточке воина в разделе «Профиль»
+                      {selectedItem.equip_slot === 'badge' ? ' (значок справа внизу у аватара)' : ''}
+                      {selectedItem.equip_slot === 'frame' ? ' (рунный обод вокруг аватара)' : ''}
+                      {selectedItem.equip_slot === 'theme' ? ' (цвета фона профиля)' : ''}.
+                    </div>
+                  )}
                   <div className="fshop-modal-name">{selectedItem.name}</div>
                   <div className="fshop-modal-desc">
                     {selectedItem.description}
-                    {selectedItem.limited ? `\n\nОсталось: ${selectedItem.stock} шт.` : ''}
+                    {selectedItem.limited && !selectedItem.unlimited ? `\n\nОсталось: ${selectedItem.stock} шт.` : ''}
                   </div>
                   <div className="fshop-modal-price-box">
                     <div className="fshop-mpb-coin">ᚱ</div>
@@ -585,8 +703,12 @@ const SHOP_CSS = `
 .fshop-card.privilege .fshop-card-img::before{background:linear-gradient(135deg,#1a1020,#1a0818)}
 .fshop-card.cosmetic .fshop-card-img::before{background:linear-gradient(135deg,#0e1520,#0b1a18)}
 .fshop-card-icon{position:relative;z-index:2;font-size:48px;
-  filter:drop-shadow(0 4px 12px rgba(0,0,0,.4));transition:all .4s cubic-bezier(.34,1.56,.64,1)}
-@media(hover:hover){.fshop-card:hover .fshop-card-icon{transform:scale(1.15) rotate(-5deg)}}
+  filter:drop-shadow(0 4px 12px rgba(0,0,0,.4));transition:all .4s cubic-bezier(.34,1.56,.64,1);
+  display:flex;align-items:center;justify-content:center}
+.fshop-card-icon.fshop-card-3d{font-size:0;height:112px;filter:none}
+@media(hover:hover){.fshop-card:hover .fshop-card-icon{transform:scale(1.08)}
+.fshop-card:hover .fshop-card-icon.fshop-card-3d{transform:scale(1.03)}}
+@keyframes fshopSpin{to{transform:rotate(360deg)}}
 .fshop-card-glow{position:absolute;width:80px;height:80px;border-radius:50%;filter:blur(25px);opacity:.3;z-index:1}
 .fshop-card.food .fshop-card-glow{background:#84CC16}
 .fshop-card.merch .fshop-card-glow{background:var(--fshop-gold)}

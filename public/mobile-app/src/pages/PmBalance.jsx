@@ -7,11 +7,10 @@ import { EmptyState } from '@/components/shared/EmptyState';
 import { SkeletonList } from '@/components/shared/SkeletonKit';
 import { PullToRefresh } from '@/components/shared/PullToRefresh';
 import { StatCard, StatRow } from '@/components/shared/StatCard';
+import { formatMoney as fmtMoney } from '@/lib/utils';
 import {
   Wallet, ChevronRight, ArrowDownCircle, ArrowUpCircle, Banknote,
 } from 'lucide-react';
-
-const fmtMoney = (n) => n != null ? Math.round(n).toLocaleString('ru-RU') + ' ₽' : '—';
 
 export default function PmBalance() {
   const haptic = useHaptic();

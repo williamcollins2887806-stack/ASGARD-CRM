@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { fieldApi } from '@/api/fieldClient';
 import { useHaptic } from '@/hooks/useHaptic';
 import { ArrowLeft, BookOpen, Star, Edit3, Check, X, ChevronDown } from 'lucide-react';
+import { formatMoney } from '@/lib/utils';
 
 const MOODS = [
   { id: 'great',   emoji: '😄', label: 'Отлично',   color: '#22c55e' },
@@ -136,7 +137,7 @@ function ShiftCard({ shift, onEdit }) {
             <p className="text-xs" style={{ color: 'var(--text-tertiary)' }}>
               {shift.work_title || shift.object_name || shift.city || '—'}
               {shift.hours_worked ? ` · ${Math.round(shift.hours_worked * 10) / 10}ч` : ''}
-              {shift.amount_earned ? ` · ${Math.round(shift.amount_earned).toLocaleString('ru-RU')}₽` : ''}
+              {shift.amount_earned ? ` · ${formatMoney(shift.amount_earned)}` : ''}
             </p>
           </div>
         </div>

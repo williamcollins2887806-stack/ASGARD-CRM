@@ -1,10 +1,11 @@
 /**
  * BottomSheet — iOS-стиль bottom sheet
  * Grab handle, glass-фон, spring-анимация, overlay blur
+ * Optional sticky `footer` outside scroll area.
  */
 import { useEffect, useRef, useCallback } from 'react';
 
-export function BottomSheet({ open, onClose, children, title }) {
+export function BottomSheet({ open, onClose, children, title, footer, maxHeight = '85vh' }) {
   const sheetRef = useRef(null);
   const startY = useRef(0);
   const currentY = useRef(0);
@@ -46,7 +47,6 @@ export function BottomSheet({ open, onClose, children, title }) {
 
   return (
     <div className="fixed inset-0" style={{ zIndex: 40 }}>
-      {/* Overlay */}
       <div
         className="absolute inset-0"
         onClick={onClose}
@@ -58,42 +58,51 @@ export function BottomSheet({ open, onClose, children, title }) {
         }}
       />
 
-      {/* Sheet */}
       <div
         ref={sheetRef}
-        className="absolute bottom-0 left-0 right-0 glass-strong rounded-t-3xl"
+        className={'absolute bottom-0 left-0 right-0 glass-strong rounded-t-3xl' + (footer ? ' flex flex-col' : '')}
         style={{
-          maxHeight: '85vh',
+          maxHeight,
+          ...(footer ? { height: maxHeight } : {}),
           animation: 'sheetSlideUp var(--motion-normal) var(--ease-spring) forwards',
-          paddingBottom: 'calc(var(--safe-bottom) + 16px)',
+          paddingBottom: footer ? 0 : 'calc(var(--safe-bottom) + 16px)',
         }}
         onTouchStart={handleTouchStart}
         onTouchMove={handleTouchMove}
         onTouchEnd={handleTouchEnd}
       >
-        {/* Grab handle */}
-        <div className="flex justify-center pt-3 pb-2">
+        <div className="flex justify-center pt-3 pb-2 shrink-0">
           <div
             className="w-9 h-1 rounded-full"
             style={{ backgroundColor: 'var(--text-tertiary)', opacity: 0.4 }}
           />
         </div>
 
-        {/* Title */}
         {title && (
-          <div className="px-5 pb-3">
-            <h3
-              className="text-lg font-bold c-primary"
-            >
-              {title}
-            </h3>
+          <div className="px-5 pb-3 shrink-0">
+            <h3 className="text-lg font-bold c-primary">{title}</h3>
           </div>
         )}
 
-        {/* Content */}
-        <div className="px-5 overflow-y-auto scroll-container" style={{ maxHeight: 'calc(85vh - 80px)' }}>
+        <div
+          className={'px-5 overflow-y-auto scroll-container' + (footer ? ' flex-1 min-h-0' : '')}
+          style={footer ? undefined : { maxHeight: 'calc(85vh - 80px)' }}
+        >
           {children}
         </div>
+
+        {footer ? (
+          <div
+            className="shrink-0 px-5 pt-3"
+            style={{
+              borderTop: '0.5px solid var(--border-norse)',
+              paddingBottom: 'calc(var(--safe-bottom) + 12px)',
+              background: 'var(--bg-surface)',
+            }}
+          >
+            {footer}
+          </div>
+        ) : null}
       </div>
 
       <style>{`

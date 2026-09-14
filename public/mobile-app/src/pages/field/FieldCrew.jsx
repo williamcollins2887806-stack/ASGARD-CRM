@@ -3,11 +3,16 @@ import { useNavigate } from 'react-router-dom';
 import { fieldApi } from '@/api/fieldClient';
 import { useHaptic } from '@/hooks/useHaptic';
 import { ArrowLeft, Users, Phone, Clock, UserPlus, Send } from 'lucide-react';
+import { formatMoney as fmt } from '@/lib/utils';
 
 const fmtTime = (d) => d ? new Date(d).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }) : '';
-const fmt = (n) => (n || 0).toLocaleString('ru-RU') + ' ₽';
-
-const ROLE_LABELS = { senior_master: 'Ст. мастер', shift_master: 'Мастер', worker: 'Рабочий' };
+const ROLE_LABELS = {
+  senior_master: 'Ст. мастер',
+  shift_master: 'Мастер',
+  welder: 'Сварщик',
+  pto: 'ПТО',
+  worker: 'Рабочий',
+};
 const SHIFT_LABELS = { day: 'дневная', night: 'ночная', road: 'дорога', standby: 'ожидание' };
 
 export default function FieldCrew() {
@@ -193,6 +198,7 @@ export default function FieldCrew() {
 }
 
 function CrewCard({ member: m }) {
+  const navigate = useNavigate();
   const isMasterRole = m.field_role === 'shift_master' || m.field_role === 'senior_master';
 
   const meta = [];
@@ -204,8 +210,14 @@ function CrewCard({ member: m }) {
   const borderColor = m.checkin_status === 'active' ? 'rgba(52,199,89,0.2)' : 'var(--border-norse)';
 
   return (
-    <div className="rounded-xl p-3 flex items-center gap-3"
-      style={{ backgroundColor: 'var(--bg-elevated)', border: `1px solid ${borderColor}` }}>
+    <div
+      className="rounded-xl p-3 flex items-center gap-3"
+      style={{ backgroundColor: 'var(--bg-elevated)', border: `1px solid ${borderColor}`, cursor: 'pointer' }}
+      onClick={() => m.employee_id && navigate(`/field/hall/${m.employee_id}`)}
+      role="button"
+      tabIndex={0}
+      onKeyDown={(e) => e.key === 'Enter' && m.employee_id && navigate(`/field/hall/${m.employee_id}`)}
+    >
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2">
           <p className="text-sm font-medium truncate" style={{ color: 'var(--text-primary)' }}>{m.fio || 'Сотрудник'}</p>
@@ -221,8 +233,12 @@ function CrewCard({ member: m }) {
         )}
       </div>
       {m.phone && (
-        <a href={`tel:${m.phone.replace(/[^\d+]/g, '')}`} className="p-2 rounded-lg flex-shrink-0"
-          style={{ backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-norse)' }}>
+        <a
+          href={`tel:${m.phone.replace(/[^\d+]/g, '')}`}
+          className="p-2 rounded-lg flex-shrink-0"
+          style={{ backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-norse)' }}
+          onClick={(e) => e.stopPropagation()}
+        >
           <Phone size={16} style={{ color: 'var(--gold)' }} />
         </a>
       )}

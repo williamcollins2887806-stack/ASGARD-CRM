@@ -12,6 +12,13 @@ const C = {
   amber: '#f59e0b', text: '#e8e8f0', muted: '#6b7280',
 };
 
+/** Совпадает с MIN_READ_SECONDS в src/routes/field-academy.js */
+const MIN_READ_SECONDS = 60;
+
+function readStartKey(id) {
+  return 'academy_read_start_' + id;
+}
+
 // ── Block renderers ──────────────────────────────────────────────────────────
 
 function CoverBlock({ block }) {
@@ -155,7 +162,9 @@ export default function FieldLesson() {
   const [progress, setProgress] = useState(null);
   const [loading, setLoading] = useState(true);
   const [readCompleted, setReadCompleted] = useState(false);
+  const [passed, setPassed] = useState(false);
   const [completing, setCompleting] = useState(false);
+  const [remainSec, setRemainSec] = useState(MIN_READ_SECONDS);
   const startTimeRef = useRef(Date.now());
   const readStartedRef = useRef(false);
 
@@ -174,9 +183,11 @@ export default function FieldLesson() {
           setLesson({ ...found, blocks: cur.lesson.blocks });
           setProgress(cur.lesson);
           setReadCompleted(!!cur.lesson.read_completed_at);
+          setPassed(!!cur.lesson.passed || !!found.passed);
         } else {
           setLesson(found);
           setReadCompleted(!!found.read_completed_at);
+          setPassed(!!found.passed);
         }
       }
     } catch (e) {
@@ -188,9 +199,25 @@ export default function FieldLesson() {
 
   useEffect(() => {
     load();
-    // Start read timer
-    startTimeRef.current = Date.now();
   }, [load]);
+
+  useEffect(() => {
+    if (!lessonId) return;
+    const key = readStartKey(lessonId);
+    let start = Number(sessionStorage.getItem(key));
+    if (!Number.isFinite(start) || start <= 0) {
+      start = Date.now();
+      try { sessionStorage.setItem(key, String(start)); } catch { /* */ }
+    }
+    startTimeRef.current = start;
+    const tick = () => {
+      const elapsed = Math.round((Date.now() - start) / 1000);
+      setRemainSec(Math.max(0, MIN_READ_SECONDS - elapsed));
+    };
+    tick();
+    const t = setInterval(tick, 500);
+    return () => clearInterval(t);
+  }, [lessonId]);
 
   useEffect(() => {
     // Mark read-start
@@ -203,10 +230,15 @@ export default function FieldLesson() {
   async function handleComplete() {
     if (readCompleted || completing) return;
     const seconds = Math.round((Date.now() - startTimeRef.current) / 1000);
+    if (seconds < MIN_READ_SECONDS) {
+      setRemainSec(MIN_READ_SECONDS - seconds);
+      return;
+    }
     setCompleting(true);
     try {
       await fieldApi.post(`/academy/lessons/${lessonId}/read-complete`, { time_spent_seconds: seconds });
       setReadCompleted(true);
+      try { sessionStorage.removeItem(readStartKey(lessonId)); } catch { /* */ }
     } catch (e) {
       alert(e.message || 'Ошибка');
     } finally {
@@ -272,34 +304,42 @@ export default function FieldLesson() {
               color: C.green, fontSize: 14, fontWeight: 700,
               textAlign: 'center',
             }}>
-              ✓ Прочитано
+              {passed ? '✓ Испытание пройдено' : '✓ Прочитано'}
             </div>
-            <button
-              onClick={() => navigate(`/field/academy/quiz/${lessonId}`)}
-              style={{
-                flex: 2, padding: '13px 0',
-                background: `linear-gradient(90deg, ${C.rune}, #9b59b6)`,
-                border: 'none', borderRadius: 12, color: '#fff',
-                fontSize: 14, fontWeight: 700, cursor: 'pointer',
-              }}
-            >
-              ⚔️ Пройти Испытание
-            </button>
+            {!passed && (
+              <button
+                onClick={() => navigate(`/field/academy/quiz/${lessonId}`)}
+                style={{
+                  flex: 2, padding: '13px 0',
+                  background: `linear-gradient(90deg, ${C.rune}, #9b59b6)`,
+                  border: 'none', borderRadius: 12, color: '#fff',
+                  fontSize: 14, fontWeight: 700, cursor: 'pointer',
+                }}
+              >
+                ⚔️ Пройти Испытание
+              </button>
+            )}
           </div>
         ) : (
           <button
             onClick={handleComplete}
-            disabled={completing}
+            disabled={completing || remainSec > 0}
             style={{
               width: '100%', padding: '14px 0',
-              background: completing
+              background: completing || remainSec > 0
                 ? '#ffffff22'
                 : `linear-gradient(90deg, ${C.gold}, #a87d20)`,
-              border: 'none', borderRadius: 12, color: '#000',
-              fontSize: 15, fontWeight: 800, cursor: completing ? 'default' : 'pointer',
+              border: 'none', borderRadius: 12,
+              color: remainSec > 0 ? C.muted : '#000',
+              fontSize: 15, fontWeight: 800,
+              cursor: completing || remainSec > 0 ? 'default' : 'pointer',
             }}
           >
-            {completing ? 'Сохраняем...' : '✓ Прочитал — к Испытанию'}
+            {completing
+              ? 'Сохраняем...'
+              : remainSec > 0
+                ? `Читай ещё ${remainSec} сек`
+                : '✓ Прочитал — к Испытанию'}
           </button>
         )}
       </div>

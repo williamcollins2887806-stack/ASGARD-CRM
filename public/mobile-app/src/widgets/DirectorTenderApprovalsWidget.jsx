@@ -58,7 +58,7 @@ export default function DirectorTenderApprovalsWidget() {
             <div className="muted" style={{ fontSize: 14 }}>Нет ожидающих</div>
           )}
           <div className="muted" style={{ fontSize: 12, marginTop: 4 }}>
-            Просчёты &gt;5 млн без НДС
+            Просчёты &gt;10 млн без НДС
           </div>
         </div>
         <ChevronRight size={20} className="muted" />

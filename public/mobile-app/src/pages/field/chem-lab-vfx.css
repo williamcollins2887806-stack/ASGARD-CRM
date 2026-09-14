@@ -1,0 +1,266 @@
+/* Химцех — catastrophe VFX */
+
+.cl-vfx {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  pointer-events: none;
+  overflow: hidden;
+  background: transparent;
+}
+.cl-vfx--catastrophe {
+  background: radial-gradient(ellipse at 50% 40%, rgba(80, 16, 8, 0.35), transparent 62%);
+}
+
+.cl-vfx--idle { display: none; }
+
+.cl-vfx__flash {
+  position: absolute;
+  inset: 0;
+  background: #fff;
+  opacity: 0;
+  animation: cl-flash 0.35s ease-out forwards;
+}
+
+.cl-vfx--gas .cl-vfx__flash {
+  background: #a3e635;
+  animation: cl-flash-gas 0.5s ease-out forwards;
+}
+
+.cl-vfx--boil .cl-vfx__flash {
+  background: #fff7ed;
+  animation: cl-flash-hot 0.55s ease-out forwards;
+}
+
+@keyframes cl-flash {
+  0% { opacity: 0.95; }
+  100% { opacity: 0; }
+}
+@keyframes cl-flash-gas {
+  0% { opacity: 0.55; }
+  100% { opacity: 0; }
+}
+@keyframes cl-flash-hot {
+  0% { opacity: 1; }
+  40% { opacity: 0.7; }
+  100% { opacity: 0; }
+}
+
+.cl-vfx__fireball {
+  position: absolute;
+  left: 50%;
+  top: 45%;
+  width: 120px;
+  height: 120px;
+  margin: -60px 0 0 -60px;
+  border-radius: 50%;
+  background: radial-gradient(circle, #fff 0%, #fbbf24 25%, #ef4444 55%, transparent 70%);
+  animation: cl-fireball 1.1s ease-out forwards;
+  mix-blend-mode: screen;
+}
+@keyframes cl-fireball {
+  0% { transform: scale(0.2); opacity: 1; }
+  45% { transform: scale(2.4); opacity: 0.95; }
+  100% { transform: scale(4.8); opacity: 0; }
+}
+
+.cl-vfx__shockwave {
+  position: absolute;
+  left: 50%;
+  top: 45%;
+  width: 40px;
+  height: 40px;
+  margin: -20px 0 0 -20px;
+  border-radius: 50%;
+  border: 3px solid rgba(255, 220, 160, 0.9);
+  box-shadow: 0 0 40px rgba(255, 140, 40, 0.8);
+  animation: cl-shock 1.2s cubic-bezier(0.15, 0.8, 0.2, 1) forwards;
+}
+
+@keyframes cl-shock {
+  0% { transform: scale(0.2); opacity: 1; }
+  100% { transform: scale(18); opacity: 0; }
+}
+
+.cl-vfx__sparks {
+  position: absolute;
+  inset: 0;
+}
+
+.cl-vfx__sparks span {
+  position: absolute;
+  left: 50%;
+  top: 45%;
+  width: 5px;
+  height: 5px;
+  border-radius: 1px;
+  background: #fbbf24;
+  box-shadow: 0 0 8px #f59e0b, 0 0 16px #ef4444;
+  animation: cl-spark 1.25s ease-out forwards;
+  --ang: calc(var(--i) * 12.8deg);
+}
+
+@keyframes cl-spark {
+  0% { transform: rotate(var(--ang)) translateY(0) scale(1.2); opacity: 1; }
+  100% { transform: rotate(var(--ang)) translateY(-240px) scale(0.15); opacity: 0; }
+}
+
+.cl-vfx__gas {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(ellipse 80% 60% at 50% 70%, rgba(163, 230, 53, 0.75), transparent 70%),
+    radial-gradient(ellipse 100% 80% at 40% 40%, rgba(132, 204, 22, 0.55), transparent 70%),
+    radial-gradient(ellipse 90% 70% at 60% 50%, rgba(190, 242, 100, 0.4), transparent 65%);
+  filter: blur(8px);
+  animation: cl-gas-fill 1.35s ease-in forwards;
+  mix-blend-mode: screen;
+}
+
+@keyframes cl-gas-fill {
+  0% { opacity: 0; transform: scale(0.6) translateY(40px); }
+  35% { opacity: 0.7; }
+  100% { opacity: 0; transform: scale(1.2) translateY(-16px); }
+}
+
+.cl-vfx__steam {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(circle at 50% 60%, rgba(255, 255, 255, 0.55), transparent 50%),
+    radial-gradient(circle at 40% 40%, rgba(254, 243, 199, 0.4), transparent 45%);
+  filter: blur(12px);
+  animation: cl-steam 1.35s ease-out forwards;
+}
+
+.cl-vfx__steam--soft {
+  animation-duration: 0.5s;
+  opacity: 0.7;
+}
+
+@keyframes cl-steam {
+  0% { opacity: 0; transform: scale(0.8); }
+  50% { opacity: 1; }
+  100% { opacity: 0.3; transform: scale(1.4) translateY(-30px); }
+}
+
+.cl-vfx__splash span {
+  position: absolute;
+  left: 50%;
+  top: 55%;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #fde68a;
+  animation: cl-splash 0.7s ease-out forwards;
+  --ang: calc(var(--i) * 30deg);
+}
+
+@keyframes cl-splash {
+  0% { transform: rotate(var(--ang)) translateY(0); opacity: 1; }
+  100% { transform: rotate(var(--ang)) translateY(-120px); opacity: 0; }
+}
+
+.cl-vfx__foam {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle at 50% 55%, rgba(52, 211, 153, 0.45), transparent 55%);
+  animation: cl-foam 0.6s ease-out forwards;
+}
+
+@keyframes cl-foam {
+  0% { opacity: 0; transform: scale(0.7); }
+  40% { opacity: 1; }
+  100% { opacity: 0; transform: scale(1.2); }
+}
+
+.cl-vfx__win-sparks {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle at 50% 40%, rgba(251, 191, 36, 0.35), transparent 50%);
+  animation: cl-foam 0.8s ease-out forwards;
+}
+
+.cl-vfx__blackout { display: none; }
+
+.cl-vfx__epilogue {
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  top: 8px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  padding: 12px 14px 10px;
+  text-align: center;
+  background: linear-gradient(180deg, rgba(12, 8, 8, 0.88), rgba(12, 8, 8, 0.62));
+  border: 1px solid rgba(239, 68, 68, 0.35);
+  border-radius: 14px;
+  pointer-events: none;
+  animation: cl-epi-in 0.35s ease-out both;
+  z-index: 2;
+  max-height: 34%;
+  overflow: auto;
+}
+
+@keyframes cl-epi-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.cl-vfx__epilogue-kicker {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.2em;
+  color: #ef4444;
+  margin-bottom: 12px;
+}
+
+.cl-vfx__epilogue-title {
+  font-size: 18px;
+  font-weight: 900;
+  color: #fff;
+  margin: 0 0 8px;
+  line-height: 1.25;
+}
+
+.cl-vfx__epilogue-fact {
+  font-size: 14px;
+  line-height: 1.45;
+  color: rgba(255, 255, 255, 0.88);
+  max-width: 340px;
+  margin: 0;
+}
+
+.cl-vfx__epilogue-hint {
+  margin: 10px 0 0;
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.38);
+}
+
+.cl-vfx--catastrophe.cl-vfx--explosion,
+.cl-vfx--impact.cl-vfx--explosion {
+  animation: cl-shake 0.35s linear;
+}
+
+@keyframes cl-shake {
+  0%, 100% { transform: translate(0, 0); }
+  20% { transform: translate(-6px, 3px); }
+  40% { transform: translate(7px, -4px); }
+  60% { transform: translate(-5px, -2px); }
+  80% { transform: translate(4px, 3px); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cl-vfx__flash,
+  .cl-vfx__shockwave,
+  .cl-vfx__sparks span,
+  .cl-vfx__gas,
+  .cl-vfx__steam,
+  .cl-vfx__splash span {
+    animation-duration: 0.01ms !important;
+  }
+}

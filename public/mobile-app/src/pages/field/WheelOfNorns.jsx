@@ -1,6 +1,27 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { fieldApi } from '@/api/fieldClient';
+import VikingAvatar3D, { canUseWebGL } from '@/components/field/VikingAvatar3D';
+import { getRank } from '@/lib/fieldRanks';
+import WheelReel3D from './WheelReel3D';
+import { prizeIconHtml } from '@/lib/prizeToken';
+import {
+  NornsPauseStrip,
+  NornsPauseModal,
+  shouldShowPauseModal,
+  markPauseModalSeen,
+  PAUSE_FULL,
+} from '@/components/field/NornsPauseBanner';
+
+function tryOnFromPrize(prize) {
+  if (!prize?.asset_key || !prize?.equip_slot) return {};
+  const map = {
+    helmet: 'helmet', weapon: 'weapon', armor: 'armor', cape: 'cape',
+    boots: 'boots', face_paint: 'face_paint', avatar: 'body',
+  };
+  const slot = map[prize.equip_slot];
+  return slot ? { [slot]: prize.asset_key } : {};
+}
 
 // ═══════���═══════════════════════════════════════════════════════════════════
 // WHEEL OF NORNS — Full 1:1 port of WHEEL_OF_NORNS_RENDER.html (991 lines)
@@ -50,35 +71,73 @@ const WHEEL_CSS = `
 .wn-dot-now{border:1.5px solid var(--gold);animation:wnDotP 1.5s ease-in-out infinite}
 @keyframes wnDotP{0%,100%{box-shadow:0 0 3px var(--gold-d)}50%{box-shadow:0 0 10px var(--gold)}}
 .wn-mult{padding:4px 10px;border-radius:10px;font-size:12px;font-weight:800;background:linear-gradient(135deg,var(--red),#ff6b6b);color:#fff;box-shadow:0 2px 8px rgba(232,64,87,.3)}
-.wn-viking-area{position:relative;z-index:15;display:flex;justify-content:center;margin-top:4px;height:130px;pointer-events:none}
-.wn-viking{position:relative;width:120px;height:130px}
+.wn-viking-area{position:relative;z-index:15;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;margin-top:4px;height:196px;pointer-events:none}
+.wn-viking{position:relative;width:160px;height:160px;display:flex;align-items:center;justify-content:center}
 .wn-viking svg{width:100%;height:100%;overflow:visible;filter:drop-shadow(0 6px 15px rgba(0,0,0,.5))}
-.wn-bubble{position:absolute;top:2px;left:105%;padding:5px 12px;border-radius:14px;background:var(--card2);
+.wn-viking-3d{width:160px;height:160px;border-radius:20px;overflow:hidden;
+  background:radial-gradient(circle at 50% 30%,rgba(240,200,80,.12),transparent 65%),linear-gradient(180deg,rgba(20,24,40,.6),rgba(8,9,15,.2));
+  box-shadow:0 8px 28px rgba(0,0,0,.45),inset 0 0 0 1px rgba(240,200,80,.2);
+  transition:box-shadow .3s ease}
+.wn-viking-3d.mood-spin{
+  box-shadow:0 0 24px rgba(232,64,87,.4),0 8px 28px rgba(0,0,0,.45),inset 0 0 0 1px rgba(232,64,87,.3)}
+.wn-viking-3d.mood-look{
+  box-shadow:0 0 22px rgba(74,144,255,.4),0 8px 28px rgba(0,0,0,.45),inset 0 0 0 1px rgba(74,144,255,.3)}
+.wn-viking-3d.mood-nod,.wn-viking-3d.mood-win{
+  box-shadow:0 0 28px rgba(61,220,132,.45),0 8px 28px rgba(0,0,0,.45),inset 0 0 0 1px rgba(61,220,132,.35)}
+.wn-viking-3d.mood-epic{
+  box-shadow:0 0 36px rgba(240,200,80,.55),0 0 16px rgba(232,64,87,.3),0 8px 28px rgba(0,0,0,.45),inset 0 0 0 1px rgba(240,200,80,.45)}
+/* no CSS filter — blanks WebGL avatar on mobile; glow via box-shadow on .wn-viking-3d */
+.wn-viking-area.engaged .wn-viking-3d{box-shadow:0 0 28px rgba(240,200,80,.35),0 8px 28px rgba(0,0,0,.45),inset 0 0 0 1px rgba(240,200,80,.35)}
+.wn-rank-badge{margin-top:4px;display:inline-flex;align-items:center;gap:6px;padding:3px 10px 3px 8px;border-radius:999px;
+  background:rgba(12,14,24,.72);border:1px solid rgba(255,255,255,.12);backdrop-filter:blur(8px);
+  font-size:11px;font-weight:700;letter-spacing:.04em;pointer-events:none}
+.wn-rank-rune{font-size:13px;line-height:1}
+.wn-rw-actions{display:flex;flex-direction:column;gap:8px;width:100%;margin-top:4px}
+.wn-rw-equip{width:100%;padding:12px 18px;border-radius:14px;border:1.5px solid rgba(240,200,80,.45);
+  background:linear-gradient(135deg,rgba(240,200,80,.18),rgba(200,148,10,.12));color:var(--gold);
+  font-size:14px;font-weight:800;cursor:pointer}
+.wn-rw-equip:disabled{opacity:.45}
+.wn-bubble{position:absolute;top:-8px;left:50%;transform:translateX(-50%) scale(.7);padding:5px 12px;border-radius:14px;background:var(--card2);
   border:1px solid rgba(255,255,255,.08);font-size:12px;font-weight:700;white-space:nowrap;
-  box-shadow:0 4px 15px rgba(0,0,0,.4);opacity:0;transform:scale(.7);transition:all .25s cubic-bezier(.34,1.56,.64,1);pointer-events:none}
-.wn-bubble::before{content:'';position:absolute;left:-5px;top:50%;transform:translateY(-50%);border:5px solid transparent;border-right-color:var(--card2)}
-.wn-bubble-on{opacity:1;transform:scale(1)}
+  box-shadow:0 4px 15px rgba(0,0,0,.4);opacity:0;transition:all .25s cubic-bezier(.34,1.56,.64,1);pointer-events:none;z-index:6}
+.wn-bubble::before{content:'';position:absolute;left:50%;bottom:-5px;transform:translateX(-50%);border:5px solid transparent;border-top-color:var(--card2)}
+.wn-bubble-on{opacity:1;transform:translateX(-50%) scale(1)}
 .wn-wheel{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;position:relative;z-index:10}
-.wn-drum-wrap{position:relative;width:calc(100% - 32px);max-width:360px;height:200px;perspective:600px}
-.wn-frame{position:absolute;inset:-8px;border-radius:24px;background:linear-gradient(180deg,#3d2f12,#2a1f0e,#3d2f12);
-  border:2px solid rgba(240,200,80,.3);box-shadow:0 8px 30px rgba(0,0,0,.5),0 0 0 1px rgba(240,200,80,.1),inset 0 2px 0 rgba(255,255,255,.08),inset 0 -2px 0 rgba(0,0,0,.3)}
-.wn-frame::before{content:'ᚠ';position:absolute;top:8px;left:12px;font-size:14px;color:rgba(240,200,80,.2)}
-.wn-frame::after{content:'ᚱ';position:absolute;top:8px;right:12px;font-size:14px;color:rgba(240,200,80,.2)}
-.wn-viewport{position:relative;width:100%;height:100%;overflow:hidden;border-radius:16px;background:linear-gradient(180deg,#08090f,#0d1020,#08090f)}
+.wn-drum-wrap{position:relative;width:calc(100% - 32px);max-width:360px;height:228px}
+.wn-reel3d{position:absolute;inset:0;width:100%;height:100%;display:block;border-radius:22px;z-index:4}
+.wn-drum-wrap.wn-has3d .wn-frame{display:none}
+.wn-drum-wrap.wn-has3d .wn-viewport{background:transparent;box-shadow:none}
+.wn-drum-wrap.wn-has3d .wn-frame,.wn-drum-wrap.wn-has3d .wn-vp-top,.wn-drum-wrap.wn-has3d .wn-vp-bot,.wn-drum-wrap.wn-has3d .wn-highlight,.wn-drum-wrap.wn-has3d .wn-ptr,.wn-drum-wrap.wn-has3d .wn-strip{opacity:0;pointer-events:none}
+.wn-frame{position:absolute;inset:-10px;border-radius:26px;
+  background:linear-gradient(145deg,#5a4a22,#2a1f0e 38%,#120e08 62%,#3d2f12);
+  border:2px solid rgba(240,200,80,.55);
+  box-shadow:0 12px 36px rgba(0,0,0,.55),0 0 24px rgba(240,200,80,.12),inset 0 2px 0 rgba(255,255,255,.14),inset 0 -3px 8px rgba(0,0,0,.45)}
+.wn-viewport{position:relative;width:100%;height:100%;overflow:hidden;border-radius:18px;background:linear-gradient(180deg,#080910,#14182a,#080910);
+  box-shadow:inset 0 0 40px rgba(0,0,0,.45)}
+.wn-highlight{position:absolute;top:50%;left:0;right:0;height:66px;transform:translateY(-50%);z-index:4;
+  border-top:2px solid rgba(240,200,80,.65);border-bottom:2px solid rgba(240,200,80,.65);
+  background:linear-gradient(90deg,transparent,rgba(240,200,80,.16),transparent);pointer-events:none;
+  box-shadow:0 0 28px rgba(240,200,80,.22);animation:wnHi 1.8s ease-in-out infinite}
+@keyframes wnHi{0%,100%{opacity:.85}50%{opacity:1}}
+.wn-item{display:flex;align-items:center;gap:14px;height:66px;padding:0 20px;border-bottom:1px solid rgba(255,255,255,.04)}
+.wn-di-icon.legendary{background:rgba(240,200,80,.14);border:1px solid rgba(240,200,80,.35);box-shadow:0 0 16px rgba(240,200,80,.2);animation:wnLeg 1.4s ease-in-out infinite}
+@keyframes wnLeg{0%,100%{filter:brightness(1)}50%{filter:brightness(1.25)}}
+.wn-frame::before{content:'ᚠ';position:absolute;top:10px;left:14px;font-size:15px;color:rgba(240,200,80,.28)}
+.wn-frame::after{content:'ᚱ';position:absolute;top:10px;right:14px;font-size:15px;color:rgba(240,200,80,.28)}
 .wn-vp-top{position:absolute;top:0;left:0;right:0;height:50px;z-index:5;background:linear-gradient(180deg,rgba(8,9,15,.95),transparent);pointer-events:none}
 .wn-vp-bot{position:absolute;bottom:0;left:0;right:0;height:50px;z-index:5;background:linear-gradient(0deg,rgba(8,9,15,.95),transparent);pointer-events:none}
-.wn-highlight{position:absolute;top:50%;left:0;right:0;height:66px;transform:translateY(-50%);z-index:4;
-  border-top:2px solid rgba(240,200,80,.35);border-bottom:2px solid rgba(240,200,80,.35);
-  background:rgba(240,200,80,.04);pointer-events:none;box-shadow:0 0 30px rgba(240,200,80,.06)}
 .wn-strip{position:absolute;left:0;right:0;z-index:2;will-change:transform}
-.wn-ptr{position:absolute;top:50%;transform:translateY(-50%);z-index:6;width:14px;height:20px}
+.wn-ptr{position:absolute;top:50%;transform:translateY(-50%);z-index:6;width:14px;height:20px;
+  animation:wnPtr 1.4s ease-in-out infinite;filter:drop-shadow(0 0 6px rgba(240,200,80,.45))}
+@keyframes wnPtr{0%,100%{transform:translateY(-50%) scale(1)}50%{transform:translateY(-50%) scale(1.14)}}
 .wn-ptr-l{left:-1px}.wn-ptr-r{right:-1px}
-.wn-item{display:flex;align-items:center;gap:14px;height:66px;padding:0 20px;border-bottom:1px solid rgba(255,255,255,.03)}
 .wn-di-icon{font-size:30px;width:44px;height:44px;border-radius:12px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.wn-di-icon svg,.wn-lc-i svg,.wn-rw-emoji svg{width:30px;height:30px;display:block}
+.wn-rw-emoji svg{width:72px;height:72px}
 .wn-di-icon.common{background:rgba(61,220,132,.08);border:1px solid rgba(61,220,132,.15)}
 .wn-di-icon.rare{background:rgba(74,144,255,.08);border:1px solid rgba(74,144,255,.15)}
 .wn-di-icon.epic{background:rgba(165,110,255,.08);border:1px solid rgba(165,110,255,.15)}
-.wn-di-icon.legendary{background:rgba(240,200,80,.1);border:1px solid rgba(240,200,80,.2);box-shadow:0 0 12px rgba(240,200,80,.08)}
+.wn-di-icon.legendary{background:rgba(240,200,80,.14);border:1px solid rgba(240,200,80,.35);box-shadow:0 0 16px rgba(240,200,80,.2);animation:wnLeg 1.4s ease-in-out infinite}
 .wn-di-name{font-size:14px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--t1)}
 .wn-di-desc{font-size:11px;color:var(--t3);margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .wn-di-tag{flex-shrink:0;padding:3px 10px;border-radius:8px;font-size:10px;font-weight:700}
@@ -155,7 +214,7 @@ function tick(freq = 700) {
   if (!audioCtx) return;
   const o = audioCtx.createOscillator(), g = audioCtx.createGain();
   o.connect(g); g.connect(audioCtx.destination);
-  o.frequency.value = freq; o.type = 'triangle'; g.gain.value = 0.04;
+  o.frequency.value = freq; o.type = 'triangle'; g.gain.value = 0.025;
   g.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.03);
   o.start(); o.stop(audioCtx.currentTime + 0.03);
 }
@@ -165,7 +224,7 @@ function winSound(tier) {
   notes.forEach((f, i) => {
     const o = audioCtx.createOscillator(), g = audioCtx.createGain();
     o.connect(g); g.connect(audioCtx.destination);
-    o.frequency.value = f; o.type = 'sine'; g.gain.value = 0.08;
+    o.frequency.value = f; o.type = 'sine'; g.gain.value = 0.05;
     g.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.18 * (i + 1) + 0.3);
     o.start(audioCtx.currentTime + 0.15 * i); o.stop(audioCtx.currentTime + 0.18 * (i + 1) + 0.3);
   });
@@ -236,7 +295,7 @@ const DEMO_PRIZES = [
   { name: 'Множ. ×2', icon: '🎯', desc: 'Следующий приз удвоен!', tier: 'rare' },
   { name: '250 Рун', icon: '💎', desc: 'Руническое богатство!', tier: 'epic' },
   { name: 'Рамка «Воин»', icon: '⚔️', desc: 'Рамка огня и стали', tier: 'epic' },
-  { name: 'Футболка ASGARD', icon: '👕', desc: 'Фирменная футболка!', tier: 'legendary' },
+  { name: 'Шлем «Драконий»', icon: '🐉', desc: 'Облик воина', tier: 'legendary' },
   { name: '1000 Рун', icon: '💎', desc: 'Легендарное сокровище!', tier: 'legendary' },
 ];
 
@@ -250,10 +309,8 @@ function buildStripHTML(items) {
     const tier = escHtml(p.tier);
     const tag = tier === 'legendary' ? 'ЛЕГЕНДА' : tier === 'epic' ? 'ЭПИК' : tier === 'rare' ? 'РЕДКИЙ' : '';
     // Use SVG icon if available (safe — comes from our own DB), else emoji
-    const iconContent = p.icon_svg
-      ? `<span style="display:inline-flex;align-items:center;justify-content:center;width:30px;height:30px">${p.icon_svg}</span>`
-      : escHtml(p.icon || '?');
-    return `<div class="wn-item"><div class="wn-di-icon ${tier}" style="${p.icon_svg ? 'font-size:0;padding:0' : ''}">${iconContent}</div><div style="flex:1;min-width:0"><div class="wn-di-name">${escHtml(p.name)}</div><div class="wn-di-desc">${escHtml(p.desc || p.description || '')}</div></div>${tag ? `<div class="wn-di-tag ${tier}">${tag}</div>` : ''}</div>`;
+    const iconContent = prizeIconHtml(p, 30);
+    return `<div class="wn-item"><div class="wn-di-icon ${tier}" style="font-size:0;padding:0">${iconContent}</div><div style="flex:1;min-width:0"><div class="wn-di-name">${escHtml(p.name)}</div><div class="wn-di-desc">${escHtml(p.desc || p.description || '')}</div></div>${tag ? `<div class="wn-di-tag ${tier}">${tag}</div>` : ''}</div>`;
   }).join('');
 }
 
@@ -264,7 +321,11 @@ export default function WheelOfNorns() {
   const stripRef = useRef(null);
   const canvasRef = useRef(null);
   const fxRef = useRef(null);
+  const reelRef = useRef(null);
+  const reelItemsRef = useRef([]);
+  const [reel3d, setReel3d] = useState(false);
   const vBodyRef = useRef(null);
+  const vikingWrapRef = useRef(null);
   const mouthRef = useRef(null);
   const teethRef = useRef(null);
   const browLRef = useRef(null);
@@ -291,6 +352,45 @@ export default function WheelOfNorns() {
   const [shaking, setShaking] = useState(false);
   const [spinsLeft, setSpinsLeft] = useState(null); // { free, checkin, purchased, total }
   const [blockedByLesson, setBlockedByLesson] = useState(null); // { id, title } если заблокировано уроком
+  const [use3d, setUse3d] = useState(() => canUseWebGL());
+  const use3dRef = useRef(use3d);
+  use3dRef.current = use3d;
+  const [avatarMountKey, setAvatarMountKey] = useState(0);
+  const avatarFailCount = useRef(0);
+  const [vikingMood, setVikingMood] = useState('idle');
+  const [meAssets, setMeAssets] = useState({});
+  const [meCosmetics, setMeCosmetics] = useState({});
+  const [tryOn, setTryOn] = useState({});
+  const [reelTick, setReelTick] = useState(0);
+  const [equipping, setEquipping] = useState(false);
+  const [avatarReady, setAvatarReady] = useState(false);
+  const [pauseModalOpen, setPauseModalOpen] = useState(false);
+  // Soft fail → remount once; permanent SVG only if WebGL truly dead or 2+ fails
+  const onAvatarFail = useCallback(() => {
+    avatarFailCount.current += 1;
+    if (avatarFailCount.current === 1 && canUseWebGL()) {
+      setAvatarMountKey((k) => k + 1);
+      return;
+    }
+    setUse3d(false);
+  }, []);
+  const rank = getRank(level);
+
+  const loadMeAvatar = useCallback(() => {
+    return fieldApi.get('/worker/me').then((me) => {
+      if (!me) return;
+      setMeAssets(me.assets || {});
+      setMeCosmetics({
+        active_avatar: me.active_avatar,
+        active_frame: me.active_frame,
+        active_badge: me.active_badge,
+        active_theme: me.active_theme,
+        active_helmet: me.active_helmet,
+        active_weapon: me.active_weapon,
+        active_armor: me.active_armor,
+      });
+    }).catch(() => {});
+  }, []);
 
   // Spring physics state
   const springState = useRef({ vY: 0, vVel: 0, vRot: 0, vRVel: 0, vScale: 1, vSVel: 0, target: { y: 0, rot: 0, scale: 1 }, state: 'idle', phase: 0 });
@@ -328,13 +428,20 @@ export default function WheelOfNorns() {
   }, []);
 
   useEffect(() => {
-    fieldApi.get('/gamification/wallet').then(w => {
-      setBalance(w.runes || 0);
-      setLevel(w.level || 1);
-      const pct = w.xp_per_level ? Math.round((w.xp_in_level / w.xp_per_level) * 100) : 65;
-      setXpPct(pct);
-      setXpText(`${w.xp_in_level || 0} / ${w.xp_per_level || 100}`);
-    }).catch(() => {});
+    let cancelled = false;
+    Promise.all([
+      fieldApi.get('/gamification/wallet').then(w => {
+        if (cancelled) return;
+        setBalance(w.runes || 0);
+        setLevel(w.level || 1);
+        const pct = w.xp_per_level ? Math.round((w.xp_in_level / w.xp_per_level) * 100) : 65;
+        setXpPct(pct);
+        setXpText(`${w.xp_in_level || 0} / ${w.xp_per_level || 100}`);
+      }).catch(() => {}),
+      loadMeAvatar(),
+    ]).finally(() => {
+      if (!cancelled) setAvatarReady(true);
+    });
     // Load real prizes pool from API
     fieldApi.get('/gamification/prizes').then(d => {
       if (d.prizes?.length) {
@@ -353,8 +460,10 @@ export default function WheelOfNorns() {
         if (streakQ) setStreak(streakQ.progress || 0);
       }
     }).catch(() => {});
+    if (shouldShowPauseModal()) setPauseModalOpen(true);
     loadSpinStatus();
-  }, [loadSpinStatus]);
+    return () => { cancelled = true; };
+  }, [loadSpinStatus, loadMeAvatar]);
 
   // Init strip with random items (re-init when prizesPool loads from API)
   useEffect(() => {
@@ -362,6 +471,9 @@ export default function WheelOfNorns() {
       const items = []; for (let i = 0; i < 5; i++) items.push(randomPrize(prizesPool));
       stripRef.current.innerHTML = buildStripHTML(items);
       stripRef.current.style.transform = `translateY(${-ITEM_H + ITEM_H * ((VISIBLE - 1) / 2)}px)`;
+      reelItemsRef.current = items;
+      reelRef.current?.setItems(items);
+      reelRef.current?.setOffset(-ITEM_H + ITEM_H * ((VISIBLE - 1) / 2));
     }
   }, [prizesPool]);
 
@@ -374,11 +486,12 @@ export default function WheelOfNorns() {
       if (!running) return;
       ss.phase += 0.04;
 
-      // Target based on state
-      if (ss.state === 'idle') { ss.target.y = Math.sin(ss.phase) * 2.5; ss.target.rot = Math.sin(ss.phase * 0.7) * 0.8; ss.target.scale = 1; }
-      else if (ss.state === 'spin') { ss.target.y = Math.sin(ss.phase * 6) * 5; ss.target.rot = Math.sin(ss.phase * 4) * 2; ss.target.scale = 1 + Math.sin(ss.phase * 6) * 0.02; }
-      else if (ss.state === 'win') { ss.target.y = Math.sin(ss.phase * 4) * 6; ss.target.rot = Math.sin(ss.phase * 3) * 3; ss.target.scale = 1 + Math.sin(ss.phase * 5) * 0.03; }
-      else if (ss.state === 'epic') { ss.target.y = Math.sin(ss.phase * 5) * 8; ss.target.rot = Math.sin(ss.phase * 4) * 5; ss.target.scale = 1 + Math.sin(ss.phase * 6) * 0.04; }
+      // Target based on state — stronger motion for 3D stage involvement
+      const boost = use3dRef.current ? 1.8 : 1;
+      if (ss.state === 'idle') { ss.target.y = Math.sin(ss.phase) * 2.5 * boost; ss.target.rot = Math.sin(ss.phase * 0.7) * 0.8; ss.target.scale = 1; }
+      else if (ss.state === 'spin') { ss.target.y = Math.sin(ss.phase * 8) * 10 * boost; ss.target.rot = Math.sin(ss.phase * 5) * 4; ss.target.scale = 1 + Math.sin(ss.phase * 8) * 0.05; }
+      else if (ss.state === 'win') { ss.target.y = Math.sin(ss.phase * 5) * 12 * boost; ss.target.rot = Math.sin(ss.phase * 4) * 6; ss.target.scale = 1 + Math.sin(ss.phase * 6) * 0.06; }
+      else if (ss.state === 'epic') { ss.target.y = Math.sin(ss.phase * 6) * 16 * boost; ss.target.rot = Math.sin(ss.phase * 5) * 10; ss.target.scale = 1 + Math.sin(ss.phase * 7) * 0.08; }
 
       // Spring step: Y
       const fY = (ss.target.y - ss.vY) * 0.15 - ss.vVel * 0.3; ss.vVel += fY; ss.vY += ss.vVel;
@@ -389,6 +502,13 @@ export default function WheelOfNorns() {
 
       if (vBodyRef.current) {
         vBodyRef.current.setAttribute('transform', `translate(0,${ss.vY}) rotate(${ss.vRot},70,80) scale(${ss.vScale})`);
+      }
+      // 3D: только персонаж внутри canvas двигается — рамку не дёргаем
+      if (vikingWrapRef.current && !use3dRef.current) {
+        vikingWrapRef.current.style.transform =
+          `translateY(${ss.vY}px) rotate(${ss.vRot}deg) scale(${ss.vScale})`;
+      } else if (vikingWrapRef.current && use3dRef.current) {
+        vikingWrapRef.current.style.transform = '';
       }
 
       // Pupils
@@ -448,13 +568,17 @@ export default function WheelOfNorns() {
   }
 
   function setVikingState(state) {
-    springState.current.state = state;
+    const allowed = ['win', 'epic', 'spin', 'look', 'nod'];
+    const mood = allowed.includes(state) ? state : 'idle';
+    springState.current.state = mood;
+    setVikingMood(mood);
     const mouth = mouthRef.current, teeth = teethRef.current, bL = browLRef.current, bR = browRRef.current;
     if (!mouth) return;
-    if (state === 'idle') { mouth.setAttribute('d', 'M58 70 Q70 77 82 70'); teeth.setAttribute('opacity', '0'); bL.setAttribute('d', 'M45 42 Q52 36 66 41'); bR.setAttribute('d', 'M74 41 Q88 36 95 42'); }
-    if (state === 'spin') { mouth.setAttribute('d', 'M58 69 Q70 79 82 69'); teeth.setAttribute('opacity', '0'); bL.setAttribute('d', 'M45 40 Q52 34 66 39'); bR.setAttribute('d', 'M74 39 Q88 34 95 40'); }
-    if (state === 'win') { mouth.setAttribute('d', 'M56 68 Q70 82 84 68'); teeth.setAttribute('opacity', '.8'); teeth.setAttribute('d', 'M60 73 L64 73 L68 73 L72 73 L76 73 L80 73'); bL.setAttribute('d', 'M45 40 Q52 34 66 40'); bR.setAttribute('d', 'M74 40 Q88 34 95 40'); }
-    if (state === 'epic') { mouth.setAttribute('d', 'M54 66 Q70 86 86 66'); teeth.setAttribute('opacity', '1'); teeth.setAttribute('d', 'M58 72 L62 72 L66 72 L70 72 L74 72 L78 72 L82 72'); bL.setAttribute('d', 'M46 38 Q52 31 66 38'); bR.setAttribute('d', 'M74 38 Q88 31 94 38'); }
+    if (mood === 'idle') { mouth.setAttribute('d', 'M58 70 Q70 77 82 70'); teeth.setAttribute('opacity', '0'); bL.setAttribute('d', 'M45 42 Q52 36 66 41'); bR.setAttribute('d', 'M74 41 Q88 36 95 42'); }
+    if (mood === 'spin') { mouth.setAttribute('d', 'M58 69 Q70 79 82 69'); teeth.setAttribute('opacity', '0'); bL.setAttribute('d', 'M45 40 Q52 34 66 39'); bR.setAttribute('d', 'M74 39 Q88 34 95 40'); }
+    if (mood === 'look') { mouth.setAttribute('d', 'M58 71 Q70 74 82 71'); teeth.setAttribute('opacity', '0'); bL.setAttribute('d', 'M45 39 Q52 33 66 38'); bR.setAttribute('d', 'M74 38 Q88 33 95 39'); }
+    if (mood === 'nod' || mood === 'win') { mouth.setAttribute('d', 'M56 68 Q70 82 84 68'); teeth.setAttribute('opacity', '.8'); teeth.setAttribute('d', 'M60 73 L64 73 L68 73 L72 73 L76 73 L80 73'); bL.setAttribute('d', 'M45 40 Q52 34 66 40'); bR.setAttribute('d', 'M74 40 Q88 34 95 40'); }
+    if (mood === 'epic') { mouth.setAttribute('d', 'M54 66 Q70 86 86 66'); teeth.setAttribute('opacity', '1'); teeth.setAttribute('d', 'M58 72 L62 72 L66 72 L70 72 L74 72 L78 72 L82 72'); bL.setAttribute('d', 'M46 38 Q52 31 66 38'); bR.setAttribute('d', 'M74 38 Q88 31 94 38'); }
   }
 
   // ═══ VIKING QUOTES (when no spins left) ═══
@@ -491,6 +615,8 @@ export default function WheelOfNorns() {
     if (!canSpin) { handleNoSpins(); return; }
     initAudio(); hap([25]);
     setSpinning(true);
+    setTryOn({});
+    setReelTick(0);
     setVikingState('spin');
     say('Поехали!! 🔥', 6000);
     setHint('Колесо Норн вращается...');
@@ -541,6 +667,9 @@ export default function WheelOfNorns() {
     strip.innerHTML = buildStripHTML(items);
     strip.style.transition = 'none';
     strip.style.transform = `translateY(${ITEM_H}px)`;
+    reelItemsRef.current = items;
+    reelRef.current?.setItems(items);
+    reelRef.current?.setOffset(ITEM_H);
 
     const targetY = -(winIndex * ITEM_H) + ITEM_H * ((VISIBLE - 1) / 2);
     const startY = ITEM_H;
@@ -560,6 +689,7 @@ export default function WheelOfNorns() {
       const progress = Math.min(getProgress(Math.min(elapsed, TOTAL)), 1);
       const currentY = startY + (targetY - startY) * progress;
       strip.style.transform = `translateY(${currentY}px)`;
+      reelRef.current?.setOffset(currentY);
 
       const phase = elapsed < ACCEL ? 'accel' : elapsed < ACCEL + CRUISE ? 'cruise' : 'decel';
       const decelProgress = phase === 'decel' ? (elapsed - ACCEL - CRUISE) / DECEL : 0;
@@ -571,16 +701,17 @@ export default function WheelOfNorns() {
         const minInterval = phase === 'cruise' ? 30 : phase === 'accel' ? 60 : 80;
         if (now - lastTickTime > minInterval) {
           lastTickTime = now;
+          setReelTick((n) => n + 1);
           if (phase === 'decel') {
             const freq = 400 + 200 * (1 - decelProgress);
             tick(freq);
             hap([8 + Math.floor(decelProgress * 15)]); // Progressive haptic
-            // BONUS: Viking anticipation on last 3 ticks
-            if (decelProgress > 0.85 && springState.current.state !== 'epic') {
-              setVikingState('epic'); say('Ну давай... 😱', 3000);
-            } else if (decelProgress > 0.7 && springState.current.state !== 'epic') {
-              setVikingState('epic'); say('Ну давай... давай!! 😱', 3000);
-            } else if (decelProgress > 0.4 && decelProgress <= 0.7 && springState.current.state === 'spin') {
+            // Near-miss lean → then peak tension
+            if (decelProgress > 0.85) {
+              setVikingState('look'); say('Ну давай... 😱', 3000);
+            } else if (decelProgress > 0.55 && springState.current.state !== 'look') {
+              setVikingState('look'); say('Ну давай... давай!! 😱', 3000);
+            } else if (decelProgress > 0.35 && decelProgress <= 0.55 && springState.current.state === 'spin') {
               say('Что выпадет?! 👀', 2000);
             }
           } else {
@@ -590,13 +721,21 @@ export default function WheelOfNorns() {
         }
       }
 
-      // Drum blur
-      if (phase === 'cruise') strip.style.filter = 'blur(0.5px)';
-      else if (phase === 'decel' && decelProgress > 0.3) strip.style.filter = 'none';
-      else strip.style.filter = `blur(${phase === 'accel' ? 0.3 : 0.5}px)`;
+      // Drum motion — keep prizes readable, no smear
+      if (phase === 'cruise') strip.style.filter = 'none';
+      else strip.style.filter = 'none';
 
       if (elapsed < TOTAL) requestAnimationFrame(frame);
-      else { strip.style.filter = 'none'; onWin(prize); }
+      else {
+        strip.style.filter = 'none';
+        strip.style.transition = 'transform 0.32s cubic-bezier(.22,1.55,.36,1)';
+        strip.style.transform = `translateY(${targetY - 10}px)`;
+        setTimeout(() => {
+          strip.style.transform = `translateY(${targetY}px)`;
+          reelRef.current?.land();
+          onWin(prize);
+        }, 200);
+      }
     }
     requestAnimationFrame(frame);
   }
@@ -610,12 +749,16 @@ export default function WheelOfNorns() {
     hap(tier === 'legendary' ? [50, 30, 80, 30, 100] : [40, 20, 60]);
     winSound(tier);
     if (tier === 'legendary' || tier === 'epic') triumphFanfare(); // BONUS
+    reelRef.current?.flash(tier);
 
-    // Viking reaction
+    // Viking reaction by tier + try-on won cosmetic
+    const fitted = tryOnFromPrize(prize);
+    if (Object.keys(fitted).length) setTryOn(fitted);
+
     if (tier === 'legendary') { setVikingState('epic'); say('ЛЕГЕНДА!!! 🏆🔥⚔️', 4000); }
     else if (tier === 'epic') { setVikingState('epic'); say('ЭПИК!! ВАЛЬХАЛЛА! 💜', 3000); }
     else if (tier === 'rare') { setVikingState('win'); say('Неплохо, воин! 💪', 2500); }
-    else { setVikingState('win'); say('Skál! 🍻', 2000); }
+    else { setVikingState('nod'); say('Skál! 🍻', 2000); }
 
     // FX flash
     if (fxRef.current) {
@@ -652,6 +795,7 @@ export default function WheelOfNorns() {
     setShowReward(false);
     hap([12]);
     setVikingState('idle');
+    setTryOn({});
     // Check remaining spins
     loadSpinStatus();
     if (spinsLeft && spinsLeft.total <= 1) {
@@ -664,6 +808,26 @@ export default function WheelOfNorns() {
       const items = []; for (let i = 0; i < 5; i++) items.push(randomPrize(prizesPool));
       stripRef.current.innerHTML = buildStripHTML(items);
       stripRef.current.style.transform = `translateY(${-ITEM_H + ITEM_H * ((VISIBLE - 1) / 2)}px)`;
+      reelItemsRef.current = items;
+      reelRef.current?.setItems(items);
+      reelRef.current?.setOffset(-ITEM_H + ITEM_H * ((VISIBLE - 1) / 2));
+    }
+  }
+
+  async function equipWon() {
+    if (!wonPrize?.inventory_id || equipping) return;
+    setEquipping(true);
+    try {
+      await fieldApi.post(`/gamification/inventory/${wonPrize.inventory_id}/equip`, {});
+      hap([20, 10, 20]);
+      say('Надето! ⚔️', 2000);
+      setTryOn({});
+      loadMeAvatar();
+      setWonPrize((p) => (p ? { ...p, can_equip: false, equipped: true } : p));
+    } catch (err) {
+      setHint(err.message || 'Не удалось надеть');
+    } finally {
+      setEquipping(false);
     }
   }
 
@@ -720,6 +884,8 @@ export default function WheelOfNorns() {
           </div>
         </div>
 
+        <NornsPauseStrip style={{ marginTop: 8 }} />
+
         {/* LEVEL */}
         <div className="wn-lvl">
           <div className="wn-lvl-badge">LV {level}</div>
@@ -760,9 +926,29 @@ export default function WheelOfNorns() {
         )}
 
         {/* VIKING */}
-        <div className="wn-viking-area">
-          <div className="wn-viking">
-            <svg viewBox="0 0 140 145" overflow="visible">
+        <div className={`wn-viking-area${vikingMood !== 'idle' ? ' engaged' : ''}`}>
+          <div className="wn-viking" ref={vikingWrapRef}>
+            {use3d && avatarReady ? (
+              <div className={`wn-viking-3d mood-${vikingMood}`}>
+                <VikingAvatar3D
+                  key={avatarMountKey}
+                  assets={meAssets}
+                  cosmetics={meCosmetics}
+                  overrides={tryOn}
+                  level={level}
+                  size={160}
+                  interactive={false}
+                  mood={vikingMood}
+                  tick={reelTick}
+                  transparentBg
+                  heroPunch={vikingMood === 'win' || vikingMood === 'epic' || vikingMood === 'nod'}
+                  onFail={onAvatarFail}
+                />
+              </div>
+            ) : use3d && !avatarReady ? (
+              <div className="wn-viking-3d" style={{ opacity: 0.35 }} />
+            ) : (
+              <svg viewBox="0 0 140 145" overflow="visible">
               <defs>
                 <linearGradient id="wn-hlm" x1="70" y1="15" x2="70" y2="55" gradientUnits="userSpaceOnUse"><stop offset="0%" stopColor="rgba(255,255,255,.25)" /><stop offset="100%" stopColor="transparent" /></linearGradient>
                 <linearGradient id="wn-armG" x1="70" y1="85" x2="70" y2="130" gradientUnits="userSpaceOnUse"><stop offset="0%" stopColor="rgba(255,255,255,.1)" /><stop offset="100%" stopColor="transparent" /></linearGradient>
@@ -905,13 +1091,29 @@ export default function WheelOfNorns() {
                 <circle cx="115" cy="128" r="1.5" fill="#5C2E10" /><circle cx="112" cy="129" r="1.5" fill="#5C2E10" />
               </g>
             </svg>
+            )}
             <div ref={bubbleRef} className="wn-bubble">Крути, воин! ⚔️</div>
+          </div>
+          <div className="wn-rank-badge" style={{ color: rank.color, borderColor: `${rank.color}55` }}>
+            <span className="wn-rank-rune">{rank.rune}</span>
+            <span>{rank.title}</span>
+            <span style={{ opacity: 0.55, fontWeight: 600 }}>· ур. {level}</span>
           </div>
         </div>
 
         {/* DRUM */}
         <div className="wn-wheel">
-          <div className="wn-drum-wrap">
+          <div className={`wn-drum-wrap${reel3d ? ' wn-has3d' : ''}`}>
+            {reel3d && (
+              <WheelReel3D
+                ref={reelRef}
+                onReady={() => {
+                  setReel3d(true);
+                  reelRef.current?.setItems(reelItemsRef.current);
+                }}
+                onFail={() => setReel3d(false)}
+              />
+            )}
             <div className="wn-frame" />
             <div className="wn-viewport">
               <div className="wn-vp-top" /><div className="wn-vp-bot" />
@@ -966,14 +1168,28 @@ export default function WheelOfNorns() {
         <div className="wn-loot">
           <div className="wn-loot-h">Возможные награды</div>
           <div className="wn-loot-row">
-            <div className="wn-lc"><span className="wn-lc-i">🍜</span><span className="wn-lc-n">Еда</span></div>
-            <div className="wn-lc rar"><span className="wn-lc-i">👕</span><span className="wn-lc-n">Мерч</span></div>
-            <div className="wn-lc rar"><span className="wn-lc-i">⭐</span><span className="wn-lc-n">Привилегии</span></div>
-            <div className="wn-lc epc"><span className="wn-lc-i">💎</span><span className="wn-lc-n">Цифровое</span></div>
-            <div className="wn-lc leg"><span className="wn-lc-i">🧥</span><span className="wn-lc-n">Куртка</span></div>
+            {[
+              { name: 'Руны', tier: 'common', label: 'Руны' },
+              { name: 'XP', tier: 'rare', label: 'XP' },
+              { name: 'Шлем', tier: 'rare', label: 'Облик' },
+              { name: 'Рамка', tier: 'epic', label: 'Рамки' },
+              { name: 'Множ. ×2', tier: 'legendary', label: 'Бусты' },
+            ].map((p) => (
+              <div key={p.label} className={`wn-lc ${p.tier === 'legendary' ? 'leg' : p.tier === 'epic' ? 'epc' : p.tier === 'rare' ? 'rar' : ''}`}>
+                <span className="wn-lc-i" style={{ fontSize: 0 }} dangerouslySetInnerHTML={{ __html: prizeIconHtml(p, 22) }} />
+                <span className="wn-lc-n">{p.label}</span>
+              </div>
+            ))}
           </div>
         </div>
       </div>
+
+      <NornsPauseModal
+        open={pauseModalOpen}
+        title={PAUSE_FULL.title}
+        body={PAUSE_FULL.body}
+        onClose={() => { markPauseModalSeen(); setPauseModalOpen(false); }}
+      />
 
       {/* REWARD POPUP */}
       <div className={`wn-ov ${showReward ? 'wn-ov-on' : ''}`} onClick={claim} />
@@ -983,10 +1199,11 @@ export default function WheelOfNorns() {
             <div className="wn-rw-handle" />
             <div className="wn-rw-icon">
               <div className={`wn-rw-glow ${wonPrize.tier}`} />
-              {wonPrize.icon_svg
-                ? <span className="wn-rw-emoji" style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 0, lineHeight: '110px' }}
-                    dangerouslySetInnerHTML={{ __html: wonPrize.icon_svg.replace(/(<svg[^>]*)\s+(width|height)="[^"]*"/g, '$1').replace(/<svg/, '<svg width="72" height="72"') }} />
-                : <div className="wn-rw-emoji">{wonPrize.icon}</div>}
+              <div
+                className="wn-rw-emoji"
+                style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 0, lineHeight: '110px' }}
+                dangerouslySetInnerHTML={{ __html: prizeIconHtml(wonPrize, 72) }}
+              />
             </div>
             <div style={{ textAlign: 'center' }}>
               <div className={`wn-rw-tag ${wonPrize.tier}`}>
@@ -995,7 +1212,22 @@ export default function WheelOfNorns() {
               <div className="wn-rw-name">{wonPrize.name}</div>
               <div className="wn-rw-desc">{wonPrize.description || wonPrize.desc}</div>
               <div className={`wn-rw-val ${wonPrize.tier}`}>{wonPrize.value ? `+${wonPrize.value}` : '✓ Получено!'}</div>
-              <button className={`wn-rw-btn ${wonPrize.tier}`} onClick={claim}>Забрать добычу!</button>
+              <div className="wn-rw-actions">
+                {wonPrize.can_equip && !wonPrize.equipped && (
+                  <button
+                    type="button"
+                    className="wn-rw-equip"
+                    disabled={equipping}
+                    onClick={(e) => { e.stopPropagation(); equipWon(); }}
+                  >
+                    {equipping ? 'Надеваем…' : 'Надеть на воина'}
+                  </button>
+                )}
+                {wonPrize.equipped && (
+                  <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--gold)', marginBottom: 4 }}>✓ Уже на воине</div>
+                )}
+                <button className={`wn-rw-btn ${wonPrize.tier}`} onClick={claim}>Забрать добычу!</button>
+              </div>
             </div>
           </div>
         )}

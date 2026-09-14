@@ -1,0 +1,155 @@
+{
+  "asset": {
+    "generator": "ASGARD extract_kaykit_helmets",
+    "version": "2.0"
+  },
+  "scene": 0,
+  "scenes": [
+    {
+      "name": "Scene",
+      "nodes": [
+        0
+      ]
+    }
+  ],
+  "nodes": [
+    {
+      "mesh": 0,
+      "name": "hat_skel_mage",
+      "translation": [
+        0.000286102294921875,
+        0.5426742468974732,
+        -1.3597309589385986e-7
+      ],
+      "rotation": [
+        -7.85025605384411e-37,
+        -7.1054265105680546e-15,
+        1.1048254461819734e-22,
+        1
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    }
+  ],
+  "materials": [
+    {
+      "doubleSided": true,
+      "name": "skeleton_texture",
+      "pbrMetallicRoughness": {
+        "baseColorTexture": {
+          "index": 0
+        },
+        "metallicFactor": 0,
+        "roughnessFactor": 0.5
+      }
+    }
+  ],
+  "meshes": [
+    {
+      "name": "hat_skel_mage",
+      "primitives": [
+        {
+          "attributes": {
+            "POSITION": 0,
+            "NORMAL": 1,
+            "TEXCOORD_0": 2
+          },
+          "indices": 3,
+          "material": 0
+        }
+      ]
+    }
+  ],
+  "textures": [
+    {
+      "sampler": 0,
+      "source": 0
+    }
+  ],
+  "images": [
+    {
+      "mimeType": "image/png",
+      "name": "skeleton_texture",
+      "uri": "skeleton_texture.png"
+    }
+  ],
+  "samplers": [
+    {
+      "magFilter": 9729,
+      "minFilter": 9987,
+      "wrapS": 10497,
+      "wrapT": 10497
+    }
+  ],
+  "accessors": [
+    {
+      "bufferView": 0,
+      "componentType": 5126,
+      "count": 340,
+      "type": "VEC3",
+      "max": [
+        0.8761310577392578,
+        0.8461285829544067,
+        0.8869861364364624
+      ],
+      "min": [
+        -0.9136902689933777,
+        -0.42223477363586426,
+        -0.8483182787895203
+      ]
+    },
+    {
+      "bufferView": 1,
+      "componentType": 5126,
+      "count": 340,
+      "type": "VEC3"
+    },
+    {
+      "bufferView": 2,
+      "componentType": 5126,
+      "count": 340,
+      "type": "VEC2"
+    },
+    {
+      "bufferView": 3,
+      "componentType": 5123,
+      "count": 924,
+      "type": "SCALAR"
+    }
+  ],
+  "bufferViews": [
+    {
+      "buffer": 0,
+      "byteOffset": 0,
+      "byteLength": 4080,
+      "target": 34962
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 4080,
+      "byteLength": 4080,
+      "target": 34962
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 8160,
+      "byteLength": 2720,
+      "target": 34962
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 10880,
+      "byteLength": 1848,
+      "target": 34963
+    }
+  ],
+  "buffers": [
+    {
+      "byteLength": 12728,
+      "uri": "hat_skel_mage.bin"
+    }
+  ]
+}
