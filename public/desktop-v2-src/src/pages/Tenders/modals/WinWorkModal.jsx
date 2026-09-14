@@ -4,9 +4,12 @@
 import { useState } from 'react';
 import { Btn } from '@/modals/parts';
 import { toast } from '@/modals/Notifications';
+import { useModal } from '@/modals';
 import { createRegistryWork } from '../api';
+import { openBaseRatesModal } from '../../PmWorks/modals/FieldTab/tabs/Crew/BaseRatesModal';
 
 export default function WinWorkModal({ tender, pms = [], onClose, onDone }) {
+  const { open } = useModal();
   const [pmId, setPmId] = useState(tender?.responsible_pm_id || '');
   const [busy, setBusy] = useState(false);
 
@@ -15,10 +18,17 @@ export default function WinWorkModal({ tender, pms = [], onClose, onDone }) {
   const submit = async () => {
     setBusy(true);
     try {
-      await createRegistryWork(tender.id, Number(pmId));
+      const res = await createRegistryWork(tender.id, Number(pmId));
       toast('Работа создана', 'ok');
       onDone?.();
       onClose?.();
+      const work = res?.work;
+      if (work?.id) {
+        openBaseRatesModal(open, {
+          workId: work.id,
+          workTitle: work.work_title || work.customer_name || tender.customer_name
+        });
+      }
     } catch (e) {
       toast(e.message || 'Ошибка', 'err');
     } finally {

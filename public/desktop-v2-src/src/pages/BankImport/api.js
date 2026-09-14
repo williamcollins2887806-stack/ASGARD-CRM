@@ -7,6 +7,8 @@
  */
 import { api } from '@/api/client';
 
+export { formatMoney as fmtMoney, formatMoneyShort as fmtMoneyShort } from '@/lib/money';
+
 /* ── Справочники статей (для UI label/value) ────────────────────────── */
 export const EXPENSE_ARTICLES = [
   { value: 'fot',          label: 'ФОТ' },
@@ -60,10 +62,6 @@ export const MATCH_FIELDS = [
 ];
 
 /* ── Helpers ────────────────────────────────────────────────────────── */
-export const fmtMoney = (v) => {
-  const n = Math.round(Number(v || 0));
-  return n.toLocaleString('ru-RU') + ' ₽';
-};
 export const fmtDate = (s) => {
   if (!s) return '—';
   try { return new Date(s).toLocaleDateString('ru-RU'); } catch { return s; }

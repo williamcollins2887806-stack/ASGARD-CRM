@@ -12,6 +12,9 @@
  */
 import { api } from '@/api/client';
 
+export { formatMoney as fmtMoney, formatMoneyShort as fmtMoneyShort } from '@/lib/money';
+export { formatMoneyShort as moneyShort } from '@/lib/money';
+
 export const MONTHS_SHORT = ['Янв', 'Фев', 'Мар', 'Апр', 'Май', 'Июн', 'Июл', 'Авг', 'Сен', 'Окт', 'Ноя', 'Дек'];
 export const MONTHS_FULL  = ['Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь', 'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь'];
 
@@ -130,18 +133,3 @@ export function collectData(year, { works, workExpenses, officeExpenses }) {
 
 /* ─── Форматирование ─────────────────────────────────────────────────── */
 
-export function fmtMoney(n) {
-  if (!Number.isFinite(+n) || n === 0) return '0 ₽';
-  return new Intl.NumberFormat('ru-RU').format(Math.round(+n)) + ' ₽';
-}
-
-export function moneyShort(x) {
-  if (x === null || x === undefined || x === '') return '0';
-  const n = Math.abs(Number(x));
-  if (!Number.isFinite(n)) return '0';
-  const sign = Number(x) < 0 ? '−' : '';
-  if (n >= 1e9) return sign + (n / 1e9).toFixed(1).replace('.0', '') + ' млрд';
-  if (n >= 1e6) return sign + (n / 1e6).toFixed(1).replace('.0', '') + ' млн';
-  if (n >= 1e3) return sign + (n / 1e3).toFixed(0) + ' тыс';
-  return sign + n.toFixed(0);
-}

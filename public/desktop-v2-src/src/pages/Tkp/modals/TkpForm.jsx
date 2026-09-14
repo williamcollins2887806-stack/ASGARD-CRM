@@ -18,6 +18,7 @@ import {
   createTkp, updateTkp, loadTkp, customerByInn, lookupCustomers, mimirSuggest,
   previewTkpPdf, calcTotals, fmtMoney, VAT_PCT, PAYMENT_PRESETS
 } from '../api';
+import { PolishTextSheet } from './PolishTextSheet';
 import '../tkp.css';
 
 // ── Auto-save черновика ТКП (vanilla паттерн как у TenderEditor) ─────────────
@@ -80,7 +81,7 @@ const EMPTY_FORM = {
 };
 
 export function TkpFormModal({ editId, prefill }) {
-  const { close } = useModal();
+  const { close, open } = useModal();
   const { user } = useAuth();
   const isNew = !editId;
   const draftKey = useMemo(() => (isNew ? tkpDraftKey(user?.id) : null), [isNew, user?.id]);
@@ -310,6 +311,7 @@ export function TkpFormModal({ editId, prefill }) {
     try {
       const payload = {
         ...form,
+        kp_variant: 'classic',
         status: asReady ? 'ready' : 'draft',
         total_amount: totals.total,
         netto_amount: totals.netto,
@@ -398,10 +400,13 @@ export function TkpFormModal({ editId, prefill }) {
                 { value: 'other',    label: 'Другое' }
               ]} />
             </Field>
-            <Field label="Описание работ" help="Можно сгенерировать через Мимира">
+            <Field label="Описание работ" help="Можно сгенерировать через Мимира или переписать ✨">
               <div className="tkp-ai-wrap">
                 <TextareaInput value={form.description} onChange={(v) => set('description', v)} minRows={3} maxRows={8} />
-                <div className="tkp-ai-btn">
+                <div className="tkp-ai-btn" style={{ display: 'flex', gap: 4 }}>
+                  <Btn size="sm" variant="ghost" disabled={aiBusy} onClick={() => open(<PolishTextSheet text={form.description} fieldLabel="Описание работ" onApply={(v) => set('description', v)} />)} title="Мимир — переписать">
+                    ✨
+                  </Btn>
                   <Btn size="sm" variant="ghost" disabled={aiBusy} onClick={onAiDescription} title="Мимир — сгенерировать описание">
                     {aiBusy ? '⏳' : '🧙'}
                   </Btn>
@@ -514,7 +519,7 @@ export function TkpFormModal({ editId, prefill }) {
       <MFoot align="spread">
         <Btn onClick={close}>Отмена</Btn>
         <div className="u-flex gap-6">
-          <Btn variant="ghost" disabled={busy} onClick={onPreviewPdf}>👁 Предпросмотр PDF</Btn>
+          <Btn variant="ghost" disabled={busy} onClick={onPreviewPdf}>Предпросмотр PDF</Btn>
           <Btn variant="ghost" disabled={busy} onClick={() => save(false)}>💾 Сохранить черновик</Btn>
           <Btn variant="primary" disabled={busy} onClick={() => save(true)}>✓ Готово</Btn>
         </div>

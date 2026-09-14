@@ -3,7 +3,7 @@
  *   pm        → /my-timesheet            (PM, HEAD_PM)
  *   warehouse → /timesheet-warehouse     (WAREHOUSE)
  *   medical   → /timesheet-medical       (TO, HEAD_TO)
- *   travel    → /timesheet-travel        (OFFICE_MANAGER)
+ *   travel    → /timesheet-travel        (OFFICE_MANAGER, HEAD_TO)
  *   global    → /timesheet               (DIRECTOR_*, ADMIN, BUH, HR, HR_MANAGER)
  *
  * Контракт: TIMESHEET_V2_CONTRACT.md.
@@ -20,10 +20,11 @@
  */
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useAuth } from '@/api/useAuth';
-import { useModal } from '@/modals';
+import { useModal, ConfirmModal } from '@/modals';
 import { toast } from '@/modals/Notifications';
 import { TopActionsBar } from '@/blocks/Blocks';
 import AccessDenied from '@/blocks/AccessDenied';
+import { Btn, MCard, MHead, MBody, MFoot } from '@/modals/parts';
 
 import { api } from '@/api/client';
 import {
@@ -31,7 +32,8 @@ import {
   canLockScope, canAnyUnlock,
   getMonth, putEntry, lockMonth, unlockMonth, getLocks, getClosureStatus, exportXlsx,
   getRoster,
-  monthLabel
+  monthLabel,
+  periodLockInfo, pmLockOverrideConfirmMessage
 } from './api';
 import Toolbar from './Toolbar';
 import TimesheetGrid from './TimesheetGrid';
@@ -203,7 +205,7 @@ export default function TimesheetPage({ mode: modeProp }) {
   const isLocked = !!myLock;
   const canEdit = hasAccess && !isLocked;
   const canLockMy = hasAccess && canLockScope(user?.role, meta.lockScope);
-  const canExport = hasAccess && mode === 'global';
+  const canExport = hasAccess && (mode === 'global' || mode === 'medical' || mode === 'travel');
   // FIX 3 — «+ Рабочего» для всех 4 не-РП ролей + global, кроме read-only
   const canAddWorker = hasAccess && canEdit && MODES_WITH_ADD.includes(mode);
 
@@ -246,15 +248,40 @@ export default function TimesheetPage({ mode: modeProp }) {
     }
   }, [year, month]);
 
+  const onWorkFilterApply = useCallback(async (workId, title) => {
+    setRosterLoading(true);
+    try {
+      const r = await getRoster(year, month, { work_id: workId });
+      setProjectFilter({
+        work_id: workId,
+        query: title,
+        title,
+        work_matches: r.work_matches || [{ work_id: workId, work_title: title }],
+        employees: r.employees || []
+      });
+      if (!(r.employees || []).length) toast.warn('По этому объекту никого не нашли');
+    } catch (e) {
+      toast.error('Фильтр: ' + (e?.serverMsg || e?.message || e));
+    } finally {
+      setRosterLoading(false);
+    }
+  }, [year, month]);
+
   const onProjectFilterClear = useCallback(() => setProjectFilter(null), []);
 
-  const onExportClick = async () => {
-    try {
-      await exportXlsx(year, month);
-      toast.success('Файл скачивается');
-    } catch (e) {
-      toast.error('Не удалось скачать: ' + (e?.serverMsg || e?.message || e));
-    }
+  const onExportClick = () => {
+    openWithPause(
+      <ExportPerDiemModal
+        onGo={async (includePerDiem) => {
+          try {
+            await exportXlsx(year, month, { include_per_diem: includePerDiem });
+            toast.success(includePerDiem ? 'Excel со суточными' : 'Excel без суточных');
+          } catch (e) {
+            toast.error('Не удалось скачать: ' + (e?.serverMsg || e?.message || e));
+          }
+        }}
+      />
+    );
   };
 
   const openWithPause = useCallback((node) => {
@@ -333,13 +360,82 @@ export default function TimesheetPage({ mode: modeProp }) {
 
   /* ─── Entry change (callback из TimesheetGrid) ─── */
   const onEntryChange = useCallback(async (payload) => {
-    try {
-      await putEntry(payload);
-      toast.success(payload.delete ? 'Отметка удалена' : 'Отметка сохранена');
+    const save = async (p) => {
+      await putEntry(p);
+      toast.success(p.delete ? 'Отметка удалена' : 'Отметка сохранена');
       await loadAll(true);
+    };
+
+    try {
+      await save(payload);
     } catch (e) {
+      if (e?.status === 409 && e?.data?.requires_confirmation && !payload.confirm_overwrite) {
+        await new Promise((resolve, reject) => {
+          openWithPause(
+            <ConfirmModal
+              title="На дату уже есть отметка"
+              tone="warn"
+              message={e?.data?.message || e?.message || 'Перезаписать существующую отметку?'}
+              okText="Да, перезаписать"
+              cancelText="Отмена"
+              onConfirm={async () => {
+                try {
+                  await save({ ...payload, confirm_overwrite: true });
+                  resolve();
+                } catch (e2) {
+                  toast.error('Не удалось сохранить: ' + (e2?.serverMsg || e2?.message || e2));
+                  throw e2;
+                }
+              }}
+              onCancel={() => reject(Object.assign(new Error('cancelled'), { cancelled: true }))}
+            />
+          );
+        }).catch((err) => {
+          if (err?.cancelled) {
+            throw Object.assign(new Error('cancelled'), { cancelled: true });
+          }
+          throw err;
+        });
+        return;
+      }
       if (e?.status === 423) {
-        toast.warn('Месяц закрыт — изменение запрещено');
+        const info = periodLockInfo(e);
+        if (info.overridable && !payload.force_pm_lock) {
+          await new Promise((resolve, reject) => {
+            openWithPause(
+              <ConfirmModal
+                title="Период закрыт у РП"
+                tone="warn"
+                message={pmLockOverrideConfirmMessage(info, payload)}
+                okText="Да, изменить"
+                cancelText="Отмена"
+                onConfirm={async () => {
+                  try {
+                    await save({ ...payload, force_pm_lock: true });
+                    resolve();
+                  } catch (e2) {
+                    if (e2?.status === 423) {
+                      toast.warn(periodLockInfo(e2).message);
+                    } else {
+                      toast.error('Не удалось сохранить: ' + (e2?.serverMsg || e2?.message || e2));
+                    }
+                    throw e2;
+                  }
+                }}
+                onCancel={() => reject(Object.assign(new Error('cancelled'), { cancelled: true }))}
+              />
+            );
+          }).catch((err) => {
+            if (err?.cancelled) {
+              const cancelErr = Object.assign(new Error('cancelled'), { cancelled: true });
+              throw cancelErr;
+            }
+            throw err;
+          });
+          return;
+        }
+        toast.warn(info.message);
+        throw e;
       } else if (e?.status === 403) {
         toast.warn('Нет прав на эту отметку');
       } else if (e?.status === 400 && e?.serverMsg === 'work_id_required') {
@@ -351,7 +447,7 @@ export default function TimesheetPage({ mode: modeProp }) {
       }
       throw e;
     }
-  }, [loadAll]);
+  }, [loadAll, openWithPause]);
 
   // FIX 13 — позволяем дочерним компонентам сигналить об открытии/закрытии popover
   const onPopoverChange = useCallback((open) => {
@@ -398,6 +494,7 @@ export default function TimesheetPage({ mode: modeProp }) {
         projectFilter={projectFilter}
         onProjectFilterClear={onProjectFilterClear}
         onProjectFilterApply={onProjectFilterApply}
+        onWorkFilterApply={onWorkFilterApply}
         rosterLoading={rosterLoading}
       />
 
@@ -470,5 +567,29 @@ export default function TimesheetPage({ mode: modeProp }) {
         </>
       )}
     </div>
+  );
+}
+
+/** Модалка опций Excel: суточные вкл/выкл */
+function ExportPerDiemModal({ onGo }) {
+  const { close } = useModal();
+  const [pd, setPd] = useState(true);
+  return (
+    <MCard className="frame-inside" style={{ maxWidth: 420 }}>
+      <MHead icon="📥" title="Выгрузка табеля Excel" accent="gold" onClose={close} />
+      <MBody>
+        <p style={{ fontSize: 13, color: 'var(--t2)', margin: '0 0 12px', lineHeight: 1.45 }}>
+          В ячейках — только баллы, цвет = тип смены. Легенда под таблицей на одном листе.
+        </p>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 14, cursor: 'pointer' }}>
+          <input type="checkbox" checked={pd} onChange={(e) => setPd(e.target.checked)} />
+          Учитывать суточные
+        </label>
+      </MBody>
+      <MFoot>
+        <Btn variant="ghost" onClick={close}>Отмена</Btn>
+        <Btn variant="primary" onClick={() => { close(); onGo?.(pd); }}>Скачать Excel</Btn>
+      </MFoot>
+    </MCard>
   );
 }

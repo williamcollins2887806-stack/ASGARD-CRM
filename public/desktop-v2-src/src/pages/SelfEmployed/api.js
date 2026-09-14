@@ -17,6 +17,8 @@
  */
 import { api } from '@/api/client';
 
+export { formatMoney as fmtMoney, formatMoneyShort as fmtMoneyShort } from '@/lib/money';
+
 export const NPD_STATUSES = [
   { value: 'active',    label: 'Активен',     tone: 'approved' },
   { value: 'suspended', label: 'Приостановлен', tone: 'question' },
@@ -58,13 +60,6 @@ export function createSelfEmployed(payload) {
 
 export function updateSelfEmployed(id, payload) {
   return api(`/api/payroll/self-employed/${id}`, { method: 'PUT', body: payload });
-}
-
-export function fmtMoney(n) {
-  if (n === null || n === undefined || n === '') return '—';
-  const num = Number(n);
-  if (!Number.isFinite(num)) return '—';
-  return new Intl.NumberFormat('ru-RU').format(Math.round(num)) + ' ₽';
 }
 
 export function fmtDate(s) {

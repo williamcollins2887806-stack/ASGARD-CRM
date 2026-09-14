@@ -8,6 +8,7 @@ function mapContact(c) {
     name:       String(c?.name || ''),
     position:   String(c?.position || c?.role || ''),
     phone:      String(c?.phone || ''),
+    phone2:     String(c?.phone2 || ''),
     email:      String(c?.email || ''),
     is_primary: !!c?.is_primary
   };
@@ -42,6 +43,7 @@ export function initialContacts(customer) {
       name:       String(customer.contact_person).trim(),
       position:   '',
       phone:      String(customer.phone || ''),
+      phone2:     '',
       email:      String(customer.email || ''),
       is_primary: true
     }];
@@ -56,10 +58,11 @@ export function cleanContacts(contacts) {
       name:       (c.name || '').trim(),
       position:   (c.position || '').trim(),
       phone:      (c.phone || '').trim(),
+      phone2:     (c.phone2 || '').trim(),
       email:      (c.email || '').trim(),
       is_primary: !!c.is_primary
     }))
-    .filter((c) => c.name || c.phone || c.email);
+    .filter((c) => c.name || c.phone || c.phone2 || c.email);
 
   let primaryFound = false;
   for (const c of cleaned) {
@@ -77,13 +80,16 @@ export function legacyContactPerson(contacts) {
   return primary ? [primary.name, primary.position].filter(Boolean).join(' · ') : '';
 }
 
-/** Payload для PUT: contacts + contact_person. */
+/** Payload для PUT: contacts + contact_person + legacy phone (только phone, не phone2). */
 export function contactsPayload(contacts) {
   const cleaned = cleanContacts(contacts);
-  return {
+  const primary = cleaned.find((c) => c.is_primary) || cleaned[0];
+  const payload = {
     contacts:       cleaned,
     contact_person: legacyContactPerson(cleaned)
   };
+  if (primary?.phone) payload.phone = primary.phone;
+  return payload;
 }
 
 export function emitCustomersChanged() {

@@ -17,6 +17,8 @@
  */
 import { api } from '@/api/client';
 
+export { formatMoney as fmtMoney, formatMoneyShort as fmtMoneyShort } from '@/lib/money';
+
 export const CATEGORIES = [
   { key: 'rent',             label: 'Аренда офиса',         icon: '🏢' },
   { key: 'utilities',        label: 'Коммунальные',         icon: '💡' },
@@ -119,20 +121,6 @@ export function loadComments(id) {
 }
 
 /* ─── Хелперы ─── */
-
-export function fmtMoney(n) {
-  if (n === null || n === undefined || n === '') return '—';
-  const num = Number(n);
-  if (!Number.isFinite(num)) return '—';
-  return new Intl.NumberFormat('ru-RU').format(Math.round(num)) + ' ₽';
-}
-
-export function fmtMoneyShort(n) {
-  const num = Number(n) || 0;
-  if (num >= 1_000_000) return (num / 1_000_000).toFixed(1) + ' млн ₽';
-  if (num >= 1_000)     return (num / 1_000).toFixed(0) + ' тыс ₽';
-  return fmtMoney(num);
-}
 
 export function fmtDate(s) {
   if (!s) return '—';

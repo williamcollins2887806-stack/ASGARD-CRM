@@ -8,19 +8,25 @@ import { toast } from '@/modals/Notifications';
 import { useModal } from '@/modals';
 import { useAuth } from '@/api/useAuth';
 import {
-  loadRegistry, createRegistryRow, patchRegistryField, patchRegistryStatus,
-  REGISTRY_STATUSES, buildRegistryPeriodOptions, loadUsers,
-  assignRegistryCalculator, createRegistryWork, loadPmDutyCurrent, markRegistryReviewSeen
+  loadRegistry, patchRegistryField, patchRegistryStatus,
+  REGISTRY_STATUSES, loadUsers,
+  assignRegistryCalculator, createRegistryWork, loadPmDutyCurrent, markRegistryReviewSeen,
+  archiveRegistryRow
 } from './api';
 import CustomerSuggestCell from './CustomerSuggestCell';
 import RpReviewModal from './modals/RpReviewModal';
 import RegistryLossModal from './modals/RegistryLossModal';
 import RegistryDetailModal from './modals/RegistryDetailModal';
+import RegistryRowFormModal from './modals/RegistryRowFormModal';
+import TenderPeriodFilter from './TenderPeriodFilter';
+import { defaultPeriodFilter, periodFilterKey } from './periodFilterUtils';
 import {
   STATUS_CLASS, STATUS_LEGEND, SORT_COLUMNS, getRowActionState, isTestGarbage,
-  sortRegistryRows, countActionRows, formatMoney, fmtAdded, fmtRegistryDate,
-  reportModeFromRow
+  sortRegistryRows, countActionRows, formatMoney, formatSubmissionCell, fmtAdded, fmtRegistryDate,
+  reportModeFromRow, participationLabel, analysisDeadlineMeta
 } from './registryTabHelpers';
+import { suggestSubmissionPrices, VAT_DEFAULT_PCT, withVat, withoutVat, formatMoney as fmtMoney } from '@/lib/money';
+import { api } from '@/api/client';
 import './registry-tab.css';
 
 const DUTY_VIEW_ROLES = ['TO', 'HEAD_TO', 'ADMIN', 'PM', 'HEAD_PM', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV'];
@@ -41,13 +47,6 @@ function useDebouncedSave(delay = 400) {
     clearTimeout(timers.current[key]);
     timers.current[key] = setTimeout(fn, delay);
   }, [delay]);
-}
-
-function periodLabel(value, options) {
-  if (value === 'current') return 'Текущий месяц';
-  if (!value) return 'Все тендеры';
-  const hit = options.find((o) => o.value === value);
-  return hit?.label || value;
 }
 
 function statusLabel(st) {
@@ -80,12 +79,85 @@ function RegistryStatusLegend({ active, onSelect }) {
 
 function RegistryStatusModal({ row, onClose, onApply }) {
   const [next, setNext] = useState(row.registry_status || 'рассмотрение');
+  const [vatPct, setVatPct] = useState(
+    Number(row.vat_pct) > 0 ? Number(row.vat_pct) : VAT_DEFAULT_PCT
+  );
+  const suggested = suggestSubmissionPrices(row, vatPct);
+  const vatMul = 1 + vatPct / 100;
+  const [priceNoVat, setPriceNoVat] = useState(
+    suggested.exVat != null ? String(suggested.exVat) : ''
+  );
+  const [priceWithVat, setPriceWithVat] = useState(
+    suggested.withVat != null ? String(suggested.withVat) : ''
+  );
+  const [archiveReason, setArchiveReason] = useState('');
+  const [pricesTouched, setPricesTouched] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    api('/api/settings/vat_default_pct')
+      .then((res) => {
+        if (cancelled) return;
+        const v = Number(res?.value ?? res?.value_json);
+        if (!Number.isFinite(v) || v < 0 || v > 100) return;
+        setVatPct(v);
+        if (!pricesTouched) {
+          const base = suggestSubmissionPrices(row, v);
+          if (base.exVat != null) setPriceNoVat(String(base.exVat));
+          if (base.withVat != null) setPriceWithVat(String(base.withVat));
+          else if (base.exVat != null) setPriceWithVat(String(withVat(base.exVat, v)));
+        }
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [row, pricesTouched]);
+
+  const handleNoVat = (v) => {
+    setPricesTouched(true);
+    setPriceNoVat(v);
+    const n = Number(String(v).replace(/\s/g, '').replace(',', '.'));
+    if (Number.isFinite(n) && n > 0) setPriceWithVat(String(withVat(n, vatPct)));
+  };
+  const handleWithVat = (v) => {
+    setPricesTouched(true);
+    setPriceWithVat(v);
+    const n = Number(String(v).replace(/\s/g, '').replace(',', '.'));
+    if (Number.isFinite(n) && n > 0) setPriceNoVat(String(withoutVat(n, vatPct)));
+  };
+
+  const save = () => {
+    if (next === 'подались') {
+      const parseAmt = (s) => {
+        const n = Number(String(s || '').replace(/\s/g, '').replace(',', '.'));
+        return Number.isFinite(n) && n > 0 ? n : 0;
+      };
+      const finalNoVat = parseAmt(priceNoVat) || (parseAmt(priceWithVat) ? withoutVat(parseAmt(priceWithVat), vatPct) : 0);
+      const finalWithVat = parseAmt(priceWithVat) || (parseAmt(priceNoVat) ? withVat(parseAmt(priceNoVat), vatPct) : 0);
+      if (!finalNoVat && !finalWithVat) {
+        toast.warn('Укажите сумму подачи');
+        return;
+      }
+      onApply({
+        registry_status: next,
+        submission_price: finalNoVat,
+        submission_price_with_vat: finalWithVat,
+        vat_pct: vatPct
+      });
+      return;
+    }
+    if (next === 'отмена') {
+      onApply({ registry_status: next, archive_reason: archiveReason });
+      return;
+    }
+    onApply(next);
+  };
+
   return (
-    <MCard>
-      <MHead title={'Статус тендера #' + row.id} onClose={onClose} />
+    <MCard className="modal-sm">
+      <MHead icon="📌" title={'Статус тендера #' + row.id} subtitle={row.customer_name || ''} accent="gold" onClose={onClose} />
       <MBody>
-        <p className="muted" style={{ margin: '0 0 10px', fontSize: 13 }}>
-          {row.customer_name || ''} — {(row.tender_title || '').slice(0, 80)}
+        <p className="reg-status-modal-hint">
+          {(row.tender_title || '').slice(0, 120) || '—'}
         </p>
         <label>
           Статус
@@ -93,13 +165,61 @@ function RegistryStatusModal({ row, onClose, onApply }) {
             {REGISTRY_STATUSES.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
           </select>
         </label>
+        {next === 'подались' && (
+          <div className="reg-status-money">
+            <p className="reg-status-money-title">
+              С какой суммой подались? Предложена сумма из отчёта РП
+              {suggested.withVat != null ? ` (${fmtMoney(suggested.withVat)})` : ''}.
+            </p>
+            <label>
+              Без НДС, ₽
+              <input
+                className="inp"
+                type="text"
+                style={{ width: '100%', marginTop: 4 }}
+                value={priceNoVat}
+                onChange={(e) => handleNoVat(e.target.value)}
+                placeholder="можно цифры или текст-ориентир"
+              />
+            </label>
+            <label>
+              С НДС {vatPct}%, ₽
+              <input
+                className="inp"
+                type="text"
+                style={{ width: '100%', marginTop: 4 }}
+                value={priceWithVat}
+                onChange={(e) => handleWithVat(e.target.value)}
+                placeholder="можно цифры или текст-ориентир"
+              />
+            </label>
+            {priceWithVat && Number(priceWithVat) > 0 && (
+              <p className="reg-status-vat">
+                в т.ч. НДС {fmtMoney(Math.round((Number(priceWithVat) - (Number(priceNoVat) || Number(priceWithVat) / vatMul)) * 100) / 100)}
+              </p>
+            )}
+          </div>
+        )}
+        {next === 'отмена' && (
+          <label style={{ display: 'block', marginTop: 10 }}>
+            Причина отмены <span className="muted">(необязательно)</span>
+            <textarea
+              className="inp"
+              rows={2}
+              style={{ width: '100%', marginTop: 4 }}
+              value={archiveReason}
+              onChange={(e) => setArchiveReason(e.target.value)}
+              placeholder="Напр.: закупка отменена заказчиком"
+            />
+          </label>
+        )}
         <p className="muted" style={{ fontSize: 11, margin: '10px 0 0' }}>
           Отчёт РП «Подаём» → <strong>Готовим</strong>. «Подались» — когда заявку реально подали на площадке.
         </p>
       </MBody>
-      <MFoot>
+      <MFoot align="spread">
         <Btn variant="ghost" onClick={onClose}>Отмена</Btn>
-        <Btn onClick={() => onApply(next)}>Сохранить</Btn>
+        <Btn variant="primary" onClick={save}>Сохранить</Btn>
       </MFoot>
     </MCard>
   );
@@ -107,7 +227,7 @@ function RegistryStatusModal({ row, onClose, onApply }) {
 
 function ActionCell({
   row, pms, assignPm, setAssignPm, winPm, setWinPm,
-  onOpenReview, onAssignSelf, onAssignPm, onCreateWork
+  onOpenReview, onAssignSelf, onAssignPm, onCreateWork, onArchive
 }) {
   const action = getRowActionState(row);
   if (!action.needs) return <span className="muted">—</span>;
@@ -134,13 +254,18 @@ function ActionCell({
         Смотреть отчёт
       </button>
     );
-  } else if (action.type === 'draft') {
+  } else if (action.type === 'rp_reject') {
     controls = (
-      <button type="button" className="btn mini ghost" onClick={() => onOpenReview(row, false)}>
-        Открыть
-      </button>
+      <>
+        <button type="button" className="btn mini ghost" onClick={() => onOpenReview(row, true)}>
+          Открыть
+        </button>
+        <button type="button" className="btn mini reg-to-archive" onClick={() => onArchive(row)}>
+          В архив
+        </button>
+      </>
     );
-  } else if (action.type === 'analysis_assign') {
+  } else if (action.type === 'analysis_assign' || action.type === 'assign') {
     const calcName = row.calculator_user_name || row.rp_review?.calculator_name || '';
     controls = (
       <>
@@ -148,33 +273,7 @@ function ActionCell({
           Открыть
         </button>
         <button type="button" className="btn mini ghost" onClick={() => onAssignSelf(row)}>Считаю сам</button>
-        <select
-          className="inp reg-assign-pm"
-          style={{ minWidth: 120, fontSize: 11 }}
-          value={assignPm[row.id] || ''}
-          onChange={(e) => setAssignPm((p) => ({ ...p, [row.id]: e.target.value }))}
-        >
-          <option value="">РП</option>
-          {pms.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-        </select>
-        <button type="button" className="btn mini" onClick={() => onAssignPm(row)}>→</button>
         {calcName ? <span className="muted" style={{ fontSize: 11 }}>{calcName} считает</span> : null}
-      </>
-    );
-  } else if (action.type === 'assign') {
-    controls = (
-      <>
-        <button type="button" className="btn mini ghost" onClick={() => onAssignSelf(row)}>Считаю сам</button>
-        <select
-          className="inp reg-assign-pm"
-          style={{ minWidth: 120, fontSize: 11 }}
-          value={assignPm[row.id] || ''}
-          onChange={(e) => setAssignPm((p) => ({ ...p, [row.id]: e.target.value }))}
-        >
-          <option value="">РП</option>
-          {pms.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-        </select>
-        <button type="button" className="btn mini" onClick={() => onAssignPm(row)}>→</button>
       </>
     );
   } else if (action.type === 'director_wait') {
@@ -202,8 +301,11 @@ function ActionCell({
 export default function RegistryTab({
   subtab = 'registry',
   period = 'current',
+  periodFilter: periodFilterProp,
   burnOnly = false,
   onPeriodChange,
+  onPeriodFilterChange,
+  onClearBurn,
   onOpenWin,
   onRefresh
 }) {
@@ -223,7 +325,7 @@ export default function RegistryTab({
   const [winPm, setWinPm] = useState({});
   const [duty, setDuty] = useState(null);
   const debounce = useDebouncedSave();
-  const periodOptions = useMemo(() => buildRegistryPeriodOptions(), []);
+  const periodFilter = periodFilterProp || defaultPeriodFilter();
 
   useEffect(() => {
     loadUsers('PM,HEAD_PM').then(setPms).catch(() => {});
@@ -231,7 +333,7 @@ export default function RegistryTab({
 
   const refresh = useCallback(() => {
     setLoading(true);
-    const tasks = [loadRegistry({ subtab, period, burn: burnOnly, limit, q: searchQ || undefined })];
+    const tasks = [loadRegistry({ subtab, periodFilter, burn: burnOnly, limit, q: searchQ || undefined })];
     if (userCanRole(user, DUTY_VIEW_ROLES)) {
       tasks.push(loadPmDutyCurrent().then((d) => setDuty(d.duty || d)).catch(() => setDuty(null)));
     } else {
@@ -242,13 +344,12 @@ export default function RegistryTab({
         setRows(d.items || []);
         setTotal(d.total ?? (d.items || []).length);
       })
-      .catch((e) => toast('Ошибка загрузки: ' + e.message, 'err'))
+      .catch((e) => toast.error('Ошибка загрузки: ' + e.message))
       .finally(() => setLoading(false));
-  }, [subtab, period, burnOnly, limit, searchQ, user]);
+  }, [subtab, periodFilterKey(periodFilter), burnOnly, limit, searchQ, user]);
 
-  useEffect(() => {
-    const t = setTimeout(() => setSearchQ(searchInput.trim()), 300);
-    return () => clearTimeout(t);
+  const commitSearch = useCallback(() => {
+    setSearchQ(searchInput.trim());
   }, [searchInput]);
 
   useEffect(() => { refresh(); }, [refresh]);
@@ -276,21 +377,22 @@ export default function RegistryTab({
     debounce(`${id}:${field}`, () => {
       patchRegistryField(id, field, value)
         .then(() => onRefresh?.())
-        .catch((e) => toast(e.message, 'err'));
+        .catch((e) => toast.error(e.message));
     });
   };
 
   const applyStatus = (id, body) => {
-    patchRegistryStatus(id, body)
+    const payload = typeof body === 'string' ? { registry_status: body } : body;
+    patchRegistryStatus(id, payload)
       .then((d) => {
         setRows((prev) => prev.map((r) => r.id === id ? { ...r, ...d.tender } : r));
-        const st = typeof body === 'string' ? body : body.registry_status;
+        const st = payload.registry_status;
         if (st === 'выиграли') onOpenWin?.(d.tender);
-        toast('Статус: ' + statusLabel(st), 'ok');
+        toast.success('Статус: ' + statusLabel(st));
         onRefresh?.();
         refresh();
       })
-      .catch((e) => toast(e.message, 'err'));
+      .catch((e) => toast.error(e.message));
   };
 
   const openStatusModal = (row) => {
@@ -299,9 +401,10 @@ export default function RegistryTab({
         row={row}
         onClose={close}
         onApply={(next) => {
+          const body = typeof next === 'string' ? { registry_status: next } : next;
           const st = row.registry_status || 'рассмотрение';
-          if (next === st) { close(); return; }
-          if (next === 'проиграли') {
+          if (body.registry_status === st && body.registry_status !== 'подались') { close(); return; }
+          if (body.registry_status === 'проиграли') {
             close();
             modal.open(({ close: closeLoss }) => (
               <RegistryLossModal
@@ -313,7 +416,7 @@ export default function RegistryTab({
             ));
             return;
           }
-          applyStatus(row.id, next);
+          applyStatus(row.id, body);
           close();
         }}
       />
@@ -377,7 +480,34 @@ export default function RegistryTab({
 
   const openDetail = (row) => {
     modal.open(({ close }) => (
-      <RegistryDetailModal row={row} onClose={close} onRefresh={() => { refresh(); onRefresh?.(); }} />
+      <RegistryDetailModal
+        row={row}
+        onClose={close}
+        onRefresh={() => { refresh(); onRefresh?.(); }}
+        onEdit={() => {
+          close();
+          modal.open(({ close: closeEdit }) => (
+            <RegistryRowFormModal
+              row={row}
+              onClose={closeEdit}
+              onSaved={() => { refresh(); onRefresh?.(); }}
+            />
+          ));
+        }}
+      />
+    ));
+  };
+
+  const addRow = () => {
+    modal.open(({ close }) => (
+      <RegistryRowFormModal
+        onClose={close}
+        onSaved={(tender) => {
+          if (tender) setRows((prev) => [tender, ...prev]);
+          refresh();
+          onRefresh?.();
+        }}
+      />
     ));
   };
 
@@ -392,6 +522,33 @@ export default function RegistryTab({
       return (
         <button type="button" className="pill warn" onClick={() => openReview(row, true)}>
           У директора
+        </button>
+      );
+    }
+    if (rev?.director_review_status === 'rejected') {
+      return (
+        <button type="button" className="pill err" onClick={() => openReview(row, true)}>
+          ✕ Отклонено
+        </button>
+      );
+    }
+    if (rev?.director_review_status === 'approved'
+      || (rev?.is_final && rev.decision === 'submit')) {
+      return (
+        <button type="button" className="pill ok" onClick={() => openReview(row, true)}>
+          Цена согласована
+        </button>
+      );
+    }
+    if (rev?.is_final && rev.decision === 'reject') {
+      return (
+        <button
+          type="button"
+          className="pill err"
+          title="РП рекомендует не подавать"
+          onClick={() => openReview(row, true)}
+        >
+          ✕ Не подаём
         </button>
       );
     }
@@ -421,51 +578,82 @@ export default function RegistryTab({
 
   const handleAssignSelf = (row) => {
     assignRegistryCalculator(row.id, 'to').then(() => {
-      toast('Вы назначены считающим', 'ok');
+      toast.success('Вы назначены считающим');
       openReview(row, false, { mode: 'calc', forceEdit: true });
       refresh();
-    }).catch((e) => toast(e.message, 'err'));
+    }).catch((e) => toast.error(e.message));
   };
 
   const handleAssignPm = (row) => {
     const pmId = Number(assignPm[row.id]);
-    if (!pmId) return toast('Выберите РП', 'warn');
+    if (!pmId) return toast.warn('Выберите РП');
     assignRegistryCalculator(row.id, 'pm', pmId).then(() => {
-      toast('РП назначен на просчёт', 'ok');
+      toast.success('РП назначен на просчёт');
       refresh();
-    }).catch((e) => toast(e.message, 'err'));
+    }).catch((e) => toast.error(e.message));
   };
 
   const handleCreateWork = (row) => {
     const pmId = Number(winPm[row.id]);
-    if (!pmId) return toast('Выберите РП', 'err');
-    createRegistryWork(row.id, pmId).then(() => {
-      toast('Работа создана', 'ok');
+    if (!pmId) return toast.error('Выберите РП');
+    createRegistryWork(row.id, pmId).then((res) => {
+      toast.success('Работа создана');
       refresh();
       onRefresh?.();
-    }).catch((e) => toast(e.message, 'err'));
+      const work = res?.work;
+      if (work?.id) {
+        import('../PmWorks/modals/FieldTab/tabs/Crew/BaseRatesModal')
+          .then(({ openBaseRatesModal }) => {
+            openBaseRatesModal(modal.open, {
+              workId: work.id,
+              workTitle: work.work_title || work.customer_name || row.customer_name
+            });
+          })
+          .catch(() => {});
+      }
+    }).catch((e) => toast.error(e.message));
+  };
+
+  const handleArchive = (row) => {
+    const ok = window.confirm(
+      'Отправить в архив?\n\n' +
+      (row.customer_name || '') + ' — ' + ((row.tender_title || '').slice(0, 80)) +
+      '\n\nРП рекомендовал не подавать. После архива тендер уйдёт во вкладку «Архив».'
+    );
+    if (!ok) return;
+    archiveRegistryRow(row.id, 'РП: не подаём — подтверждено ТО')
+      .then(() => {
+        toast.success('Тендер в архиве');
+        refresh();
+        onRefresh?.();
+      })
+      .catch((e) => toast.error(e.message));
   };
 
   const renderRow = (row) => {
     const st = row.registry_status || 'рассмотрение';
+    const rev = row.rp_review;
     const cls = STATUS_CLASS[st] || '';
     const action = getRowActionState(row);
     const score = row.score;
     const scoreTxt = score ? `${score.win_chance_pct}% (${score.tenders_count || 0})` : '—';
-    const commentPrev = row.comment_to
-      ? String(row.comment_to).slice(0, 40) + (String(row.comment_to).length > 40 ? '…' : '')
-      : '—';
     const title = row.tender_title || '—';
     const actionCls = action.needs ? ` reg-row-needs-action reg-action-tone-${action.tone}` : '';
+    const rejectCls = (rev?.is_final && rev.decision === 'reject' && st !== 'отмена')
+      ? ' reg-row-rp-reject' : '';
     const unreadCls = row.review_unread ? ' reg-row-unread' : '';
+    const submission = formatSubmissionCell(row);
 
     return (
-      <tr key={row.id} className={`reg-row ${cls}${actionCls}${unreadCls}`} data-id={row.id}>
+      <tr key={row.id} className={`reg-row ${cls}${actionCls}${rejectCls}${unreadCls}`} data-id={row.id}>
         <td className="reg-no-cell" title={'ID: ' + row.id}>
-          <div className="reg-no-main">{row.registry_no != null ? row.registry_no : row.id}</div>
+          <div className="reg-no-main">
+            {row.review_unread ? <span className="reg-unread-dot" title="Новый отчёт" /> : null}
+            {row.registry_no != null ? row.registry_no : row.id}
+          </div>
           <div className="reg-no-sub">id {row.id}</div>
         </td>
-        <td className="reg-editable">
+        <td>
           <CustomerSuggestCell
             value={row.customer_name || ''}
             inn={row.customer_inn}
@@ -475,19 +663,39 @@ export default function RegistryTab({
             }}
           />
         </td>
-        <td className="reg-editable">
+        <td>
           <span className="reg-cell-text reg-title" title={title}>
             {row.doc_count > 0 && <span title="Есть документы" style={{ marginRight: 4 }}>📎</span>}
             {title}
           </span>
         </td>
-        <td className="reg-editable">
+        <td className="reg-col-money">
           <span className="reg-cell-text reg-price-text" title={formatMoney(row.tender_price)}>
             {formatMoney(row.tender_price)}
           </span>
         </td>
-        <td className="reg-editable">
+        <td className="reg-col-money reg-col-submit">
+          {submission ? (
+            <div className="reg-submit-cell">
+              <div className="reg-submit-main">{submission.withVat}</div>
+              <div className="reg-submit-vat muted">{submission.vatLine}</div>
+            </div>
+          ) : <span className="muted">—</span>}
+        </td>
+        <td className="reg-col-date">
           <span className="reg-cell-text">{fmtRegistryDate(row.docs_deadline)}</span>
+        </td>
+        <td className="reg-col-participation">
+          {row.participation_paid
+            ? <span className="reg-participation-paid" title="Платный сбор за участие (сгорит при проигрыше)">{participationLabel(row)}</span>
+            : <span className="reg-participation-free muted" title="Участие без платы">бесплатно</span>}
+        </td>
+        <td className="reg-col-analysis">
+          {(() => {
+            const meta = analysisDeadlineMeta(row);
+            if (!meta.tone) return <span className="muted">—</span>;
+            return <span className={`reg-adl-badge reg-adl-${meta.tone}`}>{meta.text}</span>;
+          })()}
         </td>
         <td>
           <button
@@ -499,16 +707,15 @@ export default function RegistryTab({
             {statusLabel(st)}
           </button>
         </td>
-        <td className="muted" style={{ fontSize: 12 }}>
+        <td className="muted reg-col-person" style={{ fontSize: 12 }}>
           {row.calculator_user_name || row.rp_review?.calculator_name || '—'}
         </td>
         <td>{renderRp(row)}</td>
-        <td title={score?.top_reject_reasons?.map((r) => r.reason).join('\n')}>{scoreTxt}</td>
-        <td className="muted" style={{ fontSize: 11 }}>{row.created_by_name || '—'}</td>
-        <td className="muted" style={{ fontSize: 11, whiteSpace: 'nowrap' }} title={row.created_at || ''}>
+        <td className="reg-col-score" title={score?.top_reject_reasons?.map((r) => r.reason).join('\n')}>{scoreTxt}</td>
+        <td className="muted reg-col-person" style={{ fontSize: 11 }}>{row.created_by_name || '—'}</td>
+        <td className="muted reg-col-date" style={{ fontSize: 11 }} title={row.created_at || ''}>
           {fmtAdded(row.created_at)}
         </td>
-        <td className="muted" style={{ fontSize: 11 }} title={row.comment_to || ''}>{commentPrev || '—'}</td>
         <td className="reg-purchase-cell">
           {row.purchase_url
             ? <a href={row.purchase_url} target="_blank" rel="noreferrer" className="btn mini" title="Ссылка на закупку">↗</a>
@@ -532,6 +739,7 @@ export default function RegistryTab({
             onAssignSelf={handleAssignSelf}
             onAssignPm={handleAssignPm}
             onCreateWork={handleCreateWork}
+            onArchive={handleArchive}
           />
         </td>
         <td>
@@ -541,16 +749,10 @@ export default function RegistryTab({
     );
   };
 
-  const addRow = () => {
-    createRegistryRow({ customer_name: 'Новый заказчик', tender_title: 'Новый тендер' })
-      .then((d) => { setRows((prev) => [d.tender, ...prev]); toast('Строка добавлена', 'ok'); onRefresh?.(); })
-      .catch((e) => toast(e.message, 'err'));
-  };
-
   return (
     <div className="registry-tab">
       {showDutyBar && (
-        <div className="reg-duty-bar alert" style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 10, padding: '10px 12px' }}>
+        <div className="reg-duty-bar">
           <span>
             {duty?.pm_name ? (
               <>🛡 Дежурный РП: <strong>{duty.pm_name}</strong>
@@ -560,43 +762,57 @@ export default function RegistryTab({
             )}
           </span>
           {canEditDuty && (
-            <Link to="/pm-calculations?roster=1" className="btn mini" style={{ marginLeft: 'auto' }}>График дежурств</Link>
+            <Link to="/pm-calculations?roster=1" className="btn mini reg-duty-link">График дежурств</Link>
           )}
         </div>
       )}
-      <div className="reg-toolbar" style={{ marginBottom: 12, display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-        <label style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-          <span className="muted" style={{ fontSize: 13 }}>Период:</span>
-          <select className="inp" value={period} onChange={(e) => onPeriodChange?.(e.target.value)}>
-            {periodOptions.map((o) => <option key={o.value || 'all'} value={o.value}>{o.label}</option>)}
-          </select>
-        </label>
-        <label style={{ display: 'flex', alignItems: 'center', gap: 6, flex: 1, minWidth: 200 }}>
-          <span className="muted" style={{ fontSize: 13 }}>Поиск:</span>
+      <div className="reg-toolbar">
+        <div className="reg-toolbar-field reg-toolbar-period">
+          <span className="muted">Период</span>
+          <TenderPeriodFilter
+            value={periodFilter}
+            onChange={(pf) => {
+              onPeriodFilterChange?.(pf);
+              onClearBurn?.();
+            }}
+          />
+        </div>
+        <label className="reg-toolbar-field reg-toolbar-search">
+          <span className="muted">Поиск</span>
           <input
             className="inp"
             type="search"
             value={searchInput}
             onChange={(e) => setSearchInput(e.target.value)}
-            placeholder="Заказчик, № реестра, предмет…"
-            style={{ flex: 1, minWidth: 160 }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                commitSearch();
+              }
+            }}
+            placeholder="Заказчик, № реестра, предмет… (Enter)"
+            title="Поиск запускается по Enter"
           />
         </label>
-        <label style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-          <span className="muted" style={{ fontSize: 13 }}>Статус:</span>
+        <label className="reg-toolbar-field">
+          <span className="muted">Статус</span>
           <select className="inp" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
             <option value="">Все статусы</option>
             {REGISTRY_STATUSES.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
           </select>
         </label>
-        <span className="muted" style={{ fontSize: 13 }}>
-          {total} тендеров
-          {actionCount > 0 && <> · {actionCount} нуждают действия</>}
-          {burnOnly && ' · горящие'}
+        <span className="reg-toolbar-meta muted">
+          {total} {total === 1 ? 'тендер' : total < 5 ? 'тендера' : 'тендеров'}
+          {actionCount > 0 && <> · {actionCount} требуют действия</>}
         </span>
-        <label style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-          <span className="muted" style={{ fontSize: 13 }}>Строк:</span>
-          <select className="inp" value={limit} onChange={(e) => setLimit(Number(e.target.value) || 1000)} style={{ minWidth: 72 }}>
+        {burnOnly && (
+          <button type="button" className="reg-burn-chip" onClick={() => onClearBurn?.()}>
+            🔥 Горящие ×
+          </button>
+        )}
+        <label className="reg-toolbar-field">
+          <span className="muted">Строк</span>
+          <select className="inp" value={limit} onChange={(e) => setLimit(Number(e.target.value) || 1000)}>
             {[100, 500, 1000, 2000].map((n) => (
               <option key={n} value={n}>{n >= 1000 ? `${n / 1000}k` : n}</option>
             ))}
@@ -608,52 +824,81 @@ export default function RegistryTab({
           </button>
         )}
         <button type="button" className="btn mini" onClick={addRow}>+ Строка</button>
-        <button type="button" className="btn mini ghost" onClick={refresh}>↻</button>
+        <button type="button" className="btn mini ghost" onClick={refresh} title="Обновить">↻</button>
         <Link to="/pm-calculations" className="btn mini ghost">Просчёты РП</Link>
       </div>
       <RegistryStatusLegend
         active={statusFilter}
         onSelect={(v) => setStatusFilter(v)}
       />
-      <p className="muted reg-toolbar-hint" style={{ fontSize: 12, margin: '-4px 0 10px' }}>
-        ℹ Статус — клик по плашке. Редактирование — двойной клик или ⋯. Сортировка — клик по заголовку колонки.
+      <p className="muted reg-toolbar-hint">
+        Статус — клик по плашке · заказчик — правка в ячейке · полная карточка — ⋯ · сортировка — клик по заголовку
       </p>
-      {loading && <p>Загрузка…</p>}
-      <div className="reg-table-wrap" style={{ overflowX: 'auto' }}>
-        <table className="tnd-table asg reg-table" style={{ width: '100%', fontSize: 13 }}>
-          <thead>
-            <tr>
-              {SORT_COLUMNS.map((c) => {
-                const active = sortKey === c.key;
-                const ind = active ? (sortDir === 1 ? '▲' : '▼') : '';
-                const isNo = c.key === 'registry_no';
-                return (
-                  <th key={c.key} className={isNo ? 'reg-th-no' : ''}>
-                    <button
-                      type="button"
-                      className={'reg-th-sort' + (active ? ' reg-th-sort-active' : '')}
-                      onClick={() => onSort(c.key)}
-                    >
-                      {c.label}
-                      {ind && <span className="reg-sort-ind">{ind}</span>}
-                    </button>
-                  </th>
-                );
-              })}
-              <th className="reg-th-nosort" title="Ссылка на закупку">↗</th>
-              <th className="reg-th-nosort" />
-            </tr>
-          </thead>
-          <tbody>
-            {sorted.map(renderRow)}
-          </tbody>
-        </table>
-      </div>
-      {!loading && !filtered.length && (
-        <p className="muted">{burnOnly ? 'Нет горящих дедлайнов' : 'Нет записей за период'}</p>
+      {loading && (
+        <div className="reg-skeleton" aria-busy="true" aria-label="Загрузка реестра">
+          {Array.from({ length: 8 }).map((_, i) => (
+            <div key={i} className="reg-skeleton-row" style={{ animationDelay: `${i * 40}ms` }} />
+          ))}
+        </div>
       )}
       {!loading && (
-        <div className="reg-footer muted" style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginTop: 8, fontSize: 13 }}>
+        <div className="reg-table-wrap">
+          <table className="tnd-table asg reg-table">
+            <thead>
+              <tr>
+                {SORT_COLUMNS.map((c) => {
+                  const active = sortKey === c.key;
+                  const ind = active ? (sortDir === 1 ? '▲' : '▼') : '';
+                  const thCls = c.key === 'registry_no' ? 'reg-th-no'
+                    : (c.key === 'participation_fee' ? 'reg-th-participation'
+                      : (c.key === 'analysis_deadline' ? 'reg-th-analysis' : ''));
+                  const thTitle = c.key === 'analysis_deadline'
+                    ? 'Внутренний срок анализа (срок подачи минус 3 или 5 раб. дней)'
+                    : (c.key === 'participation_fee' ? 'Сбор за участие в тендере' : undefined);
+                  return (
+                    <th key={c.key} className={thCls} title={thTitle}>
+                      <button
+                        type="button"
+                        className={'reg-th-sort' + (active ? ' reg-th-sort-active' : '')}
+                        onClick={() => onSort(c.key)}
+                      >
+                        {c.label}
+                        {ind && <span className="reg-sort-ind">{ind}</span>}
+                      </button>
+                    </th>
+                  );
+                })}
+                <th className="reg-th-nosort" title="Ссылка на закупку">↗</th>
+                <th className="reg-th-nosort" />
+              </tr>
+            </thead>
+            <tbody>
+              {sorted.map(renderRow)}
+            </tbody>
+          </table>
+        </div>
+      )}
+      {!loading && !filtered.length && (
+        <div className="reg-empty">
+          <div className="reg-empty-ic" aria-hidden>{burnOnly ? '🔥' : '📋'}</div>
+          <div className="reg-empty-title">
+            {burnOnly ? 'Нет горящих дедлайнов' : 'Нет записей за период'}
+          </div>
+          <div className="reg-empty-msg">
+            {burnOnly
+              ? 'Снимите фильтр или смените период — возможно, всё уже обработано.'
+              : 'Смените период или добавьте строку вручную.'}
+          </div>
+          <div className="reg-empty-actions">
+            {burnOnly && (
+              <button type="button" className="btn mini" onClick={() => onClearBurn?.()}>Сбросить горящие</button>
+            )}
+            <button type="button" className="btn mini" onClick={addRow}>+ Строка</button>
+          </div>
+        </div>
+      )}
+      {!loading && filtered.length > 0 && (
+        <div className="reg-footer muted">
           <span>Всего: <strong>{total}</strong></span>
           <span>Показано: <strong>{sorted.length}</strong> из {total}</span>
           {total > sorted.length && <span>· загружено {rows.length}, увеличьте «Строк»</span>}

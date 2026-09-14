@@ -33,6 +33,7 @@ import { StatusBadge } from '@/modals/Notifications';
 import { loadList, loadOne as _loadOne, updateStatus as _updateStatus, deleteApp as _deleteApp, STATUS_MAP, TYPE_MAP, STATUS_TONES } from './api';
 import { TrainingEditModal } from './TrainingEditModal';
 import { TrainingDetailModal } from './TrainingDetailModal';
+import { formatMoney as fmtMoney } from '@/lib/money';
 
 export default function TrainingPage() {
   const { user } = useAuth();
@@ -246,10 +247,6 @@ function Th({ children }) {
 }
 function Td({ children }) {
   return <td className="pad-cell-lg v-mid">{children}</td>;
-}
-function fmtMoney(n) {
-  if (!Number.isFinite(+n) || +n === 0) return '—';
-  return new Intl.NumberFormat('ru-RU').format(Math.round(+n)) + ' ₽';
 }
 function fmtDate(d) {
   if (!d) return '—';

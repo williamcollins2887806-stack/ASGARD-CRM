@@ -10,6 +10,9 @@
 import { api } from '@/api/client';
 import { downloadProtected, openProtected } from '@/api/download';
 
+export { formatMoney as fmtMoney, formatMoneyShort as fmtMoneyShort } from '@/lib/money';
+export { formatMoney as fmtMoneyR } from '@/lib/money';
+
 /* ─── категории расходов (vanilla work_report.js:15..29) ─────────────── */
 export const CAT_LABELS = {
   payroll:       { label: 'ФОТ (начислено)',   icon: '👷', color: '#e74c3c' },
@@ -66,11 +69,6 @@ export async function downloadXlsxFromServer(workId) {
 }
 
 /* ─── helpers ────────────────────────────────────────────────────────── */
-export function fmtMoney(n) {
-  if (!Number.isFinite(+n)) return '0';
-  return new Intl.NumberFormat('ru-RU').format(Math.round(+n));
-}
-export function fmtMoneyR(n) { return fmtMoney(n) + ' ₽'; }
 export function fmtDate(s) {
   if (!s) return '—';
   const parts = String(s).split('T')[0].split('-');

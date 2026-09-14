@@ -2,7 +2,9 @@ import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import App from './App';
 import { AppErrorBoundary } from '@/blocks/AppErrorBoundary';
+import { installGlobalErrorListeners } from '@/lib/reportClientError';
 import './styles/theme.css';
+import './styles/checkbox.css';
 import './styles/utils.css';
 import './styles/shell.css';
 import './styles/dashboard.css';
@@ -17,6 +19,8 @@ import './styles/specials.css';
 import './styles/notifications.css';
 import './styles/sidebar.css';
 import './modals/compat.jsx';
+
+installGlobalErrorListeners('v2');
 
 // G-10: AppErrorBoundary — generic boundary для render-ошибок (вне ChunkLoadError).
 // Должен быть САМЫМ ВНЕШНИМ, иначе ошибка в ThemeProvider/AuthProvider не поймается.

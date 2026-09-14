@@ -130,6 +130,10 @@ tools/_tz_*/
 _v2_deploy.tar
 public/_preview-*.html
 public/prototypes/
+# Windows-артефакт: файл с именем-устройством (след `> nul` вместо /dev/null).
+# Копия public/assets/css/rp-review-modal.css; из-за него падает `git add -A`
+# по всему public/desktop-v2-src (fatal: unable to index file). 14.09.2026.
+public/desktop-v2-src/nul.css
 # Разовые архивы выкаток, кэш Python и прочий локальный мусор в корне
 /*.tar
 /*.tar.gz

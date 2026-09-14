@@ -380,7 +380,7 @@ export default function CorrespondenceComposer() {
               variant="ghost"
               onClick={() => setSplitView(splitView === 'editor' ? 'preview' : 'editor')}
             >
-              {splitView === 'editor' ? '👁 Превью' : '✎ Редактировать'}
+              {splitView === 'editor' ? 'Превью' : 'Редактировать'}
             </Btn>
             {signingStatus === 'draft' && (
               <Btn variant="ghost" disabled={saving} onClick={saveNow}>

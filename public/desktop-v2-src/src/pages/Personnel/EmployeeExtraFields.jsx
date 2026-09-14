@@ -15,6 +15,7 @@ import { Btn, Field } from '@/modals/parts';
 import { TextInput, PhoneInput, TextareaInput, SelectInput, NumberInput } from '@/inputs/Inputs';
 import { toast } from '@/modals/Notifications';
 import { updateEmployee } from './api';
+import { ppeSizeSelectOptions } from '@/lib/ppeSizes';
 
 const MARITAL_OPTIONS = [
   { value: '', label: '— не указано —' },
@@ -160,13 +161,28 @@ export function EmployeeExtraFields({ employee, canEdit, onSaved }) {
       <SubSection title="👕 СИЗ — размеры">
         <div className="grid-2 gap-10">
           <Field label="Размер одежды">
-            <TextInput value={form.clothing_size} onChange={(v) => set('clothing_size', v)} disabled={!canEdit} placeholder="48-50 / M" />
+            <SelectInput
+              value={form.clothing_size}
+              onChange={(v) => set('clothing_size', v)}
+              options={ppeSizeSelectOptions('clothing_size', form.clothing_size)}
+              disabled={!canEdit}
+            />
           </Field>
           <Field label="Размер обуви">
-            <TextInput value={form.shoe_size} onChange={(v) => set('shoe_size', v)} disabled={!canEdit} placeholder="43" />
+            <SelectInput
+              value={form.shoe_size}
+              onChange={(v) => set('shoe_size', v)}
+              options={ppeSizeSelectOptions('shoe_size', form.shoe_size)}
+              disabled={!canEdit}
+            />
           </Field>
           <Field label="Головной убор (каска)">
-            <TextInput value={form.headwear_size} onChange={(v) => set('headwear_size', v)} disabled={!canEdit} placeholder="стандарт / 58-60" />
+            <SelectInput
+              value={form.headwear_size}
+              onChange={(v) => set('headwear_size', v)}
+              options={ppeSizeSelectOptions('headwear_size', form.headwear_size)}
+              disabled={!canEdit}
+            />
           </Field>
         </div>
       </SubSection>

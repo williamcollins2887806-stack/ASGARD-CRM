@@ -1,4 +1,5 @@
 /** Shared RP review modal logic — parity with vanilla rp_review_modal.js */
+export { formatMoney as fmtMoney } from '@/lib/money';
 
 export const MISSING_FLAGS = [
   { id: 'tz', label: 'ТЗ / документация' },
@@ -23,9 +24,16 @@ export const LOG_LABELS = {
   save_draft: 'Черновик сохранён',
   finalize: 'Отчёт закрыт',
   finalize_analysis: 'Анализ закрыт',
+  finalize_reject: 'Решение: не подаём',
   attach_estimate: 'Прикреплена смета',
   attach_report: 'Прикреплён отчёт',
-  invite_collaborator: 'Приглашён коллаборатор',
+  attach_tkp: 'Прикреплено ТКП',
+  invite_collaborator: 'Привлечён РП к совместной работе',
+  revoke_collaborator: 'Привлечение РП отозвано',
+  draft_ready: 'Черновик отмечен готовым',
+  save_participant_draft: 'Личный черновик сохранён',
+  import_draft_to_final: 'Черновик взят в финал',
+  mimir_apply: 'Мимир: применено к отчёту',
   to_accept: 'ТО: принято → Готовим',
   to_reject: 'ТО: отклонено',
   to_rework: 'ТО: на доработку',
@@ -91,13 +99,6 @@ export function getAnalysisSnapshot(reportJson, review, apiSnapshot) {
   return null;
 }
 
-export function fmtMoney(v) {
-  if (v == null || v === '') return '—';
-  const n = Number(v);
-  if (!Number.isFinite(n)) return String(v);
-  return n.toLocaleString('ru-RU', { maximumFractionDigits: 0 }) + ' ₽';
-}
-
 export function fmtRegistryDate(v) {
   if (!v) return '—';
   const s = String(v).slice(0, 10);
@@ -122,9 +123,19 @@ export function priceRangeLabel(rj, workPrice) {
   if (workPrice) return fmtMoney(workPrice) + ' (с НДС)';
   const min = rj.price_range_min;
   const max = rj.price_range_max;
-  if (min != null && max != null) return fmtMoney(min) + ' — ' + fmtMoney(max) + ' (без НДС)';
-  if (min != null) return 'от ' + fmtMoney(min) + ' (без НДС)';
-  if (max != null) return 'до ' + fmtMoney(max) + ' (без НДС)';
+  const fmt = (v) => {
+    if (v == null || v === '') return null;
+    if (typeof v === 'number' && Number.isFinite(v)) return fmtMoney(v);
+    const s = String(v).trim();
+    if (!s) return null;
+    const n = Number(s.replace(/\s/g, '').replace(',', '.'));
+    return Number.isFinite(n) ? fmtMoney(n) : s;
+  };
+  const minL = fmt(min);
+  const maxL = fmt(max);
+  if (minL != null && maxL != null) return minL + ' — ' + maxL + ' (без НДС)';
+  if (minL != null) return 'от ' + minL + ' (без НДС)';
+  if (maxL != null) return 'до ' + maxL + ' (без НДС)';
   return '—';
 }
 
@@ -132,10 +143,15 @@ export function progressPct(rj, mode, decision, workPrice, estimateAttached) {
   let total = 5;
   let done = 0;
   if (decision === 'submit' || decision === 'reject') done++;
+  if (decision === 'reject') {
+    total = 3;
+    if (String(rj.reject_preset || '').trim()) done++;
+    if ((rj.points || []).some((p) => String(p.point || '').trim() || String(p.reason || '').trim())) done++;
+    return { done, total, pct: Math.round((done / total) * 100) };
+  }
   if (rj.feasibility) done++;
   if (String(rj.summary || '').trim()) done++;
   if (String(rj.recommendation || '').trim() || String(rj.risks || '').trim()) done++;
-  if (decision === 'reject' && (rj.points || []).some((p) => p.point || p.reason)) done++;
   if (mode === 'calc') {
     total = 9;
     if (String(rj.scope || '').trim()) done++;

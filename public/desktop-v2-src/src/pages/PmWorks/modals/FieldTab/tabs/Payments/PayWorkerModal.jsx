@@ -16,11 +16,7 @@ import { toast } from '@/modals/Notifications';
 import { useModal, ConfirmModal } from '@/modals';
 import { api } from '@/api/client';
 import { loadEmployeePaymentSummary, payWorkerDirect, loadCrew, loadCrewAll } from '../../api';
-
-function fmtMoney(n) {
-  if (!Number.isFinite(+n)) return '0 ₽';
-  return new Intl.NumberFormat('ru-RU').format(Math.round(+n)) + ' ₽';
-}
+import { formatMoney as fmtMoney } from '@/lib/money';
 
 function workerHint({ isOfficial, isSelfEmployed }) {
   if (isOfficial) return 'Работник оформлен как штатник — оф-часть обычно идёт через банк, доплаты налом из кассы РП.';

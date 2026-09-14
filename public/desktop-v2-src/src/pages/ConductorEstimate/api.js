@@ -6,7 +6,7 @@
  *   Роли: ADMIN/PM/HEAD_PM/TO/HEAD_TO/DIRECTOR_*
  */
 import { api } from '@/api/client';
-
+export { formatMoney as fmtRub } from '@/lib/money';
 const API = '/api/mimir/conductor';
 
 // Полный набор фаз (32 агента).
@@ -148,9 +148,6 @@ export function adjustMargin(runId, newMarginPct) {
 // (открытие/закрытие/reconnect/lastEventId/мульти-подписчики per-runId).
 // Если нужен ручной EventSource — используй openConductorRunStream().
 
-export function fmtRub(n) {
-  return Math.round(Number(n) || 0).toLocaleString('ru-RU') + ' ₽';
-}
 export function fmtTs(ts) { try { return new Date(ts).toLocaleTimeString('ru-RU'); } catch { return ''; } }
 export function fmtDur(ms) { return ms ? Math.round(ms / 1000) + 'с' : ''; }
 export function fmtCost(r) { return r ? Number(r).toFixed(2) + '₽' : ''; }

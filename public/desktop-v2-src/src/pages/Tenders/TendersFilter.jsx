@@ -1,8 +1,14 @@
 import { SearchInput, SelectInput } from '@/inputs/Inputs';
-import { PERIOD_PRESETS, TENDER_TYPES, TENDER_STATUSES, SOURCE_OPTIONS } from './api';
+import TenderPeriodFilter from './TenderPeriodFilter';
+import { defaultPeriodFilter } from './periodFilterUtils';
+import { TENDER_TYPES, TENDER_STATUSES, SOURCE_OPTIONS } from './api';
+
+export { defaultPeriodFilter };
 
 export default function TendersFilter({ filters, onChange, pms = [] }) {
   const set = (k, v) => onChange({ ...filters, [k]: v });
+  const periodFilter = filters.periodFilter || defaultPeriodFilter();
+  const setPeriodFilter = (pf) => onChange({ ...filters, periodFilter: pf });
 
   const pmOptions = [
     { value: '', label: 'Все РП' },
@@ -11,17 +17,15 @@ export default function TendersFilter({ filters, onChange, pms = [] }) {
 
   return (
     <div className="filter-bar filter-grid">
-      {/* v2 BONUS: data-searchbox для hotkey "/" */}
       <SearchInput
         data-searchbox="tenders"
         value={filters.q || ''}
         onChange={(v) => set('q', v)}
         placeholder="Поиск по заказчику, ИНН, ID… (/ фокус)"
       />
-      <SelectInput
-        value={filters.period || 'month'}
-        onChange={(v) => set('period', v)}
-        options={PERIOD_PRESETS}
+      <TenderPeriodFilter
+        value={periodFilter}
+        onChange={setPeriodFilter}
       />
       <SelectInput
         value={filters.type || ''}

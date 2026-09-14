@@ -221,8 +221,8 @@ function PayrollList({ user, modal, navigate }) {
       <div className="grid-auto-170 gap-10">
         <KpiCell label="Ведомостей"   value={sheets.length} />
         <KpiCell label="Ожидают согл." value={kpi.pending} tone="amber" />
-        <KpiCell label="К выплате"     value={fmtMoneyShort(kpi.total_payout) + ' ₽'} tone="gold" />
-        <KpiCell label="Выплачено"     value={fmtMoneyShort(kpi.total_paid)   + ' ₽'} tone="ok" />
+        <KpiCell label="К выплате"     value={fmtMoneyShort(kpi.total_payout)} tone="gold" />
+        <KpiCell label="Выплачено"     value={fmtMoneyShort(kpi.total_paid)} tone="ok" />
       </div>
 
       <TabsBar tabs={tabs} active={tab} onChange={setTab} />

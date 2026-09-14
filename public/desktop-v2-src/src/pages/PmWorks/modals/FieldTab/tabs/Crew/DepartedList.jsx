@@ -1,22 +1,58 @@
 /**
  * DepartedList — коллапсируемый блок «⚫ Уехали / убраны с объекта».
  *
- * Источник vanilla: field-tab.js:462-510.
- * Read-only история отъездов; для каждого работника — кнопка «🔄 Вернуть»:
- *   POST /api/field/manage/projects/:work_id/return/:employee_id
+ * Источник vanilla: field-tab.js (departed + openDepartedTariffModal).
+ * Для каждого: «🔄 Вернуть» и «💰 Тариф» (keep_inactive — без возврата на объект).
  */
 import { useState } from 'react';
-import { Btn } from '@/modals/parts';
+import { Btn, MCard, MHead, MBody } from '@/modals/parts';
 import { StatusBadge, toast } from '@/modals/Notifications';
 import { useModal, ConfirmModal } from '@/modals';
 import { returnCrewMember } from '../../api';
+import { filterTariffsForFieldRole } from '../../constants';
+import TariffEditor from './TariffEditor';
 
 function fmtDate(d) {
   if (!d) return '—';
   try { return new Date(d).toLocaleDateString('ru-RU'); } catch { return String(d); }
 }
 
-export default function DepartedList({ work, items, onReturned }) {
+function DepartedTariffModal({ work, member, tariffs, comboTariffs, category, onDone }) {
+  const { close } = useModal();
+  const empName = member.employee_name || member.name || `#${member.employee_id}`;
+  const role = member.field_role || member.role_in_field || 'worker';
+  const pool = filterTariffsForFieldRole(tariffs || [], role, category || 'mlsp');
+
+  return (
+    <MCard>
+      <MHead title={`Тариф — ${empName}`} onClose={close} />
+      <MBody>
+        <p className="muted" style={{ fontSize: 12, margin: '0 0 12px' }}>
+          Уехавший остаётся в истории бригады — тариф можно задать без возврата на объект.
+        </p>
+        <TariffEditor
+          member={member}
+          tariffs={pool.length ? pool : (tariffs || [])}
+          comboTariffs={comboTariffs || []}
+          workId={work.id}
+          keepInactive
+          onSaved={() => { close(); if (onDone) onDone(); }}
+          onCancel={close}
+        />
+      </MBody>
+    </MCard>
+  );
+}
+
+export default function DepartedList({
+  work,
+  items,
+  tariffs = [],
+  comboTariffs = [],
+  category = 'mlsp',
+  onReturned,
+  onTariffSaved
+}) {
   const { open } = useModal();
   const [collapsed, setCollapsed] = useState(false);
 
@@ -41,6 +77,19 @@ export default function DepartedList({ work, items, onReturned }) {
     />);
   };
 
+  const onTariffClick = (m) => {
+    open(
+      <DepartedTariffModal
+        work={work}
+        member={m}
+        tariffs={tariffs}
+        comboTariffs={comboTariffs}
+        category={category}
+        onDone={() => { if (onTariffSaved) onTariffSaved(); }}
+      />
+    );
+  };
+
   return (
     <section className="ft-departed">
       <header className="ft-departed__head" onClick={() => setCollapsed((c) => !c)}>
@@ -54,6 +103,9 @@ export default function DepartedList({ work, items, onReturned }) {
             const empName = m.employee_name || m.name || `#${m.employee_id}`;
             const reason = m.departure_reason || m.reason || null;
             const isDeparted = !!m.departure_date;
+            const tariffTitle = m.tariff_id
+              ? (`Тариф #${m.tariff_id}${m.tariff_points != null ? ` · ${m.tariff_points}б` : ''}`)
+              : 'Тариф не задан';
             return (
               <li key={m.id || `${m.employee_id}-${m.work_id}`} className="ft-departed__row">
                 <div className="ft-departed__main">
@@ -68,6 +120,9 @@ export default function DepartedList({ work, items, onReturned }) {
                   {reason && <span className="ft-departed__reason" title={reason}>{reason}</span>}
                 </div>
                 <div className="ft-departed__actions">
+                  <Btn size="sm" variant="ghost" onClick={() => onTariffClick(m)} title={tariffTitle}>
+                    💰 Тариф
+                  </Btn>
                   <Btn size="sm" variant="ghost" onClick={() => onReturnClick(m)} title="Вернуть на объект">
                     🔄 Вернуть
                   </Btn>

@@ -1,0 +1,107 @@
+.sc-page-filters {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  align-items: center;
+  margin: 0 0 14px;
+}
+.sc-page-filters .inp-wrap {
+  flex: 1;
+  min-width: 220px;
+  max-width: 420px;
+}
+.sc-stat {
+  font-size: 12px;
+  color: var(--t-2);
+  white-space: nowrap;
+}
+.sc-block {
+  border: 1px solid var(--brd);
+  border-radius: 12px;
+  background: var(--bg-2);
+  margin-bottom: 10px;
+  overflow: hidden;
+}
+.sc-block-head {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  align-items: center;
+  padding: 12px 14px;
+  cursor: pointer;
+  user-select: none;
+  background: transparent;
+  border: 0;
+  width: 100%;
+  text-align: left;
+  color: inherit;
+  font: inherit;
+}
+.sc-block-head:hover {
+  background: var(--bg-3, color-mix(in srgb, var(--t-1) 4%, transparent));
+}
+.sc-block-head:focus-visible {
+  outline: 2px solid var(--gold);
+  outline-offset: -2px;
+}
+.sc-block-title {
+  font-weight: 800;
+  font-size: 15px;
+  color: var(--t-1);
+}
+.sc-block-meta {
+  font-size: 12px;
+  color: var(--t-2);
+  flex: 1;
+  min-width: 140px;
+}
+.sc-badge {
+  font-size: 12px;
+  font-weight: 700;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: var(--bg-3, color-mix(in srgb, var(--t-1) 6%, transparent));
+  color: var(--t-1);
+  border: 1px solid var(--brd);
+}
+.sc-chevron {
+  font-size: 14px;
+  color: var(--t-2);
+  transition: transform 0.15s ease;
+  width: 1.2em;
+  text-align: center;
+}
+.sc-block.open .sc-chevron {
+  transform: rotate(90deg);
+}
+.sc-block-body {
+  display: none;
+  padding: 0 14px 14px;
+  border-top: 1px solid var(--brd);
+}
+.sc-block.open .sc-block-body {
+  display: block;
+}
+.sc-block-body table {
+  width: 100%;
+  font-size: 13px;
+  margin-top: 10px;
+  border-collapse: collapse;
+}
+.sc-block-body th {
+  text-align: left;
+  color: var(--t-2);
+  padding: 6px 4px;
+  font-weight: 600;
+}
+.sc-block-body td {
+  padding: 8px 4px;
+  border-top: 1px solid var(--brd);
+  vertical-align: top;
+}
+.sc-block-body tr.sc-hit td {
+  background: color-mix(in srgb, var(--gold) 18%, transparent);
+}
+.sc-block-body tr.sc-hit td:first-child {
+  box-shadow: inset 3px 0 0 var(--gold);
+}

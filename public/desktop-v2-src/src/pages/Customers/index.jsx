@@ -25,6 +25,7 @@ import { CustomerEditModal } from './CustomerEditModal';
 import { CustomerDetailModal } from './CustomerDetailModal';
 import { loadCustomers, loadCustomer, filterByQuery } from './api';
 import './customers.css';
+import { formatMoney as fmtMoney } from '@/lib/money';
 
 const PAGE = 30;
 
@@ -194,13 +195,6 @@ export default function CustomersPage() {
     const revenue = list.reduce((s, c) => s + (Number(c.revenue_total) || Number(c.won_amount_total) || 0), 0);
     return { all, active, wonSum, revenue };
   }, [list]);
-
-  const fmtMoney = (n) => {
-    if (!Number.isFinite(+n) || n <= 0) return '—';
-    if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + ' млн ₽';
-    if (n >= 1_000) return (n / 1_000).toFixed(0) + ' тыс ₽';
-    return n + ' ₽';
-  };
 
   return (
     <div className="col gap-14">

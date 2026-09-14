@@ -17,11 +17,13 @@
  *   pm        → /my-timesheet            roles=[PM,HEAD_PM]
  *   warehouse → /timesheet-warehouse     roles=[WAREHOUSE]
  *   medical   → /timesheet-medical       roles=[TO,HEAD_TO]
- *   travel    → /timesheet-travel        roles=[OFFICE_MANAGER]
+ *   travel    → /timesheet-travel        roles=[OFFICE_MANAGER, HEAD_TO]
  *   global    → /timesheet               roles=[DIRECTOR_*, ADMIN, BUH, HR, HR_MANAGER]
  */
 import { api } from '@/api/client';
 import { downloadProtected } from '@/api/download';
+
+export { formatMoney as fmtMoney, formatMoneyShort as fmtMoneyShort } from '@/lib/money';
 
 const BASE = '/api/timesheet/v2';
 
@@ -43,14 +45,52 @@ export function getRoster(year, month, { project_q, work_id } = {}) {
   return api(`${BASE}/${year}/${month}/roster${qs}`);
 }
 
+/** Dropdown объектов для фильтра табеля (HEAD_TO / medical / travel). */
+export function getWorksOptions() {
+  return api(`${BASE}/works-options`);
+}
+
+export const DIRECTION_TYPES = new Set(['travel', 'ship', 'helicopter']);
+
 export function putEntry(data) {
   return api(`${BASE}/entry`, { method: 'PUT', body: data });
+}
+
+/** Сообщение / флаги из 423 period_locked (после PUT /entry). */
+export function periodLockInfo(err) {
+  const data = err?.data || {};
+  return {
+    reason: data.reason || data.error || '',
+    message: data.message || data.message_ru || err?.serverMsg || 'Период закрыт. Изменение запрещено.',
+    overridable: !!data.overridable,
+    lock: data.lock || null
+  };
+}
+
+/**
+ * Текст подтверждения обхода чужого pm-лока.
+ * Сервер уже кладёт понятный message; дополняем вопросом.
+ */
+export function pmLockOverrideConfirmMessage(errOrInfo, payload = {}) {
+  const info = errOrInfo?.status != null ? periodLockInfo(errOrInfo) : (errOrInfo || {});
+  const base = (info.message || '').trim();
+  const date = payload.date ? String(payload.date).slice(0, 10) : '';
+  const dateRu = date && /^\d{4}-\d{2}-\d{2}$/.test(date)
+    ? `${date.slice(8, 10)}.${date.slice(5, 7)}.${date.slice(0, 4)}`
+    : '';
+  const lines = [
+    base || 'Отметка находится в периоде, который уже закрыл РП.',
+    dateRu ? `Дата отметки: ${dateRu}.` : null,
+    'Вы точно уверены, что хотите изменить? Если да — изменение будет сохранено с записью в журнал.'
+  ].filter(Boolean);
+  return lines.join('\n\n');
 }
 
 /**
  * Список работ, которые видит текущий пользователь.
  * Используется для work-picker когда сотрудник не привязан к работе,
- * а тип отметки (day/night/waiting/ship/warehouse) требует work_id.
+ * а тип отметки (day/night/waiting) требует work_id.
+ * warehouse/medical/training/travel/ship/helicopter — без work_id.
  *
  * Возвращает массив { id, work_title, city, ... }.
  */
@@ -78,15 +118,22 @@ export async function loadWorks() {
 
 /**
  * Типы отметок которые требуют work_id (синхрон с backend src/routes/timesheet-v2.js).
- * medical/travel — БЕЗ work_id (межработные этапы).
+ * warehouse/medical/training/travel/ship/helicopter — work_id не обязателен;
+ * backend подставит его только если рабочий назначен на работу на эту дату.
+ * UI для свободных этапов НЕ шлёт work_id из фильтра проекта (чтобы не приклеить чужой объект).
  */
-export const REQUIRE_WORK_ID = new Set(['day', 'night', 'waiting', 'warehouse']);
+export const REQUIRE_WORK_ID = new Set(['day', 'night', 'waiting']);
 
 export function typeRequiresWorkId(mode, type) {
   if (mode === 'medical' || mode === 'travel' || mode === 'warehouse') return false;
   if (mode === 'pm') return type === 'day' || type === 'night' || type === 'waiting';
   return REQUIRE_WORK_ID.has(type);
 }
+
+/** Свободные этапы — UI не подставляет work_id из фильтра; backend резолвит из назначения. */
+export const FREE_STANDING_TYPES = new Set([
+  'warehouse', 'medical', 'training', 'travel', 'ship', 'helicopter'
+]);
 
 export function lockMonth(data) {
   return api(`${BASE}/lock`, { method: 'POST', body: data });
@@ -122,9 +169,10 @@ export function updateSettings(data) {
   return api(`${BASE}/settings/position-points`, { method: 'PUT', body: data });
 }
 
-export async function exportXlsx(year, month) {
+export async function exportXlsx(year, month, { include_per_diem = true } = {}) {
   const filename = `табель_${year}_${String(month).padStart(2, '0')}.xlsx`;
-  return downloadProtected(`${BASE}/${year}/${month}/export?format=xlsx`, filename);
+  const pd = include_per_diem === false || include_per_diem === 0 || include_per_diem === '0' ? '0' : '1';
+  return downloadProtected(`${BASE}/${year}/${month}/export?format=xlsx&include_per_diem=${pd}`, filename);
 }
 
 /* ═══════════════════ Mode → meta ═══════════════════ */
@@ -138,7 +186,7 @@ export const MODES = {
     lockScope: 'pm',
     editableTypes: ['day', 'night', 'waiting'],
     requireWorkFor: ['day', 'night'],
-    columns: { points: 'mine', amount: 'none', perDiem: 'none' }, // суточные скрыты везде
+    columns: { points: 'mine', amount: 'none', perDiem: 'show' },
     roles: ['PM', 'HEAD_PM']
   },
   warehouse: {
@@ -163,20 +211,20 @@ export const MODES = {
     requireWorkFor: [],
     // V255: свои отметки — с баллами, чужие — только иконка.
     columns: { points: 'mine', amount: 'none', perDiem: 'none' },
-    roles: ['TO', 'HEAD_TO']
+    roles: ['TO', 'HEAD_TO', 'ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV']
   },
   travel: {
     title: 'Табель учёта дороги',
     subtitle: 'Дни в дороге',
     kicker: 'Логистика',
     icon: '✈️',
+    // Дорога и Ожидание (⏳ = 6 баллов) — офис-менеджер и рук ТО.
     lockScope: 'travel',
-    // FIX 4 — OFFICE_MANAGER ставит только 'travel'. 'waiting' исключён по ТЗ.
-    editableTypes: ['travel'],
+    editableTypes: ['travel', 'waiting'],
     requireWorkFor: [],
     // V255: свои отметки — с баллами, чужие — только иконка.
     columns: { points: 'mine', amount: 'none', perDiem: 'none' },
-    roles: ['OFFICE_MANAGER']
+    roles: ['OFFICE_MANAGER', 'HEAD_TO', 'ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV']
   },
   global: {
     title: 'Общий табель — Табель дружины',
@@ -186,7 +234,7 @@ export const MODES = {
     lockScope: 'global',
     editableTypes: ['day', 'night', 'warehouse', 'medical', 'training', 'travel', 'ship', 'helicopter', 'waiting'],
     requireWorkFor: ['day', 'night'],
-    columns: { points: 'always', amount: 'show', perDiem: 'none' },
+    columns: { points: 'always', amount: 'show', perDiem: 'show' },
     roles: ['DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV', 'ADMIN', 'BUH', 'HR', 'HR_MANAGER']
   }
 };
@@ -210,7 +258,7 @@ export function canLockScope(role, scope) {
   if (scope === 'pm') return ['PM', 'HEAD_PM'].includes(role);
   if (scope === 'warehouse') return role === 'WAREHOUSE';
   if (scope === 'medical') return ['TO', 'HEAD_TO'].includes(role);
-  if (scope === 'travel') return role === 'OFFICE_MANAGER';
+  if (scope === 'travel') return ['OFFICE_MANAGER', 'HEAD_TO'].includes(role);
   if (scope === 'global') return ['DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV', 'ADMIN', 'BUH', 'HR', 'HR_MANAGER'].includes(role);
   return false;
 }
@@ -238,7 +286,9 @@ export const TYPE_META = {
   travel:    { icon: '✈️', label: 'Дорога',   short: 'ДР', bgVar: '--ts-travel-bg',    fgVar: '--ts-travel-fg',    title: 'Дорога' },
   ship:      { icon: '🚢', label: 'Корабль',  short: 'КР', bgVar: '--ts-ship-bg',      fgVar: '--ts-ship-fg',      title: 'Дорога кораблём' },
   helicopter:{ icon: '🚁', label: 'Вертолёт', short: 'Вр', bgVar: '--ts-helicopter-bg',fgVar: '--ts-helicopter-fg',title: 'Вертолёт' },
-  waiting:   { icon: '⏰', label: 'Ожидание', short: 'ОЖ', bgVar: '--ts-waiting-bg',   fgVar: '--ts-waiting-fg',   title: 'Ожидание' }
+  waiting:   { icon: '⏳', label: 'Ожидание', short: 'ОЖ', bgVar: '--ts-waiting-bg',   fgVar: '--ts-waiting-fg',   title: 'Ожидание' },
+  office:    { icon: '🏢', label: 'Офис',     short: 'Оф', bgVar: '--ts-office-bg',    fgVar: '--ts-office-fg',    title: 'Офис' },
+  remote:    { icon: '🏠', label: 'Удалёнка', short: 'Уд', bgVar: '--ts-remote-bg',    fgVar: '--ts-remote-fg',    title: 'Удалённая работа' }
 };
 
 export const TYPE_KEYS = Object.keys(TYPE_META);
@@ -256,11 +306,6 @@ export function monthLabel(year, month) {
 export function fmtNum(n) {
   if (n == null || isNaN(n)) return '—';
   return new Intl.NumberFormat('ru-RU').format(Math.round(n));
-}
-
-export function fmtMoney(n) {
-  if (n == null || isNaN(n)) return '—';
-  return new Intl.NumberFormat('ru-RU').format(Math.round(n)) + ' ₽';
 }
 
 export function pad2(n) {

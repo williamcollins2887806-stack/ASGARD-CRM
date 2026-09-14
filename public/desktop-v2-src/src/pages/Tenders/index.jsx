@@ -44,22 +44,23 @@ import {
 } from './modals/StatusModals';
 import { PassRequestModal } from './modals/PassRequestModal';
 import { TmcRequestModal } from './modals/TmcRequestModal';
-import KpReadyPanel from './panels/KpReadyPanel';
 import RegistryTab from './RegistryTab';
 import PlatformTendersTab from './PlatformTendersTab';
+import FunnelHubTab from './FunnelHubTab';
 import TenderGuruSettingsPanel from './TenderGuruSettingsPanel';
 import WinWorkModal from './modals/WinWorkModal';
 import {
   loadTenders, loadUsers, loadHubFeed, putTenderStatus,
-  filterByPeriod, filterByQuery, filterByMatch
+  filterByQuery, filterByMatch
 } from './api';
+import { defaultPeriodFilter, periodFilterKey } from './periodFilterUtils';
 import './tenders.css';
 
 /* Sub-табы конфигурация (1:1 с vanilla S-13). */
 const SUB_TABS = {
   tenders: [
     { id: 'registry',  icon: '📋', label: 'Реестр',      hint: 'Быстрый ввод тендеров ТО — spreadsheet-таблица.' },
-    { id: 'in_work',   icon: '🧮', label: 'В работе ТО', hint: 'Только поданные тендеры (статус «подались»).' },
+    { id: 'in_work',   icon: '🧮', label: 'В работе ТО', hint: 'Статусы «готовим» и «подались».' },
     { id: 'platforms', icon: '📡', label: 'С площадок',  hint: 'TenderGuru API — пропущенные тендеры.' }
   ],
   applications: [
@@ -80,7 +81,10 @@ export default function TendersPage() {
   const [main, setMain] = useState('tenders');
   const [sub, setSub] = useState('registry');
   const [tab, setTab] = useState('active');
-  const [filters, setFilters] = useState({ q: '', period: 'month', type: '', status: '', source: '', pm: '' });
+  const [filters, setFilters] = useState({
+    q: '', type: '', status: '', source: '', pm: '',
+    periodFilter: defaultPeriodFilter(),
+  });
   const [sort, setSort] = useState({ key: 'id', dir: -1 });
   const [tenders, setTenders] = useState([]);
   const [feedItems, setFeedItems] = useState([]);
@@ -96,7 +100,7 @@ export default function TendersPage() {
   const [loadError, setLoadError] = useState(null);
   const [showTgSettings, setShowTgSettings] = useState(false);
   const [tgRefreshKey, setTgRefreshKey] = useState(0);
-  const [registryPeriod, setRegistryPeriod] = useState('current');
+  const [registryPeriodFilter, setRegistryPeriodFilter] = useState(() => defaultPeriodFilter());
   const [registryBurnOnly, setRegistryBurnOnly] = useState(false);
 
   /* Загрузка для tab='tenders' — старый /api/tenders endpoint (snapshot).
@@ -110,18 +114,19 @@ export default function TendersPage() {
     // F2: тянем И PM, И HEAD_PM (vanilla tenders.js:717). Backend поддерживает comma-list.
     tasks.push(loadUsers('PM,HEAD_PM'));
     if (wantTenders) {
-      tasks.push(loadTenders({ archived: tab === 'archive', limit: 1000 }));
+      tasks.push(loadTenders({
+        archived: tab === 'archive',
+        limit: 1000,
+        periodFilter: filters.periodFilter,
+      }));
     } else {
       tasks.push(Promise.resolve([]));
     }
     if (wantFeed) {
-      // Period в feed-формате: month/quarter/year → 30d/year/year; week → 7d; today → 3d.
-      const periodMap = { today: '3d', week: '7d', month: '30d', quarter: 'year', year: 'year', all: 'all' };
-      const feedPeriod = periodMap[filters.period] || 'all';
       tasks.push(loadHubFeed({
         tab: main,
         subtab: sub || '',
-        period: feedPeriod,
+        periodFilter: filters.periodFilter,
         search: filters.q || '',
         status: filters.status || '',
         type:   filters.type || '',
@@ -137,8 +142,6 @@ export default function TendersPage() {
     // 📧 Почта / 📞 Телефония / 👤 От РП были актуальны независимо от
     // активной вкладки. Каждый item имеет поле `kind` (inbox_application |
     // pre_tender | call), по нему считаем sub-counters.
-    const periodMap = { today: '3d', week: '7d', month: '30d', quarter: 'year', year: 'year', all: 'all' };
-    const feedPeriod = periodMap[filters.period] || 'all';
     const countTasks = [
       loadHubFeed({ tab: 'applications', period: 'all', limit: 1 }).catch(() => ({ total: 0, subtab_counts: null })),
       loadHubFeed({ tab: 'all',          period: 'all', limit: 1 }).catch(() => ({ total: 0 }))
@@ -169,8 +172,9 @@ export default function TendersPage() {
       .finally(() => setLoading(false));
   };
 
+  const periodKey = periodFilterKey(filters.periodFilter);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => { refresh(); }, [main, sub, tab, filters.period, filters.status, filters.type, filters.source, filters.pm, filters.q]);
+  useEffect(() => { refresh(); }, [main, sub, tab, periodKey, filters.status, filters.type, filters.source, filters.pm, filters.q]);
 
   /* SSE-подписки top-level (R-11). Одним effect — всё рассылается через
      `asgard:sse:<event>` от useGlobalSSE singleton. Любое изменение в любом
@@ -215,14 +219,23 @@ export default function TendersPage() {
     const params = new URLSearchParams(hash.slice(i + 1));
     const st = params.get('status');
     const mainParam = params.get('tab');
-    const subParam = params.get('subtab');
+    const subParam = params.get('subtab') || params.get('sub');
     if (mainParam && ['tenders', 'applications', 'all'].includes(mainParam)) {
       setMain(mainParam);
       if (mainParam === 'tenders') setSub(subParam || 'registry');
       else if (mainParam === 'applications') setSub(subParam || 'mail');
       else setSub(null);
+    } else if (subParam === 'funnel') {
+      setMain('tenders');
+      setSub('funnel');
     }
-    if (st) setFilters((f) => ({ ...f, status: st, period: 'all' }));
+    if (st) {
+      setFilters((f) => ({
+        ...f,
+        status: st,
+        periodFilter: { ...defaultPeriodFilter(), mode: 'quick', quick: 'all', month: '' },
+      }));
+    }
     if (st || mainParam) window.history.replaceState(null, '', hash.slice(0, i));
     // run once on mount
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -267,7 +280,6 @@ export default function TendersPage() {
         Number(t.author_user_id) === uid
       );
     }
-    v = filterByPeriod(v, filters.period);
     v = filterByQuery(v, filters.q);
     v = filterByMatch(v, 'tender_type', filters.type);
     v = filterByMatch(v, 'tender_status', filters.status);
@@ -276,32 +288,52 @@ export default function TendersPage() {
     return v;
   }, [tenders, feedItems, filters, tab, sub, main, user]);
 
-  /* KPI считаются из tenders snapshot (всё что есть, без current-tab фильтра). */
+  /* KPI: календарный месяц (1…конец), не rolling 30d. Scope ТО — свои. */
   const kpiStats = useMemo(() => {
     const today = new Date(); today.setHours(0, 0, 0, 0);
     const todayMs = today.getTime();
-    const month30 = todayMs - 30 * 86400000;
-    let inboxToday = 0, inWork = 0, burn = 0, addendum = 0, wonMonth = 0;
+    const monthStart = new Date(today.getFullYear(), today.getMonth(), 1).getTime();
+    const monthEnd = new Date(today.getFullYear(), today.getMonth() + 1, 0, 23, 59, 59, 999).getTime();
+    // ISO week Mon–Sun
+    const dow = (today.getDay() + 6) % 7;
+    const weekStart = new Date(today); weekStart.setDate(today.getDate() - dow); weekStart.setHours(0, 0, 0, 0);
+    const weekStartMs = weekStart.getTime();
+    const weekEnd = new Date(weekStart); weekEnd.setDate(weekStart.getDate() + 6); weekEnd.setHours(23, 59, 59, 999);
+    const weekEndMs = weekEnd.getTime();
+
+    const role = user?.role || '';
+    const isDeptWide = ['ADMIN', 'HEAD_TO', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV'].includes(role);
+    const uid = user?.id;
+    const mine = (t) => {
+      if (!uid || isDeptWide || role !== 'TO') return true;
+      return t.created_by_user_id === uid || t.created_by === uid || t.calculator_user_id === uid;
+    };
+
+    const FINAL = new Set(['отмена', 'выиграли', 'проиграли']);
+    let inboxToday = 0, inWork = 0, burn = 0, addendum = 0, wonMonth = 0, lostMonth = 0;
     const hotIds = [];
-    const ACTIVE_STATUSES = new Set([
-      'Новый', 'На анализе', 'Отправлено на просчёт', 'Согласование ТКП',
-      'ТКП согласовано', 'Готово к отправке КП', 'КП отправлено', 'Дозапрос'
-    ]);
+    const week = { inbox: 0, submitted: 0, won: 0, lost: 0 };
+    const month = { inbox: 0, submitted: 0, won: 0, lost: 0, submission_sum: 0 };
+
+    const inRange = (ms, a, b) => Number.isFinite(ms) && ms >= a && ms <= b;
+
     for (const t of tenders) {
+      if (!mine(t)) continue;
       const created = t.created_at && new Date(t.created_at).getTime();
-      // 23.06.2026 BUG-FIX (🟡 #7): «Выиграно за месяц» теперь по won_at (V117), не created_at —
-      // created_at = когда тендер ЗАВЕДЁН, won_at = когда фактически выиграли. Fallback на
-      // created_at для исторических записей до V117.
       const wonMs = t.won_at ? new Date(t.won_at).getTime() : created;
       const lostMs = t.lost_at ? new Date(t.lost_at).getTime() : created;
+      const submittedMs = t.submitted_at
+        ? new Date(t.submitted_at).getTime()
+        : (t.registry_status === 'подались' ? created : null);
+
       if (Number.isFinite(created) && created >= todayMs) inboxToday++;
-      if (t.registry_status === 'подались' && t.tender_status !== 'Не подходит') inWork++;
+      if (['готовим', 'подались'].includes(t.registry_status) && t.tender_status !== 'Не подходит') inWork++;
       if (t.tender_status === 'Дозапрос') addendum++;
-      if (t.tender_status === 'Выиграли' && Number.isFinite(wonMs) && wonMs >= month30) wonMonth++;
-      // Burn — активный + deadline ≤ 3 дня
-      // 23.06.2026 BUG-FIX (P0 #1 уточнение): первичная колонка БД — docs_deadline.
-      // deadline_at/deadline оставлены для обратной совместимости со старыми feed-источниками.
-      if (ACTIVE_STATUSES.has(t.tender_status) && (t.docs_deadline || t.deadline_at || t.deadline)) {
+      if (t.tender_status === 'Выиграли' && inRange(wonMs, monthStart, monthEnd)) wonMonth++;
+      if (t.tender_status === 'Проиграли' && inRange(lostMs, monthStart, monthEnd)) lostMonth++;
+
+      const st = t.registry_status || 'рассмотрение';
+      if (!FINAL.has(st) && (t.docs_deadline || t.deadline_at || t.deadline)) {
         const dl = new Date(t.docs_deadline || t.deadline_at || t.deadline).getTime();
         if (Number.isFinite(dl)) {
           const days = Math.round((dl - todayMs) / 86400000);
@@ -311,25 +343,46 @@ export default function TendersPage() {
           }
         }
       }
+
+      if (inRange(created, weekStartMs, weekEndMs)) week.inbox++;
+      if (t.registry_status === 'подались' && inRange(submittedMs, weekStartMs, weekEndMs)) week.submitted++;
+      if (t.tender_status === 'Выиграли' && inRange(wonMs, weekStartMs, weekEndMs)) week.won++;
+      if (t.tender_status === 'Проиграли' && inRange(lostMs, weekStartMs, weekEndMs)) week.lost++;
+
+      if (inRange(created, monthStart, monthEnd)) month.inbox++;
+      if (t.registry_status === 'подались' && inRange(submittedMs, monthStart, monthEnd)) {
+        month.submitted++;
+        month.submission_sum += Number(t.submission_price_with_vat) || Number(t.submission_price) || 0;
+      }
+      if (t.tender_status === 'Выиграли' && inRange(wonMs, monthStart, monthEnd)) month.won++;
+      if (t.tender_status === 'Проиграли' && inRange(lostMs, monthStart, monthEnd)) month.lost++;
     }
-    // Конверсия = won / (won+lost) за месяц
-    let lostMonth = 0;
-    for (const t of tenders) {
-      const created = t.created_at && new Date(t.created_at).getTime();
-      // 23.06.2026 BUG-FIX (🟡 #7): lost_at вместо created_at, fallback — created_at.
-      const lostMs = t.lost_at ? new Date(t.lost_at).getTime() : created;
-      if (Number.isFinite(lostMs) && lostMs >= month30 && t.tender_status === 'Проиграли') lostMonth++;
+
+    // заявки сегодня из feed (если подгружен)
+    for (const f of feedItems) {
+      if (f.kind === 'tender') continue;
+      const created = f.created_at && new Date(f.created_at).getTime();
+      if (Number.isFinite(created) && created >= todayMs) inboxToday++;
+      if (Number.isFinite(created) && inRange(created, weekStartMs, weekEndMs)) week.inbox++;
+      if (Number.isFinite(created) && inRange(created, monthStart, monthEnd)) month.inbox++;
     }
+
     const total = wonMonth + lostMonth;
     const win_pct = total > 0 ? Math.round((wonMonth / total) * 100) : null;
-    return { inbox_today: inboxToday, in_work: inWork, burn, addendum, won_month: wonMonth, win_pct, hotIds };
-  }, [tenders]);
+    return {
+      inbox_today: inboxToday,
+      in_work: inWork,
+      burn,
+      addendum,
+      won_month: wonMonth,
+      win_pct,
+      hotIds,
+      week,
+      month
+    };
+  }, [tenders, feedItems, user]);
 
-  /* Счётчики на главных табах.
-     26.06.2026 FIX: раньше counts зависели от активной вкладки (если main='tenders',
-     заявки/all показывались 0/undefined, а при переключении считались из feedItems
-     — несогласованные цифры). Теперь applications/all берутся из feedCounts,
-     которые грузятся в фоне каждый refresh независимо от текущей вкладки. */
+  /* Счётчики на главных табах. */
   const mainCounts = useMemo(() => {
     const tendersCount = tenders.filter((t) => t.tender_status !== 'Не подходит').length;
     return {
@@ -413,7 +466,10 @@ export default function TendersPage() {
   };
 
   const onCreate = () => modal.open(<TenderEditorModal />);
-  const onResetFilters = () => setFilters({ q: '', period: 'all', type: '', status: '', source: '', pm: '' });
+  const onResetFilters = () => setFilters({
+    q: '', type: '', status: '', source: '', pm: '',
+    periodFilter: defaultPeriodFilter(),
+  });
 
   /* Переключение main-таба → дефолтный sub. */
   const onMainChange = (id) => {
@@ -424,7 +480,7 @@ export default function TendersPage() {
   };
 
   const jumpToBurn = () => {
-    setRegistryPeriod('current');
+    setRegistryPeriodFilter(defaultPeriodFilter());
     setRegistryBurnOnly(true);
     setMain('tenders');
     setSub('registry');
@@ -454,13 +510,18 @@ export default function TendersPage() {
   const subTabs = useMemo(() => {
     if (main === 'tenders') {
       const inWork = tenders.filter((t) =>
-        t.registry_status === 'подались' && t.tender_status !== 'Не подходит'
+        ['готовим', 'подались'].includes(t.registry_status) && t.tender_status !== 'Не подходит'
       ).length;
-      return [
+      const base = [
         { ...SUB_TABS.tenders[0] },
         { ...SUB_TABS.tenders[1], count: inWork },
         { ...SUB_TABS.tenders[2] }
       ];
+      const role = user?.role || '';
+      if (['ADMIN', 'HEAD_TO', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV'].includes(role)) {
+        base.push({ id: 'funnel', icon: '📊', label: 'Воронка', hint: 'Все тендеры и заявки — обзор для руководства' });
+      }
+      return base;
     }
     if (main === 'applications') {
       return [
@@ -470,10 +531,10 @@ export default function TendersPage() {
       ];
     }
     return null;
-  }, [main, tenders, feedCounts, ACTIVE_TENDER_STATUSES]);
-  const showPanels = false;
+  }, [main, tenders, feedCounts, user]);
   const showArchiveToggle = main === 'tenders' && sub === 'registry';
   const showRegistry = main === 'tenders' && (sub === 'registry' || sub === 'in_work');
+  const showFunnel = main === 'tenders' && sub === 'funnel';
   const showPlatform = main === 'tenders' && sub === 'platforms';
   const registrySubtab = sub === 'in_work' ? 'in_work' : (tab === 'archive' ? 'archive' : 'registry');
 
@@ -487,9 +548,20 @@ export default function TendersPage() {
     <div className="col gap-12">
       <TopActionsBar
         title="Хаб Тендеров"
-        subtitle={`${visible.length} ${pluralize(visible.length, ['обращение', 'обращения', 'обращений'])} в выборке`}
+        subtitle={
+          showRegistry
+            ? (tab === 'archive' ? 'Архив реестра ТО' : 'Реестр тендеров ТО')
+            : showFunnel
+              ? 'Воронка для руководства'
+              : showPlatform
+                ? 'Тендеры с площадок'
+                : `${visible.length} ${pluralize(visible.length, ['обращение', 'обращения', 'обращений'])} в выборке`
+        }
         actions={
           <>
+            {(user?.role === 'TO' || user?.role === 'HEAD_TO') && (
+              <a className="btn ghost" href="#/personal-kanban" title="Личный канбан ТО">⚔ Канбан</a>
+            )}
             {showPlatform && ['ADMIN', 'TO', 'HEAD_TO'].includes(user?.role) && (
               <Btn variant="ghost" onClick={() => setShowTgSettings(v => !v)}>
                 {showTgSettings ? '✕ Закрыть настройки' : '⚙ TenderGuru'}
@@ -510,18 +582,6 @@ export default function TendersPage() {
         hotIds={kpiStats.hotIds}
         onShow={jumpToBurn}
       />
-
-      {/* CTA-карточка перехода в канбан ТО */}
-      {(user?.role === 'TO' || user?.role === 'HEAD_TO') && (
-        <div className="tnd-kanban-cta">
-          <div className="tnd-kanban-cta-ic" aria-hidden>⚔</div>
-          <div className="tnd-kanban-cta-text">
-            <div className="tnd-kanban-cta-h">Личный канбан ТО — управление по этапам</div>
-            <div className="tnd-kanban-cta-p">Drag &amp; drop карточек по 9 колонкам жизненного цикла.</div>
-          </div>
-          <a className="tnd-kanban-cta-btn" href="#/personal-kanban">⚔ Открыть канбан</a>
-        </div>
-      )}
 
       {/* 3 главных таба */}
       <HubMainTabs active={main} counts={mainCounts} onChange={onMainChange} />
@@ -547,22 +607,13 @@ export default function TendersPage() {
         <PlatformTendersTab key={tgRefreshKey} onRefresh={refresh} />
       )}
 
-      {showRegistry && (
-        <RegistryTab
-          subtab={registrySubtab}
-          period={registryPeriod}
-          burnOnly={registryBurnOnly}
-          onPeriodChange={(p) => { setRegistryPeriod(p); setRegistryBurnOnly(false); }}
-          onOpenWin={onOpenWin}
-          onRefresh={refresh}
-        />
-      )}
-
-      {/* Sub-toggle «Активные / Архив» — в Реестре */}
+      {/* Активные / Архив — над реестром */}
       {showArchiveToggle && (
-        <div className="tnd-sub-tabs">
+        <div className="tnd-sub-tabs tnd-archive-toggle" role="tablist" aria-label="Активные или архив">
           <button
             type="button"
+            role="tab"
+            aria-selected={tab === 'active'}
             className={'tnd-sub-pill' + (tab === 'active' ? ' on' : '')}
             onClick={() => setTab('active')}
           >
@@ -570,20 +621,33 @@ export default function TendersPage() {
           </button>
           <button
             type="button"
+            role="tab"
+            aria-selected={tab === 'archive'}
             className={'tnd-sub-pill' + (tab === 'archive' ? ' on' : '')}
             onClick={() => setTab('archive')}
           >
-            📁 Архив
+            Архив
           </button>
         </div>
       )}
 
-      {/* Оперативные панели — только в Тендеры → В работе → Активные */}
-      {showPanels && (
-        <KpReadyPanel user={user} />
+      {showRegistry && (
+        <RegistryTab
+          subtab={registrySubtab}
+          periodFilter={registryPeriodFilter}
+          burnOnly={registryBurnOnly}
+          onPeriodFilterChange={(pf) => { setRegistryPeriodFilter(pf); setRegistryBurnOnly(false); }}
+          onClearBurn={() => setRegistryBurnOnly(false)}
+          onOpenWin={onOpenWin}
+          onRefresh={refresh}
+        />
       )}
 
-      {!showRegistry && !showPlatform && (
+      {showFunnel && (
+        <FunnelHubTab tenders={tenders} onRefresh={refresh} />
+      )}
+
+      {!showRegistry && !showPlatform && !showFunnel && (
         <>
       <TendersFilter filters={filters} onChange={setFilters} pms={pms} />
 

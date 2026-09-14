@@ -30,23 +30,27 @@ import { useEffect, useMemo, useState } from 'react';
 import { Btn } from '@/modals/parts';
 import { EmptyState } from '@/blocks/Blocks';
 import { StatusBadge, toast } from '@/modals/Notifications';
-import { Field, SelectInput, MoneyInput } from '@/inputs/Inputs';
+import { Field, SelectInput, MoneyInput, TextInput } from '@/inputs/Inputs';
 import { useModal, ConfirmModal } from '@/modals';
 import {
   loadCrew, loadTariffs, loadAvailableEmployees, loadPaymentsList,
-  addCrewMember, removeCrewMember,
+  addCrewMember, hardRemoveCrewMember,
   sendCrewInvites, sendCrewMaxInvites, sendSingleInvite,
-  activateFieldProject
+  activateFieldProject, loadRoleBaseRates
 } from '../api';
-import { CATEGORIES, ROLES, SHIFTS } from '../constants';
+import {
+  CATEGORIES, ROLES, SHIFTS, mapRoleTagToFieldRole,
+  filterTariffsForFieldRole, defaultTariffIdForRole, tariffIdFromRoleBaseRates
+} from '../constants';
 import TariffEditor from './Crew/TariffEditor';
 import DepartureModal from './Crew/DepartureModal';
 import DepartedList from './Crew/DepartedList';
 import LaunchFieldModal from './Crew/LaunchFieldModal';
+import { openBaseRatesModal } from './Crew/BaseRatesModal';
+import { formatMoney as fmtMoney } from '@/lib/money';
 
-function fmtMoney(n) {
-  if (!Number.isFinite(+n)) return '—';
-  return new Intl.NumberFormat('ru-RU').format(Math.round(+n)) + ' ₽';
+function byFio(a, b) {
+  return String(a?.employee_name || '').localeCompare(String(b?.employee_name || ''), 'ru', { sensitivity: 'base' });
 }
 
 function pl(n) {
@@ -83,20 +87,24 @@ export default function CrewTab({ work }) {
   const [showAdd, setShowAdd] = useState(false);
   const [editingMemberId, setEditingMemberId] = useState(null); // employee_id строки в режиме редактирования тарифа
   const [addForm, setAddForm] = useState({
-    employee_id: '', role: 'worker', shift: 'day', tariff_id: '', combo_id: '', per_diem: ''
+    employee_id: '', role: 'worker', shift: 'day', tariff_id: '',
+    combo_ids: [], manual_extra: ''
   });
   const [busy, setBusy] = useState(false);
   const [sendingSms, setSendingSms] = useState(false);
   const [sendingMax, setSendingMax] = useState(false);
   const [activating, setActivating] = useState(false);
+  const [fioQuery, setFioQuery] = useState('');
+  const [roleBaseRates, setRoleBaseRates] = useState(null);
 
   const reload = () => Promise.all([
     loadCrew(work.id),
     loadTariffs('all').then((d) => Array.isArray(d) ? d : []),
     // bypass cached wrapper for specials — vanilla тоже их получает отдельно
     loadAvailableEmployees(work.id),
-    loadPaymentsList(work.id)
-  ]).then(([members, allTariffs, av, pays]) => {
+    loadPaymentsList(work.id),
+    loadRoleBaseRates(work.id)
+  ]).then(([members, allTariffs, av, pays, rbr]) => {
     setAllMembers(members || []);
     // У нас loadTariffs отдаёт только массив `tariffs`. Спец-тарифы (для совмещения)
     // подгружаем отдельным запросом из всех (category=special).
@@ -104,12 +112,15 @@ export default function CrewTab({ work }) {
     setSpecials(allTariffs.filter((t) => t.category === 'special'));
     setAvailable(av || []);
     setPayments(Array.isArray(pays) ? pays : []);
+    setRoleBaseRates(rbr?.role_base_rates || null);
+    if (rbr?.site_category) setCategory(rbr.site_category);
     // Соберём справочник имён/телефонов (на случай если у назначения нет employee_name)
     const dict = (av || []).map((e) => ({
       id: e.id,
       name: e.fio || e.full_name || `${e.last_name || ''} ${e.first_name || ''}`.trim() || `#${e.id}`,
       phone: e.phone || e.mobile || null,
-      position: e.position || e.role_display || e.role || ''
+      position: e.position || e.role_display || e.role || '',
+      role_tag: e.role_tag || ''
     }));
     setEmployees(dict);
   }).catch((e) => {
@@ -136,17 +147,66 @@ export default function CrewTab({ work }) {
       };
     };
     return {
-      active:   allMembers.filter((a) => a.is_active !== false && !a.departure_date).map(enrich),
-      departed: allMembers.filter((a) => a.is_active === false || !!a.departure_date).map(enrich)
+      active:   allMembers.filter((a) => a.is_active !== false && !a.departure_date).map(enrich).sort(byFio),
+      departed: allMembers.filter((a) => a.is_active === false || !!a.departure_date).map(enrich).sort(byFio)
     };
   }, [allMembers, employees, payments]);
 
-  // Тарифы для совмещения = (specials ∪ tariffs с is_combinable)
+  const filteredActive = useMemo(() => {
+    const q = fioQuery.trim().toLowerCase();
+    if (!q) return active;
+    return active.filter((m) => String(m.employee_name || '').toLowerCase().includes(q));
+  }, [active, fioQuery]);
+
+  // Тарифы для совмещения = (specials ∪ tariffs с is_combinable) в категории
   const comboTariffs = useMemo(() => {
-    const combo = [...specials];
-    tariffs.forEach((t) => { if (t.is_combinable) combo.push(t); });
+    const combo = [];
+    tariffs.forEach((t) => {
+      if (t.is_combinable && t.category === category) combo.push(t);
+    });
+    specials.forEach((t) => { if (t.is_combinable) combo.push(t); });
     return combo;
-  }, [tariffs, specials]);
+  }, [tariffs, specials, category]);
+
+  const categoryTariffs = useMemo(
+    () => tariffs.filter((t) => t.category === category),
+    [tariffs, category]
+  );
+
+  const addFormTariffs = useMemo(
+    () => filterTariffsForFieldRole(categoryTariffs, addForm.role, category),
+    [categoryTariffs, addForm.role, category]
+  );
+
+  const addFormCalc = useMemo(() => {
+    const t = addFormTariffs.find((x) => String(x.id) === String(addForm.tariff_id))
+      || categoryTariffs.find((x) => String(x.id) === String(addForm.tariff_id));
+    const basePoints = t ? Number(t.points) || 0 : 0;
+    const baseRate = t ? Number(t.rate_per_shift) || 0 : 0;
+    let comboPoints = 0;
+    let comboRate = 0;
+    for (const id of addForm.combo_ids || []) {
+      const c = comboTariffs.find((x) => String(x.id) === String(id));
+      if (!c) continue;
+      comboPoints += Number(c.points) || 0;
+      comboRate += Number(c.rate_per_shift) || 0;
+    }
+    let manual = Number(String(addForm.manual_extra || '').replace(',', '.'));
+    if (!Number.isFinite(manual) || manual < 0) manual = 0;
+    manual = Math.round(manual * 100) / 100;
+    const pv = t?.point_value != null ? Number(t.point_value) : 500;
+    return {
+      basePoints, baseRate, comboPoints, comboRate, manual,
+      totalPoints: basePoints + comboPoints + manual,
+      totalRate: baseRate + comboRate + manual * pv
+    };
+  }, [addForm, addFormTariffs, categoryTariffs, comboTariffs]);
+
+  const resolveTariffForRole = (role, rates = roleBaseRates) => {
+    const fromBase = tariffIdFromRoleBaseRates(rates, role);
+    if (fromBase) return fromBase;
+    return defaultTariffIdForRole(categoryTariffs, role, category);
+  };
 
   if (!allMembers) return <div className="ft-loading">⏳ Загружаем бригаду…</div>;
 
@@ -156,19 +216,34 @@ export default function CrewTab({ work }) {
       toast('Сотрудник', 'Выбери из доступных', 'warn');
       return;
     }
+    const emp = available.find((e) => String(e.id) === String(addForm.employee_id));
+    if (emp?.is_busy && emp.busy_with?.length) {
+      const w = emp.busy_with[0];
+      const endStr = w.end_date ? new Date(w.end_date).toLocaleDateString('ru-RU') : '—';
+      const ok = window.confirm(
+        `⚠️ Этот сотрудник уже на объекте:\n«${w.work_title || '?'}»\nдо ${endStr}\n\nНазначить всё равно?`
+      );
+      if (!ok) return;
+    }
     setBusy(true);
     try {
+      const ids = (addForm.combo_ids || []).map(Number).filter((n) => n > 0);
       await addCrewMember(work.id, {
         employee_id: Number(addForm.employee_id),
         field_role: addForm.role,
         shift_type: addForm.shift,
         tariff_id: addForm.tariff_id ? Number(addForm.tariff_id) : null,
-        combination_tariff_id: addForm.combo_id ? Number(addForm.combo_id) : null,
-        per_diem: addForm.per_diem ? Number(addForm.per_diem) : null
+        combination_tariff_id: ids[0] || null,
+        combo_tariff_ids: ids,
+        manual_extra_points: addFormCalc.manual
+        // суточные — только из настроек проекта (toolbar), не per-person при добавлении
       });
-      const empName = available.find((e) => String(e.id) === String(addForm.employee_id))?.fio || '';
+      const empName = emp?.fio || available.find((e) => String(e.id) === String(addForm.employee_id))?.fio || '';
       toast('Добавлен в бригаду', empName || '', 'ok');
-      setAddForm({ employee_id: '', role: 'worker', shift: 'day', tariff_id: '', combo_id: '', per_diem: '' });
+      setAddForm({
+        employee_id: '', role: 'worker', shift: 'day', tariff_id: '',
+        combo_ids: [], manual_extra: ''
+      });
       setShowAdd(false);
       reload();
     } catch (e) {
@@ -178,17 +253,22 @@ export default function CrewTab({ work }) {
     }
   };
 
-  /* ─── Удаление (с подтверждением) ─── */
+  /* ─── ✕ Убрать из бригады (назначение). Сотрудник в справочнике остаётся. ─── */
   const onRemove = (employeeId, name) => {
     open(<ConfirmModal
-      title="Убрать из бригады"
-      message={`Убрать ${name || '#' + employeeId} из бригады?`}
-      tone="warn"
-      okText="Убрать"
+      title="Убрать из бригады?"
+      message={
+        `Убрать ${name || '#' + employeeId} из бригады этой работы?\n\n` +
+        `Карточка в справочнике останется. Удалится только назначение на объект ` +
+        `(и смены на нём). Дорога/корабль Хосе сохранятся.\n\n` +
+        `Для отъезда с датой в истории — «Отъезд».`
+      }
+      tone="danger"
+      okText="Убрать из бригады"
       onConfirm={async () => {
         try {
-          await removeCrewMember(work.id, employeeId);
-          toast('Убран', name || '', 'ok');
+          await hardRemoveCrewMember(work.id, employeeId);
+          toast('Убран из бригады', name || '', 'ok');
           reload();
         } catch (e) {
           toast('Ошибка', String(e?.message || e), 'err');
@@ -272,11 +352,26 @@ export default function CrewTab({ work }) {
       });
       toast('Field', 'Полевой модуль активирован', 'ok');
       reload();
+      openBaseRatesModal(open, {
+        workId: work.id,
+        workTitle: work.work_title || work.customer_name,
+        siteCategory: category,
+        onSaved: () => reload()
+      });
     } catch (e) {
       toast('Ошибка', String(e?.message || e), 'err');
     } finally {
       setActivating(false);
     }
+  };
+
+  const onOpenBaseRates = () => {
+    openBaseRatesModal(open, {
+      workId: work.id,
+      workTitle: work.work_title || work.customer_name,
+      siteCategory: category,
+      onSaved: () => reload()
+    });
   };
 
   /* ─── Индивидуальный SMS ─── */
@@ -325,6 +420,9 @@ export default function CrewTab({ work }) {
           <Btn variant="ghost" disabled={activating} onClick={onActivate} title="Активировать настройки field-проекта">
             {activating ? 'Активация…' : '🚀 Запустить Field'}
           </Btn>
+          <Btn variant="ghost" onClick={onOpenBaseRates} title="Базовые ставки по ролям">
+            💰 Базовые ставки
+          </Btn>
           {active.length > 0 && (
             <Btn variant="ghost" disabled={sendingSms} onClick={onSendSmsBroadcast} title="Отправить SMS всем">
               {sendingSms ? 'Отправка…' : '📨 SMS бригаде'}
@@ -341,61 +439,152 @@ export default function CrewTab({ work }) {
         </div>
       </div>
 
+      {/* ── Поиск по ФИО ── */}
+      <div className="ft-crew-filter-bar">
+        <div className="ft-crew-search">
+          <TextInput
+            icon="🔍"
+            clearable
+            value={fioQuery}
+            onChange={setFioQuery}
+            placeholder="Поиск по ФИО…"
+          />
+        </div>
+        <span className="ft-crew-filter-hint">
+          {fioQuery.trim()
+            ? `Найдено: ${filteredActive.length} из ${active.length}`
+            : (active.length ? `${active.length} чел. · А→Я` : '')}
+        </span>
+      </div>
+
       {/* ── Форма добавления ── */}
       {showAdd && (
         <div className="ft-add-form">
           <Field label="Свободный сотрудник" required help={`${available.length} в наличии`}>
             <SelectInput
               value={addForm.employee_id}
-              onChange={(v) => setAddForm({ ...addForm, employee_id: v })}
+              onChange={(v) => {
+                const emp = available.find((e) => String(e.id) === String(v));
+                const mapped = mapRoleTagToFieldRole(emp?.role_tag);
+                const next = {
+                  ...addForm,
+                  employee_id: v,
+                  role: mapped,
+                  tariff_id: resolveTariffForRole(mapped),
+                  combo_ids: []
+                };
+                setAddForm(next);
+                if (emp?.is_busy && emp.busy_with?.length) {
+                  const w = emp.busy_with[0];
+                  toast(
+                    'Уже на объекте',
+                    `«${emp.fio || 'Сотрудник'}»: ${w.work_title || 'другая работа'}${w.end_date ? ' до ' + new Date(w.end_date).toLocaleDateString('ru-RU') : ''}`,
+                    'warn'
+                  );
+                }
+              }}
               options={[
                 { value: '', label: '— выбрать из свободных —' },
-                ...available.map((e) => ({
-                  value: String(e.id),
-                  label: `${e.fio || e.full_name || `#${e.id}`}${e.specialty ? ' · ' + e.specialty : ''}${e.is_busy ? ' 🔴 занят' : ''}`
-                }))
+                ...available.map((e) => {
+                  const busy = e.is_busy && e.busy_with?.length
+                    ? ` 🔴 ${(e.busy_with[0].work_title || 'занят').slice(0, 40)}`
+                    : (e.is_busy ? ' 🔴 занят' : '');
+                  return {
+                    value: String(e.id),
+                    label: `${e.fio || e.full_name || `#${e.id}`}${e.role_tag || e.specialty ? ' · ' + (e.role_tag || e.specialty) : ''}${busy}`
+                  };
+                })
               ]}
             />
           </Field>
           <div className="ft-row-grid-2">
             <Field label="Роль в поле">
-              <SelectInput value={addForm.role} onChange={(v) => setAddForm({ ...addForm, role: v })}
-                options={ROLES.map((r) => ({ value: r.value, label: r.label }))} />
+              <SelectInput
+                value={addForm.role}
+                onChange={(v) => {
+                  setAddForm({
+                    ...addForm,
+                    role: v,
+                    tariff_id: resolveTariffForRole(v)
+                  });
+                }}
+                options={ROLES.map((r) => ({ value: r.value, label: r.label }))}
+              />
             </Field>
             <Field label="Смена">
               <SelectInput value={addForm.shift} onChange={(v) => setAddForm({ ...addForm, shift: v })}
                 options={SHIFTS.map((s) => ({ value: s.value, label: s.label }))} />
             </Field>
           </div>
-          <div className="ft-row-grid-2">
-            <Field label="Тариф">
-              <SelectInput value={addForm.tariff_id} onChange={(v) => setAddForm({ ...addForm, tariff_id: v })}
-                options={[
-                  { value: '', label: '— по дефолту —' },
-                  ...tariffs.map((t) => ({
-                    value: String(t.id),
-                    label: `${t.position_name || t.label || t.name} · ${t.points || 0}б · ${fmtMoney(t.rate_per_shift)}/смена`
-                  }))
-                ]}
-              />
-            </Field>
-            <Field label="Совмещение">
-              <SelectInput value={addForm.combo_id} onChange={(v) => setAddForm({ ...addForm, combo_id: v })}
-                options={[
-                  { value: '', label: 'Нет' },
-                  ...comboTariffs
-                    .filter((t) => t.is_combinable)
-                    .map((t) => ({
+
+          <div className="ft-assign-rate-grid">
+            <div className="ft-assign-rate-col ft-assign-rate-col--base">
+              <div className="ft-assign-rate-col__title">База</div>
+              <p className="ft-assign-rate-hint">
+                {roleBaseRates
+                  ? 'Подставлена из базовых ставок объекта (можно сменить).'
+                  : 'Задайте базовые ставки кнопкой «💰 Базовые ставки» или выберите тариф.'}
+              </p>
+              <Field label="Тариф">
+                <SelectInput value={addForm.tariff_id} onChange={(v) => setAddForm({ ...addForm, tariff_id: v })}
+                  options={[
+                    { value: '', label: '— по дефолту —' },
+                    ...addFormTariffs.map((t) => ({
                       value: String(t.id),
-                      label: `${t.position_name || t.label || t.name} (+${t.points || 1}б)`
+                      label: `${t.position_name || t.label || t.name} · ${t.points || 0}б · ${fmtMoney(t.rate_per_shift)}/смена`
                     }))
-                ]}
-              />
-            </Field>
+                  ]}
+                />
+              </Field>
+            </div>
+            <div className="ft-assign-rate-col ft-assign-rate-col--extra">
+              <div className="ft-assign-rate-col__title">Доплата</div>
+              <p className="ft-assign-rate-hint">Только этому человеку · галочки и/или ручные баллы (3.5…)</p>
+              <Field label="Ручные баллы">
+                <input
+                  className="m-input"
+                  type="number"
+                  min="0"
+                  step="0.5"
+                  placeholder="0"
+                  value={addForm.manual_extra}
+                  onChange={(e) => setAddForm({ ...addForm, manual_extra: e.target.value })}
+                />
+              </Field>
+              <div className="ft-assign-rate-checks">
+                {comboTariffs.filter((t) => t.is_combinable).map((t) => {
+                  const id = String(t.id);
+                  const checked = (addForm.combo_ids || []).includes(id);
+                  return (
+                    <label key={id} className="ft-assign-rate-check">
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={() => {
+                          const cur = addForm.combo_ids || [];
+                          setAddForm({
+                            ...addForm,
+                            combo_ids: checked ? cur.filter((x) => x !== id) : [...cur, id]
+                          });
+                        }}
+                      />
+                      <span>{t.position_name || t.name} (+{t.points || 1}б)</span>
+                    </label>
+                  );
+                })}
+              </div>
+            </div>
           </div>
-          <Field label="Суточные / день">
-            <MoneyInput value={addForm.per_diem} onChange={(v) => setAddForm({ ...addForm, per_diem: v })} />
-          </Field>
+
+          <div className="ft-tariff-editor__calc ft-assign-rate-total">
+            <div>
+              <span className="ft-tariff-editor__calc-l">Итого:</span>
+              <strong>
+                {addFormCalc.totalPoints}б · {addFormCalc.totalRate ? fmtMoney(addFormCalc.totalRate) : '—'}
+              </strong>
+            </div>
+          </div>
+
           <div className="ft-row-r">
             <Btn onClick={() => setShowAdd(false)}>Отмена</Btn>
             <Btn variant="primary" disabled={busy} onClick={submitAdd}>{busy ? 'Сохраняем…' : 'Добавить'}</Btn>
@@ -406,12 +595,15 @@ export default function CrewTab({ work }) {
       {/* ── Таблица бригады ── */}
       {active.length === 0 && !showAdd ? (
         <EmptyState icon="👥" title="Бригада пуста" hint="Добавь рабочих кнопкой выше" />
-      ) : active.length === 0 ? null : (
+      ) : active.length === 0 ? null : filteredActive.length === 0 ? (
+        <EmptyState icon="🔍" title="Никого не найдено" hint="Сбрось поиск или уточни ФИО" />
+      ) : (
         <div className="card ft-table-wrap">
           <div className="ft-table-scroll">
             <table className="t-list ft-table ft-crew-table">
               <thead>
                 <tr>
+                  <th style={{ width: 36, textAlign: 'center' }}>#</th>
                   <th>Сотрудник</th>
                   <th>Роль</th>
                   <th>Тариф</th>
@@ -426,22 +618,42 @@ export default function CrewTab({ work }) {
                 </tr>
               </thead>
               <tbody>
-                {active.map((m) => {
+                {filteredActive.map((m, idx) => {
                   const tariff = tariffs.find((t) => Number(t.id) === Number(m.tariff_id));
-                  const combo = comboTariffs.find((t) => Number(t.id) === Number(m.combination_tariff_id));
+                  const memberComboIds = Array.isArray(m.combo_tariff_ids) && m.combo_tariff_ids.length
+                    ? m.combo_tariff_ids
+                    : (m.combination_tariff_id ? [m.combination_tariff_id] : []);
+                  const combos = memberComboIds
+                    .map((id) => comboTariffs.find((t) => Number(t.id) === Number(id)))
+                    .filter(Boolean);
+                  const manualPts = Number(m.manual_extra_points) || 0;
                   const role = ROLES.find((r) => r.value === (m.field_role || m.role_in_field)) || { label: m.field_role || '—' };
-                  const points = (tariff?.points || 0) + (combo?.points || 0);
-                  const rate = (Number(tariff?.rate_per_shift) || 0) + (Number(combo?.rate_per_shift) || 0);
+                  const points = m.tariff_points != null
+                    ? Number(m.tariff_points)
+                    : (tariff?.points || 0) + combos.reduce((s, c) => s + (Number(c.points) || 0), 0) + manualPts;
+                  const rate = (Number(tariff?.rate_per_shift) || 0)
+                    + combos.reduce((s, c) => s + (Number(c.rate_per_shift) || 0), 0)
+                    + manualPts * (Number(tariff?.point_value) || 500);
+                  const comboLabel = [
+                    ...combos.map((c) => c.position_name || c.name),
+                    manualPts > 0 ? `+${manualPts}б` : null
+                  ].filter(Boolean).join(', ') || '—';
                   const isEditing = editingMemberId === m.employee_id;
+                  const memberRole = m.field_role || m.role_in_field || 'worker';
+                  let roleTariffs = filterTariffsForFieldRole(categoryTariffs, memberRole, category);
+                  if (m.tariff_id && !roleTariffs.some((t) => Number(t.id) === Number(m.tariff_id))) {
+                    const cur = tariffs.find((t) => Number(t.id) === Number(m.tariff_id));
+                    if (cur) roleTariffs = [cur, ...roleTariffs];
+                  }
 
                   // Inline-редактор ниже строки
                   if (isEditing) {
                     return (
                       <tr key={`${m.id || m.employee_id}-edit`} className="ft-crew-edit-row">
-                        <td colSpan={11}>
+                        <td colSpan={12}>
                           <TariffEditor
                             member={m}
-                            tariffs={tariffs}
+                            tariffs={roleTariffs}
                             comboTariffs={comboTariffs}
                             workId={work.id}
                             onSaved={() => { setEditingMemberId(null); reload(); }}
@@ -454,6 +666,7 @@ export default function CrewTab({ work }) {
 
                   return (
                     <tr key={m.id || m.employee_id} className="row-hover">
+                      <td className="ft-crew-num" style={{ textAlign: 'center', color: 'var(--t3)' }}>{idx + 1}</td>
                       <td>
                         <strong className="ft-row-name-l">{m.employee_name || `#${m.employee_id}`}</strong>
                         {m.phone && <div className="ft-row-name-s">{m.phone}</div>}
@@ -471,7 +684,7 @@ export default function CrewTab({ work }) {
                       </td>
                       <td className="ft-crew-num">{points || '—'}</td>
                       <td className="ft-crew-num c-gold">{rate ? fmtMoney(rate) : '—'}</td>
-                      <td className="ft-crew-num">{combo ? (combo.position_name || combo.name) : '—'}</td>
+                      <td className="ft-crew-num">{comboLabel}</td>
                       <td className="ft-crew-num">{m.days_on_site != null ? m.days_on_site : '—'}</td>
                       <td className="ft-crew-num c-gold">{m.earned ? fmtMoney(m.earned) : '—'}</td>
                       <td className="ft-crew-num">
@@ -514,7 +727,11 @@ export default function CrewTab({ work }) {
       <DepartedList
         work={work}
         items={departed}
+        tariffs={categoryTariffs}
+        comboTariffs={comboTariffs}
+        category={category}
         onReturned={() => reload()}
+        onTariffSaved={() => reload()}
       />
     </div>
   );

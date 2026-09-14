@@ -2,6 +2,7 @@ import { Btn } from '@/modals/parts';
 import { StatusBadge } from '@/modals/Notifications';
 import { TENDER_STATUSES } from './api';
 import SourceBadge from './SourceBadge';
+import { formatMoney as fmtMoney } from '@/lib/money';
 
 // Backend хранит tender_status как русский string. Ранее ключи были английские —
 // lookup всегда возвращал undefined, бейджи теряли цвет.
@@ -26,11 +27,6 @@ const TYPE_META = {
   addendum:   { icon: '➕', label: 'Доп. соглашение', cls: 'addendum' },
   commercial: { icon: '💼', label: 'Коммерческий',  cls: 'commercial' }
 };
-
-function fmtMoney(n) {
-  if (!Number.isFinite(+n)) return '—';
-  return new Intl.NumberFormat('ru-RU').format(Math.round(+n)) + ' ₽';
-}
 
 /** Дедлайн-пилюля по горячности (vs «сегодня»). */
 function DeadlinePill({ value }) {

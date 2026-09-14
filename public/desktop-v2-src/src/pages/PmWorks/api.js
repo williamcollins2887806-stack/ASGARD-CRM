@@ -39,6 +39,8 @@ export const WORK_STATUS_TRANSITIONS = {
 // чтобы локальные потребители PmWorks/api ничего не ломали, но истина — одна.
 export { PREP_STATUSES, isPrepWork } from '@/helpers/work-status';
 import { PREP_STATUSES as _PREP_STATUSES } from '@/helpers/work-status';
+
+export { formatMoney as fmtMoney, formatMoneyShort as fmtMoneyShort } from '@/lib/money';
 export const ACTIVE_STATUSES = ['В работе', 'На паузе'];
 export const CLOSEOUT_STATUSES = ['Подписание акта', 'Работы сдали'];
 // Vanilla pm_works имел расширенный набор финальных статусов (см. MyDashboard DONE_SET).
@@ -93,7 +95,7 @@ export function loadEquipmentAvailable(from, to) {
  * Backend src/routes/expenses.js:139, :191.
  */
 export function loadWorkExpenses(workId) {
-  return api('/api/expenses/work?work_id=' + workId)
+  return api('/api/expenses/work?work_id=' + workId + '&limit=5000')
     .then((d) => d.expenses || d.items || [])
     .catch(() => []);
 }
@@ -179,11 +181,6 @@ export function filterByGroup(works, group) {
 export function pctDelta(fact, plan) {
   if (!plan || !Number.isFinite(+plan) || +plan === 0) return null;
   return ((+fact - +plan) / +plan) * 100;
-}
-
-export function fmtMoney(n) {
-  if (!Number.isFinite(+n)) return '—';
-  return new Intl.NumberFormat('ru-RU').format(Math.round(+n)) + ' ₽';
 }
 
 export function fmtDate(s) {

@@ -97,7 +97,7 @@ export function SendTkpModal({ tkp: tkpProp }) {
               <Checkbox checked={form.attach_stamp} onChange={(v) => setForm({ ...form, attach_stamp: v })} label="Включить печать" />
               <div className="mt-10">
                 <button type="button" onClick={openPreview} style={{ fontSize: 12.5, color: 'var(--gold)', background: 'transparent', border: 'none', cursor: 'pointer', padding: 0 }}>
-                  👁 Открыть превью PDF
+                  Открыть превью PDF
                 </button>
               </div>
             </div>

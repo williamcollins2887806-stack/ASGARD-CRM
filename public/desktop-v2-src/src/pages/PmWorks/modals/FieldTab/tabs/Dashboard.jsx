@@ -17,11 +17,8 @@
 import { useEffect, useState } from 'react';
 import { Btn } from '@/modals/parts';
 import { loadDashboard } from '../api';
+import { formatMoney as fmtMoney } from '@/lib/money';
 
-function fmtMoney(n) {
-  if (!Number.isFinite(+n)) return '—';
-  return new Intl.NumberFormat('ru-RU').format(Math.round(+n)) + ' ₽';
-}
 function fmtDate(s) {
   if (!s) return '—';
   const d = new Date(s);

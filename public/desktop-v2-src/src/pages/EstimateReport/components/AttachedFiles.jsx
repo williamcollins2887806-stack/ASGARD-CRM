@@ -72,7 +72,7 @@ export default function AttachedFiles({ docs }) {
                   type="button"
                   className="er-file-link"
                   onClick={() => openPreview(d, url, name)}
-                >👁 Просмотр</button>
+                >Просмотр</button>
               )}
               <a href={url} download={name} className="er-file-link" target="_blank" rel="noreferrer">⬇ Скачать</a>
             </div>

@@ -1,11 +1,7 @@
 import { Btn } from '@/modals/parts';
 import { StatusBadge } from '@/modals/Notifications';
 import SourceBadge from './SourceBadge';
-
-function fmtMoney(n) {
-  if (!Number.isFinite(+n)) return '—';
-  return new Intl.NumberFormat('ru-RU').format(Math.round(+n)) + ' ₽';
-}
+import { formatMoney as fmtMoney } from '@/lib/money';
 
 const FEED_STATUS_TONE = {
   'Новая': 'info',

@@ -23,7 +23,7 @@
  *   POST   /api/inbox-applications/:id/archive  — архивировать заявку
  */
 import { api } from '@/api/client';
-
+export { formatMoney as money } from '@/lib/money';
 export const MAILBOX_ROLES = ['ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV', 'HEAD_TO'];
 
 /* ── Типы писем ──────────────────────────────────────────────────────── */
@@ -231,7 +231,3 @@ export function extractFirstEmail(raw) {
   return first.name || first.address || first.email || '';
 }
 
-export function money(x) {
-  const n = Math.round(Number(x || 0));
-  return n.toLocaleString('ru-RU') + ' ₽';
-}

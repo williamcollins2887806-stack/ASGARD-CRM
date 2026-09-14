@@ -17,6 +17,7 @@ import { toast } from '@/modals/Notifications';
 import { StatusBadge } from '@/modals/Notifications';
 import { loadOne, updateStatus, deleteApp, STATUS_MAP, STATUS_TONES, TYPE_MAP } from './api';
 import { TrainingEditModal } from './TrainingEditModal';
+import { formatMoney as fmtMoney } from '@/lib/money';
 
 function emit() { window.dispatchEvent(new CustomEvent('asgard:training:changed')); }
 
@@ -208,10 +209,6 @@ function Row({ label, who, when, tone, reason }) {
       {reason && <div style={{ marginTop: 4, fontSize: 12, color: 'var(--err)' }}>Причина: {reason}</div>}
     </div>
   );
-}
-function fmtMoney(n) {
-  if (!Number.isFinite(+n) || +n === 0) return '—';
-  return new Intl.NumberFormat('ru-RU').format(Math.round(+n)) + ' ₽';
 }
 function fmtDate(d) {
   if (!d) return '—';

@@ -42,6 +42,7 @@ import { SelectInput } from '@/inputs/Inputs';
 
 import BalanceAdjustModal from './BalanceAdjustModal';
 import DetailModal from './DetailModal';
+import OnBehalfModal from './OnBehalfModal';
 import {
   loadAllRequests, loadSummary, loadCashBalance,
   ADMIN_STATUS_OPTIONS, ADMIN_TYPE_OPTIONS,
@@ -135,6 +136,10 @@ export default function CashAdminPage() {
     modal.open(<BalanceAdjustModal currentBalance={balance?.balance || 0} onSaved={refresh} />, { size: 'wide' });
   };
 
+  const onBehalf = () => {
+    modal.open(<OnBehalfModal onCreated={refresh} />, { size: 'wide' });
+  };
+
   const active = filtered.filter((r) => !['closed', 'rejected'].includes(r.status));
   const done   = filtered.filter((r) =>  ['closed', 'rejected'].includes(r.status));
 
@@ -156,7 +161,12 @@ export default function CashAdminPage() {
         kicker="Финансы"
         title="Казна. Управление"
         subtitle="Согласование и контроль авансовых отчётов"
-        actions={<Btn variant="ghost" onClick={refresh}>↻ Обновить</Btn>}
+        actions={
+          <>
+            <Btn variant="ghost" onClick={refresh}>↻ Обновить</Btn>
+            <Btn variant="primary" onClick={onBehalf}>Запросить за сотрудника</Btn>
+          </>
+        }
       />
 
       {/* Баланс кассы */}
@@ -374,6 +384,9 @@ function MiniCard({ req, onOpen }) {
         <div>
           <div className="user">{req.user_name}</div>
           <div className="role">{req.user_role || ''}</div>
+          {req.initiated_by && Number(req.initiated_by) !== Number(req.user_id) && req.initiated_by_name && (
+            <div className="fs-11 c-t3">Запросил: {req.initiated_by_name}</div>
+          )}
         </div>
         <div className="fs-11 c-t3">{fmtDate(req.created_at)}</div>
       </div>
@@ -414,6 +427,9 @@ function AdminCard({ req, onOpen }) {
         <div>
           <div className="fw-700 c-t1">{req.user_name || '—'}</div>
           <div className="fs-11 c-t3">{req.user_role || ''}</div>
+          {req.initiated_by && Number(req.initiated_by) !== Number(req.user_id) && req.initiated_by_name && (
+            <div className="fs-11 c-t3">Запросил: {req.initiated_by_name}</div>
+          )}
         </div>
         <div className="cash-card-date">{fmtDate(req.created_at)}</div>
       </div>

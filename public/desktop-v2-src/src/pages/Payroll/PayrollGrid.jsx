@@ -192,8 +192,8 @@ function GridBody({ gridData, pointsMap, editMode, pendingEdits, setPendingEdits
       <div className="grid-auto-160 gap-10">
         <KPICell label="Рабочих" value={totalWorkers} />
         <KPICell label="Смен"    value={totalShifts} />
-        <KPICell label="ФОТ"     value={fmtMoneyShort(totalFOT) + ' ₽'} tone="gold" />
-        <KPICell label="Суточные" value={fmtMoneyShort(totalPerDiem) + ' ₽'} tone="info" />
+        <KPICell label="ФОТ"     value={fmtMoneyShort(totalFOT)} tone="gold" />
+        <KPICell label="Суточные" value={fmtMoneyShort(totalPerDiem)} tone="info" />
       </div>
 
       {/* Таблица */}

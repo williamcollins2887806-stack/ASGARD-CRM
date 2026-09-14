@@ -37,7 +37,7 @@ import { toast } from '@/modals/Notifications';
 import {
   STATUS_MAP, REASONS, SE_YEAR_LIMIT,
   loadEmployee, loadReadinessLog, setReadinessStatus,
-  fmtDate, fmtMoney, fmtRating, canEdit, canSeePII,
+  fmtDate, fmtMoney, fmtRating, canEdit, canSeePII, canEditReadiness,
 } from './api';
 import { EditEmployeeModal } from './EditEmployeeModal';
 import { ReviewModal } from './ReviewModal';
@@ -136,6 +136,7 @@ export function EmployeeDetailModal({ employeeId }) {
   const loc = emp.on_site_info || emp.approved_info || null;
 
   const userCanEdit = user && canEdit(user.role);
+  const userCanEditReadiness = user && canEditReadiness(user.role);
   const userCanSeePII = user && canSeePII(user.role);
   const userCanReview = user && (user.role === 'PM' || user.role === 'HEAD_PM' || user.role === 'ADMIN' || /^DIRECTOR/.test(user.role || ''));
 
@@ -175,8 +176,8 @@ export function EmployeeDetailModal({ employeeId }) {
   };
   const saveStatus = async () => {
     const { status, readiness_date, reason, comment } = statusForm;
-    if (status === 'ready' && !readiness_date) {
-      toast.warn('Укажите дату готовности');
+    if ((status === 'ready' || status === 'not_ready') && !readiness_date) {
+      toast.warn('Укажите дату (с какого числа готов / не готов)');
       return;
     }
     if (status === 'not_ready' && !reason) {
@@ -187,7 +188,7 @@ export function EmployeeDetailModal({ employeeId }) {
     try {
       await setReadinessStatus(emp.id, {
         status,
-        readiness_date: status === 'ready' ? readiness_date : null,
+        readiness_date: (status === 'ready' || status === 'not_ready') ? readiness_date : null,
         reason: status === 'not_ready' ? reason : null,
         comment: comment.trim() || null,
       });
@@ -278,7 +279,7 @@ export function EmployeeDetailModal({ employeeId }) {
           )}
 
           {/* Смена статуса */}
-          {userCanEdit && (
+          {userCanEditReadiness && (
             <Section label="Смена статуса готовности">
               {!statusForm.show ? (
                 <div className="row gap-8 u-wrap">
@@ -293,8 +294,11 @@ export function EmployeeDetailModal({ employeeId }) {
                   <div className="prs-detail-status-form-info">
                     Сменить на: <b>{STATUS_MAP[statusForm.status]?.label || statusForm.status}</b>
                   </div>
-                  {statusForm.status === 'ready' && (
-                    <Field label="Дата готовности" required>
+                  {(statusForm.status === 'ready' || statusForm.status === 'not_ready') && (
+                    <Field
+                      label={statusForm.status === 'ready' ? 'Готов с даты' : 'Не готов с даты'}
+                      required
+                    >
                       <DatePicker
                         value={statusForm.readiness_date}
                         onChange={(v) => setStatusForm((f) => ({ ...f, readiness_date: v || '' }))}

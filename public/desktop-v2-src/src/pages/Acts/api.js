@@ -15,6 +15,8 @@
  */
 import { api } from '@/api/client';
 
+export { formatMoney as fmtMoney, formatMoneyShort as fmtMoneyShort } from '@/lib/money';
+
 export const STATUSES = {
   draft:  { label: 'Черновик',  tone: 'draft',    color: 'var(--t-3)' },
   sent:   { label: 'Отправлен', tone: 'info',     color: 'var(--info)' },
@@ -73,10 +75,6 @@ export function loadWorks() {
 
 /* ─── Форматирование ─────────────────────────────────────────────────── */
 
-export function fmtMoney(n) {
-  if (!Number.isFinite(+n) || n === 0) return '0 ₽';
-  return new Intl.NumberFormat('ru-RU').format(Math.round(+n)) + ' ₽';
-}
 export function fmtDate(s) {
   if (!s) return '—';
   const d = new Date(s);

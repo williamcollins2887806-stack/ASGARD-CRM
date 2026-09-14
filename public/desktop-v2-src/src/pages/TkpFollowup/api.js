@@ -13,6 +13,8 @@
  */
 import { api } from '@/api/client';
 
+export { formatMoney as fmtMoney, formatMoneyShort as fmtMoneyShort } from '@/lib/money';
+
 /**
  * Статусы-баскеты — backend выставляет followup_bucket по дням без контакта и client_decision.
  */
@@ -74,11 +76,6 @@ export function setClientDecision(tkpId, decision, comment) {
     method: 'POST',
     body: { decision, comment: comment || '' }
   });
-}
-
-export function fmtMoney(n) {
-  if (!Number.isFinite(+n)) return '—';
-  return new Intl.NumberFormat('ru-RU').format(Math.round(+n)) + ' ₽';
 }
 
 export function fmtDate(s) {

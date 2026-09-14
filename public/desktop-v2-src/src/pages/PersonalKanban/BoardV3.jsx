@@ -39,6 +39,7 @@ import NoteBoard from './NoteBoard';
 import CustomerPicker from './CustomerPicker';
 import CreateCustomerModal from './CreateCustomerModal';
 import { FilePreviewModal } from '@/modals/FilePreview';
+import { formatMoney as fmtMoney, formatMoneyShort as fmtMoneyShort } from '@/lib/money';
 
 // 22.06.2026 P0-F1: шутки для click-guard на overlay (паритет с
 // personal_kanban.js:3186-3199). Юзер случайно кликал на оверлей и терял работу.
@@ -798,10 +799,6 @@ function FinCard({ label, v, margin }) {
     </div>
   );
 }
-function fmtMoney(n) {
-  if (n == null) return '— ₽';
-  return Number(n).toLocaleString('ru-RU') + ' ₽';
-}
 function docFolderCanUpload(folderId, folders) {
   if (folderId === 'pm_upload' || folderId === 'customer') return true;
   const f = (folders || []).find((x) => x.id === folderId);
@@ -1386,7 +1383,6 @@ function ReferencesV3({ card, onClose }) {
     </div>
   );
 }
-function fmtMoneyShort(n) { return n != null ? (Math.round(Number(n) / 1000) + ' К') : '—'; }
 function fmtPct(n) { return n != null ? (Number(n).toFixed(1) + '%') : '—'; }
 
 const TKP_DEFAULT_BLOCKS = [
@@ -1746,10 +1742,10 @@ function SmetaTableEditable({ block, onChange }) {
   function changeVat(v) {
     update(items, parseFloat(v) || 0);
   }
-  const fmt = (n) => Math.round(n).toLocaleString('ru-RU');
   const total = items.reduce((s, it) => s + ((Number(it.qty) || 0) * (Number(it.price) || 0)), 0);
   const vatAmount = total * vatPct / 100;
   const totalWithVat = total + vatAmount;
+  const fmt = (n) => fmtMoney(n, { noCurrency: true });
 
   const inputStyle = {
     width:'100%', background:'transparent', border:'1px solid transparent',

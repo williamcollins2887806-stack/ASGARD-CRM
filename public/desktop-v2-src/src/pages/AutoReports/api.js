@@ -13,6 +13,9 @@
 import { api } from '@/api/client';
 import { downloadProtected } from '@/api/download';
 
+export { formatMoney as fmtMoney, formatMoneyShort as fmtMoneyShort } from '@/lib/money';
+export { formatMoney as fmtMoneyR } from '@/lib/money';
+
 export const REPORT_TYPES = {
   monthly:   { label: 'Месячный',    icon: '📅' },
   quarterly: { label: 'Квартальный', icon: '📊' },
@@ -21,11 +24,6 @@ export const REPORT_TYPES = {
 
 export const MONTHS = ['', 'Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь',
                        'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь'];
-
-export function fmtMoneyR(n) {
-  if (!Number.isFinite(+n)) return '0 ₽';
-  return new Intl.NumberFormat('ru-RU').format(Math.round(+n)) + ' ₽';
-}
 
 function buildParams(type, p) {
   const q = new URLSearchParams();

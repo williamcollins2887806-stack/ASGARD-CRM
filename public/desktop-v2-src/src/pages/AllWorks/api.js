@@ -5,6 +5,8 @@
  */
 import { api } from '@/api/client';
 
+export { formatMoney as fmtMoney, formatMoneyShort as fmtMoneyShort } from '@/lib/money';
+
 // Backend хранит work_status как русский string. English value были мёртвым кодом —
 // фильтр по 'closed'/'finished' никогда не возвращал старые работы.
 // Полный список включает legacy-окончания (Завершена/Сдан) которые встречаются в БД,
@@ -97,11 +99,6 @@ export function filterByMatch(works, key, value) {
 }
 
 /* ─── Форматирование ─── */
-
-export function fmtMoney(n) {
-  if (!Number.isFinite(+n)) return '—';
-  return new Intl.NumberFormat('ru-RU').format(Math.round(+n)) + ' ₽';
-}
 
 export function fmtDate(s) {
   if (!s) return '—';

@@ -192,3 +192,16 @@
 .oe-kpi--err     { background: var(--err-bg); }
 .oe-kpi--err .oe-kpi-value,
 .oe-kpi--err .oe-kpi-label { color: var(--err); }
+
+.oe-cash-hint {
+  padding: 12px 14px;
+  border-radius: var(--r-md, 10px);
+  background: color-mix(in srgb, var(--amber) 12%, transparent);
+  color: var(--t-1);
+  font-size: 13px;
+  line-height: 1.45;
+}
+.oe-cash-hint a {
+  color: var(--gold);
+  font-weight: 700;
+}

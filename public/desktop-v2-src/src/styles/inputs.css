@@ -39,6 +39,10 @@
 }
 .inp-wrap.has-err { border-color: var(--err); }
 .inp-wrap.has-err:focus-within { box-shadow: 0 0 0 3px var(--err-bg); }
+.inp-wrap.is-disabled {
+  opacity: 0.55;
+  pointer-events: none;
+}
 
 .inp-text {
   flex: 1;

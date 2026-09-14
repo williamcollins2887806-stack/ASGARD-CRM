@@ -1,15 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { api } from '@/api/client';
-
-function shortMoney(n) {
-  const x = Number(n) || 0;
-  const abs = Math.abs(x);
-  const sign = x < 0 ? '−' : '';
-  if (abs >= 1e9) return sign + (abs / 1e9).toFixed(1) + ' млрд ₽';
-  if (abs >= 1e6) return sign + (abs / 1e6).toFixed(1) + ' млн ₽';
-  if (abs >= 1e3) return sign + (abs / 1e3).toFixed(0) + ' тыс ₽';
-  return x.toLocaleString('ru-RU') + ' ₽';
-}
+import { formatMoneyShort as shortMoney } from '@/lib/money';
 
 export default function Money() {
   const [{ works, tenders }, setData] = useState({ works: null, tenders: null });

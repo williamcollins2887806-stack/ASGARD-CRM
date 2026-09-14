@@ -108,6 +108,11 @@
   --bg-accent: var(--inner-bg);
   --gold-bg-strong: rgba(212,168,67,0.18);
 
+  /* Официальный лист (счета, акты, наряды) — всегда бумага, не инверсия UI */
+  --paper: #F3EBDA;
+  --paper-ink: #1C1710;
+  --paper-muted: #6A6256;
+
   /* ─── Иконки каталога (warehouse/procurement/v2/assets/icons/*.svg) ───
      Используются ВНУТРИ SVG (через <style> внутри файла иконки), поэтому
      наследуются только при inline-вставке (см. components/GoodsIcon.jsx). */
@@ -225,6 +230,10 @@
   --brd: var(--brd-1);
   --bg-accent: var(--inner-bg);
   --gold-bg-strong: rgba(212,168,67,0.22);
+
+  --paper: #F7F1E6;
+  --paper-ink: #1C1710;
+  --paper-muted: #6A6256;
 
   /* ─── Иконки каталога — светлая тема (НЕ инверсия) ─── */
   --icon-ink:    #1F2A3A;   /* глубокий slate для контура (читается на белом) */

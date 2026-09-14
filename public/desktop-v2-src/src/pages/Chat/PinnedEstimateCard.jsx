@@ -16,6 +16,7 @@
  */
 import { useEffect, useMemo, useState, useRef } from 'react';
 import { Btn } from '@/modals/parts';
+import { formatMoney as fmtRub } from '@/lib/money';
 
 const STATUS_LABELS = {
   draft: 'Черновик',
@@ -25,13 +26,6 @@ const STATUS_LABELS = {
   question: 'Вопрос',
   rejected: 'Отклонён'
 };
-
-function fmtRub(v) {
-  if (v == null || v === '') return '—';
-  const n = Number(v);
-  if (!Number.isFinite(n)) return '—';
-  return new Intl.NumberFormat('ru-RU').format(Math.round(n)) + ' ₽';
-}
 
 function parseMetadata(raw) {
   if (!raw) return {};

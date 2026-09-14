@@ -12,7 +12,7 @@ import { useModal } from '@/modals';
 import { MCard, MHead, MBody, MFoot, Btn, Field, Pill } from '@/modals/parts';
 import { SelectInput } from '@/inputs/Inputs';
 import { toast } from '@/modals/Notifications';
-import { SHIFT_TYPES, getShiftMeta, buildDateRange, dayOfWeek, dowShort, dayLabel } from './timesheetUtils';
+import { SHIFT_TYPES, EDITABLE_SHIFT_TYPES, getShiftMeta, buildDateRange, dayOfWeek, dowShort, dayLabel } from './timesheetUtils';
 import { createCheckin } from '../api';
 
 const TEMPLATES = [
@@ -74,23 +74,44 @@ export function BulkShiftModal({ workId, from, to, employees = [], onDone }) {
     setProgress({ done: 0, total: totalCalls, failed: 0 });
     let done = 0;
     let failed = 0;
+    let overwriteAll = null; // null = ещё не спрашивали; true/false после confirm
     const empIds = [...selected];
     for (const empId of empIds) {
       for (const date of targetDates) {
+        const payload = {
+          employee_id: empId,
+          date,
+          shift,
+          hours_worked: hours,
+          hours_paid: hours,
+          day_rate: points * pointValue,
+          amount_earned: points * pointValue,
+          status: 'completed'
+        };
         try {
-          await createCheckin(workId, {
-            employee_id: empId,
-            date,
-            shift,
-            hours_worked: hours,
-            hours_paid: hours,
-            day_rate: points * pointValue,
-            amount_earned: points * pointValue,
-            status: 'completed'
-          });
+          await createCheckin(workId, payload);
           done++;
         } catch (e) {
-          failed++;
+          if (e?.status === 409 && e?.data?.requires_confirmation) {
+            if (overwriteAll === null) {
+              overwriteAll = window.confirm(
+                (e.data.message || 'На некоторые даты уже есть отметки.') +
+                  '\n\nПерезаписать все такие дни в шаблоне?'
+              );
+            }
+            if (overwriteAll) {
+              try {
+                await createCheckin(workId, { ...payload, confirm_overwrite: true });
+                done++;
+              } catch (_) {
+                failed++;
+              }
+            } else {
+              failed++;
+            }
+          } else {
+            failed++;
+          }
         }
         setProgress({ done: done + failed, total: totalCalls, failed });
       }
@@ -125,7 +146,7 @@ export function BulkShiftModal({ workId, from, to, employees = [], onDone }) {
           </Field>
 
           <div className="ft-ts-pop-shifts" role="radiogroup" aria-label="Тип смены">
-            {SHIFT_TYPES.map((st) => (
+            {EDITABLE_SHIFT_TYPES.map((st) => (
               <button
                 key={st.value}
                 type="button"

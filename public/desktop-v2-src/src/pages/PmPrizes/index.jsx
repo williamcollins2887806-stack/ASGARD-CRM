@@ -94,6 +94,13 @@ export default function PmPrizesPage() {
         actions={<Btn variant="ghost" onClick={refresh}>↻ Обновить</Btn>}
       />
 
+      <div className="card p-14" style={{ borderColor: 'rgba(212,168,67,.35)', background: 'linear-gradient(135deg,rgba(212,168,67,.08),transparent)' }}>
+        <div style={{ fontWeight: 700, marginBottom: 4 }}>Залы Норн обновляются</div>
+        <div className="c-t2" style={{ fontSize: 13, lineHeight: 1.4 }}>
+          Новые заявки на физ. и privilege не создаём. Старые fulfillment — закрываем до конца.
+        </div>
+      </div>
+
       <div className="pp-stats">
         <PpStat ico="⚔️" color="var(--gold)" v={stats.workers} l="Воинов с призами" />
         <PpStat ico="📩" color="var(--amber)" v={stats.requested} l="Запрошено" />

@@ -112,7 +112,7 @@ export function Popover({ anchorRef, open, onClose, matchWidth = true, maxHeight
         left: pos.left,
         width: pos.width,
         maxHeight,
-        zIndex: 20000 // выше всех модалок
+        zIndex: 2147483600
       }}
     >
       {children}

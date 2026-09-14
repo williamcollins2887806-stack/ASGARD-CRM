@@ -12,10 +12,7 @@
 import { useState, useRef } from 'react';
 import { useModal } from './ModalProvider';
 import { MCard, MHead, MBody, MFoot, Btn, Field, Input, Textarea } from './parts';
-
-function money(n) {
-  return (Number(n) || 0).toLocaleString('ru-RU') + ' ₽';
-}
+import { formatMoney as money } from '@/lib/money';
 
 /** Баланс-плашка для модалок над кассой */
 function BalanceBadge({ balance, requested }) {

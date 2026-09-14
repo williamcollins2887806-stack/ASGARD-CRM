@@ -22,6 +22,7 @@ export function EmployeePlannedEngagement({ employee, canEdit, onSaved }) {
   const [from, setFrom] = useState(plan?.planned_from ? String(plan.planned_from).slice(0, 10) : '');
   const [to, setTo] = useState(plan?.planned_to ? String(plan.planned_to).slice(0, 10) : '');
   const [note, setNote] = useState(plan?.note || '');
+  const [inbound, setInbound] = useState(plan?.inbound_transport || '');
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -36,16 +37,27 @@ export function EmployeePlannedEngagement({ employee, canEdit, onSaved }) {
     setFrom(plan?.planned_from ? String(plan.planned_from).slice(0, 10) : '');
     setTo(plan?.planned_to ? String(plan.planned_to).slice(0, 10) : '');
     setNote(plan?.note || '');
+    setInbound(plan?.inbound_transport || '');
   }, [employee?.id, plan?.work_id]);
 
-  const workOptions = works.map((w) => ({
-    value: String(w.id),
-    label: (w.work_title || 'Работа #' + w.id).slice(0, 80),
-  }));
+  const workOptions = works.map((w) => {
+    const base = (w.work_title || 'Работа #' + w.id).slice(0, 70);
+    const isCurrent = onSite && Number(onSite.work_id) === Number(w.id);
+    return {
+      value: String(w.id),
+      label: isCurrent ? `${base} · уже на объекте` : base,
+    };
+  });
 
   const save = async () => {
     if (!workId) {
       toast.warn('Выберите проект');
+      return;
+    }
+    if (onSite && Number(onSite.work_id) === Number(workId)) {
+      toast.warn(
+        `«${employee.fio || 'Сотрудник'}» уже на объекте «${onSite.work_title || ''}». Выберите другой проект или оформите отъезд.`
+      );
       return;
     }
     setSaving(true);
@@ -55,6 +67,7 @@ export function EmployeePlannedEngagement({ employee, canEdit, onSaved }) {
         planned_from: from || null,
         planned_to: to || null,
         note: note.trim() || null,
+        inbound_transport: inbound || null,
       });
       if (res.warnings?.length) {
         toast.warn(res.warnings.join('; '));
@@ -79,6 +92,7 @@ export function EmployeePlannedEngagement({ employee, canEdit, onSaved }) {
       setFrom('');
       setTo('');
       setNote('');
+      setInbound('');
       emitChanged();
       onSaved?.();
     } catch (e) {
@@ -102,6 +116,11 @@ export function EmployeePlannedEngagement({ employee, canEdit, onSaved }) {
               {plan.planned_to && ` по ${fmtDate(plan.planned_to)}`}
             </div>
           )}
+          {plan.inbound_transport && (
+            <div className="prs-detail-loc-pm">
+              Завоз: {plan.inbound_transport === 'ship' ? 'корабль' : 'вертолёт'}
+            </div>
+          )}
         </div>
       )}
 
@@ -122,6 +141,17 @@ export function EmployeePlannedEngagement({ employee, canEdit, onSaved }) {
               <DatePicker value={to} onChange={(v) => setTo(v || '')} />
             </Field>
           </div>
+          <Field label="Чем завозим (МЛСП)">
+            <SelectInput
+              value={inbound}
+              onChange={setInbound}
+              options={[
+                { value: '', label: '— не указано —' },
+                { value: 'helicopter', label: 'Вертолёт' },
+                { value: 'ship', label: 'Корабль' },
+              ]}
+            />
+          </Field>
           <Field label="Комментарий">
             <TextareaInput value={note} onChange={setNote} minRows={2} maxRows={3} placeholder="Необязательно" />
           </Field>
@@ -137,7 +167,9 @@ export function EmployeePlannedEngagement({ employee, canEdit, onSaved }) {
           </div>
           {onSite && (
             <p className="prs-planned-hint muted fs-12">
-              Сейчас на объекте: {onSite.work_title}. План на другой проект не меняет статус «На объекте».
+              Сейчас на объекте: <b>{onSite.work_title}</b>
+              {onSite.pm_name ? ` · РП: ${onSite.pm_name}` : ''}.
+              {' '}План на другой проект не снимает его с текущего. Чтобы перевести — сначала отъезд.
             </p>
           )}
         </>

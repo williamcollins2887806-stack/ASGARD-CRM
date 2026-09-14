@@ -7,6 +7,7 @@ import AccessDenied from '@/blocks/AccessDenied';
 import { toast } from '@/modals/Notifications';
 // 23.06.2026 BUG-FIX (Sites D-M10/D-M11): DONE_SET/isDone — из единого helpers/work-status.
 import { isDone } from '@/helpers/work-status';
+import { formatMoneyShort as shortMoney, formatMoney as money } from '@/lib/money';
 
 const MONTHS = ['Янв', 'Фев', 'Мар', 'Апр', 'Май', 'Июн', 'Июл', 'Авг', 'Сен', 'Окт', 'Ноя', 'Дек'];
 const WON = ['Выиграли'];
@@ -17,18 +18,6 @@ const LOST = ['Проиграли'];
 // backend ловился silent → пустой дашборд без объяснения).
 const ALLOWED = ['ADMIN', 'DIRECTOR_COMM', 'DIRECTOR_GEN', 'DIRECTOR_DEV'];
 
-function money(n) {
-  return (Number(n) || 0).toLocaleString('ru-RU', { maximumFractionDigits: 0 }) + ' ₽';
-}
-function shortMoney(n) {
-  const x = Number(n) || 0;
-  const abs = Math.abs(x);
-  const sign = x < 0 ? '−' : '';
-  if (abs >= 1e9) return sign + (abs / 1e9).toFixed(1) + ' млрд ₽';
-  if (abs >= 1e6) return sign + (abs / 1e6).toFixed(1) + ' млн ₽';
-  if (abs >= 1e3) return sign + (abs / 1e3).toFixed(0) + ' тыс ₽';
-  return money(x);
-}
 function pct(a, b) {
   if (!b) return '—';
   return Math.round((a / b) * 100) + '%';

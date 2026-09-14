@@ -12,6 +12,8 @@
  */
 import { api } from '@/api/client';
 
+export { formatMoney as fmtMoney, formatMoneyShort as fmtMoneyShort } from '@/lib/money';
+
 export const ENTITY_LABEL = {
   cash_requests:        'Запрос наличных',
   pre_tender_requests:  'Зап. ТКП',
@@ -74,13 +76,6 @@ export function loadComments(entityType, id) {
   return api(`/api/approval/${entityType}/${id}/comments`)
     .then((d) => d.comments || [])
     .catch(() => []);
-}
-
-export function fmtMoney(n) {
-  if (n === null || n === undefined || n === '') return '—';
-  const num = Number(n);
-  if (!Number.isFinite(num)) return '—';
-  return new Intl.NumberFormat('ru-RU').format(Math.round(num)) + ' ₽';
 }
 
 export function fmtDateTime(s) {

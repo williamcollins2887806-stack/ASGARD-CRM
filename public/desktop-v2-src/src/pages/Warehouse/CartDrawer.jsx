@@ -236,7 +236,7 @@ export function CartDrawer({ open, onClose, onChanged }) {
             </div>
             <div className="wh-cart-actions">
               <Btn variant="ghost" onClick={onOpenPreview} style={{ flex: 1 }}>
-                👁 Предпросмотр
+                Предпросмотр
               </Btn>
               <Btn variant="primary" disabled={busy} onClick={() => onSubmit(false, '')} style={{ flex: 2 }}>
                 {busy ? 'Отправка…' : 'Отправить заявку →'}
@@ -514,7 +514,7 @@ function PreviewBlock({ data, works, workValue, onChangeWork, onCancel, onConfir
   };
   return (
     <div className="wh-cart-preview">
-      <div className="wh-cart-preview-title">👁 Предпросмотр разбивки</div>
+      <div className="wh-cart-preview-title">Предпросмотр разбивки</div>
       {section('🔒 Зарезервируется со склада', data.reserve_lines, (l, i) => (
         <tr key={'r' + i}>
           <td><strong>{l.name}</strong></td>

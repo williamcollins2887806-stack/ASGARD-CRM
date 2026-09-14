@@ -12,6 +12,8 @@
  */
 import { api } from '@/api/client';
 
+export { formatMoney as fmtMoney, formatMoneyShort as fmtMoneyShort } from '@/lib/money';
+
 /* 11 стадий воронки — 10 по статусам тендеров (зеркало TENDER_TRANSITIONS) + completed
    для тендеров, чья работа уже завершена (vanilla funnel.js:236-238 ставит stage='completed').
    Используем кириллические статусы из БД (см. src/routes/tenders.js). */
@@ -127,7 +129,3 @@ export function tenderSum(t) {
   return Number(t.contract_value || t.tender_price || t.estimated_sum || 0) || 0;
 }
 
-export function fmtMoney(n) {
-  const v = Number(n) || 0;
-  return new Intl.NumberFormat('ru-RU').format(Math.round(v)) + ' ₽';
-}

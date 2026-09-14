@@ -31,6 +31,8 @@ import { PayWorkerModal } from './Payments/PayWorkerModal';
 import { BulkPerDiemModal } from './Payments/BulkPerDiemModal';
 import { GenerateSalaryModal } from './Payments/GenerateSalaryModal';
 import { SalaryStatementModal } from './Payments/SalaryStatementModal';
+import { EditPaymentModal } from './Payments/EditPaymentModal';
+import { formatMoney as fmtMoney } from '@/lib/money';
 
 const PAY_TYPE_LABELS = {
   per_diem: '🌙 Суточные',
@@ -53,10 +55,6 @@ const METHOD_LABELS = {
   transfer: '🏦 Перевод'
 };
 
-function fmtMoney(n) {
-  if (!Number.isFinite(+n)) return '0 ₽';
-  return new Intl.NumberFormat('ru-RU').format(Math.round(+n)) + ' ₽';
-}
 function fmtDate(s) {
   if (!s) return '—';
   const d = new Date(s);
@@ -213,20 +211,24 @@ export default function PaymentsTab({ work }) {
 
   const onDelete = (p) => {
     open(<ConfirmModal
-      title="Отменить выплату"
-      message={`Отменить ${PAY_TYPE_LABELS[p.type] || p.type} ${fmtMoney(p.amount)}? Запись перейдёт в статус «cancelled».`}
+      title="Удалить выплату"
+      message={`Удалить ${PAY_TYPE_LABELS[p.type] || p.type} ${fmtMoney(p.amount)} (${p.employee_name || ''})?\nВыплата пропадёт из баланса рабочего, кассы РП и расходов по работе. Начисление ФОТ по табелю не трогаем.`}
       tone="danger"
-      okText="Отменить"
+      okText="Удалить"
       onConfirm={async () => {
         try {
-          await deletePayment(p.id);
-          toast('Выплата отменена', '', 'ok');
+          const res = await deletePayment(p.id);
+          toast('Выплата удалена', res?.warning || '', 'ok');
           reload();
         } catch (e) {
           toast('Ошибка', e?.message || String(e), 'err');
         }
       }}
     />);
+  };
+
+  const onEdit = (p) => {
+    open(<EditPaymentModal payment={p} onSaved={reload} />);
   };
 
   /* ─────────────── РЕНДЕР ─────────────── */
@@ -412,7 +414,10 @@ export default function PaymentsTab({ work }) {
                           <Btn size="sm" variant="ghost" onClick={() => onMarkPaid(p)} title="Отметить выплаченным">💰</Btn>
                         )}
                         {p.status !== 'cancelled' && (
-                          <Btn size="sm" variant="ghost" onClick={() => onDelete(p)} title="Отменить">🗑</Btn>
+                          <Btn size="sm" variant="ghost" onClick={() => onEdit(p)} title="Редактировать">✎</Btn>
+                        )}
+                        {p.status !== 'cancelled' && (
+                          <Btn size="sm" variant="ghost" onClick={() => onDelete(p)} title="Удалить">✕</Btn>
                         )}
                       </td>
                     </tr>

@@ -12,6 +12,8 @@
  */
 import { api } from '@/api/client';
 
+export { formatMoney as fmtMoney, formatMoneyShort as fmtMoneyShort } from '@/lib/money';
+
 export const TENDER_STATUS_TONES = {
   'Отправлено на просчёт': 'info',
   'Согласование ТКП': 'purple',
@@ -96,11 +98,6 @@ export function bucketOf(tender) {
   if (s === 'ТКП согласовано') return 'tkp';
   if (s === 'Готово к отправке КП') return 'send';
   return 'other';
-}
-
-export function fmtMoney(n) {
-  if (!Number.isFinite(+n) || +n <= 0) return '—';
-  return new Intl.NumberFormat('ru-RU').format(Math.round(+n)) + ' ₽';
 }
 
 export function fmtDate(s) {

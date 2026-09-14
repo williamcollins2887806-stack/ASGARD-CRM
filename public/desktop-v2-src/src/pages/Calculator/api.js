@@ -18,6 +18,8 @@
  */
 import { api } from '@/api/client';
 
+export { formatMoney as fmtMoney, formatMoneyShort as fmtMoneyShort } from '@/lib/money';
+
 export const ROLE_LIST = ['ИТР', 'Мастер', 'Слесарь', 'Промывщик', 'ПТО', 'Химик', 'Сварщик', 'Разнорабочий'];
 
 export function num(v, d = 0) {
@@ -27,11 +29,6 @@ export function num(v, d = 0) {
 
 export function clamp(n, mn, mx) {
   return Math.min(mx, Math.max(mn, n));
-}
-
-export function fmtMoney(v) {
-  const n = Number(v) || 0;
-  return new Intl.NumberFormat('ru-RU').format(Math.round(n)) + ' ₽';
 }
 
 export function safeParse(s, fallback) {

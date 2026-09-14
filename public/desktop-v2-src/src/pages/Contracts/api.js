@@ -19,6 +19,8 @@
  */
 import { api } from '@/api/client';
 
+export { formatMoney as fmtMoney, formatMoneyShort as fmtMoneyShort } from '@/lib/money';
+
 export const ALLOWED_VIEW_ROLES = [
   'ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV',
   'OFFICE_MANAGER', 'BUH', 'PM', 'HEAD_PM'
@@ -124,12 +126,6 @@ export function fmtDate(s) {
   if (!s) return '—';
   try { return new Date(s).toLocaleDateString('ru-RU'); }
   catch { return String(s).slice(0, 10); }
-}
-
-export function fmtMoney(n) {
-  const v = parseFloat(n);
-  if (!Number.isFinite(v)) return '—';
-  return new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 0 }).format(v) + ' ₽';
 }
 
 export function filterByQuery(list, q) {

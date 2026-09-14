@@ -23,15 +23,9 @@ import { MCard, MHead, MBody, MFoot, Btn } from '@/modals/parts';
 import { api } from '@/api/client';
 import { toast } from '@/modals/Notifications';
 import './PaymentBreakdown.css';
+import { formatMoney as fmtMoney } from '@/lib/money';
 
 // ─── helpers ───────────────────────────────────────────────────────────────
-
-function fmtMoney(n) {
-  if (n == null || n === '') return '0 ₽';
-  const num = Number(n);
-  if (!Number.isFinite(num)) return '0 ₽';
-  return new Intl.NumberFormat('ru-RU').format(Math.round(num)) + ' ₽';
-}
 
 function fmtDate(s) {
   if (!s) return '—';

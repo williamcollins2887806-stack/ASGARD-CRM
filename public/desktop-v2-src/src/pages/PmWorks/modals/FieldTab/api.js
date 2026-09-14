@@ -75,6 +75,7 @@ export async function exportTimesheetExcel(workId, params = {}) {
   if (params.from) q.set('from', params.from);
   if (params.to)   q.set('to',   params.to);
   q.set('format', 'xlsx');
+  q.set('include_per_diem', params.include_per_diem === false || params.include_per_diem === 0 || params.include_per_diem === '0' ? '0' : '1');
   const url = `/api/field/manage/projects/${workId}/timesheet?${q.toString()}`;
   const { downloadProtected } = await import('@/api/download');
   return downloadProtected(url, `timesheet-${workId}-${params.from || ''}-${params.to || ''}.xlsx`);
@@ -281,6 +282,9 @@ export function createPayment(payload) {
 export function deletePayment(id) {
   return api(`/api/worker-payments/${id}`, { method: 'DELETE' });
 }
+export function updatePayment(id, payload) {
+  return api(`/api/worker-payments/${id}`, { method: 'PUT', body: payload });
+}
 
 /* ─── Payments tab — расширения для PayWorker / Bulk / Salary ─── */
 
@@ -357,16 +361,24 @@ export function saveCrew(workId, crew) {
 }
 export function addCrewMember(workId, payload) {
   // Backend ждёт {employees:[{...}]}. Нормализуем поле role → field_role (бэк-имя).
+  const comboIds = Array.isArray(payload.combo_tariff_ids)
+    ? payload.combo_tariff_ids.map(Number).filter((n) => n > 0)
+    : (payload.combination_tariff_id ? [Number(payload.combination_tariff_id)] : []);
   const member = {
     employee_id: payload.employee_id,
     field_role: payload.field_role || payload.role_in_field || payload.role || 'worker',
     tariff_id: payload.tariff_id || null,
-    combination_tariff_id: payload.combination_tariff_id || null,
+    combination_tariff_id: comboIds[0] || payload.combination_tariff_id || null,
+    combo_tariff_ids: comboIds,
+    manual_extra_points: payload.manual_extra_points != null && payload.manual_extra_points !== ''
+      ? Number(payload.manual_extra_points)
+      : 0,
     shift_type: payload.shift_type || payload.shift || 'day',
     per_diem: payload.per_diem != null ? payload.per_diem : null
   };
   return fm(`/projects/${workId}/crew`, { method: 'POST', body: { employees: [member] } });
 }
+/** Soft leave (🚪 отъезд) — is_active=false + departure_date. */
 export function removeCrewMember(workId, employeeId, opts = {}) {
   return fm(`/projects/${workId}/departure/${employeeId}`, {
     method: 'POST',
@@ -375,6 +387,11 @@ export function removeCrewMember(workId, employeeId, opts = {}) {
       departure_date: opts.departure_date || new Date().toISOString().slice(0, 10)
     }
   });
+}
+
+/** Hard-delete ✕ — убрать из бригады как будто не было (DELETE assignment + checkins). */
+export function hardRemoveCrewMember(workId, employeeId) {
+  return fm(`/projects/${workId}/crew/${employeeId}`, { method: 'DELETE' });
 }
 
 /* ─── Бригада — массовые приглашения (vanilla field-tab.js:428,448) ─── */
@@ -426,14 +443,23 @@ export function returnCrewMember(workId, employeeId) {
  * (см. field-manage.js:148, ветка `if (existing.length > 0) UPDATE`).
  */
 export function updateCrewMemberTariff(workId, payload) {
+  const comboIds = Array.isArray(payload.combo_tariff_ids)
+    ? payload.combo_tariff_ids.map(Number).filter((n) => n > 0)
+    : (payload.combination_tariff_id ? [Number(payload.combination_tariff_id)] : []);
   const member = {
     employee_id: Number(payload.employee_id),
     field_role: payload.field_role || 'worker',
     shift_type: payload.shift_type || 'day',
     tariff_id: payload.tariff_id ? Number(payload.tariff_id) : null,
-    combination_tariff_id: payload.combination_tariff_id ? Number(payload.combination_tariff_id) : null,
+    combination_tariff_id: comboIds[0] || null,
+    combo_tariff_ids: comboIds,
+    manual_extra_points: payload.manual_extra_points != null && payload.manual_extra_points !== ''
+      ? Number(payload.manual_extra_points)
+      : 0,
     per_diem: payload.per_diem != null && payload.per_diem !== '' ? Number(payload.per_diem) : null
   };
+  // keep_inactive: обновить тариф уехавшему без возврата на объект
+  if (payload.keep_inactive) member.keep_inactive = true;
   return fm(`/projects/${workId}/crew`, { method: 'POST', body: { employees: [member] } });
 }
 
@@ -460,7 +486,28 @@ export function activateFieldProject(workId, payload) {
       site_category: payload?.site_category || 'ground',
       per_diem: payload?.per_diem != null ? payload.per_diem : 0,
       schedule_type: payload?.schedule_type || 'shift',
-      shift_hours: payload?.shift_hours != null ? payload.shift_hours : 11
+      shift_hours: payload?.shift_hours != null ? payload.shift_hours : 11,
+      ...(payload?.role_base_rates != null ? { role_base_rates: payload.role_base_rates } : {}),
+      ...(payload?.per_diem_on_checkins != null ? { per_diem_on_checkins: payload.per_diem_on_checkins } : {})
+    }
+  });
+}
+
+export function loadRoleBaseRates(workId) {
+  return fm(`/projects/${workId}/role-base-rates`).catch(() => ({
+    work_id: workId,
+    site_category: 'ground',
+    role_base_rates: null,
+    is_active: false
+  }));
+}
+
+export function saveRoleBaseRates(workId, payload) {
+  return fm(`/projects/${workId}/role-base-rates`, {
+    method: 'PUT',
+    body: {
+      site_category: payload?.site_category || null,
+      role_base_rates: payload?.role_base_rates ?? null
     }
   });
 }

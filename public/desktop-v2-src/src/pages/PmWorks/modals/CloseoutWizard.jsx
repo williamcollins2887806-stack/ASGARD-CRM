@@ -23,6 +23,7 @@ import { toast } from '@/modals/Notifications';
 import { api } from '@/api/client';
 import { loadProcurementForWork, loadAssemblyForWork } from '../api';
 import { loadCrew } from './FieldTab/api';
+import { formatMoney as money } from '@/lib/money';
 
 const RATING_LABELS = [
   '', '👎 Очень плохо', '🙁 Плохо', '😐 Средне', '🙂 Хорошо', '🌟 Отлично'
@@ -141,12 +142,11 @@ export function CloseoutWizard({ work }) {
           const chatId = chatResp?.chat?.id;
           if (finSummary && chatId) {
             const profitEmoji = (finSummary.profit?.net ?? 0) >= 0 ? '📈' : '📉';
-            const money = (n) => (Number(n) || 0).toLocaleString('ru-RU');
             const message =
               `${profitEmoji} **Работы завершены — Финансовый итог**\n\n` +
-              `Выручка: ${money(finSummary.revenue?.ex_vat)} ₽\n` +
-              `Расходы + налоги: ${money(finSummary.expenses?.total_with_tax)} ₽\n` +
-              `Чистая прибыль: **${money(finSummary.profit?.net)} ₽** (маржа ${finSummary.profit?.margin ?? 0}%)\n\n` +
+              `Выручка: ${money(finSummary.revenue?.ex_vat)}\n` +
+              `Расходы + налоги: ${money(finSummary.expenses?.total_with_tax)}\n` +
+              `Чистая прибыль: **${money(finSummary.profit?.net)}** (маржа ${finSummary.profit?.margin ?? 0}%)\n\n` +
               `[Открыть полный отчёт](#/work-report?id=${work.id})`;
             await api(`/api/chat-groups/${chatId}/messages`, { method: 'POST', body: { message } });
           }

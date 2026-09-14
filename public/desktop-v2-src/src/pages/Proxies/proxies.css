@@ -1,6 +1,4 @@
-/* ═══════════════════════════════════════════════════════════════════════
- * Proxies — реестр доверенностей
- * ═══════════════════════════════════════════════════════════════════════ */
+/* Proxies — унитарный реестр доверенностей */
 
 .prx-filter {
   display: grid;
@@ -8,32 +6,6 @@
   gap: 8px;
 }
 .prx-filter > * { min-width: 0; }
-
-.prx-kpi {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-  gap: 10px;
-}
-.prx-kpi-card {
-  background: var(--card-bg);
-  border: 1px solid var(--brd-1);
-  border-radius: var(--r-md);
-  padding: 14px 16px;
-  box-shadow: var(--sh-card);
-}
-.prx-kpi-lab {
-  font-size: 11px;
-  text-transform: uppercase;
-  letter-spacing: 0.12em;
-  color: var(--t-3);
-  font-weight: 700;
-}
-.prx-kpi-val {
-  margin-top: 6px;
-  font-size: 22px;
-  font-weight: 800;
-  color: var(--t-1);
-}
 
 .prx-table {
   width: 100%;
@@ -48,14 +20,14 @@
   text-align: left;
   padding: 10px 12px;
   font-size: 11px;
-  letter-spacing: 0.1em;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--t-3);
   font-weight: 700;
   white-space: nowrap;
 }
 .prx-table td {
-  padding: 10px 12px;
+  padding: 11px 12px;
   border-bottom: 1px solid var(--brd-2);
   vertical-align: middle;
 }
@@ -66,57 +38,195 @@
 .prx-row:hover { background: var(--hover-bg); }
 .prx-num {
   font-weight: 700;
+  font-variant-numeric: tabular-nums;
   color: var(--t-1);
+  white-space: nowrap;
 }
 .prx-dim {
   color: var(--t-3);
-  font-size: 12.5px;
+  font-size: 12px;
 }
 .prx-actions {
   text-align: right;
   white-space: nowrap;
 }
-.prx-actions .m-btn {
-  margin-left: 4px;
+.prx-actions .m-btn { margin-left: 2px; }
+
+.prx-files {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+.prx-file-dot {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 2px 6px;
+  border-radius: var(--r-sm, 4px);
+  background: var(--inner-bg);
+  color: var(--t-3);
+  border: 1px solid var(--brd-2);
+}
+.prx-file-dot.is-ext {
+  color: var(--info-t, var(--t-1));
+  border-color: var(--info-brd, var(--brd-1));
+}
+.prx-file-dot.is-sign {
+  color: var(--ok-t, var(--t-1));
+  border-color: var(--ok-brd, var(--brd-1));
 }
 
 .prx-typegrid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-  gap: 12px;
+  gap: 10px;
 }
 .prx-typecard {
-  background: var(--inner-bg);
+  text-align: left;
+  padding: 14px 16px;
+  border-radius: var(--r-md, 8px);
   border: 1px solid var(--brd-1);
-  border-radius: var(--r-md);
-  padding: 18px 14px;
-  text-align: center;
+  background: var(--card-bg, var(--bg-1));
   cursor: pointer;
-  transition: all 0.15s ease;
-  font-family: inherit;
-  color: var(--t-1);
+  transition: border-color 0.12s ease, background 0.12s ease;
 }
 .prx-typecard:hover {
-  border-color: var(--gold);
-  transform: translateY(-2px);
-  box-shadow: var(--sh-md);
-}
-.prx-typecard-ic {
-  font-size: 30px;
-  margin-bottom: 8px;
-  line-height: 1;
+  border-color: var(--accent, var(--brd-1));
+  background: var(--hover-bg);
 }
 .prx-typecard-ttl {
   font-weight: 700;
+  font-size: 14px;
   color: var(--t-1);
   margin-bottom: 4px;
 }
 .prx-typecard-desc {
+  font-size: 12.5px;
   color: var(--t-3);
-  font-size: 12px;
-  line-height: 1.4;
+  line-height: 1.35;
+}
+.prx-modal-foot {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 14px;
 }
 
-@media (max-width: 900px) {
-  .prx-filter { grid-template-columns: 1fr; }
+.prx-sec {
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--brd-2);
+}
+.prx-sec:last-child { border-bottom: none; }
+.prx-sec-title {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--t-3);
+  margin-bottom: 10px;
+}
+
+.prx-person-mode {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 10px;
+  flex-wrap: wrap;
+}
+.prx-mode-btn {
+  border: 1px solid var(--brd-1);
+  background: var(--inner-bg);
+  color: var(--t-2);
+  border-radius: var(--r-sm, 4px);
+  padding: 6px 10px;
+  font-size: 12.5px;
+  cursor: pointer;
+}
+.prx-mode-btn.is-on {
+  border-color: var(--accent, var(--brd-1));
+  color: var(--t-1);
+  font-weight: 700;
+  background: var(--hover-bg);
+}
+
+.prx-emp-search { position: relative; }
+.prx-emp-hint {
+  font-size: 12px;
+  color: var(--t-3);
+  margin-top: 4px;
+}
+.prx-emp-list {
+  position: absolute;
+  z-index: 20;
+  left: 0; right: 0;
+  top: calc(100% + 4px);
+  max-height: 220px;
+  overflow: auto;
+  background: var(--card-bg, var(--bg-1));
+  border: 1px solid var(--brd-1);
+  border-radius: var(--r-md, 8px);
+  box-shadow: var(--sh-card, 0 8px 24px rgba(0,0,0,0.12));
+}
+.prx-emp-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 100%;
+  text-align: left;
+  padding: 10px 12px;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  border-bottom: 1px solid var(--brd-2);
+}
+.prx-emp-item:hover { background: var(--hover-bg); }
+.prx-emp-name { font-weight: 600; color: var(--t-1); font-size: 13px; }
+.prx-emp-meta { font-size: 12px; color: var(--t-3); }
+
+.prx-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+  font-size: 13px;
+  color: var(--t-2);
+  cursor: pointer;
+}
+.prx-file-row {
+  font-size: 13px;
+  color: var(--t-2);
+  margin-bottom: 8px;
+}
+.prx-file-row a { color: var(--accent, var(--t-1)); }
+
+.prx-field-with-polish { margin-bottom: 4px; }
+.prx-field-label-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+.prx-field-label {
+  font-size: 12px;
+  color: var(--t-3);
+  font-weight: 600;
+}
+.prx-field-label .req { color: var(--danger-t, var(--t-2)); margin-left: 2px; }
+.prx-polish-btn {
+  border: 0;
+  background: transparent;
+  color: var(--t-3);
+  cursor: pointer;
+  font-size: 13px;
+  line-height: 1;
+  padding: 2px 6px;
+  border-radius: var(--r-sm, 4px);
+  opacity: 0.55;
+  transition: opacity 0.15s ease, background 0.15s ease;
+}
+.prx-polish-btn:hover {
+  opacity: 1;
+  background: var(--hover-bg);
+  color: var(--t-1);
 }

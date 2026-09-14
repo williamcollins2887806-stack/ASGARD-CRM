@@ -13,6 +13,8 @@
  */
 import { api } from '@/api/client';
 
+export { formatMoney as fmtMoney, formatMoneyShort as fmtMoneyShort } from '@/lib/money';
+
 /* ─── константы ─── */
 export const SHEET_STATUSES = {
   draft:     { label: 'Черновик',         tone: 'draft' },
@@ -262,20 +264,6 @@ export function loadWorks() {
 }
 
 /* ═══════════════════ ХЕЛПЕРЫ ═══════════════════ */
-
-export function fmtMoney(n) {
-  if (n === null || n === undefined || n === '') return '0 ₽';
-  const num = Number(n);
-  if (!Number.isFinite(num)) return '0 ₽';
-  return new Intl.NumberFormat('ru-RU').format(Math.round(num)) + ' ₽';
-}
-
-export function fmtMoneyShort(n) {
-  const num = Number(n) || 0;
-  if (num >= 1000000) return (num / 1000000).toFixed(1) + 'M';
-  if (num >= 1000)    return Math.round(num / 1000) + 'K';
-  return num.toLocaleString('ru-RU');
-}
 
 export function fmtDate(s) {
   if (!s) return '—';

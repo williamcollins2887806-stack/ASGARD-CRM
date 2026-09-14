@@ -16,6 +16,7 @@ import {
 } from './api';
 import { CustomerEditModal } from './CustomerEditModal';
 import { CustomerContactEditModal } from './CustomerContactEditModal';
+import { formatMoney as fmtMoney } from '@/lib/money';
 import {
   initialContacts, contactsPayload, emitCustomersChanged
 } from './contactsHelpers';
@@ -28,11 +29,6 @@ const TRAFFIC = {
   red:    { tone: 'rejected', label: 'Высокий риск' },
   gray:   { tone: 'draft',    label: 'Новый' }
 };
-
-function fmtMoney(n) {
-  const v = Number(n) || 0;
-  return new Intl.NumberFormat('ru-RU').format(Math.round(v)) + ' ₽';
-}
 
 export function CustomerDetailModal({ inn }) {
   const { user } = useAuth();
@@ -181,7 +177,6 @@ export function CustomerDetailModal({ inn }) {
             canEdit={canEdit}
             onRefresh={refreshSilent}
           />
-
 
           {/* ── Последние тендеры ─────────────────────────────────── */}
           <div>
@@ -332,10 +327,10 @@ function CustomerContactsView({ customer, canEdit, onRefresh }) {
                 <b>{c.name || '—'}</b>
                 {c.position && <span className="c-t3 fs-11"> · {c.position}</span>}
               </span>
-              <span className="c-t3 fs-12">{c.phone || '—'}</span>
+              <span className="c-t3 fs-12">{[c.phone, c.phone2].filter(Boolean).join(' · ') || '—'}</span>
               <span className="c-t3 fs-12">{c.email || '—'}</span>
               <span className="cust-contact-detail-badge">
-                {c.is_primary && <span className="cust-cat-pill tone-gold">★ основной</span>}
+                {c.is_primary && <span className="cust-cat-pill tone-gold">★ главное</span>}
               </span>
               {canEdit && (
                 <span className="cust-contact-detail-actions" onClick={(e) => e.stopPropagation()}>

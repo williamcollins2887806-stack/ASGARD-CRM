@@ -10,6 +10,7 @@ import { api } from '@/api/client';
 import { colorInfo, fmtDate, fmtDateTime } from './api';
 import EmailPreviewModal from './EmailPreview';
 import { FilePreviewModal } from '@/modals/FilePreview';
+import { formatMoney as fmtMoney } from '@/lib/money';
 
 const TABS = [
   { id: 'summary', label: 'Суть' },
@@ -17,12 +18,6 @@ const TABS = [
   { id: 'ai', label: 'AI' },
   { id: 'docs', label: 'Документы' }
 ];
-
-function fmtMoney(n) {
-  if (n == null || n === '') return '—';
-  const num = Number(n);
-  return Number.isFinite(num) ? num.toLocaleString('ru-RU') + ' ₽' : '—';
-}
 
 export default function PreTenderDetailModal({ item, onChanged }) {
   const { close, open } = useModal();

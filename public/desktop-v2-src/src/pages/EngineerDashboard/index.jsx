@@ -20,13 +20,9 @@ import { toast } from '@/modals/Notifications';
 import { Btn } from '@/modals/parts';
 import { TopActionsBar, EmptyState } from '@/blocks/Blocks';
 import './engineer-dashboard.css';
+import { formatMoney as fmtMoney } from '@/lib/money';
 
 const ALLOWED = ['ADMIN', 'CHIEF_ENGINEER', 'DIRECTOR_COMM', 'DIRECTOR_GEN', 'DIRECTOR_DEV'];
-
-function fmtMoney(n) {
-  const x = Number(n) || 0;
-  return new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 0 }).format(x) + ' ₽';
-}
 
 function fmtDate(iso) {
   if (!iso) return '—';

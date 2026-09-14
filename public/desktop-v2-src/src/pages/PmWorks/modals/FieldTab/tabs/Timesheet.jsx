@@ -24,36 +24,38 @@ import { DatePicker } from '@/inputs/Inputs';
 import { EmptyState } from '@/blocks/Blocks';
 import { useModal } from '@/modals';
 import { toast } from '@/modals/Notifications';
+import { MCard, MHead, MBody, MFoot } from '@/modals/parts';
 import {
   loadTimesheet, exportTimesheetExcel, loadDashboard,
   createCheckin, updateCheckin, deleteCheckin
 } from '../api';
 import {
   SHIFT_TYPES, getShiftMeta, fmtMoney, fmtInt, pointsColor,
-  ymdAddDays, buildDateRange, dayLabel, dowShort, dayOfWeek,
-  extractPointValue
+  buildDateRange, dayLabel, dowShort, dayOfWeek,
+  extractPointValue, todayYmd
 } from './timesheetUtils';
 import { ShiftPopover } from './ShiftPopover';
 import { BulkShiftModal } from './BulkShiftModal';
 
-/* По умолчанию: workStart-7 → workEnd+7, fallback last 30 days. */
-function defaultRange(work) {
+/* По умолчанию: текущий календарный месяц.
+ * Раньше брали весь срок работы (±7 дней) — на длинных объектах 600+ колонок
+ * и UI «невозможно использовать». Как в общем табеле — месяц. */
+function defaultRange(_work) {
   const today = new Date();
-  const workStart = work?.start_in_work_date || work?.start_plan || work?.start_fact;
-  const workEnd = work?.end_plan || work?.end_fact;
-  let from;
-  if (workStart) {
-    from = ymdAddDays(String(workStart).slice(0, 10), -7);
-  } else {
-    const d = new Date(today); d.setDate(d.getDate() - 30);
-    from = d.toISOString().slice(0, 10);
-  }
-  let to;
-  if (workEnd) {
-    to = ymdAddDays(String(workEnd).slice(0, 10), 7);
-  } else {
-    to = today.toISOString().slice(0, 10);
-  }
+  const y = today.getFullYear();
+  const m = today.getMonth() + 1;
+  const from = `${y}-${String(m).padStart(2, '0')}-01`;
+  const last = new Date(y, m, 0).getDate();
+  const to = `${y}-${String(m).padStart(2, '0')}-${String(last).padStart(2, '0')}`;
+  return { from, to, viewY: y, viewM: m };
+}
+
+const MONTHS_RU = ['Январь','Февраль','Март','Апрель','Май','Июнь','Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'];
+
+function monthBounds(y, m) {
+  const from = `${y}-${String(m).padStart(2, '0')}-01`;
+  const last = new Date(y, m, 0).getDate();
+  const to = `${y}-${String(m).padStart(2, '0')}-${String(last).padStart(2, '0')}`;
   return { from, to };
 }
 
@@ -62,6 +64,8 @@ export default function TimesheetTab({ work }) {
   const def = useMemo(() => defaultRange(work), [work?.id]);
   const [from, setFrom] = useState(def.from);
   const [to, setTo] = useState(def.to);
+  const [viewY, setViewY] = useState(def.viewY);
+  const [viewM, setViewM] = useState(def.viewM);
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [editMode, setEditMode] = useState(false);
@@ -80,6 +84,13 @@ export default function TimesheetTab({ work }) {
     setLoading(true);
     setCrewEmpty(false);
     try {
+      const d0 = new Date(from + 'T12:00:00Z');
+      const d1 = new Date(to + 'T12:00:00Z');
+      const daysSpan = Math.round((d1 - d0) / 86400000) + 1;
+      // Произвольный период > месяца разрешён; предупреждаем только при экстремальной длине.
+      if (daysSpan > 186) {
+        toast('Табель', `Длинный период (${daysSpan} дн.) — таблица может тормозить. Для правок удобнее месяц ← → или «Этот месяц».`, 'warn');
+      }
       const d = await loadTimesheet(work.id, { from, to });
       const safe = d || { timesheet: [], per_diem_rate: 0 };
       const tsArr = Array.isArray(safe.timesheet) ? safe.timesheet : [];
@@ -136,10 +147,50 @@ export default function TimesheetTab({ work }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [work.id, from, to]);
 
-  const rows = data?.timesheet || [];
+  const rows = useMemo(() => {
+    const list = Array.isArray(data?.timesheet) ? data.timesheet.slice() : [];
+    // Сначала действующие / с отметками, затем «только план»; внутри — А→Я
+    list.sort((a, b) => {
+      const ap = a.is_planned_only ? 1 : 0;
+      const bp = b.is_planned_only ? 1 : 0;
+      if (ap !== bp) return ap - bp;
+      return String(a.fio || '').localeCompare(String(b.fio || ''), 'ru', { sensitivity: 'base' });
+    });
+    return list;
+  }, [data?.timesheet]);
   const perDiem = parseFloat(data?.per_diem_rate || 0);
 
+  const goMonth = (y, m) => {
+    let yy = y; let mm = m;
+    if (mm < 1) { mm = 12; yy -= 1; }
+    if (mm > 12) { mm = 1; yy += 1; }
+    const b = monthBounds(yy, mm);
+    setViewY(yy); setViewM(mm);
+    setFrom(b.from); setTo(b.to);
+  };
+
+  const monthLabel = useMemo(() => {
+    const b = monthBounds(viewY, viewM);
+    if (from === b.from && to === b.to) return `${MONTHS_RU[viewM - 1]} ${viewY}`;
+    const fmt = (ymd) => {
+      const p = String(ymd || '').slice(0, 10).split('-');
+      return p.length >= 3 ? `${p[2]}.${p[1]}.${p[0].slice(2)}` : ymd;
+    };
+    return `${fmt(from)} — ${fmt(to)}`;
+  }, [from, to, viewY, viewM]);
+
+  const todayStr = useMemo(() => todayYmd(), []);
+
   const dates = useMemo(() => buildDateRange(from, to), [from, to]);
+
+  // Прокрутка к сегодняшнему дню в шапке
+  useEffect(() => {
+    if (loading || !dates.includes(todayStr)) return;
+    const el = document.querySelector(`th.ft-ts-th-day--today`);
+    if (el && typeof el.scrollIntoView === 'function') {
+      try { el.scrollIntoView({ inline: 'center', block: 'nearest', behavior: 'smooth' }); } catch (_) {}
+    }
+  }, [loading, dates, todayStr]);
 
   // Карта { employee_id → { dateYMD → day } } для быстрого доступа
   const dayMap = useMemo(() => {
@@ -167,18 +218,34 @@ export default function TimesheetTab({ work }) {
 
   /* ─── CRUD: создать/обновить/удалить смену ─── */
   const saveCheckin = async ({ employee, date, day, payload }) => {
-    try {
+    const trySave = async (body) => {
       if (day && day.id) {
-        await updateCheckin(work.id, day.id, payload);
+        await updateCheckin(work.id, day.id, body);
         toast('Табель', `Смена ${dayLabel(date)} обновлена`, 'ok');
       } else {
-        await createCheckin(work.id, { employee_id: employee.employee_id, date, ...payload });
+        await createCheckin(work.id, { employee_id: employee.employee_id, date, ...body });
         toast('Табель', `${getShiftMeta(payload.shift).label} ${dayLabel(date)} добавлена`, 'ok');
       }
+    };
+    try {
+      await trySave(payload);
       setPopState(null);
       await reload();
     } catch (e) {
-      toast('Ошибка', String(e?.message || e), 'err');
+      if (e?.status === 409 && e?.data?.requires_confirmation && !payload.confirm_overwrite) {
+        const ok = window.confirm(e.data.message || e.message || 'На дату уже есть отметка. Перезаписать?');
+        if (!ok) return;
+        try {
+          await trySave({ ...payload, confirm_overwrite: true });
+          setPopState(null);
+          await reload();
+          return;
+        } catch (e2) {
+          toast('Ошибка', String(e2?.data?.message || e2?.message || e2), 'err');
+          return;
+        }
+      }
+      toast('Ошибка', String(e?.data?.message || e?.message || e), 'err');
     }
   };
 
@@ -195,6 +262,10 @@ export default function TimesheetTab({ work }) {
   };
 
   const openCell = (e, employee, date, day) => {
+    if (employee?.is_planned_only) {
+      toast('В плане', 'Смены появятся после назначения в бригаду. Сейчас только подсветка даты заезда.', 'warn');
+      return;
+    }
     const anchor = e.currentTarget;
     // Если popover уже открыт на этой ячейке — закрываем (toggle)
     if (popState?.anchorEl === anchor) {
@@ -210,22 +281,24 @@ export default function TimesheetTab({ work }) {
     });
   };
 
-  /* ─── Сдвиг диапазона на ±1 день ─── */
-  const shiftFromLeft = () => setFrom(ymdAddDays(from, -1));
-  const shiftToRight = () => setTo(ymdAddDays(to, 1));
-
   /* ─── Excel-экспорт ─── */
-  const onExport = async () => {
+  const onExport = () => {
     if (exporting) return;
-    setExporting(true);
-    try {
-      await exportTimesheetExcel(work.id, { from, to });
-      toast('Табель', 'Excel скачан', 'ok');
-    } catch (e) {
-      toast('Ошибка', 'Не удалось выгрузить Excel', 'err');
-    } finally {
-      setExporting(false);
-    }
+    open(
+      <ExportPerDiemModal
+        onGo={async (includePerDiem) => {
+          setExporting(true);
+          try {
+            await exportTimesheetExcel(work.id, { from, to, include_per_diem: includePerDiem });
+            toast('Табель', includePerDiem ? 'Excel со суточными' : 'Excel без суточных', 'ok');
+          } catch (e) {
+            toast('Ошибка', 'Не удалось выгрузить Excel', 'err');
+          } finally {
+            setExporting(false);
+          }
+        }}
+      />
+    );
   };
 
   /* ─── Bulk-шаблон ─── */
@@ -270,14 +343,19 @@ export default function TimesheetTab({ work }) {
     <div className="ft-stack">
       {/* ─── Фильтры + действия ─── */}
       <div className="ft-ts-filters">
-        <Btn variant="ghost" size="sm" onClick={shiftFromLeft} title="Сдвинуть начало на день влево">← День</Btn>
+        <Btn variant="ghost" size="sm" onClick={() => goMonth(viewY, viewM - 1)} title="Предыдущий месяц">←</Btn>
+        <span style={{ fontWeight: 600, minWidth: 140, textAlign: 'center' }}>{monthLabel}</span>
+        <Btn variant="ghost" size="sm" onClick={() => goMonth(viewY, viewM + 1)} title="Следующий месяц">→</Btn>
+        <Btn variant="ghost" size="sm" onClick={() => {
+          const t = new Date();
+          goMonth(t.getFullYear(), t.getMonth() + 1);
+        }}>Этот месяц</Btn>
         <Field label="С">
           <DatePicker value={from} onChange={setFrom} />
         </Field>
         <Field label="По">
           <DatePicker value={to} onChange={setTo} />
         </Field>
-        <Btn variant="ghost" size="sm" onClick={shiftToRight} title="Сдвинуть конец на день вправо">День →</Btn>
         <Btn variant="ghost" size="sm" onClick={reload} disabled={loading} title="Перезагрузить табель">
           {loading ? '⏳' : '↻'}
         </Btn>
@@ -317,12 +395,22 @@ export default function TimesheetTab({ work }) {
           <table className="t-list ft-ts-table">
             <thead>
               <tr>
+                <th style={{ width: 36, textAlign: 'center' }}>#</th>
                 <th className="ft-ts-th-fio">Сотрудник</th>
                 {dates.map((d) => {
                   const dow = dayOfWeek(d);
                   const isWeekend = dow === 0 || dow === 6;
+                  const isToday = d === todayStr;
                   return (
-                    <th key={d} className={'ft-ts-th-day' + (isWeekend ? ' ft-ts-th-day--we' : '')}>
+                    <th
+                      key={d}
+                      className={
+                        'ft-ts-th-day'
+                        + (isWeekend ? ' ft-ts-th-day--we' : '')
+                        + (isToday ? ' ft-ts-th-day--today' : '')
+                      }
+                      title={isToday ? 'Сегодня' : undefined}
+                    >
                       <div className="ft-ts-th-dow">{dowShort(d)}</div>
                       <div>{dayLabel(d)}</div>
                     </th>
@@ -336,16 +424,54 @@ export default function TimesheetTab({ work }) {
               </tr>
             </thead>
             <tbody>
-              {enrichedRows.map((emp) => {
+              {enrichedRows.map((emp, idx) => {
                 const inner = dayMap.get(emp.employee_id) || {};
                 const innerForeign = foreignMap.get(emp.employee_id) || {};
+                const planFrom = emp.planned_info?.planned_from
+                  ? String(emp.planned_info.planned_from).slice(0, 10)
+                  : null;
+                const planTo = emp.planned_info?.planned_to
+                  ? String(emp.planned_info.planned_to).slice(0, 10)
+                  : null;
+                const reasons = emp.roster_reasons || [];
+                const rowClass = [
+                  'row-hover',
+                  emp.is_planned_only ? 'ft-ts-row--planned' : '',
+                  reasons.includes('was_on') && !reasons.includes('on_site') ? 'ft-ts-row--was' : ''
+                ].filter(Boolean).join(' ');
                 return (
-                  <tr key={emp.employee_id} className="row-hover">
-                    <td className="ft-ts-fio">{emp.fio || `#${emp.employee_id}`}</td>
+                  <tr key={emp.employee_id} className={rowClass}>
+                    <td className="ft-ts-num">{idx + 1}</td>
+                    <td className="ft-ts-fio">
+                      <div className="ft-ts-fio-main">{emp.fio || `#${emp.employee_id}`}</div>
+                      <div className="ft-ts-fio-badges">
+                        {reasons.includes('on_site') && (
+                          <span className="ft-ts-badge ft-ts-badge--crew" title="Сейчас в бригаде">в бригаде</span>
+                        )}
+                        {reasons.includes('was_on') && !reasons.includes('on_site') && (
+                          <span className="ft-ts-badge ft-ts-badge--was" title="Был на объекте в этом периоде">был</span>
+                        )}
+                        {reasons.includes('planned') && (
+                          <span
+                            className="ft-ts-badge ft-ts-badge--plan"
+                            title={
+                              planFrom
+                                ? `План заезда с ${planFrom}${planTo ? ` по ${planTo}` : ''}`
+                                : 'Планируемое привлечение'
+                            }
+                          >
+                            в плане{planFrom ? ` · ${planFrom.slice(8, 10)}.${planFrom.slice(5, 7)}` : ''}
+                          </span>
+                        )}
+                      </div>
+                    </td>
                     {dates.map((d) => {
                       const day = inner[d];
                       const foreign = !day ? innerForeign[d] : null;
                       const isWeekend = (() => { const dw = dayOfWeek(d); return dw === 0 || dw === 6; })();
+                      const isToday = d === todayStr;
+                      const isPlanArrive = !!(planFrom && d === planFrom);
+                      const isPlanSpan = !!(planFrom && planTo && d > planFrom && d <= planTo && !day);
                       return (
                         <ShiftCell
                           key={d}
@@ -353,8 +479,12 @@ export default function TimesheetTab({ work }) {
                           foreign={foreign}
                           date={d}
                           isWeekend={isWeekend}
+                          isToday={isToday}
+                          isPlanArrive={isPlanArrive}
+                          isPlanSpan={isPlanSpan}
+                          plannedOnly={!!emp.is_planned_only}
                           pointValue={pointValue}
-                          editMode={editMode}
+                          editMode={editMode && !emp.is_planned_only}
                           activeAnchor={popState?.anchorEl}
                           activeKey={popState ? popState.employee.employee_id + '|' + popState.date : null}
                           cellKey={emp.employee_id + '|' + d}
@@ -365,7 +495,22 @@ export default function TimesheetTab({ work }) {
                                 'warn');
                               return;
                             }
-                            if (editMode) openCell(e, emp, d, day);
+                            if (emp.is_planned_only) {
+                              toast('В плане',
+                                planFrom
+                                  ? `Планируемый заезд ${planFrom.slice(8, 10)}.${planFrom.slice(5, 7)}. Отметки — после назначения в бригаду.`
+                                  : 'Планируемое привлечение. Отметки — после назначения в бригаду.',
+                                'warn');
+                              return;
+                            }
+                            if (!editMode) return;
+                            if (day?.kind === 'stage') {
+                              toast('Этап',
+                                (getShiftMeta(day.shift).label || 'Отметка') + ' из маршрутов — правьте во вкладке «Маршруты» или в «Мой табель».',
+                                'warn');
+                              return;
+                            }
+                            openCell(e, emp, d, day);
                           }}
                         />
                       );
@@ -379,7 +524,7 @@ export default function TimesheetTab({ work }) {
                 );
               })}
               <tr className="ft-ts-totals-row">
-                <td className="ft-ts-totals-label" colSpan={dates.length + 1}>ИТОГО:</td>
+                <td className="ft-ts-totals-label" colSpan={dates.length + 2}>ИТОГО:</td>
                 <td className="ft-ts-total-num">{fmtInt(grandPoints)}</td>
                 <td className="ft-ts-total-num">{fmtMoney(grandEarned)}</td>
                 <td className="ft-ts-total-num">{fmtMoney(grandPerDiem)}</td>
@@ -395,6 +540,14 @@ export default function TimesheetTab({ work }) {
                 <span>{st.label} ({st.defaultPts} бал. = {fmtMoney(st.defaultPts * pointValue)})</span>
               </span>
             ))}
+            <span className="ft-ts-legend-item">
+              <span className="ft-ts-badge ft-ts-badge--plan">в плане</span>
+              <span>планируемое привлечение</span>
+            </span>
+            <span className="ft-ts-legend-item">
+              <span className="ft-ts-legend-plan-swatch" aria-hidden="true" />
+              <span>день планируемого заезда</span>
+            </span>
             <span className="ft-ts-legend-item">
               <span>Суточные: {fmtMoney(perDiem)}/день</span>
             </span>
@@ -434,49 +587,61 @@ export default function TimesheetTab({ work }) {
 }
 
 /* ─── Ячейка одного дня ─── */
-function ShiftCell({ day, foreign, date, isWeekend, pointValue, editMode, activeAnchor, cellKey, activeKey, onClick }) {
+function ShiftCell({
+  day, foreign, date, isWeekend, isToday, isPlanArrive, isPlanSpan, plannedOnly,
+  pointValue, editMode, activeAnchor, cellKey, activeKey, onClick
+}) {
   const ref = useRef(null);
   const isActive = activeKey && activeKey === cellKey;
-  // Сохраняем ref активной ячейки в родительский активный якорь (нужен для popover)
   useEffect(() => {
     if (isActive && ref.current && activeAnchor !== ref.current) {
-      // Шанс рассинхрона минимальный — popState.anchorEl ставится в openCell сразу
+      // popState.anchorEl ставится в openCell сразу
     }
   });
 
   let content, color, bg, titleTxt;
   if (day) {
-    // Баллы из amount_earned (рубли), НЕ из day_rate — он местами загрязнён
-    // баллами (13/17) вместо рублей (6500/8500), что давало ☀0. См. итог-колонку.
     const pts = Math.round(parseFloat(day.amount ?? day.amount_earned ?? day.day_rate ?? 0) / pointValue) || 0;
     const meta = getShiftMeta(day.shift);
     content = <><span style={{ marginRight: 1 }}>{meta.icon}</span>{pts}</>;
     color = pointsColor(pts);
     bg = meta.bg;
     titleTxt = `${getShiftMeta(day.shift).label} · ${pts} бал. · ${fmtMoney(parseFloat(day.amount || day.amount_earned || 0))}`;
+    if (isPlanArrive) titleTxt = `Планируемый заезд · ${titleTxt}`;
   } else if (foreign) {
-    // 25.06.2026: чужой чекин — показываем замок и tooltip, клик блокируем
     content = '🔒';
     color = 'var(--t-3)';
     bg = 'rgba(245,158,11,0.10)';
     titleTxt = 'Занят на работе «' + (foreign.work_title || '—') + '» (РП ' + (foreign.pm_fio || '—') + '). Поставить чекин нельзя.';
-  } else if (editMode) {
+  } else if (isPlanArrive) {
+    content = <span className="ft-ts-plan-pin" aria-hidden="true">◆</span>;
+    color = 'var(--gold)';
+    titleTxt = 'Планируемый заезд';
+  } else if (editMode && !plannedOnly) {
     content = '+';
     color = 'var(--t-3)';
     titleTxt = 'Добавить смену';
-  } else {
-    content = '—';
+  } else if (isPlanSpan) {
+    content = '';
     color = 'var(--t-3)';
-    titleTxt = '';
+    titleTxt = 'Период плана привлечения';
+  } else {
+    content = plannedOnly ? '' : '—';
+    color = 'var(--t-3)';
+    titleTxt = plannedOnly ? 'В плане — отметки после назначения в бригаду' : '';
   }
 
   const className = [
     'ft-ts-cell',
     day ? 'ft-ts-cell--filled' : '',
     foreign ? 'ft-ts-cell--foreign' : '',
-    editMode ? 'ft-ts-cell--edit' : '',
+    editMode && !plannedOnly ? 'ft-ts-cell--edit' : '',
     isWeekend ? 'ft-ts-cell--we' : '',
-    isActive ? 'ft-ts-cell--active' : ''
+    isToday ? 'ft-ts-cell--today' : '',
+    isActive ? 'ft-ts-cell--active' : '',
+    isPlanArrive ? 'ft-ts-cell--plan-arrive' : '',
+    isPlanSpan && !day && !isPlanArrive ? 'ft-ts-cell--plan-span' : '',
+    plannedOnly ? 'ft-ts-cell--planned-row' : ''
   ].filter(Boolean).join(' ');
 
   return (
@@ -486,12 +651,38 @@ function ShiftCell({ day, foreign, date, isWeekend, pointValue, editMode, active
       onClick={onClick}
       style={{
         color, background: bg,
-        cursor: foreign ? 'not-allowed' : (editMode ? 'pointer' : 'default'),
+        cursor: foreign || plannedOnly
+          ? (isPlanArrive || plannedOnly ? 'help' : 'not-allowed')
+          : (editMode ? 'pointer' : 'default'),
         opacity: foreign ? 0.65 : 1
       }}
-      title={titleTxt}
+      title={titleTxt || (isToday ? 'Сегодня' : '')}
     >
       {content}
     </td>
+  );
+}
+
+/** Модалка опций Excel: суточные вкл/выкл */
+function ExportPerDiemModal({ onGo }) {
+  const { close } = useModal();
+  const [pd, setPd] = useState(true);
+  return (
+    <MCard className="frame-inside" style={{ maxWidth: 420 }}>
+      <MHead icon="📥" title="Выгрузка табеля Excel" accent="gold" onClose={close} />
+      <MBody>
+        <p style={{ fontSize: 13, color: 'var(--t2)', margin: '0 0 12px', lineHeight: 1.45 }}>
+          В ячейках — только баллы, цвет = тип смены. Легенда под таблицей на одном листе.
+        </p>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 14, cursor: 'pointer' }}>
+          <input type="checkbox" checked={pd} onChange={(e) => setPd(e.target.checked)} />
+          Учитывать суточные
+        </label>
+      </MBody>
+      <MFoot>
+        <Btn variant="ghost" onClick={close}>Отмена</Btn>
+        <Btn variant="primary" onClick={() => { close(); onGo?.(pd); }}>Скачать Excel</Btn>
+      </MFoot>
+    </MCard>
   );
 }

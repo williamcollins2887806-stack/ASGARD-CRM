@@ -143,6 +143,11 @@ export default function OfficeExpensesPage() {
         }
       />
 
+      <div className="oe-cash-hint">
+        Это реестр компании, не личная касса. Если платите наличными из подотчёта — откройте{' '}
+        <a href="#/cash">Кассу</a> и приложите чек. Иначе сумма останется «на руках».
+      </div>
+
       {/* KPI */}
       <div className="oe-kpis">
         <KpiBox label={`Всего за ${year || 'всё время'}`} value={fmtMoney(kpi.total)} sub={`${byYM.length} записей`} tone="gold" />

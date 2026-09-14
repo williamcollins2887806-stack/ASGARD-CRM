@@ -4,6 +4,8 @@
  */
 import { api } from '@/api/client';
 
+export { formatMoney as fmtMoney, formatMoneyShort as fmtMoneyShort } from '@/lib/money';
+
 export const APPROVAL_STATUSES = {
   draft:    { label: 'Черновик',     tone: 'draft' },
   sent:     { label: 'На согласовании', tone: 'sent' },
@@ -281,11 +283,6 @@ export function mimirChat(body) {
     return api('/api/mimir/auto-estimate-chat', { method: 'POST', body });
   }
   return api('/api/mimir/chat', { method: 'POST', body });
-}
-
-export function fmtMoney(n) {
-  if (!Number.isFinite(+n)) return '—';
-  return new Intl.NumberFormat('ru-RU').format(Math.round(+n)) + ' ₽';
 }
 
 export function fmtDateTime(s) {

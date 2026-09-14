@@ -13,7 +13,7 @@ import {
   initialContacts, contactsPayload, emitCustomersChanged
 } from './contactsHelpers';
 
-const EMPTY = { name: '', position: '', phone: '', email: '', is_primary: false };
+const EMPTY = { name: '', position: '', phone: '', phone2: '', email: '', is_primary: false };
 
 export function CustomerContactEditModal({ customer, contactIndex = null, onSaved }) {
   const { close } = useModal();
@@ -32,16 +32,18 @@ export function CustomerContactEditModal({ customer, contactIndex = null, onSave
 
   const errEmail = form.email ? emailError(form.email) : null;
   const errPhone = form.phone ? phoneError(form.phone) : null;
-  const hasErr = !!(errEmail || errPhone);
+  const errPhone2 = form.phone2 ? phoneError(form.phone2) : null;
+  const hasErr = !!(errEmail || errPhone || errPhone2);
 
   const save = async () => {
     if (!form.name.trim()) return toast.warn('Укажите ФИО контакта');
-    if (hasErr) return toast.warn(errEmail || errPhone);
+    if (hasErr) return toast.warn(errEmail || errPhone || errPhone2);
 
     const entry = {
       name:       form.name.trim(),
       position:   form.position.trim(),
       phone:      form.phone.trim(),
+      phone2:     form.phone2.trim(),
       email:      form.email.trim(),
       is_primary: !!form.is_primary
     };
@@ -101,22 +103,25 @@ export function CustomerContactEditModal({ customer, contactIndex = null, onSave
             />
           </Field>
           <div className="grid-2 gap-10">
-            <Field label="Телефон" error={errPhone}>
+            <Field label="Телефон 1" error={errPhone}>
               <PhoneInput value={form.phone} onChange={(v) => set('phone', v)} />
             </Field>
-            <Field label="Email" error={errEmail}>
-              <TextInput
-                type="email"
-                value={form.email}
-                onChange={(v) => set('email', v)}
-                placeholder="ivanov@example.ru"
-              />
+            <Field label="Телефон 2" error={errPhone2}>
+              <PhoneInput value={form.phone2} onChange={(v) => set('phone2', v)} />
             </Field>
           </div>
+          <Field label="Email" error={errEmail}>
+            <TextInput
+              type="email"
+              value={form.email}
+              onChange={(v) => set('email', v)}
+              placeholder="ivanov@example.ru"
+            />
+          </Field>
           <Checkbox
             checked={form.is_primary}
             onChange={(v) => set('is_primary', v)}
-            label="Основной контакт"
+            label="Главное контактное лицо"
           />
         </div>
       </MBody>

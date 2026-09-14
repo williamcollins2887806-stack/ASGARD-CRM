@@ -18,7 +18,7 @@ function TimePicker({ value, onChange }) {
   );
 }
 
-import { createMeeting, updateMeeting, addParticipants, loadUsers } from './api';
+import { createMeeting, updateMeeting, loadUsers } from './api';
 
 function emit() { window.dispatchEvent(new CustomEvent('asgard:meetings:changed')); }
 
@@ -32,6 +32,8 @@ export function MeetingEditModal({ meeting, onSaved }) {
   const [title, setTitle] = useState(meeting?.title || '');
   const [description, setDescription] = useState(meeting?.description || '');
   const [location, setLocation] = useState(meeting?.location || '');
+  const [conferenceUrl, setConferenceUrl] = useState(meeting?.conference_url || '');
+  const [guestEmails, setGuestEmails] = useState('');
   const [date, setDate] = useState(toDateStr(initialStart));
   const [timeStart, setTimeStart] = useState(toTimeStr(initialStart));
   const [timeEnd, setTimeEnd] = useState(initialEnd ? toTimeStr(initialEnd) : '');
@@ -59,18 +61,22 @@ export function MeetingEditModal({ meeting, onSaved }) {
         title: title.trim(),
         description: description.trim(),
         location: location.trim(),
+        conference_url: conferenceUrl.trim() || null,
         start_time: startISO,
-        end_time: endISO
+        end_time: endISO,
+        guests: guestEmails
+          .split(/[,;\s]+/)
+          .map((e) => e.trim().toLowerCase())
+          .filter((e) => e.includes('@'))
+          .map((email) => ({ email })),
+        send_invites: true,
+        participant_ids: participants
       };
       let saved;
       if (isEdit) {
         saved = await updateMeeting(meeting.id, payload);
       } else {
         saved = await createMeeting(payload);
-        const newId = saved?.meeting?.id || saved?.id;
-        if (newId && participants.length) {
-          await addParticipants(newId, participants);
-        }
       }
       toast.success(isEdit ? 'Совещание обновлено' : 'Совещание создано');
       emit();
@@ -114,6 +120,9 @@ export function MeetingEditModal({ meeting, onSaved }) {
           <Field label="Место">
             <TextInput value={location} onChange={setLocation} placeholder="Переговорная / Zoom / Telegram…" />
           </Field>
+          <Field label="Ссылка ВКС">
+            <TextInput value={conferenceUrl} onChange={setConferenceUrl} placeholder="https://…" />
+          </Field>
           {!isEdit && (
             <Field label="Участники" help="Можно добавить позже в карточке совещания">
               <MultiSelect
@@ -124,6 +133,13 @@ export function MeetingEditModal({ meeting, onSaved }) {
               />
             </Field>
           )}
+          <Field label="Гости (email)">
+            <TextInput
+              value={guestEmails}
+              onChange={setGuestEmails}
+              placeholder="guest1@mail.ru, guest2@mail.ru"
+            />
+          </Field>
         </div>
       </MBody>
       <MFoot>

@@ -6,6 +6,8 @@
  */
 import { api } from '@/api/client';
 
+export { formatMoney as fmtMoney, formatMoneyShort as fmtMoneyShort } from '@/lib/money';
+
 /* Согласование: 4 действия + черновик + переотправка + отменено */
 export const APPROVAL_STATUSES = [
   { value: 'draft',     label: 'Черновик',        tone: 'draft' },
@@ -110,11 +112,6 @@ export function filterByQuery(items, q) {
 export function filterByMatch(items, key, value) {
   if (!value) return items;
   return items.filter((e) => String(e[key] ?? '') === String(value));
-}
-
-export function fmtMoney(n) {
-  if (!Number.isFinite(+n)) return '—';
-  return new Intl.NumberFormat('ru-RU').format(Math.round(+n)) + ' ₽';
 }
 
 export function fmtDate(s) {

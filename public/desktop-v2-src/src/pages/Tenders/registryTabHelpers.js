@@ -1,4 +1,5 @@
 /** Registry tab helpers — parity with public/assets/js/registry_tab.js */
+import { formatMoney as fmtMoneyLib, formatMoneyVat as fmtMoneyVatLib } from '@/lib/money';
 
 export const STATUS_CLASS = {
   рассмотрение: 'reg-st-review',
@@ -27,14 +28,16 @@ export const SORT_COLUMNS = [
   { key: 'customer_name', label: 'Заказчик' },
   { key: 'tender_title', label: 'Тендер' },
   { key: 'tender_price', label: 'НМЦ' },
+  { key: 'submission_price_with_vat', label: 'Подача' },
   { key: 'docs_deadline', label: 'Срок' },
+  { key: 'participation_fee', label: 'Сбор' },
+  { key: 'analysis_deadline', label: 'Анализ' },
   { key: 'registry_status', label: 'Статус' },
   { key: 'calculator_user_name', label: 'Считает' },
   { key: '_rp_sort', label: 'Отчёт' },
   { key: '_score_pct', label: 'Скор' },
   { key: 'created_by_name', label: 'Внёс' },
   { key: 'created_at', label: 'Добавлен' },
-  { key: 'comment_to', label: 'Коммент.' },
   { key: '_action_sort', label: 'Действие' }
 ];
 
@@ -71,6 +74,12 @@ export function getRowActionState(row) {
   if (st === 'выиграли' && !tenderHasWork(row)) {
     return { needs: true, type: 'won', label: 'Создать работу', tone: 'success' };
   }
+  if (st === 'отмена' || st === 'проиграли') {
+    return { needs: false, type: null, label: '', tone: null };
+  }
+  if (rev?.is_final && rev.decision === 'reject' && st !== 'отмена') {
+    return { needs: true, type: 'rp_reject', label: 'РП: не подаём → в архив', tone: 'danger' };
+  }
   if (st !== 'рассмотрение') {
     return { needs: false, type: null, label: '', tone: null };
   }
@@ -81,7 +90,7 @@ export function getRowActionState(row) {
     return { needs: true, type: 'decide', label: 'Решение по отчёту', tone: 'info' };
   }
   if (rev?.analysis_finalized_at && !rev?.is_final) {
-    return { needs: true, type: 'analysis_assign', label: 'Анализ готов — назначьте РП', tone: 'info' };
+    return { needs: true, type: 'analysis_assign', label: 'Анализ готов · считает дежурный РП', tone: 'info' };
   }
   return { needs: true, type: 'wait', label: 'Ждёт анализ РП', tone: 'warn' };
 }
@@ -89,7 +98,7 @@ export function getRowActionState(row) {
 function actionSortRank(row) {
   const a = getRowActionState(row);
   if (!a.needs) return 99;
-  const ranks = { won: 0, decide: 1, director_wait: 1.5, analysis_assign: 2, assign: 3, draft: 4, wait: 5 };
+    const ranks = { won: 0, rp_reject: 0.5, decide: 1, director_wait: 1.5, analysis_assign: 2, wait: 5 };
   return ranks[a.type] != null ? ranks[a.type] : 50;
 }
 
@@ -117,8 +126,19 @@ function sortFieldValue(row, key) {
       return row.registry_no != null ? Number(row.registry_no) : (Number(row.id) || 0);
     case 'tender_price':
       return row.tender_price != null && Number.isFinite(Number(row.tender_price)) ? Number(row.tender_price) : -Infinity;
+    case 'submission_price_with_vat':
+      return row.submission_price_with_vat != null && Number.isFinite(Number(row.submission_price_with_vat))
+        ? Number(row.submission_price_with_vat) : -Infinity;
     case 'docs_deadline':
       return row.docs_deadline ? new Date(row.docs_deadline).getTime() : -Infinity;
+    case 'analysis_deadline':
+      return row.analysis_deadline ? new Date(row.analysis_deadline).getTime() : -Infinity;
+    case 'participation_fee':
+      if (row.participation_paid) {
+        return row.participation_fee != null && Number.isFinite(Number(row.participation_fee))
+          ? Number(row.participation_fee) : 0;
+      }
+      return -1;
     case 'created_at':
       return row.created_at ? new Date(row.created_at).getTime() : -Infinity;
     case 'registry_status':
@@ -161,16 +181,27 @@ export function countActionRows(rows) {
 }
 
 export function formatMoney(v) {
-  if (v == null || v === '') return '—';
-  const n = Number(v);
-  if (!Number.isFinite(n)) return String(v);
-  return n.toLocaleString('ru-RU', { maximumFractionDigits: 0 }) + ' ₽';
+  return fmtMoneyLib(v);
+}
+
+export function formatSubmissionCell(row) {
+  const withV = row?.submission_price_with_vat;
+  if (withV == null || withV === '' || !(Number(withV) > 0)) return null;
+  const ex = row?.submission_price;
+  return fmtMoneyVatLib(withV, row?.vat_pct, {
+    exVat: ex != null ? Number(ex) : undefined,
+    vatPct: row?.vat_pct
+  });
 }
 
 export function fmtAdded(iso) {
   if (!iso) return '—';
   try {
-    return new Date(iso).toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric' });
+    const d = new Date(iso);
+    const dd = String(d.getDate()).padStart(2, '0');
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const yy = String(d.getFullYear()).slice(-2);
+    return `${dd}.${mm}.${yy}`;
   } catch {
     return '—';
   }
@@ -180,7 +211,17 @@ export function fmtRegistryDate(v) {
   if (!v) return '—';
   const s = String(v).slice(0, 10);
   const m = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-  return m ? `${m[3]}.${m[2]}.${m[1]}` : s;
+  if (m) return `${m[3]}.${m[2]}.${m[1].slice(-2)}`;
+  try {
+    const d = new Date(v);
+    if (!Number.isNaN(d.getTime())) {
+      const dd = String(d.getDate()).padStart(2, '0');
+      const mm = String(d.getMonth() + 1).padStart(2, '0');
+      const yy = String(d.getFullYear()).slice(-2);
+      return `${dd}.${mm}.${yy}`;
+    }
+  } catch { /* ignore */ }
+  return s;
 }
 
 export function reportModeFromRow(row) {
@@ -192,4 +233,69 @@ export function reportModeFromRow(row) {
   } catch {
     return 'calc';
   }
+}
+
+function subBusinessDaysClient(iso, n) {
+  const s = String(iso || '').slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return null;
+  const [y, mo, d] = s.split('-').map(Number);
+  const cur = new Date(y, mo - 1, d);
+  let left = Math.max(0, Math.floor(Number(n) || 0));
+  while (left > 0) {
+    cur.setDate(cur.getDate() - 1);
+    const day = cur.getDay();
+    if (day !== 0 && day !== 6) left -= 1;
+  }
+  const yy = cur.getFullYear();
+  const mm = String(cur.getMonth() + 1).padStart(2, '0');
+  const dd = String(cur.getDate()).padStart(2, '0');
+  return `${yy}-${mm}-${dd}`;
+}
+
+export function previewAnalysisDeadline(docsDeadline, paid, createdAt) {
+  const docs = String(docsDeadline || '').slice(0, 10);
+  if (!docs) return null;
+  const days = paid ? 5 : 3;
+  let deadline = subBusinessDaysClient(docs, days);
+  const created = String(createdAt || new Date().toISOString()).slice(0, 10);
+  const raw = deadline;
+  if (deadline && created && deadline < created) deadline = created;
+  return {
+    deadline,
+    days,
+    tight: !!(raw && created && raw < created)
+  };
+}
+
+export function fmtFullRegistryDate(v) {
+  if (!v) return '—';
+  const s = String(v).slice(0, 10);
+  const m = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  return m ? `${m[3]}.${m[2]}.${m[1]}` : fmtRegistryDate(v);
+}
+
+export function participationLabel(row) {
+  if (row?.participation_paid) {
+    return row.participation_fee != null ? formatMoney(row.participation_fee) : 'платно';
+  }
+  return 'бесплатно';
+}
+
+/** Returns { text, tone: 'ok'|'soon'|'overdue'|null } */
+export function analysisDeadlineMeta(row) {
+  const dl = row?.analysis_deadline ? String(row.analysis_deadline).slice(0, 10) : '';
+  if (!dl) return { text: '—', tone: null };
+  const today = new Date();
+  const tIso = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+  if (dl < tIso) return { text: fmtRegistryDate(dl), tone: 'overdue' };
+  let left = 0;
+  const cur = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+  const end = new Date(dl.slice(0, 4), Number(dl.slice(5, 7)) - 1, Number(dl.slice(8, 10)));
+  while (cur < end) {
+    cur.setDate(cur.getDate() + 1);
+    const day = cur.getDay();
+    if (day !== 0 && day !== 6) left += 1;
+  }
+  if (left <= 1) return { text: fmtRegistryDate(dl), tone: 'soon' };
+  return { text: fmtRegistryDate(dl), tone: 'ok' };
 }

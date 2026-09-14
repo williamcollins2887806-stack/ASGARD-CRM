@@ -1,6 +1,8 @@
 /* API для /integrations — Банк/1С, площадки, ERP. */
 import { api } from '@/api/client';
 
+export { formatMoney as fmtMoney, formatMoneyShort as fmtMoneyShort } from '@/lib/money';
+
 export const ARTICLES = {
   fot: 'ФОТ', taxes: 'Налоги', rent: 'Аренда', utilities: 'Коммунальные', logistics: 'Логистика',
   materials: 'Материалы', subcontract: 'Субподряд', equipment: 'Оборудование', software: 'ПО',
@@ -15,11 +17,6 @@ export const TX_STATUS = {
   distributed: { l: 'Разнесена',    c: 'var(--ok)' },
   exported_1c: { l: 'Экспорт 1С',   c: 'var(--t-2)' },
   skipped:     { l: 'Пропущена',    c: 'var(--t-2)' }
-};
-
-export const fmtMoney = (v) => {
-  const n = Math.round(Number(v || 0));
-  return (n).toLocaleString('ru-RU') + ' ₽';
 };
 
 export const fmtDate = (s) => {

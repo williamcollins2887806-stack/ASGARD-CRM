@@ -29,6 +29,8 @@
 import { api } from '@/api/client';
 import { postMultipart } from '@/api/upload';
 
+export { formatMoney as fmtMoney, formatMoneyShort as fmtMoneyShort } from '@/lib/money';
+
 /* ─── Константы (повторяют vanilla personnel.js) ─────────────────────────── */
 export const SE_YEAR_LIMIT = 2_400_000; // ₽ годовой лимит самозанятого
 
@@ -37,10 +39,26 @@ export const STATUSES = [
   { code: 'approved',  label: 'Утверждён',  tone: 'info',  icon: '✓' },
   { code: 'ready',     label: 'Готов',      tone: 'gold',  icon: '★' },
   { code: 'not_ready', label: 'Не готов',   tone: 'warn',  icon: '⏸' },
+  { code: 'unknown',   label: 'Без статуса', tone: 'neutral', icon: '○' },
   { code: 'planned',   label: 'В плане',    tone: 'info',  icon: '📋' },
+  { code: 'on_mlsp',   label: 'На МЛСП',    tone: 'warn',  icon: '🛢' },
   { code: 'archive',   label: 'Архив',      tone: 'mute',  icon: '📦' },
 ];
 export const STATUS_MAP = Object.fromEntries(STATUSES.map((s) => [s.code, s]));
+
+export const MLSP_SEGMENTS = [
+  { value: 'all', label: 'Все видимые' },
+  { value: 'd14', label: 'Вывоз ≤14 дн' },
+  { value: 'd7', label: 'Вывоз ≤7 дн' },
+  { value: 'over', label: 'Просрочен' },
+  { value: 'left', label: 'Съехали (14 дн)' },
+];
+
+/** Запись вахты МЛСП: офис + РП своих */
+export const MLSP_WRITE_ROLES = [
+  'ADMIN', 'HR', 'HR_MANAGER', 'OFFICE_MANAGER', 'HEAD_TO',
+  'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV', 'PM', 'HEAD_PM',
+];
 
 export const REASONS = [
   { key: 'illness',    label: 'Болезнь' },
@@ -69,10 +87,16 @@ export const VIEW_ROLES = [
 ];
 
 // Редактирование анкет — HR/ADMIN/директора, плюс HEAD_PM и OFFICE_MANAGER
-// (для контактных данных в «Моей дружине»). PM остаётся read-only.
+// (для контактных данных в «Моей дружине»). PM остаётся read-only по анкете.
 // FIX (23.06.2026): HEAD_PM/OFFICE_MANAGER добавлены — могут править контакты/паспорт/одежду/прочее.
 // Финансовые поля у них всё равно режутся через FIN_RESTRICTED_FIELDS на бэке (staff.js).
 export const EDIT_ROLES = ['ADMIN', 'HR', 'HR_MANAGER', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'HEAD_PM', 'OFFICE_MANAGER', 'TO', 'HEAD_TO'];
+
+// Смена статуса готовности — как backend READINESS_ROLES (+ PM).
+export const READINESS_EDIT_ROLES = [
+  'ADMIN', 'HR', 'HR_MANAGER', 'DIRECTOR_GEN', 'DIRECTOR_COMM',
+  'HEAD_PM', 'OFFICE_MANAGER', 'TO', 'HEAD_TO', 'PM',
+];
 
 // PII (паспорт, ИНН, СНИЛС, банк) видят HR/ADMIN/директора + HEAD_PM/OFFICE_MANAGER
 // (без них «редактирование контактных» бесполезно — паспорт не показан).
@@ -87,19 +111,47 @@ export function canView(role) {
 export function canEdit(role) {
   return EDIT_ROLES.includes(role) || isDirectorRole(role);
 }
+export function canEditReadiness(role) {
+  return READINESS_EDIT_ROLES.includes(role) || isDirectorRole(role);
+}
 export function canSeePII(role) {
   return PII_ROLES.includes(role) || isDirectorRole(role);
 }
 export function canImportSeLimits(role) {
   return FIN_ROLES.includes(role) || isDirectorRole(role);
 }
+export function canWriteMlsp(role) {
+  return MLSP_WRITE_ROLES.includes(role) || isDirectorRole(role);
+}
 
 /* ─── API ─────────────────────────────────────────────────────────────────── */
 export function loadReadiness() {
   return api('/api/staff/readiness').then((d) => ({
     employees: d.employees || [],
-    groups: d.groups || { on_site: 0, approved: 0, ready: 0, not_ready: 0, archive: 0, planned: 0 },
+    groups: d.groups || { on_site: 0, approved: 0, ready: 0, not_ready: 0, unknown: 0, archive: 0, planned: 0, on_mlsp: 0 },
   }));
+}
+
+export function patchMlspStay(id, body) {
+  return api('/api/staff/mlsp-stays/' + encodeURIComponent(id), { method: 'PATCH', body });
+}
+export function extendMlspStay(id, body) {
+  return api('/api/staff/mlsp-stays/' + encodeURIComponent(id) + '/extend', { method: 'POST', body });
+}
+export function departMlspStay(id, body) {
+  return api('/api/staff/mlsp-stays/' + encodeURIComponent(id) + '/depart', { method: 'POST', body });
+}
+export function reopenMlspStay(id) {
+  return api('/api/staff/mlsp-stays/' + encodeURIComponent(id) + '/reopen', { method: 'POST', body: {} });
+}
+
+/** Тон чипа МЛСП по остатку дней */
+export function mlspChipTone(stay) {
+  if (!stay) return 'mute';
+  if (!stay.is_open) return 'mute';
+  if (stay.is_overdue || (stay.days_left != null && stay.days_left <= 7)) return 'danger';
+  if (stay.days_left != null && stay.days_left <= 14) return 'warn';
+  return 'ok';
 }
 
 export function loadPlannedByProject() {
@@ -130,8 +182,21 @@ export function loadSeLastImport() {
     .catch(() => null);
 }
 
-export function loadEmployee(id) {
-  return api('/api/staff/employees/' + encodeURIComponent(id));
+export async function loadEmployee(id) {
+  const data = await api('/api/staff/employees/' + encodeURIComponent(id));
+  const emp = data?.employee;
+  if (emp?.se_payee_id && !emp.se_payee_fio) {
+    try {
+      const payee = await api('/api/staff/employees/' + encodeURIComponent(emp.se_payee_id), { silent: true });
+      const p = payee?.employee || payee;
+      if (p) {
+        emp.se_payee_fio = p.fio || '';
+        emp.se_payee_phone = p.phone || '';
+        emp.se_payee_inn = p.inn || '';
+      }
+    } catch (_) { /* payee optional */ }
+  }
+  return data;
 }
 
 export function loadReadinessLog(employeeId) {
@@ -190,6 +255,13 @@ export function createReview(employeeId, payload) {
 export function loadEmployeeAssignments(employeeId) {
   return api('/api/staff/employees/' + encodeURIComponent(employeeId))
     .then((d) => d.assignments || [])
+    .catch(() => []);
+}
+
+/** Фактические сегменты по чек-инам (паритет vanilla renderTimeline) */
+export function loadEmployeeWorklog(employeeId) {
+  return api('/api/staff/employees/' + encodeURIComponent(employeeId) + '/worklog')
+    .then((d) => d.segments || [])
     .catch(() => []);
 }
 
@@ -284,11 +356,6 @@ export function fmtDate(d) {
   if (!d) return '—';
   try { return new Date(d).toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric' }); }
   catch { return String(d).slice(0, 10); }
-}
-
-export function fmtMoney(n) {
-  if (n == null || !isFinite(Number(n))) return '—';
-  return Number(n).toLocaleString('ru-RU', { maximumFractionDigits: 0 }) + ' ₽';
 }
 
 export function fmtRating(v) {

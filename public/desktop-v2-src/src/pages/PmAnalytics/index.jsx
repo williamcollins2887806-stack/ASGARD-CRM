@@ -17,13 +17,9 @@ import { toast } from '@/modals/Notifications';
 import { Btn } from '@/modals/parts';
 import { TopActionsBar, EmptyState } from '@/blocks/Blocks';
 import { SelectInput } from '@/inputs/Inputs';
+import { formatMoney as fmtMoney } from '@/lib/money';
 
 const ALLOWED = ['ADMIN', 'HEAD_PM', 'DIRECTOR_COMM', 'DIRECTOR_GEN', 'DIRECTOR_DEV'];
-
-function fmtMoney(n) {
-  const x = Number(n) || 0;
-  return new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 0 }).format(x) + ' ₽';
-}
 
 function _pct(a, b) { return b ? Math.round((a / b) * 100) + '%' : '—'; }
 

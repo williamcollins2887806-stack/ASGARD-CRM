@@ -47,7 +47,7 @@
  *   GET    /api/price-records/hint                   — Подсказка цены при вводе
  */
 import { api } from '@/api/client';
-
+export { formatMoney as money } from '@/lib/money';
 /* ─── Карта статусов (1:1 с vanilla STATUSES) ─── */
 export const STATUSES = {
   draft:               { label: 'Черновик',         tone: 'draft' },
@@ -88,12 +88,6 @@ export const isWAREHOUSE  = (role) => ['WAREHOUSE', 'ADMIN'].includes(role);
 export const canSeeAll    = (role) => ['ADMIN', 'PROC', 'BUH', 'WAREHOUSE', 'HEAD_PM', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV'].includes(role);
 
 /* ─── Format helpers ─── */
-export function money(v) {
-  if (v == null || v === '') return '—';
-  const n = Number(v);
-  if (!Number.isFinite(n)) return '—';
-  return new Intl.NumberFormat('ru-RU').format(Math.round(n)) + ' ₽';
-}
 export function fmtDate(d) {
   if (!d) return '—';
   return new Date(d).toLocaleDateString('ru-RU');

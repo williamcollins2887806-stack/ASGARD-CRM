@@ -35,7 +35,7 @@ export default function CustomerSuggestCell({ value, inn, onChange }) {
       {inn && <small className="muted">{inn}</small>}
       {open && suggestions.length > 0 && (
         <div className="dropdown-panel" style={{
-          position: 'absolute', zIndex: 20, background: 'var(--bg-2)', border: '1px solid var(--border)',
+          position: 'absolute', zIndex: 20, background: 'var(--bg-2)', border: '1px solid var(--brd-1)',
           borderRadius: 8, maxHeight: 180, overflow: 'auto', width: '100%'
         }}>
           {suggestions.map((s, i) => (

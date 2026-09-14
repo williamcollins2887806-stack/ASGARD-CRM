@@ -20,11 +20,10 @@ import { PromptModal } from '@/modals/Prompt';
 import { ConfirmModal } from '@/modals/Confirm';
 import { toast } from '@/modals/Notifications';
 import { Btn } from '@/modals/parts';
+import { formatMoney } from '@/lib/money';
 
 function rub(n) {
-  if (n == null || n === '') return '0 ₽';
-  const num = Number(n) || 0;
-  return new Intl.NumberFormat('ru-RU').format(Math.round(num)) + ' ₽';
+  return formatMoney(n, { empty: '0 ₽' });
 }
 
 const STATUS_LABEL = {

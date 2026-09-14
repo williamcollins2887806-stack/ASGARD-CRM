@@ -139,6 +139,10 @@ export function OfficeExpenseFormModal({ expense, onDone }) {
         onClose={close}
       />
       <MBody>
+        <div className="oe-cash-hint" style={{ marginBottom: 12 }}>
+          Реестр компании, не личная касса. Наличные из подотчёта проводите через{' '}
+          <a href="#/cash">Кассу</a> с фото чека — иначе сумма останется на руках.
+        </div>
         {rejectReason && (
           <div
             style={{

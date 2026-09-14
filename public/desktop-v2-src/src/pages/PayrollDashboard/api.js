@@ -17,6 +17,8 @@
  */
 import { api } from '@/api/client';
 
+export { formatMoney as fmtMoney, formatMoneyShort as fmtMoneyShort } from '@/lib/money';
+
 export const ACCESS_ROLES = ['ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'BUH'];
 export const LIMIT_EDITORS = ['ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV', 'BUH'];
 
@@ -152,13 +154,6 @@ export function setFinanceLimits(monthly, yearly) {
 }
 
 /* ─── Хелперы ─── */
-
-export function fmtMoney(n) {
-  if (n == null || n === '') return '—';
-  const num = Number(n);
-  if (!Number.isFinite(num)) return '—';
-  return new Intl.NumberFormat('ru-RU').format(Math.round(num)) + ' ₽';
-}
 
 export function fmtPeriod(year, month) {
   const d = new Date(year, month - 1);

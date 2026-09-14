@@ -13,15 +13,120 @@ export const CATEGORIES = [
   { value: 'warehouse',  label: 'Склад' }
 ];
 
-// Backend принимает только worker/shift_master/senior_master
-// (field-checkin.js:299,310, field-photos.js:278, field-stages.js:139).
-// До 23.06.2026 здесь были object_master/pm — сотрудник с такой ролью пропадал
-// из счётчиков бригады и preHandler'ов мастера.
+// field_role бригады. Мастерские права — только shift_master / senior_master.
 export const ROLES = [
   { value: 'worker',        label: 'Рабочий' },
+  { value: 'welder',        label: 'Сварщик' },
+  { value: 'pto',           label: 'ПТО' },
   { value: 'shift_master',  label: 'Мастер смены' },
-  { value: 'senior_master', label: 'Старший мастер' }
+  { value: 'senior_master', label: 'Старший мастер' },
+  { value: 'project_lead',  label: 'Рук. проекта' }
 ];
+
+/** role_tag дружины → field_role (можно переопределить в UI). */
+export function mapRoleTagToFieldRole(roleTag) {
+  const t = String(roleTag || '').trim().toLowerCase();
+  if (t === 'сварщик') return 'welder';
+  if (t === 'пто' || t === 'pto') return 'pto';
+  if (t === 'мастер') return 'shift_master';
+  if (t === 'рп' || t === 'руководитель' || t.startsWith('рп')) return 'project_lead';
+  return 'worker';
+}
+
+export function isWelderTariffName(name) {
+  return /^Сварщик\s*\(/i.test(String(name || '').trim());
+}
+
+export function isPtoTariffName(name) {
+  return /^ПТО\s*\(/i.test(String(name || '').trim());
+}
+
+/** Фильтр сетки ставок под роль бригады. */
+export function filterTariffsForFieldRole(tariffs, fieldRole, siteCategory) {
+  const list = Array.isArray(tariffs) ? tariffs : [];
+  const role = String(fieldRole || 'worker');
+  const inCat = (t) => !siteCategory || t.category === siteCategory || t.category === 'special';
+  if (role === 'welder') {
+    return list.filter((t) => isWelderTariffName(t.position_name || t.label || t.name)
+      && inCat(t));
+  }
+  if (role === 'pto') {
+    return list.filter((t) => isPtoTariffName(t.position_name || t.label || t.name)
+      && inCat(t));
+  }
+  if (role === 'shift_master') {
+    return list.filter((t) => {
+      const n = t.position_name || t.label || t.name || '';
+      if (t.is_combinable) return false;
+      return /Мастер сменный/i.test(n) && inCat(t);
+    });
+  }
+  if (role === 'senior_master') {
+    return list.filter((t) => {
+      const n = t.position_name || t.label || t.name || '';
+      if (t.is_combinable) return false;
+      return /Мастер ответственный/i.test(n) && inCat(t);
+    });
+  }
+  return list.filter((t) => {
+    const n = t.position_name || t.label || t.name || '';
+    if (isWelderTariffName(n) || isPtoTariffName(n)) return false;
+    if (/Мастер сменный|Мастер ответственный|Мастер ПТО/i.test(n)) return false;
+    if (siteCategory && t.category && t.category !== siteCategory) return false;
+    return !t.is_combinable;
+  });
+}
+
+export function defaultTariffIdForRole(tariffs, fieldRole, siteCategory) {
+  const filtered = filterTariffsForFieldRole(tariffs, fieldRole, siteCategory)
+    .slice()
+    .sort((a, b) => (Number(a.points) || 0) - (Number(b.points) || 0));
+  const fourteen = filtered.find((t) => Number(t.points) === 14);
+  return fourteen ? String(fourteen.id) : (filtered[0] ? String(filtered[0].id) : '');
+}
+
+/** Роли для окна «Базовые ставки» (после создания работы). */
+export const BASE_ROLE_DEFS = [
+  { key: 'worker',        label: 'Слесарь / монтажник', defaultEnabled: true },
+  { key: 'shift_master',  label: 'Мастер сменный',      defaultEnabled: true },
+  { key: 'senior_master', label: 'Мастер ответственный', defaultEnabled: true },
+  { key: 'welder',        label: 'Сварщик',             defaultEnabled: false },
+  { key: 'pto',           label: 'ПТО',                 defaultEnabled: false },
+  { key: 'project_lead',  label: 'Рук. проекта',        defaultEnabled: false }
+];
+
+/** Дефолтный тариф для роли в окне базовых ставок (мастер — по имени). */
+export function pickDefaultTariffForRole(tariffs, roleKey) {
+  const list = Array.isArray(tariffs) ? tariffs.slice() : [];
+  const byPointsAsc = (a, b) => (Number(a.points) || 0) - (Number(b.points) || 0);
+  if (roleKey === 'shift_master') {
+    const hit = list.find((t) => /Мастер сменный/i.test(t.position_name || ''));
+    if (hit) return String(hit.id);
+  }
+  if (roleKey === 'senior_master') {
+    const hit = list.find((t) => /Мастер ответственный/i.test(t.position_name || ''));
+    if (hit) return String(hit.id);
+  }
+  if (roleKey === 'welder' || roleKey === 'pto') {
+    list.sort(byPointsAsc);
+    const fourteen = list.find((t) => Number(t.points) === 14);
+    return fourteen ? String(fourteen.id) : (list[0] ? String(list[0].id) : '');
+  }
+  // worker: слесарь «полный функционал» или средний по баллам
+  const sle = list.find((t) => /Слесарь \(полный функционал/i.test(t.position_name || '')
+    || /Слесарь \(полный функционал,/i.test(t.position_name || '')
+    || /Слесарь-монтажник/i.test(t.position_name || ''));
+  if (sle) return String(sle.id);
+  list.sort(byPointsAsc);
+  return list[0] ? String(list[0].id) : '';
+}
+
+/** Тариф по role_base_rates для field_role при добавлении в бригаду. */
+export function tariffIdFromRoleBaseRates(roleBaseRates, fieldRole) {
+  const roles = Array.isArray(roleBaseRates?.roles) ? roleBaseRates.roles : [];
+  const hit = roles.find((r) => r.role_key === fieldRole && r.enabled && r.tariff_id);
+  return hit?.tariff_id ? String(hit.tariff_id) : '';
+}
 
 export const SHIFTS = [
   { value: 'day',   label: 'День' },

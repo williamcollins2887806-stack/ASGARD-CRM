@@ -29,13 +29,10 @@ import {
   createStage, approveStage, rejectStage, bulkCreateStages
 } from '../api';
 import { STAGE_COLORS, STAGE_LABELS, STAGE_TEMPLATES } from '../constants';
+import { formatMoney as fmtMoney } from '@/lib/money';
 
 const STAGE_TYPES = Object.keys(STAGE_LABELS).map((v) => ({ value: v, label: STAGE_LABELS[v], color: STAGE_COLORS[v] }));
 
-function fmtMoney(n) {
-  if (!Number.isFinite(+n)) return '—';
-  return new Intl.NumberFormat('ru-RU').format(Math.round(+n)) + ' ₽';
-}
 function fmtDate(s) {
   if (!s) return '—';
   const d = new Date(s);
@@ -74,21 +71,37 @@ export default function StagesTab({ work }) {
     if (!form.employee_id) return toast('Сотрудник', 'Выбери сотрудника', 'warn');
     if (!form.date_from) return toast('Дата', 'Укажи дату начала', 'warn');
     setBusy(true);
+    const payload = {
+      work_id: work.id,
+      employee_id: Number(form.employee_id),
+      stage_type: form.stage_type,
+      date_from: form.date_from,
+      date_to: form.date_to || form.date_from,
+      note: form.details || null
+    };
     try {
-      await createStage({
-        work_id: work.id,
-        employee_id: Number(form.employee_id),
-        stage_type: form.stage_type,
-        date_from: form.date_from,
-        date_to: form.date_to || form.date_from,
-        note: form.details || null
-      });
+      await createStage(payload);
       toast('Этап добавлен', '', 'ok');
       setForm({ employee_id: form.employee_id, stage_type: 'medical', date_from: '', date_to: '', details: '' });
       setShowForm(false);
       reload();
     } catch (e) {
-      toast('Ошибка', String(e?.message || e), 'err');
+      if (e?.status === 409 && e?.data?.requires_confirmation) {
+        const ok = window.confirm(e.data.message || e.message || 'На дату уже есть смена. Перезаписать?');
+        if (ok) {
+          try {
+            await createStage({ ...payload, confirm_overwrite: true });
+            toast('Этап добавлен', 'смена отменена', 'ok');
+            setForm({ employee_id: form.employee_id, stage_type: 'medical', date_from: '', date_to: '', details: '' });
+            setShowForm(false);
+            reload();
+          } catch (e2) {
+            toast('Ошибка', String(e2?.message || e2), 'err');
+          }
+        }
+      } else {
+        toast('Ошибка', String(e?.message || e), 'err');
+      }
     } finally {
       setBusy(false);
     }
@@ -410,10 +423,49 @@ function BulkStageModal({ work, crew, employees, onChanged }) {
             stage_type: tpl.stage_type,
             date_from: dStr
           });
-          createdTotal += r?.created_count || 0;
+          if (r?.requires_confirmation && r?.conflicts?.length) {
+            const ok = window.confirm(
+              (r.message || 'У части сотрудников на дату уже есть смена.') +
+              '\n\nПерезаписать смены этапами «' + tpl.label + '»?'
+            );
+            if (ok) {
+              const r2 = await bulkCreateStages({
+                employee_ids: empIds,
+                work_id: work.id,
+                stage_type: tpl.stage_type,
+                date_from: dStr,
+                confirm_overwrite: true
+              });
+              createdTotal += r2?.created_count || 0;
+            } else {
+              createdTotal += r?.created_count || 0;
+            }
+          } else {
+            createdTotal += r?.created_count || 0;
+          }
         } catch (e) {
-          // дубликаты пропускаются бэком; иные ошибки показываем
-          toast('Ошибка ' + tpl.label, String(e?.message || e), 'err');
+          if (e?.status === 409 && e?.data?.requires_confirmation) {
+            const ok = window.confirm(
+              (e.data.message || e.message || 'На дату уже есть смена.') +
+              '\n\nПерезаписать на «' + tpl.label + '»?'
+            );
+            if (ok) {
+              try {
+                const r2 = await bulkCreateStages({
+                  employee_ids: empIds,
+                  work_id: work.id,
+                  stage_type: tpl.stage_type,
+                  date_from: dStr,
+                  confirm_overwrite: true
+                });
+                createdTotal += r2?.created_count || 0;
+              } catch (e2) {
+                toast('Ошибка ' + tpl.label, String(e2?.message || e2), 'err');
+              }
+            }
+          } else {
+            toast('Ошибка ' + tpl.label, String(e?.message || e), 'err');
+          }
         }
       }
       toast('Создано этапов', String(createdTotal), createdTotal ? 'ok' : 'warn');

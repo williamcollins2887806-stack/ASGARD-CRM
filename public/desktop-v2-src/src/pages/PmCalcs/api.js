@@ -4,6 +4,8 @@
  */
 import { api } from '@/api/client';
 
+export { formatMoney as fmtMoney, formatMoneyShort as fmtMoneyShort } from '@/lib/money';
+
 export const CALC_STATUSES = [
   { value: 'new',           label: 'Новый',          tone: 'draft' },
   { value: 'in_calc',       label: 'На просчёте',    tone: 'sent' },
@@ -128,11 +130,6 @@ export function filterByQuery(items, q) {
     (t.tag || '').toLowerCase().includes(lq) ||
     String(t.id).includes(lq)
   );
-}
-
-export function fmtMoney(n) {
-  if (!Number.isFinite(+n)) return '—';
-  return new Intl.NumberFormat('ru-RU').format(Math.round(+n)) + ' ₽';
 }
 
 export function fmtDate(s) {

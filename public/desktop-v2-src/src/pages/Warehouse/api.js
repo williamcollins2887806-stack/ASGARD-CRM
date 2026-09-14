@@ -13,6 +13,11 @@
  *   src/routes/warehouse-locations.js — /api/warehouse/locations/*
  */
 import { api } from '@/api/client';
+export { formatMoney as money } from '@/lib/money';
+export function fmt(n) {
+  if (n == null || n === '') return '—';
+  return Number(n).toLocaleString('ru-RU');
+}
 
 /* ── Хелперы fetch с raw-ответом (для 409 stock_changed/equipment_taken) ── */
 export async function rawApi(url, opts = {}) {
@@ -271,16 +276,6 @@ export function isPm(role)          { return PM_ROLES.includes(role); }
 export function canUseCart(role)    { return CART_USE_ROLES.includes(role); }
 
 /* ─────────── Формат / утилиты ─────────── */
-export function fmt(n) {
-  if (n == null || n === '') return '—';
-  return Number(n).toLocaleString('ru-RU');
-}
-
-export function money(n) {
-  if (n == null || n === '') return '—';
-  return Number(n).toLocaleString('ru-RU') + ' ₽';
-}
-
 export function formatDate(d) {
   if (!d) return '—';
   try { return new Date(d).toLocaleDateString('ru-RU'); } catch { return '—'; }

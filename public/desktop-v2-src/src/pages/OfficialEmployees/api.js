@@ -14,6 +14,8 @@
  */
 import { api } from '@/api/client';
 
+export { formatMoney as rub } from '@/lib/money';
+
 export const VIEW_ROLES = ['ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'BUH'];
 export const PII_ROLES = ['ADMIN', 'HR', 'HR_MANAGER', 'BUH'];
 export const EDIT_ROLES = ['ADMIN', 'DIRECTOR_GEN', 'BUH'];
@@ -30,13 +32,6 @@ export const STATUS_CFG = {
 export const STATUS_OPTS = Object.entries(STATUS_CFG).map(([value, cfg]) => ({ value, label: cfg.label }));
 
 export const LEAVE_STATUSES = new Set(['unpaid_leave', 'maternity', 'sick_leave']);
-
-export function rub(n) {
-  if (n === null || n === undefined || n === '') return '—';
-  return new Intl.NumberFormat('ru-RU', {
-    style: 'currency', currency: 'RUB', maximumFractionDigits: 0
-  }).format(Number(n) || 0);
-}
 
 export function fmtDate(s) {
   if (!s) return '—';

@@ -12,6 +12,9 @@
 import { api } from '@/api/client';
 import { downloadProtected } from '@/api/download';
 
+export { formatMoney as fmtMoney, formatMoneyShort as fmtMoneyShort } from '@/lib/money';
+export { formatMoney as fmtMoneyR } from '@/lib/money';
+
 export const MONTH_NAMES = ['Янв', 'Фев', 'Мар', 'Апр', 'Май', 'Июн',
                             'Июл', 'Авг', 'Сен', 'Окт', 'Ноя', 'Дек'];
 export const MONTH_FULL = ['Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь',
@@ -31,16 +34,6 @@ export const PAYMENT_TYPES = {
   bonus:    { label: '🎁 Премия',     tone: 'ok' },
   penalty:  { label: '⚠️ Удержание',  tone: 'err' }
 };
-
-export function fmtMoneyR(n) {
-  if (!Number.isFinite(+n)) return '0 ₽';
-  return new Intl.NumberFormat('ru-RU').format(Math.round(+n)) + ' ₽';
-}
-
-export function fmtMoney(n) {
-  if (!Number.isFinite(+n)) return '0';
-  return new Intl.NumberFormat('ru-RU').format(Math.round(+n));
-}
 
 export async function loadPayrollReport(year, month) {
   return api(`/api/worker-payments/reports/payroll/${year}/${month}`, { silent: true });

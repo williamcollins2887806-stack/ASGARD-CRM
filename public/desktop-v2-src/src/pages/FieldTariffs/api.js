@@ -14,6 +14,8 @@
  */
 import { api } from '@/api/client';
 
+export { formatMoney as fmtMoney, formatMoneyShort as fmtMoneyShort } from '@/lib/money';
+
 export const SETTINGS_ROLES = ['ADMIN'];
 
 export const CATEGORY_LABELS = {
@@ -69,8 +71,3 @@ export function categoryLabel(cat) {
   return CATEGORY_LABELS[cat] || cat || '—';
 }
 
-export function fmtMoney(v) {
-  const n = Number(v);
-  if (!Number.isFinite(n)) return '—';
-  return new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 0 }).format(n);
-}

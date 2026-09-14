@@ -14,6 +14,8 @@
  */
 import { api } from '@/api/client';
 
+export { formatMoney as fmtMoney, formatMoneyShort as fmtMoneyShort } from '@/lib/money';
+
 export function loadToTenders() {
   return api('/api/tenders?limit=2000')
     .then((d) => (d.tenders || d.items || []).filter((t) => t.calculator_kind === 'to'));
@@ -61,11 +63,6 @@ export function rejectEstimate(estId, comment) {
   return api(`/api/approval/estimates/${estId}/reject`, {
     method: 'POST', body: { comment }
   });
-}
-
-export function fmtMoney(n) {
-  if (!Number.isFinite(+n) || +n <= 0) return '—';
-  return new Intl.NumberFormat('ru-RU').format(Math.round(+n)) + ' ₽';
 }
 
 export function fmtDateTime(s) {

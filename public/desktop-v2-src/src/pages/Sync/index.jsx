@@ -24,6 +24,7 @@ import {
 import { ConnectionEditModal } from './ConnectionEditModal';
 import { ExportModal } from './ExportModal';
 import './sync.css';
+import { formatMoney as fmtRub } from '@/lib/money';
 
 export default function SyncPage() {
   const { user } = useAuth();
@@ -331,14 +332,6 @@ export default function SyncPage() {
       </div>
     </div>
   );
-}
-
-function fmtRub(n) {
-  if (!Number.isFinite(+n) || n === 0) return '0 ₽';
-  const v = +n;
-  if (v >= 1_000_000) return (v / 1_000_000).toFixed(1) + ' млн ₽';
-  if (v >= 1_000) return (v / 1_000).toFixed(0) + ' тыс. ₽';
-  return new Intl.NumberFormat('ru-RU').format(Math.round(v)) + ' ₽';
 }
 
 function pluralize(n, one, few, many) {

@@ -19,6 +19,7 @@ import { Btn } from '@/modals/parts';
 import { TopActionsBar, EmptyState } from '@/blocks/Blocks';
 import { SelectInput } from '@/inputs/Inputs';
 import './kpi-money.css';
+import { formatMoney as fmtMoney, formatMoneyShort as shortMoney } from '@/lib/money';
 
 const _ALLOWED = ['ADMIN', 'PM', 'HEAD_PM', 'BUH', 'OFFICE_MANAGER', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV'];
 
@@ -59,19 +60,6 @@ function normalizeCategory(cat) {
   return EXPENSE_CATEGORIES.some((c) => c.key === mapped) ? mapped : 'other';
 }
 
-function fmtMoney(n) {
-  const x = Number(n) || 0;
-  return new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 0 }).format(x) + ' ₽';
-}
-function shortMoney(n) {
-  const x = Number(n) || 0;
-  const abs = Math.abs(x);
-  const sign = x < 0 ? '−' : '';
-  if (abs >= 1e9) return sign + (abs / 1e9).toFixed(1) + ' млрд ₽';
-  if (abs >= 1e6) return sign + (abs / 1e6).toFixed(1) + ' млн ₽';
-  if (abs >= 1e3) return sign + (abs / 1e3).toFixed(0) + ' тыс ₽';
-  return fmtMoney(x);
-}
 function marginPct(contract, fact) {
   const c = Number(contract) || 0;
   const f = Number(fact) || 0;

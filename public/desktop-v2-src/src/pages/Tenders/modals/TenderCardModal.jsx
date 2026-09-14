@@ -20,6 +20,7 @@ import HistoryTab from './HistoryTab';
 import AddendaTab from './AddendaTab';
 import InlineDocsBar from './InlineDocsBar';
 import WorkflowActions from './WorkflowActions';
+import { formatMoney as fmtMoney } from '@/lib/money';
 
 const TABS = [
   { key: 'card',     label: '📋 Карточка' },
@@ -28,11 +29,6 @@ const TABS = [
   { key: 'addenda',  label: '📑 ДС' },
   { key: 'history',  label: '📜 История' }
 ];
-
-function fmtMoney(n) {
-  if (!Number.isFinite(+n)) return '—';
-  return new Intl.NumberFormat('ru-RU').format(Math.round(+n)) + ' ₽';
-}
 
 function fmtDate(s) {
   if (!s) return '—';

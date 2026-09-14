@@ -3,10 +3,10 @@
  */
 import { useMemo, useState, useEffect, useCallback } from 'react';
 import { Btn } from '@/modals/parts';
-import { monthLabel, fmtNum, fmtMoney } from './api';
+import { monthLabel, fmtNum, fmtMoney, getWorksOptions } from './api';
 
 export default function Toolbar({
-  year, month, mode: _mode,
+  year, month, mode,
   data,
   onPrev, onNext, onToday,
   onRefresh, onExport, onAddWorker,
@@ -19,11 +19,28 @@ export default function Toolbar({
   projectFilter = null,
   onProjectFilterClear,
   onProjectFilterApply,
+  onWorkFilterApply,
   rosterLoading = false,
 }) {
   const [localProjectQ, setLocalProjectQ] = useState(projectQuery);
+  const [works, setWorks] = useState([]);
+  const [workId, setWorkId] = useState(projectFilter?.work_id ? String(projectFilter.work_id) : '');
+
+  const useWorksDropdown = mode === 'medical' || mode === 'travel' || mode === 'global';
 
   useEffect(() => { setLocalProjectQ(projectQuery); }, [projectQuery]);
+  useEffect(() => {
+    setWorkId(projectFilter?.work_id ? String(projectFilter.work_id) : '');
+  }, [projectFilter]);
+
+  useEffect(() => {
+    if (!useWorksDropdown) return;
+    let cancelled = false;
+    getWorksOptions()
+      .then((r) => { if (!cancelled) setWorks(r?.works || []); })
+      .catch(() => { if (!cancelled) setWorks([]); });
+    return () => { cancelled = true; };
+  }, [useWorksDropdown]);
 
   const kpi = useMemo(() => {
     const employees = data?.employees || [];
@@ -53,12 +70,23 @@ export default function Toolbar({
     onProjectFilterApply?.(q);
   }, [localProjectQ, onProjectFilterApply]);
 
+  const onWorkChange = useCallback((e) => {
+    const id = e.target.value;
+    setWorkId(id);
+    if (!id) {
+      onProjectFilterClear?.();
+      return;
+    }
+    const w = works.find((x) => String(x.id) === id);
+    onWorkFilterApply?.(Number(id), w?.label || w?.title || `Объект #${id}`);
+  }, [works, onWorkFilterApply, onProjectFilterClear]);
+
   const rosterSummary = useMemo(() => {
     if (!projectFilter?.employees?.length) return null;
     const emps = projectFilter.employees;
     const planned = emps.filter((e) => (e.roster_reasons || []).includes('planned')).length;
     const approved = emps.filter((e) => (e.roster_reasons || []).includes('approved')).length;
-    const title = projectFilter.work_matches?.[0]?.work_title || projectFilter.query || 'Проект';
+    const title = projectFilter.work_matches?.[0]?.work_title || projectFilter.query || projectFilter.title || 'Проект';
     return { title, count: emps.length, planned, approved };
   }, [projectFilter]);
 
@@ -107,19 +135,39 @@ export default function Toolbar({
           onChange={(e) => onFioSearchChange?.(e.target.value)}
           aria-label="Поиск по ФИО"
         />
-        <input
-          type="search"
-          placeholder="Объект: МЛСП, Пуровский…"
-          value={localProjectQ}
-          onChange={(e) => setLocalProjectQ(e.target.value)}
-          onKeyDown={(e) => { if (e.key === 'Enter') applyProject(); }}
-          aria-label="Фильтр по объекту"
-        />
-        <Btn variant="ghost" size="sm" onClick={applyProject} disabled={localProjectQ.trim().length < 2 || rosterLoading}>
-          {rosterLoading ? '…' : 'Фильтр'}
-        </Btn>
+        {useWorksDropdown ? (
+          <select
+            value={workId}
+            onChange={onWorkChange}
+            aria-label="Фильтр по объекту"
+            disabled={rosterLoading}
+            style={{ minWidth: 220, maxWidth: 360 }}
+          >
+            <option value="">Все объекты</option>
+            {works.map((w) => (
+              <option key={w.id} value={w.id}>{w.label || w.title || `#${w.id}`}</option>
+            ))}
+          </select>
+        ) : (
+          <>
+            <input
+              type="search"
+              placeholder="Объект: МЛСП, Пуровский…"
+              value={localProjectQ}
+              onChange={(e) => {
+                setLocalProjectQ(e.target.value);
+                onProjectQueryChange?.(e.target.value);
+              }}
+              onKeyDown={(e) => { if (e.key === 'Enter') applyProject(); }}
+              aria-label="Фильтр по объекту"
+            />
+            <Btn variant="ghost" size="sm" onClick={applyProject} disabled={localProjectQ.trim().length < 2 || rosterLoading}>
+              {rosterLoading ? '…' : 'Фильтр'}
+            </Btn>
+          </>
+        )}
         {projectFilter && (
-          <Btn variant="ghost" size="sm" onClick={onProjectFilterClear}>× Сбросить</Btn>
+          <Btn variant="ghost" size="sm" onClick={() => { setWorkId(''); onProjectFilterClear?.(); }}>× Сбросить</Btn>
         )}
       </div>
 

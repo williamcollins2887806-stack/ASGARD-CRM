@@ -197,7 +197,7 @@ export default function AutoReportsPage() {
               </div>
               <div className="row gap-10 mt-12">
                 <Btn variant="ghost"   onClick={() => onPreview('monthly')}  disabled={!!busy.monthly_preview}>
-                  {busy.monthly_preview ? '⏳' : '👁'} Просмотр
+                  {busy.monthly_preview ? '…' : ''}Просмотр
                 </Btn>
                 <Btn variant="primary" onClick={() => onDownload('monthly')} disabled={!!busy.monthly_dl}>
                   {busy.monthly_dl ? '⏳' : '📥'} Excel
@@ -218,7 +218,7 @@ export default function AutoReportsPage() {
               </div>
               <div className="row gap-10 mt-12">
                 <Btn variant="ghost"   onClick={() => onPreview('quarterly')}  disabled={!!busy.quarterly_preview}>
-                  {busy.quarterly_preview ? '⏳' : '👁'} Просмотр
+                  {busy.quarterly_preview ? '…' : ''}Просмотр
                 </Btn>
                 <Btn variant="primary" onClick={() => onDownload('quarterly')} disabled={!!busy.quarterly_dl}>
                   {busy.quarterly_dl ? '⏳' : '📥'} Excel
@@ -236,7 +236,7 @@ export default function AutoReportsPage() {
               </div>
               <div className="row gap-10 mt-12">
                 <Btn variant="ghost"   onClick={() => onPreview('yearly')}  disabled={!!busy.yearly_preview}>
-                  {busy.yearly_preview ? '⏳' : '👁'} Просмотр
+                  {busy.yearly_preview ? '…' : ''}Просмотр
                 </Btn>
                 <Btn variant="primary" onClick={() => onDownload('yearly')} disabled={!!busy.yearly_dl}>
                   {busy.yearly_dl ? '⏳' : '📥'} Excel

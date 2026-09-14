@@ -53,7 +53,7 @@ const HintBubble = () => <_CatalogStub route="(встроен в страниц�
 const NewCustomerOverlay = () => <_CatalogStub route="/customers" name="New Customer" />;
 // Аналогично для удалённых из blocks/Blocks.jsx демо-панелей:
 const WinPanel = () => <_CatalogStub route="/tenders" name="WinPanel" />;
-const DistPanel = () => <_CatalogStub route="/funnel" name="DistPanel" />;
+const DistPanel = () => <_CatalogStub route="/tenders" name="DistPanel" />;
 const StatCardRow = () => <_CatalogStub route="/dashboard" name="StatCardRow" />;
 const FilterBar = () => <_CatalogStub route="(встроен в страницы)" name="FilterBar" />;
 const AlertStrip = () => <_CatalogStub route="/alerts" name="AlertStrip" />;

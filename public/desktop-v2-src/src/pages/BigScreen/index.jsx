@@ -25,6 +25,7 @@ import { toast } from '@/modals/Notifications';
 // 23.06.2026 BUG-FIX (Sites D-M10/D-M11): CLOSED_WORK/PREP — из единого helpers/work-status.
 import { CLOSED_WORK, isClosedWork, PREP_STATUSES } from '@/helpers/work-status';
 import './big-screen.css';
+import { formatMoney as money } from '@/lib/money';
 
 const ALLOWED = ['ADMIN', 'DIRECTOR_COMM', 'DIRECTOR_GEN', 'DIRECTOR_DEV', 'HEAD_TO', 'HEAD_PM'];
 const SLIDE_INTERVAL = 60_000;
@@ -32,10 +33,6 @@ const DATA_REFRESH = 300_000;
 
 function esc(s) {
   return String(s ?? '');
-}
-
-function money(n) {
-  return new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 0 }).format(Number(n) || 0) + ' ₽';
 }
 
 function shortNum(x) {

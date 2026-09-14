@@ -28,6 +28,7 @@ import { TopActionsBar } from '@/blocks/Blocks';
 import EstimateFilter from './EstimateFilter';
 import EstimatesList from './EstimatesList';
 import { EstimateDetailModal } from './modals/EstimateDetail';
+import { formatMoney as fmtRub } from '@/lib/money';
 import {
   loadEstimates, loadUsers,
   filterByPeriod, filterByQuery, filterByMatch
@@ -211,9 +212,3 @@ function pluralize(n, forms) {
   return forms[2];
 }
 
-function fmtRub(n) {
-  if (!Number.isFinite(+n) || n === 0) return '0 ₽';
-  if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + ' млн ₽';
-  if (n >= 1_000) return (n / 1_000).toFixed(0) + ' тыс. ₽';
-  return new Intl.NumberFormat('ru-RU').format(Math.round(n)) + ' ₽';
-}

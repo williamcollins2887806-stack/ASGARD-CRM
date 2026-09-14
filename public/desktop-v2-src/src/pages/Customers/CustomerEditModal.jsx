@@ -190,7 +190,7 @@ export function CustomerEditModal({ customer, onSaved }) {
   // ── Multi-contact: операции массива ─────────────────────────────────────
   const addContact = () => {
     setContacts((arr) => {
-      const next = [...arr, { name: '', position: '', phone: '', email: '', is_primary: arr.length === 0 }];
+      const next = [...arr, { name: '', position: '', phone: '', phone2: '', email: '', is_primary: arr.length === 0 }];
       return next;
     });
   };
@@ -220,10 +220,11 @@ export function CustomerEditModal({ customer, onSaved }) {
   };
   // Валидация контактов: email и телефон в каждой строке.
   const contactErrors = contacts.map((c) => ({
-    email: c.email ? emailError(c.email) : null,
-    phone: c.phone ? phoneError(c.phone) : null
+    email:  c.email ? emailError(c.email) : null,
+    phone:  c.phone ? phoneError(c.phone) : null,
+    phone2: c.phone2 ? phoneError(c.phone2) : null
   }));
-  const hasContactErr = contactErrors.some((e) => e.email || e.phone);
+  const hasContactErr = contactErrors.some((e) => e.email || e.phone || e.phone2);
   const hasFieldErr = Object.values(fieldErrors).some(Boolean) || hasContactErr;
 
   const save = async () => {
@@ -442,10 +443,16 @@ export function CustomerEditModal({ customer, onSaved }) {
                             placeholder="Главный инженер"
                           />
                         </Field>
-                        <Field label="Телефон" error={err.phone}>
+                        <Field label="Телефон 1" error={err.phone}>
                           <PhoneInput
                             value={c.phone}
                             onChange={(v) => updateContact(idx, { phone: v })}
+                          />
+                        </Field>
+                        <Field label="Телефон 2" error={err.phone2}>
+                          <PhoneInput
+                            value={c.phone2}
+                            onChange={(v) => updateContact(idx, { phone2: v })}
                           />
                         </Field>
                         <Field label="Email" error={err.email}>
@@ -461,7 +468,7 @@ export function CustomerEditModal({ customer, onSaved }) {
                         <Checkbox
                           checked={c.is_primary}
                           onChange={() => setPrimary(idx)}
-                          label="Основной"
+                          label="Главное контактное лицо"
                         />
                         <Btn
                           variant="ghost"

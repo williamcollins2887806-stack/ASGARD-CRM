@@ -12,6 +12,8 @@ import { useGlobalSSE } from '@/hooks/useGlobalSSE';
 // уже были подняты (useGlobalSSE), а user.role был проверен. Источник vanilla:
 // public/assets/js/telephony_popup.js (1353 LOC). См. pages/Telephony/IncomingCallPopup.jsx.
 import IncomingCallPopup from '@/pages/Telephony/IncomingCallPopup';
+import MorningBriefHost from '@/pages/Tenders/MorningBriefHost';
+import AcademyLagReminderHost from '@/pages/OfficeAcademy/AcademyLagReminderHost';
 
 // ────────────────────────────────────────────────────────────────────────────
 // Волна D-5: глобальный code-split. Главный чанк до этого был 1651 kB —
@@ -37,7 +39,6 @@ const PmWorks = lazy(() => import('@/pages/PmWorks'));
 const PmCalcs = lazy(() => import('@/pages/PmCalcs'));
 const AllWorks = lazy(() => import('@/pages/AllWorks'));
 const AllEstimates = lazy(() => import('@/pages/AllEstimates'));
-const Funnel = lazy(() => import('@/pages/Funnel'));
 const Customers = lazy(() => import('@/pages/Customers'));
 const Gantt = lazy(() => import('@/pages/Gantt'));
 const Approvals = lazy(() => import('@/pages/Approvals'));
@@ -62,6 +63,7 @@ const OfficialEmployees = lazy(() => import('@/pages/OfficialEmployees'));
 // GlobalTimesheet удалён 18.06.2026 — заменён на Timesheet (mode='global').
 // Timesheet v2 — единый компонент для 5 mode'ов (см. TIMESHEET_V2_CONTRACT.md)
 const Timesheet = lazy(() => import('@/pages/Timesheet'));
+const SiteCrew = lazy(() => import('@/pages/SiteCrew'));
 const Personnel = lazy(() => import('@/pages/Personnel'));
 const HrRequests = lazy(() => import('@/pages/HrRequests'));
 const HrRating = lazy(() => import('@/pages/HrRating'));
@@ -80,8 +82,7 @@ const ToAnalytics = lazy(() => import('@/pages/ToAnalytics'));
 const ObjectMap = lazy(() => import('@/pages/ObjectMap'));
 const Finances = lazy(() => import('@/pages/Finances'));
 const BuhRegistry = lazy(() => import('@/pages/BuhRegistry'));
-const Invoices = lazy(() => import('@/pages/Invoices'));
-const Acts = lazy(() => import('@/pages/Acts'));
+const Billing = lazy(() => import('@/pages/Billing'));
 const OfficeExpenses = lazy(() => import('@/pages/OfficeExpenses'));
 const PayrollDashboard = lazy(() => import('@/pages/PayrollDashboard'));
 const Payroll = lazy(() => import('@/pages/Payroll'));
@@ -181,6 +182,8 @@ function Protected({ title, children, roles }) {
     <AppShell title={title}>
       {children}
       <IncomingCallPopup />
+      <MorningBriefHost />
+      <AcademyLagReminderHost />
     </AppShell>
   );
 }
@@ -232,7 +235,7 @@ export default function App() {
               <Route path="/head-to-approvals" element={<Navigate to="/tenders" replace />} />
               <Route path="/all-estimates" element={<Navigate to={{ pathname: '/pm-calculations', search: '?tab=archive' }} replace />} />
               <Route path="/all-works" element={<Protected title="Свод Контрактов"><AllWorks /></Protected>} />
-              <Route path="/funnel" element={<Protected title="Воронка продаж"><Funnel /></Protected>} />
+              <Route path="/funnel" element={<Navigate to="/tenders" replace />} />
               <Route path="/customers" element={<Protected title="Заказчики"><Customers /></Protected>} />
               <Route path="/gantt-calcs"   element={<Protected title="Гантт • Просчёты"><Gantt /></Protected>} />
               <Route path="/gantt-works"   element={<Protected title="Гантт • Работы"><Gantt /></Protected>} />
@@ -257,8 +260,9 @@ export default function App() {
               <Route path="/my-timesheet"        element={<Protected title="Табель моей дружины"        roles={['PM','HEAD_PM']}><Timesheet mode="pm" /></Protected>} />
               <Route path="/timesheet-warehouse" element={<Protected title="Табель учёта работы на складе" roles={['WAREHOUSE','ADMIN','DIRECTOR_GEN','DIRECTOR_COMM','DIRECTOR_DEV']}><Timesheet mode="warehouse" /></Protected>} />
               <Route path="/timesheet-medical"   element={<Protected title="Табель учёта МО/обучения/иной транспорт" roles={['TO','HEAD_TO','ADMIN','DIRECTOR_GEN','DIRECTOR_COMM','DIRECTOR_DEV']}><Timesheet mode="medical" /></Protected>} />
-              <Route path="/timesheet-travel"    element={<Protected title="Табель учёта дороги"          roles={['OFFICE_MANAGER','ADMIN','DIRECTOR_GEN','DIRECTOR_COMM','DIRECTOR_DEV']}><Timesheet mode="travel" /></Protected>} />
+              <Route path="/timesheet-travel"    element={<Protected title="Табель учёта дороги"          roles={['OFFICE_MANAGER','HEAD_TO','ADMIN','DIRECTOR_GEN','DIRECTOR_COMM','DIRECTOR_DEV']}><Timesheet mode="travel" /></Protected>} />
               <Route path="/timesheet"           element={<Protected title="Общий табель — Табель дружины" roles={['DIRECTOR_GEN','DIRECTOR_COMM','DIRECTOR_DEV','ADMIN','BUH','HR','HR_MANAGER']}><Timesheet mode="global" /></Protected>} />
+              <Route path="/site-crew"           element={<Protected title="Кто на объектах" roles={['ADMIN','HEAD_TO','DIRECTOR_GEN','DIRECTOR_COMM','DIRECTOR_DEV']}><SiteCrew /></Protected>} />
               <Route path="/admin/timesheet-settings" element={<Protected title="Настройки баллов табеля" roles={['ADMIN','DIRECTOR_GEN','DIRECTOR_COMM','DIRECTOR_DEV','BUH']}><AdminTimesheetSettings /></Protected>} />
               <Route path="/personnel" element={<Protected title="Дружина"><Personnel /></Protected>} />
               <Route path="/employee" element={<Protected title="Дружина"><Personnel /></Protected>} />
@@ -292,8 +296,9 @@ export default function App() {
               <Route path="/object-map" element={<Protected title="Карта объектов"><ObjectMap /></Protected>} />
               <Route path="/finances" element={<Protected title="Деньги • Аналитика"><Finances /></Protected>} />
               <Route path="/buh-registry" element={<Protected title="Реестр расходов"><BuhRegistry /></Protected>} />
-              <Route path="/invoices" element={<Protected title="Счета и оплаты"><Invoices /></Protected>} />
-              <Route path="/acts" element={<Protected title="Акты выполненных работ"><Acts /></Protected>} />
+              <Route path="/billing" element={<Protected title="Счета и акты"><Billing /></Protected>} />
+              <Route path="/invoices" element={<Protected title="Счета и акты"><Billing defaultTab="invoices" /></Protected>} />
+              <Route path="/acts" element={<Protected title="Счета и акты"><Billing defaultTab="acts" /></Protected>} />
               <Route path="/office-expenses" element={<Protected title="Офисные расходы"><OfficeExpenses /></Protected>} />
               <Route path="/payroll-dashboard" element={<Protected title="Финансы персонала"><PayrollDashboard /></Protected>} />
               <Route path="/payroll"       element={<Protected title="Расчёты с рабочими"><Payroll /></Protected>} />

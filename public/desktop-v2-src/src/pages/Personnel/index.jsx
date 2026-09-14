@@ -25,25 +25,30 @@ import { SearchInput, SelectInput } from '@/inputs/Inputs';
 import { useDebounce, useHotkeys, useLocalStorage, exportToCsv } from '@/api/useListHelpers';
 
 import {
-  STATUSES, STATUS_MAP, SE_YEAR_LIMIT,
+  STATUSES, STATUS_MAP, SE_YEAR_LIMIT, MLSP_SEGMENTS,
   loadReadiness, filterByQuery, fmtDate, fmtMoney, fmtRating,
   canView, canEdit, canImportSeLimits, loadSeLastImport,
+  canWriteMlsp, mlspChipTone,
 } from './api';
 import { AddEmployeeModal } from './AddEmployeeModal';
 import { EmployeeDetailModal } from './EmployeeDetailModal';
 import { SeLimitsImportModal } from './SeLimitsImportModal';
 import { PlannedByProjectView } from './PlannedByProjectView';
+import { ExtendMlspModal, DepartMlspModal, ReopenMlspModal, TransportSelect } from './MlspStayModals';
+import { getPassportAgeValidity, passportStatusClass } from '@/lib/passportValidity';
+import { needsUmo, ageFromBirthDate } from '@/lib/birthDate';
+import { useBrigadeCart, BrigadeCartChrome, BrigadeCartToggle } from './BrigadeCart';
 import './personnel.css';
 
 const PAGE_SIZE = 50;
-const TABLE_STATUSES = STATUSES.filter((s) => s.code !== 'planned');
+const TABLE_STATUSES = STATUSES.filter((s) => s.code !== 'planned' && s.code !== 'on_mlsp');
 
 export default function PersonnelPage() {
   const { user } = useAuth();
   const modal = useModal();
 
   const [employees, setEmployees] = useState([]);
-  const [groups, setGroups] = useState({ on_site: 0, approved: 0, ready: 0, not_ready: 0, archive: 0, planned: 0 });
+  const [groups, setGroups] = useState({ on_site: 0, approved: 0, ready: 0, not_ready: 0, unknown: 0, archive: 0, planned: 0, on_mlsp: 0 });
   const [viewMode, setViewMode] = useLocalStorage('prs-view', 'list');
   const [loading, setLoading] = useState(true);
 
@@ -57,10 +62,12 @@ export default function PersonnelPage() {
   // v2 BONUS: persist специальности и статус-фильтра между сессиями (vanilla сбрасывала)
   const [spec, setSpec] = useLocalStorage('prs-spec', '');
   const [status, setStatus] = useLocalStorage('prs-status', '');
+  const [mlspSeg, setMlspSeg] = useLocalStorage('prs-mlsp-seg', 'all');
   // 25.06.2026: фильтры по городу и пропускам (БОСИЕТ/РУКАВ/МЛСП/ФСБ)
   const [city, setCity] = useLocalStorage('prs-city', '');
   const [passFilter, setPassFilter] = useLocalStorage('prs-pass', '');
   const [page, setPage] = useState(1);
+  const [focusEmpId, setFocusEmpId] = useState(null);
 
   const refresh = () => {
     setLoading(true);
@@ -107,10 +114,14 @@ export default function PersonnelPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Уникальные специальности для фильтра
+  // Уникальные специальности для фильтра (без дублей по регистру)
   const specialties = useMemo(() => {
     const set = new Set();
-    employees.forEach((e) => { if (e.role_tag) set.add(e.role_tag); });
+    employees.forEach((e) => {
+      const t = (e.role_tag || '').trim();
+      if (!t) return;
+      set.add(t === 'РП' ? 'РП' : t.toLowerCase());
+    });
     return Array.from(set).sort((a, b) => a.localeCompare(b, 'ru'));
   }, [employees]);
 
@@ -125,9 +136,29 @@ export default function PersonnelPage() {
   const filtered = useMemo(() => {
     let rows = employees;
     rows = filterByQuery(rows, dQuery);
-    if (spec) rows = rows.filter((e) => (e.role_tag || '') === spec);
+    if (spec) {
+      rows = rows.filter((e) => {
+        const t = (e.role_tag || '').trim();
+        if (spec === 'РП') return t === 'РП';
+        return t.toLowerCase() === spec.toLowerCase();
+      });
+    }
     if (status === 'planned') {
       rows = rows.filter((e) => !!e.planned_info);
+    } else if (status === 'on_mlsp') {
+      rows = rows.filter((e) => !!e.mlsp_stay);
+      if (mlspSeg === 'd14') {
+        rows = rows.filter((e) => e.mlsp_stay?.is_open && e.mlsp_stay.days_left != null && e.mlsp_stay.days_left <= 14);
+      } else if (mlspSeg === 'd7') {
+        rows = rows.filter((e) => e.mlsp_stay?.is_open && e.mlsp_stay.days_left != null && e.mlsp_stay.days_left <= 7);
+      } else if (mlspSeg === 'over') {
+        rows = rows.filter((e) => e.mlsp_stay?.is_overdue);
+      } else if (mlspSeg === 'left') {
+        rows = rows.filter((e) => e.mlsp_stay && !e.mlsp_stay.is_open);
+      } else {
+        // all — открытые + съехавшие ≤14д (уже в mlsp_stay с readiness)
+        rows = rows.filter((e) => !!e.mlsp_stay);
+      }
     } else if (status) {
       rows = rows.filter((e) => (e.effective_status || e.readiness_status || '') === status);
     }
@@ -150,34 +181,56 @@ export default function PersonnelPage() {
         return true;
       });
     }
-    // Сортировка: по статусу (on_site → ready → not_ready → archive), внутри — ФИО
-    const order = { on_site: 0, approved: 1, ready: 2, not_ready: 3, archive: 4 };
+    // Сортировка: по статусу (on_site → ready → not_ready → unknown → archive), внутри — ФИО
+    const order = { on_site: 0, approved: 1, ready: 2, not_ready: 3, unknown: 4, archive: 5 };
     return rows.slice().sort((a, b) => {
       const sa = order[a.effective_status] ?? 9;
       const sb = order[b.effective_status] ?? 9;
       if (sa !== sb) return sa - sb;
       return (a.fio || '').localeCompare(b.fio || '', 'ru');
     });
-  }, [employees, dQuery, spec, status]);
+  }, [employees, dQuery, spec, status, city, passFilter, mlspSeg]);
 
   const pages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const safePage = Math.min(page, pages);
   const slice = filtered.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
-  useEffect(() => { setPage(1); }, [dQuery, spec, status, city, passFilter]);
+  useEffect(() => { setPage(1); }, [dQuery, spec, status, city, passFilter, mlspSeg]);
+
+  const isMlspView = status === 'on_mlsp';
+  const userCanWriteMlsp = canWriteMlsp(user?.role);
+
+  useEffect(() => {
+    if (!isMlspView || !focusEmpId || loading) return;
+    const idx = filtered.findIndex((e) => Number(e.id) === Number(focusEmpId));
+    if (idx >= 0) {
+      const needPage = Math.floor(idx / PAGE_SIZE) + 1;
+      if (needPage !== safePage) {
+        setPage(needPage);
+        return;
+      }
+    }
+    const t = setTimeout(() => {
+      const el = document.querySelector(`tr.prs-row[data-emp-id="${focusEmpId}"]`);
+      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      setFocusEmpId(null);
+    }, 100);
+    return () => clearTimeout(t);
+  }, [isMlspView, focusEmpId, loading, filtered, safePage]);
 
   // Группировка отображаемого среза по статусу
   const grouped = useMemo(() => {
     const g = {};
     TABLE_STATUSES.forEach((s) => { g[s.code] = []; });
     slice.forEach((e) => {
-      const st = e.effective_status || e.readiness_status || 'archive';
+      const st = e.effective_status || e.readiness_status || 'unknown';
       if (g[st]) g[st].push(e);
-      else g['archive'].push(e);
+      else g['unknown'].push(e);
     });
     return g;
   }, [slice]);
 
   const userCanEdit = user && canEdit(user.role);
+  const cart = useBrigadeCart(employees);
 
   const onAdd = () => {
     if (!userCanEdit) {
@@ -266,6 +319,7 @@ export default function PersonnelPage() {
           <>
             <Btn variant="ghost" onClick={refresh}>↻ Обновить</Btn>
             <Btn variant="ghost" onClick={() => { window.location.hash = '#/workers-schedule'; }}>📅 График</Btn>
+            <BrigadeCartChrome cart={cart} />
             {/* v2 BONUS: CSV-экспорт (vanilla не имеет) */}
             <Btn variant="ghost" onClick={onExportCsv} title="Экспорт CSV (Ctrl+E)">📥 CSV</Btn>
             {/* Импорт остатков СЗ (FIN_ROLES) — паритет с vanilla personnel.js */}
@@ -305,7 +359,11 @@ export default function PersonnelPage() {
             onClick={() => onBadgeClick(s.code)}
             title={`Фильтр: ${s.label}`}
           >
-            <div className="num">{s.code === 'planned' ? (groups.planned || 0) : (groups[s.code] || 0)}</div>
+            <div className="num">{
+              s.code === 'planned' ? (groups.planned || 0)
+                : s.code === 'on_mlsp' ? (groups.on_mlsp || 0)
+                  : (groups[s.code] || 0)
+            }</div>
             <div className="lbl">{s.icon} {s.label}</div>
           </button>
         ))}
@@ -362,6 +420,13 @@ export default function PersonnelPage() {
             { value: 'expiring:FSB',      label: '⚠ Истекает ФСБ (≤30д)' },
           ]}
         />
+        {isMlspView && (
+          <SelectInput
+            value={mlspSeg}
+            onChange={setMlspSeg}
+            options={MLSP_SEGMENTS.map((s) => ({ value: s.value, label: s.label }))}
+          />
+        )}
       </div>
 
       {loading ? (
@@ -388,29 +453,65 @@ export default function PersonnelPage() {
                     <th>Специальность</th>
                     <th>Статус</th>
                     <th>Объект / РП</th>
-                    <th>План привлечения</th>
-                    <th>Начало работ</th>
-                    <th style={{ textAlign: 'center', width: 80 }}>Документы</th>
-                    <th style={{ textAlign: 'center', width: 170 }} title="БОСИЕТ · РУКАВ · МЛСП · ФСБ">Ключевые допуски</th>
-                    <th style={{ width: 130 }}>СИЗ</th>
-                    <th style={{ width: 120 }}>Город</th>
-                    <th className="w-150">Лимит СЗ</th>
-                    <th style={{ textAlign: 'right', width: 90 }}>Рейтинг</th>
+                    {isMlspView ? (
+                      <>
+                        <th>Заезд</th>
+                        <th>Дней</th>
+                        <th>Вывоз</th>
+                        <th>Транспорт</th>
+                        <th style={{ width: 160 }}>Действия</th>
+                      </>
+                    ) : (
+                      <>
+                        <th>План привлечения</th>
+                        <th>Начало работ</th>
+                        <th style={{ textAlign: 'center', width: 80 }}>Документы</th>
+                        <th style={{ textAlign: 'center', width: 170 }} title="БОСИЕТ · РУКАВ · МЛСП · ФСБ">Ключевые допуски</th>
+                        <th style={{ width: 130 }}>СИЗ</th>
+                        <th style={{ width: 120 }}>Город</th>
+                        <th className="w-150">Лимит СЗ</th>
+                        <th style={{ textAlign: 'right', width: 90 }}>Рейтинг</th>
+                      </>
+                    )}
                   </tr>
                 </thead>
                 <tbody>
-                  {TABLE_STATUSES.map((st) => {
-                    const list = grouped[st.code];
-                    if (!list || !list.length) return null;
-                    return (
-                      <PersonnelGroup
-                        key={st.code}
-                        status={st}
-                        rows={list}
-                        onOpen={onOpen}
-                      />
-                    );
-                  })}
+                  {isMlspView ? (
+                    <>
+                      <tr className="prs-group-row">
+                        <td colSpan={9}>🛢 На МЛСП · {slice.length}</td>
+                      </tr>
+                      {slice.map((e) => (
+                        <MlspPersonnelRow
+                          key={e.id}
+                          emp={e}
+                          onOpen={onOpen}
+                          canWrite={userCanWriteMlsp}
+                          onExtend={(stay) => modal.open(<ExtendMlspModal stay={{ ...stay, fio: e.fio }} />, { size: 'sm' })}
+                          onDepart={(stay) => modal.open(<DepartMlspModal stay={{ ...stay, fio: e.fio }} />, { size: 'sm' })}
+                          onReopen={(stay) => modal.open(<ReopenMlspModal stay={{ ...stay, fio: e.fio }} />, { size: 'sm' })}
+                        />
+                      ))}
+                    </>
+                  ) : (
+                    TABLE_STATUSES.map((st) => {
+                      const list = grouped[st.code];
+                      if (!list || !list.length) return null;
+                      return (
+                        <PersonnelGroup
+                          key={st.code}
+                          status={st}
+                          rows={list}
+                          onOpen={onOpen}
+                          cart={cart}
+                          onMlspChip={(empId) => {
+                            setFocusEmpId(empId);
+                            setStatus('on_mlsp');
+                          }}
+                        />
+                      );
+                    })
+                  )}
                 </tbody>
               </table>
             </div>
@@ -450,20 +551,107 @@ function SizSizes({ emp }) {
   );
 }
 
-function PersonnelGroup({ status, rows, onOpen }) {
+function PersonnelGroup({ status, rows, onOpen, onMlspChip, cart }) {
   return (
     <>
       <tr className="prs-group-row">
         <td colSpan={12}>{status.icon} {status.label} · {rows.length}</td>
       </tr>
       {rows.map((e) => (
-        <PersonnelRow key={e.id} emp={e} onOpen={onOpen} />
+        <PersonnelRow key={e.id} emp={e} onOpen={onOpen} onMlspChip={onMlspChip} cart={cart} />
       ))}
     </>
   );
 }
 
-function PersonnelRow({ emp, onOpen }) {
+function MlspChip({ stay, empId, onClick }) {
+  if (!stay?.is_open) return null;
+  const tone = mlspChipTone(stay);
+  return (
+    <button
+      type="button"
+      className={`prs-mlsp-chip prs-mlsp-chip--${tone}`}
+      title="Открыть фильтр «На МЛСП»"
+      onClick={(e) => { e.stopPropagation(); onClick?.(empId); }}
+    >
+      МЛСП · {stay.days_on_platform ?? '—'} дн
+    </button>
+  );
+}
+
+function MlspPersonnelRow({ emp, onOpen, canWrite, onExtend, onDepart, onReopen }) {
+  const stay = emp.mlsp_stay;
+  const loc = emp.on_site_info || emp.approved_info || emp.last_assignment_info || null;
+  const workTitle = loc ? (loc.work_title || '') : '';
+  const pmName = loc ? (loc.pm_name || '') : '';
+  const stMeta = STATUS_MAP[emp.effective_status] || STATUS_MAP[emp.readiness_status];
+  const left = stay?.days_left;
+  const tone = mlspChipTone(stay);
+  const overdue = stay?.is_overdue;
+
+  return (
+    <tr
+      className={`prs-row ${overdue ? 'prs-row--mlsp-overdue' : ''}`}
+      data-emp-id={emp.id}
+      onClick={() => onOpen(emp)}
+    >
+      <td>
+        <div className="prs-fio">{emp.fio || '—'}</div>
+        {emp.phone && <div className="prs-phone">{emp.phone}</div>}
+      </td>
+      <td className="prs-spec">{emp.role_tag || emp.position || '—'}</td>
+      <td>{stMeta ? <StatusPill meta={stMeta} /> : '—'}</td>
+      <td>
+        {workTitle ? (
+          <>
+            <div className="prs-work">{workTitle}</div>
+            {pmName && <div className="prs-pm">РП: {pmName}</div>}
+          </>
+        ) : <span className="prs-dim">—</span>}
+      </td>
+      <td className="u-nowrap">{stay?.arrived_at ? fmtDate(stay.arrived_at) : '—'}</td>
+      <td>
+        <span className={`prs-mlsp-days prs-mlsp-chip--${tone}`}>
+          {stay?.days_on_platform ?? '—'}
+        </span>
+      </td>
+      <td>
+        {stay?.is_open ? (
+          <>
+            <div className="u-nowrap">{fmtDate(stay.planned_depart_at)}</div>
+            <div className={`prs-pm prs-mlsp-left--${tone}`}>
+              {overdue ? `просрочен ${Math.abs(left)} дн` : left != null ? `осталось ${left} дн` : ''}
+            </div>
+          </>
+        ) : (
+          <div className="prs-dim">съехал {fmtDate(stay?.actual_departed_at)}</div>
+        )}
+      </td>
+      <td onClick={(e) => e.stopPropagation()}>
+        {stay ? <TransportSelect stay={stay} disabled={!canWrite} /> : '—'}
+      </td>
+      <td onClick={(e) => e.stopPropagation()}>
+        {stay?.is_open && canWrite && (
+          <div className="prs-mlsp-actions">
+            <Btn
+              size="sm"
+              variant={left != null && left <= 14 ? 'primary' : 'ghost'}
+              onClick={() => onExtend(stay)}
+            >
+              Продлить
+            </Btn>
+            <Btn size="sm" variant="ghost" onClick={() => onDepart(stay)}>Съехал</Btn>
+          </div>
+        )}
+        {!stay?.is_open && stay?.departed_source === 'auto_travel' && canWrite && (
+          <Btn size="sm" variant="ghost" onClick={() => onReopen(stay)}>Вернуть</Btn>
+        )}
+      </td>
+    </tr>
+  );
+}
+
+function PersonnelRow({ emp, onOpen, onMlspChip, cart }) {
   // Приоритет: на объекте сейчас → согласован → история последней работы.
   const loc = emp.on_site_info || emp.approved_info || emp.last_assignment_info || null;
   const isHistorical = !emp.on_site_info && !emp.approved_info && !!emp.last_assignment_info;
@@ -478,10 +666,20 @@ function PersonnelRow({ emp, onOpen }) {
   const stMeta = STATUS_MAP[emp.effective_status] || STATUS_MAP[emp.readiness_status];
 
   return (
-    <tr className="prs-row" onClick={() => onOpen(emp)}>
+    <tr className="prs-row" onClick={() => onOpen(emp)} data-emp-id={emp.id}>
       <td>
-        <div className="prs-fio">{emp.fio || '—'}</div>
-        {emp.phone && <div className="prs-phone">{emp.phone}</div>}
+        <div className="bc-cell">
+          {cart && <BrigadeCartToggle cart={cart} employeeId={emp.id} emp={emp} />}
+          <div className="bc-cell__body">
+            <div className="prs-fio">{emp.fio || '—'}</div>
+            {emp.phone && <div className="prs-phone">{emp.phone}</div>}
+            <div className="prs-chips-row">
+              <UmoChip emp={emp} />
+              <PassportAgeChip emp={emp} />
+              <MlspChip stay={emp.mlsp_stay} empId={emp.id} onClick={onMlspChip} />
+            </div>
+          </div>
+        </div>
       </td>
       <td className="prs-spec">{emp.role_tag || emp.position || '—'}</td>
       <td>{stMeta ? <StatusPill meta={stMeta} /> : '—'}</td>
@@ -537,6 +735,29 @@ function PersonnelRow({ emp, onOpen }) {
   );
 }
 
+function UmoChip({ emp }) {
+  if (!needsUmo(emp.birth_date)) return null;
+  const age = ageFromBirthDate(emp.birth_date);
+  return (
+    <div
+      className="prs-pass-chip prs-umo-chip"
+      title={`Возраст ${age} лет — этому рабочему требуется УМО (информационно)`}
+    >
+      УМО · 45+
+    </div>
+  );
+}
+
+function PassportAgeChip({ emp }) {
+  const v = getPassportAgeValidity(emp.birth_date, emp.passport_date);
+  if (v.status === 'ok' || v.status === 'unknown') return null;
+  return (
+    <div className={`prs-pass-chip ${passportStatusClass(v.status)}`} title={v.hint}>
+      {v.label}
+    </div>
+  );
+}
+
 /**
  * 25.06.2026: компактные чипы 4 ключевых пропусков.
  * Цвет: зелёный — действует, оранжевый — истекает (≤30 дней), красный — просрочен,
@@ -583,6 +804,7 @@ function StatusPill({ meta }) {
     gold:  { bg: 'var(--gold-bg)',  fg: 'var(--gold)' },
     warn:  { bg: 'var(--orange-bg)', fg: 'var(--amber)' },
     mute:  { bg: 'var(--bar-bg)',   fg: 'var(--t-3)' },
+    neutral: { bg: 'var(--inner-bg)', fg: 'var(--t-2)' },
   };
   const c = colorMap[meta.tone] || colorMap.mute;
   return (

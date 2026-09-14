@@ -1,159 +1,92 @@
 /**
- * API-клиент страницы /proxies — Реестр доверенностей.
- *
- * Backend: `/api/data/proxies` (generic CRUD, src/routes/data.js).
- * RBAC: OFFICE_MANAGER, ADMIN, директора (см. ACCESS_MATRIX в data.js).
- *
- * Колонки proxies (см. V001a__audit_baseline_orphan_tables.sql):
- *   id, type (label на русском), number, issue_date, valid_until,
- *   employee_id, employee_name, fio, passport,
- *   powers_general, description, address, supplier, goods_list,
- *   vehicle_brand, vehicle_number, vin,
- *   bank_name, account_number, tax_office, court_name, case_number, license,
- *   status (active/revoked/expired), created_at, updated_at.
+ * API / константы реестра доверенностей.
+ * Backend: /api/proxies (+ CRUD), render/upload/send/import.
  */
 import { api } from '@/api/client';
+import { downloadProtected, openProtected } from '@/api/download';
 
 export const ALLOWED_VIEW_ROLES = [
   'ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV', 'OFFICE_MANAGER'
 ];
 
-/* Шаблоны доверенностей — список полей по типу (для формы). */
 export const PROXY_TYPES = [
-  {
-    id: 'general', label: 'Генеральная', icon: '📜',
-    desc: 'Полные полномочия представлять интересы',
-    fields: ['fio', 'passport', 'powers_general']
-  },
-  {
-    id: 'receive_goods', label: 'Получение ТМЦ', icon: '📦',
-    desc: 'Получение товарно-материальных ценностей',
-    fields: ['fio', 'passport', 'supplier', 'goods_list']
-  },
-  {
-    id: 'representation', label: 'Представительство', icon: '🏛️',
-    desc: 'Представление интересов в организациях',
-    fields: ['fio', 'passport', 'powers_general', 'description']
-  },
-  {
-    id: 'construction', label: 'Строительная площадка', icon: '🏗️',
-    desc: 'Полномочия на строительной площадке',
-    fields: ['fio', 'passport', 'address', 'description']
-  },
-  {
-    id: 'vehicle', label: 'Транспорт/Грузы', icon: '🚚',
-    desc: 'Управление ТС и перевозка грузов',
-    fields: ['fio', 'passport', 'vehicle_brand', 'vehicle_number', 'vin']
-  },
-  {
-    id: 'bank', label: 'Банковская', icon: '🏦',
-    desc: 'Операции в банке',
-    fields: ['fio', 'passport', 'bank_name', 'account_number']
-  },
-  {
-    id: 'common', label: 'Общая', icon: '📋',
-    desc: 'Общие полномочия',
-    fields: ['fio', 'passport', 'powers_general', 'description']
-  }
+  { id: 'tmc_short', label: 'Получение ТМЦ', desc: 'Получение товарно-материальных ценностей', fields: [] },
+  { id: 'tender', label: 'Тендер / переговоры', desc: 'Переговоры и участие в тендере', fields: ['tender_subject', 'counterparty'] },
+  { id: 'commercial', label: 'Коммерческие договоры', desc: 'Договоры и товаросопроводительные документы', fields: [] },
+  { id: 'docs_tmc', label: 'Документы + ТМЦ', desc: 'Приём документов и ТМЦ', fields: [] },
+  { id: 'representation', label: 'Представительство', desc: 'Госорганы и организации', fields: [] },
+  { id: 'vehicle', label: 'Транспорт', desc: 'Управление ТС', fields: ['vehicle_brand', 'vehicle_number', 'vin'] },
+  { id: 'bank', label: 'Банковская', desc: 'Банковская гарантия / операции', fields: ['bank_name', 'account_number'] },
+  { id: 'custom', label: 'Свободная', desc: 'Произвольный текст полномочий', fields: [] }
 ];
 
 export const FIELD_LABELS = {
-  fio: 'ФИО доверенного лица',
-  passport: 'Паспортные данные',
-  powers_general: 'Полномочия',
-  description: 'Описание',
-  address: 'Адрес',
-  supplier: 'Поставщик',
-  goods_list: 'Перечень ТМЦ',
+  tender_subject: 'Предмет / контекст',
+  counterparty: 'Контрагент',
   vehicle_brand: 'Марка ТС',
   vehicle_number: 'Гос. номер',
   vin: 'VIN',
   bank_name: 'Банк',
-  account_number: 'Расчётный счёт',
-  tax_office: 'Налоговая',
-  court_name: 'Суд',
-  case_number: 'Номер дела',
-  license: 'Лицензия'
+  account_number: 'Расчётный счёт'
 };
-
-export const FIELD_PLACEHOLDERS = {
-  fio: 'Иванов Иван Иванович',
-  passport: 'Серия 1234 № 567890, выдан…',
-  powers_general: 'Представлять интересы, подписывать документы…',
-  description: 'Дополнительная информация',
-  address: 'г. Москва, ул. Примерная, д. 1',
-  supplier: 'ООО Поставщик',
-  goods_list: 'Кирпич, цемент, арматура…',
-  vehicle_brand: 'Toyota Camry',
-  vehicle_number: 'А123БВ77',
-  vin: 'JTDKN3DU5A0…',
-  bank_name: 'ПАО Сбербанк',
-  account_number: '40702810…'
-};
-
-/* Какие поля рендерим как textarea, а какие — обычный input */
-export const TEXTAREA_FIELDS = new Set([
-  'powers_general', 'description', 'goods_list', 'passport'
-]);
 
 export const STATUS_CFG = {
-  active:   { label: 'Действует', tone: 'approved' },
-  expiring: { label: 'Истекает',  tone: 'rework' },
-  expired:  { label: 'Истекла',   tone: 'rejected' },
-  revoked:  { label: 'Отозвана',  tone: 'draft' }
+  draft: { label: 'Черновик', tone: 'draft' },
+  created: { label: 'Создана', tone: 'sent' },
+  issued: { label: 'Выдана', tone: 'approved' },
+  sent: { label: 'Отправлена', tone: 'paid' },
+  expiring: { label: 'Истекает', tone: 'rework' },
+  expired: { label: 'Просрочена', tone: 'rejected' },
+  annulled: { label: 'Аннулирована', tone: 'draft' },
+  revoked: { label: 'Аннулирована', tone: 'draft' }
 };
 
 export const STATUS_FILTERS = [
-  { value: '',        label: 'Все статусы' },
-  { value: 'active',   label: 'Действует' },
+  { value: '', label: 'Все статусы' },
+  { value: 'draft', label: 'Черновик' },
+  { value: 'created', label: 'Создана' },
+  { value: 'issued', label: 'Выдана' },
+  { value: 'sent', label: 'Отправлена' },
   { value: 'expiring', label: 'Истекает' },
-  { value: 'expired',  label: 'Истекла' },
-  { value: 'revoked',  label: 'Отозвана' }
+  { value: 'expired', label: 'Просрочена' },
+  { value: 'annulled', label: 'Аннулирована' }
 ];
+
+export const STATUS_OPTIONS = STATUS_FILTERS.filter((s) => s.value && s.value !== 'expiring');
 
 export const TYPE_FILTERS = [
   { value: '', label: 'Все типы' },
-  ...PROXY_TYPES.map((t) => ({ value: t.label, label: t.label }))
+  ...PROXY_TYPES.map((t) => ({ value: t.id, label: t.label }))
 ];
 
-export function computeStatus(row) {
-  if (!row) return 'active';
-  if (row.status === 'revoked') return 'revoked';
-  if (row.status === 'expired') return 'expired';
-  if (!row.valid_until) return row.status === 'active' ? 'active' : (row.status || 'active');
-  const now = new Date();
-  const exp = new Date(row.valid_until);
-  if (Number.isNaN(exp.getTime())) return 'active';
-  if (exp < now) return 'expired';
-  const days = Math.ceil((exp.getTime() - now.getTime()) / 86400000);
-  if (days <= 30) return 'expiring';
-  return 'active';
-}
-
-export function describeStatus(s) {
-  return STATUS_CFG[s] || STATUS_CFG.active;
-}
-
-export function findTypeByLabel(label) {
-  return PROXY_TYPES.find((t) => t.label === label) || PROXY_TYPES[6]; // common как дефолт
-}
-
-export function loadProxies() {
-  return api('/api/data/proxies?limit=2000&orderBy=id&desc=true').then(
-    (d) => d.proxies || d.items || []
+export function findType(idOrLabel) {
+  return (
+    PROXY_TYPES.find((t) => t.id === idOrLabel) ||
+    PROXY_TYPES.find((t) => t.label === idOrLabel) ||
+    PROXY_TYPES.find((t) => t.id === 'custom')
   );
 }
 
-export function createProxy(payload) {
-  return api('/api/data/proxies', { method: 'POST', body: payload }).then((d) => d.item || d);
+export function computeStatus(row) {
+  if (!row) return 'draft';
+  if (row.status === 'annulled' || row.status === 'revoked') return 'annulled';
+  if (row.status === 'expired') return 'expired';
+  if (row.status === 'draft') return 'draft';
+  if (row.status === 'created') return 'created';
+  const until = row.valid_until ? new Date(row.valid_until) : null;
+  if (until && !Number.isNaN(until.getTime())) {
+    const now = new Date();
+    if (until < now) return 'expired';
+    const days = Math.ceil((until.getTime() - now.getTime()) / 86400000);
+    if (days <= 30 && (row.status === 'issued' || row.status === 'sent')) {
+      return row.status === 'sent' ? 'sent' : 'expiring';
+    }
+  }
+  return row.status || 'created';
 }
 
-export function updateProxy(id, payload) {
-  return api('/api/data/proxies/' + id, { method: 'PUT', body: payload }).then((d) => d.item || d);
-}
-
-export function deleteProxy(id) {
-  return api('/api/data/proxies/' + id, { method: 'DELETE' });
+export function describeStatus(s) {
+  return STATUS_CFG[s] || STATUS_CFG.created;
 }
 
 export function fmtDate(s) {
@@ -162,43 +95,143 @@ export function fmtDate(s) {
   catch { return String(s).slice(0, 10); }
 }
 
-/* DOC content generation (HTML → .doc) */
-export function generateDocContent(data, type) {
-  const t = type;
-  const esc = (s) => String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-  let h = '<html><head><meta charset="utf-8"><style>body{font-family:Times New Roman,serif;font-size:14pt;margin:2cm}h1{text-align:center;font-size:18pt}h2{text-align:center;font-size:16pt}.center{text-align:center}.field{margin:10px 0}.label{font-weight:bold}</style></head><body>';
-  h += '<h1>ДОВЕРЕННОСТЬ</h1>';
-  if (data.number) h += '<p class="center">№ ' + esc(data.number) + '</p>';
-  h += '<p class="center">г. Москва</p>';
-  if (data.issue_date) h += '<p class="center">' + fmtDate(data.issue_date) + '</p>';
-  h += '<p>ООО «Асгард Сервис», в лице Генерального директора, действующего на основании Устава, настоящей доверенностью уполномочивает:</p>';
-  if (data.fio) h += '<p class="field"><span class="label">ФИО:</span> ' + esc(data.fio) + '</p>';
-  if (data.passport) h += '<p class="field"><span class="label">Паспорт:</span> ' + esc(data.passport) + '</p>';
-  if (t && Array.isArray(t.fields)) {
-    for (const fld of t.fields) {
-      if (fld === 'fio' || fld === 'passport') continue;
-      if (data[fld]) {
-        h += '<p class="field"><span class="label">' + esc(FIELD_LABELS[fld] || fld) + ':</span> ' + esc(data[fld]) + '</p>';
-      }
-    }
-  }
-  if (data.valid_until) h += '<p class="field">Доверенность действительна до ' + fmtDate(data.valid_until) + '.</p>';
-  else h += '<p class="field">Доверенность действительна в течение одного года со дня выдачи.</p>';
-  h += '<br><br><p>Генеральный директор _______________ / _______________</p>';
-  h += '<p>М.П.</p>';
-  h += '</body></html>';
-  return h;
+export function loadProxies() {
+  return api('/api/proxies?limit=2000').then((d) => d.items || d.proxies || []);
 }
 
-export function downloadDoc(data, type) {
-  const content = generateDocContent(data, type);
-  const blob = new Blob([content], { type: 'application/msword' });
+export function createProxy(payload) {
+  return api('/api/proxies', { method: 'POST', body: payload }).then((d) => d.item || d);
+}
+
+export function updateProxy(id, payload) {
+  return api('/api/proxies/' + id, { method: 'PUT', body: payload }).then((d) => d.item || d);
+}
+
+export function deleteProxy(id) {
+  return api('/api/proxies/' + id, { method: 'DELETE' });
+}
+
+export function nextNumber(issueDate) {
+  return api('/api/proxies/next-number', {
+    method: 'POST',
+    body: { issue_date: issueDate || null }
+  }).then((d) => d.number);
+}
+
+export function loadPowerPresets() {
+  return api('/api/proxies/power-presets').then((d) => d.items || []);
+}
+
+export function loadTypes() {
+  return api('/api/proxies/types').then((d) => d);
+}
+
+export async function downloadDocx(id) {
+  await downloadProtected(`/api/proxies/${id}/render/docx`, `proxy_${id}.docx`);
+}
+
+export async function previewDocx(id) {
+  await openProtected(`/api/proxies/${id}/render/docx`, `proxy_${id}.docx`);
+}
+
+async function previewFetch(form, format) {
+  const token = localStorage.getItem('asgard_token') || '';
+  const q = format === 'pdf' ? '?format=pdf' : '';
+  const r = await fetch('/api/proxies/preview' + q, {
+    method: 'POST',
+    headers: {
+      Authorization: 'Bearer ' + token,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify(form)
+  });
+  if (!r.ok) {
+    let msg = `HTTP ${r.status}`;
+    try {
+      const j = await r.json();
+      if (j?.error) msg = j.error;
+    } catch (_) {
+      const t = await r.text().catch(() => '');
+      if (t) msg = t;
+    }
+    throw new Error(msg);
+  }
+  return r.blob();
+}
+
+export function previewDocxBlob(form) {
+  return previewFetch(form, 'docx');
+}
+
+export function previewPdfBlob(form) {
+  return previewFetch(form, 'pdf');
+}
+
+export function downloadBlobFile(blob, filename) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = 'doverennost_' + (data.number || 'new') + '.doc';
+  a.download = filename;
   a.click();
-  URL.revokeObjectURL(url);
+  setTimeout(() => URL.revokeObjectURL(url), 60_000);
+}
+
+export async function previewFromForm(form) {
+  const blob = await previewDocxBlob(form);
+  downloadBlobFile(blob, `Доверенность_${form.number || 'draft'}.docx`);
+}
+
+export function polishText({ text, field_label, context }) {
+  return api('/api/proxies/polish-text', {
+    method: 'POST',
+    body: { text, field_label, context }
+  });
+}
+
+export function buildPolishContext(form, type) {
+  const t = type || findType(form?.type_id || form?.type);
+  return {
+    type: t?.id,
+    type_label: t?.label,
+    number: form?.number || '',
+    issue_date: form?.issue_date || '',
+    valid_until: form?.valid_until || '',
+    fio: form?.fio || '',
+    region: form?.region || '',
+    vehicle_brand: form?.vehicle_brand || '',
+    bank_name: form?.bank_name || '',
+    tender_subject: form?.tender_subject || form?.description || '',
+    counterparty: form?.counterparty || form?.supplier || '',
+    other_fields_hint: [
+      form?.signatory ? 'Подписант: ' + form.signatory : '',
+      form?.issue_place ? 'Место выдачи: ' + form.issue_place : '',
+      form?.comment ? 'Комментарий: ' + form.comment : ''
+    ].filter(Boolean).join('\n')
+  };
+}
+
+export async function uploadProxyFile(id, file, kind = 'signed') {
+  const token = localStorage.getItem('asgard_token') || '';
+  const fd = new FormData();
+  fd.append('file', file);
+  const r = await fetch(`/api/proxies/${id}/upload?kind=${encodeURIComponent(kind)}`, {
+    method: 'POST',
+    headers: { Authorization: 'Bearer ' + token },
+    body: fd
+  });
+  if (!r.ok) {
+    const t = await r.text().catch(() => '');
+    throw new Error(t || `HTTP ${r.status}`);
+  }
+  return r.json();
+}
+
+export function sendProxy(id, payload) {
+  return api(`/api/proxies/${id}/send`, { method: 'POST', body: payload });
+}
+
+export function importRegistry() {
+  return api('/api/proxies/import-registry', { method: 'POST', body: {} });
 }
 
 export function filterByQuery(list, q) {
@@ -207,6 +240,110 @@ export function filterByQuery(list, q) {
   return list.filter((r) =>
     String(r.fio || '').toLowerCase().includes(s) ||
     String(r.employee_name || '').toLowerCase().includes(s) ||
-    String(r.number || '').toLowerCase().includes(s)
+    String(r.number || '').toLowerCase().includes(s) ||
+    String(r.region || '').toLowerCase().includes(s)
   );
+}
+
+export function toGenitiveFioClient(fio) {
+  const raw = String(fio || '').trim().replace(/\s+/g, ' ');
+  if (!raw) return '';
+  const parts = raw.split(' ');
+  if (parts.length < 2) return raw;
+  const last = parts[0];
+  const first = parts[1];
+  const patr = parts[2] || '';
+  const female = /на$/i.test(patr) || /ова$|ева$|ина$|ая$/i.test(last);
+  const declLast = (w) => {
+    if (/ова$/i.test(w)) return w.replace(/ова$/i, 'овой');
+    if (/ева$/i.test(w)) return w.replace(/ева$/i, 'евой');
+    if (/ина$/i.test(w)) return w.replace(/ина$/i, 'иной');
+    if (/ский$/i.test(w)) return w.replace(/ский$/i, 'ского');
+    if (/ов$|ев$|ин$/i.test(w)) return w + 'а';
+    if (/а$/i.test(w)) return w.replace(/а$/i, 'ы');
+    if (/[бвгджзклмнпрстфхцчшщ]$/i.test(w)) return w + 'а';
+    return w;
+  };
+  const declFirst = (w) => {
+    if (female) {
+      if (/ия$/i.test(w)) return w.replace(/ия$/i, 'ии');
+      if (/а$/i.test(w)) return w.replace(/а$/i, 'ы');
+      if (/я$/i.test(w)) return w.replace(/я$/i, 'и');
+      return w;
+    }
+    if (/ей$/i.test(w)) return w.replace(/ей$/i, 'ея');
+    if (/ий$/i.test(w)) return w.replace(/ий$/i, 'ия');
+    if (/й$/i.test(w)) return w.replace(/й$/i, 'я');
+    if (/[бвгджзклмнпрстфхцчшщ]$/i.test(w)) return w + 'а';
+    return w;
+  };
+  const declPatr = (w) => {
+    if (/овна$/i.test(w)) return w.replace(/овна$/i, 'овны');
+    if (/евна$/i.test(w)) return w.replace(/евна$/i, 'евны');
+    if (/ович$/i.test(w)) return w.replace(/ович$/i, 'овича');
+    if (/евич$/i.test(w)) return w.replace(/евич$/i, 'евича');
+    return w;
+  };
+  return [declLast(last), declFirst(first), patr ? declPatr(patr) : ''].filter(Boolean).join(' ');
+}
+
+export function employeeToForm(emp) {
+  if (!emp) return {};
+  const fio = emp.full_name || emp.name || '';
+  return {
+    employee_id: emp.id,
+    employee_name: fio,
+    fio,
+    fio_genitive: toGenitiveFioClient(fio),
+    birth_date: (emp.birth_date || '').slice(0, 10),
+    passport_series: emp.passport_series || '',
+    passport_number: emp.passport_number || '',
+    passport_issued: emp.passport_issued || '',
+    passport_date: (emp.passport_date || '').slice(0, 10),
+    passport_code: emp.passport_code || '',
+    registration_address: emp.registration_address || emp.address || '',
+    phone: emp.phone || ''
+  };
+}
+
+export function buildPayload(form, type) {
+  const typeId = type?.id || form.type_id || 'custom';
+  const t = findType(typeId);
+  return {
+    type_id: t.id,
+    type: t.label,
+    number: form.number?.trim() || null,
+    issue_date: form.issue_date || null,
+    valid_from: form.valid_from || form.issue_date || null,
+    valid_until: form.valid_until || null,
+    status: form.status || 'created',
+    source: form.source || 'crm',
+    employee_id: form.employee_id || null,
+    employee_name: form.fio || null,
+    fio: form.fio?.trim() || null,
+    fio_genitive: form.fio_genitive?.trim() || null,
+    birth_date: form.birth_date || null,
+    passport_series: form.passport_series || null,
+    passport_number: form.passport_number || null,
+    passport_issued: form.passport_issued || null,
+    passport_date: form.passport_date || null,
+    passport_code: form.passport_code || null,
+    registration_address: form.registration_address || null,
+    phone: form.phone || null,
+    powers_text: form.powers_text || null,
+    vehicle_brand: form.vehicle_brand || null,
+    vehicle_number: form.vehicle_number || null,
+    vin: form.vin || null,
+    bank_name: form.bank_name || null,
+    account_number: form.account_number || null,
+    description: form.tender_subject || form.description || null,
+    supplier: form.counterparty || form.supplier || null,
+    region: form.region || null,
+    original_handed_to: form.original_handed_to || null,
+    notary_number: form.notary_number || null,
+    comment: form.comment || null,
+    signatory: form.signatory || null,
+    issue_place: form.issue_place || 'г. Москва',
+    allow_redelegation: !!form.allow_redelegation
+  };
 }

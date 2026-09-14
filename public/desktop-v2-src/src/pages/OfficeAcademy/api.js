@@ -68,6 +68,19 @@ export function submitQuiz(id, answers) {
   });
 }
 
+/** POST /api/office-academy/lessons/:id/rate — оценка интереса 1–5 */
+export function rateLesson(id, score, comment) {
+  return api(`/api/office-academy/lessons/${id}/rate`, {
+    method: 'POST',
+    body: { score, comment: comment || undefined }
+  });
+}
+
+/** GET /api/office-academy/reminder — обязательные непройденные */
+export function loadReminder() {
+  return api('/api/office-academy/reminder');
+}
+
 /** GET /api/office-academy/leaderboard — топ-20 по департаменту */
 export function loadLeaderboard() {
   return api('/api/office-academy/leaderboard');

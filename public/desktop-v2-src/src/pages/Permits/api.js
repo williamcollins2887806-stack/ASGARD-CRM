@@ -131,6 +131,22 @@ export function bulkSaveEmployeePermits(employeeId, items) {
   });
 }
 
+/** YYYY-MM-DD для <input type="date"> — без slice(0,10), который ломал ISO с offset */
+export function dateInputValue(v) {
+  if (v == null || v === '') return '';
+  const s = String(v).trim();
+  if (/^[+-]\d/.test(s)) return '';
+  const iso = s.match(/^(\d{4}-\d{2}-\d{2})/);
+  if (iso) return iso[1];
+  const ru = s.match(/^(\d{1,2})[./](\d{1,2})[./](\d{2,4})/);
+  if (ru) {
+    let d = +ru[1], m = +ru[2], y = +ru[3];
+    if (y < 100) y += y >= 70 ? 1900 : 2000;
+    return `${String(y).padStart(4, '0')}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+  }
+  return '';
+}
+
 export async function uploadScan(id, file) {
   const fd = new FormData();
   fd.append('file', file);

@@ -12,6 +12,8 @@
  */
 import { api } from '@/api/client';
 
+export { formatMoney as fmtMoney, formatMoneyShort as fmtMoneyShort } from '@/lib/money';
+
 /* RBAC — синхронно с vanilla approvals.js строки 3, 221:
  * Просмотр и решения по очереди согласования доступны:
  *   - ADMIN (полные права)
@@ -112,12 +114,6 @@ export function loadPms() {
 }
 
 /* ─── helpers ─── */
-export function fmtMoney(n) {
-  if (n === null || n === undefined || n === '') return '—';
-  const num = Number(n);
-  if (!Number.isFinite(num)) return '—';
-  return new Intl.NumberFormat('ru-RU').format(Math.round(num)) + ' ₽';
-}
 
 export function fmtDateTime(s) {
   if (!s) return '—';

@@ -3,6 +3,7 @@
  * Источник: vanilla cash_admin.js → showDetail/renderDetail.
  */
 import { useState, useEffect } from 'react';
+import { useAuth } from '@/api/useAuth';
 import { useModal } from '@/modals';
 import { toast } from '@/modals/Notifications';
 import { ConfirmModal } from '@/modals/Confirm';
@@ -16,7 +17,10 @@ import {
 } from './api';
 import CloseRequestModal from './CloseRequestModal';
 
+const APPROVE_ROLES = ['DIRECTOR_COMM', 'ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_DEV'];
+
 export default function DetailModal({ requestId, onChanged }) {
+  const { user } = useAuth();
   const { open, close } = useModal();
   const [req, setReq] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -131,10 +135,11 @@ export default function DetailModal({ requestId, onChanged }) {
     );
   }
 
-  const canApprove = req.status === 'requested';
+  const isApprover = APPROVE_ROLES.includes(user?.role);
+  const canApprove = isApprover && req.status === 'requested';
   const canIssue   = req.status === 'approved';
-  const canReject  = ['requested', 'approved'].includes(req.status);
-  const canQuestion = ['requested', 'received', 'reporting'].includes(req.status);
+  const canReject  = isApprover && ['requested', 'approved'].includes(req.status);
+  const canQuestion = isApprover && ['requested', 'received', 'reporting'].includes(req.status);
   const canClose   = ['received', 'reporting'].includes(req.status);
 
   const isLoan = req.type === 'loan';
@@ -177,6 +182,12 @@ export default function DetailModal({ requestId, onChanged }) {
               <span className="label">Сотрудник</span>
               <span className="value">{req.user_name || '—'} ({req.user_role || ''})</span>
             </div>
+            {req.initiated_by && Number(req.initiated_by) !== Number(req.user_id) && req.initiated_by_name && (
+              <div className="cash-detail-item mt-10">
+                <span className="label">Запросил</span>
+                <span className="value">{req.initiated_by_name}</span>
+              </div>
+            )}
             <div className="cash-detail-item mt-10" >
               <span className="label">Тип</span>
               <span className="value">{TYPE_LABELS[req.type] || req.type}</span>

@@ -18,6 +18,7 @@
  *   README.md          — описание для разработчиков
  */
 import { useState, useEffect, useRef } from 'react';
+import { Link } from 'react-router-dom';
 import { useAuth } from '@/api/useAuth';
 import { api } from '@/api/client';
 import { useModal, PickerModal, ConfirmModal } from '@/modals';
@@ -27,7 +28,6 @@ import { Btn } from '@/modals/parts';
 import Welcome from '@/widgets/Welcome';
 import Notifications from '@/widgets/Notifications';
 import MyWorks from '@/widgets/MyWorks';
-import Funnel from '@/widgets/Funnel';
 import Money from '@/widgets/Money';
 import Birthdays from '@/widgets/Birthdays';
 import Calendar from '@/widgets/Calendar';
@@ -47,7 +47,8 @@ const WIDGET_TYPES = {
   my_works:          { name: 'Мои работы',           icon: '🔧', size: 'normal', cls: 'w-works',   render: (u) => <MyWorks user={u} /> },
   my_readiness:      { name: 'Мои проекты',          icon: '🎯', size: 'wide',   cls: 'w-works',   render: (u) => <MyReadiness user={u} /> },
   director_readiness:{ name: 'Готовность по РП',     icon: '🚦', size: 'wide',   cls: 'w-works',   render: () => <DirectorReadiness /> },
-  tenders_funnel:    { name: 'Воронка',              icon: '📊', size: 'normal', cls: 'w-funnel',  render: () => <Funnel /> },
+  tenders_funnel:    { name: 'Воронка',              icon: '📊', size: 'normal', cls: 'w-funnel',  render: () => <Link className="btn mini" to="/tenders">Хаб тендеров</Link> },
+  tenders_list:      { name: 'Тендеры',              icon: '📋', size: 'normal', cls: 'w-tenders', render: () => <Link className="btn mini" to="/tenders">Открыть хаб</Link> },
   money_summary:     { name: 'Финансы',              icon: '💰', size: 'normal', cls: 'w-money',   render: () => <Money /> },
   equipment_value:   { name: 'Стоимость ТМЦ',        icon: '📦', size: 'normal', cls: 'w-money',   render: () => <EquipmentValue /> },
   birthdays:         { name: 'Дни рождения',         icon: '🎂', size: 'normal', cls: 'w-bday',    render: () => <Birthdays /> },
@@ -75,16 +76,16 @@ const WIDGET_TYPES = {
 };
 
 const DEFAULT_LAYOUTS = {
-  ADMIN: ['welcome','academy','kpi_summary','pre_tenders','quick_actions','overdue_works','tenders_funnel','my_mail','notifications'],
+  ADMIN: ['welcome','academy','kpi_summary','my_cash_balance','pre_tenders','quick_actions','overdue_works','tenders_funnel','my_mail','notifications'],
   PM: ['welcome','academy','quick_actions','my_readiness','my_works','my_cash_balance','gantt_mini','todo','my_mail','notifications','birthdays'],
-  TO: ['welcome','academy','quick_actions','tenders_funnel','tender_dynamics','my_mail','notifications'],
+  TO: ['welcome','academy','quick_actions','my_cash_balance','tenders_funnel','tender_dynamics','my_mail','notifications'],
   HEAD_TO: ['welcome','academy','my_cash_balance','pre_tenders','platform_alerts','tender_dynamics','tenders_funnel','my_mail','notifications'],
-  HEAD_PM: ['welcome','academy','director_readiness','team_workload','overdue_works','gantt_mini','my_mail','notifications'],
-  CHIEF_ENGINEER: ['welcome','academy','equipment_value','equipment_alerts','my_mail','notifications'],
-  HR: ['welcome','academy','permits_expiry','birthdays','my_mail','notifications','calendar'],
-  HR_MANAGER: ['welcome','academy','permits_expiry','birthdays','team_workload','my_mail','notifications'],
-  BUH: ['welcome','academy','cash_balance','bank_summary','money_summary','my_mail','notifications'],
-  DEFAULT: ['welcome','academy','my_mail','notifications','todo','calendar','birthdays']
+  HEAD_PM: ['welcome','academy','my_cash_balance','director_readiness','team_workload','overdue_works','gantt_mini','my_mail','notifications'],
+  CHIEF_ENGINEER: ['welcome','academy','my_cash_balance','equipment_value','equipment_alerts','my_mail','notifications'],
+  HR: ['welcome','academy','my_cash_balance','permits_expiry','birthdays','my_mail','notifications','calendar'],
+  HR_MANAGER: ['welcome','academy','my_cash_balance','permits_expiry','birthdays','team_workload','my_mail','notifications'],
+  BUH: ['welcome','academy','cash_balance','my_cash_balance','bank_summary','money_summary','my_mail','notifications'],
+  DEFAULT: ['welcome','academy','my_cash_balance','my_mail','notifications','todo','calendar','birthdays']
 };
 
 function layoutFor(role) {

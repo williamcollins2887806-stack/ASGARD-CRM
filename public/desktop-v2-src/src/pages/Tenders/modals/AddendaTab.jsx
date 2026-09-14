@@ -17,13 +17,9 @@ import { ConfirmModal } from '@/modals';
 import { Field, TextInput, MoneyInput, TextareaInput, NumberInput, DatePicker } from '@/inputs/Inputs';
 import { toast } from '@/modals/Notifications';
 import { loadTenderWithAddenda, createAddendum, deleteAddendum } from '../api';
+import { formatMoney as fmtMoney } from '@/lib/money';
 
 const ADDENDA_ROLES = ['ADMIN', 'PM', 'HEAD_PM', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV'];
-
-function fmtMoney(n) {
-  if (!Number.isFinite(+n)) return '—';
-  return new Intl.NumberFormat('ru-RU').format(Math.round(+n)) + ' ₽';
-}
 
 function fmtDate(s) {
   if (!s) return '—';

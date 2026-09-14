@@ -98,6 +98,7 @@ export function QuizModal({ lessonId, questions, onChanged }) {
             const correctIdx = typeof fb.correct_index === 'number' ? fb.correct_index : -1;
             const selectedIdx = answers[q.id];
             const opts = Array.isArray(q.options) ? q.options : [];
+            const optText = (opt) => (typeof opt === 'string' ? opt : (opt?.text || opt?.label || ''));
 
             return (
               <div key={q.id} className="oa-q" style={{ borderColor: isCorrect ? 'var(--ok-t)' : 'var(--err-t)' }}>
@@ -117,7 +118,7 @@ export function QuizModal({ lessonId, questions, onChanged }) {
                         {isCorrOpt ? '✓' : isSelected ? '✗' : '○'}
                       </span>
                       <span style={{ fontWeight: isCorrOpt || isSelected ? 600 : 400 }}>
-                        {opt.text || ''}
+                        {optText(opt)}
                       </span>
                     </div>
                   );
@@ -166,6 +167,7 @@ export function QuizModal({ lessonId, questions, onChanged }) {
             : (typeof q.options === 'string'
                 ? (() => { try { return JSON.parse(q.options); } catch { return []; } })()
                 : []);
+          const optText = (opt) => (typeof opt === 'string' ? opt : (opt?.text || opt?.label || ''));
 
           return (
             <div key={q.id} className="oa-q">
@@ -179,7 +181,7 @@ export function QuizModal({ lessonId, questions, onChanged }) {
                     checked={answers[q.id] === oi}
                     onChange={() => setAnswer(q.id, oi)}
                   />
-                  <span>{opt.text || ''}</span>
+                  <span>{optText(opt)}</span>
                 </label>
               ))}
             </div>

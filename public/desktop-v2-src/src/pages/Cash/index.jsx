@@ -85,12 +85,14 @@ export default function CashPage() {
   const [tab, setTab] = useState(initialTab);
   const isAdmin = canPickAnyPm(user?.role);
   const isHeadTo = isHeadToUser(user?.role);
+  const isPmLike = user?.role === 'PM' || user?.role === 'HEAD_PM';
+  const isSimple = !isPmLike;
 
   const refresh = () => {
     setLoading(true);
-    const handoversPromise = isHeadTo
-      ? Promise.resolve([])
-      : loadMyHandovers().catch(() => []);
+    const handoversPromise = isPmLike
+      ? loadMyHandovers().catch(() => [])
+      : Promise.resolve([]);
     Promise.all([loadMyBalance(), loadMyRequests(), handoversPromise])
       .then(([b, l, h]) => {
         setBalance(b);
@@ -204,7 +206,7 @@ export default function CashPage() {
 
   const onCreate = () => {
     modal.open(
-      <CreateRequestModal onCreated={refresh} defaultType={isHeadTo ? 'office' : 'advance'} simplified={isHeadTo} />,
+      <CreateRequestModal onCreated={refresh} defaultType={isSimple ? 'office' : 'advance'} simplified={isSimple} />,
       { size: 'wide' }
     );
   };
@@ -232,20 +234,20 @@ export default function CashPage() {
     <div className="col gap-14">
       <TopActionsBar
         kicker="Финансы"
-        title={isHeadTo ? 'Моя касса' : 'Казна Дружины'}
-        subtitle={isHeadTo ? 'Авансы, суточные и расходы' : 'Авансы, расходы и расчёты'}
+        title={isSimple ? 'Моя касса' : 'Казна Дружины'}
+        subtitle={isSimple ? 'Авансы и расходы' : 'Авансы, расходы и расчёты'}
         actions={
           tab === 'requests' ? (
             <>
               <Btn variant="ghost" onClick={refresh}>↻ Обновить</Btn>
-              {!isHeadTo && (
+              {isPmLike && (
                 <Btn variant="ghost" onClick={onReceiveFromSe}>📥 Получил нал от СЗ</Btn>
               )}
               {isHeadTo && (
                 <Btn variant="primary" onClick={onQuickExpense}>+ Добавить расход</Btn>
               )}
               <Btn variant={isHeadTo ? 'ghost' : 'primary'} onClick={onCreate}>
-                + {isHeadTo ? 'Запросить аванс' : 'Запросить аванс'}
+                + Запросить аванс
               </Btn>
             </>
           ) : isHeadTo ? (
@@ -297,7 +299,8 @@ export default function CashPage() {
           onCreate={onCreate}
           onQuickExpense={onQuickExpense}
           onHistoryClick={onHistoryClick}
-          simplified={isHeadTo}
+          simplified={isSimple}
+          showQuickExpense={isHeadTo}
         />
       )}
     </div>
@@ -311,7 +314,7 @@ export default function CashPage() {
 function RequestsView({
   balance, breakdown, loading, list, handovers, active, done,
   sourceFilter, setSourceFilter, history, onOpen, onCreate, onQuickExpense, onHistoryClick,
-  simplified = false
+  simplified = false, showQuickExpense = false
 }) {
   return (
     <>
@@ -337,7 +340,7 @@ function RequestsView({
         </div>
       )}
 
-      {simplified && balance && (
+      {showQuickExpense && balance && (
         <div className="mt-8" style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           <Btn variant="primary" onClick={onQuickExpense}>+ Добавить расход</Btn>
           <Btn variant="ghost" onClick={onCreate}>Запросить аванс</Btn>
@@ -376,10 +379,10 @@ function RequestsView({
           icon="💰"
           title="Нет операций"
           hint={simplified
-            ? 'Запросите аванс у бухгалтера, затем фиксируйте расходы одной кнопкой'
+            ? 'Запросите деньги — после согласования директора получите их в бухгалтерии'
             : 'Создайте первую заявку на аванс или зафиксируйте получение нала от СЗ'}
           action={
-            simplified
+            showQuickExpense
               ? <><Btn variant="primary" onClick={onQuickExpense}>+ Добавить расход</Btn>{' '}<Btn variant="ghost" onClick={onCreate}>Запросить аванс</Btn></>
               : <Btn variant="primary" onClick={onCreate}>+ Запросить аванс</Btn>
           }
@@ -529,6 +532,9 @@ function RequestCard({ req, onOpen }) {
       </div>
 
       {projectName && <div className="cash-card-project">{projectName}</div>}
+      {req.initiated_by && Number(req.initiated_by) !== Number(req.user_id) && req.initiated_by_name && (
+        <div className="cash-card-project fs-12 c-t3">Запросил: {req.initiated_by_name}</div>
+      )}
 
       <div className="cash-card-amount">{fmtMoney(req.amount)}</div>
 

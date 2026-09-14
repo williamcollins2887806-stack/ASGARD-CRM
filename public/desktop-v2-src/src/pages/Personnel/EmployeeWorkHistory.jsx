@@ -1,52 +1,56 @@
 /**
- * История работ сотрудника — мини Gantt-таймлайн + таблица.
- *
- * Источник: vanilla `public/assets/js/employee.js` (renderTimeline + assignRow,
- * строки 95–113, 421–527).
- *
- * Данные:
- *   • GET /api/data/employee_assignments?where={"employee_id":N}
- *   • GET /api/works?limit=2000 (для подстановки work_title / pm_name / city / customer)
- *
- * Виды:
- *   • Карточки KPI: всего работ / активных / дней / заказчиков
- *   • SVG-таймлайн по месяцам с горизонтальными полосами
- *   • Таблица «С / По / Контракт / Заказчик / Город / Роль / РП / Статус»
+ * История работ сотрудника — мини Gantt по /worklog + таблица назначений.
+ * Паритет vanilla `employee.js` renderTimeline (чек-ины, разрывы заездов).
  */
 import { useEffect, useMemo, useState } from 'react';
-import { loadEmployeeAssignments, loadWorksLookup, fmtDate } from './api';
+import { loadEmployeeAssignments, loadEmployeeWorklog, loadWorksLookup, fmtDate } from './api';
 
 const TODAY = new Date().toISOString().slice(0, 10);
 
-function isCurrentAssign(a) {
-  return !a.date_to || String(a.date_to).slice(0, 10) >= TODAY;
+function ymd(v) {
+  if (!v) return '';
+  const s = String(v);
+  return s.length >= 10 ? s.slice(0, 10) : s;
 }
 
-function daysBetween(d1, d2) {
-  if (!d1) return 0;
-  const a = new Date(d1);
-  const b = d2 ? new Date(d2) : new Date();
-  return Math.max(0, Math.round((b - a) / 86400000));
+function assignEnd(a) {
+  return ymd(a && a.date_to) || ymd(a && a.departure_date);
+}
+
+function isCurrentAssign(a) {
+  const end = assignEnd(a);
+  if (end && end < TODAY) return false;
+  if (a && (a.is_active === false || a.is_active === 'f' || a.is_active === 0)) {
+    return !!(end && end >= TODAY);
+  }
+  return !end || end >= TODAY;
+}
+
+function fmtRu(s) {
+  return s ? new Date(s).toLocaleDateString('ru-RU') : '';
 }
 
 export function EmployeeWorkHistory({ employeeId }) {
   const [loading, setLoading] = useState(true);
   const [assigns, setAssigns] = useState([]);
+  const [segments, setSegments] = useState([]);
   const [worksMap, setWorksMap] = useState(new Map());
+  const [hlWorkId, setHlWorkId] = useState(null);
 
   useEffect(() => {
     let alive = true;
     setLoading(true);
     Promise.all([
       loadEmployeeAssignments(employeeId),
+      loadEmployeeWorklog(employeeId),
       loadWorksLookup(),
-    ]).then(([a, w]) => {
+    ]).then(([a, segs, w]) => {
       if (!alive) return;
-      // Сортируем по date_from DESC (новые сверху)
       const sorted = (a || []).slice().sort((x, y) =>
         String(y.date_from || '').localeCompare(String(x.date_from || ''))
       );
       setAssigns(sorted);
+      setSegments(segs || []);
       setWorksMap(new Map((w || []).map((it) => [it.id, it])));
     }).finally(() => { if (alive) setLoading(false); });
     return () => { alive = false; };
@@ -55,38 +59,40 @@ export function EmployeeWorkHistory({ employeeId }) {
   const stats = useMemo(() => {
     const total = assigns.length;
     const active = assigns.filter(isCurrentAssign).length;
-    let totalDays = 0;
+    let factDays = 0;
+    segments.forEach((s) => { factDays += Number(s.days) || 0; });
     const customers = new Set();
     assigns.forEach((a) => {
-      totalDays += daysBetween(a.date_from, a.date_to);
       const w = worksMap.get(a.work_id);
       if (w?.customer_name) customers.add(w.customer_name);
     });
-    return { total, active, totalDays, customers: customers.size };
-  }, [assigns, worksMap]);
+    segments.forEach((s) => { if (s.customer_name) customers.add(s.customer_name); });
+    return { total, active, factDays, customers: customers.size };
+  }, [assigns, segments, worksMap]);
 
   if (loading) {
     return <div className="emp-modal-empty">⏳ Загружаем историю работ…</div>;
   }
 
-  if (assigns.length === 0) {
+  if (assigns.length === 0 && segments.length === 0) {
     return <div className="emp-modal-empty">История назначений пуста</div>;
   }
 
   return (
     <div className="emp-history">
-      {/* KPI */}
       <div className="emp-history-stats">
         <StatCard label="Всего работ" value={stats.total} tone="gold" />
         <StatCard label="Активных" value={stats.active} tone="ok" />
-        <StatCard label="Дней отработано" value={stats.totalDays} tone="t1" />
+        <StatCard label="Дней факт." value={stats.factDays} tone="t1" />
         <StatCard label="Заказчиков" value={stats.customers} tone="info" />
       </div>
 
-      {/* Timeline */}
-      <Timeline assigns={assigns} worksMap={worksMap} />
+      <WorklogTimeline
+        segments={segments}
+        hlWorkId={hlWorkId}
+        onBarClick={(wid) => setHlWorkId(wid)}
+      />
 
-      {/* Таблица */}
       <div className="emp-history-table-wrap">
         <table className="emp-history-table">
           <thead>
@@ -105,14 +111,19 @@ export function EmployeeWorkHistory({ employeeId }) {
             {assigns.map((a, i) => {
               const w = worksMap.get(a.work_id);
               const isCur = isCurrentAssign(a);
+              const hl = hlWorkId != null && String(a.work_id) === String(hlWorkId);
               return (
-                <tr key={a.id || i} className={isCur ? 'is-current' : ''}>
+                <tr
+                  key={a.id || i}
+                  className={(isCur ? 'is-current' : '') + (hl ? ' is-hl' : '')}
+                  data-work-id={a.work_id || ''}
+                >
                   <td className="u-nowrap">{a.date_from ? fmtDate(a.date_from) : '—'}</td>
-                  <td className="u-nowrap">{a.date_to ? fmtDate(a.date_to) : '—'}</td>
-                  <td><b>{w?.work_title || '—'}</b></td>
+                  <td className="u-nowrap">{assignEnd(a) ? fmtDate(assignEnd(a)) : '—'}</td>
+                  <td><b>{w?.work_title || a.work_title || '—'}</b></td>
                   <td>{w?.customer_name || ''}</td>
                   <td>{w?.object_name || w?.city || w?.tender_region || w?.object_address || ''}</td>
-                  <td>{a.role || a.role_on_work || a.field_role || ''}</td>
+                  <td>{a.role || a.role_on_work || ({ worker: 'Рабочий', senior_master: 'Ст. мастер', project_lead: 'Рук. проекта' }[a.field_role] || a.field_role || '')}</td>
                   <td>{w?.pm_name || (w?.pm_id ? `#${w.pm_id}` : '—')}</td>
                   <td>
                     {isCur
@@ -140,114 +151,137 @@ function StatCard({ label, value, tone }) {
   );
 }
 
-/**
- * SVG mini-Gantt по месяцам.
- * Источник: vanilla `employee.js` строки 449–527.
- */
-function Timeline({ assigns, worksMap }) {
-  const { svgInfo, monthW, totalW, months, rowH } = useMemo(() => {
+/** Gantt по сегментам worklog (чек-ины), группировка по work_id */
+function WorklogTimeline({ segments, hlWorkId, onBarClick }) {
+  const layout = useMemo(() => {
+    if (!segments.length) return null;
     const now = new Date();
-    const allDates = [];
-    assigns.forEach((a) => {
-      if (a.date_from) allDates.push(new Date(a.date_from));
-      allDates.push(a.date_to ? new Date(a.date_to) : now);
-    });
-    if (allDates.length === 0) return { svgInfo: null, monthW: 0, totalW: 0, months: [], rowH: 38 };
+    const endOf = (seg) => (seg.ongoing ? now : (seg.end ? new Date(seg.end) : now));
+    const startOf = (seg) => (seg.start ? new Date(seg.start) : now);
 
+    const allDates = [];
+    segments.forEach((s) => { allDates.push(startOf(s)); allDates.push(endOf(s)); });
     let minD = new Date(Math.min.apply(null, allDates));
     let maxD = new Date(Math.max.apply(null, allDates));
     minD.setDate(1); minD.setMonth(minD.getMonth() - 1);
     maxD.setDate(1); maxD.setMonth(maxD.getMonth() + 2);
     const totalMs = maxD - minD;
-    if (totalMs <= 0) return { svgInfo: null, monthW: 0, totalW: 0, months: [], rowH: 38 };
+    if (totalMs <= 0) return null;
 
     const monthsArr = [];
     const cur = new Date(minD);
     while (cur < maxD) {
-      monthsArr.push({
-        d: new Date(cur),
-        label: cur.toLocaleDateString('ru-RU', { month: 'short', year: '2-digit' }),
-      });
+      monthsArr.push(cur.toLocaleDateString('ru-RU', { month: 'short', year: '2-digit' }));
       cur.setMonth(cur.getMonth() + 1);
     }
-    const mw = Math.max(60, 900 / Math.max(1, monthsArr.length));
-    const tw = mw * monthsArr.length;
-    const rh = 38;
-    const todayLeft = ((now - minD) / totalMs) * tw;
+    const monthW = Math.max(60, 900 / Math.max(1, monthsArr.length));
+    const totalW = monthW * monthsArr.length;
+    const rowH = 38;
+    const todayLeft = ((now - minD) / totalMs) * totalW;
 
-    const bars = assigns.map((a, idx) => {
-      const d1 = a.date_from ? new Date(a.date_from) : minD;
-      const d2 = a.date_to ? new Date(a.date_to) : now;
-      const left = ((d1 - minD) / totalMs) * tw;
-      const width = Math.max(4, ((d2 - d1) / totalMs) * tw);
-      const w2 = worksMap.get(a.work_id);
-      const isCur = !a.date_to || String(a.date_to).slice(0, 10) >= TODAY;
-      const label = (w2?.work_title || '').slice(0, 25);
-      const customer = w2?.customer_name || '';
-      const role = a.role || a.role_on_work || a.field_role || '';
-      const days = daysBetween(a.date_from, a.date_to);
-      const df = d1.toLocaleDateString('ru-RU');
-      const dt = a.date_to ? d2.toLocaleDateString('ru-RU') : 'по н.в.';
-      const tooltip = `${label}\n${customer}\nРоль: ${role}\n${df} — ${dt}\n${days} дн.${isCur ? ' (активна)' : ' (завершена)'}`;
-      return { idx, left, width, isCur, label, tooltip };
+    const rowsMap = new Map();
+    segments.forEach((s) => {
+      if (!rowsMap.has(s.work_id)) rowsMap.set(s.work_id, []);
+      rowsMap.get(s.work_id).push(s);
+    });
+    const rows = Array.from(rowsMap.entries()).map(([work_id, segs]) => ({
+      work_id,
+      segs: segs.slice().sort((a, b) => startOf(a) - startOf(b)),
+    })).sort((a, b) => startOf(a.segs[0]) - startOf(b.segs[0]));
+
+    const bars = [];
+    rows.forEach((row, idx) => {
+      row.segs.forEach((s, segIdx) => {
+        const d1 = startOf(s);
+        const d2 = endOf(s);
+        const left = ((d1 - minD) / totalMs) * totalW;
+        const width = Math.max(5, ((d2 - d1) / totalMs) * totalW);
+        const title = s.work_title || (`Объект #${s.work_id}`);
+        const label = segIdx === 0 ? title.slice(0, 25) : (s.days ? `${s.days} дн.` : '');
+        const periodTxt = `${fmtRu(s.start)} — ${s.ongoing ? 'по н.в. (текущая работа)' : fmtRu(s.end)}`;
+        const daysTxt = s.no_checkins ? 'нет отметок о выходах' : `${s.days} дн. фактически`;
+        const depTxt = (!s.ongoing && s.departure) ? `\nОтъезд: ${fmtRu(s.departure)}` : '';
+        const tooltip = `${title}\n${s.customer_name || ''}\nРП: ${s.pm_name || ''}\n${periodTxt}\n${daysTxt}${depTxt}`;
+        bars.push({
+          key: `${s.work_id}-${segIdx}-${s.start}`,
+          work_id: s.work_id,
+          left,
+          top: idx * rowH + 4,
+          width,
+          height: rowH - 8,
+          isCur: !!s.ongoing,
+          label,
+          tooltip,
+        });
+      });
     });
 
     return {
-      svgInfo: { bars, todayLeft, totalHeight: assigns.length * rh + 10 },
-      monthW: mw,
-      totalW: tw,
+      monthW,
+      totalW,
       months: monthsArr,
-      rowH: rh,
+      bars,
+      todayLeft,
+      totalHeight: rows.length * rowH + 10,
     };
-  }, [assigns, worksMap]);
+  }, [segments]);
 
-  if (!svgInfo) return null;
+  if (!segments.length) {
+    return <div className="emp-modal-empty" style={{ marginBottom: 12 }}>Нет отметок о выходах на объект</div>;
+  }
+  if (!layout) return null;
 
   return (
     <div className="emp-history-timeline">
-      <div className="emp-history-timeline-inner" style={{ minWidth: totalW + 'px' }}>
+      <div className="emp-history-timeline-inner" style={{ minWidth: layout.totalW + 'px' }}>
         <div className="emp-history-timeline-head">
-          {months.map((m, i) => (
-            <div key={i} className="emp-history-timeline-month" style={{ width: monthW + 'px' }}>
-              {m.label}
+          {layout.months.map((m, i) => (
+            <div key={i} className="emp-history-timeline-month" style={{ width: layout.monthW + 'px' }}>
+              {m}
             </div>
           ))}
         </div>
-        <div
-          className="emp-history-timeline-body"
-          style={{ height: svgInfo.totalHeight + 'px' }}
-        >
-          {months.map((_, i) => (
+        <div className="emp-history-timeline-body" style={{ height: layout.totalHeight + 'px' }}>
+          {layout.months.map((_, i) => (
             <div
               key={i}
               className="emp-history-timeline-grid"
-              style={{ left: (i * monthW) + 'px' }}
+              style={{ left: (i * layout.monthW) + 'px' }}
             />
           ))}
-          {svgInfo.bars.map((b) => (
+          {layout.bars.map((b) => (
             <div
-              key={b.idx}
-              className={'emp-history-timeline-bar ' + (b.isCur ? 'is-cur' : 'is-done')}
+              key={b.key}
+              role="button"
+              tabIndex={0}
+              className={
+                'emp-history-timeline-bar '
+                + (b.isCur ? 'is-cur' : 'is-done')
+                + (hlWorkId != null && String(hlWorkId) === String(b.work_id) ? ' is-hl' : '')
+              }
               style={{
                 left: b.left + 'px',
-                top: (b.idx * rowH + 4) + 'px',
+                top: b.top + 'px',
                 width: b.width + 'px',
-                height: (rowH - 8) + 'px',
+                height: b.height + 'px',
+                cursor: 'pointer',
               }}
               title={b.tooltip}
+              onClick={() => onBarClick?.(b.work_id)}
+              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') onBarClick?.(b.work_id); }}
             >
               {b.label}
             </div>
           ))}
           <div
             className="emp-history-timeline-today"
-            style={{ left: svgInfo.todayLeft + 'px' }}
+            style={{ left: layout.todayLeft + 'px' }}
             title="Сегодня"
           />
         </div>
         <div className="emp-history-timeline-legend">
-          <span><span className="dot dot--cur" />Активна</span>
-          <span><span className="dot dot--done" />Завершена</span>
+          <span><span className="dot dot--cur" />Текущая работа</span>
+          <span><span className="dot dot--done" />Завершённый заезд</span>
           <span className="legend-today"><span className="line" />Сегодня</span>
         </div>
       </div>

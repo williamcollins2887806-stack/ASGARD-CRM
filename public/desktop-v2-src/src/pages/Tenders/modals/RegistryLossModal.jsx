@@ -1,9 +1,10 @@
 /**
- * Модалка «Почему проиграли?» — mockup v3
+ * Модалка «Почему проиграли?»
  */
 import { useState } from 'react';
-import { Btn } from '@/modals/parts';
+import { MCard, MHead, MBody, MFoot, Btn } from '@/modals/parts';
 import { toast } from '@/modals/Notifications';
+import { MoneyInput } from '@/inputs/Inputs';
 import { patchRegistryStatus } from '../api';
 
 export const LOSS_REASONS = [
@@ -16,7 +17,8 @@ export const LOSS_REASONS = [
   { id: 'nobid', label: 'Не подали заявку' }
 ];
 
-export default function RegistryLossModal({ tender, onClose, onSaved }) {
+export default function RegistryLossModal({ tender, onClose, onSaved, onCancel }) {
+  const close = onClose || onCancel;
   const [selected, setSelected] = useState(new Set());
   const [winnerPrice, setWinnerPrice] = useState('');
   const [winnerName, setWinnerName] = useState('');
@@ -33,21 +35,21 @@ export default function RegistryLossModal({ tender, onClose, onSaved }) {
   };
 
   const save = async () => {
-    if (!selected.size) return toast('Выберите хотя бы одну причину', 'warn');
+    if (!selected.size) return toast.warn('Выберите хотя бы одну причину');
     setBusy(true);
     try {
       await patchRegistryStatus(tender.id, {
         registry_status: 'проиграли',
         loss_reasons: [...selected],
-        winner_price: winnerPrice ? Number(winnerPrice) : null,
+        winner_price: winnerPrice !== '' && winnerPrice != null ? Number(winnerPrice) : null,
         winner_name: winnerName.trim() || null,
         comment: comment.trim() || null
       });
-      toast('Сохранено', 'ok');
+      toast.success('Сохранено');
       onSaved?.();
-      onClose?.();
+      close?.();
     } catch (e) {
-      toast(e.message, 'err');
+      toast.error(e.message);
       setBusy(false);
     }
   };
@@ -57,30 +59,36 @@ export default function RegistryLossModal({ tender, onClose, onSaved }) {
     : '';
 
   return (
-    <div className="modal-body" style={{ minWidth: 420 }}>
-      <h3>Почему проиграли?</h3>
-      <p className="muted">{tender.customer_name} · {tender.tender_title}</p>
-      <p style={{ fontSize: 13, marginBottom: 12 }}>Выберите одну или несколько причин. Данные учитываются в скоре заказчика.</p>
-      <div style={{ marginBottom: 12 }}>
-        {LOSS_REASONS.map((r) => (
-          <label key={r.id} style={{ display: 'flex', gap: 8, marginBottom: 8, cursor: 'pointer' }}>
-            <input type="checkbox" checked={selected.has(r.id)} onChange={() => toggle(r.id)} />
-            <span>{r.label}</span>
-          </label>
-        ))}
-      </div>
-      <label className="muted" style={{ fontSize: 12 }}>Сумма победителя, ₽</label>
-      <input className="inp" type="number" value={winnerPrice} onChange={(e) => setWinnerPrice(e.target.value)} style={{ width: '100%', marginBottom: 12 }} />
-      <label className="muted" style={{ fontSize: 12 }}>Кто выиграл</label>
-      <input className="inp" value={winnerName} onChange={(e) => setWinnerName(e.target.value)} style={{ width: '100%', marginBottom: 12 }} />
-      <label className="muted" style={{ fontSize: 12 }}>Комментарий</label>
-      <textarea className="inp" rows={3} value={comment} onChange={(e) => setComment(e.target.value)} style={{ width: '100%' }} />
-      {scoreHint && <div className="alert" style={{ marginTop: 12, fontSize: 12 }}>{scoreHint}</div>}
-      <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
-        <Btn variant="ghost" onClick={onClose} disabled={busy}>Отмена</Btn>
+    <MCard style={{ width: 'min(480px, 96vw)' }}>
+      <MHead title="Почему проиграли?" onClose={close} />
+      <MBody>
+        <p className="muted" style={{ marginTop: 0 }}>
+          {tender.customer_name} · {tender.tender_title}
+        </p>
+        <p style={{ fontSize: 13, marginBottom: 12 }}>
+          Выберите одну или несколько причин. Данные учитываются в скоре заказчика.
+        </p>
+        <div className="reg-loss-reasons">
+          {LOSS_REASONS.map((r) => (
+            <label key={r.id} className="reg-loss-reason">
+              <input type="checkbox" checked={selected.has(r.id)} onChange={() => toggle(r.id)} />
+              <span>{r.label}</span>
+            </label>
+          ))}
+        </div>
+        <label className="muted" style={{ fontSize: 12, display: 'block', marginTop: 12 }}>Сумма победителя</label>
+        <MoneyInput value={winnerPrice} onChange={setWinnerPrice} placeholder="0 ₽" />
+        <label className="muted" style={{ fontSize: 12, display: 'block', marginTop: 12 }}>Кто выиграл</label>
+        <input className="inp" value={winnerName} onChange={(e) => setWinnerName(e.target.value)} style={{ width: '100%' }} />
+        <label className="muted" style={{ fontSize: 12, display: 'block', marginTop: 12 }}>Комментарий</label>
+        <textarea className="inp" rows={3} value={comment} onChange={(e) => setComment(e.target.value)} style={{ width: '100%' }} />
+        {scoreHint && <div className="alert" style={{ marginTop: 12, fontSize: 12 }}>{scoreHint}</div>}
+      </MBody>
+      <MFoot>
+        <Btn variant="ghost" onClick={close} disabled={busy}>Отмена</Btn>
         <span style={{ flex: 1 }} />
         <Btn onClick={save} disabled={busy}>Сохранить и закрыть</Btn>
-      </div>
-    </div>
+      </MFoot>
+    </MCard>
   );
 }

@@ -38,12 +38,12 @@ export const NAV_ITEMS = [
   // 27.06.2026: пункты «Заявки (ТО)» и «Входящие заявки» сведены в единый
   // «Маркетплейс заявок» /director-inbox. Раньше 3 страницы дублировали данные
   // и путали директора. Теперь — один экран, RBAC прячет/показывает нужное.
-  { r: '/funnel',       l: 'Воронка продаж',      d: 'Канбан тендеров',       i: '🪶', g: 'tenders', roles: ['ADMIN','TO','HEAD_TO', ...DIRECTOR_ROLES] },
-  { r: '/tenders',      l: 'Сага Тендеров',       d: 'Реестр тендеров',       i: '📋', g: 'tenders', roles: ['ADMIN','TO','HEAD_TO', ...DIRECTOR_ROLES] },
+  // Воронка продаж — вкладка на хабе /tenders (sub=funnel), не отдельная страница.
+  { r: '/tenders',      l: 'Сага Тендеров',       d: 'Реестр + воронка',      i: '📋', g: 'tenders', roles: ['ADMIN','TO','HEAD_TO', ...DIRECTOR_ROLES] },
   { r: '/pm-calculations', l: 'Просчёты РП', d: 'Анализ, просчёты и архив', i: '🛡', g: 'tenders', roles: ['ADMIN','PM','HEAD_PM','TO','HEAD_TO', ...DIRECTOR_ROLES], ready: true },
   { r: '/customers',    l: 'Карта Контрагентов',  d: 'Справочник организаций',i: '🏢', g: 'tenders', roles: ['ADMIN','TO','HEAD_TO','PM','HEAD_PM','OFFICE_MANAGER', ...DIRECTOR_ROLES] },
   { r: '/director-inbox', l: 'Маркетплейс заявок',   d: 'Новые письма + работа РП в одном экране', i: '📭', g: 'tenders', roles: ['ADMIN', ...DIRECTOR_ROLES, 'HEAD_PM', 'PM', 'TO', 'HEAD_TO'], ready: true },
-  { r: '/director-tender-approvals', l: 'Согласование тендеров', d: 'Просчёты РП >5 млн без НДС', i: '✅', g: 'tenders', roles: ['ADMIN', ...DIRECTOR_ROLES], ready: true },
+  { r: '/director-tender-approvals', l: 'Согласование тендеров', d: 'Просчёты РП ≥10 млн без НДС', i: '✅', g: 'tenders', roles: ['ADMIN', ...DIRECTOR_ROLES], ready: true },
 
   // ── РАБОТЫ ──
   { r: '/calculator',   l: 'Калькулятор',         d: 'Расчёт стоимости',      i: '🧮', g: 'works', roles: ['ADMIN','PM','TO','HEAD_PM','HEAD_TO', ...DIRECTOR_ROLES] },
@@ -60,12 +60,11 @@ export const NAV_ITEMS = [
 
   // ── ФИНАНСЫ ──
   { r: '/finances',     l: 'Финансы',             d: 'Аналитика и реестр',    i: '💰', g: 'finance', roles: ['ADMIN','BUH', ...DIRECTOR_ROLES] },
-  { r: '/invoices',     l: 'Счета и оплаты',      d: 'Выставление и трекинг', i: '🧾', g: 'finance', roles: ['ADMIN','PM','BUH', ...DIRECTOR_ROLES] },
-  { r: '/acts',         l: 'Акты',                d: 'Выполненные работы',    i: '📄', g: 'finance', roles: ['ADMIN','PM','BUH', ...DIRECTOR_ROLES] },
+  { r: '/billing',      l: 'Счета и акты',        d: 'Выставление, PDF, оплаты', i: '🧾', g: 'finance', roles: ['ADMIN','PM','HEAD_PM','BUH', ...DIRECTOR_ROLES] },
   { r: '/buh-registry', l: 'Реестр расходов',     d: 'Бухгалтерский реестр',  i: '🧾', g: 'finance', roles: ['ADMIN','BUH', ...DIRECTOR_ROLES] },
   { r: '/bank-import',  l: 'Импорт выписок',      d: 'Банк/1С → разноска',    i: '📄', g: 'finance', roles: ['ADMIN','BUH', ...DIRECTOR_ROLES] },
   { r: '/office-expenses', l: 'Офисные расходы',  d: 'Управление и согл.',    i: '🏢', g: 'finance', roles: ['ADMIN','OFFICE_MANAGER', ...DIRECTOR_ROLES] },
-  { r: '/cash',         l: 'Касса',               d: 'Авансовые отчёты',      i: '💵', g: 'finance', roles: ['ADMIN','PM','HEAD_TO', ...DIRECTOR_ROLES] },
+  { r: '/cash',         l: 'Касса',               d: 'Авансовые отчёты',      i: '💵', g: 'finance', roles: [...ALL_ROLES, 'FIELD_WORKER'] },
   { r: '/cash-admin',   l: 'Касса (управление)',  d: 'Согласование и контроль',i: '💵', g: 'finance', roles: ['ADMIN','BUH', ...DIRECTOR_ROLES] },
   { r: '/payroll',      l: 'Расчёты с рабочими',  d: 'Ведомости и выплаты',   i: '💰', g: 'finance', roles: ['ADMIN','PM','HEAD_PM','TO','HEAD_TO','PROC','BUH', ...DIRECTOR_ROLES] },
   { r: '/self-employed',l: 'Самозанятые',         d: 'Реестр СЗ',             i: '👤', g: 'finance', roles: ['ADMIN','BUH', ...DIRECTOR_ROLES] },
@@ -86,7 +85,7 @@ export const NAV_ITEMS = [
   { r: '/correspondence',l:'Официальная переписка',d: 'Письма ГНШ-формата (вх./исх.)', i: '📜', g: 'resources', roles: ['ADMIN','OFFICE_MANAGER','PM','HEAD_PM','TO','HEAD_TO', ...DIRECTOR_ROLES] },
   { r: '/contracts',    l: 'Реестр договоров',    d: 'Договора',              i: '📄', g: 'resources', roles: ['ADMIN','OFFICE_MANAGER','BUH', ...DIRECTOR_ROLES] },
   { r: '/seals',        l: 'Реестр печатей',      d: 'Учёт и передача',       i: '🛡', g: 'resources', roles: ['ADMIN','OFFICE_MANAGER', ...DIRECTOR_ROLES] },
-  { r: '/proxies',      l: 'Доверенности',        d: '7 шаблонов',            i: '📑', g: 'resources', roles: ['ADMIN','OFFICE_MANAGER', ...DIRECTOR_ROLES] },
+  { r: '/proxies',      l: 'Доверенности',        d: 'Реестр и бланки',       i: '📑', g: 'resources', roles: ['ADMIN','OFFICE_MANAGER', ...DIRECTOR_ROLES] },
 
   // ── ПЕРСОНАЛ ──
   { r: '/personnel',    l: 'Дружина',             d: 'Сотрудники',            i: '👥', g: 'personnel', roles: ['ADMIN','HR','HR_MANAGER','PM','HEAD_PM','TO','HEAD_TO','OFFICE_MANAGER', ...DIRECTOR_ROLES] },
@@ -105,6 +104,7 @@ export const NAV_ITEMS = [
   { r: '/timesheet-warehouse', l: 'Табель учёта работы на складе', d: 'Дни рабочих на складе',        i: '📦', g: 'personnel', roles: ['WAREHOUSE'] },
   { r: '/timesheet-medical',   l: 'Табель учёта МО/обучения/иной транспорт', d: 'Медосмотры, обучение, транспорт', i: '🏥', g: 'personnel', roles: ['TO','HEAD_TO'] },
   { r: '/timesheet-travel',    l: 'Табель учёта дороги',           d: 'Дни в дороге и ожидании',      i: '✈️', g: 'personnel', roles: ['OFFICE_MANAGER','HEAD_TO'] },
+  { r: '/site-crew',           l: 'Кто на объектах',               d: 'Матрица бригад на работах',    i: '🏗', g: 'personnel', roles: ['ADMIN','HEAD_TO', ...DIRECTOR_ROLES], ready: true },
   { r: '/timesheet',           l: 'Общий табель',                  d: 'Все рабочие за месяц',         i: '📊', g: 'personnel', roles: ['ADMIN','BUH','HR','HR_MANAGER', ...DIRECTOR_ROLES] },
   { r: '/payroll-dashboard', l: 'Финансы персонала', d:'Дашборд выплат',      i: '💰', g: 'personnel', roles: ['ADMIN','BUH', ...DIRECTOR_ROLES] },
   { r: '/official-employees', l: 'Официально устроенные', d:'Оклады и статусы',i:'👔',g:'personnel', roles: ['ADMIN','BUH', ...DIRECTOR_ROLES] },

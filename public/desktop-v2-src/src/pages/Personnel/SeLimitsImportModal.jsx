@@ -24,13 +24,9 @@ import { toast } from '@/modals/Notifications';
 import { postMultipart } from '@/api/upload';
 import { api } from '@/api/client';
 import { loadReadiness } from './api';
+import { formatMoney as fmtMoney } from '@/lib/money';
 
 const MONTHLY_LIMIT_DEFAULT = 350_000;
-
-function fmtMoney(n) {
-  if (n == null || !isFinite(Number(n))) return '—';
-  return Number(n).toLocaleString('ru-RU', { maximumFractionDigits: 0 }) + ' ₽';
-}
 
 function actionLabel(act) {
   switch (act) {

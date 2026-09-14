@@ -16,6 +16,8 @@
  */
 import { api } from '@/api/client';
 
+export { formatMoney as fmtMoney, formatMoneyShort as fmtMoneyShort } from '@/lib/money';
+
 export const STATUSES = [
   { value: 'draft',     label: 'Черновик',  tone: 'draft' },
   { value: 'submitted', label: 'Подана',    tone: 'sent' },
@@ -72,11 +74,6 @@ export function setStatus(id, status) {
 
 export function loadWorks() {
   return api('/api/works?limit=2000').then((d) => d.items || d.works || []).catch(() => []);
-}
-
-export function fmtMoney(v) {
-  if (v == null || v === '') return '—';
-  return new Intl.NumberFormat('ru-RU').format(Math.round(Number(v))) + ' ₽';
 }
 
 export function fmtDate(s) {

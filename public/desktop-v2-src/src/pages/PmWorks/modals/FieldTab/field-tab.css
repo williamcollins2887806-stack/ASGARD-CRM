@@ -904,6 +904,14 @@
   text-align: left;
   padding: 8px;
 }
+.ft-ts-table th.ft-ts-th-num,
+.ft-ts-num {
+  width: 36px;
+  text-align: center;
+  color: var(--t2);
+  font-weight: 500;
+  padding: 8px 6px;
+}
 .ft-ts-table th.ft-ts-th-day {
   min-width: 40px;
   padding: 4px 2px;
@@ -915,6 +923,16 @@
 .ft-ts-table th.ft-ts-th-day--we {
   color: var(--err);
   background: var(--err-bg);
+}
+.ft-ts-table th.ft-ts-th-day--today {
+  color: var(--gold);
+  background: rgba(212, 168, 67, 0.22);
+  box-shadow: inset 0 -2px 0 var(--gold);
+  font-weight: 700;
+}
+.ft-ts-cell--today {
+  box-shadow: inset 0 0 0 1.5px rgba(212, 168, 67, 0.55);
+  background: rgba(212, 168, 67, 0.08);
 }
 .ft-ts-th-dow {
   font-size: 9px;
@@ -937,6 +955,90 @@
   padding: 8px;
   font-weight: 600;
   white-space: nowrap;
+  min-width: 168px;
+}
+.ft-ts-fio-main {
+  line-height: 1.25;
+}
+.ft-ts-fio-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 4px;
+}
+.ft-ts-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 7px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  line-height: 1.4;
+  border: 1px solid transparent;
+}
+.ft-ts-badge--crew {
+  background: var(--ok-bg);
+  color: var(--ok);
+  border-color: color-mix(in srgb, var(--ok) 35%, transparent);
+}
+.ft-ts-badge--was {
+  background: var(--bg3);
+  color: var(--t2);
+  border-color: var(--brd);
+}
+.ft-ts-badge--plan {
+  background: var(--gold-bg);
+  color: var(--gold);
+  border-color: color-mix(in srgb, var(--gold) 45%, transparent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--gold) 12%, transparent);
+}
+.ft-ts-row--planned td {
+  background: color-mix(in srgb, var(--gold) 5%, transparent);
+}
+.ft-ts-row--planned:hover td {
+  background: color-mix(in srgb, var(--gold) 9%, transparent);
+}
+.ft-ts-row--was td.ft-ts-fio {
+  opacity: 0.92;
+}
+.ft-ts-cell--plan-arrive {
+  background: color-mix(in srgb, var(--gold) 22%, transparent) !important;
+  box-shadow: inset 0 0 0 1.5px var(--gold);
+  color: var(--gold) !important;
+  font-weight: 800;
+  animation: ft-ts-plan-pulse 1.8s ease-in-out infinite;
+}
+.ft-ts-cell--plan-span {
+  background: color-mix(in srgb, var(--gold) 8%, transparent) !important;
+  background-image: repeating-linear-gradient(
+    -45deg,
+    transparent,
+    transparent 3px,
+    color-mix(in srgb, var(--gold) 10%, transparent) 3px,
+    color-mix(in srgb, var(--gold) 10%, transparent) 6px
+  ) !important;
+}
+.ft-ts-cell--planned-row {
+  opacity: 0.95;
+}
+.ft-ts-plan-pin {
+  display: inline-block;
+  font-size: 11px;
+  line-height: 1;
+  transform: translateY(-0.5px);
+}
+@keyframes ft-ts-plan-pulse {
+  0%, 100% { box-shadow: inset 0 0 0 1.5px var(--gold); }
+  50% { box-shadow: inset 0 0 0 2px var(--gold), 0 0 10px color-mix(in srgb, var(--gold) 35%, transparent); }
+}
+.ft-ts-legend-plan-swatch {
+  width: 14px;
+  height: 14px;
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--gold) 28%, transparent);
+  box-shadow: inset 0 0 0 1.5px var(--gold);
+  flex-shrink: 0;
 }
 .ft-ts-cell {
   padding: 4px 2px;
@@ -946,7 +1048,7 @@
   min-width: 36px;
   user-select: none;
   border-radius: 4px;
-  transition: outline 0.15s ease, background 0.15s ease;
+  transition: outline 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
 }
 .ft-ts-cell--filled {
   font-weight: 700;
@@ -1017,8 +1119,8 @@
   border-radius: var(--r-md);
   box-shadow: 0 12px 32px rgba(0,0,0,0.45);
   padding: 12px;
-  min-width: 300px;
-  max-width: 340px;
+  min-width: 340px;
+  max-width: 380px;
   display: flex;
   flex-direction: column;
   gap: 10px;
@@ -1074,8 +1176,27 @@
 .ft-ts-pop-shift .lbl { font-size: 9.5px; }
 .ft-ts-pop-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr 1.2fr;
-  gap: 6px;
+  grid-template-columns: 1fr 1fr 1.35fr;
+  gap: 8px;
+}
+/* Баллы при редактировании: цифра читаема, без spin-стрелок Windows */
+.ft-ts-pop-grid .m-input {
+  padding: 8px 10px;
+  font-size: 15px;
+  font-weight: 700;
+  text-align: center;
+  min-height: 40px;
+  color: var(--t-1);
+  background: var(--card-bg);
+}
+.ft-ts-pop-grid input[type="number"] {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+.ft-ts-pop-grid input[type="number"]::-webkit-outer-spin-button,
+.ft-ts-pop-grid input[type="number"]::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
 }
 .ft-ts-pop-hint {
   font-size: 11px;
@@ -1140,6 +1261,23 @@
   flex-wrap: wrap;
 }
 .ft-crew-toolbar-right > * { min-width: 120px; }
+
+.ft-crew-filter-bar {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-bottom: 4px;
+}
+.ft-crew-search {
+  flex: 1;
+  min-width: 200px;
+  max-width: 360px;
+}
+.ft-crew-filter-hint {
+  font-size: 12px;
+  color: var(--t-3);
+}
 
 .ft-crew-table { font-size: 12.5px; }
 .ft-crew-table th {
@@ -1490,4 +1628,96 @@
   line-height: 1.6;
 }
 .ft-launch-ol li { color: var(--t-2); }
+
+/* ── Базовые ставки / доплата в бригаде ── */
+.ft-base-rates-banner {
+  padding: 10px 12px;
+  margin-bottom: 12px;
+  border-radius: var(--r-md);
+  background: color-mix(in srgb, var(--amber) 18%, var(--inner-bg));
+  border: 1px solid color-mix(in srgb, var(--amber) 45%, transparent);
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--t-1);
+}
+.ft-base-rates-cat {
+  max-width: 280px;
+  margin-bottom: 12px;
+}
+.ft-base-rates-table-wrap {
+  overflow: auto;
+  max-height: min(52vh, 480px);
+}
+.ft-base-rates-table th,
+.ft-base-rates-table td {
+  vertical-align: middle;
+}
+.ft-base-rates-row--off {
+  opacity: 0.55;
+}
+
+.ft-assign-rate-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+@media (max-width: 720px) {
+  .ft-assign-rate-grid { grid-template-columns: 1fr; }
+}
+.ft-assign-rate-col {
+  padding: 10px 12px;
+  border-radius: var(--r-md);
+  background: var(--inner-bg);
+  border: 1px solid var(--line);
+}
+.ft-assign-rate-col--base {
+  border-color: color-mix(in srgb, var(--ok) 35%, var(--line));
+}
+.ft-assign-rate-col--extra {
+  border-color: color-mix(in srgb, var(--amber) 40%, var(--line));
+}
+.ft-assign-rate-col__title {
+  font-weight: 700;
+  font-size: 13px;
+  margin-bottom: 4px;
+}
+.ft-assign-rate-hint {
+  font-size: 11.5px;
+  color: var(--t-3);
+  margin: 0 0 8px;
+  line-height: 1.35;
+}
+.ft-assign-rate-base-ro {
+  padding: 8px 10px;
+  border-radius: var(--r-sm);
+  background: var(--panel-bg, var(--card-bg));
+}
+.ft-assign-rate-base-ro__name { font-weight: 600; font-size: 13px; }
+.ft-assign-rate-base-ro__meta {
+  font-size: 12px;
+  color: var(--t-3);
+  margin-top: 2px;
+}
+.ft-assign-rate-checks {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 8px;
+  max-height: 180px;
+  overflow: auto;
+}
+.ft-assign-rate-check {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 12.5px;
+  cursor: pointer;
+  line-height: 1.35;
+}
+.ft-assign-rate-check input {
+  margin-top: 2px;
+}
+.ft-assign-rate-total {
+  margin-top: 10px;
+}
 

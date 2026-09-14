@@ -16,14 +16,10 @@ import { useEffect, useState } from 'react';
 import { MCard, MHead, MBody, MFoot, Btn, Textarea } from '@/modals/parts';
 import { Field, SelectInput, DatePicker, Checkbox } from '@/inputs/Inputs';
 import { toast } from '@/modals/Notifications';
+import { formatMoney as fmtMoney } from '@/lib/money';
 import {
   loadDeparturePreview, departCrewMember, sendSingleInvite, loadPacking, loadPackingDetail
 } from '../../api';
-
-function fmtMoney(n) {
-  if (!Number.isFinite(+n)) return '0 ₽';
-  return new Intl.NumberFormat('ru-RU').format(Math.round(+n)) + ' ₽';
-}
 
 const DEPARTURE_REASONS = [
   { value: 'planned',       label: 'Плановый отъезд (вахта закончилась)' },

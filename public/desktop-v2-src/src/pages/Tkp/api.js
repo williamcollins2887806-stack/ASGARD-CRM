@@ -4,6 +4,8 @@
  */
 import { api } from '@/api/client';
 
+export { formatMoney as fmtMoney, formatMoneyShort as fmtMoneyShort } from '@/lib/money';
+
 // Backend `tkp.js:615` VALID = ['draft','sent','accepted','rejected','expired'].
 // 'ready'/'viewed'/'cancelled' были мёртвым кодом — backend бы отклонил их PUT 400.
 // 'expired' (Просрочено) — есть в vanilla tkp-page.js:6-12, был пропущен.
@@ -102,8 +104,48 @@ export function mimirSuggest(payload) {
   return api('/api/mimir/suggest-tkp', { method: 'POST', body: payload });
 }
 
+/** Multipart parse — паритет vanilla openUploadTkpModal */
+export async function parseAttachmentForm(file, { force_ocr = false, mode = 'initial' } = {}) {
+  const token = localStorage.getItem('asgard_token') || '';
+  const fd = new FormData();
+  fd.append('file', file);
+  if (force_ocr) fd.append('force_ocr', '1');
+  if (mode) fd.append('mode', mode);
+  const resp = await fetch('/api/tkp/parse-attachment', {
+    method: 'POST',
+    headers: { Authorization: 'Bearer ' + token },
+    body: fd
+  });
+  if (!resp.ok) {
+    const err = await resp.json().catch(() => ({}));
+    throw new Error(err.error || `HTTP ${resp.status}`);
+  }
+  return resp.json();
+}
+
+/** @deprecated JSON path — оставляем имя, но больше не используем в UI */
 export function parseAttachment(payload) {
   return api('/api/tkp/parse-attachment', { method: 'POST', body: payload });
+}
+
+export async function uploadReadyForm(file, fields = {}) {
+  const token = localStorage.getItem('asgard_token') || '';
+  const fd = new FormData();
+  if (file) fd.append('file', file);
+  Object.entries(fields).forEach(([k, v]) => {
+    if (v == null) return;
+    fd.append(k, typeof v === 'object' ? JSON.stringify(v) : String(v));
+  });
+  const resp = await fetch('/api/tkp/upload-ready', {
+    method: 'POST',
+    headers: { Authorization: 'Bearer ' + token },
+    body: fd
+  });
+  if (!resp.ok) {
+    const err = await resp.json().catch(() => ({}));
+    throw new Error(err.error || `HTTP ${resp.status}`);
+  }
+  return resp.json();
 }
 
 export function uploadReady(payload) {
@@ -236,6 +278,15 @@ export async function openExcel(id) {
   return openProtected(`/api/tkp/${id}/excel`, `tkp_${id}.xlsx`);
 }
 
+export async function openDocx(id) {
+  const { openProtected } = await import('@/api/download');
+  return openProtected(`/api/tkp/${id}/docx`, `tkp_${id}.docx`);
+}
+
+export function polishText(payload) {
+  return api('/api/tkp/polish-text', { method: 'POST', body: payload });
+}
+
 export function calcTotals(items, vatPct = VAT_PCT) {
   let netto = 0;
   for (const it of items || []) {
@@ -245,11 +296,6 @@ export function calcTotals(items, vatPct = VAT_PCT) {
   }
   const vat = netto * (vatPct / 100);
   return { netto, vat, total: netto + vat };
-}
-
-export function fmtMoney(n) {
-  if (!Number.isFinite(+n)) return '—';
-  return new Intl.NumberFormat('ru-RU').format(Math.round(+n)) + ' ₽';
 }
 
 export function fmtDate(s) {

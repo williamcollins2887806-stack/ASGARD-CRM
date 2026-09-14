@@ -20,7 +20,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Btn, Field } from '@/modals/parts';
-import { SHIFT_TYPES, getShiftMeta } from './timesheetUtils';
+import { EDITABLE_SHIFT_TYPES, getShiftMeta } from './timesheetUtils';
 
 export function ShiftPopover({
   anchorRef,
@@ -61,8 +61,8 @@ export function ShiftPopover({
       const a = anchorRef?.current;
       if (!a) return;
       const r = a.getBoundingClientRect();
-      const popW = popRef.current?.offsetWidth || 280;
-      const popH = popRef.current?.offsetHeight || 220;
+      const popW = popRef.current?.offsetWidth || 340;
+      const popH = popRef.current?.offsetHeight || 260;
       const margin = 8;
       // Вертикальный flip
       const spaceBelow = window.innerHeight - r.bottom;
@@ -191,7 +191,7 @@ export function ShiftPopover({
       </div>
 
       <div className="ft-ts-pop-shifts" role="radiogroup" aria-label="Тип смены">
-        {SHIFT_TYPES.map((st) => (
+        {EDITABLE_SHIFT_TYPES.map((st) => (
           <button
             key={st.value}
             type="button"
@@ -222,12 +222,12 @@ export function ShiftPopover({
         <Field label="Баллы">
           <input
             ref={inputRef}
-            type="number"
+            type="text"
+            inputMode="numeric"
+            pattern="[0-9]*"
             className="m-input"
             value={points}
-            min={0}
-            max={30}
-            step={1}
+            aria-label="Баллы"
             onChange={(e) => onPointsChange(e.target.value)}
           />
         </Field>

@@ -17,7 +17,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useModal } from '@/modals';
 import { toast } from '@/modals/Notifications';
 import { MCard, MHead, MBody, MFoot, Btn } from '@/modals/parts';
-import { loadTypes, loadPermits, bulkSaveEmployeePermits, CATEGORIES } from './api';
+import { loadTypes, loadPermits, bulkSaveEmployeePermits, CATEGORIES, dateInputValue } from './api';
 
 const OTHER_CAT = '__other__';
 
@@ -49,8 +49,8 @@ export default function PermitsChecklistModal({ employeeId, employeeName, onSave
             ? {
                 present: true,
                 _was: true,
-                issue_date: (ex.issue_date || '').slice(0, 10),
-                expiry_date: (ex.expiry_date || '').slice(0, 10),
+                issue_date: dateInputValue(ex.issue_date),
+                expiry_date: dateInputValue(ex.expiry_date),
                 doc_number: ex.doc_number || '',
                 issuer: ex.issuer || '',
                 notes: ex.notes || '',

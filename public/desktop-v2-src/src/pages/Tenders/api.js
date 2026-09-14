@@ -5,6 +5,7 @@
  * Полная миграция модалок — в задачах для агентов.
  */
 import { api } from '@/api/client';
+import { appendPeriodQuery } from './periodFilterUtils';
 
 export const TENDER_TYPES = [
   { value: 'commercial', label: 'Коммерческий' },
@@ -111,6 +112,7 @@ export function loadTenders(params = {}) {
   const q = new URLSearchParams();
   q.set('limit', String(params.limit ?? 500));
   if (params.archived) q.set('archived', 'true');
+  if (params.periodFilter) appendPeriodQuery(q, params.periodFilter);
   return api(`/api/tenders?${q.toString()}`).then((d) => d.tenders || d.items || []);
 }
 
@@ -481,7 +483,11 @@ export function normalizeFeedItem(x) {
     tender_price: x.nmck != null ? x.nmck : x.tender_price,
     nmck: x.nmck != null ? x.nmck : x.tender_price,
     pm_id: x.responsible_user_id ?? x.pm_id,
-    responsible_pm_id: x.responsible_user_id ?? x.responsible_pm_id
+    responsible_pm_id: x.responsible_user_id ?? x.responsible_pm_id,
+    // Funnel / period filters expect created_at; hub feed returns event_at
+    event_at: x.event_at || x.created_at || null,
+    created_at: x.created_at || x.event_at || null,
+    assigned_pm_name: x.assigned_pm_name || x.pm_name || x.work_pm_name || null
   };
 }
 
@@ -489,7 +495,11 @@ export function loadHubFeed(params = {}) {
   const q = new URLSearchParams();
   if (params.tab)     q.set('tab', String(params.tab));
   if (params.subtab)  q.set('subtab', String(params.subtab));
-  if (params.period)  q.set('period', String(params.period));
+  if (params.periodFilter) {
+    appendPeriodQuery(q, params.periodFilter);
+  } else if (params.period) {
+    q.set('period', String(params.period));
+  }
   if (params.search)  q.set('search', String(params.search));
   if (params.status)  q.set('status', String(params.status));
   if (params.type)    q.set('type', String(params.type));
@@ -511,6 +521,27 @@ export function loadHubFeed(params = {}) {
     .catch(() => ({
       items: [], total: 0, applications_total: null, all_total: null,
       subtab_counts: null, limit: 0, offset: 0, role: ''
+    }));
+}
+
+/** Воронка «Заявки»: маркетплейс + канбан РП (application|pre_tender). */
+export function loadFunnelApps() {
+  return api('/api/tenders-hub/funnel-apps')
+    .then((d) => ({
+      marketplace: Array.isArray(d.marketplace) ? d.marketplace : [],
+      kanban: Array.isArray(d.kanban) ? d.kanban : [],
+      columns: d.columns || [],
+      counts: d.counts || { marketplace: 0, kanban: 0, total: 0 },
+      scope: d.scope || null,
+      role: d.role || ''
+    }))
+    .catch(() => ({
+      marketplace: [],
+      kanban: [],
+      columns: [],
+      counts: { marketplace: 0, kanban: 0, total: 0 },
+      scope: null,
+      role: ''
     }));
 }
 
@@ -584,7 +615,11 @@ export function loadRegistry(params = {}) {
   const q = new URLSearchParams();
   q.set('subtab', params.subtab || 'registry');
   q.set('limit', String(params.limit ?? 500));
-  if (params.period !== undefined) q.set('period', params.period);
+  if (params.periodFilter) {
+    appendPeriodQuery(q, params.periodFilter);
+  } else if (params.period !== undefined) {
+    q.set('period', params.period);
+  }
   if (params.burn) q.set('burn', '1');
   if (params.q) q.set('q', params.q);
   return api(`/api/tenders/registry?${q}`).then(d => d);
@@ -594,6 +629,13 @@ export function createRegistryRow(body) {
   return api('/api/tenders/registry', { method: 'POST', body });
 }
 
+export function findRegistryDuplicates(opts) {
+  const q = new URLSearchParams();
+  if (opts?.title) q.set('title', opts.title);
+  if (opts?.purchase_url) q.set('purchase_url', opts.purchase_url);
+  return api(`/api/tenders/registry/find-duplicates?${q}`);
+}
+
 export function patchRegistryField(id, field, value) {
   return api(`/api/tenders/registry/${id}`, { method: 'PATCH', body: { field, value } });
 }
@@ -601,6 +643,13 @@ export function patchRegistryField(id, field, value) {
 export function patchRegistryStatus(id, body) {
   const payload = typeof body === 'string' ? { registry_status: body } : (body || {});
   return api(`/api/tenders/registry/${id}/status`, { method: 'PATCH', body: payload });
+}
+
+export function archiveRegistryRow(id, archive_reason) {
+  return api(`/api/tenders/registry/${id}/archive`, {
+    method: 'POST',
+    body: { archive_reason: archive_reason || 'РП: не подаём — архив ТО' }
+  });
 }
 
 export function assignRegistryCalculator(id, kind, user_id) {
@@ -622,6 +671,22 @@ export function uploadRpEstimate(tenderId, file) {
   fd.append('file', file);
   const token = localStorage.getItem('asgard_token') || '';
   return fetch(`/api/tenders/${tenderId}/rp-review/estimate`, {
+    method: 'POST',
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+    body: fd
+  }).then(async (r) => {
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(d.error || d.message || `HTTP ${r.status}`);
+    return d;
+  });
+}
+
+export function uploadRpDraftFile(tenderId, kind, file, phase) {
+  const fd = new FormData();
+  fd.append('file', file);
+  const token = localStorage.getItem('asgard_token') || '';
+  const q = phase ? (`?phase=${encodeURIComponent(phase)}`) : '';
+  return fetch(`/api/tenders/${tenderId}/rp-review/my-draft/${kind}${q}`, {
     method: 'POST',
     headers: token ? { Authorization: `Bearer ${token}` } : {},
     body: fd
@@ -736,6 +801,26 @@ export function loadRpReview(tenderId) {
 
 export function saveRpReview(tenderId, body) {
   return api(`/api/tenders/${tenderId}/rp-review`, { method: 'PUT', body });
+}
+
+export function saveRpMyDraft(tenderId, body) {
+  return api(`/api/tenders/${tenderId}/rp-review/my-draft`, { method: 'PUT', body: body || {} });
+}
+
+export function importRpDraft(tenderId, body) {
+  return api(`/api/tenders/${tenderId}/rp-review/import-draft`, { method: 'POST', body: body || {} });
+}
+
+export function mimirApplyRpReview(tenderId, body) {
+  return api(`/api/tenders/${tenderId}/rp-review/mimir-apply`, { method: 'POST', body: body || {} });
+}
+
+export function startRpQuick(tenderId, body) {
+  return api(`/api/tenders/${tenderId}/rp-review/start-quick`, { method: 'POST', body: body || {} });
+}
+
+export function revokeRpCollaborator(tenderId, pmId) {
+  return api(`/api/tenders/${tenderId}/rp-review/invite/${pmId}`, { method: 'DELETE' });
 }
 
 export function createRegistryWork(tenderId, pm_id) {

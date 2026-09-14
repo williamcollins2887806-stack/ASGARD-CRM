@@ -46,18 +46,26 @@ function userCanRole(user, roles) {
 const QUEUE_TABS = [
   { id: 'analysis', label: 'Анализ' },
   { id: 'calc', label: 'Просчёты' },
+  { id: 'mine', label: 'Мои' },
   { id: 'archive', label: 'Архив' }
 ];
 
 function normalizeTab(tab) {
   if (!tab || tab === 'need_report') return 'analysis';
-  if (tab === 'drafts' || tab === 'my_reviewed') return tab === 'my_reviewed' ? 'archive' : 'calc';
+  if (tab === 'drafts') return 'calc';
+  if (tab === 'my_reviewed') return 'archive';
   return QUEUE_TABS.some((t) => t.id === tab) ? tab : 'analysis';
 }
 
 function queueSourceLabel(row, tab) {
   if (row.queue_source) return row.queue_source;
   if (tab === 'analysis') return 'Дежурная очередь';
+  if (tab === 'mine') {
+    if (row.phase === 'calc') return 'Просчёт';
+    if (row.analysis_owner_name) return `Хозяин: ${row.analysis_owner_name}`;
+    if (row.started_by_name) return `Начал: ${row.started_by_name}`;
+    return 'Моё участие';
+  }
   if (row.created_by_name) return 'Назначил ТО';
   return '—';
 }
@@ -65,11 +73,13 @@ function queueSourceLabel(row, tab) {
 function tabHint(tab) {
   if (tab === 'analysis') return 'Быстрый анализ: подаём / не подаём (дежурная очередь «рассмотрение»)';
   if (tab === 'calc') return 'Назначили мне + черновики — полный просчёт со сметой';
+  if (tab === 'mine') return 'Тендеры, которые вы начинали или считали. Пока анализ не закрыт — можно править вместе с дежурным.';
   return 'Закрытые отчёты — бывший «Свод расчётов»';
 }
 
 function queueStatusLabel(row) {
   if (row.is_final) return 'Отчёт готов';
+  if (row.phase === 'calc' || row.analysis_finalized_at) return 'Анализ закрыт · просчёт';
   if (row.decision === 'submit') return 'Подаём';
   if (row.decision === 'reject') return 'Не подаём';
   if (row.review_id && !row.is_final) return 'Черновик';
@@ -325,8 +335,9 @@ export default function PmDutyPage() {
 
 
   const openReview = (tender) => {
-    const readOnly = tab === 'archive' || !!tender.is_final;
-    const mode = tab === 'calc' ? 'calc' : 'analysis';
+    const analysisClosed = !!tender.analysis_finalized_at;
+    const readOnly = tab === 'archive' || !!tender.is_final || (tab === 'mine' && analysisClosed && !tender.can_edit);
+    const mode = (tab === 'calc' || tender.phase === 'calc' || analysisClosed) ? 'calc' : 'analysis';
     const role = user?.role || '';
     let reviewRole = '';
     let locked = readOnly;
@@ -336,6 +347,10 @@ export default function PmDutyPage() {
     } else if (role === 'HEAD_TO') {
       locked = true;
       reviewRole = tender.is_final ? 'to' : 'viewer';
+    } else if (tab === 'mine' && analysisClosed) {
+      // После закрытия анализа из «Мои» — только просмотр (просчёт — во вкладке Просчёты)
+      locked = true;
+      reviewRole = 'viewer';
     }
     modal.open(({ close }) => (
       <RpReviewModal
@@ -356,7 +371,7 @@ export default function PmDutyPage() {
 
     <div className="page pm-duty-page">
 
-      <TopActionsBar title="Просчёты РП" subtitle="Анализ, просчёты (включая черновики) и архив" />
+      <TopActionsBar title="Просчёты РП" subtitle="Анализ, просчёты, мои и архив" />
 
 
 
@@ -543,6 +558,11 @@ export default function PmDutyPage() {
               <td>
                 {(tab === 'analysis' || tab === 'calc') && !row.is_final && (
                   <Btn size="sm" onClick={() => openReview(row)}>Отчёт</Btn>
+                )}
+                {tab === 'mine' && (
+                  <Btn size="sm" variant={row.can_edit ? undefined : 'ghost'} onClick={() => openReview(row)}>
+                    {row.can_edit ? 'Отчёт' : 'Открыть'}
+                  </Btn>
                 )}
                 {tab === 'archive' && (
                   <Btn size="sm" variant="ghost" onClick={() => openReview(row)}>Открыть</Btn>

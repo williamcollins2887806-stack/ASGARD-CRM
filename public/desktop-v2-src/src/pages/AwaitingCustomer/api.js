@@ -4,7 +4,7 @@
  * Backend: src/routes/mimir-conductor.js — /api/mimir/conductor/awaiting-customer и letter/*.
  */
 import { api } from '@/api/client';
-
+export { formatMoney as fmtRub } from '@/lib/money';
 const API = '/api/mimir/conductor';
 
 /** GET /awaiting-customer */
@@ -76,8 +76,3 @@ export async function downloadLetter(letterId, format) {
   return resp.blob();
 }
 
-export function fmtRub(v) {
-  const n = Number(v);
-  if (!isFinite(n)) return '—';
-  return Math.round(n).toLocaleString('ru-RU') + ' ₽';
-}

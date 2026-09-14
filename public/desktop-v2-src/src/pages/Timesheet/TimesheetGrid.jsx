@@ -10,10 +10,10 @@
  *   FIX 14 — Группировка по объекту для pm-mode (через groupEmployees).
  */
 import { useState, useRef, useMemo, useCallback, useEffect } from 'react';
-import CellEditor from './CellEditor';
+import CellEditor, { canManageCellType } from './CellEditor';
 import {
   TYPE_META, daysInMonth, toIsoDate, fmtNum, fmtMoney, roleShort, fmtDateTime,
-  groupEmployees, inferWorkIdForEmployee
+  groupEmployees, inferWorkIdForEmployee, typeRequiresWorkId
 } from './api';
 
 const TOOLTIP_DELAY = 300;
@@ -77,10 +77,13 @@ export default function TimesheetGrid({
 
   const handleSave = useCallback(async (type, opts = {}) => {
     if (!editing) return;
-    // FIX 5 — корректный work_id: primary_work_id ИЛИ last-filled day.work_id ИЛИ существующий cell.work_id
-    // opts.workId — переопределение из CellEditor work-picker'а
+    // Свободные этапы: UI не шлёт work_id из фильтра/ячейки — backend сам
+    // подставит work_id, только если рабочий назначен на работу на эту дату.
     const cell = editing.employee.days?.[editing.day];
-    const workId = opts.workId || cell?.work_id || inferWorkIdForEmployee(editing.employee);
+    const needsWork = typeRequiresWorkId(mode, type);
+    const workId = needsWork
+      ? (opts.workId || cell?.work_id || inferWorkIdForEmployee(editing.employee) || null)
+      : null;
     const payload = {
       employee_id: editing.employee.id,
       work_id: workId,
@@ -88,24 +91,28 @@ export default function TimesheetGrid({
       type,
       delete: false
     };
+    if (opts.direction) payload.direction = opts.direction;
     await onEntryChange?.(payload);
-  }, [editing, onEntryChange]);
+  }, [editing, onEntryChange, mode]);
 
   const handleDelete = useCallback(async () => {
     if (!editing) return;
     const cell = editing.employee.days?.[editing.day];
-    if (!cell?.type || !editableTypes.includes(cell.type)) {
+    if (!cell?.type || !canManageCellType(editableTypes, cell.type, mode)) {
       return;
     }
+    const needsWork = typeRequiresWorkId(mode, cell.type);
     const payload = {
       employee_id: editing.employee.id,
-      work_id: cell?.work_id || inferWorkIdForEmployee(editing.employee),
+      work_id: needsWork
+        ? (cell?.work_id || inferWorkIdForEmployee(editing.employee) || null)
+        : null,
       date: editing.dateIso,
       type: cell.type,
       delete: true
     };
     await onEntryChange?.(payload);
-  }, [editing, editableTypes, onEntryChange]);
+  }, [editing, editableTypes, onEntryChange, mode]);
 
   const closeEditing = useCallback(() => setEditing(null), []);
 
@@ -632,15 +639,16 @@ function Cell({ employee, day, cell, cols, canEdit, isLocked, onClick, onEnter, 
   }
 
   const meta = TYPE_META[cell.type] || TYPE_META.day;
+  const dirArrow = cell.direction === 'to_site' ? '→' : (cell.direction === 'from_site' ? '←' : '');
   let content;
   if (cols.points === 'always' && cell.points != null) {
-    content = String(cell.points);
+    content = String(cell.points) + dirArrow;
   } else if (cols.points === 'mine' && cell.is_mine && cell.points != null) {
-    content = String(cell.points);
+    content = String(cell.points) + dirArrow;
   } else {
-    content = meta.icon;
+    content = meta.icon + dirArrow;
   }
-  const isIconOnly = content === meta.icon;
+  const isIconOnly = content === meta.icon || content === (meta.icon + dirArrow);
 
   return (
     <div
@@ -695,6 +703,8 @@ function Tooltip({ x, y, employee, day, cell, dateIso }) {
       <div className="ts-tooltip-title">{employee.fio} · {dt}</div>
       <div className="ts-tooltip-row">
         <span aria-hidden="true">{meta.icon}</span> {meta.title}
+        {cell.direction === 'to_site' && ' · → Туда'}
+        {cell.direction === 'from_site' && ' · ← Обратно'}
         {cell.points != null && ` · ${cell.points} баллов`}
         {cell.amount != null && cell.amount > 0 && ` · ${fmtMoney(cell.amount)}`}
       </div>

@@ -18,6 +18,7 @@ import { toast } from '@/modals/Notifications';
 import { Btn } from '@/modals/parts';
 import { TopActionsBar, EmptyState } from '@/blocks/Blocks';
 import { SelectInput } from '@/inputs/Inputs';
+import { formatMoney as _fmtMoney } from '@/lib/money';
 import './kpi-works.css';
 
 const _ALLOWED = ['ADMIN', 'HEAD_PM', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV'];
@@ -76,10 +77,6 @@ function scoreGrade(s) {
   if (s >= 45) return 'C';
   if (s >= 30) return 'D';
   return 'F';
-}
-function _fmtMoney(n) {
-  const x = Number(n) || 0;
-  return new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 0 }).format(x) + ' ₽';
 }
 
 export default function KpiWorksPage() {

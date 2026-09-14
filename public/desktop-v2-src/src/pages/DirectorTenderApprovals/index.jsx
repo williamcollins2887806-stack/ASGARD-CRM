@@ -69,7 +69,7 @@ export default function DirectorTenderApprovals() {
       <div className="page-head" style={{ marginBottom: 16 }}>
         <h1 style={{ margin: 0 }}>Согласование тендеров</h1>
         <p className="muted" style={{ margin: '6px 0 0' }}>
-          Просчёты РП свыше 5 млн ₽ без НДС · {items.length} в очереди
+          Просчёты РП от 10 млн ₽ без НДС · {items.length} в очереди
         </p>
         <button type="button" className="btn mini ghost" style={{ marginTop: 8 }} onClick={fetchQueue}>
           Обновить

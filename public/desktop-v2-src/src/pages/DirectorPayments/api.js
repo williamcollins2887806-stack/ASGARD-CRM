@@ -10,6 +10,8 @@
  */
 import { api } from '@/api/client';
 
+export { formatMoney as fmtMoney, formatMoneyShort as fmtMoneyShort } from '@/lib/money';
+
 export const PAYMENT_TYPES = [
   { value: '',          label: 'Все типы' },
   { value: 'per_diem',  label: 'Суточные', icon: '🌙' },
@@ -80,11 +82,6 @@ export function loadEmployees() {
   return api('/api/staff/employees?limit=2000')
     .then(parse)
     .catch(() => api('/api/employees?limit=2000').then(parse).catch(() => []));
-}
-
-export function fmtMoney(n) {
-  const v = Math.round(Number(n) || 0);
-  return new Intl.NumberFormat('ru-RU').format(v) + ' ₽';
 }
 
 export function fmtDate(s) {

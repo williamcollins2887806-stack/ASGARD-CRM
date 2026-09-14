@@ -11,15 +11,12 @@ import { MCard, MHead, MBody, MFoot, Btn } from '@/modals/parts';
 import { Field, TextInput, PhoneInput, SelectInput, TextareaInput, DatePicker } from '@/inputs/Inputs';
 import { phoneError, dateNotFutureError } from '@/inputs/validators';
 import { toast } from '@/modals/Notifications';
+import { birthAgeHelp } from '@/lib/birthDate';
 import { createEmployee } from './api';
+import { ROLE_TAGS } from './employeeFormState';
 
 // Должность влияет на баллы в табеле (склад 10б vs 12б).
-// Слесарь — базовая ставка, мастер — повышенная, РП — руководитель (не попадает в табель).
-const SPECIALTIES = [
-  'слесарь',
-  'мастер',
-  'РП',
-];
+const SPECIALTIES = ROLE_TAGS;
 
 function emitChanged() {
   window.dispatchEvent(new CustomEvent('asgard:personnel:changed'));
@@ -89,7 +86,11 @@ export function AddEmployeeModal({ onSaved }) {
             <Field label="Телефон" error={fieldErrors.phone}>
               <PhoneInput value={form.phone} onChange={(v) => set('phone', v)} />
             </Field>
-            <Field label="Дата рождения" error={fieldErrors.birth_date}>
+            <Field
+              label="Дата рождения"
+              error={fieldErrors.birth_date}
+              help={fieldErrors.birth_date ? null : (birthAgeHelp(form.birth_date) || 'Вставьте дату (дд.мм.гггг) или выберите в календаре')}
+            >
               <DatePicker value={form.birth_date} onChange={(v) => set('birth_date', v || '')} />
             </Field>
           </div>

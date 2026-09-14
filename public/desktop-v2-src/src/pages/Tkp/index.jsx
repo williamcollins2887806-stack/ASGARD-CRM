@@ -27,6 +27,8 @@ import AccessDenied from '@/blocks/AccessDenied';
 import TkpFilter from './TkpFilter';
 import TkpList from './TkpList';
 import { TkpFormModal } from './modals/TkpForm';
+import { FullKpFormModal } from './modals/FullKpFormModal';
+import { CreateTkpChooser } from './modals/CreateTkpChooser';
 import { SendTkpModal } from './modals/SendTkpModal';
 import { ClientDecisionModal } from './modals/ClientDecisionModal';
 import { PdfDialogModal } from './modals/PdfDialogModal';
@@ -71,8 +73,12 @@ export default function TkpPage() {
     const editMatch = hash.match(/[?&]edit=(\d+)/);
     const tenderMatch = hash.match(/[?&]tender_id=(\d+)/);
     if (editMatch) {
-      modal.open(<TkpFormModal editId={Number(editMatch[1])} />);
-      // чистим параметр
+      const eid = Number(editMatch[1]);
+      loadTkpList().then((list) => {
+        const found = (list || []).find((x) => Number(x.id) === eid);
+        if (found?.kp_variant === 'full') modal.open(<FullKpFormModal editId={eid} />);
+        else modal.open(<TkpFormModal editId={eid} />);
+      }).catch(() => modal.open(<TkpFormModal editId={eid} />));
       const clean = hash.replace(/[?&]edit=\d+/, '').replace(/\?$/, '');
       history.replaceState(null, '', clean);
     } else if (tenderMatch) {
@@ -96,7 +102,7 @@ export default function TkpPage() {
       if (e.target?.tagName === 'INPUT' || e.target?.tagName === 'TEXTAREA') return;
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'n') {
         e.preventDefault();
-        modal.open(<TkpFormModal />);
+        modal.open(<CreateTkpChooser onCreated={() => refresh()} />);
       } else if (!e.ctrlKey && !e.metaKey && !e.altKey) {
         if (e.key === '/') { e.preventDefault(); document.querySelector('input[data-searchbox="tkp"]')?.focus(); }
         else if (e.key === 'm') { e.preventDefault(); openQuick(); }
@@ -156,8 +162,11 @@ export default function TkpPage() {
     return v;
   }, [items, dq, filters.link_type, filters.client_decision, filters.status]);
 
-  const openNew = () => modal.open(<TkpFormModal />);
-  const openEdit = (t) => modal.open(<TkpFormModal editId={t.id} />);
+  const openNew = () => modal.open(<CreateTkpChooser onCreated={() => refresh()} />);
+  const openEdit = (t) => {
+    if (t?.kp_variant === 'full') modal.open(<FullKpFormModal editId={t.id} onSaved={() => refresh()} />);
+    else modal.open(<TkpFormModal editId={t.id} />);
+  };
   const openSend = (t) => modal.open(<SendTkpModal tkp={t} />);
   const openDecision = (t) => modal.open(<ClientDecisionModal tkp={t} />);
   const openPdf = (t) => modal.open(<PdfDialogModal tkp={t} />);

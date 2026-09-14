@@ -17,6 +17,8 @@
  */
 import { api } from '@/api/client';
 
+export { formatMoney as rub } from '@/lib/money';
+
 /** GET /api/payroll-dashboard/pm-balance — нормализуем поля под старую вью. */
 export function loadPmBalanceList() {
   return api('/api/payroll-dashboard/pm-balance')
@@ -73,15 +75,6 @@ export function loadPmBalanceDetail(pmId) {
       cash_returns:     d?.cash_returns     || items.cash_returns     || []
     };
   });
-}
-
-export function rub(n) {
-  if (n == null || n === '') return '—';
-  const num = Number(n);
-  if (!Number.isFinite(num)) return '—';
-  return new Intl.NumberFormat('ru-RU', {
-    style: 'currency', currency: 'RUB', maximumFractionDigits: 0
-  }).format(num);
 }
 
 export function fmtDate(s) {

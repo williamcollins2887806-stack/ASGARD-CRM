@@ -1,19 +1,5 @@
 /**
- * Страница /proxies — Реестр доверенностей.
- * Источник: vanilla `public/assets/js/proxies.js` (~688 строк).
- *
- *   ✅ index.jsx                  — root + KPI + фильтры + таблица + действия
- *   ✅ api.js                     — CRUD через /api/data/proxies + .doc-генератор
- *   ✅ ProxyTypePickerModal.jsx   — выбор шаблона при создании
- *   ✅ ProxyEditModal.jsx         — форма по шаблону (поля + срок + .doc)
- *   ✅ proxies.css                — стили
- *
- * RBAC просмотра: ADMIN, OFFICE_MANAGER, директора.
- * Действия со строкой:
- *   • ✎ Редактировать
- *   • 📄 Скачать .doc
- *   • ⛔ Отозвать (status=revoked) — если ещё активна
- *   • 🗑 Удалить (ADMIN)
+ * /proxies — унитарный реестр доверенностей (без KPI).
  */
 import { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '@/api/useAuth';
@@ -25,14 +11,16 @@ import { SearchInput, SelectInput } from '@/inputs/Inputs';
 import { useDebounce } from '@/api/useListHelpers';
 
 import {
-  ALLOWED_VIEW_ROLES, PROXY_TYPES,
+  ALLOWED_VIEW_ROLES,
   STATUS_FILTERS, TYPE_FILTERS,
-  loadProxies, updateProxy, deleteProxy,
-  computeStatus, describeStatus, findTypeByLabel,
-  fmtDate, filterByQuery, downloadDoc
+  loadProxies, updateProxy, deleteProxy, importRegistry,
+  computeStatus, describeStatus, findType,
+  fmtDate, filterByQuery, downloadDocx
 } from './api';
 import { ProxyTypePickerModal } from './ProxyTypePickerModal';
 import { ProxyEditModal } from './ProxyEditModal';
+import { ProxyExternalModal } from './ProxyExternalModal';
+import { ProxyStatusModal, ProxySendModal } from './ProxyActionModals';
 import './proxies.css';
 
 export default function ProxiesPage() {
@@ -42,7 +30,7 @@ export default function ProxiesPage() {
   const [list, setList] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
-  const dSearch = useDebounce(search, 300);  // G-11: debounce 300мс
+  const dSearch = useDebounce(search, 300);
   const [filterType, setFilterType] = useState('');
   const [filterStatus, setFilterStatus] = useState('');
 
@@ -54,41 +42,28 @@ export default function ProxiesPage() {
     setLoading(true);
     loadProxies()
       .then((items) => {
-        const enriched = items.map((r) => ({ ...r, _status: computeStatus(r) }));
-        setList(enriched);
+        setList(items.map((r) => ({ ...r, _status: computeStatus(r) })));
       })
-      .catch((e) => toast.error('Не удалось загрузить доверенности: ' + (e?.message || e)))
+      .catch((e) => toast.error('Не удалось загрузить: ' + (e?.message || e)))
       .finally(() => setLoading(false));
   };
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => { refresh(); /* eslint-disable-next-line */ }, [user?.id]);
+  useEffect(() => { refresh(); }, [user?.id]);
 
   useEffect(() => {
     const onChanged = () => refresh();
     window.addEventListener('asgard:proxies:changed', onChanged);
     return () => window.removeEventListener('asgard:proxies:changed', onChanged);
-    /* eslint-disable-next-line */
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const filtered = useMemo(() => {
-    let v = list.slice();
-    v = filterByQuery(v, dSearch);
-    if (filterType) v = v.filter((r) => r.type === filterType);
-    if (filterStatus) v = v.filter((r) => r._status === filterStatus);
+    let v = filterByQuery(list, dSearch);
+    if (filterType) v = v.filter((r) => (r.type_id || findType(r.type).id) === filterType);
+    if (filterStatus) v = v.filter((r) => r._status === filterStatus || (filterStatus === 'annulled' && r._status === 'revoked'));
     return v;
   }, [list, dSearch, filterType, filterStatus]);
-
-  const kpi = useMemo(() => {
-    let active = 0, expiring = 0, expired = 0, revoked = 0;
-    for (const r of list) {
-      if (r._status === 'active') active++;
-      else if (r._status === 'expiring') expiring++;
-      else if (r._status === 'expired') expired++;
-      else if (r._status === 'revoked') revoked++;
-    }
-    return { total: list.length, active, expiring, expired, revoked };
-  }, [list]);
 
   const onCreate = () => {
     modal.open(
@@ -102,60 +77,92 @@ export default function ProxiesPage() {
     );
   };
 
+  const onExternal = () => {
+    modal.open(<ProxyExternalModal onSaved={refresh} />, { size: 'md' });
+  };
+
   const onEdit = (proxy) => {
-    const type = findTypeByLabel(proxy.type);
+    const type = findType(proxy.type_id || proxy.type);
     modal.open(<ProxyEditModal type={type} proxy={proxy} onSaved={refresh} />, { size: 'wide' });
   };
 
-  const onDownload = (proxy, e) => {
+  const onCopy = (proxy, e) => {
     e?.stopPropagation?.();
-    const type = findTypeByLabel(proxy.type);
-    downloadDoc(proxy, type);
-    toast.success('Документ скачан');
+    const type = findType(proxy.type_id || proxy.type);
+    modal.open(
+      <ProxyEditModal type={type} copyFrom={proxy} onSaved={refresh} />,
+      { size: 'wide' }
+    );
   };
 
-  const onRevoke = (proxy, e) => {
+  const onDownload = async (proxy, e) => {
+    e?.stopPropagation?.();
+    try {
+      if (proxy.source === 'external' && proxy.external_file_url) {
+        window.open(proxy.external_file_url, '_blank');
+      } else if (proxy.signed_file_url && e?.shiftKey) {
+        window.open(proxy.signed_file_url, '_blank');
+      } else {
+        await downloadDocx(proxy.id);
+      }
+      toast.success('Скачано');
+    } catch (err) {
+      toast.error('Не удалось скачать: ' + (err?.message || err));
+    }
+  };
+
+  const onAnnul = (proxy, e) => {
     e?.stopPropagation?.();
     modal.open(
       <ConfirmModal
-        title="Отозвать доверенность?"
-        message={`Доверенность № ${proxy.number || proxy.id} (${proxy.fio || '—'}) будет отозвана.`}
+        title="Аннулировать доверенность?"
+        message={`Доверенность № ${proxy.number || proxy.id} будет аннулирована.`}
         tone="danger"
-        okText="⛔ Отозвать"
+        okText="Аннулировать"
         onConfirm={async () => {
           try {
-            await updateProxy(proxy.id, { status: 'revoked' });
-            toast.success('Доверенность отозвана');
+            await updateProxy(proxy.id, { status: 'annulled' });
+            toast.success('Аннулирована');
             window.dispatchEvent(new CustomEvent('asgard:proxies:changed'));
             refresh();
           } catch (err) {
-            toast.error('Не удалось отозвать: ' + (err?.message || err));
+            toast.error('Ошибка: ' + (err?.message || err));
           }
         }}
       />
     );
   };
 
+  const onStatus = (proxy, e) => {
+    e?.stopPropagation?.();
+    modal.open(<ProxyStatusModal proxy={proxy} onDone={refresh} />, { size: 'sm' });
+  };
+
+  const onSend = (proxy, e) => {
+    e?.stopPropagation?.();
+    modal.open(<ProxySendModal proxy={proxy} onDone={refresh} />, { size: 'sm' });
+  };
+
   const onDelete = (proxy, e) => {
     e?.stopPropagation?.();
     if (!isAdmin) {
-      toast.warn('Удалять доверенности может только ADMIN');
+      toast.warn('Удалять может только ADMIN');
       return;
     }
     modal.open(
       <ConfirmModal
         title="Удалить доверенность?"
-        message={`Доверенность № ${proxy.number || proxy.id} будет удалена без возможности восстановления.`}
+        message={`№ ${proxy.number || proxy.id} будет удалена без восстановления.`}
         tone="danger"
         okText="Удалить"
         onConfirm={async () => {
           try {
             await deleteProxy(proxy.id);
-            toast.success('Доверенность удалена');
+            toast.success('Удалено');
             window.dispatchEvent(new CustomEvent('asgard:proxies:changed'));
             refresh();
           } catch (err) {
-            toast.error('Не удалось удалить: ' + (err?.message || err));
+            toast.error('Ошибка: ' + (err?.message || err));
           }
         }}
       />
@@ -164,10 +171,9 @@ export default function ProxiesPage() {
 
   if (!allowed) {
     return (
-      <div className="card p-32 t-center" >
-        <div className="fs-32 mb-12">🛡</div>
+      <div className="card p-32 t-center">
         <div className="fs-16 fw-700 mb-6">Нет доступа</div>
-        <div className="c-t3">Раздел «Доверенности» доступен ADMIN, директорам и OFFICE_MANAGER.</div>
+        <div className="c-t3">Раздел доступен ADMIN, директорам и OFFICE_MANAGER.</div>
       </div>
     );
   }
@@ -176,38 +182,26 @@ export default function ProxiesPage() {
     <div className="col gap-12">
       <TopActionsBar
         kicker="Документы"
-        title="Реестр доверенностей"
-        subtitle={`${filtered.length} из ${list.length} в выборке`}
+        title="Доверенности"
+        subtitle={loading ? 'Загрузка…' : `${filtered.length} из ${list.length}`}
         actions={
           <>
-            <Btn variant="ghost" onClick={refresh}>↻ Обновить</Btn>
-            <Btn variant="primary" onClick={onCreate}>+ Создать доверенность</Btn>
+            {isAdmin && (
+              <Btn variant="ghost" onClick={async () => {
+                try {
+                  const r = await importRegistry();
+                  toast.success(`Импорт: +${r.created || 0}, пропуск ${r.skipped || 0}`);
+                  refresh();
+                } catch (e) {
+                  toast.error(e?.message || 'Импорт не удался');
+                }
+              }}>Импорт Excel</Btn>
+            )}
+            <Btn variant="ghost" onClick={onExternal}>Прикрепить внешнюю</Btn>
+            <Btn variant="primary" onClick={onCreate}>Создать</Btn>
           </>
         }
       />
-
-      <div className="prx-kpi">
-        <div className="prx-kpi-card">
-          <div className="prx-kpi-lab">Всего</div>
-          <div className="prx-kpi-val">{kpi.total}</div>
-        </div>
-        <div className="prx-kpi-card brd-top-ok">
-          <div className="prx-kpi-lab">Действуют</div>
-          <div className="prx-kpi-val">{kpi.active}</div>
-        </div>
-        <div className="prx-kpi-card" style={{ borderTop: '2px solid var(--amber, var(--warn-t))' }}>
-          <div className="prx-kpi-lab">Истекают (30д)</div>
-          <div className="prx-kpi-val">{kpi.expiring}</div>
-        </div>
-        <div className="prx-kpi-card brd-top-err">
-          <div className="prx-kpi-lab">Истекли</div>
-          <div className="prx-kpi-val">{kpi.expired}</div>
-        </div>
-        <div className="prx-kpi-card brd-top-t3">
-          <div className="prx-kpi-lab">Отозваны</div>
-          <div className="prx-kpi-val">{kpi.revoked}</div>
-        </div>
-      </div>
 
       <div className="prx-filter">
         <SearchInput value={search} onChange={setSearch} placeholder="Поиск по ФИО, номеру…" />
@@ -216,15 +210,12 @@ export default function ProxiesPage() {
       </div>
 
       {loading ? (
-        <div className="card card-empty" >
-          ⏳ Загружаем доверенности…
-        </div>
+        <div className="card card-empty">Загружаем…</div>
       ) : filtered.length === 0 ? (
         <EmptyState
-          icon="📜"
           title={search || filterType || filterStatus ? 'Ничего не нашли' : 'Доверенностей пока нет'}
-          hint={search || filterType || filterStatus ? 'Попробуйте изменить фильтры' : 'Создайте первую через «+ Создать доверенность»'}
-          action={null}
+          hint={search || filterType || filterStatus ? 'Измените фильтры' : 'Создайте первую доверенность'}
+          action={<Btn variant="primary" onClick={onCreate}>Создать</Btn>}
         />
       ) : (
         <div className="card card-pad-overflow">
@@ -232,14 +223,14 @@ export default function ProxiesPage() {
             <table className="prx-table">
               <thead>
                 <tr>
-                  <th className="w-70">#</th>
-                  <th className="w-140">Номер</th>
-                  <th className="w-200">Тип</th>
-                  <th>На кого (ФИО)</th>
-                  <th className="w-120">Выдана</th>
-                  <th className="w-130">Действует до</th>
-                  <th className="w-130">Статус</th>
-                  <th className="w-170"></th>
+                  <th>Номер</th>
+                  <th>Представитель</th>
+                  <th>Тип</th>
+                  <th>Выдана</th>
+                  <th>До</th>
+                  <th>Статус</th>
+                  <th>Файлы</th>
+                  <th></th>
                 </tr>
               </thead>
               <tbody>
@@ -247,11 +238,14 @@ export default function ProxiesPage() {
                   <ProxyRow
                     key={r.id}
                     proxy={r}
+                    isAdmin={isAdmin}
                     onEdit={onEdit}
                     onDownload={onDownload}
-                    onRevoke={onRevoke}
+                    onCopy={onCopy}
+                    onAnnul={onAnnul}
+                    onStatus={onStatus}
+                    onSend={onSend}
                     onDelete={onDelete}
-                    isAdmin={isAdmin}
                   />
                 ))}
               </tbody>
@@ -263,31 +257,43 @@ export default function ProxiesPage() {
   );
 }
 
-function ProxyRow({ proxy, onEdit, onDownload, onRevoke, onDelete, isAdmin }) {
-  const r = proxy;
+function ProxyRow({
+  proxy: r, isAdmin,
+  onEdit, onDownload, onCopy, onAnnul, onStatus, onSend, onDelete
+}) {
   const status = describeStatus(r._status);
-  const typeFound = PROXY_TYPES.find((t) => t.label === r.type);
-  const icon = typeFound?.icon || '📜';
-  const canRevoke = r._status !== 'revoked' && r._status !== 'expired';
+  const typeFound = findType(r.type_id || r.type);
+  const canAnnul = r._status !== 'annulled' && r._status !== 'expired';
 
   return (
     <tr className="prx-row" onClick={() => onEdit(r)}>
-      <td className="prx-dim">{r.id}</td>
       <td className="prx-num">{r.number || '—'}</td>
-      <td><span className="mr-6">{icon}</span>{r.type || '—'}</td>
-      <td>{r.fio || r.employee_name || '—'}</td>
+      <td>
+        <div>{r.fio || r.employee_name || '—'}</div>
+        {r.phone ? <div className="prx-dim">{r.phone}</div> : null}
+      </td>
+      <td>{typeFound?.label || r.type || '—'}</td>
       <td className="prx-dim">{fmtDate(r.issue_date)}</td>
       <td className="prx-dim">{fmtDate(r.valid_until)}</td>
       <td><StatusBadge tone={status.tone} label={status.label} /></td>
+      <td className="prx-files">
+        {r.source !== 'external' && <span className="prx-file-dot" title="Бланк CRM">CRM</span>}
+        {r.external_file_url && <span className="prx-file-dot is-ext" title="Внешний файл">Внеш</span>}
+        {r.signed_file_url && <span className="prx-file-dot is-sign" title="Подписанный скан">Подп</span>}
+      </td>
       <td className="prx-actions" onClick={(e) => e.stopPropagation()}>
-        <Btn size="sm" variant="ghost" onClick={(e) => onDownload(r, e)} title=".doc">📄</Btn>
-        {canRevoke && (
-          <Btn size="sm" variant="ghost" onClick={(e) => onRevoke(r, e)} title="Отозвать">⛔</Btn>
+        <Btn size="sm" variant="ghost" onClick={(e) => onDownload(r, e)} title="Скачать">↓</Btn>
+        <Btn size="sm" variant="ghost" onClick={(e) => onCopy(r, e)} title="Копировать">⧉</Btn>
+        <Btn size="sm" variant="ghost" onClick={(e) => onSend(r, e)} title="Отправить">✉</Btn>
+        <Btn size="sm" variant="ghost" onClick={(e) => onStatus(r, e)} title="Статус">↻</Btn>
+        {canAnnul && (
+          <Btn size="sm" variant="ghost" onClick={(e) => onAnnul(r, e)} title="Аннулировать">✕</Btn>
         )}
         {isAdmin && (
-          <Btn size="sm" variant="ghost" onClick={(e) => onDelete(r, e)} title="Удалить">🗑</Btn>
+          <Btn size="sm" variant="ghost" onClick={(e) => onDelete(r, e)} title="Удалить">⌫</Btn>
         )}
       </td>
     </tr>
   );
 }
+

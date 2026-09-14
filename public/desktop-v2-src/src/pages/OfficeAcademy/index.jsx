@@ -265,6 +265,12 @@ function LessonCard({ lesson, onOpen }) {
           {lesson.is_mandatory && <span className="oa-pill must">⚠️ Обязательно</span>}
           {lesson.estimated_minutes && <span className="oa-pill">⏱ {lesson.estimated_minutes} мин</span>}
           {lesson.xp_earned > 0 && <span className="oa-pill xp">⚡ {lesson.xp_earned}</span>}
+          {Number(lesson.interest_count) >= 3 && lesson.interest_avg != null && (
+            <span className="oa-pill interest">★ {Number(lesson.interest_avg).toFixed(1)}</span>
+          )}
+          {lesson.my_interest_score > 0 && Number(lesson.interest_count) < 3 && (
+            <span className="oa-pill interest">★ {lesson.my_interest_score}/5</span>
+          )}
         </div>
 
         <div className="oa-status-row">

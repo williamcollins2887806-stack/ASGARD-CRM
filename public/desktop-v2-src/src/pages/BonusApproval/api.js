@@ -17,6 +17,8 @@
  */
 import { api } from '@/api/client';
 
+export { formatMoney as fmtMoney, formatMoneyShort as fmtMoneyShort } from '@/lib/money';
+
 export const BONUS_STATUSES = {
   draft:    { label: 'Черновик',         tone: 'draft' },
   pending:  { label: 'На согласовании',  tone: 'sent' },
@@ -115,13 +117,6 @@ export function parseBonuses(raw) {
   }
   if (typeof raw === 'object') return raw.bonuses || [];
   return [];
-}
-
-export function fmtMoney(n) {
-  if (n === null || n === undefined || n === '') return '—';
-  const num = Number(n);
-  if (!Number.isFinite(num)) return '—';
-  return new Intl.NumberFormat('ru-RU').format(Math.round(num)) + ' ₽';
 }
 
 export function fmtDate(s) {

@@ -9,6 +9,8 @@
  */
 import { api } from '@/api/client';
 
+export { formatMoney as fmtMoney, formatMoneyShort as fmtMoneyShort } from '@/lib/money';
+
 export const STATUS_LABELS = {
   requested:    'Ожидает',
   approved:     'Согласовано',
@@ -372,11 +374,6 @@ export async function openReceipt(requestId, filename) {
 // ─────────────────────────────────────────────────────────────────
 // Helpers
 // ─────────────────────────────────────────────────────────────────
-
-export function fmtMoney(val) {
-  const n = Math.round(Number(val || 0));
-  return new Intl.NumberFormat('ru-RU').format(n) + ' ₽';
-}
 
 export function fmtDate(val) {
   if (!val) return '—';

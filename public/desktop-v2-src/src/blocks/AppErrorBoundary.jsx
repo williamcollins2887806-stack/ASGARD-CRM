@@ -16,6 +16,7 @@
  * там уже есть ChunkReloadBoundary внутри ThemeProvider — этот выше).
  */
 import { Component } from 'react';
+import { reportClientError } from '@/lib/reportClientError';
 
 export class AppErrorBoundary extends Component {
   constructor(props) {
@@ -30,6 +31,14 @@ export class AppErrorBoundary extends Component {
   componentDidCatch(error, info) {
     // eslint-disable-next-line no-console
     console.error('[AppErrorBoundary] render error:', error, info);
+    try {
+      reportClientError({
+        source: 'v2',
+        kind: 'boundary',
+        message: error?.message || 'React render error',
+        stack: [error?.stack, info?.componentStack].filter(Boolean).join('\n'),
+      });
+    } catch { /* noop */ }
     this.setState({ info });
   }
   _reload() {

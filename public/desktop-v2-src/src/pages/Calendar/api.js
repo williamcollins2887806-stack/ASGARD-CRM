@@ -1,14 +1,5 @@
 /**
- * Calendar — API helpers.
- *
- * Backend: src/routes/calendar.js — endpoints:
- *   GET    /api/calendar?date_from=&date_to=&type=&limit=  →  {events:[]}
- *   GET    /api/calendar/:id                                →  {event}
- *   POST   /api/calendar                                    →  {event}
- *   PUT    /api/calendar/:id                                →  {event}
- *   DELETE /api/calendar/:id                                →  ok
- *
- * Поля: title, description, date (YYYY-MM-DD), time, end_date, location, type, color, tender_id, work_id
+ * Calendar — API helpers (feed + personal CRUD + meetings + availability).
  */
 import { api } from '@/api/client';
 
@@ -38,6 +29,13 @@ export const REMINDER_OPTS = [
   { value: '1440', label: 'За 1 день' }
 ];
 
+export const RECUR_OPTS = [
+  { value: 'NONE', label: 'Не повторять' },
+  { value: 'DAILY', label: 'Каждый день' },
+  { value: 'WEEKLY', label: 'Каждую неделю' },
+  { value: 'MONTHLY', label: 'Каждый месяц' }
+];
+
 export function eventTypeInfo(code) {
   return EVENT_TYPES.find((t) => t.code === code) || EVENT_TYPES[5];
 }
@@ -47,8 +45,13 @@ export async function loadEvents({ date_from, date_to } = {}) {
   p.set('limit', '500');
   if (date_from) p.set('date_from', date_from);
   if (date_to)   p.set('date_to',   date_to);
-  const r = await api('/api/calendar?' + p.toString());
-  return r?.events || [];
+  try {
+    const r = await api('/api/calendar/feed?' + p.toString());
+    return r?.items || r?.events || [];
+  } catch {
+    const r = await api('/api/calendar?' + p.toString());
+    return r?.events || [];
+  }
 }
 
 export function createEvent(body) {
@@ -63,7 +66,34 @@ export function deleteEvent(id) {
   return api(`/api/calendar/${id}`, { method: 'DELETE' });
 }
 
-/* ── Утилиты дат ─────────────────────────────────────────────── */
+export function createMeeting(body) {
+  return api('/api/meetings', { method: 'POST', body });
+}
+
+export function updateMeeting(id, body) {
+  return api(`/api/meetings/${id}`, { method: 'PUT', body });
+}
+
+export function deleteMeeting(id) {
+  return api(`/api/meetings/${id}`, { method: 'DELETE' });
+}
+
+export function loadUsers() {
+  return api('/api/users?limit=500&is_active=true').then((d) => d?.users || []).catch(() => []);
+}
+
+export function loadAvailability(userIds, from, to) {
+  const q = new URLSearchParams({
+    user_ids: userIds.join(','),
+    from,
+    to
+  });
+  return api('/api/calendar/availability?' + q.toString());
+}
+
+export function findTime(body) {
+  return api('/api/calendar/find-time', { method: 'POST', body });
+}
 
 export function ymd(d) {
   const x = d instanceof Date ? d : new Date(d);
@@ -76,7 +106,7 @@ export function daysInMonth(year, month) {
 
 export function firstDayOfWeek(year, month) {
   const d = new Date(year, month, 1).getDay();
-  return d === 0 ? 6 : d - 1; // Пн = 0
+  return d === 0 ? 6 : d - 1;
 }
 
 export function startOfWeek(date) {
@@ -118,4 +148,9 @@ export function groupByDate(events) {
     m[k].sort((a, b) => String(a.time || '').localeCompare(String(b.time || '')));
   }
   return m;
+}
+
+export function defaultEnd(time) {
+  const [h, m] = String(time || '10:00').split(':').map(Number);
+  return `${String(Math.min(23, (h || 10) + 1)).padStart(2, '0')}:${String(m || 0).padStart(2, '0')}`;
 }

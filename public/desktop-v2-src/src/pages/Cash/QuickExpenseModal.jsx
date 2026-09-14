@@ -87,10 +87,11 @@ export default function QuickExpenseModal({ onSaved }) {
     }
 
     if (expenseType === 'per_diem') {
-      if (!employeeId || !workId) {
-        toast.warn('Выберите рабочего и работу');
+      if (!employeeId) {
+        toast.warn('Выберите рабочего');
         return;
       }
+      // Работа опциональна: дорога/МО без объекта
     } else if (!description.trim()) {
       toast.warn('Укажите описание расхода');
       return;
@@ -107,7 +108,7 @@ export default function QuickExpenseModal({ onSaved }) {
       };
       if (expenseType === 'per_diem') {
         body.employee_id = Number(employeeId);
-        body.work_id = Number(workId);
+        if (workId) body.work_id = Number(workId);
       }
       await quickExpense(body);
       toast.success('Расход записан');
@@ -162,7 +163,7 @@ export default function QuickExpenseModal({ onSaved }) {
             <Field label="Рабочий" required>
               <SelectInput value={employeeId} onChange={setEmployeeId} options={employeeOpts} />
             </Field>
-            <Field label="Работа" required>
+            <Field label="Работа (необязательно, если этап без объекта)">
               <SelectInput value={workId} onChange={setWorkId} options={workOpts} />
             </Field>
             {suggestionForEmployee && (

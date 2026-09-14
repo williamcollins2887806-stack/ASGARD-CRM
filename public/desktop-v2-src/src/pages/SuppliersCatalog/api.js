@@ -19,6 +19,8 @@
  */
 import { api } from '@/api/client';
 
+export { formatMoney as fmtMoney, formatMoneyShort as fmtMoneyShort } from '@/lib/money';
+
 export const CATEGORIES = [
   { value: 'materials',        label: 'Материалы' },
   { value: 'equipment_rental', label: 'Аренда техники' },
@@ -94,11 +96,6 @@ export function loadPrices(params = {}) {
 
 export function createPriceRecord(body) {
   return api('/api/price-records', { method: 'POST', body });
-}
-
-export function fmtMoney(v) {
-  if (v == null || v === '') return '—';
-  return new Intl.NumberFormat('ru-RU').format(Math.round(Number(v))) + ' ₽';
 }
 
 export function fmtDate(s) {

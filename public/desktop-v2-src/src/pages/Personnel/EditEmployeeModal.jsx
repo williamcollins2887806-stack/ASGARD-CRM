@@ -7,7 +7,7 @@
  * PII-поля (паспорт, ИНН, СНИЛС, банковские реквизиты) видны только HR/ADMIN/директорам
  * — этот модал уже доступен только им, так что блок «PII» рисуется всегда.
  */
-import { useEffect, useRef, useState } from 'react';
+import { useState } from 'react';
 import { useAuth } from '@/api/useAuth';
 import { useModal } from '@/modals';
 import { MCard, MHead, MBody, MFoot, Btn } from '@/modals/parts';
@@ -16,7 +16,11 @@ import {
   emailError, phoneError, innError, dateNotFutureError, lengthInRange
 } from '@/inputs/validators';
 import { toast } from '@/modals/Notifications';
-import { updateEmployee, searchPayees, createPayee } from './api';
+import { updateEmployee } from './api';
+import { formatMoney as fmtMoneyFallback } from '@/lib/money';
+import { birthAgeHelp } from '@/lib/birthDate';
+import { PayeeSelector } from './PayeeSelector';
+import { ROLE_TAGS, canonRoleTag } from './employeeFormState';
 
 const OFFICIAL_STATUSES = [
   { value: 'active',        label: 'Активен' },
@@ -28,7 +32,8 @@ const OFFICIAL_STATUSES = [
 
 const FINANCE_ROLES = ['ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV', 'BUH'];
 
-const STANDARD_ROLE_TAGS = ['слесарь', 'сварщик', 'альпинист', 'мастер', 'РП'];
+const STANDARD_ROLE_TAGS = ROLE_TAGS;
+
 
 const GENDERS = [
   { value: 'male',   label: 'Мужской' },
@@ -60,13 +65,6 @@ function dateOnly(v) {
   return '';
 }
 
-function fmtMoneyFallback(v) {
-  if (v == null || v === '') return '0';
-  const n = Number(v);
-  if (!Number.isFinite(n)) return '0';
-  return n.toLocaleString('ru-RU');
-}
-
 function labelOfficial(code) {
   const o = OFFICIAL_STATUSES.find((x) => x.value === code);
   return o ? o.label : (code || '—');
@@ -84,7 +82,7 @@ export function EditEmployeeModal({ employee, onSaved }) {
     email:             e.email || '',
     birth_date:        dateOnly(e.birth_date),
     gender:            normalizeGenderInput(e.gender),
-    role_tag:          e.role_tag || '',
+    role_tag:          canonRoleTag(e.role_tag),
     position:          e.position || '',
     grade:             e.grade || '',
     city:              e.city || '',
@@ -257,7 +255,11 @@ export function EditEmployeeModal({ employee, onSaved }) {
               <Field label="ФИО" required error={fieldErrors.fio}>
                 <TextInput value={form.fio} onChange={(v) => set('fio', v)} />
               </Field>
-              <Field label="Дата рождения" error={fieldErrors.birth_date}>
+              <Field
+                label="Дата рождения"
+                error={fieldErrors.birth_date}
+                help={fieldErrors.birth_date ? null : (birthAgeHelp(form.birth_date) || 'Вставьте дату (дд.мм.гггг) или выберите в календаре')}
+              >
                 <DatePicker value={form.birth_date} onChange={(v) => set('birth_date', v || '')} />
               </Field>
               <Field label="Пол">
@@ -470,10 +472,10 @@ export function EditEmployeeModal({ employee, onSaved }) {
             ) : (
               <div className="c-t3" style={{ fontSize: 12, lineHeight: 1.5, padding: 8, border: '1px dashed var(--brd-2)', borderRadius: 6 }}>
                 <div><b>Месячный лимит:</b> {e.can_exceed_limit ? 'снят (разрешено превышение)' : 'действует (350 000 ₽)'}</div>
-                <div><b>За год уже потрачено:</b> {fmtMoneyFallback(e.se_yearly_used_initial)} ₽</div>
+                <div><b>За год уже потрачено:</b> {fmtMoneyFallback(e.se_yearly_used_initial)}</div>
                 {e.se_monthly_used_initial && (
                   <div>
-                    <b>Месячный offset:</b> {e.se_monthly_used_initial.year}-{String(e.se_monthly_used_initial.month).padStart(2, '0')} → {fmtMoneyFallback(e.se_monthly_used_initial.amount)} ₽
+                    <b>Месячный offset:</b> {e.se_monthly_used_initial.year}-{String(e.se_monthly_used_initial.month).padStart(2, '0')} → {fmtMoneyFallback(e.se_monthly_used_initial.amount)}
                   </div>
                 )}
                 <div style={{ marginTop: 4, opacity: 0.7 }}>Изменить может только бухгалтер/директор/админ.</div>
@@ -556,8 +558,8 @@ export function EditEmployeeModal({ employee, onSaved }) {
               </>
             ) : (
               <div className="c-t3" style={{ fontSize: 12, lineHeight: 1.5, padding: 8, border: '1px dashed var(--brd-2)', borderRadius: 6 }}>
-                <div><b>Оклад:</b> {e.official_salary != null ? fmtMoneyFallback(e.official_salary) + ' ₽' : '—'}</div>
-                <div><b>Несгораемая часть:</b> {e.official_non_burnable != null ? fmtMoneyFallback(e.official_non_burnable) + ' ₽' : '—'}</div>
+                <div><b>Оклад:</b> {e.official_salary != null ? fmtMoneyFallback(e.official_salary) : '—'}</div>
+                <div><b>Несгораемая часть:</b> {e.official_non_burnable != null ? fmtMoneyFallback(e.official_non_burnable) : '—'}</div>
                 <div><b>Дата приёма:</b> {e.official_hire_date ? dateOnly(e.official_hire_date) : '—'}</div>
                 <div><b>Статус:</b> {labelOfficial(e.official_status)}</div>
                 {e.official_status === 'unpaid_leave' && (e.official_leave_from || e.official_leave_to) && (
@@ -674,250 +676,6 @@ function Section({ title, warn, children }) {
       <div className="col gap-10">
         {children}
       </div>
-    </div>
-  );
-}
-
-/* ═══════════════════════════════════════════════════════════════════════
- * PayeeSelector (V240) — поиск/создание родственника-получателя НПД-выплат.
- *   - Поиск debounced 300мс по /api/staff/payees?search=Q
- *   - Если payeeId задан — показываем «карточку» с ФИО + кнопками Открепить/Открыть
- *   - Поиск дополнительный (можно сменить выбранного payee)
- *   - «+ Создать» — мини-форма (ФИО/телефон/ИНН) → POST /api/staff/payees
- *   - canCreate=false (не FIN_ROLES) → кнопка скрыта
- * ═══════════════════════════════════════════════════════════════════════ */
-function PayeeSelector({ payeeId, payeeFio, payeePhone, payeeInn, canCreate, onPick, onUnlink }) {
-  const [q, setQ] = useState('');
-  const [results, setResults] = useState([]);
-  const [open, setOpen] = useState(false);
-  const [loading, setLoading] = useState(false);
-  const [creating, setCreating] = useState(false);
-  const [newForm, setNewForm] = useState({ fio: '', phone: '', inn: '' });
-  const [savingNew, setSavingNew] = useState(false);
-  const wrapRef = useRef(null);
-
-  // Debounce поиск
-  useEffect(() => {
-    if (!q || q.trim().length < 2) {
-      setResults([]);
-      setOpen(false);
-      return;
-    }
-    let cancelled = false;
-    setLoading(true);
-    const t = setTimeout(async () => {
-      try {
-        const items = await searchPayees(q.trim(), 20);
-        if (!cancelled) {
-          setResults(items || []);
-          setOpen(true);
-        }
-      } catch (_) {
-        if (!cancelled) setResults([]);
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    }, 300);
-    return () => { cancelled = true; clearTimeout(t); };
-  }, [q]);
-
-  // Клик вне → закрыть выпадайку
-  useEffect(() => {
-    if (!open) return;
-    const onDocClick = (e) => {
-      if (wrapRef.current && !wrapRef.current.contains(e.target)) setOpen(false);
-    };
-    document.addEventListener('mousedown', onDocClick);
-    return () => document.removeEventListener('mousedown', onDocClick);
-  }, [open]);
-
-  const handlePick = (p) => {
-    onPick?.(p);
-    setQ('');
-    setResults([]);
-    setOpen(false);
-  };
-
-  const openCardHash = () => {
-    if (!payeeId) return;
-    location.hash = '#/employee?id=' + Number(payeeId);
-  };
-
-  const submitCreate = async () => {
-    const fio = (newForm.fio || '').trim();
-    if (!fio) { toast.warn('ФИО обязательно'); return; }
-    setSavingNew(true);
-    try {
-      const created = await createPayee({
-        fio,
-        phone: (newForm.phone || '').trim() || null,
-        inn:   (newForm.inn || '').trim() || null,
-      });
-      if (!created || !created.id) {
-        toast.error('Сервер не вернул id получателя');
-      } else {
-        onPick?.({
-          id: created.id,
-          fio: created.fio || fio,
-          phone: created.phone || newForm.phone || '',
-          inn: created.inn || newForm.inn || '',
-        });
-        toast.success('Получатель создан');
-        setCreating(false);
-        setNewForm({ fio: '', phone: '', inn: '' });
-      }
-    } catch (err) {
-      toast.error('Не удалось создать: ' + (err?.message || err));
-    } finally {
-      setSavingNew(false);
-    }
-  };
-
-  return (
-    <div ref={wrapRef} style={{ position: 'relative', marginTop: 8 }}>
-      {/* Текущий payee — мягкая зелёная плашка */}
-      {payeeId && (
-        <div style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: 10,
-          padding: '10px 12px',
-          background: '#E8F5E9',
-          color: '#1b5e20',
-          borderRadius: 8,
-          marginBottom: 10,
-          flexWrap: 'wrap',
-        }}>
-          <span style={{ fontSize: 18 }} aria-hidden="true">👤</span>
-          <div style={{ flex: 1, minWidth: 200 }}>
-            <div style={{ fontWeight: 600 }}>{payeeFio || ('id=' + payeeId)}</div>
-            <div style={{ fontSize: 11, opacity: 0.75 }}>
-              {['id=' + payeeId, payeePhone, payeeInn ? 'ИНН ' + payeeInn : null]
-                .filter(Boolean).join(' · ')}
-            </div>
-          </div>
-          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-            <Btn size="sm" onClick={onUnlink}>Открепить</Btn>
-            <Btn size="sm" onClick={openCardHash}>Открыть карточку</Btn>
-          </div>
-        </div>
-      )}
-
-      {/* Поиск (всегда видимый, чтобы можно было сменить выбранного) */}
-      <div style={{ position: 'relative' }}>
-        <TextInput
-          value={q}
-          onChange={setQ}
-          placeholder={payeeId ? 'Сменить получателя…' : 'Поиск по ФИО или телефону…'}
-          aria-label="Поиск получателя НПД"
-        />
-        {open && (
-          <div style={{
-            position: 'absolute',
-            top: '100%',
-            left: 0,
-            right: 0,
-            background: 'var(--bg-1)',
-            border: '1px solid var(--brd-2)',
-            borderRadius: 8,
-            marginTop: 4,
-            maxHeight: 280,
-            overflowY: 'auto',
-            zIndex: 10,
-            boxShadow: '0 4px 16px rgba(0,0,0,0.18)',
-          }}>
-            {loading && (
-              <div style={{ padding: '10px 12px', fontSize: 13, color: 'var(--t-3)' }}>Ищем…</div>
-            )}
-            {!loading && results.length === 0 && (
-              <div style={{ padding: '10px 12px', fontSize: 13, color: 'var(--t-3)' }}>
-                Никого не нашли. {canCreate ? 'Попробуйте создать нового.' : ''}
-              </div>
-            )}
-            {!loading && results.map((p) => (
-              <div
-                key={p.id}
-                onClick={() => handlePick(p)}
-                style={{
-                  padding: '8px 12px',
-                  cursor: 'pointer',
-                  borderBottom: '1px solid var(--brd-2)',
-                  fontSize: 13,
-                }}
-                onMouseEnter={(e) => e.currentTarget.style.background = 'var(--bg-2)'}
-                onMouseLeave={(e) => e.currentTarget.style.background = ''}
-              >
-                <div style={{ fontWeight: 600 }}>
-                  {p.fio || '—'}
-                  {p.linked_count != null && (
-                    <span style={{ fontSize: 11, color: 'var(--t-3)', marginLeft: 6 }}>
-                      (привязано: {p.linked_count})
-                    </span>
-                  )}
-                </div>
-                <div style={{ fontSize: 11, color: 'var(--t-3)' }}>
-                  id={p.id}
-                  {p.phone ? ' · ' + p.phone : ''}
-                  {p.inn ? ' · ИНН ' + p.inn : ''}
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-
-      {/* Кнопка создания — только FIN_ROLES */}
-      {canCreate && !creating && (
-        <div style={{ marginTop: 8 }}>
-          <Btn size="sm" onClick={() => setCreating(true)}>+ Создать нового получателя</Btn>
-        </div>
-      )}
-
-      {/* Мини-форма создания */}
-      {creating && (
-        <div style={{
-          marginTop: 10,
-          padding: 12,
-          border: '1px dashed var(--brd-2)',
-          borderRadius: 8,
-          background: 'var(--bg-2)',
-        }}>
-          <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--t-3)', marginBottom: 8, textTransform: 'uppercase' }}>
-            + Новый получатель НПД
-          </div>
-          <div className="col gap-10">
-            <Field label="ФИО" required>
-              <TextInput
-                value={newForm.fio}
-                onChange={(v) => setNewForm((f) => ({ ...f, fio: v }))}
-                placeholder="Иванов Иван Иванович"
-              />
-            </Field>
-            <Field label="Телефон">
-              <PhoneInput
-                value={newForm.phone}
-                onChange={(v) => setNewForm((f) => ({ ...f, phone: v }))}
-              />
-            </Field>
-            <Field label="ИНН (опц.)" help="12 цифр">
-              <TextInput
-                value={newForm.inn}
-                onChange={(v) => setNewForm((f) => ({ ...f, inn: v.replace(/\D/g, '').slice(0, 12) }))}
-                placeholder="123456789012"
-                inputMode="numeric"
-              />
-            </Field>
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 4 }}>
-              <Btn size="sm" onClick={() => { setCreating(false); setNewForm({ fio: '', phone: '', inn: '' }); }}>
-                Отмена
-              </Btn>
-              <Btn size="sm" variant="primary" disabled={savingNew || !newForm.fio.trim()} onClick={submitCreate}>
-                {savingNew ? 'Создаём…' : 'Создать'}
-              </Btn>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

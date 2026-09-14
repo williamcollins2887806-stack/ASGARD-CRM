@@ -34,6 +34,7 @@ import AccessDenied from '@/blocks/AccessDenied';
 import { TextInput, SelectInput } from '@/inputs/Inputs';
 import { DrawerModal } from '@/modals/Drawer';
 import './object-map.css';
+import { formatMoney as fmtRub } from '@/lib/money';
 
 // RBAC синхронно с backend `src/routes/sites.js`. GET /api/sites — auth-only,
 // но POST/PUT/DELETE — `requireRoles(['ADMIN','PM','HEAD_PM','DIRECTOR_GEN'])`.
@@ -85,13 +86,6 @@ function getSiteStatus(site) {
   if (site.tenders_count > 0 && site.works_count === 0) return 'tender';
   if (site.works_count > 0) return 'done';
   return 'unknown';
-}
-
-function fmtRub(v) {
-  const n = Number(v || 0);
-  if (n >= 1e6) return (n / 1e6).toFixed(1) + ' млн ₽';
-  if (n >= 1e3) return (n / 1e3).toFixed(0) + ' тыс ₽';
-  return new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 0 }).format(n) + ' ₽';
 }
 
 function workStatusIcon(s) {

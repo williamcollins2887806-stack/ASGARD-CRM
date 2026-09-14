@@ -36,8 +36,8 @@ export function MCard({ children, className = '', ...rest }) {
   return <div className={'m-card ' + className} {...rest}>{children}</div>;
 }
 
-export function MBody({ children, style }) {
-  return <div className="m-body" style={style}>{children}</div>;
+export function MBody({ children, style, className = '' }) {
+  return <div className={'m-body ' + className} style={style}>{children}</div>;
 }
 
 export function MFoot({ children, align = 'end' }) {

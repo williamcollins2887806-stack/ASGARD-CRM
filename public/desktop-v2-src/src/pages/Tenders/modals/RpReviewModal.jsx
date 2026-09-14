@@ -6,8 +6,10 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import { MCard, MHead, MBody, Btn } from '@/modals/parts';
 import { toast } from '@/modals/Notifications';
 import {
-  loadRpReview, saveRpReview, inviteRpCollaborator, uploadRpEstimate, uploadRpReport, uploadRpTkp,
-  toDecisionRpReview, directorDecisionRpReview,
+  loadRpReview, saveRpReview, saveRpMyDraft, importRpDraft, mimirApplyRpReview,
+  inviteRpCollaborator, revokeRpCollaborator, uploadRpEstimate, uploadRpReport, uploadRpTkp,
+  uploadRpDraftFile,
+  toDecisionRpReview, directorDecisionRpReview, archiveRegistryRow,
   fmtRegistryDate
 } from '../api';
 import {
@@ -74,7 +76,7 @@ function HeaderBadges({ review, mode, isLocked }) {
         <span className="rp-review-badge" style={{ background: '#7c2d12', color: '#fdba74' }}>Согласование директора</span>
       )}
       {review?.director_review_status === 'approved' && (
-        <span className="rp-review-badge" style={{ background: '#14532d', color: '#86efac' }}>Одобрено директором</span>
+        <span className="rp-review-badge" style={{ background: 'var(--ok-bg)', color: 'var(--ok-t)' }}>Цена согласована</span>
       )}
       {review?.director_review_status === 'rejected' && (
         <span className="rp-review-badge reject">Отклонено директором</span>
@@ -239,6 +241,15 @@ export default function RpReviewModal({
   const [mode, setMode] = useState(modeProp);
   const [locked, setLocked] = useState(readOnly || role === 'viewer');
   const [analysisSnapshot, setAnalysisSnapshot] = useState(null);
+  const [isFinalOwner, setIsFinalOwner] = useState(true);
+  const [isRealFinalOwner, setIsRealFinalOwner] = useState(true);
+  const [canFinalize, setCanFinalize] = useState(true);
+  const [finalOwnerName, setFinalOwnerName] = useState('');
+  const [finalOwnerUserId, setFinalOwnerUserId] = useState(null);
+  const [myDraft, setMyDraft] = useState(null);
+  const [teamDrafts, setTeamDrafts] = useState([]);
+  const [teamSummary, setTeamSummary] = useState(null);
+  const [editingParticipantDraft, setEditingParticipantDraft] = useState(false);
 
   const patchRj = useCallback((patch) => {
     setReportJson((rj) => ({ ...rj, ...patch }));
@@ -256,6 +267,18 @@ export default function RpReviewModal({
       setReportFile(d.report_file || null);
       setTkpFile(d.tkp_file || null);
       setThreadUnread(d.thread_unread || 0);
+      setIsFinalOwner(d.is_final_owner !== false);
+      setIsRealFinalOwner(
+        d.is_real_final_owner != null
+          ? !!d.is_real_final_owner
+          : (!d.final_owner_user_id || Number(d.final_owner_user_id) === Number(JSON.parse(localStorage.getItem('asgard_user') || '{}').id || 0))
+      );
+      setCanFinalize(!!d.can_finalize);
+      setFinalOwnerName(d.final_owner_name || '');
+      setFinalOwnerUserId(d.final_owner_user_id != null ? Number(d.final_owner_user_id) : null);
+      setMyDraft(d.my_draft || null);
+      setTeamDrafts(d.team_drafts || []);
+      setTeamSummary(d.team_summary || null);
       const snap = getAnalysisSnapshot(rev?.report_json, rev, d.analysis_snapshot);
       setAnalysisSnapshot(snap);
       let dec = rev?.decision && rev.decision !== 'pending' ? rev.decision : 'submit';
@@ -266,14 +289,24 @@ export default function RpReviewModal({
       setDecision(dec);
       setReportKind(rev?.report_kind || (dec === 'reject' ? 'reject' : 'work'));
       setMode(m);
-      setReportJson(parseRj(rev?.report_json, m));
-      setWorkPrice(rev?.work_price ?? '');
-      setMissingFlags(Array.isArray(rev?.missing_info_flags) ? [...rev.missing_info_flags] : []);
       const isLocked = readOnly || isViewer || !!rev?.is_final;
       setLocked(isLocked);
-    }).catch((e) => toast(e.message, 'err'))
+      const asCollab = !isLocked && !isTo && !isDirector && !isViewer && d.is_final_owner === false;
+      setEditingParticipantDraft(asCollab);
+      if (asCollab && d.my_draft?.draft_json) {
+        setReportJson(parseRj(d.my_draft.draft_json, m));
+        if (d.my_draft.estimate_file) setEstimateFile(d.my_draft.estimate_file);
+        if (d.my_draft.report_file) setReportFile(d.my_draft.report_file);
+        if (d.my_draft.tkp_file) setTkpFile(d.my_draft.tkp_file);
+        if (d.my_draft.draft_json.work_price != null) setWorkPrice(d.my_draft.draft_json.work_price);
+      } else {
+        setReportJson(parseRj(rev?.report_json, m));
+        setWorkPrice(rev?.work_price ?? '');
+      }
+      setMissingFlags(Array.isArray(rev?.missing_info_flags) ? [...rev.missing_info_flags] : []);
+    }).catch((e) => toast(e.message || 'Сбой', null, 'err'))
       .finally(() => setLoading(false));
-  }, [tender?.id, modeProp, readOnly, isTo]);
+  }, [tender?.id, modeProp, readOnly, isTo, isDirector, isViewer]);
 
   const toggleSec = (id) => setCollapsed((c) => ({ ...c, [id]: !c[id] }));
 
@@ -291,88 +324,248 @@ export default function RpReviewModal({
     ));
   };
 
-  const collectPayload = (finalize) => ({
-    decision,
-    report_kind: reportKind,
-    report_json: { ...reportJson, mode },
-    missing_info_flags: missingFlags,
-    work_price: workPrice ? Number(workPrice) : null,
-    finalize: !!finalize
-  });
+  const collectPayload = (finalize, overrideAsAdmin) => {
+    const body = {
+      decision,
+      report_kind: reportKind,
+      report_json: { ...reportJson, mode },
+      missing_info_flags: missingFlags,
+      work_price: workPrice ? Number(workPrice) : null,
+      finalize: !!finalize,
+      expected_updated_at: review?.updated_at || null
+    };
+    if (overrideAsAdmin) body.override_as_admin = true;
+    return body;
+  };
 
-  const save = (finalize = false) => {
-    if (finalize && decision !== 'submit' && decision !== 'reject') {
-      toast('Выберите решение: Подаём или Не подаём', 'err');
+  const confirmAdminOverrideIfNeeded = (finalize) => {
+    let uid = 0;
+    try { uid = Number(JSON.parse(localStorage.getItem('asgard_user') || '{}').id) || 0; } catch { /* ignore */ }
+    const ownerId = finalOwnerUserId ? Number(finalOwnerUserId) : null;
+    if (!ownerId || !uid || ownerId === uid || isRealFinalOwner || !isFinalOwner) {
+      return { ok: true, override: false };
+    }
+    const who = finalOwnerName || `#${ownerId}`;
+    const msg = finalize
+      ? `Вы не хозяин фазы (${who}). Закрыть финал от его имени?`
+      : `Вы не хозяин фазы (${who}). Перезаписать финальный отчёт?`;
+    return { ok: window.confirm(msg), override: true };
+  };
+
+  const save = async (finalize = false, draftReady = false) => {
+    if (editingParticipantDraft) {
+      try {
+        const d = await saveRpMyDraft(tender.id, {
+          phase: mode === 'calc' ? 'calc' : 'analysis',
+          draft_json: reportJson,
+          status: draftReady ? 'ready' : 'working',
+          expected_updated_at: myDraft?.updated_at
+        });
+        setMyDraft(d.draft || myDraft);
+        toast(draftReady ? 'Готово — ответственный РП уведомлён' : 'Черновик сохранён', null, 'ok');
+        onSaved?.();
+      } catch (e) {
+        toast(e.message || 'Ошибка сохранения', null, 'err');
+      }
       return;
+    }
+    if (finalize && decision !== 'submit' && decision !== 'reject') {
+      toast('Выберите решение: Подаём или Не подаём', null, 'err');
+      return;
+    }
+    if (finalize && mode === 'analysis' && decision === 'submit') {
+      if (!String(reportJson.summary || '').trim()) {
+        toast('Для закрытия укажите «Суть для ТО»', null, 'err');
+        return;
+      }
+      if (!reportJson.feasibility) {
+        toast('Укажите выполнимость (да / условно / нет)', null, 'err');
+        return;
+      }
+    }
+    if (finalize && mode === 'analysis' && decision === 'reject') {
+      const points = reportJson.points || [];
+      const hasReason = points.some((p) => String(p.point || '').trim() || String(p.reason || '').trim())
+        || String(reportJson.reject_preset || '').trim();
+      if (!hasReason) {
+        toast('Укажите причину «Не подаём» (категория или пункт)', null, 'err');
+        return;
+      }
     }
     if (finalize && mode === 'calc' && decision === 'submit' && !tkpFile) {
-      toast('Приложите ТКП к отчёту просчёта', 'err');
+      toast('Приложите ТКП к отчёту просчёта', null, 'err');
       return;
     }
-    saveRpReview(tender.id, collectPayload(finalize)).then((d) => {
+    if (finalize) {
+      const isAnalysis = mode === 'analysis';
+      const msg = isAnalysis
+        ? 'Закрыть анализ?\n\nПосле закрытия вы больше не сможете его править — анализ уйдёт ТО.\n\nЧтобы просто выйти со страницы — нажмите крестик, не эту кнопку.'
+        : 'Закрыть отчёт?\n\nПосле закрытия вы больше не сможете его править.\n\nЧтобы просто выйти — нажмите крестик, не эту кнопку.';
+      if (!window.confirm(msg)) return;
+    }
+    const ov = confirmAdminOverrideIfNeeded(finalize);
+    if (!ov.ok) return;
+    saveRpReview(tender.id, collectPayload(finalize, ov.override)).then((d) => {
       setReview(d.review);
-      toast(finalize ? (mode === 'analysis' ? 'Анализ закрыт' : 'Отчёт закрыт') : 'Сохранено', 'ok');
+      toast(finalize ? (mode === 'analysis' ? 'Анализ закрыт' : 'Отчёт закрыт') : 'Сохранено', null, 'ok');
       onSaved?.();
       if (finalize) onClose?.();
-    }).catch((e) => toast(e.message, 'err'));
+    }).catch((e) => {
+      const msg = e.message || 'Ошибка сохранения';
+      toast(msg, null, 'err');
+      if (/изменился|REVIEW_CONFLICT|конфликт/i.test(msg)) {
+        loadRpReview(tender.id).then((d) => {
+          if (d.review) setReview(d.review);
+          if (d.logs) setLogs(d.logs);
+          toast('Форма обновлена с сервера — проверьте и сохраните снова', null, 'ok');
+        }).catch(() => {});
+      }
+    });
+  };
+
+  const openMimir = () => {
+    if (typeof window !== 'undefined' && window.AsgardMimirQuick?.openForRpReview) {
+      window.AsgardMimirQuick.openForRpReview({
+        tenderId: tender.id,
+        phase: mode === 'calc' ? 'calc' : 'analysis',
+        tender,
+        isFinalOwner: isFinalOwner && !editingParticipantDraft,
+        onApplied: (result) => {
+          if (result.field_patch) patchRj(result.field_patch);
+          if (result.work_price != null) setWorkPrice(result.work_price);
+          if (result.estimate_file && !editingParticipantDraft) setEstimateFile(result.estimate_file);
+          if (result.report_file && !editingParticipantDraft) setReportFile(result.report_file);
+          if (result.draft) setMyDraft(result.draft);
+          if (result.review) {
+            setReview(result.review);
+            setReportJson(parseRj(result.review.report_json, mode));
+            setWorkPrice(result.review.work_price ?? '');
+          }
+          toast('Мимир применён к форме', null, 'ok');
+          onSaved?.();
+        }
+      });
+      return;
+    }
+    toast('Мимир-Quick загружается из shell — обновите страницу или откройте через vanilla', null, 'err');
   };
 
   const invite = () => {
     if (!invitePm) return;
     inviteRpCollaborator(tender.id, Number(invitePm)).then(() => {
-      toast('РП приглашён', 'ok');
+      toast('РП привлечён к совместной работе', null, 'ok');
       return loadRpReview(tender.id);
-    }).then((d) => setCollabs(d.collaborators || []))
-      .catch((e) => toast(e.message, 'err'));
+    }).then((d) => {
+      setCollabs(d.collaborators || []);
+      setTeamDrafts(d.team_drafts || []);
+      setTeamSummary(d.team_summary || null);
+    }).catch((e) => toast(e.message || 'Сбой', null, 'err'));
+  };
+
+  const revokeCollab = (pmId) => {
+    if (!window.confirm('Отозвать привлечение РП?')) return;
+    revokeRpCollaborator(tender.id, pmId).then(() => loadRpReview(tender.id)).then((d) => {
+      setCollabs(d.collaborators || []);
+      setTeamDrafts(d.team_drafts || []);
+      toast('Привлечение отозвано', null, 'ok');
+    }).catch((e) => toast(e.message || 'Сбой', null, 'err'));
+  };
+
+  const importDraft = (draftId, includeFiles) => {
+    const ok = window.confirm(
+      includeFiles
+        ? 'Заменить поля финала и вложения черновиком коллеги?'
+        : 'Заменить только поля финала черновиком коллеги?'
+    );
+    if (!ok) return;
+    importRpDraft(tender.id, { draft_id: draftId, include_files: includeFiles }).then(async () => {
+      const full = await loadRpReview(tender.id);
+      setReview(full.review);
+      setReportJson(parseRj(full.review?.report_json, mode));
+      setWorkPrice(full.review?.work_price ?? '');
+      setEstimateFile(full.estimate_file || null);
+      setReportFile(full.report_file || null);
+      setTkpFile(full.tkp_file || null);
+      setTeamDrafts(full.team_drafts || []);
+      setTab('report');
+      toast('Черновик взят в финал', null, 'ok');
+    }).catch((e) => toast(e.message || 'Сбой', null, 'err'));
   };
 
   const onEstimate = (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    uploadRpEstimate(tender.id, file).then((d) => {
-      setEstimateFile(d.estimate_file || null);
-      toast('Смета прикреплена', 'ok');
-    }).catch((err) => toast(err.message, 'err'));
+    const phase = mode === 'calc' ? 'calc' : 'analysis';
+    const p = editingParticipantDraft
+      ? uploadRpDraftFile(tender.id, 'estimate', file, phase)
+      : uploadRpEstimate(tender.id, file);
+    p.then((d) => {
+      if (editingParticipantDraft && d.draft) {
+        setMyDraft(d.draft);
+        setEstimateFile(d.draft.estimate_file || d.file || null);
+      } else {
+        setEstimateFile(d.estimate_file || null);
+      }
+      toast('Смета прикреплена', null, 'ok');
+    }).catch((err) => toast(err.message, null, 'err'));
   };
 
   const onReport = (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    uploadRpReport(tender.id, file).then((d) => {
-      setReportFile(d.report_file || null);
-      toast('Отчёт прикреплён', 'ok');
-    }).catch((err) => toast(err.message, 'err'));
+    const phase = mode === 'calc' ? 'calc' : 'analysis';
+    const p = editingParticipantDraft
+      ? uploadRpDraftFile(tender.id, 'report', file, phase)
+      : uploadRpReport(tender.id, file);
+    p.then((d) => {
+      if (editingParticipantDraft && d.draft) {
+        setMyDraft(d.draft);
+        setReportFile(d.draft.report_file || d.file || null);
+      } else {
+        setReportFile(d.report_file || null);
+      }
+      toast('Отчёт прикреплён', null, 'ok');
+    }).catch((err) => toast(err.message, null, 'err'));
   };
 
   const onTkp = (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    uploadRpTkp(tender.id, file).then((d) => {
-      setTkpFile(d.tkp_file || null);
-      toast('ТКП прикреплено', 'ok');
-    }).catch((err) => toast(err.message, 'err'));
+    const phase = mode === 'calc' ? 'calc' : 'analysis';
+    const p = editingParticipantDraft
+      ? uploadRpDraftFile(tender.id, 'tkp', file, phase)
+      : uploadRpTkp(tender.id, file);
+    p.then((d) => {
+      if (editingParticipantDraft && d.draft) {
+        setMyDraft(d.draft);
+        setTkpFile(d.draft.tkp_file || d.file || null);
+      } else {
+        setTkpFile(d.tkp_file || null);
+      }
+      toast('ТКП прикреплено', null, 'ok');
+    }).catch((err) => toast(err.message, null, 'err'));
   };
 
   const directorDecision = (action) => {
     const comment = dirComment.trim();
     if (action === 'reject' && !comment) {
-      toast('Укажите причину отказа', 'err');
+      toast('Укажите причину отказа', null, 'err');
       return;
     }
     directorDecisionRpReview(tender.id, {
       action,
       comment: comment || undefined
     }).then(() => {
-      toast(action === 'submit' ? 'Одобрено — ТО может подавать' : 'Тендер отклонён', 'ok');
+      toast(action === 'submit' ? 'Одобрено — ТО может подавать' : 'Тендер отклонён', null, 'ok');
       onSaved?.();
       onClose?.();
-    }).catch((e) => toast(e.message, 'err'));
+    }).catch((e) => toast(e.message || 'Сбой', null, 'err'));
   };
 
   const toDecision = (action) => {
     const comment = toComment.trim();
     if ((action === 'rework' || action === 'reject') && !comment) {
-      toast(action === 'rework' ? 'Укажите комментарий — что доработать' : 'Укажите причину отклонения', 'err');
+      toast(action === 'rework' ? 'Укажите комментарий — что доработать' : 'Укажите причину отклонения', null, 'err');
       return;
     }
     const body = action === 'accept'
@@ -384,7 +577,15 @@ export default function RpReviewModal({
       toast(action === 'accept' ? 'Принято — статус «Готовим»' : (action === 'rework' ? 'Отправлено на доработку' : 'Тендер отклонён'), 'ok');
       onSaved?.();
       onClose?.();
-    }).catch((e) => toast(e.message, 'err'));
+    }).catch((e) => toast(e.message || 'Сбой', null, 'err'));
+  };
+
+  const archiveFromReject = () => {
+    archiveRegistryRow(tender.id, 'РП: не подаём — подтверждено ТО').then(() => {
+      toast('Тендер в архиве', null, 'ok');
+      onSaved?.();
+      onClose?.();
+    }).catch((e) => toast(e.message || 'Сбой', null, 'err'));
   };
 
   const pr = useMemo(
@@ -399,8 +600,10 @@ export default function RpReviewModal({
 
   const showToBar = isTo && !isViewer && review?.is_final && review.decision !== 'reject'
     && review?.director_review_status !== 'pending';
+  const showRejectArchiveBar = isTo && !isViewer && review?.is_final && review.decision === 'reject'
+    && review?.director_review_status !== 'pending';
   const showDirectorBar = isDirector && review?.director_review_status === 'pending';
-  const showFooter = !showToBar && !showDirectorBar;
+  const showFooter = !showToBar && !showRejectArchiveBar && !showDirectorBar;
   const hasSnap = mode === 'calc' && analysisSnapshot;
   const calcNoSnap = mode === 'calc' && !analysisSnapshot && !locked;
 
@@ -523,21 +726,23 @@ export default function RpReviewModal({
                 </p>
                 <div className="rp-review-field-row">
                   <div className="rp-review-field">
-                    <label>Ориентир цены от, ₽ (без НДС)</label>
+                    <label>Ориентир цены от (без НДС)</label>
                     <input
                       className="inp"
-                      type="number"
+                      type="text"
                       value={reportJson.price_range_min ?? ''}
-                      onChange={(e) => patchRj({ price_range_min: e.target.value ? Number(e.target.value) : null })}
+                      onChange={(e) => patchRj({ price_range_min: e.target.value || null })}
+                      placeholder="например: 5 млн или по КП"
                     />
                   </div>
                   <div className="rp-review-field">
-                    <label>до, ₽ (без НДС)</label>
+                    <label>до (без НДС)</label>
                     <input
                       className="inp"
-                      type="number"
+                      type="text"
                       value={reportJson.price_range_max ?? ''}
-                      onChange={(e) => patchRj({ price_range_max: e.target.value ? Number(e.target.value) : null })}
+                      onChange={(e) => patchRj({ price_range_max: e.target.value || null })}
+                      placeholder="цифры или текст"
                     />
                   </div>
                 </div>
@@ -822,6 +1027,25 @@ export default function RpReviewModal({
             <HeaderBadges review={review} mode={mode} isLocked={locked} />
             <p className="rp-review-lead">{leadSubtitle(tender)}</p>
             <MetaBar tender={tender} review={review} />
+            {!locked && !isTo && !isDirector && (
+              <>
+                {editingParticipantDraft ? (
+                  <div className="alert" style={{ margin: '0 0 12px', fontSize: 13 }}>
+                    Вы готовите <b>личный черновик</b> для {finalOwnerName || 'хозяина фазы'}.
+                    Закрыть анализ/отчёт может только он.
+                  </div>
+                ) : null}
+                {isFinalOwner && teamSummary && (teamSummary.drafts_count > 0 || collabs.length > 0) ? (
+                  <div className="muted" style={{ margin: '0 0 10px', fontSize: 12 }}>
+                    Команда: {collabs.length} привлечённых · черновиков: {teamSummary.drafts_count || 0}
+                    {teamSummary.ready_count ? ` · готовых: ${teamSummary.ready_count}` : ''} · вкладка «Команда»
+                  </div>
+                ) : null}
+                <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
+                  <button type="button" className="btn mini" onClick={openMimir}>🚀 Просчёт Мимир</button>
+                </div>
+              </>
+            )}
             <TenderToDocsBlock tenderId={tender.id} />
 
             <div className="rp-review-tabs">
@@ -855,43 +1079,82 @@ export default function RpReviewModal({
                 )}
               </div>
             )}
-            {tab === 'history' && (
-              logs.length ? (
-                <ul className="rp-review-timeline">
-                  {logs.map((l) => {
-                    let extra = '';
-                    if (l.payload_json) {
-                      try {
-                        const p = typeof l.payload_json === 'string' ? JSON.parse(l.payload_json) : l.payload_json;
-                        if (p.comment) extra = ' — ' + p.comment;
-                      } catch { /* ignore */ }
-                    }
-                    return (
-                      <li key={l.id || l.created_at}>
-                        <div className="tl-time">
-                          {new Date(l.created_at).toLocaleString('ru-RU')} · {l.actor_name || '—'}
-                        </div>
-                        <div className="tl-action">{(LOG_LABELS[l.action] || l.action) + extra}</div>
-                      </li>
-                    );
-                  })}
-                </ul>
-              ) : (
-                <p className="muted">Пока нет действий</p>
-              )
-            )}
+            {tab === 'history' && (() => {
+              const TO_FINAL_ACTIONS = new Set([
+                'finalize', 'finalize_analysis', 'finalize_reject',
+                'attach_estimate', 'attach_report', 'attach_tkp',
+                'to_accept', 'to_reject', 'to_rework',
+                'invite_collaborator', 'revoke_collaborator'
+              ]);
+              let visible = logs;
+              let hiddenNote = null;
+              if (isTo && !isDirector) {
+                const compact = logs.filter((l) => TO_FINAL_ACTIONS.has(l.action));
+                const hidden = logs.length - compact.length;
+                visible = compact;
+                if (hidden > 0) {
+                  hiddenNote = `Показаны финальные действия для ТО. В памяти тендера ещё ${hidden} записей черновиков/Мимира (доступны РП и админам).`;
+                }
+              }
+              if (!visible.length) {
+                return (
+                  <>
+                    {hiddenNote ? <p className="muted" style={{ fontSize: 12, margin: '0 0 8px' }}>{hiddenNote}</p> : null}
+                    <p className="muted">Пока нет действий</p>
+                  </>
+                );
+              }
+              return (
+                <>
+                  {hiddenNote ? <p className="muted" style={{ fontSize: 12, margin: '0 0 8px' }}>{hiddenNote}</p> : null}
+                  <ul className="rp-review-timeline">
+                    {visible.map((l) => {
+                      let extra = '';
+                      if (l.payload_json) {
+                        try {
+                          const p = typeof l.payload_json === 'string' ? JSON.parse(l.payload_json) : l.payload_json;
+                          if (p.comment) extra = ' — ' + p.comment;
+                          if (l.action === 'mimir_apply' && p.session_uid) extra += ` · сессия ${String(p.session_uid).slice(0, 8)}`;
+                          if (l.action === 'import_draft_to_final' && p.author_user_id) extra += ` · от РП #${p.author_user_id}`;
+                        } catch { /* ignore */ }
+                      }
+                      return (
+                        <li key={l.id || l.created_at}>
+                          <div className="tl-time">
+                            {new Date(l.created_at).toLocaleString('ru-RU')} · {l.actor_name || '—'}
+                          </div>
+                          <div className="tl-action">{(LOG_LABELS[l.action] || l.action) + extra}</div>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </>
+              );
+            })()}
             {tab === 'team' && (
               <>
+                {finalOwnerName ? (
+                  <p className="muted" style={{ margin: '0 0 10px', fontSize: 12 }}>
+                    Хозяин финала: <b>{finalOwnerName}</b>
+                  </p>
+                ) : null}
                 {collabs.length ? (
-                  <ul style={{ paddingLeft: 18, margin: '0 0 12px' }}>
-                    {collabs.map((c) => <li key={c.id || c.pm_user_id}>{c.pm_name}</li>)}
+                  <ul style={{ paddingLeft: 0, margin: '0 0 12px', listStyle: 'none' }}>
+                    {collabs.map((c) => (
+                      <li key={c.id || c.pm_user_id} style={{ display: 'flex', gap: 8, alignItems: 'center', margin: '6px 0' }}>
+                        <span style={{ flex: 1 }}>{c.pm_name}</span>
+                        {!locked && isFinalOwner ? (
+                          <button type="button" className="btn mini ghost" onClick={() => revokeCollab(c.pm_user_id)}>Отозвать</button>
+                        ) : null}
+                      </li>
+                    ))}
                   </ul>
                 ) : (
-                  <p className="muted" style={{ margin: '0 0 12px' }}>Нет приглашённых РП</p>
+                  <p className="muted" style={{ margin: '0 0 12px' }}>Нет привлечённых РП — параллельная работа, не перевод тендера</p>
                 )}
-                {!locked && (
+                {!locked && isFinalOwner && (
                   <div className="rp-review-field">
-                    <label>Привлечь РП</label>
+                    <label>Привлечь РП к совместному {mode === 'calc' ? 'просчёту' : 'анализу'}</label>
                     <div style={{ display: 'flex', gap: 8 }}>
                       <select className="inp" style={{ flex: 1 }} value={invitePm} onChange={(e) => setInvitePm(e.target.value)}>
                         <option value="">— выберите —</option>
@@ -901,6 +1164,29 @@ export default function RpReviewModal({
                     </div>
                   </div>
                 )}
+                <h4 style={{ margin: '16px 0 8px', fontSize: 13 }}>Черновики команды</h4>
+                {!teamDrafts.length ? (
+                  <p className="muted" style={{ margin: 0 }}>Пока нет чужих черновиков</p>
+                ) : teamDrafts.map((d) => {
+                  const dj = d.draft_json || {};
+                  return (
+                    <div key={d.id} className="rp-review-summary-card" style={{ marginBottom: 10 }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
+                        <strong>{d.author_name || 'РП'}{d.status === 'ready' ? ' · готово' : ''}</strong>
+                        <span className="muted" style={{ fontSize: 11 }}>
+                          {d.updated_at ? new Date(d.updated_at).toLocaleString('ru-RU') : ''}
+                        </span>
+                      </div>
+                      {dj.summary ? <div style={{ fontSize: 12, marginTop: 6 }}>{String(dj.summary).slice(0, 220)}</div> : null}
+                      {isFinalOwner && !locked ? (
+                        <div style={{ marginTop: 8, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                          <button type="button" className="btn mini" onClick={() => importDraft(d.id, true)}>Взять в финал (поля+файлы)</button>
+                          <button type="button" className="btn mini ghost" onClick={() => importDraft(d.id, false)}>Только поля</button>
+                        </div>
+                      ) : null}
+                    </div>
+                  );
+                })}
               </>
             )}
             {tab === 'thread' && (
@@ -914,7 +1200,7 @@ export default function RpReviewModal({
               <div className="rp-review-to-bar" style={{ borderColor: '#c2410c' }}>
                 <h4>Решение директора</h4>
                 <p className="muted" style={{ fontSize: 12, margin: '0 0 10px' }}>
-                  Просчёт РП свыше 5 млн ₽ без НДС. Подтвердите подачу или отклоните тендер.
+                  Просчёт РП от 10 млн ₽ без НДС. Подтвердите подачу или отклоните тендер.
                 </p>
                 <div className="rp-review-to-comment">
                   <label className="muted" style={{ fontSize: 12, display: 'block', marginBottom: 4 }}>
@@ -933,6 +1219,33 @@ export default function RpReviewModal({
                   <Btn variant="ghost" style={{ color: '#f87171' }} onClick={() => directorDecision('reject')}>
                     Не подавать
                   </Btn>
+                </div>
+              </div>
+            )}
+
+            {showRejectArchiveBar && (
+              <div className="rp-review-to-bar rp-review-to-bar-reject">
+                <h4>РП рекомендует: Не подаём</h4>
+                <p className="muted" style={{ fontSize: 12, margin: '0 0 10px' }}>
+                  Тендер остаётся в активном реестре. Подтвердите архив или верните отчёт РП на доработку.
+                </p>
+                <div className="rp-review-to-comment">
+                  <label className="muted" style={{ fontSize: 12, display: 'block', marginBottom: 4 }}>
+                    Комментарий (для «На доработку» — обязателен)
+                  </label>
+                  <textarea
+                    className="inp"
+                    rows={2}
+                    placeholder="Комментарий…"
+                    value={toComment}
+                    onChange={(e) => setToComment(e.target.value)}
+                  />
+                </div>
+                <div className="rp-review-to-actions">
+                  <button type="button" className="btn rp-to-archive-btn" onClick={archiveFromReject}>
+                    В архив
+                  </button>
+                  <Btn variant="ghost" onClick={() => toDecision('rework')}>На доработку</Btn>
                 </div>
               </div>
             )}
@@ -970,7 +1283,13 @@ export default function RpReviewModal({
                   <>
                     <span className="spacer" />
                     <Btn variant="ghost" onClick={() => save(false)}>Сохранить черновик</Btn>
-                    <Btn onClick={() => save(true)}>{mode === 'analysis' ? 'Закрыть анализ' : 'Закрыть отчёт'}</Btn>
+                    {editingParticipantDraft ? (
+                      <Btn variant="primary" onClick={() => save(false, true)}>Отметить готовым</Btn>
+                    ) : canFinalize ? (
+                      <Btn variant="primary" onClick={() => save(true)}>
+                        {mode === 'analysis' ? 'Закрыть анализ' : 'Закрыть отчёт'}
+                      </Btn>
+                    ) : null}
                   </>
                 )}
               </div>

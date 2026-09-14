@@ -145,7 +145,7 @@ export default function DetailModal({ requestId, onChanged }) {
   }
 
   const isLoan = req.type === 'loan';
-  const canReceive    = req.status === 'approved' || req.status === 'money_issued';
+  const canReceive    = req.status === 'money_issued';
   const canAddExpense = !isLoan && ['received', 'reporting'].includes(req.status);
   const canSubmitRep  = !isLoan && ['received', 'reporting'].includes(req.status) && (req.expenses?.length > 0);
   const canReturn     = ['received', 'reporting'].includes(req.status) && (req.balance?.remainder || 0) > 0;
@@ -199,6 +199,11 @@ export default function DetailModal({ requestId, onChanged }) {
             <div className="cash-detail-item mt-10" >
               <span className="label">Цель</span><span className="value">{req.purpose || '—'}</span>
             </div>
+            {req.initiated_by && Number(req.initiated_by) !== Number(req.user_id) && req.initiated_by_name && (
+              <div className="cash-detail-item mt-10">
+                <span className="label">Запросил</span><span className="value">{req.initiated_by_name}</span>
+              </div>
+            )}
             {req.cover_letter && (
               <div className="cash-detail-item mt-10" >
                 <span className="label">Письмо</span><span className="value">{req.cover_letter}</span>
@@ -263,6 +268,17 @@ export default function DetailModal({ requestId, onChanged }) {
                 Возвращено: {fmtMoney(req.balance.returned)} | <b>Остаток: {fmtMoney(balanceVal)}</b>
               </>
             )}
+          </div>
+        )}
+
+        {canReceive && (
+          <div className="cash-alert warning">
+            Сначала подтвердите получение. Пока не подтвердите — чек, отчёт и возврат недоступны, хотя сумма уже на балансе.
+          </div>
+        )}
+        {req.returns?.some((r) => !r.confirmed_at) && (
+          <div className="cash-alert warning">
+            Возврат ожидает подтверждения кассы. Пока не подтвердят — сумма остаётся на вашем балансе.
           </div>
         )}
 

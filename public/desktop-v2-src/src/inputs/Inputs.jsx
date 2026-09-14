@@ -25,6 +25,27 @@
  */
 import { useState, useRef, useEffect, cloneElement, isValidElement } from 'react';
 import { Popover } from './Popover';
+import { formatMoney } from '@/lib/money';
+import { parseFlexibleDate } from '@/lib/birthDate';
+import {
+  formatRuPhoneDisplay,
+  normalizeRuPhoneDigits,
+  formatSnilsDisplay,
+  formatPassportCodeDisplay,
+  digitsOf,
+} from '@/lib/ruMasks';
+
+/** Локальный YYYY-MM-DD без UTC-сдвига (MSK и др.) */
+function localDateISO(d = new Date()) {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+function fmtRuDate(d) {
+  return d ? d.toLocaleDateString('ru-RU') : '';
+}
 
 /* ─── Базовый wrapper для поля ─── */
 export function Field({ label, required, help, error, children, htmlFor, id }) {
@@ -131,7 +152,7 @@ export function NumberInput({ value, onChange, min, max, step = 1, ...rest }) {
 
 /* Money — авто-форматирование */
 export function MoneyInput({ value, onChange, currency = '₽', ...rest }) {
-  const formatted = value ? Number(value).toLocaleString('ru-RU') : '';
+  const formatted = value ? formatMoney(Number(value), { noCurrency: true }) : '';
   return (
     <div className="inp-wrap">
       <span className="inp-icon">💰</span>
@@ -199,26 +220,51 @@ function innChecksumOk(d) {
   return false;
 }
 
-/* Phone — маска +7 */
+/* Phone — маска +7(916)-061-48-09; хранит digits */
 export function PhoneInput({ value, onChange, ...rest }) {
-  const fmt = (v) => {
-    const d = v.replace(/\D/g, '').slice(0, 11);
-    if (d.length === 0) return '';
-    if (d.length <= 1) return '+7 ';
-    if (d.length <= 4) return `+7 (${d.slice(1)}`;
-    if (d.length <= 7) return `+7 (${d.slice(1, 4)}) ${d.slice(4)}`;
-    if (d.length <= 9) return `+7 (${d.slice(1, 4)}) ${d.slice(4, 7)}-${d.slice(7)}`;
-    return `+7 (${d.slice(1, 4)}) ${d.slice(4, 7)}-${d.slice(7, 9)}-${d.slice(9)}`;
-  };
   return (
     <div className="inp-wrap">
       <span className="inp-icon">📞</span>
       <input
         type="tel"
         className="inp-text"
-        value={fmt(value || '')}
-        onChange={(e) => onChange?.(e.target.value.replace(/\D/g, ''))}
-        placeholder="+7 (___) ___-__-__"
+        value={formatRuPhoneDisplay(value || '')}
+        onChange={(e) => onChange?.(normalizeRuPhoneDigits(e.target.value))}
+        placeholder="+7(___)-___-__-__"
+        {...rest}
+      />
+    </div>
+  );
+}
+
+/** СНИЛС XXX-XXX-XXX XX; хранит digits */
+export function SnilsInput({ value, onChange, ...rest }) {
+  return (
+    <div className="inp-wrap">
+      <input
+        type="text"
+        className="inp-text"
+        inputMode="numeric"
+        value={formatSnilsDisplay(value || '')}
+        onChange={(e) => onChange?.(digitsOf(e.target.value).slice(0, 11))}
+        placeholder="000-000-000 00"
+        {...rest}
+      />
+    </div>
+  );
+}
+
+/** Код подразделения XXX-XXX */
+export function PassportCodeInput({ value, onChange, ...rest }) {
+  return (
+    <div className="inp-wrap">
+      <input
+        type="text"
+        className="inp-text"
+        inputMode="numeric"
+        value={formatPassportCodeDisplay(value || '')}
+        onChange={(e) => onChange?.(digitsOf(e.target.value).slice(0, 6))}
+        placeholder="000-000"
         {...rest}
       />
     </div>
@@ -380,13 +426,23 @@ export function Combobox({ value, onChange, options = [], placeholder = 'Нач�
           className="inp-text"
           value={open ? q : display}
           placeholder={placeholder}
-          onFocus={() => { setOpen(true); setQ(''); }}
-          onChange={(e) => { setQ(e.target.value); if (allowFreeText) onChange?.(e.target.value, null); }}
+          onFocus={() => {
+            setOpen(true);
+            // Для free-text (заказчик ТКП) — оставить текущее значение для дописывания/поиска
+            setQ(allowFreeText && value ? String(value) : '');
+          }}
+          onChange={(e) => {
+            const next = e.target.value;
+            setQ(next);
+            if (!open) setOpen(true);
+            if (allowFreeText) onChange?.(next, null);
+          }}
           onKeyDown={onKeyDown}
           aria-autocomplete="list"
           aria-controls={listIdRef.current}
           aria-activedescendant={activeOptId}
           aria-label={ariaLabel || placeholder}
+          autoComplete="off"
         />
         <span className="inp-suffix" aria-hidden="true">▾</span>
       </div>
@@ -604,14 +660,28 @@ export function Slider({ value, onChange, min = 0, max = 100, step = 1, showValu
 const MONTHS_RU = ['Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь', 'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь'];
 const WEEK_RU = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
 
-export function DatePicker({ value, onChange, placeholder = 'дд.мм.гггг' }) {
+export function DatePicker({ value, onChange, placeholder = 'дд.мм.гггг', disabled = false }) {
   const [open, setOpen] = useState(false);
   // Защита от value=null → new Date(null) = 1970-01-01
-  const safeViewDate = (v) => v ? new Date(v) : new Date();
+  const safeViewDate = (v) => {
+    const iso = parseFlexibleDate(v);
+    return iso ? new Date(iso + 'T12:00:00') : new Date();
+  };
   const [view, setView] = useState(safeViewDate(value));
+  const [draft, setDraft] = useState(() => {
+    const iso = parseFlexibleDate(value);
+    return iso ? fmtRuDate(new Date(iso + 'T12:00:00')) : '';
+  });
+  const [editing, setEditing] = useState(false);
   const wrap = useRef(null);
   // При сбросе value на null — возвращаем view на текущий месяц при следующем открытии
   useEffect(() => { if (!value && open) setView(new Date()); }, [value, open]);
+  // Синхронизация отображения, когда value меняется извне и поле не в фокусе
+  useEffect(() => {
+    if (editing) return;
+    const iso = parseFlexibleDate(value);
+    setDraft(iso ? fmtRuDate(new Date(iso + 'T12:00:00')) : '');
+  }, [value, editing]);
 
   const today = new Date();
   const y = view.getFullYear(); const m = view.getMonth();
@@ -623,24 +693,70 @@ export function DatePicker({ value, onChange, placeholder = 'дд.мм.гггг'
   for (let d = 1; d <= lastDay.getDate(); d++) cells.push(new Date(y, m, d));
   while (cells.length % 7) cells.push(null);
 
-  const fmt = (d) => d ? d.toLocaleDateString('ru-RU') : '';
   const same = (a, b) => a && b && a.toDateString() === b.toDateString();
-  const sel = value ? new Date(value) : null;
+  const isoValue = parseFlexibleDate(value);
+  const sel = isoValue ? new Date(isoValue + 'T12:00:00') : null;
+
+  const commitText = (text) => {
+    const t = String(text || '').trim();
+    if (!t) {
+      onChange?.(null);
+      setDraft('');
+      return;
+    }
+    const iso = parseFlexibleDate(t);
+    if (iso) {
+      onChange?.(iso);
+      setDraft(fmtRuDate(new Date(iso + 'T12:00:00')));
+      setView(new Date(iso + 'T12:00:00'));
+    } else {
+      // Невалидный ввод — вернуть к текущему value
+      setDraft(sel ? fmtRuDate(sel) : '');
+    }
+  };
 
   return (
     <>
-      <div className="inp-wrap" ref={wrap}>
+      <div className={'inp-wrap' + (disabled ? ' is-disabled' : '')} ref={wrap}>
         <span className="inp-icon" aria-hidden="true">📅</span>
         <input
           type="text"
           className="inp-text"
-          readOnly
-          value={fmt(sel)}
+          disabled={disabled}
+          value={editing ? draft : (sel ? fmtRuDate(sel) : draft)}
           placeholder={placeholder}
-          onClick={() => setOpen((o) => !o)}
+          title="Можно вставить дату (дд.мм.гггг) или выбрать в календаре"
+          onFocus={() => {
+            if (disabled) return;
+            setEditing(true);
+            setDraft(sel ? fmtRuDate(sel) : '');
+          }}
+          onChange={(e) => setDraft(e.target.value)}
+          onBlur={() => {
+            commitText(draft);
+            setEditing(false);
+          }}
+          onPaste={(e) => {
+            if (disabled) return;
+            const text = e.clipboardData?.getData('text');
+            if (!text) return;
+            const iso = parseFlexibleDate(text);
+            if (!iso) return;
+            e.preventDefault();
+            onChange?.(iso);
+            setDraft(fmtRuDate(new Date(iso + 'T12:00:00')));
+            setView(new Date(iso + 'T12:00:00'));
+            setEditing(false);
+            setOpen(false);
+          }}
           onKeyDown={(e) => {
-            // WCAG 2.1.1: Enter/Space/↓ открывает календарь, Esc закрывает
-            if (e.key === 'Enter' || e.key === ' ' || e.key === 'ArrowDown') {
+            if (disabled) return;
+            if (e.key === 'Enter') {
+              e.preventDefault();
+              commitText(draft);
+              setEditing(false);
+              e.currentTarget.blur();
+            } else if (e.key === 'ArrowDown') {
               e.preventDefault();
               setOpen(true);
             } else if (e.key === 'Escape' && open) {
@@ -652,14 +768,20 @@ export function DatePicker({ value, onChange, placeholder = 'дд.мм.гггг'
           aria-expanded={open}
           aria-label={placeholder}
         />
-        <span className="inp-suffix" aria-hidden="true">▾</span>
+        <button
+          type="button"
+          className="inp-suffix inp-suffix-btn"
+          disabled={disabled}
+          aria-label="Открыть календарь"
+          onClick={() => { if (!disabled) setOpen((o) => !o); }}
+        >▾</button>
       </div>
-      <Popover anchorRef={wrap} open={open} onClose={() => setOpen(false)} matchWidth={false} maxHeight={420}>
+      <Popover anchorRef={wrap} open={open && !disabled} onClose={() => setOpen(false)} matchWidth={false} maxHeight={420}>
         <div className="date-pop w-280">
           <div className="dp-h">
-            <button onClick={() => setView(new Date(y, m - 1, 1))}>‹</button>
+            <button type="button" onClick={() => setView(new Date(y, m - 1, 1))}>‹</button>
             <span>{MONTHS_RU[m]} {y}</span>
-            <button onClick={() => setView(new Date(y, m + 1, 1))}>›</button>
+            <button type="button" onClick={() => setView(new Date(y, m + 1, 1))}>›</button>
           </div>
           <div className="dp-wd">
             {WEEK_RU.map((w) => <div key={w}>{w}</div>)}
@@ -667,15 +789,32 @@ export function DatePicker({ value, onChange, placeholder = 'дд.мм.гггг'
           <div className="dp-cells">
             {cells.map((d, i) => d ? (
               <button
+                type="button"
                 key={i}
                 className={'dp-cell ' + (same(d, today) ? 'today ' : '') + (same(d, sel) ? 'sel ' : '')}
-                onClick={() => { onChange?.(d.toISOString().slice(0, 10)); setOpen(false); }}
+                onClick={() => {
+                  onChange?.(localDateISO(d));
+                  setDraft(fmtRuDate(d));
+                  setEditing(false);
+                  setOpen(false);
+                }}
               >{d.getDate()}</button>
             ) : <div key={i} />)}
           </div>
           <div className="dp-foot">
-            <button className="dp-link" onClick={() => { onChange?.(new Date().toISOString().slice(0, 10)); setOpen(false); }}>Сегодня</button>
-            <button className="dp-link" onClick={() => { onChange?.(null); setOpen(false); }}>Очистить</button>
+            <button type="button" className="dp-link" onClick={() => {
+              const iso = localDateISO();
+              onChange?.(iso);
+              setDraft(fmtRuDate(new Date(iso + 'T12:00:00')));
+              setEditing(false);
+              setOpen(false);
+            }}>Сегодня</button>
+            <button type="button" className="dp-link" onClick={() => {
+              onChange?.(null);
+              setDraft('');
+              setEditing(false);
+              setOpen(false);
+            }}>Очистить</button>
           </div>
         </div>
       </Popover>

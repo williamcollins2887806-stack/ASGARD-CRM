@@ -36,6 +36,7 @@ import {
 // helpers/work-status вместо локальных new Set([...]) (раньше каждая страница
 // держала свою копию из 4-15 строк).
 import { isClosedWork } from '@/helpers/work-status';
+import { formatMoney as fmtRub } from '@/lib/money';
 
 // Кто может создавать ТКП из работы — синхронно с vanilla all_works.js
 // (per-row кнопка «Создать ТКП», доступна РП/руководству/тендерному отделу).
@@ -227,9 +228,3 @@ function pluralize(n, forms) {
   return forms[2];
 }
 
-function fmtRub(n) {
-  if (!Number.isFinite(+n) || n === 0) return '0 ₽';
-  if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + ' млн ₽';
-  if (n >= 1_000) return (n / 1_000).toFixed(0) + ' тыс. ₽';
-  return new Intl.NumberFormat('ru-RU').format(Math.round(n)) + ' ₽';
-}

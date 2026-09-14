@@ -17,18 +17,9 @@ import { MiniChart as _MiniChart, StatusBadge, ProgressSteps as _ProgressSteps, 
 import { DrawerModal, useModal } from '@/modals';
 import { Btn } from '@/modals/parts';
 import './business-widgets.css';
+import { formatMoneyShort as shortMoney } from '@/lib/money';
 
 /* ─── Хелперы ─── */
-function shortMoney(n) {
-  const x = Number(n) || 0;
-  const abs = Math.abs(x);
-  const sign = x < 0 ? '−' : '';
-  if (abs >= 1e9) return sign + (abs / 1e9).toFixed(1) + ' млрд ₽';
-  if (abs >= 1e6) return sign + (abs / 1e6).toFixed(1) + ' млн ₽';
-  if (abs >= 1e3) return sign + (abs / 1e3).toFixed(0) + ' тыс ₽';
-  return (abs).toLocaleString('ru-RU') + ' ₽';
-}
-
 function Loading({ tall }) {
   return <div className={`empty ${tall ? 'bw-load-tall' : 'bw-load-default'}`}>⏳ Загрузка…</div>;
 }

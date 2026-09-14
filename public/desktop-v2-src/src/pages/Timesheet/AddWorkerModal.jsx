@@ -7,15 +7,15 @@
  * Поиск: server-side через /api/staff/employees?search= (debounce).
  */
 import { useEffect, useState, useCallback } from 'react';
-import { useModal } from '@/modals';
+import { useModal, ConfirmModal } from '@/modals';
 import { MCard, MHead, MBody, MFoot, Btn, Field } from '@/modals/parts';
 import { SearchInput } from '@/inputs/Inputs';
 import { toast } from '@/modals/Notifications';
 import { api } from '@/api/client';
-import { putEntry, toIsoDate } from './api';
+import { putEntry, toIsoDate, periodLockInfo, pmLockOverrideConfirmMessage } from './api';
 
 export default function AddWorkerModal({ workId, year, month, mode = 'pm', onAdded }) {
-  const { close } = useModal();
+  const { close, open } = useModal();
   const [q, setQ] = useState('');
   const [results, setResults] = useState([]);
   const [searching, setSearching] = useState(false);
@@ -83,19 +83,59 @@ export default function AddWorkerModal({ workId, year, month, mode = 'pm', onAdd
       const today = new Date();
       const isCurMonth = (today.getFullYear() === year && (today.getMonth() + 1) === month);
       const date = isCurMonth ? toIsoDate(year, month, today.getDate()) : toIsoDate(year, month, 1);
-      await putEntry({
+      const payload = {
         employee_id: emp.id,
-        work_id: selectedWorkId || null,
+        // Свободные этапы (warehouse/medical/travel) — без work_id.
+        work_id: (mode === 'warehouse' || mode === 'medical' || mode === 'travel')
+          ? null
+          : (selectedWorkId || null),
         date,
         type: typeByMode[mode] || 'day',
         delete: false,
-      });
+      };
+      try {
+        await putEntry(payload);
+      } catch (e) {
+        if (e?.status === 423) {
+          const info = periodLockInfo(e);
+          if (info.overridable) {
+            await new Promise((resolve, reject) => {
+              open(
+                <ConfirmModal
+                  title="Период закрыт у РП"
+                  tone="warn"
+                  message={pmLockOverrideConfirmMessage(info, payload)}
+                  okText="Да, изменить"
+                  cancelText="Отмена"
+                  onConfirm={async () => {
+                    try {
+                      await putEntry({ ...payload, force_pm_lock: true });
+                      resolve();
+                    } catch (e2) {
+                      toast.warn(periodLockInfo(e2).message || 'Не удалось добавить');
+                      throw e2;
+                    }
+                  }}
+                  onCancel={() => reject(Object.assign(new Error('cancelled'), { cancelled: true }))}
+                />
+              );
+            });
+          } else {
+            toast.warn(info.message);
+            return;
+          }
+        } else {
+          throw e;
+        }
+      }
       toast.success('Рабочий добавлен в табель');
       onAdded?.(emp);
       close();
     } catch (e) {
-      if (e?.status === 423) {
-        toast.warn('Месяц закрыт — добавление невозможно');
+      if (e?.cancelled) {
+        // пользователь отказался от обхода лока
+      } else if (e?.status === 423) {
+        toast.warn(periodLockInfo(e).message);
       } else if (e?.status === 409) {
         toast.warn('На эту дату уже есть отметка');
       } else {
@@ -104,7 +144,7 @@ export default function AddWorkerModal({ workId, year, month, mode = 'pm', onAdd
     } finally {
       setBusy(false);
     }
-  }, [busy, requiresWorkId, selectedWorkId, year, month, mode, onAdded, close]);
+  }, [busy, requiresWorkId, selectedWorkId, year, month, mode, onAdded, close, open]);
 
   const lq = q.trim();
 

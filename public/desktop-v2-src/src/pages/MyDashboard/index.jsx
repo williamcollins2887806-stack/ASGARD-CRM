@@ -31,6 +31,7 @@ import AccessDenied from '@/blocks/AccessDenied';
 // 23.06.2026 BUG-FIX (Sites D-M10/D-M11): DONE_SET/PREP_SET — из единого helpers/work-status.
 import { isDone, PREP_SET } from '@/helpers/work-status';
 import './my-dashboard.css';
+import { formatMoney as fmtMoney, formatMoneyShort as shortMoney } from '@/lib/money';
 
 // RBAC: vanilla dashboard.js / app.js NAV (строка 216) показывает /my-dashboard для
 // ADMIN, PM, TO, HR, OFFICE_MANAGER, BUH, 3 DIR, 2 HEAD. Расширил до полного списка.
@@ -40,20 +41,6 @@ const ALLOWED = ['ADMIN', 'PM', 'HEAD_PM', 'TO', 'HEAD_TO', 'HR', 'HR_MANAGER', 
 const CALL_DASH_ROLES = ['ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV'];
 // Pre-tenders статистика осмысленна только для тендерного отдела.
 const PRE_TENDERS_ROLES = ['ADMIN', 'TO', 'HEAD_TO', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV'];
-
-function fmtMoney(n) {
-  const x = Number(n) || 0;
-  return new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 0 }).format(x) + ' ₽';
-}
-function shortMoney(n) {
-  const x = Number(n) || 0;
-  const abs = Math.abs(x);
-  const sign = x < 0 ? '−' : '';
-  if (abs >= 1e9) return sign + (abs / 1e9).toFixed(1) + ' млрд ₽';
-  if (abs >= 1e6) return sign + (abs / 1e6).toFixed(1) + ' млн ₽';
-  if (abs >= 1e3) return sign + (abs / 1e3).toFixed(0) + ' тыс ₽';
-  return fmtMoney(x);
-}
 
 export default function MyDashboardPage() {
   const { user } = useAuth();
