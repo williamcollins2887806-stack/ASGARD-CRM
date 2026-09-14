@@ -16,6 +16,9 @@ tests/reports/*
 !tests/reports/PHASE2-PARITY-MATRIX.md
 !tests/reports/_FIX-QUEUE.md
 !tests/reports/.last-verified
+# Журнал разбора прод-строк: на нём стоит гейт audit_silent_reverts.js (pre-deploy),
+# поэтому решение обязано быть в истории, а не только на диске (D-151).
+!tests/reports/ASSET-PROD-DIFF-ACK.json
 tests/report.html
 tests/report.json
 _deprecated/

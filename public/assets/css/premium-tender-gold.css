@@ -115,8 +115,11 @@
 /* ── 3. Карточки / панели ─────────────────────────────────────────────────── */
 .rp-calc-modal, .rp-calc-modal--embedded { border-radius: var(--ptg-rl); box-shadow: var(--shadow-xl); }
 /* fullscreen-модалка растёт по контенту (cr-m--fullscreen: height auto) — overflow:hidden
-   её обрезал. embedded-вариант оставляет hidden ниже (rp-calc-modal.css:30, свои скругления). */
-.rp-calc-modal { overflow: visible; }
+   её обрезал. Скоуп :not(--embedded) обязателен: без него это правило той же специфичности
+   (0,1,0), но загруженное ПОЗЖЕ, перебивало `.rp-calc-modal--embedded{overflow:hidden}`
+   из rp-calc-modal.css:30 — и embedded-вариант терял свои скругления/клиппинг.
+   Элемент несёт оба класса одновременно (rp_calc_modal.js:479). */
+.rp-calc-modal:not(.rp-calc-modal--embedded) { overflow: visible; }
 .rp-calc-body { background: color-mix(in srgb, var(--bg1) 55%, var(--bg2)); }
 
 .rp-calc-card, .rp-calc-preview-sec, .rp-review-meta, .rp-review-section, .rp-review-summary-card,

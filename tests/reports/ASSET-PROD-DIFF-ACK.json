@@ -1,0 +1,46 @@
+{
+  "_doc": [
+    "Журнал разбора прод-строк, которых нет ни в локальном файле, ни в истории git для этого пути.",
+    "Зачем: гейт tools/audit_silent_reverts.js падает (PROD_HANDEDIT), если такие строки есть и НЕ разобраны.",
+    "Это не «отключение гейта»: без записи здесь гейт обязан падать. Каждая запись — решение с доказательством,",
+    "которое проверяется независимым верификатором (правило: чинит один агент — сертифицирует другой).",
+    "Причина попадания строк в список: прод этого проекта выкатывался rsync/scp из РАБОЧЕГО ДЕРЕВА,",
+    "поэтому на проде может стоять промежуточное состояние, которого никогда не было в коммите,",
+    "и его prod-only строки не находятся в git-истории. Такое состояние не доказуемо механически —",
+    "поэтому нужна явная запись с разбором: содержит ли прод работу, которой нет локально."
+  ],
+  "checked_at": "2026-09-14",
+  "method": "node tools/audit_silent_reverts.js + node _tmp_prod_diff.js <path> (unified diff LOCAL -> PROD, '-' = локальная строка)",
+  "files": {
+    "public/sw.js": {
+      "reason": "Прод — предыдущая версия оболочки: prod-only строки это BOM, старый SHELL_VERSION и английский комментарий.",
+      "evidence": "Дифф: prod SHELL_VERSION='20.28.27' против локального '20.28.29'; prod-only комментарий 'JS/CSS freshness is guaranteed...' заменён в локальной версии русским 'JS/CSS свежесть всё равно гарантируется...'; BOM в начале файла есть только на проде. Ни один prod-only фрагмент не несёт функциональности, которой нет локально. Локальная версия новее по номеру и покрывает те же участки.",
+      "verdict": "superseded_by_local"
+    },
+    "public/assets/css/cr-modal.css": {
+      "reason": "Prod-only 1 строка — старое значение `align-items: stretch;` у overlay просчёта РП, которое локально осознанно заменено на flex-start.",
+      "evidence": "Дифф: prod содержит `align-items: stretch;` в .cr-m-overlay:has(.rp-calc-modal); локально там комментарий '14.09: было stretch — фиксировало высоту модалки и убивало скролл overlay' + `align-items: flex-start;`. Это правка батча B (скролл модалки РП), а не потеря прод-работы. Файл был untracked до коммита 12c08308, поэтому prod-строка не находится в истории git.",
+      "verdict": "superseded_by_local"
+    },
+    "public/assets/css/premium-tender-gold.css": {
+      "reason": "Prod-only 5 строк — дореформенные значения из батча B: stretch у overlay, общий селектор KPI с .pm-duty-kpi, `overflow: hidden` на .rp-calc-modal.",
+      "evidence": "Дифф по 3 блокам: (1) prod `align-items: stretch !important;` → локально `flex-start !important` + комментарий-пояснение; (2) prod `.rp-calc-modal, .rp-calc-modal--embedded { ... overflow: hidden; ... }` → локально разделено на общий border-radius + `.rp-calc-modal:not(.rp-calc-modal--embedded) { overflow: visible; }`; (3) prod `.pm-duty-kpi, .rp-calc-smeta-totals .kpi, .rp-calc-footer__kpi {` → локально рамки/заливка оставлены только `.pm-duty-kpi`, а для KPI сметы/футера — отдельное правило без frame-стилей. Всё это ровно те правки, которые выкатывает батч B.",
+      "verdict": "superseded_by_local"
+    },
+    "public/assets/js/director_tender_approvals.js": {
+      "reason": "Prod-only 3 строки — старый порог '(>5 млн)' в комментарии и UI-тексте, плюс иное место гарда RpReviewModal.",
+      "evidence": "Дифф: prod-комментарий 'очередь согласования просчётов РП >5 млн без НДС' против локального '≥10 млн без НДС'; prod-текст 'Просчёты РП свыше 5 млн ₽ без НДС' против локального 'Просчёты РП от 10 млн ₽ без НДС'. Подъём порога 5→10 млн — требование заказчика 13.09.2026 (транскрипт afbd8058: 'порог реальный. approval_recipients обязательны при >=10млн'), миграция V353. Третий prod-only фрагмент — `if (!window.AsgardRpReviewModal) return;` перед markDirectorReviewSeen; локально гард сохранён, но перенесён ниже (после ветки calc-модалки), т.е. не потерян.",
+      "verdict": "superseded_by_local"
+    },
+    "public/assets/js/timesheet-v2.js": {
+      "reason": "Prod-only 13 строк — более ранняя реализация пересечения типов (TRANSPORT_OVERWRITE_TYPES, иконка ⏰), локально — обобщённые CROSS_EDIT_GROUPS (⏳) + PM-guard.",
+      "evidence": "Дифф: prod `waiting: { icon: '⏰' }` против локального `icon: '⏳'` (заказчик просил песочные часы); prod `MODE_ALLOWED_TYPES.travel = ['travel']` против локального `['travel','waiting']`; prod `const TRANSPORT_OVERWRITE_TYPES = new Set(['travel','ship','helicopter'])` и `if (TRANSPORT_OVERWRITE_TYPES.has(...)) return true;` против локальных `CROSS_EDIT_GROUPS` (наборы транспорт + дорога/ожидание) и `if (mode === 'pm') return false;`. Локальная реализация СТРОЖЕ прода: она сохраняет изоляцию PM-режима, а прод-вариант её не имел. Тесты tests/timesheet-v2/verify-waiting-frontend.js ожидают именно CROSS_EDIT_GROUPS и `v2: PM guard отсекает cross-group (travel) вне своего набора` == false.",
+      "verdict": "superseded_by_local"
+    },
+    "public/assets/js/warehouse-v2.js": {
+      "reason": "Prod-only строки принадлежат старой 1265-строчной версии склада; локальная — сентябрьская на 2798 строк.",
+      "evidence": "Дифф: local 2798 строк / prod 1265 строк, local-only 1694 / prod-only 161. Prod-only фрагменты — кнопки `id=\"wh2-cart-preview\"` 'Предпросмотр' и `UI.showModal({ title: 'Предпросмотр разбивки' })` из старой витрины карточек; в локальной версии витрина переписана (media-first .wh2-card__media, humanCatalogName, KPI нового вида). Это тот самый случай, ради которого батч A и делается: критерий приёмки прямо требует 'warehouse-v2.js на проде = локальная сентябрьская версия (2 798 стр., не 1 264)'.",
+      "verdict": "superseded_by_local"
+    }
+  }
+}

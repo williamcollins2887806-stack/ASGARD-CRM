@@ -32,6 +32,7 @@ import hashlib
 import json
 import os
 import re
+import shlex
 import subprocess
 import sys
 from datetime import datetime, timezone
@@ -71,7 +72,7 @@ for sub in ("public/assets",):
         dirnames[:] = [d for d in dirnames if d not in ("node_modules", ".git")]
         for fn in filenames:
             targets.append(os.path.join(dirpath, fn))
-for f in ("public/index.html", "public/sw.js"):
+for f in sys.argv[2:]:
     targets.append(os.path.join(root, f))
 
 out = []
@@ -128,9 +129,13 @@ def local_manifest() -> list[dict]:
 
 def remote_manifest() -> list[dict]:
     payload = base64.b64encode(REMOTE_SCRIPT.encode("utf-8")).decode("ascii")
+    # Все TARGET_FILES уезжают аргументами: иначе manifest.json / offline.html /
+    # favicon.ico не попадали в удалённый инвентарь и навсегда числились как
+    # «нет на проде» (и перезаливались каждым синком).
+    extra = " ".join(shlex.quote(f) for f in TARGET_FILES)
     remote_cmd = (
         f"echo {payload} | base64 -d > /tmp/asgard_asset_inv.py && "
-        f"python3 /tmp/asgard_asset_inv.py {REMOTE_ROOT}"
+        f"python3 /tmp/asgard_asset_inv.py {REMOTE_ROOT} {extra}"
     )
     proc = subprocess.run(
         ["ssh", "-i", SSH_KEY, "-o", "StrictHostKeyChecking=no", "-o", "ConnectTimeout=20", SSH_HOST, remote_cmd],
