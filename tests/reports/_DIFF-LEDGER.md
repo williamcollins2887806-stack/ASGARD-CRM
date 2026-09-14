@@ -3135,3 +3135,41 @@ D-15-candidate из A-29 (correspondence RBAC расширен) и A-31 (custome
 - **Остаток:** правила-хуки (запрет `checkout|restore|clean` по `public/index.html`/`public/sw.js`, запрет
   `Set-Content`/`Get-Content -Raw + -replace` по UTF-8, «один worktree — один агент») описаны в D-146/D-147,
   но в `.cursor/rules` / `.claude/settings.json` пока не заведены.
+
+## Шаг 5a — коммит выполнен (4 тематических коммита)
+
+`HEAD = bba6a61a`. Было 448 modified + 10 deleted + 3168 untracked; до `git add` дерево очищено от мусора
+(`.gitignore`: `_tmp_*`, `tools/_tz_*`, `_*.sql|sh|out|txt|csv|json|js`, `/*.tar`, `__pycache__`, `.cad_mcp/`,
+`public/desktop-v2-src/nul.css`) — иначе в историю уходило ~1900 файлов временных выгрузок.
+
+| коммит | содержимое | файлов |
+|---|---|---|
+| `12c08308` | `fix(shell)`: подключения в `index.html`, `sw.js`, `work-documents.js`, CSS модалки РП; бэкенд `src/**`, 96 миграций V292..V353, ассеты | 397 (+87 882 / −8 472) |
+| `dd83545a` | `feat(mobile)`: `public/mobile-app`, сборка `public/m` (10 устаревших чанков удалены), `m/` | — |
+| `600866a5` | `feat(v2)`: `public/desktop-v2-src` (включая `pages/Billing/*`) | 215 |
+| `bba6a61a` | `chore(tools)`: гейты `verify_index_tags` / `audit_silent_reverts` / `restore_asset_sync`, правка deploy-скрипта, тесты, шаблоны | 274 |
+
+- **Найдено при коммите:** файл `public/desktop-v2-src/nul.css` (11 570 Б — устаревшая копия
+  `public/assets/css/rp-review-modal.css`, след `> nul` вместо `/dev/null`) валил `git add -A` по всему
+  дереву v2 с `fatal: unable to index file` (имя `nul` зарезервировано в Windows). Внесён в `.gitignore`,
+  правило записано в `.cursor/rules/protect-prod-shell.mdc`. Не удалён — отдельным решением.
+- **Остаток:** 3 файла `tmp-*.js` в корне (не коммитил). Push **не** делался — он в шаге 5b.
+
+## Шаг 6 — правила-предохранители заведены
+
+Создан `.cursor/rules/protect-prod-shell.mdc` (alwaysApply): запрет `git checkout|restore|clean` по критичным
+файлам, запрет `Set-Content` по UTF-8, запрет патчинга `index.html`/`sw.js` на проде, обязательные три гейта
+перед деплоем, deploy-gate по `.last-verified`, «один worktree — один агент», и памятка про `nul.*`.
+Файл в `.cursor/`, а он в `.gitignore` — правило действует в воркспейсе, в историю не попадает.
+
+## Остаток по батчу A (требует человека)
+
+- **Шаг 4 (деплой) — не сделан: нужна явная команда пользователя.** Прод по правилам проекта выкатывается
+  только по отдельной команде. Подготовлено всё: теги в закоммиченном `index.html`, 29 ассетов к заливке,
+  гейты зелёные, коммит есть.
+- **D-148:** вместе с деплоем нужно решить вопрос V353 (порог 5 → 10 млн) на прод-БД; сейчас у прода порог 5 млн,
+  а UI-подписи в коде — 10 млн.
+- **Шаг 7 (независимый верификатор)** — запускается после деплоя (часть критериев проверяется только на проде:
+  0 ответов 404, консоль под 4 ролями).
+- **Шаг 5b (push)** — после верификации; токен не писать в remote-URL и отозвать после.
+- Механический pre-flight `verify_index_tags` во все ~80 deploy-скриптов — отдельной задачей (см. выше).
