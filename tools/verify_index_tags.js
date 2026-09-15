@@ -31,6 +31,7 @@ const path = require('path');
 const ROOT = path.resolve(__dirname, '..');
 const PUBLIC = path.join(ROOT, 'public');
 const JS_DIR = path.join(PUBLIC, 'assets', 'js');
+const CSS_DIR = path.join(PUBLIC, 'assets', 'css');
 const INDEX_PATH = process.argv[2] ? path.resolve(process.argv[2]) : path.join(PUBLIC, 'index.html');
 
 /**
@@ -81,12 +82,50 @@ const WARN_ALLOWLIST = {
   AsgardTmcRequests: 'guarded, с fallback на location.hash; определитель — AsgardTmcRequestsPage',
 };
 
+/**
+ * Файлы, которые лежат на диске и НЕ подключены ни одним HTML public/.
+ * Каждая запись обязана иметь причину.
+ *
+ * Зачем этот гейт существует (D-156, 15.09.2026): `assets/css/brigade-cart.css`
+ * лежал и локально, и на проде байт-в-байт, но `<link>` на него пропал из
+ * index.html при инциденте 08–10.09 → корзина бригады осталась без стилей,
+ * кнопки «+» рендерились 12×23 px серыми квадратами. Все предыдущие проверки
+ * смотрели только на теги, которые ЕСТЬ, поэтому «файл есть, тега нет» не ловилось.
+ */
+const CSS_ALLOWLIST = {};
+const JS_ALLOWLIST = {
+  'assets/js/calculator.js':
+    'legacy vanilla-калькулятор (IIFE без глобала), вытеснен calculator_v2.js; тега нет ни в одном HTML',
+};
+
 /** Файлы, чьи обращения к Asgard* считаем «контрактом загрузки». */
 function walkJs(dir, acc = []) {
   for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
     const p = path.join(dir, e.name);
     if (e.isDirectory()) walkJs(p, acc);
     else if (e.name.endsWith('.js')) acc.push(p);
+  }
+  return acc;
+}
+
+/**
+ * Все HTML-страницы public/ — index.html плюс автономные (conductor-estimate.html,
+ * awaiting-customer.html и т.п.). Сборки v2/m и исходники в обход: у них свои бандлы.
+ *
+ * Служебные файлы (`_preview-*.html`, `*.bak`, `*.old`, `*.before*`) тоже в обход:
+ * это реликты чужих сессий (прод-мусор), и их ссылки маскируют пропажу тега
+ * в настоящей оболочке — ровно так `_preview-checkbox-verify.html` прятал потерю
+ * `cr-checkbox.css` (D-156).
+ */
+const HTML_SKIP_RE = /^_|\.(bak|old|before|orig|pre-[\w-]*)/i;
+function walkHtml(dir, acc = []) {
+  for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+    if (e.isDirectory()) {
+      if (['node_modules', 'desktop-v2-src', 'mobile-app', 'prototypes'].includes(e.name)) continue;
+      walkHtml(path.join(dir, e.name), acc);
+    } else if (e.name.endsWith('.html') && !HTML_SKIP_RE.test(e.name)) {
+      acc.push(path.join(dir, e.name));
+    }
   }
   return acc;
 }
@@ -231,6 +270,51 @@ for (const name of [...genDefiners.keys()].sort()) {
 // ── 4c. REQUIRED regression guard ─────────────────────────────────────────────
 const requiredMissing = REQUIRED_MODULES.filter((rel) => !loaded.has(rel));
 
+// ── 4d. «Файл есть — тега нет»: каждый assets/css/*.css обязан быть подключён ──
+// Файл может быть подключён и из автономной страницы (conductor-estimate.html,
+// awaiting-customer.html), поэтому смотрим все HTML public/, а не только index.html.
+// Сам index.html из обхода исключаем ВСЕГДА (в т.ч. когда проверяем прод-копию):
+// иначе ссылки локального index.html замаскируют пропажу тега в проверяемом файле.
+const INDEX_IN_PUBLIC = path.resolve(path.join(PUBLIC, 'index.html'));
+const otherHtmlRefs = new Set();
+for (const abs of walkHtml(PUBLIC)) {
+  const resolved = path.resolve(abs);
+  if (resolved === INDEX_PATH || resolved === INDEX_IN_PUBLIC) continue;
+  const src = fs.readFileSync(abs, 'utf8');
+  const re = /(?:src|href)\s*=\s*["']([^"']+?\.(?:js|css))(?:\?[^"']*)?["']/gi;
+  let r;
+  while ((r = re.exec(src)) !== null) otherHtmlRefs.add(r[1].replace(/^\//, ''));
+}
+
+const cssOnDisk = fs.existsSync(CSS_DIR)
+  ? fs.readdirSync(CSS_DIR).filter((f) => f.endsWith('.css')).map((f) => 'assets/css/' + f)
+  : [];
+const cssUnlinked = cssOnDisk.filter(
+  (rel) => !loaded.has(rel) && !otherHtmlRefs.has(rel) && !CSS_ALLOWLIST[rel],
+);
+const cssAllowlisted = cssOnDisk.filter(
+  (rel) => !loaded.has(rel) && !otherHtmlRefs.has(rel) && CSS_ALLOWLIST[rel],
+);
+const cssStaleAllowlist = Object.keys(CSS_ALLOWLIST).filter(
+  (rel) => loaded.has(rel) || otherHtmlRefs.has(rel),
+);
+
+// ── 4e. То же для assets/js/**.js (тот же класс дефекта, что D-156) ────────────
+// Локальные JS тянутся только тегами: динамических подгрузок с локальными путями нет,
+// внешние библиотеки грузятся с CDN и под это правило не попадают.
+const jsOnDisk = jsFiles.map(
+  (abs) => 'assets/js/' + path.relative(JS_DIR, abs).split(path.sep).join('/'),
+);
+const jsUnlinked = jsOnDisk.filter(
+  (rel) => !loaded.has(rel) && !otherHtmlRefs.has(rel) && !JS_ALLOWLIST[rel],
+);
+const jsAllowlisted = jsOnDisk.filter(
+  (rel) => !loaded.has(rel) && !otherHtmlRefs.has(rel) && JS_ALLOWLIST[rel],
+);
+const jsStaleAllowlist = Object.keys(JS_ALLOWLIST).filter(
+  (rel) => loaded.has(rel) || otherHtmlRefs.has(rel),
+);
+
 // ── 6. Отчёт ──────────────────────────────────────────────────────────────────
 console.log(`index.html: ${INDEX_PATH}`);
 console.log(`подключений assets/(js|css): ${refs.length}, уникальных: ${loaded.size}`);
@@ -273,6 +357,22 @@ if (requiredMissing.length) {
   console.log('');
 }
 
+if (cssUnlinked.length) {
+  failed = true;
+  console.log(red(`CSS-UNLINKED (${cssUnlinked.length}): файл есть на диске, но не подключён ни одним HTML`));
+  for (const r of cssUnlinked) console.log(`  ${r}  <-- ни <link> в index.html, ни ссылка из автономной страницы`);
+  console.log(`  ${COLORS.dim}либо подключить, либо внести в CSS_ALLOWLIST с причиной${COLORS.off}`);
+  console.log('');
+}
+
+if (jsUnlinked.length) {
+  failed = true;
+  console.log(red(`JS-UNLINKED (${jsUnlinked.length}): файл есть на диске, но не подключён ни одним HTML`));
+  for (const r of jsUnlinked) console.log(`  ${r}  <-- ни <script> в index.html, ни ссылка из автономной страницы`);
+  console.log(`  ${COLORS.dim}либо подключить, либо внести в JS_ALLOWLIST с причиной${COLORS.off}`);
+  console.log('');
+}
+
 const unknownWarn = warnNoDefiner.filter((w) => !WARN_ALLOWLIST[w.name]);
 const knownWarn = warnNoDefiner.filter((w) => WARN_ALLOWLIST[w.name]);
 
@@ -290,10 +390,32 @@ if (unknownWarn.length) {
   console.log('');
 }
 
+const allowlisted = [...cssAllowlisted, ...jsAllowlisted];
+if (allowlisted.length) {
+  console.log(`${COLORS.dim}NOTE (${allowlisted.length}): файлы без подключения, внесены в allowlist с причиной${COLORS.off}`);
+  for (const r of cssAllowlisted) console.log(`  ${r} — ${CSS_ALLOWLIST[r]}`);
+  for (const r of jsAllowlisted) console.log(`  ${r} — ${JS_ALLOWLIST[r]}`);
+  console.log('');
+}
+
+const staleAllowlist = [...cssStaleAllowlist.map((r) => ['CSS_ALLOWLIST', r]), ...jsStaleAllowlist.map((r) => ['JS_ALLOWLIST', r])];
+if (staleAllowlist.length) {
+  failed = true;
+  console.log(red(`STALE-ALLOWLIST (${staleAllowlist.length}): запись устарела — файл уже подключён, убери из allowlist`));
+  for (const [list, r] of staleAllowlist) console.log(`  ${list}: ${r}`);
+  console.log('');
+}
+
 if (failed) {
   console.log(red('ИТОГ: FAIL'));
   process.exit(1);
 }
 
-console.log(green(`ИТОГ: OK — 0 MISSING, 0 MISSING-G, 0 DUPLICATE, 0 BROKEN, 0 REQUIRED-пропусков, 0 необъяснённых WARN (глобалов проверено: ${users.size})`));
+console.log(
+  green(
+    `ИТОГ: OK — 0 MISSING, 0 MISSING-G, 0 DUPLICATE, 0 BROKEN, 0 REQUIRED-пропусков, ` +
+      `0 CSS-UNLINKED из ${cssOnDisk.length}, 0 JS-UNLINKED из ${jsOnDisk.length}, ` +
+      `0 необъяснённых WARN, 0 устаревших allowlist (глобалов проверено: ${users.size})`,
+  ),
+);
 process.exit(0);

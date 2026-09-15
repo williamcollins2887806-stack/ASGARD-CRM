@@ -3302,3 +3302,156 @@ D-15-candidate из A-29 (correspondence RBAC расширен) и A-31 (custome
 - **Шаг 5b (push)** — после верификации; токен не писать в remote-URL и отозвать после.
 - Механический pre-flight `verify_index_tags` + `verify_rp_modal_render` во все ~80 deploy-скриптов —
   отдельной задачей (см. выше).
+
+---
+
+# Итерация 15.09.2026 — единый прод-заход P5 выполнен, найдены 4 новых D
+
+## P5 — единый прод-заход (оболочка + сентябрьский фронт + бэкенд + миграции V345–V354)
+
+- **Тип:** deploy / record
+- **Статус:** DONE — выполнен по явной команде заказчика («Продолжай до последнего шага»), проверен машинно.
+- **Стоп-контроль:** `git rev-parse HEAD` = `tests/reports/.last-verified` = `5dcc2f847fcc1b710619c92418004983803c6a41` (гейт был открыт).
+- **Снапшоты:** `asgard-crm-pre-big-20260915-012246/012318.tgz` (файлы) + `pg_dump` БД — см. D-160 про пробел `src/`.
+
+| шаг | что сделано | доказательство |
+|---|---|---|
+| P5.2 миграции | V345–V354 по одной (`psql -f` + `information_schema` после каждой + ручная запись в `migrations`) | `migrations` ids **270–279**; появились `payment_invoices`, `payment_mail_tokens`, `payment_mail_batches`, `tender_director_mail_tokens`, `tender_file_share_tokens`, `tender_approval_recipients`, `doc_registry`, `doc_registry_audit`, `warehouse_map_floors`, `warehouse_map_objects`, `warehouse_op_sessions`, колонки `procurement_invoice_imports.approval_status`/`sent_to_pm_at`, `payment_invoices.pay_timing`, `equipment.volume_mm3`; WMS-сид 45 объектов; `settings.director_tender_threshold_rub = 10000000` |
+| P5.3 фронт | бамп shell `20.28.29 → 20.28.30`, `tar`+`scp`, 28 файлов | прод `index.html` md5 `6e7cb58f…` **байт-в-байт** = локальному, `sw.js` `df2b1247…`; `SHELL_VERSION`/`ASGARD_SHELL_VERSION` = `20.28.30`; сборки `public/v2` 236 + `public/m` 83 = 319 файлов |
+| P5.4 бэкенд | `src/**` additive-extract без `--delete` + `systemctl restart asgard-crm` | **паритет доказан:** 371/371 `.js` совпадают (0 только-на-проде, 0 только-локально, 0 расхождений) |
+| P5.5 рантайм-гейт | 12 ранее-404 файлов → 200; 8/8 страниц 200; консоль 4 роли × 8 страниц | `verify_index_tags.js` по **прод**-копии: 0/0/0/0; `audit_silent_reverts.js --post-deploy`: 0 расхождений; JS-ошибок 0, HTTP 4xx 0 |
+| P5.6 прод-sentinel табеля | `✈️ → ⏳ → ✈️` на одной дате | **14/14 PASS**: ровно 1 активная отметка, тип `waiting`, баллы **заменяются** (6, не 12 и не 18); `PM`/`WAREHOUSE` на чужую отметку — не 201; строки 6070–6072 удалены, на дате 0 строк |
+| P5.7 подпись | `.last-verified` = фактически проверенный коммит | `5dcc2f84` (подписан, не закоммичен) |
+
+- **Замечание по плану P5.2:** `npm run migrate` на проде не запускался — в `migrations` есть исторические записи
+  с `.sql` в имени (`V334__field_app_logins.sql`), из-за чего раннер считает миграцию невыполненной и прогоняет повторно.
+  Применение — по одной с проверкой `information_schema`.
+
+## D-156 — Потеряны два `<link>` CSS: `brigade-cart.css` и `cr-checkbox.css` → корзина бригады без стилей
+
+- **Тип:** bug / deploy-recurrence (прямое продолжение D-145; тот же механизм, другой набор тегов)
+- **Приоритет:** HIGH (корзина бригады — рабочий инструмент: добавление в бригаду, плановое привлечение, матрица допусков)
+- **Статус:** FIXED (локально), выкатывается отдельным быстрым заходом
+- **Симптом заказчика (15.09):** «не работает корзина… нет кнопок добавить в корзину, а корзина не работает, не открывается».
+- **Диагностика на проде ДО правки** (Playwright, inject JWT в `localStorage`, 4 роли, read-only, без кликов):
+
+  | роль | `AsgardBrigadeCart` | `[data-bc-toggle]` | `#prs_bc_open` | `#bc_bar`/`#bc_drawer` | `cssHasCart` | `.bc-row-btn` computed |
+  |---|---|---|---|---|---|---|
+  | ADMIN / PM / HEAD_TO / OFFICE_MANAGER | object (8 методов) | **572** | есть | в DOM | **false** | `background: rgb(107,107,107)`, `border-2px`, **12.6 × 23.5 px** |
+
+  → JS-модуль загружен и работает, элементы отрисованы, но **стилей нет**: кнопка «+» получает дефолтную
+  стилизацию `button` и выглядит серым квадратом 12×23 px, бар и drawer — `position: static`, `display: none`,
+  `background: rgba(0,0,0,0)`. `cssLinkCount = 27`, из них ни одного `brigade-cart`.
+- **Первопричина:** в `public/index.html` не было `<link>` на `assets/css/brigade-cart.css` (и на `assets/css/cr-checkbox.css`).
+  Оба файла при этом **лежали** и локально, и на проде (LF-нормализованный sha256 совпадает), бэкенд
+  `src/routes/brigade-cart.js` + `src/lib/brigade-cart-export.js` на проде есть, роут зарегистрирован (`src/index.js:746`).
+- **Доказательство, что это РЕГРЕССИЯ, а не «никогда не было»** (сплошной скан всех снапшотов `/root/snapshots/`, read-only;
+  `grep -c` по `public/index.html` внутри каждого):
+
+  | снапшот | brigade-cart.css | cr-checkbox.css |
+  |---|---|---|
+  | `-pre-deploy-pin-idle-…-20260731` … `-chemlab-20260828` (июль–28.08) | 0 | 0 |
+  | `-field-pin-20260831-113156` | 0 | **1** |
+  | `-brigade-cart-20260831-183449/183500` (перед выкаткой корзины) | **1** | **1** |
+  | `-brigade-excel-20260831-184707`, `-cash-mail/‑cash-ui-20260906…`, `-paid-adl-20260907`, `-part-label-20260907`, `-reg-align-20260907`, `-reg-period-20260907`, `-crew-unknown-20260907` | 1 | 1 |
+  | `-roster-readiness-20260908-163104`, `-v2-roster-20260908-163323` | 1 / **0** | 1 / **0** |
+  | `-billing-20260908-115925`, `-billing-issuer-20260908-131555`, `-billing-office-20260908-150500` | 1 | 1 |
+  | **`-d140-20260908-210826` (последний «хороший», 21:08)** | **1** (строка 100) | **1** (строка 99) |
+  | `-logfix-20260910`, `-headto-travel-20260914-114954`, `-tender-premium-20260914-000234`, `-overlay-20260914-001127`, `-pre-restore-20260914-190452`, `-pre-big-*` | 0 | 0 |
+
+  Снапшоты снимаются **до** деплоя ⇒ в 08.09 21:08 теги на проде были, в 10.09 — уже нет.
+  **Окно потери совпадает с окном D-145** (между деплоем `d140` 08.09 21:08 и `logfix` 10.09 21:04).
+  Оригинальные строки (взяты из снапшота, не выдуманы): `assets/css/cr-checkbox.css?v=20.27.73` (стр. 99),
+  `assets/css/brigade-cart.css?v=20.27.93` (стр. 100) — в блоке после `light-theme.css`, перед `nd-permits.css`/`billing.css`.
+- **Полнота восстановления оболочки (машинно):** сверка ВСЕХ ссылок `script src` / `link href` между снапшотом `d140`
+  (216 ссылок) и локальным `index.html` (223) даёт **ровно 2** ссылки «были на проде, нет локально» —
+  `brigade-cart.css` и `cr-checkbox.css`; обратная разница (9) — сентябрьские модули (`doc-hub`, `premium-wms-gold`,
+  `premium-tender-gold`, `rp-calc-modal`, `warehouse-map`, `warehouse-v2-asm`, `rp_calc_modal`, `preview_calc_report`),
+  появившиеся после 08.09. **Больше терять было нечего.**
+- **Фикс:** вставлены оба `<link>` после `light-theme.css`; `SHELL_VERSION`/`ASGARD_SHELL_VERSION` `20.28.30 → 20.28.31`;
+  все `?v=` (237) приведены к `20.28.31`. Атомарный скрипт с проверкой «изменилось ровно 2 строки + версии»:
+  diff по маскированным версиям = `+2 строки`, `-1 строка` (строка `ASGARD_SHELL_VERSION`); BOM (EF BB BF, как на проде)
+  и LF сохранены, `crlf=0`.
+- **Файлы:** `public/index.html` (2 `<link>` + версии), `public/sw.js` (`SHELL_VERSION`), `tools/verify_index_tags.js` (новый гейт, см. ниже).
+- **Гейты после правки (все exit 0):**
+
+  | гейт | команда | итог |
+  |---|---|---|
+  | подключения оболочки | `node tools/verify_index_tags.js` | **OK** — 0 MISSING/MISSING-G/DUPLICATE/BROKEN, **0 CSS-UNLINKED из 26**, 0 JS-UNLINKED из 202, 224 подключения |
+  | синк ассетов | `python tools/restore_asset_sync.py plan` | к заливке **2** (`index.html`, `sw.js`), `прод-новее = 0`; `brigade-cart.css` **не** в списке — он уже байт-в-байт равен проду |
+  | тихие откаты | `node tools/audit_silent_reverts.js` | `OK (pre-deploy) — PROD_HANDEDIT=0`, `PENDING_DEPLOY=2` |
+  | модалка РП | `node tools/verify_rp_modal_render.js` | **19/19** |
+
+- **Остаток:** пост-деплойные гейты (link в отданном HTML, 200 на `/assets/css/brigade-cart.css?v=20.28.31`,
+  `verify_index_tags` по прод-копии, `audit --post-deploy`, консоль 4 роли, браузер-проверка корзины) — см. раздел ниже.
+
+## D-157 — Гейт `verify_index_tags.js` не видел класс «файл есть — тега нет» для CSS/JS (закрыт)
+
+- **Тип:** дефект инструмента (слепота гейта)
+- **Приоритет:** HIGH (именно этот класс и дал D-156: корзина была «на месте» по всем прежним проверкам)
+- **Статус:** FIXED
+- **Первопричина:** гейт анализировал только теги, которые **есть** (BROKEN/DUPLICATE/MISSING по глобалам
+  и `REQUIRED_MODULES`). Файл `assets/css/brigade-cart.css`, к которому не ведёт ни один тег, не попадал ни в одну проверку.
+- **Фикс — два новых блока:**
+  1. **CSS:** каждый `public/assets/css/*.css` обязан быть подключён `<link>` **либо** из проверяемого `index.html`,
+     **либо** из автономной страницы (`conductor-estimate.html`, `awaiting-customer.html`) → иначе FAIL `CSS-UNLINKED`;
+     освобождение — только через `CSS_ALLOWLIST` с причиной. Сейчас `CSS_ALLOWLIST` пуст (26/26 подключены).
+  2. **JS:** то же для `public/assets/js/**.js` → FAIL `JS-UNLINKED`; в `JS_ALLOWLIST` одна запись —
+     `assets/js/calculator.js` («legacy vanilla-калькулятор (IIFE без глобала), вытеснен `calculator_v2.js`»).
+     Обоснование правомерности: сплошной grep показал, что локальные JS нигде не подгружаются динамически
+     (`createElement('script')` в `warehouse-map.js`/`warehouse-v2.js`/`system-panel.js`/`procurement-page.js`
+     грузят только CDN-библиотеки), поэтому «не подключён ни одним HTML» = мёртвый файл.
+  3. Заодно исправлены **два дефекта самого гейта**, найденных негативным контролем:
+     - при проверке копии (`node tools/verify_index_tags.js <prod-copy>`) в набор «прочих страниц» попадал
+       локальный `public/index.html`, и его ссылки **маскировали** пропажу тега в проверяемом файле
+       (негативный контроль ложно зеленел) → теперь `public/index.html` исключается из обхода **всегда**;
+     - служебные реликты (`_preview-*.html`, `*.bak`, `*.old`, `*.before*`) тоже исключены — именно
+       `public/_preview-checkbox-verify.html` (мусор чужой сессии) прятал потерю `cr-checkbox.css`.
+- **Негативный контроль (обязателен):**
+  - копия `index.html` без `<link brigade-cart.css` → `CSS-UNLINKED (1)` + exit 1;
+  - копия без обоих (`brigade-cart`, `cr-checkbox`) → `CSS-UNLINKED (2)` + exit 1;
+  - локальный `index.html` → `OK`, exit 0.
+- **Файл:** `tools/verify_index_tags.js`.
+
+## D-158 — `403 POST /api/warehouse-map/floors/1/sync-locations` на каждой отрисовке карты (OPEN, нужно решение)
+
+- **Тип:** bug / frontend (write-операция в read-потоке)
+- **Приоритет:** MEDIUM (не ломает данные, но 403 в консоли на каждой отрисовке WMS и лишние запросы)
+- **Статус:** OPEN — варианты зафиксированы, требуется решение заказчика
+- **Доказательство:** `src/routes/warehouse-map.js:7` — `WMS_WRITE = ['ADMIN','WAREHOUSE','CHIEF_ENGINEER','DIRECTOR_GEN','DIRECTOR_COMM','DIRECTOR_DEV']`;
+  фронт вызывает синк **автоматически при монтировании** (`warehouse-map.js:2597` внутри `refresh()`,
+  из `renderMapTab` :1536 и `mount` :2871). Для ролей вне `WMS_WRITE` это гарантированный 403 на каждой отрисовке.
+- **Варианты:** (A, рекомендуемый) не дёргать sync при монтировании — только по явному действию под ролью с правом записи;
+  (B) расширить `WMS_WRITE`. Кода не менял до решения.
+
+## D-159 — `503 /api/procurement/export/excel` (гипотеза: окно рестарта; проверяется read-only)
+
+- **Тип:** bug / ops (наблюдение из консоли прода 15.09)
+- **Приоритет:** LOW (гипотеза — транзиент)
+- **Статус:** OPEN → проверка read-only под `ADMIN`/`PROC`/`PM`
+- **Доказательство:** роут существует (`src/routes/procurement.js:120`) и защищён `requireRoles`,
+  который отдаёт **403**, а не 503; `exceljs` на проде установлен. 503 совпал по времени с окном
+  `systemctl restart asgard-crm` во время захода P5.
+
+## D-160 — Пробел отката: снапшоты `pre-big` не содержат `src/`
+
+- **Тип:** process / rollback-gap
+- **Приоритет:** MEDIUM (нечем откатить бэкенд целиком)
+- **Статус:** RECORDED (исправляется со следующего снапшота)
+- **Суть:** `tar czf asgard-crm-pre-big-<TS>.tgz -C /var/www/asgard-crm public/...` кладёт только `public/**`.
+  При этом прод-git стоит на `76fd787c` с 298 «грязными» файлами `src/` (локальные правки на проде, не в git)
+  ⇒ откат бэкенда из снапшота невозможен. В будущих снапшотах включать `src/`.
+
+## D-161 — Мёртвые файлы, не подключённые ни одним HTML (закрыто allowlist'ом)
+
+- **Тип:** hygiene
+- **Приоритет:** LOW
+- **Статус:** RECORDED
+- **Факт (машинная сверка 30 HTML-страниц `public/`):** не подключён ни одним HTML ровно **один** JS —
+  `assets/js/calculator.js` (39 688 Б, IIFE без глобала, вытеснен `calculator_v2.js`) → внесён в `JS_ALLOWLIST`.
+- **Снято как не-дефект:** `mimir-conductor.css` **не** является потерянным: он подключён автономными страницами
+  `public/conductor-estimate.html:7` и `public/awaiting-customer.html:7`, а не SPA-оболочкой. Классы `.mc-*`
+  используются только `mimir-conductor-ui.js`, который грузится этими же страницами.
+- **Наблюдение (не в задаче):** `mimir-conductor-ui.js`, `calculator.js` и др. содержат кириллицу в **cp1251**
+  (в grep-выводе — mojibake). На работу не влияет (браузер определяет кодировку по meta/HTTP), но при любой
+  правке этих файлов через PowerShell сценарий D-142b повторится. Кандидат на отдельную запись.
