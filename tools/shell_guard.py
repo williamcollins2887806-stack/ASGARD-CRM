@@ -138,8 +138,9 @@ def _check_shell_file(rep, label, path):
         rep.check("addEventListener('install'" in txt or 'addEventListener("install"' in txt,
                   "sw.js: это реальный service worker (есть install-хендлер)",
                   "вхождений caches: %d" % txt.count("caches"))
-        rep.check("SHELL_VERSION" in txt, "sw.js: объявлен SHELL_VERSION",
-                  "вхождений: %d" % txt.count("SHELL_VERSION"))
+        rep.check(bool(re.search(r"const\s+SHELL_VERSION\s*=\s*'[^']+'", txt)),
+                  "sw.js: объявление const SHELL_VERSION = '<ver>'",
+                  "вхождений SHELL_VERSION: %d" % txt.count("SHELL_VERSION"))
     return txt, None
 
 
