@@ -33,9 +33,9 @@ Asgard CRM. Идёт миграция ДЕСКТОП-фронта vanilla → Re
 ## Гейты (делают DONE механическим, без человека)
 - `npm run build` ОБЯЗАН проходить.
 - Пер-пункт verify на клоне (sentinel POST→GET→assert / рантайм-проверка / grep) — зелёный.
-- **Deploy-gate:** деплоить на прод ТОЛЬКО если `git rev-parse HEAD` == `tests/reports/.last-verified`. Verify пишет `.last-verified` = ИМЕННО проверенный коммит. **Не переиспользовать старый хэш.**
+- **Deploy-gate:** деплоить на прод ТОЛЬКО если `git rev-parse HEAD` == `tests/reports/.last-verified`. Verify пишет `.last-verified` = ИМЕННО проверенный коммит. **Не переиспользовать старый хэш.** Проверяется машинно: `python tools/shell_guard.py --deploy-gate` (допускает дельту после подписи, только если она не трогает `public/`, `src/`, `migrations/`).
 - Нет хардкод-цветов в `desktop-v2-src/*.{jsx,css}` — только токены темы.
-- Хуки PreToolUse (deploy-gate, color-gate) — в `.claude/settings.json`.
+- Pre-deploy гейты (обязательны, порядок из `.cursor/rules/protect-prod-shell.mdc`): `tools/shell_guard.py --expect-version <X> --deploy-gate`, `tools/verify_index_tags.js`, `tools/audit_silent_reverts.js`, `python tools/restore_asset_sync.py plan`, `node tools/verify_rp_modal_render.js`. Post-deploy: сначала `restore_asset_sync.py plan`, потом `audit_silent_reverts.js --post-deploy` (см. D-166).
 
 ## Человек нужен ТОЛЬКО здесь (остальное — автономно)
 - **Перед ПРОД-пушем батча** — аудит зелёный (отдельный агент сертифицировал, покрытие сошлось).

@@ -323,6 +323,18 @@ def apply_plan(plan: dict) -> None:
         print("Нечего заливать.")
         return
 
+    # Pre-flight (D-167): оболочка обязана быть валидной, а HEAD — совпадать с проверенным
+    # коммитом (или отличаться от него только не-деплойными правками). Иначе заливка не идёт.
+    try:
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import shell_guard  # noqa: E402
+        shell_guard.assert_ok(base_dir=ROOT, deploy_gate=True)
+        print("pre-flight shell_guard: OK")
+    except SystemExit:
+        raise
+    except Exception as exc:  # модуль недоступен — не блокируем, но громко сообщаем
+        print(f"pre-flight shell_guard: ПРОПУЩЕН ({exc})")
+
     os.makedirs(WORK, exist_ok=True)
     list_path = os.path.join(WORK, "upload-list.txt")
     tar_path = os.path.join(WORK, "asset-sync.tar.gz")
