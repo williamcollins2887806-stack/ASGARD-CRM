@@ -424,6 +424,54 @@ async function caseC(pg) {
   }
 }
 
+// B2/C2 закрывают формулировку приёмки буквально: порог считается по сумме БЕЗ НДС,
+// поэтому проверяем ровно 6 млн и 12 млн ex-VAT (цена с НДС подбирается обратно через VAT_DIVISOR).
+async function caseThreshold(pg, { id, name, exVatTarget, expectDirector }) {
+  try {
+    const withVat = Math.round(exVatTarget * VAT_DIVISOR);
+    const tenderId = await createRegistryTender(`case-${id}`, 'TO');
+    await finalizeAnalysis(tenderId, pg);
+    const { resp, exVat: ev } = await finalizeCalc(tenderId, withVat, pg, {
+      approval_recipients: expectDirector ? ['HEAD_TO'] : undefined,
+    });
+    if (resp.status >= 400) {
+      return fail(id, name, `finalize HTTP ${resp.status} ${JSON.stringify(resp.data).slice(0, 300)}`);
+    }
+    const st = await readTenderState(pg, tenderId);
+    const rcptCount = await countApprovalRecipients(pg, tenderId);
+    const isPending = st.director_review_status === 'pending';
+    const okPrice = expectDirector ? ev >= THRESHOLD_EX_VAT : ev < THRESHOLD_EX_VAT;
+    const okDirector = isPending === expectDirector;
+    const okRecipients = expectDirector ? rcptCount >= 1 : rcptCount === 0;
+    if (okPrice && okDirector && okRecipients && !isLiveMail()) {
+      return pass(id, name, `tenderId=${tenderId} with_vat=${withVat} ex_vat=${ev} ` +
+        `director=${st.director_review_status || 'null'} recipients=${rcptCount} registry=${st.registry_status}`);
+    }
+    return fail(id, name, `tenderId=${tenderId} with_vat=${withVat} ex_vat=${ev} ` +
+      `director=${st.director_review_status} recipients=${rcptCount} okPrice=${okPrice} okDirector=${okDirector}`);
+  } catch (e) {
+    return fail(id, name, e.message);
+  }
+}
+
+async function caseB2(pg) {
+  return caseThreshold(pg, {
+    id: 'B2',
+    name: 'Calc ровно 6M ex-VAT → директору НЕ уходит, без recipients',
+    exVatTarget: 6_000_000,
+    expectDirector: false,
+  });
+}
+
+async function caseC2(pg) {
+  return caseThreshold(pg, {
+    id: 'C2',
+    name: 'Calc ровно 12M ex-VAT → директору уходит, recipients есть',
+    exVatTarget: 12_000_000,
+    expectDirector: true,
+  });
+}
+
 async function caseD(pg) {
   const id = 'D';
   const name = 'DIRECTOR_GEN approve → approved + registry=готовим';
@@ -598,7 +646,9 @@ async function caseH(pg) {
     const cases = [
       ['A', caseA],
       ['B', caseB],
+      ['B2', caseB2],
       ['C', caseC],
+      ['C2', caseC2],
       ['D', caseD],
       ['E', caseE],
       ['F', caseF],

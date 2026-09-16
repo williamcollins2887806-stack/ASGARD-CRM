@@ -241,6 +241,7 @@ window.AsgardWarehouseMap = (function () {
                 <input id="whm-find" placeholder="Код места" autocomplete="off">
                 <button type="button" class="whm__btn whm__btn--pri" data-a="find">Найти</button>
                 <button type="button" class="whm__btn" data-a="edit" title="Редактор">✎</button>
+                <button type="button" class="whm__btn" data-a="sync" title="Синхронизировать QR-места этажа по объектам (нужны права склада)">Синхр. QR</button>
                 <button type="button" class="whm__btn" data-a="refresh" title="Обновить">↻</button>
               </div>
               <span class="whm__meta" id="whm-bar-status"></span>
@@ -2592,10 +2593,9 @@ window.AsgardWarehouseMap = (function () {
         o.params_json = paramsOf(o);
         return o;
       });
-      // QR-места для ops/history: после сида V347 объекты есть, а warehouse_locations могут быть пусты
-      try {
-        await api.post('/api/warehouse-map/floors/' + list[0].id + '/sync-locations', {});
-      } catch (_) { /* read-only роли — пропуск */ }
+      // QR-места для ops/history: после сида V347 объекты есть, а warehouse_locations могут быть пусты.
+      // D-158: синхронизация убрана из read-потока — POST на каждой отрисовке давал 403 всем ролям
+      // вне WMS_WRITE (и лишний запрос на каждый refresh). Теперь это явное действие кнопкой «Синхр. QR».
       clearWorld();
       shell = buildFloorShell(floorData);
       objects.forEach((o) => buildObject(o, !mode3d));
@@ -2763,6 +2763,19 @@ window.AsgardWarehouseMap = (function () {
     };
     container.querySelector('[data-a="refresh"]').onclick = () => {
       refresh().catch((e) => setStatus(e.message));
+    };
+    // D-158: явная синхронизация QR-мест этажа (пришла на смену авто-POST из refresh()).
+    container.querySelector('[data-a="sync"]').onclick = async () => {
+      if (!floorData || !floorData.id) return;
+      setStatus('Синхронизация QR-мест…');
+      try {
+        const r = await api.post('/api/warehouse-map/floors/' + floorData.id + '/sync-locations', {});
+        setBarStatus('Ячеек: ' + (r.count || 0));
+        showHint('Синхронизация QR', (r.count || 0) + ' ячеек');
+        setStatus('QR-места синхронизированы');
+      } catch (e) {
+        setStatus((e && e.message) || 'Не удалось синхронизировать QR-места');
+      }
     };
     container.querySelector('[data-a="find"]').onclick = () => {
       const v = container.querySelector('#whm-find').value;

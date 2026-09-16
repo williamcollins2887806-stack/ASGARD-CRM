@@ -3413,25 +3413,33 @@ D-15-candidate из A-29 (correspondence RBAC расширен) и A-31 (custome
   - локальный `index.html` → `OK`, exit 0.
 - **Файл:** `tools/verify_index_tags.js`.
 
-## D-158 — `403 POST /api/warehouse-map/floors/1/sync-locations` на каждой отрисовке карты (OPEN, нужно решение)
+## D-158 — `403 POST /api/warehouse-map/floors/1/sync-locations` на каждой отрисовке карты (VERIFIED, вариант A)
 
 - **Тип:** bug / frontend (write-операция в read-потоке)
 - **Приоритет:** MEDIUM (не ломает данные, но 403 в консоли на каждой отрисовке WMS и лишние запросы)
-- **Статус:** OPEN — варианты зафиксированы, требуется решение заказчика
-- **Доказательство:** `src/routes/warehouse-map.js:7` — `WMS_WRITE = ['ADMIN','WAREHOUSE','CHIEF_ENGINEER','DIRECTOR_GEN','DIRECTOR_COMM','DIRECTOR_DEV']`;
-  фронт вызывает синк **автоматически при монтировании** (`warehouse-map.js:2597` внутри `refresh()`,
+- **Статус:** FIXED + VERIFIED на клоне (вариант A, выбран заказчиком 15.09). Прод — за отдельной командой.
+- **Доказательство (до):** `src/routes/warehouse-map.js:7` — `WMS_WRITE = ['ADMIN','WAREHOUSE','CHIEF_ENGINEER','DIRECTOR_GEN','DIRECTOR_COMM','DIRECTOR_DEV']`;
+  фронт вызывал синк **автоматически при монтировании** (`warehouse-map.js:2597` внутри `refresh()`,
   из `renderMapTab` :1536 и `mount` :2871). Для ролей вне `WMS_WRITE` это гарантированный 403 на каждой отрисовке.
-- **Варианты:** (A, рекомендуемый) не дёргать sync при монтировании — только по явному действию под ролью с правом записи;
-  (B) расширить `WMS_WRITE`. Кода не менял до решения.
+- **Правка (вариант A):** авто-POST убран из `refresh()`; синхронизация осталась **явным действием** —
+  кнопка `Синхр. QR` (`[data-a="sync"]`) в тулбаре, которая бьёт в тот же эндпоинт и показывает результат
+  (`setStatus`/`setBarStatus`, ошибка — текстом, без падения). Изменён только `public/assets/js/warehouse-map.js`.
+- **VERIFIED (клон `asgard_crm_test`, двойник `:3100`, шелл 20.28.32):** `tools`-скрипт `wms_sync_verify.js`
+  на маршруте `#/warehouse-v2?tab=map` — **6/6 PASS под ADMIN и 6/6 PASS под PM**:
+  монтирование → `0` вызовов `sync-locations`; кнопка `↻` (refresh) → `0` вызовов; JS-ошибок до клика — `0`;
+  явный клик по «Синхр. QR» → ровно `1` POST. Т.е. 403-шум у read-only ролей исчез, право записи по-прежнему
+  решает API (`WMS_WRITE`), а не UI.
 
-## D-159 — `503 /api/procurement/export/excel` (гипотеза: окно рестарта; проверяется read-only)
+## D-159 — `503 /api/procurement/export/excel` (CLOSED: не воспроизводится)
 
 - **Тип:** bug / ops (наблюдение из консоли прода 15.09)
-- **Приоритет:** LOW (гипотеза — транзиент)
-- **Статус:** OPEN → проверка read-only под `ADMIN`/`PROC`/`PM`
+- **Приоритет:** LOW → закрыто
+- **Статус:** CLOSED — 8/8 PASS read-only пробой на проде, 503 не воспроизводится
 - **Доказательство:** роут существует (`src/routes/procurement.js:120`) и защищён `requireRoles`,
-  который отдаёт **403**, а не 503; `exceljs` на проде установлен. 503 совпал по времени с окном
-  `systemctl restart asgard-crm` во время захода P5.
+  который отдаёт **403**, а не 503; `exceljs` на проде установлен.
+- **Проба (прод, GET, только чтение, `asgard_excel_probe.py`):** `ADMIN`(1), `PROC`(3467), `PM`(3463), `BUH`(3469)
+  × (`/export/excel`, `/export/excel?status=sent_to_proc`) → **HTTP 200** и `content-type: application/vnd.openxmlformats-officedocument…`,
+  6656–7595 Б. Вывод: 503 был транзиентом окна `systemctl restart asgard-crm` во время захода P5.
 
 ## D-160 — Пробел отката: снапшоты `pre-big` не содержат `src/`
 
@@ -3455,3 +3463,66 @@ D-15-candidate из A-29 (correspondence RBAC расширен) и A-31 (custome
 - **Наблюдение (не в задаче):** `mimir-conductor-ui.js`, `calculator.js` и др. содержат кириллицу в **cp1251**
   (в grep-выводе — mojibake). На работу не влияет (браузер определяет кодировку по meta/HTTP), но при любой
   правке этих файлов через PowerShell сценарий D-142b повторится. Кандидат на отдельную запись.
+
+## D-162 — Сертификат прода истёк 15.09 13:39 GMT → HTTPS переставал открываться (CLOSED)
+
+- **Тип:** incident / ops (прод-доступность)
+- **Приоритет:** CRITICAL (сайт недоступен по HTTPS; в консоли браузера — `SSL certificate error`)
+- **Статус:** CLOSED — выпущен и установлен Let's Encrypt, авто-renew включён
+- **Диагноз:** `openssl s_client` по обоим именам отдавал `CN=www.asgard-crm.ru`,
+  `issuer=GlobalSign GCC R3 DV TLS CA 2020`, `notAfter = Sep 15 13:39:22 2026 GMT` (истёк за ~1.9 ч до обнаружения).
+  На сервере **не было** ни `certbot`, ни `acme.sh`, ни таймеров/кронов продления — сертификат от 22.02.2026
+  (`/etc/ssl/asgard-crm/{fullchain,privkey}.pem`) продлевался вручную. Порт 80 и исходящий доступ к LE были открыты.
+- **Что сделано:** снапшот конфига и старого сертификата (`/root/snapshots/tls-20260915-2005/`);
+  в порт-80 блок nginx добавлена ACME-локация `location ^~ /.well-known/acme-challenge/ { root /var/www/letsencrypt; }`
+  (**до** `location /` с 301) и отдельный webroot `/var/www/letsencrypt` (вне дерева деплоя — `rsync` его не затронет);
+  установлен `certbot 2.9.0`; выпущен сертификат на `asgard-crm.ru` + `www.asgard-crm.ru`
+  (webroot, аккаунт `crm@asgard-service.com`, ECDSA); nginx переведён на `/etc/letsencrypt/live/asgard-crm.ru/`.
+- **VERIFIED:** SAN обоих имён; `notAfter = Dec 14 16:01:53 2026 GMT`; строгий TLS-fetch снаружи по обоим именам — **200**;
+  `certbot.timer` (`enabled`, следующий запуск 16.09 05:32); deploy-hook
+  `/etc/letsencrypt/renewal-hooks/deploy/reload-nginx.sh` (перезагружает nginx после продления);
+  `certbot renew --dry-run` → **exit 0, «all simulated renewals succeeded»**.
+- **Откат:** конфиг и старый GlobalSign-сертификат лежат в `/root/snapshots/tls-20260915-2005/` (вернуть
+  `ssl_certificate*` на `/etc/ssl/asgard-crm/*` + `systemctl reload nginx`).
+
+## D-163 — Клон `asgard_crm_test` был залит с потерей кодировки → ложный FAIL теста порога (CLOSED)
+
+- **Тип:** test-infrastructure / encoding (класс D-142b)
+- **Приоритет:** MEDIUM (гейт давал ложный красный и уводил разбор в ложном направлении)
+- **Статус:** CLOSED — клон перезалит бинарно, тест 10/10
+- **Симптом:** `tests/tender-approval-chain.js` падал на всех кейсах с
+  `new row for relation "tenders" violates check constraint "tenders_registry_status_check"`.
+- **Диагноз (машинно, UTF-8-hex без участия клиентской кодировки):** на **проде** constraint корректен —
+  `CHECK (registry_status IN ('рассмотрение','готовим','подались','проиграли','отмена','выиграли'))`, данные тоже кириллицей;
+  на **клоне** тот же constraint содержал `'????…'` (12 кириллических символов превратились в 24 `?`).
+  Причина — восстановление клона текстовым `pg_dump | psql` через пайп с ANSI-кодировкой: кириллица в DDL-литералах
+  потерялась. Т.е. **дефект клона, а не прода**: тендерный реестр на проде не сломан.
+- **Фикс:** клон пересоздан бинарно-безопасно — `pg_dump -Fc` на проде → `scp` → `pg_restore --no-owner --no-privileges`
+  (32 297 286 Б, md5 `87da6c7c6254a71fd8b1907231f36d32`). После восстановления: constraint с кириллицей,
+  `tenders = 1244`, `migrations = 279/271`, порог `10000000`, `test_admin` на месте.
+- **Правило на будущее:** клон из прода делать **только** через `-Fc` + `pg_restore` (или с явным
+  `PGCLIENTENCODING=UTF8` на обеих сторонах). Текстовый пайп на Windows — запрещённый способ (см. D-142b).
+
+## D-164 — Порог тендера: рантайм-доказательство на верном клоне (VERIFIED, 10/10)
+
+- **Тип:** verification (денежное правило)
+- **Приоритет:** HIGH (решение о тендерах 5–10 млн)
+- **Статус:** VERIFIED — `tests/tender-approval-chain.js` **10/10 PASS**, exit 0 (клоне `asgard_crm_test`, `:3100`)
+- **Что проверено на рантайме (POST→PUT→GET/DB), а не только значением в `settings`:**
+  - **B2:** ровно **6 000 000 без НДС** (7 320 000 с НДС) → `director_review_status = null`, recipients `0`, registry `готовим` — директору **не** уходит;
+  - **C:** ровно **10 000 000 без НДС** (граница) → `pending`, recipients `1` — уходит;
+  - **C2:** ровно **12 000 000 без НДС** (14 640 000 с НДС) → `pending`, recipients `1` — уходит;
+  - **B/A/D/E/F/G/H:** создание+finalize анализа → `calculator_user_id`; <10M без director; approve → `approved` + registry `готовим`;
+    2 recipients → одного `DIRECTOR` достаточно; reject → registry `отмена`; `assign-calculator kind=pm` → 400;
+    бейдж «Цена согласована» = `approved` (DB и API).
+- **Тест расширен** двумя кейсами (`B2`, `C2`) — раньше формулировка «6 млн не уходит, 12 млн уходит» не покрывалась буквально.
+
+## D-165 — `tests/config.js`: гипотеза про `https.Agent` для http-клона не подтвердилась
+
+- **Тип:** test-infrastructure (ложная гипотеза, зафиксирована чтобы не повторять)
+- **Статус:** CLOSED — правка `tests/config.js` **не требуется**
+- **Разбор:** план предполагал, что `_sharedAgent = new https.Agent(...)`, передаваемый в `fetch` даже для
+  `http://127.0.0.1:3100`, вызывает `fetch failed`. Прямой эксперимент на Node **v24.13.1**: локальный http-сервер,
+  `fetch(url, {agent: https.Agent})` → **HTTP 200**, без агента → **HTTP 200** (ошибки нет).
+  Настоящая причина `fetch failed` была в том, что **двойник на `:3100` не был запущен** (порт закрыт).
+  Файл не менялся — минимальный diff, ложную правку не вносим.
