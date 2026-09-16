@@ -12,6 +12,7 @@ const path = require('path');
 const fs = require('fs');
 const { sendCrmEmail } = require('./crm-mailer');
 const { recalcAsgardSmeta } = require('./asgard-smeta');
+const { resolveWorkPrice } = require('./work-price');
 const { uploadFsPath } = require('../utils/upload-url');
 
 const TOKEN_TTL_HOURS = 72;
@@ -192,6 +193,13 @@ function ensureEstimate(raw) {
 function renderSmetaTableHtml(estimate) {
   const est = ensureEstimate(estimate);
   const rows = est.rows || [];
+  const meta = est.meta || {};
+  const totals = est.totals || {};
+  // Колонка «Доля, %» — только если доля где-то реально меньше 100% (блок G).
+  const withShare = rows.some((r) => r.kind === 'line' && r.sharePct != null && r.sharePct !== ''
+    && Number(r.sharePct) > 0 && Number(r.sharePct) < 1);
+  const COLS = withShare ? 7 : 6;
+  const cell = 'padding:6px 8px;border-bottom:1px solid #eef1f6';
   let body = '';
   let pendingSection = null;
   let sectionHasLines = false;
@@ -205,7 +213,25 @@ function renderSmetaTableHtml(estimate) {
   for (const r of rows) {
     if (r.kind === 'section') {
       flushSection();
-      pendingSection = `<tr style="background:#1b2a4a;color:#fff"><td colspan="6" style="padding:9px 10px;font-weight:700;font-size:12px;letter-spacing:.04em">${esc(r.name)}</td></tr>`;
+      pendingSection = `<tr style="background:#1b2a4a;color:#fff"><td colspan="${COLS}" style="padding:9px 10px;font-weight:700;font-size:12px;letter-spacing:.04em">${esc(r.name)}</td></tr>`;
+      continue;
+    }
+    if (r.kind === 'info') {
+      // Перечень (блок F): показываем всегда — это справочный состав техники/оборудования.
+      if (pendingSection) {
+        body += pendingSection;
+        pendingSection = null;
+      }
+      sectionHasLines = true;
+      body += `<tr>
+        <td style="${cell};font-size:12px;color:#6b7280">${esc(r.code || '')}</td>
+        <td style="${cell};font-size:13px">${esc(r.name || '')}</td>
+        <td style="${cell};font-size:12px;color:#6b7280">${esc(r.unit || '')}</td>
+        <td style="${cell};font-size:13px;text-align:right">${esc(r.qty != null ? String(r.qty) : '')}</td>
+        <td style="${cell};font-size:13px;text-align:right">${esc(r.price != null && Number(r.price) ? Math.round(r.price).toLocaleString('ru-RU') : '')}</td>
+        ${withShare ? `<td style="${cell};font-size:12px;text-align:right;color:#6b7280">—</td>` : ''}
+        <td style="${cell};font-size:12px;text-align:right;color:#6b7280">${esc(Number(r.sum) > 0 ? `${fmtRub(r.sum)} спр.` : 'справочно')}</td>
+      </tr>`;
       continue;
     }
     if (r.kind === 'line') {
@@ -216,13 +242,20 @@ function renderSmetaTableHtml(estimate) {
         pendingSection = null;
       }
       sectionHasLines = true;
+      const share = r.sharePct != null && r.sharePct !== '' ? Number(r.sharePct) : 1;
+      const shareTxt = share < 1 ? `${Math.round(share * 1000) / 10}%` : '';
+      const full = Number(r.qty) * Number(r.price);
+      const sumTitle = share < 1
+        ? `Из ${fmtRub(full)} в себестоимость входит ${shareTxt}`
+        : '';
       body += `<tr>
-        <td style="padding:6px 8px;border-bottom:1px solid #eef1f6;font-size:12px;color:#6b7280">${esc(r.code || '')}</td>
-        <td style="padding:6px 8px;border-bottom:1px solid #eef1f6;font-size:13px">${esc(r.name || '')}</td>
-        <td style="padding:6px 8px;border-bottom:1px solid #eef1f6;font-size:12px;color:#6b7280">${esc(r.unit || '')}</td>
-        <td style="padding:6px 8px;border-bottom:1px solid #eef1f6;font-size:13px;text-align:right">${esc(String(r.qty != null ? r.qty : ''))}</td>
-        <td style="padding:6px 8px;border-bottom:1px solid #eef1f6;font-size:13px;text-align:right">${esc(r.price != null ? Math.round(r.price).toLocaleString('ru-RU') : '')}</td>
-        <td style="padding:6px 8px;border-bottom:1px solid #eef1f6;font-size:13px;text-align:right;font-weight:700">${esc(fmtRub(sum))}</td>
+        <td style="${cell};font-size:12px;color:#6b7280">${esc(r.code || '')}</td>
+        <td style="${cell};font-size:13px">${esc(r.name || '')}</td>
+        <td style="${cell};font-size:12px;color:#6b7280">${esc(r.unit || '')}</td>
+        <td style="${cell};font-size:13px;text-align:right">${esc(String(r.qty != null ? r.qty : ''))}</td>
+        <td style="${cell};font-size:13px;text-align:right">${esc(r.price != null ? Math.round(r.price).toLocaleString('ru-RU') : '')}</td>
+        ${withShare ? `<td style="${cell};font-size:13px;text-align:right">${esc(r.section === 'G' ? shareTxt : '')}</td>` : ''}
+        <td style="${cell};font-size:13px;text-align:right;font-weight:700"${sumTitle ? ` title="${esc(sumTitle)}"` : ''}>${esc(fmtRub(sum))}</td>
       </tr>`;
       continue;
     }
@@ -231,22 +264,45 @@ function renderSmetaTableHtml(estimate) {
       flushSection();
       const heavy = /СЕБЕСТОИМОСТЬ|ЦЕНА ЗАКАЗЧИКУ|ПРЯМЫЕ|Цена без НДС/.test(r.name || '');
       body += `<tr style="background:${heavy ? '#faf6e8' : '#f8fafc'}">
-        <td colspan="5" style="padding:8px 10px;border-bottom:1px solid #e5e7eb;font-size:13px;font-weight:${heavy ? 800 : 700};text-align:right">${esc(r.name)}</td>
+        <td colspan="${COLS - 1}" style="padding:8px 10px;border-bottom:1px solid #e5e7eb;font-size:13px;font-weight:${heavy ? 800 : 700};text-align:right">${esc(r.name)}</td>
         <td style="padding:8px 10px;border-bottom:1px solid #e5e7eb;font-size:13px;text-align:right;font-weight:800;color:${heavy ? '#a8862e' : '#1b2a4a'}">${esc(fmtRub(r.sum))}</td>
       </tr>`;
     }
   }
   flushSection();
 
-  return `<table style="width:100%;border-collapse:collapse;margin:8px 0 4px">
+  let pre = '';
+  if (meta.work_start_plan || meta.work_duration_days) {
+    pre += `<div style="font-size:12px;color:#6b7280;margin:0 0 6px">Начало работ (план): <b style="color:#1b2a4a">${esc(fmtDate(meta.work_start_plan))}</b>`
+      + ` · примерный срок: <b style="color:#1b2a4a">${esc(meta.work_duration_days ? `${meta.work_duration_days} сут` : '—')}</b>`
+      + ` · окончание (план): <b style="color:#1b2a4a">${esc(fmtDate(meta.work_end_plan_calc))}</b></div>`;
+  }
+
+  let post = '';
+  if (Number(totals.equipment) > 0) {
+    const parts = [];
+    if (Number(totals.equipment_purchase) > 0) {
+      parts.push(`закупка долей: ${fmtRub(totals.equipment_purchase)}`
+        + (Number(totals.equipment_purchase_full) > 0 ? ` из ${fmtRub(totals.equipment_purchase_full)}` : ''));
+    }
+    if (Number(totals.equipment_rental) > 0) parts.push(`аренда техники: ${fmtRub(totals.equipment_rental)}`);
+    post += `<div style="font-size:12px;color:#6b7280;margin:0 0 8px">Оборудование в себестоимости: <b style="color:#1b2a4a">${esc(fmtRub(totals.equipment))}</b>`
+      + `${parts.length ? ` (${esc(parts.join('; '))})` : ''} · наценка на оборудование не начисляется</div>`;
+  }
+  if (Number(totals.equipment_planned) > 0) {
+    post += `<div style="font-size:12px;color:#6b7280;margin:0 0 8px">Планируемое оборудование по перечню (справочно, в расходы не входит): ${esc(fmtRub(totals.equipment_planned))}</div>`;
+  }
+
+  return pre + `<table style="width:100%;border-collapse:collapse;margin:8px 0 4px">
     <thead><tr style="background:#f8fafc">
       <th style="text-align:left;padding:8px 10px;font-size:11px;color:#6b7280;border-bottom:1px solid #e5e7eb">Код</th>
       <th style="text-align:left;padding:8px 10px;font-size:11px;color:#6b7280;border-bottom:1px solid #e5e7eb">Статья</th>
       <th style="text-align:left;padding:8px 10px;font-size:11px;color:#6b7280;border-bottom:1px solid #e5e7eb">Ед.</th>
       <th style="text-align:right;padding:8px 10px;font-size:11px;color:#6b7280;border-bottom:1px solid #e5e7eb">Кол-во</th>
       <th style="text-align:right;padding:8px 10px;font-size:11px;color:#6b7280;border-bottom:1px solid #e5e7eb">Цена, ₽</th>
+      ${withShare ? `<th style="text-align:right;padding:8px 10px;font-size:11px;color:#6b7280;border-bottom:1px solid #e5e7eb">Доля, %</th>` : ''}
       <th style="text-align:right;padding:8px 10px;font-size:11px;color:#6b7280;border-bottom:1px solid #e5e7eb">Сумма</th>
-    </tr></thead><tbody>${body}</tbody></table>`;
+    </tr></thead><tbody>${body}</tbody></table>` + post;
 }
 
 function textBlock(label, value) {
@@ -263,12 +319,19 @@ function buildEmailHtml({ tender, review, estimate, decideUrl, filesUrl, files, 
   const est = ensureEstimate(estimate || rj.asgard_smeta);
   const t = est.totals || {};
   const title = tender.tender_title || 'Просчёт по тендеру';
-  const when = [fmtDate(tender.work_start_plan || tender.work_start || tender.docs_deadline), fmtDate(tender.work_end)]
-    .filter((x) => x && x !== '—').join(' — ')
-    || (est.meta && est.meta.work_schedule) || fmtDate(tender.docs_deadline) || '—';
+  const when = (() => {
+    const meta = est.meta || {};
+    const plan = [fmtDate(meta.work_start_plan), fmtDate(meta.work_end_plan_calc)]
+      .filter((x) => x && x !== '—').join(' — ');
+    if (plan) return meta.work_duration_days ? `${plan} (${meta.work_duration_days} сут)` : plan;
+    return [fmtDate(tender.work_start_plan || tender.work_start || tender.docs_deadline), fmtDate(tender.work_end)]
+      .filter((x) => x && x !== '—').join(' — ')
+      || meta.work_schedule || fmtDate(tender.docs_deadline) || '—';
+  })();
   const where = tender.object_name || tender.city || tender.region
     || (est.meta && est.meta.object) || '—';
-  const priceWithVat = t.price_with_vat != null ? t.price_with_vat : review?.work_price;
+  const priceWithVat = t.price_with_vat != null ? t.price_with_vat : resolveWorkPrice(review).withVat;
+  const priceExVat = t.price_no_vat != null ? t.price_no_vat : resolveWorkPrice(review).exVat;
   const who = pmName || review?.calculator_name || review?.finalized_by_name || 'РП';
   const decisionUntil = tender.docs_deadline
     ? `${fmtDate(tender.docs_deadline)} (дедлайн подачи документации)`
@@ -319,7 +382,7 @@ function buildEmailHtml({ tender, review, estimate, decideUrl, filesUrl, files, 
       <div style="margin:18px 0 8px;padding:16px 18px;background:linear-gradient(180deg,#faf6e8,#f8fafc);border-radius:12px;border:1px solid #e8dfc0">
         <div style="font-size:11px;color:#8a6d1a;margin-bottom:8px;font-weight:800;letter-spacing:.05em;text-transform:uppercase">Итоги для решения</div>
         <div style="font-size:14px;margin:4px 0">Себестоимость без НДС: <b>${esc(fmtRub(t.cost))}</b></div>
-        <div style="font-size:14px;margin:4px 0">Цена без НДС: <b>${esc(fmtRub(t.price_no_vat))}</b></div>
+        <div style="font-size:14px;margin:4px 0">Цена без НДС: <b>${esc(fmtRub(priceExVat))}</b></div>
         <div style="font-size:26px;font-weight:800;margin-top:10px;color:#1b2a4a;letter-spacing:-.02em">С НДС: ${esc(fmtRub(priceWithVat))}</div>
       </div>
       <a href="${esc(decideUrl)}" style="display:block;background:#15803d;color:#fff;text-decoration:none;text-align:center;padding:16px 18px;border-radius:12px;font-weight:800;font-size:17px;margin:20px 0 10px;">Согласовать</a>
@@ -376,7 +439,7 @@ function landingMessageHtml(title, msg, tone) {
 function landingActionHtml(tender, review, rawToken, recipientLabel, expectedFrom) {
   const rj = parseRj(review.report_json);
   const est = ensureEstimate(rj.asgard_smeta);
-  const price = review.work_price != null ? review.work_price : est.totals?.price_with_vat;
+  const price = review.work_price != null ? resolveWorkPrice(review).withVat : est.totals?.price_with_vat;
   return landingShell('Решение по просчёту', `
     <div class="muted" style="margin-top:0;">Цена заказчику с НДС</div>
     <div class="amt">${esc(fmtRub(price))}</div>
@@ -799,7 +862,7 @@ async function sendPreviewToAndrosov(db, opts = {}) {
   const html = buildEmailHtml({
     tender,
     review: {
-      work_price: est.totals?.price_with_vat,
+      work_price: est.totals?.price_no_vat,
       report_json: {
         asgard_smeta: est,
         summary: opts.summary || 'Гидроструйная очистка теплообменного оборудования. Бригада 2 смены, выезд на площадку заказчика.',

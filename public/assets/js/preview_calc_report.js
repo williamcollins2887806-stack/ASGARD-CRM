@@ -58,17 +58,37 @@ window.AsgardPreviewCalcReportPage = (function () {
           customer: tender.customer_name,
           object: tender.object_name,
           executor: 'ООО «АСГАРД-Сервис»',
-          work_schedule: '14 раб.сут · 2 смены'
+          work_schedule: '14 раб.сут · 2 смены',
+          // Демонстрируем блок дат в письме: начало + срок → расчётное окончание.
+          work_start_plan: '2026-10-12',
+          work_duration_days: 16
         },
         params: AsgardSmeta.segezhaFixtureParams
           ? AsgardSmeta.segezhaFixtureParams()
           : (AsgardSmeta.DEFAULT_PARAMS || {})
       });
+      // Демо новых блоков: перечень (F, справочно), закупка долей (G, 15 млн × 30%), аренда (H).
+      const setLine = function (id, patch) {
+        const row = (estimate.rows || []).find(function (r) { return r.id === id; });
+        if (row) Object.assign(row, patch, { override: true });
+      };
+      setLine('f1', { name: 'АВД высокого давления', unit: 'шт', qty: 2, price: 900000 });
+      setLine('g1', { name: 'Шарошечные насадки, комплект', unit: 'компл', qty: 1, price: 15000000, sharePct: 0.3 });
+      setLine('h1', { name: 'Автокран 25 т', unit: 'смена', qty: 6, price: 45000 });
+      // Позиция перечня, добавленная РП кнопкой «+ строка» (в скелете её нет).
+      const fIdx = (estimate.rows || []).findIndex(function (r) { return r.id === 'sec_g'; });
+      if (fIdx > 0) {
+        estimate.rows.splice(fIdx, 0, {
+          id: 'f_u_demo', kind: 'info', section: 'F', code: 'F2',
+          name: 'Установка «Вулкан»', unit: 'шт', qty: 1, price: 450000, override: true
+        });
+      }
+      estimate = AsgardSmeta.recalcAsgardSmeta(estimate);
     }
     return M.buildEmailPreviewHtml({
       tender: tender,
       review: {
-        work_price: estimate && estimate.totals ? estimate.totals.price_with_vat : null,
+        work_price: estimate && estimate.totals ? estimate.totals.price_no_vat : null,
         report_json: {
           mode: 'calc',
           cost_without_vat: estimate && estimate.totals ? estimate.totals.cost : null,

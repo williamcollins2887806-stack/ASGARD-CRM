@@ -201,10 +201,16 @@ function registerRpReviewCollabRoutes(fastify) {
     };
 
     const workPrice = dj.work_price != null ? dj.work_price : review.work_price;
+    // Канон D-173: цена в этом пути задаётся НОВОЙ (из черновика Мимира) → это запись канона,
+    // значит `work_price_ex_vat` обязан обновиться вместе с ней. Без этого на карточке
+    // оставался бы старый «легаси» ex-vat, и `resolveWorkPrice` прочитал бы цену заниженно
+    // (нашёл L3-верификатор, 16.09).
+    const workPriceExVat = Number(workPrice) > 0 ? Number(workPrice) : null;
     await db.query(`
       UPDATE tender_rp_reviews SET
         report_json = $1::jsonb,
         work_price = COALESCE($2, work_price),
+        work_price_ex_vat = COALESCE($8, work_price_ex_vat),
         estimate_file_id = CASE WHEN $3::boolean THEN COALESCE($4, estimate_file_id) ELSE estimate_file_id END,
         report_file_id = CASE WHEN $3::boolean THEN COALESCE($5, report_file_id) ELSE report_file_id END,
         tkp_file_id = CASE WHEN $3::boolean THEN COALESCE($6, tkp_file_id) ELSE tkp_file_id END,
@@ -217,7 +223,8 @@ function registerRpReviewCollabRoutes(fastify) {
       draft.estimate_file_id || null,
       draft.report_file_id || null,
       draft.tkp_file_id || null,
-      review.id
+      review.id,
+      workPriceExVat
     ]);
 
     await writeReviewLog(db, {

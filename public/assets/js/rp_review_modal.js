@@ -136,8 +136,24 @@ window.AsgardRpReviewModal = (function () {
     return hit ? hit.label : '—';
   }
 
+  /**
+   * Канон цены работ РП: work_price — БЕЗ НДС (зеркало src/services/work-price.js).
+   * Legacy-карточки хранили с НДС + work_price_ex_vat = /1.22 — распознаём по отношению.
+   */
+  function reviewWorkPrice(review, workPrice) {
+    const src = {
+      work_price: workPrice != null && workPrice !== '' ? workPrice : (review && review.work_price),
+      work_price_ex_vat: review && review.work_price_ex_vat
+    };
+    const M = window.AsgardMoney;
+    if (M && M.resolveWorkPrice) return M.resolveWorkPrice(src);
+    const ex = Number(src.work_price);
+    if (!Number.isFinite(ex)) return { exVat: null, withVat: null };
+    return { exVat: ex, withVat: Math.round(ex * 1.22 * 100) / 100 };
+  }
+
   function priceRangeLabel(rj, workPrice) {
-    if (workPrice) return fmtMoney(workPrice) + ' (с НДС)';
+    if (workPrice) return fmtMoney(workPrice) + ' (без НДС)';
     const min = rj.price_range_min;
     const max = rj.price_range_max;
     const fmt = (v) => {
@@ -304,10 +320,9 @@ window.AsgardRpReviewModal = (function () {
       || review?.analysis_finalized_by_name
       || '—';
     const cost = rj?.cost_without_vat;
-    const priceInc = workPrice != null && workPrice !== '' ? Number(workPrice) : null;
-    const priceEx = review?.work_price_ex_vat != null
-      ? Number(review.work_price_ex_vat)
-      : (Number.isFinite(priceInc) ? Math.round((priceInc / 1.22) * 100) / 100 : null);
+    const rw = reviewWorkPrice(review, workPrice);
+    const priceEx = rw.exVat;
+    const priceInc = rw.withVat;
     const duration = rj?.duration_days;
     const deadline = tender?.docs_deadline;
     const dec = review?.decision;
@@ -647,7 +662,12 @@ window.AsgardRpReviewModal = (function () {
             const pr = priceRangeLabel(reportJson, workPrice);
             if (pr !== '—') ih += renderRo('Ориентир цены', pr);
           } else if (mode === 'calc' && isLocked && workPrice) {
-            ih += renderRo('Цена работ (с НДС)', fmtMoney(workPrice));
+            // Канон: work_price — цена без НДС; «с НДС» показываем производной.
+            ih += renderRo('Цена работ (без НДС)', fmtMoney(workPrice));
+            const rw = reviewWorkPrice(review, workPrice);
+            if (rw.withVat != null && rw.withVat !== Number(workPrice)) {
+              ih += renderRo('Цена работ (с НДС)', fmtMoney(rw.withVat));
+            }
           }
 
           ih += '<div class="rp-review-field"><label>Суть для ТО' + (!isLocked ? ' <span class="req">*</span>' : '') + '</label>';
@@ -699,7 +719,7 @@ window.AsgardRpReviewModal = (function () {
             ih += isLocked ? renderRo('', reportJson.cost_without_vat != null ? fmtMoney(reportJson.cost_without_vat) : '—') :
               '<input class="inp" id="rpCostNoVat" type="number" value="' + esc(reportJson.cost_without_vat ?? '') + '"/>';
             ih += '</div>';
-            ih += '<div class="rp-review-field"><label>Цена работ, ₽ (с НДС)' + (!isLocked ? ' <span class="req">*</span>' : '') + '</label>';
+            ih += '<div class="rp-review-field"><label>Цена работ, ₽ (без НДС)' + (!isLocked ? ' <span class="req">*</span>' : '') + '</label>';
             ih += isLocked ? renderRo('', fmtMoney(workPrice)) :
               '<input class="inp" id="rpPrice" type="number" value="' + esc(workPrice) + '"/>';
             ih += '</div>';
@@ -832,7 +852,7 @@ window.AsgardRpReviewModal = (function () {
               esc(fmtMoney(dj.price_range_min)) + ' — ' + esc(fmtMoney(dj.price_range_max)) + '</div>';
           }
           if (dj.work_price != null) {
-            h += '<div class="muted" style="font-size:11px;margin-top:4px">Цена: ' + esc(fmtMoney(dj.work_price)) + '</div>';
+            h += '<div class="muted" style="font-size:11px;margin-top:4px">Цена (без НДС): ' + esc(fmtMoney(dj.work_price)) + '</div>';
           }
           if (isFinalOwner && !isLocked && !d._mine) {
             h += '<div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap">' +
@@ -1316,7 +1336,7 @@ window.AsgardRpReviewModal = (function () {
             if (result.review) {
               review = result.review;
               reportJson = parseRj(review.report_json, mode);
-              workPrice = review.work_price ?? workPrice;
+              workPrice = reviewWorkPrice(review).exVat ?? workPrice;
             }
             toast('Мимир', 'Применено к форме — можно править поля', 'ok');
             rerender();
@@ -1488,7 +1508,7 @@ window.AsgardRpReviewModal = (function () {
             if (d.review) {
               review = d.review;
               reportJson = parseRj(review.report_json, mode);
-              workPrice = review.work_price ?? workPrice;
+              workPrice = reviewWorkPrice(review).exVat ?? workPrice;
             }
             const full = await API.loadRpReview(tender.id);
             estimateFile = full.estimate_file || estimateFile;
@@ -1719,7 +1739,7 @@ window.AsgardRpReviewModal = (function () {
           reportKind = review?.report_kind || (decision === 'reject' ? 'reject' : 'work');
           mode = contextMode != null ? contextMode : (parseRj(review?.report_json, 'calc').mode || 'calc');
           reportJson = parseRj(review?.report_json, mode);
-          workPrice = review?.work_price ?? '';
+          workPrice = reviewWorkPrice(review).exVat ?? '';
           missingFlags = Array.isArray(review?.missing_info_flags) ? [...review.missing_info_flags] : [];
           threadUnread = d.thread_unread || 0;
           if (review?.is_final) isLocked = true;
@@ -1762,7 +1782,7 @@ window.AsgardRpReviewModal = (function () {
     const rj = parseRj(rev.report_json, 'calc');
     let h = '<div class="rp-review-summary-card' + (rev.decision === 'submit' ? ' submit' : (rev.decision === 'reject' ? ' reject' : '')) + '">';
     h += '<strong>' + (rev.decision === 'submit' ? '✓ Подаём' : (rev.decision === 'reject' ? '✕ Не подаём' : 'Черновик')) + '</strong>';
-    if (rev.work_price) h += ' · ' + esc(fmtMoney(rev.work_price));
+    if (rev.work_price) h += ' · ' + esc(fmtMoney(reviewWorkPrice(rev).exVat)) + ' (без НДС)';
     h += '</div>';
     h += renderRo('Суть', rj.summary) + renderRo('Риски', rj.risks) + renderRo('Рекомендация', rj.recommendation);
     if (estimateFile) {

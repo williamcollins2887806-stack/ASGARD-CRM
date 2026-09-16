@@ -1,6 +1,7 @@
 'use strict';
 
 const { createNotification } = require('./notify');
+const { resolveWorkPrice } = require('./work-price');
 
 const DIRECTOR_ROLES = ['DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV'];
 
@@ -44,15 +45,19 @@ function buildReportBrief(review, kind) {
   const dec = decisionLabel(review?.decision || src.decision);
   if (dec) lines.push(`Решение: ${dec}`);
 
-  const workPrice = fmtMoney(review?.work_price);
+  const wp = require('./work-price').resolveWorkPrice(review);
+  const workPriceEx = fmtMoney(wp.exVat);
+  const workPriceWith = fmtMoney(wp.withVat);
   const costNoVat = fmtMoney(rj.cost_without_vat);
-  if (workPrice) {
-    lines.push(`Цена работ (с НДС): ${workPrice}`);
+  if (workPriceEx) {
+    // Канон: work_price — без НДС; «с НДС» считаем производной (см. src/services/work-price.js).
+    lines.push(`Цена работ (без НДС): ${workPriceEx}`);
+    if (workPriceWith) lines.push(`Цена работ (с НДС): ${workPriceWith}`);
   }
   if (costNoVat) {
     lines.push(`Себестоимость (без НДС): ${costNoVat}`);
   }
-  if (!workPrice) {
+  if (!workPriceEx) {
     const min = src.price_range_min ?? rj.price_range_min;
     const max = src.price_range_max ?? rj.price_range_max;
     const fMin = fmtMoney(min);
@@ -348,7 +353,9 @@ async function notifyOnDirectorDecision(db, { tenderId, action, comment, directo
   const link = `#/tenders?id=${tenderId}`;
   const appUrl = (process.env.PUBLIC_APP_URL || 'https://asgard-crm.ru').replace(/\/$/, '');
   const fullLink = `${appUrl}/${link}`;
-  const priceFmt = fmtMoney(review.work_price);
+  const wpRes = resolveWorkPrice(review);
+  const priceExFmt = fmtMoney(wpRes.exVat);
+  const priceFmt = fmtMoney(wpRes.withVat);
   const deadline = tender.docs_deadline
     ? String(tender.docs_deadline).slice(0, 10).split('-').reverse().join('.')
     : null;
@@ -395,6 +402,7 @@ async function notifyOnDirectorDecision(db, { tenderId, action, comment, directo
         `Заказчик: ${customer}`,
         `Предмет: ${title}`
       ];
+      if (priceExFmt) textParts.push(`Сумма подачи (без НДС): ${priceExFmt}`);
       if (priceFmt) textParts.push(`Сумма подачи (с НДС): ${priceFmt}`);
       if (deadline) textParts.push(`Срок документов: ${deadline}`);
       if (!approved && reason) textParts.push(`Причина отказа: ${reason}`);
@@ -408,6 +416,9 @@ async function notifyOnDirectorDecision(db, { tenderId, action, comment, directo
         `<tr><td style="padding:4px 12px 4px 0;color:#666">Заказчик</td><td>${escapeHtml(customer)}</td></tr>`,
         `<tr><td style="padding:4px 12px 4px 0;color:#666;vertical-align:top">Предмет</td><td>${escapeHtml(title)}</td></tr>`
       ];
+      if (priceExFmt) {
+        htmlParts.push(`<tr><td style="padding:4px 12px 4px 0;color:#666">Сумма (без НДС)</td><td>${escapeHtml(priceExFmt)}</td></tr>`);
+      }
       if (priceFmt) {
         htmlParts.push(`<tr><td style="padding:4px 12px 4px 0;color:#666">Сумма с НДС</td><td>${escapeHtml(priceFmt)}</td></tr>`);
       }

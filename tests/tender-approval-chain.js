@@ -40,7 +40,28 @@ const PG = {
   database: process.env.PGDATABASE || 'asgard_crm_test',
 };
 
-const VAT_DIVISOR = 1.22;
+const VAT_PCT = 22;
+/**
+ * Канон 16.09.2026: `tender_rp_reviews.work_price` — цена БЕЗ НДС (то, что отдаёт смета
+ * в `totals.price_no_vat` и с чем сравнивается порог директора). Зеркало
+ * `src/services/work-price.js`: легаси-пары 2025 г. (`work_price` с НДС +
+ * `work_price_ex_vat = work_price / 1.22`) распознаются по отношению и читаются как ex-VAT.
+ */
+function exVat(workPrice, legacyExVat) {
+  const wp = Number(workPrice);
+  const legacy = Number(legacyExVat);
+  if (!Number.isFinite(wp) || wp <= 0) return Number.isFinite(legacy) && legacy > 0 ? legacy : null;
+  if (Number.isFinite(legacy) && legacy > 0 && legacy < wp) {
+    const ratio = wp / legacy;
+    if (Math.abs(ratio - (1 + VAT_PCT / 100)) < 0.02) return legacy;
+  }
+  return wp;
+}
+
+/** Производная «цена с НДС» — только для читаемости отчёта, в БД её нет. */
+function withVatOf(exVatValue) {
+  return Math.round(Number(exVatValue) * (1 + VAT_PCT / 100) * 100) / 100;
+}
 // Порог берётся из настроек БД (settings.director_tender_threshold_rub) — той же,
 // из которой его читает бэкенд (src/routes/pm-duty.js:36-46). Константа не дублируется:
 // иначе тест «зеленеет» на устаревшем пороге (находка L3 F-1).
@@ -65,10 +86,6 @@ function pass(id, name, detail) {
 function fail(id, name, detail) {
   record(id, name, 'FAIL', detail);
   return false;
-}
-
-function exVat(withVat) {
-  return Math.round((Number(withVat) / VAT_DIVISOR) * 100) / 100;
 }
 
 function futureDeadline(days = 30) {
@@ -312,27 +329,30 @@ async function finalizeAnalysis(tenderId, pg) {
   return { resp, row: row.rows[0] };
 }
 
-async function finalizeCalc(tenderId, workPrice, pg, opts = {}) {
-  const role = calcRole();
+async function finalizeCalc(tenderId, workPriceExVat, pg, opts = {}) {
+  const role = opts.role || calcRole();
+  const override = opts.noOverride ? {} : withOverride();
   const uploader = state.dutyPmUserId || TEST_USERS.PM?.id || 1;
   const tkpId = await insertFakeTkp(pg, tenderId, uploader);
   const expected = await getReviewUpdatedAt(tenderId, role);
-  const body = withOverride({
+  const body = {
+    ...override,
     decision: 'submit',
     report_kind: 'work',
     report_json: { mode: 'calc', summary: `${RUN_TAG}: просчёт` },
-    work_price: workPrice,
+    // Канон: work_price — цена БЕЗ НДС (как totals.price_no_vat из сметы).
+    work_price: workPriceExVat,
     tkp_file_id: tkpId,
     missing_info_flags: [],
     finalize: true,
     expected_updated_at: expected,
-  });
+  };
   if (opts.approval_recipients) {
     body.approval_recipients = opts.approval_recipients;
   }
 
   const resp = await api('PUT', `/api/tenders/${tenderId}/rp-review`, { role, body });
-  return { resp, tkpId, exVat: exVat(workPrice) };
+  return { resp, tkpId, exVat: exVat(workPriceExVat) };
 }
 
 async function readTenderState(pg, tenderId) {
@@ -449,17 +469,17 @@ async function caseC(pg) {
   }
 }
 
-// B2/C2 закрывают формулировку приёмки буквально: порог считается по сумме БЕЗ НДС,
-// поэтому проверяем ровно 6 млн и 12 млн ex-VAT (цена с НДС подбирается обратно через VAT_DIVISOR).
+// B2/C2 закрывают формулировку приёмки буквально: порог считается по цене БЕЗ НДС,
+// поэтому в `work_price` отправляем ровно целевые суммы (6 млн и 12 млн без НДС).
 async function caseThreshold(pg, { id, name, exVatTarget, expectDirector }) {
   try {
     if (!Number.isFinite(THRESHOLD_EX_VAT) || THRESHOLD_EX_VAT <= 0) {
       return fail(id, name, 'THRESHOLD_EX_VAT не загружен из settings — тест не имеет права угадывать порог');
     }
-    const withVat = Math.round(exVatTarget * VAT_DIVISOR);
+    const withVat = withVatOf(exVatTarget);
     const tenderId = await createRegistryTender(`case-${id}`, 'TO');
     await finalizeAnalysis(tenderId, pg);
-    const { resp, exVat: ev } = await finalizeCalc(tenderId, withVat, pg, {
+    const { resp, exVat: ev } = await finalizeCalc(tenderId, exVatTarget, pg, {
       approval_recipients: expectDirector ? ['HEAD_TO'] : undefined,
     });
     if (resp.status >= 400) {
@@ -471,12 +491,18 @@ async function caseThreshold(pg, { id, name, exVatTarget, expectDirector }) {
     const okPrice = expectDirector ? ev >= THRESHOLD_EX_VAT : ev < THRESHOLD_EX_VAT;
     const okDirector = isPending === expectDirector;
     const okRecipients = expectDirector ? rcptCount >= 1 : rcptCount === 0;
-    if (okPrice && okDirector && okRecipients && !isLiveMail()) {
-      return pass(id, name, `tenderId=${tenderId} with_vat=${withVat} ex_vat=${ev} ` +
-        `director=${st.director_review_status || 'null'} recipients=${rcptCount} registry=${st.registry_status}`);
+    // Канон: work_price хранится без НДС, work_price_ex_vat = work_price.
+    const storedEx = Number(st.work_price_ex_vat);
+    const okStored = Math.abs(Number(st.work_price) - exVatTarget) < 1
+      && Number.isFinite(storedEx) && Math.abs(storedEx - exVatTarget) < 1;
+    if (okPrice && okDirector && okRecipients && okStored && !isLiveMail()) {
+      return pass(id, name, `tenderId=${tenderId} work_price=${exVatTarget} (без НДС; с НДС ≈${withVat}) ` +
+        `ex_vat=${ev} stored_ex_vat=${storedEx} director=${st.director_review_status || 'null'} ` +
+        `recipients=${rcptCount} registry=${st.registry_status}`);
     }
-    return fail(id, name, `tenderId=${tenderId} with_vat=${withVat} ex_vat=${ev} ` +
-      `director=${st.director_review_status} recipients=${rcptCount} okPrice=${okPrice} okDirector=${okDirector}`);
+    return fail(id, name, `tenderId=${tenderId} work_price=${exVatTarget} ex_vat=${ev} ` +
+      `stored=${st.work_price}/${st.work_price_ex_vat} director=${st.director_review_status} ` +
+      `recipients=${rcptCount} okPrice=${okPrice} okDirector=${okDirector} okStored=${okStored}`);
   } catch (e) {
     return fail(id, name, e.message);
   }
@@ -657,8 +683,204 @@ async function caseH(pg) {
   }
 }
 
-// ── Main ─────────────────────────────────────────────────────────
+/**
+ * Осиротевший просчёт (дефект B1, 16.09.2026): анализ закрыт до выкатки автопривязки,
+ * `calculator_user_id` пуст у `tenders` и у отзыва → карточка мертва (её не видит никто,
+ * кроме «Мои»/архива). Ждём: (1) карточка видна текущему дежурному во вкладке «Просчёты»
+ * с пометкой, (2) PUT просчёта от дежурного проходит, (3) владелец закрепляется за ним.
+ * Дежурного на время кейса ставим тестового РП (новая запись ростера «сегодня» побеждает
+ * по `created_at`), в finally запись удаляем — состав дежурств возвращается как был.
+ */
+async function caseOrphan(pg) {
+  const id = 'ORPH';
+  const name = 'Осиротевший просчёт: виден дежурному в «Просчётах», PUT проходит, владелец закрепляется';
+  let rosterId = null;
+  try {
+    const pmId = state.dutyPmUserId || TEST_USERS.PM?.id;
+    if (!pmId) return fail(id, name, 'нет test_pm — кейс невозможен');
+    const today = new Date().toISOString().slice(0, 10);
+    const admin = await pg.query(`SELECT id FROM users WHERE login = 'test_admin' LIMIT 1`);
+    const ins = await pg.query(`
+      INSERT INTO pm_duty_roster (pm_user_id, period_start, period_end, assigned_by_user_id, created_at)
+      VALUES ($1, $2::date, $2::date, $3, NOW())
+      RETURNING id
+    `, [pmId, today, admin.rows[0]?.id || pmId]);
+    rosterId = ins.rows[0].id;
 
+    const tenderId = await createRegistryTender('case-orphan', 'TO');
+    await finalizeAnalysis(tenderId, pg);
+    // Эмулируем карточку, закрытую ДО выкатки автопривязки: анализ закрыт, владельца нет.
+    await pg.query('UPDATE tenders SET calculator_user_id = NULL WHERE id = $1', [tenderId]);
+    await pg.query('UPDATE tender_rp_reviews SET calculator_user_id = NULL WHERE tender_id = $1', [tenderId]);
+    // Очередь реестра прячет тендеры, созданные тестовыми юзерами
+    // (`buildRegistryExclusionClause`: `cb.name NOT LIKE 'test %'`) — это гигиена
+    // тестовых данных, а не часть проверяемой клаузы. Переносим автора на реального ТО,
+    // иначе карточка не доходит до очереди и кейс проверял бы фильтр, а не self-heal.
+    const realAuthor = await pg.query(`
+      SELECT id FROM users
+      WHERE name NOT ILIKE 'test %' AND COALESCE(is_active, true) = true
+        AND id <> $1
+      ORDER BY id
+      LIMIT 1
+    `, [pmId]);
+    if (realAuthor.rows[0]?.id) {
+      await pg.query('UPDATE tenders SET created_by = $1 WHERE id = $2', [realAuthor.rows[0].id, tenderId]);
+    }
+
+    const queue = await api('GET', '/api/pm-duty/queue?tab=calc', { role: 'PM' });
+    if (queue.status >= 400) {
+      return fail(id, name, `queue HTTP ${queue.status} ${JSON.stringify(queue.data).slice(0, 200)}`);
+    }
+    const items = queue.data?.items || [];
+    const row = items.find((x) => Number(x.id) === Number(tenderId));
+    if (!row) {
+      return fail(id, name, `карточка ${tenderId} не попала в «Просчёты» дежурного (в очереди ${items.length})`);
+    }
+    const okQueue = row.queue_mode === 'duty_orphan'
+      || row.queue_source === 'Просчёт без владельца — взять дежурному';
+
+    // PUT просчёта от дежурного РП: гард пропускает безвладельную карточку, self-heal закрепляет владельца.
+    const workPriceExVat = 2_000_000;
+    const { resp } = await finalizeCalc(tenderId, workPriceExVat, pg, { role: 'PM', noOverride: true });
+    if (resp.status >= 400) {
+      return fail(id, name, `PUT просчёта HTTP ${resp.status} ${JSON.stringify(resp.data).slice(0, 250)}`);
+    }
+    const own = await pg.query(`
+      SELECT t.calculator_user_id AS t_calc, r.calculator_user_id AS r_calc
+      FROM tenders t JOIN tender_rp_reviews r ON r.tender_id = t.id
+      WHERE t.id = $1
+    `, [tenderId]);
+    const tCalc = Number(own.rows[0]?.t_calc) || null;
+    const rCalc = Number(own.rows[0]?.r_calc) || null;
+    const okOwner = tCalc === Number(pmId) && rCalc === Number(pmId);
+    if (okQueue && okOwner) {
+      return pass(id, name, `tenderId=${tenderId} queue_mode=${row.queue_mode} owner=${tCalc}/${rCalc} ` +
+        `(дежурный ${pmId}) — карточка вылечена`);
+    }
+    return fail(id, name, `tenderId=${tenderId} okQueue=${okQueue} (mode=${row.queue_mode}, source=${row.queue_source}) ` +
+      `tender_calc=${tCalc} review_calc=${rCalc} expected=${pmId}`);
+  } catch (e) {
+    return fail(id, name, e.message);
+  } finally {
+    if (rosterId) await pg.query('DELETE FROM pm_duty_roster WHERE id = $1', [rosterId]).catch(() => {});
+  }
+}
+
+/**
+ * Канон D-173 — пара `work_price` / `work_price_ex_vat` пишется согласованно.
+ *
+ * Закрывает два дефекта, найденных L3-верификатором 16.09:
+ *  1. ветка `reject` не трогала `work_price_ex_vat` → он оставался NULL (`pm-duty.js`);
+ *  2. `POST /:id/rp-review/import-draft` обновлял `work_price`, не обновляя ex-vat
+ *     (`rp-review-collab.js`) → «полу-легаси» строка, которую `resolveWorkPrice`
+ *     читает по заниженной ветке (в живом прогоне верификатора карточка на 11 590 000
+ *     не дошла до порога директора).
+ *
+ * Оба пути проходятся СВОИМ маршрутом API, а не ручным UPDATE: черновик создаётся
+ * через `PUT my-draft`, импорт — через `POST import-draft`.
+ */
+async function caseCanonPair(pg) {
+  const id = 'PAIR';
+  const name = 'Канон: work_price_ex_vat пишется вместе с ценой (финал `reject` и импорт черновика Мимира)';
+  try {
+    // (1) Финал по отказу — раньше ex-vat оставался NULL.
+    const rejectId = await createRegistryTender('case-pair-reject', 'TO');
+    await finalizeAnalysis(rejectId, pg);
+    const rejectPrice = 5_000_000;
+    const expectedR = await getReviewUpdatedAt(rejectId, calcRole());
+    const rejectResp = await api('PUT', `/api/tenders/${rejectId}/rp-review`, {
+      role: calcRole(),
+      body: {
+        ...withOverride(),
+        decision: 'reject',
+        report_kind: 'reject',
+        report_json: { mode: 'calc', summary: `${RUN_TAG}: отказ` },
+        work_price: rejectPrice,
+        missing_info_flags: [],
+        finalize: true,
+        expected_updated_at: expectedR,
+      },
+    });
+    if (rejectResp.status >= 400) {
+      return fail(id, name, `reject-finalize HTTP ${rejectResp.status} ${JSON.stringify(rejectResp.data).slice(0, 250)}`);
+    }
+    const stR = await readTenderState(pg, rejectId);
+    const okReject = Number(stR.work_price) === rejectPrice
+      && Number(stR.work_price_ex_vat) === rejectPrice;
+    if (!okReject) {
+      return fail(id, name,
+        `после финала reject: work_price=${stR.work_price} work_price_ex_vat=${stR.work_price_ex_vat} ` +
+        `(ожидалось ${rejectPrice}/${rejectPrice} — ex-vat не должен оставаться NULL)`);
+    }
+
+    // (2) Легаси-подобная пара + импорт черновика Мимира → пара лечится.
+    // Именно этот путь (импорт черновика) обновлял `work_price`, не трогая ex-vat: карточка
+    // с истинной ценой 11,59 млн получала пару `11 590 000 / 9 500 000`, `resolveWorkPrice`
+    // читал её как легаси и возвращал 9,5 млн — порог директора не срабатывал (D-173).
+    const healId = await createRegistryTender('case-pair-heal', 'TO');
+    await finalizeAnalysis(healId, pg);
+    const stale = 9_500_000;      // цена «до»: канонная пара 9 500 000 / 9 500 000
+    const fresh = 11_590_000;     // цена из черновика Мимира: 11 590 000 / 1.22 = 9 500 000
+    await pg.query(
+      'UPDATE tender_rp_reviews SET work_price = $1, work_price_ex_vat = $1 WHERE tender_id = $2',
+      [stale, healId]
+    );
+
+    // Черновик создаём штатным API, а не INSERT'ом — иначе тест проверял бы свою же фикстуру.
+    const draftResp = await api('PUT', `/api/tenders/${healId}/rp-review/my-draft`, {
+      role: calcRole(),
+      body: {
+        phase: 'calc',
+        draft_json: { mode: 'calc', summary: `${RUN_TAG}: черновик Мимира`, work_price: fresh },
+        status: 'ready'
+      }
+    });
+    if (draftResp.status >= 400) {
+      return fail(id, name, `my-draft HTTP ${draftResp.status} ${JSON.stringify(draftResp.data).slice(0, 250)}`);
+    }
+    const draftId = draftResp.data?.draft?.id;
+    if (!draftId) {
+      return fail(id, name, `черновик не создан: ${JSON.stringify(draftResp.data).slice(0, 250)}`);
+    }
+
+    const importResp = await api('POST', `/api/tenders/${healId}/rp-review/import-draft`, {
+      role: calcRole(),
+      body: { draft_id: draftId }
+    });
+    if (importResp.status >= 400) {
+      return fail(id, name, `import-draft HTTP ${importResp.status} ${JSON.stringify(importResp.data).slice(0, 250)}`);
+    }
+    const stImp = await readTenderState(pg, healId);
+    const okImport = Number(stImp.work_price) === fresh && Number(stImp.work_price_ex_vat) === fresh;
+    if (!okImport) {
+      return fail(id, name,
+        `после import-draft: work_price=${stImp.work_price} work_price_ex_vat=${stImp.work_price_ex_vat} ` +
+        `(ожидалось ${fresh}/${fresh}; пара ${fresh}/${stale} читается резолвером как цена ${stale})`);
+    }
+
+    // Догоняем до финала просчёта: теперь цена 11,59 млн ≥ порога → директор.
+    const { resp: healResp } = await finalizeCalc(healId, fresh, pg, { approval_recipients: ['HEAD_TO'] });
+    if (healResp.status >= 400) {
+      return fail(id, name, `heal-finalize HTTP ${healResp.status} ${JSON.stringify(healResp.data).slice(0, 250)}`);
+    }
+    const stH = await readTenderState(pg, healId);
+    const okHeal = Number(stH.work_price) === fresh && Number(stH.work_price_ex_vat) === fresh;
+    const okDirector = stH.director_review_status === 'pending';
+    if (okHeal && okDirector) {
+      return pass(id, name,
+        `reject: ex_vat=${stR.work_price_ex_vat}; ` +
+        `import-draft вылечил пару ${stale}/${stale} → ${stH.work_price}/${stH.work_price_ex_vat}, ` +
+        `director=${stH.director_review_status}`);
+    }
+    return fail(id, name,
+      `heal: work_price=${stH.work_price} work_price_ex_vat=${stH.work_price_ex_vat} ` +
+      `director=${stH.director_review_status} okHeal=${okHeal} okDirector=${okDirector}`);
+  } catch (e) {
+    return fail(id, name, e.message);
+  }
+}
+
+// ── Main ─────────────────────────────────────────────────────────
 (async () => {
   console.log(`\n=== Tender approval chain ===`);
   console.log(`BASE_URL=${BASE_URL} PG=${PG.database} RUN_TAG=${RUN_TAG}\n`);
@@ -697,6 +919,8 @@ async function caseH(pg) {
       ['F', caseF],
       ['G', caseG],
       ['H', caseH],
+      ['ORPH', caseOrphan],
+      ['PAIR', caseCanonPair],
     ];
 
     for (const [, fn] of cases) {

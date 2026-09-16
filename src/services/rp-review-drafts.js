@@ -253,7 +253,9 @@ function mapMimirToReportFields(phase, estimate, chatMd) {
       patch.price_range_max = Math.round(ex * 1.1);
     }
   } else {
-    if (Number.isFinite(withVat) && withVat > 0) patch.work_price = Math.round(withVat);
+    // Канон: work_price — цена БЕЗ НДС (см. src/services/work-price.js).
+    if (Number.isFinite(noVat) && noVat > 0) patch.work_price = Math.round(noVat);
+    else if (Number.isFinite(withVat) && withVat > 0) patch.work_price = Math.round(withVat / 1.22);
     if (Number.isFinite(cost) && cost > 0) patch.cost_without_vat = Math.round(cost);
     else if (Number.isFinite(noVat) && noVat > 0) patch.cost_without_vat = Math.round(noVat);
   }

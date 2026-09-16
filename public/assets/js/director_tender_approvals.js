@@ -78,7 +78,7 @@ window.AsgardDirectorTenderApprovalsPage = (function () {
         '<td>' + esc(row.customer_name || '—') + '</td>' +
         '<td>' + esc((row.tender_title || '—').slice(0, 60)) + '</td>' +
         '<td>' + esc(fmtMoney(row.tender_price)) + '</td>' +
-        '<td><strong>' + esc(fmtMoney(row.work_price_ex_vat)) + '</strong></td>' +
+        '<td><strong>' + esc(fmtMoney(row.work_price_ex_vat != null ? row.work_price_ex_vat : row.work_price)) + '</strong></td>' +
         '<td>' + esc(fmtDate(row.docs_deadline)) + '</td>' +
         '<td>' + (row.duration_days != null ? esc(row.duration_days) + ' дн.' : '—') + '</td>' +
         '<td>' + esc(row.calculator_name || '—') + '</td>' +

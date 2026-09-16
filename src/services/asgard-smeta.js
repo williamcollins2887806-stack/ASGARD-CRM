@@ -64,6 +64,33 @@ function ratio(v, fallback) {
   return n;
 }
 
+/** Доля закупки, входящая в себестоимость: 30 → 0.3, 0.3 → 0.3, пусто → 1, 0 → 0. */
+function normalizeSharePct(v) {
+  if (v == null || v === '') return 1;
+  const n = Number(v);
+  if (!Number.isFinite(n)) return 1;
+  if (n <= 0) return 0;
+  const frac = n > 1 ? n / 100 : n;
+  return Math.min(1, frac);
+}
+
+/** YYYY-MM-DD или null. Принимает ISO-таймстемпы и dd.mm.yyyy (старые карточки/письма). */
+function normalizeIsoDate(v) {
+  const s = String(v == null ? '' : v).trim();
+  const iso = /^(\d{4})-(\d{2})-(\d{2})/.exec(s);
+  if (iso) return `${iso[1]}-${iso[2]}-${iso[3]}`;
+  const ru = /^(\d{1,2})\.(\d{1,2})\.(\d{4})$/.exec(s);
+  if (ru) return `${ru[3]}-${ru[2].padStart(2, '0')}-${ru[1].padStart(2, '0')}`;
+  return null;
+}
+
+function addDaysIso(iso, days) {
+  const d = new Date(`${iso}T00:00:00Z`);
+  if (!Number.isFinite(d.getTime())) return null;
+  d.setUTCDate(d.getUTCDate() + num(days, 0));
+  return d.toISOString().slice(0, 10);
+}
+
 function mergeParams(input) {
   const p = { ...DEFAULT_PARAMS, ...(input || {}) };
   for (const k of Object.keys(DEFAULT_PARAMS)) {
@@ -183,6 +210,30 @@ function skeletonRows() {
       qty: 0, price: 0, editable: { qty: true, price: true, name: true } },
     { id: 'e_tot', kind: 'subtotal', section: 'E', code: 'E_TOT', name: 'Материалы и реагенты, итого', sumOf: 'E_lines' },
 
+    // F — перечень планируемого оборудования и техники: справочно, в суммы НЕ входит.
+    { id: 'sec_f', kind: 'section', section: 'F', name: 'F. Планируемое оборудование и техника (перечень, справочно)' },
+    { id: 'f1', kind: 'info', section: 'F', code: 'F1', name: 'АВД высокого давления', unit: 'шт',
+      qty: 1, price: 0, note: 'собственное, вывозим',
+      editable: { qty: true, price: true, name: true, note: true } },
+
+    // G — закупка оборудования: в себестоимость входит долей от цены закупки, наценка не начисляется.
+    { id: 'sec_g', kind: 'section', section: 'G', name: 'G. Закупка оборудования (доля входит в себестоимость)' },
+    { id: 'g1', kind: 'line', section: 'G', code: 'G1', name: 'Оборудование к закупке', unit: 'компл',
+      qty: 1, price: 0, sharePct: 1, note: '',
+      editable: { qty: true, price: true, name: true, sharePct: true, note: true } },
+    { id: 'g_tot', kind: 'subtotal', section: 'G', code: 'G_TOT', name: 'Закупка оборудования (доля в с/с), итого', sumOf: 'G_lines' },
+
+    // H — аренда техники: 1:1, без наценки.
+    { id: 'sec_h', kind: 'section', section: 'H', name: 'H. Аренда техники' },
+    { id: 'h1', kind: 'line', section: 'H', code: 'H1', name: 'Аренда техники (кран, манипулятор и т.п.)', unit: 'смена',
+      qty: 0, price: 0, note: '',
+      editable: { qty: true, price: true, name: true, note: true } },
+    { id: 'h_tot', kind: 'subtotal', section: 'H', code: 'H_TOT', name: 'Аренда техники, итого', sumOf: 'H_lines' },
+
+    { id: 'r_equip_g', kind: 'rollup', section: 'R', code: 'R0a', name: 'Закупка оборудования (доля), в себестоимости', sumExpr: 'equipment_purchase' },
+    { id: 'r_equip_h', kind: 'rollup', section: 'R', code: 'R0b', name: 'Аренда техники, в себестоимости', sumExpr: 'equipment_rental' },
+    { id: 'r_equip', kind: 'rollup', section: 'R', code: 'R0', name: 'Оборудование и техника, итого (G+H)', sumExpr: 'equipment' },
+
     { id: 'r_direct', kind: 'rollup', section: 'R', code: 'R1', name: 'ПРЯМЫЕ ЗАТРАТЫ, ИТОГО', sumExpr: 'direct' },
     { id: 'r_oh', kind: 'rollup', section: 'R', code: 'R2', name: '+ Накладные расходы', sumExpr: 'overhead' },
     { id: 'r_cont', kind: 'rollup', section: 'R', code: 'R3', name: '+ Непредвиденные', sumExpr: 'contingency' },
@@ -191,6 +242,31 @@ function skeletonRows() {
     { id: 'r_vat', kind: 'rollup', section: 'R', code: 'R6', name: 'НДС', sumExpr: 'vat_amount' },
     { id: 'r_total', kind: 'rollup', section: 'R', code: 'R7', name: 'ЦЕНА ЗАКАЗЧИКУ (с НДС)', sumExpr: 'price_with_vat' }
   ];
+}
+
+/**
+ * Дозаливает в сохранённую смету строки скелета, которых в ней нет (блоки F/G/H и
+ * rollup-и «Оборудование» появились 16.09.2026). Строки Мимира (c_ai_*, d_ai_*, e_ai_*)
+ * и правки РП остаются на своих местах, суммы старых строк не меняются.
+ * Вызывается из recalcAsgardSmeta — поэтому лечатся и модалка, и письмо, и Excel.
+ */
+function mergeSkeletonRows(rows) {
+  const list = Array.isArray(rows) ? rows.slice() : [];
+  const skeleton = skeletonRows();
+  const present = new Set(list.map((r) => r && r.id));
+  for (let i = 0; i < skeleton.length; i += 1) {
+    const sk = skeleton[i];
+    if (present.has(sk.id)) continue;
+    // Вставляем перед ближайшей следующей строкой скелета, которая уже есть в смете.
+    let insertAt = list.length;
+    for (let j = i + 1; j < skeleton.length; j += 1) {
+      const idx = list.findIndex((r) => r && r.id === skeleton[j].id);
+      if (idx >= 0) { insertAt = idx; break; }
+    }
+    list.splice(insertAt, 0, JSON.parse(JSON.stringify(sk)));
+    present.add(sk.id);
+  }
+  return list;
 }
 
 /**
@@ -203,7 +279,19 @@ function recalcAsgardSmeta(estimate) {
   const p = est.params;
   if (!Array.isArray(est.rows) || !est.rows.length) {
     est.rows = skeletonRows();
+  } else {
+    est.rows = mergeSkeletonRows(est.rows);
   }
+
+  // Даты работ: план начала + примерный срок → расчётное окончание (для письма/Excel/модалки).
+  const meta = (est.meta && typeof est.meta === 'object') ? est.meta : {};
+  meta.work_start_plan = normalizeIsoDate(meta.work_start_plan);
+  const durDays = Number(meta.work_duration_days);
+  meta.work_duration_days = Number.isFinite(durDays) && durDays > 0 ? Math.round(durDays) : null;
+  meta.work_end_plan_calc = (meta.work_start_plan && meta.work_duration_days)
+    ? addDaysIso(meta.work_start_plan, meta.work_duration_days)
+    : null;
+  est.meta = meta;
 
   const sumSectionLines = (sec) => {
     let s = 0;
@@ -216,6 +304,13 @@ function recalcAsgardSmeta(estimate) {
 
   // 1) линии
   for (const r of est.rows) {
+    if (r.kind === 'info') {
+      // Справочная строка перечня (блок F): в суммы не входит ни в одном контуре.
+      r.qty = (r.qty == null || r.qty === '') ? null : num(r.qty);
+      r.price = (r.price == null || r.price === '') ? null : num(r.price);
+      r.sum = (r.qty != null && r.price != null) ? Math.round(r.qty * r.price * 100) / 100 : null;
+      continue;
+    }
     if (r.kind !== 'line') continue;
     if (!r.override) {
       if (r.qtyExpr) {
@@ -229,7 +324,9 @@ function recalcAsgardSmeta(estimate) {
     }
     r.qty = num(r.qty);
     r.price = num(r.price);
-    r.sum = Math.round(r.qty * r.price * 100) / 100;
+    // Доля в себестоимость (блок G): пусто → 1, 30 → 0.3, 0.3 → 0.3.
+    if (r.sharePct != null && r.sharePct !== '') r.sharePct = normalizeSharePct(r.sharePct);
+    r.sum = Math.round(r.qty * r.price * normalizeSharePct(r.sharePct) * 100) / 100;
   }
 
   const fot = sumSectionLines('A');
@@ -239,18 +336,42 @@ function recalcAsgardSmeta(estimate) {
   const travel = sumSectionLines('C');
   const transport = sumSectionLines('D');
   const materials = sumSectionLines('E');
-  const direct = personnel + current + travel + transport + materials;
+  // Оборудование и аренда (G+H) — в прямые затраты; наценка на них не начисляется (1:1).
+  const equipmentPurchase = sumSectionLines('G');
+  const equipmentRental = sumSectionLines('H');
+  const equipment = equipmentPurchase + equipmentRental;
+  const equipmentPlanned = (est.rows || []).reduce(
+    (s, r) => (r.kind === 'info' && r.section === 'F' ? s + num(r.sum) : s), 0
+  );
+  // Полная цена закупки/аренды — справочно для директора (не входит в себестоимость).
+  const fullSum = (sec) => {
+    let s = 0;
+    for (const r of est.rows) {
+      if (r.kind !== 'line' || r.section !== sec) continue;
+      s += num(r.qty) * num(r.price);
+    }
+    return Math.round(s * 100) / 100;
+  };
+  const equipmentPurchaseFull = fullSum('G');
+  const equipmentRentalFull = fullSum('H');
+  const direct = personnel + current + travel + transport + materials + equipment;
   const overhead = Math.round(direct * p.overhead * 100) / 100;
   const contingency = Math.round((direct + overhead) * p.contingency * 100) / 100;
   const cost = direct + overhead + contingency;
   const priceNoVat = Math.round(
-    (materials * p.material_markup + (cost - materials) * p.markup) * 100
+    (materials * p.material_markup + equipment + (cost - materials - equipment) * p.markup) * 100
   ) / 100;
   const vatAmount = Math.round(priceNoVat * p.vat * 100) / 100;
   const priceWithVat = priceNoVat + vatAmount;
 
   const totalsMap = {
     fot, fot_tax: fotTax, personnel, current, travel, transport, materials,
+    equipment_purchase: equipmentPurchase,
+    equipment_rental: equipmentRental,
+    equipment,
+    equipment_planned: equipmentPlanned,
+    equipment_purchase_full: equipmentPurchaseFull,
+    equipment_rental_full: equipmentRentalFull,
     direct, overhead, contingency, cost,
     price_no_vat: priceNoVat, vat_amount: vatAmount, price_with_vat: priceWithVat
   };
@@ -292,7 +413,8 @@ function toFlatItems(est) {
   for (const r of (est.rows || [])) {
     if (r.kind !== 'line') continue;
     if (!(num(r.sum) > 0) && !(num(r.price) > 0)) continue;
-    items.push({
+    const share = normalizeSharePct(r.sharePct);
+    const item = {
       name: r.name,
       unit: r.unit || '',
       qty: num(r.qty),
@@ -301,7 +423,12 @@ function toFlatItems(est) {
       section: r.section,
       code: r.code,
       id: r.id
-    });
+    };
+    if (share < 1) {
+      item.share_pct = share;
+      item.full_total = Math.round(num(r.qty) * num(r.price) * 100) / 100;
+    }
+    items.push(item);
   }
   // Виртуальные rollup-строки для старого _calcTotals (сумма items = cost)
   const t = est.totals || {};
@@ -335,8 +462,15 @@ function toText(est) {
       lines.push(`\n${r.name}`);
       continue;
     }
+    if (r.kind === 'info') {
+      const ref = num(r.sum) > 0 ? ` ≈ ${Math.round(r.sum).toLocaleString('ru-RU')} ₽ (справочно, в расходы не входит)` : ' (справочно)';
+      lines.push(`  ${r.code || ''} ${r.name}: ${r.qty != null ? r.qty : ''} ${r.unit || ''}${ref}`);
+      continue;
+    }
     if (r.kind === 'line') {
-      lines.push(`  ${r.code || ''} ${r.name}: ${r.qty} ${r.unit || ''} × ${r.price} = ${Math.round(r.sum).toLocaleString('ru-RU')} ₽${r.override ? ' [правка РП]' : ''}`);
+      const share = normalizeSharePct(r.sharePct);
+      const shareTxt = share < 1 ? ` (в себестоимость ${Math.round(share * 1000) / 10}%)` : '';
+      lines.push(`  ${r.code || ''} ${r.name}: ${r.qty} ${r.unit || ''} × ${r.price} = ${Math.round(r.sum).toLocaleString('ru-RU')} ₽${shareTxt}${r.override ? ' [правка РП]' : ''}`);
     } else if (r.kind === 'subtotal' || r.kind === 'rollup') {
       lines.push(`  → ${r.name}: ${Math.round(num(r.sum)).toLocaleString('ru-RU')} ₽`);
     }
@@ -541,7 +675,11 @@ module.exports = {
   DEFAULT_PARAMS,
   PARAM_LABELS,
   mergeParams,
+  normalizeSharePct,
+  normalizeIsoDate,
+  addDaysIso,
   skeletonRows,
+  mergeSkeletonRows,
   recalcAsgardSmeta,
   composeFromRecomputed,
   toFlatItems,

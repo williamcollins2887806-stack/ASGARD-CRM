@@ -82,6 +82,7 @@
     withVat: withVat,
     withoutVat: withoutVat,
     formatMoneyVat: formatMoneyVat,
+    resolveWorkPrice: resolveWorkPrice,
     suggestSubmissionPrices: suggestSubmissionPrices,
     money: formatMoney
   };
@@ -98,19 +99,38 @@
     }
   });
 
+  /**
+   * Канон цены работ РП: `work_price` — цена БЕЗ НДС (зеркало src/services/work-price.js).
+   * Legacy-карточки 2025 г.: work_price хранил цену С НДС, а work_price_ex_vat = /1.22 —
+   * распознаём по отношению и читаем верно, чтобы старые карточки не «подорожали».
+   */
+  function resolveWorkPrice(review, vatPct) {
+    var rev = review || {};
+    var pct = Number(vatPct);
+    if (!isFinite(pct) || pct <= 0) pct = VAT_DEFAULT_PCT;
+    var wp = parseMoney(rev.work_price);
+    var wpEx = parseMoney(rev.work_price_ex_vat);
+    if (wp == null || !(wp > 0)) {
+      if (wpEx != null && wpEx > 0) return { exVat: wpEx, withVat: withVat(wpEx, pct), vatPct: pct, legacy: false };
+      return { exVat: null, withVat: null, vatPct: pct, legacy: false };
+    }
+    if (wpEx != null && wpEx > 0 && wpEx < wp
+        && Math.abs(wp / wpEx - (1 + pct / 100)) < 0.02) {
+      return { exVat: wpEx, withVat: wp, vatPct: pct, legacy: true };
+    }
+    return { exVat: wp, withVat: withVat(wp, pct), vatPct: pct, legacy: false };
+  }
+
   function suggestSubmissionPrices(row, vatPct) {
     vatPct = vatPct != null ? vatPct : VAT_DEFAULT_PCT;
     var rev = (row && row.rp_review) || {};
     var pct = Number(row && row.vat_pct) || vatPct;
     var withV = null;
     var exV = null;
-    if (rev.work_price != null && Number(rev.work_price) > 0) {
-      withV = Number(rev.work_price);
-      exV = rev.work_price_ex_vat != null ? Number(rev.work_price_ex_vat) : withoutVat(withV, pct);
-    } else if (rev.work_price_ex_vat != null && Number(rev.work_price_ex_vat) > 0) {
-      exV = Number(rev.work_price_ex_vat);
-      withV = withVat(exV, pct);
-    } else {
+    var rw = resolveWorkPrice(rev, pct);
+    withV = rw.withVat;
+    exV = rw.exVat;
+    if (withV == null) {
       var rj = rev.report_json;
       try {
         if (typeof rj === 'string') rj = JSON.parse(rj || '{}');

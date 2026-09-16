@@ -457,6 +457,36 @@
 
 .rp-calc-smeta-totals .kpi.is-gold b { color: var(--gold); }
 
+/* Даты работ над таблицей сметы */
+.rp-calc-smeta-dates {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 18px;
+  padding: 8px 12px;
+  margin: 0 0 8px;
+  border: 1px solid color-mix(in srgb, var(--gold) 30%, var(--brd));
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--gold) 7%, var(--bg2));
+  font-size: 12px;
+  color: var(--muted);
+}
+.rp-calc-smeta-dates b { color: var(--txt); font-weight: 700; }
+
+/* Справочные строки перечня (блок F): в суммы не входят */
+.rp-calc-smeta tr.rp-calc-line.is-info td { color: var(--muted); }
+.rp-calc-smeta tr.rp-calc-line.is-info input.rp-calc-cell,
+.rp-calc-smeta tr.rp-calc-line.is-info input.rp-calc-cell-name {
+  border-style: dashed;
+}
+
+/* Кнопка «+ строка» в блоках F/G/H */
+.rp-calc-smeta tr.rp-calc-addrow td {
+  padding: 5px 8px;
+  border-bottom: 1px dashed color-mix(in srgb, var(--brd) 80%, transparent);
+  background: transparent;
+}
+.rp-calc-smeta tr.rp-calc-addrow .btn { font-size: 11.5px; padding: 4px 10px; }
+
 /* ── Files / dropzones ──────────────────────────────────── */
 .rp-calc-drops {
   display: grid;

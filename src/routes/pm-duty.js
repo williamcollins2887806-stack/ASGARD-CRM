@@ -31,7 +31,6 @@ const TO_DECISION_ROLES = ['ADMIN', 'TO', 'HEAD_TO'];
 const DIRECTOR_DECISION_ROLES = ['ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV'];
 const ASSIGN_ROLES = ['ADMIN', 'TO', 'HEAD_TO', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV'];
 const DEFAULT_DIRECTOR_THRESHOLD = 10_000_000;
-const VAT_DIVISOR = 1.22;
 
 async function getDirectorThreshold(db) {
   try {
@@ -45,10 +44,16 @@ async function getDirectorThreshold(db) {
   return DEFAULT_DIRECTOR_THRESHOLD;
 }
 
-function computeWorkPriceExVat(workPrice) {
-  const n = Number(workPrice);
-  if (!Number.isFinite(n) || n <= 0) return null;
-  return Math.round((n / VAT_DIVISOR) * 100) / 100;
+/**
+ * Цена просчёта без НДС для сравнения с порогом директора.
+ * Канон: `work_price` уже без НДС (см. src/services/work-price.js). Legacy-пары
+ * (work_price с НДС + work_price_ex_vat = /1.22) распознаём и берём ex-vat.
+ */
+function computeWorkPriceExVat(workPrice, legacyExVat) {
+  return require('../services/work-price').workPriceExVat({
+    work_price: workPrice,
+    work_price_ex_vat: legacyExVat
+  });
 }
 
 function needsDirectorApproval(workPriceExVat, threshold) {
@@ -193,7 +198,7 @@ function participatedSql(param = '$1') {
  * Пока анализ открыт — дежурный + участник; после — хозяин фазы / calc.
  */
 function assertFinalFileUploadAccess({
-  review, isDuty, isParticipant, collab, isCalc, isWide, isFinalOwner
+  review, isDuty, isParticipant, collab, isCalc, isWide, isFinalOwner, calcOwnerless
 }) {
   if (review.is_final) {
     return { ok: false, code: 409, body: { error: 'Отчёт уже закрыт' } };
@@ -204,6 +209,11 @@ function assertFinalFileUploadAccess({
       return { ok: true };
     }
     return { ok: false, code: 403, body: { error: 'Нет доступа к загрузке файла' } };
+  }
+  // Фаза calc без владельца (осиротевший просчёт): файл грузит текущий дежурный РП,
+  // он же становится владельцем — иначе карточку некому доработать.
+  if (calcOwnerless && isDuty) {
+    return { ok: true };
   }
   if (!isFinalOwner) {
     return {
@@ -239,6 +249,59 @@ async function syncCalculatorActor(db, tenderId, userId, userRole, tenderRow, { 
   await db.query(`
     UPDATE tender_rp_reviews SET calculator_user_id = $1, updated_at = NOW() WHERE tender_id = $2
   `, [ownerId, tenderId]);
+}
+
+/** Реестровые статусы, в которых просчёт ещё «живой» и его можно взять дежурному. */
+const CALC_OWNER_ACTIVE_STATUSES = ['рассмотрение', 'готовим'];
+
+/**
+ * Self-heal «осиротевшего» просчёта.
+ *
+ * Анализ закрыт («подаём»), но владелец просчёта не проставлен: так бывает у карточек,
+ * закрытых ДО выкатки автопривязки к дежурному (13.09), и при ручном `UPDATE` из старых
+ * closing-скриптов. Ручной выбор РП для фазы calc отключён (tenders-registry.js:
+ * `assign-calculator` принимает только kind==='to'), поэтому карточка недоступна вообще
+ * никому: она не попадает во вкладку «Просчёты» и PUT отбивается 403.
+ *
+ * Лечим на чтении/записи: если актор — текущий дежурный РП, владельца нет, анализ закрыт
+ * и реестр активен → закрепляем просчёт за дежурным. Идемпотентно.
+ *
+ * `updated_at` отчёта НЕ трогаем: он служит optimistic-lock токеном, и его бамп ломал бы
+ * сохранение с `expected_updated_at` у уже открытой формы.
+ */
+async function ensureCalcOwner(db, { review, tender, duty, actorUserId, log } = {}) {
+  if (!review || !duty || !actorUserId) return review;
+  if (Number(duty.pm_user_id) !== Number(actorUserId)) return review;
+  if (!review.analysis_finalized_at) return review;
+  if (review.is_final === true) return review;
+  const currentOwner = (tender && tender.calculator_user_id) || review.calculator_user_id || null;
+  if (currentOwner) return review;
+  const status = String((tender && tender.registry_status) || '');
+  if (!CALC_OWNER_ACTIVE_STATUSES.includes(status)) return review;
+
+  await db.query(`
+    UPDATE tenders SET calculator_user_id = $1, calculator_kind = 'pm', updated_at = NOW()
+    WHERE id = $2
+  `, [actorUserId, review.tender_id]);
+  await db.query(`
+    UPDATE tender_rp_reviews SET calculator_user_id = $1
+    WHERE id = $2
+  `, [actorUserId, review.id]);
+  try {
+    await writeReviewLog(db, {
+      reviewId: review.id, tenderId: review.tender_id, actorUserId,
+      action: 'calc_owner_auto_bind',
+      payload: { owner_user_id: actorUserId, reason: 'orphan_calc_phase' }
+    });
+  } catch (_) { /* log не критичен */ }
+
+  // Локальные копии — чтобы resolveFinalOwner/isCalc в текущем запросе увидели владельца
+  review.calculator_user_id = actorUserId;
+  if (tender) tender.calculator_user_id = actorUserId;
+  if (log && typeof log.info === 'function') {
+    log.info({ tenderId: review.tender_id, actorUserId }, 'calc_owner_auto_bind');
+  }
+  return review;
 }
 
 async function canAccessReviewThread(db, tenderId, user) {
@@ -606,6 +669,8 @@ async function routes(fastify) {
     }
 
     if (tab === 'calc') {
+      // Осиротевший просчёт (анализ закрыт, владельца нет) виден и доступен текущему
+      // дежурному РП: ручного назначения РП для фазы calc нет, иначе карточка мертва.
       const r = await db.query(`
         ${baseSelect}
         WHERE t.deleted_at IS NULL
@@ -617,6 +682,11 @@ async function routes(fastify) {
               SELECT 1 FROM tender_rp_review_collaborators c
               WHERE c.review_id = rev.id AND c.pm_user_id = $1 AND c.revoked_at IS NULL
             )
+            OR (
+              $2::boolean
+              AND t.calculator_user_id IS NULL
+              AND rev.calculator_user_id IS NULL
+            )
           )
           ${notArchivedStatuses}
           ${excludeClause}
@@ -626,8 +696,18 @@ async function routes(fastify) {
           rev.updated_at DESC NULLS LAST,
           t.created_at ASC
         LIMIT 300
-      `, [userId]);
-      return { items: r.rows, tab, duty, is_duty: isDuty };
+      `, [userId, isDuty]);
+      const items = r.rows.map((row) => {
+        const ownerless = row.calculator_user_id == null && row.calculator_user_name == null;
+        if (!ownerless || !isDuty) return row;
+        return {
+          ...row,
+          queue_source: 'Просчёт без владельца — взять дежурному',
+          queue_mode: 'duty_orphan',
+          can_edit: true
+        };
+      });
+      return { items, tab, duty, is_duty: isDuty };
     }
 
     // analysis — очередь дежурного / коллабораторов / preview для остальных
@@ -1002,8 +1082,13 @@ async function reviewRoutes(fastify) {
         const seenAt = seen.rows[0]?.seen_at;
         director_unread = !seenAt || new Date(seenAt) < new Date(row.director_notify_at);
       }
+      // Канон: work_price — цена без НДС; для legacy-карточек резолвим пару с work_price_ex_vat.
+      const wp = require('../services/work-price').resolveWorkPrice(row);
       items.push({
         ...row,
+        work_price: wp.exVat != null ? wp.exVat : row.work_price,
+        work_price_ex_vat: wp.exVat,
+        work_price_with_vat: wp.withVat,
         duration_days: rj.duration_days ?? null,
         thread_unread,
         director_unread
@@ -1102,6 +1187,11 @@ async function reviewRoutes(fastify) {
     `, [tenderId]);
     const tender = tenderRow.rows[0] || null;
 
+    // Self-heal осиротевшего просчёта: дежурный РП, открывший карточку, становится владельцем.
+    try {
+      review = await ensureCalcOwner(db, { review, tender, duty, actorUserId: userId, log: request.log });
+    } catch (_) { /* ignore */ }
+
     const { phase, ownerUserId } = await resolveFinalOwner(db, review, tender, duty?.pm_user_id);
     const isFinalOwner = ownerUserId != null && Number(ownerUserId) === userId;
     const isToRole = ['TO', 'HEAD_TO'].includes(userRole);
@@ -1180,12 +1270,18 @@ async function reviewRoutes(fastify) {
       [tenderId]
     );
     const tender = tenderRow.rows[0];
-    const isCalc = tender && Number(tender.calculator_user_id) === userId;
     const userRole = request.user.role || '';
     const isWide = ['ADMIN', 'HEAD_TO', 'HEAD_PM'].includes(userRole);
 
     let review = await ensureReview(db, tenderId, userId);
     const b = request.body || {};
+
+    // Self-heal осиротевшего просчёта ДО проверки прав: дежурный становится владельцем,
+    // иначе PUT отбивается «Полный просчёт ведёт назначенный РП» и карточку не сдвинуть.
+    try {
+      review = await ensureCalcOwner(db, { review, tender, duty, actorUserId: userId, log: request.log });
+    } catch (_) { /* ignore */ }
+    const isCalc = Number(tender && tender.calculator_user_id) === userId;
 
     // Optimistic lock до любых мутаций — иначе ensureAnalysisOwner ломает токен
     if (b.expected_updated_at && review.updated_at) {
@@ -1311,7 +1407,22 @@ async function reviewRoutes(fastify) {
     let notifyToAt = review.to_notify_at;
     let directorReviewStatus = review.director_review_status || null;
     let directorNotifyAt = review.director_notify_at || null;
-  let workPriceExVat = review.work_price_ex_vat || null;
+  // Канон D-173: `work_price` — цена БЕЗ НДС. Пару пишем согласованно, иначе получаем
+  // «полу-легаси» строку, которую `resolveWorkPrice` прочитает по заниженной ветке:
+  //  • цена в запросе задана → это НОВАЯ запись в каноне: `work_price_ex_vat = work_price`;
+  //  • клиент явно прислал legacy-пару (ex_vat строго меньше цены) → сохраняем как есть,
+  //    чтобы исторические карточки 2025 г. не удвоили цену от одной перезаписи;
+  //  • цену не меняют → `null`: SQL оставляет прежнее значение (COALESCE).
+  // Раньше ветка `reject`/`save_draft` не трогала `work_price_ex_vat` вовсе, и он оставался
+  // NULL/устаревшим (нашёл L3-верификатор, 16.09).
+  let workPriceExVat = null;
+  if (b.work_price !== undefined && Number(work_price) > 0) {
+    const wpNum = Number(work_price);
+    const explicitEx = Number(b.work_price_ex_vat);
+    workPriceExVat = Number.isFinite(explicitEx) && explicitEx > 0 && explicitEx < wpNum ? explicitEx : wpNum;
+  } else {
+    workPriceExVat = computeWorkPriceExVat(work_price, review.work_price_ex_vat);
+  }
   let pendingDirector = false;
   let approvalRecipients = null;
 
@@ -1359,7 +1470,8 @@ async function reviewRoutes(fastify) {
         logAction = 'finalize_reject';
       } else if (decision === 'submit') {
         const threshold = await getDirectorThreshold(db);
-        workPriceExVat = computeWorkPriceExVat(work_price);
+        // Канон: `workPriceExVat` уже посчитан выше (цена без НДС) — и он же уходит
+        // в `work_price_ex_vat`, так что порог и запись в БД не могут разъехаться.
         // Порог 10 млн без НДС — единственный триггер согласования (force_director убран).
         if (needsDirectorApproval(workPriceExVat, threshold)) {
           approvalRecipients = normalizeApprovalRecipients(b.approval_recipients);
@@ -1514,9 +1626,13 @@ async function reviewRoutes(fastify) {
     const isParticipant = await isReviewParticipant(db, tenderId, userId);
     const tenderRow = await db.query('SELECT calculator_user_id FROM tenders WHERE id = $1', [tenderId]);
     const tender = tenderRow.rows[0];
-    const isCalc = tender && Number(tender.calculator_user_id) === userId;
     const isWide = ['ADMIN', 'HEAD_TO', 'HEAD_PM'].includes(request.user.role);
     let review = await ensureReview(db, tenderId, userId);
+    // Self-heal: осиротевший просчёт забирает дежурный РП (ручное назначение в фазе calc отключено).
+    try {
+      review = await ensureCalcOwner(db, { review, tender, duty, actorUserId: userId, log: request.log });
+    } catch (_) { /* ignore */ }
+    const isCalc = Number(tender && tender.calculator_user_id) === userId;
     try {
       review = await ensureAnalysisOwner(db, review, userId, duty?.pm_user_id, {
         allowActorFallback: !!(isDuty || isCalc || isParticipant)
@@ -1524,8 +1640,10 @@ async function reviewRoutes(fastify) {
     } catch (_) { /* ignore */ }
     const { ownerUserId } = await resolveFinalOwner(db, review, tender, duty?.pm_user_id);
     const isFinalOwner = (ownerUserId && Number(ownerUserId) === userId) || isWide;
+    const calcOwnerless = !!review.analysis_finalized_at
+      && !review.calculator_user_id && !Number(tender && tender.calculator_user_id);
     const access = assertFinalFileUploadAccess({
-      review, isDuty, isParticipant, collab, isCalc, isWide, isFinalOwner
+      review, isDuty, isParticipant, collab, isCalc, isWide, isFinalOwner, calcOwnerless
     });
     if (!access.ok) return reply.code(access.code).send(access.body);
 
@@ -1568,9 +1686,13 @@ async function reviewRoutes(fastify) {
     const isParticipant = await isReviewParticipant(db, tenderId, userId);
     const tenderRow = await db.query('SELECT calculator_user_id FROM tenders WHERE id = $1', [tenderId]);
     const tender = tenderRow.rows[0];
-    const isCalc = tender && Number(tender.calculator_user_id) === userId;
     const isWide = ['ADMIN', 'HEAD_TO', 'HEAD_PM'].includes(request.user.role);
     let review = await ensureReview(db, tenderId, userId);
+    // Self-heal: осиротевший просчёт забирает дежурный РП (ручное назначение в фазе calc отключено).
+    try {
+      review = await ensureCalcOwner(db, { review, tender, duty, actorUserId: userId, log: request.log });
+    } catch (_) { /* ignore */ }
+    const isCalc = Number(tender && tender.calculator_user_id) === userId;
     try {
       review = await ensureAnalysisOwner(db, review, userId, duty?.pm_user_id, {
         allowActorFallback: !!(isDuty || isCalc || isParticipant)
@@ -1578,8 +1700,10 @@ async function reviewRoutes(fastify) {
     } catch (_) { /* ignore */ }
     const { ownerUserId } = await resolveFinalOwner(db, review, tender, duty?.pm_user_id);
     const isFinalOwner = (ownerUserId && Number(ownerUserId) === userId) || isWide;
+    const calcOwnerless = !!review.analysis_finalized_at
+      && !review.calculator_user_id && !Number(tender && tender.calculator_user_id);
     const access = assertFinalFileUploadAccess({
-      review, isDuty, isParticipant, collab, isCalc, isWide, isFinalOwner
+      review, isDuty, isParticipant, collab, isCalc, isWide, isFinalOwner, calcOwnerless
     });
     if (!access.ok) return reply.code(access.code).send(access.body);
 
@@ -1622,9 +1746,13 @@ async function reviewRoutes(fastify) {
     const isParticipant = await isReviewParticipant(db, tenderId, userId);
     const tenderRow = await db.query('SELECT calculator_user_id FROM tenders WHERE id = $1', [tenderId]);
     const tender = tenderRow.rows[0];
-    const isCalc = tender && Number(tender.calculator_user_id) === userId;
     const isWide = ['ADMIN', 'HEAD_TO', 'HEAD_PM'].includes(request.user.role);
     let review = await ensureReview(db, tenderId, userId);
+    // Self-heal: осиротевший просчёт забирает дежурный РП (ручное назначение в фазе calc отключено).
+    try {
+      review = await ensureCalcOwner(db, { review, tender, duty, actorUserId: userId, log: request.log });
+    } catch (_) { /* ignore */ }
+    const isCalc = Number(tender && tender.calculator_user_id) === userId;
     try {
       review = await ensureAnalysisOwner(db, review, userId, duty?.pm_user_id, {
         allowActorFallback: !!(isDuty || isCalc || isParticipant)
@@ -1632,8 +1760,10 @@ async function reviewRoutes(fastify) {
     } catch (_) { /* ignore */ }
     const { ownerUserId } = await resolveFinalOwner(db, review, tender, duty?.pm_user_id);
     const isFinalOwner = (ownerUserId && Number(ownerUserId) === userId) || isWide;
+    const calcOwnerless = !!review.analysis_finalized_at
+      && !review.calculator_user_id && !Number(tender && tender.calculator_user_id);
     const access = assertFinalFileUploadAccess({
-      review, isDuty, isParticipant, collab, isCalc, isWide, isFinalOwner
+      review, isDuty, isParticipant, collab, isCalc, isWide, isFinalOwner, calcOwnerless
     });
     if (!access.ok) return reply.code(access.code).send(access.body);
 

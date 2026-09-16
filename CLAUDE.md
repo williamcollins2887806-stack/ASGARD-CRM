@@ -21,6 +21,22 @@ Asgard CRM. Идёт миграция ДЕСКТОП-фронта vanilla → Re
 - БД на проде: `PGPASSWORD=123456789 psql -U asgard -d asgard_crm`.
 - Бамп shell-версии при выкатке: `public/sw.js` + `public/index.html` (`SHELL_VERSION` / `ASGARD_SHELL_VERSION`).
 
+## Каноны, которые нельзя «поправить обратно» (16.09.2026)
+
+- **`tender_rp_reviews.work_price` — цена работ БЕЗ НДС** (как `asgard_smeta.totals.price_no_vat`).
+  Порог согласования директора (`settings.director_tender_threshold_rub`, 10 млн) сравнивается именно с ней,
+  **делить на 1.22 больше нельзя**. Легаси-пары 2025 г. (`work_price` с НДС + `work_price_ex_vat = /1.22`)
+  распознаёт `src/services/work-price.js`; зеркало для фронта — `AsgardMoney.resolveWorkPrice`
+  (`public/assets/js/money_fmt.js`). Любой скрипт закрытия/создания просчёта обязан слать без НДС. См. D-173.
+- **Просчёт делает дежурный РП, ручного назначения нет.** Если анализ закрыт, а `calculator_user_id` пуст
+  (карточки, закрытые до выкатки 13.09), карточку лечит `ensureCalcOwner` в `src/routes/pm-duty.js`:
+  дежурный видит её во вкладке «Просчёты» (`queue_mode = duty_orphan`) и при сохранении закрепляет за собой. См. D-172.
+- **Смета живёт в ДВУХ копиях** — `src/services/asgard-smeta.js` (источник истины) и `public/assets/js/asgard_smeta.js`.
+  Браузерную пересобирать: `node tools/build_smeta_mirror.js` (гейт — `--check`, дублируется тестом
+  `tests/asgard-smeta-share.test.js`). Блоки F (перечень, справочно), G (закупка долей `sharePct`),
+  H (аренда) и даты работ — там же. На оборудование (G+H) **наценка не начисляется** (1:1). См. D-174.
+- Бамп `SHELL_VERSION` — `node tools/bump_shell_version.js` (кросс-платформенно, `--check` для проверки).
+
 ## Дисциплина (ЗАКОН, не обсуждается)
 1. **Слово агента != сделано.** LOC, число роутов, «проверил» — не доказательство. DONE только при ЗЕЛЁНОМ детерминированном гейте.
 2. **FIXED != VERIFIED.** VERIFIED только после рантайм/sentinel-проверки на КЛОНЕ.

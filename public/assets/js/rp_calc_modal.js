@@ -281,6 +281,15 @@ window.AsgardRpCalcModal = (function () {
   function renderSmetaTableHtml(estimate) {
     const est = estimate && estimate.totals ? estimate : ensureEstimate(estimate || {});
     const rows = est.rows || [];
+    const meta = est.meta || {};
+    const totals = est.totals || {};
+    // Колонка «Доля, %» в письме — только если доля реально где-то меньше 100%.
+    const withShare = rows.some(function (r) {
+      return r.kind === 'line' && r.sharePct != null && r.sharePct !== ''
+        && Number(r.sharePct) > 0 && Number(r.sharePct) < 1;
+    });
+    const COLS = withShare ? 7 : 6;
+    const cell = 'padding:6px 8px;border-bottom:1px solid #eef1f6';
     let body = '';
     let pendingSection = null;
     let sectionHasLines = false;
@@ -297,8 +306,24 @@ window.AsgardRpCalcModal = (function () {
       if (r.kind === 'section') {
         flushSection();
         pendingSection = '<tr style="background:#1b2a4a;color:#fff">' +
-          '<td colspan="6" style="padding:9px 10px;font-weight:700;font-size:12px;letter-spacing:.04em">' +
+          '<td colspan="' + COLS + '" style="padding:9px 10px;font-weight:700;font-size:12px;letter-spacing:.04em">' +
           esc(r.name || '') + '</td></tr>';
+        return;
+      }
+      if (r.kind === 'info') {
+        // Перечень (блок F): показываем всегда, в суммы не входит.
+        if (pendingSection) { body += pendingSection; pendingSection = null; }
+        sectionHasLines = true;
+        body += '<tr>' +
+          '<td style="' + cell + ';color:#6b7280;font-size:12px">' + esc(r.code || '') + '</td>' +
+          '<td style="' + cell + ';font-size:13px">' + esc(r.name || '') + '</td>' +
+          '<td style="' + cell + ';font-size:12px;color:#6b7280">' + esc(r.unit || '') + '</td>' +
+          '<td style="' + cell + ';text-align:right;font-size:13px">' + esc(r.qty != null ? String(r.qty) : '') + '</td>' +
+          '<td style="' + cell + ';text-align:right;font-size:13px">' + esc(fmtMoneyPlain(r.price).replace(' ₽', '')) + '</td>' +
+          (withShare ? '<td style="' + cell + ';text-align:right;font-size:12px;color:#6b7280">—</td>' : '') +
+          '<td style="' + cell + ';text-align:right;font-size:12px;color:#6b7280" title="Справочно: в себестоимость не входит">' +
+          esc(Number(r.sum) > 0 ? fmtMoneyPlain(r.sum) + ' спр.' : 'справочно') + '</td>' +
+          '</tr>';
         return;
       }
       if (r.kind === 'line') {
@@ -309,13 +334,23 @@ window.AsgardRpCalcModal = (function () {
           pendingSection = null;
         }
         sectionHasLines = true;
+        const share = r.sharePct != null && r.sharePct !== '' ? Number(r.sharePct) : 1;
+        const shareCell = withShare
+          ? '<td style="' + cell + ';text-align:right;font-size:13px">' +
+            esc(r.section === 'G' ? (Math.round(share * 1000) / 10) + '%' : '') + '</td>'
+          : '';
+        const sumTitle = share < 1
+          ? 'Из ' + fmtMoneyPlain(Number(r.qty) * Number(r.price)) + ' в себестоимость входит ' + (Math.round(share * 1000) / 10) + '%'
+          : '';
         body += '<tr>' +
-          '<td style="padding:6px 8px;border-bottom:1px solid #eef1f6;color:#6b7280;font-size:12px">' + esc(r.code || '') + '</td>' +
-          '<td style="padding:6px 8px;border-bottom:1px solid #eef1f6;font-size:13px">' + esc(r.name || '') + '</td>' +
-          '<td style="padding:6px 8px;border-bottom:1px solid #eef1f6;font-size:12px;color:#6b7280">' + esc(r.unit || '') + '</td>' +
-          '<td style="padding:6px 8px;border-bottom:1px solid #eef1f6;text-align:right;font-size:13px">' + esc(String(r.qty != null ? r.qty : '')) + '</td>' +
-          '<td style="padding:6px 8px;border-bottom:1px solid #eef1f6;text-align:right;font-size:13px">' + esc(fmtMoneyPlain(r.price).replace(' ₽', '')) + '</td>' +
-          '<td style="padding:6px 8px;border-bottom:1px solid #eef1f6;text-align:right;font-weight:700;font-size:13px">' + esc(fmtMoneyPlain(r.sum)) + '</td>' +
+          '<td style="' + cell + ';color:#6b7280;font-size:12px">' + esc(r.code || '') + '</td>' +
+          '<td style="' + cell + ';font-size:13px">' + esc(r.name || '') + '</td>' +
+          '<td style="' + cell + ';font-size:12px;color:#6b7280">' + esc(r.unit || '') + '</td>' +
+          '<td style="' + cell + ';text-align:right;font-size:13px">' + esc(String(r.qty != null ? r.qty : '')) + '</td>' +
+          '<td style="' + cell + ';text-align:right;font-size:13px">' + esc(fmtMoneyPlain(r.price).replace(' ₽', '')) + '</td>' +
+          shareCell +
+          '<td style="' + cell + ';text-align:right;font-weight:700;font-size:13px"' + (sumTitle ? ' title="' + esc(sumTitle) + '"' : '') + '>' +
+          esc(fmtMoneyPlain(r.sum)) + '</td>' +
           '</tr>';
         return;
       }
@@ -325,28 +360,78 @@ window.AsgardRpCalcModal = (function () {
         const strong = r.sumExpr === 'cost' || r.sumExpr === 'price_with_vat' || r.sumExpr === 'price_no_vat' || r.sumExpr === 'direct';
         const label = r.kind === 'rollup' ? rollupDisplayName(r, est.params || {}) : (r.name || '');
         body += '<tr style="background:' + (strong ? '#faf6e8' : '#f8fafc') + '">' +
-          '<td colspan="5" style="padding:8px 10px;text-align:right;font-weight:700;font-size:13px;color:#1b2a4a">' + esc(label) + '</td>' +
+          '<td colspan="' + (COLS - 1) + '" style="padding:8px 10px;text-align:right;font-weight:700;font-size:13px;color:#1b2a4a">' + esc(label) + '</td>' +
           '<td style="padding:8px 10px;text-align:right;font-weight:800;font-size:13px;color:' + (strong ? '#a8862e' : '#1b2a4a') + '">' +
           esc(fmtMoneyPlain(r.sum)) + '</td></tr>';
       }
     });
     flushSection();
 
-    return '<table style="width:100%;border-collapse:collapse;margin:12px 0 4px;font-family:Arial,Helvetica,sans-serif">' +
+    const header = withShare
+      ? '<th style="text-align:right;padding:8px 10px;font-size:11px;color:#6b7280;border-bottom:1px solid #e5e7eb">Доля, %</th>'
+      : '';
+
+    let pre = '';
+    if (meta.work_start_plan || meta.work_duration_days) {
+      pre += '<div style="font-size:12px;color:#6b7280;margin:0 0 6px">' +
+        'Начало работ (план): <b style="color:#1b2a4a">' + esc(fmtDateRu(meta.work_start_plan) || '—') + '</b>' +
+        ' · примерный срок: <b style="color:#1b2a4a">' + esc(meta.work_duration_days ? meta.work_duration_days + ' сут' : '—') + '</b>' +
+        ' · окончание (план): <b style="color:#1b2a4a">' + esc(fmtDateRu(meta.work_end_plan_calc) || '—') + '</b></div>';
+    }
+
+    let post = '';
+    if (Number(totals.equipment) > 0) {
+      const parts = [];
+      if (Number(totals.equipment_purchase) > 0) {
+        parts.push('закупка долей: ' + fmtMoneyPlain(totals.equipment_purchase)
+          + (Number(totals.equipment_purchase_full) > 0 ? ' из ' + fmtMoneyPlain(totals.equipment_purchase_full) : ''));
+      }
+      if (Number(totals.equipment_rental) > 0) parts.push('аренда техники: ' + fmtMoneyPlain(totals.equipment_rental));
+      post += '<div style="font-size:12px;color:#6b7280;margin:0 0 8px">' +
+        'Оборудование в себестоимости: <b style="color:#1b2a4a">' + esc(fmtMoneyPlain(totals.equipment)) + '</b>' +
+        (parts.length ? ' (' + esc(parts.join('; ')) + ')' : '') +
+        ' · наценка на оборудование не начисляется</div>';
+    }
+    if (Number(totals.equipment_planned) > 0) {
+      post += '<div style="font-size:12px;color:#6b7280;margin:0 0 8px">Планируемое оборудование по перечню (справочно, в расходы не входит): ' +
+        esc(fmtMoneyPlain(totals.equipment_planned)) + '</div>';
+    }
+
+    return pre +
+      '<table style="width:100%;border-collapse:collapse;margin:12px 0 4px;font-family:Arial,Helvetica,sans-serif">' +
       '<thead><tr style="background:#f8fafc">' +
       '<th style="text-align:left;padding:8px 10px;font-size:11px;color:#6b7280;border-bottom:1px solid #e5e7eb">Код</th>' +
       '<th style="text-align:left;padding:8px 10px;font-size:11px;color:#6b7280;border-bottom:1px solid #e5e7eb">Статья</th>' +
       '<th style="text-align:left;padding:8px 10px;font-size:11px;color:#6b7280;border-bottom:1px solid #e5e7eb">Ед.</th>' +
       '<th style="text-align:right;padding:8px 10px;font-size:11px;color:#6b7280;border-bottom:1px solid #e5e7eb">Кол-во</th>' +
       '<th style="text-align:right;padding:8px 10px;font-size:11px;color:#6b7280;border-bottom:1px solid #e5e7eb">Цена, ₽</th>' +
+      header +
       '<th style="text-align:right;padding:8px 10px;font-size:11px;color:#6b7280;border-bottom:1px solid #e5e7eb">Сумма</th>' +
-      '</tr></thead><tbody>' + body + '</tbody></table>';
+      '</tr></thead><tbody>' + body + '</tbody></table>' + post;
   }
 
   function fmtMoneyPlain(v) {
     const n = Number(v);
     if (!Number.isFinite(n)) return '—';
     return Math.round(n).toLocaleString('ru-RU') + ' ₽';
+  }
+
+  /* Канон: work_price — цена работ БЕЗ НДС. Если сметы нет, резолвим пару
+     work_price/work_price_ex_vat через AsgardMoney (src/services/work-price.js). */
+  function moneyExVat(totals, review) {
+    const t = totals || {};
+    if (t.price_no_vat != null) return t.price_no_vat;
+    const M = window.AsgardMoney;
+    if (M && M.resolveWorkPrice) return M.resolveWorkPrice(review || {}).exVat;
+    return review ? review.work_price : null;
+  }
+
+  function moneyWithVat(totals, review) {
+    const t = totals || {};
+    if (t.price_with_vat != null) return t.price_with_vat;
+    const M = window.AsgardMoney;
+    if (M && M.resolveWorkPrice) return M.resolveWorkPrice(review || {}).withVat;
+    return review ? review.work_price : null;
   }
 
   function textBlock(label, value) {
@@ -369,9 +454,17 @@ window.AsgardRpCalcModal = (function () {
     const decideUrl = opts.decideUrl || '#';
     const filesUrl = opts.filesUrl || '#';
     const title = tender.tender_title || tender.title || 'Просчёт по тендеру';
-    const when = [fmtDate(tender.work_start || tender.work_start_plan), fmtDate(tender.work_end)]
-      .filter(function (x) { return x && x !== '—'; }).join(' — ') ||
-      (estimate.meta && estimate.meta.work_schedule) || '—';
+    const meta = estimate.meta || {};
+    // Приоритет: плановые даты сметы → даты карточки → свободный режим работ.
+    const planDates = [fmtDate(meta.work_start_plan), fmtDate(meta.work_end_plan_calc)]
+      .filter(function (x) { return x && x !== '—'; }).join(' — ');
+    const planSchedule = planDates
+      ? (meta.work_duration_days ? planDates + ' (' + meta.work_duration_days + ' сут)' : planDates)
+      : '';
+    const when = planSchedule ||
+      [fmtDate(tender.work_start), fmtDate(tender.work_end)]
+        .filter(function (x) { return x && x !== '—'; }).join(' — ') ||
+      meta.work_schedule || '—';
     const where = tender.object_name || tender.region ||
       (estimate.meta && estimate.meta.object) || '—';
     const rj = parseReportJson(review.report_json);
@@ -441,9 +534,9 @@ window.AsgardRpCalcModal = (function () {
       '<div style="margin:18px 0 8px;padding:16px 18px;background:linear-gradient(180deg,#faf6e8,#f8fafc);border-radius:12px;border:1px solid #e8dfc0">' +
       '<div style="font-size:11px;color:#8a6d1a;margin-bottom:8px;font-weight:800;letter-spacing:.05em;text-transform:uppercase">Итоги для решения</div>' +
       '<div style="font-size:14px;margin:4px 0">Себестоимость без НДС: <b>' + esc(fmtMoneyPlain(t.cost)) + '</b></div>' +
-      '<div style="font-size:14px;margin:4px 0">Цена без НДС: <b>' + esc(fmtMoneyPlain(t.price_no_vat)) + '</b></div>' +
+      '<div style="font-size:14px;margin:4px 0">Цена без НДС: <b>' + esc(fmtMoneyPlain(moneyExVat(t, review))) + '</b></div>' +
       '<div style="font-size:26px;font-weight:800;margin-top:10px;color:#1b2a4a;letter-spacing:-.02em">С НДС: ' +
-      esc(fmtMoneyPlain(t.price_with_vat || review.work_price)) + '</div></div>' +
+      esc(fmtMoneyPlain(moneyWithVat(t, review))) + '</div></div>' +
       '<a href="' + esc(decideUrl) + '" style="display:block;background:#15803d;color:#fff;text-decoration:none;text-align:center;' +
       'padding:16px 18px;border-radius:12px;font-weight:800;font-size:17px;margin:20px 0 10px;">Согласовать</a>' +
       '<a href="' + esc(decideUrl) + '" style="display:block;background:#b91c1c;color:#fff;text-decoration:none;text-align:center;' +
@@ -499,6 +592,9 @@ window.AsgardRpCalcModal = (function () {
       '<div class="rp-calc-footer">' +
       '<div class="rp-calc-footer__kpis">' +
       '<div class="rp-calc-footer__kpi"><span>Себестоимость</span><b data-kpi="cost">' + esc(fmtMoney(totals.cost)) + '</b></div>' +
+      (Number(totals.equipment) > 0
+        ? '<div class="rp-calc-footer__kpi"><span>Оборудование в с/с</span><b data-kpi="equipment">' + esc(fmtMoney(totals.equipment)) + '</b></div>'
+        : '') +
       '<div class="rp-calc-footer__kpi"><span>Цена без НДС</span><b data-kpi="price_no_vat">' + esc(fmtMoney(totals.price_no_vat)) + '</b></div>' +
       '<div class="rp-calc-footer__kpi is-gold"><span>Цена с НДС</span><b data-kpi="price_with_vat">' + esc(fmtMoney(totals.price_with_vat)) + '</b></div>' +
       '</div>' +
@@ -549,9 +645,13 @@ window.AsgardRpCalcModal = (function () {
       '<div class="rp-calc-grid">' +
       field('customer', 'Заказчик', meta.customer || state.tender.customer_name || '') +
       field('object', 'Объект', meta.object || state.tender.object_name || '') +
-      field('work_schedule', 'График / сроки', meta.work_schedule || '') +
+      field('work_schedule', 'График / сроки (расшифровка)', meta.work_schedule || '') +
+      dateField('work_start_plan', 'Дата начала работ (план)', meta.work_start_plan || '') +
+      daysField('work_duration_days', 'Примерный срок работ, суток', meta.work_duration_days) +
       field('terms', 'Условия оплаты', meta.terms || '') +
-      '</div></div>' +
+      '</div>' +
+      '<div class="rp-calc-hint" data-rp-dates-hint>' + esc(datesHintText(meta)) + '</div>' +
+      '</div>' +
       '<div class="rp-calc-card"><div class="rp-calc-card__head">Для директора</div>' +
       '<div class="rp-calc-field" style="margin-bottom:12px"><label>Описание работ</label>' +
       '<textarea class="inp" rows="3" data-rp-brief="summary" placeholder="Что за работа, объём, особенности…">' +
@@ -575,19 +675,90 @@ window.AsgardRpCalcModal = (function () {
       '<input class="inp" data-rp-meta="' + esc(key) + '" value="' + esc(value) + '"/></div>';
   }
 
+  function dateField(key, label, value) {
+    return '<div class="rp-calc-field"><label>' + esc(label) + '</label>' +
+      '<input class="inp" type="date" data-rp-meta="' + esc(key) + '" value="' + esc(value || '') + '"/></div>';
+  }
+
+  function daysField(key, label, value) {
+    return '<div class="rp-calc-field"><label>' + esc(label) + '</label>' +
+      '<input class="inp" type="number" min="0" step="1" data-rp-meta="' + esc(key) + '" value="' +
+      esc(value != null && value !== '' ? value : '') + '" placeholder="например 14"/></div>';
+  }
+
+  function fmtDateRu(iso) {
+    const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(iso || ''));
+    return m ? (m[3] + '.' + m[2] + '.' + m[1]) : '';
+  }
+
+  /** Подсказка о датах работ для вкладки «Вводные» и шапки сметы. */
+  function datesHintText(meta) {
+    const start = fmtDateRu(meta && meta.work_start_plan);
+    const days = meta && meta.work_duration_days ? Number(meta.work_duration_days) : null;
+    const end = fmtDateRu(meta && meta.work_end_plan_calc);
+    if (start && days && end) return 'Окончание (расчётно): ' + end + ' — ' + days + ' сут с ' + start + '.';
+    if (start || days) return 'Укажите и дату начала, и срок — окончание посчитается автоматически.';
+    return 'Необязательно: дата начала и примерный срок попадут в смету, письмо директору и Excel.';
+  }
+
   function renderSmeta(state) {
     const est = state.estimate || {};
     const rows = est.rows || [];
     const totals = est.totals || {};
     const params = est.params || {};
+    const meta = est.meta || {};
     const active = state.tab === 'smeta' ? ' is-active' : '';
+    // Колонка «Доля, %» нужна, если в смете есть блок закупки оборудования (G).
+    const withShare = rows.some(function (r) { return r.kind === 'line' && r.section === 'G'; });
+    const COLS = withShare ? 7 : 6;
+    const ADD_SECTIONS = { F: true, G: true, H: true };
     let pendingSec = '';
     let secOpen = false;
+    let curSec = null;
+    let curSecKind = null;
+    const addRowDone = {}; // раздел → кнопка «+ строка» уже показана (ровно одна на блок)
     const parts = [];
+
+    function addRowBtn(sec) {
+      if (!sec || !ADD_SECTIONS[sec] || addRowDone[sec]) return;
+      addRowDone[sec] = true;
+      const label = sec === 'F' ? '+ позиция перечня' : '+ строка';
+      parts.push('<tr class="rp-calc-addrow"><td colspan="' + COLS + '">' +
+        '<button type="button" class="btn mini ghost" data-add-row="' + esc(sec) + '">' + esc(label) + '</button>' +
+        (sec === 'G' ? '<span class="muted" style="margin-left:10px;font-size:11px">доля — сколько % цены закупки входит в себестоимость (наценка не начисляется)</span>' : '') +
+        '</td></tr>');
+    }
+
+    function flushAddRow() {
+      if (secOpen) addRowBtn(curSec);
+    }
+
     rows.forEach(function (r) {
       if (r.kind === 'section') {
-        pendingSec = '<tr class="rp-calc-sec"><td colspan="6">' + esc(r.name || '') + '</td></tr>';
+        flushAddRow();
+        pendingSec = '<tr class="rp-calc-sec"><td colspan="' + COLS + '">' + esc(r.name || '') + '</td></tr>';
         secOpen = false;
+        curSec = r.section || null;
+        curSecKind = null;
+        return;
+      }
+      if (r.kind === 'info') {
+        // Блок F: перечень оборудования — справочно, в суммы не входит.
+        if (pendingSec) { parts.push(pendingSec); pendingSec = ''; }
+        secOpen = true;
+        curSecKind = 'info';
+        const infoSum = Number(r.sum) > 0 ? fmtMoney(r.sum) + ' спр.' : 'справочно';
+        parts.push('<tr class="rp-calc-line is-info" data-row-id="' + esc(r.id) + '">' +
+          '<td>' + esc(r.code || '') + '</td>' +
+          '<td><input class="rp-calc-cell-name" data-fld="name" value="' + esc(r.name || '') +
+          '" placeholder="Что за техника / оборудование"/></td>' +
+          '<td class="rp-calc-unit-cell">' + unitSelectHtml(r.unit) + '</td>' +
+          '<td class="num"><input class="rp-calc-cell" type="number" step="1" data-fld="qty" ' +
+          'value="' + esc(r.qty != null ? r.qty : '') + '" placeholder="кол-во"/></td>' +
+          '<td class="num"><input class="rp-calc-cell" type="number" step="1" data-fld="price" ' +
+          'value="' + esc(r.price != null ? r.price : '') + '" placeholder="₽ за ед." title="Справочная цена, в расходы не входит"/></td>' +
+          (withShare ? '<td class="num"></td>' : '') +
+          '<td class="num muted" data-fld="sum" title="Справочно: в себестоимость не входит">' + esc(infoSum) + '</td></tr>');
         return;
       }
       if (r.kind === 'line') {
@@ -596,6 +767,13 @@ window.AsgardRpCalcModal = (function () {
         if (!(Number(r.sum) > 0) && !(Number(r.qty) > 0) && !r.override) return;
         if (pendingSec) { parts.push(pendingSec); pendingSec = ''; }
         secOpen = true;
+        curSecKind = 'line';
+        const share = r.sharePct != null && r.sharePct !== '' ? Number(r.sharePct) : 1;
+        const isG = r.section === 'G';
+        const full = Number(r.qty) * Number(r.price);
+        const sumTitle = share < 1
+          ? 'Из ' + fmtMoney(full) + ' в себестоимость входит ' + (Math.round(share * 1000) / 10) + '%'
+          : 'Сумма строки';
         parts.push('<tr class="rp-calc-line' + (r.override ? ' is-override' : '') + '" data-row-id="' + esc(r.id) + '">' +
           '<td>' + esc(r.code || '') + '</td>' +
           '<td><input class="rp-calc-cell-name" data-fld="name" value="' + esc(r.name || '') +
@@ -605,31 +783,48 @@ window.AsgardRpCalcModal = (function () {
           'value="' + esc(r.qty != null ? r.qty : 0) + '" placeholder="кол-во" title="Количество в выбранных единицах"/></td>' +
           '<td class="num"><input class="rp-calc-cell" type="number" step="1" data-fld="price" ' +
           'value="' + esc(r.price != null ? r.price : 0) + '" placeholder="₽ за ед." title="Цена за единицу, ₽"/></td>' +
-          '<td class="num" data-fld="sum">' + esc(fmtMoney(r.sum)) + '</td></tr>');
+          (withShare ? '<td class="num">' + (isG
+            ? '<input class="rp-calc-cell" type="number" min="0" max="100" step="1" data-fld="sharePct" value="' +
+              esc(Math.round(share * 10000) / 100) + '" title="Сколько % цены закупки входит в себестоимость"/>'
+            : '') + '</td>' : '') +
+          '<td class="num" data-fld="sum" title="' + esc(sumTitle) + '">' + esc(fmtMoney(r.sum)) + '</td></tr>');
         return;
       }
       if (r.kind === 'subtotal' && !secOpen) return;
+      if (ADD_SECTIONS[curSec]) addRowBtn(curSec);
       pendingSec = '';
       const strong = r.sumExpr === 'cost' || r.sumExpr === 'price_with_vat' || r.sumExpr === 'price_no_vat';
       const cls = r.kind === 'rollup' ? 'rp-calc-rollup' : 'rp-calc-subtotal';
       const label = r.kind === 'rollup' ? rollupDisplayName(r, params) : (r.name || '');
       parts.push('<tr class="' + cls + (strong ? ' is-strong' : '') + '"' +
         (r.sumExpr ? ' data-sum-expr="' + esc(r.sumExpr) + '"' : '') + '>' +
-        '<td colspan="5" class="num">' + esc(label) + '</td>' +
+        '<td colspan="' + (COLS - 1) + '" class="num">' + esc(label) + '</td>' +
         '<td class="num">' + esc(fmtMoney(r.sum)) + '</td></tr>');
     });
+    flushAddRow();
     const body = parts.join('');
     const taxPct = pctLabel(params.fot_tax != null ? params.fot_tax : 0.55);
+    const equipKpi = Number(totals.equipment) > 0
+      ? '<div class="kpi"><span>Оборудование в с/с</span><b>' + esc(fmtMoney(totals.equipment)) + '</b></div>'
+      : '';
 
     return '<div class="rp-calc-panel' + active + '" data-panel="smeta">' +
       '<p class="rp-calc-hint">Строки с нулевой суммой скрыты. Ед. — выпадающий список. ' +
-      'Кол-во и цена: правка фиксирует override. Налог на ФОТ сейчас <b>' + esc(taxPct) + '%</b> (параметры на вкладке «Вводные»).</p>' +
+      'Кол-во, цена и доля: правка фиксирует override. Налог на ФОТ сейчас <b>' + esc(taxPct) + '%</b> (параметры на вкладке «Вводные»).</p>' +
+      '<div class="rp-calc-smeta-dates">' +
+      '<span>Начало работ (план): <b>' + esc(meta.work_start_plan ? fmtDateRu(meta.work_start_plan) : '—') + '</b></span>' +
+      '<span>Примерный срок: <b>' + esc(meta.work_duration_days ? meta.work_duration_days + ' сут' : '—') + '</b></span>' +
+      '<span>Окончание (план): <b>' + esc(meta.work_end_plan_calc ? fmtDateRu(meta.work_end_plan_calc) : '—') + '</b></span>' +
+      '</div>' +
       '<div class="rp-calc-smeta-wrap"><table class="rp-calc-smeta">' +
-      '<thead><tr><th>Код</th><th>Статья</th><th>Ед.</th><th class="num">Кол-во</th><th class="num">Цена</th><th class="num">Сумма</th></tr></thead>' +
-      '<tbody>' + (body || '<tr><td colspan="6" style="padding:16px;text-align:center;color:var(--muted)">Нет строк</td></tr>') +
+      '<thead><tr><th>Код</th><th>Статья</th><th>Ед.</th><th class="num">Кол-во</th><th class="num">Цена</th>' +
+      (withShare ? '<th class="num">Доля, %</th>' : '') +
+      '<th class="num">Сумма</th></tr></thead>' +
+      '<tbody>' + (body || '<tr><td colspan="' + COLS + '" style="padding:16px;text-align:center;color:var(--muted)">Нет строк</td></tr>') +
       '</tbody></table>' +
       '<div class="rp-calc-smeta-totals">' +
       '<div class="kpi"><span>Себестоимость</span><b>' + esc(fmtMoney(totals.cost)) + '</b></div>' +
+      equipKpi +
       '<div class="kpi"><span>Без НДС</span><b>' + esc(fmtMoney(totals.price_no_vat)) + '</b></div>' +
       '<div class="kpi is-gold"><span>С НДС</span><b>' + esc(fmtMoney(totals.price_with_vat)) + '</b></div>' +
       '</div></div></div>';
@@ -809,8 +1004,11 @@ window.AsgardRpCalcModal = (function () {
 
       root.querySelectorAll('[data-rp-meta]').forEach(function (inp) {
         inp.addEventListener('change', function () {
+          const key = inp.getAttribute('data-rp-meta');
           state.estimate.meta = state.estimate.meta || {};
-          state.estimate.meta[inp.getAttribute('data-rp-meta')] = inp.value;
+          state.estimate.meta[key] = inp.value;
+          // Даты работ: пересчёт обновляет окончание в подсказке и шапке сметы.
+          if (key === 'work_start_plan' || key === 'work_duration_days') recalc(true);
         });
       });
 
@@ -836,6 +1034,12 @@ window.AsgardRpCalcModal = (function () {
           if (fld === 'qty' || fld === 'price') {
             row[fld] = Number(inp.value) || 0;
             row.override = true;
+          } else if (fld === 'sharePct') {
+            // Ввод в процентах (30) → доля 0.3; пусто → 1 (вся цена закупки).
+            const pct = Number(inp.value);
+            if (!Number.isFinite(pct) || String(inp.value).trim() === '') delete row.sharePct;
+            else row.sharePct = Math.max(0, Math.min(100, pct)) / 100;
+            row.override = true;
           } else if (fld === 'unit') {
             row.unit = inp.value;
             row.override = true;
@@ -843,6 +1047,49 @@ window.AsgardRpCalcModal = (function () {
             row[fld] = inp.value;
           }
           recalc(true);
+        });
+      });
+
+      // «+ строка» в блоках F (перечень), G (закупка), H (аренда).
+      root.querySelectorAll('[data-add-row]').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+          const sec = btn.getAttribute('data-add-row');
+          const rows = state.estimate.rows || [];
+          const info = sec === 'F';
+          const same = rows.filter(function (r) { return r.section === sec; });
+          const row = {
+            id: sec.toLowerCase() + '_u_' + Date.now(),
+            kind: info ? 'info' : 'line',
+            section: sec,
+            code: sec + (same.length + 1),
+            name: '',
+            unit: sec === 'G' ? 'компл' : (sec === 'H' ? 'смена' : 'шт'),
+            qty: info ? null : 1,
+            price: info ? null : 0,
+            override: true,
+            editable: { qty: true, price: true, name: true, note: true }
+          };
+          if (sec === 'G') row.sharePct = 1;
+          // В конец блока: перед его subtotal, иначе перед следующим разделом после него.
+          let insertAt = rows.length;
+          let seenSame = false;
+          for (let i = 0; i < rows.length; i += 1) {
+            const r = rows[i];
+            if (r.section === sec) {
+              seenSame = true;
+              if (r.kind === 'subtotal' || r.kind === 'rollup') { insertAt = i; break; }
+            } else if (seenSame) {
+              insertAt = i;
+              break;
+            }
+          }
+          rows.splice(insertAt, 0, row);
+          state.estimate.rows = rows;
+          state.tab = 'smeta';
+          recalc(false);
+          const root2 = getRoot();
+          const el = root2 && root2.querySelector('tr[data-row-id="' + row.id + '"] [data-fld="name"]');
+          if (el) el.focus();
         });
       });
 
@@ -952,7 +1199,8 @@ window.AsgardRpCalcModal = (function () {
         decision: 'submit',
         report_kind: 'work',
         report_json: rj,
-        work_price: totals.price_with_vat != null ? Math.round(totals.price_with_vat) : null,
+        // Канон: work_price — цена работ БЕЗ НДС (порог директора тоже без НДС).
+        work_price: totals.price_no_vat != null ? Math.round(totals.price_no_vat) : null,
         finalize: !!finalize,
         expected_updated_at: state.review && state.review.updated_at ? state.review.updated_at : null
       };
@@ -1203,7 +1451,7 @@ window.AsgardRpCalcModal = (function () {
       tab: 'inputs',
       review: {
         decision: 'submit',
-        work_price: estimate.totals && estimate.totals.price_with_vat,
+        work_price: estimate.totals && estimate.totals.price_no_vat,
         report_json: {
           mode: 'calc',
           asgard_smeta: estimate,

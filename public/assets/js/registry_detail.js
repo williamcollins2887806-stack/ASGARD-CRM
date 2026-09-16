@@ -36,7 +36,12 @@ window.AsgardRegistryDetail = (function () {
         } else {
         if (rev.is_final) {
           h += '<p><span class="pill ok">' + (rev.decision === 'submit' ? 'Подаём' : 'Не подаём') + '</span>';
-          if (rev.work_price) h += ' · ' + esc(Number(rev.work_price).toLocaleString('ru-RU')) + ' ₽';
+          if (rev.work_price) {
+            var rwReg = (window.AsgardMoney && AsgardMoney.resolveWorkPrice)
+              ? AsgardMoney.resolveWorkPrice(rev)
+              : { exVat: Number(rev.work_price) };
+            h += ' · ' + esc(Number(rwReg.exVat).toLocaleString('ru-RU')) + ' ₽ без НДС';
+          }
           h += '</p>';
         } else {
           h += '<p><span class="pill warn">Черновик</span></p>';
