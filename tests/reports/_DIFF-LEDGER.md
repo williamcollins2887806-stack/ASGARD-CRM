@@ -3417,7 +3417,7 @@ D-15-candidate из A-29 (correspondence RBAC расширен) и A-31 (custome
 
 - **Тип:** bug / frontend (write-операция в read-потоке)
 - **Приоритет:** MEDIUM (не ломает данные, но 403 в консоли на каждой отрисовке WMS и лишние запросы)
-- **Статус:** FIXED + VERIFIED на клоне (вариант A, выбран заказчиком 15.09). Прод — за отдельной командой.
+- **Статус:** FIXED + VERIFIED на клоне И на проде (вариант A, выбран заказчиком 15.09). Выкачено 16.09 (шелл 20.28.32).
 - **Доказательство (до):** `src/routes/warehouse-map.js:7` — `WMS_WRITE = ['ADMIN','WAREHOUSE','CHIEF_ENGINEER','DIRECTOR_GEN','DIRECTOR_COMM','DIRECTOR_DEV']`;
   фронт вызывал синк **автоматически при монтировании** (`warehouse-map.js:2597` внутри `refresh()`,
   из `renderMapTab` :1536 и `mount` :2871). Для ролей вне `WMS_WRITE` это гарантированный 403 на каждой отрисовке.
@@ -3429,6 +3429,12 @@ D-15-candidate из A-29 (correspondence RBAC расширен) и A-31 (custome
   монтирование → `0` вызовов `sync-locations`; кнопка `↻` (refresh) → `0` вызовов; JS-ошибок до клика — `0`;
   явный клик по «Синхр. QR» → ровно `1` POST. Т.е. 403-шум у read-only ролей исчез, право записи по-прежнему
   решает API (`WMS_WRITE`), а не UI.
+- **VERIFIED (прод, после выкатки 16.09):** тот же скрипт с `BASE=https://asgard-crm.ru` — **6/6 PASS под ADMIN
+  и 6/6 PASS под PM**; md5 `public/{index.html,sw.js,assets/js/warehouse-map.js}` локально и на проде совпадают
+  (шелл `20.28.32`, `?v=20.28.32` × 237); консоль-аудит **4 роли × 8 страниц = 0 JS-ошибок и 0 HTTP 4xx**
+  (включая `/warehouse-map`); `audit_silent_reverts.js --post-deploy` — 0 расхождений;
+  `verify_index_tags.js` по прод-копии `index.html` — 0 MISSING/MISSING-G/DUPLICATE/BROKEN.
+  Откат — снапшот `/root/snapshots/asgard-crm-wms-20260916-120041.tgz` (sha256 `a352e147…`, 2.57 МБ, включает `src/`).
 
 ## D-159 — `503 /api/procurement/export/excel` (CLOSED: не воспроизводится)
 
@@ -3526,3 +3532,18 @@ D-15-candidate из A-29 (correspondence RBAC расширен) и A-31 (custome
   `fetch(url, {agent: https.Agent})` → **HTTP 200**, без агента → **HTTP 200** (ошибки нет).
   Настоящая причина `fetch failed` была в том, что **двойник на `:3100` не был запущен** (порт закрыт).
   Файл не менялся — минимальный diff, ложную правку не вносим.
+
+## D-166 — `audit_silent_reverts.js --post-deploy` даёт ложный FAIL на устаревшем манифесте (tooling caveat)
+
+- **Тип:** tooling / process (ложный красный гейт)
+- **Приоритет:** LOW (но легко принять за «заливка не дошла»)
+- **Статус:** RECORDED (порядок действий зафиксирован)
+- **Симптом:** сразу после выкатки D-158 `--post-deploy` вернул
+  `FAIL — 1 файл(ов) на проде отличаются от локального: public/assets/js/warehouse-map.js`,
+  при этом независимая проверка (`md5sum` по ssh + HTTP-проба) показывала **байтовое совпадение**.
+- **Причина:** гейт опирается на `tests/reports/ASSET-MANIFESTS.json`, в котором лежит **снятый ранее** прод-хэш;
+  после заливки манифест ещё описывает прошлое состояние прода.
+- **Порядок (обязательный):** после выкатки сначала `python tools/restore_asset_sync.py plan`
+  (пересъёмка манифеста), **затем** `node tools/audit_silent_reverts.js --post-deploy`.
+  С ним повторный прогон дал `OK (post-deploy) — расхождений: 0`.
+- **Не путать с D-155:** там красный гейт был настоящим (неверное утверждение в отчёте), здесь — устаревший вход.
