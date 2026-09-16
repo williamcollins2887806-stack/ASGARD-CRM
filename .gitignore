@@ -154,3 +154,7 @@ prototypes/_shots/
 /*.tar.gz
 __pycache__/
 .cad_mcp/
+# диагностические копии чужих сессий в корне (16.09: сами файлы отсутствуют, записи — превентивные)
+/prod_bc.css
+/prod_bc.js
+/prod_pers.js
