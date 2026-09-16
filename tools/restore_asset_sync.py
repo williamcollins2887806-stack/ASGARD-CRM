@@ -324,16 +324,15 @@ def apply_plan(plan: dict) -> None:
         return
 
     # Pre-flight (D-167): оболочка обязана быть валидной, а HEAD — совпадать с проверенным
-    # коммитом (или отличаться от него только не-деплойными правками). Иначе заливка не идёт.
+    # коммитом (или отличаться от него только не-деплойными правками). Fail-closed:
+    # нет модуля/ошибка импорта → заливка НЕ идёт (L3 finding: раньше было fail-open).
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
     try:
-        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
         import shell_guard  # noqa: E402
-        shell_guard.assert_ok(base_dir=ROOT, deploy_gate=True)
-        print("pre-flight shell_guard: OK")
-    except SystemExit:
-        raise
-    except Exception as exc:  # модуль недоступен — не блокируем, но громко сообщаем
-        print(f"pre-flight shell_guard: ПРОПУЩЕН ({exc})")
+    except Exception as exc:
+        raise SystemExit(f"shell_guard недоступен ({exc}) — заливка без pre-flight запрещена")
+    shell_guard.assert_ok(base_dir=ROOT, deploy_gate=True)
+    print("pre-flight shell_guard: OK")
 
     os.makedirs(WORK, exist_ok=True)
     list_path = os.path.join(WORK, "upload-list.txt")

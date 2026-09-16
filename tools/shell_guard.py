@@ -3,27 +3,31 @@
 """
 shell_guard — единый pre-flight для файлов-оболочки (`public/index.html`, `public/sw.js`).
 
-Закрывает класс инцидентов D-142b / D-145 / D-147:
+Закрывает класс инцидентов D-142b / D-145 / D-147 / D-151 / D-156:
   * PowerShell писал UTF-8 файлы в cp1251 → потеря глифов и `U+FFFD` (D-142b);
-  * теги модулей инжектились только на проде и стирались любым деплоем (D-145);
-  * деплой ехал с протухшим `.last-verified` (D-151).
+  * теги модулей жили только на проде и стирались любым деплоем (D-145, D-156);
+  * деплой ехал с протухшим `.last-verified` (D-151);
+  * оболочка «всё пропало» = файл есть, но усечён/пуст (нечем доказать — этот гейт).
 
 Использование:
     python tools/shell_guard.py                       # локальные файлы
-    python tools/shell_guard.py --dir <каталог>       # index.html/sw.js из другого каталога (напр. копия прода)
+    python tools/shell_guard.py --dir <каталог>       # index.html/sw.js из другого каталога
     python tools/shell_guard.py --expect-version 20.28.32
-    python tools/shell_guard.py --deploy-gate         # + git HEAD == tests/reports/.last-verified
+    python tools/shell_guard.py --deploy-gate         # + HEAD vs .last-verified
     python tools/shell_guard.py --json                # машинный вывод
 
 Как модуль (для deploy-скриптов):
     import sys; sys.path.insert(0, "tools")
     import shell_guard
-    shell_guard.assert_ok()          # кидает SystemExit(1), если оболочка битая
+    shell_guard.assert_ok()          # SystemExit(1), если оболочка битая
 
 Код выхода: 0 — всё чисто, 1 — есть провалы.
+
+Границы (проверено независимым верификатором, D-167): гейт НЕ проверяет содержимое/хеши самих
+ассетов и не заменяет `verify_index_tags.js` (он проверяет полноту подключений и JS-глобалы).
+Задача shell_guard — целостность двух shell-файлов и версия, а не паритет ассетов.
 """
 import argparse
-import hashlib
 import io
 import json
 import os
@@ -46,6 +50,16 @@ CRITICAL_REFS = [
     "assets/css/cr-checkbox.css",
 ]
 
+# Минимальный «разумный» размер: усечённая/пустая оболочка = инцидент «всё пропало».
+MIN_SIZE = {"index.html": 20000, "sw.js": 5000}
+
+# Корневые файлы, которые тоже едут на прод: правка после подписи обязана блокировать деплой.
+DEPLOY_ROOT_FILES = {
+    "package.json", "package-lock.json", "Dockerfile", "nginx.conf", "_migrate.js",
+    "update_server.sh", "sync-vault.js", "ecosystem.config.js", ".env", ".env.example",
+}
+DEPLOY_DIR_PREFIXES = ("public/", "src/", "migrations/")
+
 
 def _read(path):
     with open(path, "rb") as f:
@@ -57,59 +71,100 @@ class Report(object):
         self.checks = []
 
     def check(self, ok, name, detail=""):
-        self.checks.append({"ok": bool(ok), "name": name, "detail": str(detail)[:220]})
-        return ok
+        self.checks.append({"ok": bool(ok), "name": name, "detail": str(detail)[:240]})
+        return bool(ok)
+
+    def info(self, name, detail=""):
+        """Не проверка, а пояснение (не влияет на итог) — чтобы «пропущено» было видно, а не молчало."""
+        self.checks.append({"ok": None, "name": name, "detail": str(detail)[:240]})
 
     @property
     def failed(self):
-        return [c for c in self.checks if not c["ok"]]
+        return [c for c in self.checks if c["ok"] is False]
+
+    @property
+    def total(self):
+        return len([c for c in self.checks if c["ok"] is not None])
 
     def print(self):
         for c in self.checks:
-            print("  %s  %-52s %s" % ("PASS" if c["ok"] else "FAIL", c["name"], c["detail"]))
+            mark = "PASS" if c["ok"] else ("SKIP" if c["ok"] is None else "FAIL")
+            print("  %-4s %-56s %s" % (mark, c["name"], c["detail"]))
         print("")
         if self.failed:
-            print("ИТОГ: FAIL — %d из %d проверок не прошли" % (len(self.failed), len(self.checks)))
+            print("ИТОГ: FAIL — %d из %d проверок не прошли" % (len(self.failed), self.total))
         else:
-            print("ИТОГ: OK — %d/%d проверок пройдено" % (len(self.checks), len(self.checks)))
+            print("ИТОГ: OK — %d/%d проверок пройдено" % (self.total, self.total))
+
+
+def _resolve(base_dir):
+    idx = os.path.join(base_dir, "public", "index.html")
+    sw = os.path.join(base_dir, "public", "sw.js")
+    if not os.path.exists(idx) and os.path.exists(os.path.join(base_dir, "index.html")):
+        idx = os.path.join(base_dir, "index.html")
+        sw = os.path.join(base_dir, "sw.js")
+    return idx, sw
+
+
+def _check_shell_file(rep, label, path):
+    """Целостность одного shell-файла. Возвращает (текст, причина_отказа)."""
+    if not rep.check(os.path.exists(path), "%s: файл существует" % label, path):
+        return None, "отсутствует %s" % label
+    raw = _read(path)
+    try:
+        txt = raw.decode("utf-8")
+    except UnicodeDecodeError as e:
+        rep.check(False, "%s: валидный UTF-8" % label,
+                  "ОШИБКА: %s (похоже на cp1251 — класс D-142b)" % e)
+        return None, "%s не читается как UTF-8" % label
+    rep.check(True, "%s: валидный UTF-8" % label,
+              "%d Б, переводы строк %s" % (len(raw), "CRLF" if b"\r\n" in raw else "LF"))
+    rep.check("\ufffd" not in txt, "%s: нет U+FFFD (нет потери глифов)" % label,
+              "найдено %d" % txt.count("\ufffd"))
+    floor = MIN_SIZE.get(label, 1000)
+    rep.check(len(raw) >= floor, "%s: размер >= %d Б (не усечён/не пуст)" % (label, floor),
+              "%d Б" % len(raw))
+    if label == "index.html":
+        rep.check(txt.startswith("\ufeff"), "index.html: UTF-8 BOM сохранён",
+                  "BOM=%s" % txt.startswith("\ufeff"))
+        body = txt.rstrip()
+        rep.check(body.endswith("</html>"), "index.html: документ не обрезан (заканчивается </html>)",
+                  "хвост: %r" % body[-24:])
+        rep.check('src="assets/js/app.js' in txt, "index.html: точка входа app.js подключена",
+                  "вхождений: %d" % txt.count('src="assets/js/app.js'))
+        rep.check("ASGARD_SHELL_VERSION" in txt, "index.html: объявлен ASGARD_SHELL_VERSION",
+                  "вхождений: %d" % txt.count("ASGARD_SHELL_VERSION"))
+    else:
+        rep.check("addEventListener('install'" in txt or 'addEventListener("install"' in txt,
+                  "sw.js: это реальный service worker (есть install-хендлер)",
+                  "вхождений caches: %d" % txt.count("caches"))
+        rep.check("SHELL_VERSION" in txt, "sw.js: объявлен SHELL_VERSION",
+                  "вхождений: %d" % txt.count("SHELL_VERSION"))
+    return txt, None
 
 
 def run_checks(base_dir, expect_version=None, deploy_gate=False):
     rep = Report()
-    idx = os.path.join(base_dir, "public", "index.html")
-    sw = os.path.join(base_dir, "public", "sw.js")
-    # допускаем передачу уже "public"-каталога
-    if not os.path.exists(idx) and os.path.exists(os.path.join(base_dir, "index.html")):
-        idx = os.path.join(base_dir, "index.html")
-        sw = os.path.join(base_dir, "sw.js")
+    idx, sw = _resolve(os.path.abspath(base_dir))
 
-    for label, path in (("index.html", idx), ("sw.js", sw)):
-        if not rep.check(os.path.exists(path), "%s: файл существует" % label, path):
-            continue
-        raw = _read(path)
-        try:
-            txt = raw.decode("utf-8")
-            rep.check(True, "%s: валидный UTF-8" % label, "%d Б" % len(raw))
-        except UnicodeDecodeError as e:
-            rep.check(False, "%s: валидный UTF-8" % label, "ОШИБКА: %s (похоже на cp1251, см. D-142b)" % e)
-            continue
-        rep.check("\ufffd" not in txt, "%s: нет U+FFFD (нет потери глифов)" % label,
-                  "найдено %d" % txt.count("\ufffd"))
-        if label == "index.html":
-            rep.check(txt.startswith("\ufeff"), "index.html: UTF-8 BOM сохранён", "BOM=%s" % txt.startswith("\ufeff"))
-        rep.check("\r\n" not in txt or raw.count(b"\r\n") >= 0, "%s: читается" % label, "eol=%s" % ("CRLF" if b"\r\n" in raw else "LF"))
+    html, idx_reason = _check_shell_file(rep, "index.html", idx)
+    js, sw_reason = _check_shell_file(rep, "sw.js", sw)
 
-    if not os.path.exists(idx) or not os.path.exists(sw):
+    # Версии проверяются даже если один из файлов отсутствует — иначе негативный контроль
+    # краснеет «не по той причине» (находка L3 F-4).
+    if html is None or js is None:
+        why = idx_reason or sw_reason
+        rep.check(False, "версии оболочки совпадают", "НЕ ПРОВЕРЕНО: %s" % why)
+        rep.check(False, "все ?v= приведены к версии оболочки", "НЕ ПРОВЕРЕНО: %s" % why)
+        if expect_version:
+            rep.check(False, "версия оболочки = ожидаемой", "НЕ ПРОВЕРЕНО: %s" % why)
         return rep
-
-    html = io.open(idx, encoding="utf-8").read()
-    js = io.open(sw, encoding="utf-8").read()
 
     m_idx = re.search(r"ASGARD_SHELL_VERSION\s*=\s*'([^']+)'", html)
     m_sw = re.search(r"SHELL_VERSION\s*=\s*'([^']+)'", js)
     v_idx = m_idx.group(1) if m_idx else None
     v_sw = m_sw.group(1) if m_sw else None
-    rep.check(v_idx and v_sw and v_idx == v_sw, "версии оболочки совпадают",
+    rep.check(bool(v_idx) and bool(v_sw) and v_idx == v_sw, "версии оболочки совпадают",
               "index=%s sw=%s" % (v_idx, v_sw))
 
     versions = sorted(set(re.findall(r"\?v=([0-9A-Za-z.\-]+)", html)))
@@ -123,6 +178,22 @@ def run_checks(base_dir, expect_version=None, deploy_gate=False):
     for ref in CRITICAL_REFS:
         n = len(re.findall(r'(?:src|href)="%s' % re.escape(ref), html))
         rep.check(n == 1, "подключён ровно один раз: %s" % ref, "вхождений: %d" % n)
+        if n == 1:
+            tagged = re.search(r'(?:src|href)="%s\?v=([0-9A-Za-z.\-]+)"' % re.escape(ref), html)
+            rep.check(bool(tagged) and (tagged.group(1) == v_idx),
+                      "  └ ?v= у %s" % ref,
+                      "v=%s" % (tagged.group(1) if tagged else "нет"))
+
+    # Существование ассетов проверяем только там, где каталог ассетов реально есть
+    # (на копии «только index.html + sw.js» это не проверить — сообщаем, а не молчим).
+    assets_dir = os.path.join(os.path.dirname(idx), "assets")
+    if os.path.isdir(assets_dir):
+        missing_assets = [r for r in CRITICAL_REFS if not os.path.exists(os.path.join(os.path.dirname(idx), r))]
+        rep.check(not missing_assets, "все критические ассеты есть на диске",
+                  "отсутствуют: %s" % (", ".join(missing_assets) if missing_assets else "нет"))
+    else:
+        rep.info("все критические ассеты есть на диске",
+                 "SKIP: нет каталога %s (проверяется только в дереве репозитория)" % assets_dir)
 
     if deploy_gate:
         head = subprocess.run(["git", "rev-parse", "HEAD"], cwd=base_dir, capture_output=True,
@@ -133,11 +204,12 @@ def run_checks(base_dir, expect_version=None, deploy_gate=False):
             rep.check(True, "deploy-gate: HEAD == .last-verified", "HEAD=%s" % head[:12])
         else:
             # Допустимо: после проверенного коммита идут ТОЛЬКО не-деплойные правки (ledger/docs/reports).
-            # Это машинно проверяемо, поэтому гейт остаётся гейтом, а не «словом агента».
+            # Машинно проверяемо — поэтому гейт остаётся гейтом, а не «словом агента».
             diff = subprocess.run(["git", "diff", "--name-only", "%s..%s" % (lv, head or "HEAD")],
                                   cwd=base_dir, capture_output=True, encoding="utf-8",
                                   errors="replace").stdout.split() if lv else []
-            deployable = [p for p in diff if p.startswith(("public/", "src/", "migrations/"))]
+            deployable = [p for p in diff
+                          if p.startswith(DEPLOY_DIR_PREFIXES) or os.path.basename(p) in DEPLOY_ROOT_FILES]
             ancestor = subprocess.run(["git", "merge-base", "--is-ancestor", lv, head or "HEAD"],
                                       cwd=base_dir, capture_output=True).returncode == 0 if lv else False
             ok = bool(lv) and ancestor and not deployable
@@ -161,7 +233,8 @@ def main():
 
     rep = run_checks(os.path.abspath(a.dir), a.expect_version, a.deploy_gate)
     if a.json:
-        print(json.dumps({"checks": rep.checks, "failed": len(rep.failed)}, ensure_ascii=False, indent=2))
+        print(json.dumps({"checks": rep.checks, "failed": len(rep.failed), "total": rep.total},
+                         ensure_ascii=False, indent=2))
     else:
         print("shell_guard — %s" % os.path.abspath(a.dir))
         rep.print()

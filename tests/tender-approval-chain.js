@@ -41,7 +41,11 @@ const PG = {
 };
 
 const VAT_DIVISOR = 1.22;
-const THRESHOLD_EX_VAT = 10_000_000;
+// Порог берётся из настроек БД (settings.director_tender_threshold_rub) — той же,
+// из которой его читает бэкенд (src/routes/pm-duty.js:36-46). Константа не дублируется:
+// иначе тест «зеленеет» на устаревшем пороге (находка L3 F-1).
+const ACCEPTED_THRESHOLD_RUB = 10_000_000; // приёмка заказчика от 14.09: порог = 10 млн
+let THRESHOLD_EX_VAT = null;               // заполняется в loadThresholdFromDb()
 const RUN_TAG = `TAC_${Date.now()}`;
 
 const results = [];
@@ -85,6 +89,27 @@ async function pgConnect() {
   const client = new Client(PG);
   await client.connect();
   return client;
+}
+
+/**
+ * Читает действующий порог согласования директора из настроек (как это делает бэкенд)
+ * и сверяет его с приёмочным значением. Возвращает { configured, accepted, ok }.
+ */
+async function loadThresholdFromDb(pg) {
+  const r = await pg.query(
+    "SELECT value_json FROM settings WHERE key = 'director_tender_threshold_rub'"
+  );
+  const raw = r.rows[0] ? r.rows[0].value_json : null;
+  const v = typeof raw === 'number' ? raw : Number(String(raw == null ? '' : raw).replace(/"/g, ''));
+  if (!Number.isFinite(v) || v <= 0) {
+    throw new Error(
+      "FATAL: settings.director_tender_threshold_rub не найден/не число " +
+      `(получено: ${JSON.stringify(raw)}). Бэкенд в этом случае падает на DEFAULT_DIRECTOR_THRESHOLD — ` +
+      'тест обязан проверять фактическую настройку, а не дефолт.'
+    );
+  }
+  THRESHOLD_EX_VAT = v;
+  return { configured: v, accepted: ACCEPTED_THRESHOLD_RUB, ok: v === ACCEPTED_THRESHOLD_RUB };
 }
 
 function assertNotProdDb() {
@@ -428,6 +453,9 @@ async function caseC(pg) {
 // поэтому проверяем ровно 6 млн и 12 млн ex-VAT (цена с НДС подбирается обратно через VAT_DIVISOR).
 async function caseThreshold(pg, { id, name, exVatTarget, expectDirector }) {
   try {
+    if (!Number.isFinite(THRESHOLD_EX_VAT) || THRESHOLD_EX_VAT <= 0) {
+      return fail(id, name, 'THRESHOLD_EX_VAT не загружен из settings — тест не имеет права угадывать порог');
+    }
     const withVat = Math.round(exVatTarget * VAT_DIVISOR);
     const tenderId = await createRegistryTender(`case-${id}`, 'TO');
     await finalizeAnalysis(tenderId, pg);
@@ -455,19 +483,23 @@ async function caseThreshold(pg, { id, name, exVatTarget, expectDirector }) {
 }
 
 async function caseB2(pg) {
+  // Граница снизу: 6 млн при пороге 10 млн (0.6×) — считается от ФАКТИЧЕСКОЙ настройки, не от константы.
+  const target = Math.round(THRESHOLD_EX_VAT * 0.6);
   return caseThreshold(pg, {
     id: 'B2',
-    name: 'Calc ровно 6M ex-VAT → директору НЕ уходит, без recipients',
-    exVatTarget: 6_000_000,
+    name: `Calc ${target.toLocaleString('ru-RU')} ex-VAT (< ${THRESHOLD_EX_VAT.toLocaleString('ru-RU')}) → директору НЕ уходит, без recipients`,
+    exVatTarget: target,
     expectDirector: false,
   });
 }
 
 async function caseC2(pg) {
+  // Граница сверху: 12 млн при пороге 10 млн (1.2×).
+  const target = Math.round(THRESHOLD_EX_VAT * 1.2);
   return caseThreshold(pg, {
     id: 'C2',
-    name: 'Calc ровно 12M ex-VAT → директору уходит, recipients есть',
-    exVatTarget: 12_000_000,
+    name: `Calc ${target.toLocaleString('ru-RU')} ex-VAT (>= ${THRESHOLD_EX_VAT.toLocaleString('ru-RU')}) → директору уходит, recipients есть`,
+    exVatTarget: target,
     expectDirector: true,
   });
 }
@@ -642,6 +674,17 @@ async function caseH(pg) {
     pg = await pgConnect();
     await ensureDutyPm(pg);
     console.log(`duty_pm_user_id=${state.dutyPmUserId} admin_override=${state.useAdminOverride}\n`);
+
+    // F-1 (L3): порог не хардкодим — читаем настройку и сверяем её с приёмочным значением.
+    const th = await loadThresholdFromDb(pg);
+    if (th.ok) {
+      pass('T0', 'Порог согласования директора = приёмочные 10 млн (settings.director_tender_threshold_rub)',
+        `configured=${th.configured} accepted=${th.accepted}`);
+    } else {
+      fail('T0', 'Порог согласования директора = приёмочные 10 млн (settings.director_tender_threshold_rub)',
+        `settings=${th.configured}, приёмка требует ${th.accepted} — тест не должен «зеленеть» на другом пороге`);
+    }
+    console.log(`threshold_ex_vat=${THRESHOLD_EX_VAT}\n`);
 
     const cases = [
       ['A', caseA],
