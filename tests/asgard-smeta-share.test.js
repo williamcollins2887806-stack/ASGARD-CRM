@@ -235,10 +235,15 @@ check('две копии сметы дают одинаковый результ
   );
   assert.strictEqual(typeof mirror.buildTextReport, typeof server.buildTextReport, 'набор экспортов совпадает');
   // Файл-зеркало должен быть ровно тем, что собирает tools/build_smeta_mirror.js.
-  const src = fs.readFileSync(SRC, 'utf8');
-  const expected = '(function (root) {\n' + src.replace('module.exports = {', 'root.AsgardSmeta = {').trimEnd() + '\n})(typeof window !== \'undefined\' ? window : globalThis);\n';
+  // Сборщик — единый источник истины (в т.ч. по переводам строк, D-179): не
+  // дублируем его логику в тесте, иначе гейт ловит CRLF/LF как «расхождение».
+  const { buildMirror, normalizeEol } = require(path.join(ROOT, 'tools', 'build_smeta_mirror.js'));
   const actual = fs.readFileSync(DST, 'utf8');
-  assert.strictEqual(actual, expected, 'public/assets/js/asgard_smeta.js разошёлся — запустить node tools/build_smeta_mirror.js');
+  assert.strictEqual(
+    normalizeEol(actual),
+    normalizeEol(buildMirror()),
+    'public/assets/js/asgard_smeta.js разошёлся — запустить node tools/build_smeta_mirror.js'
+  );
 });
 
 check('налог 55% считается с ФОТ + пайковые (проживание не облагается)', () => {
