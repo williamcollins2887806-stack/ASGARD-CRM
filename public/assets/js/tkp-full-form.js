@@ -19,6 +19,7 @@ window.AsgardTkpFullForm = (function() {
       scope_boundary: '',
       apparatus: [{ equipment: '', inventory_no: '', tube_data: '', qty: '1 компл.', amount_no_vat: '' }],
       transport_amount: 0,
+      table_labels: {},
       cost_notes: '',
       acceptance: '',
       risks: '',
@@ -51,9 +52,9 @@ window.AsgardTkpFullForm = (function() {
     r = r || {};
     return '<tr data-idx="' + idx + '">' +
       '<td style="width:28px">' + (idx + 1) + '</td>' +
-      '<td><input class="fa-eq" value="' + esc(r.equipment || '') + '" placeholder="Оборудование" style="width:100%;box-sizing:border-box"/></td>' +
-      '<td style="width:100px"><input class="fa-inv" value="' + esc(r.inventory_no || '') + '" placeholder="Инв. №" style="width:100%;box-sizing:border-box"/></td>' +
-      '<td><input class="fa-tube" value="' + esc(r.tube_data || '') + '" placeholder="трубки; L; Ø" style="width:100%;box-sizing:border-box"/></td>' +
+      '<td><input class="fa-eq" value="' + esc(r.equipment || '') + '" placeholder="Наименование" style="width:100%;box-sizing:border-box"/></td>' +
+      '<td style="width:100px"><input class="fa-inv" value="' + esc(r.inventory_no || '') + '" placeholder="Ед. изм." style="width:100%;box-sizing:border-box"/></td>' +
+      '<td><input class="fa-tube" value="' + esc(r.tube_data || '') + '" placeholder="объём; расчётные данные" style="width:100%;box-sizing:border-box"/></td>' +
       '<td style="width:90px"><input class="fa-qty" value="' + esc(r.qty || '1 компл.') + '" style="width:100%;box-sizing:border-box"/></td>' +
       '<td style="width:120px"><input class="fa-amt" type="number" step="0.01" value="' + (r.amount_no_vat != null && r.amount_no_vat !== '' ? r.amount_no_vat : '') + '" style="width:100%;box-sizing:border-box"/></td>' +
       '<td style="width:32px"><button type="button" class="btn ghost mini fa-del" title="Удалить">×</button></td>' +
@@ -235,13 +236,13 @@ window.AsgardTkpFullForm = (function() {
       fieldWithPolish('Технический периметр работ', 'fullScope', 6, full.scope) +
       fieldWithPolish('Граница объема', 'fullScopeBound', 3, full.scope_boundary) +
 
-      sectionHdr('Стоимость работ по аппаратам') +
+      sectionHdr('Стоимость работ и затрат') +
       '<div style="overflow-x:auto"><table class="data-table" style="font-size:12px"><thead><tr>' +
-        '<th>№</th><th>Оборудование</th><th>Инв. №</th><th>Расчётные данные по трубкам</th><th>Кол-во</th><th>Сумма без НДС</th><th></th>' +
+        '<th>№</th><th>Наименование</th><th>Ед. изм.</th><th>Объём и расчётные данные</th><th>Кол-во</th><th>Сумма без НДС</th><th></th>' +
       '</tr></thead><tbody id="fullAppBody">' +
         full.apparatus.map(apparatusRowHtml).join('') +
       '</tbody></table></div>' +
-      '<button class="btn ghost" id="fullAddApp" type="button" style="margin-top:8px">+ Добавить аппарат</button>' +
+      '<button class="btn ghost" id="fullAddApp" type="button" style="margin-top:8px">+ Добавить позицию</button>' +
       '<div class="formrow" style="margin-top:10px"><div><label>Транспортные расходы (без НДС)</label><input id="fullTransport" type="number" step="0.01" value="' + (full.transport_amount || 0) + '"/></div></div>' +
       '<div id="fullTotals" style="text-align:right;margin:8px 0;font-size:13px"></div>' +
       fieldWithPolish('Примечания к распределению стоимости', 'fullCostNotes', 4, full.cost_notes) +
@@ -495,6 +496,7 @@ window.AsgardTkpFullForm = (function() {
             scope_boundary: (root.querySelector('#fullScopeBound') || {}).value || '',
             apparatus: collectApparatus(root.querySelector('#fullAppBody')),
             transport_amount: parseFloat((root.querySelector('#fullTransport') || {}).value) || 0,
+            table_labels: Object.assign({}, full.table_labels || {}),
             cost_notes: (root.querySelector('#fullCostNotes') || {}).value || '',
             acceptance: (root.querySelector('#fullAcceptance') || {}).value || '',
             risks: (root.querySelector('#fullRisks') || {}).value || '',

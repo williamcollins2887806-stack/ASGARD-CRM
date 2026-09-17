@@ -9,6 +9,33 @@ import { toast } from '@/modals/Notifications';
 import { createTkp, updateTkp, loadTkp, previewTkpPdf, openPdf, openDocx, lookupCustomers, customerByInn } from '../api';
 import { PolishTextSheet } from './PolishTextSheet';
 
+/**
+ * Шапка таблицы стоимости. Слова универсальные (не «по аппаратам» и не «по работам»),
+ * потому что одна и та же форма обслуживает и чистку аппаратов, и промывку сетей,
+ * и монтаж. Если предмет требует своих слов — их можно вписать в блоке «Шапка таблицы»,
+ * они уедут в payload (items.full.table_labels) и попадут в DOCX/PDF.
+ * Значения ниже дублируют `TABLE_LABELS_DEFAULT` из src/services/tkp-full-kp.js.
+ */
+const TABLE_LABEL_DEFAULTS = {
+  tbl_title: 'Стоимость работ и затрат',
+  tbl_col1: 'Наименование',
+  tbl_col2: 'Ед. изм.',
+  tbl_col3: 'Объём и расчётные данные',
+  tbl_col4: 'Кол-во',
+  tbl_col5: 'Сумма без НДС, руб.',
+  tbl_transport_label: 'Транспортные расходы: мобилизация и демобилизация оборудования и персонала'
+};
+
+const TABLE_LABEL_FIELDS = [
+  ['tbl_title', 'Название раздела'],
+  ['tbl_col1', 'Колонка 1'],
+  ['tbl_col2', 'Колонка 2'],
+  ['tbl_col3', 'Колонка 3'],
+  ['tbl_col4', 'Колонка 4'],
+  ['tbl_col5', 'Колонка 5 (сумма)'],
+  ['tbl_transport_label', 'Строка транспортных расходов']
+];
+
 const emptyFull = () => ({
   object_name: '',
   basis: 'Техническое задание, ведомость объемов работ и письменные ответы Заказчика на технические вопросы',
@@ -20,6 +47,7 @@ const emptyFull = () => ({
   scope_boundary: '',
   apparatus: [{ equipment: '', inventory_no: '', tube_data: '', qty: '1 компл.', amount_no_vat: '' }],
   transport_amount: 0,
+  table_labels: {},
   cost_notes: '',
   acceptance: '',
   risks: '',
@@ -70,6 +98,7 @@ export function FullKpFormModal({ editId, onSaved }) {
   const [validity_days, setValidity] = useState(30);
   const [tkp_number, setNumber] = useState('');
   const [full, setFull] = useState(emptyFull);
+  const [showLabels, setShowLabels] = useState(false);
 
   useEffect(() => {
     if (!editId) return;
@@ -281,23 +310,45 @@ export function FullKpFormModal({ editId, onSaved }) {
           <FieldBlock label="Технический периметр работ" value={full.scope} onChange={(v) => setFull({ ...full, scope: v })} rows={6} />
           <FieldBlock label="Граница объема" value={full.scope_boundary} onChange={(v) => setFull({ ...full, scope_boundary: v })} />
 
-          <div style={{ fontWeight: 700, color: 'var(--gold)', marginTop: 8 }}>Стоимость по аппаратам</div>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 8 }}>
+            <div style={{ fontWeight: 700, color: 'var(--gold)' }}>Стоимость работ и затрат</div>
+            <Btn size="sm" variant="ghost" onClick={() => setShowLabels((v) => !v)}>
+              {showLabels ? 'Скрыть шапку таблицы' : '⚙ Шапка таблицы'}
+            </Btn>
+          </div>
+          {showLabels && (
+            <div className="p-10 bg-inner r-sm col gap-6">
+              <div style={{ fontSize: 12, opacity: .75 }}>
+                Пусто — напечатается универсальный текст (он же в подсказке). Заполняй, только если
+                предмет КП требует своих слов.
+              </div>
+              {TABLE_LABEL_FIELDS.map(([key, label]) => (
+                <Field key={key} label={label}>
+                  <TextInput
+                    value={(full.table_labels || {})[key] || ''}
+                    placeholder={TABLE_LABEL_DEFAULTS[key]}
+                    onChange={(v) => setFull((f) => ({ ...f, table_labels: { ...(f.table_labels || {}), [key]: v } }))}
+                  />
+                </Field>
+              ))}
+            </div>
+          )}
           {(full.apparatus || []).map((r, idx) => (
             <div key={idx} className="p-10 bg-inner r-sm col gap-6">
               <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                 <b>#{idx + 1}</b>
                 <Btn onClick={() => setFull((f) => ({ ...f, apparatus: f.apparatus.filter((_, i) => i !== idx).length ? f.apparatus.filter((_, i) => i !== idx) : emptyFull().apparatus }))}>×</Btn>
               </div>
-              <Field label="Оборудование"><TextInput value={r.equipment} onChange={(v) => setApp(idx, { equipment: v })} /></Field>
+              <Field label="Наименование"><TextInput value={r.equipment} onChange={(v) => setApp(idx, { equipment: v })} /></Field>
               <div className="grid-2 gap-8">
-                <Field label="Инв. №"><TextInput value={r.inventory_no} onChange={(v) => setApp(idx, { inventory_no: v })} /></Field>
+                <Field label="Ед. изм."><TextInput value={r.inventory_no} onChange={(v) => setApp(idx, { inventory_no: v })} /></Field>
                 <Field label="Кол-во"><TextInput value={r.qty} onChange={(v) => setApp(idx, { qty: v })} /></Field>
               </div>
-              <Field label="Расчётные данные по трубкам"><TextInput value={r.tube_data} onChange={(v) => setApp(idx, { tube_data: v })} /></Field>
+              <Field label="Объём и расчётные данные"><TextInput value={r.tube_data} onChange={(v) => setApp(idx, { tube_data: v })} /></Field>
               <Field label="Сумма без НДС"><NumberInput value={r.amount_no_vat} onChange={(v) => setApp(idx, { amount_no_vat: v })} /></Field>
             </div>
           ))}
-          <Btn onClick={() => setFull((f) => ({ ...f, apparatus: [...f.apparatus, { equipment: '', inventory_no: '', tube_data: '', qty: '1 компл.', amount_no_vat: '' }] }))}>+ Аппарат</Btn>
+          <Btn onClick={() => setFull((f) => ({ ...f, apparatus: [...f.apparatus, { equipment: '', inventory_no: '', tube_data: '', qty: '1 компл.', amount_no_vat: '' }] }))}>+ Позиция</Btn>
           <Field label="Транспортные расходы"><NumberInput value={full.transport_amount} onChange={(v) => setFull({ ...full, transport_amount: v })} /></Field>
           <div className="p-10 bg-inner r-sm" style={{ textAlign: 'right' }}>
             Итого без НДС: <b>{totals.subtotal.toLocaleString('ru-RU', { minimumFractionDigits: 2 })}</b> ₽ ·

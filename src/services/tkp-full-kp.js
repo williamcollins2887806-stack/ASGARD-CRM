@@ -15,6 +15,64 @@ const db = require('./db');
 const ROOT = path.resolve(__dirname, '..', '..');
 const FULL_KP_TPL = path.join(ROOT, 'templates', 'full-kp-nika-tpl.docx');
 
+/**
+ * Шапка таблицы стоимости. ОДИН шаблон на все предметы КП.
+ *
+ * Слова в шапке — не «под аппараты» и не «под работы», а универсальные, и они
+ * ПАРАМЕТРИЧЕСКИЕ: в templates/full-kp-nika-tpl.docx стоят плейсхолдеры
+ * {tbl_title}, {tbl_col1..5}, {tbl_transport_label}, а значения подставляются отсюда.
+ * Значения по умолчанию можно переопределить на конкретное КП через
+ * items.full.table_labels (поля есть в форме полного КП).
+ *
+ * Зачем так: прошлая попытка решала это вторым файлом-шаблоном и переключателем
+ * template_kind — на третьем предмете (монтаж, антикор, диагностика) понадобился бы
+ * третий файл. Теперь шаблон править не нужно вообще, достаточно текста в форме.
+ */
+const TABLE_LABELS_DEFAULT = {
+  tbl_title: 'Стоимость работ и затрат',
+  tbl_col1: 'Наименование',
+  tbl_col2: 'Ед. изм.',
+  tbl_col3: 'Объём и расчётные данные',
+  tbl_col4: 'Кол-во',
+  tbl_col5: 'Сумма без НДС, руб.',
+  tbl_transport_label: 'Транспортные расходы: мобилизация и демобилизация оборудования и персонала'
+};
+
+/** Дружественные имена полей формы → имена плейсхолдеров шаблона. */
+const TABLE_LABEL_ALIASES = {
+  section_title: 'tbl_title',
+  col1: 'tbl_col1',
+  col2: 'tbl_col2',
+  col3: 'tbl_col3',
+  col4: 'tbl_col4',
+  col5: 'tbl_col5',
+  col_equipment: 'tbl_col1',
+  col_inventory: 'tbl_col2',
+  col_tube: 'tbl_col3',
+  col_qty: 'tbl_col4',
+  col_amount: 'tbl_col5',
+  transport_label: 'tbl_transport_label'
+};
+
+/** Шапка таблицы стоимости: дефолт + переопределение из items.full.table_labels. */
+function resolveTableLabels(tkp) {
+  const labels = { ...TABLE_LABELS_DEFAULT };
+  const full = getFullPayload(tkp);
+  const over = full.table_labels && typeof full.table_labels === 'object' ? full.table_labels : {};
+  const entries = Object.entries(over);
+  // Порядок важен: сначала дружественные имена, затем канонические (tbl_*).
+  // Иначе два ключа к одному плейсхолдеру (tbl_col1 и col1) давали бы «кто последний».
+  const apply = ([key, val]) => {
+    const name = TABLE_LABEL_ALIASES[key] || key;
+    if (!(name in TABLE_LABELS_DEFAULT)) return;
+    const text = String(val == null ? '' : val).trim();
+    if (text) labels[name] = text;
+  };
+  entries.filter(([key]) => !(key in TABLE_LABELS_DEFAULT)).forEach(apply);
+  entries.filter(([key]) => key in TABLE_LABELS_DEFAULT).forEach(apply);
+  return labels;
+}
+
 let pdfGenerator = null;
 try { pdfGenerator = require('./pdf-generator'); } catch (_) {}
 
@@ -78,8 +136,9 @@ function emptyFullPayload() {
     },
     scope: '',
     scope_boundary: '',
-    apparatus: [], // { equipment, inventory_no, tube_data, qty, amount_no_vat }
+    apparatus: [], // { equipment|name, inventory_no|unit, tube_data|details, qty, amount_no_vat }
     transport_amount: 0,
+    table_labels: {}, // переопределение шапки таблицы стоимости (см. TABLE_LABELS_DEFAULT)
     cost_notes: '',
     acceptance: '',
     risks: '',
@@ -109,6 +168,15 @@ function getFullPayload(tkp) {
     conditions: { ...base.conditions, ...(full.conditions || {}) },
     apparatus: Array.isArray(full.apparatus) ? full.apparatus : []
   };
+}
+
+/** Значение позиции таблицы: сначала исторические ключи, затем универсальные. */
+function posVal(row, ...keys) {
+  for (const k of keys) {
+    const v = row && row[k];
+    if (v != null && String(v).trim()) return v;
+  }
+  return '';
 }
 
 function calcTotals(full, vatPct) {
@@ -149,6 +217,7 @@ function buildFullKpHtml(tkp, opts = {}) {
   const cj = parseItems(tkp);
   const vatPct = cj.vat_pct != null ? cj.vat_pct : 22;
   const totals = calcTotals(full, vatPct);
+  const L = resolveTableLabels(tkp);
 
   const num = tkp.tkp_number || ('АС-' + tkp.id);
   const dateStr = formatDate(tkp.created_at || new Date());
@@ -167,9 +236,9 @@ function buildFullKpHtml(tkp, opts = {}) {
   const apparatusRows = (full.apparatus || []).map((r, i) => `
     <tr>
       <td class="c">${i + 1}</td>
-      <td>${esc(r.equipment || '—')}</td>
-      <td>${esc(r.inventory_no || '—')}</td>
-      <td>${esc(r.tube_data || '—')}</td>
+      <td>${esc(posVal(r, 'equipment', 'name', 'title', 'work') || '—')}</td>
+      <td>${esc(posVal(r, 'inventory_no', 'unit', 'measure') || '—')}</td>
+      <td>${esc(posVal(r, 'tube_data', 'details', 'volume', 'scope') || '—')}</td>
       <td class="c">${esc(r.qty || '1 компл.')}</td>
       <td class="r">${fmtMoney(r.amount_no_vat)}</td>
     </tr>`).join('');
@@ -244,20 +313,20 @@ ${condRows.length ? sectionBlock('Условия и комментарии', con
 ${sectionBlock('Технический периметр работ', preBlock(full.scope) + (full.scope_boundary
   ? `<div class="kv"><div class="kv-k">Граница объема</div><div class="kv-v">${esc(full.scope_boundary)}</div></div>` : ''))}
 
-${(full.apparatus || []).length ? sectionBlock('Стоимость работ по аппаратам', `
+${(full.apparatus || []).length ? sectionBlock(L.tbl_title, `
 <table class="app">
   <thead><tr>
     <th style="width:28px">№</th>
-    <th>Оборудование</th>
-    <th style="width:90px">Инвентарный №</th>
-    <th>Расчетные данные по трубкам</th>
-    <th style="width:70px">Кол-во</th>
-    <th style="width:110px">Сумма без НДС, руб.</th>
+    <th>${esc(L.tbl_col1)}</th>
+    <th style="width:90px">${esc(L.tbl_col2)}</th>
+    <th>${esc(L.tbl_col3)}</th>
+    <th style="width:70px">${esc(L.tbl_col4)}</th>
+    <th style="width:110px">${esc(L.tbl_col5)}</th>
   </tr></thead>
   <tbody>
     ${apparatusRows}
     <tr>
-      <td colspan="5"><b>Транспортные расходы: мобилизация и демобилизация оборудования и персонала</b></td>
+      <td colspan="5"><b>${esc(L.tbl_transport_label)}</b></td>
       <td class="r"><b>${fmtMoney(full.transport_amount)}</b></td>
     </tr>
   </tbody>
@@ -336,12 +405,14 @@ function buildFullKpTemplateData(tkp, company = {}) {
 
   const apparatus = (full.apparatus || []).map((r, i) => ({
     n: String(i + 1),
-    equipment: r.equipment || '—',
-    inventory_no: r.inventory_no || '—',
-    tube_data: r.tube_data || '—',
+    equipment: posVal(r, 'equipment', 'name', 'title', 'work') || '—',
+    inventory_no: posVal(r, 'inventory_no', 'unit', 'measure') || '—',
+    tube_data: posVal(r, 'tube_data', 'details', 'volume', 'scope') || '—',
     qty: r.qty || '1 компл.',
     amount: fmtMoney(r.amount_no_vat)
   }));
+
+  const L = resolveTableLabels(tkp);
 
   let totalWords = '';
   try {
@@ -353,6 +424,7 @@ function buildFullKpTemplateData(tkp, company = {}) {
     company_name: companyName,
     company_address: company.legal_address || company.address || '',
     company_phone: company.phone || '',
+    ...L,
     tkp_number: tkp.tkp_number || ('АС-' + (tkp.id || '')),
     tkp_date: formatDate(tkp.created_at || new Date()),
     validity_days: String(tkp.validity_days || 30),
@@ -386,12 +458,9 @@ function buildFullKpTemplateData(tkp, company = {}) {
 }
 
 function generateFullKpDocxBuffer(tkp, company = {}) {
-  if (!fs.existsSync(FULL_KP_TPL)) {
-    throw new Error('Шаблон полного КП не найден: templates/full-kp-nika-tpl.docx');
-  }
-  const { Docxtemplater, PizZip } = _loadDocxLibs();
   const data = buildFullKpTemplateData(tkp, company);
   const content = fs.readFileSync(FULL_KP_TPL);
+  const { Docxtemplater, PizZip } = _loadDocxLibs();
   const zip = new PizZip(content);
   const doc = new Docxtemplater(zip, {
     paragraphLoop: true,
@@ -541,6 +610,8 @@ module.exports = {
   calcTotals,
   buildFullKpHtml,
   buildFullKpTemplateData,
+  resolveTableLabels,
+  TABLE_LABELS_DEFAULT,
   generateFullKpPdf,
   generateFullKpPdfBuffer,
   generateFullKpDocx,
