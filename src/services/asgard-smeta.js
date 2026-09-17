@@ -369,8 +369,15 @@ function recalcAsgardSmeta(estimate) {
   const priceNoVat = Math.round(
     (materials * p.material_markup + equipment + (cost - materials - equipment) * p.markup) * 100
   ) / 100;
-  const vatAmount = Math.round(priceNoVat * p.vat * 100) / 100;
-  const priceWithVat = priceNoVat + vatAmount;
+  // НДС считаем в ЦЕЛЫХ копейках, а не через float-произведение (D-181).
+  // `Math.round(priceNoVat * p.vat * 100) / 100` давал ошибку в 1 копейку на полугранице:
+  // 9 785 921,25 × 0,22 = 2 152 902,6750, но float-произведение уходит на 1 ULP ниже половины
+  // (215290267.49999997) → Math.round давал .67 вместо .68. Переводим цену в копейки (целое),
+  // ставку — в базисные пункты (22 % → 2200), поэтому произведение остаётся целым и точным.
+  const priceKop = Math.round(priceNoVat * 100);
+  const vatBasisPoints = Math.round(p.vat * 10000);
+  const vatAmount = Math.round(priceKop * vatBasisPoints / 10000) / 100;
+  const priceWithVat = Math.round((priceKop + Math.round(priceKop * vatBasisPoints / 10000))) / 100;
 
   const totalsMap = {
     fot, fot_tax: fotTax, fot_tax_base: fotTaxBase, personnel, current, travel, transport, materials,
