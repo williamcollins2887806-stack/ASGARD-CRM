@@ -30,6 +30,65 @@ window.AsgardTkpFullForm = (function() {
     };
   }
 
+  // Шапка таблицы стоимости. Источник истины — TABLE_LABELS_DEFAULT в
+  // src/services/tkp-full-kp.js; здесь зеркало, чтобы форма показывала, что напечатается,
+  // и позволяла переопределить текст под предмет КП (items.full.table_labels).
+  var TABLE_LABEL_FIELDS = [
+    ['tbl_title', 'Название раздела'],
+    ['tbl_col1', 'Колонка 1'],
+    ['tbl_col2', 'Колонка 2'],
+    ['tbl_col3', 'Колонка 3'],
+    ['tbl_col4', 'Колонка 4'],
+    ['tbl_col5', 'Колонка 5'],
+    ['tbl_transport_label', 'Строка транспортных расходов']
+  ];
+  var TABLE_LABEL_DEFAULTS = {
+    tbl_title: 'СТОИМОСТЬ РАБОТ И ЗАТРАТ',
+    tbl_col1: 'Наименование',
+    tbl_col2: 'Ед. изм.',
+    tbl_col3: 'Объём и расчётные данные',
+    tbl_col4: 'Кол-во',
+    tbl_col5: 'Сумма без НДС, руб.',
+    tbl_transport_label: 'Транспортные расходы: мобилизация и демобилизация оборудования и персонала'
+  };
+  // Колонки таблицы, у которых есть поле ввода в позиции (для живой синхронизации подсказок).
+  var LBL_TO_ROWCLASS = { tbl_col1: 'fa-eq', tbl_col2: 'fa-inv', tbl_col3: 'fa-tube' };
+
+  function resolveTblLabels(over) {
+    var L = {};
+    Object.keys(TABLE_LABEL_DEFAULTS).forEach(function(k) {
+      var v = (over && typeof over === 'object') ? over[k] : '';
+      L[k] = String(v == null ? '' : v).trim() || TABLE_LABEL_DEFAULTS[k];
+    });
+    return L;
+  }
+
+  function tblLabelsInputsHtml(over) {
+    return TABLE_LABEL_FIELDS.map(function(f) {
+      var key = f[0];
+      var v = (over && typeof over === 'object') ? over[key] : '';
+      return '<div style="margin-bottom:6px">' +
+        '<label style="font-size:11px;text-transform:uppercase;color:var(--t3)">' + esc(f[1]) + '</label>' +
+        '<input class="ftl" data-lbl="' + key + '" value="' + esc(v == null ? '' : String(v)) +
+          '" placeholder="' + esc(TABLE_LABEL_DEFAULTS[key]) + '" style="width:100%;box-sizing:border-box;margin-top:2px"/>' +
+      '</div>';
+    }).join('');
+  }
+
+  // Пустое поле = печатать дефолт (ключ из payload убираем). Прочие ключи, которые
+  // могли приехать через API, сохраняем как есть.
+  function collectTblLabels(root, existing) {
+    var out = Object.assign({}, existing || {});
+    TABLE_LABEL_FIELDS.forEach(function(f) {
+      var inp = root.querySelector('.ftl[data-lbl="' + f[0] + '"]');
+      if (!inp) return;
+      var v = (inp.value || '').trim();
+      if (v) out[f[0]] = v;
+      else delete out[f[0]];
+    });
+    return out;
+  }
+
   function sectionHdr(title) {
     return '<div class="cr-f-section" style="margin-top:16px"><span class="cr-f-section__icon" style="color:var(--gold)">▸</span><span>' + esc(title) + '</span></div>';
   }
@@ -48,13 +107,16 @@ window.AsgardTkpFullForm = (function() {
     '</div>';
   }
 
-  function apparatusRowHtml(r, idx) {
+  // L — действующая шапка (resolveTblLabels): подсказка в поле обязана совпадать
+  // с заголовком колонки, иначе форма показывает одно, а печать — другое.
+  function apparatusRowHtml(r, idx, L) {
     r = r || {};
+    L = L || TABLE_LABEL_DEFAULTS;
     return '<tr data-idx="' + idx + '">' +
       '<td style="width:28px">' + (idx + 1) + '</td>' +
-      '<td><input class="fa-eq" value="' + esc(r.equipment || '') + '" placeholder="Наименование" style="width:100%;box-sizing:border-box"/></td>' +
-      '<td style="width:100px"><input class="fa-inv" value="' + esc(r.inventory_no || '') + '" placeholder="Ед. изм." style="width:100%;box-sizing:border-box"/></td>' +
-      '<td><input class="fa-tube" value="' + esc(r.tube_data || '') + '" placeholder="объём; расчётные данные" style="width:100%;box-sizing:border-box"/></td>' +
+      '<td><input class="fa-eq" value="' + esc(r.equipment || '') + '" placeholder="' + esc(L.tbl_col1) + '" style="width:100%;box-sizing:border-box"/></td>' +
+      '<td style="width:100px"><input class="fa-inv" value="' + esc(r.inventory_no || '') + '" placeholder="' + esc(L.tbl_col2) + '" style="width:100%;box-sizing:border-box"/></td>' +
+      '<td><input class="fa-tube" value="' + esc(r.tube_data || '') + '" placeholder="' + esc(L.tbl_col3) + '" style="width:100%;box-sizing:border-box"/></td>' +
       '<td style="width:90px"><input class="fa-qty" value="' + esc(r.qty || '1 компл.') + '" style="width:100%;box-sizing:border-box"/></td>' +
       '<td style="width:120px"><input class="fa-amt" type="number" step="0.01" value="' + (r.amount_no_vat != null && r.amount_no_vat !== '' ? r.amount_no_vat : '') + '" style="width:100%;box-sizing:border-box"/></td>' +
       '<td style="width:32px"><button type="button" class="btn ghost mini fa-del" title="Удалить">×</button></td>' +
@@ -205,6 +267,8 @@ window.AsgardTkpFullForm = (function() {
 
     if (!full.apparatus.length) full.apparatus = [{ equipment: '', inventory_no: '', tube_data: '', qty: '1 компл.', amount_no_vat: '' }];
 
+    var tblLabels = resolveTblLabels(full.table_labels);
+
     var html =
       sectionHdr('Шапка') +
       '<div class="formrow"><div style="position:relative;grid-column:1/-1">' +
@@ -237,13 +301,24 @@ window.AsgardTkpFullForm = (function() {
       fieldWithPolish('Граница объема', 'fullScopeBound', 3, full.scope_boundary) +
 
       sectionHdr('Стоимость работ и затрат') +
+      '<div style="display:flex;justify-content:flex-end;margin-bottom:6px">' +
+        '<button class="btn ghost" id="fullTblLabelsToggle" type="button">⚙ Шапка таблицы</button>' +
+      '</div>' +
+      '<div id="fullTblLabels" style="display:none;border:1px solid var(--brd);border-radius:8px;padding:10px;margin-bottom:10px">' +
+        '<div style="font-size:11px;color:var(--t3);margin-bottom:8px">Пусто — печатается универсальный текст (он же в подсказке). Заполняем, только если предмет КП требует своих слов.</div>' +
+        tblLabelsInputsHtml(full.table_labels) +
+      '</div>' +
       '<div style="overflow-x:auto"><table class="data-table" style="font-size:12px"><thead><tr>' +
-        '<th>№</th><th>Наименование</th><th>Ед. изм.</th><th>Объём и расчётные данные</th><th>Кол-во</th><th>Сумма без НДС</th><th></th>' +
+        '<th>№</th><th data-lbl="tbl_col1">' + esc(tblLabels.tbl_col1) + '</th>' +
+        '<th data-lbl="tbl_col2">' + esc(tblLabels.tbl_col2) + '</th>' +
+        '<th data-lbl="tbl_col3">' + esc(tblLabels.tbl_col3) + '</th>' +
+        '<th data-lbl="tbl_col4">' + esc(tblLabels.tbl_col4) + '</th>' +
+        '<th data-lbl="tbl_col5">' + esc(tblLabels.tbl_col5) + '</th><th></th>' +
       '</tr></thead><tbody id="fullAppBody">' +
-        full.apparatus.map(apparatusRowHtml).join('') +
+        full.apparatus.map(function(r, i) { return apparatusRowHtml(r, i, tblLabels); }).join('') +
       '</tbody></table></div>' +
       '<button class="btn ghost" id="fullAddApp" type="button" style="margin-top:8px">+ Добавить позицию</button>' +
-      '<div class="formrow" style="margin-top:10px"><div><label>Транспортные расходы (без НДС)</label><input id="fullTransport" type="number" step="0.01" value="' + (full.transport_amount || 0) + '"/></div></div>' +
+      '<div class="formrow" style="margin-top:10px"><div><label>' + esc(tblLabels.tbl_transport_label) + ' (без НДС)</label><input id="fullTransport" type="number" step="0.01" value="' + (full.transport_amount || 0) + '"/></div></div>' +
       '<div id="fullTotals" style="text-align:right;margin:8px 0;font-size:13px"></div>' +
       fieldWithPolish('Примечания к распределению стоимости', 'fullCostNotes', 4, full.cost_notes) +
 
@@ -463,9 +538,35 @@ window.AsgardTkpFullForm = (function() {
           });
         }
 
+        // Шапка таблицы: раскрытие блока и живое обновление заголовков колонок в форме,
+        // чтобы форма показывала ровно то, что уедет в DOCX/PDF.
+        var lblBox = root.querySelector('#fullTblLabels');
+        var lblToggle = root.querySelector('#fullTblLabelsToggle');
+        if (lblBox && lblToggle) {
+          lblToggle.addEventListener('click', function() {
+            var show = lblBox.style.display === 'none';
+            lblBox.style.display = show ? '' : 'none';
+            lblToggle.textContent = show ? 'Скрыть шапку таблицы' : '⚙ Шапка таблицы';
+          });
+          lblBox.addEventListener('input', function(e) {
+            var inp = e.target.closest('.ftl');
+            if (!inp) return;
+            var key = inp.getAttribute('data-lbl');
+            var text = (inp.value || '').trim() || TABLE_LABEL_DEFAULTS[key];
+            root.querySelectorAll('th[data-lbl="' + key + '"]').forEach(function(th) { th.textContent = text; });
+            var cls = LBL_TO_ROWCLASS[key];
+            if (cls) {
+              root.querySelectorAll('#fullAppBody .' + cls).forEach(function(el) { el.setAttribute('placeholder', text); });
+            }
+          });
+        }
+
         root.querySelector('#fullAddApp').addEventListener('click', function() {
           var body = root.querySelector('#fullAppBody');
-          body.insertAdjacentHTML('beforeend', apparatusRowHtml({}, body.children.length));
+          // подписи берём из полей блока (уже с учётом правок) — новая позиция
+          // должна выглядеть как остальные и как печатная шапка
+          var live = resolveTblLabels(collectTblLabels(root, full.table_labels));
+          body.insertAdjacentHTML('beforeend', apparatusRowHtml({}, body.children.length, live));
           renumber();
           calcPreviewTotals(root);
         });
@@ -496,7 +597,7 @@ window.AsgardTkpFullForm = (function() {
             scope_boundary: (root.querySelector('#fullScopeBound') || {}).value || '',
             apparatus: collectApparatus(root.querySelector('#fullAppBody')),
             transport_amount: parseFloat((root.querySelector('#fullTransport') || {}).value) || 0,
-            table_labels: Object.assign({}, full.table_labels || {}),
+            table_labels: collectTblLabels(root, full.table_labels),
             cost_notes: (root.querySelector('#fullCostNotes') || {}).value || '',
             acceptance: (root.querySelector('#fullAcceptance') || {}).value || '',
             risks: (root.querySelector('#fullRisks') || {}).value || '',

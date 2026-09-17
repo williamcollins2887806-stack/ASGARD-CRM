@@ -17,7 +17,7 @@ import { PolishTextSheet } from './PolishTextSheet';
  * Значения ниже дублируют `TABLE_LABELS_DEFAULT` из src/services/tkp-full-kp.js.
  */
 const TABLE_LABEL_DEFAULTS = {
-  tbl_title: 'Стоимость работ и затрат',
+  tbl_title: 'СТОИМОСТЬ РАБОТ И ЗАТРАТ',
   tbl_col1: 'Наименование',
   tbl_col2: 'Ед. изм.',
   tbl_col3: 'Объём и расчётные данные',
