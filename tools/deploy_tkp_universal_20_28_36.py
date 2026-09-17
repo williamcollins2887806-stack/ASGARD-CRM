@@ -30,6 +30,12 @@
 DeployError и ловятся в main(), иначе откат не срабатывал бы в самом частом сценарии
 (находка аудитора 17.09, второй проход).
 
+Откат САМ СЕБЯ ПРОВЕРЯЕТ (находка аудитора, третий проход): снапшот снимается с проверкой
+состава архива и md5 каждого файла, а после распаковки md5 сверяются обратно и проверяется
+`systemctl is-active`. Только тогда печатается «ОТКАЧЕН»; иначе — «ОТКАТ НЕ ПОДТВЕРЖДЁН»
+с путём к снапшоту для ручного разбора. Раньше `tar … 2>/dev/null; ls` маскировал провал tar,
+и откат из неполного архива рапортовал об успехе.
+
 Файлы подставляются АТОМАРНО: tar везётся в /tmp, распаковывается в стейдж внутри
 проекта (тот же fs), сверяется по md5 и только потом переезжает на место `mv` (rename).
 Обрыв канала больше не может оставить на проде обрезанный шаблон — а обрезанный
@@ -77,6 +83,8 @@ PROJECT = "/var/www/asgard-crm"
 TKP_ID = "3042"
 STAMP = datetime.now().strftime("%Y%m%d-%H%M%S")
 SNAP = f"/root/snapshots/asgard-crm-pre-deploy-tkp-universal-{STAMP}.tgz"
+# md5 прод-файлов на момент снапшота: откат сверяется с ними и без них не считается успешным.
+SNAP_MD5: dict[str, str] = {}
 
 TPL_FILE = "templates/full-kp-nika-tpl.docx"
 # Фаза 1: код. Фаза 2: шаблон. См. «ПОРЯДОК ЗАЛИВКИ» в шапке файла.
@@ -259,16 +267,83 @@ def upload(rel_files: list[str], label: str) -> None:
 
 
 def rollback(reason: str) -> None:
-    """Возврат всех 5 файлов из pre-deploy снапшота. Прод не оставляем в смешанном состоянии."""
+    """Возврат всех 5 файлов из снапшота + ПРОВЕРКА, что прод действительно вернулся.
+
+    Раньше откат был «на честном слове»: `tar -xzf` + `echo ROLLBACK_DONE`. Если в
+    снапшоте не хватало файла, распаковка проходила успешно, но прод оставался
+    смешанным — при рапорте об успехе (находка аудита, третий проход). Теперь после
+    распаковки сверяем md5 всех файлов с картой, снятой на снапшоте, проверяем
+    `is-active` и только тогда говорим «откачен».
+    """
     print("\n" + "!" * 78)
     print(f"! ОТКАТ: {reason}")
     print("!" * 78)
-    res = ssh_soft(f"tar -C {PROJECT} -xzf {SNAP} && systemctl restart asgard-crm && sleep 4 "
-                   f"&& systemctl is-active asgard-crm && echo ROLLBACK_DONE")
-    print((res.stdout or "").strip()[-1500:])
-    if "ROLLBACK_DONE" not in (res.stdout or ""):
+
+    def try_ssh(cmd: str) -> str:
+        # Канал мог умереть ровно в момент аварии — откат обязан это пережить и честно
+        # доложить, что не подтверждён, а не падать трейсбеком.
+        try:
+            return ssh(cmd).stdout or ""
+        except DeployError as exc:
+            print(f"  [откат] ssh не прошёл: {exc}")
+            return ""
+
+    try_ssh(f"tar -C {PROJECT} -xzf {SNAP}")
+    mismatch = []
+    for rel, want in (SNAP_MD5 or {}).items():
+        out = try_ssh(f"md5sum {PROJECT}/{rel}")
+        got = out.split()[0] if out.strip() else "?"
+        if got != want:
+            mismatch.append(f"{rel}: в снапшоте {want}, на проде {got}")
+    active = "active" in try_ssh("systemctl restart asgard-crm && sleep 4 && systemctl is-active asgard-crm")
+    if not SNAP_MD5:
+        mismatch.append("карта md5 снапшота пуста — подтвердить возврат нечем")
+
+    if mismatch or not active:
         print("!!! ОТКАТ НЕ ПОДТВЕРЖДЁН — нужен ручной разбор: снапшот " + SNAP)
+        for m in mismatch:
+            print("    · " + m)
+        if not active:
+            print("    · сервис не подтверждён как active")
+        raise SystemExit(
+            "ДЕПЛОЙ ПРЕРВАН, ОТКАТ НЕ ПОДТВЕРЖДЁН (прод может быть в смешанном "
+            f"состоянии — сверься со снапшотом {SNAP}): {reason}")
+
+    print(f"ОТКАТ ПОДТВЕРЖДЁН: {len(SNAP_MD5)}/{len(SNAP_MD5)} файлов совпали со снапшотом, сервис active")
     raise SystemExit(f"ДЕПЛОЙ ПРЕРВАН И ОТКАЧЕН: {reason}")
+
+
+def make_snapshot() -> dict[str, str]:
+    """Снапшот 5 файлов + карта md5 — ДО любой заливки.
+
+    Провал tar больше НЕ маскируется. Было: `tar … 2>/dev/null; ls -lh` — цепочка
+    возвращала 0 даже при ошибке tar, `snapshot_done` врал, откат шёл из неполного
+    архива (находка аудита, третий проход). Теперь проверяем наличие каждого файла
+    на проде, состав архива и снимаем md5 — иначе выкатка вообще не начинается.
+    """
+    print("\n=== 1. SNAPSHOT (состав архива проверяется) ===")
+    for rel in FILES:
+        res = ssh(f"test -f {PROJECT}/{rel} && echo PRESENT || echo MISSING")
+        if "PRESENT" not in (res.stdout or ""):
+            raise DeployError(f"на проде нет файла {rel} — снапшот был бы неполным")
+    ssh(f"mkdir -p /root/snapshots /root/tkp-tmp && tar -C {PROJECT} -czf {SNAP} " + " ".join(FILES))
+    listing = ssh(f"tar -tzf {SNAP}").stdout or ""
+    missing = [rel for rel in FILES if rel not in listing]
+    if missing:
+        raise DeployError(f"в снапшоте нет {missing} — откат был бы частичным")
+    md5s: dict[str, str] = {}
+    for rel in FILES:
+        val = ((ssh(f"md5sum {PROJECT}/{rel}").stdout or "").split() or [""])[0]
+        if len(val) != 32:
+            raise DeployError(f"не снял md5 прод-файла {rel} — откат нечем подтвердить")
+        md5s[rel] = val
+    print(f"снапшот: {SNAP} — {len(FILES)}/{len(FILES)} файлов, md5 снят ({len(md5s)})")
+    print((ssh(f"ls -lh {SNAP}").stdout or "").strip())
+    with tempfile.TemporaryDirectory() as tmp:
+        js_path = Path(tmp) / "_tkp_docx_check.js"
+        js_path.write_text(RUNTIME_JS, encoding="utf-8")
+        scp_retry(str(js_path), "/root/tkp-tmp/_tkp_docx_check.js")
+    return md5s
 
 
 def runtime_check(mode: str) -> None:
@@ -324,20 +399,19 @@ def main() -> None:
         print(f"   ~ {f}")
     # Версионированные гейты батча: локальные, поэтому падаем ДО любой заливки.
     for gate in ("tools/verify_tkp_full_template.js", "tools/verify_tkp_full_form.js"):
-        p = run(["node", gate], check=False)
+        p = run(["node", str(ROOT / gate)], check=False)
         if p.returncode != 0:
             raise SystemExit(f"гейт {gate} красный — выкатка не начинается")
         print(f"гейт {gate}: OK")
 
-    # ── 1. снапшот + чек-инструмент на прод ────────────────────────────────
-    print("\n=== 1. SNAPSHOT ===")
-    ssh(f"mkdir -p /root/snapshots /root/tkp-tmp && tar -C {PROJECT} -czf {SNAP} "
-        + " ".join(FILES) + f" 2>/dev/null; ls -lh {SNAP}")
+    # ── 1. снапшот (с проверкой состава и md5) + чек-инструмент на прод ────
+    # Если снапшот не снят/неполон — выкатка НЕ начинается: откатывать будет нечем,
+    # а рапортовать «откачено» из неполного архива нельзя (находка аудита, 3-й проход).
+    try:
+        SNAP_MD5.update(make_snapshot())
+    except DeployError as exc:
+        raise SystemExit(f"ВЫКАТКА НЕ НАЧАТА (снапшот не снят, прод не тронут): {exc}")
     snapshot_done = True
-    with tempfile.TemporaryDirectory() as tmp:
-        js_path = Path(tmp) / "_tkp_docx_check.js"
-        js_path.write_text(RUNTIME_JS, encoding="utf-8")
-        scp_retry(str(js_path), "/root/tkp-tmp/_tkp_docx_check.js")
 
     # ── 2..5. заливка ─────────────────────────────────────────────────────
     # Любой провал (включая обрыв ssh/scp) после снапшота = откат прод-файлов.
