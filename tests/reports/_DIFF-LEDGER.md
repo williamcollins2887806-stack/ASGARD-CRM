@@ -4113,7 +4113,33 @@ D-15-candidate из A-29 (correspondence RBAC расширен) и A-31 (custome
   ушла в прод, нужен деплой бэкенда `src/services/asgard-smeta.js` + фронта `public/assets/js/asgard_smeta.js`
   (зеркало пересобрано, байты изменились → `restore_asset_sync` покажет `differ_local_newer`).
   До выкатки локальное зеркало и прод расходятся — это `PENDING_DEPLOY`, не дефект.
-- **Статус:** FIXED + VERIFIED (детерминированный тест с допуском 0,005). Выкатка — по команде РП.
+- **Статус:** FIXED + VERIFIED (детерминированный тест с допуском 0,005) + **DEPLOYED** (см. ниже).
+
+#### D-181 — выкатка на прод 17.09.2026 (shell 20.28.34 → 20.28.35)
+
+- **Коммиты:** `8fdfe560` (правка + тест + ledger) → `7e270c07` (бамп оболочки) → `b37bf446` (подпись `.last-verified`).
+  Снапшот прода: `/root/snapshots/asgard-crm-pre-deploy-smeta-vatfix-20260917-185511.tgz`.
+- **Скрипт:** `tools/deploy_smeta_vatfix_20_28_35.py`. Отличие от прошлого деплоя: фронт везётся
+  **явным списком файлов**, а не через `restore_asset_sync.apply_plan`. Причина — в том же worktree
+  работает параллельная сессия, и её правка `public/assets/js/tkp-full-form.js` попадала в авто-очередь
+  sync. Заливать чужой файл нельзя (правило «один worktree — один агент»); `shell_guard` вызывается явно.
+- **Залито:** `src/services/asgard-smeta.js`, `public/assets/js/asgard_smeta.js`, `public/index.html`,
+  `public/sw.js` — md5 local == prod по всем четырём.
+- **Pre-deploy гейты (все зелёные):** `shell_guard --expect-version 20.28.35 --deploy-gate` **37/37**;
+  `verify_index_tags.js` — 0 MISSING/DUPLICATE/BROKEN; `audit_silent_reverts.js` — `PROD_HANDEDIT=0`;
+  `restore_asset_sync.py plan` — `differ_prod_newer=0`, `index_reference_problems=0`;
+  `verify_rp_modal_render.js` — 19/19 (chromium).
+- **Рантайм на ПРОДЕ (не unit-тест):** `COST=6530947.5 VAT=2152902.68 WITH=11938823.93 NOVAT=9785921.25`
+  → `RUNTIME-OK`. До фикса на проде было бы `VAT=2152902.67 WITH=11938823.92`.
+- **Post-deploy (порядок D-166 соблюдён):** `restore_asset_sync.py plan` → `identical: 303`, `to_upload: []`
+  по нашим файлам; затем `audit_silent_reverts.js --post-deploy` → `OK=303, PROD_HANDEDIT=0`,
+  наши 4 файла `local == head == prod`.
+  ⚠️ Единственный не-OK — **чужой** `public/assets/js/tkp-full-form.js` (`PENDING_DEPLOY`, prodOnly 6 строк)
+  из параллельной сессии; в наш деплой он не входил и залит не был.
+- **Смоук:** `/api/version` → `20.28.35`; `home:200`; `ASGARD_SHELL_VERSION`/`SHELL_VERSION` = 20.28.35;
+  маркер `vatBasisPoints` найден в обоих контурах; `systemctl is-active` → `active`.
+- **Статус:** D-181 → **FIXED + VERIFIED + DEPLOYED**.
+
 
 
 
