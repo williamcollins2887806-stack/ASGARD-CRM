@@ -3956,3 +3956,29 @@ D-15-candidate из A-29 (correspondence RBAC расширен) и A-31 (custome
   т.к. 4 смены мобилизации уже в `a2`/`a3` (18+4 мастер, 90+20 чистильщики) — в расчёте РП ставим `a5 = 0`.
 - **Статус:** FIXED. VERIFIED — детерминированный тест + сверка движка. На прод **не выкачено** (ждёт команды РП,
   правка в `public/assets/js/asgard_smeta.js` требует бампа `SHELL_VERSION` при выкатке).
+
+#### D-178 — выкатка на прод 17.09.2026 (shell 20.28.33 → 20.28.34)
+
+- **Коммит:** `d3abccb1` (правка) + `78bcc113` (подпись `.last-verified`). Бэкап-снапшот прода:
+  `/root/snapshots/asgard-crm-pre-deploy-smeta-taxfix-20260917-180205.tgz`.
+- **Скрипт:** `tools/deploy_smeta_taxfix_20_28_34.py` (с `shell_guard.assert_ok` в pre-flight; добавлены ретраи
+  SSH/scp — канал до прода в этот день рвался с `banner exchange: Connection timed out`, из-за чего
+  `audit_silent_reverts` сначала дал **ложный** `PROD_HANDEDIT=2` (не смог скачать прод-файлы → `UNREVIEWED`).
+  Повторный прогон при живой связи: `PROD_HANDEDIT=0`, `PENDING_DEPLOY=2` — гейт зелёный.)
+- **Залито:** бэкенд `src/services/asgard-smeta.js`, `src/services/asgard-smeta-xlsx.js` (md5 local==prod);
+  фронт `public/assets/js/asgard_smeta.js`, `public/index.html`, `public/sw.js` — через `restore_asset_sync`
+  (очередь ровно 3 файла, `differ_prod_newer=0`, `index_reference_problems=0`). v2 НЕ трогали (решение РП).
+- **Pre-deploy гейты (все зелёные):** `shell_guard --expect-version 20.28.34 --deploy-gate` 37/37;
+  `verify_index_tags.js` — 0 MISSING/DUPLICATE/BROKEN; `audit_silent_reverts.js` — PROD_HANDEDIT=0;
+  `restore_asset_sync.py plan` — differ_prod_newer=0; `verify_rp_modal_render.js` — 19/19 (chromium).
+- **Post-deploy (порядок D-166 соблюдён):** `restore_asset_sync.py plan` → `identical: 304/304`,
+  `to_upload: 0`; затем `audit_silent_reverts.js --post-deploy` → **расхождений 0**.
+- **Смоук прода:** `/api/version` → `20.28.34`; `home:200`; `ASGARD_SHELL_VERSION`/`SHELL_VERSION` = 20.28.34;
+  маркеры `fot_tax_base`, `fotTaxBase`, `c1Row` найдены на проде; `systemctl is-active` → `active`.
+- **Рантайм на КЛОНЕ ПРОДА (не unit-тест):** `node` с `require` прод-`asgard-smeta.js` дал
+  `FOT=100000 BASE=200000 TAX=110000 PERSONNEL=210000 TRAVEL=225000 DIRECT=435000` →
+  `RUNTIME-OK` — налог считается с ФОТ + пайковые (раньше было бы 55 000).
+- **Статус:** D-178 → **FIXED + VERIFIED + DEPLOYED**.
+- ⚠️ **Гигиена:** на момент коммита в рабочем дереве обнаружены **чужие** правки
+  (`src/services/tkp-full-kp.js`, `templates/full-kp-works-tpl.docx`) — признак параллельной сессии в том же
+  worktree, что нарушает правило «один worktree — один агент». Их НЕ трогали и в коммит не включали.
