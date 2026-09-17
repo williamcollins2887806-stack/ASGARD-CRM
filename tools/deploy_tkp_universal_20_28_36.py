@@ -24,7 +24,16 @@
   фаза 1 — код (сервис + форма + оболочка) + рестарт: новый код со старым шаблоном
             печатает корректно (tbl_* просто не используются);
   фаза 2 — шаблон + рестарт: печатается новая шапка.
-На любом провале после первой заливки — авто-откат всех 5 файлов из снапшота.
+
+На любом провале после первой заливки — авто-откат всех 5 файлов из снапшота. Это
+касается и ТРАНСПОРТНЫХ сбоев (ssh/scp оборвались по таймауту): они поднимаются как
+DeployError и ловятся в main(), иначе откат не срабатывал бы в самом частом сценарии
+(находка аудитора 17.09, второй проход).
+
+Файлы подставляются АТОМАРНО: tar везётся в /tmp, распаковывается в стейдж внутри
+проекта (тот же fs), сверяется по md5 и только потом переезжает на место `mv` (rename).
+Обрыв канала больше не может оставить на проде обрезанный шаблон — а обрезанный
+full-kp-nika-tpl.docx ломал бы печать каждого полного КП (fs.readFileSync + PizZip).
 
 ВАЖНО: фронт везём ЯВНЫМ списком, а не через `restore_asset_sync.apply_plan`:
 в том же worktree работает параллельная сессия (D-179..D-181), её файлы
@@ -47,6 +56,13 @@ from datetime import datetime
 from pathlib import Path
 
 sys.stdout.reconfigure(encoding="utf-8", errors="replace")  # type: ignore[attr-defined]
+
+
+class DeployError(Exception):
+    """Провал шага выкатки (в т.ч. обрыв ssh/scp). Ловится в main() → rollback()."""
+
+    pass
+
 
 ROOT = Path(__file__).resolve().parents[1]
 TOOLS = ROOT / "tools"
@@ -164,7 +180,7 @@ def run(cmd: list[str], cwd: Path | None = None, check: bool = True) -> subproce
     if p.stderr.strip():
         print("STDERR:", p.stderr[-2000:])
     if check and p.returncode != 0:
-        raise SystemExit(f"FAIL ({p.returncode}): {' '.join(cmd[:4])}")
+        raise DeployError(f"FAIL ({p.returncode}): {' '.join(cmd[:4])}")
     return p
 
 
@@ -178,7 +194,7 @@ def ssh(remote: str) -> subprocess.CompletedProcess:
             return p
         print(f"  [ssh] попытка {attempt}/4 не удалась (rc={p.returncode}), повтор...")
         time.sleep(5)
-    raise SystemExit(f"SSH не прошёл за 4 попытки: {remote[:80]}")
+    raise DeployError(f"SSH не прошёл за 4 попытки: {remote[:80]}")
 
 
 def ssh_soft(remote: str) -> subprocess.CompletedProcess:
@@ -196,20 +212,42 @@ def scp_retry(local: str, remote: str) -> None:
             return
         print(f"  [scp] попытка {attempt}/4 не удалась (rc={p.returncode}), повтор...")
         time.sleep(5)
-    raise SystemExit(f"scp не прошёл за 4 попытки: {remote}")
+    raise DeployError(f"scp не прошёл за 4 попытки: {remote}")
 
 
 def upload(rel_files: list[str], label: str) -> None:
-    """Заливка явного списка: tar + scp + распаковка + побайтовая md5-сверка."""
+    """Заливка явного списка — в два шага, чтобы прод не увидел обрезанный файл.
+
+    1) tar + scp в /tmp (канал может оборваться — прод ещё не тронут);
+    2) распаковка в стейдж ВНУТРИ проекта (тот же fs) + md5-сверка со локальным деревом;
+    3) переключение `mv` (атомарный rename в пределах одного fs) + контрольная md5-сверка.
+
+    Ни на одном шаге целевой файл не переписывается «на живую»: самое плохое, что
+    может остаться от обрыва, — каталог .deploy-stage-* и tar в /tmp.
+    """
     print(f"\n--- upload {label}: {len(rel_files)} файл(ов) ---")
+    remote_tar = f"/tmp/asgard-tkp-{label}-{STAMP}.tgz"
+    stage = f"{PROJECT}/.deploy-stage-{label}-{STAMP}"
     with tempfile.TemporaryDirectory() as tmp:
         tar_path = Path(tmp) / "tkp-universal.tgz"
         with tarfile.open(tar_path, "w:gz") as tar:
             for rel in rel_files:
                 tar.add(ROOT / rel, arcname=rel)
-        remote_tar = f"/tmp/asgard-tkp-{label}-{STAMP}.tgz"
         scp_retry(str(tar_path), remote_tar)
-    ssh(f"cd {PROJECT} && tar xzf {remote_tar} && rm -f {remote_tar} && echo EXTRACT_OK")
+
+    ssh(f"rm -rf {stage} && mkdir -p {stage} && tar xzf {remote_tar} -C {stage} "
+        f"&& rm -f {remote_tar} && echo EXTRACT_OK")
+    # Сверяем СТЕЙДЖ: целевые файлы на проде ещё не тронуты, откат не нужен.
+    for rel in rel_files:
+        local = md5_file(ROOT / rel)
+        res = ssh(f"md5sum {stage}/{rel}")
+        staged = (res.stdout or "").split()[0] if res.stdout.strip() else "?"
+        if staged != local:
+            ssh_soft(f"rm -rf {stage}")
+            rollback(f"стейдж не совпал с локальным деревом: {rel} (local={local} stage={staged})")
+    # Переключение: по одному rename — файл либо старый целиком, либо новый целиком.
+    ssh(" && ".join([f"mv -f {stage}/{rel} {PROJECT}/{rel}" for rel in rel_files])
+        + f" && rm -rf {stage} && echo SWITCH_OK")
     for rel in rel_files:
         local = md5_file(ROOT / rel)
         res = ssh(f"md5sum {PROJECT}/{rel}")
@@ -270,7 +308,7 @@ def main() -> None:
     print("=" * 78)
 
     # ── 0. pre-flight ──────────────────────────────────────────────────────
-    print("\n=== 0. PRE-FLIGHT (shell_guard + маркеры + шаблон) ===")
+    print("\n=== 0. PRE-FLIGHT (shell_guard + маркеры + шаблон + гейты) ===")
     shell_guard.assert_ok(base_dir=str(ROOT), expect_version=VER, deploy_gate=True)
     print("shell_guard: OK (оболочка валидна, HEAD == .last-verified)")
 
@@ -284,56 +322,71 @@ def main() -> None:
     print(f"маркеры: OK ({len(MARKERS)}/{len(MARKERS)}); файлов к заливке: {len(FILES)}")
     for f in FILES:
         print(f"   ~ {f}")
+    # Версионированные гейты батча: локальные, поэтому падаем ДО любой заливки.
+    for gate in ("tools/verify_tkp_full_template.js", "tools/verify_tkp_full_form.js"):
+        p = run(["node", gate], check=False)
+        if p.returncode != 0:
+            raise SystemExit(f"гейт {gate} красный — выкатка не начинается")
+        print(f"гейт {gate}: OK")
 
     # ── 1. снапшот + чек-инструмент на прод ────────────────────────────────
     print("\n=== 1. SNAPSHOT ===")
     ssh(f"mkdir -p /root/snapshots /root/tkp-tmp && tar -C {PROJECT} -czf {SNAP} "
         + " ".join(FILES) + f" 2>/dev/null; ls -lh {SNAP}")
+    snapshot_done = True
     with tempfile.TemporaryDirectory() as tmp:
         js_path = Path(tmp) / "_tkp_docx_check.js"
         js_path.write_text(RUNTIME_JS, encoding="utf-8")
         scp_retry(str(js_path), "/root/tkp-tmp/_tkp_docx_check.js")
 
-    # ── 2. ФАЗА 1: код + рестарт (шаблон ещё старый — печать не ломается) ──
-    print("\n=== 2. ФАЗА 1: код (сервис + форма + оболочка) ===")
-    upload(CODE_FILES, "code")
-    restart()
-    print(f"\n=== 2б. RUNTIME на проде (phase1: шапка непустая, суммы, без утечек) ===")
-    runtime_check("phase1")
+    # ── 2..5. заливка ─────────────────────────────────────────────────────
+    # Любой провал (включая обрыв ssh/scp) после снапшота = откат прод-файлов.
+    # rollback() поднимает SystemExit — его этот except не перехватывает.
+    try:
+        # ── 2. ФАЗА 1: код + рестарт (шаблон ещё старый — печать не ломается) ──
+        print("\n=== 2. ФАЗА 1: код (сервис + форма + оболочка) ===")
+        upload(CODE_FILES, "code")
+        restart()
+        print(f"\n=== 2б. RUNTIME на проде (phase1: шапка непустая, суммы, без утечек) ===")
+        runtime_check("phase1")
 
-    # ── 3. ФАЗА 2: шаблон + рестарт ────────────────────────────────────────
-    print("\n=== 3. ФАЗА 2: шаблон ===")
-    upload([TPL_FILE], "tpl")
-    restart()
-    print(f"\n=== 3б. RUNTIME на проде (phase2: строго новая шапка) ===")
-    runtime_check("phase2")
+        # ── 3. ФАЗА 2: шаблон + рестарт ────────────────────────────────────────
+        print("\n=== 3. ФАЗА 2: шаблон ===")
+        upload([TPL_FILE], "tpl")
+        restart()
+        print(f"\n=== 3б. RUNTIME на проде (phase2: строго новая шапка) ===")
+        runtime_check("phase2")
 
-    # ── 4. сквозная проверка клиентским путём (HTTP API → docx) ───────────
-    print("\n=== 4. E2E через API (то, что получит клиент) ===")
-    probe = ROOT / "tools" / "tkp_full_docx_probe.js"
-    if not probe.is_file():
-        rollback(f"нет зонда {probe}")
-    scp_retry(str(probe), "/root/tkp-tmp/tkp_full_docx_probe.js")
-    res = ssh_soft("cd /root/tkp-tmp && TKP_AUTHOR_LOGIN=n.androsov "
-                   f"node tkp_full_docx_probe.js {TKP_ID}")
-    out = res.stdout or ""
-    print(out)
-    if "PROBE_OK" not in out:
-        rollback("клиентский docx не прошёл зонд (см. вывод выше)")
+        # ── 4. сквозная проверка клиентским путём (HTTP API → docx) ───────────
+        print("\n=== 4. E2E через API (то, что получит клиент) ===")
+        probe = ROOT / "tools" / "tkp_full_docx_probe.js"
+        if not probe.is_file():
+            rollback(f"нет зонда {probe}")
+        scp_retry(str(probe), "/root/tkp-tmp/tkp_full_docx_probe.js")
+        res = ssh_soft("cd /root/tkp-tmp && TKP_AUTHOR_LOGIN=n.androsov "
+                       f"node tkp_full_docx_probe.js {TKP_ID}")
+        out = res.stdout or ""
+        print(out)
+        if "PROBE_OK" not in out:
+            rollback("клиентский docx не прошёл зонд (см. вывод выше)")
 
-    # ── 5. смоук ───────────────────────────────────────────────────────────
-    print("\n=== 5. SMOKE ===")
-    ssh("curl -s http://127.0.0.1:3000/api/version; echo; "
-        "curl -s -o /dev/null -w 'home:%{http_code}\\n' https://asgard-crm.ru/; "
-        f"grep -oP \"ASGARD_SHELL_VERSION = '\\K[^']+\" {PROJECT}/public/index.html | head -1; "
-        f"grep -oP \"SHELL_VERSION = '\\K[^']+\" {PROJECT}/public/sw.js | head -1")
-    for rel, needle in SMOKE_GREPS:
-        res = ssh(f"grep -c {needle!r} {PROJECT}/{rel}")
-        cnt = (res.stdout or "0").strip().splitlines()[-1] if res.stdout.strip() else "0"
-        print(f"  {'OK  ' if cnt not in ('', '0') else 'FAIL'} {rel} :: {needle} = {cnt}")
-        if cnt in ("", "0"):
-            rollback(f"смоук: маркер не найден на проде: {rel} :: {needle}")
-    ssh("journalctl -u asgard-crm -n 20 --no-pager | tail -20")
+        # ── 5. смоук ───────────────────────────────────────────────────────────
+        print("\n=== 5. SMOKE ===")
+        ssh("curl -s http://127.0.0.1:3000/api/version; echo; "
+            "curl -s -o /dev/null -w 'home:%{http_code}\\n' https://asgard-crm.ru/; "
+            f"grep -oP \"ASGARD_SHELL_VERSION = '\\K[^']+\" {PROJECT}/public/index.html | head -1; "
+            f"grep -oP \"SHELL_VERSION = '\\K[^']+\" {PROJECT}/public/sw.js | head -1")
+        for rel, needle in SMOKE_GREPS:
+            res = ssh(f"grep -c {needle!r} {PROJECT}/{rel}")
+            cnt = (res.stdout or "0").strip().splitlines()[-1] if res.stdout.strip() else "0"
+            print(f"  {'OK  ' if cnt not in ('', '0') else 'FAIL'} {rel} :: {needle} = {cnt}")
+            if cnt in ("", "0"):
+                rollback(f"смоук: маркер не найден на проде: {rel} :: {needle}")
+        ssh("journalctl -u asgard-crm -n 20 --no-pager | tail -20")
+    except DeployError as exc:
+        if snapshot_done:
+            rollback(f"аварийное завершение выкатки: {exc}")
+        raise
 
     print("\n=== DEPLOY DONE ===")
     print(f"shell {VER}; снапшот: {SNAP}")
