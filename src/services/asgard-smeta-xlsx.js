@@ -255,7 +255,9 @@ async function buildAsgardSmetaXlsx(estimate) {
         .filter(Boolean).map((x) => `G${x}`);
 
       if (row.sumExpr === 'fot_tax' && fotRow) {
-        formula = `G${fotRow}*${paramCell.fot_tax}`;
+        // База 55% = ФОТ + пайковые (C1); проживание налогом не облагается.
+        const c1Row = excelRow.c1;
+        formula = c1Row ? `(G${fotRow}+G${c1Row})*${paramCell.fot_tax}` : `G${fotRow}*${paramCell.fot_tax}`;
       } else if (row.sumExpr === 'personnel' && fotRow && taxRow) {
         formula = `G${fotRow}+G${taxRow}`;
       } else if (row.sumExpr === 'direct' && directParts.length) {

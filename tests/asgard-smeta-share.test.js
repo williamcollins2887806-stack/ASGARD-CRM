@@ -241,6 +241,93 @@ check('две копии сметы дают одинаковый результ
   assert.strictEqual(actual, expected, 'public/assets/js/asgard_smeta.js разошёлся — запустить node tools/build_smeta_mirror.js');
 });
 
+check('налог 55% считается с ФОТ + пайковые (проживание не облагается)', () => {
+  // Канон из CLAUDE.md: база налога = ФОТ + пайковые. Проживание — компенсация
+  // расходов, налогом не облагается. Проверяем на «чистых» числах.
+  const est = server.recalcAsgardSmeta({
+    template: 'asgard_v1',
+    params: { fot_tax: 0.55, overhead: 0, contingency: 0, markup: 1, material_markup: 1 }
+  });
+  est.rows.forEach((r) => {
+    if (r.kind !== 'line') return;
+    r.qty = 0; r.price = 0; r.override = true;
+  });
+  const setLine = (id, patch) => {
+    const row = est.rows.find((r) => r.id === id);
+    assert.ok(row, `в скелете есть строка ${id}`);
+    Object.assign(row, patch, { override: true });
+  };
+  setLine('a3', { name: 'Рабочий', qty: 10, price: 10000 });   // ФОТ = 100 000
+  setLine('c1', { name: 'Пайковые', qty: 100, price: 1000 });  // пайковые = 100 000
+  setLine('c2', { name: 'Проживание', qty: 100, price: 1250 }); // жильё = 125 000 (не облагается)
+
+  const out = server.recalcAsgardSmeta(est);
+  const t = out.totals;
+  assert.strictEqual(t.fot, 100000, 'ФОТ = 100 000');
+  assert.strictEqual(t.fot_tax_base, 200000, 'база налога = ФОТ + пайковые = 200 000');
+  assert.strictEqual(t.fot_tax, 110000, 'налог 55% от 200 000 = 110 000 (не 55 000 от одного ФОТ)');
+  assert.strictEqual(t.personnel, 210000, 'персонал = ФОТ + налог = 210 000');
+  assert.strictEqual(t.travel, 225000, 'командировочные = пайковые + проживание = 225 000');
+  assert.strictEqual(t.direct, 435000, 'прямые = персонал + командировочные = 435 000');
+  assert.notStrictEqual(t.fot_tax, Math.round(t.fot * 0.55), 'налог не равен 55% от одного ФОТ');
+});
+
+check('регресс Киров Тайр (реестр 1229): движок воспроизводит расчёт РП до рубля', () => {
+  // Фиксирует поведение, на котором сошлись 17.09.2026: смена 11 ч − 3 ч = 8 ч,
+  // 2 чистильщика по 1 п.м/ч, 2 смены/сутки → 32 п.м/сутки; 200 п.м = 6,25 сут
+  // + 4 смены АВД = 8,25 → 9 рабочих суток. Мобилизация 4 сут, дорога 4 сут.
+  const est = server.recalcAsgardSmeta({
+    template: 'asgard_v1',
+    params: { markup: 2, material_markup: 1, fot_tax: 0.55, overhead: 0.10, contingency: 0.05, vat: 0.22 }
+  });
+  est.rows.forEach((r) => {
+    if (r.kind !== 'line') return;
+    r.qty = 0; r.price = 0; r.override = true;
+  });
+  const setLine = (id, patch) => {
+    const row = est.rows.find((r) => r.id === id);
+    assert.ok(row, `в скелете есть строка ${id}`);
+    Object.assign(row, patch, { override: true });
+  };
+  const WD = 9, MOB = 4, ROAD = 4, SHIFTS = 2;
+  const DAYS_AWAY = WD + MOB + ROAD;   // 17
+  const PPL = 6 * SHIFTS + 1;          // 13: 12 сменщиков + ИТР
+  setLine('a1', { qty: DAYS_AWAY, price: 20000 });                        // ИТР 17 × 20 000
+  setLine('a2', { qty: 1 * SHIFTS * WD + 1 * MOB, price: 20000 });        // мастер 22
+  setLine('a3', { qty: 5 * SHIFTS * WD + 5 * MOB, price: 15000 });        // чистильщики 110
+  setLine('a4', { qty: 0, price: 20000 });
+  setLine('a5', { qty: 0, price: 15000 });                                // мобилизация уже в A2/A3
+  setLine('a6', { qty: PPL * ROAD, price: 3000 });                        // дорога 13 × 4
+  setLine('b1', { qty: PPL, price: 15000 });
+  setLine('b4', { qty: 1, price: 100000 });
+  setLine('b5', { qty: 1, price: 150000 });
+  setLine('c1', { qty: PPL * DAYS_AWAY, price: 1000 });
+  setLine('c2', { qty: PPL * (WD + MOB), price: 1000 });
+  setLine('d1', { qty: PPL, price: 20000 });
+  setLine('d2', { qty: 1, price: 50000 });
+  setLine('g1', { qty: 2, price: 35000, sharePct: 0.30 });                // 2 вентилятора, доля 30%
+
+  const t = server.recalcAsgardSmeta(est).totals;
+  const near = (got, want, label) => assert.ok(Math.abs(got - want) < 1.5, `${label}: ${got} != ${want}`);
+  near(t.fot, 2586000, 'ФОТ');
+  near(t.fot_tax_base, 2807000, 'база налога (ФОТ + пайковые)');
+  near(t.fot_tax, 1543850, 'налог 55%');
+  near(t.personnel, 4129850, 'персонал');
+  near(t.travel, 390000, 'командировочные');
+  near(t.transport, 310000, 'логистика');
+  near(t.equipment_purchase, 21000, 'доля закупки 70 000 × 30%');
+  near(t.direct, 5295850, 'прямые');
+  near(t.cost, 6116707, 'себестоимость');
+  near(t.price_no_vat, 12212414, 'цена без НДС (маржа 100%)');
+  near(t.price_with_vat, 14899144, 'цена с НДС 22%');
+  // Чистая прибыль = (цена без НДС − себестоимость) × (1 − 0.25).
+  // На оборудование наценка не начисляется, поэтому маржа = price_no_vat − cost.
+  const margin = t.price_no_vat - t.cost;
+  near(margin, 6095707, 'маржа до налога');
+  near(margin * 0.75, 4571780, 'чистая прибыль после налога 25%');
+  assert.ok(margin * 0.75 >= 2000000, 'чистая прибыль не ниже цели 2 000 000 ₽');
+});
+
 const pending = [];
 
 check('письмо директору: перечень, колонка «Доля, %» и плановые даты на месте', () => {

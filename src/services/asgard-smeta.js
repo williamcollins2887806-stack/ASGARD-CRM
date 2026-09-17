@@ -330,10 +330,18 @@ function recalcAsgardSmeta(estimate) {
   }
 
   const fot = sumSectionLines('A');
-  const fotTax = Math.round(fot * p.fot_tax * 100) / 100;
-  const personnel = fot + fotTax;
   const current = sumSectionLines('B');
   const travel = sumSectionLines('C');
+  // База налога 55% = ФОТ + пайковые (суточные/пайковые — выплата работнику, облагается).
+  // Проживание — компенсация расходов, налогом не облагается, поэтому берём только C1.
+  const perDiem = (est.rows || []).reduce((s, r) => {
+    if (r.kind !== 'line') return s;
+    const isPerDiem = r.id === 'c1' || String(r.code || '').toUpperCase() === 'C1';
+    return isPerDiem ? s + num(r.sum) : s;
+  }, 0);
+  const fotTaxBase = fot + perDiem;
+  const fotTax = Math.round(fotTaxBase * p.fot_tax * 100) / 100;
+  const personnel = fot + fotTax;
   const transport = sumSectionLines('D');
   const materials = sumSectionLines('E');
   // Оборудование и аренда (G+H) — в прямые затраты; наценка на них не начисляется (1:1).
@@ -365,7 +373,7 @@ function recalcAsgardSmeta(estimate) {
   const priceWithVat = priceNoVat + vatAmount;
 
   const totalsMap = {
-    fot, fot_tax: fotTax, personnel, current, travel, transport, materials,
+    fot, fot_tax: fotTax, fot_tax_base: fotTaxBase, personnel, current, travel, transport, materials,
     equipment_purchase: equipmentPurchase,
     equipment_rental: equipmentRental,
     equipment,
