@@ -3078,7 +3078,7 @@ html[data-theme="light"] .pk3-stk-float-bar { background: rgba(255,255,255,.94);
     let withVat = Number(fin.kp_price_with_vat || c.kp_price_with_vat) || 0;
     if (!noVat && c._tkp_max_sum) noVat = Number(c._tkp_max_sum) || 0;
     if (noVat && !withVat) {
-      const vat = Number(fin.vat_rate_pct) || 20;
+      const vat = Number(fin.vat_rate_pct) || 22;
       withVat = Math.round(noVat * (1 + vat / 100));
     }
     return { noVat, withVat };
@@ -4769,16 +4769,26 @@ html[data-theme="light"] .pk3-stk-float-bar { background: rgba(255,255,255,.94);
   function _secFin(card, fin) {
     const v = (n) => n != null ? (Number(n).toLocaleString('ru-RU') + ' ₽') : '— ₽';
     const m = fin.margin_planned_pct != null ? Number(fin.margin_planned_pct).toFixed(1) + '%' : '— %';
+    // Ставка НДС: сначала та, что уже сохранена в карточке, иначе действующая 22 %
+    // (не 20). Если в карточке есть нестандартная ставка — она попадёт в select
+    // при подстановке из настроек (D-190); метка «С НДС» ниже берётся из расчёта.
+    const finVat = (() => {
+      if (fin.kp_price_with_vat == null || !fin.kp_price_without_vat) return null;
+      const pct = ((Number(fin.kp_price_with_vat) / Number(fin.kp_price_without_vat)) - 1) * 100;
+      return Number.isFinite(pct) && pct >= 0 ? Math.round(pct * 10) / 10 : null;
+    })();
+    const vatNow = finVat != null ? finVat : 22;
+    const vatOpt = (val, label) => '<option value="' + val + '"' + (Number(val) === Number(vatNow) ? ' selected' : '') + '>' + label + '</option>';
     return _section('sec-fin', _PK3_ICO.coin, 'Финансы', null, `
       <div class="pk3-fin-grid">
         <div class="pk3-fin-card"><label>Плановая с/с</label><div class="pk3-v">${esc(v(fin.cost_planned))}</div></div>
         <div class="pk3-fin-card"><label>Цена КП без НДС</label><div class="pk3-v">${esc(v(fin.kp_price_without_vat))}</div></div>
-        <div class="pk3-fin-card"><label>С НДС 20%</label><div class="pk3-v">${esc(v(fin.kp_price_with_vat))}</div></div>
+        <div class="pk3-fin-card"><label>С НДС ${esc(String(vatNow).replace('.', ','))}%</label><div class="pk3-v">${esc(v(fin.kp_price_with_vat))}</div></div>
         <div class="pk3-fin-card pk3-margin"><label>Маржа</label><div class="pk3-v">${esc(m)}</div></div>
       </div>
       ${_row('Плановая с/с', `<input id="pk3-f-cost" type="number" value="${fin.cost_planned || ''}" placeholder="например 920 000" />`)}
       ${_row('Цена КП без НДС', `<input id="pk3-f-kp" type="number" value="${fin.kp_price_without_vat || ''}" placeholder="например 1 200 000" />`)}
-      ${_row('НДС', `<select id="pk3-f-vat"><option value="20">20% (общая)</option><option value="0">0% (УСН)</option><option value="10">10%</option></select>`)}
+      ${_row('НДС', `<select id="pk3-f-vat">${vatOpt(22, '22% (общая)')}${vatOpt(20, '20%')}${vatOpt(0, '0% (УСН)')}${vatOpt(10, '10%')}</select>`)}
       <div style="margin-top:8px"><button class="pk3-btn" id="pk3-save-fin" data-action="save-fin">💾 Сохранить финансы</button></div>
     `);
   }
@@ -5589,7 +5599,7 @@ html[data-theme="light"] .pk3-stk-float-bar { background: rgba(255,255,255,.94);
     const kpNoVat = getNum('#pk3-f-kp');
     const cost = getNum('#pk3-f-cost');
     const vatSel = $('#pk3-f-vat');
-    const vatRate = vatSel ? Number(vatSel.value) : 20;
+    const vatRate = vatSel ? Number(vatSel.value) : 22;
     const kpWithVat = kpNoVat != null ? Math.round(kpNoVat * (1 + (vatRate || 0) / 100) * 100) / 100 : null;
     const margin = (cost != null && kpNoVat != null && kpNoVat > 0)
       ? Math.round((1 - cost / kpNoVat) * 1000) / 10
@@ -6769,7 +6779,7 @@ html[data-theme="light"] .pk3-stk-float-bar { background: rgba(255,255,255,.94);
                 style="width:100%;margin-top:4px;padding:8px 10px;border:1px solid var(--brd-m);border-radius:7px;background:var(--bg1);color:var(--t1);font-size:13px;outline:none" />
             </label>
             <label style="flex:0 0 130px;font-size:12px;color:var(--t2)">НДС, %
-              <input id="pk3-tkp-up-vat" type="number" min="0" max="50" value="20"
+              <input id="pk3-tkp-up-vat" type="number" min="0" max="50" value="22"
                 style="width:100%;margin-top:4px;padding:8px 10px;border:1px solid var(--brd-m);border-radius:7px;background:var(--bg1);color:var(--t1);font-size:13px;outline:none" />
             </label>
           </div>
@@ -7477,7 +7487,7 @@ window.AsgardPKv3Modals = (function () {
     let lastEstimate = null;       // {items, totals, total_with_vat, ...}
     let lastChatMd = '';            // markdown ответа AI
     let attachWarn = [];            // имена файлов, не загруженных в сессию
-    let vatPct = 20;
+    let vatPct = 22;
     let marginPct = 30;
     let extraFiles = [];           // ручные File-объекты с диска (доп.ТЗ)
     let marginEdited = false;       // юзер вручную тронул маржу → игнорим total_without_vat от AI
@@ -9820,7 +9830,7 @@ window.AsgardPKv3Modals = (function () {
     if (blocks.find(b => b.key === 'preamble')) {
       out += `<h2>Преамбула</h2>
         <p>ООО «АСГАРД-Сервис» благодарит вас за обращение и предлагает выполнить работы согласно ТЗ.</p>
-        <p>Настоящее ТКП действительно в течение 30 календарных дней. Стоимость указана в рублях без НДС / с НДС 20%.</p>`;
+        <p>Настоящее ТКП действительно в течение 30 календарных дней. Стоимость указана в рублях без НДС / с НДС 22%.</p>`;
     }
     if (blocks.find(b => b.key === 'smeta')) {
       const smetaBlock = blocks.find(b => b.key === 'smeta');
@@ -9835,7 +9845,7 @@ window.AsgardPKv3Modals = (function () {
           { name: 'Реагенты',           unit: 'компл',  qty: 1,  price: 370500 },
         ];
       const vatPct = (smetaBlock.block_data && smetaBlock.block_data.vat_pct != null)
-        ? Number(smetaBlock.block_data.vat_pct) : 20;
+        ? Number(smetaBlock.block_data.vat_pct) : 22;
       // Сохраняем дефолты обратно в blocks для autosave (если пусто).
       if (!smetaBlock.block_data || !Array.isArray(smetaBlock.block_data.items)) {
         smetaBlock.block_data = { items, vat_pct: vatPct };

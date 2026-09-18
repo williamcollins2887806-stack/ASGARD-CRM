@@ -44,6 +44,18 @@ const PATCHABLE_FIELDS = {
   participation: 'participation'
 };
 
+// Неизменяемые реквизиты карточки: заказчик, НМЦК, дедлайн подачи (и файлы — через upload-роуты).
+// Даже ТО не может их переписать после заведения, чтобы не «уплыл» зафиксированный тендер (D-189).
+const IMMUTABLE_FIELDS = new Set(['customer_name', 'customer_inn', 'tender_price', 'docs_deadline']);
+
+// Кто что может править:
+//  ADMIN                 — всё, включая immutable (аварийный доступ администратора);
+//  TO / HEAD_TO          — все mutable-поля карточки (immutable закрыты и им);
+//  PM / HEAD_PM          — только комментарий ТО (comment_to);
+//  остальные роли        — только reject/participation (как и раньше).
+const COMMENT_ONLY_ROLES = new Set(['PM', 'HEAD_PM']);
+const PM_EDITABLE_FIELDS = new Set(['comment_to']);
+
 function parsePaidFlag(raw) {
   if (raw === true || raw === 'true' || raw === 1 || raw === '1') return true;
   return false;
@@ -410,6 +422,20 @@ async function routes(fastify) {
     const { field, value } = request.body || {};
     const col = PATCHABLE_FIELDS[field];
     if (!col) return reply.code(400).send({ error: 'Недопустимое поле', allowed: Object.keys(PATCHABLE_FIELDS) });
+
+    // Разграничение прав на правку карточки (D-189).
+    const role = request.user.role || '';
+    // Immutable-реквизиты (заказчик/ИНН, НМЦК, дедлайн подачи) не правит никто, кроме ADMIN:
+    // это «паспорт» уже заведённого тендера. Раньше проверка стояла только на «не TO»,
+    // и TO мог переписать НМЦ/заказчика мимо формы — закрыто sentinel-ом.
+    if (IMMUTABLE_FIELDS.has(field) && role !== 'ADMIN') {
+      return reply.code(403).send({
+        error: 'Поле «' + field + '» неизменяемо. Заказчик, НМЦК и дата подачи фиксируются при заведении карточки.'
+      });
+    }
+    if (COMMENT_ONLY_ROLES.has(role) && !PM_EDITABLE_FIELDS.has(field)) {
+      return reply.code(403).send({ error: 'РП может править только комментарий ТО в карточке тендера' });
+    }
 
     if (col === 'docs_deadline' && (value === '' || value == null)) {
       return reply.code(400).send({ error: 'Дата подачи обязательна' });

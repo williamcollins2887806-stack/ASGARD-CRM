@@ -1560,7 +1560,7 @@ window.AsgardTkpPage = (function() {
         '<tfoot>' +
           '<tr style="background:var(--bg3)"><td colspan="5" style="text-align:right;font-weight:600">Без НДС:</td>' +
           '<td style="text-align:right;font-weight:600">' + Number(est.subtotal||0).toLocaleString('ru-RU') + ' ₽</td></tr>' +
-          '<tr><td colspan="5" style="text-align:right">НДС ' + (est.vat_pct||20) + '%:</td>' +
+          '<tr><td colspan="5" style="text-align:right">НДС ' + (est.vat_pct||22) + '%:</td>' +
           '<td style="text-align:right">' + Number(est.vat_sum||0).toLocaleString('ru-RU') + ' ₽</td></tr>' +
           '<tr style="background:rgba(30,77,140,0.06)"><td colspan="5" style="text-align:right;font-weight:700">ИТОГО с НДС:</td>' +
           '<td style="text-align:right;font-weight:700;color:var(--blue)">' + Number(est.total_with_vat||0).toLocaleString('ru-RU') + ' ₽</td></tr>' +

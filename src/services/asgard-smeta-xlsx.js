@@ -283,6 +283,13 @@ async function buildAsgardSmetaXlsx(estimate) {
         formula = `G${priceRow}*${paramCell.vat}`;
       } else if (row.sumExpr === 'price_with_vat' && priceRow) {
         formula = `G${priceRow}*(1+${paramCell.vat})`;
+      } else if (row.sumExpr === 'margin_rub' && priceRow && costRow) {
+        // Маржа = цена без НДС − себестоимость (D-184).
+        formula = `G${priceRow}-G${costRow}`;
+      } else if (row.sumExpr === 'income_tax_amount' && priceRow && costRow) {
+        formula = `MAX(0,(G${priceRow}-G${costRow}))*${paramCell.income_tax}`;
+      } else if (row.sumExpr === 'net_profit' && priceRow && costRow) {
+        formula = `(G${priceRow}-G${costRow})-MAX(0,(G${priceRow}-G${costRow}))*${paramCell.income_tax}`;
       } else {
         ws.getCell(`G${r}`).value = numOr(row.sum, 0);
       }

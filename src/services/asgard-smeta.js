@@ -26,7 +26,10 @@ const DEFAULT_PARAMS = {
   consumables_pct: 0.03,
   markup: 1.5,
   material_markup: 1.25,
-  vat: 0.22
+  vat: 0.22,
+  // Налог на прибыль (25 %) — нужен, чтобы показать РП и директору ЧИСТУЮ прибыль,
+  // а не только маржу. Ставка предприятия лежит в settings.income_tax_rate.
+  income_tax: 0.25
 };
 
 const PARAM_LABELS = [
@@ -49,7 +52,8 @@ const PARAM_LABELS = [
   { key: 'contingency', label: 'Непредвиденные', unit: 'доля', note: 'от прямых+накладных' },
   { key: 'markup', label: 'Наценка (markup)', unit: '×', note: 'к себестоимости' },
   { key: 'material_markup', label: 'Наценка на материал', unit: '×', note: 'раздельный сценарий' },
-  { key: 'vat', label: 'НДС', unit: 'доля', note: '0.22 = 22%' }
+  { key: 'vat', label: 'НДС', unit: 'доля', note: '0.22 = 22%' },
+  { key: 'income_tax', label: 'Налог на прибыль', unit: 'доля', note: '0.25 = 25% (для чистой прибыли)' }
 ];
 
 function num(v, fallback = 0) {
@@ -102,6 +106,7 @@ function mergeParams(input) {
   p.contingency = ratio(p.contingency, DEFAULT_PARAMS.contingency);
   p.consumables_pct = ratio(p.consumables_pct, DEFAULT_PARAMS.consumables_pct);
   p.vat = ratio(p.vat, DEFAULT_PARAMS.vat);
+  p.income_tax = ratio(p.income_tax, DEFAULT_PARAMS.income_tax);
   if (p.markup > 10) p.markup = p.markup / 100 + 1; // 50% → 1.5
   return p;
 }
@@ -240,7 +245,10 @@ function skeletonRows() {
     { id: 'r_cost', kind: 'rollup', section: 'R', code: 'R4', name: 'СЕБЕСТОИМОСТЬ (без НДС)', sumExpr: 'cost' },
     { id: 'r_price', kind: 'rollup', section: 'R', code: 'R5', name: 'Цена без НДС (наценка)', sumExpr: 'price_no_vat' },
     { id: 'r_vat', kind: 'rollup', section: 'R', code: 'R6', name: 'НДС', sumExpr: 'vat_amount' },
-    { id: 'r_total', kind: 'rollup', section: 'R', code: 'R7', name: 'ЦЕНА ЗАКАЗЧИКУ (с НДС)', sumExpr: 'price_with_vat' }
+    { id: 'r_total', kind: 'rollup', section: 'R', code: 'R7', name: 'ЦЕНА ЗАКАЗЧИКУ (с НДС)', sumExpr: 'price_with_vat' },
+    { id: 'r_margin', kind: 'rollup', section: 'R', code: 'R8', name: 'Маржа (цена без НДС − себестоимость)', sumExpr: 'margin_rub' },
+    { id: 'r_income_tax', kind: 'rollup', section: 'R', code: 'R9', name: 'Налог на прибыль', sumExpr: 'income_tax_amount' },
+    { id: 'r_net', kind: 'rollup', section: 'R', code: 'R10', name: 'ЧИСТАЯ ПРИБЫЛЬ (после налога)', sumExpr: 'net_profit' }
   ];
 }
 
@@ -379,6 +387,21 @@ function recalcAsgardSmeta(estimate) {
   const vatAmount = Math.round(priceKop * vatBasisPoints / 10000) / 100;
   const priceWithVat = Math.round((priceKop + Math.round(priceKop * vatBasisPoints / 10000))) / 100;
 
+  // Чистая прибыль после налога на прибыль (D-184).
+  // Маржа = цена без НДС − себестоимость; налог на прибыль берём с маржи (если она положительна),
+  // чистая = маржа − налог. Ставка `income_tax` — доля (0.25), из settings.income_tax_rate.
+  const marginRub = Math.round((priceNoVat - cost) * 100) / 100;
+  const incomeTaxAmount = marginRub > 0 ? Math.round(marginRub * p.income_tax * 100) / 100 : 0;
+  const netProfit = Math.round((marginRub - incomeTaxAmount) * 100) / 100;
+
+  // Чел-смены: сколько человеко-смен оплачено на проекте (рабочие + мастера, по сменам и суткам).
+  // Без этой величины «прибыль на чел/смену» показать нечем — она и есть знаменатель.
+  const personShifts = num(p.work_days) * num(p.shifts_per_day)
+    * (num(p.workers_per_shift) + num(p.masters_per_shift));
+  const profitPerPersonShift = personShifts > 0
+    ? Math.round(netProfit / personShifts * 100) / 100
+    : null;
+
   const totalsMap = {
     fot, fot_tax: fotTax, fot_tax_base: fotTaxBase, personnel, current, travel, transport, materials,
     equipment_purchase: equipmentPurchase,
@@ -388,7 +411,12 @@ function recalcAsgardSmeta(estimate) {
     equipment_purchase_full: equipmentPurchaseFull,
     equipment_rental_full: equipmentRentalFull,
     direct, overhead, contingency, cost,
-    price_no_vat: priceNoVat, vat_amount: vatAmount, price_with_vat: priceWithVat
+    price_no_vat: priceNoVat, vat_amount: vatAmount, price_with_vat: priceWithVat,
+    margin_rub: marginRub,
+    income_tax_amount: incomeTaxAmount,
+    net_profit: netProfit,
+    person_shifts: personShifts,
+    profit_per_person_shift: profitPerPersonShift
   };
 
   for (const r of est.rows) {
@@ -408,6 +436,7 @@ function recalcAsgardSmeta(estimate) {
   est.totals = {
     ...totalsMap,
     vat_pct: Math.round(p.vat * 1000) / 10,
+    income_tax_pct: Math.round(p.income_tax * 1000) / 10,
     markup: p.markup,
     margin_pct: Math.round((p.markup - 1) * 1000) / 10
   };
@@ -495,6 +524,12 @@ function toText(est) {
   lines.push(`Итого с/с: ${Math.round(t.cost || 0).toLocaleString('ru-RU')} ₽`);
   lines.push(`КП без НДС (×${p.markup}): ${Math.round(t.price_no_vat || 0).toLocaleString('ru-RU')} ₽`);
   lines.push(`КП с НДС ${Math.round((p.vat || 0) * 100)}%: ${Math.round(t.price_with_vat || 0).toLocaleString('ru-RU')} ₽`);
+  lines.push(`Маржа: ${Math.round(t.margin_rub || 0).toLocaleString('ru-RU')} ₽`);
+  lines.push(`Налог на прибыль ${Math.round((p.income_tax || 0) * 100)}%: ${Math.round(t.income_tax_amount || 0).toLocaleString('ru-RU')} ₽`);
+  lines.push(`ЧИСТАЯ ПРИБЫЛЬ: ${Math.round(t.net_profit || 0).toLocaleString('ru-RU')} ₽`);
+  if (t.person_shifts > 0 && t.profit_per_person_shift != null) {
+    lines.push(`Прибыль на чел·смену: ${Math.round(t.profit_per_person_shift).toLocaleString('ru-RU')} ₽ (чел·смен: ${t.person_shifts})`);
+  }
   return lines.join('\n');
 }
 
@@ -577,7 +612,8 @@ function composeFromRecomputed(ai, recomputed) {
     overhead: ratio(settings.overhead_pct ?? 10, 0.1),
     contingency: ratio(totals.contingency_pct ?? settings.contingency_pct ?? 5, 0.05),
     markup: markup >= 1 ? markup : 1 + markup,
-    vat: ratio(totals.vat_pct ?? settings.vat_pct ?? 22, 0.22)
+    vat: ratio(totals.vat_pct ?? settings.vat_pct ?? 22, 0.22),
+    income_tax: ratio(settings.income_tax_rate ?? totals.income_tax_pct ?? 25, 0.25)
   });
 
   let rows = skeletonRows();
@@ -682,7 +718,8 @@ function segezhaFixtureParams() {
     contingency: 0.1,
     markup: 1.5,
     material_markup: 1.25,
-    vat: 0.22
+    vat: 0.22,
+    income_tax: 0.25
   });
 }
 

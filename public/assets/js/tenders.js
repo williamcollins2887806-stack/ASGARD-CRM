@@ -3276,9 +3276,9 @@ window.AsgardTendersPage = (function(){
       $('#e_we_w')?.appendChild(CRDatePicker.create({ id:'e_we', value:(t&&t.work_end_plan)||'', placeholder:'Выберите дату', disabled:!full, clearable:true, dropdownClass:'z-modal' }));
       $('#e_deadline_w')?.appendChild(CRDatePicker.create({ id:'e_docs_deadline', value:(t&&t.docs_deadline)||'', placeholder:'Выберите дату', disabled:!(full||limited), clearable:true, dropdownClass:'z-modal' }));
 
-      // Авторасчёт НДС: ставка из настроек
+      // Авторасчёт НДС: ставка из настроек. Fallback — 22 % (действующая ставка), не 20 (D-190).
       const _vatSetting = await AsgardDB.get('settings', 'vat_default_pct');
-      const _vatPct = _vatSetting ? (parseFloat(_vatSetting.value_json) || 20) : 20;
+      const _vatPct = _vatSetting ? (parseFloat(_vatSetting.value_json) || 22) : 22;
       const _vatMul = 1 + _vatPct / 100;
       const ePriceEl = document.getElementById('e_price');
       const ePriceVatEl = document.getElementById('e_price_vat');
@@ -3664,7 +3664,7 @@ window.AsgardTendersPage = (function(){
               '<div class="cr-f-field"><div class="cr-f-label">Дата подписания</div>' +
               '<input id="dsSigned" class="inp" type="date" style="width:100%"/></div>' +
               '<div class="cr-f-field"><div class="cr-f-label">НДС %</div>' +
-              '<input id="dsVat" class="inp" type="number" value="20" style="width:100%"/></div>' +
+              '<input id="dsVat" class="inp" type="number" value="22" style="width:100%"/></div>' +
             '</div>' +
             '<div class="cr-f-field"><div class="cr-f-label">Плановые сроки</div>' +
             '<div class="cr-f-row--2">' +
@@ -3693,7 +3693,7 @@ window.AsgardTendersPage = (function(){
                 parent_work_id: parentWorkId,
                 work_title: (document.getElementById('dsTitle').value||'').trim() || null,
                 contract_value: Number(valEl.value) || 0,
-                vat_pct: Number(document.getElementById('dsVat').value) || 20,
+                vat_pct: Number(document.getElementById('dsVat').value) || 22,
                 start_plan: document.getElementById('dsStart').value || null,
                 end_plan: document.getElementById('dsEnd').value || null,
                 addendum_signed_date: document.getElementById('dsSigned').value || null,

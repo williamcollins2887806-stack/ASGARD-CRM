@@ -1169,6 +1169,35 @@ async function reviewRoutes(fastify) {
       );
       tkp_file = tf.rows[0] || null;
     }
+    // Документы тендера (ТЗ, чертежи, паспорта, что ТО приложил при заведении карточки).
+    // Их раньше не было в ответе — РП не видел и не мог скачать (D-187). Исключаем:
+    //   * типы рп-контура (rp_estimate/rp_report/rp_tkp) — они и так приходят как *File-поля;
+    //   * сами файлы сметы/ТКП/отчёта (по id и по имени) — иначе «Смета» и «ТКП» дублировались
+    //     в блоке «Документы тендера» (нашёл L3-верификатор: tender 2052).
+    const linkedFileIds = [review.estimate_file_id, review.report_file_id, review.tkp_file_id]
+      .filter((v) => v != null);
+    const linkedNames = [estimate_file, report_file, tkp_file]
+      .filter(Boolean)
+      .map((f) => String(f.original_name || '').trim().toLowerCase())
+      .filter(Boolean);
+    const tenderFilesRes = await db.query(`
+      SELECT id, original_name, download_url, size, mime_type, type, created_at
+      FROM documents
+      WHERE tender_id = $1
+        AND COALESCE(type,'') NOT IN ('rp_estimate','rp_report','rp_tkp','ocr-extract')
+        AND NOT (id = ANY($2::int[]))
+        AND lower(btrim(COALESCE(original_name,''))) <> ALL($3::text[])
+      ORDER BY created_at DESC
+      LIMIT 100
+    `, [tenderId, linkedFileIds, linkedNames]);
+    const tenderFiles = [];
+    const seenTenderFiles = new Set();
+    for (const f of tenderFilesRes.rows) {
+      const key = `${String(f.original_name || '').trim().toLowerCase()}|${f.type || ''}`;
+      if (seenTenderFiles.has(key)) continue;
+      seenTenderFiles.add(key);
+      tenderFiles.push(f);
+    }
     const enriched = enrichReviewRow(review, userMap);
     if (review.analysis_owner_user_id) {
       enriched.analysis_owner_name = userMap[review.analysis_owner_user_id] || null;
@@ -1244,6 +1273,9 @@ async function reviewRoutes(fastify) {
       estimate_file,
       report_file,
       tkp_file,
+      tender_files: tenderFiles,
+      // Порог согласования директора — из settings, чтобы фронт не хардкодил 10 млн (D-185).
+      director_threshold: await getDirectorThreshold(db),
       thread_unread,
       phase,
       final_owner_user_id: ownerUserId,
@@ -2236,3 +2268,5 @@ async function reviewRoutes(fastify) {
 
 module.exports = routes;
 module.exports.reviewRoutes = reviewRoutes;
+module.exports.needsDirectorApproval = needsDirectorApproval;
+module.exports.computeWorkPriceExVat = computeWorkPriceExVat;

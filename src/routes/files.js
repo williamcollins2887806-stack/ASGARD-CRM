@@ -318,7 +318,14 @@ async function routes(fastify, options) {
   });
 
   fastify.get('/', { preHandler: [fastify.authenticate] }, async (request) => {
-    const { tender_id, work_id, estimate_id, type, limit = 50, cascade = 'true' } = request.query;
+    const { tender_id, work_id, estimate_id, type, exclude_types, limit = 50, cascade = 'true' } = request.query;
+
+    // Список типов-исключений (через запятую): документы рп-контура (rp_estimate/rp_report/rp_tkp)
+    // и «Смета»/«ТКП» не должны дублироваться в блоке «Документы ТО» (D-185).
+    const excludeList = String(exclude_types || '')
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean);
 
     // Simple estimate_id query
     if (estimate_id) {
@@ -332,6 +339,19 @@ async function routes(fastify, options) {
     }
     const params = [];
     let idx = 1;
+
+    /** Дедуп по (tender_id, original_name): скрипты закрытия грузят файл дважды (D-185). */
+    const dedupeByName = (rows) => {
+      const seen = new Set();
+      const out = [];
+      for (const r of rows) {
+        const key = `${r.tender_id || ''}|${r.original_name || r.filename || ''}|${r.type || ''}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        out.push(r);
+      }
+      return out;
+    };
 
     // Логика: при запросе по work_id — также добавляем документы по тендеру
     // При запросе по tender_id — также добавляем документы по дочерним работам
@@ -366,10 +386,15 @@ async function routes(fastify, options) {
       if (type) { sql += ` AND type = $${idx}`; params.push(type); idx++; }
       // Служебный OCR-кэш (ocr-extract) — не в UI; archive-extracted от confirm — оставляем
       sql += ` AND COALESCE(type,'') NOT IN ('ocr-extract')`;
+      for (const t of excludeList) {
+        sql += ` AND COALESCE(type,'') <> $${idx}`;
+        params.push(t);
+        idx++;
+      }
       sql += ` ORDER BY created_at DESC LIMIT $${idx}`;
       params.push(parseInt(limit));
       const result = await db.query(sql, params);
-      return { files: result.rows };
+      return { files: dedupeByName(result.rows) };
     }
 
     // Простой запрос без каскада
@@ -380,10 +405,15 @@ async function routes(fastify, options) {
     else {
       sql += ` AND COALESCE(type,'') NOT IN ('ocr-extract')`;
     }
+    for (const t of excludeList) {
+      sql += ` AND COALESCE(type,'') <> $${idx}`;
+      params.push(t);
+      idx++;
+    }
     sql += ` ORDER BY created_at DESC LIMIT $${idx}`;
     params.push(parseInt(limit));
     const result = await db.query(sql, params);
-    return { files: result.rows };
+    return { files: dedupeByName(result.rows) };
   });
 
   // GET /api/files/zip?tender_ids=1,2,3&token=...

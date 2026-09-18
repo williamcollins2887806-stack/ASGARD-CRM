@@ -227,7 +227,11 @@ window.AsgardRegistryApi = (function () {
   }
 
   function loadTenderDocs(tenderId) {
-    return fetch('/api/files?tender_id=' + encodeURIComponent(tenderId) + '&limit=200&cascade=false', {
+    // Исключаем документы рп-контура и дубли «Смета»/«ТКП»: иначе в карточке анализа
+    // и в «Документах ТО» один и тот же файл показывается дважды (D-187).
+    const exclude = 'rp_estimate,rp_report,rp_tkp,Смета,ТКП';
+    return fetch('/api/files?tender_id=' + encodeURIComponent(tenderId) +
+      '&limit=200&cascade=false&exclude_types=' + encodeURIComponent(exclude), {
       headers: headers()
     }).then((r) => r.json().then((d) => {
       if (!r.ok) throw new Error(d.error || d.message || ('HTTP ' + r.status));

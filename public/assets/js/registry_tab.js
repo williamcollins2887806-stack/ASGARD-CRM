@@ -96,6 +96,21 @@ window.AsgardRegistryTab = (function () {
   }
 
   const DIRECTOR_ROLES = ['DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV'];
+  // Кто может править mutable-часть карточки тендера (синхронно с бэком, D-189).
+  const FULL_CARD_EDIT_ROLES = ['ADMIN', 'TO', 'HEAD_TO'];
+  // Immutable (заказчик/ИНН, НМЦ, срок подачи, файлы) — только ADMIN.
+  const IMMUTABLE_CARD_ADMIN_ONLY = ['ADMIN'];
+  // РП правит только комментарий ТО.
+  const COMMENT_ONLY_ROLES = ['PM', 'HEAD_PM'];
+  // Поля, которые фиксируются при заведении карточки и дальше не меняются никем, кроме ADMIN.
+  const IMMUTABLE_CARD_FIELDS = ['customer', 'price', 'deadline'];
+  function canEditFullCard() { return FULL_CARD_EDIT_ROLES.includes(currentUserRole()); }
+  function canEditCommentOnly() { return COMMENT_ONLY_ROLES.includes(currentUserRole()); }
+  function canEditImmutable() { return IMMUTABLE_CARD_ADMIN_ONLY.includes(currentUserRole()); }
+  // Срок подачи — immutable для ВСЕХ, кроме ADMIN (бэк отвечает 403 остальным, D-189).
+  // Инлайн-редактор в таблице должен быть доступен ровно тем же ролям, иначе клик
+  // открывает редактор и заканчивается ошибкой (нашёл L3-верификатор).
+  function canEditDeadlineCell() { return canEditImmutable(); }
 
   function openRpReviewModal(row, opts) {
     opts = opts || {};
@@ -723,6 +738,7 @@ window.AsgardRegistryTab = (function () {
     const dl = row.docs_deadline ? API.fmtDateIso(row.docs_deadline) : '';
     let tenderId = row.id || null;
     let savedNew = false;
+    let docsMode = false;
 
     function formHtml(showDocs) {
       const docsBlock = showDocs
@@ -730,31 +746,49 @@ window.AsgardRegistryTab = (function () {
         : (isNew ? API.renderRegistryDocsPlaceholderHtml() : '<div id="regDocsHost"></div>');
       const paid = !!row.participation_paid;
       const feeVal = row.participation_fee != null ? row.participation_fee : '';
+      // Правка карточки (D-189):
+      //  - immutable (заказчик/ИНН, НМЦК, срок подачи) — только ADMIN, при создании заполняются свободно;
+      //  - PM/HEAD_PM — только комментарий ТО;
+      //  - «Платное участие», ссылка, статус, комментарий — доступны ТО и после загрузки документов.
+      const fullEdit = isNew || canEditFullCard();
+      const commentOnly = !isNew && canEditCommentOnly();
+      const dis = (field) => {
+        if (isNew) return '';
+        if (commentOnly) return field === 'comment' ? '' : ' disabled';
+        if (IMMUTABLE_CARD_FIELDS.indexOf(field) >= 0) return canEditImmutable() ? '' : ' disabled';
+        if (fullEdit) return '';
+        return ' disabled';
+      };
+      const immutNote = (!isNew && !commentOnly && !canEditImmutable())
+        ? '<p class="muted" style="font-size:11px;margin:-4px 0 0">Заказчик, НМЦ и срок подачи зафиксированы при заведении карточки. Остальные поля доступны для правки.</p>'
+        : '';
       return '<div class="reg-form-modal" style="display:grid;gap:10px">' +
         '<label style="position:relative">Заказчик <small class="muted">(название или ИНН — подскажем из ДаДата)</small>' +
-        '<input class="inp" id="regFormCustomer" data-inn="' + esc(row.customer_inn || '') + '" value="' + esc(row.customer_name || '') + '" placeholder="Начните вводить…" style="width:100%;margin-top:4px"' + (showDocs ? ' disabled' : '') + '/></label>' +
-        '<label>Тендер<input class="inp" id="regFormTitle" value="' + esc(row.tender_title || '') + '" style="width:100%;margin-top:4px"' + (showDocs ? ' disabled' : '') + '/></label>' +
+        '<input class="inp" id="regFormCustomer" data-inn="' + esc(row.customer_inn || '') + '" value="' + esc(row.customer_name || '') + '" placeholder="Начните вводить…" style="width:100%;margin-top:4px"' + dis('customer') + '/></label>' +
+        '<label>Тендер<input class="inp" id="regFormTitle" value="' + esc(row.tender_title || '') + '" style="width:100%;margin-top:4px"' + dis('title') + '/></label>' +
         '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">' +
-        '<label>НМЦ<input class="inp" id="regFormPrice" type="number" value="' + (row.tender_price != null ? row.tender_price : '') + '" style="width:100%;margin-top:4px"' + (showDocs ? ' disabled' : '') + '/></label>' +
-        '<label>Срок подачи <span class="req">*</span><input class="inp" id="regFormDeadline" type="date" value="' + dl + '" required style="width:100%;margin-top:4px"' + (showDocs ? ' disabled' : '') + '/></label></div>' +
+        '<label>НМЦ<input class="inp" id="regFormPrice" type="number" value="' + (row.tender_price != null ? row.tender_price : '') + '" style="width:100%;margin-top:4px"' + dis('price') + '/></label>' +
+        '<label>Срок подачи <span class="req">*</span><input class="inp" id="regFormDeadline" type="date" value="' + dl + '" required style="width:100%;margin-top:4px"' + dis('deadline') + '/></label></div>' +
+        immutNote +
         '<p class="muted" id="regFormAnalysisHint" style="font-size:11px;margin:-4px 0 0"></p>' +
         '<label style="display:flex;align-items:center;gap:8px;margin:0">' +
-        '<input type="checkbox" id="regFormPaid"' + (paid ? ' checked' : '') + (showDocs ? ' disabled' : '') + '/>' +
+        '<input type="checkbox" id="regFormPaid"' + (paid ? ' checked' : '') + (commentOnly ? ' disabled' : '') + '/>' +
         ' Платное участие</label>' +
         '<label id="regFormFeeWrap" style="' + (paid ? '' : 'display:none;') + '">Ориентировочная стоимость (сгорит при проигрыше), ₽' +
-        '<input class="inp" id="regFormFee" type="number" min="1" step="0.01" value="' + esc(feeVal) + '" style="width:100%;margin-top:4px"' + (showDocs ? ' disabled' : '') + '/></label>' +
-        '<label>Ссылка на закупку<input class="inp" id="regFormPurchaseUrl" type="url" value="' + esc(row.purchase_url || '') + '" placeholder="zakupki.gov.ru / B2B…" style="width:100%;margin-top:4px"' + (showDocs ? ' disabled' : '') + '/></label>' +
-        '<label>Статус<select class="inp" id="regFormStatus" style="width:100%;margin-top:4px"' + (showDocs ? ' disabled' : '') + '>' +
+        '<input class="inp" id="regFormFee" type="number" min="1" step="0.01" value="' + esc(feeVal) + '" style="width:100%;margin-top:4px"' + (commentOnly ? ' disabled' : '') + '/></label>' +
+        '<label>Ссылка на закупку<input class="inp" id="regFormPurchaseUrl" type="url" value="' + esc(row.purchase_url || '') + '" placeholder="zakupki.gov.ru / B2B…" style="width:100%;margin-top:4px"' + dis('purchase') + '/></label>' +
+        '<label>Статус<select class="inp" id="regFormStatus" style="width:100%;margin-top:4px"' + dis('status') + '>' +
         API.REGISTRY_STATUSES.map((s) =>
           '<option value="' + s.value + '"' + (st === s.value ? ' selected' : '') + '>' + esc(s.label) + '</option>'
         ).join('') + '</select></label>' +
-        '<label>Комментарий<textarea class="inp" id="regFormComment" rows="3" style="width:100%;margin-top:4px"' + (showDocs ? ' disabled' : '') + '>' + esc(row.comment_to || '') + '</textarea></label>' +
+        '<label>Комментарий<textarea class="inp" id="regFormComment" rows="3" style="width:100%;margin-top:4px"' + dis('comment') + '>' + esc(row.comment_to || '') + '</textarea></label>' +
         docsBlock +
         '<div style="display:flex;gap:8px;margin-top:4px">' +
         (showDocs
-          ? '<button type="button" class="btn" id="regFormDone">Готово</button>'
-          : '<button type="button" class="btn" id="regFormSave">' + (isNew ? 'Добавить' : 'Сохранить') + '</button>') +
-        '<button type="button" class="btn ghost" id="regFormCancel">' + (showDocs ? 'Закрыть' : 'Отмена') + '</button></div></div>';
+          ? ((fullEdit || commentOnly) ? '<button type="button" class="btn" id="regFormSave">Сохранить</button>' : '') +
+            '<button type="button" class="btn ghost" id="regFormDone">Готово</button>'
+          : '<button type="button" class="btn" id="regFormSave">' + (isNew ? 'Добавить' : 'Сохранить') + '</button>' +
+            '<button type="button" class="btn ghost" id="regFormCancel">Отмена</button>') + '</div></div>';
     }
 
     function syncPaidFeeUi() {
@@ -782,15 +816,15 @@ window.AsgardRegistryTab = (function () {
     }
 
     function mountForm(showDocs) {
+      docsMode = !!showDocs;
       const root = document.querySelector('.reg-form-modal')?.closest('.modal-body') || document.querySelector('.reg-form-modal')?.parentElement;
       const modalRoot = document.querySelector('.reg-form-modal');
-      if (!showDocs) {
-        bindFormCustomerSuggest(document.getElementById('regFormCustomer'));
-        document.getElementById('regFormPaid')?.addEventListener('change', syncPaidFeeUi);
-        document.getElementById('regFormDeadline')?.addEventListener('change', updateAnalysisHint);
-        document.getElementById('regFormDeadline')?.addEventListener('input', updateAnalysisHint);
-        syncPaidFeeUi();
-      }
+      // Подсказки/связки полей нужны и в режиме документов — там теперь тоже можно править (D-189).
+      bindFormCustomerSuggest(document.getElementById('regFormCustomer'));
+      document.getElementById('regFormPaid')?.addEventListener('change', syncPaidFeeUi);
+      document.getElementById('regFormDeadline')?.addEventListener('change', updateAnalysisHint);
+      document.getElementById('regFormDeadline')?.addEventListener('input', updateAnalysisHint);
+      syncPaidFeeUi();
       document.getElementById('regFormCancel')?.addEventListener('click', () => {
         hideModal();
         if (savedNew || !isNew) {
@@ -888,7 +922,11 @@ window.AsgardRegistryTab = (function () {
             }
             mountForm(true);
           } else {
-            const fields = ['customer_name', 'customer_inn', 'tender_title', 'tender_price', 'docs_deadline', 'purchase_url', 'comment_to'];
+            // PM/HEAD_PM шлют только комментарий — остальное бэк всё равно отвергнет 403 (D-189).
+            const commentOnlySave = canEditCommentOnly();
+            const fields = commentOnlySave
+              ? ['comment_to']
+              : ['customer_name', 'customer_inn', 'tender_title', 'tender_price', 'docs_deadline', 'purchase_url', 'comment_to'];
             for (const f of fields) {
               const prev = row[f];
               let next = body[f];
@@ -905,15 +943,31 @@ window.AsgardRegistryTab = (function () {
             }
             const prevPaid = !!row.participation_paid;
             const prevFee = row.participation_fee != null ? Number(row.participation_fee) : null;
-            if (prevPaid !== paid || prevFee !== (paid ? fee : null)) {
+            if (!commentOnlySave && (prevPaid !== paid || prevFee !== (paid ? fee : null))) {
               await API.patchRegistryField(row.id, 'participation', {
                 participation_paid: paid,
                 participation_fee: paid ? fee : null
               });
             }
-            if (nextStatus !== st) {
+            if (!commentOnlySave && nextStatus !== st) {
               await applyStatusChange(row, nextStatus);
               hideModal();
+              refresh();
+              onRefreshCb && onRefreshCb();
+              return;
+            }
+            // В режиме документов модалку не закрываем: ТО правит карточку, не теряя список файлов.
+            if (docsMode) {
+              row.customer_name = body.customer_name;
+              row.customer_inn = body.customer_inn;
+              row.tender_title = body.tender_title;
+              row.tender_price = body.tender_price;
+              row.docs_deadline = body.docs_deadline;
+              row.purchase_url = body.purchase_url;
+              row.comment_to = body.comment_to;
+              row.participation_paid = paid;
+              row.participation_fee = paid ? fee : null;
+              toast('Сохранено', 'ok');
               refresh();
               onRefreshCb && onRefreshCb();
               return;
@@ -1237,7 +1291,9 @@ window.AsgardRegistryTab = (function () {
       '<td><span class="reg-cell-text reg-title" title="' + esc(title) + '">' + docIcon + esc(title) + '</span></td>' +
       '<td class="reg-col-money"><span class="reg-cell-text reg-price-text" title="' + esc(formatMoney(row.tender_price)) + '">' + esc(formatMoney(row.tender_price)) + '</span></td>' +
       '<td class="reg-col-money reg-col-submit">' + submitHtml + '</td>' +
-      '<td class="reg-col-date reg-deadline-cell" data-id="' + row.id + '" data-value="' + esc(dlIso) + '" title="Клик — изменить срок">' +
+      '<td class="reg-col-date reg-deadline-cell' + (canEditDeadlineCell() ? '' : ' reg-deadline-readonly') +
+      '" data-id="' + row.id + '" data-value="' + esc(dlIso) + '"' +
+      (canEditDeadlineCell() ? ' title="Клик — изменить срок"' : ' title="Срок подачи меняет только администратор"') + '>' +
       '<span class="reg-cell-text reg-deadline-text">' + esc(fmtShortDate(row.docs_deadline)) + '</span></td>' +
       '<td class="reg-col-participation">' + participationCell(row) + '</td>' +
       '<td class="reg-col-analysis">' + analysisDeadlineCell(row) + '</td>' +
@@ -1574,6 +1630,11 @@ window.AsgardRegistryTab = (function () {
     });
     mountEl.querySelectorAll('.reg-deadline-cell').forEach((cell) => {
       cell.addEventListener('click', (e) => {
+        // Immutable: без прав редактор не открываем (иначе 403 от бэка, D-189).
+        if (!canEditDeadlineCell()) {
+          toast('Срок подачи меняет только администратор', 'warn');
+          return;
+        }
         if (e.target.closest('input')) return;
         e.preventDefault();
         e.stopPropagation();

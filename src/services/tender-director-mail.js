@@ -314,6 +314,23 @@ function textBlock(label, value) {
   </div>`;
 }
 
+/** Блок маржи и ЧИСТОЙ прибыли после налога для письма директору (D-184). */
+function renderProfitBlockHtml(totals) {
+  const t = totals || {};
+  if (t.net_profit == null && t.margin_rub == null) return '';
+  const row = (label, value) => `<div style="font-size:14px;margin:4px 0">${esc(label)}: <b>${esc(fmtRub(value))}</b></div>`;
+  let h = '<div style="margin-top:12px;padding-top:10px;border-top:1px dashed #e0d5ae">';
+  h += row('Маржа (без НДС − себестоимость)', t.margin_rub);
+  if (t.income_tax_amount != null) {
+    h += row(`Налог на прибыль${t.income_tax_pct != null ? ` (${t.income_tax_pct}%)` : ''}`, t.income_tax_amount);
+  }
+  h += `<div style="font-size:20px;font-weight:800;margin-top:8px;color:#15803d">ЧИСТАЯ ПРИБЫЛЬ: ${esc(fmtRub(t.net_profit))}</div>`;
+  if (t.profit_per_person_shift != null) {
+    h += `<div style="font-size:13px;color:#5c4a00;margin-top:6px">Прибыль на чел·смену: <b>${esc(fmtRub(t.profit_per_person_shift))}</b>${Number(t.person_shifts) > 0 ? ` (чел·смен: ${t.person_shifts})` : ''}</div>`;
+  }
+  return `${h}</div>`;
+}
+
 function buildEmailHtml({ tender, review, estimate, decideUrl, filesUrl, files, pmName, expectedFrom, recipientLabel }) {
   const rj = parseRj(review?.report_json);
   const est = ensureEstimate(estimate || rj.asgard_smeta);
@@ -384,6 +401,7 @@ function buildEmailHtml({ tender, review, estimate, decideUrl, filesUrl, files, 
         <div style="font-size:14px;margin:4px 0">Себестоимость без НДС: <b>${esc(fmtRub(t.cost))}</b></div>
         <div style="font-size:14px;margin:4px 0">Цена без НДС: <b>${esc(fmtRub(priceExVat))}</b></div>
         <div style="font-size:26px;font-weight:800;margin-top:10px;color:#1b2a4a;letter-spacing:-.02em">С НДС: ${esc(fmtRub(priceWithVat))}</div>
+        ${renderProfitBlockHtml(t)}
       </div>
       <a href="${esc(decideUrl)}" style="display:block;background:#15803d;color:#fff;text-decoration:none;text-align:center;padding:16px 18px;border-radius:12px;font-weight:800;font-size:17px;margin:20px 0 10px;">Согласовать</a>
       <a href="${esc(decideUrl)}" style="display:block;background:#b91c1c;color:#fff;text-decoration:none;text-align:center;padding:16px 18px;border-radius:12px;font-weight:800;font-size:17px;">Отказать</a>

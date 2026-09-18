@@ -22,7 +22,7 @@ window.AsgardRpCalcModal = (function () {
     { id: 'tender', label: 'Тендер' }
   ];
 
-  const PCT_KEYS = { fot_tax: 1, overhead: 1, contingency: 1, consumables_pct: 1, vat: 1 };
+  const PCT_KEYS = { fot_tax: 1, overhead: 1, contingency: 1, consumables_pct: 1, vat: 1, income_tax: 1 };
   const SMETA_UNITS = [
     'чел·смен', 'чел', 'чел·дн', 'чел·ночь', 'чел·поездка',
     'компл', 'рейс', 'шт', 'сут', 'дн', 'смен', 'усл.'
@@ -58,11 +58,15 @@ window.AsgardRpCalcModal = (function () {
     if (r.sumExpr === 'contingency') {
       return 'Непредвиденные (' + pctLabel(p.contingency != null ? p.contingency : 0) + '%)';
     }
+    if (r.sumExpr === 'income_tax_amount') {
+      return 'Налог на прибыль (' + pctLabel(p.income_tax != null ? p.income_tax : 0.25) + '%)';
+    }
     return r.name || '';
   }
 
-  // Адресное согласование: ровно 4 получателя, минимум один. Порог — 10 млн без НДС.
-  const DIRECTOR_THRESHOLD = 10000000;
+  // Адресное согласование: ровно 4 получателя, минимум один.
+  // Порог берём с бэкенда (settings.director_tender_threshold_rub); это лишь fallback (D-185).
+  const DIRECTOR_THRESHOLD_FALLBACK = 10000000;
   const APPROVAL_RECIPIENTS = [
     { code: 'DIRECTOR_GEN', label: 'Генеральный директор' },
     { code: 'DIRECTOR_DEV', label: 'Директор по развитию' },
@@ -357,7 +361,7 @@ window.AsgardRpCalcModal = (function () {
       if (r.kind === 'subtotal' || r.kind === 'rollup') {
         if (r.kind === 'subtotal' && !sectionHasLines && !(Number(r.sum) > 0)) return;
         flushSection();
-        const strong = r.sumExpr === 'cost' || r.sumExpr === 'price_with_vat' || r.sumExpr === 'price_no_vat' || r.sumExpr === 'direct';
+        const strong = r.sumExpr === 'cost' || r.sumExpr === 'price_with_vat' || r.sumExpr === 'price_no_vat' || r.sumExpr === 'direct' || r.sumExpr === 'net_profit';
         const label = r.kind === 'rollup' ? rollupDisplayName(r, est.params || {}) : (r.name || '');
         body += '<tr style="background:' + (strong ? '#faf6e8' : '#f8fafc') + '">' +
           '<td colspan="' + (COLS - 1) + '" style="padding:8px 10px;text-align:right;font-weight:700;font-size:13px;color:#1b2a4a">' + esc(label) + '</td>' +
@@ -441,6 +445,31 @@ window.AsgardRpCalcModal = (function () {
       '<div style="font-size:11px;color:#6b7280;font-weight:700;letter-spacing:.04em;text-transform:uppercase;margin-bottom:4px">' +
       esc(label) + '</div>' +
       '<div style="font-size:14px;line-height:1.5;white-space:pre-wrap">' + esc(v) + '</div></div>';
+  }
+
+  /** Блок чистой прибыли для письма директору (D-184). Пустой, если движок ещё не отдал поля. */
+  function renderProfitBlockHtml(totals) {
+    const t = totals || {};
+    if (t.net_profit == null && t.margin_rub == null) return '';
+    function row(label, value, strong) {
+      return '<div style="font-size:14px;margin:4px 0' + (strong ? ';margin-top:10px' : '') + '">' + esc(label) + ': <b>' +
+        esc(fmtMoneyPlain(value)) + '</b></div>';
+    }
+    let h = '<div style="margin-top:12px;padding-top:10px;border-top:1px dashed #e0d5ae">';
+    h += row('Маржа (без НДС − себестоимость)', t.margin_rub);
+    if (t.income_tax_amount != null) {
+      h += row('Налог на прибыль' + (t.income_tax_pct != null ? ' (' + pctLabel(t.income_tax_pct / 100) + '%)' : ''),
+        t.income_tax_amount);
+    }
+    h += '<div style="font-size:20px;font-weight:800;margin-top:8px;color:#15803d">ЧИСТАЯ ПРИБЫЛЬ: ' +
+      esc(fmtMoneyPlain(t.net_profit)) + '</div>';
+    if (t.profit_per_person_shift != null) {
+      h += '<div style="font-size:13px;color:#5c4a00;margin-top:6px">Прибыль на чел·смену: <b>' +
+        esc(fmtMoneyPlain(t.profit_per_person_shift)) + '</b>' +
+        (Number(t.person_shifts) > 0 ? ' (чел·смен: ' + esc(String(t.person_shifts)) + ')' : '') + '</div>';
+    }
+    h += '</div>';
+    return h;
   }
 
   function buildEmailPreviewHtml(opts) {
@@ -536,7 +565,8 @@ window.AsgardRpCalcModal = (function () {
       '<div style="font-size:14px;margin:4px 0">Себестоимость без НДС: <b>' + esc(fmtMoneyPlain(t.cost)) + '</b></div>' +
       '<div style="font-size:14px;margin:4px 0">Цена без НДС: <b>' + esc(fmtMoneyPlain(moneyExVat(t, review))) + '</b></div>' +
       '<div style="font-size:26px;font-weight:800;margin-top:10px;color:#1b2a4a;letter-spacing:-.02em">С НДС: ' +
-      esc(fmtMoneyPlain(moneyWithVat(t, review))) + '</div></div>' +
+      esc(fmtMoneyPlain(moneyWithVat(t, review))) + '</div>' +
+      renderProfitBlockHtml(t) + '</div>' +
       '<a href="' + esc(decideUrl) + '" style="display:block;background:#15803d;color:#fff;text-decoration:none;text-align:center;' +
       'padding:16px 18px;border-radius:12px;font-weight:800;font-size:17px;margin:20px 0 10px;">Согласовать</a>' +
       '<a href="' + esc(decideUrl) + '" style="display:block;background:#b91c1c;color:#fff;text-decoration:none;text-align:center;' +
@@ -554,6 +584,19 @@ window.AsgardRpCalcModal = (function () {
   }
 
   /* ── render shell ──────────────────────────────────────── */
+
+  /** Порог согласования из state — общий и для renderShell, и для сессии (D-185). */
+  function stateDirectorThreshold(state) {
+    const t = Number(state && state.directorThreshold);
+    return Number.isFinite(t) && t > 0 ? t : DIRECTOR_THRESHOLD_FALLBACK;
+  }
+
+  /** Нужно ли согласование директора: цена без НДС >= порога. Общий хелпер (D-185). */
+  function stateApprovalNeeded(state) {
+    const totals = (state && state.estimate && state.estimate.totals) || {};
+    const noVat = Number(totals.price_no_vat);
+    return Number.isFinite(noVat) && noVat >= stateDirectorThreshold(state);
+  }
 
   function renderShell(state) {
     const t = state.tender || {};
@@ -581,6 +624,8 @@ window.AsgardRpCalcModal = (function () {
       '<div class="rp-calc-hero__side">' +
       '<span class="rp-calc-badge">' + (demo ? 'Демо' + (state.readOnly ? '' : '') : 'РП') + '</span>' +
       '<span class="rp-calc-dl rp-calc-dl--' + dl.cls + '">' + esc(dl.label) + '</span>' +
+      '<button type="button" class="btn ghost rp-calc-open-analysis" data-rp-act="open-analysis" ' +
+      'title="Открыть карточку анализа РП в режиме просмотра">Открыть анализ</button>' +
       '</div></div>' +
       '<div class="rp-calc-tabs-wrap"><div class="rp-calc-tabs" role="tablist">' + tabsHtml + '</div></div>' +
       '<div class="rp-calc-body">' +
@@ -597,15 +642,25 @@ window.AsgardRpCalcModal = (function () {
         : '') +
       '<div class="rp-calc-footer__kpi"><span>Цена без НДС</span><b data-kpi="price_no_vat">' + esc(fmtMoney(totals.price_no_vat)) + '</b></div>' +
       '<div class="rp-calc-footer__kpi is-gold"><span>Цена с НДС</span><b data-kpi="price_with_vat">' + esc(fmtMoney(totals.price_with_vat)) + '</b></div>' +
+      '<div class="rp-calc-footer__kpi is-profit"><span>Чистая прибыль' +
+        (totals.income_tax_pct != null ? ' (после ' + esc(pctLabel(totals.income_tax_pct / 100)) + '%)' : '') +
+        '</span><b data-kpi="net_profit">' + esc(fmtMoney(totals.net_profit)) + '</b></div>' +
+      (totals.profit_per_person_shift != null
+        ? '<div class="rp-calc-footer__kpi"><span>Прибыль / чел·смен' +
+          (Number(totals.person_shifts) > 0 ? ' (' + esc(String(totals.person_shifts)) + ')' : '') +
+          '</span><b data-kpi="profit_per_person_shift">' + esc(fmtMoney(totals.profit_per_person_shift)) + '</b></div>'
+        : '') +
       '</div>' +
       '<div class="rp-calc-footer__acts">' +
+      '<span class="rp-calc-save-state" data-rp-save-state></span>' +
       (state.readOnly
         ? '<span class="muted" style="font-size:12px">Только просмотр</span>'
         : (demo
           ? '<button type="button" class="btn ghost" data-rp-act="demo-draft">Сохранить черновик</button>' +
             '<button type="button" class="btn primary" data-rp-act="demo-send">Отправить директору</button>'
           : '<button type="button" class="btn ghost" data-rp-act="save-draft"' + (state.busy ? ' disabled' : '') + '>Сохранить черновик</button>' +
-            '<button type="button" class="btn primary" data-rp-act="send-director"' + (state.busy ? ' disabled' : '') + '>Отправить директору</button>')) +
+            '<button type="button" class="btn primary" data-rp-act="send-director"' + (state.busy ? ' disabled' : '') + '>' +
+            esc(stateApprovalNeeded(state) ? 'Отправить директору' : 'Завершить просчёт') + '</button>')) +
       '</div></div></div>';
   }
 
@@ -793,7 +848,7 @@ window.AsgardRpCalcModal = (function () {
       if (r.kind === 'subtotal' && !secOpen) return;
       if (ADD_SECTIONS[curSec]) addRowBtn(curSec);
       pendingSec = '';
-      const strong = r.sumExpr === 'cost' || r.sumExpr === 'price_with_vat' || r.sumExpr === 'price_no_vat';
+      const strong = r.sumExpr === 'cost' || r.sumExpr === 'price_with_vat' || r.sumExpr === 'price_no_vat' || r.sumExpr === 'net_profit';
       const cls = r.kind === 'rollup' ? 'rp-calc-rollup' : 'rp-calc-subtotal';
       const label = r.kind === 'rollup' ? rollupDisplayName(r, params) : (r.name || '');
       parts.push('<tr class="' + cls + (strong ? ' is-strong' : '') + '"' +
@@ -827,12 +882,23 @@ window.AsgardRpCalcModal = (function () {
       equipKpi +
       '<div class="kpi"><span>Без НДС</span><b>' + esc(fmtMoney(totals.price_no_vat)) + '</b></div>' +
       '<div class="kpi is-gold"><span>С НДС</span><b>' + esc(fmtMoney(totals.price_with_vat)) + '</b></div>' +
+      '<div class="kpi is-profit"><span>Маржа</span><b>' + esc(fmtMoney(totals.margin_rub)) + '</b></div>' +
+      '<div class="kpi"><span>Налог на прибыль' +
+        (totals.income_tax_pct != null ? ' (' + esc(pctLabel(totals.income_tax_pct / 100)) + '%)' : '') +
+        '</span><b>' + esc(fmtMoney(totals.income_tax_amount)) + '</b></div>' +
+      '<div class="kpi is-profit"><span>Чистая прибыль</span><b>' + esc(fmtMoney(totals.net_profit)) + '</b></div>' +
+      (totals.profit_per_person_shift != null
+        ? '<div class="kpi is-profit"><span>Прибыль / чел·смен' +
+          (Number(totals.person_shifts) > 0 ? ' (' + esc(String(totals.person_shifts)) + ')' : '') +
+          '</span><b>' + esc(fmtMoney(totals.profit_per_person_shift)) + '</b></div>'
+        : '') +
       '</div></div></div>';
   }
 
   function renderFiles(state) {
     const active = state.tab === 'files' ? ' is-active' : '';
     const files = state.files || {};
+    const readOnly = !!state.readOnly;
     const kinds = [
       { id: 'estimate', title: 'Смета', hint: 'XLSX / PDF' },
       { id: 'tkp', title: 'ТКП', hint: 'PDF / DOCX' },
@@ -841,13 +907,28 @@ window.AsgardRpCalcModal = (function () {
     const drops = kinds.map(function (k) {
       const f = files[k.id];
       const name = f && (f.name || f.original_name || f.file_name);
+      const links = name ? fileLinksHtml(f) : '';
       return '<div class="rp-calc-drop' + (name ? ' has-file' : '') + '" data-drop="' + k.id + '" tabindex="0">' +
         '<strong>' + esc(k.title) + '</strong>' +
         '<div class="hint">' + (name ? 'Заменено — перетащите новый файл' : 'Перетащите файл или кликните · ' + k.hint) + '</div>' +
-        (name ? '<div class="fname">📎 ' + esc(name) + '</div>' : '') +
+        (name ? '<div class="fname">📎 ' + esc(name) + links + '</div>' : '') +
         '<input type="file" hidden data-file-input="' + k.id + '" accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg"/>' +
         '</div>';
     }).join('');
+
+    // Документы тендера (ТЗ, чертежи, паспорта): приходят из GET /:id/rp-review → tender_files.
+    // Раньше их в просчёте не было вообще — РП не мог открыть или скачать (D-187).
+    const tenderFiles = Array.isArray(state.tenderFiles) ? state.tenderFiles : [];
+    let tenderList = '';
+    if (tenderFiles.length) {
+      tenderList = '<div class="rp-calc-file-sec"><h4>Документы тендера</h4><ul class="rp-calc-file-list">' +
+        tenderFiles.map(function (f) {
+          const name = f.original_name || f.name || 'файл';
+          return '<li data-tender-file="' + esc(name) + '"><span class="tag">' + esc(f.type || 'Документ') + '</span>' +
+            '<span style="flex:1">' + esc(name) + '</span>' +
+            fileLinksHtml(f) + '</li>';
+        }).join('') + '</ul></div>';
+    }
 
     let list = '';
     if (state.demo && Array.isArray(files.mockList) && files.mockList.length) {
@@ -859,7 +940,27 @@ window.AsgardRpCalcModal = (function () {
 
     return '<div class="rp-calc-panel' + active + '" data-panel="files">' +
       '<p class="rp-calc-hint">Вложения к просчёту. В демо загрузка опциональна — показан пример комплекта файлов.</p>' +
-      '<div class="rp-calc-drops">' + drops + '</div>' + list + '</div>';
+      '<div class="rp-calc-drops">' + drops + '</div>' + list + tenderList + '</div>';
+  }
+
+  /** Ссылки «Просмотр» и «Скачать» для документа (D-187). */
+  function fileLinksHtml(f) {
+    if (!f) return '';
+    const F = window.AsgardFileDownload;
+    const url = F && F.fileDownloadUrl ? F.fileDownloadUrl(f) : (f.download_url || f.file_url || '');
+    if (!url) return '';
+    const name = f.original_name || f.name || f.filename || '';
+    const parts = [];
+    // Просмотр — через /preview/:filename (inline для PDF/картинок) с токеном.
+    const previewUrl = F && F.fileDownloadUrl && f.filename
+      ? F.fileDownloadUrl('/api/files/preview/' + encodeURIComponent(f.filename))
+      : '';
+    if (previewUrl) {
+      parts.push('<a class="rp-calc-file-link" href="' + esc(previewUrl) + '" target="_blank" rel="noopener" ' +
+        'title="Открыть в новой вкладке">Просмотр</a>');
+    }
+    parts.push('<a class="rp-calc-file-link" href="' + esc(url) + '" download="' + esc(name) + '" title="Скачать">Скачать</a>');
+    return '<span class="rp-calc-file-links">' + parts.join('') + '</span>';
   }
 
   function renderTender(state) {
@@ -895,9 +996,16 @@ window.AsgardRpCalcModal = (function () {
       review: initial.review || null,
       estimate: ensureEstimate(initial.estimate),
       files: initial.files || { estimate: null, tkp: null, report: null },
+      tenderFiles: initial.tenderFiles || [],
       tab: initial.tab || 'inputs',
       demo: !!initial.demo,
       embedded: !!initial.embedded,
+      // Читаем из opts: без этого «Только просмотр» и роль не доходили до модалки (D-185).
+      readOnly: !!initial.readOnly,
+      role: initial.role || '',
+      directorThreshold: initial.directorThreshold || DIRECTOR_THRESHOLD_FALLBACK,
+      saving: false,
+      savedAt: null,
       busy: false,
       onRefresh: initial.onRefresh || null,
       root: null,
@@ -952,6 +1060,17 @@ window.AsgardRpCalcModal = (function () {
         }
       }
       bind();
+      if (state.readOnly) {
+        // Read-only (D-185): поля отключаем физически. Раньше блокировались только
+        // кнопки, а ввод в поля всё равно менял локальную модель — правки «протекали»
+        // в просмотр. Ссылки/табы/кнопки остаются живыми.
+        const roRoot = getRoot();
+        if (roRoot) {
+          roRoot.querySelectorAll('input, select, textarea').forEach(function (el) {
+            el.disabled = true;
+          });
+        }
+      }
       if (keepFocus) {
         const root = getRoot();
         if (!root) return;
@@ -981,12 +1100,131 @@ window.AsgardRpCalcModal = (function () {
       });
     }
 
-    function recalc(keepFocus) {
+    /** Только пересчёт модели, без перерисовки (для «живого» ввода). */
+    function recalcModel() {
       const sm = S();
       if (sm && sm.recalcAsgardSmeta) {
         state.estimate = sm.recalcAsgardSmeta(state.estimate);
       }
+    }
+
+    function recalc(keepFocus) {
+      recalcModel();
       paint(keepFocus);
+    }
+
+    /* ── Debounce + автосейв черновика (D-186) ─────────────────────────
+     * РП жаловался, что смета не пересчитывается, пока не нажмёшь «Сохранить
+     * черновик». Теперь: ввод → локальный пересчёт мгновенно (он дешёвый),
+     * а сохранение на сервер — через 2.5 с тишины, с индикатором в футере. */
+    let autosaveTimer = null;
+    let autosaveIndicatorTimer = null;
+
+    function autosaveAllowed() {
+      if (state.demo || state.readOnly) return false;
+      if (!state.tender || !state.tender.id) return false;
+      // Автосейв — только владельцу просчёта; остальные не должны перебивать чужой отчёт.
+      const r = state.review;
+      if (!r || r.is_final) return false;
+      // Без посчитанной цены автосейв запрещён: buildPayload отправил бы work_price=null,
+      // а пустой work_price в PUT обнуляет цену просчёта (D-176). Ручное сохранение
+      // остаётся доступным — там пользователь видит результат нажатия.
+      const totals = (state.estimate && state.estimate.totals) || {};
+      if (totals.price_no_vat == null) return false;
+      return !!(r.is_real_final_owner || r.is_final_owner || r.can_finalize);
+    }
+
+    function paintSaveIndicator(text, kind) {
+      const root = getRoot();
+      if (!root) return;
+      const el = root.querySelector('[data-rp-save-state]');
+      if (!el) return;
+      el.textContent = text;
+      el.className = 'rp-calc-save-state' + (kind ? ' is-' + kind : '');
+    }
+
+    function autosaveNow(silent) {
+      if (!autosaveAllowed()) return;
+      clearTimeout(autosaveTimer);
+      if (!silent) paintSaveIndicator('Сохранение…', 'busy');
+      save(false, { auto: true });
+    }
+
+    function scheduleAutosave() {
+      if (!autosaveAllowed()) return;
+      clearTimeout(autosaveTimer);
+      paintSaveIndicator('Черновик не сохранён…', 'dirty');
+      autosaveTimer = setTimeout(function () { autosaveNow(); }, 2500);
+    }
+
+    /** Обёртка для полей: мгновенный локальный пересчёт + отложенный автосейв. */
+    function onFieldInput(handler) {
+      return function (ev) {
+        // Read-only: любое событие ввода игнорируем, даже если поле разблокировали
+        // из консоли — правки в просмотре недопустимы (D-185).
+        if (state.readOnly) return;
+        handler(ev);
+        patchTotals(ev && ev.target);
+        scheduleAutosave();
+      };
+    }
+
+    // Точечное обновление цифр без перерисовки модалки: полный paint() на каждый
+    // символ сбрасывал бы каретку в поле ввода (D-186). Полная перерисовка
+    // (показ/скрытие строк) делается на blur/change.
+    function patchTotals(activeEl) {
+      const root = getRoot();
+      if (!root) return;
+      const est = state.estimate || {};
+      const totals = est.totals || {};
+      const rows = est.rows || [];
+
+      function setKpi(name, value) {
+        if (value == null) return;
+        root.querySelectorAll('[data-kpi="' + name + '"]').forEach(function (el) {
+          el.textContent = fmtMoney(value);
+        });
+      }
+      setKpi('cost', totals.cost);
+      setKpi('equipment', totals.equipment);
+      setKpi('price_no_vat', totals.price_no_vat);
+      setKpi('price_with_vat', totals.price_with_vat);
+      setKpi('margin_rub', totals.margin_rub);
+      setKpi('income_tax_amount', totals.income_tax_amount);
+      setKpi('net_profit', totals.net_profit);
+      setKpi('profit_per_person_shift', totals.profit_per_person_shift);
+
+      root.querySelectorAll('tr[data-row-id]').forEach(function (tr) {
+        const id = tr.getAttribute('data-row-id');
+        const row = rows.find(function (r) { return r.id === id; });
+        if (!row) return;
+        const sumCell = tr.querySelector('[data-fld="sum"]');
+        if (sumCell && row.kind !== 'subtotal' && row.kind !== 'rollup') {
+          sumCell.textContent = row.kind === 'info'
+            ? (Number(row.sum) > 0 ? fmtMoney(row.sum) + ' спр.' : 'справочно')
+            : fmtMoney(row.sum);
+        }
+        if (row.kind === 'line' && row.qtyExpr && !row.override) {
+          const qtyInp = tr.querySelector('[data-fld="qty"]');
+          // Не двигаем значение в поле, где сейчас курсор (иначе рвём ввод).
+          if (qtyInp && qtyInp !== activeEl && document.activeElement !== qtyInp) {
+            qtyInp.value = row.qty != null ? row.qty : 0;
+          }
+        }
+      });
+
+      root.querySelectorAll('tr[data-sum-expr]').forEach(function (tr) {
+        const expr = tr.getAttribute('data-sum-expr');
+        const tds = tr.querySelectorAll('td');
+        const last = tds[tds.length - 1];
+        if (last && totals[expr] != null) last.textContent = fmtMoney(totals[expr]);
+      });
+
+      // Кнопка меняет смысл по порогу директора (D-185).
+      const btn = root.querySelector('[data-rp-act="send-director"]');
+      if (btn && !state.readOnly) {
+        btn.textContent = approvalNeeded() ? 'Отправить директору' : 'Завершить просчёт';
+      }
     }
 
     function bind() {
@@ -1002,34 +1240,78 @@ window.AsgardRpCalcModal = (function () {
         });
       });
 
+      // Тексты «Описание работ / Комментарий РП / Что нужно сделать» — живой ввод + автосейв (D-186).
+      root.querySelectorAll('[data-rp-brief]').forEach(function (inp) {
+        const key = inp.getAttribute('data-rp-brief');
+        const applyBrief = function () {
+          if (state.readOnly) return; // read-only: правки брифа недопустимы (D-185)
+          state.brief = state.brief || {};
+          state.brief[key] = inp.value;
+          scheduleAutosave();
+        };
+        inp.addEventListener('input', applyBrief);
+        inp.addEventListener('change', applyBrief);
+      });
+
       root.querySelectorAll('[data-rp-meta]').forEach(function (inp) {
-        inp.addEventListener('change', function () {
+        const applyMeta = function () {
+          if (state.readOnly) return; // read-only: метаданные не правим (D-185)
           const key = inp.getAttribute('data-rp-meta');
           state.estimate.meta = state.estimate.meta || {};
           state.estimate.meta[key] = inp.value;
+        };
+        // Живой ввод: обновляем модель, полная перерисовка — на blur/change (D-186).
+        inp.addEventListener('input', function () {
+          applyMeta();
+          const key = inp.getAttribute('data-rp-meta');
+          if (key === 'work_start_plan' || key === 'work_duration_days') recalcModel();
+          scheduleAutosave();
+        });
+        inp.addEventListener('change', function () {
+          applyMeta();
+          const key = inp.getAttribute('data-rp-meta');
           // Даты работ: пересчёт обновляет окончание в подсказке и шапке сметы.
+          if (key === 'work_start_plan' || key === 'work_duration_days') recalc(true);
+          else scheduleAutosave();
+        });
+        inp.addEventListener('blur', function () {
+          const key = inp.getAttribute('data-rp-meta');
           if (key === 'work_start_plan' || key === 'work_duration_days') recalc(true);
         });
       });
 
       root.querySelectorAll('[data-rp-param]').forEach(function (inp) {
-        inp.addEventListener('change', function () {
+        const applyParam = function () {
+          if (state.readOnly) return; // read-only: параметры расчёта не правим (D-185)
           const key = inp.getAttribute('data-rp-param');
           let v = Number(inp.value);
           if (!Number.isFinite(v)) v = 0;
           if (PCT_KEYS[key]) v = v / 100;
           state.estimate.params = state.estimate.params || {};
           state.estimate.params[key] = v;
+        };
+        // На «input» — мгновенный локальный пересчёт, на «change»/blur — полная перерисовка.
+        // Раньше был только «change», поэтому смета «не считалась», пока не уйдёшь из поля (D-186).
+        inp.addEventListener('input', onFieldInput(function () {
+          applyParam();
+          recalcModel();
+          patchTotals(inp);
+        }));
+        inp.addEventListener('change', function (ev) {
+          applyParam();
           recalc(true);
+          scheduleAutosave();
         });
+        inp.addEventListener('blur', function () { recalc(true); });
       });
 
       root.querySelectorAll('tr[data-row-id] [data-fld]').forEach(function (inp) {
-        inp.addEventListener('change', function () {
+        const applyRow = function () {
+          if (state.readOnly) return null; // read-only: строки сметы не правим (D-185)
           const tr = inp.closest('tr[data-row-id]');
           const id = tr && tr.getAttribute('data-row-id');
           const row = (state.estimate.rows || []).find(function (r) { return r.id === id; });
-          if (!row) return;
+          if (!row) return null;
           const fld = inp.getAttribute('data-fld');
           if (fld === 'qty' || fld === 'price') {
             row[fld] = Number(inp.value) || 0;
@@ -1046,13 +1328,25 @@ window.AsgardRpCalcModal = (function () {
           } else {
             row[fld] = inp.value;
           }
+          return row;
+        };
+        inp.addEventListener('input', onFieldInput(function () {
+          applyRow();
+          recalcModel();
+          patchTotals(inp);
+        }));
+        inp.addEventListener('change', function () {
+          applyRow();
           recalc(true);
+          scheduleAutosave();
         });
+        inp.addEventListener('blur', function () { recalc(true); });
       });
 
       // «+ строка» в блоках F (перечень), G (закупка), H (аренда).
       root.querySelectorAll('[data-add-row]').forEach(function (btn) {
         btn.addEventListener('click', function () {
+          if (state.readOnly) return; // read-only: добавление строк запрещено (D-185)
           const sec = btn.getAttribute('data-add-row');
           const rows = state.estimate.rows || [];
           const info = sec === 'F';
@@ -1122,6 +1416,7 @@ window.AsgardRpCalcModal = (function () {
           const act = btn.getAttribute('data-rp-act');
           if (act === 'save-draft') save(false);
           else if (act === 'send-director') openSendPreview();
+          else if (act === 'open-analysis') openAnalysisView();
           else if (act === 'demo-draft') toast('Демо', 'Черновик сохранён локально (без API)', 'ok');
           else if (act === 'demo-send') openSendPreview();
         });
@@ -1162,9 +1457,12 @@ window.AsgardRpCalcModal = (function () {
     }
 
     function approvalNeeded() {
-      const totals = (state.estimate && state.estimate.totals) || {};
-      const noVat = Number(totals.price_no_vat);
-      return Number.isFinite(noVat) && noVat >= DIRECTOR_THRESHOLD;
+      return stateApprovalNeeded(state);
+    }
+
+    /** Порог согласования: с бэкенда, иначе 10 млн (D-185). */
+    function directorThreshold() {
+      return stateDirectorThreshold(state);
     }
 
     function selectedRecipients() {
@@ -1229,6 +1527,23 @@ window.AsgardRpCalcModal = (function () {
       return out;
     }
 
+    /** Просмотр анализа РП без права правки — доступен всем, кто видит просчёт (D-188). */
+    function openAnalysisView() {
+      const M = window.AsgardRpReviewModal;
+      if (!M || !M.open) {
+        toast('Недоступно', 'Модуль карточки РП не загружен', 'err');
+        return;
+      }
+      syncMetaFromDom(getRoot());
+      // mode:'analysis' + readOnly + viewer → модалка рендерит снимок анализа без полей ввода.
+      M.open(state.tender || {}, state.pms || [], function () { /* no-op: просмотр */ }, {
+        mode: 'analysis',
+        readOnly: true,
+        role: 'viewer',
+        initialTab: 'report'
+      });
+    }
+
     function openSendPreview() {
       syncMetaFromDom(getRoot());
       const sm = S();
@@ -1283,7 +1598,8 @@ window.AsgardRpCalcModal = (function () {
             '<div class="rp-calc-mail-preview__to-warn" hidden>Выберите хотя бы одного получателя</div>' +
           '</div>')
         : ('<div class="rp-calc-mail-preview__skip">Согласование не требуется: цена без НДС ' +
-            esc(fmtMoney(noVat)) + ' ниже 10 млн. Тендер сразу уйдёт в «Готовим», письмо не отправляется.</div>');
+            esc(fmtMoney(noVat)) + ' ниже порога ' + esc(fmtMoney(directorThreshold())) +
+            '. Тендер сразу уйдёт в «Готовим», письмо не отправляется.</div>');
       overlay.innerHTML =
         '<div class="rp-calc-mail-preview__bar">' +
         '<div><strong>Предпросмотр письма директору</strong>' +
@@ -1353,17 +1669,26 @@ window.AsgardRpCalcModal = (function () {
       });
     }
 
-    function save(finalize) {
+    function save(finalize, opts) {
       if (state.demo) return;
       if (!state.tender || !state.tender.id) {
         toast('Ошибка', 'Нет ID тендера', 'err');
         return;
       }
+      const auto = !!(opts && opts.auto);
       state.busy = true;
-      paint();
+      if (!auto) paint();
+      else paintSaveIndicator('Сохранение…', 'busy');
       const body = buildPayload(finalize);
       saveRpReview(state.tender.id, body).then(function (d) {
         if (d.review) state.review = d.review;
+        if (auto) {
+          state.busy = false;
+          paintSaveIndicator('Черновик сохранён', 'ok');
+          if (autosaveIndicatorTimer) clearTimeout(autosaveIndicatorTimer);
+          autosaveIndicatorTimer = setTimeout(function () { paintSaveIndicator('', ''); }, 4000);
+          return;
+        }
         toast(finalize ? 'Отправлено' : 'Сохранено',
           finalize ? 'Просчёт ушёл директору' : 'Черновик просчёта сохранён', 'ok');
         if (typeof state.onRefresh === 'function') {
@@ -1372,10 +1697,16 @@ window.AsgardRpCalcModal = (function () {
         if (finalize) hideModal();
         else paint();
       }).catch(function (e) {
+        if (auto) {
+          state.busy = false;
+          // Конфликт optimistic lock на автосейве не спамим тостом — показываем в индикаторе.
+          paintSaveIndicator('Не сохранено: ' + (e.message || 'ошибка'), 'err');
+          return;
+        }
         toast('Ошибка', e.message || 'Не удалось сохранить', 'err');
       }).finally(function () {
         state.busy = false;
-        if (!finalize) paint();
+        if (!finalize && !auto) paint();
       });
     }
 
@@ -1395,7 +1726,10 @@ window.AsgardRpCalcModal = (function () {
       demo: false,
       embedded: false,
       estimate: null,
-      files: { estimate: null, tkp: null, report: null }
+      files: { estimate: null, tkp: null, report: null },
+      readOnly: opts.readOnly,
+      role: opts.role,
+      directorThreshold: opts.directorThreshold
     });
 
     showModal({
@@ -1413,6 +1747,11 @@ window.AsgardRpCalcModal = (function () {
         loadRpReview(tender.id).then(function (d) {
           if (d.tender) Object.assign(session.state.tender, d.tender);
           session.state.review = d.review || null;
+          // Порог согласования приходит с бэкенда — фронт больше не хардкодит 10 млн (D-185).
+          if (d.director_threshold != null) {
+            const th = Number(d.director_threshold);
+            if (Number.isFinite(th) && th > 0) session.state.directorThreshold = th;
+          }
           const rj = parseReportJson(d.review && d.review.report_json);
           const seed = rj.asgard_smeta || null;
           session.state.estimate = ensureEstimate(seed || {
@@ -1428,6 +1767,9 @@ window.AsgardRpCalcModal = (function () {
             tkp: d.tkp_file || null,
             report: d.report_file || null
           };
+          session.state.tenderFiles = Array.isArray(d.tender_files) ? d.tender_files : [];
+          // Снимок анализа РП — для кнопки «Открыть анализ (просмотр)».
+          session.state.analysisSnapshot = d.analysis_snapshot || rj.analysis_snapshot || null;
           session.paint();
         }).catch(function (e) {
           toast('Ошибка', e.message || 'Не удалось загрузить', 'err');

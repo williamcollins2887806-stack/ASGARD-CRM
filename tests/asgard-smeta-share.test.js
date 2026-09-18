@@ -354,6 +354,113 @@ check('регресс Киров Тайр (реестр 1229): движок во
   assert.ok(t.price_no_vat <= 10000000, 'цена без НДС ниже порога директора');
 });
 
+check('чистая прибыль и прибыль на чел·смену: движок считает то же, что руками (D-184)', () => {
+  const est = server.recalcAsgardSmeta({
+    template: 'asgard_v1',
+    params: {
+      markup: 1.5, material_markup: 1, fot_tax: 0, overhead: 0, contingency: 0, vat: 0.22, income_tax: 0.25,
+      work_days: 10, shifts_per_day: 2, workers_per_shift: 2, masters_per_shift: 1
+    }
+  });
+  est.rows.forEach((r) => {
+    if (r.kind !== 'line') return;
+    r.qty = 0; r.price = 0; r.override = true;
+  });
+  // B-раздел (текущие расходы) — НЕ материалы, поэтому идёт под общую наценку:
+  // себестоимость 1 000 000 → цена без НДС 1 500 000, маржа 500 000, налог 125 000, чистая 375 000.
+  Object.assign(est.rows.find((r) => r.id === 'b5'), { qty: 1, price: 1000000, override: true });
+  const t = server.recalcAsgardSmeta(est).totals;
+  assert.strictEqual(t.cost, 1000000, 'себестоимость');
+  assert.strictEqual(t.price_no_vat, 1500000, 'цена без НДС');
+  assert.strictEqual(t.margin_rub, 500000, 'маржа = цена без НДС − себестоимость');
+  assert.strictEqual(t.income_tax_amount, 125000, 'налог на прибыль 25% от маржи');
+  assert.strictEqual(t.net_profit, 375000, 'чистая прибыль = маржа − налог');
+  assert.strictEqual(t.income_tax_pct, 25, 'ставка налога отдана в totals');
+  assert.strictEqual(t.person_shifts, 10 * 2 * (2 + 1), 'чел·смены = сутки × смены × (рабочие + мастера)');
+  assert.strictEqual(t.profit_per_person_shift, Math.round(375000 / 60 * 100) / 100, 'прибыль на чел·смену');
+});
+
+check('ставка налога на прибыль настраивается и не влияет на цену (D-184)', () => {
+  const mk = (incomeTax) => {
+    const est = server.recalcAsgardSmeta({
+      template: 'asgard_v1',
+      params: { markup: 1.5, material_markup: 1, fot_tax: 0, overhead: 0, contingency: 0, vat: 0.22, income_tax: incomeTax }
+    });
+    est.rows.forEach((r) => {
+      if (r.kind !== 'line') return;
+      r.qty = 0; r.price = 0; r.override = true;
+    });
+    Object.assign(est.rows.find((r) => r.id === 'b5'), { qty: 1, price: 1000000, override: true });
+    return server.recalcAsgardSmeta(est).totals;
+  };
+  const t0 = mk(0);
+  const t25 = mk(0.25);
+  assert.strictEqual(t0.price_with_vat, t25.price_with_vat, 'налог на прибыль не меняет цену заказчику');
+  assert.strictEqual(t0.net_profit, 500000, 'при 0% чистая = маржа');
+  assert.strictEqual(t25.net_profit, 375000, 'при 25% чистая = 75% маржи');
+  assert.ok(t0.net_profit > t25.net_profit, 'рост налога уменьшает чистую прибыль');
+});
+
+check('ставка «25» (проценты) и «0.25» (доля) дают один результат (D-184)', () => {
+  const mk = (v) => {
+    const est = server.recalcAsgardSmeta({
+      template: 'asgard_v1',
+      params: { markup: 1.5, material_markup: 1, fot_tax: 0, overhead: 0, contingency: 0, vat: 0.22, income_tax: v }
+    });
+    est.rows.forEach((r) => {
+      if (r.kind !== 'line') return;
+      r.qty = 0; r.price = 0; r.override = true;
+    });
+    Object.assign(est.rows.find((r) => r.id === 'b5'), { qty: 1, price: 1000000, override: true });
+    return server.recalcAsgardSmeta(est).totals;
+  };
+  assert.strictEqual(mk(25).net_profit, mk(0.25).net_profit, 'ratio() нормализует 25 → 0.25');
+  assert.strictEqual(mk(25).income_tax_pct, 25, 'в totals ставка всегда в процентах');
+});
+
+check('убыток не превращается в «налог»: при отрицательной марже налог = 0 (D-184)', () => {
+  const est = server.recalcAsgardSmeta({
+    template: 'asgard_v1',
+    params: { markup: 1, material_markup: 1, fot_tax: 0, overhead: 0, contingency: 0, vat: 0.22, income_tax: 0.25 }
+  });
+  est.rows.forEach((r) => {
+    if (r.kind !== 'line') return;
+    r.qty = 1; r.price = 1000; r.override = true;
+  });
+  const t = server.recalcAsgardSmeta(est).totals;
+  // markup = 1 → цена без НДС = себестоимость, маржа ровно 0.
+  assert.strictEqual(t.margin_rub, 0, 'маржа 0');
+  assert.strictEqual(t.income_tax_amount, 0, 'налога нет при нулевой марже');
+  assert.strictEqual(t.net_profit, 0, 'чистая 0');
+  assert.strictEqual(t.profit_per_person_shift, 0, 'прибыль на чел·смену 0, деления на 0 нет');
+});
+
+check('строки R8–R10 в смете выводят маржу, налог и ЧИСТУЮ ПРИБЫЛЬ (D-184)', () => {
+  const est = server.recalcAsgardSmeta(estimateWithEquipment());
+  const r8 = est.rows.find((r) => r.id === 'r_margin');
+  const r9 = est.rows.find((r) => r.id === 'r_income_tax');
+  const r10 = est.rows.find((r) => r.id === 'r_net');
+  assert.ok(r8 && r9 && r10, 'строки R8/R9/R10 дозалиты в старую смету');
+  assert.strictEqual(r8.code, 'R8', 'код R8');
+  assert.strictEqual(r9.code, 'R9', 'код R9');
+  assert.strictEqual(r10.code, 'R10', 'код R10');
+  assert.strictEqual(r8.sum, est.totals.margin_rub, 'R8 = маржа');
+  assert.strictEqual(r9.sum, est.totals.income_tax_amount, 'R9 = налог');
+  assert.strictEqual(r10.sum, est.totals.net_profit, 'R10 = чистая прибыль');
+});
+
+check('порог директора берётся из settings, а не из хардкода фронта (D-185)', () => {
+  // Фронт получает director_threshold в GET /:id/rp-review и сравнивает с price_no_vat.
+  // Здесь проверяем чистую функцию порога на бэке, чтобы логика не разъехалась.
+  const { needsDirectorApproval } = require('../src/routes/pm-duty');
+  assert.strictEqual(typeof needsDirectorApproval, 'function', 'экспортирована needsDirectorApproval');
+  assert.strictEqual(needsDirectorApproval(10000000, 10000000), true, 'ровно порог → согласование нужно');
+  assert.strictEqual(needsDirectorApproval(9999999.99, 10000000), false, 'чуть ниже → не нужно');
+  assert.strictEqual(needsDirectorApproval(5000000, 3000000), true, 'свой порог 3 млн → 5 млн требует согласия');
+  assert.strictEqual(needsDirectorApproval(2999999, 3000000), false, 'ниже своего порога → не требует');
+  assert.strictEqual(needsDirectorApproval(null, 10000000), false, 'без цены согласование не включаем');
+});
+
 const pending = [];
 
 check('письмо директору: перечень, колонка «Доля, %» и плановые даты на месте', () => {
