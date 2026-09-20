@@ -27,6 +27,12 @@ const UPLOAD_BASE = process.env.UPLOAD_DIR || './uploads';
 const MAX_PHOTO_SIZE = 15 * 1024 * 1024; // 15MB
 const MANGO_SMS_FROM = process.env.MANGO_SMS_EXTENSION || '101';
 
+// D-220: белый список типов фото (расширение берём из MIME, а не из имени файла клиента).
+const PHOTO_MIME_EXT = {
+  'image/jpeg': '.jpg', 'image/jpg': '.jpg', 'image/png': '.png',
+  'image/webp': '.webp', 'image/heic': '.heic', 'image/heif': '.heif',
+};
+
 const MANAGE_ROLES = ['PM', 'HEAD_PM', 'OFFICE_MANAGER', 'WAREHOUSE', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV'];
 
 async function routes(fastify, options) {
@@ -496,7 +502,11 @@ async function routes(fastify, options) {
 
       if (!file) return reply.code(400).send({ error: 'Фото не загружено' });
 
-      const ext = path.extname(file.filename).toLowerCase() || '.jpg';
+      // D-220 (VERIFY-C, 20.09): тот же белый список, что в field-assembly.js. Раньше расширение
+      // бралось из имени файла как есть → .html/.svg раздавались статикой как исполняемый контент.
+      const ext = PHOTO_MIME_EXT[String(file.mimetype || '').toLowerCase()];
+      if (!ext) return reply.code(415).send({ error: 'Недопустимый тип файла — только изображение (jpeg/png/webp/heic)' });
+      const safeOriginal = String(file.filename || '').replace(/[\\/\u0000-\u001f]/g, '').slice(0, 300) || null;
       const uploadDir = path.join(UPLOAD_BASE, 'packing');
       await fs.promises.mkdir(uploadDir, { recursive: true });
 
@@ -509,7 +519,7 @@ async function routes(fastify, options) {
           photographed_at = NOW(), photographed_by = $3,
           updated_at = NOW()
         WHERE id = $4
-      `, [uniqueName, file.filename, empId, itemId]);
+      `, [uniqueName, safeOriginal, empId, itemId]);
 
       return { ok: true, photo_url: `/uploads/packing/${uniqueName}` };
     } catch (err) {

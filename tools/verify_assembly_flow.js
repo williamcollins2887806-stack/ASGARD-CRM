@@ -149,6 +149,40 @@ const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR
       check('GET /api/assembly/:id (чужой РП) → 403 (IDOR-guard)', r.status === 403, `status=${r.status}`);
     }
 
+    // D-220 (VERIFY-C): негативные кейсы типа файла. Раньше .html/.txt принимались и
+    // раздавались статикой как text/html → stored XSS. Теперь только белый список MIME.
+    {
+      const badForm = new FormData();
+      badForm.append('photo', new Blob([Buffer.from('<script>alert(1)</script>')], { type: 'text/html' }), 'evil.html');
+      fr = await fetch(BASE + `/api/field/assembly/${orderId}/items/${i1.id}/photo`, { method: 'POST', headers: { Authorization: 'Bearer ' + fieldToken }, body: badForm });
+      check('D-220: .html (text/html) отклонён (415)', fr.status === 415, `status=${fr.status}`);
+
+      const txtForm = new FormData();
+      txtForm.append('photo', new Blob([Buffer.from('x')], { type: 'text/plain' }), 'evil.txt');
+      fr = await fetch(BASE + `/api/field/assembly/${orderId}/items/${i1.id}/photo`, { method: 'POST', headers: { Authorization: 'Bearer ' + fieldToken }, body: txtForm });
+      check('D-220: .txt (text/plain) отклонён (415)', fr.status === 415, `status=${fr.status}`);
+
+      // svg — исполняемый в браузере контент, не в белом списке
+      const svgForm = new FormData();
+      svgForm.append('photo', new Blob([Buffer.from('<svg onload=alert(1)/>')], { type: 'image/svg+xml' }), 'x.svg');
+      fr = await fetch(BASE + `/api/field/assembly/${orderId}/items/${i1.id}/photo`, { method: 'POST', headers: { Authorization: 'Bearer ' + fieldToken }, body: svgForm });
+      check('D-220: .svg (image/svg+xml) отклонён (415)', fr.status === 415, `status=${fr.status}`);
+
+      // имя «evil.html» с корректным MIME image/png → сохраняется как .png (расширение из MIME)
+      const spoofForm = new FormData();
+      spoofForm.append('photo', new Blob([PNG], { type: 'image/png' }), 'evil.html');
+      fr = await fetch(BASE + `/api/field/assembly/${orderId}/items/${i1.id}/photo`, { method: 'POST', headers: { Authorization: 'Bearer ' + fieldToken }, body: spoofForm });
+      fd = await fr.json().catch(() => ({}));
+      const spoofOk = fr.status === 200 && /\.png$/.test(fd.photo_url || '');
+      check('D-220: имя evil.html при image/png → сохранён как .png', spoofOk, `status=${fr.status} url=${fd.photo_url}`);
+      const spoofAbs = path.join(UPLOAD_BASE, 'assembly', path.basename(fd.photo_url || 'x'));
+      if (spoofOk) cleanup.files.push(spoofAbs);
+
+      // /uploads/* отдаётся с nosniff (класс XSS закрыт на уровне статики)
+      const probe = await fetch(BASE + '/uploads/assembly/__nonexistent__.html');
+      check('D-220: /uploads/* с X-Content-Type-Options: nosniff', probe.headers.get('x-content-type-options') === 'nosniff', `hdr=${probe.headers.get('x-content-type-options')}`);
+    }
+
     // ── 8. приёмка паллета (field scan-pallet) ──
     const qr = (await pool.query('SELECT qr_uuid FROM assembly_pallets WHERE id=$1', [palletId])).rows[0]?.qr_uuid;
     fr = await fetch(BASE + '/api/field/assembly/scan-pallet', { method: 'POST', headers: H(fieldToken), body: JSON.stringify({ qr_uuid: qr, lat: 55.75, lon: 37.61 }) });

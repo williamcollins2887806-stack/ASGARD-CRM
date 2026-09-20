@@ -18,6 +18,19 @@ const path = require('path');
 const UPLOAD_BASE = process.env.UPLOAD_DIR || './uploads';
 const MAX_PHOTO_SIZE = 15 * 1024 * 1024; // 15MB (как в legacy field-packing)
 
+// D-220 (VERIFY-C, 20.09): белый список типов фото. Раньше расширение бралось из имени
+// файла как есть (как в legacy field-packing.js), поэтому `.html`/`.svg` сохранялся и
+// раздавался статикой как text/html → stored XSS от залогиненного сотрудника.
+// Далее расширение БЕРЁМ ИЗ MIME (не из пользовательского имени) — имя не влияет на путь.
+const PHOTO_MIME_EXT = {
+  'image/jpeg': '.jpg',
+  'image/jpg': '.jpg',
+  'image/png': '.png',
+  'image/webp': '.webp',
+  'image/heic': '.heic',
+  'image/heif': '.heif',
+};
+
 async function routes(fastify) {
   const db = fastify.db;
   const auth = { preHandler: [fastify.fieldAuthenticate] };
@@ -229,7 +242,11 @@ async function routes(fastify) {
     }
     if (!file) return bad(reply, 'Фото не загружено');
 
-    const ext = (path.extname(file.filename) || '.jpg').toLowerCase();
+    // D-220: тип — только по MIME из белого списка. Расширение берём ИЗ MIME, а не из имени файла
+    // (имя от клиента может быть «evil.html»/«x.svg»). Не-картинки отклоняем до записи на диск.
+    const ext = PHOTO_MIME_EXT[String(file.mimetype || '').toLowerCase()];
+    if (!ext) return bad(reply, 'Недопустимый тип файла — только изображение (jpeg/png/webp/heic)', 415);
+    const safeOriginal = String(file.filename || '').replace(/[\\/\u0000-\u001f]/g, '').slice(0, 300) || null;
     const uploadDir = path.join(UPLOAD_BASE, 'assembly');
     await fs.promises.mkdir(uploadDir, { recursive: true });
     const uniqueName = `asm_${randomUUID().replace(/-/g, '')}${ext}`;
@@ -238,7 +255,7 @@ async function routes(fastify) {
     const userId = await resolveUserId(empId);
     await db.query(`UPDATE assembly_items SET photo_filename=$1, photo_original=$2,
       photographed_at=NOW(), photographed_by=$3 WHERE id=$4`,
-      [uniqueName, file.filename || null, userId, itemId]);
+      [uniqueName, safeOriginal, userId, itemId]);
 
     return { ok: true, photo_url: `/uploads/assembly/${uniqueName}`, photo_filename: uniqueName };
   });

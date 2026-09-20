@@ -5,6 +5,13 @@
 
 require('dotenv').config();
 
+// D-210 / задача «mail-killswitch» (шаг 0.5): единый предохранитель почты.
+// Ставится ДО require любых сервисов/роутов: патчит nodemailer.createTransport,
+// поэтому даже модули, делающие `const { createTransport } = require('nodemailer')`,
+// получают уже заглушённую версию. В non-prod реальная SMTP-отправка невозможна,
+// кроме адресов из MAIL_ALLOW_TO (для тестов — только Андросов).
+require('./lib/mail-killswitch').install();
+
 const fastify = require('fastify')({
   logger: {
     level: process.env.NODE_ENV === 'production' ? 'info' : 'debug'
@@ -342,10 +349,16 @@ fastify.addHook('onSend', async (request, reply) => {
 });
 
 // Uploads directory — served separately (uploads/ is outside public/)
+// D-220 (VERIFY-C, 20.09): в uploads/ лежат файлы, загруженные пользователями. Даже с белым
+// списком MIME на загрузке (field-assembly.js) статика исторически могла отдавать сохранённый
+// .html/.svg как исполняемый контент (stored XSS на домене CRM). Ставим X-Content-Type-Options
+// на ВСЕ отдачи /uploads/*, чтобы браузер не «догадывался» о типе. Класс дефекта закрыт для
+// всех загрузчиков сразу (не по одному роуту — урок D-203/D-206).
 fastify.register(require('@fastify/static'), {
   root: path.join(__dirname, '../uploads'),
   prefix: '/uploads/',
   decorateReply: false,
+  setHeaders: (res) => { res.setHeader('X-Content-Type-Options', 'nosniff'); },
 });
 
 // Rate limiting
@@ -1724,7 +1737,14 @@ const start = async () => {
       await imapService.init();
       fastify.log.info('IMAP mail service started');
       try { const imapSvc = require("./services/imap"); imapSvc.startPersonalPolling(); fastify.log.info("Personal IMAP polling started"); } catch(pe) { fastify.log.warn("Personal IMAP init skipped: " + pe.message); }
-      try { const folderSorter = require("./services/email-folder-sorter"); folderSorter.initCrmFolders(); setInterval(() => folderSorter.processNewCrmEmails().catch(e => console.error("[FolderSorter]", e.message)), 300000); fastify.log.info("Email folder sorter initialized"); } catch(fse) { fastify.log.warn("Folder sorter init skipped: " + fse.message); }
+      // D-204 (дефект H): на стенде (IMAP_DISABLED=1) сортировщик папок тоже НЕ поднимаем —
+      // он ходит в IMAP каждые 5 минут и мог бы трогать реальный ящик при локальном запуске
+      // на прод-данных. Guard здесь, т.к. служба запускается отдельно от imap.init().
+      if (process.env.IMAP_DISABLED === '1' || process.env.IMAP_DISABLED === 'true') {
+        fastify.log.info('IMAP_DISABLED=1 — email folder sorter не запускается (режим просмотра)');
+      } else {
+        try { const folderSorter = require("./services/email-folder-sorter"); folderSorter.initCrmFolders(); setInterval(() => folderSorter.processNewCrmEmails().catch(e => console.error("[FolderSorter]", e.message)), 300000); fastify.log.info("Email folder sorter initialized"); } catch(fse) { fastify.log.warn("Folder sorter init skipped: " + fse.message); }
+      }
     } catch (imapErr) {
       fastify.log.warn('IMAP mail service init skipped: ' + imapErr.message);
     }
