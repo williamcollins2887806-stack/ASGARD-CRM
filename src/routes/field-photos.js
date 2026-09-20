@@ -75,11 +75,13 @@ async function routes(fastify, options) {
         return reply.code(400).send({ error: 'Укажите work_id' });
       }
 
-      // Validate extension
-      const ext = path.extname(file.filename).toLowerCase();
-      const allowedExts = ['.jpg', '.jpeg', '.png', '.webp', '.heic', '.heif'];
-      if (!allowedExts.includes(ext)) {
-        return reply.code(400).send({ error: 'Допустимые форматы: JPG, PNG, WebP, HEIC' });
+      // D-220 (20.09): расширение из белого списка (MIME → каноничный ext), не из имени
+      // клиента — иначе `.html`/`.svg` ложились в uploads/field/<work> и отдавались
+      // статикой как исполняемый контент.
+      const { safeStoredExt } = require('../lib/upload-ext');
+      const ext = safeStoredExt(file.mimetype, file.filename, { allow: 'photo' });
+      if (!ext) {
+        return reply.code(415).send({ error: 'Допустимые форматы: JPG, PNG, WebP, HEIC' });
       }
 
       // Create dir

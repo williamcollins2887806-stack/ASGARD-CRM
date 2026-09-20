@@ -1753,10 +1753,12 @@ module.exports = async function routesWithExtensions(fastify, options) {
     ]);
 
     // Сохраняем файл на диск
-    const ext       = pathLib.extname(fileInfo.filename || '').toLowerCase() || '.bin';
-    const safeExt   = ext.replace(/[^a-z0-9.]/gi, '');
+    // D-220 (20.09): расширение из белого списка (MIME → каноничный ext), а не из имени клиента.
+    // `uploads/tkp/ready/*` раздаётся статикой → `.html` исполнялся в домене CRM.
+    const { safeStoredExt } = require('../lib/upload-ext');
     const ts        = Date.now();
-    const filename  = `tkp_ready_${newTkp.id}_${ts}${safeExt}`;
+    const ext       = safeStoredExt(fileInfo.mimetype, fileInfo.filename, { allow: 'doc' }) || '.bin';
+    const filename  = `tkp_ready_${newTkp.id}_${ts}${ext}`;
     const tkpDir    = pathLib.join(UPLOAD_DIR, 'tkp', 'ready');
     fsLib.mkdirSync(tkpDir, { recursive: true });
     const absPath   = pathLib.join(tkpDir, filename);

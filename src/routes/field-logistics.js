@@ -20,6 +20,7 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const { logError } = require('../lib/log-error');
+const { safeStoredExt } = require('../lib/upload-ext');
 
 // FIX 3: дата-парсер для assertNotLocked
 function _logDateParts(d) {
@@ -487,8 +488,13 @@ async function routes(fastify, options) {
 
       if (!file) return reply.code(400).send({ error: 'Файл не загружен' });
 
+      // D-220 (20.09): расширение ИЗ БЕЛОГО СПИСКА, а не из имени клиента. Раньше
+      // `path.extname(file.filename)` клал `evil.html` в uploads/logistics/ и статика
+      // отдавала его как text/html → исполнение на домене CRM (подтверждено рантаймом).
+      const ext = safeStoredExt(file.mimetype, file.filename, { allow: 'doc' });
+      if (!ext) return reply.code(415).send({ error: 'Недопустимый тип файла' });
+
       // Save file
-      const ext = path.extname(file.filename).toLowerCase();
       const uploadDir = path.join(UPLOAD_BASE, 'logistics');
       await fs.promises.mkdir(uploadDir, { recursive: true });
 

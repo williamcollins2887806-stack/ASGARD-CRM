@@ -429,9 +429,10 @@ async function routes(fastify) {
     const ct = req.headers['content-type'] || '';
     if (ct.includes('multipart/form-data')) {
       const data = await req.file(); if (!data) return bad(reply, 'Загрузите фото');
-      const allowed = ['.jpg', '.jpeg', '.png', '.gif', '.webp'];
-      const ext = path.extname(data.filename || '').toLowerCase() || '.jpg';
-      if (!allowed.includes(ext)) return bad(reply, 'Форматы: jpg, png, gif, webp');
+      // D-220 (20.09): белый список по MIME, расширение — каноничное из MIME, не из имени клиента.
+      const { safeStoredExt } = require('../lib/upload-ext');
+      const ext = safeStoredExt(data.mimetype, data.filename, { allow: 'photo' });
+      if (!ext) return bad(reply, 'Форматы: jpg, png, gif, webp', 415);
       const dir = path.join(process.env.UPLOAD_DIR || './uploads', 'products');
       await fsp.mkdir(dir, { recursive: true });
       const fn = `prod_${pid}_${randomUUID()}${ext}`;

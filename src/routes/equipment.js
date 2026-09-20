@@ -2319,10 +2319,13 @@ async function equipmentRoutes(fastify, options) {
       const data = await request.file();
       if (!data) return reply.code(400).send({ success: false, message: 'Загрузите фото' });
 
-      const allowedExt = ['.jpg', '.jpeg', '.png', '.gif', '.webp'];
-      const ext = path.extname(data.filename || '').toLowerCase() || '.jpg';
-      if (!allowedExt.includes(ext)) {
-        return reply.code(400).send({ success: false, message: 'Допустимые форматы: jpg, png, gif, webp' });
+      // D-220 (20.09): расширение — из белого списка (MIME → каноничный ext), не из имени
+      // клиента. Иначе `.html`/`.svg` ложились в uploads/equipment и отдавались статикой
+      // как исполняемый контент (stored XSS в домене CRM).
+      const { safeStoredExt } = require('../lib/upload-ext');
+      const ext = safeStoredExt(data.mimetype, data.filename, { allow: 'photo' });
+      if (!ext) {
+        return reply.code(415).send({ success: false, message: 'Допустимые форматы: jpg, png, gif, webp' });
       }
 
       const uploadDir = process.env.UPLOAD_DIR || './uploads';

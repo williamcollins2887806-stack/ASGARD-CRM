@@ -190,17 +190,17 @@ async function routes(fastify) {
       return reply.code(404).send({ error: 'Файл счёта не найден на диске' });
     }
     const name = rows[0].file_name || path.basename(fsPath);
-    const ext = path.extname(name).toLowerCase();
-    const types = {
-      '.pdf': 'application/pdf',
-      '.png': 'image/png',
-      '.jpg': 'image/jpeg',
-      '.jpeg': 'image/jpeg',
-      '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-      '.xls': 'application/vnd.ms-excel'
-    };
-    reply.header('Content-Type', types[ext] || 'application/octet-stream');
-    reply.header('Content-Disposition', `inline; filename="${encodeURIComponent(name)}"`);
+    // D-220 (20.09): тип — по расширению РЕАЛЬНОГО файла на диске (а не по имени из БД),
+    // неизвестное/исполняемое → attachment/octet-stream. Иначе `.html` исполнялся inline.
+    const ext = path.extname(fsPath).toLowerCase();
+    const { safeContentType } = require('../lib/upload-ext');
+    const ct = safeContentType(ext, null);
+    reply.header('Content-Type', ct);
+    if (ct === 'application/octet-stream') {
+      reply.header('Content-Disposition', `attachment; filename="${encodeURIComponent(name)}"`);
+    } else {
+      reply.header('Content-Disposition', `inline; filename="${encodeURIComponent(name)}"`);
+    }
     return reply.send(fs.createReadStream(fsPath));
   });
 
@@ -278,8 +278,13 @@ async function routes(fastify) {
     const data = await req.file();
     if (!data) return reply.code(400).send({ error: 'Нет файла' });
     const dir = await ensureUploadDir();
-    const safe = String(data.filename || 'invoice').replace(/[^\w.\-а-яА-ЯёЁ]+/gi, '_').slice(0, 120);
-    const fname = `${Date.now()}_${safe}`;
+    // D-220 (20.09): расширение из белого списка (MIME → каноничный ext), а не из имени клиента.
+    // `uploads/payment-invoices/*` раздаётся статикой → `.html` исполнялся в домене CRM.
+    const { safeStoredExt } = require('../lib/upload-ext');
+    const ext = safeStoredExt(data.mimetype, data.filename, { allow: 'doc' });
+    if (!ext) return reply.code(415).send({ error: 'Недопустимый тип файла' });
+    const stem = String(data.filename || 'invoice').replace(/[^\w.\-а-яА-ЯёЁ]+/gi, '_').replace(/\.[^.]*$/, '').slice(0, 110) || 'invoice';
+    const fname = `${Date.now()}_${stem}${ext}`;
     const full = path.join(dir, fname);
     await fsp.writeFile(full, await data.toBuffer());
     const file_path = normalizeUploadUrl(`uploads/payment-invoices/${fname}`);

@@ -72,8 +72,7 @@ async function routes(fastify, options) {
     await fs.mkdir(uploadBaseDir, { recursive: true });
   } catch (e) {}
 
-  fastify.post('/upload', { preHandler: [fastify.authenticate] }, async (request, reply) => {
-    const parts = request.parts();
+  fastify.post('/upload', { preHandler: [fastify.authenticate] }, async (request, reply) => {    const parts = request.parts();
     let file = null;
     let tenderId = null;
     let workId = null;
@@ -255,11 +254,17 @@ async function routes(fastify, options) {
 
     const buffer = await fs.readFile(filePath);
 
-    reply
-      .header('Content-Type', doc.mime_type || 'application/octet-stream')
+    // D-220 (20.09): даже на скачивании не отдаём client-supplied text/html — тип по
+    // расширению реального файла (плюс Content-Disposition: attachment).
+    const { safeContentType, inlineSafetyHeaders } = require('../lib/upload-ext');
+    const dlExt = path.extname(filePath).toLowerCase();
+    const dlSafety = inlineSafetyHeaders(dlExt);
+    const dlOut = reply
+      .header('Content-Type', safeContentType(dlExt, doc.mime_type))
       .header('Content-Length', buffer.length)
-      .header('Content-Disposition', buildContentDisposition(doc.original_name || doc.filename))
-      .send(buffer);
+      .header('Content-Disposition', buildContentDisposition(doc.original_name || doc.filename));
+    for (const [k, v] of Object.entries(dlSafety)) dlOut.header(k, v);
+    return dlOut.send(buffer);
   });
 
   // Предпросмотр файла (inline, без скачивания — для директора)
@@ -300,21 +305,30 @@ async function routes(fastify, options) {
     }
 
     const buffer = await fs.readFile(filePath);
-    const mime = doc.mime_type || 'application/octet-stream';
+    // D-220 (20.09): Content-Type берём из РАСШИРЕНИЯ СОХРАНЁННОГО файла (у нас это
+    // хеш + белый список расширений), а НЕ из client-supplied documents.mime_type.
+    // Раньше `mime = doc.mime_type || octet-stream` отдавал `text/html` для `.html`,
+    // а inline-allowlist пропускал `text/*` → stored XSS исполнялся в домене CRM.
+    const storedExt = path.extname(filePath).toLowerCase();
+    const { safeContentType, inlineSafetyHeaders } = require('../lib/upload-ext');
+    const mime = safeContentType(storedExt, doc.mime_type);
 
     // Для PDF, изображений и текста — inline (предпросмотр в браузере)
     // Для остальных — скачивание
     const inlineTypes = ['application/pdf', 'image/png', 'image/jpeg', 'image/gif', 'image/webp', 'text/plain'];
-    const disposition = inlineTypes.some(t => mime.startsWith(t.split('/')[0]) || mime === t)
+    const disposition = inlineTypes.includes(mime)
       ? `inline; filename="${encodeURIComponent(doc.original_name || doc.filename)}"`
       : buildContentDisposition(doc.original_name || doc.filename);
 
-    reply
+    const safety = inlineSafetyHeaders(storedExt);
+    const out = reply
       .header('Content-Type', mime)
       .header('Content-Length', buffer.length)
       .header('Content-Disposition', disposition)
-      .header('Cache-Control', 'private, max-age=3600')
-      .send(buffer);
+      .header('X-Content-Type-Options', 'nosniff')
+      .header('Cache-Control', 'private, max-age=3600');
+    for (const [k, v] of Object.entries(safety)) out.header(k, v);
+    return out.send(buffer);
   });
 
   fastify.get('/', { preHandler: [fastify.authenticate] }, async (request) => {

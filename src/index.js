@@ -349,16 +349,40 @@ fastify.addHook('onSend', async (request, reply) => {
 });
 
 // Uploads directory — served separately (uploads/ is outside public/)
-// D-220 (VERIFY-C, 20.09): в uploads/ лежат файлы, загруженные пользователями. Даже с белым
-// списком MIME на загрузке (field-assembly.js) статика исторически могла отдавать сохранённый
-// .html/.svg как исполняемый контент (stored XSS на домене CRM). Ставим X-Content-Type-Options
-// на ВСЕ отдачи /uploads/*, чтобы браузер не «догадывался» о типе. Класс дефекта закрыт для
-// всех загрузчиков сразу (не по одному роуту — урок D-203/D-206).
+// D-220 (VERIFY-C, 20.09; расширено независимым верификатором): в uploads/ лежат файлы,
+// загруженные пользователями. Статика @fastify/static выставляет Content-Type ПО РАСШИРЕНИЮ,
+// поэтому сохранённый `.html`/`.svg` отдавался как text/html и ИСПОЛНЯЛСЯ в домене CRM
+// (stored XSS от залогиненного сотрудника). `nosniff` это НЕ лечит — сервер сам объявляет тип.
+// Барьер ставим ГЛОБАЛЬНО на всю раздачу uploads/ (а не по одному загрузчику — урок D-203/D-206):
+//   1) белый список расширений на входе (src/lib/upload-ext.js) в каждом загрузчике;
+//   2) здесь — принудительный безопасный Content-Type по расширению сохранённого файла;
+//   3) nosniff как дополнительный слой.
 fastify.register(require('@fastify/static'), {
   root: path.join(__dirname, '../uploads'),
   prefix: '/uploads/',
   decorateReply: false,
-  setHeaders: (res) => { res.setHeader('X-Content-Type-Options', 'nosniff'); },
+  setHeaders: (res, filePath) => {
+    const { isDangerousExt, EXT_CONTENT_TYPE } = require('./lib/upload-ext');
+    const ext = path.extname(filePath || '').toLowerCase();
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    if (isDangerousExt(ext)) {
+      // HTML/SVG/XML: блокируем ИСПОЛНЕНИЕ (CSP sandbox без allow-scripts — скрипт не
+      // запустится даже в том же origin), но оставляем рендер статичных документов
+      // (серверные экспорты смет: html с 0 <script>, проверено на проде).
+      // charset ОБЯЗАТЕЛЕН: @fastify/static добавлял его автоматически, а мы перезаписываем
+      // Content-Type — без charset кириллица в серверных HTML-экспортах превращалась в кракозябры.
+      res.setHeader('Content-Security-Policy', "sandbox; default-src 'none'; style-src 'unsafe-inline'; img-src data:");
+      res.setHeader('Content-Type', ext === '.svg' ? 'image/svg+xml' : 'text/html; charset=utf-8');
+      return;
+    }
+    if (!EXT_CONTENT_TYPE[ext]) {
+      // Неизвестное расширение — отдаём как поток байт, браузер не исполнит.
+      res.setHeader('Content-Type', 'application/octet-stream');
+      res.setHeader('Content-Disposition', 'attachment');
+      return;
+    }
+    res.setHeader('Content-Type', EXT_CONTENT_TYPE[ext] + (ext === '.txt' || ext === '.csv' ? '; charset=utf-8' : ''));
+  },
 });
 
 // Rate limiting

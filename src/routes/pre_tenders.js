@@ -947,7 +947,15 @@ module.exports = async function (fastify) {
         continue;
       }
       if (part.type !== 'file') continue;
-      const safeName = (part.filename || 'file').replace(/[^\w.\-а-яА-ЯёЁ ]/gi, '_').slice(0, 200);
+      // D-220 (20.09): имя сохраняем безопасно, но расширение обязано быть из белого списка —
+      // `uploads/pre_tenders/*` раздаётся статикой, `.html` исполнялся в домене CRM.
+      const { safeStoredExt: safeExtPt } = require('../lib/upload-ext');
+      const ptExt = safeExtPt(part.mimetype, part.filename, { allow: 'doc' });
+      if (!ptExt) {
+        return reply.code(415).send({ error: 'Недопустимый тип файла' });
+      }
+      const baseStem = (part.filename || 'file').replace(/\.[^.]*$/, '').replace(/[^\w.\-а-яА-ЯёЁ ]/gi, '_').slice(0, 180) || 'file';
+      const safeName = `${baseStem}${ptExt}`;
       const filePath = path.join(uploadDir, safeName);
       const chunks = [];
       for await (const chunk of part.file) chunks.push(chunk);
@@ -1316,8 +1324,10 @@ module.exports = async function (fastify) {
 
     const buf = fs.readFileSync(absPath);
     const dispName = (doc.original_name || doc.filename || 'document').replace(/[\r\n"]/g, '_');
+    // D-220 (20.09): тип по расширению реального файла, не по client-supplied MIME.
+    const { safeContentType: safeCtDoc } = require('../lib/upload-ext');
     reply
-      .header('Content-Type', doc.mime_type || 'application/octet-stream')
+      .header('Content-Type', safeCtDoc(path.extname(absPath).toLowerCase(), doc.mime_type))
       .header('Content-Length', buf.length)
       .header('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(dispName)}`)
       .send(buf);
@@ -1864,8 +1874,10 @@ module.exports = async function (fastify) {
     if (!absPath) return reply.code(404).send({ error: 'file_not_found_on_disk' });
     const buf = fs.readFileSync(absPath);
     const dispName = (att.original_filename || att.filename || 'attachment').replace(/[\r\n"]/g, '_');
+    // D-220 (20.09): тип по расширению реального файла (белый список), не по client-supplied MIME.
+    const { safeContentType: safeCtAtt } = require('../lib/upload-ext');
     reply
-      .header('Content-Type', att.mime_type || 'application/octet-stream')
+      .header('Content-Type', safeCtAtt(path.extname(absPath).toLowerCase(), att.mime_type))
       .header('Content-Length', buf.length)
       .header('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(dispName)}`)
       .send(buf);

@@ -516,8 +516,10 @@ async function routes(fastify) {
       }
       // сохраним файл
       try{const path=require('path');const fsp=require('fs').promises;const {randomUUID}=require('crypto');
+        const {safeStoredExt}=require('../lib/upload-ext'); // D-220: расширение из белого списка
         const dir=path.join(process.env.UPLOAD_DIR||'./uploads','proc-invoices');await fsp.mkdir(dir,{recursive:true});
-        fileName=(data.filename||'invoice.xlsx');const fn='inv_'+randomUUID()+'_'+fileName.replace(/[^\w.-]/g,'_');
+        fileName=(data.filename||'invoice.xlsx');const safeDocExt=safeStoredExt(data.mimetype,fileName,{allow:'doc'})||'.bin';
+        const fn='inv_'+randomUUID()+safeDocExt;
         await fsp.writeFile(path.join(dir,fn),buf);filePath='/uploads/proc-invoices/'+fn;
       }catch(_){}
     } else {

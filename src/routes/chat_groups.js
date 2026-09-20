@@ -1102,8 +1102,15 @@ module.exports = async function(fastify) {
 
       await fs.mkdir(chatUploadDir, { recursive: true });
 
+      // D-220 (20.09): расширение только из белого списка (MIME → каноничный ext).
+      // Раньше брали `path.extname(originalName)` из имени клиента, файл лежит в uploads/chat
+      // (раздаётся статикой) → `.html` исполнялся в домене CRM.
+      const { safeStoredExt } = require('../lib/upload-ext');
+      const ext = safeStoredExt(data.mimetype, data.filename, { allow: 'doc' });
+      if (!ext) {
+        return reply.code(415).send({ error: 'Недопустимый тип файла' });
+      }
       const originalName = (data.filename || '').trim() || 'attachment';
-      const ext = path.extname(originalName);
       const safeName = Date.now() + '_' + Math.random().toString(36).substring(2, 8) + ext;
       const filePath = path.resolve(chatUploadDir, safeName);
       const storedFilePath = `chat/${safeName}`;
@@ -1222,9 +1229,15 @@ module.exports = async function(fastify) {
 
     const fileBuffer = await fs.readFile(filePath);
 
+    // D-220 (20.09): тип по расширению реально сохранённого файла (белый список), а не
+    // client-supplied mime_type — иначе `.html` отдавался как text/html и исполнялся.
+    const { safeContentType } = require('../lib/upload-ext');
+    const storedExt = path.extname(String(attachment?.file_name || storedFilename || '')).toLowerCase();
+
     reply
-      .header('Content-Type', attachment?.mime_type || 'application/octet-stream')
+      .header('Content-Type', safeContentType(storedExt, attachment?.mime_type))
       .header('Content-Disposition', buildSafeContentDisposition(attachment?.file_name || storedFilename))
+      .header('X-Content-Type-Options', 'nosniff')
       .send(fileBuffer);
   });
 

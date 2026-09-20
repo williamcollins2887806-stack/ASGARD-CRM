@@ -1109,6 +1109,159 @@ async function reviewRoutes(fastify) {
     return { ok: true };
   });
 
+  // ── Чек-лист анализа (D-203) ─────────────────────────────────────────────
+  // GET /:id/analysis-checklist — шаблон + сохранённые ответы.
+  fastify.get('/:id/analysis-checklist', {
+    preHandler: [fastify.requireRoles(PM_ROLES)]
+  }, async (request, reply) => {
+    const checklist = require('../services/analysis-checklist');
+    const tenderId = request.params.id;
+    // Мягко удалённый тендер чек-лист не отдаёт: в ответах есть бюджет заказчика и
+    // оценка конкурентов. Инвариант держим на ВСЕХ трёх роутах (:id) одинаково —
+    // PUT и .docx уже фильтруют, GET раньше нет (нашёл L3-верификатор 20.09).
+    const t = await db.query(
+      'SELECT id, customer_name, customer_inn, tender_title FROM tenders WHERE id = $1 AND deleted_at IS NULL',
+      [tenderId]
+    );
+    if (!t.rows[0]) return reply.code(404).send({ error: 'Тендер не найден' });
+    const template = await checklist.getTemplate(db);
+    const r = await db.query(
+      'SELECT * FROM tender_analysis_checklists WHERE tender_id = $1',
+      [tenderId]
+    );
+    return {
+      template,
+      checklist: r.rows[0] || null,
+      tender: t.rows[0]
+    };
+  });
+
+  // PUT /:id/analysis-checklist — сохранить ответы (черновик чек-листа).
+  // Писать может хозяин анализа / дежурный / считающий / wide-роли.
+  fastify.put('/:id/analysis-checklist', {
+    preHandler: [fastify.requireRoles(PM_ROLES)]
+  }, async (request, reply) => {
+    const checklist = require('../services/analysis-checklist');
+    const tenderId = request.params.id;
+    const userId = request.user.id;
+    const b = request.body || {};
+
+    const t = await db.query(
+      'SELECT id, customer_name, customer_inn, tender_title, calculator_user_id FROM tenders WHERE id = $1 AND deleted_at IS NULL',
+      [tenderId]
+    );
+    if (!t.rows[0]) return reply.code(404).send({ error: 'Тендер не найден' });
+    const tender = t.rows[0];
+
+    let review = await ensureReview(db, tenderId, userId);
+    if (review.is_final) {
+      return reply.code(409).send({ error: 'Отчёт уже закрыт — чек-лист менять нельзя' });
+    }
+    // D-203: после закрытия АНАЛИЗА чек-лист неизменяем. Он — основание решения о подаче
+    // (уходит в Word и в историю контрагента), поэтому «дописать задним числом» нельзя.
+    // Тот же инвариант уже стоял в PUT /:id/rp-review для mode='analysis'; здесь его не было.
+    if (review.analysis_finalized_at) {
+      return reply.code(409).send({
+        error: 'Анализ уже закрыт — чек-лист менять нельзя',
+        code: 'CHECKLIST_LOCKED'
+      });
+    }
+
+    const template = await checklist.getTemplate(db);
+    const answers = (b.answers && typeof b.answers === 'object') ? b.answers : {};
+    const freeAnswers = Array.isArray(b.free_answers) ? b.free_answers.slice(0, 20) : [];
+
+    // require_complete=1 — жёсткая проверка (используется при закрытии анализа).
+    if (b.require_complete) {
+      const v = checklist.validateAnswers(template, answers);
+      if (!v.ok) {
+        return reply.code(400).send({
+          error: 'Заполните обязательные вопросы чек-листа',
+          code: 'CHECKLIST_INCOMPLETE',
+          missing: v.missing
+        });
+      }
+    }
+
+    const r = await db.query(`
+      INSERT INTO tender_analysis_checklists
+        (tender_id, review_id, created_by_user_id, answers, free_answers, template_snapshot,
+         work_title, customer_name, customer_inn, created_at, updated_at)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW(), NOW())
+      ON CONFLICT (tender_id) DO UPDATE SET
+        review_id = EXCLUDED.review_id,
+        created_by_user_id = EXCLUDED.created_by_user_id,
+        answers = EXCLUDED.answers,
+        free_answers = EXCLUDED.free_answers,
+        template_snapshot = EXCLUDED.template_snapshot,
+        work_title = EXCLUDED.work_title,
+        customer_name = EXCLUDED.customer_name,
+        customer_inn = EXCLUDED.customer_inn,
+        updated_at = NOW()
+      RETURNING *
+    `, [
+      tenderId,
+      review.id || null,
+      userId,
+      JSON.stringify(answers),
+      JSON.stringify(freeAnswers),
+      JSON.stringify(template),
+      tender.tender_title || null,
+      tender.customer_name || null,
+      tender.customer_inn || null
+    ]);
+
+    return { ok: true, checklist: r.rows[0] };
+  });
+
+  // GET /:id/analysis-checklist.docx — скачать чек-лист в Word (D-203).
+  fastify.get('/:id/analysis-checklist.docx', {
+    preHandler: [fastify.requireRoles(PM_ROLES)]
+  }, async (request, reply) => {
+    const tenderId = request.params.id;
+    const row = await db.query(
+      'SELECT * FROM tender_analysis_checklists WHERE tender_id = $1',
+      [tenderId]
+    );
+    const cl = row.rows[0];
+    if (!cl) {
+      return reply.code(404).send({ error: 'Чек-лист ещё не заполнен' });
+    }
+    const t = await db.query(
+      'SELECT id, customer_name, customer_inn, tender_title FROM tenders WHERE id = $1 AND deleted_at IS NULL',
+      [tenderId]
+    );
+    if (!t.rows[0]) {
+      return reply.code(404).send({ error: 'Тендер не найден' });
+    }
+    const author = await db.query('SELECT name FROM users WHERE id = $1', [cl.created_by_user_id]);
+    try {
+      const docx = require('../services/analysis-checklist-docx');
+      const buffer = docx.buildChecklistDocx({
+        template: cl.template_snapshot,
+        answers: cl.answers,
+        free_answers: cl.free_answers,
+        tender: t.rows[0] || {},
+        authorName: author.rows[0]?.name || '—',
+        createdAt: cl.updated_at || cl.created_at
+      });
+      const bad = docx.assertNoPlaceholders(buffer);
+      if (bad.length) {
+        request.log.error({ bad }, 'analysis-checklist docx содержит плейсхолдеры');
+        return reply.code(500).send({ error: 'Ошибка шаблона чек-листа: ' + bad.join(', ') });
+      }
+      const safeNo = String((t.rows[0] && t.rows[0].id) || tenderId);
+      const filename = 'Чек-лист анализа_' + safeNo + '.docx';
+      reply
+        .header('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document')
+        .header('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(filename)}`)
+        .send(buffer);
+    } catch (err) {
+      request.log.error({ err }, 'analysis-checklist docx failed');
+      return reply.code(500).send({ error: err.message || 'Не удалось собрать Word' });
+    }
+  });
+
   fastify.get('/:id/rp-review', {
     preHandler: [fastify.requireRoles(PM_ROLES)]
   }, async (request, reply) => {
@@ -1459,6 +1612,21 @@ async function reviewRoutes(fastify) {
   let approvalRecipients = null;
 
     if (isFinal && mode === 'analysis') {
+      // D-203: анализ нельзя закрыть без заполненного чек-листа (10 базовых вопросов).
+      const checklistSvc = require('../services/analysis-checklist');
+      const clRow = await db.query(
+        'SELECT answers FROM tender_analysis_checklists WHERE tender_id = $1',
+        [tenderId]
+      );
+      const clTemplate = await checklistSvc.getTemplate(db);
+      const clCheck = checklistSvc.validateAnswers(clTemplate, clRow.rows[0]?.answers || {});
+      if (!clCheck.ok) {
+        return reply.code(400).send({
+          error: 'Заполните чек-лист анализа перед закрытием',
+          code: 'CHECKLIST_REQUIRED',
+          missing: clCheck.missing
+        });
+      }
       const userName = request.user.name || '';
       if (decision === 'reject') {
         // Не кидаем в архив сразу: ТО видит «не подаём» в активном реестре и сам жмёт «В архив».
@@ -1685,7 +1853,12 @@ async function reviewRoutes(fastify) {
     const uploadRoot = process.env.UPLOAD_DIR || './uploads';
     const dir = path.join(uploadRoot, 'rp_estimates', String(tenderId));
     await fs.mkdir(dir, { recursive: true });
-    const safeName = `${Date.now()}_${String(data.filename || 'estimate').replace(/[^a-zA-Z0-9._-]/g, '_')}`;
+    // D-220 (20.09): расширение из белого списка (MIME → каноничный ext), не из имени клиента.
+    // `uploads/rp_estimates/*` раздаётся статикой → `.html` исполнялся в домене CRM.
+    const { safeStoredExt } = require('../lib/upload-ext');
+    const ext = safeStoredExt(data.mimetype, data.filename, { allow: 'doc' });
+    if (!ext) return reply.code(415).send({ error: 'Недопустимый тип файла' });
+    const safeName = `${Date.now()}_${String(data.filename || 'estimate').replace(/[^a-zA-Z0-9._-]/g, '_').replace(/\.[^.]*$/, '').slice(0, 100)}${ext}`;
     await fs.writeFile(path.join(dir, safeName), buffer);
     const downloadUrl = `/uploads/rp_estimates/${tenderId}/${safeName}`;
     const docRes = await db.query(`
@@ -1745,7 +1918,11 @@ async function reviewRoutes(fastify) {
     const uploadRoot = process.env.UPLOAD_DIR || './uploads';
     const dir = path.join(uploadRoot, 'rp_reports', String(tenderId));
     await fs.mkdir(dir, { recursive: true });
-    const safeName = `${Date.now()}_${String(data.filename || 'report').replace(/[^a-zA-Z0-9._-]/g, '_')}`;
+    // D-220 (20.09): белый список расширений (см. rp_estimates выше).
+    const { safeStoredExt: safeExtRep } = require('../lib/upload-ext');
+    const extRep = safeExtRep(data.mimetype, data.filename, { allow: 'doc' });
+    if (!extRep) return reply.code(415).send({ error: 'Недопустимый тип файла' });
+    const safeName = `${Date.now()}_${String(data.filename || 'report').replace(/[^a-zA-Z0-9._-]/g, '_').replace(/\.[^.]*$/, '').slice(0, 100)}${extRep}`;
     await fs.writeFile(path.join(dir, safeName), buffer);
     const downloadUrl = `/uploads/rp_reports/${tenderId}/${safeName}`;
     const docRes = await db.query(`
@@ -1805,7 +1982,11 @@ async function reviewRoutes(fastify) {
     const uploadRoot = process.env.UPLOAD_DIR || './uploads';
     const dir = path.join(uploadRoot, 'rp_tkp', String(tenderId));
     await fs.mkdir(dir, { recursive: true });
-    const safeName = `${Date.now()}_${String(data.filename || 'tkp').replace(/[^a-zA-Z0-9._-]/g, '_')}`;
+    // D-220 (20.09): белый список расширений (см. rp_estimates выше).
+    const { safeStoredExt: safeExtTkp } = require('../lib/upload-ext');
+    const extTkp = safeExtTkp(data.mimetype, data.filename, { allow: 'doc' });
+    if (!extTkp) return reply.code(415).send({ error: 'Недопустимый тип файла' });
+    const safeName = `${Date.now()}_${String(data.filename || 'tkp').replace(/[^a-zA-Z0-9._-]/g, '_').replace(/\.[^.]*$/, '').slice(0, 100)}${extTkp}`;
     await fs.writeFile(path.join(dir, safeName), buffer);
     const downloadUrl = `/uploads/rp_tkp/${tenderId}/${safeName}`;
     const docRes = await db.query(`
@@ -2126,7 +2307,11 @@ async function reviewRoutes(fastify) {
           bodyText = String((await part.value) || '').trim();
         } else if (part.type === 'file' && part.file) {
           const buffer = await part.toBuffer();
-          const safeName = `${Date.now()}_${String(part.filename || 'file').replace(/[^a-zA-Z0-9._-]/g, '_')}`;
+          // D-220 (20.09): белый список расширений (см. rp_estimates выше).
+          const { safeStoredExt: safeExtThread } = require('../lib/upload-ext');
+          const extThread = safeExtThread(part.mimetype, part.filename, { allow: 'doc' });
+          if (!extThread) return reply.code(415).send({ error: 'Недопустимый тип файла' });
+          const safeName = `${Date.now()}_${String(part.filename || 'file').replace(/[^a-zA-Z0-9._-]/g, '_').replace(/\.[^.]*$/, '').slice(0, 100)}${extThread}`;
           await fs.writeFile(path.join(dir, safeName), buffer);
           const downloadUrl = `/uploads/rp_thread/${tenderId}/${safeName}`;
           uploadedFiles.push({

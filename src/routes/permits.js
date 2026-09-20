@@ -389,7 +389,10 @@ module.exports = async function(fastify) {
     let scanFile = null;
     let scanOrigName = null;
     if (file) {
-      const ext = path.extname(file.filename) || '';
+      // D-220 (20.09): расширение из белого списка (MIME → каноничный ext), не из имени клиента.
+      const { safeStoredExt } = require('../lib/upload-ext');
+      const ext = safeStoredExt(file.mimetype, file.filename, { allow: 'doc' });
+      if (!ext) return reply.code(415).send({ error: 'Недопустимый тип файла' });
       scanFile = `permit_${uuidv4()}${ext}`;
       await fs.mkdir(uploadDir, { recursive: true });
       await fs.writeFile(path.join(uploadDir, scanFile), file.buffer);
@@ -657,7 +660,10 @@ module.exports = async function(fastify) {
       try { await fs.unlink(path.join(uploadDir, permit.scan_file)); } catch(e) { /* ignore */ }
     }
 
-    const ext = path.extname(file.filename) || '';
+    // D-220 (20.09): расширение из белого списка (MIME → каноничный ext), не из имени клиента.
+    const { safeStoredExt: safeExtPermit } = require('../lib/upload-ext');
+    const ext = safeExtPermit(file.mimetype, file.filename, { allow: 'doc' });
+    if (!ext) return reply.code(415).send({ error: 'Недопустимый тип файла' });
     const scanFile = `permit_${uuidv4()}${ext}`;
     await fs.mkdir(uploadDir, { recursive: true });
     await fs.writeFile(path.join(uploadDir, scanFile), file.buffer);

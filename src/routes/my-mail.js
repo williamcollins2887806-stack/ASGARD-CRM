@@ -869,9 +869,13 @@ async function routes(fastify, options) {
     if (!fs.existsSync(filePath)) return reply.code(404).send({ error: 'Файл не найден на диске' });
 
     const stream = fs.createReadStream(filePath);
+    // D-220 (20.09): тип по расширению реального файла, не по client-supplied MIME
+    // (письма/вложения приходят извне — самый недоверенный источник).
+    const { safeContentType } = require('../lib/upload-ext');
     return reply
-      .header('Content-Type', attachment.mime_type || 'application/octet-stream')
+      .header('Content-Type', safeContentType(path.extname(filePath).toLowerCase(), attachment.mime_type))
       .header('Content-Disposition', `attachment; filename="${encodeURIComponent(attachment.original_filename || attachment.filename)}"`)
+      .header('X-Content-Type-Options', 'nosniff')
       .send(stream);
   });
 

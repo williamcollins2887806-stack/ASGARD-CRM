@@ -285,7 +285,12 @@ const { logError } = require('../lib/log-error');
       const fs = require('fs').promises;
       const { v4: uuidv4 } = require('uuid');
 
-      const ext = path.extname(file.filename).toLowerCase();
+      // D-220 (20.09): расширение только из белого списка (MIME → каноничный ext).
+      // Раньше `path.extname(file.filename)` + отдача через /api/files/preview как
+      // text/html давала исполнение `.html` в домене CRM (подтверждено рантаймом).
+      const { safeStoredExt } = require('../lib/upload-ext');
+      const ext = safeStoredExt(file.mimetype, file.filename, { allow: 'doc' });
+      if (!ext) return reply.code(415).send({ error: 'Недопустимый тип файла' });
       const storedName = uuidv4() + ext;
       const uploadDir = process.env.UPLOAD_DIR || './uploads';
       // Каталог может отсутствовать (напр. после rsync/чистого чекаута) —

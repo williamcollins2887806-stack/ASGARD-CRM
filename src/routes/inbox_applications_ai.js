@@ -23,6 +23,8 @@ const path = require('path');
 const { v4: uuidv4 } = require('uuid');
 const db = require('../services/db');
 const aiAnalyzer = require('../services/ai-email-analyzer');
+// D-204: единый util извлечения текста письма (body_text → stripHtml(body_html)).
+const { bestEmailText } = require('../services/email-text');
 const correspondenceService = require('../services/correspondence');
 const { createNotification } = require('../services/notify');
 
@@ -221,8 +223,11 @@ module.exports = async function (fastify) {
 
     const buf = fs.readFileSync(absPath);
     const dispName = (att.original_filename || att.filename || 'attachment').replace(/[\r\n"]/g, '_');
+    // D-220 (20.09): Content-Type по расширению РЕАЛЬНОГО файла (белый список), а не из
+    // client-supplied ea.mime_type — иначе `.html` отдавался как text/html и исполнялся.
+    const { safeContentType } = require('../lib/upload-ext');
     reply
-      .header('Content-Type', att.mime_type || 'application/octet-stream')
+      .header('Content-Type', safeContentType(path.extname(absPath).toLowerCase(), att.mime_type))
       .header('Content-Length', buf.length)
       .header('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(dispName)}`)
       .send(buf);
@@ -299,7 +304,10 @@ module.exports = async function (fastify) {
         const analysis = await aiAnalyzer.analyzeEmail({
           emailId: email_id,
           subject: email.subject,
-          bodyText: email.body_text,
+          // D-204 (дефект B): body_text у HTML-only писем пуст (Яндекс/Fwd) — именно из-за
+          // этого терялись #4255/#4256. Здесь был сырой body_text, то есть второй потребитель
+          // analyzeEmail оставался с той же дырой. Теперь общий util: body_text → stripHtml(body_html).
+          bodyText: bestEmailText(email),
           fromEmail: email.from_email,
           fromName: email.from_name,
           attachmentNames

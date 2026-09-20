@@ -230,7 +230,12 @@ async function routes(fastify, options) {
       let receiptFilename = null;
       let receiptOriginal = null;
       if (file) {
-        const ext = path.extname(file.filename).toLowerCase() || '.jpg';
+        // D-220 (20.09): расширение из белого списка (MIME → каноничный ext), а не из имени
+        // клиента. Иначе `.html`/`.svg` ложились в uploads/receipts и отдавались статикой
+        // как исполняемый контент (stored XSS в домене CRM).
+        const { safeStoredExt } = require('../lib/upload-ext');
+        const ext = safeStoredExt(file.mimetype, file.filename, { allow: 'photo' });
+        if (!ext) return reply.code(415).send({ error: 'Недопустимый тип файла — только изображение или PDF' });
         const uploadDir = path.join(UPLOAD_BASE, 'receipts');
         await fs.promises.mkdir(uploadDir, { recursive: true });
 

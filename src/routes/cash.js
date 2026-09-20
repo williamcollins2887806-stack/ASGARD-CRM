@@ -1719,7 +1719,12 @@ module.exports = async function(fastify) {
 
     // Сохраняем файл
     const uploadDir = process.env.UPLOAD_DIR || './uploads';
-    const ext = path.extname(data.filename) || '.jpg';
+    // D-220 (20.09): расширение из белого списка (MIME → каноничный ext). Раньше брали
+    // `path.extname(data.filename)` → `.html`/`.svg` ложились в uploads/ и раздавались
+    // статикой как исполняемый контент (stored XSS в домене CRM).
+    const { safeStoredExt } = require('../lib/upload-ext');
+    const ext = safeStoredExt(data.mimetype, data.filename, { allow: 'photo' });
+    if (!ext) return reply.code(415).send({ error: 'Недопустимый тип файла — только изображение или PDF' });
     const filename = `receipt_${randomUUID()}${ext}`;
     const filepath = path.join(uploadDir, filename);
 

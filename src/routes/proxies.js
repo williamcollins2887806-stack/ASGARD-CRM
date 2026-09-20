@@ -451,8 +451,13 @@ module.exports = async function proxiesRoutes(fastify) {
 
       const dir = path.join(UPLOAD_ROOT, String(row.id));
       ensureDir(dir);
-      const safeName = String(data.filename || 'file.bin').replace(/[^\w.\-а-яА-ЯёЁ]+/gi, '_');
-      const stored = `${kind}_${Date.now()}_${safeName}`;
+      // D-220 (20.09): расширение из белого списка (MIME → каноничный ext), не из имени клиента.
+      // `uploads/proxies/*` раздаётся статикой → `.html` исполнялся в домене CRM.
+      const { safeStoredExt } = require('../lib/upload-ext');
+      const ext = safeStoredExt(data.mimetype, data.filename, { allow: 'doc' });
+      if (!ext) return reply.code(415).send({ error: 'Недопустимый тип файла' });
+      const safeStem = String(data.filename || 'file').replace(/[^\w.\-а-яА-ЯёЁ]+/gi, '_').replace(/\.[^.]*$/, '').slice(0, 100) || 'file';
+      const stored = `${kind}_${Date.now()}_${safeStem}${ext}`;
       const abs = path.join(dir, stored);
       await pipeline(data.file, createWriteStream(abs));
       const url = `/uploads/proxies/${row.id}/${stored}`;
