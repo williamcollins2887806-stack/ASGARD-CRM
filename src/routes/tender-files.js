@@ -5,6 +5,7 @@
  * download/view without CRM login
  */
 const fs = require('fs');
+const path = require('path');
 const tenderMail = require('../services/tender-director-mail');
 
 module.exports = async function tenderFilesRoutes(fastify) {
@@ -35,7 +36,14 @@ module.exports = async function tenderFilesRoutes(fastify) {
     if (!found.ok) return reply.code(404).send({ error: 'not_found' });
     const file = await tenderMail.resolveDocFs(db, found.tokenRow.tender_id, request.params.docId);
     if (!file) return reply.code(404).send({ error: 'file_missing' });
-    reply.header('Content-Type', file.mime);
+    // D-220b (верификатор 21.09): тип брался из БД (client-supplied mime_type). Роут стримит файл
+    // НАПРЯМУЮ, минуя статику /uploads/*, поэтому CSP-барьер setHeaders на него не действовал —
+    // и .html/.svg отсюда исполнялись. Тип считаем по расширению реального файла + страховка.
+    const { safeContentType, inlineSafetyHeaders } = require('../lib/upload-ext');
+    const ext = path.extname(String(file.fsPath || file.filename || '')).toLowerCase();
+    reply.header('Content-Type', safeContentType(ext, file.mime));
+    for (const [k, v] of Object.entries(inlineSafetyHeaders(ext))) reply.header(k, v);
+    reply.header('X-Content-Type-Options', 'nosniff');
     reply.header('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(file.filename)}`);
     return reply.send(fs.createReadStream(file.fsPath));
   });
@@ -45,8 +53,15 @@ module.exports = async function tenderFilesRoutes(fastify) {
     if (!found.ok) return reply.code(404).send({ error: 'not_found' });
     const file = await tenderMail.resolveDocFs(db, found.tokenRow.tender_id, request.params.docId);
     if (!file) return reply.code(404).send({ error: 'file_missing' });
-    reply.header('Content-Type', file.mime);
-    reply.header('Content-Disposition', `inline; filename*=UTF-8''${encodeURIComponent(file.filename)}`);
+    const { safeContentType, inlineSafetyHeaders } = require('../lib/upload-ext');
+    const ext = path.extname(String(file.fsPath || file.filename || '')).toLowerCase();
+    const ct = safeContentType(ext, file.mime);
+    reply.header('Content-Type', ct);
+    for (const [k, v] of Object.entries(inlineSafetyHeaders(ext))) reply.header(k, v);
+    reply.header('X-Content-Type-Options', 'nosniff');
+    // Исполняемое/неизвестное — не рендерим, а отдаём файлом (защита от stored XSS).
+    const inline = ct !== 'application/octet-stream';
+    reply.header('Content-Disposition', `${inline ? 'inline' : 'attachment'}; filename*=UTF-8''${encodeURIComponent(file.filename)}`);
     return reply.send(fs.createReadStream(file.fsPath));
   });
 };

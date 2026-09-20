@@ -2412,24 +2412,22 @@ async function reviewRoutes(fastify) {
       return reply.code(404).send({ error: 'Файл не найден на диске' });
     }
 
-    const mime = doc.mime_type || 'application/octet-stream';
+    // D-220b: тип из БД (client-supplied) + image/svg+xml в inline-списке → svg со <script>
+    // исполнялся. Тип считаем по расширению реального файла; исполняемое не рендерим.
+    const { safeContentType, inlineSafetyHeaders: ishPm } = require('../lib/upload-ext');
     const name = doc.original_name || doc.filename || 'file';
     const ext = path.extname(name).toLowerCase();
-    const inlineMimes = [
-      'application/pdf',
-      'image/png', 'image/jpeg', 'image/gif', 'image/webp', 'image/svg+xml'
-    ];
-    const isBinaryInline = inlineMimes.includes(mime)
-      || mime.startsWith('image/')
-      || (mime === 'application/pdf' || ext === '.pdf');
+    const mime = safeContentType(ext, doc.mime_type);
+    const isBinaryInline = mime === 'application/pdf' || mime.startsWith('image/');
 
     if (isBinaryInline) {
-      return reply
+      const outPm = reply
         .header('Content-Type', mime)
         .header('Content-Length', buffer.length)
         .header('Content-Disposition', `inline; filename="${encodeURIComponent(name)}"`)
-        .header('Cache-Control', 'private, max-age=600')
-        .send(buffer);
+        .header('Cache-Control', 'private, max-age=600');
+      for (const [k, v] of Object.entries(ishPm(ext))) outPm.header(k, v);
+      return outPm.send(buffer);
     }
 
     try {

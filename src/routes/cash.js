@@ -2032,17 +2032,10 @@ module.exports = async function(fastify) {
       const stat = await fs.stat(filepath);
       const file = await fs.readFile(filepath);
 
-      const ext = path.extname(filename).toLowerCase();
-      const mimeTypes = {
-        '.jpg': 'image/jpeg',
-        '.jpeg': 'image/jpeg',
-        '.png': 'image/png',
-        '.gif': 'image/gif',
-        '.pdf': 'application/pdf',
-        '.webp': 'image/webp'
-      };
-
-      reply.header('Content-Type', mimeTypes[ext] || 'application/octet-stream');
+      // D-220b: тип — из общей политики, а не локального словаря (исполняемое → octet-stream).
+      const { safeContentType } = require('../lib/upload-ext');
+      reply.header('Content-Type', safeContentType(path.extname(filename).toLowerCase(), null));
+      reply.header('X-Content-Type-Options', 'nosniff');
       reply.header('Content-Length', stat.size);
       return reply.send(file);
     } catch (e) {

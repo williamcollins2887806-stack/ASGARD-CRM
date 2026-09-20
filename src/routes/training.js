@@ -204,9 +204,14 @@ async function routes(fastify, options) {
 
     const buffer = await fsp.readFile(filePath);
     const origName = t.certificate_original_name || t.certificate_file;
+    // D-220b: явный безопасный тип по реальному расширению (раньше тип не задавался вовсе).
+    const { safeContentType } = require('../lib/upload-ext');
+    const ctTrain = safeContentType(path.extname(String(t.certificate_file || '')).toLowerCase(), null);
     reply
+      .header('Content-Type', ctTrain)
+      .header('X-Content-Type-Options', 'nosniff')
       .header('Content-Length', buffer.length)
-      .header('Content-Disposition', `inline; filename*=UTF-8''${encodeURIComponent(origName)}`)
+      .header('Content-Disposition', `${ctTrain === 'application/octet-stream' ? 'attachment' : 'inline'}; filename*=UTF-8''${encodeURIComponent(origName)}`)
       .send(buffer);
   });
 }

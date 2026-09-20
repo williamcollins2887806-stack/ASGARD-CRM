@@ -390,6 +390,21 @@ async function main() {
   }
   step('0b. health', !!(health && health.status === 'ok'), JSON.stringify(health));
 
+  // D-220b (21.09): дрейф фикстуры клона — у служебных тест-юзеров появился pin_hash, из-за чего
+  // /api/auth/login отдаёт ограниченный токен (need_pin) и КАЖДЫЙ шаг падает 403 «Требуется
+  // подтверждение PIN». PIN-фича (HIGH-7) в проде остаётся; здесь приводим клон к ожидаемому
+  // состоянию ПЕРЕД прогоном, чтобы «красный» тест всегда означал дефект кода, а не дрейф стенда.
+  try {
+    const fixPool = new Pool({ user: 'asgard', password: '123456789', database: DB_NAME, host: '127.0.0.1' });
+    const fixed = await fixPool.query(
+      `UPDATE users SET pin_hash = NULL
+        WHERE login IN ('test_admin','test_pm','test_buh') AND pin_hash IS NOT NULL RETURNING login`);
+    if (fixed.rowCount) console.log('  [fixture] снят PIN у тест-юзеров:', fixed.rows.map((x) => x.login).join(', '));
+    await fixPool.end();
+  } catch (e) {
+    console.log('  [fixture] не удалось нормализовать PIN:', e.message);
+  }
+
   const seed = await seedOfsStock();
   step('0c. seed stock', seed.seeded.length >= 2, JSON.stringify(seed.seeded.map((s) => s.name.slice(0, 30))));
 

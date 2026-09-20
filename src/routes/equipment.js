@@ -2382,9 +2382,10 @@ async function equipmentRoutes(fastify, options) {
     try {
       const stat = await fsp.stat(filepath);
       const file = await fsp.readFile(filepath);
-      const mimeMap = { '.jpg':'image/jpeg', '.jpeg':'image/jpeg', '.png':'image/png', '.gif':'image/gif', '.webp':'image/webp' };
-      const ext = path.extname(safeName).toLowerCase();
-      reply.header('Content-Type', mimeMap[ext] || 'application/octet-stream');
+      // D-220b: тип — из общей политики (не локальный словарь): исполняемое → octet-stream.
+      const { safeContentType } = require('../lib/upload-ext');
+      reply.header('Content-Type', safeContentType(path.extname(safeName).toLowerCase(), null));
+      reply.header('X-Content-Type-Options', 'nosniff');
       reply.header('Content-Length', stat.size);
       reply.header('Cache-Control', 'public, max-age=86400');
       return reply.send(file);

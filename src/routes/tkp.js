@@ -2147,9 +2147,12 @@ module.exports = async function routesWithExtensions(fastify, options) {
       return reply.code(404).send({ error: 'Файл не найден на диске' });
     }
 
-    const mime     = tkp.attachment_mime || 'application/octet-stream';
+    // D-220b: тип из БД (client-supplied) → проводим через общую политику.
+    const { safeContentType } = require('../lib/upload-ext');
+    const mime     = safeContentType(pathLib.extname(absPath).toLowerCase(), tkp.attachment_mime);
     const dispName = encodeURIComponent(tkp.attachment_original_name || pathLib.basename(tkp.attachment_path));
     reply.header('Content-Type', mime);
+    reply.header('X-Content-Type-Options', 'nosniff');
     reply.header('Content-Disposition', `attachment; filename*=UTF-8''${dispName}`);
     return reply.send(fsLib.createReadStream(absPath));
   });

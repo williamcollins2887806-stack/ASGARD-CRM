@@ -54,18 +54,9 @@ const TERMINAL_STATUSES = new Set([
 ]);
 
 // Ответ заказчика на письмо: допустимые MIME и лимит размера (Сессия 08, fix #3).
+// D-220b: сам список теперь не решает судьбу файла — каноничное расширение определяет
+// `safeStoredExt` (см. ниже), который покрывает эти же типы и отбивает .html/.svg/пустой MIME.
 const MAX_REPLY_BYTES = 50 * 1024 * 1024; // 50 MB
-const ALLOWED_REPLY_MIMES = new Set([
-  'application/pdf',
-  'application/vnd.openxmlformats-officedocument.wordprocessingml.document', // docx
-  'application/msword', // doc (на всякий)
-  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', // xlsx
-  'application/vnd.ms-excel', // xls
-  'image/jpeg',
-  'image/png',
-  'image/tiff',
-  'text/plain'
-]);
 
 async function mimirConductorRoutes(fastify, options) {
   // ═══════════════════════════════════════════════════════════════════════════
@@ -420,13 +411,17 @@ async function mimirConductorRoutes(fastify, options) {
       const file = await request.file({ limits: { fileSize: MAX_REPLY_BYTES } });
       if (file) {
         // MIME-whitelist (fix #3) — отсекаем до записи на диск.
-        if (file.mimetype && !ALLOWED_REPLY_MIMES.has(file.mimetype)) {
+        // D-220b (21.09): пустой mimetype обходил проверку (`if (file.mimetype && …)`),
+        // а расширение бралось из клиентского имени — `image/png` + имя `evil.html` давал .html.
+        const { safeStoredExt } = require('../lib/upload-ext');
+        const storedExt = safeStoredExt(file.mimetype, file.filename, { allow: 'doc' });
+        if (!storedExt) {
           return reply.code(415).send({
-            error: `Тип файла не поддерживается: ${file.mimetype}. Разрешены: PDF, DOCX, XLSX, JPG, PNG, TIFF, TXT.`
+            error: `Тип файла не поддерживается: ${file.mimetype || '(не указан)'}. Разрешены: PDF, DOCX, XLSX, JPG, PNG, TIFF, TXT.`
           });
         }
         if (!fs.existsSync(LETTERS_DIR)) fs.mkdirSync(LETTERS_DIR, { recursive: true });
-        const safe = `reply_${letterId}_${Date.now()}${path.extname(file.filename || '') || '.bin'}`;
+        const safe = `reply_${letterId}_${Date.now()}${storedExt}`;
         replyPath = path.join(LETTERS_DIR, safe);
         await new Promise((resolve, rej) => {
           const ws = fs.createWriteStream(replyPath);

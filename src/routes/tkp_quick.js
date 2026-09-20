@@ -1390,9 +1390,10 @@ async function routes(fastify, options) {
       });
       const buf = kind === 'smeta' ? xlsxBuf : docxBuf;
       const ext = kind === 'smeta' ? 'xlsx' : 'docx';
-      const mime = kind === 'smeta'
-        ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-        : 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+      // D-220b: тип — из белого списка по реальному расширению (генератор серверный, но
+      // держим единый вход вместо локального тернарника, который гейт класса считает «из выражения»).
+      const { safeContentType: sctTkpq } = require('../lib/upload-ext');
+      const mime = sctTkpq('.' + ext, null);
       // CRIT: кириллица в filename= ломает Node setHeader (ERR_INVALID_CHAR).
       // ASCII fallback + filename* (RFC 6266), как в acts.js.
       const shortUid = request.params.uid.slice(0, 8);

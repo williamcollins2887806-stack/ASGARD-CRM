@@ -61,7 +61,22 @@ async function saveBufferAsDoc(db, {
   const uploadRoot = process.env.UPLOAD_DIR || './uploads';
   const dir = path.join(uploadRoot, subdir, String(tenderId));
   await fs.mkdir(dir, { recursive: true });
-  const safeName = `${Date.now()}_${String(originalName || 'file').replace(/[^a-zA-Z0-9._-]/g, '_')}`;
+  // D-220b (третий FAIL верификатора, 21.09): здесь РАНЬШЕ расширение бралось из имени
+  // клиента — `evil.html` ложился в uploads/ и отдавался роутом tender-files /view как
+  // text/html inline (CSP статики /uploads/* на этот роут НЕ распространяется, он стримит
+  // напрямую) → скрипт исполнялся. Расширение берём ТОЛЬКО из белого списка по MIME.
+  const { safeStoredExt } = require('../lib/upload-ext');
+  const ext = safeStoredExt(mimeType, originalName, { allow: 'doc' });
+  if (!ext) {
+    const err = new Error('Недопустимый тип файла');
+    err.code = 'EBADFILE';
+    throw err;
+  }
+  const stem = String(originalName || 'file')
+    .replace(/\.[^.]*$/, '')
+    .replace(/[^a-zA-Z0-9._-]/g, '_')
+    .slice(0, 120) || 'file';
+  const safeName = `${Date.now()}_${stem}${ext}`;
   await fs.writeFile(path.join(dir, safeName), buffer);
   const downloadUrl = `/uploads/${subdir}/${tenderId}/${safeName}`;
   const docRes = await db.query(`
@@ -69,7 +84,7 @@ async function saveBufferAsDoc(db, {
     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())
     RETURNING id, original_name, download_url, size, mime_type, created_at
   `, [
-    safeName, originalName || safeName, mimeType || 'application/octet-stream',
+    safeName, String(originalName || safeName).slice(0, 300), mimeType || 'application/octet-stream',
     buffer.length, docType, tenderId, userId, downloadUrl
   ]);
   return docRes.rows[0];
@@ -517,13 +532,21 @@ function registerRpReviewCollabRoutes(fastify) {
         tkp: { type: 'rp_tkp', subdir: 'rp_tkp', col: 'tkp_file_id' }
       };
       const cfg = map[kind];
-      const file = await saveBufferAsDoc(db, {
-        tenderId, userId, buffer,
-        originalName: data.filename || kind,
-        mimeType: data.mimetype,
-        docType: cfg.type,
-        subdir: cfg.subdir
-      });
+      let file;
+      try {
+        file = await saveBufferAsDoc(db, {
+          tenderId, userId, buffer,
+          originalName: data.filename || kind,
+          mimeType: data.mimetype,
+          docType: cfg.type,
+          subdir: cfg.subdir
+        });
+      } catch (e) {
+        if (e && e.code === 'EBADFILE') {
+          return reply.code(415).send({ error: 'Недопустимый тип файла' });
+        }
+        throw e;
+      }
       const patch = { [cfg.col]: file.id };
       const draft = await upsertMyDraft(db, {
         reviewId: review.id,

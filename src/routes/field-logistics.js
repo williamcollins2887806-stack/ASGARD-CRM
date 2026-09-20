@@ -765,17 +765,23 @@ async function routes(fastify, options) {
       if (!filePath) return reply.code(404).send({ error: 'Файл не найден' });
 
       const buffer = await fs.promises.readFile(filePath);
-      const mime = doc.mime_type || 'application/octet-stream';
-      const isInline = mime.startsWith('application/pdf') || mime.startsWith('image/');
+      // D-220b (21.09, 3-й FAIL верификатора: класс остаётся живым на отдаче): тип брался
+      // из БД (client-supplied) и для image/* уходил inline → svg с <script> исполнялся.
+      // Теперь тип — по расширению реального файла, исполняемое не рендерим.
+      const { safeContentType, inlineSafetyHeaders } = require('../lib/upload-ext');
+      const storedExt = path.extname(String(filename || '')).toLowerCase();
+      const mime = safeContentType(storedExt, doc.mime_type);
+      const isInline = mime === 'application/pdf' || mime.startsWith('image/');
 
-      reply
+      const out = reply
         .header('Content-Type', mime)
         .header('Content-Length', buffer.length)
         .header('Content-Disposition', isInline
           ? `inline; filename="${encodeURIComponent(doc.original_name || filename)}"`
           : `attachment; filename="${encodeURIComponent(doc.original_name || filename)}"`)
-        .header('Cache-Control', 'private, max-age=3600')
-        .send(buffer);
+        .header('Cache-Control', 'private, max-age=3600');
+      for (const [k, v] of Object.entries(inlineSafetyHeaders(storedExt))) out.header(k, v);
+      return out.send(buffer);
     } catch (err) {
       logError(fastify, '[field-logistics] file preview error', err, req);
       return reply.code(500).send({ error: 'Ошибка сервера' });
