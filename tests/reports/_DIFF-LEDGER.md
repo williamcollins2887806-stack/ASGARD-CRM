@@ -5840,7 +5840,76 @@ verdict `superseded_by_local`); повторный прогон — `PROD_HANDED
 `V001a` — не идемпотентна). Запись внесена в ledger **только тест-БД** отдельной безопасной
 операцией; на проде — при выкатке, штатным порядком.
 
-**Статус: FIXED (20.09).** Требуется повторная сертификация независимым верификатором.
+**Статус: REOPENED → FIXED ЦЕЛИКОМ (20.09, второй проход).** См. «D-220b» ниже — первая правка
+закрыла только два роута, а класс оставался живым.
+
+## D-220b. Класс D-220 закрыт не был: 9 живых цепочек upload → исполнение в браузере (20.09.2026)
+
+**Как найдено.** Повторная сертификация D-220 независимым верификатором (обязательна на L3)
+вернула **FAIL**, хотя оба «исправленных» эндпоинта проходили. Дословный вывод:
+
+- `src/routes/field-logistics.js:491` — `POST /api/field/logistics/:id/attach` (`crmAuth`) пишет
+  `uploads/logistics/<hex>.html`; в реальном chromium скрипт **исполнился** (`STATIC-XSS-4`).
+- `src/routes/expenses.js:288` — `POST /api/expenses/attach/:expense_id` → `uploads/`,
+  раздача `/api/files/preview/:filename` как `inline; text/html`; скрипт **исполнился** (`XSS-EXEC-2`).
+- Подозреваемые того же класса, код подтверждён: `cash.js:1722`, `field-funds.js:233`.
+
+**Вывод верификатора, который и есть суть.** Журнальная запись утверждала «класс закрыт целиком» —
+это было неверно. И `nosniff` **не** лечит заявленный `text/html`: он запрещает угадывание типа,
+а сервер сам объявлял `Content-Type: text/html` по расширению из клиентского имени. Лечение
+только одно — не отдавать исполнимый тип и не хранить исполнимые расширения из чужого имени.
+
+**Найденный след эксплуатации.** `uploads/assembly/asm_adbe76f33b3b48b3975f0b50fcb4cac4.html`
+(25 байт) — артефакт негативного теста верификатора, оставшийся на диске. Также проверена вся
+выдача uploads на проде: **10 `.html`** — все серверные экспорты смет (`uploads/estimates/*`,
+июль, `<script>` = 0), исполнимых пользовательских файлов нет. Старые 10 не удаляются (это
+легитимные документы), они закрыты новым барьером раздачи.
+
+**Правка (единый вход вместо поштучных заплаток — урок D-203/D-206).**
+1. **Новый модуль `src/lib/upload-ext.js`** — единая политика: `DANGEROUS_EXT` (html/htm/xhtml/
+   svg/xml/js/mjs/swf/vbs…), `SAFE_STORED_EXT`, `PHOTO_MIME_EXT`, `safeStoredExt(mime, filename,
+   {allow})` (расширение из **MIME**, при пустом MIME — только из безопасного списка, никогда из
+   блок-листа), `safeContentType(storedExt, claimedMime)`, `inlineSafetyHeaders(ext)`.
+2. **9 загрузчиков переведены на белый список**: `field-logistics.js`, `expenses.js`, `cash.js`
+   (чек), `field-funds.js` (квитанция), `equipment.js` (фото), `field-photos.js`, `stock.js`
+   (фото товара), `chat_groups.js` (вложение чата), `tkp.js` (upload-ready), `permits.js` (скан
+   допуска ×2), `proxies.js`, `pm-duty.js` (rp_estimates / rp_reports / rp_tkp / rp_thread),
+   `pre_tenders.js` (ручные документы), `payment-invoices.js`, `procurement.js` (счёт), `files.js`
+   (общий `/upload`).
+3. **Отдача переведена на тип по расширению РЕАЛЬНОГО файла**: `/api/files/preview` и
+   `/api/files/download` (`files.js`), `chat_groups.js` (вложение), `inbox_applications_ai.js`,
+   `pre_tenders.js` (×2), `my-mail.js`, `mailbox.js`, `payment-invoices.js /:id/file`.
+   Client-supplied `mime_type` больше не определяет тип ответа.
+4. **Глобальный барьер раздачи `/uploads/*`** (`src/index.js`): для опасных расширений —
+   `Content-Security-Policy: sandbox; default-src 'none'; style-src 'unsafe-inline'; img-src data:`
+   (без `allow-scripts` → **скрипт не исполнится даже в том же origin**) + `nosniff`; для
+   неизвестных — `application/octet-stream` + `attachment`. Легитимные серверные HTML-экспорты
+   смет остаются рендерящимися (в них `<script>` = 0 — проверено и в коде, и на проде).
+
+**Доказательство (клон :3101, `asgard_crm_test`).**
+- `tools/verify_d220_upload_xss.js` — **27/27 PASS**. Ключевое: оба эксплойта верификатора
+  (logistics + expenses) → **415**, в БД нет `.html`-файлов, `/api/files/preview/*.html` →
+  `application/octet-stream` + `attachment`, статика `.html` → CSP sandbox без `allow-scripts`,
+  неизвестное расширение → octet-stream, **регресс**: `public/index.html` = `text/html`,
+  `public/icons/*.svg` = `image/svg+xml` (не сломан).
+- `tools/verify_d220_browser.js` — **5/5 PASS** в реальном chromium: скрипт **не исполнился** ни
+  на статике, ни в preview, ни в download (title остался `ORIGINAL`/пустым); серверная смета
+  **рендерится** (`title="Смета"`); **негативный контроль методики** — тот же payload через
+  `data:`-URL даёт `title="XSS-EXEC"`, т.е. тест реально способен поймать XSS.
+- Регресс-гейты: `verify_index_tags.js` OK (0 MISSING/DUPLICATE/BROKEN), `verify_assembly_flow.js`
+  25/25, `verify_c5_parser.js` 23/23, `verify_c6_degrade.js` 9/9, `verify_c1c3_browser.js` 7/7,
+  **полный OFS E2E — 58 шагов / 0 FAIL / 0 ошибок консоли, 52 PNG, дважды подряд** (прогон1
+  `5d46ce`, прогон2 после коммита `836747a8` без правок; base=`http://127.0.0.1:3101`,
+  DB=`asgard_crm_test`).
+
+**Побочно найдено и исправлено самим гейтом:** мой `setHeaders` перезаписывал `Content-Type` и
+терял `charset=utf-8`, который `@fastify/static` добавлял автоматически → кириллица в серверных
+HTML-сметах становилась кракозябрами. Поймано браузерным тестом B4, charset восстановлен
+(`text/html; charset=utf-8`, а также `text/plain`/`text/csv`). Урок: тест на реальном рендере
+ловит то, что HTTP-код и Content-Type сами по себе не показывают.
+
+**Статус: FIXED (20.09, второй проход).** Требуется сертификация независимым верификатором
+(второй вызов; первый вернул FAIL и был прав).
 
 
 
