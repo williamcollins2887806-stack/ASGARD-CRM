@@ -25,13 +25,20 @@ for (const f of new Set(files.map((x) => path.resolve(x)))) {
   const rel = path.relative(ROOT, f).replace(/\\/g, '/');
   const src = fs.readFileSync(f, 'utf8');
   const lines = src.split(/\r?\n/);
+  // D-220b (аудит поймал СВОЮ слепую зону): раньше проверялся только литерал 'uploads',
+  // поэтому роуты, где каталог — переменная (`const uploadDir = process.env.UPLOAD_DIR || './uploads'`),
+  // проходили как «без uploads». Теперь признак uploads ищется и по переменным-каталогам всего файла.
+  const fileUploadsVar = /process\.env\.UPLOAD_DIR|UPLOAD_BASE|UPLOAD_DIR|uploadDir|uploadBase/.test(src);
+  const fileWhitelist = /safeStoredExt|PHOTO_MIME_EXT|upload-ext/.test(src);
   lines.forEach((line, i) => {
     if (!/\.file\(|\.parts\(|multipart/.test(line)) return;
     const win = lines.slice(Math.max(0, i - 20), Math.min(lines.length, i + 90)).join('\n');
     if (!/writeFile|createWriteStream/.test(win)) return;
-    const uploadsRef = /uploads|UPLOAD_DIR|UPLOAD_BASE/.test(win);
+    // uploads: либо литерал в окне, либо файл в принципе пишет в uploads-каталог через переменную.
+    const uploadsRef = /uploads|UPLOAD_DIR|UPLOAD_BASE/.test(win)
+      || (fileUploadsVar && /writeFile|writeFileSync|createWriteStream/.test(win));
     const extFromName = /extname\(/.test(win);
-    const extFromMime = /safeStoredExt|PHOTO_MIME_EXT|allowedExt|allowed\s*=\s*\[/.test(win);
+    const extFromMime = /safeStoredExt|PHOTO_MIME_EXT|allowedExt|allowed\s*=\s*\[/.test(win) || fileWhitelist;
     const mimeEcho = /Content-Type['"]\s*,\s*(doc|att|file|.*mime)/.test(src) || /\.header\(['"]Content-Type['"],\s*[a-zA-Z_.]*(mime|type)/.test(win);
     rows.push({
       rel,

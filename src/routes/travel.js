@@ -128,7 +128,10 @@ module.exports = async function (fastify) {
     const data = await request.file();
     if (!data) return reply.code(400).send({ error: 'Файл не найден' });
 
-    const ext = path.extname(data.filename) || '';
+    // D-220b: расширение — только из белого списка, по MIME (не из клиентского имени).
+    const { safeStoredExt } = require('../lib/upload-ext');
+    const ext = safeStoredExt(data.mimetype, data.filename, { allow: 'doc' });
+    if (!ext) return reply.code(415).send({ error: 'Недопустимый тип файла' });
     const filename = `travel_${id}_${Date.now()}${ext}`;
     const filepath = path.join(uploadDir, filename);
 

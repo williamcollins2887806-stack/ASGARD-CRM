@@ -158,7 +158,10 @@ async function routes(fastify, options) {
       try { await fsp.unlink(path.join(uploadDir, t.certificate_file)); } catch (e) { /* ignore */ }
     }
 
-    const ext = path.extname(file.filename) || '';
+    // D-220b: расширение — только из белого списка, по MIME (не из клиентского имени).
+    const { safeStoredExt } = require('../lib/upload-ext');
+    const ext = safeStoredExt(file.mimetype, file.filename, { allow: 'doc' });
+    if (!ext) return reply.code(415).send({ error: 'Недопустимый тип файла' });
     const certFile = `training_${uuidv4()}${ext}`;
     await fsp.mkdir(uploadDir, { recursive: true });
     await fsp.writeFile(path.join(uploadDir, certFile), file.buffer);

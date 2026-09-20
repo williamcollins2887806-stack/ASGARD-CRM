@@ -487,7 +487,12 @@ module.exports = async function(fastify) {
 
     for await (const part of parts) {
       if (part.file) {
-        const ext = path.extname(part.filename) || '';
+        // D-220b: расширение — только из белого списка по MIME (не из клиентского имени).
+        const { safeStoredExt } = require('../lib/upload-ext');
+        const ext = safeStoredExt(part.mimetype, part.filename, { allow: 'doc' });
+        if (!ext) {
+          return reply.code(415).send({ error: 'Недопустимый тип файла' });
+        }
         const savedName = `task_${randomUUID()}${ext}`;
         await fs.mkdir(uploadDir, { recursive: true });
         const buffer = await part.toBuffer();
@@ -550,15 +555,12 @@ module.exports = async function(fastify) {
       const stat = await fs.stat(filepath);
       const file = await fs.readFile(filepath);
 
+      // D-220b: тип по расширению реального файла; .html/.svg и прочее исполняемое → octet-stream.
+      const { safeContentType, inlineSafetyHeaders } = require('../lib/upload-ext');
       const ext = path.extname(filename).toLowerCase();
-      const mimeTypes = {
-        '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png',
-        '.gif': 'image/gif', '.pdf': 'application/pdf', '.webp': 'image/webp',
-        '.doc': 'application/msword', '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-        '.xls': 'application/vnd.ms-excel', '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-      };
-
-      reply.header('Content-Type', mimeTypes[ext] || 'application/octet-stream');
+      reply.header('Content-Type', safeContentType(ext));
+      for (const [k, v] of Object.entries(inlineSafetyHeaders(ext))) reply.header(k, v);
+      reply.header('X-Content-Type-Options', 'nosniff');
       reply.header('Content-Length', stat.size);
       reply.header('Content-Disposition', `attachment; filename="${encodeURIComponent(fileInfo.original_name || filename)}"`);
       return reply.send(file);
