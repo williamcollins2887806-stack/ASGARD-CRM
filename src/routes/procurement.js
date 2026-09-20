@@ -9,6 +9,32 @@ const BUH_ROLES = ['BUH', 'ADMIN'];
 const WH_ROLES = ['WAREHOUSE', 'ADMIN'];
 const READ_ALL_ROLES = [...new Set([...DIR_ROLES, ...PROC_ROLES, ...BUH_ROLES, 'HEAD_PM', 'WAREHOUSE'])];
 
+// C5: OCR-файлы кладём во временный каталог (pdf-ocr сам чистит за собой,
+// но входные пути держим отдельно от uploads, чтобы мусор не раздавался статикой).
+function saveTemp(buf, originalName) {
+  const os = require('os');
+  const path = require('path');
+  const fsp = require('fs').promises;
+  const ext = (String(originalName || 'invoice.pdf').match(/\.[a-z0-9]+$/i) || ['.pdf'])[0];
+  const dir = path.join(os.tmpdir(), 'asgard-proc-ocr');
+  const file = path.join(dir, 'inv_' + randomUUID() + ext);
+  return fsp.mkdir(dir, { recursive: true }).then(() => fsp.writeFile(file, buf)).then(() => file);
+}
+
+// C5: жёсткий потолок на OCR счёта, чтобы запрос не «висел» минутами
+// (AI_TIMEOUT_MS у провайдера — 10 мин, для счёта слишком долго).
+function pdfOcrTimeoutMs() {
+  const ms = parseInt(process.env.PROC_OCR_TIMEOUT_MS || '60000', 10);
+  return Number.isFinite(ms) && ms > 0 ? ms : 60000;
+}
+
+
+// C5: эвристика таблицы счёта ДО обращения к AI — общая реализация в text-match.js
+// (покрыта юнит-тестами). Если строки читаются надёжно (≥3 позиции) — AI не зовём.
+function heuristicParseInvoice(rawText) {
+  return require('../services/text-match').heuristicParseInvoiceLines(rawText);
+}
+
 async function routes(fastify) {
   const db = fastify.db;
   const { createNotification } = require('../services/notify');
@@ -450,8 +476,44 @@ async function routes(fastify) {
       supplierName=fields.supplier_name?.value||null;
       deliveryDays=fields.delivery_days?.value?parseInt(fields.delivery_days.value):null;
       let buf; try{buf=await data.toBuffer();}catch(_){return reply.code(400).send({error:'Не удалось прочитать файл'});}
-      const {parseProcurementExcel}=require('../utils/excel-parser');
-      try{parsedItems=await parseProcurementExcel(buf);}catch(_){return reply.code(400).send({error:'Не удалось прочитать Excel'});}
+      const fname=(data.filename||'invoice').toLowerCase();
+      const isExcel=/\.(xlsx|xls|csv)$/.test(fname)||/sheet|excel/.test(String(data.mimetype||''));
+      // C5: PDF/скан без текстового слоя раньше валился на фронте «сфотографируйте».
+      // Теперь сервер сам распознаёт страницы готовым OCR-контуром (pdf-ocr.js).
+      let serverText=null;
+      if(!isExcel){
+        try{
+          const isPdf=fname.endsWith('.pdf')||String(data.mimetype||'')==='application/pdf';
+          const ocr=require('../services/pdf-ocr');
+          const ocrPromise=isPdf
+            ? ocr.ocrPdfPath(((await saveTemp(buf,data.filename))||''), data.filename||'invoice.pdf', {maxPages:5, concurrency:1})
+            : ocr.ocrImageBuffer(buf, data.mimetype, data.filename||'invoice.jpg');
+          let timer; const rr=await Promise.race([
+            ocrPromise,
+            new Promise((_,rej)=>{ timer=setTimeout(()=>rej(new Error('OCR timeout '+pdfOcrTimeoutMs()+'ms')), pdfOcrTimeoutMs()); })
+          ]).finally(()=>clearTimeout(timer));
+          serverText=String((rr&&rr.text)||rr||'');
+        }catch(e){ fastify.log.warn('[procurement] invoice OCR: '+e.message); }
+        if(serverText&&String(serverText).replace(/\s/g,'').length<15) serverText=null;
+      }
+      if(isExcel){
+        const {parseProcurementExcel}=require('../utils/excel-parser');
+        try{parsedItems=await parseProcurementExcel(buf);}catch(_){return reply.code(400).send({error:'Не удалось прочитать Excel'});}
+      } else if(serverText){
+        // C5: сначала эвристика строк (без AI); к AI обращаемся только если эвристика не дала ≥3 позиций.
+        const heur=heuristicParseInvoice(serverText);
+        if(heur.length>=3){ parsedItems=heur; }
+        else {
+          const aiProvider=require('../services/ai-provider');
+          try{const r=await aiProvider.complete({system:'Извлеки из текста счёта список позиций. Верни СТРОГО JSON {"supplier":"","items":[{"name":"","article":"","quantity":1,"unit":"шт","unit_price":0}]} без markdown.',
+            messages:[{role:'user',content:'Счёт:\n\n'+String(serverText).slice(0,14000)}],maxTokens:4000,temperature:0.1});
+            const m=(r&&r.text||'').match(/\{[\s\S]*\}/); const j=m?JSON.parse(m[0]):null;
+            parsedItems=j&&Array.isArray(j.items)?j.items:[]; if(!supplierName&&j&&j.supplier)supplierName=j.supplier;
+          }catch(e){ return reply.send({matches:[],unmatched:[],ocr_used:true,ai_unavailable:true,message:'Текст распознан, но AI недоступен — заполните строки вручную'}); }
+        }
+      } else {
+        try{ return reply.code(422).send({error:'Не удалось распознать файл — загрузите Excel или фото лучшего качества'}); }catch(_){}
+      }
       // сохраним файл
       try{const path=require('path');const fsp=require('fs').promises;const {randomUUID}=require('crypto');
         const dir=path.join(process.env.UPLOAD_DIR||'./uploads','proc-invoices');await fsp.mkdir(dir,{recursive:true});
@@ -463,12 +525,17 @@ async function routes(fastify) {
       supplierId=b.supplier_id||null;supplierName=b.supplier_name||null;deliveryDays=b.delivery_days||null;
       if(b.items&&Array.isArray(b.items)){ parsedItems=b.items; }       // клиент уже распарсил (AI на фронте)
       else if(b.text){
+        // C5: эвристика строк ДО AI (та же логика, что для OCR-файла).
+        const heur=heuristicParseInvoice(b.text);
+        if(heur.length>=3){ parsedItems=heur; }
+        else {
         const aiProvider=require('../services/ai-provider');
         try{const r=await aiProvider.complete({system:'Извлеки из текста счёта список позиций. Верни СТРОГО JSON {"supplier":"","items":[{"name":"","article":"","quantity":1,"unit":"шт","unit_price":0}]} без markdown.',
           messages:[{role:'user',content:'Счёт:\n\n'+String(b.text).slice(0,14000)}],maxTokens:4000,temperature:0.1});
           const m=(r&&r.text||'').match(/\{[\s\S]*\}/); const j=m?JSON.parse(m[0]):null;
           parsedItems=j&&Array.isArray(j.items)?j.items:[]; if(!supplierName&&j&&j.supplier)supplierName=j.supplier;
         }catch(e){ return reply.send({matches:[],unmatched:[],ai_unavailable:true,message:'AI временно недоступен'}); }
+        }
       } else return reply.code(400).send({error:'Нужен файл, items или text'});
     }
     parsedItems=(parsedItems||[]).filter(x=>x&&x.name&&String(x.name).trim());
@@ -478,21 +545,50 @@ async function routes(fastify) {
       WHERE procurement_id=$1 AND parent_item_id IS NULL ORDER BY id`,[id])).rows;
     const used=new Set();
     const matches=[], unmatched=[];
+    // C5: нормализация + словарь технических синонимов + токен-пересечение.
+    // Синоним («УШМ» ↔ «болгарка», «АКБ» ↔ «аккумулятор») в чистый trigram не попадает —
+    // добиваем детерминированно, без ИИ. Спорные пары (дрель↔шуруповёрт) в словарь НЕ внесены.
+    const { normalizeName, matchVariants, tokenOverlapScore }=require('../services/text-match');
+    const reqNorm=reqItems.map(r=>({...r,norm:normalizeName(r.name),normArticle:(r.article||'').toLowerCase()}));
     for(const inv of parsedItems){
       const nm=String(inv.name).trim(), art=(inv.article||'').toString().trim();
-      let best=null, conf=0;
+      const nmNorm=normalizeName(nm);
+      let best=null, conf=0, matchVia=null;
       // 1) точный артикул
-      if(art){ const e=reqItems.find(r=>r.article&&r.article.toLowerCase()===art.toLowerCase()&&!used.has(r.id)); if(e){best=e;conf=1;} }
-      // 2) точное имя
-      if(!best){ const e=reqItems.find(r=>r.name.toLowerCase()===nm.toLowerCase()&&!used.has(r.id)); if(e){best=e;conf=0.95;} }
-      // 3) trigram-похожесть в БД
+      if(art){ const e=reqNorm.find(r=>r.normArticle&&r.normArticle===art.toLowerCase()&&!used.has(r.id)); if(e){best=e;conf=1;matchVia='article';} }
+      // 2) точное имя (по нормализованному: ё=е, кавычки/знаки не мешают)
+      if(!best){ const e=reqNorm.find(r=>r.norm===nmNorm&&!used.has(r.id)); if(e){best=e;conf=0.95;matchVia='exact';} }
+      // 3) синоним/перестановки: токен-пересечение с «смысловым полем» позиции.
+      // Делаем ДО trigram: если смысл совпал (УШМ↔болгарка, перестановка слов) — это
+      // сильнее символьной похожести и даёт честный match_via; порог 0.6 — большинство
+      // значимых слов (не одна общая «гайка» из трёх).
       if(!best){
-        const sim=await db.query(`SELECT id,similarity(lower(name),lower($2)) AS s FROM procurement_items
-          WHERE procurement_id=$1 AND parent_item_id IS NULL ORDER BY s DESC LIMIT 1`,[id,nm]);
-        if(sim.rows[0]&&sim.rows[0].s>=0.4&&!used.has(sim.rows[0].id)){ best=reqItems.find(r=>r.id===sim.rows[0].id); conf=parseFloat(sim.rows[0].s.toFixed(2)); }
+        let cand=null, bestOv=0;
+        for(const r of reqNorm){
+          if(used.has(r.id)) continue;
+          const ov=tokenOverlapScore(nm, r.name);
+          if(ov>bestOv){ bestOv=ov; cand=r; }
+        }
+        if(cand&&bestOv>=0.6){ best=cand; conf=Math.min(0.85, 0.5+bestOv*0.4); matchVia='tokens'; }
+      }
+      // 4) trigram-похожесть в БД — по всем вариантам (оригинал + синонимы)
+      if(!best){
+        for(const v of matchVariants(nm)){
+          const sim=await db.query(`SELECT id,similarity(lower(name),lower($2)) AS s FROM procurement_items
+            WHERE procurement_id=$1 AND parent_item_id IS NULL ORDER BY s DESC LIMIT 1`,[id,v]);
+          if(sim.rows[0]&&sim.rows[0].s>=0.4&&!used.has(sim.rows[0].id)){ best=reqNorm.find(r=>r.id===sim.rows[0].id); conf=parseFloat(sim.rows[0].s.toFixed(2)); matchVia='trigram'; break; }
+        }
+      }
+      // 5) синонимичный вариант как точное имя (последний шанс перед unmatched)
+      if(!best){
+        const variants=matchVariants(nm);
+        for(const v of variants){
+          const e=reqNorm.find(r=>r.norm===v&&!used.has(r.id));
+          if(e){ best=e; conf=0.9; matchVia='synonym'; break; }
+        }
       }
       const price=parseFloat(inv.unit_price)||null;
-      if(best){ used.add(best.id); matches.push({item_id:best.id,item_name:best.name,invoice_name:nm,article:art,quantity:inv.quantity||best.quantity,unit_price:price,confidence:conf}); }
+      if(best){ used.add(best.id); matches.push({item_id:best.id,item_name:best.name,invoice_name:nm,article:art,quantity:inv.quantity||best.quantity,unit_price:price,confidence:conf,match_via:matchVia}); }
       else unmatched.push({invoice_name:nm,article:art,quantity:inv.quantity||1,unit_price:price});
     }
     // сохраним import-лог

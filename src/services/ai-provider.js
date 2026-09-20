@@ -633,7 +633,7 @@ async function _callOpenAIOnce({ system, messages, maxTokens, temperature, strea
  * @param {number} options.temperature - Температура (0-1)
  * @returns {Promise<{text: string, usage: {inputTokens: number, outputTokens: number}, model: string}>}
  */
-async function complete({ system, messages, maxTokens, temperature, tools, plugins, verbosity, responseFormat, model, provider: providerOverride }) {
+async function complete({ system, messages, maxTokens, temperature, tools, plugins, verbosity, responseFormat, model, provider: providerOverride, timeoutMs }) {
   await _loadKeysFromDB();
   let provider = providerOverride || AI_PROVIDER;
   const startTime = Date.now();
@@ -671,14 +671,25 @@ async function complete({ system, messages, maxTokens, temperature, tools, plugi
   // другую». Раньше код пытался autoswap anthropic ↔ openai при 5xx, но это
   // путало пользователя (он выбрал модель — а ответила другая).
   let result;
-  if (provider === 'anthropic') {
-    result = await callAnthropic({ system, messages, maxTokens, temperature });
-    result.provider = 'anthropic';
-  } else if (provider === 'openai') {
-    result = await callOpenAI({ system, messages, maxTokens, temperature, tools, plugins, verbosity, responseFormat, model });
-    result.provider = 'openai';
+  const _call = async () => {
+    if (provider === 'anthropic') {
+      result = await callAnthropic({ system, messages, maxTokens, temperature });
+      result.provider = 'anthropic';
+    } else if (provider === 'openai') {
+      result = await callOpenAI({ system, messages, maxTokens, temperature, tools, plugins, verbosity, responseFormat, model });
+      result.provider = 'openai';
+    } else {
+      throw new Error(`Unknown AI provider: ${provider}`);
+    }
+  };
+  // C5: необязательный внешний потолок времени. Внутренний AI_TIMEOUT_MS = 10 мин —
+  // для интерактивных вызовов (suggest-ai ≤60с) слишком долго; caller задаёт timeoutMs.
+  if (timeoutMs && Number.isFinite(timeoutMs) && timeoutMs > 0) {
+    let _t; try {
+      await Promise.race([_call(), new Promise((_, rej) => { _t = setTimeout(() => rej(new Error(`AI timeout after ${timeoutMs}ms`)), timeoutMs); })]);
+    } finally { clearTimeout(_t); }
   } else {
-    throw new Error(`Unknown AI provider: ${provider}`);
+    await _call();
   }
   result.durationMs = Date.now() - startTime;
   if (_usageTracker && result.usage) _usageTracker.addUsage(result.usage, result._actual_api_id || null);

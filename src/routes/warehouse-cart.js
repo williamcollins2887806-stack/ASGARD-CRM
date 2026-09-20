@@ -217,7 +217,12 @@ async function routes(fastify) {
     const art = String(article || '').trim();
     const lim = Math.max(1, Math.min(50, limit || 15));
     const tokens = nameTokens(nm);
-    const likePatterns = tokens.map(t => '%' + t + '%');
+    // C5: к токенам добавляем технические синонимы (УШМ↔болгарка, АКБ↔аккумулятор).
+    // likePatterns расширяются → SQL находит кандидата, который иначе не попадал;
+    // LLM-слой (если включён) при этом остаётся необязательным, а не единственным путём.
+    const stdMatch = require('../services/text-match');
+    const synLike = stdMatch.likePatterns(nm, 12);
+    const likePatterns = [...new Set([...tokens.map(t => '%' + t + '%'), ...synLike])];
     // products
     const prodSqlTrgm = `
       SELECT 'product'::text AS kind, p.id AS product_id, NULL::int AS equipment_id,
@@ -326,6 +331,45 @@ async function routes(fastify) {
     }
 
     const merged = [...products.rows, ...equipment.rows]
+      .sort((a, b) => (parseFloat(b.sim) || 0) - (parseFloat(a.sim) || 0));
+
+    // C5: снизу подмешиваем кандидатов, найденных по синонимам даже если SQL-`sim` низкий.
+    // TypeBoost мягкий (≤0.15): только поднимает в выдаче, порог «weak» (<0.25) не перебивает сам.
+    const seenKey = new Set(merged.map(r => (r.kind === 'equipment' ? 'e' : 'p') + (r.equipment_id || r.product_id)));
+    try {
+      const prodSyn = await client.query(
+        `SELECT p.id AS product_id, p.name, p.article, p.unit FROM products p
+          WHERE p.deleted_at IS NULL AND COALESCE(p.is_active,true)=true
+            AND p.name ILIKE ANY($1::text[]) LIMIT 20`, [likePatterns]);
+      for (const r of prodSyn.rows) {
+        if (seenKey.has('p' + r.product_id)) continue;
+        seenKey.add('p' + r.product_id);
+        merged.push({
+          kind: 'product', product_id: r.product_id, equipment_id: null, name: r.name,
+          article: r.article, unit: r.unit, status: null, inventory_number: null,
+          available_qty: null, last_price: null, last_supplier: null, sim: 0
+        });
+      }
+      const eqSyn = await client.query(
+        `SELECT e.id AS equipment_id, e.name, e.status, e.inventory_number FROM equipment e
+          WHERE e.deleted_at IS NULL AND e.status <> 'written_off'
+            AND e.name ILIKE ANY($1::text[]) LIMIT 20`, [likePatterns]);
+      for (const r of eqSyn.rows) {
+        if (seenKey.has('e' + r.equipment_id)) continue;
+        seenKey.add('e' + r.equipment_id);
+        merged.push({
+          kind: 'equipment', product_id: null, equipment_id: r.equipment_id, name: r.name,
+          article: r.inventory_number, unit: 'шт', status: r.status, inventory_number: r.inventory_number,
+          available_qty: r.status === 'on_warehouse' ? 1 : 0, last_price: null, last_supplier: null, sim: 0
+        });
+      }
+    } catch (_) { /* синоним-слой необязателен */ }
+    for (const r of merged) {
+      const ov = stdMatch.tokenOverlapScore(nm, r.name);
+      if (ov > 0) r.sim = Math.min(1, (parseFloat(r.sim) || 0) + ov * 0.15);
+    }
+
+    return merged
       .sort((a, b) => (parseFloat(b.sim) || 0) - (parseFloat(a.sim) || 0))
       .slice(0, lim);
     return merged;
@@ -404,7 +448,9 @@ async function routes(fastify) {
           content: 'Склад warehouse_id в контексте заявки. Строки и SQL-кандидаты (JSON):\n' + JSON.stringify(payload)
         }],
         maxTokens: 4000,
-        temperature: 0.1
+        temperature: 0.1,
+        // C5: жёсткий лимит 60с на интерактивный suggest-ai (по умолчанию у провайдера 10 мин).
+        timeoutMs: parseInt(process.env.WMS_CART_AI_TIMEOUT_MS || '60000', 10) || 60000
       });
       let text = (ai && ai.text || '').trim();
       text = text.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim();

@@ -1706,29 +1706,116 @@ window.AsgardProcurementPage = (function() {
     </div>`;
     showModal({ title: '🧾 Загрузить счёт поставщика', html });
     const setStatus = t => { const s = document.getElementById('inv-status'); if (s) s.textContent = t || ''; };
-    document.getElementById('inv-file').onchange = async (ev) => {
-      const file = ev.target.files && ev.target.files[0]; if (!file) return;
-      const ext = (file.name.split('.').pop() || '').toLowerCase();
+    const readMeta = () => {
       const supId = document.getElementById('inv-sup').value || '';
       const supName = document.getElementById('inv-supname').value.trim() || (document.getElementById('inv-sup').selectedOptions[0]?.textContent !== '— выберите/впишите —' ? document.getElementById('inv-sup').selectedOptions[0]?.textContent : '') || '';
       const days = document.getElementById('inv-days').value || '';
+      return { supId, supName, days };
+    };
+    // C6: единая точка разбора — чтобы «Повторить» переиспользовало тот же файл без пересборки формы.
+    const runParse = async (file) => {
+      const ext = (file.name.split('.').pop() || '').toLowerCase();
+      const { supId, supName, days } = readMeta();
+      if (ext === 'xlsx' || ext === 'xls') {
+        setStatus('Разбор Excel…');
+        const fd = new FormData();
+        if (supId) fd.append('supplier_id', supId);
+        if (supName) fd.append('supplier_name', supName);
+        if (days) fd.append('delivery_days', days);
+        fd.append('file', file);
+        const r = await fetch(`/api/procurement/${procId}/invoice/parse`, { method: 'POST', headers: { Authorization: hdr().Authorization }, body: fd });
+        const d = await r.json(); if (!r.ok) throw new Error(d.error || ('HTTP ' + r.status));
+        return d;
+      }
+      // PDF/фото: сначала текст в браузере (быстро, без расхода ИИ). Если текстового слоя
+      // нет (скан) — шлём ФАЙЛ на сервер: он распознаёт страницы (C5, pdf-ocr).
+      let text = '';
+      try { setStatus('Распознавание…'); text = await _extractText(file, setStatus); } catch (_) { text = ''; }
+      if (text && text.replace(/\s/g, '').length >= 30) {
+        return await apiPost(`/api/procurement/${procId}/invoice/parse`, { text, supplier_id: supId || null, supplier_name: supName || null, delivery_days: days || null });
+      }
+      setStatus('Распознавание на сервере…');
+      const fd = new FormData();
+      if (supId) fd.append('supplier_id', supId);
+      if (supName) fd.append('supplier_name', supName);
+      if (days) fd.append('delivery_days', days);
+      fd.append('file', file);
+      const r = await fetch(`/api/procurement/${procId}/invoice/parse`, { method: 'POST', headers: { Authorization: hdr().Authorization }, body: fd });
+      const d = await r.json(); if (!r.ok) throw new Error(d.error || ('HTTP ' + r.status));
+      return d;
+    };
+    // C6: падение ИИ/OCR НЕ убивает счёт. Документ остаётся живым: баннер с причиной,
+    // «Повторить» (тот же файл) и «Вручную» (вписать строки — сопоставим без ИИ).
+    const handleInvoiceFile = async (file) => {
       try {
-        let d;
-        if (ext === 'xlsx' || ext === 'xls') {
-          setStatus('Разбор Excel…');
-          const fd = new FormData(); if (supId) fd.append('supplier_id', supId); if (supName) fd.append('supplier_name', supName); if (days) fd.append('delivery_days', days); fd.append('file', file);
-          const r = await fetch(`/api/procurement/${procId}/invoice/parse`, { method: 'POST', headers: { Authorization: hdr().Authorization }, body: fd });
-          d = await r.json(); if (!r.ok) throw new Error(d.error || ('HTTP ' + r.status));
-        } else {
-          // PDF/фото → извлекаем текст в браузере (реюз warehouse extractDocText недоступен здесь — простая загрузка через FormData с конвертацией не делаем; шлём текст если есть)
-          setStatus('Распознавание…');
-          const text = await _extractText(file, setStatus);
-          d = await apiPost(`/api/procurement/${procId}/invoice/parse`, { text, supplier_id: supId || null, supplier_name: supName || null, delivery_days: days || null });
-        }
+        const d = await runParse(file);
         setStatus('');
-        if (d.ai_unavailable) { document.getElementById('inv-preview').innerHTML = `<div class="proc-empty">🤖 ${esc(d.message || 'AI недоступен')}</div>`; return; }
+        if (d.ai_unavailable || d.error) {
+          return _renderDegrade({ reason: d.message || d.error || 'ИИ/OCR временно недоступен', retry: () => handleInvoiceFile(file), manual: () => _renderManualIngest(procId) });
+        }
         _drawInvoicePreview(procId, d);
-      } catch (e) { setStatus(''); toast('Ошибка', e.message, 'err'); }
+      } catch (e) {
+        setStatus('');
+        _renderDegrade({ reason: e.message || 'Не удалось обработать файл', retry: () => handleInvoiceFile(file), manual: () => _renderManualIngest(procId) });
+      }
+    };
+    document.getElementById('inv-file').onchange = (ev) => { const f = ev.target.files && ev.target.files[0]; if (f) handleInvoiceFile(f); };
+  }
+  // C6: баннер деградации (без новой модалки — внутри существующей карточки счёта).
+  function _renderDegrade({ reason, retry, manual }) {
+    const host = document.getElementById('inv-preview'); if (!host) return;
+    host.innerHTML = `<div class="proc-wiz">
+      <div style="padding:10px 12px;margin-bottom:8px;border:1px solid var(--warn,#e0a800);border-radius:8px;background:rgba(224,168,0,.10);color:var(--t1)">
+        <b>⚠️ ${esc(reason)}</b><div style="font-size:12px;color:var(--t2);margin-top:4px">Счёт не потерян — можно повторить распознавание или вписать строки вручную.</div>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button type="button" class="btn primary" id="deg-retry">🔁 Повторить</button>
+        <button type="button" class="btn ghost" id="deg-manual">✍️ Вручную</button>
+        <button type="button" class="btn ghost" id="deg-cancel">Отмена</button>
+      </div>
+    </div>`;
+    const r = host.querySelector('#deg-retry'); if (r) r.onclick = () => retry && retry();
+    const m = host.querySelector('#deg-manual'); if (m) m.onclick = () => manual && manual();
+    const c = host.querySelector('#deg-cancel'); if (c) c.onclick = () => closeModal();
+  }
+  // C6: ручной ввод строк счёта — тот же маршрут invoice/parse (b.items), ИИ и OCR не нужны.
+  function _renderManualIngest(procId) {
+    const host = document.getElementById('inv-preview'); if (!host) return;
+    const rowHtml = (i) => `<tr data-man-row="${i}">
+      <td><input class="man-name" placeholder="Наименование позиции" style="width:100%;padding:5px;border:1px solid var(--brd);border-radius:6px"></td>
+      <td><input class="man-qty" type="number" min="0" step="any" value="1" style="width:70px;padding:5px;border:1px solid var(--brd);border-radius:6px"></td>
+      <td><input class="man-price" type="number" min="0" step="any" placeholder="0" style="width:90px;padding:5px;border:1px solid var(--brd);border-radius:6px"></td>
+      <td><button type="button" class="btn ghost man-del" title="Удалить">✕</button></td></tr>`;
+    host.innerHTML = `<div class="proc-wiz">
+      <div style="padding:10px 12px;margin-bottom:8px;border:1px solid var(--brd);border-radius:8px;background:var(--bg2,rgba(127,127,127,.06))">
+        <b>✍️ Ручной ввод</b><div style="font-size:12px;color:var(--t2);margin-top:4px">Впишите строки счёта — сопоставим с позициями заявки без ИИ и OCR (тот же счёт, тот же контур).</div>
+      </div>
+      <table class="proc-items-table proc-wiz-table" style="margin:0"><thead><tr><th>Наименование</th><th>Кол-во</th><th>Цена</th><th></th></tr></thead>
+      <tbody id="man-body">${[0, 1, 2].map(rowHtml).join('')}</tbody></table>
+      <div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-top:8px">
+        <div style="display:flex;gap:8px">
+          <button type="button" class="btn ghost" id="man-add">+ Строка</button>
+          <button type="button" class="btn ghost" id="man-back">← К загрузке файла</button>
+        </div>
+        <button type="button" class="btn primary" id="man-go">Сопоставить</button>
+      </div>
+    </div>`;
+    let seq = 3;
+    const bindDel = () => host.querySelectorAll('.man-del').forEach(b => { b.onclick = () => b.closest('tr').remove(); });
+    bindDel();
+    host.querySelector('#man-add').onclick = () => { document.getElementById('man-body').insertAdjacentHTML('beforeend', rowHtml(seq++)); bindDel(); };
+    host.querySelector('#man-back').onclick = () => { const f = document.getElementById('inv-file'); if (f) f.click(); };
+    host.querySelector('#man-go').onclick = async () => {
+      const items = [];
+      host.querySelectorAll('#man-body tr').forEach(tr => {
+        const name = tr.querySelector('.man-name').value.trim();
+        const qty = parseFloat(tr.querySelector('.man-qty').value) || 1;
+        const price = parseFloat(tr.querySelector('.man-price').value);
+        if (name) items.push({ name, quantity: qty, unit: 'шт', unit_price: Number.isFinite(price) ? price : 0 });
+      });
+      if (!items.length) { toast('Внимание', 'Впишите хотя бы одну строку', 'warn'); return; }
+      try { const d = await apiPost(`/api/procurement/${procId}/invoice/parse`, { items }); _drawInvoicePreview(procId, d); }
+      catch (e) { toast('Ошибка', e.message || 'Не удалось сопоставить', 'err'); }
     };
   }
   // Извлечение текста из PDF/фото (CDN pdf.js/Tesseract — как на складе)
