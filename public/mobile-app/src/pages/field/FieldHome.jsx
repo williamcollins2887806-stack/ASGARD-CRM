@@ -548,7 +548,6 @@ export default function FieldHome() {
       { icon: FileText, label: 'Отчёт', path: '/field/report' },
       { icon: AlertTriangle, label: 'Инцидент', path: '/field/incidents' },
       { icon: Wallet, label: 'Подотчёт', path: '/field/funds' },
-      { icon: Package, label: 'Сборы', path: '/field/packing' },
       { icon: PackageCheck, label: 'Приёмка', path: '/field/receiving' },
     );
   }

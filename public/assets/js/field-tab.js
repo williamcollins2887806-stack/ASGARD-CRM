@@ -274,7 +274,7 @@ window.AsgardFieldTab = (function () {
       { id: 'timesheet', label: '📋 Табель', render: () => renderTimesheetTab(content, work) },
       { id: 'disputes', label: '⚠️ Разногласия', render: () => renderDisputesTab(content, work, user) },
       { id: 'funds', label: '💰 Подотчёт', render: () => renderFundsTab(content, work, user) },
-      { id: 'packing', label: '📦 Сборы', render: () => renderPackingTab(content, work, user) },
+      { id: 'assembly', label: '🏗️ Сборки', render: () => renderPackingTab(content, work, user) },
       { id: 'nd', label: '📜 Наряды', render: () => {
         if (window.AsgardNdPermits) AsgardNdPermits.renderFieldTab(content, work, user);
         else content.innerHTML = '<div class="help">Модуль нарядов не загружен (nd-permits.js)</div>';
@@ -2382,7 +2382,7 @@ window.AsgardFieldTab = (function () {
     if (!timesheet.length) {
       // 23.06.2026: бригада не назначена (даже в dashboard.crew пусто) — единственный
       // оставшийся случай. Показываем подсказку с переходом к назначению бригады.
-      wrap.innerHTML = '<div class="help" style="text-align:center;padding:40px;color:var(--t2)">На проекте пока никого нет в бригаде. Сначала добавьте сотрудников через «Сборы» / «Бригада», потом возвращайтесь — табель появится автоматически.</div>';
+      wrap.innerHTML = '<div class="help" style="text-align:center;padding:40px;color:var(--t2)">На проекте пока никого нет в бригаде. Сначала добавьте сотрудников во вкладке «Бригада», потом возвращайтесь — табель появится автоматически.</div>';
       return;
     }
 
@@ -3442,243 +3442,177 @@ window.AsgardFieldTab = (function () {
   }
 
   // ═══════════════════════════════════════════════════════════════════
-  // TAB 6: СБОРЫ (PACKING)
+  // TAB 6: СБОРКИ (ASSEMBLY) — единый контур со складом и мобильным приложением
   // ═══════════════════════════════════════════════════════════════════
-  async function apiPacking(path, opts) {
-    const r = await fetch('/api/field/packing' + path, { headers: hdr(), ...opts });
+  const ASSEMBLY_STATUS_LABELS = {
+    draft: '⚪ Черновик', confirmed: '🟡 Подтверждена', packing: '🔵 В сборке',
+    packed: '🟢 Собрана', in_transit: '🟣 В пути', received: '✅ Принята',
+    returned: '↩️ Возврат', closed: '⚫ Закрыта',
+  };
+  const ASSEMBLY_TYPE_LABELS = { mobilization: 'Мобилизация', demobilization: 'Демобилизация', transfer: 'Перемещение' };
+
+  async function apiAssembly(path, opts) {
+    const r = await fetch('/api/assembly' + path, { headers: hdr(), ...opts });
     return r.json();
   }
 
-  const PACK_STATUS_LABELS = {
-    draft: '⚪ Черновик', sent: '🟡 Назначен', in_progress: '🔵 В сборке', completed: '🟢 Собран', shipped: '🟣 Отправлен',
-  };
-
   async function renderPackingTab(container, work, user) {
-    container.innerHTML = '<div class="help">Загрузка листов сборки…</div>';
+    container.innerHTML = '<div class="help">Загрузка ведомостей сборки…</div>';
 
     let data;
-    try { data = await apiPacking('/?work_id=' + work.id); } catch (_) {}
+    try { data = await apiAssembly('/?work_id=' + work.id); } catch (_) {}
 
     container.innerHTML = '';
 
-    // Create button
     const topBar = document.createElement('div');
     topBar.style.cssText = 'display:flex;justify-content:space-between;align-items:center;margin-bottom:12px';
-    topBar.innerHTML = `<span style="font-weight:600;font-size:14px">Листы сборки</span>`;
+    topBar.innerHTML = '<span style="font-weight:600;font-size:14px">Ведомости сборки</span>';
     const addBtn = document.createElement('button');
     addBtn.className = 'btn gold';
-    addBtn.textContent = '+ Новый лист';
+    addBtn.textContent = '+ Новая ведомость';
     addBtn.style.cssText = 'font-size:12px;padding:6px 14px';
-    addBtn.addEventListener('click', () => openCreatePackingModal(work, container, user));
+    addBtn.addEventListener('click', () => openCreateAssemblyModal(work, container, user));
     topBar.appendChild(addBtn);
     container.appendChild(topBar);
 
-    if (!data || !data.lists || data.lists.length === 0) {
-      container.innerHTML += '<div class="help" style="padding:32px;text-align:center">Нет листов сборки для этого проекта</div>';
+    if (!data || !data.items || data.items.length === 0) {
+      const empty = document.createElement('div');
+      empty.className = 'help';
+      empty.style.cssText = 'padding:32px;text-align:center';
+      empty.textContent = 'Нет ведомостей сборки для этого проекта';
+      container.appendChild(empty);
       return;
     }
 
-    // Table
     const table = document.createElement('table');
     table.className = 'fk-table fk-table-small';
     table.style.cssText = 'width:100%;font-size:12px';
-    const thead = document.createElement('thead');
-    thead.innerHTML = '<tr><th>Название</th><th>Назначен</th><th>Прогресс</th><th>Срок</th><th>Статус</th><th></th></tr>';
-    table.appendChild(thead);
-
+    table.innerHTML = '<thead><tr><th>Название</th><th>Тип</th><th>Прогресс</th><th>План</th><th>Статус</th></tr></thead>';
     const tbody = document.createElement('tbody');
-    for (const l of data.lists) {
-      const pct = l.items_total > 0 ? Math.round((l.items_packed / l.items_total) * 100) : 0;
+    for (const a of data.items) {
+      const total = a.items_count || 0;
+      const packed = a.packed_count || 0;
+      const pct = total > 0 ? Math.round((packed / total) * 100) : 0;
       const tr = document.createElement('tr');
       tr.style.cursor = 'pointer';
       tr.innerHTML = `
-        <td><strong>${esc(l.title)}</strong>${l.description ? '<br><span style="font-size:10px;color:var(--t2)">' + esc(l.description.substring(0, 60)) + '</span>' : ''}</td>
-        <td>${esc(l.assigned_to_name || '—')}</td>
+        <td><strong>${esc(a.title || '—')}</strong>${a.destination ? '<br><span style="font-size:10px;color:var(--t2)">' + esc(a.destination) + '</span>' : ''}</td>
+        <td><span style="font-size:11px">${ASSEMBLY_TYPE_LABELS[a.type] || a.type || ''}</span></td>
         <td>
           <div style="display:flex;align-items:center;gap:6px">
             <div style="flex:1;height:6px;background:var(--bg3);border-radius:3px;overflow:hidden"><div style="height:100%;width:${pct}%;background:linear-gradient(90deg,#D4A843,#E5C06E);border-radius:3px"></div></div>
-            <span style="font-size:11px;white-space:nowrap">${l.items_packed}/${l.items_total}</span>
+            <span style="font-size:11px;white-space:nowrap">${packed}/${total}</span>
           </div>
         </td>
-        <td>${l.due_date ? formatDate(l.due_date) : '—'}</td>
-        <td><span style="font-size:11px">${PACK_STATUS_LABELS[l.status] || l.status}</span></td>
-        <td>${!l.assigned_to ? '<button class="btn ghost assign-pack" data-id="' + l.id + '" style="font-size:11px;padding:4px 8px">Назначить</button>' : ''}</td>
+        <td>${a.planned_date ? formatDate(a.planned_date) : '—'}</td>
+        <td><span style="font-size:11px">${ASSEMBLY_STATUS_LABELS[a.status] || a.status}</span></td>
       `;
-      tr.addEventListener('click', (e) => {
-        if (e.target.classList.contains('assign-pack')) return;
-        openPackingDetailModal(l.id, work, container, user);
-      });
+      tr.addEventListener('click', () => openAssemblyDetailModal(a.id));
       tbody.appendChild(tr);
     }
     table.appendChild(tbody);
     container.appendChild(table);
-
-    // Assign handlers
-    container.querySelectorAll('.assign-pack').forEach(btn => {
-      btn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        openAssignPackingModal(parseInt(btn.dataset.id), work, container, user);
-      });
-    });
   }
 
-  function openCreatePackingModal(work, parentContainer, user) {
+  function openCreateAssemblyModal(work, parentContainer, user) {
     AsgardUI.showModal({
-      title: '📦 Новый лист сборки',
+      title: '🏗️ Новая ведомость сборки',
       html: `
         <div style="display:flex;flex-direction:column;gap:12px;max-width:480px">
-          <label>Название<input id="packTitle" type="text" class="inp" style="width:100%" placeholder="Основное оборудование"></label>
-          <label>Описание<textarea id="packDesc" class="inp" style="width:100%;min-height:60px" placeholder="Что нужно собрать"></textarea></label>
-          <label>Срок<input id="packDue" type="date" class="inp" style="width:100%"></label>
-          <div id="packItemsBlock">
-            <div style="font-weight:600;font-size:13px;margin-bottom:8px">Позиции</div>
-            <div id="packItemsList"></div>
-            <button id="packAddItem" class="btn ghost" style="font-size:12px;margin-top:4px">+ Добавить позицию</button>
-          </div>
-          <button id="packSubmit" class="btn gold" style="margin-top:8px">Создать</button>
+          <label>Тип
+            <select id="asmType" class="inp" style="width:100%">
+              <option value="mobilization">Мобилизация (на объект)</option>
+              <option value="demobilization">Демобилизация (с объекта)</option>
+              <option value="transfer">Перемещение</option>
+            </select>
+          </label>
+          <label>Название<input id="asmTitle" type="text" class="inp" style="width:100%" placeholder="Оставьте пустым — подставим автоматически"></label>
+          <label>Пункт назначения<input id="asmDest" type="text" class="inp" style="width:100%" placeholder="Объект / склад"></label>
+          <label>Плановая дата<input id="asmDate" type="date" class="inp" style="width:100%"></label>
+          <label>Примечание<textarea id="asmNotes" class="inp" style="width:100%;min-height:60px" placeholder="Что учесть при сборке"></textarea></label>
+          <div style="font-size:11px;color:var(--t2)">Позиции подтянутся автоматически из брони оборудования и закупок на объект. Дополнительные позиции можно добавить после создания.</div>
+          <button id="asmSubmit" class="btn gold" style="margin-top:8px">Создать</button>
         </div>
       `,
       onMount: () => {
-        const list = document.getElementById('packItemsList');
-        let itemCount = 0;
-
-        function addItemRow() {
-          const row = document.createElement('div');
-          row.style.cssText = 'display:flex;gap:6px;margin-bottom:6px;align-items:center';
-          row.innerHTML = `
-            <input type="text" class="inp pack-item-name" placeholder="Название" style="flex:2;font-size:12px">
-            <input type="number" class="inp pack-item-qty" placeholder="Кол-во" value="1" min="1" style="width:60px;font-size:12px">
-            <input type="text" class="inp pack-item-cat" placeholder="Категория" style="flex:1;font-size:12px">
-            <button class="btn ghost" style="font-size:11px;padding:4px 6px;color:#ef4444" onclick="this.parentElement.remove()">✕</button>
-          `;
-          list.appendChild(row);
-          itemCount++;
-        }
-
-        addItemRow();
-        document.getElementById('packAddItem').addEventListener('click', addItemRow);
-
-        document.getElementById('packSubmit').addEventListener('click', async () => {
-          const title = document.getElementById('packTitle').value.trim();
-          if (!title) { toast('Укажите название'); return; }
-
-          const items = [];
-          list.querySelectorAll('div').forEach(row => {
-            const name = row.querySelector('.pack-item-name')?.value.trim();
-            const qty = parseInt(row.querySelector('.pack-item-qty')?.value) || 1;
-            const cat = row.querySelector('.pack-item-cat')?.value.trim() || null;
-            if (name) items.push({ item_name: name, quantity_required: qty, item_category: cat });
-          });
-
+        document.getElementById('asmSubmit').addEventListener('click', async () => {
+          const btn = document.getElementById('asmSubmit');
+          btn.disabled = true;
           try {
-            const result = await apiPacking('/', {
+            const result = await apiAssembly('/', {
               method: 'POST',
               body: JSON.stringify({
                 work_id: work.id,
-                title,
-                description: document.getElementById('packDesc').value.trim() || null,
-                due_date: document.getElementById('packDue').value || null,
-                items,
+                type: document.getElementById('asmType').value,
+                title: document.getElementById('asmTitle').value.trim() || null,
+                destination: document.getElementById('asmDest').value.trim() || null,
+                planned_date: document.getElementById('asmDate').value || null,
+                notes: document.getElementById('asmNotes').value.trim() || null,
               }),
             });
-            if (result.error) { toast('Ошибка: ' + result.error); return; }
-            toast('Лист сборки создан!');
+            if (result.error) { toast('Ошибка: ' + result.error); btn.disabled = false; return; }
+            toast('Ведомость создана' + (result.items && result.items.length ? ' — позиций: ' + result.items.length : ''));
             AsgardUI.hideModal();
             renderPackingTab(parentContainer, work, user);
-          } catch (err) { toast('Ошибка: ' + err.message); }
+          } catch (err) { toast('Ошибка: ' + err.message); btn.disabled = false; }
         });
       }
     });
   }
 
-  async function openPackingDetailModal(listId, work, parentContainer, user) {
+  async function openAssemblyDetailModal(assemblyId) {
     let data;
-    try { data = await apiPacking('/' + listId); } catch (_) {}
-    if (!data || !data.list) { toast('Не удалось загрузить'); return; }
+    try { data = await apiAssembly('/' + assemblyId); } catch (_) {}
+    if (!data || !data.item) { toast('Не удалось загрузить ведомость'); return; }
 
-    const l = data.list;
+    const a = data.item;
     const items = data.items || [];
-    const pct = l.items_total > 0 ? Math.round((l.items_packed / l.items_total) * 100) : 0;
+    const pallets = data.pallets || [];
+    const total = items.length;
+    const packed = items.filter(it => it.packed).length;
+    const pct = total > 0 ? Math.round((packed / total) * 100) : 0;
+    const palletById = {};
+    pallets.forEach(p => { palletById[p.id] = p; });
 
     let itemsHtml = '';
     if (items.length > 0) {
-      itemsHtml = '<table class="fk-table fk-table-small" style="width:100%;font-size:11px;margin-top:12px"><thead><tr><th>#</th><th>Позиция</th><th>Категория</th><th>Требуется</th><th>Собрано</th><th>Статус</th><th>Фото</th></tr></thead><tbody>';
+      itemsHtml = '<table class="fk-table fk-table-small" style="width:100%;font-size:11px;margin-top:12px"><thead><tr><th>#</th><th>Позиция</th><th>Кол-во</th><th>Паллет</th><th>Статус</th><th>Фото</th></tr></thead><tbody>';
       items.forEach((it, i) => {
-        const itStatus = { pending: '⬜', packed: '✅', shortage: '⚠️', replaced: '🔄' };
-        const photoLink = it.photo_filename ? `<a href="/uploads/packing/${esc(it.photo_filename)}" target="_blank">📷</a>` : '—';
-        itemsHtml += `<tr><td>${i + 1}</td><td>${esc(it.item_name)}</td><td>${esc(it.item_category || '—')}</td><td>${it.quantity_required} ${esc(it.unit)}</td><td>${it.quantity_packed}</td><td>${itStatus[it.status] || it.status}${it.shortage_note ? ' <span style="color:#ef4444;font-size:10px">' + esc(it.shortage_note) + '</span>' : ''}</td><td>${photoLink}</td></tr>`;
+        const photo = it.photo_filename
+          ? '<a href="/uploads/assembly/' + esc(it.photo_filename) + '" target="_blank">📷</a>'
+          : '<span style="color:var(--t2)">—</span>';
+        const pallet = it.pallet_id && palletById[it.pallet_id] ? ('№' + palletById[it.pallet_id].pallet_number) : '—';
+        const st = it.line_status === 'unpick_requested'
+          ? '<span style="color:#F59E0B">⚠️ снять</span>'
+          : (it.packed ? '<span style="color:#22C55E">✅ собр.</span>' : '<span style="color:var(--t2)">⬜</span>');
+        itemsHtml += `<tr><td>${i + 1}</td><td>${esc(it.name)}${it.article ? ' <span style="color:var(--t2)">' + esc(it.article) + '</span>' : ''}</td><td>${it.quantity} ${esc(it.unit || 'шт')}</td><td>${pallet}</td><td>${st}</td><td>${photo}</td></tr>`;
       });
       itemsHtml += '</tbody></table>';
+    } else {
+      itemsHtml = '<div class="help" style="padding:16px;text-align:center">Позиций пока нет</div>';
     }
 
     AsgardUI.showModal({
-      title: '📦 ' + esc(l.title),
+      title: '🏗️ ' + esc(a.title || 'Ведомость сборки'),
       html: `
-        <div style="max-width:700px">
+        <div style="max-width:760px">
           <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px">
             <div style="flex:1;height:8px;background:var(--bg3);border-radius:4px;overflow:hidden"><div style="height:100%;width:${pct}%;background:linear-gradient(90deg,#D4A843,#E5C06E);border-radius:4px"></div></div>
-            <span style="font-size:13px;font-weight:600">${pct}%</span>
-            <span style="font-size:12px;color:var(--t2)">${PACK_STATUS_LABELS[l.status] || l.status}</span>
+            <span style="font-size:13px;font-weight:600">${packed}/${total} · ${pct}%</span>
+            <span style="font-size:12px;color:var(--t2)">${ASSEMBLY_STATUS_LABELS[a.status] || a.status}</span>
           </div>
-          <div style="font-size:12px;color:var(--t2);margin-bottom:4px">
-            Назначен: <strong>${esc(l.assigned_to_name || 'не назначен')}</strong>
-            ${l.due_date ? ' · Срок: ' + formatDate(l.due_date) : ''}
-            ${l.tracking_number ? ' · Трек: ' + esc(l.tracking_number) : ''}
+          <div style="font-size:12px;color:var(--t2);margin-bottom:8px">
+            Тип: <strong>${ASSEMBLY_TYPE_LABELS[a.type] || a.type || '—'}</strong>
+            ${a.destination ? ' · Назначение: ' + esc(a.destination) : ''}
+            ${a.planned_date ? ' · План: ' + formatDate(a.planned_date) : ''}
+            · Паллетов: ${pallets.length}
           </div>
-          ${l.description ? '<div style="font-size:12px;margin-bottom:8px;color:var(--t2)">' + esc(l.description) + '</div>' : ''}
+          ${a.notes ? '<div style="font-size:12px;color:var(--t2);margin-bottom:8px">' + esc(a.notes) + '</div>' : ''}
           ${itemsHtml}
+          <div style="font-size:11px;color:var(--t2);margin-top:12px">Паллеты и QR-бирки, приёмка и возврат — в мобильном приложении рабочего и на странице склада.</div>
         </div>
       `,
       wide: true,
-    });
-  }
-
-  async function openAssignPackingModal(listId, work, parentContainer, user) {
-    AsgardUI.showModal({
-      title: '📦 Назначить сборщика',
-      html: `
-        <div style="display:flex;flex-direction:column;gap:12px;max-width:400px">
-          <label>Сотрудник<div id="packAssigneeWrap" style="width:100%"></div></label>
-          <label><input type="checkbox" id="packSendSms" checked> Отправить SMS-уведомление</label>
-          <button id="packAssignSubmit" class="btn gold">Назначить</button>
-        </div>
-      `,
-      onMount: async () => {
-        const _packOpts = [];
-        try {
-          const crewResp = await api('/projects/' + work.id + '/dashboard');
-          if (crewResp && crewResp.crew) {
-            for (const c of crewResp.crew) {
-              _packOpts.push({ value: String(c.employee_id), label: c.fio || c.employee_name || 'ID ' + c.employee_id });
-            }
-          }
-        } catch (_) {}
-        const wrapPack = document.getElementById('packAssigneeWrap');
-        if (wrapPack && window.CRSelect) {
-          wrapPack.appendChild(CRSelect.create({
-            id: 'packAssignee', options: _packOpts, placeholder: '— Выберите —', fullWidth: true
-          }));
-        }
-
-        document.getElementById('packAssignSubmit').addEventListener('click', async () => {
-          const empId = window.CRSelect ? CRSelect.getValue('packAssignee') : '';
-          if (!empId) { toast('Выберите сотрудника'); return; }
-
-          try {
-            const result = await apiPacking('/' + listId + '/assign', {
-              method: 'POST',
-              body: JSON.stringify({
-                employee_id: parseInt(empId),
-                send_sms: document.getElementById('packSendSms').checked,
-              }),
-            });
-            if (result.error) { toast('Ошибка: ' + result.error); return; }
-            toast('Сборщик назначен!' + (result.sms_sent ? ' SMS отправлен' : ''));
-            AsgardUI.hideModal();
-            renderPackingTab(parentContainer, work, user);
-          } catch (err) { toast('Ошибка: ' + err.message); }
-        });
-      }
     });
   }
 

@@ -25,7 +25,6 @@ import FieldCrew from '@/pages/field/FieldCrew';
 import FieldReport from '@/pages/field/FieldReport';
 import FieldIncidents from '@/pages/field/FieldIncidents';
 import FieldPhotos from '@/pages/field/FieldPhotos';
-import FieldPacking from '@/pages/field/FieldPacking';
 import FieldPermits from '@/pages/field/FieldPermits';
 import FieldPermitDetail from '@/pages/field/FieldPermitDetail';
 import FieldStages from '@/pages/field/FieldStages';
@@ -436,7 +435,7 @@ function AppLayout() {
                 <Route path="report" element={<FieldReport />} />
                 <Route path="incidents" element={<FieldIncidents />} />
                 <Route path="photos" element={<FieldPhotos />} />
-                <Route path="packing" element={<FieldPacking />} />
+                <Route path="packing" element={<Navigate to="/field/assembly" replace />} />
                 <Route path="permits" element={<FieldPermits />} />
                 <Route path="permits/:id" element={<FieldPermitDetail />} />
                 <Route path="assembly" element={<FieldAssembly />} />

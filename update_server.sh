@@ -355,7 +355,6 @@ JS_FILES=(
     "public/assets/js/global_search.js"
     "public/assets/js/mobile.js"
     "public/assets/js/tenders.js"
-    "public/assets/js/warehouse.js"
 )
 
 for f in "${JS_FILES[@]}"; do

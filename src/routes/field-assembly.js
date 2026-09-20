@@ -12,6 +12,11 @@
  */
 
 const { randomUUID } = require('crypto');
+const fs = require('fs');
+const path = require('path');
+
+const UPLOAD_BASE = process.env.UPLOAD_DIR || './uploads';
+const MAX_PHOTO_SIZE = 15 * 1024 * 1024; // 15MB (как в legacy field-packing)
 
 async function routes(fastify) {
   const db = fastify.db;
@@ -198,6 +203,44 @@ async function routes(fastify) {
       await client.query('COMMIT');
       return { item: rows[0] };
     } catch (e) { await client.query('ROLLBACK'); throw e; } finally { client.release(); }
+  });
+
+  // ── Фото позиции (перенос из legacy field_packing) ────────────────────────
+  // Рабочий фиксирует фото позиции при сборке. Файл кладём в uploads/assembly/,
+  // в БД пишем имя файла и оригинальное имя (как в legacy).
+  fastify.post('/:id/items/:itemId/photo', auth, async (req, reply) => {
+    const empId = req.fieldEmployee.id;
+    const id = parseInt(req.params.id);
+    const itemId = parseInt(req.params.itemId);
+    const acc = await assertAccess(reply, empId, id); if (!acc) return;
+
+    const own = await db.query('SELECT id FROM assembly_items WHERE id=$1 AND assembly_id=$2', [itemId, id]);
+    if (!own.rows[0]) return bad(reply, 'Позиция не найдена', 404);
+
+    // multipart
+    if (typeof req.parts !== 'function') return bad(reply, 'Ожидается multipart/form-data', 415);
+    let file = null;
+    for await (const part of req.parts()) {
+      if (part.file) {
+        const buffer = await part.toBuffer();
+        if (buffer.length > MAX_PHOTO_SIZE) return bad(reply, 'Фото слишком большое (макс 15МБ)', 413);
+        file = { buffer, filename: part.filename, mimetype: part.mimetype };
+      }
+    }
+    if (!file) return bad(reply, 'Фото не загружено');
+
+    const ext = (path.extname(file.filename) || '.jpg').toLowerCase();
+    const uploadDir = path.join(UPLOAD_BASE, 'assembly');
+    await fs.promises.mkdir(uploadDir, { recursive: true });
+    const uniqueName = `asm_${randomUUID().replace(/-/g, '')}${ext}`;
+    await fs.promises.writeFile(path.join(uploadDir, uniqueName), file.buffer);
+
+    const userId = await resolveUserId(empId);
+    await db.query(`UPDATE assembly_items SET photo_filename=$1, photo_original=$2,
+      photographed_at=NOW(), photographed_by=$3 WHERE id=$4`,
+      [uniqueName, file.filename || null, userId, itemId]);
+
+    return { ok: true, photo_url: `/uploads/assembly/${uniqueName}`, photo_filename: uniqueName };
   });
 
   // ── Скан QR паллета (приёмка на объекте с GPS) ────────────────────────────

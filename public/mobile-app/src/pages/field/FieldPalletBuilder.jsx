@@ -9,7 +9,7 @@ import { fieldApi } from '@/api/fieldClient';
 import { useHaptic } from '@/hooks/useHaptic';
 import {
   ArrowLeft, Plus, Check, Package, PackagePlus, Layers, X,
-  ShoppingCart, Warehouse, Hand, Users, RefreshCw,
+  ShoppingCart, Warehouse, Hand, Users, RefreshCw, Camera, Loader2,
 } from 'lucide-react';
 
 const SOURCE_META = {
@@ -84,6 +84,36 @@ export default function FieldPalletBuilder() {
     setData(d => ({ ...d, items: d.items.map(i => i.id === item.id ? { ...i, pallet_id: palletId } : i) }));
     try { await fieldApi.put(`/assembly/${id}/items/${item.id}/pallet`, { pallet_id: palletId }); }
     catch (e) { showErr(e.message); load(); }
+  }
+
+  // Фото позиции (перенос из legacy «Сборы»): выбираем/снимаем файл и грузим multipart.
+  const fileRef = useRef(null);
+  const photoItemRef = useRef(null);
+  const [photoBusy, setPhotoBusy] = useState(false);
+  function pickPhoto(item) {
+    if (!canPack) return;
+    haptic.light();
+    photoItemRef.current = item.id;
+    if (fileRef.current) { fileRef.current.value = ''; fileRef.current.click(); }
+  }
+  async function onPhotoChosen(e) {
+    const file = e.target.files?.[0];
+    const itemId = photoItemRef.current;
+    if (!file || !itemId) return;
+    setPhotoBusy(true);
+    try {
+      const form = new FormData();
+      form.append('photo', file);
+      const token = localStorage.getItem('field_token') || localStorage.getItem('asgard_field_token');
+      const r = await fetch(`/api/field/assembly/${id}/items/${itemId}/photo`, {
+        method: 'POST', headers: { Authorization: `Bearer ${token}` }, body: form,
+      });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(d.error || 'Не удалось загрузить фото');
+      haptic.success();
+      await load();
+    } catch (err) { showErr(err.message); }
+    finally { setPhotoBusy(false); photoItemRef.current = null; }
   }
 
   // группировка: позиции без паллета + по паллетам
@@ -162,6 +192,7 @@ export default function FieldPalletBuilder() {
             {unassigned.map(it => (
               <ItemRow key={it.id} item={it} canPack={canPack}
                 onPack={() => togglePack(it)}
+                onPhoto={() => pickPhoto(it)}
                 onAssign={activePallet ? () => assignToPallet(it, activePallet) : null}
                 assignLabel={activePallet ? `→ №${pallets.find(p => p.id === activePallet)?.pallet_number}` : null} />
             ))}
@@ -177,6 +208,7 @@ export default function FieldPalletBuilder() {
               {list.map(it => (
                 <ItemRow key={it.id} item={it} canPack={canPack}
                   onPack={() => togglePack(it)}
+                  onPhoto={() => pickPhoto(it)}
                   onAssign={() => assignToPallet(it, null)} assignLabel="Снять" />
               ))}
             </Section>
@@ -206,6 +238,17 @@ export default function FieldPalletBuilder() {
           onErr={showErr} />
       )}
 
+      {/* Скрытый input для фото позиции (перенос из legacy «Сборы») */}
+      <input ref={fileRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={onPhotoChosen} />
+      {photoBusy && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ background: 'rgba(0,0,0,.5)' }}>
+          <div className="flex items-center gap-3 px-5 py-3 rounded-xl" style={{ background: 'rgba(20,20,32,.95)' }}>
+            <Loader2 className="animate-spin" size={18} color="#F0C850" />
+            <span className="text-sm">Загружаем фото…</span>
+          </div>
+        </div>
+      )}
+
       {toastMsg && (
         <div className="fixed left-4 right-4 z-50 px-4 py-3 rounded-xl text-sm font-medium text-center"
           style={{ bottom: 90, background: 'rgba(255,92,92,.95)', color: '#fff', boxShadow: '0 6px 24px rgba(0,0,0,.4)' }}>
@@ -225,7 +268,7 @@ function Section({ title, children }) {
   );
 }
 
-function ItemRow({ item, canPack, onPack, onAssign, assignLabel }) {
+function ItemRow({ item, canPack, onPack, onAssign, assignLabel, onPhoto }) {
   const meta = SOURCE_META[item.source] || SOURCE_META.manual;
   return (
     <div className="rounded-xl p-3 flex items-center gap-3"
@@ -242,8 +285,15 @@ function ItemRow({ item, canPack, onPack, onAssign, assignLabel }) {
           <span className="text-xs opacity-70">{Number(item.quantity)} {item.unit}</span>
           <span className="text-[10px] px-1.5 py-0.5 rounded-full" style={{ background: `${meta.color}22`, color: meta.color }}>{meta.label}</span>
           {item.over_received && <span className="text-[10px] px-1.5 py-0.5 rounded-full" style={{ background: 'rgba(255,176,32,.2)', color: '#ffb020' }}>излишек</span>}
+          {item.photo_filename && <span className="text-[10px] px-1.5 py-0.5 rounded-full" style={{ background: 'rgba(48,209,88,.15)', color: '#30d158' }}>фото</span>}
         </div>
       </div>
+      {onPhoto && canPack && (
+        <button onClick={onPhoto} className="p-2 rounded-lg flex-shrink-0 active:scale-95 transition"
+          style={{ background: 'rgba(255,255,255,.06)', color: item.photo_filename ? '#30d158' : '#8b93a3' }} title="Фото позиции">
+          <Camera size={16} />
+        </button>
+      )}
       {onAssign && canPack && (
         <button onClick={onAssign} className="text-[11px] font-semibold px-2.5 py-1.5 rounded-lg flex-shrink-0 active:scale-95 transition"
           style={{ background: 'rgba(240,200,80,.12)', color: '#F0C850' }}>{assignLabel}</button>

@@ -41,6 +41,11 @@
       "reason": "Prod-only строки принадлежат старой 1265-строчной версии склада; локальная — сентябрьская на 2798 строк.",
       "evidence": "Дифф: local 2798 строк / prod 1265 строк, local-only 1694 / prod-only 161. Prod-only фрагменты — кнопки `id=\"wh2-cart-preview\"` 'Предпросмотр' и `UI.showModal({ title: 'Предпросмотр разбивки' })` из старой витрины карточек; в локальной версии витрина переписана (media-first .wh2-card__media, humanCatalogName, KPI нового вида). Это тот самый случай, ради которого батч A и делается: критерий приёмки прямо требует 'warehouse-v2.js на проде = локальная сентябрьская версия (2 798 стр., не 1 264)'.",
       "verdict": "superseded_by_local"
+    },
+    "public/index.html": {
+      "reason": "Prod-only 3 строки — <script>-теги мёртвых модулей warehouse.js / assembly-page.js / assembly-dnd.js (на проде оболочка 20.28.37, теги ещё не сняты). Это ровно те теги, которые задача C2 (20.09) осознанно удаляет вместе с самими файлами.",
+      "evidence": "prod содержит `assets/js/warehouse.js?v=20.28.37`, `assets/js/assembly-page.js?v=20.28.37`, `assets/js/assembly-dnd.js?v=20.28.37`; в локальном index.html тегов нет (после C2), сами файлы удалены из дерева. Мёртвость подтверждена статикой: app.js:2311 роут /assembly редиректит на #/warehouse-v2?tab=assemblies (AsgardAssemblyPage не вызывается), AsgardAssemblyDnD дёргается только из assembly-page.js, AsgardWarehouse (v1) не вызывается ни из app.js (роут /warehouse → хэш-редирект на /warehouse-v2), ни из warehouse-v2.js. Гейт verify_index_tags.js: OK (0 MISSING/BROKEN). Прод-файлы этих модулей остаются на сервере как осиротевшие ассеты (scp их не удаляет), потому что белые-листы — на git-show локального index.html, где тегов уже нет, а не на grep прода. Потери прод-работы нет: prod-only строки не несут функциональности (теги на неиспользуемые скрипты).",
+      "verdict": "superseded_by_local"
     }
   }
 }

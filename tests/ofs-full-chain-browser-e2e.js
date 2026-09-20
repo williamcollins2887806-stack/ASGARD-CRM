@@ -14,6 +14,12 @@ const { seedOfsStock } = require('./helpers/ofs-seed-stock');
 const { invoiceLines } = require('./helpers/ofs-invoice-lines');
 
 const BASE = (process.env.TEST_BASE_URL || 'http://127.0.0.1:3000').replace(/\/$/, '');
+// C4 (20.09): прогон только на тест-клоне. Прод-БД (asgard_crm) здесь запрещена.
+const DB_NAME = process.env.DB_NAME || 'asgard_crm_test';
+if (/^asgard_crm$/i.test(DB_NAME)) {
+  console.error('[C4] FAIL: DB_NAME=' + DB_NAME + ' — прогон на прод-БД запрещён (правило local-only-tests). Задайте asgard_crm_test.');
+  process.exit(1);
+}
 const OUT = path.join(__dirname, 'reports', 'ofs-full-chain');
 const SHOTS = path.join(OUT, 'shots');
 const CART_XLSX = path.join(__dirname, 'fixtures', 'ofs', 'cart-ofs.xlsx');
@@ -358,12 +364,10 @@ async function shot(page, name) {
 }
 
 function assertNoConsole(bucket, label) {
-  const bad = (bucket || []).filter((t) => {
-    if (/Failed to load resource.*favicon/i.test(t)) return false;
-    // pool-flakes на cart sync (GET/POST) после уже успешных UI-шагов корзины
-    if (/HTTP 500.*\/api\/warehouse-cart/i.test(t)) return false;
-    return true;
-  });
+  // C4 (20.09): мягких игноров нет. Ловим всё, что попало в bucket:
+  // любые console.error и ЛЮБОЙ 5xx в критичном контуре (включая /api/warehouse-cart).
+  // Игнор по остаётся только на favicon (не ошибка продукта).
+  const bad = (bucket || []).filter((t) => !/Failed to load resource.*favicon/i.test(t));
   step('console: ' + label, bad.length === 0, bad.slice(0, 3).join(' || ') || '0');
 }
 
@@ -595,31 +599,11 @@ async function main() {
         }, { wid: workId, dest: destination, planned });
         await page.waitForTimeout(2500);
       }
-      // если корзина всё ещё полна — прямой API submit из браузера (тот же токен UI)
-      const left = await page.evaluate(async (token) => {
-        const r = await fetch('/api/warehouse-cart', { headers: { Authorization: 'Bearer ' + token } });
-        const d = await r.json();
-        return (d.items || []).length;
-      }, pm.token);
-      if (left > 0) {
-        const sub = await page.evaluate(async ({ token, wid, dest, planned }) => {
-          const r = await fetch('/api/warehouse-cart/submit', {
-            method: 'POST',
-            headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              confirmed: true, global_work_id: wid, destination: dest,
-              planned_date: planned, object_name: dest,
-            }),
-          });
-          return { status: r.status, body: await r.json() };
-        }, { token: pm.token, wid: workId, dest: destination, planned });
-        step('2b3. submit via browser fetch', sub.status < 400 && sub.body && sub.body.success,
-          JSON.stringify(sub).slice(0, 200));
-        if (sub.body) {
-          report.ids.procurement_id = sub.body.procurement_id || report.ids.procurement_id;
-          report.ids.assembly_id = sub.body.assembly_id || report.ids.assembly_id;
-        }
-      }
+      // C4 (20.09): НЕ добивать submit'ом через page.evaluate — бизнес-шаг обязан проходить в UI.
+      // Если корзина всё ещё полна — фиксируем left>0 как FAIL, а не «дочищаем» браузерным fetch.
+      const left = await api(pm, 'GET', '/api/warehouse-cart');
+      const leftCount = (left.data.items || []).length;
+      step('2b3. корзина очищена UI-submit (без browser fetch)', leftCount === 0, 'left=' + leftCount);
       await shot(page, 'pm-after-submit');
       // достать ids из toast / openDetail URL
       const idsFromUi = await page.evaluate(() => {
@@ -638,10 +622,12 @@ async function main() {
 
     // resolve ids from DB / API
     {
-      step('2c. корзина после submit', true, 'left check soft');
-      const cart = await api(pm, 'GET', '/api/warehouse-cart');
-      if ((cart.data.items || []).length) await clearCart(pm);
-      const pool = new Pool({ user: 'asgard', password: '123456789', database: 'asgard_crm_dev', host: '127.0.0.1' });
+      // cartItemsLeft — состояние корзины ПОСЛЕ UI-шагов (см. блок PM выше) для hard-ассерта.
+      const cartNow = await api(pm, 'GET', '/api/warehouse-cart');
+      const cartItemsLeft = (cartNow.data.items || []).length;
+      step('2c. корзина пуста после submit', cartItemsLeft === 0, 'items left=' + cartItemsLeft);
+      if (cartItemsLeft > 0) await clearCart(pm);
+      const pool = new Pool({ user: 'asgard', password: '123456789', database: DB_NAME, host: '127.0.0.1' });
       if (!report.ids.procurement_id) {
         const { rows } = await pool.query(
           `SELECT id, status FROM procurement_requests WHERE author_id=$1 OR work_id=$2 ORDER BY id DESC LIMIT 1`,
@@ -680,7 +666,7 @@ async function main() {
         const s = await api(pm, 'PUT', `/api/procurement/${report.ids.procurement_id}/send-to-proc`, {});
         step('2e. send-to-proc', s.ok, s.status);
       } else {
-        step('2e. already at proc', true, cur.data.item && cur.data.item.status);
+        step('2e. заявка уже не черновик', cur.data.item && cur.data.item.status === 'sent_to_proc', cur.data.item && cur.data.item.status);
       }
     }
 
@@ -796,27 +782,15 @@ async function main() {
       // JSON items path (без платного ИИ) — основной; Excel — доп. если UI file есть
       {
         const lines = invoiceLines(6);
-        const parsed = await page.evaluate(async ({ pid, lines, token }) => {
-          const r = await fetch('/api/procurement/' + pid + '/invoice/parse', {
-            method: 'POST',
-            headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
-            body: JSON.stringify({ items: lines, supplier_name: 'ОФС ВЕДО' }),
-          });
-          return r.json();
-        }, { pid, lines, token: proc.token });
+        // C4: parse/apply — серверные API-хелперы (вне браузера), не page.evaluate(fetch)
+        const parsedRes = await api(proc, 'POST', '/api/procurement/' + pid + '/invoice/parse', { items: lines, supplier_name: 'ОФС ВЕДО' });
+        const parsed = parsedRes.data || {};
         step('4. parse items JSON', !!(parsed.import_id || (parsed.matches && parsed.matches.length)), JSON.stringify(parsed).slice(0, 160));
         if (parsed.import_id && parsed.matches) {
           const rows = parsed.matches.filter((m) => m.unit_price > 0).map((m) => ({
             item_id: m.item_id, unit_price: m.unit_price,
           }));
-          const ap = await page.evaluate(async ({ pid, importId, rows, token }) => {
-            const r = await fetch(`/api/procurement/${pid}/invoice/${importId}/apply`, {
-              method: 'POST',
-              headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
-              body: JSON.stringify({ rows, supplier_name: 'ОФС ВЕДО' }),
-            });
-            return r.json();
-          }, { pid, importId: parsed.import_id, rows, token: proc.token });
+          const ap = (await api(proc, 'POST', `/api/procurement/${pid}/invoice/${parsed.import_id}/apply`, { rows, supplier_name: 'ОФС ВЕДО' })).data || {};
           step('4b. apply', !!ap.success || ap.applied > 0, JSON.stringify(ap).slice(0, 120));
           report.ids.import_id = parsed.import_id;
         }
@@ -847,7 +821,7 @@ async function main() {
           method: 'POST', headers: { Authorization: 'Bearer ' + proc.token }, body: fd,
         }).then((r) => r.json());
         step('4b2. PDF upload', !!up.file_path, up.file_path || JSON.stringify(up).slice(0, 120));
-        const pool = new Pool({ user: 'asgard', password: '123456789', database: 'asgard_crm_dev', host: '127.0.0.1' });
+        const pool = new Pool({ user: 'asgard', password: '123456789', database: DB_NAME, host: '127.0.0.1' });
         if (!report.ids.import_id) {
           const { rows: imps } = await pool.query(
             `SELECT id FROM procurement_invoice_imports WHERE procurement_id=$1 ORDER BY id DESC LIMIT 1`,
@@ -877,7 +851,10 @@ async function main() {
           await page.waitForTimeout(1200);
         }
         const s = await api(proc, 'PUT', `/api/procurement/${pid}/invoice/${report.ids.import_id}/send-to-pm`, {});
-        step('4c. send-to-pm', s.ok || s.status < 400 || /уже|already|согласован/i.test(JSON.stringify(s.data)), s.status + ' ' + JSON.stringify(s.data).slice(0, 100));
+        // C4: hard-ассерт. send-to-pm создаёт волну 'awaiting_pm' — успех 200 + awaiting_pm.
+        const sTxt = JSON.stringify(s.data || {});
+        const sOk = (s.status === 200 && /awaiting_pm/.test(sTxt)) || /уже|already|awaiting_pm/i.test(sTxt);
+        step('4c. send-to-pm', sOk, s.status + ' ' + sTxt.slice(0, 120));
         await page.evaluate((id) => {
           if (window.AsgardProcurementPage && AsgardProcurementPage.openDetail) AsgardProcurementPage.openDetail(id);
         }, pid);
@@ -905,7 +882,7 @@ async function main() {
 
     // catalog assert
     {
-      const pool = new Pool({ user: 'asgard', password: '123456789', database: 'asgard_crm_dev', host: '127.0.0.1' });
+      const pool = new Pool({ user: 'asgard', password: '123456789', database: DB_NAME, host: '127.0.0.1' });
       const { rows: pr } = await pool.query(
         `SELECT COUNT(*)::int AS n FROM price_records WHERE source='procurement' AND recorded_at > NOW() - interval '2 hours'`
       );
@@ -929,11 +906,13 @@ async function main() {
       }
       if (report.ids.import_id) {
         const ap = await api(pm, 'PUT', `/api/procurement/${pid}/invoice/${report.ids.import_id}/pm-approve`, {});
-        const apTxt = JSON.stringify(ap.data || {});
-        const apOk = ap.ok || ap.status < 400
-          || /уже|already|pm_approved|согласован/i.test(apTxt)
-          || /не на согласован/i.test(apTxt); // UI мог согласовать раньше API
-        step('4e. pm-approve invoice', apOk, apTxt.slice(0, 120));
+        // C4: hard-ассерт по КОНЕЧНОМУ состоянию, а не по коду ответа. Счёт мог быть согласован
+        // выше UI-кнопкой (тогда API вернёт 400 «уже не на согласовании») — это не ошибка.
+        // Приёмка: в БД/API approval_status этого счёта = 'pm_approved'.
+        const cur = await api(pm, 'GET', '/api/procurement/' + pid);
+        const imp = ((cur.data && cur.data.invoice_imports) || []).find((x) => x.id === report.ids.import_id);
+        const finalStatus = imp && imp.approval_status;
+        step('4e. pm-approve invoice', finalStatus === 'pm_approved', `api_status=${ap.status} final=${finalStatus}`);
       }
       const st = await api(pm, 'GET', '/api/procurement/' + pid);
       if (st.data.item && st.data.item.status === 'proc_responded') {
@@ -985,7 +964,7 @@ async function main() {
 
     // find payment invoice
     {
-      const pool = new Pool({ user: 'asgard', password: '123456789', database: 'asgard_crm_dev', host: '127.0.0.1' });
+      const pool = new Pool({ user: 'asgard', password: '123456789', database: DB_NAME, host: '127.0.0.1' });
       const { rows } = await pool.query(
         `SELECT id, status, payment_status FROM payment_invoices
          WHERE procurement_id=$1 OR (basis_text ILIKE $2) ORDER BY id DESC LIMIT 1`,

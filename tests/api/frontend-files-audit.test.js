@@ -318,10 +318,6 @@ module.exports = {
       await assertFileServed('/assets/js/mimir.js');
     }},
 
-    { name: '3.36 JS: warehouse.js exists', run: async () => {
-      await assertFileServed('/assets/js/warehouse.js');
-    }},
-
     { name: '3.37 JS: gantt.js exists', run: async () => {
       await assertFileServed('/assets/js/gantt.js');
     }},
@@ -470,10 +466,6 @@ module.exports = {
 
     { name: '4.23 equipment.js contains equipment module', run: async () => {
       await assertBodyContains('/assets/js/equipment.js', 'equipment', 'equipment.js reference');
-    }},
-
-    { name: '4.24 warehouse.js contains warehouse/TMC module', run: async () => {
-      await assertBodyContains('/assets/js/warehouse.js', 'warehouse', 'warehouse.js reference');
     }},
 
     { name: '4.25 payroll.js contains payroll module', run: async () => {

@@ -13,7 +13,7 @@ const ITEMS = JSON.parse(
 
 async function seedOfsStock(opts = {}) {
   const pool = opts.pool || new Pool({
-    user: 'asgard', password: '123456789', database: process.env.DB_NAME || 'asgard_crm_dev', host: '127.0.0.1',
+    user: 'asgard', password: '123456789', database: process.env.DB_NAME || 'asgard_crm_test', host: '127.0.0.1',
   });
   const own = !opts.pool;
   const wh = await pool.query(
@@ -37,7 +37,7 @@ async function seedOfsStock(opts = {}) {
     if (!productId) {
       const ins = await pool.query(
         `INSERT INTO products(name, unit, is_draft, created_from, created_at)
-         VALUES($1,$2,false,'ofs-seed',NOW()) RETURNING id`,
+         VALUES($1,$2,false,'import',NOW()) RETURNING id`,
         [it.name, it.unit || 'шт']
       );
       productId = ins.rows[0].id;
