@@ -362,11 +362,17 @@ window.AsgardAuth = (function(){
   async function _doRequireUser(){
     const now = Date.now();
     const auth = getAuth();
-    if(!auth || !auth.token || !auth.user) { _cachedAuth = null; return null; }
+    // D-228: сессия восстанавливается из ОДНОГО токена. Потерянный `asgard_user` (вторая вкладка
+    // почистила ключ, прерванная запись, старый профиль) НЕ означает, что токен мёртв: спрашиваем
+    // /api/auth/me и восстанавливаем профиль. Раньше здесь стоял ранний выход по `!auth.user`,
+    // поэтому валидная сессия считалась недействительной и роутер (`router.js:41`) уводил
+    // на `#/login` → `#/welcome`, хотя токен рабочий. Страдал не только D1: ЛЮБАЯ страница.
+    const token = (auth && auth.token) || localStorage.getItem('asgard_token');
+    if(!token) { _cachedAuth = null; return null; }
 
     try {
       const resp = await fetch('/api/auth/me', {
-        headers: { 'Authorization': 'Bearer ' + auth.token }
+        headers: { 'Authorization': 'Bearer ' + token }
       });
 
       if(!resp.ok){
@@ -376,7 +382,9 @@ window.AsgardAuth = (function(){
       }
 
       const data = await resp.json();
-      const user = data.user || auth.user;
+      const user = data.user || (auth && auth.user);
+      // Сервер не отдал профиль — сессия недействительна, наверх не пробиваемся.
+      if(!user){ logout(); _cachedAuth = null; return null; }
       user.roles = normalizeUserRoles(user);
       user.active_role = user.role;
 
@@ -390,16 +398,17 @@ window.AsgardAuth = (function(){
         localStorage.setItem('asgard_menu_settings', JSON.stringify(user.menu_settings));
       }
 
-      const result = { session: { user_id: user.id, token: auth.token }, user, token: auth.token };
+      const result = { session: { user_id: user.id, token }, user, token };
       _cachedAuth = result;
       _cachedAuthTime = now;
       return result;
     } catch(e) {
-      // При ошибке сети - используем кэш
-      const user = auth.user;
+      // При ошибке СЕТИ — используем кэш профиля, если он есть. Без профиля сессии нет.
+      const user = auth && auth.user;
+      if(!user){ _cachedAuth = null; return null; }
       user.roles = normalizeUserRoles(user);
       user.active_role = user.role;
-      const result = { session: { user_id: user.id, token: auth.token }, user, token: auth.token };
+      const result = { session: { user_id: user.id, token }, user, token };
       _cachedAuth = result;
       _cachedAuthTime = now;
       return result;

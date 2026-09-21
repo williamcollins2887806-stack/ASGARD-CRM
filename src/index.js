@@ -362,7 +362,7 @@ fastify.register(require('@fastify/static'), {
   prefix: '/uploads/',
   decorateReply: false,
   setHeaders: (res, filePath) => {
-    const { isDangerousExt, EXT_CONTENT_TYPE } = require('./lib/upload-ext');
+    const { isDangerousExt, safeContentType } = require('./lib/upload-ext');
     const ext = path.extname(filePath || '').toLowerCase();
     res.setHeader('X-Content-Type-Options', 'nosniff');
     if (isDangerousExt(ext)) {
@@ -375,13 +375,15 @@ fastify.register(require('@fastify/static'), {
       res.setHeader('Content-Type', ext === '.svg' ? 'image/svg+xml' : 'text/html; charset=utf-8');
       return;
     }
-    if (!EXT_CONTENT_TYPE[ext]) {
+    if (safeContentType(ext, null) === 'application/octet-stream' && !['.bin'].includes(ext)) {
       // Неизвестное расширение — отдаём как поток байт, браузер не исполнит.
       res.setHeader('Content-Type', 'application/octet-stream');
       res.setHeader('Content-Disposition', 'attachment');
       return;
     }
-    res.setHeader('Content-Type', EXT_CONTENT_TYPE[ext] + (ext === '.txt' || ext === '.csv' ? '; charset=utf-8' : ''));
+    // Тип берём ИЗ ПОЛИТИКИ (safeContentType), а не из локальной таблицы: значение безопасно
+    // по построению, и это видно гейту класса, а не только человеку.
+    res.setHeader('Content-Type', safeContentType(ext, null) + (ext === '.txt' || ext === '.csv' ? '; charset=utf-8' : ''));
   },
 });
 

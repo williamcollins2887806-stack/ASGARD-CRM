@@ -469,10 +469,11 @@ async function routes(fastify, options) {
       if (m) {
         // D-220b: тип приходит из поля клиента (`data:image/svg+xml;base64,…` → исполняемый SVG).
         // Отдаём только безопасные типы, остальное — потоком байт.
+        const { safeContentType } = require('../lib/upload-ext');
         const offered = String(m[1] || '').toLowerCase();
-        const safeMime = /^(image\/(jpeg|png|gif|webp|bmp)|application\/pdf)$/.test(offered)
-          ? offered
-          : 'application/octet-stream';
+        // safeContentType отдаёт canonical тип ИЛИ octet-stream для всего неизвестного/исполняемого,
+        // поэтому «свой» тернарник, невидимый гейту, больше не нужен: тип доказан политикой.
+        const safeMime = safeContentType(null, offered);
         reply.header('Content-Type', safeMime);
         reply.header('X-Content-Type-Options', 'nosniff');
         if (safeMime === 'application/octet-stream') reply.header('Content-Disposition', 'attachment');

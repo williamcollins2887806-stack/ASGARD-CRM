@@ -152,10 +152,15 @@ async function afterPaid(db, payment) {
 function decoratePayment(row) {
   if (!row) return row;
   const file_path = normalizeUploadUrl(row.file_path);
+  const has_file = !!(row.file_path || row.file_name);
   return {
     ...row,
     file_path,
-    file_url: row.id ? `/api/payment-invoices/${row.id}/file` : null,
+    has_file,
+    // D1 (21.09): `file_url` — ТОЛЬКО когда файл реально есть. Раньше URL проставлялся всегда,
+    // и модалка счёта БЕЗ вложения строила /file, получала 404 (ошибка в консоли), а превью
+    // показывало «не удалось загрузить» вместо честного «файл не приложен».
+    file_url: has_file && row.id ? `/api/payment-invoices/${row.id}/file` : null,
     status_label: statusLabel(row.status, row.payment_status, row.pay_timing)
   };
 }
@@ -176,6 +181,7 @@ async function routes(fastify) {
     if (isNaN(id)) return reply.code(400).send({ error: 'Неверный ID' });
     const { rows } = await db.query('SELECT * FROM payment_invoices WHERE id=$1', [id]);
     if (!rows[0]) return reply.code(404).send({ error: 'Не найдено' });
+    // `has_file` приходит из decoratePayment — здесь не дублируем.
     return decoratePayment(rows[0]);
   });
 
@@ -183,8 +189,21 @@ async function routes(fastify) {
   fastify.get('/:id/file', { preHandler: [fastify.requireRoles(FILE_ROLES)] }, async (req, reply) => {
     const id = parseInt(req.params.id);
     if (isNaN(id)) return reply.code(400).send({ error: 'Неверный ID' });
-    const { rows } = await db.query('SELECT file_path, file_name FROM payment_invoices WHERE id=$1', [id]);
+    const { rows } = await db.query('SELECT file_path, file_name, created_by, status, pay_timing, payment_status FROM payment_invoices WHERE id=$1', [id]);
     if (!rows[0]) return reply.code(404).send({ error: 'Не найдено' });
+    // D-226/#4 (21.09, независимый верификатор): право на ФАЙЛ не шире права видеть САМ счёт.
+    // Раньше файл раздавался широкому списку ролей (в т.ч. PM), хотя очередь директора им
+    // отдаёт 403 — то есть роль, которой счёт не виден, могла выкачать его реквизиты.
+    // Разрешаем: директор/бухгалтер/ADMIN (решают и платят), инициатор счёта, либо роль из FILE_ROLES
+    // только если счёт в публичной очереди (ждёт решения/оплаты) — т.е. реально «виден» в своём разделе.
+    const r = String(req.user.role || '');
+    const isDir = DIR_ROLES.includes(r);
+    const isBuh = BUH_ROLES.includes(r);
+    const isOwner = Number(rows[0].created_by) === Number(req.user.id);
+    const visible = rows[0].status === 'awaiting_dir' || rows[0].payment_status === 'pending_payment';
+    if (!isDir && !isBuh && !isOwner && !(FILE_ROLES.includes(r) && visible)) {
+      return reply.code(403).send({ error: 'Нет доступа к файлу счёта' });
+    }
     const fsPath = uploadFsPath(rows[0].file_path);
     if (!fsPath || !fs.existsSync(fsPath)) {
       return reply.code(404).send({ error: 'Файл счёта не найден на диске' });
@@ -294,6 +313,7 @@ async function routes(fastify) {
   // Director can set pay_timing on approve
   fastify.post('/:id/dir-approve', { preHandler: [fastify.requireRoles(DIR_ROLES)] }, async (req, reply) => {
     const id = parseInt(req.params.id);
+    if (isNaN(id)) return reply.code(404).send({ error: 'Не найдено' });
     const { rows } = await db.query('SELECT * FROM payment_invoices WHERE id=$1', [id]);
     if (!rows[0]) return reply.code(404).send({ error: 'Не найдено' });
     if (rows[0].status !== 'awaiting_dir') return reply.code(409).send({ error: 'Счёт не на согласовании директора' });
@@ -302,15 +322,28 @@ async function routes(fastify) {
       await db.query(`UPDATE payment_invoices SET pay_timing=$2, updated_at=NOW() WHERE id=$1`, [id, timing]);
       rows[0].pay_timing = timing;
     }
+    // D1 (21.09): комментарий директора сохраняем — он летит в письмо/аудит и объясняет решение.
+    const dirComment = req.body && typeof req.body.comment === 'string' ? req.body.comment.trim().slice(0, 1000) : '';
+    if (dirComment) {
+      await db.query(`UPDATE payment_invoices SET dir_comment=$2, updated_at=NOW() WHERE id=$1`, [id, dirComment]);
+      rows[0].dir_comment = dirComment;
+    }
     const result = await paymentMail.applyDecision(db, rows[0], 'approve', req.user);
     return result;
   });
 
   fastify.post('/:id/dir-reject', { preHandler: [fastify.requireRoles(DIR_ROLES)] }, async (req, reply) => {
     const id = parseInt(req.params.id);
+    if (isNaN(id)) return reply.code(404).send({ error: 'Не найдено' });
     const { rows } = await db.query('SELECT * FROM payment_invoices WHERE id=$1', [id]);
     if (!rows[0]) return reply.code(404).send({ error: 'Не найдено' });
     if (rows[0].status !== 'awaiting_dir') return reply.code(409).send({ error: 'Счёт не на согласовании директора' });
+    // D1 (21.09): комментарий при возврате — иначе инициатор не понимает, что исправить.
+    const dirComment = req.body && typeof req.body.comment === 'string' ? req.body.comment.trim().slice(0, 1000) : '';
+    if (dirComment) {
+      await db.query(`UPDATE payment_invoices SET dir_comment=$2, updated_at=NOW() WHERE id=$1`, [id, dirComment]);
+      rows[0].dir_comment = dirComment;
+    }
     const result = await paymentMail.applyDecision(db, rows[0], 'reject', req.user);
     return result;
   });
@@ -318,6 +351,7 @@ async function routes(fastify) {
   // BUH pay with optional payment slip
   fastify.post('/:id/pay-bank', { preHandler: [fastify.requireRoles(BUH_ROLES)] }, async (req, reply) => {
     const id = parseInt(req.params.id);
+    if (isNaN(id)) return reply.code(404).send({ error: 'Не найдено' });
     const { rows } = await db.query('SELECT * FROM payment_invoices WHERE id=$1', [id]);
     if (!rows[0]) return reply.code(404).send({ error: 'Не найдено' });
     const pay = rows[0];

@@ -794,7 +794,20 @@ module.exports = async function telephonyRoutes(fastify, opts) {
       if (fs.existsSync(call.record_path)) {
         const stat = fs.statSync(call.record_path);
         const ext = call.record_path.split('.').pop();
-        const mimeType = ext === 'wav' ? 'audio/wav' : ext === 'ogg' ? 'audio/ogg' : 'audio/mpeg';
+        // Запись звонка: расширение берём от ИМЕНИ ФАЙЛА, а не от доверенного серверного поля,
+        // поэтому тип обязан проходить политику (D-223/D-224). Аудио-типы заданы ЛИТЕРАЛАМИ
+        // (доказуемо), всё прочее — через safeContentType (исполняемое → octet-stream).
+        const { safeContentType } = require('../lib/upload-ext');
+        const e = String(ext).toLowerCase();
+        const mimeType = e === 'wav' ? 'audio/wav'
+          : e === 'ogg' ? 'audio/ogg'
+            : e === 'mp3' ? 'audio/mpeg'
+              : e === 'm4a' ? 'audio/mp4'
+                : e === 'aac' ? 'audio/aac'
+                  : e === 'opus' ? 'audio/opus'
+                    : e === 'webm' ? 'audio/webm'
+                      : safeContentType('.' + e, null);
+        reply.header('X-Content-Type-Options', 'nosniff');
 
         // Поддержка Range requests для seek
         const range = request.headers.range;

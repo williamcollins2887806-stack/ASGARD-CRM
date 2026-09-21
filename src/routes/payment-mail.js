@@ -90,8 +90,18 @@ module.exports = async function paymentMailRoutes(fastify) {
     const fsPath = paymentMail.uploadFsPath(pay.file_path);
     if (!fsPath || !fs.existsSync(fsPath)) return reply.code(404).send({ error: 'Файл не найден' });
     const name = pay.file_name || path.basename(fsPath);
-    reply.header('Content-Type', name.toLowerCase().endsWith('.pdf') ? 'application/pdf' : 'application/octet-stream');
-    reply.header('Content-Disposition', `inline; filename="${encodeURIComponent(name)}"`);
+    // Публичный токен-роут: тип определяем по РЕАЛЬНО сохранённому расширению через ту же
+    // политику, что и остальные выдачи (D-220b/D-223). Раньше тип выводился из имени в БД —
+    // защищён был лишь .pdf-суффикс, и это ровно тот «сиблинг», который находил верификатор.
+    const { safeContentType, inlineSafetyHeaders, isDangerousExt } = require('../lib/upload-ext');
+    const ext = path.extname(fsPath).toLowerCase();
+    const ct = safeContentType(ext, pay.file_mime);
+    reply.header('Content-Type', ct);
+    for (const [k, v] of Object.entries(inlineSafetyHeaders(ext))) reply.header(k, v);
+    reply.header('X-Content-Type-Options', 'nosniff');
+    // Неизвестный/исполняемый тип — не рендерим, а отдаём файлом.
+    const dispo = isDangerousExt(ext) || ct === 'application/octet-stream' ? 'attachment' : 'inline';
+    reply.header('Content-Disposition', `${dispo}; filename="${encodeURIComponent(name)}"`);
     return reply.send(fs.createReadStream(fsPath));
   });
 

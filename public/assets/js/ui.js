@@ -233,6 +233,11 @@ window.AsgardUI = (function(){
         catch(e){ toast("Ошибка", e, "err"); }
       }, 0);
     }
+    // Возвращаем контейнер модалки: вызывающий код ДОЛЖЕН искать свои элементы внутри него,
+    // а не в document. Иначе при наложении модалок (двойной клик по карточке, «закрыл A →
+    // сразу открыл B») querySelector по document возвращает элементы ПЕРВОЙ в документе
+    // модалки — уходящей, без обработчиков, а видимая (верхняя) остаётся «мёртвой» (D-226).
+    return overlay;
   }
 
   /**
@@ -269,16 +274,26 @@ window.AsgardUI = (function(){
    * hideModal() — closes and removes only the top modal.
    * The modal below (if any) remains visible and fully functional.
    */
-  function hideModal(){
+  function hideModal(overlay){
     if(!_modalStack.length) return;
-    const overlay = _modalStack.pop();
-    const modal = $(".cr-m", overlay);
+    let target = null;
+    if(overlay){
+      // Закрыть КОНКРЕТНУЮ модалку (даже если она уже не верхняя): убираем её из стека,
+      // чтобы отложенный ответ не «догнал» и не закрыл поверх неё открытую другую (D-226).
+      const i = _modalStack.indexOf(overlay);
+      if(i >= 0) _modalStack.splice(i, 1);
+      target = overlay;
+    } else {
+      target = _modalStack.pop();
+    }
+    if(!target) return;
+    const modal = $(".cr-m", target);
 
-    overlay.classList.add("cr-m-overlay--leaving");
-    overlay.classList.remove("cr-m-overlay--visible");
+    target.classList.add("cr-m-overlay--leaving");
+    target.classList.remove("cr-m-overlay--visible");
 
     setTimeout(function(){
-      overlay.remove();
+      target.remove();
       if(_modalStack.length === 0) document.body.style.overflow = "";
     }, 300);
   }

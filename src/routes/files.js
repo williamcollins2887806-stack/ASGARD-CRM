@@ -510,7 +510,7 @@ async function routes(fastify, options) {
 
     // Сборка ZIP в памяти через adm-zip (есть в зависимостях).
     const zip = new AdmZip();
-    const sanitize = (s) => String(s || '').replace(/[\\/:*?"<>| -]/g, '_').trim() || 'unnamed';
+    const sanitize = (s) => String(s || '').replace(/[\\/:*?"<>|\x00-\x1f]/g, '_').trim() || 'unnamed';
     const usedNames = new Set();
     let addedCount = 0;
 

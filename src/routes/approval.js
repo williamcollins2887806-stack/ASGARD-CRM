@@ -398,6 +398,49 @@ async function routes(fastify) {
     return { items, cash_balance: balance };
   });
 
+  // ─── Очередь директора (D1, 21.09) ───
+  // Раньше директор не имел своей очереди в этом разделе: nav открывал страницу бухгалтерии,
+  // запрос pending-buh падал 403, и директор видел пустой/битый экран. Возвращаем его срез —
+  // счета, ожидающие решения директора (status='awaiting_dir').
+  fastify.get('/pending-dir', {
+    preHandler: [fastify.authenticate]
+  }, async (request, reply) => {
+    const role = request.user.role;
+    const isDir = approvalService.isDirector(role);
+    // ADMIN видит очередь директора для разбора инцидентов (read-only решения не отменяет).
+    if (!isDir && role !== 'ADMIN') {
+      return reply.code(403).send({ error: 'Доступ только для директора' });
+    }
+    const { rows } = await db.query(`
+      SELECT id, supplier_name, amount, currency, basis_type, basis_text, work_id,
+             status, payment_status, pay_timing, created_at, updated_at, file_name
+        FROM payment_invoices
+       WHERE status = 'awaiting_dir'
+       ORDER BY created_at ASC
+    `);
+    const items = rows.map((r) => ({
+      // ВАЖНО: ровно то же значение, что отдаёт очередь бухгалтерии ('payment_invoices').
+      // С единственным числом карточка уходила в чужую ветку обработчика клика и модалка не открывалась.
+      entity_type: 'payment_invoices',
+      id: r.id,
+      label: 'Счёт',
+      title: r.supplier_name || ('Счёт #' + r.id),
+      amount: r.amount,
+      currency: r.currency,
+      basis_type: r.basis_type,
+      basis_text: r.basis_text,
+      work_id: r.work_id,
+      status: r.status,
+      payment_status: r.payment_status,
+      pay_timing: r.pay_timing,
+      file_name: r.file_name,
+      created_at: r.created_at,
+      updated_at: r.updated_at,
+    }));
+    const total = items.reduce((s, x) => s + Number(x.amount || 0), 0);
+    return { items, total, count: items.length };
+  });
+
   // ─── Баланс кассы (для модалки) ───
   fastify.get('/cash-balance', {
     preHandler: [fastify.authenticate]
