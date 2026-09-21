@@ -6626,3 +6626,49 @@ F1–F6 (синк «Счета и акты»), G1–G9 (матрица осно�
 в объём D-237 не входит.
 
 **Статус: REVIEW** (код + гейты зелёные; независимая сертификация L3 и выкатка — отдельным шагом).
+
+## D-238. Срок подачи и внутренний дедлайн расходились на общих путях записи (21.09.2026)
+
+**Как найдено.** При L3-сертификации D-237 верификатор искал дыры в объёме и нашёл, что PATCH
+реестра — не единственный путь записи. Машинно подтверждено на клоне `asgard_crm_test` (:3100,
+тендер #2052): `PUT /api/tenders/2052 {docs_deadline: +10д}` от роли **PM** → 200, `docs_deadline`
+изменился, `analysis_deadline` остался прежним (`2026-09-11`). То же на `PUT /api/data/tenders/2052`.
+
+**Корень.** Канон пересчёта (`computeAnalysisDeadline`) применялся только в ветке
+`docs_deadline`/participation у `PATCH /api/tenders/registry/:id`. Остальные пути писали тендер
+напрямую:
+- `PUT /api/tenders/:id` — общий редактор тендера (v2 `TenderEditor`, `PmCalcs`, funnel, mobile);
+- `PUT /api/data/tenders/:id` — generic CRUD, куда пишет ванила `AsgardDB.put('tenders', ...)`
+  и мобильные шторки;
+- `POST /api/tenders` — создание строки.
+
+Итог: заказчик переносит срок, ТО правит его в реестре (там всё честно), а РП в просчёте/анализе
+через общий редактор мог двинуть срок и получить **протухший** `analysis_deadline`. В клоне из-за
+этого 5 строк с заполненным `docs_deadline` и `analysis_deadline IS NULL` (созданные через POST).
+
+**Правка (узкая: только пересчёт, RBAC не трогаем).**
+- Новый `src/lib/analysis-deadline.js` — единая точка канона поверх `lib/business-days`:
+  `recalcAnalysisDeadlinePatch(patch, current)` возвращает `undefined`, если среди полей нет
+  входов канона (`docs_deadline`/`participation_paid`/`participation_fee`) — тогда `UPDATE`
+  не трогаем.
+- `src/routes/tenders.js`: пересчёт в `PUT /:id` (блок идёт **до** `values.push(id)` —
+  `idx` нумерует плейсхолдеры; первая версия вставила значение после `id` и отдавала 500
+  `invalid input syntax for type date`); `POST /` заполняет `analysis_deadline` сразу.
+- `src/routes/data.js`: пересчёт в `PUT /:table/:id` при `table='tenders'` (снимок `before`).
+- Осознанно **не** менялись RBAC и immutable-границы общих путей: `/api/data/tenders/:id`
+  по-прежнему доступен любой роли из `ALLOWED_ROLES` таблицы и может писать заказчика/ИНН/НМЦ —
+  это **отдельная** находка (обход immutable мимо реестра), в объём D-238 не входит. Туда же:
+  `POST /api/tenders/:id/win` и `/lose` пишут `docs_deadline` без пересчёта.
+
+**Доказательство (клон :3100, тендер #2052, гейт возвращает данные за собой).**
+- `node tests/rp-calc-improvements-sentinel.js` → **20/20 PASS** (было 16): добавлены 4 кейса D-238 —
+  `PUT /api/tenders/:id` (TO) меняет срок и пересчитывает `analysis_deadline` (`2026-09-25 → 2026-09-22`);
+  `PUT /api/data/tenders/:id` (TO) — то же; платное участие через generic даёт канон −5;
+  `POST /api/tenders` отдаёт тендер сразу с `analysis_deadline`.
+- **Mutation-контроль (не тавтологично):** тот же сценарий на дереве до правки дал `7/13` FAIL —
+  `PUT /api/tenders/:id` отдавал 500, `analysis_deadline` не менялся.
+- `node tools/verify_registry_row_form.js` → **24/24 PASS** (реестр не сломан).
+- `node --check` на трёх файлах; юнит-проба `recalcAnalysisDeadlinePatch` (`undefined` без входов,
+  −3/−5, `null` при снятом сроке).
+
+**Статус: REVIEW** (код + гейты зелёные; независимая сертификация — отдельным шагом).

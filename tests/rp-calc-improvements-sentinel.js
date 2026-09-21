@@ -15,6 +15,9 @@
  *      пишут, PM/HEAD_PM получают 403; при переносе срока внутренний срок анализа
  *      (analysis_deadline) пересчитывается по канону «−3 раб. дня бесплатно / −5 при
  *      платном участии»;
+ *   4c) внутренний срок пересчитывается и на ОБЩИХ путях записи (D-238):
+ *      PUT /api/tenders/:id (v2/PmCalcs/funnel/mobile), PUT /api/data/tenders/:id
+ *      (ванила AsgardDB.put), POST /api/tenders (создание);
  *   5) work_price в смете остаётся БЕЗ НДС.
  *
  * Usage: node tests/rp-calc-improvements-sentinel.js
@@ -320,6 +323,90 @@ async function loadTenderRow(role) {
     assert(Number(t.price_no_vat) > 0, 'нет price_no_vat');
     assert(Math.abs(Number(t.work_price || t.price_no_vat) - Number(t.price_no_vat)) < 0.02,
       'work_price разошёлся с price_no_vat');
+  });
+
+  // ── 4c. D-238: внутренний срок пересчитывается и на ОБЩИХ путях записи ──
+  // Реестр — не единственный путь: ванила пишет тендер через PUT /api/data/tenders/:id
+  // (AsgardDB.put), общий редактор v2/PmCalcs/funnel/mobile — через PUT /api/tenders/:id.
+  // До фикса срок подачи уезжал, а analysis_deadline оставался старым (РП работал по протухшему).
+  const TENDER_PUT = '/api/tenders/' + TENDER_ID;
+  const TENDER_DATA = '/api/data/tenders/' + TENDER_ID;
+
+  async function dataRow() {
+    const r = await api('GET', TENDER_DATA, { role: 'ADMIN' });
+    const t = r.data.item || r.data.tender || r.data;
+    assert(t && t.id, 'GET /api/data/tenders/:id не отдал строку: ' + JSON.stringify(r.data).slice(0, 160));
+    return t;
+  }
+
+  await check('PUT /api/tenders/:id — перенос срока пересчитывает analysis_deadline — D-238', async () => {
+    const t0 = await dataRow();
+    const paid = !!t0.participation_paid;
+    const origIso = String(t0.docs_deadline).slice(0, 10);
+    const d = new Date(origIso + 'T12:00:00');
+    d.setDate(d.getDate() + 10);
+    const shifted = d.toISOString().slice(0, 10);
+    const expected = computeAnalysisDeadline({ docs_deadline: shifted, participation_paid: paid, created_at: t0.created_at });
+
+    const r = await api('PUT', TENDER_PUT, { role: 'TO', body: { docs_deadline: shifted } });
+    assert(r.ok, 'общий редактор упал: HTTP ' + r.status + ' — ' + JSON.stringify(r.data).slice(0, 200));
+    const got = String((r.data.tender || {}).analysis_deadline || '').slice(0, 10);
+    assert(got === expected,
+      'analysis_deadline не пересчитан общим редактором: ожидали ' + expected + ', получили ' + got);
+
+    const back = await api('PUT', TENDER_PUT, { role: 'ADMIN', body: { docs_deadline: origIso } });
+    assert(back.ok, 'не удалось вернуть срок: HTTP ' + back.status);
+    assert(String((back.data.tender || {}).analysis_deadline || '').slice(0, 10) === String(t0.analysis_deadline).slice(0, 10),
+      'возврат срока не вернул прежний analysis_deadline');
+  });
+
+  await check('PUT /api/data/tenders/:id — перенос срока пересчитывает analysis_deadline — D-238', async () => {
+    const t0 = await dataRow();
+    const paid = !!t0.participation_paid;
+    const origIso = String(t0.docs_deadline).slice(0, 10);
+    const d = new Date(origIso + 'T12:00:00');
+    d.setDate(d.getDate() + 10);
+    const shifted = d.toISOString().slice(0, 10);
+    const expected = computeAnalysisDeadline({ docs_deadline: shifted, participation_paid: paid, created_at: t0.created_at });
+
+    const r = await api('PUT', TENDER_DATA, { role: 'TO', body: { docs_deadline: shifted } });
+    assert(r.ok, 'generic-путь упал: HTTP ' + r.status + ' — ' + JSON.stringify(r.data).slice(0, 200));
+    const after = await dataRow();
+    assert(String(after.analysis_deadline).slice(0, 10) === expected,
+      'analysis_deadline не пересчитан generic-путём: ожидали ' + expected + ', получили ' + String(after.analysis_deadline).slice(0, 10));
+
+    await api('PUT', TENDER_DATA, { role: 'ADMIN', body: { docs_deadline: origIso } });
+    const restored = await dataRow();
+    assert(String(restored.analysis_deadline).slice(0, 10) === String(t0.analysis_deadline).slice(0, 10),
+      'возврат срока не вернул прежний analysis_deadline');
+  });
+
+  await check('PUT /api/data/tenders/:id — платное участие меняет срок анализа на −5 раб. дней — D-238', async () => {
+    const t0 = await dataRow();
+    if (t0.docs_deadline == null) return;
+    const expected = computeAnalysisDeadline({ docs_deadline: t0.docs_deadline, participation_paid: true, created_at: t0.created_at });
+    const r = await api('PUT', TENDER_DATA, { role: 'ADMIN', body: { participation_paid: true } });
+    assert(r.ok, 'HTTP ' + r.status);
+    const after = await dataRow();
+    assert(after.participation_paid === true, 'участие не переключилось');
+    assert(String(after.analysis_deadline).slice(0, 10) === expected,
+      'срок анализа не учёл платное участие: ожидали ' + expected + ', получили ' + String(after.analysis_deadline).slice(0, 10));
+
+    await api('PUT', TENDER_DATA, { role: 'ADMIN', body: { participation_paid: !!t0.participation_paid, participation_fee: t0.participation_fee } });
+  });
+
+  await check('POST /api/tenders — новый тендер получает analysis_deadline сразу — D-238', async () => {
+    const iso = '2026-12-15';
+    const r = await api('POST', '/api/tenders', {
+      role: 'TO',
+      body: { customer_name: 'SENTINEL_D238', tender_title: 'sentinel', docs_deadline: iso, tender_price: 1000 }
+    });
+    assert(r.ok, 'создание упало: HTTP ' + r.status + ' — ' + JSON.stringify(r.data).slice(0, 200));
+    const t = r.data.tender || r.data || {};
+    const expected = computeAnalysisDeadline({ docs_deadline: iso, participation_paid: false, created_at: t.created_at });
+    assert(String(t.analysis_deadline || '').slice(0, 10) === expected,
+      'новый тендер без внутреннего срока: ожидали ' + expected + ', получили ' + JSON.stringify(t.analysis_deadline));
+    if (t.id) await api('DELETE', '/api/tenders/' + t.id, { role: 'ADMIN' });
   });
 
   console.log('\n' + results.filter((r) => r[0] === 'PASS').length + '/' + results.length + ' PASS');

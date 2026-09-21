@@ -7,6 +7,7 @@
 const {
   shouldHideTestUsersFromLists,
 } = require('../lib/user-filters');
+const { recalcAnalysisDeadlinePatch } = require('../lib/analysis-deadline');
 
 async function dataRoutes(fastify, options) {
   const db = fastify.db;
@@ -786,6 +787,25 @@ async function dataRoutes(fastify, options) {
       const keys = Object.keys(data).filter(k => /^[a-z_]+$/i.test(k) && tableCols.has(k));
       if (keys.length === 0) {
         return reply.code(400).send({ error: 'Нет валидных полей для обновления' });
+      }
+
+      // D-237: ванила пишет тендер через AsgardDB.put → generic /api/data/tenders/:id.
+      // Этот путь не знал про внутренний срок анализа, поэтому пересчитываем его здесь
+      // тем же каноном, что и реестр (docs_deadline − 3/5 раб. дней).
+      let recalcDeadline;
+      if (table === 'tenders') {
+        const p = {};
+        for (const f of ['docs_deadline', 'participation_paid', 'participation_fee']) {
+          if (data[f] !== undefined) p[f] = data[f];
+        }
+        if (Object.keys(p).length) {
+          const prev = await db.query('SELECT docs_deadline, participation_paid, created_at FROM tenders WHERE id = $1', [id]);
+          if (prev.rows[0]) recalcDeadline = recalcAnalysisDeadlinePatch(p, prev.rows[0]);
+        }
+      }
+      if (recalcDeadline !== undefined) {
+        data.analysis_deadline = recalcDeadline;
+        if (!keys.includes('analysis_deadline')) keys.push('analysis_deadline');
       }
 
       // Тендеры: снимок до UPDATE — для уведомления РП при переназначении на просчёт

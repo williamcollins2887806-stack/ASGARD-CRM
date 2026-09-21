@@ -74,6 +74,8 @@ async function routes(fastify, options) {
   const { ensureSiteByPlace } = require('../helpers/site-geocode');
 const { logError } = require('../lib/log-error');
 const { buildTenderDateWhere } = require('../services/tender-date-filter');
+const { recalcAnalysisDeadlinePatch } = require('../lib/analysis-deadline');
+const { computeAnalysisDeadline } = require('../lib/business-days');
 
   // ─────────────────────────────────────────────────────────────────────────────
   // GET /api/tenders - List all tenders
@@ -530,6 +532,16 @@ const { buildTenderDateWhere } = require('../services/tender-date-filter');
         if (raw[k] !== undefined) data[k] = raw[k];
       }
 
+      // D-237: внутренний срок анализа = docs_deadline − 3/5 раб. дней.
+      // Раньше POST его не заполнял, и у созданных здесь строк оставался NULL.
+      if (data.docs_deadline) {
+        data.analysis_deadline = computeAnalysisDeadline({
+          docs_deadline: data.docs_deadline,
+          participation_paid: false,
+          created_at: data.created_at
+        });
+      }
+
       const keys = Object.keys(data);
       const values = Object.values(data);
       const placeholders = keys.map((_, i) => `$${i + 1}`);
@@ -692,6 +704,23 @@ const { buildTenderDateWhere } = require('../services/tender-date-filter');
     }
 
     updates.push('updated_at = NOW()');
+
+    // D-237: внутренний срок анализа пересчитывается на ЛЮБОМ пути, где меняется
+    // срок подачи/участие — не только в реестре. Иначе РП работал бы по старому сроку.
+    // ВАЖНО: блок идёт ДО values.push(id) — `idx` нумерует плейсхолдеры по порядку
+    // значений, а `id` встаёт последним ($idx в WHERE).
+    const recalcCurrent = { docs_deadline: oldTender.docs_deadline, participation_paid: oldTender.participation_paid, created_at: oldTender.created_at };
+    const recalcPatch = {};
+    for (const field of ['docs_deadline', 'participation_paid', 'participation_fee']) {
+      if (data[field] !== undefined) recalcPatch[field] = data[field];
+    }
+    const recalcDeadline = recalcAnalysisDeadlinePatch(recalcPatch, recalcCurrent);
+    if (recalcDeadline !== undefined) {
+      updates.push(`analysis_deadline = $${idx}`);
+      values.push(recalcDeadline);
+      idx++;
+    }
+
     values.push(id);
 
     const sql = `
