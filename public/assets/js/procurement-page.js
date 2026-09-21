@@ -43,7 +43,10 @@ window.AsgardProcurementPage = (function() {
     paid:{l:'Оплачен',c:'proc-inv--paid'}
   };
   const invBadge = s => { const st=INV_WAVE[s]||{l:s||'draft',c:'proc-inv--draft'}; return `<span class="proc-inv-badge ${st.c}">${esc(st.l)}</span>`; };
-  const money = (v) => (AsgardUI.moneyRub || AsgardMoney.formatMoney)(v);
+  // D-241 (21.09): обёртка ОБЯЗАНА пробрасывать opts — иначе money2 ниже не доносит
+  // `fractionDigits: 2` (AsgardUI.moneyRub/formatMoney принимают второй аргумент),
+  // и «бумага счёта» молча округляет сумму до рубля. Дефект поймал независимый VER-1 живьём.
+  const money = (v, opts) => (AsgardUI.moneyRub || AsgardMoney.formatMoney)(v, opts);
   const dt = d => d ? new Date(d).toLocaleDateString('ru-RU') : '—';
   const dtFull = d => d ? new Date(d).toLocaleString('ru-RU',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}) : '—';
   function hdr() { const t=localStorage.getItem('asgard_token')||localStorage.getItem('auth_token'); return {'Authorization':'Bearer '+t,'Content-Type':'application/json'}; }
