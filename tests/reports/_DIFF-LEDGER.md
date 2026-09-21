@@ -6507,3 +6507,68 @@ if (b.action === 'pay') {
 `source_key=<id>`; без `work_id` — карточка остаётся в Doc Hub как неполная).
 
 **Статус: CONFIRMED (E0).** Правка — E5.
+
+---
+
+## Выкатка 21.09.2026 (shell 20.28.45). Прод 18.09 → 21.09, батч D-184..D-236
+
+**Команда:** пользователь — «сделай комит и деплой прод, ТО не могут внести тендер» + выбор
+«Выкатывать весь батч сейчас».
+
+**Состояние до.** Прод: shell `20.28.37`, git `76fd787c` (18.09). Локально: `20.28.45`, `e31a2070`.
+На проде НЕ было фикса ТО (`assign-analysis` — 0 вхождений), миграций V355/V356/V357, двух
+новых файлов (billing/nd-permits) и 96 расходящихся файлов. Прод при этом целостен и
+самодостаточен; единственная прод-уникальная правка после 18.09 — `src/services/_t_report.js`
+(mtime 21.09, не в git, в патч не входил, сохранён).
+
+**Найдено до коммита (важное).** Закоммиченный `HEAD` был НЕработоспособен: `src/index.js` и
+`src/routes/pm-duty.js` требовали незакоммиченных модулей (`analysis-checklist.js`,
+`mail-killswitch.js`, `email-text.js`, `upload-ext.js`, `analysis-checklist-docx.js`). Из чистого
+git сервер бы не поднялся. Все коммиты сделаны до деплоя; `src` залит из git (`git archive`).
+
+**Гейты (все зелёные).**
+- `shell_guard --expect-version 20.28.45 --deploy-gate` → 37/37 (до подписи 36/37: FAIL только сам deploy-gate).
+- `verify_index_tags.js` → 0 MISSING / 0 DUPLICATE / 0 BROKEN (200 JS, 26 CSS).
+- `audit_silent_reverts.js` (pre) → PROD_HANDEDIT=0, PENDING_DEPLOY=20.
+- `restore_asset_sync.py plan` (pre) → differ_prod_newer=0, index_reference_problems=0.
+- `verify_rp_modal_render.js` → 19/19 OK.
+- `verify_registry_row_form.js` → 19/19 PASS (B1 колонка «Аналитик», B3/B4 кнопка «Анализирую сам»,
+  B5/B6 права владельца и чужого открытого анализа).
+- `verify_content_type_guard.js` → 0 срабатываний на 378 файлах.
+- Синтаксис 17/17 бэкенд-файлов OK; `require()` резолвятся; npm-пакеты (docxtemplater, pizzip,
+  nodemailer) на проде уже стояли — установка не требовалась.
+
+**Порядок выкатки.**
+1. Снапшот прода: `_snapshots/before-release-21-09-20260921-153606.tar.gz` (63.3 МБ, 7978 файлов,
+   src/**/*.js = 373, оболочка внутри).
+2. Дамп БД: `/root/snapshots/asgard_crm_pre-V355-20260921-153802.dump` (34 МБ, 4284 объекта, читается).
+3. Миграции V355 (emails.ai_attempts/ai_last_error_at), V356 (tender_analysis_checklists + 4 индекса,
+   uq по tender_id), V357 (assembly_items.photo_*) — applied с ON_ERROR_STOP, аддитивные (только
+   ADD COLUMN / CREATE TABLE IF NOT EXISTS, без DROP/DELETE/ALTER COLUMN).
+4. Фронт: `restore_asset_sync.py apply` (tar+scp; перед scp свой shell_guard).
+5. Бэкенд: архив из `git archive HEAD src` (392 файла) + бэкап прежнего src
+   (`/root/snapshots/src-pre-deploy-20260921-154539.tar.gz`). Залито 41 изменённый + 6 новых.
+6. `systemctl restart asgard-crm` → active, `/api/health` 200, встроенный `asgard-smoke` 10/10.
+7. Post-deploy: сначала `restore_asset_sync.py plan` (пересъёмка манифеста), затем
+   `audit_silent_reverts.js --post-deploy` → «прод совпадает с локальным (расхождений: 0)».
+
+**Рантайм-проверка снаружи (https://asgard-crm.ru).**
+- Оболочка: `ASGARD_SHELL_VERSION=20.28.45`, 201 скрипт, редирект на `#/welcome` корректен.
+- Модули: `AsgardBillingPage`, `AsgardNdPermits`, `AsgardDocHubPage`, `AsgardBrigadeCart`,
+  `AsgardWarehouseMap`, `AsgardWarehouseV2`, `AsgardProcurementPage`, `AsgardApprovalPaymentPage`,
+  `AsgardAnalysisChecklist`, `AsgardRegistryTab` — все `object`. 0 ошибок.
+- Новые методы: `assignRegistryAnalysis`, `loadAnalysisChecklist` — `function`.
+- Новые роуты: `GET /api/tenders/1/analysis-checklist` → 401, `POST .../assign-analysis` → 401
+  (маршрут есть, нужен вход), `GET /api/settings/analysis-checklist-template` → 401. 404 нет.
+- Ассеты с бывшими 404 (billing.js/css, nd-permits.js/css, warehouse-map.js, brigade-cart.js,
+  analysis_checklist.js, registry_tab.js, warehouse-v2-asm.js) → HTTP 200.
+- TLS: сертификат asgard-crm.ru действителен до 14.12.2026 (84 дня), `certbot.timer` активен,
+  nginx active — вмешательство не требовалось.
+
+**Чего не было (честно).** Сквозного независимого верификатора на ВЕСЬ трёхдневный батч в этой
+сессии не запускалось: сертификация шла по частям (D-220c — три прохода, D1/D2 — проходы).
+Рантайм-проверка выполнена снаружи и в браузере, но по раздельным блокам.
+
+**Остаётся открытым после выкатки:** D-231 (копейки в `procurement-page.js` и v2-модалках),
+блоки E1–E5 (единая точка заявок, «К оплате» создаёт счёт, авто-расход после оплаты),
+F1–F6 (синк «Счета и акты»), G1–G9 (матрица оснований согласования).
