@@ -11,7 +11,20 @@
 
 const { test, expect } = require('@playwright/test');
 
-const BASE_URL = 'https://asgard-crm.ru';
+// Шаг 0.4 (D-193): тесты ходят ТОЛЬКО на локальный клон. Прод — по явному ALLOW_PROD=1.
+const PROD_RE = /asgard-crm\.ru|92\.242\.61\.184/i;
+const BASE_URL = process.env.TEST_BASE_URL
+  || (process.env.E2E_BASE_URL)
+  || 'http://127.0.0.1:3100';
+if (PROD_RE.test(BASE_URL) && process.env.ALLOW_PROD !== '1') {
+  throw new Error(
+    `FATAL: BASE_URL=${BASE_URL} — это прод. Тесты обязаны идти на клон :3100. ` +
+    'Переопределите TEST_BASE_URL или поставьте ALLOW_PROD=1 осознанно.'
+  );
+}
+// Сужающие ручки для быстрой проверки механики (полный прогон — без них).
+const ONLY_ROLES = (process.env.AUDIT_ROLES || '').split(',').map(s => s.trim()).filter(Boolean);
+const MAX_PAGES = Number(process.env.AUDIT_MAX_PAGES || 0); // 0 = все
 
 const ACCOUNTS = {
   ADMIN:          { login: 'admin',              password: 'admin123',  pin: '1234' },
@@ -22,10 +35,11 @@ const ACCOUNTS = {
   HEAD_PM:        { login: 'test_head_pm',       password: 'Test123!',  pin: '0000' },
   BUH:            { login: 'test_buh',           password: 'Test123!',  pin: '0000' },
   HR:             { login: 'test_hr',            password: 'Test123!',  pin: '0000' },
-  OFFICE_MANAGER: { login: 'test_office_mgr',     password: 'Test123!',  pin: '0000' },
+  // D-193: было test_office_mgr / test_chief_eng — таких логинов в БД НЕТ (=роль молча скипалась)
+  OFFICE_MANAGER: { login: 'test_office_manager', password: 'Test123!', pin: '0000' },
   WAREHOUSE:      { login: 'test_warehouse',     password: 'Test123!',  pin: '0000' },
   PROC:           { login: 'test_proc',          password: 'Test123!',  pin: '0000' },
-  CHIEF_ENGINEER: { login: 'test_chief_eng',     password: 'Test123!',  pin: '0000' },
+  CHIEF_ENGINEER: { login: 'test_chief_engineer', password: 'Test123!', pin: '0000' },
 };
 
 // ── Все страницы SPA ────────────────────────────────────────────────────────
@@ -237,6 +251,7 @@ async function loginByApi(page, role) {
 
 // ── Тест для каждой роли ──────────────────────────────────────────────────
 for (const role of Object.keys(ACCOUNTS)) {
+  if (ONLY_ROLES.length && !ONLY_ROLES.includes(role)) continue;
   test(`Аудит консоли [${role}] — все страницы`, async ({ page }) => {
     test.setTimeout(360000); // 6 минут на роль
 
@@ -278,7 +293,8 @@ for (const role of Object.keys(ACCOUNTS)) {
     });
 
     // Обход страниц
-    for (const { path, name } of PAGES) {
+    const pagesToRun = MAX_PAGES > 0 ? PAGES.slice(0, MAX_PAGES) : PAGES;
+    for (const { path, name } of pagesToRun) {
       currentPageErrors.length = 0; // сброс перед навигацией
 
       try {
@@ -292,6 +308,41 @@ for (const role of Object.keys(ACCOUNTS)) {
 
       } catch (_) {
         // Таймаут навигации — всё равно смотрим консоль
+      }
+
+      // ── Шаг 0.4 (D-193): SPA отдаёт 200 на ЛЮБОЙ путь, поэтому проверяем фактический DOM.
+      //    HTTP-код ответа здесь ничего не доказывает — смотрим, что страница реально отрисована.
+      //    Важно: редирект на доступную страницу (нет прав на запрошенную) — это НЕ дефект,
+      //    поэтому «ушли с адреса» само по себе ошибкой не считается; ошибка — только пустой #app,
+      //    «Ошибка рендера» либо редирект в НИКУДА (страница тоже не отрисована).
+      //    domcontentloaded может наступить ДО вставки узла #app, поэтому даём ограниченное ожидание
+      //    (2.5 с) на его появление — это стабилизация флейка SW, а не маскировка: пустой DOM по-прежнему FAIL.
+      try {
+        await page.waitForSelector('#app', { timeout: 2500 }).catch(() => {});
+        const dom = await page.evaluate(() => {
+          const app = document.getElementById('app');
+          return {
+            hasApp: !!app,
+            appHtmlLen: app ? app.innerHTML.length : 0,
+            renderError: !!app && /Ошибка рендера/i.test(app.innerHTML),
+            hash: location.hash || '',
+          };
+        });
+        const rendered = dom.hasApp && !dom.renderError && dom.appHtmlLen >= 40;
+        if (!dom.hasApp) {
+          currentPageErrors.push('DOM: нет узла #app — страница не смонтирована');
+        } else if (dom.renderError) {
+          currentPageErrors.push('DOM: роутер отдал «Ошибка рендера»');
+        } else if (!rendered && dom.hash.includes(path)) {
+          currentPageErrors.push(`DOM: #app пуст (${dom.appHtmlLen} симв.) — страница не отрисована`);
+        } else if (!dom.hash.includes(path) && !rendered) {
+          currentPageErrors.push(
+            `DOM: ушли на «${dom.hash || '(пусто)'}» и там тоже пусто — страница недоступна`
+          );
+        }
+        // Ушли на другой адрес, но он отрисован — это штатное ограничение доступа по роли.
+      } catch (e) {
+        currentPageErrors.push('DOM: не удалось прочитать DOM — ' + String(e.message || e).slice(0, 120));
       }
 
       if (currentPageErrors.length > 0) {

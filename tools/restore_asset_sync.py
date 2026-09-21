@@ -59,14 +59,17 @@ TARGET_FILES = [
     "public/offline.html",
     "public/favicon.ico",
 ]
-TARGET_DIRS = ["public/assets"]
+# D-195: public/icons (1072 SVG иконок каталога) существует ТОЛЬКО на проде — его нет ни в git,
+# ни в локальном дереве. Любая выкатка из локального дерева сносит папку, и иконки пропадают
+# на всех страницах склада/закупок. Держим каталог в контуре синхронизации как защиту.
+TARGET_DIRS = ["public/assets", "public/icons"]
 
 REMOTE_SCRIPT = r'''
 import hashlib, os, sys, json
 
 root = sys.argv[1]
 targets = []
-for sub in ("public/assets",):
+for sub in ("public/assets", "public/icons"):
     base = os.path.join(root, sub)
     for dirpath, dirnames, filenames in os.walk(base):
         dirnames[:] = [d for d in dirnames if d not in ("node_modules", ".git")]

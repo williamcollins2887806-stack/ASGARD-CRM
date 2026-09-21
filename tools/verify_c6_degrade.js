@@ -31,6 +31,9 @@ function check(name, ok, proof) { ok ? pass++ : fail++; console.log(`${ok ? '✓
   const hideThemeOverlay = async () => { await page.evaluate(() => { const el = document.getElementById('asgard-theme-selector'); if (el) el.style.display = 'none'; }); };
   try {
     await page.goto(BASE + '/', { waitUntil: 'load' });
+    // Оверлей выбора темы всплывает асинхронно и перехватывает клики (флак теста).
+    // Гасим его постоянным правилом со !important — любой показ уже не помешает.
+    await page.addStyleTag({ content: '#asgard-theme-selector{display:none !important}' });
     await hideThemeOverlay();
     const auth = await page.evaluate(async (base) => {
       const r = await fetch(base + '/api/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ login: 'test_pm', password: 'Test123!' }) });
