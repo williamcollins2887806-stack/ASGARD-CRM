@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+<style>
+  .ink          { stroke:var(--icon-ink,#1F2A3A); fill:none; stroke-linecap:round; stroke-linejoin:round; }
+  .accent       { stroke:var(--icon-accent,#2E7BC0); fill:none; stroke-linecap:round; stroke-linejoin:round; }
+  .ink-fill     { fill:var(--icon-ink,#1F2A3A); stroke:none; }
+  .accent-fill  { fill:var(--icon-accent,#2E7BC0); stroke:none; }
+  .w4  { stroke-width:4;  }
+  .w5  { stroke-width:5;  }
+  .w6  { stroke-width:6;  }
+  .w7  { stroke-width:7;  }
+  .w9  { stroke-width:9;  }
+  .w10 { stroke-width:10; }
+  .w12 { stroke-width:12; }
+</style>
+<g class="ink w10">
+  <circle cx="172" cy="252" r="96"/>
+  <rect x="150" y="120" width="48" height="60"/>
+  <line x1="138" y1="120" x2="210" y2="120"/>
+  <rect x="60" y="228" width="60" height="48"/>
+  <line x1="60" y1="212" x2="60" y2="292"/>
+  <rect x="276" y="208" width="180" height="88" rx="10"/>
+  <line x1="456" y1="232" x2="468" y2="232"/>
+  <line x1="468" y1="224" x2="468" y2="280"/>
+  <rect x="88" y="372" width="340" height="24" rx="4"/>
+  <line x1="120" y1="396" x2="120" y2="426"/>
+  <line x1="396" y1="396" x2="396" y2="426"/>
+</g>
+<g class="accent w7">
+  <circle cx="172" cy="252" r="34"/>
+</g>
+<g class="ink w4">
+  <line x1="300" y1="230" x2="300" y2="278"/>
+  <line x1="330" y1="230" x2="330" y2="278"/>
+  <line x1="360" y1="230" x2="360" y2="278"/>
+  <line x1="390" y1="230" x2="390" y2="278"/>
+  <line x1="420" y1="230" x2="420" y2="278"/>
+</g>
+</svg>

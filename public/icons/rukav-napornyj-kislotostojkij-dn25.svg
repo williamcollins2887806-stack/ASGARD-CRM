@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+<style>
+  .ink          { stroke:var(--icon-ink,#1F2A3A); fill:none; stroke-linecap:round; stroke-linejoin:round; }
+  .accent       { stroke:var(--icon-accent,#2E7BC0); fill:none; stroke-linecap:round; stroke-linejoin:round; }
+  .ink-fill     { fill:var(--icon-ink,#1F2A3A); stroke:none; }
+  .accent-fill  { fill:var(--icon-accent,#2E7BC0); stroke:none; }
+  .w4  { stroke-width:4;  }
+  .w5  { stroke-width:5;  }
+  .w6  { stroke-width:6;  }
+  .w7  { stroke-width:7;  }
+  .w9  { stroke-width:9;  }
+  .w10 { stroke-width:10; }
+  .w12 { stroke-width:12; }
+</style>
+<g class="ink w12">
+  <path d="M 96 400 C 96 296, 240 296, 240 196 S 384 96, 432 132"/>
+</g>
+<g class="accent w9">
+  <path d="M 96 400 C 96 296, 240 296, 240 196 S 384 96, 432 132"/>
+</g>
+<g class="ink w7">
+  <rect x="64" y="384" width="48" height="36" rx="3"/>
+  <rect x="412" y="112" width="48" height="36" rx="3"/>
+</g>
+<g class="accent-fill">
+  <path d="M 168 332 C 156 348, 156 364, 168 376 C 180 364, 180 348, 168 332 Z"/>
+  <path d="M 224 280 C 212 296, 212 312, 224 324 C 236 312, 236 296, 224 280 Z"/>
+  <path d="M 286 220 C 274 236, 274 252, 286 264 C 298 252, 298 236, 286 220 Z"/>
+  <path d="M 360 152 C 348 168, 348 184, 360 196 C 372 184, 372 168, 360 152 Z"/>
+</g>
+</svg>

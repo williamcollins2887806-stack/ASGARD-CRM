@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+<style>
+  .ink          { stroke:var(--icon-ink,#1F2A3A); fill:none; stroke-linecap:round; stroke-linejoin:round; }
+  .accent       { stroke:var(--icon-accent,#2E7BC0); fill:none; stroke-linecap:round; stroke-linejoin:round; }
+  .ink-fill     { fill:var(--icon-ink,#1F2A3A); stroke:none; }
+  .accent-fill  { fill:var(--icon-accent,#2E7BC0); stroke:none; }
+  .w4  { stroke-width:4;  }
+  .w5  { stroke-width:5;  }
+  .w6  { stroke-width:6;  }
+  .w7  { stroke-width:7;  }
+  .w9  { stroke-width:9;  }
+  .w10 { stroke-width:10; }
+  .w12 { stroke-width:12; }
+</style>
+<g class="ink w10">
+  <rect x="72" y="156" width="368" height="252" rx="14"/>
+  <path d="M 200 156 L 200 124 Q 200 108, 216 108 L 296 108 Q 312 108, 312 124 L 312 156"/>
+  <line x1="72" y1="272" x2="440" y2="272"/>
+  <circle cx="256" cy="272" r="22"/>
+</g>
+<g class="accent w7">
+  <path d="M 124 220 L 188 220 L 188 252"/>
+  <path d="M 324 220 L 388 220 L 388 252"/>
+  <path d="M 124 332 L 184 332 L 184 364 L 220 364"/>
+  <path d="M 292 364 L 328 364 L 328 332 L 388 332"/>
+</g>
+<g class="ink w4">
+  <line x1="116" y1="408" x2="156" y2="408"/>
+  <line x1="356" y1="408" x2="396" y2="408"/>
+</g>
+</svg>

@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+<style>
+  .ink          { stroke:var(--icon-ink,#1F2A3A); fill:none; stroke-linecap:round; stroke-linejoin:round; }
+  .accent       { stroke:var(--icon-accent,#2E7BC0); fill:none; stroke-linecap:round; stroke-linejoin:round; }
+  .ink-fill     { fill:var(--icon-ink,#1F2A3A); stroke:none; }
+  .accent-fill  { fill:var(--icon-accent,#2E7BC0); stroke:none; }
+  .w4  { stroke-width:4;  }
+  .w5  { stroke-width:5;  }
+  .w6  { stroke-width:6;  }
+  .w7  { stroke-width:7;  }
+  .w9  { stroke-width:9;  }
+  .w10 { stroke-width:10; }
+  .w12 { stroke-width:12; }
+</style>
+<g class="ink w12">
+  <polyline points="100,300 100,200 440,200 440,300"/>
+</g>
+<g class="ink w10">
+  <path d="M80 300 Q80 340 120 340 L160 340 Q190 340 190 370 L190 410 Q190 440 160 440 L110 440 Q80 440 80 410 Z"/>
+  <line x1="440" y1="300" x2="440" y2="340"/>
+  <line x1="120" y1="340" x2="440" y2="340"/>
+</g>
+<g class="ink w4">
+  <polyline points="135,340 145,355 155,340 165,355 175,340 185,355 195,340 205,355 215,340 225,355 235,340 245,355 255,340 265,355 275,340 285,355 295,340 305,355 315,340 325,355 335,340 345,355 355,340 365,355 375,340 385,355 395,340 405,355 415,340 425,355"/>
+</g>
+<g class="accent w6">
+  <line x1="110" y1="380" x2="160" y2="380"/>
+</g>
+</svg>

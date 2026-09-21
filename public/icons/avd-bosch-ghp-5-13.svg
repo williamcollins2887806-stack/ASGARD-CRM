@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+<style>
+  .ink          { stroke:var(--icon-ink,#1F2A3A); fill:none; stroke-linecap:round; stroke-linejoin:round; }
+  .accent       { stroke:var(--icon-accent,#2E7BC0); fill:none; stroke-linecap:round; stroke-linejoin:round; }
+  .ink-fill     { fill:var(--icon-ink,#1F2A3A); stroke:none; }
+  .accent-fill  { fill:var(--icon-accent,#2E7BC0); stroke:none; }
+  .w4  { stroke-width:4;  }
+  .w5  { stroke-width:5;  }
+  .w6  { stroke-width:6;  }
+  .w7  { stroke-width:7;  }
+  .w9  { stroke-width:9;  }
+  .w10 { stroke-width:10; }
+  .w12 { stroke-width:12; }
+</style>
+<g class="ink w10">
+  <rect x="96" y="200" width="200" height="200" rx="18"/>
+  <path d="M 120 200 L 120 150 L 272 150 L 272 200"/>
+  <rect x="116" y="248" width="160" height="60" rx="8"/>
+</g>
+<g class="ink w7">
+  <line x1="140" y1="340" x2="252" y2="340"/>
+  <line x1="140" y1="370" x2="252" y2="370"/>
+</g>
+<g class="ink w12">
+  <path d="M 296 280 C 360 280 380 240 416 220"/>
+</g>
+<g class="accent w9">
+  <path d="M 300 280 C 358 280 376 244 412 224"/>
+</g>
+<g class="ink w10">
+  <rect x="396" y="200" width="56" height="44" rx="6"/>
+  <line x1="424" y1="200" x2="424" y2="180"/>
+</g>
+<g class="accent-fill">
+  <rect x="156" y="260" width="80" height="36" rx="4"/>
+</g>
+</svg>

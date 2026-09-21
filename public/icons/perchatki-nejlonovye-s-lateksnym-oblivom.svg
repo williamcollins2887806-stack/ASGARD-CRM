@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+<style>
+  .ink          { stroke:var(--icon-ink,#1F2A3A); fill:none; stroke-linecap:round; stroke-linejoin:round; }
+  .accent       { stroke:var(--icon-accent,#2E7BC0); fill:none; stroke-linecap:round; stroke-linejoin:round; }
+  .ink-fill     { fill:var(--icon-ink,#1F2A3A); stroke:none; }
+  .accent-fill  { fill:var(--icon-accent,#2E7BC0); stroke:none; }
+  .w4  { stroke-width:4;  }
+  .w5  { stroke-width:5;  }
+  .w6  { stroke-width:6;  }
+  .w7  { stroke-width:7;  }
+  .w9  { stroke-width:9;  }
+  .w10 { stroke-width:10; }
+  .w12 { stroke-width:12; }
+</style>
+<g class="ink w10">
+  <path d="M 168 432 L 168 232 Q 168 188, 196 184 Q 220 182, 222 220 L 222 168 Q 222 124, 250 124 Q 276 124, 276 168 L 276 200 Q 276 140, 304 140 Q 330 140, 330 184 L 330 220 Q 330 168, 356 172 Q 380 176, 380 224 L 380 280 Q 380 340, 360 380 L 360 432 Z"/>
+  <path d="M 168 408 L 180 396 L 192 408 L 204 396 L 216 408 L 228 396 L 240 408 L 252 396 L 264 408 L 276 396 L 288 408 L 300 396 L 312 408 L 324 396 L 336 408 L 348 396 L 360 408"/>
+</g>
+<g class="accent w6">
+  <path d="M 188 232 Q 188 268, 220 280 Q 256 286, 290 282 Q 340 274, 360 244 Q 360 320, 340 364 Q 308 388, 256 388 Q 204 388, 184 364 Q 168 320, 188 232 Z"/>
+</g>
+</svg>

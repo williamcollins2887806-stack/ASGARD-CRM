@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+<style>
+  .ink          { stroke:var(--icon-ink,#1F2A3A); fill:none; stroke-linecap:round; stroke-linejoin:round; }
+  .accent       { stroke:var(--icon-accent,#2E7BC0); fill:none; stroke-linecap:round; stroke-linejoin:round; }
+  .ink-fill     { fill:var(--icon-ink,#1F2A3A); stroke:none; }
+  .accent-fill  { fill:var(--icon-accent,#2E7BC0); stroke:none; }
+  .w4  { stroke-width:4;  }
+  .w5  { stroke-width:5;  }
+  .w6  { stroke-width:6;  }
+  .w7  { stroke-width:7;  }
+  .w9  { stroke-width:9;  }
+  .w10 { stroke-width:10; }
+  .w12 { stroke-width:12; }
+</style>
+<g class="ink w10">
+  <path d="M 156 200 Q 256 144, 356 200 Q 380 268, 356 340 Q 256 400, 156 340 Q 132 268, 156 200 Z"/>
+  <circle cx="148" cy="270" r="40"/>
+  <circle cx="364" cy="270" r="40"/>
+  <path d="M 108 270 Q 80 220, 64 232"/>
+  <path d="M 404 270 Q 432 220, 448 232"/>
+  <path d="M 108 270 Q 80 320, 64 308"/>
+  <path d="M 404 270 Q 432 320, 448 308"/>
+</g>
+<g class="accent w7">
+  <circle cx="148" cy="270" r="20"/>
+  <circle cx="364" cy="270" r="20"/>
+  <path d="M 220 280 Q 256 304, 292 280"/>
+</g>
+</svg>

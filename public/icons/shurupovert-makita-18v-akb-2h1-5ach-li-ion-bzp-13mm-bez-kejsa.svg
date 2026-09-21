@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+<style>
+  .ink          { stroke:var(--icon-ink,#1F2A3A); fill:none; stroke-linecap:round; stroke-linejoin:round; }
+  .accent       { stroke:var(--icon-accent,#2E7BC0); fill:none; stroke-linecap:round; stroke-linejoin:round; }
+  .ink-fill     { fill:var(--icon-ink,#1F2A3A); stroke:none; }
+  .accent-fill  { fill:var(--icon-accent,#2E7BC0); stroke:none; }
+  .w4  { stroke-width:4;  }
+  .w5  { stroke-width:5;  }
+  .w6  { stroke-width:6;  }
+  .w7  { stroke-width:7;  }
+  .w9  { stroke-width:9;  }
+  .w10 { stroke-width:10; }
+  .w12 { stroke-width:12; }
+</style>
+<g class="ink w10">
+  <rect x="130" y="150" width="230" height="130" rx="22"/>
+  <rect x="360" y="180" width="70" height="70" rx="10"/>
+  <rect x="210" y="280" width="100" height="120" rx="14"/>
+  <rect x="180" y="400" width="160" height="52" rx="10"/>
+</g>
+<g class="accent w7">
+  <line x1="380" y1="215" x2="440" y2="215"/>
+  <line x1="220" y1="430" x2="300" y2="430"/>
+</g>
+<g class="ink w4">
+  <line x1="230" y1="320" x2="290" y2="320"/>
+</g>
+</svg>

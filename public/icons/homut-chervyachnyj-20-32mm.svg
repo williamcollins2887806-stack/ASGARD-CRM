@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+<style>
+  .ink          { stroke:var(--icon-ink,#1F2A3A); fill:none; stroke-linecap:round; stroke-linejoin:round; }
+  .accent       { stroke:var(--icon-accent,#2E7BC0); fill:none; stroke-linecap:round; stroke-linejoin:round; }
+  .ink-fill     { fill:var(--icon-ink,#1F2A3A); stroke:none; }
+  .accent-fill  { fill:var(--icon-accent,#2E7BC0); stroke:none; }
+  .w4  { stroke-width:4;  }
+  .w5  { stroke-width:5;  }
+  .w6  { stroke-width:6;  }
+  .w7  { stroke-width:7;  }
+  .w9  { stroke-width:9;  }
+  .w10 { stroke-width:10; }
+  .w12 { stroke-width:12; }
+</style>
+<g class="ink w10">
+  <circle cx="232" cy="280" r="148"/>
+  <circle cx="232" cy="280" r="120"/>
+  <path d="M340,176 L420,176 L420,236 L340,236 Z"/>
+  <path d="M420,196 L460,196"/>
+  <path d="M420,216 L460,216"/>
+</g>
+<g class="ink w4">
+  <path d="M348,180 L348,232"/>
+  <path d="M360,180 L360,232"/>
+  <path d="M372,180 L372,232"/>
+  <path d="M384,180 L384,232"/>
+  <path d="M396,180 L396,232"/>
+  <path d="M408,180 L408,232"/>
+</g>
+</svg>

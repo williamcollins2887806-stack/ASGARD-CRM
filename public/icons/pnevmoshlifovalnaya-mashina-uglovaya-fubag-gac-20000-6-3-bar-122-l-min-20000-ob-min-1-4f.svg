@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+<style>
+  .ink          { stroke:var(--icon-ink,#1F2A3A); fill:none; stroke-linecap:round; stroke-linejoin:round; }
+  .accent       { stroke:var(--icon-accent,#2E7BC0); fill:none; stroke-linecap:round; stroke-linejoin:round; }
+  .ink-fill     { fill:var(--icon-ink,#1F2A3A); stroke:none; }
+  .accent-fill  { fill:var(--icon-accent,#2E7BC0); stroke:none; }
+  .w4  { stroke-width:4;  }
+  .w5  { stroke-width:5;  }
+  .w6  { stroke-width:6;  }
+  .w7  { stroke-width:7;  }
+  .w9  { stroke-width:9;  }
+  .w10 { stroke-width:10; }
+  .w12 { stroke-width:12; }
+</style>
+<g class="ink w10">
+  <rect x="90" y="210" width="220" height="92" rx="38"/>
+  <path d="M 310 230 L 350 230 L 350 282 L 310 282"/>
+  <circle cx="392" cy="256" r="60"/>
+  <path d="M 200 210 L 200 170 L 280 170 L 280 210"/>
+</g>
+<g class="accent w7">
+  <circle cx="392" cy="256" r="38"/>
+</g>
+<g class="ink w7">
+  <line x1="80" y1="240" x2="80" y2="272"/>
+</g>
+<g class="ink-fill">
+  <circle cx="160" cy="256" r="6"/>
+</g>
+</svg>

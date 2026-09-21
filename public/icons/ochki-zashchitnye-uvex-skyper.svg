@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+<style>
+  .ink          { stroke:var(--icon-ink,#1F2A3A); fill:none; stroke-linecap:round; stroke-linejoin:round; }
+  .accent       { stroke:var(--icon-accent,#2E7BC0); fill:none; stroke-linecap:round; stroke-linejoin:round; }
+  .ink-fill     { fill:var(--icon-ink,#1F2A3A); stroke:none; }
+  .accent-fill  { fill:var(--icon-accent,#2E7BC0); stroke:none; }
+  .w4  { stroke-width:4;  }
+  .w5  { stroke-width:5;  }
+  .w6  { stroke-width:6;  }
+  .w7  { stroke-width:7;  }
+  .w9  { stroke-width:9;  }
+  .w10 { stroke-width:10; }
+  .w12 { stroke-width:12; }
+</style>
+<g class="ink w10">
+  <path d="M 64 240 Q 64 192, 120 184 L 224 184 Q 244 184, 248 220 L 248 288 Q 244 320, 212 324 L 116 324 Q 72 320, 68 288 Z"/>
+  <path d="M 264 220 Q 268 184, 288 184 L 392 184 Q 448 192, 448 240 L 444 288 Q 440 320, 396 324 L 300 324 Q 268 320, 264 288 Z"/>
+  <line x1="248" y1="232" x2="264" y2="232"/>
+</g>
+<g class="ink w7">
+  <path d="M 64 232 Q 48 232, 44 252"/>
+  <path d="M 448 232 Q 464 232, 468 252"/>
+</g>
+<g class="accent w6">
+  <path d="M 112 224 Q 120 212, 148 212"/>
+  <path d="M 304 224 Q 312 212, 340 212"/>
+</g>
+</svg>

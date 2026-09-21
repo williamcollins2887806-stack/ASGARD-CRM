@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+<style>
+  .ink          { stroke:var(--icon-ink,#1F2A3A); fill:none; stroke-linecap:round; stroke-linejoin:round; }
+  .accent       { stroke:var(--icon-accent,#2E7BC0); fill:none; stroke-linecap:round; stroke-linejoin:round; }
+  .ink-fill     { fill:var(--icon-ink,#1F2A3A); stroke:none; }
+  .accent-fill  { fill:var(--icon-accent,#2E7BC0); stroke:none; }
+  .w4  { stroke-width:4;  }
+  .w5  { stroke-width:5;  }
+  .w6  { stroke-width:6;  }
+  .w7  { stroke-width:7;  }
+  .w9  { stroke-width:9;  }
+  .w10 { stroke-width:10; }
+  .w12 { stroke-width:12; }
+</style>
+<g class="ink w10">
+  <path d="M 152 256 Q 152 192 216 192 L 296 192 Q 360 192 360 256 L 360 320 Q 360 384 296 384 L 216 384 Q 152 384 152 320 Z"/>
+  <rect x="64" y="280" width="88" height="56"/>
+  <rect x="360" y="280" width="88" height="56"/>
+  <rect x="232" y="144" width="48" height="48"/>
+</g>
+<g class="accent w9">
+  <line x1="200" y1="320" x2="312" y2="240"/>
+</g>
+<g class="accent w7">
+  <polyline points="120,308 144,308 136,300"/>
+  <polyline points="120,308 144,308 136,316"/>
+</g>
+<g class="ink w4">
+  <line x1="80" y1="280" x2="80" y2="336"/>
+  <line x1="136" y1="280" x2="136" y2="336"/>
+  <line x1="376" y1="280" x2="376" y2="336"/>
+  <line x1="432" y1="280" x2="432" y2="336"/>
+</g>
+</svg>

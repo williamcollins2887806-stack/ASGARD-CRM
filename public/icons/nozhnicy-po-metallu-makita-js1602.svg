@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+<style>
+  .ink          { stroke:var(--icon-ink,#1F2A3A); fill:none; stroke-linecap:round; stroke-linejoin:round; }
+  .accent       { stroke:var(--icon-accent,#2E7BC0); fill:none; stroke-linecap:round; stroke-linejoin:round; }
+  .ink-fill     { fill:var(--icon-ink,#1F2A3A); stroke:none; }
+  .accent-fill  { fill:var(--icon-accent,#2E7BC0); stroke:none; }
+  .w4  { stroke-width:4;  }
+  .w5  { stroke-width:5;  }
+  .w6  { stroke-width:6;  }
+  .w7  { stroke-width:7;  }
+  .w9  { stroke-width:9;  }
+  .w10 { stroke-width:10; }
+  .w12 { stroke-width:12; }
+</style>
+<g class="ink w10">
+  <path d="M120 210 L300 210 Q330 210 330 240 L330 280 Q330 310 300 310 L240 310 L240 380 Q240 410 210 410 L160 410 Q130 410 130 380 L130 320 Q100 310 100 280 L100 240 Q100 210 120 210 Z"/>
+  <polygon points="330,230 430,220 430,260 330,260"/>
+  <polygon points="330,260 430,260 430,300 330,290"/>
+</g>
+<g class="accent w6">
+  <rect x="160" y="240" width="100" height="20" rx="6"/>
+  <line x1="180" y1="350" x2="220" y2="350"/>
+</g>
+<g class="ink w7">
+  <line x1="380" y1="240" x2="420" y2="240"/>
+  <line x1="380" y1="280" x2="420" y2="280"/>
+</g>
+</svg>

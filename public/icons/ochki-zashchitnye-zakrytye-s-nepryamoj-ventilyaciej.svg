@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+<style>
+  .ink          { stroke:var(--icon-ink,#1F2A3A); fill:none; stroke-linecap:round; stroke-linejoin:round; }
+  .accent       { stroke:var(--icon-accent,#2E7BC0); fill:none; stroke-linecap:round; stroke-linejoin:round; }
+  .ink-fill     { fill:var(--icon-ink,#1F2A3A); stroke:none; }
+  .accent-fill  { fill:var(--icon-accent,#2E7BC0); stroke:none; }
+  .w4  { stroke-width:4;  }
+  .w5  { stroke-width:5;  }
+  .w6  { stroke-width:6;  }
+  .w7  { stroke-width:7;  }
+  .w9  { stroke-width:9;  }
+  .w10 { stroke-width:10; }
+  .w12 { stroke-width:12; }
+</style>
+<g class="ink w12">
+  <rect x="64" y="172" width="384" height="172" rx="60"/>
+</g>
+<g class="ink w10">
+  <line x1="256" y1="188" x2="256" y2="328"/>
+</g>
+<g class="ink w7">
+  <ellipse cx="160" cy="260" rx="64" ry="60"/>
+  <ellipse cx="352" cy="260" rx="64" ry="60"/>
+</g>
+<g class="ink w4">
+  <line x1="80" y1="200" x2="60" y2="192"/>
+  <line x1="80" y1="316" x2="60" y2="324"/>
+  <line x1="432" y1="200" x2="452" y2="192"/>
+  <line x1="432" y1="316" x2="452" y2="324"/>
+  <line x1="64" y1="356" x2="92" y2="356"/>
+  <line x1="100" y1="356" x2="128" y2="356"/>
+  <line x1="384" y1="356" x2="412" y2="356"/>
+  <line x1="420" y1="356" x2="448" y2="356"/>
+</g>
+<g class="accent w5">
+  <path d="M 120 248 Q 128 236, 152 236"/>
+  <path d="M 312 248 Q 320 236, 344 236"/>
+</g>
+</svg>

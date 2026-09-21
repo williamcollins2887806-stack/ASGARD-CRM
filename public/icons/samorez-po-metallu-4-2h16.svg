@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+<style>
+  .ink          { stroke:var(--icon-ink,#1F2A3A); fill:none; stroke-linecap:round; stroke-linejoin:round; }
+  .accent       { stroke:var(--icon-accent,#2E7BC0); fill:none; stroke-linecap:round; stroke-linejoin:round; }
+  .ink-fill     { fill:var(--icon-ink,#1F2A3A); stroke:none; }
+  .accent-fill  { fill:var(--icon-accent,#2E7BC0); stroke:none; }
+  .w4  { stroke-width:4;  }
+  .w5  { stroke-width:5;  }
+  .w6  { stroke-width:6;  }
+  .w7  { stroke-width:7;  }
+  .w9  { stroke-width:9;  }
+  .w10 { stroke-width:10; }
+  .w12 { stroke-width:12; }
+</style>
+<g class="ink w10">
+  <ellipse cx="256" cy="92" rx="56" ry="16"/>
+  <line x1="232" y1="124" x2="280" y2="124"/>
+  <line x1="232" y1="124" x2="232" y2="384"/>
+  <line x1="280" y1="124" x2="280" y2="384"/>
+  <polygon points="232,384 280,384 256,452"/>
+</g>
+<g class="accent w4">
+  <line x1="232" y1="160" x2="280" y2="148"/>
+  <line x1="232" y1="184" x2="280" y2="172"/>
+  <line x1="232" y1="208" x2="280" y2="196"/>
+  <line x1="232" y1="232" x2="280" y2="220"/>
+  <line x1="232" y1="256" x2="280" y2="244"/>
+  <line x1="232" y1="280" x2="280" y2="268"/>
+  <line x1="232" y1="304" x2="280" y2="292"/>
+  <line x1="232" y1="328" x2="280" y2="316"/>
+  <line x1="232" y1="352" x2="280" y2="340"/>
+</g>
+</svg>

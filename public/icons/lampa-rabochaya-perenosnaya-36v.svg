@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+<style>
+  .ink          { stroke:var(--icon-ink,#1F2A3A); fill:none; stroke-linecap:round; stroke-linejoin:round; }
+  .accent       { stroke:var(--icon-accent,#2E7BC0); fill:none; stroke-linecap:round; stroke-linejoin:round; }
+  .ink-fill     { fill:var(--icon-ink,#1F2A3A); stroke:none; }
+  .accent-fill  { fill:var(--icon-accent,#2E7BC0); stroke:none; }
+  .w4  { stroke-width:4;  }
+  .w5  { stroke-width:5;  }
+  .w6  { stroke-width:6;  }
+  .w7  { stroke-width:7;  }
+  .w9  { stroke-width:9;  }
+  .w10 { stroke-width:10; }
+  .w12 { stroke-width:12; }
+</style>
+<g class="accent-fill">
+  <circle cx="256" cy="240" r="80"/>
+</g>
+<g class="ink w10">
+  <circle cx="256" cy="240" r="100"/>
+  <rect x="220" y="332" width="72" height="44" rx="6"/>
+  <path d="M 256 376 C 256 412, 320 432, 360 460"/>
+  <path d="M 156 152 L 356 152"/>
+  <path d="M 156 152 C 130 200, 130 280, 156 328"/>
+  <path d="M 356 152 C 382 200, 382 280, 356 328"/>
+</g>
+<g class="ink w7">
+  <line x1="180" y1="180" x2="180" y2="300"/>
+  <line x1="220" y1="160" x2="220" y2="320"/>
+  <line x1="292" y1="160" x2="292" y2="320"/>
+  <line x1="332" y1="180" x2="332" y2="300"/>
+</g>
+</svg>

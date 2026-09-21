@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+<style>
+  .ink          { stroke:var(--icon-ink,#1F2A3A); fill:none; stroke-linecap:round; stroke-linejoin:round; }
+  .accent       { stroke:var(--icon-accent,#2E7BC0); fill:none; stroke-linecap:round; stroke-linejoin:round; }
+  .ink-fill     { fill:var(--icon-ink,#1F2A3A); stroke:none; }
+  .accent-fill  { fill:var(--icon-accent,#2E7BC0); stroke:none; }
+  .w4  { stroke-width:4;  }
+  .w5  { stroke-width:5;  }
+  .w6  { stroke-width:6;  }
+  .w7  { stroke-width:7;  }
+  .w9  { stroke-width:9;  }
+  .w10 { stroke-width:10; }
+  .w12 { stroke-width:12; }
+</style>
+<g class="ink w10">
+  <rect x="48" y="224" width="248" height="80" rx="18"/>
+  <circle cx="376" cy="264" r="92"/>
+  <rect x="296" y="240" width="40" height="48" rx="6"/>
+  <path d="M 148 224 Q 128 160 176 144 Q 224 144 224 192 L 224 224"/>
+</g>
+<g class="ink w7">
+  <line x1="76" y1="248" x2="76" y2="280"/>
+  <line x1="100" y1="248" x2="100" y2="280"/>
+  <line x1="124" y1="248" x2="124" y2="280"/>
+  <rect x="240" y="256" width="40" height="20" rx="4"/>
+</g>
+<g class="accent w7">
+  <circle cx="376" cy="264" r="60"/>
+</g>
+</svg>

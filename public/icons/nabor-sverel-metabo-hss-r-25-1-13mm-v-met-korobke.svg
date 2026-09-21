@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+<style>
+  .ink          { stroke:var(--icon-ink,#1F2A3A); fill:none; stroke-linecap:round; stroke-linejoin:round; }
+  .accent       { stroke:var(--icon-accent,#2E7BC0); fill:none; stroke-linecap:round; stroke-linejoin:round; }
+  .ink-fill     { fill:var(--icon-ink,#1F2A3A); stroke:none; }
+  .accent-fill  { fill:var(--icon-accent,#2E7BC0); stroke:none; }
+  .w4  { stroke-width:4;  }
+  .w5  { stroke-width:5;  }
+  .w6  { stroke-width:6;  }
+  .w7  { stroke-width:7;  }
+  .w9  { stroke-width:9;  }
+  .w10 { stroke-width:10; }
+  .w12 { stroke-width:12; }
+</style>
+<g class="ink w10">
+  <rect x="72" y="312" width="368" height="132" rx="10"/>
+  <line x1="72" y1="356" x2="440" y2="356"/>
+  <rect x="232" y="392" width="48" height="22" rx="4"/>
+  <line x1="100" y1="312" x2="100" y2="280"/>
+  <line x1="412" y1="312" x2="412" y2="280"/>
+</g>
+<g class="ink w10">
+  <polygon points="120,240 152,240 152,300 136,312 120,300"/>
+  <polygon points="180,210 216,210 216,300 198,312 180,300"/>
+  <polygon points="244,180 284,180 284,300 264,312 244,300"/>
+  <polygon points="312,150 356,150 356,300 334,312 312,300"/>
+  <polygon points="384,120 432,120 432,300 408,312 384,300"/>
+</g>
+<g class="accent w6">
+  <line x1="136" y1="252" x2="136" y2="296"/>
+  <line x1="198" y1="222" x2="198" y2="296"/>
+  <line x1="264" y1="192" x2="264" y2="296"/>
+  <line x1="334" y1="162" x2="334" y2="296"/>
+  <line x1="408" y1="132" x2="408" y2="296"/>
+</g>
+</svg>

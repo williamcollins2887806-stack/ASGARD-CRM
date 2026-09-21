@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+<style>
+  .ink          { stroke:var(--icon-ink,#1F2A3A); fill:none; stroke-linecap:round; stroke-linejoin:round; }
+  .accent       { stroke:var(--icon-accent,#2E7BC0); fill:none; stroke-linecap:round; stroke-linejoin:round; }
+  .ink-fill     { fill:var(--icon-ink,#1F2A3A); stroke:none; }
+  .accent-fill  { fill:var(--icon-accent,#2E7BC0); stroke:none; }
+  .w4  { stroke-width:4;  }
+  .w5  { stroke-width:5;  }
+  .w6  { stroke-width:6;  }
+  .w7  { stroke-width:7;  }
+  .w9  { stroke-width:9;  }
+  .w10 { stroke-width:10; }
+  .w12 { stroke-width:12; }
+</style>
+<g class="ink w10">
+  <rect x="80" y="304" width="352" height="136" rx="14"/>
+  <line x1="80" y1="356" x2="432" y2="356"/>
+  <rect x="240" y="392" width="32" height="20" rx="4"/>
+</g>
+<g class="ink w10">
+  <rect x="140" y="180" width="44" height="124" rx="8"/>
+  <rect x="244" y="180" width="44" height="124" rx="8"/>
+  <rect x="348" y="180" width="44" height="124" rx="8"/>
+</g>
+<g class="accent w9">
+  <line x1="162" y1="216" x2="162" y2="268"/>
+  <line x1="266" y1="216" x2="266" y2="268"/>
+  <line x1="370" y1="216" x2="370" y2="268"/>
+</g>
+<g class="accent w7">
+  <line x1="162" y1="180" x2="162" y2="100"/>
+  <line x1="266" y1="180" x2="266" y2="100"/>
+  <line x1="370" y1="180" x2="370" y2="100"/>
+</g>
+<g class="accent w6">
+  <line x1="152" y1="100" x2="172" y2="100"/>
+  <line x1="256" y1="100" x2="276" y2="100"/>
+  <line x1="360" y1="100" x2="380" y2="100"/>
+</g>
+</svg>

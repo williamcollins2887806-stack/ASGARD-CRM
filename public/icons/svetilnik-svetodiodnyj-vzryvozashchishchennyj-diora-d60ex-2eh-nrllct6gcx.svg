@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+<style>
+  .ink          { stroke:var(--icon-ink,#1F2A3A); fill:none; stroke-linecap:round; stroke-linejoin:round; }
+  .accent       { stroke:var(--icon-accent,#2E7BC0); fill:none; stroke-linecap:round; stroke-linejoin:round; }
+  .ink-fill     { fill:var(--icon-ink,#1F2A3A); stroke:none; }
+  .accent-fill  { fill:var(--icon-accent,#2E7BC0); stroke:none; }
+  .w4  { stroke-width:4;  }
+  .w5  { stroke-width:5;  }
+  .w6  { stroke-width:6;  }
+  .w7  { stroke-width:7;  }
+  .w9  { stroke-width:9;  }
+  .w10 { stroke-width:10; }
+  .w12 { stroke-width:12; }
+</style>
+<g class="ink w10">
+  <rect x="160" y="100" width="192" height="200" rx="20"/>
+  <line x1="180" y1="100" x2="180" y2="300"/>
+  <line x1="220" y1="100" x2="220" y2="300"/>
+  <line x1="260" y1="100" x2="260" y2="300"/>
+  <line x1="292" y1="100" x2="292" y2="300"/>
+  <line x1="332" y1="100" x2="332" y2="300"/>
+  <ellipse cx="256" cy="340" rx="100" ry="40"/>
+</g>
+<g class="accent-fill">
+  <ellipse cx="256" cy="340" rx="80" ry="28"/>
+</g>
+<g class="accent w5">
+  <line x1="200" y1="400" x2="180" y2="440"/>
+  <line x1="256" y1="400" x2="256" y2="450"/>
+  <line x1="312" y1="400" x2="332" y2="440"/>
+</g>
+</svg>

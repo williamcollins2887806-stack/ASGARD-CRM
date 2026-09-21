@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+<style>
+  .ink          { stroke:var(--icon-ink,#1F2A3A); fill:none; stroke-linecap:round; stroke-linejoin:round; }
+  .accent       { stroke:var(--icon-accent,#2E7BC0); fill:none; stroke-linecap:round; stroke-linejoin:round; }
+  .ink-fill     { fill:var(--icon-ink,#1F2A3A); stroke:none; }
+  .accent-fill  { fill:var(--icon-accent,#2E7BC0); stroke:none; }
+  .w4  { stroke-width:4;  }
+  .w5  { stroke-width:5;  }
+  .w6  { stroke-width:6;  }
+  .w7  { stroke-width:7;  }
+  .w9  { stroke-width:9;  }
+  .w10 { stroke-width:10; }
+  .w12 { stroke-width:12; }
+</style>
+<g class="ink w12">
+  <path d="M 176 432 L 176 224 Q 176 108, 280 108 Q 384 108, 384 224 L 384 288 L 412 288 Q 452 288, 452 248 Q 452 208, 412 208 L 384 208"/>
+  <path d="M 176 432 L 384 432 L 384 376"/>
+</g>
+<g class="ink w7">
+  <path d="M 176 224 Q 132 236, 108 268 Q 88 304, 116 332 Q 148 352, 176 332"/>
+</g>
+<g class="accent w9">
+  <line x1="176" y1="404" x2="384" y2="404"/>
+  <line x1="176" y1="380" x2="384" y2="380"/>
+</g>
+</svg>

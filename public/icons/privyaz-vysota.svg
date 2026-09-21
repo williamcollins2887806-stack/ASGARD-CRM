@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+<style>
+  .ink          { stroke:var(--icon-ink,#1F2A3A); fill:none; stroke-linecap:round; stroke-linejoin:round; }
+  .accent       { stroke:var(--icon-accent,#2E7BC0); fill:none; stroke-linecap:round; stroke-linejoin:round; }
+  .ink-fill     { fill:var(--icon-ink,#1F2A3A); stroke:none; }
+  .accent-fill  { fill:var(--icon-accent,#2E7BC0); stroke:none; }
+  .w4  { stroke-width:4;  }
+  .w5  { stroke-width:5;  }
+  .w6  { stroke-width:6;  }
+  .w7  { stroke-width:7;  }
+  .w9  { stroke-width:9;  }
+  .w10 { stroke-width:10; }
+  .w12 { stroke-width:12; }
+</style>
+<g class="ink w10">
+  <path d="M 168 76 L 256 252 L 344 76"/>
+  <path d="M 168 76 L 168 316 L 256 376 L 344 316 L 344 76"/>
+  <line x1="124" y1="276" x2="168" y2="276"/>
+  <line x1="344" y1="276" x2="388" y2="276"/>
+  <path d="M 256 376 L 208 456"/>
+  <path d="M 256 376 L 304 456"/>
+</g>
+<g class="accent w7">
+  <circle cx="256" cy="252" r="24"/>
+  <line x1="168" y1="196" x2="344" y2="196"/>
+</g>
+</svg>

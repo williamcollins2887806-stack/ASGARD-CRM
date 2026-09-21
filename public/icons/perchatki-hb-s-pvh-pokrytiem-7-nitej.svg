@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+<style>
+  .ink          { stroke:var(--icon-ink,#1F2A3A); fill:none; stroke-linecap:round; stroke-linejoin:round; }
+  .accent       { stroke:var(--icon-accent,#2E7BC0); fill:none; stroke-linecap:round; stroke-linejoin:round; }
+  .ink-fill     { fill:var(--icon-ink,#1F2A3A); stroke:none; }
+  .accent-fill  { fill:var(--icon-accent,#2E7BC0); stroke:none; }
+  .w4  { stroke-width:4;  }
+  .w5  { stroke-width:5;  }
+  .w6  { stroke-width:6;  }
+  .w7  { stroke-width:7;  }
+  .w9  { stroke-width:9;  }
+  .w10 { stroke-width:10; }
+  .w12 { stroke-width:12; }
+</style>
+<g class="ink w10">
+  <path d="M 144 444 L 144 236 Q 144 184, 180 180 Q 212 178, 214 220 L 214 160 Q 214 112, 246 112 Q 276 112, 276 160 L 276 200 Q 276 132, 308 132 Q 338 132, 338 184 L 338 224 Q 338 164, 368 168 Q 396 172, 396 228 L 396 292 Q 396 356, 374 396 L 374 444 Z"/>
+  <path d="M 144 420 L 156 408 L 168 420 L 180 408 L 192 420 L 204 408 L 216 420 L 228 408 L 240 420 L 252 408 L 264 420 L 276 408 L 288 420 L 300 408 L 312 420 L 324 408 L 336 420 L 348 408 L 360 420 L 374 412"/>
+</g>
+<g class="accent-fill">
+  <path d="M 164 244 Q 164 232, 176 232 L 384 232 Q 396 232, 396 248 L 396 308 Q 396 372, 374 408 L 176 408 Q 164 372, 164 308 Z"/>
+</g>
+</svg>

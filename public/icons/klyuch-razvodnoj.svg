@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+<style>
+  .ink          { stroke:var(--icon-ink,#1F2A3A); fill:none; stroke-linecap:round; stroke-linejoin:round; }
+  .accent       { stroke:var(--icon-accent,#2E7BC0); fill:none; stroke-linecap:round; stroke-linejoin:round; }
+  .ink-fill     { fill:var(--icon-ink,#1F2A3A); stroke:none; }
+  .accent-fill  { fill:var(--icon-accent,#2E7BC0); stroke:none; }
+  .w4  { stroke-width:4;  }
+  .w5  { stroke-width:5;  }
+  .w6  { stroke-width:6;  }
+  .w7  { stroke-width:7;  }
+  .w9  { stroke-width:9;  }
+  .w10 { stroke-width:10; }
+  .w12 { stroke-width:12; }
+</style>
+<g class="ink w10">
+  <rect x="80" y="316" width="240" height="36" rx="10"/>
+  <polyline points="320,316 360,276 360,176 296,112 220,112 220,200 280,260 320,260"/>
+  <polyline points="320,352 376,352 416,312 416,200 384,168"/>
+</g>
+<g class="accent w7">
+  <line x1="240" y1="200" x2="284" y2="156"/>
+  <line x1="252" y1="216" x2="300" y2="168"/>
+  <line x1="264" y1="232" x2="316" y2="180"/>
+</g>
+</svg>

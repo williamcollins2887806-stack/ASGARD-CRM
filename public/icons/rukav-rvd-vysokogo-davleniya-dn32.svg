@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+<style>
+  .ink          { stroke:var(--icon-ink,#1F2A3A); fill:none; stroke-linecap:round; stroke-linejoin:round; }
+  .accent       { stroke:var(--icon-accent,#2E7BC0); fill:none; stroke-linecap:round; stroke-linejoin:round; }
+  .ink-fill     { fill:var(--icon-ink,#1F2A3A); stroke:none; }
+  .accent-fill  { fill:var(--icon-accent,#2E7BC0); stroke:none; }
+  .w4  { stroke-width:4;  }
+  .w5  { stroke-width:5;  }
+  .w6  { stroke-width:6;  }
+  .w7  { stroke-width:7;  }
+  .w9  { stroke-width:9;  }
+  .w10 { stroke-width:10; }
+  .w12 { stroke-width:12; }
+</style>
+<g class="ink w12">
+  <path d="M 120 396 C 120 308, 240 308, 240 208 S 364 108, 408 144"/>
+</g>
+<g class="accent w9">
+  <path d="M 120 396 C 120 308, 240 308, 240 208 S 364 108, 408 144"/>
+</g>
+<g class="ink w7">
+  <rect x="56" y="368" width="88" height="56" rx="3"/>
+  <rect x="380" y="100" width="88" height="56" rx="3"/>
+  <rect x="68" y="352" width="64" height="18" rx="2"/>
+  <rect x="392" y="84" width="64" height="18" rx="2"/>
+  <rect x="76" y="338" width="48" height="14" rx="2"/>
+  <rect x="400" y="70" width="48" height="14" rx="2"/>
+</g>
+<g class="ink w4">
+  <line x1="70" y1="376" x2="70" y2="420"/>
+  <line x1="84" y1="376" x2="84" y2="420"/>
+  <line x1="98" y1="376" x2="98" y2="420"/>
+  <line x1="112" y1="376" x2="112" y2="420"/>
+  <line x1="126" y1="376" x2="126" y2="420"/>
+  <line x1="140" y1="376" x2="140" y2="420"/>
+  <line x1="394" y1="108" x2="394" y2="152"/>
+  <line x1="408" y1="108" x2="408" y2="152"/>
+  <line x1="422" y1="108" x2="422" y2="152"/>
+  <line x1="436" y1="108" x2="436" y2="152"/>
+  <line x1="450" y1="108" x2="450" y2="152"/>
+  <line x1="464" y1="108" x2="464" y2="152"/>
+</g>
+</svg>

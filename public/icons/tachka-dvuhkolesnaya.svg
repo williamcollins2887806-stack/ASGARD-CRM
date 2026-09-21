@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+<style>
+  .ink          { stroke:var(--icon-ink,#1F2A3A); fill:none; stroke-linecap:round; stroke-linejoin:round; }
+  .accent       { stroke:var(--icon-accent,#2E7BC0); fill:none; stroke-linecap:round; stroke-linejoin:round; }
+  .ink-fill     { fill:var(--icon-ink,#1F2A3A); stroke:none; }
+  .accent-fill  { fill:var(--icon-accent,#2E7BC0); stroke:none; }
+  .w4  { stroke-width:4;  }
+  .w5  { stroke-width:5;  }
+  .w6  { stroke-width:6;  }
+  .w7  { stroke-width:7;  }
+  .w9  { stroke-width:9;  }
+  .w10 { stroke-width:10; }
+  .w12 { stroke-width:12; }
+</style>
+<g class="ink w10">
+  <path d="M112 168 L 240 224 L 416 312 L 360 396 L 192 320 L 96 252 Z"/>
+  <circle cx="160" cy="408" r="40"/>
+  <circle cx="372" cy="424" r="40"/>
+  <line x1="112" y1="168" x2="68" y2="120"/>
+  <line x1="416" y1="312" x2="448" y2="280"/>
+</g>
+<g class="accent w7">
+  <line x1="156" y1="240" x2="380" y2="340"/>
+</g>
+<g class="ink w4">
+  <circle cx="160" cy="408" r="12"/>
+  <circle cx="372" cy="424" r="12"/>
+</g>
+</svg>

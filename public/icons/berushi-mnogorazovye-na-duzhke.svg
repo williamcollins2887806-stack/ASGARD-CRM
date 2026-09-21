@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+<style>
+  .ink          { stroke:var(--icon-ink,#1F2A3A); fill:none; stroke-linecap:round; stroke-linejoin:round; }
+  .accent       { stroke:var(--icon-accent,#2E7BC0); fill:none; stroke-linecap:round; stroke-linejoin:round; }
+  .ink-fill     { fill:var(--icon-ink,#1F2A3A); stroke:none; }
+  .accent-fill  { fill:var(--icon-accent,#2E7BC0); stroke:none; }
+  .w4  { stroke-width:4;  }
+  .w5  { stroke-width:5;  }
+  .w6  { stroke-width:6;  }
+  .w7  { stroke-width:7;  }
+  .w9  { stroke-width:9;  }
+  .w10 { stroke-width:10; }
+  .w12 { stroke-width:12; }
+</style>
+<g class="accent w7">
+  <path d="M 130 280 Q 256 80, 382 280"/>
+</g>
+<g class="ink w10">
+  <path d="M 100 280 L 160 280 L 150 340 Q 130 360, 110 340 L 100 280 Z"/>
+  <path d="M 130 290 L 130 332"/>
+  <path d="M 100 300 Q 95 310, 100 320"/>
+  <path d="M 352 280 L 412 280 L 402 340 Q 382 360, 362 340 L 352 280 Z"/>
+  <path d="M 382 290 L 382 332"/>
+  <path d="M 412 300 Q 417 310, 412 320"/>
+</g>
+<g class="ink w7">
+  <path d="M 100 360 Q 130 400, 160 380"/>
+  <path d="M 352 360 Q 382 400, 412 380"/>
+</g>
+</svg>

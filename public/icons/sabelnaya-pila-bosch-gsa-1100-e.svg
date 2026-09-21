@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+<style>
+  .ink          { stroke:var(--icon-ink,#1F2A3A); fill:none; stroke-linecap:round; stroke-linejoin:round; }
+  .accent       { stroke:var(--icon-accent,#2E7BC0); fill:none; stroke-linecap:round; stroke-linejoin:round; }
+  .ink-fill     { fill:var(--icon-ink,#1F2A3A); stroke:none; }
+  .accent-fill  { fill:var(--icon-accent,#2E7BC0); stroke:none; }
+  .w4  { stroke-width:4;  }
+  .w5  { stroke-width:5;  }
+  .w6  { stroke-width:6;  }
+  .w7  { stroke-width:7;  }
+  .w9  { stroke-width:9;  }
+  .w10 { stroke-width:10; }
+  .w12 { stroke-width:12; }
+</style>
+<g class="ink w10">
+  <path d="M 80 224 L 80 296 L 188 296 L 188 380 L 268 380 L 268 296 L 304 296 L 304 224 Z"/>
+  <rect x="304" y="240" width="48" height="40" rx="6"/>
+  <path d="M 352 248 L 488 248 L 488 272 L 352 272"/>
+</g>
+<g class="accent w7">
+  <line x1="120" y1="256" x2="160" y2="256"/>
+</g>
+<g class="ink w4">
+  <path d="M 360 272 L 366 282 L 372 272 L 378 282 L 384 272 L 390 282 L 396 272 L 402 282 L 408 272 L 414 282 L 420 272 L 426 282 L 432 272 L 438 282 L 444 272 L 450 282 L 456 272 L 462 282 L 468 272 L 474 282 L 480 272"/>
+</g>
+</svg>

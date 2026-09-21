@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+<style>
+  .ink          { stroke:var(--icon-ink,#1F2A3A); fill:none; stroke-linecap:round; stroke-linejoin:round; }
+  .accent       { stroke:var(--icon-accent,#2E7BC0); fill:none; stroke-linecap:round; stroke-linejoin:round; }
+  .ink-fill     { fill:var(--icon-ink,#1F2A3A); stroke:none; }
+  .accent-fill  { fill:var(--icon-accent,#2E7BC0); stroke:none; }
+  .w4  { stroke-width:4;  }
+  .w5  { stroke-width:5;  }
+  .w6  { stroke-width:6;  }
+  .w7  { stroke-width:7;  }
+  .w9  { stroke-width:9;  }
+  .w10 { stroke-width:10; }
+  .w12 { stroke-width:12; }
+</style>
+<g class="ink w10">
+  <path d="M 192 432 L 192 256 Q 192 244, 180 244 Q 168 244, 168 256 L 168 308 L 168 200 Q 168 188, 180 188 Q 192 188, 192 200 L 192 256 L 192 168 Q 192 156, 204 156 Q 216 156, 216 168 L 216 256 L 216 140 Q 216 128, 228 128 Q 240 128, 240 140 L 240 256 L 240 156 Q 240 144, 252 144 Q 264 144, 264 156 L 264 256 L 264 432 Z"/>
+</g>
+<g class="accent-fill">
+  <ellipse cx="216" cy="316" rx="44" ry="56"/>
+</g>
+<g class="ink w4">
+  <ellipse cx="216" cy="316" rx="44" ry="56"/>
+</g>
+</svg>

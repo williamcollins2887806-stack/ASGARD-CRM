@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+<style>
+  .ink          { stroke:var(--icon-ink,#1F2A3A); fill:none; stroke-linecap:round; stroke-linejoin:round; }
+  .accent       { stroke:var(--icon-accent,#2E7BC0); fill:none; stroke-linecap:round; stroke-linejoin:round; }
+  .ink-fill     { fill:var(--icon-ink,#1F2A3A); stroke:none; }
+  .accent-fill  { fill:var(--icon-accent,#2E7BC0); stroke:none; }
+  .w4  { stroke-width:4;  }
+  .w5  { stroke-width:5;  }
+  .w6  { stroke-width:6;  }
+  .w7  { stroke-width:7;  }
+  .w9  { stroke-width:9;  }
+  .w10 { stroke-width:10; }
+  .w12 { stroke-width:12; }
+</style>
+<g class="ink w10">
+  <path d="M80 180 L80 360 Q80 400 120 400 L392 400 Q432 400 432 360 L432 180"/>
+  <line x1="60" y1="180" x2="452" y2="180"/>
+  <rect x="324" y="200" width="92" height="56" rx="6"/>
+</g>
+<g class="accent-fill">
+  <rect x="332" y="208" width="76" height="40" rx="4"/>
+</g>
+<g class="accent w7">
+  <path d="M120 300 Q160 270 200 300 T280 300 T360 300"/>
+  <path d="M120 340 Q160 310 200 340 T280 340 T360 340"/>
+</g>
+</svg>

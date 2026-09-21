@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+<style>
+  .ink          { stroke:var(--icon-ink,#1F2A3A); fill:none; stroke-linecap:round; stroke-linejoin:round; }
+  .accent       { stroke:var(--icon-accent,#2E7BC0); fill:none; stroke-linecap:round; stroke-linejoin:round; }
+  .ink-fill     { fill:var(--icon-ink,#1F2A3A); stroke:none; }
+  .accent-fill  { fill:var(--icon-accent,#2E7BC0); stroke:none; }
+  .w4  { stroke-width:4;  }
+  .w5  { stroke-width:5;  }
+  .w6  { stroke-width:6;  }
+  .w7  { stroke-width:7;  }
+  .w9  { stroke-width:9;  }
+  .w10 { stroke-width:10; }
+  .w12 { stroke-width:12; }
+</style>
+<g class="ink w10">
+  <path d="M 160 168 Q 160 140, 200 136 L 312 136 Q 352 140, 352 168 L 360 432 Q 360 448, 344 448 L 168 448 Q 152 448, 152 432 Z"/>
+  <path d="M 200 136 Q 200 116, 220 112 L 292 112 Q 312 116, 312 136"/>
+</g>
+<g class="accent w7">
+  <line x1="200" y1="256" x2="312" y2="256"/>
+  <line x1="200" y1="288" x2="312" y2="288"/>
+</g>
+<g class="ink w4">
+  <line x1="220" y1="384" x2="292" y2="384"/>
+  <line x1="220" y1="404" x2="292" y2="404"/>
+</g>
+</svg>

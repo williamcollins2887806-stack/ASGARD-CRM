@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+<style>
+  .ink          { stroke:var(--icon-ink,#1F2A3A); fill:none; stroke-linecap:round; stroke-linejoin:round; }
+  .accent       { stroke:var(--icon-accent,#2E7BC0); fill:none; stroke-linecap:round; stroke-linejoin:round; }
+  .ink-fill     { fill:var(--icon-ink,#1F2A3A); stroke:none; }
+  .accent-fill  { fill:var(--icon-accent,#2E7BC0); stroke:none; }
+  .w4  { stroke-width:4;  }
+  .w5  { stroke-width:5;  }
+  .w6  { stroke-width:6;  }
+  .w7  { stroke-width:7;  }
+  .w9  { stroke-width:9;  }
+  .w10 { stroke-width:10; }
+  .w12 { stroke-width:12; }
+</style>
+<g class="ink w10">
+  <path d="M 72 224 L 96 200 L 224 200 L 248 240 L 264 240 L 288 200 L 416 200 L 440 224 L 440 296 L 412 332 L 288 332 L 264 296 L 248 296 L 224 332 L 100 332 L 72 296 Z"/>
+  <line x1="60" y1="216" x2="40" y2="204"/>
+  <line x1="452" y1="216" x2="472" y2="204"/>
+</g>
+<g class="accent w7">
+  <line x1="116" y1="252" x2="208" y2="252"/>
+  <line x1="304" y1="252" x2="396" y2="252"/>
+</g>
+</svg>

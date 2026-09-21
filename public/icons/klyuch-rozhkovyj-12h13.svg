@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+<style>
+  .ink          { stroke:var(--icon-ink,#1F2A3A); fill:none; stroke-linecap:round; stroke-linejoin:round; }
+  .accent       { stroke:var(--icon-accent,#2E7BC0); fill:none; stroke-linecap:round; stroke-linejoin:round; }
+  .ink-fill     { fill:var(--icon-ink,#1F2A3A); stroke:none; }
+  .accent-fill  { fill:var(--icon-accent,#2E7BC0); stroke:none; }
+  .w4  { stroke-width:4;  }
+  .w5  { stroke-width:5;  }
+  .w6  { stroke-width:6;  }
+  .w7  { stroke-width:7;  }
+  .w9  { stroke-width:9;  }
+  .w10 { stroke-width:10; }
+  .w12 { stroke-width:12; }
+</style>
+<g class="ink w10">
+  <rect x="156" y="244" width="200" height="24" rx="8"/>
+  <polyline points="156,244 116,228 96,256 116,284 156,268"/>
+  <polyline points="356,244 396,228 416,256 396,284 356,268"/>
+</g>
+<g class="accent w6">
+  <line x1="108" y1="244" x2="138" y2="244"/>
+  <line x1="108" y1="268" x2="138" y2="268"/>
+  <line x1="374" y1="240" x2="408" y2="240"/>
+  <line x1="374" y1="272" x2="408" y2="272"/>
+</g>
+</svg>

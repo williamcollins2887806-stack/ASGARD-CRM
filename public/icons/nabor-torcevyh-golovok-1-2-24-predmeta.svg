@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+<style>
+  .ink          { stroke:var(--icon-ink,#1F2A3A); fill:none; stroke-linecap:round; stroke-linejoin:round; }
+  .accent       { stroke:var(--icon-accent,#2E7BC0); fill:none; stroke-linecap:round; stroke-linejoin:round; }
+  .ink-fill     { fill:var(--icon-ink,#1F2A3A); stroke:none; }
+  .accent-fill  { fill:var(--icon-accent,#2E7BC0); stroke:none; }
+  .w4  { stroke-width:4;  }
+  .w5  { stroke-width:5;  }
+  .w6  { stroke-width:6;  }
+  .w7  { stroke-width:7;  }
+  .w9  { stroke-width:9;  }
+  .w10 { stroke-width:10; }
+  .w12 { stroke-width:12; }
+</style>
+<g class="ink w10">
+  <rect x="60" y="288" width="392" height="160" rx="14"/>
+  <line x1="60" y1="336" x2="452" y2="336"/>
+  <rect x="236" y="400" width="40" height="22" rx="4"/>
+</g>
+<g class="ink w10">
+  <rect x="84" y="180" width="56" height="108" rx="6"/>
+  <rect x="156" y="200" width="48" height="88" rx="6"/>
+  <rect x="220" y="216" width="44" height="72" rx="6"/>
+  <rect x="280" y="228" width="40" height="60" rx="6"/>
+  <rect x="336" y="240" width="36" height="48" rx="6"/>
+  <rect x="388" y="252" width="32" height="36" rx="6"/>
+</g>
+<g class="accent w7">
+  <circle cx="112" cy="220" r="14"/>
+  <circle cx="180" cy="236" r="12"/>
+  <circle cx="242" cy="248" r="10"/>
+  <circle cx="300" cy="256" r="9"/>
+  <circle cx="354" cy="262" r="8"/>
+  <circle cx="404" cy="268" r="7"/>
+</g>
+</svg>

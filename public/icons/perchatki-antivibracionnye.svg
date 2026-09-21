@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+<style>
+  .ink          { stroke:var(--icon-ink,#1F2A3A); fill:none; stroke-linecap:round; stroke-linejoin:round; }
+  .accent       { stroke:var(--icon-accent,#2E7BC0); fill:none; stroke-linecap:round; stroke-linejoin:round; }
+  .ink-fill     { fill:var(--icon-ink,#1F2A3A); stroke:none; }
+  .accent-fill  { fill:var(--icon-accent,#2E7BC0); stroke:none; }
+  .w4  { stroke-width:4;  }
+  .w5  { stroke-width:5;  }
+  .w6  { stroke-width:6;  }
+  .w7  { stroke-width:7;  }
+  .w9  { stroke-width:9;  }
+  .w10 { stroke-width:10; }
+  .w12 { stroke-width:12; }
+</style>
+<g class="ink w10">
+  <path d="M 168 432 L 168 256 Q 168 244, 156 244 Q 144 244, 144 256 L 144 304 L 144 200 Q 144 188, 156 188 Q 168 188, 168 200 L 168 256 L 168 168 Q 168 156, 180 156 Q 192 156, 192 168 L 192 256 L 192 140 Q 192 128, 204 128 Q 216 128, 216 140 L 216 256 L 216 156 Q 216 144, 228 144 Q 240 144, 240 156 L 240 256 L 240 432 Z"/>
+</g>
+<g class="accent w7">
+  <line x1="280" y1="220" x2="320" y2="220"/>
+  <line x1="332" y1="220" x2="372" y2="220"/>
+  <line x1="280" y1="260" x2="320" y2="260"/>
+  <line x1="332" y1="260" x2="372" y2="260"/>
+  <line x1="280" y1="300" x2="320" y2="300"/>
+  <line x1="332" y1="300" x2="372" y2="300"/>
+</g>
+</svg>
