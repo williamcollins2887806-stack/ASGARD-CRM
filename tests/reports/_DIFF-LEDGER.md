@@ -7070,3 +7070,59 @@ D-244 (парсер+гейт+ноль) **10/15**. Все — exit 1.
 
 **Статус: VERIFIED** (код + живой гейт 15/15 + mutation-матрица + независимая сертификация L3,
 ИТОГ VERIFIED. Прод-выкатка D-243+D-244 — по команде и на `.last-verified` == HEAD).
+
+---
+
+## Выкатка 21.09.2026 №2 (shell 20.28.46). Прод 20.28.45 → 20.28.46, батч D-237..D-244 + E5
+
+**Команда:** пользователь — «деплой» (после L3-VERIFIED D-243/D-244 и выбора «включить E5»).
+
+**Что выкачено (дельта `e31a2070..4cf68a66`, 11 коммитов).**
+
+| Находка | Суть | Файлы |
+| --- | --- | --- |
+| D-237 | срок подачи тендера правит ТО/HEAD_TO/ADMIN (не только админ) + пересчёт внутреннего дедлайна | `tenders-registry.js`, `registry_tab.js` |
+| D-238 | `analysis_deadline` пересчитывается на ВСЕХ путях записи (`PUT /api/tenders/:id`, `PUT /api/data/tenders/:id`, `POST /api/tenders`) | `tenders.js`, `data.js`, новый `lib/analysis-deadline.js` |
+| D-239 | убран SQL-шим `work_id` в OFS (живой шаг через UI) | `tests/ofs-full-chain-browser-e2e.js` |
+| D-240 | `_loadWorks` больше не кэширует навсегда, ошибки видны | `warehouse-v2.js` |
+| D-241 | копейки в «бумаге счёта» и модалках v2 | `procurement-page.js`, v2 `ActModal/InvoiceModal/DeliverModal` |
+| D-243 | НДС в модалке «Подались» берётся из настроек (и для денег уже поданных) | `db.js`, `registry_tab.js`, `money_fmt.js`, `tenders.js` |
+| D-244 | сумма подачи: строгий парсер (копейки не усекаются, «1,000»≠1 ₽, мусор/явный ноль блокируются) | `registry_tab.js` |
+| E5 (D-236) | после оплаты счёта с `work_id` создаётся ровно один расход проекта | `payment-invoices.js` |
+
+**Pre-deploy гейты (все зелёные).**
+- `shell_guard --expect-version 20.28.46 --deploy-gate` → **37/37** (deploy-gate: HEAD == `.last-verified`).
+- `verify_index_tags.js` → 0 MISSING / 0 DUPLICATE / 0 BROKEN (222 подключения, 200 JS, 26 CSS).
+- `audit_silent_reverts.js` (pre) → **PROD_HANDEDIT=0**, PENDING_DEPLOY=5.
+- `restore_asset_sync.py plan` → `differ_prod_newer=0`, `index_reference_problems=0`.
+- `verify_rp_modal_render.js` → **19/19**; `verify_content_type_guard.js` → 0 срабатываний (379 файлов).
+
+**Порядок выкатки.**
+1. Снапшот прода: `/root/snapshots/asgard-crm-pre-deploy-tender-batch-20260921-225459.tgz` (26 МБ).
+2. Миграций в батче **нет** — БД не трогали.
+3. Бэкенд: `git archive HEAD src` → tar+scp → распаковка; бэкап прежнего `src` (`src-pre-deploy-20260921-*.tar.gz`).
+   Сверка: нормализованное содержимое (CRLF→LF) совпало с git-blob 1:1 по всем 5 затронутым файлам.
+4. Фронт: `restore_asset_sync.py apply` → 8 файлов (db.js, money_fmt.js, procurement-page.js,
+   registry_tab.js, tenders.js, warehouse-v2.js, index.html, sw.js).
+5. v2: `npm run build` (билд был СТАРШЕ правки D-241 — иначе она бы не доехала) → tar+scp `public/v2`
+   (233 ассета, 5.4 МБ); entry `index-CNBL-3wc.js` — совпал с локальным.
+6. `systemctl restart asgard-crm` → active, `/api/health` 200, `https://asgard-crm.ru/` 200.
+
+**Post-deploy (порядок D-166).**
+- `restore_asset_sync.py plan` → `identical=1374`, `to_upload=0`, `differ_prod_newer=0`.
+- `audit_silent_reverts.js --post-deploy` → «прод совпадает с локальным (расхождений: 0)».
+
+**Рантайм (прод).** Маркеры в выложенных файлах: `canEditDeadlineCell` ×6, `parseMoneyInput` ×8,
+`suggestSubmissionPrices` ×2, `recalcAnalysisDeadlinePatch` ×2, `autoWorkExpense` ×2. Ассеты
+`db.js/money_fmt.js/registry_tab.js/tenders.js/warehouse-v2.js/procurement-page.js` → 200,
+`/v2/` и `/v2/assets/index-CNBL-3wc.js` → 200, `/api/tenders/registry/1/assign-analysis` и
+`/api/tenders/1/analysis-checklist` → 401 (маршруты есть, нужен вход), `404` нет.
+
+**Живые гейты на выкаченном коде (клон :3100 + asgard_crm_test):** VT1 15/15, VT2 20/20,
+VAT D-243/D-244 15/15, E5 11/11, `rp-calc-improvements-sentinel` 20/20.
+
+**Остаётся открытым:** E1–E4 (единая точка заявок РП / «К оплате» из реестра / снятие второго входа
+согласования), F1–F5 (синк «Счета и акты»), G1–G9 (матрица оснований). Независимый VERIFY-1 по
+этапам R/V-T и VERIFY-E (живой контур E5 сертифицирован гейтом, но сквозной аудит блока E — впереди).
+
+**Статус выкатки: DONE** (все pre/post гейты зелёные, `.last-verified = 4cf68a66`).
