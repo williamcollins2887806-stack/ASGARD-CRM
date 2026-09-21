@@ -121,6 +121,65 @@ window.AsgardDB = (function(){
     }
   }
   
+  /**
+   * getSettingValue(key) — ЗНАЧЕНИЕ настройки в том виде, в каком его отдаёт API.
+   *
+   * getSettings() возвращает уже разобранное значение (`data.setting || data.value || data`),
+   * а НЕ строку с полем `value_json`. Обращаться после него к `.value_json` бессмысленно:
+   * поле всегда undefined → `parseFloat(undefined)` → NaN → настройка молча игнорируется.
+   * Именно так модалка «С какой суммой подались?» показывала НДС 20 % из карточки
+   * (tenders.vat_pct DEFAULT 20) вместо 22 % из настроек (найдено 21.09.2026).
+   *
+   * Возвращает число, если значение числовое, иначе строку/объект/null.
+   */
+  async function getSettingValue(key) {
+    const stored = await getSettings(key);
+    return unwrapSettingValue(stored);
+  }
+
+  /**
+   * Разворачивает запись настройки в её значение. Понимает обе формы:
+   *  - строка из БД/IDB: { key, value_json: '22' }
+   *  - ответ API/AsgardDB.get: 22 (число) | '22' | { value: 22 } | { setting: {...} }
+   */
+  function unwrapSettingValue(stored) {
+    let v = stored;
+    for (let i = 0; i < 4; i++) {
+      if (v == null) return null;
+      if (typeof v === 'object') {
+        if ('value_json' in v && v.value_json != null) { v = v.value_json; continue; }
+        if ('value' in v && v.value != null) { v = v.value; continue; }
+        if ('setting' in v && v.setting != null) { v = v.setting; continue; }
+        return v;
+      }
+      // Строка: либо JSON-обёртка, либо «сырое» значение ('22', '"22"', '{"value":22}').
+      if (typeof v === 'string') {
+        const t = v.trim();
+        if (!t) return '';
+        try {
+          const parsed = JSON.parse(t);
+          if (parsed !== v) { v = parsed; continue; }
+        } catch (_) { /* не JSON — обычное значение */ }
+        return t;
+      }
+      return v; // число/булево
+    }
+    return v;
+  }
+
+  /**
+   * Число из настройки. `null`, если значение не число или вне [min, max].
+   * Нужен там, где важен приоритет настройки (например, ставка НДС): вызывающий
+   * должен явно отличать «настройка есть» от «настройки нет».
+   */
+  async function getSettingNumber(key, { min = -Infinity, max = Infinity } = {}) {
+    const raw = await getSettingValue(key);
+    if (raw == null || raw === '') return null;
+    const n = typeof raw === 'number' ? raw : parseFloat(String(raw).replace(/\s/g, '').replace(',', '.'));
+    if (!Number.isFinite(n) || n < min || n > max) return null;
+    return n;
+  }
+
   async function putSettings(val) {
     const key = val.key;
     if (!key) throw new Error('settings требует key');
@@ -599,6 +658,8 @@ window.AsgardDB = (function(){
   return {
     open: open,
     get: get,
+    getSettingValue: getSettingValue,
+    getSettingNumber: getSettingNumber,
     all: all,
     getAll: getAll,
     add: add,

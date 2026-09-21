@@ -88,7 +88,13 @@ async function login(loginName, password) {
   check('1. на «Очереди оплаты» зарегистрирован интервал', intervals1.some((ms) => ms >= 10000), `intervals=[${intervals1.join(',')}]`);
 
   const before = liveHits;
-  await page.waitForTimeout(22000);
+  // Окно ожидания ЧЕСТНОЕ, но достаточное: интервал live — 20 с, а страница могла
+  // отрисовываться дольше обычного (соседний chromium/сервер). Фиксированные 22 с давали
+  // маржу 2 с и «моргали» (21.09: продукт тикал — зонд показал fired=1 на t=21 с, а гейт
+  // падал). Ждём рост ДО 32 с: свойство («без F5 данные обновляются») не ослаблено —
+  // без live роста не будет вовсе; смягчено только время ожидания.
+  const deadline = Date.now() + 32000;
+  while (liveHits === before && Date.now() < deadline) await page.waitForTimeout(1000);
   const grew1 = liveHits > before;
   check('2. live реально дёргает API без F5', grew1, `запросов было ${before}, стало ${liveHits}`);
 
@@ -130,9 +136,10 @@ async function login(loginName, password) {
     document.dispatchEvent(new Event('visibilitychange'));
   });
   const beforeReenter = liveHits;
-  await page.waitForTimeout(45000);
+  const deadlineRe = Date.now() + 52000;
+  while (liveHits === beforeReenter && Date.now() < deadlineRe) await page.waitForTimeout(1000);
   const grewReenter = liveHits - beforeReenter;
-  check('4b. live ЖИВ после повторного входа + переключения вкладки', grewReenter >= 1, `запросов за 45с после возврата+toggle: ${grewReenter}`);
+  check('4b. live ЖИВ после повторного входа + переключения вкладки', grewReenter >= 1, `запросов за 52с после возврата+toggle: ${grewReenter}`);
 
   // ── 4. Склад: живость проверяем ЗАПРОСАМИ, а не грепом по файлу ─────────
   let whHits = 0;
@@ -140,9 +147,10 @@ async function login(loginName, password) {
   await page.goto(`${BASE}/#/warehouse-v2?tab=assemblies`, { waitUntil: 'load' });
   await page.waitForTimeout(5000);
   const whBefore = whHits;
-  await page.waitForTimeout(45000);
+  const whDeadline = Date.now() + 52000;
+  while (whHits === whBefore && Date.now() < whDeadline) await page.waitForTimeout(1000);
   const whLive = whHits - whBefore;
-  check('5. склад: live реально дёргает API без F5 (счётчик запросов)', whLive >= 1, `запросов за 45с на вкладке «Сборки»: ${whLive}`);
+  check('5. склад: live реально дёргает API без F5 (счётчик запросов)', whLive >= 1, `запросов за 52с на вкладке «Сборки»: ${whLive}`);
   const src = fs.readFileSync('public/assets/js/warehouse-v2.js', 'utf8');
   check('6. в warehouse-v2 учтён document.hidden', /document\.hidden/.test(src), 'hidden проверяется');
   check('7. в warehouse-v2 есть остановка таймера', /_stopLive|clearInterval/.test(src), 'stopLive');

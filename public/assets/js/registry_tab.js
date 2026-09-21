@@ -584,12 +584,15 @@ window.AsgardRegistryTab = (function () {
 
   async function openStatusModal(row) {
     const st = row.registry_status || 'рассмотрение';
-    let vatPct = Number(row.vat_pct) || (M() && M().VAT_DEFAULT_PCT) || 22;
-    try {
-      const vatSetting = await AsgardDB.get('settings', 'vat_default_pct');
-      const v = vatSetting ? parseFloat(vatSetting.value_json) : NaN;
-      if (Number.isFinite(v) && v >= 0 && v <= 100) vatPct = v;
-    } catch (_) { /* keep fallback */ }
+    // Ставка НДС: ЕДИНСТВЕННЫЙ источник — настройка `vat_default_pct` (прямое указание заказчика).
+    // `row.vat_pct` здесь НЕ участвует: у колонки tenders.vat_pct DEFAULT 20, и на проде так у 1401
+    // из 1410 строк — 20 из карточки перебивал настройку 22, поэтому в модалке «подались» было 20 %.
+    // Если настройки нет/она не число — берём действующую ставку из константы модуля (22, канон D-190),
+    // а не значение карточки: 20 — это дрейф схемы, а не реальная ставка.
+    const vatSetting = await AsgardDB.getSettingNumber('vat_default_pct', { min: 0, max: 100 });
+    const vatPct = vatSetting != null
+      ? vatSetting
+      : ((M() && M().VAT_DEFAULT_PCT) || 22);
     const suggested = (M() && M().suggestSubmissionPrices) ? M().suggestSubmissionPrices(row, vatPct) : { exVat: null, withVat: null, vatPct };
     const sugEx = suggested.exVat > 0 ? String(Math.round(suggested.exVat)) : '';
     const sugWith = suggested.withVat > 0 ? String(Math.round(suggested.withVat)) : '';
@@ -635,7 +638,7 @@ window.AsgardRegistryTab = (function () {
           if (!vatLine) return;
           if (w > 0) {
             const base = e > 0 ? e : (M() ? M().withoutVat(w, vatPct) : Math.round(w / (1 + vatPct / 100)));
-            vatLine.textContent = 'в т.ч. НДС ' + formatMoney(Math.round((w - base) * 100) / 100);
+            vatLine.textContent = 'в т.ч. НДС ' + vatPct + '%: ' + formatMoney(Math.round((w - base) * 100) / 100);
           } else vatLine.textContent = '';
         };
         pick?.addEventListener('change', syncVis);
@@ -1808,6 +1811,14 @@ window.AsgardRegistryTab = (function () {
   }
 
   return {
+    /**
+     * Только для гейтов (tools/verify_registry_vat_from_settings.js): открыть модалку
+     * смены статуса на поданной строке без похода в реестр. В проде не используется.
+     * Держать рядом с mount(), чтобы при рефакторинге было видно, что это тест-хук.
+     */
+    _test: {
+      openStatusModal,
+    },
     mount(el, opts) {
       mountEl = el;
       opts = opts || {};

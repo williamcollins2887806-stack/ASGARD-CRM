@@ -3277,8 +3277,9 @@ window.AsgardTendersPage = (function(){
       $('#e_deadline_w')?.appendChild(CRDatePicker.create({ id:'e_docs_deadline', value:(t&&t.docs_deadline)||'', placeholder:'Выберите дату', disabled:!(full||limited), clearable:true, dropdownClass:'z-modal' }));
 
       // Авторасчёт НДС: ставка из настроек. Fallback — 22 % (действующая ставка), не 20 (D-190).
-      const _vatSetting = await AsgardDB.get('settings', 'vat_default_pct');
-      const _vatPct = _vatSetting ? (parseFloat(_vatSetting.value_json) || 22) : 22;
+      // AsgardDB.getSettingNumber возвращает null, если настройки нет/она не число —
+      // тогда честный fallback 22, а не undefined-арифметика (см. db.js, найдено 21.09.2026).
+      const _vatPct = (await AsgardDB.getSettingNumber('vat_default_pct', { min: 0, max: 100 })) ?? 22;
       const _vatMul = 1 + _vatPct / 100;
       const ePriceEl = document.getElementById('e_price');
       const ePriceVatEl = document.getElementById('e_price_vat');
@@ -4732,8 +4733,8 @@ window.AsgardTendersPage = (function(){
     // После: HEAD_TO в win-panel сверху страницы назначит РП на работы.
     // ═══════════════════════════════════════════════════════════════
     async function openWonModal(tid, tender) {
-      const vatSetting = await AsgardDB.get('settings', 'vat_default_pct');
-      const vatPct = vatSetting ? (parseFloat(vatSetting.value_json) || 22) : 22;
+      // Ставка — из настроек (единый источник), fallback 22 % только если настройки нет.
+      const vatPct = (await AsgardDB.getSettingNumber('vat_default_pct', { min: 0, max: 100 })) ?? 22;
       const vatMul = 1 + vatPct / 100;
 
       const initNoVat = tender?.submission_price || 0;

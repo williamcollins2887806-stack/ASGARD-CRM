@@ -121,10 +121,21 @@
     return { exVat: wp, withVat: withVat(wp, pct), vatPct: pct, legacy: false };
   }
 
+  /**
+   * Цены подачи для модалки «Подались».
+   *
+   * ВАЖНО: `vatPct` — приоритетный источник, `row.vat_pct` — вторичный.
+   * Найдено 21.09.2026 (D-243): здесь стояло `Number(row.vat_pct) || vatPct`, поэтому
+   * ставка карточки (у колонки tenders.vat_pct DEFAULT 20, на проде — 1401 строка)
+   * побеждала настройку: подпись в модалке читала настройку (22 %), а суммы считались
+   * по 20 %. Итог: подпись «С НДС 22%», а рядом НДС, посчитанный как 20 %.
+   * Теперь настройка главная, карточка — только если настройки нет.
+   */
   function suggestSubmissionPrices(row, vatPct) {
-    vatPct = vatPct != null ? vatPct : VAT_DEFAULT_PCT;
+    var vatPctGiven = vatPct != null && vatPct !== '';
+    var pct = vatPctGiven ? Number(vatPct) : (Number(row && row.vat_pct) || VAT_DEFAULT_PCT);
+    if (!isFinite(pct) || pct < 0 || pct > 100) pct = VAT_DEFAULT_PCT;
     var rev = (row && row.rp_review) || {};
-    var pct = Number(row && row.vat_pct) || vatPct;
     var withV = null;
     var exV = null;
     var rw = resolveWorkPrice(rev, pct);
