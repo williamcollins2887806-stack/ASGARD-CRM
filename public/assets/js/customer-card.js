@@ -106,7 +106,43 @@ window.AsgardCustomerCard = (function () {
             <summary>📊 Разбивка по статусам тендеров</summary>
             <table>${statusRows}</table>
           </details>` : ''}
+
+        <details class="cc-details" id="ccChecklistsBlock">
+          <summary>📞 Чек-листы анализа (звонки)</summary>
+          <div id="ccChecklists" style="padding-top:4px"><div style="color:var(--t3);font-size:10px">Загрузка…</div></div>
+        </details>
       </div>`;
+  }
+
+  /** История чек-листов анализа по контрагенту (D-203). */
+  function checklistsHtml(items) {
+    if (!items || !items.length) {
+      return '<div style="color:var(--t3);font-size:10px">Чек-листов по этому контрагенту пока нет.</div>';
+    }
+    return items.map((c) => {
+      const tpl = Array.isArray(c.template_snapshot) ? c.template_snapshot : [];
+      const answers = (c.answers && typeof c.answers === 'object') ? c.answers : {};
+      const free = Array.isArray(c.free_answers) ? c.free_answers : [];
+      const date = c.updated_at || c.created_at
+        ? new Date(c.updated_at || c.created_at).toLocaleDateString('ru-RU', { day: '2-digit', month: 'short', year: '2-digit' })
+        : '—';
+      const rows = tpl.filter(q => q && q.kind !== 'free').map((q) => {
+        const a = answers[q.id];
+        return `<tr>
+          <td style="padding:2px 6px;vertical-align:top">${esc(q.text)}</td>
+          <td style="padding:2px 6px;vertical-align:top;color:var(--t2)">${a ? esc(String(a)) : '<span style="color:var(--t3)">— не заполнено —</span>'}</td>
+        </tr>`;
+      }).join('');
+      const freeRows = free.filter(f => (f && (f.text || f.answer)))
+        .map(f => `<tr>
+          <td style="padding:2px 6px;vertical-align:top">${esc(f.text || '—')}</td>
+          <td style="padding:2px 6px;vertical-align:top;color:var(--t2)">${f.answer ? esc(String(f.answer)) : '<span style="color:var(--t3)">—</span>'}</td>
+        </tr>`).join('');
+      return `<details class="cc-details" style="margin-bottom:4px">
+        <summary>${esc(c.work_title || 'Работа без названия')} · ${date}${c.author_name ? ' · ' + esc(c.author_name) : ''}</summary>
+        <table>${rows}${freeRows}</table>
+      </details>`;
+    }).join('');
   }
 
   /**
@@ -134,8 +170,26 @@ window.AsgardCustomerCard = (function () {
       if (!r.ok) throw new Error('HTTP ' + r.status);
       const d = await r.json();
       container.innerHTML = renderHtml(d);
+      loadChecklists(container, cleanInn);
     } catch (e) {
       container.innerHTML = '<div style="color:var(--t3);font-size:11px;padding:8px">Не удалось загрузить данные контрагента</div>';
+    }
+  }
+
+  /** Догружает историю чек-листов анализа в уже отрисованную карточку. */
+  async function loadChecklists(container, inn) {
+    const host = container.querySelector('#ccChecklists');
+    if (!host) return;
+    try {
+      const token = localStorage.getItem('asgard_token') || '';
+      const r = await fetch('/api/customers/' + inn + '/analysis-checklists', {
+        headers: { 'Authorization': 'Bearer ' + token }
+      });
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      const d = await r.json();
+      host.innerHTML = checklistsHtml(d.items || []);
+    } catch (e) {
+      host.innerHTML = '<div style="color:var(--t3);font-size:10px">Чек-листы недоступны</div>';
     }
   }
 

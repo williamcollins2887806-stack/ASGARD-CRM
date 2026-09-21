@@ -408,6 +408,25 @@ const MAX_EXTRACT_PER_FILE = 15000; // For classification (short analysis)
 const MAX_EXTRACT_PER_FILE_REPORT = 100000; // For reports — full TZ documents (50+ pages)
 const IMAGE_MIMES = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
 
+// ── Бюджет выходных токенов для классификации (D-204) ────────────────
+// Было 1024: JSON-ответ с summary/recommendation/полями карточки клиента
+// обрывался на середине, JSON.parse падал, письмо уходило в тихий 'other'
+// и терялось (август–сентябрь 2026: 11 писем с confidence=0, из них реальные
+// молчаливые потери — #4255/#4256 от 18.09). 4096 хватает с запасом,
+// при stopReason='length' ниже есть retry с удвоением бюджета.
+const ANALYSIS_MAX_TOKENS = parseInt(process.env.AI_ANALYSIS_MAX_TOKENS || '4096', 10);
+const ANALYSIS_MAX_TOKENS_CEILING = parseInt(process.env.AI_ANALYSIS_MAX_TOKENS_CEILING || '16384', 10);
+
+// D-204: классы, которые модель обязана вернуть. Если ответ валиден как JSON,
+// но класса нет (или он не из списка) — это НЕ «письмо не про нас», а сбой
+// разбора: иначе `{}` и `{"classification":null}` снова уходили бы в тихий
+// 'other' с ai_processed_at=NOW() и заявка терялась бы молча.
+const VALID_CLASSIFICATIONS = [
+  'direct_request', 'platform_tender', 'tender_invitation', 'addendum_response',
+  'commercial_offer', 'information', 'spam', 'personal', 'other'
+];
+const VALID_CLASSIFICATION_SET = new Set(VALID_CLASSIFICATIONS);
+
 /**
  * Resolve attachment file path — tries multiple base directories for robustness
  * (handles PM2, Docker, and different cwd scenarios)
@@ -539,8 +558,29 @@ async function extractAttachmentTexts(emailId, { maxPerFile = MAX_EXTRACT_PER_FI
               if (cnt++ > 100) return;
               const vals = [];
               row.eachCell((cell) => {
-                const v = cell.text || cell.value;
-                if (v != null && v !== '') vals.push(String(v).trim());
+                // D-204: на реальном файле «пассивация труб компрессоров.xlsx»
+                // САМ геттер cell.text падает с "Cannot read properties of null
+                // (reading 'toString')" — поэтому к cell.text не обращаемся вообще,
+                // а собираем текст из cell.value (richText / formula / hyperlink).
+                try {
+                  const raw = cell.value;
+                  if (raw == null) return;
+                  let v;
+                  if (typeof raw === 'object') {
+                    v = raw.text ?? raw.result ?? raw.hyperlink ?? null;
+                    if (v == null && Array.isArray(raw.richText)) {
+                      v = raw.richText.map((rt) => rt?.text || '').join('');
+                    }
+                  } else {
+                    v = raw;
+                  }
+                  if (v != null && typeof v !== 'object') {
+                    const s = String(v).trim();
+                    if (s) vals.push(s);
+                  }
+                } catch (cellErr) {
+                  console.warn(`[AI-Analyzer] XLSX cell skipped in "${a.original_filename}":`, cellErr.message);
+                }
               });
               if (vals.length) lines.push(vals.join(' | '));
             });
@@ -700,8 +740,23 @@ async function extractAttachmentTexts(emailId, { maxPerFile = MAX_EXTRACT_PER_FI
                     if (cnt++ > 100) return;
                     const vals = [];
                     row.eachCell((cell) => {
-                      const v = cell.text || cell.value;
-                      if (v != null && v !== '') vals.push(String(v).trim());
+                      // D-204: тот же дефект, что и в основном XLSX-обработчике —
+                      // cell.text может падать на битых ячейках. Читаем только value.
+                      try {
+                        const raw = cell.value;
+                        if (raw == null) return;
+                        let v;
+                        if (typeof raw === 'object') {
+                          v = raw.text ?? raw.result ?? raw.hyperlink ?? null;
+                          if (v == null && Array.isArray(raw.richText)) v = raw.richText.map(rt => rt?.text || '').join('');
+                        } else v = raw;
+                        if (v != null && typeof v !== 'object') {
+                          const s = String(v).trim();
+                          if (s) vals.push(s);
+                        }
+                      } catch (cellErr) {
+                        console.warn(`[AI-Analyzer] Archive XLSX cell skipped in "${ef.filename}":`, cellErr.message);
+                      }
                     });
                     if (vals.length) lines.push(vals.join(' | '));
                   });
@@ -760,7 +815,20 @@ async function extractAttachmentTexts(emailId, { maxPerFile = MAX_EXTRACT_PER_FI
                   console.log(`[AI-Analyzer] Archive image: "${ef.filename}" (${stats.size} bytes)`);
                 }
               } catch (_) {}
+              continue;
             }
+
+            // D-204: не-молчаливый список «остальных» файлов из архива.
+            // Реальный кейс: письмо #4256 — .rar с одним .dwg (чертёж AutoCAD).
+            // Раньше такой файл просто исчезал, и модель не знала, что к письму
+            // приложен чертёж. Теперь хотя бы перечисляем имя/тип/размер —
+            // по ним классификация даёт осмысленный work_type и summary.
+            try {
+              const stats = fs.statSync(ef.absPath);
+              const ext = path.extname(efExt).replace('.', '').toUpperCase() || 'файл';
+              texts.push(`[${a.original_filename} → ${ef.filename}] (${ext}, ${Math.round(stats.size / 1024)} КБ) — бинарный формат, текст не извлекается`);
+              console.log(`[AI-Analyzer] Archive opaque file: "${ef.filename}" (${ext}, ${stats.size} bytes) — перечислен без разбора`);
+            } catch (_) {}
           }
         } catch (archErr) {
           console.error(`[AI-Analyzer] Archive extraction error "${a.original_filename}":`, archErr.message);
@@ -842,15 +910,38 @@ async function analyzeEmail({ emailId, subject, bodyText, fromEmail, fromName, a
     }
 
     const completeFn = aiProvider.completeAnalytics || aiProvider.complete;
-    const response = await completeFn({
-      system: ANALYSIS_SYSTEM_PROMPT,
-      messages: [{ role: 'user', content: messageContent }],
-      maxTokens: 1024,
-      temperature: 0.3
-    });
 
-    // Парсим JSON-ответ
-    result = parseAIResponse(response.text);
+    // D-204: классификация с retry при обрыве по токенам.
+    // Было maxTokens=1024 → JSON обрывался на середине → parse падал → тихий 'other'.
+    // Теперь: бюджет 4096, при stopReason='length' повтор с удвоением (до ceiling).
+    let attempt = 0;
+    let budget = ANALYSIS_MAX_TOKENS;
+    let response;
+    let parsedResult;
+    while (true) {
+      attempt++;
+      response = await completeFn({
+        system: ANALYSIS_SYSTEM_PROMPT,
+        messages: [{ role: 'user', content: messageContent }],
+        maxTokens: budget,
+        temperature: 0.3
+      });
+
+      parsedResult = parseAIResponse(response.text);
+
+      const truncated = response.stopReason === 'length' || response.stopReason === 'max_tokens';
+      if (!parsedResult._parse_failed && !truncated) break;
+
+      if (budget >= ANALYSIS_MAX_TOKENS_CEILING || attempt >= 3) {
+        console.warn(`[AI-Analyzer] #${emailId}: разбор не удался после ${attempt} попыток (budget=${budget}, stopReason=${response.stopReason}) — needs_review`);
+        break;
+      }
+
+      budget = Math.min(budget * 2, ANALYSIS_MAX_TOKENS_CEILING);
+      console.warn(`[AI-Analyzer] #${emailId}: ${truncated ? 'обрыв по токенам' : 'JSON не разобран'} (stopReason=${response.stopReason}) — повтор с maxTokens=${budget}`);
+    }
+
+    result = parsedResult;
 
     // Защитный override: AI иногда классифицирует пересланное ТЗ как 'information',
     // хотя summary/recommendation явно указывают на запрос работ или подготовку КП.
@@ -878,14 +969,26 @@ async function analyzeEmail({ emailId, subject, bodyText, fromEmail, fromName, a
       model: response.model,
       provider: response.provider,
       usage: response.usage,
-      durationMs: response.durationMs
+      durationMs: response.durationMs,
+      attempts: attempt,
+      maxTokensUsed: budget
     };
+
+    // D-204: сбой разбора — это НЕ «письмо не про нас». Отдаём наверх явный флаг,
+    // чтобы imap.js не ставил ai_processed_at, показал needs_review и уведомил людей.
+    if (result._parse_failed) {
+      result.needs_review = true;
+      result.confidence = 0;
+      result.color = 'red';
+      result.summary = result.summary || 'Не удалось автоматически классифицировать';
+      console.warn(`[AI-Analyzer] Email #${emailId}: _parse_failed (${result._parse_error}) → needs_review=true, ai_processed_at НЕ будет выставлен`);
+    }
 
     // Логируем в ai_analysis_log
     await logAnalysis({
       entityType: 'email',
       entityId: emailId || 0,
-      analysisType: 'email_classification',
+      analysisType: result._parse_failed ? 'email_classification_parse_failed' : 'email_classification',
       promptTokens: response.usage?.inputTokens || 0,
       completionTokens: response.usage?.outputTokens || 0,
       model: response.model,
@@ -909,8 +1012,11 @@ async function analyzeEmail({ emailId, subject, bodyText, fromEmail, fromName, a
       inputPreview: (subject || '').slice(0, 200)
     });
 
-    // Fallback — базовая классификация без AI
-    return fallbackClassification({ subject, bodyText, fromEmail });
+    // Fallback — базовая классификация без AI.
+    // D-204: помечаем как _parse_failed, чтобы imap.js не счёл письмо обработанным
+    // (иначе сбой сети/ключа навсегда «съедал» заявку — ствол 18.09.2026).
+    const fb = fallbackClassification({ subject, bodyText, fromEmail });
+    return { ...fb, _parse_failed: true, _parse_error: 'provider_error', needs_review: true };
   }
 }
 
@@ -955,18 +1061,63 @@ function buildAnalysisMessage({ subject, bodyText, fromEmail, fromName, attachme
 // ── Парсинг ответа AI ────────────────────────────────────────────────
 
 function parseAIResponse(text) {
-  if (!text) return fallbackResult();
+  if (!text) {
+    // Пустой ответ модели — это НЕ «письмо не про нас», это сбой разбора.
+    console.warn('[AI-Analyzer] Empty AI response — marking _parse_failed');
+    return { ...fallbackResult(), _parse_failed: true, _parse_error: 'empty_response' };
+  }
 
   // Удаляем markdown-обёртку если есть
   let clean = text.trim();
   if (clean.startsWith('```json')) clean = clean.slice(7);
-  if (clean.startsWith('```')) clean = clean.slice(3);
+  else if (clean.startsWith('```')) clean = clean.slice(3);
   if (clean.endsWith('```')) clean = clean.slice(0, -3);
   clean = clean.trim();
 
-  try {
-    const parsed = JSON.parse(clean);
+  // D-204: устойчивое извлечение JSON. Модель может добавить пояснение до/после
+  // объекта или вернуть markdown. Раньше любой такой случай падал в JSON.parse,
+  // затем в тихий 'other' — и заявка терялась (август–сентябрь 2026).
+  let parsed = null;
+  const parseAttempts = [clean];
+  const firstBrace = clean.indexOf('{');
+  const lastBrace = clean.lastIndexOf('}');
+  if (firstBrace !== -1 && lastBrace > firstBrace) {
+    parseAttempts.push(clean.slice(firstBrace, lastBrace + 1));
+  }
+  for (const candidate of parseAttempts) {
+    try {
+      parsed = JSON.parse(candidate);
+      if (parsed && typeof parsed === 'object') break;
+      parsed = null;
+    } catch (_) { /* пробуем следующий вариант */ }
+  }
 
+  if (!parsed) {
+    // Не молчим: помечаем сбой, чтобы imap.js не ставил ai_processed_at и не терял письмо.
+    console.warn('[AI-Analyzer] JSON parse error — marking _parse_failed | raw:', clean.slice(0, 200));
+    return {
+      ...fallbackResult(),
+      _parse_failed: true,
+      _parse_error: 'json_parse_error',
+      _raw_text: clean.slice(0, 2000)
+    };
+  }
+
+  // D-204: валидный JSON без валидного класса — тоже сбой разбора, а не «не наш профиль».
+  // Реальные случаи: `{}`, `{"classification":null}`, `{"status":"ok"}` — раньше они
+  // проходили как честный 'other' с confidence 0.5 и письмо помечалось обработанным.
+  const clsRaw = parsed.classification;
+  if (!VALID_CLASSIFICATION_SET.has(clsRaw)) {
+    console.warn(`[AI-Analyzer] JSON без валидной классификации (classification=${JSON.stringify(clsRaw)}) — marking _parse_failed`);
+    return {
+      ...fallbackResult(),
+      _parse_failed: true,
+      _parse_error: 'missing_classification',
+      _raw_text: clean.slice(0, 2000)
+    };
+  }
+
+  try {
     // Sanitize Fwd-парсинг: НИКОГДА не возвращать наш внутренний домен как original_sender.
     // Это защита от случая когда AI всё-таки спутал форвардера с клиентом.
     const INTERNAL_DOMAINS_LOWER = ['asgard-crm.ru', 'asgard-service.ru', 'asgard-service.com', 'asgard-s.ru'];
@@ -1018,6 +1169,7 @@ function parseAIResponse(text) {
       original_sender_company: origCompany,
       forwarder_name:  fwdName,
       forwarder_email: fwdEmail ? String(fwdEmail).toLowerCase() : null,
+      suggested_pm_name: parsed.suggested_pm_name || null,
       _fwd_warning: !!(parsed.is_forwarded === true && !origEmail),
       // ── Карточка клиента из фото/PDF (NEW) ─────────────────────────────
       extracted_customer_name:    parsed.extracted_customer_name || null,
@@ -1031,8 +1183,9 @@ function parseAIResponse(text) {
       extracted_equipment:        parsed.extracted_equipment || null
     };
   } catch (e) {
-    console.warn('[AI-Analyzer] JSON parse error:', e.message, '| raw:', clean.slice(0, 80));
-    return fallbackResult();
+    // Сбой на пост-обработке уже распарсенного JSON — тоже не молчим.
+    console.warn('[AI-Analyzer] JSON sanitize error:', e.message);
+    return { ...fallbackResult(), _parse_failed: true, _parse_error: 'sanitize_error' };
   }
 }
 
@@ -1262,6 +1415,10 @@ module.exports = {
   parseAIResponse,
   shouldSkipEmail,
   ANALYSIS_SYSTEM_PROMPT,
+  // D-204: белый список классов — экспортирован, чтобы тест ловил рассинхрон
+  // с ANALYSIS_SYSTEM_PROMPT (если в промпт добавят класс и забудут здесь,
+  // письма начнут уходить в needs_review).
+  VALID_CLASSIFICATIONS,
   // S-9: экспорт для unit-тестов addendum-keyword heuristic.
   fallbackClassification
 };

@@ -164,6 +164,17 @@ async function createPreTenderFromEmail(emailId, options = {}) {
 
   // Создаём заявку с данными из письма
   const assignedTo = options.assignedTo || null;
+
+  // D-204: work_description раньше брался строго из body_text. У писем, которые
+  // приходят только в HTML (Яндекс/Fwd), body_text пуст — и карточка РП получала
+  // пустое «что делать». Теперь: body_text → текст из body_html → AI-конспект.
+  const { bestEmailText } = require('./email-text');
+  const workDescription = (
+    bestEmailText(email)
+    || email.ai_summary
+    || ''
+  ).slice(0, 2000);
+
   const ins = await db.query(`
     INSERT INTO pre_tender_requests (
       email_id, source_type,
@@ -190,7 +201,7 @@ async function createPreTenderFromEmail(emailId, options = {}) {
     customerInn,
     email.extracted_customer_contact_person || null,
     email.extracted_customer_phone || null,
-    (email.body_text || '').slice(0, 2000),
+    workDescription,
     email.ai_summary || null,
     email.ai_color || 'yellow',
     email.ai_recommendation || null,

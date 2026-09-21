@@ -47,6 +47,44 @@ async function routes(fastify, options) {
     return { refs: JSON.parse(result.rows[0].value_json) };
   });
 
+  // ── Чек-лист анализа (D-203) — специфичные маршруты ДО параметризованных ──
+  const CHECKLIST_ADMIN_ROLES = ['ADMIN', 'HEAD_TO'];
+
+  fastify.get('/analysis-checklist-template', {
+    preHandler: [fastify.requireRoles(CHECKLIST_ADMIN_ROLES)]
+  }, async () => {
+    const checklist = require('../services/analysis-checklist');
+    const questions = await checklist.getTemplate(db);
+    return { questions, defaults: checklist.DEFAULT_TEMPLATE };
+  });
+
+  fastify.put('/analysis-checklist-template', {
+    preHandler: [fastify.requireRoles(CHECKLIST_ADMIN_ROLES)]
+  }, async (request, reply) => {
+    const checklist = require('../services/analysis-checklist');
+    const body = request.body || {};
+    const raw = body.questions !== undefined ? body.questions : body.value;
+    if (body.reset === true) {
+      await db.query(`
+        INSERT INTO settings (key, value_json, updated_at)
+        VALUES ($1, $2, NOW())
+        ON CONFLICT (key) DO UPDATE SET value_json = $2, updated_at = NOW()
+      `, [checklist.SETTINGS_KEY, JSON.stringify(checklist.DEFAULT_TEMPLATE)]);
+      return { questions: checklist.DEFAULT_TEMPLATE, reset: true };
+    }
+    const questions = checklist.normalizeTemplate(raw);
+    const requiredCount = questions.filter((q) => q.required).length;
+    if (requiredCount < 1) {
+      return reply.code(400).send({ error: 'Нужен хотя бы один обязательный вопрос' });
+    }
+    await db.query(`
+      INSERT INTO settings (key, value_json, updated_at)
+      VALUES ($1, $2, NOW())
+      ON CONFLICT (key) DO UPDATE SET value_json = $2, updated_at = NOW()
+    `, [checklist.SETTINGS_KEY, JSON.stringify(questions)]);
+    return { questions };
+  });
+
   fastify.get('/:key', { preHandler: [fastify.authenticate] }, async (request, reply) => {
     const { key } = request.params;
     const isAdmin = request.user.role === 'ADMIN';

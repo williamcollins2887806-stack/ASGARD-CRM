@@ -545,6 +545,45 @@ async function routes(fastify, options) {
     };
   });
 
+  // GET /:inn/analysis-checklists — история чек-листов анализа по контрагенту (D-203).
+  // Ищем по ИНН, с фолбэком по названию (у старых тендеров ИНН мог быть пуст).
+  // Роли: только те, кто работает с тендерами/анализом. В вопросах и ответах есть
+  // бюджет заказчика и оценка конкурентов — склад/кадры/бухгалтерия/закупки сюда не ходят.
+  const CHECKLIST_VIEW_ROLES = [
+    'ADMIN', 'TO', 'HEAD_TO', 'PM', 'HEAD_PM',
+    'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV'
+  ];
+  fastify.get('/:inn/analysis-checklists', {
+    preHandler: [fastify.authenticate, fastify.requireRoles(CHECKLIST_VIEW_ROLES)]
+  }, async (request, reply) => {
+    const inn = String(request.params.inn || '').replace(/\D/g, '');
+    if (inn.length !== 10 && inn.length !== 12) {
+      return reply.code(400).send({ error: 'Некорректный ИНН' });
+    }
+    const cust = await db.query('SELECT name FROM customers WHERE inn = $1', [inn]);
+    const name = cust.rows[0]?.name || null;
+
+    // D-203: мягко удалённый тендер чек-лист не отдаёт — ни здесь, ни в :id-роутах.
+    // Это ТРЕТЬЕ повторение одного класса (сначала .docx, потом GET /:id, теперь история):
+    // инвариант держится не конструкцией, а аккуратностью на каждом маршруте — поэтому
+    // условие стоит явно и закреплено гейтом (7f / 7f-bis).
+    const r = await db.query(`
+      SELECT c.id, c.tender_id, c.answers, c.free_answers, c.template_snapshot,
+             c.work_title, c.customer_name, c.customer_inn, c.created_at, c.updated_at,
+             c.created_by_user_id, u.name AS author_name,
+             t.registry_no
+      FROM tender_analysis_checklists c
+      LEFT JOIN users u ON u.id = c.created_by_user_id
+      JOIN tenders t ON t.id = c.tender_id AND t.deleted_at IS NULL
+      WHERE c.customer_inn = $1
+         OR ($2::text IS NOT NULL AND c.customer_name = $2)
+      ORDER BY COALESCE(c.updated_at, c.created_at) DESC
+      LIMIT 100
+    `, [inn, name]);
+
+    return { inn, customer_name: name, items: r.rows };
+  });
+
   fastify.delete('/:inn', { preHandler: [fastify.requireRoles(['ADMIN'])] }, async (request, reply) => {
     try {
       const result = await db.query('DELETE FROM customers WHERE inn = $1 RETURNING inn', [request.params.inn]);

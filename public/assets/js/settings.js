@@ -76,10 +76,155 @@ window.AsgardSettingsPage = (function(){
     return role === "ADMIN" || (window.AsgardAuth&&AsgardAuth.isDirectorRole?AsgardAuth.isDirectorRole(role):String(role||"").startsWith("DIRECTOR_"));
   }
 
+  // ═══════════════════════════════════════════════════════════════════════════
+  // ЧЕК-ЛИСТ АНАЛИЗА (D-203) — шаблон вопросов, правится из настроек.
+  // Источник правды — API /api/settings/analysis-checklist-template (ADMIN/HEAD_TO).
+  // Здесь нет хардкода вопросов: дефолт приходит с бэка.
+  // ═══════════════════════════════════════════════════════════════════════════
+  let checklistCache = { questions: [], defaults: [] };
+
+  function checklistToken(){
+    return localStorage.getItem('asgard_token') || '';
+  }
+
+  async function checklistApi(path, opts){
+    opts = opts || {};
+    const r = await fetch(path, {
+      method: opts.method || 'GET',
+      headers: Object.assign({ 'Authorization': 'Bearer ' + checklistToken() }, opts.body ? { 'Content-Type': 'application/json' } : {}),
+      body: opts.body ? JSON.stringify(opts.body) : undefined
+    });
+    const d = await r.json().catch(() => ({}));
+    if(!r.ok) throw new Error(d.error || d.message || ('HTTP ' + r.status));
+    return d;
+  }
+
+  function checklistRowsHtml(questions){
+    const qs = Array.isArray(questions) ? questions : [];
+    const base = qs.filter(q => q.kind !== 'free');
+    const free = qs.filter(q => q.kind === 'free');
+    const row = (q) => `
+      <div class="row" data-cl-row="${esc(q.id)}" style="gap:8px;align-items:center;margin-bottom:6px">
+        <input class="inp" data-cl-text style="flex:1" value="${esc(q.text)}" />
+        <label class="muted" style="font-size:12px;white-space:nowrap">
+          <input type="checkbox" data-cl-req ${q.required ? 'checked' : ''}/> обязательный
+        </label>
+        <button class="btn ghost" data-cl-del="${esc(q.id)}" type="button">Удалить</button>
+      </div>`;
+    return `
+      <div class="help">Базовые вопросы звонка клиенту. Порядок — как в форме анализа.</div>
+      <div id="clBaseList">${base.map(row).join('')}</div>
+      <h4 style="margin:14px 0 6px">Свободные строки (для своих вопросов, необязательны)</h4>
+      <div id="clFreeList">${free.map(row).join('')}</div>`;
+  }
+
+  function checklistHtml(){
+    return `
+      <div class="card">
+        <h3>Чек-лист анализа тендера</h3>
+        <div class="help">Обязателен при закрытии анализа. Вопросы правятся здесь; при закрытии анализа ТО/РП заполняет ответы, чек-лист сохраняется в карточке анализа, скачивается в Word и виден в карточке контрагента.</div>
+        <div id="clList">${checklistRowsHtml(checklistCache.questions)}</div>
+        <div class="row" style="gap:8px;margin-top:10px;flex-wrap:wrap">
+          <button class="btn ghost" id="clAdd" type="button">+ Вопрос</button>
+          <button class="btn ghost" id="clAddFree" type="button">+ Свободная строка</button>
+          <button class="btn ghost" id="clReset" type="button">Сбросить к дефолту</button>
+          <button class="btn" id="clSave" type="button">Сохранить чек-лист</button>
+        </div>
+      </div>`;
+  }
+
+  function checklistFocusedHtml(){
+    return `<div style="max-width:920px;margin:0 auto">${checklistHtml()}</div>`;
+  }
+
+  function collectChecklistRows(){
+    const out = [];
+    document.querySelectorAll('#clList [data-cl-row]').forEach(el => {
+      const text = (el.querySelector('[data-cl-text]')?.value || '').trim();
+      if(!text) return;
+      const isFree = !!el.closest('#clFreeList');
+      out.push({
+        id: el.getAttribute('data-cl-row'),
+        text,
+        kind: isFree ? 'free' : 'question',
+        required: isFree ? false : !!(el.querySelector('[data-cl-req]')?.checked)
+      });
+    });
+    return out;
+  }
+
+  function rebuildChecklistRows(questions){
+    checklistCache.questions = questions;
+    const host = document.getElementById('clList');
+    if(host) host.innerHTML = checklistRowsHtml(questions);
+  }
+
+  async function mountChecklistEditor(){
+    try{
+      const d = await checklistApi('/api/settings/analysis-checklist-template');
+      checklistCache = { questions: d.questions || [], defaults: d.defaults || [] };
+    }catch(e){
+      toast("Чек-лист", e.message || "Не удалось загрузить шаблон", "err");
+      checklistCache = { questions: [], defaults: [] };
+    }
+    rebuildChecklistRows(checklistCache.questions);
+
+    document.getElementById('clAdd')?.addEventListener('click', ()=>{
+      const id = 'q' + Date.now().toString(36);
+      checklistCache.questions = collectChecklistRows().concat([{ id, text: '', kind: 'question', required: true }]);
+      rebuildChecklistRows(checklistCache.questions);
+      document.querySelector(`#clBaseList [data-cl-row="${id}"] [data-cl-text]`)?.focus();
+    });
+
+    document.getElementById('clAddFree')?.addEventListener('click', ()=>{
+      const id = 'free' + Date.now().toString(36);
+      checklistCache.questions = collectChecklistRows().concat([{ id, text: '', kind: 'free', required: false }]);
+      rebuildChecklistRows(checklistCache.questions);
+    });
+
+    document.getElementById('clList')?.addEventListener('click', (e)=>{
+      const del = e.target.closest('[data-cl-del]');
+      if(!del) return;
+      const id = del.getAttribute('data-cl-del');
+      checklistCache.questions = collectChecklistRows().filter(q => q.id !== id);
+      rebuildChecklistRows(checklistCache.questions);
+    });
+
+    document.getElementById('clReset')?.addEventListener('click', async ()=>{
+      try{
+        const d = await checklistApi('/api/settings/analysis-checklist-template', { method: 'PUT', body: { reset: true } });
+        rebuildChecklistRows(d.questions || []);
+        toast("Чек-лист", "Шаблон сброшен к дефолтному");
+      }catch(e){ toast("Чек-лист", e.message || "Ошибка сброса", "err"); }
+    });
+
+    document.getElementById('clSave')?.addEventListener('click', async ()=>{
+      const questions = collectChecklistRows();
+      if(!questions.filter(q => q.required).length){
+        toast("Чек-лист", "Нужен хотя бы один обязательный вопрос", "err");
+        return;
+      }
+      try{
+        const d = await checklistApi('/api/settings/analysis-checklist-template', { method: 'PUT', body: { questions } });
+        rebuildChecklistRows(d.questions || questions);
+        toast("Чек-лист", "Шаблон сохранён");
+      }catch(e){ toast("Чек-лист", e.message || "Ошибка сохранения", "err"); }
+    });
+  }
+
   async function render({layout, title}){
     const auth = await AsgardAuth.requireUser();
     if(!auth){ location.hash = "#/login"; return; }
     const user = auth.user;
+
+    // HEAD_TO правит ТОЛЬКО шаблон чек-листа анализа (D-203): фокусный экран,
+    // без доступа к SMTP/app/финансовым настройкам, которые видит директор.
+    const isChecklistEditor = !hasAccess(user.role) && user.role === 'HEAD_TO';
+    if(isChecklistEditor){
+      await layout(checklistFocusedHtml(), { title: "Шаблон чек-листа анализа" });
+      await mountChecklistEditor();
+      return;
+    }
 
     if(!hasAccess(user.role)){
       toast("Доступ","Раздел доступен только директору и администратору","err");
@@ -294,6 +439,18 @@ window.AsgardSettingsPage = (function(){
                 <textarea id="r_perm" rows="6" style="width:100%">${esc((refs.permits||[]).join("\n"))}</textarea>
                 <div class="help">Используется в личном деле сотрудников и фильтрах (этап 8).</div>
               </div>
+            </div>
+          </div>
+
+          <div class="card">
+            <h3>Чек-лист анализа тендера</h3>
+            <div class="help">Обязателен при закрытии анализа. Вопросы правятся здесь; ответы сохраняются в карточке анализа, скачиваются в Word и видны в карточке контрагента.</div>
+            <div id="clList">${checklistRowsHtml(checklistCache.questions)}</div>
+            <div class="row" style="gap:8px;margin-top:10px;flex-wrap:wrap">
+              <button class="btn ghost" id="clAdd" type="button">+ Вопрос</button>
+              <button class="btn ghost" id="clAddFree" type="button">+ Свободная строка</button>
+              <button class="btn ghost" id="clReset" type="button">Сбросить к дефолту</button>
+              <button class="btn" id="clSave" type="button">Сохранить чек-лист</button>
             </div>
           </div>
 
@@ -539,7 +696,10 @@ window.AsgardSettingsPage = (function(){
     try { if (window.AsgardPush) AsgardPush.bindSettingsEvents(); } catch(e) {}
     try { if (window.AsgardWebAuthn) AsgardWebAuthn.loadDevices(); } catch(e) {}
 
-    // Sync color pickers <-> HEX inputs (for easy copy/paste)
+    // Встраиваем шаблон чек-листа в раздел справочников (ADMIN видит его вместе с refs).
+  if(document.getElementById('clList')){ await mountChecklistEditor(); }
+
+  // Sync color pickers <-> HEX inputs (for easy copy/paste)
     document.querySelectorAll("[data-color-copy]").forEach((inp)=>{
       const id = inp.getAttribute("data-color-copy");
       const col = document.getElementById(id);

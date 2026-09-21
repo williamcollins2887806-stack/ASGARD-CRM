@@ -431,6 +431,8 @@ async function saveEmail(account, msg, parsed) {
 const AI_SKIP_TYPES = ['internal', 'spam', 'newsletter', 'notification', 'auto_reply'];
 const AI_BATCH_SIZE = 5;       // process N emails concurrently
 const AI_PROCESS_INTERVAL = 30000; // run every 30 sec
+// D-204: после стольких неудачных попыток письмо перестаём крутить и отдаём людям.
+const AI_MAX_ATTEMPTS = parseInt(process.env.AI_MAX_ATTEMPTS || '3', 10);
 let aiProcessorTimer = null;
 let aiProcessorRunning = false;
 
@@ -843,25 +845,10 @@ async function analyzeOneEmail(email) {
     console.log(`[IMAP-AI] #${emailId} step 1: calling analyzeEmail... (source_kind=${sourceKind}, forwarded=${forwarded})`);
     // 20.06.2026 фикс: некоторые email-клиенты (Яндекс через Fwd) шлют только HTML,
     // body_text=0. AI получал пустую строку → классифицировал как «other» → терялись заявки.
-    // Если body_text пуст — извлекаем чистый текст из body_html (strip tags + decode entities).
-    const _stripHtml = (h) => String(h || '')
-      .replace(/<style[\s\S]*?<\/style>/gi, ' ')
-      .replace(/<script[\s\S]*?<\/script>/gi, ' ')
-      .replace(/<\/(div|p|br|h[1-6]|li|tr)>/gi, '\n')
-      .replace(/<br\s*\/?>/gi, '\n')
-      .replace(/<[^>]+>/g, ' ')
-      .replace(/&nbsp;/g, ' ')
-      .replace(/&amp;/g, '&')
-      .replace(/&lt;/g, '<')
-      .replace(/&gt;/g, '>')
-      .replace(/&quot;/g, '"')
-      .replace(/&#39;/g, "'")
-      .replace(/[ \t]+/g, ' ')
-      .replace(/\n\s*\n/g, '\n')
-      .trim();
-    const effectiveBodyText = email.body_text && email.body_text.trim().length > 30
-      ? email.body_text
-      : _stripHtml(email.body_html || '');
+    // D-204: та же логика вынесена в общий util email-text.js — её же использует
+    // pre-tender-service, чтобы не заполнять work_description пустой строкой.
+    const { bestEmailText } = require('./email-text');
+    const effectiveBodyText = bestEmailText(email);
     const analysis = await aiAnalyzer.analyzeEmail({
       emailId,
       subject: email.subject,
@@ -902,15 +889,58 @@ async function analyzeOneEmail(email) {
       needsReview = true;
     }
 
-    const workload = await aiAnalyzer.getWorkloadData();
-    console.log(`[IMAP-AI] #${emailId} step 3: calling updateEmailAiClassification...`);
+    // ── D-204: сбой разбора JSON/провайдера ──────────────────────────────
+    // НЕ помечаем письмо обработанным (ai_processed_at = NULL), иначе заявка
+    // потеряется навсегда. Считаем попытку; после AI_MAX_ATTEMPTS — уведомляем
+    // руководство и отдаём письмо людям как needs_review.
+    if (analysis._parse_failed) {
+      const attemptRes = await db.query(`
+        UPDATE emails
+           SET ai_summary = $1,
+               ai_color = 'red',
+               ai_attempts = COALESCE(ai_attempts, 0) + 1,
+               ai_last_error_at = NOW(),
+               updated_at = NOW()
+         WHERE id = $2
+        RETURNING COALESCE(ai_attempts, 0) AS ai_attempts
+      `, ['[Разбор не удался: ' + (analysis._parse_error || 'parse_failed') + ']', emailId]).catch(() => ({ rows: [{ ai_attempts: 0 }] }));
 
-    // Update the emails table with AI results
-    await updateEmailAiClassification(
-      emailId, analysis.classification, analysis.color,
-      analysis.summary, analysis.recommendation
-    );
-    console.log(`[IMAP-AI] #${emailId} step 4: update done`);
+      const attempts = attemptRes.rows?.[0]?.ai_attempts || 0;
+      console.warn(`[IMAP-AI] #${emailId} _parse_failed (${analysis._parse_error}) — ai_processed_at НЕ выставлен, попытка ${attempts}/${AI_MAX_ATTEMPTS}`);
+
+      if (attempts >= AI_MAX_ATTEMPTS) {
+        try {
+          const { createNotification } = require('./notify');
+          // Роли синхронизированы с доступом к странице «Почта и заявки»
+          // (public/assets/js/app.js: роут /mailbox, p:"mailbox"). HEAD_PM сюда
+          // не входит — у него нет доступа к ящику, уведомление вело бы в 403.
+          const recipients = await db.query(
+            `SELECT id FROM users WHERE role = ANY($1::text[]) AND is_active = TRUE`,
+            [['ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV', 'HEAD_TO']]);
+          for (const u of recipients.rows) {
+            Promise.resolve(createNotification(db, {
+              user_id: u.id,
+              title: `Письмо #${emailId} не разобрал AI — нужна ручная проверка`,
+              message: `${(email.subject || '(без темы)').slice(0, 120)} — ${attempts} неудачных попыток`,
+              type: 'email_ai_needs_review',
+              // D-204: раньше здесь был `#/mail?email=...` — такого роута нет
+              // (роутер отдаёт /home), а mailbox.js не читает query. Ведём туда,
+              // куда реально можно попасть; id и тема письма уже в тексте.
+              link: `#/mailbox`
+            })).catch(() => {});
+          }
+        } catch (notifyErr) {
+          console.warn(`[IMAP-AI] needs_review notify failed for #${emailId}:`, notifyErr.message);
+        }
+      }
+
+      return false;
+    }
+
+    const workload = await aiAnalyzer.getWorkloadData();
+    // D-204 (дефект C): фиксацию «шаг 3» (updateEmailAiClassification) сняли отсюда —
+    // она переехала в самый низ функции, ПОСЛЕ создания inbox_application/pre_tender.
+    // `workload` остаётся нужен для INSERT inbox_applications ниже.
 
     // ════════════════════════════════════════════════════════════════════
     // S-9 (Stage 2.6): addendum_response — продолжение по СУЩЕСТВУЮЩЕМУ
@@ -1362,7 +1392,9 @@ async function analyzeOneEmail(email) {
           const aiReport = await aiAnalyzer.generateReport({
             emailId,
             subject: email.subject,
-            bodyText: email.body_text,
+            // D-204 (дефект B, третий потребитель): тот же сырой body_text ломал AI-отчёт
+            // у HTML-only писем. Берём уже вычисленный effectiveBodyText (body_text → stripHtml).
+            bodyText: effectiveBodyText,
             fromEmail: email.from_email,
             fromName: email.from_name,
             attachmentNames: attNames
@@ -1438,7 +1470,11 @@ async function analyzeOneEmail(email) {
             }
           }
         } catch (ptErr) {
-          console.error(`[IMAP-AI] auto pre_tender creation error for email #${emailId}:`, ptErr.message);
+          // D-204 (дефект C): не глотаем молча. Сбой создания заявки — это ровно тот класс,
+          // при котором письмо оставалось «обработанным», но заявки нет. Пробрасываем наверх,
+          // чтобы сработала catch-ветка analyzeOneEmail: ai_processed_at НЕ выставится,
+          // попытка учтётся, после лимита руководство получит уведомление.
+          throw new Error('pre_tender creation failed: ' + (ptErr.message || ptErr));
         }
       }
 
@@ -1454,15 +1490,60 @@ async function analyzeOneEmail(email) {
       console.log(`[IMAP-AI] Skipped application creation for email #${emailId}: ${analysis.classification} (not a work proposal)`);
     }
 
+    // D-204 (дефект C): фиксируем «обработано» только теперь — заявка/inbox_application
+    // уже созданы (или классификация честно не подразумевает заявку). При любом сбое
+    // выше ai_processed_at остаётся NULL и письмо вернётся в разбор, а не потеряется молча.
+    await updateEmailAiClassification(
+      emailId, analysis.classification, analysis.color,
+      analysis.summary, analysis.recommendation
+    );
+    console.log(`[IMAP-AI] #${emailId} step 4: AI-разбор зафиксирован (ai_processed_at установлен)`);
+
     return true;
   } catch (err) {
     console.error(`[IMAP-AI] Error processing email #${emailId}:`, err.message);
     console.error(`[IMAP-AI] Stack trace:`, err.stack);
-    // Mark as failed so we don't retry endlessly
-    await db.query(
-      `UPDATE emails SET ai_processed_at = NOW(), ai_summary = $1, updated_at = NOW() WHERE id = $2`,
+    // D-204: НЕ ставим ai_processed_at при сбое — иначе письмо навсегда «обработано»
+    // и заявка потеряна (ствол 18.09.2026). Пишем маркер ошибки и инкрементим
+    // счётчик попыток, чтобы processUnanalyzedEmails не крутил письмо бесконечно
+    // и в итоге отдал его людям как needs_review.
+    const errAttemptRes = await db.query(
+      `UPDATE emails
+          SET ai_summary = $1,
+              ai_color = 'red',
+              ai_attempts = COALESCE(ai_attempts, 0) + 1,
+              ai_last_error_at = NOW(),
+              updated_at = NOW()
+        WHERE id = $2
+      RETURNING COALESCE(ai_attempts, 0) AS ai_attempts`,
       ['[Ошибка AI-анализа: ' + err.message.slice(0, 200) + ']', emailId]
-    ).catch(() => {});
+    ).catch(() => ({ rows: [] }));
+
+    // D-204 (дефект E): раньше уведомление уходило только из ветки `_parse_failed`.
+    // Если письмо исчерпало попытки в этой catch-ветке, оно молча выпадало из выборки
+    // (COALESCE(ai_attempts,0) < AI_MAX_ATTEMPTS) — «чёрная дыра» без единого сигнала людям.
+    // Теперь лимит в этой ветке тоже эскалируется уведомлением о ручном разборе.
+    const errAttempts = errAttemptRes.rows?.[0]?.ai_attempts || 0;
+    if (errAttempts >= AI_MAX_ATTEMPTS) {
+      try {
+        const { createNotification } = require('./notify');
+        const recipients = await db.query(
+          `SELECT id FROM users WHERE role = ANY($1::text[]) AND is_active = TRUE`,
+          [['ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV', 'HEAD_TO']]);
+        for (const u of recipients.rows) {
+          Promise.resolve(createNotification(db, {
+            user_id: u.id,
+            title: `Письмо #${emailId} не разобрал AI — нужна ручная проверка`,
+            message: `${(email.subject || '(без темы)').slice(0, 120)} — ${errAttempts} неудачных попыток (ошибка разбора)`,
+            type: 'email_ai_needs_review',
+            link: `#/mailbox`
+          })).catch(() => {});
+        }
+        console.warn(`[IMAP-AI] #${emailId} исчерпал попытки (${errAttempts}/${AI_MAX_ATTEMPTS}) в catch-ветке — руководство уведомлено`);
+      } catch (notifyErr) {
+        console.warn(`[IMAP-AI] error-branch needs_review notify failed for #${emailId}:`, notifyErr.message);
+      }
+    }
     return false;
   }
 }
@@ -1477,6 +1558,8 @@ async function processUnanalyzedEmails() {
 
   try {
     // Find ALL inbound emails that need AI analysis (без фильтрации по типу — AI сам решает)
+    // D-204: письма, у которых исчерпан лимит попыток, в выборку не попадают —
+    // они уже отданы людям (needs_review) и не крутятся бесконечно.
     const res = await db.query(`
       SELECT id, subject, body_text, body_html, from_email, from_name, email_type, attachment_count,
              in_reply_to, references_header
@@ -1484,9 +1567,10 @@ async function processUnanalyzedEmails() {
       WHERE ai_processed_at IS NULL
         AND direction = 'inbound'
         AND is_deleted = false
+        AND COALESCE(ai_attempts, 0) < $2
       ORDER BY email_date DESC
       LIMIT $1
-    `, [AI_BATCH_SIZE]);
+    `, [AI_BATCH_SIZE, AI_MAX_ATTEMPTS]);
 
     if (res.rows.length === 0) {
       // Diagnostic: log why there are 0 emails to process (run every ~5 minutes)
@@ -1661,6 +1745,15 @@ async function autoProvisionFromEnv() {
 // ── Init: start polling for all active accounts ─────────────────────────
 async function init() {
   try {
+    // D-204 / стенд: при IMAP_DISABLED=1 не поднимаем ни polling, ни AI-процессор,
+    // ни resetSkippedEmails. Нужно, чтобы локальный сервер можно было поднять
+    // на прод-БД только для просмотра UI и он НЕ выкачал почту и НЕ разослал
+    // автоответы клиентам.
+    if (process.env.IMAP_DISABLED === '1' || process.env.IMAP_DISABLED === 'true') {
+      console.log('[IMAP] IMAP_DISABLED=1 — почта и фоновый AI-разбор отключены (режим просмотра)');
+      return;
+    }
+
     // Auto-provision from ENV if no accounts exist
     await autoProvisionFromEnv();
 
@@ -1756,6 +1849,13 @@ async function shutdown() {
 /**
  * Reset emails that were skipped or errored during AI processing so they get reprocessed.
  * Clears ai_processed_at for emails with skip/error markers.
+ *
+ * D-204: раньше сюда входило условие `ai_classification = '"other"'`, из-за чего
+ * любое письмо, честно классифицированное как 'other', при каждом рестарте
+ * сбрасывалось заново — бесконечная петля «reset → разбор → other → reset».
+ * Теперь сбрасываем только реальные сбои (маркер ошибки/разбора) и не более
+ * AI_MAX_ATTEMPTS раз. Явно помеченные 'Пропущено' (bounce/internal) не трогаем —
+ * они не сбой, а осознанный skip.
  */
 async function resetSkippedEmails() {
   const result = await db.query(`
@@ -1763,16 +1863,15 @@ async function resetSkippedEmails() {
     WHERE direction = 'inbound'
       AND is_deleted = false
       AND ai_processed_at IS NOT NULL
+      AND COALESCE(ai_attempts, 0) < $1
       AND (
-        ai_summary LIKE '%Пропущено%'
-        OR ai_summary LIKE '%Ошибка%'
-        OR ai_summary LIKE '%skipped%'
-        OR ai_classification IS NULL
-        OR ai_classification = ''
-        OR ai_classification = '"other"'
+        ai_summary LIKE '%Ошибка AI-анализа%'
+        OR ai_summary LIKE '%Разбор не удался%'
+        OR ai_summary LIKE '%parse_error%'
+        OR (ai_summary LIKE '%Ошибка%' AND ai_summary NOT LIKE '%Пропущено%')
       )
-  `);
-  console.log(`[IMAP-AI] Reset ${result.rowCount} skipped/errored emails for reprocessing`);
+  `, [AI_MAX_ATTEMPTS]);
+  console.log(`[IMAP-AI] Reset ${result.rowCount} errored emails for reprocessing (max attempts ${AI_MAX_ATTEMPTS})`);
   return result.rowCount;
 }
 
@@ -2008,6 +2107,13 @@ async function syncUserAccount(userAccountId) {
  */
 async function startPersonalPolling() {
   try {
+    // D-204: страховка на уровне сервиса. `index.js` вызывает startPersonalPolling()
+    // напрямую (мимо init()), поэтому early-return в init() сам по себе не защищал
+    // от выкачивания личной почты пользователей на стенде.
+    if (process.env.IMAP_DISABLED === '1' || process.env.IMAP_DISABLED === 'true') {
+      console.log('[IMAP-Personal] IMAP_DISABLED=1 — личный polling не запускается (режим просмотра)');
+      return;
+    }
     const accounts = await db.query('SELECT id, sync_interval_sec FROM user_email_accounts WHERE is_active = true');
     for (const acc of accounts.rows) {
       schedulePersonalSync(acc.id, (acc.sync_interval_sec || 120) * 1000);
