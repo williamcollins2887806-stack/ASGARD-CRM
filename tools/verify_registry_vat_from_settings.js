@@ -591,6 +591,27 @@ async function submitFromModal(page, row, edits) {
         && Math.abs(Number(commaPatch.body.submission_price_with_vat) - 1220) < 0.01,
       commaPatch ? `patch=${commaPatch.body.submission_price}/${commaPatch.body.submission_price_with_vat}` : 'PATCH не ушёл');
 
+    // ── V13: явный НОЛЬ не подменяется предзаполнением (FAIL прохода 2 сертификации) ──
+    // Поле «0»/«0,00»/«000» раньше давало PATCH 1000000/1220000 (молча бралось другое поле).
+    // Ожидание: PATCH не уходит, пользователь видит явное предупреждение.
+    const zeroRow = {
+      id: TENDER_ID, registry_status: 'подались', customer_name: 'Гейт D-244 (ноль)',
+      tender_title: 'Явный ноль в поле', tender_price: 1000000, vat_pct: 20,
+      submission_price: 111, submission_price_with_vat: 135,
+      docs_deadline: snapTender.docs_deadline, participation_paid: false, rp_review: { work_price: 1000000 },
+    };
+    const zeroCases = ['0', '0,00', '000'];
+    const zeroBad = [];
+    for (const raw of zeroCases) {
+      const zr = await submitFromModal(page, zeroRow, { ex: raw });
+      const zp = (zr.calls || []).find((c) => c.body && c.body.registry_status === 'подались');
+      if (zp || !/больше нуля/i.test(String(zr.vatLine || ''))) {
+        zeroBad.push(`${JSON.stringify(raw)}→${zp ? 'PATCH ' + zp.body.submission_price : 'нет PATCH'} (vatLine="${String(zr.vatLine || '').slice(0, 60)}")`);
+      }
+    }
+    check('V13 явный ноль (0 / 0,00 / 000) не подменяется предзаполнением — PATCH не уходит',
+      zeroBad.length === 0, zeroBad.length ? zeroBad.join('; ') : `${zeroCases.length}/${zeroCases.length} кейсов заблокированы`);
+
     check('   JS-ошибок на странице нет', pageErrors.length === 0, pageErrors.slice(0, 3).join(' | '));
   } catch (e) {
     check('прогон гейта завершился без исключения', false, e.message);

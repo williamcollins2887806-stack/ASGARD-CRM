@@ -711,6 +711,7 @@ window.AsgardRegistryTab = (function () {
           // Нечисловой/неоднозначный ввод НЕ подменяем молча — показываем ошибку и
           // уходим (сохранение тоже заблокировано ниже), иначе «ввёл одно, ушло другое».
           if ((wRaw && !isFinite(w)) || (eRaw && !isFinite(e))) { showSumError(''); return; }
+          if ((wRaw && w === 0) || (eRaw && e === 0)) { showSumError('Сумма должна быть больше нуля'); return; }
           if (w > 0) {
             const base = e > 0 ? e : (M() ? M().withoutVat(w, vatPct) : Math.round(w / (1 + vatPct / 100)));
             vatLine.textContent = 'в т.ч. НДС ' + vatPct + '%: ' + formatMoney(Math.round((w - base) * 100) / 100);
@@ -747,6 +748,13 @@ window.AsgardRegistryTab = (function () {
               // поле (или предзаполнение) — это «ввёл одно, ушло другое» (D-244, лицо 3/7).
               if ((exRaw && !isFinite(finalNoVat)) || (withRaw && !isFinite(finalWithVat))) {
                 toast('Не понимаю формат суммы — проверьте ввод', 'warn');
+                return;
+              }
+              // Явно введённый НОЛЬ — не «пустое поле». Иначе он молча подменялся значением
+              // из другого поля/предзаполнения (поле «0», а в PATCH 1 000 000) — тот же класс
+              // «ввёл одно, ушло другое» (D-244, сертификация прохода 2).
+              if ((exRaw && Number(finalNoVat) === 0) || (withRaw && Number(finalWithVat) === 0)) {
+                toast('Сумма должна быть больше нуля', 'warn');
                 return;
               }
               const exN = isFinite(finalNoVat) ? finalNoVat : 0;

@@ -113,7 +113,9 @@ const d244GoodSave = L(regSrc,
 );
 const d244BrokenSave = L(regSrc,
   "              const finalNoVat = Number(String(exInp?.value || '').replace(/[^\\d]/g, '')) || 0;",
-  "              const finalWithVat = Number(String(withInp?.value || '').replace(/[^\\d]/g, '')) || 0;"
+  "              const finalWithVat = Number(String(withInp?.value || '').replace(/[^\\d]/g, '')) || 0;",
+  '              const exRaw = String(exInp?.value || \'\').trim();',
+  '              const withRaw = String(withInp?.value || \'\').trim();'
 );
 const d244GoodGuard = L(regSrc,
   "    if (!/^[\\d.,]+$/.test(s)) return NaN; // мусор/минус/экспонента — не молчаливый ноль"
@@ -121,11 +123,15 @@ const d244GoodGuard = L(regSrc,
 const d244BrokenGuard = L(regSrc,
   '    s = s.replace(/[^\\d]/g, "");'
 );
-const d244GoodStrict = L(regSrc,
-  "              if ((exRaw && !isFinite(finalNoVat)) || (withRaw && !isFinite(finalWithVat))) {",
-  "                toast('Не понимаю формат суммы — проверьте ввод', 'warn');",
+const d244GoodZero = L(regSrc,
+  "              if ((exRaw && Number(finalNoVat) === 0) || (withRaw && Number(finalWithVat) === 0)) {",
+  "                toast('Сумма должна быть больше нуля', 'warn');",
   '                return;',
   '              }',
+  '              const exN = isFinite(finalNoVat) ? finalNoVat : 0;',
+  '              const withN = isFinite(finalWithVat) ? finalWithVat : 0;'
+);
+const d244BrokenZero = L(regSrc,
   '              const exN = isFinite(finalNoVat) ? finalNoVat : 0;',
   '              const withN = isFinite(finalWithVat) ? finalWithVat : 0;'
 );
@@ -138,7 +144,7 @@ if (!regSrc.includes(d244GoodParse)) {
   fail('registry_tab: маркер parseMoneyInput не найден — D-244-мутант собрать нельзя (код изменился?)');
 } else if (!regSrc.includes(d244GoodFmt)) {
   fail('registry_tab: маркер fmtMoneyInput не найден — D-244-мутант собрать нельзя (код изменился?)');
-} else if (!regSrc.includes(d244GoodSave) || !regSrc.includes(d244GoodGuard) || !regSrc.includes(d244GoodStrict)) {
+} else if (!regSrc.includes(d244GoodSave) || !regSrc.includes(d244GoodGuard) || !regSrc.includes(d244GoodZero)) {
   fail('registry_tab: маркеры сборки сумм/строгого гейта не найдены — D-244-мутант собрать нельзя (код изменился?)');
 } else if (!bad) {
   fs.writeFileSync(D244_OUT, regSrc
@@ -146,7 +152,7 @@ if (!regSrc.includes(d244GoodParse)) {
     .replace(d244GoodFmt, d244BrokenFmt)
     .replace(d244GoodGuard, d244BrokenGuard)
     .replace(d244GoodSave, d244BrokenSave)
-    .replace(d244GoodStrict, d244BrokenStrict));
+    .replace(d244GoodZero, d244BrokenZero));
   console.log('мутант записан:', D244_OUT);
 }
 
