@@ -6508,6 +6508,17 @@ if (b.action === 'pay') {
 
 **Статус: CONFIRMED (E0).** Правка — E5.
 
+**Статус: FIXED (E5, 21.09.2026).** `afterPaid` (`src/routes/payment-invoices.js`) теперь зовёт
+`autoWorkExpense`: при непустом `work_id` создаёт/обновляет расход через
+`insertWorkExpense(source_table='payment_invoices', source_key=<id>)` (идемпотентность — upsert
+по этой паре + unique-индекс V071) и проставляет `doc_registry.work_expense_id`; ручную запись
+расхода не перетирает. Без `work_id` расход не создаётся — карточка остаётся в Doc Hub неполной.
+
+**Доказательство — живой гейт** `tools/verify_e5_auto_expense_live.js` на `:3100` + `asgard_crm_test`:
+**11/11 GREEN** (dir-approve → pay-bank → ровно 1 строка `work_expenses` по счёту, та же работа,
+сумма по копейкам, `work_expense_id` в карточке, повторный upsert не дублирует, без `work_id` — 0).
+Гейт не тавтологичен: на сервере без правки E5 те же шаги дали `rows=0`.
+
 ---
 
 ## Выкатка 21.09.2026 (shell 20.28.45). Прод 18.09 → 21.09, батч D-184..D-236

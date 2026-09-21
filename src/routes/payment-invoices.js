@@ -141,11 +141,60 @@ async function afterPaid(db, payment) {
       );
     }
   }
+  let docRow = null;
   try {
     const { upsertFromPaymentInvoice } = require('../services/doc-registry-upsert');
-    await upsertFromPaymentInvoice(db, payment);
+    docRow = await upsertFromPaymentInvoice(db, payment);
   } catch (e) {
     console.warn('[payment-invoices] doc_registry upsert:', e && e.message);
+  }
+  await autoWorkExpense(db, payment, docRow);
+  return docRow;
+}
+
+/**
+ * E5 (21.09.2026, D-236). «Оплатили → расход у проекта» раньше требовало ручного шага:
+ * после оплаты счёта в расходах работы (`work_expenses`) ничего не появлялось, хотя реестр
+ * карточку уже получал. Здесь досоздаём расход, если счёт привязан к работе.
+ *
+ * Идемпотентность — на стороне `insertWorkExpense`: upsert по (`source_table`, `source_key`)
+ * = ('payment_invoices', '<id>'), плюс unique-индекс V071:20. Повторное срабатывание
+ * `afterPaid` (например, ре-подтверждение оплаты) обновит ту же строку, а не создаст вторую.
+ * Умышленно НЕ трогаем расход, если по этой карточке реестра он уже заведён вручную
+ * (`doc_registry.work_expense_id`) — ручная запись главнее, у неё своя категория.
+ */
+async function autoWorkExpense(db, payment, docRow) {
+  if (!payment || !payment.work_id) return null; // без работы расход некуда писать — карточка остаётся «неполной»
+  if (docRow && docRow.work_expense_id) return docRow.work_expense_id; // ручная запись уже есть
+  try {
+    const { insertWorkExpense } = require('../services/work-expense-writer');
+    // Категория по умолчанию — «материалы (безнал)»: счёт поставщику. Это ВИД расхода, а не основание
+    // (основание — work_id, см. блок G). Бухгалтер правит категорию в расходах, если закупка иная.
+    const expense = await insertWorkExpense(db, {
+      work_id: payment.work_id,
+      category: 'materials',
+      subcategory: 'other',
+      amount: num(payment.amount),
+      date: payment.buh_acted_at ? String(payment.buh_acted_at).slice(0, 10) : new Date().toISOString().slice(0, 10),
+      description: `Оплата счёта #${payment.id}${payment.supplier_name ? ': ' + payment.supplier_name : ''}`,
+      supplier: payment.supplier_name || null,
+      doc_number: docRow && docRow.invoice_number ? docRow.invoice_number : null,
+      payment_method: 'bank',
+      source_table: 'payment_invoices',
+      source_key: String(payment.id),
+      created_by: payment.buh_id || payment.dir_approved_by || payment.created_by || null
+    });
+    if (docRow && docRow.id && expense && expense.id) {
+      await db.query(
+        `UPDATE doc_registry SET work_expense_id=$2, updated_at=NOW() WHERE id=$1 AND work_expense_id IS NULL`,
+        [docRow.id, expense.id]
+      );
+    }
+    return expense && expense.id;
+  } catch (e) {
+    // Оплата уже состоялась и откатывать её из-за ошибки расхода нельзя — фиксируем и идём дальше.
+    console.warn('[payment-invoices] auto work_expense:', e && e.message);
+    return null;
   }
 }
 
