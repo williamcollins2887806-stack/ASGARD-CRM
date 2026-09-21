@@ -176,6 +176,56 @@ async function scenario({ pctRaw, expectPct, row }) {
   return { ok: labelOk && lineOk && noNaN && noErr, detail, got };
 }
 
+/**
+ * Открыть модалку, (опционально) ввести суммы, нажать «Сохранить» и перехватить PATCH смены
+ * статуса. Нужен для класса «уже поданный тендер»: дефект (D-243, лицо 7) проявлялся не в
+ * подписи, а в ДЕНЬГАХ — сохранённая 20 %-пара переотправлялась как есть с меткой ставки 22 %.
+ * Возвращает тело PATCH и то, что реально было показано в полях (до правок).
+ */
+async function submitFromModal(page, row, edits) {
+  return page.evaluate(async ({ row, edits }) => {
+    const tab = window.AsgardRegistryTab;
+    const calls = [];
+    const realFetch = window.fetch;
+    window.fetch = async (url, opts) => {
+      const u = String(url);
+      if (/\/api\/tenders\/registry\/\d+\/status$/.test(u) && (opts && opts.method) === 'PATCH') {
+        calls.push({ url: u, body: JSON.parse(opts.body || '{}') });
+        return new Response(JSON.stringify({ ok: true }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      }
+      return realFetch(url, opts);
+    };
+    try {
+      try { window.AsgardUI.closeModal(); } catch (_) {}
+      await new Promise((r) => setTimeout(r, 420));
+      await tab._test.openStatusModal(row);
+      await new Promise((r) => setTimeout(r, 150));
+      const overlays = [...document.querySelectorAll('.cr-m-overlay:not(.cr-m-overlay--leaving)')];
+      const root = overlays[overlays.length - 1];
+      if (!root) return { calls, err: 'модалка не открылась' };
+      const pick = root.querySelector('#regStatusPick');
+      pick.value = 'подались';
+      pick.dispatchEvent(new Event('change'));
+      await new Promise((r) => setTimeout(r, 80));
+      const ex = root.querySelector('#regSubEx');
+      const wv = root.querySelector('#regSubWith');
+      const shownEx = ex.value, shownWith = wv.value;
+      if (edits && edits.ex != null) { ex.value = edits.ex; ex.dispatchEvent(new Event('input')); }
+      if (edits && edits.with != null) { wv.value = edits.with; wv.dispatchEvent(new Event('input')); }
+      await new Promise((r) => setTimeout(r, 120));
+      const vatLine = (root.querySelector('#regSubVatLine') || {}).textContent || '';
+      const btn = root.querySelector('#regStatusSave');
+      if (!btn) return { calls, err: 'нет кнопки #regStatusSave' };
+      btn.click();
+      await new Promise((r) => setTimeout(r, 500));
+      return { calls, shownEx, shownWith, vatLine };
+    } finally {
+      window.fetch = realFetch;
+      try { window.AsgardUI.closeModal(); } catch (_) {}
+    }
+  }, { row, edits: edits || {} });
+}
+
 // ── main ───────────────────────────────────────────────────────────────────
 (async () => {
   console.log('\n── Гейт D-243: НДС модалки «Подались» из настроек ────────');
@@ -202,7 +252,10 @@ async function scenario({ pctRaw, expectPct, row }) {
   const auth = await login('test_admin', 'Test123!', '0000');
   const scriptPath = process.env.REGISTRY_TAB_PATH || null;
   const mutantSrc = scriptPath ? fs.readFileSync(scriptPath, 'utf8') : null;
-  console.log(`   registry_tab.js: ${scriptPath ? 'ПОДМЕНЁН на ' + scriptPath + ' (mutation-контроль)' : 'рабочий (HEAD)'}\n`);
+  const moneyPath = process.env.MONEY_FMT_PATH || null;
+  const moneyMutantSrc = moneyPath ? fs.readFileSync(moneyPath, 'utf8') : null;
+  console.log(`   registry_tab.js: ${scriptPath ? 'ПОДМЕНЁН на ' + scriptPath + ' (mutation-контроль)' : 'рабочий (HEAD)'}`);
+  console.log(`   money_fmt.js:    ${moneyPath ? 'ПОДМЕНЁН на ' + moneyPath + ' (mutation-контроль)' : 'рабочий (HEAD)'}\n`);
 
   const browser = await playwright.chromium.launch();
   const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
@@ -260,6 +313,16 @@ async function scenario({ pctRaw, expectPct, row }) {
     page.on('response', (r) => {
       if (/assets\/js\/registry_tab\.js/.test(r.url())) {
         console.log(`   [mutation] registry_tab.js отдан подменённым (HTTP ${r.status()})`);
+      }
+    });
+  }
+  if (moneyMutantSrc) {
+    await page.route('**/assets/js/money_fmt.js*', async (route) => {
+      await route.fulfill({ status: 200, contentType: 'application/javascript; charset=utf-8', body: moneyMutantSrc });
+    });
+    page.on('response', (r) => {
+      if (/assets\/js\/money_fmt\.js/.test(r.url())) {
+        console.log(`   [mutation] money_fmt.js отдан подменённым (HTTP ${r.status()})`);
       }
     });
   }
@@ -351,6 +414,45 @@ async function scenario({ pctRaw, expectPct, row }) {
       !!patch && noVat === 1000000 && Math.abs(withVat - wantWith) < 1,
       patch ? `submission_price=${noVat}, submission_price_with_vat=${withVat} (ждали ${wantWith}), vat_pct=${patch.body.vat_pct}`
             : `PATCH не ушёл; computedWithVat=${moneyRes.computedWithVat}; err=${moneyRes.err || '-'}; calls=${JSON.stringify(moneyRes.calls || []).slice(0, 120)}`);
+
+    // ── V6: УЖЕ поданный тендер с сохранённой 20 %-парой (лицо 7 верификатора) ──
+    // Карточка: submission_price=111, submission_price_with_vat=135 (эпоха 20 %), vat_pct=20.
+    // Настройка 22. Прежний дефект: модалка переотправляла пару 111/135 как есть с vat_pct=22
+    // (отношение 1.2162 ≠ 1.22) — молчаливая несогласованность денег и метки ставки.
+    // Ожидание: база без НДС сохраняется (111), сумма с НДС ПЕРЕСЧИТЫВАЕТСЯ по ставке → 135.42.
+    await dbSetSetting('22');
+    const legacyRow = {
+      id: TENDER_ID, registry_status: 'подались', customer_name: 'Гейт D-243 (legacy 20%)',
+      tender_title: 'Уже поданный тендер, сохранённая 20 %-пара', tender_price: null, vat_pct: 20,
+      submission_price: 111, submission_price_with_vat: 135,
+      docs_deadline: snapTender.docs_deadline, participation_paid: false, rp_review: {},
+    };
+    const legacyRes = await submitFromModal(page, legacyRow, {});
+    const lPatch = (legacyRes.calls || []).find((c) => c.body && c.body.registry_status === 'подались');
+    const wantLegacyWith = 135.42; // 111 × 1.22
+    check('V6 уже поданный с 20 %-парой: сохранённая сумма с НДС пересчитана по ставке настроек',
+      !!lPatch && Number(lPatch.body.submission_price) === 111
+        && Math.abs(Number(lPatch.body.submission_price_with_vat) - wantLegacyWith) < 0.01
+        && Number(lPatch.body.vat_pct) === 22,
+      lPatch ? `submission_price=${lPatch.body.submission_price}, submission_price_with_vat=${lPatch.body.submission_price_with_vat} (ждали ${wantLegacyWith}), vat_pct=${lPatch.body.vat_pct}`
+             : `PATCH не ушёл; shownEx=${legacyRes.shownEx}, shownWith=${legacyRes.shownWith}, err=${legacyRes.err || '-'}`);
+
+    // ── V7: у поданного сохранена ТОЛЬКО сумма без НДС → поле «С НДС» не пустое ──
+    // Прежний дефект: suggestSubmissionPrices не ставил withVat (suggested.withVat == null),
+    // модалка открывалась с пустым «С НДС», а сохранение без правок слало придуманную сумму.
+    const baseOnlyRow = {
+      id: TENDER_ID, registry_status: 'подались', customer_name: 'Гейт D-243 (только база)',
+      tender_title: 'Сохранена только сумма без НДС', tender_price: null, vat_pct: 20,
+      submission_price: 1000000, submission_price_with_vat: null,
+      docs_deadline: snapTender.docs_deadline, participation_paid: false, rp_review: {},
+    };
+    const baseOnlyRes = await submitFromModal(page, baseOnlyRow, {});
+    const bPatch = (baseOnlyRes.calls || []).find((c) => c.body && c.body.registry_status === 'подались');
+    check('V7 сохранена только сумма без НДС → «С НДС» заполнена и PATCH согласован (1 000 000 → 1 220 000)',
+      String(baseOnlyRes.shownWith || '') !== '' && !!bPatch
+        && Number(bPatch.body.submission_price) === 1000000
+        && Math.abs(Number(bPatch.body.submission_price_with_vat) - 1220000) < 1,
+      `shown_with="${baseOnlyRes.shownWith}", patch=${bPatch ? bPatch.body.submission_price + '/' + bPatch.body.submission_price_with_vat : 'нет'}`);
 
     check('   JS-ошибок на странице нет', pageErrors.length === 0, pageErrors.slice(0, 3).join(' | '));
   } catch (e) {

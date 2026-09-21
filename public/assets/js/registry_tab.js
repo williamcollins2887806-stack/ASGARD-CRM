@@ -669,10 +669,20 @@ window.AsgardRegistryTab = (function () {
                 toast('Укажите сумму подачи', 'warn');
                 return;
               }
+              // Инвариант денег на границе записи: база — без НДС, а сумма с НДС ВСЕГДА
+              // выводится из базы по ставке-настройке. Иначе у уже поданных «20 %-эпохи»
+              // тендеров в PATCH ушла бы сохранённая 20 %-пара (111/135 → 1.2162 ≠ 1.22)
+              // под меткой ставки 22 % — молчаливая несогласованность (D-243, лицо 7).
+              const baseNoVat = finalNoVat > 0
+                ? finalNoVat
+                : (M() ? M().withoutVat(finalWithVat, vatPct) : Math.round(finalWithVat / (1 + vatPct / 100)));
+              const sumWithVat = finalNoVat > 0
+                ? (M() ? M().withVat(finalNoVat, vatPct) : Math.round(finalNoVat * (1 + vatPct / 100)))
+                : finalWithVat;
               await applyStatusChange(row, {
                 registry_status: next,
-                submission_price: finalNoVat || (M() ? M().withoutVat(finalWithVat, vatPct) : finalWithVat),
-                submission_price_with_vat: finalWithVat || (M() ? M().withVat(finalNoVat, vatPct) : finalNoVat),
+                submission_price: baseNoVat,
+                submission_price_with_vat: sumWithVat,
                 vat_pct: vatPct
               });
             } else if (next === 'отмена') {

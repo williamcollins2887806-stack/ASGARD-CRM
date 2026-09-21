@@ -130,6 +130,9 @@
    * побеждала настройку: подпись в модалке читала настройку (22 %), а суммы считались
    * по 20 %. Итог: подпись «С НДС 22%», а рядом НДС, посчитанный как 20 %.
    * Теперь настройка главная, карточка — только если настройки нет.
+   * Сохранённая сумма подачи берётся как БАЗА без НДС, а сумма с НДС пересчитывается по
+   * текущей ставке — иначе у уже поданных «20 %-эпохи» тендеров пара сумма-без-НДС ↔
+   * сумма-с-НДС шла бы в PATCH как есть, но с меткой ставки из настроек (D-243, лицо 7).
    */
   function suggestSubmissionPrices(row, vatPct) {
     var vatPctGiven = vatPct != null && vatPct !== '';
@@ -160,12 +163,19 @@
       exV = Number(row.tender_price);
       withV = row.tender_price_with_vat != null ? Number(row.tender_price_with_vat) : withVat(exV, pct);
     }
-    if (row && row.submission_price_with_vat != null && Number(row.submission_price_with_vat) > 0) {
-      withV = Number(row.submission_price_with_vat);
-      exV = row.submission_price != null ? Number(row.submission_price) : withoutVat(withV, pct);
-    } else if (row && row.submission_price != null && Number(row.submission_price) > 0) {
+    // Сохранённая сумма подачи — база БЕЗ НДС; сумма с НДС ПЕРЕСЧИТЫВАЕТСЯ по ставке из
+    // настроек (деньги = база × (1+ставка)). Прежнее поведение брало сохранённую пару как есть
+    // (`withV = row.submission_price_with_vat`, `exV = row.submission_price`), и у поданного
+    // при 20 % тендера модалка показывала/переотправляла 20 %-пару, помечая её настройкой 22 %
+    // (payload 111/135 → отношение 1.2162 ≠ 1.22) — молчаливая несогласованность (D-243, лицо 7).
+    if (row && row.submission_price != null && Number(row.submission_price) > 0) {
       exV = Number(row.submission_price);
       withV = withVat(exV, pct);
+    } else if (row && row.submission_price_with_vat != null && Number(row.submission_price_with_vat) > 0) {
+      // Нет базы — разворачиваем сохранённую сумму с НДС ТЕКУЩЕЙ ставкой, чтобы пара была
+      // согласована: withVat(withoutVat(saved, pct), pct) == saved (ставка — единственный источник).
+      withV = Number(row.submission_price_with_vat);
+      exV = withoutVat(withV, pct);
     }
     return { exVat: exV, withVat: withV, vatPct: pct };
   }
