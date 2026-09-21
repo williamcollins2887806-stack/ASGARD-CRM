@@ -20,6 +20,8 @@ import { MCard, MHead, MBody, MFoot, Btn } from '@/modals/parts';
 import { Field, MoneyInput, DatePicker, TextareaInput, TextInput, SelectInput } from '@/inputs/Inputs';
 import { toast } from '@/modals/Notifications';
 import { api } from '@/api/client';
+// D-231 (21.09): суммы в документе (счёт) — с копейками, как в остальных документах v2.
+import { formatMoney } from '@/lib/money';
 
 function todayIso() { return new Date().toISOString().slice(0, 10); }
 
@@ -172,7 +174,7 @@ export function InvoiceModal({ work, invoice }) {
 
           <div className="existing-box" style={{ background: 'var(--bg-accent, rgba(0,0,0,.04))', padding: 10, borderRadius: 6 }}>
             <div className="existing-box-title">ИТОГО С НДС</div>
-            <strong className="fs-18">{totalWithVat.toLocaleString('ru-RU')} ₽</strong>
+            <strong className="fs-18">{formatMoney(totalWithVat, { fractionDigits: 2 })}</strong>
           </div>
 
           {existing.length > 0 && (
@@ -183,7 +185,7 @@ export function InvoiceModal({ work, invoice }) {
               {existing.slice(0, 5).map((i) => (
                 <div key={i.id} className="existing-row">
                   <span>{i.invoice_number || `#${i.id}`} · {i.invoice_type || ''}</span>
-                  <strong>{Number(i.total_amount || i.amount).toLocaleString('ru-RU')} ₽</strong>
+                  <strong>{formatMoney(Number(i.total_amount || i.amount), { fractionDigits: 2 })}</strong>
                 </div>
               ))}
             </div>

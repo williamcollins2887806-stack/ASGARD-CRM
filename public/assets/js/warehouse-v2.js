@@ -556,9 +556,20 @@ window.AsgardWarehouseV2 = (function () {
 
   // ════════════════════ МОДАЛКА КОРЗИНЫ ════════════════════
   let _works = [];
-  async function _loadWorks() {
-    if (_works.length) return _works;
-    try { const w = await api('/api/works?limit=300'); _works = (w.works || w.items || w.rows || []).map(x => ({ id: x.id, title: x.work_title || ('#' + x.id) })); } catch (_) { _works = []; }
+  // D-238 (21.09): force=1 — принудительная перечитка. Раньше кеш не сбрасывался никогда,
+  // и работа, созданная после первого открытия корзины, не появлялась в выпадающем списке
+  // до полной перезагрузки страницы (F5). Список в «Предпросмотре отправки» теперь
+  // перечитывается при каждом открытии.
+  async function _loadWorks(force) {
+    if (_works.length && !force) return _works;
+    try {
+      const w = await api('/api/works?limit=300');
+      _works = (w.works || w.items || w.rows || []).map(x => ({ id: x.id, title: x.work_title || ('#' + x.id) }));
+    } catch (e) {
+      // D-238: ошибку не глотаем молча — иначе пользователь видит пустой список без причины.
+      console.warn('[warehouse-v2] не удалось загрузить список работ:', e && e.message);
+      if (!_works.length) _works = [];
+    }
     return _works;
   }
   function _workOptions(sel) {
@@ -594,7 +605,7 @@ window.AsgardWarehouseV2 = (function () {
   // иначе _cartSync().then(_renderDrawer) сносит #wh2-cart-sub во время parse.
   let _cartPanelBusy = false;
   async function openCartDrawer() {
-    await _loadWorks();
+    await _loadWorks(true); // D-238: force — работа могла быть создана после прошлого открытия
     if (!document.getElementById('wh2-cart-drawer')) {
       const ov = document.createElement('div'); ov.id = 'wh2-cart-overlay'; ov.className = 'wh2-cart-ov';
       const dr = document.createElement('div'); dr.id = 'wh2-cart-drawer'; dr.className = 'wh2-cart-dr';
@@ -894,7 +905,7 @@ window.AsgardWarehouseV2 = (function () {
   async function openSubmitPreview() {
     try { await _cartSync(); } catch (_) {}
     let d; try { d = await api('/api/warehouse-cart/preview-submit', { method: 'POST', body: JSON.stringify({}) }); } catch (e) { toast('Ошибка', e.message, 'err'); return; }
-    await _loadWorks();
+    await _loadWorks(true); // D-238: force — работа могла быть создана после открытия корзины
     const cartWorks = [...new Set((_cart.items || []).map((it) => it.work_id).filter(Boolean))];
     const preWork = cartWorks.length === 1 ? String(cartWorks[0]) : '';
     const reserve = d.reserve_lines || [];

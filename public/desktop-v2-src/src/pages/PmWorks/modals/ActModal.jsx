@@ -16,6 +16,8 @@ import { MCard, MHead, MBody, MFoot, Btn } from '@/modals/parts';
 import { Field, MoneyInput, DatePicker, TextareaInput, TextInput } from '@/inputs/Inputs';
 import { toast } from '@/modals/Notifications';
 import { api } from '@/api/client';
+// D-231 (21.09): суммы в документе (акт) — с копейками, как в остальных документах v2.
+import { formatMoney } from '@/lib/money';
 
 function todayIso() { return new Date().toISOString().slice(0, 10); }
 
@@ -155,7 +157,7 @@ export function ActModal({ work, act }) {
 
           <div className="existing-box" style={{ background: 'var(--bg-accent, rgba(0,0,0,.04))', padding: 10, borderRadius: 6 }}>
             <div className="existing-box-title">ИТОГО С НДС</div>
-            <strong className="fs-18">{totalWithVat.toLocaleString('ru-RU')} ₽</strong>
+            <strong className="fs-18">{formatMoney(totalWithVat, { fractionDigits: 2 })}</strong>
           </div>
 
           {existing.length > 0 && (
@@ -166,7 +168,7 @@ export function ActModal({ work, act }) {
               {existing.slice(0, 5).map((a) => (
                 <div key={a.id} className="existing-row">
                   <span>{a.act_number || `#${a.id}`} · {a.status || ''}</span>
-                  <strong>{Number(a.total_amount || a.amount).toLocaleString('ru-RU')} ₽</strong>
+                  <strong>{formatMoney(Number(a.total_amount || a.amount), { fractionDigits: 2 })}</strong>
                 </div>
               ))}
             </div>

@@ -15,6 +15,8 @@ import { useModal } from '@/modals';
 import { MCard, MHead, MBody, MFoot, Btn } from '@/modals/parts';
 import { toast } from '@/modals/Notifications';
 import { loadProcurementDetail, deliverItem, loadWarehouseLocations } from '../api';
+// D-231 (21.09): цена позиции в документе приёмки — с копейками, как в остальных документах v2.
+import { formatMoney } from '@/lib/money';
 
 /** Открыть модалку приёмки (1:1 с vanilla openDeliverModal). */
 export function openDeliverModal(open, procId, onDone) {
@@ -168,7 +170,7 @@ export function DeliverModal({ procId, onDone }) {
                   <div className="proc-deliver-card-name">{it.name}</div>
                   <div className="proc-deliver-card-meta">
                     <span>{it.quantity} {it.unit}</span>
-                    {it.unit_price && <span>{Number(it.unit_price).toLocaleString('ru-RU')} ₽</span>}
+                    {it.unit_price && <span>{formatMoney(Number(it.unit_price), { fractionDigits: 2 })}</span>}
                     {it.supplier && <span>{it.supplier}</span>}
                   </div>
                   {toWarehouse && locations.length > 0 && (

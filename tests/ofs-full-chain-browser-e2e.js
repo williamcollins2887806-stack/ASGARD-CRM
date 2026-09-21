@@ -417,12 +417,17 @@ async function main() {
 
   await clearCart(pm);
 
-  // work — единственный API setup (не бизнес-действие корзины)
+  // work — единственный API setup (не бизнес-действие корзины).
+  // V-T5 (21.09): pm_id ОБЯЗАТЕЛЕН. /api/works фильтрует PM по w.pm_id, а при создании
+  // работы через API pm_id сам не проставляется. Реальный UI получает pm_id из тендера
+  // (tenders.js:2082 — INSERT ... pm_id при выигрыше). Без pm_id работа не появляется
+  // в списке #wh2-prev-work, и тест раньше «лечил» это подменой DOM (убранó в V-T5).
   const workRes = await api(pm, 'POST', '/api/works', {
     work_title: report.tag + ' ОФС полный сценарий',
     object_place: 'МЛСП Приразломная',
     customer_name: 'Газпром нефть шельф',
     status: 'in_progress',
+    pm_id: pm.user.id,
   });
   const workId = (workRes.data.item && workRes.data.item.id)
     || (workRes.data.work && workRes.data.work.id) || workRes.data.id;
@@ -578,47 +583,35 @@ async function main() {
       step('2b. preview резерв/закупка', /со склада|в закупку|резерв|закупк/i.test(prevText), prevText.slice(0, 120));
 
       await page.selectOption('#wh2-prev-work', String(workId)).catch(() => {});
-      await page.evaluate((wid) => {
+      // V-T5 (21.09): работа, созданная выше, ОБЯЗАНА появиться в списке сама.
+      // Раньше тест подсовывал <option> вручную — это маскировало реальный дефект
+      // (_loadWorks кешировал пустой список и не сбрасывал кеш). Теперь: если опции нет,
+      // это FAIL с диагнозом, а не тихая подмена.
+      const workInList = await page.evaluate((wid) => {
         const s = document.getElementById('wh2-prev-work');
-        if (!s) return;
-        let found = [...s.options].some((o) => o.value === String(wid));
-        if (!found) {
-          const o = document.createElement('option');
-          o.value = String(wid);
-          o.textContent = 'ОФС full #' + wid;
-          s.appendChild(o);
-        }
-        s.value = String(wid);
-        s.dispatchEvent(new Event('change', { bubbles: true }));
+        if (!s) return { found: false, reason: 'нет селекта #wh2-prev-work' };
+        const found = [...s.options].some((o) => o.value === String(wid));
+        return { found, reason: found ? '' : 'работы #' + wid + ' нет в списке (кеш _loadWorks не сброшен?)', count: s.options.length - 1 };
       }, workId);
+      step('2b2. работа есть в UI-списке (без подмены DOM)', workInList.found,
+        workInList.found ? 'options=' + workInList.count : workInList.reason);
       const selWork = await page.locator('#wh2-prev-work').inputValue();
-      step('2b2. work selected', String(selWork) === String(workId), 'sel=' + selWork + ' want=' + workId);
+      step('2b3. работа выбрана', String(selWork) === String(workId), 'sel=' + selWork + ' want=' + workId);
       await page.fill('#wh2-prev-dest', destination);
       await page.fill('#wh2-prev-date', planned);
       await shot(page, 'pm-preview-filled');
-      // клик + fallback evaluate submitCart
+      // V-T5 (21.09): клик по кнопке — бизнес-шаг обязан проходить в UI.
+      // Раньше здесь был fallback через page.evaluate(submitCart(...)) — прямое противоречие
+      // с C4 («НЕ добивать submit'ом через page.evaluate»). Убран: если кнопка не сработала,
+      // это FAIL, а не повод обойти UI.
       await Promise.all([
         page.waitForResponse((r) => /\/api\/warehouse-cart\/submit/.test(r.url()), { timeout: 20000 }).catch(() => null),
         page.locator('#wh2-prev-submit').click({ force: true }),
       ]);
-      await page.waitForTimeout(1500);
-      const stillOpen = await page.locator('#wh2-prev-submit').count();
-      if (stillOpen) {
-        await page.evaluate(({ wid, dest, planned }) => {
-          if (typeof submitCart === 'function') {
-            return submitCart({ global_work_id: wid, destination: dest, planned_date: planned, object_name: dest, fromPreview: true });
-          }
-          // вызвать через кнопку-хендлер заново
-          const go = document.getElementById('wh2-prev-submit');
-          if (go) go.click();
-        }, { wid: workId, dest: destination, planned });
-        await page.waitForTimeout(2500);
-      }
-      // C4 (20.09): НЕ добивать submit'ом через page.evaluate — бизнес-шаг обязан проходить в UI.
-      // Если корзина всё ещё полна — фиксируем left>0 как FAIL, а не «дочищаем» браузерным fetch.
+      await page.waitForTimeout(2500);
       const left = await api(pm, 'GET', '/api/warehouse-cart');
       const leftCount = (left.data.items || []).length;
-      step('2b3. корзина очищена UI-submit (без browser fetch)', leftCount === 0, 'left=' + leftCount);
+      step('2b4. корзина очищена UI-submit (без browser fetch)', leftCount === 0, 'left=' + leftCount);
       await shot(page, 'pm-after-submit');
       // достать ids из toast / openDetail URL
       const idsFromUi = await page.evaluate(() => {
@@ -657,20 +650,25 @@ async function main() {
         );
         report.ids.assembly_id = asms[0]?.id;
       }
-      // bind work if missing
-      if (report.ids.procurement_id) {
-        await pool.query(`UPDATE procurement_requests SET work_id=COALESCE(work_id,$2) WHERE id=$1`, [report.ids.procurement_id, workId]);
-      }
+      // V-T5 (21.09): work_id НЕ подставляем SQL-ом. UI-submit обязан сам проставить работу
+      // (warehouse-cart.js передаёт global_work_id в procurement_requests.work_id на строке 773
+      // и в assembly_orders.work_id на строке 855). Раньше тест «лечил» это UPDATE-ом,
+      // из-за чего шаг 2e был нечестным: состояние готовил тест, а не пользователь.
+      const chk = await pool.query(
+        `SELECT id, work_id, status FROM procurement_requests WHERE id = $1`,
+        [report.ids.procurement_id]
+      );
+      const row = chk.rows[0] || {};
+      step('2d. UI сам проставил work_id в заявку', String(row.work_id) === String(workId),
+        `work_id=${row.work_id} want=${workId}`);
       if (report.ids.assembly_id) {
-        await pool.query(
-          `UPDATE assembly_orders SET work_id=COALESCE(work_id,$2), destination=COALESCE(NULLIF(destination,''),$3),
-             planned_date=COALESCE(planned_date,$4::date), object_name=COALESCE(NULLIF(object_name,''),$3)
-           WHERE id=$1`,
-          [report.ids.assembly_id, workId, destination, planned]
-        );
+        const chkAsm = await pool.query(`SELECT id, work_id FROM assembly_orders WHERE id = $1`, [report.ids.assembly_id]);
+        const arow = chkAsm.rows[0] || {};
+        step('2d2. UI сам проставил work_id в сборку', String(arow.work_id) === String(workId),
+          `work_id=${arow.work_id} want=${workId}`);
       }
       await pool.end();
-      step('2d. proc+asm ids', !!(report.ids.procurement_id && report.ids.assembly_id),
+      step('2d3. proc+asm ids', !!(report.ids.procurement_id && report.ids.assembly_id),
         `proc=${report.ids.procurement_id} asm=${report.ids.assembly_id}`);
     }
 

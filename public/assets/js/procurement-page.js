@@ -127,6 +127,10 @@ window.AsgardProcurementPage = (function() {
     } catch (e) { toast('Файл', e.message || 'Не удалось открыть', 'err'); }
   }
 
+  // D-231 (21.09): дублируем не формат, а ПРАВИЛО v2 (src/lib/money.js): в «документах»
+  // (бумага счёта) суммы идут с копейками, в списках/KPI — округление до рубля.
+  // Тот же приём, что в approval_payment.js для D-229. Меняем только бумагу счёта.
+  const money2 = (v) => money(v, { fractionDigits: 2 });
   function payPreviewPane(fileUrl, fileName, opts) {
     const apiUrl = (opts && opts.apiUrl) || (fileUrl && String(fileUrl).startsWith('/api/') ? fileUrl : null);
     const staticUrl = (opts && opts.staticUrl) || (fileUrl && String(fileUrl).startsWith('/uploads/') ? fileUrl : null);
@@ -144,11 +148,11 @@ window.AsgardProcurementPage = (function() {
       const lines = Array.isArray(pay.line_items_json) ? pay.line_items_json
         : (typeof pay.line_items_json === 'string' ? (() => { try { return JSON.parse(pay.line_items_json || '[]'); } catch (_) { return []; } })() : []);
       const lineHtml = lines.slice(0, 6).map(l =>
-        `<div class="proc-pay-paper__row"><span>${esc(l.name || '—')}</span><span>${esc(String(l.qty ?? l.quantity ?? ''))}</span><span>${money(l.unit_price)}</span></div>`
+        `<div class="proc-pay-paper__row"><span>${esc(l.name || '—')}</span><span>${esc(String(l.qty ?? l.quantity ?? ''))}</span><span>${money2(l.unit_price)}</span></div>`
       ).join('');
       paper = `<div class="proc-pay-paper" data-pay-paper="1">
         <div class="proc-pay-paper__brand">АСГАРД · СЧЁТ</div>
-        <div class="proc-pay-paper__sum">${money(pay.amount)}</div>
+        <div class="proc-pay-paper__sum">${money2(pay.amount)}</div>
         <div class="proc-pay-paper__meta">${esc(pay.supplier_name || '—')}<br>${esc(pay.basis_text || pay.basis_type || '')}</div>
         ${lineHtml ? `<div class="proc-pay-paper__lines">${lineHtml}</div>` : ''}
         <div class="proc-pay-paper__file">${esc(fileName || 'файл счёта')}${src || apiUrl ? ' · готов к открытию' : ''}</div>

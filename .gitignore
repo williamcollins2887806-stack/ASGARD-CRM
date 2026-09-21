@@ -22,6 +22,10 @@ tests/reports/*
 # Журнал разбора прод-строк: на нём стоит гейт audit_silent_reverts.js (pre-deploy),
 # поэтому решение обязано быть в истории, а не только на диске (D-151).
 !tests/reports/ASSET-PROD-DIFF-ACK.json
+# Этап R (21.09.2026): карта доказательств по 30 «completed» и разбор прод-консоли (V-T4).
+# На них опирается план «Живая сертификация + E/F/G» → решение обязано быть в истории.
+!tests/reports/COMPLETED-EVIDENCE-MAP.md
+!tests/reports/VT4-PROD-CONSOLE-FINDINGS.md
 tests/report.html
 tests/report.json
 _deprecated/
