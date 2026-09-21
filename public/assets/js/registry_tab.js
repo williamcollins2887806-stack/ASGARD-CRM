@@ -112,8 +112,31 @@ window.AsgardRegistryTab = (function () {
   // открывает редактор и заканчивается ошибкой (нашёл L3-верификатор).
   function canEditDeadlineCell() { return canEditImmutable(); }
 
+  /**
+   * Хозяин ОТКРЫТОГО анализа — текущий пользователь? (ТО взял анализ кнопкой
+   * «Анализирую сам», либо дежурный РП ведёт его.)
+   *
+   * Нужно, чтобы ТО, ведущий анализ, открывал его РЕДАКТИРУЕМЫМ: иначе он не может
+   * ни вести анализ, ни заполнить обязательный чек-лист. Ветки ниже исторически
+   * («ТО всегда смотрит как ТО») закрывают модалку всем ТО без исключения — это и был
+   * дефект D-203/B. Закрытый анализ по-прежнему только для чтения.
+   */
+  function ownsOpenAnalysis(row) {
+    if (!row) return false;
+    const rev = row.rp_review || {};
+    if (row.analysis_finalized_at || rev.analysis_finalized_at) return false;
+    const myId = Number((dutyUser() || {}).id) || 0;
+    if (!myId) return false;
+    const ownerId = Number(
+      row.analysis_owner_user_id || rev.analysis_owner_user_id || rev.started_by_user_id || 0
+    ) || 0;
+    return ownerId > 0 && ownerId === myId;
+  }
+
   function openRpReviewModal(row, opts) {
     opts = opts || {};
+    // Если анализ открыт и ведёт его сам пользователь — не навязываем read-only/роль «ТО».
+    const ownsAnalysis = ownsOpenAnalysis(row);
     if (row.review_unread && API.markRegistryReviewSeen) {
       API.markRegistryReviewSeen(row.id).catch(function () {});
       row.review_unread = false;
@@ -130,9 +153,13 @@ window.AsgardRegistryTab = (function () {
         readOnly: true,
         mode: opts.mode || 'calc'
       }, opts);
+      if (ownsAnalysis) { opts.readOnly = false; opts.role = ''; }
     } else if (isTo && opts.viewAsTo !== false && !opts.forceEdit) {
-      // ТО всегда смотрит как ТО (readOnly), даже до финала — иначе UI коллаба
-      opts = Object.assign({ role: 'to', readOnly: true, mode: opts.mode || 'calc' }, opts);
+      // ТО обычно смотрит как ТО (readOnly), даже до финала — иначе UI коллаба.
+      // Исключение: ТО, который сам ведёт открытый анализ (D-203/B).
+      if (!ownsAnalysis) {
+        opts = Object.assign({ role: 'to', readOnly: true, mode: opts.mode || 'calc' }, opts);
+      }
     }
     const mode = opts.mode || (row.analysis_finalized_at || final ? 'calc' : 'analysis');
     opts.mode = mode;
@@ -316,6 +343,7 @@ window.AsgardRegistryTab = (function () {
     { key: 'participation_fee', label: 'Сбор' },
     { key: 'analysis_deadline', label: 'Анализ' },
     { key: 'registry_status', label: 'Статус' },
+    { key: 'analyst_name', label: 'Аналитик' },
     { key: 'calculator_user_name', label: 'Считает' },
     { key: '_rp_sort', label: 'Отчёт' },
     { key: 'comment_to', label: 'Коммент' },
@@ -407,6 +435,8 @@ window.AsgardRegistryTab = (function () {
       case 'registry_status':
         return STATUS_ORDER[row.registry_status || 'рассмотрение'] != null
           ? STATUS_ORDER[row.registry_status || 'рассмотрение'] : 9;
+      case 'analyst_name':
+        return row.analyst_name || row.rp_review?.analyst_name || '';
       case 'calculator_user_name':
         return row.calculator_user_name || row.rp_review?.calculator_name || '';
       case '_rp_sort':
@@ -734,8 +764,10 @@ window.AsgardRegistryTab = (function () {
   }
 
   function openRowFormModal(row, isNew) {
-    const st = row.registry_status || 'рассмотрение';
-    const dl = row.docs_deadline ? API.fmtDateIso(row.docs_deadline) : '';
+    // st/dl — снимки для formHtml(). После создания строки их обязательно пересчитать:
+    // иначе экран «Загрузите документы» рисуется из пустых/устаревших значений (D-198).
+    let st = row.registry_status || 'рассмотрение';
+    let dl = row.docs_deadline ? API.fmtDateIso(row.docs_deadline) : '';
     let tenderId = row.id || null;
     let savedNew = false;
     let docsMode = false;
@@ -896,12 +928,30 @@ window.AsgardRegistryTab = (function () {
             }
             const res = await API.createRegistryRow(Object.assign({}, body, { registry_status: nextStatus }));
             tenderId = res.tender?.id || res.id;
-            if (res.tender) {
-              row.participation_paid = res.tender.participation_paid;
-              row.participation_fee = res.tender.participation_fee;
-              row.analysis_deadline = res.tender.analysis_deadline;
-              row.created_at = res.tender.created_at;
-            }
+            // D-198: экран «Загрузите документы» ниже рисуется из `row` (formHtml читает
+            // row.customer_name / row.tender_title / row.tender_price / dl / st). Бэк отдаёт
+            // строку через RETURNING *, поэтому переносим её в `row` целиком — иначе поля
+            // показываются пустыми, а `isNew` остаётся true и «Сохранить» создаёт дубль.
+            if (res.tender) Object.assign(row, res.tender);
+            row.id = tenderId;
+            // Значения из формы — источник правды для только что созданной строки
+            // (на случай, если бэк нормализовал/обрезал ввод).
+            row.customer_name = body.customer_name;
+            row.customer_inn = body.customer_inn;
+            row.tender_title = body.tender_title;
+            row.tender_price = body.tender_price;
+            row.docs_deadline = body.docs_deadline;
+            row.purchase_url = body.purchase_url;
+            row.comment_to = body.comment_to;
+            row.registry_status = nextStatus;
+            row.participation_paid = paid;
+            row.participation_fee = paid ? fee : null;
+            // Пересчитываем снимки, которые читает formHtml().
+            st = nextStatus;
+            dl = row.docs_deadline ? API.fmtDateIso(row.docs_deadline) : '';
+            // Строка создана: дальше это ПРАВКА уже существующей карточки, а не создание
+            // новой (закрывает повторный POST и PATCH /undefined).
+            isNew = false;
             savedNew = true;
             toast('Строка добавлена — загрузите документы ниже', 'ok');
             if (typeof AsgardUI.replaceModal === 'function') {
@@ -1087,9 +1137,20 @@ window.AsgardRegistryTab = (function () {
     }
     if (action.type === 'wait') {
       const calcName = row.calculator_user_name || row.rp_review?.calculator_name || '';
-      return calcName
-        ? '<span class="muted" style="font-size:11px">' + esc(calcName) + ' считает</span>'
-        : '<span class="pill warn">Ждёт анализ РП</span>';
+      // Анализ ведёт дежурный РП; ТО может взять анализ сам — зеркало «Считаю сам» (D-203).
+      const canTakeAnalysis = ['TO', 'HEAD_TO', 'ADMIN'].includes(currentUserRole());
+      const ownerId = row.analysis_owner_user_id || row.rp_review?.analysis_owner_user_id || null;
+      const ownerName = row.analyst_name || row.rp_review?.analyst_name || '';
+      const mine = ownerId != null && Number(ownerId) === Number((dutyUser() || {}).id);
+      let h = '<button type="button" class="btn mini ghost reg-rp-view" data-id="' + row.id + '">Открыть</button>';
+      if (canTakeAnalysis && !mine) {
+        h += '<button type="button" class="btn mini ghost reg-analysis-self" data-id="' + row.id + '"' +
+          (ownerId ? ' title="Анализ уже ведёт ' + esc(ownerName) + '"' : '') + '>Анализирую сам</button>';
+      }
+      if (calcName) {
+        h += '<span class="muted" style="font-size:11px;margin-left:4px">' + esc(calcName) + ' считает</span>';
+      }
+      return h;
     }
     return '';
   }
@@ -1298,6 +1359,7 @@ window.AsgardRegistryTab = (function () {
       '<td class="reg-col-participation">' + participationCell(row) + '</td>' +
       '<td class="reg-col-analysis">' + analysisDeadlineCell(row) + '</td>' +
       '<td>' + statusPill(st, row.id) + '</td>' +
+      '<td class="muted reg-col-person" style="font-size:12px" title="Кто ведёт анализ">' + esc(row.analyst_name || '—') + '</td>' +
       '<td class="muted reg-col-person" style="font-size:12px">' + esc(calcName) + '</td>' +
       '<td>' + rpPill + '</td>' +
       '<td class="reg-col-comment"><div class="reg-comment-full">' + (comment ? esc(comment) : '<span class="muted">—</span>') + '</div></td>' +
@@ -1570,6 +1632,17 @@ window.AsgardRegistryTab = (function () {
         } catch (e) { toast(e.message, 'err'); }
       });
     });
+    mountEl.querySelectorAll('.reg-analysis-self').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const id = Number(btn.dataset.id);
+        API.assignRegistryAnalysis(id).then((res) => {
+          toast('Вы ведёте анализ' + (res?.analysis_owner_name ? ': ' + res.analysis_owner_name : ''), 'ok');
+          const row = rows.find((r) => r.id === id);
+          if (row && window.AsgardRpReviewModal) AsgardRpReviewModal.open(row, pmsCache, refresh, { mode: 'analysis' });
+          else refresh();
+        }).catch((e) => toast(e.message, 'err'));
+      });
+    });
     mountEl.querySelectorAll('.reg-self-calc').forEach((btn) => {
       btn.addEventListener('click', () => {
         API.assignRegistryCalculator(Number(btn.dataset.id), 'to').then(() => {
@@ -1605,7 +1678,11 @@ window.AsgardRegistryTab = (function () {
         const row = rows.find((r) => r.id === Number(el.dataset.id));
         if (!row) return;
         const isView = el.classList.contains('reg-rp-view');
-        const readOnly = isView;
+        // D-203/B: кнопка «Открыть» в ячейке помечена reg-rp-view, то есть по классу
+        // она всегда «просмотр». Но хозяин открытого анализа (ТО, взявший анализ сам,
+        // или дежурный) обязан попасть в редактируемую модалку — иначе он не сможет
+        // вести анализ и заполнить обязательный чек-лист.
+        const readOnly = isView && !ownsOpenAnalysis(row);
         let mode = 'calc';
         if (!row.rp_review?.analysis_finalized_at) {
           const rj = row.rp_review?.report_json;
@@ -1614,7 +1691,7 @@ window.AsgardRegistryTab = (function () {
             mode = parsed.mode === 'analysis' ? 'analysis' : 'calc';
           } catch (_) { /* ignore */ }
         }
-        openRpReviewModal(row, { readOnly, mode, viewAsTo: isView });
+        openRpReviewModal(row, { readOnly, mode, viewAsTo: isView && readOnly });
       });
     });
     mountEl.querySelectorAll('.reg-rp-chat').forEach((el) => {

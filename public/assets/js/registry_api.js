@@ -467,6 +467,19 @@ window.AsgardRegistryApi = (function () {
       if (user_id) body.user_id = user_id;
       return api('/api/tenders/registry/' + id + '/assign-calculator', { method: 'POST', body });
     },
+    // ТО берёт анализ сам (зеркало «Считаю сам» для просчёта).
+    assignRegistryAnalysis(id) {
+      return api('/api/tenders/registry/' + id + '/assign-analysis', { method: 'POST', body: {} });
+    },
+    loadAnalysisChecklist(id) {
+      return api('/api/tenders/' + id + '/analysis-checklist');
+    },
+    saveAnalysisChecklist(id, body) {
+      return api('/api/tenders/' + id + '/analysis-checklist', { method: 'PUT', body });
+    },
+    analysisChecklistWordUrl(id) {
+      return '/api/tenders/' + id + '/analysis-checklist.docx';
+    },
     markRegistryReviewSeen(id) {
       return api('/api/tenders/registry/' + id + '/review-seen', { method: 'POST' });
     },

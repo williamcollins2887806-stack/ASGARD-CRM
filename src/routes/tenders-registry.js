@@ -48,6 +48,13 @@ const PATCHABLE_FIELDS = {
 // Даже ТО не может их переписать после заведения, чтобы не «уплыл» зафиксированный тендер (D-189).
 const IMMUTABLE_FIELDS = new Set(['customer_name', 'customer_inn', 'tender_price', 'docs_deadline']);
 
+/**
+ * Хозяин анализа (канон порядка взят из V331/pm-analysis-rating.ownerExpr):
+ * analysis_owner → кто начал → кто закрыл → кто финализировал отчёт.
+ * Используется как `tender_rp_reviews.<alias>.` в JOIN-он для ФИО аналитика.
+ */
+const ANALYST_OWNER_SQL = 'COALESCE(r.analysis_owner_user_id, r.started_by_user_id, r.analysis_finalized_by_user_id, r.finalized_by_user_id)';
+
 // Кто что может править:
 //  ADMIN                 — всё, включая immutable (аварийный доступ администратора);
 //  TO / HEAD_TO          — все mutable-поля карточки (immutable закрыты и им);
@@ -129,9 +136,10 @@ async function routes(fastify) {
         row.score = cache.get(key);
       }
       const rev = await db.query(`
-        SELECT r.*, u.name AS calculator_name
+        SELECT r.*, u.name AS calculator_name, an.name AS analyst_name
         FROM tender_rp_reviews r
         LEFT JOIN users u ON u.id = r.calculator_user_id
+        LEFT JOIN users an ON an.id = ${ANALYST_OWNER_SQL}
         WHERE r.tender_id = $1
       `, [row.id]);
       row.rp_review = rev.rows[0] || null;
@@ -258,6 +266,8 @@ async function routes(fastify) {
       SELECT t.*,
              cb.name AS created_by_name,
              calc.name AS calculator_user_name,
+             an.name AS analyst_name,
+             an_rev.analysis_owner_user_id AS analysis_owner_user_id,
              (SELECT COUNT(*)::int FROM documents d
                WHERE d.tender_id = t.id
                  AND COALESCE(d.type,'') NOT IN ('ocr-extract')) AS doc_count,
@@ -268,6 +278,8 @@ async function routes(fastify) {
       FROM tenders t
       LEFT JOIN users cb ON cb.id = t.created_by
       LEFT JOIN users calc ON calc.id = t.calculator_user_id
+      LEFT JOIN tender_rp_reviews an_rev ON an_rev.tender_id = t.id
+      LEFT JOIN users an ON an.id = COALESCE(an_rev.analysis_owner_user_id, an_rev.started_by_user_id, an_rev.analysis_finalized_by_user_id, an_rev.finalized_by_user_id)
       WHERE ${where}${periodClause}${burnClause}${searchClause}${excludeClause}${scopeClause}
       ORDER BY t.created_at DESC
       LIMIT $${listParams.length - 1} OFFSET $${listParams.length}
@@ -822,6 +834,75 @@ async function routes(fastify) {
     broadcast('tender:registry:changed', { id: parseInt(id, 10) });
     const updated = await db.query('SELECT * FROM tenders WHERE id = $1', [id]);
     return { tender: updated.rows[0] };
+  });
+
+  // POST /registry/:id/assign-analysis — ТО берёт анализ сам (зеркало «Считаю сам»).
+  // Ручного назначения аналитика нет: анализ ведёт дежурный РП либо сам ТО.
+  fastify.post('/registry/:id/assign-analysis', {
+    preHandler: [fastify.requireRoles(['ADMIN', 'TO', 'HEAD_TO'])]
+  }, async (request, reply) => {
+    const { id } = request.params;
+    const userId = request.user.id;
+
+    const cur = await db.query(
+      'SELECT id, registry_status, customer_name, tender_title, registry_no, calculator_kind FROM tenders WHERE id = $1 AND deleted_at IS NULL',
+      [id]
+    );
+    if (!cur.rows[0]) return reply.code(404).send({ error: 'Тендер не найден' });
+    const tender = cur.rows[0];
+
+    const st = tender.registry_status || 'рассмотрение';
+    if (st !== 'рассмотрение') {
+      return reply.code(400).send({ error: 'Взять анализ можно только в статусе «рассмотрение»' });
+    }
+
+    const rev = await ensureReview(db, id, userId);
+    if (rev.analysis_finalized_at) {
+      return reply.code(400).send({ error: 'Анализ уже закрыт — владельца анализа менять нельзя' });
+    }
+    if (rev.is_final) {
+      return reply.code(400).send({ error: 'Отчёт уже закрыт' });
+    }
+
+    // Если анализ уже ведёт другой РП — не отбираем молча.
+    const u = await db.query('SELECT id, name, role FROM users WHERE id = $1 AND is_active = true', [userId]);
+    if (!u.rows[0]) return reply.code(400).send({ error: 'Пользователь не найден' });
+    const actorName = u.rows[0].name || 'ТО';
+
+    const currentOwnerId = rev.analysis_owner_user_id || rev.started_by_user_id || null;
+    if (currentOwnerId && Number(currentOwnerId) !== Number(userId)) {
+      const ownerRes = await db.query('SELECT name FROM users WHERE id = $1', [currentOwnerId]);
+      const ownerName = ownerRes.rows[0]?.name || ('#' + currentOwnerId);
+      return reply.code(409).send({
+        error: 'Анализ уже ведёт ' + ownerName + '. Закрыть его может владелец или новый дежурный РП.',
+        analysis_owner_user_id: Number(currentOwnerId),
+        analysis_owner_name: ownerName
+      });
+    }
+
+    const upd = await db.query(`
+      UPDATE tender_rp_reviews SET
+        analysis_owner_user_id = $1,
+        started_by_user_id = COALESCE(started_by_user_id, $1),
+        analysis_started_at = COALESCE(analysis_started_at, NOW()),
+        updated_at = NOW()
+      WHERE id = $2
+      RETURNING *
+    `, [userId, rev.id]);
+
+    await db.query(`
+      UPDATE tenders SET calculator_kind = 'to', updated_at = NOW() WHERE id = $1
+    `, [id]);
+
+    await writeRegistryAudit(db, {
+      actorUserId: userId, tenderId: id,
+      action: 'assign_analysis',
+      before: { analysis_owner_user_id: currentOwnerId },
+      after: { analysis_owner_user_id: userId, analysis_owner_name: actorName }
+    });
+
+    broadcast('tender:registry:changed', { id: parseInt(id, 10) });
+    return { ok: true, review: upd.rows[0], analysis_owner_name: actorName };
   });
 
   // POST /registry/:id/archive
