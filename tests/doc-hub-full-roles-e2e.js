@@ -120,8 +120,13 @@ async function openDocHub(context, auth) {
   }, auth);
   const page = await context.newPage();
   const consoleErrors = [];
+  const http5xx = [];
   page.on('pageerror', (e) => consoleErrors.push(String(e.message || e)));
+  // B2: ловим именно console.error (не только pageerror) и все ответы 5xx.
+  page.on('console', (m) => { if (m.type() === 'error') consoleErrors.push(m.text()); });
+  page.on('response', (r) => { const s = r.status(); if (s >= 500) http5xx.push(s + ' ' + r.url()); });
   page.__consoleErrors = consoleErrors;
+  page.__http5xx = http5xx;
 
   await page.goto(BASE + '/', { waitUntil: 'commit', timeout: 60000 });
   await page.evaluate(async () => {
@@ -382,16 +387,26 @@ async function uiDeep(browser, role, seedId) {
     await page.locator('input[name="amount_gross"]').fill('777');
     await page.locator('#dhDirCards [data-dir="in"]').click({ force: true }).catch(() => {});
     await page.locator('#dhWizNext').click({ force: true });
-    await page.waitForTimeout(300);
+    await page.waitForFunction(() => {
+      const f = document.getElementById('dhWizForm');
+      return f && f.getAttribute('data-step') === '2';
+    }, { timeout: 8000 }).catch(() => {});
     mark(role.key, 'wizard_step2', (await page.locator('#dhModeCards, select[name="contract_mode"], #dhWizContract').count()) > 0, '');
     await page.locator('#dhModeCards [data-mode="once"]').click({ force: true }).catch(() => {});
     await page.locator('select[name="contract_mode"]').selectOption('once').catch(() => {});
     await page.locator('#dhWizNext').click({ force: true });
-    await page.waitForTimeout(300);
+    await page.waitForFunction(() => {
+      const f = document.getElementById('dhWizForm');
+      return f && f.getAttribute('data-step') === '3';
+    }, { timeout: 8000 }).catch(() => {});
     mark(role.key, 'wizard_step3', (await page.locator('#dhWizSubmit, #dhWizAddLine, textarea[name="parsed_json"]').count()) > 0, '');
     // submit create
     await page.locator('#dhWizSubmit').click({ force: true }).catch(() => {});
-    await page.waitForTimeout(1200);
+    await page.waitForResponse(
+      (r) => r.url().includes('/api/doc-registry') && r.request().method() === 'POST',
+      { timeout: 10000 }
+    ).catch(() => {});
+    await page.waitForTimeout(900);
     const drawerOpen = await page.locator('#dhDrawer.is-on, #dhDrawer:not([hidden])').count();
     mark(role.key, 'wizard_create', drawerOpen > 0 || (await page.locator('#dhTableHost').innerText()).includes('UI-' + role.key), 'drawer/table');
 
@@ -470,8 +485,13 @@ async function uiDeep(browser, role, seedId) {
     await page.waitForTimeout(400);
     mark(role.key, 'import_1c_btn', true, 'clicked');
 
-    const fatal = (page.__consoleErrors || []).filter((t) => !/favicon|ResizeObserver|Download the React|net::ERR/i.test(t));
+    const fatal = (page.__consoleErrors || []).filter((t) => !/favicon|ResizeObserver|Download the React/i.test(t));
     mark(role.key, 'no_pageerror', fatal.length === 0, fatal.slice(0, 2).join(' | '));
+    const h5 = page.__http5xx || [];
+    mark(role.key, 'no_5xx', h5.length === 0, h5.slice(0, 2).join(' | '));
+    // D-202: сетевые сбои без ответа (failed-запросы) — отдельный класс, _no_5xx их не видит.
+    const netFail = fatal.filter((t) => /net::ERR|Failed to fetch|ERR_ABORTED/i.test(t));
+    mark(role.key, 'no_netfail', netFail.length === 0, netFail.slice(0, 2).join(' | '));
   } catch (e) {
     mark(role.key, 'ui_exception', false, e.message);
     if (page) await page.screenshot({ path: path.join(OUT, role.key + '-FAIL.png'), fullPage: true }).catch(() => {});
@@ -520,7 +540,6 @@ async function uiDeep(browser, role, seedId) {
     lines.push('');
   }
   fs.writeFileSync(path.join(OUT, 'report-full.json'), JSON.stringify(report, null, 2));
-  fs.writeFileSync(path.join(OUT, 'INDEX.md'), lines.join('\n'));
   fs.writeFileSync(path.join(OUT, 'INDEX-full.md'), lines.join('\n'));
   console.log(JSON.stringify(report.summary));
   process.exit(report.summary.fail ? 1 : 0);

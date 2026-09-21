@@ -18,6 +18,7 @@ window.AsgardRpCalcModal = (function () {
   const TABS = [
     { id: 'inputs', label: 'Вводные' },
     { id: 'smeta', label: 'Смета' },
+    { id: 'checklist', label: 'Чек-лист' },
     { id: 'files', label: 'Файлы' },
     { id: 'tender', label: 'Тендер' }
   ];
@@ -631,6 +632,7 @@ window.AsgardRpCalcModal = (function () {
       '<div class="rp-calc-body">' +
       renderInputs(state) +
       renderSmeta(state) +
+      renderChecklist(state) +
       renderFiles(state) +
       renderTender(state) +
       '</div>' +
@@ -963,6 +965,15 @@ window.AsgardRpCalcModal = (function () {
     return '<span class="rp-calc-file-links">' + parts.join('') + '</span>';
   }
 
+  /** Вкладка «Чек-лист» — ответы анализа только для чтения (D-203). */
+  function renderChecklist(state) {
+    const active = state.tab === 'checklist' ? ' is-active' : '';
+    return '<div class="rp-calc-panel' + active + '" data-panel="checklist">' +
+      '<p class="rp-calc-hint">Чек-лист звонка клиенту, заполненный при анализе. Только для чтения.</p>' +
+      '<div id="rpCalcChecklistHost"><p class="muted">Откройте вкладку — данные загрузятся.</p></div>' +
+      '</div>';
+  }
+
   function renderTender(state) {
     const t = state.tender || {};
     const active = state.tab === 'tender' ? ' is-active' : '';
@@ -1237,6 +1248,9 @@ window.AsgardRpCalcModal = (function () {
           syncMetaFromDom(root);
           state.tab = btn.getAttribute('data-rp-tab');
           paint();
+          if (state.tab === 'checklist' && state.tender && state.tender.id && window.AsgardAnalysisChecklist) {
+            window.AsgardAnalysisChecklist.renderInto('rpCalcChecklistHost', state.tender.id, { wordUrl: null });
+          }
         });
       });
 

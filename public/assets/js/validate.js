@@ -224,7 +224,18 @@ window.AsgardValidate = (function(){
         name.includes('date') || name.includes('_at') ||
         id.includes('date') || id.includes('_at') ||
         placeholder.includes('yyyy-mm-dd')) {
-      
+
+      // D-200: ISO-поля НЕ маскируем. Их контракт — гггг-мм-дд, он задан
+      // атрибутом pattern или явным data-no-mask. Иначе маска дд.мм.гггг
+      // превращает 2026-09-18 в 20.26.0918, и reportValidity() блокирует форму
+      // (так ломался визард Doc Hub — 5 полей invoice_date/payment_due_at/...).
+      const isoPattern = /\\d\{4\}/.test(input.getAttribute('pattern') || '');
+      const noMask = input.getAttribute('data-no-mask') !== null;
+      if (isoPattern || noMask) {
+        input.dataset.validated = 'date';
+        return;
+      }
+
       // Меняем placeholder
       if (input.placeholder?.includes('YYYY-MM-DD')) {
         input.placeholder = 'дд.мм.гггг';

@@ -10,6 +10,29 @@ window.AsgardWarehouseV2 = (function () {
   const toast = UI.toast || ((t, m, tp) => console.log(`[${tp}] ${t}: ${m}`));
 
   let _user = null, _root = null, _tab = 'equipment';
+  // ── D2 (21.09): live-обновление без F5 ──────────────────────────────────
+  // В складе раньше НЕ было ни setInterval, ни SSE/WS — данные менялись только по F5.
+  // Поллим только «живые» вкладки (очереди и списки, где важна свежесть), останавливаемся
+  // при скрытой вкладке (document.hidden) и при уходе со страницы (проверка _root в DOM),
+  // иначе таймер остаётся висеть после перехода в другой раздел.
+  const LIVE_TABS = new Set(['assemblies', 'monitor', 'ops', 'incoming', 'sheet']);
+  let _liveTimer = null;
+  function _stopLive() { if (_liveTimer) { clearInterval(_liveTimer); _liveTimer = null; } }
+  function _startLive() {
+    _stopLive();
+    _liveTimer = setInterval(async () => {
+      // Тик берёт ЖИВОЙ корень на момент срабатывания: _root заменяется при каждом render(),
+      // и по захваченной ссылке «устаревший» тик гас бы или писал в отсоединённый узел.
+      const root = (_root && document.body.contains(_root)) ? _root : document.querySelector('.wh2');
+      if (!root || !document.body.contains(root)) { _stopLive(); return; }
+      if (document.hidden) return;
+      if (!LIVE_TABS.has(_tab)) return;
+      // Не перетираем открытую модалку/просмотр — обновляем только когда пользователь «на списке».
+      if (document.querySelector('.cr-m-overlay')) return;
+      try { await refresh(); } catch (_) { /* live не должен ломать экран */ }
+    }, 20000);
+  }
+  window.addEventListener('hashchange', () => { if (!location.hash.startsWith('#/warehouse-v2')) _stopLive(); });
   let _cats = [], _whs = [];
   const fmt = n => (n == null ? '—' : Number(n).toLocaleString('ru-RU'));
   /** Демо/E2E имена каталога → короткое «Позиция #id» или обрезка. */
@@ -1459,9 +1482,14 @@ window.AsgardWarehouseV2 = (function () {
 
   // ── Перерисовка активной вкладки ──────────────────────────────────────────
   let _searchVal = '';
-  async function refresh() {
-    const body = _root.querySelector('#wh2-body');
-    const toolbar = _root.querySelector('#wh2-toolbar');
+    async function refresh() {
+    // Тик live может прийти после смены страницы — тогда _root отсоединён; подхватываем живой.
+    if (!_root || !document.body.contains(_root)) {
+      const live = document.querySelector('.wh2');
+      if (!live || !document.body.contains(live)) return;   // ушли со склада — тихо выходим
+      _root = live;
+    }
+    const body = _root.querySelector('#wh2-body');    const toolbar = _root.querySelector('#wh2-toolbar');
     // toolbar зависит от вкладки. На «Оборудование» поиск и кнопки рисует сам модуль.
     const addBtn = toolbar.querySelector('#wh2-add');
     addBtn.style.display = (_tab === 'consumables' || _tab === 'locations') ? '' : 'none';
@@ -2733,6 +2761,7 @@ window.AsgardWarehouseV2 = (function () {
     _mountFab();        // FAB корзины в углу + скрыть Мимира на складе
     _updateCartBadge();
     refresh();
+    _startLive();
   }
 
   // ── Поиск с автоподсказками ──

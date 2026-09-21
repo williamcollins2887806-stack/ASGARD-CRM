@@ -7,6 +7,7 @@ window.AsgardProcurementPage = (function() {
   const closeModal = UI.closeModal || (() => {});
 
   let currentFilters = {};
+  let _myScope = false; // true на «Мои заявки» (#/my-procurement) — РП создаёт заявку здесь (E1)
   let _user = null;
   let _viewMode = localStorage.getItem('proc_view') || 'kanban'; // 'kanban' | 'table'
   let _groupMode = 'none'; // 'none' | 'category' | 'supplier' — группировка позиций в детали
@@ -337,8 +338,11 @@ window.AsgardProcurementPage = (function() {
       const lines = Array.isArray(pay.line_items_json) ? pay.line_items_json
         : (typeof pay.line_items_json === 'string' ? JSON.parse(pay.line_items_json || '[]') : []);
       const isDIR = ['ADMIN','DIRECTOR_GEN','DIRECTOR_COMM','DIRECTOR_DEV'].includes(_user.role);
-      const fileApi = pay.file_url || (pay.id ? `/api/payment-invoices/${pay.id}/file` : null);
-      const fileStatic = pay.file_path && String(pay.file_path).startsWith('/uploads/') ? pay.file_path : null;
+      // `has_file` от сервера (D1, 21.09): без файла не строим URL /file, иначе модалка даёт
+      // 404 и показывает «не удалось», хотя счёт просто без вложения.
+      const hasFile = !!pay.has_file;
+      const fileApi = hasFile ? (pay.file_url || `/api/payment-invoices/${pay.id}/file`) : null;
+      const fileStatic = hasFile && pay.file_path && String(pay.file_path).startsWith('/uploads/') ? pay.file_path : null;
       const lineRows = lines.map(l => `<tr><td>${esc(l.name||'—')}</td><td>${esc(String(l.qty??l.quantity??''))}</td><td>${money(l.unit_price)}</td></tr>`).join('');
       const stCls = payStatusClass(pay);
       let timing = pay.pay_timing === 'deferred' ? 'deferred' : 'immediate';
@@ -424,6 +428,9 @@ window.AsgardProcurementPage = (function() {
   function renderFilters(el) {
     // «+ Новая заявка» убрана намеренно: заявки создаются ТОЛЬКО из карточки работы или из
     // корзины на складе. Закупщик заявки не создаёт — он их отрабатывает. Это реестр/просмотр.
+    // E1 (21.09.2026): исключение — «Мои заявки» (#/my-procurement), где заявку создаёт РП
+    // без захода на склад. Там кнопка есть, на «Закупках» её по-прежнему нет.
+    const canCreateHere = _myScope && ['PM', 'HEAD_PM'].includes(_user && _user.role);
     el.innerHTML = `<div class="proc-toolbar">
       <div class="proc-viewtoggle">
         <button class="proc-vt ${_viewMode==='kanban'?'proc-vt--on':''}" data-vm="kanban">Канбан</button>
@@ -432,6 +439,8 @@ window.AsgardProcurementPage = (function() {
       <div id="pf-status_w" style="display:${_viewMode==='table'?'inline-block':'none'};min-width:150px"></div>
       <input type="text" id="pf-search" class="proc-toolbar__search" placeholder="Поиск по заявке, работе, РП…">
       <div class="proc-toolbar__acts">
+        ${canCreateHere ? '<button type="button" class="proc-act proc-act--primary" id="proc-new-req">+ Создать заявку</button>' : ''}
+        ${canCreateHere ? '<button type="button" class="proc-act" id="proc-new-req-cart">Собрать в корзине</button>' : ''}
         <button type="button" class="proc-act" id="proc-new-pay">Новое согласование</button>
         <button type="button" class="proc-act" id="proc-export-xl">Excel</button>
         <button type="button" class="proc-act" id="proc-tpl-xl">Шаблон</button>
@@ -439,6 +448,10 @@ window.AsgardProcurementPage = (function() {
     </div>`;
     el.querySelector('#proc-export-xl').onclick = () => window.open('/api/procurement/export/excel');
     el.querySelector('#proc-tpl-xl').onclick = () => window.open('/api/procurement/template/excel');
+    const newReqBtn = el.querySelector('#proc-new-req');
+    if (newReqBtn) newReqBtn.onclick = () => openCreateModal(null);
+    const cartBtn = el.querySelector('#proc-new-req-cart');
+    if (cartBtn) cartBtn.onclick = () => { location.hash = '#/warehouse-v2'; };
     const newPayBtn = el.querySelector('#proc-new-pay');
     if (newPayBtn) newPayBtn.onclick = () => openStandalonePaymentModal();
     el.querySelectorAll('[data-vm]').forEach(b => b.onclick = () => {
@@ -1564,10 +1577,11 @@ window.AsgardProcurementPage = (function() {
   }
 
   // -- Render --
-  async function render({ layout, title }) {
+  async function render({ layout, title, myScope }) {
     const ud = await apiFetch('/api/users/me');
     _user = ud.user || ud;
     currentFilters = {};
+    _myScope = !!myScope; // «Мои заявки»: РП создаёт здесь заявку без захода на склад (E1)
 
     await layout('', { title: title || 'Закупки' });
     const layoutEl = document.getElementById('layout');

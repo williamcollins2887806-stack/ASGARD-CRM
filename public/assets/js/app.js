@@ -168,6 +168,11 @@ console.log('[ASGARD] Global period functions loaded');
   const OFFICE_ROLES = ["TO","PM","HR","HR_MANAGER","BUH","OFFICE_MANAGER","WAREHOUSE","CHIEF_ENGINEER",...HEAD_ROLES,...DIRECTOR_ROLES,"ADMIN"];
   const ALL_ROLES = [...OFFICE_ROLES,"PROC"];
 
+  // D-196: склад — доступ строго по матрице бэкенда (WMS_READ в src/routes/warehouse-ops.js
+  // и warehouse-map.js). OFFICE_MANAGER в неё НЕ входит: раньше пункт меню и роут пускали его
+  // (roles:ALL_ROLES), а API отдавал 403 — мёртвая страница. Держим в синхроне с бэком.
+  const WH_READ_ROLES = ["ADMIN","WAREHOUSE","CHIEF_ENGINEER",...DIRECTOR_ROLES,"PM","HEAD_PM","PROC","BUH"];
+
 
   window.__ASG_SHARED_TABLE_CSS__ = `
 <style>
@@ -287,7 +292,7 @@ console.log('[ASGARD] Global period functions loaded');
 {r:"/assembly",l:"Сбор на складе",d:"Ведомости сборки и мобилизации → Склад",
  roles:["ADMIN","PM","HEAD_PM","WAREHOUSE","DIRECTOR_GEN","DIRECTOR_COMM","DIRECTOR_DEV"],
  i:"backup",p:"warehouse",g:"resources"},
-    {r:"/warehouse-v2",l:"Склад",d:"Каталог, наличие, оборудование, ячейки, сборка, готовность",roles:ALL_ROLES,i:"backup",p:"warehouse",g:"resources"},
+    {r:"/warehouse-v2",l:"Склад",d:"Каталог, наличие, оборудование, ячейки, сборка, готовность",roles:WH_READ_ROLES,i:"backup",p:"warehouse",g:"resources"},
     {r:"/my-equipment",l:"Моё оборудование",d:"Выданное мне",roles:["PM","HEAD_PM","CHIEF_ENGINEER",...DIRECTOR_ROLES,"ADMIN"],i:"pmworks",p:"my_equipment",g:"resources"},
     {r:"/correspondence",l:"Корреспонденция",d:"Входящие и исходящие",roles:["ADMIN","OFFICE_MANAGER","DIRECTOR_COMM","DIRECTOR_GEN","DIRECTOR_DEV","PM","HEAD_PM","TO","HEAD_TO"],i:"correspondence",p:"correspondence",g:"resources"},
     {r:"/contracts",l:"Реестр договоров",d:"Договора поставщиков",roles:["ADMIN","OFFICE_MANAGER","BUH",...DIRECTOR_ROLES],i:"proxies",p:"contracts",g:"resources"},
@@ -2301,7 +2306,7 @@ var _setupPinKeypad = null;
     AsgardRouter.add("/pm-balance", ()=>AsgardPmBalancePage.render({layout, title:"Баланс подотчётников"}), {auth:true, roles:["ADMIN","BUH",...DIRECTOR_ROLES]});
     AsgardRouter.add("/pm-balance/:pm_id", ()=>AsgardPmBalancePage.renderDetail({layout, title:"Баланс подотчётников"}), {auth:true, roles:["ADMIN","BUH",...DIRECTOR_ROLES]});
     AsgardRouter.add("/procurement", ()=>AsgardProcurementPage.render({layout, title:"Закупки"}), {auth:true, roles:["ADMIN","PROC","BUH","PM","HEAD_PM","DIRECTOR_GEN","DIRECTOR_COMM","DIRECTOR_DEV"]});
-    AsgardRouter.add("/my-procurement", ()=>AsgardProcurementPage.render({layout, title:"Мои заявки"}), {auth:true, roles:["PM","HEAD_PM","WAREHOUSE","ADMIN"]});
+    AsgardRouter.add("/my-procurement", ()=>AsgardProcurementPage.render({layout, title:"Мои заявки", myScope:true}), {auth:true, roles:["PM","HEAD_PM","WAREHOUSE","ADMIN"]});
     AsgardRouter.add("/suppliers-catalog", ()=>AsgardSuppliersPage.render({layout, title:"Поставщики и цены"}), {auth:true, roles:["ADMIN","PROC","PM","HEAD_PM","DIRECTOR_GEN","DIRECTOR_COMM","DIRECTOR_DEV","BUH"]});
 AsgardRouter.add("/assembly", () => {
       const h = String(location.hash || '');
@@ -2325,8 +2330,8 @@ AsgardRouter.add("/assembly", () => {
     AsgardRouter.add("/acts", ({query})=>AsgardBillingPage.render({layout, title:"Счета и акты", query, tab:"acts"}), {auth:true, roles:["ADMIN","PM","HEAD_PM","BUH",...DIRECTOR_ROLES]});
     AsgardRouter.add("/invoices", ({query})=>AsgardBillingPage.render({layout, title:"Счета и акты", query, tab:"invoices"}), {auth:true, roles:["ADMIN","PM","HEAD_PM","BUH",...DIRECTOR_ROLES]});
     AsgardRouter.add("/reminders", ()=>AsgardReminders.render({layout, title:"Напоминания"}), {auth:true, roles:ALL_ROLES});
-    AsgardRouter.add("/warehouse", ()=>{ location.hash = '#/warehouse-v2'; }, {auth:true, roles:ALL_ROLES});
-    AsgardRouter.add("/warehouse-v2", ()=>AsgardWarehouseV2.render({layout, title:"Склад"}), {auth:true, roles:ALL_ROLES});
+    AsgardRouter.add("/warehouse", ()=>{ location.hash = '#/warehouse-v2'; }, {auth:true, roles:WH_READ_ROLES});
+    AsgardRouter.add("/warehouse-v2", ()=>AsgardWarehouseV2.render({layout, title:"Склад"}), {auth:true, roles:WH_READ_ROLES});
     AsgardRouter.add("/my-equipment", ()=>AsgardMyEquipment.render({layout, title:"Моё оборудование"}), {auth:true, roles:["PM","HEAD_PM","CHIEF_ENGINEER",...DIRECTOR_ROLES,"ADMIN"]});
 
     // Касса (M2)

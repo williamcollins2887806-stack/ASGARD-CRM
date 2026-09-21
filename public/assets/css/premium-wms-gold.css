@@ -38,6 +38,12 @@
   border-color: var(--gold, #D4A843) !important;
   color: #15110d !important;
 }
+/* E1: «+ Создать заявку» в «Моих заявках» — та же золотая иерархия, только токены темы. */
+#proc-new-req.proc-act {
+  background: var(--gold, #D4A843) !important;
+  border-color: var(--gold, #D4A843) !important;
+  color: #15110d !important;
+}
 .proc-deliver__btn--primary {
   background: linear-gradient(135deg, var(--gold, #D4A843), #b8923a) !important;
   color: #15110d !important;
@@ -113,6 +119,29 @@
 .wh2-asm-empty__verb { color:var(--t2); font-size:14px; max-width:420px; margin:0 auto 16px; line-height:1.45; }
 .wh2-asm-actions { display:flex; gap:8px; flex-wrap:wrap; }
 .wh2-asm-pallet { padding:8px 12px; border-radius:8px; border:1px dashed var(--brd); margin-bottom:6px; font-size:13px; }
+/* D3: guided pick «ячейка → паллет + бирка» и приёмка/сверка возврата (desktop). Только токены темы. */
+.wh2-asm-row__sel {
+  padding:6px 8px; border-radius:8px; border:1px solid var(--brd);
+  background:var(--bg2, rgba(0,0,0,.25)); color:inherit; font-size:12px; max-width:220px;
+}
+.wh2-rc { display:flex; flex-direction:column; gap:12px; max-width:820px; }
+.wh2-rc-hint { margin:0; font-size:12px; color:var(--t2); line-height:1.45; }
+.wh2-rc-list { display:flex; flex-direction:column; gap:8px; max-height:44vh; overflow:auto; padding-right:4px; }
+.wh2-rc-row {
+  display:grid; grid-template-columns:1fr 92px 190px 1fr; gap:8px; align-items:center;
+  padding:8px 10px; border-radius:10px; border:1px solid var(--brd);
+}
+.wh2-rc-name { font-size:13px; font-weight:600; min-width:0; }
+.wh2-rc-inp, .wh2-rc-sel {
+  width:100%; padding:6px 8px; border-radius:8px; border:1px solid var(--brd);
+  background:var(--bg2, rgba(0,0,0,.25)); color:inherit; font-size:12px;
+}
+.wh2-rc-add { padding:10px 12px; border-radius:10px; border:1px dashed var(--brd); }
+.wh2-rc-acts { display:flex; gap:8px; justify-content:flex-end; flex-wrap:wrap; }
+@media (max-width: 720px) {
+  .wh2-rc-row { grid-template-columns:1fr 1fr; }
+  .wh2-rc-name { grid-column:1 / -1; }
+}
 .wh2 .btn.primary, .wh2-asm .btn.primary {
   background: var(--gold, #D4A843) !important;
   border-color: var(--gold, #D4A843) !important;

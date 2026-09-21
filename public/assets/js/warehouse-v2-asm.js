@@ -19,6 +19,12 @@ window.WH2Asm = (function () {
     reserved: 'резерв', assembled: 'собрано', in_transit: 'в пути',
     in_procurement: 'в закупке', paid: 'оплачено', on_shelf: 'на полке'
   };
+  // D3: состояния возврата с объекта (CHECK assembly_items.return_status: returning/damaged/lost/consumed).
+  const RETURN_LABELS = { returning: 'возврат', damaged: 'повреждено', lost: 'утеря', consumed: 'израсходовано' };
+  const TYPE_LABELS = { mobilization: 'Мобилизация', demobilization: 'Демобилизация', transfer: 'Перемещение' };
+  // D3: паллет для бирки можно выбрать при укладке — «паллет + бирка» вместо молчаливого pallets[0].
+  const NEW_PALLET = '__new__';
+  const REFRESH_MS = 60000;
 
   let _ctx = null; // { api, user, toast, esc }
   let _sheetId = null;
@@ -28,6 +34,36 @@ window.WH2Asm = (function () {
   function role() { return (_ctx.user && _ctx.user.role) || ''; }
   function isWh() { return ['WAREHOUSE', 'ADMIN'].includes(role()); }
   function isPm() { return ['PM', 'HEAD_PM', 'ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV'].includes(role()); }
+
+  /**
+   * D3: <a href> не отправляет Authorization — PDF/Excel-роуты сборки это понимают и принимают
+   * `?token=` (проверено на клоне: без токена 401, с токеном 200). Токен берём тем же способом,
+   * что и остальные vanilla-модули (localStorage `asgard_token`), не изобретаем свой канал.
+   */
+  function token() {
+    try {
+      return localStorage.getItem('asgard_token')
+        || localStorage.getItem('auth_token')
+        || (window.AsgardAuth && AsgardAuth.getToken && AsgardAuth.getToken())
+        || (window.AsgardAuth && AsgardAuth.token)
+        || '';
+    } catch (_) { return ''; }
+  }
+  function fileHref(path) {
+    const t = token();
+    return t ? (path + (path.indexOf('?') >= 0 ? '&' : '?') + 'token=' + encodeURIComponent(t)) : path;
+  }
+
+  /** D3: PDF/бирки — только про существующие роуты (раньше здесь были href в 404: /:id/pdf и /:id/labels). */
+  function pdfActionsHtml(id, pallets) {
+    const items = (pallets || []).slice(0, 6).map((p) => {
+      const n = p.pallet_number || p.id;
+      return `<a class="btn" target="_blank" rel="noopener" href="${esc(fileHref('/api/assembly/' + id + '/pallets/' + p.id + '/label-pdf'))}">Бирка П${esc(String(n))}</a>`;
+    }).join('');
+    return `<a class="btn" target="_blank" rel="noopener" href="${esc(fileHref('/api/assembly/' + id + '/checklist-pdf'))}">Чек-лист PDF</a>
+      <a class="btn" target="_blank" rel="noopener" href="${esc(fileHref('/api/assembly/' + id + '/export-excel'))}">Excel</a>
+      ${items}`;
+  }
 
   function humanTitle(a) {
     if (!a) return 'Сборка';
@@ -124,6 +160,7 @@ window.WH2Asm = (function () {
 
   async function openSheet(id, body) {
     _sheetId = id;
+    stopSheetLive();
     if (body) {
       // switch visual tab via hash so refresh keeps context
       try {
@@ -145,6 +182,16 @@ window.WH2Asm = (function () {
     }
     const a = d.item || {};
     const items = d.items || [];
+    // D3: свежая демобилизация создаётся черновиком и не может комплектоваться (на паллет кладут только
+    // из confirmed/packing), а принять её нужно. Поэтому демоб сразу переводим в рабочее состояние —
+    // ровно то же, что делает PM кнопкой «Подтвердить».
+    if (a.type === 'demobilization' && a.status === 'draft') {
+      try {
+        await api()('/api/assembly/' + id + '/confirm', { method: 'PUT', body: '{}' });
+        const r2 = await api()('/api/assembly/' + id);
+        Object.assign(a, r2.item || {});
+      } catch (_) { /* если нет прав PM — останется черновиком, ниже покажем это честно */ }
+    }
     const pallets = d.pallets || live.pallets || [];
     const kpi = live.kpi || {
       ready_pct: live.ready_pct,
@@ -154,46 +201,43 @@ window.WH2Asm = (function () {
     const canSend = ['packed', 'packing'].includes(a.status) && isWh();
     const canConfirm = a.status === 'draft' && isPm();
     const canPack = isWh() && ['confirmed', 'packing'].includes(a.status);
+    const isDemob = a.type === 'demobilization';
+    // D3: демоб сверяет «сколько приехало с объекта» — это приёмка от склада, а не укладка на паллет.
+    // Статус не ограничиваем рабочими этапами: возврат с объекта принимают до закрытия ведомости.
+    const canReceipt = isDemob && isWh() && !['closed', 'returned'].includes(a.status);
+    // D3: guided pick — на паллет кладёт только после подтверждения ведомости (как и было).
+    const showPackSelect = canPack && !isDemob;
+    const openPallets = pallets.filter((p) => p.status !== 'received' && p.status !== 'shipped');
 
     host.innerHTML = `<div class="wh2-asm wh2-asm--sheet">
-      <div class="wh2-asm-head">
+      <div class="wh2-asm-head" id="wh2-asm-sheet-head">
         <div>
           <button type="button" class="btn" id="wh2-asm-back">← К сборкам</button>
-          <div class="wh2-asm-kicker" style="margin-top:10px">Ведомость</div>
+          <div class="wh2-asm-kicker" style="margin-top:10px">Ведомость · ${esc(TYPE_LABELS[a.type] || a.type || '—')}</div>
           <h3 class="wh2-asm-h">${esc(humanTitle(a))}</h3>
           <div class="wh2-asm-card__meta">${statusChip(a.status)}
             ${a.planned_date ? ' · план ' + dt(a.planned_date) : ''}
             ${a.destination ? ' · ' + esc(a.destination) : ''}
           </div>
         </div>
-        <div class="wh2-asm-actions">
+        <div class="wh2-asm-actions" id="wh2-asm-sheet-btns">
           ${canConfirm ? '<button type="button" class="btn primary" id="wh2-asm-confirm">Подтвердить</button>' : ''}
+          ${canReceipt ? '<button type="button" class="btn primary" id="wh2-asm-receipt">Принять с объекта</button>' : ''}
           ${canPack ? '<button type="button" class="btn primary" id="wh2-asm-mk-pallet">＋ Паллет</button>' : ''}
           ${canPack ? '<button type="button" class="btn" id="wh2-asm-to-ops">Операции (пикинг)</button>' : ''}
           ${canSend ? '<button type="button" class="btn primary" id="wh2-asm-send">Отправить на объект</button>' : ''}
-          <a class="btn" target="_blank" href="/api/assembly/${id}/pdf">PDF</a>
-          <a class="btn" target="_blank" href="/api/assembly/${id}/labels">Бирки</a>
+          ${canPack ? `<button type="button" class="btn" id="wh2-asm-demob" title="Создать ведомость возврата с объекта">🏠 Демобилизация</button>` : ''}
+          ${pdfActionsHtml(id, pallets)}
         </div>
       </div>
       ${kpiBar(kpi)}
-      <div class="wh2-asm-sec-h">Позиции · ${items.length}</div>
-      <div class="wh2-asm-table">${items.length ? items.map((it) => `
-        <div class="wh2-asm-row" data-item-id="${it.id}">
-          <div class="wh2-asm-row__name">${esc(it.name)}</div>
-          <div class="wh2-asm-row__qty">${esc(String(it.quantity))} ${esc(it.unit || 'шт')}</div>
-          <div class="wh2-asm-row__st">${it.packed ? '<span class="wh2-asm-chip wh2-asm-chip--assembled">собрано</span>' : '<span class="wh2-asm-chip">' + esc(LINE_ST[it.line_status] || it.line_status || '—') + '</span>'}</div>
-          ${canPack && !it.packed ? `<button type="button" class="btn primary wh2-asm-pack" data-pack="${it.id}">Собрать на паллет</button>` : ''}
-        </div>`).join('') : emptyState('Нет позиций', 'Добавьте из корзины или change-order.', null)}
-      </div>
-      <div class="wh2-asm-sec-h">Паллеты · ${pallets.length}</div>
-      <div class="wh2-asm-pallets">${pallets.length ? pallets.map((p) => `
-        <div class="wh2-asm-pallet">Паллет ${esc(String(p.pallet_number || p.id))} · ${esc(p.status || '—')} · ${p.items || 0} поз. · ${p.packed || 0} собрано</div>
-      `).join('') : '<div class="wh2-asm-card__meta">Паллеты ещё не созданы — нажмите «＋ Паллет»</div>'}
-      </div>
+      <div id="wh2-asm-sheet-body"></div>
     </div>`;
 
+    renderSheetBody(host, { id, a, items, pallets, openPallets, canPack, showPackSelect, isDemob, canReceipt });
+
     const back = host.querySelector('#wh2-asm-back');
-    if (back) back.onclick = () => { location.hash = '#/warehouse-v2?tab=assemblies'; };
+    if (back) back.onclick = () => { stopSheetLive(); location.hash = '#/warehouse-v2?tab=assemblies'; };
     const conf = host.querySelector('#wh2-asm-confirm');
     if (conf) conf.onclick = async () => {
       try {
@@ -208,30 +252,20 @@ window.WH2Asm = (function () {
     if (mkPal) mkPal.onclick = async () => {
       try {
         await api()('/api/assembly/' + id + '/pallets', { method: 'POST', body: JSON.stringify({ label: 'Паллет ОФС' }) });
-        toast('Паллет', 'Создан', 'ok');
+        toast('Паллет', 'Создан — бирка в шапке ведомости', 'ok');
         openSheet(id, host);
       } catch (e) { toast('Ошибка', e.message, 'err'); }
     };
-    host.querySelectorAll('[data-pack]').forEach((btn) => {
-      btn.onclick = async () => {
-        const itemId = btn.getAttribute('data-pack');
-        try {
-          let palletId = (pallets[0] && pallets[0].id) || null;
-          if (!palletId) {
-            const pr = await api()('/api/assembly/' + id + '/pallets', { method: 'POST', body: JSON.stringify({ label: 'Паллет ОФС' }) });
-            palletId = (pr.pallet && pr.pallet.id) || (pr.item && pr.item.id) || pr.id;
-          }
-          if (palletId) {
-            await api()('/api/assembly/' + id + '/items/' + itemId + '/assign-pallet', {
-              method: 'PUT', body: JSON.stringify({ pallet_id: palletId })
-            });
-          }
-          await api()('/api/assembly/' + id + '/items/' + itemId + '/pack', { method: 'PUT', body: '{}' });
-          toast('Сборка', 'Позиция на паллете', 'ok');
-          openSheet(id, host);
-        } catch (e) { toast('Ошибка', e.message, 'err'); }
-      };
-    });
+    const demob = host.querySelector('#wh2-asm-demob');
+    if (demob) demob.onclick = async () => {
+      if (!window.confirm('Создать ведомость ДЕМОБИЛИЗАЦИИ из этой мобилизации? Позиции скопируются со статусом «возврат».')) return;
+      try {
+        const r = await api()('/api/assembly/' + id + '/create-demob', { method: 'POST', body: '{}' });
+        const nid = (r.item && r.item.id) || r.id;
+        toast('Демобилизация', nid ? ('Ведомость #' + nid + ' создана') : 'Создана', 'ok');
+        if (nid) openSheet(nid, host); else openSheet(id, host);
+      } catch (e) { toast('Ошибка', e.message, 'err'); }
+    };
     const send = host.querySelector('#wh2-asm-send');
     if (send) send.onclick = async () => {
       try {
@@ -239,6 +273,192 @@ window.WH2Asm = (function () {
         toast('Сборка', 'Отправлена', 'ok');
         openSheet(id, host);
       } catch (e) { toast('Ошибка', e.message, 'err'); }
+    };
+    const receipt = host.querySelector('#wh2-asm-receipt');
+    if (receipt) receipt.onclick = () => openReceipt(id, host);
+
+    bindSheetBody(host, { id, items, openPallets });
+    // D3: пока ведомость открыта и вкладка видима — обновляем её (склад видит укладку/приёмку без F5).
+    startSheetLive(host, id);
+  }
+
+  /** D3: тело ведомости (позиции + паллеты) рендерится отдельно, чтобы live перерисовывал только его. */
+  function renderSheetBody(host, s) {
+    const box = host.querySelector('#wh2-asm-sheet-body');
+    if (!box) return;
+    const { items, pallets, openPallets, canPack, showPackSelect, isDemob } = s;
+    const palletOpts = (sel) => (openPallets || []).map((p) =>
+      `<option value="${p.id}"${String(p.id) === String(sel) ? ' selected' : ''}>Паллет ${esc(String(p.pallet_number || p.id))}${p.label ? ' · ' + esc(p.label) : ''}</option>`
+    ).join('');
+    box.innerHTML = `
+      <div class="wh2-asm-sec-h">Позиции · ${items.length}</div>
+      <div class="wh2-asm-table">${items.length ? items.map((it) => {
+        const st = it.packed ? '<span class="wh2-asm-chip wh2-asm-chip--assembled">собрано</span>'
+          : (isDemob && it.return_status ? `<span class="wh2-asm-chip">${esc(RETURN_LABELS[it.return_status] || it.return_status)}</span>`
+            : '<span class="wh2-asm-chip">' + esc(LINE_ST[it.line_status] || it.line_status || '—') + '</span>');
+        const pick = (showPackSelect && !it.packed) ? `<select class="wh2-asm-row__sel" data-pal-sel="${it.id}">
+            ${palletOpts(it.pallet_id)}
+            <option value="${NEW_PALLET}">＋ новый паллет…</option>
+          </select>` : '';
+        return `<div class="wh2-asm-row" data-item-id="${it.id}">
+          <div class="wh2-asm-row__name">${esc(it.name)}</div>
+          <div class="wh2-asm-row__qty">${esc(String(it.quantity))} ${esc(it.unit || 'шт')}</div>
+          <div class="wh2-asm-row__st">${st}</div>
+          ${pick}
+          ${showPackSelect && !it.packed ? `<button type="button" class="btn primary wh2-asm-pack" data-pack="${it.id}">На паллет + бирка</button>` : ''}
+        </div>`;
+      }).join('') : emptyState('Нет позиций', isDemob ? 'Позиции скопирует «🏠 Демобилизация» из мобилизации.' : 'Добавьте из корзины или change-order.', null)}
+      </div>
+      <div class="wh2-asm-sec-h">Паллеты · ${pallets.length}</div>
+      <div class="wh2-asm-pallets">${pallets.length ? pallets.map((p) => `
+        <div class="wh2-asm-pallet">Паллет ${esc(String(p.pallet_number || p.id))}${p.label ? ' · ' + esc(p.label) : ''} · ${esc(p.status || '—')} · ${p.items || 0} поз. · ${p.packed || 0} собрано</div>
+      `).join('') : '<div class="wh2-asm-card__meta">Паллеты ещё не созданы — нажмите «＋ Паллет»</div>'}
+      </div>`;
+  }
+
+  /** D3: guided pick — строка знает свой паллет; новый создаётся ровно один раз и сразу получает бирку. */
+  function bindSheetBody(host, s) {
+    const { id, openPallets } = s;
+    host.querySelectorAll('[data-pack]').forEach((btn) => {
+      btn.onclick = async () => {
+        const itemId = btn.getAttribute('data-pack');
+        const sel = host.querySelector(`[data-pal-sel="${itemId}"]`);
+        const choice = sel ? sel.value : '';
+        let fresh = null;
+        try {
+          let palletId = (choice && choice !== NEW_PALLET) ? choice : (openPallets[0] && openPallets[0].id) || null;
+          if (choice === NEW_PALLET || !palletId) {
+            const pr = await api()('/api/assembly/' + id + '/pallets', { method: 'POST', body: JSON.stringify({ label: 'Паллет ОФС' }) });
+            fresh = (pr.pallet && pr.pallet.id) || (pr.item && pr.item.id) || pr.id;
+            palletId = fresh;
+          }
+          if (palletId) {
+            await api()('/api/assembly/' + id + '/items/' + itemId + '/assign-pallet', {
+              method: 'PUT', body: JSON.stringify({ pallet_id: palletId })
+            });
+          }
+          await api()('/api/assembly/' + id + '/items/' + itemId + '/pack', { method: 'PUT', body: '{}' });
+          toast('Сборка', fresh ? 'Позиция на новом паллете — бирка в шапке' : 'Позиция на паллете', 'ok');
+          _suppressLive = true;
+          openSheet(id, host);
+        } catch (e) { toast('Ошибка', e.message, 'err'); }
+      };
+    });
+  }
+
+  let _liveTimer = null;
+  let _suppressLive = false;
+  function stopSheetLive() { if (_liveTimer) { clearInterval(_liveTimer); _liveTimer = null; } }
+  function startSheetLive(host, id) {
+    stopSheetLive();
+    _liveTimer = setInterval(async () => {
+      if (document.hidden || _suppressLive || _sheetId !== id) { _suppressLive = false; return; }
+      // если пользователь ушёл с ведомости — глушим
+      if (!document.getElementById('wh2-asm-sheet-body')) { stopSheetLive(); return; }
+      try {
+        const d = await api()('/api/assembly/' + id);
+        const live = await api()('/api/assembly/' + id + '/live');
+        const a = d.item || {};
+        const pallets = d.pallets || live.pallets || [];
+        const openPallets = pallets.filter((p) => p.status !== 'received' && p.status !== 'shipped');
+        const canPack = isWh() && ['confirmed', 'packing'].includes(a.status);
+        renderSheetBody(host, {
+          id,
+          items: d.items || [],
+          pallets,
+          openPallets,
+          canPack,
+          showPackSelect: canPack && a.type !== 'demobilization',
+          isDemob: a.type === 'demobilization'
+        });
+        bindSheetBody(host, { id, openPallets });
+      } catch (_) { /* тихий пропуск: live не должен ломать страницу */ }
+    }, REFRESH_MS);
+  }
+
+  /** D3: приёмка/сверка возврата с объекта (desktop). Расхождения пишутся существующим POST /:id/reconcile. */
+  async function openReceipt(id, body) {
+    const host = body || document.getElementById('wh2-body');
+    let d;
+    try { d = await api()('/api/assembly/' + id); } catch (e) { toast('Ошибка', e.message, 'err'); return; }
+    const items = d.items || [];
+    const rowsHtml = items.map((it) => {
+      const exp = Number(it.expected_quantity != null ? it.expected_quantity : it.quantity) || 0;
+      const got = Number(it.quantity) || 0;
+      return `<div class="wh2-rc-row" data-rc="${it.id}" data-exp="${exp}">
+        <div class="wh2-rc-name">${esc(it.name)}<div class="wh2-asm-card__meta">ожидается ${exp} ${esc(it.unit || 'шт')}</div></div>
+        <input class="wh2-rc-inp" type="number" step="0.001" min="0" data-rc-qty="${it.id}" value="${got}">
+        <select class="wh2-rc-sel" data-rc-st="${it.id}">
+          <option value="">— причина, если меньше —</option>
+          <option value="returning"${it.return_status === 'returning' ? ' selected' : ''}>возврат</option>
+          <option value="damaged"${it.return_status === 'damaged' ? ' selected' : ''}>повреждено</option>
+          <option value="lost"${it.return_status === 'lost' ? ' selected' : ''}>утеря</option>
+          <option value="consumed"${it.return_status === 'consumed' ? ' selected' : ''}>израсходовано</option>
+        </select>
+        <input class="wh2-rc-inp" data-rc-rsn="${it.id}" placeholder="комментарий к расхождению" value="${esc(it.return_reason || '')}">
+      </div>`;
+    }).join('');
+    const root = UI.showModal({
+      title: 'Приёмка с объекта · сверка возврата',
+      html: `<div class="wh2-rc">
+        <p class="wh2-rc-hint">Укажите, сколько реально приехало. Если меньше ожидаемого — выберите причину (обязательна для «повреждено»/«утеря»). Расхождения уйдут в разбор возврата.</p>
+        <div class="wh2-rc-list">${rowsHtml || '<div class="wh2-asm-card__meta">Нет позиций</div>'}</div>
+        <div class="wh2-rc-add">
+          <div class="wh2-asm-card__meta" style="margin-bottom:6px">Приехало лишнее / не из ведомости (попадёт находкой на склад):</div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <input class="wh2-rc-inp" id="wh2-rc-extra-name" placeholder="название" style="flex:2;min-width:180px">
+            <input class="wh2-rc-inp" id="wh2-rc-extra-qty" type="number" step="0.001" min="0" placeholder="кол-во" style="width:110px">
+            <input class="wh2-rc-inp" id="wh2-rc-extra-unit" placeholder="ед." value="шт" style="width:80px">
+          </div>
+        </div>
+        <div class="wh2-rc-acts">
+          <button type="button" class="btn" id="wh2-rc-cancel">Отмена</button>
+          <button type="button" class="btn primary" id="wh2-rc-ok">Подтвердить приёмку</button>
+        </div>
+      </div>`
+    });
+    const scope = root || host;
+    const close = () => { try { UI.hideModal(root); } catch (_) { UI.hideModal(); } };
+    scope.querySelector('#wh2-rc-cancel').onclick = close;
+    scope.querySelector('#wh2-rc-ok').onclick = async () => {
+      const itemsPayload = [];
+      let bad = null;
+      scope.querySelectorAll('[data-rc]').forEach((rowEl) => {
+        const iid = rowEl.getAttribute('data-rc');
+        const exp = parseFloat(rowEl.getAttribute('data-exp')) || 0;
+        const qtyEl = scope.querySelector(`[data-rc-qty="${iid}"]`);
+        const stEl = scope.querySelector(`[data-rc-st="${iid}"]`);
+        const rsnEl = scope.querySelector(`[data-rc-rsn="${iid}"]`);
+        const got = parseFloat(qtyEl && qtyEl.value);
+        const rst = stEl ? stEl.value : '';
+        const rsn = rsnEl ? rsnEl.value : '';
+        if (Number.isNaN(got) || got < 0) { bad = 'Укажите количество по каждой позиции'; return; }
+        if (got < exp && (rst === 'damaged' || rst === 'lost') && !rsn.trim()) { bad = 'Для «повреждено»/«утеря» нужен комментарий'; return; }
+        itemsPayload.push({ item_id: +iid, received_qty: got, return_status: rst || undefined, return_reason: rsn || undefined });
+      });
+      if (bad) { toast('Проверьте форму', bad, 'warn'); return; }
+      const extras = [];
+      const en = scope.querySelector('#wh2-rc-extra-name');
+      if (en && en.value.trim()) {
+        extras.push({
+          name: en.value.trim(),
+          quantity: parseFloat((scope.querySelector('#wh2-rc-extra-qty') || {}).value) || 1,
+          unit: (scope.querySelector('#wh2-rc-extra-unit') || {}).value || 'шт'
+        });
+      }
+      const okBtn = scope.querySelector('#wh2-rc-ok');
+      if (okBtn) { okBtn.disabled = true; }
+      try {
+        const r = await api()('/api/assembly/' + id + '/reconcile', {
+          method: 'POST', body: JSON.stringify({ items: itemsPayload, extras })
+        });
+        toast('Приёмка', `Готово: расхождений ${r.shortages || 0}, находок ${r.extras_created || 0}`, 'ok');
+        close();
+        openSheet(id, host);
+      } catch (e) {
+        if (okBtn) { okBtn.disabled = false; }
+        toast('Ошибка', e.message, 'err');
+      }
     };
   }
 
@@ -391,9 +611,12 @@ window.WH2Asm = (function () {
 
   function render(body, tab, ctx) {
     _ctx = ctx || _ctx;
+    if (tab !== 'sheet') stopSheetLive(); // D3: live ведомости живёт только на открытой ведомости
     if (tab === 'assemblies') return renderAssemblies(body);
     if (tab === 'sheet') {
-      const id = _sheetId || (ctx && ctx.id);
+      // D3: id из адреса важнее «последней открытой» — иначе переход по ссылке/смене hash
+      // на ДРУГУЮ ведомость молча показывал старую (переход на демобилизацию не срабатывал).
+      const id = (ctx && ctx.id) || _sheetId;
       if (id) return openSheet(id, body);
       return renderAssemblies(body);
     }

@@ -872,14 +872,23 @@ window.AsgardProxiesPage = (function () {
     }, 30);
   }
 
-  function renderPage(opts) {
+  async function renderPage(opts) {
     opts = opts || {};
     var layout = opts.layout;
     var html = '<div id="prx-root"><div class="prx-empty">Загрузка…</div></div>';
-    if (layout && layout.setContent) layout.setContent(html);
-    else {
-      var main = document.getElementById('content') || document.getElementById('app-main') || document.body;
-      main.innerHTML = html;
+    // D-194: у страницы ДВА контура рендера. `layout` из app.js — это ФУНКЦИЯ
+    // (window.layout(body,{title})), а НЕ объект с setContent. Прежний код проверял
+    // `layout.setContent` (всегда false) и валился в document.body.innerHTML,
+    // стирая узел #app. После этого роутер падал «Cannot set properties of null
+    // (setting 'innerHTML')» и ВСЕ следующие страницы оставались мёртвыми.
+    // Правильный приём — как в contracts.js: вызвать layout(...) и дождаться его.
+    if (typeof layout === 'function') {
+      await layout(html, { title: opts.title || 'Доверенности' });
+    } else if (layout && typeof layout.setContent === 'function') {
+      layout.setContent(html);
+    } else {
+      var main = document.getElementById('app') || document.getElementById('content') || document.getElementById('app-main');
+      if (main) main.innerHTML = html;
     }
     loadProxies();
     window.addEventListener('asgard:proxies:changed', loadProxies);

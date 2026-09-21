@@ -448,6 +448,55 @@ window.AsgardRpReviewModal = (function () {
     let teamDrafts = [];
     let teamSummary = null;
     let editingParticipantDraft = false; // коллаб пишет в my-draft, не в финал
+    // Чек-лист анализа (D-203): шаблон и ответы грузим один раз при открытии вкладки.
+    let checklistData = { template: [], answers: {}, free_answers: [], loaded: false, saving: false };
+
+    /** Можно ли править чек-лист (хозяин анализа / дежурный / участник / wide). */
+    function canEditChecklist() {
+      if (isDirector || isViewer) return false;
+      // D-203: после закрытия анализа чек-лист неизменяем (он — основание решения о подаче).
+      // Проверяем по данным карточки, а не по isLocked: ТО открывает анализ редактируемым,
+      // и без этой строки он мог бы переписать закрытый чек-лист (бэк вернёт 409).
+      if (review && review.analysis_finalized_at) return false;
+      if (isTo) return false;              // ТО смотрит анализ, но не правит
+      if (isLocked && !editingParticipantDraft) return false;
+      return !!canFinalize || editingParticipantDraft || isFinalOwner;
+    }
+
+    function renderChecklistTab() {
+      if (!checklistData.loaded) {
+        // Подгрузка асинхронно, первый кадр — плейсхолдер.
+        loadChecklist();
+        return '<div class="rp-review-tab-body" id="rpChecklistHost"><p class="muted">Загрузка чек-листа…</p></div>';
+      }
+      const ro = !canEditChecklist();
+      const wordUrl = API.analysisChecklistWordUrl ? API.analysisChecklistWordUrl(tender.id) : '';
+      return '<div class="rp-review-tab-body" id="rpChecklistHost">' +
+        window.AsgardAnalysisChecklist.html(
+          checklistData.template, checklistData.answers, checklistData.free_answers,
+          { readOnly: ro, wordUrl }
+        ) + '</div>';
+    }
+
+    function loadChecklist(force) {
+      if (checklistData.loading) return Promise.resolve();
+      if (checklistData.loaded && !force) return Promise.resolve();
+      checklistData.loading = true;
+      return window.AsgardAnalysisChecklist.load(tender.id).then((d) => {
+        checklistData = {
+          template: d.template || [],
+          answers: d.answers || {},
+          free_answers: d.free_answers || [],
+          loaded: true,
+          loading: false,
+          error: !!d.error
+        };
+        if (tab === 'checklist') rerender();
+      }).catch(() => {
+        checklistData.loading = false;
+        checklistData.loaded = true;
+      });
+    }
 
     function titleText() {
       return 'Отчёт РП · #' + tender.id;
@@ -1028,6 +1077,7 @@ window.AsgardRpReviewModal = (function () {
     function bodyHtml() {
       const tabs = [
         { id: 'report', label: 'Отчёт' },
+        { id: 'checklist', label: 'Чек-лист' },
         { id: 'tender', label: 'Тендер' },
         { id: 'history', label: 'История' },
         { id: 'team', label: 'Команда' },
@@ -1060,6 +1110,7 @@ window.AsgardRpReviewModal = (function () {
       });
       h += '</div>';
       if (tab === 'report') h += renderReportTab();
+      else if (tab === 'checklist') h += renderChecklistTab();
       else if (tab === 'tender') h += renderTenderTab();
       else if (tab === 'history') h += renderHistoryTab();
       else if (tab === 'thread') h += renderThreadTab();
@@ -1397,6 +1448,27 @@ window.AsgardRpReviewModal = (function () {
           );
         }
         if (!ok) return;
+        // D-203: анализ закрывается только с заполненным чек-листом. Сохраняем его
+        // жёстко (require_complete) ДО закрытия — иначе бэк вернёт 400 и анализ останется открытым.
+        if (isAnalysis) {
+          try {
+            const clHost = document.getElementById('rpChecklistHost');
+            if (clHost && canEditChecklist()) {
+              await window.AsgardAnalysisChecklist.save(tender.id, clHost, { requireComplete: true });
+            }
+          } catch (e) {
+            if (e && e.code === 'CHECKLIST_INCOMPLETE') {
+              tab = 'checklist';
+              toast('Чек-лист', 'Заполните ' + (e.missing || []).length + ' обязательных вопрос(ов) чек-листа: ' +
+                (e.missing || []).map((m) => '«' + m.text + '»').slice(0, 3).join(', ') +
+                ((e.missing || []).length > 3 ? ' …' : ''), 'err');
+              rerender();
+              return;
+            }
+            toast('Чек-лист', e.message || 'Не удалось сохранить чек-лист', 'err');
+            return;
+          }
+        }
         const ov = await confirmAdminOverrideIfNeeded(true);
         if (!ov.ok) return;
         API.saveRpReview(tender.id, collectPayload(true, ov.override)).then((d) => {
@@ -1413,9 +1485,38 @@ window.AsgardRpReviewModal = (function () {
           tab = b.dataset.rptab;
           if (tab === 'thread') {
             loadThreadMessages().then(() => rerender());
+          } else if (tab === 'checklist') {
+            loadChecklist().then(() => { if (tab === 'checklist') rerender(); });
+            rerender();
           } else {
             rerender();
           }
+        });
+      });
+
+      // Чек-лист: сохранение из вкладки.
+      document.getElementById('rpClSave')?.addEventListener('click', () => {
+        const host = document.getElementById('rpChecklistHost');
+        if (!host || checklistData.saving) return;
+        checklistData.saving = true;
+        const st = document.getElementById('rpClStatus');
+        if (st) st.textContent = 'Сохранение…';
+        const payload = window.AsgardAnalysisChecklist.collect(host);
+        API.saveAnalysisChecklist(tender.id, {
+          answers: payload.answers,
+          free_answers: payload.free_answers
+        }).then(() => {
+          checklistData.answers = payload.answers;
+          checklistData.free_answers = payload.free_answers;
+          checklistData.saving = false;
+          const s = document.getElementById('rpClStatus');
+          if (s) s.textContent = 'Сохранено';
+          toast('Чек-лист', 'Сохранено', 'ok');
+        }).catch((e) => {
+          checklistData.saving = false;
+          const s = document.getElementById('rpClStatus');
+          if (s) s.textContent = '';
+          toast('Чек-лист', e.message || 'Не удалось сохранить', 'err');
         });
       });
       document.querySelectorAll('[data-toggle-sec]').forEach((b) => {

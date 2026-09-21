@@ -261,12 +261,19 @@ window.AsgardTasksPage = (function() {
       }
     } catch (e) {
       console.error('loadTasks error:', e);
-      document.getElementById('tasksList').innerHTML = '<div style="color:var(--red); padding:10px">Ошибка загрузки задач</div>';
+      // D-205: и здесь контейнера может уже не быть — без защиты это второй TypeError
+      // из catch (страница «мертва» без внятного сообщения).
+      const host = document.getElementById('tasksList');
+      if (host) host.innerHTML = '<div style="color:var(--red); padding:10px">Ошибка загрузки задач</div>';
     }
   }
 
   function renderTasksList() {
     const container = document.getElementById('tasksList');
+    // D-205: страница могла уже уйти из DOM (уход по роутеру/перерисовка SPA), пока шёл
+    // запрос — getElementById вернёт null и запись в innerHTML падала TypeError'ом.
+    // Выходим тихо: рендерить в никуда нечего, страница не на экране.
+    if (!container) return;
     if (!currentTasks.length) {
       container.innerHTML = '<div style="color:var(--dim); padding:20px; text-align:center">Нет задач</div>';
       return;
@@ -523,13 +530,17 @@ window.AsgardTasksPage = (function() {
       renderTodoList();
     } catch (e) {
       console.error('loadTodo error:', e);
-      document.getElementById('todoList').innerHTML = '<div style="color:var(--red)">Ошибка загрузки</div>';
+      // D-205: без защиты это бросало второй TypeError поверх исходного.
+      const host = document.getElementById('todoList');
+      if (host) host.innerHTML = '<div style="color:var(--red)">Ошибка загрузки</div>';
     }
   }
 
   function renderTodoList() {
     const container = document.getElementById('todoList');
     const counter = document.getElementById('todoCounter');
+    // D-205: см. комментарий в renderTasksList — страница могла уже уйти из DOM.
+    if (!container) return;
     const doneCount = currentTodo.filter(i => i.done).length;
 
     if (counter) {
@@ -646,6 +657,11 @@ window.AsgardTasksPage = (function() {
     filterTasks,
     acceptTask,
     startTask,
+    // D-205: экспортируем рендеры для детерминированного гейта tools/verify_tasks_render.js
+    // (проверка, что при отсутствующем контейнере функция выходит тихо, а не бросает TypeError).
+    renderTasksList,
+    renderTodoList,
+    renderCreatedTasksList,
     showCompleteModal,
     closeCompleteModal,
     submitComplete,

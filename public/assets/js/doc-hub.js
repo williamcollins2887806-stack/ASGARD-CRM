@@ -9,6 +9,11 @@ window.AsgardDocHubPage = (function () {
     'ADMIN', 'BUH', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV', 'DIRECTOR',
     'PM', 'HEAD_PM', 'TO', 'HEAD_TO', 'PROC', 'WAREHOUSE', 'OFFICE_MANAGER'
   ];
+  // D-201: зеркало бэкендного WH_ROLES (src/routes/doc-registry.js:20). Действие
+  // «Склад» (quick action=wh) доступно только складу/бух/admin — бэк отдаёт 403
+  // остальным. Кнопку остальным НЕ показываем, иначе роль видит действие,
+  // которое всегда падает.
+  const WH_ROLES = ['WAREHOUSE', 'ADMIN', 'BUH'];
   const VAT_RATE = 0.22;
   const OPS_OPTIONS = [
     ['', 'Все статусы'],
@@ -67,6 +72,16 @@ window.AsgardDocHubPage = (function () {
     if (json !== false) h['Content-Type'] = 'application/json';
     return h;
   }
+  // D-201: роль текущего пользователя (localStorage тише и надёжнее, чем дёргать API).
+  function role() {
+    try {
+      const u = JSON.parse(localStorage.getItem('asgard_user') || '{}');
+      return u.role || '';
+    } catch (_) {
+      return '';
+    }
+  }
+  function canWh() { return WH_ROLES.includes(role()); }
   async function confirm(title, body) {
     if (window.AsgardConfirm && typeof AsgardConfirm.open === 'function') {
       return !!(await AsgardConfirm.open({ title, body }));
@@ -90,6 +105,27 @@ window.AsgardDocHubPage = (function () {
       throw err;
     }
     return j;
+  }
+
+  // D-211 (B3): в карточке печаталось СЫРОЕ значение wh_status («await»), а не
+  // человеческий статус. Список — зеркало WH_CHAIN из src/routes/doc-registry.js:21.
+  // Неизвестное значение печатаем как есть (лучше код, чем пустота) — но известные
+  // все переведены. Отдельно от statusLabel: у таблицы и карточки разная семантика.
+  function whLabel(row) {
+    const map = {
+      none: 'не задействован',
+      await: 'у склада (ждёт обработки)',
+      received: 'склад обработал',
+      to_office: 'в пути в офис',
+      buh_ok: 'принято бухгалтерией'
+    };
+    const v = row.wh_status;
+    if (!v || v === 'none') {
+      // цепочка склада могла идти через ops_status (историческая запись)
+      if (row.ops_status === 'wh_transfer') return map.await;
+      return '—';
+    }
+    return map[v] || String(v);
   }
 
   function statusLabel(row) {
@@ -301,7 +337,7 @@ window.AsgardDocHubPage = (function () {
           <div class="dh-qa">
             <button type="button" data-qa="pay" title="К оплате" ${r.pay_status === 'paid' ? 'disabled' : ''}>${ico.pay}</button>
             <button type="button" data-qa="sf" title="СФ получена">${ico.sf}</button>
-            <button type="button" data-qa="wh" title="Склад">${ico.wh}</button>
+            ${canWh() ? `<button type="button" data-qa="wh" title="Склад">${ico.wh}</button>` : ''}
             <button type="button" data-qa="open" title="Карточка">${ico.open}</button>
           </div>
         </td>
@@ -842,7 +878,7 @@ window.AsgardDocHubPage = (function () {
     if (row.original_path_url) {
       atts = atts.concat([{ url: row.original_path_url, name: 'Оригинал / путь' }]);
     }
-    if (!atts.length) return '<div class="dh-empty dh-empty--sm"><div class="dh-empty__t">Нет вложений</div><p>Добавьте скан счёта или СФ при создании / через API upload.</p></div>';
+    if (!atts.length) return '<div class="dh-empty dh-empty--sm"><div class="dh-empty__t">Нет вложений</div><p>Скан счёта или СФ можно приложить при создании документа или позже в этой карточке.</p></div>';
     return atts.map((a) => {
       const url = typeof a === 'string' ? a : (a.url || a.path || '');
       const name = typeof a === 'string' ? a.split('/').pop() : (a.name || a.filename || url || 'файл');
@@ -916,7 +952,7 @@ window.AsgardDocHubPage = (function () {
               <dt>Отв. док.</dt><dd>${esc(row.doc_owner_name || '—')}</dd>
               <dt>РП</dt><dd>${esc(row.pm_name || '—')}</dd>
               <dt>1С</dt><dd>${esc(row.onec_id || 'не связан')}</dd>
-              <dt>Склад</dt><dd>${esc(row.wh_status || '—')}</dd>
+              <dt>Склад</dt><dd>${esc(whLabel(row))}</dd>
               <dt>Оплата до</dt><dd>${fmtDate(row.payment_due_at)}</dd>
             </dl>
             <div class="dh-section">
@@ -926,7 +962,7 @@ window.AsgardDocHubPage = (function () {
             ${editIncompleteHtml(row)}
             <div class="dh-drawer__actions">
               <button type="button" class="dh-btn dh-btn--ghost" data-qa="sf">СФ</button>
-              <button type="button" class="dh-btn dh-btn--ghost" data-qa="wh">Склад</button>
+              ${canWh() ? '<button type="button" class="dh-btn dh-btn--ghost" data-qa="wh">Склад</button>' : ''}
               <button type="button" class="dh-btn dh-btn--primary" data-qa="pay">К оплате</button>
               <button type="button" class="dh-btn dh-btn--ok" id="dhParseCatalog" ${row.dir !== 'in' ? 'disabled title="Только входящие"' : ''}>В каталог</button>
             </div>

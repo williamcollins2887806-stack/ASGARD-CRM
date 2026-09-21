@@ -1,7 +1,7 @@
 'use strict';
 /**
  * Fast Doc Hub gate: API full chain + UI for all hub roles.
- * Writes tests/reports/doc-hub-e2e/INDEX.md
+ * Writes tests/reports/doc-hub-e2e/report-gate.json + INDEX-gate.md
  */
 const fs = require('fs');
 const path = require('path');
@@ -96,6 +96,16 @@ async function openDocHub(context, auth) {
     }
   }, auth);
   const page = await context.newPage();
+  // B2 (негативная находка верификатора): в этом suite НЕ было ни одного слушателя
+  // страницы — прогон мог быть «зелёным» при ошибках консоли и 5xx. Ставим ДО первой
+  // навигации, иначе ранние ошибки не поймаются.
+  const consoleErrors = [];
+  const http5xx = [];
+  page.on('pageerror', (e) => consoleErrors.push(String(e.message || e)));
+  page.on('console', (m) => { if (m.type() === 'error') consoleErrors.push(m.text()); });
+  page.on('response', (r) => { const s = r.status(); if (s >= 500) http5xx.push(s + ' ' + r.url()); });
+  page.__consoleErrors = consoleErrors;
+  page.__http5xx = http5xx;
   await page.goto(BASE + '/', { waitUntil: 'commit', timeout: 60000 });
   await page.evaluate(async () => {
     if (navigator.serviceWorker) {
@@ -170,6 +180,55 @@ async function openDocHub(context, auth) {
   add('api_wh', (await api(token, 'POST', '/' + id + '/quick', { action: 'wh' })).status === 200, '');
   add('api_pay_redirect', !!(await api(token, 'POST', '/' + id + '/quick', { action: 'pay' })).body.redirect, '');
   add('api_export', !!(await api(token, 'POST', '/export-1c', { ids: [id] })).body.csv, '');
+
+  // ── B1: Excel-ВЛОЖЕНИЕ → автопарс БЕЗ обращения к AI ───────────────────────
+  // Проверяем ветку maybeScheduleParse → parseProcurementExcel (opts.buffer).
+  // Документ создаём БЕЗ parsed_json, иначе schedule вернётся раньше (lines.length > 0).
+  const create2 = await api(token, 'POST', '/', {
+    dir: 'in', invoice_number: 'GATE-XLSX-' + stamp, invoice_date: new Date().toISOString().slice(0, 10),
+    counterparty_name: 'ООО Gate XLSX', amount_gross: 166.5, has_vat: false,
+    contract_mode: 'once', purpose_consumables: true
+  });
+  const id2 = create2.body.id;
+  let upStatus = 0;
+  try {
+    const ExcelJS = require('exceljs');
+    const wb = new ExcelJS.Workbook();
+    const ws = wb.addWorksheet('list');
+    ws.addRow(['Наименование', 'Артикул', 'Кол-во', 'Ед', 'Цена']);
+    ws.addRow(['Gate XLSX ' + stamp, 'GX-' + stamp, 3, 'шт', 55.5]);
+    const xbuf = Buffer.from(await wb.xlsx.writeBuffer());
+    const fd = new FormData();
+    fd.append('file', new Blob([xbuf], {
+      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    }), 'attach-' + stamp + '.xlsx');
+    const up = await fetch(BASE + '/api/doc-registry/' + id2 + '/upload', {
+      method: 'POST', headers: { Authorization: 'Bearer ' + token }, body: fd
+    });
+    upStatus = up.status;
+  } catch (e) {
+    add('api_attach_upload', false, e.message);
+  }
+  if (upStatus) add('api_attach_upload', upStatus === 200, 'HTTP ' + upStatus);
+  // ждём фоновый parse (без AI) — ROW должен лечь в products/price_records
+  let autoPj = null;
+  let autoHit = null;
+  for (let i = 0; i < 12; i++) {
+    await new Promise((r) => setTimeout(r, 400));
+    const d = await api(token, 'GET', '/' + id2);
+    const pj = d.body && d.body.parsed_json;
+    if (Array.isArray(pj) && pj.length) { autoPj = pj; break; }
+  }
+  add('api_attach_autoparse', !!(autoPj && autoPj.length), autoPj ? JSON.stringify(autoPj[0]) : 'parsed_json is empty');
+  for (let i = 0; i < 8; i++) {
+    const p = await fetch(BASE + '/api/products/search?q=' + encodeURIComponent('GX-' + stamp), {
+      headers: { Authorization: 'Bearer ' + token }
+    }).then((r) => r.json());
+    if (Array.isArray(p.items) && p.items.length) { autoHit = p.items[0]; break; }
+    await new Promise((r) => setTimeout(r, 300));
+  }
+  add('api_attach_catalog', !!autoHit, autoHit ? (autoHit.article || autoHit.name) : 'no product');
+
   const mergedPath = path.join(OUT, '..', 'doc-hub-excel', 'merged-rows.json');
   const mergedRows = JSON.parse(fs.readFileSync(mergedPath, 'utf8'));
   const dry = await api(token, 'POST', '/excel/dry-run', { rows: mergedRows });
@@ -213,10 +272,43 @@ async function openDocHub(context, auth) {
           await page.waitForTimeout(300);
           await scope.uncheck({ force: true }).catch(() => {});
           add(role.key + '_scope', true, 'mine/all');
+          // ── B1: «scope=mine» переживает F5 (не сбрасывается в all) ──────────
+          const respP = page.waitForResponse(
+            (r) => r.url().includes('/api/doc-registry') && r.request().method() === 'GET',
+            { timeout: 9000 }
+          ).catch(() => null);
+          await page.reload({ waitUntil: 'domcontentloaded' }).catch(() => {});
+          const resp = await respP;
+          await dismissChrome(page);
+          // Флак 20.09: после reload 600 мс могло не хватить на отрисовку, элемент
+          // отсутствовал -> count()=0 -> checkedAfter дефолтился в true и проверка
+          // ложно падала (хотя запрос уже нёс scope=mine). Ждём появления элемента
+          // и читаем состояние ТОЛЬКО если он реально есть; иначе честный FAIL.
+          const sc2 = page.locator('#dhScopeAll');
+          const scAttached = await sc2.first().waitFor({ state: 'attached', timeout: 12000 })
+            .then(() => true).catch(() => false);
+          if (!scAttached) {
+            add(role.key + '_scope_f5', false, 'скоп-чекбокс не отрисовался после F5');
+          } else {
+            const checkedAfter = await sc2.isChecked().catch(() => null);
+            const q = resp ? (resp.url().split('?')[1] || '') : '';
+            add(role.key + '_scope_f5', checkedAfter === false && !/scope=all/.test(q),
+              'checked=' + checkedAfter + ' q=' + (q || 'no-call'));
+          }
         } else {
           add(role.key + '_scope', false, 'missing');
         }
       }
+      // B2: 0 console.error и 0 ответов 5xx под ролью (как в roles/full-roles).
+      // D-202: `net::ERR` НЕ глушим — сетевой сбой (ERR_CONNECTION_REFUSED, ERR_ABORTED)
+      // не даёт ответа, поэтому _no_5xx его не поймает; это отдельный класс дефекта.
+      const fatal = (page.__consoleErrors || []).filter((t) => !/favicon|ResizeObserver|Download the React/i.test(t));
+      add(role.key + '_no_pageerror', fatal.length === 0, fatal.slice(0, 2).join(' | '));
+      const h5 = page.__http5xx || [];
+      add(role.key + '_no_5xx', h5.length === 0, h5.slice(0, 2).join(' | '));
+      // D-202: сетевые сбои, по которым вообще не пришёл ответ (failed-запросы к API).
+      const netFail = fatal.filter((t) => /net::ERR|Failed to fetch|ERR_ABORTED/i.test(t));
+      add(role.key + '_no_netfail', netFail.length === 0, netFail.slice(0, 2).join(' | '));
     } catch (e) {
       add(role.key + '_exception', false, e.message);
     }
@@ -228,8 +320,8 @@ async function openDocHub(context, auth) {
   const fail = report.checks.filter((c) => !c.pass).length;
   report.finished_at = new Date().toISOString();
   report.summary = { pass, fail };
-  fs.writeFileSync(path.join(OUT, 'report.json'), JSON.stringify(report, null, 2));
-  fs.writeFileSync(path.join(OUT, 'INDEX.md'), [
+  fs.writeFileSync(path.join(OUT, 'report-gate.json'), JSON.stringify(report, null, 2));
+  fs.writeFileSync(path.join(OUT, 'INDEX-gate.md'), [
     '# Doc Hub E2E INDEX (gate)',
     '',
     `PASS ${pass} / FAIL ${fail}`,
