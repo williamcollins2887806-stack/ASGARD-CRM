@@ -16,6 +16,9 @@ tests/reports/*
 !tests/reports/PHASE2-PARITY-MATRIX.md
 !tests/reports/_FIX-QUEUE.md
 !tests/reports/.last-verified
+# Таблица истины Шага 0 (D-193): по каждому пункту B/C/D — «в коде / работает в рантайме / нет».
+# На ней стоит вход в план, поэтому решение обязано быть в истории, а не только на диске.
+!tests/reports/BCD-TRUTH-TABLE.md
 # Журнал разбора прод-строк: на нём стоит гейт audit_silent_reverts.js (pre-deploy),
 # поэтому решение обязано быть в истории, а не только на диске (D-151).
 !tests/reports/ASSET-PROD-DIFF-ACK.json
@@ -128,6 +131,10 @@ tests/reports/smoke-v2-final/
 # Без этого `git add -A` утаскивает в историю ~1000 файлов временных выгрузок.
 _tmp_*/
 _tmp_*
+# Рабочие каталоги разовых проверок (D1/D2, 21.09.2026): скрипты-зонды и логи гейтов.
+# Содержимое — одноразовое, в истории не нужно (как _tmp_*); сами гейты живут в tools/.
+_d12_tmp/
+_verif_tmp/
 tools/_tz_work/
 tools/_tz_*/
 _v2_deploy.tar
@@ -158,3 +165,7 @@ __pycache__/
 /prod_bc.css
 /prod_bc.js
 /prod_pers.js
+
+# Точки отката прода (tools/prod_snapshot.py, D-191): ~63 МБ бинаря на снимок.
+# Хранятся локально и на проде, в git не место — сюда же местные .json-метаданные.
+/_snapshots/
