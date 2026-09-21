@@ -82,11 +82,15 @@ if (!moneySrc.includes(moneyGood)) {
 // и показ полей — к `Math.round` до рублей. Ожидание: гейт краснеет на V8/V9.
 const d244GoodParse = L(regSrc,
   '  function parseMoneyInput(v) {',
-  "    let s = String(v == null ? '' : v).replace(/[\\s\\u00a0\\u2009₽]/g, '');"
+  "    const raw = String(v == null ? '' : v).trim();",
+  "    if (!raw) return NaN;",
+  "    let s = raw.replace(/[\\s\\u00a0\\u2009₽]/g, '');"
 );
 const d244BrokenParse = L(regSrc,
   '  function parseMoneyInput(v) {',
-  "    let s = String(v == null ? '' : v).replace(/[^\\d]/g, '');"
+  "    const raw = String(v == null ? '' : v).trim();",
+  "    if (!raw) return NaN;",
+  "    let s = raw.replace(/[^\\d]/g, '');"
 );
 const d244GoodFmt = L(regSrc,
   '  function fmtMoneyInput(v) {',
@@ -101,12 +105,48 @@ const d244BrokenFmt = L(regSrc,
   '    return String(Math.round(n));'
 );
 
+const d244GoodSave = L(regSrc,
+  "              const exRaw = String(exInp?.value || '').trim();",
+  "              const withRaw = String(withInp?.value || '').trim();",
+  '              const finalNoVat = parseMoneyInput(exRaw);',
+  '              const finalWithVat = parseMoneyInput(withRaw);'
+);
+const d244BrokenSave = L(regSrc,
+  "              const finalNoVat = Number(String(exInp?.value || '').replace(/[^\\d]/g, '')) || 0;",
+  "              const finalWithVat = Number(String(withInp?.value || '').replace(/[^\\d]/g, '')) || 0;"
+);
+const d244GoodGuard = L(regSrc,
+  "    if (!/^[\\d.,]+$/.test(s)) return NaN; // мусор/минус/экспонента — не молчаливый ноль"
+);
+const d244BrokenGuard = L(regSrc,
+  '    s = s.replace(/[^\\d]/g, "");'
+);
+const d244GoodStrict = L(regSrc,
+  "              if ((exRaw && !isFinite(finalNoVat)) || (withRaw && !isFinite(finalWithVat))) {",
+  "                toast('Не понимаю формат суммы — проверьте ввод', 'warn');",
+  '                return;',
+  '              }',
+  '              const exN = isFinite(finalNoVat) ? finalNoVat : 0;',
+  '              const withN = isFinite(finalWithVat) ? finalWithVat : 0;'
+);
+const d244BrokenStrict = L(regSrc,
+  '              const exN = finalNoVat;',
+  '              const withN = finalWithVat;'
+);
+
 if (!regSrc.includes(d244GoodParse)) {
   fail('registry_tab: маркер parseMoneyInput не найден — D-244-мутант собрать нельзя (код изменился?)');
 } else if (!regSrc.includes(d244GoodFmt)) {
   fail('registry_tab: маркер fmtMoneyInput не найден — D-244-мутант собрать нельзя (код изменился?)');
+} else if (!regSrc.includes(d244GoodSave) || !regSrc.includes(d244GoodGuard) || !regSrc.includes(d244GoodStrict)) {
+  fail('registry_tab: маркеры сборки сумм/строгого гейта не найдены — D-244-мутант собрать нельзя (код изменился?)');
 } else if (!bad) {
-  fs.writeFileSync(D244_OUT, regSrc.replace(d244GoodParse, d244BrokenParse).replace(d244GoodFmt, d244BrokenFmt));
+  fs.writeFileSync(D244_OUT, regSrc
+    .replace(d244GoodParse, d244BrokenParse)
+    .replace(d244GoodFmt, d244BrokenFmt)
+    .replace(d244GoodGuard, d244BrokenGuard)
+    .replace(d244GoodSave, d244BrokenSave)
+    .replace(d244GoodStrict, d244BrokenStrict));
   console.log('мутант записан:', D244_OUT);
 }
 

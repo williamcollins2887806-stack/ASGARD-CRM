@@ -586,25 +586,55 @@ window.AsgardRegistryTab = (function () {
    * Разбор суммы из поля ввода. Раньше здесь стоял `digits()` = `replace(/\D/g,'')`,
    * который УСЕКАЛ копейки: сохранённую базу `111,37` поле показывало как «111», и при
    * сохранении без правок в PATCH уходило `111` (D-244, найдено сертификацией D-243).
-   * Теперь принимаем: «1 000 000», «1000000,50», «111.37», «1.000.000» (точки-разделители
-   * тысяч, если после точки 3+ цифры), «₽», неразрывные пробелы.
+   *
+   * Возвращает ЧИСЛО или NaN, если формат непонятен/неоднозначен. NaN здесь — не «ноль»:
+   * вызывающий ОБЯЗАН заблокировать сохранение и сказать пользователю, а не молча подставить
+   * другое поле или предзаполнение (иначе «ввёл одно, ушло другое» — тот же класс дефекта).
+   *
+   * Правила (ru-локаль, суммы — рубли с копейками):
+   *   «1 000 000», «1000000», «₽ 1000»        → целое;
+   *   «111,37», «111.37», «1000,50»            → копейки (1–2 цифры после разделителя);
+   *   «1.000.000», «1,000», «1,000,000»        → разделители тысяч (группы по 3);
+   *   «1,000.50», «1.000,50»                    → тысячи + копейки;
+   *   «12.34.56», «abc», «-5», «1e15», «0.005» → NaN (неоднозначно/не сумма).
    */
   function parseMoneyInput(v) {
-    let s = String(v == null ? '' : v).replace(/[\s\u00a0\u2009₽]/g, '');
-    if (s.indexOf(',') >= 0) {
-      // Запятая — десятичный разделитель; точки при этом считаем разделителями тысяч.
-      s = s.replace(/\./g, '').replace(',', '.');
-      s = s.replace(/[^\d.]/g, '');
-      const d = s.indexOf('.');
-      if (d >= 0) s = s.slice(0, d + 1) + s.slice(d + 1).replace(/\./g, '');
-    } else {
-      const dots = (s.match(/\./g) || []).length;
-      const after = s.slice(s.lastIndexOf('.') + 1);
-      if (!(dots === 1 && /^\d{1,2}$/.test(after))) s = s.replace(/\./g, '');
-      s = s.replace(/[^\d.]/g, '');
+    const raw = String(v == null ? '' : v).trim();
+    if (!raw) return NaN;
+    let s = raw.replace(/[\s\u00a0\u2009₽]/g, '');
+    if (!/^[\d.,]+$/.test(s)) return NaN; // мусор/минус/экспонента — не молчаливый ноль
+    s = s.replace(/[.,]+$/, '');          // «1000.» — хвостовой разделитель не значим
+    if (!s) return NaN;
+
+    // Десятичный разделитель — ПОСЛЕДНИЙ из «,»/«.», и только если после него 1–2 цифры.
+    let decIdx = -1;
+    for (let i = s.length - 1; i >= 0; i--) {
+      if (s[i] === ',' || s[i] === '.') {
+        const after = s.length - 1 - i;
+        if (after >= 1 && after <= 2) decIdx = i;
+        break;
+      }
     }
-    const n = Number(s);
-    return isFinite(n) ? n : 0;
+    const intPart = decIdx >= 0 ? s.slice(0, decIdx) : s;
+    const fracPart = decIdx >= 0 ? s.slice(decIdx + 1) : '';
+
+    let intDigits = '';
+    if (intPart) {
+      const parts = intPart.split(/[.,]/);
+      if (parts.some((p) => !/^\d+$/.test(p))) return NaN;
+      if (parts.length === 1) {
+        intDigits = parts[0];
+      } else {
+        const sepChars = intPart.match(/[.,]/g) || [];
+        if (sepChars.some((c) => c !== sepChars[0])) return NaN; // смесь «1.000,000» — неоднозначно
+        if (parts[0] === '0') return NaN;                        // «0.005» — не сумма
+        if (parts[0].length < 1 || parts[0].length > 3) return NaN;
+        for (let i = 1; i < parts.length; i++) if (parts[i].length !== 3) return NaN;
+        intDigits = parts.join('');
+      }
+    }
+    const n = Number((intDigits || '0') + (fracPart ? '.' + fracPart : ''));
+    return isFinite(n) && n >= 0 ? n : NaN;
   }
 
   /**
@@ -666,11 +696,21 @@ window.AsgardRegistryTab = (function () {
           if (moneyBox) moneyBox.style.display = (pick?.value === 'подались') ? '' : 'none';
           if (cancelBox) cancelBox.style.display = (pick?.value === 'отмена') ? '' : 'none';
         };
-        const digits = parseMoneyInput;
-        const updateVat = () => {
-          const w = parseMoneyInput(withInp?.value);
-          const e = parseMoneyInput(exInp?.value);
+        const showSumError = (msg) => {
           if (!vatLine) return;
+          vatLine.textContent = msg || 'Не понимаю формат суммы — проверьте ввод';
+          vatLine.style.color = 'var(--err-t,#ff5b5b)';
+        };
+        const updateVat = () => {
+          const wRaw = String(withInp?.value || '').trim();
+          const eRaw = String(exInp?.value || '').trim();
+          const w = parseMoneyInput(wRaw);
+          const e = parseMoneyInput(eRaw);
+          if (!vatLine) return;
+          vatLine.style.color = '';
+          // Нечисловой/неоднозначный ввод НЕ подменяем молча — показываем ошибку и
+          // уходим (сохранение тоже заблокировано ниже), иначе «ввёл одно, ушло другое».
+          if ((wRaw && !isFinite(w)) || (eRaw && !isFinite(e))) { showSumError(''); return; }
           if (w > 0) {
             const base = e > 0 ? e : (M() ? M().withoutVat(w, vatPct) : Math.round(w / (1 + vatPct / 100)));
             vatLine.textContent = 'в т.ч. НДС ' + vatPct + '%: ' + formatMoney(Math.round((w - base) * 100) / 100);
@@ -681,7 +721,7 @@ window.AsgardRegistryTab = (function () {
         updateVat();
         exInp?.addEventListener('input', () => {
           const n = parseMoneyInput(exInp.value);
-          if (n > 0 && withInp) {
+          if (isFinite(n) && n > 0 && withInp) {
             // Показываем копейки, если они есть, — «видно = уйдёт в PATCH» (D-244).
             withInp.value = fmtMoneyInput(M() ? M().withVat(n, vatPct) : n * (1 + vatPct / 100));
           }
@@ -689,7 +729,7 @@ window.AsgardRegistryTab = (function () {
         });
         withInp?.addEventListener('input', () => {
           const n = parseMoneyInput(withInp.value);
-          if (n > 0 && exInp) {
+          if (isFinite(n) && n > 0 && exInp) {
             exInp.value = fmtMoneyInput(M() ? M().withoutVat(n, vatPct) : n / (1 + vatPct / 100));
           }
           updateVat();
@@ -699,9 +739,19 @@ window.AsgardRegistryTab = (function () {
           const next = pick?.value || st;
           try {
             if (next === 'подались') {
-              const finalNoVat = parseMoneyInput(exInp?.value);
-              const finalWithVat = parseMoneyInput(withInp?.value);
-              if (!finalNoVat && !finalWithVat) {
+              const exRaw = String(exInp?.value || '').trim();
+              const withRaw = String(withInp?.value || '').trim();
+              const finalNoVat = parseMoneyInput(exRaw);
+              const finalWithVat = parseMoneyInput(withRaw);
+              // Нечисловой/неоднозначный формат блокируем ЯВНО: молча подставлять другое
+              // поле (или предзаполнение) — это «ввёл одно, ушло другое» (D-244, лицо 3/7).
+              if ((exRaw && !isFinite(finalNoVat)) || (withRaw && !isFinite(finalWithVat))) {
+                toast('Не понимаю формат суммы — проверьте ввод', 'warn');
+                return;
+              }
+              const exN = isFinite(finalNoVat) ? finalNoVat : 0;
+              const withN = isFinite(finalWithVat) ? finalWithVat : 0;
+              if (!exN && !withN) {
                 toast('Укажите сумму подачи', 'warn');
                 return;
               }
@@ -709,12 +759,12 @@ window.AsgardRegistryTab = (function () {
               // выводится из базы по ставке-настройке. Иначе у уже поданных «20 %-эпохи»
               // тендеров в PATCH ушла бы сохранённая 20 %-пара (111/135 → 1.2162 ≠ 1.22)
               // под меткой ставки 22 % — молчаливая несогласованность (D-243, лицо 7).
-              const baseNoVat = finalNoVat > 0
-                ? finalNoVat
-                : (M() ? M().withoutVat(finalWithVat, vatPct) : Math.round(finalWithVat / (1 + vatPct / 100)));
-              const sumWithVat = finalNoVat > 0
-                ? (M() ? M().withVat(finalNoVat, vatPct) : Math.round(finalNoVat * (1 + vatPct / 100)))
-                : finalWithVat;
+              const baseNoVat = exN > 0
+                ? exN
+                : (M() ? M().withoutVat(withN, vatPct) : Math.round(withN / (1 + vatPct / 100)));
+              const sumWithVat = exN > 0
+                ? (M() ? M().withVat(exN, vatPct) : Math.round(exN * (1 + vatPct / 100)))
+                : withN;
               await applyStatusChange(row, {
                 registry_status: next,
                 submission_price: baseNoVat,
@@ -1864,6 +1914,8 @@ window.AsgardRegistryTab = (function () {
      */
     _test: {
       openStatusModal,
+      parseMoneyInput,
+      fmtMoneyInput,
     },
     mount(el, opts) {
       mountEl = el;

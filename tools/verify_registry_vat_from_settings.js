@@ -374,11 +374,24 @@ async function submitFromModal(page, row, edits) {
   try {
     await page.goto(BASE + '/?nocache=' + Date.now() + '#/tenders', { waitUntil: 'commit', timeout: 60000 });
     await page.waitForTimeout(2500);
-    const hasTab = await page.evaluate(() => ({
-      tab: !!window.AsgardRegistryTab,
-      test: !!(window.AsgardRegistryTab && window.AsgardRegistryTab._test),
-      open: !!(window.AsgardRegistryTab && window.AsgardRegistryTab._test && window.AsgardRegistryTab._test.openStatusModal),
-    }));
+    const hasTab = await page.evaluate(async () => {
+      // Ванильный лоадер поднимает модули асинхронно: под соседним chromium/сервером
+      // фиксированные 2.5 с иногда не хватало, и гейт падал «0/2» не по делу.
+      // Опрашиваем готовность `AsgardRegistryTab._test` до 20 с вместо одной паузы.
+      const deadline = Date.now() + 20000;
+      let snap = {};
+      while (Date.now() < deadline) {
+        snap = {
+          tab: !!window.AsgardRegistryTab,
+          test: !!(window.AsgardRegistryTab && window.AsgardRegistryTab._test),
+          open: !!(window.AsgardRegistryTab && window.AsgardRegistryTab._test && window.AsgardRegistryTab._test.openStatusModal),
+          parse: !!(window.AsgardRegistryTab && window.AsgardRegistryTab._test && window.AsgardRegistryTab._test.parseMoneyInput),
+        };
+        if (snap.test && snap.open && snap.parse) return snap;
+        await new Promise((r) => setTimeout(r, 250));
+      }
+      return snap;
+    });
     if (!hasTab.test || !hasTab.open) {
       check('стенд: AsgardRegistryTab._test доступен', false,
         `AsgardRegistryTab=${hasTab.tab}, _test=${hasTab.test}, openStatusModal=${hasTab.open}; pageErrors=${pageErrors.slice(0, 3).join(' | ') || '—'}`);
@@ -527,6 +540,56 @@ async function submitFromModal(page, row, edits) {
         && Math.abs(Number(fwPatch.body.submission_price) - 82.42) < 0.005
         && Math.abs(Number(fwPatch.body.submission_price_with_vat) - 100.55) < 0.005,
       `shown_ex="${fracWithRes.shownEx}", shown_with="${fracWithRes.shownWith}", patch=${fwPatch ? fwPatch.body.submission_price + '/' + fwPatch.body.submission_price_with_vat : 'нет'}`);
+
+    // ── V10: ПАРСЕР суммы — контракт форматов (D-244, FAIL-1/2 сертификации: «1,000» давал 1 ₽) ──
+    // Гоняем через реальную функцию модалки (window.AsgardRegistryTab._test.parseMoneyInput).
+    const parseCases = [
+      ['1 000 000', 1000000], ['1000000', 1000000], ['₽ 1000', 1000], ['  1000 ', 1000],
+      ['1.000.000', 1000000], ['1,000', 1000], ['1,000,000', 1000000],
+      ['111,37', 111.37], ['111.37', 111.37], ['1 234 567,89', 1234567.89], ['1,000.50', 1000.5], ['1.000,50', 1000.5],
+      ['0,5', 0.5], ['1000.', 1000], [',5', 0.5],
+      ['1.000', 1000], ['1.5', 1.5], ['01.123', 1123], ['0.50', 0.5], ['00,50', 0.5],
+      ['1.5e5', null], ['1e5', null], ['abc', null], ['', null], ['-5', null], ['+5', null], ['₽', null],
+      ['0.005', null], ['1,5.10', null], ['1.000,000', null], ['1000000000.99', 1000000000.99],
+    ];
+    const gotCases = await page.evaluate((cs) => {
+      const f = window.AsgardRegistryTab && window.AsgardRegistryTab._test && window.AsgardRegistryTab._test.parseMoneyInput;
+      if (!f) return { err: 'нет _test.parseMoneyInput' };
+      return { rows: cs.map(([inp, want]) => ({ inp, want, got: String(f(inp)) })) };
+    }, parseCases);
+    let parseBad = [];
+    if (gotCases.err) {
+      check('V10 парсер суммы: контракт форматов', false, gotCases.err);
+    } else {
+      for (const r of gotCases.rows) {
+        const g = Number(r.got);
+        const ok = r.want === null ? r.got === 'NaN' : (isFinite(g) && Math.abs(g - r.want) < 1e-9);
+        if (!ok) parseBad.push(`${JSON.stringify(r.inp)}→${r.got}(ждали ${r.want === null ? 'NaN' : r.want})`);
+      }
+      check('V10 парсер суммы: контракт форматов («1,000»→1000, мусор→NaN, «0.005»→NaN)',
+        parseBad.length === 0, parseBad.length ? parseBad.join('; ') : `${gotCases.rows.length}/${gotCases.rows.length} кейсов совпали`);
+    }
+
+    // ── V11: нечисловой ввод НЕ уходит в PATCH (блокировка, FAIL-3 сертификации) ──
+    const badRow = {
+      id: TENDER_ID, registry_status: 'подались', customer_name: 'Гейт D-244 (мусор)',
+      tender_title: 'Нечисловой ввод', tender_price: 1000000, vat_pct: 20,
+      submission_price: 111, submission_price_with_vat: 135,
+      docs_deadline: snapTender.docs_deadline, participation_paid: false, rp_review: { work_price: 1000000 },
+    };
+    const badRes = await submitFromModal(page, badRow, { ex: 'abc' });
+    const badPatch = (badRes.calls || []).find((c) => c.body && c.body.registry_status === 'подались');
+    check('V11 мусор в поле («abc») не уходит в PATCH (блокировка, без молчаливой подстановки)',
+      !badPatch && /формат суммы/i.test(String(badRes.vatLine || '')),
+      `patch=${badPatch ? JSON.stringify(badPatch.body).slice(0, 120) : 'нет'}, vatLine="${badRes.vatLine}", calls=${(badRes.calls || []).length}`);
+
+    // ── V12: «1,000» (целые тысячи запятыми) — целые 1000, не 1 ₽ (регресс, найденный сертификацией) ──
+    const commaRes = await submitFromModal(page, badRow, { ex: '1,000' });
+    const commaPatch = (commaRes.calls || []).find((c) => c.body && c.body.registry_status === 'подались');
+    check('V12 «1,000» → целые 1000 ₽ (не 1) и пара 1000/1220 по ставке',
+      !!commaPatch && Math.abs(Number(commaPatch.body.submission_price) - 1000) < 0.001
+        && Math.abs(Number(commaPatch.body.submission_price_with_vat) - 1220) < 0.01,
+      commaPatch ? `patch=${commaPatch.body.submission_price}/${commaPatch.body.submission_price_with_vat}` : 'PATCH не ушёл');
 
     check('   JS-ошибок на странице нет', pageErrors.length === 0, pageErrors.slice(0, 3).join(' | '));
   } catch (e) {
