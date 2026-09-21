@@ -44,9 +44,11 @@ const PATCHABLE_FIELDS = {
   participation: 'participation'
 };
 
-// Неизменяемые реквизиты карточки: заказчик, НМЦК, дедлайн подачи (и файлы — через upload-роуты).
-// Даже ТО не может их переписать после заведения, чтобы не «уплыл» зафиксированный тендер (D-189).
-const IMMUTABLE_FIELDS = new Set(['customer_name', 'customer_inn', 'tender_price', 'docs_deadline']);
+// Неизменяемые реквизиты карточки: заказчик, ИНН, НМЦК (и файлы — через upload-роуты).
+// «Паспорт» заведённого тендера; даже ТО его не переписывает (D-189).
+// Срок подачи (docs_deadline) в этот набор НЕ входит: заказчик тендера регулярно переносит
+// даты, это рабочее поле ТО, а не паспорт (D-237). Право — FULL_CARD_EDIT_ROLES.
+const IMMUTABLE_FIELDS = new Set(['customer_name', 'customer_inn', 'tender_price']);
 
 /**
  * Хозяин анализа (канон порядка взят из V331/pm-analysis-rating.ownerExpr):

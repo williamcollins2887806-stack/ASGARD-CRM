@@ -98,19 +98,19 @@ window.AsgardRegistryTab = (function () {
   const DIRECTOR_ROLES = ['DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV'];
   // Кто может править mutable-часть карточки тендера (синхронно с бэком, D-189).
   const FULL_CARD_EDIT_ROLES = ['ADMIN', 'TO', 'HEAD_TO'];
-  // Immutable (заказчик/ИНН, НМЦ, срок подачи, файлы) — только ADMIN.
+  // Immutable (заказчик/ИНН, НМЦ, файлы) — только ADMIN.
   const IMMUTABLE_CARD_ADMIN_ONLY = ['ADMIN'];
   // РП правит только комментарий ТО.
   const COMMENT_ONLY_ROLES = ['PM', 'HEAD_PM'];
   // Поля, которые фиксируются при заведении карточки и дальше не меняются никем, кроме ADMIN.
-  const IMMUTABLE_CARD_FIELDS = ['customer', 'price', 'deadline'];
+  // Срок подачи сюда НЕ входит: тендеры переносят, и это рабочее поле ТО (D-237).
+  const IMMUTABLE_CARD_FIELDS = ['customer', 'price'];
   function canEditFullCard() { return FULL_CARD_EDIT_ROLES.includes(currentUserRole()); }
   function canEditCommentOnly() { return COMMENT_ONLY_ROLES.includes(currentUserRole()); }
   function canEditImmutable() { return IMMUTABLE_CARD_ADMIN_ONLY.includes(currentUserRole()); }
-  // Срок подачи — immutable для ВСЕХ, кроме ADMIN (бэк отвечает 403 остальным, D-189).
-  // Инлайн-редактор в таблице должен быть доступен ровно тем же ролям, иначе клик
-  // открывает редактор и заканчивается ошибкой (нашёл L3-верификатор).
-  function canEditDeadlineCell() { return canEditImmutable(); }
+  // Срок подачи правит тот же круг, что и остальную mutable-часть карточки: ТО/HEAD_TO/ADMIN
+  // (бэк, D-237). Раньше был immutable — из-за этого ячейка была серой и ТО ловил 403.
+  function canEditDeadlineCell() { return canEditFullCard(); }
 
   /**
    * Хозяин ОТКРЫТОГО анализа — текущий пользователь? (ТО взял анализ кнопкой
@@ -778,10 +778,10 @@ window.AsgardRegistryTab = (function () {
         : (isNew ? API.renderRegistryDocsPlaceholderHtml() : '<div id="regDocsHost"></div>');
       const paid = !!row.participation_paid;
       const feeVal = row.participation_fee != null ? row.participation_fee : '';
-      // Правка карточки (D-189):
-      //  - immutable (заказчик/ИНН, НМЦК, срок подачи) — только ADMIN, при создании заполняются свободно;
+      // Правка карточки (D-189/D-237):
+      //  - immutable (заказчик/ИНН, НМЦК) — только ADMIN, при создании заполняются свободно;
       //  - PM/HEAD_PM — только комментарий ТО;
-      //  - «Платное участие», ссылка, статус, комментарий — доступны ТО и после загрузки документов.
+      //  - срок подачи, «Платное участие», ссылка, статус, комментарий — доступны ТО и после загрузки документов.
       const fullEdit = isNew || canEditFullCard();
       const commentOnly = !isNew && canEditCommentOnly();
       const dis = (field) => {
@@ -792,7 +792,7 @@ window.AsgardRegistryTab = (function () {
         return ' disabled';
       };
       const immutNote = (!isNew && !commentOnly && !canEditImmutable())
-        ? '<p class="muted" style="font-size:11px;margin:-4px 0 0">Заказчик, НМЦ и срок подачи зафиксированы при заведении карточки. Остальные поля доступны для правки.</p>'
+        ? '<p class="muted" style="font-size:11px;margin:-4px 0 0">Заказчик, ИНН и НМЦ зафиксированы при заведении карточки. Остальные поля, включая срок подачи, доступны для правки.</p>'
         : '';
       return '<div class="reg-form-modal" style="display:grid;gap:10px">' +
         '<label style="position:relative">Заказчик <small class="muted">(название или ИНН — подскажем из ДаДата)</small>' +
@@ -973,10 +973,14 @@ window.AsgardRegistryTab = (function () {
             mountForm(true);
           } else {
             // PM/HEAD_PM шлют только комментарий — остальное бэк всё равно отвергнет 403 (D-189).
+            // Срок подачи (docs_deadline) шлём только тем, кто вправе его менять (ТО/HEAD_TO/ADMIN):
+            // РП его не правит, а лишний PATCH дал бы 403 (D-237).
             const commentOnlySave = canEditCommentOnly();
             const fields = commentOnlySave
               ? ['comment_to']
-              : ['customer_name', 'customer_inn', 'tender_title', 'tender_price', 'docs_deadline', 'purchase_url', 'comment_to'];
+              : (canEditDeadlineCell()
+                ? ['customer_name', 'customer_inn', 'tender_title', 'tender_price', 'docs_deadline', 'purchase_url', 'comment_to']
+                : ['customer_name', 'customer_inn', 'tender_title', 'purchase_url', 'comment_to']);
             for (const f of fields) {
               const prev = row[f];
               let next = body[f];
@@ -1012,7 +1016,7 @@ window.AsgardRegistryTab = (function () {
               row.customer_inn = body.customer_inn;
               row.tender_title = body.tender_title;
               row.tender_price = body.tender_price;
-              row.docs_deadline = body.docs_deadline;
+              if (canEditDeadlineCell()) row.docs_deadline = body.docs_deadline;
               row.purchase_url = body.purchase_url;
               row.comment_to = body.comment_to;
               row.participation_paid = paid;
@@ -1354,7 +1358,7 @@ window.AsgardRegistryTab = (function () {
       '<td class="reg-col-money reg-col-submit">' + submitHtml + '</td>' +
       '<td class="reg-col-date reg-deadline-cell' + (canEditDeadlineCell() ? '' : ' reg-deadline-readonly') +
       '" data-id="' + row.id + '" data-value="' + esc(dlIso) + '"' +
-      (canEditDeadlineCell() ? ' title="Клик — изменить срок"' : ' title="Срок подачи меняет только администратор"') + '>' +
+      (canEditDeadlineCell() ? ' title="Клик — изменить срок"' : ' title="Срок подачи меняет ТО или администратор"') + '>' +
       '<span class="reg-cell-text reg-deadline-text">' + esc(fmtShortDate(row.docs_deadline)) + '</span></td>' +
       '<td class="reg-col-participation">' + participationCell(row) + '</td>' +
       '<td class="reg-col-analysis">' + analysisDeadlineCell(row) + '</td>' +
@@ -1707,9 +1711,9 @@ window.AsgardRegistryTab = (function () {
     });
     mountEl.querySelectorAll('.reg-deadline-cell').forEach((cell) => {
       cell.addEventListener('click', (e) => {
-        // Immutable: без прав редактор не открываем (иначе 403 от бэка, D-189).
+        // Без прав редактор не открываем (иначе 403 от бэка, D-189/D-237).
         if (!canEditDeadlineCell()) {
-          toast('Срок подачи меняет только администратор', 'warn');
+          toast('Срок подачи меняет ТО или администратор', 'warn');
           return;
         }
         if (e.target.closest('input')) return;

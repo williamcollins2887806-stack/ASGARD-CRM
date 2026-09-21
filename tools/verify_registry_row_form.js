@@ -95,6 +95,16 @@ const OVERRIDE_SCRIPT = `<script>
 
   function ok(v) { return Promise.resolve(v); }
 
+  // Перехват тостов: по тексту отличаем «прав нет» от «срок обновлён» (D-237).
+  window.__toasts = [];
+  const realToast = (window.AsgardUI && window.AsgardUI.toast) || function () {};
+  if (window.AsgardUI) {
+    window.AsgardUI.toast = function (title, msg, type) {
+      window.__toasts.push({ title: String(title || ''), msg: String(msg || ''), type: String(type || '') });
+      try { return realToast.apply(this, arguments); } catch (e) {}
+    };
+  }
+
   window.AsgardRegistryApi = Object.assign({}, real, {
     loadUsers: function () { return ok([]); },
     loadRegistry: function () { return ok({ items: window.__FIXTURE_ROWS || [], total: (window.__FIXTURE_ROWS || []).length }); },
@@ -503,11 +513,115 @@ const FILL = {
 
   if (errors3.length) console.log(C.dim + 'ошибки страницы 3: ' + JSON.stringify(errors3.slice(0, 6)) + C.off);
 
+  // ─────────── Шаг C: ТО правит срок подачи инлайн (D-237) ───────────
+  // Раньше ячейка срока была «серой» (immutable для всех, кроме ADMIN): ТО не мог
+  // продлить срок, хотя заказчик переносит даты регулярно. Теперь это рабочее поле ТО.
+  const page4 = await browser.newPage({ viewport: { width: 1600, height: 1000 } });
+  const errors4 = [];
+  page4.on('pageerror', (e) => errors4.push(String((e && e.message) || e)));
+  page4.on('console', (m) => {
+    if (m.type() !== 'error') return;
+    const u = (m.location() && m.location().url) || '';
+    if (/\/assets\/fonts\//.test(u)) return;
+    errors4.push('console: ' + m.text() + (u ? ' @ ' + u : ''));
+  });
+  await page4.goto(fileUrl(FIXTURE));
+  await page4.waitForTimeout(200);
+  await page4.evaluate(() => {
+    window.__FIXTURE_ROWS = [{
+      id: 960090,
+      registry_no: 960090,
+      customer_name: 'ООО «Сроки»',
+      tender_title: 'Перенос сроков подачи',
+      tender_price: 400000,
+      docs_deadline: '2026-12-25',
+      registry_status: 'рассмотрение',
+      participation_paid: false,
+      created_at: '2026-09-20T10:00:00.000Z',
+      rp_review: null
+    }];
+    window.AsgardRegistryTab.mount(document.getElementById('tab'), {});
+  });
+  await page4.waitForTimeout(300);
+
+  const cellState = await page4.evaluate(() => {
+    const cell = document.querySelector('.reg-deadline-cell');
+    if (!cell) return { hasCell: false };
+    return { hasCell: true, cls: cell.className, title: cell.getAttribute('title'), dataId: cell.dataset.id };
+  });
+  check('C2 ячейка срока подачи у ТО редактируема (не reg-deadline-readonly)',
+    cellState.hasCell && !/reg-deadline-readonly/.test(cellState.cls),
+    cellState.hasCell ? 'class=' + JSON.stringify(cellState.cls) + ', title=' + JSON.stringify(cellState.title) : 'ячейки нет');
+
+  await page4.evaluate(() => {
+    const cell = document.querySelector('.reg-deadline-cell');
+    if (cell) cell.click();
+  });
+  await page4.waitForTimeout(150);
+  const inputShown = await page4.evaluate(() => !!document.querySelector('.reg-deadline-cell input.reg-deadline-inp'));
+  check('C3 клик по сроку у ТО открывает инлайн-редактор',
+    inputShown, inputShown ? 'input.reg-deadline-inp создан' : 'редактор не открылся');
+
+  await page4.evaluate(() => {
+    const inp = document.querySelector('.reg-deadline-cell input.reg-deadline-inp');
+    if (!inp) return;
+    inp.value = '2027-01-15';
+    inp.dispatchEvent(new Event('blur'));
+  });
+  await page4.waitForTimeout(400);
+  const dlCall = await page4.evaluate(() =>
+    (window.__calls || []).find((c) => c.method === 'PATCH' && c.field === 'docs_deadline'));
+  check('C4 новый срок уходит PATCH docs_deadline на реальный id',
+    !!dlCall && dlCall.value === '2027-01-15' && dlCall.url === '/api/tenders/registry/960090',
+    dlCall ? dlCall.method + ' ' + dlCall.url + ' = ' + dlCall.value : 'вызова нет');
+
+  // Инвариант: РП срок не правит — ячейка серая, клик объясняет, что менять может ТО/админ.
+  await page4.evaluate(() => {
+    localStorage.setItem('asgard_user', JSON.stringify({ id: 43, login: 'pm.test', name: 'Тест РП', role: 'PM' }));
+    window.__toasts.length = 0;
+    window.__FIXTURE_ROWS = [{
+      id: 960091,
+      registry_no: 960091,
+      customer_name: 'ООО «Сроки»',
+      tender_title: 'Чужой перенос',
+      tender_price: 400000,
+      docs_deadline: '2026-12-26',
+      registry_status: 'рассмотрение',
+      participation_paid: false,
+      created_at: '2026-09-20T10:00:00.000Z',
+      rp_review: null
+    }];
+    window.AsgardRegistryTab.mount(document.getElementById('tab'), {});
+  });
+  await page4.waitForTimeout(300);
+  const pmCell = await page4.evaluate(() => {
+    const cell = document.querySelector('.reg-deadline-cell');
+    return cell ? { hasCell: true, cls: cell.className } : { hasCell: false };
+  });
+  check('C5 у РП ячейка срока остаётся read-only',
+    pmCell.hasCell && /reg-deadline-readonly/.test(pmCell.cls),
+    pmCell.hasCell ? 'class=' + JSON.stringify(pmCell.cls) : 'ячейки нет');
+
+  await page4.evaluate(() => {
+    const cell = document.querySelector('.reg-deadline-cell');
+    if (cell) cell.click();
+  });
+  await page4.waitForTimeout(200);
+  const pmResult = await page4.evaluate(() => ({
+    input: !!document.querySelector('.reg-deadline-cell input.reg-deadline-inp'),
+    toasts: window.__toasts.slice()
+  }));
+  check('C6 клик РП не открывает редактор и объясняет права',
+    !pmResult.input && pmResult.toasts.some((t) => /ТО или администратор/.test(t.msg)),
+    'input=' + pmResult.input + ', toasts=' + JSON.stringify(pmResult.toasts));
+
+  if (errors4.length) console.log(C.dim + 'ошибки страницы 4: ' + JSON.stringify(errors4.slice(0, 6)) + C.off);
+
   // Консоль обязана быть чистой: ошибки страницы = FAIL (не только печать).
   check('C1 консоль без ошибок страницы (TO, все экраны)',
-    errors.length === 0 && errors2.length === 0 && errors3.length === 0,
-    errors.length || errors2.length || errors3.length
-      ? JSON.stringify(errors.concat(errors2, errors3).slice(0, 6)) : 'ошибок нет');
+    errors.length === 0 && errors2.length === 0 && errors3.length === 0 && errors4.length === 0,
+    errors.length || errors2.length || errors3.length || errors4.length
+      ? JSON.stringify(errors.concat(errors2, errors3, errors4).slice(0, 6)) : 'ошибок нет');
 
   await browser.close();
 

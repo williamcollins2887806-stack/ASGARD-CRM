@@ -8,9 +8,13 @@
  *   2) GET /:id/rp-review отдаёт tender_files (документы тендера);
  *   3) GET /api/files?exclude_types=… не возвращает rp_estimate/rp_report/rp_tkp
  *      и не дублирует файлы по (tender_id, original_name, type);
- *   4) PATCH /registry/:id — RBAC: immutable-поля (customer_name/tender_price/
- *      docs_deadline) закрыты для всех, кроме ADMIN; TO правит mutable (в т.ч.
+ *   4) PATCH /registry/:id — RBAC: immutable-поля (customer_name/customer_inn/
+ *      tender_price) закрыты для всех, кроме ADMIN; TO правит mutable (в т.ч.
  *      платное участие), PM/HEAD_PM — только comment_to;
+ *   4b) срок подачи (docs_deadline) — рабочее поле ТО (D-237): TO/HEAD_TO/ADMIN
+ *      пишут, PM/HEAD_PM получают 403; при переносе срока внутренний срок анализа
+ *      (analysis_deadline) пересчитывается по канону «−3 раб. дня бесплатно / −5 при
+ *      платном участии»;
  *   5) work_price в смете остаётся БЕЗ НДС.
  *
  * Usage: node tests/rp-calc-improvements-sentinel.js
@@ -24,6 +28,8 @@ const {
   TEST_USERS,
   assert,
 } = require('./config');
+
+const { computeAnalysisDeadline } = require('../src/lib/business-days');
 
 const results = [];
 let failed = 0;
@@ -45,6 +51,20 @@ function check(name, fn) {
 }
 
 const TENDER_ID = Number(process.env.SENTINEL_TENDER_ID || 2052);
+
+/**
+ * Полная строка тендера из реестра. GET /:id/rp-review отдаёт tender усечённым
+ * (без created_at / participation_paid / analysis_deadline), а пересчёт внутреннего
+ * срока анализа опирается именно на них — берём из списка реестра.
+ */
+async function loadTenderRow(role) {
+  const r = await api('GET', '/api/tenders/registry?period=all&limit=2000&q=' + TENDER_ID, { role: role || 'ADMIN' });
+  assert(r.ok, 'реестр недоступен: HTTP ' + r.status + ' — ' + JSON.stringify(r.data).slice(0, 160));
+  const items = r.data.items || [];
+  const row = items.find((it) => Number(it.id) === TENDER_ID);
+  assert(row, 'тендер #' + TENDER_ID + ' не найден в реестре (period=all)');
+  return row;
+}
 
 (async function main() {
   await initTokens();
@@ -131,6 +151,122 @@ const TENDER_ID = Number(process.env.SENTINEL_TENDER_ID || 2052);
       body: { field: 'customer_inn', value: '0000000000' }
     });
     assert(r.status === 403, 'ожидали 403, получили ' + r.status + ' — ' + JSON.stringify(r.data).slice(0, 200));
+  });
+
+  await check('PATCH: НМЦ закрыта для TO (403), но срок подачи — можно — D-237', async () => {
+    assert(to.id, 'не найден test_to');
+    const t = await loadTenderRow('ADMIN');
+    assert(t.docs_deadline, 'у тендера #' + TENDER_ID + ' не заполнен docs_deadline');
+
+    const rPrice = await api('PATCH', '/api/tenders/registry/' + TENDER_ID, {
+      role: 'TO',
+      body: { field: 'tender_price', value: Number(t.tender_price || 0) + 1 }
+    });
+    assert(rPrice.status === 403, 'НМЦ должна остаться неизменяемой: получили ' + rPrice.status);
+
+    const iso = String(t.docs_deadline).slice(0, 10);
+    const rDl = await api('PATCH', '/api/tenders/registry/' + TENDER_ID, {
+      role: 'TO',
+      body: { field: 'docs_deadline', value: iso }
+    });
+    assert(rDl.ok, 'ТО должен менять срок подачи: HTTP ' + rDl.status + ' — ' + JSON.stringify(rDl.data).slice(0, 200));
+    assert(String((rDl.data.tender || {}).docs_deadline || '').slice(0, 10) === iso,
+      'бэк вернул не тот docs_deadline: ' + JSON.stringify((rDl.data.tender || {}).docs_deadline));
+
+    // То же значение = проверка доступа, без мутации. Внутренний срок анализа не должен «уехать».
+    const adlBefore = String(t.analysis_deadline || '').slice(0, 10);
+    const adlAfter = String((rDl.data.tender || {}).analysis_deadline || '').slice(0, 10);
+    assert(adlBefore === adlAfter, 'analysis_deadline изменился без смены даты: ' + adlBefore + ' → ' + adlAfter);
+  });
+
+  await check('PATCH: срок подачи закрыт для PM/HEAD_PM (403) — D-237', async () => {
+    for (const role of ['PM', 'HEAD_PM']) {
+      const r = await api('PATCH', '/api/tenders/registry/' + TENDER_ID, {
+        role,
+        body: { field: 'docs_deadline', value: '2026-12-31' }
+      });
+      assert(r.status === 403, role + ': ожидали 403, получили ' + r.status + ' — ' + JSON.stringify(r.data).slice(0, 160));
+    }
+  });
+
+  await check('PATCH: перенос срока ТО пересчитывает внутренний срок анализа — D-237', async () => {
+    assert(to.id, 'не найден test_to');
+    const t0 = await loadTenderRow('ADMIN');
+    const paid = !!t0.participation_paid;
+    const created = t0.created_at || null;
+    const origIso = String(t0.docs_deadline).slice(0, 10);
+
+    // Сначала переносим срок ВПЕРЁД от текущего, чтобы пересчёт не упёрся в клэмп created_at
+    // (канон business-days.computeAnalysisDeadline: internal = docs − 3 раб. дн., при платном — −5).
+    const d = new Date(origIso + 'T12:00:00');
+    d.setDate(d.getDate() + 10);
+    const shifted = d.toISOString().slice(0, 10);
+
+    const r = await api('PATCH', '/api/tenders/registry/' + TENDER_ID, {
+      role: 'TO',
+      body: { field: 'docs_deadline', value: shifted }
+    });
+    assert(r.ok, 'перенос срока упал: HTTP ' + r.status + ' — ' + JSON.stringify(r.data).slice(0, 200));
+    const expected = computeAnalysisDeadline({ docs_deadline: shifted, participation_paid: paid, created_at: created });
+    const got = String((r.data.tender || {}).analysis_deadline || '').slice(0, 10);
+    assert(got === expected,
+      'analysis_deadline не пересчитан: ожидали ' + expected + ', получили ' + got +
+      ' (docs=' + shifted + ', paid=' + paid + ', created=' + created + ')');
+
+    // Возвращаем исходную дату — гейт не должен оставлять за собой изменённый тендер.
+    const back = await api('PATCH', '/api/tenders/registry/' + TENDER_ID, {
+      role: 'TO',
+      body: { field: 'docs_deadline', value: origIso }
+    });
+    assert(back.ok, 'не удалось вернуть исходный срок: HTTP ' + back.status);
+    const restored = computeAnalysisDeadline({ docs_deadline: origIso, participation_paid: paid, created_at: created });
+    assert(String((back.data.tender || {}).analysis_deadline || '').slice(0, 10) === restored,
+      'после возврата срока analysis_deadline не сошёлся с каноном');
+  });
+
+  await check('PATCH: HEAD_TO тоже меняет срок подачи — D-237', async () => {
+    const t = await loadTenderRow('ADMIN');
+    const iso = String(t.docs_deadline).slice(0, 10);
+    const r = await api('PATCH', '/api/tenders/registry/' + TENDER_ID, {
+      role: 'HEAD_TO',
+      body: { field: 'docs_deadline', value: iso }
+    });
+    assert(r.ok, 'HEAD_TO должен менять срок подачи: HTTP ' + r.status + ' — ' + JSON.stringify(r.data).slice(0, 200));
+  });
+
+  // РП в карточке просчёта и в анализе видит срок из tender.docs_deadline (см. rp_calc_modal.js
+  // deadlineTone / rp_review_modal.js renderMeta). Проверяем, что перенос ТО доезжает до этой ручки.
+  await check('РП видит перенесённый срок в карточке просчёта/анализа — D-237', async () => {
+    const t0 = await loadTenderRow('ADMIN');
+    const origIso = String(t0.docs_deadline).slice(0, 10);
+    const d = new Date(origIso + 'T12:00:00');
+    d.setDate(d.getDate() + 7);
+    const shifted = d.toISOString().slice(0, 10);
+
+    const r = await api('PATCH', '/api/tenders/registry/' + TENDER_ID, {
+      role: 'TO',
+      body: { field: 'docs_deadline', value: shifted }
+    });
+    assert(r.ok, 'перенос ТО упал: HTTP ' + r.status);
+
+    const seen = await api('GET', RP_REVIEW, { role: 'PM' });
+    assert(seen.ok, 'PM не открыл rp-review: HTTP ' + seen.status);
+    const seenTender = seen.data.tender || {};
+    assert(String(seenTender.docs_deadline || '').slice(0, 10) === shifted,
+      'РП видит старый срок: ' + String(seenTender.docs_deadline || '').slice(0, 10) + ' вместо ' + shifted);
+    const shiftedExpected = computeAnalysisDeadline({
+      docs_deadline: shifted,
+      participation_paid: !!t0.participation_paid,
+      created_at: t0.created_at || null
+    });
+    assert(String(r.data.tender.analysis_deadline || '').slice(0, 10) === shiftedExpected,
+      'внутренний срок анализа не поехал вместе со сроком подачи');
+
+    const back = await api('PATCH', '/api/tenders/registry/' + TENDER_ID, {
+      role: 'TO',
+      body: { field: 'docs_deadline', value: origIso }
+    });
+    assert(back.ok, 'не удалось вернуть исходный срок: HTTP ' + back.status);
   });
 
   await check('PATCH: TO может писать comment_to (не 403) — D-189', async () => {
