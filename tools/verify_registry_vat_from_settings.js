@@ -121,17 +121,40 @@ async function openModalAndRead(page, row) {
   return page.evaluate(async (row) => {
     const tab = window.AsgardRegistryTab;
     if (!tab || !tab._test || !tab._test.openStatusModal) return { err: 'нет _test.openStatusModal' };
+    // hideModal() удаляет оверлей из DOM только через 300 мс, а на это время он остаётся
+    // в документе с классом --leaving. Если открыть модалку раньше, её onMount ищет поля
+    // через document.getElementById и попадает в ОВЕРЛЕЙ-ЗОМБИ (D-226-класс) — строка
+    // «в т.ч. НДС» остаётся пустой. Поэтому ждём, пока в DOM не останется оверлеев ВООБЩЕ.
+    const waitClean = async (ms) => {
+      const t0 = Date.now();
+      while (Date.now() - t0 < ms) {
+        if (!document.querySelectorAll('.cr-m-overlay').length) return true;
+        await new Promise((r) => setTimeout(r, 50));
+      }
+      return false;
+    };
+    const waitRoot = async (ms) => {
+      const t0 = Date.now();
+      while (Date.now() - t0 < ms) {
+        const ov = [...document.querySelectorAll('.cr-m-overlay:not(.cr-m-overlay--leaving)')];
+        const r = ov[ov.length - 1];
+        if (r && r.querySelector('#regSubEx')) return r;
+        await new Promise((r2) => setTimeout(r2, 50));
+      }
+      return null;
+    };
     try { window.AsgardUI.closeModal(); } catch (_) {}
-    await new Promise((r) => setTimeout(r, 420));
+    await waitClean(1500);
     const errs = [];
     const origErr = console.error;
     console.error = (...a) => { errs.push(a.map(String).join(' ')); origErr.apply(console, a); };
     try {
       await tab._test.openStatusModal(row);
-      await new Promise((r) => setTimeout(r, 150));
-      const overlays = [...document.querySelectorAll('.cr-m-overlay:not(.cr-m-overlay--leaving)')];
-      const root = overlays[overlays.length - 1];
-      if (!root) return { err: 'нет верхнего .cr-m-overlay (модалка не открылась)' };
+      const root = await waitRoot(2500);
+      if (!root) return { err: 'нет верхнего .cr-m-overlay с полями сумм (модалка не открылась)' };
+      // DOM модалки появляется до выполнения onMount (там навешиваются обработчики и
+      // считается строка «в т.ч. НДС»). Без этой паузы vatLine ещё пуст.
+      await new Promise((r) => setTimeout(r, 300));
       // Подпись «С НДС N%, ₽» — это текст <label> вокруг #regSubWith, а не текст модалки:
       // у input.innerText пусто, поэтому читаем label по DOM.
       const withInp = root.querySelector('#regSubWith');
@@ -142,13 +165,14 @@ async function openModalAndRead(page, row) {
       const vatLineEl = root.querySelector('#regSubVatLine');
       const pick = root.querySelector('#regStatusPick');
       return {
-        overlayCount: overlays.length,
+        overlayCount: 1,
         title: (root.querySelector('#modalTitle') || {}).textContent || null,
         labelText,
         withVatLabel,
         withVatInput: withInp ? withInp.value : null,
         noVatInput: exInp ? exInp.value : null,
         vatLine: vatLineEl ? vatLineEl.textContent : null,
+        vatLinePresent: !!vatLineEl,
         statusOptions: pick ? [...pick.options].map((o) => o.value) : null,
         errs,
       };
@@ -172,7 +196,7 @@ async function scenario({ pctRaw, expectPct, row }) {
   const lineOk = String(got.vatLine || '').indexOf(`в т.ч. НДС ${expectPct}%`) === 0;
   const noNaN = !/NaN|undefined/.test(String(got.withVatInput) + String(got.noVatInput) + String(got.vatLine));
   const noErr = !(got.errs || []).length;
-  const detail = `label="${got.withVatLabel}" (ждали ${expectPct}), vatLine="${got.vatLine}", with_vat_input=${got.withVatInput}, no_vat_input=${got.noVatInput}, overlayCount=${got.overlayCount}`;
+  const detail = `label="${got.withVatLabel}" (ждали ${expectPct}), vatLine="${got.vatLine}", present=${got.vatLinePresent}, with_vat_input=${got.withVatInput}, no_vat_input=${got.noVatInput}, overlayCount=${got.overlayCount}, errs=${JSON.stringify(got.errs || []).slice(0, 200)}`;
   return { ok: labelOk && lineOk && noNaN && noErr, detail, got };
 }
 
@@ -187,6 +211,24 @@ async function submitFromModal(page, row, edits) {
     const tab = window.AsgardRegistryTab;
     const calls = [];
     const realFetch = window.fetch;
+    const waitClean = async (ms) => {
+      const t0 = Date.now();
+      while (Date.now() - t0 < ms) {
+        if (!document.querySelectorAll('.cr-m-overlay').length) return true;
+        await new Promise((r) => setTimeout(r, 50));
+      }
+      return false;
+    };
+    const waitRoot = async (ms) => {
+      const t0 = Date.now();
+      while (Date.now() - t0 < ms) {
+        const ov = [...document.querySelectorAll('.cr-m-overlay:not(.cr-m-overlay--leaving)')];
+        const r = ov[ov.length - 1];
+        if (r && r.querySelector('#regSubEx')) return r;
+        await new Promise((r2) => setTimeout(r2, 50));
+      }
+      return null;
+    };
     window.fetch = async (url, opts) => {
       const u = String(url);
       if (/\/api\/tenders\/registry\/\d+\/status$/.test(u) && (opts && opts.method) === 'PATCH') {
@@ -197,12 +239,11 @@ async function submitFromModal(page, row, edits) {
     };
     try {
       try { window.AsgardUI.closeModal(); } catch (_) {}
-      await new Promise((r) => setTimeout(r, 420));
+      await waitClean(1500);
       await tab._test.openStatusModal(row);
-      await new Promise((r) => setTimeout(r, 150));
-      const overlays = [...document.querySelectorAll('.cr-m-overlay:not(.cr-m-overlay--leaving)')];
-      const root = overlays[overlays.length - 1];
+      const root = await waitRoot(2500);
       if (!root) return { calls, err: 'модалка не открылась' };
+      await new Promise((r) => setTimeout(r, 300));
       const pick = root.querySelector('#regStatusPick');
       pick.value = 'подались';
       pick.dispatchEvent(new Event('change'));
@@ -453,6 +494,39 @@ async function submitFromModal(page, row, edits) {
         && Number(bPatch.body.submission_price) === 1000000
         && Math.abs(Number(bPatch.body.submission_price_with_vat) - 1220000) < 1,
       `shown_with="${baseOnlyRes.shownWith}", patch=${bPatch ? bPatch.body.submission_price + '/' + bPatch.body.submission_price_with_vat : 'нет'}`);
+
+    // ── V8: ДРОБНАЯ сохранённая база (D-244, замечание сертификации) ──
+    // Раньше поле парсилось как `replace(/\D/g,'')` и предзаполнялось `Math.round` до рублей:
+    // база 111,37 показывалась как «111» и в PATCH уходило 111 (копейки терялись).
+    // Ожидание: показано «111,37», в PATCH 111.37 / 135.87 (ровно ×1.22, без потери копеек).
+    const fracRow = {
+      id: TENDER_ID, registry_status: 'подались', customer_name: 'Гейт D-244 (дробная база)',
+      tender_title: 'Дробная сохранённая сумма подачи', tender_price: null, vat_pct: 20,
+      submission_price: 111.37, submission_price_with_vat: 135.87,
+      docs_deadline: snapTender.docs_deadline, participation_paid: false, rp_review: {},
+    };
+    const fracRes = await submitFromModal(page, fracRow, {});
+    const fPatch = (fracRes.calls || []).find((c) => c.body && c.body.registry_status === 'подались');
+    check('V8 дробная база 111,37 не усекается: показ «111,37», PATCH 111.37 → 135.87',
+      String(fracRes.shownEx || '').replace(/\s/g, '') === '111,37' && !!fPatch
+        && Math.abs(Number(fPatch.body.submission_price) - 111.37) < 0.001
+        && Math.abs(Number(fPatch.body.submission_price_with_vat) - 135.87) < 0.01,
+      `shown_ex="${fracRes.shownEx}", shown_with="${fracRes.shownWith}", patch=${fPatch ? fPatch.body.submission_price + '/' + fPatch.body.submission_price_with_vat : 'нет'}`);
+
+    // ── V9: сохранена ТОЛЬКО дробная сумма с НДС → база не усекается ──
+    const fracWithRow = {
+      id: TENDER_ID, registry_status: 'подались', customer_name: 'Гейт D-244 (дробная с НДС)',
+      tender_title: 'Сохранена только дробная сумма с НДС', tender_price: null, vat_pct: 20,
+      submission_price: null, submission_price_with_vat: 100.55,
+      docs_deadline: snapTender.docs_deadline, participation_paid: false, rp_review: {},
+    };
+    const fracWithRes = await submitFromModal(page, fracWithRow, {});
+    const fwPatch = (fracWithRes.calls || []).find((c) => c.body && c.body.registry_status === 'подались');
+    check('V9 сохранена только дробная сумма с НДС 100,55 → база 82,42, пара согласована',
+      String(fracWithRes.shownWith || '').replace(/\s/g, '') === '100,55' && !!fwPatch
+        && Math.abs(Number(fwPatch.body.submission_price) - 82.42) < 0.005
+        && Math.abs(Number(fwPatch.body.submission_price_with_vat) - 100.55) < 0.005,
+      `shown_ex="${fracWithRes.shownEx}", shown_with="${fracWithRes.shownWith}", patch=${fwPatch ? fwPatch.body.submission_price + '/' + fwPatch.body.submission_price_with_vat : 'нет'}`);
 
     check('   JS-ошибок на странице нет', pageErrors.length === 0, pageErrors.slice(0, 3).join(' | '));
   } catch (e) {

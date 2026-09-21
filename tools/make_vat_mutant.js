@@ -10,10 +10,13 @@
 //   * money_fmt_MUTANT.js   — до-фикс приоритет сохранённой пары над расчётом по ставке
 //     (`withV = row.submission_price_with_vat`, `exV = row.submission_price`).
 //
+//   * registry_tab_D244_MUTANT.js — до-фикс парсер суммы поля: `replace(/[^\d]/g,'')`
+//     (копейки усекаются) + округление показа до рублей.
+//
 // Прогоны (подтверждают, что гейт ловит КАЖДУЮ часть правки, а не только подпись):
-//   registry_tab только:  REGISTRY_TAB_PATH=%TEMP%\registry_tab_MUTANT.js  → краснеет
-//   money_fmt только:     MONEY_FMT_PATH=%TEMP%\money_fmt_MUTANT.js        → краснеют V6/V7
-//   оба:                  оба env-var                                      → краснеет
+//   registry_tab только:  REGISTRY_TAB_PATH=%TEMP%\registry_tab_MUTANT.js       → краснеет
+//   money_fmt только:     MONEY_FMT_PATH=%TEMP%\money_fmt_MUTANT.js             → краснеют V7
+//   D-244 только:         REGISTRY_TAB_PATH=%TEMP%\registry_tab_D244_MUTANT.js  → краснеют V8/V9
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
@@ -23,6 +26,7 @@ const REG_SRC = path.join(ROOT, 'public', 'assets', 'js', 'registry_tab.js');
 const MONEY_SRC = path.join(ROOT, 'public', 'assets', 'js', 'money_fmt.js');
 const REG_OUT = path.join(os.tmpdir(), 'registry_tab_MUTANT.js');
 const MONEY_OUT = path.join(os.tmpdir(), 'money_fmt_MUTANT.js');
+const D244_OUT = path.join(os.tmpdir(), 'registry_tab_D244_MUTANT.js');
 
 let bad = 0;
 function fail(msg) { console.error(msg); bad = 1; }
@@ -71,6 +75,39 @@ if (!moneySrc.includes(moneyGood)) {
 } else {
   fs.writeFileSync(MONEY_OUT, moneySrc.replace(moneyGood, moneyBroken));
   console.log('мутант записан:', MONEY_OUT);
+}
+
+// ── 3. registry_tab.js: до-фикс парсер копеек (D-244) ──────────────────────
+// Возвращает `parseMoneyInput` к прежнему поведению — «оставить только цифры» (111,37 → 111),
+// и показ полей — к `Math.round` до рублей. Ожидание: гейт краснеет на V8/V9.
+const d244GoodParse = L(regSrc,
+  '  function parseMoneyInput(v) {',
+  "    let s = String(v == null ? '' : v).replace(/[\\s\\u00a0\\u2009₽]/g, '');"
+);
+const d244BrokenParse = L(regSrc,
+  '  function parseMoneyInput(v) {',
+  "    let s = String(v == null ? '' : v).replace(/[^\\d]/g, '');"
+);
+const d244GoodFmt = L(regSrc,
+  '  function fmtMoneyInput(v) {',
+  '    const n = Number(v);',
+  "    if (!isFinite(n) || n <= 0) return '';",
+  '    return Number.isInteger(n) ? String(n) : n.toFixed(2).replace(\'.\', \',\');'
+);
+const d244BrokenFmt = L(regSrc,
+  '  function fmtMoneyInput(v) {',
+  '    const n = Number(v);',
+  "    if (!isFinite(n) || n <= 0) return '';",
+  '    return String(Math.round(n));'
+);
+
+if (!regSrc.includes(d244GoodParse)) {
+  fail('registry_tab: маркер parseMoneyInput не найден — D-244-мутант собрать нельзя (код изменился?)');
+} else if (!regSrc.includes(d244GoodFmt)) {
+  fail('registry_tab: маркер fmtMoneyInput не найден — D-244-мутант собрать нельзя (код изменился?)');
+} else if (!bad) {
+  fs.writeFileSync(D244_OUT, regSrc.replace(d244GoodParse, d244BrokenParse).replace(d244GoodFmt, d244BrokenFmt));
+  console.log('мутант записан:', D244_OUT);
 }
 
 process.exit(bad);

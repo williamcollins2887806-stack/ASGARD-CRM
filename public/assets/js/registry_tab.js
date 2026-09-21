@@ -582,6 +582,41 @@ window.AsgardRegistryTab = (function () {
     onRefreshCb && onRefreshCb();
   }
 
+  /**
+   * Разбор суммы из поля ввода. Раньше здесь стоял `digits()` = `replace(/\D/g,'')`,
+   * который УСЕКАЛ копейки: сохранённую базу `111,37` поле показывало как «111», и при
+   * сохранении без правок в PATCH уходило `111` (D-244, найдено сертификацией D-243).
+   * Теперь принимаем: «1 000 000», «1000000,50», «111.37», «1.000.000» (точки-разделители
+   * тысяч, если после точки 3+ цифры), «₽», неразрывные пробелы.
+   */
+  function parseMoneyInput(v) {
+    let s = String(v == null ? '' : v).replace(/[\s\u00a0\u2009₽]/g, '');
+    if (s.indexOf(',') >= 0) {
+      // Запятая — десятичный разделитель; точки при этом считаем разделителями тысяч.
+      s = s.replace(/\./g, '').replace(',', '.');
+      s = s.replace(/[^\d.]/g, '');
+      const d = s.indexOf('.');
+      if (d >= 0) s = s.slice(0, d + 1) + s.slice(d + 1).replace(/\./g, '');
+    } else {
+      const dots = (s.match(/\./g) || []).length;
+      const after = s.slice(s.lastIndexOf('.') + 1);
+      if (!(dots === 1 && /^\d{1,2}$/.test(after))) s = s.replace(/\./g, '');
+      s = s.replace(/[^\d.]/g, '');
+    }
+    const n = Number(s);
+    return isFinite(n) ? n : 0;
+  }
+
+  /**
+   * Показ суммы в поле ввода: целые — без дробной части, копейки — «111,37» (запятая,
+   * как принято в РФ). Без потери точности: то, что показано, и уйдёт в PATCH.
+   */
+  function fmtMoneyInput(v) {
+    const n = Number(v);
+    if (!isFinite(n) || n <= 0) return '';
+    return Number.isInteger(n) ? String(n) : n.toFixed(2).replace('.', ',');
+  }
+
   async function openStatusModal(row) {
     const st = row.registry_status || 'рассмотрение';
     // Ставка НДС: ЕДИНСТВЕННЫЙ источник — настройка `vat_default_pct` (прямое указание заказчика).
@@ -594,8 +629,8 @@ window.AsgardRegistryTab = (function () {
       ? vatSetting
       : ((M() && M().VAT_DEFAULT_PCT) || 22);
     const suggested = (M() && M().suggestSubmissionPrices) ? M().suggestSubmissionPrices(row, vatPct) : { exVat: null, withVat: null, vatPct };
-    const sugEx = suggested.exVat > 0 ? String(Math.round(suggested.exVat)) : '';
-    const sugWith = suggested.withVat > 0 ? String(Math.round(suggested.withVat)) : '';
+    const sugEx = suggested.exVat > 0 ? fmtMoneyInput(suggested.exVat) : '';
+    const sugWith = suggested.withVat > 0 ? fmtMoneyInput(suggested.withVat) : '';
     const sugHint = suggested.withVat != null
       ? ' Предложена сумма из отчёта РП (' + formatMoney(suggested.withVat) + ').'
       : '';
@@ -631,10 +666,10 @@ window.AsgardRegistryTab = (function () {
           if (moneyBox) moneyBox.style.display = (pick?.value === 'подались') ? '' : 'none';
           if (cancelBox) cancelBox.style.display = (pick?.value === 'отмена') ? '' : 'none';
         };
-        const digits = (v) => String(v || '').replace(/\D/g, '');
+        const digits = parseMoneyInput;
         const updateVat = () => {
-          const w = Number(digits(withInp?.value));
-          const e = Number(digits(exInp?.value));
+          const w = parseMoneyInput(withInp?.value);
+          const e = parseMoneyInput(exInp?.value);
           if (!vatLine) return;
           if (w > 0) {
             const base = e > 0 ? e : (M() ? M().withoutVat(w, vatPct) : Math.round(w / (1 + vatPct / 100)));
@@ -645,16 +680,17 @@ window.AsgardRegistryTab = (function () {
         syncVis();
         updateVat();
         exInp?.addEventListener('input', () => {
-          const n = Number(digits(exInp.value));
+          const n = parseMoneyInput(exInp.value);
           if (n > 0 && withInp) {
-            withInp.value = String(Math.round(M() ? M().withVat(n, vatPct) : n * (1 + vatPct / 100)));
+            // Показываем копейки, если они есть, — «видно = уйдёт в PATCH» (D-244).
+            withInp.value = fmtMoneyInput(M() ? M().withVat(n, vatPct) : n * (1 + vatPct / 100));
           }
           updateVat();
         });
         withInp?.addEventListener('input', () => {
-          const n = Number(digits(withInp.value));
+          const n = parseMoneyInput(withInp.value);
           if (n > 0 && exInp) {
-            exInp.value = String(Math.round(M() ? M().withoutVat(n, vatPct) : n / (1 + vatPct / 100)));
+            exInp.value = fmtMoneyInput(M() ? M().withoutVat(n, vatPct) : n / (1 + vatPct / 100));
           }
           updateVat();
         });
@@ -663,8 +699,8 @@ window.AsgardRegistryTab = (function () {
           const next = pick?.value || st;
           try {
             if (next === 'подались') {
-              const finalNoVat = Number(digits(exInp?.value)) || 0;
-              const finalWithVat = Number(digits(withInp?.value)) || 0;
+              const finalNoVat = parseMoneyInput(exInp?.value);
+              const finalWithVat = parseMoneyInput(withInp?.value);
               if (!finalNoVat && !finalWithVat) {
                 toast('Укажите сумму подачи', 'warn');
                 return;
