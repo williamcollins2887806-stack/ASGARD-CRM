@@ -7158,3 +7158,106 @@ const money2 = (v) => money(v, { fractionDigits: 2 });                    // э�
 
 **Статус: VERIFIED** (живой гейт 5/5 + мутант красный + регресс; фикс выкачен повторным деплоем
 shell 20.28.47).
+
+## D-246. Аудит логов 14–20.09.2026: 2 клиентских, 2 бэковых 500, счёт дайджеста и 43 % трафика (22.09.2026)
+
+**Как найдено.** Разбор `journalctl` прода + `level:50` из `/api/client-errors` + nginx-логи за
+14–20.09 по запросу «есть ли ошибки, которые нужно чинить на десктопе и у рабочих в мобильном,
+и правильно ли дайджест 9:15 посчитал нули». Пять подтверждённых находок.
+
+**1) Мобильный: `TypeError: Cannot read properties of null (reading 'style')`** — `/m/field/seasonal`,
+`XpBar` (`public/mobile-app/src/pages/field/FieldProfile.jsx:225`). Внутренний `requestAnimationFrame`
+писал в `barRef.current.style` без проверки; при уходе с роута между кадрами узел уже `null`.
+Правка: `const node = barRef.current; if (!node) return;` + `cancelAnimationFrame` обоих кадров.
+Доказательство: `cancelAnimationFrame` присутствует в собранном `public/m/assets/index-*.js` (10 вхождений),
+`public/m` синхронизирован с `dist` (78/78, 0 расхождений).
+
+**2) Десктоп: `ReferenceError: AsgardRegistryApi is not defined`** — `registry_detail.js` и `registry_tab.js`
+читали зависимость на этапе загрузки модуля (в логе — от `YandexBot`). Правка: ранний выход с
+`console.error`, если `window.AsgardUI`/`window.AsgardRegistryApi` ещё не подняты; модуль не активируется,
+а не роняет страницу.
+
+**3) `crew-all` 500 (PostgreSQL 42P10)** — `GET /api/worker-payments/project/:work_id/crew-all`:
+`SELECT DISTINCT … ORDER BY e.fio` требует `e.fio` в списке выборки. Правка:
+`GROUP BY e.id, e.fio, e.full_name, e.position ORDER BY e.fio` — гасит дубли `LEFT JOIN`, сохраняет
+алфавитный порядок UI (вариант `DISTINCT ON (e.id)` менял сортировку на `e.id` — отклонён).
+Sentinel `tools/verify_d246_backend.js`: 5/5 работ → HTTP 200, `on_site` не пуст; **дискриминирующий
+контроль** — прежний SQL на том же work=422 действительно падает `42P10`.
+
+**4) FK `field_trip_stages_entered_by_user_id_fkey` (500)** — `PUT /api/timesheet/v2/entry` писал
+`entered_by_user_id = viewer.id`; у сессии-сотрудника `viewer.id` живёт в namespace `employees`, а FK
+смотрит на `users(id)`. Правка: общий резолвер `src/lib/entered-by-user.js`
+(`users.id → employees.user_id → NULL`) применён в `timesheet-v2.js`, `global-timesheet.js`,
+`field-logistics.js`. Sentinel `tests/timesheet-v2/verify-waiting-backend.js`: **51/51 PASS**, включая
+новые D-246/D-246b (ghost-id → 201 и `entered_by_user_id = NULL` при сохранённом `created_by`;
+CRUD-JWT-путь → 400 `work_id_required`, не 500).
+
+**5) Счёт дайджеста: закрытые ПРОСЧЁТЫ не учитывались** (вариант «split tiles»). Дайджест 14–20.09
+показал «0 закрытых анализов» — для анализов верно (последнее закрытие 11.09), но 17.09 11:04 закрыт
+**просчёт** review 142 / тендер 2042 (`action='finalize'`, `payload_json->>'mode'='calc'`), и фильтр
+`finalize_analysis`/`finalize_reject` его не видел ни в дайджесте, ни в рейтинге.
+Правки:
+- `src/services/pm-analysis-weekly-report.js` — `loadAnalysisByPm` считает `finalize`+`mode=calc`
+  отдельной колонкой `closed_calc`; **`taken`/`go`/`reject` остались про анализы** (`taken = go + reject`),
+  просчёты в них не подмешиваются (регресс был поймал sentinel’ом: `taken=1` вместо 0 — исправлено);
+  `kpi.closed_calc`, `duty[].closed_calc`, `analysisLeaders` включают закрывавших только просчёты.
+- `src/services/pm-analysis-weekly-email.js` — плитка «Закрыто просчётов» (#0ea5e9), сноска-пояснение,
+  строка «просчётов N» в таблице дежурства, отдельный блок «Также закрывали просчёты (вне дежурства)».
+- `src/prompts/pm-analysis-weekly-prompt.js` — вердикт: при нуле анализов, но ненулевых просчётах
+  пишет «Закрытых анализов за неделю не было, но закрыто просчётов: N» вместо «почти не было».
+- `src/services/pm-analysis-rating.js` + миграция `V358__rating_daily_activity.sql` — справочная
+  `activity.closed_calc` (`activity_json`), **в score/grade НЕ входит**: у закрытия просчёта нет решения
+  «подаём/не подаём», иначе числа рейтинга меняются молча.
+Доказательства: `tools/verify_d246_backend.js` — `kpi.closed_calc=1`, `kpi.taken=0`, плитка и блок
+в письме, `activity.closed_calc=1`; **принудительное сравнение до/после** `tools/check_rating_delta.js`
+на клоне: `recomputeAll` 14/14 пользователей, **дельт score/grade = 0/0**, `activity_json` заполнен 42/42.
+
+**6) Шум (разбор, не «починка вслепую», но правка дешёвая и доказанная).**
+- `/api/data/notifications/by-index` — **478 560** запросов за окно логов (43 % трафика сайта),
+  все — store `notifications`. Причина: SLA-тик зовёт `alreadyNotified` **на каждую пару
+  «правило × получатель»** (дни рождения офиса и рабочих), поэтому дедупликация не экономила чтения.
+  Замер `tools/measure_sla_byindex.js` на клоне: активных users 105, с `birth_date` 22, рабочих с ДР 490,
+  HR/DIRECTOR-получателей 9 → верхняя оценка одного тика **6 698 чтений** (≈964 512/сутки при 10-мин тике).
+  Правка: кэш `notifCache` на время тика (≤1 чтение на уникального получателя) в `public/assets/js/sla.js`;
+  тик не запускается в фоне (`document.hidden`) и идемпотентно добирается на `visibilitychange`
+  (`public/assets/js/router.js`); в офлайне чтения не делаются вовсе (пустой кэш породил бы дубли).
+  Гейт `tools/verify_d246_sla_noise.js` **8/8 PASS**: чтений 4 вместо 6 (прежний код из `git show HEAD`,
+  дискриминирующий контроль), **набор `dedup_key` идентичен прежнему коду**, повторный тик без дублей,
+  офлайн — 0 чтений и 0 записей.
+- `404 /api/timesheet/v2/grid?year=&month=` ×11 — UA `asgard-diag/1.0` (40 запросов с одного IP
+  15.09 01:51–01:52, включая `201 /api/timesheet/v2/entry`), т.е. внешний диагностический клиент,
+  а не наш ассет (в `public/**` строки нет; реальный роут — `/:year/:month`). Закрыто как внешний пробник,
+  кода не касались.
+
+**Регресс и гейты.** `npm run build` (backend не затронут), `node tests/asgard-smeta-share.test.js` —
+сметы не задеты. Pre-deploy: `shell_guard.py --expect-version 20.28.48 --deploy-gate` 37/37;
+`verify_index_tags.js` 0 MISSING/0 DUPLICATE/0 BROKEN; `restore_asset_sync.py plan`
+`differ_prod_newer=0`, `index_reference_problems=0` (в раздачу идут ровно 4 файла: `sla.js`, `router.js`,
+`registry_detail.js`, `registry_tab.js`; `prod-only` строки внесены мной в этой же сессии, `PROD_HANDEDIT=0`);
+`verify_rp_modal_render.js` 19/19. Shell-версия `20.28.47 → 20.28.48`
+(`node tools/bump_shell_version.js`).
+
+**Ловушка, которую стоит помнить.** Первый прогон `audit_silent_reverts.js` показал `OK` на 4 файлах,
+хотя они уже были изменены: манифест `asset-sync-manifest.json` был снят раньше правок, и аудит читал
+старые локальные хеши. Обновлять манифест (`restore_asset_sync.py plan`) нужно **до** аудита, иначе
+вердикт `OK` — ложный (класс D-151).
+
+**Дополнение после верификации (L3, независимый аудит).** Вердикт верификатора — **VERIFIED**,
+ни одного FAIL. Независимо подтверждено: 21/21 backend-sentinel, 8/8 SLA-шум, 19/19 RP-модалка,
+51/51 timesheet, 16/16 сметы, `shell_guard` 37/37, `index_tags` 0 MISSING/DUPLICATE/BROKEN.
+Собственный мутационный контроль верификатора подтвердил, что гейт `kpi.taken=0` не тавтологичен
+(старая семантика, где `closed_calc` входит в `taken`, даёт 1 ≠ 0). Прямой SQL на клоне: ровно
+1 событие `finalize`+`mode=calc` (log 317, review 142, actor 3474 Андросов), 0 событий
+`finalize_analysis`/`finalize_reject` за 14–20.09. Стенд `:3100`, клон `asgard_crm_test`, прод не тронут.
+
+Отдельно закрыт `migrations`-реестр: `V355__email_ai_attempts`, `V356__analysis_checklists`,
+`V357__assembly_item_photos`, `V358__rating_daily_activity` фактически применялись без записи
+(в `migrations` максимум был `V354`), а `migrations.id` жил наоборот впереди (`last_value=269`
+при `max(id)=279`) — обычный `INSERT` упал бы на duplicate key. Запись сделана через
+`setval('migrations_id_seq', max(id))` + `INSERT … ON CONFLICT DO NOTHING` (без форсирования схемы).
+Идемпотентность V358 и round-trip up→down→up проверены на клоне.
+
+**Статус: VERIFIED** (sentinel-гейты зелёные + независимый верификатор без FAIL).
+Правки НЕ закоммичены и НЕ выкачены — по правилу проекта деплой только по отдельной команде
+пользователя. Рейтинг правкой не сдвинут (дельт score/grade 0/0), так что выкатка безопасна
+по числам.

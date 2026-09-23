@@ -327,6 +327,49 @@ const YEAR = 2026, MONTH = 9;
       where employee_id=$1 and date_from=$2::date and stage_type='waiting'
         and coalesce(status,'active') not in ('rejected','cancelled')`, [EMP.id, DATE]);
     check('чужая ⏳ пережила DELETE глобал-роли', stillThere.rows[0].n === 1, `alive=${stillThere.rows[0].n}`);
+
+    // ── 15) РЕГРЕСС D-246: entered_by_user_id вне namespace users → не 500 ──
+    // Прод 15.09.2026 01:52:59: FK `field_trip_stages_entered_by_user_id_fkey`
+    // (QA-сессия с employee.id; reviewer id=1 в users нет). Резолвер обязан
+    // отдать NULL (колонка nullable) и запись должна пройти со статусом 201/200.
+    await db.query(`delete from field_trip_stages where employee_id=$1 and date_from=$2::date`, [EMP.id, DATE]);
+    const FK_GHOST_ID = 999999; // нет ни в users, ни в employees
+    const ghostUser = await db.query(`select 1 from users where id=$1 union all select 1 from employees where id=$1`, [FK_GHOST_ID]);
+    check('D-246 setup: FK-ghost id отсутствует и в users, и в employees', ghostUser.rows.length === 0, `id=${FK_GHOST_ID}`);
+    const rGhost = await fastify.inject({
+      method: 'PUT', url: '/api/timesheet/v2/entry',
+      headers: { authorization: 'Bearer ' + token('OFFICE_MANAGER', FK_GHOST_ID) },
+      payload: { employee_id: EMP.id, date: DATE, type: 'waiting', mode: 'travel' }
+    });
+    check('D-246: employee-id сессия ставит ⏳ -> 201', rGhost.statusCode === 201, `HTTP ${rGhost.statusCode} ${rGhost.body.slice(0, 120)}`);
+    const ghostRow = await db.query(`
+      select id, entered_by_user_id, created_by from field_trip_stages
+      where employee_id=$1 and date_from=$2::date and stage_type='waiting'
+        and coalesce(status,'active') not in ('rejected','cancelled')
+      order by id desc limit 1`, [EMP.id, DATE]);
+    check('D-246: entered_by_user_id = NULL (а не 999999 → FK-падение)',
+      ghostRow.rows[0]?.entered_by_user_id == null, `entered_by_user_id=${ghostRow.rows[0]?.entered_by_user_id}`);
+    check('D-246: created_by сохранён (атрибуция не потеряна)',
+      Number(ghostRow.rows[0]?.created_by) === FK_GHOST_ID, `created_by=${ghostRow.rows[0]?.created_by}`);
+
+    // 15b) штатный CRM-JWT путь: user.id, у которого есть employees.user_id,
+    // должен резолвиться в user_id сотрудника (не NULL) — регресс на «слишком строгий» фильтр.
+    const linked = await db.query(`
+      select e.id AS emp_id, e.user_id, u.role from employees e
+      join users u on u.id = e.user_id
+      where u.role = 'PM' and coalesce(e.is_active,true) = true
+      order by e.id limit 1`);
+    if (linked.rows.length) {
+      await db.query(`delete from field_trip_stages where employee_id=$1 and date_from=$2::date`, [EMP.id, DATE]);
+      const pmEmp = linked.rows[0];
+      const rLinked = await fastify.inject({
+        method: 'PUT', url: '/api/timesheet/v2/entry',
+        headers: { authorization: 'Bearer ' + token('PM', pmEmp.emp_id) },
+        payload: { employee_id: EMP.id, date: DATE, type: 'waiting', mode: 'global' }
+      });
+      check('D-246b: PM по глобальному пути -> 400 (work_id обязателен), не 500',
+        rLinked.statusCode === 400, `HTTP ${rLinked.statusCode} ${rLinked.body.slice(0, 90)}`);
+    }
   } catch (err) {
     console.error('FATAL', err);
     results.push({ name: 'harness', pass: false, proof: err.message });

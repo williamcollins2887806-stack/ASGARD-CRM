@@ -227,6 +227,24 @@ async function loadCollabStats(db, userId, periodStart, periodEnd) {
   return r.rows;
 }
 
+/**
+ * D-246: закрытые ПРОСЧЁТЫ (`finalize` + `payload_json->>'mode' = 'calc'`) — отдельный
+ * счётчик «закрыто просчётов» по актору, как в недельном дайджесте. В скоринг НЕ входит:
+ * у закрытия просчёта нет решения «подаём/не подаём», поэтому завершение/скорость/дисциплина
+ * считаются только по анализу. Иначе числа рейтинга менялись бы молча.
+ */
+async function loadCalcClosedStats(db, userId, periodStart, periodEnd) {
+  const r = await db.query(`
+    SELECT COUNT(DISTINCT l.review_id)::int AS closed_calc
+    FROM tender_rp_review_log l
+    WHERE l.action = 'finalize'
+      AND l.payload_json->>'mode' = 'calc'
+      AND l.actor_user_id = $3
+      AND l.created_at::date BETWEEN $1::date AND $2::date
+  `, [periodStart, periodEnd, userId]);
+  return r.rows[0] ? Number(r.rows[0].closed_calc) : 0;
+}
+
 function isTaken(row) {
   if (!row.review_id) return false;
   return !!(row.started_by_user_id || row.analysis_owner_user_id || row.analysis_started_at || row.first_activity_at);
@@ -266,9 +284,10 @@ async function computeUserRating(db, userId, windowKind, asOfDate) {
     return emptyPayload(userId, win, asOf, 'Нет периодов дежурства — рейтинг смены недоступен.');
   }
 
-  const [rows, collabs] = await Promise.all([
+  const [rows, collabs, closedCalc] = await Promise.all([
     loadCandidates(db, userId, ps, pe),
-    loadCollabStats(db, userId, ps, pe)
+    loadCollabStats(db, userId, ps, pe),
+    loadCalcClosedStats(db, userId, ps, pe)
   ]);
 
   const poolIds = new Set();
@@ -441,6 +460,11 @@ async function computeUserRating(db, userId, windowKind, asOfDate) {
     total: penaltiesTotal
   };
 
+  const activity = {
+    // D-246: справочная метрика — закрытые просчёты в окне. В score/grade не входит.
+    closed_calc: closedCalc
+  };
+
   const bonuses = {
     collab_active: { count: activeCollabs, points: collabBonus },
     win: { points: BONUS.win },
@@ -464,6 +488,7 @@ async function computeUserRating(db, userId, windowKind, asOfDate) {
     components,
     penalties,
     bonuses,
+    activity,
     recommendations,
     weights: WEIGHTS
   };
@@ -490,6 +515,8 @@ function emptyPayload(userId, win, asOf, hint) {
     },
     penalties: { overdue: { count: 0, points: 0, ids: [] }, abandoned: { count: 0, points: 0, ids: [] }, reject_no_preset: { count: 0, points: 0 }, registry_cancel: { count: 0, points: 0 }, total: 0 },
     bonuses: { collab_active: { count: 0, points: 0 }, win: { points: 0 }, total: 0 },
+    // D-246: пустая смена — закрытых просчётов тоже 0, поле присутствует всегда.
+    activity: { closed_calc: 0 },
     recommendations: [hint || 'Недостаточно данных для оценки.'],
     weights: WEIGHTS,
     empty: true
@@ -565,8 +592,8 @@ async function upsertSnapshots(db, userId, asOfDate) {
     await db.query(`
       INSERT INTO pm_analysis_rating_daily (
         user_id, as_of_date, window_kind, score, grade,
-        period_start, period_end, components_json, penalties_json, bonuses_json, recs_json, updated_at
-      ) VALUES ($1, $2::date, $3, $4, $5, $6::date, $7::date, $8::jsonb, $9::jsonb, $10::jsonb, $11::jsonb, NOW())
+        period_start, period_end, components_json, penalties_json, bonuses_json, activity_json, recs_json, updated_at
+      ) VALUES ($1, $2::date, $3, $4, $5, $6::date, $7::date, $8::jsonb, $9::jsonb, $10::jsonb, $11::jsonb, $12::jsonb, NOW())
       ON CONFLICT (user_id, as_of_date, window_kind) DO UPDATE SET
         score = EXCLUDED.score,
         grade = EXCLUDED.grade,
@@ -575,6 +602,7 @@ async function upsertSnapshots(db, userId, asOfDate) {
         components_json = EXCLUDED.components_json,
         penalties_json = EXCLUDED.penalties_json,
         bonuses_json = EXCLUDED.bonuses_json,
+        activity_json = EXCLUDED.activity_json,
         recs_json = EXCLUDED.recs_json,
         updated_at = NOW()
     `, [
@@ -583,6 +611,7 @@ async function upsertSnapshots(db, userId, asOfDate) {
       JSON.stringify(payload.components),
       JSON.stringify(payload.penalties),
       JSON.stringify(payload.bonuses),
+      JSON.stringify(payload.activity || {}),
       JSON.stringify(payload.recommendations)
     ]);
     results.push(payload);
@@ -632,6 +661,8 @@ function snapshotToPayload(row, extra = {}) {
     penalties: row.penalties_json,
     bonuses: row.bonuses_json,
     recommendations: row.recs_json,
+    // D-246: снапшоты до этой правки поля не имеют — отдаём null, а не undefined.
+    activity: row.activity_json || null,
     ...extra
   };
 }

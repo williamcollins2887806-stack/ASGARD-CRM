@@ -21,6 +21,8 @@ const path = require('path');
 const crypto = require('crypto');
 const { logError } = require('../lib/log-error');
 const { safeStoredExt } = require('../lib/upload-ext');
+// D-246: резолв user.id для FK `entered_by_user_id` (request.user.id не всегда user.id).
+const { resolveEnteredByUserId } = require('../lib/entered-by-user');
 
 // FIX 3: дата-парсер для assertNotLocked
 function _logDateParts(d) {
@@ -238,12 +240,12 @@ async function routes(fastify, options) {
                 (employee_id, work_id, stage_type, date_from, date_to, days_count,
                  tariff_id, tariff_points, rate_per_day, amount_earned, details,
                  logistics_id, source, status, created_by, entered_by_user_id)
-              VALUES ($1,$2,'travel',$3,$4,$5,$6,$7,$8,$9,$10,$11,'auto','planned',$12,$12)
+              VALUES ($1,$2,'travel',$3,$4,$5,$6,$7,$8,$9,$10,$11,'auto','planned',$12,$13)
               ON CONFLICT DO NOTHING
             `, [employee_id, stageWorkId, date_from, date_to || null, days,
                 tariff.id || null, tPoints, tRate, stageAmount,
                 JSON.stringify({ transport: 'auto', route: title }),
-                logisticsId, userId]);
+                logisticsId, userId, await resolveEnteredByUserId(db, { id: userId })]);
           } catch (stErr) {
             fastify.log.warn('[field-logistics] auto-create travel stage:', stErr.message);
           }

@@ -87,8 +87,13 @@ window.AsgardRouter=(function(){
     });
 
     render();
-    // SLA tick as background interval instead of per-navigation
-    setInterval(async () => {
+
+    // SLA tick as background interval instead of per-navigation.
+    // D-246/шум: тик сам читает notifications/by-index на каждого получателя, поэтому
+    // в фоновой вкладке он должен молчать — иначе 24/7-нагрузка на ровном месте.
+    // Возврат в фокус не теряется: на `visibilitychange` тик сработает сразу
+    // (коулдаун 5 мин внутри AsgardSLA не даст лишнего запроса).
+    const _slaTick = async () => {
       try {
         if (!localStorage.getItem('asgard_token')) return;
         const auth = window.AsgardAuth && AsgardAuth.getAuth();
@@ -96,7 +101,9 @@ window.AsgardRouter=(function(){
           await AsgardSLA.tick(auth.user);
         }
       } catch(_) {}
-    }, 10 * 60 * 1000);
+    };
+    setInterval(() => { if (!document.hidden) _slaTick(); }, 10 * 60 * 1000);
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) _slaTick(); });
   }
 
   return { add, start, current };

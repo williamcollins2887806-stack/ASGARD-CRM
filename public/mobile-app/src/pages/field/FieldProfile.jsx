@@ -226,15 +226,24 @@ function XpBar({ xpCurrent, xpNext, level }) {
   const barRef = useRef(null);
   const pct = xpNext ? Math.min((xpCurrent / xpNext) * 100, 100) : 100;
   useEffect(() => {
-    if (!barRef.current) return;
-    barRef.current.style.width = '0%';
-    const t = requestAnimationFrame(() => {
-      requestAnimationFrame(() => {
-        barRef.current.style.transition = 'width 1.4s cubic-bezier(.25,.46,.45,.94)';
-        barRef.current.style.width = `${pct}%`;
+    const el = barRef.current;
+    if (!el) return;
+    el.style.width = '0%';
+    // D-246: вложенный RAF — узел мог размонтироваться между кадрами (уход с роута),
+    // поэтому проверяем barRef.current перед каждой записью в .style и глушим оба кадра.
+    let inner = 0;
+    const outer = requestAnimationFrame(() => {
+      inner = requestAnimationFrame(() => {
+        const node = barRef.current;
+        if (!node) return;
+        node.style.transition = 'width 1.4s cubic-bezier(.25,.46,.45,.94)';
+        node.style.width = `${pct}%`;
       });
     });
-    return () => cancelAnimationFrame(t);
+    return () => {
+      cancelAnimationFrame(outer);
+      cancelAnimationFrame(inner);
+    };
   }, [pct]);
 
   return (

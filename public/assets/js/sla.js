@@ -87,10 +87,30 @@ window.AsgardSLA = (function(){
     return `sla:${kind}:${entity_type}:${entity_id}:${day}`;
   }
 
+  // D-246/шум: `alreadyNotified` зовётся на каждую пару «правило × получатель»,
+  // поэтому один и тот же пользователь опрашивался десятки раз за тик (43 % всего
+  // трафика сайта — 478k запросов `/api/data/notifications/by-index` за 2 недели).
+  // Кэш на время тика: список уведомлений пользователя читается один раз,
+  // dedup проверяется в памяти. Семантика не меняется — те же данные, один запрос.
+  let notifCache = new Map();
+  let skippedOffline = 0; // сколько чтений не сделали из-за offline-guard
+
+  function isOfflineMode(){
+    return !!(window.AsgardSessionGuard && AsgardSessionGuard.isOffline && AsgardSessionGuard.isOffline());
+  }
+
   async function alreadyNotified(user_id, dedup_key){
+    // Офлайн: чтение вернуло бы пусто из кэша, и мы бы создали дубли уведомлений
+    // (было бы хуже, чем пропустить один тик — офлайн-очередь отправит их позже).
+    if (isOfflineMode()) { skippedOffline++; return true; }
     try {
-      const nots = await AsgardDB.byIndex('notifications','user_id', user_id);
-      return (nots||[]).some(n=>n && n.dedup_key===dedup_key);
+      let keys = notifCache.get(user_id);
+      if (!keys) {
+        const nots = await AsgardDB.byIndex('notifications','user_id', user_id);
+        keys = new Set((nots||[]).map(n=>n && n.dedup_key).filter(Boolean));
+        notifCache.set(user_id, keys);
+      }
+      return keys.has(dedup_key);
     } catch(e) { return true; } // Считаем что уже уведомлено при ошибке
   }
 
@@ -110,6 +130,9 @@ window.AsgardSLA = (function(){
       day_key: day,
       dedup_key
     });
+    // Созданное уведомление должно быть видно последующим проверкам того же тика.
+    const keys = notifCache.get(user_id);
+    if (keys) keys.add(dedup_key);
     return true;
   }
 
@@ -127,6 +150,7 @@ window.AsgardSLA = (function(){
     const now = Date.now();
     if (now - lastTickTime < TICK_COOLDOWN) return;
     lastTickTime = now;
+    notifCache = new Map(); // D-246/шум: свежий кэш на тик (чтение by-index не более 1× на юзера)
 
     if(!currentUser || !currentUser.id) return;
     // Skip SLA tick if session is locked or token missing (prevents 403 spam)

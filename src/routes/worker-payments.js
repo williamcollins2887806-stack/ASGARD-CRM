@@ -948,13 +948,17 @@ async function routes(fastify, options) {
         return reply.code(400).send({ error: 'bad_work_id' });
       }
 
+      // D-246: `SELECT DISTINCT … ORDER BY e.fio` давал 42P10 («ORDER BY expressions must
+      // appear in select list») → 500 на каждой бригаде. Гасим дубли GROUP BY по сотруднику
+      // (несколько assignment/чекинов на одну работу) и сохраняем исходную алфавитную сортировку.
       const { rows: onSite } = await db.query(`
-        SELECT DISTINCT e.id AS employee_id, ${empDisplayNameSql('e')} AS employee_name, e.position,
+        SELECT e.id AS employee_id, ${empDisplayNameSql('e')} AS employee_name, e.position,
                0 AS per_diem_rate
         FROM employees e
         LEFT JOIN employee_assignments ea ON ea.employee_id = e.id AND ea.work_id = $1
         LEFT JOIN field_checkins fc ON fc.employee_id = e.id AND fc.work_id = $1
         WHERE (ea.work_id = $1 OR fc.work_id = $1) AND COALESCE(e.is_active, true) = true
+        GROUP BY e.id, e.fio, e.full_name, e.position
         ORDER BY e.fio
       `, [workId]);
 

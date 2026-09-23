@@ -45,6 +45,9 @@ function pointsForStage(type) {
   return STAGE_POINTS[type] != null ? STAGE_POINTS[type] : 0;
 }
 
+// D-246: резолв user.id для FK `entered_by_user_id` (request.user.id не всегда user.id).
+const { resolveEnteredByUserId } = require('../lib/entered-by-user');
+
 const VIEW_ROLES = [
   'ADMIN',
   'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV',
@@ -557,9 +560,9 @@ async function routes(fastify, options) {
       const { rows: [ci] } = await db.query(`
         INSERT INTO field_checkins
           (employee_id, work_id, assignment_id, date, shift, status, checkin_at, amount_earned, hours_worked, checkin_source, checkin_by, note, entered_by_user_id)
-        VALUES ($1, $2, $3, $4, $5, 'completed', NOW(), $6, $7, 'admin', $8, $9, $8)
+        VALUES ($1, $2, $3, $4, $5, 'completed', NOW(), $6, $7, 'admin', $8, $9, $10)
         RETURNING *
-      `, [employee_id, work_id, assign[0].id, date, type, amount || null, hours || null, request.user.id, note || null]);
+      `, [employee_id, work_id, assign[0].id, date, type, amount || null, hours || null, request.user.id, note || null, await resolveEnteredByUserId(db, request.user)]);
       return { ok: true, entry: ci, kind: 'checkin' };
     }
 
@@ -570,9 +573,9 @@ async function routes(fastify, options) {
     const { rows: [st] } = await db.query(`
       INSERT INTO field_trip_stages
         (employee_id, work_id, stage_type, date_from, date_to, days_count, tariff_points, rate_per_day, amount_earned, status, created_by, note, entered_by_user_id)
-      VALUES ($1, $2, $3, $4, $4, 1, $5, $6, $7, 'completed', $8, $9, $8)
+      VALUES ($1, $2, $3, $4, $4, 1, $5, $6, $7, 'completed', $8, $9, $10)
       RETURNING *
-    `, [employee_id, work_id || null, type, date, stagePoints, amount || 0, amount || 0, request.user.id, note || null]);
+    `, [employee_id, work_id || null, type, date, stagePoints, amount || 0, amount || 0, request.user.id, note || null, await resolveEnteredByUserId(db, request.user)]);
     return { ok: true, entry: st, kind: 'stage' };
   });
 }

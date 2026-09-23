@@ -2,6 +2,13 @@
  * Registry row detail — комментарии, история, отчёт РП (read-only)
  */
 window.AsgardRegistryDetail = (function () {
+  // D-246: не читаем зависимости на этапе загрузки модуля. registry_api.js грузится
+  // раньше, но при сбое порядка загрузки / у бота ReferenceError уходил в /api/client-errors
+  // (YandexBot, 20.28.31). Ленивый доступ + явный ранний выход, если модуль не поднят.
+  if (typeof window.AsgardUI === 'undefined' || typeof window.AsgardRegistryApi === 'undefined') {
+    console.error('[registry] AsgardRegistryDetail: AsgardUI/AsgardRegistryApi missing — модуль не активирован');
+    return { open: function () {} };
+  }
   const { esc, toast, showModal, hideModal } = AsgardUI;
   const API = AsgardRegistryApi;
 

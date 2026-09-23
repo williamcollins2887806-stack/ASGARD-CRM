@@ -3,6 +3,13 @@
  * Action rows highlighted in-place; column sort with reset; default sort: action-first then deadline
  */
 window.AsgardRegistryTab = (function () {
+  // D-246: guard на этапе загрузки модуля — не падать ReferenceError'ом
+  // (уходил в /api/client-errors от YandexBot, 20.28.31). Если зависимости ещё не подняты,
+  // модуль не активируется, а не рушит страницу.
+  if (typeof window.AsgardUI === 'undefined' || typeof window.AsgardRegistryApi === 'undefined') {
+    console.error('[registry] AsgardRegistryTab: AsgardUI/AsgardRegistryApi missing — модуль не активирован');
+    return { mount: function () {}, unmount: function () {} };
+  }
   const { esc, showModal, hideModal } = AsgardUI;
   const _uiToast = AsgardUI.toast;
   /** Compat: toast(msg, 'err'|'ok'|'warn') — AsgardUI expects (title, msg, type). */

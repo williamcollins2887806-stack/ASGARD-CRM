@@ -83,7 +83,10 @@ function generatePmAnalysisWeeklyEmail(payload) {
       <td style="padding:8px;font-size:13px;"><strong>${esc(d.pm_name)}</strong><br>
         <span style="color:#64748b;font-size:11px;">смена ${fmtShort(d.period_start)}–${fmtShort(d.period_end)}</span></td>
       <td style="padding:8px;font-size:13px;text-align:center;">${d.closed || 0}<br>
-        <span style="color:#64748b;font-size:11px;">${d.go || 0} «подаём» / ${d.reject || 0} отказ</span></td>
+        <span style="color:#64748b;font-size:11px;">${d.go || 0} «подаём» / ${d.reject || 0} отказ</span>${
+          (d.closed_calc || 0) > 0
+            ? `<br><span style="color:#0ea5e9;font-size:11px;">просчётов ${d.closed_calc}</span>`
+            : ''}</td>
       <td style="padding:8px;font-size:13px;text-align:center;">${esc(d.grade_d30 || '—')}${d.score_d30 != null ? ` · ${d.score_d30}` : ''}</td>
     </tr>`
   ).join('') || `<tr><td colspan="3" style="padding:8px;font-size:13px;color:#64748b;">Нет смен дежурства за период</td></tr>`;
@@ -183,7 +186,8 @@ function generatePmAnalysisWeeklyEmail(payload) {
       </div>`;
   }
 
-  const othersClosers = (payload.analysisLeaders || []).filter((a) => !a.on_duty);
+  const othersClosers = (payload.analysisLeaders || []).filter((a) => !a.on_duty && (a.closed || 0) > 0);
+  const elseCalc = (payload.analysisLeaders || []).filter((a) => !a.on_duty && !(a.closed || 0) && (a.closed_calc || 0) > 0);
   const leadersBlock = othersClosers.length
     ? `<div style="margin-top:12px;">
       <div style="font-size:12px;color:#64748b;margin-bottom:6px;">Также закрывали анализ (вне дежурства):</div>
@@ -198,6 +202,25 @@ function generatePmAnalysisWeeklyEmail(payload) {
             <td style="padding:6px 8px;font-size:12px;"><strong>${esc(shortName(a.name))}</strong></td>
             <td style="padding:6px 8px;font-size:12px;text-align:center;font-weight:700;">${a.closed || 0}</td>
             <td style="padding:6px 8px;font-size:11px;text-align:center;color:#64748b;">${a.go || 0} / ${a.reject || 0}</td>
+          </tr>`
+        ).join('')}
+      </table>
+    </div>`
+    : '';
+
+  // D-246: кто закрывал только ПРОСЧЁТЫ (без анализов) — иначе такие люди выпадали из блока.
+  const elseCalcBlock = elseCalc.length
+    ? `<div style="margin-top:12px;">
+      <div style="font-size:12px;color:#64748b;margin-bottom:6px;">Также закрывали просчёты (вне дежурства):</div>
+      <table width="100%" style="border-collapse:collapse;">
+        <tr style="background:#f1f5f9;">
+          <th style="padding:6px 8px;text-align:left;font-size:11px;">Кто</th>
+          <th style="padding:6px 8px;text-align:center;font-size:11px;">Просчётов</th>
+        </tr>
+        ${elseCalc.map((a) =>
+          `<tr style="border-bottom:1px solid #e2e8f0;">
+            <td style="padding:6px 8px;font-size:12px;"><strong>${esc(shortName(a.name))}</strong></td>
+            <td style="padding:6px 8px;font-size:12px;text-align:center;font-weight:700;color:#0ea5e9;">${a.closed_calc || 0}</td>
           </tr>`
         ).join('')}
       </table>
@@ -231,6 +254,7 @@ function generatePmAnalysisWeeklyEmail(payload) {
   <tr><td style="padding:8px 16px 4px;">
     <table width="100%" cellspacing="6" cellpadding="0"><tr>
       ${tile(k.taken || 0, 'Закрыто анализов', '#3b82f6')}
+      ${tile(k.closed_calc || 0, 'Закрыто просчётов', '#0ea5e9')}
       ${tile(k.go || 0, 'Решение: подаём', '#22c55e')}
       ${tile(k.reject || 0, 'Решение: не подаём', '#f59e0b')}
       ${tile(k.submitted || 0, 'В реестре: подались', '#8b5cf6')}
@@ -238,7 +262,8 @@ function generatePmAnalysisWeeklyEmail(payload) {
     </tr></table>
     <div style="font-size:11px;color:#64748b;line-height:1.45;padding:4px 6px 12px;">
       «Подаём / не подаём» — решение по анализу тендера.<br>
-      «Подались / отмена» — уже статус в реестре (подача документов или снятие).
+      «Подались / отмена» — уже статус в реестре (подача документов или снятие).<br>
+      «Закрыто просчётов» — закрытые сметы/КП по уже проанализированным тендерам (отдельно от анализов).
     </div>
   </td></tr>
 
@@ -254,6 +279,7 @@ function generatePmAnalysisWeeklyEmail(payload) {
     </table>
     ${nextDutyHtml}
     ${leadersBlock}
+    ${elseCalcBlock}
     ${staleHtml ? `<div style="margin-top:12px;">${sectionTitle('Риски: нет движения или дедлайн ≤ 2 дней')}
       <table width="100%" style="border-collapse:collapse;">
         <tr style="background:#fef2f2;">

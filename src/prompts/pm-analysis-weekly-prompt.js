@@ -41,18 +41,30 @@ function buildHeuristicDigestCopy(payload) {
     : 'Дежурный на период в реестре не найден.';
 
   const closed = (k.go || 0) + (k.reject || 0);
+  // D-246: закрытый просчёт (`finalize` с mode='calc') — не анализ: у него нет решения
+  // «подаём/не подаём». Поэтому он идёт отдельной фразой, а не в сумме закрытых анализов.
+  const calc = k.closed_calc || 0;
+  const calcTail = calc > 0 ? ` Дополнительно закрыто просчётов: ${calc}.` : '';
   let analysisPart;
-  if (duty.length === 1 && closed > 0) {
+  if (duty.length === 1 && (closed > 0 || calc > 0)) {
     const d = duty[0];
     const closedDuty = (d.closed != null ? d.closed : ((d.go || 0) + (d.reject || 0)));
+    const calcDuty = (d.closed_calc != null ? d.closed_calc : 0);
     analysisPart = sentence(
       `За ${periodWord} ${shortName(d.pm_name)} закрыл ${closedDuty} анализов` +
       ` — из них «подаём» ${d.go || 0}, «не подаём» ${d.reject || 0}.` +
+      (calcDuty > 0 ? ` Плюс закрыто просчётов: ${calcDuty}.` : '') +
       ` В реестре тендеров за тот же период: «подались» ${k.submitted || 0}, «отмена» ${k.cancelled || 0}`
     );
   } else if (closed > 0) {
     analysisPart = sentence(
       `За ${periodWord} закрыто анализов: ${closed} («подаём» ${k.go || 0}, «не подаём» ${k.reject || 0}).` +
+      calcTail +
+      ` В реестре тендеров: «подались» ${k.submitted || 0}, «отмена» ${k.cancelled || 0}`
+    );
+  } else if (calc > 0) {
+    analysisPart = sentence(
+      `Закрытых анализов за ${periodWord} не было, но закрыто просчётов: ${calc}.` +
       ` В реестре тендеров: «подались» ${k.submitted || 0}, «отмена» ${k.cancelled || 0}`
     );
   } else {

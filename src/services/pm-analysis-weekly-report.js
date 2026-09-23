@@ -142,6 +142,8 @@ async function buildWeeklyDigest(db, opts = {}) {
     taken: analysisByPm.reduce((s, x) => s + (x.taken || 0), 0),
     go: analysisByPm.reduce((s, x) => s + (x.go || 0), 0),
     reject: analysisByPm.reduce((s, x) => s + (x.reject || 0), 0),
+    // D-246: закрытые просчёты — отдельная плитка, не смешивается с анализами.
+    closed_calc: analysisByPm.reduce((s, x) => s + (x.closed_calc || 0), 0),
     submitted: registry.submitted || 0,
     cancelled: registry.cancelled || 0
   };
@@ -154,6 +156,7 @@ async function buildWeeklyDigest(db, opts = {}) {
       taken: a.taken || 0,
       go: a.go || 0,
       reject: a.reject || 0,
+      closed_calc: a.closed_calc || 0,
       closed: (a.go || 0) + (a.reject || 0),
       grade_d30: rat.grade_d30 || null,
       score_d30: rat.score_d30 != null ? rat.score_d30 : null,
@@ -163,13 +166,13 @@ async function buildWeeklyDigest(db, opts = {}) {
   });
 
   const analysisLeaders = analysisByPm
-    .filter((a) => (a.go || 0) + (a.reject || 0) > 0)
+    .filter((a) => (a.go || 0) + (a.reject || 0) > 0 || (a.closed_calc || 0) > 0)
     .map((a) => ({
       ...a,
       closed: (a.go || 0) + (a.reject || 0),
       on_duty: dutyRows.some((d) => d.pm_user_id === a.user_id)
     }))
-    .sort((a, b) => b.closed - a.closed);
+    .sort((a, b) => (b.closed - a.closed) || ((b.closed_calc || 0) - (a.closed_calc || 0)));
 
   const worksCounts = works.counts || { prep: 0, in_work: 0, pause: 0, other: 0 };
   const workItems = works.items || works;
@@ -397,16 +400,22 @@ async function loadFieldAppStats(db, weekStart, weekEnd) {
 }
 
 async function loadAnalysisByPm(db, weekStart, weekEnd) {
-  // Последнее finalize_* по review: reject→submit на одном анализе не двойнится.
-  // «Взяли» = число уникальных закрытых анализов (= go + reject).
+  // Последнее finalize-событие по review: reject→submit на одном анализе не двойнится.
+  // D-246: закрытых АНАЛИЗОВ = go + reject (как и было), ПРОСЧЁТЫ (`finalize` с
+  // mode='calc') идут отдельной колонкой `closed_calc` и в `taken`/`go`/`reject` НЕ входят:
+  // у закрытия просчёта нет решения «подаём/не подаём», это другой тип работы.
   const r = await db.query(`
     WITH last_fin AS (
       SELECT DISTINCT ON (l.review_id)
         l.review_id,
         l.actor_user_id AS uid,
-        l.action
+        l.action,
+        COALESCE(l.payload_json->>'mode', '') AS mode
       FROM tender_rp_review_log l
-      WHERE l.action IN ('finalize_analysis', 'finalize_reject')
+      WHERE (
+              l.action IN ('finalize_analysis', 'finalize_reject')
+              OR (l.action = 'finalize' AND l.payload_json->>'mode' = 'calc')
+            )
         AND l.created_at::date BETWEEN $1::date AND $2::date
       ORDER BY l.review_id, l.created_at DESC
     ),
@@ -415,17 +424,18 @@ async function loadAnalysisByPm(db, weekStart, weekEnd) {
         uid,
         COUNT(*) FILTER (WHERE action = 'finalize_reject')::int AS reject,
         COUNT(*) FILTER (WHERE action = 'finalize_analysis')::int AS go,
-        COUNT(*)::int AS taken
+        COUNT(*) FILTER (WHERE action = 'finalize' AND mode = 'calc')::int AS closed_calc
       FROM last_fin
       GROUP BY 1
     )
     SELECT u.id AS user_id, u.name, u.role,
-           COALESCE(c.taken, 0) AS taken,
+           (COALESCE(c.go, 0) + COALESCE(c.reject, 0)) AS taken,
            COALESCE(c.go, 0) AS go,
-           COALESCE(c.reject, 0) AS reject
+           COALESCE(c.reject, 0) AS reject,
+           COALESCE(c.closed_calc, 0) AS closed_calc
     FROM users u
     JOIN closed_log c ON c.uid = u.id
-    WHERE COALESCE(c.taken, 0) > 0
+    WHERE (COALESCE(c.go, 0) + COALESCE(c.reject, 0) + COALESCE(c.closed_calc, 0)) > 0
     ORDER BY (COALESCE(c.go,0)+COALESCE(c.reject,0)) DESC, u.name
   `, [weekStart, weekEnd]);
 
@@ -436,6 +446,7 @@ async function loadAnalysisByPm(db, weekStart, weekEnd) {
     androsov.taken += admin.taken || 0;
     androsov.go += admin.go || 0;
     androsov.reject += admin.reject || 0;
+    androsov.closed_calc = (androsov.closed_calc || 0) + (admin.closed_calc || 0);
   } else if (admin) {
     rows.push({
       user_id: admin.user_id,
@@ -443,7 +454,8 @@ async function loadAnalysisByPm(db, weekStart, weekEnd) {
       role: 'PM',
       taken: admin.taken || 0,
       go: admin.go || 0,
-      reject: admin.reject || 0
+      reject: admin.reject || 0,
+      closed_calc: admin.closed_calc || 0
     });
   }
   return rows.sort((a, b) => ((b.go + b.reject) - (a.go + a.reject)) || String(a.name).localeCompare(String(b.name), 'ru'));

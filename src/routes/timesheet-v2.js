@@ -39,6 +39,8 @@ const TRAVEL_ROLES = ['OFFICE_MANAGER', 'HEAD_TO'];
 const STAGE_TYPES = new Set(['warehouse', 'medical', 'travel', 'ship', 'training', 'helicopter', 'waiting', 'office', 'remote']);
 const SHIFT_TYPES = new Set(['day', 'night']);
 const { getPerDiemAccruedMap } = require('../lib/worker-per-diem-days');
+// D-246: резолв user.id для FK `entered_by_user_id` (request.user.id не всегда user.id).
+const { resolveEnteredByUserId } = require('../lib/entered-by-user');
 // МО/дорога/вертолёт/корабль/склад/обучение/офис/удалёнка — work_id НЕ обязателен, но
 // подставляется ТОЛЬКО если рабочий назначен на работу (на дату отметки).
 // Нельзя брать work_id из фильтра проекта UI — иначе чужие люди липнут к объекту РП.
@@ -106,6 +108,11 @@ async function tableExists(db, name) {
   );
   return rows.length > 0;
 }
+
+/**
+ * D-246: см. lib/entered-by-user.js — резолв user.id для FK `entered_by_user_id`
+ * (request.user.id не всегда user.id: QA-сессия подписана employee.id).
+ */
 
 async function getActiveLocks(fastify, year, month) {
   if (lockLib && typeof lockLib.getActiveLocks === 'function') {
@@ -1841,6 +1848,9 @@ async function routes(fastify) {
 
       const force_pm_lock = !!body.force_pm_lock;
 
+      // D-246: user.id для FK-колонок entered_by_user_id (см. resolveEnteredByUserId).
+      const enteredByUserId = await resolveEnteredByUserId(db, viewer);
+
       try {
         const lockRes = await assertNotLocked(fastify, { id: viewer.id, role: viewer.role }, {
           year: y, month: m, scope_hint: mode, type, work_id, employee_id, date, force_pm_lock
@@ -2077,7 +2087,7 @@ async function routes(fastify) {
               updated_at = NOW()
             WHERE id = $1
             RETURNING id, employee_id, work_id, date, shift, amount_earned, day_rate
-          `, [dupCi[0].id, type, dayRate, amountEarned, hoursWorked, viewer.id]);
+          `, [dupCi[0].id, type, dayRate, amountEarned, hoursWorked, enteredByUserId]);
           // Вахта МЛСП: road→day/night на существующей ячейке тоже открывает stay
           if (type === 'day' || type === 'night') {
             try {
@@ -2099,10 +2109,10 @@ async function routes(fastify) {
              checkin_source, checkin_by, entered_by_user_id)
           VALUES ($1, $2, $3, $4::date, $5, 'completed',
                   ($4::date + TIME '08:00')::timestamptz, $6, $6, $7, $8,
-                  'pm_manual', $9, $9)
+                  'pm_manual', $9, $10)
           RETURNING id, employee_id, work_id, date, shift, amount_earned, day_rate
         `, [employee_id, work_id, assign[0].id, date, type,
-            hoursWorked, dayRate, amountEarned, viewer.id]);
+            hoursWorked, dayRate, amountEarned, viewer.id, enteredByUserId]);
         // Вахта МЛСП: первая смена day/night открывает stay
         if (type === 'day' || type === 'night') {
           try {
@@ -2150,7 +2160,7 @@ async function routes(fastify) {
               work_id = $4,
               updated_at = NOW()
             WHERE id = $1
-          `, [dupSt[0].id, viewer.id, direction, work_id || null]);
+          `, [dupSt[0].id, enteredByUserId, direction, work_id || null]);
           return { ok: true, updated: true, kind: 'stage', stage_id: dupSt[0].id, replaced: false };
         }
       }
@@ -2187,7 +2197,7 @@ async function routes(fastify) {
             amount_earned = $6,
             updated_at = NOW()
           WHERE id = $1
-        `, [sameStage[0].id, viewer.id, direction, pts, ratePerDay, amountEarned]);
+        `, [sameStage[0].id, enteredByUserId, direction, pts, ratePerDay, amountEarned]);
         return { ok: true, updated: true, kind: 'stage', stage_id: sameStage[0].id, replaced: false, deduped: true };
       }
 
@@ -2196,9 +2206,9 @@ async function routes(fastify) {
           INSERT INTO field_trip_stages
             (employee_id, work_id, stage_type, date_from, date_to, days_count,
              tariff_points, rate_per_day, amount_earned, status, created_by, entered_by_user_id, source, direction)
-          VALUES ($1, $2, $3, $4::date, $4::date, 1, $5, $6, $7, 'completed', $8, $8, 'manual', $9)
+          VALUES ($1, $2, $3, $4::date, $4::date, 1, $5, $6, $7, 'completed', $8, $9, 'manual', $10)
           RETURNING id, employee_id, work_id, stage_type, date_from, tariff_points, rate_per_day, amount_earned, direction
-        `, [employee_id, stageWorkId, type, date, pts, ratePerDay, amountEarned, viewer.id, direction]);
+        `, [employee_id, stageWorkId, type, date, pts, ratePerDay, amountEarned, viewer.id, enteredByUserId, direction]);
         return reply.code(201).send({ ok: true, created: true, kind: 'stage', entry: ins2[0] });
       } catch (insErr) {
         // Race / cancelled-ghost unique: recover via UPDATE, never bare 500
@@ -2223,7 +2233,7 @@ async function routes(fastify) {
                 amount_earned = $7,
                 updated_at = NOW()
               WHERE id = $1
-            `, [race[0].id, viewer.id, direction, stageWorkId, pts, ratePerDay, amountEarned]);
+            `, [race[0].id, enteredByUserId, direction, stageWorkId, pts, ratePerDay, amountEarned]);
             return { ok: true, updated: true, kind: 'stage', stage_id: race[0].id, replaced: false, raced: true };
           }
           // Ghost cancelled still blocking (pre-V299) — cancel-all matching keys then retry once
@@ -2238,9 +2248,9 @@ async function routes(fastify) {
             INSERT INTO field_trip_stages
               (employee_id, work_id, stage_type, date_from, date_to, days_count,
                tariff_points, rate_per_day, amount_earned, status, created_by, entered_by_user_id, source, direction)
-            VALUES ($1, $2, $3, $4::date, $4::date, 1, $5, $6, $7, 'completed', $8, $8, 'manual', $9)
+            VALUES ($1, $2, $3, $4::date, $4::date, 1, $5, $6, $7, 'completed', $8, $9, 'manual', $10)
             RETURNING id, employee_id, work_id, stage_type, date_from, tariff_points, rate_per_day, amount_earned, direction
-          `, [employee_id, stageWorkId, type, date, pts, ratePerDay, amountEarned, viewer.id, direction]);
+          `, [employee_id, stageWorkId, type, date, pts, ratePerDay, amountEarned, viewer.id, enteredByUserId, direction]);
           return reply.code(201).send({ ok: true, created: true, kind: 'stage', entry: ins3[0], recovered: true });
         }
         throw insErr;
