@@ -7261,3 +7261,66 @@ CRUD-JWT-путь → 400 `work_id_required`, не 500).
 Правки НЕ закоммичены и НЕ выкачены — по правилу проекта деплой только по отдельной команде
 пользователя. Рейтинг правкой не сдвинут (дельт score/grade 0/0), так что выкатка безопасна
 по числам.
+
+## D-247. `hideModal(Event)` → `TypeError: e.querySelector is not a function` — крестик шапки ломал закрытие модалок (23.09.2026)
+
+**Симптом (прод-журнал).** 31 событие 21.09 15:58 → 23.09 10:58, всё ещё воспроизводилось на `ui.js?v=20.28.47`,
+пользователь 3461 на `#/tenders`:
+
+```
+TypeError: e.querySelector is not a function
+    at $ (assets/js/ui.js:2:34)
+    at HTMLButtonElement.hideModal (assets/js/ui.js:290:19)
+```
+
+**Причина (доказана по строкам стека).** `ui.js:2` — `const $ = (s, e=document) => e.querySelector(s);`
+(колонка 34 — вызов `e.querySelector`). `ui.js:290` — `const modal = $(".cr-m", target);` внутри `hideModal`.
+`ui.js:167` — `closeBtn.addEventListener("click", hideModal)` передаёт в `hideModal` **`MouseEvent`**, а не overlay.
+Ветка `if(overlay)` (строка 280) тихо ставила `target = event` (`indexOf(event)` = −1), и на 290
+`event.querySelector` падал. Строка `const modal = ...` была **мёртвой** (`modal` нигде не использовался).
+
+**Класс, а не единичный случай.** Крестик в шапке — основной способ закрыть модалку, поэтому тот же дефект
+задевал 30 других привязок `addEventListener('click', hideModal|closeModal)` (`tasks-page.js`, `registry_tab.js`,
+`work_norms_ui.js`, `calculator.js`, `morning_brief.js`, `personal_kanban.js`, `director_inbox.js` и др.).
+Кнопка не умирала насмерть: отмена без аргумента (`hideModal()`) продолжала работать — отсюда «иногда закрывается».
+Корректные вызывающие (передают настоящий overlay, их трогать нельзя): `approval_payment.js` (`hideModal(modalRoot)`/
+`hideModal(buhRoot)`) и `warehouse-v2-asm.js` (`hideModal(root)`) — это защита D-226.
+
+**Правка (`public/assets/js/ui.js`).** Нормализация аргумента:
+- добавлен `_isOverlay(el)`;
+- `hideModal` берёт overlay, только если аргумент — реальный overlay (или `event.currentTarget` от него),
+  иначе закрывает верхнюю модалку;
+- строка `closeBtn.addEventListener("click", function(){ hideModal(overlay); })` — крестик закрывает именно свой слой;
+- удалена мёртвая падающая строка. Контракт D-226 сохранён.
+
+**Доказательства.**
+- Живой гейт `tools/verify_d247_hidemodal_live.js` (реальный chromium, :3100, `asgard_crm_test`): **10/10 PASS**, exit 0;
+  3 прогона подряд — без флапа. Кейсы: H0 чистый стек, H1/H1b крестик без ошибок, H2 `hideModal()`,
+  H3 регресс D-226, H4 `hideModal(new MouseEvent("click"))`, H5 серия из 6, H5b/H6 — 0 pageerror класса D-247.
+- Мутант-контроль `tools/make_d247_mutant.js` (откат правки в копию `%TEMP%`): гейт **8 FAIL, exit 1**,
+  причём красное H1b/H4/H5b содержат **ровно прод-строку** `e.querySelector is not a function` — корень подтверждён,
+  гейт не тавтологичен.
+- Регресс: `verify_d1_dir_modal.js` 27/27, `verify_d2_live.js` 14/14, `verify_registry_row_form.js` 24/24,
+  `tests/rp-calc-improvements-sentinel.js` 20/20.
+
+**Статус: FIXED** (VERIFIED — после независимой проверки в рамках L3).
+
+## D-248. `ui.js` содержал 2 байта U+FFFD: «отпра??лено» не матчило статус «Отправлено на просчёт» (23.09.2026)
+
+**Как найдено.** При подготовке D-247 к деплою: `grep` по U+FFFD в `public/assets/js/ui.js` дал 2 байта
+(предсуществующие — в `HEAD` и на проде их тоже 2, прод md5 `08671606e0ff32584630cfe94e0871aa`).
+Позиция — внутри регулярки `statusClass`:
+
+```
+    if (/^(отпра<U+FFFD><U+FFFD>лено на просчёт|в работе|in.progress|...)/.test(s)) return 'status-blue';
+```
+
+**Причина / эффект.** Слово «отправлено» было повреждено (кодировочный след D-142b). Отсюда `statusClass` не
+назначал `status-blue` статусу «Отправлено на просчёт» — статус падал в дефолтную ветку.
+
+**Правка.** Текст восстановлен: `отправлено на просчёт`. Правка в том же файле, что D-247.
+
+**Доказательства.** `U+FFFD` в `ui.js` = 0 (было 2); `node --check` — OK; `ui.js` с 0 U+FFFD входит
+в набор выкатки, поэтому прод получает восстановленный текст (проверка `shell_guard` — класс D-142b).
+
+**Статус: FIXED.** Замечание: другие файлы на U+FFFD в рамках этой задачи не сканировались — отдельная задача.

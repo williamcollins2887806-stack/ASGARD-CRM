@@ -164,7 +164,10 @@ window.AsgardUI = (function(){
     closeBtn.title = "Закрыть";
     closeBtn.type = "button";
     closeBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
-    closeBtn.addEventListener("click", hideModal);
+    // D-247: передаём ИМЕННО свой overlay. При `addEventListener('click', hideModal)` первым
+    // аргументом приходил MouseEvent, из-за чего hideModal падал на `$(".cr-m", target)`
+    // («e.querySelector is not a function»). Сам hideModal теперь тоже нормализует аргумент.
+    closeBtn.addEventListener("click", function(){ hideModal(overlay); });
     actions.appendChild(closeBtn);
 
     header.appendChild(actions);
@@ -274,20 +277,30 @@ window.AsgardUI = (function(){
    * hideModal() — closes and removes only the top modal.
    * The modal below (if any) remains visible and fully functional.
    */
+  // D-247: hideModal вызывают тремя способами — hideModal(), hideModal(overlay) и как
+  // обработчик клика (addEventListener('click', hideModal) → первым аргументом Event).
+  // Раньше Event попадал в ветку `if(overlay)`, target = Event, и падало на
+  // `$(".cr-m", target)` («e.querySelector is not a function», 31 живое событие 21–23.09).
+  function _isOverlay(el){
+    return !!(el && el.nodeType === 1 && el.classList && el.classList.contains("cr-m-overlay"));
+  }
   function hideModal(overlay){
     if(!_modalStack.length) return;
-    let target = null;
-    if(overlay){
+    // Берём overlay только если это реально overlay (или event.currentTarget от него);
+    // любой другой аргумент (Event, undefined, кнопка) → закрываем верхнюю модалку.
+    var el = _isOverlay(overlay) ? overlay
+           : (overlay && _isOverlay(overlay.currentTarget) ? overlay.currentTarget : null);
+    var target;
+    if(el){
       // Закрыть КОНКРЕТНУЮ модалку (даже если она уже не верхняя): убираем её из стека,
       // чтобы отложенный ответ не «догнал» и не закрыл поверх неё открытую другую (D-226).
-      const i = _modalStack.indexOf(overlay);
+      const i = _modalStack.indexOf(el);
       if(i >= 0) _modalStack.splice(i, 1);
-      target = overlay;
+      target = el;
     } else {
       target = _modalStack.pop();
     }
-    if(!target) return;
-    const modal = $(".cr-m", target);
+    if(!target || !target.classList) return;
 
     target.classList.add("cr-m-overlay--leaving");
     target.classList.remove("cr-m-overlay--visible");
@@ -492,7 +505,7 @@ window.AsgardUI = (function(){
     const s = statusText.toLowerCase().trim();
 
     if (/^(новый|новая|черновик|draft|отменён|архив)/.test(s)) return 'status-gray';
-    if (/^(отпра��лено на просчёт|в работе|in.progress|выполняется|обработка|подготовка|мобилизация)/.test(s)) return 'status-blue';
+    if (/^(отправлено на просчёт|в работе|in.progress|выполняется|обработка|подготовка|мобилизация)/.test(s)) return 'status-blue';
     if (/^(кп отправлено|согласование ткп|на проверке|review|ожидание)/.test(s)) return 'status-purple';
     if (/^(на паузе|отложен|истекает|pending|вопрос|приостановлен)/.test(s)) return 'status-yellow';
     if (/^(выиграли|ткп согласовано|оплачен|завершён|done|готов|выполнен|одобрен|работы сдали|подписание акта)/.test(s)) return 'status-green';
