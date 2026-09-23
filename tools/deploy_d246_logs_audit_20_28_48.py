@@ -91,6 +91,8 @@ CODE_FILES = [
     "public/sw.js",
 ]
 FILES = CODE_FILES + [MIGRATION]
+# Заливаются одним таром: код + SQL миграции (миграция применяется после заливки, до рестарта).
+UPLOAD_FILES = CODE_FILES + [MIGRATION]
 EXISTING_ON_PROD = [f for f in FILES if f not in NEW_FILES]
 
 # Если на диске не тот код, что мы проверяли, — падаем ДО заливки.
@@ -100,7 +102,7 @@ MARKERS = [
     ("src/services/pm-analysis-rating.js", "loadCalcClosedStats"),
     ("src/services/pm-analysis-rating.js", "activity_json"),
     ("src/services/pm-analysis-weekly-email.js", "Закрыто просчётов"),
-    ("src/services/pm-analysis-weekly-prompt.js", "Дополнительно закрыто просчётов"),
+    ("src/prompts/pm-analysis-weekly-prompt.js", "Дополнительно закрыто просчётов"),
     ("src/routes/worker-payments.js", "GROUP BY e.id, e.fio, e.full_name, e.position"),
     ("src/routes/timesheet-v2.js", "resolveEnteredByUserId"),
     ("src/routes/global-timesheet.js", "resolveEnteredByUserId"),
@@ -324,27 +326,27 @@ def make_snapshot() -> None:
 
 def upload_code() -> None:
     """tar → /tmp → стейдж в проекте → md5-сверка → атомарный mv. Прод не видит обрезанных файлов."""
-    print(f"\n=== 2. ЗАЛИВКА КОДА: {len(CODE_FILES)} файл(ов) ===")
+    print(f"\n=== 2. ЗАЛИВКА КОДА + SQL МИГРАЦИИ: {len(UPLOAD_FILES)} файл(ов) ===")
     remote_tar = f"/tmp/asgard-d246-code-{STAMP}.tgz"
     stage = f"{PROJECT}/.deploy-stage-d246-code-{STAMP}"
     with tempfile.TemporaryDirectory() as tmp:
         tar_path = Path(tmp) / "d246-code.tgz"
         with tarfile.open(tar_path, "w:gz") as tar:
-            for rel in CODE_FILES:
+            for rel in UPLOAD_FILES:
                 tar.add(ROOT / rel, arcname=rel)
         scp_retry(str(tar_path), remote_tar)
     ssh(f"rm -rf {stage} && mkdir -p {stage} && tar xzf {remote_tar} -C {stage} "
         f"&& rm -f {remote_tar} && echo EXTRACT_OK")
-    for rel in CODE_FILES:
+    for rel in UPLOAD_FILES:
         local = md5_file(ROOT / rel)
         res = ssh(f"md5sum {stage}/{rel}")
         staged = (res.stdout or "").split()[0] if res.stdout.strip() else "?"
         if staged != local:
             ssh_soft(f"rm -rf {stage}")
             rollback(f"стейдж кода не совпал: {rel} (local={local} stage={staged})")
-    ssh(" && ".join([f"mv -f {stage}/{rel} {PROJECT}/{rel}" for rel in CODE_FILES])
+    ssh(" && ".join([f"mv -f {stage}/{rel} {PROJECT}/{rel}" for rel in UPLOAD_FILES])
         + f" && rm -rf {stage} && echo SWITCH_OK")
-    for rel in CODE_FILES:
+    for rel in UPLOAD_FILES:
         local = md5_file(ROOT / rel)
         remote = ((ssh(f"md5sum {PROJECT}/{rel}").stdout or "").split() or ["?"])[0]
         ok = remote == local
@@ -356,22 +358,28 @@ def upload_code() -> None:
 def apply_migration() -> None:
     """V358 идемпотентна (ADD COLUMN IF NOT EXISTS). Маркер — с setval (D-208/D-165)."""
     print("\n=== 3. МИГРАЦИЯ V358 ===")
-    ssh(f"PGPASSWORD=123456789 psql -U asgard -d asgard_crm -v ON_ERROR_STOP=1 "
-        f"-f {PROJECT}/{MIGRATION}")
-    sql = ("SELECT setval('migrations_id_seq', GREATEST("
-           "(SELECT COALESCE(max(id),1) FROM migrations),"
-           "(SELECT last_value FROM migrations_id_seq)));")
-    ssh(f"PGPASSWORD=123456789 psql -U asgard -d asgard_crm -v ON_ERROR_STOP=1 -c \"{sql}\"")
-    ins = (f"INSERT INTO migrations (name) VALUES ('{MIGRATION_NAME}') "
-           f"ON CONFLICT (name) DO NOTHING;")
-    ssh(f"PGPASSWORD=123456789 psql -U asgard -d asgard_crm -v ON_ERROR_STOP=1 -c \"{ins}\"")
-    chk = ssh(f"PGPASSWORD=123456789 psql -U asgard -d asgard_crm -tAc \"SELECT "
-              f"(SELECT count(*) FROM information_schema.columns WHERE table_name='pm_analysis_rating_daily' "
-              f"AND column_name='activity_json') || '/' || "
-              f"(SELECT count(*) FROM migrations WHERE name='{MIGRATION_NAME}') || '/' || "
-              f"(SELECT max(id) FROM migrations) || '/' || "
-              f"(SELECT last_value FROM migrations_id_seq)\"")
-    out = (chk.stdout or "").strip()
+    if "PRESENT" not in (ssh(f"test -f {PROJECT}/{MIGRATION} && echo PRESENT || echo MISSING").stdout or ""):
+        rollback(f"файла миграции нет на проде: {MIGRATION}")
+
+    def psql(sql_or_flag: str, label: str) -> str:
+        # ssh_soft: у psql-ошибки свой код возврата, ретраить её бессмысленно (D-208).
+        res = ssh_soft(f"PGPASSWORD=123456789 psql -U asgard -d asgard_crm -v ON_ERROR_STOP=1 {sql_or_flag}")
+        if res.returncode != 0:
+            rollback(f"{label} не выполнена: {(res.stderr or res.stdout or '').strip()[-300:]}")
+        return (res.stdout or "").strip()
+
+    psql(f"-f {PROJECT}/{MIGRATION}", "миграция V358")
+    psql('-c "SELECT setval(\'migrations_id_seq\', GREATEST('
+         '(SELECT COALESCE(max(id),1) FROM migrations),'
+         '(SELECT last_value FROM migrations_id_seq)))"', "ремонт последовательности migrations")
+    psql(f'-c "INSERT INTO migrations (name) VALUES (\'{MIGRATION_NAME}\') '
+         f'ON CONFLICT (name) DO NOTHING"', "маркер V358 в migrations")
+    out = psql('-tAc "SELECT '
+               "(SELECT count(*) FROM information_schema.columns WHERE table_name='pm_analysis_rating_daily' "
+               "AND column_name='activity_json') || '/' || "
+               f"(SELECT count(*) FROM migrations WHERE name='{MIGRATION_NAME}') || '/' || "
+               '(SELECT max(id) FROM migrations) || \'/\' || '
+               '(SELECT last_value FROM migrations_id_seq)"', "контроль V358")
     print(f"  колонка/маркер/max(id)/last_value = {out}")
     parts = out.split("/")
     if len(parts) != 4 or parts[0] != "1" or parts[1] != "1":
@@ -420,10 +428,11 @@ def upload_mobile() -> None:
 
 def restart() -> None:
     print("\n=== 5. RESTART ===")
+    ssh("systemctl restart asgard-crm")
     ok = False
-    for i in range(1, 11):
+    for i in range(1, 13):
         time.sleep(2)
-        res = ssh_soft("systemctl restart asgard-crm; sleep 3; systemctl is-active asgard-crm; "
+        res = ssh_soft("systemctl is-active asgard-crm; "
                        "curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:3000/api/health || echo fail")
         out = res.stdout or ""
         if "active" in out and "200" in out:
@@ -431,7 +440,7 @@ def restart() -> None:
             ok = True
             break
     if not ok:
-        ssh_soft("journalctl -u asgard-crm -n 80 --no-pager")
+        ssh_soft("systemctl is-active asgard-crm; journalctl -u asgard-crm -n 80 --no-pager")
         rollback("health не подтверждён после рестарта")
 
 
