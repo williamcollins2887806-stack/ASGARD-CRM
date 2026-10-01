@@ -213,10 +213,18 @@ def smoke() -> None:
     if d != "CLEAN":
         raise DeployError("на проде OFFICE_STAGE_SHIFTS всё ещё содержит запрещённые типы")
 
-    served = ssh_soft(
-        f"curl -s 'https://asgard-crm.ru/assets/js/field-tab.js?v={VER}' | grep -c 'Logistics stages only'"
-    )
-    n = (served.stdout or "0").strip().splitlines()[-1] if (served.stdout or "").strip() else "0"
+    # Через loopback на самом сервере — публичный HTTPS иногда рвёт ssh-туннель (ложный FAIL → откат).
+    served = None
+    n = "0"
+    for attempt in range(1, 5):
+        served = ssh_soft(
+            f"curl -s 'http://127.0.0.1:3000/assets/js/field-tab.js?v={VER}' | grep -c 'Logistics stages only'"
+        )
+        n = (served.stdout or "0").strip().splitlines()[-1] if (served.stdout or "").strip() else "0"
+        if n not in ("", "0"):
+            break
+        print(f"  [smoke] served field-tab try {attempt}/4 → {n!r}, повтор...")
+        time.sleep(3)
     print(f"  {'OK  ' if n not in ('', '0') else 'FAIL'} отдаваемый field-tab.js :: Logistics = {n}")
     if n in ("", "0"):
         raise DeployError("в отдаваемом field-tab.js нет Logistics stages only")
