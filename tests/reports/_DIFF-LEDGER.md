@@ -7395,4 +7395,8 @@ A `wa.tier AS rarity` SQL.
 `travel|road|ship|helicopter|waiting|standby`; медосмотр/склад/обучение/day_off → снова toast «Маршруты».
 Правки: `OFFICE_STAGE_SHIFTS` в `field-tab.js` + v2 `Timesheet.jsx`; sentinel `B-scope-vanilla`/`B-scope-v2`.
 RISK2 (confirm при «Добавить» уехавшего) — **не в этом патче**.
-**Статус: FIXED** (статический scope-гейт зелёный; выкатка — по команде).
+**Статус: FIXED.**
+**Выкатка:** 02.10.2026 shell **20.28.51** — `python tools/deploy_d249b_stage_scope_20_28_51.py`
+(snapshot → tar 3 FILES → restart → smoke). md5 3/3; `/api/version`=20.28.51;
+`OFFICE_STAGE_SHIFTS` CLEAN. Post-deploy `audit_silent_reverts --post-deploy` = **0 расхождений**.
+Коммиты: `2f0764e1` (fix), `140a573d` (verify), `61d41470` (deploy).
