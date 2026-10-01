@@ -52,6 +52,17 @@ function defaultRange(_work) {
 
 const MONTHS_RU = ['Январь','Февраль','Март','Апрель','Май','Июнь','Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'];
 
+/** Office/route stages: RP may overwrite via new checkin + confirm_overwrite (D-249). */
+const OFFICE_STAGE_SHIFTS = new Set([
+  'travel', 'road', 'ship', 'helicopter', 'waiting', 'standby',
+  'medical', 'warehouse', 'training', 'day_off'
+]);
+function isOfficeStageDay(day) {
+  if (!day || day.kind !== 'stage') return false;
+  const st = day.shift || day.stage_type || '';
+  return OFFICE_STAGE_SHIFTS.has(st);
+}
+
 function monthBounds(y, m) {
   const from = `${y}-${String(m).padStart(2, '0')}-01`;
   const last = new Date(y, m, 0).getDate();
@@ -218,8 +229,10 @@ export default function TimesheetTab({ work }) {
 
   /* ─── CRUD: создать/обновить/удалить смену ─── */
   const saveCheckin = async ({ employee, date, day, payload }) => {
+    // Stage cells have stage id, not checkin id — always POST new checkin (409→confirm).
+    const isStageOverwrite = day?.kind === 'stage';
     const trySave = async (body) => {
-      if (day && day.id) {
+      if (day && day.id && !isStageOverwrite) {
         await updateCheckin(work.id, day.id, body);
         toast('Табель', `Смена ${dayLabel(date)} обновлена`, 'ok');
       } else {
@@ -505,6 +518,11 @@ export default function TimesheetTab({ work }) {
                             }
                             if (!editMode) return;
                             if (day?.kind === 'stage') {
+                              if (isOfficeStageDay(day)) {
+                                // D-249: дорога/ожидание Хосе/Вики → новая смена + confirm_overwrite
+                                openCell(e, emp, d, null);
+                                return;
+                              }
                               toast('Этап',
                                 (getShiftMeta(day.shift).label || 'Отметка') + ' из маршрутов — правьте во вкладке «Маршруты» или в «Мой табель».',
                                 'warn');

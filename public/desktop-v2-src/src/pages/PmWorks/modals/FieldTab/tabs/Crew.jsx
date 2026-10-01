@@ -30,7 +30,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Btn } from '@/modals/parts';
 import { EmptyState } from '@/blocks/Blocks';
 import { StatusBadge, toast } from '@/modals/Notifications';
-import { Field, SelectInput, MoneyInput, TextInput } from '@/inputs/Inputs';
+import { Field, SelectInput, MoneyInput, TextInput, Combobox } from '@/inputs/Inputs';
 import { useModal, ConfirmModal } from '@/modals';
 import {
   loadCrew, loadTariffs, loadAvailableEmployees, loadPaymentsList,
@@ -151,6 +151,27 @@ export default function CrewTab({ work }) {
       departed: allMembers.filter((a) => a.is_active === false || !!a.departure_date).map(enrich).sort(byFio)
     };
   }, [allMembers, employees, payments]);
+
+  const activeEmpIds = useMemo(
+    () => new Set(active.map((m) => Number(m.employee_id))),
+    [active]
+  );
+  const departedEmpIds = useMemo(
+    () => new Set(departed.map((m) => Number(m.employee_id))),
+    [departed]
+  );
+  const addEmpOptions = useMemo(() => available
+    .filter((e) => !activeEmpIds.has(Number(e.id)))
+    .map((e) => {
+      const busy = e.is_busy && e.busy_with?.length
+        ? ` 🔴 ${(e.busy_with[0].work_title || 'занят').slice(0, 40)}`
+        : (e.is_busy ? ' 🔴 занят' : '');
+      const departedTag = departedEmpIds.has(Number(e.id)) ? ' ↩ уехал с этого объекта' : '';
+      return {
+        value: String(e.id),
+        label: `${e.fio || e.full_name || `#${e.id}`}${e.role_tag || e.specialty ? ' · ' + (e.role_tag || e.specialty) : ''}${departedTag}${busy}`
+      };
+    }), [available, activeEmpIds, departedEmpIds]);
 
   const filteredActive = useMemo(() => {
     const q = fioQuery.trim().toLowerCase();
@@ -460,9 +481,11 @@ export default function CrewTab({ work }) {
       {/* ── Форма добавления ── */}
       {showAdd && (
         <div className="ft-add-form">
-          <Field label="Свободный сотрудник" required help={`${available.length} в наличии`}>
-            <SelectInput
+          <Field label="Свободный сотрудник" required help={`${addEmpOptions.length} в наличии`}>
+            <Combobox
               value={addForm.employee_id}
+              placeholder="Начните вводить фамилию…"
+              options={addEmpOptions}
               onChange={(v) => {
                 const emp = available.find((e) => String(e.id) === String(v));
                 const mapped = mapRoleTagToFieldRole(emp?.role_tag);
@@ -476,25 +499,16 @@ export default function CrewTab({ work }) {
                 setAddForm(next);
                 if (emp?.is_busy && emp.busy_with?.length) {
                   const w = emp.busy_with[0];
-                  toast(
-                    'Уже на объекте',
-                    `«${emp.fio || 'Сотрудник'}»: ${w.work_title || 'другая работа'}${w.end_date ? ' до ' + new Date(w.end_date).toLocaleDateString('ru-RU') : ''}`,
-                    'warn'
+                  const endStr = w.end_date ? new Date(w.end_date).toLocaleDateString('ru-RU') : '—';
+                  const ok = window.confirm(
+                    `⚠️ Этот сотрудник уже на объекте:\n«${w.work_title || '?'}»\nдо ${endStr}\n\nНазначить всё равно?`
                   );
+                  if (!ok) {
+                    setAddForm({ ...next, employee_id: '' });
+                    return;
+                  }
                 }
               }}
-              options={[
-                { value: '', label: '— выбрать из свободных —' },
-                ...available.map((e) => {
-                  const busy = e.is_busy && e.busy_with?.length
-                    ? ` 🔴 ${(e.busy_with[0].work_title || 'занят').slice(0, 40)}`
-                    : (e.is_busy ? ' 🔴 занят' : '');
-                  return {
-                    value: String(e.id),
-                    label: `${e.fio || e.full_name || `#${e.id}`}${e.role_tag || e.specialty ? ' · ' + (e.role_tag || e.specialty) : ''}${busy}`
-                  };
-                })
-              ]}
             />
           </Field>
           <div className="ft-row-grid-2">

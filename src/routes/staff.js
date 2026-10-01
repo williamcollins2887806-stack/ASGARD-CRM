@@ -250,6 +250,7 @@ async function routes(fastify, options) {
       WHERE ea.employee_id = ANY($1::int[])
         AND ea.work_id != $2
         AND COALESCE(ea.is_active, true) = true
+        AND ea.departure_date IS NULL
         AND ${notClosedSql('w.work_status')}
         AND COALESCE(w.start_in_work_date, w.start_plan) <= $4
         AND CASE

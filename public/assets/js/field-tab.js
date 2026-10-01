@@ -671,12 +671,16 @@ window.AsgardFieldTab = (function () {
         const empIds = pId ? CREmployeePicker.getSelected(pId) : [];
         if (empIds[0]) assignedIds.add(Number(empIds[0]));
       });
+      const departedOnThisWork = new Set(
+        inactiveAssignments.map(function(a) { return Number(a.employee_id); }).filter(Boolean)
+      );
       openAddCrewModal({
         work, user, settingsData, container,
         allEmployees,
         filteredTariffs,
         comboTariffs,
         assignedIds,
+        departedOnThisWork,
         defaultPerDiem: readPerDiemInput(),
         isActive
       });
@@ -1147,25 +1151,26 @@ window.AsgardFieldTab = (function () {
     var filteredTariffs = ctx.filteredTariffs || [];
     var comboTariffs = (ctx.comboTariffs || []).filter(function(t) { return t.is_combinable; });
     var assignedIds = ctx.assignedIds || new Set();
+    var departedOnThisWork = ctx.departedOnThisWork || new Set();
     var defaultPerDiem = ctx.defaultPerDiem || 0;
     var isActive = ctx.isActive;
 
-    // Доступные = активные, не в бригаде
+    // Доступные = не в активной бригаде (уехавшие с этого объекта остаются в списке)
     var freeEmps = allEmployees.filter(function(e) { return !assignedIds.has(Number(e.id)); });
 
-    var empOptsHtml = '<option value="">— Выберите —</option>';
-    freeEmps.forEach(function(e) {
+    var empCrOptions = freeEmps.map(function(e) {
       var baseName = e.fio || e.full_name || ((e.last_name || '') + ' ' + (e.first_name || '')).trim() || ('ID ' + e.id);
-      var busyTag = '';
+      var tags = '';
+      if (departedOnThisWork.has(Number(e.id))) tags += ' ↩ уехал с этого объекта';
       if (e.is_busy && e.busy_with && e.busy_with.length) {
         var w = e.busy_with[0];
         var endStr = w.end_date ? new Date(w.end_date).toLocaleDateString('ru-RU') : '';
         var titleShort = (w.work_title || 'другой объект').slice(0, 36);
-        busyTag = ' 🔴 ' + titleShort + (endStr ? ' (до ' + endStr + ')' : '');
+        tags += ' 🔴 ' + titleShort + (endStr ? ' (до ' + endStr + ')' : '');
       }
-      empOptsHtml += '<option value="' + e.id + '" data-busy="' + (e.is_busy ? '1' : '0') + '">' + esc(baseName + busyTag) + '</option>';
+      return { value: String(e.id), label: baseName + tags };
     });
-
+    var empOptsHtml = ''; // legacy unused; CRSelect below
     var tariffOptsHtml = '<option value="">— выберите —</option>';
     filteredTariffs.forEach(function(t) {
       tariffOptsHtml += '<option value="' + t.id + '" data-role-filter="1">' + esc(t.position_name + ' (' + t.points + 'б · ' + money(t.rate_per_shift) + ')') + '</option>';
@@ -1182,7 +1187,7 @@ window.AsgardFieldTab = (function () {
         '<div id="acErr" style="display:none;background:rgba(239,68,68,0.12);border:1px solid #ef4444;color:#ef4444;padding:10px 14px;border-radius:8px;margin-bottom:12px;font-size:13px;font-weight:600"></div>' +
         '<label style="font-size:12px;font-weight:600;color:var(--t2);text-transform:uppercase;letter-spacing:.5px;display:block;margin-bottom:14px">' +
           'Сотрудник' +
-          '<select id="acEmp" class="inp" style="width:100%;margin-top:6px;font-weight:400;text-transform:none;letter-spacing:0;color:var(--t1)">' + empOptsHtml + '</select>' +
+          '<div id="acEmp_w" style="width:100%;margin-top:6px;font-weight:400;text-transform:none;letter-spacing:0"></div>' +
         '</label>' +
         '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px">' +
           '<label style="font-size:12px;font-weight:600;color:var(--t2);text-transform:uppercase;letter-spacing:.5px">' +
@@ -1248,9 +1253,11 @@ window.AsgardFieldTab = (function () {
     }
 
     var closeBtn = body ? body.querySelector('.ac-close') : null;
-    if (closeBtn) closeBtn.addEventListener('click', function() { AsgardUI.hideModal(); });
+    if (closeBtn) closeBtn.addEventListener('click', function() {
+      try { CRSelect.destroy('acEmp'); } catch (_) {}
+      AsgardUI.hideModal();
+    });
 
-    var empSel = body ? body.querySelector('#acEmp') : null;
     var roleSel = body ? body.querySelector('#acRole') : null;
     var tariffSel = body ? body.querySelector('#acTariff') : null;
     var siteCat = settingsData?.site_category || 'ground';
@@ -1275,25 +1282,33 @@ window.AsgardFieldTab = (function () {
       }
     }
 
-    // Предупреждение если выбрали занятого + автомап роли
-    if (empSel) empSel.addEventListener('change', function() {
-      var opt = empSel.options[empSel.selectedIndex];
-      if (opt && opt.dataset.busy === '1') {
-        var emp = freeEmps.find(function(e) { return Number(e.id) === Number(empSel.value); });
-        var w = emp && emp.busy_with && emp.busy_with[0] ? emp.busy_with[0] : null;
-        var msg = w
-          ? ('⚠️ «' + (emp.fio || 'Сотрудник') + '» уже на объекте:\n«' + (w.work_title || '?') + '»\n\nНазначить всё равно?')
-          : '⚠️ Этот сотрудник уже занят на другой работе.\nНазначить всё равно?';
-        var ok = window.confirm(msg);
-        if (!ok) { empSel.value = ''; return; }
-      }
-      var chosen = freeEmps.find(function(e) { return Number(e.id) === Number(empSel.value); });
-      if (chosen && roleSel) {
-        var mapped = mapRoleTagToFieldRole(chosen.role_tag);
-        roleSel.value = mapped;
-        refillAcTariffs(mapped, true);
-      }
-    });
+    // D-249: searchable CRSelect по ФИО (+ метка «уехал с этого объекта»)
+    var empWrap = body ? body.querySelector('#acEmp_w') : null;
+    try { CRSelect.destroy('acEmp'); } catch (_) {}
+    if (empWrap && window.CRSelect) {
+      empWrap.appendChild(CRSelect.create({
+        id: 'acEmp',
+        searchable: true,
+        placeholder: 'Начните вводить фамилию…',
+        options: empCrOptions,
+        onChange: function(val) {
+          var chosen = freeEmps.find(function(e) { return String(e.id) === String(val); });
+          if (chosen && chosen.is_busy && chosen.busy_with && chosen.busy_with.length) {
+            var w = chosen.busy_with[0];
+            var msg = '⚠️ «' + (chosen.fio || 'Сотрудник') + '» уже на объекте:\n«' + (w.work_title || '?') + '»\n\nНазначить всё равно?';
+            if (!window.confirm(msg)) {
+              try { CRSelect.setValue('acEmp', ''); } catch (_) {}
+              return;
+            }
+          }
+          if (chosen && roleSel) {
+            var mapped = mapRoleTagToFieldRole(chosen.role_tag);
+            roleSel.value = mapped;
+            refillAcTariffs(mapped, true);
+          }
+        }
+      }));
+    }
 
     if (roleSel) roleSel.addEventListener('change', function() {
       refillAcTariffs(roleSel.value || 'worker', true);
@@ -1302,7 +1317,8 @@ window.AsgardFieldTab = (function () {
 
     var submitBtn = body ? body.querySelector('#acSubmit') : null;
     if (submitBtn) submitBtn.addEventListener('click', async function() {
-      var empId = empSel ? parseInt(empSel.value) : 0;
+      var empId = 0;
+      try { empId = parseInt(CRSelect.getValue('acEmp') || '', 10) || 0; } catch (_) { empId = 0; }
       var tariffId = parseInt((body.querySelector('#acTariff') || {}).value || '');
       var comboIds = [];
       (body.querySelectorAll('.ac-combo:checked') || []).forEach(function(cb) {
@@ -1357,6 +1373,7 @@ window.AsgardFieldTab = (function () {
           return;
         }
         AsgardUI.hideModal();
+        try { CRSelect.destroy('acEmp'); } catch (_) {}
         toast('Бригада', 'Сотрудник добавлен', 'ok');
         // Перерисовываем всю вкладку — она перечитает assignments
         renderCrewTab(container, work, user, settingsData, isActive || true);
@@ -2554,12 +2571,16 @@ window.AsgardFieldTab = (function () {
           if (si.bg) td.style.background = si.bg;
           td.title = `${si.label} ${pts} бал. = ${money(pts * pv)}`
             + (day.kind === 'stage' ? ' (этап / маршрут)' : '')
-            + (editMode ? (day.kind === 'stage' ? '. Редактируется во вкладке «Маршруты» или «Мой табель»' : '. Клик для редактирования') : '');
+            + (editMode
+              ? (day.kind === 'stage' && !_isOfficeStageShift(day.shift || day.stage_type)
+                ? '. Редактируется во вкладке «Маршруты» или «Мой табель»'
+                : '. Клик для редактирования')
+              : '');
           if (editMode) {
             td.style.cursor = 'pointer';
             td.style.border = '1px dashed var(--brd)';
             td.style.borderRadius = '4px';
-            if (day.kind === 'stage') {
+            if (day.kind === 'stage' && !_isOfficeStageShift(day.shift || day.stage_type)) {
               td.addEventListener('click', () => {
                 if (window.toast) {
                   window.toast('Этап', si.label + ' из маршрутов — правьте во вкладке «Маршруты» или в «Мой табель».', 'warn');
@@ -2567,6 +2588,9 @@ window.AsgardFieldTab = (function () {
                   alert(si.label + ' — этап из маршрутов');
                 }
               });
+            } else if (day.kind === 'stage') {
+              // D-249: дорога/ожидание Хосе/Вики — как новая смена → 409 confirm_overwrite
+              td.addEventListener('click', () => addCheckinCell(td, emp, d, work, pv));
             } else {
               td.addEventListener('click', () => editCheckinCell(td, day, emp, d, work, pv));
             }
@@ -2726,6 +2750,15 @@ window.AsgardFieldTab = (function () {
     // travel (канон stages) → road (иконка полевого табеля)
     const key = shift === 'travel' ? 'road' : shift;
     return SHIFT_TYPES.find(s => s.value === key) || SHIFT_TYPES[0];
+  }
+  // Office/route stages that RP may overwrite via checkin + confirm_overwrite (D-249)
+  const OFFICE_STAGE_SHIFTS = new Set([
+    'travel', 'road', 'ship', 'helicopter', 'waiting', 'standby',
+    'medical', 'warehouse', 'training', 'day_off'
+  ]);
+  function _isOfficeStageShift(shift) {
+    if (!shift) return false;
+    return OFFICE_STAGE_SHIFTS.has(shift === 'travel' ? 'travel' : shift);
   }
 
   // ── Inline shift+points editor (replaces cell content) ──
@@ -2903,12 +2936,20 @@ window.AsgardFieldTab = (function () {
   // ── Add new checkin cell ──
   function addCheckinCell(td, emp, date, work, pv) {
     pv = pv || 500;
+    const prevHtml = td.innerHTML;
+    const prevCss = {
+      color: td.style.color,
+      opacity: td.style.opacity,
+      background: td.style.background,
+      padding: td.style.padding
+    };
 
     function restore() {
-      td.textContent = '+';
-      td.style.color = 'var(--t2)';
-      td.style.opacity = '0.5';
-      td.style.background = '';
+      td.innerHTML = prevHtml;
+      td.style.color = prevCss.color;
+      td.style.opacity = prevCss.opacity;
+      td.style.background = prevCss.background;
+      td.style.padding = prevCss.padding || '';
     }
 
     _shiftEditor(td, 'day', 13, pv,

@@ -7350,3 +7350,37 @@ md5 3/3 → смоук. Рестарт не требовался (только �
    ложное «залито не 3 файла» и **откат после успешной заливки**. Правка: `PYTHONIOENCODING=utf-8` для
    дочернего процесса (`child_env()` в `deploy_d247_ui_hidemodal_20_28_49.py`). Симптом обнаруживается только
    на живой выкатке — поэтому повторный прогон обязателен, а не «гейт сказал OK».
+
+## D-249. День табеля 01.10: overwrite дороги Хосе/Вики + ghost re-add после автовыезда + rarity (01.10.2026)
+
+**Как найдено.** Аудит логов 17.09–01.10 + жалобы: Трухин не мог перезаписать дорогу офиса и «добавить»
+Романова/Шмелёва/Пономарёва через полевой модуль. Форензика nginx+БД 01.10:
+- user `3462` / IP `193.233.106.108` — 19× `POST …/424/crew` **200**; Романов `266`+Пономарёв Алексей `241`
+  появились на 424 в 22:26; Шмелёв уже на 404; Пономарёв Александр `240` — 0 assignment за день.
+- Утро `404/checkin` — пачки **409** без добивающего confirm; дорога Вики: `field_trip_stages` `6093`
+  (work 354, travel, entered_by Тумаева).
+
+**Корни (не заплатки).**
+1. **UI:** `field-tab.js` / v2 `Timesheet.jsx` на `kind==='stage'` всегда toast «Маршруты» — API
+   `confirm_overwrite` не вызывался. Чужой РП (`foreign_days` 🔒) оставляем.
+2. **Бэк:** `POST /crew` UPDATE ставил `is_active=true`, но **не чистил** `departure_*` / `inactivity_*`
+   → API 200, UI «Уехали». Путь «Вернуть» чистил правильно.
+3. **Busy:** `/api/staff/employees/available` считал busy по `is_active` без `departure_date IS NULL`.
+4. **UX:** native select без поиска по ФИО в форме «+ В бригаду».
+5. **Логи 29.09:** `field-pm.js` `wa.rarity` → колонка `tier` (42703/500 профиля).
+
+**Правки.**
+- `src/routes/field-pm.js` — `wa.tier AS rarity`
+- `src/routes/field-manage.js` — UPDATE `/crew` при `!keep_inactive` чистит departure/inactivity
+- `src/routes/staff.js` — conflicts `AND ea.departure_date IS NULL`
+- `public/assets/js/field-tab.js` — office-stage → `addCheckinCell` + confirm; CRSelect searchable + «↩ уехал…»
+- v2 `Timesheet.jsx` / `Crew.jsx` — тот же контракт (Combobox)
+
+**Доказательства (клон `:3100` / `asgard_crm_test`).**
+`node tests/sentinel_d249_timesheet_crew.js` → **19/19 PASS** (`tests/reports/D249-SENTINEL.json`):
+D-readd-clear; B-409→confirm + stage soft-cancel; E busy-parity; F searchable; C foreign lock;
+A `wa.tier AS rarity` SQL.
+
+**Статус: FIXED** (SELF-CHECK зелёный на клоне; VERIFIED — после независимого аудита / выкатки по команде).
+**Выкатка:** не делалась — только по явной команде. FILES: `field-pm.js`, `field-manage.js`, `staff.js`,
+`field-tab.js`, v2 `Timesheet.jsx`+`Crew.jsx` (+ билд v2 если катим `/v2/`).

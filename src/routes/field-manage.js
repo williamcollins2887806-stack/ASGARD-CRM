@@ -366,12 +366,18 @@ async function routes(fastify, options) {
         if (existing.length > 0) {
           // keep_inactive: обновить тариф уехавшему, не возвращая на объект
           const keepInactive = !!emp.keep_inactive;
+          // D-249: без keep_inactive — как «Вернуть»: чистим departure_* / inactivity_*,
+          // иначе API 200, а UI оставляет человека в «Уехали» (ghost после автовыезда).
           await db.query(`
             UPDATE employee_assignments SET
               field_role = $3, tariff_id = $4, tariff_points = $5,
               combination_tariff_id = $6, per_diem = $7, shift_type = $8,
               combo_tariff_ids = $10::int[], manual_extra_points = $11,
               is_active = CASE WHEN $9::boolean THEN is_active ELSE true END,
+              departure_date = CASE WHEN $9::boolean THEN departure_date ELSE NULL END,
+              departure_reason = CASE WHEN $9::boolean THEN departure_reason ELSE NULL END,
+              inactivity_warned_at = CASE WHEN $9::boolean THEN inactivity_warned_at ELSE NULL END,
+              inactivity_auto_departed_at = CASE WHEN $9::boolean THEN inactivity_auto_departed_at ELSE NULL END,
               updated_at = NOW()
             WHERE employee_id = $1 AND work_id = $2
           `, [employee_id, workId, field_role || 'worker', tariff_id || null,

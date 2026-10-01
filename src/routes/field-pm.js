@@ -283,7 +283,7 @@ async function routes(fastify) {
 
       // Достижения
       db.query(`
-        SELECT ea.achievement_id, ea.earned_at, wa.name, wa.description, wa.icon, wa.rarity
+        SELECT ea.achievement_id, ea.earned_at, wa.name, wa.description, wa.icon, wa.tier AS rarity
         FROM employee_achievements ea
         JOIN worker_achievements wa ON wa.id = ea.achievement_id
         WHERE ea.employee_id = $1
