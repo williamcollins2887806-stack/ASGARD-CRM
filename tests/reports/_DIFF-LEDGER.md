@@ -7382,5 +7382,8 @@ D-readd-clear; B-409→confirm + stage soft-cancel; E busy-parity; F searchable;
 A `wa.tier AS rarity` SQL.
 
 **Статус: FIXED** (SELF-CHECK зелёный на клоне; VERIFIED — после независимого аудита / выкатки по команде).
-**Выкатка:** не делалась — только по явной команде. FILES: `field-pm.js`, `field-manage.js`, `staff.js`,
-`field-tab.js`, v2 `Timesheet.jsx`+`Crew.jsx` (+ билд v2 если катим `/v2/`).
+**Выкатка:** 01.10.2026 shell **20.28.50** — `python tools/deploy_d249_timesheet_crew_20_28_50.py`
+(snapshot → tar 6 FILES → restart → smoke). md5 6/6; `/api/version`=20.28.50; отдаваемый
+`field-tab.js` несёт `_isOfficeStageShift`. Post-deploy: `restore_asset_sync plan` to_upload=0;
+`audit_silent_reverts --post-deploy` = **0 расхождений**. Коммиты: `eb62876a` (fix), `ede36291` (verify).
+На прод везли **vanilla** `field-tab.js` + бэкенд; v2 src только в git (РП работает в vanilla).
