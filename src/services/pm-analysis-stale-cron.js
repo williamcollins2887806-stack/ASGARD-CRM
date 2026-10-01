@@ -86,6 +86,8 @@ async function findAnalysisDeadlineOverdue(db) {
     SELECT t.id AS tender_id, t.customer_name, t.tender_title,
            t.docs_deadline::date AS docs_deadline,
            t.analysis_deadline::date AS analysis_deadline,
+           t.participation_paid,
+           t.participation_fee,
            rev.id AS review_id
     FROM tenders t
     LEFT JOIN LATERAL (
@@ -150,37 +152,70 @@ async function markSentTender(db, tenderId, reviewId, noticeKind) {
   `, [tenderId, reviewId || null, noticeKind]).catch(() => {});
 }
 
-function buildEmail(row) {
+function buildEmail(row, dutyName) {
   const why = row.notice_kind === 'deadline_2d'
     ? `До дедлайна подачи документов осталось 2 дня или меньше (${row.docs_deadline || '—'}).`
-    : `По анализу нет движения больше суток (последнее касание ~${row.idle_hours || '?'} ч назад).`;
+    : `По анализу нет движения уже около ${row.idle_hours} ч.`;
   const subject = row.notice_kind === 'deadline_2d'
-    ? `Срок подачи близко: ${row.customer_name || ('тендер #' + row.tender_id)}`
-    : `Анализ без движения: ${row.customer_name || ('тендер #' + row.tender_id)}`;
-  const html = `
-    <div style="font-family:sans-serif;font-size:14px;color:#111;">
-      <p>Здравствуйте.</p>
-      <p>${escHtml(why)}</p>
-      <p><strong>${escHtml(row.customer_name || '')}</strong><br>
-         ${escHtml(row.tender_title || '')}<br>
-         Дедлайн документов: <strong>${escHtml(row.docs_deadline || '—')}</strong></p>
-      <p><a href="https://asgard-crm.ru/#/pm-calculations">Открыть очередь анализа</a></p>
-    </div>`;
+    ? `Срочно: анализ тендера №${row.tender_id} — дедлайн близко`
+    : `Напоминание: анализ тендера №${row.tender_id} без движения`;
+  const client = (row.customer_name && String(row.customer_name).trim())
+    || (row.tender_title && String(row.tender_title).trim())
+    || 'не указан';
+  const html = `<!DOCTYPE html><html><body style="font-family:Arial,sans-serif;background:#f4f6f9;padding:16px;">
+  <table width="100%" style="max-width:560px;margin:0 auto;background:#fff;border-radius:10px;">
+    <tr><td style="padding:20px;background:#1a2332;color:#fff;">
+      <strong>ASGARD CRM</strong> · незакрытый анализ тендера
+    </td></tr>
+    <tr><td style="padding:16px;font-size:14px;color:#334155;line-height:1.5;">
+      <p>Здравствуйте${dutyName ? ', ' + escHtml(dutyName) : ''}!</p>
+      <p><strong>${escHtml(why)}</strong></p>
+      <p>Клиент: <strong>${escHtml(client)}</strong><br>
+         Тендер №${row.tender_id}<br>
+         ${row.tender_title ? escHtml(row.tender_title) : ''}</p>
+      <p>Закройте анализ («подаём» или «не подаём» с причиной) — черновик портит очередь и рейтинг.</p>
+      <p style="text-align:center;margin-top:20px;">
+        <a href="https://asgard-crm.ru/#/pm-calculations"
+           style="background:#3b82f6;color:#fff;padding:12px 22px;border-radius:8px;text-decoration:none;font-weight:bold;">
+          Открыть очередь анализа
+        </a>
+      </p>
+    </td></tr>
+  </table></body></html>`;
   return { subject, html };
 }
 
-function buildOverdueEmail(row, dutyName) {
-  const subject = `Просрочен analysis_deadline: ${row.customer_name || ('тендер #' + row.tender_id)}`;
-  const html = `
-    <div style="font-family:sans-serif;font-size:14px;color:#111;">
-      <p>Здравствуйте${dutyName ? ', ' + escHtml(dutyName) : ''}.</p>
-      <p>Внутренний срок анализа просрочен
+function buildOverdueEmail(row, recipientName) {
+  const paidLabel = row.participation_paid
+    ? (`платное · ${formatMoneyRu(row.participation_fee) || 'сумма не указана'}`)
+    : 'бесплатное';
+  const subject = `Просрочен внутренний срок анализа · тендер №${row.tender_id}`;
+  const client = (row.customer_name && String(row.customer_name).trim())
+    || (row.tender_title && String(row.tender_title).trim())
+    || 'не указан';
+  const html = `<!DOCTYPE html><html><body style="font-family:Arial,sans-serif;background:#f4f6f9;padding:16px;">
+  <table width="100%" style="max-width:560px;margin:0 auto;background:#fff;border-radius:10px;">
+    <tr><td style="padding:20px;background:#7f1d1d;color:#fff;">
+      <strong>ASGARD CRM</strong> · просрочен внутренний срок анализа
+    </td></tr>
+    <tr><td style="padding:16px;font-size:14px;color:#334155;line-height:1.5;">
+      <p>Здравствуйте${recipientName ? ', ' + escHtml(recipientName) : ''}!</p>
+      <p>Внутренний срок анализа тендера <strong>№${row.tender_id}</strong> истёк
          (<strong>${escHtml(row.analysis_deadline || '—')}</strong>).</p>
-      <p><strong>${escHtml(row.customer_name || '')}</strong><br>
-         ${escHtml(row.tender_title || '')}<br>
+      <p>Клиент: <strong>${escHtml(client)}</strong><br>
+         ${row.tender_title ? escHtml(row.tender_title) + '<br>' : ''}
+         Участие: ${escHtml(paidLabel)}<br>
          Срок подачи документов: <strong>${escHtml(row.docs_deadline || '—')}</strong></p>
-      <p><a href="https://asgard-crm.ru/#/tenders?id=${row.tender_id}">Открыть тендер</a></p>
-    </div>`;
+      <p>Продление внутреннего срока возможно <strong>не позднее чем за 2 календарных дня</strong>
+         до срока подачи документов (сейчас ещё можно успеть закрыть или сдвинуть срок подачи).</p>
+      <p style="text-align:center;margin-top:20px;">
+        <a href="https://asgard-crm.ru/#/tenders?id=${row.tender_id}"
+           style="background:#3b82f6;color:#fff;padding:12px 22px;border-radius:8px;text-decoration:none;font-weight:bold;">
+          Открыть тендер в CRM
+        </a>
+      </p>
+    </td></tr>
+  </table></body></html>`;
   return { subject, html };
 }
 
@@ -269,7 +304,7 @@ async function runOnce(db, log) {
   for (const row of rows) {
     try {
       if (await alreadySentReview(db, row.review_id, row.notice_kind)) continue;
-      const { subject, html } = buildEmail(row);
+      const { subject, html } = buildEmail(row, recipient.name);
       if (recipient.email) {
         await sendCrmEmail(db, null, { to: recipient.email, subject, html, text: subject });
       }
