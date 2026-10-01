@@ -525,7 +525,6 @@ async function routes(fastify) {
     `, [pm_user_id, period_start, period_end, request.user.id]);
     let handoff = { transferred: 0 };
     try {
-      // Если период уже активен (или начинается сегодня) — передать открытые анализы.
       const today = new Date().toISOString().slice(0, 10);
       if (String(period_start).slice(0, 10) <= today && String(period_end).slice(0, 10) >= today) {
         handoff = await transferOpenAnalysesToDuty(db, Number(pm_user_id));
@@ -533,7 +532,23 @@ async function routes(fastify) {
     } catch (e) {
       request.log.warn({ err: e }, 'duty handoff transfer failed');
     }
-    return { roster: r.rows[0], analysis_handoff: handoff };
+    const pe = String(period_end).slice(0, 10);
+    const successor = await db.query(`
+      SELECT id, pm_user_id, period_start::text, period_end::text
+      FROM pm_duty_roster
+      WHERE period_start > $1::date
+      ORDER BY period_start ASC
+      LIMIT 1
+    `, [pe]).catch(() => ({ rows: [] }));
+    const needs_successor = !successor.rows[0];
+    return {
+      roster: r.rows[0],
+      analysis_handoff: handoff,
+      needs_successor,
+      warning: needs_successor
+        ? `После ${pe} следующий дежурный не назначен — укажите смену в реестре, иначе очередь оборвётся.`
+        : null
+    };
   });
 
   // PUT /roster/:id
@@ -570,13 +585,26 @@ async function routes(fastify) {
       const ps = String(roster.period_start).slice(0, 10);
       const pe = String(roster.period_end).slice(0, 10);
       if (ps <= today && pe >= today) {
-        // Все открытые «рассмотрение» с чужим analysis_owner → новому дежурному
         handoff = await transferOpenAnalysesToDuty(db, Number(roster.pm_user_id));
       }
     } catch (e) {
       request.log.warn({ err: e }, 'duty handoff transfer failed');
     }
-    return { roster, analysis_handoff: handoff };
+    const pe = String(roster.period_end).slice(0, 10);
+    const successor = await db.query(`
+      SELECT id FROM pm_duty_roster
+      WHERE period_start > $1::date AND id <> $2
+      ORDER BY period_start ASC LIMIT 1
+    `, [pe, roster.id]).catch(() => ({ rows: [] }));
+    const needs_successor = !successor.rows[0];
+    return {
+      roster,
+      analysis_handoff: handoff,
+      needs_successor,
+      warning: needs_successor
+        ? `После ${pe} следующий дежурный не назначен — укажите смену в реестре, иначе очередь оборвётся.`
+        : null
+    };
   });
 
   // DELETE /roster/:id
@@ -734,15 +762,19 @@ async function routes(fastify) {
       items = r.rows.map((row) => ({ ...row, can_report: true, queue_mode: 'duty' }));
       queueMode = 'duty';
     } else if (oversight) {
+      // ТО/директора/HEAD_PM: полная очередь только read-only (без can_report).
       const r = await db.query(analysisQueueSql);
       items = r.rows.map((row) => ({
         ...row,
-        can_report: true,
+        can_report: false,
         queue_mode: 'oversight',
-        queue_source: row.queue_source || 'Дежурная очередь'
+        preview: true,
+        queue_source: row.queue_source || 'Дежурная очередь (обзор)'
       }));
       queueMode = 'oversight';
     } else {
+      // Обычный РП: только свои collab-приглашения. Preview полной очереди убран —
+      // тендеры на анализ видит только дежурный.
       const collab = await db.query(`
         ${baseSelect}
         JOIN tender_rp_review_collaborators c ON c.review_id = rev.id AND c.revoked_at IS NULL
@@ -754,47 +786,26 @@ async function routes(fastify) {
           ${excludeClause}
         ORDER BY t.docs_deadline ASC NULLS LAST, t.created_at ASC
       `, [userId]);
-      const collabIds = new Set(collab.rows.map((x) => x.id));
-
-      // Live preview of duty queue so page is never "blind empty"
-      const preview = await db.query(analysisQueueSql);
-      const byId = new Map();
-      preview.rows.forEach((row) => {
-        byId.set(row.id, {
-          ...row,
-          can_report: false,
-          queue_mode: 'preview',
-          preview: true
-        });
-      });
-      collab.rows.forEach((row) => {
-        byId.set(row.id, {
-          ...row,
-          can_report: true,
-          queue_mode: 'collab',
-          preview: false,
-          queue_source: row.queue_source || 'Приглашён'
-        });
-      });
-      items = Array.from(byId.values()).sort((a, b) => {
-        const da = a.docs_deadline ? String(a.docs_deadline).slice(0, 10) : '9999';
-        const db_ = b.docs_deadline ? String(b.docs_deadline).slice(0, 10) : '9999';
-        if (da !== db_) return da < db_ ? -1 : 1;
-        return Number(a.id) - Number(b.id);
-      });
-      queueMode = collabIds.size ? 'collab+preview' : 'preview';
+      items = collab.rows.map((row) => ({
+        ...row,
+        can_report: true,
+        queue_mode: 'collab',
+        preview: false,
+        queue_source: row.queue_source || 'Приглашён'
+      }));
+      queueMode = 'collab';
     }
 
     const banner = !isDuty && tab === 'analysis' && duty
       ? {
           message: oversight
-            ? `Обзор очереди дежурного: ${duty.pm_name}, ${fmtRuDate(duty.period_start)} — ${fmtRuDate(duty.period_end)}.`
-            : `Вы не дежурный. Сейчас: ${duty.pm_name} (${fmtRuDate(duty.period_start)} — ${fmtRuDate(duty.period_end)}). Очередь ниже — просмотр; править можно свои приглашения.`
+            ? `Обзор очереди дежурного (только просмотр): ${duty.pm_name}, ${fmtRuDate(duty.period_start)} — ${fmtRuDate(duty.period_end)}.`
+            : `Вы не дежурный. Сейчас: ${duty.pm_name} (${fmtRuDate(duty.period_start)} — ${fmtRuDate(duty.period_end)}). В очереди анализа — только ваши приглашения.`
         }
       : (!isDuty && tab === 'analysis' && !duty
         ? { message: oversight
-            ? 'Дежурный не назначен. Ниже — полная очередь «рассмотрение».'
-            : 'Дежурный не назначен. Очередь «рассмотрение» ниже (просмотр).' }
+            ? 'Дежурный не назначен. Ниже — очередь «рассмотрение» (только просмотр).'
+            : 'Дежурный не назначен. Очередь анализа пуста, пока нет смены или приглашения.' }
         : null);
 
     if (tab === 'analysis' && items.length) {

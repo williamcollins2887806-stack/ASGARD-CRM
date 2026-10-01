@@ -1,15 +1,20 @@
 'use strict';
 
 /**
- * Hourly reminders:
- * - open analysis idle ≥24h OR docs_deadline ≤2 days
- * - analysis_deadline overdue (duty PM + analysis owner)
+ * Hourly reminders for OPEN analysis queue:
+ * - idle ≥24h OR docs_deadline ≤2 days
+ * - analysis_deadline overdue
+ *
+ * Канон: письма и in-app — ТОЛЬКО текущему дежурному РП.
+ * Owner / бывший дежурный / HEAD_PM CC — не получатели.
+ * Нет дежурного → не слать (warning в лог).
  */
 
 const cron = require('node-cron');
 const { sendCrmEmail } = require('./crm-mailer');
 const { createNotification } = require('./notify');
 const { getCurrentDuty } = require('./tender-registry-helpers');
+const { transferOpenAnalysesToDuty } = require('./rp-review-drafts');
 
 let _job = null;
 
@@ -31,11 +36,11 @@ function formatMoneyRu(n) {
   return num.toLocaleString('ru-RU', { maximumFractionDigits: 2 }) + ' ₽';
 }
 
+/** Open analyses that need a nudge (idle ≥24h or docs_deadline ≤2d). No recipient yet. */
 async function findCandidates(db) {
   const r = await db.query(`
     SELECT rev.id AS review_id, t.id AS tender_id, t.customer_name, t.tender_title,
            t.docs_deadline::date AS docs_deadline,
-           u.id AS pm_user_id, u.name AS pm_name, u.email AS pm_email, u.role AS pm_role,
            GREATEST(
              COALESCE(rev.updated_at, rev.created_at),
              COALESCE((SELECT MAX(l.created_at) FROM tender_rp_review_log l WHERE l.review_id = rev.id), rev.created_at),
@@ -43,13 +48,9 @@ async function findCandidates(db) {
            ) AS last_touch
     FROM tender_rp_reviews rev
     JOIN tenders t ON t.id = rev.tender_id AND t.deleted_at IS NULL
-    JOIN users u ON u.id = COALESCE(rev.analysis_owner_user_id, rev.started_by_user_id)
     WHERE rev.analysis_finalized_at IS NULL
       AND t.registry_status = 'рассмотрение'
       AND COALESCE(t.calculator_kind, '') <> 'to'
-      AND u.role IS DISTINCT FROM 'ADMIN'
-      AND u.name NOT ILIKE 'Администратор%'
-      AND u.login NOT LIKE 'test_%'
       AND NOT (
         COALESCE(btrim(t.customer_name), '') = ''
         AND COALESCE(btrim(t.tender_title), '') ILIKE 'Новый тендер%'
@@ -82,24 +83,21 @@ async function findCandidates(db) {
 /** Overdue internal analysis_deadline; still extendable (≥2 calendar days before docs_deadline). */
 async function findAnalysisDeadlineOverdue(db) {
   const r = await db.query(`
-    SELECT t.id AS tender_id,
-           t.customer_name, t.tender_title,
+    SELECT t.id AS tender_id, t.customer_name, t.tender_title,
            t.docs_deadline::date AS docs_deadline,
            t.analysis_deadline::date AS analysis_deadline,
-           t.participation_paid,
-           t.participation_fee,
-           rev.id AS review_id,
-           COALESCE(rev.analysis_owner_user_id, rev.started_by_user_id) AS owner_user_id
+           rev.id AS review_id
     FROM tenders t
     LEFT JOIN LATERAL (
-      SELECT r.id, r.analysis_owner_user_id, r.started_by_user_id, r.analysis_finalized_at
+      SELECT r.id, r.analysis_finalized_at
       FROM tender_rp_reviews r
       WHERE r.tender_id = t.id
-      ORDER BY r.id DESC
+      ORDER BY r.created_at DESC
       LIMIT 1
     ) rev ON true
     WHERE t.deleted_at IS NULL
       AND t.registry_status = 'рассмотрение'
+      AND COALESCE(t.calculator_kind, '') <> 'to'
       AND t.analysis_deadline IS NOT NULL
       AND t.analysis_deadline::date < CURRENT_DATE
       AND t.docs_deadline IS NOT NULL
@@ -118,176 +116,131 @@ async function findAnalysisDeadlineOverdue(db) {
   }));
 }
 
-async function alreadySentReview(db, reviewId, kind) {
+async function alreadySentReview(db, reviewId, noticeKind) {
   const r = await db.query(`
     SELECT 1 FROM pm_analysis_stale_notices
     WHERE review_id = $1 AND notice_kind = $2
       AND sent_at > NOW() - INTERVAL '24 hours'
     LIMIT 1
-  `, [reviewId, kind]);
+  `, [reviewId, noticeKind]).catch(() => ({ rows: [] }));
   return !!r.rows[0];
 }
 
-async function alreadySentTender(db, tenderId, kind) {
+async function markSentReview(db, reviewId, noticeKind) {
+  await db.query(`
+    INSERT INTO pm_analysis_stale_notices (review_id, notice_kind, sent_at)
+    VALUES ($1, $2, NOW())
+  `, [reviewId, noticeKind]).catch(() => {});
+}
+
+async function alreadySentTender(db, tenderId, noticeKind) {
   const r = await db.query(`
     SELECT 1 FROM pm_analysis_stale_notices
     WHERE tender_id = $1 AND notice_kind = $2
       AND sent_at > NOW() - INTERVAL '24 hours'
     LIMIT 1
-  `, [tenderId, kind]);
+  `, [tenderId, noticeKind]).catch(() => ({ rows: [] }));
   return !!r.rows[0];
 }
 
-async function markSentReview(db, reviewId, kind) {
+async function markSentTender(db, tenderId, reviewId, noticeKind) {
   await db.query(`
-    INSERT INTO pm_analysis_stale_notices (review_id, notice_kind, sent_at)
-    VALUES ($1, $2, NOW())
-    ON CONFLICT (review_id, notice_kind) DO UPDATE SET sent_at = NOW()
-  `, [reviewId, kind]);
-}
-
-async function markSentTender(db, tenderId, reviewId, kind) {
-  // Prefer unique (tender_id, notice_kind) partial index
-  const existing = await db.query(`
-    SELECT id FROM pm_analysis_stale_notices
-    WHERE tender_id = $1 AND notice_kind = $2
-    LIMIT 1
-  `, [tenderId, kind]);
-  if (existing.rows[0]) {
-    await db.query(`
-      UPDATE pm_analysis_stale_notices
-      SET sent_at = NOW(), review_id = COALESCE($2, review_id)
-      WHERE id = $1
-    `, [existing.rows[0].id, reviewId || null]);
-    return;
-  }
-  await db.query(`
-    INSERT INTO pm_analysis_stale_notices (review_id, tender_id, notice_kind, sent_at)
+    INSERT INTO pm_analysis_stale_notices (tender_id, review_id, notice_kind, sent_at)
     VALUES ($1, $2, $3, NOW())
-  `, [reviewId || null, tenderId, kind]);
+  `, [tenderId, reviewId || null, noticeKind]).catch(() => {});
 }
 
 function buildEmail(row) {
   const why = row.notice_kind === 'deadline_2d'
     ? `До дедлайна подачи документов осталось 2 дня или меньше (${row.docs_deadline || '—'}).`
-    : `По анализу нет движения уже около ${row.idle_hours} ч.`;
+    : `По анализу нет движения больше суток (последнее касание ~${row.idle_hours || '?'} ч назад).`;
   const subject = row.notice_kind === 'deadline_2d'
-    ? `Срочно: анализ тендера №${row.tender_id} — дедлайн близко`
-    : `Напоминание: анализ тендера №${row.tender_id} без движения`;
-  const client = (row.customer_name && String(row.customer_name).trim())
-    || (row.tender_title && String(row.tender_title).trim())
-    || 'не указан';
-  const html = `<!DOCTYPE html><html><body style="font-family:Arial,sans-serif;background:#f4f6f9;padding:16px;">
-  <table width="100%" style="max-width:560px;margin:0 auto;background:#fff;border-radius:10px;">
-    <tr><td style="padding:20px;background:#1a2332;color:#fff;">
-      <strong>ASGARD CRM</strong> · незакрытый анализ тендера
-    </td></tr>
-    <tr><td style="padding:16px;font-size:14px;color:#334155;line-height:1.5;">
-      <p>Здравствуйте, ${escHtml(row.pm_name) || ''}!</p>
-      <p><strong>${escHtml(why)}</strong></p>
-      <p>Клиент: <strong>${escHtml(client)}</strong><br>
-         Тендер №${row.tender_id}<br>
-         ${row.tender_title ? escHtml(row.tender_title) : ''}</p>
-      <p>Закройте анализ («подаём» или «не подаём» с причиной) — черновик портит очередь и рейтинг.</p>
-      <p style="text-align:center;margin-top:20px;">
-        <a href="https://asgard-crm.ru/#/pm-calculations"
-           style="background:#3b82f6;color:#fff;padding:12px 22px;border-radius:8px;text-decoration:none;font-weight:bold;">
-          Открыть очередь анализа
-        </a>
-      </p>
-    </td></tr>
-  </table></body></html>`;
+    ? `Срок подачи близко: ${row.customer_name || ('тендер #' + row.tender_id)}`
+    : `Анализ без движения: ${row.customer_name || ('тендер #' + row.tender_id)}`;
+  const html = `
+    <div style="font-family:sans-serif;font-size:14px;color:#111;">
+      <p>Здравствуйте.</p>
+      <p>${escHtml(why)}</p>
+      <p><strong>${escHtml(row.customer_name || '')}</strong><br>
+         ${escHtml(row.tender_title || '')}<br>
+         Дедлайн документов: <strong>${escHtml(row.docs_deadline || '—')}</strong></p>
+      <p><a href="https://asgard-crm.ru/#/pm-calculations">Открыть очередь анализа</a></p>
+    </div>`;
   return { subject, html };
 }
 
-function buildOverdueEmail(row, recipientName) {
-  const paidLabel = row.participation_paid
-    ? (`платное · ${formatMoneyRu(row.participation_fee) || 'сумма не указана'}`)
-    : 'бесплатное';
-  const subject = `Просрочен внутренний срок анализа · тендер №${row.tender_id}`;
-  const client = (row.customer_name && String(row.customer_name).trim())
-    || (row.tender_title && String(row.tender_title).trim())
-    || 'не указан';
-  const html = `<!DOCTYPE html><html><body style="font-family:Arial,sans-serif;background:#f4f6f9;padding:16px;">
-  <table width="100%" style="max-width:560px;margin:0 auto;background:#fff;border-radius:10px;">
-    <tr><td style="padding:20px;background:#7f1d1d;color:#fff;">
-      <strong>ASGARD CRM</strong> · просрочен внутренний срок анализа
-    </td></tr>
-    <tr><td style="padding:16px;font-size:14px;color:#334155;line-height:1.5;">
-      <p>Здравствуйте${recipientName ? ', ' + escHtml(recipientName) : ''}!</p>
-      <p>Внутренний срок анализа тендера <strong>№${row.tender_id}</strong> истёк
+function buildOverdueEmail(row, dutyName) {
+  const subject = `Просрочен analysis_deadline: ${row.customer_name || ('тендер #' + row.tender_id)}`;
+  const html = `
+    <div style="font-family:sans-serif;font-size:14px;color:#111;">
+      <p>Здравствуйте${dutyName ? ', ' + escHtml(dutyName) : ''}.</p>
+      <p>Внутренний срок анализа просрочен
          (<strong>${escHtml(row.analysis_deadline || '—')}</strong>).</p>
-      <p>Клиент: <strong>${escHtml(client)}</strong><br>
-         ${row.tender_title ? escHtml(row.tender_title) + '<br>' : ''}
-         Участие: ${escHtml(paidLabel)}<br>
+      <p><strong>${escHtml(row.customer_name || '')}</strong><br>
+         ${escHtml(row.tender_title || '')}<br>
          Срок подачи документов: <strong>${escHtml(row.docs_deadline || '—')}</strong></p>
-      <p>Продление внутреннего срока возможно <strong>не позднее чем за 2 календарных дня</strong>
-         до срока подачи документов (сейчас ещё можно успеть закрыть или сдвинуть срок подачи).</p>
-      <p style="text-align:center;margin-top:20px;">
-        <a href="https://asgard-crm.ru/#/tenders?id=${row.tender_id}"
-           style="background:#3b82f6;color:#fff;padding:12px 22px;border-radius:8px;text-decoration:none;font-weight:bold;">
-          Открыть тендер в CRM
-        </a>
-      </p>
-    </td></tr>
-  </table></body></html>`;
+      <p><a href="https://asgard-crm.ru/#/tenders?id=${row.tender_id}">Открыть тендер</a></p>
+    </div>`;
   return { subject, html };
 }
 
-async function getHeadPmEmails(db) {
+async function loadDutyRecipient(db) {
+  const duty = await getCurrentDuty(db).catch(() => null);
+  if (!duty || !duty.pm_user_id) return null;
   const r = await db.query(`
-    SELECT email FROM users
-    WHERE is_active AND role = 'HEAD_PM' AND email IS NOT NULL AND btrim(email) <> ''
-  `);
-  return r.rows.map((x) => x.email);
-}
-
-async function loadUsersByIds(db, ids) {
-  const uniq = [...new Set(ids.filter(Boolean).map((x) => Number(x)).filter((n) => Number.isFinite(n)))];
-  if (!uniq.length) return [];
-  const r = await db.query(`
-    SELECT id, name, email, role, login
+    SELECT id, name, email, role
     FROM users
-    WHERE id = ANY($1::int[])
+    WHERE id = $1
       AND is_active
       AND role IS DISTINCT FROM 'ADMIN'
       AND name NOT ILIKE 'Администратор%'
       AND login NOT LIKE 'test_%'
-  `, [uniq]);
-  return r.rows;
+    LIMIT 1
+  `, [duty.pm_user_id]).catch(() => ({ rows: [] }));
+  return r.rows[0] || null;
+}
+
+/** Если есть текущий дежурный — перекинуть открытые рассмотрение на него (owner не залипает). */
+async function handoffToCurrentDuty(db, log) {
+  const duty = await getCurrentDuty(db).catch(() => null);
+  if (!duty || !duty.pm_user_id) return { transferred: 0, skipped: true };
+  try {
+    const r = await transferOpenAnalysesToDuty(db, Number(duty.pm_user_id));
+    if (r.transferred > 0) {
+      log?.info?.(`[PmAnalysisStale] handoff transferred=${r.transferred} → duty=${duty.pm_user_id}`);
+    }
+    return r;
+  } catch (err) {
+    log?.warn?.({ err }, '[PmAnalysisStale] handoff failed');
+    return { transferred: 0, error: true };
+  }
 }
 
 async function runOverdueOnce(db, log) {
   const rows = await findAnalysisDeadlineOverdue(db);
   let sent = 0;
-  const duty = await getCurrentDuty(db).catch(() => null);
-  const dutyPmId = duty?.pm_user_id || null;
+  const recipient = await loadDutyRecipient(db);
+  if (!recipient) {
+    log?.warn?.(`[PmAnalysisStale] overdue: no duty PM — skip ${rows.length} candidates`);
+    return { candidates: rows.length, sent: 0, skipped_no_duty: true };
+  }
 
   for (const row of rows) {
     try {
       if (await alreadySentTender(db, row.tender_id, 'analysis_deadline_overdue')) continue;
 
-      const recipients = await loadUsersByIds(db, [dutyPmId, row.owner_user_id]);
-      if (!recipients.length) {
-        log?.warn?.({ tender_id: row.tender_id }, '[PmAnalysisStale] overdue: no recipients');
-        await markSentTender(db, row.tender_id, row.review_id, 'analysis_deadline_overdue');
-        continue;
+      const { subject, html } = buildOverdueEmail(row, recipient.name);
+      if (recipient.email) {
+        await sendCrmEmail(db, null, { to: recipient.email, subject, html, text: subject });
       }
-
-      for (const u of recipients) {
-        const { subject, html } = buildOverdueEmail(row, u.name);
-        if (u.email) {
-          await sendCrmEmail(db, null, { to: u.email, subject, html, text: subject });
-        }
-        if (createNotification) {
-          await createNotification(db, {
-            user_id: u.id,
-            type: 'pm_analysis_deadline_overdue',
-            title: subject,
-            message: row.customer_name || (`Тендер #${row.tender_id}`),
-            link: `#/tenders?id=${row.tender_id}`
-          }).catch(() => {});
-        }
+      if (createNotification) {
+        await createNotification(db, {
+          user_id: recipient.id,
+          type: 'pm_analysis_deadline_overdue',
+          title: subject,
+          message: row.customer_name || (`Тендер #${row.tender_id}`),
+          link: `#/tenders?id=${row.tender_id}`
+        }).catch(() => {});
       }
 
       await markSentTender(db, row.tender_id, row.review_id, 'analysis_deadline_overdue');
@@ -296,41 +249,40 @@ async function runOverdueOnce(db, log) {
       log?.error?.({ err, tender_id: row.tender_id }, '[PmAnalysisStale] overdue send failed');
     }
   }
-  log?.info?.(`[PmAnalysisStale] overdue candidates=${rows.length} sent=${sent}`);
+  log?.info?.(`[PmAnalysisStale] overdue candidates=${rows.length} sent=${sent} duty=${recipient.id}`);
   return { candidates: rows.length, sent };
 }
 
 async function runOnce(db, log) {
+  await handoffToCurrentDuty(db, log);
+
+  const recipient = await loadDutyRecipient(db);
   const rows = await findCandidates(db);
   let sent = 0;
+
+  if (!recipient) {
+    log?.warn?.(`[PmAnalysisStale] no duty PM — skip ${rows.length} idle/deadline candidates`);
+    const overdue = await runOverdueOnce(db, log);
+    return { candidates: rows.length, sent: 0, skipped_no_duty: true, overdue };
+  }
+
   for (const row of rows) {
     try {
       if (await alreadySentReview(db, row.review_id, row.notice_kind)) continue;
       const { subject, html } = buildEmail(row);
-      if (row.pm_email) {
-        await sendCrmEmail(db, null, { to: row.pm_email, subject, html, text: subject });
+      if (recipient.email) {
+        await sendCrmEmail(db, null, { to: recipient.email, subject, html, text: subject });
       }
-      if (row.pm_user_id && createNotification) {
+      if (createNotification) {
         await createNotification(db, {
-          user_id: row.pm_user_id,
+          user_id: recipient.id,
           type: 'pm_analysis_stale',
           title: subject,
           message: row.customer_name || (`Тендер #${row.tender_id}`),
           link: '#/pm-calculations'
         }).catch(() => {});
       }
-      if (row.notice_kind === 'deadline_2d') {
-        const heads = await getHeadPmEmails(db);
-        for (const em of heads) {
-          if (em === row.pm_email) continue;
-          await sendCrmEmail(db, null, {
-            to: em,
-            subject: `[копия] ${subject}`,
-            html,
-            text: subject
-          }).catch(() => {});
-        }
-      }
+      // CC HEAD_PM убран: уведомления только дежурному.
       await markSentReview(db, row.review_id, row.notice_kind);
       sent += 1;
     } catch (err) {
@@ -338,7 +290,7 @@ async function runOnce(db, log) {
     }
   }
   const overdue = await runOverdueOnce(db, log);
-  log?.info?.(`[PmAnalysisStale] candidates=${rows.length} sent=${sent}`);
+  log?.info?.(`[PmAnalysisStale] candidates=${rows.length} sent=${sent} duty=${recipient.id}`);
   return { candidates: rows.length, sent, overdue };
 }
 
@@ -360,5 +312,7 @@ module.exports = {
   runOnce,
   findCandidates,
   findAnalysisDeadlineOverdue,
-  runOverdueOnce
+  runOverdueOnce,
+  handoffToCurrentDuty,
+  loadDutyRecipient
 };

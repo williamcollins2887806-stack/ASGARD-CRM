@@ -284,11 +284,23 @@ async function computeUserRating(db, userId, windowKind, asOfDate) {
     return emptyPayload(userId, win, asOf, 'Нет периодов дежурства — рейтинг смены недоступен.');
   }
 
-  const [rows, collabs, closedCalc] = await Promise.all([
+  const [rows, collabs, closedCalc, onDutyAtAsOf] = await Promise.all([
     loadCandidates(db, userId, ps, pe),
     loadCollabStats(db, userId, ps, pe),
-    loadCalcClosedStats(db, userId, ps, pe)
+    loadCalcClosedStats(db, userId, ps, pe),
+    (async () => {
+      const r = await db.query(`
+        SELECT 1 FROM pm_duty_roster
+        WHERE pm_user_id = $1 AND period_start <= $2::date AND period_end >= $2::date
+        LIMIT 1
+      `, [userId, asOf]).catch(() => ({ rows: [] }));
+      return !!r.rows[0];
+    })()
   ]);
+
+  // Live-штрафы (overdue/abandoned/cancel): только пока человек дежурит на asOf,
+  // либо в окне 'duty' (оценка конкретной смены). Иначе d30 капает бывшему дежурному вечно.
+  const applyLivePenalties = window_kind === 'duty' || onDutyAtAsOf;
 
   const poolIds = new Set();
   const takenIds = new Set();
@@ -319,11 +331,18 @@ async function computeUserRating(db, userId, windowKind, asOfDate) {
     const finalized = !!closedAt;
     const finDate = finalized ? isoDate(closedAt) : null;
     const finalizedInWindow = finalized && finDate >= ps && finDate <= pe;
+    const started = startTs(row);
+    const startedDate = started ? isoDate(started) : null;
+    const startedInWindow = !!(startedDate && startedDate >= ps && startedDate <= pe);
 
-    if (mine && taken) takenIds.add(tid);
+    // Completion denominator = taken in window (done in window + open started in window / duty open).
+    // Не тащим всю историю открытых карточек в taken — иначе completion тает без новых действий.
+    if (mine && taken && (finalizedInWindow || (!finalized && (startedInWindow || window_kind === 'duty')))) {
+      takenIds.add(tid);
+    }
     if (mine && finalizedInWindow) {
       doneIds.add(tid);
-      const h = hoursBetween(startTs(row), closedAt);
+      const h = hoursBetween(started, closedAt);
       if (h != null) speedHours.push(h);
 
       if (row.decision === 'reject') {
@@ -338,26 +357,26 @@ async function computeUserRating(db, userId, windowKind, asOfDate) {
       }
     }
 
-    // Overdue: open analysis, docs_deadline < today, owner is me OR (unowned and we are scoring duty pool attribution)
+    if (!applyLivePenalties) continue;
+
+    // Overdue: open analysis, docs_deadline < today, owner is me OR (unowned and we are scoring duty pool)
     const openAnalysis = !finalized && (row.registry_status === 'рассмотрение' || !row.registry_status);
     if (openAnalysis && row.docs_deadline && isoDate(row.docs_deadline) < today) {
-      if (mine || (taken && mine)) {
+      if (mine) {
         overdueOpen += 1;
         overdueIds.push(tid);
       } else if (!taken && window_kind === 'duty') {
-        // duty: unowned overdue in pool still hurts the duty PM (responsibility for queue)
         overdueOpen += 1;
         overdueIds.push(tid);
       }
     }
 
-    // Abandoned: mine, started, not closed, and (duty ended before today OR age > 7d)
+    // Abandoned: mine, started, not closed, age > 7d — только пока дежурит / в окне duty.
+    // Не используем pe < today для d30 (там pe=asOf) — это давало ложный drip после смены.
     if (mine && taken && !finalized) {
-      const started = startTs(row);
-      const startedDate = started ? isoDate(started) : null;
-      const dutyEnded = pe < today;
       const olderThan7 = startedDate && addDaysIso(startedDate, 7) < today;
-      if (dutyEnded || olderThan7) {
+      const dutyWindowEnded = window_kind === 'duty' && pe < today;
+      if (olderThan7 || dutyWindowEnded) {
         abandoned += 1;
         abandonedIds.push(tid);
       }

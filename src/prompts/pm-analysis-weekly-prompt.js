@@ -77,6 +77,10 @@ function buildHeuristicDigestCopy(payload) {
     nextPart = sentence(`Дежурство продолжается: ${shortName(next.pm_name)} до ${fmtD(next.period_end)}`);
   } else if (next.assigned) {
     nextPart = sentence(`Следующий дежурный: ${shortName(next.pm_name)} с ${fmtD(next.period_start)} по ${fmtD(next.period_end)}`);
+  } else if (next.last_duty_pm_name && next.last_duty_period_end) {
+    nextPart = sentence(
+      `Следующий дежурный не назначен (последняя смена: ${shortName(next.last_duty_pm_name)} до ${fmtD(next.last_duty_period_end)})`
+    );
   } else {
     nextPart = 'Следующий дежурный не назначен.';
   }

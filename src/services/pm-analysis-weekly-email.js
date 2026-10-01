@@ -181,8 +181,11 @@ function generatePmAnalysisWeeklyEmail(payload) {
         <span style="color:#047857;"> · ${fmtShort(nextDuty.period_start)}–${fmtShort(nextDuty.period_end)}</span>
       </div>`;
   } else {
+    const lastHint = nextDuty.last_duty_pm_name && nextDuty.last_duty_period_end
+      ? ` Последняя смена: ${esc(nextDuty.last_duty_pm_name)} до ${fmtShort(nextDuty.last_duty_period_end)}.`
+      : '';
     nextDutyHtml = `<div style="margin-top:10px;padding:10px 12px;background:#fff7ed;border-radius:8px;border-left:3px solid #ea580c;font-size:13px;color:#9a3412;">
-        <strong>Следующий дежурный не назначен</strong> — нужно указать смену в реестре дежурств.
+        <strong>Следующий дежурный не назначен</strong> — нужно указать смену в реестре дежурств.${lastHint}
       </div>`;
   }
 

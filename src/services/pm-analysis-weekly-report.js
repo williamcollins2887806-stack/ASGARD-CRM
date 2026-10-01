@@ -325,7 +325,35 @@ async function loadNextDuty(db, weekEnd) {
     LIMIT 1
   `, [weekEnd]).catch(() => ({ rows: [] }));
 
-  if (!nextR.rows[0]) return empty;
+  if (!nextR.rows[0]) {
+    // Нет будущей смены — подтянуть последнюю завершённую, чтобы письмо не было «пустым generic».
+    const lastR = await db.query(`
+      SELECT r.pm_user_id, u.name AS pm_name,
+             r.period_start::text AS period_start, r.period_end::text AS period_end
+      FROM pm_duty_roster r
+      JOIN users u ON u.id = r.pm_user_id
+      WHERE r.period_end <= $1::date
+      ORDER BY r.period_end DESC, r.created_at DESC
+      LIMIT 1
+    `, [weekEnd]).catch(() => ({ rows: [] }));
+    if (lastR.rows[0]) {
+      const last = lastR.rows[0];
+      return {
+        kind: 'none',
+        assigned: false,
+        continuing: false,
+        needs_successor: true,
+        pm_user_id: null,
+        pm_name: null,
+        period_start: null,
+        period_end: null,
+        last_duty_pm_name: last.pm_name,
+        last_duty_period_start: isoDate(last.period_start),
+        last_duty_period_end: isoDate(last.period_end)
+      };
+    }
+    return empty;
+  }
   const row = nextR.rows[0];
   return {
     kind: 'next',
@@ -539,8 +567,10 @@ async function loadRatings(db) {
     WHERE r.as_of_date = (SELECT MAX(as_of_date) FROM pm_analysis_rating_daily)
       AND u.role IN ('PM', 'HEAD_PM')
       AND u.login NOT LIKE 'test_%'
-      AND u.name NOT ILIKE 'Test %'
+      AND u.name NOT ILIKE 'Test%'
+      AND u.name NOT ILIKE 'ТЕСТ%'
       AND u.name NOT ILIKE 'Администратор%'
+      AND u.is_active = true
     GROUP BY u.id, u.name
   `);
   return r.rows;
@@ -910,5 +940,6 @@ module.exports = {
   addDaysIso,
   loadToActivity,
   loadCrmActivity,
-  loadNextDuty
+  loadNextDuty,
+  loadRatings
 };
