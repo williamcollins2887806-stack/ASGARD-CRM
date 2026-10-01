@@ -52,10 +52,10 @@ function defaultRange(_work) {
 
 const MONTHS_RU = ['Январь','Февраль','Март','Апрель','Май','Июнь','Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'];
 
-/** Office/route stages: RP may overwrite via new checkin + confirm_overwrite (D-249). */
+/** Logistics only: RP may overwrite via checkin + confirm_overwrite (D-249b).
+ *  medical / warehouse / training / day_off stay locked → toast «Маршруты». */
 const OFFICE_STAGE_SHIFTS = new Set([
-  'travel', 'road', 'ship', 'helicopter', 'waiting', 'standby',
-  'medical', 'warehouse', 'training', 'day_off'
+  'travel', 'road', 'ship', 'helicopter', 'waiting', 'standby'
 ]);
 function isOfficeStageDay(day) {
   if (!day || day.kind !== 'stage') return false;

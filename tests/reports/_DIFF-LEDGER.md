@@ -7387,3 +7387,12 @@ A `wa.tier AS rarity` SQL.
 `field-tab.js` несёт `_isOfficeStageShift`. Post-deploy: `restore_asset_sync plan` to_upload=0;
 `audit_silent_reverts --post-deploy` = **0 расхождений**. Коммиты: `eb62876a` (fix), `ede36291` (verify).
 На прод везли **vanilla** `field-tab.js` + бэкенд; v2 src только в git (РП работает в vanilla).
+
+### D-249b. Сужение overwrite этапов (02.10.2026)
+
+Аудит после выкатки: unlock был шире бага Трухина (`medical`/`warehouse`/`training`/`day_off`).
+Решение продукта: РП перезаписывает только логистику
+`travel|road|ship|helicopter|waiting|standby`; медосмотр/склад/обучение/day_off → снова toast «Маршруты».
+Правки: `OFFICE_STAGE_SHIFTS` в `field-tab.js` + v2 `Timesheet.jsx`; sentinel `B-scope-vanilla`/`B-scope-v2`.
+RISK2 (confirm при «Добавить» уехавшего) — **не в этом патче**.
+**Статус: FIXED** (статический scope-гейт зелёный; выкатка — по команде).

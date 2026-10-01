@@ -2751,10 +2751,10 @@ window.AsgardFieldTab = (function () {
     const key = shift === 'travel' ? 'road' : shift;
     return SHIFT_TYPES.find(s => s.value === key) || SHIFT_TYPES[0];
   }
-  // Office/route stages that RP may overwrite via checkin + confirm_overwrite (D-249)
+  // Logistics stages only: RP may overwrite via checkin + confirm_overwrite (D-249b).
+  // medical / warehouse / training / day_off stay locked → toast «Маршруты».
   const OFFICE_STAGE_SHIFTS = new Set([
-    'travel', 'road', 'ship', 'helicopter', 'waiting', 'standby',
-    'medical', 'warehouse', 'training', 'day_off'
+    'travel', 'road', 'ship', 'helicopter', 'waiting', 'standby'
   ]);
   function _isOfficeStageShift(shift) {
     if (!shift) return false;

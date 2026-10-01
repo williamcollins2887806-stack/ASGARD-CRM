@@ -276,13 +276,23 @@ async function main() {
       pass('B-stage-softcancel-soft', JSON.stringify(stAfter[0]));
     }
 
-    // UI static check: field-tab no longer hard-blocks all stages
+    // UI static check: field-tab unlocks logistics only (D-249b)
     const tabPath = path.join(__dirname, '..', 'public', 'assets', 'js', 'field-tab.js');
     const tabSrc = fs.readFileSync(tabPath, 'utf8');
     if (tabSrc.includes('_isOfficeStageShift') && tabSrc.includes('addCheckinCell(td, emp, d, work, pv)')) {
       pass('B-ui-vanilla', '_isOfficeStageShift → addCheckinCell');
     } else {
       fail('B-ui-vanilla', 'office-stage click path missing');
+    }
+    {
+      const m = tabSrc.match(/const OFFICE_STAGE_SHIFTS = new Set\(\[([\s\S]*?)\]\)/);
+      const setBody = m ? m[1] : '';
+      const allow = ['travel', 'road', 'ship', 'helicopter', 'waiting', 'standby'];
+      const deny = ['medical', 'warehouse', 'training', 'day_off'];
+      const hasAll = allow.every((s) => setBody.includes(`'${s}'`));
+      const hasNone = deny.every((s) => !setBody.includes(`'${s}'`));
+      if (hasAll && hasNone) pass('B-scope-vanilla', 'logistics allow / medical+warehouse+training+day_off deny');
+      else fail('B-scope-vanilla', setBody.replace(/\s+/g, ' ').slice(0, 200));
     }
     if (tabSrc.includes("searchable: true") && tabSrc.includes('acEmp')) {
       pass('F-search-vanilla', 'CRSelect searchable acEmp');
@@ -300,6 +310,16 @@ async function main() {
       pass('B-ui-v2', 'Timesheet office stage → openCell null');
     } else {
       fail('B-ui-v2', 'Timesheet fix missing');
+    }
+    {
+      const m = v2Ts.match(/const OFFICE_STAGE_SHIFTS = new Set\(\[([\s\S]*?)\]\)/);
+      const setBody = m ? m[1] : '';
+      const allow = ['travel', 'road', 'ship', 'helicopter', 'waiting', 'standby'];
+      const deny = ['medical', 'warehouse', 'training', 'day_off'];
+      const hasAll = allow.every((s) => setBody.includes(`'${s}'`));
+      const hasNone = deny.every((s) => !setBody.includes(`'${s}'`));
+      if (hasAll && hasNone) pass('B-scope-v2', 'logistics allow / medical+warehouse+training+day_off deny');
+      else fail('B-scope-v2', setBody.replace(/\s+/g, ' ').slice(0, 200));
     }
     const v2Crew = fs.readFileSync(path.join(__dirname, '..', 'public', 'desktop-v2-src', 'src', 'pages', 'PmWorks', 'modals', 'FieldTab', 'tabs', 'Crew.jsx'), 'utf8');
     if (v2Crew.includes('Combobox') && v2Crew.includes('уехал с этого объекта')) {
