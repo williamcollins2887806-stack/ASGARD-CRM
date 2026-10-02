@@ -35,7 +35,7 @@
   function qs(sel, el) { return (el || document).querySelector(sel); }
   function qsa(sel, el) { return Array.from((el || document).querySelectorAll(sel)); }
   function toast(msg, ok) {
-    if (window.AsgardToast) AsgardToast.show(msg, ok === false ? 'error' : 'success');
+    if (window.AsgardUI && typeof AsgardUI.toast === 'function') AsgardUI.toast(msg, ok === false ? 'error' : 'success');
     else console.log('[ting]', msg);
   }
   async function api(path, opts) {
