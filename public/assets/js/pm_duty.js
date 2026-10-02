@@ -38,7 +38,17 @@ window.AsgardPmDutyPage = (function () {
 
   function isoDate(d) {
     const x = d || new Date();
-    return x.getFullYear() + '-' + String(x.getMonth() + 1).padStart(2, '0') + '-' + String(x.getDate()).padStart(2, '0');
+    try {
+      return new Intl.DateTimeFormat('en-CA', {
+        timeZone: 'Europe/Moscow',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit'
+      }).format(x instanceof Date ? x : new Date(x));
+    } catch (_) {
+      const y = x instanceof Date ? x : new Date(x);
+      return y.getFullYear() + '-' + String(y.getMonth() + 1).padStart(2, '0') + '-' + String(y.getDate()).padStart(2, '0');
+    }
   }
 
   function addDays(dateStr, n) {
@@ -160,25 +170,53 @@ window.AsgardPmDutyPage = (function () {
     if (!items || !items.length) {
       return '<div class="pm-duty-gantt pm-duty-gantt--empty"><p class="muted">Нет периодов в графике</p></div>';
     }
-    const today = new Date();
-    const start = new Date(today);
-    start.setDate(start.getDate() - 3);
-    const end = new Date(today);
-    end.setDate(end.getDate() + 21);
-    const span = end.getTime() - start.getTime();
-    const nowPct = Math.max(0, Math.min(100, ((today.getTime() - start.getTime()) / span) * 100));
+    const nowStr = isoDate();
+    const viewStart = addDays(nowStr, -3);
+    const viewEnd = addDays(nowStr, 21);
+    const startMs = new Date(viewStart + 'T12:00:00').getTime();
+    const endMs = new Date(viewEnd + 'T12:00:00').getTime();
+    const span = Math.max(1, endMs - startMs);
 
-    function pct(d) {
-      const t = new Date(String(d).slice(0, 10) + 'T12:00:00').getTime();
-      return Math.max(0, Math.min(100, ((t - start.getTime()) / span) * 100));
+    function pctIso(iso) {
+      const t = new Date(String(iso).slice(0, 10) + 'T12:00:00').getTime();
+      return ((t - startMs) / span) * 100;
     }
 
-    const nowStr = isoDate(today);
+    function intersectsViewport(ps, pe) {
+      const a = String(ps).slice(0, 10);
+      const b = String(pe).slice(0, 10);
+      return a <= viewEnd && b >= viewStart;
+    }
+
+    const visible = (items || []).filter((r) => intersectsViewport(r.period_start, r.period_end));
+    if (!visible.length) {
+      return '<div class="pm-duty-gantt pm-duty-gantt--empty"><p class="muted">Нет периодов в ближайшие 3 недели</p></div>';
+    }
+
+    const byPm = new Map();
+    visible.forEach((r) => {
+      const key = String(r.pm_user_id);
+      if (!byPm.has(key)) {
+        byPm.set(key, { pm_user_id: r.pm_user_id, pm_name: r.pm_name, periods: [] });
+      }
+      byPm.get(key).periods.push(r);
+    });
+
+    const groups = Array.from(byPm.values()).sort((a, b) => {
+      const aAct = a.periods.some((p) => nowStr >= String(p.period_start).slice(0, 10) && nowStr <= String(p.period_end).slice(0, 10));
+      const bAct = b.periods.some((p) => nowStr >= String(p.period_start).slice(0, 10) && nowStr <= String(p.period_end).slice(0, 10));
+      if (aAct !== bAct) return aAct ? -1 : 1;
+      return String(a.pm_name || '').localeCompare(String(b.pm_name || ''), 'ru');
+    });
+
+    const nowPct = Math.max(0, Math.min(100, pctIso(nowStr)));
     const ticks = [];
     for (let i = 0; i <= 4; i++) {
-      const d = new Date(start);
-      d.setDate(start.getDate() + Math.round((i / 4) * 24));
-      ticks.push({ left: (i / 4) * 100, label: String(d.getDate()).padStart(2, '0') + '.' + String(d.getMonth() + 1).padStart(2, '0') });
+      const d = addDays(viewStart, Math.round((i / 4) * 24));
+      ticks.push({
+        left: (i / 4) * 100,
+        label: d.slice(8, 10) + '.' + d.slice(5, 7)
+      });
     }
 
     let html = '<div class="pm-duty-gantt">' +
@@ -186,20 +224,33 @@ window.AsgardPmDutyPage = (function () {
       ticks.map((t) => '<span style="left:' + t.left + '%">' + esc(t.label) + '</span>').join('') +
       '</div>';
 
-    items.slice(0, 16).forEach((r) => {
-      const ps = pct(r.period_start);
-      const pe = pct(r.period_end);
-      const w = Math.max(3.5, pe - ps);
-      const active = nowStr >= String(r.period_start).slice(0, 10) && nowStr <= String(r.period_end).slice(0, 10);
+    groups.slice(0, 16).forEach((g) => {
+      const active = g.periods.some((p) => nowStr >= String(p.period_start).slice(0, 10) && nowStr <= String(p.period_end).slice(0, 10));
+      const bars = g.periods.map((r) => {
+        let leftIso = String(r.period_start).slice(0, 10);
+        // exclusive end (+1 день) — inclusive period_end рисуется целиком
+        let rightIso = addDays(String(r.period_end).slice(0, 10), 1);
+        if (leftIso < viewStart) leftIso = viewStart;
+        const viewRight = addDays(viewEnd, 1);
+        if (rightIso > viewRight) rightIso = viewRight;
+        const left = Math.max(0, Math.min(100, pctIso(leftIso)));
+        const right = Math.max(0, Math.min(100, pctIso(rightIso)));
+        const w = right - left;
+        if (w <= 0.05) return '';
+        const barActive = nowStr >= String(r.period_start).slice(0, 10) && nowStr <= String(r.period_end).slice(0, 10);
+        const tip = (r.pm_name ? r.pm_name + ': ' : '') + fmtDate(r.period_start) + ' — ' + fmtDate(r.period_end);
+        return '<div class="pm-duty-gantt-bar' + (barActive ? ' active' : '') + '" style="left:' + left + '%;width:' + w + '%" title="' +
+          esc(tip) + '"></div>';
+      }).join('');
+
       html += '<div class="pm-duty-gantt-row' + (active ? ' is-active' : '') + '">' +
-        '<div class="pm-duty-gantt-who">' +
-          '<span class="pm-duty-avatar" aria-hidden="true">' + esc(initials(r.pm_name)) + '</span>' +
-          '<span class="pm-duty-gantt-name">' + esc(r.pm_name) + '</span>' +
+        '<div class="pm-duty-gantt-who" title="' + esc(g.pm_name || '') + '">' +
+          '<span class="pm-duty-avatar" aria-hidden="true">' + esc(initials(g.pm_name)) + '</span>' +
+          '<span class="pm-duty-gantt-name">' + esc(g.pm_name) + '</span>' +
         '</div>' +
         '<div class="pm-duty-gantt-track">' +
-          '<div class="pm-duty-gantt-today" style="left:' + nowPct + '%" title="Сегодня"></div>' +
-          '<div class="pm-duty-gantt-bar' + (active ? ' active' : '') + '" style="left:' + ps + '%;width:' + w + '%" title="' +
-            esc(fmtDate(r.period_start) + ' — ' + fmtDate(r.period_end)) + '"></div>' +
+          '<div class="pm-duty-gantt-today" style="left:' + nowPct + '%" title="Сегодня ' + esc(nowStr) + '"></div>' +
+          bars +
         '</div>' +
       '</div>';
     });
@@ -209,8 +260,8 @@ window.AsgardPmDutyPage = (function () {
   function openRatingDrawer(payload) {
     const r = payload && (payload.rating || payload);
     const user = (payload && payload.user) || {};
-    if (!r) {
-      toast('Нет данных рейтинга', 'err');
+    if (!r || r.empty) {
+      toast(r && r.empty ? 'Недостаточно данных для оценки в этом окне' : 'Нет данных рейтинга', 'err');
       return;
     }
     const comps = r.components || {};
@@ -247,13 +298,25 @@ window.AsgardPmDutyPage = (function () {
     if (pens.reject_no_preset && pens.reject_no_preset.points) penLines.push('Отказ без пресета: −' + pens.reject_no_preset.points);
     if (pens.registry_cancel && pens.registry_cancel.points) penLines.push('Хаотичная отмена: −' + pens.registry_cancel.points);
 
+    const bonusLines = [];
+    if (bons.collab_active && bons.collab_active.points) {
+      bonusLines.push('Привлечение коллег: +' + bons.collab_active.points);
+    }
+    if (bons.volume && bons.volume.points) {
+      bonusLines.push('Объём закрытий (' + (bons.volume.count || 0) + '): +' + bons.volume.points);
+    }
+
+    const windowLabel = r.window_kind === 'duty'
+      ? 'смена'
+      : (r.window_kind === 'd90' ? '90 дней' : '30 дней');
+
     const html =
       '<div class="pm-duty-drawer">' +
         '<div class="pm-duty-drawer-head">' +
           '<div class="' + gradeClass(r.grade) + '">' + esc(r.grade || '—') + '</div>' +
           '<div>' +
             '<div class="pm-duty-drawer-score">' + esc(String(r.score != null ? r.score : '—')) + '<small>/100</small></div>' +
-            '<div class="muted">' + esc(user.name || 'РП') + ' · окно ' + esc(r.window_kind || '') +
+            '<div class="muted">' + esc(user.name || 'РП') + ' · ' + esc(windowLabel) +
               (r.period_start ? (' · ' + fmtDate(r.period_start) + '–' + fmtDate(r.period_end)) : '') +
             '</div>' +
           '</div>' +
@@ -268,8 +331,8 @@ window.AsgardPmDutyPage = (function () {
         (penLines.length
           ? '<div class="pm-duty-drawer-block"><h4>Штрафы хаоса</h4><ul>' + penLines.map((x) => '<li>' + esc(x) + '</li>').join('') + '</ul></div>'
           : '') +
-        (bons.collab_active && bons.collab_active.points
-          ? '<div class="pm-duty-drawer-block"><h4>Бонусы</h4><p>Привлечение коллег: +' + esc(String(bons.collab_active.points)) + '</p></div>'
+        (bonusLines.length
+          ? '<div class="pm-duty-drawer-block"><h4>Бонусы</h4><ul>' + bonusLines.map((x) => '<li>' + esc(x) + '</li>').join('') + '</ul></div>'
           : '') +
         '<div class="pm-duty-drawer-block"><h4>Рекомендации</h4><ul class="pm-duty-recs">' +
           (recs.length ? recs.map((x) => '<li>' + esc(x) + '</li>').join('') : '<li class="muted">Нет рекомендаций</li>') +
@@ -370,19 +433,26 @@ window.AsgardPmDutyPage = (function () {
     }
 
     function renderHero() {
-      const rating = isDuty ? (dutyRating || myRating) : (myRating || dutyRating);
+      // Hero/бейдж: всегда предпочитаем d30; duty=0 / empty не маскируют живой d30.
+      const d30Ok = myRating && !myRating.empty;
+      const dutyOk = dutyRating && !dutyRating.empty;
+      const rating = d30Ok ? myRating : (dutyOk ? dutyRating : null);
+      const ratingWindowLabel = rating && rating.window_kind === 'duty' ? 'смены' : '30 дней';
+      const dutyChip = (isDuty && dutyOk && rating && rating.window_kind !== 'duty')
+        ? ('<span class="pm-duty-rating-duty-chip" title="Рейтинг текущей смены">смена · ' +
+            esc(String(dutyRating.grade || '')) + ' ' + esc(String(dutyRating.score)) + '</span>')
+        : '';
       const progress = duty ? periodProgress(duty.period_start, duty.period_end) : null;
       const kpis = tab === 'norms' ? null : queueKpis();
       const who = duty && duty.pm_name
         ? ('<strong>' + esc(duty.pm_name) + '</strong>')
         : '<span class="muted">не назначен</span>';
-      const ratingWindowLabel = isDuty ? 'смены' : '30 дней';
       const topRec = rating && rating.recommendations && rating.recommendations[0]
         ? rating.recommendations[0]
         : '';
 
       const badge = rating
-        ? ('<button type="button" class="pm-duty-rating-badge" id="pmDutyRatingBadge" title="Расшифровка эффективности">' +
+        ? ('<button type="button" class="pm-duty-rating-badge" id="pmDutyRatingBadge" title="Расшифровка эффективности · ' + ratingWindowLabel + '">' +
             '<div class="pm-duty-rating-visual">' +
               ratingRingSvg(rating.score, rating.grade) +
               '<div class="pm-duty-rating-core">' +
@@ -391,6 +461,7 @@ window.AsgardPmDutyPage = (function () {
               '</div>' +
             '</div>' +
             '<span class="pm-duty-rating-label">рейтинг · ' + ratingWindowLabel + '</span>' +
+            dutyChip +
             (topRec ? '<span class="pm-duty-rating-tip">' + esc(topRec) + '</span>' : '') +
             '<span class="pm-duty-rating-cta">подробнее</span></button>')
         : '<div class="pm-duty-rating-badge is-empty"><span class="pm-duty-rating-score">—</span><span class="pm-duty-rating-label">рейтинг появится после расчёта</span></div>';
@@ -652,12 +723,14 @@ window.AsgardPmDutyPage = (function () {
       });
       document.getElementById('pmDutyRatingBadge')?.addEventListener('click', async () => {
         const uid = user.id;
-        const win = isDuty ? 'duty' : 'd30';
+        // Drawer открывает то же окно, что на бейдже (d30 по умолчанию; duty только если d30 empty)
+        const d30Ok = myRating && !myRating.empty;
+        const win = d30Ok ? 'd30' : (isDuty ? 'duty' : 'd30');
         try {
           const d = await API.loadPmDutyRatingBreakdown(uid, win);
           openRatingDrawer(d);
         } catch (e) {
-          openRatingDrawer({ rating: (isDuty ? dutyRating : myRating) || dutyRating || myRating, user: { name: user.name } });
+          openRatingDrawer({ rating: (d30Ok ? myRating : (dutyRating || myRating)), user: { name: user.name } });
         }
       });
       document.querySelectorAll('.pm-duty-lb-item').forEach((el) => {

@@ -22,7 +22,7 @@ import { Field, TextareaInput, Rating, MoneyInput, DatePicker } from '@/inputs/I
 import { toast } from '@/modals/Notifications';
 import { api } from '@/api/client';
 import { loadProcurementForWork, loadAssemblyForWork } from '../api';
-import { loadCrew } from './FieldTab/api';
+import { loadCrew, loadCrewAll } from './FieldTab/api';
 import { formatMoney as money } from '@/lib/money';
 
 const RATING_LABELS = [
@@ -30,6 +30,7 @@ const RATING_LABELS = [
 ];
 
 const TRIGGER_STATUS = 'Подписание акта';
+const LEGACY_DONE = ['Завершена', 'Завершено', 'Завершен', 'Завершён', 'Закрыта', 'Сдана', 'Сдан'];
 
 function toIsoDate(d) {
   if (!d) return null;
@@ -38,12 +39,38 @@ function toIsoDate(d) {
   return s;
 }
 
-export function CloseoutWizard({ work }) {
+function statusAllowsCloseout(work) {
+  const st = String(work?.work_status || '');
+  if (st === TRIGGER_STATUS) return true;
+  if (LEGACY_DONE.includes(st) && !work?.closeout_submitted_at) return true;
+  return false;
+}
+
+async function loadRatingCrew(workId) {
+  const [assigns, all] = await Promise.all([
+    loadCrew(workId),
+    loadCrewAll(workId)
+  ]);
+  const byId = new Map();
+  for (const a of assigns || []) {
+    const id = Number(a.employee_id || a.id);
+    if (id) byId.set(id, { ...a, employee_id: id, fio: a.fio || a.employee_name || a.full_name || `#${id}` });
+  }
+  for (const a of (all?.on_site || [])) {
+    const id = Number(a.employee_id || a.id);
+    if (id && !byId.has(id)) {
+      byId.set(id, { employee_id: id, fio: a.employee_name || a.fio || `#${id}` });
+    }
+  }
+  return Array.from(byId.values());
+}
+
+export function CloseoutWizard({ work, ratingsOnly = false }) {
   const { close } = useModal();
 
-  const wrongStatus = String(work?.work_status || '') !== TRIGGER_STATUS;
+  const wrongStatus = !ratingsOnly && !statusAllowsCloseout(work);
 
-  const [step, setStep] = useState(wrongStatus ? 'precheck' : 'check');
+  const [step, setStep] = useState(ratingsOnly ? 'ratings' : (wrongStatus ? 'precheck' : 'check'));
   const [blockers, setBlockers] = useState(null);
   const [crew, setCrew] = useState([]);
   const [empRatings, setEmpRatings] = useState({});
@@ -76,10 +103,10 @@ export function CloseoutWizard({ work }) {
     });
   }, [step, work.id]);
 
-  // Шаг 4: загрузить бригаду для рейтингов
+  // Шаг ratings: бригада = assignments (все) ∪ crew-all on_site
   useEffect(() => {
     if (step !== 'ratings') return;
-    loadCrew(work.id).then((c) => {
+    loadRatingCrew(work.id).then((c) => {
       setCrew(c);
       const def = {};
       c.forEach((m) => { def[m.employee_id || m.id] = { stars: 5, note: '' }; });
@@ -103,16 +130,44 @@ export function CloseoutWizard({ work }) {
 
   const factsValid = Object.keys(factsErrors).length === 0;
 
+  const buildEmployeeRatings = () => Object.entries(empRatings)
+    .filter(([, r]) => r && r.stars > 0)
+    .map(([empId, r]) => ({
+      employee_id: Number(empId),
+      score: Math.max(1, Math.min(10, Math.round(Number(r.stars) * 2))),
+      comment: r.note || null
+    }));
+
+  const submitRatingsOnly = async () => {
+    setBusy(true);
+    try {
+      for (const r of buildEmployeeRatings()) {
+        await api(`/api/staff/employees/${r.employee_id}/review`, {
+          method: 'POST',
+          body: { work_id: work.id, score: r.score, comment: r.comment }
+        });
+      }
+      if (customerRating > 0) {
+        await api(`/api/works/${work.id}/customer-review`, {
+          method: 'POST',
+          body: {
+            score: Math.max(1, Math.min(10, Math.round(Number(customerRating) * 2))),
+            comment: customerNote || null
+          }
+        });
+      }
+      toast('Оценки', 'Сохранено', 'ok');
+      close();
+    } catch (e) {
+      toast('Ошибка', String(e?.message || e), 'err');
+      setBusy(false);
+    }
+  };
+
   const submitClose = async () => {
     setBusy(true);
     try {
-      const employee_ratings = Object.entries(empRatings)
-        .filter(([, r]) => r && r.stars > 0)
-        .map(([empId, r]) => ({
-          employee_id: Number(empId),
-          score: Math.max(1, Math.min(10, Math.round(Number(r.stars) * 2))),
-          comment: r.note || null
-        }));
+      const employee_ratings = buildEmployeeRatings();
       const customer_rating_obj = customerRating > 0
         ? {
             score: Math.max(1, Math.min(10, Math.round(Number(customerRating) * 2))),
@@ -162,8 +217,10 @@ export function CloseoutWizard({ work }) {
     }
   };
 
-  // Шаги для stepper (precheck — особый, не показываем если статус ОК)
-  const steps = wrongStatus
+  // Шаги для stepper
+  const steps = ratingsOnly
+    ? [{ k: 'ratings', t: 'Рейтинги' }, { k: 'customer', t: 'Заказчик' }]
+    : wrongStatus
     ? [{ k: 'precheck', t: 'Проверка статуса' }]
     : [
         { k: 'check',    t: 'Блокеры' },
@@ -230,13 +287,14 @@ export function CloseoutWizard({ work }) {
 
       <MFoot align="spread">
         <Btn onClick={() => {
+          if (ratingsOnly && step === 'ratings') { close(); return; }
           if (step === 'precheck' || step === 'check') close();
           if (step === 'facts') setStep('check');
-          if (step === 'ratings') setStep('facts');
+          if (step === 'ratings') setStep(ratingsOnly ? 'ratings' : 'facts');
           if (step === 'customer') setStep('ratings');
           if (step === 'confirm') setStep('customer');
         }}>
-          {step === 'precheck' || step === 'check' ? 'Отмена' : '← Назад'}
+          {(step === 'precheck' || step === 'check' || (ratingsOnly && step === 'ratings')) ? 'Отмена' : '← Назад'}
         </Btn>
 
         {step === 'precheck' && (
@@ -265,7 +323,9 @@ export function CloseoutWizard({ work }) {
           <Btn variant="primary" onClick={() => setStep('customer')}>Далее →</Btn>
         )}
         {step === 'customer' && (
-          <Btn variant="primary" disabled={!customerRating} onClick={() => setStep('confirm')}>Далее →</Btn>
+          ratingsOnly
+            ? <Btn variant="primary" disabled={busy || !customerRating} onClick={submitRatingsOnly}>{busy ? 'Сохраняем…' : 'Сохранить оценки'}</Btn>
+            : <Btn variant="primary" disabled={!customerRating} onClick={() => setStep('confirm')}>Далее →</Btn>
         )}
         {step === 'confirm' && (
           <Btn variant="primary" disabled={busy || !factsValid} onClick={submitClose}>{busy ? 'Закрываем…' : '✅ Закрыть работу'}</Btn>

@@ -258,11 +258,11 @@ window.AsgardCustomDashboard = (function(){
           '<span id="pmDutyBannerRating" class="muted" style="font-size:12px"></span>' +
           '<a href="#/pm-calculations" class="btn mini ghost" style="margin-left:auto">Просчёты РП</a></div>';
         if (isMe && AsgardRegistryApi.loadPmDutyRatingMe) {
-          AsgardRegistryApi.loadPmDutyRatingMe('duty').then((res) => {
+          AsgardRegistryApi.loadPmDutyRatingMe('d30').then((res) => {
             const r = res.rating;
             const slot = document.getElementById('pmDutyBannerRating');
-            if (!slot || !r) return;
-            slot.innerHTML = 'рейтинг смены <strong>' + _esc(String(r.score)) + '</strong> · ' + _esc(r.grade || '');
+            if (!slot || !r || r.empty) return;
+            slot.innerHTML = 'рейтинг · 30 дн. <strong>' + _esc(String(r.score)) + '</strong> · ' + _esc(r.grade || '');
           }).catch(() => {});
         }
       } catch (_) { /* ignore */ }
@@ -1673,6 +1673,10 @@ window.AsgardCustomDashboard = (function(){
     try {
       const res = await AsgardRegistryApi.loadPmDutyRatingMe('d30');
       const r = res.rating || {};
+      if (r.empty) {
+        el.innerHTML = '<div class="muted" style="padding:12px;text-align:center">Рейтинг появится после первых закрытий анализа</div>';
+        return;
+      }
       const rec = (r.recommendations && r.recommendations[0]) || 'Открыть расшифровку на странице дежурства';
       el.innerHTML =
         '<div style="cursor:pointer" onclick="location.hash=\'#/pm-calculations\'">' +

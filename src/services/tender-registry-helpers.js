@@ -195,7 +195,13 @@ async function ensureReview(db, tenderId, actorUserId) {
 }
 
 async function getCurrentDuty(db, date = new Date()) {
-  const d = date.toISOString().slice(0, 10);
+  // Московская календарная дата (не UTC — иначе 00:00–03:00 МСК = «вчера»)
+  const d = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Europe/Moscow',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(date instanceof Date ? date : new Date(date));
   const r = await db.query(`
     SELECT r.*,
            u.name AS pm_name,

@@ -39,6 +39,13 @@ import { MiniGanttBar } from './MiniGantt';
 // КРУГ B Smoke: триггер закрытия — русский лейбл, как хранит БД
 // (works.js:563 проверяет work_status === 'Подписание акта')
 const CLOSEOUT_TRIGGER = 'Подписание акта';
+const LEGACY_CLOSEOUT_STATUSES = ['Завершена', 'Завершено', 'Завершен', 'Завершён', 'Закрыта', 'Сдана', 'Сдан'];
+function canCloseoutWork(work) {
+  const st = String(work?.work_status || '');
+  if (st === CLOSEOUT_TRIGGER) return true;
+  if (LEGACY_CLOSEOUT_STATUSES.includes(st) && !work?.closeout_submitted_at) return true;
+  return false;
+}
 // Кнопка «Внести факт для Мимира» появлялась только на 4 статусах; для legacy
 // статусов (Завершена/Закрыто/Сдана) она пряталась — vanilla pm_works.js:1090
 // тоже показывает её на Завершена/Сдана. Расширил до объединения CLOSEOUT+CLOSED.
@@ -247,7 +254,10 @@ export function WorkDetailModal({ work }) {
   const _isDirectorGen = user?.role === 'DIRECTOR_GEN';
   const isHr = ['HR', 'HR_MANAGER'].includes(user?.role);
   const canReassignPm = ['ADMIN', 'DIRECTOR_GEN'].includes(user?.role);
-  const isCloseout = w.work_status === CLOSEOUT_TRIGGER && user?.role === 'PM';
+  const isCloseout = canCloseoutWork(w) && user?.role === 'PM';
+  const isRateCrew = user?.role === 'PM' && (
+    ['Работы сдали', 'Закрыт', ...LEGACY_CLOSEOUT_STATUSES].includes(String(w.work_status || ''))
+  );
   const isMimirReady = MIMIR_READY_STATUSES.includes(w.work_status);
   const isAdminOrDir = ['ADMIN', 'DIRECTOR_GEN'].includes(user?.role);
 
@@ -315,12 +325,15 @@ export function WorkDetailModal({ work }) {
         { icon: '🛒', label: 'Закупки',      desc: 'Заявки на закупку',       onClick: () => gotoLegacy('my-procurement', { work: w.id }) }
       ] : []),
 
-      // ── Завершение (PM на стадии act_sign) ──
+      // ── Завершение (PM на стадии act_sign / легаси без closeout) ──
       ...(isCloseout ? [
         '---',
         { icon: '📦', label: 'Склад',         desc: 'Бронирование оборудования', onClick: () => open(<EquipmentReserveModal work={w} />) },
         { icon: '🏗️', label: 'Сбор',          desc: 'Мобилизация / демобилизация', onClick: () => open(<AssemblyModal work={w} />) },
         { icon: '✅', label: 'Работы завершены', desc: 'Закрыть работу с рейтингами', onClick: () => open(<CloseoutWizard work={w} />), variant: 'danger' }
+      ] : []),
+      ...(isRateCrew ? [
+        { icon: '⭐', label: 'Оценить бригаду', desc: 'Оценки без смены статуса', onClick: () => open(<CloseoutWizard work={w} ratingsOnly />) }
       ] : []),
 
       // ── Обучение AI (по завершению) ──

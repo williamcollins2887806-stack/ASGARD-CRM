@@ -87,7 +87,14 @@ const STATUS_TRANSITIONS = {
   'На паузе':         ['В работе'],
   'Подписание акта':  ['Работы сдали'],
   'Работы сдали':     ['Закрыт'],
-  'Закрыт':           []
+  'Закрыт':           [],
+  'Завершена':        ['Подписание акта'],
+  'Завершено':        ['Подписание акта'],
+  'Завершен':         ['Подписание акта'],
+  'Завершён':         ['Подписание акта'],
+  'Закрыта':          ['Подписание акта'],
+  'Сдана':            ['Подписание акта'],
+  'Сдан':             ['Подписание акта']
 };
 
 function isValidTransition(from, to) {
@@ -655,11 +662,14 @@ async function routes(fastify, options) {
       if (!workRes.rows[0]) return reply.code(404).send({ error: 'Работа не найдена' });
       const work = workRes.rows[0];
 
-      // Проверить статус
+      // Проверить статус: триггер closeout ИЛИ легаси «Завершена*» без closeout_submitted_at
       const triggerStatus = body.trigger_status || 'Подписание акта';
-      if (work.work_status !== triggerStatus) {
+      const LEGACY_DONE = ['Завершена', 'Завершено', 'Завершен', 'Завершён', 'Закрыта', 'Сдана', 'Сдан'];
+      const statusOk = work.work_status === triggerStatus
+        || (LEGACY_DONE.includes(work.work_status) && !work.closeout_submitted_at);
+      if (!statusOk) {
         return reply.code(400).send({
-          error: `Closeout доступен только на статусе "${triggerStatus}". Текущий: "${work.work_status}"`
+          error: `Closeout доступен на статусе "${triggerStatus}" или незакрытом легаси «Завершена». Текущий: "${work.work_status}"`
         });
       }
 

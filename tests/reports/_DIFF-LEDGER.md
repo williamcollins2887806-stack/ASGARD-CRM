@@ -7515,3 +7515,22 @@ Post-deploy: `audit_silent_reverts --post-deploy` = **0 расхождений**
 Если патч `mango.js` (D-253g) ломает SMS Field — чинить в том же батче. Иначе микро-PR сразу после телефонии.
 Журнал: `BLOCKED-BY` / `FOLLOW-UP-OPEN` в `TELEPHONY-EXEC-JOURNAL.md`.
 
+## D-257. Closeout roster/legacy + рейтинг анализа + gantt дежурства (02.10.2026)
+
+**Как найдено.** Жалобы РП (Андросов): (1) после снятия бригады closeout-оценки пустые, на «Завершена»
+нет «Работы завершены»; (2) рейтинг анализа несправедлив (чужой backlog в pool) и hero «E 0»
+маскирует живой d30; (3) на графике дежурств «4 Андросова» + синие точки вне viewport.
+
+**Правки.**
+- Closeout: roster = `staff_ids` ∪ plan ∪ crew-all(`on_site`); legacy `Завершена*` → акт + closeout;
+  кнопка «Оценить бригаду»; v2 `CloseoutWizard`/`WorkDetail` паритет.
+- Рейтинг: pool take = мои + незабранные на duty; volume-bonus; вне duty без scare-queue;
+  hero/виджет/drawer — d30, `empty` не показывает E/0.
+- Duty: 1 ряд = 1 РП, фильтр viewport, линия «сегодня» (noon/MSK), `GET /current` всегда `is_duty:boolean`.
+- `getCurrentDuty` — календарная дата Europe/Moscow.
+- shell **20.28.54**.
+
+**Доказательства.** `node tests/sentinel_closeout_rating_duty.js` → **19/19** на `asgard_crm_test`
+(Андросов #3474 d30 A/86, pool=37).
+**Статус:** FIXED (SELF-CHECK). Deploy — по команде.
+

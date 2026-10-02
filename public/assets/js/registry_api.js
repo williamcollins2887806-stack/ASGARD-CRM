@@ -327,8 +327,12 @@ window.AsgardRegistryApi = (function () {
     loadPmDutyCurrent() {
       return api('/api/pm-duty/current');
     },
-    loadPmDutyRoster(limit) {
-      return api('/api/pm-duty/roster?limit=' + (limit || 50));
+    loadPmDutyRoster(limit, opts) {
+      const q = new URLSearchParams();
+      q.set('limit', String(limit || 50));
+      if (opts && opts.from) q.set('from', String(opts.from).slice(0, 10));
+      if (opts && opts.to) q.set('to', String(opts.to).slice(0, 10));
+      return api('/api/pm-duty/roster?' + q.toString());
     },
     savePmDutyRoster(body) {
       return api('/api/pm-duty/roster', { method: 'POST', body: body });

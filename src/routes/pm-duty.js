@@ -137,7 +137,7 @@ function fmtRuDate(v) {
 
 async function isDutyPm(db, userId) {
   const duty = await getCurrentDuty(db);
-  return duty && duty.pm_user_id === userId;
+  return !!(duty && Number(duty.pm_user_id) === Number(userId));
 }
 
 async function isCollaborator(db, tenderId, userId) {
@@ -480,9 +480,11 @@ async function routes(fastify) {
   // GET /current
   fastify.get('/current', {
     preHandler: [fastify.requireRoles(PM_ROLES)]
-  }, async () => {
+  }, async (request) => {
     const duty = await getCurrentDuty(db);
-    return { duty, is_duty: duty ? undefined : false };
+    const uid = request.user && request.user.id != null ? Number(request.user.id) : null;
+    const isDuty = !!(duty && uid != null && Number(duty.pm_user_id) === uid);
+    return { duty, is_duty: isDuty };
   });
 
   // GET /roster
@@ -490,14 +492,25 @@ async function routes(fastify) {
     preHandler: [fastify.requireRoles(PM_ROLES)]
   }, async (request) => {
     const limit = Math.min(parseInt(request.query.limit || '50', 10), 200);
+    const from = request.query.from ? String(request.query.from).slice(0, 10) : null;
+    const to = request.query.to ? String(request.query.to).slice(0, 10) : null;
+    const params = [];
+    let where = '';
+    if (from && to) {
+      params.push(from, to);
+      where = `WHERE r.period_start <= $2::date AND r.period_end >= $1::date`;
+    }
+    params.push(limit);
+    const limIdx = params.length;
     const r = await db.query(`
       SELECT r.*, u.name AS pm_name, ab.name AS assigned_by_name
       FROM pm_duty_roster r
       JOIN users u ON u.id = r.pm_user_id
       JOIN users ab ON ab.id = r.assigned_by_user_id
+      ${where}
       ORDER BY r.period_start DESC
-      LIMIT $1
-    `, [limit]);
+      LIMIT $${limIdx}
+    `, params);
     return { items: r.rows };
   });
 
@@ -626,7 +639,7 @@ async function routes(fastify) {
     if (tab === 'drafts') tab = 'calc';
     const userId = request.user.id;
     const duty = await getCurrentDuty(db);
-    const isDuty = duty && duty.pm_user_id === userId;
+    const isDuty = !!(duty && Number(duty.pm_user_id) === Number(userId));
 
     const baseSelect = `
       SELECT t.*, rev.decision, rev.is_final, rev.id AS review_id, rev.updated_at AS review_updated_at,
@@ -1459,7 +1472,7 @@ async function reviewRoutes(fastify) {
     const tenderId = request.params.id;
     const userId = request.user.id;
     const duty = await getCurrentDuty(db);
-    const isDuty = duty && duty.pm_user_id === userId;
+    const isDuty = !!(duty && Number(duty.pm_user_id) === Number(userId));
     const collab = await isCollaborator(db, tenderId, userId);
     const tenderRow = await db.query(
       'SELECT calculator_user_id, calculator_kind, registry_status FROM tenders WHERE id = $1',
@@ -1832,7 +1845,7 @@ async function reviewRoutes(fastify) {
     const tenderId = request.params.id;
     const userId = request.user.id;
     const duty = await getCurrentDuty(db);
-    const isDuty = duty && duty.pm_user_id === userId;
+    const isDuty = !!(duty && Number(duty.pm_user_id) === Number(userId));
     const collab = await isCollaborator(db, tenderId, userId);
     const isParticipant = await isReviewParticipant(db, tenderId, userId);
     const tenderRow = await db.query('SELECT calculator_user_id FROM tenders WHERE id = $1', [tenderId]);
@@ -1897,7 +1910,7 @@ async function reviewRoutes(fastify) {
     const tenderId = request.params.id;
     const userId = request.user.id;
     const duty = await getCurrentDuty(db);
-    const isDuty = duty && duty.pm_user_id === userId;
+    const isDuty = !!(duty && Number(duty.pm_user_id) === Number(userId));
     const collab = await isCollaborator(db, tenderId, userId);
     const isParticipant = await isReviewParticipant(db, tenderId, userId);
     const tenderRow = await db.query('SELECT calculator_user_id FROM tenders WHERE id = $1', [tenderId]);
@@ -1961,7 +1974,7 @@ async function reviewRoutes(fastify) {
     const tenderId = request.params.id;
     const userId = request.user.id;
     const duty = await getCurrentDuty(db);
-    const isDuty = duty && duty.pm_user_id === userId;
+    const isDuty = !!(duty && Number(duty.pm_user_id) === Number(userId));
     const collab = await isCollaborator(db, tenderId, userId);
     const isParticipant = await isReviewParticipant(db, tenderId, userId);
     const tenderRow = await db.query('SELECT calculator_user_id FROM tenders WHERE id = $1', [tenderId]);

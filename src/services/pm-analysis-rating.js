@@ -26,7 +26,9 @@ const PENALTY = Object.freeze({
 
 const BONUS = Object.freeze({
   collabActive: { per: 2, cap: 8 },
-  win: 0 // MVP: выигрыши не влияют
+  win: 0, // MVP: выигрыши не влияют
+  // Лояльность: бонус за абсолютный объём закрытых анализов в окне
+  volume: { target: 8, cap: 10 }
 });
 
 const GRADES = [
@@ -75,7 +77,8 @@ function median(nums) {
 }
 
 function ownerExpr(alias = 'rev') {
-  return `COALESCE(${alias}.analysis_owner_user_id, ${alias}.started_by_user_id, ${alias}.analysis_finalized_by_user_id)`;
+  // analysis_finalized_by + calc finalized_by — чтобы фактический аналитик не терял taken/done
+  return `COALESCE(${alias}.analysis_owner_user_id, ${alias}.started_by_user_id, ${alias}.analysis_finalized_by_user_id, ${alias}.finalized_by_user_id)`;
 }
 
 function parseRejectPreset(reportJson) {
@@ -322,11 +325,10 @@ async function computeUserRating(db, userId, windowKind, asOfDate) {
 
   for (const row of rows) {
     const tid = row.tender_id;
-    poolIds.add(tid);
 
     const owner = row.owner_id != null ? Number(row.owner_id) : null;
     const mine = owner === Number(userId);
-    const taken = isTaken(row);
+    const takenFlag = isTaken(row);
     const closedAt = analysisClosedAt(row);
     const finalized = !!closedAt;
     const finDate = finalized ? isoDate(closedAt) : null;
@@ -335,9 +337,18 @@ async function computeUserRating(db, userId, windowKind, asOfDate) {
     const startedDate = started ? isoDate(started) : null;
     const startedInWindow = !!(startedDate && startedDate >= ps && startedDate <= pe);
 
+    // Pool для take: только МОИ карточки + незабранные из очереди на дежурстве.
+    // Чужой backlog / чужие финалы больше не раздувают знаменатель (лояльность).
+    const openQueue = !finalized && (row.registry_status === 'рассмотрение' || !row.registry_status);
+    if (mine) {
+      poolIds.add(tid);
+    } else if (!takenFlag && openQueue && (window_kind === 'duty' || onDutyAtAsOf)) {
+      poolIds.add(tid);
+    }
+
     // Completion denominator = taken in window (done in window + open started in window / duty open).
     // Не тащим всю историю открытых карточек в taken — иначе completion тает без новых действий.
-    if (mine && taken && (finalizedInWindow || (!finalized && (startedInWindow || window_kind === 'duty')))) {
+    if (mine && takenFlag && (finalizedInWindow || (!finalized && (startedInWindow || window_kind === 'duty')))) {
       takenIds.add(tid);
     }
     if (mine && finalizedInWindow) {
@@ -365,7 +376,7 @@ async function computeUserRating(db, userId, windowKind, asOfDate) {
       if (mine) {
         overdueOpen += 1;
         overdueIds.push(tid);
-      } else if (!taken && window_kind === 'duty') {
+      } else if (!takenFlag && window_kind === 'duty') {
         overdueOpen += 1;
         overdueIds.push(tid);
       }
@@ -373,7 +384,7 @@ async function computeUserRating(db, userId, windowKind, asOfDate) {
 
     // Abandoned: mine, started, not closed, age > 7d — только пока дежурит / в окне duty.
     // Не используем pe < today для d30 (там pe=asOf) — это давало ложный drip после смены.
-    if (mine && taken && !finalized) {
+    if (mine && takenFlag && !finalized) {
       const olderThan7 = startedDate && addDaysIso(startedDate, 7) < today;
       const dutyWindowEnded = window_kind === 'duty' && pe < today;
       if (olderThan7 || dutyWindowEnded) {
@@ -395,7 +406,10 @@ async function computeUserRating(db, userId, windowKind, asOfDate) {
   const taken = takenIds.size;
   const done = doneIds.size;
 
-  const takeRate = pool > 0 ? taken / pool : (taken > 0 ? 1 : 0);
+  // Вне дежурства при пустом личном pool и есть taken/done — полный take (не 0).
+  const takeRate = pool > 0
+    ? taken / pool
+    : ((taken > 0 || done > 0) ? 1 : 0);
   const completionRate = taken > 0 ? done / taken : (done > 0 ? 1 : 0);
 
   const medHours = median(speedHours);
@@ -466,7 +480,14 @@ async function computeUserRating(db, userId, windowKind, asOfDate) {
   const penaltiesTotal = overduePts + abandonedPts + rejectPts + cancelPts;
 
   const collabBonus = Math.min(activeCollabs * BONUS.collabActive.per, BONUS.collabActive.cap);
-  const bonusesTotal = collabBonus + BONUS.win;
+  // Лояльность: бонус за абсолютный объём закрытых анализов (не за «долю от чужого пула»).
+  const volumePts = done <= 0
+    ? 0
+    : Math.min(
+      BONUS.volume.cap,
+      Math.round((done / BONUS.volume.target) * BONUS.volume.cap)
+    );
+  const bonusesTotal = collabBonus + BONUS.win + volumePts;
 
   const score = Math.round(clamp(base + bonusesTotal - penaltiesTotal, 0, 100));
   const grade = gradeFromScore(score);
@@ -487,11 +508,22 @@ async function computeUserRating(db, userId, windowKind, asOfDate) {
   const bonuses = {
     collab_active: { count: activeCollabs, points: collabBonus },
     win: { points: BONUS.win },
+    volume: { count: done, points: volumePts, target: BONUS.volume.target },
     total: bonusesTotal
   };
 
   const recommendations = buildRecommendations({
-    components, penalties, pool, taken, done, medHours, activeCollabs, overdueIds, abandonedIds
+    components,
+    penalties,
+    pool,
+    taken,
+    done,
+    medHours,
+    activeCollabs,
+    overdueIds,
+    abandonedIds,
+    window_kind,
+    on_duty: !!onDutyAtAsOf
   });
 
   return {
@@ -533,7 +565,12 @@ function emptyPayload(userId, win, asOf, hint) {
       collab: { ...zeroComp(WEIGHTS.collab), invites: 0, active: 0, norm: COLLAB_NORM }
     },
     penalties: { overdue: { count: 0, points: 0, ids: [] }, abandoned: { count: 0, points: 0, ids: [] }, reject_no_preset: { count: 0, points: 0 }, registry_cancel: { count: 0, points: 0 }, total: 0 },
-    bonuses: { collab_active: { count: 0, points: 0 }, win: { points: 0 }, total: 0 },
+    bonuses: {
+      collab_active: { count: 0, points: 0 },
+      win: { points: 0 },
+      volume: { count: 0, points: 0, target: BONUS.volume.target },
+      total: 0
+    },
     // D-246: пустая смена — закрытых просчётов тоже 0, поле присутствует всегда.
     activity: { closed_calc: 0 },
     recommendations: [hint || 'Недостаточно данных для оценки.'],
@@ -544,12 +581,18 @@ function emptyPayload(userId, win, asOf, hint) {
 
 function buildRecommendations(ctx) {
   const recs = [];
-  const { components, penalties, pool, taken, done, medHours, activeCollabs, overdueIds, abandonedIds } = ctx;
+  const {
+    components, penalties, pool, taken, done, medHours, activeCollabs,
+    overdueIds, abandonedIds, window_kind, on_duty
+  } = ctx;
   const untaken = Math.max(0, pool - taken);
   const drafts = Math.max(0, taken - done);
+  // «N неразобранных» — только на дежурстве / в окне duty (личный+duty pool).
+  // Вне смены не пугаем чужим/общим backlog.
+  const scareQueue = window_kind === 'duty' || on_duty;
 
-  if (components.take.score < 60 && untaken > 0) {
-    recs.push(`В очереди ${untaken} неразобранных — разберите сами или привлеките коллегу.`);
+  if (scareQueue && components.take.score < 60 && untaken > 0) {
+    recs.push(`В очереди дежурства ${untaken} неразобранных — разберите сами или привлеките коллегу.`);
   }
   if (components.completion.score < 60 && drafts > 0) {
     recs.push(`${drafts} черновик(ов) без решения — закройте анализ (подаём / не подаём).`);
@@ -568,14 +611,19 @@ function buildRecommendations(ctx) {
   if (penalties.reject_no_preset.count > 0) {
     recs.push('Отказы без причины (reject_preset) — указывайте пресет при «не подаём».');
   }
-  if (components.collab.score < 40 && pool >= 5 && activeCollabs === 0) {
+  if (scareQueue && components.collab.score < 40 && pool >= 5 && activeCollabs === 0) {
     recs.push('Большая очередь без коллаборации — привлекайте смежных РП.');
+  }
+  if (done >= BONUS.volume.target) {
+    recs.push(`Сильный объём: ${done} закрытых анализов в окне — так держать.`);
   }
   if (!recs.length) {
     if (components.take.score >= 80 && components.completion.score >= 80) {
       recs.push('Сильные покрытие и закрытие — держите темп и следите за дедлайнами.');
+    } else if (done > 0) {
+      recs.push(`Закрыто ${done} анализ(ов) в окне — продолжайте закрывать до дедлайна документов.`);
     } else {
-      recs.push('Продолжайте разбирать очередь и закрывать анализ до дедлайна документов.');
+      recs.push('Продолжайте разбирать свою очередь и закрывать анализ до дедлайна документов.');
     }
   }
   return recs.slice(0, 5);
@@ -591,7 +639,7 @@ async function listPmUserIds(db) {
         OR EXISTS (SELECT 1 FROM pm_duty_roster d WHERE d.pm_user_id = u.id)
         OR EXISTS (
           SELECT 1 FROM tender_rp_reviews rev
-          WHERE COALESCE(rev.analysis_owner_user_id, rev.started_by_user_id, rev.analysis_finalized_by_user_id) = u.id
+          WHERE COALESCE(rev.analysis_owner_user_id, rev.started_by_user_id, rev.analysis_finalized_by_user_id, rev.finalized_by_user_id) = u.id
         )
       )
     ORDER BY u.id

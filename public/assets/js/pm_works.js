@@ -1,4 +1,4 @@
-const WORK_STATUS_TRANSITIONS = {
+  const WORK_STATUS_TRANSITIONS = {
     'Новая':            ['Подготовка'],
     'Подготовка':       ['Мобилизация', 'Новая'],
     'Мобилизация':      ['В работе', 'Подготовка'],
@@ -6,10 +6,33 @@ const WORK_STATUS_TRANSITIONS = {
     'На паузе':         ['В работе'],
     'Подписание акта':  ['Работы сдали'],
     'Работы сдали':     ['Закрыт'],
-    'Закрыт':           []
+    'Закрыт':           [],
+    // Legacy terminal → allow return to closeout trigger
+    'Завершена':        ['Подписание акта'],
+    'Завершено':        ['Подписание акта'],
+    'Завершен':         ['Подписание акта'],
+    'Завершён':         ['Подписание акта'],
+    'Закрыта':          ['Подписание акта'],
+    'Сдана':            ['Подписание акта'],
+    'Сдан':             ['Подписание акта']
   };
 
+  const LEGACY_DONE_STATUSES = ['Завершена', 'Завершено', 'Завершен', 'Завершён', 'Закрыта', 'Сдана', 'Сдан'];
+  const TERMINAL_RATE_STATUSES = ['Работы сдали', 'Закрыт'].concat(LEGACY_DONE_STATUSES);
+
   const CANONICAL_WORK_STATUSES = ['Новая', 'Подготовка', 'Мобилизация', 'В работе', 'На паузе', 'Подписание акта', 'Работы сдали', 'Закрыт'];
+
+  function isLegacyDoneStatus(st) {
+    return LEGACY_DONE_STATUSES.includes(String(st || ''));
+  }
+
+  function canRunCloseout(work, triggerStatus) {
+    const st = String(work && work.work_status || '');
+    const trig = String(triggerStatus || 'Подписание акта');
+    if (st === trig) return true;
+    if (isLegacyDoneStatus(st) && !work.closeout_submitted_at) return true;
+    return false;
+  }
 
   function normalizeStatusList(raw) {
     if (!raw) return [];
@@ -249,31 +272,60 @@ window.AsgardPmWorksPage=(function(){
 
 
   async function rosterEmployeeIds(work){
-    // Prefer explicit staff_ids_json on work; fallback to booking plan rows.
-    let ids=[];
+    // UNION: staff_ids_json + employee_plan + crew-all (assignments ∪ checkins).
+    // Нельзя брать только текущий staff_ids — после снятия бригады closeout видел пустой список.
+    const set = new Set();
+    const wid = Number(work && work.id || 0);
     try{
       const raw = work && work.staff_ids_json;
       if(raw){
         const a = safeJson(raw, []);
-        if(Array.isArray(a)) ids = a.map(Number).filter(n=>isFinite(n));
+        if(Array.isArray(a)) a.map(Number).filter(n=>isFinite(n) && n>0).forEach(n=>set.add(n));
       }
-    }catch(_){ ids=[]; }
-    if(ids.length) return Array.from(new Set(ids));
+    }catch(_){ /* ignore */ }
 
     try{
       const plan = await AsgardDB.all("employee_plan");
-      const set = new Set();
       for(const p of (plan||[])){
         if(!p) continue;
         if(String(p.kind||"")!=="work") continue;
-        if(Number(p.work_id||0)!==Number(work.id||0)) continue;
+        if(Number(p.work_id||0)!==wid) continue;
         const eid = Number(p.employee_id||0);
         if(eid) set.add(eid);
       }
-      return Array.from(set);
-    }catch(_){
-      return [];
+    }catch(_){ /* ignore */ }
+
+    if(wid){
+      try{
+        const r = await fetch('/api/worker-payments/project/' + wid + '/crew-all', { headers: pmAuthHeaders() });
+        if(r.ok){
+          const d = await r.json().catch(()=>({}));
+          // Только on_site = кто был на объекте (не весь справочник others)
+          for(const row of (d.on_site||[])){
+            const eid = Number(row.employee_id||row.id||0);
+            if(eid) set.add(eid);
+          }
+        }
+      }catch(_){ /* ignore */ }
+      // Fallback: assignments из data API (включая уехавших)
+      if(!set.size){
+        try{
+          const where = encodeURIComponent(JSON.stringify({ work_id: wid }));
+          const r2 = await fetch('/api/data/employee_assignments?where=' + where + '&limit=500', { headers: pmAuthHeaders() });
+          if(r2.ok){
+            const d2 = await r2.json().catch(()=>({}));
+            const arr = Array.isArray(d2) ? d2
+              : (d2.employee_assignments || d2.items || []);
+            for(const a of arr){
+              if(Number(a.work_id||0)!==wid) continue;
+              const eid = Number(a.employee_id||0);
+              if(eid) set.add(eid);
+            }
+          }
+        }catch(_){ /* ignore */ }
+      }
     }
+    return Array.from(set);
   }
 
   async function recomputeEmployeeRating(employee_id){
@@ -387,11 +439,11 @@ window.AsgardPmWorksPage=(function(){
   async function closeoutWizard({work, pmUser, triggerStatus, onDone}={}){
     if(!work || !pmUser) return;
     const trig = String(triggerStatus||'Подписание акта');
-    if(String(work.work_status||'') !== trig){
-      toast('Закрытие',`Кнопка доступна на статусе «${trig}»`,'err');
+    if(!canRunCloseout(work, trig)){
+      toast('Закрытие',`Кнопка доступна на статусе «${trig}» или незакрытом легаси «Завершена»`,'err');
       return;
     }
-    if(String(work.work_status||'') === 'Работы сдали'){
+    if(String(work.work_status||'') === 'Работы сдали' && work.closeout_submitted_at){
       toast('Закрытие','Работа уже завершена','err');
       return;
     }
@@ -1173,10 +1225,11 @@ window.AsgardPmWorksPage=(function(){
 
         <hr class="hr"/>
         <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center">
-          ${(user.role==="PM" && String(w.work_status||"")===triggerStatus) ? `<button class="btn danger" id="btnCloseout">Работы завершены</button>` : ``}
+          ${(user.role==="PM" && canRunCloseout(w, triggerStatus)) ? `<button class="btn danger" id="btnCloseout">Работы завершены</button>` : ``}
+          ${(user.role==="PM" && TERMINAL_RATE_STATUSES.includes(String(w.work_status||''))) ? `<button class="btn ghost" id="btnRateCrew">Оценить бригаду</button>` : ``}
           <button class="btn primary" id="btnSaveWork">Сохранить</button>
           <button class="btn ghost" id="btnActions">⚡ Действия</button>
-          ${(['Подписание акта','Завершена','Закрыта','Сдана'].includes(String(w.work_status||''))) ? `<button class="btn" id="btnSaveActuals" style="background:linear-gradient(135deg,#1f6fff,#7a3aff);color:#fff;border:0">📊 Внести факт для обучения Мимира</button>` : ``}
+          ${(['Подписание акта','Завершена','Закрыта','Сдана','Работы сдали','Закрыт'].includes(String(w.work_status||'')) || isLegacyDoneStatus(w.work_status)) ? `<button class="btn" id="btnSaveActuals" style="background:linear-gradient(135deg,#1f6fff,#7a3aff);color:#fff;border:0">📊 Внести факт для обучения Мимира</button>` : ``}
         </div>
       `;
 
@@ -1249,6 +1302,13 @@ window.AsgardPmWorksPage=(function(){
             openWork(id);
           }
         }));
+      }
+      const btnRateCrew = $("#btnRateCrew");
+      if(btnRateCrew){
+        btnRateCrew.addEventListener("click", async ()=>{
+          const ok = await collectCloseoutRatings({work:w, pmUser:user});
+          if(ok) toast('Оценки', 'Сохранено', 'ok');
+        });
       }
 
       // btnFullGantt moved to popup-grid menu
@@ -1404,7 +1464,7 @@ window.AsgardPmWorksPage=(function(){
           });
 
           // ─── Завершение ───
-          if(user.role==="PM" && String(w.work_status||"")===triggerStatus){
+          if(user.role==="PM" && canRunCloseout(w, triggerStatus)){
             actions.push('---');
             actions.push({ icon: '📦', label: 'Склад', desc: 'Бронирование оборудования', onClick: () => openEquipmentForWork(w, user) });
             actions.push({ icon: '🏗️', label: 'Сбор', desc: 'Мобилизация / демобилизация', onClick: () => openAssemblyForWork(w, user) });
@@ -1421,6 +1481,16 @@ window.AsgardPmWorksPage=(function(){
                   openWork(w.id);
                 }
               })
+            });
+          }
+          if(user.role==="PM" && TERMINAL_RATE_STATUSES.includes(String(w.work_status||''))){
+            actions.push({
+              icon: '⭐', label: 'Оценить бригаду',
+              desc: 'Оценки сотрудников и заказчика без смены статуса',
+              onClick: async () => {
+                const ok = await collectCloseoutRatings({work:w, pmUser:user});
+                if(ok) toast('Оценки', 'Сохранено', 'ok');
+              }
             });
           }
 

@@ -12514,7 +12514,7 @@ table.reg-table th.reg-th-nosort {
   display: flex; flex-wrap: wrap; gap: 8px; align-items: end;
 }
 .pm-duty-assign-form label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--muted); font-weight: 600; }
-.pm-duty-gantt { margin: 8px 0 12px; }
+.pm-duty-gantt { margin: 8px 0 12px; padding-top: 12px; }
 .pm-duty-gantt--empty { padding: 14px; border: 1px dashed var(--brd); border-radius: 10px; }
 .pm-duty-gantt-scale {
   position: relative; height: 16px; margin: 0 0 8px 148px; font-size: 10px; color: var(--muted); font-weight: 650;
@@ -12535,6 +12535,18 @@ table.reg-table th.reg-th-nosort {
 }
 .pm-duty-gantt-today {
   position: absolute; top: 0; bottom: 0; width: 2px; background: var(--danger, #e05252); opacity: .8; z-index: 2;
+}
+.pm-duty-gantt-today::after {
+  content: 'сегодня';
+  position: absolute; top: -14px; left: 50%; transform: translateX(-50%);
+  font-size: 9px; font-weight: 700; color: var(--danger, #e05252); white-space: nowrap; letter-spacing: .02em;
+}
+.pm-duty-rating-duty-chip {
+  display: inline-flex; align-items: center; gap: 4px;
+  margin-top: 2px; padding: 2px 8px; border-radius: 999px;
+  font-size: 10px; font-weight: 700; color: var(--t2);
+  background: color-mix(in srgb, var(--bg3) 80%, var(--gold, #c8a84e));
+  border: 1px solid color-mix(in srgb, var(--brd) 70%, var(--gold, #c8a84e));
 }
 .pm-duty-gantt-bar {
   position: absolute; top: 4px; bottom: 4px; border-radius: 5px;
