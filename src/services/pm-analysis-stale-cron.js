@@ -118,38 +118,61 @@ async function findAnalysisDeadlineOverdue(db) {
   }));
 }
 
+/** Повторное письмо по тому же review/tender+kind — не чаще раза в 48 ч. */
+const NOTICE_COOLDOWN = '48 hours';
+
 async function alreadySentReview(db, reviewId, noticeKind) {
+  if (!reviewId) return false;
   const r = await db.query(`
     SELECT 1 FROM pm_analysis_stale_notices
     WHERE review_id = $1 AND notice_kind = $2
-      AND sent_at > NOW() - INTERVAL '24 hours'
+      AND sent_at > NOW() - $3::interval
     LIMIT 1
-  `, [reviewId, noticeKind]).catch(() => ({ rows: [] }));
+  `, [reviewId, noticeKind, NOTICE_COOLDOWN]).catch(() => ({ rows: [] }));
   return !!r.rows[0];
 }
 
 async function markSentReview(db, reviewId, noticeKind) {
+  if (!reviewId) return;
+  // UNIQUE (review_id, notice_kind) — без UPSERT INSERT молча падает и спам идёт каждый час
   await db.query(`
     INSERT INTO pm_analysis_stale_notices (review_id, notice_kind, sent_at)
     VALUES ($1, $2, NOW())
-  `, [reviewId, noticeKind]).catch(() => {});
+    ON CONFLICT (review_id, notice_kind) DO UPDATE SET sent_at = NOW()
+  `, [reviewId, noticeKind]);
 }
 
 async function alreadySentTender(db, tenderId, noticeKind) {
+  if (!tenderId) return false;
   const r = await db.query(`
     SELECT 1 FROM pm_analysis_stale_notices
     WHERE tender_id = $1 AND notice_kind = $2
-      AND sent_at > NOW() - INTERVAL '24 hours'
+      AND sent_at > NOW() - $3::interval
     LIMIT 1
-  `, [tenderId, noticeKind]).catch(() => ({ rows: [] }));
+  `, [tenderId, noticeKind, NOTICE_COOLDOWN]).catch(() => ({ rows: [] }));
   return !!r.rows[0];
 }
 
 async function markSentTender(db, tenderId, reviewId, noticeKind) {
+  if (!tenderId) return;
+  // UNIQUE partial (tender_id, notice_kind) WHERE tender_id IS NOT NULL
+  const existing = await db.query(`
+    SELECT id FROM pm_analysis_stale_notices
+    WHERE tender_id = $1 AND notice_kind = $2
+    LIMIT 1
+  `, [tenderId, noticeKind]);
+  if (existing.rows[0]) {
+    await db.query(`
+      UPDATE pm_analysis_stale_notices
+      SET sent_at = NOW(), review_id = COALESCE($2, review_id)
+      WHERE id = $1
+    `, [existing.rows[0].id, reviewId || null]);
+    return;
+  }
   await db.query(`
-    INSERT INTO pm_analysis_stale_notices (tender_id, review_id, notice_kind, sent_at)
+    INSERT INTO pm_analysis_stale_notices (review_id, tender_id, notice_kind, sent_at)
     VALUES ($1, $2, $3, NOW())
-  `, [tenderId, reviewId || null, noticeKind]).catch(() => {});
+  `, [reviewId || null, tenderId, noticeKind]);
 }
 
 function buildEmail(row, dutyName) {
