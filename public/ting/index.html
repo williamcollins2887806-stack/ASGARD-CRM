@@ -1,0 +1,421 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Тинг</title>
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg0: #08090C;
+      --bg1: #0D1117;
+      --bg2: #151c24;
+      --text: #E8EEF4;
+      --t2: #8B9AAB;
+      --gold: #D4A843;
+      --gold-l: #E8C35A;
+      --line: #243040;
+      --danger: #E85D5D;
+      --font: "Manrope", system-ui, sans-serif;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; min-height: 100vh; font-family: var(--font);
+      background: radial-gradient(1200px 600px at 50% -10%, #1a2230 0%, var(--bg0) 55%);
+      color: var(--text);
+    }
+    .lobby {
+      min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 24px;
+    }
+    .lobby-card {
+      width: min(400px, 100%); text-align: center;
+      border: 1px solid var(--line); border-radius: 18px;
+      padding: 28px 22px; background: var(--bg2);
+    }
+    .logo-row { display: flex; gap: 10px; align-items: center; justify-content: center; margin-bottom: 10px; }
+    .rune-badge {
+      width: 32px; height: 32px; border-radius: 10px; display: grid; place-items: center;
+      background: linear-gradient(180deg, var(--gold-l), var(--gold)); color: #111; font-weight: 800;
+    }
+    .chip {
+      display: inline-flex; align-items: center; padding: 4px 10px; border-radius: 999px;
+      border: 1px solid var(--line); color: var(--t2); font-size: 12px; font-weight: 600;
+    }
+    h1, h3 { font-size: 1.45rem; font-weight: 800; margin: 10px 0 6px; }
+    .sub { color: var(--t2); margin: 0 0 16px; font-size: 14px; line-height: 1.45; }
+    .preview {
+      position: relative; height: 210px; border-radius: 16px; overflow: hidden;
+      background: #0a0e12; border: 1px solid var(--line); margin-bottom: 12px;
+    }
+    .preview video { width: 100%; height: 100%; object-fit: cover; }
+    .preview .avatar {
+      position: absolute; inset: 0; display: grid; place-items: center;
+      font-size: 42px; font-weight: 800; color: var(--gold); background: #121820;
+    }
+    .preview-controls {
+      position: absolute; left: 0; right: 0; bottom: 10px;
+      display: flex; gap: 8px; justify-content: center;
+    }
+    .btn-icon {
+      width: 42px; height: 42px; border-radius: 50%; border: 1px solid var(--line);
+      background: rgba(15,20,28,.82); color: var(--text); cursor: pointer;
+    }
+    .btn-icon.off { color: var(--danger); border-color: rgba(232,93,93,.45); }
+    .status-plaque { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; margin-bottom: 14px; }
+    label { display: block; text-align: left; font-size: 0.85rem; margin-bottom: 6px; color: var(--t2); }
+    input {
+      width: 100%; padding: 12px 14px; border-radius: 10px; border: 1px solid var(--line);
+      background: var(--bg0); color: var(--text); margin-bottom: 14px; font-size: 1rem; font-family: inherit;
+    }
+    .btn {
+      width: 100%; padding: 12px 16px; border: 0; border-radius: 12px;
+      background: linear-gradient(180deg, var(--gold-l), var(--gold)); color: #111;
+      font-weight: 700; cursor: pointer; font-size: 1rem; font-family: inherit;
+    }
+    .btn:disabled { opacity: 0.5; cursor: default; }
+    .err { color: var(--danger); font-size: 0.9rem; margin-top: 10px; }
+    .ok { color: #6bcf8e; font-size: 0.9rem; margin-top: 10px; }
+    #roomView { display: none; flex-direction: column; height: 100vh; }
+    #roomView.on { display: flex; }
+    .room-top {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 10px 14px; border-bottom: 1px solid var(--line); background: var(--bg1);
+    }
+    .room-top .title { font-weight: 700; }
+    .room-top .timer { color: var(--t2); font-variant-numeric: tabular-nums; }
+    #stage {
+      flex: 1; display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 8px; padding: 12px; background: var(--bg0);
+    }
+    .tile {
+      position: relative; background: #1a222c; border-radius: 12px; overflow: hidden;
+      min-height: 160px; border: 1px solid var(--line);
+    }
+    .tile video { width: 100%; height: 100%; object-fit: cover; background: #000; }
+    .tile .label {
+      position: absolute; left: 8px; bottom: 8px; font-size: 0.8rem;
+      background: rgba(0,0,0,.55); padding: 4px 8px; border-radius: 6px;
+    }
+    .dock {
+      display: flex; gap: 10px; justify-content: center; padding: 14px;
+      border-top: 1px solid var(--line); background: var(--bg2);
+    }
+    .dock button {
+      width: auto; min-width: 88px; padding: 10px 14px; border: 0; border-radius: 12px;
+      background: #243040; color: var(--text); font-weight: 600; cursor: pointer; font-family: inherit;
+    }
+    .dock button.danger { background: var(--danger); color: #fff; }
+  </style>
+  <script src="https://cdn.jsdelivr.net/npm/livekit-client@2/dist/livekit-client.umd.min.js"></script>
+</head>
+<body>
+  <div class="lobby" id="lobby">
+    <div class="lobby-card">
+      <div class="logo-row">
+        <div class="rune-badge">ᚦ</div>
+        <span class="chip">Тинг · ASGARD</span>
+      </div>
+      <h3 id="title">Тинг</h3>
+      <p class="sub" id="meta">Загрузка…</p>
+      <div id="form" hidden>
+        <div class="preview" id="preview">
+          <video id="previewVideo" playsinline muted autoplay hidden></video>
+          <div class="avatar" id="previewAvatar">?</div>
+          <div class="preview-controls">
+            <button type="button" class="btn-icon" id="preMic" title="Микрофон">🎤</button>
+            <button type="button" class="btn-icon" id="preCam" title="Камера">📷</button>
+          </div>
+        </div>
+        <div class="status-plaque">
+          <span class="chip" id="micChip">Микрофон вкл</span>
+          <span class="chip" id="camChip">Камера вкл</span>
+        </div>
+        <label for="name">Как вас представить</label>
+        <input id="name" autocomplete="name" placeholder="Имя" />
+        <div id="pinWrap" hidden>
+          <label for="pin">PIN (4 цифры)</label>
+          <input id="pin" inputmode="numeric" maxlength="4" placeholder="••••" />
+        </div>
+        <button type="button" class="btn" id="join">Войти</button>
+        <div id="msg"></div>
+      </div>
+    </div>
+  </div>
+
+  <div id="roomView">
+    <div class="room-top">
+      <div class="title" id="roomTitle">Тинг</div>
+      <div class="timer" id="roomTimer">00:00</div>
+    </div>
+    <div id="stage"></div>
+    <div class="dock">
+      <button type="button" id="btnMic" title="Микрофон">Микрофон</button>
+      <button type="button" id="btnCam" title="Камера">Камера</button>
+      <button type="button" id="btnShare" title="Демонстрация экрана">Экран</button>
+      <button type="button" id="btnLeave" class="danger">Выйти</button>
+    </div>
+  </div>
+
+  <script>
+    (function () {
+      const slug = location.pathname.replace(/^\/ting\/?/, '').split(/[/?#]/)[0].toLowerCase();
+      const titleEl = document.getElementById('title');
+      const metaEl = document.getElementById('meta');
+      const formEl = document.getElementById('form');
+      const msgEl = document.getElementById('msg');
+      const pinWrap = document.getElementById('pinWrap');
+      const previewVideo = document.getElementById('previewVideo');
+      const previewAvatar = document.getElementById('previewAvatar');
+      let room = null;
+      let localAudio = true;
+      let localVideo = true;
+      let previewStream = null;
+      let joinedAt = 0;
+      let timerId = null;
+
+      if (!slug) {
+        metaEl.textContent = 'Откройте ссылку вида /ting/xxxxxx';
+        return;
+      }
+
+      function initials(name) {
+        const p = String(name || '?').trim().split(/\s+/).slice(0, 2);
+        return p.map(function (s) { return s[0] ? s[0].toUpperCase() : ''; }).join('') || '?';
+      }
+
+      function syncPreviewUi() {
+        document.getElementById('micChip').textContent = localAudio ? 'Микрофон вкл' : 'Микрофон выкл';
+        document.getElementById('camChip').textContent = localVideo ? 'Камера вкл' : 'Камера выкл';
+        document.getElementById('preMic').classList.toggle('off', !localAudio);
+        document.getElementById('preCam').classList.toggle('off', !localVideo);
+        const name = document.getElementById('name').value.trim();
+        previewAvatar.textContent = initials(name);
+        if (localVideo && previewStream) {
+          previewVideo.hidden = false;
+          previewAvatar.style.display = 'none';
+        } else {
+          previewVideo.hidden = true;
+          previewAvatar.style.display = 'grid';
+        }
+      }
+
+      async function ensurePreview() {
+        try {
+          if (previewStream) {
+            previewStream.getTracks().forEach(function (t) { t.stop(); });
+            previewStream = null;
+          }
+          if (!localVideo && !localAudio) {
+            syncPreviewUi();
+            return;
+          }
+          previewStream = await navigator.mediaDevices.getUserMedia({
+            audio: localAudio,
+            video: localVideo ? { facingMode: 'user' } : false
+          });
+          previewVideo.srcObject = previewStream;
+          syncPreviewUi();
+        } catch (_) {
+          localVideo = false;
+          syncPreviewUi();
+        }
+      }
+
+      document.getElementById('name').addEventListener('input', syncPreviewUi);
+      document.getElementById('preMic').addEventListener('click', function () {
+        localAudio = !localAudio;
+        if (previewStream) {
+          previewStream.getAudioTracks().forEach(function (t) { t.enabled = localAudio; });
+        }
+        syncPreviewUi();
+      });
+      document.getElementById('preCam').addEventListener('click', async function () {
+        localVideo = !localVideo;
+        await ensurePreview();
+      });
+
+      fetch('/api/thing/public/' + encodeURIComponent(slug))
+        .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
+        .then(async function (res) {
+          if (!res.ok) {
+            metaEl.textContent = res.j.error || 'Тинг не найден';
+            return;
+          }
+          titleEl.textContent = res.j.title || 'Тинг';
+          document.getElementById('roomTitle').textContent = res.j.title || 'Тинг';
+          if (res.j.status === 'ended' || res.j.status === 'cancelled') {
+            metaEl.textContent = 'Этот Тинг уже завершён';
+            return;
+          }
+          const crmToken = localStorage.getItem('asgard_token');
+          if (crmToken) {
+            try {
+              const tr = await fetch('/api/thing/rooms/' + encodeURIComponent(slug) + '/token', {
+                method: 'POST',
+                headers: { 'Authorization': 'Bearer ' + crmToken, 'Content-Type': 'application/json' },
+                body: '{}'
+              });
+              const tj = await tr.json();
+              if (tr.ok && tj.token) {
+                metaEl.textContent = 'Вход как сотрудник CRM…';
+                await enterRoom(tj);
+                return;
+              }
+            } catch (_) { /* guest form */ }
+          }
+          metaEl.textContent = res.j.lobby_enabled
+            ? 'Комната с залом ожидания. Проверьте камеру и микрофон.'
+            : 'Вас ждут. Проверьте камеру и микрофон.';
+          formEl.hidden = false;
+          if (res.j.pin_required) pinWrap.hidden = false;
+          await ensurePreview();
+        })
+        .catch(function () {
+          metaEl.textContent = 'Не удалось связаться с сервером';
+        });
+
+      function attachTrack(track, identity) {
+        const stage = document.getElementById('stage');
+        let tile = stage.querySelector('[data-id="' + identity + '"]');
+        if (!tile) {
+          tile = document.createElement('div');
+          tile.className = 'tile';
+          tile.dataset.id = identity;
+          const label = document.createElement('div');
+          label.className = 'label';
+          label.textContent = identity;
+          tile.appendChild(label);
+          stage.appendChild(tile);
+        }
+        if (track.kind === 'video' || track.kind === 'audio') {
+          let el = tile.querySelector(track.kind);
+          if (!el) {
+            el = track.attach();
+            if (track.kind === 'video') {
+              el.style.width = '100%';
+              el.style.height = '100%';
+              el.style.objectFit = 'cover';
+              tile.insertBefore(el, tile.firstChild);
+            } else {
+              el.style.display = 'none';
+              tile.appendChild(el);
+            }
+          }
+        }
+      }
+
+      function startTimer() {
+        joinedAt = Date.now();
+        timerId = setInterval(function () {
+          const s = Math.floor((Date.now() - joinedAt) / 1000);
+          const mm = String(Math.floor(s / 60)).padStart(2, '0');
+          const ss = String(s % 60).padStart(2, '0');
+          document.getElementById('roomTimer').textContent = mm + ':' + ss;
+        }, 1000);
+      }
+
+      async function enterRoom(creds) {
+        if (!window.LivekitClient) {
+          msgEl.className = 'err';
+          msgEl.textContent = 'LiveKit client не загрузился';
+          return;
+        }
+        if (previewStream) {
+          previewStream.getTracks().forEach(function (t) { t.stop(); });
+          previewStream = null;
+        }
+        const Room = window.LivekitClient.Room;
+        room = new Room({ adaptiveStream: true, dynacast: true });
+        room.on(window.LivekitClient.RoomEvent.TrackSubscribed, function (track, _pub, participant) {
+          attachTrack(track, participant.identity);
+        });
+        room.on(window.LivekitClient.RoomEvent.TrackUnsubscribed, function (track) {
+          track.detach().forEach(function (el) { el.remove(); });
+        });
+        await room.connect(creds.url, creds.token);
+        await room.localParticipant.setMicrophoneEnabled(localAudio);
+        await room.localParticipant.setCameraEnabled(localVideo);
+        room.localParticipant.videoTrackPublications.forEach(function (pub) {
+          if (pub.track) attachTrack(pub.track, 'Вы');
+        });
+        document.getElementById('lobby').style.display = 'none';
+        document.getElementById('roomView').classList.add('on');
+        document.getElementById('btnMic').textContent = localAudio ? 'Микрофон' : 'Микрофон выкл';
+        document.getElementById('btnCam').textContent = localVideo ? 'Камера' : 'Камера выкл';
+        startTimer();
+      }
+
+      document.getElementById('join').addEventListener('click', function () {
+        const name = document.getElementById('name').value.trim();
+        const pin = document.getElementById('pin').value.trim();
+        msgEl.className = '';
+        msgEl.textContent = '';
+        document.getElementById('join').disabled = true;
+        fetch('/api/thing/public/' + encodeURIComponent(slug) + '/guest-token', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: name, pin: pin || undefined })
+        })
+          .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, status: r.status, j: j }; }); })
+          .then(async function (res) {
+            document.getElementById('join').disabled = false;
+            if (!res.ok) {
+              msgEl.className = 'err';
+              msgEl.textContent = res.j.error || ('Ошибка ' + res.status);
+              return;
+            }
+            if (res.j.lobby_status === 'waiting') {
+              msgEl.className = 'ok';
+              msgEl.textContent = res.j.message || 'Ждите хоста…';
+              return;
+            }
+            if (!res.j.token) {
+              msgEl.className = 'err';
+              msgEl.textContent = res.j.error || 'Нет media-токена (LiveKit не настроен)';
+              return;
+            }
+            try {
+              await enterRoom(res.j);
+            } catch (e) {
+              msgEl.className = 'err';
+              msgEl.textContent = 'Не удалось войти в комнату: ' + (e.message || e);
+            }
+          })
+          .catch(function () {
+            document.getElementById('join').disabled = false;
+            msgEl.className = 'err';
+            msgEl.textContent = 'Сеть недоступна';
+          });
+      });
+
+      document.getElementById('btnMic').addEventListener('click', async function () {
+        if (!room) return;
+        localAudio = !localAudio;
+        await room.localParticipant.setMicrophoneEnabled(localAudio);
+        this.textContent = localAudio ? 'Микрофон' : 'Микрофон выкл';
+      });
+      document.getElementById('btnCam').addEventListener('click', async function () {
+        if (!room) return;
+        localVideo = !localVideo;
+        await room.localParticipant.setCameraEnabled(localVideo);
+        this.textContent = localVideo ? 'Камера' : 'Камера выкл';
+      });
+      document.getElementById('btnShare').addEventListener('click', async function () {
+        if (!room) return;
+        try {
+          const enabled = room.localParticipant.isScreenShareEnabled;
+          await room.localParticipant.setScreenShareEnabled(!enabled);
+          this.textContent = !enabled ? 'Экран · идёт' : 'Экран';
+        } catch (e) {
+          console.warn('screen share', e);
+        }
+      });
+      document.getElementById('btnLeave').addEventListener('click', async function () {
+        if (timerId) clearInterval(timerId);
+        if (room) await room.disconnect();
+        location.reload();
+      });
+    })();
+  </script>
+</body>
+</html>

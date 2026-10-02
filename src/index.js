@@ -203,6 +203,11 @@ const fieldIndexPath = path.join(__dirname, '../public/field/index.html');
 let fieldHtml = '';
 try { fieldHtml = fs.readFileSync(fieldIndexPath, 'utf8'); } catch (_) {}
 
+// Тинг guest SPA
+const tingIndexPath = path.join(__dirname, '../public/ting/index.html');
+let tingHtml = '';
+try { tingHtml = fs.readFileSync(tingIndexPath, 'utf8'); } catch (_) {}
+
 // Перехватываем / и /index.html ДО @fastify/static
 // + React mobile app SPA routing для /m/*
 // + Field PWA SPA routing для /field/*
@@ -212,6 +217,20 @@ fastify.addHook('onRequest', (request, reply, done) => {
   // DEBUG: Log all requests to /m/*
   if (url.startsWith('/m/')) {
     console.log(`[onRequest] ${url}`);
+  }
+
+  // Тинг guest: /ting и /ting/{slug}
+  if (url === '/ting') {
+    reply.redirect(301, '/ting/');
+    return;
+  }
+  if (url === '/ting/' || (url.startsWith('/ting/') && !url.match(/\.(js|css|png|jpg|jpeg|gif|svg|ico|woff2?|ttf|eot|webp|json|map)$/i))) {
+    if (tingHtml) {
+      reply.type('text/html')
+        .header('Cache-Control', 'no-cache, no-store, must-revalidate, max-age=0')
+        .send(tingHtml);
+      return;
+    }
   }
 
   // React mobile app: /m → /m/ redirect
@@ -734,6 +753,7 @@ fastify.register(require('./routes/permits'), { prefix: '/api/permits' });
 fastify.register(require('./routes/nd'), { prefix: '/api/nd' }); // электронные наряды-допуски (РП / справочник)
 fastify.register(require('./routes/chat_groups'), { prefix: '/api/chat-groups' });
 fastify.register(require('./routes/meetings'), { prefix: '/api/meetings' });
+fastify.register(require('./routes/thing'), { prefix: '/api/thing' }); // Тинг ВКС (V361)
 fastify.register(require('./routes/payroll'), { prefix: '/api/payroll' });
 fastify.register(require('./routes/permit_applications'), { prefix: '/api/permit-applications' });
 fastify.register(require('./routes/mailbox'), { prefix: '/api/mailbox' });
@@ -837,6 +857,33 @@ try {
   });
 } catch (telErr) {
   fastify.log.warn('[Telephony] Job queue/escalation init skipped: ' + telErr.message);
+}
+
+// ── Тинг protocol worker (PG queue) ──
+try {
+  const { createThingWorker } = require('./services/thing-pipeline');
+  const thingWorker = createThingWorker(db, fastify.log);
+  const thingWorkersEnabled = process.env.THING_WORKERS === '1'
+    || (process.env.NODE_ENV === 'production' && process.env.THING_WORKERS !== '0');
+  fastify.decorate('thingWorker', thingWorker);
+  fastify.addHook('onReady', async () => {
+    if (!thingWorkersEnabled) {
+      fastify.log.info('[Thing] Workers DISABLED (set THING_WORKERS=1 to enable)');
+      return;
+    }
+    thingWorker.start();
+    fastify.log.info('[Thing] Protocol job worker started');
+    try {
+      const { ensureSipDialIn } = require('./services/thing-sip');
+      const sip = await ensureSipDialIn();
+      fastify.log.info('[Thing] SIP dial-in ensure: ' + JSON.stringify(sip));
+    } catch (e) {
+      fastify.log.warn('[Thing] SIP ensure skipped: ' + e.message);
+    }
+  });
+  fastify.addHook('onClose', async () => { thingWorker.stop(); });
+} catch (thingErr) {
+  fastify.log.warn('[Thing] Worker init skipped: ' + thingErr.message);
 }
 
 // ── Tender OCR Worker (распаковка архивов + кэш documents.ocr_text) ──

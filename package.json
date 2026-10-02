@@ -71,6 +71,7 @@
     "iconv-lite": "^0.7.2",
     "imapflow": "^1.2.9",
     "jsonwebtoken": "^9.0.2",
+    "livekit-server-sdk": "^2.19.1",
     "mailparser": "^3.9.3",
     "mammoth": "^1.8.0",
     "node-cron": "^4.2.1",

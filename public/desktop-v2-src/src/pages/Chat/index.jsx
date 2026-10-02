@@ -50,7 +50,8 @@ import {
   loadGroup, loadMessages, sendMessage, editMessage, deleteMessage,
   uploadAttachment, markRead, fmtDateTime, initials,
   getMimirChat, sendMimirMessage, loadMimirModels, loadLinkPreview,
-  toggleReaction, sendTyping, archiveChat, loadGroupsByArchive
+  toggleReaction, sendTyping, archiveChat, loadGroupsByArchive,
+  createThingRoom
 } from './api';
 import { openProtected } from '@/api/download';
 import { validateFiles, MAX_ATTACHMENT_SIZE } from '@/api/upload';
@@ -509,6 +510,27 @@ export default function ChatPage() {
     />);
   };
 
+  const startTingFromChat = async () => {
+    if (!activeGroup) return;
+    if ((activeGroup.type || '') === 'mimir') return;
+    try {
+      const title = (activeGroup.title || activeGroup.name || 'Тинг из чата').toString().slice(0, 200);
+      const data = await createThingRoom({ title, mode: 'instant', protocol_enabled: true });
+      const room = data.room || data;
+      const url = room.url || (`/ting/${room.slug}`);
+      const dial = room.dial_code || '';
+      const text = dial ? `Тинг: ${url}\nТелефон: код ${dial} (6 цифр)` : `Тинг: ${url}`;
+      try {
+        await sendMessage(activeGroup.id, { text });
+        refreshActive();
+      } catch (_) { /* ignore */ }
+      window.open(url, '_blank');
+    } catch (e) {
+      console.error('[ting]', e);
+      alert(e.message || 'Не удалось создать Тинг');
+    }
+  };
+
   const onArchiveToggle = () => {
     if (!activeGroup) return;
     const archive = !isArchived;
@@ -624,6 +646,9 @@ export default function ChatPage() {
                     estimateId={pinnedEstimateId}
                     onUpdated={() => refreshActive()}
                   />
+                )}
+                {(activeGroup.type || '') !== 'mimir' && (
+                  <Btn size="sm" variant="ghost" onClick={startTingFromChat} title="Тинг-конференция">ᚱ Тинг</Btn>
                 )}
                 <Btn size="sm" variant="ghost" onClick={openMuteModal} title={isMuted ? 'Снять mute' : 'Заглушить'}>
                   {isMuted ? '🔕' : '🔔'}

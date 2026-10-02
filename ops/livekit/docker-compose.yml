@@ -1,0 +1,41 @@
+# ASGARD Тинг — LiveKit stack
+# UDP: LiveKit RTC 50000-60000; SIP RTP 40000+; Asterisk RTP 10000-20000
+
+services:
+  livekit-redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:6382:6379"
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+
+  livekit:
+    image: livekit/livekit-server:latest
+    restart: unless-stopped
+    depends_on:
+      - livekit-redis
+    network_mode: host
+    volumes:
+      - ./livekit.yaml:/etc/livekit.yaml:ro
+    command: ["--config", "/etc/livekit.yaml"]
+
+  livekit-egress:
+    image: livekit/egress:latest
+    restart: unless-stopped
+    network_mode: host
+    environment:
+      EGRESS_CONFIG_FILE: /etc/egress.yaml
+    volumes:
+      - ./egress.yaml:/etc/egress.yaml:ro
+      - /var/lib/asgard-thing/recordings:/var/lib/asgard-thing/recordings
+
+  livekit-sip:
+    image: livekit/sip:latest
+    restart: unless-stopped
+    network_mode: host
+    depends_on:
+      - livekit
+      - livekit-redis
+    volumes:
+      - ./sip.yaml:/etc/sip.yaml:ro
+    command: ["--config", "/etc/sip.yaml"]

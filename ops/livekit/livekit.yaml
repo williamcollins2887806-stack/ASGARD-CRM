@@ -1,0 +1,27 @@
+# LiveKit config for ASGARD Тинг
+# UDP RTC MUST NOT overlap Asterisk 10000-20000
+
+port: 7880
+bind_addresses:
+  - ""
+
+rtc:
+  tcp_port: 7881
+  port_range_start: 50000
+  port_range_end: 60000
+  use_external_ip: true
+
+redis:
+  address: 127.0.0.1:6379
+  db: 2
+
+# keys: заменить на прод-секреты из /etc/asgard-crm/thing.env
+keys:
+  APItingdevkey: ting_dev_secret_change_me
+
+logging:
+  level: info
+
+room:
+  empty_timeout: 300
+  max_participants: 50

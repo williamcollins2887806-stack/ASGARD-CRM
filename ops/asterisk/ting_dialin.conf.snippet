@@ -1,0 +1,20 @@
+; ASGARD Ting dial-in — include from extensions.conf
+; DID → IVR 6 digits → AGI/curl resolve → LiveKit SIP (P5 wiring)
+;
+; [from-ting-dialin]
+; exten => _X.,1,NoOp(Ting dial-in)
+;  same => n,Answer()
+;  same => n,Wait(1)
+;  same => n,Read(TINGCODE,ting-enter-code,6,,,3,10)
+;  same => n,GotoIf($["${LEN(${TINGCODE})}" != "6"]?bad)
+;  same => n,AGI(ting-resolve.py,${TINGCODE})
+;  same => n,GotoIf($["${TING_ROOM}" = ""]?bad)
+;  same => n,Dial(PJSIP/${TING_ROOM}@livekit-sip)
+;  same => n,Hangup()
+;  same => n(bad),Playback(invalid)
+;  same => n,Hangup()
+
+; Resolve helper calls:
+;   POST https://127.0.0.1:3000/api/thing/dial-in/resolve
+;   Header: X-Thing-Dialin-Secret: $THING_DIALIN_SECRET
+;   Body: {"dial_code":"482917"}

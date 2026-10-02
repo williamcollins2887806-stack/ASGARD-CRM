@@ -1,0 +1,13 @@
+# LiveKit SIP — dial-in bridge for Asterisk (port 5066, Asterisk keeps 5060)
+api_key: REPLACE_KEY
+api_secret: REPLACE_SECRET
+ws_url: ws://127.0.0.1:7880
+redis:
+  address: 127.0.0.1:6382
+  db: 0
+sip_port: 5066
+rtp_port: 10000
+# NOTE: LiveKit SIP RTP default may conflict — set high range via env if needed
+use_external_ip: true
+logging:
+  level: info

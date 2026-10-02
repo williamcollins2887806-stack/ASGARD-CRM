@@ -1,0 +1,1952 @@
+﻿<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Тинг — UI Prototype · ASGARD CRM</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg0: #08090C;
+      --bg1: #0D1117;
+      --bg2: #151922;
+      --bg3: #1C2130;
+      --bg4: #222838;
+      --bg5: #2A3248;
+      --t1: rgba(255,255,255,0.95);
+      --t2: rgba(255,255,255,0.65);
+      --t3: rgba(255,255,255,0.40);
+      --brd: rgba(255,255,255,0.12);
+      --brd-m: rgba(255,255,255,0.07);
+      --gold: #D4A843;
+      --gold-h: #B8922E;
+      --gold-l: #E8C35A;
+      --gold-bg: rgba(212,168,67,0.12);
+      --red: #C8293B;
+      --red-bg: rgba(200,41,59,0.10);
+      --blue: #1E4D8C;
+      --blue-l: #4A90D9;
+      --blue-bg: rgba(30,77,140,0.10);
+      --ok: #2D8659;
+      --ok-t: #4ADE80;
+      --ok-bg: rgba(45,134,89,0.12);
+      --radius: 16px;
+      --radius-sm: 12px;
+      --shadow: 0 24px 64px rgba(0,0,0,0.45);
+      --font: "Manrope", system-ui, sans-serif;
+      --paper: #F7F5F0;
+      --paper-ink: #1A1D24;
+      --paper-muted: #5A6170;
+      --paper-line: #E4E0D6;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { height: 100%; }
+    body {
+      font-family: var(--font);
+      background: #050608;
+      color: var(--t1);
+      display: grid;
+      grid-template-columns: 290px 1fr;
+      min-height: 100vh;
+    }
+
+    /* ── Sidebar ── */
+    .nav {
+      background: var(--bg1);
+      border-right: 1px solid var(--brd-m);
+      padding: 18px 12px;
+      overflow-y: auto;
+      position: sticky;
+      top: 0;
+      height: 100vh;
+    }
+    .nav-brand {
+      display: flex; align-items: center; gap: 10px;
+      padding: 6px 8px 16px;
+      border-bottom: 1px solid var(--brd-m);
+      margin-bottom: 14px;
+    }
+    .nav-brand img { width: 32px; height: 32px; object-fit: contain; }
+    .nav-brand .rune {
+      width: 28px; height: 28px; border-radius: 8px;
+      background: linear-gradient(145deg, var(--gold-l), var(--gold-h));
+      color: #1a1205; display: grid; place-items: center;
+      font-weight: 800; font-size: 15px;
+    }
+    .nav-brand h1 { font-size: 14px; font-weight: 700; }
+    .nav-brand p { font-size: 11px; color: var(--t3); margin-top: 2px; }
+    .nav-group { margin-bottom: 14px; }
+    .nav-group h2 {
+      font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em;
+      color: var(--t3); padding: 0 8px 7px; font-weight: 600;
+    }
+    .nav button {
+      width: 100%; text-align: left;
+      background: transparent; border: 0; color: var(--t2);
+      padding: 8px 10px; border-radius: 10px;
+      font: 500 12.5px/1.3 var(--font); cursor: pointer;
+      display: flex; gap: 8px; align-items: flex-start;
+      transition: background .15s, color .15s;
+    }
+    .nav button:hover { background: var(--bg3); color: var(--t1); }
+    .nav button.active { background: var(--gold-bg); color: var(--gold-l); }
+    .nav button .n { color: var(--t3); font-size: 10px; min-width: 18px; padding-top: 1px; }
+    .nav-hint {
+      margin-top: 14px; padding: 12px; border-radius: 12px;
+      background: var(--bg2); border: 1px solid var(--brd-m);
+      font-size: 11px; color: var(--t2); line-height: 1.45;
+    }
+
+    /* ── Stage ── */
+    .stage { padding: 24px 28px 48px; overflow: auto; }
+    .stage-head {
+      display: flex; justify-content: space-between; align-items: end;
+      gap: 16px; margin-bottom: 20px; flex-wrap: wrap;
+    }
+    .stage-head h2 { font-size: 20px; font-weight: 700; }
+    .stage-head p { color: var(--t2); font-size: 13px; margin-top: 4px; max-width: 580px; }
+    .device-toggle {
+      display: inline-flex; background: var(--bg2); border: 1px solid var(--brd);
+      border-radius: 999px; padding: 3px;
+    }
+    .device-toggle button {
+      border: 0; background: transparent; color: var(--t2);
+      padding: 8px 14px; border-radius: 999px; cursor: pointer;
+      font: 600 12px var(--font);
+    }
+    .device-toggle button.on { background: var(--bg4); color: var(--t1); }
+
+    .frames { display: flex; gap: 28px; align-items: flex-start; flex-wrap: wrap; }
+    .frame {
+      background: #11141b; border: 1px solid var(--brd);
+      border-radius: 20px; box-shadow: var(--shadow);
+      overflow: hidden; position: relative;
+    }
+    .frame.desk { width: 1080px; height: 680px; }
+    .frame.phone {
+      width: 390px; height: 780px;
+      border-radius: 36px; border: 8px solid #1a1e28;
+    }
+    .frame.phone::before {
+      content: "";
+      position: absolute; top: 10px; left: 50%; transform: translateX(-50%);
+      width: 110px; height: 22px; background: #0a0c10; border-radius: 12px; z-index: 5;
+    }
+    .screen {
+      width: 100%; height: 100%;
+      background: var(--bg1);
+      display: none; flex-direction: column;
+      position: relative; overflow: hidden;
+    }
+    .screen.on { display: flex; }
+
+    /* atoms */
+    .btn {
+      border: 0; cursor: pointer; font: 600 14px/1 var(--font);
+      border-radius: 12px; padding: 12px 18px;
+      transition: transform .12s, filter .12s;
+    }
+    .btn:active { transform: scale(0.98); }
+    .btn-primary {
+      background: linear-gradient(180deg, var(--gold-l), var(--gold));
+      color: #1a1205;
+    }
+    .btn-primary:hover { filter: brightness(1.05); }
+    .btn-ghost {
+      background: var(--bg3); color: var(--t1); border: 1px solid var(--brd);
+    }
+    .btn-danger { background: var(--red); color: #fff; }
+    .btn-lg { padding: 15px 20px; font-size: 15px; border-radius: 14px; width: 100%; }
+    .btn-sm { padding: 8px 12px; font-size: 12px; border-radius: 10px; }
+    .btn-link {
+      background: none; border: 0; color: var(--gold-l); cursor: pointer;
+      font: 600 13px var(--font); padding: 6px 0;
+      text-decoration: underline; text-underline-offset: 3px;
+    }
+    .btn-icon {
+      width: 52px; height: 52px; border-radius: 50%;
+      display: grid; place-items: center;
+      background: rgba(255,255,255,0.08);
+      border: 1px solid rgba(255,255,255,0.12);
+      color: #fff; cursor: pointer; font-size: 18px;
+    }
+    .btn-icon svg { display: block; width: 22px; height: 22px; }
+    .btn-icon .ico-more { font-size: 22px; line-height: 1; font-weight: 700; }
+    .btn-icon.off { background: #fff; color: #111; }
+    .btn-icon.danger { background: var(--red); border-color: transparent; }
+    .btn-icon.mic-off-state, .btn-icon.cam-off {
+      background: rgba(255,255,255,0.1); color: #ff8a96; border-color: rgba(200,41,59,0.35);
+    }
+    .dock-item { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+    .dock-item span { font-size: 10px; color: var(--t3); font-weight: 600; }
+
+    .field {
+      width: 100%; background: var(--bg3); border: 1px solid var(--brd);
+      border-radius: 12px; padding: 13px 15px; color: var(--t1);
+      font: 500 14px var(--font); outline: none;
+    }
+    .field:focus { border-color: rgba(212,168,67,0.55); }
+    .field::placeholder { color: var(--t3); }
+    .label { font-size: 12px; color: var(--t2); margin-bottom: 6px; font-weight: 600; }
+    .chip {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 5px 10px; border-radius: 999px;
+      background: var(--bg3); border: 1px solid var(--brd-m);
+      font-size: 12px; color: var(--t2);
+    }
+    .chip.ai { background: var(--blue-bg); border-color: rgba(74,144,217,0.35); color: #8ec0ff; }
+    .chip.crm {
+      background: var(--blue-bg); border-color: rgba(74,144,217,0.4);
+      color: var(--blue-l);
+    }
+    .chip.ok { background: var(--ok-bg); border-color: rgba(45,134,89,0.35); color: var(--ok-t); }
+    .chip.gold { background: var(--gold-bg); border-color: rgba(212,168,67,0.35); color: var(--gold-l); }
+    .chip.rec {
+      background: var(--red-bg); border-color: rgba(200,41,59,0.4); color: #ff8a96;
+    }
+    .avatar {
+      width: 40px; height: 40px; border-radius: 50%;
+      display: grid; place-items: center; font-weight: 700; font-size: 14px;
+      background: linear-gradient(145deg, #3a465c, #232a3a); color: #fff; flex-shrink: 0;
+    }
+    .avatar.gold { background: linear-gradient(145deg, var(--gold-l), var(--gold-h)); color: #1a1205; }
+    .avatar.lg { width: 72px; height: 72px; font-size: 24px; }
+    .avatar.xl { width: 96px; height: 96px; font-size: 32px; }
+
+    .logo-row { display: flex; align-items: center; gap: 10px; }
+    .logo-row img { width: 28px; height: 28px; object-fit: contain; }
+    .logo-row .rune-badge {
+      width: 26px; height: 26px; border-radius: 7px;
+      background: linear-gradient(145deg, var(--gold-l), var(--gold-h));
+      color: #1a1205; display: grid; place-items: center;
+      font-weight: 800; font-size: 14px;
+    }
+    .logo-row strong { font-size: 18px; font-weight: 800; }
+    .logo-row .brand-sub { font-size: 11px; color: var(--t3); font-weight: 600; }
+    .brand-block { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; }
+    .brand-block.center { align-items: center; }
+    .rune-line {
+      display: block; width: 72px; height: 1px;
+      background: linear-gradient(90deg, transparent, var(--gold), var(--blue-l), transparent);
+      opacity: 0.55;
+    }
+    .brand-block.center .rune-line { width: 96px; }
+
+    /* CRM-style rune separator */
+    .runesep {
+      text-align: center;
+      padding: 6px 0;
+      margin: 10px 0;
+      color: var(--gold);
+      font-size: 11px;
+      letter-spacing: 0.5em;
+      opacity: 0.55;
+      user-select: none;
+    }
+    .runesep::before { content: "ᚱ ◆ ᚨ ◆ ᚷ"; }
+    .runesep.alt::before { content: "ᚱ ◆ ᚨ ◆ ᚷ"; }
+
+    .brand-mark {
+      width: 64px; height: 64px; border-radius: 16px;
+      background: linear-gradient(145deg, var(--gold-l), var(--gold-h));
+      display: grid; place-items: center;
+      color: #1a1205; font-weight: 800; font-size: 28px;
+      margin: 0 auto;
+    }
+    .brand-mark.sm { width: 44px; height: 44px; font-size: 20px; border-radius: 12px; }
+
+    /* Hub */
+    .hub {
+      padding: 28px 40px;
+      background:
+        radial-gradient(900px 420px at 15% -10%, rgba(212,168,67,0.12), transparent 55%),
+        radial-gradient(700px 380px at 100% 0%, rgba(30,77,140,0.14), transparent 50%),
+        var(--bg1);
+      overflow: auto;
+    }
+    .hub-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; gap: 12px; flex-wrap: wrap; }
+    .btn-crm {
+      background: linear-gradient(180deg, var(--blue-l), var(--blue));
+      color: #fff; border: 0;
+    }
+    .btn-crm:hover { filter: brightness(1.06); }
+    .hub-cta { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+    .hub-tabs { display: flex; gap: 6px; margin-bottom: 12px; }
+    .hub-tabs button {
+      border: 1px solid var(--brd-m); background: transparent; color: var(--t2);
+      padding: 8px 14px; border-radius: 999px; cursor: pointer; font: 600 12px var(--font);
+    }
+    .hub-tabs button.on { background: var(--gold-bg); color: var(--gold-l); border-color: rgba(212,168,67,0.35); }
+    .hub-hint {
+      font-size: 12px; color: var(--t3); margin-bottom: 12px; line-height: 1.4;
+      padding: 10px 12px; border-radius: 10px; background: var(--blue-bg);
+      border: 1px solid rgba(74,144,217,0.28);
+      border-left: 3px solid var(--blue-l);
+    }
+    .hub-list h4 {
+      font-size: 12px; color: var(--t3); text-transform: uppercase;
+      letter-spacing: 0.06em; margin-bottom: 10px;
+    }
+    .meeting-row {
+      display: flex; align-items: center; gap: 12px;
+      padding: 12px 14px; border-radius: 14px;
+      background: var(--bg2); border: 1px solid var(--brd-m);
+      margin-bottom: 8px; cursor: pointer;
+    }
+    .meeting-row.crm-src {
+      border-color: rgba(74,144,217,0.28);
+      border-left: 3px solid var(--blue-l);
+    }
+    .meeting-row.ting-src {
+      border-left: 3px solid var(--gold);
+    }
+    .meeting-row:hover { background: var(--bg3); }
+    .meeting-row .meta { flex: 1; min-width: 0; }
+    .meeting-row .meta b { display: block; font-size: 14px; margin-bottom: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .meeting-row .meta span { font-size: 12px; color: var(--t3); }
+    .status-quiet { font-size: 12px; color: var(--t3); font-weight: 600; }
+
+    /* Modal */
+    .modal-screen {
+      background: rgba(5,6,8,0.72); backdrop-filter: blur(8px);
+      display: none; align-items: center; justify-content: center; padding: 24px;
+    }
+    .modal-screen.on { display: flex; }
+    .modal {
+      width: min(440px, 100%); background: var(--bg2);
+      border: 1px solid var(--brd); border-radius: 20px;
+      padding: 28px; box-shadow: var(--shadow);
+    }
+    .modal h3 { font-size: 22px; font-weight: 750; margin-bottom: 8px; }
+    .modal .sub { color: var(--t2); font-size: 14px; margin-bottom: 20px; line-height: 1.45; }
+    .choice { display: flex; gap: 12px; margin-bottom: 8px; }
+    .choice button {
+      flex: 1; text-align: left; padding: 16px 14px;
+      border-radius: 14px; border: 1px solid var(--brd);
+      background: var(--bg3); color: var(--t1); cursor: pointer;
+      font: 600 14px var(--font);
+    }
+    .choice button span { display: block; font-weight: 500; color: var(--t3); font-size: 12px; margin-top: 6px; }
+    .choice button:hover, .choice button.sel {
+      border-color: rgba(212,168,67,0.55); background: var(--gold-bg);
+    }
+
+    /* Forms */
+    .form-screen { padding: 28px 40px; overflow: auto; }
+    .form-card {
+      max-width: 580px; margin: 0 auto;
+      background: var(--bg2); border: 1px solid var(--brd);
+      border-radius: 20px; padding: 26px;
+    }
+    .form-card h3 { font-size: 22px; margin-bottom: 6px; }
+    .form-grid { display: grid; gap: 14px; margin-top: 18px; }
+    .form-grid .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .people { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+    .toggle-row {
+      display: flex; align-items: center; justify-content: space-between; gap: 16px;
+      padding: 14px 16px; border-radius: 14px;
+      background: var(--bg3); border: 1px solid var(--brd-m);
+    }
+    .toggle-row .toggle-text b { display: block; font-size: 14px; margin-bottom: 3px; }
+    .toggle-row .toggle-text span { font-size: 12px; color: var(--t3); line-height: 1.35; }
+    .switch {
+      width: 46px; height: 26px; border-radius: 999px;
+      background: var(--bg5); border: 1px solid var(--brd);
+      position: relative; cursor: pointer; flex-shrink: 0;
+    }
+    .switch.on { background: linear-gradient(180deg, var(--gold-l), var(--gold)); border-color: transparent; }
+    .switch i {
+      position: absolute; top: 2px; left: 2px;
+      width: 20px; height: 20px; border-radius: 50%;
+      background: #fff; transition: left .15s;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+    }
+    .switch.on i { left: 22px; }
+
+    /* Ready */
+    .ready {
+      padding: 28px 40px; align-items: center; justify-content: center; overflow: auto;
+      background:
+        radial-gradient(600px 300px at 50% 0%, rgba(212,168,67,0.12), transparent 60%),
+        var(--bg1);
+    }
+    .ready-card {
+      width: min(540px, 100%);
+      background: var(--bg2);
+      border: 1px solid var(--brd);
+      border-top: 2px solid var(--gold);
+      border-bottom: 2px solid rgba(74,144,217,0.45);
+      border-radius: 24px; padding: 28px; text-align: center;
+    }
+    .ready-card h3 { font-size: 24px; font-weight: 800; margin: 14px 0 6px; }
+    .ready-card .sub { color: var(--t2); margin-bottom: 18px; font-size: 14px; }
+    .link-box {
+      background: var(--bg3); border: 1px solid var(--brd);
+      border-radius: 14px; padding: 12px 14px;
+      display: flex; align-items: center; gap: 10px;
+      margin-bottom: 12px; text-align: left;
+    }
+    .link-box code {
+      flex: 1; font-family: ui-monospace, monospace;
+      font-size: 13px; color: var(--gold-l);
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .dial-code-block {
+      margin: 14px 0 6px; padding: 16px;
+      background: rgba(255,255,255,0.03); border: 1px solid var(--brd-m);
+      border-radius: 14px; text-align: center;
+    }
+    .dial-code-block .label { margin-bottom: 8px; }
+    .dial-code {
+      font-size: 36px; font-weight: 800; letter-spacing: 0.18em;
+      color: var(--t1); font-variant-numeric: tabular-nums;
+    }
+    .dial-code-block .hint { font-size: 12px; color: var(--t3); margin-top: 6px; }
+    .ready-extra {
+      display: grid; grid-template-columns: 110px 1fr; gap: 14px;
+      margin-top: 16px; text-align: left; align-items: start;
+    }
+    .qr-box {
+      width: 110px; height: 110px; border-radius: 12px;
+      background:
+        linear-gradient(90deg, #111 2px, transparent 2px) 0 0 / 10px 10px,
+        linear-gradient(#111 2px, transparent 2px) 0 0 / 10px 10px,
+        #f5f5f0;
+      border: 4px solid #fff;
+      position: relative; box-shadow: inset 0 0 0 8px #f5f5f0;
+    }
+    .qr-box::before, .qr-box::after {
+      content: ""; position: absolute; width: 22px; height: 22px;
+      border: 3px solid #111; background: transparent;
+    }
+    .qr-box::before { top: 10px; left: 10px; box-shadow: inset 0 0 0 4px #f5f5f0, inset 0 0 0 8px #111; }
+    .qr-box::after { bottom: 10px; right: 10px; box-shadow: inset 0 0 0 4px #f5f5f0, inset 0 0 0 8px #111; }
+    .call-in-zone {
+      padding: 4px 0 0;
+    }
+    .call-in-zone .phone-line { font-size: 15px; font-weight: 700; margin-bottom: 4px; }
+    .call-in-zone .meta-line { font-size: 13px; color: var(--t2); line-height: 1.45; }
+    .call-in-zone .meta-line b { color: var(--t1); }
+    .stack-btns { display: flex; flex-direction: column; gap: 10px; }
+
+    /* Meeting card dial block */
+    .ting-access {
+      margin-top: 16px; padding: 14px; border-radius: 14px;
+      background: var(--bg3); border: 1px solid var(--brd-m); text-align: left;
+    }
+    .ting-access .row { display: flex; justify-content: space-between; gap: 8px; padding: 6px 0; font-size: 13px; }
+    .ting-access .row span { color: var(--t3); }
+    .ting-access .row b { color: var(--t1); font-weight: 700; letter-spacing: 0.04em; }
+    .ting-access .code-big { font-size: 22px; letter-spacing: 0.14em; }
+
+    /* Lobby */
+    .lobby {
+      align-items: center; justify-content: center; padding: 24px; overflow: auto;
+      background:
+        radial-gradient(700px 400px at 50% -20%, rgba(212,168,67,0.14), transparent 55%),
+        linear-gradient(180deg, #10131a 0%, var(--bg1) 55%);
+    }
+    .lobby-card { width: min(400px, 100%); text-align: center; }
+    .lobby-card h3 { font-size: 26px; font-weight: 800; margin: 14px 0 6px; }
+    .lobby-card .sub { color: var(--t2); margin-bottom: 20px; font-size: 14px; }
+    .preview {
+      width: 100%; aspect-ratio: 16/10; border-radius: 18px; overflow: hidden;
+      background: linear-gradient(145deg, #2a3348, #151922);
+      border: 1px solid var(--brd); position: relative; margin-bottom: 14px;
+      display: grid; place-items: center;
+    }
+    .preview-controls { position: absolute; bottom: 12px; right: 12px; display: flex; gap: 8px; }
+    .preview-controls .btn-icon { width: 40px; height: 40px; }
+    .status-plaque { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; margin: 0 0 12px; }
+
+    /* Waiting / error */
+    .center-msg {
+      flex: 1; display: grid; place-items: center; text-align: center; padding: 32px;
+    }
+    .center-msg h3 { font-size: 22px; margin: 14px 0 8px; }
+    .center-msg p { color: var(--t2); max-width: 300px; margin: 0 auto 20px; line-height: 1.45; font-size: 14px; }
+
+    /* Room */
+    .room { background: #0a0c10; }
+    .room-top {
+      position: absolute; top: 0; left: 0; right: 0;
+      display: flex; justify-content: space-between; align-items: center;
+      gap: 12px; padding: 16px 20px; z-index: 3;
+      background: linear-gradient(180deg, rgba(0,0,0,0.55), transparent);
+    }
+    .room-top-right { display: flex; gap: 8px; align-items: center; flex-shrink: 0; }
+    .room-title { font-size: 14px; font-weight: 600; }
+    .room-title span { color: var(--t3); font-weight: 500; margin-left: 8px; }
+    .timer { font-variant-numeric: tabular-nums; color: var(--t2); font-size: 13px; font-weight: 600; }
+    .frame.desk .room-top .timer { display: none; }
+    .consent-bar {
+      position: absolute; top: 52px; left: 50%; transform: translateX(-50%);
+      z-index: 4; white-space: nowrap;
+      background: rgba(200,41,59,0.18); border: 1px solid rgba(200,41,59,0.4);
+      color: #ffc0c6; font-size: 12px; font-weight: 600;
+      padding: 8px 14px; border-radius: 999px;
+    }
+    .rec-pill {
+      display: inline-flex; align-items: center; gap: 8px;
+      background: rgba(200,41,59,0.2); color: #ffb0b8;
+      padding: 7px 12px; border-radius: 999px; font-size: 12px; font-weight: 600;
+    }
+    .rec-pill i {
+      width: 8px; height: 8px; border-radius: 50%; background: #ff4d5e;
+      box-shadow: 0 0 0 4px rgba(255,77,94,0.2);
+      animation: pulse 1.4s infinite;
+    }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.45} }
+
+    .grid {
+      flex: 1; display: grid; gap: 10px; padding: 56px 18px 110px;
+      align-content: center;
+    }
+    .grid.g2 { grid-template-columns: 1.4fr 1fr; grid-template-rows: 1fr 1fr; }
+    .grid.g1 { grid-template-columns: 1fr; }
+    .tile {
+      background: linear-gradient(160deg, #243049, #141924);
+      border-radius: 18px; position: relative; overflow: hidden;
+      min-height: 160px; border: 1px solid rgba(255,255,255,0.06);
+    }
+    .tile.speak { outline: 2px solid rgba(212,168,67,0.65); outline-offset: -2px; }
+    .tile.span2 { grid-row: span 2; }
+    .tile-inner { position: absolute; inset: 0; display: grid; place-items: center; }
+    .tile-label {
+      position: absolute; left: 12px; bottom: 12px;
+      background: rgba(0,0,0,0.5); backdrop-filter: blur(6px);
+      padding: 6px 10px; border-radius: 8px; font-size: 12px; font-weight: 600;
+      display: flex; align-items: center; gap: 6px;
+    }
+    .tile-label .mic-off { color: #ff8a96; font-size: 11px; margin-right: 4px; }
+    .filmstrip {
+      position: absolute; right: 18px; top: 56px;
+      display: flex; flex-direction: column; gap: 8px; z-index: 2;
+    }
+    .film {
+      width: 148px; height: 92px; border-radius: 12px;
+      background: #1a2233; border: 1px solid var(--brd);
+      position: relative; overflow: hidden;
+    }
+    .film .tile-inner { transform: scale(0.7); }
+    .dock {
+      position: absolute; left: 50%; bottom: 18px; transform: translateX(-50%);
+      display: flex; gap: 12px; align-items: flex-end;
+      padding: 12px 16px 10px; border-radius: 24px;
+      background: rgba(20,24,34,0.92);
+      border: 1px solid rgba(255,255,255,0.1);
+      backdrop-filter: blur(16px); z-index: 4;
+      box-shadow: 0 12px 40px rgba(0,0,0,0.4);
+    }
+
+    .side {
+      position: absolute; top: 56px; right: 16px; bottom: 100px;
+      width: 300px; background: rgba(17,20,28,0.94);
+      border: 1px solid var(--brd); border-radius: 18px;
+      backdrop-filter: blur(12px); z-index: 5;
+      display: none; flex-direction: column; overflow: hidden;
+    }
+    .side.on { display: flex; }
+    .side header {
+      padding: 14px 16px; font-weight: 700; font-size: 14px;
+      border-bottom: 1px solid var(--brd-m);
+      display: flex; justify-content: space-between; align-items: center;
+    }
+    .side .body { padding: 12px; overflow: auto; flex: 1; }
+    .plist { display: flex; flex-direction: column; gap: 8px; }
+    .plist-row {
+      display: flex; align-items: center; gap: 10px;
+      padding: 10px; border-radius: 12px; background: rgba(255,255,255,0.03);
+    }
+    .plist-row .who { flex: 1; font-size: 13px; }
+    .plist-row .who small { display: block; color: var(--t3); font-size: 11px; }
+    .chat-bubble {
+      max-width: 90%; padding: 10px 12px; border-radius: 12px;
+      background: var(--bg3); font-size: 13px; margin-bottom: 8px; line-height: 1.4;
+    }
+    .chat-bubble.me { margin-left: auto; background: rgba(212,168,67,0.18); }
+    .chat-bubble b { display: block; font-size: 11px; color: var(--t3); margin-bottom: 4px; font-weight: 600; }
+    .chat-input {
+      display: flex; gap: 8px; padding: 12px; border-top: 1px solid var(--brd-m);
+    }
+    .chat-input input {
+      flex: 1; background: var(--bg3); border: 1px solid var(--brd);
+      border-radius: 10px; padding: 10px 12px; color: var(--t1); font: 500 13px var(--font);
+    }
+
+    /* Ended / dialin */
+    .ended {
+      align-items: center; justify-content: center; padding: 28px; overflow: auto;
+      background: radial-gradient(600px 320px at 50% 0%, rgba(74,144,217,0.10), transparent 60%), var(--bg1);
+    }
+    .ended-card {
+      width: min(520px, 100%); background: var(--bg2);
+      border: 1px solid var(--brd); border-radius: 24px; padding: 28px;
+    }
+    .ended-card h3 { font-size: 24px; font-weight: 800; margin-bottom: 8px; }
+    .dial-card {
+      max-width: 440px; margin: 0 auto; text-align: left;
+      background: var(--bg2); border-radius: 20px; padding: 26px; border: 1px solid var(--brd);
+    }
+    .dial-steps { margin: 16px 0; }
+    .dial-steps li {
+      list-style: none; padding: 12px 0; border-bottom: 1px solid var(--brd-m);
+      display: flex; gap: 12px; align-items: flex-start; font-size: 14px;
+    }
+    .dial-steps li:last-child { border-bottom: 0; }
+    .step-n {
+      width: 28px; height: 28px; border-radius: 50%;
+      background: var(--gold-bg); color: var(--gold-l);
+      display: grid; place-items: center; font-weight: 700; font-size: 13px; flex-shrink: 0;
+    }
+    .dial-big {
+      font-size: 32px; font-weight: 800; letter-spacing: 0.16em;
+      text-align: center; margin: 8px 0; font-variant-numeric: tabular-nums;
+    }
+
+    /* Protocol document — densified for 680–780px viewport */
+    .frame.desk.proto-tall { height: 780px; }
+    .protocol-screen {
+      padding: 12px 18px 14px; overflow: auto;
+      background: var(--bg1);
+      align-items: flex-start;
+    }
+    .proto-bar {
+      max-width: 720px; margin: 0 auto 8px;
+      display: flex; flex-direction: column; gap: 8px;
+    }
+    .proto-toolbar {
+      display: flex; flex-wrap: wrap; gap: 6px;
+      align-items: center;
+    }
+    .proto-toolbar .spacer { flex: 1; min-width: 8px; }
+    .proto-primary {
+      display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
+    }
+    .proto-secondary {
+      display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: center;
+    }
+    .proto-secondary .btn-link,
+    .proto-secondary .btn-text {
+      background: none; border: 0; color: var(--t2); cursor: pointer;
+      font: 600 12px var(--font); padding: 4px 0;
+      text-decoration: underline; text-underline-offset: 3px;
+    }
+    .proto-secondary .btn-text:hover { color: var(--t1); }
+    .proto-edit-tools {
+      display: none; flex-wrap: wrap; gap: 8px; align-items: center;
+    }
+    .proto-edit-tools.on { display: flex; }
+    .proto-more { position: relative; }
+    .proto-more-menu {
+      display: none; position: absolute; right: 0; top: calc(100% + 4px);
+      min-width: 180px; background: var(--bg2); border: 1px solid var(--brd);
+      border-radius: 12px; padding: 6px; z-index: 8;
+      box-shadow: var(--shadow);
+    }
+    .proto-more.open .proto-more-menu { display: flex; flex-direction: column; gap: 2px; }
+    .proto-more-menu button {
+      text-align: left; background: transparent; border: 0; color: var(--t1);
+      padding: 10px 12px; border-radius: 8px; cursor: pointer;
+      font: 600 12.5px var(--font);
+    }
+    .proto-more-menu button:hover { background: var(--bg3); }
+    .proto-doc {
+      background: var(--paper);
+      color: var(--paper-ink);
+      border-radius: 8px;
+      padding: 18px 24px 20px;
+      max-width: 720px;
+      margin: 0 auto 8px;
+      box-shadow: 0 8px 40px rgba(0,0,0,0.35);
+      font-size: 12.5px;
+      line-height: 1.4;
+      border: 1px solid rgba(212,168,67,0.18);
+      border-top: 2px solid var(--gold);
+      position: relative;
+    }
+    .proto-doc::before, .proto-doc::after {
+      content: "ᚦ"; position: absolute; font-size: 11px; color: #B8922E;
+      opacity: 0.45; line-height: 1;
+    }
+    .proto-doc::before { top: 8px; left: 10px; }
+    .proto-doc::after { top: 8px; right: 10px; }
+    .proto-doc.editing {
+      outline: 2px solid rgba(30,77,140,0.45);
+      outline-offset: 2px;
+      box-shadow: 0 0 0 4px rgba(30,77,140,0.12), 0 8px 40px rgba(0,0,0,0.35);
+    }
+    .proto-doc.editing [contenteditable="true"],
+    .proto-doc.editing input,
+    .proto-doc.editing textarea {
+      outline: 1.5px solid rgba(30,77,140,0.55);
+      background: rgba(30,77,140,0.06);
+      border-radius: 4px;
+      padding: 2px 4px;
+      box-shadow: inset 0 0 0 1px rgba(30,77,140,0.15);
+    }
+    .proto-head {
+      display: flex; justify-content: space-between; align-items: flex-start;
+      gap: 12px; margin-bottom: 2px; padding: 0 8px;
+    }
+    .proto-brand { display: flex; align-items: center; gap: 8px; }
+    .proto-brand img { width: 28px; height: 28px; object-fit: contain; }
+    .proto-brand .titles b { display: block; font-size: 13px; font-weight: 800; letter-spacing: 0.04em; }
+    .proto-brand .titles span { font-size: 11px; color: var(--paper-muted); }
+    .proto-meta-num { text-align: right; font-size: 11px; color: var(--paper-muted); line-height: 1.4; }
+    .proto-meta-num strong { display: block; color: var(--paper-ink); font-size: 12.5px; }
+    .proto-sep {
+      text-align: center; padding: 4px 0 6px;
+      color: #B8922E; font-size: 10px; letter-spacing: 0.45em;
+      opacity: 0.55; user-select: none;
+    }
+    .proto-sep::before { content: "ᚱ ◆ ᚨ ◆ ᚷ"; }
+    .proto-doc h1 {
+      font-size: 16px; font-weight: 800; margin-bottom: 8px;
+      letter-spacing: -0.02em;
+    }
+    .proto-meta-grid {
+      display: grid; grid-template-columns: 100px 1fr; gap: 3px 10px;
+      margin-bottom: 8px; font-size: 12px;
+    }
+    .proto-meta-grid dt { color: var(--paper-muted); font-weight: 600; }
+    .proto-meta-grid dd { color: var(--paper-ink); }
+    .proto-link {
+      display: inline-flex; align-items: center; gap: 6px;
+      margin-bottom: 8px; padding: 5px 10px;
+      background: #EEF2F8; border-radius: 8px;
+      font-size: 11px; color: var(--blue); font-weight: 600;
+      text-decoration: none; cursor: pointer; border: 1px solid rgba(30,77,140,0.2);
+      font-family: var(--font);
+    }
+    .proto-doc h2 {
+      font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em;
+      color: var(--blue); margin: 10px 0 4px; font-weight: 800;
+      border-bottom: 1px solid var(--paper-line); padding-bottom: 2px;
+    }
+    .proto-doc ol { padding-left: 16px; margin: 0 0 2px; }
+    .proto-doc ol li { margin-bottom: 3px; }
+    .proto-doc ul { padding-left: 16px; }
+    .proto-doc ul li { margin-bottom: 2px; }
+    .proto-doc p { margin: 0; }
+    .proto-table {
+      width: 100%; border-collapse: collapse; font-size: 11.5px; margin-top: 4px;
+    }
+    .proto-table th, .proto-table td {
+      border: 1px solid var(--paper-line); padding: 5px 7px; text-align: left;
+      vertical-align: top;
+    }
+    .proto-table th {
+      background: #F0EDE6; font-weight: 700; font-size: 10px;
+      text-transform: uppercase; letter-spacing: 0.04em; color: var(--paper-muted);
+    }
+    .proto-status {
+      display: inline-block; padding: 1px 6px; border-radius: 999px;
+      font-size: 10px; font-weight: 700;
+      background: #E8F5EE; color: #2D8659;
+    }
+    .proto-status.open { background: #FEF3E0; color: #B8922E; }
+
+    /* Host end confirm */
+    .confirm-box {
+      width: min(400px, 100%); background: var(--bg2);
+      border: 1px solid var(--brd); border-radius: 20px; padding: 28px; text-align: center;
+    }
+
+    /* Phone adaptations */
+    .phone .hub, .phone .ready, .phone .lobby, .phone .ended,
+    .phone .form-screen, .phone .protocol-screen { padding-left: 14px; padding-right: 14px; }
+    .phone .hub { padding-top: 52px; }
+    .phone .form-screen { padding-top: 52px; }
+    .phone .ready { padding-top: 48px; }
+    .phone .protocol-screen { padding-top: 44px; padding-bottom: 16px; }
+    .phone .ended { padding-top: 48px; align-items: flex-start; }
+    .phone .proto-doc { padding: 16px 14px 18px; font-size: 12px; }
+    .phone .proto-doc::before, .phone .proto-doc::after { display: none; }
+    .phone .proto-meta-grid { grid-template-columns: 72px 1fr; }
+    .phone .proto-primary { width: 100%; }
+    .phone .proto-primary .btn { flex: 1; min-width: 0; justify-content: center; }
+    .phone .proto-secondary { display: none; }
+    .phone .proto-more { display: inline-block; }
+    .phone .hub-cta { width: 100%; }
+    .phone .hub-cta .btn { flex: 1; }
+    .phone .dial-code { font-size: 28px; }
+    .phone .ready-extra { grid-template-columns: 90px 1fr; }
+    .phone .qr-box { width: 90px; height: 90px; }
+    .phone .grid.g2 { grid-template-columns: 1fr; grid-template-rows: auto; gap: 8px; padding: 64px 12px 120px; }
+    .phone .tile.span2 { grid-row: auto; min-height: 260px; }
+    .phone .tile { min-height: 110px; }
+    .phone .dock { bottom: 28px; gap: 8px; padding: 8px 10px; }
+    .phone .btn-icon { width: 46px; height: 46px; }
+    .phone .side { left: 12px; right: 12px; width: auto; top: 52px; bottom: 110px; }
+    .phone .filmstrip { display: none; }
+    .phone .room-top { padding: 28px 14px 10px; }
+    .phone .room-title { font-size: 13px; max-width: 58%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .phone .room-title span { display: none; }
+    .phone .form-grid .row2 { grid-template-columns: 1fr; }
+    .phone .choice { flex-direction: column; }
+    .phone .hub-top .btn { padding: 8px 10px; font-size: 12px; }
+
+    .desk .proto-more { display: none; }
+    .desk .proto-secondary { display: flex; }
+
+    .hidden-desk .frame.desk { display: none; }
+    .hidden-phone .frame.phone { display: none; }
+
+    @media (max-width: 1200px) {
+      body { grid-template-columns: 1fr; }
+      .nav { position: relative; height: auto; max-height: 260px; }
+      .frame.desk { width: 100%; max-width: 960px; height: 600px; }
+    }
+  </style>
+</head>
+<body>
+  <aside class="nav">
+    <div class="nav-brand">
+      <img src="img/logo.png" alt="ASGARD" />
+      <div class="rune">ᚦ</div>
+      <div>
+        <h1>Тинг · прототип</h1>
+        <p>ASGARD CRM · все экраны</p>
+      </div>
+    </div>
+
+    <div class="nav-group">
+      <h2>Создание</h2>
+      <button class="active" data-screen="hub"><span class="n">1</span>Хаб Тинга</button>
+      <button data-screen="new"><span class="n">2</span>Новый Тинг</button>
+      <button data-screen="schedule"><span class="n">3</span>По расписанию</button>
+      <button data-screen="meeting-create"><span class="n">4</span>Совещание + Тинг</button>
+      <button data-screen="ready"><span class="n">5</span>Готово: ссылка и код</button>
+      <button data-screen="meeting"><span class="n">6</span>Карточка совещания</button>
+    </div>
+    <div class="nav-group">
+      <h2>Вход</h2>
+      <button data-screen="lobby"><span class="n">7</span>Гость: имя + превью</button>
+      <button data-screen="waiting"><span class="n">8</span>Waiting room</button>
+      <button data-screen="error"><span class="n">9</span>Комната завершена</button>
+      <button data-screen="error-code"><span class="n">10</span>Неверный код</button>
+    </div>
+    <div class="nav-group">
+      <h2>Комната</h2>
+      <button data-screen="room"><span class="n">11</span>Сетка участников</button>
+      <button data-screen="share"><span class="n">12</span>Демонстрация экрана</button>
+      <button data-screen="people"><span class="n">13</span>Панель участников</button>
+      <button data-screen="chat"><span class="n">14</span>Чат в комнате</button>
+      <button data-screen="recording"><span class="n">15</span>Идёт запись</button>
+      <button data-screen="host-end"><span class="n">16</span>Хост: завершить?</button>
+    </div>
+    <div class="nav-group">
+      <h2>После</h2>
+      <button data-screen="ended"><span class="n">17</span>Тинг завершён</button>
+      <button data-screen="protocol"><span class="n">18</span>Протокол</button>
+      <button data-screen="dialin"><span class="n">19</span>Вход по телефону</button>
+    </div>
+
+    <div class="nav-hint">
+      Dial-in: код <b style="color:var(--gold-l)">482917</b> (6 цифр).
+      Ссылка: asgard-crm.ru/ting/k7m2qx — не для набора с телефона.
+    </div>
+  </aside>
+
+  <main class="stage" id="stage">
+    <div class="stage-head">
+      <div>
+        <h2 id="screenTitle">Хаб Тинга</h2>
+        <p id="screenDesc">Встречи из Тинга и из модуля Совещания CRM.</p>
+      </div>
+      <div class="device-toggle" role="group" aria-label="Устройство">
+        <button type="button" class="on" id="btnBoth">Оба</button>
+        <button type="button" id="btnDesk">Desktop</button>
+        <button type="button" id="btnPhone">Mobile</button>
+      </div>
+    </div>
+
+    <div class="frames" id="frames">
+      <!-- ════════════ DESKTOP ════════════ -->
+      <div class="frame desk" id="deskFrame">
+
+        <!-- hub -->
+        <section class="screen hub on" data-id="hub">
+          <div class="hub-top">
+            <div class="brand-block">
+              <div class="logo-row">
+                <img src="img/logo.png" alt="" />
+                <div class="rune-badge">ᚦ</div>
+                <div>
+                  <strong>Тинг</strong>
+                  <div class="brand-sub">ASGARD CRM</div>
+                </div>
+              </div>
+              <span class="rune-line" aria-hidden="true"></span>
+            </div>
+            <div class="hub-cta">
+              <button class="btn btn-crm btn-sm" data-go="meeting-create">Совещание CRM</button>
+              <button class="btn btn-ghost btn-sm" data-go="schedule">По расписанию</button>
+              <button class="btn btn-primary btn-sm" data-go="new">Создать Тинг</button>
+            </div>
+          </div>
+          <div class="runesep" aria-hidden="true"></div>
+          <div class="hub-tabs">
+            <button type="button" class="on">Из Тинга</button>
+            <button type="button">Из Совещаний</button>
+          </div>
+          <div class="hub-hint">Совещания CRM с флагом «Тинг-конференция» тоже появляются здесь — отдельный модуль не нужен.</div>
+          <div class="hub-list">
+            <h4>Ближайшие</h4>
+            <div class="meeting-row ting-src" data-go="meeting">
+              <div class="avatar gold">НМ</div>
+              <div class="meta">
+                <b>Смета ОВКВ · согласование</b>
+                <span>Сегодня · 16:00 · 4 участника · код 482917</span>
+              </div>
+              <span class="chip gold">Тинг</span>
+              <button type="button" class="btn btn-primary btn-sm" data-go="room">Войти</button>
+            </div>
+            <div class="meeting-row crm-src" data-go="meeting">
+              <div class="avatar">РП</div>
+              <div class="meta">
+                <b>Еженедельный статус</b>
+                <span>Пт · 10:00 · из модуля Совещания</span>
+              </div>
+              <span class="chip crm">CRM</span>
+              <span class="status-quiet">завтра</span>
+            </div>
+          </div>
+        </section>
+
+        <!-- new -->
+        <section class="screen modal-screen" data-id="new">
+          <div class="modal">
+            <h3>Новый Тинг</h3>
+            <p class="sub">Выберите, когда собрать людей. Остальное — одна кнопка.</p>
+            <div class="choice">
+              <button type="button" class="sel" data-go="ready">Сейчас<span>Мгновенная комната</span></button>
+              <button type="button" data-go="schedule">Позже<span>В календарь и совещание</span></button>
+            </div>
+            <div class="runesep" aria-hidden="true"></div>
+            <button class="btn btn-ghost btn-lg" data-go="meeting-create">Создать из совещания CRM →</button>
+            <div style="margin-top:14px;display:flex;justify-content:flex-end">
+              <button class="btn btn-ghost btn-sm" data-go="hub">Отмена</button>
+            </div>
+          </div>
+        </section>
+
+        <!-- schedule -->
+        <section class="screen form-screen" data-id="schedule">
+          <div class="form-card">
+            <h3>Тинг по расписанию</h3>
+            <p style="color:var(--t2);font-size:14px">Создаст совещание в CRM и комнату Тинга.</p>
+            <div class="form-grid">
+              <div>
+                <div class="label">Тема</div>
+                <input class="field" value="Смета ОВКВ · согласование" />
+              </div>
+              <div class="row2">
+                <div><div class="label">Дата</div><input class="field" type="date" value="2026-10-02" /></div>
+                <div><div class="label">Время</div><input class="field" type="time" value="16:00" /></div>
+              </div>
+              <div>
+                <div class="label">Участники ASGARD</div>
+                <div class="people">
+                  <span class="chip"><span class="avatar" style="width:22px;height:22px;font-size:10px">НМ</span> Никита</span>
+                  <span class="chip"><span class="avatar" style="width:22px;height:22px;font-size:10px">ЕЛ</span> Елена</span>
+                  <span class="chip">+ добавить</span>
+                </div>
+              </div>
+              <div>
+                <div class="label">Гости (email)</div>
+                <input class="field" placeholder="client@company.ru" />
+              </div>
+              <button class="btn btn-primary btn-lg" data-go="ready">Создать и получить ссылку</button>
+            </div>
+          </div>
+        </section>
+
+        <!-- meeting-create -->
+        <section class="screen form-screen" data-id="meeting-create">
+          <div class="form-card">
+            <div class="chip crm" style="margin-bottom:12px">Модуль Совещания · CRM</div>
+            <h3>Новое совещание</h3>
+            <p style="color:var(--t2);font-size:14px;margin-top:4px">Форма CRM. Включите Тинг — комната создастся вместе с совещанием.</p>
+            <div class="form-grid">
+              <div>
+                <div class="label">Тема</div>
+                <input class="field" value="Смета ОВКВ · согласование" />
+              </div>
+              <div class="row2">
+                <div><div class="label">Дата</div><input class="field" type="date" value="2026-10-02" /></div>
+                <div><div class="label">Время</div><input class="field" type="time" value="16:00" /></div>
+              </div>
+              <div>
+                <div class="label">Участники</div>
+                <div class="people">
+                  <span class="chip"><span class="avatar" style="width:22px;height:22px;font-size:10px">НМ</span> Никита</span>
+                  <span class="chip"><span class="avatar" style="width:22px;height:22px;font-size:10px">ЕЛ</span> Елена</span>
+                  <span class="chip"><span class="avatar" style="width:22px;height:22px;font-size:10px">РИ</span> РП Иванов</span>
+                  <span class="chip">+ гость</span>
+                </div>
+              </div>
+              <div class="toggle-row">
+                <div class="toggle-text">
+                  <b>Тинг-конференция</b>
+                  <span>Создать видеокомнату Тинга и коды dial-in вместе с совещанием</span>
+                </div>
+                <div class="switch on" role="switch" aria-checked="true" id="tingToggleDesk"><i></i></div>
+              </div>
+              <button class="btn btn-primary btn-lg" data-go="ready">Создать совещание и комнату Тинга</button>
+              <button class="btn btn-ghost btn-lg" data-go="hub">Только совещание (без Тинга)</button>
+            </div>
+          </div>
+        </section>
+
+        <!-- ready -->
+        <section class="screen ready" data-id="ready">
+          <div class="ready-card">
+            <div class="brand-block center" style="margin-bottom:4px">
+              <div class="logo-row" style="justify-content:center">
+                <img src="img/logo.png" alt="" style="width:36px;height:36px" />
+                <div class="rune-badge" style="width:32px;height:32px;font-size:16px">ᚦ</div>
+              </div>
+              <span class="rune-line" aria-hidden="true"></span>
+            </div>
+            <h3>Тинг готов</h3>
+            <p class="sub">Отправьте ссылку коллегам и клиентам.</p>
+            <div class="runesep alt" aria-hidden="true"></div>
+            <div class="link-box">
+              <code>asgard-crm.ru/ting/k7m2qx</code>
+            </div>
+            <div class="stack-btns">
+              <button class="btn btn-primary btn-lg" type="button">Скопировать ссылку</button>
+              <button class="btn btn-ghost btn-lg" type="button">Поделиться</button>
+              <button class="btn btn-ghost btn-lg" data-go="room">Войти в Тинг</button>
+            </div>
+            <div class="dial-code-block">
+              <div class="label">Код для телефона</div>
+              <div class="dial-code">482917</div>
+              <div class="hint">6 цифр · наберите после звонка на номер Тинга</div>
+            </div>
+            <div class="ready-extra">
+              <div class="qr-box" title="QR"></div>
+              <div class="call-in-zone">
+                <div class="label">Без интернета — позвоните</div>
+                <div class="phone-line">+7 495 000-00-42</div>
+                <div class="meta-line">код <b>482917</b> · PIN (опц.) <b>3914</b></div>
+                <button type="button" class="btn-link" data-go="dialin">Как дозвониться →</button>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- meeting -->
+        <section class="screen form-screen" data-id="meeting">
+          <div class="form-card">
+            <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
+              <span class="chip crm">Совещание · CRM</span>
+              <span class="chip gold">Тинг</span>
+            </div>
+            <h3>Смета ОВКВ · согласование</h3>
+            <p style="color:var(--t2);margin:8px 0 16px;font-size:14px">Сегодня, 16:00–17:00 · Организатор: Никита</p>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:18px">
+              <span class="chip">Никита</span><span class="chip">Елена</span>
+              <span class="chip">РП Иванов</span><span class="chip">гость · client@</span>
+            </div>
+            <button class="btn btn-primary btn-lg" data-go="room">Войти в Тинг</button>
+            <div class="ting-access">
+              <div class="row"><span>Ссылка</span><b style="font-size:12px;letter-spacing:0;font-weight:600;color:var(--gold-l)">asgard-crm.ru/ting/k7m2qx</b></div>
+              <div class="row"><span>Код телефона</span><b class="code-big">482917</b></div>
+              <div class="row"><span>Телефон</span><b>+7 495 000-00-42</b></div>
+              <div class="row"><span>PIN</span><b>3914</b></div>
+            </div>
+            <button class="btn btn-ghost btn-lg" style="margin-top:12px" data-go="ready">Ссылка и QR</button>
+          </div>
+        </section>
+
+        <!-- lobby -->
+        <section class="screen lobby" data-id="lobby">
+          <div class="lobby-card">
+            <div class="logo-row" style="justify-content:center">
+              <img src="img/logo.png" alt="" style="width:28px;height:28px" />
+              <div class="rune-badge">ᚦ</div>
+              <span class="chip">Тинг · ASGARD</span>
+            </div>
+            <h3>Смета ОВКВ</h3>
+            <p class="sub">Вас ждут. Проверьте камеру и микрофон.</p>
+            <div class="preview">
+              <div class="avatar xl">АК</div>
+              <div class="preview-controls">
+                <button type="button" class="btn-icon mic-off-state" title="Микрофон выкл"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 14a3 3 0 0 0 3-3V7a3 3 0 0 0-6 0v4a3 3 0 0 0 3 3z"/><path d="M19 11v1a7 7 0 0 1-14 0v-1M12 18v3"/><path d="M3 3l18 18"/></svg></button>
+                <button type="button" class="btn-icon cam-off" title="Камера выкл"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 8h4l2-2h8a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V10a2 2 0 0 1 2-2z"/><circle cx="12" cy="13" r="3"/><path d="M3 3l18 18"/></svg></button>
+              </div>
+            </div>
+            <div class="status-plaque">
+              <span class="chip">Микрофон выкл</span>
+              <span class="chip">Камера выкл</span>
+            </div>
+            <div class="label" style="text-align:left">Как вас представить</div>
+            <input class="field" value="Алексей · Заказчик" style="margin-bottom:14px" />
+            <button class="btn btn-primary btn-lg" data-go="room">Войти</button>
+          </div>
+        </section>
+
+        <!-- waiting -->
+        <section class="screen" data-id="waiting">
+          <div class="center-msg">
+            <div class="brand-mark sm">ᚦ</div>
+            <h3>Почти внутри</h3>
+            <p>Хост скоро пустит вас в Тинг. Можно подождать здесь.</p>
+            <div class="chip" style="margin-bottom:18px">Ожидание · Смета ОВКВ</div>
+            <button type="button" class="btn btn-primary">Подождать</button>
+          </div>
+        </section>
+
+        <!-- error -->
+        <section class="screen" data-id="error">
+          <div class="center-msg">
+            <div class="avatar xl" style="background:#3a1a20;color:#ff8a96">!</div>
+            <h3>Тинг уже завершён</h3>
+            <p>Комната закрыта. Попросите новую ссылку у организатора.</p>
+            <button class="btn btn-primary" data-go="hub">На главную</button>
+          </div>
+        </section>
+
+        <!-- error-code -->
+        <section class="screen" data-id="error-code">
+          <div class="center-msg">
+            <div class="avatar xl" style="background:#3a2a14;color:var(--gold-l)">?</div>
+            <h3>Неверный код</h3>
+            <p>Код комнаты из 6 цифр не найден. Проверьте и введите снова — например <b>482917</b>.</p>
+            <input class="field" placeholder="______" maxlength="6" style="max-width:200px;margin:0 auto 14px;text-align:center;letter-spacing:0.3em;font-size:20px;font-weight:700" />
+            <button class="btn btn-primary" data-go="lobby">Повторить</button>
+            <button class="btn-link" style="margin-top:10px" data-go="dialin">Инструкция dial-in</button>
+          </div>
+        </section>
+
+        <!-- room -->
+        <section class="screen room" data-id="room">
+          <div class="room-top">
+            <div class="room-title">Смета ОВКВ <span>24:12</span></div>
+            <div class="room-top-right"><div class="timer">24:12</div><div class="chip">3 в комнате</div></div>
+          </div>
+          <div class="grid g2">
+            <div class="tile span2 speak">
+              <div class="tile-inner"><div class="avatar xl gold">НМ</div></div>
+              <div class="tile-label">Никита · хост</div>
+            </div>
+            <div class="tile">
+              <div class="tile-inner"><div class="avatar lg">ЕЛ</div></div>
+              <div class="tile-label">Елена</div>
+            </div>
+            <div class="tile">
+              <div class="tile-inner"><div class="avatar lg" style="font-size:18px">☎</div></div>
+              <div class="tile-label"><span class="mic-off">мик выкл</span> +7 916 000-45-12</div>
+            </div>
+          </div>
+          <div class="dock">
+            <div class="dock-item"><button type="button" class="btn-icon off" title="Микрофон"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 14a3 3 0 0 0 3-3V7a3 3 0 0 0-6 0v4a3 3 0 0 0 3 3z"/><path d="M19 11v1a7 7 0 0 1-14 0v-1M12 18v3"/></svg></button><span>Мик</span></div>
+            <div class="dock-item"><button type="button" class="btn-icon off" title="Камера"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 8h4l2-2h8a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V10a2 2 0 0 1 2-2z"/><circle cx="12" cy="13" r="3"/></svg></button><span>Камера</span></div>
+            <div class="dock-item"><button type="button" class="btn-icon" title="Экран" data-go="share"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg></button><span>Экран</span></div>
+            <div class="dock-item"><button type="button" class="btn-icon" title="Ещё" data-go="people"><span class="ico-more">⋯</span></button><span>Ещё</span></div>
+            <div class="dock-item"><button type="button" class="btn-icon danger" title="Выйти" data-go="host-end"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 3h4l1 5-3 2a11 11 0 0 0 6 6l2-3 5 1v4l-5-1a15 15 0 0 1-13-13l2-3z"/></svg></button><span>Выйти</span></div>
+          </div>
+        </section>
+
+        <!-- share -->
+        <section class="screen room" data-id="share">
+          <div class="room-top">
+            <div class="room-title">Демонстрация экрана <span>24:12</span></div>
+            <div class="room-top-right"><div class="timer">24:12</div><div class="chip">Вы показываете экран</div></div>
+          </div>
+          <div class="grid g1" style="padding-right:180px">
+            <div class="tile speak" style="min-height:420px;background:linear-gradient(180deg,#1a2338,#0d121c)">
+              <div class="tile-inner" style="color:var(--t2);font-size:14px">
+                <div style="width:70%;height:58%;background:rgba(255,255,255,0.04);border:1px solid var(--brd);border-radius:8px;display:grid;place-items:center">
+                  Смета · Excel · лист «Итоги»
+                </div>
+              </div>
+              <div class="tile-label">Экран · Никита</div>
+            </div>
+          </div>
+          <div class="filmstrip">
+            <div class="film"><div class="tile-inner"><div class="avatar">НМ</div></div></div>
+            <div class="film"><div class="tile-inner"><div class="avatar">ЕЛ</div></div></div>
+          </div>
+          <div class="dock">
+            <div class="dock-item"><button type="button" class="btn-icon off"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 14a3 3 0 0 0 3-3V7a3 3 0 0 0-6 0v4a3 3 0 0 0 3 3z"/><path d="M19 11v1a7 7 0 0 1-14 0v-1M12 18v3"/></svg></button><span>Мик</span></div>
+            <div class="dock-item"><button type="button" class="btn-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 8h4l2-2h8a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V10a2 2 0 0 1 2-2z"/><circle cx="12" cy="13" r="3"/></svg></button><span>Камера</span></div>
+            <div class="dock-item"><button type="button" class="btn-icon" style="background:linear-gradient(180deg,var(--gold-l),var(--gold));color:#1a1205;border-color:transparent" data-go="room"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg></button><span>Экран</span></div>
+            <div class="dock-item"><button type="button" class="btn-icon" data-go="people"><span class="ico-more">⋯</span></button><span>Ещё</span></div>
+            <div class="dock-item"><button type="button" class="btn-icon danger" data-go="host-end"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 3h4l1 5-3 2a11 11 0 0 0 6 6l2-3 5 1v4l-5-1a15 15 0 0 1-13-13l2-3z"/></svg></button><span>Выйти</span></div>
+          </div>
+        </section>
+
+        <!-- people -->
+        <section class="screen room" data-id="people">
+          <div class="room-top">
+            <div class="room-title">Смета ОВКВ <span>24:12</span></div>
+            <div class="room-top-right"><div class="timer">24:12</div></div>
+          </div>
+          <div class="grid g2">
+            <div class="tile span2 speak"><div class="tile-inner"><div class="avatar xl gold">НМ</div></div><div class="tile-label">Никита · хост</div></div>
+            <div class="tile"><div class="tile-inner"><div class="avatar lg">ЕЛ</div></div><div class="tile-label">Елена</div></div>
+            <div class="tile"><div class="tile-inner"><div class="avatar lg">АК</div></div><div class="tile-label">Алексей</div></div>
+          </div>
+          <aside class="side on">
+            <header>Ещё <button class="btn btn-ghost btn-sm" data-go="room">✕</button></header>
+            <div class="body">
+              <div class="plist" style="margin-bottom:14px">
+                <button type="button" class="btn btn-ghost btn-lg" style="text-align:left;margin-bottom:8px" data-go="people">Участники</button>
+                <button type="button" class="btn btn-ghost btn-lg" style="text-align:left;margin-bottom:8px" data-go="chat">Чат</button>
+                <button type="button" class="btn btn-ghost btn-lg" style="text-align:left;margin-bottom:8px" data-go="recording">Запись</button>
+              </div>
+              <div class="label">В комнате</div>
+              <div class="plist">
+                <div class="plist-row"><div class="avatar" style="width:32px;height:32px;font-size:11px">НМ</div><div class="who">Никита<small>хост · говорит</small></div></div>
+                <div class="plist-row"><div class="avatar" style="width:32px;height:32px;font-size:11px">ЕЛ</div><div class="who">Елена<small>CRM · камера</small></div></div>
+                <div class="plist-row"><div class="avatar" style="width:32px;height:32px;font-size:11px">☎</div><div class="who">+7 916 000-45-12<small>телефон</small></div></div>
+                <div class="plist-row"><div class="avatar" style="width:32px;height:32px;font-size:11px">АК</div><div class="who">Алексей<small>гость</small></div></div>
+              </div>
+            </div>
+          </aside>
+          <div class="dock">
+            <div class="dock-item"><button type="button" class="btn-icon off"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 14a3 3 0 0 0 3-3V7a3 3 0 0 0-6 0v4a3 3 0 0 0 3 3z"/><path d="M19 11v1a7 7 0 0 1-14 0v-1M12 18v3"/></svg></button><span>Мик</span></div>
+            <div class="dock-item"><button type="button" class="btn-icon off"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 8h4l2-2h8a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V10a2 2 0 0 1 2-2z"/><circle cx="12" cy="13" r="3"/></svg></button><span>Камера</span></div>
+            <div class="dock-item"><button type="button" class="btn-icon" data-go="share"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg></button><span>Экран</span></div>
+            <div class="dock-item"><button type="button" class="btn-icon" data-go="people"><span class="ico-more">⋯</span></button><span>Ещё</span></div>
+            <div class="dock-item"><button type="button" class="btn-icon danger" data-go="host-end"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 3h4l1 5-3 2a11 11 0 0 0 6 6l2-3 5 1v4l-5-1a15 15 0 0 1-13-13l2-3z"/></svg></button><span>Выйти</span></div>
+          </div>
+        </section>
+
+        <!-- chat -->
+        <section class="screen room" data-id="chat">
+          <div class="room-top"><div class="room-title">Смета ОВКВ <span>24:12</span></div><div class="room-top-right"><div class="timer">24:12</div></div></div>
+          <div class="grid g1" style="padding-right:320px">
+            <div class="tile speak" style="min-height:360px"><div class="tile-inner"><div class="avatar xl gold">НМ</div></div><div class="tile-label">Никита · хост</div></div>
+          </div>
+          <aside class="side on">
+            <header>Чат <button class="btn btn-ghost btn-sm" data-go="room">✕</button></header>
+            <div class="body">
+              <div class="chat-bubble"><b>Елена</b>Скиньте ссылку на смету ещё раз</div>
+              <div class="chat-bubble me"><b>Вы</b>Уже в чате совещания ✓</div>
+              <div class="chat-bubble"><b>Никита</b>Смотрим лист «Итоги»</div>
+            </div>
+            <div class="chat-input">
+              <input placeholder="Сообщение…" />
+              <button class="btn btn-primary" style="padding:10px 14px">→</button>
+            </div>
+          </aside>
+          <div class="dock">
+            <div class="dock-item"><button type="button" class="btn-icon off"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 14a3 3 0 0 0 3-3V7a3 3 0 0 0-6 0v4a3 3 0 0 0 3 3z"/><path d="M19 11v1a7 7 0 0 1-14 0v-1M12 18v3"/></svg></button><span>Мик</span></div>
+            <div class="dock-item"><button type="button" class="btn-icon off"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 8h4l2-2h8a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V10a2 2 0 0 1 2-2z"/><circle cx="12" cy="13" r="3"/></svg></button><span>Камера</span></div>
+            <div class="dock-item"><button type="button" class="btn-icon" data-go="share"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg></button><span>Экран</span></div>
+            <div class="dock-item"><button type="button" class="btn-icon" data-go="people"><span class="ico-more">⋯</span></button><span>Ещё</span></div>
+            <div class="dock-item"><button type="button" class="btn-icon danger" data-go="host-end"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 3h4l1 5-3 2a11 11 0 0 0 6 6l2-3 5 1v4l-5-1a15 15 0 0 1-13-13l2-3z"/></svg></button><span>Выйти</span></div>
+          </div>
+        </section>
+
+        <!-- recording -->
+        <section class="screen room" data-id="recording">
+          <div class="consent-bar">Идёт запись · все участники в эфире</div>
+          <div class="room-top">
+            <div class="room-title">Смета ОВКВ <span>24:12</span></div>
+            <div class="room-top-right"><div class="timer">24:12</div><div class="rec-pill"><i></i> REC · запись</div></div>
+          </div>
+          <div class="grid g2">
+            <div class="tile span2 speak"><div class="tile-inner"><div class="avatar xl gold">НМ</div></div><div class="tile-label">Никита · хост</div></div>
+            <div class="tile"><div class="tile-inner"><div class="avatar lg">ЕЛ</div></div><div class="tile-label">Елена</div></div>
+            <div class="tile"><div class="tile-inner"><div class="avatar lg">АК</div></div><div class="tile-label">Алексей</div></div>
+          </div>
+          <div class="dock">
+            <div class="dock-item"><button type="button" class="btn-icon off"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 14a3 3 0 0 0 3-3V7a3 3 0 0 0-6 0v4a3 3 0 0 0 3 3z"/><path d="M19 11v1a7 7 0 0 1-14 0v-1M12 18v3"/></svg></button><span>Мик</span></div>
+            <div class="dock-item"><button type="button" class="btn-icon off"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 8h4l2-2h8a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V10a2 2 0 0 1 2-2z"/><circle cx="12" cy="13" r="3"/></svg></button><span>Камера</span></div>
+            <div class="dock-item"><button type="button" class="btn-icon" data-go="share"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg></button><span>Экран</span></div>
+            <div class="dock-item"><button type="button" class="btn-icon" data-go="people"><span class="ico-more">⋯</span></button><span>Ещё</span></div>
+            <div class="dock-item"><button type="button" class="btn-icon danger" data-go="host-end"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 3h4l1 5-3 2a11 11 0 0 0 6 6l2-3 5 1v4l-5-1a15 15 0 0 1-13-13l2-3z"/></svg></button><span>Выйти</span></div>
+          </div>
+        </section>
+
+        <!-- host-end -->
+        <section class="screen modal-screen" data-id="host-end">
+          <div class="confirm-box">
+            <div class="brand-mark sm" style="margin:0 auto 14px">ᚦ</div>
+            <h3 style="font-size:20px;margin-bottom:8px">Завершить Тинг?</h3>
+            <p style="color:var(--t2);font-size:14px;margin-bottom:20px;line-height:1.45">Все участники выйдут из комнаты. Запись и протокол сохранятся.</p>
+            <div class="stack-btns">
+              <button class="btn btn-danger btn-lg" data-go="ended">Завершить для всех</button>
+              <button class="btn btn-ghost btn-lg" data-go="ended">Выйти только мне</button>
+              <button class="btn btn-ghost btn-lg" data-go="room">Отмена</button>
+            </div>
+          </div>
+        </section>
+
+        <!-- ended -->
+        <section class="screen ended" data-id="ended">
+          <div class="ended-card" style="text-align:center">
+            <div class="brand-mark sm" style="margin:0 auto">ᚦ</div>
+            <h3>Тинг завершён</h3>
+            <p style="color:var(--t2);margin-bottom:20px">24 мин · 4 участника · запись сохранена</p>
+            <div class="stack-btns">
+              <button class="btn btn-primary btn-lg" data-go="protocol">Открыть протокол</button>
+              <button class="btn btn-ghost btn-lg">Смотреть запись</button>
+              <button class="btn btn-ghost btn-lg" data-go="hub">На главную</button>
+            </div>
+          </div>
+        </section>
+
+        <!-- protocol -->
+        <section class="screen protocol-screen" data-id="protocol">
+          <div class="proto-bar">
+            <div class="proto-toolbar">
+              <span class="chip ai">ИИ · черновик</span>
+              <span class="chip proto-mode-chip">Просмотр</span>
+              <div class="spacer"></div>
+              <div class="proto-edit-tools">
+                <button type="button" class="btn btn-primary btn-sm proto-save-btn">Сохранить</button>
+                <button type="button" class="btn btn-ghost btn-sm proto-cancel-btn">Отмена</button>
+              </div>
+            </div>
+            <div class="proto-primary">
+              <button type="button" class="btn btn-primary btn-sm">Отправить всем</button>
+              <button type="button" class="btn btn-primary btn-sm" style="background:linear-gradient(180deg,var(--blue-l),var(--blue));color:#fff">Печать / PDF</button>
+            </div>
+            <div class="proto-secondary">
+              <button type="button" class="btn-text proto-edit-btn">Редактировать</button>
+              <button type="button" class="btn-text">Создать задачи</button>
+              <button type="button" class="btn-text">Скопировать</button>
+              <button type="button" class="btn-text" data-go="meeting">В совещание</button>
+            </div>
+            <div class="proto-more">
+              <button type="button" class="btn btn-ghost btn-sm proto-more-toggle">Ещё…</button>
+              <div class="proto-more-menu">
+                <button type="button" class="proto-edit-btn">Редактировать</button>
+                <button type="button">Создать задачи</button>
+                <button type="button">Скопировать</button>
+                <button type="button" data-go="meeting">В совещание</button>
+              </div>
+            </div>
+          </div>
+          <div class="proto-doc" data-proto>
+            <div class="proto-head">
+              <div class="proto-brand">
+                <img src="img/logo.png" alt="ASGARD" />
+                <div class="titles">
+                  <b>ASGARD</b>
+                  <span>Протокол совещания / Тинг</span>
+                </div>
+              </div>
+              <div class="proto-meta-num">
+                <strong contenteditable="false">№ Т-2026-1002</strong>
+                2 октября 2026 г.
+              </div>
+            </div>
+            <div class="proto-sep" aria-hidden="true"></div>
+            <h1 contenteditable="false">Смета ОВКВ · согласование</h1>
+            <dl class="proto-meta-grid">
+              <dt>Дата / время</dt><dd contenteditable="false">02.10.2026, 16:00–16:24</dd>
+              <dt>Длительность</dt><dd contenteditable="false">24 мин</dd>
+              <dt>Организатор</dt><dd contenteditable="false">Никита Морозов (CRM)</dd>
+              <dt>Участники</dt>
+              <dd contenteditable="false">
+                Никита Морозов (CRM, хост); Елена Лебедева (CRM);
+                Алексей Ковалёв (гость); +7 916 000-45-12 (тел.)
+              </dd>
+            </dl>
+            <button type="button" class="proto-link" data-go="meeting">Совещание #4821 · Открыть в модуле Совещания →</button>
+
+            <h2>Повестка</h2>
+            <ol contenteditable="false">
+              <li>Объём работ по разделу ОВ</li>
+              <li>Цена оборудования и наценка</li>
+              <li>Сроки монтажа и ТКП клиенту</li>
+            </ol>
+
+            <h2>Краткое резюме</h2>
+            <p contenteditable="false">
+              Согласовали объём работ по разделу ОВ. Цену оборудования оставили без наценки (1:1).
+              Порог директора по work_price без НДС не затронут.
+            </p>
+
+            <h2>Решения</h2>
+            <ol contenteditable="false">
+              <li>Утвердить смету ОВКВ в текущем составе — <b>отв. Никита Морозов</b></li>
+              <li>Оборудование без наценки — <b>отв. Елена Лебедева</b></li>
+            </ol>
+
+            <h2>Поручения</h2>
+            <table class="proto-table">
+              <thead>
+                <tr><th>№</th><th>Поручение</th><th>Ответственный</th><th>Срок</th><th>Статус</th></tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>1</td>
+                  <td contenteditable="false">Выгрузить ТКП клиенту</td>
+                  <td>Елена Лебедева</td>
+                  <td>04.10.2026</td>
+                  <td><span class="proto-status open">открыто</span></td>
+                </tr>
+                <tr>
+                  <td>2</td>
+                  <td contenteditable="false">Прислать уточнение по срокам монтажа</td>
+                  <td>Алексей Ковалёв (гость)</td>
+                  <td>07.10.2026</td>
+                  <td><span class="proto-status open">открыто</span></td>
+                </tr>
+                <tr>
+                  <td>3</td>
+                  <td contenteditable="false">Зафиксировать решение в карточке совещания</td>
+                  <td>Никита Морозов</td>
+                  <td>02.10.2026</td>
+                  <td><span class="proto-status">сделано</span></td>
+                </tr>
+              </tbody>
+            </table>
+
+            <h2>Открытые вопросы</h2>
+            <ul contenteditable="false">
+              <li>Нужна ли отдельная смета на ПНР — отложено до ответа заказчика</li>
+              <li>Подтверждение даты выезда бригады</li>
+            </ul>
+          </div>
+        </section>
+
+        <!-- dialin -->
+        <section class="screen ended" data-id="dialin">
+          <div class="dial-card">
+            <div class="logo-row" style="margin-bottom:12px">
+              <img src="img/logo.png" alt="" style="width:28px;height:28px" />
+              <div class="rune-badge">ᚦ</div>
+              <strong style="font-size:16px">Вход по телефону</strong>
+            </div>
+            <p style="color:var(--t2);font-size:14px;margin-bottom:8px">Если нет интернета — достаточно мобильной связи.</p>
+            <div class="dial-code-block" style="margin:12px 0">
+              <div class="label">Код Тинга</div>
+              <div class="dial-big">482917</div>
+            </div>
+            <ul class="dial-steps">
+              <li><span class="step-n">1</span><div>Позвоните на <b>+7 495 000-00-42</b></div></li>
+              <li><span class="step-n">2</span><div>Введите код: <b>482917</b> (6 цифр)</div></li>
+              <li><span class="step-n">3</span><div>При необходимости PIN: <b>3914</b></div></li>
+              <li><span class="step-n">4</span><div>Вы в комнате голосом — в сетке отображается ваш номер.</div></li>
+            </ul>
+            <p style="font-size:12px;color:var(--t3);margin-bottom:14px">Ссылка asgard-crm.ru/ting/k7m2qx — только для браузера, не для набора с телефона.</p>
+            <button class="btn btn-primary btn-lg" data-go="ready">Скопировать инструкцию</button>
+          </div>
+        </section>
+      </div>
+
+      <!-- ════════════ PHONE ════════════ -->
+      <div class="frame phone" id="phoneFrame">
+
+        <section class="screen hub on" data-id="hub">
+          <div class="hub-top">
+            <div class="brand-block">
+              <div class="logo-row">
+                <img src="img/logo.png" alt="" />
+                <div class="rune-badge">ᚦ</div>
+                <strong>Тинг</strong>
+              </div>
+              <span class="rune-line" aria-hidden="true"></span>
+            </div>
+          </div>
+          <div class="hub-cta" style="margin-bottom:12px">
+            <button class="btn btn-crm btn-sm" data-go="meeting-create">Совещание CRM</button>
+            <button class="btn btn-primary btn-sm" data-go="new">Создать Тинг</button>
+          </div>
+          <div class="runesep" aria-hidden="true"></div>
+          <div class="hub-tabs">
+            <button type="button" class="on">Из Тинга</button>
+            <button type="button">Совещания</button>
+          </div>
+          <div class="hub-hint" style="font-size:11px">CRM-совещания с Тингом тоже здесь.</div>
+          <div class="hub-list">
+            <h4>Ближайшие</h4>
+            <div class="meeting-row ting-src" data-go="meeting">
+              <div class="avatar gold">НМ</div>
+              <div class="meta"><b>Смета ОВКВ</b><span>Сегодня · 16:00</span></div>
+              <button type="button" class="btn btn-primary btn-sm" data-go="room">Войти</button>
+            </div>
+            <div class="meeting-row crm-src" data-go="meeting">
+              <div class="avatar">РП</div>
+              <div class="meta"><b>Еженедельный статус</b><span>Пт · 10:00 · CRM</span></div>
+              <span class="chip crm">CRM</span>
+            </div>
+          </div>
+        </section>
+
+        <section class="screen modal-screen" data-id="new">
+          <div class="modal" style="margin-top:80px">
+            <h3>Новый Тинг</h3>
+            <p class="sub">Когда собрать людей?</p>
+            <div class="choice">
+              <button class="sel" data-go="ready">Сейчас<span>Мгновенно</span></button>
+              <button data-go="schedule">Позже<span>В календарь</span></button>
+            </div>
+            <button class="btn-link" style="margin-top:12px" data-go="meeting-create">Из совещания CRM →</button>
+          </div>
+        </section>
+
+        <section class="screen form-screen" data-id="schedule">
+          <div class="form-card" style="padding:18px">
+            <h3>По расписанию</h3>
+            <div class="form-grid">
+              <div><div class="label">Тема</div><input class="field" value="Смета ОВКВ" /></div>
+              <div><div class="label">Когда</div><input class="field" value="Сегодня, 16:00" /></div>
+              <button class="btn btn-primary btn-lg" data-go="ready">Создать</button>
+            </div>
+          </div>
+        </section>
+
+        <section class="screen form-screen" data-id="meeting-create">
+          <div class="form-card" style="padding:18px">
+            <div class="chip crm" style="margin-bottom:10px">Совещания CRM</div>
+            <h3 style="font-size:18px">Новое совещание</h3>
+            <div class="form-grid">
+              <div><div class="label">Тема</div><input class="field" value="Смета ОВКВ" /></div>
+              <div><div class="label">Когда</div><input class="field" value="02.10 · 16:00" /></div>
+              <div class="toggle-row" style="padding:12px">
+                <div class="toggle-text"><b>Тинг-конференция</b><span>ON</span></div>
+                <div class="switch on"><i></i></div>
+              </div>
+              <button class="btn btn-primary btn-lg" data-go="ready">Создать совещание и комнату Тинга</button>
+            </div>
+          </div>
+        </section>
+
+        <section class="screen ready" data-id="ready">
+          <div class="ready-card" style="padding:20px">
+            <div class="brand-block center">
+              <div class="logo-row" style="justify-content:center">
+                <img src="img/logo.png" alt="" style="width:28px;height:28px" />
+                <div class="rune-badge">ᚦ</div>
+              </div>
+              <span class="rune-line" aria-hidden="true"></span>
+            </div>
+            <h3 style="font-size:20px">Тинг готов</h3>
+            <p class="sub" style="font-size:13px">Отправьте ссылку</p>
+            <div class="runesep alt" aria-hidden="true"></div>
+            <div class="link-box"><code>asgard-crm.ru/ting/k7m2qx</code></div>
+            <button type="button" class="btn btn-primary btn-lg">Скопировать ссылку</button>
+            <button type="button" class="btn btn-ghost btn-lg" style="margin-top:8px">Поделиться</button>
+            <button type="button" class="btn btn-ghost btn-lg" style="margin-top:8px" data-go="room">Войти</button>
+            <div class="dial-code-block">
+              <div class="label">Код для телефона</div>
+              <div class="dial-code" style="font-size:28px">482917</div>
+            </div>
+            <div class="ready-extra">
+              <div class="qr-box"></div>
+              <div class="call-in-zone">
+                <div class="phone-line">+7 495 000-00-42</div>
+                <div class="meta-line">код <b>482917</b> · PIN <b>3914</b></div>
+                <button type="button" class="btn-link" data-go="dialin">Как дозвониться →</button>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="screen form-screen" data-id="meeting">
+          <div class="form-card" style="padding:18px">
+            <span class="chip gold" style="margin-bottom:10px">Тинг</span>
+            <h3 style="font-size:18px">Смета ОВКВ</h3>
+            <p style="color:var(--t2);font-size:13px;margin:8px 0 14px">Сегодня 16:00</p>
+            <button class="btn btn-primary btn-lg" data-go="room">Войти в Тинг</button>
+            <div class="ting-access">
+              <div class="row"><span>Ссылка</span><b style="font-size:11px;letter-spacing:0">…/ting/k7m2qx</b></div>
+              <div class="row"><span>Код</span><b class="code-big">482917</b></div>
+              <div class="row"><span>Тел.</span><b>+7 495 000-00-42</b></div>
+            </div>
+          </div>
+        </section>
+
+        <section class="screen lobby" data-id="lobby">
+          <div class="lobby-card" style="padding-top:36px">
+            <h3 style="font-size:22px">Смета ОВКВ</h3>
+            <p class="sub">Проверьте звук и камеру</p>
+            <div class="preview" style="aspect-ratio:1/1.05">
+              <div class="avatar xl">АК</div>
+              <div class="preview-controls">
+                <button type="button" class="btn-icon mic-off-state"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 14a3 3 0 0 0 3-3V7a3 3 0 0 0-6 0v4a3 3 0 0 0 3 3z"/><path d="M19 11v1a7 7 0 0 1-14 0v-1M12 18v3"/><path d="M3 3l18 18"/></svg></button>
+                <button type="button" class="btn-icon cam-off"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 8h4l2-2h8a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V10a2 2 0 0 1 2-2z"/><circle cx="12" cy="13" r="3"/><path d="M3 3l18 18"/></svg></button>
+              </div>
+            </div>
+            <input class="field" value="Алексей · Заказчик" style="margin-bottom:12px" />
+            <button class="btn btn-primary btn-lg" data-go="room">Войти</button>
+          </div>
+        </section>
+
+        <section class="screen" data-id="waiting">
+          <div class="center-msg">
+            <div class="brand-mark sm">ᚦ</div>
+            <h3>Ждём хоста</h3>
+            <p>Вас пустят в Тинг через мгновение.</p>
+            <button type="button" class="btn btn-primary">Подождать</button>
+          </div>
+        </section>
+
+        <section class="screen" data-id="error">
+          <div class="center-msg">
+            <h3>Тинг завершён</h3>
+            <p>Попросите новую ссылку.</p>
+            <button type="button" class="btn btn-primary" data-go="hub">На главную</button>
+          </div>
+        </section>
+
+        <section class="screen" data-id="error-code">
+          <div class="center-msg">
+            <h3>Неверный код</h3>
+            <p>Введите 6 цифр снова.</p>
+            <input class="field" placeholder="482917" maxlength="6" style="max-width:180px;margin:0 auto 12px;text-align:center;letter-spacing:0.2em;font-weight:700" />
+            <button class="btn btn-primary" data-go="lobby">Повторить</button>
+          </div>
+        </section>
+
+        <section class="screen room" data-id="room">
+          <div class="room-top"><div class="room-title">Смета ОВКВ</div><div class="room-top-right"><div class="timer">24:12</div></div></div>
+          <div class="grid g2">
+            <div class="tile span2 speak"><div class="tile-inner"><div class="avatar xl gold">НМ</div></div><div class="tile-label">Никита · хост</div></div>
+            <div class="tile"><div class="tile-inner"><div class="avatar lg">ЕЛ</div></div><div class="tile-label">Елена</div></div>
+            <div class="tile"><div class="tile-inner"><div class="avatar lg" style="font-size:18px">☎</div></div><div class="tile-label"><span class="mic-off">мик выкл</span> +7 916…</div></div>
+          </div>
+          <div class="dock">
+            <div class="dock-item"><button type="button" class="btn-icon off"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 14a3 3 0 0 0 3-3V7a3 3 0 0 0-6 0v4a3 3 0 0 0 3 3z"/><path d="M19 11v1a7 7 0 0 1-14 0v-1M12 18v3"/></svg></button><span>Мик</span></div>
+            <div class="dock-item"><button type="button" class="btn-icon off"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 8h4l2-2h8a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V10a2 2 0 0 1 2-2z"/><circle cx="12" cy="13" r="3"/></svg></button><span>Камера</span></div>
+            <div class="dock-item"><button type="button" class="btn-icon" data-go="share"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg></button><span>Экран</span></div>
+            <div class="dock-item"><button type="button" class="btn-icon" data-go="people"><span class="ico-more">⋯</span></button><span>Ещё</span></div>
+            <div class="dock-item"><button type="button" class="btn-icon danger" data-go="host-end"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 3h4l1 5-3 2a11 11 0 0 0 6 6l2-3 5 1v4l-5-1a15 15 0 0 1-13-13l2-3z"/></svg></button><span>Выйти</span></div>
+          </div>
+        </section>
+
+        <section class="screen room" data-id="share">
+          <div class="room-top"><div class="room-title">Демонстрация</div><div class="room-top-right"><div class="timer">24:12</div></div></div>
+          <div class="grid g1">
+            <div class="tile" style="min-height:400px"><div class="tile-inner" style="color:var(--t2)">Демонстрация</div><div class="tile-label">Экран · Никита</div></div>
+          </div>
+          <div class="dock">
+            <div class="dock-item"><button type="button" class="btn-icon off"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 14a3 3 0 0 0 3-3V7a3 3 0 0 0-6 0v4a3 3 0 0 0 3 3z"/><path d="M19 11v1a7 7 0 0 1-14 0v-1M12 18v3"/></svg></button><span>Мик</span></div>
+            <div class="dock-item"><button type="button" class="btn-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 8h4l2-2h8a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V10a2 2 0 0 1 2-2z"/><circle cx="12" cy="13" r="3"/></svg></button><span>Камера</span></div>
+            <div class="dock-item"><button type="button" class="btn-icon" style="background:linear-gradient(180deg,var(--gold-l),var(--gold));color:#1a1205;border-color:transparent" data-go="room"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg></button><span>Экран</span></div>
+            <div class="dock-item"><button type="button" class="btn-icon" data-go="people"><span class="ico-more">⋯</span></button><span>Ещё</span></div>
+            <div class="dock-item"><button type="button" class="btn-icon danger" data-go="host-end"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 3h4l1 5-3 2a11 11 0 0 0 6 6l2-3 5 1v4l-5-1a15 15 0 0 1-13-13l2-3z"/></svg></button><span>Выйти</span></div>
+          </div>
+        </section>
+
+        <section class="screen room" data-id="people">
+          <div class="room-top"><div class="room-title">Смета ОВКВ</div><div class="room-top-right"><div class="timer">24:12</div></div></div>
+          <aside class="side on" style="top:52px">
+            <header>Ещё <button class="btn btn-ghost btn-sm" data-go="room">✕</button></header>
+            <div class="body">
+              <button type="button" class="btn btn-ghost btn-lg" style="text-align:left;margin-bottom:8px" data-go="chat">Чат</button>
+              <button type="button" class="btn btn-ghost btn-lg" style="text-align:left;margin-bottom:8px" data-go="recording">Запись</button>
+              <div class="label" style="margin-top:10px">Участники</div>
+              <div class="plist">
+                <div class="plist-row"><div class="avatar" style="width:32px;height:32px;font-size:11px">НМ</div><div class="who">Никита<small>хост</small></div></div>
+                <div class="plist-row"><div class="avatar" style="width:32px;height:32px;font-size:11px">ЕЛ</div><div class="who">Елена</div></div>
+                <div class="plist-row"><div class="avatar" style="width:32px;height:32px;font-size:11px">☎</div><div class="who">+7 916…</div></div>
+              </div>
+            </div>
+          </aside>
+          <div class="dock">
+            <div class="dock-item"><button type="button" class="btn-icon off"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 14a3 3 0 0 0 3-3V7a3 3 0 0 0-6 0v4a3 3 0 0 0 3 3z"/><path d="M19 11v1a7 7 0 0 1-14 0v-1M12 18v3"/></svg></button><span>Мик</span></div>
+            <div class="dock-item"><button type="button" class="btn-icon off"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 8h4l2-2h8a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V10a2 2 0 0 1 2-2z"/><circle cx="12" cy="13" r="3"/></svg></button><span>Камера</span></div>
+            <div class="dock-item"><button type="button" class="btn-icon" data-go="share"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg></button><span>Экран</span></div>
+            <div class="dock-item"><button type="button" class="btn-icon" data-go="people"><span class="ico-more">⋯</span></button><span>Ещё</span></div>
+            <div class="dock-item"><button type="button" class="btn-icon danger" data-go="host-end"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 3h4l1 5-3 2a11 11 0 0 0 6 6l2-3 5 1v4l-5-1a15 15 0 0 1-13-13l2-3z"/></svg></button><span>Выйти</span></div>
+          </div>
+        </section>
+
+        <section class="screen room" data-id="chat">
+          <div class="room-top"><div class="room-title">Смета ОВКВ</div><div class="room-top-right"><div class="timer">24:12</div></div></div>
+          <aside class="side on">
+            <header>Чат <button class="btn btn-ghost btn-sm" data-go="room">✕</button></header>
+            <div class="body">
+              <div class="chat-bubble"><b>Елена</b>Ссылку на смету</div>
+              <div class="chat-bubble me"><b>Вы</b>Ок</div>
+            </div>
+            <div class="chat-input"><input placeholder="Сообщение…" /><button class="btn btn-primary" style="padding:10px 12px">→</button></div>
+          </aside>
+          <div class="dock">
+            <div class="dock-item"><button type="button" class="btn-icon off"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 14a3 3 0 0 0 3-3V7a3 3 0 0 0-6 0v4a3 3 0 0 0 3 3z"/><path d="M19 11v1a7 7 0 0 1-14 0v-1M12 18v3"/></svg></button><span>Мик</span></div>
+            <div class="dock-item"><button type="button" class="btn-icon off"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 8h4l2-2h8a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V10a2 2 0 0 1 2-2z"/><circle cx="12" cy="13" r="3"/></svg></button><span>Камера</span></div>
+            <div class="dock-item"><button type="button" class="btn-icon" data-go="share"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg></button><span>Экран</span></div>
+            <div class="dock-item"><button type="button" class="btn-icon" data-go="people"><span class="ico-more">⋯</span></button><span>Ещё</span></div>
+            <div class="dock-item"><button type="button" class="btn-icon danger" data-go="host-end"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 3h4l1 5-3 2a11 11 0 0 0 6 6l2-3 5 1v4l-5-1a15 15 0 0 1-13-13l2-3z"/></svg></button><span>Выйти</span></div>
+          </div>
+        </section>
+
+        <section class="screen room" data-id="recording">
+          <div class="consent-bar">Идёт запись</div>
+          <div class="room-top">
+            <div class="room-title">Смета ОВКВ</div>
+            <div class="room-top-right"><div class="timer">24:12</div><div class="rec-pill"><i></i> REC</div></div>
+          </div>
+          <div class="grid g2">
+            <div class="tile span2 speak"><div class="tile-inner"><div class="avatar xl gold">НМ</div></div><div class="tile-label">Никита</div></div>
+            <div class="tile"><div class="tile-inner"><div class="avatar lg">ЕЛ</div></div><div class="tile-label">Елена</div></div>
+          </div>
+          <div class="dock">
+            <div class="dock-item"><button type="button" class="btn-icon off"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 14a3 3 0 0 0 3-3V7a3 3 0 0 0-6 0v4a3 3 0 0 0 3 3z"/><path d="M19 11v1a7 7 0 0 1-14 0v-1M12 18v3"/></svg></button><span>Мик</span></div>
+            <div class="dock-item"><button type="button" class="btn-icon off"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 8h4l2-2h8a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V10a2 2 0 0 1 2-2z"/><circle cx="12" cy="13" r="3"/></svg></button><span>Камера</span></div>
+            <div class="dock-item"><button type="button" class="btn-icon" data-go="share"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg></button><span>Экран</span></div>
+            <div class="dock-item"><button type="button" class="btn-icon" data-go="people"><span class="ico-more">⋯</span></button><span>Ещё</span></div>
+            <div class="dock-item"><button type="button" class="btn-icon danger" data-go="host-end"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 3h4l1 5-3 2a11 11 0 0 0 6 6l2-3 5 1v4l-5-1a15 15 0 0 1-13-13l2-3z"/></svg></button><span>Выйти</span></div>
+          </div>
+        </section>
+
+        <section class="screen modal-screen" data-id="host-end">
+          <div class="confirm-box" style="margin-top:100px">
+            <h3 style="font-size:18px;margin-bottom:8px">Завершить Тинг?</h3>
+            <p style="color:var(--t2);font-size:13px;margin-bottom:16px">Все выйдут из комнаты.</p>
+            <button class="btn btn-danger btn-lg" data-go="ended">Завершить для всех</button>
+            <button class="btn btn-ghost btn-lg" style="margin-top:8px" data-go="room">Отмена</button>
+          </div>
+        </section>
+
+        <section class="screen ended" data-id="ended">
+          <div class="ended-card" style="padding:20px;text-align:center">
+            <div class="brand-mark sm" style="margin:0 auto 10px">ᚦ</div>
+            <h3 style="font-size:20px">Тинг завершён</h3>
+            <p style="color:var(--t2);margin:8px 0 16px;font-size:13px">24 мин · запись есть</p>
+            <button class="btn btn-primary btn-lg" data-go="protocol">Протокол</button>
+            <button class="btn btn-ghost btn-lg" style="margin-top:8px" data-go="hub">На главную</button>
+          </div>
+        </section>
+
+        <section class="screen protocol-screen" data-id="protocol">
+          <div class="proto-bar">
+            <div class="proto-toolbar">
+              <span class="chip ai">ИИ</span>
+              <span class="chip proto-mode-chip">Просмотр</span>
+              <div class="spacer"></div>
+              <div class="proto-edit-tools">
+                <button type="button" class="btn btn-primary btn-sm proto-save-btn">Сохранить</button>
+                <button type="button" class="btn btn-ghost btn-sm proto-cancel-btn">Отмена</button>
+              </div>
+            </div>
+            <div class="proto-primary">
+              <button type="button" class="btn btn-primary btn-sm">Отправить всем</button>
+              <button type="button" class="btn btn-primary btn-sm" style="background:linear-gradient(180deg,var(--blue-l),var(--blue));color:#fff">Печать / PDF</button>
+              <div class="proto-more">
+                <button type="button" class="btn btn-ghost btn-sm proto-more-toggle">Ещё…</button>
+                <div class="proto-more-menu">
+                  <button type="button" class="proto-edit-btn">Редактировать</button>
+                  <button type="button">Создать задачи</button>
+                  <button type="button">Скопировать</button>
+                  <button type="button" data-go="meeting">В совещание</button>
+                </div>
+              </div>
+            </div>
+            <div class="proto-secondary">
+              <button type="button" class="btn-text proto-edit-btn">Редактировать</button>
+              <button type="button" class="btn-text">Создать задачи</button>
+              <button type="button" class="btn-text">Скопировать</button>
+              <button type="button" class="btn-text" data-go="meeting">В совещание</button>
+            </div>
+          </div>
+          <div class="proto-doc" data-proto>
+            <div class="proto-head">
+              <div class="proto-brand">
+                <img src="img/logo.png" alt="" />
+                <div class="titles"><b>ASGARD</b><span>Протокол / Тинг</span></div>
+              </div>
+              <div class="proto-meta-num"><strong>№ Т-2026-1002</strong>02.10.2026</div>
+            </div>
+            <div class="proto-sep" aria-hidden="true"></div>
+            <h1 contenteditable="false" style="font-size:15px">Смета ОВКВ · согласование</h1>
+            <dl class="proto-meta-grid">
+              <dt>Когда</dt><dd contenteditable="false">02.10 · 16:00–16:24</dd>
+              <dt>Орг.</dt><dd contenteditable="false">Никита Морозов</dd>
+              <dt>Кто</dt><dd contenteditable="false">Никита, Елена, Алексей (гость), +7 916… (тел.)</dd>
+            </dl>
+            <button type="button" class="proto-link" data-go="meeting">Совещание #4821 →</button>
+            <h2>Повестка</h2>
+            <ol contenteditable="false"><li>Объём ОВ</li><li>Оборудование</li><li>Сроки / ТКП</li></ol>
+            <h2>Резюме</h2>
+            <p contenteditable="false">Согласовали объём ОВ; оборудование без наценки.</p>
+            <h2>Решения</h2>
+            <ol contenteditable="false">
+              <li>Утвердить смету — <b>Никита</b></li>
+              <li>Без наценки на оборудование — <b>Елена</b></li>
+            </ol>
+            <h2>Поручения</h2>
+            <table class="proto-table">
+              <thead><tr><th>№</th><th>Поручение</th><th>Отв.</th><th>Срок</th><th>Ст.</th></tr></thead>
+              <tbody>
+                <tr><td>1</td><td contenteditable="false">ТКП клиенту</td><td>Елена</td><td>04.10</td><td><span class="proto-status open">откр.</span></td></tr>
+                <tr><td>2</td><td contenteditable="false">Сроки монтажа</td><td>Алексей</td><td>07.10</td><td><span class="proto-status open">откр.</span></td></tr>
+                <tr><td>3</td><td contenteditable="false">В карточку совещания</td><td>Никита</td><td>02.10</td><td><span class="proto-status">готово</span></td></tr>
+              </tbody>
+            </table>
+            <h2>Открытые вопросы</h2>
+            <ul contenteditable="false"><li>ПНР — отложено</li><li>Дата выезда бригады</li></ul>
+          </div>
+        </section>
+
+        <section class="screen ended" data-id="dialin">
+          <div class="dial-card" style="padding:18px">
+            <h3 style="font-size:18px">Вход по телефону</h3>
+            <div class="dial-big" style="font-size:28px">482917</div>
+            <ul class="dial-steps">
+              <li><span class="step-n">1</span><div>Позвоните <b>+7 495 000-00-42</b></div></li>
+              <li><span class="step-n">2</span><div>Код: <b>482917</b></div></li>
+              <li><span class="step-n">3</span><div>PIN: <b>3914</b></div></li>
+            </ul>
+            <p style="font-size:11px;color:var(--t3);margin-bottom:12px">Slug k7m2qx — только для ссылки, не для набора.</p>
+            <button type="button" class="btn btn-primary btn-lg" data-go="ready">Скопировать</button>
+          </div>
+        </section>
+      </div>
+    </div>
+  </main>
+
+  <script>
+    const META = {
+      hub: ["Хаб Тинга", "Вкладки «Из Тинга» / «Из Совещаний». CRM тоже создаёт комнаты."],
+      new: ["Новый Тинг", "Сейчас или по расписанию. Есть переход из совещания CRM."],
+      schedule: ["По расписанию", "Форма Тинга → совещание CRM + комната."],
+      "meeting-create": ["Совещание + Тинг", "Форма CRM с переключателем «Тинг-конференция» ON."],
+      ready: ["Готово: ссылка и код", "Ссылка k7m2qx · dial-code 482917 · PIN 3914 · QR."],
+      meeting: ["Карточка совещания", "Войти в Тинг + блок ссылка / 6 цифр / телефон."],
+      lobby: ["Гость: имя + превью", "Имя → мик/камера → Войти."],
+      waiting: ["Waiting room", "Гость ждёт пуска хоста."],
+      error: ["Комната завершена", "Понятная ошибка без жаргона."],
+      "error-code": ["Неверный код", "6 цифр не совпали. Повторный ввод."],
+      room: ["Сетка участников", "Dock: Мик · Камера · Экран · Ещё · Выйти."],
+      share: ["Демонстрация экрана", "Экран крупно, люди — filmstrip."],
+      people: ["Панель участников", "Хост, CRM, гость, телефон."],
+      chat: ["Чат в комнате", "Боковая панель."],
+      recording: ["Идёт запись", "Consent bar + REC pill."],
+      "host-end": ["Хост: завершить?", "Подтверждение перед концом Тинга."],
+      ended: ["Тинг завершён", "Протокол · запись · домой."],
+      protocol: ["Протокол", "Документ A4: мета, решения, поручения, действия."],
+      dialin: ["Вход по телефону", "Код 482917 · PIN 3914. Slug не для набора."]
+    };
+
+    function show(id) {
+      document.querySelectorAll(".nav button[data-screen]").forEach(b => {
+        b.classList.toggle("active", b.dataset.screen === id);
+      });
+      document.querySelectorAll(".frame").forEach(frame => {
+        frame.querySelectorAll(".screen").forEach(s => {
+          s.classList.toggle("on", s.dataset.id === id);
+        });
+        frame.classList.toggle("proto-tall", id === "protocol" && frame.classList.contains("desk"));
+      });
+      const m = META[id] || [id, ""];
+      document.getElementById("screenTitle").textContent = m[0];
+      document.getElementById("screenDesc").textContent = m[1];
+      history.replaceState(null, "", "#" + id);
+    }
+
+    document.querySelectorAll(".nav button[data-screen]").forEach(b => {
+      b.addEventListener("click", () => show(b.dataset.screen));
+    });
+    document.addEventListener("click", (e) => {
+      const go = e.target.closest("[data-go]");
+      if (!go) return;
+      e.stopPropagation();
+      show(go.dataset.go);
+    });
+
+    const frames = document.getElementById("frames");
+    function setDevice(mode) {
+      frames.classList.toggle("hidden-desk", mode === "phone");
+      frames.classList.toggle("hidden-phone", mode === "desk");
+      document.getElementById("btnBoth").classList.toggle("on", mode === "both");
+      document.getElementById("btnDesk").classList.toggle("on", mode === "desk");
+      document.getElementById("btnPhone").classList.toggle("on", mode === "phone");
+    }
+    document.getElementById("btnBoth").onclick = () => setDevice("both");
+    document.getElementById("btnDesk").onclick = () => setDevice("desk");
+    document.getElementById("btnPhone").onclick = () => setDevice("phone");
+
+    /* Protocol edit / save / cancel */
+    function setProtoEditing(screen, on) {
+      const doc = screen.querySelector("[data-proto]");
+      if (!doc) return;
+      const tools = screen.querySelector(".proto-edit-tools");
+      const modeChip = screen.querySelector(".proto-mode-chip");
+      const secondary = screen.querySelector(".proto-secondary");
+      const more = screen.querySelector(".proto-more");
+      if (on) {
+        if (!doc.dataset.snapshot) doc.dataset.snapshot = doc.innerHTML;
+        doc.classList.add("editing");
+        doc.querySelectorAll("[contenteditable]").forEach(n => { n.contentEditable = "true"; });
+        if (tools) tools.classList.add("on");
+        if (modeChip) modeChip.textContent = "Редактирование";
+        if (secondary) secondary.style.visibility = "hidden";
+        if (more) more.style.visibility = "hidden";
+      } else {
+        doc.classList.remove("editing");
+        doc.querySelectorAll("[contenteditable]").forEach(n => { n.contentEditable = "false"; });
+        if (tools) tools.classList.remove("on");
+        if (modeChip) modeChip.textContent = "Просмотр";
+        if (secondary) secondary.style.visibility = "";
+        if (more) more.style.visibility = "";
+        delete doc.dataset.snapshot;
+      }
+      screen.querySelectorAll(".proto-more").forEach(m => m.classList.remove("open"));
+    }
+
+    document.querySelectorAll(".proto-edit-btn").forEach(btn => {
+      btn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        setProtoEditing(btn.closest(".screen"), true);
+      });
+    });
+    document.querySelectorAll(".proto-save-btn").forEach(btn => {
+      btn.addEventListener("click", () => {
+        const screen = btn.closest(".screen");
+        const doc = screen.querySelector("[data-proto]");
+        if (doc) delete doc.dataset.snapshot;
+        setProtoEditing(screen, false);
+      });
+    });
+    document.querySelectorAll(".proto-cancel-btn").forEach(btn => {
+      btn.addEventListener("click", () => {
+        const screen = btn.closest(".screen");
+        const doc = screen.querySelector("[data-proto]");
+        if (doc && doc.dataset.snapshot) doc.innerHTML = doc.dataset.snapshot;
+        setProtoEditing(screen, false);
+      });
+    });
+
+    document.querySelectorAll(".proto-more-toggle").forEach(btn => {
+      btn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const wrap = btn.closest(".proto-more");
+        document.querySelectorAll(".proto-more.open").forEach(m => {
+          if (m !== wrap) m.classList.remove("open");
+        });
+        wrap.classList.toggle("open");
+      });
+    });
+    document.addEventListener("click", () => {
+      document.querySelectorAll(".proto-more.open").forEach(m => m.classList.remove("open"));
+    });
+
+    /* Toggle switch demo */
+    document.querySelectorAll(".switch").forEach(sw => {
+      sw.addEventListener("click", () => {
+        sw.classList.toggle("on");
+        sw.setAttribute("aria-checked", sw.classList.contains("on") ? "true" : "false");
+      });
+    });
+
+    /* Hub tabs visual only */
+    document.querySelectorAll(".hub-tabs").forEach(tabs => {
+      tabs.querySelectorAll("button").forEach(b => {
+        b.addEventListener("click", () => {
+          tabs.querySelectorAll("button").forEach(x => x.classList.remove("on"));
+          b.classList.add("on");
+        });
+      });
+    });
+
+    const start = (location.hash || "#hub").slice(1);
+    show(META[start] ? start : "hub");
+  </script>
+</body>
+</html>

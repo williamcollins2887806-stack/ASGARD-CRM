@@ -234,3 +234,8 @@ export function fmtDateTime(s) {
 export function initials(name) {
   return String(name || '?').trim().split(/\s+/).map((s) => s[0]).slice(0, 2).join('').toUpperCase();
 }
+
+/** P6: создать Тинг из чата */
+export function createThingRoom(body) {
+  return api('/api/thing/rooms', { method: 'POST', body });
+}

@@ -235,7 +235,8 @@ window.AsgardMeetings = (function(){
   // ═══════════════════════════════════════════════════════════════
 
   async function openMeeting(meetingId) {
-    const { meeting, participants, minutes } = await API.getMeeting(meetingId);
+    const data = await API.getMeeting(meetingId);
+    const { meeting, participants, minutes, thing, protocol_locked, protocol_lock_reason } = data;
     const users = await AsgardDB.getAll('users') || [];
     const usersById = new Map(users.map(u => [u.id, u]));
 
@@ -253,7 +254,9 @@ window.AsgardMeetings = (function(){
       `;
     }).join('');
 
-    const minutesHtml = minutes.map(m => {
+    const minutesHtml = protocol_locked
+      ? `<p class="text-muted">${esc(protocol_lock_reason || 'Протокол видит только инициатор Тинга')}</p>`
+      : (minutes.map(m => {
       const typeIcons = { note: '📝', decision: '✅', action: '📋', question: '❓' };
       const responsible = m.responsible_user_id ? usersById.get(m.responsible_user_id)?.name : null;
       return `
@@ -269,7 +272,24 @@ window.AsgardMeetings = (function(){
           ${m.task_id ? `<a href="#/kanban?id=${m.task_id}" class="text-gold">→ Задача #${m.task_id}</a>` : ''}
         </div>
       `;
-    }).join('') || '<p class="text-muted">Протокол пуст</p>';
+    }).join('') || '<p class="text-muted">Протокол пуст</p>');
+
+    const tingBlock = thing ? `
+      <div class="card mb-4" style="border-color:var(--gold,#D4A843);padding:14px">
+        <div class="row between mb-2">
+          <strong style="color:var(--gold,#D4A843)">Тинг</strong>
+          <a class="btn primary mini" href="${esc(thing.url)}" target="_blank" rel="noopener">Войти в Тинг</a>
+        </div>
+        <div class="info-row"><span>Ссылка</span><b style="font-size:12px">${esc(location.origin + thing.url)}</b></div>
+        ${thing.dial_code ? `<div class="info-row"><span>Код телефона</span><b style="font-size:22px;letter-spacing:0.12em;color:var(--gold,#D4A843)">${esc(thing.dial_code)}</b></div>` : ''}
+        <div class="info-row"><span>Статус</span><span>${esc(thing.status || '')}${thing.protocol_enabled ? ' · AI-протокол' : ''}</span></div>
+        ${thing.is_host && thing.protocol_enabled ? `<button class="btn mt-2" onclick="AsgardMeetings.openThingProtocol('${esc(thing.slug)}')">Открыть AI-протокол</button>` : ''}
+      </div>
+    ` : (meeting.conference_url ? `
+      <div class="info-row mb-3"><span>ВКС</span><a href="${esc(meeting.conference_url)}" target="_blank">${esc(meeting.conference_url)}</a></div>
+    ` : '');
+
+    const canEditMinutes = !protocol_locked && meeting.status !== 'completed' && meeting.status !== 'cancelled';
 
     const html = `
       <div style="max-width: 700px;">
@@ -280,6 +300,8 @@ window.AsgardMeetings = (function(){
 
         <h3>${esc(meeting.title)}</h3>
         ${meeting.description ? `<p class="text-muted mb-3">${esc(meeting.description)}</p>` : ''}
+
+        ${tingBlock}
 
         <div class="grid2 mb-4">
           <div>
@@ -314,7 +336,7 @@ window.AsgardMeetings = (function(){
           ${minutesHtml}
         </div>
 
-        ${meeting.status !== 'completed' && meeting.status !== 'cancelled' ? `
+        ${canEditMinutes ? `
           <div class="row mb-4" style="align-items:flex-start;gap:8px">
             <div id="minutesTypeWrap"></div>
             <input type="text" id="minutes-item-content" class="input" style="flex: 2;" placeholder="Текст пункта...">
@@ -475,7 +497,17 @@ window.AsgardMeetings = (function(){
         </div>
         <div class="form-group">
           <label>Ссылка ВКС</label>
-          <input type="text" id="meeting-conference" class="input" placeholder="https://…">
+          <input type="text" id="meeting-conference" class="input" placeholder="https://… (если не Тинг)">
+        </div>
+        <div class="form-group" style="display:flex;gap:16px;flex-wrap:wrap;align-items:center">
+          <label style="display:flex;gap:8px;align-items:center;cursor:pointer;margin:0">
+            <input type="checkbox" id="meeting-ting" checked>
+            <span>Тинг-конференция</span>
+          </label>
+          <label style="display:flex;gap:8px;align-items:center;cursor:pointer;margin:0">
+            <input type="checkbox" id="meeting-protocol" checked>
+            <span>Нужен AI-протокол</span>
+          </label>
         </div>
         <div class="form-group">
           <label>Повестка дня</label>
@@ -535,6 +567,8 @@ window.AsgardMeetings = (function(){
     const participantIds = CREmployeePicker.getSelected(MEETING_PICKER_ID);
     const guestsRaw = $('#meeting-guests')?.value || '';
     const guests = guestsRaw.split(/[,;\s]+/).map(e => e.trim().toLowerCase()).filter(e => e.includes('@')).map(email => ({ email }));
+    const createThing = !!$('#meeting-ting')?.checked;
+    const protocolEnabled = !!$('#meeting-protocol')?.checked;
 
     if (!title) {
       toast('Укажите название', 'error');
@@ -546,7 +580,7 @@ window.AsgardMeetings = (function(){
     }
 
     try {
-      await API.createMeeting({
+      const result = await API.createMeeting({
         title,
         start_time: startTime,
         end_time: endTime || null,
@@ -555,14 +589,87 @@ window.AsgardMeetings = (function(){
         agenda: agenda || null,
         participant_ids: participantIds,
         guests,
-        send_invites: true
+        send_invites: true,
+        create_thing: createThing,
+        protocol_enabled: protocolEnabled
       });
-      toast('Совещание создано', 'success');
+      const tingHint = result?.thing?.dial_code
+        ? ` Тинг: код ${result.thing.dial_code}`
+        : '';
+      toast('Совещание создано' + tingHint, 'success');
       CREmployeePicker.destroy(MEETING_PICKER_ID);
       closeModal();
+      if (result?.thing?.url) {
+        showThingReady(result.thing, result.meeting?.title || title);
+      }
       await refresh();
     } catch (e) {
-      toast('Ошибка создания', 'error');
+      toast(e.message || 'Ошибка создания', 'error');
+    }
+  }
+
+  function showThingReady(thing, title) {
+    const url = thing.url.startsWith('http') ? thing.url : (location.origin + thing.url);
+    const dial = thing.dial_code || '';
+    const html = `
+      <div style="max-width:420px;text-align:center;padding:8px 4px">
+        <div style="color:#D4A843;letter-spacing:0.35em;margin-bottom:8px">ᚦ ◆ ТИНГ</div>
+        <h3 style="margin:0 0 6px">Тинг готов</h3>
+        <p class="text-muted" style="margin-bottom:14px">${esc(title || 'Отправьте ссылку коллегам')}</p>
+        <div class="card" style="padding:12px;margin-bottom:12px;word-break:break-all;font-family:ui-monospace,monospace;font-size:13px;color:#D4A843">${esc(url)}</div>
+        <div class="stack" style="display:flex;flex-direction:column;gap:8px;margin-bottom:14px">
+          <button class="btn primary" onclick="navigator.clipboard.writeText(${JSON.stringify(url)}).then(()=>toast('Ссылка скопирована','success'))">Скопировать ссылку</button>
+          <a class="btn" href="${esc(thing.url)}" target="_blank" rel="noopener">Войти в Тинг</a>
+        </div>
+        ${dial ? `
+          <div class="card" style="padding:14px">
+            <div class="text-muted" style="font-size:12px;margin-bottom:4px">Код для телефона</div>
+            <div style="font-size:28px;font-weight:700;letter-spacing:0.18em;color:#D4A843">${esc(dial)}</div>
+            <div class="text-muted" style="font-size:12px;margin-top:6px">6 цифр · после звонка на номер Тинга</div>
+          </div>
+        ` : ''}
+        <div class="row between mt-4">
+          <button class="btn" onclick="AsgardUI.closeModal()">Закрыть</button>
+        </div>
+      </div>
+    `;
+    showModal('Тинг готов', html);
+  }
+
+  async function openThingProtocol(slug) {
+    try {
+      const token = localStorage.getItem('asgard_token');
+      const res = await fetch('/api/thing/rooms/' + encodeURIComponent(slug) + '/protocol', {
+        headers: { Authorization: 'Bearer ' + token }
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        toast(data.error || 'Нет доступа к протоколу', 'error');
+        return;
+      }
+      const labels = data.status_labels || {};
+      const status = data.protocol_status || 'queued';
+      const mins = (data.minutes || []).map(m => {
+        const t = ({ note: 'Заметка', decision: 'Решение', action: 'Поручение', question: 'Вопрос' })[m.item_type] || m.item_type;
+        return `<div class="info-row"><b>${esc(t)}</b><span>${esc(m.content || '')}</span></div>`;
+      }).join('') || '<p class="text-muted">Пунктов пока нет</p>';
+      const html = `
+        <div style="max-width:640px">
+          <div class="row between mb-3">
+            <span class="chip" style="color:#D4A843">ИИ · ${esc(labels[status] || status)}</span>
+          </div>
+          <h3 style="margin-top:0">Протокол Тинга</h3>
+          ${data.protocol_error ? `<p class="text-red">${esc(data.protocol_error)}</p>` : ''}
+          <div class="card mb-3" style="padding:16px">${mins}</div>
+          <div class="row between">
+            <button class="btn" onclick="AsgardUI.closeModal()">Закрыть</button>
+            <button class="btn primary" onclick="window.print()">Печать / PDF</button>
+          </div>
+        </div>
+      `;
+      showModal('Протокол', html);
+    } catch (e) {
+      toast('Ошибка протокола', 'error');
     }
   }
 
@@ -621,6 +728,8 @@ window.AsgardMeetings = (function(){
     cancelMeeting,
     showCreateModal,
     createMeeting,
+    showThingReady,
+    openThingProtocol,
     renderWidget
   };
 })();

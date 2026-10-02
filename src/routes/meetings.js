@@ -13,6 +13,7 @@
 
 const { createNotification } = require('../services/notify');
 const { sendMeetingInvites, upsertGuests } = require('../services/calendar-invite-mail');
+const { createThingRoom } = require('../services/thing-create');
 
 module.exports = async function(fastify) {
   const db = fastify.db;
@@ -72,6 +73,27 @@ module.exports = async function(fastify) {
     `, [meetingId, userId]);
 
     return rows.length > 0;
+  }
+
+  /**
+   * AI-протокол Тинга: minutes видны/правятся только host_user_id комнаты.
+   * Возвращает null, если у совещания нет thing-комнаты.
+   */
+  async function thingProtocolGate(meetingId) {
+    const { rows } = await db.query(
+      `SELECT id, host_user_id, protocol_enabled, slug, dial_code, status, pin_code
+       FROM thing_rooms
+       WHERE meeting_id = $1
+       ORDER BY id DESC LIMIT 1`,
+      [meetingId]
+    );
+    return rows[0] || null;
+  }
+
+  /** false = minutes закрыты (не инициатор Тинга с protocol_enabled) */
+  function canSeeThingProtocol(thingRoom, userId) {
+    if (!thingRoom || !thingRoom.protocol_enabled) return true;
+    return Number(thingRoom.host_user_id) === Number(userId);
   }
 
   // ╔═══════════════════════════════════════════════════════════════╗
@@ -214,8 +236,14 @@ module.exports = async function(fastify) {
       [id]
     );
 
-    // Получить пункты протокола
-    const { rows: minutes } = await db.query(`
+    // Получить пункты протокола (Тинг AI: только инициатор)
+    const thingRoom = await thingProtocolGate(id);
+    let minutes = [];
+    let protocolLocked = false;
+    if (thingRoom && thingRoom.protocol_enabled && !canSeeThingProtocol(thingRoom, userId)) {
+      protocolLocked = true;
+    } else {
+      const { rows: minuteRows } = await db.query(`
       SELECT mm.*, u.name as responsible_name, cb.name as created_by_name
       FROM meeting_minutes mm
       LEFT JOIN users u ON mm.responsible_user_id = u.id
@@ -223,8 +251,40 @@ module.exports = async function(fastify) {
       WHERE mm.meeting_id = $1
       ORDER BY mm.item_order
     `, [id]);
+      minutes = minuteRows;
+    }
 
-    return { meeting, participants, guests, minutes };
+    const thing = thingRoom
+      ? {
+          id: thingRoom.id,
+          slug: thingRoom.slug,
+          dial_code: Number(thingRoom.host_user_id) === Number(userId) ? thingRoom.dial_code : undefined,
+          status: thingRoom.status,
+          protocol_enabled: thingRoom.protocol_enabled,
+          url: '/ting/' + thingRoom.slug,
+          pin_required: Boolean(thingRoom.pin_code),
+          is_host: Number(thingRoom.host_user_id) === Number(userId)
+        }
+      : null;
+
+    if (protocolLocked) {
+      meeting.minutes = null;
+      meeting.minutes_author_id = null;
+      meeting.minutes_author_name = null;
+      meeting.minutes_approved_at = null;
+    }
+
+    return {
+      meeting,
+      participants,
+      guests,
+      minutes,
+      thing,
+      protocol_locked: protocolLocked,
+      protocol_lock_reason: protocolLocked
+        ? 'AI-протокол Тинга видит только инициатор'
+        : null
+    };
   });
 
   // ───────────────────────────────────────────────────────────────
@@ -236,7 +296,8 @@ module.exports = async function(fastify) {
     const {
       title, description, location, start_time, end_time,
       agenda, participant_ids, work_id, tender_id, notify_before_minutes,
-      conference_url, guests, guest_emails, send_invites, recurrence_rule
+      conference_url, guests, guest_emails, send_invites, recurrence_rule,
+      create_thing, ting, ting_enabled, protocol_enabled, thing_pin_code
     } = request.body || {};
 
     if (!title || !title.trim()) {
@@ -323,8 +384,42 @@ module.exports = async function(fastify) {
       }
     }
 
+    // Тинг: create_thing | ting | ting_enabled — при создании совещания
+    let thing = null;
+    const wantThing = create_thing === true || create_thing === 'true'
+      || ting === true || ting === 'true'
+      || ting_enabled === true || ting_enabled === 'true';
+    if (wantThing) {
+      try {
+        const created = await createThingRoom(db, {
+          title: title.trim(),
+          hostUserId: organizerId,
+          hostDisplayName: request.user.name || request.user.email || `user-${organizerId}`,
+          meetingId: meeting.id,
+          mode: 'scheduled',
+          status: 'scheduled',
+          protocol_enabled: protocol_enabled !== false && protocol_enabled !== 'false',
+          pin_code: thing_pin_code || null,
+          overwrite_conference_url: !conference_url
+        });
+        thing = {
+          id: created.room.id,
+          slug: created.room.slug,
+          dial_code: created.room.dial_code,
+          url: created.url,
+          protocol_enabled: created.room.protocol_enabled
+        };
+      } catch (e) {
+        fastify.log.error('Thing create on meeting failed: ' + e.message);
+        return reply.code(e.statusCode || 500).send({
+          error: 'Совещание создано, но Тинг не поднялся: ' + e.message,
+          meeting_id: meeting.id
+        });
+      }
+    }
+
     const { rows: [fresh] } = await db.query('SELECT * FROM meetings WHERE id = $1', [meeting.id]);
-    return { meeting: fresh || meeting, invites: inviteResult };
+    return { meeting: fresh || meeting, invites: inviteResult, thing };
   });
 
   // ───────────────────────────────────────────────────────────────
@@ -621,6 +716,10 @@ module.exports = async function(fastify) {
     if (!await canAccessMeeting(id, userId, request.user.role)) {
       return reply.code(403).send({ error: 'Нет доступа' });
     }
+    const thingRoom = await thingProtocolGate(id);
+    if (!canSeeThingProtocol(thingRoom, userId)) {
+      return reply.code(403).send({ error: 'AI-протокол Тинга правит только инициатор' });
+    }
 
     if (!content || !content.trim()) {
       return reply.code(400).send({ error: 'Содержание обязательно' });
@@ -662,6 +761,10 @@ module.exports = async function(fastify) {
     if (!await canAccessMeeting(meetingId, userId, request.user.role)) {
       return reply.code(403).send({ error: 'Нет доступа' });
     }
+    const thingRoomPut = await thingProtocolGate(meetingId);
+    if (!canSeeThingProtocol(thingRoomPut, userId)) {
+      return reply.code(403).send({ error: 'AI-протокол Тинга правит только инициатор' });
+    }
 
     const { item_type, content, responsible_user_id, deadline } = request.body;
     const updates = [];
@@ -695,6 +798,14 @@ module.exports = async function(fastify) {
     const meetingId = parseInt(request.params.meetingId);
     const itemId = parseInt(request.params.id);
     const userId = request.user.id;
+
+    if (!await canAccessMeeting(meetingId, userId, request.user.role)) {
+      return reply.code(403).send({ error: 'Нет доступа' });
+    }
+    const thingRoomTask = await thingProtocolGate(meetingId);
+    if (!canSeeThingProtocol(thingRoomTask, userId)) {
+      return reply.code(403).send({ error: 'AI-протокол Тинга правит только инициатор' });
+    }
 
     const { rows: [item] } = await db.query(
       'SELECT * FROM meeting_minutes WHERE id = $1 AND meeting_id = $2',
@@ -754,6 +865,11 @@ module.exports = async function(fastify) {
 
     if (meeting.organizer_id !== userId && !DIRECTOR_ROLES.includes(request.user.role)) {
       return reply.code(403).send({ error: 'Только организатор' });
+    }
+    const thingRoomFin = await thingProtocolGate(id);
+    if (thingRoomFin && thingRoomFin.protocol_enabled
+        && Number(thingRoomFin.host_user_id) !== Number(userId)) {
+      return reply.code(403).send({ error: 'AI-протокол Тинга завершает только инициатор' });
     }
 
     await db.query(`
