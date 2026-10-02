@@ -7414,5 +7414,10 @@ RISK2 (confirm при «Добавить» уехавшего) — **не в э�
 - `public/assets/js/app.js` — PROC в меню/роуте `/timesheet`.
 
 **Доказательства.** `verify-waiting-backend` **55/55**; `verify-waiting-frontend` **39/39**.
-**Статус: FIXED** (SELF-CHECK). Выкатка: shell **20.28.52** (по команде).
+**Статус: FIXED** (SELF-CHECK + post-deploy).
+**Выкатка:** 02.10.2026 shell **20.28.52** — `python tools/deploy_d250_waiting_medical_proc_20_28_52.py`
+(snapshot → tar code+v2+m → restart → smoke). `/api/version`=20.28.52; medical ACL + waiting;
+отдаваемый `timesheet-v2.js` несёт medical waiting; v2/ и m/ → 200.
+Post-deploy: `restore_asset_sync plan` to_upload=0; `audit_silent_reverts --post-deploy` = **0 расхождений**.
+Коммиты: `e93926c8` (fix), `2fb122bf` (verify).
 
