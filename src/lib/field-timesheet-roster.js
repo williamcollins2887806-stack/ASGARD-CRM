@@ -142,12 +142,28 @@ async function loadFieldTimesheetRoster(db, workId, dateFrom, dateTo) {
       pe.planned_from,
       pe.planned_to,
       pe.note AS plan_note,
-      pe.inbound_transport
+      pe.inbound_transport,
+      tar.tariff_id,
+      tar.tariff_points,
+      tar.manual_extra_points,
+      tar.point_value
     FROM reasons r
     JOIN employees e ON e.id = r.employee_id
     ${plannedLateral}
+    LEFT JOIN LATERAL (
+      SELECT ea.tariff_id,
+             ea.tariff_points,
+             ea.manual_extra_points,
+             COALESCE(ftg.point_value, 500) AS point_value
+        FROM employee_assignments ea
+        LEFT JOIN field_tariff_grid ftg ON ftg.id = ea.tariff_id
+       WHERE ea.employee_id = e.id AND ea.work_id = $1
+       ORDER BY COALESCE(ea.is_active, true) DESC, ea.id DESC
+       LIMIT 1
+    ) tar ON true
     GROUP BY e.id, e.fio, e.full_name,
-             pe.planned_from, pe.planned_to, pe.note, pe.inbound_transport
+             pe.planned_from, pe.planned_to, pe.note, pe.inbound_transport,
+             tar.tariff_id, tar.tariff_points, tar.manual_extra_points, tar.point_value
     ORDER BY fio
   `, [workId, from, to]);
 
@@ -156,6 +172,7 @@ async function loadFieldTimesheetRoster(db, workId, dateFrom, dateTo) {
     const hasPlan = reasons.includes('planned') || row.planned_from || row.planned_to || row.plan_note;
     const isPlannedOnly = reasons.length > 0
       && reasons.every((r) => r === 'planned');
+    const tariffPoints = row.tariff_points != null ? Number(row.tariff_points) : null;
     return {
       employee_id: row.employee_id,
       fio: row.fio,
@@ -166,7 +183,11 @@ async function loadFieldTimesheetRoster(db, workId, dateFrom, dateTo) {
         note: row.plan_note || null,
         inbound_transport: row.inbound_transport || null
       } : null,
-      is_planned_only: isPlannedOnly
+      is_planned_only: isPlannedOnly,
+      tariff_id: row.tariff_id != null ? Number(row.tariff_id) : null,
+      tariff_points: Number.isFinite(tariffPoints) ? tariffPoints : null,
+      manual_extra_points: row.manual_extra_points != null ? Number(row.manual_extra_points) : null,
+      point_value: row.point_value != null ? Number(row.point_value) : 500
     };
   });
 }

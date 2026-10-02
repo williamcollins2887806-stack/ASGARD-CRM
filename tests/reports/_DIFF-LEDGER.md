@@ -7538,3 +7538,23 @@ Post-deploy: `audit_silent_reverts --post-deploy` = **0 расхождений**
 post-deploy `audit_silent_reverts --post-deploy` = **0 расхождений**.
 Коммиты: `7eba3ad7` (fix), `7f3fc5f1` (verify).
 
+## D-258. Табель: корректировки РП + корабль в «Моей дружине» + 13 баллов + test-РП + lock склада (02.10.2026)
+
+**Как найдено.** Трухин: клик по 🚢 Хосе в `#/my-timesheet` — ничего (D-249b чинил только field-tab).
+Полевой табель ставит 13б вместо тарифа бригады. В «Закрытие месяца» — Test PM / Test HEAD_PM.
+403 «Нельзя ставить лок такой области» на `/api/timesheet/v2/lock` (склад): ADMIN/директор видят кнопку,
+но ACL только `WAREHOUSE`. Плюс запрос фичи «Корректировка» (РП → офис/мастер).
+
+**Форензика прод.** users: Трухин `3462`; test_pm=`4605`, test_head_pm=`4616` (is_active).
+Ship/travel часто `work_id IS NULL` (freestanding) → `is_mine=false` у PM. nginx: 4× POST lock 403 с `84.17.46.76`.
+
+**Правки.**
+1. `src/lib/timesheet-logistics-types.js` — SSoT logistics types.
+2. `timesheet-v2` route+UI: PM overwrite/delete logistics; closure без test_*; ADMIN может lock scoped;
+   UX lock 403.
+3. `field-manage` + roster + `field-tab`: баллы из `tariff_points` бригады.
+4. `timesheet_corrections` (V360) + API + UI field-tab / my-timesheet.
+
+**Статус: FIXED** (SELF-CHECK: `node tests/sentinel_d258_timesheet_fixes.js` → **10/10**;
+V360 `timesheet_corrections` на прод применена). Выкатка shell/assets — по команде.
+

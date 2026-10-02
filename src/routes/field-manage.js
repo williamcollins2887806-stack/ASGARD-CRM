@@ -895,6 +895,10 @@ async function routes(fastify, options) {
           roster_reasons: c.roster_reasons || [],
           planned_info: c.planned_info || null,
           is_planned_only: !!c.is_planned_only,
+          // D-258: тариф бригады → дефолт баллов в полевом табеле
+          tariff_id: c.tariff_id || null,
+          tariff_points: c.tariff_points != null ? Number(c.tariff_points) : null,
+          point_value: c.point_value != null ? Number(c.point_value) : null,
         };
       }
       for (const row of checkins) {
@@ -1480,7 +1484,6 @@ async function routes(fastify, options) {
       const assignmentId = assignRows[0].id;
 
       // 07.08.2026: конфликт с этапами (дорога/вертолёт/…) на ту же дату.
-      // Без этого полевой табель и «Маршруты» писали в разные таблицы молча → двойной счёт.
       {
         const blocked = await assertNoStageConflict(db, {
           employeeId: employee_id,
@@ -1491,11 +1494,7 @@ async function routes(fastify, options) {
         if (blocked) return reply.code(409).send(blocked);
       }
 
-      // 25.06.2026 FIX «коллизия чужой работы»: если у этого employee_id уже
-      // есть НЕ-cancelled чекин на ту же дату, но на ДРУГОЙ работе — отказ.
-      // Раньше другой РП мог поверх перезаписать чекин рабочего, забрав его
-      // себе (см. инцидент Климакин 23.06 → Пономарёв на work=353 вместо
-      // работы Андросова work=11). Контекст в edit_reason.
+      // 25.06.2026 FIX «коллизия чужой работы»
       const { rows: otherWorkCheckins } = await db.query(`
         SELECT fc.id, fc.work_id, fc.checkin_source, fc.entered_by_user_id,
                w.work_title, w.pm_id,
@@ -1511,7 +1510,6 @@ async function routes(fastify, options) {
       `, [employee_id, date, workId]);
       if (otherWorkCheckins.length > 0) {
         const other = otherWorkCheckins[0];
-        // ADMIN/DIRECTOR — могут перебить (для нештатных кейсов)
         const role = req.user.role;
         const canForce = role === 'ADMIN' || (role && role.startsWith('DIRECTOR_'));
         if (!canForce) {
@@ -1532,8 +1530,29 @@ async function routes(fastify, options) {
         }
       }
 
-      const pts = day_rate != null ? day_rate : 0;
-      const amt = amount_earned != null ? amount_earned : pts;
+      // D-258: SSoT из бригады, если day_rate не передан или use_assignment_rate=true.
+      // Клиент обычно шлёт рубли (pts×point_value); не угадываем «≤50 = баллы».
+      let pts = day_rate != null ? Number(day_rate) : null;
+      let amt = amount_earned != null ? Number(amount_earned) : null;
+      const useAssign = !!(req.body && req.body.use_assignment_rate) || pts == null || !Number.isFinite(pts);
+      if (useAssign) {
+        try {
+          const { resolveAssignmentRates } = require('../lib/field-assignment-rate');
+          const { rows: asgFull } = await db.query(`
+            SELECT tariff_id, combination_tariff_id, combo_tariff_ids, manual_extra_points
+              FROM employee_assignments WHERE id=$1
+          `, [assignmentId]);
+          if (asgFull.length && asgFull[0].tariff_id) {
+            const rates = await resolveAssignmentRates(db, asgFull[0]);
+            if (!rates.error && rates.totalRate > 0) {
+              pts = rates.totalRate;
+              amt = rates.totalRate;
+            }
+          }
+        } catch (_) { /* keep client values */ }
+      }
+      if (pts == null || !Number.isFinite(pts)) pts = 0;
+      if (amt == null || !Number.isFinite(amt)) amt = pts;
       // checkin_at is NOT NULL — default to start of the date
       const checkinAt = date + 'T08:00:00';
       const { rows } = await db.query(`

@@ -2582,15 +2582,33 @@ window.AsgardFieldTab = (function () {
             td.style.borderRadius = '4px';
             if (day.kind === 'stage' && !_isOfficeStageShift(day.shift || day.stage_type)) {
               td.addEventListener('click', () => {
-                if (window.toast) {
-                  window.toast('Этап', si.label + ' из маршрутов — правьте во вкладке «Маршруты» или в «Мой табель».', 'warn');
-                } else {
-                  alert(si.label + ' — этап из маршрутов');
-                }
+                AsgardUI.showModal({
+                  title: si.label + ' (этап)',
+                  html:
+                    '<p style="font-size:13px;margin:0 0 12px">Правка — во вкладке «Маршруты» или в «Мой табель».<br>' +
+                    'Или оставьте <b>корректировку</b> для офиса/мастера.</p>' +
+                    '<div style="display:flex;gap:8px;justify-content:flex-end">' +
+                    '<button type="button" class="btn mini ghost" id="ftCorrCnl">Закрыть</button>' +
+                    '<button type="button" class="btn mini" id="ftCorrGo">✏️ Корректировка</button></div>',
+                  onMount: () => {
+                    document.getElementById('ftCorrCnl')?.addEventListener('click', () => AsgardUI.closeModal());
+                    document.getElementById('ftCorrGo')?.addEventListener('click', () => {
+                      AsgardUI.closeModal();
+                      openFieldCorrectionModal(emp, d, work, day.shift || day.stage_type);
+                    });
+                  }
+                });
               });
             } else if (day.kind === 'stage') {
               // D-249: дорога/ожидание Хосе/Вики — как новая смена → 409 confirm_overwrite
-              td.addEventListener('click', () => addCheckinCell(td, emp, d, work, pv));
+              td.addEventListener('click', (ev) => {
+                if (ev.altKey || ev.shiftKey) {
+                  openFieldCorrectionModal(emp, d, work, day.shift || day.stage_type);
+                  return;
+                }
+                addCheckinCell(td, emp, d, work, pv);
+              });
+              td.title = (td.title || '') + ' · Alt+клик — корректировка';
             } else {
               td.addEventListener('click', () => editCheckinCell(td, day, emp, d, work, pv));
             }
@@ -2935,7 +2953,7 @@ window.AsgardFieldTab = (function () {
 
   // ── Add new checkin cell ──
   function addCheckinCell(td, emp, date, work, pv) {
-    pv = pv || 500;
+    pv = pv || emp.point_value || 500;
     const prevHtml = td.innerHTML;
     const prevCss = {
       color: td.style.color,
@@ -2952,13 +2970,19 @@ window.AsgardFieldTab = (function () {
       td.style.padding = prevCss.padding || '';
     }
 
-    _shiftEditor(td, 'day', 13, pv,
+    // D-258: дефолт баллов = тариф бригады, не хардкод 13
+    const defaultPts = (emp.tariff_points != null && Number(emp.tariff_points) > 0)
+      ? Number(emp.tariff_points)
+      : 13;
+    let userEditedPts = false;
+
+    _shiftEditor(td, 'day', defaultPts, pv,
       async (pts, shift, si) => {
         if (pts === 0) { restore(); return; }
         const rate = pts * pv;
         const shiftDef = SHIFT_TYPES.find(s => s.value === shift) || SHIFT_TYPES[0];
         try {
-          await apiCheckinWithConflictConfirm(`/projects/${work.id}/checkin`, {
+          const body = {
             employee_id: emp.employee_id,
             date: date,
             shift: shift,
@@ -2966,7 +2990,12 @@ window.AsgardFieldTab = (function () {
             hours_paid: shiftDef.hours,
             day_rate: rate,
             amount_earned: rate,
-          }, 'POST');
+          };
+          // Если пользователь не трогал баллы — бэкенд возьмёт ставку из назначения
+          if (!userEditedPts && emp.tariff_points != null) {
+            body.use_assignment_rate = true;
+          }
+          await apiCheckinWithConflictConfirm(`/projects/${work.id}/checkin`, body, 'POST');
           td.innerHTML = si.icon + pts;
           td.style.color = pts >= 18 ? '#D4A843' : pts >= 12 ? '#10b981' : '#3b82f6';
           td.style.background = si.bg || '';
@@ -2983,6 +3012,70 @@ window.AsgardFieldTab = (function () {
       },
       restore
     );
+    // пометить ручное изменение баллов в редакторе
+    try {
+      const inp = td.querySelector('input[type="number"], input.ts-pts');
+      if (inp) {
+        inp.addEventListener('input', () => { userEditedPts = true; }, { once: false });
+        inp.addEventListener('change', () => { userEditedPts = true; });
+      }
+        } catch (_) {}
+  }
+
+  // D-258: РП → офис/мастер «здесь должно быть …»
+  function openFieldCorrectionModal(emp, date, work, curType) {
+    const fio = emp.fio || emp.employee_name || ('#' + emp.employee_id);
+    AsgardUI.showModal({
+      title: 'Корректировка табеля',
+      html:
+        `<p style="font-size:13px;margin:0 0 10px">Сотрудник: <b>${esc(fio)}</b><br>Дата: <b>${esc(date)}</b>` +
+        (curType ? `<br>Сейчас: <b>${esc(curType)}</b>` : '') +
+        `</p>` +
+        `<label style="font-size:12px;display:block;margin-bottom:4px">Что должно быть</label>` +
+        `<select id="ftCorrType" style="width:100%;margin-bottom:8px;padding:6px">` +
+        `<option value="">— не важно —</option>` +
+        `<option value="day">День</option><option value="night">Ночь</option>` +
+        `<option value="travel">Дорога</option><option value="ship">Корабль</option>` +
+        `<option value="helicopter">Вертолёт</option><option value="waiting">Ожидание</option>` +
+        `</select>` +
+        `<label style="font-size:12px;display:block;margin-bottom:4px">Баллы</label>` +
+        `<input id="ftCorrPts" type="number" min="0" max="50" step="0.5" placeholder="${emp.tariff_points || 13}" style="width:100%;margin-bottom:8px;padding:6px"/>` +
+        `<label style="font-size:12px;display:block;margin-bottom:4px">Комментарий</label>` +
+        `<textarea id="ftCorrMsg" rows="3" style="width:100%;padding:6px" placeholder="Здесь должна быть отметка…"></textarea>` +
+        `<div style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px">` +
+        `<button type="button" class="btn mini ghost" id="ftCorrCancel">Отмена</button>` +
+        `<button type="button" class="btn mini" id="ftCorrSend">Отправить</button></div>`,
+      onMount: () => {
+        document.getElementById('ftCorrCancel')?.addEventListener('click', () => AsgardUI.closeModal());
+        document.getElementById('ftCorrSend')?.addEventListener('click', async () => {
+          const msg = (document.getElementById('ftCorrMsg')?.value || '').trim();
+          if (msg.length < 3) { toast('Корректировка', 'Напишите, что должно быть', 'warn'); return; }
+          const expected_type = document.getElementById('ftCorrType')?.value || null;
+          const ptsRaw = document.getElementById('ftCorrPts')?.value;
+          const expected_points = ptsRaw !== '' && ptsRaw != null ? Number(ptsRaw) : null;
+          try {
+            const r = await fetch('/api/timesheet/v2/corrections', {
+              method: 'POST',
+              headers: hdr(),
+              body: JSON.stringify({
+                employee_id: emp.employee_id,
+                work_id: work?.id || null,
+                correction_date: date,
+                expected_type,
+                expected_points: Number.isFinite(expected_points) ? expected_points : null,
+                message: msg
+              })
+            });
+            const data = await r.json().catch(() => ({}));
+            if (!r.ok) throw new Error(data.message || data.error || ('HTTP ' + r.status));
+            AsgardUI.closeModal();
+            toast('Корректировка', 'Отправлено', 'ok');
+          } catch (e) {
+            toast('Ошибка', e.message || String(e), 'err');
+          }
+        });
+      }
+    });
   }
 
   // ═══════════════════════════════════════════════════════════════════

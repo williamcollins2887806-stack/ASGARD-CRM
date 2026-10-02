@@ -17,6 +17,9 @@
  *   GET    /:year/:month/export?format=xlsx  — Excel выгрузка
  */
 
+const { isPmOverwriteType, normalizeLogisticsType } = require('../lib/timesheet-logistics-types');
+const { createNotification } = require('../services/notify');
+
 const ALL_VIEW_ROLES = [
   'ADMIN',
   'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV',
@@ -38,6 +41,8 @@ const PM_ROLES = ['PM', 'HEAD_PM'];
 const WAREHOUSE_ROLES = ['WAREHOUSE'];
 const MEDICAL_ROLES = ['TO', 'HEAD_TO'];
 const TRAVEL_ROLES = ['OFFICE_MANAGER', 'HEAD_TO'];
+// D-258: ADMIN/директора могут закрывать scoped-табели (склад/МО/дорога).
+const SCOPE_LOCK_ADMIN_ROLES = GLOBAL_FULL_ROLES;
 
 function isGlobalLeanRole(role) {
   return GLOBAL_LEAN_ROLES.includes(role);
@@ -312,6 +317,33 @@ function typeAllowedForRole(role, type) {
   const modes = modesOfRole(role);
   if (!modes.length) return false;
   return modes.some((m) => typeAllowedForMode(m, type));
+}
+
+/**
+ * D-258: РП может удалить офисную логистику (ship/travel/…) даже если type
+ * не в MODE_ALLOWED_TYPES.pm. Создание ship РП по-прежнему запрещено.
+ */
+function typeAllowedForRoleOrPmLogisticsDelete(role, type, isDelete) {
+  if (typeAllowedForRole(role, type)) return true;
+  return !!(isDelete && PM_ROLES.includes(role) && isPmOverwriteType(type));
+}
+
+/** Есть ли у PM доступ к сотруднику (своя работа / assignment / HEAD_PM). */
+async function pmOwnsEmployeeOrWork(db, viewer, employeeId, workId) {
+  if (!PM_ROLES.includes(viewer.role)) return false;
+  if (viewer.role === 'HEAD_PM') return true;
+  if (workId) {
+    const { rows } = await db.query(`SELECT pm_id FROM works WHERE id=$1`, [workId]);
+    if (rows.length && Number(rows[0].pm_id) === Number(viewer.id)) return true;
+  }
+  const { rows: asg } = await db.query(`
+    SELECT 1 FROM employee_assignments ea
+    JOIN works w ON w.id = ea.work_id
+    WHERE ea.employee_id = $1 AND w.pm_id = $2
+      AND (COALESCE(ea.is_active, true) = true OR ea.departure_date IS NOT NULL)
+    LIMIT 1
+  `, [employeeId, viewer.id]);
+  return asg.length > 0;
 }
 
 /**
@@ -1872,11 +1904,16 @@ async function routes(fastify) {
         return reply.code(400).send({ error: 'employee_id, date, type обязательны' });
       }
       // HEAD_TO: medical + travel — проверяем по всем mode роли, не по одному дефолту.
-      if (!typeAllowedForRole(viewer.role, type)) {
+      // D-258: PM может DELETE logistics (ship/travel/…) даже если type не в pm-allowed.
+      if (!typeAllowedForRoleOrPmLogisticsDelete(viewer.role, type, del)) {
         return reply.code(403).send({ error: `Тип "${type}" не разрешён для роли ${viewer.role}` });
       }
       const requestedMode = body.mode && VALID_MODES.includes(body.mode) ? body.mode : null;
-      const mode = resolveWriteMode(viewer.role, type, requestedMode);
+      let mode = resolveWriteMode(viewer.role, type, requestedMode);
+      // PM logistics delete: resolveWriteMode('pm','ship') → null → fallback pm
+      if (!mode && del && PM_ROLES.includes(viewer.role) && isPmOverwriteType(type)) {
+        mode = 'pm';
+      }
       if (!mode) return reply.code(403).send({ error: 'role_not_supported' });
 
       // FIX #3: строгая валидация date. Раньше parseInt мог дать NaN/мусор и
@@ -2012,6 +2049,11 @@ async function routes(fastify) {
           LIMIT 1
         `, stParams);
         if (!st.length) return reply.code(404).send({ error: 'Отметка не найдена' });
+        // D-258: freestanding logistics (work_id NULL) — РП удаляет, если сотрудник в его дружине.
+        if (mode === 'pm' && isPmOverwriteType(type)) {
+          const ok = await pmOwnsEmployeeOrWork(db, viewer, employee_id, st[0].work_id || work_id);
+          if (!ok) return reply.code(403).send({ error: 'Нет доступа к этой отметке' });
+        }
         // FIX 4: убран NULL-bypass — PM удаляет всё на своей работе (RBAC выше).
         await db.query(`UPDATE field_trip_stages SET status='cancelled', updated_at=NOW() WHERE id=$1`, [st[0].id]);
         return { ok: true, deleted: true, kind: 'stage' };
@@ -2386,6 +2428,9 @@ async function routes(fastify) {
           ${pmLockJoin}
          WHERE u.role IN ('PM','HEAD_PM')
            AND COALESCE(u.is_active, true) = true
+           AND u.login NOT LIKE 'test\\_%'
+           AND u.id NOT BETWEEN 9000 AND 9099
+           AND COALESCE(u.email, '') NOT LIKE '%@test.asgard.local'
          ORDER BY u.name ASC NULLS LAST
       `, hasLocks ? [year, month] : []);
 
@@ -2463,12 +2508,21 @@ async function routes(fastify) {
 
       const allowed = (
         (scope === 'pm' && PM_ROLES.includes(role)) ||
-        (scope === 'warehouse' && WAREHOUSE_ROLES.includes(role)) ||
-        (scope === 'medical' && MEDICAL_ROLES.includes(role)) ||
-        (scope === 'travel' && TRAVEL_ROLES.includes(role)) ||
+        (scope === 'warehouse' && (WAREHOUSE_ROLES.includes(role) || SCOPE_LOCK_ADMIN_ROLES.includes(role))) ||
+        (scope === 'medical' && (MEDICAL_ROLES.includes(role) || SCOPE_LOCK_ADMIN_ROLES.includes(role))) ||
+        (scope === 'travel' && (TRAVEL_ROLES.includes(role) || SCOPE_LOCK_ADMIN_ROLES.includes(role))) ||
         (scope === 'global' && (GLOBAL_ROLES.includes(role) || isGlobalLeanRole(role)))
       );
-      if (!allowed) return reply.code(403).send({ error: 'Нельзя ставить лок такой области' });
+      if (!allowed) {
+        const hint = ({
+          warehouse: 'Закрыть табель склада может роль Склад (или админ/директор).',
+          medical: 'Закрыть табель МО может ТО / рук. ТО (или админ/директор).',
+          travel: 'Закрыть табель дороги может офис-менеджер / рук. ТО (или админ/директор).',
+          pm: 'Закрыть свой табель может только РП.',
+          global: 'Закрыть общий табель могут директор / бух / HR / админ.'
+        })[scope] || 'Нельзя ставить лок такой области';
+        return reply.code(403).send({ error: 'Нельзя ставить лок такой области', message: hint, scope });
+      }
 
       if (scope === 'pm') scope_user_id = viewer.id;
       else if (['warehouse','medical','travel','global'].includes(scope)) scope_user_id = null;
@@ -3664,6 +3718,196 @@ async function routes(fastify) {
       };
     } catch (err) {
       fastify.log.error({ err }, '[timesheet-v2] /handovers error');
+      return reply.code(500).send({ error: 'Ошибка сервера' });
+    }
+  });
+
+  // ────────────────────────────────────────────────────────────────
+  // D-258: timesheet_corrections — РП просит офис/мастера исправить день
+  // ────────────────────────────────────────────────────────────────
+  async function correctionsTableReady() {
+    return tableExists(db, 'timesheet_corrections');
+  }
+
+  // POST /api/timesheet/v2/corrections
+  fastify.post('/corrections', viewAuth, async (request, reply) => {
+    try {
+      if (!(await correctionsTableReady())) {
+        return reply.code(503).send({ error: 'timesheet_corrections not ready — apply V360' });
+      }
+      const viewer = request.user || {};
+      if (!PM_ROLES.includes(viewer.role) && !GLOBAL_ROLES.includes(viewer.role)) {
+        return reply.code(403).send({ error: 'Только РП может ставить корректировку' });
+      }
+      const body = request.body || {};
+      const employee_id = parseInt(body.employee_id, 10);
+      const work_id = body.work_id != null ? parseInt(body.work_id, 10) : null;
+      const correction_date = body.correction_date || body.date;
+      const message = String(body.message || '').trim();
+      const expected_type = body.expected_type ? normalizeLogisticsType(body.expected_type) || body.expected_type : null;
+      let expected_points = body.expected_points != null ? Number(body.expected_points) : null;
+      if (expected_points != null && !Number.isFinite(expected_points)) expected_points = null;
+      const target_user_id = body.target_user_id != null ? parseInt(body.target_user_id, 10) : null;
+
+      if (!employee_id || !correction_date || !message) {
+        return reply.code(400).send({ error: 'employee_id, date, message обязательны' });
+      }
+      if (message.length < 3) return reply.code(400).send({ error: 'Сообщение слишком короткое' });
+
+      if (PM_ROLES.includes(viewer.role)) {
+        const ok = await pmOwnsEmployeeOrWork(db, viewer, employee_id, work_id);
+        if (!ok) return reply.code(403).send({ error: 'Сотрудник не в вашей дружине' });
+        if (work_id && viewer.role === 'PM') {
+          const { rows: w } = await db.query(`SELECT pm_id FROM works WHERE id=$1`, [work_id]);
+          if (!w.length || Number(w[0].pm_id) !== Number(viewer.id)) {
+            return reply.code(403).send({ error: 'Это не ваша работа' });
+          }
+        }
+      }
+
+      // Авто-target: автор последней отметки на дату (users.id)
+      let target = target_user_id;
+      if (!target) {
+        const { rows: st } = await db.query(`
+          SELECT COALESCE(entered_by_user_id, created_by) AS uid
+            FROM field_trip_stages
+           WHERE employee_id=$1 AND date_from <= $2::date
+             AND COALESCE(date_to, date_from) >= $2::date
+             AND COALESCE(status,'active') NOT IN ('rejected','cancelled')
+           ORDER BY updated_at DESC NULLS LAST, id DESC LIMIT 1
+        `, [employee_id, correction_date]);
+        if (st[0]?.uid) target = Number(st[0].uid);
+        if (!target) {
+          const { rows: ci } = await db.query(`
+            SELECT entered_by_user_id AS uid FROM field_checkins
+             WHERE employee_id=$1 AND date=$2::date AND status='completed'
+             ORDER BY updated_at DESC NULLS LAST LIMIT 1
+          `, [employee_id, correction_date]);
+          if (ci[0]?.uid) target = Number(ci[0].uid);
+        }
+      }
+
+      const { rows } = await db.query(`
+        INSERT INTO timesheet_corrections
+          (work_id, employee_id, correction_date, expected_type, expected_points,
+           message, status, created_by_user_id, target_user_id)
+        VALUES ($1,$2,$3::date,$4,$5,$6,'open',$7,$8)
+        RETURNING *
+      `, [work_id, employee_id, correction_date, expected_type, expected_points,
+          message, viewer.id, target || null]);
+
+      if (target) {
+        try {
+          const { rows: emp } = await db.query(
+            `SELECT COALESCE(fio, full_name) AS fio FROM employees WHERE id=$1`, [employee_id]
+          );
+          await createNotification(db, {
+            user_id: target,
+            title: 'Корректировка табеля',
+            message: `РП ${viewer.name || ''}: ${emp[0]?.fio || 'сотрудник'} на ${correction_date} — ${message}`,
+            link: work_id ? `/#/pm-works?work=${work_id}` : '/#/timesheet-travel',
+            type: 'timesheet_correction'
+          });
+        } catch (_) { /* non-critical */ }
+      }
+
+      return reply.code(201).send({ ok: true, correction: rows[0] });
+    } catch (err) {
+      fastify.log.error({ err }, '[timesheet-v2] POST /corrections');
+      return reply.code(500).send({ error: 'Ошибка сервера' });
+    }
+  });
+
+  // GET /api/timesheet/v2/corrections?work_id=&from=&to=&status=open&inbox=1
+  fastify.get('/corrections', viewAuth, async (request, reply) => {
+    try {
+      if (!(await correctionsTableReady())) return { corrections: [] };
+      const viewer = request.user || {};
+      const q = request.query || {};
+      const workId = q.work_id != null ? parseInt(q.work_id, 10) : null;
+      const from = q.from || null;
+      const to = q.to || null;
+      const status = q.status || 'open';
+      const inbox = q.inbox === '1' || q.inbox === 'true';
+
+      const params = [];
+      const where = [];
+      if (status && status !== 'all') {
+        params.push(status);
+        where.push(`c.status = $${params.length}`);
+      }
+      if (workId) {
+        params.push(workId);
+        where.push(`c.work_id = $${params.length}`);
+      }
+      if (from) {
+        params.push(from);
+        where.push(`c.correction_date >= $${params.length}::date`);
+      }
+      if (to) {
+        params.push(to);
+        where.push(`c.correction_date <= $${params.length}::date`);
+      }
+      if (inbox) {
+        params.push(viewer.id);
+        where.push(`c.target_user_id = $${params.length}`);
+      } else if (PM_ROLES.includes(viewer.role) && viewer.role === 'PM') {
+        params.push(viewer.id);
+        where.push(`(c.created_by_user_id = $${params.length} OR c.work_id IN (SELECT id FROM works WHERE pm_id=$${params.length}))`);
+      }
+
+      const sql = `
+        SELECT c.*, e.fio AS employee_fio, u.name AS created_by_fio,
+               tu.name AS target_fio, w.work_title
+          FROM timesheet_corrections c
+          JOIN employees e ON e.id = c.employee_id
+          LEFT JOIN users u ON u.id = c.created_by_user_id
+          LEFT JOIN users tu ON tu.id = c.target_user_id
+          LEFT JOIN works w ON w.id = c.work_id
+         ${where.length ? 'WHERE ' + where.join(' AND ') : ''}
+         ORDER BY c.correction_date DESC, c.id DESC
+         LIMIT 200
+      `;
+      const { rows } = await db.query(sql, params);
+      return { corrections: rows };
+    } catch (err) {
+      fastify.log.error({ err }, '[timesheet-v2] GET /corrections');
+      return reply.code(500).send({ error: 'Ошибка сервера' });
+    }
+  });
+
+  // PATCH /api/timesheet/v2/corrections/:id/resolve
+  fastify.patch('/corrections/:id/resolve', viewAuth, async (request, reply) => {
+    try {
+      if (!(await correctionsTableReady())) {
+        return reply.code(503).send({ error: 'timesheet_corrections not ready' });
+      }
+      const id = parseInt(request.params.id, 10);
+      const viewer = request.user || {};
+      const body = request.body || {};
+      const nextStatus = body.status === 'cancelled' ? 'cancelled' : 'resolved';
+
+      const { rows: cur } = await db.query(`SELECT * FROM timesheet_corrections WHERE id=$1`, [id]);
+      if (!cur.length) return reply.code(404).send({ error: 'Не найдено' });
+      const row = cur[0];
+      const can =
+        Number(row.created_by_user_id) === Number(viewer.id) ||
+        Number(row.target_user_id) === Number(viewer.id) ||
+        GLOBAL_ROLES.includes(viewer.role) ||
+        MEDICAL_ROLES.includes(viewer.role) ||
+        TRAVEL_ROLES.includes(viewer.role) ||
+        PM_ROLES.includes(viewer.role);
+      if (!can) return reply.code(403).send({ error: 'Нет доступа' });
+
+      const { rows } = await db.query(`
+        UPDATE timesheet_corrections
+           SET status=$2, resolved_at=NOW(), resolved_by_user_id=$3, updated_at=NOW()
+         WHERE id=$1
+         RETURNING *
+      `, [id, nextStatus, viewer.id]);
+      return { ok: true, correction: rows[0] };
+    } catch (err) {
+      fastify.log.error({ err }, '[timesheet-v2] PATCH /corrections/:id/resolve');
       return reply.code(500).send({ error: 'Ошибка сервера' });
     }
   });

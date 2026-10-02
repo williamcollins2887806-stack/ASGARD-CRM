@@ -1107,6 +1107,18 @@ window.AsgardTimesheetV2 = (function () {
     return html;
   }
 
+  // D-258 / D-249b: логистика офиса — РП может заменить/удалить в «Табель моей дружины».
+  // medical/warehouse/training НЕ входят.
+  const PM_LOGISTICS_OVERWRITE = new Set([
+    'travel', 'road', 'ship', 'helicopter', 'waiting', 'standby'
+  ]);
+  function isPmLogisticsType(t) {
+    if (!t) return false;
+    if (t === 'road') return PM_LOGISTICS_OVERWRITE.has('travel');
+    if (t === 'standby') return PM_LOGISTICS_OVERWRITE.has('waiting');
+    return PM_LOGISTICS_OVERWRITE.has(t);
+  }
+
   // Наборы «одна дата = одна отметка». Чужую отметку из набора можно заменить,
   // если в режиме есть свой тип из того же набора (✈️→🚢, ✈️→⏳).
   const CROSS_EDIT_GROUPS = [
@@ -1118,7 +1130,9 @@ window.AsgardTimesheetV2 = (function () {
     if (!canEdit) return false;
     if (!entry || !entry.type) return true;
     if (entry.is_mine) return true;
-    // PM-режим правит только свои смены на своей работе — чужие дороги/ожидания не трогаем.
+    // D-258: PM может кликнуть офисную логистику (корабль/дорога Хосе) → day/night/delete
+    if (mode === 'pm' && isPmLogisticsType(entry.type)) return true;
+    // PM-режим правит только свои смены на своей работе — чужие non-logistics не трогаем.
     if (mode === 'pm') return false;
     const allowed = MODE_ALLOWED_TYPES[mode] || [];
     return CROSS_EDIT_GROUPS.some(
@@ -1854,6 +1868,15 @@ window.AsgardTimesheetV2 = (function () {
 
     async function onLockClick() {
       const scope = MODE_LOCK_SCOPE[mode];
+      if (!scope) {
+        toast('Ошибка', 'Неизвестный режим табеля — закрытие недоступно', 'err');
+        return;
+      }
+      // D-258: жёстко свой scope; pm никогда не шлёт warehouse
+      if (mode === 'pm' && scope !== 'pm') {
+        toast('Ошибка', 'РП закрывает только свой табель', 'err');
+        return;
+      }
       const period = `${MONTHS_RU[curMonth-1]} ${curYear}`;
       // FIX 16 — человеческие подписи без техжаргона (никаких scope=pm)
       const scopeText = ({
@@ -1871,7 +1894,8 @@ window.AsgardTimesheetV2 = (function () {
         toast('Готово', 'Месяц закрыт', 'ok');
         await refresh();
       } catch (e) {
-        toast('Ошибка', e.message, 'err');
+        const msg = (e && e.data && e.data.message) || e.message || 'Не удалось закрыть';
+        toast('Ошибка', msg, 'err');
       }
     }
 
@@ -2454,6 +2478,7 @@ window.AsgardTimesheetV2 = (function () {
       const curType = cell.dataset.type || null;
 
       const allowedTypes = MODE_ALLOWED_TYPES[mode] || [];
+      const isPmLogisticsCell = mode === 'pm' && isPmLogisticsType(curType);
       const pop = document.createElement('div');
       pop.className = 'tsv2-popover';
       _editing = true; // FIX 13 — пауза авторефреша
@@ -2526,27 +2551,73 @@ window.AsgardTimesheetV2 = (function () {
         });
       }
 
-      allowedTypes.forEach(t => {
-        const meta = TYPE_META[t];
-        const btn = document.createElement('button');
-        btn.innerHTML = `<span class="tsv2-cell" style="background:${meta.color};color:${meta.textColor}">${meta.icon}</span> ${meta.label}`;
-        btn.addEventListener('click', async () => {
-          pop.remove();
-          _editing = false; // FIX 13
-          // Если тип требует work_id и нет — открыть picker
-          if (typeRequiresWorkIdLocal(t) && !workId) {
-            openWorkPicker(empId, meta.label, async (pickedId) => {
-              await askDirectionThenSave(t, pickedId);
-            });
-            return;
-          }
-          await askDirectionThenSave(t, workId);
+      // D-258: офисная логистика в PM — только заменить на день/ночь или удалить
+      // (не создавать новый ship/travel из PM).
+      if (isPmLogisticsCell) {
+        const note = document.createElement('div');
+        note.style.cssText = 'padding:6px 10px;font-size:11px;color:var(--t2);max-width:200px';
+        note.textContent = 'Офисная отметка. Замените на смену или удалите.';
+        pop.appendChild(note);
+        ['day', 'night'].forEach((t) => {
+          const meta = TYPE_META[t];
+          const btn = document.createElement('button');
+          btn.innerHTML = `<span class="tsv2-cell" style="background:${meta.color};color:${meta.textColor}">${meta.icon}</span> ${meta.label}`;
+          btn.addEventListener('click', async () => {
+            pop.remove();
+            _editing = false;
+            const wid = workId || null;
+            if (!wid) {
+              openWorkPicker(empId, meta.label, async (pickedId) => {
+                await saveEntry(t, pickedId);
+              });
+              return;
+            }
+            await saveEntry(t, wid);
+          });
+          pop.appendChild(btn);
         });
-        pop.appendChild(btn);
-      });
+        const corrBtn = document.createElement('button');
+        corrBtn.textContent = '✏️ Корректировка…';
+        corrBtn.addEventListener('click', () => {
+          pop.remove();
+          _editing = false;
+          openCorrectionModal(empId, dateISO, workId, curType);
+        });
+        pop.appendChild(corrBtn);
+      } else {
+        allowedTypes.forEach(t => {
+          const meta = TYPE_META[t];
+          const btn = document.createElement('button');
+          btn.innerHTML = `<span class="tsv2-cell" style="background:${meta.color};color:${meta.textColor}">${meta.icon}</span> ${meta.label}`;
+          btn.addEventListener('click', async () => {
+            pop.remove();
+            _editing = false; // FIX 13
+            // Если тип требует work_id и нет — открыть picker
+            if (typeRequiresWorkIdLocal(t) && !workId) {
+              openWorkPicker(empId, meta.label, async (pickedId) => {
+                await askDirectionThenSave(t, pickedId);
+              });
+              return;
+            }
+            await askDirectionThenSave(t, workId);
+          });
+          pop.appendChild(btn);
+        });
+        if (mode === 'pm' && (!curType || !isPmLogisticsType(curType))) {
+          const corrBtn = document.createElement('button');
+          corrBtn.textContent = '✏️ Корректировка…';
+          corrBtn.addEventListener('click', () => {
+            pop.remove();
+            _editing = false;
+            openCorrectionModal(empId, dateISO, workId, curType);
+          });
+          pop.appendChild(corrBtn);
+        }
+      }
 
       if (curType && (
-        allowedTypes.includes(curType)
+        isPmLogisticsCell
+        || allowedTypes.includes(curType)
         || (mode !== 'pm' && CROSS_EDIT_GROUPS.some(
           (g) => g.has(curType) && allowedTypes.some((t) => g.has(t))
         ))
@@ -2605,6 +2676,56 @@ window.AsgardTimesheetV2 = (function () {
         }
       };
       setTimeout(() => document.addEventListener('click', closeOnOut), 10);
+    }
+
+    function openCorrectionModal(empId, dateISO, workId, curType) {
+      const emp = (data?.employees || []).find((e) => Number(e.id) === Number(empId));
+      const fio = emp ? (emp.fio || emp.name || '#' + empId) : ('#' + empId);
+      showModal({
+        title: 'Корректировка табеля',
+        html:
+          `<p style="font-size:13px;margin:0 0 10px">Сотрудник: <b>${esc(fio)}</b><br>Дата: <b>${esc(dateISO)}</b>` +
+          (curType ? `<br>Сейчас: <b>${esc((TYPE_META[curType] || {}).label || curType)}</b>` : '') +
+          `</p>` +
+          `<label style="font-size:12px;display:block;margin-bottom:4px">Что должно быть (тип)</label>` +
+          `<select id="tsv2CorrType" style="width:100%;margin-bottom:8px;padding:6px">` +
+          `<option value="">— не важно —</option>` +
+          ['day','night','travel','ship','helicopter','waiting'].map((t) =>
+            `<option value="${t}">${esc((TYPE_META[t] || {}).label || t)}</option>`
+          ).join('') +
+          `</select>` +
+          `<label style="font-size:12px;display:block;margin-bottom:4px">Баллы (если нужно)</label>` +
+          `<input id="tsv2CorrPts" type="number" min="0" max="50" step="0.5" placeholder="например 13" style="width:100%;margin-bottom:8px;padding:6px"/>` +
+          `<label style="font-size:12px;display:block;margin-bottom:4px">Комментарий для офиса / мастера</label>` +
+          `<textarea id="tsv2CorrMsg" rows="3" style="width:100%;padding:6px" placeholder="Здесь должна быть дорога / дневная смена…"></textarea>` +
+          `<div style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px">` +
+          `<button type="button" class="btn mini ghost" id="tsv2CorrCnl">Отмена</button>` +
+          `<button type="button" class="btn mini" id="tsv2CorrOk">Отправить</button></div>`,
+        onMount: () => {
+          document.getElementById('tsv2CorrCnl')?.addEventListener('click', () => closeModal());
+          document.getElementById('tsv2CorrOk')?.addEventListener('click', async () => {
+            const msg = (document.getElementById('tsv2CorrMsg')?.value || '').trim();
+            if (msg.length < 3) { toast('Корректировка', 'Напишите, что должно быть', 'warn'); return; }
+            const expected_type = document.getElementById('tsv2CorrType')?.value || null;
+            const ptsRaw = document.getElementById('tsv2CorrPts')?.value;
+            const expected_points = ptsRaw !== '' && ptsRaw != null ? Number(ptsRaw) : null;
+            try {
+              await apiSend('POST', `${API_BASE}/corrections`, {
+                employee_id: empId,
+                work_id: workId || null,
+                correction_date: dateISO,
+                expected_type,
+                expected_points: Number.isFinite(expected_points) ? expected_points : null,
+                message: msg
+              });
+              closeModal();
+              toast('Корректировка', 'Отправлено', 'ok');
+            } catch (e) {
+              toast('Ошибка', e.message || String(e), 'err');
+            }
+          });
+        }
+      });
     }
 
     // ── Модалка «+ Добавить рабочего» ────────────────────────────────
