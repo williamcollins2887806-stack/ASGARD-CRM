@@ -7441,3 +7441,77 @@ Post-deploy: `restore_asset_sync plan` to_upload=0; `audit_silent_reverts --post
 Post-deploy: `audit_silent_reverts --post-deploy` = **0 расхождений**.
 Коммиты: `6920cd89` (fix), `8bc9240e` (verify); `.last-verified`=`6920cd89`.
 
+## D-252. Timesheet Excel без закреплённых областей (02.10.2026)
+
+**Как найдено.** Выгрузка табеля (lean и full) открывалась в Excel с freeze panes
+(3 строки шапки + leadCols слева) — неудобно для PROC/директора.
+
+**Правки.** `src/routes/timesheet-v2.js` — удалены оба `ws.views = [{ state: 'frozen', ... }]`.
+
+**Доказательства.** Локально/прод: `grep state: 'frozen'` в `timesheet-v2.js` = 0.
+**Статус: FIXED** (SELF-CHECK + post-deploy).
+**Выкатка:** 02.10.2026 shell **20.28.53** (без бампа) —
+`python tools/deploy_timesheet_xlsx_no_freeze.py` (snapshot → tar 1 FILE → restart → smoke).
+Коммиты: `cd902661` (fix); `.last-verified`=`cd902661`.
+
+## D-252. Telephony cutover audit: критические дыры безопасности (02.10.2026)
+
+**Источник:** план «Телефония вместо Битрикс24», read-only аудит прода/кода.
+**Критичность:** critical.
+**Статус:** FOUND → чинится в батче телефонии (см. `TELEPHONY-EXEC-JOURNAL.md`).
+
+| ID | Суть | Файлы:строки |
+|----|------|--------------|
+| D-252a | `/internal/agi-event` — «localhost only» обходится через nginx; `recordingPath` → LFI через `/calls/:id/record` | `src/routes/telephony.js:1485–1651`, `775–836` |
+| D-252b | IDOR: детали/запись/note/tag/transcribe/analyze/create-lead/ack missed без проверки участия | `telephony.js:747–944`, `1077–1085` |
+| D-252c | Незащищённые `/call/route`, `/call/transfer`, `/call/hangup` — любой auth может управлять чужим звонком | `telephony.js:1372–1418` |
+| D-252d | `user_call_status` доступен на запись через `/api/data` | `src/routes/data.js:37,69+` |
+| D-252e | Секреты Mango не в `SENSITIVE_KEYS` settings | `src/routes/settings.js:8` |
+| D-252f | `from_extension` можно подменить в `/call/start` | `telephony.js:954–966` |
+| D-252g | `trustProxy` не настроен; `request.ip` за nginx = 127.0.0.1 | `src/index.js:15–20` |
+| D-252h | Диспетчер ИИ / AGI live — мёртвый опасный контур | `telephony.js:1485+`, call-control dispatcher |
+
+## D-253. Telephony: конвейер и вебхуки сломаны (02.10.2026)
+
+**Критичность:** high. **Статус:** FOUND.
+
+| ID | Суть | Файлы |
+|----|------|-------|
+| D-253a | `require('../services/notify')` без деструктуризации → `notify` = объект, не функция | `telephony.js:6,76` |
+| D-253b | Missed-task без `creator_id`, статус `'todo'` вместо `'new'` | `call-pipeline.js:311–324` |
+| D-253c | UPDATE несуществующей колонки `record_url` (в схеме `recording_url`) | `call-pipeline.js:132`, `telephony.js:1590–1618` |
+| D-253d | Два инстанса CallPipeline (route lazy vs index.js) | `telephony.js:71–81`, `index.js:805–814` |
+| D-253e | Воркеры/пайплайн могут бить платные API на клоне | `call-pipeline.js`, `index.js` |
+| D-253f | `getCurrentDuty` берёт UTC-дату → 00:00–03:00 МСК = вчера | `tender-registry-helpers.js:197–210` |
+| D-253g | Mango `result` vs `code` — сбой может выглядеть как успех | `mango.js:66–73` |
+| D-253h | SSE `call:incoming` camelCase, фронт ждёт snake_case | `telephony.js:276–286`, `telephony_popup.js:1027–1040` |
+| D-253i | Disconnected: DELETE active_calls до SELECT assigned → call:ended теряется | `telephony.js:319–328` |
+
+## D-254. Telephony: vanilla UI и отчёты (02.10.2026)
+
+**Критичность:** high. **Статус:** FOUND.
+
+| ID | Суть | Файлы |
+|----|------|-------|
+| D-254a | `showModal({body})` вместо `{html}` — пустые модалки | `telephony.js`, `call_reports.js` |
+| D-254b | Toast args перепутаны (msg, type) vs (title, msg, type) | `telephony.js`, `telephony_popup.js` |
+| D-254c | SSE-хендлеры вложены/копятся в `app.js` | `app.js:2799+` |
+| D-254d | XSS в AI-полях; опечатка `DIRECTOR_COM`; TypeError аналитика | `telephony.js` |
+| D-254e | Мёртвое: виджет «Приём звонков», `#/mango`, ИИ-диспетчер в UI | `mango.js`, routes |
+| D-254f | Нет `POST /call-control/answer` (фронт вызывает) | `telephony_popup.js:773` |
+| D-254g | `/status` читает таблицу `calls` вместо `call_history` | `telephony.js:96–121` |
+
+## D-255. D-36/54/68/70 — статусы устарели (02.10.2026)
+
+Ранее в ledger висели FOUND, но закрыты коммитами/редиректами в июне–сентябре или вне soft-cutover (v2-only).
+- **D-36** mango-settings → OUT_OF_SCOPE_SOFT_CUTOVER (vanilla `#/mango` убираем; v2 redirect уже есть).
+- **D-54** CallDetailModal v2 → OUT_OF_SCOPE_SOFT_CUTOVER (софтфон только vanilla).
+- **D-68** telephony-status dispatcher → FIXED_PARTIAL в рамках D-252h (диспетчер ИИ снимаем).
+- **D-70** MakeCallModal wording → OUT_OF_SCOPE_SOFT_CUTOVER (v2); vanilla callback переписывается в softphone.
+
+## D-256. field-manage sendSms vs mango result (FOLLOW-UP)
+
+**Критичность:** medium. **Статус:** FOLLOW-UP-OPEN.
+Если патч `mango.js` (D-253g) ломает SMS Field — чинить в том же батче. Иначе микро-PR сразу после телефонии.
+Журнал: `BLOCKED-BY` / `FOLLOW-UP-OPEN` в `TELEPHONY-EXEC-JOURNAL.md`.
+
