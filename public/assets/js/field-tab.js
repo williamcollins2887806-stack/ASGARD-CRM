@@ -10,6 +10,46 @@ window.AsgardFieldTab = (function () {
 
   const { $, $$, esc, toast, moneyRub: money, formatDate } = AsgardUI;
 
+  /** Ctrl/Shift + колесо → горизонтальный скролл широких таблиц. */
+  function bindHScrollWheel(el) {
+    if (!el || el.dataset.hScrollBound === '1') return;
+    el.dataset.hScrollBound = '1';
+    el.addEventListener('wheel', (e) => {
+      if (!(e.ctrlKey || e.shiftKey)) return;
+      if (el.scrollWidth <= el.clientWidth + 1) return;
+      e.preventDefault();
+      el.scrollLeft += e.deltaY || e.deltaX;
+    }, { passive: false });
+  }
+
+  function applyCompactTableClass(wrap, table) {
+    if (!wrap) return;
+    const narrow = (typeof window !== 'undefined' && window.innerWidth < 1400);
+    wrap.classList.toggle('ft-wide-table--compact', !!narrow);
+    if (table) table.classList.toggle('ft-wide-table--compact', !!narrow);
+  }
+
+  function ensureFieldTabTableStyles() {
+    if (document.getElementById('ft-wide-table-css')) return;
+    const st = document.createElement('style');
+    st.id = 'ft-wide-table-css';
+    st.textContent = `
+      .ft-crew-table-wrap.ft-wide-table--compact .ft-crew-table { font-size: 12px; }
+      .ft-crew-table-wrap.ft-wide-table--compact .ft-crew-table th,
+      .ft-crew-table-wrap.ft-wide-table--compact .ft-crew-table td { padding: 4px 6px !important; }
+      .ft-crew-table-wrap .ft-crew-col-fio,
+      .ft-crew-table-wrap td:nth-child(2) {
+        position: sticky; left: 0; z-index: 2;
+        background: var(--bg1, #12141c);
+        box-shadow: 4px 0 8px rgba(0,0,0,.12);
+      }
+      .ft-crew-table-wrap thead .ft-crew-col-fio { z-index: 3; background: var(--bg2, #1a1f2e); }
+      .ft-combo-btn { max-width: 110px; }
+      #tsTableWrap.ft-wide-table--compact table { font-size: 12px; }
+    `;
+    document.head.appendChild(st);
+  }
+
   function hdr() {
     const t = localStorage.getItem('asgard_token') || localStorage.getItem('auth_token');
     return { 'Authorization': 'Bearer ' + t, 'Content-Type': 'application/json' };
@@ -340,6 +380,7 @@ window.AsgardFieldTab = (function () {
   // ═══════════════════════════════════════════════════════════════════
   async function renderCrewTab(container, work, user, settingsData, isActive) {
     stopCrewAutosave();
+    ensureFieldTabTableStyles();
     // Clean up previous CRSelect instances for crew rows
     _ftTariffIds.forEach(id => { try { CRSelect.destroy(id); } catch (_) {} });
     _ftTariffIds.length = 0;
@@ -555,16 +596,18 @@ window.AsgardFieldTab = (function () {
     // скролла нет вообще. `min-width:0` на flex/grid-родителях не критично,
     // но добавлено для надёжности.
     const tableWrap = document.createElement('div');
+    tableWrap.className = 'ft-crew-table-wrap';
     tableWrap.style.cssText = 'overflow-x:auto;margin-bottom:16px;min-width:0';
 
     const table = document.createElement('table');
+    table.className = 'ft-crew-table';
     table.style.cssText = 'width:100%;border-collapse:collapse;font-size:13px';
 
     // Header
     const thead = document.createElement('thead');
     thead.innerHTML = `<tr style="background:var(--bg2)">
       <th style="padding:8px 6px;text-align:center;border-bottom:1px solid var(--brd);color:var(--t2);font-weight:500;font-size:12px;width:36px">#</th>
-      <th style="padding:8px 10px;text-align:left;border-bottom:1px solid var(--brd);color:var(--t2);font-weight:500;font-size:12px">ФИО</th>
+      <th class="ft-crew-col-fio" style="padding:8px 10px;text-align:left;border-bottom:1px solid var(--brd);color:var(--t2);font-weight:500;font-size:12px">ФИО</th>
       <th style="padding:8px 10px;text-align:left;border-bottom:1px solid var(--brd);color:var(--t2);font-weight:500;font-size:12px">Роль</th>
       <th style="padding:8px 10px;text-align:left;border-bottom:1px solid var(--brd);color:var(--t2);font-weight:500;font-size:12px">Смена</th>
       <th style="padding:8px 10px;text-align:left;border-bottom:1px solid var(--brd);color:var(--t2);font-weight:500;font-size:12px">Тариф</th>
@@ -583,6 +626,16 @@ window.AsgardFieldTab = (function () {
 
     tableWrap.appendChild(table);
     container.appendChild(tableWrap);
+    bindHScrollWheel(tableWrap);
+    applyCompactTableClass(tableWrap, table);
+    if (!window.__ftCompactResize) {
+      window.__ftCompactResize = () => {
+        document.querySelectorAll('.ft-crew-table-wrap').forEach((w) => {
+          applyCompactTableClass(w, w.querySelector('table'));
+        });
+      };
+      window.addEventListener('resize', window.__ftCompactResize);
+    }
 
     // Populate existing assignments — сразу по ФИО А→Я
     const currentCat = CRSelect.getValue('fieldCategory');
@@ -590,7 +643,20 @@ window.AsgardFieldTab = (function () {
     const filteredTariffs = allTariffs.filter(t => t.category === currentCat);
     const comboTariffs = specials.concat(allTariffs.filter(t => t.is_combinable));
 
-    const sortedAssignments = assignments.slice().sort((a, b) => {
+    // Дедуп: один employee_id — одна активная строка (оставляем новейшее назначение)
+    const dedupedByEmp = new Map();
+    for (const a of assignments) {
+      const eid = Number(a.employee_id);
+      if (!Number.isFinite(eid)) continue;
+      const prev = dedupedByEmp.get(eid);
+      if (!prev) { dedupedByEmp.set(eid, a); continue; }
+      const aTs = new Date(a.created_at || a.date_from || 0).getTime();
+      const pTs = new Date(prev.created_at || prev.date_from || 0).getTime();
+      if (aTs >= pTs) dedupedByEmp.set(eid, a);
+    }
+    const uniqueAssignments = Array.from(dedupedByEmp.values());
+
+    const sortedAssignments = uniqueAssignments.slice().sort((a, b) => {
       const ea = allEmployees.find(e => Number(e.id) === Number(a.employee_id));
       const eb = allEmployees.find(e => Number(e.id) === Number(b.employee_id));
       const na = String(ea?.fio || ea?.full_name || '').toLocaleLowerCase('ru');
@@ -599,8 +665,17 @@ window.AsgardFieldTab = (function () {
     });
 
     for (const a of sortedAssignments) {
-      const emp = allEmployees.find(e => e.id === a.employee_id);
-      if (!emp) continue;
+      let emp = allEmployees.find(e => Number(e.id) === Number(a.employee_id));
+      // Не скрывать строку: иначе «человек без ФИО» / пропавший из справочника
+      if (!emp) {
+        emp = {
+          id: Number(a.employee_id),
+          fio: '',
+          full_name: '',
+          phone: null,
+          _missingFromDirectory: true
+        };
+      }
       addCrewRow(tbody, emp, a, filteredTariffs, comboTariffs, allEmployees, work, allTariffs);
     }
     renumberCrewRows(tbody);
@@ -877,13 +952,13 @@ window.AsgardFieldTab = (function () {
       depSection.appendChild(depHeader);
 
       for (const a of inactiveAssignments) {
-        const emp = allEmployees.find(e => e.id === a.employee_id);
-        if (!emp) continue;
+        const emp = allEmployees.find(e => Number(e.id) === Number(a.employee_id))
+          || { id: Number(a.employee_id), fio: '#' + a.employee_id };
         const row = document.createElement('div');
         row.style.cssText = 'display:flex;align-items:center;justify-content:space-between;padding:8px 14px;border-top:1px solid var(--brd-m);font-size:13px;color:var(--t2)';
 
         const nameSpan = document.createElement('span');
-        nameSpan.textContent = emp.fio || '—';
+        nameSpan.textContent = emp.fio || emp.full_name || ('#' + a.employee_id);
         row.appendChild(nameSpan);
 
         const dateSpan = document.createElement('span');
@@ -1416,10 +1491,16 @@ window.AsgardFieldTab = (function () {
     tdEmp.style.cssText = cellStyle + ';min-width:240px';
     const pickerId = 'crew-emp-' + (employee ? employee.id : Date.now() + '-' + Math.random().toString(36).slice(2, 6));
     CREmployeePicker.destroy(pickerId);
+    // Гарантируем, что текущий сотрудник есть в списке пикера (иначе chip пустой)
+    const pickerSource = Array.isArray(allEmployees) ? allEmployees.slice() : [];
+    if (employee && !pickerSource.some((e) => Number(e.id) === Number(employee.id))) {
+      pickerSource.unshift(employee);
+    }
     const pickerEl = CREmployeePicker.create({
       id: pickerId,
-      employees: allEmployees.map(e => {
-        const baseName = e.fio || e.full_name || `${e.last_name || ''} ${e.first_name || ''}`.trim() || '';
+      employees: pickerSource.map(e => {
+        const baseName = e.fio || e.full_name || `${e.last_name || ''} ${e.first_name || ''}`.trim()
+          || (e.id != null ? ('#' + e.id) : '');
         // Если рабочий занят на другой работе — добавляем индикатор
         let suffix = '';
         if (e.is_busy && e.busy_with && e.busy_with.length) {
@@ -1429,15 +1510,17 @@ window.AsgardFieldTab = (function () {
         } else if (e.busy_with !== undefined) {
           // Свободен — endpoint /available вернул данные
           suffix = ' ✅';
+        } else if (e._missingFromDirectory) {
+          suffix = ' ⚠ нет в справочнике';
         }
         return {
-          id: e.id,
+          id: Number(e.id),
           name: baseName + suffix,
           position: e.position || e.role_display || e.role || '',
           role: e.role || '',
         };
       }),
-      selected: employee ? [employee.id] : [],
+      selected: employee ? [Number(employee.id)] : [],
       maxSelect: 1,
       placeholder: '— сотрудник —',
       showChips: true,
@@ -1569,30 +1652,61 @@ window.AsgardFieldTab = (function () {
     tdRate.textContent = '—';
     tr.appendChild(tdRate);
 
-    // Combination: галочки + ручные баллы (не один dropdown)
+    // Combination: компактная кнопка + popover (галочки в DOM строки для collectCrewEmployees)
     const tdCombo = document.createElement('td');
-    tdCombo.style.cssText = cellStyle + ';text-align:left;min-width:160px;max-width:220px';
+    tdCombo.style.cssText = cellStyle + ';text-align:center;min-width:88px;max-width:120px';
     tdCombo.dataset.field = 'combo';
     const selectedComboIds = Array.isArray(assignment?.combo_tariff_ids) && assignment.combo_tariff_ids.length
       ? assignment.combo_tariff_ids.map(String)
       : (assignment?.combination_tariff_id ? [String(assignment.combination_tariff_id)] : []);
-    const comboWrap = document.createElement('div');
-    comboWrap.style.cssText = 'display:flex;flex-direction:column;gap:3px;max-height:110px;overflow:auto';
+
+    const comboBtn = document.createElement('button');
+    comboBtn.type = 'button';
+    comboBtn.className = 'btn mini ghost ft-combo-btn';
+    comboBtn.style.cssText = 'font-size:11px;padding:4px 8px;white-space:nowrap;max-width:110px;overflow:hidden;text-overflow:ellipsis';
+
+    const comboPanel = document.createElement('div');
+    comboPanel.className = 'ft-combo-pop';
+    comboPanel.hidden = true;
+    comboPanel.style.cssText = [
+      'display:none',
+      'position:fixed',
+      'z-index:12000',
+      'min-width:240px',
+      'max-width:320px',
+      'max-height:280px',
+      'overflow:auto',
+      'padding:10px',
+      'background:var(--bg1,#1a1f2e)',
+      'border:1px solid var(--brd)',
+      'border-radius:8px',
+      'box-shadow:0 8px 24px rgba(0,0,0,.35)'
+    ].join(';');
+
+    const comboList = document.createElement('div');
+    comboList.style.cssText = 'display:flex;flex-direction:column;gap:4px;margin-bottom:8px';
     comboTariffs.filter(t => t.is_combinable).forEach(t => {
       const lab = document.createElement('label');
-      lab.style.cssText = 'display:flex;align-items:flex-start;gap:5px;font-size:11px;cursor:pointer;line-height:1.25';
+      lab.style.cssText = 'display:flex;align-items:flex-start;gap:6px;font-size:12px;cursor:pointer;line-height:1.3';
       const cb = document.createElement('input');
       cb.type = 'checkbox';
       cb.className = 'ft-combo-check';
       cb.value = String(t.id);
       cb.checked = selectedComboIds.includes(String(t.id));
-      cb.addEventListener('change', () => updatePointsRate());
+      cb.addEventListener('change', () => { updatePointsRate(); refreshComboBtn(); });
       lab.appendChild(cb);
       const sp = document.createElement('span');
       sp.textContent = (t.position_name || '') + ' (+' + (t.points || 1) + 'б)';
       lab.appendChild(sp);
-      comboWrap.appendChild(lab);
+      comboList.appendChild(lab);
     });
+    if (!comboList.childElementCount) {
+      const empty = document.createElement('div');
+      empty.style.cssText = 'font-size:12px;color:var(--t3)';
+      empty.textContent = 'Нет совмещений в сетке';
+      comboList.appendChild(empty);
+    }
+
     const manualInp = document.createElement('input');
     manualInp.type = 'number';
     manualInp.min = '0';
@@ -1603,10 +1717,81 @@ window.AsgardFieldTab = (function () {
     manualInp.value = assignment?.manual_extra_points != null && Number(assignment.manual_extra_points) !== 0
       ? String(assignment.manual_extra_points)
       : '';
-    manualInp.style.cssText = 'width:100%;margin-top:4px;font-size:11px;padding:3px 6px';
-    manualInp.addEventListener('input', () => updatePointsRate());
-    tdCombo.appendChild(comboWrap);
-    tdCombo.appendChild(manualInp);
+    manualInp.style.cssText = 'width:100%;font-size:12px;padding:4px 8px';
+    manualInp.addEventListener('input', () => { updatePointsRate(); refreshComboBtn(); });
+
+    comboPanel.appendChild(comboList);
+    comboPanel.appendChild(manualInp);
+
+    function comboSummary() {
+      let pts = 0;
+      let n = 0;
+      const names = [];
+      comboPanel.querySelectorAll('.ft-combo-check:checked').forEach((cb) => {
+        n += 1;
+        const t = comboTariffs.find((x) => String(x.id) === String(cb.value));
+        pts += Number(t?.points) || 0;
+        if (t) names.push(t.position_name || ('#' + t.id));
+      });
+      const manual = parseFloat(manualInp.value);
+      if (Number.isFinite(manual) && manual !== 0) {
+        pts += manual;
+        names.push('+' + manual + 'б вручную');
+      }
+      if (!n && !(Number.isFinite(manual) && manual !== 0)) {
+        return { label: 'нет', title: 'Совмещения не выбраны' };
+      }
+      const label = pts ? ('+' + (Number.isInteger(pts) ? pts : pts) + 'б' + (n > 1 ? ' · ' + n : '')) : (n + ' шт');
+      return { label, title: names.join(', ') || label };
+    }
+    function refreshComboBtn() {
+      const s = comboSummary();
+      comboBtn.textContent = s.label;
+      comboBtn.title = s.title;
+    }
+    refreshComboBtn();
+
+    function closeComboPop() {
+      comboPanel.style.display = 'none';
+      comboPanel.hidden = true;
+      document.removeEventListener('mousedown', onComboOutside, true);
+      document.removeEventListener('keydown', onComboEsc, true);
+    }
+    function onComboOutside(e) {
+      if (comboPanel.contains(e.target) || comboBtn.contains(e.target)) return;
+      closeComboPop();
+    }
+    function onComboEsc(e) {
+      if (e.key === 'Escape') closeComboPop();
+    }
+    function openComboPop() {
+      // один открытый popover
+      document.querySelectorAll('.ft-combo-pop').forEach((p) => {
+        if (p !== comboPanel) { p.style.display = 'none'; p.hidden = true; }
+      });
+      comboPanel.hidden = false;
+      comboPanel.style.display = 'block';
+      const r = comboBtn.getBoundingClientRect();
+      const pw = 280;
+      let left = r.left;
+      if (left + pw > window.innerWidth - 8) left = Math.max(8, window.innerWidth - pw - 8);
+      let top = r.bottom + 4;
+      if (top + 200 > window.innerHeight) top = Math.max(8, r.top - 204);
+      comboPanel.style.left = left + 'px';
+      comboPanel.style.top = top + 'px';
+      document.addEventListener('mousedown', onComboOutside, true);
+      document.addEventListener('keydown', onComboEsc, true);
+    }
+    comboBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (comboPanel.hidden) openComboPop();
+      else closeComboPop();
+    });
+
+    // position:fixed — строку не раздувает; чекбоксы остаются внутри tr для collectCrewEmployees
+    tdCombo.appendChild(comboBtn);
+    tdCombo.appendChild(comboPanel);
     tr.appendChild(tdCombo);
 
     // SMS status + individual send button
@@ -1905,15 +2090,15 @@ window.AsgardFieldTab = (function () {
     });
 
     for (const a of assignments) {
-      const emp = empsMap[a.employee_id];
-      if (!emp) continue;
+      const emp = empsMap[a.employee_id] || empsMap[Number(a.employee_id)]
+        || { id: Number(a.employee_id), fio: '#' + a.employee_id };
       const tr = document.createElement('tr');
       tr.style.cssText = 'border-bottom:1px solid var(--brd-m)';
 
       // Employee name
       const tdName = document.createElement('td');
       tdName.style.cssText = 'padding:8px 10px;font-weight:500;white-space:nowrap';
-      tdName.textContent = emp.fio || '—';
+      tdName.textContent = emp.fio || emp.full_name || ('#' + a.employee_id);
       tr.appendChild(tdName);
 
       // For each logistics type
@@ -2234,6 +2419,9 @@ window.AsgardFieldTab = (function () {
     tableWrap.id = 'tsTableWrap';
     tableWrap.style.cssText = 'overflow-x:auto';
     container.appendChild(tableWrap);
+    ensureFieldTabTableStyles();
+    bindHScrollWheel(tableWrap);
+    applyCompactTableClass(tableWrap, null);
 
     function todayYmd() {
       const t = new Date();
@@ -2811,7 +2999,8 @@ window.AsgardFieldTab = (function () {
     });
     wrap.appendChild(btnsRow);
 
-    // Points input — минимум 2 цифры читаемы (26/30), без spin-стрелок Windows
+    // Points input — до 99 баллов (не 30: у Портного и др. бывают 31+), без spin-стрелок Windows
+    const MAX_SHIFT_POINTS = 99;
     const input = document.createElement('input');
     input.type = 'text';
     input.inputMode = 'numeric';
@@ -2842,7 +3031,7 @@ window.AsgardFieldTab = (function () {
       const raw = String(input.value).replace(/\D/g, '');
       if (raw !== input.value) input.value = raw;
       const n = parseInt(raw, 10);
-      if (Number.isFinite(n) && n > 30) input.value = '30';
+      if (Number.isFinite(n) && n > MAX_SHIFT_POINTS) input.value = String(MAX_SHIFT_POINTS);
     });
     wrap.appendChild(input);
 
@@ -3039,7 +3228,7 @@ window.AsgardFieldTab = (function () {
         `<option value="helicopter">Вертолёт</option><option value="waiting">Ожидание</option>` +
         `</select>` +
         `<label style="font-size:12px;display:block;margin-bottom:4px">Баллы</label>` +
-        `<input id="ftCorrPts" type="number" min="0" max="50" step="0.5" placeholder="${emp.tariff_points || 13}" style="width:100%;margin-bottom:8px;padding:6px"/>` +
+        `<input id="ftCorrPts" type="number" min="0" max="99" step="0.5" placeholder="${emp.tariff_points || 13}" style="width:100%;margin-bottom:8px;padding:6px"/>` +
         `<label style="font-size:12px;display:block;margin-bottom:4px">Комментарий</label>` +
         `<textarea id="ftCorrMsg" rows="3" style="width:100%;padding:6px" placeholder="Здесь должна быть отметка…"></textarea>` +
         `<div style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px">` +

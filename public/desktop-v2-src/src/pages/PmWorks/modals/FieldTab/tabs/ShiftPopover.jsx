@@ -129,7 +129,7 @@ export function ShiftPopover({
   };
 
   const onPointsChange = (v) => {
-    const n = Math.max(0, Math.min(30, parseInt(v) || 0));
+    const n = Math.max(0, Math.min(99, parseInt(v) || 0));
     setUserEditedPoints(true);
     setPoints(n);
     if (!userEditedAmount) setAmount(n * pointValue);

@@ -166,6 +166,14 @@ window.AsgardTimesheetV2 = (function () {
         -webkit-overflow-scrolling:touch;
         border:1px solid var(--brd); border-radius:var(--r-md); background:var(--bg1);
       }
+      @media (max-width: 1400px) {
+        .tsv2-scroll { font-size: 12px; }
+        .tsv2-table th, .tsv2-table td { padding: 3px 4px !important; }
+        .tsv2-table th:first-child, .tsv2-table td:first-child {
+          position: sticky; left: 0; z-index: 2;
+          background: var(--bg1); box-shadow: 4px 0 8px rgba(0,0,0,.12);
+        }
+      }
       .tsv2-filters {
         display:flex; flex-wrap:wrap; gap:8px; align-items:center;
         padding:8px 0 4px; width:100%;
@@ -2216,9 +2224,21 @@ window.AsgardTimesheetV2 = (function () {
       box.innerHTML = items.join('');
     }
 
+    function bindTsv2HScroll(wrap) {
+      if (!wrap || wrap.dataset.hScrollBound === '1') return;
+      wrap.dataset.hScrollBound = '1';
+      wrap.addEventListener('wheel', (e) => {
+        if (!(e.ctrlKey || e.shiftKey)) return;
+        if (wrap.scrollWidth <= wrap.clientWidth + 1) return;
+        e.preventDefault();
+        wrap.scrollLeft += e.deltaY || e.deltaX;
+      }, { passive: false });
+    }
+
     function renderTable() {
       const wrap = $('#tsv2_scroll');
       if (!wrap) return;
+      bindTsv2HScroll(wrap);
       if (!data || !data.employees) {
         wrap.innerHTML = `<div class="tsv2-empty">
           Нет данных за выбранный период.<br>
@@ -2695,7 +2715,7 @@ window.AsgardTimesheetV2 = (function () {
           ).join('') +
           `</select>` +
           `<label style="font-size:12px;display:block;margin-bottom:4px">Баллы (если нужно)</label>` +
-          `<input id="tsv2CorrPts" type="number" min="0" max="50" step="0.5" placeholder="например 13" style="width:100%;margin-bottom:8px;padding:6px"/>` +
+          `<input id="tsv2CorrPts" type="number" min="0" max="99" step="0.5" placeholder="например 13" style="width:100%;margin-bottom:8px;padding:6px"/>` +
           `<label style="font-size:12px;display:block;margin-bottom:4px">Комментарий для офиса / мастера</label>` +
           `<textarea id="tsv2CorrMsg" rows="3" style="width:100%;padding:6px" placeholder="Здесь должна быть дорога / дневная смена…"></textarea>` +
           `<div style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px">` +

@@ -3747,6 +3747,11 @@ async function routes(fastify) {
       const expected_type = body.expected_type ? normalizeLogisticsType(body.expected_type) || body.expected_type : null;
       let expected_points = body.expected_points != null ? Number(body.expected_points) : null;
       if (expected_points != null && !Number.isFinite(expected_points)) expected_points = null;
+      if (expected_points != null) {
+        if (expected_points < 0 || expected_points > 99) {
+          return reply.code(400).send({ error: 'expected_points: допустимо 0…99' });
+        }
+      }
       const target_user_id = body.target_user_id != null ? parseInt(body.target_user_id, 10) : null;
 
       if (!employee_id || !correction_date || !message) {

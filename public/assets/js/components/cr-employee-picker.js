@@ -71,7 +71,7 @@ const CREmployeePicker = (() => {
       if (res.ok) {
         const data = await res.json();
         _employeeCache = (data.employees || data.rows || data || []).filter(e => e.is_active !== false).map(e => ({
-          id: e.id,
+          id: Number(e.id),
           name: e.full_name || e.fio || e.name || `${e.last_name || ''} ${e.first_name || ''}`.trim(),
           position: e.position || e.role_display || '',
           role: e.role || e.role_tag || '',
@@ -90,6 +90,26 @@ const CREmployeePicker = (() => {
   }
 
   // ── Helpers ───────────────────────────────────────────────
+  /** Нормализация id: number↔string ломали chip (пустое ФИО в бригаде). */
+  function _nid(id) {
+    if (id == null || id === '') return id;
+    const n = Number(id);
+    return Number.isFinite(n) ? n : id;
+  }
+  function _sameId(a, b) {
+    if (a == null || b == null) return false;
+    return _nid(a) === _nid(b);
+  }
+  function _findEmp(emps, id) {
+    return (emps || []).find((e) => _sameId(e.id, id));
+  }
+  function _indexOfId(arr, id) {
+    return (arr || []).findIndex((x) => _sameId(x, id));
+  }
+  function _includesId(arr, id) {
+    return _indexOfId(arr, id) >= 0;
+  }
+
   function _getInitials(name) {
     if (!name) return '?';
     const parts = name.trim().split(/\s+/);
@@ -147,14 +167,17 @@ const CREmployeePicker = (() => {
 
     if (inst.showChips) {
       const show = selected.slice(0, inst.maxChips);
+      let chipsDrawn = 0;
       for (const id of show) {
-        const emp = emps.find(e => e.id === id);
-        if (!emp) continue;
+        const emp = _findEmp(emps, id);
+        const displayName = emp
+          ? (emp.name || emp.fio || '')
+          : ('#' + String(id));
 
         const chip = document.createElement('span');
         chip.className = 'cr-emp-picker__chip';
 
-        if (emp.avatar) {
+        if (emp && emp.avatar) {
           const img = document.createElement('img');
           img.className = 'cr-emp-picker__chip-avatar';
           img.src = emp.avatar;
@@ -165,8 +188,12 @@ const CREmployeePicker = (() => {
 
         const nameSpan = document.createElement('span');
         nameSpan.className = 'cr-emp-picker__chip-name';
-        nameSpan.textContent = _formatShortFio(emp.name);
-        nameSpan.title = emp.name || '';
+        nameSpan.textContent = emp ? (_formatShortFio(displayName) || ('#' + String(id))) : displayName;
+        nameSpan.title = displayName || ('#' + String(id));
+        if (!emp) {
+          nameSpan.style.opacity = '0.75';
+          nameSpan.title = 'Сотрудник #' + String(id) + ' (нет в справочнике — проверьте карточку)';
+        }
         chip.appendChild(nameSpan);
 
         const removeBtn = document.createElement('span');
@@ -180,6 +207,16 @@ const CREmployeePicker = (() => {
         chip.appendChild(removeBtn);
 
         container.appendChild(chip);
+        chipsDrawn += 1;
+      }
+
+      // selected есть, но ни одного chip — не оставляем пустую ячейку
+      if (chipsDrawn === 0 && selected.length > 0) {
+        const ph = document.createElement('span');
+        ph.className = 'cr-emp-picker__chip-name';
+        ph.textContent = '#' + String(selected[0]);
+        ph.title = 'Не удалось показать ФИО (id=' + String(selected[0]) + ')';
+        container.appendChild(ph);
       }
 
       if (selected.length > inst.maxChips) {
@@ -405,7 +442,7 @@ const CREmployeePicker = (() => {
         groups.get(key).push(emp);
       }
       for (const [groupName, emps] of groups) {
-        const selCount = emps.filter(e => inst._tempSelected.includes(e.id)).length;
+        const selCount = emps.filter(e => _includesId(inst._tempSelected, e.id)).length;
         const needed = reqs[groupName];
         const gtr = document.createElement('tr');
         gtr.className = 'cr-emp-picker__group-hdr';
@@ -429,7 +466,7 @@ const CREmployeePicker = (() => {
 
   function _appendTableRows(inst, tbody, employees, isSingle) {
     for (const emp of employees) {
-      const isSelected = inst._tempSelected.includes(emp.id);
+      const isSelected = _includesId(inst._tempSelected, emp.id);
       const tr = document.createElement('tr');
       tr.className = 'cr-emp-picker__row' + (isSelected ? ' cr-emp-picker__row--sel' : '');
 
@@ -496,14 +533,15 @@ const CREmployeePicker = (() => {
       // Click handler
       tr.addEventListener('click', () => {
         if (isSingle) {
-          inst.selected = [emp.id];
+          const sid = _nid(emp.id);
+          inst.selected = [sid];
           _renderTrigger(inst);
           _closeModal(inst);
-          if (inst.onChange) inst.onChange([emp.id]);
+          if (inst.onChange) inst.onChange([sid]);
           return;
         }
         _toggleTempEmployee(inst, emp.id);
-        const nowSel = inst._tempSelected.includes(emp.id);
+        const nowSel = _includesId(inst._tempSelected, emp.id);
         tr.classList.toggle('cr-emp-picker__row--sel', nowSel);
         _updateModalCount(inst);
         _refreshGroupHdrs(inst);
@@ -519,7 +557,7 @@ const CREmployeePicker = (() => {
     inst._modalList.querySelectorAll('.cr-emp-picker__group-hdr').forEach(gtr => {
       const g = gtr.dataset.group;
       const emps = inst.employees.filter(e => (e[inst.groupBy] || 'Другое') === g);
-      const sel = emps.filter(e => inst._tempSelected.includes(e.id)).length;
+      const sel = emps.filter(e => _includesId(inst._tempSelected, e.id)).length;
       const n = reqs[g];
       gtr.firstChild.textContent = n != null
         ? `${g} — нужно: ${n} | выбрано: ${sel}/${n}`
@@ -528,24 +566,26 @@ const CREmployeePicker = (() => {
   }
 
   function _toggleTempEmployee(inst, empId) {
-    const idx = inst._tempSelected.indexOf(empId);
+    const id = _nid(empId);
+    const idx = _indexOfId(inst._tempSelected, id);
     if (idx >= 0) {
       inst._tempSelected.splice(idx, 1);
     } else {
       if (inst.maxSelect > 0 && inst._tempSelected.length >= inst.maxSelect) {
         return; // Max reached
       }
-      inst._tempSelected.push(empId);
+      inst._tempSelected.push(id);
     }
   }
 
   function _toggleEmployee(inst, empId) {
-    const idx = inst.selected.indexOf(empId);
+    const id = _nid(empId);
+    const idx = _indexOfId(inst.selected, id);
     if (idx >= 0) {
       inst.selected.splice(idx, 1);
     } else {
       if (inst.maxSelect > 0 && inst.selected.length >= inst.maxSelect) return;
-      inst.selected.push(empId);
+      inst.selected.push(id);
     }
     if (inst.onChange) inst.onChange([...inst.selected]);
   }
@@ -600,8 +640,8 @@ const CREmployeePicker = (() => {
 
       const inst = {
         id,
-        employees: config.employees || [],
-        selected: config.selected ? [...config.selected] : [],
+        employees: (config.employees || []).map((e) => ({ ...e, id: _nid(e.id) })),
+        selected: (config.selected || []).map(_nid),
         maxSelect: config.maxSelect ?? 0,
         placeholder: config.placeholder || 'Выберите сотрудников',
         showChips: config.showChips ?? true,
@@ -642,7 +682,7 @@ const CREmployeePicker = (() => {
     setSelected(id, ids) {
       const inst = _instances.get(id);
       if (!inst) return;
-      inst.selected = [...ids];
+      inst.selected = (ids || []).map(_nid);
       _renderTrigger(inst);
     },
 
@@ -657,7 +697,7 @@ const CREmployeePicker = (() => {
     setEmployees(id, employees) {
       const inst = _instances.get(id);
       if (!inst) return;
-      inst.employees = employees;
+      inst.employees = (employees || []).map((e) => ({ ...e, id: _nid(e.id) }));
       _renderTrigger(inst);
     },
 
@@ -708,7 +748,7 @@ const CREmployeePicker = (() => {
             if (resolved) return;
             resolved = true;
             const empId = ids[0];
-            const emp = filtered.find(e => e.id === empId);
+            const emp = _findEmp(filtered, empId);
             _instances.delete(tempId);
             if (emp) emp.fio = emp.name; // compat
             resolve(emp || null);
@@ -756,7 +796,7 @@ const CREmployeePicker = (() => {
         onChange: (ids) => {
           const empId = ids[0];
           container.pickerValue = empId || '';
-          const emp = filtered.find(e => e.id === empId);
+          const emp = _findEmp(filtered, empId);
           if (onChange) onChange(emp || null);
         }
       });

@@ -357,32 +357,45 @@ async function routes(fastify, options) {
         const manualPts = rates.manualPoints;
         const perDiem = emp.per_diem != null ? emp.per_diem : projectPerDiem;
 
-        // Upsert assignment
+        // Upsert assignment (один employee на работу; дубли гасим)
         const { rows: existing } = await db.query(
-          `SELECT id FROM employee_assignments WHERE employee_id = $1 AND work_id = $2 LIMIT 1`,
+          `SELECT id FROM employee_assignments
+           WHERE employee_id = $1 AND work_id = $2
+           ORDER BY id DESC LIMIT 1`,
           [employee_id, workId]
         );
 
         if (existing.length > 0) {
           // keep_inactive: обновить тариф уехавшему, не возвращая на объект
           const keepInactive = !!emp.keep_inactive;
+          const keepId = existing[0].id;
           // D-249: без keep_inactive — как «Вернуть»: чистим departure_* / inactivity_*,
           // иначе API 200, а UI оставляет человека в «Уехали» (ghost после автовыезда).
           await db.query(`
             UPDATE employee_assignments SET
-              field_role = $3, tariff_id = $4, tariff_points = $5,
-              combination_tariff_id = $6, per_diem = $7, shift_type = $8,
-              combo_tariff_ids = $10::int[], manual_extra_points = $11,
-              is_active = CASE WHEN $9::boolean THEN is_active ELSE true END,
-              departure_date = CASE WHEN $9::boolean THEN departure_date ELSE NULL END,
-              departure_reason = CASE WHEN $9::boolean THEN departure_reason ELSE NULL END,
-              inactivity_warned_at = CASE WHEN $9::boolean THEN inactivity_warned_at ELSE NULL END,
-              inactivity_auto_departed_at = CASE WHEN $9::boolean THEN inactivity_auto_departed_at ELSE NULL END,
+              field_role = $2, tariff_id = $3, tariff_points = $4,
+              combination_tariff_id = $5, per_diem = $6, shift_type = $7,
+              combo_tariff_ids = $9::int[], manual_extra_points = $10,
+              is_active = CASE WHEN $8::boolean THEN is_active ELSE true END,
+              departure_date = CASE WHEN $8::boolean THEN departure_date ELSE NULL END,
+              departure_reason = CASE WHEN $8::boolean THEN departure_reason ELSE NULL END,
+              inactivity_warned_at = CASE WHEN $8::boolean THEN inactivity_warned_at ELSE NULL END,
+              inactivity_auto_departed_at = CASE WHEN $8::boolean THEN inactivity_auto_departed_at ELSE NULL END,
               updated_at = NOW()
-            WHERE employee_id = $1 AND work_id = $2
-          `, [employee_id, workId, field_role || 'worker', tariff_id || null,
+            WHERE id = $1
+          `, [keepId, field_role || 'worker', tariff_id || null,
               totalPoints || null, primaryComboId, perDiem, shift_type || 'day',
               keepInactive, comboIds, manualPts]);
+          // Лишние строки того же employee на этой работе — деактивировать
+          await db.query(`
+            UPDATE employee_assignments
+            SET is_active = false,
+                departure_date = COALESCE(departure_date, CURRENT_DATE),
+                departure_reason = COALESCE(departure_reason, 'дубль назначения (авто)'),
+                updated_at = NOW()
+            WHERE employee_id = $1 AND work_id = $2 AND id <> $3
+              AND COALESCE(is_active, true) = true AND departure_date IS NULL
+          `, [employee_id, workId, keepId]);
         } else {
           await db.query(`
             INSERT INTO employee_assignments (employee_id, work_id, field_role, tariff_id,

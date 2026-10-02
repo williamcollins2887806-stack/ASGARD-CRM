@@ -177,8 +177,8 @@ export function BulkShiftModal({ workId, from, to, employees = [], onDone }) {
                 className="m-input"
                 value={points}
                 min={1}
-                max={30}
-                onChange={(e) => setPoints(Math.max(1, Math.min(30, parseInt(e.target.value) || 1)))}
+                max={99}
+                onChange={(e) => setPoints(Math.max(1, Math.min(99, parseInt(e.target.value) || 1)))}
               />
             </Field>
           </div>
