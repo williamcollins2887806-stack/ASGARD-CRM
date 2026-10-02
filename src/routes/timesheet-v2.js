@@ -2833,7 +2833,6 @@ async function routes(fastify) {
         ws.getColumn(T.paid).width    = 14;
         ws.getColumn(T.bonus).width   = 13;
         ws.getColumn(T.penalty).width = 13;
-        ws.views = [{ state: 'frozen', xSplit: leadCols, ySplit: 3 }];
 
         const firstDataRow = 4;
         let rowIdx = firstDataRow;
@@ -3263,9 +3262,6 @@ async function routes(fastify) {
       ws.getColumn(T.cashDelta).width   = 13;
       ws.getColumn(T.limYearRem).width  = 17;
       ws.getColumn(T.limMonthRem).width = 17;
-
-      // Заморозка: 3 левые колонки (ФИО / Город / Должность) + строка шапки.
-      ws.views = [{ state: 'frozen', xSplit: leadCols, ySplit: 3 }];
 
       const TYPE_LABEL = {
         day: 'Д', night: 'Н', warehouse: 'С', medical: 'М',
