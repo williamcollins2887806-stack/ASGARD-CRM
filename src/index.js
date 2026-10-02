@@ -16,6 +16,8 @@ const fastify = require('fastify')({
   logger: {
     level: process.env.NODE_ENV === 'production' ? 'info' : 'debug'
   },
+  // Только loopback: nginx → node. Не доверяем произвольным X-Forwarded-For снаружи.
+  trustProxy: process.env.TRUST_PROXY === '0' ? false : '127.0.0.1',
   bodyLimit: 209715200 // 200 MB — для загрузки файлов в pre-tenders, cash и др.
 });
 
@@ -791,6 +793,7 @@ fastify.register(require("./routes/training_applications"), { prefix: "/api/trai
 fastify.register(require('./routes/travel'), { prefix: '/api/travel' });
 fastify.register(require("./routes/site_inspections"), { prefix: "/api/site-inspections" });
 fastify.register(require("./routes/telephony"), { prefix: "/api/telephony" });
+fastify.register(require("./routes/telephony-pbx"), { prefix: "/api/telephony/pbx" });
 fastify.register(require("./routes/approval"), { prefix: "/api/approval" });
 fastify.register(require('./routes/stories'), { prefix: '/api/stories' });
 fastify.register(require('./routes/worker_profiles'), { prefix: '/api/worker-profiles' });
@@ -838,12 +841,21 @@ try {
   const recordingFetcher = new RecordingFetcher(db, fastify.log);
   recordingFetcher.setJobQueue(jobQueue);
 
-  // Make queue and escalation available to routes
+  // Make queue and escalation available to routes (единый pipeline — D-253d)
   fastify.decorate('telephonyQueue', jobQueue);
   fastify.decorate('escalationChecker', escalationChecker);
+  fastify.decorate('telephonyPipeline', pipeline);
+
+  // D-253e: на клоне / non-prod не гоняем платные API и Mango recording fetcher
+  const telephonyWorkersEnabled = process.env.TELEPHONY_WORKERS === '1'
+    || (process.env.NODE_ENV === 'production' && process.env.TELEPHONY_WORKERS !== '0');
 
   // Start workers after server is ready
   fastify.addHook('onReady', async () => {
+    if (!telephonyWorkersEnabled) {
+      fastify.log.info('[Telephony] Workers DISABLED (set TELEPHONY_WORKERS=1 to enable on clone)');
+      return;
+    }
     jobQueue.start();
     escalationChecker.start();
     recordingFetcher.start();
@@ -884,6 +896,39 @@ try {
   fastify.addHook('onClose', async () => { thingWorker.stop(); });
 } catch (thingErr) {
   fastify.log.warn('[Thing] Worker init skipped: ' + thingErr.message);
+}
+
+// ── PBX NOTIFY → SSE bridge ──
+try {
+  const { attachNotifyBridge } = require('./pbx/notify-bridge');
+  const { sendToUser, broadcast } = require('./routes/sse');
+  const bridge = attachNotifyBridge(db.pool || db);
+  bridge.emitter.on('pbx_call_event', (payload) => {
+    try {
+      const event = payload && payload.event ? payload.event : 'pbx:event';
+      const userId = payload && payload.user_id;
+      const data = payload && payload.data != null ? payload.data : payload;
+      if (userId) sendToUser(userId, event, data);
+      else broadcast(event, data);
+    } catch (e) {
+      fastify.log.warn('[PBX→SSE] ' + e.message);
+    }
+  });
+  bridge.emitter.on('pbx_recording_ready', (payload) => {
+    try {
+      const userId = payload && payload.user_id;
+      if (userId) sendToUser(userId, 'call:recording_ready', payload);
+      else broadcast('call:recording_ready', payload);
+    } catch (e) {
+      fastify.log.warn('[PBX→SSE recording] ' + e.message);
+    }
+  });
+  fastify.addHook('onClose', async () => {
+    if (bridge.stop) await bridge.stop();
+  });
+  fastify.log.info('[PBX] NOTIFY→SSE bridge attached');
+} catch (pbxBridgeErr) {
+  fastify.log.warn('[PBX] NOTIFY→SSE bridge skipped: ' + pbxBridgeErr.message);
 }
 
 // ── Tender OCR Worker (распаковка архивов + кэш documents.ocr_text) ──

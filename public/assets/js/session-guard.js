@@ -910,11 +910,11 @@
       AsgardAuth.requireUser();
     }
 
-    /* Принудительно пере-рендерим текущую страницу.
-       location.reload() гарантирует чистое состояние:
-       sidebar (desktop) и m-app (mobile) рендерятся корректно.
-       dispatchEvent(hashchange) не работал надёжно — роутер
-       мог игнорировать событие если hash не менялся. */
+    /* Во время звонка полный reload рвёт WebRTC — откладываем или только снимаем PIN. */
+    if (window.AsgardPhone && AsgardPhone.isInCallOrRinging && AsgardPhone.isInCallOrRinging()) {
+      if (AsgardPhone.markPendingReload) AsgardPhone.markPendingReload();
+      return;
+    }
     setTimeout(function() {
       location.reload();
     }, 450);

@@ -63,10 +63,18 @@ class MangoService {
             const contentType = res.headers['content-type'] || '';
             if (contentType.includes('application/json') || contentType.includes('text/')) {
               const parsed = JSON.parse(data);
-              if (parsed.code && parsed.code !== 1000) {
-                const err = new Error(`Mango API error: ${parsed.message || 'Unknown'} (code: ${parsed.code})`);
-                err.code = parsed.code;
+              // Mango: успех = code 1000 ИЛИ отсутствие кода при HTTP 2xx.
+              // Поле result !== '1000' / result с ошибкой — тоже фейл (D-253g).
+              const code = parsed.code != null ? Number(parsed.code) : null;
+              const resultField = parsed.result != null ? String(parsed.result) : null;
+              const httpOk = res.statusCode >= 200 && res.statusCode < 300;
+              const codeFail = code != null && code !== 1000;
+              const resultFail = resultField != null && resultField !== '1000' && resultField !== '0' && !/^ok$/i.test(resultField);
+              if (!httpOk || codeFail || resultFail) {
+                const err = new Error(`Mango API error: ${parsed.message || parsed.result || 'Unknown'} (code: ${code != null ? code : resultField}, http: ${res.statusCode})`);
+                err.code = code != null ? code : resultField;
                 err.response = parsed;
+                err.statusCode = res.statusCode;
                 reject(err);
               } else {
                 resolve(parsed);

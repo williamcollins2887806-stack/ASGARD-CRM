@@ -1,0 +1,38 @@
+; ASGARD CRM — WebRTC endpoints (include from pjsip.conf)
+; TLS + WSS on nginx → Asterisk HTTP :8088
+
+[transport-wss]
+type=transport
+protocol=wss
+bind=0.0.0.0
+
+[webrtc-template](!)
+type=endpoint
+context=from-internal
+disallow=all
+allow=opus,ulaw,alaw
+webrtc=yes
+dtls_auto_generate_cert=yes
+media_encryption=dtls
+direct_media=no
+rtp_symmetric=yes
+force_rport=yes
+rewrite_contact=yes
+ice_support=yes
+
+[auth-webrtc-template](!)
+type=auth
+auth_type=userpass
+
+[aor-webrtc-template](!)
+type=aor
+max_contacts=3
+remove_existing=yes
+
+; Пример оператора (sip_username из pbx_operators):
+; [u42_pmivanov](webrtc-template)
+; auth=u42_pmivanov
+; aors=u42_pmivanov
+; [u42_pmivanov](auth-webrtc-template)
+; password=*** from CRM softphone credentials
+; [u42_pmivanov](aor-webrtc-template)

@@ -3,17 +3,28 @@
 const MangoService = require('../services/mango');
 const { normalizePhone, getCallDirection } = require('../services/mango');
 const CallPipeline = require('../services/call-pipeline');
-const createNotification = require('../services/notify');
+const { createNotification } = require('../services/notify');
 const https = require('https');
 const {
   entryIdAliases,
   firstRecordingId,
   isRecordingComplete,
 } = require('../lib/mango-entry-id');
+const {
+  TEL_FULL_VIEW_ROLES,
+  TEL_ADMIN_ROLES: TEL_ADMIN_ROLES_LIB,
+  canViewCall,
+  loadCallForAccess,
+  resolveSafeRecordPath,
+  hasFullCallView,
+} = require('../lib/telephony-access');
 
 // Роли с доступом к телефонии
 const TEL_ROLES = ['ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV', 'PM', 'HEAD_PM', 'TO', 'HEAD_TO', 'BUH'];
-const TEL_ADMIN_ROLES = ['ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM'];
+const TEL_ADMIN_ROLES = TEL_ADMIN_ROLES_LIB.length
+  ? TEL_ADMIN_ROLES_LIB
+  : ['ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV'];
+void TEL_FULL_VIEW_ROLES;
 // ── Webhook Rate Limiter ──
 const _webhookRateMap = new Map();
 const WEBHOOK_RATE_LIMIT = 100;  // max requests per window
@@ -70,6 +81,7 @@ module.exports = async function telephonyRoutes(fastify, opts) {
 
   // Ленивая инициализация pipeline (нужен ai-provider)
   function getPipeline() {
+    if (fastify.telephonyPipeline) return fastify.telephonyPipeline;
     if (!pipeline) {
       try {
         const aiProvider = require('../services/ai-provider');
@@ -79,6 +91,19 @@ module.exports = async function telephonyRoutes(fastify, opts) {
       }
     }
     return pipeline;
+  }
+
+  async function assertCallAccess(request, reply, callId) {
+    const row = await loadCallForAccess(db, callId);
+    if (!row) {
+      reply.code(404).send({ error: 'Call not found' });
+      return null;
+    }
+    if (!(await canViewCall(db, request.user, row))) {
+      reply.code(403).send({ error: 'Forbidden' });
+      return null;
+    }
+    return row;
   }
 
   // SSE helper
@@ -101,12 +126,13 @@ module.exports = async function telephonyRoutes(fastify, opts) {
 
     try {
       const missedRes = await db.query(
-        `SELECT COUNT(*)::int AS cnt FROM calls
-         WHERE direction = 'inbound' AND status = 'missed'
-           AND acknowledged_at IS NULL AND created_at >= NOW() - INTERVAL '24 hours'`
+        `SELECT COUNT(*)::int AS cnt FROM call_history
+         WHERE (call_type = 'missed' OR status = 'missed')
+           AND COALESCE(missed_acknowledged, false) = false
+           AND created_at >= NOW() - INTERVAL '24 hours'`
       );
       const lastCallRes = await db.query(
-        `SELECT created_at FROM calls ORDER BY created_at DESC LIMIT 1`
+        `SELECT created_at FROM call_history ORDER BY created_at DESC LIMIT 1`
       );
 
       return {
@@ -271,16 +297,26 @@ module.exports = async function telephonyRoutes(fastify, opts) {
         ]
       );
 
-      // SSE уведомление менеджеру
+      // SSE уведомление менеджеру (snake_case + camelCase для совместимости)
       if (sseSendToUser && assignedUserId) {
         sseSendToUser(assignedUserId, 'call:incoming', {
+          call_id: callId,
           callId,
+          entry_id: entryId,
           entryId,
+          from: fromNumber,
+          from_number: fromNumber,
           fromNumber,
+          to: toNumber,
+          to_number: toNumber,
           toNumber,
+          client_name: client ? (client.contact_person || client.name) : null,
           clientName: client ? (client.contact_person || client.name) : null,
+          client_company: client ? client.name : null,
           clientCompany: client ? client.name : null,
+          client_inn: client ? client.inn : null,
           clientInn: client ? client.inn : null,
+          responsible_manager: assignedUserName,
           responsibleManager: assignedUserName,
           timestamp: event.timestamp
         });
@@ -318,13 +354,14 @@ module.exports = async function telephonyRoutes(fastify, opts) {
 
     // Звонок завершён
     if (callState === 'Disconnected') {
+      const ac = await db.query('SELECT assigned_user_id FROM active_calls WHERE mango_call_id = $1', [callId]);
+      const assigned = ac.rows[0]?.assigned_user_id || null;
       await db.query("DELETE FROM active_calls WHERE mango_call_id = $1", [callId]);
 
-      const ac = await db.query('SELECT assigned_user_id FROM active_calls WHERE mango_call_id = $1', [callId]);
-      if (sseSendToUser && ac.rows.length && ac.rows[0].assigned_user_id) {
-        sseSendToUser(ac.rows[0].assigned_user_id, 'call:ended', { callId });
+      if (sseSendToUser && assigned) {
+        sseSendToUser(assigned, 'call:ended', { callId, call_id: callId });
       } else if (sseBroadcast) {
-        sseBroadcast('call:ended', { callId });
+        sseBroadcast('call:ended', { callId, call_id: callId });
       }
     }
 
@@ -749,6 +786,11 @@ module.exports = async function telephonyRoutes(fastify, opts) {
   }, async (request, reply) => {
     const id = parseInt(request.params.id);
     if (!id || id < 1 || isNaN(id)) return reply.code(400).send({ error: 'Invalid call ID' });
+    const accessRow = await loadCallForAccess(db, id);
+    if (!accessRow) return reply.code(404).send({ error: 'Call not found' });
+    if (!(await canViewCall(db, request.user, accessRow))) {
+      return reply.code(403).send({ error: 'Forbidden' });
+    }
     const res = await db.query(
       `SELECT ch.*, c.name as client_name, c.contact_person as client_contact,
         c.phone as client_phone, c.email as client_email,
@@ -783,17 +825,21 @@ module.exports = async function telephonyRoutes(fastify, opts) {
     ]
   }, async (request, reply) => {
     const { id } = request.params;
-    const res = await db.query('SELECT record_path, recording_id FROM call_history WHERE id = $1', [id]);
-    if (!res.rows.length) return reply.code(404).send({ error: 'Call not found' });
+    const accessRow = await loadCallForAccess(db, id);
+    if (!accessRow) return reply.code(404).send({ error: 'Call not found' });
+    if (!(await canViewCall(db, request.user, accessRow))) {
+      return reply.code(403).send({ error: 'Forbidden' });
+    }
 
-    const call = res.rows[0];
+    const call = accessRow;
 
-    // Если файл есть локально
-    if (call.record_path) {
+    // Если файл есть локально — только внутри whitelist-корня (D-252a LFI)
+    const safePath = resolveSafeRecordPath(call.record_path);
+    if (safePath) {
       const fs = require('fs');
-      if (fs.existsSync(call.record_path)) {
-        const stat = fs.statSync(call.record_path);
-        const ext = call.record_path.split('.').pop();
+      if (fs.existsSync(safePath)) {
+        const stat = fs.statSync(safePath);
+        const ext = safePath.split('.').pop();
         // Запись звонка: расширение берём от ИМЕНИ ФАЙЛА, а не от доверенного серверного поля,
         // поэтому тип обязан проходить политику (D-223/D-224). Аудио-типы заданы ЛИТЕРАЛАМИ
         // (доказуемо), всё прочее — через safeContentType (исполняемое → octet-stream).
@@ -823,7 +869,7 @@ module.exports = async function telephonyRoutes(fastify, opts) {
             'Content-Length': chunkSize,
             'Content-Type': mimeType
           });
-          return reply.send(fs.createReadStream(call.record_path, { start, end }));
+          return reply.send(fs.createReadStream(safePath, { start, end }));
         }
 
         reply.headers({
@@ -832,7 +878,7 @@ module.exports = async function telephonyRoutes(fastify, opts) {
           'Accept-Ranges': 'bytes',
           'Content-Disposition': `inline; filename="call_${id}.${ext}"`
         });
-        return reply.send(fs.createReadStream(call.record_path));
+        return reply.send(fs.createReadStream(safePath));
       }
     }
 
@@ -857,6 +903,8 @@ module.exports = async function telephonyRoutes(fastify, opts) {
   }, async (request, reply) => {
     const callId = parseInt(request.params.id);
     if (!callId || callId < 1) return reply.code(400).send({ error: 'Invalid call ID' });
+    const access = await assertCallAccess(request, reply, callId);
+    if (!access) return;
     const call = (await db.query('SELECT id,record_path,recording_id FROM call_history WHERE id=$1', [callId])).rows[0];
     if (!call) return reply.code(404).send({ error: 'Call not found' });
     const { getSpeechKitService } = require('../services/speechkit');
@@ -874,6 +922,8 @@ module.exports = async function telephonyRoutes(fastify, opts) {
   }, async (request, reply) => {
     const callId = parseInt(request.params.id);
     if (!callId || callId < 1) return reply.code(400).send({ error: 'Invalid call ID' });
+    const access = await assertCallAccess(request, reply, callId);
+    if (!access) return;
     const call = (await db.query('SELECT id,transcript,transcript_status FROM call_history WHERE id=$1', [callId])).rows[0];
     if (!call) return reply.code(404).send({ error: 'Call not found' });
     if (!call.transcript || call.transcript_status !== 'done') return reply.code(400).send({ error: 'Транскрипт не готов' });
@@ -888,6 +938,8 @@ module.exports = async function telephonyRoutes(fastify, opts) {
     preHandler: [fastify.authenticate]
   }, async (request, reply) => {
     const { id } = request.params;
+    const access = await assertCallAccess(request, reply, id);
+    if (!access) return;
     const call = (await db.query('SELECT * FROM call_history WHERE id = $1', [id])).rows[0];
     if (!call) return reply.code(404).send({ error: 'Call not found' });
     if (call.lead_id) return reply.code(400).send({ error: 'Lead already exists', lead_id: call.lead_id });
@@ -914,6 +966,8 @@ module.exports = async function telephonyRoutes(fastify, opts) {
     preHandler: [fastify.authenticate]
   }, async (request, reply) => {
     const { id } = request.params;
+    const access = await assertCallAccess(request, reply, id);
+    if (!access) return;
     const { note } = request.body || {};
     if (note != null && typeof note !== 'string') {
       return reply.code(400).send({ error: 'note должен быть строкой или null' });
@@ -931,6 +985,8 @@ module.exports = async function telephonyRoutes(fastify, opts) {
     preHandler: [fastify.authenticate]
   }, async (request, reply) => {
     const { id } = request.params;
+    const access = await assertCallAccess(request, reply, id);
+    if (!access) return;
     const { tag } = request.body || {};
     if (tag != null && (typeof tag !== 'string' || tag.length > 50)) {
       return reply.code(400).send({ error: 'tag — строка ≤ 50 символов или null' });
@@ -951,7 +1007,7 @@ module.exports = async function telephonyRoutes(fastify, opts) {
       return reply.code(503).send({ success: false, error: 'Телефония не настроена. Обратитесь к администратору.' });
     }
 
-    const { to_number, from_extension, line_number } = request.body || {};
+    const { to_number, line_number } = request.body || {};
     if (!to_number) {
       return reply.code(400).send({ success: false, error: 'Не указан номер для звонка' });
     }
@@ -963,7 +1019,8 @@ module.exports = async function telephonyRoutes(fastify, opts) {
 
     const ucs = await db.query('SELECT mango_extension, fallback_mobile FROM user_call_status WHERE user_id = $1', [request.user.id]);
     const userExt = ucs.rows.length ? ucs.rows[0].mango_extension : null;
-    const ext = from_extension || userExt;
+    // D-252f: нельзя подменить from_extension чужим внутренним номером
+    const ext = userExt;
 
     if (!ext) {
       return reply.code(400).send({ success: false, error: 'У вас не настроен внутренний номер (extension) в Mango Office. Обратитесь к администратору.' });
@@ -1077,6 +1134,8 @@ module.exports = async function telephonyRoutes(fastify, opts) {
   fastify.post('/missed/:id/acknowledge', {
     preHandler: [fastify.authenticate]
   }, async (request, reply) => {
+    const access = await assertCallAccess(request, reply, request.params.id);
+    if (!access) return;
     await db.query(
       'UPDATE call_history SET missed_acknowledged = true, updated_at = NOW() WHERE id = $1',
       [request.params.id]
@@ -1368,12 +1427,15 @@ module.exports = async function telephonyRoutes(fastify, opts) {
     reply.send({ calls: res.rows });
   });
 
-  // --- Route/Transfer через API ---
+  // --- Route/Transfer через API (D-252c: только админы телефонии; предпочтителен PBX API) ---
   fastify.post('/call/route', {
     preHandler: [fastify.authenticate]
   }, async (request, reply) => {
+    if (!TEL_ADMIN_ROLES.includes(request.user.role)) {
+      return reply.code(403).send({ error: 'Forbidden' });
+    }
     if (!mango.isConfigured()) return reply.code(503).send({ error: 'Telephony not configured' });
-    const { call_id, to_number } = request.body;
+    const { call_id, to_number } = request.body || {};
     if (!call_id || !to_number) return reply.code(400).send({ error: 'call_id and to_number required' });
 
     try {
@@ -1387,8 +1449,11 @@ module.exports = async function telephonyRoutes(fastify, opts) {
   fastify.post('/call/transfer', {
     preHandler: [fastify.authenticate]
   }, async (request, reply) => {
+    if (!TEL_ADMIN_ROLES.includes(request.user.role)) {
+      return reply.code(403).send({ error: 'Forbidden' });
+    }
     if (!mango.isConfigured()) return reply.code(503).send({ error: 'Telephony not configured' });
-    const { call_id, to_number, method = 'blind' } = request.body;
+    const { call_id, to_number, method = 'blind' } = request.body || {};
     if (!call_id || !to_number) return reply.code(400).send({ error: 'call_id and to_number required' });
 
     const ucs = await db.query('SELECT mango_extension FROM user_call_status WHERE user_id = $1', [request.user.id]);
@@ -1405,8 +1470,11 @@ module.exports = async function telephonyRoutes(fastify, opts) {
   fastify.post('/call/hangup', {
     preHandler: [fastify.authenticate]
   }, async (request, reply) => {
+    if (!TEL_ADMIN_ROLES.includes(request.user.role)) {
+      return reply.code(403).send({ error: 'Forbidden' });
+    }
     if (!mango.isConfigured()) return reply.code(503).send({ error: 'Telephony not configured' });
-    const { call_id } = request.body;
+    const { call_id } = request.body || {};
     if (!call_id) return reply.code(400).send({ error: 'call_id required' });
 
     try {
@@ -1481,173 +1549,10 @@ module.exports = async function telephonyRoutes(fastify, opts) {
     reply.send({ managers: res.rows });
   });
 
-  // --- Внутренний API для AGI-событий (только localhost) ---
+  // D-252a: AGI-event endpoint removed (LFI via recordingPath + fake localhost behind nginx).
+  // New PBX events go through asgard-pbx NOTIFY → CRM SSE bridge.
   fastify.post('/internal/agi-event', async (request, reply) => {
-    const ip = request.ip;
-    if (ip !== '127.0.0.1' && ip !== '::1' && ip !== '::ffff:127.0.0.1') {
-      return reply.code(403).send({ error: 'Localhost only' });
-    }
-    const event = request.body;
-    if (!event || !event.type) return reply.code(400).send({ error: 'type required' });
-
-    console.log('[Telephony] AGI event:', event.type, 'caller=' + (event.caller || 'unknown'));
-    await logEvent('agi_live', event);
-
-    // Отправляем AGI события ТОЛЬКО диспетчеру (кэш 30с)
-    try {
-      if (!_agiSseCache || Date.now() - _agiSseCacheTime > 30000) {
-        const d = await db.query('SELECT user_id FROM user_call_status WHERE is_call_dispatcher = true');
-        _agiSseCache = [...new Set(d.rows.map(r => r.user_id))];
-        _agiSseCacheTime = Date.now();
-      }
-      const sse = require('./sse');
-      for (const uid of _agiSseCache) {
-        sse.sendToUser(uid, 'call:agi_event', event);
-      }
-    } catch (sseErr) {
-      console.error('[Telephony] SSE dispatch error:', sseErr.message);
-    }
-
-    if (event.type === 'call_end' && event.caller) {
-      try {
-        const normCaller = normalizePhone(event.caller);
-
-        // 1. Найти начало этого звонка (call_start)
-        const callStartRes = await db.query(
-          `SELECT created_at FROM telephony_events_log
-           WHERE event_type = 'agi_live' AND payload->>'caller' = $1 AND payload->>'type' = 'call_start'
-           ORDER BY created_at DESC LIMIT 1`,
-          [event.caller]
-        );
-        const sinceTime = callStartRes.rows.length
-          ? callStartRes.rows[0].created_at
-          : new Date(Date.now() - 15 * 60 * 1000);
-
-        // 2. Собрать все речевые события для этого звонка
-        const agiEvents = await db.query(
-          `SELECT payload, created_at FROM telephony_events_log
-           WHERE event_type = 'agi_live' AND payload->>'caller' = $1
-             AND payload->>'type' IN ('greeting', 'client_speech', 'ai_response')
-             AND created_at >= $2
-           ORDER BY created_at ASC`,
-          [event.caller, sinceTime]
-        );
-
-        // 3. Собрать транскрипт и сегменты
-        const segments = [];
-        const transcriptLines = [];
-        let routeTo = null;
-        let routeName = null;
-
-        for (const row of agiEvents.rows) {
-          const p = typeof row.payload === 'string' ? JSON.parse(row.payload) : row.payload;
-          let speaker, speakerLabel, text;
-
-          if (p.type === 'greeting') {
-            speaker = 1; speakerLabel = 'ИИ';
-            text = p.greeting || p.text || '';
-          } else if (p.type === 'client_speech') {
-            speaker = 0; speakerLabel = 'Клиент';
-            text = p.text || '';
-          } else if (p.type === 'ai_response') {
-            speaker = 1; speakerLabel = 'ИИ';
-            text = p.text || '';
-            if (p.route_to) { routeTo = p.route_to; routeName = p.route_name || ''; }
-          }
-
-          if (!text) continue;
-          segments.push({
-            speaker, speakerLabel, text,
-            startTime: new Date(row.created_at).getTime() / 1000
-          });
-          transcriptLines.push('[' + speakerLabel + ']: ' + text);
-        }
-
-        // 4. Найти user_id по route_to (из call_end или из ai_response)
-        let routeUserId = null;
-        const rt = event.route_to || routeTo;
-        if (rt) {
-          const normRoute = normalizePhone(rt);
-          const u = await db.query(
-            `SELECT user_id FROM user_call_status WHERE replace(replace(fallback_mobile,'+',''),'-','') LIKE $1 LIMIT 1`,
-            ['%' + normRoute.slice(-10)]
-          );
-          if (u.rows.length) routeUserId = u.rows[0].user_id;
-        }
-
-        // 5. Собрать UPDATE
-        const sets = [];
-        const params = [];
-        let pi = 1;
-
-        if (routeUserId) { sets.push('user_id = $' + pi++); params.push(routeUserId); }
-        if (event.ai_summary) { sets.push('ai_summary = $' + pi++); params.push(event.ai_summary); }
-        if (event.intent) { sets.push('ai_is_target = $' + pi++); params.push(!['spam','unknown','silence'].includes(event.intent)); }
-        if (event.collected_data) { sets.push('ai_lead_data = $' + pi++); params.push(JSON.stringify(event.collected_data)); }
-        if (event.sentiment) { sets.push('ai_sentiment = $' + pi++); params.push(event.sentiment); }
-
-        // MixMonitor recording path
-        if (event.recordingPath) {
-          sets.push('record_path = $' + pi++); params.push(event.recordingPath);
-          sets.push('record_url = $' + pi++); params.push('/api/telephony/calls/{id}/record');
-        }
-
-        // Транскрипт из AGI-событий
-        if (transcriptLines.length > 0) {
-          sets.push('transcript = $' + pi++); params.push(transcriptLines.join('\n'));
-          sets.push('transcript_segments = $' + pi++); params.push(JSON.stringify(segments));
-          sets.push("transcript_status = 'done'");
-        }
-
-        if (sets.length > 0) {
-          sets.push('updated_at = NOW()');
-          params.push('%' + normCaller.slice(-10));
-          const updateRes = await db.query(
-            'UPDATE call_history SET ' + sets.join(', ') +
-            ' WHERE id = (SELECT id FROM call_history WHERE from_number LIKE $' + pi + ' ORDER BY created_at DESC LIMIT 1) RETURNING id',
-            params
-          );
-
-          if (updateRes.rows.length) {
-            const callHistoryId = updateRes.rows[0].id;
-
-            // Обновить record_url с реальным id
-            if (event.recordingPath) {
-              await db.query(
-                'UPDATE call_history SET record_url = $1 WHERE id = $2',
-                ['/api/telephony/calls/' + callHistoryId + '/record', callHistoryId]
-              );
-            }
-
-            // Запустить AI-анализ по сохранённому транскрипту
-            if (transcriptLines.length > 0) {
-              console.log('[Telephony] AGI transcript saved: call #' + callHistoryId + ' (' + segments.length + ' segments, ' + transcriptLines.length + ' lines)');
-              const pipeline = getPipeline();
-              if (pipeline) {
-                setImmediate(() => pipeline.processCall(callHistoryId).catch(e =>
-                  console.error('[Telephony] AGI pipeline error:', e.message)
-                ));
-              }
-            }
-
-            // Запустить транскрипцию + AI-анализ по MixMonitor записи
-            if (event.recordingPath && transcriptLines.length === 0) {
-              console.log('[Telephony] MixMonitor recording: call #' + callHistoryId + ', path=' + event.recordingPath);
-              const pipeline = getPipeline();
-              if (pipeline) {
-                setImmediate(() => pipeline.processLocalRecording(callHistoryId).catch(e =>
-                  console.error('[Telephony] MixMonitor pipeline error:', e.message)
-                ));
-              }
-            }
-          }
-        }
-      } catch (e) {
-        console.error('[Telephony] AGI call_end update error:', e.message);
-      }
-    }
-
-    reply.send({ status: 'ok' });
+    return reply.code(410).send({ error: 'gone', message: 'AGI event endpoint removed. Use asgard-pbx.' });
   });
 
   // --- Настройки мониторинга звонков ---
@@ -1672,40 +1577,14 @@ module.exports = async function telephonyRoutes(fastify, opts) {
     });
   });
 
-  // --- Активация/деактивация диспетчера ---
+  // --- Активация/деактивация диспетчера (D-252h: ИИ-диспетчер отключён) ---
   fastify.post('/call-control/toggle-dispatcher', {
     preHandler: [fastify.authenticate]
   }, async (request, reply) => {
-    const { enable } = request.body;
-    const userId = request.user.id;
-    if (enable) {
-      const existing = await db.query(
-        `SELECT ucs.user_id, u.name FROM user_call_status ucs
-         JOIN users u ON u.id = ucs.user_id
-         WHERE ucs.is_call_dispatcher = true AND ucs.user_id != $1`,
-        [userId]
-      );
-      if (existing.rows.length) {
-        return reply.code(409).send({
-          error: 'dispatcher_active',
-          active_dispatcher: { user_id: existing.rows[0].user_id, name: existing.rows[0].name }
-        });
-      }
-      await db.query(
-        `INSERT INTO user_call_status (user_id, is_call_dispatcher, receive_call_push, updated_at)
-         VALUES ($1, true, true, NOW())
-         ON CONFLICT (user_id) DO UPDATE SET is_call_dispatcher = true, receive_call_push = true, updated_at = NOW()`,
-        [userId]
-      );
-    } else {
-      await db.query(
-        'UPDATE user_call_status SET is_call_dispatcher = false, updated_at = NOW() WHERE user_id = $1',
-        [userId]
-      );
-    }
-    const userName = request.user.name || request.user.full_name || '';
-    _agiSseCache = null; // Invalidate cache
-    reply.send({ status: 'ok', is_dispatcher: !!enable, dispatcher_name: enable ? userName : '' });
+    return reply.code(410).send({
+      error: 'gone',
+      message: 'ИИ-диспетчер отключён. Используйте кнопку «Телефон» / PBX on-line.'
+    });
   });
 
   // --- Список сотрудников для перевода ---

@@ -1,0 +1,333 @@
+/* ASGARD PBX softphone — ASGARD DS tokens only */
+.ph-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border-radius: var(--r-md);
+  border: 1px solid var(--brd);
+  background: var(--bg2);
+  color: var(--t1);
+  font-size: 13px;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+.ph-btn:hover { background: var(--bg3); border-color: var(--brd-m); }
+.ph-btn:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
+.ph-btn:active { transform: scale(0.98); }
+.ph-btn-icon { display: flex; color: var(--t2); }
+.ph-btn-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: var(--r-full);
+  background: var(--t3);
+}
+.ph-dot--offline { background: var(--t3); }
+.ph-dot--online { background: var(--ok-t); box-shadow: 0 0 0 2px color-mix(in srgb, var(--ok-t) 25%, transparent); }
+.ph-dot--ring {
+  background: var(--ok-t);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--ok-t) 35%, transparent);
+  animation: ph-pulse 1.2s ease infinite;
+}
+.ph-dot--incall { background: var(--blue-l); box-shadow: 0 0 0 2px color-mix(in srgb, var(--blue) 25%, transparent); }
+.ph-btn--ring {
+  border-color: color-mix(in srgb, var(--ok-t) 45%, var(--brd));
+  background: color-mix(in srgb, var(--ok-t) 10%, var(--bg2));
+}
+.ph-btn--incall {
+  border-color: color-mix(in srgb, var(--blue) 45%, var(--brd));
+  background: color-mix(in srgb, var(--blue) 10%, var(--bg2));
+}
+@keyframes ph-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.55; transform: scale(1.15); }
+}
+
+.ph-menu {
+  position: fixed;
+  z-index: 100050;
+  min-width: 220px;
+  background: var(--bg2);
+  border: 1px solid var(--brd);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-lg, 0 12px 40px rgba(0, 0, 0, 0.35));
+  padding: 8px;
+}
+.ph-menu-head {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--t3);
+  padding: 6px 10px 8px;
+}
+.ph-menu-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 10px 12px;
+  border: none;
+  border-radius: var(--r-md);
+  background: transparent;
+  color: var(--t1);
+  font-size: 14px;
+  cursor: pointer;
+}
+.ph-menu-item:hover { background: var(--bg3); }
+.ph-menu-item--danger { color: var(--err-t); }
+
+.ph-card {
+  position: fixed;
+  right: 20px;
+  bottom: 20px;
+  z-index: 100010;
+  width: min(360px, calc(100vw - 32px));
+}
+.ph-card-inner {
+  background: var(--bg2);
+  border: 1px solid var(--brd);
+  border-radius: var(--r-lg);
+  padding: 18px 16px;
+  box-shadow: var(--shadow-xl, 0 16px 48px rgba(0, 0, 0, 0.4));
+}
+.ph-card-title { font-size: 12px; color: var(--t3); margin-bottom: 6px; }
+.ph-card-name { font-size: 18px; font-weight: 700; color: var(--t1); }
+.ph-card-sub { font-size: 14px; color: var(--t2); margin-top: 4px; }
+.ph-card-actions { display: flex; gap: 10px; margin-top: 16px; }
+.ph-act {
+  flex: 1;
+  padding: 12px 14px;
+  border-radius: var(--r-md);
+  border: none;
+  font-weight: 600;
+  font-size: 14px;
+  cursor: pointer;
+  min-height: 44px;
+}
+.ph-act--answer { background: var(--ok); color: #fff; }
+.ph-act--answer:hover { filter: brightness(1.08); }
+.ph-act--answer:active { transform: scale(0.98); }
+.ph-act--answer:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
+.ph-act--hangup { background: var(--bg3); color: var(--t1); border: 1px solid var(--brd); }
+.ph-act--hangup:hover { background: var(--bg4); border-color: var(--brd-m); }
+.ph-act--hangup:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
+
+.ph-bar {
+  position: fixed;
+  left: 50%;
+  bottom: 16px;
+  transform: translateX(-50%);
+  z-index: 100010;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  max-width: min(720px, calc(100vw - 24px));
+  padding: 10px 14px;
+  background: var(--bg2);
+  border: 1px solid var(--brd);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-lg, 0 8px 32px rgba(0, 0, 0, 0.35));
+}
+.ph-bar--hold {
+  border-color: color-mix(in srgb, var(--gold) 50%, var(--brd));
+  background: color-mix(in srgb, var(--gold) 8%, var(--bg2));
+}
+/* Gallery capture helper: keep overlays above chrome without design overrides */
+.ph-menu.is-gallery,
+.ph-card.is-gallery,
+.ph-bar.is-gallery {
+  z-index: 2147483000 !important;
+}
+.ph-menu.is-gallery { display: block !important; top: 56px; right: 24px; }
+.ph-card.is-gallery { display: block !important; top: 80px; right: 28px; bottom: auto; }
+.ph-bar.is-gallery { display: flex !important; }
+.ph-bar-left { display: flex; align-items: baseline; gap: 10px; min-width: 120px; }
+.ph-bar-timer { font-variant-numeric: tabular-nums; font-weight: 700; color: var(--gold); }
+.ph-bar-num { font-size: 14px; color: var(--t2); }
+.ph-bar-actions { display: flex; gap: 6px; flex: 1; justify-content: center; }
+.ph-iconbtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: var(--r-md);
+  border: 1px solid var(--brd);
+  background: var(--bg3);
+  color: var(--t2);
+  cursor: pointer;
+  font-size: 16px;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+.ph-iconbtn:hover { background: var(--bg4); border-color: var(--brd-m); color: var(--t1); }
+.ph-iconbtn:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
+.ph-iconbtn:active { transform: scale(0.96); }
+.ph-iconbtn--active {
+  background: color-mix(in srgb, var(--gold) 22%, var(--bg3));
+  border-color: var(--gold);
+  color: var(--gold);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--gold) 30%, transparent);
+}
+.ph-bar--hold .ph-iconbtn--active {
+  background: color-mix(in srgb, var(--gold) 32%, var(--bg3));
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--gold) 45%, transparent);
+}
+.ph-iconbtn--danger { border-color: color-mix(in srgb, var(--err-t) 40%, var(--brd)); color: var(--err-t); }
+.ph-iconbtn--danger:hover { background: color-mix(in srgb, var(--err-t) 12%, var(--bg2)); }
+.ph-note {
+  flex: 1 1 100%;
+  width: 100%;
+  resize: vertical;
+  min-height: 32px;
+  max-height: 80px;
+  padding: 8px 10px;
+  border-radius: var(--r-md);
+  border: 1px solid var(--brd);
+  background: var(--bg3);
+  color: var(--t1);
+  font-size: 13px;
+}
+.ph-note:focus { border-color: var(--blue); outline: none; }
+
+.ph-dial-call { width: 100%; margin-top: 12px; }
+
+.ph-takeover {
+  position: fixed;
+  inset: 0;
+  z-index: 100030;
+  background: color-mix(in srgb, var(--bg0) 75%, transparent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.ph-takeover-inner {
+  background: var(--bg2);
+  border: 1px solid var(--brd);
+  border-radius: var(--r-lg);
+  padding: 24px;
+  text-align: center;
+  max-width: 320px;
+}
+.ph-takeover-inner p { color: var(--t2); margin-bottom: 16px; }
+
+.ph-audio-banner {
+  position: fixed;
+  top: 72px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 100060;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 16px;
+  background: var(--bg2);
+  border: 1px solid var(--brd);
+  border-radius: var(--r-md);
+  color: var(--t1);
+  font-size: 13px;
+}
+
+.ph-dial-label { display: block; margin-bottom: 12px; color: var(--t2); font-size: 13px; }
+.ph-dial-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin-top: 8px;
+  max-width: 240px;
+  margin-left: auto;
+  margin-right: auto;
+}
+.ph-dial-key {
+  padding: 14px;
+  font-size: 18px;
+  border-radius: var(--r-md);
+  border: 1px solid var(--brd);
+  background: var(--bg3);
+  color: var(--t1);
+  cursor: pointer;
+  min-height: 48px;
+}
+.ph-dial-key:hover { background: var(--bg4); }
+.ph-dial-key:focus-visible { outline: 2px solid var(--blue); outline-offset: 1px; }
+.ph-dial-key:active { transform: scale(0.97); }
+
+.ph-tr-list { max-height: 280px; overflow-y: auto; margin: 12px 0; }
+.ph-tr-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--brd);
+  border-radius: var(--r-md);
+  background: var(--bg3);
+  color: var(--t1);
+  cursor: pointer;
+  text-align: left;
+  margin-bottom: 8px;
+}
+.ph-tr-row:hover { background: var(--bg4); }
+.ph-tr-row:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
+.ph-tr-online { font-size: 11px; color: var(--ok-t); font-weight: 600; }
+.ph-tr-offline { font-size: 11px; color: var(--t3); }
+.ph-tr-mode { display: flex; gap: 16px; font-size: 13px; color: var(--t2); margin-bottom: 12px; }
+.ph-tr-empty { padding: 16px; color: var(--t3); text-align: center; }
+.ph-tr-actions { display: flex; gap: 8px; margin-top: 8px; }
+
+/* Admin PBX tab */
+.pbx-admin { display: flex; flex-direction: column; gap: 16px; }
+.pbx-subtabs { display: flex; flex-wrap: wrap; gap: 8px; }
+.pbx-subtab {
+  padding: 8px 14px;
+  border-radius: var(--r-md);
+  border: 1px solid var(--brd);
+  background: var(--bg2);
+  color: var(--t2);
+  cursor: pointer;
+  font-size: 13px;
+}
+.pbx-subtab:hover { background: var(--bg3); color: var(--t1); }
+.pbx-subtab:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
+.pbx-subtab--active { background: var(--bg3); color: var(--t1); border-color: var(--brd-m); }
+.pbx-panel {
+  background: var(--bg2);
+  border: 1px solid var(--brd);
+  border-radius: var(--r-lg);
+  padding: 16px;
+}
+.pbx-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; }
+.pbx-field label { display: block; font-size: 12px; color: var(--t3); margin-bottom: 4px; }
+.pbx-field input, .pbx-field select, .pbx-field textarea {
+  width: 100%;
+  padding: 8px 10px;
+  border-radius: var(--r-md);
+  border: 1px solid var(--brd);
+  background: var(--bg3);
+  color: var(--t1);
+}
+.pbx-field input:focus, .pbx-field select:focus, .pbx-field textarea:focus {
+  border-color: var(--blue);
+  outline: none;
+}
+.pbx-field input:disabled, .pbx-field select:disabled, .pbx-field textarea:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.pbx-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.pbx-table th, .pbx-table td { padding: 8px 10px; border-bottom: 1px solid var(--brd-m); text-align: left; }
+.pbx-health-ok { color: var(--ok-t); }
+.pbx-health-bad { color: var(--err-t); }
+.pbx-empty {
+  padding: 32px 16px;
+  text-align: center;
+  color: var(--t2);
+  background: var(--bg2);
+  border: 1px solid var(--brd);
+  border-radius: var(--r-lg);
+}
+.pbx-empty p { margin: 0 0 12px; }
+
+@media (max-width: 640px) {
+  .ph-btn-label { display: none; }
+  .ph-bar { flex-direction: column; align-items: stretch; }
+}

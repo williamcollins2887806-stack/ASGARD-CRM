@@ -129,7 +129,7 @@ class CallPipeline {
       fs.writeFileSync(filePath, buffer);
 
       await this.db.query(
-        'UPDATE call_history SET record_path = $1, record_url = $2, updated_at = NOW() WHERE id = $3',
+        'UPDATE call_history SET record_path = $1, recording_url = $2, updated_at = NOW() WHERE id = $3',
         [filePath, `/api/telephony/calls/${call.id}/record`, call.id]
       );
 
@@ -140,6 +140,27 @@ class CallPipeline {
   }
 
   async _transcribe(call) {
+    // Emulation gate: skip paid SpeechKit, inject stub transcript
+    if (process.env.TELEPHONY_EMU_MOCK === '1') {
+      const stubText =
+        'Клиент: Здравствуйте, хочу уточнить сроки.\nОператор: Добрый день, подскажу по договору.';
+      const segments = [
+        { speaker: 'Клиент', text: 'Здравствуйте, хочу уточнить сроки.', start: 0, end: 2 },
+        { speaker: 'Оператор', text: 'Добрый день, подскажу по договору.', start: 2, end: 5 },
+      ];
+      await this.db.query(
+        `UPDATE call_history SET
+          transcript = $1,
+          transcript_segments = $2,
+          transcript_status = 'done',
+          updated_at = NOW()
+        WHERE id = $3`,
+        [stubText, JSON.stringify(segments), call.id]
+      );
+      console.log(`[CallPipeline] EMU_MOCK transcription for #${call.id}`);
+      return;
+    }
+
     if (!this.speechKit.isConfigured()) return;
 
     try {
@@ -150,10 +171,21 @@ class CallPipeline {
 
       console.log(`[CallPipeline] Transcribing ${call.record_path}...`);
 
-      const result = await this.speechKit.transcribeFile(call.record_path, {
-        enableSpeakerDiarization: true,
-        maxSpeakers: 2
-      });
+      // Стерео MixMonitor: L=клиент, R=сотрудники — предпочтительно по каналам
+      let result;
+      if (typeof this.speechKit.transcribeStereoChannels === 'function') {
+        result = await this.speechKit.transcribeStereoChannels(call.record_path, {
+          leftLabel: 'Клиент',
+          rightLabel: 'Оператор',
+          minSeconds: 10,
+        });
+      } else {
+        result = await this.speechKit.transcribeFile(call.record_path, {
+          enableSpeakerDiarization: true,
+          maxSpeakers: 2,
+          audioChannelCount: 2,
+        });
+      }
 
       await this.db.query(
         `UPDATE call_history SET
@@ -293,8 +325,15 @@ class CallPipeline {
     const settings = await this._getSettings();
     const deadlineMinutes = settings.missed_deadline_minutes || 30;
 
-    // Находим ответственного менеджера
+    // Находим ответственного менеджера (дежурный РП из pm_duty_roster по МСК)
     let assigneeId = call.user_id;
+    if (!assigneeId) {
+      try {
+        const { getCurrentDuty } = require('./tender-registry-helpers');
+        const duty = await getCurrentDuty(this.db);
+        if (duty?.pm_user_id) assigneeId = duty.pm_user_id;
+      } catch (_) { /* ignore */ }
+    }
     if (!assigneeId) {
       const duty = await this.db.query(
         'SELECT user_id FROM user_call_status WHERE is_duty = true AND accepting = true LIMIT 1'
@@ -309,8 +348,8 @@ class CallPipeline {
     const fromDisplay = call.from_number || call.caller_number || 'неизвестный номер';
 
     const task = await this.db.query(
-      `INSERT INTO tasks (title, description, assignee_id, deadline, priority, status, tags, created_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
+      `INSERT INTO tasks (title, description, assignee_id, creator_id, deadline, priority, status, tags, created_at)
+       VALUES ($1, $2, $3, $3, $4, $5, $6, $7, NOW())
        RETURNING id`,
       [
         'Перезвонить: ' + fromDisplay,
@@ -318,7 +357,7 @@ class CallPipeline {
         assigneeId,
         deadline,
         'high',
-        'todo',
+        'new',
         JSON.stringify(['перезвонить', 'пропущенный'])
       ]
     );

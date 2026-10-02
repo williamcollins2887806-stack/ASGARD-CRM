@@ -1,0 +1,8 @@
+; ASGARD asgard-pbx AMI user (include in manager.conf)
+[asgard-pbx]
+secret = CHANGE_ME_AMI_SECRET
+deny = 0.0.0.0/0.0.0.0
+permit = 127.0.0.1/255.255.255.255
+read = system,call,log,verbose,command,agent,user,config,dtmf,reporting,cdr,dialplan
+write = system,call,log,verbose,command,agent,user,config,dtmf,reporting,cdr,dialplan
+writetimeout = 5000

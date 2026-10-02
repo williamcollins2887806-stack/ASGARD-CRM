@@ -22,7 +22,14 @@ class CallAnalyzer {
     });
     try {
       const completeFn = this.aiProvider.completeAnalytics || this.aiProvider.complete || this.aiProvider;
-      const response = await completeFn({ system: systemPrompt, messages: [{ role: 'user', content: transcript }], maxTokens: 3000, temperature: 0.1 });
+      const response = await completeFn({
+        system: systemPrompt,
+        messages: [{ role: 'user', content: transcript }],
+        maxTokens: 3000,
+        temperature: 0.1,
+        // D-253 / план: сводка звонков — yandex-pro
+        model: process.env.CALL_ANALYSIS_MODEL || 'yandex-pro',
+      });
       const text = typeof response === 'string' ? response : (response.text || response.content || '');
       return this._parseResponse(text);
     } catch (err) {

@@ -356,7 +356,7 @@ window.AsgardCallReportsPage = (function() {
     try {
       var data = await API.getReport(id);
       var r = data.item;
-      if (!r) { toast('Отчёт не найден', 'error'); return; }
+      if (!r) { toast('Отчёты', 'Отчёт не найден', 'err'); return; }
 
       var TYPE_LABELS = { daily: 'Ежедневный', weekly: 'Еженедельный', monthly: 'Ежемесячный' };
       var stats = {};
@@ -420,7 +420,7 @@ window.AsgardCallReportsPage = (function() {
           bodyContent +
         '</div>';
 
-      showModal(html, { title: 'Отчёт #' + r.id, width: 750 });
+      showModal({ title: 'Отчёт #' + r.id, html: html, wide: true });
 
       // Animate detail mini values
       setTimeout(function() {
@@ -431,7 +431,7 @@ window.AsgardCallReportsPage = (function() {
       }, 100);
 
     } catch (err) {
-      toast('Ошибка: ' + err.message, 'error');
+      toast('Отчёты', err.message || 'Ошибка', 'err');
     }
   }
 
@@ -454,7 +454,7 @@ window.AsgardCallReportsPage = (function() {
         '<button id="crGenSubmit" class="fk-btn fk-btn--primary">Сгенерировать</button>' +
       '</div>';
 
-    showModal(html, { title: 'Новый отчёт по звонкам', width: 420 });
+    showModal({ title: 'Новый отчёт по звонкам', html: html });
 
     setTimeout(function() {
       // CRSelect init — report type
@@ -480,13 +480,13 @@ window.AsgardCallReportsPage = (function() {
           var result = await API.generate(reportType, dateFrom, dateTo);
           if (result.success) {
             closeModal();
-            toast('Отчёт создан', 'success');
+            toast('Отчёты', 'Отчёт создан', 'ok');
             await loadReports(_filterType);
           } else {
-            toast(result.error || 'Ошибка', 'error');
+            toast('Отчёты', result.error || 'Ошибка', 'err');
           }
         } catch (err) {
-          toast('Ошибка: ' + err.message, 'error');
+          toast('Отчёты', err.message || 'Ошибка', 'err');
         } finally {
           submitBtn.disabled = false;
           submitBtn.textContent = 'Сгенерировать';
@@ -553,7 +553,7 @@ window.AsgardCallReportsPage = (function() {
     html += '<button id="crSaveSettings" class="fk-btn fk-btn--primary" style="margin-top:16px;width:100%">Сохранить</button>';
     html += '</div>';
 
-    showModal(html, { title: '\u2699\uFE0F Настройки отчётов', width: 480 });
+    showModal({ title: '\u2699\uFE0F Настройки отчётов', html: html });
 
     setTimeout(function() {
       var saveBtn = document.getElementById('crSaveSettings');
@@ -574,9 +574,9 @@ window.AsgardCallReportsPage = (function() {
             body: JSON.stringify(body)
           });
           closeModal();
-          toast('Настройки сохранены', 'success');
+          toast('Отчёты', 'Настройки сохранены', 'ok');
         } catch (e) {
-          toast('Ошибка: ' + e.message, 'error');
+          toast('Отчёты', e.message || 'Ошибка', 'err');
           saveBtn.disabled = false;
           saveBtn.textContent = 'Сохранить';
         }

@@ -1,0 +1,18 @@
+[Unit]
+Description=ASGARD CRM PBX sidecar (FastAGI + AMI command HTTP)
+After=network.target postgresql.service asterisk.service
+Wants=asterisk.service
+
+[Service]
+Type=simple
+User=www-data
+Group=www-data
+WorkingDirectory=/var/www/asgard-crm/src/pbx
+Environment=NODE_ENV=production
+EnvironmentFile=-/etc/asgard-crm/pbx.env
+ExecStart=/usr/bin/node index.js
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

@@ -733,6 +733,7 @@ try{
           </div>
           <div class="badges">${[
   ...(user ? [
+    `<span id="asgardPhoneSlot"></span>`,
     `<a class="v2-switch v2-switch--to-new" href="/v2/" title="Открыть новый интерфейс CRM 2.0"><span class="v2-switch-rune">ᛞ</span><span class="v2-switch-label">CRM 2.0</span><span class="v2-switch-arrow">→</span></a>`,
     `<button class="themebtn" id="btnTheme" type="button" title="Переключить тему" aria-label="Переключить тему"><svg id="themeIcon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg></button>`,
     `<button class="topbar-search" id="btnTopSearch" type="button" title="Поиск (Ctrl+K)"><span class="ts-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg></span><span class="ts-label">Поиск</span><kbd class="ts-kbd">⌘K</kbd></button>`,
@@ -1985,7 +1986,7 @@ var _setupPinKeypad = null;
         </div>
 
         <!-- Виджет телефонии -->
-        <div class="card span-3" id="callToggleContainer"></div>
+        <div class="card span-3"><h3>Телефон PBX</h3><p>Приём звонков — кнопка «Телефон» в шапке (WebRTC).</p></div>
         
         <!-- Виджет сканера чеков для PM -->
         ${user.role === 'PM' ? `
@@ -2010,9 +2011,8 @@ var _setupPinKeypad = null;
     `;
     await layout(body, {title:"Зал Ярла • Меню", rightBadges:[`Роль: ${user.role}`, `Логин: ${user.login}`]});
     
-    // Рендерим виджет телефонии после загрузки страницы
-    if(window.AsgardMango){
-      setTimeout(() => AsgardMango.renderCallToggle('callToggleContainer'), 100);
+    if (window.AsgardPhoneUI && AsgardPhoneUI.init) {
+      setTimeout(function () { AsgardPhoneUI.init(); }, 50);
     }
 
     // Баланс кассы — у всех с виджетом (cash:read). Quick-expense — только HEAD_TO.
@@ -2679,6 +2679,9 @@ AsgardRouter.add("/assembly", () => {
 
     // SSE: подключение для real-time обновлений
     initGlobalSSE();
+    if (window.AsgardPhoneUI && AsgardPhoneUI.init) {
+      try { AsgardPhoneUI.init(); } catch (_) {}
+    }
 
     // Авто-восстановление Мимира: на любой странице после авторизации проверяем
     // есть ли идущие просчёты — если да, открываем модалку без клика юзера.
@@ -2796,35 +2799,86 @@ AsgardRouter.add("/assembly", () => {
         } catch(_) {}
       });
 
-// Телефония — входящий звонок
-      _sseSource.addEventListener("call:incoming", (e) => {
-        try {
-          const data = JSON.parse(e.data);
-          if (window.AsgardTelephonyPopup) window.AsgardTelephonyPopup.showIncoming(data);
-        } catch(_) {}
+      function mapCallSsePayload(raw) {
+        if (!raw || typeof raw !== 'object') return raw;
+        return {
+          call_id: raw.call_id || raw.callId || (raw.pbx_uid ? 'pbx_' + raw.pbx_uid : null) || raw.uniqueid,
+          pbx_uid: raw.pbx_uid || (raw.call_id ? String(raw.call_id).replace(/^pbx_/, '') : null),
+          channel: raw.channel || null,
+          history_id: raw.history_id || null,
+          caller: raw.caller || raw.from || raw.from_number || raw.caller_number || raw.fromNumber,
+          caller_name: raw.caller_name || raw.callerName,
+          client_name: raw.client_name || raw.clientName,
+          client_company: raw.client_company || raw.clientCompany,
+          called: raw.called || raw.to || raw.to_number,
+          summary: raw.summary,
+          type: raw.type || raw.event_type,
+          lookup: {
+            name: raw.client_name || raw.clientName,
+            company: raw.client_company || raw.clientCompany,
+            type: raw.lookup_type,
+          },
+        };
+      }
+
+      function notifyIncomingCall(data) {
+        const mapped = mapCallSsePayload(data);
+        const P = window.AsgardPhone;
+        if (P && P.getState && P.getState() !== 'offline') {
+          if (P.applyIncoming) {
+            P.applyIncoming({
+              number: mapped.caller,
+              channel: mapped.channel,
+              pbx_uid: mapped.pbx_uid,
+              call_id: mapped.call_id,
+              history_id: mapped.history_id,
+              lookup: mapped.lookup,
+            });
+          } else {
+            document.dispatchEvent(new CustomEvent('asgard-phone', {
+              detail: { type: 'incoming', number: mapped.caller, callMeta: mapped },
+            }));
+          }
+          return;
+        }
+        if (window.AsgardTelephonyPopup) window.AsgardTelephonyPopup.showIncoming(mapped);
+      }
+
+      _sseSource.addEventListener('call:incoming', (e) => {
+        try { notifyIncomingCall(JSON.parse(e.data)); } catch (_) {}
       });
 
-      _sseSource.addEventListener("call:connected", (e) => {
+      _sseSource.addEventListener('call:connected', (e) => {
         try {
-          const data = JSON.parse(e.data);
-          if (window.AsgardTelephonyPopup) window.AsgardTelephonyPopup.showConnected(data);
-        } catch(_) {}
+          const data = mapCallSsePayload(JSON.parse(e.data));
+          if (window.AsgardPhone && AsgardPhone.getState() !== 'offline') {
+            document.dispatchEvent(new CustomEvent('asgard-phone', { detail: { type: 'connected', number: data.caller } }));
+          } else if (window.AsgardTelephonyPopup) {
+            window.AsgardTelephonyPopup.showConnected(data);
+          }
+        } catch (_) {}
       });
 
-      _sseSource.addEventListener("call:ended", (e) => {
+      _sseSource.addEventListener('call:ended', (e) => {
         try {
           if (window.AsgardTelephonyPopup) window.AsgardTelephonyPopup.hide();
-        } catch(_) {}
-_sseSource.addEventListener("call:missed", (e) => {        try {          if (window.AsgardTelephonyPopup) window.AsgardTelephonyPopup.hide();        } catch(_) {}      });
+        } catch (_) {}
+      });
 
-      _sseSource.addEventListener("call:agi_event", (e) => {
+      _sseSource.addEventListener('call:missed', (e) => {
+        try {
+          if (window.AsgardTelephonyPopup) window.AsgardTelephonyPopup.hide();
+        } catch (_) {}
+      });
+
+      _sseSource.addEventListener('call:agi_event', (e) => {
         try {
           const data = JSON.parse(e.data);
+          if (window.AsgardPhone && AsgardPhone.getState() !== 'offline') return;
           if (window.AsgardTelephonyPopup && window.AsgardTelephonyPopup.handleAgiEvent) {
             window.AsgardTelephonyPopup.handleAgiEvent(data);
           }
-        } catch(_) {}
-      });
+        } catch (_) {}
       });
 
       // Real-time notification badge update

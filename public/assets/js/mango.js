@@ -141,10 +141,15 @@ window.AsgardMango = (function(){
   // ========== ВИДЖЕТ ПЕРЕКЛЮЧАТЕЛЯ ==========
   
   async function renderCallToggle(containerId) {
+    /* PBX softphone (phone_ui.js) заменил виджет «Приём звонков» Mango. */
+    const container = document.getElementById(containerId);
+    if (container) {
+      container.innerHTML = '<p style="font-size:13px;color:var(--t2)">Приём звонков — кнопка «Телефон» в шапке (PBX WebRTC).</p>';
+    }
+    return;
     const auth = await AsgardAuth.requireUser();
     if (!auth) return;
     
-    const container = document.getElementById(containerId);
     if (!container) return;
     
     const status = await getUserCallStatus(auth.user.id);

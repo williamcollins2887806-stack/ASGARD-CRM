@@ -94,7 +94,7 @@ window.AsgardTelephonyPopup = (function () {
       '.tp-avatar.tp-av-sm { width: 36px; height: 36px; font-size: 15px; }',
       '.tp-avatar-ring {',
       '  position: absolute; inset: -5px; border-radius: 50%;',
-      '  border: 2px solid rgba(74,200,138,0.40);',
+      '  border: 2px solid color-mix(in srgb, var(--green) 40%, transparent);',
       '  animation: tp-ring-pulse 1.5s ease-in-out infinite;',
       '}',
       '.tp-av-sm .tp-avatar-ring { display: none; }',
@@ -107,7 +107,7 @@ window.AsgardTelephonyPopup = (function () {
       '  font-size: 15px; font-weight: 700; color: var(--t1);',
       '  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;',
       '}',
-      '.tp-caller-name.tp-known { color: #d4a843; }',
+      '.tp-caller-name.tp-known { color: var(--gold); }',
       '.tp-caller-sub {',
       '  font-size: 11px; color: var(--t3); margin-top: 2px;',
       '  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;',
@@ -125,13 +125,13 @@ window.AsgardTelephonyPopup = (function () {
       '.tp-sdot {',
       '  width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0;',
       '}',
-      '.tp-sdot.st-ringing   { background:#4ac88a; box-shadow:0 0 6px #4ac88a; animation: tp-spulse 1.5s ease-in-out infinite; }',
-      '.tp-sdot.st-ai-talk   { background:#4a90d9; box-shadow:0 0 6px #4a90d9; animation: tp-spulse 1.5s ease-in-out infinite; }',
-      '.tp-sdot.st-ai-listen { background:#d4a843; box-shadow:0 0 6px #d4a843; animation: tp-spulse 1.5s ease-in-out infinite; }',
-      '.tp-sdot.st-transfer  { background:#c9a84c; box-shadow:0 0 8px #c9a84c; animation: tp-spulse 1.0s ease-in-out infinite; }',
-      '.tp-sdot.st-connected { background:#4a90d9; box-shadow:0 0 6px #4a90d9; animation: none; }',
+      '.tp-sdot.st-ringing   { background:var(--green); animation: tp-spulse 1.5s ease-in-out infinite; }',
+      '.tp-sdot.st-ai-talk   { background:var(--blue); animation: tp-spulse 1.5s ease-in-out infinite; }',
+      '.tp-sdot.st-ai-listen { background:var(--gold); animation: tp-spulse 1.5s ease-in-out infinite; }',
+      '.tp-sdot.st-transfer  { background:var(--gold); animation: tp-spulse 1.0s ease-in-out infinite; }',
+      '.tp-sdot.st-connected { background:var(--blue); animation: none; }',
       '.tp-sdot.st-ended     { background:var(--t3); box-shadow:none; animation: none; }',
-      '.tp-sdot.st-voicemail { background:#c8293b; box-shadow:0 0 6px #c8293b; animation: tp-spulse 1.5s ease-in-out infinite; }',
+      '.tp-sdot.st-voicemail { background:var(--accent); animation: tp-spulse 1.5s ease-in-out infinite; }',
       '@keyframes tp-spulse {',
       '  0%,100% { opacity:1; transform:scale(1);   }',
       '  50%      { opacity:.35; transform:scale(1.5); }',
@@ -217,7 +217,7 @@ window.AsgardTelephonyPopup = (function () {
       '}',
       '.tp-typing-bub span {',
       '  width:6px; height:6px; border-radius:50%;',
-      '  background:rgba(100,140,255,0.55);',
+      '  background:color-mix(in srgb, var(--blue) 55%, transparent);',
       '  animation: tp-dot 1.2s ease-in-out infinite;',
       '}',
       '.tp-typing-bub span:nth-child(2) { animation-delay:0.15s; }',
@@ -231,14 +231,14 @@ window.AsgardTelephonyPopup = (function () {
       '.tp-mimir {',
       '  display:none; margin:0 12px 8px;',
       '  padding:10px 12px;',
-      '  background:rgba(201,168,76,0.06);',
-      '  border:1px solid rgba(201,168,76,0.30);',
+      '  background:var(--gold-bg);',
+      '  border:1px solid var(--gold-border);',
       '  border-radius:12px;',
       '  animation: tp-slide-l 250ms ease;',
       '}',
       '.tp-mimir.tp-show { display:block; }',
       '.tp-mimir-hd {',
-      '  font-size:11px; font-weight:600; color:#c9a84c;',
+      '  font-size:11px; font-weight:600; color:var(--gold);',
       '  margin-bottom:5px; display:flex; align-items:center; gap:5px;',
       '}',
       '.tp-mimir-txt {',
@@ -252,8 +252,8 @@ window.AsgardTelephonyPopup = (function () {
       '  cursor:pointer; transition:opacity 0.2s;',
       '}',
       '.tp-mimir-btn:hover { opacity:0.80; }',
-      '.tp-mb-yes { background:rgba(45,134,89,0.25); color:#4ac88a; border:1px solid rgba(74,200,138,0.30); }',
-      '.tp-mb-no  { background:rgba(200,41,59,0.15);  color:#e06070; border:1px solid rgba(200,41,59,0.25); }',
+      '.tp-mb-yes { background:var(--ok-bg); color:var(--green); border:1px solid color-mix(in srgb, var(--green) 30%, transparent); }',
+      '.tp-mb-no  { background:var(--err-bg); color:var(--err-t); border:1px solid color-mix(in srgb, var(--err-t) 25%, transparent); }',
 
       /* ── Ended bar ── */
       '.tp-ended-bar {',
@@ -324,9 +324,9 @@ window.AsgardTelephonyPopup = (function () {
       '}',
       '.tp-dispatcher-btn:hover  { transform:scale(1.07); }',
       '.tp-dispatcher-btn:active { transform:scale(0.95); }',
-      '.tp-dispatcher-btn.tp-disp-active { border-color:#2d8659; box-shadow:0 0 12px rgba(45,134,89,0.35); }',
+      '.tp-dispatcher-btn.tp-disp-active { border-color:var(--green); box-shadow:var(--shadow-sm); }',
       '.tp-dispatcher-btn svg { width:20px; height:20px; color:var(--t3); transition:color 0.3s; }',
-      '.tp-dispatcher-btn.tp-disp-active svg { color:#4bc88a; }',
+      '.tp-dispatcher-btn.tp-disp-active svg { color:var(--green); }',
       '.tp-disp-tooltip {',
       '  position:absolute; bottom:0; left:52px; min-width:200px;',
       '  padding:10px 14px;',
@@ -340,7 +340,7 @@ window.AsgardTelephonyPopup = (function () {
       '}',
       '.tp-disp-tooltip.tp-tt-visible { transform:translateY(0); opacity:1; pointer-events:auto; }',
       '.tp-disp-tooltip-title { font-weight:600; color:var(--t1); margin-bottom:4px; font-size:13px; }',
-      '.tp-disp-tooltip-warn  { color:#d4a843; margin-top:6px; font-size:11px; }',
+      '.tp-disp-tooltip-warn  { color:var(--gold); margin-top:6px; font-size:11px; }',
       '.tp-disp-tooltip-toggle {',
       '  display:block; width:100%; margin-top:8px; padding:7px;',
       '  background:var(--bg3); color:var(--t1);',
@@ -349,8 +349,8 @@ window.AsgardTelephonyPopup = (function () {
       '  text-align:center; transition:background 0.2s;',
       '}',
       '.tp-disp-tooltip-toggle:hover { background:var(--bg4); }',
-      '.tp-disp-tooltip-toggle.tp-tt-on  { background:rgba(45,134,89,0.15); color:#4bc88a; border-color:rgba(45,134,89,0.30); }',
-      '.tp-disp-tooltip-toggle.tp-tt-off { background:rgba(200,41,59,0.12); color:#e06070; border-color:rgba(200,41,59,0.25); }',
+      '.tp-disp-tooltip-toggle.tp-tt-on  { background:var(--ok-bg); color:var(--green); border-color:color-mix(in srgb, var(--green) 30%, transparent); }',
+      '.tp-disp-tooltip-toggle.tp-tt-off { background:var(--err-bg); color:var(--err-t); border-color:color-mix(in srgb, var(--err-t) 25%, transparent); }',
 
       ''
     ].join('\n');
@@ -677,8 +677,7 @@ window.AsgardTelephonyPopup = (function () {
       }
     });
 
-    /* Dispatcher toggle */
-    _buildDispatcher();
+    /* ИИ-диспетчер отключён — PBX softphone в шапке */
   }
 
   /* ════════════════════════════════════════════════════════════════════
@@ -756,10 +755,10 @@ window.AsgardTelephonyPopup = (function () {
         addMessage('system', 'Перевод на ' + employeeName);
         setStatus('transfer', 'Перевод на ' + employeeName);
       } else {
-        toast('Ошибка перевода: ' + (res.error || 'неизвестная'), 'error');
+        toast('Перевод', res.error || 'неизвестная ошибка', 'err');
       }
     }).catch(function () {
-      toast('Ошибка перевода', 'error');
+      toast('Перевод', 'Ошибка перевода', 'err');
     }).finally(function () {
       dom.btnTransfer.disabled = false;
       dom.btnTransfer.innerHTML = '';
@@ -1026,6 +1025,16 @@ window.AsgardTelephonyPopup = (function () {
      ════════════════════════════════════════════════════════════════════ */
   function showIncoming(data) {
     data = data || {};
+    if (window.AsgardPhone && AsgardPhone.getState && AsgardPhone.getState() !== 'offline') {
+      document.dispatchEvent(new CustomEvent('asgard-phone', {
+        detail: {
+          type: 'incoming',
+          number: data.caller || data.caller_number || data.from,
+          callMeta: { direction: 'inbound' },
+        },
+      }));
+      return;
+    }
     var newCaller = (data.caller || data.caller_number || data.from || '').replace(/\D/g,'').slice(-10);
     var curCaller = state.callerNumber.replace(/\D/g,'').slice(-10);
     if (state.visible && state.status !== 'ended' && newCaller && curCaller && newCaller === curCaller) {
@@ -1293,14 +1302,14 @@ window.AsgardTelephonyPopup = (function () {
         if (res.ok || res.success || data.is_dispatcher != null) {
           state.dispatcherActive = !!data.is_dispatcher;
           state.dispatcherName   = data.dispatcher_name || '';
-          toast(state.dispatcherActive ? 'Режим диспетчера включён' : 'Режим диспетчера выключен', 'ok');
+          toast('Диспетчер', state.dispatcherActive ? 'Режим включён' : 'Режим выключен', 'ok');
           _renderDispatcherUI(data);
         } else {
-          toast('Ошибка: ' + (res.error || 'не удалось переключить'), 'error');
+          toast('Диспетчер', res.error || 'не удалось переключить', 'err');
           loadDispatcherStatus();
         }
       }).catch(function () {
-        toast('Ошибка сети', 'error');
+        toast('Диспетчер', 'Ошибка сети', 'err');
       }).finally(function () {
         state.dispatcherLoading    = false;
         dom.dispToggleBtn.disabled = false;
@@ -1330,7 +1339,6 @@ window.AsgardTelephonyPopup = (function () {
   function init() {
     if (TEL_ROLES.indexOf(_getUserRole()) === -1) return;
     ensureContainer();
-    loadDispatcherStatus();
   }
 
   if (document.readyState === 'loading') {

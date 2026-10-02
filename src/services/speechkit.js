@@ -789,6 +789,86 @@ class SpeechKitService {
     });
   }
 
+  /**
+   * Стерео MixMonitor: левый канал = клиент, правый = оператор(ы).
+   * Разбивает через sox (если есть) и склеивает сегменты с метками.
+   * Если sox нет — fallback на transcribeFile с audioChannelCount=2.
+   */
+  async transcribeStereoChannels(filePath, options = {}) {
+    const {
+      leftLabel = 'Клиент',
+      rightLabel = 'Оператор',
+      minSeconds = 10,
+      languageCode = 'ru-RU',
+    } = options;
+
+    const { execFileSync } = require('child_process');
+    const os = require('os');
+    const tmp = os.tmpdir();
+    const base = path.join(tmp, `sk_stereo_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`);
+    const leftPath = `${base}_L.wav`;
+    const rightPath = `${base}_R.wav`;
+
+    let usedSox = false;
+    try {
+      execFileSync('sox', ['--i', '-D', filePath], { stdio: ['ignore', 'pipe', 'ignore'] });
+      const dur = parseFloat(String(execFileSync('sox', ['--i', '-D', filePath], { encoding: 'utf8' })).trim()) || 0;
+      if (dur > 0 && dur < minSeconds) {
+        return { text: '', segments: [], skipped: true, reason: 'too_short', duration: dur };
+      }
+      execFileSync('sox', [filePath, leftPath, 'remix', '1'], { stdio: 'ignore' });
+      execFileSync('sox', [filePath, rightPath, 'remix', '2'], { stdio: 'ignore' });
+      usedSox = true;
+    } catch (e) {
+      console.warn('[SpeechKit] sox stereo split unavailable, fallback diarization:', e.message);
+      return this.transcribeFile(filePath, {
+        languageCode,
+        enableSpeakerDiarization: true,
+        maxSpeakers: 2,
+        audioChannelCount: 2,
+      });
+    }
+
+    try {
+      const left = await this.transcribeFile(leftPath, {
+        languageCode,
+        enableSpeakerDiarization: false,
+        audioChannelCount: 1,
+      });
+      const right = await this.transcribeFile(rightPath, {
+        languageCode,
+        enableSpeakerDiarization: false,
+        audioChannelCount: 1,
+      });
+
+      const segments = [];
+      for (const s of left.segments || []) {
+        segments.push({
+          ...s,
+          speaker: 0,
+          speakerLabel: leftLabel,
+          channel: 'L',
+        });
+      }
+      for (const s of right.segments || []) {
+        segments.push({
+          ...s,
+          speaker: 1,
+          speakerLabel: rightLabel,
+          channel: 'R',
+        });
+      }
+      segments.sort((a, b) => (a.startTime || 0) - (b.startTime || 0));
+
+      const text = segments.map((s) => `[${s.speakerLabel}]: ${s.text || ''}`).join('\n');
+      return { text, segments, stereo: true, usedSox };
+    } finally {
+      for (const f of [leftPath, rightPath]) {
+        try { fs.unlinkSync(f); } catch (_) { /* ignore */ }
+      }
+    }
+  }
+
   _httpsRequestRaw(options, body) {
     return new Promise((resolve, reject) => {
       const req = https.request(options, (res) => {

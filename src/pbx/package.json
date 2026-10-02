@@ -1,0 +1,14 @@
+{
+  "name": "asgard-pbx",
+  "version": "1.0.0",
+  "description": "ASGARD CRM PBX sidecar — FastAGI, AMI, command HTTP",
+  "main": "index.js",
+  "private": true,
+  "scripts": {
+    "start": "node index.js",
+    "test": "node ../../tests/pbx/dial-engine.test.js"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

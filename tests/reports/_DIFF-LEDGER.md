@@ -7560,3 +7560,18 @@ Pre/post-deploy: `shell_guard` 37/37, `verify_index_tags` OK, `audit_silent_reve
 `restore_asset_sync` differ=0. Smoke: `/api/version`=20.28.55, health 200, маркеры D-258 на проде.
 V360 таблица уже была. Телефония не выкатывалась.
 
+## D-259. Telephony emulation gate (pre-live) (02.10.2026)
+
+**Цель.** Перед продом и живыми звонками закрыть механику ≥95% на клоне без SIP/Mango live.
+
+**Артефакты.**
+- Runner: `tests/telephony/emulation/run.js` (E01–E08)
+- Mock CMD: `tests/telephony/emulation/mock-cmd.js`
+- `TELEPHONY_EMU_MOCK=1` в `src/services/call-pipeline.js` (_transcribe stub)
+- Отчёт: `tests/reports/TELEPHONY-EMU-GATE.md`
+
+**Результат.** GATE **GREEN**: scenarios 24/24, integration 28/28, E02–E08 PASS.
+Остаток на live: JsSIP media, trunk cutover, прод.
+
+**Статус:** VERIFIED (эмуляция). Cutover/prod — не начаты.
+
