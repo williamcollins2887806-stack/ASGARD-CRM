@@ -7421,3 +7421,23 @@ RISK2 (confirm при «Добавить» уехавшего) — **не в э�
 Post-deploy: `restore_asset_sync plan` to_upload=0; `audit_silent_reverts --post-deploy` = **0 расхождений**.
 Коммиты: `e93926c8` (fix), `2fb122bf` (verify).
 
+## D-251. PROC: lean pay-cols + жёсткий global-лок месяца (02.10.2026)
+
+**Как найдено.** PROC нужен lean «Общий табель» с оплатой (баллы/сумма/суточные/заработано/выплачено/премия/штраф),
+без KPI/города/СЗ/кассы; плюс видеть кто закрыл месяц и самому закрывать/открывать global-лок так,
+чтобы **никто** (включая ADMIN/DIRECTOR) не правил отметки до разблокировки.
+
+**Правки.**
+- `src/lib/timesheet-locks.js` — `assertNotLocked`: scope=global без обхода DIRECTORS_AND_ADMIN.
+- `src/routes/timesheet-v2.js` — PROC POST/DELETE `/lock` для scope=global; lean GET/export (pay-cols, 1 лист Excel).
+- vanilla `public/assets/js/timesheet-v2.js` — панель закрытия «Общий» как у директора; `canUnlock`/`isModeLocked` для PROC.
+- shell **20.28.53** (`index.html` + `sw.js`).
+
+**Доказательства.** `tests/sentinel_proc_lean_timesheet.js` **19/19** (lean + lock→ADMIN 423→unlock).
+**Статус: FIXED** (SELF-CHECK + post-deploy).
+**Выкатка:** 02.10.2026 shell **20.28.53** — `python tools/deploy_proc_global_lock_20_28_53.py`
+(snapshot → tar → restart → smoke). `/api/version`=20.28.53; prod markers: `PROC` в `app.js`,
+`GLOBAL_LEAN_ROLES` + `isProcGlobal` в `timesheet-v2.js`.
+Post-deploy: `audit_silent_reverts --post-deploy` = **0 расхождений**.
+Коммиты: `6920cd89` (fix), `8bc9240e` (verify); `.last-verified`=`6920cd89`.
+
