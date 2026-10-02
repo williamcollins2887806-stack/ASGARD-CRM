@@ -15,7 +15,8 @@
  *                  Снять может только DIRECTOR_x или ADMIN.
  *   2) warehouse — ставит WAREHOUSE. Запирает редактирование клеток type=warehouse.
  *   3) medical   — ставит TO/HEAD_TO. Запирает type=medical/training/ship/helicopter.
- *   4) travel    — ставит OFFICE_MANAGER и HEAD_TO. Запирает type=travel и waiting.
+ *   4) travel    — ставит OFFICE_MANAGER и HEAD_TO. Запирает type=travel и waiting
+ *                  (waiting ставится и из UI табеля МО, но scope лока — travel).
  *   5) pm        — ставит PM/HEAD_PM на СВОЙ user_id. Запирает редактирование
  *                  чекинов PM, где entered_by_user_id = scope_user_id, ИЛИ
  *                  где work.pm_id = scope_user_id (PM «заморозил свой набор»).
@@ -65,7 +66,7 @@ const TYPE_TO_SCOPE = {
   ship:    'medical',
   training: 'medical',
   helicopter: 'medical',
-  // Ожидание ставится в travel-табеле (офис-менеджер, рук ТО) → лочится travel-локом.
+  // Ожидание: UI travel и medical, лок всегда travel (офис-менеджер / рук ТО).
   // В global (PM/директора) дополнительно блокирует только period/global-лок.
   waiting: 'travel',
 };

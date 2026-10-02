@@ -207,7 +207,7 @@ export const MODES = {
     kicker: 'ТО',
     icon: '🏥',
     lockScope: 'medical',
-    editableTypes: ['medical', 'training', 'ship', 'helicopter'],
+    editableTypes: ['medical', 'training', 'ship', 'helicopter', 'waiting'],
     requireWorkFor: [],
     // V255: свои отметки — с баллами, чужие — только иконка.
     columns: { points: 'mine', amount: 'none', perDiem: 'none' },

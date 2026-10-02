@@ -28,11 +28,54 @@ const ALL_VIEW_ROLES = [
   'PROC'
 ];
 
-const GLOBAL_ROLES = ['ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV', 'BUH', 'HR', 'HR_MANAGER'];
+// FULL = директорский KPI, все finance-колонки, 2-листовый Excel, запись в global.
+const GLOBAL_FULL_ROLES = ['ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV', 'BUH', 'HR', 'HR_MANAGER'];
+// LEAN = закупки (PROC): read-only global без KPI/СЗ/города/кассы.
+const GLOBAL_LEAN_ROLES = ['PROC'];
+// Alias: существующие проверки прав (локи, settings, write) = только FULL.
+const GLOBAL_ROLES = GLOBAL_FULL_ROLES;
 const PM_ROLES = ['PM', 'HEAD_PM'];
 const WAREHOUSE_ROLES = ['WAREHOUSE'];
 const MEDICAL_ROLES = ['TO', 'HEAD_TO'];
 const TRAVEL_ROLES = ['OFFICE_MANAGER', 'HEAD_TO'];
+
+function isGlobalLeanRole(role) {
+  return GLOBAL_LEAN_ROLES.includes(role);
+}
+
+function viewProfileFor(role, mode) {
+  if (mode !== 'global') return 'scoped';
+  if (isGlobalLeanRole(role)) return 'lean';
+  if (GLOBAL_FULL_ROLES.includes(role)) return 'full';
+  return 'scoped';
+}
+
+/** Убрать директорские/СЗ-поля из employee для lean-профиля (tooltip days.* оставляем). */
+function projectEmployeeForView(emp, viewProfile) {
+  if (viewProfile !== 'lean' || !emp) return emp;
+  const out = { ...emp };
+  delete out.city;
+  delete out.pay_type;
+  delete out.payment_source_label;
+  delete out.is_self_employed;
+  delete out.is_officially_employed;
+  delete out.can_exceed_limit;
+  delete out.official_salary;
+  delete out.official_non_burnable;
+  delete out.official_status;
+  delete out.inn;
+  delete out.se_payee_id;
+  delete out.payee_fio;
+  delete out.payee_phone;
+  delete out.transfer_amount;
+  delete out.cash_payout;
+  delete out.cash_return;
+  delete out.yearly_remaining;
+  delete out.monthly_remaining;
+  delete out.deduct_salary;
+  delete out.deduct_official;
+  return out;
+}
 
 // V255 (23.06.2026): добавлен 'ship' — альтернатива «Дорога» за повышенную ставку
 // (12 баллов × 500 ₽ = 6000 ₽). Ставит ТО/HEAD_TO (как МО/Обучение).
@@ -224,7 +267,7 @@ function parseDateOnlyToUtcMs(value) {
  * (табель МО), а дорогу открывает явно через ?mode=travel / type=travel.
  */
 function modeOfRole(role) {
-  if (GLOBAL_ROLES.includes(role)) return 'global';
+  if (GLOBAL_ROLES.includes(role) || isGlobalLeanRole(role)) return 'global';
   if (PM_ROLES.includes(role)) return 'pm';
   if (WAREHOUSE_ROLES.includes(role)) return 'warehouse';
   if (MEDICAL_ROLES.includes(role)) return 'medical';
@@ -237,6 +280,8 @@ function modesOfRole(role) {
   if (GLOBAL_ROLES.includes(role)) {
     return ['global', 'pm', 'warehouse', 'medical', 'travel'];
   }
+  // PROC — только чтение общего табеля, без scoped-mode'ов директоров.
+  if (isGlobalLeanRole(role)) return ['global'];
   const modes = [];
   if (PM_ROLES.includes(role)) modes.push('pm');
   if (WAREHOUSE_ROLES.includes(role)) modes.push('warehouse');
@@ -250,8 +295,10 @@ function typeAllowedForMode(mode, type) {
   if (mode === 'pm') return type === 'day' || type === 'night' || type === 'waiting';
   if (mode === 'warehouse') return type === 'warehouse';
   // V255/V284: medical-роли (TO/HEAD_TO) ставят МО, Обучение, Корабль и Вертолёт.
+  // Waiting (⏳ = 6) тоже из табеля МО — чтобы HEAD_TO не прыгал в «Дорогу».
   if (mode === 'medical') {
-    return type === 'medical' || type === 'training' || type === 'ship' || type === 'helicopter';
+    return type === 'medical' || type === 'training' || type === 'ship'
+      || type === 'helicopter' || type === 'waiting';
   }
   // Дорога и Ожидание (⏳ = 6 баллов) — офис-менеджер и рук ТО.
   if (mode === 'travel') return type === 'travel' || type === 'waiting';
@@ -260,6 +307,8 @@ function typeAllowedForMode(mode, type) {
 
 /** Тип разрешён, если его допускает хотя бы один mode роли. */
 function typeAllowedForRole(role, type) {
+  // Lean (PROC) — только чтение, запись любых типов запрещена.
+  if (isGlobalLeanRole(role)) return false;
   const modes = modesOfRole(role);
   if (!modes.length) return false;
   return modes.some((m) => typeAllowedForMode(m, type));
@@ -393,7 +442,7 @@ async function routes(fastify) {
   const db = fastify.db;
   const viewAuth = { preHandler: [fastify.requireRoles(ALL_VIEW_ROLES)] };
   const settingsWriteAuth = { preHandler: [fastify.requireRoles(['ADMIN', 'DIRECTOR_GEN'])] };
-  const exportAuth = { preHandler: [fastify.requireRoles([...GLOBAL_ROLES, 'HEAD_TO', 'TO'])] };
+  const exportAuth = { preHandler: [fastify.requireRoles([...GLOBAL_ROLES, ...GLOBAL_LEAN_ROLES, 'HEAD_TO', 'TO'])] };
 
   // ────────────────────────────────────────────────────────────────
   // GET /api/timesheet/v2/works-options — список работ для фильтра табеля
@@ -736,11 +785,11 @@ async function routes(fastify) {
           amount:  mode === 'global' ? 'show' : 'none',
           perDiem: (mode === 'pm' || mode === 'global') ? 'show' : 'none'
         };
-        // PHASE 1A: summary при пустом списке — нулевая сводка для global,
-        // null для остальных mode. Лимиты компании всё равно дёргаем (могут быть
-        // переводы по СЗ, которых нет в текущей выборке employees).
+        // PHASE 1A: summary при пустом списке — нулевая сводка для global FULL,
+        // null для lean (PROC) и остальных mode.
+        const viewProfileEmpty = viewProfileFor(viewer.role, mode);
         let summary = null;
-        if (mode === 'global') {
+        if (mode === 'global' && viewProfileEmpty === 'full') {
           let monthlyLimit = 350000, yearlyLimit = 2400000;
           try {
             const { rows: lRows } = await db.query(`
@@ -792,6 +841,7 @@ async function routes(fastify) {
         }
         return {
           year, month, days_in_month: dim, mode,
+          view_profile: viewProfileEmpty,
           viewer: { id: viewer.id, role: viewer.role, fio: viewer.name || viewer.full_name || viewer.fio || '' },
           employees: [],
           locks,
@@ -1665,9 +1715,10 @@ async function routes(fastify) {
         perDiem: (mode === 'pm' || mode === 'global') ? 'show' : 'none'
       };
 
-      // ── summary (ТОЛЬКО для global) ───────────────────────────────────
+      // ── summary (ТОЛЬКО для global FULL — директора/бух/HR) ───────────
+      const viewProfile = viewProfileFor(viewer.role, mode);
       let summary = null;
-      if (mode === 'global') {
+      if (mode === 'global' && viewProfile === 'full') {
         const empArr = employees.map(e => empById[e.id]);
         // company-wide month_used / year_used — отдельные SELECT'ы (не зависят
         // от seEmpIds, чтобы считать «по всем СЗ компании, не только в видимом списке»).
@@ -1774,8 +1825,9 @@ async function routes(fastify) {
 
       return {
         year, month, days_in_month: dim, mode,
+        view_profile: viewProfile,
         viewer: { id: viewer.id, role: viewer.role, fio: viewer.name || viewer.full_name || viewer.fio || '' },
-        employees: employees.map(e => empById[e.id]),
+        employees: employees.map(e => projectEmployeeForView(empById[e.id], viewProfile)),
         locks,
         settings,
         columns,
@@ -1793,6 +1845,9 @@ async function routes(fastify) {
   fastify.put('/entry', viewAuth, async (request, reply) => {
     try {
       const viewer = request.user || {};
+      if (isGlobalLeanRole(viewer.role)) {
+        return reply.code(403).send({ error: 'read_only', message: 'Закупки: табель только для просмотра' });
+      }
       if (!modeOfRole(viewer.role) && !modesOfRole(viewer.role).length) {
         return reply.code(403).send({ error: 'role_not_supported' });
       }
@@ -2607,7 +2662,7 @@ async function routes(fastify) {
           request.headers.authorization = 'Bearer ' + request.query.token;
         }
       },
-      fastify.requireRoles([...GLOBAL_ROLES, 'HEAD_TO', 'TO'])
+      fastify.requireRoles([...GLOBAL_ROLES, ...GLOBAL_LEAN_ROLES, 'HEAD_TO', 'TO'])
     ]
   }, async (request, reply) => {
     try {
@@ -2620,6 +2675,7 @@ async function routes(fastify) {
       }
 
       const viewerRole = request.user?.role || '';
+      const isLeanExport = isGlobalLeanRole(viewerRole);
       const requestedExportMode = (request.query && request.query.mode) || null;
       let exportMode = modeOfRole(viewerRole) || 'medical';
       if (GLOBAL_ROLES.includes(viewerRole)) {
@@ -2683,7 +2739,252 @@ async function routes(fastify) {
       const pointValue = Number(data.settings?.point_value || 500) || 500;
 
       // ════════════════════════════════════════════════════════════════
-      // ЛИСТ 1: 📊 Сводка (первый, виден при открытии)
+      // LEAN (PROC): 1 лист «Табель» без Сводки / города / СЗ / кассы
+      // Колонки: ФИО, должность, дни, баллы, сумма, суточные,
+      //          заработано, выплачено, премия, штраф + формулы.
+      // ════════════════════════════════════════════════════════════════
+      if (isLeanExport) {
+        const showPerDiem = include_per_diem_q === '0' ? false : true;
+        if (showPerDiem && employees.length) {
+          const needIds = employees.filter((e) => e.per_diem_total == null).map((e) => Number(e.id)).filter(Boolean);
+          if (needIds.length) {
+            try {
+              const pdMap = await getPerDiemAccruedMap(db, needIds, year, month);
+              for (const emp of employees) {
+                if (emp.per_diem_total == null) {
+                  const pd = pdMap[emp.id] || { accrued: 0, days: 0 };
+                  emp.per_diem_total = pd.accrued;
+                  emp.per_diem_days = pd.days;
+                }
+              }
+            } catch (e) {
+              for (const emp of employees) {
+                if (emp.per_diem_total == null) emp.per_diem_total = 0;
+              }
+            }
+          }
+        }
+
+        const ws = wb.addWorksheet('Табель');
+        const leadCols = 2; // ФИО + Должность (без Города)
+        const baseTrailing = showPerDiem ? 3 : 2; // Баллы + Сумма + (Суточные)
+        const leanExtra = 4; // Заработано / Выплачено / Премия / Штраф
+        const trailingCols = baseTrailing + leanExtra;
+        const totalCols = leadCols + dim + trailingCols;
+
+        ws.mergeCells(1, 1, 1, totalCols);
+        const t = ws.getCell(1, 1);
+        t.value = `ТАБЕЛЬ — ${mName} ${year}`;
+        t.font = { bold: true, size: 14, color: { argb: FONT_GOLD_DARK } };
+        t.alignment = { horizontal: 'center', vertical: 'middle' };
+        t.fill = goldFill;
+        ws.getRow(1).height = 24;
+
+        ws.getCell('C2').value = '1 балл, ₽';
+        ws.getCell('C2').font = { size: 9, color: { argb: 'FF555555' } };
+        ws.getCell('D2').value = pointValue;
+        ws.getCell('D2').font = { bold: true, size: 10 };
+        ws.getCell('D2').numFmt = '0';
+        ws.getCell('E2').value = 'Формулы: Баллы=SUM(дни); Сумма=Баллы×$D$2; Заработано=Сумма+Премия−Штраф';
+        ws.getCell('E2').font = { size: 8, italic: true, color: { argb: 'FF888888' } };
+        ws.getRow(2).height = 16;
+
+        const hdr = ws.getRow(3);
+        hdr.getCell(1).value = 'ФИО';
+        hdr.getCell(2).value = 'Должность';
+        const DAY_NAMES = ['Вс','Пн','Вт','Ср','Чт','Пт','Сб'];
+        for (let d = 1; d <= dim; d++) {
+          const dt = new Date(year, month - 1, d);
+          const c = hdr.getCell(leadCols + d);
+          c.value = `${d}\n${DAY_NAMES[dt.getDay()]}`;
+          c.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
+        }
+        hdr.getCell(leadCols + dim + 1).value = 'Баллы';
+        hdr.getCell(leadCols + dim + 2).value = 'Сумма ₽';
+        if (showPerDiem) hdr.getCell(leadCols + dim + 3).value = 'Суточные ₽';
+        const T_BASE = leadCols + dim + baseTrailing;
+        const T = {
+          earned:  T_BASE + 1,
+          paid:    T_BASE + 2,
+          bonus:   T_BASE + 3,
+          penalty: T_BASE + 4
+        };
+        hdr.getCell(T.earned).value  = 'Заработано ₽';
+        hdr.getCell(T.paid).value    = '📤 Выплачено ₽';
+        hdr.getCell(T.bonus).value   = '🎁 Премия ₽';
+        hdr.getCell(T.penalty).value = '⚠ Штраф ₽';
+        hdr.font = { bold: true, size: 10, color: { argb: FONT_GOLD_DARK } };
+        hdr.alignment = { horizontal: 'center' };
+        for (let C = 1; C <= totalCols; C++) {
+          hdr.getCell(C).fill = goldFill;
+          hdr.getCell(C).border = borderAll;
+        }
+        ws.getRow(3).height = 28;
+
+        ws.getColumn(1).width = 26;
+        ws.getColumn(2).width = 16;
+        for (let d = 1; d <= dim; d++) ws.getColumn(leadCols + d).width = 5;
+        ws.getColumn(leadCols + dim + 1).width = 10;
+        ws.getColumn(leadCols + dim + 2).width = 14;
+        if (showPerDiem) ws.getColumn(leadCols + dim + 3).width = 14;
+        ws.getColumn(T.earned).width  = 14;
+        ws.getColumn(T.paid).width    = 14;
+        ws.getColumn(T.bonus).width   = 13;
+        ws.getColumn(T.penalty).width = 13;
+        ws.views = [{ state: 'frozen', xSplit: leadCols, ySplit: 3 }];
+
+        const firstDataRow = 4;
+        let rowIdx = firstDataRow;
+        for (const emp of employees) {
+          const r = ws.getRow(rowIdx);
+          const isZebra = ((rowIdx - firstDataRow) % 2) === 1;
+          const rowZebraFill = isZebra ? zebraFill : null;
+
+          r.getCell(1).value = emp.fio || '';
+          r.getCell(2).value = emp.position || '';
+
+          for (let d = 1; d <= dim; d++) {
+            const cell = (emp.days || {})[String(d)];
+            const c = r.getCell(leadCols + d);
+            if (cell && cell.type) {
+              const pts = cell.points != null ? Number(cell.points) : 0;
+              tsExcelStyle.applyShiftCell(c, pts, cell.type);
+              if (cell.direction === 'to_site' || cell.direction === 'from_site') {
+                c.note = { texts: [{ text: cell.direction === 'to_site' ? 'Туда (на объект)' : 'Обратно (с объекта)' }] };
+              }
+            } else if (rowZebraFill) {
+              c.fill = rowZebraFill;
+            }
+          }
+
+          const startCol = ws.getColumn(leadCols + 1).letter;
+          const endCol   = ws.getColumn(leadCols + dim).letter;
+          const ptsColL  = ws.getColumn(leadCols + dim + 1).letter;
+          const amtColL  = ws.getColumn(leadCols + dim + 2).letter;
+          const ptsSum = Object.keys(emp.days || {}).reduce((s, k) => {
+            const cell = (emp.days || {})[k];
+            return s + (cell && cell.points != null ? Number(cell.points) || 0 : 0);
+          }, 0);
+          r.getCell(leadCols + dim + 1).value = {
+            formula: `SUM(${startCol}${rowIdx}:${endCol}${rowIdx})`,
+            result: r0(ptsSum)
+          };
+          r.getCell(leadCols + dim + 2).value = {
+            formula: `${ptsColL}${rowIdx}*$D$2`,
+            result: r0(emp.total_amount)
+          };
+          r.getCell(leadCols + dim + 2).numFmt = RUB_FMT;
+          if (showPerDiem) {
+            const pdCell = r.getCell(leadCols + dim + 3);
+            pdCell.value = r0(emp.per_diem_total);
+            pdCell.numFmt = RUB_FMT;
+          }
+
+          const empBonus = Number(emp.bonus || 0);
+          const empPenalty = Number(emp.penalty || 0);
+          const empPaid = Number(
+            emp.paid_salary_total != null ? emp.paid_salary_total : (emp.paid_total || 0)
+          );
+          {
+            const bcell = r.getCell(T.bonus);
+            bcell.value = r0(empBonus);
+            bcell.numFmt = RUB_FMT_DASH;
+            if (empBonus > 0) {
+              bcell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE8F5E9' } };
+              bcell.font = { color: { argb: 'FF1B5E20' }, bold: true };
+            }
+          }
+          {
+            const pcell = r.getCell(T.penalty);
+            pcell.value = r0(empPenalty);
+            pcell.numFmt = RUB_FMT_DASH;
+            if (empPenalty > 0) {
+              pcell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFEBEE' } };
+              pcell.font = { color: { argb: 'FFC62828' }, bold: true };
+            }
+          }
+          {
+            const pcell = r.getCell(T.paid);
+            pcell.value = r0(empPaid);
+            pcell.numFmt = RUB_FMT_DASH;
+            if (empPaid > 0) {
+              pcell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFF3E0' } };
+              pcell.font = { color: { argb: 'FFE65100' }, bold: true };
+            }
+          }
+
+          const bonusL = ws.getColumn(T.bonus).letter;
+          const penaltyL = ws.getColumn(T.penalty).letter;
+          r.getCell(T.earned).value = {
+            formula: `${amtColL}${rowIdx}+${bonusL}${rowIdx}-${penaltyL}${rowIdx}`,
+            result: r0(emp.earned)
+          };
+          r.getCell(T.earned).numFmt = RUB_FMT;
+
+          if (rowZebraFill) {
+            for (const cN of [1, 2, leadCols + dim + 1, leadCols + dim + 2, T.earned, T.paid, T.bonus, T.penalty]) {
+              const c = r.getCell(cN);
+              if (!c.fill) c.fill = rowZebraFill;
+            }
+            if (showPerDiem) {
+              const c = r.getCell(leadCols + dim + 3);
+              if (!c.fill) c.fill = rowZebraFill;
+            }
+          }
+          for (let C = 1; C <= totalCols; C++) {
+            r.getCell(C).border = borderAll;
+          }
+          rowIdx++;
+        }
+
+        if (employees.length > 0) {
+          const tot = ws.getRow(rowIdx);
+          ws.mergeCells(rowIdx, 1, rowIdx, leadCols);
+          tot.getCell(1).value = 'ИТОГО:';
+          tot.getCell(1).font = { bold: true };
+          tot.getCell(1).alignment = { horizontal: 'right' };
+          const startRow = firstDataRow;
+          const endRow = rowIdx - 1;
+          for (let d = 1; d <= dim; d++) {
+            const col = ws.getColumn(leadCols + d).letter;
+            tot.getCell(leadCols + d).value = { formula: `SUM(${col}${startRow}:${col}${endRow})` };
+          }
+          const ptsCol = ws.getColumn(leadCols + dim + 1).letter;
+          tot.getCell(leadCols + dim + 1).value = { formula: `SUM(${ptsCol}${startRow}:${ptsCol}${endRow})` };
+          const amtCol = ws.getColumn(leadCols + dim + 2).letter;
+          tot.getCell(leadCols + dim + 2).value = { formula: `SUM(${amtCol}${startRow}:${amtCol}${endRow})` };
+          tot.getCell(leadCols + dim + 2).numFmt = RUB_FMT;
+          if (showPerDiem) {
+            const pdCol = ws.getColumn(leadCols + dim + 3).letter;
+            tot.getCell(leadCols + dim + 3).value = { formula: `SUM(${pdCol}${startRow}:${pdCol}${endRow})` };
+            tot.getCell(leadCols + dim + 3).numFmt = RUB_FMT;
+          }
+          const sumCol = (idx) => {
+            const col = ws.getColumn(idx).letter;
+            tot.getCell(idx).value = { formula: `SUM(${col}${startRow}:${col}${endRow})` };
+            tot.getCell(idx).numFmt = RUB_FMT;
+          };
+          sumCol(T.earned);
+          sumCol(T.paid);
+          sumCol(T.bonus);
+          sumCol(T.penalty);
+          for (let C = 1; C <= totalCols; C++) {
+            tot.getCell(C).fill = totalFill;
+            tot.getCell(C).border = borderAll;
+            tot.getCell(C).font = Object.assign({}, tot.getCell(C).font || {}, { bold: true });
+          }
+        }
+
+        tsExcelStyle.appendLegendBelow(ws, rowIdx, { colSpan: 10 });
+        const buf = await wb.xlsx.writeBuffer();
+        reply.header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        const fname = encodeURIComponent(`Табель_${mName}_${year}.xlsx`);
+        reply.header('Content-Disposition', `attachment; filename*=UTF-8''${fname}`);
+        return reply.send(Buffer.from(buf));
+      }
+
+      // ════════════════════════════════════════════════════════════════
+      // ЛИСТ 1: 📊 Сводка (первый, виден при открытии) — FULL only
       // ════════════════════════════════════════════════════════════════
       const wsSum = wb.addWorksheet('📊 Сводка');
       wsSum.getColumn(1).width = 28;

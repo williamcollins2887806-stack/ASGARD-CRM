@@ -104,9 +104,28 @@ const YEAR = 2026, MONTH = 9;
     await cleanup();
 
     // ── 1) ACL: кто может waiting ────────────────────────────────
+    // TO теперь может waiting из табеля МО (mode=medical) — паритет с HEAD_TO.
     const rTO = await put(USERS.TO, { employee_id: EMP.id, date: DATE, type: 'waiting', mode: 'medical' });
-    check('TO (medical) НЕ может waiting -> 403', rTO.statusCode === 403, `HTTP ${rTO.statusCode}`);
-    if (rTO.statusCode === 201) createdStageIds.push(JSON.parse(rTO.body).entry.id);
+    check('TO (medical) может waiting -> 201', rTO.statusCode === 201, `HTTP ${rTO.statusCode} ${rTO.body.slice(0, 120)}`);
+    if (rTO.statusCode === 201) {
+      const e = JSON.parse(rTO.body).entry;
+      createdStageIds.push(e.id);
+      check('TO medical waiting.tariff_points = 6', Number(e.tariff_points) === 6, `tariff_points=${e.tariff_points}`);
+    }
+    // cleanup before OM path
+    await db.query(`delete from field_trip_stages where employee_id=$1 and date_from=$2::date and stage_type='waiting'`, [EMP.id, DATE]);
+    createdStageIds.length = 0;
+
+    // HEAD_TO из табеля МО (сценарий Хосе) — без прыжка в «Дорогу»
+    const rHtoMed = await put(USERS.HTO, { employee_id: EMP.id, date: DATE, type: 'waiting', mode: 'medical' });
+    check('HEAD_TO (medical) может waiting -> 201', rHtoMed.statusCode === 201, `HTTP ${rHtoMed.statusCode} ${rHtoMed.body.slice(0, 120)}`);
+    if (rHtoMed.statusCode === 201) {
+      const e = JSON.parse(rHtoMed.body).entry;
+      createdStageIds.push(e.id);
+      check('HEAD_TO medical waiting.tariff_points = 6', Number(e.tariff_points) === 6, `tariff_points=${e.tariff_points}`);
+    }
+    await db.query(`delete from field_trip_stages where employee_id=$1 and date_from=$2::date and stage_type='waiting'`, [EMP.id, DATE]);
+    createdStageIds.length = 0;
 
     const rPM = await put(USERS.PM, { employee_id: EMP.id, date: DATE, type: 'waiting', mode: 'pm' });
     check('PM без work_id НЕ может waiting -> 400/403 (нужна работа)', rPM.statusCode !== 201, `HTTP ${rPM.statusCode}`);
@@ -163,6 +182,9 @@ const YEAR = 2026, MONTH = 9;
     check('travel-лок закрывает waiting для OFFICE_MANAGER -> 423', rLockedOM.statusCode === 423, `HTTP ${rLockedOM.statusCode}`);
     const rLockedHTO = await put(USERS.HTO, { employee_id: EMP.id, date: DATE, type: 'waiting', mode: 'travel' });
     check('travel-лок закрывает waiting и для HEAD_TO -> 423', rLockedHTO.statusCode === 423, `HTTP ${rLockedHTO.statusCode}`);
+    // Даже из UI табеля МО travel-лок закрывает waiting (scope=travel).
+    const rLockedHtoMed = await put(USERS.HTO, { employee_id: EMP.id, date: DATE, type: 'waiting', mode: 'medical' });
+    check('travel-лок закрывает waiting для HEAD_TO и из medical UI -> 423', rLockedHtoMed.statusCode === 423, `HTTP ${rLockedHtoMed.statusCode}`);
 
     await db.query(`delete from payroll_period_locks where id=$1`, [lock.rows[0].id]);
     createdLockIds.length = 0;
@@ -220,7 +242,7 @@ const YEAR = 2026, MONTH = 9;
       headers: { authorization: 'Bearer ' + token(USERS.TO.role, USERS.TO.id) },
       payload: { employee_id: EMP.id, date: DATE, type: 'waiting' }
     });
-    check('global /timesheet/global/entry: TO waiting -> 403', gTO.statusCode === 403, `HTTP ${gTO.statusCode}`);
+    check('global /timesheet/global/entry: TO waiting -> не 403', gTO.statusCode !== 403, `HTTP ${gTO.statusCode} ${gTO.body.slice(0, 100)}`);
 
     // ── 10) РЕГРЕСС FAIL-2: ✈️ → ⏳ → ✈️ (три шага, V299-индекс) ──
     // Раньше третий шаг ловил 409 и день терялся (0 активных отметок).

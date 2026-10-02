@@ -67,7 +67,7 @@ window.AsgardTimesheetV2 = (function () {
   const MODE_ALLOWED_TYPES = {
     pm:        ['day','night','waiting'],
     warehouse: ['warehouse'],
-    medical:   ['medical','training','ship','helicopter'],
+    medical:   ['medical','training','ship','helicopter','waiting'],
     // Ожидание (⏳ = 6 баллов) ставит офис-менеджер и рук ТО — как дорогу.
     travel:    ['travel','waiting'],
     global:    ['day','night','warehouse','medical','training','travel','ship','helicopter','waiting','office','remote']
@@ -933,10 +933,52 @@ window.AsgardTimesheetV2 = (function () {
     if (_tipEl) _tipEl.classList.remove('show');
   }
 
-  // Phase 1B — 7 финансовых ячеек для строки сотрудника (mode='global')
-  // Поля от бэка: pay_type, earned, deduct_salary, transfer_amount,
-  //              cash_payout, cash_return, yearly_remaining, monthly_remaining
-  function renderPayCells(emp) {
+  // Phase 1B — финансовые ячейки строки (mode='global')
+  // lean (PROC): только Заработано / Выплачено / Премия / Штраф
+  // full: + Тип / Получает / Оклад / На карту / Из кассы / Лимиты СЗ
+  function renderPayCells(emp, lean) {
+    if (lean) {
+      let html = '';
+      const earnedTitle = 'Итоговая сумма к выплате на руки за месяц.\nФормула: смены (ставка × дни + баллы × коэф) + премия − штраф';
+      html += `<td class="tsv2-total" title="${esc(earnedTitle)}">${emp.earned != null ? fmt(emp.earned) + ' ₽' : '—'}</td>`;
+      const paidSalaryTotal = Number(
+        emp.paid_salary_total != null
+          ? emp.paid_salary_total
+          : (Number(emp.paid_breakdown?.salary  || 0)
+           + Number(emp.paid_breakdown?.advance || 0)
+           + Number(emp.paid_breakdown?.bonus   || 0))
+      );
+      const paidTotalWithPerDiem = Number(emp.paid_total || 0);
+      if (paidSalaryTotal > 0 || paidTotalWithPerDiem > 0) {
+        const breakdown = emp.paid_breakdown || {};
+        const parts = [];
+        if (Number(breakdown.salary   || 0) > 0) parts.push(`зп ${fmt(breakdown.salary)}`);
+        if (Number(breakdown.advance  || 0) > 0) parts.push(`аванс ${fmt(breakdown.advance)}`);
+        if (Number(breakdown.bonus    || 0) > 0) parts.push(`бонус ${fmt(breakdown.bonus)}`);
+        const ttHead = `Уже выплачено ЗП (зп + аванс + бонус) в поле: ${fmt(paidSalaryTotal)} ₽`;
+        const tt = parts.length ? `${ttHead}\n` + parts.join(' · ') : ttHead;
+        if (paidSalaryTotal > 0) {
+          html += `<td><span class="tsv2-paid-cell" title="${esc(tt)}">${fmt(paidSalaryTotal)} ₽</span></td>`;
+        } else {
+          html += `<td class="tsv2-mute" title="${esc(tt)}">—</td>`;
+        }
+      } else {
+        html += `<td class="tsv2-mute">—</td>`;
+      }
+      const empBonus = Number(emp.bonus || 0);
+      if (empBonus > 0) {
+        html += `<td><span class="tsv2-bonus-cell" title="Премии за месяц">${fmt(empBonus)} ₽</span></td>`;
+      } else {
+        html += `<td class="tsv2-mute">—</td>`;
+      }
+      const empPenalty = Number(emp.penalty || 0);
+      if (empPenalty > 0) {
+        html += `<td><span class="tsv2-penalty-cell" title="Штрафы за месяц">${fmt(empPenalty)} ₽</span></td>`;
+      } else {
+        html += `<td class="tsv2-mute">—</td>`;
+      }
+      return html;
+    }
     const payType = emp.pay_type || (emp.is_self_employed ? 'self_employed'
                                    : emp.is_officially_employed ? 'official'
                                    : 'cash');
@@ -1596,10 +1638,26 @@ window.AsgardTimesheetV2 = (function () {
 
       const period = new Date(curYear, curMonth - 1).toLocaleString('ru-RU', { month: 'long', year: 'numeric' });
       const isGlobal = mode === 'global';
+      const lean = data && data.view_profile === 'lean';
       const myScope = MODE_LOCK_SCOPE[mode];
 
       const rows = [];
       rows.push(`<div class="tsv2-locks-title">Закрытие месяца — ${esc(period)}</div>`);
+
+      if (lean) {
+        // PROC: только статус scopes, без кнопок закрытия/открытия
+        rows.push(
+          `<div class="tsv2-lock-row">
+             <div class="tsv2-lock-row-label">Статус:</div>
+             ${renderScopeBadge('warehouse', scopeLocks.warehouse, true)}
+             ${renderScopeBadge('medical',   scopeLocks.medical, true)}
+             ${renderScopeBadge('travel',    scopeLocks.travel, true)}
+             ${renderScopeBadge('global',    scopeLocks.global, true)}
+           </div>`
+        );
+        box.innerHTML = rows.join('');
+        return;
+      }
 
       if (isGlobal) {
         // РП (все)
@@ -2165,10 +2223,11 @@ window.AsgardTimesheetV2 = (function () {
       const daysInMonth = data.days_in_month || new Date(curYear, curMonth, 0).getDate();
       const todayD = (new Date().getFullYear() === curYear && new Date().getMonth() + 1 === curMonth) ? new Date().getDate() : -1;
       const showPerDiem = (mode === 'global' || mode === 'pm');
+      const lean = data.view_profile === 'lean';
 
       // Header
       let header = '<thead><tr><th>ФИО / Должность</th>';
-      if (mode === 'global') header += '<th title="Город проживания">Город</th>';
+      if (mode === 'global' && !lean) header += '<th title="Город проживания">Город</th>';
       for (let d = 1; d <= daysInMonth; d++) {
         const dt = new Date(curYear, curMonth - 1, d);
         const wd = dt.getDay();
@@ -2182,9 +2241,14 @@ window.AsgardTimesheetV2 = (function () {
       if (mode === 'pm' || mode === 'global') header += `<th class="tsv2-total">Баллы</th>`;
       if (mode === 'global') header += `<th class="tsv2-total">Сумма ₽</th>`;
       if (showPerDiem) header += `<th class="tsv2-total" title="Начислено суточных за этот месяц: дорога, МО, склад, обучение, корабль, вертолёт. Вахта МЛСП не входит.">Суточные ₽</th>`;
-      // Phase 1B — 9 финансовых колонок (только global)
-      // 1B+: между «Заработано» и «Оклад» добавлены 🎁 Премия и ⚠ Штраф
-      if (mode === 'global') {
+      // Phase 1B — финансовые колонки (только global)
+      // lean (PROC): Заработано / Выплачено / Премия / Штраф — без Тип/Получает/Оклад/Карта/Касса/Лимиты
+      if (mode === 'global' && lean) {
+        header += `<th class="tsv2-total" title="Итоговая сумма к выплате на руки за месяц (смены + премия − штраф). Это и есть «к получению».">Заработано ₽</th>`;
+        header += `<th class="tsv2-total" title="Уже выплачено по ЗП через полевой модуль (worker_payments status paid/confirmed): зп + аванс + бонус. Суточные НЕ учитываются — это компенсация командировочных, не ЗП.">📤 Выплачено ₽</th>`;
+        header += `<th class="tsv2-total" title="Премии за месяц (worker_payments type=bonus)">🎁 Премия ₽</th>`;
+        header += `<th class="tsv2-total" title="Штрафы за месяц (worker_payments type=penalty)">⚠ Штраф ₽</th>`;
+      } else if (mode === 'global') {
         header += `<th class="tsv2-total" title="Тип занятости: СЗ — самозанятый, Оф — официально, Нал — наличка">Тип</th>`;
         header += `<th class="tsv2-total" title="Получает выплаты сам / через родственника / окладом / наличкой">Получает</th>`;
         header += `<th class="tsv2-total" title="Итоговая сумма к выплате на руки за месяц (смены + премия − штраф). Это и есть «к получению».">Заработано ₽</th>`;
@@ -2221,7 +2285,7 @@ window.AsgardTimesheetV2 = (function () {
           <div class="tsv2-pos">${esc(emp.position || emp.role_tag || '')}</div>
           ${rosterBadgesHtml(emp)}
         </td>`;
-        if (mode === 'global') row += `<td class="tsv2-city">${esc(emp.city || '—')}</td>`;
+        if (mode === 'global' && !lean) row += `<td class="tsv2-city">${esc(emp.city || '—')}</td>`;
         const days = emp.days || {};
         for (let d = 1; d <= daysInMonth; d++) {
           const dateISO = `${curYear}-${String(curMonth).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
@@ -2239,20 +2303,21 @@ window.AsgardTimesheetV2 = (function () {
             : 'Нет дней суточных в этом месяце (вахта МЛСП без суточных, либо нет дороги/МО/склада).';
           row += `<td class="tsv2-sum" title="${esc(pdTitle)}">${pd ? fmt(pd) + ' ₽' : '—'}</td>`;
         }
-        if (mode === 'global') row += renderPayCells(emp);
+        if (mode === 'global') row += renderPayCells(emp, lean);
         row += '</tr>';
         return row;
       };
 
       if (showGroups && groupKeys.length > 1) {
         // Подсчёт ширины таблицы — для colspan
+        const financeCols = mode === 'global' ? (lean ? 4 : 11) : 0;
         const totalCols = 1 + daysInMonth +
                           1 +                                        // Дни
                           ((mode === 'pm' || mode === 'global') ? 1 : 0) + // Баллы
                           ((mode === 'global') ? 1 : 0) +            // Сумма ₽
                           (showPerDiem ? 1 : 0) +                    // Суточные ₽
-                          ((mode === 'global') ? 11 : 0) +           // Phase 1B+ Stage S: Тип/Получает/Заработ./Выплачено/Премия/Штраф/Оклад/Карта/Касса±/Лим.год/Лим.мес
-                          ((mode === 'global') ? 1 : 0);             // Q3: Город
+                          financeCols +
+                          ((mode === 'global' && !lean) ? 1 : 0);    // Q3: Город (только full)
         groupKeys.forEach(k => {
           body += `<tr class="tsv2-group-row"><td colspan="${totalCols}">${esc(k || 'Без объекта')}</td></tr>`;
           groups[k].forEach(e => { body += renderEmpRow(e); });
@@ -2744,13 +2809,18 @@ window.AsgardTimesheetV2 = (function () {
       updatePeriodLabel();
       renderToolbarExtra();
       try {
-        // Phase 1E — параллельно фетчим табель И cash-coverage (только в global, иначе skip)
+        // Phase 1E — параллельно фетчим табель И cash-coverage (только full-global)
         const [d, cc] = await Promise.all([
           fetchData(curYear, curMonth, mode),
           mode === 'global' ? fetchCashCoverage(curYear, curMonth) : Promise.resolve(null)
         ]);
         data = d;
-        if (data) data.cashCoverage = cc; // null если не директор/бух/admin или ошибка
+        // Lean (PROC): без кассы директора; cash-coverage вернёт 403 — игнорируем.
+        if (data && data.view_profile === 'lean') {
+          data.cashCoverage = null;
+        } else if (data) {
+          data.cashCoverage = cc;
+        }
         // FIX 1 + FIX 2 — параллельно дёргаем closure-status; кладём в data.closureStatus
         try {
           const cs = await fetchClosureStatus(curYear, curMonth);
@@ -2760,9 +2830,11 @@ window.AsgardTimesheetV2 = (function () {
         toast('Ошибка', e.message || 'Не удалось загрузить табель', 'err');
         data = null;
       }
-      // canEdit: есть хоть один разрешённый тип, и месяц не заперт
+      // canEdit: есть хоть один разрешённый тип, и месяц не заперт.
+      // Lean (PROC) — только просмотр.
       const allowedTypes = MODE_ALLOWED_TYPES[mode] || [];
-      canEdit = allowedTypes.length > 0 && !isModeLockedForViewer();
+      const isLean = data && data.view_profile === 'lean';
+      canEdit = !isLean && allowedTypes.length > 0 && !isModeLockedForViewer();
       renderLocks();
       renderDashboard();
       renderKpi();
@@ -2814,7 +2886,13 @@ window.AsgardTimesheetV2 = (function () {
         data = fresh;
         try { const cs = await fetchClosureStatus(curYear, curMonth); if (data) data.closureStatus = cs; } catch (_) {}
         if (mode === 'global') {
-          try { data.cashCoverage = await fetchCashCoverage(curYear, curMonth); } catch (_) {}
+          try {
+            if (data && data.view_profile !== 'lean') {
+              data.cashCoverage = await fetchCashCoverage(curYear, curMonth);
+            } else if (data) {
+              data.cashCoverage = null;
+            }
+          } catch (_) {}
         }
         renderLocks(); renderDashboard(); renderKpi(); renderTable();
       } catch (_) {}

@@ -24,6 +24,8 @@ const read = (p) => fs.readFileSync(path.join(ROOT, p), 'utf8');
 const vanilla = read('public/assets/js/timesheet-v2.js');
 const vTravel = vanilla.match(/travel:\s*\[([^\]]*)\]/);
 check('vanilla: travel-mode содержит waiting', /waiting/.test(vTravel ? vTravel[1] : ''), vTravel ? vTravel[1] : 'не найдено');
+const vMedical = vanilla.match(/medical:\s*\[([^\]]*)\]/);
+check('vanilla: medical-mode содержит waiting', /waiting/.test(vMedical ? vMedical[1] : ''), vMedical ? vMedical[1] : 'не найдено');
 const vWaitingMeta = vanilla.match(/waiting:\s*\{[^}]*\}/);
 check('vanilla: иконка waiting = ⏳', /icon:\s*'⏳'/.test(vWaitingMeta ? vWaitingMeta[0] : ''), (vWaitingMeta || [''])[0].slice(0, 90));
 
@@ -46,6 +48,7 @@ if (typeof vFn === 'function') {
   check('vanilla: своя отметка всегда редактируема', vFn(true, { type: 'waiting', is_mine: true }, 'pm') === true);
   check('vanilla: canEdit=false блокирует всё', vFn(false, null, 'travel') === false);
   check('vanilla: warehouse не правит чужую ⏳ (не его скоуп)', vFn(true, strangerWaiting, 'warehouse') === false);
+  check('vanilla: medical видит чужую ⏳ кликабельной', vFn(true, strangerWaiting, 'medical') === true);
 }
 
 // ── 3. Vanilla: waiting не свободный этап ────────────────────────────────
@@ -56,6 +59,8 @@ check('vanilla: waiting НЕ в FREE_STANDING (work_id-контракт цел)'
 const v2api = read('public/desktop-v2-src/src/pages/Timesheet/api.js');
 const travelCfg = v2api.match(/travel:\s*\{[\s\S]*?\n  \},/);
 check('v2 api.js: travel.editableTypes содержит waiting', /editableTypes:\s*\['travel',\s*'waiting'\]/.test(travelCfg ? travelCfg[0] : ''), travelCfg ? travelCfg[0].match(/editableTypes[^\]]*\]/)[0] : 'не найдено');
+const medicalCfg = v2api.match(/medical:\s*\{[\s\S]*?\n  \},/);
+check('v2 api.js: medical.editableTypes содержит waiting', /editableTypes:\s*\[[^\]]*waiting[^\]]*\]/.test(medicalCfg ? medicalCfg[0] : ''), medicalCfg ? (medicalCfg[0].match(/editableTypes[^\]]*\]/) || [''])[0] : 'не найдено');
 check('v2 api.js: иконка waiting = ⏳', /waiting:\s*\{[^}]*icon:\s*'⏳'/.test(v2api));
 check('v2 api.js: waiting НЕ в FREE_STANDING_TYPES', !/FREE_STANDING_TYPES\s*=\s*new Set\(\[[^\]]*waiting/.test(v2api));
 check('v2 api.js: waiting остаётся в REQUIRE_WORK_ID (для pm/global)', /REQUIRE_WORK_ID = new Set\(\['day', 'night', 'waiting'\]\)/.test(v2api));
@@ -77,7 +82,7 @@ if (typeof v2Fn === 'function') {
   check('v2: PM НЕ получает cross-group прав на ✈️ (не его скоуп)', v2Fn(['day', 'night', 'waiting'], 'travel', 'pm') === false);
   check('v2: PM НЕ получает cross-group прав на 🚢', v2Fn(['day', 'night', 'waiting'], 'ship', 'pm') === false);
   check('v2: WAREHOUSE НЕ получает cross-group прав', v2Fn(['warehouse'], 'travel', 'warehouse') === false);
-  check('v2: [medical] НЕ правит чужую ⏳', v2Fn(['medical', 'training', 'ship', 'helicopter'], 'waiting', 'medical') === false);
+  check('v2: [medical+waiting] правит чужую ⏳', v2Fn(['medical', 'training', 'ship', 'helicopter', 'waiting'], 'waiting', 'medical') === true);
   check('v2: свой тип всегда правит', v2Fn(['waiting'], 'waiting', 'travel') === true);
   // Аудит-замечание «PM удаляет чужую ⏳» — снято как ложное: в PM-табеле чужая
   // отметка на работе РП отдаётся backend'ом с is_mine=true (work.pm_id === viewer.id),
@@ -93,17 +98,19 @@ check('v2 CellEditor: canManageCellType вызван с mode', /canManageCellTyp
 // ── 6. Mobile ───────────────────────────────────────────────────────────
 const mob = read('public/mobile-app/src/pages/timesheet/TimesheetMobile.jsx');
 check('mobile: travel-mode содержит waiting', /travel:\s*\['travel',\s*'waiting'\]/.test(mob));
+check('mobile: medical-mode содержит waiting', /medical:\s*\[[^\]]*waiting[^\]]*\]/.test(mob));
 check('mobile: иконка waiting = ⏳', /waiting:\s*\{[^}]*icon:\s*'⏳'/.test(mob));
 
-// ── 7. Backend: waiting в travel-скоупе и не в медицинском ────────────────
+// ── 7. Backend: waiting в travel и medical; лок — travel ────────────────
 const be = read('src/routes/timesheet-v2.js');
 check('backend: travel-mode допускает waiting', /mode === 'travel'\) return type === 'travel' \|\| type === 'waiting'/.test(be));
-check('backend: medical-mode НЕ допускает waiting', /mode === 'medical'\) \{[\s\S]{0,220}?return type === 'medical' \|\| type === 'training' \|\| type === 'ship' \|\| type === 'helicopter';/.test(be));
+check('backend: medical-mode допускает waiting', /mode === 'medical'\) \{[\s\S]{0,280}?type === 'waiting'/.test(be));
 const locks = read('src/lib/timesheet-locks.js');
 check('locks: waiting -> travel-скоуп', /waiting:\s*'travel'/.test(locks));
 const gt = read('src/routes/global-timesheet.js');
 check('global: OM/HEAD_TO могут waiting', /role === 'OFFICE_MANAGER' \|\| role === 'HEAD_TO'\) && \(type === 'travel' \|\| type === 'waiting'\)/.test(gt));
-check('global: HEAD_TO waiting -> travel-скоуп', /role === 'HEAD_TO' && \(type === 'travel' \|\| type === 'waiting'\)\) return 'travel'/.test(gt));
+check('global: TO/HEAD_TO могут waiting (medical)', /role === 'TO' \|\| role === 'HEAD_TO'\)[\s\S]{0,80}type === 'waiting'/.test(gt));
+check('global: TO/HEAD_TO waiting -> travel-скоуп', /\(role === 'TO' \|\| role === 'HEAD_TO'\) && type === 'waiting'\) return 'travel'/.test(gt));
 
 const failed = results.filter((r) => !r.pass);
 console.log(`\n═══ ИТОГ: ${results.length - failed.length}/${results.length} PASS ═══`);

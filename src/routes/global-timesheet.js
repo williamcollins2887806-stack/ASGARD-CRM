@@ -85,8 +85,10 @@ function scopeForRole(role, type) {
   if (role === 'PM' || role === 'HEAD_PM') return 'pm';
   if (role === 'WAREHOUSE') return 'warehouse';
   if (role === 'OFFICE_MANAGER') return 'travel';
-  // HEAD_TO: medical по умолчанию, travel — если пишет дорогу или ожидание
-  if (role === 'HEAD_TO' && (type === 'travel' || type === 'waiting')) return 'travel';
+  // waiting лочится travel-скоупом (TYPE_TO_SCOPE), даже если UI — табель МО.
+  if ((role === 'TO' || role === 'HEAD_TO') && type === 'waiting') return 'travel';
+  // HEAD_TO: medical по умолчанию, travel — если пишет дорогу
+  if (role === 'HEAD_TO' && type === 'travel') return 'travel';
   if (role === 'TO' || role === 'HEAD_TO') return 'medical';
   return 'global';
 }
@@ -117,10 +119,11 @@ function fmtDate(d) {
 
 function canEditType(role, type) {
   if (role === 'ADMIN' || role.startsWith('DIRECTOR_')) return true;
-  // V255: medical-роли (TO/HEAD_TO) ставят МО и Корабль.
-  if ((role === 'TO' || role === 'HEAD_TO') && (type === 'medical' || type === 'ship')) return true;
+  // V255: medical-роли (TO/HEAD_TO) ставят МО, Корабль и Ожидание (из табеля МО).
+  if ((role === 'TO' || role === 'HEAD_TO')
+      && (type === 'medical' || type === 'ship' || type === 'waiting')) return true;
   if (role === 'WAREHOUSE' && type === 'warehouse') return true;
-  // Дорога и Ожидание (⏳ = 6 баллов) — офис-менеджер и рук ТО.
+  // Дорога и Ожидание — офис-менеджер и рук ТО (табель дороги).
   if ((role === 'OFFICE_MANAGER' || role === 'HEAD_TO') && (type === 'travel' || type === 'waiting')) return true;
   return false;
 }

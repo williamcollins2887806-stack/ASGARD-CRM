@@ -7400,3 +7400,19 @@ RISK2 (confirm при «Добавить» уехавшего) — **не в э�
 (snapshot → tar 3 FILES → restart → smoke). md5 3/3; `/api/version`=20.28.51;
 `OFFICE_STAGE_SHIFTS` CLEAN. Post-deploy `audit_silent_reverts --post-deploy` = **0 расхождений**.
 Коммиты: `2f0764e1` (fix), `140a573d` (verify), `61d41470` (deploy).
+
+## D-250. Waiting (⏳) в табеле МО + lean global для PROC (02.10.2026)
+
+**Как найдено.** HEAD_TO (Хосе) не мог ставить «ожидание» из табеля МО — ACL/UI пускали waiting
+только в режиме travel («Табель дороги»). Параллельно: закупки (PROC) не видели общий табель.
+
+**Правки.**
+- `src/routes/timesheet-v2.js` — medical `typeAllowedForMode` += waiting; GLOBAL_LEAN_ROLES=PROC
+  (read-only global без KPI/финансов).
+- `src/routes/global-timesheet.js` / `src/lib/timesheet-locks.js` — TO/HEAD_TO canEdit waiting.
+- vanilla `timesheet-v2.js`, v2 `Timesheet/api.js`, mobile `TimesheetMobile.jsx` — medical += waiting.
+- `public/assets/js/app.js` — PROC в меню/роуте `/timesheet`.
+
+**Доказательства.** `verify-waiting-backend` **55/55**; `verify-waiting-frontend` **39/39**.
+**Статус: FIXED** (SELF-CHECK). Выкатка: shell **20.28.52** (по команде).
+

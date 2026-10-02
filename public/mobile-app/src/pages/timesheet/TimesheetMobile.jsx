@@ -75,7 +75,7 @@ const MODE_TITLES = {
 const MODE_TYPES = {
   pm:        ['day', 'night', 'waiting'],
   warehouse: ['warehouse'],
-  medical:   ['medical', 'training', 'ship', 'helicopter'],
+  medical:   ['medical', 'training', 'ship', 'helicopter', 'waiting'],
   // Ожидание (⏳ = 6 баллов) — офис-менеджер и рук ТО, как дорога.
   travel:    ['travel', 'waiting'],
   global:    ['day', 'night', 'warehouse', 'medical', 'training', 'travel', 'ship', 'helicopter', 'waiting', 'office', 'remote'],
