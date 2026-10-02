@@ -7555,6 +7555,8 @@ Ship/travel часто `work_id IS NULL` (freestanding) → `is_mine=false` у P
 3. `field-manage` + roster + `field-tab`: баллы из `tariff_points` бригады.
 4. `timesheet_corrections` (V360) + API + UI field-tab / my-timesheet.
 
-**Статус: FIXED** (SELF-CHECK: `node tests/sentinel_d258_timesheet_fixes.js` → **10/10**;
-V360 `timesheet_corrections` на прод применена). Выкатка shell/assets — по команде.
+**Статус: DEPLOYED** shell **20.28.55** (commit `1b8f405e`, verify `dd3c3844`).
+Pre/post-deploy: `shell_guard` 37/37, `verify_index_tags` OK, `audit_silent_reverts` post-deploy **0**,
+`restore_asset_sync` differ=0. Smoke: `/api/version`=20.28.55, health 200, маркеры D-258 на проде.
+V360 таблица уже была. Телефония не выкатывалась.
 
