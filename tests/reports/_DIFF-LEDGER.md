@@ -7532,5 +7532,9 @@ Post-deploy: `audit_silent_reverts --post-deploy` = **0 расхождений**
 
 **Доказательства.** `node tests/sentinel_closeout_rating_duty.js` → **19/19** на `asgard_crm_test`
 (Андросов #3474 d30 A/86, pool=37).
-**Статус:** FIXED (SELF-CHECK). Deploy — по команде.
+**Статус:** FIXED + VERIFIED + DEPLOYED.
+**Выкатка:** 02.10.2026 shell **20.28.54** — `python tools/deploy_d257_closeout_rating_duty_20_28_54.py`
+(snapshot → tar → restart → smoke). `/api/version`=20.28.54; health 200; markers OK;
+post-deploy `audit_silent_reverts --post-deploy` = **0 расхождений**.
+Коммиты: `7eba3ad7` (fix), `7f3fc5f1` (verify).
 
