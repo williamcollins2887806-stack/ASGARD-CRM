@@ -7,15 +7,8 @@
   <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
   <style>
     :root {
-      --bg0: #08090C;
-      --bg1: #0D1117;
-      --bg2: #151c24;
-      --text: #E8EEF4;
-      --t2: #8B9AAB;
-      --gold: #D4A843;
-      --gold-l: #E8C35A;
-      --line: #243040;
-      --danger: #E85D5D;
+      --bg0: #08090C; --bg1: #0D1117; --bg2: #151c24; --text: #E8EEF4; --t2: #8B9AAB;
+      --gold: #D4A843; --gold-l: #E8C35A; --line: #243040; --danger: #E85D5D;
       --font: "Manrope", system-ui, sans-serif;
     }
     * { box-sizing: border-box; }
@@ -24,24 +17,22 @@
       background: radial-gradient(1200px 600px at 50% -10%, #1a2230 0%, var(--bg0) 55%);
       color: var(--text);
     }
-    .lobby {
-      min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 24px;
-    }
-    .lobby-card {
-      width: min(400px, 100%); text-align: center;
-      border: 1px solid var(--line); border-radius: 18px;
-      padding: 28px 22px; background: var(--bg2);
+    .screen { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 24px; }
+    .card {
+      width: min(420px, 100%); text-align: center; border: 1px solid var(--line);
+      border-radius: 18px; padding: 28px 22px; background: var(--bg2);
     }
     .logo-row { display: flex; gap: 10px; align-items: center; justify-content: center; margin-bottom: 10px; }
-    .rune-badge {
+    .rune {
       width: 32px; height: 32px; border-radius: 10px; display: grid; place-items: center;
       background: linear-gradient(180deg, var(--gold-l), var(--gold)); color: #111; font-weight: 800;
     }
     .chip {
-      display: inline-flex; align-items: center; padding: 4px 10px; border-radius: 999px;
-      border: 1px solid var(--line); color: var(--t2); font-size: 12px; font-weight: 600;
+      display: inline-flex; padding: 4px 10px; border-radius: 999px; border: 1px solid var(--line);
+      color: var(--t2); font-size: 12px; font-weight: 600;
     }
-    h1, h3 { font-size: 1.45rem; font-weight: 800; margin: 10px 0 6px; }
+    .chip.gold { border-color: var(--gold); color: var(--gold); }
+    h1, h3 { font-size: 1.4rem; font-weight: 800; margin: 10px 0 6px; }
     .sub { color: var(--t2); margin: 0 0 16px; font-size: 14px; line-height: 1.45; }
     .preview {
       position: relative; height: 210px; border-radius: 16px; overflow: hidden;
@@ -61,7 +52,6 @@
       background: rgba(15,20,28,.82); color: var(--text); cursor: pointer;
     }
     .btn-icon.off { color: var(--danger); border-color: rgba(232,93,93,.45); }
-    .status-plaque { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; margin-bottom: 14px; }
     label { display: block; text-align: left; font-size: 0.85rem; margin-bottom: 6px; color: var(--t2); }
     input {
       width: 100%; padding: 12px 14px; border-radius: 10px; border: 1px solid var(--line);
@@ -72,6 +62,7 @@
       background: linear-gradient(180deg, var(--gold-l), var(--gold)); color: #111;
       font-weight: 700; cursor: pointer; font-size: 1rem; font-family: inherit;
     }
+    .btn.ghost { background: transparent; border: 1px solid var(--line); color: var(--text); margin-top: 8px; }
     .btn:disabled { opacity: 0.5; cursor: default; }
     .err { color: var(--danger); font-size: 0.9rem; margin-top: 10px; }
     .ok { color: #6bcf8e; font-size: 0.9rem; margin-top: 10px; }
@@ -81,12 +72,19 @@
       display: flex; justify-content: space-between; align-items: center;
       padding: 10px 14px; border-bottom: 1px solid var(--line); background: var(--bg1);
     }
-    .room-top .title { font-weight: 700; }
-    .room-top .timer { color: var(--t2); font-variant-numeric: tabular-nums; }
+    .consent {
+      background: rgba(212,168,67,.15); border-bottom: 1px solid var(--gold);
+      color: var(--gold-l); padding: 8px; text-align: center; font-size: 13px; font-weight: 600;
+    }
     #stage {
       flex: 1; display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-      gap: 8px; padding: 12px; background: var(--bg0);
+      gap: 8px; padding: 12px; background: var(--bg0); overflow: auto;
     }
+    .filmstrip {
+      display: flex; gap: 8px; padding: 8px 12px; overflow-x: auto;
+      border-top: 1px solid var(--line); background: var(--bg1); min-height: 72px;
+    }
+    .filmstrip .tile { width: 120px; min-height: 68px; flex: 0 0 auto; }
     .tile {
       position: relative; background: #1a222c; border-radius: 12px; overflow: hidden;
       min-height: 160px; border: 1px solid var(--line);
@@ -97,27 +95,30 @@
       background: rgba(0,0,0,.55); padding: 4px 8px; border-radius: 6px;
     }
     .dock {
-      display: flex; gap: 10px; justify-content: center; padding: 14px;
-      border-top: 1px solid var(--line); background: var(--bg2);
+      display: flex; gap: 10px; justify-content: center; flex-wrap: wrap;
+      padding: 14px; border-top: 1px solid var(--line); background: var(--bg2);
     }
     .dock button {
-      width: auto; min-width: 88px; padding: 10px 14px; border: 0; border-radius: 12px;
-      background: #243040; color: var(--text); font-weight: 600; cursor: pointer; font-family: inherit;
+      width: 52px; height: 52px; border-radius: 50%; border: 1px solid var(--line);
+      background: #243040; color: var(--text); cursor: pointer; font-size: 18px;
     }
-    .dock button.danger { background: var(--danger); color: #fff; }
+    .dock button.off { color: var(--danger); }
+    .dock button.danger { background: var(--danger); border: 0; color: #fff; }
+    .side {
+      position: absolute; top: 52px; right: 0; bottom: 80px; width: min(320px, 100%);
+      background: var(--bg1); border-left: 1px solid var(--line); padding: 12px; overflow: auto; z-index: 2;
+    }
+    .hidden { display: none !important; }
   </style>
-  <script src="https://cdn.jsdelivr.net/npm/livekit-client@2/dist/livekit-client.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/livekit-client@2.9.1/dist/livekit-client.umd.min.js"></script>
 </head>
 <body>
-  <div class="lobby" id="lobby">
-    <div class="lobby-card">
-      <div class="logo-row">
-        <div class="rune-badge">ᚦ</div>
-        <span class="chip">Тинг · ASGARD</span>
-      </div>
+  <div class="screen" id="lobby">
+    <div class="card">
+      <div class="logo-row"><div class="rune">ᛏ</div><span class="chip gold">Тинг · ASGARD</span></div>
       <h3 id="title">Тинг</h3>
       <p class="sub" id="meta">Загрузка…</p>
-      <div id="form" hidden>
+      <div id="form" class="hidden">
         <div class="preview" id="preview">
           <video id="previewVideo" playsinline muted autoplay hidden></video>
           <div class="avatar" id="previewAvatar">?</div>
@@ -126,13 +127,9 @@
             <button type="button" class="btn-icon" id="preCam" title="Камера">📷</button>
           </div>
         </div>
-        <div class="status-plaque">
-          <span class="chip" id="micChip">Микрофон вкл</span>
-          <span class="chip" id="camChip">Камера вкл</span>
-        </div>
         <label for="name">Как вас представить</label>
         <input id="name" autocomplete="name" placeholder="Имя" />
-        <div id="pinWrap" hidden>
+        <div id="pinWrap" class="hidden">
           <label for="pin">PIN (4 цифры)</label>
           <input id="pin" inputmode="numeric" maxlength="4" placeholder="••••" />
         </div>
@@ -142,17 +139,64 @@
     </div>
   </div>
 
-  <div id="roomView">
+  <div class="screen hidden" id="waiting">
+    <div class="card">
+      <div class="rune" style="margin:0 auto 12px">ᛏ</div>
+      <h3>Почти внутри</h3>
+      <p class="sub">Хост скоро пустит — не закрывайте вкладку</p>
+      <button type="button" class="btn ghost" id="waitLeave">Выйти</button>
+    </div>
+  </div>
+
+  <div class="screen hidden" id="ended">
+    <div class="card">
+      <div class="rune" style="margin:0 auto 12px">ᛏ</div>
+      <h3>Тинг завершён</h3>
+      <p class="sub" id="endedMeta">Комната закрыта</p>
+      <a class="btn" id="endedProto" href="/#/ting">Протокол / на хаб CRM</a>
+      <button type="button" class="btn ghost" id="endedRec">Запись</button>
+    </div>
+  </div>
+
+  <div class="screen hidden" id="errorCode">
+    <div class="card" data-screen="error-code">
+      <h3>Неверный код или PIN</h3>
+      <p class="sub" id="errorCodeMeta">Проверьте PIN и попробуйте снова</p>
+      <button type="button" class="btn" onclick="location.reload()">Повторить</button>
+    </div>
+  </div>
+
+  <div class="screen hidden" id="errorView">
+    <div class="card">
+      <h3>Не удалось войти</h3>
+      <p class="sub" id="errorMeta">Ошибка</p>
+      <button type="button" class="btn" onclick="location.reload()">Повторить</button>
+    </div>
+  </div>
+
+  <div id="roomView" style="position:relative">
+    <div class="consent hidden" id="recConsent">● Идёт запись</div>
     <div class="room-top">
       <div class="title" id="roomTitle">Тинг</div>
-      <div class="timer" id="roomTimer">00:00</div>
+      <div class="timer" id="roomTimer" style="color:var(--t2)">00:00</div>
     </div>
     <div id="stage"></div>
+    <div class="filmstrip" id="filmstrip" title="Участники"></div>
+    <div class="side hidden" id="peopleSide"><h3>Участники</h3><div id="peopleList"></div></div>
+    <div class="side hidden" id="chatSide">
+      <h3>Чат</h3><div id="chatList"></div>
+      <div style="display:flex;gap:6px;margin-top:10px">
+        <input id="chatIn" placeholder="Сообщение" style="margin:0" />
+        <button type="button" class="btn" id="chatSend" style="width:auto;padding:10px 14px">→</button>
+      </div>
+    </div>
     <div class="dock">
-      <button type="button" id="btnMic" title="Микрофон">Микрофон</button>
-      <button type="button" id="btnCam" title="Камера">Камера</button>
-      <button type="button" id="btnShare" title="Демонстрация экрана">Экран</button>
-      <button type="button" id="btnLeave" class="danger">Выйти</button>
+      <button type="button" id="btnMic" title="Микрофон">🎤</button>
+      <button type="button" id="btnCam" title="Камера">📷</button>
+      <button type="button" id="btnShare" title="Экран">🖥️</button>
+      <button type="button" id="btnPeople" title="Люди">👥</button>
+      <button type="button" id="btnChat" title="Чат">💬</button>
+      <button type="button" id="btnLeave" class="danger" title="Выйти">📞</button>
     </div>
   </div>
 
@@ -172,6 +216,33 @@
       let previewStream = null;
       let joinedAt = 0;
       let timerId = null;
+      let pollId = null;
+      let waitIdentity = null;
+      let sharing = false;
+      let guestName = '';
+
+      function show(id) {
+        ['lobby', 'waiting', 'ended', 'errorView', 'errorCode'].forEach(function (x) {
+          var el = document.getElementById(x);
+          if (el) el.classList.toggle('hidden', x !== id);
+        });
+        document.getElementById('roomView').classList.toggle('on', id === 'room');
+        if (id === 'room') {
+          document.getElementById('lobby').classList.add('hidden');
+          document.getElementById('waiting').classList.add('hidden');
+        }
+      }
+
+      function showError(msg) {
+        var isCode = /PIN|код|неверн/i.test(String(msg || ''));
+        if (isCode) {
+          document.getElementById('errorCodeMeta').textContent = msg || 'Неверный код или PIN';
+          show('errorCode');
+          return;
+        }
+        document.getElementById('errorMeta').textContent = msg || 'Ошибка';
+        show('errorView');
+      }
 
       if (!slug) {
         metaEl.textContent = 'Откройте ссылку вида /ting/xxxxxx';
@@ -184,12 +255,9 @@
       }
 
       function syncPreviewUi() {
-        document.getElementById('micChip').textContent = localAudio ? 'Микрофон вкл' : 'Микрофон выкл';
-        document.getElementById('camChip').textContent = localVideo ? 'Камера вкл' : 'Камера выкл';
         document.getElementById('preMic').classList.toggle('off', !localAudio);
         document.getElementById('preCam').classList.toggle('off', !localVideo);
-        const name = document.getElementById('name').value.trim();
-        previewAvatar.textContent = initials(name);
+        previewAvatar.textContent = initials(document.getElementById('name').value);
         if (localVideo && previewStream) {
           previewVideo.hidden = false;
           previewAvatar.style.display = 'none';
@@ -205,14 +273,11 @@
             previewStream.getTracks().forEach(function (t) { t.stop(); });
             previewStream = null;
           }
-          if (!localVideo && !localAudio) {
-            syncPreviewUi();
-            return;
-          }
           previewStream = await navigator.mediaDevices.getUserMedia({
-            audio: localAudio,
+            audio: true,
             video: localVideo ? { facingMode: 'user' } : false
           });
+          previewStream.getAudioTracks().forEach(function (t) { t.enabled = localAudio; });
           previewVideo.srcObject = previewStream;
           syncPreviewUi();
         } catch (_) {
@@ -224,27 +289,27 @@
       document.getElementById('name').addEventListener('input', syncPreviewUi);
       document.getElementById('preMic').addEventListener('click', function () {
         localAudio = !localAudio;
-        if (previewStream) {
-          previewStream.getAudioTracks().forEach(function (t) { t.enabled = localAudio; });
-        }
+        if (previewStream) previewStream.getAudioTracks().forEach(function (t) { t.enabled = localAudio; });
         syncPreviewUi();
       });
       document.getElementById('preCam').addEventListener('click', async function () {
         localVideo = !localVideo;
         await ensurePreview();
       });
+      document.getElementById('waitLeave').addEventListener('click', function () {
+        if (pollId) clearInterval(pollId);
+        location.reload();
+      });
 
       fetch('/api/thing/public/' + encodeURIComponent(slug))
         .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
         .then(async function (res) {
-          if (!res.ok) {
-            metaEl.textContent = res.j.error || 'Тинг не найден';
-            return;
-          }
+          if (!res.ok) { showError(res.j.error || 'Тинг не найден'); return; }
           titleEl.textContent = res.j.title || 'Тинг';
           document.getElementById('roomTitle').textContent = res.j.title || 'Тинг';
           if (res.j.status === 'ended' || res.j.status === 'cancelled') {
-            metaEl.textContent = 'Этот Тинг уже завершён';
+            document.getElementById('endedMeta').textContent = res.j.title || 'Комната закрыта';
+            show('ended');
             return;
           }
           const crmToken = localStorage.getItem('asgard_token');
@@ -261,40 +326,38 @@
                 await enterRoom(tj);
                 return;
               }
-            } catch (_) { /* guest form */ }
+            } catch (_) { /* guest */ }
           }
           metaEl.textContent = res.j.lobby_enabled
             ? 'Комната с залом ожидания. Проверьте камеру и микрофон.'
             : 'Вас ждут. Проверьте камеру и микрофон.';
-          formEl.hidden = false;
-          if (res.j.pin_required) pinWrap.hidden = false;
+          formEl.classList.remove('hidden');
+          if (res.j.pin_required) pinWrap.classList.remove('hidden');
           await ensurePreview();
         })
-        .catch(function () {
-          metaEl.textContent = 'Не удалось связаться с сервером';
-        });
+        .catch(function () { showError('Не удалось связаться с сервером'); });
 
-      function attachTrack(track, identity) {
+      function attachTrack(track, identity, name, intoStrip) {
         const stage = document.getElementById('stage');
-        let tile = stage.querySelector('[data-id="' + identity + '"]');
+        const strip = document.getElementById('filmstrip');
+        const host = intoStrip && strip ? strip : stage;
+        let tile = host.querySelector('[data-id="' + identity + '"]') || stage.querySelector('[data-id="' + identity + '"]');
         if (!tile) {
           tile = document.createElement('div');
           tile.className = 'tile';
           tile.dataset.id = identity;
           const label = document.createElement('div');
           label.className = 'label';
-          label.textContent = identity;
+          label.textContent = name || identity;
           tile.appendChild(label);
-          stage.appendChild(tile);
+          host.appendChild(tile);
         }
         if (track.kind === 'video' || track.kind === 'audio') {
           let el = tile.querySelector(track.kind);
           if (!el) {
             el = track.attach();
             if (track.kind === 'video') {
-              el.style.width = '100%';
-              el.style.height = '100%';
-              el.style.objectFit = 'cover';
+              el.style.width = '100%'; el.style.height = '100%'; el.style.objectFit = 'cover';
               tile.insertBefore(el, tile.firstChild);
             } else {
               el.style.display = 'none';
@@ -308,18 +371,35 @@
         joinedAt = Date.now();
         timerId = setInterval(function () {
           const s = Math.floor((Date.now() - joinedAt) / 1000);
-          const mm = String(Math.floor(s / 60)).padStart(2, '0');
-          const ss = String(s % 60).padStart(2, '0');
-          document.getElementById('roomTimer').textContent = mm + ':' + ss;
+          document.getElementById('roomTimer').textContent =
+            String(Math.floor(s / 60)).padStart(2, '0') + ':' + String(s % 60).padStart(2, '0');
         }, 1000);
       }
 
+      function startLobbyPoll(identity) {
+        waitIdentity = identity;
+        show('waiting');
+        if (pollId) clearInterval(pollId);
+        pollId = setInterval(async function () {
+          try {
+            const r = await fetch('/api/thing/public/' + encodeURIComponent(slug) +
+              '/lobby-status?identity=' + encodeURIComponent(identity));
+            const j = await r.json();
+            if (j.lobby_status === 'rejected') {
+              clearInterval(pollId);
+              showError('Хост отклонил вход');
+              return;
+            }
+            if (j.lobby_status === 'admitted' && j.token) {
+              clearInterval(pollId);
+              await enterRoom(j);
+            }
+          } catch (_) { /* retry */ }
+        }, 2000);
+      }
+
       async function enterRoom(creds) {
-        if (!window.LivekitClient) {
-          msgEl.className = 'err';
-          msgEl.textContent = 'LiveKit client не загрузился';
-          return;
-        }
+        if (!window.LivekitClient) { showError('LiveKit client не загрузился'); return; }
         if (previewStream) {
           previewStream.getTracks().forEach(function (t) { t.stop(); });
           previewStream = null;
@@ -327,34 +407,36 @@
         const Room = window.LivekitClient.Room;
         room = new Room({ adaptiveStream: true, dynacast: true });
         room.on(window.LivekitClient.RoomEvent.TrackSubscribed, function (track, _pub, participant) {
-          attachTrack(track, participant.identity);
+          attachTrack(track, participant.identity, participant.name, true);
         });
         room.on(window.LivekitClient.RoomEvent.TrackUnsubscribed, function (track) {
           track.detach().forEach(function (el) { el.remove(); });
+        });
+        room.on(window.LivekitClient.RoomEvent.Disconnected, function () {
+          if (timerId) clearInterval(timerId);
+          show('ended');
         });
         await room.connect(creds.url, creds.token);
         await room.localParticipant.setMicrophoneEnabled(localAudio);
         await room.localParticipant.setCameraEnabled(localVideo);
         room.localParticipant.videoTrackPublications.forEach(function (pub) {
-          if (pub.track) attachTrack(pub.track, 'Вы');
+          if (pub.track) attachTrack(pub.track, 'me', 'Вы', false);
         });
-        document.getElementById('lobby').style.display = 'none';
-        document.getElementById('roomView').classList.add('on');
-        document.getElementById('btnMic').textContent = localAudio ? 'Микрофон' : 'Микрофон выкл';
-        document.getElementById('btnCam').textContent = localVideo ? 'Камера' : 'Камера выкл';
+        show('room');
+        document.getElementById('btnMic').classList.toggle('off', !localAudio);
+        document.getElementById('btnCam').classList.toggle('off', !localVideo);
         startTimer();
       }
 
       document.getElementById('join').addEventListener('click', function () {
-        const name = document.getElementById('name').value.trim();
+        guestName = document.getElementById('name').value.trim();
         const pin = document.getElementById('pin').value.trim();
-        msgEl.className = '';
-        msgEl.textContent = '';
+        msgEl.className = ''; msgEl.textContent = '';
         document.getElementById('join').disabled = true;
         fetch('/api/thing/public/' + encodeURIComponent(slug) + '/guest-token', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ name: name, pin: pin || undefined })
+          body: JSON.stringify({ name: guestName, pin: pin || undefined })
         })
           .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, status: r.status, j: j }; }); })
           .then(async function (res) {
@@ -362,24 +444,20 @@
             if (!res.ok) {
               msgEl.className = 'err';
               msgEl.textContent = res.j.error || ('Ошибка ' + res.status);
+              if (/PIN|код|неверн/i.test(res.j.error || '')) showError(res.j.error);
               return;
             }
             if (res.j.lobby_status === 'waiting') {
-              msgEl.className = 'ok';
-              msgEl.textContent = res.j.message || 'Ждите хоста…';
+              startLobbyPoll(res.j.identity);
               return;
             }
             if (!res.j.token) {
               msgEl.className = 'err';
-              msgEl.textContent = res.j.error || 'Нет media-токена (LiveKit не настроен)';
+              msgEl.textContent = res.j.error || 'Нет media-токена';
               return;
             }
-            try {
-              await enterRoom(res.j);
-            } catch (e) {
-              msgEl.className = 'err';
-              msgEl.textContent = 'Не удалось войти в комнату: ' + (e.message || e);
-            }
+            try { await enterRoom(res.j); }
+            catch (e) { showError('Не удалось войти: ' + (e.message || e)); }
           })
           .catch(function () {
             document.getElementById('join').disabled = false;
@@ -392,28 +470,62 @@
         if (!room) return;
         localAudio = !localAudio;
         await room.localParticipant.setMicrophoneEnabled(localAudio);
-        this.textContent = localAudio ? 'Микрофон' : 'Микрофон выкл';
+        this.classList.toggle('off', !localAudio);
       });
       document.getElementById('btnCam').addEventListener('click', async function () {
         if (!room) return;
         localVideo = !localVideo;
         await room.localParticipant.setCameraEnabled(localVideo);
-        this.textContent = localVideo ? 'Камера' : 'Камера выкл';
+        this.classList.toggle('off', !localVideo);
       });
       document.getElementById('btnShare').addEventListener('click', async function () {
         if (!room) return;
         try {
-          const enabled = room.localParticipant.isScreenShareEnabled;
-          await room.localParticipant.setScreenShareEnabled(!enabled);
-          this.textContent = !enabled ? 'Экран · идёт' : 'Экран';
-        } catch (e) {
-          console.warn('screen share', e);
+          sharing = !room.localParticipant.isScreenShareEnabled;
+          await room.localParticipant.setScreenShareEnabled(sharing);
+          this.classList.toggle('off', sharing);
+        } catch (e) { console.warn(e); }
+      });
+      document.getElementById('btnPeople').addEventListener('click', function () {
+        const el = document.getElementById('peopleSide');
+        const chat = document.getElementById('chatSide');
+        chat.classList.add('hidden');
+        el.classList.toggle('hidden');
+        if (!el.classList.contains('hidden') && room) {
+          const list = document.getElementById('peopleList');
+          const names = ['Вы'];
+          room.remoteParticipants.forEach(function (p) { names.push(p.name || p.identity); });
+          list.innerHTML = names.map(function (n) {
+            return '<div style="padding:8px 0;border-bottom:1px solid var(--line)">' + n + '</div>';
+          }).join('');
+        }
+      });
+      document.getElementById('btnChat').addEventListener('click', function () {
+        document.getElementById('peopleSide').classList.add('hidden');
+        document.getElementById('chatSide').classList.toggle('hidden');
+      });
+      document.getElementById('chatSend').addEventListener('click', function () {
+        const inp = document.getElementById('chatIn');
+        const text = (inp.value || '').trim();
+        if (!text) return;
+        const list = document.getElementById('chatList');
+        list.innerHTML += '<div style="margin:8px 0"><b>' + (guestName || 'Вы') + '</b><div class="sub">' +
+          text.replace(/</g, '&lt;') + '</div></div>';
+        inp.value = '';
+        if (room && room.localParticipant) {
+          try {
+            const enc = new TextEncoder();
+            room.localParticipant.publishData(enc.encode(JSON.stringify({ type: 'chat', text: text })), { reliable: true });
+          } catch (_) { /* */ }
         }
       });
       document.getElementById('btnLeave').addEventListener('click', async function () {
         if (timerId) clearInterval(timerId);
         if (room) await room.disconnect();
-        location.reload();
+        show('ended');
+      });
+      document.getElementById('endedRec').addEventListener('click', function () {
+        alert('Запись доступна инициатору в CRM после обработки');
       });
     })();
   </script>

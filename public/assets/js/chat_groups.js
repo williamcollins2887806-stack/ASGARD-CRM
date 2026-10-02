@@ -1926,7 +1926,7 @@ window.AsgardChatGroups = (function(){
       try {
         await API.sendMessage(chatId, msg);
       } catch (_) { /* ignore */ }
-      window.open(url, '_blank');
+      location.hash = '#/ting?view=ready&slug=' + encodeURIComponent(data.room.slug);
       toast('Тинг создан', 'success');
     } catch (e) {
       toast('Ошибка Тинга: ' + (e.message || e), 'error');

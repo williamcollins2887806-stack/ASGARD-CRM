@@ -325,6 +325,7 @@ console.log('[ASGARD] Global period functions loaded');
     // ── КОММУНИКАЦИИ ──
     {r:"/messenger",l:"Хугинн",d:"Вороний Вестник — чаты",roles:ALL_ROLES,i:"correspondence",p:"chat_groups",g:"comm"},
     {r:"/meetings",l:"Совещания",d:"Планирование и протоколы",roles:ALL_ROLES,i:"schedule",p:"meetings",g:"comm"},
+    {r:"/ting",l:"Тинг",d:"Видеосовещания LiveKit",roles:ALL_ROLES,i:"schedule",p:"ting",g:"comm"},
     {r:"/alerts",l:"Уведомления",d:"Воронья почта",roles:ALL_ROLES,i:"alerts",p:"alerts",g:"comm"},
     {r:"/telegram",l:"Telegram",d:"Уведомления и SMS",roles:["ADMIN"],i:"alerts",p:"telegram_admin",g:"comm"},
     {r:"/telephony",l:"Телефония",d:"Звонки и маршрутизация",roles:["ADMIN","TO","HEAD_TO","PM","HEAD_PM",...DIRECTOR_ROLES],i:"telephony",p:"telephony",g:"comm"},
@@ -2446,6 +2447,10 @@ AsgardRouter.add("/assembly", () => {
 
     AsgardRouter.add("/meetings", async ()=>{
       await AsgardMeetings.render({layout});
+    }, {auth:true, roles:ALL_ROLES});
+
+    AsgardRouter.add("/ting", async ()=>{
+      await AsgardTing.render({layout});
     }, {auth:true, roles:ALL_ROLES});
 
     // M15: Аналитика для руководителей отделов

@@ -278,12 +278,15 @@ window.AsgardMeetings = (function(){
       <div class="card mb-4" style="border-color:var(--gold,#D4A843);padding:14px">
         <div class="row between mb-2">
           <strong style="color:var(--gold,#D4A843)">Тинг</strong>
-          <a class="btn primary mini" href="${esc(thing.url)}" target="_blank" rel="noopener">Войти в Тинг</a>
+          <a class="btn primary mini" href="#/ting?view=lobby&slug=${esc(thing.slug)}">Войти в Тинг</a>
         </div>
         <div class="info-row"><span>Ссылка</span><b style="font-size:12px">${esc(location.origin + thing.url)}</b></div>
         ${thing.dial_code ? `<div class="info-row"><span>Код телефона</span><b style="font-size:22px;letter-spacing:0.12em;color:var(--gold,#D4A843)">${esc(thing.dial_code)}</b></div>` : ''}
         <div class="info-row"><span>Статус</span><span>${esc(thing.status || '')}${thing.protocol_enabled ? ' · AI-протокол' : ''}</span></div>
-        ${thing.is_host && thing.protocol_enabled ? `<button class="btn mt-2" onclick="AsgardMeetings.openThingProtocol('${esc(thing.slug)}')">Открыть AI-протокол</button>` : ''}
+        <div class="row mt-2" style="gap:8px;flex-wrap:wrap">
+          <button class="btn mini" onclick="location.hash='#/ting?view=ready&slug=${esc(thing.slug)}'">Карточка доступа</button>
+          ${thing.is_host && thing.protocol_enabled ? `<button class="btn mini" onclick="location.hash='#/ting?view=protocol&slug=${esc(thing.slug)}'">AI-протокол</button>` : ''}
+        </div>
       </div>
     ` : (meeting.conference_url ? `
       <div class="info-row mb-3"><span>ВКС</span><a href="${esc(meeting.conference_url)}" target="_blank">${esc(meeting.conference_url)}</a></div>
@@ -609,7 +612,12 @@ window.AsgardMeetings = (function(){
   }
 
   function showThingReady(thing, title) {
-    const url = thing.url.startsWith('http') ? thing.url : (location.origin + thing.url);
+    if (thing && thing.slug) {
+      try { AsgardUI.closeModal(); } catch (_) {}
+      location.hash = '#/ting?view=ready&slug=' + encodeURIComponent(thing.slug);
+      return;
+    }
+    const url = (thing.url || '').startsWith('http') ? thing.url : (location.origin + (thing.url || ''));
     const dial = thing.dial_code || '';
     const html = `
       <div style="max-width:420px;text-align:center;padding:8px 4px">
@@ -619,7 +627,7 @@ window.AsgardMeetings = (function(){
         <div class="card" style="padding:12px;margin-bottom:12px;word-break:break-all;font-family:ui-monospace,monospace;font-size:13px;color:#D4A843">${esc(url)}</div>
         <div class="stack" style="display:flex;flex-direction:column;gap:8px;margin-bottom:14px">
           <button class="btn primary" onclick="navigator.clipboard.writeText(${JSON.stringify(url)}).then(()=>toast('Ссылка скопирована','success'))">Скопировать ссылку</button>
-          <a class="btn" href="${esc(thing.url)}" target="_blank" rel="noopener">Войти в Тинг</a>
+          <a class="btn" href="#/ting?view=lobby&slug=${esc(thing.slug || '')}">Войти в Тинг</a>
         </div>
         ${dial ? `
           <div class="card" style="padding:14px">
@@ -637,40 +645,7 @@ window.AsgardMeetings = (function(){
   }
 
   async function openThingProtocol(slug) {
-    try {
-      const token = localStorage.getItem('asgard_token');
-      const res = await fetch('/api/thing/rooms/' + encodeURIComponent(slug) + '/protocol', {
-        headers: { Authorization: 'Bearer ' + token }
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        toast(data.error || 'Нет доступа к протоколу', 'error');
-        return;
-      }
-      const labels = data.status_labels || {};
-      const status = data.protocol_status || 'queued';
-      const mins = (data.minutes || []).map(m => {
-        const t = ({ note: 'Заметка', decision: 'Решение', action: 'Поручение', question: 'Вопрос' })[m.item_type] || m.item_type;
-        return `<div class="info-row"><b>${esc(t)}</b><span>${esc(m.content || '')}</span></div>`;
-      }).join('') || '<p class="text-muted">Пунктов пока нет</p>';
-      const html = `
-        <div style="max-width:640px">
-          <div class="row between mb-3">
-            <span class="chip" style="color:#D4A843">ИИ · ${esc(labels[status] || status)}</span>
-          </div>
-          <h3 style="margin-top:0">Протокол Тинга</h3>
-          ${data.protocol_error ? `<p class="text-red">${esc(data.protocol_error)}</p>` : ''}
-          <div class="card mb-3" style="padding:16px">${mins}</div>
-          <div class="row between">
-            <button class="btn" onclick="AsgardUI.closeModal()">Закрыть</button>
-            <button class="btn primary" onclick="window.print()">Печать / PDF</button>
-          </div>
-        </div>
-      `;
-      showModal('Протокол', html);
-    } catch (e) {
-      toast('Ошибка протокола', 'error');
-    }
+    location.hash = '#/ting?view=protocol&slug=' + encodeURIComponent(slug);
   }
 
   // ═══════════════════════════════════════════════════════════════

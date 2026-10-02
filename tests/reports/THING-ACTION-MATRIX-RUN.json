@@ -1,0 +1,251 @@
+{
+  "at": "2026-10-02T18:27:40.791Z",
+  "base": "http://127.0.0.1:3100",
+  "numerator": 33,
+  "denominator": 33,
+  "skipped": 7,
+  "pass": true,
+  "fails": [],
+  "rows": [
+    {
+      "id": "A01",
+      "pass": true,
+      "skip": false,
+      "detail": "hub route + AsgardTing"
+    },
+    {
+      "id": "A02",
+      "pass": true,
+      "skip": false,
+      "detail": "tab Из Тинга"
+    },
+    {
+      "id": "A03",
+      "pass": true,
+      "skip": false,
+      "detail": "tab Из Совещаний"
+    },
+    {
+      "id": "A04",
+      "pass": true,
+      "skip": false,
+      "detail": "CTA new"
+    },
+    {
+      "id": "A05",
+      "pass": true,
+      "skip": false,
+      "detail": "CTA meeting-create"
+    },
+    {
+      "id": "A06",
+      "pass": true,
+      "skip": false,
+      "detail": "CTA schedule"
+    },
+    {
+      "id": "A07",
+      "pass": true,
+      "skip": false,
+      "detail": "CTA dialin"
+    },
+    {
+      "id": "A08",
+      "pass": true,
+      "skip": false,
+      "detail": "create room dial=863118"
+    },
+    {
+      "id": "A09",
+      "pass": true,
+      "skip": false,
+      "detail": "ready copy link"
+    },
+    {
+      "id": "A10",
+      "pass": true,
+      "skip": false,
+      "detail": "ready dial 6"
+    },
+    {
+      "id": "A11",
+      "pass": true,
+      "skip": false,
+      "detail": "ready→lobby"
+    },
+    {
+      "id": "A12",
+      "pass": true,
+      "skip": false,
+      "detail": "lobby mic/cam"
+    },
+    {
+      "id": "A13",
+      "pass": null,
+      "skip": true,
+      "detail": "LiveKit not configured locally — ACK (LiveKit ещё не развёрнут на сервере (P1))"
+    },
+    {
+      "id": "A14",
+      "pass": null,
+      "skip": true,
+      "detail": "LiveKit not configured locally — ACK (LiveKit ещё не развёрнут на сервере (P1))"
+    },
+    {
+      "id": "A15",
+      "pass": true,
+      "skip": false,
+      "detail": "waiting+admit id=26 admit=200"
+    },
+    {
+      "id": "A16",
+      "pass": true,
+      "skip": false,
+      "detail": "reject guest"
+    },
+    {
+      "id": "A17",
+      "pass": null,
+      "skip": true,
+      "detail": "LiveKit not configured locally — ACK (LiveKit ещё не развёрнут на сервере (P1))"
+    },
+    {
+      "id": "A18",
+      "pass": null,
+      "skip": true,
+      "detail": "LiveKit not configured locally — ACK (LiveKit ещё не развёрнут на сервере (P1))"
+    },
+    {
+      "id": "A19",
+      "pass": null,
+      "skip": true,
+      "detail": "LiveKit not configured locally — ACK (LiveKit ещё не развёрнут на сервере (P1))"
+    },
+    {
+      "id": "A20",
+      "pass": true,
+      "skip": false,
+      "detail": "people panel"
+    },
+    {
+      "id": "A21",
+      "pass": true,
+      "skip": false,
+      "detail": "mute-all status=200"
+    },
+    {
+      "id": "A22",
+      "pass": true,
+      "skip": false,
+      "detail": "kick guest_77166505b80aeda4"
+    },
+    {
+      "id": "A23",
+      "pass": true,
+      "skip": false,
+      "detail": "chat UI + API roundtrip=true"
+    },
+    {
+      "id": "A24",
+      "pass": true,
+      "skip": false,
+      "detail": "recording consent UI"
+    },
+    {
+      "id": "A25",
+      "pass": null,
+      "skip": true,
+      "detail": "recording stop ACK (no active egress)"
+    },
+    {
+      "id": "A26",
+      "pass": true,
+      "skip": false,
+      "detail": "host-end modal + API end=200"
+    },
+    {
+      "id": "A27",
+      "pass": true,
+      "skip": false,
+      "detail": "leave"
+    },
+    {
+      "id": "A28",
+      "pass": true,
+      "skip": false,
+      "detail": "ended CTA"
+    },
+    {
+      "id": "A29",
+      "pass": true,
+      "skip": false,
+      "detail": "protocol A4"
+    },
+    {
+      "id": "A30",
+      "pass": true,
+      "skip": false,
+      "detail": "protocol host 200"
+    },
+    {
+      "id": "A31",
+      "pass": true,
+      "skip": false,
+      "detail": "non-host 403 got 403"
+    },
+    {
+      "id": "A32",
+      "pass": true,
+      "skip": false,
+      "detail": "dialin UI"
+    },
+    {
+      "id": "A33",
+      "pass": null,
+      "skip": true,
+      "detail": "THING_DIALIN_SECRET unset — ACK"
+    },
+    {
+      "id": "A34",
+      "pass": true,
+      "skip": false,
+      "detail": "ended token 410"
+    },
+    {
+      "id": "A35",
+      "pass": true,
+      "skip": false,
+      "detail": "bad PIN status=400"
+    },
+    {
+      "id": "A36",
+      "pass": true,
+      "skip": false,
+      "detail": "meeting card"
+    },
+    {
+      "id": "A37",
+      "pass": true,
+      "skip": false,
+      "detail": "schedule/create room"
+    },
+    {
+      "id": "A38",
+      "pass": true,
+      "skip": false,
+      "detail": "NAV + script"
+    },
+    {
+      "id": "A39",
+      "pass": true,
+      "skip": false,
+      "detail": "guest dock"
+    },
+    {
+      "id": "A40",
+      "pass": true,
+      "skip": false,
+      "detail": "guest waiting poll"
+    }
+  ]
+}

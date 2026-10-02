@@ -421,20 +421,27 @@ module.exports = async function thingRoutes(fastify) {
       const pin = String(body.pin || '').replace(/\D/g, '');
       if (pin !== room.pin_code) return reply.code(403).send({ error: 'Неверный PIN' });
     }
-    if (!livekit.isConfigured()) {
-      return reply.code(503).send({ error: 'LiveKit не настроен', code: 'LIVEKIT_NOT_CONFIGURED' });
-    }
 
     const identity = `guest_${crypto.randomBytes(8).toString('hex')}`;
     const lobby = room.lobby_enabled ? 'waiting' : 'admitted';
-    await db.query(
+    const { rows: ins } = await db.query(
       `INSERT INTO thing_participants (room_id, guest_name, guest_email, role, display_name, identity, lobby_status)
-       VALUES ($1, $2, $3, 'guest', $2, $4, $5)`,
+       VALUES ($1, $2, $3, 'guest', $2, $4, $5) RETURNING id`,
       [room.id, name, body.email || null, identity, lobby]
     );
 
     if (lobby === 'waiting') {
-      return { lobby_status: 'waiting', message: 'Хост скоро пустит' };
+      return {
+        lobby_status: 'waiting',
+        participant_id: ins[0].id,
+        identity,
+        message: 'Хост скоро пустит',
+        poll_url: `/api/thing/public/${encodeURIComponent(room.slug)}/lobby-status?identity=${encodeURIComponent(identity)}`
+      };
+    }
+
+    if (!livekit.isConfigured()) {
+      return reply.code(503).send({ error: 'LiveKit не настроен', code: 'LIVEKIT_NOT_CONFIGURED' });
     }
 
     const creds = await livekit.createAccessToken({
@@ -445,6 +452,165 @@ module.exports = async function thingRoutes(fastify) {
       canPublish: true
     });
     return { ...creds, lobby_status: 'admitted', room: { title: room.title, slug: room.slug, status: room.status } };
+  });
+
+  /** Гость поллит статус лобби → получает token когда admitted */
+  fastify.get('/public/:code/lobby-status', async (request, reply) => {
+    const code = String(request.params.code || '').toLowerCase();
+    const identity = String(request.query.identity || '');
+    if (!isSlug(code) || !identity) return reply.code(400).send({ error: 'slug + identity' });
+    const { rows } = await db.query(`SELECT * FROM thing_rooms WHERE slug = $1`, [code]);
+    const room = rows[0];
+    if (!room) return reply.code(404).send({ error: 'Тинг не найден' });
+    const { rows: parts } = await db.query(
+      `SELECT * FROM thing_participants WHERE room_id = $1 AND identity = $2`,
+      [room.id, identity]
+    );
+    const p = parts[0];
+    if (!p) return reply.code(404).send({ error: 'Участник не найден' });
+    if (p.lobby_status === 'rejected') return { lobby_status: 'rejected' };
+    if (p.lobby_status === 'waiting') return { lobby_status: 'waiting' };
+    if (!livekit.isConfigured()) return reply.code(503).send({ error: 'LiveKit не настроен' });
+    const creds = await livekit.createAccessToken({
+      roomName: room.livekit_room_name,
+      identity: p.identity,
+      name: p.display_name,
+      roomAdmin: false,
+      canPublish: true
+    });
+    return { lobby_status: 'admitted', ...creds, room: { title: room.title, slug: room.slug } };
+  });
+
+  // ─── PARTICIPANTS / LOBBY / MODERATION ───────────────────────
+  fastify.get('/rooms/:id/participants', { preHandler: [fastify.authenticate] }, async (request, reply) => {
+    const room = await loadRoom(request.params.id);
+    if (!room) return reply.code(404).send({ error: 'Тинг не найден' });
+    if (!(await canAccessRoom(room, request.user))) return reply.code(403).send({ error: 'Нет доступа' });
+    const { rows } = await db.query(
+      `SELECT id, user_id, guest_name, role, display_name, identity, lobby_status, joined_at, left_at, created_at
+       FROM thing_participants WHERE room_id = $1 ORDER BY id`,
+      [room.id]
+    );
+    let live = [];
+    try {
+      live = await livekit.listLiveKitParticipants(room.livekit_room_name);
+    } catch (_) { /* */ }
+    return {
+      participants: rows,
+      live: live.map((p) => ({
+        identity: p.identity,
+        name: p.name || p.identity,
+        state: p.state,
+        tracks: (p.tracks || []).map((t) => ({ sid: t.sid, source: t.source, muted: t.muted }))
+      })),
+      is_host: isHost(room, request.user)
+    };
+  });
+
+  fastify.post('/rooms/:id/lobby/:participantId/admit', { preHandler: [fastify.authenticate] }, async (request, reply) => {
+    const room = await loadRoom(request.params.id);
+    if (!room) return reply.code(404).send({ error: 'Тинг не найден' });
+    if (!isHost(room, request.user)) return reply.code(403).send({ error: 'Только хост' });
+    const pid = parseInt(request.params.participantId, 10);
+    const { rows } = await db.query(
+      `UPDATE thing_participants SET lobby_status = 'admitted', joined_at = COALESCE(joined_at, NOW())
+       WHERE id = $1 AND room_id = $2 AND lobby_status = 'waiting'
+       RETURNING *`,
+      [pid, room.id]
+    );
+    if (!rows[0]) return reply.code(404).send({ error: 'Ожидающий не найден' });
+    return { ok: true, participant: rows[0] };
+  });
+
+  fastify.post('/rooms/:id/lobby/:participantId/reject', { preHandler: [fastify.authenticate] }, async (request, reply) => {
+    const room = await loadRoom(request.params.id);
+    if (!room) return reply.code(404).send({ error: 'Тинг не найден' });
+    if (!isHost(room, request.user)) return reply.code(403).send({ error: 'Только хост' });
+    const pid = parseInt(request.params.participantId, 10);
+    const { rows } = await db.query(
+      `UPDATE thing_participants SET lobby_status = 'rejected'
+       WHERE id = $1 AND room_id = $2 RETURNING *`,
+      [pid, room.id]
+    );
+    if (!rows[0]) return reply.code(404).send({ error: 'Участник не найден' });
+    return { ok: true, participant: rows[0] };
+  });
+
+  fastify.post('/rooms/:id/participants/:identity/remove', { preHandler: [fastify.authenticate] }, async (request, reply) => {
+    const room = await loadRoom(request.params.id);
+    if (!room) return reply.code(404).send({ error: 'Тинг не найден' });
+    if (!isHost(room, request.user)) return reply.code(403).send({ error: 'Только хост' });
+    const identity = decodeURIComponent(request.params.identity);
+    let livekit_removed = false;
+    let livekit_error = null;
+    try {
+      if (livekit.isConfigured()) {
+        await livekit.removeLiveKitParticipant(room.livekit_room_name, identity);
+        livekit_removed = true;
+      }
+    } catch (e) {
+      livekit_error = e.message || 'LiveKit remove failed';
+    }
+    await db.query(
+      `UPDATE thing_participants SET left_at = NOW(), lobby_status = CASE WHEN lobby_status = 'waiting' THEN 'rejected' ELSE lobby_status END
+       WHERE room_id = $1 AND identity = $2`,
+      [room.id, identity]
+    );
+    return { ok: true, livekit_removed, livekit_error };
+  });
+
+  fastify.post('/rooms/:id/mute-all', { preHandler: [fastify.authenticate] }, async (request, reply) => {
+    const room = await loadRoom(request.params.id);
+    if (!room) return reply.code(404).send({ error: 'Тинг не найден' });
+    if (!isHost(room, request.user)) return reply.code(403).send({ error: 'Только хост' });
+    try {
+      const except = String((request.body || {}).except_identity || '');
+      const r = await livekit.muteAllExcept(room.livekit_room_name, except || undefined);
+      return { ok: true, ...r };
+    } catch (e) {
+      return reply.code(502).send({ error: e.message || 'mute failed' });
+    }
+  });
+
+  /** In-room data chat (persist last N in memory via DB table optional — use thing_participants + jobs noop)
+   *  Simple: store in thing_jobs payload as chat append — better use dedicated lightweight table.
+   *  v1: return ok and broadcast via LiveKit data from client; server log only.
+   */
+  fastify.get('/rooms/:id/chat', { preHandler: [fastify.authenticate] }, async (request, reply) => {
+    const room = await loadRoom(request.params.id);
+    if (!room) return reply.code(404).send({ error: 'Тинг не найден' });
+    if (!(await canAccessRoom(room, request.user))) return reply.code(403).send({ error: 'Нет доступа' });
+    const { rows } = await db.query(
+      `SELECT id, payload, created_at FROM thing_jobs
+       WHERE room_id = $1 AND job_type = 'thing_chat'
+       ORDER BY id DESC LIMIT 100`,
+      [room.id]
+    );
+    const messages = rows.reverse().map((r) => ({
+      id: r.id,
+      ...(typeof r.payload === 'object' ? r.payload : {}),
+      created_at: r.created_at
+    }));
+    return { messages };
+  });
+
+  fastify.post('/rooms/:id/chat', { preHandler: [fastify.authenticate] }, async (request, reply) => {
+    const room = await loadRoom(request.params.id);
+    if (!room) return reply.code(404).send({ error: 'Тинг не найден' });
+    if (!(await canAccessRoom(room, request.user))) return reply.code(403).send({ error: 'Нет доступа' });
+    const text = String((request.body || {}).text || '').trim().slice(0, 2000);
+    if (!text) return reply.code(400).send({ error: 'Пустое сообщение' });
+    const payload = {
+      text,
+      author: request.user.name || request.user.email || 'user',
+      user_id: request.user.id
+    };
+    const { rows } = await db.query(
+      `INSERT INTO thing_jobs (job_type, room_id, status, payload, scheduled_at)
+       VALUES ('thing_chat', $1, 'done', $2::jsonb, NOW()) RETURNING id, created_at`,
+      [room.id, JSON.stringify(payload)]
+    );
+    return { ok: true, message: { id: rows[0].id, ...payload, created_at: rows[0].created_at } };
   });
 
   // ─── DIAL-IN info + lookup ──────────────────────────────────

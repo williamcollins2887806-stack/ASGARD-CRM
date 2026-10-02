@@ -143,6 +143,48 @@ async function stopEgress(egressId) {
   return egress.stopEgress(egressId);
 }
 
+async function listLiveKitParticipants(livekitRoomName) {
+  if (!isConfigured() || !livekitRoomName) return [];
+  const svc = await getRoomService();
+  const list = await svc.listParticipants(livekitRoomName);
+  return Array.isArray(list) ? list : (list.participants || []);
+}
+
+async function removeLiveKitParticipant(livekitRoomName, identity) {
+  if (!isConfigured()) throw new Error('LiveKit не настроен');
+  const svc = await getRoomService();
+  await svc.removeParticipant(livekitRoomName, identity);
+}
+
+async function muteLiveKitTrack(livekitRoomName, identity, trackSid, muted = true) {
+  if (!isConfigured()) throw new Error('LiveKit не настроен');
+  const svc = await getRoomService();
+  await svc.mutePublishedTrack(livekitRoomName, identity, trackSid, muted);
+}
+
+/** Mute all audio tracks for every participant except optional identity */
+async function muteAllExcept(livekitRoomName, exceptIdentity) {
+  const parts = await listLiveKitParticipants(livekitRoomName);
+  let n = 0;
+  for (const p of parts) {
+    const id = p.identity || p.sid;
+    if (!id || id === exceptIdentity) continue;
+    const tracks = p.tracks || p.publishedTracks || [];
+    for (const t of tracks) {
+      const sid = t.sid || t.trackSid;
+      const src = t.source || t.type || '';
+      const isAudio = /audio|microphone/i.test(String(src)) || t.type === 'AUDIO';
+      if (sid && isAudio) {
+        try {
+          await muteLiveKitTrack(livekitRoomName, id, sid, true);
+          n++;
+        } catch (_) { /* track may have left */ }
+      }
+    }
+  }
+  return { muted_tracks: n };
+}
+
 module.exports = {
   isConfigured,
   publicWsUrl,
@@ -151,5 +193,9 @@ module.exports = {
   deleteLiveKitRoom,
   createAccessToken,
   startRoomEgress,
-  stopEgress
+  stopEgress,
+  listLiveKitParticipants,
+  removeLiveKitParticipant,
+  muteLiveKitTrack,
+  muteAllExcept
 };
