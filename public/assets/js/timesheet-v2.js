@@ -1638,26 +1638,10 @@ window.AsgardTimesheetV2 = (function () {
 
       const period = new Date(curYear, curMonth - 1).toLocaleString('ru-RU', { month: 'long', year: 'numeric' });
       const isGlobal = mode === 'global';
-      const lean = data && data.view_profile === 'lean';
       const myScope = MODE_LOCK_SCOPE[mode];
 
       const rows = [];
       rows.push(`<div class="tsv2-locks-title">Закрытие месяца — ${esc(period)}</div>`);
-
-      if (lean) {
-        // PROC: только статус scopes, без кнопок закрытия/открытия
-        rows.push(
-          `<div class="tsv2-lock-row">
-             <div class="tsv2-lock-row-label">Статус:</div>
-             ${renderScopeBadge('warehouse', scopeLocks.warehouse, true)}
-             ${renderScopeBadge('medical',   scopeLocks.medical, true)}
-             ${renderScopeBadge('travel',    scopeLocks.travel, true)}
-             ${renderScopeBadge('global',    scopeLocks.global, true)}
-           </div>`
-        );
-        box.innerHTML = rows.join('');
-        return;
-      }
 
       if (isGlobal) {
         // РП (все)
@@ -1838,6 +1822,8 @@ window.AsgardTimesheetV2 = (function () {
       const role = user.role;
       const isDir = role && (role.startsWith('DIRECTOR') || role === 'ADMIN');
       if (isDir) return !!slLike.lock_id;
+      // PROC снимает любой global-лок (закрытие месяца закупками).
+      if (role === 'PROC' && slLike.scope === 'global') return !!slLike.lock_id;
       if (slLike.locked_by === user.id) return !!slLike.lock_id;
       return false;
     }
@@ -1846,16 +1832,17 @@ window.AsgardTimesheetV2 = (function () {
       const role = user.role;
       const isDir = role && (role.startsWith('DIRECTOR') || role === 'ADMIN');
       if (isDir) return true;
+      if (role === 'PROC' && lock.scope === 'global') return true;
       if (lock.locked_by === user.id) return true;
       return false;
     }
 
     function isModeLockedForViewer() {
       const locks = (data && data.locks) || [];
-      // 1) Любой неснятый глобальный лок — всем кроме DIRECTOR/ADMIN
-      const isDir = user.role && (user.role.startsWith('DIRECTOR') || user.role === 'ADMIN');
+      // 1) Global-лок — жёсткий для всех ролей (включая DIRECTOR/ADMIN).
       const g = locks.find(l => l.scope === 'global' && l.locked_at && !l.unlocked_at);
-      if (g && !isDir) return true;
+      if (g) return true;
+      const isDir = user.role && (user.role.startsWith('DIRECTOR') || user.role === 'ADMIN');
       // 2) Свой scope-лок
       const myScope = MODE_LOCK_SCOPE[mode];
       const own = locks.find(l => l.scope === myScope && l.locked_at && !l.unlocked_at && (

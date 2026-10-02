@@ -10,9 +10,9 @@
  * Источник правды — TIMESHEET_V2_CONTRACT.md секция «Лок-проверки перед
  * записью» и таблица «scope → роль».
  *
- *   1) global    — ставит DIRECTOR_x (GEN/COMM/DEV), ADMIN, BUH, HR, HR_MANAGER.
- *                  Запирает ВСЕХ (включая PM/WAREHOUSE/TO/OFFICE_MANAGER).
- *                  Снять может только DIRECTOR_x или ADMIN.
+ *   1) global    — ставит DIRECTOR_x, ADMIN, BUH, HR, HR_MANAGER, PROC.
+ *                  Запирает ВСЕХ ролей (включая ADMIN/DIRECTOR) — правки отметок
+ *                  запрещены, пока лок не снят. Снять: DIRECTOR_x / ADMIN / PROC.
  *   2) warehouse — ставит WAREHOUSE. Запирает редактирование клеток type=warehouse.
  *   3) medical   — ставит TO/HEAD_TO. Запирает type=medical/training/ship/helicopter.
  *   4) travel    — ставит OFFICE_MANAGER и HEAD_TO. Запирает type=travel и waiting
@@ -21,9 +21,8 @@
  *                  чекинов PM, где entered_by_user_id = scope_user_id, ИЛИ
  *                  где work.pm_id = scope_user_id (PM «заморозил свой набор»).
  *
- * DIRECTOR_x и ADMIN могут редактировать поверх любого лока (см. контракт,
- * «исключение через отдельный разлок»). Эту проверку делает РУЧКА, не библиотека —
- * библиотека только сообщает «лок есть/нет, кто и когда».
+ * DIRECTOR_x и ADMIN могут обходить warehouse/medical/travel/pm локи (кроме
+ * собственного pm-лока у PM). Global-лок — жёсткий: обхода нет ни у кого.
  *
  * Интерфейс: принимает `fastify` (для fastify.db.query / fastify.pg.query)
  * и возвращает throw-аемые ошибки с `statusCode=423` («Locked» — стандарт
@@ -232,9 +231,10 @@ async function assertNotLocked(fastify, viewer, payload) {
   const lockMsgOpts = { year, month };
   const locks = await getActiveLocks(fastify, year, month);
 
-  // Уровень 1: global — лочит всех КРОМЕ DIRECTOR_*/ADMIN. Обход запрещён.
+  // Уровень 1: global — лочит ВСЕХ, включая DIRECTOR_*/ADMIN. Обход запрещён.
+  // Снять лок можно через DELETE /lock (DIRECTOR/ADMIN/PROC); писать поверх нельзя.
   const globalLock = locks.find((l) => l.scope === 'global');
-  if (globalLock && !DIRECTORS_AND_ADMIN.has(role)) {
+  if (globalLock) {
     throw lockedError([globalLock], 'period_locked_global', {
       ...lockMsgOpts,
       overridable: false,

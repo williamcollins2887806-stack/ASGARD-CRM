@@ -191,21 +191,20 @@ async function assertNotLocked(fastify, viewer, ctx) {
 
   const role = viewer && viewer.role;
   const uid = viewer && viewer.id;
+  // Global — жёсткий для всех ролей (включая ADMIN/DIRECTOR). Scope-локи
+  // ниже по-прежнему обходятся FULL global-ролями (isPriv).
   const isPriv = GLOBAL_ROLES.includes(role);
 
   const locks = await getActiveLocks(fastify, year, month);
   if (!locks.length) return;
 
   for (const lock of locks) {
-    // global перекрывает всех, кроме привилегированных через явный разлок
+    // global перекрывает ВСЕХ — писать поверх нельзя, только снять лок.
     if (lock.scope === 'global') {
-      if (!isPriv) {
-        const err = new Error('period_locked');
-        err.code = 'period_locked';
-        err.lock = lock;
-        throw err;
-      }
-      continue;
+      const err = new Error('period_locked');
+      err.code = 'period_locked';
+      err.lock = lock;
+      throw err;
     }
     if (lock.scope === 'pm') {
       // персональный лок РП — блокирует только этого РП
@@ -214,6 +213,7 @@ async function assertNotLocked(fastify, viewer, ctx) {
       }
       continue;
     }
+    if (isPriv) continue;
     if (lock.scope === 'warehouse' && WAREHOUSE_ROLES.includes(role)) {
       const err = new Error('period_locked'); err.code = 'period_locked'; err.lock = lock; throw err;
     }
@@ -2466,7 +2466,7 @@ async function routes(fastify) {
         (scope === 'warehouse' && WAREHOUSE_ROLES.includes(role)) ||
         (scope === 'medical' && MEDICAL_ROLES.includes(role)) ||
         (scope === 'travel' && TRAVEL_ROLES.includes(role)) ||
-        (scope === 'global' && GLOBAL_ROLES.includes(role))
+        (scope === 'global' && (GLOBAL_ROLES.includes(role) || isGlobalLeanRole(role)))
       );
       if (!allowed) return reply.code(403).send({ error: 'Нельзя ставить лок такой области' });
 
@@ -2562,7 +2562,9 @@ async function routes(fastify) {
 
       const isAdmin = ['ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV'].includes(viewer.role);
       const isOwner = Number(lock.locked_by) === Number(viewer.id);
-      if (!isAdmin && !isOwner) {
+      // PROC снимает любой global-лок (рабочий контур закрытия месяца закупками).
+      const isProcGlobal = isGlobalLeanRole(viewer.role) && lock.scope === 'global';
+      if (!isAdmin && !isOwner && !isProcGlobal) {
         return reply.code(403).send({ error: 'Нет прав снимать чужой лок' });
       }
       await db.query(

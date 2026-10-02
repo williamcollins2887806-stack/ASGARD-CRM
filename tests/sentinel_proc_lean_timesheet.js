@@ -171,6 +171,77 @@ async function main() {
     }
   }
 
+  // ── Global lock: PROC closes → ADMIN cannot write → PROC unlocks ──
+  // Use far month (currentYear+1 / 06) so we don't disturb real Sept data.
+  const LOCK_YEAR = new Date().getFullYear() + 1;
+  const LOCK_MONTH = 6;
+  let lockId = null;
+  try {
+    const lr = await fetch(`${BASE}/api/timesheet/v2/lock`, {
+      method: 'POST',
+      headers: hdr(procToken),
+      body: JSON.stringify({ scope: 'global', year: LOCK_YEAR, month: LOCK_MONTH })
+    });
+    const lb = await lr.json().catch(() => ({}));
+    if (lr.status === 201 && lb.lock && lb.lock.id) {
+      lockId = lb.lock.id;
+      pass('PROC_LOCK', `id=${lockId} ${LOCK_YEAR}-${LOCK_MONTH}`);
+    } else if (lr.status === 409 && lb.lock && lb.lock.id) {
+      lockId = lb.lock.id;
+      pass('PROC_LOCK', `already active id=${lockId}`);
+    } else {
+      fail('PROC_LOCK', `status=${lr.status} ${JSON.stringify(lb).slice(0, 180)}`);
+    }
+
+    // closure-status under PROC shows who locked
+    {
+      const cr = await fetch(`${BASE}/api/timesheet/v2/closure-status/${LOCK_YEAR}/${LOCK_MONTH}`, {
+        headers: hdr(procToken)
+      });
+      const cb = await cr.json().catch(() => ({}));
+      const g = cb.scope_locks && cb.scope_locks.global;
+      if (cr.status === 200 && g && g.locked && g.locked_by_fio) {
+        pass('PROC_SEE_WHO', `${g.locked_by_fio} @ ${g.locked_at || '?'}`);
+      } else if (cr.status === 200 && g && g.locked) {
+        pass('PROC_SEE_WHO', 'locked (fio missing on synthetic?)');
+      } else {
+        fail('PROC_SEE_WHO', `status=${cr.status} ${JSON.stringify(g || cb).slice(0, 180)}`);
+      }
+    }
+
+    // ADMIN PUT must get 423 while global locked
+    {
+      const put = await fetch(`${BASE}/api/timesheet/v2/entry`, {
+        method: 'PUT',
+        headers: hdr(adminToken),
+        body: JSON.stringify({
+          employee_id: 1,
+          date: `${LOCK_YEAR}-${String(LOCK_MONTH).padStart(2, '0')}-15`,
+          type: 'day',
+          work_id: 1
+        })
+      });
+      const pb = await put.json().catch(() => ({}));
+      if (put.status === 423 || pb.error === 'period_locked') {
+        pass('ADMIN_BLOCKED', `status=${put.status} ${pb.error || ''}`);
+      } else {
+        fail('ADMIN_BLOCKED', `expected 423, got ${put.status} ${JSON.stringify(pb).slice(0, 160)}`);
+      }
+    }
+  } finally {
+    if (lockId) {
+      const ur = await fetch(`${BASE}/api/timesheet/v2/lock/${lockId}`, {
+        method: 'DELETE',
+        headers: hdr(procToken)
+      });
+      const ub = await ur.json().catch(() => ({}));
+      if (ur.status === 200 && ub.ok) pass('PROC_UNLOCK', `id=${lockId}`);
+      else fail('PROC_UNLOCK', `status=${ur.status} ${JSON.stringify(ub).slice(0, 160)}`);
+    } else {
+      fail('PROC_UNLOCK', 'no lockId to unlock');
+    }
+  }
+
   const failed = results.filter((x) => !x.ok);
   console.log('\n====', results.length - failed.length, '/', results.length, 'PASS ====');
   if (failed.length) {
