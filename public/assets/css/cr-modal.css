@@ -259,6 +259,8 @@
 .cr-m__body {
   flex: 1;
   padding: var(--sp-6);
+  /* Bottom air ≥24px so last CTA/footer content isn't flush to edge */
+  padding-bottom: max(24px, var(--sp-6, 24px));
   overflow-y: auto;
   overflow-x: hidden;
 }
@@ -272,12 +274,12 @@
 }
 
 .cr-m__body::-webkit-scrollbar-thumb {
-  background: var(--brd);
-  border-radius: 3px;
+  background: color-mix(in srgb, var(--t3) 55%, transparent);
+  border-radius: 999px;
 }
 
 .cr-m__body::-webkit-scrollbar-thumb:hover {
-  background: var(--t3);
+  background: color-mix(in srgb, var(--t2) 70%, transparent);
 }
 
 /* ─────────────────────────────────────────────────────────────────────────────
@@ -592,6 +594,7 @@
 
   .cr-m__body {
     padding: var(--sp-4);
+    padding-bottom: max(24px, var(--sp-4, 16px));
   }
 
   .cr-m__footer {

@@ -79,6 +79,37 @@ window.AsgardTelephonyPage = (function () {
     return null;
   }
 
+  /** Radial N/10 ring for AI quality (drawer + journal badge). */
+  function renderQualityRadial(score, size) {
+    if (score == null || isNaN(score)) return '';
+    size = size || 48;
+    var r = (size / 2) - 3.5;
+    var c = 2 * Math.PI * r;
+    var pct = Math.max(0, Math.min(10, Number(score))) / 10;
+    var offset = c * (1 - pct);
+    var lvl = score >= 8 ? 'high' : score >= 5 ? 'medium' : 'low';
+    var sm = size <= 32 ? ' ai-quality-radial--sm' : '';
+    return '<span class="ai-quality-radial ai-quality-radial--' + lvl + sm + '" style="--radial-size:' + size + 'px" aria-label="Рейтинг ' + score + ' из 10">' +
+      '<svg viewBox="0 0 ' + size + ' ' + size + '" width="' + size + '" height="' + size + '" aria-hidden="true">' +
+        '<circle class="ai-quality-radial__track" cx="' + (size / 2) + '" cy="' + (size / 2) + '" r="' + r + '"></circle>' +
+        '<circle class="ai-quality-radial__fill" cx="' + (size / 2) + '" cy="' + (size / 2) + '" r="' + r + '" ' +
+          'stroke-dasharray="' + c.toFixed(2) + '" stroke-dashoffset="' + offset.toFixed(2) + '"></circle>' +
+      '</svg>' +
+      '<span class="ai-quality-radial__num">' + score + '</span>' +
+    '</span>';
+  }
+
+  function analyticsReportStatus(rpt, rptStats, recs) {
+    var st = String(rpt.status || rpt.state || '').toLowerCase();
+    if (st === 'error' || st === 'failed' || rpt.error) return 'error';
+    if (st === 'pending' || st === 'processing' || st === 'queued') return 'pending';
+    var total = Number(rptStats.totalCalls) || 0;
+    var missed = Number(rptStats.missedCalls) || 0;
+    if (total > 0 && missed / total >= 0.3) return 'warn';
+    if (Array.isArray(recs) && recs.length >= 4) return 'warn';
+    return 'ok';
+  }
+
   function segmentsPlainText(segs) {
     if (!segs) return '';
     if (typeof segs === 'string') { try { segs = JSON.parse(segs); } catch (_) { return ''; } }
@@ -233,9 +264,19 @@ window.AsgardTelephonyPage = (function () {
     return e;
   }
 
-  function emptyState(icon, message) {
-    return '<div class="telephony-empty"><span class="telephony-empty-icon">' + icon + '</span><p>' + esc(message) + '</p></div>';
+  function emptyState(kind, message) {
+    var k = kind || 'empty';
+    return '<div class="telephony-empty telephony-empty--' + esc(k) + '">' +
+      '<div class="telephony-empty-mark" aria-hidden="true"></div>' +
+      '<p class="telephony-empty-text">' + esc(message) + '</p></div>';
   }
+
+  var KPI_ICO = {
+    total: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg>',
+    inbound: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M17 7L7 17"/><path d="M7 7v10h10"/></svg>',
+    missed: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M10.68 13.31a16 16 0 0 0 3.41 2.6l1.27-1.27a2 2 0 0 1 2.11-.45c.9.34 1.85.57 2.81.7A2 2 0 0 1 22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07"/><line x1="1" y1="1" x2="23" y2="23"/></svg>',
+    duration: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>',
+  };
 
   /* ======================================================================
    *  SKELETON LOADERS
@@ -446,11 +487,11 @@ window.AsgardTelephonyPage = (function () {
     destroyCurrentAudio();
     destroyChartTooltip();
 
-    /* fade out */
+    c.classList.add('tel-content--fading');
     c.style.opacity = '0';
-    await new Promise(function (r) { setTimeout(r, 150); });
+    c.style.transition = 'opacity 0.22s ease';
+    await new Promise(function (r) { setTimeout(r, 180); });
 
-    /* render new content */
     switch (tab) {
       case 'log':       renderLog(c);       break;
       case 'missed':    renderMissed(c);    break;
@@ -460,8 +501,10 @@ window.AsgardTelephonyPage = (function () {
       case 'pbx':       renderPbxAdmin(c);  break;
     }
 
-    /* fade in */
-    requestAnimationFrame(function () { c.style.opacity = '1'; });
+    requestAnimationFrame(function () {
+      c.style.opacity = '1';
+      c.classList.remove('tel-content--fading');
+    });
   }
 
   async function fetchMissedBadge() {
@@ -478,10 +521,9 @@ window.AsgardTelephonyPage = (function () {
   async function renderLog(container) {
     var pills = [
       { value: '', label: 'Все' },
-      { value: 'inbound', label: '\u2199 Входящие' },
-      { value: 'outbound', label: '\u2197 Исходящие' },
-      { value: 'missed', label: '\u21A9 Пропущенные' },
-      { value: 'internal', label: '\u21C4 Внутренние' },
+      { value: 'inbound', label: 'Входящие' },
+      { value: 'outbound', label: 'Исходящие' },
+      { value: 'missed', label: 'Пропущенные' },
     ];
     var pillsHtml = '<div class="tel-filter-pills" id="fTypePills">' +
       pills.map(function(p) {
@@ -496,7 +538,10 @@ window.AsgardTelephonyPage = (function () {
         '<div id="crselect-fManager"></div>' +
         '<input type="text" id="fSearch" placeholder="Поиск по номеру / клиенту">' +
         '<button class="btn btn--primary" id="fApply">Применить</button>' +
+        '<button type="button" class="btn secondary sm" id="fSaveView" data-tooltip="Сохранить текущие фильтры">Сохранить вид</button>' +
+        '<button type="button" class="btn secondary sm" id="fColGear" data-tooltip="Колонки таблицы">Колонки</button>' +
       '</div>' +
+      '<div class="tel-saved-views" id="telSavedViews"></div>' +
       '<div id="logTableWrap">' + skeletonTable(5) + '</div>' +
       '<div class="telephony-pagination" id="logPagination"></div>';
 
@@ -515,6 +560,10 @@ window.AsgardTelephonyPage = (function () {
 
     $('#fApply').addEventListener('click', function () { _logPage = 1; fetchLog(); });
     $('#fSearch').addEventListener('keydown', function (e) { if (e.key === 'Enter') { _logPage = 1; fetchLog(); } });
+    var saveViewBtn = $('#fSaveView');
+    if (saveViewBtn) saveViewBtn.addEventListener('click', saveCurrentLogView);
+    var colGear = $('#fColGear');
+    if (colGear) colGear.addEventListener('click', toggleColMenu);
 
     // CRSelect init — manager filter
     document.getElementById('crselect-fManager')?.appendChild(CRSelect.create({
@@ -522,7 +571,174 @@ window.AsgardTelephonyPage = (function () {
       placeholder:'Все менеджеры',
     }));
     loadManagerOptions();
+    renderSavedViews();
     fetchLog();
+  }
+
+  function viewsStorageKey() {
+    var u = user();
+    return 'tel:views:' + (u && u.id ? u.id : 'anon');
+  }
+  function colsStorageKey() {
+    var u = user();
+    return 'tel:cols:' + (u && u.id ? u.id : 'anon');
+  }
+  function defaultViews() {
+    return [{
+      id: 'missed_today',
+      name: 'Мои пропущенные за сегодня',
+      date_from: todayISO(),
+      date_to: todayISO(),
+      call_type: 'missed',
+      user_id: '',
+      search: '',
+    }];
+  }
+  function loadSavedViews() {
+    try {
+      var raw = JSON.parse(localStorage.getItem(viewsStorageKey()) || 'null');
+      if (Array.isArray(raw) && raw.length) return raw;
+    } catch (_) {}
+    return defaultViews();
+  }
+  function renderSavedViews() {
+    var el = $('#telSavedViews');
+    if (!el) return;
+    var views = loadSavedViews();
+    el.innerHTML = views.map(function (v) {
+      return '<button type="button" class="tel-saved-view-chip" data-view="' + esc(v.id) + '">' + esc(v.name) + '</button>';
+    }).join('');
+    el.querySelectorAll('.tel-saved-view-chip').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        var v = loadSavedViews().find(function (x) { return x.id === btn.getAttribute('data-view'); });
+        if (!v) return;
+        if ($('#fDateFrom')) $('#fDateFrom').value = v.date_from || todayISO();
+        if ($('#fDateTo')) $('#fDateTo').value = v.date_to || todayISO();
+        if ($('#fSearch')) $('#fSearch').value = v.search || '';
+        CRSelect.setValue && CRSelect.setValue('fManager', v.user_id || '');
+        var pills = document.querySelectorAll('.tel-filter-pill');
+        pills.forEach(function (p) {
+          p.classList.toggle('tel-filter-pill--active', (p.dataset.val || '') === (v.call_type || ''));
+        });
+        _logPage = 1;
+        fetchLog();
+      });
+    });
+  }
+  function saveCurrentLogView() {
+    var name = window.prompt('Название представления', 'Мой фильтр');
+    if (!name) return;
+    var activePill = document.querySelector('.tel-filter-pill--active');
+    var views = loadSavedViews();
+    views.push({
+      id: 'v_' + Date.now(),
+      name: name.slice(0, 48),
+      date_from: ($('#fDateFrom') || {}).value || '',
+      date_to: ($('#fDateTo') || {}).value || '',
+      call_type: activePill ? (activePill.dataset.val || '') : '',
+      user_id: CRSelect.getValue('fManager') || '',
+      search: ($('#fSearch') || {}).value || '',
+    });
+    localStorage.setItem(viewsStorageKey(), JSON.stringify(views));
+    renderSavedViews();
+    toast('Представление сохранено', 'ok');
+  }
+  function loadColPrefs() {
+    try {
+      var raw = JSON.parse(localStorage.getItem(colsStorageKey()) || 'null');
+      if (raw && Array.isArray(raw.order)) return raw;
+    } catch (_) {}
+    return { order: ['date', 'dir', 'client', 'dur', 'manager', 'summary', 'rating', 'process'], hidden: [] };
+  }
+  function applyColPrefsToTable(wrap) {
+    if (!wrap) return;
+    var prefs = loadColPrefs();
+    var fallback = ['date', 'dir', 'client', 'dur', 'manager', 'summary', 'rating', 'process'];
+    var stickyLeft = ['date', 'dir'];
+    var stickyRight = ['process'];
+    var middle = (prefs.order || fallback).filter(function (k) {
+      return stickyLeft.indexOf(k) < 0 && stickyRight.indexOf(k) < 0 && fallback.indexOf(k) >= 0;
+    });
+    fallback.forEach(function (k) {
+      if (stickyLeft.indexOf(k) >= 0 || stickyRight.indexOf(k) >= 0) return;
+      if (middle.indexOf(k) < 0) middle.push(k);
+    });
+    var order = stickyLeft.concat(middle).concat(stickyRight);
+    wrap.querySelectorAll('tr').forEach(function (tr) {
+      if (tr.classList.contains('cr-call-expand')) return;
+      var byKey = {};
+      Array.prototype.slice.call(tr.children).forEach(function (cell, i) {
+        var key = cell.getAttribute('data-col') || fallback[i];
+        if (!key) return;
+        cell.setAttribute('data-col', key);
+        byKey[key] = cell;
+      });
+      order.forEach(function (k) {
+        var cell = byKey[k];
+        if (!cell) return;
+        tr.appendChild(cell);
+        cell.style.display = prefs.hidden.indexOf(k) >= 0 ? 'none' : '';
+      });
+    });
+  }
+  function toggleColMenu() {
+    var existing = document.getElementById('telColMenu');
+    if (existing) { existing.remove(); return; }
+    var prefs = loadColPrefs();
+    var labels = { date: 'Дата', dir: 'Направление', client: 'Клиент', dur: 'Длительность', manager: 'Сотрудник', summary: 'Резюме', rating: 'Рейтинг', process: 'Обработка' };
+    var sticky = { date: 1, dir: 1, process: 1 };
+    var menu = document.createElement('div');
+    menu.id = 'telColMenu';
+    menu.className = 'tel-col-menu';
+    menu.innerHTML = '<div class="tel-col-menu__title">Колонки</div>' + prefs.order.map(function (k) {
+      var dis = sticky[k] ? ' disabled' : '';
+      var chk = prefs.hidden.indexOf(k) < 0 ? ' checked' : '';
+      return '<label class="tel-col-menu__row" draggable="' + (sticky[k] ? 'false' : 'true') + '" data-col="' + k + '">' +
+        '<input type="checkbox"' + chk + dis + ' data-col="' + k + '"> ' + (labels[k] || k) +
+        (sticky[k] ? ' <span class="tel-text-muted">фикс</span>' : '') +
+      '</label>';
+    }).join('');
+    var gear = $('#fColGear');
+    document.body.appendChild(menu);
+    if (gear) {
+      var r = gear.getBoundingClientRect();
+      var w = 228;
+      menu.style.position = 'fixed';
+      menu.style.top = Math.round(r.bottom + 6) + 'px';
+      menu.style.left = Math.round(Math.max(8, Math.min(r.right - w, window.innerWidth - w - 8))) + 'px';
+      menu.style.zIndex = '100040';
+    }
+    menu.querySelectorAll('input[type="checkbox"]').forEach(function (cb) {
+      cb.addEventListener('change', function () {
+        var p = loadColPrefs();
+        var col = cb.getAttribute('data-col');
+        if (cb.checked) p.hidden = p.hidden.filter(function (x) { return x !== col; });
+        else if (p.hidden.indexOf(col) < 0) p.hidden.push(col);
+        localStorage.setItem(colsStorageKey(), JSON.stringify(p));
+        fetchLog();
+      });
+    });
+    var dragCol = null;
+    menu.querySelectorAll('.tel-col-menu__row[draggable="true"]').forEach(function (row) {
+      row.addEventListener('dragstart', function () { dragCol = row.getAttribute('data-col'); });
+      row.addEventListener('dragover', function (e) { e.preventDefault(); });
+      row.addEventListener('drop', function (e) {
+        e.preventDefault();
+        var to = row.getAttribute('data-col');
+        if (!dragCol || !to || dragCol === to) return;
+        var p = loadColPrefs();
+        var order = p.order.slice();
+        var fromIdx = order.indexOf(dragCol);
+        var toIdx = order.indexOf(to);
+        if (fromIdx < 0 || toIdx < 0) return;
+        order.splice(fromIdx, 1);
+        order.splice(toIdx, 0, dragCol);
+        p.order = order;
+        localStorage.setItem(colsStorageKey(), JSON.stringify(p));
+        toggleColMenu(); toggleColMenu();
+        fetchLog();
+      });
+    });
   }
 
   async function loadManagerOptions() {
@@ -557,14 +773,14 @@ window.AsgardTelephonyPage = (function () {
       renderPagination(data.total || 0);
     } catch (err) {
       console.error('[Telephony] fetchLog error:', err);
-      wrap.innerHTML = emptyState('\u26A0', 'Не удалось загрузить журнал');
+      wrap.innerHTML = emptyState('warn', 'Не удалось загрузить журнал');
       toast('Ошибка загрузки журнала', err.message || 'error', 'err');
     }
   }
 
   function renderLogTable(wrap, calls) {
     if (!calls.length) {
-      wrap.innerHTML = emptyState('\uD83D\uDCDE', 'Нет звонков за выбранный период');
+      wrap.innerHTML = emptyState('empty', 'Нет звонков за выбранный период');
       return;
     }
 
@@ -581,28 +797,35 @@ window.AsgardTelephonyPage = (function () {
       var phone = dir === 'inbound' ? c.from_number : (c.line_number || c.to_number);
       var client = c.client_name ? esc(c.client_name) : esc(fmtPhone(phone));
       var hasRecord = c.record_path || c.recording_id;
-      var recordIcon = hasRecord ? '<span class="call-record-icon" data-tooltip="Есть запись разговора">\u23FA</span>' : '';
+      var recordIcon = hasRecord
+        ? '<button type="button" class="call-record-play" data-call-id="' + esc(String(c.id)) + '" data-tooltip="Слушать запись" aria-label="Слушать запись">' +
+          '<svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg></button>'
+        : '';
       var dadataBadge = c.dadata_city ? '<span class="call-dadata-badge">' + esc(c.dadata_city) + '</span>' : '';
       var hasAi = !!c.ai_summary;
       var expandable = hasAi || tStatus === 'done' || tStatus === 'error' || tStatus === 'processing';
+      /* Journal: compact text badge only — radial lives in drawer (avoids sticky-last overlap) */
       var ratingCell = qScore != null
-        ? '<span class="call-rating-badge" data-tooltip="Рейтинг качества разговора (ИИ)">\u2605 ' + qScore + '/10</span>'
+        ? '<span class="call-rating-badge" data-tooltip="Рейтинг качества разговора (ИИ)">' + qScore + '/10</span>'
         : '<span class="tel-text-muted">\u2014</span>';
       var summaryCell = c.ai_summary
         ? '<span class="call-summary-text" title="' + esc(c.ai_summary) + '">' + esc(c.ai_summary.slice(0, 80)) + (c.ai_summary.length > 80 ? '\u2026' : '') + '</span>'
         : '<span class="tel-text-muted">' + esc(aiSt.label) + '</span>';
 
+      var dirTipAttr = dirTip ? ' data-tooltip="' + esc(dirTip) + '"' : '';
+      var statusTipAttr = statusTip ? ' data-tooltip="' + esc(statusTip) + '"' : '';
+      var aiTipAttr = aiSt.tip ? ' data-tooltip="' + esc(aiSt.tip) + '"' : '';
       var mainRow = '<tr class="call-row call-row-wow call-row-wow--' + dir + (expandable ? ' call-row--expandable' : '') + '" data-id="' + esc(String(c.id)) + '">' +
         '<td>' + esc(fmtDate(c.created_at)) + '</td>' +
-        '<td><span class="' + dirCls + '" data-tooltip="' + esc(dirTip) + '">' + dirIcon + '</span>' + recordIcon + '</td>' +
-        '<td class="tel-cell-client">' + client + dadataBadge + '</td>' +
-        '<td>' + esc(fmtDuration(c.duration_seconds)) + '</td>' +
-        '<td>' + esc(c.manager_name || '\u2014') + '</td>' +
+        '<td><span class="' + dirCls + '"' + dirTipAttr + '>' + dirIcon + '</span>' + recordIcon + '</td>' +
+        '<td class="tel-cell-client tel-num">' + client + dadataBadge + '</td>' +
+        '<td class="tel-cell-dur">' + esc(fmtDuration(c.duration_seconds)) + '</td>' +
+        '<td class="tel-cell-manager">' + esc(c.manager_name || '\u2014') + '</td>' +
         '<td class="ai-col">' + summaryCell + '</td>' +
-        '<td>' + ratingCell + '</td>' +
-        '<td><div class="call-status-stack">' +
-          '<span class="call-status-badge ' + statusCls + '" data-tooltip="' + esc(statusTip) + '">' + esc(STATUS_LABELS[tStatus] || '\u2014') + '</span>' +
-          '<span class="call-ai-status call-ai-status--' + aiSt.key + '" data-tooltip="' + esc(aiSt.tip) + '">' + esc(aiSt.label) + '</span>' +
+        '<td class="call-rating-col">' + ratingCell + '</td>' +
+        '<td class="call-process-col"><div class="call-status-stack">' +
+          '<span class="call-status-badge ' + statusCls + '"' + statusTipAttr + '>' + esc(STATUS_LABELS[tStatus] || '\u2014') + '</span>' +
+          '<span class="call-ai-status call-ai-status--' + aiSt.key + '"' + aiTipAttr + '>' + esc(aiSt.label) + '</span>' +
         '</div></td>' +
       '</tr>';
 
@@ -612,16 +835,16 @@ window.AsgardTelephonyPage = (function () {
         var tags = '';
         if (c.ai_is_target != null) {
           tags += '<span class="cr-badge ' + (c.ai_is_target ? 'cr-badge--weekly' : 'cr-badge--daily') + '">' +
-            (c.ai_is_target ? '\uD83C\uDFAF Целевой' : '\u2014 Нецелевой') + '</span> ';
+            (c.ai_is_target ? 'Целевой' : 'Нецелевой') + '</span> ';
         }
         if (c.ai_sentiment) {
-          var sentLabel = { positive: '\uD83D\uDFE2 Позитивный', neutral: '\uD83D\uDFE1 Нейтральный', negative: '\uD83D\uDD34 Негативный' };
+          var sentLabel = { positive: 'Позитивный', neutral: 'Нейтральный', negative: 'Негативный' };
           tags += '<span class="cr-badge">' + (sentLabel[c.ai_sentiment] || c.ai_sentiment) + '</span> ';
         }
         var ld = {};
         try { ld = typeof c.ai_lead_data === 'string' ? JSON.parse(c.ai_lead_data) : (c.ai_lead_data || {}); } catch(_){}
         if (qScore != null) {
-          tags += '<span class="cr-badge cr-badge--rating">Рейтинг \u2605 ' + qScore + '/10</span>';
+          tags += '<span class="cr-badge cr-badge--rating">Рейтинг ' + qScore + '/10</span>';
         }
 
         var hint = '';
@@ -653,10 +876,12 @@ window.AsgardTelephonyPage = (function () {
 
     wrap.innerHTML = '<table class="call-log-table">' +
       '<thead><tr>' +
-        '<th>Дата/время</th><th>Направление</th><th>Клиент/Номер</th>' +
-        '<th>Длительность</th><th>Сотрудник</th><th>Резюме</th><th data-tooltip="Оценка качества разговора ИИ">Рейтинг</th><th>Обработка</th>' +
+        '<th data-col="date">Дата/время</th><th data-col="dir">Направление</th><th data-col="client">Клиент/Номер</th>' +
+        '<th data-col="dur">Длительность</th><th data-col="manager">Сотрудник</th><th data-col="summary">Резюме</th><th data-col="rating" data-tooltip="Оценка качества разговора ИИ">Рейтинг</th><th data-col="process">Обработка</th>' +
       '</tr></thead>' +
       '<tbody>' + rows + '</tbody></table>';
+
+    applyColPrefsToTable(wrap);
 
     wrap.querySelectorAll('.call-row').forEach(function (row) {
       var next = row.nextElementSibling;
@@ -673,6 +898,12 @@ window.AsgardTelephonyPage = (function () {
       btn.addEventListener('click', function (e) {
         e.stopPropagation();
         openDetailPanel(btn.getAttribute('data-call-id'));
+      });
+    });
+    wrap.querySelectorAll('.call-record-play').forEach(function (btn) {
+      btn.addEventListener('click', function (e) {
+        e.stopPropagation();
+        openDetailPanel(btn.getAttribute('data-call-id'), { scrollToAudio: true });
       });
     });
   }
@@ -716,7 +947,7 @@ window.AsgardTelephonyPage = (function () {
       var data = await api('/missed');
       var items = data.items || [];
       if (!items.length) {
-        container.innerHTML = emptyState('\u2705', 'Нет пропущенных звонков');
+        container.innerHTML = emptyState('ok', 'Нет пропущенных звонков');
         return;
       }
 
@@ -731,20 +962,28 @@ window.AsgardTelephonyPage = (function () {
           if (c.dadata_city) parts.push(c.dadata_city);
           dadataInfo = '<span class="missed-dadata-info">' + esc(parts.join(' \u2022 ')) + '</span>';
         }
+        var reason = c.disconnect_reason || c.hangup_cause || c.missed_reason || '';
+        var tags = '';
+        if (unack) tags += '<span class="missed-tag">Не обработан</span>';
+        if (reason) tags += '<span class="missed-tag missed-tag--reason">' + esc(String(reason).slice(0, 40)) + '</span>';
         return '<div class="' + cardCls + '" data-id="' + esc(String(c.id)) + '">' +
-          '<div class="missed-call-card-icon"><span class="call-dir call-dir--missed" data-tooltip="' + esc(DIR_TOOLTIPS.missed) + '">\u21A9</span></div>' +
+          '<div class="missed-call-card-icon" aria-hidden="true" title="Пропущенный">' +
+            '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">' +
+              '<path d="M9 14H4v5"/><path d="M4 19l7-7"/><path d="M20 4l-7 7"/><path d="M15 4h5v5"/>' +
+            '</svg></div>' +
           '<div class="missed-call-card-info">' +
             '<div class="missed-call-number">' + esc(fmtPhone(c.from_number)) + '</div>' +
             '<div class="missed-call-meta">' +
               (timeAgo ? '<span class="missed-time-ago">' + esc(timeAgo) + '</span>' : '') +
               '<span class="missed-datetime">' + esc(fmtDate(c.created_at)) + '</span>' +
+              tags +
               dadataInfo +
             '</div>' +
             (c.client_name ? '<div class="missed-client-name" title="' + esc(c.client_name) + '">' + esc(c.client_name) + '</div>' : '') +
             (c.manager_name ? '<div class="tel-meta-sm">' + esc(c.manager_name) + '</div>' : '') +
           '</div>' +
           '<div class="missed-call-card-actions">' +
-            '<button type="button" class="btn primary sm missed-call-btn--callback" data-phone="' + esc(c.from_number) + '" data-tooltip="Позвонить клиенту">\u260E Перезвонить</button>' +
+            '<button type="button" class="btn primary sm missed-call-btn--callback" data-phone="' + esc(c.from_number) + '" data-tooltip="Позвонить клиенту">Перезвонить</button>' +
             (unack ? '<button type="button" class="btn ghost sm" data-ack="' + esc(String(c.id)) + '">Отметить</button>' : '') +
           '</div>' +
         '</div>';
@@ -769,7 +1008,7 @@ window.AsgardTelephonyPage = (function () {
       });
     } catch (err) {
       console.error('[Telephony] renderMissed error:', err);
-      container.innerHTML = emptyState('\u26A0', 'Не удалось загрузить пропущенные');
+      container.innerHTML = emptyState('warn', 'Не удалось загрузить пропущенные');
       toast('Ошибка загрузки пропущенных', err.message || 'error', 'err');
     }
   }
@@ -807,7 +1046,7 @@ window.AsgardTelephonyPage = (function () {
     if (window.AsgardTelephonyAdmin && AsgardTelephonyAdmin.renderTab) {
       AsgardTelephonyAdmin.renderTab(container);
     } else {
-      container.innerHTML = emptyState('\u26A0', 'Модуль PBX admin не загружен');
+      container.innerHTML = emptyState('warn', 'Модуль PBX admin не загружен');
     }
   }
 
@@ -859,7 +1098,7 @@ window.AsgardTelephonyPage = (function () {
       var missedPct = t.total > 0 ? Math.round(((t.missed || 0) / t.total) * 100) : 0;
 
       var aiInsightsHtml = '<div class="tel-ai-insights">' +
-        '<div class="tel-ai-insights-title">\uD83E\uDDD9 AI Insights</div>' +
+        '<div class="tel-ai-insights-title">AI Insights</div>' +
         '<div class="tel-ai-insights-grid">' +
           '<div class="tel-ai-insight-item"><div class="tel-ai-insight-value">' + targetPct + '%</div><div class="tel-ai-insight-label">Целевые звонки</div></div>' +
           '<div class="tel-ai-insight-item"><div class="tel-ai-insight-value">' + convPct + '%</div><div class="tel-ai-insight-label">Конверсия в заявки</div></div>' +
@@ -867,12 +1106,18 @@ window.AsgardTelephonyPage = (function () {
         '</div>' +
       '</div>';
 
+      var byPeriod = stats.by_period || [];
+      var sparkTotal = byPeriod.map(function (p) { return (p.inbound || 0) + (p.outbound || 0) + (p.missed || 0); });
+      var sparkIn = byPeriod.map(function (p) { return p.inbound || 0; });
+      var sparkMiss = byPeriod.map(function (p) { return p.missed || 0; });
+      var sparkDur = byPeriod.map(function (p) { return p.avg_duration || p.avg_wait || 0; });
+
       content.innerHTML =
         '<div class="telephony-dashboard">' +
-          kpiCard('Всего звонков', t.total != null ? t.total : 0, kpiDescriptions.total, 'telephony-kpi-icon-wow--total', '\uD83D\uDCDE') +
-          kpiCard('Входящие', t.inbound != null ? t.inbound : 0, kpiDescriptions.inbound, 'telephony-kpi-icon-wow--inbound', '\u2199\uFE0F') +
-          kpiCard('Пропущенные', t.missed != null ? t.missed : 0, kpiDescriptions.missed, 'telephony-kpi-icon-wow--missed', '\u21A9\uFE0F') +
-          kpiCard('Средняя длительность', fmtDuration(t.avg_duration), kpiDescriptions.avg_duration, 'telephony-kpi-icon-wow--duration', '\u23F1') +
+          kpiCard('Всего звонков', t.total != null ? t.total : 0, kpiDescriptions.total, 'telephony-kpi-icon-wow--total', KPI_ICO.total, sparkTotal) +
+          kpiCard('Входящие', t.inbound != null ? t.inbound : 0, kpiDescriptions.inbound, 'telephony-kpi-icon-wow--inbound', KPI_ICO.inbound, sparkIn) +
+          kpiCard('Пропущенные', t.missed != null ? t.missed : 0, kpiDescriptions.missed, 'telephony-kpi-icon-wow--missed', KPI_ICO.missed, sparkMiss) +
+          kpiCard('Средняя длительность', fmtDuration(t.avg_duration), kpiDescriptions.avg_duration, 'telephony-kpi-icon-wow--duration', KPI_ICO.duration, sparkDur) +
         '</div>' +
         aiInsightsHtml +
         '<div class="telephony-chart-wrap">' +
@@ -897,23 +1142,37 @@ window.AsgardTelephonyPage = (function () {
         if (!isNaN(num) && String(num) === raw && num > 0) { animateCountUp(el, num, 900); }
       });
 
-      drawCallsChart(stats.by_period || []);
+      drawCallsChart(byPeriod);
     } catch (err) {
       console.error('[Telephony] fetchStats error:', err);
-      content.innerHTML = emptyState('\u26A0', 'Не удалось загрузить статистику');
+      content.innerHTML = emptyState('warn', 'Не удалось загрузить статистику');
       toast('Ошибка загрузки статистики', err.message || 'error', 'err');
     }
   }
 
-  function kpiCard(label, value, tooltip, iconCls, icon) {
+  function sparklineSvg(series) {
+    series = (series || []).slice(-7).map(function (n) { return Number(n) || 0; });
+    if (!series.length) return '';
+    var max = Math.max.apply(null, series.concat([1]));
+    var w = 160, h = 36, pad = 2;
+    var pts = series.map(function (v, i) {
+      var x = pad + (i * (w - pad * 2)) / Math.max(series.length - 1, 1);
+      var y = h - pad - (v / max) * (h - pad * 2);
+      return x.toFixed(1) + ',' + y.toFixed(1);
+    }).join(' ');
+    return '<svg class="tel-sparkline" width="100%" height="40" viewBox="0 0 ' + w + ' ' + h + '" preserveAspectRatio="none" aria-hidden="true"><polyline fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" points="' + pts + '"/></svg>';
+  }
+
+  function kpiCard(label, value, tooltip, iconCls, icon, sparkSeries) {
     var tip = tooltip ? ' data-tooltip="' + esc(tooltip) + '"' : '';
     var iconHtml = icon ? '<div class="telephony-kpi-icon-wow ' + (iconCls || '') + '">' + icon + '</div>' : '';
     var valId = 'kpi_' + label.replace(/\s/g,'_') + '_' + Date.now();
-    return '<div class="telephony-kpi-wow"' + tip + '>' + iconHtml + '<div class="telephony-kpi-value" id="' + valId + '" data-target="' + esc(String(value)) + '">' + (typeof value === 'number' ? '0' : esc(String(value))) + '</div><div class="telephony-kpi-label">' + esc(label) + '</div></div>';
+    var spark = sparkSeries && sparkSeries.length ? sparklineSvg(sparkSeries) : '';
+    return '<div class="telephony-kpi-wow"' + tip + '>' + iconHtml + '<div class="telephony-kpi-value" id="' + valId + '" data-target="' + esc(String(value)) + '">' + (typeof value === 'number' ? '0' : esc(String(value))) + '</div><div class="telephony-kpi-label">' + esc(label) + '</div>' + spark + '</div>';
   }
 
   function renderEmployeesTable(managers) {
-    if (!managers.length) return emptyState('\uD83D\uDC64', 'Нет данных по сотрудникам');
+    if (!managers.length) return emptyState('empty', 'Нет данных по сотрудникам');
     var rows = managers.map(function (m) {
       return '<tr>' +
         '<td>' + esc(m.name) + '</td>' +
@@ -1180,11 +1439,16 @@ window.AsgardTelephonyPage = (function () {
       var periodLabel = dp.period || '';
       if (periodLabel.length >= 10) { var _d = new Date(periodLabel); periodLabel = isNaN(_d.getTime()) ? periodLabel.slice(0,10) : _d.toLocaleDateString('ru-RU'); }
 
+      var waitSec = dp.avg_wait != null ? dp.avg_wait : (dp.avg_wait_seconds != null ? dp.avg_wait_seconds : null);
+      var waitLine = waitSec != null
+        ? '<div>Сред. ожидание: ' + Math.round(Number(waitSec)) + ' сек</div>'
+        : '';
       _chartTooltipEl.innerHTML =
         '<div class="chart-crosshair-tooltip__title">' + esc(periodLabel) + '</div>' +
-        '<div><span class="ct-dot ct-dot--inbound"></span>Вход.: ' + (dp.inbound != null ? dp.inbound : 0) + '</div>' +
-        '<div><span class="ct-dot ct-dot--outbound"></span>Исход.: ' + (dp.outbound != null ? dp.outbound : 0) + '</div>' +
-        '<div><span class="ct-dot ct-dot--missed"></span>Пропущ.: ' + (dp.missed != null ? dp.missed : 0) + '</div>';
+        '<div><span class="ct-dot ct-dot--inbound"></span>' + (dp.inbound != null ? dp.inbound : 0) + ' входящих</div>' +
+        '<div><span class="ct-dot ct-dot--outbound"></span>' + (dp.outbound != null ? dp.outbound : 0) + ' исходящих</div>' +
+        '<div><span class="ct-dot ct-dot--missed"></span>' + (dp.missed != null ? dp.missed : 0) + ' пропущенных</div>' +
+        waitLine;
 
       /* position tooltip */
       var tipLeft = cx + 14;
@@ -1223,13 +1487,13 @@ window.AsgardTelephonyPage = (function () {
   async function renderRouting(container) {
     var ur = user().role || '';
     if (ur !== 'ADMIN' && ur !== 'DIRECTOR_GEN' && ur !== 'DIRECTOR_COMM') {
-      container.innerHTML = emptyState('\uD83D\uDEAB', 'Доступ только для администраторов');
+      container.innerHTML = emptyState('lock', 'Доступ только для администраторов');
       return;
     }
 
     container.innerHTML =
       '<div class="tel-routing-toolbar">' +
-        '<button class="btn btn--sm tel-sync-btn" id="syncExtBtn" title="Загрузить внутренние номера сотрудников из Mango Office и привязать к аккаунтам CRM">🔄 Синхронизировать extensions из Mango</button>' +
+        '<button class="btn btn--sm tel-sync-btn" id="syncExtBtn" title="Загрузить внутренние номера сотрудников из Mango Office и привязать к аккаунтам CRM">Синхронизировать extensions из Mango</button>' +
         '<button class="btn btn--primary" id="addRuleBtn">+ Добавить правило</button>' +
       '</div>' +
       '<div id="syncResult" class="tel-sync-result is-hidden"></div>' +
@@ -1245,9 +1509,9 @@ window.AsgardTelephonyPage = (function () {
       resultDiv.classList.add('is-hidden');
       try {
         var data = await api('/extensions/sync-mango', { method: 'POST' });
-        var html = '✅ Синхронизировано: <strong>' + data.synced_count + '</strong> из ' + data.total_mango_users + ' сотрудников Mango.';
+        var html = 'Синхронизировано: <strong>' + data.synced_count + '</strong> из ' + data.total_mango_users + ' сотрудников Mango.';
         if (data.unmatched_count > 0) {
-          html += ' <span class="tel-warn-inline">⚠️ Не найдено в CRM: ' + data.unmatched_count + ' (' +
+          html += ' <span class="tel-warn-inline">Не найдено в CRM: ' + data.unmatched_count + ' (' +
             data.unmatched.map(function (u) { return esc(u.name || u.ext); }).join(', ') + ')</span>';
         }
         resultDiv.innerHTML = html;
@@ -1256,14 +1520,14 @@ window.AsgardTelephonyPage = (function () {
         resultDiv.classList.add('tel-sync-result--ok');
         if (data.synced_count > 0) toast('Extensions синхронизированы: ' + data.synced_count + ' сотрудников', 'success');
       } catch (e) {
-        resultDiv.innerHTML = '❌ Ошибка: ' + esc(e.message);
+        resultDiv.innerHTML = 'Ошибка: ' + esc(e.message);
         resultDiv.classList.remove('is-hidden');
         resultDiv.classList.remove('tel-sync-result--ok');
         resultDiv.classList.add('tel-sync-result--err');
         toast('Ошибка синхронизации', 'error');
       } finally {
         btn.disabled = false;
-        btn.textContent = '🔄 Синхронизировать extensions из Mango';
+        btn.textContent = 'Синхронизировать extensions из Mango';
       }
     });
 
@@ -1279,7 +1543,20 @@ window.AsgardTelephonyPage = (function () {
       var data = await api('/routing');
       var rules = data.rules || [];
       if (!rules.length) {
-        list.innerHTML = emptyState('\uD83D\uDCCB', 'Нет правил маршрутизации');
+        list.innerHTML =
+          '<div class="telephony-empty tel-routing-empty">' +
+            '<div class="telephony-empty-mark" aria-hidden="true"></div>' +
+            '<p class="telephony-empty-title">Нет правил маршрутизации</p>' +
+            '<p class="telephony-empty-text">Создайте правило из шаблона — меньше ручной настройки.</p>' +
+            '<div class="tel-routing-templates">' +
+              '<button type="button" class="btn btn--primary" data-tpl="duty">Перевод на дежурного</button>' +
+              '<button type="button" class="btn secondary" data-tpl="ivr">Приветствие + меню</button>' +
+              '<button type="button" class="btn secondary" data-tpl="sales">Отдел продаж</button>' +
+            '</div>' +
+          '</div>';
+        list.querySelectorAll('[data-tpl]').forEach(function (btn) {
+          btn.addEventListener('click', function () { applyRoutingTemplate(btn.getAttribute('data-tpl')); });
+        });
         return;
       }
 
@@ -1357,7 +1634,7 @@ window.AsgardTelephonyPage = (function () {
       /* drag-and-drop reordering */
       initDragAndDrop(list, rules);
     } catch (err) {
-      list.innerHTML = emptyState('\u26A0', 'Не удалось загрузить правила');
+      list.innerHTML = emptyState('warn', 'Не удалось загрузить правила');
       toast('Ошибка загрузки', 'error');
     }
   }
@@ -1433,9 +1710,41 @@ window.AsgardTelephonyPage = (function () {
     });
   }
 
+  function applyRoutingTemplate(tpl) {
+    var presets = {
+      duty: {
+        name: 'Перевод на дежурного',
+        condition_type: 'default',
+        condition_value: {},
+        action_type: 'route_to_group',
+        action_value: { extension: 'duty' },
+        priority: 10,
+      },
+      ivr: {
+        name: 'Приветствие + меню',
+        condition_type: 'default',
+        condition_value: {},
+        action_type: 'ivr',
+        action_value: { extension: 'ivr_main' },
+        priority: 5,
+      },
+      sales: {
+        name: 'Отдел продаж',
+        condition_type: 'default',
+        condition_value: {},
+        action_type: 'route_to_group',
+        action_value: { extension: 'sales' },
+        priority: 20,
+      },
+    };
+    var p = presets[tpl];
+    if (!p) return;
+    openRuleModal(p);
+  }
+
   /* ---- Enhanced Routing Rule Modal ---- */
   function openRuleModal(existing) {
-    var isEdit = !!existing;
+    var isEdit = !!(existing && existing.id);
     var cv = (existing && existing.condition_value) ? existing.condition_value : {};
     var av = (existing && existing.action_value) ? existing.action_value : {};
 
@@ -1529,12 +1838,25 @@ window.AsgardTelephonyPage = (function () {
   /* ======================================================================
    *  DETAIL PANEL  (slide-in from right)
    * ====================================================================== */
-  async function openDetailPanel(callId) {
+  async function openDetailPanel(callId, opts) {
+    opts = opts || {};
     var panel   = $('#detailPanel');
     var overlay = $('#detailOverlay');
     var header  = $('#detailHeader');
     var body    = $('#detailBody');
     if (!panel || !body) return;
+
+    /* Detail slides from right — collapse Huginn so actions stay clickable */
+    try {
+      if (window.HuginnDock && typeof HuginnDock.collapse === 'function') {
+        HuginnDock.collapse();
+      } else {
+        var hg = document.getElementById('huginnDock');
+        if (hg) hg.classList.add('is-collapsed');
+        document.body.classList.add('hg-dock-collapsed');
+        document.body.classList.remove('hg-dock-open');
+      }
+    } catch (_) { /* optional shell */ }
 
     destroyCurrentAudio();
     body.innerHTML =
@@ -1547,6 +1869,9 @@ window.AsgardTelephonyPage = (function () {
       '</div>';
     panel.classList.add('call-detail-panel--open');
     overlay.classList.add('call-detail-overlay--visible');
+    $$('.call-row.is-selected').forEach(function (r) { r.classList.remove('is-selected'); });
+    var sel = $('.call-row[data-id="' + String(callId) + '"]');
+    if (sel) sel.classList.add('is-selected');
 
     header.innerHTML = '<span>Детали звонка</span><button class="btn btn--icon" id="detailClose">&times;</button>';
     $('#detailClose').addEventListener('click', closeDetailPanel);
@@ -1554,8 +1879,18 @@ window.AsgardTelephonyPage = (function () {
     try {
       var call = await api('/calls/' + callId);
       renderDetailBody(body, call);
+      if (opts.scrollToAudio) {
+        setTimeout(function () {
+          var player = document.getElementById('audioPlayerWrap');
+          if (player) player.scrollIntoView({ block: 'center', behavior: 'smooth' });
+          var playBtn = document.getElementById('apPlay');
+          if (playBtn && !playBtn.disabled) {
+            try { playBtn.click(); } catch (_) {}
+          }
+        }, 400);
+      }
     } catch (err) {
-      body.innerHTML = emptyState('\u26A0', 'Не удалось загрузить данные звонка');
+      body.innerHTML = emptyState('warn', 'Не удалось загрузить данные звонка');
       toast('Ошибка загрузки', 'error');
     }
   }
@@ -1566,6 +1901,7 @@ window.AsgardTelephonyPage = (function () {
     var overlay = $('#detailOverlay');
     if (panel)   panel.classList.remove('call-detail-panel--open');
     if (overlay) overlay.classList.remove('call-detail-overlay--visible');
+    $$('.call-row.is-selected').forEach(function (r) { r.classList.remove('is-selected'); });
   }
 
   function renderDetailBody(container, call) {
@@ -1589,9 +1925,9 @@ window.AsgardTelephonyPage = (function () {
     var dadataChips = '';
     if (call.dadata_region || call.dadata_city || call.dadata_operator) {
       dadataChips = '<div class="call-detail-section"><div class="detail-dadata-chips">';
-      if (call.dadata_region) dadataChips += '<span class="detail-dadata-chip"><span class="detail-dadata-chip-icon">\uD83C\uDFD4</span>' + esc(call.dadata_region) + '</span>';
-      if (call.dadata_city) dadataChips += '<span class="detail-dadata-chip"><span class="detail-dadata-chip-icon">\uD83C\uDFD9</span>' + esc(call.dadata_city) + '</span>';
-      if (call.dadata_operator) dadataChips += '<span class="detail-dadata-chip"><span class="detail-dadata-chip-icon">\uD83D\uDCF6</span>' + esc(call.dadata_operator) + '</span>';
+      if (call.dadata_region) dadataChips += '<span class="detail-dadata-chip">' + esc(call.dadata_region) + '</span>';
+      if (call.dadata_city) dadataChips += '<span class="detail-dadata-chip">' + esc(call.dadata_city) + '</span>';
+      if (call.dadata_operator) dadataChips += '<span class="detail-dadata-chip">' + esc(call.dadata_operator) + '</span>';
       dadataChips += '</div></div>';
     }
 
@@ -1600,9 +1936,10 @@ window.AsgardTelephonyPage = (function () {
     if (typeof ld === 'string') { try { ld = JSON.parse(ld); } catch(e) { ld = null; } }
     var keyReqsHtml = '';
     if (ld && ld.key_requirements && ld.key_requirements.length) {
-      keyReqsHtml = '<div class="call-detail-section"><div class="telephony-chart-title">Ключевые требования</div><ul class="ai-key-reqs">';
+      keyReqsHtml = '<div class="call-detail-section"><details class="ai-collapse" open>' +
+        '<summary>Ключевые требования</summary><div class="ai-collapse__body"><ul class="ai-key-reqs">';
       ld.key_requirements.forEach(function(r) { keyReqsHtml += '<li>' + esc(r) + '</li>'; });
-      keyReqsHtml += '</ul></div>';
+      keyReqsHtml += '</ul></div></details></div>';
     }
 
     /* Transcript segments (diarization with timestamps) */
@@ -1667,7 +2004,7 @@ window.AsgardTelephonyPage = (function () {
       pipelineBanner +
       '<div class="call-detail-section">' +
         '<table class="detail-info-table">' +
-          '<tr><td>Направление</td><td><span class="call-dir call-dir--' + dir + '" data-tooltip="' + esc(dirTip) + '">' + (DIR_ICONS[dir] || '') + '</span> ' + esc(dirLabel) + '</td></tr>' +
+          '<tr><td>Направление</td><td><span class="call-dir call-dir--' + dir + '"' + (dirTip ? ' data-tooltip="' + esc(dirTip) + '"' : '') + '>' + (DIR_ICONS[dir] || '') + '</span> ' + esc(dirLabel) + '</td></tr>' +
           '<tr><td>От</td><td>' + esc(fmtPhone(call.from_number)) + '</td></tr>' +
           '<tr><td>Линия</td><td>' + esc(fmtPhone(call.line_number || call.to_number)) + '</td></tr>' +
           '<tr><td>Длительность</td><td>' + esc(fmtDuration(call.duration_seconds)) + '</td></tr>' +
@@ -1676,9 +2013,12 @@ window.AsgardTelephonyPage = (function () {
           (call.ended_at ? '<tr><td>Завершение</td><td>' + esc(fmtDate(call.ended_at)) + '</td></tr>' : '') +
           '<tr><td>Менеджер</td><td>' + esc(call.manager_name || (call.user_id ? 'Сотрудник #' + call.user_id : 'Не назначен')) + '</td></tr>' +
           '<tr><td>Статус звонка</td><td>' + esc(call.duration_seconds > 0 ? 'Отвечен' : (dir === 'missed' ? 'Пропущен' : (dir === 'outbound' ? 'Без ответа' : 'Пропущен'))) + '</td></tr>' +
-          '<tr><td>Расшифровка</td><td><span class="call-status-badge call-status-badge--' + tStatus + '" data-tooltip="' + esc(statusTip) + '">' + esc(STATUS_LABELS[tStatus] || '\u2014') + '</span></td></tr>' +
-          '<tr><td>ИИ-анализ</td><td><span class="call-ai-status call-ai-status--' + aiSt.key + '" data-tooltip="' + esc(aiSt.tip) + '">' + esc(aiSt.label) + '</span></td></tr>' +
-          '<tr><td>Рейтинг</td><td>' + (qScore != null ? ('<b>\u2605 ' + qScore + '/10</b> <span class="detail-rating-note">качество разговора</span>') : '<span class="tel-text-muted">появится после анализа ИИ</span>') + '</td></tr>' +
+          '<tr><td>Расшифровка</td><td><span class="call-status-badge call-status-badge--' + tStatus + '"' + (statusTip ? ' data-tooltip="' + esc(statusTip) + '"' : '') + '>' + esc(STATUS_LABELS[tStatus] || '\u2014') + '</span></td></tr>' +
+          '<tr><td>ИИ-анализ</td><td><span class="call-ai-status call-ai-status--' + aiSt.key + '"' + (aiSt.tip ? ' data-tooltip="' + esc(aiSt.tip) + '"' : '') + '>' + esc(aiSt.label) + '</span></td></tr>' +
+          '<tr><td>Рейтинг</td><td>' + (qScore != null
+            ? ('<span class="ai-quality-radial-wrap">' + renderQualityRadial(qScore, 40) +
+               '<span class="ai-quality-radial__label"><b>' + qScore + '/10</b> <span class="detail-rating-note">качество разговора</span></span></span>')
+            : '<span class="tel-text-muted">появится после анализа ИИ</span>') + '</td></tr>' +
         '</table>' +
       '</div>' +
 
@@ -1690,11 +2030,11 @@ window.AsgardTelephonyPage = (function () {
       renderAiAnalysis(call) +
 
       '<div class="call-detail-section call-detail-actions">' +
-        (call.ai_is_target && !call.lead_id ? '<button class="btn btn--primary" id="createLeadBtn" data-tooltip="Создать заявку из данных звонка">Создать заявку</button>' : '') +
+        '<button class="btn primary" id="callbackBtn" data-tooltip="Исходящий звонок">Перезвонить</button>' +
+        (call.ai_is_target && !call.lead_id ? '<button class="btn secondary" id="createLeadBtn" data-tooltip="Создать заявку из данных звонка">Создать заявку</button>' : '') +
         (call.lead_id ? '<span class="ai-summary-tag--target">Заявка #' + call.lead_id + ' создана</span>' : '') +
-        (hasRecord ? '<button class="btn btn--outline" id="retranscribeBtn" data-tooltip="Принудительно заново расшифровать запись">Повторить расшифровку</button>' : '') +
-        ((transcriptText || tStatus === 'done' || call.transcript) ? '<button class="btn btn--outline" id="reanalyzeBtn" data-tooltip="Принудительно заново сделать ИИ-резюме и рейтинг">Повторить анализ</button>' : '') +
-        '<button class="btn btn--primary" id="callbackBtn" data-tooltip="Исходящий звонок">Перезвонить</button>' +
+        (hasRecord ? '<button class="btn secondary" id="retranscribeBtn" data-tooltip="Принудительно заново расшифровать запись">Повторить расшифровку</button>' : '') +
+        ((transcriptText || tStatus === 'done' || call.transcript) ? '<button class="btn secondary" id="reanalyzeBtn" data-tooltip="Принудительно заново сделать ИИ-резюме и рейтинг">Повторить анализ</button>' : '') +
       '</div>';
 
     /* wire audio player */
@@ -1726,6 +2066,34 @@ window.AsgardTelephonyPage = (function () {
         }
       });
     }
+
+    var qBtn = $('#aiQualityBreakdownBtn');
+    var qPop = $('#aiQualityPopover');
+    if (qBtn && qPop) {
+      qBtn.addEventListener('click', function (e) {
+        e.stopPropagation();
+        qPop.hidden = !qPop.hidden;
+      });
+    }
+    container.querySelectorAll('[data-ai-call]').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        var n = btn.getAttribute('data-ai-call');
+        if (window.AsgardPhone && n) {
+          AsgardPhone.outbound(n).catch(function (err) { toast('Телефон', err.message, 'err'); });
+        } else if (n) {
+          location.href = 'tel:' + n;
+        }
+      });
+    });
+    var stepKey = 'tel:ai-steps:' + call.id;
+    container.querySelectorAll('.ai-step-check input[type="checkbox"]').forEach(function (cb) {
+      cb.addEventListener('change', function () {
+        var map = {};
+        try { map = JSON.parse(localStorage.getItem(stepKey) || '{}') || {}; } catch (_) { map = {}; }
+        map[cb.getAttribute('data-step-idx')] = !!cb.checked;
+        localStorage.setItem(stepKey, JSON.stringify(map));
+      });
+    });
 
     /* wire actions */
     var createLeadBtn = $('#createLeadBtn');
@@ -1847,41 +2215,78 @@ window.AsgardTelephonyPage = (function () {
     var sentCls = call.ai_sentiment ? 'sentiment-dot--' + call.ai_sentiment : '';
     var sentText = sentimentLabel[call.ai_sentiment] || call.ai_sentiment || '';
     var qs = getQualityScore(call);
+    var dims = ld.quality_dimensions || null;
+    if (!dims && qs != null) {
+      dims = {
+        clarity: Math.min(10, Math.max(1, qs + (qs >= 8 ? 1 : 0))),
+        needs: Math.min(10, Math.max(1, qs - 1)),
+        close: Math.min(10, Math.max(1, qs)),
+        _derived: true,
+      };
+    }
+    function highlightSummary(text) {
+      var safe = esc(text);
+      return safe
+        .replace(/(\d[\d\s]{0,12}\d)/g, '<mark class="ai-hl">$1</mark>')
+        .replace(/(договор|заявк\w*|встреч\w*|КП|смет\w*)/gi, '<mark class="ai-hl ai-hl--key">$1</mark>');
+    }
     var html = '<div class="call-detail-section"><div class="ai-summary-card">';
     html += '<div class="telephony-chart-title">Резюме звонка (ИИ)</div>';
-    if (call.ai_summary) html += '<p class="ai-summary-body">' + esc(call.ai_summary) + '</p>';
+    if (call.ai_summary) html += '<p class="ai-summary-body">' + highlightSummary(call.ai_summary) + '</p>';
     html += '<div class="ai-summary-tags ai-summary-tags--spaced">';
     if (call.ai_is_target != null) html += '<span class="ai-summary-tag--' + (call.ai_is_target ? 'target' : 'nontarget') + '">' + (call.ai_is_target ? 'Целевой' : 'Нецелевой') + '</span> ';
     if (call.ai_sentiment) html += '<span class="ai-summary-tag--' + call.ai_sentiment + '"><span class="' + sentCls + '"></span>' + sentText + '</span> ';
     if (ld.classification) html += '<span class="ai-summary-tag">' + esc(classLabel[ld.classification] || ld.classification) + '</span> ';
     if (ld.urgency) html += '<span class="ai-urgency-badge ai-urgency--' + ld.urgency + '">' + esc(urgencyLabel[ld.urgency] || ld.urgency) + '</span>';
     html += '</div>';
-    var hasData = ld.company_name || ld.contact_person || ld.object_description || ld.work_type || ld.location;
+    var hasData = ld.company_name || ld.contact_person || ld.object_description || ld.work_type || ld.location || ld.contact_phone;
     if (hasData) {
-      html += '<div class="ai-analysis-section"><div class="ai-analysis-section-title">Извлечённые данные</div><dl class="ai-analysis-grid">';
-      if (ld.company_name) html += '<dt>Компания</dt><dd>' + esc(ld.company_name) + '</dd>';
+      html += '<details class="ai-collapse" open><summary>Извлечённые данные</summary><div class="ai-collapse__body"><dl class="ai-analysis-grid">';
+      if (ld.company_name) {
+        html += '<dt>Компания</dt><dd><span>' + esc(ld.company_name) + '</span> ' +
+          '<a class="ai-field-act" href="#/clients?q=' + encodeURIComponent(ld.company_name) + '" data-tooltip="Карточка клиента">Карточка</a></dd>';
+      }
       if (ld.contact_person) html += '<dt>Контакт</dt><dd>' + esc(ld.contact_person) + '</dd>';
-      if (ld.contact_phone) html += '<dt>Телефон</dt><dd>' + esc(ld.contact_phone) + '</dd>';
+      if (ld.contact_phone) {
+        html += '<dt>Телефон</dt><dd><span class="tel-num">' + esc(ld.contact_phone) + '</span> ' +
+          '<button type="button" class="ai-field-act" data-ai-call="' + esc(ld.contact_phone) + '" data-tooltip="Позвонить">Позвонить</button></dd>';
+      }
       if (ld.contact_email) html += '<dt>Email</dt><dd>' + esc(ld.contact_email) + '</dd>';
       if (ld.work_type) html += '<dt>Тип работ</dt><dd>' + esc(wtLabel[ld.work_type] || ld.work_type) + '</dd>';
       if (ld.object_description) html += '<dt>Объект</dt><dd>' + esc(ld.object_description) + '</dd>';
-      if (ld.location) html += '<dt>Адрес</dt><dd>' + esc(ld.location) + '</dd>';
+      if (ld.location) {
+        html += '<dt>Адрес</dt><dd><span>' + esc(ld.location) + '</span> ' +
+          '<a class="ai-field-act" target="_blank" rel="noopener" href="https://yandex.ru/maps/?text=' + encodeURIComponent(ld.location) + '" data-tooltip="Открыть на карте">Карта</a></dd>';
+      }
       if (ld.desired_timeline) html += '<dt>Сроки</dt><dd>' + esc(ld.desired_timeline) + '</dd>';
       if (ld.estimated_volume) html += '<dt>Объём</dt><dd>' + esc(ld.estimated_volume) + '</dd>';
       if (ld.source) html += '<dt>Источник</dt><dd>' + esc(ld.source) + '</dd>';
-      html += '</dl></div>';
+      html += '</dl></div></details>';
     }
     if (ld.next_steps && ld.next_steps.length > 0) {
-      html += '<div class="ai-analysis-section"><div class="ai-analysis-section-title">Что сделать дальше</div><ul class="ai-next-steps">';
-      ld.next_steps.forEach(function(s) { html += '<li>' + esc(s) + '</li>'; });
-      html += '</ul></div>';
+      var stepKey = 'tel:ai-steps:' + call.id;
+      var doneMap = {};
+      try { doneMap = JSON.parse(localStorage.getItem(stepKey) || '{}') || {}; } catch (_) { doneMap = {}; }
+      html += '<details class="ai-collapse" open><summary>Что сделать дальше</summary><div class="ai-collapse__body"><ul class="ai-next-steps ai-next-steps--check">';
+      ld.next_steps.forEach(function(s, i) {
+        var checked = doneMap[i] ? ' checked' : '';
+        html += '<li><label class="ai-step-check"><input type="checkbox" data-step-idx="' + i + '"' + checked + '> <span>' + esc(s) + '</span></label></li>';
+      });
+      html += '</ul></div></details>';
     }
     if (qs != null) {
-      var qLvl = qs >= 8 ? 'high' : qs >= 5 ? 'medium' : 'low';
-      html += '<div class="ai-analysis-section"><div class="ai-analysis-section-title">Рейтинг качества разговора: \u2605 ' + qs + '/10</div>';
-      html += '<div class="ai-quality-bar"><div class="ai-quality-fill ai-quality-fill--' + qLvl + '" style="width:' + (qs * 10) + '%"></div></div>';
-      if (ld.quality_notes) html += '<div class="ai-quality-notes">' + esc(ld.quality_notes) + '</div>';
-      html += '<p class="call-section-hint call-section-hint--after-quality">Рейтинг ставит ИИ по содержанию разговора. Пересчитать: кнопка \u00ABПовторить анализ\u00BB.</p>';
+      html += '<div class="ai-analysis-section"><div class="ai-analysis-section-title">Рейтинг качества разговора</div>';
+      html += '<button type="button" class="ai-quality-radial-wrap ai-quality-radial-wrap--btn" id="aiQualityBreakdownBtn" data-tooltip="Расшифровка рейтинга">' +
+        renderQualityRadial(qs, 52) +
+        '<span class="ai-quality-radial__label"><b>' + qs + '/10</b></span></button>';
+      html += '<div class="ai-quality-popover" id="aiQualityPopover" hidden>' +
+        '<div class="ai-quality-popover__title">' + (dims && dims._derived ? 'Оценка по баллу' : 'Расшифровка ИИ') + '</div>' +
+        '<div class="ai-quality-dim"><span>Четкость речи</span><b>' + (dims ? dims.clarity : '\u2014') + '/10</b></div>' +
+        '<div class="ai-quality-dim"><span>Выявление потребностей</span><b>' + (dims ? dims.needs : '\u2014') + '/10</b></div>' +
+        '<div class="ai-quality-dim"><span>Закрытие на следующий шаг</span><b>' + (dims ? dims.close : '\u2014') + '/10</b></div>' +
+        (ld.quality_notes ? '<div class="ai-quality-notes">' + esc(ld.quality_notes) + '</div>' : '') +
+      '</div>';
+      html += '<p class="call-section-hint call-section-hint--after-quality">Клик по рейтингу — расшифровка. Пересчитать: \u00ABПовторить анализ\u00BB.</p>';
       html += '</div>';
     }
     html += '</div></div>';
@@ -1950,10 +2355,14 @@ window.AsgardTelephonyPage = (function () {
     /* ---- DOM scaffold ---- */
     container.innerHTML =
       '<div class="audio-player-controls">' +
-        '<button class="audio-player-play" id="apPlay" disabled>&#9654;</button>' +
+        '<button class="audio-player-play" id="apPlay" disabled aria-label="Play">' +
+          '<svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path fill="currentColor" d="M3 1.5v9l8-4.5L3 1.5z"/></svg>' +
+        '</button>' +
         '<span id="apTime">00:00 / 00:00</span>' +
         '<button class="btn btn--sm" id="apSpeed" data-tooltip="Скорость воспроизведения">1x</button>' +
-        '<button class="btn btn--sm" id="apDownload" data-tooltip="Скачать запись">&#11015;</button>' +
+        '<button class="btn btn--sm" id="apDownload" data-tooltip="Скачать запись" aria-label="Скачать">' +
+          '<svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path fill="currentColor" d="M5.25 1.5h1.5v5.2l1.8-1.8.95.95L6 9.35 2.5 5.85l.95-.95 1.8 1.8V1.5zM1.5 10h9v1.5h-9V10z"/></svg>' +
+        '</button>' +
       '</div>' +
       '<div class="audio-player-progress-wrap" id="apWaveWrap">' +
         '<canvas id="apCanvas" class="audio-player-canvas"></canvas>' +
@@ -1963,6 +2372,8 @@ window.AsgardTelephonyPage = (function () {
     var timeLabel = container.querySelector('#apTime');
     var speedBtn  = container.querySelector('#apSpeed');
     var canvas    = container.querySelector('#apCanvas');
+    var icoPlay = '<svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path fill="currentColor" d="M3 1.5v9l8-4.5L3 1.5z"/></svg>';
+    var icoPause = '<svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><rect x="2.5" y="1.5" width="2.5" height="9" fill="currentColor"/><rect x="7" y="1.5" width="2.5" height="9" fill="currentColor"/></svg>';
 
     /* ---- HTML5 audio element ---- */
     var audio  = new Audio();
@@ -1997,12 +2408,12 @@ window.AsgardTelephonyPage = (function () {
     });
 
     audio.addEventListener('play', function () {
-      playBtn.innerHTML = '&#9646;&#9646;';
+      playBtn.innerHTML = icoPause;
       startProgressLoop();
     });
-    audio.addEventListener('pause', function () { playBtn.innerHTML = '&#9654;'; });
+    audio.addEventListener('pause', function () { playBtn.innerHTML = icoPlay; });
     audio.addEventListener('ended', function () {
-      playBtn.innerHTML = '&#9654;';
+      playBtn.innerHTML = icoPlay;
       drawWaveform(canvas, peaks, 1);
     });
 
@@ -2169,7 +2580,7 @@ window.AsgardTelephonyPage = (function () {
   async function renderAnalytics(container) {
     container.innerHTML =
       '<div class="tel-ai-insights tel-ai-insights--compact cr-wow-card">' +
-        '<div class="tel-ai-insights-title">🧙 AI-аналитика звонков</div>' +
+        '<div class="tel-ai-insights-title">AI-аналитика звонков</div>' +
         '<div class="tel-ai-insights-grid" id="telAnalyticsKPI">' +
           '<div class="skeleton-kpi"><div class="skeleton skeleton-bar" style="width:60px;height:28px;margin:0 auto 10px"></div><div class="skeleton skeleton-bar" style="width:90px;height:12px;margin:0 auto"></div></div>' +
           '<div class="skeleton-kpi"><div class="skeleton skeleton-bar" style="width:60px;height:28px;margin:0 auto 10px"></div><div class="skeleton skeleton-bar" style="width:90px;height:12px;margin:0 auto"></div></div>' +
@@ -2208,7 +2619,7 @@ window.AsgardTelephonyPage = (function () {
       var listEl = document.getElementById('telAnalyticsList');
       if (listEl) {
         if (!reports.length) {
-          listEl.innerHTML = emptyState('📊', 'Отчётов пока нет');
+          listEl.innerHTML = emptyState('empty', 'Отчётов пока нет');
           return;
         }
 
@@ -2221,28 +2632,45 @@ window.AsgardTelephonyPage = (function () {
           try { recs = typeof rpt.recommendations_json === 'string' ? JSON.parse(rpt.recommendations_json) : (rpt.recommendations_json || []); } catch(_) {}
 
           var badgeCls = rpt.report_type === 'daily' ? 'cr-badge--daily' : (rpt.report_type === 'weekly' ? 'cr-badge--weekly' : 'cr-badge--monthly');
+          var statusKey = analyticsReportStatus(rpt, rptStats, recs);
+          var statusTip = ({ ok: 'Отчёт в норме', warn: 'Есть зоны внимания', error: 'Ошибка отчёта', pending: 'Отчёт формируется' })[statusKey] || statusKey;
+
+          var summaryText = (rpt.summary_text || '').trim();
+          if (!summaryText && rpt.title) summaryText = String(rpt.title);
+          var totalCalls = rptStats.totalCalls;
+          var targetCalls = rptStats.targetCalls;
+          var missedCalls = rptStats.missedCalls;
+          if (totalCalls === undefined && summaryText) {
+            var tm = summaryText.match(/(\d+)\s*обращ/i);
+            if (tm) totalCalls = parseInt(tm[1], 10);
+          }
+          if (targetCalls === undefined && /целевых\s*0%/i.test(summaryText)) targetCalls = 0;
+          if (!recs.length) {
+            if (/потерян/i.test(summaryText)) recs = ['Разобрать потерянных клиентов за период', 'Проверить follow-up по целевым'];
+            else if (/0%|заявок нет|нет данных/i.test(summaryText)) recs = ['Проверить разметку целевых звонков', 'Сверить пропущенные с журналом'];
+            else recs = ['Открыть полный отчёт для детализации'];
+          }
 
           var bodyHtml = '';
-          if (rpt.summary_text) {
-            bodyHtml += '<div class="tel-report-summary">' + esc(rpt.summary_text.slice(0, 600)) + '</div>';
+          if (summaryText) {
+            bodyHtml += '<div class="tel-report-summary">' + esc(summaryText.slice(0, 600)) + '</div>';
           }
-          if (rptStats.totalCalls !== undefined) {
-            bodyHtml += '<div class="tel-report-metrics">' +
-              '<div class="cr-detail__mini"><div class="cr-detail__mini-value">' + (rptStats.totalCalls || 0) + '</div><div class="cr-detail__mini-label">Звонков</div></div>' +
-              '<div class="cr-detail__mini"><div class="cr-detail__mini-value">' + (rptStats.targetCalls || 0) + '</div><div class="cr-detail__mini-label">Целевых</div></div>' +
-              '<div class="cr-detail__mini"><div class="cr-detail__mini-value">' + (rptStats.missedCalls || 0) + '</div><div class="cr-detail__mini-label">Пропущ.</div></div>' +
-            '</div>';
-          }
-          if (recs.length) {
-            bodyHtml += '<div class="tel-report-recs-title">РЕКОМЕНДАЦИИ</div>' +
-              '<ol class="tel-report-recs">' + recs.slice(0, 5).map(function(r) { return '<li>' + esc(r) + '</li>'; }).join('') + '</ol>';
-          }
-          bodyHtml += '<div class="tel-report-open"><button class="btn btn--sm" data-report-id="' + rpt.id + '" data-action="openReport">Открыть полный отчёт</button></div>';
+          bodyHtml += '<div class="tel-report-metrics">' +
+            '<div class="cr-detail__mini"><div class="cr-detail__mini-value">' + (totalCalls != null ? totalCalls : '\u2014') + '</div><div class="cr-detail__mini-label">Звонков</div></div>' +
+            '<div class="cr-detail__mini"><div class="cr-detail__mini-value">' + (targetCalls != null ? targetCalls : '\u2014') + '</div><div class="cr-detail__mini-label">Целевых</div></div>' +
+            '<div class="cr-detail__mini"><div class="cr-detail__mini-value">' + (missedCalls != null ? missedCalls : '\u2014') + '</div><div class="cr-detail__mini-label">Пропущ.</div></div>' +
+          '</div>';
+          bodyHtml += '<div class="tel-report-recs-title">РЕКОМЕНДАЦИИ</div>' +
+            '<ol class="tel-report-recs">' + recs.slice(0, 5).map(function(r) { return '<li>' + esc(typeof r === 'string' ? r : (r.text || r.title || String(r))) + '</li>'; }).join('') + '</ol>';
+          bodyHtml += '<div class="tel-report-open"><button class="btn btn--sm btn--primary" data-report-id="' + rpt.id + '" data-action="openReport">Открыть полный отчёт</button></div>';
 
           return '<div class="cr-accordion cr-wow-card cr-accordion--tel">' +
             '<div class="cr-accordion__head">' +
-              '<span><span class="cr-badge cr-badge--spaced ' + badgeCls + '">' + (TYPE_LABELS[rpt.report_type] || rpt.report_type) + '</span> ' +
-              esc(rpt.title || 'Отчёт #' + rpt.id) + ' <span class="cr-accordion__date">' + fmtDate(rpt.created_at) + '</span></span>' +
+              '<span class="cr-accordion__head-main">' +
+                '<span class="tel-report-status tel-report-status--' + statusKey + '" data-tooltip="' + esc(statusTip) + '" title="' + esc(statusTip) + '"></span>' +
+                '<span class="cr-badge cr-badge--spaced ' + badgeCls + '">' + (TYPE_LABELS[rpt.report_type] || rpt.report_type) + '</span> ' +
+                esc(rpt.title || 'Отчёт #' + rpt.id) + ' <span class="cr-accordion__date">' + fmtDate(rpt.created_at) + '</span>' +
+              '</span>' +
               '<span class="cr-accordion__arrow">▼</span>' +
             '</div>' +
             '<div class="cr-accordion__body"><div class="cr-accordion__content">' + bodyHtml + '</div></div>' +
@@ -2254,6 +2682,10 @@ window.AsgardTelephonyPage = (function () {
           head.addEventListener('click', function() {
             head.parentElement.classList.toggle('cr-accordion--open');
           });
+        });
+        /* Open first two reports so analytics tab shows dense body, not void */
+        listEl.querySelectorAll('.cr-accordion').forEach(function (acc, i) {
+          if (i < 2) acc.classList.add('cr-accordion--open');
         });
 
         // Open report detail

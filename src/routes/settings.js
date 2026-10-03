@@ -5,7 +5,11 @@
 // ═══════════════════════════════════════════════════════════════════════════
 // SECURITY: Скрытие чувствительных настроек от не-админов (HIGH-11)
 // ═══════════════════════════════════════════════════════════════════════════
-const SENSITIVE_KEYS = ['smtp_config', 'smtp_from', 'smtp_password', 'api_keys', 'telegram_bot_token'];
+const SENSITIVE_KEYS = [
+  'smtp_config', 'smtp_from', 'smtp_password', 'api_keys', 'telegram_bot_token',
+  'mango', 'mango_api_key', 'mango_api_salt', 'mango_config',
+  'pbx_config', 'ami_secret', 'speechkit', 'yandex_api_keys'
+];
 
 async function routes(fastify, options) {
   const db = fastify.db;

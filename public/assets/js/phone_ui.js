@@ -20,14 +20,84 @@
   var timerStart = 0;
   var noteTimer = null;
   var noteKey = 'asgard_phone_note';
-  var ICON = {
-    mic: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>',
-    micOff: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><line x1="1" y1="1" x2="23" y2="23"/><path d="M9 9v3a3 3 0 0 0 5.12 2.12M15 9.34V4a3 3 0 0 0-5.94-.6"/><path d="M17 16.95A7 7 0 0 1 5 12v-2m14 0v2a7 7 0 0 1-.11 1.23"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>',
-    hold: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>',
-    keypad: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="5" cy="5" r="1.5" fill="currentColor" stroke="none"/><circle cx="12" cy="5" r="1.5" fill="currentColor" stroke="none"/><circle cx="19" cy="5" r="1.5" fill="currentColor" stroke="none"/><circle cx="5" cy="12" r="1.5" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.5" fill="currentColor" stroke="none"/><circle cx="19" cy="12" r="1.5" fill="currentColor" stroke="none"/><circle cx="12" cy="19" r="1.5" fill="currentColor" stroke="none"/></svg>',
-    transfer: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M17 1l4 4-4 4"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><path d="M7 23l-4-4 4-4"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>',
-    hangup: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M10.68 13.31a16 16 0 0 0 3.41 2.6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11z"/></svg>',
+  var dockMini = false;
+  var incomingPulseTimer = null;
+  var transferMode = 'blind';
+  var soundEnabled = localStorage.getItem('tel:sound') !== '0';
+  var audioCtx = null;
+  var SVG = function (paths) {
+    return '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + paths + '</svg>';
   };
+  var SVG_DOCK = function (paths) {
+    return '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.45" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + paths + '</svg>';
+  };
+  var SVG_FILL = function (paths) {
+    return '<svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" stroke="none" aria-hidden="true">' + paths + '</svg>';
+  };
+  var ICON = {
+    mic: SVG_FILL('<path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm5.3-3c0 3-2.54 5.1-5.3 5.1S6.7 14 6.7 11H5c0 3.41 2.72 6.23 6 6.72V21h2v-3.28c3.28-.49 6-3.31 6-6.72h-1.7z"/>'),
+    micOff: SVG_FILL('<path d="M19 11h-1.7c0 .74-.16 1.43-.43 2.05l1.23 1.23c.56-.98.9-2.09.9-3.28zm-4.02.17c0-.06.02-.11.02-.17V5c0-1.66-1.34-3-3-3-.06 0-.11.02-.17.02l3.15 3.15zM4.41 2.86 3 4.27l6 6V11c0 1.66 1.34 3 3 3 .23 0 .44-.03.65-.08l1.66 1.66c-.7.33-1.48.52-2.31.52-2.76 0-5.3-2.1-5.3-5.1H5c0 3.41 2.72 6.23 6 6.72V21h2v-3.28c.91-.13 1.77-.45 2.54-.9L19.73 21l1.41-1.41L4.41 2.86z"/>'),
+    hold: SVG_FILL('<rect x="5" y="3" width="5" height="18" rx="1.5"/><rect x="14" y="3" width="5" height="18" rx="1.5"/>'),
+    keypad: SVG_FILL('<circle cx="5" cy="5" r="2"/><circle cx="12" cy="5" r="2"/><circle cx="19" cy="5" r="2"/><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/><circle cx="5" cy="19" r="2"/><circle cx="12" cy="19" r="2"/><circle cx="19" cy="19" r="2"/>'),
+    transfer: SVG_FILL('<path d="M8 4v3H3v3h5v3l5-4.5L8 4zm8 16v-3h5v-3h-5v-3l-5 4.5L16 20z"/>'),
+    hangup: SVG_FILL('<path d="M6.62 10.79c1.44 2.83 3.76 5.14 6.59 6.59l2.2-2.2c.27-.27.67-.36 1.02-.24 1.12.37 2.33.57 3.57.57.55 0 1 .45 1 1V20c0 .55-.45 1-1 1C10.61 21 3 13.39 3 4c0-.55.45-1 1-1h3.5c.55 0 1 .45 1 1 0 1.25.2 2.45.57 3.57.11.35.03.74-.25 1.02l-2.2 2.2z"/>'),
+    browser: SVG_FILL('<path d="M3 4h18a1 1 0 0 1 1 1v11a1 1 0 0 1-1 1h-7v2h3v2H8v-2h3v-2H3a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1zm1 2v8h16V6H4z"/>'),
+    mobile: SVG_FILL('<path d="M8 1h8a2 2 0 0 1 2 2v18a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V3a2 2 0 0 1 2-2zm4 19a1.25 1.25 0 1 0 0-2.5A1.25 1.25 0 0 0 12 20z"/>'),
+    micCheck: SVG_FILL('<path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm5.3-3c0 3-2.54 5.1-5.3 5.1S6.7 14 6.7 11H5c0 3.41 2.72 6.23 6 6.72V21h2v-3.28c3.28-.49 6-3.31 6-6.72h-1.7z"/>'),
+    dial: SVG_FILL('<path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm1 5v4.2l2.6 1.5-.9 1.55L11 12.4V7h2z"/>'),
+    offline: SVG_FILL('<path d="M12 2a1.5 1.5 0 0 1 1.5 1.5v7a1.5 1.5 0 0 1-3 0v-7A1.5 1.5 0 0 1 12 2zm6.36 4.64a1.25 1.25 0 0 1 0 1.77 7.5 7.5 0 1 1-10.72 0 1.25 1.25 0 1 1 1.77-1.77 5 5 0 1 0 7.18 0 1.25 1.25 0 0 1 1.77 0z"/>'),
+    note: SVG_FILL('<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6zm0 2.5L17.5 8H14V4.5zM8 13h8v1.8H8V13zm0 3.7h6V18.5H8V16.7z"/>'),
+    chevronDown: SVG_FILL('<path d="M7.41 8.59 12 13.17l4.59-4.58L18 10l-6 6-6-6z"/>'),
+    chevronUp: SVG_FILL('<path d="M7.41 15.41 12 10.83l4.59 4.58L18 14l-6-6-6 6z"/>'),
+  };
+
+  function playTone(kind) {
+    if (!soundEnabled || document.body.classList.contains('is-gallery')) return;
+    try {
+      audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+      var o = audioCtx.createOscillator();
+      var g = audioCtx.createGain();
+      o.connect(g); g.connect(audioCtx.destination);
+      var now = audioCtx.currentTime;
+      if (kind === 'ring') { o.frequency.value = 440; g.gain.setValueAtTime(0.0001, now); g.gain.exponentialRampToValueAtTime(0.04, now + 0.05); g.gain.exponentialRampToValueAtTime(0.0001, now + 0.35); }
+      else if (kind === 'ok') { o.frequency.value = 660; g.gain.setValueAtTime(0.0001, now); g.gain.exponentialRampToValueAtTime(0.05, now + 0.03); g.gain.exponentialRampToValueAtTime(0.0001, now + 0.22); }
+      else { o.frequency.value = 220; g.gain.setValueAtTime(0.0001, now); g.gain.exponentialRampToValueAtTime(0.04, now + 0.04); g.gain.exponentialRampToValueAtTime(0.0001, now + 0.28); }
+      o.type = 'sine';
+      o.start(now); o.stop(now + 0.4);
+    } catch (_) {}
+  }
+
+  function menuItem(action, ico, title, sub, danger) {
+    return (
+      '<button type="button" class="ph-menu-item' + (danger ? ' ph-menu-item--danger' : '') + '" data-action="' + action + '">' +
+        '<span class="ph-menu-item__ico">' + ico + '</span>' +
+        '<span class="ph-menu-item__body">' +
+          '<span class="ph-menu-item__title">' + title + '</span>' +
+          (sub ? '<span class="ph-menu-item__sub">' + sub + '</span>' : '') +
+        '</span>' +
+      '</button>'
+    );
+  }
+
+  function initialsFrom(name, phone) {
+    var s = String(name || '').trim();
+    if (s) {
+      var parts = s.split(/\s+/).filter(Boolean);
+      if (parts.length >= 2) return (parts[0].charAt(0) + parts[1].charAt(0)).toUpperCase();
+      return s.slice(0, 2).toUpperCase();
+    }
+    var d = String(phone || '').replace(/\D/g, '');
+    return d.slice(-2) || '•';
+  }
+
+  function dockBtn(id, ico, label, extraClass) {
+    return (
+      '<div class="ph-dock-item">' +
+        '<button type="button" class="ph-iconbtn' + (extraClass ? ' ' + extraClass : '') + '" id="' + id + '" title="' + label + '" aria-label="' + label + '" data-tooltip="' + label + '">' + ico + '</button>' +
+        '<span>' + label + '</span>' +
+      '</div>'
+    );
+  }
 
   function userRole() {
     try {
@@ -144,17 +214,17 @@
   function renderOfflineMenu() {
     dom.menu.innerHTML =
       '<div class="ph-menu-head">Телефон PBX</div>' +
-      '<button type="button" class="ph-menu-item" data-action="online-browser">На линии (браузер)</button>' +
-      '<button type="button" class="ph-menu-item" data-action="online-mobile">На линии (мобильный)</button>' +
-      '<button type="button" class="ph-menu-item" data-action="mic">Проверить микрофон</button>';
+      menuItem('online-browser', ICON.browser, 'На линии', 'Звонки в браузере') +
+      menuItem('online-mobile', ICON.mobile, 'На линии', 'Переадресация на мобильный') +
+      menuItem('mic', ICON.micCheck, 'Проверить микрофон', 'Доступ к устройству');
     bindMenuActions();
   }
 
   function renderOnlineMenu() {
     dom.menu.innerHTML =
       '<div class="ph-menu-head">На линии</div>' +
-      '<button type="button" class="ph-menu-item" data-action="dial">Набрать номер</button>' +
-      '<button type="button" class="ph-menu-item ph-menu-item--danger" data-action="offline">Сойти с линии</button>';
+      menuItem('dial', ICON.dial, 'Набрать номер', 'Исходящий звонок') +
+      menuItem('offline', ICON.offline, 'Сойти с линии', 'Статус offline', true);
     bindMenuActions();
   }
 
@@ -235,17 +305,31 @@
     var title = lookup.name || lookup.client_name || fmtPhone(num);
     var sub = fmtPhone(num);
     if (lookup.company) sub += ' · ' + lookup.company;
+    var ini = initialsFrom(lookup.name || lookup.client_name, num);
+    dom.incoming.className = 'ph-card ph-card--incoming';
     dom.incoming.innerHTML =
       '<div class="ph-card-inner">' +
-        '<div class="ph-card-title">Входящий звонок</div>' +
-        '<div class="ph-card-name">' + esc(title) + '</div>' +
-        '<div class="ph-card-sub">' + esc(sub) + '</div>' +
+        '<div class="ph-card-top">' +
+          '<div class="ph-avatar" aria-hidden="true">' + esc(ini) + '</div>' +
+          '<div class="ph-card-meta">' +
+            '<div class="ph-card-title">Входящий звонок</div>' +
+            '<div class="ph-card-name">' + esc(title) + '</div>' +
+            '<div class="ph-card-sub">' + esc(sub) + '</div>' +
+          '</div>' +
+        '</div>' +
         '<div class="ph-card-actions">' +
-          '<button type="button" class="ph-act ph-act--answer" id="phAnswer">Ответить</button>' +
-          '<button type="button" class="ph-act ph-act--hangup" id="phDecline">Сбросить</button>' +
+          '<button type="button" class="ph-act ph-act--answer" id="phAnswer" data-tooltip="Ответить (Space)">Ответить</button>' +
+          '<button type="button" class="ph-act ph-act--hangup" id="phDecline" data-tooltip="Сбросить (Esc)">Сбросить</button>' +
         '</div>' +
       '</div>';
     dom.incoming.style.display = 'block';
+    playTone('ring');
+    clearTimeout(incomingPulseTimer);
+    incomingPulseTimer = setTimeout(function () {
+      if (dom.incoming && dom.incoming.style.display === 'block') {
+        dom.incoming.classList.add('ph-card--incoming-pulse');
+      }
+    }, 8000);
     dom.incoming.querySelector('#phAnswer').onclick = function () {
       AsgardPhone.answer().catch(function (e) { toast('Телефон', e.message, 'err'); });
     };
@@ -255,7 +339,11 @@
   }
 
   function hideIncoming() {
-    if (dom.incoming) dom.incoming.style.display = 'none';
+    clearTimeout(incomingPulseTimer);
+    if (dom.incoming) {
+      dom.incoming.classList.remove('ph-card--incoming-pulse');
+      dom.incoming.style.display = 'none';
+    }
   }
 
   function renderIncall(detail) {
@@ -267,28 +355,56 @@
     var note = localStorage.getItem(noteKey + ':' + num) || '';
     var isMuted = window.AsgardPhone && AsgardPhone.isMuted && AsgardPhone.isMuted();
     var isHeld = window.AsgardPhone && AsgardPhone.getState() === 'held';
+    var noteOpen = !!String(note || '').trim() && !dockMini;
+    dom.incall.className = 'ph-bar' + (isHeld ? ' ph-bar--hold' : '') + (noteOpen ? ' is-note-open' : '') + (dockMini ? ' ph-bar--mini' : '');
     dom.incall.innerHTML =
-      '<div class="ph-bar-left">' +
-        '<span class="ph-bar-timer" id="phIncallTimer">00:00</span>' +
-        '<span class="ph-bar-num">' + esc(fmtPhone(num)) + '</span>' +
-      '</div>' +
       '<div class="ph-bar-actions">' +
-        '<button type="button" class="ph-iconbtn' + (isMuted ? ' ph-iconbtn--active' : '') + '" id="phMute" title="Микрофон" aria-label="Микрофон">' + (isMuted ? ICON.micOff : ICON.mic) + '</button>' +
-        '<button type="button" class="ph-iconbtn' + (isHeld ? ' ph-iconbtn--active' : '') + '" id="phHold" title="Удержание" aria-label="Удержание">' + ICON.hold + '</button>' +
-        '<button type="button" class="ph-iconbtn" id="phKeypad" title="Клавиши" aria-label="Клавиши">' + ICON.keypad + '</button>' +
-        '<button type="button" class="ph-iconbtn" id="phTransfer" title="Перевод" aria-label="Перевод">' + ICON.transfer + '</button>' +
-        '<button type="button" class="ph-iconbtn ph-iconbtn--danger" id="phHangup" title="Завершить" aria-label="Завершить">' + ICON.hangup + '</button>' +
+        '<div class="ph-bar-meta">' +
+          '<span class="ph-bar-timer" id="phIncallTimer">00:00</span>' +
+          '<span class="ph-bar-num">' + esc(fmtPhone(num)) + '</span>' +
+        '</div>' +
+        dockBtn('phMute', isMuted ? ICON.micOff : ICON.mic, isMuted ? 'Вкл. мик' : 'Микрофон', isMuted ? 'ph-iconbtn--active' : '') +
+        dockBtn('phHold', ICON.hold, isHeld ? 'Снять' : 'Удерж.', isHeld ? 'ph-iconbtn--active' : '') +
+        dockBtn('phKeypad', ICON.keypad, 'Клавиши', '') +
+        dockBtn('phTransfer', ICON.transfer, 'Перевод', '') +
+        dockBtn('phNoteToggle', ICON.note, 'Заметка', noteOpen ? 'ph-iconbtn--active' : '') +
+        '<div class="ph-dock-item ph-dock-item--keep ph-dock-item--mini-toggle">' +
+          '<button type="button" class="ph-iconbtn ph-iconbtn--mini" id="phDockMini" title="' + (dockMini ? 'Развернуть' : 'Свернуть') + '" aria-label="' + (dockMini ? 'Развернуть' : 'Свернуть') + '" data-tooltip="' + (dockMini ? 'Развернуть' : 'Свернуть') + '">' + (dockMini ? ICON.chevronUp : ICON.chevronDown) + '</button>' +
+        '</div>' +
+        dockBtn('phHangup', ICON.hangup, 'Сброс', 'ph-iconbtn--danger') +
       '</div>' +
-      '<textarea class="ph-note" id="phNote" placeholder="Заметка по звонку…" rows="1">' + esc(note) + '</textarea>';
+      '<textarea class="ph-note" id="phNote" placeholder="Заметка…" rows="1">' + esc(note) + '</textarea>';
     dom.incall.style.display = 'flex';
     startCallTimer();
 
-    dom.incall.querySelector('#phHangup').onclick = function () { AsgardPhone.hangup(); };
+    var miniBtn = dom.incall.querySelector('#phDockMini');
+    if (miniBtn) {
+      miniBtn.onclick = function (e) {
+        e.stopPropagation();
+        dockMini = !dockMini;
+        renderIncall(detail);
+      };
+    }
+    if (dockMini) {
+      dom.incall.onclick = function (e) {
+        if (e.target && (e.target.id === 'phHangup' || e.target.closest('#phHangup'))) return;
+        if (e.target && (e.target.id === 'phDockMini' || e.target.closest('#phDockMini'))) return;
+        dockMini = false;
+        renderIncall(detail);
+      };
+    } else {
+      dom.incall.onclick = null;
+    }
+
+    dom.incall.querySelector('#phHangup').onclick = function () { playTone('end'); AsgardPhone.hangup(); };
     dom.incall.querySelector('#phHold').onclick = function () {
       var held = AsgardPhone.getState() === 'held';
       var holdBtn = dom.incall.querySelector('#phHold');
       AsgardPhone.hold(!held).then(function () {
         if (holdBtn) holdBtn.classList.toggle('ph-iconbtn--active', !held);
+        dom.incall.classList.toggle('ph-bar--hold', !held);
+        var lab = holdBtn && holdBtn.parentElement && holdBtn.parentElement.querySelector('span');
+        if (lab) lab.textContent = !held ? 'Снять' : 'Удерж.';
       }).catch(function (e) { toast('Телефон', e.message, 'err'); });
     };
     dom.incall.querySelector('#phKeypad').onclick = function () { openDialPad(num); };
@@ -300,10 +416,22 @@
         if (muteBtn) {
           muteBtn.classList.toggle('ph-iconbtn--active', next);
           muteBtn.innerHTML = next ? ICON.micOff : ICON.mic;
+          var lab = muteBtn.parentElement && muteBtn.parentElement.querySelector('span');
+          if (lab) lab.textContent = next ? 'Вкл. мик' : 'Микрофон';
         }
       }).catch(function (e) { toast('Телефон', e.message, 'err'); });
     };
     var noteEl = dom.incall.querySelector('#phNote');
+    var noteToggle = dom.incall.querySelector('#phNoteToggle');
+    if (noteToggle) {
+      noteToggle.onclick = function () {
+        var open = dom.incall.classList.toggle('is-note-open');
+        noteToggle.classList.toggle('ph-iconbtn--active', open);
+        if (open && noteEl) {
+          noteEl.focus();
+        }
+      };
+    }
     noteEl.addEventListener('input', function () {
       clearTimeout(noteTimer);
       noteTimer = setTimeout(function () {
@@ -324,6 +452,8 @@
       '<div class="ph-dial-grid" id="phDialGrid"></div>' +
       '<button type="button" class="btn primary ph-dial-call" id="phDialCall">Позвонить</button>';
     var overlay = AsgardUI.showModal({ title: 'Набор номера', html: html, wide: false });
+    var modalEl = overlay.querySelector('.cr-m');
+    if (modalEl) modalEl.classList.add('ph-modal');
     var body = overlay.querySelector('#modalBody') || overlay;
     var grid = body.querySelector('#phDialGrid');
     if (grid) {
@@ -352,17 +482,30 @@
 
   function openTransferModal() {
     if (!window.AsgardUI || !AsgardUI.showModal) return;
+    transferMode = 'blind';
     var html =
       '<input type="search" class="inp" id="phTrSearch" placeholder="Поиск сотрудника…">' +
       '<div class="ph-tr-list" id="phTrList">Загрузка…</div>' +
-      '<div class="ph-tr-mode">' +
-        '<label><input type="radio" name="phTrMode" value="blind" checked> Слепой</label>' +
-        '<label><input type="radio" name="phTrMode" value="consult"> Консультативный</label>' +
-      '</div>';
+      '<div class="ph-seg" role="group" aria-label="Режим перевода">' +
+        '<button type="button" class="ph-seg__btn is-active" data-mode="blind">Слепой</button>' +
+        '<button type="button" class="ph-seg__btn" data-mode="consult">Консультативный</button>' +
+      '</div>' +
+      '<input type="hidden" name="phTrMode" id="phTrMode" value="blind">';
     var overlay = AsgardUI.showModal({ title: 'Перевод звонка', html: html });
+    var modalEl = overlay.querySelector('.cr-m');
+    if (modalEl) modalEl.classList.add('ph-modal');
     var body = overlay.querySelector('#modalBody') || overlay;
     var listEl = body.querySelector('#phTrList');
     var staff = [];
+    body.querySelectorAll('.ph-seg__btn').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        body.querySelectorAll('.ph-seg__btn').forEach(function (b) { b.classList.remove('is-active'); });
+        btn.classList.add('is-active');
+        transferMode = btn.getAttribute('data-mode') || 'blind';
+        var hid = body.querySelector('#phTrMode');
+        if (hid) hid.value = transferMode;
+      });
+    });
     Promise.all([
       fetch('/api/telephony/employees', { headers: { Authorization: 'Bearer ' + (localStorage.getItem('asgard_token') || '') } }).then(function (r) { return r.json(); }),
       fetch('/api/telephony/pbx/reports/staff', { headers: { Authorization: 'Bearer ' + (localStorage.getItem('asgard_token') || '') } }).catch(function () { return { staff: [] }; }).then(function (r) { return r.json ? r : { staff: [] }; }),
@@ -388,17 +531,21 @@
         return;
       }
       listEl.innerHTML = rows.map(function (s) {
-        var badge = s.on_line ? '<span class="ph-tr-online">на линии</span>' : '<span class="ph-tr-offline">не в сети</span>';
+        var ini = initialsFrom(s.name, s.phone);
+        var on = !!s.on_line;
         return '<button type="button" class="ph-tr-row" data-id="' + s.id + '" data-phone="' + esc(s.phone || '') + '">' +
-          '<span>' + esc(s.name) + '</span>' + badge +
+          '<span class="ph-tr-ava" aria-hidden="true">' + esc(ini) +
+            '<span class="ph-tr-dot ' + (on ? 'ph-tr-dot--on' : 'ph-tr-dot--off') + '" title="' + (on ? 'на линии' : 'не в сети') + '"></span>' +
+          '</span>' +
+          '<span class="ph-tr-name">' + esc(s.name) + '</span>' +
         '</button>';
       }).join('');
       listEl.querySelectorAll('.ph-tr-row').forEach(function (row) {
         row.addEventListener('click', function () {
-          var modeEl = body.querySelector('input[name="phTrMode"]:checked');
-          var mode = modeEl ? modeEl.value : 'blind';
+          var mode = transferMode || 'blind';
           var target = row.getAttribute('data-phone') || row.getAttribute('data-id');
           AsgardPhone.transfer(mode, target).then(function () {
+            playTone('ok');
             toast('Перевод', 'Запрос отправлен', 'ok');
             AsgardUI.closeModal && AsgardUI.closeModal();
           }).catch(function (e) { toast('Перевод', e.message, 'err'); });
@@ -480,26 +627,101 @@
     return 'offline';
   }
 
-  function init() {
-    if (TEL_ROLES.indexOf(userRole()) === -1) return;
-    document.addEventListener('asgard-phone', onPhoneEvent);
-    bindTelLinks();
-    tryInitAfterLayout();
-    var obs = new MutationObserver(function () {
-      if (document.getElementById('asgardPhoneSlot') || document.querySelector('.topbar .badges')) {
-        tryInitAfterLayout();
+  function isTypingTarget(el) {
+    if (!el) return false;
+    var tag = (el.tagName || '').toLowerCase();
+    return tag === 'input' || tag === 'textarea' || tag === 'select' || el.isContentEditable;
+  }
+
+  function ensureHotkeyHint() {
+    var hint = document.getElementById('phHotkeyHint');
+    if (hint) return hint;
+    hint = document.createElement('div');
+    hint.id = 'phHotkeyHint';
+    hint.className = 'ph-hotkey-hint';
+    hint.innerHTML =
+      '<div><kbd>Space</kbd> ответить</div>' +
+      '<div><kbd>Esc</kbd> сброс</div>' +
+      '<div><kbd>M</kbd> микрофон</div>' +
+      '<div><kbd>H</kbd> удержание</div>' +
+      '<div><kbd>?</kbd> эта подсказка</div>';
+    document.body.appendChild(hint);
+    return hint;
+  }
+
+  var hotkeysBound = false;
+  function bindHotkeys() {
+    if (hotkeysBound) return;
+    hotkeysBound = true;
+    document.addEventListener('keydown', function (e) {
+      if (isTypingTarget(e.target)) return;
+      if (e.key === '?' || (e.shiftKey && e.key === '/')) {
+        e.preventDefault();
+        ensureHotkeyHint().classList.toggle('is-open');
+        return;
       }
-    });
-    obs.observe(document.body, { childList: true, subtree: true });
-    if (sessionStorage.getItem('asgard_phone_audio_blocked')) {
-      dom.audioBanner && (dom.audioBanner.style.display = 'flex');
-    }
-    document.addEventListener('asgard-phone', function (ev) {
-      if (ev.detail && ev.detail.type === 'audio_blocked') sessionStorage.setItem('asgard_phone_audio_blocked', '1');
+      if (!window.AsgardPhone) return;
+      var incomingOpen = dom.incoming && dom.incoming.style.display === 'block';
+      var incallOpen = dom.incall && dom.incall.style.display === 'flex';
+      if (e.key === 'Escape') {
+        var hint = document.getElementById('phHotkeyHint');
+        if (hint && hint.classList.contains('is-open')) { hint.classList.remove('is-open'); return; }
+        if (incomingOpen) { e.preventDefault(); AsgardPhone.hangup(); return; }
+        if (incallOpen) { e.preventDefault(); playTone('end'); AsgardPhone.hangup(); return; }
+      }
+      if (e.code === 'Space' && incomingOpen) {
+        e.preventDefault();
+        AsgardPhone.answer().catch(function (err) { toast('Телефон', err.message, 'err'); });
+        return;
+      }
+      if (!incallOpen) return;
+      if (e.key === 'm' || e.key === 'M') {
+        e.preventDefault();
+        var next = !(AsgardPhone.isMuted && AsgardPhone.isMuted());
+        AsgardPhone.setMuted(next).catch(function (err) { toast('Телефон', err.message, 'err'); });
+      } else if (e.key === 'h' || e.key === 'H') {
+        e.preventDefault();
+        var held = AsgardPhone.getState() === 'held';
+        AsgardPhone.hold(!held).catch(function (err) { toast('Телефон', err.message, 'err'); });
+      }
     });
   }
 
-  window.AsgardPhoneUI = { init: init, fmtPhone: fmtPhone, openDialPad: openDialPad };
+  var phoneUiReady = false;
+  function ensurePhoneUiBound() {
+    if (TEL_ROLES.indexOf(userRole()) === -1) return false;
+    if (!phoneUiReady) {
+      phoneUiReady = true;
+      document.addEventListener('asgard-phone', onPhoneEvent);
+      bindTelLinks();
+      document.addEventListener('asgard-phone', function (ev) {
+        if (ev.detail && ev.detail.type === 'audio_blocked') sessionStorage.setItem('asgard_phone_audio_blocked', '1');
+      });
+    }
+    bindHotkeys();
+    tryInitAfterLayout();
+    if (sessionStorage.getItem('asgard_phone_audio_blocked')) {
+      dom.audioBanner && (dom.audioBanner.style.display = 'flex');
+    }
+    return true;
+  }
+
+  function init() {
+    ensurePhoneUiBound();
+    var obs = new MutationObserver(function () {
+      if (document.getElementById('asgardPhoneSlot') || document.querySelector('.topbar .badges') || window.AsgardAuth) {
+        ensurePhoneUiBound();
+      }
+    });
+    if (document.body) obs.observe(document.body, { childList: true, subtree: true });
+  }
+
+  window.AsgardPhoneUI = {
+    init: init,
+    fmtPhone: fmtPhone,
+    openDialPad: openDialPad,
+    openHotkeyHelp: function () { ensureHotkeyHint().classList.add('is-open'); },
+  };
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
   else init();

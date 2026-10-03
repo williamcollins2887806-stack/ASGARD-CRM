@@ -1,11 +1,149 @@
 /**
  * Telephony page — ASGARD DS (scoped polish)
  * Loaded with telephony.js; replaces legacy injectStyles().
+ *
+ * Sprint audit (promote / keep / drop):
+ * PROMOTE → design-tokens: light --t2/--t3 floor, .tnum, DS scrollbar
+ * KEEP scoped → cool remap, done badges, dock pad, missed densify, ph-seg
+ * DROP → duplicate hard hex color !important (use var(--t2)/--t3); transcript hard thumb hex
  */
 
 /* ── Page shell ── */
 .telephony-page {
   color: var(--t1);
+}
+
+/* Remap Nordic parchment → cool CRM chrome while telephony is mounted */
+html[data-theme="light"] body:has(.telephony-page),
+html:not([data-theme="dark"]):not(.theme-dark) body:has(.telephony-page) {
+  --bg0: #E8ECF1;
+  --bg1: #F8F9FA;
+  --bg2: #FFFFFF;
+  --bg3: #F0F2F5;
+  --bg4: #E4E8EE;
+  --bg5: #D5DBE4;
+  --overlay: rgba(16, 24, 40, 0.52);
+  --t1: #0E141C;
+  --t2: #374151; /* darker secondary — light contrast */
+  --t3: #4B5563;
+  --tel-brd-soft: rgba(0, 0, 0, 0.09);
+  --card: #FFFFFF;
+  --surface: #FFFFFF;
+  --surface-alt: var(--bg3);
+  --bg-input: #F3F5F8;
+  --bg-surface: #FFFFFF;
+  --glass-bg: rgba(255, 255, 255, 0.72);
+  --glass: rgba(255, 255, 255, 0.72);
+  background: var(--bg1);
+}
+html[data-theme="light"] body:has(.telephony-page) #content,
+html[data-theme="light"] body:has(.telephony-page) .content,
+html[data-theme="light"] body:has(.telephony-page) main,
+html:not([data-theme="dark"]):not(.theme-dark) body:has(.telephony-page) #content,
+html:not([data-theme="dark"]):not(.theme-dark) body:has(.telephony-page) .content,
+html:not([data-theme="dark"]):not(.theme-dark) body:has(.telephony-page) main {
+  background: var(--bg1) !important;
+}
+
+/* Force cool surfaces on filters / thead / inputs (beat residual parchment) */
+html[data-theme="light"] .telephony-page .telephony-filters,
+html[data-theme="light"] .telephony-page .tel-filter-pills,
+html[data-theme="light"] .telephony-page .telephony-tabs,
+html:not([data-theme="dark"]):not(.theme-dark) .telephony-page .telephony-filters,
+html:not([data-theme="dark"]):not(.theme-dark) .telephony-page .tel-filter-pills,
+html:not([data-theme="dark"]):not(.theme-dark) .telephony-page .telephony-tabs {
+  background: #FFFFFF !important;
+  border-color: var(--tel-brd-soft) !important;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.05);
+}
+html[data-theme="light"] .telephony-page .tel-filter-pill,
+html:not([data-theme="dark"]):not(.theme-dark) .telephony-page .tel-filter-pill {
+  background: #F3F5F8 !important;
+  border-color: color-mix(in srgb, #9aabc2 40%, var(--brd)) !important;
+  color: var(--t2) !important;
+}
+html[data-theme="light"] .telephony-page .tel-filter-pill--active,
+html:not([data-theme="dark"]):not(.theme-dark) .telephony-page .tel-filter-pill--active {
+  background: color-mix(in srgb, var(--gold) 18%, #FFFFFF) !important;
+  border-color: var(--gold) !important;
+  color: #1a1205 !important;
+}
+html[data-theme="light"] .telephony-page .telephony-filters input,
+html[data-theme="light"] .telephony-page .telephony-filters select,
+html[data-theme="light"] .telephony-page .telephony-filters .inp,
+html:not([data-theme="dark"]):not(.theme-dark) .telephony-page .telephony-filters input,
+html:not([data-theme="dark"]):not(.theme-dark) .telephony-page .telephony-filters select,
+html:not([data-theme="dark"]):not(.theme-dark) .telephony-page .telephony-filters .inp {
+  background: #F3F5F8 !important;
+  border-color: color-mix(in srgb, #9aabc2 45%, var(--brd)) !important;
+  color: var(--t1) !important;
+}
+html[data-theme="light"] .telephony-page .call-log-table thead th,
+html[data-theme="light"] #logTableWrap thead th,
+html:not([data-theme="dark"]):not(.theme-dark) .telephony-page .call-log-table thead th,
+html:not([data-theme="dark"]):not(.theme-dark) #logTableWrap thead th {
+  background: #F0F2F5 !important;
+  color: var(--t2) !important;
+  border-bottom-color: var(--tel-brd-soft) !important;
+}
+html[data-theme="light"] #logTableWrap,
+html:not([data-theme="dark"]):not(.theme-dark) #logTableWrap {
+  border-color: var(--tel-brd-soft) !important;
+}
+html[data-theme="light"] .telephony-page .call-log-table tbody td,
+html:not([data-theme="dark"]):not(.theme-dark) .telephony-page .call-log-table tbody td {
+  border-bottom-color: rgba(0, 0, 0, 0.06) !important;
+  color: var(--t1);
+}
+/* Secondary via cool remap tokens (--t2/#374151, --t3/#4B5563); beat parchment only */
+html[data-theme="light"] .telephony-page .call-summary-text,
+html[data-theme="light"] .telephony-page td.ai-col,
+html[data-theme="light"] .telephony-page .call-status-badge--none,
+html[data-theme="light"] .telephony-page .telephony-kpi-label,
+html[data-theme="light"] .telephony-page .call-ai-status:not(.call-ai-status--ai_done),
+html[data-theme="light"] .telephony-page .missed-call-meta,
+html[data-theme="light"] .telephony-page .missed-datetime,
+html[data-theme="light"] .telephony-page .tel-cell-manager,
+html[data-theme="light"] .telephony-page .missed-client-name,
+html:not([data-theme="dark"]):not(.theme-dark) .telephony-page .call-summary-text,
+html:not([data-theme="dark"]):not(.theme-dark) .telephony-page td.ai-col,
+html:not([data-theme="dark"]):not(.theme-dark) .telephony-page .call-status-badge--none,
+html:not([data-theme="dark"]):not(.theme-dark) .telephony-page .telephony-kpi-label,
+html:not([data-theme="dark"]):not(.theme-dark) .telephony-page .call-ai-status:not(.call-ai-status--ai_done),
+html:not([data-theme="dark"]):not(.theme-dark) .telephony-page .missed-call-meta,
+html:not([data-theme="dark"]):not(.theme-dark) .telephony-page .missed-datetime,
+html:not([data-theme="dark"]):not(.theme-dark) .telephony-page .tel-cell-manager,
+html:not([data-theme="dark"]):not(.theme-dark) .telephony-page .missed-client-name {
+  color: var(--t2) !important;
+}
+html[data-theme="light"] .telephony-page .call-log-table tbody td,
+html[data-theme="light"] #logTableWrap tbody td,
+html:not([data-theme="dark"]):not(.theme-dark) .telephony-page .call-log-table tbody td,
+html:not([data-theme="dark"]):not(.theme-dark) #logTableWrap tbody td {
+  background: #FFFFFF !important;
+}
+html[data-theme="light"] .telephony-page .call-log-table tbody tr:nth-child(even) td,
+html[data-theme="light"] #logTableWrap tbody tr:nth-child(even) td,
+html:not([data-theme="dark"]):not(.theme-dark) .telephony-page .call-log-table tbody tr:nth-child(even) td,
+html:not([data-theme="dark"]):not(.theme-dark) #logTableWrap tbody tr:nth-child(even) td {
+  background: #F8F9FA !important;
+}
+html[data-theme="light"] .telephony-page .call-log-table tbody tr:hover td,
+html:not([data-theme="dark"]):not(.theme-dark) .telephony-page .call-log-table tbody tr:hover td {
+  background: #EEF2F7 !important;
+}
+html[data-theme="light"] .telephony-page .call-log-table tbody td.ai-col,
+html:not([data-theme="dark"]):not(.theme-dark) .telephony-page .call-log-table tbody td.ai-col {
+  background: transparent !important;
+}
+html[data-theme="light"] .telephony-page .telephony-tab,
+html:not([data-theme="dark"]):not(.theme-dark) .telephony-page .telephony-tab {
+  background: transparent;
+}
+html[data-theme="light"] .telephony-page .telephony-tab--active,
+html:not([data-theme="dark"]):not(.theme-dark) .telephony-page .telephony-tab--active {
+  background: #EEF2F8 !important;
+  color: var(--t1) !important;
 }
 
 .telephony-page label {
@@ -53,12 +191,56 @@
 }
 
 /* Legacy btn modifiers → components.css parity */
+/* Beat app.css .btn.primary / .btn--primary !important navy — gold CTAs */
+.telephony-page .btn.primary,
+.telephony-page button.btn.primary,
+.telephony-page .btn.primary.sm,
 .telephony-page .btn--primary,
-.telephony-page .btn.primary {
-  /* mirrored from .btn.primary in components.css */
-  background: var(--blue);
-  color: #fff;
-  border: 1px solid transparent;
+.telephony-page button.btn--primary,
+.telephony-page .call-detail-actions .btn.primary,
+.telephony-page .call-detail-actions .btn--primary,
+.telephony-page #callbackBtn,
+.telephony-page #fApply,
+.telephony-page #sApply,
+.telephony-page #addRuleBtn,
+.telephony-page #pbxSaveSettings,
+.telephony-page #rmRuleSave,
+.telephony-page #telCbConfirm,
+#callbackBtn.btn.primary,
+#phDialCall,
+button#phDialCall.btn.primary,
+#phTransferGo,
+button#phTransferGo.btn.primary,
+.ph-dial-call.btn.primary,
+body .btn.primary.ph-dial-call,
+body #phTransferGo.btn.primary,
+.ph-act--answer {
+  background: linear-gradient(165deg, #F5C542 0%, #E5A820 55%, #C8892E 100%) !important;
+  color: #1a1205 !important;
+  border-color: transparent !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.52),
+    inset 0 -1px 0 rgba(80, 50, 0, 0.16),
+    0 0 0 1px color-mix(in srgb, #C8892E 42%, transparent),
+    0 8px 24px color-mix(in srgb, #E5A820 44%, transparent),
+    0 0 36px color-mix(in srgb, #F5C542 28%, transparent) !important;
+  font-weight: 700 !important;
+  transition: box-shadow 0.22s ease, filter 0.22s ease, transform 0.18s ease;
+}
+.telephony-page .btn.primary:hover,
+.telephony-page button.btn.primary:hover,
+.telephony-page #fApply:hover,
+.telephony-page #callbackBtn:hover,
+#phDialCall:hover,
+button#phDialCall.btn.primary:hover,
+.ph-act--answer:hover {
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.6),
+    0 0 0 1px color-mix(in srgb, #C8892E 55%, transparent),
+    0 12px 32px color-mix(in srgb, #E5A820 52%, transparent),
+    0 0 48px color-mix(in srgb, #F5C542 38%, transparent) !important;
+  filter: brightness(1.06);
+  transform: translateY(-1px);
 }
 
 .telephony-page .btn--sm,
@@ -135,7 +317,7 @@
 
 /* ── Tab content ── */
 #telContent {
-  transition: opacity 0.15s ease;
+  transition: opacity 0.22s ease;
 }
 
 /* ── Skeleton ── */
@@ -265,6 +447,37 @@
   table-layout: fixed;
   width: 100%;
 }
+.telephony-page .call-log-table tbody td {
+  background-clip: padding-box;
+}
+.telephony-page .call-log-table tbody tr:nth-child(even) td.ai-col,
+.telephony-page .call-log-table tbody tr:nth-child(odd) td.ai-col {
+  background-color: transparent !important;
+}
+/* Cooler chrome shells (light) — CRM, not Ting cream paper */
+html:not([data-theme="dark"]):not(.theme-dark) .telephony-page {
+  --tel-cool-bg: #e8eef6;
+  --tel-cool-surface: #f0f4fa;
+  --tel-cool-border: rgba(0, 0, 0, 0.1);
+}
+html:not([data-theme="dark"]):not(.theme-dark) .telephony-page .telephony-filters,
+html:not([data-theme="dark"]):not(.theme-dark) .telephony-page .telephony-kpi-wow,
+html:not([data-theme="dark"]):not(.theme-dark) .telephony-page .missed-call-card,
+html:not([data-theme="dark"]):not(.theme-dark) .telephony-page .telephony-chart-wrap,
+html:not([data-theme="dark"]):not(.theme-dark) .telephony-page .tel-ai-insights,
+html:not([data-theme="dark"]):not(.theme-dark) .telephony-page .telephony-empty,
+html:not([data-theme="dark"]):not(.theme-dark) .telephony-page .routing-rule-card,
+html:not([data-theme="dark"]):not(.theme-dark) .telephony-page .pbx-admin,
+html:not([data-theme="dark"]):not(.theme-dark) .telephony-page .ai-summary-card,
+html:not([data-theme="dark"]):not(.theme-dark) #logTableWrap {
+  background: color-mix(in srgb, var(--tel-cool-bg) 88%, #fff);
+  border-color: var(--tel-cool-border);
+}
+html:not([data-theme="dark"]):not(.theme-dark) .telephony-page .call-detail-panel {
+  background: color-mix(in srgb, #eef3fa 94%, #fff) !important;
+  border-left-color: color-mix(in srgb, var(--gold) 35%, var(--tel-cool-border)) !important;
+  box-shadow: -12px 0 40px rgba(20, 32, 52, 0.14);
+}
 
 .telephony-page .call-log-table .ai-col,
 .telephony-page .call-log-table .call-ai-preview {
@@ -291,6 +504,18 @@
   color: var(--t2);
   font-size: 13px;
   line-height: 1.35;
+  background: transparent !important;
+  box-shadow: none !important;
+  border: none !important;
+  padding: 0 !important;
+  max-width: 100%;
+  white-space: nowrap;
+}
+.telephony-page .call-log-table .ai-col,
+.telephony-page .call-log-table td.ai-col {
+  background: transparent !important;
+  position: relative;
+  z-index: 0;
 }
 
 .telephony-page .call-log-table td.tel-cell-client {
@@ -327,28 +552,46 @@
   border-left-color: var(--gold);
 }
 
-.telephony-page .call-row-wow:hover {
-  background: var(--bg3);
+.telephony-page .call-row-wow:hover,
+.telephony-page .call-row:hover {
+  background: color-mix(in srgb, var(--blue, #4a7fd4) 7%, var(--bg3));
+}
+html[data-theme="dark"] .telephony-page .call-row-wow:hover,
+html[data-theme="dark"] .telephony-page .call-row:hover,
+html.theme-dark .telephony-page .call-row-wow:hover,
+html.theme-dark .telephony-page .call-row:hover {
+  background: color-mix(in srgb, var(--gold, #D4A843) 10%, rgba(30, 38, 54, 0.92));
 }
 
-.telephony-page .call-record-icon {
+.telephony-page .call-record-icon,
+.telephony-page .call-record-play {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 22px;
-  height: 22px;
+  width: 24px;
+  height: 24px;
   border-radius: var(--r-full, 999px);
-  background: var(--bg3);
-  color: var(--blue);
+  background: color-mix(in srgb, var(--blue, #4a7fd4) 12%, var(--bg3));
+  color: var(--blue, #4a7fd4);
   font-size: 11px;
   cursor: pointer;
   vertical-align: middle;
   margin-left: 4px;
-  border: 1px solid var(--brd);
+  border: 1px solid color-mix(in srgb, var(--blue, #4a7fd4) 35%, var(--brd));
+  padding: 0;
+  line-height: 0;
+  transition: background 0.15s ease, box-shadow 0.15s ease, transform 0.12s ease;
 }
-
-.telephony-page .call-record-icon:hover {
-  background: var(--bg2);
+.telephony-page .call-record-play svg { display: block; margin-left: 1px; }
+.telephony-page .call-record-icon:hover,
+.telephony-page .call-record-play:hover {
+  background: color-mix(in srgb, var(--blue, #4a7fd4) 22%, var(--bg2));
+  box-shadow: 0 2px 10px color-mix(in srgb, var(--blue, #4a7fd4) 28%, transparent);
+  transform: scale(1.06);
+}
+.telephony-page .call-record-play:focus-visible {
+  outline: 2px solid var(--gold, var(--blue));
+  outline-offset: 1px;
 }
 
 .telephony-page .call-dadata-badge {
@@ -373,19 +616,53 @@
   color: var(--t3);
 }
 
-.telephony-page .call-row-wow:hover {
-  background: var(--bg3);
+/* Inherit DS .tnum / .tnum--mono (design-tokens.css) */
+.telephony-page .tel-num,
+.telephony-page .tel-cell-client {
+  font-variant-numeric: tabular-nums lining-nums;
+  font-feature-settings: "tnum" 1, "lnum" 1;
+  font-kerning: none;
+}
+.telephony-page .tel-cell-dur,
+.telephony-page td.tel-cell-dur,
+.telephony-page .telephony-kpi-value {
+  font-variant-numeric: tabular-nums lining-nums;
+  font-feature-settings: "tnum" 1, "lnum" 1;
+  font-kerning: none;
+  font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+}
+.telephony-page .tel-cell-dur,
+.telephony-page td.tel-cell-dur {
+  font-size: 0.95em;
+  letter-spacing: 0.02em;
+  min-width: 5ch;
+  width: 6.5ch;
+  text-align: right;
+  white-space: nowrap;
+}
+.telephony-page .call-log-table th[data-col="dur"] {
+  width: 6.5ch;
+  min-width: 6.5ch;
+  white-space: nowrap;
+  text-align: right;
+}
+.telephony-page .telephony-kpi-value {
+  font-size: 0.95em;
+  letter-spacing: 0.02em;
 }
 
 /* Filter pills */
 .telephony-page .tel-filter-pills {
   display: flex;
   gap: 4px;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  max-width: 100%;
+  align-items: center;
 }
 
 .telephony-page .tel-filter-pill {
-  padding: 6px 14px;
+  padding: 5px 9px;
   border-radius: var(--r-full, 999px);
   border: 1px solid var(--brd);
   background: transparent;
@@ -393,7 +670,13 @@
   font-size: 12px;
   font-weight: 500;
   cursor: pointer;
+  white-space: nowrap;
+  flex: 0 0 auto;
   transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+.telephony-page .telephony-filters {
+  flex-wrap: nowrap;
+  overflow-x: auto;
 }
 
 .telephony-page .tel-filter-pill:hover {
@@ -416,8 +699,34 @@
 }
 
 .telephony-page .call-status-badge--done {
-  background: var(--gold-bg);
-  color: var(--ok-t);
+  background: color-mix(in srgb, #166534 22%, var(--bg2));
+  color: #14532D;
+  font-weight: 700;
+  border: 1px solid color-mix(in srgb, #166534 45%, transparent);
+}
+html[data-theme="light"] .telephony-page .call-status-badge--done,
+html:not([data-theme="dark"]):not(.theme-dark) .telephony-page .call-status-badge--done {
+  background: #BBF7D0 !important;
+  color: #14532D !important;
+  border-color: #16A34A !important;
+}
+html[data-theme="dark"] .telephony-page .call-status-badge--done,
+html.theme-dark .telephony-page .call-status-badge--done {
+  background: rgba(34, 197, 94, 0.22) !important;
+  color: #86EFAC !important;
+  border: 1px solid rgba(134, 239, 172, 0.45) !important;
+  font-weight: 700;
+}
+html[data-theme="dark"] .telephony-page .call-ai-status--ai_done,
+html.theme-dark .telephony-page .call-ai-status--ai_done {
+  color: #86EFAC !important;
+  font-weight: 700;
+}
+html[data-theme="dark"] .telephony-page .call-ai-status:not(.call-ai-status--ai_done),
+html.theme-dark .telephony-page .call-ai-status:not(.call-ai-status--ai_done),
+html[data-theme="dark"] .telephony-page .call-status-badge--none,
+html.theme-dark .telephony-page .call-status-badge--none {
+  color: #D1D5DB !important;
 }
 
 .telephony-page .call-status-badge--processing,
@@ -438,14 +747,19 @@
 
 .telephony-page .call-ai-status {
   font-size: 11px;
-  color: var(--t3);
+  color: var(--t2);
   line-height: 1.2;
+  font-weight: 500;
 }
 
 .telephony-page .call-ai-status--ai_done {
-  color: var(--ok-t);
+  color: #14532D;
+  font-weight: 700;
 }
-
+html[data-theme="light"] .telephony-page .call-ai-status--ai_done,
+html:not([data-theme="dark"]):not(.theme-dark) .telephony-page .call-ai-status--ai_done {
+  color: #14532D !important;
+}
 .telephony-page .call-ai-status--ai_error,
 .telephony-page .call-ai-status--stt_error {
   color: var(--err-t);
@@ -707,24 +1021,26 @@
   background: var(--bg3);
 }
 
-/* AI insights strip */
+/* AI insights strip — dense SaaS, not tall sparse */
 .telephony-page .tel-ai-insights {
   background: var(--bg3);
   border-radius: var(--r-lg, 12px);
-  padding: 20px;
-  margin-bottom: 20px;
+  padding: 12px 14px;
+  margin-bottom: 12px;
   border: 1px solid var(--brd);
 }
 
 .telephony-page .tel-ai-insights--compact {
-  margin-bottom: 16px;
+  margin-bottom: 10px;
 }
 
 .telephony-page .tel-ai-insights-title {
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--gold);
-  margin-bottom: 12px;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--t3);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  margin-bottom: 8px;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -733,39 +1049,71 @@
 .telephony-page .tel-ai-insights-grid {
   display: grid;
   grid-template-columns: 1fr 1fr 1fr;
-  gap: 16px;
+  gap: 8px 12px;
 }
 
 .telephony-page .tel-ai-insight-item {
   text-align: center;
+  padding: 4px 0;
 }
 
 .telephony-page .tel-ai-insight-value {
-  font-size: 24px;
+  font-size: 20px;
   font-weight: 700;
   color: var(--t1);
+  line-height: 1.15;
 }
 
 .telephony-page .tel-ai-insight-label {
-  font-size: 11px;
+  font-size: 10px;
   color: var(--t3);
   text-transform: uppercase;
   letter-spacing: 0.04em;
   margin-top: 2px;
 }
 
-/* Missed cards */
+/* Missed cards — dense rows (no max-height clip) */
 .telephony-page .missed-call-card {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
-  gap: 12px 16px;
+  gap: 4px 8px;
   align-items: center;
-  padding: 14px 16px;
+  padding: 6px 10px;
   background: var(--bg2);
   border: 1px solid var(--brd);
   border-left: 3px solid var(--red);
-  border-radius: var(--r-lg, 12px);
-  margin-bottom: 8px;
+  border-radius: 8px;
+  margin-bottom: 3px;
+  min-height: 42px;
+  max-height: none;
+  overflow: visible;
+}
+.telephony-page .missed-call-card-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--red, #C8293B) 14%, var(--bg3));
+  color: var(--red, #C8293B);
+}
+.telephony-page .missed-tag {
+  display: inline-block;
+  padding: 1px 7px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 600;
+  background: color-mix(in srgb, var(--red, #C8293B) 12%, var(--bg3));
+  color: var(--red, #C8293B);
+  border: 1px solid color-mix(in srgb, var(--red, #C8293B) 28%, transparent);
+}
+.telephony-page .missed-tag--reason {
+  background: color-mix(in srgb, var(--t3) 12%, var(--bg3));
+  color: var(--t2);
+  border-color: color-mix(in srgb, var(--t3) 30%, transparent);
+  font-weight: 500;
 }
 
 .telephony-page .missed-card-wow {
@@ -775,10 +1123,6 @@
 .telephony-page .missed-card-wow--unack {
   border-color: color-mix(in srgb, var(--red) 45%, var(--brd));
   border-left-color: var(--red);
-}
-
-.telephony-page .missed-call-card-icon {
-  flex-shrink: 0;
 }
 
 .telephony-page .missed-call-card-info {
@@ -832,8 +1176,9 @@
   border-radius: var(--r-full, 999px);
   font-size: 11px;
   font-weight: 600;
-  background: color-mix(in srgb, var(--err-t) 12%, var(--bg3));
-  color: var(--err-t);
+  background: color-mix(in srgb, var(--err-t, var(--red)) 14%, var(--bg3)) !important;
+  color: var(--err-t, var(--red)) !important;
+  border: 1px solid color-mix(in srgb, var(--err-t, var(--red)) 28%, transparent);
 }
 
 .telephony-page .missed-dadata-info {
@@ -889,17 +1234,36 @@
   font-size: 12px;
 }
 
-/* ── Transcript ── */
+/* ── Transcript — inherit DS thin scrollbar (design-tokens); no hard hex ── */
 .telephony-page .transcript-viewer {
   max-height: 340px;
   overflow-y: auto;
   padding: 12px;
+  padding-right: 10px;
   background: var(--bg3);
   border-radius: var(--r-md, 8px);
   font-family: var(--mono, ui-monospace, monospace);
   font-size: 13px;
   line-height: 1.75;
   border: 1px solid var(--brd);
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--t3) 55%, transparent) transparent;
+}
+.telephony-page .transcript-viewer::-webkit-scrollbar {
+  width: 6px;
+}
+.telephony-page .transcript-viewer::-webkit-scrollbar-track {
+  background: transparent;
+  margin: 4px 0;
+}
+.telephony-page .transcript-viewer::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--t3) 55%, transparent);
+  border-radius: 999px;
+  min-height: 28px;
+}
+.telephony-page .transcript-viewer::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in srgb, var(--t2) 70%, transparent);
 }
 
 .telephony-page .transcript-line {
@@ -1168,6 +1532,26 @@
   cursor: pointer;
 }
 
+/* Beat app.css navy play — gold CRM primary */
+.telephony-page .audio-player-play,
+.telephony-page #apPlay.audio-player-play {
+  background: linear-gradient(180deg, var(--gold-l, #E8C35A), var(--gold, #D4A843)) !important;
+  color: #1a1205 !important;
+  border: none !important;
+  box-shadow: 0 6px 16px color-mix(in srgb, var(--gold, #D4A843) 32%, transparent) !important;
+  font-weight: 700;
+}
+.telephony-page .audio-player-play:hover,
+.telephony-page #apPlay.audio-player-play:hover {
+  background: linear-gradient(180deg, #f0d06e, var(--gold-l, #E8C35A)) !important;
+  filter: brightness(1.04);
+  box-shadow: 0 8px 20px color-mix(in srgb, var(--gold, #D4A843) 40%, transparent) !important;
+}
+.telephony-page .audio-player-play:disabled {
+  opacity: 0.55;
+  filter: grayscale(0.15);
+}
+
 /* Routing drag */
 .telephony-page .routing-rule-card {
   transition: border-color 0.15s;
@@ -1189,7 +1573,7 @@
 
 /* Empty / modal helpers */
 .telephony-page .telephony-empty-icon {
-  font-size: 2.4rem;
+  display: none;
 }
 
 .telephony-page .tel-modal-hint {
@@ -1300,6 +1684,1030 @@
 
 .telephony-page .cr-badge--spaced {
   margin-right: 8px;
+}
+
+/* ── Ting+ densify (scoped overrides) ── */
+.telephony-page .telephony-tabs {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-bottom: 16px;
+  padding: 4px;
+  background: var(--bg2);
+  border: 1px solid var(--brd);
+  border-radius: 999px;
+  width: auto;
+  max-width: 100%;
+}
+
+.telephony-page .telephony-tab {
+  flex: 0 1 auto;
+  padding: 8px 14px;
+  border-radius: 999px;
+  border: none;
+  background: transparent;
+  color: var(--t2);
+  font-size: 13px;
+  font-weight: 600;
+  box-shadow: none;
+  transform: none;
+}
+
+.telephony-page .telephony-tab:hover {
+  background: var(--bg3);
+  color: var(--t1);
+}
+
+.telephony-page .telephony-tab--active {
+  background: var(--bg4);
+  color: var(--t1);
+  border: none;
+  box-shadow: none;
+  transform: none;
+}
+
+.telephony-page .telephony-tab--active::after {
+  display: none;
+}
+
+.telephony-page .telephony-tab-badge {
+  margin-left: 6px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--err, var(--red)) 18%, transparent);
+  color: var(--err-t, var(--red));
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.telephony-page .telephony-filters {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  margin-bottom: 12px;
+  background: color-mix(in srgb, var(--bg2) 92%, var(--bg3));
+  border: 1px solid var(--brd);
+  border-radius: 14px;
+  overflow-x: auto;
+}
+.telephony-page .telephony-filters #fDateFrom,
+.telephony-page .telephony-filters #fDateTo,
+.telephony-page .telephony-filters input[type="date"] {
+  flex: 0 0 auto;
+  width: 138px;
+  max-width: 138px;
+}
+.telephony-page .telephony-filters #fSearch {
+  flex: 1 1 160px;
+  min-width: 140px;
+}
+.telephony-page .telephony-filters #fApply,
+.telephony-page .telephony-filters #sApply {
+  flex: 0 0 auto;
+  margin-left: auto;
+}
+
+.telephony-page .telephony-filters input,
+.telephony-page .telephony-filters select {
+  padding: 7px 10px;
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.telephony-page .telephony-filters input:focus,
+.telephony-page .telephony-filters select:focus {
+  border-color: color-mix(in srgb, var(--gold, var(--blue)) 55%, var(--brd));
+}
+
+.telephony-page .tel-filter-pills {
+  display: inline-flex;
+  flex-wrap: nowrap !important;
+  gap: 3px;
+  padding: 3px;
+  background: var(--bg3);
+  border: 1px solid var(--brd-m);
+  border-radius: 999px;
+  max-width: none;
+  overflow: visible;
+  align-items: center;
+  white-space: nowrap;
+}
+
+.telephony-page .tel-filter-pill {
+  padding: 6px 10px;
+  border-radius: 999px;
+  border: none;
+  background: transparent;
+  color: var(--t2);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  flex: 0 0 auto;
+}
+
+.telephony-page .tel-filter-pill--active {
+  background: var(--bg4);
+  color: var(--t1);
+}
+
+.telephony-page .telephony-dashboard {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.telephony-page .telephony-kpi-wow {
+  background: color-mix(in srgb, var(--bg2) 96%, transparent);
+  border: 1px solid var(--brd);
+  border-radius: 16px;
+  padding: 16px 14px;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.1);
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  min-height: 148px;
+}
+
+.telephony-page .telephony-kpi-icon-wow {
+  width: 36px;
+  height: 36px;
+  border-radius: 12px;
+  font-size: 0;
+}
+
+.telephony-page .telephony-kpi-icon-wow svg {
+  display: block;
+}
+
+.telephony-page .telephony-kpi-value {
+  font-variant-numeric: tabular-nums;
+  font-weight: 800;
+  font-size: 22px;
+  color: var(--t1);
+}
+
+.telephony-page .telephony-kpi-label {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--t3);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-top: 4px;
+}
+
+.telephony-page .telephony-chart-wrap,
+.telephony-page .missed-call-card,
+.telephony-page .missed-card-wow,
+.telephony-page .tel-ai-insights {
+  background: var(--bg2);
+  border: 1px solid var(--brd);
+  border-radius: 12px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.06);
+}
+.telephony-page .tel-ai-insights.cr-wow-card {
+  padding: 12px 14px !important;
+  min-height: 0 !important;
+}
+#routingList {
+  min-height: 0 !important;
+}
+#routingList .telephony-empty {
+  max-height: 96px !important;
+  min-height: 72px !important;
+}
+#telAnalyticsList details,
+#telAnalyticsList .cr-accordion-item,
+#telAnalyticsList > div {
+  margin-bottom: 6px;
+}
+#telAnalyticsList summary,
+#telAnalyticsList .cr-accordion-head {
+  padding: 8px 12px !important;
+  min-height: 0 !important;
+}
+
+.telephony-page .missed-call-card,
+.telephony-page .missed-card-wow {
+  padding: 8px 12px;
+  margin-bottom: 4px;
+  min-height: 52px;
+  max-height: none;
+  border-radius: 10px;
+  border: 1px solid var(--brd) !important;
+  box-shadow: none !important;
+  gap: 8px 10px;
+  background: var(--bg2);
+  align-items: center;
+  overflow: visible;
+}
+.telephony-page .missed-call-card-info {
+  overflow: visible;
+  min-width: 0;
+}
+.telephony-page .missed-call-card-info .tel-meta-sm,
+.telephony-page .missed-call-meta {
+  white-space: normal;
+  line-height: 1.35;
+}
+html[data-theme="dark"] .telephony-page .missed-call-card,
+html.theme-dark .telephony-page .missed-call-card,
+body.theme-dark .telephony-page .missed-call-card {
+  background: color-mix(in srgb, var(--bg2) 92%, #000);
+  border-color: color-mix(in srgb, var(--brd) 80%, transparent) !important;
+  box-shadow: none !important;
+}
+.telephony-page .missed-call-card-actions .btn {
+  padding: 6px 10px;
+  font-size: 12px;
+  min-height: 32px;
+}
+
+.telephony-page .tel-ai-insights-title {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--t3);
+}
+
+.telephony-page .telephony-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 16px 14px;
+  text-align: center;
+  background: var(--bg2);
+  border: 1px solid var(--brd);
+  border-radius: 12px;
+  min-height: 72px;
+  max-height: 96px;
+  width: 100%;
+  box-sizing: border-box;
+}
+/* Routing/analytics: don't let empty/short content stretch to viewport */
+.telephony-page #telContent {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: flex-start;
+  gap: 10px;
+  flex: 0 0 auto;
+  min-height: 0;
+}
+.telephony-page #telContent > .telephony-empty,
+.telephony-page #telContent > .tel-ai-insights,
+.telephony-page #telContent > #telAnalyticsList,
+.telephony-page #telAnalyticsList,
+.telephony-page #telAnalyticsList .cr-accordion {
+  flex: 0 0 auto;
+  align-self: stretch;
+}
+.telephony-page #telAnalyticsList {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 0;
+  padding-bottom: 0;
+}
+.telephony-page #telAnalyticsList .cr-accordion--tel {
+  margin-bottom: 0;
+}
+/* Analytics: keep shell content-sized; fill with open accordion body, not empty card void */
+.telephony-page:has(#telAnalyticsList) {
+  max-width: 100%;
+}
+.telephony-page:has(#telAnalyticsList) #telContent {
+  gap: 8px;
+  padding-bottom: 8px;
+}
+.telephony-page #telAnalyticsList .cr-accordion--open .cr-accordion__body {
+  max-height: 2000px;
+  padding: 12px 14px 14px;
+  border-top: 1px solid color-mix(in srgb, var(--brd) 55%, transparent);
+  background: color-mix(in srgb, var(--bg3) 35%, transparent);
+}
+.telephony-page #telAnalyticsList .tel-report-summary {
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--t2);
+  margin-bottom: 10px;
+}
+.telephony-page #telAnalyticsList .tel-report-metrics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 16px;
+  margin-bottom: 10px;
+}
+.telephony-page #telAnalyticsList .tel-report-recs-title {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--t3);
+  margin: 4px 0 6px;
+}
+.telephony-page #telAnalyticsList .tel-report-recs {
+  margin: 0 0 10px;
+  padding-left: 18px;
+  color: var(--t2);
+  font-size: 13px;
+  line-height: 1.4;
+}
+.telephony-page #telAnalyticsList .tel-report-open .btn--primary {
+  margin-top: 2px;
+}
+body:has(.telephony-page) .main,
+body:has(.telephony-page) main.main,
+html body:has(.telephony-page) .asg-main-wrap {
+  align-items: flex-start !important;
+}
+.telephony-page .tel-ai-insights + *,
+.telephony-page .tel-report-list,
+.telephony-page .analytics-report-list {
+  margin-top: 0;
+}
+
+.telephony-page .telephony-empty-mark {
+  width: 40px;
+  height: 40px;
+  border-radius: 14px;
+  border: 1px solid var(--brd);
+  background: var(--bg3);
+  position: relative;
+}
+
+.telephony-page .telephony-empty-mark::after {
+  content: "";
+  position: absolute;
+  inset: 12px;
+  border-radius: 999px;
+  border: 2px solid var(--t3);
+  opacity: 0.55;
+}
+
+.telephony-page .telephony-empty--ok .telephony-empty-mark {
+  border-color: color-mix(in srgb, var(--ok-t) 35%, var(--brd));
+  background: color-mix(in srgb, var(--ok-t) 12%, var(--bg3));
+}
+
+.telephony-page .telephony-empty--warn .telephony-empty-mark {
+  border-color: color-mix(in srgb, var(--gold) 40%, var(--brd));
+  background: color-mix(in srgb, var(--gold) 12%, var(--bg3));
+}
+
+.telephony-page .telephony-empty--lock .telephony-empty-mark::after {
+  border-radius: 4px;
+}
+
+.telephony-page .telephony-empty-text,
+.telephony-page .telephony-empty p {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--t2);
+  max-width: 360px;
+}
+
+#logTableWrap {
+  background: var(--bg2);
+  border: 1px solid var(--brd);
+  border-radius: 16px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.08);
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Gold primary CTA language (Ting+); one hero action */
+.telephony-page .call-detail-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.telephony-page .call-detail-actions .btn--primary {
+  order: -1;
+}
+
+.telephony-page .ph-dial-call,
+.telephony-page .missed-call-btn--callback,
+body .ph-dial-call.btn.primary,
+body .btn.primary.ph-dial-call {
+  background: linear-gradient(180deg, var(--gold-l, #E8C35A), var(--gold, #D4A843)) !important;
+  color: #1a1205 !important;
+  border: none !important;
+  font-weight: 700;
+}
+
+/* Journal selected row when detail drawer open — cool base + gold edge */
+.telephony-page .call-row.is-selected td,
+.telephony-page tr.call-row.is-selected td {
+  background: #e4ebf5 !important;
+  box-shadow: inset 3px 0 0 var(--gold, #D4A843);
+}
+html[data-theme="dark"] .telephony-page .call-row.is-selected td,
+html.theme-dark .telephony-page .call-row.is-selected td {
+  background: rgba(36, 44, 60, 0.98) !important;
+  box-shadow: inset 3px 0 0 var(--gold, #D4A843);
+}
+
+/* Softphone dock clearance — pad the scroll surfaces, not only page shell */
+body:has(.ph-bar) .telephony-page,
+body:has(.ph-bar.is-gallery) .telephony-page,
+body:has(.ph-bar) #content:has(.telephony-page),
+body:has(.ph-bar.is-gallery) #content:has(.telephony-page) {
+  padding-bottom: 140px !important;
+}
+body:has(.ph-bar) .telephony-page #telContent,
+body:has(.ph-bar.is-gallery) .telephony-page #telContent {
+  padding-bottom: 140px !important;
+  box-sizing: border-box;
+  scroll-padding-bottom: 140px;
+}
+body:has(.ph-bar) .telephony-page .telephony-pagination,
+body:has(.ph-bar.is-gallery) .telephony-page .telephony-pagination,
+body:has(.ph-bar) #logPagination,
+body:has(.ph-bar.is-gallery) #logPagination {
+  padding-bottom: 140px !important;
+  box-sizing: border-box;
+}
+body:has(.ph-bar) #logTableWrap,
+body:has(.ph-bar.is-gallery) #logTableWrap,
+body:has(.ph-bar) .telephony-page .missed-list,
+body:has(.ph-bar.is-gallery) .telephony-page .missed-list {
+  margin-bottom: 0;
+  padding-bottom: 140px !important;
+  box-sizing: border-box;
+}
+body:has(.ph-bar--mini) .telephony-page,
+body:has(.ph-bar--mini) .telephony-page #telContent,
+body:has(.ph-bar--mini) #logTableWrap,
+body:has(.ph-bar--mini) .telephony-page .missed-list,
+body:has(.ph-bar--mini) .telephony-page .telephony-pagination,
+body:has(.ph-bar--mini) #logPagination {
+  padding-bottom: 120px !important;
+  scroll-padding-bottom: 120px;
+}
+
+/* Detail drawer: always scrollable body, sticky header */
+.telephony-page .call-detail-panel,
+.call-detail-panel {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.telephony-page .call-detail-header,
+.call-detail-header {
+  flex-shrink: 0;
+}
+.telephony-page .call-detail-body,
+.call-detail-body {
+  flex: 1 1 auto;
+  overflow-y: auto !important;
+  overscroll-behavior: contain;
+  padding-bottom: 48px !important;
+  max-height: calc(100vh - 72px);
+}
+.telephony-page .call-detail-section:last-child,
+.call-detail-section:last-child {
+  margin-bottom: 24px;
+}
+.telephony-page .ai-summary-tags,
+.telephony-page .ai-summary-tags--spaced {
+  padding-bottom: 8px;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+/* ══ UX-2026: sticky journal cols, AI air/collapse/radial, PBX footer, analytics dots ══ */
+.telephony-page .call-log-table {
+  border-collapse: separate;
+  border-spacing: 0;
+  /* Overflow middle cols under sticky edges (rating stays left of sticky last) */
+  min-width: 1360px;
+}
+/* Sticky: col1 Date, col2 Direction, last Processing */
+.telephony-page .call-log-table th:nth-child(1),
+.telephony-page .call-log-table td:nth-child(1) {
+  position: sticky;
+  left: 0;
+  z-index: 3;
+  min-width: 118px;
+  box-shadow: 4px 0 10px rgba(0, 0, 0, 0.08);
+}
+.telephony-page .call-log-table th:nth-child(2),
+.telephony-page .call-log-table td:nth-child(2) {
+  position: sticky;
+  left: 118px;
+  z-index: 3;
+  min-width: 56px;
+  box-shadow: 4px 0 10px rgba(0, 0, 0, 0.06);
+}
+.telephony-page .call-log-table th:last-child,
+.telephony-page .call-log-table td:last-child {
+  position: sticky;
+  right: 0;
+  z-index: 4;
+  min-width: 148px;
+  max-width: 168px;
+  box-shadow: -6px 0 12px rgba(0, 0, 0, 0.1);
+}
+.telephony-page .call-log-table thead th:nth-child(1),
+.telephony-page .call-log-table thead th:nth-child(2),
+.telephony-page .call-log-table thead th:last-child {
+  z-index: 6;
+}
+.telephony-page .call-log-table tbody td:nth-child(1),
+.telephony-page .call-log-table tbody td:nth-child(2),
+.telephony-page .call-log-table tbody td:last-child {
+  background: #ffffff;
+}
+html:not([data-theme="dark"]):not(.theme-dark) .telephony-page .call-log-table tbody td:nth-child(1),
+html:not([data-theme="dark"]):not(.theme-dark) .telephony-page .call-log-table tbody td:nth-child(2),
+html:not([data-theme="dark"]):not(.theme-dark) .telephony-page .call-log-table tbody td:last-child {
+  background: #ffffff;
+}
+.telephony-page .call-log-table tbody tr:nth-child(even) td:nth-child(1),
+.telephony-page .call-log-table tbody tr:nth-child(even) td:nth-child(2),
+.telephony-page .call-log-table tbody tr:nth-child(even) td:last-child {
+  background: #f8f9fa;
+}
+.telephony-page .call-log-table tbody tr:hover td:nth-child(1),
+.telephony-page .call-log-table tbody tr:hover td:nth-child(2),
+.telephony-page .call-log-table tbody tr:hover td:last-child {
+  background: #eef2f7;
+}
+.telephony-page .call-row.is-selected td:nth-child(1),
+.telephony-page .call-row.is-selected td:nth-child(2),
+.telephony-page .call-row.is-selected td:last-child,
+.telephony-page tr.call-row.is-selected td:nth-child(1),
+.telephony-page tr.call-row.is-selected td:nth-child(2),
+.telephony-page tr.call-row.is-selected td:last-child {
+  background: #e4ebf5 !important;
+}
+html[data-theme="dark"] .telephony-page .call-log-table thead th:nth-child(1),
+html[data-theme="dark"] .telephony-page .call-log-table thead th:nth-child(2),
+html[data-theme="dark"] .telephony-page .call-log-table thead th:last-child,
+html.theme-dark .telephony-page .call-log-table thead th:nth-child(1),
+html.theme-dark .telephony-page .call-log-table thead th:nth-child(2),
+html.theme-dark .telephony-page .call-log-table thead th:last-child {
+  background: #151b28 !important;
+}
+html[data-theme="dark"] .telephony-page .call-log-table tbody td:nth-child(1),
+html[data-theme="dark"] .telephony-page .call-log-table tbody td:nth-child(2),
+html[data-theme="dark"] .telephony-page .call-log-table tbody td:last-child,
+html.theme-dark .telephony-page .call-log-table tbody td:nth-child(1),
+html.theme-dark .telephony-page .call-log-table tbody td:nth-child(2),
+html.theme-dark .telephony-page .call-log-table tbody td:last-child {
+  background: #1a2030 !important;
+}
+html[data-theme="dark"] .telephony-page .call-log-table tbody tr:nth-child(even) td:nth-child(1),
+html[data-theme="dark"] .telephony-page .call-log-table tbody tr:nth-child(even) td:nth-child(2),
+html[data-theme="dark"] .telephony-page .call-log-table tbody tr:nth-child(even) td:last-child,
+html.theme-dark .telephony-page .call-log-table tbody tr:nth-child(even) td:nth-child(1),
+html.theme-dark .telephony-page .call-log-table tbody tr:nth-child(even) td:last-child,
+html.theme-dark .telephony-page .call-log-table tbody tr:nth-child(even) td:nth-child(2) {
+  background: #1e2636 !important;
+}
+html[data-theme="dark"] .telephony-page .call-row.is-selected td:nth-child(1),
+html[data-theme="dark"] .telephony-page .call-row.is-selected td:nth-child(2),
+html[data-theme="dark"] .telephony-page .call-row.is-selected td:last-child,
+html.theme-dark .telephony-page .call-row.is-selected td:nth-child(1),
+html.theme-dark .telephony-page .call-row.is-selected td:nth-child(2),
+html.theme-dark .telephony-page .call-row.is-selected td:last-child {
+  background: #242c3c !important;
+}
+/* Sticky last must fully occlude scrolled middle cols (no text bleed) */
+html[data-theme="dark"] .telephony-page .call-log-table td:last-child,
+html[data-theme="dark"] .telephony-page .call-log-table th:last-child,
+html.theme-dark .telephony-page .call-log-table td:last-child,
+html.theme-dark .telephony-page .call-log-table th:last-child {
+  background-clip: padding-box;
+  isolation: isolate;
+}
+.telephony-page .call-log-table td:nth-child(3),
+.telephony-page .call-log-table td:nth-child(4),
+.telephony-page .telephony-kpi-value,
+.telephony-page .ph-bar-num,
+.telephony-page .managers-stats-table td {
+  font-variant-numeric: tabular-nums;
+}
+.telephony-page .call-rating-col {
+  white-space: nowrap;
+  min-width: 64px;
+}
+.telephony-page .call-process-col {
+  overflow: hidden;
+}
+/* play-in-row styles live near .call-row-wow (call-record-play) */
+html[data-theme="light"] .telephony-page .call-log-table thead th:first-child,
+html[data-theme="light"] .telephony-page .call-log-table thead th:last-child,
+html:not([data-theme="dark"]):not(.theme-dark) .telephony-page .call-log-table thead th:first-child,
+html:not([data-theme="dark"]):not(.theme-dark) .telephony-page .call-log-table thead th:last-child {
+  background: #E0E7F1 !important;
+}
+
+.telephony-page .call-detail-body .call-detail-section {
+  margin-bottom: 18px;
+  padding: 4px 0 10px;
+}
+.telephony-page .call-detail-body .call-detail-section + .call-detail-section {
+  border-top: 1px solid color-mix(in srgb, var(--brd) 55%, transparent);
+  padding-top: 14px;
+}
+.telephony-page .ai-collapse {
+  border: 1px solid color-mix(in srgb, var(--brd) 70%, transparent);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--bg3) 40%, transparent);
+  margin: 10px 0 0;
+  overflow: hidden;
+}
+.telephony-page .ai-collapse > summary {
+  cursor: pointer;
+  list-style: none;
+  padding: 10px 14px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--t2);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  user-select: none;
+}
+.telephony-page .ai-collapse > summary::-webkit-details-marker { display: none; }
+.telephony-page .ai-collapse > summary::after {
+  content: "";
+  width: 7px;
+  height: 7px;
+  border-right: 2px solid var(--t3);
+  border-bottom: 2px solid var(--t3);
+  transform: rotate(45deg);
+  transition: transform 0.15s;
+  flex-shrink: 0;
+}
+.telephony-page .ai-collapse[open] > summary::after {
+  transform: rotate(225deg);
+  margin-top: 4px;
+}
+.telephony-page .ai-collapse__body {
+  padding: 4px 14px 14px;
+}
+.telephony-page .ai-quality-radial-wrap {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin: 8px 0 4px;
+}
+.telephony-page .ai-quality-radial {
+  --radial-size: 48px;
+  position: relative;
+  width: var(--radial-size);
+  height: var(--radial-size);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.telephony-page .ai-quality-radial svg {
+  position: absolute;
+  inset: 0;
+  transform: rotate(-90deg);
+}
+.telephony-page .ai-quality-radial__track {
+  fill: none;
+  stroke: color-mix(in srgb, var(--brd) 80%, transparent);
+  stroke-width: 3.5;
+}
+.telephony-page .ai-quality-radial__fill {
+  fill: none;
+  stroke-width: 3.5;
+  stroke-linecap: round;
+  transition: stroke-dashoffset 0.35s ease;
+}
+.telephony-page .ai-quality-radial--high .ai-quality-radial__fill { stroke: var(--ok, #3d9a6a); }
+.telephony-page .ai-quality-radial--medium .ai-quality-radial__fill { stroke: var(--gold, #D4A843); }
+.telephony-page .ai-quality-radial--low .ai-quality-radial__fill { stroke: var(--err, #c8293b); }
+.telephony-page .ai-quality-radial__num {
+  position: relative;
+  z-index: 1;
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--t1);
+  line-height: 1;
+}
+.telephony-page .ai-quality-radial__label {
+  font-size: 13px;
+  color: var(--t2);
+  font-weight: 600;
+}
+.telephony-page .ai-quality-radial--sm {
+  --radial-size: 28px;
+}
+.telephony-page .ai-quality-radial--sm .ai-quality-radial__num {
+  font-size: 9px;
+  font-weight: 800;
+}
+.telephony-page .call-rating-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  vertical-align: middle;
+}
+
+.telephony-page .pbx-settings-shell {
+  display: flex;
+  flex-direction: column;
+  min-height: 280px;
+  max-height: min(70vh, 640px);
+  border: 1px solid var(--brd);
+  border-radius: 14px;
+  overflow: hidden;
+  background: var(--bg2);
+}
+.telephony-page .pbx-settings-scroll {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  padding: 14px 16px 12px;
+  overscroll-behavior: contain;
+}
+.telephony-page .pbx-settings-footer {
+  flex-shrink: 0;
+  position: sticky;
+  bottom: 0;
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 10px 16px;
+  border-top: 1px solid var(--brd);
+  background: color-mix(in srgb, var(--bg2) 92%, var(--bg3));
+  backdrop-filter: blur(8px);
+  z-index: 2;
+}
+.telephony-page .pbx-settings-footer #pbxSaveSettings {
+  margin-top: 0 !important;
+}
+
+.telephony-page .tel-report-status {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  margin-right: 8px;
+  vertical-align: middle;
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--bg2) 80%, transparent);
+}
+.telephony-page .tel-report-status--ok { background: var(--ok, #3d9a6a); }
+.telephony-page .tel-report-status--warn { background: var(--gold, #D4A843); }
+.telephony-page .tel-report-status--error { background: var(--err, #c8293b); }
+.telephony-page .tel-report-status--pending {
+  background: var(--t3);
+  animation: tel-status-pulse 1.2s ease-in-out infinite;
+}
+@keyframes tel-status-pulse {
+  0%, 100% { opacity: 0.45; }
+  50% { opacity: 1; }
+}
+.telephony-page .cr-accordion__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.telephony-page .cr-accordion__head-main {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  flex: 1;
+}
+
+/* Mimír tip: strip emoji chrome on telephony surface */
+.telephony-page .mh-pill-emoji,
+.mh-root .mh-pill-emoji {
+  display: none !important;
+}
+.telephony-page .mh-teaser,
+.mh-root.mh-on-telephony .mh-teaser {
+  font-variant-emoji: text;
+}
+
+/* ══ Premium-2026: saved views, sparklines, AI popover, col menu, transitions ══ */
+.telephony-page .tel-saved-views {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 6px;
+  margin: 0 0 10px;
+  min-height: 0;
+  overflow-x: auto;
+  max-width: 100%;
+  scrollbar-width: thin;
+}
+.telephony-page .tel-saved-view-chip {
+  border: 1px solid color-mix(in srgb, var(--brd) 80%, transparent);
+  background: color-mix(in srgb, var(--bg2) 92%, transparent);
+  color: var(--t2);
+  font-size: 12px;
+  font-weight: 650;
+  padding: 5px 10px;
+  border-radius: 999px;
+  cursor: pointer;
+  white-space: nowrap;
+  flex: 0 0 auto;
+  transition: background 0.2s ease, border-color 0.2s ease, color 0.2s ease, box-shadow 0.2s ease;
+}
+.telephony-page .tel-saved-view-chip:hover {
+  border-color: color-mix(in srgb, var(--gold) 45%, var(--brd));
+  color: var(--t1);
+  box-shadow: 0 2px 10px color-mix(in srgb, var(--gold) 18%, transparent);
+}
+.telephony-page .tel-sparkline {
+  display: block;
+  width: 100% !important;
+  max-width: none !important;
+  height: 40px !important;
+  margin-top: 12px;
+  color: var(--gold, #D4A843);
+  opacity: 1;
+}
+.telephony-page .telephony-kpi-wow .tel-sparkline {
+  margin-top: auto;
+  padding-top: 8px;
+}
+html[data-theme="dark"] .telephony-page .tel-sparkline,
+html.theme-dark .telephony-page .tel-sparkline {
+  color: var(--gold-l, #E8C35A);
+  filter: drop-shadow(0 0 6px color-mix(in srgb, var(--gold) 55%, transparent));
+}
+.telephony-page .telephony-kpi-wow {
+  transition: transform 0.22s ease, box-shadow 0.22s ease;
+}
+.telephony-page .ai-quality-radial-wrap--btn {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  padding: 0;
+  margin: 0;
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+}
+.telephony-page .ai-quality-popover {
+  margin-top: 10px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid color-mix(in srgb, var(--brd) 75%, transparent);
+  background: color-mix(in srgb, var(--bg2) 88%, transparent);
+  backdrop-filter: blur(14px) saturate(1.2);
+  -webkit-backdrop-filter: blur(14px) saturate(1.2);
+  box-shadow: 0 12px 28px rgba(12, 22, 40, 0.14);
+  animation: tel-pop-in 0.22s ease;
+}
+.telephony-page .ai-quality-popover[hidden] { display: none !important; }
+@keyframes tel-pop-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.telephony-page .ai-quality-popover__title {
+  font-size: 11px;
+  font-weight: 750;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--t3);
+  margin-bottom: 8px;
+}
+.telephony-page .ai-quality-dim {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 13px;
+  padding: 4px 0;
+  color: var(--t2);
+  font-variant-numeric: tabular-nums;
+}
+.telephony-page .ai-quality-dim b { color: var(--t1); }
+.telephony-page .ai-quality-notes {
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--t2);
+  line-height: 1.4;
+}
+.telephony-page .ai-hl {
+  background: color-mix(in srgb, var(--gold) 22%, transparent);
+  color: inherit;
+  border-radius: 3px;
+  padding: 0 2px;
+}
+.telephony-page .ai-hl--key {
+  background: color-mix(in srgb, var(--blue, #4a7fd4) 18%, transparent);
+}
+.telephony-page .ai-field-act {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 6px;
+  padding: 2px 8px;
+  border-radius: 8px;
+  border: 1px solid color-mix(in srgb, var(--gold) 40%, var(--brd));
+  background: color-mix(in srgb, var(--gold) 10%, var(--bg3));
+  color: var(--t1);
+  font-size: 11px;
+  font-weight: 650;
+  text-decoration: none;
+  cursor: pointer;
+  transition: background 0.18s ease, box-shadow 0.18s ease;
+}
+.telephony-page .ai-field-act:hover {
+  background: color-mix(in srgb, var(--gold) 18%, var(--bg2));
+  box-shadow: 0 2px 8px color-mix(in srgb, var(--gold) 22%, transparent);
+}
+.telephony-page .ai-next-steps--check {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+.telephony-page .ai-step-check {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--t1);
+  padding: 4px 0;
+}
+.telephony-page .ai-step-check input { margin-top: 3px; }
+.tel-col-menu,
+.telephony-page .tel-col-menu {
+  position: fixed;
+  z-index: 100040;
+  min-width: 220px;
+  padding: 10px;
+  border-radius: 12px;
+  border: 1px solid var(--brd);
+  background: color-mix(in srgb, var(--bg2) 94%, transparent);
+  backdrop-filter: blur(16px);
+  box-shadow: 0 16px 36px rgba(12, 22, 40, 0.18);
+  animation: tel-pop-in 0.2s ease;
+}
+.telephony-page .telephony-filters { position: relative; }
+.telephony-page .tel-col-menu__title {
+  font-size: 11px;
+  font-weight: 750;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--t3);
+  margin-bottom: 8px;
+}
+.telephony-page .tel-col-menu__row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 4px;
+  font-size: 13px;
+  color: var(--t1);
+  cursor: grab;
+  border-radius: 8px;
+}
+.telephony-page .tel-col-menu__row:hover { background: var(--bg3); }
+.telephony-page .tel-routing-empty .telephony-empty-mark {
+  width: 56px;
+  height: 56px;
+  margin: 0 auto 12px;
+  border-radius: 16px;
+  background:
+    radial-gradient(circle at 30% 30%, color-mix(in srgb, var(--gold) 55%, #fff), transparent 55%),
+    linear-gradient(165deg, color-mix(in srgb, var(--gold) 28%, var(--bg3)), var(--bg2));
+  border: 1px solid color-mix(in srgb, var(--gold) 40%, var(--brd));
+  box-shadow: 0 10px 24px color-mix(in srgb, var(--gold) 18%, transparent);
+}
+.telephony-page .tel-routing-templates {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: center;
+  margin-top: 14px;
+}
+.telephony-page .call-detail-panel {
+  transition: transform 0.28s ease, opacity 0.28s ease;
+}
+.telephony-page .call-detail-overlay {
+  transition: opacity 0.25s ease;
+}
+.telephony-page .telephony-tab {
+  transition: background 0.2s ease, color 0.2s ease, border-color 0.2s ease;
+}
+.telephony-page .ph-modal,
+.ph-modal {
+  transition: opacity 0.22s ease, transform 0.22s ease;
 }
 
 /* Responsive */

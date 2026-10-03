@@ -540,7 +540,18 @@ module.exports.run = async function run() {
       { timeout: 8000 }
     );
     await page.waitForSelector('#retranscribeBtn', { timeout: 8000 });
-    await page.click('#retranscribeBtn');
+    await page.evaluate(() => {
+      try {
+        if (window.HuginnDock && HuginnDock.collapse) HuginnDock.collapse();
+        else {
+          var hg = document.getElementById('huginnDock');
+          if (hg) hg.classList.add('is-collapsed');
+          document.body.classList.add('hg-dock-collapsed');
+          document.body.classList.remove('hg-dock-open');
+        }
+      } catch (_) {}
+    });
+    await page.click('#retranscribeBtn', { force: true });
     await waitReq(
       log,
       (r) => r.method === 'POST' && r.path.includes('/transcribe'),

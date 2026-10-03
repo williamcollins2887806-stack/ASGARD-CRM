@@ -204,7 +204,7 @@ async function dataRoutes(fastify, options) {
   };
 
   // Таблицы, запрещённые для записи через data API (всегда)
-  const WRITE_PROTECTED_TABLES = ['audit_log', 'users'];
+  const WRITE_PROTECTED_TABLES = ['audit_log', 'users', 'user_call_status', 'call_history', 'pbx_operators', 'pbx_call_legs'];
 
   // Таблицы, запрещённые для чтения через data API (кроме ADMIN/DIRECTOR)
   // users убран: HIDDEN_COLS уже скрывает password_hash/pin_hash, а ФИО нужны всем ролям

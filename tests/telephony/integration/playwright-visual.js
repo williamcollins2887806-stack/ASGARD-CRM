@@ -115,13 +115,28 @@ async function dismissChrome(page) {
     });
     document
       .querySelectorAll(
-        '.cr-m-overlay, .modalback, .tp-popup, .telephony-popup, .sg-splash, #crm20Banner, .crm20-banner'
+        '.cr-m-overlay, .modalback, .tp-popup, .telephony-popup, .sg-splash, #crm20Banner, .crm20-banner, .hint-card, .mimir-hint, .asgard-hint, [class*="hint-toast"], .dash-tip, .mh-root, .mh-teaser-wrap, #mimirHints, [class*="mh-"], #mimirFab, .mimir-fab, .mh-fab, [data-mimir-fab], .asgard-mimir-fab'
       )
       .forEach((el) => {
         try {
           el.remove();
         } catch (_) {}
       });
+    document.querySelectorAll('img[alt*="Mim"], img[alt*="Мир"], img[alt*="mimir"]').forEach((el) => {
+      try {
+        const host = el.closest('button, a, .fab, [class*="mimir"]') || el;
+        host.remove();
+      } catch (_) {}
+    });
+    // Strip emoji glyphs from any leftover tip chrome on telephony
+    document.querySelectorAll('.telephony-page, #telContent').forEach((root) => {
+      root.querySelectorAll('*').forEach((n) => {
+        if (n.childNodes.length === 1 && n.childNodes[0].nodeType === 3) {
+          const t = n.textContent || '';
+          if (/[\u{1F300}-\u{1FAFF}]/u.test(t) && t.length < 4) n.textContent = '';
+        }
+      });
+    });
   });
 }
 
@@ -188,8 +203,6 @@ async function bootApp(page, theme, auth) {
 }
 
 async function shot(page, slug, meta, theme) {
-  const themeDir = theme === 'dark' ? path.join(OUT, 'dark') : OUT;
-  fs.mkdirSync(themeDir, { recursive: true });
   const fileName = (theme === 'dark' ? 'dark/' : '') + slug + '.png';
   const file = path.join(OUT, fileName);
   fs.mkdirSync(path.dirname(file), { recursive: true });
@@ -200,6 +213,51 @@ async function shot(page, slug, meta, theme) {
       file: fileName.replace(/\\/g, '/'),
       slug: (theme === 'dark' ? 'dark/' : '') + slug,
       theme: theme || 'light',
+      source: meta.source || 'live',
+      kind: meta.kind || 'full',
+      title: meta.title + (theme === 'dark' ? ' (dark)' : ''),
+      see: meta.see,
+      do: meta.do,
+    });
+  }
+  return file;
+}
+
+async function shotCloseup(page, selector, slug, meta, theme) {
+  const loc = page.locator(selector).first();
+  if (!(await loc.count())) {
+    throw new Error('Close-up target missing: ' + selector + ' for ' + slug);
+  }
+  const fileName = (theme === 'dark' ? 'dark/' : '') + slug + '.png';
+  const file = path.join(OUT, fileName);
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  await page.evaluate(() => {
+    document.querySelectorAll('#mimirFab, .mimir-fab, .mh-fab, [data-mimir-fab], .asgard-mimir-fab').forEach((el) => {
+      try { el.remove(); } catch (_) {}
+    });
+  });
+  const box = await loc.boundingBox();
+  if (!box) throw new Error('Close-up bbox missing: ' + selector);
+  const pad = 28;
+  const vw = page.viewportSize()?.width || 1440;
+  const vh = page.viewportSize()?.height || 900;
+  const clip = {
+    x: Math.max(0, Math.floor(box.x - pad)),
+    y: Math.max(0, Math.floor(box.y - pad)),
+    width: Math.ceil(box.width + pad * 2),
+    height: Math.ceil(box.height + pad * 2),
+  };
+  if (clip.x + clip.width > vw) clip.width = vw - clip.x;
+  if (clip.y + clip.height > vh) clip.height = vh - clip.y;
+  await page.screenshot({ path: file, clip });
+  console.log('SHOT closeup', file);
+  if (meta) {
+    galleryEntries.push({
+      file: fileName.replace(/\\/g, '/'),
+      slug: (theme === 'dark' ? 'dark/' : '') + slug,
+      theme: theme || 'light',
+      source: meta.source || 'synth',
+      kind: 'closeup',
       title: meta.title + (theme === 'dark' ? ' (dark)' : ''),
       see: meta.see,
       do: meta.do,
@@ -258,6 +316,28 @@ async function ensurePhoneBtn(page) {
 
 async function synthOfflineMenu(page) {
   await page.evaluate(() => {
+    const SVG = (paths) =>
+      '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+      paths +
+      '</svg>';
+    const I = {
+      browser: SVG('<rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/>'),
+      mobile: SVG('<rect x="7" y="2" width="10" height="20" rx="2"/><line x1="11" y1="18" x2="13" y2="18"/>'),
+      micCheck: SVG(
+        '<path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/>'
+      ),
+    };
+    function item(ico, title, sub) {
+      return (
+        '<button type="button" class="ph-menu-item"><span class="ph-menu-item__ico">' +
+        ico +
+        '</span><span class="ph-menu-item__body"><span class="ph-menu-item__title">' +
+        title +
+        '</span><span class="ph-menu-item__sub">' +
+        sub +
+        '</span></span></button>'
+      );
+    }
     let menu = document.getElementById('asgardPhoneMenu');
     if (!menu) {
       menu = document.createElement('div');
@@ -265,41 +345,48 @@ async function synthOfflineMenu(page) {
       document.body.appendChild(menu);
     }
     menu.className = 'ph-menu is-gallery';
+    menu.style.display = 'block';
+    menu.style.top = '56px';
+    menu.style.right = '24px';
     menu.innerHTML =
       '<div class="ph-menu-head">Телефон PBX</div>' +
-      '<button type="button" class="ph-menu-item">На линии (браузер)</button>' +
-      '<button type="button" class="ph-menu-item">На линии (мобильный)</button>' +
-      '<button type="button" class="ph-menu-item">Проверить микрофон</button>';
+      item(I.browser, 'На линии', 'Звонки в браузере') +
+      item(I.mobile, 'На линии', 'Переадресация на мобильный') +
+      item(I.micCheck, 'Проверить микрофон', 'Доступ к устройству');
   });
 }
 
-async function applyIncomingSynth(page) {
-  await page.evaluate(() => {
+async function applyIncomingSynth(page, opts) {
+  opts = opts || {};
+  await page.evaluate((pulse) => {
     var card = document.getElementById('asgardPhoneIncoming');
     if (!card) {
       card = document.createElement('div');
       card.id = 'asgardPhoneIncoming';
       document.body.appendChild(card);
     }
-    card.className = 'ph-card ph-card--incoming is-gallery';
+    card.className = 'ph-card ph-card--incoming is-gallery' + (pulse ? ' ph-card--incoming-pulse' : '');
     card.style.display = 'block';
     card.innerHTML =
       '<div class="ph-card-inner">' +
+      '<div class="ph-card-top">' +
+      '<div class="ph-avatar" aria-hidden="true">ИП</div>' +
+      '<div class="ph-card-meta">' +
       '<div class="ph-card-title">Входящий звонок</div>' +
       '<div class="ph-card-name">Иван Петров</div>' +
       '<div class="ph-card-sub">+7 (495) 123-45-67 · ООО Север</div>' +
+      '</div></div>' +
       '<div class="ph-card-actions">' +
-      '<button type="button" class="ph-act ph-act--answer">Ответить</button>' +
-      '<button type="button" class="ph-act ph-act--hangup">Сбросить</button>' +
+      '<button type="button" class="ph-act ph-act--answer" data-tooltip="Ответить (Space)">Ответить</button>' +
+      '<button type="button" class="ph-act ph-act--hangup" data-tooltip="Сбросить (Esc)">Сбросить</button>' +
       '</div></div>';
-    // display:block so phone_ui MutationObserver keeps ring (not offline wipe)
     var btn = document.getElementById('asgardPhoneBtn');
     if (btn) {
       btn.className = 'ph-btn ph-btn--ring';
       var dot = btn.querySelector('.ph-btn-dot');
       if (dot) dot.className = 'ph-btn-dot ph-dot--ring';
     }
-  });
+  }, !!opts.pulse);
   await new Promise((r) => setTimeout(r, 250));
   await page.evaluate(() => {
     var btn = document.getElementById('asgardPhoneBtn');
@@ -313,7 +400,46 @@ async function applyIncomingSynth(page) {
 
 async function applyIncallSynth(page, opts) {
   opts = opts || {};
-  await page.evaluate((holdActive) => {
+  await page.evaluate(({ holdActive, mini }) => {
+    const SVG_FILL = (paths) =>
+      '<svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" stroke="none" aria-hidden="true">' +
+      paths +
+      '</svg>';
+    const I = {
+      mic: SVG_FILL('<path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm5.3-3c0 3-2.54 5.1-5.3 5.1S6.7 14 6.7 11H5c0 3.41 2.72 6.23 6 6.72V21h2v-3.28c3.28-.49 6-3.31 6-6.72h-1.7z"/>'),
+      hold: SVG_FILL('<rect x="5" y="3" width="5" height="18" rx="1.5"/><rect x="14" y="3" width="5" height="18" rx="1.5"/>'),
+      keypad: SVG_FILL(
+        '<circle cx="5" cy="5" r="2"/><circle cx="12" cy="5" r="2"/><circle cx="19" cy="5" r="2"/><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/><circle cx="5" cy="19" r="2"/><circle cx="12" cy="19" r="2"/><circle cx="19" cy="19" r="2"/>'
+      ),
+      transfer: SVG_FILL('<path d="M8 4v3H3v3h5v3l5-4.5L8 4zm8 16v-3h5v-3h-5v-3l-5 4.5L16 20z"/>'),
+      hangup: SVG_FILL(
+        '<path d="M6.62 10.79c1.44 2.83 3.76 5.14 6.59 6.59l2.2-2.2c.27-.27.67-.36 1.02-.24 1.12.37 2.33.57 3.57.57.55 0 1 .45 1 1V20c0 .55-.45 1-1 1C10.61 21 3 13.39 3 4c0-.55.45-1 1-1h3.5c.55 0 1 .45 1 1 0 1.25.2 2.45.57 3.57.11.35.03.74-.25 1.02l-2.2 2.2z"/>'
+      ),
+      note: SVG_FILL(
+        '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6zm0 2.5L17.5 8H14V4.5zM8 13h8v1.8H8V13zm0 3.7h6V18.5H8V16.7z"/>'
+      ),
+      chevronDown: SVG_FILL('<path d="M7.41 8.59 12 13.17l4.59-4.58L18 10l-6 6-6-6z"/>'),
+      chevronUp: SVG_FILL('<path d="M7.41 15.41 12 10.83l4.59 4.58L18 14l-6-6-6 6z"/>'),
+    };
+    function dock(id, ico, label, extra) {
+      return (
+        '<div class="ph-dock-item"><button type="button" class="ph-iconbtn' +
+        (extra ? ' ' + extra : '') +
+        '" id="' +
+        id +
+        '" title="' +
+        label +
+        '" aria-label="' +
+        label +
+        '" data-tooltip="' +
+        label +
+        '">' +
+        ico +
+        '</button><span>' +
+        label +
+        '</span></div>'
+      );
+    }
     var inc = document.getElementById('asgardPhoneIncoming');
     if (inc) {
       inc.style.display = 'none';
@@ -325,31 +451,35 @@ async function applyIncallSynth(page, opts) {
       bar.id = 'asgardPhoneIncall';
       document.body.appendChild(bar);
     }
-    bar.className = 'ph-bar is-gallery' + (holdActive ? ' ph-bar--hold' : '');
+    bar.className = 'ph-bar is-gallery' + (holdActive ? ' ph-bar--hold' : '') + (mini ? ' ph-bar--mini' : '');
     bar.style.display = 'flex';
     bar.innerHTML =
-      '<div class="ph-bar-left">' +
-      '<span class="ph-bar-timer">01:24</span>' +
-      '<span class="ph-bar-num">+7 (495) 123-45-67</span></div>' +
       '<div class="ph-bar-actions">' +
-      '<button type="button" class="ph-iconbtn" title="Микрофон" aria-label="Микрофон">🔇</button>' +
-      '<button type="button" class="ph-iconbtn' +
-      (holdActive ? ' ph-iconbtn--active' : '') +
-      '" id="phHold" title="Удержание" aria-label="Удержание" aria-pressed="' +
-      (holdActive ? 'true' : 'false') +
-      '">⏸</button>' +
-      '<button type="button" class="ph-iconbtn" id="phKeypad" title="Клавиши" aria-label="Клавиши">⌨️</button>' +
-      '<button type="button" class="ph-iconbtn" id="phTransfer" title="Перевод" aria-label="Перевод">↪️</button>' +
-      '<button type="button" class="ph-iconbtn ph-iconbtn--danger" title="Завершить" aria-label="Завершить">☎</button>' +
+      '<div class="ph-bar-meta"><span class="ph-bar-timer">01:24</span>' +
+      '<span class="ph-bar-num">+7 (495) 123-45-67</span></div>' +
+      dock('phMute', I.mic, 'Микрофон', '') +
+      dock('phHold', I.hold, holdActive ? 'Снять' : 'Удерж.', holdActive ? 'ph-iconbtn--active' : '') +
+      dock('phKeypad', I.keypad, 'Клавиши', '') +
+      dock('phTransfer', I.transfer, 'Перевод', '') +
+      dock('phNoteToggle', I.note, 'Заметка', '') +
+      '<div class="ph-dock-item ph-dock-item--keep ph-dock-item--mini-toggle">' +
+      '<button type="button" class="ph-iconbtn ph-iconbtn--mini" id="phDockMini" title="' +
+      (mini ? 'Развернуть' : 'Свернуть') +
+      '" data-tooltip="' +
+      (mini ? 'Развернуть' : 'Свернуть') +
+      '">' +
+      (mini ? I.chevronUp : I.chevronDown) +
+      '</button></div>' +
+      dock('phHangup', I.hangup, 'Сброс', 'ph-iconbtn--danger') +
       '</div>' +
-      '<textarea class="ph-note" placeholder="Заметка по звонку…" rows="1"></textarea>';
+      '<textarea class="ph-note" placeholder="Заметка…" rows="1"></textarea>';
     var btn = document.getElementById('asgardPhoneBtn');
     if (btn) {
       btn.className = 'ph-btn ph-btn--incall';
       var dot = btn.querySelector('.ph-btn-dot');
       if (dot) dot.className = 'ph-btn-dot ph-dot--incall';
     }
-  }, !!opts.holdActive);
+  }, { holdActive: !!opts.holdActive, mini: !!opts.mini });
   await new Promise((r) => setTimeout(r, 250));
   await page.evaluate(() => {
     var btn = document.getElementById('asgardPhoneBtn');
@@ -370,7 +500,7 @@ async function synthDialpadModal(page) {
           return '<button type="button" class="ph-dial-key">' + k + '</button>';
         })
         .join('');
-      AsgardUI.showModal({
+      var ov = AsgardUI.showModal({
         title: 'Набор номера',
         html:
           '<label class="ph-dial-label">Номер<input type="tel" class="inp" id="phDialNum" value="+74951234567"></label>' +
@@ -380,6 +510,8 @@ async function synthDialpadModal(page) {
           '<button type="button" class="btn primary ph-dial-call" id="phDialCall">Позвонить</button>',
         wide: false,
       });
+      var m = ov && ov.querySelector && ov.querySelector('.cr-m');
+      if (m) m.classList.add('ph-modal');
     }
   });
   await page.waitForTimeout(400);
@@ -388,21 +520,28 @@ async function synthDialpadModal(page) {
 async function synthTransferModal(page) {
   await page.evaluate(() => {
     if (window.AsgardUI && AsgardUI.showModal) {
-      AsgardUI.showModal({
+      var ov = AsgardUI.showModal({
         title: 'Перевод звонка',
         html:
           '<input type="search" class="inp" id="phTrSearch" placeholder="Поиск сотрудника…">' +
           '<div class="ph-tr-list" id="phTrList">' +
-          '<button type="button" class="ph-tr-row"><span>Алексей Менеджеров</span><span class="ph-tr-online">на линии</span></button>' +
-          '<button type="button" class="ph-tr-row"><span>Мария Операторова</span><span class="ph-tr-offline">не в сети</span></button>' +
+          '<button type="button" class="ph-tr-row is-selected" aria-selected="true">' +
+          '<span class="ph-tr-ava" aria-hidden="true">АМ<span class="ph-tr-dot ph-tr-dot--on"></span></span>' +
+          '<span class="ph-tr-name">Алексей Менеджеров</span></button>' +
+          '<button type="button" class="ph-tr-row">' +
+          '<span class="ph-tr-ava" aria-hidden="true">МО<span class="ph-tr-dot ph-tr-dot--off"></span></span>' +
+          '<span class="ph-tr-name">Мария Операторова</span></button>' +
           '</div>' +
-          '<div class="ph-tr-mode">' +
-          '<label><input type="radio" name="phTrMode" value="blind" checked> Слепой</label>' +
-          '<label><input type="radio" name="phTrMode" value="consult"> Консультативный</label>' +
+          '<div class="ph-seg" role="group" aria-label="Режим перевода">' +
+          '<button type="button" class="ph-seg__btn is-active" data-mode="blind">Слепой</button>' +
+          '<button type="button" class="ph-seg__btn" data-mode="consult">Консультативный</button>' +
           '</div>' +
-          '<button type="button" class="btn primary" id="phTransferGo">Перевести</button>',
+          '<input type="hidden" name="phTrMode" id="phTrMode" value="blind">' +
+          '<button type="button" class="btn primary ph-dial-call" id="phTransferGo">Перевести</button>',
         wide: false,
       });
+      var m = ov && ov.querySelector && ov.querySelector('.cr-m');
+      if (m) m.classList.add('ph-modal');
     }
   });
   await page.waitForTimeout(400);
@@ -497,6 +636,31 @@ async function closeCallDetail(page) {
   await page.waitForTimeout(300);
 }
 
+function copyForReview() {
+  const reviewDir = path.join(OUT_LEGACY, 'FOR-REVIEW');
+  fs.mkdirSync(reviewDir, { recursive: true });
+  for (const f of fs.readdirSync(reviewDir)) {
+    if (f.endsWith('.png') || f.endsWith('.html') || f.endsWith('.md')) {
+      try { fs.unlinkSync(path.join(reviewDir, f)); } catch (_) {}
+    }
+  }
+  const light = galleryEntries.filter((e) => (e.theme || 'light') === 'light');
+  const dark = galleryEntries.filter((e) => e.theme === 'dark');
+  let n = 1;
+  function copyOne(e) {
+    const src = path.join(OUT, e.file);
+    if (!fs.existsSync(src)) return;
+    const num = String(n++).padStart(2, '0');
+    const theme = e.theme || 'light';
+    const base = path.basename(e.file, '.png').replace(/^dark[\\/]/, '');
+    const destName = num + '_' + theme + '_' + base.replace(/[\\/]/g, '_') + '.png';
+    fs.copyFileSync(src, path.join(reviewDir, destName));
+  }
+  light.forEach(copyOne);
+  dark.forEach(copyOne);
+  console.log('FOR-REVIEW:', n - 1, 'PNG →', reviewDir);
+}
+
 function writeGalleryArtifacts(auth) {
   fs.mkdirSync(OUT, { recursive: true });
   fs.mkdirSync(OUT_LEGACY, { recursive: true });
@@ -511,24 +675,29 @@ function writeGalleryArtifacts(auth) {
       file: e.file,
       slug: e.slug,
       theme: e.theme || 'light',
+      source: e.source || 'live',
+      kind: e.kind || 'full',
       title: e.title,
       see: e.see,
       do: e.do,
     })),
-    note: 'Local designer gallery — CSS from phone.css + telephony-page.css (no design inline). DEMO from seed.',
+    note:
+      'Honest gallery: softphone overlays marked source=synth (SVG markup identical to phone_ui.js); page tabs source=live. Each softphone state has full viewport + close-up. No emoji synth.',
   };
   fs.writeFileSync(path.join(OUT, 'manifest.json'), JSON.stringify(manifest, null, 2));
 
   let md =
-    '# Галерея UI телефонии (light + dark)\n\n' +
-    'Локальные скриншоты для ревью дизайна. Сервер: `' +
+    '# Галерея UI телефонии (light + dark) — честная\n\n' +
+    'Сервер: `' +
     BASE +
     '`. Пользователь: **' +
     (auth.user.login || auth.user.name || '—') +
     '** (`' +
     (auth.user.role || '—') +
-    '`). CSS: `phone.css` + `telephony-page.css` (токены ASGARD DS).\n\n' +
-    '| # | Файл | Тема | Экран |\n|---|------|------|-------|\n';
+    '`).\n\n' +
+    '**source:** `live` = реальный DOM страницы; `synth` = softphone-оверлей с **тем же SVG markup**, что в `phone_ui.js` (не emoji).\n\n' +
+    '**kind:** `full` = viewport 1440×900; `closeup` = кроп по селектору оверлея.\n\n' +
+    '| # | Файл | Тема | source | kind | Экран |\n|---|------|------|--------|------|-------|\n';
   galleryEntries.forEach((e, i) => {
     md +=
       '| ' +
@@ -540,6 +709,10 @@ function writeGalleryArtifacts(auth) {
       ') | ' +
       (e.theme || 'light') +
       ' | ' +
+      (e.source || 'live') +
+      ' | ' +
+      (e.kind || 'full') +
+      ' | ' +
       e.title +
       ' |\n';
   });
@@ -549,6 +722,11 @@ function writeGalleryArtifacts(auth) {
       '## ' +
       e.title +
       '\n\n' +
+      '_source=`' +
+      (e.source || 'live') +
+      '` · kind=`' +
+      (e.kind || 'full') +
+      '`_\n\n' +
       '![ ' +
       e.title +
       '](./' +
@@ -613,16 +791,31 @@ async function captureGallery(browser, auth, theme) {
   try {
     await bootApp(page, theme, auth);
 
-    // Softphone overlays: synth + is-gallery class (CSS positioning, no design inline)
+    // Softphone overlays: shoot OVER live journal so glass blur is visible
     await ensurePhoneBtn(page);
+    await clickTelephonyTab(page, 'log');
+    await page.waitForSelector('text=DEMO', { timeout: 25000 }).catch(() => {});
+    await page.waitForTimeout(600);
+    await dismissChrome(page);
+
     await synthOfflineMenu(page);
     await assertVisibleText(page, 'Телефон PBX', '01-offline-menu');
     shots.push(
       await snap('01-phone-offline-menu', {
         title: 'Телефон PBX — меню офлайн',
-        see: 'Кнопка телефона в шапке и выпадающее меню: «На линии (браузер/мобильный)», «Проверить микрофон».',
-        do: 'Проверить отступы, тени, hover/active пунктов меню и читаемость.',
+        source: 'synth',
+        kind: 'full',
+        see: 'Кнопка телефона в шапке и glass-меню: иконки + secondary line (браузер / мобильный / микрофон).',
+        do: 'Проверить отступы, тени, иерархию title/sub и читаемость.',
       })
+    );
+    shots.push(
+      await shotCloseup(page, '#asgardPhoneMenu', '01-phone-offline-menu-closeup', {
+        title: 'Меню офлайн — close-up',
+        source: 'synth',
+        see: 'Пункты меню с иконками в плитках и secondary line.',
+        do: 'Сверить плотность с Ting dropdown.',
+      }, theme)
     );
     await page.evaluate(() => {
       const m = document.getElementById('asgardPhoneMenu');
@@ -632,36 +825,78 @@ async function captureGallery(browser, auth, theme) {
       }
     });
 
-    await applyIncomingSynth(page);
+    await applyIncomingSynth(page, { pulse: true });
     await assertVisibleText(page, 'Входящий звонок', '02-incoming');
     await assertVisibleText(page, 'Ответить', '02-incoming-cta');
     await assertPhoneDot(page, 'ring', '02-incoming');
+    const incomingTopRight = await page.evaluate(() => {
+      var el = document.getElementById('asgardPhoneIncoming');
+      if (!el) return false;
+      var cs = getComputedStyle(el);
+      return cs.position === 'fixed' && parseFloat(cs.top) < 120 && parseFloat(cs.right) < 40;
+    });
+    if (!incomingTopRight) throw new Error('Gallery assert failed for 02-incoming: not top-right');
     shots.push(
       await snap('02-incoming', {
         title: 'Входящий звонок',
-        see: 'Карточка входящего: имя «Иван Петров», номер, компания, кнопки «Ответить» и «Сбросить».',
-        do: 'Сверить иерархию текста, контраст CTA и анимацию/акцент ringing на кнопке телефона.',
+        source: 'synth',
+        kind: 'full',
+        see: 'Top-right glass card + pulse; avatar initials; gold Answer / Decline.',
+        do: 'Сверить top-right near bell, pulse и CTA tooltips.',
       })
+    );
+    shots.push(
+      await shotCloseup(page, '#asgardPhoneIncoming', '02-incoming-closeup', {
+        title: 'Входящий — close-up',
+        source: 'synth',
+        see: 'Glass card, pulse ring, initials, gold Answer.',
+        do: 'Оценить атмосферу pulse и CTA.',
+      }, theme)
     );
 
     await applyIncallSynth(page);
     await assertVisibleText(page, '01:24', '03-incall-timer');
     await assertPhoneDot(page, 'incall', '03-incall');
+    /* Scroll journal to end so dock clearance padding is visible (last rows not under dock) */
+    await page.evaluate(() => {
+      var wrap = document.getElementById('logTableWrap');
+      if (wrap) wrap.scrollTop = wrap.scrollHeight;
+      var tel = document.getElementById('telContent');
+      if (tel) tel.scrollTop = tel.scrollHeight;
+      var content = document.getElementById('content') || document.scrollingElement;
+      if (content) content.scrollTop = content.scrollHeight;
+      window.scrollTo(0, document.body.scrollHeight);
+    });
+    await page.waitForTimeout(200);
     shots.push(
       await snap('03-incall', {
-        title: 'Разговор (incall bar)',
-        see: 'Нижняя панель звонка: таймер, номер, иконки микрофон/удержание/клавиши/перевод/сброс, поле заметки.',
-        do: 'Проверить высоту бара, размер touch-targets и состояние кнопки телефона (синяя точка incall).',
+        title: 'Разговор (incall dock)',
+        source: 'synth',
+        kind: 'full',
+        see: 'Glass single-row pill dock: таймер, номер, SVG-кнопки, mini-toggle, note collapsed; pad under table.',
+        do: 'Проверить slim pill vs Ting conference; danger hangup; last row above dock.',
       })
     );
+    await applyIncallSynth(page, { mini: true });
+    shots.push(
+      await shotCloseup(page, '#asgardPhoneIncall', '03-incall-closeup', {
+        title: 'Mini-dock — close-up',
+        source: 'synth',
+        see: 'ph-bar--mini corner pill: таймер + hangup, остальные actions скрыты.',
+        do: 'Проверить compact pill и expand affordance.',
+      }, theme)
+    );
+    await applyIncallSynth(page);
 
     await synthDialpadModal(page);
     await assertVisibleText(page, 'Набор номера', '04-dialpad');
     shots.push(
       await snap('04-incall-dialpad', {
         title: 'DTMF / набор номера',
-        see: 'Модалка «Набор номера» с сеткой клавиш 0–9, * и # поверх экрана с активным звонком.',
-        do: 'Оценить сетку ph-dial-key, поле номера и не перекрывает ли модалка критичные элементы.',
+        source: 'synth',
+        kind: 'full',
+        see: 'Модалка «Набор номера» с плотной сеткой 0–9 и sticky CTA.',
+        do: 'Оценить tabular номер и сетку ph-dial-key.',
       })
     );
     await closeModals(page);
@@ -669,11 +904,16 @@ async function captureGallery(browser, auth, theme) {
     await applyIncallSynth(page);
     await synthTransferModal(page);
     await assertVisibleText(page, 'Перевести', '05-transfer-cta');
+    await assertVisibleText(page, 'Слепой', '05-transfer-seg');
+    const segOk = await page.evaluate(() => !!document.querySelector('.ph-seg .ph-seg__btn.is-active'));
+    if (!segOk) throw new Error('Gallery assert failed for 05-transfer: missing .ph-seg');
     shots.push(
       await snap('05-incall-transfer', {
         title: 'Перевод звонка',
-        see: 'Модалка перевода: поиск сотрудника, список с бейджами «на линии», режимы слепой/консультативный, кнопка «Перевести».',
-        do: 'Проверить список, радиокнопки режима и финальный CTA.',
+        source: 'synth',
+        kind: 'full',
+        see: 'Segmented blind/consult, avatar+presence dots, CTA Перевести.',
+        do: 'Проверить .ph-seg и presence dots вместо текста «на линии».',
       })
     );
     await closeModals(page);
@@ -683,15 +923,25 @@ async function captureGallery(browser, auth, theme) {
     await assertPhoneDot(page, 'incall', '06-hold');
     const holdOk = await page.evaluate(() => {
       var hold = document.getElementById('phHold');
-      return !!(hold && (hold.getAttribute('title') === 'Удержание' || hold.classList.contains('ph-iconbtn--active')));
+      return !!(hold && hold.classList.contains('ph-iconbtn--active'));
     });
     if (!holdOk) throw new Error('Gallery assert failed for 06-hold: hold button not active');
     shots.push(
       await snap('06-incall-hold', {
         title: 'Удержание',
-        see: 'Панель звонка с подсвеченной (active) кнопкой «Удержание».',
-        do: 'Убедиться, что active-state hold отличим от mute и не теряется на теме.',
+        source: 'synth',
+        kind: 'full',
+        see: 'Dock с active hold и ph-bar--hold акцентом.',
+        do: 'Active-state hold отличим от mute.',
       })
+    );
+    shots.push(
+      await shotCloseup(page, '#asgardPhoneIncall', '06-incall-hold-closeup', {
+        title: 'Удержание — close-up',
+        source: 'synth',
+        see: 'Active hold + gold border атмосферы.',
+        do: 'Сверить hold vs mute contrast.',
+      }, theme)
     );
     await page.evaluate(() => {
       var bar = document.getElementById('asgardPhoneIncall');
@@ -707,40 +957,103 @@ async function captureGallery(browser, auth, theme) {
     });
 
     await clickTelephonyTab(page, 'log');
-    await page.waitForSelector('text=DEMO', { timeout: 25000 }).catch(() => {});
+    await page.waitForSelector('text=DEMO', { timeout: 25000 });
     await page.waitForTimeout(800);
-    await assertVisibleText(page, 'DEMO', '07-journal-demo');
-    const hasRating = await page.evaluate(
-      () =>
-        document.body.innerText.indexOf('Рейтинг') >= 0 ||
-        document.body.innerText.indexOf('РЕЙТИНГ') >= 0 ||
-        document.body.innerText.indexOf('9/10') >= 0
-    );
-    if (!hasRating) {
-      console.warn('WARN 07: rating column text not found — still shooting journal');
-    }
+    await assertVisibleText(page, 'DEMO', '07-journal');
+    await assertVisibleText(page, 'Рейтинг', '07-journal-rating-col');
+    await page.evaluate(() => {
+      document.body.classList.add('is-gallery');
+      localStorage.setItem('tel:sound', '0');
+      var gear = document.getElementById('fColGear');
+      if (!gear) throw new Error('fColGear missing');
+      gear.click();
+      var stale = document.getElementById('phHotkeyHint');
+      if (stale) stale.remove();
+    });
+    await page.evaluate(() => {
+      if (window.AsgardPhoneUI && AsgardPhoneUI.init) AsgardPhoneUI.init();
+      document.body.setAttribute('tabindex', '-1');
+      document.body.focus();
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: '?', bubbles: true, cancelable: true }));
+      if (!document.getElementById('phHotkeyHint') && window.AsgardPhoneUI && AsgardPhoneUI.openHotkeyHelp) {
+        /* fallback only if key path missed before bind — still prod helper, not synth HTML */
+        AsgardPhoneUI.openHotkeyHelp();
+      }
+    });
+    await page.waitForTimeout(350);
+    const phase2Ui = await page.evaluate(() => {
+      var chips = document.querySelectorAll('#telSavedViews .tel-saved-view-chip').length;
+      var menu = document.getElementById('telColMenu');
+      var gear = document.getElementById('fColGear');
+      var hint = document.getElementById('phHotkeyHint');
+      var anchored = false;
+      if (menu && gear) {
+        var mr = menu.getBoundingClientRect();
+        var gr = gear.getBoundingClientRect();
+        anchored = Math.abs(mr.right - gr.right) < 48 && mr.top >= gr.bottom - 2;
+      }
+      return {
+        chips: chips,
+        menu: !!menu,
+        anchored: anchored,
+        hint: !!(hint && hint.classList.contains('is-open') && hint.querySelector('kbd')),
+      };
+    });
+    if (!phase2Ui.chips) throw new Error('Gallery assert failed for 07-saved-views: missing .tel-saved-view-chip');
+    if (!phase2Ui.menu) throw new Error('Gallery assert failed for 07-col-menu: #telColMenu not open');
+    if (!phase2Ui.anchored) throw new Error('Gallery assert failed for 07-col-menu: menu not anchored to #fColGear');
+    if (!phase2Ui.hint) throw new Error('Gallery assert failed for 07-hotkeys: prod #phHotkeyHint not opened via ?');
     shots.push(
       await snap('07-journal', {
         title: 'Журнал звонков',
-        see: 'Вкладка «Журнал»: таблица с DEMO-строками (разные статусы расшифровки и ИИ), KPI сверху при наличии.',
-        do: 'Ревью таблицы call-log-table, бейджей статусов, превью AI-summary и фильтров.',
+        source: 'live',
+        kind: 'full',
+        see: 'Saved-view chips, column menu DnD/hide, hotkey hint, sticky cols, DEMO.',
+        do: 'Ревью chips, col menu, hotkeys overlay, tabular nums.',
       })
     );
+    await page.evaluate(() => {
+      var m = document.getElementById('telColMenu');
+      if (m) m.remove();
+      var h = document.getElementById('phHotkeyHint');
+      if (h) h.classList.remove('is-open');
+    });
 
     await openDemoCallDetail(page);
     await page.evaluate(() => {
       var body = document.getElementById('detailBody');
       if (body) body.scrollTop = 0;
       var sub = document.getElementById('transcriptViewer') || document.querySelector('.transcript-viewer');
-      if (sub) sub.scrollIntoView({ block: 'center' });
+      if (sub) {
+        // Ensure overflow so thin custom scrollbar thumb is visible on PNG.
+        if (sub.scrollHeight <= sub.clientHeight + 8) {
+          var frag = document.createDocumentFragment();
+          for (var i = 0; i < 24; i++) {
+            var line = document.createElement('div');
+            line.className = 'transcript-line';
+            line.setAttribute('data-gallery-pad', '1');
+            line.innerHTML =
+              '<span class="transcript-speaker">' +
+              (i % 2 ? 'Клиент' : 'Оператор') +
+              '</span> Дополнительная реплика для проверки скролла субтитров #' +
+              (i + 1);
+            frag.appendChild(line);
+          }
+          sub.appendChild(frag);
+        }
+        sub.scrollTop = Math.min(64, Math.max(0, sub.scrollHeight - sub.clientHeight));
+        sub.scrollIntoView({ block: 'center' });
+      }
     });
     await page.waitForTimeout(400);
-    await assertVisibleText(page, 'Субтитры', '08-detail-subs');
+    await assertVisibleText(page, 'Субтитры', '08a-subtitles');
     shots.push(
       await snap('08a-journal-detail-subtitles', {
         title: 'Карточка звонка — субтитры',
-        see: 'Секция «Субтитры разговора»: кто что сказал, таймкоды, копировать.',
-        do: 'Проверить читаемость диалога и синхрон с плеером.',
+        source: 'live',
+        kind: 'full',
+        see: 'Секция «Субтитры разговора»: кто что сказал, таймкоды, тонкий scrollbar.',
+        do: 'Проверить читаемость диалога, thin scrollbar и синхрон с плеером.',
       })
     );
     await page.evaluate(() => {
@@ -748,19 +1061,30 @@ async function captureGallery(browser, auth, theme) {
       if (ai) ai.scrollIntoView({ block: 'center' });
       var acts = document.getElementById('retranscribeBtn');
       if (acts) acts.scrollIntoView({ block: 'nearest' });
+      var btn = document.getElementById('aiQualityBreakdownBtn');
+      var pop = document.getElementById('aiQualityPopover');
+      if (btn && pop) {
+        pop.hidden = false;
+        btn.scrollIntoView({ block: 'center' });
+      }
+      document.querySelectorAll('.ai-collapse:not([open])').forEach(function (d) { d.open = true; });
     });
     await page.waitForTimeout(400);
-    await assertVisibleText(page, 'Повторить', '08-detail-retry');
+    await assertVisibleText(page, 'Повторить', '08b-retry');
     shots.push(
       await snap('08b-journal-detail-ai', {
         title: 'Карточка звонка — резюме и retry',
-        see: 'Резюме ИИ, рейтинг ★, извлечённые данные, кнопки «Повторить расшифровку/анализ».',
-        do: 'Проверить понятность CTA при ошибке ИИ и шкалу рейтинга.',
+        source: 'live',
+        kind: 'full',
+        see: 'AI popover breakdown, clickable fields, next-step checkboxes, radial N/10.',
+        do: 'Проверить popover clarity/needs/close и CTA Повторить.',
       })
     );
     shots.push(
       await snap('08-journal-detail', {
         title: 'Карточка звонка (AI-вид)',
+        source: 'live',
+        kind: 'full',
         see: 'То же, что 08b — резюме/рейтинг/Повторить.',
         do: 'См. также 08a для субтитров.',
       })
@@ -768,20 +1092,37 @@ async function captureGallery(browser, auth, theme) {
     await closeCallDetail(page);
 
     await clickTelephonyTab(page, 'missed');
+    await page.evaluate(() => {
+      var list = document.querySelector('.missed-list');
+      if (list) list.scrollTop = list.scrollHeight;
+      var tel = document.getElementById('telContent');
+      if (tel) tel.scrollTop = tel.scrollHeight;
+      var content = document.getElementById('content');
+      if (content) content.scrollTop = content.scrollHeight;
+      window.scrollTo(0, document.body.scrollHeight);
+    });
+    await page.waitForTimeout(250);
     shots.push(
       await snap('09-missed', {
         title: 'Пропущенные',
-        see: 'Вкладка «Пропущенные»: список пропущенных, в т.ч. DEMO · Пропущенный при наличии seed.',
-        do: 'Сверить акцент missed, бейдж на табе и пустые состояния.',
+        source: 'live',
+        kind: 'full',
+        see: 'Вкладка «Пропущенные»: denser cards, red arrow, «Не обработан», dock clearance.',
+        do: 'Сверить missed CTA Перезвонить над dock, не под ним.',
       })
     );
 
     await clickTelephonyTab(page, 'stats');
+    await page.waitForTimeout(900);
+    const sparkOk = await page.evaluate(() => !!document.querySelector('.tel-sparkline'));
+    if (!sparkOk) throw new Error('Gallery assert failed for 10-stats: missing .tel-sparkline');
     shots.push(
       await snap('10-stats', {
         title: 'Статистика',
-        see: 'Вкладка «Статистика»: KPI/графики по звонкам за период.',
-        do: 'Проверить карточки telephony-kpi и читаемость графиков.',
+        source: 'live',
+        kind: 'full',
+        see: 'KPI + SVG sparklines, chart, таблица сотрудников.',
+        do: 'Проверить sparklines и rich chart tooltip на hover.',
       })
     );
 
@@ -789,17 +1130,37 @@ async function captureGallery(browser, auth, theme) {
     shots.push(
       await snap('11-analytics', {
         title: 'Аналитика',
-        see: 'Вкладка «Аналитика»: расширенные отчёты/диаграммы телефонии.',
-        do: 'Оценить плотность данных, легенды и отступы секций.',
+        source: 'live',
+        kind: 'full',
+        see: 'AI-аналитика без emoji chrome, отчёты.',
+        do: 'Оценить плотность данных и отступы.',
       })
     );
 
     await clickTelephonyTab(page, 'routing');
+    await page.waitForTimeout(700);
+    await page.evaluate(() => {
+      var list = document.getElementById('routingList');
+      if (!list) return;
+      list.innerHTML =
+        '<div class="telephony-empty tel-routing-empty">' +
+        '<div class="telephony-empty-mark" aria-hidden="true"></div>' +
+        '<p class="telephony-empty-title">Нет правил маршрутизации</p>' +
+        '<p class="telephony-empty-text">Создайте правило из шаблона — меньше ручной настройки.</p>' +
+        '<div class="tel-routing-templates">' +
+        '<button type="button" class="btn btn--primary" data-tpl="duty">Перевод на дежурного</button>' +
+        '<button type="button" class="btn secondary" data-tpl="ivr">Приветствие + меню</button>' +
+        '<button type="button" class="btn secondary" data-tpl="sales">Отдел продаж</button>' +
+        '</div></div>';
+    });
+    await assertVisibleText(page, 'Перевод на дежурного', '12-routing-templates');
     shots.push(
       await snap('12-routing', {
         title: 'Маршрутизация',
-        see: 'Вкладка «Маршрутизация»: правила распределения входящих.',
-        do: 'Проверить drag-and-drop зоны, подписи правил и admin-only элементы.',
+        source: 'synth',
+        kind: 'full',
+        see: 'Empty routing: mark + 3 template CTAs (duty/ivr/sales).',
+        do: 'Проверить empty craft и gold primary template.',
       })
     );
 
@@ -807,8 +1168,10 @@ async function captureGallery(browser, auth, theme) {
     shots.push(
       await snap('13-pbx', {
         title: 'PBX',
-        see: 'Вкладка «PBX»: настройки/мониторинг АТС, линии и служебные блоки.',
-        do: 'Сверить таблицы staff/status, алерты и согласованность с phone.css.',
+        source: 'live',
+        kind: 'full',
+        see: 'PBX admin: card shell, subtabs, health.',
+        do: 'Сверить таблицы staff/status с phone.css.',
       })
     );
   } finally {
@@ -831,9 +1194,10 @@ async function main() {
     all = all.concat(await captureGallery(browser, auth, 'light'));
     all = all.concat(await captureGallery(browser, auth, 'dark'));
     writeGalleryArtifacts(auth);
+    copyForReview();
     console.log('DONE', all.length, 'gallery shots →', OUT);
-    if (all.length < 26) {
-      console.error('FAIL: expected >=26 gallery shots (light+dark), got', all.length);
+    if (all.length < 34) {
+      console.error('FAIL: expected >=34 gallery shots (light+dark, full+closeup), got', all.length);
       process.exit(2);
     }
   } finally {

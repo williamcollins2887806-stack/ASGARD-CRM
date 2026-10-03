@@ -392,7 +392,7 @@ body {
   overflow-x: hidden;
 }
 
-/* ─── Scrollbar ─── */
+/* ─── Scrollbar (DS single source — thin, soft thumb) ─── */
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;
@@ -403,18 +403,29 @@ body {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: var(--brd);
-  border-radius: 3px;
+  background: color-mix(in srgb, var(--t3) 55%, transparent);
+  border-radius: 999px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: var(--t3);
+  background: color-mix(in srgb, var(--t2) 70%, transparent);
 }
 
 /* Firefox */
 * {
   scrollbar-width: thin;
-  scrollbar-color: var(--brd) transparent;
+  scrollbar-color: color-mix(in srgb, var(--t3) 55%, transparent) transparent;
+}
+
+/* ─── Tabular nums (opt-in; do NOT apply to all CRM numbers) ─── */
+.tnum,
+[data-tnum] {
+  font-variant-numeric: tabular-nums lining-nums;
+  font-feature-settings: "tnum" 1, "lnum" 1;
+  font-kerning: none;
+}
+.tnum--mono {
+  font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
 }
 
 /* ─── Links ─── */
@@ -465,10 +476,12 @@ html[data-theme="light"] {
   --bg5: #D8D0C0;           /* Самый тёмный bg (редко) */
   --overlay: rgba(28,25,20,0.50);  /* Тёплый, не холодный чёрный */
 
-  /* ── Текст: чернила на бумаге ── */
+  /* ── Текст: чернила на бумаге ──
+     WCAG floor on parchment: secondary ≥ #6B7280 (--t3), body secondary #4B5563 (--t2).
+     Do not push --t2 darker than #374151 CRM-wide (dirty UI risk). */
   --t1: #1C1914;            /* Чернильный чёрный (тёплый) */
-  --t2: #4A4236;            /* Состаренные чернила */
-  --t3: #7A7062;            /* Выцветший, muted */
+  --t2: #4B5563;            /* Вторичный — WCAG-ish на пергаменте */
+  --t3: #6B7280;            /* Muted floor — readable 8h shifts */
 
   /* ── Акцентные цвета: матовые, не неоновые ── */
   --red:    #A82030;        /* Лаковый красный */

@@ -94,26 +94,32 @@ window.AsgardTelephonyAdmin = (function () {
       var whTo = (cfg.work_hours && cfg.work_hours.mon && cfg.work_hours.mon.end) || cfg.work_hours_to || '18:00';
 
       body.innerHTML =
-        '<div class="pbx-grid">' +
-          '<div class="pbx-field"><label>Стратегия дозвона<select id="pbxDialStrategy">' +
-            [
-              { v: 'duty_first', l: 'Сначала дежурный РП' },
-              { v: 'round_robin', l: 'По кругу' },
-              { v: 'ordered', l: 'Строго по порядку' },
-              { v: 'simultaneous', l: 'Всем сразу' },
-            ].map(function (o) {
-              return '<option value="' + o.v + '"' + (strategy === o.v ? ' selected' : '') + '>' + o.l + '</option>';
-            }).join('') +
-          '</select></label></div>' +
-          '<div class="pbx-field"><label>Начало рабочего дня<input type="time" id="pbxWorkFrom" value="' + esc(whFrom) + '"></label></div>' +
-          '<div class="pbx-field"><label>Конец рабочего дня<input type="time" id="pbxWorkTo" value="' + esc(whTo) + '"></label></div>' +
-          '<div class="pbx-field"><label><input type="checkbox" id="pbxRec"' + (cfg.recording_enabled !== false ? ' checked' : '') + '> Запись разговоров</label></div>' +
-          '<div class="pbx-field"><label><input type="checkbox" id="pbxAi"' + (cfg.ai_postcall_enabled ? ' checked' : '') + '> AI после звонка</label></div>' +
-        '</div>' +
-        '<div class="pbx-field" style="margin-top:12px"><label>Текст приветствия<textarea id="pbxGreeting" rows="2">' + esc(cfg.greeting_text || '') + '</textarea></label></div>' +
-        '<div class="pbx-field"><label>Текст вне часов<textarea id="pbxAfterHours" rows="2">' + esc(cfg.after_hours_text || '') + '</textarea></label></div>' +
-        '<h4 style="margin:16px 0 8px;color:var(--t2)">Линии</h4>' + linesHtml +
-        '<button type="button" class="btn btn--primary" id="pbxSaveSettings" style="margin-top:16px">Сохранить</button>';
+        '<div class="pbx-settings-shell">' +
+          '<div class="pbx-settings-scroll">' +
+            '<div class="pbx-grid">' +
+              '<div class="pbx-field"><label>Стратегия дозвона<select id="pbxDialStrategy">' +
+                [
+                  { v: 'duty_first', l: 'Сначала дежурный РП' },
+                  { v: 'round_robin', l: 'По кругу' },
+                  { v: 'ordered', l: 'Строго по порядку' },
+                  { v: 'simultaneous', l: 'Всем сразу' },
+                ].map(function (o) {
+                  return '<option value="' + o.v + '"' + (strategy === o.v ? ' selected' : '') + '>' + o.l + '</option>';
+                }).join('') +
+              '</select></label></div>' +
+              '<div class="pbx-field"><label>Начало рабочего дня<input type="time" id="pbxWorkFrom" value="' + esc(whFrom) + '"></label></div>' +
+              '<div class="pbx-field"><label>Конец рабочего дня<input type="time" id="pbxWorkTo" value="' + esc(whTo) + '"></label></div>' +
+              '<div class="pbx-field"><label><input type="checkbox" id="pbxRec"' + (cfg.recording_enabled !== false ? ' checked' : '') + '> Запись разговоров</label></div>' +
+              '<div class="pbx-field"><label><input type="checkbox" id="pbxAi"' + (cfg.ai_postcall_enabled ? ' checked' : '') + '> AI после звонка</label></div>' +
+            '</div>' +
+            '<div class="pbx-field" style="margin-top:12px"><label>Текст приветствия<textarea id="pbxGreeting" rows="2">' + esc(cfg.greeting_text || '') + '</textarea></label></div>' +
+            '<div class="pbx-field"><label>Текст вне часов<textarea id="pbxAfterHours" rows="2">' + esc(cfg.after_hours_text || '') + '</textarea></label></div>' +
+            '<h4 style="margin:16px 0 8px;color:var(--t2)">Линии</h4>' + linesHtml +
+          '</div>' +
+          '<div class="pbx-settings-footer">' +
+            '<button type="button" class="btn btn--primary" id="pbxSaveSettings">Сохранить</button>' +
+          '</div>' +
+        '</div>';
 
       body.querySelector('#pbxSaveSettings').addEventListener('click', function () {
         var strat = (body.querySelector('#pbxDialStrategy') || {}).value || 'duty_first';
