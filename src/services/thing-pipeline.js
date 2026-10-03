@@ -214,10 +214,14 @@ async function handleProtocol(db, job, log) {
     }
 
     if (parsed.summary) {
-      await db.query(
-        `UPDATE meetings SET minutes = $2, updated_at = NOW() WHERE id = $1`,
-        [room.meeting_id, parsed.summary]
-      ).catch(() => {});
+      try {
+        await db.query(
+          `UPDATE meetings SET minutes = $2, updated_at = NOW() WHERE id = $1`,
+          [room.meeting_id, parsed.summary]
+        );
+      } catch (e) {
+        console.warn('[thing-pipeline] meetings.minutes mirror failed', e && e.message);
+      }
     }
   }
 
@@ -231,7 +235,9 @@ async function handleProtocol(db, job, log) {
       type: 'thing',
       link: room.meeting_id ? `#/meetings/${room.meeting_id}` : `#/ting/${room.slug}`
     });
-  } catch (_) { /* ignore */ }
+  } catch (e) {
+    console.warn('[thing-pipeline] minutes mirror failed', e && e.message);
+  }
 
   log.info?.('[thing-pipeline] protocol ready', recId);
 }

@@ -178,7 +178,9 @@ async function muteAllExcept(livekitRoomName, exceptIdentity) {
         try {
           await muteLiveKitTrack(livekitRoomName, id, sid, true);
           n++;
-        } catch (_) { /* track may have left */ }
+        } catch (e) {
+          console.warn('[thing-livekit] mute track skipped', e && e.message);
+        }
       }
     }
   }

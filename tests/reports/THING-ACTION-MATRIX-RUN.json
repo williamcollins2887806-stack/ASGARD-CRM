@@ -1,9 +1,9 @@
 {
-  "at": "2026-10-02T18:27:40.791Z",
-  "base": "http://127.0.0.1:3100",
-  "numerator": 33,
-  "denominator": 33,
-  "skipped": 7,
+  "at": "2026-10-03T18:24:10.967Z",
+  "base": "http://127.0.0.1:3101",
+  "numerator": 43,
+  "denominator": 43,
+  "skipped": 1,
   "pass": true,
   "fails": [],
   "rows": [
@@ -17,13 +17,13 @@
       "id": "A02",
       "pass": true,
       "skip": false,
-      "detail": "tab Из Тинга"
+      "detail": "tab Тинги"
     },
     {
       "id": "A03",
       "pass": true,
       "skip": false,
-      "detail": "tab Из Совещаний"
+      "detail": "tab Совещания"
     },
     {
       "id": "A04",
@@ -53,7 +53,7 @@
       "id": "A08",
       "pass": true,
       "skip": false,
-      "detail": "create room dial=863118"
+      "detail": "create room dial=194731 status=201"
     },
     {
       "id": "A09",
@@ -81,21 +81,21 @@
     },
     {
       "id": "A13",
-      "pass": null,
-      "skip": true,
-      "detail": "LiveKit not configured locally — ACK (LiveKit ещё не развёрнут на сервере (P1))"
+      "pass": true,
+      "skip": false,
+      "detail": "from LIVEKIT-MATRIX: host Room.connect"
     },
     {
       "id": "A14",
-      "pass": null,
-      "skip": true,
-      "detail": "LiveKit not configured locally — ACK (LiveKit ещё не развёрнут на сервере (P1))"
+      "pass": true,
+      "skip": false,
+      "detail": "from LIVEKIT-MATRIX: guest Room.connect"
     },
     {
       "id": "A15",
       "pass": true,
       "skip": false,
-      "detail": "waiting+admit id=26 admit=200"
+      "detail": "waiting+admit id=27 admit=200"
     },
     {
       "id": "A16",
@@ -105,21 +105,21 @@
     },
     {
       "id": "A17",
-      "pass": null,
-      "skip": true,
-      "detail": "LiveKit not configured locally — ACK (LiveKit ещё не развёрнут на сервере (P1))"
+      "pass": true,
+      "skip": false,
+      "detail": "from LIVEKIT-MATRIX: mic toggle"
     },
     {
       "id": "A18",
-      "pass": null,
-      "skip": true,
-      "detail": "LiveKit not configured locally — ACK (LiveKit ещё не развёрнут на сервере (P1))"
+      "pass": true,
+      "skip": false,
+      "detail": "from LIVEKIT-MATRIX: cam toggle"
     },
     {
       "id": "A19",
-      "pass": null,
-      "skip": true,
-      "detail": "LiveKit not configured locally — ACK (LiveKit ещё не развёрнут на сервере (P1))"
+      "pass": true,
+      "skip": false,
+      "detail": "from LIVEKIT-MATRIX: screen share"
     },
     {
       "id": "A20",
@@ -137,7 +137,7 @@
       "id": "A22",
       "pass": true,
       "skip": false,
-      "detail": "kick guest_77166505b80aeda4"
+      "detail": "kick guest_91c3a85bde50b23a"
     },
     {
       "id": "A23",
@@ -201,9 +201,9 @@
     },
     {
       "id": "A33",
-      "pass": null,
-      "skip": true,
-      "detail": "THING_DIALIN_SECRET unset — ACK"
+      "pass": true,
+      "skip": false,
+      "detail": "dial-in resolve status=200"
     },
     {
       "id": "A34",
@@ -227,7 +227,7 @@
       "id": "A37",
       "pass": true,
       "skip": false,
-      "detail": "schedule/create room"
+      "detail": "schedule/create room status=201"
     },
     {
       "id": "A38",
@@ -246,6 +246,30 @@
       "pass": true,
       "skip": false,
       "detail": "guest waiting poll"
+    },
+    {
+      "id": "A41",
+      "pass": true,
+      "skip": false,
+      "detail": "start status=200"
+    },
+    {
+      "id": "A42",
+      "pass": true,
+      "skip": false,
+      "detail": "leave status=200"
+    },
+    {
+      "id": "A43",
+      "pass": true,
+      "skip": false,
+      "detail": "public chat after admit"
+    },
+    {
+      "id": "A44",
+      "pass": true,
+      "skip": false,
+      "detail": "protocol generate contract 400"
     }
   ]
 }

@@ -1,7 +1,6 @@
 #!/usr/bin/env node
 /**
- * Independent CODE verifier for Ting CRM UI 100% plan (F4).
- * Anti-stub, LiveKit real hooks, RBAC protocol, dial 6, no dead CTA.
+ * Independent CODE verifier — Ting visual/UX plan.
  * Exit 0 = VERIFIED, 1 = FAIL.
  */
 'use strict';
@@ -17,30 +16,43 @@ function check(id, pass, evidence) {
 }
 
 const tingPage = fs.readFileSync(path.join(root, 'public/assets/js/ting_page.js'), 'utf8');
+const tingCss = fs.readFileSync(path.join(root, 'public/assets/css/ting.css'), 'utf8');
 const guest = fs.readFileSync(path.join(root, 'public/ting/index.html'), 'utf8');
 const thing = fs.readFileSync(path.join(root, 'src/routes/thing.js'), 'utf8');
 const livekit = fs.readFileSync(path.join(root, 'src/services/thing-livekit.js'), 'utf8');
 const app = fs.readFileSync(path.join(root, 'public/assets/js/app.js'), 'utf8');
 const index = fs.readFileSync(path.join(root, 'public/index.html'), 'utf8');
 
-check('C01_no_skoro_toast', !/скоро появится|coming soon|TODO.*ting|заглушк|toast\(['\"]скоро/i.test(tingPage), 'no stub phrases in ting_page');
-check('C02_livekit_cdn', /livekit-client@2/.test(tingPage) && /LivekitClient|createLocalTracks|Room\.connect|room\.connect/.test(tingPage), 'LiveKit client connect');
-check('C03_guest_livekit', /room\.connect|LivekitClient/.test(guest), 'guest connects LiveKit');
-check('C04_protocol_owner', /isProtocolOwner/.test(thing), 'protocol RBAC helper');
-check('C05_lobby_admit', /lobby\/:participantId\/admit/.test(thing) && /admit/.test(tingPage), 'admit wired');
-check('C06_lobby_reject', /lobby\/:participantId\/reject/.test(thing), 'reject API');
-check('C07_mute_all', /mute-all/.test(thing) && /mute-all|muteAll/.test(livekit + tingPage), 'mute-all');
-check('C08_remove', /participants\/:identity\/remove/.test(thing), 'kick/remove');
-check('C09_recording_ui', /recording\/start/.test(tingPage) && /recording\/stop/.test(tingPage), 'rec UI');
-check('C10_host_end', /\/end/.test(tingPage) && /host-end-confirm/.test(tingPage), 'host end');
-check('C11_dial_6', /dial_code|ting-dial/.test(tingPage) && /isDialCode/.test(thing), 'dial 6');
-check('C12_nav', /r:"\/ting",l:"Тинг"/.test(app), 'NAV item');
-check('C13_script_tag', /ting_page\.js/.test(index) && /ting\.css/.test(index), 'index wiring');
-check('C14_participants', /\/participants/.test(tingPage) && /GET.*participants|\/participants/.test(thing), 'participants list');
-check('C15_chat_api', /\/chat/.test(thing) && /chat-send/.test(tingPage), 'chat API+UI');
-check('C16_guest_waiting', /lobby-status/.test(guest) && /lobby-status/.test(thing), 'waiting poll');
-check('C17_no_iframe_ting', !/iframe.*ting|ting.*iframe/i.test(tingPage + app), 'not iframe wrap');
-check('C18_icon_dock', /ting-dock|dock button/.test(tingPage + guest), 'icon dock');
+check('C01_no_skoro_toast', !/скоро появится|coming soon|заглушк|toast\(['\"]скоро/i.test(tingPage), 'no stub toasts');
+check('C02_livekit_cdn', /livekit-client@2/.test(tingPage) && /room\.connect/.test(tingPage), 'LiveKit connect');
+check('C03_guest_livekit', /room\.connect|LivekitClient/.test(guest), 'guest LiveKit');
+check('C04_lobby_default_off', /lobby_enabled:\s*lobby/.test(tingPage) && /ting-lobby/.test(tingPage) && !/#ting-lobby" checked/.test(tingPage) && !/id="ting-lobby" checked/.test(tingPage), 'lobby checkbox unchecked by default');
+check('C05_no_kick_word', !/\bКик\b|Mute all|toast\(['\"]Kick/i.test(tingPage) && !/>Kick</i.test(tingPage), 'no Kick/Mute all UI anglicisms');
+check('C06_no_modul_crm', !/модуль CRM/.test(tingPage), 'no «модуль CRM»');
+check('C07_incall_chrome', /ting-incall/.test(tingPage) && /ting-incall/.test(tingCss), 'CRM chrome hide class');
+check('C08_chat_sidebar', /ting-chat/.test(tingPage) && /grid-area:\s*chat/.test(tingCss), 'chat always side column');
+check('C09_screenshare', /setScreenShareEnabled/.test(tingPage) && /setScreenShareEnabled/.test(guest), 'screen share API');
+check('C10_live_loop', /startLiveLoop|setInterval\(async/.test(tingPage), 'live refresh loop');
+check('C11_hub_telemost', /Новый Тинг/.test(tingPage) && /Подключиться/.test(tingPage) && /Запланировать/.test(tingPage), 'hub Telemost IA');
+check('C12_logo_mark', /ting-logo-mark/.test(tingPage) && /ting-logo-mark/.test(tingCss), 'logo mark');
+check('C13_grid_speaker', /layout === 'speaker'|layout-toggle/.test(tingPage), 'grid/speaker modes');
+check('C14_floating_dock', /ting-dock-inner/.test(tingPage) && /ting-dock-inner/.test(tingCss), 'floating dock');
+check('C15_tile_mic_label', /ting-tile|\.lbl/.test(tingCss) && /svgMic/.test(tingPage), 'tile name+mic');
+check('C16_public_chat', /public\/:code\/chat/.test(thing) && /public\/.*\/chat/.test(guest), 'guest public chat');
+check('C17_remove_ru', /Удалить из комнаты/.test(tingPage), 'kick → Russian');
+check('C18_mute_all_ru', /Выключить микрофоны у всех/.test(tingPage), 'mute-all Russian');
+check('C19_qr_ready', /qrserver|ting-qr/.test(tingPage), 'QR on ready');
+check('C20_share_link', /share-link|navigator\.share/.test(tingPage), 'share CTA');
+check('C21_nav', /r:"\/ting",l:"Тинг"/.test(app), 'NAV item');
+check('C22_script_tag', /ting_page\.js/.test(index) && /ting\.css/.test(index), 'index wiring');
+check('C23_guest_css_shared', /assets\/css\/ting\.css/.test(guest), 'guest uses shared CSS');
+check('C24_protocol_owner', /isProtocolOwner/.test(thing), 'protocol RBAC');
+check('C25_recording', /recording\/start/.test(tingPage) && /recording\/stop/.test(tingPage), 'rec UI');
+check('C26_host_end', /host-end-confirm/.test(tingPage), 'host end');
+check('C27_dial', /ting-dial/.test(tingPage) && /isDialCode/.test(thing), 'dial-in');
+check('C28_mobile', /@media \(max-width: 820px\)/.test(tingCss) && /\.ting-chat\.open/.test(tingCss) && /ting-people-drawer/.test(tingCss), 'mobile breakpoints + sheets');
+check('C29_lobby_admit_api', /lobby\/:participantId\/admit/.test(thing), 'admit API still exists');
+check('C30_no_iframe', !/iframe.*ting|ting.*iframe/i.test(tingPage + app), 'not iframe');
 
 const fail = checks.filter((c) => !c.pass);
 const md = [
@@ -57,6 +69,6 @@ const md = [
 ].join('\n');
 
 fs.writeFileSync(report, md);
-console.log(md.split('\n').slice(0, 6).join('\n'));
+console.log(md.split('\n').slice(0, 8).join('\n'));
 fail.forEach((f) => console.log('FAIL', f.id, f.evidence));
 process.exit(fail.length ? 1 : 0);

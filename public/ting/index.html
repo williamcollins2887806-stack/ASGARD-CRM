@@ -4,204 +4,210 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Тинг</title>
-  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/assets/css/ting.css" />
   <style>
-    :root {
-      --bg0: #08090C; --bg1: #0D1117; --bg2: #151c24; --text: #E8EEF4; --t2: #8B9AAB;
-      --gold: #D4A843; --gold-l: #E8C35A; --line: #243040; --danger: #E85D5D;
-      --font: "Manrope", system-ui, sans-serif;
-    }
-    * { box-sizing: border-box; }
-    body {
-      margin: 0; min-height: 100vh; font-family: var(--font);
-      background: radial-gradient(1200px 600px at 50% -10%, #1a2230 0%, var(--bg0) 55%);
-      color: var(--text);
-    }
-    .screen { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 24px; }
-    .card {
-      width: min(420px, 100%); text-align: center; border: 1px solid var(--line);
-      border-radius: 18px; padding: 28px 22px; background: var(--bg2);
-    }
-    .logo-row { display: flex; gap: 10px; align-items: center; justify-content: center; margin-bottom: 10px; }
-    .rune {
-      width: 32px; height: 32px; border-radius: 10px; display: grid; place-items: center;
-      background: linear-gradient(180deg, var(--gold-l), var(--gold)); color: #111; font-weight: 800;
-    }
-    .chip {
-      display: inline-flex; padding: 4px 10px; border-radius: 999px; border: 1px solid var(--line);
-      color: var(--t2); font-size: 12px; font-weight: 600;
-    }
-    .chip.gold { border-color: var(--gold); color: var(--gold); }
-    h1, h3 { font-size: 1.4rem; font-weight: 800; margin: 10px 0 6px; }
-    .sub { color: var(--t2); margin: 0 0 16px; font-size: 14px; line-height: 1.45; }
-    .preview {
-      position: relative; height: 210px; border-radius: 16px; overflow: hidden;
-      background: #0a0e12; border: 1px solid var(--line); margin-bottom: 12px;
-    }
-    .preview video { width: 100%; height: 100%; object-fit: cover; }
-    .preview .avatar {
-      position: absolute; inset: 0; display: grid; place-items: center;
-      font-size: 42px; font-weight: 800; color: var(--gold); background: #121820;
-    }
-    .preview-controls {
-      position: absolute; left: 0; right: 0; bottom: 10px;
-      display: flex; gap: 8px; justify-content: center;
-    }
-    .btn-icon {
-      width: 42px; height: 42px; border-radius: 50%; border: 1px solid var(--line);
-      background: rgba(15,20,28,.82); color: var(--text); cursor: pointer;
-    }
-    .btn-icon.off { color: var(--danger); border-color: rgba(232,93,93,.45); }
-    label { display: block; text-align: left; font-size: 0.85rem; margin-bottom: 6px; color: var(--t2); }
-    input {
-      width: 100%; padding: 12px 14px; border-radius: 10px; border: 1px solid var(--line);
-      background: var(--bg0); color: var(--text); margin-bottom: 14px; font-size: 1rem; font-family: inherit;
-    }
-    .btn {
-      width: 100%; padding: 12px 16px; border: 0; border-radius: 12px;
-      background: linear-gradient(180deg, var(--gold-l), var(--gold)); color: #111;
-      font-weight: 700; cursor: pointer; font-size: 1rem; font-family: inherit;
-    }
-    .btn.ghost { background: transparent; border: 1px solid var(--line); color: var(--text); margin-top: 8px; }
-    .btn:disabled { opacity: 0.5; cursor: default; }
-    .err { color: var(--danger); font-size: 0.9rem; margin-top: 10px; }
-    .ok { color: #6bcf8e; font-size: 0.9rem; margin-top: 10px; }
-    #roomView { display: none; flex-direction: column; height: 100vh; }
-    #roomView.on { display: flex; }
-    .room-top {
-      display: flex; justify-content: space-between; align-items: center;
-      padding: 10px 14px; border-bottom: 1px solid var(--line); background: var(--bg1);
-    }
-    .consent {
-      background: rgba(212,168,67,.15); border-bottom: 1px solid var(--gold);
-      color: var(--gold-l); padding: 8px; text-align: center; font-size: 13px; font-weight: 600;
-    }
-    #stage {
-      flex: 1; display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-      gap: 8px; padding: 12px; background: var(--bg0); overflow: auto;
-    }
-    .filmstrip {
-      display: flex; gap: 8px; padding: 8px 12px; overflow-x: auto;
-      border-top: 1px solid var(--line); background: var(--bg1); min-height: 72px;
-    }
-    .filmstrip .tile { width: 120px; min-height: 68px; flex: 0 0 auto; }
-    .tile {
-      position: relative; background: #1a222c; border-radius: 12px; overflow: hidden;
-      min-height: 160px; border: 1px solid var(--line);
-    }
-    .tile video { width: 100%; height: 100%; object-fit: cover; background: #000; }
-    .tile .label {
-      position: absolute; left: 8px; bottom: 8px; font-size: 0.8rem;
-      background: rgba(0,0,0,.55); padding: 4px 8px; border-radius: 6px;
-    }
-    .dock {
-      display: flex; gap: 10px; justify-content: center; flex-wrap: wrap;
-      padding: 14px; border-top: 1px solid var(--line); background: var(--bg2);
-    }
-    .dock button {
-      width: 52px; height: 52px; border-radius: 50%; border: 1px solid var(--line);
-      background: #243040; color: var(--text); cursor: pointer; font-size: 18px;
-    }
-    .dock button.off { color: var(--danger); }
-    .dock button.danger { background: var(--danger); border: 0; color: #fff; }
-    .side {
-      position: absolute; top: 52px; right: 0; bottom: 80px; width: min(320px, 100%);
-      background: var(--bg1); border-left: 1px solid var(--line); padding: 12px; overflow: auto; z-index: 2;
-    }
+    html, body { margin: 0; min-height: 100%; }
     .hidden { display: none !important; }
+    #roomView { display: none; }
+    #roomView.on { display: grid; }
+    .ting-guest-label { display:block; text-align:left; margin-bottom:6px; }
+    .ting-guest-brand { justify-content:center; margin-bottom:12px; }
+    .ting-guest-brand .ting-logo-text { text-align:left; }
+    .ting-guest-cta { display:inline-flex; text-decoration:none; }
   </style>
   <script src="https://cdn.jsdelivr.net/npm/livekit-client@2.9.1/dist/livekit-client.umd.min.js"></script>
+  <script src="/assets/js/ting_icons.js"></script>
+  <script src="/assets/js/ting_common.js"></script>
 </head>
-<body>
-  <div class="screen" id="lobby">
-    <div class="card">
-      <div class="logo-row"><div class="rune">ᛏ</div><span class="chip gold">Тинг · ASGARD</span></div>
-      <h3 id="title">Тинг</h3>
-      <p class="sub" id="meta">Загрузка…</p>
+<body class="ting-guest">
+  <div class="g-screen" id="lobby">
+    <div class="ting-wrap" style="max-width:480px;width:100%">
+    <div class="ting-brand-row">
+      <div class="ting-logo ting-guest-brand">
+        <div class="ting-logo-mark" aria-hidden="true" id="guestLogo"></div>
+        <div class="ting-logo-text"><strong>Тинг</strong><span>совещания ASGARD</span></div>
+      </div>
+      <span class="ting-chip gold">гость</span>
+    </div>
+    <div class="ting-card ting-center-card">
+      <h3 id="title" class="ting-h2-tight">Тинг</h3>
+      <p class="ting-muted" id="meta">Загрузка…</p>
       <div id="form" class="hidden">
-        <div class="preview" id="preview">
+        <div class="ting-preview" id="preview">
           <video id="previewVideo" playsinline muted autoplay hidden></video>
-          <div class="avatar" id="previewAvatar">?</div>
-          <div class="preview-controls">
-            <button type="button" class="btn-icon" id="preMic" title="Микрофон">🎤</button>
-            <button type="button" class="btn-icon" id="preCam" title="Камера">📷</button>
+          <div class="ting-avatar tone-0" id="previewAvatar">Г</div>
+          <div class="ting-precall-controls">
+            <button type="button" class="ting-dock-btn active" id="preMic" title="Микрофон" aria-label="Микрофон"></button>
+            <button type="button" class="ting-dock-btn active" id="preCam" title="Камера" aria-label="Камера"></button>
           </div>
         </div>
-        <label for="name">Как вас представить</label>
-        <input id="name" autocomplete="name" placeholder="Имя" />
+        <label class="ting-muted ting-guest-label" for="name">Как вас представить</label>
+        <input class="ting-field" id="name" autocomplete="name" placeholder="Ваше имя" value="Гость" />
         <div id="pinWrap" class="hidden">
-          <label for="pin">PIN (4 цифры)</label>
-          <input id="pin" inputmode="numeric" maxlength="4" placeholder="••••" />
+          <label class="ting-muted ting-guest-label" for="pin">PIN (4 цифры)</label>
+          <input class="ting-field" id="pin" inputmode="numeric" maxlength="4" placeholder="••••" />
         </div>
-        <button type="button" class="btn" id="join">Войти</button>
+        <button type="button" class="ting-btn ting-btn-primary ting-full-btn" id="join">Войти</button>
         <div id="msg"></div>
       </div>
     </div>
-  </div>
-
-  <div class="screen hidden" id="waiting">
-    <div class="card">
-      <div class="rune" style="margin:0 auto 12px">ᛏ</div>
-      <h3>Почти внутри</h3>
-      <p class="sub">Хост скоро пустит — не закрывайте вкладку</p>
-      <button type="button" class="btn ghost" id="waitLeave">Выйти</button>
     </div>
   </div>
 
-  <div class="screen hidden" id="ended">
-    <div class="card">
-      <div class="rune" style="margin:0 auto 12px">ᛏ</div>
-      <h3>Тинг завершён</h3>
-      <p class="sub" id="endedMeta">Комната закрыта</p>
-      <a class="btn" id="endedProto" href="/#/ting">Протокол / на хаб CRM</a>
-      <button type="button" class="btn ghost" id="endedRec">Запись</button>
-    </div>
-  </div>
-
-  <div class="screen hidden" id="errorCode">
-    <div class="card" data-screen="error-code">
-      <h3>Неверный код или PIN</h3>
-      <p class="sub" id="errorCodeMeta">Проверьте PIN и попробуйте снова</p>
-      <button type="button" class="btn" onclick="location.reload()">Повторить</button>
-    </div>
-  </div>
-
-  <div class="screen hidden" id="errorView">
-    <div class="card">
-      <h3>Не удалось войти</h3>
-      <p class="sub" id="errorMeta">Ошибка</p>
-      <button type="button" class="btn" onclick="location.reload()">Повторить</button>
-    </div>
-  </div>
-
-  <div id="roomView" style="position:relative">
-    <div class="consent hidden" id="recConsent">● Идёт запись</div>
-    <div class="room-top">
-      <div class="title" id="roomTitle">Тинг</div>
-      <div class="timer" id="roomTimer" style="color:var(--t2)">00:00</div>
-    </div>
-    <div id="stage"></div>
-    <div class="filmstrip" id="filmstrip" title="Участники"></div>
-    <div class="side hidden" id="peopleSide"><h3>Участники</h3><div id="peopleList"></div></div>
-    <div class="side hidden" id="chatSide">
-      <h3>Чат</h3><div id="chatList"></div>
-      <div style="display:flex;gap:6px;margin-top:10px">
-        <input id="chatIn" placeholder="Сообщение" style="margin:0" />
-        <button type="button" class="btn" id="chatSend" style="width:auto;padding:10px 14px">→</button>
+  <div class="g-screen hidden" id="waiting">
+    <div class="ting-wrap" style="max-width:480px;width:100%">
+      <div class="ting-brand-row">
+        <div class="ting-logo ting-guest-brand">
+          <div class="ting-logo-mark" id="waitLogo"></div>
+          <div class="ting-logo-text"><strong>Тинг</strong><span>совещания ASGARD</span></div>
+        </div>
+        <span class="ting-chip gold">ожидание</span>
+      </div>
+      <div class="ting-card ting-center-card ting-stack">
+        <div class="ting-wait-pulse" aria-hidden="true">
+          <div class="ting-logo-mark" id="waitLogoPulse"></div>
+        </div>
+        <h3>Почти внутри</h3>
+        <p class="ting-muted ting-wait-copy">Организатор скоро пустит — не закрывайте вкладку</p>
+        <button type="button" class="ting-btn ting-btn-ghost" id="waitLeave">Выйти</button>
       </div>
     </div>
-    <div class="dock">
-      <button type="button" id="btnMic" title="Микрофон">🎤</button>
-      <button type="button" id="btnCam" title="Камера">📷</button>
-      <button type="button" id="btnShare" title="Экран">🖥️</button>
-      <button type="button" id="btnPeople" title="Люди">👥</button>
-      <button type="button" id="btnChat" title="Чат">💬</button>
-      <button type="button" id="btnLeave" class="danger" title="Выйти">📞</button>
+  </div>
+
+  <div class="g-screen hidden" id="ended">
+    <div class="ting-wrap" style="max-width:480px;width:100%">
+      <div class="ting-brand-row">
+        <div class="ting-logo ting-guest-brand">
+          <div class="ting-logo-mark" id="endedLogo"></div>
+          <div class="ting-logo-text"><strong>Тинг</strong><span>совещания ASGARD</span></div>
+        </div>
+        <span class="ting-chip gold">завершён</span>
+      </div>
+      <div class="ting-card ting-center-card ting-stack">
+        <h3>Тинг завершён</h3>
+        <p class="ting-muted" id="endedMeta">Комната закрыта</p>
+        <button type="button" class="ting-btn ting-btn-primary" id="endedClose">Закрыть</button>
+      </div>
     </div>
+  </div>
+
+  <div class="g-screen hidden" id="errorCode">
+    <div class="ting-wrap" style="max-width:480px;width:100%">
+      <div class="ting-brand-row">
+        <div class="ting-logo ting-guest-brand">
+          <div class="ting-logo-mark" id="errorCodeLogo"></div>
+          <div class="ting-logo-text"><strong>Тинг</strong><span>совещания ASGARD</span></div>
+        </div>
+        <span class="ting-chip gold">код</span>
+      </div>
+      <div class="ting-card ting-center-card ting-stack">
+        <h3>Неверный код или PIN</h3>
+        <p class="ting-muted" id="errorCodeMeta">Проверьте 6 цифр кода комнаты и PIN с карточки доступа.</p>
+        <div class="ting-cta-row ting-cta-center">
+          <button type="button" class="ting-btn ting-btn-primary" onclick="location.reload()">Повторить</button>
+          <button type="button" class="ting-btn ting-btn-ghost" id="errorCodeClose">Закрыть</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="g-screen hidden" id="errorView">
+    <div class="ting-wrap" style="max-width:480px;width:100%">
+      <div class="ting-brand-row">
+        <div class="ting-logo ting-guest-brand">
+          <div class="ting-logo-mark" id="errorLogo"></div>
+          <div class="ting-logo-text"><strong>Тинг</strong><span>совещания ASGARD</span></div>
+        </div>
+        <span class="ting-chip gold">ошибка</span>
+      </div>
+      <div class="ting-card ting-center-card ting-stack">
+        <h3>Не удалось войти</h3>
+        <p class="ting-muted" id="errorMeta">Сеть, права доступа или видео-сервер недоступны. Попробуйте ещё раз.</p>
+        <div class="ting-cta-row ting-cta-center">
+          <button type="button" class="ting-btn ting-btn-primary" onclick="location.reload()">Повторить</button>
+          <button type="button" class="ting-btn ting-btn-ghost" id="errorClose">Закрыть</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="guestToast" class="ting-guest-toast hidden" role="status" aria-live="polite"></div>
+
+  <div class="ting-room-shell" id="roomView">
+    <div class="ting-consent hidden" id="recConsent">Идёт запись · все участники уведомлены</div>
+    <div class="ting-room-main">
+      <div class="ting-room-top">
+        <div class="ting-room-title">
+          <div class="ting-logo-mark" style="width:28px;height:28px;border-radius:9px" id="roomLogo"></div>
+          <div class="ting-room-title-text">
+            <strong id="roomTitle">Тинг</strong>
+            <span class="ting-muted" id="roomTimer">00:00</span>
+          </div>
+        </div>
+        <div class="ting-top-actions">
+          <button type="button" class="ting-icon-btn" id="btnPeopleTop" title="Участники" aria-label="Участники"></button>
+          <button type="button" class="ting-icon-btn" id="btnChatMob" title="Чат" aria-label="Чат"></button>
+        </div>
+      </div>
+      <div class="ting-stage-wrap">
+        <div class="ting-filmstrip" id="filmstrip"></div>
+        <div class="ting-stage" id="stage"></div>
+        <div class="ting-people-drawer hidden" id="peopleDrawer">
+          <div class="ting-drawer-head">
+            <strong>Участники</strong>
+            <button type="button" class="ting-icon-btn ting-icon-sm" id="peopleClose" aria-label="Закрыть">✕</button>
+          </div>
+          <div id="peopleList"></div>
+        </div>
+      </div>
+      <div class="ting-dock">
+        <div class="ting-dock-inner">
+          <button type="button" class="ting-dock-btn" id="btnMic" title="Микрофон" aria-label="Микрофон"></button>
+          <button type="button" class="ting-dock-btn" id="btnCam" title="Камера" aria-label="Камера"></button>
+          <button type="button" class="ting-dock-btn" id="btnShare" title="Экран" aria-label="Экран"></button>
+          <button type="button" class="ting-dock-btn" id="btnPeople" title="Участники" aria-label="Участники"></button>
+          <div class="ting-dock-sep" aria-hidden="true"></div>
+          <button type="button" class="ting-dock-btn danger" id="btnLeave" title="Выйти" aria-label="Выйти"></button>
+        </div>
+      </div>
+    </div>
+    <aside class="ting-chat" id="chatSide">
+      <div class="ting-chat-head"><span>Чат</span>
+        <button type="button" class="ting-icon-btn ting-icon-sm" id="chatCloseMob">✕</button>
+      </div>
+      <div class="ting-chat-list" id="chatList"></div>
+      <div class="ting-chat-input">
+        <div class="ting-chat-compose">
+          <input id="chatIn" placeholder="Сообщение" maxlength="2000" autocomplete="off" />
+          <button type="button" class="ting-chat-send-ico" id="chatSend" title="Отправить" aria-label="Отправить"></button>
+        </div>
+      </div>
+    </aside>
   </div>
 
   <script>
     (function () {
+      const I = window.TingIcons || {};
+      function paintIcons() {
+        var map = [
+          ['guestLogo', I.logoMark], ['waitLogo', I.logoMark], ['waitLogoPulse', I.logoMark],
+          ['endedLogo', I.logoMark], ['errorCodeLogo', I.logoMark], ['errorLogo', I.logoMark],
+          ['roomLogo', I.logoMark],
+          ['preMic', function () { return I.mic && I.mic(false); }],
+          ['preCam', function () { return I.cam && I.cam(false); }],
+          ['btnMic', function () { return I.mic && I.mic(false); }],
+          ['btnCam', function () { return I.cam && I.cam(false); }],
+          ['btnShare', I.screen], ['btnPeople', I.people], ['btnPeopleTop', I.people],
+          ['btnChatMob', I.chat], ['btnLeave', I.hang],
+          ['chatSend', I.send]
+        ];
+        map.forEach(function (pair) {
+          var el = document.getElementById(pair[0]);
+          if (el && typeof pair[1] === 'function') el.innerHTML = pair[1]() || '';
+        });
+      }
+      paintIcons();
+
       const slug = location.pathname.replace(/^\/ting\/?/, '').split(/[/?#]/)[0].toLowerCase();
       const titleEl = document.getElementById('title');
       const metaEl = document.getElementById('meta');
@@ -210,6 +216,7 @@
       const pinWrap = document.getElementById('pinWrap');
       const previewVideo = document.getElementById('previewVideo');
       const previewAvatar = document.getElementById('previewAvatar');
+      const peopleDrawer = document.getElementById('peopleDrawer');
       let room = null;
       let localAudio = true;
       let localVideo = true;
@@ -217,9 +224,38 @@
       let joinedAt = 0;
       let timerId = null;
       let pollId = null;
+      let chatPollId = null;
       let waitIdentity = null;
+      let joinToken = null;
+      let guestIdentity = null;
       let sharing = false;
       let guestName = '';
+      let peopleOpen = false;
+      let recordingMode = 'off';
+      let activeSpeakerId = null;
+      let speakerTimer = null;
+      let guestChat = [];
+      function tingSound(kind) {
+        if (window.TingCommon && TingCommon.TingSound) TingCommon.TingSound.play(kind);
+        else if (window.TingSound) TingSound.play(kind);
+      }
+
+      function avatarTone(identity) {
+        if (window.TingCommon && TingCommon.avatarTone) return TingCommon.avatarTone(identity);
+        var s = String(identity || '');
+        var h = 0;
+        for (var i = 0; i < s.length; i++) h = ((h << 5) - h + s.charCodeAt(i)) | 0;
+        return Math.abs(h) % 6;
+      }
+
+      function markSpeakingTiles() {
+        document.querySelectorAll('#stage .ting-tile, #filmstrip .ting-tile').forEach(function (tile) {
+          var on = !!(activeSpeakerId && tile.dataset.id === activeSpeakerId);
+          tile.classList.toggle('speak', on);
+          var av = tile.querySelector('.ting-avatar');
+          if (av) av.classList.toggle('speaking', on);
+        });
+      }
 
       function show(id) {
         ['lobby', 'waiting', 'ended', 'errorView', 'errorCode'].forEach(function (x) {
@@ -227,6 +263,7 @@
           if (el) el.classList.toggle('hidden', x !== id);
         });
         document.getElementById('roomView').classList.toggle('on', id === 'room');
+        document.body.classList.toggle('ting-incall', id === 'room');
         if (id === 'room') {
           document.getElementById('lobby').classList.add('hidden');
           document.getElementById('waiting').classList.add('hidden');
@@ -240,8 +277,18 @@
           show('errorCode');
           return;
         }
-        document.getElementById('errorMeta').textContent = msg || 'Ошибка';
+        document.getElementById('errorMeta').textContent = (msg && msg !== 'Не удалось войти' && msg !== 'Ошибка')
+          ? msg
+          : 'Сеть, PIN или доступ к комнате. Проверьте ссылку и попробуйте снова.';
         show('errorView');
+      }
+
+      function stopPreview() {
+        if (previewStream) {
+          previewStream.getTracks().forEach(function (t) { t.stop(); });
+          previewStream = null;
+        }
+        if (previewVideo) previewVideo.srcObject = null;
       }
 
       if (!slug) {
@@ -250,14 +297,19 @@
       }
 
       function initials(name) {
+        if (window.TingCommon && TingCommon.initials) return TingCommon.initials(name);
         const p = String(name || '?').trim().split(/\s+/).slice(0, 2);
         return p.map(function (s) { return s[0] ? s[0].toUpperCase() : ''; }).join('') || '?';
       }
 
       function syncPreviewUi() {
         document.getElementById('preMic').classList.toggle('off', !localAudio);
+        document.getElementById('preMic').classList.toggle('active', localAudio);
         document.getElementById('preCam').classList.toggle('off', !localVideo);
-        previewAvatar.textContent = initials(document.getElementById('name').value);
+        document.getElementById('preCam').classList.toggle('active', localVideo);
+        var nm = document.getElementById('name').value;
+        previewAvatar.textContent = initials(nm);
+        previewAvatar.className = 'ting-avatar tone-' + avatarTone(nm || 'guest');
         if (localVideo && previewStream) {
           previewVideo.hidden = false;
           previewAvatar.style.display = 'none';
@@ -269,10 +321,7 @@
 
       async function ensurePreview() {
         try {
-          if (previewStream) {
-            previewStream.getTracks().forEach(function (t) { t.stop(); });
-            previewStream = null;
-          }
+          stopPreview();
           previewStream = await navigator.mediaDevices.getUserMedia({
             audio: true,
             video: localVideo ? { facingMode: 'user' } : false
@@ -286,20 +335,92 @@
         }
       }
 
+      function renderPeople() {
+        var list = document.getElementById('peopleList');
+        if (!list) return;
+        var names = ['Вы'];
+        if (room) {
+          room.remoteParticipants.forEach(function (p) {
+            names.push(p.name || p.identity);
+          });
+        }
+        list.innerHTML = names.map(function (n) {
+          return '<div class="ting-list-item"><span>' + String(n).replace(/</g, '&lt;') + '</span></div>';
+        }).join('') || '<div class="ting-muted">Никого нет</div>';
+      }
+
+      function setPeopleOpen(on) {
+        peopleOpen = !!on;
+        if (peopleDrawer) peopleDrawer.classList.toggle('hidden', !peopleOpen);
+        document.querySelector('.ting-room-main') &&
+          document.querySelector('.ting-room-main').classList.toggle('has-people', peopleOpen);
+        if (peopleOpen) renderPeople();
+      }
+
       document.getElementById('name').addEventListener('input', syncPreviewUi);
       document.getElementById('preMic').addEventListener('click', function () {
         localAudio = !localAudio;
         if (previewStream) previewStream.getAudioTracks().forEach(function (t) { t.enabled = localAudio; });
         syncPreviewUi();
+        this.innerHTML = (I.mic && I.mic(!localAudio)) || '';
       });
       document.getElementById('preCam').addEventListener('click', async function () {
         localVideo = !localVideo;
         await ensurePreview();
+        this.innerHTML = (I.cam && I.cam(!localVideo)) || '';
       });
-      document.getElementById('waitLeave').addEventListener('click', function () {
+      async function publicLeave() {
+        var id = guestIdentity || waitIdentity;
+        if (!id || !slug || !joinToken) return;
+        try {
+          await fetch('/api/thing/public/' + encodeURIComponent(slug) + '/leave', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ identity: id, join_token: joinToken })
+          });
+        } catch (_) { /* best-effort */ }
+      }
+      function guestToast(msg) {
+        var toast = document.getElementById('guestToast');
+        var lobbyMsg = document.getElementById('msg');
+        if (lobbyMsg && !document.getElementById('lobby').classList.contains('hidden')) {
+          lobbyMsg.textContent = msg || '';
+          lobbyMsg.className = 'ting-muted';
+        }
+        if (!toast) return;
+        toast.textContent = msg || '';
+        toast.classList.remove('hidden');
+        clearTimeout(guestToast._t);
+        guestToast._t = setTimeout(function () { toast.classList.add('hidden'); }, 4200);
+      }
+
+      function syncRecConsent() {
+        var el = document.getElementById('recConsent');
+        if (!el) return;
+        var on = recordingMode && recordingMode !== 'off';
+        el.classList.toggle('hidden', !on);
+      }
+
+      document.getElementById('waitLeave').addEventListener('click', async function () {
         if (pollId) clearInterval(pollId);
-        location.reload();
+        stopPreview();
+        await publicLeave();
+        show('ended');
       });
+      document.getElementById('endedClose').addEventListener('click', function () {
+        try { window.close(); } catch (_) { /* */ }
+        location.href = 'about:blank';
+      });
+      document.getElementById('errorClose').addEventListener('click', function () {
+        try { window.close(); } catch (_) { /* */ }
+        location.href = 'about:blank';
+      });
+      document.getElementById('errorCodeClose').addEventListener('click', function () {
+        try { window.close(); } catch (_) { /* */ }
+        location.href = 'about:blank';
+      });
+      document.getElementById('peopleClose').addEventListener('click', function () { setPeopleOpen(false); });
+      document.getElementById('btnPeopleTop').addEventListener('click', function () { setPeopleOpen(!peopleOpen); });
 
       fetch('/api/thing/public/' + encodeURIComponent(slug))
         .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
@@ -307,6 +428,8 @@
           if (!res.ok) { showError(res.j.error || 'Тинг не найден'); return; }
           titleEl.textContent = res.j.title || 'Тинг';
           document.getElementById('roomTitle').textContent = res.j.title || 'Тинг';
+          recordingMode = res.j.recording_mode || 'off';
+          syncRecConsent();
           if (res.j.status === 'ended' || res.j.status === 'cancelled') {
             document.getElementById('endedMeta').textContent = res.j.title || 'Комната закрыта';
             show('ended');
@@ -323,6 +446,8 @@
               const tj = await tr.json();
               if (tr.ok && tj.token) {
                 metaEl.textContent = 'Вход как сотрудник CRM…';
+                guestIdentity = tj.identity || null;
+                if (tj.join_token) joinToken = tj.join_token;
                 await enterRoom(tj);
                 return;
               }
@@ -344,27 +469,39 @@
         let tile = host.querySelector('[data-id="' + identity + '"]') || stage.querySelector('[data-id="' + identity + '"]');
         if (!tile) {
           tile = document.createElement('div');
-          tile.className = 'tile';
+          tile.className = 'ting-tile';
           tile.dataset.id = identity;
+          var tone = avatarTone(identity || name);
+          const ph = document.createElement('div');
+          ph.className = 'ting-tile-ph tone-' + tone;
+          ph.innerHTML = '<div class="ting-avatar tone-' + tone + '">' + initials(name || identity) + '</div>';
+          tile.appendChild(ph);
           const label = document.createElement('div');
-          label.className = 'label';
-          label.textContent = name || identity;
+          label.className = 'lbl';
+          label.innerHTML = '<span class="name"></span>';
+          label.querySelector('.name').textContent = name || identity;
           tile.appendChild(label);
           host.appendChild(tile);
         }
-        if (track.kind === 'video' || track.kind === 'audio') {
-          let el = tile.querySelector(track.kind);
+        if (track.kind === 'video') {
+          let el = tile.querySelector('video');
           if (!el) {
             el = track.attach();
-            if (track.kind === 'video') {
-              el.style.width = '100%'; el.style.height = '100%'; el.style.objectFit = 'cover';
-              tile.insertBefore(el, tile.firstChild);
-            } else {
-              el.style.display = 'none';
-              tile.appendChild(el);
-            }
+            el.style.width = '100%'; el.style.height = '100%'; el.style.objectFit = 'cover';
+            const ph = tile.querySelector('.ting-tile-ph');
+            if (ph) ph.remove();
+            tile.insertBefore(el, tile.firstChild);
+          } else {
+            track.attach(el);
           }
+        } else if (track.kind === 'audio') {
+          const el = track.attach();
+          el.style.display = 'none';
+          tile.appendChild(el);
         }
+        const lab = tile.querySelector('.lbl .name');
+        if (lab) lab.textContent = name || identity;
+        if (peopleOpen) renderPeople();
       }
 
       function startTimer() {
@@ -376,56 +513,173 @@
         }, 1000);
       }
 
-      function startLobbyPoll(identity) {
+      function startLobbyPoll(identity, token) {
         waitIdentity = identity;
+        joinToken = token || joinToken;
         show('waiting');
         if (pollId) clearInterval(pollId);
+        var enterBusy = false;
         pollId = setInterval(async function () {
+          if (enterBusy) return;
           try {
             const r = await fetch('/api/thing/public/' + encodeURIComponent(slug) +
-              '/lobby-status?identity=' + encodeURIComponent(identity));
+              '/lobby-status?identity=' + encodeURIComponent(identity) +
+              '&join_token=' + encodeURIComponent(joinToken || ''));
             const j = await r.json();
+            if (j.lobby_status === 'ended' || j.lobby_status === 'left') {
+              clearInterval(pollId); pollId = null;
+              show('ended');
+              return;
+            }
             if (j.lobby_status === 'rejected') {
-              clearInterval(pollId);
-              showError('Хост отклонил вход');
+              clearInterval(pollId); pollId = null;
+              showError('Организатор отклонил вход');
               return;
             }
             if (j.lobby_status === 'admitted' && j.token) {
-              clearInterval(pollId);
-              await enterRoom(j);
+              enterBusy = true;
+              guestIdentity = identity;
+              try {
+                await enterRoom(j);
+                clearInterval(pollId); pollId = null;
+              } catch (e) {
+                enterBusy = false;
+                guestToast((e && e.message) || 'Не удалось войти в комнату');
+                showError((e && e.message) || 'Не удалось войти в комнату');
+                clearInterval(pollId); pollId = null;
+              }
             }
-          } catch (_) { /* retry */ }
+          } catch (_) { /* network — retry next tick */ }
         }, 2000);
       }
 
-      async function enterRoom(creds) {
-        if (!window.LivekitClient) { showError('LiveKit client не загрузился'); return; }
-        if (previewStream) {
-          previewStream.getTracks().forEach(function (t) { t.stop(); });
-          previewStream = null;
+      function renderChat(messages) {
+        if (window.TingCommon && TingCommon.mergeChat) {
+          guestChat = TingCommon.mergeChat([], messages || guestChat);
+        } else {
+          guestChat = messages || guestChat || [];
         }
-        const Room = window.LivekitClient.Room;
-        room = new Room({ adaptiveStream: true, dynacast: true });
-        room.on(window.LivekitClient.RoomEvent.TrackSubscribed, function (track, _pub, participant) {
-          attachTrack(track, participant.identity, participant.name, true);
+        const list = document.getElementById('chatList');
+        list.innerHTML = guestChat.map(function (m) {
+          var mine = m.identity === guestIdentity;
+          return '<div class="ting-chat-bubble ' + (mine ? 'me' : '') + '"><b>' +
+            String(m.display_name || m.author || 'Участник').replace(/</g, '&lt;') + '</b>' +
+            String(m.text || '').replace(/</g, '&lt;') + '</div>';
+        }).join('') || '<div class="ting-muted">Напишите первое сообщение</div>';
+        list.scrollTop = list.scrollHeight;
+      }
+
+      function startChatPoll() {
+        if (chatPollId) clearInterval(chatPollId);
+        if (!guestIdentity || !joinToken) return;
+        var failToastAt = 0;
+        async function pull() {
+          try {
+            const r = await fetch('/api/thing/public/' + encodeURIComponent(slug) +
+              '/chat?identity=' + encodeURIComponent(guestIdentity) +
+              '&join_token=' + encodeURIComponent(joinToken));
+            if (!r.ok) {
+              if (Date.now() - failToastAt > 8000) {
+                failToastAt = Date.now();
+                guestToast('Чат временно недоступен');
+              }
+              return;
+            }
+            const j = await r.json();
+            renderChat(j.messages || []);
+          } catch (e) {
+            if (Date.now() - failToastAt > 8000) {
+              failToastAt = Date.now();
+              guestToast((e && e.message) || 'Чат недоступен');
+            }
+          }
+        }
+        pull();
+        chatPollId = setInterval(pull, 1000);
+      }
+
+      async function enterRoom(creds) {
+        if (!window.LivekitClient) { showError('Видео-клиент не загрузился'); return; }
+        stopPreview();
+        if (creds.identity) guestIdentity = creds.identity;
+        if (creds.join_token) joinToken = creds.join_token;
+        if (room) {
+          try { await room.disconnect(); } catch (_) { /* */ }
+          room = null;
+        }
+        var next = new window.LivekitClient.Room({ adaptiveStream: true, dynacast: true });
+        room = next;
+        next.on(window.LivekitClient.RoomEvent.TrackSubscribed, function (track, _pub, participant) {
+          attachTrack(track, participant.identity, participant.name, false);
         });
-        room.on(window.LivekitClient.RoomEvent.TrackUnsubscribed, function (track) {
+        next.on(window.LivekitClient.RoomEvent.TrackUnsubscribed, function (track) {
           track.detach().forEach(function (el) { el.remove(); });
         });
-        room.on(window.LivekitClient.RoomEvent.Disconnected, function () {
+        next.on(window.LivekitClient.RoomEvent.ParticipantConnected, function () {
+          if (peopleOpen) renderPeople();
+        });
+        next.on(window.LivekitClient.RoomEvent.ParticipantDisconnected, function () {
+          if (peopleOpen) renderPeople();
+        });
+        if (window.LivekitClient.RoomEvent.ActiveSpeakersChanged) {
+          next.on(window.LivekitClient.RoomEvent.ActiveSpeakersChanged, function (speakers) {
+            var nextId = (speakers && speakers[0] && speakers[0].identity) || null;
+            if (speakerTimer) clearTimeout(speakerTimer);
+            speakerTimer = setTimeout(function () {
+              activeSpeakerId = nextId;
+              markSpeakingTiles();
+            }, 200);
+          });
+        }
+        next.on(window.LivekitClient.RoomEvent.DataReceived, function (payload) {
+          try {
+            var msg = JSON.parse(new TextDecoder().decode(payload));
+            if (msg && msg.type === 'chat' && msg.text) {
+              var row = {
+                text: msg.text,
+                display_name: msg.display_name || 'Участник',
+                identity: msg.identity || null,
+                user_id: msg.user_id,
+                ts: msg.ts || Date.now()
+              };
+              if (window.TingCommon && TingCommon.mergeChat) {
+                guestChat = TingCommon.mergeChat(guestChat, [row]);
+              } else {
+                guestChat = guestChat.concat([row]);
+              }
+              renderChat(guestChat);
+            }
+          } catch (_) { /* */ }
+        });
+        next.on(window.LivekitClient.RoomEvent.Disconnected, function () {
           if (timerId) clearInterval(timerId);
+          if (chatPollId) clearInterval(chatPollId);
+          setPeopleOpen(false);
           show('ended');
         });
-        await room.connect(creds.url, creds.token);
-        await room.localParticipant.setMicrophoneEnabled(localAudio);
-        await room.localParticipant.setCameraEnabled(localVideo);
-        room.localParticipant.videoTrackPublications.forEach(function (pub) {
-          if (pub.track) attachTrack(pub.track, 'me', 'Вы', false);
-        });
+        try {
+          await next.connect(creds.url || creds.livekit_url, creds.token);
+          await next.localParticipant.setMicrophoneEnabled(localAudio);
+          await next.localParticipant.setCameraEnabled(localVideo);
+          next.localParticipant.videoTrackPublications.forEach(function (pub) {
+            if (pub.track) attachTrack(pub.track, 'me', 'Вы', false);
+          });
+        } catch (e) {
+          try { await next.disconnect(); } catch (_) { /* */ }
+          if (room === next) room = null;
+          throw e;
+        }
         show('room');
+        syncRecConsent();
         document.getElementById('btnMic').classList.toggle('off', !localAudio);
+        document.getElementById('btnMic').classList.toggle('active', localAudio);
+        document.getElementById('btnMic').innerHTML = (I.mic && I.mic(!localAudio)) || '';
         document.getElementById('btnCam').classList.toggle('off', !localVideo);
+        document.getElementById('btnCam').classList.toggle('active', localVideo);
+        document.getElementById('btnCam').innerHTML = (I.cam && I.cam(!localVideo)) || '';
+        tingSound('join');
         startTimer();
+        startChatPoll();
       }
 
       document.getElementById('join').addEventListener('click', function () {
@@ -442,26 +696,28 @@
           .then(async function (res) {
             document.getElementById('join').disabled = false;
             if (!res.ok) {
-              msgEl.className = 'err';
+              msgEl.className = 'ting-muted';
+              msgEl.style.color = 'var(--ting-danger)';
               msgEl.textContent = res.j.error || ('Ошибка ' + res.status);
               if (/PIN|код|неверн/i.test(res.j.error || '')) showError(res.j.error);
               return;
             }
+            if (res.j.join_token) joinToken = res.j.join_token;
             if (res.j.lobby_status === 'waiting') {
-              startLobbyPoll(res.j.identity);
+              stopPreview();
+              startLobbyPoll(res.j.identity, res.j.join_token);
               return;
             }
             if (!res.j.token) {
-              msgEl.className = 'err';
               msgEl.textContent = res.j.error || 'Нет media-токена';
               return;
             }
+            guestIdentity = res.j.identity;
             try { await enterRoom(res.j); }
             catch (e) { showError('Не удалось войти: ' + (e.message || e)); }
           })
           .catch(function () {
             document.getElementById('join').disabled = false;
-            msgEl.className = 'err';
             msgEl.textContent = 'Сеть недоступна';
           });
       });
@@ -470,62 +726,96 @@
         if (!room) return;
         localAudio = !localAudio;
         await room.localParticipant.setMicrophoneEnabled(localAudio);
+        tingSound('mic');
         this.classList.toggle('off', !localAudio);
+        this.classList.toggle('active', localAudio);
+        this.innerHTML = (I.mic && I.mic(!localAudio)) || '';
       });
       document.getElementById('btnCam').addEventListener('click', async function () {
         if (!room) return;
         localVideo = !localVideo;
         await room.localParticipant.setCameraEnabled(localVideo);
         this.classList.toggle('off', !localVideo);
+        this.classList.toggle('active', localVideo);
+        this.innerHTML = (I.cam && I.cam(!localVideo)) || '';
       });
       document.getElementById('btnShare').addEventListener('click', async function () {
         if (!room) return;
         try {
           sharing = !room.localParticipant.isScreenShareEnabled;
           await room.localParticipant.setScreenShareEnabled(sharing);
-          this.classList.toggle('off', sharing);
-        } catch (e) { console.warn(e); }
-      });
-      document.getElementById('btnPeople').addEventListener('click', function () {
-        const el = document.getElementById('peopleSide');
-        const chat = document.getElementById('chatSide');
-        chat.classList.add('hidden');
-        el.classList.toggle('hidden');
-        if (!el.classList.contains('hidden') && room) {
-          const list = document.getElementById('peopleList');
-          const names = ['Вы'];
-          room.remoteParticipants.forEach(function (p) { names.push(p.name || p.identity); });
-          list.innerHTML = names.map(function (n) {
-            return '<div style="padding:8px 0;border-bottom:1px solid var(--line)">' + n + '</div>';
-          }).join('');
+          this.classList.toggle('on-gold', sharing);
+        } catch (e) {
+          guestToast(e.message || 'Не удалось показать экран');
         }
       });
-      document.getElementById('btnChat').addEventListener('click', function () {
-        document.getElementById('peopleSide').classList.add('hidden');
-        document.getElementById('chatSide').classList.toggle('hidden');
+      document.getElementById('btnPeople').addEventListener('click', function () {
+        setPeopleOpen(!peopleOpen);
       });
-      document.getElementById('chatSend').addEventListener('click', function () {
+      document.getElementById('btnChatMob').addEventListener('click', function () {
+        setPeopleOpen(false);
+        document.getElementById('chatSide').classList.add('open');
+      });
+      document.getElementById('chatCloseMob').addEventListener('click', function () {
+        document.getElementById('chatSide').classList.remove('open');
+      });
+      document.getElementById('chatSend').addEventListener('click', async function () {
         const inp = document.getElementById('chatIn');
         const text = (inp.value || '').trim();
-        if (!text) return;
-        const list = document.getElementById('chatList');
-        list.innerHTML += '<div style="margin:8px 0"><b>' + (guestName || 'Вы') + '</b><div class="sub">' +
-          text.replace(/</g, '&lt;') + '</div></div>';
-        inp.value = '';
-        if (room && room.localParticipant) {
-          try {
-            const enc = new TextEncoder();
-            room.localParticipant.publishData(enc.encode(JSON.stringify({ type: 'chat', text: text })), { reliable: true });
-          } catch (_) { /* */ }
+        if (!text || !guestIdentity) return;
+        try {
+          const r = await fetch('/api/thing/public/' + encodeURIComponent(slug) + '/chat', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              identity: guestIdentity,
+              join_token: joinToken,
+              text: text,
+              display_name: guestName || 'Гость'
+            })
+          });
+          const j = await r.json();
+          if (!r.ok) throw new Error(j.error || 'Ошибка чата');
+          inp.value = '';
+          var row = {
+            text: text,
+            display_name: guestName || 'Гость',
+            identity: guestIdentity,
+            ts: Date.now(),
+            id: j && j.message && j.message.id
+          };
+          if (window.TingCommon && TingCommon.mergeChat) {
+            guestChat = TingCommon.mergeChat(guestChat, [row]);
+          } else {
+            guestChat = guestChat.concat([row]);
+          }
+          if (room && room.localParticipant) {
+            try {
+              const enc = new TextEncoder();
+              await room.localParticipant.publishData(
+                enc.encode(JSON.stringify({
+                  type: 'chat', text: text, display_name: guestName || 'Гость',
+                  identity: guestIdentity, ts: row.ts
+                })),
+                { reliable: true }
+              );
+            } catch (_) { /* */ }
+          }
+          renderChat(guestChat);
+        } catch (e) {
+          guestToast(e.message || 'Чат недоступен');
         }
       });
       document.getElementById('btnLeave').addEventListener('click', async function () {
+        tingSound('end');
+        activeSpeakerId = null;
         if (timerId) clearInterval(timerId);
+        if (chatPollId) clearInterval(chatPollId);
+        stopPreview();
+        setPeopleOpen(false);
+        await publicLeave();
         if (room) await room.disconnect();
         show('ended');
-      });
-      document.getElementById('endedRec').addEventListener('click', function () {
-        alert('Запись доступна инициатору в CRM после обработки');
       });
     })();
   </script>

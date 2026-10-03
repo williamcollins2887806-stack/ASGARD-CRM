@@ -1,153 +1,1146 @@
-/* ASGARD Ting — CRM module (parity with prototypes/ting, CRM tokens) */
+/* ASGARD Ting — Telemost-level polish + Ting brand (gold) */
+@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700;800&display=swap');
+
 :root {
   --ting-gold: #D4A843;
   --ting-gold-l: #E8C35A;
-  --ting-bg0: #08090C;
-  --ting-bg1: #0D1117;
-  --ting-bg2: #151c24;
-  --ting-line: #243040;
-  --ting-t2: #8B9AAB;
-  --ting-danger: #E85D5D;
-  --ting-ok: #6bcf8e;
+  --ting-bg0: #0a0b0e;
+  --ting-bg1: #12151a;
+  --ting-bg2: #1a1f27;
+  --ting-bg3: #242b36;
+  --ting-line: rgba(255,255,255,.08);
+  --ting-t1: #F2F5F8;
+  --ting-t2: #8B96A8;
+  --ting-t3: #5C6675;
+  --ting-danger: #E24B4B;
+  --ting-ok: #3DCC7A;
+  --ting-radius: 22px;
+  --ting-radius-sm: 14px;
+  --ting-dock-h: 88px;
+  --ting-chat-w: 340px;
 }
-.ting-page {
-  min-height: calc(100vh - 80px);
-  font-family: "Manrope", var(--font, system-ui), sans-serif;
-  color: var(--text, #E8EEF4);
+
+/* Guest SPA + CRM share the same controls — box-sizing must be global for Ting */
+.ting-card, .ting-card *, .ting-field, .ting-btn, .ting-preview,
+.ting-chat, .ting-chat *, .ting-room-shell, .ting-room-shell *,
+.ting-modal, .ting-modal *, .g-screen, .g-screen * {
+  box-sizing: border-box;
 }
-.ting-page .ting-wrap {
-  max-width: 960px;
+
+/* ── CRM chrome off during call ── */
+body.ting-incall #sidebar,
+body.ting-incall .sidebar,
+body.ting-incall aside.sidebar,
+body.ting-incall #app-sidebar,
+body.ting-incall .crm-banner,
+body.ting-incall .asgard-crm-banner,
+body.ting-incall header.app-header,
+body.ting-incall .topbar,
+body.ting-incall .app-nav,
+body.ting-incall #nav,
+body.ting-incall .page-header,
+body.ting-incall footer {
+  display: none !important;
+}
+body.ting-incall #content,
+body.ting-incall .content,
+body.ting-incall main,
+body.ting-incall #main,
+body.ting-incall .main-content {
+  margin: 0 !important;
+  padding: 0 !important;
+  max-width: none !important;
+  width: 100% !important;
+}
+body.ting-incall {
+  overflow: hidden;
+  background: var(--ting-bg0);
+}
+
+.ting-page,
+body.ting-guest {
+  min-height: calc(100vh - 60px);
+  font-family: "Manrope", system-ui, sans-serif;
+  color: var(--ting-t1);
+  position: relative;
+  background:
+    radial-gradient(1100px 560px at 18% -12%, rgba(212,168,67,.16) 0%, transparent 55%),
+    radial-gradient(900px 520px at 88% 8%, rgba(88,120,180,.18) 0%, transparent 50%),
+    radial-gradient(700px 420px at 50% 100%, rgba(40,60,90,.24) 0%, transparent 55%),
+    linear-gradient(165deg, #141a24 0%, #0c1016 42%, #07080b 100%);
+}
+.ting-page::before,
+body.ting-guest::before {
+  content: "";
+  position: fixed; inset: 0; pointer-events: none; z-index: 0;
+  opacity: .045;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.8' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  mix-blend-mode: soft-light;
+}
+.ting-page > *,
+body.ting-guest > * { position: relative; z-index: 1; }
+.ting-page * { box-sizing: border-box; }
+
+body.ting-guest {
+  min-height: 100%;
+  margin: 0;
+}
+
+/* Shared layout helpers (CRM + guest) */
+.ting-center-card { text-align: center; }
+.ting-stack { display: flex; flex-direction: column; align-items: center; gap: 10px; }
+.ting-stack > .ting-cta-row { width: 100%; }
+.ting-full-btn { width: 100%; }
+.ting-cta-center { justify-content: center; }
+.ting-btn-compact { padding: 8px 12px; min-height: 40px; }
+.ting-btn-send { padding: 10px 14px; }
+.ting-icon-sm { width: 32px; height: 32px; }
+.ting-tabs-trail { margin-left: auto; }
+.ting-card-tight { padding: 8px 10px; }
+.ting-h2-tight { margin-top: 0; }
+.ting-ready-title { font-weight: 700; margin: 8px 0 0; }
+.ting-ready-dial-block { text-align: center; margin-top: 18px; }
+.ting-label-sm { font-size: 12px; font-weight: 700; }
+.ting-mt-8 { margin-top: 8px; }
+.ting-mt-10 { margin-top: 10px; }
+.ting-mt-12 { margin-top: 12px; }
+.ting-mt-16 { margin-top: 16px; }
+.ting-banner-error,
+.ting-hub-error {
+  margin: 0 0 14px;
+  padding: 12px 14px;
+  border-radius: var(--ting-radius-sm);
+  border: 1px solid rgba(226,75,75,.35);
+  background: rgba(226,75,75,.12);
+  color: #ffb4b8;
+  font-size: 13px;
+  font-weight: 700;
+}
+.ting-drawer-head {
+  display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;
+}
+.ting-drawer-sub {
+  margin: 14px 0 6px; font-size: 13px; color: var(--ting-t2);
+}
+.ting-proto-toolbar {
+  margin-bottom: 12px; display: flex; gap: 8px; flex-wrap: wrap; align-items: center;
+}
+.ting-precall-controls {
+  position: absolute; left: 0; right: 0; bottom: 12px;
+  display: flex; gap: 8px; justify-content: center; z-index: 2;
+}
+.ting-preview-video { width: 100%; height: 100%; object-fit: cover; }
+.ting-wait-pulse {
+  position: relative; display: grid; place-items: center; margin: 8px auto 4px;
+  width: 96px; height: 96px;
+}
+.ting-wait-pulse::before,
+.ting-wait-pulse::after {
+  content: "";
+  position: absolute; inset: 0; border-radius: 50%;
+  border: 2px solid transparent;
+  background:
+    linear-gradient(var(--ting-bg2), var(--ting-bg2)) padding-box,
+    conic-gradient(from 0deg, rgba(212,168,67,.55), transparent 40%, rgba(212,168,67,.15), transparent 75%, rgba(212,168,67,.55)) border-box;
+  animation: ting-orbit 2.4s linear infinite;
+}
+.ting-wait-pulse::after {
+  inset: 8px;
+  opacity: .55;
+  animation-direction: reverse;
+  animation-duration: 3.2s;
+}
+@keyframes ting-orbit {
+  to { transform: rotate(360deg); }
+}
+@keyframes ting-pulse {
+  0% { transform: scale(.72); opacity: .9; }
+  100% { transform: scale(1.35); opacity: 0; }
+}
+.ting-wait-copy {
+  color: #E8EEF6 !important;
+  font-weight: 650;
+  opacity: 1;
+  font-size: 15px;
+}
+.ting-dialin-hero { margin: 8px 0 18px; }
+.ting-dialin-number {
+  font-size: 36px; font-weight: 800; letter-spacing: .04em;
+  color: var(--ting-gold-l); font-variant-numeric: tabular-nums;
+  line-height: 1.15; margin-top: 6px;
+}
+.ting-step-cards {
+  display: grid; gap: 10px; text-align: left; margin: 0 0 16px;
+}
+.ting-step-card {
+  display: flex; gap: 12px; align-items: flex-start;
+  padding: 14px 14px; border-radius: 16px;
+  border: 1px solid var(--ting-line);
+  background: linear-gradient(145deg, rgba(255,255,255,.04), rgba(0,0,0,.12));
+}
+.ting-step-card .n {
+  width: 28px; height: 28px; border-radius: 50%; flex: 0 0 auto;
+  display: grid; place-items: center;
+  background: linear-gradient(145deg, var(--ting-gold-l), var(--ting-gold));
+  color: #141414; font-weight: 800; font-size: 13px;
+}
+.ting-step-card strong { display: block; font-size: 14px; margin-bottom: 2px; }
+.ting-step-card p { margin: 0; color: var(--ting-t2); font-size: 13px; line-height: 1.4; }
+
+.g-screen {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  font-family: "Manrope", system-ui, sans-serif;
+  color: var(--ting-t1);
+}
+
+.ting-wrap {
+  max-width: 720px;
   margin: 0 auto;
-  padding: 20px 16px 48px;
+  padding: 20px 16px 96px;
 }
-.ting-brand { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
-.ting-rune {
-  width: 36px; height: 36px; border-radius: 10px; display: grid; place-items: center;
-  background: linear-gradient(180deg, var(--ting-gold-l), var(--ting-gold));
-  color: #111; font-weight: 800; font-size: 18px;
+
+/* Logo mark */
+.ting-logo {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
 }
+.ting-logo-mark {
+  width: 44px; height: 44px; flex: 0 0 auto;
+  border-radius: 14px;
+  background: linear-gradient(145deg, var(--ting-gold-l), var(--ting-gold) 55%, #b8862e);
+  color: #141414;
+  display: grid; place-items: center;
+  box-shadow: 0 8px 24px rgba(212,168,67,.28);
+  position: relative;
+}
+.ting-logo-mark svg { width: 26px; height: 26px; display: block; }
+.ting-logo-text { display: flex; flex-direction: column; gap: 2px; }
+.ting-logo-text strong {
+  font-size: 20px; font-weight: 800; letter-spacing: -.02em; line-height: 1.1;
+}
+.ting-logo-text span { font-size: 12px; color: var(--ting-t2); font-weight: 600; }
+
+.ting-brand-row {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 12px; margin-bottom: 20px;
+}
+
 .ting-chip {
-  display: inline-flex; align-items: center; padding: 4px 10px; border-radius: 999px;
-  border: 1px solid var(--ting-line); color: var(--ting-t2); font-size: 12px; font-weight: 600;
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 5px 12px; border-radius: 999px;
+  border: 1px solid var(--ting-line); color: var(--ting-t2);
+  font-size: 12px; font-weight: 700;
 }
-.ting-chip.gold { border-color: var(--ting-gold); color: var(--ting-gold); }
-.ting-tabs { display: flex; gap: 8px; margin: 16px 0; flex-wrap: wrap; }
+.ting-chip.gold { border-color: rgba(212,168,67,.45); color: var(--ting-gold); background: rgba(212,168,67,.08); }
+
+/* Hub — Telemost «Звонки» */
+.ting-hub-hero {
+  display: grid;
+  grid-template-columns: 1.4fr 1fr 1fr;
+  gap: 12px;
+  margin-bottom: 22px;
+}
+.ting-hub-card {
+  border-radius: var(--ting-radius);
+  padding: 20px 18px;
+  background: var(--ting-bg2);
+  border: 1px solid var(--ting-line);
+  cursor: pointer;
+  text-align: left;
+  color: inherit;
+  font: inherit;
+  transition: transform .15s ease, border-color .15s ease, background .15s ease;
+}
+.ting-hub-card:hover {
+  border-color: rgba(212,168,67,.4);
+  transform: translateY(-1px);
+}
+.ting-hub-card.primary {
+  background: linear-gradient(160deg, rgba(212,168,67,.22), var(--ting-bg2) 55%);
+  border-color: rgba(212,168,67,.35);
+  min-height: 112px;
+}
+.ting-hub-card .ico {
+  width: 40px; height: 40px; border-radius: 12px;
+  display: grid; place-items: center;
+  background: rgba(255,255,255,.06); margin-bottom: 12px;
+  color: var(--ting-gold);
+}
+.ting-hub-card.primary .ico {
+  background: linear-gradient(145deg, var(--ting-gold-l), var(--ting-gold));
+  color: #141414;
+}
+.ting-hub-card strong { display: block; font-size: 16px; font-weight: 800; margin-bottom: 4px; }
+.ting-hub-card small { color: var(--ting-t2); font-size: 12px; font-weight: 600; }
+
+.ting-day {
+  font-size: 13px; font-weight: 800; color: var(--ting-t2);
+  text-transform: none; margin: 18px 0 8px; letter-spacing: .02em;
+}
+.ting-call-row {
+  display: flex; align-items: center; gap: 12px;
+  padding: 12px 10px; border-radius: 16px;
+  border: 0; background: transparent;
+  width: 100%; color: inherit; font: inherit; text-align: left;
+}
+.ting-call-row:hover { background: rgba(255,255,255,.04); }
+.ting-stage.speaker {
+  flex: 1;
+  min-height: 420px !important;
+}
+.ting-stage.speaker .ting-tile {
+  min-height: 420px !important;
+  height: 100%;
+}
+.ting-stage.g2 {
+  min-height: 420px;
+}
+.ting-avatar {
+  width: 48px; height: 48px; border-radius: 50%; flex: 0 0 auto;
+  display: grid; place-items: center;
+  background: linear-gradient(145deg, #5b4b8a, #3d2f66);
+  font-weight: 800; font-size: 15px; color: #fff;
+  transition: box-shadow .2s ease, transform .2s ease;
+}
+.ting-avatar.gold { background: linear-gradient(145deg, var(--ting-gold-l), var(--ting-gold)); color: #141414; }
+.ting-avatar.tone-0 { background: linear-gradient(145deg, #6a8cff, #3a4f9a); }
+.ting-avatar.tone-1 { background: linear-gradient(145deg, #5ad4a8, #2a7a5c); }
+.ting-avatar.tone-2 { background: linear-gradient(145deg, #e8a35a, #9a5a28); }
+.ting-avatar.tone-3 { background: linear-gradient(145deg, #c07cff, #5a3a8a); }
+.ting-avatar.tone-4 { background: linear-gradient(145deg, #5ab8e8, #2a5a7a); }
+.ting-avatar.tone-5 { background: linear-gradient(145deg, #e86a8a, #8a2a45); }
+.ting-avatar.speaking {
+  box-shadow: 0 0 0 4px rgba(212,168,67,.35), 0 0 28px rgba(212,168,67,.55);
+  animation: ting-speak-pulse 1.2s ease-in-out infinite;
+}
+@keyframes ting-speak-pulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.04); }
+}
+.ting-tile-ph.tone-0 {
+  background:
+    radial-gradient(ellipse 70% 55% at 50% 42%, rgba(106,140,255,.28) 0%, transparent 55%),
+    linear-gradient(165deg, #2a3558 0%, #121824 100%);
+}
+.ting-tile-ph.tone-1 {
+  background:
+    radial-gradient(ellipse 70% 55% at 50% 42%, rgba(90,212,168,.28) 0%, transparent 55%),
+    linear-gradient(165deg, #1f3a32 0%, #101816 100%);
+}
+.ting-tile-ph.tone-2 {
+  background:
+    radial-gradient(ellipse 70% 55% at 50% 42%, rgba(232,163,90,.28) 0%, transparent 55%),
+    linear-gradient(165deg, #3a2a1a 0%, #18120e 100%);
+}
+.ting-tile-ph.tone-3 {
+  background:
+    radial-gradient(ellipse 70% 55% at 50% 42%, rgba(192,124,255,.28) 0%, transparent 55%),
+    linear-gradient(165deg, #322048 0%, #140e1c 100%);
+}
+.ting-tile-ph.tone-4 {
+  background:
+    radial-gradient(ellipse 70% 55% at 50% 42%, rgba(90,184,232,.28) 0%, transparent 55%),
+    linear-gradient(165deg, #1a3040 0%, #0e141a 100%);
+}
+.ting-tile-ph.tone-5 {
+  background:
+    radial-gradient(ellipse 70% 55% at 50% 42%, rgba(232,106,138,.28) 0%, transparent 55%),
+    linear-gradient(165deg, #3a1a28 0%, #160e12 100%);
+}
+.ting-call-meta { flex: 1; min-width: 0; }
+.ting-call-meta strong {
+  display: block; font-size: 15px; font-weight: 700;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.ting-call-meta span { font-size: 12px; color: var(--ting-t2); font-weight: 600; }
+.ting-call-meta span.missed { color: var(--ting-danger); }
+.ting-call-time { font-size: 12px; color: var(--ting-t3); font-weight: 600; white-space: nowrap; }
+
+.ting-tabs {
+  display: flex; gap: 8px; margin: 8px 0 14px; flex-wrap: wrap;
+}
 .ting-tabs button {
   background: transparent; border: 1px solid var(--ting-line); color: var(--ting-t2);
-  padding: 8px 14px; border-radius: 10px; cursor: pointer; font-weight: 600;
+  padding: 8px 14px; border-radius: 999px; cursor: pointer; font-weight: 700; font: inherit;
 }
-.ting-tabs button.on { border-color: var(--ting-gold); color: var(--ting-gold); }
-.ting-cta-row { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 18px; }
+.ting-tabs button.on {
+  border-color: rgba(212,168,67,.5); color: var(--ting-gold);
+  background: rgba(212,168,67,.1);
+}
+
 .ting-btn {
-  border: 0; border-radius: 12px; padding: 12px 16px; font-weight: 700; cursor: pointer;
-  font-family: inherit; font-size: 14px;
+  border: 1px solid transparent; border-radius: 14px; padding: 12px 16px; font-weight: 700;
+  cursor: pointer; font-family: inherit; font-size: 14px;
+  min-height: 48px; display: inline-flex; align-items: center; justify-content: center;
+  line-height: 1.2; box-sizing: border-box; flex: 0 0 auto;
 }
 .ting-btn-primary {
-  background: linear-gradient(180deg, var(--ting-gold-l), var(--ting-gold)); color: #111;
+  background: linear-gradient(180deg, var(--ting-gold-l), var(--ting-gold));
+  color: #141414; box-shadow: 0 6px 18px rgba(212,168,67,.25);
+  border-color: transparent;
 }
 .ting-btn-ghost {
-  background: transparent; border: 1px solid var(--ting-line); color: var(--text, #E8EEF4);
+  background: transparent; border-color: var(--ting-line); color: var(--ting-t1);
+  box-shadow: none;
 }
-.ting-btn-danger { background: var(--ting-danger); color: #fff; }
+.ting-btn-danger { background: var(--ting-danger); color: #fff; border-color: transparent; }
 .ting-btn:disabled { opacity: .5; cursor: default; }
+.ting-cta-row { display: flex; gap: 10px; flex-wrap: wrap; margin: 14px 0; align-items: stretch; }
+.ting-cta-row .ting-btn { flex: 1 1 auto; min-width: 120px; }
+
 .ting-card {
-  border: 1px solid var(--ting-line); border-radius: 16px; padding: 18px;
-  background: var(--ting-bg2, var(--panel, #151c24));
+  border: 1px solid rgba(255,255,255,.14);
+  border-radius: var(--ting-radius);
+  padding: 22px 20px;
+  background:
+    linear-gradient(155deg, rgba(255,255,255,.1) 0%, rgba(255,255,255,.02) 38%, transparent 55%),
+    linear-gradient(180deg, rgba(32,40,56,.55) 0%, rgba(14,18,28,.48) 100%);
+  box-shadow:
+    0 28px 72px rgba(0,0,0,.45),
+    0 10px 28px rgba(0,0,0,.3),
+    inset 0 1px 0 rgba(255,255,255,.14),
+    inset 0 -1px 0 rgba(0,0,0,.2);
+  backdrop-filter: blur(28px) saturate(1.35);
+  -webkit-backdrop-filter: blur(28px) saturate(1.35);
 }
-.ting-list-item {
-  display: flex; justify-content: space-between; align-items: center; gap: 12px;
-  padding: 12px 0; border-bottom: 1px solid var(--ting-line);
+body.ting-guest .ting-card,
+.g-screen .ting-card {
+  width: min(420px, 100%);
+  font-family: "Manrope", system-ui, sans-serif;
 }
-.ting-list-item:last-child { border-bottom: 0; }
-.ting-dial {
-  font-size: 32px; font-weight: 800; letter-spacing: .18em; color: var(--ting-gold);
+.ting-field {
+  display: block; width: 100%; max-width: 100%;
+  padding: 13px 14px; border-radius: 12px;
+  border: 1px solid var(--ting-line); background: var(--ting-bg0);
+  color: inherit; font: inherit; margin: 0 0 10px;
+  box-sizing: border-box;
+  min-height: 48px;
+  color-scheme: dark;
+}
+.ting-field[type="datetime-local"],
+.ting-field[type="date"],
+.ting-field[type="time"] {
+  min-height: 48px;
+  height: 48px;
+  line-height: 1.2;
+  color: var(--ting-t1);
+}
+.ting-field[type="datetime-local"]::-webkit-calendar-picker-indicator {
+  filter: invert(.85);
+  opacity: .8;
+  cursor: pointer;
+}
+.ting-muted { color: var(--ting-t2); font-size: 14px; line-height: 1.45; }
+.ting-dial,
+.ting-dial-lg {
+  font-family: ui-monospace, "Cascadia Mono", "SF Mono", Menlo, Consolas, monospace;
   font-variant-numeric: tabular-nums;
+}
+.ting-dial {
+  font-size: 34px; font-weight: 800; letter-spacing: .16em;
+  color: var(--ting-gold); font-variant-numeric: tabular-nums;
 }
 .ting-link-box {
   font-family: ui-monospace, monospace; font-size: 13px; word-break: break-all;
-  padding: 12px; border-radius: 10px; border: 1px solid var(--ting-line);
-  color: var(--ting-gold-l); margin: 12px 0;
+  padding: 12px; border-radius: 12px; border: 1px solid var(--ting-line);
+  color: var(--ting-gold-l); margin: 12px 0; background: var(--ting-bg0);
 }
-.ting-stack { display: flex; flex-direction: column; gap: 8px; }
-.ting-field {
-  width: 100%; padding: 12px 14px; border-radius: 10px; border: 1px solid var(--ting-line);
-  background: var(--ting-bg0, #08090C); color: inherit; font: inherit; margin-bottom: 10px;
+.ting-qr {
+  width: 148px; height: 148px; flex: 0 0 auto;
+  border-radius: 16px; background: #fff; padding: 10px;
+  display: grid; place-items: center;
 }
-.ting-muted { color: var(--ting-t2); font-size: 14px; }
-.ting-room-shell {
-  position: fixed; inset: 0; z-index: 9000; background: var(--ting-bg0);
-  display: flex; flex-direction: column;
+.ting-qr img, .ting-qr canvas { width: 100%; height: 100%; }
+.ting-ready-hero { text-align: center; margin-bottom: 8px; }
+.ting-ready-hero h2 { font-size: 28px; font-weight: 800; margin: 10px 0 6px; letter-spacing: -.02em; }
+.ting-ready-foot {
+  display: flex; gap: 18px; align-items: center; text-align: left;
+  margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--ting-line);
 }
-.ting-room-top {
-  display: flex; justify-content: space-between; align-items: center;
-  padding: 10px 14px; border-bottom: 1px solid var(--ting-line); background: var(--ting-bg1);
+.ting-ready-foot .phone-block { flex: 1; }
+.ting-ready-foot .phone-block strong {
+  display: block; font-size: 20px; font-weight: 800; margin: 4px 0;
 }
-.ting-stage {
-  flex: 1; display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: 8px; padding: 12px; overflow: auto;
+.ting-dial-lg {
+  font-size: 40px; font-weight: 800; letter-spacing: .14em;
+  color: #fff; font-variant-numeric: tabular-nums; margin: 8px 0;
 }
-.ting-filmstrip {
-  display: flex; gap: 8px; padding: 8px 12px; overflow-x: auto;
-  border-top: 1px solid var(--ting-line); background: var(--ting-bg1);
-  min-height: 72px;
+.ting-check {
+  display: flex; align-items: center; gap: 8px;
+  color: var(--ting-t2); font-size: 13px; font-weight: 600; margin: 10px 0;
 }
-.ting-filmstrip .ting-tile {
-  width: 120px; min-height: 68px; flex: 0 0 auto;
+.ting-check input { width: 16px; height: 16px; accent-color: var(--ting-gold); }
+.ting-switch {
+  display: flex; align-items: center; gap: 12px;
+  margin: 14px 0; font-size: 14px; color: var(--ting-t1); cursor: pointer; user-select: none;
+  position: relative;
 }
-.ting-tile {
-  position: relative; min-height: 160px; border-radius: 12px; overflow: hidden;
-  background: #1a222c; border: 1px solid var(--ting-line);
+.ting-switch input { position: absolute; opacity: 0; width: 0; height: 0; }
+.ting-switch-ui {
+  width: 48px; height: 28px; border-radius: 999px; flex: 0 0 auto;
+  background: rgba(255,255,255,.12); border: 1px solid var(--ting-line);
+  position: relative; transition: background .18s ease, border-color .18s ease, box-shadow .18s ease;
+  box-shadow: inset 0 1px 2px rgba(0,0,0,.25);
 }
-.ting-tile video { width: 100%; height: 100%; object-fit: cover; }
-.ting-tile .lbl {
-  position: absolute; left: 8px; bottom: 8px; font-size: 12px;
-  background: rgba(0,0,0,.55); padding: 4px 8px; border-radius: 6px;
+.ting-switch-ui::after {
+  content: ''; position: absolute; top: 3px; left: 3px;
+  width: 20px; height: 20px; border-radius: 50%;
+  background: #fff; transition: transform .18s ease;
+  box-shadow: 0 2px 6px rgba(0,0,0,.35);
 }
-.ting-dock {
-  display: flex; gap: 10px; justify-content: center; flex-wrap: wrap;
-  padding: 14px; border-top: 1px solid var(--ting-line); background: var(--ting-bg2);
+.ting-switch input:checked + .ting-switch-ui {
+  background: rgba(212,168,67,.42); border-color: rgba(212,168,67,.65);
+  box-shadow: 0 0 0 3px rgba(212,168,67,.12), inset 0 1px 2px rgba(0,0,0,.2);
 }
-.ting-dock-btn {
-  width: 52px; height: 52px; border-radius: 50%; border: 1px solid var(--ting-line);
-  background: #243040; color: #E8EEF4; cursor: pointer; font-size: 18px;
+.ting-switch input:checked + .ting-switch-ui::after { transform: translateX(20px); background: var(--ting-gold-l); }
+.ting-tip {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 18px; height: 18px; border-radius: 50%; margin-left: 4px;
+  font-size: 11px; font-weight: 800; color: var(--ting-t2);
+  border: 1px solid var(--ting-line); background: rgba(255,255,255,.04);
+  position: relative; cursor: help;
 }
-.ting-dock-btn.off { color: var(--ting-danger); border-color: rgba(232,93,93,.45); }
-.ting-dock-btn.danger { background: var(--ting-danger); border-color: transparent; color: #fff; }
-.ting-side {
-  position: absolute; top: 52px; right: 0; bottom: 80px; width: min(340px, 100%);
-  background: var(--ting-bg1); border-left: 1px solid var(--ting-line);
-  padding: 12px; overflow: auto; z-index: 2;
+.ting-tip[data-tip]::after {
+  content: attr(data-tip);
+  position: absolute; left: 50%; bottom: calc(100% + 8px); transform: translateX(-50%);
+  min-width: 160px; max-width: 240px; padding: 8px 10px; border-radius: 10px;
+  background: rgba(12,16,24,.96); border: 1px solid rgba(255,255,255,.12);
+  color: var(--ting-t1); font-size: 11px; font-weight: 600; line-height: 1.35;
+  opacity: 0; pointer-events: none; transition: opacity .15s ease;
+  box-shadow: 0 10px 28px rgba(0,0,0,.45); z-index: 5; text-align: left;
 }
-.ting-consent {
-  background: rgba(212,168,67,.15); border: 1px solid var(--ting-gold);
-  color: var(--ting-gold-l); padding: 8px 12px; text-align: center; font-size: 13px; font-weight: 600;
+.ting-tip:hover::after, .ting-tip:focus-visible::after { opacity: 1; }
+.ting-when-row {
+  display: grid; grid-template-columns: 1.2fr 1fr; gap: 10px; margin: 8px 0;
 }
+.ting-invite-av {
+  width: 22px; height: 22px; border-radius: 50%;
+  display: inline-grid; place-items: center;
+  background: rgba(212,168,67,.18); color: var(--ting-gold);
+  font-size: 10px; font-weight: 800;
+}
+.ting-guest-toast {
+  position: fixed; left: 50%; bottom: 88px; transform: translateX(-50%);
+  z-index: 14000; max-width: min(420px, calc(100vw - 24px));
+  padding: 12px 16px; border-radius: 12px;
+  background: rgba(20,24,34,.94); border: 1px solid rgba(212,168,67,.35);
+  color: var(--ting-t1); font-size: 13px; font-weight: 600;
+  box-shadow: 0 12px 32px rgba(0,0,0,.45);
+}
+.ting-proto-letterhead {
+  display: flex; align-items: center; gap: 12px; margin-bottom: 8px;
+}
+.ting-proto-logo-slot {
+  width: 48px; height: 48px; border-radius: 12px; overflow: hidden; flex: 0 0 auto;
+  display: grid; place-items: center;
+  background: linear-gradient(145deg, #e8c56a, #d4a843 55%, #b8862e);
+  box-shadow: 0 4px 12px rgba(184,134,46,.25);
+}
+.ting-proto-logo-slot img {
+  width: 100%; height: 100%; object-fit: contain; background: #fff;
+}
+.ting-proto-mark {
+  width: 100%; height: 100%;
+  display: grid; place-items: center; font-weight: 800; font-size: 11px; letter-spacing: .04em;
+  color: #141414;
+}
+.ting-proto-pill {
+  display: inline-flex; margin-top: 4px; padding: 2px 8px; border-radius: 999px;
+  font-size: 11px; font-weight: 700; background: rgba(212,168,67,.15); color: #8a5a00;
+}
+.ting-proto-section {
+  margin: 16px 0 0;
+  padding: 14px 14px 12px;
+  border-radius: 14px;
+  background: rgba(255,255,255,.55);
+  border: 1px solid rgba(40,30,10,.08);
+  box-shadow: 0 2px 10px rgba(40,30,10,.04);
+}
+.ting-proto-section h2 {
+  margin: 0 0 10px !important;
+  font-size: 13px !important;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  color: #6a5a3a !important;
+}
+.ting-proto-parts { display: flex; flex-direction: column; gap: 8px; }
+.ting-proto-part {
+  display: flex; align-items: center; gap: 8px; font-size: 13px; color: #222;
+}
+.ting-proto-part-av {
+  width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center;
+  background: rgba(212,168,67,.2); color: #8a5a00; font-size: 10px; font-weight: 800;
+}
+.ting-proto-part-role { margin-left: auto; color: #666; font-size: 12px; font-weight: 600; }
+.ting-proto-summary {
+  background: rgba(212,168,67,.1); border-left: 3px solid #d4a843;
+  padding: 12px 14px; border-radius: 0 10px 10px 0; margin: 0;
+}
+.ting-proto-task {
+  display: flex; align-items: flex-start; gap: 10px;
+  padding: 10px 0; border-bottom: 1px solid rgba(0,0,0,.06);
+  font-size: 13px; color: #222;
+}
+.ting-proto-task:last-child { border-bottom: 0; }
+.ting-proto-task input[type="checkbox"] {
+  width: 18px; height: 18px; margin-top: 2px; accent-color: var(--ting-gold); flex: 0 0 auto;
+}
+.ting-proto-task.done .ting-proto-task-title { text-decoration: line-through; color: #777; }
+.ting-proto-task-meta { display: block; margin-top: 2px; font-size: 11px; color: #777; font-weight: 600; }
+.ting-proto-toggle {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 12px; font-weight: 700; color: var(--ting-t2); cursor: default;
+}
+.ting-proto-toggle input { accent-color: var(--ting-gold); }
+
 .ting-preview {
-  position: relative; height: 210px; border-radius: 16px; overflow: hidden;
-  background: #0a0e12; border: 1px solid var(--ting-line); margin: 12px 0;
+  position: relative; height: 220px; border-radius: var(--ting-radius);
+  overflow: hidden; background: #0a0e12; border: 1px solid var(--ting-line); margin: 12px 0;
 }
 .ting-preview video { width: 100%; height: 100%; object-fit: cover; }
-.ting-preview .avatar {
-  position: absolute; inset: 0; display: grid; place-items: center;
-  font-size: 42px; font-weight: 800; color: var(--ting-gold);
+.ting-preview .avatar,
+.ting-preview .ting-avatar {
+  position: absolute; inset: 0; margin: auto;
+  width: 96px; height: 96px; border-radius: 50%;
+  display: grid; place-items: center;
+  font-size: 32px; font-weight: 800; color: #fff;
+  z-index: 1;
+  box-shadow: 0 0 0 6px rgba(255,255,255,.06), 0 12px 36px rgba(0,0,0,.35);
 }
-.ting-proto-doc {
-  background: #f7f4ee; color: #1a1a1a; border-radius: 8px; padding: 28px;
-  max-width: 720px; margin: 0 auto; box-shadow: 0 8px 32px rgba(0,0,0,.35);
+
+/* In-call shell — Telemost polish + Ting rev-room */
+.ting-room-shell {
+  position: fixed; inset: 0; z-index: 12000;
+  background:
+    radial-gradient(900px 480px at 20% 0%, rgba(212,168,67,.08) 0%, transparent 50%),
+    radial-gradient(800px 500px at 90% 20%, rgba(70,100,160,.12) 0%, transparent 45%),
+    #0a0c10;
+  display: grid;
+  grid-template-columns: 1fr var(--ting-chat-w);
+  grid-template-rows: 1fr;
+  grid-template-areas: "main chat";
 }
-.ting-proto-doc h1 { font-size: 22px; margin: 12px 0; }
-.ting-proto-doc h2 { font-size: 15px; margin: 18px 0 8px; color: #444; }
-.ting-proto-doc .meta { font-size: 13px; color: #555; }
+.ting-room-shell.no-chat {
+  grid-template-columns: 1fr;
+  grid-template-areas: "main";
+}
+.ting-room-main {
+  grid-area: main;
+  position: relative;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.ting-room-top {
+  position: absolute; top: 0; left: 0; right: 0; z-index: 3;
+  display: flex; flex-direction: column; align-items: stretch;
+  gap: 8px; padding: 12px 16px 10px;
+  background: linear-gradient(180deg, rgba(0,0,0,.55), transparent);
+  pointer-events: none;
+}
+.ting-room-top > * { pointer-events: auto; }
+.ting-room-top-row {
+  display: flex; justify-content: space-between; align-items: flex-start;
+  gap: 12px; width: 100%;
+}
+.ting-room-title {
+  display: flex; align-items: flex-start; gap: 10px; min-width: 0; flex: 1 1 auto;
+}
+.ting-room-title-text {
+  display: flex; flex-direction: column; gap: 2px; min-width: 0;
+}
+.ting-room-title-text strong {
+  font-size: 14px; font-weight: 600; white-space: nowrap;
+  overflow: hidden; text-overflow: ellipsis; max-width: 100%;
+}
+.ting-room-title-text #ting-timer {
+  font-variant-numeric: tabular-nums; font-size: 12px;
+}
+.ting-room-top .ting-top-actions {
+  display: flex; gap: 8px; align-items: center; flex: 0 0 auto;
+}
+.ting-count-chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 7px 12px; border-radius: 999px; font-size: 12px; font-weight: 700;
+  background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.1);
+  color: var(--ting-t1);
+}
+.ting-icon-btn {
+  width: 40px; height: 40px; border-radius: 12px; border: 0;
+  background: rgba(255,255,255,.08); color: var(--ting-t1);
+  cursor: pointer; display: grid; place-items: center; position: relative;
+}
+.ting-icon-btn .badge {
+  position: absolute; top: -2px; right: -2px;
+  min-width: 16px; height: 16px; border-radius: 8px;
+  background: var(--ting-ok); color: #04120a;
+  font-size: 10px; font-weight: 800; display: grid; place-items: center; padding: 0 4px;
+}
+.ting-consent {
+  position: static; transform: none; z-index: 5;
+  align-self: center;
+  white-space: nowrap;
+  background: rgba(200,41,59,.2); border: 1px solid rgba(200,41,59,.45);
+  color: #ffc0c6; padding: 6px 12px; border-radius: 999px;
+  font-size: 11px; font-weight: 700; max-width: 100%;
+  overflow: hidden; text-overflow: ellipsis; text-align: center;
+}
+@media (max-width: 820px) {
+  .ting-consent {
+    white-space: normal; line-height: 1.3; width: 100%;
+    order: -1;
+  }
+  .ting-room-title { min-width: 0; max-width: 55%; }
+  .ting-room-top .ting-top-actions { flex: 0 0 auto; }
+}
+
+.ting-stage-wrap {
+  flex: 1; min-height: 0; position: relative;
+  padding: 44px 18px 110px;
+  display: flex; flex-direction: column;
+}
+@media (max-width: 820px) {
+  .ting-consent { top: 8px; font-size: 10px; padding: 5px 10px; }
+  .ting-stage-wrap { padding: 40px 12px 118px; }
+  .ting-filmstrip { margin-top: 4px; }
+}
+.ting-filmstrip {
+  display: flex; gap: 8px; padding: 0 0 10px; overflow-x: auto;
+  min-height: 0;
+}
+.ting-filmstrip:empty { display: none; }
+.ting-filmstrip .ting-tile {
+  width: 148px; height: 92px; min-height: 92px; flex: 0 0 auto; border-radius: 12px;
+}
+.ting-stage {
+  flex: 1; min-height: 0;
+  display: grid;
+  gap: 10px;
+  align-content: center;
+}
+.ting-stage.g2 {
+  grid-template-columns: 1.4fr 1fr;
+  grid-template-rows: 1fr 1fr;
+}
+.ting-stage.g1, .ting-stage.speaker {
+  grid-template-columns: 1fr;
+}
+.ting-stage.speaker .ting-tile { min-height: 100%; }
+.ting-stage.auto {
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+.ting-tile {
+  position: relative; min-height: 160px; border-radius: 18px;
+  overflow: hidden;
+  background: #0b0e14;
+  border: 1px solid rgba(255,255,255,.06);
+}
+.ting-tile::after {
+  content: "";
+  position: absolute; left: 0; right: 0; bottom: 0; height: 42%;
+  z-index: 2; pointer-events: none;
+  background: linear-gradient(180deg, transparent 0%, rgba(0,0,0,.22) 55%, rgba(0,0,0,.42) 100%);
+}
+.ting-tile.span2 { grid-row: span 2; min-height: 100%; }
+.ting-tile.speak {
+  border-color: rgba(212,168,67,.85);
+  outline: 3px solid rgba(212,168,67,.75);
+  outline-offset: -3px;
+  box-shadow:
+    0 0 0 1px rgba(212,168,67,.35),
+    0 0 36px rgba(212,168,67,.45),
+    inset 0 0 0 1px rgba(212,168,67,.25);
+  transition: box-shadow .2s ease, outline-color .2s ease;
+}
+.ting-tile video,
+.ting-tile .ting-tile-ph {
+  position: absolute; inset: 0;
+  width: 100%; height: 100%;
+  object-fit: cover; display: block;
+}
+.ting-tile .ting-tile-ph {
+  display: grid; place-items: center;
+  background:
+    radial-gradient(ellipse 70% 55% at 50% 42%, rgba(212,168,67,.22) 0%, transparent 55%),
+    radial-gradient(120% 90% at 18% 8%, rgba(120,150,220,.2) 0%, transparent 48%),
+    radial-gradient(90% 80% at 88% 92%, rgba(60,40,90,.35) 0%, transparent 52%),
+    linear-gradient(165deg, #33405c 0%, #1a2132 42%, #0e121a 78%, #090b10 100%);
+}
+.ting-tile .ting-tile-ph::before {
+  content: "";
+  position: absolute; inset: 0; pointer-events: none;
+  background: radial-gradient(ellipse 85% 75% at 50% 45%, transparent 35%, rgba(0,0,0,.45) 100%);
+}
+.ting-tile .ting-tile-ph::after {
+  content: "";
+  position: absolute; inset: 0; pointer-events: none; opacity: .11;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  mix-blend-mode: soft-light;
+}
+.ting-tile .ting-tile-ph.cinematic .ting-avatar,
+.ting-tile.ting-tile-cinematic .ting-avatar {
+  width: 104px; height: 104px; font-size: 30px;
+  box-shadow: 0 0 0 8px rgba(212,168,67,.12), 0 0 40px rgba(212,168,67,.35);
+}
+.ting-tile .ting-tile-ph .ting-avatar {
+  width: 96px; height: 96px; font-size: 28px; position: relative; z-index: 1;
+  box-shadow: 0 0 0 6px rgba(255,255,255,.06), 0 12px 36px rgba(0,0,0,.35);
+}
+
+.ting-stage-connecting {
+  display: grid;
+  place-items: center;
+  min-height: 420px;
+  width: 100%;
+  color: var(--ting-t3);
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: .02em;
+  user-select: none;
+}
+.ting-tile .lbl {
+  position: absolute; left: 10px; bottom: 10px; z-index: 3;
+  display: flex; align-items: center; gap: 6px;
+  font-size: 12px; font-weight: 700; color: rgba(255,255,255,.96);
+  background: rgba(8,10,14,.38);
+  backdrop-filter: blur(16px) saturate(1.2);
+  -webkit-backdrop-filter: blur(16px) saturate(1.2);
+  border: 1px solid rgba(255,255,255,.14);
+  box-shadow: 0 4px 14px rgba(0,0,0,.28), inset 0 1px 0 rgba(255,255,255,.08);
+  padding: 6px 12px; border-radius: 14px;
+  max-width: min(86%, calc(100% - 20px));
+  pointer-events: none;
+}
+.ting-tile .lbl .mic {
+  width: 16px; height: 16px; flex: 0 0 auto; opacity: .9;
+}
+.ting-tile .lbl .mic.off { color: #ff8a96; opacity: 1; }
+.ting-tile .lbl .name {
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0;
+}
+.ting-tile .ting-tile-ph .ting-avatar {
+  margin-bottom: 28px;
+}
+
+/* Floating dock — glass + depth + ergonomic groups */
+.ting-dock {
+  position: absolute; left: 50%; bottom: 18px; transform: translateX(-50%);
+  z-index: 5; background: transparent; padding: 0;
+}
+.ting-dock-inner {
+  display: flex; gap: 10px; align-items: flex-end;
+  padding: 14px 18px 12px;
+  border-radius: 28px;
+  background: rgba(10,14,22,.52);
+  border: 1px solid rgba(255,255,255,.16);
+  box-shadow:
+    0 24px 64px rgba(0,0,0,.55),
+    0 8px 24px rgba(0,0,0,.35),
+    inset 0 1px 0 rgba(255,255,255,.12),
+    inset 0 -1px 0 rgba(0,0,0,.25);
+  backdrop-filter: blur(40px) saturate(1.45);
+  -webkit-backdrop-filter: blur(40px) saturate(1.45);
+}
+.ting-dock-sep {
+  width: 2px; align-self: stretch; margin: 6px 8px 20px;
+  border-radius: 2px;
+  background: linear-gradient(180deg, transparent 0%, rgba(255,255,255,.38) 35%, rgba(255,255,255,.38) 65%, transparent 100%);
+  box-shadow: 0 0 8px rgba(255,255,255,.12);
+  flex: 0 0 auto;
+}
+.ting-dock-btn {
+  width: 52px; height: 52px; border-radius: 50%; border: 0;
+  background: rgba(255,255,255,.1); color: var(--ting-t1);
+  cursor: pointer; display: grid; place-items: center;
+  transition: background .15s ease, transform .15s ease, color .15s ease, box-shadow .15s ease;
+}
+@media (hover: hover) {
+  .ting-dock-btn:hover {
+    background: rgba(255,255,255,.18);
+    transform: translateY(-2px) scale(1.05);
+  }
+}
+.ting-dock-btn svg { width: 22px; height: 22px; }
+.ting-dock-btn.active {
+  background: #fff; color: #111;
+  box-shadow: 0 4px 14px rgba(255,255,255,.18);
+}
+.ting-dock-btn.off { background: rgba(226,75,75,.18); color: var(--ting-danger); }
+.ting-dock-btn.on-gold { background: rgba(212,168,67,.22); color: var(--ting-gold-l); }
+.ting-dock-btn.danger {
+  background: var(--ting-danger); color: #fff;
+  width: 56px; height: 56px;
+  box-shadow: 0 8px 24px rgba(226,75,75,.5), 0 0 0 1px rgba(255,255,255,.08);
+}
+.ting-dock-cap {
+  display: flex; flex-direction: column; align-items: center; gap: 4px;
+}
+.ting-dock-cap span {
+  font-size: 10px; font-weight: 700; color: var(--ting-t3);
+}
+
+/* Chat sidebar always open */
+.ting-chat {
+  grid-area: chat;
+  display: flex; flex-direction: column;
+  background: rgba(14,18,26,.92);
+  border-left: 1px solid rgba(255,255,255,.08);
+  min-height: 0;
+  box-shadow: -12px 0 40px rgba(0,0,0,.28);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+}
+.ting-chat-head {
+  padding: 16px 16px 12px; font-weight: 800; font-size: 15px;
+  border-bottom: 1px solid var(--ting-line);
+  display: flex; justify-content: space-between; align-items: center;
+}
+.ting-chat-list {
+  flex: 1; overflow: auto; padding: 16px 14px; min-height: 0;
+}
+.ting-chat-bubble {
+  max-width: 92%; padding: 12px 14px; border-radius: 16px;
+  background: rgba(255,255,255,.07); margin: 0 0 14px; font-size: 13px; line-height: 1.45;
+  box-shadow: 0 4px 14px rgba(0,0,0,.18);
+}
+.ting-chat-bubble.me {
+  margin-left: auto; background: rgba(212,168,67,.2);
+}
+.ting-chat-bubble b {
+  display: block; font-size: 11px; color: var(--ting-t2); margin-bottom: 4px; font-weight: 700;
+}
+.ting-chat-input {
+  display: flex; gap: 0; padding: 12px 14px 16px;
+  border-top: 1px solid var(--ting-line); align-items: center; min-width: 0;
+  background: linear-gradient(180deg, transparent, rgba(0,0,0,.18));
+}
+.ting-chat-compose {
+  position: relative; flex: 1 1 auto; min-width: 0; display: flex; align-items: center;
+}
+.ting-chat-compose input,
+.ting-chat-input input {
+  flex: 1 1 auto; width: 100%; min-width: 0; margin: 0; border-radius: 18px;
+  border: 1px solid rgba(255,255,255,.16);
+  background: rgba(8,10,14,.88); color: inherit; font: inherit;
+  padding: 12px 48px 12px 14px;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.04);
+}
+.ting-chat-compose input:focus,
+.ting-chat-input input:focus {
+  outline: none; border-color: rgba(212,168,67,.55);
+  box-shadow: 0 0 0 3px rgba(212,168,67,.12);
+}
+.ting-chat-send-ico {
+  position: absolute; right: 6px; top: 50%; transform: translateY(-50%);
+  width: 36px; height: 36px; border-radius: 50%;
+  display: inline-flex; align-items: center; justify-content: center;
+  border: none; cursor: pointer; padding: 0;
+  background: linear-gradient(160deg, #e8c56a 0%, #d4a843 55%, #b8892e 100%);
+  color: #141414;
+  box-shadow: 0 4px 12px rgba(212,168,67,.35), inset 0 1px 0 rgba(255,255,255,.35);
+  transition: transform .15s ease, box-shadow .15s ease, filter .15s ease;
+}
+.ting-chat-send-ico svg { width: 18px; height: 18px; display: block; margin-left: 1px; }
+.ting-chat-send-ico:hover {
+  transform: translateY(-50%) scale(1.06);
+  filter: brightness(1.05);
+  box-shadow: 0 6px 16px rgba(212,168,67,.45), inset 0 1px 0 rgba(255,255,255,.4);
+}
+.ting-chat-send-ico:active { transform: translateY(-50%) scale(.96); }
+.ting-chat-send-ico:disabled,
+.ting-chat-send-ico.is-empty {
+  opacity: .45; cursor: default; filter: none;
+  transform: translateY(-50%);
+  box-shadow: none;
+}
+
+/* People rail — docks to stage edge, does not float over tiles */
+.ting-room-main.has-people .ting-stage-wrap {
+  padding-right: calc(min(300px, 42vw) + 12px);
+}
+.ting-people-drawer {
+  position: absolute; top: 52px; right: 10px; bottom: 100px;
+  width: min(300px, 42vw); max-height: none;
+  background: rgba(14,18,26,.9); border: 1px solid rgba(255,255,255,.12);
+  border-radius: 18px; padding: 12px; overflow: auto; z-index: 6;
+  box-shadow: 0 20px 56px rgba(0,0,0,.55), 0 4px 16px rgba(0,0,0,.35);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+}
+
+.ting-list-item {
+  display: flex; justify-content: space-between; align-items: center; gap: 10px;
+  padding: 10px 0; border-bottom: 1px solid var(--ting-line); font-size: 13px;
+}
+.ting-list-item > span:first-child {
+  min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.ting-list-item .ting-list-actions {
+  display: inline-flex; align-items: center; gap: 6px; flex: 0 0 auto;
+}
+.ting-list-item .ting-btn { min-height: 36px; padding: 6px 10px; font-size: 12px; }
+.ting-list-item:last-child { border-bottom: 0; }
+
 .ting-modal-backdrop {
-  position: fixed; inset: 0; background: rgba(0,0,0,.65); z-index: 9500;
+  position: fixed; inset: 0; z-index: 13000;
+  background: rgba(0,0,0,.48);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
   display: flex; align-items: center; justify-content: center; padding: 16px;
+  animation: ting-fade-in .18s ease;
+  /* Modal mounts on document.body (outside .ting-page) — own ink, ignore CRM h2/body color */
+  color: var(--ting-t1);
+  font-family: Manrope, system-ui, sans-serif;
 }
 .ting-modal {
   width: min(420px, 100%); background: var(--ting-bg2); border: 1px solid var(--ting-line);
-  border-radius: 16px; padding: 22px; text-align: center;
+  border-radius: var(--ting-radius); padding: 24px; text-align: center;
+  box-shadow: 0 28px 80px rgba(0,0,0,.55), 0 0 0 1px rgba(255,255,255,.04);
+  transform: scale(.95); opacity: 0;
+  color: var(--ting-t1);
 }
-.ting-steps { text-align: left; margin: 16px 0; }
+.ting-modal-backdrop .ting-modal h2,
+.ting-modal-backdrop .ting-modal h3 {
+  margin-top: 0;
+  color: #F4F0E6;
+  font-weight: 800;
+  letter-spacing: -.01em;
+}
+.ting-modal-backdrop .ting-modal .ting-muted {
+  color: var(--ting-t2);
+}
+.ting-modal.ting-modal-enter {
+  animation: ting-modal-in .2s ease forwards;
+}
+@keyframes ting-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes ting-modal-in {
+  from { opacity: 0; transform: scale(.95); }
+  to { opacity: 1; transform: scale(1); }
+}
+.ting-steps { text-align: left; margin: 16px 0; padding-left: 18px; }
 .ting-steps li { margin: 8px 0; color: var(--ting-t2); }
-@media (max-width: 640px) {
-  .ting-side { width: 100%; top: auto; bottom: 80px; height: 40%; }
+.ting-proto-doc {
+  position: relative; overflow: hidden;
+  background: linear-gradient(180deg, #faf7f1 0%, #f3efe6 100%);
+  color: #1a1a1a; border-radius: 16px; padding: 32px 28px;
+  max-width: 720px; margin: 0 auto;
+  box-shadow: 0 12px 40px rgba(0,0,0,.4);
+  border: 1px solid rgba(212,168,67,.25);
+}
+.ting-proto-doc h1 { font-size: 22px; margin: 12px 0; color: #1a1a1a; }
+.ting-proto-doc h2 { font-size: 15px; margin: 18px 0 8px; color: #333; }
+.ting-proto-doc .meta { font-size: 13px; color: #555; }
+.ting-proto-doc p, .ting-proto-doc li { color: #222; }
+.ting-proto-table { width: 100%; border-collapse: collapse; font-size: 13px; margin-top: 8px; }
+.ting-proto-table th, .ting-proto-table td {
+  text-align: left; padding: 8px 6px; border-bottom: 1px solid #ddd; color: #222;
+}
+.ting-proto-table th { font-weight: 700; color: #333; }
+.ting-proto-status {
+  display: inline-flex; align-items: center; padding: 2px 8px; border-radius: 999px;
+  font-size: 11px; font-weight: 700; border: 1px solid #ccc;
+}
+.ting-proto-status-open {
+  color: #6B3F00; background: rgba(212,168,67,.28); border-color: rgba(160,110,20,.55);
+}
+.ting-proto-status-progress {
+  color: #0D47A1; background: rgba(60,120,200,.18); border-color: rgba(25,80,160,.45);
+}
+.ting-proto-status-done {
+  color: #2E7D32; background: rgba(46,125,50,.14); border-color: rgba(46,125,50,.45);
+}
+.ting-proto-meeting-link {
+  color: var(--ting-gold); font-size: 13px; font-weight: 700; text-decoration: none;
+}
+.ting-proto-meeting-link:hover { text-decoration: underline; }
+.ting-invite-row {
+  display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
+  margin: 8px 0 14px; min-height: 36px;
+}
+.ting-invite-chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 6px 10px; border-radius: 999px;
+  border: 1px solid var(--ting-line); background: var(--ting-bg2);
+  font-size: 12px; font-weight: 600; color: var(--ting-t1);
+}
+.ting-invite-x {
+  border: 0; background: transparent; color: var(--ting-t2);
+  cursor: pointer; font-size: 14px; line-height: 1; padding: 0 2px;
+}
+.ting-invite-add {
+  border: 1px dashed rgba(212,168,67,.45); background: transparent;
+  color: var(--ting-gold); border-radius: 999px; padding: 6px 12px;
+  font-size: 12px; font-weight: 700; cursor: pointer; font: inherit;
+}
+.ting-proto-watermark {
+  position: absolute; inset: 0; display: grid; place-items: center;
+  font-size: clamp(48px, 12vw, 96px); font-weight: 800; letter-spacing: .12em;
+  color: rgba(212,168,67,.1); pointer-events: none; user-select: none;
+  transform: rotate(-12deg);
+}
+.ting-proto-empty { min-height: 220px; }
+.ting-proto-empty-hint {
+  position: relative; z-index: 1; margin-top: 28px;
+  color: #666 !important; font-weight: 600;
+}
+
+.ting-empty {
+  text-align: center; padding: 36px 16px; color: var(--ting-t2);
+}
+
+/* Mobile */
+@media (max-width: 820px) {
+  .ting-hub-hero { grid-template-columns: 1fr 1fr; }
+  .ting-hub-card.primary { grid-column: 1 / -1; }
+  .ting-cta-row { flex-direction: column; }
+  .ting-cta-row .ting-btn { width: 100%; min-width: 0; }
+  .ting-room-shell {
+    grid-template-columns: 1fr;
+    grid-template-areas: "main";
+  }
+  .ting-chat {
+    position: fixed; inset: 0;
+    z-index: 8; transform: translateX(100%);
+    transition: transform .22s ease;
+    border-left: 0;
+    width: 100%;
+    max-width: none;
+    box-shadow: none;
+  }
+  .ting-chat.open { transform: translateX(0); }
+  .ting-room-main.has-people .ting-stage-wrap { padding-right: 0; padding-bottom: 0; }
+  .ting-people-drawer {
+    position: fixed; inset: 0;
+    top: 0; right: 0; bottom: 0; width: 100%;
+    max-width: none; border-radius: 0; z-index: 9;
+    border: 0; box-shadow: none;
+  }
+  .ting-dock-cap span { display: none; }
+  .ting-dock-sep { margin: 2px 4px 8px; }
+  .ting-page .ting-wrap { padding-bottom: 48px; }
+  .ting-stage.g2 { grid-template-columns: 1fr; grid-template-rows: auto; }
+  .ting-tile.span2 { grid-row: auto; min-height: 260px; }
+  .ting-ready-foot { flex-direction: column; text-align: center; }
+  .ting-count-chip { font-size: 11px; padding: 6px 10px; }
+  .ting-call-row .ting-btn { padding: 8px 12px; min-height: 40px; font-size: 13px; }
+}
+@media (max-width: 480px) {
+  .ting-hub-hero { grid-template-columns: 1fr; }
+  .ting-stage.auto { grid-template-columns: 1fr 1fr; gap: 8px; }
+  .ting-tile { min-height: 120px; border-radius: 16px; }
+  .ting-dock-btn { width: 48px; height: 48px; }
+  .ting-dock-btn.danger { width: 52px; height: 52px; }
+  .ting-dial-lg { font-size: 32px; }
+  .ting-call-row { flex-wrap: wrap; }
+  .ting-call-row .ting-chip { order: 3; }
+  .ting-call-row .ting-btn { order: 4; margin-left: auto; }
 }

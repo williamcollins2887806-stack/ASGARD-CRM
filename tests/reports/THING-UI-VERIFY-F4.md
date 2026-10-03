@@ -1,38 +1,24 @@
 # THING-UI-VERIFY-F4
 
-at: 2026-10-02T18:27:48.136Z
-result: VERIFIED screens 19/19
+at: 2026-10-03T18:24:11.473Z
+result: VERIFIED (15/15)
 
-| # | Screen | PASS | Missing |
-|---|--------|------|---------|
-| 1 | hub | PASS | — |
-| 2 | new | PASS | — |
-| 3 | schedule | PASS | — |
-| 4 | meeting-create | PASS | — |
-| 5 | ready | PASS | — |
-| 6 | meeting | PASS | — |
-| 7 | lobby | PASS | — |
-| 8 | waiting | PASS | — |
-| 9 | error | PASS | — |
-| 10 | error-code | PASS | — |
-| 11 | room | PASS | — |
-| 12 | share | PASS | — |
-| 13 | people | PASS | — |
-| 14 | chat | PASS | — |
-| 15 | recording | PASS | — |
-| 16 | host-end | PASS | — |
-| 17 | ended | PASS | — |
-| 18 | protocol | PASS | — |
-| 19 | dialin | PASS | — |
+| ID | PASS | Evidence |
+|----|------|----------|
+| U01_hub_hero | PASS | hub hero cards |
+| U02_call_rows | PASS | call history rows |
+| U03_radius | PASS | Telemost-like radius |
+| U04_dock_float | PASS | floating dock |
+| U05_tile_overlay | PASS | tile name overlay |
+| U06_chat_grid | PASS | chat in grid |
+| U07_incall | PASS | hide CRM chrome |
+| U08_guest_shared | PASS | guest shared shell |
+| U09_ru_copy | PASS | RU copy |
+| U10_logo | PASS | logo |
+| U11_speaker | PASS | speaker layout |
+| U12_mobile_sheets | PASS | mobile chat/people sheets |
+| U13_no_modul | PASS | no modul CRM |
+| U14_qr | PASS | QR box |
+| U15_proto_contrast | PASS | protocol contrast |
 
-| Лицо | PASS/FAIL | Доказательство |
-|------|-----------|----------------|
-| Заказчик | PASS | 19/19 screens |
-| Читатель | PASS | gold=true manrope=true |
-| Ревьюер | PASS | no stub copy |
-| Тестировщик | PASS | none missing |
-| Скептик | PASS | prototype source present or skipped |
-| Регламент | PASS | ting_page in assets |
-| Адвокат дьявола | PASS | real LiveKit not mock |
-
-## VERIFIED
+All PASS

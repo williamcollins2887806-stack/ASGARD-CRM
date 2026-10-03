@@ -25,16 +25,65 @@ function hashToken(token) {
 module.exports = async function thingRoutes(fastify) {
   const db = fastify.db;
 
+  /** PIN fail rate-limit: 5 fails / 10 min per IP (in-memory). */
+  const pinFailMap = new Map();
+  const PIN_WINDOW_MS = 10 * 60 * 1000;
+  const PIN_MAX_FAILS = 5;
+
+  function pinRateKey(request) {
+    const ip = (request.ip || request.headers['x-forwarded-for'] || '').toString().split(',')[0].trim() || 'unknown';
+    return `pin:${ip}`;
+  }
+
+  function pinRateCheck(key) {
+    const now = Date.now();
+    const e = pinFailMap.get(key);
+    if (!e || now > e.resetAt) return { ok: true };
+    if (e.count >= PIN_MAX_FAILS) return { ok: false };
+    return { ok: true };
+  }
+
+  function pinRateFail(key) {
+    const now = Date.now();
+    let e = pinFailMap.get(key);
+    if (!e || now > e.resetAt) e = { count: 0, resetAt: now + PIN_WINDOW_MS };
+    e.count += 1;
+    pinFailMap.set(key, e);
+    return e.count;
+  }
+
+  function makeJoinToken() {
+    const token = crypto.randomBytes(32).toString('hex');
+    return { token, hash: hashToken(token) };
+  }
+
+  /** Уже в комнате (для admit / CRM token). Waiting не считаем — иначе admit deadlock ROOM_FULL. */
+  async function countAdmittedParticipants(roomId) {
+    const { rows } = await db.query(
+      `SELECT COUNT(*)::int AS n FROM thing_participants
+       WHERE room_id = $1 AND left_at IS NULL AND lobby_status = 'admitted'`,
+      [roomId]
+    );
+    return rows[0] ? rows[0].n : 0;
+  }
+
+  /** Очередь + в комнате (лимит на guest-token, чтобы не забить waiting). */
+  async function countOccupyingParticipants(roomId) {
+    const { rows } = await db.query(
+      `SELECT COUNT(*)::int AS n FROM thing_participants
+       WHERE room_id = $1 AND left_at IS NULL AND lobby_status IN ('admitted', 'waiting')`,
+      [roomId]
+    );
+    return rows[0] ? rows[0].n : 0;
+  }
+
+  /** Numeric id всегда по PK. Dial-code lookup — только в /dial-in/resolve. */
   async function loadRoom(idOrCode) {
     const key = String(idOrCode || '').trim();
     if (!key) return null;
-    if (/^\d+$/.test(key) && !isDialCode(key)) {
+    if (/^\d+$/.test(key)) {
       const { rows } = await db.query(`SELECT * FROM thing_rooms WHERE id = $1`, [parseInt(key, 10)]);
       return rows[0] || null;
-    }
-    if (isDialCode(key)) {
-      // dial_code не резолвим в URL-роутах комнаты — только через /dial-in lookup
-      return null;
     }
     if (isSlug(key)) {
       const { rows } = await db.query(`SELECT * FROM thing_rooms WHERE slug = $1`, [key.toLowerCase()]);
@@ -59,14 +108,19 @@ module.exports = async function thingRoutes(fastify) {
       if (rows.length) return true;
     }
     const { rows: p } = await db.query(
-      `SELECT 1 FROM thing_participants WHERE room_id = $1 AND user_id = $2 LIMIT 1`,
+      `SELECT 1 FROM thing_participants
+       WHERE room_id = $1 AND user_id = $2
+         AND left_at IS NULL
+         AND lobby_status NOT IN ('rejected')
+       LIMIT 1`,
       [room.id, user.id]
     );
     return p.length > 0;
   }
 
+  /** Хост комнаты — только host_user_id (roomAdmin / moderation). Директора — через canAccessRoom. */
   function isHost(room, user) {
-    return room && user && (room.host_user_id === user.id || DIRECTOR_ROLES.includes(user.role));
+    return !!(room && user && room.host_user_id === user.id);
   }
 
   /** Протокол v1 — строго инициатор (host_user_id), даже директор-нехост не видит */
@@ -80,7 +134,6 @@ module.exports = async function thingRoutes(fastify) {
       id: room.id,
       meeting_id: room.meeting_id,
       slug: room.slug,
-      dial_code: room.dial_code,
       title: room.title,
       host_user_id: room.host_user_id,
       mode: room.mode,
@@ -99,10 +152,61 @@ module.exports = async function thingRoutes(fastify) {
       livekit_configured: livekit.isConfigured()
     };
     if (includeSecrets) {
+      out.dial_code = room.dial_code;
       out.livekit_room_name = room.livekit_room_name;
       out.pin_code = room.pin_code;
     }
     return out;
+  }
+
+  async function queryChat(roomId) {
+    const { rows } = await db.query(
+      `SELECT id, identity, user_id, display_name, text, created_at
+       FROM thing_chat_messages
+       WHERE room_id = $1
+       ORDER BY id DESC
+       LIMIT 100`,
+      [roomId]
+    );
+    return rows.reverse().map((r) => ({
+      id: r.id,
+      identity: r.identity,
+      user_id: r.user_id,
+      display_name: r.display_name,
+      author: r.display_name,
+      text: r.text,
+      created_at: r.created_at
+    }));
+  }
+
+  async function insertChat({ roomId, identity, userId, displayName, text }) {
+    const { rows } = await db.query(
+      `INSERT INTO thing_chat_messages (room_id, identity, user_id, display_name, text)
+       VALUES ($1, $2, $3, $4, $5)
+       RETURNING id, identity, user_id, display_name, text, created_at`,
+      [roomId, identity || null, userId || null, displayName, text]
+    );
+    const r = rows[0];
+    return {
+      id: r.id,
+      identity: r.identity,
+      user_id: r.user_id,
+      display_name: r.display_name,
+      author: r.display_name,
+      text: r.text,
+      created_at: r.created_at
+    };
+  }
+
+  async function findAdmittedParticipant(roomId, identity) {
+    const { rows } = await db.query(
+      `SELECT * FROM thing_participants
+       WHERE room_id = $1 AND identity = $2
+         AND lobby_status = 'admitted' AND left_at IS NULL
+       LIMIT 1`,
+      [roomId, identity]
+    );
+    return rows[0] || null;
   }
 
   // ─── CREATE ─────────────────────────────────────────────────
@@ -148,7 +252,8 @@ module.exports = async function thingRoutes(fastify) {
     const { rows } = await db.query(
       `SELECT * FROM thing_rooms
        WHERE host_user_id = $1 OR id IN (
-         SELECT room_id FROM thing_participants WHERE user_id = $1
+         SELECT room_id FROM thing_participants
+         WHERE user_id = $1 AND left_at IS NULL AND lobby_status NOT IN ('rejected')
        )
        ORDER BY created_at DESC
        LIMIT 50`,
@@ -183,15 +288,124 @@ module.exports = async function thingRoutes(fastify) {
         code: 'LIVEKIT_NOT_CONFIGURED'
       });
     }
+
+    const identity = `user_${request.user.id}`;
+    const displayName = (request.body && request.body.display_name)
+      || request.user.name || request.user.email || `Участник ${request.user.id}`;
     const host = isHost(room, request.user);
+    const role = host ? 'host' : 'member';
+
+    const { rows: existing } = await db.query(
+      `SELECT lobby_status, left_at FROM thing_participants
+       WHERE room_id = $1 AND identity = $2 LIMIT 1`,
+      [room.id, identity]
+    );
+    if (existing[0] && existing[0].lobby_status === 'rejected') {
+      return reply.code(403).send({ error: 'Доступ в комнату отклонён', code: 'LOBBY_REJECTED' });
+    }
+    const alreadyAdmitted = existing[0] && !existing[0].left_at && existing[0].lobby_status === 'admitted';
+    const needLobby = !!(room.lobby_enabled && !host && !alreadyAdmitted);
+    if (!alreadyAdmitted && !host && !needLobby) {
+      const active = await countAdmittedParticipants(room.id);
+      const maxP = room.max_participants || 50;
+      if (active >= maxP) {
+        return reply.code(403).send({ error: 'Комната заполнена', code: 'ROOM_FULL' });
+      }
+    }
+    if (needLobby) {
+      const occupying = await countOccupyingParticipants(room.id);
+      const maxP = room.max_participants || 50;
+      if (occupying >= maxP && !(existing[0] && !existing[0].left_at && existing[0].lobby_status === 'waiting')) {
+        return reply.code(403).send({ error: 'Комната заполнена', code: 'ROOM_FULL' });
+      }
+    }
+    const { token: joinToken, hash: joinHash } = makeJoinToken();
+    const lobbyStatus = needLobby ? 'waiting' : 'admitted';
+    if (existing[0] && existing[0].left_at && existing[0].lobby_status !== 'rejected') {
+      await db.query(
+        `UPDATE thing_participants
+         SET left_at = NULL, lobby_status = $6,
+             display_name = $3, role = $4, user_id = $5,
+             join_token_hash = $7,
+             joined_at = CASE WHEN $6 = 'admitted' THEN COALESCE(joined_at, NOW()) ELSE joined_at END
+         WHERE room_id = $1 AND identity = $2`,
+        [room.id, identity, displayName, role, request.user.id, lobbyStatus, joinHash]
+      );
+    } else if (existing[0] && existing[0].lobby_status === 'waiting' && needLobby) {
+      await db.query(
+        `UPDATE thing_participants
+         SET display_name = $3, role = $4, user_id = $5, join_token_hash = $6, left_at = NULL
+         WHERE room_id = $1 AND identity = $2`,
+        [room.id, identity, displayName, role, request.user.id, joinHash]
+      );
+    } else {
+      await db.query(
+        `INSERT INTO thing_participants
+           (room_id, user_id, role, display_name, identity, lobby_status, left_at, joined_at, join_token_hash)
+         VALUES ($1, $2, $3, $4, $5, $6, NULL, CASE WHEN $6 = 'admitted' THEN NOW() ELSE NULL END, $7)
+         ON CONFLICT (room_id, identity) DO UPDATE SET
+           user_id = EXCLUDED.user_id,
+           role = EXCLUDED.role,
+           display_name = EXCLUDED.display_name,
+           join_token_hash = EXCLUDED.join_token_hash,
+           lobby_status = CASE
+             WHEN thing_participants.lobby_status = 'rejected' THEN thing_participants.lobby_status
+             WHEN thing_participants.lobby_status = 'admitted' AND thing_participants.left_at IS NULL
+               THEN 'admitted'
+             ELSE EXCLUDED.lobby_status
+           END,
+           left_at = CASE
+             WHEN thing_participants.lobby_status = 'rejected' THEN thing_participants.left_at
+             ELSE NULL
+           END,
+           joined_at = CASE
+             WHEN EXCLUDED.lobby_status = 'admitted'
+               THEN COALESCE(thing_participants.joined_at, NOW())
+             ELSE thing_participants.joined_at
+           END`,
+        [room.id, request.user.id, role, displayName, identity, lobbyStatus, joinHash]
+      );
+    }
+
+    if (needLobby) {
+      return {
+        lobby_status: 'waiting',
+        identity,
+        join_token: joinToken,
+        message: 'Хост скоро пустит',
+        poll_url: `/api/thing/public/${encodeURIComponent(room.slug)}/lobby-status?identity=${encodeURIComponent(identity)}&join_token=${encodeURIComponent(joinToken)}`,
+        room: serializeRoom(room, { includeSecrets: false })
+      };
+    }
+
     const creds = await livekit.createAccessToken({
       roomName: room.livekit_room_name,
-      identity: `user_${request.user.id}`,
-      name: request.user.name || request.user.email || `Участник ${request.user.id}`,
+      identity,
+      name: displayName,
       roomAdmin: host,
       canPublish: true
     });
-    return { ...creds, room: serializeRoom(room) };
+    return {
+      ...creds,
+      lobby_status: 'admitted',
+      join_token: joinToken,
+      identity,
+      room: serializeRoom(room, { includeSecrets: host })
+    };
+  });
+
+  // ─── LEAVE (self) — only left_at; rejected = kick/reject only ───
+  fastify.post('/rooms/:id/leave', { preHandler: [fastify.authenticate] }, async (request, reply) => {
+    const room = await loadRoom(request.params.id);
+    if (!room) return reply.code(404).send({ error: 'Тинг не найден' });
+    const identity = `user_${request.user.id}`;
+    await db.query(
+      `UPDATE thing_participants
+       SET left_at = NOW()
+       WHERE room_id = $1 AND identity = $2 AND lobby_status <> 'rejected'`,
+      [room.id, identity]
+    );
+    return { ok: true };
   });
 
   // ─── START / END ────────────────────────────────────────────
@@ -232,7 +446,10 @@ module.exports = async function thingRoutes(fastify) {
         type: 'thing',
         link: `#/ting/${ended.slug}`
       });
-    } catch (_) { /* ignore */ }
+    } catch (e) {
+      const log = request.log || fastify.log;
+      log.warn({ err: e }, '[thing] end notify failed');
+    }
 
     return { room: serializeRoom(ended, { includeSecrets: true }), protocol };
   });
@@ -294,7 +511,6 @@ module.exports = async function thingRoutes(fastify) {
     const room = await loadRoom(request.params.id);
     if (!room) return reply.code(404).send({ error: 'Тинг не найден' });
     if (!(await canAccessRoom(room, request.user))) return reply.code(403).send({ error: 'Нет доступа' });
-    // протокол видит только initiator
     const { rows } = await db.query(
       `SELECT * FROM thing_recordings WHERE room_id = $1 ORDER BY id DESC LIMIT 5`,
       [room.id]
@@ -309,7 +525,6 @@ module.exports = async function thingRoutes(fastify) {
         duration_sec: r.duration_sec,
         started_at: r.started_at,
         ended_at: r.ended_at
-        // protocol_status скрыт от не-инициатора
       };
     });
     return { recordings };
@@ -323,7 +538,7 @@ module.exports = async function thingRoutes(fastify) {
       return reply.code(403).send({ error: 'Протокол видит только инициатор' });
     }
     if (!room.protocol_enabled) {
-      return { protocol_enabled: false, protocol_status: 'skipped' };
+      return { protocol_enabled: false, protocol_status: 'skipped', can_edit: false, minutes: [] };
     }
     const { rows: recs } = await db.query(
       `SELECT id, protocol_status, protocol_error, transcript_status, status, updated_at
@@ -350,6 +565,8 @@ module.exports = async function thingRoutes(fastify) {
       protocol_enabled: true,
       protocol_status: rec ? rec.protocol_status : 'queued',
       protocol_error: rec ? rec.protocol_error : null,
+      can_edit: false,
+      meeting_id: room.meeting_id || null,
       recording: rec || null,
       runs,
       minutes,
@@ -398,8 +615,8 @@ module.exports = async function thingRoutes(fastify) {
       status: room.status,
       lobby_enabled: room.lobby_enabled,
       pin_required: Boolean(room.pin_code),
+      recording_mode: room.recording_mode || 'off',
       slug: room.slug
-      // dial_code не светим публично без auth — только на карточке хоста
     };
   });
 
@@ -417,17 +634,34 @@ module.exports = async function thingRoutes(fastify) {
       return reply.code(410).send({ error: 'Тинг завершён' });
     }
     if (!room.allow_guests) return reply.code(403).send({ error: 'Гости не допущены' });
+
+    const rateKey = pinRateKey(request);
     if (room.pin_code) {
+      const rate = pinRateCheck(rateKey);
+      if (!rate.ok) {
+        return reply.code(429).send({ error: 'Слишком много попыток PIN. Подождите 10 минут.', code: 'PIN_RATE_LIMIT' });
+      }
       const pin = String(body.pin || '').replace(/\D/g, '');
-      if (pin !== room.pin_code) return reply.code(403).send({ error: 'Неверный PIN' });
+      if (pin !== room.pin_code) {
+        pinRateFail(rateKey);
+        return reply.code(403).send({ error: 'Неверный PIN' });
+      }
+    }
+
+    const active = await countOccupyingParticipants(room.id);
+    const maxP = room.max_participants || 50;
+    if (active >= maxP) {
+      return reply.code(403).send({ error: 'Комната заполнена', code: 'ROOM_FULL' });
     }
 
     const identity = `guest_${crypto.randomBytes(8).toString('hex')}`;
+    const { token: joinToken, hash: joinHash } = makeJoinToken();
     const lobby = room.lobby_enabled ? 'waiting' : 'admitted';
     const { rows: ins } = await db.query(
-      `INSERT INTO thing_participants (room_id, guest_name, guest_email, role, display_name, identity, lobby_status)
-       VALUES ($1, $2, $3, 'guest', $2, $4, $5) RETURNING id`,
-      [room.id, name, body.email || null, identity, lobby]
+      `INSERT INTO thing_participants
+         (room_id, guest_name, guest_email, role, display_name, identity, lobby_status, join_token_hash)
+       VALUES ($1, $2, $3, 'guest', $2, $4, $5, $6) RETURNING id`,
+      [room.id, name, body.email || null, identity, lobby, joinHash]
     );
 
     if (lobby === 'waiting') {
@@ -435,8 +669,9 @@ module.exports = async function thingRoutes(fastify) {
         lobby_status: 'waiting',
         participant_id: ins[0].id,
         identity,
+        join_token: joinToken,
         message: 'Хост скоро пустит',
-        poll_url: `/api/thing/public/${encodeURIComponent(room.slug)}/lobby-status?identity=${encodeURIComponent(identity)}`
+        poll_url: `/api/thing/public/${encodeURIComponent(room.slug)}/lobby-status?identity=${encodeURIComponent(identity)}&join_token=${encodeURIComponent(joinToken)}`
       };
     }
 
@@ -451,24 +686,39 @@ module.exports = async function thingRoutes(fastify) {
       roomAdmin: false,
       canPublish: true
     });
-    return { ...creds, lobby_status: 'admitted', room: { title: room.title, slug: room.slug, status: room.status } };
+    return {
+      ...creds,
+      lobby_status: 'admitted',
+      identity,
+      join_token: joinToken,
+      room: { title: room.title, slug: room.slug, status: room.status }
+    };
   });
 
   /** Гость поллит статус лобби → получает token когда admitted */
   fastify.get('/public/:code/lobby-status', async (request, reply) => {
     const code = String(request.params.code || '').toLowerCase();
     const identity = String(request.query.identity || '');
+    const joinToken = String(request.query.join_token || '');
     if (!isSlug(code) || !identity) return reply.code(400).send({ error: 'slug + identity' });
+    if (!joinToken) return reply.code(400).send({ error: 'Нужен join_token', code: 'JOIN_TOKEN_REQUIRED' });
     const { rows } = await db.query(`SELECT * FROM thing_rooms WHERE slug = $1`, [code]);
     const room = rows[0];
     if (!room) return reply.code(404).send({ error: 'Тинг не найден' });
+    if (room.status === 'ended' || room.status === 'cancelled') {
+      return { lobby_status: 'ended' };
+    }
     const { rows: parts } = await db.query(
       `SELECT * FROM thing_participants WHERE room_id = $1 AND identity = $2`,
       [room.id, identity]
     );
     const p = parts[0];
     if (!p) return reply.code(404).send({ error: 'Участник не найден' });
+    if (!p.join_token_hash || p.join_token_hash !== hashToken(joinToken)) {
+      return reply.code(403).send({ error: 'Неверный join_token', code: 'JOIN_TOKEN_INVALID' });
+    }
     if (p.lobby_status === 'rejected') return { lobby_status: 'rejected' };
+    if (p.left_at) return { lobby_status: 'left' };
     if (p.lobby_status === 'waiting') return { lobby_status: 'waiting' };
     if (!livekit.isConfigured()) return reply.code(503).send({ error: 'LiveKit не настроен' });
     const creds = await livekit.createAccessToken({
@@ -479,6 +729,34 @@ module.exports = async function thingRoutes(fastify) {
       canPublish: true
     });
     return { lobby_status: 'admitted', ...creds, room: { title: room.title, slug: room.slug } };
+  });
+
+  /** Публичный leave гостя — только left_at (не rejected) */
+  fastify.post('/public/:code/leave', async (request, reply) => {
+    const code = String(request.params.code || '').toLowerCase();
+    const body = request.body || {};
+    const identity = String(body.identity || '').trim();
+    const joinToken = String(body.join_token || '').trim();
+    if (!isSlug(code) || !identity) return reply.code(400).send({ error: 'slug + identity' });
+    if (!joinToken) return reply.code(400).send({ error: 'Нужен join_token', code: 'JOIN_TOKEN_REQUIRED' });
+    const { rows } = await db.query(`SELECT * FROM thing_rooms WHERE slug = $1`, [code]);
+    const room = rows[0];
+    if (!room) return reply.code(404).send({ error: 'Тинг не найден' });
+    const { rows: parts } = await db.query(
+      `SELECT * FROM thing_participants WHERE room_id = $1 AND identity = $2`,
+      [room.id, identity]
+    );
+    const p = parts[0];
+    if (!p || !p.join_token_hash || p.join_token_hash !== hashToken(joinToken)) {
+      return reply.code(403).send({ error: 'Неверный join_token', code: 'JOIN_TOKEN_INVALID' });
+    }
+    await db.query(
+      `UPDATE thing_participants
+       SET left_at = NOW()
+       WHERE room_id = $1 AND identity = $2 AND lobby_status <> 'rejected'`,
+      [room.id, identity]
+    );
+    return { ok: true };
   });
 
   // ─── PARTICIPANTS / LOBBY / MODERATION ───────────────────────
@@ -494,7 +772,9 @@ module.exports = async function thingRoutes(fastify) {
     let live = [];
     try {
       live = await livekit.listLiveKitParticipants(room.livekit_room_name);
-    } catch (_) { /* */ }
+    } catch (e) {
+      fastify.log.warn({ err: e }, 'thing: listLiveKitParticipants failed');
+    }
     return {
       participants: rows,
       live: live.map((p) => ({
@@ -511,9 +791,14 @@ module.exports = async function thingRoutes(fastify) {
     const room = await loadRoom(request.params.id);
     if (!room) return reply.code(404).send({ error: 'Тинг не найден' });
     if (!isHost(room, request.user)) return reply.code(403).send({ error: 'Только хост' });
+    const active = await countAdmittedParticipants(room.id);
+    const maxP = room.max_participants || 50;
+    if (active >= maxP) {
+      return reply.code(403).send({ error: 'Комната заполнена', code: 'ROOM_FULL' });
+    }
     const pid = parseInt(request.params.participantId, 10);
     const { rows } = await db.query(
-      `UPDATE thing_participants SET lobby_status = 'admitted', joined_at = COALESCE(joined_at, NOW())
+      `UPDATE thing_participants SET lobby_status = 'admitted', joined_at = COALESCE(joined_at, NOW()), left_at = NULL
        WHERE id = $1 AND room_id = $2 AND lobby_status = 'waiting'
        RETURNING *`,
       [pid, room.id]
@@ -528,7 +813,7 @@ module.exports = async function thingRoutes(fastify) {
     if (!isHost(room, request.user)) return reply.code(403).send({ error: 'Только хост' });
     const pid = parseInt(request.params.participantId, 10);
     const { rows } = await db.query(
-      `UPDATE thing_participants SET lobby_status = 'rejected'
+      `UPDATE thing_participants SET lobby_status = 'rejected', left_at = NOW()
        WHERE id = $1 AND room_id = $2 RETURNING *`,
       [pid, room.id]
     );
@@ -552,7 +837,7 @@ module.exports = async function thingRoutes(fastify) {
       livekit_error = e.message || 'LiveKit remove failed';
     }
     await db.query(
-      `UPDATE thing_participants SET left_at = NOW(), lobby_status = CASE WHEN lobby_status = 'waiting' THEN 'rejected' ELSE lobby_status END
+      `UPDATE thing_participants SET left_at = NOW(), lobby_status = 'rejected'
        WHERE room_id = $1 AND identity = $2`,
       [room.id, identity]
     );
@@ -572,45 +857,86 @@ module.exports = async function thingRoutes(fastify) {
     }
   });
 
-  /** In-room data chat (persist last N in memory via DB table optional — use thing_participants + jobs noop)
-   *  Simple: store in thing_jobs payload as chat append — better use dedicated lightweight table.
-   *  v1: return ok and broadcast via LiveKit data from client; server log only.
-   */
+  // ─── CHAT (thing_chat_messages) ─────────────────────────────
   fastify.get('/rooms/:id/chat', { preHandler: [fastify.authenticate] }, async (request, reply) => {
     const room = await loadRoom(request.params.id);
     if (!room) return reply.code(404).send({ error: 'Тинг не найден' });
     if (!(await canAccessRoom(room, request.user))) return reply.code(403).send({ error: 'Нет доступа' });
-    const { rows } = await db.query(
-      `SELECT id, payload, created_at FROM thing_jobs
-       WHERE room_id = $1 AND job_type = 'thing_chat'
-       ORDER BY id DESC LIMIT 100`,
-      [room.id]
-    );
-    const messages = rows.reverse().map((r) => ({
-      id: r.id,
-      ...(typeof r.payload === 'object' ? r.payload : {}),
-      created_at: r.created_at
-    }));
-    return { messages };
+    return { messages: await queryChat(room.id) };
   });
 
   fastify.post('/rooms/:id/chat', { preHandler: [fastify.authenticate] }, async (request, reply) => {
     const room = await loadRoom(request.params.id);
     if (!room) return reply.code(404).send({ error: 'Тинг не найден' });
     if (!(await canAccessRoom(room, request.user))) return reply.code(403).send({ error: 'Нет доступа' });
-    const text = String((request.body || {}).text || '').trim().slice(0, 2000);
+    if (room.status === 'ended' || room.status === 'cancelled') {
+      return reply.code(410).send({ error: 'Тинг завершён' });
+    }
+    const body = request.body || {};
+    const text = String(body.text || '').trim().slice(0, 2000);
     if (!text) return reply.code(400).send({ error: 'Пустое сообщение' });
-    const payload = {
-      text,
-      author: request.user.name || request.user.email || 'user',
-      user_id: request.user.id
-    };
+    const displayName = String(body.display_name || request.user.name || request.user.email || 'Участник').slice(0, 80);
+    const message = await insertChat({
+      roomId: room.id,
+      identity: `user_${request.user.id}`,
+      userId: request.user.id,
+      displayName,
+      text
+    });
+    return { ok: true, message };
+  });
+
+  /** Публичный чат гостя — только admitted + not left, комната не ended */
+  async function assertGuestJoinToken(roomId, identity, joinToken) {
+    if (!identity || !joinToken) return null;
     const { rows } = await db.query(
-      `INSERT INTO thing_jobs (job_type, room_id, status, payload, scheduled_at)
-       VALUES ('thing_chat', $1, 'done', $2::jsonb, NOW()) RETURNING id, created_at`,
-      [room.id, JSON.stringify(payload)]
+      `SELECT * FROM thing_participants
+       WHERE room_id = $1 AND identity = $2 AND left_at IS NULL AND lobby_status = 'admitted'`,
+      [roomId, identity]
     );
-    return { ok: true, message: { id: rows[0].id, ...payload, created_at: rows[0].created_at } };
+    const p = rows[0];
+    if (!p || !p.join_token_hash || p.join_token_hash !== hashToken(joinToken)) return null;
+    return p;
+  }
+
+  fastify.get('/public/:code/chat', async (request, reply) => {
+    const room = await loadRoom(request.params.code);
+    if (!room) return reply.code(404).send({ error: 'Тинг не найден' });
+    if (room.status === 'ended' || room.status === 'cancelled') {
+      return reply.code(410).send({ error: 'Тинг завершён' });
+    }
+    const identity = String(request.query.identity || '').trim();
+    const joinToken = String(request.query.join_token || '').trim();
+    if (!identity) return reply.code(400).send({ error: 'Нужен identity' });
+    if (!joinToken) return reply.code(400).send({ error: 'Нужен join_token', code: 'JOIN_TOKEN_REQUIRED' });
+    const p = await assertGuestJoinToken(room.id, identity, joinToken);
+    if (!p) return reply.code(403).send({ error: 'Нет доступа' });
+    return { messages: await queryChat(room.id) };
+  });
+
+  fastify.post('/public/:code/chat', async (request, reply) => {
+    const room = await loadRoom(request.params.code);
+    if (!room) return reply.code(404).send({ error: 'Тинг не найден' });
+    if (room.status === 'ended' || room.status === 'cancelled') {
+      return reply.code(410).send({ error: 'Тинг завершён' });
+    }
+    const body = request.body || {};
+    const identity = String(body.identity || '').trim();
+    const joinToken = String(body.join_token || '').trim();
+    const text = String(body.text || '').trim().slice(0, 2000);
+    if (!identity || !text) return reply.code(400).send({ error: 'Нужны identity и text' });
+    if (!joinToken) return reply.code(400).send({ error: 'Нужен join_token', code: 'JOIN_TOKEN_REQUIRED' });
+    const p = await assertGuestJoinToken(room.id, identity, joinToken);
+    if (!p) return reply.code(403).send({ error: 'Нет доступа' });
+    const displayName = String(body.display_name || p.display_name || p.guest_name || 'Гость').slice(0, 80);
+    const message = await insertChat({
+      roomId: room.id,
+      identity,
+      userId: null,
+      displayName,
+      text
+    });
+    return { ok: true, message };
   });
 
   // ─── DIAL-IN info + lookup ──────────────────────────────────
@@ -621,8 +947,17 @@ module.exports = async function thingRoutes(fastify) {
     const map = Object.fromEntries(rows.map((r) => [r.key, r.value_json]));
     let enabled = false;
     let number = '';
-    try { enabled = JSON.parse(map.thing_dialin_enabled || 'false'); } catch (_) { /* */ }
-    try { number = JSON.parse(map.thing_dialin_number || '""'); } catch (_) { number = map.thing_dialin_number || ''; }
+    try {
+      enabled = JSON.parse(map.thing_dialin_enabled || 'false');
+    } catch (e) {
+      fastify.log.warn({ err: e }, 'thing: parse thing_dialin_enabled');
+    }
+    try {
+      number = JSON.parse(map.thing_dialin_number || '""');
+    } catch (e) {
+      number = map.thing_dialin_number || '';
+      fastify.log.warn({ err: e }, 'thing: parse thing_dialin_number');
+    }
     return {
       enabled: Boolean(enabled),
       number: number || null,
@@ -641,7 +976,8 @@ module.exports = async function thingRoutes(fastify) {
     if (request.headers['x-thing-dialin-secret'] !== secret) {
       return reply.code(401).send({ error: 'Unauthorized' });
     }
-    const code = String((request.body || {}).dial_code || '').replace(/\D/g, '');
+    const body = request.body || {};
+    const code = String(body.dial_code || '').replace(/\D/g, '');
     if (!isDialCode(code)) return reply.code(400).send({ error: 'Нужно ровно 6 цифр' });
     const { rows } = await db.query(
       `SELECT id, slug, livekit_room_name, status, pin_code, title
@@ -652,13 +988,29 @@ module.exports = async function thingRoutes(fastify) {
     );
     if (!rows[0]) return reply.code(404).send({ error: 'Код не найден или Тинг не активен' });
     const room = rows[0];
+    const pinRequired = Boolean(room.pin_code);
+    if (pinRequired) {
+      const rateKey = pinRateKey(request);
+      const rate = pinRateCheck(rateKey);
+      if (!rate.ok) {
+        return reply.code(429).send({ error: 'Слишком много попыток PIN. Подождите 10 минут.', code: 'PIN_RATE_LIMIT' });
+      }
+      const pin = String(body.pin || '').replace(/\D/g, '');
+      if (!pin) {
+        return reply.code(403).send({ error: 'Требуется PIN', code: 'pin_required', pin_required: true });
+      }
+      if (pin !== room.pin_code) {
+        pinRateFail(rateKey);
+        return reply.code(403).send({ error: 'Неверный PIN', pin_required: true });
+      }
+    }
     return {
       room_id: room.id,
       slug: room.slug,
       livekit_room_name: room.livekit_room_name,
       title: room.title,
       status: room.status,
-      pin_required: Boolean(room.pin_code)
+      pin_required: pinRequired
     };
   });
 
