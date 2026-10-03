@@ -5710,6 +5710,13 @@ html[data-theme="light"] .app.sidebar-collapsed .navitem::after {
    ───────────────────────────────────────────────────────────────────────────── */
 .card { min-width: 0; }
 td, th { word-break: break-word; }
+/* Таблицы: не резать по букве (иначе «Город» и длинные названия → столбик на ноуте) */
+table.asg td, table.asg th,
+table.tbl td, table.tbl th,
+.tbl td, .tbl th {
+  word-break: normal;
+  overflow-wrap: anywhere;
+}
 .main, .asg-main-wrap { overflow-x: hidden; }
 
 /* ─────────────────────────────────────────────────────────────────────────────
@@ -9107,7 +9114,16 @@ table.asg tbody tr:hover td:first-child,
   border-radius: 12px !important;
   border: 1px solid rgba(30,77,140,0.08) !important;
   background: rgba(19,25,41,0.5) !important;
-  overflow: hidden !important;
+  /* D-table-crush: hidden резал h-scroll на ноуте → колонки давились в столбик букв */
+  overflow-x: auto !important;
+  overflow-y: hidden !important;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Перебивает inject __ASG_SHARED_TABLE_CSS__ (width:100% без min-width) */
+.tbl,
+table.asg {
+  min-width: max-content;
 }
 
 

@@ -34,6 +34,8 @@ window.AsgardFieldTab = (function () {
     const st = document.createElement('style');
     st.id = 'ft-wide-table-css';
     st.textContent = `
+      .ft-crew-table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+      .ft-crew-table { width: 100%; min-width: max-content; border-collapse: collapse; }
       .ft-crew-table-wrap.ft-wide-table--compact .ft-crew-table { font-size: 12px; }
       .ft-crew-table-wrap.ft-wide-table--compact .ft-crew-table th,
       .ft-crew-table-wrap.ft-wide-table--compact .ft-crew-table td { padding: 4px 6px !important; }
@@ -45,7 +47,7 @@ window.AsgardFieldTab = (function () {
       }
       .ft-crew-table-wrap thead .ft-crew-col-fio { z-index: 3; background: var(--bg2, #1a1f2e); }
       .ft-combo-btn { max-width: 110px; }
-      #tsTableWrap.ft-wide-table--compact table { font-size: 12px; }
+      #tsTableWrap.ft-wide-table--compact table { font-size: 12px; min-width: max-content; }
     `;
     document.head.appendChild(st);
   }
@@ -601,7 +603,7 @@ window.AsgardFieldTab = (function () {
 
     const table = document.createElement('table');
     table.className = 'ft-crew-table';
-    table.style.cssText = 'width:100%;border-collapse:collapse;font-size:13px';
+    table.style.cssText = 'width:100%;min-width:max-content;border-collapse:collapse;font-size:13px';
 
     // Header
     const thead = document.createElement('thead');

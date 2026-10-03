@@ -258,6 +258,30 @@ tr.prs-row:hover .prs-copy,
   opacity: 1;
 }
 
+/* #/personnel: город не раздувает строку; ФИО липнет при h-scroll */
+#prs_table th.prs-city,
+#prs_table td.prs-city {
+  min-width: 160px;
+  max-width: 220px;
+}
+#prs_table td.prs-city .prs-copy-cell > div:first-child {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+#prs_table th:first-child,
+#prs_table td:first-child {
+  position: sticky;
+  left: 0;
+  z-index: 2;
+  background: var(--bg2);
+  box-shadow: 4px 0 8px rgba(0, 0, 0, 0.12);
+}
+#prs_table thead th:first-child {
+  z-index: 12;
+  background: linear-gradient(180deg, var(--bg4), var(--bg3));
+}
+
 .prs-id {
   display: flex;
   flex-direction: column;
@@ -657,6 +681,11 @@ table.asg {
   width: 100%;
   border-collapse: collapse;
   font-size: 12px;
+}
+/* Не давить колонки ниже содержимого → .tablewrap даёт h-scroll на ноуте */
+.tbl,
+table.asg {
+  min-width: max-content;
 }
 
 /* Table Header */

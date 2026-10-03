@@ -939,7 +939,7 @@ window.AsgardPersonnelPage = (function () {
             <td style="text-align:center">${docIndicator(e.permits)}</td>
             <td style="text-align:center">${keyPermChipsHtml(e.key_permits)}</td>
             <td style="font-size:11px;min-width:110px">${sizSizesHtml(e)}</td>
-            <td style="font-size:12.5px;color:var(--t2)">${prsCopyWrap(e.city ? esc(e.city) : '<span style="color:var(--t3)">—</span>', e.city || '')}</td>
+            <td style="font-size:12.5px;color:var(--t2)" class="prs-city" title="${e.city ? esc(e.city) : ''}">${prsCopyWrap(e.city ? esc(e.city) : '<span style="color:var(--t3)">—</span>', e.city || '')}</td>
             <td>${e.is_self_employed
               ? prsCopyWrap(seLimitBar(seTrans, SE_YEAR_LIMIT), `${Math.round(seTrans)} / ${SE_YEAR_LIMIT}`)
               : '<span style="color:var(--t3);font-size:12px">—</span>'}</td>
@@ -1094,7 +1094,7 @@ window.AsgardPersonnelPage = (function () {
                 <th style="text-align:center;width:60px">Документы</th>
                 <th style="text-align:center;width:170px" title="БОСИЕТ · РУКАВ · МЛСП · ФСБ">Ключевые допуски</th>
                 <th style="width:120px">СИЗ</th>
-                <th style="width:120px">Город</th>
+                <th style="width:120px" class="prs-city">Город</th>
                 <th style="width:140px">Лимит СЗ</th>
                 <th style="text-align:right;width:70px">Рейтинг</th>
                 `}
