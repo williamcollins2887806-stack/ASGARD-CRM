@@ -1365,27 +1365,68 @@ module.exports = async function telephonyRoutes(fastify, opts) {
     const synced = [];
     const unmatched = [];
 
+    function digits10(s) {
+      const d = String(s || '').replace(/\D/g, '');
+      return d.length >= 10 ? d.slice(-10) : '';
+    }
+
+    function parseMangoUser(mu) {
+      const gen = mu.general || {};
+      const tel = mu.telephony || {};
+      const ext = mu.ext || mu.extension || tel.extension || gen.work_num || mu.work_num || null;
+      const email = mu.email || gen.email || null;
+      const mangoName = mu.name || gen.name || null;
+      const nums = Array.isArray(tel.numbers) ? tel.numbers : [];
+      const telMobile = nums.find((n) => n && n.protocol === 'tel' && (n.number_normalized || n.number));
+      const mobile = mu.mobile || mu.phone || gen.mobile
+        || (telMobile && (telMobile.number_normalized || telMobile.number))
+        || null;
+      return { ext: ext ? String(ext) : null, email, mangoName, mobile };
+    }
+
     for (const mu of mangoUsers) {
-      const ext = mu.ext || mu.extension || (mu.general && mu.general.work_num) || mu.work_num || null;
-      const email = mu.email || (mu.general && mu.general.email) || null;
-      const mangoName = mu.name || (mu.general && mu.general.name) || null;
-      const mobile = mu.mobile || mu.phone || (mu.general && mu.general.mobile) || null;
-
+      const { ext, email, mangoName, mobile } = parseMangoUser(mu);
       if (!ext) continue;
+      // Служебные учётки Mango (Битрикс, пустой admin) в CRM не привязываем
+      const skipName = String(mangoName || '');
+      if (/битрикс|bitrix|^admin$/i.test(skipName)) {
+        unmatched.push({ ext, name: mangoName, email, mobile, skip: 'service' });
+        continue;
+      }
 
-      // Ищем пользователя CRM по email (точное совпадение), потом по имени
       let crmUser = null;
       if (email) {
-        const r = await db.query('SELECT id, name FROM users WHERE LOWER(login) = LOWER($1) AND is_active = true LIMIT 1', [email]);
+        const r = await db.query(
+          `SELECT id, name FROM users WHERE is_active = true
+           AND (LOWER(login) = LOWER($1) OR LOWER(COALESCE(email,'')) = LOWER($1))
+           LIMIT 1`,
+          [email]
+        );
+        if (r.rows.length) crmUser = r.rows[0];
+      }
+      const mob10 = digits10(mobile);
+      if (!crmUser && mob10) {
+        const r = await db.query(
+          `SELECT id, name FROM users WHERE is_active = true
+           AND RIGHT(REGEXP_REPLACE(COALESCE(phone,''), '[^0-9]', '', 'g'), 10) = $1
+           LIMIT 1`,
+          [mob10]
+        );
         if (r.rows.length) crmUser = r.rows[0];
       }
       if (!crmUser && mangoName) {
-        const r = await db.query(
-          `SELECT id, name FROM users WHERE is_active = true
-           AND LOWER(name) = LOWER($1) LIMIT 1`,
+        const exact = await db.query(
+          `SELECT id, name FROM users WHERE is_active = true AND LOWER(name) = LOWER($1)`,
           [mangoName]
         );
-        if (r.rows.length) crmUser = r.rows[0];
+        if (exact.rows.length === 1) crmUser = exact.rows[0];
+        if (!crmUser) {
+          const fuzzy = await db.query(
+            `SELECT id, name FROM users WHERE is_active = true AND LOWER(name) LIKE LOWER($1)`,
+            ['%' + mangoName + '%']
+          );
+          if (fuzzy.rows.length === 1) crmUser = fuzzy.rows[0];
+        }
       }
 
       if (crmUser) {
@@ -1396,7 +1437,7 @@ module.exports = async function telephonyRoutes(fastify, opts) {
              mango_extension = $2,
              fallback_mobile = COALESCE($3, user_call_status.fallback_mobile),
              updated_at = NOW()`,
-          [crmUser.id, String(ext), mobile || null]
+          [crmUser.id, ext, mobile || null]
         );
         synced.push({ crm_id: crmUser.id, crm_name: crmUser.name, ext, email, mobile });
       } else {
