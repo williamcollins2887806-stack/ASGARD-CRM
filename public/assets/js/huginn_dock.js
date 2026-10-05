@@ -192,20 +192,20 @@
     root.innerHTML = `
       <section class="hg-panel" id="hgPanel"></section>
       <aside class="hg-rail" aria-label="Huginn rail">
-        <button type="button" class="hg-rail-btn" data-tab="mimir" title="Мимир">
+        <button type="button" class="hg-rail-btn" data-hg-tab="mimir" title="Мимир">
           ${ICO.sparkles || ICO.ai}
           <span>Мимир</span>
         </button>
-        <button type="button" class="hg-rail-btn is-active" data-tab="huginn" title="Хугинн">
+        <button type="button" class="hg-rail-btn is-active" data-hg-tab="huginn" title="Хугинн">
           ${ICO.chats || ICO.empty}
           <span>Хугинн</span>
           <span class="hg-rail-badge" data-rail-badge="huginn" hidden>0</span>
         </button>
-        <button type="button" class="hg-rail-btn" data-tab="ting" title="Тинг">
+        <button type="button" class="hg-rail-btn" data-hg-tab="ting" title="Тинг">
           ${ICO.video}
           <span>Тинг</span>
         </button>
-        <button type="button" class="hg-rail-btn hg-rail-btn--phone" data-tab="phone" title="Телефон" hidden>
+        <button type="button" class="hg-rail-btn hg-rail-btn--phone" data-hg-tab="phone" title="Телефон" hidden>
           ${ICO.phone}
           <span>Телефон</span>
           <span class="hg-rail-dot" aria-hidden="true"></span>
@@ -265,15 +265,18 @@
     }
     root.querySelectorAll('.hg-rail-btn').forEach((btn) => {
       btn.addEventListener('click', () => {
-        state.tab = btn.getAttribute('data-tab');
-        state.collapsed = false;
-        localStorage.setItem('hg_dock_collapsed', '0');
-        root.classList.remove('is-collapsed');
-        syncBodyPad();
-        root.querySelectorAll('.hg-rail-btn').forEach((b) => b.classList.toggle('is-active', b === btn));
+        const tab = btn.getAttribute('data-hg-tab');
+        if (!tab) return;
+        // Toggle: same active tab while open → collapse (D-260)
+        if (!state.collapsed && state.tab === tab) {
+          setCollapsed(true);
+          return;
+        }
+        state.tab = tab;
+        setCollapsed(false);
+        syncRailActive();
         renderPanel();
         syncRailBadge();
-        notifyLayout();
       });
     });
     applyPhoneRail();
@@ -320,7 +323,7 @@
 
   function applyPhoneRail() {
     if (!root) return;
-    const btn = root.querySelector('.hg-rail-btn[data-tab="phone"]');
+    const btn = root.querySelector('.hg-rail-btn[data-hg-tab="phone"]');
     if (!btn) return;
     // Только diff-запись: phone_ui слушает MutationObserver(childList) на body
     // и зовёт setPhoneRail — безусловная запись textContent зациклит страницу.
@@ -354,7 +357,7 @@
   function syncRailActive() {
     if (!root) return;
     root.querySelectorAll('.hg-rail-btn').forEach((b) => {
-      b.classList.toggle('is-active', b.getAttribute('data-tab') === state.tab);
+      b.classList.toggle('is-active', b.getAttribute('data-hg-tab') === state.tab);
     });
   }
 
@@ -1209,7 +1212,12 @@
   function renderPanel() {
     const panel = root.querySelector('#hgPanel');
     if (!panel) return;
-    if (state.tab !== lastPanelTab) {
+    if (lastPanelTab === 'ting' && state.tab !== 'ting'
+      && global.HuginnTing && typeof global.HuginnTing.unmountPanel === 'function') {
+      try { global.HuginnTing.unmountPanel(); } catch (_) {}
+    }
+    const tabChanged = state.tab !== lastPanelTab;
+    if (tabChanged) {
       lastPanelTab = state.tab;
       syncRailActive();
       Promise.resolve().then(notifyLayout);
@@ -1218,9 +1226,12 @@
       root.classList.toggle('is-thread', !!(state.chatId && state.tab === 'huginn'));
       syncFloatNavBodyClasses();
     }
-    if (!state.collapsed) {
+    // Fade only on open/tab switch — every-render opacity flash caused flicker (D-260)
+    if (!state.collapsed && tabChanged) {
       panel.style.opacity = '0';
       requestAnimationFrame(() => { panel.style.opacity = '1'; });
+    } else if (!state.collapsed) {
+      panel.style.opacity = '1';
     }
 
     if (state.tab === 'mimir') {
@@ -1245,20 +1256,21 @@
     }
 
     if (state.tab === 'ting') {
-      panel.innerHTML = `
-        <div class="hg-panel-head">
-          <h2>Тинг</h2>
-          <button type="button" class="hg-icon-btn" data-collapse>${ICO.close || '✕'}</button>
-        </div>
-        <div class="hg-list" style="padding:16px">
-          <p style="margin:0 0 12px;font:400 var(--hg-font-preview) var(--hg-font);color:var(--hg-muted)">Видеозвонок поверх CRM (overlay). Аудио 1:1 — из открытого чата.</p>
-          <button type="button" class="hg-chip" id="hgTingHub">Открыть хаб Тинг</button>
-        </div>`;
-      panel.querySelector('[data-collapse]').onclick = () => setCollapsed(true);
-      panel.querySelector('#hgTingHub').onclick = () => {
-        if (typeof HuginnTing !== 'undefined' && HuginnTing.openHub) HuginnTing.openHub();
-        else location.hash = '#/ting';
-      };
+      if (global.HuginnTing && typeof global.HuginnTing.mountPanel === 'function') {
+        global.HuginnTing.mountPanel(panel);
+      } else {
+        panel.innerHTML = `
+          <div class="hg-panel-head">
+            <h2>Тинг</h2>
+            <button type="button" class="hg-icon-btn" data-collapse>${ICO.close || '✕'}</button>
+          </div>
+          <div class="hg-list" style="padding:16px">
+            <p style="margin:0 0 12px;font:400 var(--hg-font-preview) var(--hg-font);color:var(--hg-muted)">Видеозвонок. Откройте хаб для полного UI.</p>
+            <button type="button" class="hg-chip" id="hgTingHub">Открыть хаб Тинг</button>
+          </div>`;
+        panel.querySelector('[data-collapse]').onclick = () => setCollapsed(true);
+        panel.querySelector('#hgTingHub').onclick = () => { location.hash = '#/ting'; };
+      }
       return;
     }
 
@@ -2485,32 +2497,37 @@
     }
   }
 
+  let _mounting = null;
   async function mount() {
     if (!token()) return;
-    ensureDom();
-    await Promise.all([loadChats(), loadStories()]);
-    syncRailBadge();
-    // warm presence for strip
-    try {
-      const ids = [];
-      state.chats.forEach((c) => {
-        if (c.peer_user_id) ids.push(c.peer_user_id);
-        (c.members || []).forEach((m) => {
-          const uid = m.user_id || m.id;
-          if (uid && Number(uid) !== Number(myId())) ids.push(uid);
+    if (_mounting) return _mounting;
+    _mounting = (async () => {
+      ensureDom();
+      await Promise.all([loadChats(), loadStories()]);
+      syncRailBadge();
+      // warm presence for strip
+      try {
+        const ids = [];
+        state.chats.forEach((c) => {
+          if (c.peer_user_id) ids.push(c.peer_user_id);
+          (c.members || []).forEach((m) => {
+            const uid = m.user_id || m.id;
+            if (uid && Number(uid) !== Number(myId())) ids.push(uid);
+          });
         });
-      });
-      const uniq = [...new Set(ids)].slice(0, 40);
-      if (uniq.length) {
-        const data = await api('/api/chat-groups/presence?user_ids=' + uniq.join(','));
-        (data.presence || []).forEach((p) => { state.presence[p.user_id] = p; });
+        const uniq = [...new Set(ids)].slice(0, 40);
+        if (uniq.length) {
+          const data = await api('/api/chat-groups/presence?user_ids=' + uniq.join(','));
+          (data.presence || []).forEach((p) => { state.presence[p.user_id] = p; });
+        }
+      } catch (_) {}
+      renderPanel();
+      if (global.HuginnSSE) {
+        global.HuginnSSE.start();
+        global.HuginnSSE.on('*', onLiveEvent);
       }
-    } catch (_) {}
-    renderPanel();
-    if (global.HuginnSSE) {
-      global.HuginnSSE.start();
-      global.HuginnSSE.on('*', onLiveEvent);
-    }
+    })().finally(() => { _mounting = null; });
+    return _mounting;
   }
 
   function closeChat() {
@@ -2521,7 +2538,14 @@
 
   global.HuginnDock = {
     mount,
-    open: () => { setCollapsed(false); state.tab = 'huginn'; renderPanel(); },
+    open: (tab) => {
+      setCollapsed(false);
+      if (tab && typeof tab === 'string') state.tab = tab;
+      else state.tab = 'huginn';
+      syncRailActive();
+      renderPanel();
+      notifyLayout();
+    },
     collapse: () => setCollapsed(true),
     openTab,
     getTab: () => state.tab,

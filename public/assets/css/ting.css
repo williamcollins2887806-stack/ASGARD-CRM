@@ -16,8 +16,55 @@
   --ting-ok: #3DCC7A;
   --ting-radius: 22px;
   --ting-radius-sm: 14px;
+  --ting-radius-min: 10px;
   --ting-dock-h: 88px;
   --ting-chat-w: 340px;
+}
+
+/* Light theme — follow CRM data-theme (not a separate Ting toggle) */
+html[data-theme="light"] {
+  --ting-bg0: #F4EFE6;
+  --ting-bg1: #FDFAF5;
+  --ting-bg2: #F7F1E8;
+  --ting-bg3: #EDE4D6;
+  --ting-line: rgba(40, 32, 24, .10);
+  --ting-t1: #1A1612;
+  --ting-t2: #6B5E4E;
+  --ting-t3: #9A8B78;
+}
+
+html[data-theme="light"] .ting-page,
+html[data-theme="light"] body.ting-guest {
+  background:
+    radial-gradient(1100px 560px at 18% -12%, rgba(212,168,67,.14) 0%, transparent 55%),
+    radial-gradient(900px 520px at 88% 8%, rgba(120,150,200,.12) 0%, transparent 50%),
+    radial-gradient(700px 420px at 50% 100%, rgba(180,160,130,.18) 0%, transparent 55%),
+    linear-gradient(165deg, #FDFAF5 0%, #F4EFE6 42%, #EDE6DA 100%);
+  color: var(--ting-t1);
+}
+
+html[data-theme="light"] body.ting-incall {
+  background: var(--ting-bg0);
+}
+
+/* Hub canvas: rounded content plate inside CRM chrome */
+#content:has(.ting-page),
+.main-content:has(.ting-page),
+main:has(.ting-page) {
+  border-radius: var(--ting-radius);
+  overflow: hidden;
+  margin: 8px 12px 12px;
+  min-height: calc(100vh - 80px);
+}
+
+.ting-page .ting-btn,
+.ting-page .ting-card,
+.ting-page .ting-modal,
+.ting-page .ting-tile,
+.ting-page .ting-dock,
+.ting-page .ting-chat,
+.ting-page .ting-preview {
+  border-radius: max(var(--ting-radius-min), var(--ting-radius-sm));
 }
 
 /* Guest SPA + CRM share the same controls — box-sizing must be global for Ting */

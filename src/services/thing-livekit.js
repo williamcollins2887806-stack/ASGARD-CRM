@@ -95,25 +95,37 @@ async function createAccessToken(opts) {
   if (!isConfigured()) {
     throw new Error('LiveKit не настроен — нельзя выдать media-токен');
   }
+  const roomName = opts && opts.roomName ? String(opts.roomName).trim() : '';
+  if (!roomName) {
+    const err = new Error('livekit_room_name пуст — нельзя выдать media-токен');
+    err.code = 'LIVEKIT_ROOM_MISSING';
+    throw err;
+  }
+  const identity = opts && opts.identity ? String(opts.identity).trim() : '';
+  if (!identity) {
+    const err = new Error('identity пуст — нельзя выдать media-токен');
+    err.code = 'LIVEKIT_IDENTITY_MISSING';
+    throw err;
+  }
   const { AccessToken } = await getSdk();
   const at = new AccessToken(env('LIVEKIT_API_KEY'), env('LIVEKIT_API_SECRET'), {
-    identity: opts.identity,
-    name: opts.name,
+    identity,
+    name: opts.name || identity,
     ttl: opts.ttlSec || 4 * 60 * 60
   });
   at.addGrant({
     roomJoin: true,
-    room: opts.roomName,
+    room: roomName,
     canPublish: opts.canPublish !== false,
     canSubscribe: true,
     canPublishData: opts.canPublishData !== false,
     roomAdmin: Boolean(opts.roomAdmin)
   });
-  const token = await at.toJwt();
+  const token = await Promise.resolve(at.toJwt());
   return {
     token,
     url: publicWsUrl(),
-    identity: opts.identity
+    identity
   };
 }
 

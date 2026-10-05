@@ -29,6 +29,33 @@ const generatePeriodOptions = window.generatePeriodOptions;
 const generateYearOptions = window.generateYearOptions;
 console.log('[ASGARD] Global period functions loaded');
 
+(function syncAsgardBannerH() {
+  function apply() {
+    var b = document.getElementById('asgard-v2-banner');
+    var vis = b && !b.hidden && !b.classList.contains('is-dismissed');
+    if (vis) {
+      try {
+        vis = window.getComputedStyle(b).display !== 'none';
+      } catch (e) {}
+    }
+    document.documentElement.style.setProperty('--banner-h', vis ? (b.offsetHeight + 'px') : '0px');
+  }
+  function bind() {
+    apply();
+    var b = document.getElementById('asgard-v2-banner');
+    if (!b || typeof ResizeObserver === 'undefined') return;
+    if (b._bannerRO) return;
+    b._bannerRO = new ResizeObserver(apply);
+    b._bannerRO.observe(b);
+  }
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', bind);
+  } else {
+    bind();
+  }
+  window.addEventListener('resize', apply);
+})();
+
 
 (function(){
   const { $, $$, esc, toast, showModal } = AsgardUI;
@@ -775,6 +802,17 @@ try{
     addMobileClick($("#btnMenu"), toggleNav);
     addMobileClick($("#navOverlay"), closeNav);
     $$(".navitem").forEach(a=>addMobileClick(a, closeNav));
+    // Gap: left-nav «Телефония» → Huginn phone rail when dock is usable
+    $$('.navitem[href="#/telephony"]').forEach((a) => {
+      if (a.dataset.phoneRailBound) return;
+      a.dataset.phoneRailBound = '1';
+      a.addEventListener('click', () => {
+        const D = window.HuginnDock;
+        if (D && typeof D.isUsable === 'function' && D.isUsable() && typeof D.open === 'function') {
+          try { D.open('phone'); } catch (_) {}
+        }
+      });
+    });
     if(window.__ASG_DOC_ESC_NAV__) document.removeEventListener("keydown", window.__ASG_DOC_ESC_NAV__);
     window.__ASG_DOC_ESC_NAV__ = (e)=>{ if(e.key==="Escape") closeNav(); };
     document.addEventListener("keydown", window.__ASG_DOC_ESC_NAV__);

@@ -61,6 +61,8 @@
   let liveTimer = null;
   let crmLobbyPollId = null;
   let connectBusy = false;
+  let tokenFailAt = 0;
+  let tokenFailSlug = null;
   let state = {
     view: 'hub',
     tab: 'ting',
@@ -137,7 +139,13 @@
       headers: Object.assign(headers, (opts && opts.headers) || {})
     }));
     const j = await r.json().catch(() => ({}));
-    if (!r.ok) throw new Error(j.error || j.message || ('HTTP ' + r.status));
+    if (!r.ok) {
+      const err = new Error(j.error || j.message || ('HTTP ' + r.status));
+      err.code = j.code || null;
+      err.status = r.status;
+      err.body = j;
+      throw err;
+    }
     return j;
   }
   function unwrapRoom(j) { return (j && j.room) ? j.room : j; }
@@ -1198,15 +1206,21 @@
 
   async function connectRoom(slug) {
     if (connectBusy) return;
+    const now = Date.now();
+    if (tokenFailSlug === slug && (now - tokenFailAt) < 2500) {
+      toast('Подождите пару секунд и повторите', false);
+      return;
+    }
     connectBusy = true;
     stopPreview();
-    let room = null;
     try {
       const name = (qs('#ting-disp') && qs('#ting-disp').value) || 'Участник';
       const tok = await api(`/api/thing/rooms/${encodeURIComponent(slug)}/token`, {
         method: 'POST',
         body: JSON.stringify({ display_name: name })
       });
+      tokenFailAt = 0;
+      tokenFailSlug = null;
       if (tok.lobby_status === 'waiting') {
         state.myIdentity = tok.identity || null;
         state.joinToken = tok.join_token || null;
@@ -1217,7 +1231,10 @@
       }
       await connectRoomWithCreds(slug, tok);
     } catch (e) {
-      toast(e.message || 'Не удалось подключиться', false);
+      tokenFailAt = Date.now();
+      tokenFailSlug = slug;
+      const detail = [e.message, e.code].filter(Boolean).join(' · ');
+      toast(detail || 'Не удалось подключиться', false);
     } finally {
       connectBusy = false;
     }
@@ -1301,6 +1318,16 @@
 
       await room.connect(tok.url || tok.livekit_url, tok.token);
       state.lkRoom = room;
+      if (window.TingSession && typeof TingSession.adoptRoom === 'function') {
+        try {
+          TingSession.adoptRoom(room, {
+            slug: slug,
+            title: (tok.room && tok.room.title) || slug,
+            identity: tok.identity || state.myIdentity,
+            role: tok.role || null
+          });
+        } catch (_) { /* */ }
+      }
       try {
         await room.localParticipant.setMicrophoneEnabled(state.micOn);
         await room.localParticipant.setCameraEnabled(state.camOn);
@@ -1399,6 +1426,9 @@
     if (state.lkRoom) {
       try { await state.lkRoom.disconnect(); } catch (_) { /* */ }
       state.lkRoom = null;
+    }
+    if (window.TingSession && typeof TingSession.leave === 'function' && TingSession.isActive()) {
+      try { await TingSession.leave(); } catch (_) { /* */ }
     }
     state.sharing = false;
     setIncall(false);
@@ -1914,7 +1944,19 @@
       stopLiveLoop();
       stopCrmLobbyPoll();
       setIncall(false);
-      if (state.lkRoom) { try { state.lkRoom.disconnect(); } catch (_) { /* */ } state.lkRoom = null; }
+      const sess = window.TingSession;
+      const keep = sess && typeof sess.isActive === 'function' && sess.isActive();
+      if (state.lkRoom) {
+        if (keep && sess.getRoom && sess.getRoom() === state.lkRoom) {
+          /* session owned by rail/PiP — do not disconnect */
+          if (typeof sess.syncChrome === 'function') sess.syncChrome();
+        } else if (keep) {
+          try { sess.adoptRoom(state.lkRoom, { slug: state.room && state.room.slug, title: state.room && state.room.title, identity: state.myIdentity }); } catch (_) {}
+        } else {
+          try { state.lkRoom.disconnect(); } catch (_) { /* */ }
+        }
+        state.lkRoom = null;
+      }
       if (state.timerId) clearInterval(state.timerId);
       const m = qs('#ting-host-end'); if (m) m.remove();
       if (root) { root.onclick = null; root.innerHTML = ''; }

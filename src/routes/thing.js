@@ -57,6 +57,30 @@ module.exports = async function thingRoutes(fastify) {
     return { token, hash: hashToken(token) };
   }
 
+  /** Persist LiveKit room name if missing (legacy / failed create). */
+  async function ensureRoomMediaName(room) {
+    if (room.livekit_room_name) return room;
+    const { livekitRoomName } = await livekit.ensureLiveKitRoom(room.slug, {
+      maxParticipants: room.max_participants || 50
+    });
+    await db.query(
+      `UPDATE thing_rooms SET livekit_room_name = $2, updated_at = NOW() WHERE id = $1`,
+      [room.id, livekitRoomName]
+    );
+    room.livekit_room_name = livekitRoomName;
+    return room;
+  }
+
+  function mapLivekitError(reply, err, ctx) {
+    const msg = (err && err.message) ? String(err.message) : 'LiveKit error';
+    const code = (err && err.code) || (/не настроен/i.test(msg) ? 'LIVEKIT_NOT_CONFIGURED' : 'LIVEKIT_TOKEN_FAILED');
+    const status = code === 'LIVEKIT_NOT_CONFIGURED' ? 503
+      : (code === 'LIVEKIT_ROOM_MISSING' || code === 'LIVEKIT_IDENTITY_MISSING') ? 502
+        : 502;
+    fastify.log.error({ err, slug: ctx && ctx.slug, userId: ctx && ctx.userId, code }, '[thing] token failed');
+    return reply.code(status).send({ error: msg, code });
+  }
+
   /** Уже в комнате (для admit / CRM token). Waiting не считаем — иначе admit deadlock ROOM_FULL. */
   async function countAdmittedParticipants(roomId) {
     const { rows } = await db.query(
@@ -378,20 +402,25 @@ module.exports = async function thingRoutes(fastify) {
       };
     }
 
-    const creds = await livekit.createAccessToken({
-      roomName: room.livekit_room_name,
-      identity,
-      name: displayName,
-      roomAdmin: host,
-      canPublish: true
-    });
-    return {
-      ...creds,
-      lobby_status: 'admitted',
-      join_token: joinToken,
-      identity,
-      room: serializeRoom(room, { includeSecrets: host })
-    };
+    try {
+      await ensureRoomMediaName(room);
+      const creds = await livekit.createAccessToken({
+        roomName: room.livekit_room_name,
+        identity,
+        name: displayName,
+        roomAdmin: host,
+        canPublish: true
+      });
+      return {
+        ...creds,
+        lobby_status: 'admitted',
+        join_token: joinToken,
+        identity,
+        room: serializeRoom(room, { includeSecrets: host })
+      };
+    } catch (err) {
+      return mapLivekitError(reply, err, { slug: room.slug, userId: request.user.id });
+    }
   });
 
   // ─── LEAVE (self) — only left_at; rejected = kick/reject only ───
@@ -679,20 +708,25 @@ module.exports = async function thingRoutes(fastify) {
       return reply.code(503).send({ error: 'LiveKit не настроен', code: 'LIVEKIT_NOT_CONFIGURED' });
     }
 
-    const creds = await livekit.createAccessToken({
-      roomName: room.livekit_room_name,
-      identity,
-      name,
-      roomAdmin: false,
-      canPublish: true
-    });
-    return {
-      ...creds,
-      lobby_status: 'admitted',
-      identity,
-      join_token: joinToken,
-      room: { title: room.title, slug: room.slug, status: room.status }
-    };
+    try {
+      await ensureRoomMediaName(room);
+      const creds = await livekit.createAccessToken({
+        roomName: room.livekit_room_name,
+        identity,
+        name,
+        roomAdmin: false,
+        canPublish: true
+      });
+      return {
+        ...creds,
+        lobby_status: 'admitted',
+        identity,
+        join_token: joinToken,
+        room: { title: room.title, slug: room.slug, status: room.status }
+      };
+    } catch (err) {
+      return mapLivekitError(reply, err, { slug: room.slug, userId: null });
+    }
   });
 
   /** Гость поллит статус лобби → получает token когда admitted */
@@ -721,14 +755,19 @@ module.exports = async function thingRoutes(fastify) {
     if (p.left_at) return { lobby_status: 'left' };
     if (p.lobby_status === 'waiting') return { lobby_status: 'waiting' };
     if (!livekit.isConfigured()) return reply.code(503).send({ error: 'LiveKit не настроен' });
-    const creds = await livekit.createAccessToken({
-      roomName: room.livekit_room_name,
-      identity: p.identity,
-      name: p.display_name,
-      roomAdmin: false,
-      canPublish: true
-    });
-    return { lobby_status: 'admitted', ...creds, room: { title: room.title, slug: room.slug } };
+    try {
+      await ensureRoomMediaName(room);
+      const creds = await livekit.createAccessToken({
+        roomName: room.livekit_room_name,
+        identity: p.identity,
+        name: p.display_name,
+        roomAdmin: false,
+        canPublish: true
+      });
+      return { lobby_status: 'admitted', ...creds, room: { title: room.title, slug: room.slug } };
+    } catch (err) {
+      return mapLivekitError(reply, err, { slug: room.slug, userId: null });
+    }
   });
 
   /** Публичный leave гостя — только left_at (не rejected) */
