@@ -362,18 +362,28 @@ html[data-theme="light"] .hg-glass[data-role="card"] {
 .hg-rail-badge {
   position: absolute;
   top: 2px; right: 2px;
+  z-index: 2;
   min-width: 16px; height: 16px;
   padding: 0 4px;
   border-radius: var(--hg-radius-pill);
-  background: var(--hg-accent); /* gold chrome OK on rail */
-  color: #111;
+  background: var(--hg-tg-badge, var(--hg-danger, #FF3B30));
+  color: #fff;
   font: 700 10px/16px var(--hg-font);
   text-align: center;
+  box-shadow: 0 0 0 1.5px var(--hg-bg, #151922);
+}
+html[data-theme="light"] .hg-rail-badge {
+  box-shadow: 0 0 0 1.5px var(--hg-bg, #FDFAF5);
 }
 
 /* PBX phone button (state from phone_ui.js via HuginnDock.setPhoneRail) */
 .hg-rail-btn[hidden] { display: none; }
-.hg-rail-badge[data-rail-badge="phone"] { background: var(--hg-danger); color: #fff; }
+.hg-rail-badge[data-rail-badge="phone"],
+.hg-rail-badge[data-rail-badge="huginn"],
+.hg-rail-badge[data-rail-badge="ting"] {
+  background: var(--hg-tg-badge, var(--hg-danger, #FF3B30));
+  color: #fff;
+}
 .hg-rail-dot {
   display: none;
   position: absolute;
@@ -2751,8 +2761,9 @@ html[data-theme="light"] .hg-send.is-mic:hover {
   content: '';
   position: absolute;
   width: 8px; height: 8px; border-radius: 50%;
-  background: var(--ting-gold, #D4A843);
+  background: var(--hg-tg-badge, var(--hg-danger, #FF3B30));
   top: 8px; right: 10px;
+  z-index: 1;
   box-shadow: 0 0 0 2px var(--hg-bg);
 }
 

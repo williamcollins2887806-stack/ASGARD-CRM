@@ -213,6 +213,7 @@
         <button type="button" class="hg-rail-btn" data-hg-tab="ting" title="Тинг">
           ${ICO.video}
           <span>Тинг</span>
+          <span class="hg-rail-badge" data-rail-badge="ting" hidden>0</span>
         </button>
         <button type="button" class="hg-rail-btn hg-rail-btn--phone" data-hg-tab="phone" title="Телефон" hidden>
           ${ICO.phone}
