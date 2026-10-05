@@ -8,6 +8,8 @@
 const crypto = require('crypto');
 const huginnEvents = require('../services/huginn-events');
 const chatVoiceStt = require('../services/chat-voice-stt');
+const huginnFolders = require('../services/huginn-folders');
+const huginnAiEditor = require('../services/huginn-ai-editor');
 const { sendToUser, isUserOnline } = require('./sse');
 
 function parsePositiveInt(value) {
@@ -517,6 +519,174 @@ module.exports = async function registerHuginnExt(fastify, { db, uploadDir, getC
       payload: { chat_id: chatId, message: msg }
     });
     return { message: msg };
+  });
+
+  // ── F10 Chat folders (per-user, no premium) ───────────────────
+  fastify.get('/folders', {
+    preHandler: [fastify.authenticate]
+  }, async (request) => huginnFolders.listFolders(db, request.user.id));
+
+  fastify.post('/folders', {
+    preHandler: [fastify.authenticate]
+  }, async (request, reply) => {
+    try {
+      const body = request.body || {};
+      const folder = await huginnFolders.createFolder(db, request.user.id, {
+        name: body.name,
+        iconEmoji: body.icon_emoji || body.iconEmoji,
+        sortOrder: body.sort_order
+      });
+      return { folder };
+    } catch (e) {
+      if (e.code === 'bad_request') return reply.code(400).send({ error: e.message });
+      throw e;
+    }
+  });
+
+  fastify.patch('/folders/:folderId', {
+    preHandler: [fastify.authenticate]
+  }, async (request, reply) => {
+    try {
+      const body = request.body || {};
+      const folder = await huginnFolders.updateFolder(db, request.user.id, request.params.folderId, {
+        name: body.name,
+        iconEmoji: body.icon_emoji !== undefined ? body.icon_emoji : body.iconEmoji,
+        sortOrder: body.sort_order
+      });
+      return { folder };
+    } catch (e) {
+      if (e.code === 'bad_request') return reply.code(400).send({ error: e.message });
+      if (e.code === 'not_found') return reply.code(404).send({ error: e.message });
+      throw e;
+    }
+  });
+
+  fastify.delete('/folders/:folderId', {
+    preHandler: [fastify.authenticate]
+  }, async (request, reply) => {
+    try {
+      return await huginnFolders.deleteFolder(db, request.user.id, request.params.folderId);
+    } catch (e) {
+      if (e.code === 'not_found') return reply.code(404).send({ error: e.message });
+      throw e;
+    }
+  });
+
+  fastify.put('/folders/reorder', {
+    preHandler: [fastify.authenticate]
+  }, async (request, reply) => {
+    try {
+      const ids = (request.body || {}).ids || (request.body || {}).folder_ids;
+      return await huginnFolders.reorderFolders(db, request.user.id, ids);
+    } catch (e) {
+      if (e.code === 'bad_request') return reply.code(400).send({ error: e.message });
+      throw e;
+    }
+  });
+
+  fastify.put('/folders/active', {
+    preHandler: [fastify.authenticate]
+  }, async (request, reply) => {
+    try {
+      const folderId = (request.body || {}).folder_id;
+      return await huginnFolders.setActiveFolder(db, request.user.id, folderId);
+    } catch (e) {
+      if (e.code === 'not_found') return reply.code(404).send({ error: e.message });
+      throw e;
+    }
+  });
+
+  fastify.put('/:id/folder', {
+    preHandler: [fastify.authenticate]
+  }, async (request, reply) => {
+    const chatId = parsePositiveInt(request.params.id);
+    if (chatId == null) return reply.code(400).send({ error: 'bad chat id' });
+    const member = await getChatMembership(chatId, request.user.id);
+    if (!member) return reply.code(403).send({ error: 'Нет доступа' });
+    try {
+      return await huginnFolders.assignChat(
+        db,
+        request.user.id,
+        chatId,
+        (request.body || {}).folder_id
+      );
+    } catch (e) {
+      if (e.code === 'bad_request') return reply.code(400).send({ error: e.message });
+      if (e.code === 'not_found') return reply.code(404).send({ error: e.message });
+      throw e;
+    }
+  });
+
+  // ── F11 AI Editor (corporate, all users, not Mimir stub) ──────
+  fastify.post('/ai/rewrite', {
+    preHandler: [fastify.authenticate]
+  }, async (request, reply) => {
+    const body = request.body || {};
+    try {
+      const result = await huginnAiEditor.rewrite(db, {
+        userId: request.user.id,
+        text: body.text,
+        mode: body.mode,
+        targetLang: body.target_lang || body.targetLang,
+        styleId: body.style_id || body.styleId,
+        emoji: body.emoji
+      });
+      return { ok: true, ...result };
+    } catch (e) {
+      if (e.code === 'text_required' || e.code === 'text_too_long' || e.code === 'bad_request') {
+        return reply.code(400).send({ error: e.message, code: e.code, retryable: false });
+      }
+      if (e.code === 'rate_limit') {
+        return reply.code(429).send({
+          error: 'Слишком много запросов к ИИ-редактору. Подождите минуту.',
+          code: 'rate_limit',
+          retryable: true
+        });
+      }
+      return reply.code(502).send({
+        error: e.message || 'ИИ недоступен',
+        code: e.code || 'ai_error',
+        retryable: e.retryable !== false
+      });
+    }
+  });
+
+  fastify.get('/ai/styles', {
+    preHandler: [fastify.authenticate]
+  }, async (request) => huginnAiEditor.listStyles(db, request.user.id));
+
+  fastify.post('/ai/styles', {
+    preHandler: [fastify.authenticate]
+  }, async (request, reply) => {
+    try {
+      const body = request.body || {};
+      const style = await huginnAiEditor.createStyle(db, request.user.id, {
+        name: body.name,
+        iconEmoji: body.icon_emoji || body.iconEmoji,
+        prompt: body.prompt
+      });
+      return { style };
+    } catch (e) {
+      if (e.code === 'bad_request') return reply.code(400).send({ error: e.message });
+      throw e;
+    }
+  });
+
+  fastify.post('/ai/styles/:styleId/share', {
+    preHandler: [fastify.authenticate]
+  }, async (request, reply) => {
+    try {
+      return await huginnAiEditor.shareStyle(
+        db,
+        request.user.id,
+        request.params.styleId,
+        !!(request.body || {}).with_profile_link
+      );
+    } catch (e) {
+      if (e.code === 'bad_request') return reply.code(400).send({ error: e.message });
+      if (e.code === 'not_found') return reply.code(404).send({ error: e.message });
+      throw e;
+    }
   });
 
   // silence unused lint

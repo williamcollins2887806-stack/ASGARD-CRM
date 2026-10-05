@@ -30,12 +30,21 @@
     stickToBottom: true,
     searchQ: '',
     pendingFile: null,
-    chipsHidden: false,
     pins: [],
     drafts: {},
     replyTo: null,
     contactsQ: '',
-    selectedContactUid: null
+    selectedContactUid: null,
+    /* F10 */
+    folders: [],
+    activeFolderId: null,
+    /* list hybrid: multi-select → folder */
+    listEditMode: false,
+    selectedChatIds: new Set(),
+    /* birthday banners (no geo) */
+    birthdays: [],
+    /* F11 AI editor sheet */
+    aiEditor: null
   };
 
   function draftKey(cid) { return 'hg_draft_' + cid; }
@@ -212,7 +221,7 @@
           <span class="hg-rail-badge" data-rail-badge="phone" hidden>0</span>
         </button>
       </aside>
-      <nav class="hg-bottom-nav" aria-label="Huginn mobile">
+      <nav class="hg-bottom-nav hg-glass" data-role="nav" aria-label="Huginn mobile">
         <button type="button" data-mnav="contacts" aria-label="Контакты">
           <span class="hg-nav-ico">${ICO.contacts || ICO.users}</span>
           <span class="hg-nav-label">Контакты</span>
@@ -230,7 +239,7 @@
           <span class="hg-nav-label">Настройки</span>
         </button>
       </nav>
-      <button type="button" class="hg-nav-search" id="hgNavSearch" aria-label="Поиск">${ICO.search || ''}</button>
+      <button type="button" class="hg-nav-search hg-glass" data-role="fab" id="hgNavSearch" aria-label="Поиск">${ICO.search || ''}</button>
     `;
     document.body.appendChild(root);
     // Float nav/FAB on body so backdrop-filter samples list (not flattened inside chrome stack)
@@ -544,10 +553,39 @@
     }
   }
 
+  async function loadFolders() {
+    try {
+      const data = await api('/api/chat-groups/folders');
+      state.folders = data.folders || [];
+      if (state.activeFolderId == null && data.active_folder_id != null) {
+        state.activeFolderId = data.active_folder_id;
+      }
+    } catch (_) {
+      state.folders = state.folders || [];
+    }
+  }
+
   async function loadChats() {
-    const data = await api('/api/chat-groups?archived=false');
+    let q = '/api/chat-groups?archived=false';
+    if (state.activeFolderId) q += '&folder_id=' + encodeURIComponent(state.activeFolderId);
+    const data = await api(q);
     state.chats = data.chats || data.items || [];
     padChatListToTen();
+  }
+
+  function countComposerLines(text) {
+    const t = String(text || '');
+    if (!t.trim()) return 0;
+    return t.split(/\r?\n/).length;
+  }
+
+  function syncAiComposerBtn() {
+    const btn = root && root.querySelector('#hgAiEditorBtn');
+    const input = root && root.querySelector('#hgInput');
+    if (!btn || !input) return;
+    const lines = countComposerLines(input.value);
+    /* brief / DS: icon after >3 lines → show from 4th line */
+    btn.hidden = lines < 4;
   }
 
   /** P5 — TG-density seed fillers when list is sparse. */
@@ -615,6 +653,36 @@
       const data = await api('/api/chat-groups/stories/feed');
       state.stories = data.stories || [];
     } catch (_) { state.stories = []; }
+  }
+
+  function bdayBannersEnabled() {
+    try { return localStorage.getItem('hg_bday_banners') !== '0'; } catch (_) { return true; }
+  }
+
+  function bdayDismissedSet() {
+    try {
+      return new Set(JSON.parse(localStorage.getItem('hg_bday_dismissed') || '[]').map(Number));
+    } catch (_) { return new Set(); }
+  }
+
+  function dismissBirthday(id) {
+    const set = bdayDismissedSet();
+    set.add(Number(id));
+    try { localStorage.setItem('hg_bday_dismissed', JSON.stringify([...set])); } catch (_) {}
+  }
+
+  async function loadBirthdays() {
+    if (!bdayBannersEnabled()) {
+      state.birthdays = [];
+      return;
+    }
+    try {
+      const data = await api('/api/birthdays?days=7');
+      const dismissed = bdayDismissedSet();
+      state.birthdays = (data.items || []).filter((it) =>
+        (it.is_today || Number(it.days_until) <= 3) && !dismissed.has(Number(it.id))
+      ).slice(0, 5);
+    } catch (_) { state.birthdays = []; }
   }
 
   async function openChat(id) {
@@ -844,14 +912,15 @@
     if ((type === 'file' || type === 'document') && (m.file_url || m.file_name)) {
       const name = m.file_name || m.metadata && m.metadata.file_name || 'Файл';
       const size = m.file_size || (m.metadata && m.metadata.file_size) || 0;
-      return `<div class="hg-file-card">
+      const href = m.file_url ? esc(m.file_url) : '';
+      return `<a class="hg-file-card" ${href ? `href="${href}" download target="_blank" rel="noopener"` : 'role="group"'} data-file="1">
         <div class="hg-file-ico">${ICO.file}</div>
         <div class="hg-file-meta">
           <div class="hg-file-name">${esc(name)}</div>
           <div class="hg-file-size">${esc(formatBytes(size))}</div>
         </div>
-        ${m.file_url ? `<a href="${esc(m.file_url)}" download target="_blank" rel="noopener">Скачать</a>` : ''}
-      </div>`;
+        ${href ? `<span class="hg-file-dl">${ICO.download || '↓'}</span>` : ''}
+      </a>`;
     }
     if (type === 'sticker') {
       if (m.file_url) return `<img src="${esc(m.file_url)}" alt="sticker" width="120" height="120">`;
@@ -1188,7 +1257,7 @@
     document.querySelectorAll('.hg-lightbox').forEach((el) => el.remove());
     const el = document.createElement('div');
     el.className = 'hg-lightbox';
-    el.innerHTML = `<button type="button" class="hg-lightbox-close" aria-label="Закрыть">${ICO.close || ICO.x}</button><img src="${esc(src)}" alt="">`;
+    el.innerHTML = `<button type="button" class="hg-lightbox-close hg-glass" data-role="media-chrome" aria-label="Закрыть">${ICO.close || ICO.x}</button><img src="${esc(src)}" alt="">`;
     document.body.appendChild(el);
     el.querySelector('.hg-lightbox-close').onclick = () => el.remove();
     el.onclick = (e) => { if (e.target === el) el.remove(); };
@@ -1310,9 +1379,15 @@
         : `background:${avatarColor(cname)}`;
       const avInner = avUrl ? '' : esc(initials(cname));
       const pin = (state.pins && state.pins[0]) || null;
-      const pinText = pin ? humanizeDisplayText(pin.message || '', pin) : '';
+      const pinMsgId = pin && (pin.message_id || pin.id || (pin.message && pin.message.id));
+      const pinText = pin
+        ? humanizeDisplayText(
+          (pin.message && (pin.message.message || pin.message.text)) || pin.message || pin.text || '',
+          pin.message || pin
+        )
+        : '';
       const pinBanner = pin
-        ? `<div class="hg-pin-banner" id="hgPinBanner" role="button" tabindex="0" aria-label="Закреплённое сообщение: ${esc(pinText)}">
+        ? `<div class="hg-pin-banner hg-glass" data-role="pin" id="hgPinBanner" data-pin-mid="${pinMsgId || ''}" role="button" tabindex="0" aria-label="Закреплённое сообщение: ${esc(pinText)}">
             <div class="hg-pin-body">
               <div class="hg-pin-label">Закреплённое сообщение</div>
               <div class="hg-pin-text">${esc(pinText)}</div>
@@ -1346,11 +1421,11 @@
           ${state.callStrip || ''}
           <div class="hg-float-chrome${pinBanner ? ' has-pin' : ''}">
           <div class="hg-thread-head" role="banner" aria-label="Заголовок чата" id="hgThreadHead">
-            <button type="button" class="hg-icon-btn hg-back-cluster" id="hgBack" aria-label="Назад к списку" title="Назад">
+            <button type="button" class="hg-icon-btn hg-back-cluster hg-glass" data-role="header" id="hgBack" aria-label="Назад к списку" title="Назад">
               <span class="hg-back-chevron" aria-hidden="true">${ICO.back || '←'}</span>
               <span class="hg-back-badge" id="hgBackBadge" ${unreadAbove > 0 ? '' : 'hidden'} aria-label="${unreadAbove > 0 ? unreadAbove + ' непрочитанных' : ''}">${unreadAbove > 99 ? '99+' : (unreadAbove || 0)}</span>
             </button>
-            <div class="hg-thread-title">
+            <div class="hg-thread-title hg-glass" data-role="header">
               <strong aria-level="1"><span class="hg-title-text">${esc(cname)}</span>${mutedBell}</strong>
               <span data-hg-presence aria-live="polite">${memberN > 1 ? (memberN + ' участник' + (memberN >= 5 || memberN === 0 ? 'ов' : (memberN === 1 ? '' : 'а'))) : '…'}</span>
             </div>
@@ -1359,7 +1434,6 @@
             </button>
             <div class="hg-thread-actions" hidden>
               <button type="button" class="hg-icon-btn" id="hgCallAudio" title="Звонок" aria-label="Звонок">${ICO.phone}</button>
-              <button type="button" class="hg-icon-btn" id="hgThreadSearch" title="Поиск" aria-label="Поиск">${ICO.search}</button>
               <button type="button" class="hg-icon-btn" id="hgThreadMore" title="Ещё" aria-label="Ещё">${ICO.more || ICO['more-horizontal']}</button>
             </div>
           </div>
@@ -1371,16 +1445,18 @@
           </div>
           <div class="hg-composer">
             ${renderReplyBar()}
-            <div class="hg-ai-chips${state.chipsHidden ? ' is-hidden' : ''}" id="hgAiChips"></div>
             ${state.recording ? `<div class="hg-rec-bar"><span class="hg-rec-dot"></span><span>${esc(state.recording.label)}</span><button type="button" class="hg-chip" id="hgRecStop">Стоп</button></div>` : ''}
             ${attachPrev}
             <div class="hg-composer-row">
-              <button type="button" class="hg-tool hg-attach-out is-mic" id="hgAttach" aria-label="Прикрепить файл" title="Вложение">${ICO.attach}</button>
-              <div class="hg-input-wrap">
+              <div class="hg-composer-left">
+                <button type="button" class="hg-tool hg-ai-btn hg-glass" data-role="composer" id="hgAiEditorBtn" hidden aria-label="ИИ-редактор" title="ИИ-редактор">${ICO.sparkles || ICO.ai || '✦'}<span class="hg-ai-btn-label">Ai</span></button>
+                <button type="button" class="hg-tool hg-attach-out hg-glass is-mic" data-role="composer" id="hgAttach" aria-label="Прикрепить файл" title="Вложение">${ICO.attach}</button>
+              </div>
+              <div class="hg-input-wrap hg-glass" data-role="composer">
                 <textarea id="hgInput" rows="1" placeholder="${state.replyTo ? 'Ответ…' : 'Сообщение'}" aria-label="Сообщение">${esc(draft)}</textarea>
                 <button type="button" class="hg-emoji-btn" id="hgStickers" aria-label="Стикеры" title="Стикеры">${ICO.smile || ICO.emoji || ICO.sticker}</button>
               </div>
-              <button type="button" class="hg-send is-mic" id="hgSend" aria-label="Голосовое сообщение" title="Голос / Отправить">${ICO.mic}</button>
+              <button type="button" class="hg-send hg-glass is-mic" data-role="composer" id="hgSend" aria-label="Голосовое сообщение" title="Голос / Отправить">${ICO.mic}</button>
             </div>
             <!-- keyboard suggest removed -->
             <input type="file" id="hgFile" class="hg-file-hidden" tabindex="-1" aria-hidden="true" accept="image/*,video/*,audio/*,*/*">
@@ -1393,21 +1469,133 @@
     }
 
     const unreadSum = state.chats.reduce((n, c) => n + (Number(c.unread_count) || 0), 0);
+    const folderCaps = [
+      `<button type="button" class="hg-folder-cap hg-glass${state.activeFolderId == null ? ' is-active' : ''}" data-role="segment" data-folder="">Все</button>`,
+      ...(state.folders || []).map((f) =>
+        `<button type="button" class="hg-folder-cap hg-glass${Number(state.activeFolderId) === Number(f.id) ? ' is-active' : ''}" data-role="segment" data-folder="${f.id}">${esc(f.icon_emoji || '')} ${esc(f.name)}</button>`
+      ),
+      `<button type="button" class="hg-folder-cap hg-folder-add hg-glass" data-role="segment" data-folder-add="1" title="Новая папка">+</button>`
+    ].join('');
+    const bdayHtml = (state.birthdays || []).map((b) => {
+      const when = b.is_today ? 'сегодня' : ('через ' + b.days_until + ' дн.');
+      return `<div class="hg-bday-card hg-glass" data-role="card" data-bday="${b.id}">
+        <div class="hg-bday-av" style="background:${avatarColor(b.name)}">${esc(initials(b.name))}</div>
+        <div class="hg-bday-meta"><strong>${esc(b.name)}</strong><span>ДР ${esc(when)}</span></div>
+        <button type="button" class="hg-bday-x" data-bday-dismiss="${b.id}" aria-label="Скрыть">✕</button>
+      </div>`;
+    }).join('');
+    const stories = state.stories || [];
+    const storiesHtml = stories.length
+      ? stories.map((s) => {
+        const nm = s.user_name || 'Story';
+        const unread = !s.viewed;
+        return `<button type="button" class="hg-story-item${unread ? ' is-unread' : ''}" data-story="${s.id}" title="${esc(nm)}">
+          <div class="hg-story-ring"><div class="hg-story-av" style="background:${avatarColor(nm)}${s.avatar_url ? `;background-image:url('${esc(s.avatar_url)}');background-size:cover` : ''}">${s.avatar_url ? '' : esc(initials(nm))}</div></div>
+          <span class="hg-story-label">${esc((nm || '').split(/\s+/)[0] || '—')}</span>
+        </button>`;
+      }).join('')
+      : `<button type="button" class="hg-story-item is-add" id="hgStoryAdd" title="Истории">
+          <div class="hg-story-ring"><div class="hg-story-av is-add">+</div></div>
+          <span class="hg-story-label">История</span>
+        </button>`;
+    const editBar = state.listEditMode
+      ? `<div class="hg-list-edit-bar hg-glass" data-role="card">
+          <span>Выбрано: ${state.selectedChatIds.size}</span>
+          <button type="button" class="hg-chip" id="hgAssignFolder" ${state.selectedChatIds.size ? '' : 'disabled'}>В папку</button>
+          <button type="button" class="hg-chip" id="hgEditDone">Готово</button>
+        </div>`
+      : '';
     panel.innerHTML = `
-      <div class="hg-panel-head">
-        <h2>Хугинн</h2>
-        <button type="button" class="hg-icon-btn" id="hgCompose" title="Написать">${ICO.compose || ICO.pen || '✎'}</button>
-        <button type="button" class="hg-icon-btn" data-collapse title="Свернуть">${ICO.close || '✕'}</button>
+      <div class="hg-panel-head hg-list-head-hybrid">
+        <button type="button" class="hg-head-edit" id="hgListEdit">${state.listEditMode ? 'Отмена' : 'Изм.'}</button>
+        <h2>Чаты</h2>
+        <div class="hg-head-actions">
+          <button type="button" class="hg-icon-btn" id="hgCompose" title="Написать">${ICO.compose || ICO.pen || '✎'}</button>
+          <button type="button" class="hg-icon-btn" data-collapse title="Свернуть">${ICO.close || '✕'}</button>
+        </div>
       </div>
+      <div class="hg-folder-row" id="hgFolders" role="tablist" aria-label="Папки чатов">${folderCaps}</div>
       <div class="hg-tabs" id="hgTabs">
         <button type="button" class="hg-tab ${state.listTab === 'all' ? 'is-active' : ''}" data-ltab="all">Все${unreadSum ? `<span class="hg-tab-n">${unreadSum}</span>` : ''}</button>
         <button type="button" class="hg-tab ${state.listTab === 'personal' ? 'is-active' : ''}" data-ltab="personal">Личные</button>
         <button type="button" class="hg-tab ${state.listTab === 'new' ? 'is-active' : ''}" data-ltab="new">Новые</button>
         <button type="button" class="hg-tab ${state.listTab === 'clients' ? 'is-active' : ''}" data-ltab="clients">Клиенты</button>
       </div>
+      ${bdayHtml ? `<div class="hg-bday-rail" id="hgBdayRail">${bdayHtml}</div>` : ''}
+      <div class="hg-stories-rail" id="hgStoriesRail" aria-label="Истории">${storiesHtml}</div>
+      ${editBar}
       <input class="hg-search" id="hgSearch" placeholder="Поиск" value="${esc(state.searchQ || '')}" />
       <div class="hg-list" id="hgList"></div>`;
     panel.querySelector('[data-collapse]').onclick = () => setCollapsed(true);
+    const editBtn = panel.querySelector('#hgListEdit');
+    if (editBtn) {
+      editBtn.onclick = () => {
+        state.listEditMode = !state.listEditMode;
+        if (!state.listEditMode) state.selectedChatIds = new Set();
+        renderPanel();
+      };
+    }
+    const editDone = panel.querySelector('#hgEditDone');
+    if (editDone) {
+      editDone.onclick = () => {
+        state.listEditMode = false;
+        state.selectedChatIds = new Set();
+        renderPanel();
+      };
+    }
+    const assignFolder = panel.querySelector('#hgAssignFolder');
+    if (assignFolder) {
+      assignFolder.onclick = async () => {
+        const folders = state.folders || [];
+        if (!folders.length) {
+          showToast('Сначала создайте папку');
+          return;
+        }
+        const names = folders.map((f, i) => (i + 1) + '. ' + f.name).join('\n');
+        const pick = prompt('Номер папки:\n' + names + '\n0 — снять');
+        if (pick == null) return;
+        const n = parseInt(pick, 10);
+        const folderId = n === 0 ? null : (folders[n - 1] && folders[n - 1].id);
+        if (n !== 0 && folderId == null) {
+          showToast('Неверный номер');
+          return;
+        }
+        const ids = [...state.selectedChatIds].filter((id) => Number(id) > 0);
+        for (const id of ids) {
+          try {
+            await api('/api/chat-groups/' + id + '/folder', {
+              method: 'PUT',
+              body: { folder_id: folderId }
+            });
+          } catch (e) {
+            showToast(e.message || 'Не удалось назначить папку');
+            return;
+          }
+        }
+        state.listEditMode = false;
+        state.selectedChatIds = new Set();
+        await loadChats();
+        showToast(ids.length ? 'Папка обновлена' : 'Нет выбран чатов');
+        renderPanel();
+      };
+    }
+    panel.querySelectorAll('[data-bday-dismiss]').forEach((btn) => {
+      btn.onclick = (e) => {
+        e.stopPropagation();
+        dismissBirthday(btn.getAttribute('data-bday-dismiss'));
+        state.birthdays = (state.birthdays || []).filter(
+          (b) => Number(b.id) !== Number(btn.getAttribute('data-bday-dismiss'))
+        );
+        renderPanel();
+      };
+    });
+    panel.querySelectorAll('[data-story]').forEach((btn) => {
+      btn.onclick = () => openStoryViewer(Number(btn.getAttribute('data-story')));
+    });
+    const storyAdd = panel.querySelector('#hgStoryAdd');
+    if (storyAdd) {
+      storyAdd.onclick = () => showToast('Создание истории — через профиль / API stories');
+    }
     renderChatList(state.searchQ);
     panel.querySelector('#hgSearch').oninput = (e) => {
       state.searchQ = e.target.value;
@@ -1419,9 +1607,69 @@
         renderPanel();
       };
     });
+    panel.querySelectorAll('[data-folder]').forEach((btn) => {
+      btn.onclick = async () => {
+        const raw = btn.getAttribute('data-folder');
+        state.activeFolderId = raw ? Number(raw) : null;
+        try {
+          await api('/api/chat-groups/folders/active', {
+            method: 'PUT',
+            body: { folder_id: state.activeFolderId }
+          });
+        } catch (_) {}
+        await loadChats();
+        renderPanel();
+      };
+    });
+    const addFolder = panel.querySelector('[data-folder-add]');
+    if (addFolder) {
+      addFolder.onclick = async () => {
+        const name = prompt('Название папки');
+        if (!name || !name.trim()) return;
+        try {
+          await api('/api/chat-groups/folders', { method: 'POST', body: { name: name.trim() } });
+          await loadFolders();
+          renderPanel();
+        } catch (e) {
+          showToast(e.message || 'Не удалось создать папку');
+        }
+      };
+    }
     panel.querySelector('#hgCompose').onclick = () => {
       if (location.hash !== '#/messenger') location.hash = '#/messenger';
     };
+  }
+
+  async function openStoryViewer(storyId) {
+    const story = (state.stories || []).find((s) => Number(s.id) === Number(storyId));
+    if (!story) return;
+    clearFloats();
+    root.querySelectorAll('.hg-story-viewer').forEach((el) => el.remove());
+    const el = document.createElement('div');
+    el.className = 'hg-story-viewer';
+    el.setAttribute('role', 'dialog');
+    el.setAttribute('aria-label', 'История');
+    const media = story.media_url || story.file_url || story.image_url;
+    const isVideo = story.media_type === 'video' || /\.(mp4|webm|mov)(\?|$)/i.test(String(media || ''));
+    el.innerHTML = `
+      <button type="button" class="hg-story-viewer-close" aria-label="Закрыть">${ICO.close || '✕'}</button>
+      <div class="hg-story-viewer-meta">${esc(story.user_name || 'Story')}</div>
+      <div class="hg-story-viewer-body">
+        ${media
+          ? (isVideo
+            ? `<video src="${esc(media)}" autoplay playsinline controls></video>`
+            : `<img src="${esc(media)}" alt="">`)
+          : `<div class="hg-story-viewer-text">${esc(story.caption || story.text || 'История')}</div>`}
+      </div>`;
+    (root.querySelector('.hg-chrome') || root).appendChild(el);
+    el.querySelector('.hg-story-viewer-close').onclick = () => el.remove();
+    el.onclick = (e) => { if (e.target === el) el.remove(); };
+    try {
+      await api('/api/chat-groups/stories/' + storyId + '/view', { method: 'POST', body: {} });
+      story.viewed = true;
+      const railBtn = root.querySelector('[data-story="' + storyId + '"]');
+      if (railBtn) railBtn.classList.remove('is-unread');
+    } catch (_) {}
   }
 
   /** «На линии» — presence peers, not Instagram stories */
@@ -1503,7 +1751,7 @@
       if (cta) cta.onclick = () => { if (location.hash !== '#/messenger') location.hash = '#/messenger'; };
       return;
     }
-    box.innerHTML = rows.map((c) => {
+    const rowHtml = (c) => {
       const draft = loadDraft(c.id) || (c._seedDraft ? String(c.last_message || '') : '');
       const rawPrev = c.last_message || c.last_message_text || '';
       const prevType = c.last_message_type || (
@@ -1534,16 +1782,44 @@
       const avBg = c._seedColor || avatarColor(cname);
       const pinIco = pinned ? `<span class="hg-chat-icons" title="Закреплён">${ICO.pin || ''}</span>` : '';
       const muteIco = muted ? `<span class="hg-chat-icons" title="Без звука">${ICO.mute || ICO['volume-x'] || ''}</span>` : '';
-      return `<button type="button" class="hg-chat-row${Number(c.id) === Number(state.chatId) ? ' is-active' : ''}" data-cid="${c.id}">
+      const selected = state.selectedChatIds.has(Number(c.id));
+      const check = state.listEditMode
+        ? `<span class="hg-chat-check${selected ? ' is-on' : ''}" aria-hidden="true"></span>`
+        : '';
+      return `<button type="button" class="hg-chat-row${Number(c.id) === Number(state.chatId) ? ' is-active' : ''}${selected ? ' is-selected' : ''}${state.listEditMode ? ' is-edit' : ''}" data-cid="${c.id}">
+        ${check}
         <div class="hg-chat-av${online ? ' is-online' : ''}" style="background:${avBg}">${esc(initials(cname))}</div>
         <div class="hg-chat-name">${esc(cname)}${muteIco}</div>
         <div class="hg-chat-time">${pinIco}${esc(t)}</div>
         <div class="hg-chat-prev${unread ? ' is-unread' : ''}">${prevHtml}</div>
         ${unread > 0 ? `<span class="hg-badge${muted ? ' is-muted' : ''}">${unread > 99 ? '99+' : unread}</span>` : '<span></span>'}
       </button>`;
-    }).join('');
+    };
+    const pinnedRows = rows.filter((c) => !!(c.is_pinned || c.pinned_at));
+    const ordinary = rows.filter((c) => !(c.is_pinned || c.pinned_at));
+    let html = '';
+    if (pinnedRows.length) {
+      html += `<div class="hg-pinned-block" data-role="pinned">
+        <div class="hg-pinned-label">Закреплённые</div>
+        ${pinnedRows.map(rowHtml).join('')}
+      </div>`;
+    }
+    if (ordinary.length) {
+      if (pinnedRows.length) html += `<div class="hg-list-sep" aria-hidden="true"></div>`;
+      html += ordinary.map(rowHtml).join('');
+    }
+    box.innerHTML = html;
     box.querySelectorAll('[data-cid]').forEach((el) => {
-      el.onclick = () => openChat(Number(el.getAttribute('data-cid')));
+      el.onclick = () => {
+        const cid = Number(el.getAttribute('data-cid'));
+        if (state.listEditMode) {
+          if (state.selectedChatIds.has(cid)) state.selectedChatIds.delete(cid);
+          else state.selectedChatIds.add(cid);
+          renderPanel();
+          return;
+        }
+        openChat(cid);
+      };
     });
     syncRailBadge();
   }
@@ -1652,15 +1928,34 @@
 
   function applyFxMode(mode) {
     const allowed = { full: 1, reduced: 1, off: 1 };
-    let fx = allowed[mode] ? mode : (localStorage.getItem('hg_fx') || 'full');
+    let stored = null;
+    try {
+      // F0: DS key hg_power_saving; one-time migrate from ROUND-7 hg_fx
+      stored = localStorage.getItem('hg_power_saving');
+      if (!stored) {
+        const legacy = localStorage.getItem('hg_fx');
+        if (legacy && allowed[legacy]) {
+          stored = legacy;
+          localStorage.setItem('hg_power_saving', legacy);
+          localStorage.removeItem('hg_fx');
+        }
+      }
+    } catch (_) {}
+    let fx = allowed[mode] ? mode : (allowed[stored] ? stored : 'full');
     if (!allowed[fx]) fx = 'full';
     try {
       if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches && fx === 'full') {
         fx = 'reduced';
       }
     } catch (_) {}
+    const dock = (root && root.id === 'huginnDock' ? root : null) || document.getElementById('huginnDock');
+    if (dock) {
+      dock.classList.remove('hg-power-full', 'hg-power-reduced', 'hg-power-off');
+      dock.classList.add('hg-power-' + fx);
+    }
+    // Bridge: keep data-hg-fx for any leftover ROUND-7 selectors
     document.documentElement.setAttribute('data-hg-fx', fx);
-    try { localStorage.setItem('hg_fx', fx); } catch (_) {}
+    try { localStorage.setItem('hg_power_saving', fx); } catch (_) {}
     return fx;
   }
 
@@ -1669,32 +1964,12 @@
     const name = me.name || me.full_name || me.login || 'Никита';
     const phone = me.phone || '+7 900 000-00-00';
     const uname = me.username ? ('@' + me.username) : (me.login ? ('@' + me.login) : '@asgard');
-    const fx = applyFxMode(localStorage.getItem('hg_fx'));
-    /* P7 — Telegram iOS: color tiles + groups */
-    const groups = [
-      [
-        { ico: ICO.profile || ICO.contact, label: 'Мой профиль', tone: 'is-red' }
-      ],
-      [
-        { ico: ICO.bookmark || ICO.pin, label: 'Избранное', tone: 'is-blue' },
-        { ico: ICO.calls || ICO.phone, label: 'Недавние звонки', tone: 'is-green' },
-        { ico: ICO.laptop || ICO.monitor || ICO.settings, label: 'Устройства', tone: 'is-orange' }
-      ],
-      [
-        { ico: ICO.bell, label: 'Уведомления и звуки', tone: 'is-red' },
-        { ico: ICO.lock, label: 'Конфиденциальность', tone: 'is-gray' },
-        { ico: ICO.file, label: 'Данные и память', tone: 'is-cyan' },
-        { ico: ICO.chats, label: 'Чаты', tone: 'is-blue' },
-        { ico: ICO.settings, label: 'Оформление', tone: 'is-purple' },
-        { ico: ICO.globe || ICO.users, label: 'Язык', tone: 'is-gray' },
-        { ico: ICO.info || ICO.invite, label: 'О Хугинне', tone: 'is-blue' }
-      ]
-    ];
+    const fx = applyFxMode(localStorage.getItem('hg_power_saving') || localStorage.getItem('hg_fx'));
+    /* Wired settings only — no «скоро» stub rows (P2) */
+    const groups = [];
     const actions = [
       { id: 'msg', label: 'Написать', ico: ICO.chats || ICO.send },
-      { id: 'call', label: 'Звонок', ico: ICO.phone || ICO.calls },
-      { id: 'mute', label: 'Звук', ico: ICO.bell },
-      { id: 'more', label: 'Ещё', ico: ICO.settings }
+      { id: 'call', label: 'Звонок', ico: ICO.phone || ICO.calls }
     ];
     panel.innerHTML = `
       <div class="hg-settings">
@@ -1704,13 +1979,12 @@
           <div class="hg-settings-sub">${esc([phone, uname].filter(Boolean).join(' · '))}</div>
           <div class="hg-settings-actions">
             ${actions.map((a) => `<button type="button" class="hg-settings-action" data-act="${a.id}" title="${esc(a.label)}">
-              <span class="hg-settings-action-ico">${a.ico}</span>
+              <span class="hg-settings-action-ico hg-glass" data-role="fab">${a.ico}</span>
               <span>${esc(a.label)}</span>
             </button>`).join('')}
           </div>
-          <button type="button" class="hg-settings-photo-btn" id="hgChangePhoto">${ICO.image || ''} Изменить фотографию</button>
         </div>
-        <div class="hg-settings-card">
+        <div class="hg-settings-card hg-glass" data-role="card">
           <div class="hg-settings-row hg-settings-row--static">
             <span class="hg-settings-ico is-purple">${ICO.settings}</span>
             <span class="hg-settings-label">Эффекты (экономия энергии)</span>
@@ -1722,7 +1996,14 @@
             }).join('')}
           </div>
         </div>
-        ${groups.map((items) => `<div class="hg-settings-card">
+        <div class="hg-settings-card hg-glass" data-role="card">
+          <label class="hg-settings-row hg-settings-toggle-row">
+            <span class="hg-settings-ico is-purple">🎂</span>
+            <span class="hg-settings-label">Баннеры дней рождения</span>
+            <input type="checkbox" id="hgBdayToggle" ${bdayBannersEnabled() ? 'checked' : ''} aria-label="Баннеры ДР">
+          </label>
+        </div>
+        ${groups.map((items) => `<div class="hg-settings-card hg-glass" data-role="card">
           ${items.map((it) => `<button type="button" class="hg-settings-row" data-set="${esc(it.label)}">
             <span class="hg-settings-ico ${it.tone}">${it.ico}</span>
             <span class="hg-settings-label">${esc(it.label)}</span>
@@ -1731,13 +2012,12 @@
         </div>`).join('')}
         <button type="button" class="hg-settings-logout" id="hgLogout">Выйти</button>
       </div>`;
-    const photoBtn = panel.querySelector('#hgChangePhoto');
-    if (photoBtn) photoBtn.onclick = () => showToast('Смена фото — скоро');
-    panel.querySelectorAll('[data-set]').forEach((btn) => {
-      btn.onclick = () => showToast(btn.getAttribute('data-set') + ' — скоро');
-    });
     panel.querySelectorAll('[data-act]').forEach((btn) => {
-      btn.onclick = () => showToast(btn.getAttribute('title') + ' — скоро');
+      btn.onclick = () => {
+        const act = btn.getAttribute('data-act');
+        if (act === 'msg') { state.tab = 'huginn'; state.chatId = null; renderPanel(); }
+        else if (act === 'call') { state.tab = 'phone'; renderPanel(); }
+      };
     });
     panel.querySelectorAll('[data-fx]').forEach((btn) => {
       btn.onclick = () => {
@@ -1745,6 +2025,14 @@
         renderSettingsPanel(panel);
       };
     });
+    const bdayTog = panel.querySelector('#hgBdayToggle');
+    if (bdayTog) {
+      bdayTog.onchange = async () => {
+        try { localStorage.setItem('hg_bday_banners', bdayTog.checked ? '1' : '0'); } catch (_) {}
+        await loadBirthdays();
+        showToast(bdayTog.checked ? 'Баннеры ДР включены' : 'Баннеры ДР выключены');
+      };
+    }
     panel.querySelector('#hgLogout').onclick = () => {
       if (!confirm('Выйти из аккаунта?')) return;
       try {
@@ -1782,13 +2070,6 @@
       void send.offsetWidth;
       send.style.animation = '';
     }
-    const chips = root.querySelector('#hgAiChips');
-    if (chips) {
-      if ((input.value || '').trim() && !state.chipsHidden) {
-        state.chipsHidden = true;
-        chips.classList.add('is-hidden');
-      }
-    }
   }
 
   function showQuickReact(bubble) {
@@ -1801,7 +2082,8 @@
     const br = bubble.getBoundingClientRect();
     const wr = wrap.getBoundingClientRect();
     const el = document.createElement('div');
-    el.className = 'hg-quick-react';
+    el.className = 'hg-quick-react hg-glass';
+    el.setAttribute('data-role', 'menu');
     el.innerHTML = QUICK_EMOJI.map((e) => `<button type="button" data-qe="${e}">${e}</button>`).join('');
     wrap.appendChild(el);
     const left = Math.max(8, Math.min(br.left - wr.left + br.width / 2 - el.offsetWidth / 2, wr.width - el.offsetWidth - 8));
@@ -1820,7 +2102,8 @@
     const thread = root.querySelector('.hg-thread');
     if (!thread) return;
     const el = document.createElement('div');
-    el.className = 'hg-attach-menu';
+    el.className = 'hg-attach-menu hg-glass';
+    el.setAttribute('data-role', 'menu');
     el.setAttribute('role', 'menu');
     el.innerHTML = `
       <button type="button" data-kind="image" role="menuitem">${ICO.image}<span>Фото</span></button>
@@ -1886,15 +2169,28 @@
     if (pinEl) {
       const jumpPin = () => {
         const pin = state.pins && state.pins[0];
-        const id = pin && pin.id;
+        const id = pinEl.getAttribute('data-pin-mid')
+          || (pin && (pin.message_id || pin.id || (pin.message && pin.message.id)));
         const target = id && msgsBox && msgsBox.querySelector('.hg-bubble[data-mid="' + id + '"]');
-        if (target) target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        if (target) {
+          target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          target.classList.add('is-pin-flash');
+          setTimeout(() => target.classList.remove('is-pin-flash'), 1200);
+        } else {
+          showToast('Закреплённое сообщение не в текущей ленте');
+        }
       };
       pinEl.onclick = jumpPin;
       pinEl.onkeydown = (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); jumpPin(); } };
     }
     const profileBtn = panel.querySelector('#hgThreadProfile');
-    if (profileBtn) profileBtn.onclick = () => showToast('Профиль чата — скоро');
+    if (profileBtn) {
+      profileBtn.onclick = () => {
+        /* Profile screen — open settings for now (no stub toast) */
+        state.tab = 'settings';
+        renderPanel();
+      };
+    }
     const replyClr = panel.querySelector('#hgReplyClear');
     if (replyClr) replyClr.onclick = () => setReplyTo(null);
     const sendBtn = panel.querySelector('#hgSend');
@@ -1920,6 +2216,7 @@
     input.addEventListener('input', () => {
       input.style.height = 'auto';
       input.style.height = Math.min(140, input.scrollHeight) + 'px';
+      syncAiComposerBtn();
       if (state.chatId) saveDraft(state.chatId, (input.value || '').trim());
       clearTimeout(morphTimer);
       morphTimer = setTimeout(() => syncSendButton(), 50);
@@ -1931,6 +2228,12 @@
     }
     const coarse = window.matchMedia && window.matchMedia('(pointer: coarse)').matches;
     input.addEventListener('keydown', (e) => {
+      // F12: iPad / desktop Cmd|Ctrl+Enter → send (always)
+      if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+        e.preventDefault();
+        sendBtn.click();
+        return;
+      }
       if (e.key === 'Enter' && !e.shiftKey) {
         if (coarse || window.innerWidth <= 768) return; // mobile: newline
         e.preventDefault();
@@ -1962,16 +2265,14 @@
     if (stickersBtn) stickersBtn.onclick = openStickers;
     const callBtn = panel.querySelector('#hgCallAudio');
     if (callBtn) callBtn.onclick = () => startAudioCall();
-    const searchBtn = panel.querySelector('#hgThreadSearch');
-    if (searchBtn) searchBtn.onclick = () => showToast('Поиск по чату — скоро');
     const moreBtn = panel.querySelector('#hgThreadMore');
     if (moreBtn) {
       moreBtn.onclick = (ev) => {
         const el = document.createElement('div');
-        el.className = 'hg-float';
+        el.className = 'hg-float hg-glass';
+    el.setAttribute('data-role', 'menu');
         el.innerHTML = `<div class="hg-float-actions">
           <button type="button" data-a="invite">${ICO.invite}<span>Пригласить</span></button>
-          <button type="button" data-a="ai">${ICO.ai}<span>ИИ</span></button>
           <button type="button" data-a="video">${ICO.video}<span>Тинг</span></button>
           <button type="button" data-a="collapse">${ICO.close}<span>Свернуть</span></button>
         </div>`;
@@ -1981,7 +2282,6 @@
           if (!a) return;
           clearFloats();
           if (a === 'invite') inviteSomeone();
-          if (a === 'ai') openAiMenu(ev.clientX, ev.clientY);
           if (a === 'video') {
             if (typeof HuginnTing !== 'undefined' && HuginnTing.openOverlay) HuginnTing.openOverlay({ chatId: state.chatId });
             else location.hash = '#/ting';
@@ -2035,8 +2335,10 @@
         state.recording.rec.stop();
       }
     };
-    loadAiChips();
+    const aiBtn = panel.querySelector('#hgAiEditorBtn');
+    if (aiBtn) aiBtn.onclick = () => openAiEditorSheet();
     syncSendButton();
+    syncAiComposerBtn();
     updateScrollFab();
     // Swipe-back (mobile): edge swipe right closes thread
     const thread = panel.querySelector('.hg-thread');
@@ -2081,7 +2383,7 @@
       mine.edited_at = new Date().toISOString();
       renderMessagesIntoBox();
     } else {
-      showToast(data.error || 'скоро');
+      showToast(data.error || 'Не удалось сохранить');
     }
   }
 
@@ -2096,7 +2398,6 @@
     input.value = '';
     input.style.height = 'auto';
     saveDraft(state.chatId, '');
-    state.chipsHidden = false;
     const reply = state.replyTo;
     state.replyTo = null;
     syncSendButton();
@@ -2230,7 +2531,8 @@
     clearFloats();
     const FALLBACK = ['👍', '❤️', '🔥', '👏', '😂', '🎉', '✅', '🚀', '💼', '📌', '🎯', '⭐'];
     const sheet = document.createElement('div');
-    sheet.className = 'hg-sheet hg-sheet-stickers';
+    sheet.className = 'hg-sheet hg-sheet-stickers hg-glass';
+    sheet.setAttribute('data-role', 'menu');
     sheet.setAttribute('role', 'dialog');
     sheet.setAttribute('aria-label', 'Эмодзи');
     const emojiGrid = FALLBACK.map((e) =>
@@ -2321,7 +2623,8 @@
 
   function openReactions(messageId, x, y) {
     const el = document.createElement('div');
-    el.className = 'hg-float';
+    el.className = 'hg-float hg-glass';
+    el.setAttribute('data-role', 'menu');
     const emojis = ['👍', '❤️', '🔥', '👏', '😂', '👀', '✅', '❗'];
     el.innerHTML = `<div class="hg-float-grid">${emojis.map((e) =>
       `<button type="button" data-e="${e}">${e}</button>`
@@ -2334,7 +2637,8 @@
 
   function openMsgMenu(messageId, x, y) {
     const el = document.createElement('div');
-    el.className = 'hg-float';
+    el.className = 'hg-float hg-glass';
+    el.setAttribute('data-role', 'menu');
     el.innerHTML = `<div class="hg-float-actions">
       <button type="button" data-a="react">${ICO.smile}<span>Реакция</span></button>
       <button type="button" data-a="reply">${ICO.reply}<span>Ответить</span></button>
@@ -2390,67 +2694,257 @@
     }
   }
 
-  function openAiMenu(x, y) {
-    const el = document.createElement('div');
-    el.className = 'hg-float';
-    el.setAttribute('data-ai-menu', '1');
-    el.innerHTML = `<div class="hg-float-actions">
-      <button type="button" data-mode="formal">${ICO.sparkles || ICO.ai}<span>Формально</span></button>
-      <button type="button" data-mode="short">${ICO.sparkles || ICO.ai}<span>Короче</span></button>
-      <button type="button" data-mode="grammar">${ICO.sparkles || ICO.ai}<span>Орфография</span></button>
-    </div>`;
-    const thread = root && root.querySelector('.hg-thread');
-    const rect = thread ? thread.getBoundingClientRect() : { left: 0, top: 0, width: 360, height: 400 };
-    const px = (x && x > 8) ? x : rect.left + Math.min(180, rect.width / 2);
-    const py = (y && y > 8) ? y : rect.top + Math.min(220, rect.height / 2);
-    placeFloat(el, px, py);
-    el.querySelectorAll('[data-mode]').forEach((btn) => {
-      btn.onclick = () => { clearFloats(); aiRewrite(btn.getAttribute('data-mode')); };
-    });
-  }
-
-  async function aiRewrite(mode) {
-    const input = root.querySelector('#hgInput');
-    const text = (input.value || '').trim();
-    if (!text) { alert('Введите текст'); return; }
-    mode = mode || 'formal';
-    const promptMap = {
-      formal: 'Перепиши формально, деловым стилем. Только результат.',
-      short: 'Сократи текст, сохрани смысл. Только результат.',
-      grammar: 'Исправь орфографию и пунктуацию. Только результат.'
-    };
-    const instruction = promptMap[mode] || promptMap.formal;
-    try {
-      const data = await api('/api/chat-groups/' + state.chatId + '/mimir', {
-        method: 'POST',
-        body: { text: instruction + '\n\n' + text }
-      });
-      const out = data.reply || data.message || data.text;
-      if (out && input) {
-        const ok = confirm('Было:\n' + text + '\n\nСтало:\n' + out + '\n\nПрименить?');
-        if (ok) input.value = typeof out === 'string' ? out : (out.message || text);
-      }
-    } catch (e) {
-      alert('ИИ недоступен: ' + e.message);
+  /* F11 AI Editor sheet — /api/chat-groups/ai/* (not Mimir) */
+  async function openAiEditorSheet() {
+    const input = root && root.querySelector('#hgInput');
+    const original = (input && input.value) || '';
+    if (countComposerLines(original) < 4) {
+      showToast('ИИ-редактор: наберите больше 3 строк');
+      return;
     }
-  }
-
-  async function loadAiChips() {
-    const box = root.querySelector('#hgAiChips');
-    if (!box || state.messages.length < 2) return;
-    box.innerHTML = ['Принято, сделаю', 'Уточните срок', 'На созвон?']
-      .map((t) => `<button type="button" class="hg-chip" data-chip="${esc(t)}">${esc(t)}</button>`).join('');
-    box.querySelectorAll('[data-chip]').forEach((b) => {
-      b.onclick = () => {
-        const input = root.querySelector('#hgInput');
-        if (!input) return;
-        input.value = b.getAttribute('data-chip') || '';
-        input.dispatchEvent(new Event('input', { bubbles: true }));
-        input.focus();
-        syncSendButton();
+    clearFloats();
+    root.querySelectorAll('.hg-ai-sheet,.hg-ai-style-sheet').forEach((el) => el.remove());
+    let styles = { presets: [], custom: [] };
+    try {
+      styles = await api('/api/chat-groups/ai/styles');
+    } catch (_) {}
+    const el = document.createElement('div');
+    el.className = 'hg-ai-sheet hg-sheet hg-glass';
+    el.setAttribute('data-role', 'card');
+    el.setAttribute('role', 'dialog');
+    el.setAttribute('aria-label', 'ИИ-редактор');
+    const tabIco = {
+      translate: ICO.languages || ICO.globe || '🌐',
+      style: ICO.wand || ICO.sparkles || '✨',
+      grammar: ICO.check || ICO['check-circle'] || '✓'
+    };
+    const presetHtml = (styles.presets || []).map((s) =>
+      `<button type="button" class="hg-ai-style" data-style="${esc(s.id)}"><span class="hg-ai-style-ico">${esc(s.icon_emoji || '✦')}</span><span>${esc(s.name)}</span></button>`
+    ).join('');
+    const customHtml = (styles.custom || []).map((s) =>
+      `<button type="button" class="hg-ai-style" data-style-id="${s.id}"><span class="hg-ai-style-ico">${esc(s.icon_emoji || '✦')}</span><span>${esc(s.name)}</span></button>`
+    ).join('');
+    el.innerHTML = `
+      <div class="hg-ai-sheet-head">
+        <button type="button" class="hg-ai-close" aria-label="Закрыть">${ICO.close || '✕'}</button>
+        <strong>ИИ-редактор</strong>
+        <span class="hg-ai-info" title="Обработка на сервере CRM, тексты не используются для обучения моделей">ⓘ</span>
+      </div>
+      <div class="hg-ai-tabs" role="tablist">
+        <button type="button" class="hg-ai-tab is-active" data-tab="translate"><span class="hg-ai-tab-ico">${tabIco.translate}</span><span>Перевод</span></button>
+        <button type="button" class="hg-ai-tab" data-tab="style"><span class="hg-ai-tab-ico">${tabIco.style}</span><span>Стилизация</span></button>
+        <button type="button" class="hg-ai-tab" data-tab="grammar"><span class="hg-ai-tab-ico">${tabIco.grammar}</span><span>Исправление</span></button>
+      </div>
+      <div class="hg-ai-body">
+        <div class="hg-ai-pane" data-pane="translate">
+          <div class="hg-ai-label">Оригинал: русский</div>
+          <div class="hg-ai-orig">${esc(original)}</div>
+          <label class="hg-ai-label">Перевод: <select id="hgAiLang"><option value="английский">английский</option><option value="немецкий">немецкий</option><option value="китайский">китайский</option></select></label>
+        </div>
+        <div class="hg-ai-pane" data-pane="style" hidden>
+          <div class="hg-ai-styles">${presetHtml}${customHtml}
+            <button type="button" class="hg-ai-style" data-new-style="1"><span class="hg-ai-style-ico">✨</span><span>Создать</span></button>
+          </div>
+        </div>
+        <div class="hg-ai-pane" data-pane="grammar" hidden>
+          <div class="hg-ai-label">Оригинал</div>
+          <div class="hg-ai-orig">${esc(original)}</div>
+        </div>
+        <div class="hg-ai-result-box">
+          <div class="hg-ai-label-row"><span>Результат</span>
+            <div class="hg-ai-result-tools">
+              <label class="hg-ai-emoji-tog"><input type="checkbox" id="hgAiEmoji"> Эмодзи</label>
+              <button type="button" class="hg-ai-tool-btn" id="hgAiCopy" title="Копировать" aria-label="Копировать">${ICO.copy || '⧉'}</button>
+              <button type="button" class="hg-ai-tool-btn" id="hgAiExpand" title="Развернуть" aria-label="Развернуть">${ICO.maximize || ICO.expand || '⤢'}</button>
+            </div>
+          </div>
+          <div class="hg-ai-result" id="hgAiResult"></div>
+          <div class="hg-ai-error" id="hgAiError" hidden></div>
+        </div>
+      </div>
+      <div class="hg-ai-actions">
+        <button type="button" class="hg-ai-primary" id="hgAiRun">Сгенерировать</button>
+        <button type="button" class="hg-ai-round" id="hgAiRefresh" title="Повторить" aria-label="Повторить" hidden>${ICO.refresh || ICO.rotate || '↻'}</button>
+        <button type="button" class="hg-ai-primary" id="hgAiApply" hidden>Применить</button>
+        <button type="button" class="hg-ai-round" id="hgAiSend" hidden title="Отправить">${ICO.send || '➤'}</button>
+      </div>`;
+    const thread = root.querySelector('.hg-thread') || root;
+    thread.appendChild(el);
+    let tab = 'translate';
+    let styleId = 'formal';
+    let lastOut = '';
+    const setTab = (t) => {
+      tab = t;
+      el.querySelectorAll('.hg-ai-tab').forEach((b) => b.classList.toggle('is-active', b.getAttribute('data-tab') === t));
+      el.querySelectorAll('.hg-ai-pane').forEach((p) => { p.hidden = p.getAttribute('data-pane') !== t; });
+    };
+    el.querySelectorAll('.hg-ai-tab').forEach((b) => { b.onclick = () => setTab(b.getAttribute('data-tab')); });
+    el.querySelector('.hg-ai-close').onclick = () => el.remove();
+    el.querySelectorAll('.hg-ai-style').forEach((b) => {
+      b.onclick = async () => {
+        if (b.getAttribute('data-new-style')) {
+          openNewStyleSheet(async (created) => {
+            if (created && created.style) {
+              styleId = String(created.style.id);
+              showToast('Стиль создан');
+              el.remove();
+              openAiEditorSheet();
+            }
+          });
+          return;
+        }
+        el.querySelectorAll('.hg-ai-style').forEach((x) => x.classList.remove('is-active'));
+        b.classList.add('is-active');
+        styleId = b.getAttribute('data-style-id') || b.getAttribute('data-style') || 'formal';
       };
     });
+    const runBtn = el.querySelector('#hgAiRun');
+    const applyBtn = el.querySelector('#hgAiApply');
+    const sendBtn = el.querySelector('#hgAiSend');
+    const refreshBtn = el.querySelector('#hgAiRefresh');
+    const resultEl = el.querySelector('#hgAiResult');
+    const errEl = el.querySelector('#hgAiError');
+    const copyBtn = el.querySelector('#hgAiCopy');
+    const expandBtn = el.querySelector('#hgAiExpand');
+    const runRewrite = async () => {
+      runBtn.disabled = true;
+      if (refreshBtn) refreshBtn.disabled = true;
+      resultEl.textContent = '…';
+      if (errEl) { errEl.hidden = true; errEl.textContent = ''; }
+      try {
+        const body = {
+          text: original,
+          mode: tab === 'translate' ? 'translate' : (tab === 'style' ? 'style' : 'grammar'),
+          emoji: !!(el.querySelector('#hgAiEmoji') && el.querySelector('#hgAiEmoji').checked)
+        };
+        if (body.mode === 'translate') body.target_lang = el.querySelector('#hgAiLang').value;
+        if (body.mode === 'style') body.style_id = styleId;
+        const data = await api('/api/chat-groups/ai/rewrite', { method: 'POST', body });
+        if (data.error || (!data.text && data.ok === false)) {
+          throw new Error(data.error || 'ИИ недоступен');
+        }
+        lastOut = data.text || '';
+        resultEl.textContent = lastOut;
+        applyBtn.hidden = !lastOut;
+        sendBtn.hidden = !lastOut;
+        if (refreshBtn) refreshBtn.hidden = !lastOut;
+        runBtn.textContent = 'Сгенерировать';
+        runBtn.hidden = !!lastOut;
+      } catch (e) {
+        lastOut = '';
+        resultEl.textContent = '';
+        applyBtn.hidden = true;
+        sendBtn.hidden = true;
+        runBtn.hidden = false;
+        runBtn.textContent = 'Сгенерировать';
+        if (refreshBtn) refreshBtn.hidden = false;
+        const msg = e.message || 'Ошибка ИИ';
+        if (errEl) {
+          errEl.hidden = false;
+          errEl.textContent = msg + ' — нажмите «Повторить»';
+        } else {
+          resultEl.textContent = msg;
+        }
+        showToast(msg);
+      }
+      runBtn.disabled = false;
+      if (refreshBtn) refreshBtn.disabled = false;
+    };
+    runBtn.onclick = runRewrite;
+    if (refreshBtn) refreshBtn.onclick = runRewrite;
+    if (copyBtn) {
+      copyBtn.onclick = async () => {
+        if (!lastOut) return;
+        try {
+          await navigator.clipboard.writeText(lastOut);
+          showToast('Скопировано');
+        } catch (_) {
+          showToast('Не удалось скопировать');
+        }
+      };
+    }
+    if (expandBtn) {
+      expandBtn.onclick = () => {
+        el.classList.toggle('is-expanded');
+      };
+    }
+    applyBtn.onclick = () => {
+      if (!input || !lastOut) return;
+      input.value = lastOut;
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+      el.remove();
+    };
+    sendBtn.onclick = () => {
+      if (!input || !lastOut) return;
+      input.value = lastOut;
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+      el.remove();
+      const send = root.querySelector('#hgSend');
+      if (send) send.click();
+    };
   }
+
+  function openNewStyleSheet(onCreated) {
+    root.querySelectorAll('.hg-ai-style-sheet').forEach((el) => el.remove());
+    const el = document.createElement('div');
+    el.className = 'hg-ai-style-sheet hg-sheet hg-glass';
+    el.setAttribute('data-role', 'card');
+    el.setAttribute('role', 'dialog');
+    el.setAttribute('aria-label', 'Новый стиль');
+    el.innerHTML = `
+      <div class="hg-ai-sheet-head">
+        <button type="button" class="hg-ai-close" aria-label="Закрыть">${ICO.close || '✕'}</button>
+        <strong>Новый стиль</strong>
+        <span style="width:36px"></span>
+      </div>
+      <div class="hg-ai-body">
+        <div class="hg-ai-style-avatar" aria-hidden="true">+</div>
+        <label class="hg-ai-label">Название
+          <input type="text" class="hg-ai-field" id="hgNewStyleName" placeholder="Название стиля…" maxlength="64">
+        </label>
+        <label class="hg-ai-label">Инструкция
+          <textarea class="hg-ai-field hg-ai-field-area" id="hgNewStylePrompt" placeholder="Как переписывать текст…" rows="4" maxlength="4000"></textarea>
+        </label>
+        <label class="hg-ai-emoji-tog hg-ai-profile-tog">
+          <input type="checkbox" id="hgNewStylePublic"> Со ссылкой на мой профиль
+        </label>
+      </div>
+      <div class="hg-ai-actions">
+        <button type="button" class="hg-ai-primary" id="hgNewStyleCreate">Создать</button>
+      </div>`;
+    const host = root.querySelector('.hg-thread') || root;
+    host.appendChild(el);
+    el.querySelector('.hg-ai-close').onclick = () => el.remove();
+    el.querySelector('#hgNewStyleCreate').onclick = async () => {
+      const name = (el.querySelector('#hgNewStyleName').value || '').trim();
+      const promptText = (el.querySelector('#hgNewStylePrompt').value || '').trim();
+      if (!name || !promptText) {
+        showToast('Укажите название и инструкцию');
+        return;
+      }
+      try {
+        const created = await api('/api/chat-groups/ai/styles', {
+          method: 'POST',
+          body: { name, prompt: promptText, icon_emoji: '✦' }
+        });
+        const withProfile = !!(el.querySelector('#hgNewStylePublic') && el.querySelector('#hgNewStylePublic').checked);
+        if (withProfile && created.style && created.style.id) {
+          try {
+            await api('/api/chat-groups/ai/styles/' + created.style.id + '/share', {
+              method: 'POST',
+              body: { with_profile_link: true }
+            });
+          } catch (_) {}
+        }
+        el.remove();
+        if (typeof onCreated === 'function') onCreated(created);
+      } catch (e) {
+        showToast(e.message || 'Ошибка создания стиля');
+      }
+    };
+  }
+
+  /* F11 AI Editor — chips removed (visual wave) */
 
   function startAudioCall() {
     const started = Date.now();
@@ -2552,9 +3046,9 @@
     if (!token()) return;
     if (_mounting) return _mounting;
     _mounting = (async () => {
-      applyFxMode(localStorage.getItem('hg_fx'));
+      applyFxMode(localStorage.getItem('hg_power_saving') || localStorage.getItem('hg_fx'));
       ensureDom();
-      await Promise.all([loadChats(), loadStories()]);
+      await Promise.all([loadFolders(), loadChats(), loadStories(), loadBirthdays()]);
       syncRailBadge();
       // warm presence for strip
       try {

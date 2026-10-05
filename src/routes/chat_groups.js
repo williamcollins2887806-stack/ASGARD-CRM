@@ -279,7 +279,7 @@ module.exports = async function(fastify) {
     preHandler: [fastify.requirePermission('chat_groups', 'read')]
   }, async (request) => {
     const userId = request.user.id;
-    const { archived = 'false', search } = request.query;
+    const { archived = 'false', search, folder_id: folderIdRaw } = request.query;
 
     let sql = `
       SELECT c.*,
@@ -341,6 +341,20 @@ module.exports = async function(fastify) {
     if (search) {
       sql += ` AND c.name ILIKE $${idx}`;
       params.push(`%${search}%`);
+      idx++;
+    }
+
+    // F10: filter by per-user folder membership
+    const folderId = folderIdRaw != null && String(folderIdRaw).trim() !== ''
+      ? parsePositiveInt(folderIdRaw)
+      : null;
+    if (folderId != null) {
+      sql += ` AND EXISTS (
+        SELECT 1 FROM huginn_chat_folder_members fm
+        JOIN huginn_chat_folders ff ON ff.id = fm.folder_id
+        WHERE fm.chat_id = c.id AND ff.user_id = $1 AND ff.id = $${idx}
+      )`;
+      params.push(folderId);
       idx++;
     }
 

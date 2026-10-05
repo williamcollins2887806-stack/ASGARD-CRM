@@ -4,57 +4,47 @@
   --hg-rail-w: 56px;
   --hg-panel-w: 400px;
 
-  /* TG-ATLAS tokens (tests/reports/huginn-ui/FOR-REVIEW/TG-ATLAS.json) */
-  /* R87: nav keeps ATLAS 56; composer back to R79 sizes (46.9 best) */
-  /* R130: restore R128 geom 36 (R129 ATLAS 40 → composer +16 FAIL) */
-  --hg-tg-tool-size: 36px;
-  --hg-tg-tool-bg: var(--bg3, #1C2130);
-  --hg-tg-input-h: 36px;
-  --hg-tg-input-radius: 18px;
-  --hg-tg-input-bg: var(--bg3, #1C2130);
+  /* Liquid Glass F1–F5 TARGET (HUGINN-LIQUID-GLASS-TOKENS hg_token_diff_proposal) */
+  --hg-tg-tool-size: 40px;
+  --hg-tg-tool-bg: var(--bg3, #1C2130); /* fill via .hg-glass composer */
+  --hg-tg-input-h: 40px;
+  --hg-tg-input-radius: 20px;
+  --hg-tg-input-bg: var(--bg3, #1C2130); /* fill via .hg-glass composer */
   --hg-tg-composer-gap: 6px;
   --hg-tg-composer-pad: 4px 8px 0;
   --hg-tg-composer-bar-bg: color-mix(in srgb, var(--bg2, #151922) 18%, transparent);
   --hg-tg-composer-blur: 72px;
-  --hg-tg-nav-h: 52px;
   --hg-tg-nav-inset: 12px;
-  --hg-tg-nav-radius: 26px;
-  /* R86: ATLAS geometry + dense fill (R85 ATLAS α nav +8.26) */
-  --hg-tg-nav-h: 56px;
-  /* R126: revert nav α (R125 0.72 → nav +1.98 FAIL); keep R124 dense */
-  --hg-tg-nav-bg: color-mix(in srgb, var(--bg3, #1C2130) 90%, transparent);
-  /* R175: restore blur 40 (R171 48 no nav delta; header cleaner @R163) */
+  --hg-tg-nav-h: 64px;
+  --hg-tg-nav-radius: 32px;
+  --hg-tg-nav-bg: color-mix(in srgb, var(--bg3, #1C2130) 90%, transparent); /* fill via .hg-glass nav */
   --hg-tg-nav-blur: 40px;
-  --hg-tg-nav-radius: 28px;
-  --hg-tg-fab-size: 56px;
+  --hg-tg-fab-size: 64px;
   --hg-tg-fab-gap: 8px;
   --hg-tg-fab-bg: color-mix(in srgb, var(--bg3, #1C2130) 90%, transparent);
-  /* R100: TG active = dark charcoal disk under blue glyph (not blue bloom) */
-  --hg-tg-active-circle: var(--bg3, rgba(28, 33, 48, 0.92));
+  /* Active tab = charcoal selection disc (not blue bloom) */
+  --hg-tg-active-circle: color-mix(in srgb, var(--bg3, #1C2130) 92%, var(--t1, #fff));
   --hg-tg-badge: #FF3B30;
   --hg-tg-nav-icon-active: var(--blue-l, #4A90D9);
   --hg-tg-nav-muted: #FFFFFF;
-  /* R136: restore header α0.48 (R135 0.40 → +0.18 FAIL) */
   --hg-tg-header-inset: 12px;
-  --hg-tg-header-radius: 17px;
-  --hg-tg-header-h: 36px;
+  --hg-tg-header-radius: 22px;
+  --hg-tg-header-h: 44px;
   --hg-tg-header-bg: rgba(22, 19, 20, 0.48);
   --hg-tg-header-blur: 36px;
   --hg-tg-pin-h: 40px;
-  --hg-tg-pin-radius: 16px;
-  /* R236 HOLD R234: pin α0.72 (R235 0.80 → +0.20) */
+  --hg-tg-pin-radius: 20px;
   --hg-tg-pin-bg: rgba(29, 27, 28, 0.72);
-  /* R121: TG pin sits flush under title pill (SBS gap FAIL) */
   --hg-tg-pin-gap: 2px;
-  /* TG iOS dark: white capsule + black digits (REF header close-up) */
   --hg-tg-back-badge-bg: #FFFFFF;
   --hg-tg-back-badge-fg: #000000;
-  --hg-tg-bubble-radius: 18px;
-  --hg-tg-bubble-them: rgba(36, 36, 38, 0.92);
-  --hg-tg-bubble-me: #2B5278;
+  --hg-tg-bubble-radius: 17px;
+  --hg-tg-bubble-tail-radius: 7px;
+  --hg-tg-bubble-them: color-mix(in srgb, var(--bg3, #1C2130) 92%, transparent);
+  --hg-tg-bubble-me: color-mix(in srgb, var(--blue-l, #4A90D9) 72%, var(--bg3, #1C2130));
   --hg-tg-av-msg: 32px;
-  --hg-tg-row-h: 68px;
-  --hg-tg-contact-row-h: 64px;
+  --hg-tg-row-h: 72px;
+  --hg-tg-contact-row-h: 53px;
 
   /* CRM dark — match main content canvas (bg2 #151922), not pure black bg1 */
   --hg-bg: var(--bg2, #151922);
@@ -88,16 +78,21 @@
   --hg-radius-popup: 12px;
   --hg-radius-pill: 999px;
   --hg-radius: 10px;
-  --hg-radius-input: 18px;
+  --hg-radius-input: 20px;
 
-  /* Liquid Glass 2026 (CRM colours; blur instead of refraction) */
-  --hg-glass-bg: color-mix(in srgb, var(--bg3, #1C2130) 72%, transparent);
-  --hg-glass-bg-strong: color-mix(in srgb, var(--bg3, #1C2130) 88%, transparent);
+  /* Liquid Glass F0 — one material + role vars (DS HUGINN-LIQUID-GLASS) */
+  --hg-side-inset: 16px;
+  --hg-glass-fill-pct: 72%;
   --hg-glass-blur: 28px;
-  --hg-glass-sat: 1.35;
-  --hg-glass-border: color-mix(in srgb, var(--brd-m, rgba(255, 255, 255, 0.12)) 80%, transparent);
+  --hg-glass-rim-pct: 12%;
+  --hg-glass-radius: 20px;
+  --hg-glass-sat: 180%;
+  /* Compat aliases (ROUND-7 selectors) — derived from role vars */
+  --hg-glass-bg: color-mix(in srgb, var(--bg3, #1C2130) var(--hg-glass-fill-pct), transparent);
+  --hg-glass-bg-strong: color-mix(in srgb, var(--bg3, #1C2130) 88%, transparent);
+  --hg-glass-border: color-mix(in srgb, var(--t1, #fff) var(--hg-glass-rim-pct), transparent);
   --hg-glass-shadow: 0 8px 32px rgba(0, 0, 0, 0.28);
-  --hg-fx: full; /* overridden by html[data-hg-fx] */
+  --hg-fx: full;
 
   --hg-pad-bubble: 8px 12px;
   --hg-pad-panel: 12px 16px;
@@ -116,10 +111,10 @@
 
   --hg-font: -apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, Roboto, sans-serif;
   --hg-font-meta: 11px/1.2;
-  --hg-font-name: 16px/1.25;
+  --hg-font-name: 17px/1.25;
   --hg-font-preview: 15px/1.35;
-  --hg-font-body: 16px/1.35;
-  --hg-font-title: 16px/1.3;
+  --hg-font-body: 17px/1.35;
+  --hg-font-title: 17px/1.3;
   --hg-font-status: 12px/1.3;
   --hg-font-screen: 18px/1.2;
 
@@ -133,9 +128,9 @@
 
   --hg-hover: var(--bg-hover, var(--bg3, rgba(255, 255, 255, 0.04)));
   --hg-press: rgba(255, 255, 255, 0.06);
-  /* Same active wash for chats + contacts (CRM gold) */
-  --hg-active-row: var(--gold-bg, rgba(212, 168, 67, 0.16));
-  --hg-active-edge: var(--gold, #D4A843);
+  /* List active: CRM charcoal/blue edge — gold ONLY on rail (DS §9.9) */
+  --hg-active-row: color-mix(in srgb, var(--bg3, #1C2130) 88%, var(--t1, #fff));
+  --hg-active-edge: var(--blue-l, #4A90D9);
   --hg-sticky-bg: color-mix(in srgb, var(--bg2, #151922) 92%, transparent);
   --hg-nav-bg: color-mix(in srgb, var(--bg3, #1C2130) 88%, transparent);
   --hg-quick-bg: var(--bg3, #1C2130);
@@ -145,13 +140,84 @@
   --hg-reply-fg: rgba(255, 255, 255, 0.7);
 }
 
+/* Single glass primitive — colours from CRM; geometry/fill per data-role */
 .hg-glass {
-  background: var(--hg-glass-bg);
-  border: 0.5px solid var(--hg-glass-border);
-  box-shadow: var(--hg-glass-shadow);
-  backdrop-filter: blur(var(--hg-glass-blur)) saturate(var(--hg-glass-sat));
+  background: color-mix(in srgb, var(--bg3, #1C2130) var(--hg-glass-fill-pct), transparent);
   -webkit-backdrop-filter: blur(var(--hg-glass-blur)) saturate(var(--hg-glass-sat));
+          backdrop-filter: blur(var(--hg-glass-blur)) saturate(var(--hg-glass-sat));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--t1, #fff) var(--hg-glass-rim-pct), transparent);
+  border-radius: var(--hg-glass-radius);
+  border: 0;
   transform: none; /* transforms kill backdrop-filter sampling */
+}
+.hg-glass[data-role="composer"] {
+  --hg-glass-fill-pct: 65%;
+  --hg-glass-blur: 20px;
+  --hg-glass-rim-pct: 11%;
+  --hg-glass-radius: 20px;
+  --hg-glass-sat: 180%;
+}
+.hg-glass[data-role="nav"] {
+  --hg-glass-fill-pct: 82%;
+  --hg-glass-blur: 40px;
+  --hg-glass-rim-pct: 12%;
+  --hg-glass-radius: 32px;
+  --hg-glass-sat: 180%;
+}
+.hg-glass[data-role="fab"] {
+  --hg-glass-fill-pct: 82%;
+  --hg-glass-blur: 40px;
+  --hg-glass-rim-pct: 12%;
+  --hg-glass-radius: 50%;
+  --hg-glass-sat: 180%;
+}
+.hg-glass[data-role="header"] {
+  --hg-glass-fill-pct: 48%;
+  --hg-glass-blur: 32px;
+  --hg-glass-rim-pct: 10%;
+  --hg-glass-radius: 22px;
+  --hg-glass-sat: 160%;
+}
+.hg-glass[data-role="pin"] {
+  --hg-glass-fill-pct: 72%;
+  --hg-glass-blur: 20px;
+  --hg-glass-rim-pct: 8%;
+  --hg-glass-radius: 20px;
+  --hg-glass-sat: 160%;
+}
+.hg-glass[data-role="menu"] {
+  --hg-glass-fill-pct: 80%;
+  --hg-glass-blur: 32px;
+  --hg-glass-rim-pct: 10%;
+  --hg-glass-radius: 18px;
+  --hg-glass-sat: 180%;
+}
+.hg-glass[data-role="card"] {
+  --hg-glass-fill-pct: 100%;
+  --hg-glass-blur: 0px;
+  --hg-glass-rim-pct: 0%;
+  --hg-glass-radius: 26px;
+  --hg-glass-sat: 100%;
+  background: var(--bg3, #1C2130);
+  -webkit-backdrop-filter: none;
+          backdrop-filter: none;
+  box-shadow: none;
+  border: 0;
+  border-bottom: 0.5px solid var(--brd-m, rgba(255, 255, 255, 0.08));
+}
+.hg-glass[data-role="segment"] {
+  --hg-glass-fill-pct: 55%;
+  --hg-glass-blur: 16px;
+  --hg-glass-rim-pct: 10%;
+  --hg-glass-radius: 20px;
+  --hg-glass-sat: 160%;
+}
+.hg-glass[data-role="media-chrome"] {
+  --hg-glass-fill-pct: 70%;
+  --hg-glass-blur: 28px;
+  --hg-glass-rim-pct: 10%;
+  --hg-glass-radius: 16px;
+  --hg-glass-sat: 180%;
 }
 
 html[data-theme="light"] {
@@ -161,10 +227,10 @@ html[data-theme="light"] {
   --hg-tg-fab-bg: color-mix(in srgb, var(--bg2, #FDFAF5) 90%, transparent);
   --hg-tg-header-bg: color-mix(in srgb, var(--bg2, #FDFAF5) 78%, transparent);
   --hg-tg-pin-bg: color-mix(in srgb, var(--bg3, #EDE8DC) 82%, transparent);
-  --hg-tg-active-circle: var(--gold-bg, rgba(184, 132, 26, 0.16));
+  --hg-tg-active-circle: color-mix(in srgb, var(--bg3, #EDE8DC) 92%, var(--t1, #1A1510));
   --hg-tg-nav-icon-active: var(--blue-l, #2B5F9E);
-  --hg-tg-bubble-them: #FFFFFF;
-  --hg-tg-bubble-me: #EFFDDE;
+  --hg-tg-bubble-them: color-mix(in srgb, var(--bg3, #EDE8DC) 92%, transparent);
+  --hg-tg-bubble-me: color-mix(in srgb, var(--blue-l, #2B5F9E) 72%, var(--bg3, #EDE8DC));
   /* CRM light — match main parchment/card (bg2), not cool TG #E6EBEE */
   --hg-bg: var(--bg2, #FDFAF5);
   --hg-thread-bg: var(--bg2, #FDFAF5);
@@ -185,7 +251,7 @@ html[data-theme="light"] {
   --hg-online: var(--green, #31B545);
   --hg-hover: var(--bg-hover, var(--bg3, rgba(0, 0, 0, 0.04)));
   --hg-press: rgba(0, 0, 0, 0.06);
-  --hg-active-row: var(--gold-bg, rgba(184, 132, 26, 0.16));
+  --hg-active-row: color-mix(in srgb, var(--bg3, #EDE8DC) 85%, var(--t1, #1A1510));
   --hg-active-edge: var(--gold, #B8841A);
   --hg-sticky-bg: color-mix(in srgb, var(--bg2, #FDFAF5) 92%, transparent);
   --hg-nav-bg: color-mix(in srgb, var(--bg2, #FDFAF5) 78%, transparent);
@@ -197,10 +263,20 @@ html[data-theme="light"] {
   --hg-date-pill-fg: #000000;
   --hg-reply-bg: rgba(0, 0, 0, 0.04);
   --hg-reply-fg: rgba(0, 0, 0, 0.55);
-  --hg-glass-bg: color-mix(in srgb, var(--bg3, #EDE8DC) 78%, transparent);
+  --hg-glass-fill-pct: 78%;
+  --hg-glass-bg: color-mix(in srgb, var(--bg3, #EDE8DC) var(--hg-glass-fill-pct), transparent);
   --hg-glass-bg-strong: color-mix(in srgb, var(--bg2, #FDFAF5) 88%, transparent);
-  --hg-glass-border: color-mix(in srgb, var(--brd-m, rgba(139, 120, 90, 0.18)) 90%, transparent);
+  --hg-glass-border: color-mix(in srgb, var(--t1, #1A1510) var(--hg-glass-rim-pct), transparent);
   --hg-glass-shadow: 0 8px 28px rgba(80, 60, 30, 0.12);
+}
+html[data-theme="light"] .hg-glass {
+  background: color-mix(in srgb, var(--bg3, #EDE8DC) var(--hg-glass-fill-pct), transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--t1, #1A1510) var(--hg-glass-rim-pct), transparent);
+}
+html[data-theme="light"] .hg-glass[data-role="card"] {
+  background: var(--bg3, #EDE8DC);
+  box-shadow: none;
+  border-bottom: 0.5px solid var(--brd-m, rgba(139, 120, 90, 0.14));
 }
 
 @media (max-width: 768px) {
@@ -347,7 +423,8 @@ html[data-theme="light"] {
 
 .hg-panel-head {
   min-height: var(--hg-head-h);
-  display: flex;
+  display: grid;
+  grid-template-columns: auto 1fr auto;
   align-items: center;
   gap: 8px;
   padding: var(--hg-pad-panel);
@@ -358,11 +435,35 @@ html[data-theme="light"] {
 .hg-panel-head h2 {
   margin: 0;
   font: 600 var(--hg-font-title) var(--hg-font);
-  flex: 1;
+  text-align: center;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+.hg-list-head-hybrid .hg-head-edit {
+  border: 0;
+  background: transparent;
+  color: var(--blue-l, #4A90D9);
+  font: 600 15px/1 var(--hg-font);
+  cursor: pointer;
+  padding: 8px 4px;
+  white-space: nowrap;
+}
+.hg-list-head-hybrid .hg-head-actions {
+  display: inline-flex;
+  gap: 4px;
+  align-items: center;
+}
+.hg-list-edit-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 8px 12px 0;
+  padding: 8px 12px;
+  border-radius: 14px;
+  font: 500 13px/1.2 var(--hg-font);
+  color: var(--hg-text);
 }
 
 .hg-icon-btn {
@@ -443,6 +544,461 @@ html[data-theme="light"] {
   background: var(--ok-t, #4ADE80);
   border: 2px solid var(--hg-panel);
 }
+
+/* F10 folder capsules */
+.hg-folder-row {
+  display: flex;
+  gap: 8px;
+  margin: 8px 12px 0;
+  padding: 0 0 4px;
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+.hg-folder-cap {
+  flex: 0 0 auto;
+  height: 32px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 16px;
+  font: 500 13px/32px var(--hg-font);
+  color: var(--hg-text);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.hg-folder-cap.is-active {
+  background: color-mix(in srgb, var(--bg3, #1C2130) 92%, var(--t1, #fff));
+  color: var(--blue-l, #4A90D9);
+}
+.hg-folder-add { min-width: 32px; padding: 0 10px; font-weight: 600; }
+
+/* Stories rail + birthday banners (visual wave; no geo) */
+.hg-stories-rail {
+  display: flex;
+  gap: 12px;
+  margin: 8px 0 4px;
+  padding: 4px 12px 8px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.hg-stories-rail::-webkit-scrollbar { display: none; }
+.hg-story-item {
+  flex: 0 0 auto;
+  width: 64px;
+  border: 0;
+  background: transparent;
+  color: var(--hg-text);
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 0;
+}
+.hg-story-ring {
+  width: 56px; height: 56px;
+  border-radius: 50%;
+  padding: 2px;
+  background: color-mix(in srgb, var(--hg-muted) 35%, transparent);
+}
+.hg-story-item.is-unread .hg-story-ring {
+  background: linear-gradient(135deg, var(--blue-l, #4A90D9), color-mix(in srgb, var(--blue-l, #4A90D9) 40%, #fff));
+}
+.hg-story-av {
+  width: 100%; height: 100%;
+  border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font: 600 14px/1 var(--hg-font);
+  color: #fff;
+  background: var(--bg3, #1C2130);
+  border: 2px solid var(--bg2, #151922);
+}
+.hg-story-av.is-add {
+  background: color-mix(in srgb, var(--bg3, #1C2130) 80%, transparent);
+  color: var(--blue-l, #4A90D9);
+  font-size: 22px;
+}
+.hg-story-label {
+  font: 500 11px/1.1 var(--hg-font);
+  color: var(--hg-muted);
+  max-width: 64px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.hg-story-viewer {
+  position: absolute;
+  inset: 0;
+  z-index: 80;
+  background: color-mix(in srgb, var(--bg1, #0b0e14) 92%, transparent);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 24px 16px;
+}
+.hg-story-viewer-close {
+  position: absolute;
+  top: 12px; right: 12px;
+  width: 36px; height: 36px;
+  border: 0; border-radius: 50%;
+  background: color-mix(in srgb, var(--bg3) 70%, transparent);
+  color: var(--t1, #fff);
+  cursor: pointer;
+}
+.hg-story-viewer-meta {
+  position: absolute;
+  top: 16px; left: 16px;
+  font: 600 15px/1.2 var(--hg-font);
+  color: var(--t1, #fff);
+}
+.hg-story-viewer-body img,
+.hg-story-viewer-body video {
+  max-width: 100%;
+  max-height: 70vh;
+  border-radius: 16px;
+}
+.hg-story-viewer-text {
+  font: 500 18px/1.35 var(--hg-font);
+  color: var(--t1, #fff);
+  text-align: center;
+  padding: 24px;
+}
+.hg-bday-rail {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 8px 12px 0;
+}
+.hg-bday-card {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 14px;
+}
+.hg-bday-av {
+  width: 36px; height: 36px;
+  border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  color: #fff;
+  font: 600 12px/1 var(--hg-font);
+  flex: 0 0 auto;
+}
+.hg-bday-meta {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font: 500 12px/1.2 var(--hg-font);
+  color: var(--hg-muted);
+}
+.hg-bday-meta strong {
+  font: 600 13px/1.2 var(--hg-font);
+  color: var(--hg-text);
+}
+.hg-bday-x {
+  border: 0;
+  background: transparent;
+  color: var(--hg-muted);
+  cursor: pointer;
+  padding: 6px;
+}
+.hg-pinned-block {
+  margin: 0 0 4px;
+  padding: 6px 0 2px;
+  background: color-mix(in srgb, var(--bg3, #1C2130) 55%, transparent);
+  border-radius: 12px;
+}
+.hg-pinned-label {
+  padding: 4px 16px 6px;
+  font: 600 12px/1.2 var(--hg-font);
+  color: var(--hg-muted);
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+.hg-list-sep {
+  height: 8px;
+}
+.hg-chat-row.is-edit {
+  grid-template-columns: 28px var(--hg-av-list) 1fr auto;
+  padding-left: 8px;
+}
+.hg-chat-row.is-edit .hg-chat-check {
+  grid-column: 1;
+  grid-row: 1 / span 2;
+  align-self: center;
+  justify-self: center;
+}
+.hg-chat-row.is-edit .hg-chat-av { grid-column: 2; }
+.hg-chat-row.is-edit .hg-chat-name,
+.hg-chat-row.is-edit .hg-chat-prev { grid-column: 3; }
+.hg-chat-row.is-edit .hg-chat-time,
+.hg-chat-row.is-edit .hg-badge { grid-column: 4; }
+.hg-chat-check {
+  width: 22px; height: 22px;
+  border-radius: 50%;
+  border: 2px solid var(--hg-muted);
+  box-sizing: border-box;
+}
+.hg-chat-check.is-on {
+  background: var(--blue-l, #4A90D9);
+  border-color: var(--blue-l, #4A90D9);
+  box-shadow: inset 0 0 0 3px var(--bg2, #151922);
+}
+.hg-chat-row.is-selected {
+  background: color-mix(in srgb, var(--blue-l, #4A90D9) 12%, transparent);
+}
+.hg-composer-left {
+  display: flex;
+  flex-direction: column-reverse;
+  align-items: center;
+  gap: 6px;
+  flex: 0 0 auto;
+}
+.hg-ai-btn {
+  position: relative;
+  width: 36px; height: 36px;
+  border-radius: 50%;
+}
+.hg-ai-btn-label {
+  position: absolute;
+  bottom: -2px; right: -2px;
+  font: 700 8px/1 var(--hg-font);
+  color: var(--blue-l, #4A90D9);
+  background: var(--bg2, #151922);
+  border-radius: 4px;
+  padding: 1px 2px;
+}
+.hg-ai-tab {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  height: 44px;
+}
+.hg-ai-tab-ico {
+  width: 16px; height: 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+}
+.hg-ai-tab-ico svg { width: 14px; height: 14px; }
+.hg-ai-result-tools {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.hg-ai-tool-btn {
+  width: 28px; height: 28px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--blue-l, #4A90D9);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.hg-ai-error {
+  margin-top: 8px;
+  font: 500 12px/1.3 var(--hg-font);
+  color: var(--hg-danger, #FF453A);
+}
+.hg-ai-sheet.is-expanded {
+  max-height: min(92%, 860px);
+  top: 8px;
+  bottom: 8px;
+}
+.hg-ai-style-sheet {
+  position: absolute;
+  left: 12px; right: 12px; bottom: 12px;
+  z-index: 45;
+  max-height: min(78%, 640px);
+  display: flex;
+  flex-direction: column;
+  border-radius: 28px;
+  overflow: hidden;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.45);
+}
+.hg-ai-style-avatar {
+  width: 72px; height: 72px;
+  margin: 8px auto 12px;
+  border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  background: color-mix(in srgb, var(--bg3) 88%, transparent);
+  color: var(--blue-l, #4A90D9);
+  font-size: 28px;
+}
+.hg-ai-field {
+  display: block;
+  width: 100%;
+  margin-top: 4px;
+  padding: 10px 12px;
+  border: 0;
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--bg2) 70%, transparent);
+  color: var(--t1, #fff);
+  font: 400 15px/1.3 var(--hg-font);
+  box-sizing: border-box;
+}
+.hg-ai-field-area { resize: vertical; min-height: 88px; }
+.hg-ai-profile-tog { display: flex; align-items: center; gap: 8px; margin: 12px 0; }
+.hg-settings-toggle-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  cursor: pointer;
+}
+.hg-settings-toggle-row input { margin-left: auto; }
+.hg-file-card {
+  text-decoration: none;
+  color: inherit;
+  cursor: pointer;
+}
+.hg-file-dl {
+  color: var(--blue-l, #4A90D9);
+  display: inline-flex;
+  align-items: center;
+}
+.hg-bubble.is-pin-flash {
+  outline: 2px solid var(--blue-l, #4A90D9);
+  outline-offset: 2px;
+}
+
+/* F11 AI editor sheet */
+.hg-ai-sheet {
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  bottom: 12px;
+  z-index: 40;
+  max-height: min(78%, 640px);
+  display: flex;
+  flex-direction: column;
+  border-radius: 28px;
+  overflow: hidden;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.45);
+}
+.hg-ai-sheet-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 14px 8px;
+}
+.hg-ai-sheet-head strong {
+  flex: 1;
+  text-align: center;
+  font: 700 17px/1.2 var(--hg-font);
+  color: var(--t1, #fff);
+}
+.hg-ai-close, .hg-ai-info {
+  width: 36px; height: 36px;
+  border: 0; background: transparent;
+  color: var(--t1, #fff);
+  cursor: pointer;
+  font-size: 18px;
+}
+.hg-ai-tabs {
+  display: flex;
+  gap: 6px;
+  padding: 0 12px 10px;
+}
+.hg-ai-tab {
+  flex: 1;
+  height: 36px;
+  border: 0;
+  border-radius: 18px;
+  background: transparent;
+  color: var(--hg-muted);
+  font: 500 12px/1 var(--hg-font);
+  cursor: pointer;
+}
+.hg-ai-tab.is-active {
+  background: color-mix(in srgb, var(--bg3, #1C2130) 88%, var(--t1, #fff));
+  color: var(--t1, #fff);
+}
+.hg-ai-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0 14px 12px;
+}
+.hg-ai-label, .hg-ai-label-row {
+  font: 500 12px/1.3 var(--hg-font);
+  color: var(--hg-muted);
+  margin: 8px 0 4px;
+}
+.hg-ai-label-row { display: flex; justify-content: space-between; align-items: center; }
+.hg-ai-orig, .hg-ai-result {
+  font: 400 15px/1.35 var(--hg-font);
+  color: var(--t1, #fff);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.hg-ai-result-box {
+  margin-top: 10px;
+  padding: 10px 12px;
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--bg2, #151922) 70%, transparent);
+}
+.hg-ai-styles {
+  display: flex;
+  gap: 10px;
+  overflow-x: auto;
+  padding: 6px 0 10px;
+}
+.hg-ai-style {
+  flex: 0 0 auto;
+  width: 72px;
+  border: 0;
+  background: transparent;
+  color: var(--t1, #fff);
+  font: 500 11px/1.2 var(--hg-font);
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+.hg-ai-style.is-active .hg-ai-style-ico {
+  outline: 2px solid var(--blue-l, #4A90D9);
+}
+.hg-ai-style-ico {
+  width: 52px; height: 52px;
+  border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  background: color-mix(in srgb, var(--bg3, #1C2130) 90%, transparent);
+  font-size: 22px;
+}
+.hg-ai-actions {
+  display: flex;
+  gap: 8px;
+  padding: 10px 14px 14px;
+  align-items: center;
+}
+.hg-ai-primary {
+  flex: 1;
+  height: 48px;
+  border: 0;
+  border-radius: 24px;
+  background: var(--blue-l, #4A90D9);
+  color: #fff;
+  font: 700 16px/1 var(--hg-font);
+  cursor: pointer;
+}
+.hg-ai-round {
+  width: 48px; height: 48px;
+  border: 0; border-radius: 50%;
+  background: var(--blue-l, #4A90D9);
+  color: #fff;
+  cursor: pointer;
+  display: inline-flex; align-items: center; justify-content: center;
+}
+.hg-ai-btn[hidden] { display: none !important; }
+.hg-emoji-tog { font: 500 12px/1 var(--hg-font); color: var(--hg-muted); }
 
 .hg-tabs {
   display: flex;
@@ -564,7 +1120,7 @@ html[data-theme="light"] {
 .hg-chat-name {
   grid-column: 2;
   grid-row: 1;
-  font: 600 16px/1.25 var(--hg-font);
+  font: 600 17px/1.25 var(--hg-font);
   color: var(--hg-text);
   white-space: nowrap;
   overflow: hidden;
@@ -592,6 +1148,7 @@ html[data-theme="light"] {
   overflow: hidden;
   text-overflow: ellipsis;
   min-width: 0;
+  max-height: 1.35em;
 }
 .hg-chat-prev.is-unread { color: var(--hg-text); font-weight: 600; }
 .hg-chat-prev .hg-draft {
@@ -780,7 +1337,7 @@ html[data-theme="light"] .hg-bubble {
   background: var(--hg-tg-bubble-me);
   opacity: 1;
   border-radius: var(--hg-tg-bubble-radius);
-  border-bottom-right-radius: 6px;
+  border-bottom-right-radius: var(--hg-tg-bubble-tail-radius, 7px);
   box-shadow: none;
   clip-path: none;
   -webkit-clip-path: none;
@@ -790,7 +1347,7 @@ html[data-theme="light"] .hg-bubble {
   background: var(--hg-tg-bubble-them);
   opacity: 1;
   border-radius: var(--hg-tg-bubble-radius);
-  border-bottom-left-radius: 6px;
+  border-bottom-left-radius: var(--hg-tg-bubble-tail-radius, 7px);
   max-width: min(82%, 320px);
   clip-path: none;
   -webkit-clip-path: none;
@@ -862,7 +1419,7 @@ html[data-theme="light"] .hg-bubble {
 }
 .hg-voice-play {
   width: 32px; height: 32px; border: 0; border-radius: 50%;
-  background: rgba(255, 255, 255, 0.08);
+  background: color-mix(in srgb, var(--t1, #fff) 12%, transparent);
   color: var(--hg-text);
   display: inline-flex; align-items: center; justify-content: center;
   cursor: pointer; flex: 0 0 auto;
@@ -874,9 +1431,10 @@ html[data-theme="light"] .hg-bubble {
 .hg-voice-wave i {
   width: 2px; border-radius: 1px;
   background: var(--hg-accent-chat);
-  display: block; opacity: 0.55;
+  display: block; opacity: 0.4;
 }
-.hg-voice.is-playing .hg-voice-wave i { opacity: 1; }
+.hg-bubble.me .hg-voice-wave i { opacity: 0.55; }
+.hg-voice.is-playing .hg-voice-wave i { opacity: 0.95; }
 .hg-voice-dur {
   font: 500 12px/1 var(--hg-font);
   color: var(--hg-muted);
@@ -988,17 +1546,22 @@ html[data-theme="light"] .hg-reply:hover {
 
 /* Quick reaction pill — above bottom nav (z=100) within .hg-chrome */
 .hg-quick-react {
+  --hg-glass-fill-pct: 80%;
+  --hg-glass-blur: 32px;
+  --hg-glass-rim-pct: 10%;
+  --hg-glass-sat: 180%;
   position: absolute;
   z-index: 1100;
   display: flex;
   gap: 2px;
   padding: 6px 8px;
   border-radius: 24px;
-  background: var(--hg-quick-bg);
-  backdrop-filter: blur(20px) saturate(1.3);
-  -webkit-backdrop-filter: blur(20px) saturate(1.3);
-  border: 1px solid var(--hg-border);
-  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.35);
+  background: color-mix(in srgb, var(--bg3, #1C2130) var(--hg-glass-fill-pct), transparent);
+  backdrop-filter: blur(var(--hg-glass-blur)) saturate(var(--hg-glass-sat));
+  -webkit-backdrop-filter: blur(var(--hg-glass-blur)) saturate(var(--hg-glass-sat));
+  border: 0;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--t1, #fff) var(--hg-glass-rim-pct), transparent),
+              0 8px 28px rgba(0, 0, 0, 0.35);
   animation: hg-menu-in var(--hg-dur-menu) var(--hg-ease-ui);
 }
 .hg-quick-react button {
@@ -1101,20 +1664,25 @@ html[data-theme="light"] .hg-float-chrome {
 .hg-thread-head .hg-icon-btn#hgBack,
 .hg-back-btn,
 .hg-back-cluster {
+  --hg-glass-fill-pct: 48%;
+  --hg-glass-blur: 32px;
+  --hg-glass-rim-pct: 10%;
+  --hg-glass-sat: 160%;
   position: relative;
   width: auto;
   min-width: 0;
   max-width: none;
-  height: 34px;
-  padding: 0 8px 0 6px;
+  height: var(--hg-tg-header-h);
+  min-height: var(--hg-tg-header-h);
+  padding: 0 10px 0 8px;
   /* R210: border 0 (composer rim-kill path) */
   border: 0;
-  border-radius: 17px !important;
-  background: var(--hg-tg-header-bg);
-  backdrop-filter: blur(var(--hg-tg-header-blur)) saturate(1.2);
-  -webkit-backdrop-filter: blur(var(--hg-tg-header-blur)) saturate(1.2);
+  border-radius: var(--hg-tg-header-radius);
+  background: color-mix(in srgb, var(--bg3, #1C2130) var(--hg-glass-fill-pct), transparent);
+  backdrop-filter: blur(var(--hg-glass-blur)) saturate(var(--hg-glass-sat));
+  -webkit-backdrop-filter: blur(var(--hg-glass-blur)) saturate(var(--hg-glass-sat));
   /* R223: back no lip (R222 back+pin → header +1.10) */
-  box-shadow: none;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--t1, #fff) var(--hg-glass-rim-pct), transparent);
   color: #fff;
   display: inline-flex;
   align-items: center;
@@ -1135,7 +1703,7 @@ html[data-theme="light"] .hg-float-chrome {
   align-items: center;
   justify-content: center;
   width: 16px;
-  height: 36px;
+  height: var(--hg-tg-header-h);
   flex: 0 0 16px;
   margin-right: 0;
   overflow: hidden;
@@ -1180,6 +1748,10 @@ html[data-theme="light"] .hg-back-badge {
 }
 .hg-back-badge[hidden] { display: none !important; }
 .hg-thread-title {
+  --hg-glass-fill-pct: 48%;
+  --hg-glass-blur: 32px;
+  --hg-glass-rim-pct: 10%;
+  --hg-glass-sat: 160%;
   flex: 1 1 auto;
   min-width: 0;
   max-width: none;
@@ -1188,15 +1760,17 @@ html[data-theme="light"] .hg-back-badge {
   display: flex; flex-direction: column; gap: 0;
   align-items: center;
   text-align: center;
-  background: var(--hg-tg-header-bg);
-  /* R268 HOLD: title lip 2px/0.45 (R267 0.50 → +0.05) */
+  background: color-mix(in srgb, var(--bg3, #1C2130) var(--hg-glass-fill-pct), transparent);
   border: 0;
   border-radius: var(--hg-tg-header-radius);
-  box-shadow: inset 0 0 0 2px rgba(0, 0, 0, 0.45);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--t1, #fff) var(--hg-glass-rim-pct), transparent);
   padding: 4px 14px;
-  min-height: 34px;
-  backdrop-filter: blur(var(--hg-tg-header-blur)) saturate(1.2);
-  -webkit-backdrop-filter: blur(var(--hg-tg-header-blur)) saturate(1.2);
+  height: var(--hg-tg-header-h);
+  min-height: var(--hg-tg-header-h);
+  box-sizing: border-box;
+  justify-content: center;
+  backdrop-filter: blur(var(--hg-glass-blur)) saturate(var(--hg-glass-sat));
+  -webkit-backdrop-filter: blur(var(--hg-glass-blur)) saturate(var(--hg-glass-sat));
   overflow: hidden;
 }
 .hg-thread-title strong {
@@ -1294,12 +1868,16 @@ html[data-theme="light"] .hg-thread-title strong { color: rgba(0, 0, 0, 0.82); }
   padding: 3px 12px 3px 10px;
   border-radius: var(--hg-tg-pin-radius);
   box-sizing: border-box;
-  background: var(--hg-tg-pin-bg);
-  backdrop-filter: blur(var(--hg-tg-header-blur)) saturate(1.2);
-  -webkit-backdrop-filter: blur(var(--hg-tg-header-blur)) saturate(1.2);
-  /* R210 border0; R223 pin no lip (R222 REJECT) */
+  --hg-glass-fill-pct: 72%;
+  --hg-glass-blur: 20px;
+  --hg-glass-rim-pct: 8%;
+  --hg-glass-sat: 160%;
+  background: color-mix(in srgb, var(--bg3, #1C2130) var(--hg-glass-fill-pct), transparent);
+  backdrop-filter: blur(var(--hg-glass-blur)) saturate(var(--hg-glass-sat));
+  -webkit-backdrop-filter: blur(var(--hg-glass-blur)) saturate(var(--hg-glass-sat));
+  /* R210 border0; F0 pin glass role */
   border: 0;
-  box-shadow: none;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--t1, #fff) var(--hg-glass-rim-pct), transparent);
   display: flex;
   align-items: center;
   gap: 6px;
@@ -1514,10 +2092,9 @@ html[data-theme="light"] .hg-composer {
   background: var(--hg-tg-composer-bar-bg);
 }
 .hg-ai-chips {
-  display: flex; gap: 8px; overflow-x: auto; scrollbar-width: none;
-  position: relative; z-index: 130;
+  display: none !important;
 }
-.hg-ai-chips.is-hidden { display: none; }
+.hg-ai-chips.is-hidden { display: none !important; }
 .hg-ai-chips::-webkit-scrollbar { display: none; }
 .hg-chip {
   flex: 0 0 auto;
@@ -1577,31 +2154,41 @@ html[data-theme="light"] .hg-chip:hover {
   -webkit-backdrop-filter: none;
 }
 .hg-composer-row .hg-input-wrap {
+  --hg-glass-fill-pct: 65%;
+  --hg-glass-blur: 20px;
+  --hg-glass-rim-pct: 11%;
+  --hg-glass-radius: var(--hg-tg-input-radius, 20px);
+  --hg-glass-sat: 180%;
   flex: 1;
   min-width: 0;
   display: flex;
   align-items: center;
-  border-radius: 20px;
-  /* Liquid Glass capsule — CRM elev + thin border */
-  background: var(--hg-glass-bg) !important;
-  border: 0.5px solid var(--hg-glass-border) !important;
+  border-radius: var(--hg-glass-radius);
+  /* F0: composer glass role */
+  background: color-mix(in srgb, var(--bg3, #1C2130) var(--hg-glass-fill-pct), transparent) !important;
+  border: 0 !important;
   outline: none !important;
-  box-shadow: none !important;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--t1, #fff) var(--hg-glass-rim-pct), transparent) !important;
   backdrop-filter: blur(var(--hg-glass-blur)) saturate(var(--hg-glass-sat)) !important;
   -webkit-backdrop-filter: blur(var(--hg-glass-blur)) saturate(var(--hg-glass-sat)) !important;
   padding: 0 2px 0 0;
 }
 html[data-theme="light"] .hg-composer-row .hg-input-wrap {
-  background: var(--hg-glass-bg) !important;
+  background: color-mix(in srgb, var(--bg3, #EDE8DC) var(--hg-glass-fill-pct), transparent) !important;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--t1, #1A1510) var(--hg-glass-rim-pct), transparent) !important;
 }
 /* R72: attach OUTSIDE as disk (left); smile inside capsule; mic disk right */
 .hg-composer-row .hg-tool#hgAttach,
 .hg-composer-row .hg-tool.hg-attach-out {
-  border: 0.5px solid var(--hg-glass-border);
-  background: var(--hg-glass-bg) !important;
-  backdrop-filter: blur(18px) saturate(var(--hg-glass-sat)) !important;
-  -webkit-backdrop-filter: blur(18px) saturate(var(--hg-glass-sat)) !important;
-  box-shadow: none;
+  --hg-glass-fill-pct: 65%;
+  --hg-glass-blur: 20px;
+  --hg-glass-rim-pct: 11%;
+  --hg-glass-sat: 180%;
+  border: 0;
+  background: color-mix(in srgb, var(--bg3, #1C2130) var(--hg-glass-fill-pct), transparent) !important;
+  backdrop-filter: blur(var(--hg-glass-blur)) saturate(var(--hg-glass-sat)) !important;
+  -webkit-backdrop-filter: blur(var(--hg-glass-blur)) saturate(var(--hg-glass-sat)) !important;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--t1, #fff) var(--hg-glass-rim-pct), transparent);
   color: var(--hg-muted, rgba(200, 200, 205, 0.88));
   width: var(--hg-tg-tool-size);
   height: var(--hg-tg-tool-size);
@@ -1614,7 +2201,8 @@ html[data-theme="light"] .hg-composer-row .hg-input-wrap {
 }
 html[data-theme="light"] .hg-composer-row .hg-tool#hgAttach,
 html[data-theme="light"] .hg-composer-row .hg-tool.hg-attach-out {
-  background: color-mix(in srgb, var(--bg3, #EDE8DC) 80%, transparent) !important;
+  background: color-mix(in srgb, var(--bg3, #EDE8DC) var(--hg-glass-fill-pct), transparent) !important;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--t1, #1A1510) var(--hg-glass-rim-pct), transparent);
   color: var(--t2, #6B5E4E);
 }
 .hg-composer-row .hg-input-wrap {
@@ -1698,12 +2286,12 @@ html[data-theme="light"] .hg-composer-row .hg-tool:hover {
   min-height: var(--hg-tg-input-h);
   max-height: 140px;
   resize: none;
-  border-radius: 18px;
+  border-radius: var(--hg-tg-input-radius, 20px);
   border: 0 !important;
   outline: none !important;
   box-shadow: none !important;
   padding: 8px 52px 8px 10px;
-  font: 400 16px/1.25 var(--hg-font);
+  font: 400 17px/1.25 var(--hg-font);
   background: transparent !important;
   background-color: transparent !important;
   background-image: none !important;
@@ -1815,26 +2403,25 @@ html[data-theme="light"] .hg-composer textarea:focus {
   transition: background 150ms ease, color 150ms ease, transform 150ms ease,
     box-shadow 150ms ease, border-color 150ms ease, opacity 150ms ease;
 }
-/* R202: attach border 0 (R201 composer 20.16 — need −0.16) */
+/* R202/R182 killed — F0 restores composer glass role on attach/mic */
 .hg-composer-row .hg-tool.hg-attach-out {
   border: 0;
-  background: rgba(32, 32, 32, 0.36) !important;
-  backdrop-filter: none !important;
-  -webkit-backdrop-filter: none !important;
-  box-shadow: none;
+  background: color-mix(in srgb, var(--bg3, #1C2130) var(--hg-glass-fill-pct, 65%), transparent) !important;
+  backdrop-filter: blur(var(--hg-glass-blur, 20px)) saturate(var(--hg-glass-sat, 180%)) !important;
+  -webkit-backdrop-filter: blur(var(--hg-glass-blur, 20px)) saturate(var(--hg-glass-sat, 180%)) !important;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--t1, #fff) var(--hg-glass-rim-pct, 11%), transparent);
 }
-/* R182 mic α0.10; R202: mic border 0 */
 .hg-composer-row .hg-send.is-mic {
   border: 0;
-  background: color-mix(in srgb, var(--bg3, #1C2130) 40%, transparent) !important;
-  backdrop-filter: none !important;
-  -webkit-backdrop-filter: none !important;
-  box-shadow: none;
+  background: color-mix(in srgb, var(--bg3, #1C2130) var(--hg-glass-fill-pct, 65%), transparent) !important;
+  backdrop-filter: blur(var(--hg-glass-blur, 20px)) saturate(var(--hg-glass-sat, 180%)) !important;
+  -webkit-backdrop-filter: blur(var(--hg-glass-blur, 20px)) saturate(var(--hg-glass-sat, 180%)) !important;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--t1, #fff) var(--hg-glass-rim-pct, 11%), transparent);
   margin-left: 6px;
   color: var(--hg-muted, rgba(200, 200, 205, 0.88));
 }
 html[data-theme="light"] .hg-composer-row .hg-send.is-mic {
-  background: color-mix(in srgb, var(--bg3, #EDE8DC) 80%, transparent) !important;
+  background: color-mix(in srgb, var(--bg3, #EDE8DC) var(--hg-glass-fill-pct, 65%), transparent) !important;
   color: var(--t2, #6B5E4E);
 }
 .hg-composer-row .hg-tool.hg-attach-out { margin-left: 0; margin-right: 8px; }
@@ -1904,16 +2491,22 @@ html[data-theme="light"] .hg-send.is-mic:hover {
 
 /* Attach type popup */
 .hg-attach-menu {
+  --hg-glass-fill-pct: 80%;
+  --hg-glass-blur: 32px;
+  --hg-glass-rim-pct: 10%;
+  --hg-glass-sat: 180%;
   position: absolute;
   left: 12px; bottom: 72px;
   z-index: 1150;
   min-width: 180px;
   padding: 6px;
-  border-radius: var(--hg-radius-popup);
-  background: var(--hg-quick-bg);
-  backdrop-filter: blur(var(--hg-blur-float));
-  border: 1px solid var(--hg-border);
-  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.4);
+  border-radius: var(--hg-glass-radius, 18px);
+  background: color-mix(in srgb, var(--bg3, #1C2130) var(--hg-glass-fill-pct), transparent);
+  backdrop-filter: blur(var(--hg-glass-blur)) saturate(var(--hg-glass-sat));
+  -webkit-backdrop-filter: blur(var(--hg-glass-blur)) saturate(var(--hg-glass-sat));
+  border: 0;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--t1, #fff) var(--hg-glass-rim-pct), transparent),
+              0 12px 40px rgba(0, 0, 0, 0.4);
   animation: hg-menu-in var(--hg-dur-menu) var(--hg-ease-ui);
 }
 .hg-attach-menu button {
@@ -1932,6 +2525,10 @@ html[data-theme="light"] .hg-send.is-mic:hover {
 
 /* Float menus */
 .hg-float {
+  --hg-glass-fill-pct: 80%;
+  --hg-glass-blur: 32px;
+  --hg-glass-rim-pct: 10%;
+  --hg-glass-sat: 180%;
   position: absolute;
   z-index: 1050;
   max-width: 300px;
@@ -1940,8 +2537,8 @@ html[data-theme="light"] .hg-send.is-mic:hover {
   padding: 6px;
   border-radius: var(--hg-radius-popup);
   background: var(--hg-quick-bg);
-  backdrop-filter: blur(var(--hg-blur-float)) saturate(1.35);
-  -webkit-backdrop-filter: blur(var(--hg-blur-float)) saturate(1.35);
+  backdrop-filter: blur(var(--hg-glass-blur)) saturate(var(--hg-glass-sat));
+  -webkit-backdrop-filter: blur(var(--hg-glass-blur)) saturate(var(--hg-glass-sat));
   border: 1px solid var(--hg-border);
   box-shadow: 0 12px 40px rgba(0, 0, 0, 0.45);
   animation: hg-menu-in var(--hg-dur-menu) var(--hg-ease-ui);
@@ -1974,17 +2571,23 @@ html[data-theme="light"] .hg-send.is-mic:hover {
 }
 .hg-float-actions button svg { width: 18px; height: 18px; color: var(--hg-muted); }
 .hg-float-actions button:hover { background: var(--hg-hover); }
-.hg-float-actions button.danger { color: var(--hg-danger); }
-.hg-float-actions button.danger svg { color: var(--hg-danger); }
+.hg-float-actions button.danger { color: var(--hg-danger, var(--red, #FF453A)); }
+.hg-float-actions button.danger svg { color: var(--hg-danger, var(--red, #FF453A)); }
 
 .hg-sheet {
   position: absolute;
   left: 8px; right: 8px; bottom: 8px;
-  background: var(--hg-quick-bg);
-  backdrop-filter: blur(var(--hg-blur-float));
-  border: 1px solid var(--hg-border);
-  border-radius: var(--hg-radius-panel);
-  box-shadow: 0 -8px 32px rgba(0, 0, 0, 0.4);
+  --hg-glass-fill-pct: 80%;
+  --hg-glass-blur: 32px;
+  --hg-glass-rim-pct: 10%;
+  --hg-glass-sat: 180%;
+  background: color-mix(in srgb, var(--bg3, #1C2130) var(--hg-glass-fill-pct), transparent);
+  backdrop-filter: blur(var(--hg-glass-blur)) saturate(var(--hg-glass-sat));
+  -webkit-backdrop-filter: blur(var(--hg-glass-blur)) saturate(var(--hg-glass-sat));
+  border: 0;
+  border-radius: var(--hg-glass-radius, 18px);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--t1, #fff) var(--hg-glass-rim-pct), transparent),
+    0 -8px 32px rgba(0, 0, 0, 0.4);
   padding: 12px;
   animation: hg-up var(--hg-dur-bubble) var(--hg-ease-ui);
   z-index: 1150;
@@ -2189,19 +2792,27 @@ html[data-theme="light"] .hg-empty {
 }
 
 .hg-lightbox {
+  --hg-glass-fill-pct: 70%;
+  --hg-glass-blur: 28px;
+  --hg-glass-sat: 180%;
   position: fixed; inset: 0; z-index: 1500;
-  background: color-mix(in srgb, #000 55%, transparent);
-  backdrop-filter: blur(28px) saturate(1.2);
-  -webkit-backdrop-filter: blur(28px) saturate(1.2);
+  background: color-mix(in srgb, var(--bg1, #000) 68%, transparent);
+  backdrop-filter: blur(var(--hg-glass-blur)) saturate(var(--hg-glass-sat));
+  -webkit-backdrop-filter: blur(var(--hg-glass-blur)) saturate(var(--hg-glass-sat));
   display: flex; align-items: center; justify-content: center; padding: 24px;
 }
 .hg-lightbox img { max-width: min(92vw, 960px); max-height: 88vh; border-radius: 12px; object-fit: contain; }
 .hg-lightbox-close {
+  --hg-glass-fill-pct: 70%;
+  --hg-glass-blur: 28px;
+  --hg-glass-rim-pct: 10%;
+  --hg-glass-sat: 180%;
   position: absolute; top: 16px; right: 16px;
-  width: 40px; height: 40px; border: 0.5px solid var(--hg-glass-border); border-radius: 50%;
-  background: var(--hg-glass-bg); color: #fff; cursor: pointer;
-  backdrop-filter: blur(18px) saturate(var(--hg-glass-sat));
-  -webkit-backdrop-filter: blur(18px) saturate(var(--hg-glass-sat));
+  width: 40px; height: 40px; border: 0; border-radius: 50%;
+  background: color-mix(in srgb, var(--bg3, #1C2130) var(--hg-glass-fill-pct), transparent); color: #fff; cursor: pointer;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--t1, #fff) var(--hg-glass-rim-pct), transparent);
+  backdrop-filter: blur(var(--hg-glass-blur)) saturate(var(--hg-glass-sat));
+  -webkit-backdrop-filter: blur(var(--hg-glass-blur)) saturate(var(--hg-glass-sat));
   display: inline-flex; align-items: center; justify-content: center;
 }
 
@@ -2236,7 +2847,7 @@ html[data-theme="light"] .hg-empty {
   position: fixed;
   left: var(--hg-tg-nav-inset);
   right: calc(var(--hg-tg-nav-inset) + var(--hg-tg-fab-size) + var(--hg-tg-fab-gap));
-  bottom: calc(10px + env(safe-area-inset-bottom, 0px));
+  bottom: calc(14px + env(safe-area-inset-bottom, 0px));
   width: auto;
   max-width: none;
   z-index: 1300;
@@ -2246,9 +2857,12 @@ html[data-theme="light"] .hg-empty {
   background: transparent;
   backdrop-filter: none;
   -webkit-backdrop-filter: none;
-  border: 0.5px solid rgba(255, 255, 255, 0.08);
-  box-shadow: 0 6px 28px rgba(0, 0, 0, 0.16);
-  isolation: auto;
+  border: 0.5px solid rgba(255, 255, 255, 0.14);
+  box-shadow:
+    0 10px 36px rgba(0, 0, 0, 0.32),
+    0 2px 8px rgba(0, 0, 0, 0.18),
+    inset 0 1px 0 rgba(255, 255, 255, 0.12);
+  isolation: isolate;
   align-items: center;
   justify-content: space-around;
   gap: 0;
@@ -2257,18 +2871,23 @@ html[data-theme="light"] .hg-empty {
   opacity: 1;
   transition: transform 200ms ease-out, opacity 200ms ease-out;
 }
-/* Glass layer as ::before — keeps backdrop off transformed/filtered descendants */
+/* Glass layer as ::before — nav role (F0); island over --bg2 */
 .hg-bottom-nav::before {
+  --hg-glass-fill-pct: 72%;
+  --hg-glass-blur: 48px;
+  --hg-glass-rim-pct: 18%;
+  --hg-glass-sat: 200%;
   content: '';
   position: absolute;
   inset: 0;
   z-index: 0;
   border-radius: inherit;
-  /* R85 ATLAS frost; R225 restore white inset (R224 dark lip → nav +0.31) */
-  background: var(--hg-tg-nav-bg);
-  backdrop-filter: blur(var(--hg-tg-nav-blur)) saturate(1.35);
-  -webkit-backdrop-filter: blur(var(--hg-tg-nav-blur)) saturate(1.35);
-  box-shadow: inset 0 0.5px 0 rgba(255, 255, 255, 0.10);
+  background: color-mix(in srgb, var(--bg3, #1C2130) var(--hg-glass-fill-pct), transparent);
+  backdrop-filter: blur(var(--hg-glass-blur)) saturate(var(--hg-glass-sat));
+  -webkit-backdrop-filter: blur(var(--hg-glass-blur)) saturate(var(--hg-glass-sat));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--t1, #fff) var(--hg-glass-rim-pct), transparent),
+              inset 0 1px 0 color-mix(in srgb, var(--t1, #fff) 28%, transparent),
+              inset 0 -0.5px 0 color-mix(in srgb, #000 18%, transparent);
   pointer-events: none;
 }
 .hg-bottom-nav > * {
@@ -2457,23 +3076,31 @@ html[data-theme="light"] .hg-bottom-nav .hg-nav-badge {
   border: 0;
 }
 .hg-nav-search {
+  --hg-glass-fill-pct: 70%;
+  --hg-glass-blur: 48px;
+  --hg-glass-rim-pct: 18%;
+  --hg-glass-sat: 200%;
   position: fixed;
   right: var(--hg-tg-nav-inset);
-  bottom: calc(10px + env(safe-area-inset-bottom, 0px));
+  bottom: calc(14px + env(safe-area-inset-bottom, 0px));
   width: var(--hg-tg-fab-size);
   height: var(--hg-tg-fab-size);
   min-width: var(--hg-tg-fab-size);
   min-height: var(--hg-tg-fab-size);
-  border: 0;
+  border: 0.5px solid rgba(255, 255, 255, 0.14);
   border-radius: 50% !important;
-  background: var(--hg-tg-fab-bg, var(--bg3, #1C2130));
-  backdrop-filter: none;
-  -webkit-backdrop-filter: none;
+  background: color-mix(in srgb, var(--bg3, #1C2130) var(--hg-glass-fill-pct), transparent);
+  backdrop-filter: blur(var(--hg-glass-blur)) saturate(var(--hg-glass-sat));
+  -webkit-backdrop-filter: blur(var(--hg-glass-blur)) saturate(var(--hg-glass-sat));
   color: var(--hg-text, #fff);
   display: none;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.28), inset 0 0.5px 0 rgba(255, 255, 255, 0.08);
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--t1, #fff) var(--hg-glass-rim-pct), transparent),
+    inset 0 1px 0 color-mix(in srgb, var(--t1, #fff) 28%, transparent),
+    0 12px 36px rgba(0, 0, 0, 0.34),
+    0 2px 8px rgba(0, 0, 0, 0.2);
   cursor: pointer;
   z-index: 1301;
   transform: none;
@@ -2482,13 +3109,8 @@ html[data-theme="light"] .hg-bottom-nav .hg-nav-badge {
   transition: transform 200ms ease-out, opacity 200ms ease-out;
 }
 .hg-nav-search::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  background: var(--hg-tg-fab-bg, var(--bg3, #1C2130));
-  pointer-events: none;
-  z-index: 0;
+  content: none;
+  display: none;
 }
 .hg-nav-search svg,
 .hg-nav-search > * { position: relative; z-index: 1; }
@@ -2688,16 +3310,21 @@ html[data-theme="light"] .hg-settings { background: var(--hg-bg, var(--bg1, #F4E
   min-width: 56px;
 }
 .hg-settings-action-ico {
+  --hg-glass-fill-pct: 82%;
+  --hg-glass-blur: 40px;
+  --hg-glass-rim-pct: 12%;
+  --hg-glass-sat: 180%;
   width: 52px;
   height: 52px;
   border-radius: 50%;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  background: var(--hg-glass-bg, var(--hg-elev));
-  border: 0.5px solid var(--hg-glass-border, var(--hg-border));
-  backdrop-filter: blur(16px) saturate(var(--hg-glass-sat, 1.3));
-  -webkit-backdrop-filter: blur(16px) saturate(var(--hg-glass-sat, 1.3));
+  background: color-mix(in srgb, var(--bg3, #1C2130) var(--hg-glass-fill-pct), transparent);
+  border: 0;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--t1, #fff) var(--hg-glass-rim-pct), transparent);
+  backdrop-filter: blur(var(--hg-glass-blur)) saturate(var(--hg-glass-sat));
+  -webkit-backdrop-filter: blur(var(--hg-glass-blur)) saturate(var(--hg-glass-sat));
   color: var(--hg-accent-chat);
 }
 .hg-settings-action-ico svg { width: 22px; height: 22px; stroke: currentColor; }
@@ -2741,13 +3368,13 @@ html[data-theme="light"] .hg-settings { background: var(--hg-bg, var(--bg1, #F4E
 html[data-theme="light"] .hg-settings-photo-btn { background: var(--bg2, #FDFAF5); }
 .hg-settings-photo-btn svg { width: 20px; height: 20px; stroke: currentColor; }
 .hg-settings-card {
-  background: var(--hg-elev, var(--bg3, #1C2130));
-  border-radius: 12px;
+  background: var(--bg3, #1C2130);
+  border-radius: 26px;
   padding: 0;
   overflow: hidden;
 }
 html[data-theme="light"] .hg-settings-card {
-  background: var(--bg2, #FDFAF5);
+  background: var(--bg3, #EDE8DC);
   box-shadow: none;
 }
 .hg-settings-row {
@@ -2757,7 +3384,7 @@ html[data-theme="light"] .hg-settings-card {
   width: 100%;
   padding: 10px 14px;
   border: 0;
-  border-bottom: 0.5px solid rgba(84, 84, 88, 0.45);
+  border-bottom: 0.5px solid var(--brd-m, rgba(84, 84, 88, 0.45));
   background: transparent;
   color: var(--hg-text);
   cursor: pointer;
@@ -3001,16 +3628,43 @@ body.hg-dock-collapsed { padding-right: calc(var(--hg-rail-w) + 24px); }
   }
 }
 
-/* Power-saving FX: full | reduced | off (html[data-hg-fx]) */
+/* Power-saving F0: #huginnDock.hg-power-* (DS); html[data-hg-fx] bridge for ROUND-7 */
+#huginnDock.hg-power-reduced,
 html[data-hg-fx="reduced"] {
-  --hg-glass-blur: 12px;
-  --hg-tg-nav-blur: 16px;
-  --hg-tg-header-blur: 14px;
+  --hg-glass-blur: 14px;
+  --hg-glass-fill-pct: 80%;
+  --hg-glass-sat: 120%;
+  --hg-tg-nav-blur: 20px;
+  --hg-tg-header-blur: 16px;
   --hg-tg-composer-blur: 20px;
   --hg-dur-bubble: 120ms;
   --hg-dur-menu: 100ms;
   --hg-dur-tab: 100ms;
 }
+#huginnDock.hg-power-off .hg-glass,
+#huginnDock.hg-power-off .hg-composer-row .hg-input-wrap,
+#huginnDock.hg-power-off .hg-composer-row .hg-tool#hgAttach,
+#huginnDock.hg-power-off .hg-composer-row .hg-tool.hg-attach-out,
+#huginnDock.hg-power-off .hg-bottom-nav::before,
+#huginnDock.hg-power-off .hg-quick-react,
+#huginnDock.hg-power-off .hg-float,
+#huginnDock.hg-power-off .hg-attach-menu,
+#huginnDock.hg-power-off .hg-sheet,
+#huginnDock.hg-power-off .hg-lightbox,
+#huginnDock.hg-power-off .hg-lightbox-close,
+#huginnDock.hg-power-off .hg-thread-title,
+#huginnDock.hg-power-off .hg-back-cluster,
+#huginnDock.hg-power-off .hg-back-btn,
+#huginnDock.hg-power-off .hg-thread-head .hg-icon-btn#hgBack,
+#huginnDock.hg-power-off .hg-pin-banner,
+#huginnDock.hg-power-off .hg-nav-search,
+html[data-hg-fx="off"] .hg-thread-title,
+html[data-hg-fx="off"] .hg-back-cluster,
+html[data-hg-fx="off"] .hg-back-btn,
+html[data-hg-fx="off"] .hg-thread-head .hg-icon-btn#hgBack,
+html[data-hg-fx="off"] .hg-pin-banner,
+html[data-hg-fx="off"] .hg-nav-search,
+#huginnDock.hg-power-off .hg-settings-action-ico,
 html[data-hg-fx="off"] .hg-glass,
 html[data-hg-fx="off"] .hg-composer-row .hg-input-wrap,
 html[data-hg-fx="off"] .hg-composer-row .hg-tool#hgAttach,
@@ -3021,17 +3675,29 @@ html[data-hg-fx="off"] .hg-float,
 html[data-hg-fx="off"] .hg-attach-menu,
 html[data-hg-fx="off"] .hg-sheet,
 html[data-hg-fx="off"] .hg-lightbox,
-html[data-hg-fx="off"] .hg-lightbox-close {
+html[data-hg-fx="off"] .hg-lightbox-close,
+html[data-hg-fx="off"] .hg-settings-action-ico {
   backdrop-filter: none !important;
   -webkit-backdrop-filter: none !important;
+  background: var(--bg3, #1C2130) !important;
 }
+#huginnDock.hg-power-off .hg-bubble,
+#huginnDock.hg-power-off .hg-float,
+#huginnDock.hg-power-off .hg-quick-react,
+#huginnDock.hg-power-off .hg-attach-menu,
 html[data-hg-fx="off"] .hg-bubble,
 html[data-hg-fx="off"] .hg-float,
 html[data-hg-fx="off"] .hg-quick-react,
 html[data-hg-fx="off"] .hg-attach-menu {
   animation: none !important;
+  transition: none !important;
 }
+#huginnDock.hg-power-off,
 html[data-hg-fx="off"] {
-  --hg-glass-bg: var(--hg-elev, var(--bg3, #1C2130));
+  --hg-glass-fill-pct: 100%;
+  --hg-glass-blur: 0px;
+  --hg-glass-bg: var(--bg3, #1C2130);
   --hg-glass-shadow: none;
+  --hg-tg-nav-bg: var(--bg3, #1C2130);
+  --hg-tg-fab-bg: var(--bg3, #1C2130);
 }
