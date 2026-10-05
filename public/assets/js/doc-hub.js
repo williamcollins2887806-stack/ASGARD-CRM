@@ -37,6 +37,8 @@ window.AsgardDocHubPage = (function () {
     facetCounterparty: '',
     facetOps: '',
     facetIncomplete: false,
+    quarter: '',
+    year: '',
     facets: { counterparties: [] },
     rows: [],
     total: 0,
@@ -56,9 +58,14 @@ window.AsgardDocHubPage = (function () {
     if (window.AsgardUI && AsgardUI.toast) AsgardUI.toast(t, m, k);
     else console.log(t, m);
   }
-  function money(n) {
-    const x = Number(n) || 0;
-    return x.toLocaleString('ru-RU', { maximumFractionDigits: 0 }) + ' ₽';
+  function money(n, opts) {
+    const x = Number(n);
+    const v = Number.isFinite(x) ? x : 0;
+    const max = (opts && opts.fraction != null) ? opts.fraction : (Math.abs(v % 1) > 1e-9 ? 2 : 0);
+    return v.toLocaleString('ru-RU', { minimumFractionDigits: max > 0 ? 2 : 0, maximumFractionDigits: max }) + ' ₽';
+  }
+  function moneyFine(n) {
+    return money(n, { fraction: 2 });
   }
   function fmtDate(d) {
     if (!d) return '—';
@@ -197,6 +204,9 @@ window.AsgardDocHubPage = (function () {
     if (state.kpi === 'out') p.set('dir', 'out');
     if (state.kpi === '1c') p.set('kpi', '1c');
     if (state.kpi === 'incomplete') p.set('kpi', 'incomplete');
+    if (state.quarter) p.set('quarter', String(state.quarter));
+    if (state.year) p.set('year', String(state.year));
+    p.set('sort', 'invoice_date');
     return '?' + p.toString();
   }
 
@@ -272,11 +282,11 @@ window.AsgardDocHubPage = (function () {
     let kind = 'muted';
     if (row.overdue_pay || row.pay_status === 'overdue') kind = 'err';
     else if (row.overdue_sf) kind = 'warn';
-    else if (row.is_incomplete) kind = 'info';
-    else if (row.wh_status === 'to_office') kind = 'gold';
-    else if (['wait_sf', 'wait_closing'].includes(row.ops_status)) kind = 'warn';
-    else if (row.ops_status === 'done' || (row.pay_status === 'paid' && row.closing_json)) kind = 'ok';
+    else if (row.ops_status === 'done' || label === 'Закрыто') kind = 'ok';
     else if (row.dir === 'out' && row.ops_status === 'out_sent') kind = 'ok';
+    else if (row.wh_status === 'to_office' || row.ops_status === 'wh_transfer') kind = 'gold';
+    else if (['wait_sf', 'wait_closing'].includes(row.ops_status)) kind = 'warn';
+    else if (row.is_incomplete) kind = 'info';
     else if (row.dir === 'out') kind = 'muted';
     else if (row.wh_status && row.wh_status !== 'none') kind = 'warn';
     else if (row.ops_status === 'wait_pay') kind = 'warn';
@@ -335,57 +345,74 @@ window.AsgardDocHubPage = (function () {
     })[mode] || mode || '—';
   }
 
+  function quarterLabel(q, y) {
+    const roman = { 1: 'I', 2: 'II', 3: 'III', 4: 'IV' };
+    return `${roman[q] || q} квартал ${y}`;
+  }
+  function quarterOf(row) {
+    const s = String(row.invoice_date || '').slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return null;
+    const y = +s.slice(0, 4);
+    const m = +s.slice(5, 7);
+    return { y, q: Math.floor((m - 1) / 3) + 1, key: `${y}-Q${Math.floor((m - 1) / 3) + 1}` };
+  }
+
   function renderTable() {
     if (!state.rows.length) {
       return `<div class="dh-empty"><div class="dh-empty__ico">◇</div><div class="dh-empty__t">Пока пусто</div><p>Нажмите «Внести документ» или включите «Показать все».</p></div>`;
     }
     const ico = qaIcons();
-    const rank = (r) => {
-      if (r.overdue_pay || r.pay_status === 'overdue') return 0;
-      if (r.wh_status === 'to_office') return 1;
-      if (r.ops_status === 'done' || (r.pay_status === 'paid' && r.closing_json)) return 2;
-      if (r.dir === 'out') return 3;
-      if (r.ops_status === 'wait_sf' || r.ops_status === 'wait_closing') return 4;
-      if (r.is_incomplete) return 8;
-      return 5;
-    };
-    const rows = [...state.rows].sort((a, b) => rank(a) - rank(b) || (b.id - a.id));
-    const body = rows.map((r) => {
-      return `<tr class="${rowClass(r)}" data-id="${r.id}">
+    // Keep API order (invoice_date DESC) so quarter separators work
+    const rows = state.rows;
+    const parts = [];
+    let prevKey = null;
+    rows.forEach((r) => {
+      const qinfo = quarterOf(r);
+      const key = qinfo ? qinfo.key : 'none';
+      if (key !== prevKey) {
+        if (qinfo) {
+          const isTransition = prevKey && prevKey !== 'none';
+          parts.push(`<tr class="dh-qtr-sep" data-qtr="${qinfo.q}" data-year="${qinfo.y}">
+            <td colspan="10"><div class="dh-qtr-sep__in ${isTransition ? 'is-next' : ''}">
+              ${isTransition ? '<span class="dh-qtr-sep__arrow">↓</span>' : ''}
+              <strong>${esc(quarterLabel(qinfo.q, qinfo.y))}</strong>
+              <span class="dh-qtr-sep__hint">по дате документа</span>
+            </div></td>
+          </tr>`);
+        } else {
+          parts.push(`<tr class="dh-qtr-sep" data-qtr="0"><td colspan="10"><div class="dh-qtr-sep__in"><strong>Без даты документа</strong></div></td></tr>`);
+        }
+        prevKey = key;
+      }
+      parts.push(`<tr class="${rowClass(r)}" data-id="${r.id}">
         <td>${statusPill(r)}</td>
-        <td><span class="dh-pill dh-pill--${r.dir === 'out' ? 'gold' : 'info'}">${r.dir === 'out' ? 'исходящий' : 'входящий'}</span></td>
+        <td><span class="dh-pill dh-pill--${r.dir === 'out' ? 'gold' : 'info'}">${r.dir === 'out' ? 'исх.' : 'вх.'}</span></td>
         <td>
           <div class="dh-stack"><span class="a dh-mono">${esc(r.invoice_number || 'б/н')}</span><span class="b">${fmtDate(r.invoice_date)}</span></div>
         </td>
         <td>
-          <div class="dh-stack"><span class="a">${esc(r.counterparty_name)}</span><span class="b dh-muted">${r.inn ? ('ИНН ' + esc(r.inn)) : esc(r.counterparty_email || r.email || '')}</span></div>
+          <div class="dh-stack"><span class="a">${esc(r.counterparty_name)}</span><span class="b dh-muted">${r.inn ? ('ИНН ' + esc(r.inn)) : esc(r.counterparty_email || r.email || '—')}</span></div>
         </td>
-        <td><div class="dh-stack"><span class="a">${esc(r.work_title || 'без объекта')}</span><span class="b">${r.work_id ? ('#' + r.work_id) : '—'}</span></div></td>
-        <td class="dh-money">${money(r.amount_gross)}</td>
-        <td>${vatCell(r)}</td>
-        <td><span class="dh-pill dh-pill--muted">${esc(contractModeLabel(r.contract_mode))}</span></td>
-        <td>${payCell(r)}</td>
-        <td>${closingCell(r)}</td>
-        <td>${whCell(r)}</td>
-        <td>${purposeFlags(r)}</td>
-        <td>
-          <div class="dh-stack"><span class="a">${esc(r.doc_owner_name || '—')}</span><span class="b">РП: ${esc(r.pm_name || '—')}</span></div>
-        </td>
+        <td class="dh-col-work"><div class="dh-stack"><span class="a">${esc(r.work_title || 'без объекта')}</span><span class="b">${r.work_id ? ('#' + r.work_id) : '—'}</span></div></td>
+        <td class="dh-money" title="${esc(moneyFine(r.amount_gross))}">${money(r.amount_gross)}</td>
+        <td class="dh-col-vat">${vatCell(r)}</td>
+                <td>${payCell(r)}</td>
+        <td class="dh-col-sf">${closingCell(r)}</td>
         <td class="dh-actions">
-          <div class="dh-qa">
+          <div class="dh-qa" aria-label="Действия">
             <button type="button" data-qa="pay" title="К оплате" ${r.pay_status === 'paid' ? 'disabled' : ''}>${ico.pay}</button>
             <button type="button" data-qa="sf" title="СФ получена">${ico.sf}</button>
             ${canWh() ? `<button type="button" data-qa="wh" title="Склад">${ico.wh}</button>` : ''}
             <button type="button" data-qa="open" title="Карточка">${ico.open}</button>
           </div>
         </td>
-      </tr>`;
-    }).join('');
+      </tr>`);
+    });
     return `<div class="dh-table-wrap"><table class="dh-table dh-table--rich">
       <thead><tr>
-        <th>Статус</th><th>Направление</th><th>Счёт</th><th>Контрагент</th><th>Объект / работа</th><th>Сумма</th><th>НДС</th><th>Договор</th><th>Оплата</th><th>Закрывающие</th><th>Получение</th><th>Назначение</th><th>Ответственные</th><th></th>
+        <th>Статус</th><th>Напр.</th><th>Счёт</th><th>Контрагент</th><th>Объект</th><th>Сумма</th><th>НДС</th><th>Оплата</th><th>СФ/УПД</th><th class="dh-actions">Действия</th>
       </tr></thead>
-      <tbody>${body}</tbody>
+      <tbody>${parts.join('')}</tbody>
     </table></div>`;
   }
 
@@ -408,8 +435,27 @@ window.AsgardDocHubPage = (function () {
     const opts = OPS_OPTIONS.map(([v, l]) =>
       `<option value="${esc(v)}" ${state.facetOps === v ? 'selected' : ''}>${esc(l)}</option>`
     ).join('');
+    const yNow = new Date().getFullYear();
+    const years = [yNow + 1, yNow, yNow - 1, yNow - 2];
     return `
       <div class="dh-facets" id="dhFacets">
+        <div class="dh-facet dh-facet--qtr">
+          <span>Квартал</span>
+          <div class="dh-qtr-chips" id="dhQtrChips">
+            <button type="button" class="dh-qchip ${!state.quarter ? 'is-on' : ''}" data-qtr="">Все</button>
+            <button type="button" class="dh-qchip ${state.quarter === '1' ? 'is-on' : ''}" data-qtr="1">1 кв</button>
+            <button type="button" class="dh-qchip ${state.quarter === '2' ? 'is-on' : ''}" data-qtr="2">2 кв</button>
+            <button type="button" class="dh-qchip ${state.quarter === '3' ? 'is-on' : ''}" data-qtr="3">3 кв</button>
+            <button type="button" class="dh-qchip ${state.quarter === '4' ? 'is-on' : ''}" data-qtr="4">4 кв</button>
+          </div>
+        </div>
+        <label class="dh-facet">
+          <span>Год</span>
+          <select id="dhFacetYear">
+            <option value="">Все годы</option>
+            ${years.map((y) => `<option value="${y}" ${String(state.year) === String(y) ? 'selected' : ''}>${y}</option>`).join('')}
+          </select>
+        </label>
         <label class="dh-facet">
           <span>Контрагент</span>
           <input list="dhCpList" id="dhFacetCp" type="text" placeholder="Все" value="${esc(state.facetCounterparty)}" />
@@ -466,6 +512,7 @@ window.AsgardDocHubPage = (function () {
                 <h2>Документы</h2>
                 <span id="dhRowsMeta">показано ${state.rows.length} из ${state.total || state.rows.length}${state.scope === 'all' ? ' · все строки' : ' · только мои'}</span>
               </div>
+              <div class="dh-qtr-live" id="dhQtrLive" aria-live="polite"></div>
               <div id="dhTableHost">${state.loading ? '<div class="dh-empty">Загрузка…</div>' : renderTable()}</div>
             </div>`;
   }
@@ -481,7 +528,7 @@ window.AsgardDocHubPage = (function () {
         ? 'Пошаговое заполнение с авторасчётом НДС и проверкой дублей'
         : 'Единый хаб входящих и исходящих · работы, договоры, закупки и 1С');
     return `
-      <link rel="stylesheet" href="assets/css/doc-hub.css" />
+      <link rel="stylesheet" href="assets/css/doc-hub.css?v=20.28.84" />
       <div class="dh-app dh-app--embedded${isWizard ? ' dh-app--wizard' : ''}">
         <div class="dh-shell">
           <header class="dh-top">
@@ -586,8 +633,16 @@ window.AsgardDocHubPage = (function () {
         </div>`;
     }
     if (step === 2) {
+      const g0 = parseFloat(d.amount_gross) || 0;
+      const n0 = parseFloat(d.amount_net) || (g0 ? +(g0 / (1 + VAT_RATE)).toFixed(2) : 0);
+      const v0 = g0 ? +(g0 - n0).toFixed(2) : 0;
       return steps + `
         <div class="dh-coach"><div class="dh-coach__ico">2</div><div class="dh-coach__body"><strong>Суммы</strong><p>Введите сумму с НДС или без — вторая и сам НДС посчитаются. Ставка по умолчанию 22%.</p></div></div>
+        <div class="dh-sum-strip" id="dhWizSumStrip" aria-live="polite">
+          <div><span class="k">С НДС</span><span class="v" id="dhWizStripGross">${moneyFine(g0 || 2200)}</span></div>
+          <div><span class="k">Без НДС</span><span class="v" id="dhWizStripNet">${moneyFine(n0 || 1803.28)}</span></div>
+          <div><span class="k">НДС 22%</span><span class="v" id="dhWizStripVat">${moneyFine(v0 || 396.72)}</span></div>
+        </div>
         <div class="dh-dup" id="dhWizDup" hidden>
           <strong>Похожий расход уже есть на объекте</strong>
           <p>РП мог внести этот счёт в расходы. Связать с существующей записью или оставить только в реестре?</p>
@@ -847,10 +902,10 @@ window.AsgardDocHubPage = (function () {
           const g = Math.round(n * (1 + VAT_RATE) * 100) / 100;
           const v = Math.round((g - n) * 100) / 100;
           grossEl.value = String(g);
-          if (vatAmt) vatAmt.textContent = money(v);
+          if (vatAmt) vatAmt.textContent = moneyFine(v);
         } else {
           grossEl.value = String(n);
-          if (vatAmt) vatAmt.textContent = money(0);
+          if (vatAmt) vatAmt.textContent = moneyFine(0);
         }
       } else {
         const g = parseFloat(grossEl.value) || 0;
@@ -858,16 +913,22 @@ window.AsgardDocHubPage = (function () {
           const n = Math.round((g / (1 + VAT_RATE)) * 100) / 100;
           const v = Math.round((g - n) * 100) / 100;
           if (netEl) netEl.value = String(n);
-          if (vatAmt) vatAmt.textContent = money(v);
+          if (vatAmt) vatAmt.textContent = moneyFine(v);
         } else {
           if (netEl) netEl.value = String(g);
-          if (vatAmt) vatAmt.textContent = money(0);
+          if (vatAmt) vatAmt.textContent = moneyFine(0);
         }
         if (dup) {
           const g2 = parseFloat(grossEl.value) || 0;
           dup.hidden = !(g2 === 2200 || g2 === 500 || g2 === 1000);
         }
       }
+      const sg = form.querySelector('#dhWizStripGross');
+      const sn = form.querySelector('#dhWizStripNet');
+      const sv = form.querySelector('#dhWizStripVat');
+      if (sg) sg.textContent = moneyFine(parseFloat(grossEl.value) || 0);
+      if (sn) sn.textContent = moneyFine(parseFloat(netEl && netEl.value) || 0);
+      if (sv) sv.textContent = (vatAmt && vatAmt.textContent) || moneyFine(0);
       lock = false;
     };
     if (grossEl) grossEl.addEventListener('input', () => paintVat('gross'));
@@ -1060,14 +1121,20 @@ window.AsgardDocHubPage = (function () {
         : '';
       const sums = sumParts(row);
       const titleNo = row.invoice_number ? ('Счёт ' + row.invoice_number) : ('#' + row.id);
-      const srcLine = row.excel_source || row.import_source || row.source_label || row.external_ref;
+      const srcLine = row.excel_source || row.import_source || row.source_label || row.external_ref
+        || (row.comment_text && /excel|реестр/i.test(row.comment_text) ? row.comment_text : null)
+        || 'реестр';
+      const grossTxt = money(sums.gross);
+      const netTxt = moneyFine(sums.net);
+      const vatTxt = moneyFine(sums.vat);
       d.innerHTML = `
         <div class="dh-drawer__card">
           <header class="dh-drawer__head">
             <div>
               <h3>${esc(titleNo)}</h3>
               <p>${esc(row.counterparty_name || '')} · ${esc(row.work_title || 'без объекта')}</p>
-              ${srcLine ? `<div class="dh-drawer__src">ИЗ EXCEL · ${esc(String(srcLine))}</div>` : ''}
+              <div class="dh-drawer__amt" data-qa="drawer-amt">${esc(grossTxt)}</div>
+              <div class="dh-drawer__src">ИЗ EXCEL · ${esc(String(srcLine))}</div>
             </div>
             <button type="button" id="dhDrawerClose" aria-label="Закрыть">✕</button>
           </header>
@@ -1077,13 +1144,18 @@ window.AsgardDocHubPage = (function () {
               <div class="dh-coach__body"><strong>Что дальше</strong><p>${esc(nextActionText(row))}</p></div>
             </div>
             ${payLink}
-            <div class="dh-section">
+            <div class="dh-section dh-section--sums">
               <div class="dh-section__h">Суммы</div>
               <div class="dh-section__b">
-                <div class="dh-sum-hero">
-                  <div class="dh-sum-hero__main" style="color:#f8fafc;font-size:28px;font-weight:900">${money(sums.gross)}</div>
-                  <div class="dh-sum-hero__sub" style="color:#cbd5e1">с НДС · нетто ${money(sums.net)} · НДС ${money(sums.vat)}</div>
-                  <div class="dh-sum-hero__due" style="color:#94a3b8">Срок оплаты: ${fmtDate(row.payment_due_at) || 'не указан'}</div>
+                <div class="dh-sum-hero" data-qa="sum-hero" data-gross="${esc(String(sums.gross))}">
+                  <div class="dh-sum-hero__main" data-qa="sum-hero-main">${esc(grossTxt)}</div>
+                  <div class="dh-sum-hero__sub">с НДС · нетто ${esc(netTxt)} · НДС ${esc(vatTxt)}</div>
+                  <div class="dh-sum-hero__due">Срок оплаты: ${fmtDate(row.payment_due_at) || 'не указан'}</div>
+                  <div class="dh-sum-hero__grid">
+                    <div><span class="k">С НДС</span><span class="v">${esc(grossTxt)}</span></div>
+                    <div><span class="k">Без НДС</span><span class="v">${esc(netTxt)}</span></div>
+                    <div><span class="k">НДС</span><span class="v">${esc(vatTxt)}</span></div>
+                  </div>
                 </div>
               </div>
             </div>
@@ -1291,7 +1363,9 @@ window.AsgardDocHubPage = (function () {
       state.facetCounterparty = (root.querySelector('#dhFacetCp')?.value || '').trim();
       state.facetOps = root.querySelector('#dhFacetOps')?.value || '';
       state.facetIncomplete = !!root.querySelector('#dhFacetIncomplete')?.checked;
+      state.year = root.querySelector('#dhFacetYear')?.value || '';
       if (state.facetIncomplete) state.kpi = 'incomplete';
+      syncHash();
       await refresh();
     };
     let t = null;
@@ -1302,6 +1376,40 @@ window.AsgardDocHubPage = (function () {
     });
     root.querySelector('#dhFacetOps')?.addEventListener('change', apply);
     root.querySelector('#dhFacetIncomplete')?.addEventListener('change', apply);
+    root.querySelector('#dhFacetYear')?.addEventListener('change', apply);
+    root.querySelector('#dhQtrChips')?.addEventListener('click', async (ev) => {
+      const btn = ev.target.closest('[data-qtr]');
+      if (!btn) return;
+      state.quarter = btn.getAttribute('data-qtr') || '';
+      root.querySelectorAll('#dhQtrChips .dh-qchip').forEach((b) => {
+        b.classList.toggle('is-on', (b.getAttribute('data-qtr') || '') === state.quarter);
+      });
+      syncHash();
+      await refresh();
+    });
+  }
+
+  function syncHash() {
+    try {
+      const u = new URL(location.href);
+      const h = new URLSearchParams((u.hash.split('?')[1] || ''));
+      if (state.quarter) h.set('quarter', state.quarter); else h.delete('quarter');
+      if (state.year) h.set('year', state.year); else h.delete('year');
+      if (state.scope === 'all') h.set('scope', 'all'); else h.delete('scope');
+      const base = (u.hash.split('?')[0] || '#/doc-hub');
+      const qs = h.toString();
+      history.replaceState(null, '', qs ? (base + '?' + qs) : base);
+    } catch (_) { /* ignore */ }
+  }
+
+  function readHashFilters() {
+    try {
+      const qs = (location.hash.split('?')[1] || '');
+      const h = new URLSearchParams(qs);
+      if (h.has('quarter')) state.quarter = h.get('quarter') || '';
+      if (h.has('year')) state.year = h.get('year') || '';
+      if (h.get('scope') === 'all') state.scope = 'all';
+    } catch (_) { /* ignore */ }
   }
 
   function bind(root) {
@@ -1400,12 +1508,51 @@ window.AsgardDocHubPage = (function () {
     }
   }
 
+  function bindQuarterLive() {
+    const live = document.getElementById('dhQtrLive');
+    const wrap = document.querySelector('#dhTableHost .dh-table-wrap');
+    if (!live || !wrap) return;
+    const seps = [...wrap.querySelectorAll('.dh-qtr-sep')];
+    if (!seps.length) {
+      live.classList.remove('is-on');
+      live.textContent = '';
+      return;
+    }
+    const update = () => {
+      const scrolled = wrap.scrollTop > 24;
+      const top = wrap.getBoundingClientRect().top + 8;
+      let cur = seps[0];
+      for (const sep of seps) {
+        const r = sep.getBoundingClientRect();
+        if (r.top <= top + 28) cur = sep;
+      }
+      const q = cur.getAttribute('data-qtr');
+      const y = cur.getAttribute('data-year');
+      const label = q && q !== '0' ? quarterLabel(+q, +y) : 'Без даты документа';
+      const idx = seps.indexOf(cur);
+      const next = seps[idx + 1];
+      let nextHint = '';
+      if (next) {
+        const nq = next.getAttribute('data-qtr');
+        const ny = next.getAttribute('data-year');
+        if (nq && nq !== '0') nextHint = ` → ${quarterLabel(+nq, +ny)}`;
+      }
+      live.innerHTML = `<span class="arrow">↓</span><span>${esc(label)}</span><span class="dh-qtr-sep__hint">по дате документа${esc(nextHint)}</span>`;
+      live.classList.toggle('is-on', scrolled);
+    };
+    wrap.removeEventListener('scroll', wrap.__dhQtrScroll || (() => {}));
+    wrap.__dhQtrScroll = update;
+    wrap.addEventListener('scroll', update, { passive: true });
+    update();
+  }
+
   async function refresh() {
     if (state.view === 'guide' || state.view === 'wizard') return;
     const host = document.getElementById('dhTableHost');
     if (!host) return;
     await loadData();
     host.innerHTML = renderTable();
+    bindQuarterLive();
     updateKpiDom();
     const scopeEl = document.getElementById('dhScopeAll');
     if (scopeEl) scopeEl.checked = state.scope === 'all';
@@ -1430,6 +1577,7 @@ window.AsgardDocHubPage = (function () {
       await window.layout(html, { title: state.view === 'wizard' ? 'Внести документ' : 'Реестр документов' });
     }
     bind(document);
+    if (state.view === 'registry') bindQuarterLive();
     if (state.view === 'wizard') {
       const host = document.getElementById('dhWizardHost');
       if (host) paintWizard(host);
@@ -1453,9 +1601,12 @@ window.AsgardDocHubPage = (function () {
     state.facetCounterparty = '';
     state.facetOps = '';
     state.facetIncomplete = false;
+    state.quarter = '';
+    state.year = '';
     state.view = 'registry';
     state.selectedId = null;
     state.coachOpen = true;
+    readHashFilters(); // scope/quarter/year from #/doc-hub?...
     await paint(layoutFn || window.layout);
     try {
       const q = new URLSearchParams((location.hash.split('?')[1] || ''));

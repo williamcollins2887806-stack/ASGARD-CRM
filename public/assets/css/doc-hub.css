@@ -292,8 +292,8 @@ a:hover { text-decoration: underline; }
   position: relative;
   overflow: hidden;
   text-align: left;
-  padding: 12px 12px 10px;
-  min-height: 78px;
+  padding: 8px 10px 7px;
+  min-height: 62px;
   border-radius: 12px;
   border: 1px solid transparent;
   background:
@@ -465,13 +465,15 @@ a:hover { text-decoration: underline; }
 
 .dh-table-wrap {
   overflow: auto;
-  max-height: calc(100vh - 290px);
+  max-height: calc(100vh - 250px);
+  min-height: 320px;
 }
 .dh-table {
   width: 100%;
   border-collapse: separate;
   border-spacing: 0;
-  min-width: 1280px;
+  min-width: 1100px;
+  table-layout: fixed;
 }
 .dh-table th,
 .dh-table td {
@@ -561,26 +563,30 @@ a:hover { text-decoration: underline; }
 
 .dh-table th:last-child,
 .dh-table td:last-child {
+  /* sticky actions handled by .dh-table--rich .dh-actions to avoid overlap */
+}
+.dh-table:not(.dh-table--rich) th:last-child,
+.dh-table:not(.dh-table--rich) td:last-child {
   position: sticky;
   right: 0;
   z-index: 1;
   background: var(--bg2);
   box-shadow: -8px 0 16px color-mix(in srgb, var(--bg0) 35%, transparent);
 }
-.dh-table th:last-child {
+.dh-table:not(.dh-table--rich) th:last-child {
   z-index: 3;
   background: var(--bg3);
 }
-.dh-table tbody tr:hover td:last-child {
+.dh-table:not(.dh-table--rich) tbody tr:hover td:last-child {
   background: color-mix(in srgb, var(--bg4) 70%, var(--bg2));
 }
-.dh-table tbody tr.is-selected td:last-child {
+.dh-table:not(.dh-table--rich) tbody tr.is-selected td:last-child {
   background: color-mix(in srgb, var(--gold) 10%, var(--bg2));
 }
-.dh-table tbody tr.is-overdue-pay td:last-child {
+.dh-table:not(.dh-table--rich) tbody tr.is-overdue-pay td:last-child {
   background: color-mix(in srgb, var(--red) 8%, var(--bg2));
 }
-.dh-table tbody tr.is-overdue-sf td:last-child {
+.dh-table:not(.dh-table--rich) tbody tr.is-overdue-sf td:last-child {
   background: color-mix(in srgb, var(--amber) 9%, var(--bg2));
 }
 
@@ -1203,8 +1209,8 @@ a:hover { text-decoration: underline; }
   display: flex;
   flex-wrap: wrap;
   align-items: flex-end;
-  gap: 10px 14px;
-  padding: 10px 12px;
+  gap: 8px 12px;
+  padding: 8px 10px;
   border-radius: 12px;
   border: 1px solid var(--brd, var(--line, #334155));
   background: color-mix(in srgb, var(--bg3, #1e293b) 45%, transparent);
@@ -1567,20 +1573,219 @@ a:hover { text-decoration: underline; }
 .dh-table--rich tbody tr:hover { background: color-mix(in srgb, var(--gold, #d4a017) 6%, transparent); }
 
 .dh-sum-hero {
-  padding: 12px 14px;
+  padding: 14px 16px;
   border-radius: 12px;
-  border: 1px solid color-mix(in srgb, var(--gold, #d4a017) 35%, var(--brd, #334155));
-  background: color-mix(in srgb, var(--gold, #d4a017) 8%, var(--bg2, #111827));
+  border: 1px solid color-mix(in srgb, var(--gold, #d4a017) 45%, var(--brd, #334155));
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--gold, #d4a017) 16%, #0b1220), #0b1220 55%);
+  min-height: 96px;
 }
 .dh-sum-hero__main {
-  font-size: 26px;
+  font-size: 30px;
   font-weight: 900;
   letter-spacing: -0.03em;
+  color: #f8fafc !important;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.15;
+  text-shadow: 0 1px 0 rgba(0,0,0,.35);
+}
+.dh-sum-hero__sub, .dh-sum-hero__due {
+  margin-top: 5px;
+  font-size: 12.5px;
+  color: #cbd5e1 !important;
+}
+.dh-sum-hero__grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid color-mix(in srgb, var(--gold, #d4a017) 25%, transparent);
+}
+.dh-sum-hero__grid .k {
+  display: block;
+  font-size: 10px;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: #94a3b8;
+  margin-bottom: 2px;
+}
+.dh-sum-hero__grid .v {
+  display: block;
+  font-weight: 800;
+  font-size: 14px;
+  color: #f1f5f9;
+  font-variant-numeric: tabular-nums;
+}
+.dh-drawer__amt {
+  margin-top: 6px;
+  font-size: 22px;
+  font-weight: 900;
+  color: var(--gold-l, #f5d76e);
+  font-variant-numeric: tabular-nums;
+}
+.dh-section--sums .dh-section__h { color: var(--gold-l, #f5d76e); }
+
+.dh-table--rich { border-collapse: separate; border-spacing: 0; table-layout: fixed; min-width: 1240px; }
+.dh-table--rich th, .dh-table--rich td {
+  padding: 8px 7px;
+  vertical-align: top;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.dh-table--rich th:nth-child(1), .dh-table--rich td:nth-child(1) { width: 124px; }
+.dh-table--rich th:nth-child(2), .dh-table--rich td:nth-child(2) { width: 52px; }
+.dh-table--rich th:nth-child(3), .dh-table--rich td:nth-child(3) { width: 100px; }
+.dh-table--rich th:nth-child(4), .dh-table--rich td:nth-child(4) { width: 190px; }
+.dh-table--rich th:nth-child(5), .dh-table--rich td:nth-child(5) { width: 140px; }
+.dh-table--rich th:nth-child(6), .dh-table--rich td:nth-child(6) { width: 100px; }
+.dh-table--rich th:nth-child(7), .dh-table--rich td:nth-child(7) { width: 88px; }
+.dh-table--rich th:nth-child(8), .dh-table--rich td:nth-child(8) { width: 100px; }
+.dh-table--rich th:nth-child(9), .dh-table--rich td:nth-child(9) { width: 96px; }
+.dh-table--rich th:nth-child(10), .dh-table--rich td:nth-child(10) { width: 156px; }
+.dh-table--rich .dh-col-work { max-width: 140px; white-space: normal; }
+.dh-table--rich .dh-col-work .a { white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.dh-table--rich .dh-money {
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  color: var(--t1, #e2e8f0);
+  font-size: 13px;
+}
+.dh-table--rich .dh-col-vat { white-space: normal; }
+.dh-table--rich .dh-col-sf { white-space: normal; min-width: 88px; }
+.dh-table--rich .dh-actions {
+  position: sticky;
+  right: 0;
+  background: color-mix(in srgb, var(--bg2, #0f172a) 96%, transparent);
+  box-shadow: -10px 0 14px -12px rgba(0,0,0,.6);
+  z-index: 2;
+}
+.dh-table--rich thead .dh-actions { z-index: 3; background: var(--bg3, #1e293b); }
+.dh-qa {
+  display: inline-flex;
+  gap: 4px;
+  flex-wrap: nowrap;
+}
+.dh-qa button {
+  min-width: 34px;
+  padding: 5px 6px;
+  border-radius: 8px;
+  border: 1px solid var(--brd, #334155);
+  background: var(--bg3, #1e293b);
+  color: var(--t2, #94a3b8);
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+.dh-qa .lbl { font-size: 9px; letter-spacing: .02em; opacity: .85; }
+
+.dh-sum-strip {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  margin: 0 0 14px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid color-mix(in srgb, var(--gold, #d4a017) 40%, var(--brd, #334155));
+  background: color-mix(in srgb, var(--gold, #d4a017) 10%, var(--bg2, #111827));
+}
+.dh-sum-strip .k {
+  display: block;
+  font-size: 10px;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--t2, #94a3b8);
+  margin-bottom: 3px;
+}
+.dh-sum-strip .v {
+  display: block;
+  font-size: 18px;
+  font-weight: 900;
   color: var(--t1, #f8fafc);
   font-variant-numeric: tabular-nums;
 }
-.dh-sum-hero__sub, .dh-sum-hero__due {
-  margin-top: 4px;
-  font-size: 12.5px;
-  color: var(--t2, #94a3b8);
+.dh-guide-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
 }
+.dh-gcard {
+  border: 1px solid var(--brd, #334155);
+  border-radius: 14px;
+  padding: 16px 16px 14px;
+  background: color-mix(in srgb, var(--bg2, #111827) 88%, transparent);
+  min-height: 148px;
+}
+.dh-gcard .n {
+  font-size: 11px;
+  letter-spacing: .12em;
+  color: var(--gold-l, #f5d76e);
+  font-weight: 800;
+  margin-bottom: 8px;
+}
+.dh-gcard h3 { margin: 0 0 8px; font-size: 15px; }
+.dh-gcard p { margin: 0 0 12px; color: var(--t2, #94a3b8); font-size: 12.5px; line-height: 1.45; }
+.dh-gcard .who {
+  font-size: 11px;
+  color: var(--t3, #64748b);
+  border-top: 1px solid var(--brd, #334155);
+  padding-top: 8px;
+}
+
+.dh-qtr-chips { display: inline-flex; gap: 4px; flex-wrap: wrap; }
+.dh-qchip {
+  border: 1px solid var(--brd, #334155);
+  background: var(--bg3, #1e293b);
+  color: var(--t2, #94a3b8);
+  border-radius: 999px;
+  padding: 5px 10px;
+  font-size: 12px;
+  font-weight: 700;
+}
+.dh-qchip.is-on {
+  color: var(--bg0, #0b1220);
+  background: var(--gold, #d4a017);
+  border-color: color-mix(in srgb, var(--gold, #d4a017) 70%, #fff);
+}
+.dh-facet--qtr span { display:block; margin-bottom: 4px; font-size: 11px; color: var(--t3,#64748b); text-transform: uppercase; letter-spacing: .06em; }
+.dh-qtr-live {
+  position: sticky;
+  top: 0;
+  z-index: 6;
+  display: none;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 8px;
+  padding: 8px 12px;
+  border-radius: 10px;
+  border: 1px solid color-mix(in srgb, var(--info, #38bdf8) 40%, var(--brd, #334155));
+  background: color-mix(in srgb, var(--info, #38bdf8) 14%, var(--bg2, #0f172a));
+  color: var(--t1, #f8fafc);
+  font-size: 13px;
+  font-weight: 800;
+}
+.dh-qtr-live.is-on { display: flex; }
+.dh-qtr-live .arrow { color: var(--info, #38bdf8); font-weight: 900; }
+.dh-qtr-sep td { padding: 0 !important; background: transparent !important; border: 0 !important; }
+.dh-qtr-sep__in {
+  /* Not sticky inside <tr> — multiple sticky seps stack and hide rows in tables.
+     Live sticky banner (#dhQtrLive) covers the “current quarter while scrolling” need. */
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 8px 0 4px;
+  padding: 8px 12px;
+  border-radius: 10px;
+  border: 1px solid color-mix(in srgb, var(--gold, #d4a017) 35%, var(--brd, #334155));
+  background: color-mix(in srgb, var(--gold, #d4a017) 12%, var(--bg2, #0f172a));
+  color: var(--t1, #f8fafc);
+  font-size: 13px;
+}
+.dh-qtr-sep__in.is-next {
+  border-color: color-mix(in srgb, var(--info, #38bdf8) 45%, var(--brd, #334155));
+  background: color-mix(in srgb, var(--info, #38bdf8) 12%, var(--bg2, #0f172a));
+}
+.dh-qtr-sep__arrow { font-weight: 900; color: var(--info, #38bdf8); }
+.dh-qtr-sep__hint { color: var(--t3, #64748b); font-size: 11px; margin-left: auto; }

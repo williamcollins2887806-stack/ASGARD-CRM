@@ -65,13 +65,22 @@ async function dryRun(db, rowsIn) {
   const results = [];
   let create = 0; let skip = 0; let manual = 0;
   for (let i = 0; i < rows.length; i++) {
-    const row = normalizeRow(rows[i]);
-    const dup = await findDup(db, row);
-    const cls = classify(row, dup);
-    if (cls.action === 'create') create++;
-    else if (cls.action === 'skip-duplicate') skip++;
-    else manual++;
-    results.push({ index: i, ...cls, row });
+    try {
+      const row = normalizeRow(rows[i]);
+      // Guard invalid dates before SQL cast
+      if (row.invoice_date && !/^\d{4}-\d{2}-\d{2}$/.test(row.invoice_date)) {
+        row.invoice_date = null;
+      }
+      const dup = row.invoice_date ? await findDup(db, row) : null;
+      const cls = classify(row, dup);
+      if (cls.action === 'create') create++;
+      else if (cls.action === 'skip-duplicate') skip++;
+      else manual++;
+      results.push({ index: i, ...cls, row });
+    } catch (e) {
+      manual++;
+      results.push({ index: i, action: 'needs-manual', missing: ['error:' + e.message], row: normalizeRow(rows[i]) });
+    }
   }
   return { create, skip_duplicate: skip, needs_manual: manual, items: results };
 }
@@ -145,7 +154,10 @@ async function apply(db, rowsIn, userId) {
   for (let i = 0; i < rows.length; i++) {
     const row = normalizeRow(rows[i]);
     try {
-      const dup = await findDup(db, row);
+      if (row.invoice_date && !/^\d{4}-\d{2}-\d{2}$/.test(row.invoice_date)) {
+        row.invoice_date = null;
+      }
+      const dup = row.invoice_date ? await findDup(db, row) : null;
       const cls = classify(row, dup);
       if (cls.action === 'skip-duplicate') {
         skipped++;

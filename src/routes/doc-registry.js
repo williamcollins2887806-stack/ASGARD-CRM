@@ -325,6 +325,18 @@ function buildFilters(q, userId) {
   else if (kpi === 'out') where += ` AND d.dir='out'`;
   else if (kpi === '1c' || kpi === 'no_1c') where += ` AND (d.onec_id IS NULL OR trim(d.onec_id)='')`;
   else if (kpi === 'incomplete') where += ' AND d.is_incomplete';
+
+  // Quarters by document date (invoice_date), not created_at
+  const qtr = parseInt(q.quarter, 10);
+  if (qtr >= 1 && qtr <= 4) {
+    params.push(qtr);
+    where += ` AND d.invoice_date IS NOT NULL AND EXTRACT(QUARTER FROM d.invoice_date)=$${params.length}`;
+  }
+  const year = parseInt(q.year, 10);
+  if (year >= 2000 && year <= 2100) {
+    params.push(year);
+    where += ` AND d.invoice_date IS NOT NULL AND EXTRACT(YEAR FROM d.invoice_date)=$${params.length}`;
+  }
   return { where, params };
 }
 
@@ -337,12 +349,16 @@ module.exports = async function docRegistryRoutes(fastify) {
     const { where, params } = buildFilters(q, req.user.id);
     const limit = Math.min(Math.max(parseInt(q.limit, 10) || 50, 1), 200);
     const page = Math.max(parseInt(q.page, 10) || 1, 1);
+    const sort = String(q.sort || 'invoice_date').toLowerCase();
+    const orderSql = sort === 'id'
+      ? 'ORDER BY d.id DESC'
+      : 'ORDER BY d.invoice_date DESC NULLS LAST, d.id DESC';
     const [cnt, list] = await Promise.all([
       db.query(`SELECT COUNT(*)::int n FROM doc_registry d LEFT JOIN works w ON w.id=d.work_id${where}`, params),
-      db.query(`${JOIN_SQL}${where} ORDER BY d.id DESC LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
+      db.query(`${JOIN_SQL}${where} ${orderSql} LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
         [...params, limit, (page - 1) * limit])
     ]);
-    return { items: list.rows.map(decorate), total: cnt.rows[0].n, page, limit };
+    return { items: list.rows.map(decorate), total: cnt.rows[0].n, page, limit, sort };
   });
 
   fastify.get('/kpi', auth, async (req) => {
