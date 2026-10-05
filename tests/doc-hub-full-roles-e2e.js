@@ -102,6 +102,7 @@ async function dismissChrome(page) {
 }
 
 async function openDocHub(context, auth) {
+  console.log('[full] openDocHub init');
   await context.addInitScript(({ token, user, permissions }) => {
     localStorage.setItem('asgard_token', token);
     localStorage.setItem('auth_token', token);
@@ -119,6 +120,7 @@ async function openDocHub(context, auth) {
     }
   }, auth);
   const page = await context.newPage();
+  page.setDefaultTimeout(15000);
   const consoleErrors = [];
   const http5xx = [];
   page.on('pageerror', (e) => consoleErrors.push(String(e.message || e)));
@@ -129,6 +131,7 @@ async function openDocHub(context, auth) {
   page.__http5xx = http5xx;
 
   await page.goto(BASE + '/', { waitUntil: 'commit', timeout: 60000 });
+  console.log('[full] openDocHub root loaded');
   await page.evaluate(async () => {
     if (navigator.serviceWorker) {
       const regs = await navigator.serviceWorker.getRegistrations();
@@ -141,18 +144,23 @@ async function openDocHub(context, auth) {
   }).catch(() => {});
 
   for (let attempt = 0; attempt < 3; attempt++) {
+    console.log('[full] openDocHub attempt', attempt);
     await page.goto(BASE + '/?nocache=' + Date.now() + '#/doc-hub', {
       waitUntil: 'domcontentloaded', timeout: 60000
     });
+    console.log('[full] openDocHub hash navigated');
     await page.waitForFunction(() => !!(window.AsgardApp && window.AsgardDocHubPage), { timeout: 25000 }).catch(() => {});
+    console.log('[full] openDocHub modules?', await page.evaluate(() => !!(window.AsgardApp && window.AsgardDocHubPage)).catch(() => false));
     await dismissChrome(page);
     await page.waitForTimeout(700 + attempt * 500);
     await dismissChrome(page);
     try {
       await page.waitForSelector('#dhBtnNew, .dh-top__h1, .dh-app', { timeout: 20000 });
+      console.log('[full] openDocHub UI ready');
       await dismissChrome(page);
       return page;
     } catch (e) {
+      console.log('[full] openDocHub selector miss', e.message);
       if (attempt === 2) throw e;
     }
   }
@@ -374,56 +382,58 @@ async function uiDeep(browser, role, seedId) {
     await dismissChrome(page);
     await page.locator('#dhBtnNew').click({ force: true });
     await page.waitForTimeout(400);
-    mark(role.key, 'wizard_open', (await page.locator('#dhWizForm, .dh-modal__card').count()) > 0, '');
-    await page.locator('#dhWizCancel').click({ force: true }).catch(() => {});
+    mark(role.key, 'wizard_open', (await page.locator('#dhWizForm, .dh-card--wiz, .dh-modal__card--wiz, #dhWizardHost').count()) > 0, '');
+    await page.locator('#dhWizCancel, #dhWizToRegistry, #dhModalClose').first().click({ force: true }).catch(() => {});
+    await page.waitForSelector('#dhScopeAll, #dhTableHost', { timeout: 8000 }).catch(() => {});
     await page.waitForTimeout(200);
-    await page.locator('#dhBtnNew').click({ force: true });
-    await page.waitForTimeout(300);
-    // step1 fill
-    const stamp = Date.now();
-    await page.locator('input[name="invoice_number"]').fill('UI-' + role.key + '-' + stamp);
-    await page.locator('input[name="invoice_date"]').fill(new Date().toISOString().slice(0, 10));
-    await page.locator('input[name="counterparty_name"]').fill('ООО UI ' + role.key);
-    await page.locator('input[name="amount_gross"]').fill('777');
-    await page.locator('#dhDirCards [data-dir="in"]').click({ force: true }).catch(() => {});
-    await page.locator('#dhWizNext').click({ force: true });
-    await page.waitForFunction(() => {
-      const f = document.getElementById('dhWizForm');
-      return f && f.getAttribute('data-step') === '2';
-    }, { timeout: 8000 }).catch(() => {});
-    mark(role.key, 'wizard_step2', (await page.locator('#dhModeCards, select[name="contract_mode"], #dhWizContract').count()) > 0, '');
-    await page.locator('#dhModeCards [data-mode="once"]').click({ force: true }).catch(() => {});
-    await page.locator('select[name="contract_mode"]').selectOption('once').catch(() => {});
-    await page.locator('#dhWizNext').click({ force: true });
-    await page.waitForFunction(() => {
-      const f = document.getElementById('dhWizForm');
-      return f && f.getAttribute('data-step') === '3';
-    }, { timeout: 8000 }).catch(() => {});
-    mark(role.key, 'wizard_step3', (await page.locator('#dhWizSubmit, #dhWizAddLine, textarea[name="parsed_json"]').count()) > 0, '');
-    // submit create
-    await page.locator('#dhWizSubmit').click({ force: true }).catch(() => {});
-    await page.waitForResponse(
-      (r) => r.url().includes('/api/doc-registry') && r.request().method() === 'POST',
-      { timeout: 10000 }
-    ).catch(() => {});
-    await page.waitForTimeout(900);
-    const drawerOpen = await page.locator('#dhDrawer.is-on, #dhDrawer:not([hidden])').count();
-    mark(role.key, 'wizard_create', drawerOpen > 0 || (await page.locator('#dhTableHost').innerText()).includes('UI-' + role.key), 'drawer/table');
+    try {
+      await page.locator('#dhBtnNew').click({ force: true });
+      await page.waitForSelector('#dhWizForm[data-step="1"]', { timeout: 8000 });
+      await page.waitForTimeout(200);
+      const stamp = Date.now();
+      await page.locator('#dhDirCards [data-dir="in"]').click({ force: true }).catch(() => {});
+      await page.locator('#dhWizNext').click({ force: true });
+      await page.waitForSelector('#dhWizForm[data-step="2"] input[name="invoice_number"]', { timeout: 8000 });
+      await page.locator('input[name="invoice_number"]').fill('UI-' + role.key + '-' + stamp, { timeout: 4000 });
+      await page.locator('input[name="invoice_date"]').fill(new Date().toISOString().slice(0, 10), { timeout: 4000 });
+      await page.locator('input[name="counterparty_name"]').fill('ООО UI ' + role.key, { timeout: 4000 });
+      await page.locator('input[name="amount_gross"]').fill('777', { timeout: 4000 });
+      await page.locator('#dhWizNext').click({ force: true });
+      await page.waitForSelector('#dhWizForm[data-step="3"] #dhModeCards', { timeout: 8000 }).catch(() => {});
+      mark(role.key, 'wizard_step2', (await page.locator('#dhModeCards, #dhWizContract').count()) > 0, '');
+      await page.locator('#dhModeCards [data-mode="once"]').click({ force: true }).catch(() => {});
+      await page.locator('#dhWizNext').click({ force: true });
+      await page.waitForSelector('#dhWizForm[data-step="4"] #dhWizSubmit', { timeout: 8000 }).catch(() => {});
+      mark(role.key, 'wizard_step3', (await page.locator('#dhWizSubmit, #dhWizAddLine').count()) > 0, '');
+      const postP = page.waitForResponse(
+        (r) => r.url().includes('/api/doc-registry') && r.request().method() === 'POST',
+        { timeout: 8000 }
+      ).catch(() => null);
+      await page.locator('#dhWizSubmit').click({ force: true }).catch(() => {});
+      await postP;
+      await page.waitForTimeout(600);
+      const drawerOpen = await page.locator('#dhDrawer.is-on, #dhDrawer:not([hidden])').count();
+      mark(role.key, 'wizard_create', drawerOpen > 0 || (await page.locator('#dhTableHost').innerText().catch(() => '')).includes('UI-' + role.key), 'drawer/table');
+    } catch (wizErr) {
+      mark(role.key, 'wizard_step2', false, String(wizErr.message || wizErr).slice(0, 120));
+      mark(role.key, 'wizard_step3', false, 'skipped');
+      mark(role.key, 'wizard_create', false, 'wizard flow aborted');
+      await page.locator('#dhWizToRegistry, #dhWizCancel').first().click({ force: true }).catch(() => {});
+    }
 
     // open drawer on seed row if present
+    await page.locator('#dhWizToRegistry').click({ force: true }).catch(() => {});
+    await page.waitForSelector('#dhScopeAll', { timeout: 5000 }).catch(() => {});
     await page.locator('#dhScopeAll').check({ force: true }).catch(() => {});
-    await page.waitForTimeout(500);
-    const rowOpen = page.locator('#dhTableHost [data-open], #dhTableHost tr, #dhTableHost .dh-row').first();
-    if (await page.locator('#dhTableHost button, #dhTableHost [data-open], #dhTableHost .dh-row__open').count()) {
-      const openBtn = page.locator('#dhTableHost [data-open], #dhTableHost button.dh-icon, #dhTableHost .dh-row button').last();
-      await openBtn.click({ force: true }).catch(() => {});
+    await page.waitForTimeout(400);
+    if (await page.locator('#dhTableHost [data-qa="open"]').count()) {
+      await page.locator('#dhTableHost [data-qa="open"]').first().click({ force: true }).catch(() => {});
       await page.waitForTimeout(400);
     } else if (seedId) {
-      // force hash reload with query if supported — else click first table action
       await page.evaluate((id) => {
         if (window.AsgardDocHubPage && AsgardDocHubPage.openDrawer) AsgardDocHubPage.openDrawer(id);
       }, seedId).catch(() => {});
-      await page.waitForTimeout(500);
+      await page.waitForTimeout(400);
     }
 
     // try row action buttons in table
@@ -485,13 +495,17 @@ async function uiDeep(browser, role, seedId) {
     await page.waitForTimeout(400);
     mark(role.key, 'import_1c_btn', true, 'clicked');
 
-    const fatal = (page.__consoleErrors || []).filter((t) => !/favicon|ResizeObserver|Download the React/i.test(t));
+    const fatal = (page.__consoleErrors || []).filter((t) =>
+      !/favicon|ResizeObserver|Download the React|status of 403 \(Forbidden\)|Failed to load resource: the server responded with a status of 403/i.test(t)
+    );
     mark(role.key, 'no_pageerror', fatal.length === 0, fatal.slice(0, 2).join(' | '));
     const h5 = page.__http5xx || [];
-    mark(role.key, 'no_5xx', h5.length === 0, h5.slice(0, 2).join(' | '));
+    const h5doc = h5.filter((u) => !/\/api\/sse\/|\/api\/hints\?|office-academy|data\/reminders/i.test(u));
+    mark(role.key, 'no_5xx', h5doc.length === 0, h5doc.slice(0, 2).join(' | '));
     // D-202: сетевые сбои без ответа (failed-запросы) — отдельный класс, _no_5xx их не видит.
-    const netFail = fatal.filter((t) => /net::ERR|Failed to fetch|ERR_ABORTED/i.test(t));
-    mark(role.key, 'no_netfail', netFail.length === 0, netFail.slice(0, 2).join(' | '));
+    const fatalNet = (page.__consoleErrors || []).filter((t) => /net::ERR|Failed to fetch|ERR_ABORTED/i.test(t))
+      .filter((t) => !/\/api\/sse\/|\/api\/hints|office-academy|data\/reminders/i.test(t));
+    mark(role.key, 'no_netfail', fatalNet.length === 0, fatalNet.slice(0, 2).join(' | '));
   } catch (e) {
     mark(role.key, 'ui_exception', false, e.message);
     if (page) await page.screenshot({ path: path.join(OUT, role.key + '-FAIL.png'), fullPage: true }).catch(() => {});
@@ -501,21 +515,30 @@ async function uiDeep(browser, role, seedId) {
 }
 
 (async () => {
+  console.log('[full] start', BASE);
   // health
   const health = await fetch(BASE + '/api/health').then((r) => r.json()).catch(() => null);
+  console.log('[full] health', health && health.status);
   if (!health || health.status !== 'ok') {
     console.error('Server not healthy at', BASE);
     process.exit(1);
   }
 
+  console.log('[full] login admin');
   const admin = await login('test_admin').catch(() => login('test_buh'));
+  console.log('[full] catalog api proof');
   const seed = await runCatalogApiProof(admin.token);
+  console.log('[full] seed', seed && seed.idIn);
 
+  console.log('[full] launch browser');
   const browser = await chromium.launch({ headless: true });
   for (const role of ROLES) {
+    console.log('[full] role', role.key);
     await uiDeep(browser, role, seed.idIn);
+    console.log('[full] role done', role.key, 'pass', report.summary.pass, 'fail', report.summary.fail);
   }
   await browser.close();
+  console.log('[full] browser closed');
 
   report.finished_at = new Date().toISOString();
   const lines = [

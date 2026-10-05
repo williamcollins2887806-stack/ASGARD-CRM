@@ -359,6 +359,8 @@ module.exports = async function docRegistryRoutes(fastify) {
         COUNT(*) FILTER (WHERE d.ops_status IN ('wait_sf','wait_closing')
           OR (d.sf_due_at IS NOT NULL AND d.sf_due_at::date < ${ti}::date
               AND d.ops_status IN ('wait_sf','wait_closing')))::int AS sf,
+        COUNT(*) FILTER (WHERE d.sf_due_at IS NOT NULL AND d.sf_due_at::date < ${ti}::date
+          AND d.ops_status IN ('wait_sf','wait_closing'))::int AS sf_overdue,
         COUNT(*) FILTER (WHERE d.wh_status IN ('await','received','to_office'))::int AS wh,
         COUNT(*) FILTER (WHERE d.dir='out')::int AS out,
         COUNT(*) FILTER (WHERE d.onec_id IS NULL OR trim(d.onec_id)='')::int AS no_1c,

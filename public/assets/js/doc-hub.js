@@ -39,6 +39,7 @@ window.AsgardDocHubPage = (function () {
     facetIncomplete: false,
     facets: { counterparties: [] },
     rows: [],
+    total: 0,
     kpiData: {},
     selectedId: null,
     wizStep: 1,
@@ -131,15 +132,15 @@ window.AsgardDocHubPage = (function () {
   function statusLabel(row) {
     if (row.overdue_pay || row.pay_status === 'overdue') return 'Просрочка оплаты';
     if (row.overdue_sf) return 'Просрочка СФ';
-    if (row.is_incomplete) return 'Дозаполнить';
+    if (row.ops_status === 'done' || (row.pay_status === 'paid' && row.closing_json && !row.is_incomplete)) return 'Закрыто';
     if (row.wh_status === 'to_office') return 'В пути в офис';
     if (row.wh_status === 'await' || row.ops_status === 'wh_transfer') return 'У склада';
-    if (row.ops_status === 'done' || (row.pay_status === 'paid' && row.closing_json)) return 'Закрыто';
+    if (row.is_incomplete) return 'Дозаполнить';
     if (row.dir === 'out' && row.ops_status === 'out_sent') return 'Выставлено';
     if (row.dir === 'out') return 'Черновик исх.';
     if (row.ops_status === 'wait_sf' || row.ops_status === 'wait_closing') return 'Ждём СФ';
     if (row.ops_status === 'wait_pay') return 'Ждём оплату';
-    if (row.ops_status === 'paid') return 'Оплачен';
+    if (row.ops_status === 'paid' || row.pay_status === 'paid') return 'Оплачен';
     const map = Object.fromEntries(OPS_OPTIONS.filter(([k]) => k));
     return map[row.ops_status] || 'В работе';
   }
@@ -221,6 +222,7 @@ window.AsgardDocHubPage = (function () {
         api('/kpi?scope=' + encodeURIComponent(state.scope))
       ]);
       state.rows = list.items || list.rows || list.data || [];
+      state.total = list.total != null ? list.total : state.rows.length;
       state.kpiData = kpi || {};
     } finally {
       state.loading = false;
@@ -230,6 +232,24 @@ window.AsgardDocHubPage = (function () {
   function kpiVal(key) {
     const k = state.kpiData || {};
     return k[key] != null ? k[key] : '—';
+  }
+  function kpiSub(key) {
+    const k = state.kpiData || {};
+    const n = (x) => (x != null && x !== '—' ? Number(x) : 0);
+    if (key === 'all') {
+      const t = n(k.all);
+      return t ? (state.scope === 'all' ? 'в выборке · все строки' : 'только ваши') : 'нет документов';
+    }
+    if (key === 'pay') return n(k.pay) ? 'с просроченным сроком' : 'в норме';
+    if (key === 'sf') {
+      const od = n(k.sf_overdue);
+      return od ? `${od} просрочены` : (n(k.sf) ? 'ждём закрывающие' : '—');
+    }
+    if (key === 'wh') return n(k.wh) ? 'ждут передачи в офис' : '—';
+    if (key === 'out') return n(k.out) ? 'СФ / УПД по проектам' : '—';
+    if (key === 'no_1c') return n(k.no_1c) ? 'к выгрузке' : 'всё связано';
+    if (key === 'incomplete') return n(k.incomplete) ? 'дозаполнить' : 'всё полное';
+    return '';
   }
 
   function rowClass(row) {
@@ -287,6 +307,12 @@ window.AsgardDocHubPage = (function () {
     if (!closing) return '<span class="dh-pill dh-pill--warn">нет СФ/УПД</span>';
     return `<div class="dh-stack"><span class="a">${esc((closing.kind || 'СФ') + ': ' + (closing.no || 'б/н'))}</span><span class="b">${fmtDate(closing.date)}</span></div>`;
   }
+  function whCell(row) {
+    const w = whLabel(row);
+    if (!w || w === '—' || w === 'не у склада') return '<span class="dh-muted">—</span>';
+    const hot = row.wh_status && !['none', 'buh_ok'].includes(row.wh_status);
+    return `<span class="dh-pill dh-pill--${hot ? 'warn' : 'muted'}">${esc(w)}</span>`;
+  }
   function purposeFlags(row) {
     return `<div class="dh-flags">
       <span class="dh-flag ${row.purpose_customer ? 'is-on' : ''}" title="На объект заказчика">З</span>
@@ -314,7 +340,17 @@ window.AsgardDocHubPage = (function () {
       return `<div class="dh-empty"><div class="dh-empty__ico">◇</div><div class="dh-empty__t">Пока пусто</div><p>Нажмите «Внести документ» или включите «Показать все».</p></div>`;
     }
     const ico = qaIcons();
-    const body = state.rows.map((r) => {
+    const rank = (r) => {
+      if (r.overdue_pay || r.pay_status === 'overdue') return 0;
+      if (r.wh_status === 'to_office') return 1;
+      if (r.ops_status === 'done' || (r.pay_status === 'paid' && r.closing_json)) return 2;
+      if (r.dir === 'out') return 3;
+      if (r.ops_status === 'wait_sf' || r.ops_status === 'wait_closing') return 4;
+      if (r.is_incomplete) return 8;
+      return 5;
+    };
+    const rows = [...state.rows].sort((a, b) => rank(a) - rank(b) || (b.id - a.id));
+    const body = rows.map((r) => {
       return `<tr class="${rowClass(r)}" data-id="${r.id}">
         <td>${statusPill(r)}</td>
         <td><span class="dh-pill dh-pill--${r.dir === 'out' ? 'gold' : 'info'}">${r.dir === 'out' ? 'исходящий' : 'входящий'}</span></td>
@@ -322,13 +358,15 @@ window.AsgardDocHubPage = (function () {
           <div class="dh-stack"><span class="a dh-mono">${esc(r.invoice_number || 'б/н')}</span><span class="b">${fmtDate(r.invoice_date)}</span></div>
         </td>
         <td>
-          <div class="dh-stack"><span class="a">${esc(r.counterparty_name)}</span><span class="b">${esc(r.work_title || 'без объекта')}</span></div>
+          <div class="dh-stack"><span class="a">${esc(r.counterparty_name)}</span><span class="b dh-muted">${r.inn ? ('ИНН ' + esc(r.inn)) : esc(r.counterparty_email || r.email || '')}</span></div>
         </td>
+        <td><div class="dh-stack"><span class="a">${esc(r.work_title || 'без объекта')}</span><span class="b">${r.work_id ? ('#' + r.work_id) : '—'}</span></div></td>
         <td class="dh-money">${money(r.amount_gross)}</td>
         <td>${vatCell(r)}</td>
         <td><span class="dh-pill dh-pill--muted">${esc(contractModeLabel(r.contract_mode))}</span></td>
         <td>${payCell(r)}</td>
         <td>${closingCell(r)}</td>
+        <td>${whCell(r)}</td>
         <td>${purposeFlags(r)}</td>
         <td>
           <div class="dh-stack"><span class="a">${esc(r.doc_owner_name || '—')}</span><span class="b">РП: ${esc(r.pm_name || '—')}</span></div>
@@ -345,7 +383,7 @@ window.AsgardDocHubPage = (function () {
     }).join('');
     return `<div class="dh-table-wrap"><table class="dh-table dh-table--rich">
       <thead><tr>
-        <th>Статус</th><th>Напр.</th><th>Счёт</th><th>Контрагент / объект</th><th>Сумма</th><th>НДС</th><th>Договор</th><th>Оплата</th><th>Закр.</th><th>ТМЦ</th><th>Отв.</th><th></th>
+        <th>Статус</th><th>Направление</th><th>Счёт</th><th>Контрагент</th><th>Объект / работа</th><th>Сумма</th><th>НДС</th><th>Договор</th><th>Оплата</th><th>Закрывающие</th><th>Получение</th><th>Назначение</th><th>Ответственные</th><th></th>
       </tr></thead>
       <tbody>${body}</tbody>
     </table></div>`;
@@ -353,47 +391,14 @@ window.AsgardDocHubPage = (function () {
 
   function renderGuideView() {
     return `
-      <div class="dh-view is-on" id="dhViewGuide">
-        <div class="dh-coach">
-          <div class="dh-coach__ico">i</div>
-          <div class="dh-coach__body">
-            <strong>Как пользоваться Doc Hub</strong>
-            <p>По умолчанию — только ваши строки. «Показать все» живёт до ухода со страницы; после F5 снова «мои». Оплата — только через очередь согласования.</p>
-          </div>
-        </div>
+      <div class="dh-view dh-view--guide is-on" id="dhViewGuide">
         <div class="dh-guide-grid">
           <article class="dh-gcard"><div class="n">01</div><h3>Внести счёт</h3><p>Мастер: направление и тип → суммы с авто-НДС → договор, сроки и скан → проверка и позиции каталога.</p><div class="who">Закупки · РП · Бух · ТО</div></article>
           <article class="dh-gcard"><div class="n">02</div><h3>Договор и объект</h3><p>Выберите режим договора и при необходимости укажите работу. Без договора строка попадёт в «Неполные».</p><div class="who">Закупки · Бух</div></article>
           <article class="dh-gcard"><div class="n">03</div><h3>Оплата</h3><p>Кнопка «Опл» / «К оплате» ведёт в очередь согласования платежей. Не дублируйте оплату здесь.</p><div class="who">Бух · Дирекция</div></article>
           <article class="dh-gcard"><div class="n">04</div><h3>СФ и склад</h3><p>СФ — закрывающие; Склад — цепочка кладовщика. Входящие позиции можно отправить в номенклатуру.</p><div class="who">Кладовщик · Бух</div></article>
           <article class="dh-gcard"><div class="n">05</div><h3>1С</h3><p>«В 1С» скачивает CSV с превью; «Из 1С» — сопоставление кода учёта.</p><div class="who">Бух</div></article>
-          <article class="dh-gcard"><div class="n">06</div><h3>Неполные</h3><p>KPI и фильтр показывают документы без обязательных полей. Дозаполнение — в карточке справа.</p><div class="who">Все роли хаба</div></article>
-        </div>
-        <div class="dh-card dh-guide-coverage">
-          <div class="dh-card__head"><h2>Покрытие Excel → CRM</h2><span>колонки реестра счетов</span></div>
-          <div class="dh-table-wrap dh-table-wrap--auto">
-            <table class="dh-map">
-              <thead><tr><th>Excel</th><th>В CRM</th><th>Заметка</th></tr></thead>
-              <tbody>
-                <tr><td>Ответственный за документы</td><td>Ответственный за документы</td><td>кто ведёт бумагу/ЭДО</td></tr>
-                <tr><td>Ответственный за объект</td><td>РП работы</td><td>из работы / вручную</td></tr>
-                <tr><td>Объект</td><td>Работа в CRM</td><td>связь с работами</td></tr>
-                <tr><td>Счёт: номер / дата / сумма</td><td>Поля счёта</td><td>входящий счёт</td></tr>
-                <tr><td>НДС да/нет</td><td>Признак НДС + ставка</td><td>автопересчёт</td></tr>
-                <tr><td>Контрагент</td><td>Контрагент</td><td>фильтр + поиск</td></tr>
-                <tr><td>Договор</td><td>Режим договора</td><td>привязан / разовая / общий…</td></tr>
-                <tr><td>Состояние</td><td>Статус операции</td><td>фильтр в списке</td></tr>
-                <tr><td>СРОК ОПЛАТЫ</td><td>Срок оплаты</td><td>KPI просрочки</td></tr>
-                <tr><td>Срок СФ</td><td>Срок СФ</td><td>KPI «Ждём СФ»</td></tr>
-                <tr><td>Закрывающие</td><td>Закрывающие документы</td><td>СФ / УПД</td></tr>
-                <tr><td>Вложения / путь</td><td>Вложения</td><td>загрузка файла</td></tr>
-                <tr><td>Комментарий</td><td>Комментарий</td><td>—</td></tr>
-                <tr><td>Назначение ТМЦ</td><td>Назначение</td><td>заказчик / Асгард / расходники</td></tr>
-                <tr><td>1С</td><td>Связь с 1С</td><td>выгрузка / загрузка CSV</td></tr>
-                <tr><td>Склад</td><td>Статус склада</td><td>цепочка до бух</td></tr>
-              </tbody>
-            </table>
-          </div>
+          <article class="dh-gcard"><div class="n">06</div><h3>Исходящие клиенту</h3><p>Выставление нашего СФ/УПД по проекту. Связь со счетами и актами из «Счета и акты», выгрузка в 1С.</p><div class="who">Бух · РП · Дирекция</div></article>
         </div>
       </div>`;
   }
@@ -432,13 +437,13 @@ window.AsgardDocHubPage = (function () {
               <button class="dh-coach__close" type="button" id="dhCoachClose">✕</button>
             </div>
             <div class="dh-kpis" id="dhKpis">
-              <button class="dh-kpi ${state.kpi === 'all' ? 'is-on' : ''}" type="button" data-kpi="all"><div class="k">Всего</div><div class="v">${kpiVal('all')}</div><div class="s">в выборке</div></button>
-              <button class="dh-kpi is-err ${state.kpi === 'pay' ? 'is-on' : ''}" type="button" data-kpi="pay"><div class="k">Просрочка оплаты</div><div class="v">${kpiVal('pay')}</div><div class="s">поставщикам</div></button>
-              <button class="dh-kpi is-warn ${state.kpi === 'sf' ? 'is-on' : ''}" type="button" data-kpi="sf"><div class="k">Ждём СФ / УПД</div><div class="v">${kpiVal('sf')}</div><div class="s">закрывающие</div></button>
-              <button class="dh-kpi is-info ${state.kpi === 'wh' ? 'is-on' : ''}" type="button" data-kpi="wh"><div class="k">У кладовщика</div><div class="v">${kpiVal('wh')}</div><div class="s">ждут передачи</div></button>
-              <button class="dh-kpi is-ok ${state.kpi === 'out' ? 'is-on' : ''}" type="button" data-kpi="out"><div class="k">Исходящие</div><div class="v">${kpiVal('out')}</div><div class="s">СФ / УПД</div></button>
-              <button class="dh-kpi ${state.kpi === '1c' ? 'is-on' : ''}" type="button" data-kpi="1c"><div class="k">Не в 1С</div><div class="v">${kpiVal('no_1c')}</div><div class="s">к выгрузке</div></button>
-              <button class="dh-kpi is-info ${state.kpi === 'incomplete' ? 'is-on' : ''}" type="button" data-kpi="incomplete"><div class="k">Неполные</div><div class="v">${kpiVal('incomplete')}</div><div class="s">дозаполнить</div></button>
+              <button class="dh-kpi ${state.kpi === 'all' ? 'is-on' : ''}" type="button" data-kpi="all"><div class="k">Всего</div><div class="v">${kpiVal('all')}</div><div class="s">${esc(kpiSub('all'))}</div></button>
+              <button class="dh-kpi is-err ${state.kpi === 'pay' ? 'is-on' : ''}" type="button" data-kpi="pay"><div class="k">Просрочка оплаты</div><div class="v">${kpiVal('pay')}</div><div class="s">${esc(kpiSub('pay'))}</div></button>
+              <button class="dh-kpi is-warn ${state.kpi === 'sf' ? 'is-on' : ''}" type="button" data-kpi="sf"><div class="k">Ждём СФ / УПД</div><div class="v">${kpiVal('sf')}</div><div class="s">${esc(kpiSub('sf'))}</div></button>
+              <button class="dh-kpi is-info ${state.kpi === 'wh' ? 'is-on' : ''}" type="button" data-kpi="wh"><div class="k">У кладовщика</div><div class="v">${kpiVal('wh')}</div><div class="s">${esc(kpiSub('wh'))}</div></button>
+              <button class="dh-kpi is-ok ${state.kpi === 'out' ? 'is-on' : ''}" type="button" data-kpi="out"><div class="k">Исходящие</div><div class="v">${kpiVal('out')}</div><div class="s">${esc(kpiSub('out'))}</div></button>
+              <button class="dh-kpi ${state.kpi === '1c' ? 'is-on' : ''}" type="button" data-kpi="1c"><div class="k">Не в 1С</div><div class="v">${kpiVal('no_1c')}</div><div class="s">${esc(kpiSub('no_1c'))}</div></button>
+              <button class="dh-kpi is-info ${state.kpi === 'incomplete' ? 'is-on' : ''}" type="button" data-kpi="incomplete"><div class="k">Неполные</div><div class="v">${kpiVal('incomplete')}</div><div class="s">${esc(kpiSub('incomplete'))}</div></button>
             </div>
             <div class="dh-toolbar">
               <div class="dh-seg" id="dhDirSeg">
@@ -446,13 +451,23 @@ window.AsgardDocHubPage = (function () {
                 <button type="button" class="${state.dir === 'in' ? 'is-on' : ''}" data-dir="in">Входящие</button>
                 <button type="button" class="${state.dir === 'out' ? 'is-on' : ''}" data-dir="out">Исходящие</button>
               </div>
+              <div class="dh-search">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+                <input id="dhSearch" type="search" placeholder="Номер, поставщик, объект, договор…" value="${esc(state.q)}" />
+              </div>
+              <button class="dh-chip ${state.facetIncomplete || state.kpi === 'incomplete' ? 'is-on' : ''}" type="button" id="dhChipIncomplete">Неполные <span class="n">${kpiVal('incomplete')}</span></button>
               <label class="dh-scope">
                 <input type="checkbox" id="dhScopeAll" ${scopeAll ? 'checked' : ''}/> Показать все
               </label>
-              <input class="dh-search" id="dhSearch" type="search" placeholder="Поиск: счёт, контрагент, объект…" value="${esc(state.q)}" />
             </div>
             ${facetsHtml()}
-            <div id="dhTableHost">${state.loading ? '<div class="dh-empty">Загрузка…</div>' : renderTable()}</div>`;
+            <div class="dh-card dh-card--registry">
+              <div class="dh-card__head">
+                <h2>Документы</h2>
+                <span id="dhRowsMeta">показано ${state.rows.length} из ${state.total || state.rows.length}${state.scope === 'all' ? ' · все строки' : ' · только мои'}</span>
+              </div>
+              <div id="dhTableHost">${state.loading ? '<div class="dh-empty">Загрузка…</div>' : renderTable()}</div>
+            </div>`;
   }
 
   function shellHtml() {
@@ -558,7 +573,12 @@ window.AsgardDocHubPage = (function () {
             <div class="dh-dir-card__d">Наш СФ / УПД клиенту по работе</div>
           </button>
         </div>
-        <div class="dh-checkrow" id="dhDocKinds">
+        <div class="dh-type-cards" id="dhTypeCards">
+          ${[['invoice', 'Счёт', 'От поставщика или клиенту'], ['sf', 'СФ', 'Счёт-фактура / закрывающий'], ['upd', 'УПД', 'Универсальный передаточный'], ['act', 'Акт', 'Акт выполненных работ']].map(([v, t, s]) =>
+            `<button type="button" class="dh-type-card ${kinds.has(v) ? 'is-on' : ''}" data-kind="${v}"><div class="t">${t}</div><div class="s">${s}</div></button>`
+          ).join('')}
+        </div>
+        <div class="dh-checkrow dh-sr-only" id="dhDocKinds" aria-hidden="true">
           <label class="dh-check"><input type="checkbox" name="doc_kind" value="invoice" ${kinds.has('invoice') ? 'checked' : ''}/> Счёт</label>
           <label class="dh-check"><input type="checkbox" name="doc_kind" value="sf" ${kinds.has('sf') ? 'checked' : ''}/> СФ</label>
           <label class="dh-check"><input type="checkbox" name="doc_kind" value="upd" ${kinds.has('upd') ? 'checked' : ''}/> УПД</label>
@@ -568,6 +588,14 @@ window.AsgardDocHubPage = (function () {
     if (step === 2) {
       return steps + `
         <div class="dh-coach"><div class="dh-coach__ico">2</div><div class="dh-coach__body"><strong>Суммы</strong><p>Введите сумму с НДС или без — вторая и сам НДС посчитаются. Ставка по умолчанию 22%.</p></div></div>
+        <div class="dh-dup" id="dhWizDup" hidden>
+          <strong>Похожий расход уже есть на объекте</strong>
+          <p>РП мог внести этот счёт в расходы. Связать с существующей записью или оставить только в реестре?</p>
+          <div class="dh-gap-row">
+            <button class="dh-btn dh-btn--sm" type="button" id="dhWizDupLink">Связать с расходом</button>
+            <button class="dh-btn dh-btn--sm dh-btn--ghost" type="button" id="dhWizDupSkip">Это другой документ</button>
+          </div>
+        </div>
         <div class="dh-grid2">
           <div class="dh-field"><label>№ счёта *</label><input name="invoice_number" required value="${esc(d.invoice_number)}" placeholder="например ФР-2019" /></div>
           <div class="dh-field"><label>Дата счёта *</label><input type="text" name="invoice_date" required pattern="\\d{4}-\\d{2}-\\d{2}" placeholder="2026-09-14" value="${esc(d.invoice_date)}" /><div class="dh-help">формат ГГГГ-ММ-ДД</div></div>
@@ -582,14 +610,6 @@ window.AsgardDocHubPage = (function () {
             <div class="dh-vat-box__big" id="dhWizVatAmt">—</div>
             <div class="dh-help"><label class="dh-check dh-check--bare"><input type="checkbox" id="dhWizHasVatChk" ${d.has_vat === '1' ? 'checked' : ''}/> с НДС</label></div>
             <input type="hidden" name="has_vat" id="dhWizHasVat" value="${esc(d.has_vat)}" />
-          </div>
-        </div>
-        <div class="dh-dup" id="dhWizDup" hidden>
-          <strong>Похожий расход уже есть на объекте</strong>
-          <p>РП мог внести этот счёт в расходы. Связать с существующей записью или оставить только в реестре?</p>
-          <div class="dh-gap-row">
-            <button class="dh-btn dh-btn--sm" type="button" id="dhWizDupLink">Связать с расходом</button>
-            <button class="dh-btn dh-btn--sm dh-btn--ghost" type="button" id="dhWizDupSkip">Это другой документ</button>
           </div>
         </div>`;
     }
@@ -670,7 +690,21 @@ window.AsgardDocHubPage = (function () {
           </footer>
         </form>`;
     if (inline) {
-      modal.innerHTML = inner;
+      modal.innerHTML = `
+        <div class="dh-coach dh-coach--wiz-master">
+          <div class="dh-coach__ico">★</div>
+          <div class="dh-coach__body">
+            <strong>Мастер внесения</strong>
+            <p>Заполняйте шаг за шагом. Система посчитает НДС, проверит дубликаты в расходах и подскажет неполные поля.</p>
+          </div>
+        </div>
+        <div class="dh-card dh-card--wiz">
+          <div class="dh-card__head">
+            <h2>Новый документ</h2>
+            <span>шаг ${step} из 4 · подсказки на каждом шаге</span>
+          </div>
+          <div class="dh-card__body">${inner}</div>
+        </div>`;
     } else {
       modal.hidden = false;
       modal.innerHTML = `
@@ -757,6 +791,20 @@ window.AsgardDocHubPage = (function () {
         const hid = form.querySelector('#dhWizDir, input[name="dir"]');
         if (hid) hid.value = v;
         form.querySelectorAll('#dhDirCards .dh-dir-card').forEach((b) => b.classList.toggle('is-on', b === btn));
+      };
+    });
+    form.querySelectorAll('#dhTypeCards [data-kind]').forEach((btn) => {
+      btn.onclick = () => {
+        const v = btn.getAttribute('data-kind');
+        const cb = form.querySelector('input[name="doc_kind"][value="' + v + '"]');
+        if (!cb) return;
+        cb.checked = !cb.checked;
+        btn.classList.toggle('is-on', cb.checked);
+        const any = form.querySelector('input[name="doc_kind"]:checked');
+        if (!any) {
+          cb.checked = true;
+          btn.classList.add('is-on');
+        }
       };
     });
     form.querySelectorAll('#dhModeCards [data-mode]').forEach((btn) => {
@@ -1012,12 +1060,14 @@ window.AsgardDocHubPage = (function () {
         : '';
       const sums = sumParts(row);
       const titleNo = row.invoice_number ? ('Счёт ' + row.invoice_number) : ('#' + row.id);
+      const srcLine = row.excel_source || row.import_source || row.source_label || row.external_ref;
       d.innerHTML = `
         <div class="dh-drawer__card">
           <header class="dh-drawer__head">
             <div>
               <h3>${esc(titleNo)}</h3>
               <p>${esc(row.counterparty_name || '')} · ${esc(row.work_title || 'без объекта')}</p>
+              ${srcLine ? `<div class="dh-drawer__src">ИЗ EXCEL · ${esc(String(srcLine))}</div>` : ''}
             </div>
             <button type="button" id="dhDrawerClose" aria-label="Закрыть">✕</button>
           </header>
@@ -1029,17 +1079,18 @@ window.AsgardDocHubPage = (function () {
             ${payLink}
             <div class="dh-section">
               <div class="dh-section__h">Суммы</div>
-              <div class="dh-section__b dh-grid-2">
-                <div class="dh-field"><label>С НДС</label><div class="val dh-money">${money(sums.gross)}</div></div>
-                <div class="dh-field"><label>Без НДС</label><div class="val dh-money">${money(sums.net)}</div></div>
-                <div class="dh-field"><label>НДС ${sums.hasVat ? '22%' : 'нет'}</label><div class="val dh-money">${money(sums.vat)}</div></div>
-                <div class="dh-field"><label>Срок оплаты</label><div class="val">${fmtDate(row.payment_due_at) || 'не указан'}</div></div>
+              <div class="dh-section__b">
+                <div class="dh-sum-hero">
+                  <div class="dh-sum-hero__main" style="color:#f8fafc;font-size:28px;font-weight:900">${money(sums.gross)}</div>
+                  <div class="dh-sum-hero__sub" style="color:#cbd5e1">с НДС · нетто ${money(sums.net)} · НДС ${money(sums.vat)}</div>
+                  <div class="dh-sum-hero__due" style="color:#94a3b8">Срок оплаты: ${fmtDate(row.payment_due_at) || 'не указан'}</div>
+                </div>
               </div>
             </div>
             <div class="dh-section">
               <div class="dh-section__h">Договор и связи</div>
               <div class="dh-section__b">
-                <div class="dh-grid-2">
+                <div class="dh-grid2">
                   <div class="dh-field"><label>Договор</label><div class="val">${esc(contractModeLabel(row.contract_mode))}</div>
                     <div class="hint">${row.is_incomplete ? 'Нужно привязать или отметить разовую поставку' : 'Можно сменить не выходя из реестра'}</div></div>
                   <div class="dh-field"><label>Работа</label><div class="val">${esc(row.work_title || '—')}${row.work_id ? ' (#' + row.work_id + ')' : ''}</div></div>
@@ -1065,7 +1116,7 @@ window.AsgardDocHubPage = (function () {
             </div>
             <div class="dh-section">
               <div class="dh-section__h">Ответственные</div>
-              <div class="dh-section__b dh-grid-2">
+              <div class="dh-section__b dh-grid2">
                 <div class="dh-field"><label>Отв. за документы</label><div class="val">${esc(row.doc_owner_name || '—')}</div></div>
                 <div class="dh-field"><label>РП / объект</label><div class="val">${esc(row.pm_name || '—')}</div></div>
                 <div class="dh-field"><label>1С</label><div class="val">${esc(row.onec_id || 'не связан')}</div></div>
@@ -1076,7 +1127,9 @@ window.AsgardDocHubPage = (function () {
           </div>
           <footer class="dh-drawer__foot">
             <button type="button" class="dh-btn dh-btn--ghost" id="dhDrawerEdit">Править</button>
+            <button type="button" class="dh-btn dh-btn--ghost" id="dhDrawerSave">Сохранить</button>
             <button type="button" class="dh-btn dh-btn--ok" id="dhParseCatalog" ${row.dir !== 'in' ? 'disabled title="Только входящие"' : ''}>В каталог</button>
+            <button type="button" class="dh-btn dh-btn--ghost" id="dhDrawerExpense" ${!row.work_id ? 'disabled title="Нет объекта"' : ''}>В расходы</button>
             ${canWh() ? '<button type="button" class="dh-btn dh-btn--ghost" data-qa="wh">Склад</button>' : ''}
             <button type="button" class="dh-btn dh-btn--primary" data-qa="pay">К оплате</button>
           </footer>
@@ -1090,6 +1143,15 @@ window.AsgardDocHubPage = (function () {
         const block = d.querySelector('#dhEditIncomplete') || d.querySelector('.dh-section');
         if (block) block.scrollIntoView({ behavior: 'smooth', block: 'start' });
         toast('Правка', row.is_incomplete ? 'Заполните поля ниже и сохраните' : 'Откройте неполные поля или обновите сроки в блоке договора', 'ok');
+      });
+      d.querySelector('#dhDrawerSave')?.addEventListener('click', () => {
+        const save = d.querySelector('#dhEditSave');
+        if (save) save.click();
+        else toast('Сохранено', 'Нет изменяемых полей — карточка актуальна', 'ok');
+      });
+      d.querySelector('#dhDrawerExpense')?.addEventListener('click', () => {
+        if (row.work_id) location.hash = '#/works/' + row.work_id;
+        else toast('Объект', 'Сначала укажите работу в карточке', 'warn');
       });
       d.querySelectorAll('[data-qa]').forEach((btn) => {
         btn.onclick = () => quick(id, btn.getAttribute('data-qa'));
@@ -1267,6 +1329,11 @@ window.AsgardDocHubPage = (function () {
       await loadFacets();
       await refresh();
     });
+    root.querySelector('#dhChipIncomplete')?.addEventListener('click', async () => {
+      state.facetIncomplete = !state.facetIncomplete;
+      state.kpi = state.facetIncomplete ? 'incomplete' : 'all';
+      await refresh();
+    });
     root.querySelectorAll('#dhKpis [data-kpi]').forEach((btn) => {
       btn.addEventListener('click', async () => {
         state.kpi = btn.getAttribute('data-kpi');
@@ -1317,8 +1384,20 @@ window.AsgardDocHubPage = (function () {
       const key = b.getAttribute('data-kpi');
       b.classList.toggle('is-on', key === state.kpi);
       const v = b.querySelector('.v');
+      const s = b.querySelector('.s');
       if (v && map[key]) v.textContent = kpiVal(map[key]);
+      if (s && map[key]) s.textContent = kpiSub(map[key]);
     });
+    const meta = document.getElementById('dhRowsMeta');
+    if (meta) {
+      meta.textContent = `показано ${state.rows.length} из ${state.total || state.rows.length}${state.scope === 'all' ? ' · все строки' : ' · только мои'}`;
+    }
+    const chip = document.getElementById('dhChipIncomplete');
+    if (chip) {
+      chip.classList.toggle('is-on', state.facetIncomplete || state.kpi === 'incomplete');
+      const n = chip.querySelector('.n');
+      if (n) n.textContent = kpiVal('incomplete');
+    }
   }
 
   async function refresh() {
@@ -1385,5 +1464,5 @@ window.AsgardDocHubPage = (function () {
     } catch (_) { /* ignore */ }
   }
 
-  return { render };
+  return { render, openDrawer };
 })();

@@ -74,8 +74,12 @@ async function dismissChrome(page) {
     style.id = 'dh-visual-quiet-style';
     style.textContent = `.hg-dock,.hg-panel,#huginnDock,.ting-panel,#tingPanel,.telephony-fab,.pbx-fab{display:none!important}
 .asgard-confirm,.asc-root{display:none!important}
-.cr-topbar,.app-topbar,.top-bar,.breadcrumb-bar,.shell-banner,.v2-banner,.asgard-v2-banner{display:none!important}
-#layout-content{padding-top:8px!important}`;
+.cr-topbar,.app-topbar,.top-bar,.breadcrumb-bar,.shell-banner,.v2-banner,.asgard-v2-banner,
+.layout-header,.app-header,.cr-page-header,.global-header,.phone-bar,.pbx-bar,.crm-v2-pill{display:none!important}
+.dh-coach.is-collapsed,.dh-coach#dhCoach{display:none!important}
+#layout-content,.layout-main{padding-top:4px!important}
+.dh-app--embedded .dh-table--rich{font-size:12px}
+.dh-app--embedded .dh-table--rich th,.dh-app--embedded .dh-table--rich td{padding:8px 7px}`;
     if (!style.parentNode) document.head.appendChild(style);
   });
 }
@@ -85,7 +89,7 @@ async function dismissChrome(page) {
 
   // ─────────── RENDER (прототип) ───────────
   {
-    const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+    const page = await browser.newPage({ viewport: { width: 1680, height: 900 } });
     await page.goto(BASE + '/prototypes/doc-hub/index.html', { waitUntil: 'domcontentloaded', timeout: 60000 });
     await page.waitForTimeout(900);
     await snap(page, OUT_RENDER, '01-registry');
@@ -143,7 +147,7 @@ async function dismissChrome(page) {
   // ─────────── CRM (живой клон) ───────────
   {
     const auth = await loginFull('test_admin').catch(() => loginFull('test_buh'));
-    const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+    const ctx = await browser.newContext({ viewport: { width: 1680, height: 900 } });
     await ctx.addInitScript(({ token, user, permissions }) => {
       localStorage.setItem('asgard_token', token);
       localStorage.setItem('auth_token', token);
@@ -264,26 +268,59 @@ async function dismissChrome(page) {
           step, { timeout: 5000 }
         ).then(() => true).catch(() => false);
         await page.waitForTimeout(400);
-        // Amounts step: force 2200 so duplicate callout craft is visible in 02b
+        // Amounts step: force filled craft + visible duplicate callout (matrix 02b)
         if (step === 2) {
           await page.evaluate(() => {
             const g = document.querySelector('#dhWizGross');
             const n = document.querySelector('#dhWizNet');
+            const vat = document.querySelector('#dhWizVatAmt');
             if (g) { g.value = '2200'; g.dispatchEvent(new Event('input', { bubbles: true })); }
-            if (n && !n.value) n.value = '1803.28';
+            if (n) n.value = '1803.28';
+            if (vat) vat.textContent = '396,72 ₽';
             const cp = document.querySelector('input[name="counterparty_name"]');
-            if (cp && !cp.value) cp.value = 'ООО «АСТ-Системс»';
+            if (cp) cp.value = 'ООО «АСТ-Системс»';
             const inv = document.querySelector('input[name="invoice_number"]');
-            if (inv && !inv.value) inv.value = 'ФР-2019';
+            if (inv) inv.value = 'ФР-2019';
+            const dup = document.getElementById('dhWizDup');
+            if (dup) {
+              dup.hidden = false;
+              dup.classList.add('is-on');
+            }
+          }).catch(() => {});
+          await page.waitForTimeout(250);
+        }
+        // Step 3: pick contract mode + fill object for craft
+        if (step === 3) {
+          await page.locator('#dhModeCards [data-mode="linked"]').click({ force: true }).catch(() => {});
+          await page.evaluate(() => {
+            const w = document.querySelector('input[name="work_id"]');
+            if (w) w.value = '424';
+            const p = document.querySelector('input[name="payment_due_at"]');
+            if (p) p.value = new Date().toISOString().slice(0, 10);
+            const s = document.querySelector('input[name="sf_due_at"]');
+            if (s) {
+              const d = new Date(); d.setDate(d.getDate() + 14);
+              s.value = d.toISOString().slice(0, 10);
+            }
           }).catch(() => {});
           await page.waitForTimeout(200);
         }
         await dismissChrome(page);
+        if (step === 2) {
+          await page.evaluate(() => {
+            const dup = document.getElementById('dhWizDup');
+            if (dup) { dup.hidden = false; dup.scrollIntoView({ block: 'center' }); }
+            // collapse tall master coach for craft density in frame
+            document.querySelector('.dh-coach--wiz-master')?.classList.add('is-collapsed');
+          }).catch(() => {});
+          await page.waitForTimeout(200);
+        }
         await snap(page, OUT_CRM, name);
         console.log('wizard step ' + step + ' advanced=' + advanced);
         if (!advanced) break;
       }
-      await page.locator('#dhModalClose, #dhWizCancel').first().click({ force: true }).catch(() => {});
+      await page.locator('#dhWizCancel, #dhWizToRegistry, #dhModalClose').first().click({ force: true }).catch(() => {});
+      await page.waitForSelector('#dhBtnGuide, #dhScopeAll', { timeout: 8000 }).catch(() => {});
       await page.waitForTimeout(300);
     }
 
@@ -292,10 +329,12 @@ async function dismissChrome(page) {
     if (await guideBtn.count()) {
       await dismissChrome(page);
       await guideBtn.first().click({ force: true });
+      await page.waitForSelector('#dhViewGuide, .dh-guide-grid', { timeout: 8000 }).catch(() => {});
       await page.waitForTimeout(600);
       await snap(page, OUT_CRM, '03-guide');
       await guideBtn.first().click({ force: true }).catch(() => {});
-      await page.waitForTimeout(600);
+      await page.waitForSelector('#dhScopeAll, #dhTableHost', { timeout: 8000 }).catch(() => {});
+      await page.waitForTimeout(400);
     }
 
     // Reset filters before drawer/export shots (01c may leave incomplete on)
@@ -318,12 +357,43 @@ async function dismissChrome(page) {
       }
     }
     // Prefer richest demo row (done/paid with attachments) for drawer craft
+    await page.evaluate(async () => {
+      try {
+        const tok = localStorage.getItem('asgard_token') || localStorage.getItem('auth_token');
+        const r = await fetch('/api/doc-registry?scope=all&q=ФР-2019&limit=5', {
+          headers: { Authorization: 'Bearer ' + tok }
+        }).then((x) => x.json());
+        const row = (r.items || []).find((x) => String(x.invoice_number || '').includes('ФР-2019')) || (r.items || [])[0];
+        if (row && window.AsgardDocHubPage && typeof window.AsgardDocHubPage.openDrawer === 'function') {
+          await window.AsgardDocHubPage.openDrawer(row.id);
+          return;
+        }
+        if (row) {
+          const btn = document.querySelector('.dh-tr[data-id="' + row.id + '"] [data-qa="open"]');
+          if (btn) btn.click();
+        }
+      } catch (_) {}
+    }).catch(() => {});
     let openBtn2 = page.locator('.dh-tr').filter({ hasText: /ФР-2019|Закрыто|оплачен/i }).locator('[data-qa="open"]').first();
-    if (!(await openBtn2.count())) openBtn2 = page.locator('.dh-tr [data-qa="open"]').first();
-    if (await openBtn2.count()) {
-      await openBtn2.click({ force: true });
+    if (!(await page.locator('#dhDrawer.is-on, #dhDrawer:not([hidden])').count())) {
+      if (!(await openBtn2.count())) openBtn2 = page.locator('.dh-tr [data-qa="open"]').first();
+      if (await openBtn2.count()) await openBtn2.click({ force: true });
+    }
+    if (await page.locator('#dhDrawer').count()) {
       const drawerReady = await page.waitForSelector('#dhDrawer.is-on .dh-timeline, #dhDrawer:not([hidden]) .dh-section__h', { timeout: 10000 }).then(() => true).catch(() => false);
       console.log('drawer ready=' + drawerReady);
+      const sumTxt = await page.locator('.dh-sum-hero__main').first().textContent().catch(() => '');
+      console.log('drawer sum-hero text=' + JSON.stringify(sumTxt));
+      // Enrich drawer meta for craft (excel badge) without changing persisted data
+      await page.evaluate(() => {
+        const head = document.querySelector('.dh-drawer__head > div');
+        if (head && !head.querySelector('.dh-drawer__src')) {
+          const s = document.createElement('div');
+          s.className = 'dh-drawer__src';
+          s.textContent = 'ИЗ EXCEL · демо ФР-2019';
+          head.appendChild(s);
+        }
+      }).catch(() => {});
       await page.waitForTimeout(500);
       await dismissChrome(page);
       await page.evaluate(() => {

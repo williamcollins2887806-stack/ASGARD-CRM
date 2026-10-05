@@ -1,7 +1,7 @@
 'use strict';
 /**
  * FIO audit: Excel registry vs CRM users (read-only report).
- * Default Excel: D:\ASGARD\01_Проекты\МЛСП-Оголовок\Закупка_ОФС_Приразломная_2026\Сводка_счета_и_СФ.xlsx
+ * Scans all worksheets; optional DOC_HUB_EXCEL_DIR for alternate manifests.
  */
 require('dotenv').config();
 const fs = require('fs');
@@ -9,7 +9,8 @@ const path = require('path');
 const ExcelJS = require('exceljs');
 const { Pool } = require('pg');
 
-const EXCEL = process.env.DOC_HUB_EXCEL || 'D:\\ASGARD\\01_Проекты\\МЛСП-Оголовок\\Закупка_ОФС_Приразломная_2026\\Сводка_счета_и_СФ.xlsx';
+const DEFAULT_DIR = 'D:\\ASGARD\\01_Проекты\\МЛСП-Оголовок\\Закупка_ОФС_Приразломная_2026';
+const EXCEL = process.env.DOC_HUB_EXCEL || path.join(DEFAULT_DIR, 'Сводка_счета_и_СФ.xlsx');
 const OUT = path.join(__dirname, '..', 'tests', 'reports', 'doc-hub-e2e', 'fio-audit.md');
 
 function normFio(s) {
@@ -21,35 +22,86 @@ function normFio(s) {
 }
 
 function pickColumns(headers) {
-  const h = headers.map((x, i) => ({ i, raw: String(x || ''), n: normFio(x) }));
+  const h = (headers || [])
+    .map((x, i) => ({ i, raw: String(x || ''), n: normFio(x) }))
+    .filter((c) => c && typeof c.n === 'string');
   const doc = h.find((c) => /ответственн.*документ/.test(c.n)) || h.find((c) => /ответственн.*док/.test(c.n));
   const obj = h.find((c) => /ответственн.*объект/.test(c.n)) || h.find((c) => /ответственн.*работ/.test(c.n));
   const rp = h.find((c) => /^рп$/.test(c.n) || /руководит.*проект/.test(c.n));
-  return { doc, obj, rp };
+  const fioAny = h.find((c) => /^фио$/.test(c.n) || /ответственн/.test(c.n) || /исполнител/.test(c.n));
+  return { doc, obj, rp, fioAny, score: (doc ? 4 : 0) + (obj ? 3 : 0) + (rp ? 2 : 0) + (fioAny ? 1 : 0) };
+}
+
+function findHeaderRow(rows) {
+  let best = { ri: 0, headers: rows[0] || [], cols: pickColumns(rows[0] || []), score: 0 };
+  for (let ri = 0; ri < Math.min(rows.length, 40); ri++) {
+    const headers = rows[ri] || [];
+    const cols = pickColumns(headers);
+    const score = cols.score;
+    if (score > best.score) best = { ri, headers, cols, score };
+    if (score >= 4) return { ri, headers, cols };
+  }
+  return best;
+}
+
+async function collectFromWorkbook(wb, acc) {
+  for (const sheet of wb.worksheets) {
+    const rows = [];
+    sheet.eachRow((row) => {
+      rows.push(row.values.slice(1).map((v) => (v == null ? '' : v)));
+    });
+    const { ri, headers, cols } = findHeaderRow(rows);
+    if (!cols.score) continue;
+    for (const row of rows.slice(ri + 1)) {
+      for (const c of [cols.doc, cols.obj, cols.rp, cols.fioAny]) {
+        if (!c) continue;
+        const v = String(row[c.i] || '').trim();
+        if (v && v.length > 2 && !/^\d+$/.test(v)) acc.fios.add(v);
+      }
+    }
+    if (cols.score > acc.bestScore) {
+      acc.bestScore = cols.score;
+      acc.best = { file: acc.file, sheet: sheet.name, ri, headers, cols };
+    }
+  }
+}
+
+async function scanExcelFile(filePath, acc) {
+  acc.file = filePath;
+  const wb = new ExcelJS.Workbook();
+  await wb.xlsx.readFile(filePath);
+  await collectFromWorkbook(wb, acc);
 }
 
 (async () => {
-  if (!fs.existsSync(EXCEL)) {
-    console.error('Excel not found:', EXCEL);
-    process.exit(1);
-  }
-  const wb = new ExcelJS.Workbook();
-  await wb.xlsx.readFile(EXCEL);
-  const sheet = wb.worksheets[0];
-  const rows = [];
-  sheet.eachRow((row) => {
-    rows.push(row.values.slice(1).map((v) => (v == null ? '' : v)));
-  });
-  const headers = rows[0] || [];
-  const cols = pickColumns(headers);
-  const fios = new Set();
-  for (const row of rows.slice(1)) {
-    for (const c of [cols.doc, cols.obj, cols.rp]) {
-      if (!c) continue;
-      const v = String(row[c.i] || '').trim();
-      if (v && v.length > 2) fios.add(v);
+  const files = [];
+  if (fs.existsSync(EXCEL)) files.push(EXCEL);
+  const dir = process.env.DOC_HUB_EXCEL_DIR || DEFAULT_DIR;
+  if (fs.existsSync(dir)) {
+    for (const name of fs.readdirSync(dir)) {
+      if (!/\.xlsx$/i.test(name)) continue;
+      const p = path.join(dir, name);
+      if (!files.includes(p)) files.push(p);
     }
   }
+  if (!files.length) {
+    console.error('No Excel files found:', EXCEL, dir);
+    process.exit(1);
+  }
+
+  const acc = { fios: new Set(), best: null, bestScore: 0, scanned: [] };
+  for (const f of files) {
+    try {
+      await scanExcelFile(f, acc);
+      acc.scanned.push(f);
+    } catch (e) {
+      console.warn('Skip', f, e.message);
+    }
+  }
+
+  const best = acc.best || { file: EXCEL, sheet: '—', ri: 0, headers: [], cols: pickColumns([]) };
+  const { headers, cols, ri } = best;
+  const fios = acc.fios;
 
   const pool = new Pool({
     host: process.env.DB_HOST,
@@ -82,17 +134,22 @@ function pickColumns(headers) {
   const md = [
     '# Doc Hub FIO audit (Excel vs CRM users)',
     '',
-    `**Excel:** \`${EXCEL}\``,
-    `**Sheet:** ${sheet.name}`,
+    `**Primary Excel:** \`${EXCEL}\``,
+    `**Best sheet:** ${best.sheet} (file: \`${path.basename(best.file || EXCEL)}\`)`,
+    `**Scanned files:** ${acc.scanned.length}`,
+    ...acc.scanned.slice(0, 12).map((f) => `- \`${f}\``),
+    ...(acc.scanned.length > 12 ? ['- …'] : []),
     `**Generated:** ${new Date().toISOString()}`,
     `**DB:** ${process.env.DB_NAME || 'asgard_crm'}`,
     '',
-    '## Columns used',
+    '## Columns used (best sheet)',
     `- doc: ${cols.doc ? headers[cols.doc.i] : '—'}`,
     `- object/work: ${cols.obj ? headers[cols.obj.i] : '—'}`,
     `- rp: ${cols.rp ? headers[cols.rp.i] : '—'}`,
+    `- header row: **${ri + 1}**`,
     '',
-    `## Summary`,
+    ...(fios.size === 0 ? ['> **Note:** колонки «Ответственный…» / «РП» не найдены ни на одном листе просканированных xlsx. Нужен манifest с ФИО или уточнение листа.', ''] : []),
+    '## Summary',
     `- Unique FIO in Excel: **${fios.size}**`,
     `- Matched in CRM: **${found.length}**`,
     `- **Missing in CRM: ${missing.length}**`,

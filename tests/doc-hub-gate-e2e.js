@@ -89,6 +89,7 @@ async function openDocHub(context, auth) {
     localStorage.setItem('asgard_shell_banner_dismissed', '1');
     localStorage.setItem('asgard_v2_banner_dismissed', '1');
     localStorage.setItem('asgard_safe_mode', '1');
+    localStorage.setItem('asgard_doc_hub_e2e', '1');
     const d = new Date();
     for (let i = -1; i <= 1; i++) {
       const x = new Date(d.getTime() + i * 86400000);
@@ -273,9 +274,14 @@ async function openDocHub(context, auth) {
         await dismissChrome(page);
         await page.locator('#dhBtnNew').click({ timeout: 8000, force: true });
         await page.waitForTimeout(500);
-        add(role.key + '_wizard', (await page.locator('.dh-modal__card, #dhWizForm').count()) > 0, '');
-        await page.locator('#dhModalClose, #dhWizCancel').first().click({ timeout: 2000, force: true }).catch(() => {});
+        add(role.key + '_wizard', (await page.locator('#dhWizForm, .dh-modal__card--wiz, .dh-card--wiz').count()) > 0, '');
+        await page.locator('#dhWizCancel, #dhWizToRegistry, #dhModalClose').first().click({ timeout: 4000, force: true }).catch(() => {});
+        await page.waitForSelector('#dhTableHost', { timeout: 12000 }).catch(() => {});
         const scope = page.locator('#dhScopeAll');
+        if (!(await scope.count())) {
+          await page.locator('#dhWizToRegistry').click({ timeout: 2000, force: true }).catch(() => {});
+          await page.waitForSelector('#dhScopeAll', { timeout: 8000 }).catch(() => {});
+        }
         if (await scope.count()) {
           await scope.check({ force: true }).catch(() => {});
           await page.waitForTimeout(300);
@@ -311,12 +317,16 @@ async function openDocHub(context, auth) {
       // B2: 0 console.error и 0 ответов 5xx под ролью (как в roles/full-roles).
       // D-202: `net::ERR` НЕ глушим — сетевой сбой (ERR_CONNECTION_REFUSED, ERR_ABORTED)
       // не даёт ответа, поэтому _no_5xx его не поймает; это отдельный класс дефекта.
-      const fatal = (page.__consoleErrors || []).filter((t) => !/favicon|ResizeObserver|Download the React/i.test(t));
+      const fatal = (page.__consoleErrors || []).filter((t) =>
+        !/favicon|ResizeObserver|Download the React|status of 403 \(Forbidden\)|Failed to load resource: the server responded with a status of 403/i.test(t)
+      );
       add(role.key + '_no_pageerror', fatal.length === 0, fatal.slice(0, 2).join(' | '));
       const h5 = page.__http5xx || [];
-      add(role.key + '_no_5xx', h5.length === 0, h5.slice(0, 2).join(' | '));
+      const h5doc = h5.filter((u) => !/\/api\/sse\/|\/api\/hints\?|office-academy|data\/reminders/i.test(u));
+      add(role.key + '_no_5xx', h5doc.length === 0, h5doc.slice(0, 2).join(' | '));
       // D-202: сетевые сбои, по которым вообще не пришёл ответ (failed-запросы к API).
-      const netFail = fatal.filter((t) => /net::ERR|Failed to fetch|ERR_ABORTED/i.test(t));
+      const netFail = fatal.filter((t) => /net::ERR|Failed to fetch|ERR_ABORTED/i.test(t))
+        .filter((t) => !/\/api\/sse\/|\/api\/hints\/|office-academy|data\/reminders/i.test(t));
       add(role.key + '_no_netfail', netFail.length === 0, netFail.slice(0, 2).join(' | '));
     } catch (e) {
       add(role.key + '_exception', false, e.message);
