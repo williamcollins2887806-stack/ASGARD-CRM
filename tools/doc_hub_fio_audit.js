@@ -59,13 +59,13 @@ function pickColumns(headers) {
     database: process.env.DB_NAME || 'asgard_crm'
   });
   const { rows: users } = await pool.query(
-    `SELECT id, login, full_name, role, is_active FROM users WHERE is_active = true AND full_name IS NOT NULL`
+    `SELECT id, login, name, role, is_active FROM users WHERE is_active = true AND name IS NOT NULL`
   );
   await pool.end();
 
   const byNorm = new Map();
   for (const u of users) {
-    const n = normFio(u.full_name);
+    const n = normFio(u.name);
     if (!byNorm.has(n)) byNorm.set(n, []);
     byNorm.get(n).push(u);
   }
@@ -75,7 +75,7 @@ function pickColumns(headers) {
   for (const fio of [...fios].sort((a, b) => a.localeCompare(b, 'ru'))) {
     const n = normFio(fio);
     const hit = byNorm.get(n) || [...byNorm.entries()].filter(([k]) => k.includes(n) || n.includes(k)).flatMap(([, v]) => v);
-    if (hit.length) found.push({ fio, users: hit.map((u) => `${u.full_name} (${u.role}, #${u.id})`) });
+    if (hit.length) found.push({ fio, users: hit.map((u) => `${u.name} (${u.role}, #${u.id})`) });
     else missing.push(fio);
   }
 
