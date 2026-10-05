@@ -2,7 +2,7 @@
 // Shell caching + Push Notifications + Offline Support + Background Sync
 // Session 15: PWA + Push Actions + Badge + Offline
 
-const SHELL_VERSION = '20.28.72';
+const SHELL_VERSION = '20.28.73';
 const CACHE_NAME = `asgard-crm-shell-${SHELL_VERSION}`;
 const API_CACHE_NAME = 'asgard-crm-api-v2';
 
@@ -377,8 +377,8 @@ self.addEventListener('push', function(event) {
     badge: payload.badge || './assets/img/icon-96.png',
     tag: payload.tag || 'asgard-notification',
     data: payload.data || { url: payload.url || '/' },
-    vibrate: [200, 100, 200],
-    requireInteraction: !!(payload.actions && payload.actions.length),
+    vibrate: payload.tag === 'telephony-incoming' ? [300, 120, 300, 120, 300] : [200, 100, 200],
+    requireInteraction: payload.requireInteraction || payload.tag === 'telephony-incoming' || !!(payload.actions && payload.actions.length),
     actions: (payload.actions || []).slice(0, 2)
   };
 

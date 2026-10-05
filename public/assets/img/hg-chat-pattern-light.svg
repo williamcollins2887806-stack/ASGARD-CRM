@@ -1,0 +1,72 @@
+﻿<svg xmlns="http://www.w3.org/2000/svg" width="240" height="240" viewBox="0 0 240 240">
+  <!-- P1.9 light: same geometry as dark, higher stroke alpha for Δ 10–12 -->
+  <!-- CRM parchment — not cool TG grey #E6EBEE -->
+  <rect width="240" height="240" fill="#FDFAF5"/>
+  <g id="runes">
+    <defs>
+      <g id="r-fehu" fill="none" stroke="rgba(0,0,0,0.048)" stroke-width="1.15" stroke-linecap="butt" stroke-linejoin="miter">
+        <path d="M0,0 L0,14 M0,0 L7,4 M0,7 L5,10"/>
+      </g>
+      <g id="r-uruz" fill="none" stroke="rgba(0,0,0,0.048)" stroke-width="1.15" stroke-linecap="butt" stroke-linejoin="miter">
+        <path d="M0,0 L0,14 M7,0 L7,10 L0,14 M7,0 L0,2"/>
+      </g>
+      <g id="r-ansuz" fill="none" stroke="rgba(0,0,0,0.048)" stroke-width="1.15" stroke-linecap="butt" stroke-linejoin="miter">
+        <path d="M0,0 L0,14 M0,0 L7,4 M0,7 L5,10"/>
+      </g>
+      <g id="r-raidho" fill="none" stroke="rgba(0,0,0,0.048)" stroke-width="1.15" stroke-linecap="butt" stroke-linejoin="miter">
+        <path d="M0,0 L0,14 M0,0 L6,3 L0,8 M0,8 L7,14"/>
+      </g>
+      <g id="r-kaunan" fill="none" stroke="rgba(0,0,0,0.048)" stroke-width="1.15" stroke-linecap="butt" stroke-linejoin="miter">
+        <path d="M6,0 L0,4 L6,10"/>
+      </g>
+      <g id="r-gebo" fill="none" stroke="rgba(0,0,0,0.048)" stroke-width="1.15" stroke-linecap="butt" stroke-linejoin="miter">
+        <path d="M0,0 L8,14 M8,0 L0,14"/>
+      </g>
+      <g id="r-sowilo" fill="none" stroke="rgba(0,0,0,0.048)" stroke-width="1.15" stroke-linecap="butt" stroke-linejoin="miter">
+        <path d="M6,0 L0,7 L6,14"/>
+      </g>
+      <g id="r-tiwaz" fill="none" stroke="rgba(0,0,0,0.048)" stroke-width="1.15" stroke-linecap="butt" stroke-linejoin="miter">
+        <path d="M4,0 L4,14 M0,0 L4,4 L8,0"/>
+      </g>
+      <g id="r-mannaz" fill="none" stroke="rgba(0,0,0,0.048)" stroke-width="1.15" stroke-linecap="butt" stroke-linejoin="miter">
+        <path d="M0,14 L0,0 L8,14 L8,0"/>
+      </g>
+      <g id="r-ehwaz" fill="none" stroke="rgba(0,0,0,0.048)" stroke-width="1.15" stroke-linecap="butt" stroke-linejoin="miter">
+        <path d="M0,0 L0,14 M0,0 L7,14 M0,14 L7,0"/>
+      </g>
+
+      <g id="runic-circle" fill="none" stroke="rgba(0,0,0,0.048)" stroke-width="1.2" stroke-linecap="butt" stroke-linejoin="miter">
+        <circle cx="30" cy="30" r="28"/>
+        <use href="#r-fehu" transform="translate(30,30) rotate(0) translate(0,-20) scale(0.4286) translate(-4,-7)"/>
+        <use href="#r-ansuz" transform="translate(30,30) rotate(60) translate(0,-20) scale(0.4286) translate(-4,-7)"/>
+        <use href="#r-raidho" transform="translate(30,30) rotate(120) translate(0,-20) scale(0.4286) translate(-4,-7)"/>
+        <use href="#r-gebo" transform="translate(30,30) rotate(180) translate(0,-20) scale(0.4286) translate(-4,-7)"/>
+        <use href="#r-sowilo" transform="translate(30,30) rotate(240) translate(0,-20) scale(0.4286) translate(-4,-7)"/>
+        <use href="#r-mannaz" transform="translate(30,30) rotate(300) translate(0,-20) scale(0.4286) translate(-4,-7)"/>
+      </g>
+    </defs>
+
+    <g transform="translate(0,28)">
+      <use href="#r-fehu" x="10" y="0"/>
+      <use href="#r-uruz" x="24" y="0"/>
+      <use href="#r-ansuz" x="50" y="0"/>
+      <use href="#r-raidho" x="64" y="0"/>
+    </g>
+
+    <g transform="translate(0,198)">
+      <use href="#r-kaunan" x="100" y="0"/>
+      <use href="#r-gebo" x="130" y="0"/>
+      <use href="#r-sowilo" x="144" y="0"/>
+      <use href="#r-tiwaz" x="178" y="0"/>
+    </g>
+
+    <g transform="translate(200,40)">
+      <use href="#r-mannaz" x="0" y="0"/>
+      <use href="#r-ehwaz" x="0" y="16"/>
+      <use href="#r-fehu" x="0" y="38"/>
+      <use href="#r-gebo" x="0" y="52"/>
+    </g>
+
+    <use href="#runic-circle" x="18" y="95"/>
+  </g>
+</svg>
