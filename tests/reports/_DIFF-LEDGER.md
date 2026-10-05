@@ -7573,5 +7573,25 @@ V360 таблица уже была. Телефония не выкатывал�
 **Результат.** GATE **GREEN**: scenarios 24/24, integration 28/28, E02–E08 PASS.
 Остаток на live: JsSIP media, trunk cutover, прод.
 
+
+
 **Статус:** VERIFIED (эмуляция). Cutover/prod — не начаты.
 
+## D-260. Huginn rail: `data-tab` коллизия с CRM-вкладками (05.10.2026)
+
+**Симптом.** Клик по Мимир/Хугинн/Тинг перекидывает на другую CRM-страницу, панель мигает/лагает, повторный клик не сворачивает док (нужен крестик).
+
+**Причина.** Rail-кнопки имели `data-tab` (mimir/huginn/ting/phone). Модули CRM вешают обработчики на **все** `[data-tab]` документа:
+- `pm_duty.js` → `location.hash = '#/pm-calculations?tab=' + tab` + `refreshUI()`; `bindEvents` на каждый refresh → обработчики на rail копятся (лаг/мигание растут).
+- `permits.js` → `switchTab(b.dataset.tab)` стирает содержимое страницы.
+- `bank_import.js` — тот же класс.
+
+Fade `opacity 0→1` на каждый `renderPanel` усиливал мерцание.
+
+**Фикс (только Huginn, чужие модули не трогали).**
+1. Rail: `data-tab` → `data-hg-tab` (`huginn_dock.js/css`, `huginn_ting.js`, specs).
+2. Toggle: клик по активной иконке при открытой панели → `setCollapsed(true)`.
+3. Fade только при смене вкладки; guard повторного `mount()`.
+4. Регресс: `tests/huginn/browser_rail_toggle.spec.js`.
+
+**Статус:** VERIFIED ROUND-7 (5/5 verifiers; deploy pending command).

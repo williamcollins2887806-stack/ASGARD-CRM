@@ -1,0 +1,550 @@
+{
+  "meta": {
+    "created": "2026-10-05T13:11:28",
+    "viewport": {
+      "w_pt": 414,
+      "h_pt": 896,
+      "scale": 2,
+      "note": "pt = px_828/2; iPhone XR/11 class (челка). Все shots нормализованы к этой базе."
+    },
+    "sources": {
+      "shots_dir": "shots/",
+      "atlas": "../TG-ATLAS.json",
+      "pixel_sample": "PIXEL-SAMPLE.json",
+      "huginn_css": "public/assets/css/huginn_dock.css"
+    },
+    "phase": 1,
+    "note": "Phase 1 = vision book + measured consensus. Phase 2 = overlay external sources from user."
+  },
+  "foundations": {
+    "bg_oled": {
+      "value": "#000000",
+      "role": "screen",
+      "source_shots": [
+        "S01",
+        "S07",
+        "S28"
+      ],
+      "confidence": "measured"
+    },
+    "surface_card": {
+      "value": "#1C1C1E",
+      "role": "grouped list card",
+      "source_shots": [
+        "S03",
+        "S16",
+        "S20",
+        "S32"
+      ],
+      "confidence": "measured"
+    },
+    "surface_elevated_glass": {
+      "value": "#181818",
+      "role": "glass fill over black",
+      "source_shots": [
+        "S18",
+        "S36"
+      ],
+      "confidence": "measured"
+    },
+    "separator": {
+      "value": "#3C3C3E",
+      "role": "hairline in cards",
+      "source_shots": [
+        "S29",
+        "S32"
+      ],
+      "confidence": "measured"
+    },
+    "text_primary": {
+      "value": "#FFFFFF",
+      "role": "titles/body",
+      "source_shots": [
+        "S01",
+        "S05"
+      ],
+      "confidence": "measured"
+    },
+    "text_secondary": {
+      "value": "#8E8E93",
+      "role": "meta/time/preview",
+      "source_shots": [
+        "S01",
+        "S36"
+      ],
+      "confidence": "measured"
+    },
+    "text_placeholder": {
+      "value": "rgba(255,255,255,0.60)",
+      "role": "composer placeholder + sticker icon",
+      "source_shots": [
+        "S28"
+      ],
+      "confidence": "measured"
+    },
+    "accent_blue": {
+      "value": "#3E88F7",
+      "aliases": [
+        "#0A84FF",
+        "#007AFF"
+      ],
+      "role": "links, active tab glyph, send FAB",
+      "source_shots": [
+        "S14",
+        "S22",
+        "S36"
+      ],
+      "confidence": "estimated-jpeg"
+    },
+    "accent_user": {
+      "value": "#7358FF",
+      "aliases": [
+        "#6948FD",
+        "#894DE9",
+        "#8F52D4"
+      ],
+      "role": "outgoing bubble (device theme)",
+      "source_shots": [
+        "S07",
+        "S11",
+        "S30"
+      ],
+      "confidence": "measured"
+    },
+    "danger": {
+      "value": "#E55950",
+      "aliases": [
+        "#FF3B30",
+        "#FF453A"
+      ],
+      "role": "destructive / badge",
+      "source_shots": [
+        "S19",
+        "S29",
+        "S36"
+      ],
+      "confidence": "estimated-jpeg"
+    },
+    "badge_fill": {
+      "value": "#FF3B30",
+      "role": "unread tab badge",
+      "source_shots": [
+        "S36",
+        "S01"
+      ],
+      "confidence": "canon"
+    }
+  },
+  "effects": {
+    "glass_composer": {
+      "fill": "rgba(35,35,34,0.65)",
+      "rim": "rgba(255,255,255,0.11)",
+      "spec": "rgba(255,255,255,0.22)",
+      "blur_est_pt": 20,
+      "source_shots": [
+        "S28"
+      ],
+      "confidence": "measured-alpha"
+    },
+    "glass_nav": {
+      "fill": "rgba(28,28,30,0.82)",
+      "observed_over_black": "#171717",
+      "rim_top": "rgba(255,255,255,0.10)",
+      "blur_est_pt": 40,
+      "source_shots": [
+        "S36",
+        "S12"
+      ],
+      "confidence": "measured"
+    },
+    "glass_header_pill": {
+      "fill": "rgba(22,19,20,0.48)",
+      "height_pt": 44,
+      "radius_pt": 22,
+      "blur_est_pt": 28,
+      "source_shots": [
+        "S04",
+        "S05",
+        "S24"
+      ],
+      "confidence": "estimated"
+    },
+    "selection_disc": {
+      "fill": "#393939",
+      "note": "under active tab icon — NOT blue bloom",
+      "source_shots": [
+        "S36",
+        "S01"
+      ],
+      "confidence": "measured"
+    }
+  },
+  "layout": {
+    "side_inset_pt": {
+      "value": 16,
+      "source_shots": [
+        "S03",
+        "S18",
+        "S20"
+      ],
+      "confidence": "measured"
+    },
+    "composer_side_inset_pt": {
+      "value": 26,
+      "note": "S28 crop; full-screen variants ~16–20",
+      "source_shots": [
+        "S28"
+      ],
+      "confidence": "measured"
+    },
+    "chat_row_h_pt": {
+      "value": 72,
+      "range": [
+        68,
+        76
+      ],
+      "source_shots": [
+        "S01",
+        "S37"
+      ],
+      "confidence": "estimated"
+    },
+    "contact_row_h_pt": {
+      "value": 53,
+      "source_shots": [
+        "S02"
+      ],
+      "confidence": "measured"
+    },
+    "settings_row_h_pt": {
+      "value": 52,
+      "source_shots": [
+        "S32",
+        "S29"
+      ],
+      "confidence": "measured"
+    },
+    "avatar_list_pt": {
+      "value": 60,
+      "range": [
+        54,
+        62
+      ],
+      "source_shots": [
+        "S01",
+        "S37"
+      ],
+      "confidence": "estimated"
+    },
+    "avatar_msg_pt": {
+      "value": 32,
+      "source_shots": [
+        "S05"
+      ],
+      "confidence": "estimated"
+    },
+    "avatar_contact_pt": {
+      "value": 42,
+      "source_shots": [
+        "S02"
+      ],
+      "confidence": "measured"
+    },
+    "card_radius_pt": {
+      "value": 26,
+      "range": [
+        22,
+        26
+      ],
+      "source_shots": [
+        "S03",
+        "S20",
+        "S32"
+      ],
+      "confidence": "measured"
+    }
+  },
+  "components": {
+    "composer": {
+      "tool_size_pt": 40,
+      "input_h_pt": 40,
+      "input_radius_pt": 20,
+      "gap_pt": 6,
+      "gap_alt_pt": 8,
+      "placeholder": "Сообщение",
+      "icons": [
+        "paperclip",
+        "sticker",
+        "mic"
+      ],
+      "source_shots": [
+        "S28",
+        "S27",
+        "S04",
+        "S05"
+      ],
+      "confidence": "measured",
+      "hg_map": {
+        "--hg-tg-tool-size": "40px",
+        "--hg-tg-input-h": "40px",
+        "--hg-tg-input-radius": "20px",
+        "--hg-tg-composer-gap": "6px",
+        "--hg-tg-tool-bg": "rgba(35,35,34,0.65)",
+        "--hg-tg-input-bg": "rgba(35,35,34,0.65)"
+      }
+    },
+    "nav": {
+      "pill_h_pt": 64,
+      "pill_w_pt": 301,
+      "pill_radius_pt": 32,
+      "fab_size_pt": 64,
+      "fab_gap_pt": 8,
+      "tabs": [
+        "contacts",
+        "calls",
+        "chats",
+        "settings"
+      ],
+      "icon_active": "accent_blue",
+      "selection": "selection_disc",
+      "badge": "badge_fill",
+      "source_shots": [
+        "S36",
+        "S01",
+        "S02",
+        "S12",
+        "S37",
+        "S38"
+      ],
+      "confidence": "measured",
+      "hg_map": {
+        "--hg-tg-nav-h": "64px",
+        "--hg-tg-nav-radius": "32px",
+        "--hg-tg-fab-size": "64px",
+        "--hg-tg-nav-bg": "rgba(28,28,30,0.82)",
+        "--hg-tg-nav-blur": "40px",
+        "--hg-tg-active-circle": "#393939",
+        "--hg-tg-badge": "#FF3B30",
+        "--hg-tg-nav-icon-active": "#3E88F7"
+      },
+      "hg_current_tradeoff": "huginn_dock.css holds nav-h 56 / fab 56 from ATLAS craft; book recommends 64 for TG iOS 26 parity"
+    },
+    "header": {
+      "mode": "floating_capsules",
+      "control_h_pt": 44,
+      "back_badge_bg": "#FFFFFF",
+      "back_badge_fg": "#000000",
+      "pin_w_pt": 382,
+      "pin_h_pt": 40,
+      "pin_h_alt_pt": 50,
+      "source_shots": [
+        "S04",
+        "S05",
+        "S08",
+        "S24",
+        "S25"
+      ],
+      "confidence": "measured",
+      "hg_map": {
+        "--hg-tg-header-h": "44px",
+        "--hg-tg-header-radius": "22px",
+        "--hg-tg-pin-h": "40px",
+        "--hg-tg-pin-radius": "20px",
+        "--hg-tg-back-badge-bg": "#FFFFFF",
+        "--hg-tg-back-badge-fg": "#000000"
+      }
+    },
+    "bubble": {
+      "radius_pt": 17,
+      "tail_radius_pt": 7,
+      "me_fill": "var(--accent-user)",
+      "them_fill": "rgba(36,36,38,0.92)",
+      "them_on_wallpaper": "gradient(#332433,#222433) glass",
+      "meta_in_bubble": "rgba(255,255,255,0.55)",
+      "source_shots": [
+        "S04",
+        "S05",
+        "S07",
+        "S11",
+        "S26"
+      ],
+      "confidence": "measured",
+      "hg_map": {
+        "--hg-tg-bubble-radius": "17px",
+        "--hg-tg-bubble-them": "rgba(36,36,38,0.92)",
+        "--hg-tg-bubble-me": "USE_THEME_ACCENT_NOT_HARDCODE"
+      }
+    },
+    "voice": {
+      "play_btn_pt": 40,
+      "play_btn_on_bubble": "white disc + accent glyph",
+      "waveform_played": "#FFFFFF",
+      "waveform_rest": "rgba(255,255,255,0.45)",
+      "source_shots": [
+        "S07",
+        "S22"
+      ],
+      "confidence": "estimated"
+    },
+    "segmented": {
+      "capsule_w_pt": 382,
+      "capsule_h_pt": 40,
+      "pill_inset_pt": 3,
+      "active_pill": "rgba(255,255,255,0.15)",
+      "source_shots": [
+        "S17",
+        "S18",
+        "S20",
+        "S23"
+      ],
+      "confidence": "measured"
+    }
+  },
+  "coverage_matrix": {
+    "composer": [
+      "S04",
+      "S05",
+      "S08",
+      "S25",
+      "S27",
+      "S28",
+      "S30"
+    ],
+    "nav_tabbar": [
+      "S01",
+      "S02",
+      "S06",
+      "S12",
+      "S14",
+      "S29",
+      "S31",
+      "S32",
+      "S33",
+      "S34",
+      "S36",
+      "S37",
+      "S38"
+    ],
+    "header": [
+      "S04",
+      "S05",
+      "S08",
+      "S15",
+      "S24",
+      "S25",
+      "S26",
+      "S30"
+    ],
+    "list_chats": [
+      "S01",
+      "S35",
+      "S36",
+      "S37",
+      "S38"
+    ],
+    "list_contacts": [
+      "S02",
+      "S12",
+      "S13"
+    ],
+    "thread_bubbles": [
+      "S04",
+      "S05",
+      "S07",
+      "S08",
+      "S11",
+      "S15",
+      "S25",
+      "S26",
+      "S30"
+    ],
+    "voice": [
+      "S07",
+      "S09",
+      "S22"
+    ],
+    "video_note": [
+      "S08",
+      "S09",
+      "S10"
+    ],
+    "overlays_menus": [
+      "S06",
+      "S13",
+      "S16",
+      "S19"
+    ],
+    "profile_group": [
+      "S03",
+      "S16",
+      "S17",
+      "S19",
+      "S23"
+    ],
+    "shared_media": [
+      "S18",
+      "S20",
+      "S21",
+      "S22"
+    ],
+    "settings": [
+      "S06",
+      "S29",
+      "S31",
+      "S32",
+      "S33",
+      "S34"
+    ],
+    "calls": [
+      "S14"
+    ],
+    "keyboard": [
+      "S04",
+      "S15",
+      "S25",
+      "S27"
+    ],
+    "live_location": [
+      "S08",
+      "S09",
+      "S11",
+      "S25",
+      "S30"
+    ],
+    "reactions_reply_unread": [
+      "S26"
+    ],
+    "stories": [
+      "S35",
+      "S37",
+      "S38"
+    ]
+  },
+  "hg_token_diff_proposal": {
+    "note": "Предложение для кодеров Huginn. Не применено в коде (фаза 1 = только книга).",
+    "update": {
+      "--hg-tg-tool-bg": "rgba(35,35,34,0.65)",
+      "--hg-tg-input-bg": "rgba(35,35,34,0.65)",
+      "--hg-tg-composer-gap": "6px",
+      "--hg-tg-nav-h": "64px",
+      "--hg-tg-nav-radius": "32px",
+      "--hg-tg-fab-size": "64px",
+      "--hg-tg-nav-bg": "rgba(28,28,30,0.82)",
+      "--hg-tg-active-circle": "#393939",
+      "--hg-tg-nav-icon-active": "#3E88F7",
+      "--hg-tg-header-h": "44px",
+      "--hg-tg-bubble-radius": "17px"
+    },
+    "keep_from_atlas_or_css": {
+      "--hg-tg-tool-size": "40px",
+      "--hg-tg-input-h": "40px",
+      "--hg-tg-input-radius": "20px",
+      "--hg-tg-badge": "#FF3B30",
+      "--hg-tg-back-badge-bg": "#FFFFFF",
+      "--hg-tg-nav-blur": "40px"
+    },
+    "do_not_hardcode": [
+      "--hg-tg-bubble-me — брать accent темы пользователя / CRM, на рефах purple"
+    ]
+  }
+}

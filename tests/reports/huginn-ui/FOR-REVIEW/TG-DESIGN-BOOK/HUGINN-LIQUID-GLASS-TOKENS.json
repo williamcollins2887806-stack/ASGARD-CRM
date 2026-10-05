@@ -1,0 +1,191 @@
+{
+  "meta": {
+    "name": "Huginn Liquid Glass",
+    "phase": 2,
+    "created": "2026-10-05",
+    "code_status": "docs_only_until_wave_F0_command",
+    "sources": {
+      "ds": "HUGINN-LIQUID-GLASS-DS.md",
+      "phase1_book": "TG-DESIGN-SYSTEM.md",
+      "phase1_tokens": "TG-DESIGN-TOKENS.json",
+      "shots": "shots/",
+      "refs": "REFS/",
+      "atlas": "../TG-ATLAS.json",
+      "huginn_css": "public/assets/css/huginn_dock.css",
+      "api": "tests/reports/HUGINN-API-CONTRACT.md",
+      "user_brief": "Telegram iOS 2026 Liquid Glass (kept features only)"
+    },
+    "viewport_ref": { "w_pt": 414, "h_pt": 896, "scale": 2 }
+  },
+  "crm_color_map": {
+    "screen": "var(--bg2)",
+    "elevated_glass_base": "var(--bg3)",
+    "text_primary": "var(--t1)",
+    "text_secondary": "var(--t2)",
+    "text_faint": "var(--t3)",
+    "placeholder": "color-mix(in srgb, var(--t1) 60%, transparent)",
+    "accent": "var(--blue-l)",
+    "rail_only": "var(--gold)",
+    "separator": "var(--brd-m)",
+    "badge": "var(--hg-tg-badge, #FF3B30)",
+    "selection_disc": "color-mix(in srgb, var(--bg3) 92%, var(--t1))",
+    "bubble_me": "color-mix(in srgb, var(--blue-l) 72%, var(--bg3))",
+    "bubble_them": "color-mix(in srgb, var(--bg3) 92%, transparent)",
+    "forbidden": ["#7358FF", "#6948FD", "#894DE9", "#000000 as screen", "TG OLED hex literals", "purple outgoing"]
+  },
+  "glass_primitive": {
+    "class": ".hg-glass",
+    "css_concept": {
+      "background": "color-mix(in srgb, var(--bg3) var(--hg-glass-fill-pct), transparent)",
+      "backdrop_filter": "blur(var(--hg-glass-blur)) saturate(var(--hg-glass-sat))",
+      "rim": "inset 0 0 0 1px color-mix(in srgb, var(--t1) var(--hg-glass-rim-pct), transparent)",
+      "radius": "var(--hg-glass-radius)"
+    },
+    "roles": {
+      "composer": { "fill_pct": 65, "blur_px": 20, "rim_pct": 11, "radius": "20px|50%", "sat": "180%", "ref": ["S28"] },
+      "nav": { "fill_pct": 82, "blur_px": 40, "rim_pct": 12, "radius": "32px", "sat": "180%", "ref": ["S36"] },
+      "fab": { "fill_pct": 82, "blur_px": 40, "rim_pct": 12, "radius": "50%", "sat": "180%", "ref": ["S36"] },
+      "header": { "fill_pct": 48, "blur_px": 32, "rim_pct": 10, "radius": "22px", "sat": "160%", "ref": ["S04", "S24"] },
+      "pin": { "fill_pct": 72, "blur_px": 20, "rim_pct": 8, "radius": "20px", "sat": "160%", "ref": ["S24"] },
+      "menu": { "fill_pct": 80, "blur_px": 32, "rim_pct": 10, "radius": "18px", "sat": "180%", "ref": ["S16", "S19"] },
+      "card": { "fill_pct": 100, "blur_px": 0, "rim_pct": 0, "radius": "26px", "sat": "100%", "ref": ["S20", "S32"], "note": "solid --bg3" },
+      "segment": { "fill_pct": 55, "blur_px": 16, "rim_pct": 10, "radius": "20px", "sat": "160%", "ref": ["S17", "S18", "S23"] },
+      "media-chrome": { "fill_pct": 70, "blur_px": 28, "rim_pct": 10, "radius": "16px|50%", "sat": "180%", "ref": ["S18", "S30"] }
+    }
+  },
+  "power_saving": {
+    "levels": ["full", "reduced", "off"],
+    "storage_f0": "localStorage.hg_power_saving",
+    "multipliers": {
+      "full": { "blur": 1, "sat": 1, "fill_boost": 0, "motion": 1 },
+      "reduced": { "blur": 0.5, "sat": 1.2, "fill_boost": 0.08, "motion": 0.6 },
+      "off": { "blur": 0, "sat": 1, "fill_boost": "solid_bg3", "motion": 0 }
+    },
+    "also_respect": "prefers-reduced-motion"
+  },
+  "geometry": {
+    "--hg-tg-tool-size": { "target": "40px", "current": "36px", "wave": "F2" },
+    "--hg-tg-input-h": { "target": "40px", "current": "36px", "wave": "F2" },
+    "--hg-tg-input-radius": { "target": "20px", "current": "18px", "wave": "F2" },
+    "--hg-tg-composer-gap": { "target": "6px", "current": "6px", "wave": null },
+    "--hg-tg-tool-bg": { "target": "glass role composer", "current": "var(--bg3) solid-ish", "wave": "F0/F2" },
+    "--hg-tg-input-bg": { "target": "glass role composer", "current": "var(--bg3)", "wave": "F0/F2" },
+    "--hg-tg-nav-h": { "target": "64px", "current": "56px", "wave": "F1", "status": "TARGET" },
+    "--hg-tg-nav-radius": { "target": "32px", "current": "28px", "wave": "F1" },
+    "--hg-tg-nav-bg": { "target": "glass role nav fill 82%", "current": "color-mix bg3 90%", "wave": "F0/F1" },
+    "--hg-tg-nav-blur": { "target": "40px", "current": "40px", "wave": null },
+    "--hg-tg-fab-size": { "target": "64px", "current": "56px", "wave": "F1", "status": "TARGET" },
+    "--hg-tg-fab-gap": { "target": "8px", "current": "8px", "wave": null },
+    "--hg-tg-active-circle": { "target": "selection_disc CRM mix", "current": "var(--bg3)", "wave": "F1", "note": "not blue bloom" },
+    "--hg-tg-nav-icon-active": { "target": "var(--blue-l)", "current": "var(--blue-l)", "wave": null },
+    "--hg-tg-header-h": { "target": "44px", "current": "36px", "wave": "F3" },
+    "--hg-tg-header-radius": { "target": "22px", "current": "17px", "wave": "F3" },
+    "--hg-tg-header-bg": { "target": "glass role header 48%", "current": "rgba(22,19,20,0.48)", "wave": "F0/F3" },
+    "--hg-tg-pin-h": { "target": "40px", "current": "40px", "wave": null },
+    "--hg-tg-pin-radius": { "target": "20px", "current": "16px", "wave": "F3" },
+    "--hg-tg-bubble-radius": { "target": "17px", "current": "18px", "wave": "F5" },
+    "--hg-tg-bubble-tail-radius": { "target": "7px", "current": null, "wave": "F5" },
+    "--hg-tg-bubble-me": { "target": "CRM blue-l mix", "current": "#2B5278 hardcode risk", "wave": "F5" },
+    "--hg-tg-bubble-them": { "target": "CRM bg3 glass", "current": "rgba(36,36,38,0.92)", "wave": "F5" },
+    "--hg-tg-row-h": { "target": "72px", "range": [68, 76], "current": "68px", "wave": "F4" },
+    "--hg-tg-contact-row-h": { "target": "53px", "current": "64px", "wave": "F4" },
+    "--hg-tg-av-msg": { "target": "32px", "current": "32px", "wave": null },
+    "--hg-side-inset": { "target": "16px", "current": null, "wave": "F0" },
+    "--hg-folder-capsule-h": { "target": "32px", "current": null, "wave": "F10", "be_first": true },
+    "--hg-folder-capsule-radius": { "target": "16px", "current": null, "wave": "F10", "be_first": true }
+  },
+  "brief_shots_decisions": [
+    { "id": 1, "brief": "Liquid Glass everywhere", "shots": ["S04", "S05", "S28", "S36"], "decision": "hg-glass roles", "status": "AGREE" },
+    { "id": 2, "brief": "Floating tab bar + blur on scroll", "shots": ["S36", "S01"], "decision": "nav/fab TARGET 64", "status": "AGREE_TARGET" },
+    { "id": 3, "brief": "No side menu", "shots": ["S01", "S02", "S14", "S29"], "decision": "no drawer", "status": "AGREE" },
+    { "id": 4, "brief": "Folder capsule active", "shots": [], "decision": "token only; BE first", "status": "DEFER_BE" },
+    { "id": 5, "brief": "List preview up to 2 lines", "shots": ["S01", "S37"], "decision": "1 line canon", "status": "OVERRIDE_SHOTS" },
+    { "id": 6, "brief": "Composer capsule + rim + glass", "shots": ["S28"], "decision": "3 objects 40/40/r20 alpha 65%", "status": "AGREE" },
+    { "id": 7, "brief": "Unified bubble radius including tail", "shots": ["S05", "S07", "S11"], "decision": "r17 body + tail 7 asymmetric family", "status": "OVERRIDE_SHOTS_GEOMETRY" },
+    { "id": 8, "brief": "Media viewer glass + dim", "shots": ["S18", "S30"], "decision": "F8", "status": "AGREE_PARTIAL" },
+    { "id": 9, "brief": "Context menus glass + scale", "shots": ["S16", "S19"], "decision": "F6+F9", "status": "AGREE" },
+    { "id": 10, "brief": "Profile round actions + soft cards", "shots": ["S03", "S17", "S23"], "decision": "F7", "status": "AGREE" },
+    { "id": 11, "brief": "Soft morph animations + power saving", "shots": [], "decision": "F0+F9", "status": "BRIEF_ONLY" },
+    { "id": 12, "brief": "AI Editor", "shots": [], "decision": "BE then F11", "status": "DEFER_BE" },
+    { "id": 13, "brief": "iPad Cmd+Enter", "shots": [], "decision": "F12", "status": "BRIEF_ONLY" },
+    { "id": 14, "brief": "Own colors", "shots": ["purple OLED"], "decision": "CRM tokens only", "status": "OVERRIDE_CRM" }
+  ],
+  "backend_gaps": [
+    { "feature": "chat_list_messages_upload_sse", "status": "ok", "ref": "HUGINN-API-CONTRACT.md" },
+    { "feature": "context_menu_reactions_ui", "status": "front_ok" },
+    { "feature": "media_viewer_chrome", "status": "front_ok_if_media" },
+    { "feature": "power_saving", "status": "f0_localStorage", "api": "optional_later" },
+    { "feature": "chat_folders", "status": "missing", "gate": "BE_before_F10" },
+    { "feature": "ai_editor", "status": "missing", "gate": "BE_before_F11", "notes": "Premium gate + encrypted rewrite/translate; no stub UI" },
+    { "feature": "ipad_cmd_enter", "status": "front_only", "wave": "F12" }
+  ],
+  "waves": [
+    { "id": "F0", "scope": "glass tokens + power-saving classes + kill one-off fills", "refs": [], "be": false },
+    { "id": "F1", "scope": "nav 64 + fab 64 + charcoal disc + scroll blur", "refs": ["S36", "S01", "S12"], "be": false },
+    { "id": "F2", "scope": "composer 3 glass + rim + mic/send", "refs": ["S28", "S27", "S04"], "be": false },
+    { "id": "F3", "scope": "header capsules + pin", "refs": ["S04", "S05", "S24"], "be": false },
+    { "id": "F4", "scope": "list row separators badges 1-line preview", "refs": ["S01", "S37"], "be": false },
+    { "id": "F5", "scope": "bubbles r17/tail7 CRM colors voice", "refs": ["S05", "S07", "S11"], "be": false },
+    { "id": "F6", "scope": "context menus glass + scale", "refs": ["S16", "S19"], "be": false },
+    { "id": "F7", "scope": "profile round actions + cards", "refs": ["S03", "S17"], "be": false },
+    { "id": "F8", "scope": "media viewer chrome", "refs": ["S18", "S30"], "be": false },
+    { "id": "F9", "scope": "motion + power-saving wiring", "refs": [], "be": false },
+    { "id": "F10", "scope": "folder capsules", "refs": [], "be": true },
+    { "id": "F11", "scope": "AI Editor", "refs": [], "be": true },
+    { "id": "F12", "scope": "iPad Cmd+Enter + wide polish", "refs": [], "be": false }
+  ],
+  "coverage_from_phase1": {
+    "composer": ["S04", "S05", "S08", "S25", "S27", "S28", "S30"],
+    "nav_tabbar": ["S01", "S02", "S06", "S12", "S14", "S29", "S31", "S32", "S33", "S34", "S36", "S37", "S38"],
+    "header": ["S04", "S05", "S08", "S15", "S24", "S25", "S26", "S30"],
+    "list_chats": ["S01", "S35", "S36", "S37", "S38"],
+    "thread_bubbles": ["S04", "S05", "S07", "S08", "S11", "S15", "S25", "S26", "S30"],
+    "voice": ["S07", "S09", "S22"],
+    "overlays_menus": ["S06", "S13", "S16", "S19"],
+    "profile_group": ["S03", "S16", "S17", "S19", "S23"],
+    "shared_media": ["S18", "S20", "S21", "S22"],
+    "settings": ["S06", "S29", "S31", "S32", "S33", "S34"]
+  },
+  "anti_patterns": [
+    "one-off background/blur without glass role",
+    "TG purple / OLED #000 screen",
+    "blue bloom under active tab",
+    "continuous header/composer bar",
+    "treat nav 56 as final without TARGET 64",
+    "AI Editor or folders stub without API",
+    "verifier edits code",
+    "hardcode bubble-me #2B5278 or purple",
+    "gold outside rail",
+    "2-line list preview breaking row height"
+  ],
+  "hg_token_diff_proposal": {
+    "note": "Apply only when coding waves; not applied yet",
+    "update_on_F0_F5": {
+      "--hg-tg-tool-size": "40px",
+      "--hg-tg-input-h": "40px",
+      "--hg-tg-input-radius": "20px",
+      "--hg-tg-composer-gap": "6px",
+      "--hg-tg-nav-h": "64px",
+      "--hg-tg-nav-radius": "32px",
+      "--hg-tg-fab-size": "64px",
+      "--hg-tg-header-h": "44px",
+      "--hg-tg-header-radius": "22px",
+      "--hg-tg-pin-radius": "20px",
+      "--hg-tg-bubble-radius": "17px",
+      "--hg-tg-bubble-tail-radius": "7px",
+      "--hg-tg-bubble-me": "color-mix(in srgb, var(--blue-l) 72%, var(--bg3))",
+      "--hg-tg-bubble-them": "color-mix(in srgb, var(--bg3) 92%, transparent)",
+      "--hg-tg-active-circle": "color-mix(in srgb, var(--bg3) 92%, var(--t1))",
+      "--hg-tg-tool-bg": "use .hg-glass composer",
+      "--hg-tg-input-bg": "use .hg-glass composer",
+      "--hg-tg-nav-bg": "use .hg-glass nav"
+    },
+    "keep": {
+      "--hg-tg-nav-blur": "40px",
+      "--hg-tg-badge": "#FF3B30 or CRM danger",
+      "--hg-tg-back-badge-bg": "var(--t1) / white",
+      "--hg-tg-back-badge-fg": "contrast dark",
+      "--hg-accent rail": "var(--gold) rail only"
+    }
+  }
+}

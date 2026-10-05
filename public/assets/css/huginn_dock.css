@@ -90,6 +90,15 @@
   --hg-radius: 10px;
   --hg-radius-input: 18px;
 
+  /* Liquid Glass 2026 (CRM colours; blur instead of refraction) */
+  --hg-glass-bg: color-mix(in srgb, var(--bg3, #1C2130) 72%, transparent);
+  --hg-glass-bg-strong: color-mix(in srgb, var(--bg3, #1C2130) 88%, transparent);
+  --hg-glass-blur: 28px;
+  --hg-glass-sat: 1.35;
+  --hg-glass-border: color-mix(in srgb, var(--brd-m, rgba(255, 255, 255, 0.12)) 80%, transparent);
+  --hg-glass-shadow: 0 8px 32px rgba(0, 0, 0, 0.28);
+  --hg-fx: full; /* overridden by html[data-hg-fx] */
+
   --hg-pad-bubble: 8px 12px;
   --hg-pad-panel: 12px 16px;
   --hg-pad-menu-item: 10px 12px;
@@ -136,6 +145,15 @@
   --hg-reply-fg: rgba(255, 255, 255, 0.7);
 }
 
+.hg-glass {
+  background: var(--hg-glass-bg);
+  border: 0.5px solid var(--hg-glass-border);
+  box-shadow: var(--hg-glass-shadow);
+  backdrop-filter: blur(var(--hg-glass-blur)) saturate(var(--hg-glass-sat));
+  -webkit-backdrop-filter: blur(var(--hg-glass-blur)) saturate(var(--hg-glass-sat));
+  transform: none; /* transforms kill backdrop-filter sampling */
+}
+
 html[data-theme="light"] {
   --hg-tg-tool-bg: rgba(255, 255, 255, 0.72);
   --hg-tg-input-bg: rgba(255, 255, 255, 0.78);
@@ -179,6 +197,10 @@ html[data-theme="light"] {
   --hg-date-pill-fg: #000000;
   --hg-reply-bg: rgba(0, 0, 0, 0.04);
   --hg-reply-fg: rgba(0, 0, 0, 0.55);
+  --hg-glass-bg: color-mix(in srgb, var(--bg3, #EDE8DC) 78%, transparent);
+  --hg-glass-bg-strong: color-mix(in srgb, var(--bg2, #FDFAF5) 88%, transparent);
+  --hg-glass-border: color-mix(in srgb, var(--brd-m, rgba(139, 120, 90, 0.18)) 90%, transparent);
+  --hg-glass-shadow: 0 8px 28px rgba(80, 60, 30, 0.12);
 }
 
 @media (max-width: 768px) {
@@ -1560,25 +1582,25 @@ html[data-theme="light"] .hg-chip:hover {
   display: flex;
   align-items: center;
   border-radius: 20px;
-  /* CRM elev capsule (not TG charcoal 34/31/36) */
-  background: color-mix(in srgb, var(--bg3, #1C2130) 72%, transparent) !important;
-  border: 0;
+  /* Liquid Glass capsule — CRM elev + thin border */
+  background: var(--hg-glass-bg) !important;
+  border: 0.5px solid var(--hg-glass-border) !important;
   outline: none !important;
   box-shadow: none !important;
-  backdrop-filter: none !important;
-  -webkit-backdrop-filter: none !important;
+  backdrop-filter: blur(var(--hg-glass-blur)) saturate(var(--hg-glass-sat)) !important;
+  -webkit-backdrop-filter: blur(var(--hg-glass-blur)) saturate(var(--hg-glass-sat)) !important;
   padding: 0 2px 0 0;
 }
 html[data-theme="light"] .hg-composer-row .hg-input-wrap {
-  background: color-mix(in srgb, var(--bg3, #EDE8DC) 88%, transparent) !important;
+  background: var(--hg-glass-bg) !important;
 }
 /* R72: attach OUTSIDE as disk (left); smile inside capsule; mic disk right */
 .hg-composer-row .hg-tool#hgAttach,
 .hg-composer-row .hg-tool.hg-attach-out {
-  border: 0;
-  background: color-mix(in srgb, var(--bg3, #1C2130) 55%, transparent) !important;
-  backdrop-filter: none !important;
-  -webkit-backdrop-filter: none !important;
+  border: 0.5px solid var(--hg-glass-border);
+  background: var(--hg-glass-bg) !important;
+  backdrop-filter: blur(18px) saturate(var(--hg-glass-sat)) !important;
+  -webkit-backdrop-filter: blur(18px) saturate(var(--hg-glass-sat)) !important;
   box-shadow: none;
   color: var(--hg-muted, rgba(200, 200, 205, 0.88));
   width: var(--hg-tg-tool-size);
@@ -1925,8 +1947,13 @@ html[data-theme="light"] .hg-send.is-mic:hover {
   animation: hg-menu-in var(--hg-dur-menu) var(--hg-ease-ui);
 }
 @keyframes hg-menu-in {
-  from { opacity: 0; transform: scale(0.96); }
+  from { opacity: 0; transform: scale(0.88); }
   to { opacity: 1; transform: none; }
+}
+.hg-float,
+.hg-attach-menu,
+.hg-quick-react {
+  transform-origin: var(--hg-menu-origin-x, 50%) var(--hg-menu-origin-y, 100%);
 }
 .hg-float-grid {
   display: grid;
@@ -2163,14 +2190,18 @@ html[data-theme="light"] .hg-empty {
 
 .hg-lightbox {
   position: fixed; inset: 0; z-index: 1500;
-  background: rgba(0, 0, 0, 0.82);
+  background: color-mix(in srgb, #000 55%, transparent);
+  backdrop-filter: blur(28px) saturate(1.2);
+  -webkit-backdrop-filter: blur(28px) saturate(1.2);
   display: flex; align-items: center; justify-content: center; padding: 24px;
 }
 .hg-lightbox img { max-width: min(92vw, 960px); max-height: 88vh; border-radius: 12px; object-fit: contain; }
 .hg-lightbox-close {
   position: absolute; top: 16px; right: 16px;
-  width: 40px; height: 40px; border: 0; border-radius: 50%;
-  background: rgba(255, 255, 255, 0.12); color: #fff; cursor: pointer;
+  width: 40px; height: 40px; border: 0.5px solid var(--hg-glass-border); border-radius: 50%;
+  background: var(--hg-glass-bg); color: #fff; cursor: pointer;
+  backdrop-filter: blur(18px) saturate(var(--hg-glass-sat));
+  -webkit-backdrop-filter: blur(18px) saturate(var(--hg-glass-sat));
   display: inline-flex; align-items: center; justify-content: center;
 }
 
@@ -2638,6 +2669,60 @@ html[data-theme="light"] .hg-settings { background: var(--hg-bg, var(--bg1, #F4E
   color: #8E8E93;
   text-align: center;
 }
+.hg-settings-actions {
+  display: flex;
+  justify-content: center;
+  gap: 18px;
+  margin: 16px 0 4px;
+}
+.hg-settings-action {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  border: 0;
+  background: transparent;
+  color: var(--hg-text);
+  font: 500 11px/1.2 var(--hg-font);
+  cursor: pointer;
+  min-width: 56px;
+}
+.hg-settings-action-ico {
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--hg-glass-bg, var(--hg-elev));
+  border: 0.5px solid var(--hg-glass-border, var(--hg-border));
+  backdrop-filter: blur(16px) saturate(var(--hg-glass-sat, 1.3));
+  -webkit-backdrop-filter: blur(16px) saturate(var(--hg-glass-sat, 1.3));
+  color: var(--hg-accent-chat);
+}
+.hg-settings-action-ico svg { width: 22px; height: 22px; stroke: currentColor; }
+.hg-fx-toggle {
+  display: flex;
+  gap: 6px;
+  padding: 0 12px 12px;
+}
+.hg-fx-btn {
+  flex: 1;
+  border: 0.5px solid var(--hg-border);
+  border-radius: 10px;
+  background: transparent;
+  color: var(--hg-muted);
+  font: 500 12px/1.2 var(--hg-font);
+  padding: 8px 6px;
+  cursor: pointer;
+}
+.hg-fx-btn.is-active {
+  background: var(--gold-bg, rgba(212, 168, 67, 0.16));
+  color: var(--hg-text);
+  border-color: var(--gold, #D4A843);
+}
+.hg-settings-row--static { cursor: default; }
+.hg-settings-row--static:hover { background: transparent; }
 .hg-settings-photo-btn {
   margin-top: 6px;
   width: 100%;
@@ -2914,4 +2999,39 @@ body.hg-dock-collapsed { padding-right: calc(var(--hg-rail-w) + 24px); }
     animation-duration: 0.01ms !important;
     transition-duration: 0.01ms !important;
   }
+}
+
+/* Power-saving FX: full | reduced | off (html[data-hg-fx]) */
+html[data-hg-fx="reduced"] {
+  --hg-glass-blur: 12px;
+  --hg-tg-nav-blur: 16px;
+  --hg-tg-header-blur: 14px;
+  --hg-tg-composer-blur: 20px;
+  --hg-dur-bubble: 120ms;
+  --hg-dur-menu: 100ms;
+  --hg-dur-tab: 100ms;
+}
+html[data-hg-fx="off"] .hg-glass,
+html[data-hg-fx="off"] .hg-composer-row .hg-input-wrap,
+html[data-hg-fx="off"] .hg-composer-row .hg-tool#hgAttach,
+html[data-hg-fx="off"] .hg-composer-row .hg-tool.hg-attach-out,
+html[data-hg-fx="off"] .hg-bottom-nav::before,
+html[data-hg-fx="off"] .hg-quick-react,
+html[data-hg-fx="off"] .hg-float,
+html[data-hg-fx="off"] .hg-attach-menu,
+html[data-hg-fx="off"] .hg-sheet,
+html[data-hg-fx="off"] .hg-lightbox,
+html[data-hg-fx="off"] .hg-lightbox-close {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+html[data-hg-fx="off"] .hg-bubble,
+html[data-hg-fx="off"] .hg-float,
+html[data-hg-fx="off"] .hg-quick-react,
+html[data-hg-fx="off"] .hg-attach-menu {
+  animation: none !important;
+}
+html[data-hg-fx="off"] {
+  --hg-glass-bg: var(--hg-elev, var(--bg3, #1C2130));
+  --hg-glass-shadow: none;
 }

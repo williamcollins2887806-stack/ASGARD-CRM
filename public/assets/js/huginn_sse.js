@@ -70,7 +70,8 @@
       noteOk();
       const body = await res.json();
       const events = body.events || [];
-      let hadChatMsg = false;
+      // Events already emit → HuginnDock.onLiveEvent → ingestMessage / patch.
+      // Do NOT full-refresh open chat (was causing lag every poll).
       for (const ev of events) {
         setLastId(ev.id);
         const payload = Object.assign({}, ev.data || {}, {
@@ -78,10 +79,6 @@
           chat_id: ev.chat_id != null ? ev.chat_id : (ev.data && ev.data.chat_id)
         });
         emit(ev.event, payload);
-        if (ev.event === 'chat:new_message') hadChatMsg = true;
-      }
-      if (hadChatMsg && global.HuginnDock && typeof global.HuginnDock.refreshOpenChat === 'function') {
-        try { await global.HuginnDock.refreshOpenChat(); } catch (_) {}
       }
     } catch (e) {
       noteFail();

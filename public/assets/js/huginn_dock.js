@@ -1650,11 +1650,26 @@
     });
   }
 
+  function applyFxMode(mode) {
+    const allowed = { full: 1, reduced: 1, off: 1 };
+    let fx = allowed[mode] ? mode : (localStorage.getItem('hg_fx') || 'full');
+    if (!allowed[fx]) fx = 'full';
+    try {
+      if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches && fx === 'full') {
+        fx = 'reduced';
+      }
+    } catch (_) {}
+    document.documentElement.setAttribute('data-hg-fx', fx);
+    try { localStorage.setItem('hg_fx', fx); } catch (_) {}
+    return fx;
+  }
+
   function renderSettingsPanel(panel) {
     const me = (global.AsgardAuth && AsgardAuth.user) || JSON.parse(localStorage.getItem('asgard_user') || '{}');
     const name = me.name || me.full_name || me.login || 'Никита';
     const phone = me.phone || '+7 900 000-00-00';
     const uname = me.username ? ('@' + me.username) : (me.login ? ('@' + me.login) : '@asgard');
+    const fx = applyFxMode(localStorage.getItem('hg_fx'));
     /* P7 — Telegram iOS: color tiles + groups */
     const groups = [
       [
@@ -1675,13 +1690,37 @@
         { ico: ICO.info || ICO.invite, label: 'О Хугинне', tone: 'is-blue' }
       ]
     ];
+    const actions = [
+      { id: 'msg', label: 'Написать', ico: ICO.chats || ICO.send },
+      { id: 'call', label: 'Звонок', ico: ICO.phone || ICO.calls },
+      { id: 'mute', label: 'Звук', ico: ICO.bell },
+      { id: 'more', label: 'Ещё', ico: ICO.settings }
+    ];
     panel.innerHTML = `
       <div class="hg-settings">
         <div class="hg-settings-profile">
           <div class="hg-settings-av" style="background:${avatarColor(name)}">${esc(initials(name))}</div>
           <div class="hg-settings-name">${esc(name)}</div>
           <div class="hg-settings-sub">${esc([phone, uname].filter(Boolean).join(' · '))}</div>
+          <div class="hg-settings-actions">
+            ${actions.map((a) => `<button type="button" class="hg-settings-action" data-act="${a.id}" title="${esc(a.label)}">
+              <span class="hg-settings-action-ico">${a.ico}</span>
+              <span>${esc(a.label)}</span>
+            </button>`).join('')}
+          </div>
           <button type="button" class="hg-settings-photo-btn" id="hgChangePhoto">${ICO.image || ''} Изменить фотографию</button>
+        </div>
+        <div class="hg-settings-card">
+          <div class="hg-settings-row hg-settings-row--static">
+            <span class="hg-settings-ico is-purple">${ICO.settings}</span>
+            <span class="hg-settings-label">Эффекты (экономия энергии)</span>
+          </div>
+          <div class="hg-fx-toggle" role="group" aria-label="Эффекты">
+            ${['full', 'reduced', 'off'].map((m) => {
+              const labels = { full: 'Полные', reduced: 'Меньше', off: 'Выкл' };
+              return `<button type="button" class="hg-fx-btn${fx === m ? ' is-active' : ''}" data-fx="${m}">${labels[m]}</button>`;
+            }).join('')}
+          </div>
         </div>
         ${groups.map((items) => `<div class="hg-settings-card">
           ${items.map((it) => `<button type="button" class="hg-settings-row" data-set="${esc(it.label)}">
@@ -1696,6 +1735,15 @@
     if (photoBtn) photoBtn.onclick = () => showToast('Смена фото — скоро');
     panel.querySelectorAll('[data-set]').forEach((btn) => {
       btn.onclick = () => showToast(btn.getAttribute('data-set') + ' — скоро');
+    });
+    panel.querySelectorAll('[data-act]').forEach((btn) => {
+      btn.onclick = () => showToast(btn.getAttribute('title') + ' — скоро');
+    });
+    panel.querySelectorAll('[data-fx]').forEach((btn) => {
+      btn.onclick = () => {
+        applyFxMode(btn.getAttribute('data-fx'));
+        renderSettingsPanel(panel);
+      };
     });
     panel.querySelector('#hgLogout').onclick = () => {
       if (!confirm('Выйти из аккаунта?')) return;
@@ -2482,7 +2530,9 @@
       const m = state.messages.find((x) => Number(x.id) === Number(data.message_id));
       if (m) {
         m.metadata = Object.assign({}, m.metadata || {}, { transcript: data.transcript, transcript_status: 'done' });
-        renderPanel();
+        // Patch thread only — avoid full panel rebuild lag
+        if (root && root.querySelector('.hg-msgs')) renderMessagesIntoBox();
+        else renderPanel();
       }
     }
     if (event === 'presence:online' || event === 'presence:offline') {
@@ -2502,6 +2552,7 @@
     if (!token()) return;
     if (_mounting) return _mounting;
     _mounting = (async () => {
+      applyFxMode(localStorage.getItem('hg_fx'));
       ensureDom();
       await Promise.all([loadChats(), loadStories()]);
       syncRailBadge();

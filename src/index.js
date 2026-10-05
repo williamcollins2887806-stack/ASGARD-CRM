@@ -210,6 +210,11 @@ const tingIndexPath = path.join(__dirname, '../public/ting/index.html');
 let tingHtml = '';
 try { tingHtml = fs.readFileSync(tingIndexPath, 'utf8'); } catch (_) {}
 
+// Huginn standalone messenger SPA (/h)
+const huginnIndexPath = path.join(__dirname, '../public/h/index.html');
+let huginnHtml = '';
+try { huginnHtml = fs.readFileSync(huginnIndexPath, 'utf8'); } catch (_) {}
+
 // Перехватываем / и /index.html ДО @fastify/static
 // + React mobile app SPA routing для /m/*
 // + Field PWA SPA routing для /field/*
@@ -231,6 +236,23 @@ fastify.addHook('onRequest', (request, reply, done) => {
       reply.type('text/html')
         .header('Cache-Control', 'no-cache, no-store, must-revalidate, max-age=0')
         .send(tingHtml);
+      return;
+    }
+  }
+
+  // Huginn standalone: /h и deep-links (invite etc.)
+  if (url === '/h') {
+    reply.redirect(301, '/h/');
+    return;
+  }
+  if (url === '/h/' || (url.startsWith('/h/') && !url.match(/\.(js|css|png|jpg|jpeg|gif|svg|ico|woff2?|ttf|eot|webp|json|map|webmanifest)$/i))) {
+    // Read from disk each request — boot-time cache stale after UI rewrite (ROUND-5)
+    let html = huginnHtml;
+    try { html = fs.readFileSync(huginnIndexPath, 'utf8'); huginnHtml = html; } catch (_) {}
+    if (html) {
+      reply.type('text/html')
+        .header('Cache-Control', 'no-cache, no-store, must-revalidate, max-age=0')
+        .send(html);
       return;
     }
   }
@@ -453,6 +475,20 @@ fastify.decorate('authenticate', async function(request, reply) {
         return reply.code(403).send({ error: 'Forbidden', message: 'Требуется смена пароля' });
       }
     }
+
+    // Huginn guest: messenger-only surface (not CRM modules)
+    const huginnAcl = require('./services/huginn-acl');
+    if (!request.user.is_huginn_guest && request.user.role !== 'huginn_guest') {
+      // lazy DB flag if JWT from older login
+      try {
+        const { rows } = await db.query(
+          'SELECT is_huginn_guest FROM users WHERE id = $1',
+          [request.user.id]
+        );
+        if (rows[0] && rows[0].is_huginn_guest) request.user.is_huginn_guest = true;
+      } catch (_) { /* column missing pre-migrate */ }
+    }
+    if (huginnAcl.assertGuestApiAccess(request, reply)) return;
   } catch (err) {
     return reply.code(401).send({ error: 'Unauthorized', message: 'Требуется авторизация' });
   }

@@ -1,0 +1,507 @@
+{
+  "viewport_canon": {
+    "w_pt": 414,
+    "h_pt": 896,
+    "scale": 2,
+    "note": "pt = px_828/2"
+  },
+  "samples": {
+    "S28_composer": {
+      "size": [
+        828,
+        175
+      ],
+      "cy": 87,
+      "glass_runs_px": [
+        [
+          353,
+          625,
+          273,
+          136.5
+        ],
+        [
+          662,
+          719,
+          58,
+          29.0
+        ],
+        [
+          752,
+          827,
+          76,
+          38.0
+        ]
+      ],
+      "top_runs": [
+        [
+          353,
+          625,
+          273,
+          136.5
+        ],
+        [
+          752,
+          827,
+          76,
+          38.0
+        ],
+        [
+          662,
+          719,
+          58,
+          29.0
+        ]
+      ],
+      "attach": {
+        "x0_px": 353,
+        "x1_px": 625,
+        "width_px": 273,
+        "width_pt": 136.5,
+        "diameter_or_h_pt": 136.5,
+        "fill": {
+          "r": 72,
+          "g": 69,
+          "b": 64,
+          "hex": "#484540",
+          "n": 144
+        },
+        "height_px": 119,
+        "height_pt": 59.5
+      },
+      "input": {
+        "x0_px": 353,
+        "x1_px": 625,
+        "width_px": 273,
+        "width_pt": 136.5,
+        "diameter_or_h_pt": null,
+        "fill": {
+          "r": 72,
+          "g": 69,
+          "b": 64,
+          "hex": "#484540",
+          "n": 144
+        }
+      },
+      "mic": {
+        "x0_px": 752,
+        "x1_px": 827,
+        "width_px": 76,
+        "width_pt": 38.0,
+        "diameter_or_h_pt": 38.0,
+        "fill": {
+          "r": 91,
+          "g": 83,
+          "b": 72,
+          "hex": "#5B5348",
+          "n": 144
+        }
+      },
+      "gaps_pt": {
+        "attach_to_input": -136.0,
+        "input_to_mic": 63.5,
+        "left_inset": 176.5,
+        "right_inset": 0.0
+      },
+      "bg_left": {
+        "r": 1,
+        "g": 5,
+        "b": 4,
+        "hex": "#010504",
+        "n": 256
+      },
+      "bg_right": {
+        "r": 107,
+        "g": 100,
+        "b": 89,
+        "hex": "#6B6459",
+        "n": 320
+      }
+    },
+    "S36_tabbar": {
+      "size": [
+        828,
+        258
+      ],
+      "bar_cy": 181,
+      "glass_runs_px": [
+        [
+          42,
+          79,
+          38,
+          19.0
+        ],
+        [
+          175,
+          247,
+          73,
+          36.5
+        ],
+        [
+          312,
+          373,
+          62,
+          31.0
+        ],
+        [
+          423,
+          488,
+          66,
+          33.0
+        ],
+        [
+          598,
+          643,
+          46,
+          23.0
+        ],
+        [
+          661,
+          777,
+          117,
+          58.5
+        ]
+      ],
+      "pill": {
+        "x0_px": 661,
+        "x1_px": 777,
+        "width_px": 117,
+        "width_pt": 58.5,
+        "fill": {
+          "r": 25,
+          "g": 25,
+          "b": 26,
+          "hex": "#19191A",
+          "n": 192
+        },
+        "height_px": 160,
+        "height_pt": 80.0
+      },
+      "red_count": 1901,
+      "badge": {
+        "centroid": {
+          "x": 485,
+          "y": 124
+        },
+        "sample": {
+          "r": 24,
+          "g": 24,
+          "b": 24,
+          "hex": "#181818",
+          "n": 36
+        }
+      }
+    },
+    "S24_header": {
+      "size": [
+        828,
+        347
+      ],
+      "header_row": {
+        "cy": 100,
+        "runs": [
+          [
+            86,
+            809,
+            724,
+            362.0
+          ]
+        ]
+      },
+      "header_row_seg0": {
+        "x0_px": 86,
+        "width_px": 724,
+        "width_pt": 362.0,
+        "fill": {
+          "r": 47,
+          "g": 34,
+          "b": 53,
+          "hex": "#2F2235",
+          "n": 80
+        }
+      },
+      "pin_row": {
+        "cy": 220,
+        "runs": [
+          [
+            379,
+            810,
+            432,
+            216.0
+          ]
+        ]
+      },
+      "pin_row_seg0": {
+        "x0_px": 379,
+        "width_px": 432,
+        "width_pt": 216.0,
+        "fill": {
+          "r": 44,
+          "g": 30,
+          "b": 52,
+          "hex": "#2C1E34",
+          "n": 80
+        }
+      }
+    },
+    "S07_voice": {
+      "purple_count": 9864,
+      "bubble_me_median": {
+        "r": 105,
+        "g": 72,
+        "b": 253,
+        "hex": "#6948FD"
+      },
+      "bbox_px": {
+        "x0": 350,
+        "y0": 791,
+        "x1": 818,
+        "y1": 1004,
+        "w_pt": 234.0,
+        "h_pt": 106.5
+      }
+    },
+    "S05_incoming": {
+      "bubble": {
+        "r": 72,
+        "g": 61,
+        "b": 75,
+        "hex": "#483D4B",
+        "n": 13600
+      },
+      "bg": {
+        "r": 81,
+        "g": 71,
+        "b": 74,
+        "hex": "#51474A",
+        "n": 3600
+      }
+    },
+    "S01_list": {
+      "bg": {
+        "r": 62,
+        "g": 62,
+        "b": 63,
+        "hex": "#3E3E3F",
+        "n": 2500
+      },
+      "row_mid": {
+        "r": 50,
+        "g": 49,
+        "b": 48,
+        "hex": "#323130",
+        "n": 11600
+      }
+    }
+  },
+  "conflicts_vs_atlas": [
+    {
+      "token": "--hg-tg-tool-size / --hg-tg-input-h",
+      "atlas": "40px",
+      "book": "40px",
+      "source_shots": [
+        "S28",
+        "S04",
+        "S05",
+        "S27"
+      ],
+      "status": "AGREE",
+      "note": "Liquid Glass composer controls = Ø40 / h40 / radius20. ATLAS верно."
+    },
+    {
+      "token": "--hg-tg-tool-bg / --hg-tg-input-bg",
+      "atlas": "rgba(32,32,32,0.336) / rgba(34,31,36,0.438)",
+      "book": "rgba(35,35,34,0.65) + rim rgba(255,255,255,0.11)",
+      "source_shots": [
+        "S28"
+      ],
+      "status": "CONFLICT",
+      "note": "S28 dual-bg solve даёт alpha≈0.65 (не 0.34). ATLAS недооценил непрозрачность Liquid Glass. Book wins для iOS 26."
+    },
+    {
+      "token": "--hg-tg-composer-gap",
+      "atlas": "8px",
+      "book": "6–7px",
+      "source_shots": [
+        "S28",
+        "S27"
+      ],
+      "status": "SOFT",
+      "note": "На кропе S28 gaps 6 и ≈7 pt; полный экран часто 6–8. Huginn может оставить 8."
+    },
+    {
+      "token": "--hg-tg-nav-h / --hg-tg-fab-size",
+      "atlas": "56px / 56px",
+      "book": "~64px / ~64px (stadium ≈299–303 × 63.5–64, FAB Ø63.5–64)",
+      "source_shots": [
+        "S36",
+        "S01",
+        "S02",
+        "S12",
+        "S37",
+        "S38"
+      ],
+      "status": "CONFLICT",
+      "note": "iOS 26 Liquid Glass tab island выше ATLAS 56. Book ≈64. Huginn CSS сейчас 56 — это intentional craft tradeoff (см. huginn_dock.css comments)."
+    },
+    {
+      "token": "--hg-tg-nav-bg alpha",
+      "atlas": "0.564 (raw) / 0.72 (css_canon)",
+      "book": "~0.82 over #000 (fill #171717–#181818)",
+      "source_shots": [
+        "S36",
+        "S12"
+      ],
+      "status": "CONFLICT",
+      "note": "Book denser glass. Prefer book for TG parity; Huginn may keep denser CRM-matched fill."
+    },
+    {
+      "token": "--hg-tg-active-circle",
+      "atlas": "rgba(10,132,255,0.22) blue bloom",
+      "book": "#393939 / #383838 charcoal disc under blue glyph",
+      "source_shots": [
+        "S36",
+        "S01"
+      ],
+      "status": "CONFLICT",
+      "note": "На рефах активный таб = тёмный диск + синяя иконка/лейбл, НЕ синий bloom. huginn_dock.css уже R100 charcoal — совпадает с book."
+    },
+    {
+      "token": "--hg-tg-bubble-me",
+      "atlas": "#2B5278",
+      "book": "#6948FD … #894DE9 (user accent purple)",
+      "source_shots": [
+        "S07",
+        "S11",
+        "S15",
+        "S30"
+      ],
+      "status": "THEME",
+      "note": "На устройстве пользователя accent = фиолетовый. ATLAS = default TG blue. Huginn должен брать accent из темы CRM, не хардкодить purple."
+    },
+    {
+      "token": "--hg-tg-bubble-them",
+      "atlas": "rgba(36,36,38,0.92)",
+      "book": "gradient #332433→#222433 or glass over wallpaper; radius 15–18, tail 6–7",
+      "source_shots": [
+        "S04",
+        "S05",
+        "S11",
+        "S26"
+      ],
+      "status": "SOFT",
+      "note": "На photo wallpaper входящие более стеклянные; на OLED ближе к ATLAS solid."
+    },
+    {
+      "token": "--hg-tg-header-h / floating capsules",
+      "atlas": "header-h 56 / radius 22 continuous bar",
+      "book": "отдельные glass pills h=44 (back/title/avatar), pin 382×40–50",
+      "source_shots": [
+        "S04",
+        "S05",
+        "S08",
+        "S24",
+        "S25"
+      ],
+      "status": "CONFLICT",
+      "note": "iOS 26 = floating capsules, не continuous bar. Геометрия Huginn R-серии ближе к ATLAS bar — book описывает новый chrome."
+    },
+    {
+      "token": "--hg-tg-badge",
+      "atlas": "#FF3B30",
+      "book_measured_jpeg": "#D94F42…#DC614F",
+      "book_canon": "#FF3B30",
+      "source_shots": [
+        "S36",
+        "S01",
+        "S29"
+      ],
+      "status": "AGREE",
+      "note": "JPEG смягчает красный; канон остаётся #FF3B30."
+    },
+    {
+      "token": "--hg-tg-row-h",
+      "atlas": "68px",
+      "book": "chat list ~68–76; contacts ~53; settings row 52",
+      "source_shots": [
+        "S01",
+        "S37",
+        "S02",
+        "S32"
+      ],
+      "status": "SOFT",
+      "note": "Зависит от экрана. Chat list держать 68–76; contacts/settings плотнее."
+    }
+  ],
+  "atlas_tokens": {
+    "--hg-tg-tool-size": "40px",
+    "--hg-tg-tool-bg": "rgba(32, 32, 32, 0.336)",
+    "--hg-tg-input-h": "40px",
+    "--hg-tg-input-radius": "20px",
+    "--hg-tg-input-bg": "rgba(34, 31, 36, 0.438)",
+    "--hg-tg-composer-gap": "8px",
+    "--hg-tg-composer-pad": "8px 10px",
+    "--hg-tg-nav-h": "56px",
+    "--hg-tg-nav-inset": "12px",
+    "--hg-tg-nav-radius": "28px",
+    "--hg-tg-nav-bg": "rgba(66, 63, 67, 0.564)",
+    "--hg-tg-nav-blur": "40px",
+    "--hg-tg-fab-size": "56px",
+    "--hg-tg-fab-gap": "8px",
+    "--hg-tg-fab-bg": "rgba(32, 32, 32, 0.39)",
+    "--hg-tg-active-circle": "rgba(10, 132, 255, 0.22)",
+    "--hg-tg-badge": "#FF3B30",
+    "--hg-tg-nav-icon-active": "#0A84FF",
+    "--hg-tg-nav-muted": "#8E8E93",
+    "--hg-tg-header-inset": "12px",
+    "--hg-tg-header-radius": "22px",
+    "--hg-tg-header-h": "56px",
+    "--hg-tg-header-bg": "rgba(22, 19, 20, 0.297)",
+    "--hg-tg-header-blur": "28px",
+    "--hg-tg-pin-h": "44px",
+    "--hg-tg-pin-radius": "16px",
+    "--hg-tg-pin-bg": "rgba(29, 27, 28, 0.271)",
+    "--hg-tg-pin-gap": "8px",
+    "--hg-tg-back-badge-bg": "#FFFFFF",
+    "--hg-tg-back-badge-fg": "#000000",
+    "--hg-tg-bubble-radius": "18px",
+    "--hg-tg-bubble-them": "rgba(36, 36, 38, 0.92)",
+    "--hg-tg-bubble-me": "#2B5278",
+    "--hg-tg-av-msg": "32px",
+    "--hg-tg-row-h": "68px",
+    "--hg-tg-contact-row-h": "64px"
+  },
+  "atlas_css_canon": {
+    "--hg-tg-tool-size": "40px",
+    "--hg-tg-tool-bg": "rgba(40,40,42,0.55)",
+    "--hg-tg-input-h": "40px",
+    "--hg-tg-input-radius": "20px",
+    "--hg-tg-input-bg": "rgba(45,45,48,0.50)",
+    "--hg-tg-composer-gap": "8px",
+    "--hg-tg-composer-pad": "8px 10px",
+    "--hg-tg-nav-h": "56px",
+    "--hg-tg-nav-inset": "12px",
+    "--hg-tg-nav-radius": "28px",
+    "--hg-tg-nav-bg": "rgba(30,30,32,0.72)",
+    "--hg-tg-nav-blur": "40px",
+    "--hg-tg-fab-size": "56px",
+    "--hg-tg-fab-gap": "8px",
+    "--hg-tg-fab-bg": "rgba(40,40,42,0.78)",
+    "--hg-tg-active-circle": "rgba(10,132,255,0.22)",
+    "--hg-tg-badge": "#FF3B30",
+    "--hg-tg-header-inset": "12px",
+    "--hg-tg-header-radius": "22px",
+    "--hg-tg-header-h": "56px",
+    "--hg-tg-header-bg": "rgba(30,30,32,0.55)",
+    "--hg-tg-header-blur": "28px",
+    "--hg-tg-pin-h": "44px",
+    "--hg-tg-pin-radius": "16px",
+    "--hg-tg-pin-bg": "rgba(30,30,32,0.50)",
+    "--hg-tg-bubble-radius": "18px",
+    "--hg-tg-bubble-them": "rgba(36,36,38,0.92)",
+    "--hg-tg-bubble-me": "#2B5278",
+    "--hg-tg-av-msg": "32px",
+    "--hg-tg-row-h": "68px",
+    "--hg-tg-contact-row-h": "64px"
+  },
+  "sampler_note": "Автодетект glass-runs по luminance на S28/S36 с wallpaper дал ложные bbox (склеил attach+input, взял яркий фрагмент FAB как pill). Канонические размеры — из vision+Pillow в shots/S28, S36, S04, S05 (см. TG-DESIGN-TOKENS)."
+}
