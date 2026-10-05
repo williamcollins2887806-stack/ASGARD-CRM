@@ -6,7 +6,7 @@
 require('dotenv').config();
 const fs = require('fs');
 const path = require('path');
-const XLSX = require('xlsx');
+const ExcelJS = require('exceljs');
 const { Pool } = require('pg');
 
 const EXCEL = process.env.DOC_HUB_EXCEL || 'D:\\ASGARD\\01_Проекты\\МЛСП-Оголовок\\Закупка_ОФС_Приразломная_2026\\Сводка_счета_и_СФ.xlsx';
@@ -33,9 +33,13 @@ function pickColumns(headers) {
     console.error('Excel not found:', EXCEL);
     process.exit(1);
   }
-  const wb = XLSX.readFile(EXCEL, { cellDates: true });
-  const sheet = wb.Sheets[wb.SheetNames[0]];
-  const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' });
+  const wb = new ExcelJS.Workbook();
+  await wb.xlsx.readFile(EXCEL);
+  const sheet = wb.worksheets[0];
+  const rows = [];
+  sheet.eachRow((row) => {
+    rows.push(row.values.slice(1).map((v) => (v == null ? '' : v)));
+  });
   const headers = rows[0] || [];
   const cols = pickColumns(headers);
   const fios = new Set();
@@ -79,7 +83,7 @@ function pickColumns(headers) {
     '# Doc Hub FIO audit (Excel vs CRM users)',
     '',
     `**Excel:** \`${EXCEL}\``,
-    `**Sheet:** ${wb.SheetNames[0]}`,
+    `**Sheet:** ${sheet.name}`,
     `**Generated:** ${new Date().toISOString()}`,
     `**DB:** ${process.env.DB_NAME || 'asgard_crm'}`,
     '',
