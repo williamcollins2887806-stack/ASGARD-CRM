@@ -836,6 +836,12 @@ a:hover { text-decoration: underline; }
   color: var(--t3);
   font-size: 12.5px;
 }
+.dh-modal__sub {
+  margin: 4px 0 0;
+  color: var(--t3);
+  font-size: 12.5px;
+  line-height: 1.35;
+}
 .dh-modal__body {
   padding: 18px 20px;
   display: flex;
@@ -1243,7 +1249,7 @@ a:hover { text-decoration: underline; }
   background: var(--bg3, transparent);
   width: 100%;
 }
-.dh-modal__card--wiz { max-width: 720px; }
+.dh-modal__card--wiz { max-width: 860px; width: min(860px, 96vw); }
 .dh-wiz-review { margin-bottom: 12px; }
 .dh-drawer__actions {
   display: flex;
@@ -1258,7 +1264,18 @@ a:hover { text-decoration: underline; }
 }
 .dh-guide-coverage { margin-top: 8px; }
 .dh-btn:disabled { opacity: 0.45; cursor: not-allowed; }
-.dh-app--embedded .dh-drawer { width: min(480px, 100%); }
+.dh-app--embedded .dh-drawer { width: min(520px, 100%); }
+.dh-app--wizard .dh-main { max-width: 920px; margin: 0 auto; }
+.dh-wizard-page {
+  background: var(--bg2);
+  border: 1px solid var(--brd-m);
+  border-radius: var(--r-lg, 14px);
+  padding: 20px 22px 16px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.22);
+}
+.dh-wiz--page { display: flex; flex-direction: column; gap: 14px; }
+.dh-wiz--page .dh-coach { margin-bottom: 4px; }
+.dh-wiz__foot { margin-top: 8px; justify-content: flex-end; }
 
 .dh-dir-cards, .dh-mode-cards {
   display: grid;

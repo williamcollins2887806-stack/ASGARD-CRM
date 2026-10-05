@@ -195,6 +195,14 @@ async function invoicesRoutes(fastify, options) {
     if (!invoice) {
       return reply.code(404).send({ success: false, message: 'Invoice not found' });
     }
+    if ((invoice.invoice_type || 'outgoing') === 'outgoing') {
+      try {
+        const { upsertFromOutgoingInvoice } = require('../services/doc-registry-upsert');
+        await upsertFromOutgoingInvoice(db, invoice);
+      } catch (e) {
+        fastify.log.warn('[invoices] doc_registry upsert: ' + (e && e.message));
+      }
+    }
     return { success: true, invoice };
   });
 
@@ -308,6 +316,9 @@ async function invoicesRoutes(fastify, options) {
     preHandler: [fastify.requireRoles(WRITE_ROLES)]
   }, async (request, reply) => {
     const { id } = request.params;
+    const { assertSafeBillingDelete, softDeleteByBillingRef } = require('../services/doc-registry-upsert');
+    const gate = await assertSafeBillingDelete(db, { billingInvoiceId: Number(id) });
+    if (!gate.ok) return reply.code(gate.code || 409).send({ success: false, message: gate.error });
 
     await db.query('DELETE FROM invoice_payments WHERE invoice_id = $1', [id]);
 
@@ -316,6 +327,7 @@ async function invoicesRoutes(fastify, options) {
     if (result.rows.length === 0) {
       return reply.code(404).send({ success: false, message: 'Invoice not found' });
     }
+    await softDeleteByBillingRef(db, { billingInvoiceId: Number(id), userId: request.user?.id });
 
     return { success: true, deleted: true };
   });

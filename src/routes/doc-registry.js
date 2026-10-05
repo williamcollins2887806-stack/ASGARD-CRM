@@ -575,13 +575,28 @@ module.exports = async function docRegistryRoutes(fastify) {
   fastify.delete('/:id', auth, async (req, reply) => {
     const id = parseInt(req.params.id, 10);
     if (isNaN(id)) return reply.code(400).send({ error: 'Неверный ID' });
+    const {
+      assertSafeBillingDelete,
+      hardDeleteBillingForDoc
+    } = require('../services/doc-registry-upsert');
+    const gate = await assertSafeBillingDelete(db, { docId: id });
+    if (!gate.ok) return reply.code(gate.code || 409).send({ error: gate.error });
     const { rows } = await db.query(
       `UPDATE doc_registry SET deleted_at=NOW(), updated_at=NOW(), updated_by=$2
-       WHERE id=$1 AND deleted_at IS NULL RETURNING id`,
+       WHERE id=$1 AND deleted_at IS NULL RETURNING *`,
       [id, req.user.id]
     );
     if (!rows[0]) return reply.code(404).send({ error: 'Не найдено' });
-    await audit(db, id, req.user.id, 'delete', {});
+    // F4 full sync: удаление в хабе → hard-delete связанных счёт/акт
+    try {
+      await hardDeleteBillingForDoc(db, rows[0]);
+    } catch (e) {
+      fastify.log.warn('[doc-registry] billing hard-delete: ' + (e && e.message));
+    }
+    await audit(db, id, req.user.id, 'delete', {
+      billing_invoice_id: rows[0].billing_invoice_id,
+      billing_act_id: rows[0].billing_act_id
+    });
     return { ok: true, id };
   });
 
@@ -684,10 +699,79 @@ module.exports = async function docRegistryRoutes(fastify) {
     if (!doc) return reply.code(404).send({ error: 'Не найдено' });
 
     if (b.action === 'pay') {
-      const redirect = doc.payment_invoice_id
-        ? `#/approval-payment?id=${doc.payment_invoice_id}` : '#/approval-payment';
-      await audit(db, id, req.user.id, 'quick_pay', { redirect });
-      return { redirect, payment_invoice_id: doc.payment_invoice_id || null };
+      // E2/E2b: создать payment_invoices из карточки хаба (не только redirect в пустую очередь)
+      if (doc.payment_invoice_id) {
+        const { rows: existingPay } = await db.query(
+          `SELECT id, status FROM payment_invoices WHERE id=$1`,
+          [doc.payment_invoice_id]
+        );
+        if (existingPay[0] && existingPay[0].status !== 'rejected') {
+          const redirect = `#/approval-payment?id=${existingPay[0].id}`;
+          await audit(db, id, req.user.id, 'quick_pay', { redirect, reused: true });
+          return { redirect, payment_invoice_id: existingPay[0].id };
+        }
+      }
+      const amount = num(doc.amount_gross);
+      if (!(amount > 0)) {
+        return reply.code(400).send({ error: 'Укажите сумму документа перед отправкой на оплату' });
+      }
+      let filePath = doc.original_path_url || null;
+      let fileName = null;
+      const atts = attachmentsOf(doc);
+      if (atts.length) {
+        const a = atts[0];
+        const url = typeof a === 'string' ? a : (a && (a.url || a.path));
+        if (url) {
+          filePath = filePath || url;
+          fileName = typeof a === 'object' ? (a.name || a.filename || null) : null;
+        }
+      }
+      if (!filePath) {
+        return reply.code(400).send({
+          error: 'Прикрепите скан счёта (вложение) перед отправкой на оплату'
+        });
+      }
+      const basisType = doc.work_id ? 'work' : (doc.purpose_asgard || doc.purpose_consumables ? 'other' : 'other');
+      const basisText = [
+        doc.invoice_number ? `Счёт ${doc.invoice_number}` : `Документ #${doc.id}`,
+        doc.counterparty_name || null,
+        doc.comment_text || null
+      ].filter(Boolean).join(' · ');
+      const { rows: payRows } = await db.query(
+        `INSERT INTO payment_invoices(
+           status, supplier_name, supplier_id, amount, due_date, file_path, file_name,
+           basis_type, basis_text, work_id, procurement_id,
+           line_items_json, requires_payment, created_by, pay_timing
+         ) VALUES (
+           'awaiting_dir', $1, $2, $3, $4::date, $5, $6,
+           $7, $8, $9, $10,
+           $11::jsonb, true, $12, 'immediate'
+         ) RETURNING *`,
+        [
+          doc.counterparty_name || null,
+          doc.supplier_id || null,
+          amount,
+          doc.payment_due_at || null,
+          filePath,
+          fileName,
+          basisType,
+          basisText,
+          doc.work_id || null,
+          doc.procurement_id || null,
+          JSON.stringify(Array.isArray(doc.parsed_json) ? doc.parsed_json : []),
+          req.user.id
+        ]
+      );
+      const pay = payRows[0];
+      await db.query(
+        `UPDATE doc_registry SET payment_invoice_id=$2, pay_status=CASE
+           WHEN pay_status='paid' THEN pay_status ELSE 'wait' END,
+           updated_by=$3, updated_at=NOW() WHERE id=$1`,
+        [id, pay.id, req.user.id]
+      );
+      const redirect = `#/approval-payment?id=${pay.id}`;
+      await audit(db, id, req.user.id, 'quick_pay', { redirect, payment_invoice_id: pay.id, created: true });
+      return { redirect, payment_invoice_id: pay.id };
     }
 
     if (b.action === 'sf') {

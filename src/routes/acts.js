@@ -169,6 +169,12 @@ async function actsRoutes(fastify) {
       paid_date: body.paid_date || null,
       created_by: request.user?.id
     });
+    try {
+      const { upsertFromOutgoingAct } = require('../services/doc-registry-upsert');
+      await upsertFromOutgoingAct(db, act);
+    } catch (e) {
+      fastify.log.warn('[acts] doc_registry upsert: ' + (e && e.message));
+    }
     return { success: true, act };
   });
 
@@ -188,6 +194,12 @@ async function actsRoutes(fastify) {
     if (!act) {
       return reply.code(404).send({ success: false, message: 'Акт не найден' });
     }
+    try {
+      const { upsertFromOutgoingAct } = require('../services/doc-registry-upsert');
+      await upsertFromOutgoingAct(db, act);
+    } catch (e) {
+      fastify.log.warn('[acts] doc_registry upsert: ' + (e && e.message));
+    }
     return { success: true, act };
   });
 
@@ -195,10 +207,16 @@ async function actsRoutes(fastify) {
     preHandler: [fastify.requireRoles(WRITE_ROLES)]
   }, async (request, reply) => {
     const { id } = request.params;
+    const { assertSafeBillingDelete, softDeleteByBillingRef } = require('../services/doc-registry-upsert');
+    const gate = await assertSafeBillingDelete(db, { billingActId: Number(id) });
+    if (!gate.ok) return reply.code(gate.code || 409).send({ success: false, message: gate.error });
+    // F4: invoices.act_id FK — сначала отвязать, иначе DELETE падает 23503
+    await db.query('UPDATE invoices SET act_id = NULL WHERE act_id = $1', [id]);
     const result = await db.query('DELETE FROM acts WHERE id = $1 RETURNING id', [id]);
     if (result.rows.length === 0) {
       return reply.code(404).send({ success: false, message: 'Акт не найден' });
     }
+    await softDeleteByBillingRef(db, { billingActId: Number(id), userId: request.user?.id });
     return { success: true, deleted: true };
   });
 

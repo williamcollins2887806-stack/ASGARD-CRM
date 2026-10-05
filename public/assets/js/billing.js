@@ -236,8 +236,10 @@ window.AsgardBillingPage = (function () {
     return Object.assign({}, base, {
       invoice_number: form.number || undefined,
       invoice_date: form.date,
-      invoice_type: form.origin === 'register' ? 'incoming' : 'outgoing',
-      due_date: form.due_date || null
+      // F1/F2: конструктор и «внести» — исходящие счета заказчику → реестр документов
+      invoice_type: 'outgoing',
+      due_date: form.due_date || null,
+      act_id: form.act_id ? Number(form.act_id) : null
     });
   }
 
@@ -890,6 +892,9 @@ window.AsgardBillingPage = (function () {
               ? `<div class="bill-field"><label>Дата подписания</label><input class="inp" id="ctorSigned" type="date" value="${esc(form.signed_date)}"/></div>`
               : `<div class="bill-field"><label>Оплатить до</label><input class="inp" id="ctorDue" type="date" value="${esc(form.due_date)}"/></div>`}
           </div>
+          ${!isAct ? `<div class="bill-field" style="margin-top:10px"><label>Связанный акт (ID)</label>
+            <input class="inp" id="ctorActId" type="number" min="1" step="1" value="${esc(form.act_id || '')}" placeholder="необязательно — связь счёта с актом"/>
+            <div class="bill-bind-hint">F2: если акт уже в CRM, укажите его ID — реестр документов свяжет карточки.</div></div>` : ''}
           <div class="bill-field" style="margin-top:10px"><label>Наименование работ</label>
             <input class="inp" id="ctorSubject" value="${esc(form.subject)}" placeholder="Капитальный ремонт, монтаж, ПНР…"/></div>
           <div class="bill-field" style="margin-top:10px"><label>Описание / основание</label>
@@ -934,6 +939,7 @@ window.AsgardBillingPage = (function () {
     f.number = $('#ctorNumber') ? $('#ctorNumber').value : f.number;
     f.date = $('#ctorDate') ? $('#ctorDate').value : f.date;
     if ($('#ctorDue')) f.due_date = $('#ctorDue').value;
+    if ($('#ctorActId')) f.act_id = $('#ctorActId').value || '';
     if ($('#ctorSigned')) f.signed_date = $('#ctorSigned').value;
     f.subject = $('#ctorSubject') ? $('#ctorSubject').value : f.subject;
     f.description = $('#ctorDesc') ? $('#ctorDesc').value : f.description;
@@ -1109,6 +1115,7 @@ window.AsgardBillingPage = (function () {
         date: todayISO(),
         due_date: addDaysISO(14),
         signed_date: '',
+        act_id: '',
         work_id: '',
         work_label: '',
         customer_id: null,
@@ -1418,7 +1425,7 @@ window.AsgardBillingPage = (function () {
                 amount, vat_pct: vatPct, total_amount: total,
                 description: $('#regDesc').value.trim() || undefined,
                 due_date: $('#regDue') && $('#regDue').value || null,
-                status: 'pending', invoice_type: 'incoming'
+                status: 'pending', invoice_type: 'outgoing'
               }});
               toast('Счёт внесён', '', 'ok');
             }
@@ -1623,14 +1630,24 @@ window.AsgardBillingPage = (function () {
       if (a === 'edit') { ui().hideModal(); return openCtor({ kind, editId: row.id }); }
       if (a === 'pay') { ui().hideModal(); return openPay(row); }
       if (a === 'sign') {
-        if (!confirm('Отметить акт подписанным?')) return;
+        const okSign = await (window.AsgardConfirm && AsgardConfirm.open
+          ? AsgardConfirm.open({ title: 'Подписать акт', body: 'Отметить акт подписанным?' })
+          : Promise.resolve(window.confirm('Отметить акт подписанным?')));
+        if (!okSign) return;
         try {
           await api('/api/acts/' + row.id, { method: 'PUT', body: { status: 'signed', signed_date: row.signed_date || todayISO() } });
           toast('Акт подписан', '', 'ok'); emitChanged(); refresh(); ui().hideModal();
         } catch (err) { toast('Ошибка', String(err.message || err), 'err'); }
       }
       if (a === 'del') {
-        if (!confirm(isAct ? 'Удалить акт?' : 'Удалить счёт?')) return;
+        // F5: AsgardConfirm (не silent native без текста контекста)
+        const okDel = await (window.AsgardConfirm && AsgardConfirm.open
+          ? AsgardConfirm.open({
+            title: isAct ? 'Удалить акт?' : 'Удалить счёт?',
+            body: 'Документ будет удалён. Связанная карточка в реестре документов тоже снимется.'
+          })
+          : Promise.resolve(window.confirm(isAct ? 'Удалить акт? Карточка реестра тоже снимется.' : 'Удалить счёт? Карточка реестра тоже снимется.')));
+        if (!okDel) return;
         try {
           await api((isAct ? '/api/acts/' : '/api/invoices/') + row.id, { method: 'DELETE' });
           toast('Удалено', '', 'ok'); emitChanged(); refresh(); ui().hideModal();

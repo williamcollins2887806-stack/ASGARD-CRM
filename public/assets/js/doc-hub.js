@@ -421,29 +421,8 @@ window.AsgardDocHubPage = (function () {
       </div>`;
   }
 
-  function shellHtml() {
-    const scopeAll = state.scope === 'all';
-    const isGuide = state.view === 'guide';
+  function registryMainHtml(scopeAll) {
     return `
-      <link rel="stylesheet" href="assets/css/doc-hub.css" />
-      <div class="dh-app dh-app--embedded">
-        <div class="dh-shell">
-          <header class="dh-top">
-            <div class="dh-top__title">
-              <div class="dh-top__eyebrow">Финансы · Документы</div>
-              <h1 class="dh-top__h1">${isGuide ? 'Как пользоваться · покрытие Excel' : 'Реестр счетов, СФ и УПД'}</h1>
-              <p class="dh-top__sub">${isGuide ? 'Справка и колонки Excel → CRM' : 'Единый хаб входящих и исходящих · работы, договоры, закупки, 1С'}</p>
-            </div>
-            <div class="dh-top__actions">
-              <button class="dh-btn dh-btn--ghost ${isGuide ? 'is-on' : ''}" type="button" id="dhBtnGuide">${isGuide ? 'К реестру' : 'Справка'}</button>
-              <button class="dh-btn dh-btn--ghost" type="button" id="dhBtnHelp" title="Подсказка">?</button>
-              <button class="dh-btn dh-btn--ghost" type="button" id="dhBtnImport1c">Из 1С</button>
-              <button class="dh-btn dh-btn--ghost" type="button" id="dhBtnExport1c">В 1С</button>
-              <button class="dh-btn dh-btn--primary" type="button" id="dhBtnNew">Внести документ</button>
-            </div>
-          </header>
-          <main class="dh-main">
-            ${isGuide ? renderGuideView() : `
             <div class="dh-coach ${state.coachOpen ? '' : 'is-collapsed'}" id="dhCoach">
               <div class="dh-coach__ico">i</div>
               <div class="dh-coach__body">
@@ -453,13 +432,13 @@ window.AsgardDocHubPage = (function () {
               <button class="dh-coach__close" type="button" id="dhCoachClose">✕</button>
             </div>
             <div class="dh-kpis" id="dhKpis">
-              <button class="dh-kpi ${state.kpi === 'all' ? 'is-on' : ''}" type="button" data-kpi="all"><div class="k">Всего</div><div class="v">${kpiVal('all')}</div></button>
-              <button class="dh-kpi is-err ${state.kpi === 'pay' ? 'is-on' : ''}" type="button" data-kpi="pay"><div class="k">Просрочка оплаты</div><div class="v">${kpiVal('pay')}</div></button>
-              <button class="dh-kpi is-warn ${state.kpi === 'sf' ? 'is-on' : ''}" type="button" data-kpi="sf"><div class="k">Ждём СФ</div><div class="v">${kpiVal('sf')}</div></button>
-              <button class="dh-kpi is-info ${state.kpi === 'wh' ? 'is-on' : ''}" type="button" data-kpi="wh"><div class="k">У кладовщика</div><div class="v">${kpiVal('wh')}</div></button>
-              <button class="dh-kpi is-ok ${state.kpi === 'out' ? 'is-on' : ''}" type="button" data-kpi="out"><div class="k">Исходящие</div><div class="v">${kpiVal('out')}</div></button>
-              <button class="dh-kpi ${state.kpi === '1c' ? 'is-on' : ''}" type="button" data-kpi="1c"><div class="k">Не в 1С</div><div class="v">${kpiVal('no_1c')}</div></button>
-              <button class="dh-kpi is-info ${state.kpi === 'incomplete' ? 'is-on' : ''}" type="button" data-kpi="incomplete"><div class="k">Неполные</div><div class="v">${kpiVal('incomplete')}</div></button>
+              <button class="dh-kpi ${state.kpi === 'all' ? 'is-on' : ''}" type="button" data-kpi="all"><div class="k">Всего</div><div class="v">${kpiVal('all')}</div><div class="s">в выборке</div></button>
+              <button class="dh-kpi is-err ${state.kpi === 'pay' ? 'is-on' : ''}" type="button" data-kpi="pay"><div class="k">Просрочка оплаты</div><div class="v">${kpiVal('pay')}</div><div class="s">поставщикам</div></button>
+              <button class="dh-kpi is-warn ${state.kpi === 'sf' ? 'is-on' : ''}" type="button" data-kpi="sf"><div class="k">Ждём СФ / УПД</div><div class="v">${kpiVal('sf')}</div><div class="s">закрывающие</div></button>
+              <button class="dh-kpi is-info ${state.kpi === 'wh' ? 'is-on' : ''}" type="button" data-kpi="wh"><div class="k">У кладовщика</div><div class="v">${kpiVal('wh')}</div><div class="s">ждут передачи</div></button>
+              <button class="dh-kpi is-ok ${state.kpi === 'out' ? 'is-on' : ''}" type="button" data-kpi="out"><div class="k">Исходящие</div><div class="v">${kpiVal('out')}</div><div class="s">СФ / УПД</div></button>
+              <button class="dh-kpi ${state.kpi === '1c' ? 'is-on' : ''}" type="button" data-kpi="1c"><div class="k">Не в 1С</div><div class="v">${kpiVal('no_1c')}</div><div class="s">к выгрузке</div></button>
+              <button class="dh-kpi is-info ${state.kpi === 'incomplete' ? 'is-on' : ''}" type="button" data-kpi="incomplete"><div class="k">Неполные</div><div class="v">${kpiVal('incomplete')}</div><div class="s">дозаполнить</div></button>
             </div>
             <div class="dh-toolbar">
               <div class="dh-seg" id="dhDirSeg">
@@ -473,8 +452,41 @@ window.AsgardDocHubPage = (function () {
               <input class="dh-search" id="dhSearch" type="search" placeholder="Поиск: счёт, контрагент, объект…" value="${esc(state.q)}" />
             </div>
             ${facetsHtml()}
-            <div id="dhTableHost">${state.loading ? '<div class="dh-empty">Загрузка…</div>' : renderTable()}</div>
-            `}
+            <div id="dhTableHost">${state.loading ? '<div class="dh-empty">Загрузка…</div>' : renderTable()}</div>`;
+  }
+
+  function shellHtml() {
+    const scopeAll = state.scope === 'all';
+    const isGuide = state.view === 'guide';
+    const isWizard = state.view === 'wizard';
+    const pageTitle = isGuide ? 'Как пользоваться' : (isWizard ? 'Внести документ' : 'Реестр счетов, СФ и УПД');
+    const pageSub = isGuide
+      ? 'Роли, шаги и покрытие полей Excel → CRM'
+      : (isWizard
+        ? 'Пошаговое заполнение с авторасчётом НДС и проверкой дублей'
+        : 'Единый хаб входящих и исходящих · работы, договоры, закупки и 1С');
+    return `
+      <link rel="stylesheet" href="assets/css/doc-hub.css" />
+      <div class="dh-app dh-app--embedded${isWizard ? ' dh-app--wizard' : ''}">
+        <div class="dh-shell">
+          <header class="dh-top">
+            <div class="dh-top__title">
+              <div class="dh-top__eyebrow">Финансы · Документы</div>
+              <h1 class="dh-top__h1">${pageTitle}</h1>
+              <p class="dh-top__sub">${pageSub}</p>
+            </div>
+            <div class="dh-top__actions">
+              ${isWizard
+                ? '<button class="dh-btn dh-btn--ghost" type="button" id="dhWizToRegistry">К реестру</button>'
+                : `<button class="dh-btn dh-btn--ghost ${isGuide ? 'is-on' : ''}" type="button" id="dhBtnGuide">${isGuide ? 'К реестру' : 'Справка'}</button>
+              <button class="dh-btn dh-btn--ghost" type="button" id="dhBtnHelp" title="Подсказка">?</button>
+              <button class="dh-btn dh-btn--ghost" type="button" id="dhBtnImport1c">Из 1С</button>
+              <button class="dh-btn dh-btn--ghost" type="button" id="dhBtnExport1c">В 1С</button>
+              <button class="dh-btn dh-btn--primary" type="button" id="dhBtnNew">Внести документ</button>`}
+            </div>
+          </header>
+          <main class="dh-main">
+            ${isGuide ? renderGuideView() : (isWizard ? '<div class="dh-wizard-page" id="dhWizardHost"></div>' : registryMainHtml(scopeAll))}
           </main>
         </div>
         <div class="dh-drawer" id="dhDrawer" hidden></div>
@@ -527,13 +539,14 @@ window.AsgardDocHubPage = (function () {
     const kinds = new Set(d.doc_kinds || ['invoice']);
     const steps = `
       <div class="dh-steps">
-        <div class="dh-step ${step === 1 ? 'is-on' : (step > 1 ? 'is-done' : '')}"><span class="n">1</span> Тип и суммы</div>
-        <div class="dh-step ${step === 2 ? 'is-on' : (step > 2 ? 'is-done' : '')}"><span class="n">2</span> Договор и файл</div>
-        <div class="dh-step ${step === 3 ? 'is-on' : ''}"><span class="n">3</span> Проверка</div>
+        <div class="dh-step ${step === 1 ? 'is-on' : (step > 1 ? 'is-done' : '')}"><span class="n">1</span> Тип</div>
+        <div class="dh-step ${step === 2 ? 'is-on' : (step > 2 ? 'is-done' : '')}"><span class="n">2</span> Счёт и суммы</div>
+        <div class="dh-step ${step === 3 ? 'is-on' : (step > 3 ? 'is-done' : '')}"><span class="n">3</span> Договор и объект</div>
+        <div class="dh-step ${step === 4 ? 'is-on' : ''}"><span class="n">4</span> Вложения</div>
       </div>`;
     if (step === 1) {
       return steps + `
-        <div class="dh-coach dh-coach--compact"><div class="dh-coach__ico">1</div><div class="dh-coach__body"><strong>Что вносим?</strong><p>Входящий — счёт/СФ от поставщика. Исходящий — наш СФ или УПД клиенту. Суммы: меняете «с НДС» или «без» — вторая и НДС пересчитаются (ставка 22%).</p></div></div>
+        <div class="dh-coach"><div class="dh-coach__ico">1</div><div class="dh-coach__body"><strong>Что вносим?</strong><p>Входящий — счёт/СФ от поставщика. Исходящий — наш СФ или УПД клиенту по проекту.</p></div></div>
         <input type="hidden" name="dir" id="dhWizDir" value="${esc(d.dir || 'in')}" />
         <div class="dh-dir-cards" id="dhDirCards">
           <button type="button" class="dh-dir-card ${d.dir !== 'out' ? 'is-on' : ''}" data-dir="in">
@@ -550,7 +563,11 @@ window.AsgardDocHubPage = (function () {
           <label class="dh-check"><input type="checkbox" name="doc_kind" value="sf" ${kinds.has('sf') ? 'checked' : ''}/> СФ</label>
           <label class="dh-check"><input type="checkbox" name="doc_kind" value="upd" ${kinds.has('upd') ? 'checked' : ''}/> УПД</label>
           <label class="dh-check"><input type="checkbox" name="doc_kind" value="act" ${kinds.has('act') ? 'checked' : ''}/> Акт</label>
-        </div>
+        </div>`;
+    }
+    if (step === 2) {
+      return steps + `
+        <div class="dh-coach"><div class="dh-coach__ico">2</div><div class="dh-coach__body"><strong>Суммы</strong><p>Введите сумму с НДС или без — вторая и сам НДС посчитаются. Ставка по умолчанию 22%.</p></div></div>
         <div class="dh-grid2">
           <div class="dh-field"><label>№ счёта *</label><input name="invoice_number" required value="${esc(d.invoice_number)}" placeholder="например ФР-2019" /></div>
           <div class="dh-field"><label>Дата счёта *</label><input type="text" name="invoice_date" required pattern="\\d{4}-\\d{2}-\\d{2}" placeholder="2026-09-14" value="${esc(d.invoice_date)}" /><div class="dh-help">формат ГГГГ-ММ-ДД</div></div>
@@ -568,13 +585,17 @@ window.AsgardDocHubPage = (function () {
           </div>
         </div>
         <div class="dh-dup" id="dhWizDup" hidden>
-          <strong>Похожий расход уже может быть на объекте</strong>
-          <p>РП мог внести этот счёт в расходы. После сохранения проверьте дубли в карточке и связях объекта.</p>
+          <strong>Похожий расход уже есть на объекте</strong>
+          <p>РП мог внести этот счёт в расходы. Связать с существующей записью или оставить только в реестре?</p>
+          <div class="dh-gap-row">
+            <button class="dh-btn dh-btn--sm" type="button" id="dhWizDupLink">Связать с расходом</button>
+            <button class="dh-btn dh-btn--sm dh-btn--ghost" type="button" id="dhWizDupSkip">Это другой документ</button>
+          </div>
         </div>`;
     }
-    if (step === 2) {
+    if (step === 3) {
       return steps + `
-        <div class="dh-coach dh-coach--compact"><div class="dh-coach__ico">2</div><div class="dh-coach__body"><strong>Объект и договор</strong><p>Без договора сохранение возможно, но строка попадёт в «Неполные». Прикрепите скан — для входящих позиции уйдут в номенклатуру.</p></div></div>
+        <div class="dh-coach"><div class="dh-coach__ico">3</div><div class="dh-coach__body"><strong>Объект и договор</strong><p>Без договора сохранение возможно, но строка попадёт в «Неполные» и придёт уведомление.</p></div></div>
         <input type="hidden" name="contract_mode" id="dhWizContract" value="${esc(d.contract_mode || 'none')}" />
         <div class="dh-mode-cards" id="dhModeCards">
           ${[['linked','Привязать договор','Из реестра договоров'],['once','Разовая','Без договора'],['general','Общий / заявка','Рамочный'],['none','Без договора','Не указан / позже']].map(([v,t,s]) =>
@@ -590,23 +611,23 @@ window.AsgardDocHubPage = (function () {
           <div class="dh-field"><label>Срок оплаты</label><input type="text" name="payment_due_at" pattern="\\d{4}-\\d{2}-\\d{2}" placeholder="2026-09-30" value="${esc(d.payment_due_at)}" /><div class="dh-help">ГГГГ-ММ-ДД</div></div>
           <div class="dh-field"><label>Срок ожидания СФ</label><input type="text" name="sf_due_at" pattern="\\d{4}-\\d{2}-\\d{2}" placeholder="2026-10-15" value="${esc(d.sf_due_at)}" /><div class="dh-help">ГГГГ-ММ-ДД</div></div>
         </div>
-        <div class="dh-field"><label>Работа / объект (ID в CRM)</label><input name="work_id" type="number" min="1" step="1" placeholder="оставьте пустым, если объекта ещё нет" value="${esc(d.work_id)}" /><div class="dh-help">необязательно — можно дозаполнить позже</div></div>
-        <div class="dh-field"><label>Комментарий</label><textarea name="comment_text" rows="2" placeholder="Условия оплаты, ТК, РПО…">${esc(d.comment_text)}</textarea></div>
-        <div class="dh-field">
-          <label>Вложение (скан счёта)</label>
-          <label class="dh-drop">
-            <input type="file" name="attachment" accept=".pdf,.jpg,.jpeg,.png,.xlsx,.xls,.webp,.json,.txt" />
-            <span class="dh-drop__t">${d.file ? esc(d.file.name) : 'Перетащите скан счёта или выберите файл'}</span>
-            <span class="dh-drop__s">PDF, JPG, PNG · входящие строки уйдут в номенклатуру</span>
-          </label>
-        </div>`;
+        <div class="dh-field"><label>Работа / объект (ID в CRM)</label><input name="work_id" type="number" min="1" step="1" placeholder="оставьте пустым, если объекта ещё нет" value="${esc(d.work_id)}" /><div class="dh-help">необязательно — можно дозаполнить позже</div></div>`;
     }
     const hasVat = d.has_vat === '1';
     const gross = parseFloat(d.amount_gross) || 0;
     const net = hasVat ? +(gross / (1 + VAT_RATE)).toFixed(2) : gross;
     const vat = hasVat ? +(gross - net).toFixed(2) : 0;
     return steps + `
-      <div class="dh-coach dh-coach--compact"><div class="dh-coach__ico">3</div><div class="dh-coach__body"><strong>Проверка перед сохранением</strong><p>Сверьте суммы и договор. Для входящих добавьте позиции каталога — по строкам с названием, ценой и количеством.</p></div></div>
+      <div class="dh-coach"><div class="dh-coach__ico">4</div><div class="dh-coach__body"><strong>Сканы и проверка</strong><p>Прикрепите скан и сверьте суммы. Для входящих добавьте позиции каталога — по строкам с названием, ценой и количеством.</p></div></div>
+      <div class="dh-field">
+        <label>Вложение (скан счёта)</label>
+        <label class="dh-drop">
+          <input type="file" name="attachment" accept=".pdf,.jpg,.jpeg,.png,.xlsx,.xls,.webp,.json,.txt" />
+          <span class="dh-drop__t">${d.file ? esc(d.file.name) : 'Перетащите скан счёта или выберите файл'}</span>
+          <span class="dh-drop__s">PDF, JPG, PNG · входящие строки уйдут в номенклатуру</span>
+        </label>
+      </div>
+      <div class="dh-field"><label>Комментарий</label><textarea name="comment_text" rows="2" placeholder="Условия оплаты, ТК, РПО…">${esc(d.comment_text)}</textarea></div>
       <div class="dh-review-grid">
         <div class="dh-review-card"><div class="k">Направление</div><div class="v">${d.dir === 'out' ? 'Исходящий' : 'Входящий'}</div></div>
         <div class="dh-review-card"><div class="k">Типы</div><div class="v">${esc((d.doc_kinds || []).map((x) => ({ invoice: 'Счёт', sf: 'СФ', upd: 'УПД', act: 'Акт' }[x] || x)).join(', ') || 'Счёт')}</div></div>
@@ -614,8 +635,6 @@ window.AsgardDocHubPage = (function () {
         <div class="dh-review-card"><div class="k">Контрагент</div><div class="v">${esc(d.counterparty_name)}</div></div>
         <div class="dh-review-card"><div class="k">Сумма</div><div class="v dh-money">${money(gross)}</div><div class="s">${hasVat ? 'НДС ' + money(vat) + ' · нетто ' + money(net) : 'без НДС'}</div></div>
         <div class="dh-review-card"><div class="k">Договор</div><div class="v">${esc(contractModeLabel(d.contract_mode))}</div></div>
-        <div class="dh-review-card"><div class="k">Сроки</div><div class="v">оплата ${fmtDate(d.payment_due_at)}</div><div class="s">СФ ${fmtDate(d.sf_due_at)}</div></div>
-        <div class="dh-review-card"><div class="k">Файл</div><div class="v">${d.file ? esc(d.file.name) : 'нет скана'}</div></div>
       </div>
       <div class="dh-field"><label>Позиции для каталога (входящие)</label>
         <div class="dh-lines-head"><span>Наименование</span><span>Цена</span><span>Кол-во</span><span>Ед.</span><span></span></div>
@@ -625,55 +644,77 @@ window.AsgardDocHubPage = (function () {
       </div>`;
   }
 
-  function openWizard() {
-    const modal = document.getElementById('dhModal');
-    if (!modal) return;
+  async function openWizard() {
+    state.view = 'wizard';
     state.wizStep = 1;
     state.wizDraft = emptyWizDraft();
-    modal.hidden = false;
-    paintWizard(modal);
+    await paint(window.__docHubLayout || window.layout);
+    const host = document.getElementById('dhWizardHost');
+    if (host) paintWizard(host);
   }
 
-  function paintWizard(modal) {
+  function paintWizard(container) {
+    const modal = container || document.getElementById('dhModal');
+    if (!modal) return;
+    const inline = container && container.id === 'dhWizardHost';
     const step = state.wizStep;
-    modal.innerHTML = `
-      <div class="dh-modal__card dh-modal__card--wiz">
-        <header class="dh-modal__head">
-          <h2>Внести документ</h2>
-          <button type="button" class="dh-modal__x" id="dhModalClose">✕</button>
-        </header>
-        <form id="dhWizForm" class="dh-wiz" data-step="${step}">
+    const inner = `
+        <form id="dhWizForm" class="dh-wiz${inline ? ' dh-wiz--page' : ''}" data-step="${step}">
           ${wizStepHtml(step)}
-          <footer class="dh-modal__foot">
+          <footer class="dh-modal__foot dh-wiz__foot">
             <button type="button" class="dh-btn dh-btn--ghost" id="dhWizCancel">Отмена</button>
             <button type="button" class="dh-btn dh-btn--ghost" id="dhWizBack" ${step <= 1 ? 'disabled' : ''}>Назад</button>
-            ${step < 3
+            ${step < 4
               ? '<button type="button" class="dh-btn dh-btn--primary" id="dhWizNext">Далее</button>'
-              : '<button type="submit" class="dh-btn dh-btn--primary" id="dhWizSubmit">Сохранить</button>'}
+              : '<button type="submit" class="dh-btn dh-btn--primary" id="dhWizSubmit">Сохранить в реестр</button>'}
           </footer>
-        </form>
+        </form>`;
+    if (inline) {
+      modal.innerHTML = inner;
+    } else {
+      modal.hidden = false;
+      modal.innerHTML = `
+      <div class="dh-modal__card dh-modal__card--wiz">
+        <header class="dh-modal__head">
+          <div>
+            <div class="dh-top__eyebrow">Мастер внесения</div>
+            <h2>Внести документ</h2>
+            <p class="dh-modal__sub">Пошагово · авто-НДС 22% · проверка похожих расходов</p>
+          </div>
+          <button type="button" class="dh-modal__x" id="dhModalClose">✕</button>
+        </header>
+        ${inner}
       </div>`;
+    }
     const form = modal.querySelector('#dhWizForm');
-    modal.querySelector('#dhModalClose').onclick = () => { modal.hidden = true; };
-    modal.querySelector('#dhWizCancel').onclick = () => { modal.hidden = true; };
-    modal.querySelector('#dhWizBack').onclick = () => {
+    const closeWiz = async () => {
+      if (inline) {
+        state.view = 'registry';
+        await paint(window.__docHubLayout || window.layout);
+      } else {
+        modal.hidden = true;
+      }
+    };
+    modal.querySelector('#dhModalClose')?.addEventListener('click', closeWiz);
+    modal.querySelector('#dhWizCancel')?.addEventListener('click', closeWiz);
+    modal.querySelector('#dhWizBack')?.addEventListener('click', () => {
       readWizStepFields(form);
       state.wizStep = Math.max(1, state.wizStep - 1);
-      paintWizard(modal);
-    };
+      paintWizard(container);
+    });
     const next = modal.querySelector('#dhWizNext');
     if (next) {
       next.onclick = () => {
         if (!form.reportValidity()) return;
         readWizStepFields(form);
-        state.wizStep = Math.min(3, state.wizStep + 1);
-        paintWizard(modal);
+        state.wizStep = Math.min(4, state.wizStep + 1);
+        paintWizard(container);
       };
     }
     form.onsubmit = async (ev) => {
       ev.preventDefault();
       readWizStepFields(form);
-      await submitWizard(modal);
+      await submitWizard(inline ? null : modal);
     };
     bindWizExtras(form);
   }
@@ -785,6 +826,10 @@ window.AsgardDocHubPage = (function () {
     if (netEl) netEl.addEventListener('input', () => paintVat('net'));
     if (hasChk) hasChk.addEventListener('change', () => paintVat('gross'));
     paintVat('gross');
+    const dupLink = form.querySelector('#dhWizDupLink');
+    const dupSkip = form.querySelector('#dhWizDupSkip');
+    if (dupLink) dupLink.onclick = () => { if (dup) dup.hidden = true; toast('Связь', 'После сохранения проверьте расходы объекта', 'ok'); };
+    if (dupSkip) dupSkip.onclick = () => { if (dup) dup.hidden = true; };
   }
 
   async function submitWizard(modal) {
@@ -838,8 +883,12 @@ window.AsgardDocHubPage = (function () {
         toast('Каталог', 'Строки учтены при создании', 'ok');
       }
       toast('Сохранено', 'Документ #' + (id || '') + ' в реестре', 'ok');
-      modal.hidden = true;
       state.wizDraft = null;
+      if (modal) modal.hidden = true;
+      else {
+        state.view = 'registry';
+        await paint(window.__docHubLayout || window.layout);
+      }
       await refresh();
       if (id) openDrawer(id);
     } catch (e) {
@@ -886,8 +935,9 @@ window.AsgardDocHubPage = (function () {
         <div class="dh-attach__ico">PDF</div>
         <div class="dh-attach__meta">
           <div class="a">${esc(name)}</div>
-          <div class="b">${url ? `<a href="${esc(url)}" target="_blank" rel="noopener">открыть</a>` : '—'}</div>
+          <div class="b">${url ? esc(url) : 'локальный скан'}</div>
         </div>
+        ${url ? `<a class="dh-btn dh-btn--sm" href="${esc(url)}" target="_blank" rel="noopener">Открыть</a>` : '<button class="dh-btn dh-btn--sm" type="button" disabled>Нет ссылки</button>'}
       </div>`;
     }).join('');
   }
@@ -917,6 +967,38 @@ window.AsgardDocHubPage = (function () {
       </div>`;
   }
 
+  function timelineHtml(row) {
+    const paid = row.pay_status === 'paid';
+    const closing = !!(row.closing_json || row.sf_number || row.ops_status === 'done');
+    const whDone = row.wh_status === 'buh_ok';
+    const whActive = row.wh_status && row.wh_status !== 'none' && !whDone;
+    const onecDone = !!row.onec_id;
+    const steps = [
+      { title: 'Счёт внесён', meta: fmtDate(row.invoice_date) || '—', done: true, now: false },
+      { title: 'Оплата', meta: paid ? 'оплачен' : (fmtDate(row.payment_due_at) || 'срок не задан'), done: paid, now: !paid },
+      { title: 'СФ / УПД', meta: closing ? 'получено' : 'ожидаем', done: closing, now: !closing && paid },
+      { title: 'Склад → офис → бух', meta: whLabel(row), done: whDone, now: !!whActive },
+      { title: '1С', meta: onecDone ? esc(row.onec_id) : 'не выгружено', done: onecDone, now: false }
+    ];
+    return steps.map((s) => {
+      const cls = s.done ? 'is-done' : (s.now ? 'is-now' : 'is-wait');
+      return `<div class="dh-tl-item ${cls}">
+        <div class="dh-tl-dot"></div>
+        <div><div class="dh-tl-title">${s.title}</div><div class="dh-tl-meta">${s.meta || ''}</div></div>
+      </div>`;
+    }).join('');
+  }
+
+  function sumParts(row) {
+    const gross = Number(row.amount_gross) || 0;
+    const hasVat = !(row.has_vat === false || row.has_vat === 0 || row.has_vat === '0');
+    let net = row.amount_net != null ? Number(row.amount_net) : NaN;
+    let vat = row.vat_amount != null ? Number(row.vat_amount) : NaN;
+    if (!Number.isFinite(net)) net = hasVat ? +(gross / (1 + VAT_RATE)).toFixed(2) : gross;
+    if (!Number.isFinite(vat)) vat = hasVat ? +(gross - net).toFixed(2) : 0;
+    return { gross, net, vat, hasVat };
+  }
+
   async function openDrawer(id) {
     try {
       const row = await api('/' + id);
@@ -926,53 +1008,89 @@ window.AsgardDocHubPage = (function () {
       d.hidden = false;
       d.classList.add('is-on');
       const payLink = row.payment_invoice_id
-        ? `<p><a href="#/approval-payment?id=${row.payment_invoice_id}">Очередь оплаты #${row.payment_invoice_id}</a></p>`
+        ? `<p class="dh-pay-link"><a href="#/approval-payment?id=${row.payment_invoice_id}">Очередь оплаты #${row.payment_invoice_id}</a></p>`
         : '';
+      const sums = sumParts(row);
+      const titleNo = row.invoice_number ? ('Счёт ' + row.invoice_number) : ('#' + row.id);
       d.innerHTML = `
         <div class="dh-drawer__card">
           <header class="dh-drawer__head">
             <div>
-              <h3>${esc(row.invoice_number || '#' + row.id)}</h3>
+              <h3>${esc(titleNo)}</h3>
               <p>${esc(row.counterparty_name || '')} · ${esc(row.work_title || 'без объекта')}</p>
             </div>
-            <button type="button" id="dhDrawerClose">✕</button>
+            <button type="button" id="dhDrawerClose" aria-label="Закрыть">✕</button>
           </header>
           <div class="dh-drawer__body">
-            <div class="dh-coach dh-coach--compact">
+            <div class="dh-coach">
               <div class="dh-coach__ico">→</div>
               <div class="dh-coach__body"><strong>Что дальше</strong><p>${esc(nextActionText(row))}</p></div>
             </div>
             ${payLink}
-            <dl class="dh-dl">
-              <dt>Контрагент</dt><dd>${esc(row.counterparty_name)}</dd>
-              <dt>Сумма</dt><dd>${money(row.amount_gross)}</dd>
-              <dt>Статус</dt><dd>${esc(statusLabel(row))}</dd>
-              <dt>Объект</dt><dd>${esc(row.work_title || '—')}${row.work_id ? ' (#' + row.work_id + ')' : ''}</dd>
-              <dt>Договор</dt><dd>${esc(contractModeLabel(row.contract_mode))}</dd>
-              <dt>Отв. док.</dt><dd>${esc(row.doc_owner_name || '—')}</dd>
-              <dt>РП</dt><dd>${esc(row.pm_name || '—')}</dd>
-              <dt>1С</dt><dd>${esc(row.onec_id || 'не связан')}</dd>
-              <dt>Склад</dt><dd>${esc(whLabel(row))}</dd>
-              <dt>Оплата до</dt><dd>${fmtDate(row.payment_due_at)}</dd>
-            </dl>
+            <div class="dh-section">
+              <div class="dh-section__h">Суммы</div>
+              <div class="dh-section__b dh-grid-2">
+                <div class="dh-field"><label>С НДС</label><div class="val dh-money">${money(sums.gross)}</div></div>
+                <div class="dh-field"><label>Без НДС</label><div class="val dh-money">${money(sums.net)}</div></div>
+                <div class="dh-field"><label>НДС ${sums.hasVat ? '22%' : 'нет'}</label><div class="val dh-money">${money(sums.vat)}</div></div>
+                <div class="dh-field"><label>Срок оплаты</label><div class="val">${fmtDate(row.payment_due_at) || 'не указан'}</div></div>
+              </div>
+            </div>
+            <div class="dh-section">
+              <div class="dh-section__h">Договор и связи</div>
+              <div class="dh-section__b">
+                <div class="dh-grid-2">
+                  <div class="dh-field"><label>Договор</label><div class="val">${esc(contractModeLabel(row.contract_mode))}</div>
+                    <div class="hint">${row.is_incomplete ? 'Нужно привязать или отметить разовую поставку' : 'Можно сменить не выходя из реестра'}</div></div>
+                  <div class="dh-field"><label>Работа</label><div class="val">${esc(row.work_title || '—')}${row.work_id ? ' (#' + row.work_id + ')' : ''}</div></div>
+                  <div class="dh-field"><label>Статус</label><div class="val">${statusPill(row)}</div></div>
+                  <div class="dh-field"><label>Склад</label><div class="val">${esc(whLabel(row))}</div></div>
+                </div>
+              </div>
+            </div>
+            <div class="dh-section">
+              <div class="dh-section__h">Жизненный цикл</div>
+              <div class="dh-section__b"><div class="dh-timeline">${timelineHtml(row)}</div></div>
+            </div>
             <div class="dh-section">
               <div class="dh-section__h">Вложения</div>
-              <div class="dh-section__b">${attachmentsHtml(row)}</div>
+              <div class="dh-section__b">
+                ${attachmentsHtml(row)}
+                <div class="dh-attach">
+                  <div class="dh-attach__ico">+</div>
+                  <div class="dh-attach__meta"><div class="a">Добавить скан СФ / УПД</div><div class="b">файл или путь, где лежит оригинал</div></div>
+                  <button class="dh-btn dh-btn--sm dh-btn--primary" type="button" data-qa="sf">СФ</button>
+                </div>
+              </div>
+            </div>
+            <div class="dh-section">
+              <div class="dh-section__h">Ответственные</div>
+              <div class="dh-section__b dh-grid-2">
+                <div class="dh-field"><label>Отв. за документы</label><div class="val">${esc(row.doc_owner_name || '—')}</div></div>
+                <div class="dh-field"><label>РП / объект</label><div class="val">${esc(row.pm_name || '—')}</div></div>
+                <div class="dh-field"><label>1С</label><div class="val">${esc(row.onec_id || 'не связан')}</div></div>
+                <div class="dh-field"><label>Комментарий</label><div class="val">${esc(row.comment_text || '—')}</div></div>
+              </div>
             </div>
             ${editIncompleteHtml(row)}
-            <div class="dh-drawer__actions">
-              <button type="button" class="dh-btn dh-btn--ghost" data-qa="sf">СФ</button>
-              ${canWh() ? '<button type="button" class="dh-btn dh-btn--ghost" data-qa="wh">Склад</button>' : ''}
-              <button type="button" class="dh-btn dh-btn--primary" data-qa="pay">К оплате</button>
-              <button type="button" class="dh-btn dh-btn--ok" id="dhParseCatalog" ${row.dir !== 'in' ? 'disabled title="Только входящие"' : ''}>В каталог</button>
-            </div>
           </div>
+          <footer class="dh-drawer__foot">
+            <button type="button" class="dh-btn dh-btn--ghost" id="dhDrawerEdit">Править</button>
+            <button type="button" class="dh-btn dh-btn--ok" id="dhParseCatalog" ${row.dir !== 'in' ? 'disabled title="Только входящие"' : ''}>В каталог</button>
+            ${canWh() ? '<button type="button" class="dh-btn dh-btn--ghost" data-qa="wh">Склад</button>' : ''}
+            <button type="button" class="dh-btn dh-btn--primary" data-qa="pay">К оплате</button>
+          </footer>
         </div>`;
       d.querySelector('#dhDrawerClose').onclick = () => {
         d.hidden = true;
         d.classList.remove('is-on');
         state.selectedId = null;
       };
+      d.querySelector('#dhDrawerEdit')?.addEventListener('click', () => {
+        const block = d.querySelector('#dhEditIncomplete') || d.querySelector('.dh-section');
+        if (block) block.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        toast('Правка', row.is_incomplete ? 'Заполните поля ниже и сохраните' : 'Откройте неполные поля или обновите сроки в блоке договора', 'ok');
+      });
       d.querySelectorAll('[data-qa]').forEach((btn) => {
         btn.onclick = () => quick(id, btn.getAttribute('data-qa'));
       });
@@ -1125,7 +1243,11 @@ window.AsgardDocHubPage = (function () {
   }
 
   function bind(root) {
-    root.querySelector('#dhBtnNew')?.addEventListener('click', openWizard);
+    root.querySelector('#dhWizToRegistry')?.addEventListener('click', async () => {
+      state.view = 'registry';
+      await paint(window.__docHubLayout || window.layout);
+    });
+    root.querySelector('#dhBtnNew')?.addEventListener('click', () => { openWizard(); });
     root.querySelector('#dhBtnExport1c')?.addEventListener('click', export1c);
     root.querySelector('#dhBtnImport1c')?.addEventListener('click', import1c);
     root.querySelector('#dhBtnGuide')?.addEventListener('click', async () => {
@@ -1200,7 +1322,7 @@ window.AsgardDocHubPage = (function () {
   }
 
   async function refresh() {
-    if (state.view === 'guide') return;
+    if (state.view === 'guide' || state.view === 'wizard') return;
     const host = document.getElementById('dhTableHost');
     if (!host) return;
     await loadData();
@@ -1222,13 +1344,17 @@ window.AsgardDocHubPage = (function () {
     }
     const html = shellHtml();
     if (typeof layoutFn === 'function') {
-      await layoutFn(html, { title: 'Реестр документов' });
+      await layoutFn(html, { title: state.view === 'wizard' ? 'Внести документ' : 'Реестр документов' });
     } else if (layoutFn && layoutFn.innerHTML !== undefined) {
       layoutFn.innerHTML = html;
     } else if (window.layout) {
-      await window.layout(html, { title: 'Реестр документов' });
+      await window.layout(html, { title: state.view === 'wizard' ? 'Внести документ' : 'Реестр документов' });
     }
     bind(document);
+    if (state.view === 'wizard') {
+      const host = document.getElementById('dhWizardHost');
+      if (host) paintWizard(host);
+    }
   }
 
   async function render({ layout: layoutFn, title }) {

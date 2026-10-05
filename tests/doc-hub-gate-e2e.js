@@ -178,6 +178,15 @@ async function openDocHub(context, auth) {
   add('api_catalog', !!catHit, JSON.stringify(catHit && (catHit.article || catHit.name)));
   add('api_sf', (await api(token, 'POST', '/' + id + '/quick', { action: 'sf', number: 'SF1' })).status === 200, '');
   add('api_wh', (await api(token, 'POST', '/' + id + '/quick', { action: 'wh' })).status === 200, '');
+  // E2: pay requires attachment — upload stub before redirect check
+  {
+    const fd = new FormData();
+    fd.append('file', new Blob([JSON.stringify([{ name: 'Gate pay', article: 'GP-' + stamp, unit_price: 1, quantity: 1 }])]), 'gate-pay-' + stamp + '.json');
+    const upPay = await fetch(BASE + '/api/doc-registry/' + id + '/upload', {
+      method: 'POST', headers: { Authorization: 'Bearer ' + token }, body: fd
+    }).then(async (r) => ({ status: r.status, body: await r.json().catch(() => ({})) }));
+    add('api_pay_upload', upPay.status === 200, String(upPay.status));
+  }
   add('api_pay_redirect', !!(await api(token, 'POST', '/' + id + '/quick', { action: 'pay' })).body.redirect, '');
   add('api_export', !!(await api(token, 'POST', '/export-1c', { ids: [id] })).body.csv, '');
 

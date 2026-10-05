@@ -66,8 +66,17 @@ async function dismissChrome(page) {
     const gate = document.getElementById('asgard-presence-gate');
     if (gate && gate.parentNode) gate.parentNode.removeChild(gate);
     document.querySelectorAll(
-      '.cr-m-overlay, .modalback, .tp-popup, .telephony-popup, #sg-overlay, .sg-splash, #asgard-presence-gate, #asgard-splash'
+      '.cr-m-overlay, .modalback, .tp-popup, .telephony-popup, #sg-overlay, .sg-splash, #asgard-presence-gate, #asgard-splash, .asgard-confirm, .asc-overlay, #huginnDock, .hg-dock, .hg-panel, .hg-rail, #tingPanel, .ting-panel'
     ).forEach((el) => { try { el.remove(); } catch (_) {} });
+    // Quiet chrome for visual matrix: collapse right docks
+    document.documentElement.classList.add('dh-visual-quiet');
+    const style = document.getElementById('dh-visual-quiet-style') || document.createElement('style');
+    style.id = 'dh-visual-quiet-style';
+    style.textContent = `.hg-dock,.hg-panel,#huginnDock,.ting-panel,#tingPanel,.telephony-fab,.pbx-fab{display:none!important}
+.asgard-confirm,.asc-root{display:none!important}
+.cr-topbar,.app-topbar,.top-bar,.breadcrumb-bar,.shell-banner,.v2-banner,.asgard-v2-banner{display:none!important}
+#layout-content{padding-top:8px!important}`;
+    if (!style.parentNode) document.head.appendChild(style);
   });
 }
 
@@ -221,6 +230,7 @@ async function dismissChrome(page) {
     if (await page.locator('#dhBtnNew').count()) {
       await dismissChrome(page);
       await page.locator('#dhBtnNew').click({ force: true });
+      await page.waitForSelector('#dhWizForm[data-step="1"]', { timeout: 8000 }).catch(() => {});
       await page.waitForTimeout(700);
       await dismissChrome(page);
       await snap(page, OUT_CRM, '02-wizard');
@@ -243,7 +253,7 @@ async function dismissChrome(page) {
         });
       };
 
-      for (const [step, name] of [[2, '02b-wizard-step2'], [3, '02c-wizard-step3']]) {
+      for (const [step, name] of [[2, '02b-wizard-step2'], [3, '02c-wizard-step3'], [4, '02d-wizard-step4']]) {
         await fillStep();
         const nextBtn = page.locator('#dhWizNext');
         if (!(await nextBtn.count())) break;
@@ -254,6 +264,20 @@ async function dismissChrome(page) {
           step, { timeout: 5000 }
         ).then(() => true).catch(() => false);
         await page.waitForTimeout(400);
+        // Amounts step: force 2200 so duplicate callout craft is visible in 02b
+        if (step === 2) {
+          await page.evaluate(() => {
+            const g = document.querySelector('#dhWizGross');
+            const n = document.querySelector('#dhWizNet');
+            if (g) { g.value = '2200'; g.dispatchEvent(new Event('input', { bubbles: true })); }
+            if (n && !n.value) n.value = '1803.28';
+            const cp = document.querySelector('input[name="counterparty_name"]');
+            if (cp && !cp.value) cp.value = 'ООО «АСТ-Системс»';
+            const inv = document.querySelector('input[name="invoice_number"]');
+            if (inv && !inv.value) inv.value = 'ФР-2019';
+          }).catch(() => {});
+          await page.waitForTimeout(200);
+        }
         await dismissChrome(page);
         await snap(page, OUT_CRM, name);
         console.log('wizard step ' + step + ' advanced=' + advanced);
@@ -274,35 +298,70 @@ async function dismissChrome(page) {
       await page.waitForTimeout(600);
     }
 
-    // 04 — DRAWER (клик по строке таблицы)
+    // Reset filters before drawer/export shots (01c may leave incomplete on)
+    await page.evaluate(() => {
+      const inc = document.querySelector('#dhFacetIncomplete');
+      if (inc && inc.checked) { inc.checked = false; inc.dispatchEvent(new Event('change', { bubbles: true })); }
+      const all = document.querySelector('[data-kpi="all"]');
+      if (all) all.click();
+    }).catch(() => {});
+    await page.waitForTimeout(800);
     await dismissChrome(page);
-    const row = page.locator('.dh-tr').first();
-    if (await row.count()) {
-      await row.click({ force: true }).catch(() => {});
-      await page.waitForTimeout(900);
+
+    // 04 — DRAWER: open via explicit «Карточка» on first visible row
+    const openBtn = page.locator('.dh-tr [data-qa="open"]').first();
+    if (!(await openBtn.count())) {
+      console.warn('no open button — forcing scope all + reload rows');
+      if (await page.locator('#dhScopeAll').count()) {
+        await page.locator('#dhScopeAll').check({ force: true }).catch(() => {});
+        await page.waitForTimeout(900);
+      }
+    }
+    // Prefer richest demo row (done/paid with attachments) for drawer craft
+    let openBtn2 = page.locator('.dh-tr').filter({ hasText: /ФР-2019|Закрыто|оплачен/i }).locator('[data-qa="open"]').first();
+    if (!(await openBtn2.count())) openBtn2 = page.locator('.dh-tr [data-qa="open"]').first();
+    if (await openBtn2.count()) {
+      await openBtn2.click({ force: true });
+      const drawerReady = await page.waitForSelector('#dhDrawer.is-on .dh-timeline, #dhDrawer:not([hidden]) .dh-section__h', { timeout: 10000 }).then(() => true).catch(() => false);
+      console.log('drawer ready=' + drawerReady);
+      await page.waitForTimeout(500);
       await dismissChrome(page);
+      await page.evaluate(() => {
+        document.querySelectorAll('.asgard-confirm, .asc-overlay, .asc-root').forEach((el) => { try { el.remove(); } catch (_) {} });
+      }).catch(() => {});
       await snap(page, OUT_CRM, '04-drawer');
 
-      // 05 — состояние после действия в карточке (СФ получена / кнопки drawer)
-      const sf = page.locator('#dhDrawer [data-qa="sf"], #dhDrawer button').filter({ hasText: /СФ/ }).first();
+      // 05 — confirm after SF
+      const sf = page.locator('#dhDrawer [data-qa="sf"]').first();
       if (await sf.count()) {
+        await page.evaluate(() => {
+          const s = document.getElementById('dh-visual-quiet-style');
+          if (s) s.textContent = `.hg-dock,.hg-panel,#huginnDock,.ting-panel,#tingPanel,.telephony-fab,.pbx-fab{display:none!important}`;
+        }).catch(() => {});
         await sf.click({ force: true }).catch(() => {});
         await page.waitForTimeout(900);
-        await dismissChrome(page);
         await snap(page, OUT_CRM, '05-after-sf-confirm');
+        await page.locator('button:has-text("Отмена")').first().click({ force: true }).catch(() => {});
+        await page.waitForTimeout(300);
       }
       await page.locator('#dhDrawerClose').first().click({ force: true }).catch(() => {});
       await page.waitForTimeout(400);
+    } else {
+      console.warn('SKIP 04-drawer: no rows');
     }
 
-    // 06 — модалка «Выгрузка в 1С»
+    // 06 — export modal
     const exp = page.locator('#dhBtnExport1c');
     if (await exp.count()) {
       await dismissChrome(page);
       await exp.first().click({ force: true }).catch(() => {});
-      await page.waitForTimeout(1000);
+      await page.waitForSelector('#dhModal:not([hidden]) .dh-csv-preview, #dhModal:not([hidden]) .dh-modal__card--wide', { timeout: 8000 }).catch(() => {});
+      await page.waitForTimeout(600);
       await dismissChrome(page);
       await snap(page, OUT_CRM, '06-export-1c');
+      if (!(await page.locator('.dh-csv-preview').count())) {
+        await snap(page, OUT_CRM, '06-export-debug');
+      }
     }
     await ctx.close();
   }
