@@ -20,6 +20,8 @@ const { sendToUser, isUserOnline } = require('./sse');
 const aiProvider = require('../services/ai-provider');
 const mimirData = require('../services/mimir-data');
 const estimateChat = require('../services/estimateChat');
+const huginnEvents = require('../services/huginn-events');
+const chatVoiceStt = require('../services/chat-voice-stt');
 
 module.exports = async function(fastify) {
   const db = fastify.db;
@@ -182,14 +184,33 @@ module.exports = async function(fastify) {
   // ═══════════════════════════════════════════════════════════════
   async function sseToMembers(chatId, senderUserId, event, data) {
     try {
-      const members = await getChatMembers(chatId);
-      for (const m of members) {
-        if (m.user_id !== senderUserId) sendToUser(m.user_id, event, data);
-      }
+      // Durable outbox + live SSE (catch-up via GET /events?since=)
+      await huginnEvents.publishToChatMembers(db, {
+        chatId,
+        eventType: event,
+        payload: data,
+        excludeUserId: senderUserId
+      });
     } catch (e) {
-      fastify.log.warn('SSE broadcast error:', e.message);
+      // Fallback: live-only if outbox table not migrated yet
+      try {
+        const members = await getChatMembers(chatId);
+        for (const m of members) {
+          if (m.user_id !== senderUserId) sendToUser(m.user_id, event, data);
+        }
+      } catch (e2) {
+        fastify.log.warn('SSE broadcast error:', e2.message || e.message);
+      }
     }
   }
+
+  // Huginn extensions first (static paths: /events, /invites, /stickers, …)
+  await require('./huginn_ext')(fastify, {
+    db,
+    uploadDir,
+    getChatMembership,
+    sseToMembers
+  });
 
   // ═══════════════════════════════════════════════════════════════
   // Direct Chat — find or create 1-to-1 chat
@@ -798,8 +819,8 @@ module.exports = async function(fastify) {
       notify(m.user_id, `💬 ${chat.name}`, `${senderName}: ${text.trim().substring(0, 100)}${text.length > 100 ? '...' : ''}`, `#/messenger?id=${chatId}`)
     )).catch(() => {});
 
-    // SSE broadcast new message
-    sseToMembers(chatId, userId, 'chat:new_message', {
+    // SSE + durable outbox (await so catch-up sees the event immediately)
+    await sseToMembers(chatId, userId, 'chat:new_message', {
       chat_id: chatId,
       message: { ...message, user_name: senderName }
     });
@@ -1117,6 +1138,26 @@ module.exports = async function(fastify) {
       const messageText = typeof data.fields?.message_text?.value === 'string'
         ? data.fields.message_text.value
         : '';
+      const clientType = typeof data.fields?.message_type?.value === 'string'
+        ? data.fields.message_type.value.trim()
+        : '';
+      const mime = data.mimetype || 'application/octet-stream';
+      let messageType = clientType || 'file';
+      if (!clientType) {
+        if (mime.startsWith('audio/')) messageType = 'voice';
+        else if (mime.startsWith('video/') && /circle|round/i.test(originalName)) messageType = 'circle';
+        else if (mime.startsWith('video/')) messageType = 'video';
+        else if (mime.startsWith('image/')) messageType = 'image';
+      }
+      const allowedTypes = new Set(['voice', 'video', 'circle', 'image', 'file', 'sticker']);
+      if (!allowedTypes.has(messageType)) messageType = 'file';
+
+      const durationRaw = data.fields?.file_duration?.value;
+      const fileDuration = Number.isFinite(Number(durationRaw)) ? Math.round(Number(durationRaw)) : null;
+      let waveform = null;
+      try {
+        if (data.fields?.waveform?.value) waveform = JSON.parse(data.fields.waveform.value);
+      } catch (_) { waveform = null; }
 
       const chunks = [];
       for await (const chunk of data.file) {
@@ -1128,20 +1169,49 @@ module.exports = async function(fastify) {
       }
       await fs.writeFile(filePath, buffer);
 
+      const publicUrl = `/uploads/chat/${safeName}`;
+      const placeholder =
+        messageText ||
+        (messageType === 'voice' ? '🎤 Голосовое сообщение'
+          : messageType === 'circle' ? '⭕ Видеосообщение'
+          : messageType === 'video' ? '🎬 Видео'
+          : messageType === 'image' ? '🖼 Фото' : originalName);
+
+      const meta = { mime };
+      if (messageType === 'voice') meta.transcript_status = 'pending';
+
       const msgResult = await db.query(`
-        INSERT INTO chat_messages (chat_id, user_id, message, created_at)
-        VALUES ($1, $2, $3, NOW())
+        INSERT INTO chat_messages
+          (chat_id, user_id, message, message_type, file_url, file_duration, waveform, metadata, created_at)
+        VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8::jsonb, NOW())
         RETURNING *
-      `, [chatId, request.user.id, messageText || '']);
+      `, [
+        chatId,
+        request.user.id,
+        placeholder,
+        messageType,
+        publicUrl,
+        fileDuration,
+        waveform ? JSON.stringify(waveform) : null,
+        JSON.stringify(meta)
+      ]);
 
       const msg = msgResult.rows[0];
       const attachmentResult = await db.query(`
         INSERT INTO chat_attachments (message_id, file_name, original_name, file_path, file_size, mime_type, created_at)
         VALUES ($1, $2, $3, $4, $5, $6, NOW())
         RETURNING id, message_id, file_name, original_name, file_path, file_size, mime_type, created_at
-      `, [msg.id, safeName, originalName, storedFilePath, buffer.length, data.mimetype || 'application/octet-stream']);
+      `, [msg.id, safeName, originalName, storedFilePath, buffer.length, mime]);
 
       await db.query('UPDATE chats SET last_message_at = NOW() WHERE id = $1', [chatId]);
+
+      if (messageType === 'voice') {
+        try {
+          await chatVoiceStt.enqueue(db, { messageId: msg.id, chatId });
+        } catch (sttErr) {
+          fastify.log.warn('voice STT enqueue:', sttErr.message);
+        }
+      }
 
       const user = await db.query('SELECT name FROM users WHERE id = $1', [request.user.id]);
       const attachment = serializeAttachment(attachmentResult.rows[0]);
@@ -1152,8 +1222,7 @@ module.exports = async function(fastify) {
         attachments: attachment ? [attachment] : []
       };
 
-      // SSE broadcast upload-file message
-      sseToMembers(chatId, request.user.id, 'chat:new_message', {
+      await sseToMembers(chatId, request.user.id, 'chat:new_message', {
         chat_id: chatId, message: fullMsg
       });
 
@@ -1275,14 +1344,26 @@ module.exports = async function(fastify) {
       [chatId, request.user.id]
     );
 
-    // Mark messages as read
+    // Mark messages as read (legacy flag + per-user receipts)
     await db.query(
       'UPDATE chat_messages SET is_read = true WHERE chat_id = $1 AND id <= $2 AND user_id != $3 AND is_read = false',
       [chatId, last_message_id, request.user.id]
     );
+    try {
+      await db.query(
+        `INSERT INTO chat_message_reads (message_id, user_id, read_at)
+         SELECT m.id, $2, NOW()
+         FROM chat_messages m
+         WHERE m.chat_id = $1 AND m.id <= $3 AND m.user_id <> $2 AND m.deleted_at IS NULL
+         ON CONFLICT (message_id, user_id) DO UPDATE SET read_at = EXCLUDED.read_at`,
+        [chatId, request.user.id, last_message_id]
+      );
+    } catch (_) { /* table may be missing pre-migrate */ }
+
+    await huginnEvents.touchLastSeen(db, request.user.id).catch(() => {});
 
     // Broadcast read receipt via SSE to message senders
-    sseToMembers(chatId, request.user.id, 'chat:read', {
+    await sseToMembers(chatId, request.user.id, 'chat:read', {
       chat_id: chatId,
       user_id: request.user.id,
       message_id: last_message_id
@@ -2179,4 +2260,5 @@ module.exports = async function(fastify) {
       return reply.send({ title: parsed.hostname, domain: parsed.hostname });
     }
   });
+
 };
