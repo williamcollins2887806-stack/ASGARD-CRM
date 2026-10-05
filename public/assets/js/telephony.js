@@ -447,6 +447,7 @@ window.AsgardTelephonyPage = (function () {
 
     var overlay = $('#detailOverlay');
     if (overlay) overlay.addEventListener('click', closeDetailPanel);
+    if (query.id && /^\d+$/.test(String(query.id))) openDetailPanel(query.id);
   }
 
   /* ---- Tabs ---- */

@@ -205,6 +205,12 @@
           ${ICO.video}
           <span>Тинг</span>
         </button>
+        <button type="button" class="hg-rail-btn hg-rail-btn--phone" data-tab="phone" title="Телефон" hidden>
+          ${ICO.phone}
+          <span>Телефон</span>
+          <span class="hg-rail-dot" aria-hidden="true"></span>
+          <span class="hg-rail-badge" data-rail-badge="phone" hidden>0</span>
+        </button>
       </aside>
       <nav class="hg-bottom-nav" aria-label="Huginn mobile">
         <button type="button" data-mnav="contacts" aria-label="Контакты">
@@ -250,7 +256,11 @@
     if (!state.collapsed) {
       root.classList.add('is-offscreen');
       requestAnimationFrame(() => {
-        requestAnimationFrame(() => { if (root) root.classList.remove('is-offscreen'); });
+        requestAnimationFrame(() => {
+          if (!root) return;
+          root.classList.remove('is-offscreen');
+          notifyLayout();
+        });
       });
     }
     root.querySelectorAll('.hg-rail-btn').forEach((btn) => {
@@ -263,8 +273,10 @@
         root.querySelectorAll('.hg-rail-btn').forEach((b) => b.classList.toggle('is-active', b === btn));
         renderPanel();
         syncRailBadge();
+        notifyLayout();
       });
     });
+    applyPhoneRail();
     document.querySelectorAll('.hg-bottom-nav [data-mnav]').forEach((btn) => {
       btn.addEventListener('click', () => {
         state.mobileNav = btn.getAttribute('data-mnav');
@@ -299,7 +311,68 @@
       document.addEventListener('keydown', onGlobalKey);
     }
     syncBodyPad();
+    notifyLayout();
     return root;
+  }
+
+  /** PBX-телефония живёт в phone_ui.js; док только хранит состояние кнопки рейла. */
+  const phoneRail = { visible: false, status: 'offline', badge: 0 };
+
+  function applyPhoneRail() {
+    if (!root) return;
+    const btn = root.querySelector('.hg-rail-btn[data-tab="phone"]');
+    if (!btn) return;
+    // Только diff-запись: phone_ui слушает MutationObserver(childList) на body
+    // и зовёт setPhoneRail — безусловная запись textContent зациклит страницу.
+    if (btn.hidden !== !phoneRail.visible) btn.hidden = !phoneRail.visible;
+    const st = phoneRail.status || 'offline';
+    if (btn.getAttribute('data-phone-status') !== st) btn.setAttribute('data-phone-status', st);
+    const badge = btn.querySelector('[data-rail-badge="phone"]');
+    if (badge) {
+      const n = Number(phoneRail.badge) || 0;
+      if (badge.hidden !== (n === 0)) badge.hidden = n === 0;
+      const txt = n > 99 ? '99+' : String(n);
+      if (n > 0 && badge.textContent !== txt) badge.textContent = txt;
+    }
+  }
+
+  function setPhoneRail(opts) {
+    Object.assign(phoneRail, opts || {});
+    applyPhoneRail();
+  }
+
+  function isRailVisible() {
+    const rail = root && root.querySelector('.hg-rail');
+    return !!rail && getComputedStyle(rail).display !== 'none';
+  }
+
+  function isUsable() {
+    return !!(root && document.body && document.body.contains(root)
+      && !root.classList.contains('is-offscreen') && isRailVisible());
+  }
+
+  function syncRailActive() {
+    if (!root) return;
+    root.querySelectorAll('.hg-rail-btn').forEach((b) => {
+      b.classList.toggle('is-active', b.getAttribute('data-tab') === state.tab);
+    });
+  }
+
+  function openTab(tab) {
+    if (!root) return;
+    state.tab = tab;
+    setCollapsed(false);
+    syncRailActive();
+    renderPanel();
+    notifyLayout();
+  }
+
+  function notifyLayout() {
+    try {
+      document.dispatchEvent(new CustomEvent('huginn-dock', {
+        detail: { type: 'layout', tab: state.tab, collapsed: state.collapsed }
+      }));
+    } catch (_) {}
   }
 
   function syncBodyPad() {
@@ -430,6 +503,7 @@
     localStorage.setItem('hg_dock_collapsed', state.collapsed ? '1' : '0');
     if (root) root.classList.toggle('is-collapsed', state.collapsed);
     syncBodyPad();
+    notifyLayout();
   }
 
   function onGlobalKey(e) {
@@ -1131,9 +1205,15 @@
     </div>`;
   }
 
+  let lastPanelTab = null;
   function renderPanel() {
     const panel = root.querySelector('#hgPanel');
     if (!panel) return;
+    if (state.tab !== lastPanelTab) {
+      lastPanelTab = state.tab;
+      syncRailActive();
+      Promise.resolve().then(notifyLayout);
+    }
     if (root) {
       root.classList.toggle('is-thread', !!(state.chatId && state.tab === 'huginn'));
       syncFloatNavBodyClasses();
@@ -1179,6 +1259,23 @@
         if (typeof HuginnTing !== 'undefined' && HuginnTing.openHub) HuginnTing.openHub();
         else location.hash = '#/ting';
       };
+      return;
+    }
+
+    if (state.tab === 'phone') {
+      if (global.AsgardPhoneUI && typeof global.AsgardPhoneUI.renderPanel === 'function') {
+        global.AsgardPhoneUI.renderPanel(panel);
+      } else {
+        panel.innerHTML = `
+          <div class="hg-panel-head">
+            <h2>Телефон</h2>
+            <button type="button" class="hg-icon-btn" data-collapse>${ICO.close || '✕'}</button>
+          </div>
+          <div class="hg-list" style="padding:16px">
+            <p style="margin:0;font:400 var(--hg-font-preview) var(--hg-font);color:var(--hg-muted)">Телефония недоступна на этой странице.</p>
+          </div>`;
+        panel.querySelector('[data-collapse]').onclick = () => setCollapsed(true);
+      }
       return;
     }
 
@@ -2426,6 +2523,12 @@
     mount,
     open: () => { setCollapsed(false); state.tab = 'huginn'; renderPanel(); },
     collapse: () => setCollapsed(true),
+    openTab,
+    getTab: () => state.tab,
+    isCollapsed: () => state.collapsed,
+    isPanelOpen: (tab) => !!root && !state.collapsed && state.tab === tab,
+    isUsable,
+    setPhoneRail,
     openChat,
     closeChat,
     refreshOpenChat,

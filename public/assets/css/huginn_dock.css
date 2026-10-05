@@ -273,6 +273,32 @@ html[data-theme="light"] {
   text-align: center;
 }
 
+/* PBX phone button (state from phone_ui.js via HuginnDock.setPhoneRail) */
+.hg-rail-btn[hidden] { display: none; }
+.hg-rail-badge[data-rail-badge="phone"] { background: var(--hg-danger); color: #fff; }
+.hg-rail-dot {
+  display: none;
+  position: absolute;
+  top: 8px; left: 6px;
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  box-shadow: 0 0 0 2px var(--hg-bg);
+}
+.hg-rail-btn[data-phone-status="online"] .hg-rail-dot { display: block; background: var(--hg-online); }
+.hg-rail-btn[data-phone-status="incall"] .hg-rail-dot { display: block; background: var(--hg-accent-chat); }
+.hg-rail-btn[data-phone-status="ring"] {
+  color: var(--hg-accent);
+  animation: hg-phone-ring 1.2s ease-in-out infinite;
+}
+.hg-rail-btn[data-phone-status="ring"] .hg-rail-dot { display: block; background: var(--hg-accent); }
+@keyframes hg-phone-ring {
+  0%, 100% { background: transparent; }
+  50% { background: color-mix(in srgb, var(--hg-accent) 22%, transparent); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .hg-rail-btn[data-phone-status="ring"] { animation: none; background: color-mix(in srgb, var(--hg-accent) 18%, transparent); }
+}
+
 .hg-panel {
   order: 0;
   width: var(--hg-panel-w);

@@ -25,6 +25,17 @@
   var transferMode = 'blind';
   var soundEnabled = localStorage.getItem('tel:sound') !== '0';
   var audioCtx = null;
+  // Гибрид с Huginn-рейлом: пока док доступен, звонок живёт в его панели (#hgPanel),
+  // .ph-card / .ph-bar остаются запасным UI для узких экранов и /h/ без дока.
+  var uiMode = 'idle'; // idle | incoming | incall
+  var lastIncoming = null;
+  var lastCallDetail = null;
+  var callStartedAt = 0;
+  var panelEl = null;
+  var autoOpened = null;
+  var missedUnack = 0;
+  var railStatus = 'offline';
+  var badgeTimer = null;
   var SVG = function (paths) {
     return '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + paths + '</svg>';
   };
@@ -205,10 +216,49 @@
   }
 
   function setBtnState(st) {
+    railStatus = st || 'offline';
+    syncRail();
     if (!dom.btn) return;
     dom.btn.className = 'ph-btn ph-btn--' + (st || 'offline');
     var dot = dom.btn.querySelector('.ph-btn-dot');
     if (dot) dot.className = 'ph-btn-dot ph-dot--' + (st || 'offline');
+  }
+
+  function dock() {
+    var D = window.HuginnDock;
+    if (!D || typeof D.isUsable !== 'function' || !D.isUsable()) return null;
+    return D;
+  }
+
+  function panelShown() {
+    var D = dock();
+    return !!(D && panelEl && document.body.contains(panelEl) && D.isPanelOpen('phone'));
+  }
+
+  function syncRail() {
+    var D = window.HuginnDock;
+    if (!D || typeof D.setPhoneRail !== 'function') return;
+    D.setPhoneRail({ visible: true, status: railStatus, badge: missedUnack });
+  }
+
+  /** Шапочная кнопка «Телефон» дублирует рейл — прячем, пока док доступен. */
+  function syncHeaderBtn() {
+    if (!dom.btn) return;
+    var hide = !!dock();
+    dom.btn.style.display = hide ? 'none' : '';
+    if (hide && dom.menu) dom.menu.style.display = 'none';
+  }
+
+  function refreshBadge() {
+    if (document.hidden) return Promise.resolve();
+    return fetch('/api/telephony/missed?scope=mine&acknowledged=false&limit=6', {
+      headers: { Authorization: 'Bearer ' + (localStorage.getItem('asgard_token') || '') },
+    }).then(function (r) { return r.ok ? r.json() : null; }).then(function (data) {
+      if (!data) return null;
+      missedUnack = Number(data.unacknowledged) || 0;
+      syncRail();
+      return data;
+    }).catch(function () { return null; });
   }
 
   function renderOfflineMenu() {
@@ -231,40 +281,45 @@
   function bindMenuActions() {
     dom.menu.querySelectorAll('[data-action]').forEach(function (btn) {
       btn.addEventListener('click', function () {
-        var act = btn.getAttribute('data-action');
         dom.menu.style.display = 'none';
-        var P = window.AsgardPhone;
-        if (!P) return;
-        if (act === 'online-browser') {
-          P.checkMic().then(function (m) {
-            if (!m.ok) toast('Микрофон', m.error || 'нет доступа', 'warn');
-            return P.goOnline('browser');
-          }).then(function (r) {
-            if (r && r.reason === 'takeover') showTakeover(true);
-            else syncUi(P.getState());
-          }).catch(function (e) { toast('Телефон', e.message, 'err'); });
-        } else if (act === 'online-mobile') {
-          P.goOnline('mobile').then(function (r) {
-            if (r && r.reason === 'takeover') showTakeover(true);
-            else syncUi(P.getState());
-          }).catch(function (e) { toast('Телефон', e.message, 'err'); });
-        } else if (act === 'offline') {
-          P.goOffline().then(function () { syncUi(P.getState()); });
-        } else if (act === 'mic') {
-          P.checkMic().then(function (m) {
-            toast('Микрофон', m.ok ? 'Доступ есть' : (m.error || 'ошибка'), m.ok ? 'ok' : 'err');
-          });
-        } else if (act === 'dial') {
-          openDialPad('');
-        }
+        runPhoneAction(btn.getAttribute('data-action'));
       });
     });
+  }
+
+  function runPhoneAction(act) {
+    var P = window.AsgardPhone;
+    if (!P) return;
+    if (act === 'online-browser') {
+      P.checkMic().then(function (m) {
+        if (!m.ok) toast('Микрофон', m.error || 'нет доступа', 'warn');
+        return P.goOnline('browser');
+      }).then(function (r) {
+        if (r && r.reason === 'takeover') showTakeover(true);
+        else syncUi(P.getState());
+      }).catch(function (e) { toast('Телефон', e.message, 'err'); });
+    } else if (act === 'online-mobile') {
+      P.goOnline('mobile').then(function (r) {
+        if (r && r.reason === 'takeover') showTakeover(true);
+        else syncUi(P.getState());
+      }).catch(function (e) { toast('Телефон', e.message, 'err'); });
+    } else if (act === 'offline') {
+      P.goOffline().then(function () { syncUi(P.getState()); });
+    } else if (act === 'mic') {
+      P.checkMic().then(function (m) {
+        toast('Микрофон', m.ok ? 'Доступ есть' : (m.error || 'ошибка'), m.ok ? 'ok' : 'err');
+      });
+    } else if (act === 'dial') {
+      openDialPad('');
+    }
   }
 
   function toggleMenu() {
     ensureShell();
     var P = window.AsgardPhone;
     if (!P) return;
+    var D = dock();
+    if (D) { dom.menu.style.display = 'none'; D.openTab('phone'); return; }
     var st = P.getState();
     if (dom.menu.style.display === 'block') {
       dom.menu.style.display = 'none';
@@ -283,29 +338,61 @@
     dom.takeover.style.display = on ? 'flex' : 'none';
   }
 
+  function tickCallTimer() {
+    var txt = fmtTimer(Date.now() - (timerStart || Date.now()));
+    document.querySelectorAll('.ph-js-timer').forEach(function (el) { el.textContent = txt; });
+  }
+
   function startCallTimer() {
-    stopCallTimer();
-    timerStart = Date.now();
-    timerId = setInterval(function () {
-      var el = document.getElementById('phIncallTimer');
-      if (el) el.textContent = fmtTimer(Date.now() - timerStart);
-    }, 1000);
+    if (!timerStart) timerStart = Date.now();
+    tickCallTimer();
+    if (timerId) return;
+    timerId = setInterval(tickCallTimer, 1000);
   }
 
   function stopCallTimer() {
     if (timerId) clearInterval(timerId);
     timerId = null;
+    timerStart = 0;
+  }
+
+  function incomingView(detail) {
+    var num = detail.number || '';
+    var lookup = (detail.callMeta && detail.callMeta.lookup) || detail.lookup || {};
+    var sub = fmtPhone(num);
+    if (lookup.company) sub += ' · ' + lookup.company;
+    return {
+      title: lookup.name || lookup.client_name || fmtPhone(num),
+      sub: sub,
+      ini: initialsFrom(lookup.name || lookup.client_name, num),
+    };
   }
 
   function renderIncoming(detail) {
     ensureShell();
+    lastIncoming = detail || {};
+    uiMode = 'incoming';
     setBtnState('ring');
-    var num = detail.number || '';
-    var lookup = (detail.callMeta && detail.callMeta.lookup) || detail.lookup || {};
-    var title = lookup.name || lookup.client_name || fmtPhone(num);
-    var sub = fmtPhone(num);
-    if (lookup.company) sub += ' · ' + lookup.company;
-    var ini = initialsFrom(lookup.name || lookup.client_name, num);
+    playTone('ring');
+    var D = dock();
+    if (D) {
+      if (!D.isPanelOpen('phone')) {
+        if (!autoOpened) autoOpened = { prevTab: D.getTab(), wasCollapsed: D.isCollapsed() };
+        D.openTab('phone');
+      } else {
+        paintPanel();
+      }
+      if (panelShown()) { hideIncomingCard(); return; }
+    }
+    showIncomingCard(lastIncoming);
+  }
+
+  function showIncomingCard(detail) {
+    ensureShell();
+    var v = incomingView(detail);
+    var title = v.title;
+    var sub = v.sub;
+    var ini = v.ini;
     dom.incoming.className = 'ph-card ph-card--incoming';
     dom.incoming.innerHTML =
       '<div class="ph-card-inner">' +
@@ -323,7 +410,6 @@
         '</div>' +
       '</div>';
     dom.incoming.style.display = 'block';
-    playTone('ring');
     clearTimeout(incomingPulseTimer);
     incomingPulseTimer = setTimeout(function () {
       if (dom.incoming && dom.incoming.style.display === 'block') {
@@ -338,7 +424,7 @@
     };
   }
 
-  function hideIncoming() {
+  function hideIncomingCard() {
     clearTimeout(incomingPulseTimer);
     if (dom.incoming) {
       dom.incoming.classList.remove('ph-card--incoming-pulse');
@@ -346,21 +432,49 @@
     }
   }
 
+  function hideIncoming() {
+    hideIncomingCard();
+    lastIncoming = null;
+    if (uiMode === 'incoming') uiMode = 'idle';
+  }
+
   function renderIncall(detail) {
     ensureShell();
     hideIncoming();
+    uiMode = 'incall';
+    if (detail && detail.number) lastCallDetail = detail;
+    else if (!lastCallDetail) lastCallDetail = detail || {};
     setBtnState('incall');
+    startCallTimer();
+    if (dock() && panelShown()) {
+      hideIncallBar();
+      paintPanel();
+      return;
+    }
+    showIncallBar(lastCallDetail);
+  }
+
+  function openPhoneInDock() {
+    var D = dock();
+    if (D) D.openTab('phone');
+  }
+
+  /** Пилюля разговора. При живом доке — всегда mini (таймер + сброс), клик возвращает в панель. */
+  function showIncallBar(detail) {
+    var hybrid = !!dock();
+    var mini = hybrid || dockMini;
     var meta = (window.AsgardPhone && AsgardPhone.getCallMeta()) || {};
     var num = detail.number || meta.number || '';
     var note = localStorage.getItem(noteKey + ':' + num) || '';
     var isMuted = window.AsgardPhone && AsgardPhone.isMuted && AsgardPhone.isMuted();
     var isHeld = window.AsgardPhone && AsgardPhone.getState() === 'held';
-    var noteOpen = !!String(note || '').trim() && !dockMini;
-    dom.incall.className = 'ph-bar' + (isHeld ? ' ph-bar--hold' : '') + (noteOpen ? ' is-note-open' : '') + (dockMini ? ' ph-bar--mini' : '');
+    var noteOpen = !!String(note || '').trim() && !mini;
+    var miniLabel = hybrid ? 'Открыть в панели' : (dockMini ? 'Развернуть' : 'Свернуть');
+    dom.incall.className = 'ph-bar' + (isHeld ? ' ph-bar--hold' : '') + (noteOpen ? ' is-note-open' : '') + (mini ? ' ph-bar--mini' : '');
     dom.incall.innerHTML =
       '<div class="ph-bar-actions">' +
         '<div class="ph-bar-meta">' +
-          '<span class="ph-bar-timer" id="phIncallTimer">00:00</span>' +
+          '<span class="ph-bar-timer ph-js-timer" id="phIncallTimer">00:00</span>' +
           '<span class="ph-bar-num">' + esc(fmtPhone(num)) + '</span>' +
         '</div>' +
         dockBtn('phMute', isMuted ? ICON.micOff : ICON.mic, isMuted ? 'Вкл. мик' : 'Микрофон', isMuted ? 'ph-iconbtn--active' : '') +
@@ -369,28 +483,30 @@
         dockBtn('phTransfer', ICON.transfer, 'Перевод', '') +
         dockBtn('phNoteToggle', ICON.note, 'Заметка', noteOpen ? 'ph-iconbtn--active' : '') +
         '<div class="ph-dock-item ph-dock-item--keep ph-dock-item--mini-toggle">' +
-          '<button type="button" class="ph-iconbtn ph-iconbtn--mini" id="phDockMini" title="' + (dockMini ? 'Развернуть' : 'Свернуть') + '" aria-label="' + (dockMini ? 'Развернуть' : 'Свернуть') + '" data-tooltip="' + (dockMini ? 'Развернуть' : 'Свернуть') + '">' + (dockMini ? ICON.chevronUp : ICON.chevronDown) + '</button>' +
+          '<button type="button" class="ph-iconbtn ph-iconbtn--mini" id="phDockMini" title="' + miniLabel + '" aria-label="' + miniLabel + '" data-tooltip="' + miniLabel + '">' + (mini ? ICON.chevronUp : ICON.chevronDown) + '</button>' +
         '</div>' +
         dockBtn('phHangup', ICON.hangup, 'Сброс', 'ph-iconbtn--danger') +
       '</div>' +
       '<textarea class="ph-note" id="phNote" placeholder="Заметка…" rows="1">' + esc(note) + '</textarea>';
     dom.incall.style.display = 'flex';
-    startCallTimer();
+    tickCallTimer();
 
     var miniBtn = dom.incall.querySelector('#phDockMini');
     if (miniBtn) {
       miniBtn.onclick = function (e) {
         e.stopPropagation();
+        if (hybrid) { openPhoneInDock(); return; }
         dockMini = !dockMini;
-        renderIncall(detail);
+        showIncallBar(detail);
       };
     }
-    if (dockMini) {
+    if (mini) {
       dom.incall.onclick = function (e) {
         if (e.target && (e.target.id === 'phHangup' || e.target.closest('#phHangup'))) return;
         if (e.target && (e.target.id === 'phDockMini' || e.target.closest('#phDockMini'))) return;
+        if (hybrid) { openPhoneInDock(); return; }
         dockMini = false;
-        renderIncall(detail);
+        showIncallBar(detail);
       };
     } else {
       dom.incall.onclick = null;
@@ -440,9 +556,351 @@
     });
   }
 
+  function hideIncallBar() {
+    if (dom.incall) dom.incall.style.display = 'none';
+  }
+
   function hideIncall() {
     stopCallTimer();
-    if (dom.incall) dom.incall.style.display = 'none';
+    hideIncallBar();
+    lastCallDetail = null;
+    if (uiMode === 'incall') uiMode = 'idle';
+  }
+
+  // ── Панель «Телефон» в Huginn-доке ─────────────────────────────────────────
+
+  function apiGet(url) {
+    return fetch(url, {
+      headers: { Authorization: 'Bearer ' + (localStorage.getItem('asgard_token') || '') },
+    }).then(function (r) { return r.ok ? r.json() : null; }).catch(function () { return null; });
+  }
+
+  var panelData = { missed: null, recent: null, loadedAt: 0, loading: false };
+
+  function loadPanelData(force) {
+    if (panelData.loading) return;
+    if (!force && panelData.loadedAt && Date.now() - panelData.loadedAt < 30000) return;
+    panelData.loading = true;
+    Promise.all([refreshBadge(), apiGet('/api/telephony/me/summary')]).then(function (res) {
+      panelData.missed = (res[0] && res[0].items) || [];
+      panelData.recent = (res[1] && res[1].recent) || [];
+      panelData.loadedAt = Date.now();
+    }).finally(function () {
+      panelData.loading = false;
+      if (panelShown() && currentPanelView() === 'idle') paintPanel();
+    });
+  }
+
+  function currentPanelView() {
+    if (uiMode === 'incoming') return 'incoming';
+    if (uiMode === 'incall') return 'incall';
+    var P = window.AsgardPhone;
+    if (P && P.getState() === 'ringing') {
+      var meta = P.getCallMeta() || {};
+      if (meta.direction === 'outbound') return 'dialing';
+    }
+    return 'idle';
+  }
+
+  function savePanelNote() {
+    if (!panelEl) return;
+    var n = panelEl.querySelector('#phDpNote');
+    if (!n) return;
+    clearTimeout(noteTimer);
+    localStorage.setItem(noteKey + ':' + (n.getAttribute('data-num') || ''), n.value);
+  }
+
+  function panelHead(title, sub) {
+    var close = (window.HuginnIcons && HuginnIcons.ICO && HuginnIcons.ICO.close) || '×';
+    return '<div class="hg-panel-head">' +
+      '<h2>' + esc(title) + (sub ? ' <span class="ph-dp-headsub">' + esc(sub) + '</span>' : '') + '</h2>' +
+      '<button type="button" class="hg-icon-btn" data-ph-dp="collapse" title="Свернуть" aria-label="Свернуть">' + close + '</button>' +
+    '</div>';
+  }
+
+  function callRowHtml(it, kind, online) {
+    var missed = kind === 'missed';
+    var num = missed ? it.from_number : (it.direction === 'outbound' ? it.to_number : it.from_number);
+    var name = it.client_name || fmtPhone(num || '');
+    var dirCls = missed || it.call_type === 'missed' ? 'is-missed' : (it.direction === 'outbound' ? 'is-out' : 'is-in');
+    var meta = fmtWhen(it.created_at);
+    if (!missed && it.duration_seconds) meta += ' · ' + fmtTimer(it.duration_seconds * 1000);
+    if (it.client_name && num) meta = fmtPhone(num) + ' · ' + meta;
+    return '<div class="ph-dp-row ' + dirCls + '" data-ph-open="' + (missed ? 'missed' : 'log') + '" data-id="' + esc(it.id) + '">' +
+      '<span class="ph-dp-row-dot" aria-hidden="true"></span>' +
+      '<div class="ph-dp-row-main">' +
+        '<div class="ph-dp-row-name">' + esc(name) + '</div>' +
+        '<div class="ph-dp-row-meta">' + esc(meta) + '</div>' +
+      '</div>' +
+      (online && num ? '<button type="button" class="ph-dp-row-call" data-ph-call="' + esc(num) + '" title="Перезвонить" aria-label="Перезвонить">' + ICON.hangup + '</button>' : '') +
+    '</div>';
+  }
+
+  function fmtWhen(ts) {
+    if (!ts) return '';
+    var d = new Date(ts);
+    if (isNaN(d.getTime())) return '';
+    var now = new Date();
+    var hm = d.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+    if (d.toDateString() === now.toDateString()) return hm;
+    var y = new Date(now); y.setDate(now.getDate() - 1);
+    if (d.toDateString() === y.toDateString()) return 'вчера ' + hm;
+    return d.toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit' }) + ' ' + hm;
+  }
+
+  function idlePanelHtml() {
+    var P = window.AsgardPhone;
+    var st = P ? P.getState() : 'offline';
+    var online = st !== 'offline';
+    var mode = P && P.getMode ? P.getMode() : '';
+    var line = online
+      ? '<div class="ph-dp-line is-on">' +
+          '<span class="ph-dp-line-dot" aria-hidden="true"></span>' +
+          '<div class="ph-dp-line-txt"><b>На линии</b><span>' + (mode === 'mobile' ? 'звонки идут на мобильный' : 'звонки в браузере') + '</span></div>' +
+          '<button type="button" class="ph-dp-btn ph-dp-btn--ghost" data-ph-act="offline">Сойти с линии</button>' +
+        '</div>'
+      : '<div class="ph-dp-line">' +
+          '<div class="ph-dp-line-txt"><b>Не на линии</b><span>Выберите, куда принимать звонки</span></div>' +
+          '<div class="ph-dp-line-btns">' +
+            '<button type="button" class="ph-dp-btn ph-dp-btn--primary" data-ph-act="online-browser">В браузере</button>' +
+            '<button type="button" class="ph-dp-btn" data-ph-act="online-mobile">На мобильный</button>' +
+          '</div>' +
+          '<button type="button" class="ph-dp-link" data-ph-act="mic">Проверить микрофон</button>' +
+        '</div>';
+    var dial =
+      '<form class="ph-dp-dial" data-ph-dp="dial">' +
+        '<input type="tel" class="ph-dp-input" id="phDpDial" placeholder="+7…" autocomplete="off"' + (online ? '' : ' disabled') + '>' +
+        '<button type="submit" class="ph-dp-btn ph-dp-btn--primary"' + (online ? '' : ' disabled') + '>Позвонить</button>' +
+      '</form>' +
+      (online ? '' : '<div class="ph-dp-hint">Чтобы позвонить, встаньте на линию.</div>');
+    var loading = panelData.missed === null;
+    var missed = panelData.missed || [];
+    var recent = panelData.recent || [];
+    var missedHtml = loading ? '<div class="ph-dp-empty">Загрузка…</div>'
+      : (missed.length ? missed.map(function (it) { return callRowHtml(it, 'missed', online); }).join('')
+        : '<div class="ph-dp-empty">Непрочитанных пропущенных нет</div>');
+    var recentHtml = loading ? '<div class="ph-dp-empty">Загрузка…</div>'
+      : (recent.length ? recent.map(function (it) { return callRowHtml(it, 'log', online); }).join('')
+        : '<div class="ph-dp-empty">Сегодня звонков не было</div>');
+    return panelHead('Телефон') +
+      '<div class="ph-dp">' +
+        line + dial +
+        '<div class="ph-dp-sec">' +
+          '<div class="ph-dp-sec-head"><span>Мои пропущенные' + (missedUnack ? ' <b class="ph-dp-count">' + missedUnack + '</b>' : '') + '</span>' +
+            '<a href="#/telephony?tab=missed" class="ph-dp-link">Все</a></div>' +
+          missedHtml +
+        '</div>' +
+        '<div class="ph-dp-sec">' +
+          '<div class="ph-dp-sec-head"><span>Последние</span><a href="#/telephony" class="ph-dp-link">Журнал</a></div>' +
+          recentHtml +
+        '</div>' +
+      '</div>';
+  }
+
+  function incomingPanelHtml() {
+    var v = incomingView(lastIncoming || {});
+    return panelHead('Входящий звонок') +
+      '<div class="ph-dp ph-dp--call">' +
+        '<div class="ph-dp-who">' +
+          '<div class="ph-dp-avatar is-ring" aria-hidden="true">' + esc(v.ini) + '</div>' +
+          '<div class="ph-dp-who-name">' + esc(v.title) + '</div>' +
+          '<div class="ph-dp-who-sub">' + esc(v.sub) + '</div>' +
+        '</div>' +
+        '<div class="ph-dp-callacts">' +
+          '<button type="button" class="ph-act ph-act--answer" data-ph-dp="answer" title="Ответить (Space)">Ответить</button>' +
+          '<button type="button" class="ph-act ph-act--hangup" data-ph-dp="hangup" title="Сбросить (Esc)">Сбросить</button>' +
+        '</div>' +
+        '<div class="ph-dp-hint">Space — ответить, Esc — сбросить</div>' +
+      '</div>';
+  }
+
+  function dialingPanelHtml() {
+    var P = window.AsgardPhone;
+    var meta = (P && P.getCallMeta()) || {};
+    var num = meta.number || '';
+    var lookup = meta.lookup || {};
+    var title = lookup.name || lookup.client_name || fmtPhone(num);
+    return panelHead('Исходящий звонок') +
+      '<div class="ph-dp ph-dp--call">' +
+        '<div class="ph-dp-who">' +
+          '<div class="ph-dp-avatar is-ring" aria-hidden="true">' + esc(initialsFrom(lookup.name || lookup.client_name, num)) + '</div>' +
+          '<div class="ph-dp-who-name">' + esc(title) + '</div>' +
+          '<div class="ph-dp-who-sub">Вызов…</div>' +
+        '</div>' +
+        '<div class="ph-dp-callacts">' +
+          '<button type="button" class="ph-act ph-act--hangup" data-ph-dp="hangup">Отменить</button>' +
+        '</div>' +
+      '</div>';
+  }
+
+  function incallPanelHtml() {
+    var P = window.AsgardPhone;
+    var meta = (P && P.getCallMeta()) || {};
+    var detail = lastCallDetail || {};
+    var num = detail.number || meta.number || '';
+    var lookup = meta.lookup || detail.lookup || {};
+    var title = lookup.name || lookup.client_name || fmtPhone(num);
+    var sub = fmtPhone(num);
+    if (lookup.company) sub += ' · ' + lookup.company;
+    var isMuted = !!(P && P.isMuted && P.isMuted());
+    var isHeld = !!(P && P.getState() === 'held');
+    var note = localStorage.getItem(noteKey + ':' + num) || '';
+    function ctl(act, icon, label, active, danger) {
+      return '<button type="button" class="ph-dp-ctl' + (active ? ' is-active' : '') + (danger ? ' is-danger' : '') + '" data-ph-dp="' + act + '">' +
+        icon + '<span>' + esc(label) + '</span></button>';
+    }
+    return panelHead('Разговор', isHeld ? 'на удержании' : '') +
+      '<div class="ph-dp ph-dp--call">' +
+        '<div class="ph-dp-who">' +
+          '<div class="ph-dp-avatar' + (isHeld ? ' is-held' : ' is-live') + '" aria-hidden="true">' + esc(initialsFrom(lookup.name || lookup.client_name, num)) + '</div>' +
+          '<div class="ph-dp-who-name">' + esc(title) + '</div>' +
+          '<div class="ph-dp-who-sub">' + esc(sub) + '</div>' +
+          '<div class="ph-dp-timer ph-js-timer">' + fmtTimer(Date.now() - (timerStart || Date.now())) + '</div>' +
+        '</div>' +
+        '<div class="ph-dp-ctls">' +
+          ctl('mute', isMuted ? ICON.micOff : ICON.mic, isMuted ? 'Вкл. мик' : 'Микрофон', isMuted) +
+          ctl('hold', ICON.hold, isHeld ? 'Снять' : 'Удержание', isHeld) +
+          ctl('keypad', ICON.keypad, 'Клавиши', false) +
+          ctl('transfer', ICON.transfer, 'Перевод', false) +
+        '</div>' +
+        '<button type="button" class="ph-act ph-act--hangup ph-dp-hangup" data-ph-dp="hangup" title="Завершить (Esc)">Завершить</button>' +
+        '<label class="ph-dp-notelbl">Заметка к звонку' +
+          '<textarea class="ph-dp-note" id="phDpNote" data-num="' + esc(num) + '" rows="4" placeholder="Что обсудили…">' + esc(note) + '</textarea>' +
+        '</label>' +
+        '<div class="ph-dp-hint">M — микрофон, H — удержание, Esc — завершить</div>' +
+      '</div>';
+  }
+
+  function paintPanel() {
+    if (!panelEl || !document.body.contains(panelEl)) return;
+    savePanelNote();
+    var view = currentPanelView();
+    var html = view === 'incoming' ? incomingPanelHtml()
+      : view === 'incall' ? incallPanelHtml()
+      : view === 'dialing' ? dialingPanelHtml()
+      : idlePanelHtml();
+    panelEl.innerHTML = html;
+    panelEl.setAttribute('data-ph-view', view);
+    if (view === 'idle') loadPanelData(false);
+    if (view === 'incall') {
+      tickCallTimer();
+      var noteEl = panelEl.querySelector('#phDpNote');
+      if (noteEl) {
+        noteEl.addEventListener('input', function () {
+          clearTimeout(noteTimer);
+          noteTimer = setTimeout(function () {
+            localStorage.setItem(noteKey + ':' + (noteEl.getAttribute('data-num') || ''), noteEl.value);
+          }, 400);
+        });
+      }
+    }
+  }
+
+  function onPanelClick(e) {
+    var t = e.target;
+    if (!t || !t.closest) return;
+    var P = window.AsgardPhone;
+    var actBtn = t.closest('[data-ph-act]');
+    if (actBtn) { runPhoneAction(actBtn.getAttribute('data-ph-act')); return; }
+    var callBtn = t.closest('[data-ph-call]');
+    if (callBtn) {
+      e.stopPropagation();
+      if (P) P.outbound(callBtn.getAttribute('data-ph-call')).catch(function (err) { toast('Телефон', err.message, 'err'); });
+      return;
+    }
+    var row = t.closest('[data-ph-open]');
+    if (row) {
+      var id = row.getAttribute('data-id');
+      location.hash = '#/telephony?tab=' + row.getAttribute('data-ph-open') + (id ? '&id=' + encodeURIComponent(id) : '');
+      return;
+    }
+    var b = t.closest('[data-ph-dp]');
+    if (!b || !P) return;
+    var a = b.getAttribute('data-ph-dp');
+    if (a === 'collapse') {
+      if (window.HuginnDock && HuginnDock.collapse) HuginnDock.collapse();
+    } else if (a === 'answer') {
+      P.answer().catch(function (err) { toast('Телефон', err.message, 'err'); });
+    } else if (a === 'hangup') {
+      playTone('end');
+      P.hangup();
+    } else if (a === 'mute') {
+      var next = !(P.isMuted && P.isMuted());
+      P.setMuted(next).then(paintPanel).catch(function (err) { toast('Телефон', err.message, 'err'); });
+    } else if (a === 'hold') {
+      P.hold(P.getState() !== 'held').then(paintPanel).catch(function (err) { toast('Телефон', err.message, 'err'); });
+    } else if (a === 'keypad') {
+      var d = lastCallDetail || {};
+      openDialPad(d.number || (P.getCallMeta() || {}).number || '');
+    } else if (a === 'transfer') {
+      openTransferModal();
+    }
+  }
+
+  function onPanelSubmit(e) {
+    var f = e.target;
+    if (!f || f.getAttribute('data-ph-dp') !== 'dial') return;
+    e.preventDefault();
+    var inp = f.querySelector('#phDpDial');
+    var n = inp ? String(inp.value || '').trim() : '';
+    if (!n || !window.AsgardPhone) return;
+    AsgardPhone.outbound(n).catch(function (err) { toast('Телефон', err.message, 'err'); });
+  }
+
+  /** Вызывается HuginnDock.renderPanel при активном табе phone.
+   *  Док может быть свёрнут / рейл скрыт — тогда панель не видна (panelShown=false),
+   *  и прятать fallback (.ph-card/.ph-bar) нельзя: пользователь останется без UI звонка. */
+  function renderPanel(el) {
+    if (!el) return;
+    if (panelEl !== el) {
+      panelEl = el;
+      if (!el.__phDpBound) {
+        el.__phDpBound = true;
+        var mine = function () {
+          return !!el.getAttribute('data-ph-view') && !!window.HuginnDock && HuginnDock.getTab() === 'phone';
+        };
+        el.addEventListener('click', function (e) { if (mine()) onPanelClick(e); });
+        el.addEventListener('submit', function (e) { if (mine()) onPanelSubmit(e); });
+      }
+    }
+    if (panelShown()) {
+      hideIncomingCard();
+      hideIncallBar();
+      paintPanel();
+      return;
+    }
+    paintPanel();
+    if (uiMode === 'incall') showIncallBar(lastCallDetail || {});
+    else if (uiMode === 'incoming') showIncomingCard(lastIncoming || {});
+  }
+
+  /** Док перерисовал/свернул панель: перекладываем звонок между панелью и запасным UI. */
+  function onDockLayout() {
+    syncHeaderBtn();
+    if (panelEl && !panelShown()) {
+      savePanelNote();
+      if (panelEl.getAttribute('data-ph-view') && !(window.HuginnDock && HuginnDock.getTab && HuginnDock.getTab() === 'phone')) {
+        panelEl.removeAttribute('data-ph-view');
+      }
+    }
+    if (panelShown()) {
+      hideIncomingCard();
+      hideIncallBar();
+      paintPanel();
+      return;
+    }
+    if (uiMode === 'incall') showIncallBar(lastCallDetail || {});
+    else if (uiMode === 'incoming') showIncomingCard(lastIncoming || {});
+  }
+
+  function restoreAfterCall() {
+    var D = dock();
+    var prev = autoOpened;
+    autoOpened = null;
+    if (!D || !prev) return;
+    if (D.getTab() !== 'phone') return;
+    if (prev.prevTab && prev.prevTab !== 'phone') D.openTab(prev.prevTab);
+    if (prev.wasCollapsed) D.collapse();
   }
 
   function openDialPad(prefill) {
@@ -573,6 +1031,8 @@
     } else if (st === 'in_call' || st === 'held') {
       setBtnState('incall');
     }
+    syncHeaderBtn();
+    if (panelShown()) paintPanel();
   }
 
   function onPhoneEvent(ev) {
@@ -584,11 +1044,16 @@
     if (type === 'leader') showTakeover(false);
     if (type === 'state' || type === 'ready') syncUi(P.getState());
     if (type === 'incoming') renderIncoming(d);
+    if (type === 'lookup' && uiMode === 'incoming' && panelShown()) paintPanel();
+    if (type === 'mute' && uiMode === 'incall' && panelShown()) paintPanel();
     if (type === 'connected' || (type === 'state' && P.getState() === 'in_call')) renderIncall(d);
     if (type === 'ended' || type === 'failed' || type === 'hangup') {
       hideIncoming();
       hideIncall();
+      restoreAfterCall();
+      panelData.loadedAt = 0;
       syncUi(P.getState());
+      if (!panelShown()) refreshBadge();
     }
     if (type === 'audio_blocked') dom.audioBanner.style.display = 'flex';
   }
@@ -608,6 +1073,14 @@
     var hadBtn = !!dom.btn;
     ensureShell();
     if (!window.AsgardPhone) return;
+    // Без шапочной кнопки (нет #asgardPhoneSlot) — не звать syncUi:
+    // ensureShell всё равно создаёт .ph-card/.ph-bar → MutationObserver → цикл
+    // syncUi → paintPanel → mutation → … (страница зависает).
+    if (!dom.btn) {
+      syncRail();
+      syncHeaderBtn();
+      return;
+    }
     // Не гонять полный syncUi на каждый MutationObserver-тик:
     // иначе paint incoming → DOM mutation → syncUi(offline) → hideIncoming.
     // Также не затирать видимый incall/ring кнопкой «ringing» из ядра.
@@ -615,8 +1088,9 @@
       syncUi(AsgardPhone.getState());
       return;
     }
-    if (dom.incall && dom.incall.style.display === 'flex') setBtnState('incall');
-    else if (dom.incoming && dom.incoming.style.display === 'block') setBtnState('ring');
+    syncHeaderBtn();
+    if (uiMode === 'incall') setBtnState('incall');
+    else if (uiMode === 'incoming') setBtnState('ring');
     else setBtnState(mapPhoneBtnState(AsgardPhone.getState()));
   }
 
@@ -661,8 +1135,8 @@
         return;
       }
       if (!window.AsgardPhone) return;
-      var incomingOpen = dom.incoming && dom.incoming.style.display === 'block';
-      var incallOpen = dom.incall && dom.incall.style.display === 'flex';
+      var incomingOpen = uiMode === 'incoming';
+      var incallOpen = uiMode === 'incall';
       if (e.key === 'Escape') {
         var hint = document.getElementById('phHotkeyHint');
         if (hint && hint.classList.contains('is-open')) { hint.classList.remove('is-open'); return; }
@@ -697,6 +1171,17 @@
       document.addEventListener('asgard-phone', function (ev) {
         if (ev.detail && ev.detail.type === 'audio_blocked') sessionStorage.setItem('asgard_phone_audio_blocked', '1');
       });
+      document.addEventListener('huginn-dock', onDockLayout);
+      var resizeT = null;
+      window.addEventListener('resize', function () {
+        clearTimeout(resizeT);
+        resizeT = setTimeout(onDockLayout, 200);
+      });
+      document.addEventListener('visibilitychange', function () {
+        if (!document.hidden) refreshBadge();
+      });
+      refreshBadge();
+      badgeTimer = setInterval(refreshBadge, 120000);
     }
     bindHotkeys();
     tryInitAfterLayout();
@@ -721,6 +1206,7 @@
     fmtPhone: fmtPhone,
     openDialPad: openDialPad,
     openHotkeyHelp: function () { ensureHotkeyHint().classList.add('is-open'); },
+    renderPanel: renderPanel,
   };
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
