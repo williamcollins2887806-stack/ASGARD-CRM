@@ -94,8 +94,8 @@
   ICO.more = ICO['more-horizontal'];
   ICO.circleMsg = ICO['video-message'];
   ICO.calls = ICO.phone;
-  /* TG nav chats tab uses single bubble in contacts close-up; double only if needed */
-  ICO.chats = ICO['message-circle'] || ICO['messages-square'];
+  /* REF S36 — overlapping double bubbles on Чаты tab */
+  ICO.chats = ICO['messages-square'] || ICO['message-circle'];
   ICO.contacts = ICO.contact || ICO.users;
   ICO.mute = ICO['bell-off'] || ICO['volume-x'];
   ICO.chevronRight = ICO['chevron-right'];

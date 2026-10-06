@@ -44,7 +44,12 @@
     /* birthday banners (no geo) */
     birthdays: [],
     /* F11 AI editor sheet */
-    aiEditor: null
+    aiEditor: null,
+    /* §E Mimir thread */
+    isMimirThread: false,
+    mimirChatId: null,
+    /* F3 connecting subtitle (SSE/WS gap or forced via _capture) */
+    connecting: false
   };
 
   function draftKey(cid) { return 'hg_draft_' + cid; }
@@ -110,10 +115,18 @@
 
   function humanizeChatName(name) {
     return String(name || 'Чат')
-      .replace(/\b(E2E|ROUND\s*5|ROUND5|BP-Test|seed|matrix)\b/gi, '')
+      .replace(/\b(E2E|ROUND\s*5|ROUND5|BP-Test|seed|matrix|PerShot)\b/gi, '')
       .replace(/[-_]{2,}/g, ' ')
       .replace(/\s{2,}/g, ' ')
       .trim() || 'Чат';
+  }
+
+  function isJunkChatName(name) {
+    const n = String(name || '');
+    return /^PerShot\b/i.test(n)
+      || /\b(E2E|ROUND5|BP-Test|seed|matrix)\b/i.test(n)
+      || /^matrix[-_]/i.test(n)
+      || /^cap-|^probe-|dbg[-_]/i.test(n);
   }
 
   function avatarColor(name) {
@@ -282,6 +295,11 @@
           setCollapsed(true);
           return;
         }
+        // Leaving mimir tab: clear mimir-thread lock so chatId doesn't bleed into huginn list
+        if (tab !== 'mimir' && state.isMimirThread) {
+          state.isMimirThread = false;
+          if (state.chatId === state.mimirChatId) state.chatId = null;
+        }
         state.tab = tab;
         setCollapsed(false);
         syncRailActive();
@@ -301,9 +319,12 @@
           setCollapsed(false);
           renderPanel();
         } else if (state.mobileNav === 'calls') {
-          state.tab = 'ting';
+          /* S14 = phone recent calls, not Ting meetings */
+          state.tab = 'phone';
+          state.chatId = null;
           setCollapsed(false);
           renderPanel();
+          haptic('tab');
         } else if (state.mobileNav === 'contacts') {
           state.tab = 'contacts';
           state.chatId = null;
@@ -557,7 +578,14 @@
   async function loadFolders() {
     try {
       const data = await api('/api/chat-groups/folders');
-      state.folders = data.folders || [];
+      const rawFolders = data.folders || [];
+      const seenFolder = new Set();
+      state.folders = rawFolders.filter((f) => {
+        const key = String(f.name || '').trim().toLowerCase();
+        if (!key || seenFolder.has(key)) return false;
+        seenFolder.add(key);
+        return true;
+      });
       if (state.activeFolderId == null && data.active_folder_id != null) {
         state.activeFolderId = data.active_folder_id;
       }
@@ -570,8 +598,9 @@
     let q = '/api/chat-groups?archived=false';
     if (state.activeFolderId) q += '&folder_id=' + encodeURIComponent(state.activeFolderId);
     const data = await api(q);
-    state.chats = data.chats || data.items || [];
-    padChatListToTen();
+    state.chats = (data.chats || data.items || [])
+      .filter((c) => !isJunkChatName(c && c.name))
+      .filter((c) => !c._seed && Number(c.id) > 0);
   }
 
   function countComposerLines(text) {
@@ -589,64 +618,14 @@
     btn.hidden = lines < 4;
   }
 
-  /** P5 — TG-density seed fillers when list is sparse. */
+  /** @deprecated visual density seeds — kept as no-op so capture/tests don't reintroduce ghosts */
   function padChatListToTen() {
-    const seedRows = [
-      { name: 'Анализ тендеров', last_message: 'Всех приветствую 👋 Сегодня в 11:30…', draft: true, pinned: true, unread: 0, color: '#3B82F6' },
-      { name: 'Офис АСГАРД-Сервис', last_message: 'Елена: Коллеги, доброго дня!', pinned: true, muted: true, unread: 0, color: '#5288C1' },
-      { name: 'Избранное', last_message: '📄 График_работ_КАО.pdf', pinned: true, unread: 0, color: '#0A84FF' },
-      { name: 'Никита', last_message: '📷 Фотография', pinned: true, unread: 0, color: '#30D158' },
-      { name: 'Бригада 3', last_message: 'Выехали на объект', unread: 3, color: '#FF9F0A' },
-      { name: 'Анна Смирнова', last_message: 'Договор на подписи', unread: 8, color: '#BF5AF2' },
-      { name: 'Склад Север', last_message: '🎬 Отгрузка готова', muted: true, unread: 43, color: '#636366' },
-      { name: 'Дежурный РП', last_message: 'Просчёт закрыт', unread: 2, color: '#64D2FF' },
-      { name: 'Клиент Восток', last_message: 'Ждём КП до пятницы', muted: true, unread: 12, color: '#FF453A' },
-      { name: 'Сергей Орлов', last_message: 'Ок, на месте', unread: 0, color: '#AF52DE' }
-    ];
-    const real = (state.chats || []).filter((c) => !c._seed);
-    const have = new Set(real.map((c) => String(c.name || '').toLowerCase()));
-    const seeds = [];
-    let n = -9001;
-    const now = Date.now();
-    for (let i = 0; i < seedRows.length; i++) {
-      const s = seedRows[i];
-      if (real.length + seeds.length >= 10) break;
-      if (have.has(s.name.toLowerCase())) continue;
-      seeds.push({
-        id: n--,
-        name: s.name,
-        last_message: s.last_message,
-        last_message_at: new Date(now - i * 3600000).toISOString(),
-        unread_count: s.unread || 0,
-        is_pinned: !!s.pinned,
-        muted_until: s.muted ? new Date(now + 86400000).toISOString() : null,
-        _seed: true,
-        _seedDraft: !!s.draft,
-        _seedColor: s.color
-      });
-      have.add(s.name.toLowerCase());
-    }
-    state.chats = real.concat(seeds);
+    state.chats = (state.chats || []).filter((c) => !c._seed && Number(c.id) > 0);
   }
 
-  /** P6 — contacts density: at least 16 rows with А–Я coverage. */
+  /** Contacts: real rows only (no fake А–Я fillers without chat_id). */
   function padContactsToSixteen(rows) {
-    const names = [
-      'Алексеев Павел', 'Борисова Елена', 'Волков Дмитрий', 'Громова Ольга',
-      'Денисов Иван', 'Егорова Анна', 'Жуков Максим', 'Зайцева Ирина',
-      'Ильин Артём', 'Козлова Мария', 'Лебедев Сергей', 'Морозова Дарья',
-      'Новиков Андрей', 'Орлова Виктория', 'Петров Игорь', 'Соколова Наталья'
-    ];
-    const out = (rows || []).slice();
-    const have = new Set(out.map((r) => String(r.name || '').toLowerCase()));
-    let uid = -8001;
-    for (const name of names) {
-      if (out.length >= 16) break;
-      if (have.has(name.toLowerCase())) continue;
-      out.push({ name, user_id: uid--, chat_id: '', _seed: true });
-      have.add(name.toLowerCase());
-    }
-    return out;
+    return (rows || []).filter((r) => r && (r.user_id || r.chat_id) && !r._seed);
   }
 
   async function loadStories() {
@@ -698,7 +677,10 @@
     state.stickToBottom = true;
     state.pins = [];
     state.replyTo = null;
-    state.tab = 'huginn';
+    // Detect mimir chat (is_mimir flag or type=mimir)
+    const existingForTab = state.chats.find((c) => Number(c.id) === cid);
+    state.isMimirThread = !!(existingForTab && (existingForTab.is_mimir || existingForTab.type === 'mimir'));
+    state.tab = state.isMimirThread ? 'mimir' : 'huginn';
     const data = await api('/api/chat-groups/' + id + '/messages');
     state.messages = data.messages || data.items || [];
     state.messages.forEach((m) => state.knownMsgIds.add(Number(m.id)));
@@ -721,6 +703,46 @@
       api('/api/chat-groups/' + id + '/read', { method: 'POST', body: { last_message_id: last.id } }).catch(() => {});
     }
     refreshPeerPresence();
+    scrollMsgs(true);
+  }
+
+  /** Returns true when the current open chat is the Mimir AI thread. */
+  function isMimirMode() {
+    if (state.isMimirThread) return true;
+    const chat = state.chats.find((c) => Number(c.id) === Number(state.chatId));
+    return !!(chat && (chat.is_mimir || chat.type === 'mimir'));
+  }
+
+  /**
+   * Resolves the Mimir chat (creates if missing), loads messages,
+   * then re-renders the panel in mimir-thread mode.
+   */
+  async function openMimirThread() {
+    const data = await api('/api/chat-groups/mimir');
+    const id = Number(data.chat_id || (data.chat && data.chat.id) || 0);
+    if (!id) throw new Error(data.error || 'Мимир-чат не найден');
+    state.mimirChatId = id;
+    state.isMimirThread = true;
+    state.tab = 'mimir';
+    state.knownMsgIds = new Set();
+    state.stickToBottom = true;
+    state.pins = [];
+    state.replyTo = null;
+    state.chatId = id;
+    if (!state.chats.some((c) => Number(c.id) === id)) {
+      state.chats.unshift({ id, name: 'Мимир', is_mimir: true, type: 'mimir', member_count: 1, unread_count: 0 });
+    } else {
+      const c = state.chats.find((x) => Number(x.id) === id);
+      if (c) { c.is_mimir = true; c.name = c.name || 'Мимир'; }
+    }
+    const msgs = await api('/api/chat-groups/' + id + '/messages');
+    state.messages = msgs.messages || msgs.items || [];
+    state.messages.forEach((m) => state.knownMsgIds.add(Number(m.id)));
+    try {
+      const pins = await api('/api/chat-groups/' + id + '/pins');
+      state.pins = pins.pins || [];
+    } catch (_) { state.pins = []; }
+    renderPanel();
     scrollMsgs(true);
   }
 
@@ -747,21 +769,47 @@
   function isGroupChat(chat) {
     if (!chat) return false;
     if (chat.is_group || chat.isGroup) return true;
-    const t = String(chat.type || chat.chat_type || chat.kind || '').toLowerCase();
-    if (t === 'group' || t === 'supergroup' || t === 'channel') return true;
+    const name = String(chat.name || chat.title || '');
+    /* Company office chat is always a group in TG REF / prod UX (clone may label type=direct mc=2). */
+    if (/офис\s*асгард/i.test(name)) return true;
     const n = Number(chat.member_count || chat.members_count || 0)
       || (Array.isArray(chat.members) ? chat.members.length : 0);
+    /* Member count wins over mislabeled type=direct (prod/clone drift: mc=19 + type=direct) */
     if (n > 2) return true;
-    // office/work chats in seed often lack is_group flag
-    const name = String(chat.name || chat.title || '');
-    if (/офис|бригада|склад|группа|канал/i.test(name)) return true;
+    const t = String(chat.type || chat.chat_type || chat.kind || '').toLowerCase();
+    if (t === 'direct' || t === 'dm' || t === 'private') return false;
+    if (t === 'group' || t === 'supergroup' || t === 'channel') return true;
+    if (!t && n === 0) {
+      if (/бригада|группа|канал/i.test(name)) return true;
+    }
     return false;
+  }
+
+  function setConnecting(on) {
+    state.connecting = !!on;
+    const el = root && root.querySelector('[data-hg-presence]');
+    if (!el) return;
+    if (state.connecting) {
+      el.classList.remove('is-online');
+      el.classList.add('is-connecting');
+      el.textContent = 'соединение…';
+      return;
+    }
+    el.classList.remove('is-connecting');
+    refreshPeerPresence();
   }
 
   async function refreshPeerPresence() {
     const chat = state.chats.find((c) => Number(c.id) === Number(state.chatId));
     const el = root && root.querySelector('[data-hg-presence]');
     if (!chat || !el) return;
+    if (state.connecting) {
+      el.classList.remove('is-online');
+      el.classList.add('is-connecting');
+      el.textContent = 'соединение…';
+      return;
+    }
+    el.classList.remove('is-connecting');
     const memberCount = Number(chat.member_count || chat.members_count) || (chat.members && chat.members.length) || 0;
     if (isGroupChat(chat)) {
       const n = memberCount || 0;
@@ -872,13 +920,16 @@
     }).join('')}</div>`;
   }
 
-  function voiceWaveBars(seed) {
+  function voiceWaveBars(seed, opts) {
     let s = Number(seed) || 1;
+    const n = (opts && opts.count) || 52;
+    const playedFrac = opts && Number.isFinite(opts.played) ? Math.max(0, Math.min(1, opts.played)) : 0;
     const bars = [];
-    for (let i = 0; i < 24; i++) {
+    for (let i = 0; i < n; i++) {
       s = (s * 1103515245 + 12345) & 0x7fffffff;
-      const h = 4 + (s % 18);
-      bars.push(`<i style="height:${h}px"></i>`);
+      const h = 2 + (s % 13); /* S07: ~2–14 pt peaks, denser pack */
+      const played = playedFrac > 0 && i / n < playedFrac ? ' is-played' : '';
+      bars.push(`<i class="${played.trim()}" style="height:${h}px"></i>`);
     }
     return bars.join('');
   }
@@ -941,6 +992,24 @@
       </div>`;
     }
     if (type === 'call_event') return `${ICO.phone} ${esc(display || 'Звонок')}`;
+    /* S56 checklist layout only — interactive sync DEFER_BE (no todo API) */
+    if (type === 'checklist' || type === 'todo' || (m.metadata && Array.isArray(m.metadata.checklist))) {
+      const items = (m.metadata && m.metadata.checklist) || m.checklist || [];
+      const list = Array.isArray(items) && items.length
+        ? items
+        : String(display || '').split(/\n+/).filter(Boolean).map((t) => ({ text: t, done: false }));
+      return `<div class="hg-checklist" role="group" aria-label="Чеклист">
+        <div class="hg-checklist-title">${esc((m.metadata && m.metadata.title) || 'Чеклист')}</div>
+        ${list.map((it, i) => {
+          const text = typeof it === 'string' ? it : (it.text || it.label || '');
+          const done = !!(typeof it === 'object' && (it.done || it.checked));
+          return `<label class="hg-checklist-row${done ? ' is-done' : ''}">
+            <span class="hg-checklist-box" aria-hidden="true">${done ? '✓' : ''}</span>
+            <span class="hg-checklist-text">${esc(text || ('Пункт ' + (i + 1)))}</span>
+          </label>`;
+        }).join('')}
+      </div>`;
+    }
     return esc(display);
   }
 
@@ -1012,14 +1081,20 @@
     const name = m.user_name || peerLabelForUser(m.user_id) || 'Сообщение';
     const text = humanizeDisplayText(m.message || m.text || '', m);
     const color = avatarColor(name);
-    return `<div class="hg-composer-reply" id="hgReplyBar" style="--hg-reply-accent:${color}">
+    /* S58 REF — reply strip ABOVE composer row (not nested in input capsule) */
+    return `<div class="hg-composer-reply hg-composer-reply--above" id="hgReplyBar" style="--hg-reply-accent:${color}">
       <div class="hg-reply-bar" style="background:${color}"></div>
       <div class="hg-reply-body">
-        <div class="hg-reply-name" style="color:${color}">${esc(name)}</div>
+        <div class="hg-reply-name" style="color:${color}">В ответ ${esc(name)}</div>
         <div class="hg-reply-text">${esc(text)}</div>
       </div>
-      <button type="button" class="hg-icon-btn" id="hgReplyClear" aria-label="Отменить ответ" title="Отменить">${ICO.close || '✕'}</button>
+      <button type="button" class="hg-icon-btn" id="hgReplyClear" aria-label="Отменить ответ" title="Отменить"><span aria-hidden="true">✕</span></button>
     </div>`;
+  }
+
+  function wireReplyClear(panel) {
+    const clr = panel && panel.querySelector('#hgReplyClear');
+    if (clr) clr.onclick = () => { state.replyTo = null; setReplyTo(null); };
   }
 
   function setReplyTo(msg) {
@@ -1027,17 +1102,18 @@
     const panel = root && root.querySelector('#hgPanel');
     if (!panel || !state.chatId) return;
     const existing = panel.querySelector('#hgReplyBar');
-    const composer = panel.querySelector('.hg-composer');
-    if (!composer) return;
     if (existing) existing.remove();
-    if (state.replyTo) {
-      composer.insertAdjacentHTML('afterbegin', renderReplyBar());
-      const clr = panel.querySelector('#hgReplyClear');
-      if (clr) clr.onclick = () => { state.replyTo = null; setReplyTo(null); };
+    const wrap = panel.querySelector('.hg-input-wrap');
+    if (wrap) wrap.classList.remove('has-reply');
+    const composer = panel.querySelector('.hg-composer');
+    const row = panel.querySelector('.hg-composer-row');
+    if (state.replyTo && composer && row) {
+      row.insertAdjacentHTML('beforebegin', renderReplyBar());
+      wireReplyClear(panel);
     }
     const input = panel.querySelector('#hgInput');
     if (input) {
-      input.placeholder = state.replyTo ? 'Ответ…' : 'Сообщение';
+      input.placeholder = state.replyTo ? 'Сообщение' : 'Сообщение';
       input.focus();
     }
   }
@@ -1069,6 +1145,11 @@
     const display = humanizeDisplayText(m.message || m.text || '', m);
     let cls = mine ? 'me' : 'them';
     if (m.is_system || type === 'call_event') cls = 'system';
+    // Mimir AI messages get is-ai class and AI badge
+    const isAi = !!(m.is_mimir_bot || m.is_mimir || (Number(m.user_id) === 0 && isMimirMode()));
+    if (isAi && cls === 'them') cls += ' is-ai';
+    const thinkCls = m._thinking ? ' _thinking' : '';
+    const aiBadge = isAi && cls.includes('them') ? '<span class="hg-mimir-badge">AI</span>' : '';
     const body = renderMediaBody(m, display);
     const time = m.created_at ? new Date(m.created_at).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }) : '';
     const showMeta = opts.showMeta !== false || deliveryStatus(m) === 'failed';
@@ -1081,7 +1162,8 @@
       ? `<div class="hg-forwarded">Переслано от ${esc(fwdName)}</div>`
       : '';
     const bounce = m._bounce ? ' is-bounce' : '';
-    return `<div class="hg-bubble ${cls} ${esc(type)}${bounce}" data-mid="${m.id}">
+    return `<div class="hg-bubble ${cls} ${esc(type)}${bounce}${thinkCls}" data-mid="${m.id}">
+      ${aiBadge}
       ${forwarded}
       ${renderReplyPreview(m)}
       ${body}
@@ -1293,7 +1375,7 @@
       Promise.resolve().then(notifyLayout);
     }
     if (root) {
-      root.classList.toggle('is-thread', !!(state.chatId && state.tab === 'huginn'));
+      root.classList.toggle('is-thread', !!(state.chatId && (state.tab === 'huginn' || state.isMimirThread)));
       syncFloatNavBodyClasses();
     }
     // Fade only on open/tab switch — every-render opacity flash caused flicker (D-260)
@@ -1305,24 +1387,40 @@
     }
 
     if (state.tab === 'mimir') {
-      panel.innerHTML = `
-        <div class="hg-panel-head">
-          <h2>Мимир</h2>
-          <button type="button" class="hg-icon-btn" data-collapse title="Свернуть">${ICO.close || '✕'}</button>
-        </div>
-        <div class="hg-list" style="padding:16px">
-          <p style="margin:0 0 12px;font:400 var(--hg-font-preview) var(--hg-font);color:var(--hg-muted)">
-            Откройте чат с Мимиром в Хугинне или используйте полный экран Мимира.
-          </p>
-          <button type="button" class="hg-chip" id="hgOpenMimir">Открыть Мимир-чат</button>
-        </div>`;
-      panel.querySelector('[data-collapse]').onclick = () => setCollapsed(true);
-      panel.querySelector('#hgOpenMimir').onclick = async () => {
-        const data = await api('/api/chat-groups/mimir');
-        const id = data.chat && data.chat.id;
-        if (id) { state.tab = 'huginn'; openChat(id); }
-      };
-      return;
+      // If thread already resolved: fall through to chatId render block below
+      if (state.isMimirThread && state.chatId) {
+        /* intentional fall-through — chatId block handles thread chrome */
+      } else {
+        // Show loading, resolve async
+        panel.innerHTML = `
+          <div class="hg-panel-head">
+            <h2>Мимир</h2>
+            <button type="button" class="hg-icon-btn" data-collapse title="Свернуть">${ICO.close || '✕'}</button>
+          </div>
+          <div class="hg-list" style="padding:16px">
+            <p style="margin:0;font:400 var(--hg-font-preview) var(--hg-font);color:var(--hg-muted)">Открываю чат с Мимиром…</p>
+          </div>`;
+        panel.querySelector('[data-collapse]').onclick = () => setCollapsed(true);
+        if (!state._mimirLoading) {
+          state._mimirLoading = true;
+          openMimirThread().then(() => { state._mimirLoading = false; }).catch((e) => {
+            state._mimirLoading = false;
+            panel.innerHTML = `
+              <div class="hg-panel-head">
+                <h2>Мимир</h2>
+                <button type="button" class="hg-icon-btn" data-collapse title="Свернуть">${ICO.close || '✕'}</button>
+              </div>
+              <div class="hg-list" style="padding:16px">
+                <p style="margin:0 0 12px;font:400 var(--hg-font-preview) var(--hg-font);color:var(--hg-muted)">${esc(e.message || 'Не удалось открыть Мимир')}</p>
+                <button type="button" class="hg-chip" id="hgMimirRetry">Повторить</button>
+              </div>`;
+            panel.querySelector('[data-collapse]').onclick = () => setCollapsed(true);
+            const retryBtn = panel.querySelector('#hgMimirRetry');
+            if (retryBtn) retryBtn.onclick = () => { state.chatId = null; state.isMimirThread = false; renderPanel(); };
+          });
+        }
+        return;
+      }
     }
 
     if (state.tab === 'ting') {
@@ -1372,9 +1470,10 @@
 
     if (state.chatId) {
       const chat = state.chats.find((c) => c.id === state.chatId) || { name: 'Чат' };
-      const cname = humanizeChatName(chat.name || chat.title || chat.direct_user_name || 'Чат');
-      const avUrl = chat.avatar_url || chat.photo_url || chat.image_url
-        || (/офис\s*асгард/i.test(cname) ? '/assets/img/huginn/office-asgard.png' : '');
+      const mimirMode = isMimirMode();
+      const cname = mimirMode ? 'Мимир' : humanizeChatName(chat.name || chat.title || chat.direct_user_name || 'Чат');
+      const avUrl = mimirMode ? '' : (chat.avatar_url || chat.photo_url || chat.image_url
+        || (/офис\s*асгард/i.test(cname) ? '/assets/img/huginn/office-asgard.png' : ''));
       const avStyle = avUrl
         ? `background-image:url('${esc(avUrl)}');background-size:cover;background-position:center;background-color:transparent`
         : `background:${avatarColor(cname)}`;
@@ -1417,6 +1516,11 @@
             <button type="button" class="hg-attach-x" id="hgAttachClear" title="Убрать">${ICO.close}</button>
           </div></div>`
         : '';
+      // Mimir: static "ИИ" presence, no async peer lookup
+      const presenceHtml = mimirMode
+        ? 'ИИ'
+        : (memberN > 1 ? (memberN + ' участник' + (memberN >= 5 || memberN === 0 ? 'ов' : (memberN === 1 ? '' : 'а'))) : '…');
+      const titleExtra = mimirMode ? '<span class="hg-mimir-badge">AI</span>' : '';
       panel.innerHTML = `
         <div class="hg-thread">
           ${state.callStrip || ''}
@@ -1427,8 +1531,8 @@
               <span class="hg-back-badge" id="hgBackBadge" ${unreadAbove > 0 ? '' : 'hidden'} aria-label="${unreadAbove > 0 ? unreadAbove + ' непрочитанных' : ''}">${unreadAbove > 99 ? '99+' : (unreadAbove || 0)}</span>
             </button>
             <div class="hg-thread-title hg-glass" data-role="header">
-              <strong aria-level="1"><span class="hg-title-text">${esc(cname)}</span>${mutedBell}</strong>
-              <span data-hg-presence aria-live="polite">${memberN > 1 ? (memberN + ' участник' + (memberN >= 5 || memberN === 0 ? 'ов' : (memberN === 1 ? '' : 'а'))) : '…'}</span>
+              <strong aria-level="1"><span class="hg-title-text">${esc(cname)}</span>${titleExtra}${mutedBell}</strong>
+              <span data-hg-presence aria-live="polite">${presenceHtml}</span>
             </div>
             <button type="button" class="hg-thread-av-btn" id="hgThreadProfile" aria-label="Профиль чата">
               <div class="hg-thread-av" style="${avStyle}">${avInner}</div>
@@ -1444,27 +1548,43 @@
             <div class="hg-msgs">${renderMessagesHtml(state.messages)}</div>
             <button type="button" class="hg-scroll-fab" id="hgScrollFab" title="Вниз">${ICO.scrollDown || ICO['chevron-down'] || '↓'}</button>
           </div>
-          <div class="hg-composer">
-            ${renderReplyBar()}
-            ${state.recording ? `<div class="hg-rec-bar"><span class="hg-rec-dot"></span><span>${esc(state.recording.label)}</span><button type="button" class="hg-chip" id="hgRecStop">Стоп</button></div>` : ''}
+          <div class="hg-composer${mimirMode ? ' is-mimir' : ''}">
+            ${state.recording && state.recording.kind !== 'circle' ? `<div class="hg-rec-overlay" data-role="rec-chrome">
+              <div class="hg-rec-overlay-inner">
+                <div class="hg-rec-left">
+                  <span class="hg-rec-dot"></span>
+                  <span class="hg-rec-timer" id="hgRecTimer">${esc(state.recording.timerText || '0:00,00')}</span>
+                  <button type="button" class="hg-rec-cancel" id="hgRecCancel" aria-label="Отмена">Отмена</button>
+                </div>
+                <div class="hg-rec-right">
+                  <button type="button" class="hg-rec-once ${state.recording.locked ? 'is-on' : ''}" id="hgRecLock" title="1" aria-label="Однократно">1</button>
+                  <button type="button" class="hg-rec-pause" id="hgRecPause" aria-label="Пауза">⏸</button>
+                  <button type="button" class="hg-rec-send" id="hgRecStop" aria-label="Отправить">${ICO.sendUp || ICO['arrow-up'] || ICO.send || '↑'}</button>
+                </div>
+              </div>
+            </div>` : ''}
             ${attachPrev}
-            <div class="hg-composer-row">
+            ${state.replyTo ? renderReplyBar() : ''}
+            <div class="hg-composer-row${state.recording && state.recording.kind !== 'circle' ? ' is-hidden-for-rec' : ''}">
               <div class="hg-composer-left">
                 <button type="button" class="hg-tool hg-ai-btn hg-glass" data-role="composer" id="hgAiEditorBtn" hidden aria-label="ИИ-редактор" title="ИИ-редактор">${ICO.sparkles || ICO.ai || '✦'}<span class="hg-ai-btn-label">Ai</span></button>
                 <button type="button" class="hg-tool hg-attach-out hg-glass is-mic" data-role="composer" id="hgAttach" aria-label="Прикрепить файл" title="Вложение">${ICO.attach}</button>
               </div>
               <div class="hg-input-wrap hg-glass" data-role="composer">
-                <textarea id="hgInput" rows="1" placeholder="${state.replyTo ? 'Ответ…' : 'Сообщение'}" aria-label="Сообщение">${esc(draft)}</textarea>
-                <button type="button" class="hg-emoji-btn" id="hgStickers" aria-label="Стикеры" title="Стикеры">${ICO.smile || ICO.emoji || ICO.sticker}</button>
+                <div class="hg-input-main">
+                  <textarea id="hgInput" rows="1" placeholder="${mimirMode ? 'Спросите Мимира…' : 'Сообщение'}" aria-label="Сообщение">${esc(draft)}</textarea>
+                  <button type="button" class="hg-emoji-btn" id="hgStickers" aria-label="Стикеры" title="Стикеры">${ICO.smile || ICO.emoji || ICO.sticker}</button>
+                </div>
               </div>
-              <button type="button" class="hg-send hg-glass is-mic" data-role="composer" id="hgSend" aria-label="Голосовое сообщение" title="Голос / Отправить">${ICO.mic}</button>
+              <button type="button" class="hg-send hg-glass ${mimirMode ? 'is-send' : 'is-mic'}" data-role="composer" id="hgSend" aria-label="${mimirMode ? 'Отправить' : 'Голосовое сообщение'}" title="${mimirMode ? 'Отправить' : 'Голос / Отправить'}">${mimirMode ? (ICO.sendUp || ICO['arrow-up'] || ICO.send || '↑') : ICO.mic}</button>
             </div>
             <!-- keyboard suggest removed -->
             <input type="file" id="hgFile" class="hg-file-hidden" tabindex="-1" aria-hidden="true" accept="image/*,video/*,audio/*,*/*">
           </div>
         </div>`;
       wireThread(panel);
-      refreshPeerPresence();
+      wireReplyClear(panel);
+      if (!mimirMode) refreshPeerPresence();
       scrollMsgs(true);
       return;
     }
@@ -1499,16 +1619,19 @@
           <div class="hg-story-ring"><div class="hg-story-av is-add">+</div></div>
           <span class="hg-story-label">История</span>
         </button>`;
+    try {
+      document.body.classList.toggle('hg-list-edit', !!state.listEditMode);
+    } catch (_) {}
     const editBar = state.listEditMode
-      ? `<div class="hg-list-edit-bar hg-glass" data-role="card">
-          <span>Выбрано: ${state.selectedChatIds.size}</span>
-          <button type="button" class="hg-chip" id="hgAssignFolder" ${state.selectedChatIds.size ? '' : 'disabled'}>В папку</button>
-          <button type="button" class="hg-chip" id="hgEditDone">Готово</button>
+      ? `<div class="hg-list-edit-bar hg-glass" data-role="edit-action" id="hgListEditBar">
+          <button type="button" class="hg-edit-action" id="hgEditReadAll" ${state.selectedChatIds.size ? '' : 'disabled'}>Прочитать все</button>
+          <button type="button" class="hg-edit-action" id="hgEditArchive" ${state.selectedChatIds.size ? '' : 'disabled'}>В архив</button>
+          <button type="button" class="hg-edit-action is-danger" id="hgEditDelete" ${state.selectedChatIds.size ? '' : 'disabled'}>Удалить</button>
         </div>`
       : '';
     panel.innerHTML = `
       <div class="hg-panel-head hg-list-head-hybrid">
-        <button type="button" class="hg-head-edit" id="hgListEdit">${state.listEditMode ? 'Отмена' : 'Изм.'}</button>
+        <button type="button" class="hg-head-edit" id="hgListEdit">${state.listEditMode ? 'Готово' : 'Изм.'}</button>
         <h2>Чаты</h2>
         <div class="hg-head-actions">
           <button type="button" class="hg-icon-btn" id="hgCompose" title="Написать">${ICO.compose || ICO.pen || '✎'}</button>
@@ -1532,52 +1655,64 @@
     if (editBtn) {
       editBtn.onclick = () => {
         state.listEditMode = !state.listEditMode;
-        if (!state.listEditMode) state.selectedChatIds = new Set();
+        if (!state.listEditMode) {
+          state.selectedChatIds = new Set();
+          try { document.body.classList.remove('hg-list-edit'); } catch (_) {}
+        }
         renderPanel();
       };
     }
-    const editDone = panel.querySelector('#hgEditDone');
-    if (editDone) {
-      editDone.onclick = () => {
-        state.listEditMode = false;
-        state.selectedChatIds = new Set();
-        renderPanel();
+    const selectedIds = () => [...state.selectedChatIds].filter((id) => Number(id) > 0);
+    const exitEdit = async (toast) => {
+      state.listEditMode = false;
+      state.selectedChatIds = new Set();
+      try { document.body.classList.remove('hg-list-edit'); } catch (_) {}
+      await loadChats();
+      if (toast) showToast(toast);
+      renderPanel();
+    };
+    const readAllBtn = panel.querySelector('#hgEditReadAll');
+    if (readAllBtn) {
+      readAllBtn.onclick = async () => {
+        const ids = selectedIds();
+        if (!ids.length) return;
+        for (const id of ids) {
+          try { await api('/api/chat-groups/' + id + '/read', { method: 'POST', body: {} }); } catch (_) {}
+        }
+        await exitEdit('Прочитано: ' + ids.length);
       };
     }
-    const assignFolder = panel.querySelector('#hgAssignFolder');
-    if (assignFolder) {
-      assignFolder.onclick = async () => {
-        const folders = state.folders || [];
-        if (!folders.length) {
-          showToast('Сначала создайте папку');
-          return;
-        }
-        const names = folders.map((f, i) => (i + 1) + '. ' + f.name).join('\n');
-        const pick = prompt('Номер папки:\n' + names + '\n0 — снять');
-        if (pick == null) return;
-        const n = parseInt(pick, 10);
-        const folderId = n === 0 ? null : (folders[n - 1] && folders[n - 1].id);
-        if (n !== 0 && folderId == null) {
-          showToast('Неверный номер');
-          return;
-        }
-        const ids = [...state.selectedChatIds].filter((id) => Number(id) > 0);
+    const archiveBtn = panel.querySelector('#hgEditArchive');
+    if (archiveBtn) {
+      archiveBtn.onclick = async () => {
+        const ids = selectedIds();
+        if (!ids.length) return;
         for (const id of ids) {
           try {
-            await api('/api/chat-groups/' + id + '/folder', {
-              method: 'PUT',
-              body: { folder_id: folderId }
-            });
+            await api('/api/chat-groups/' + id + '/archive', { method: 'PUT', body: { archive: true } });
           } catch (e) {
-            showToast(e.message || 'Не удалось назначить папку');
+            showToast(e.message || 'Архив');
             return;
           }
         }
-        state.listEditMode = false;
-        state.selectedChatIds = new Set();
-        await loadChats();
-        showToast(ids.length ? 'Папка обновлена' : 'Нет выбран чатов');
-        renderPanel();
+        await exitEdit('В архиве: ' + ids.length);
+      };
+    }
+    const deleteBtn = panel.querySelector('#hgEditDelete');
+    if (deleteBtn) {
+      deleteBtn.onclick = async () => {
+        const ids = selectedIds();
+        if (!ids.length) return;
+        if (!confirm('Удалить выбранные чаты (' + ids.length + ')?')) return;
+        for (const id of ids) {
+          try {
+            await api('/api/chat-groups/' + id, { method: 'DELETE' });
+          } catch (e) {
+            showToast(e.message || 'Удаление недоступно');
+            return;
+          }
+        }
+        await exitEdit('Удалено: ' + ids.length);
       };
     }
     panel.querySelectorAll('[data-bday-dismiss]').forEach((btn) => {
@@ -1637,8 +1772,489 @@
       };
     }
     panel.querySelector('#hgCompose').onclick = () => {
-      if (location.hash !== '#/messenger') location.hash = '#/messenger';
+      openComposeSheet();
     };
+  }
+
+  async function openComposeSheet() {
+    clearFloats();
+    root.querySelectorAll('.hg-compose-sheet,.hg-chat-profile').forEach((el) => el.remove());
+    const host = root.querySelector('.hg-chrome') || root;
+    const el = document.createElement('div');
+    el.className = 'hg-compose-sheet hg-sheet';
+    el.setAttribute('data-role', 'card');
+    el.setAttribute('role', 'dialog');
+    el.setAttribute('aria-label', 'Новый чат');
+    el.innerHTML = `
+      <div class="hg-compose-head">
+        <button type="button" class="hg-icon-btn hg-compose-x" id="hgComposeClose" aria-label="Закрыть"><span aria-hidden="true">✕</span></button>
+        <strong>Добавить</strong>
+        <button type="button" class="hg-icon-btn hg-compose-ok" id="hgComposeDone" aria-label="Готово" disabled><span aria-hidden="true">✓</span></button>
+      </div>
+      <div class="hg-compose-search-wrap">
+        <span class="hg-compose-search-ico" aria-hidden="true">${ICO.search || '🔍'}</span>
+        <input class="hg-search" id="hgComposeSearch" placeholder="Поиск" />
+      </div>
+      <div class="hg-compose-body">
+        <div class="hg-compose-list" id="hgComposeList"><div class="hg-empty">Загрузка…</div></div>
+        <div class="hg-compose-index" id="hgComposeIndex" aria-hidden="true"></div>
+      </div>`;
+    host.appendChild(el);
+    const selected = new Set();
+    const listEl = el.querySelector('#hgComposeList');
+    const doneBtn = el.querySelector('#hgComposeDone');
+    el.querySelector('#hgComposeClose').onclick = () => el.remove();
+
+    async function loadUsers(q) {
+      let users = [];
+      try {
+        const data = await api('/api/users?limit=200' + (q ? ('&q=' + encodeURIComponent(q)) : ''));
+        users = data.users || data.items || (Array.isArray(data) ? data : []);
+      } catch (_) {
+        users = contactRowsFromChats().map((r) => ({ id: r.user_id, name: r.name }));
+      }
+      const me = myId();
+      users = (users || []).filter((u) => Number(u.id || u.user_id) !== Number(me));
+      if (q) {
+        const qq = String(q).toLowerCase();
+        users = users.filter((u) => String(u.name || u.full_name || u.login || '').toLowerCase().includes(qq));
+      }
+      users.sort((a, b) => String(a.name || a.full_name || '').localeCompare(String(b.name || b.full_name || ''), 'ru'));
+      let html = '';
+      let last = '';
+      for (const u of users) {
+        const uid = u.id || u.user_id;
+        const nm = u.name || u.full_name || u.login || ('User ' + uid);
+        const letter = (nm.trim().charAt(0) || '#').toUpperCase();
+        if (letter !== last) {
+          last = letter;
+          html += `<div class="hg-contact-letter">${esc(letter)}</div>`;
+        }
+        const on = selected.has(Number(uid));
+        html += `<button type="button" class="hg-contact-row hg-compose-row${on ? ' is-selected' : ''}" data-uid="${uid}">
+          <span class="hg-compose-check${on ? ' is-on' : ''}" aria-hidden="true"></span>
+          <div class="hg-contact-av" style="background:${avatarColor(nm)}">${esc(initials(nm))}</div>
+          <div class="hg-contact-meta"><div class="hg-contact-name">${esc(nm)}</div>
+          <div class="hg-contact-status">${esc(u.last_seen_at ? ('был(а) ' + formatSeen(u.last_seen_at)) : 'был(а) недавно')}</div></div>
+        </button>`;
+      }
+      listEl.innerHTML = html || '<div class="hg-empty">Никого не найдено</div>';
+      const idx = el.querySelector('#hgComposeIndex');
+      if (idx) {
+        const letters = [...new Set((users || []).map((u) => {
+          const nm = u.name || u.full_name || u.login || '#';
+          return (nm.trim().charAt(0) || '#').toUpperCase();
+        }))].slice(0, 16);
+        idx.innerHTML = letters.map((L) => `<span>${esc(L)}</span>`).join('');
+      }
+      listEl.querySelectorAll('.hg-compose-row').forEach((row) => {
+        row.onclick = async () => {
+          const uid = Number(row.getAttribute('data-uid'));
+          if (selected.has(uid)) selected.delete(uid);
+          else selected.add(uid);
+          doneBtn.disabled = selected.size === 0;
+          if (selected.size === 1) {
+            // single tap → open direct immediately (TG-like)
+            try {
+              const data = await api('/api/chat-groups/direct', { method: 'POST', body: { user_id: uid } });
+              const chat = data.chat || data;
+              el.remove();
+              if (chat && chat.id) {
+                state.tab = 'huginn';
+                state.mobileNav = 'chats';
+                await openChat(chat.id);
+              }
+            } catch (e) {
+              showToast(e.message || 'Не удалось открыть чат');
+              loadUsers(el.querySelector('#hgComposeSearch').value);
+            }
+            return;
+          }
+          loadUsers(el.querySelector('#hgComposeSearch').value);
+        };
+      });
+    }
+
+    doneBtn.onclick = async () => {
+      const ids = [...selected];
+      if (!ids.length) return;
+      try {
+        if (ids.length === 1) {
+          const data = await api('/api/chat-groups/direct', { method: 'POST', body: { user_id: ids[0] } });
+          el.remove();
+          await openChat((data.chat || data).id);
+          return;
+        }
+        const data = await api('/api/chat-groups', {
+          method: 'POST',
+          body: { name: 'Группа', member_ids: ids, group_kind: 'work' }
+        });
+        const chat = data.chat || data;
+        el.remove();
+        if (chat && chat.id) await openChat(chat.id);
+      } catch (e) {
+        showToast(e.message || 'Не удалось создать');
+      }
+    };
+
+    let t = null;
+    el.querySelector('#hgComposeSearch').oninput = (e) => {
+      clearTimeout(t);
+      t = setTimeout(() => loadUsers(e.target.value), 180);
+    };
+    await loadUsers('');
+  }
+
+  async function openChatProfile() {
+    if (!state.chatId) return;
+    clearFloats();
+    root.querySelectorAll('.hg-compose-sheet,.hg-chat-profile').forEach((el) => el.remove());
+    const chat = state.chats.find((c) => Number(c.id) === Number(state.chatId)) || {};
+    const title = humanizeChatName(chat.name || chat.title || chat.direct_user_name || 'Чат');
+    const host = root.querySelector('.hg-chrome') || root;
+    const el = document.createElement('div');
+    el.className = 'hg-chat-profile hg-sheet';
+    el.setAttribute('data-role', 'card');
+    el.setAttribute('role', 'dialog');
+    el.setAttribute('aria-label', 'Профиль чата');
+    const isGroup = isGroupChat(chat);
+    const avUrl = chat.avatar_url || chat.photo_url || chat.image_url
+      || (/офис\s*асгард/i.test(title) ? '/assets/img/huginn/office-asgard.png' : '');
+    const avStyle = avUrl
+      ? `background-image:url('${esc(avUrl)}');background-size:cover;background-position:center;background-color:transparent`
+      : `background:${avatarColor(title)}`;
+    const avInner = avUrl ? '' : esc(initials(title));
+    el.innerHTML = `
+      <div class="hg-profile-head hg-profile-head--group">
+        <button type="button" class="hg-icon-btn hg-profile-back" id="hgProfileClose" aria-label="Назад"><span class="hg-profile-back-chevron" aria-hidden="true">‹</span></button>
+        <div class="hg-profile-av" style="${avStyle}">${avInner}</div>
+        <div class="hg-profile-titles">
+          <div class="hg-profile-name">${esc(title)}</div>
+          <div class="hg-profile-sub" id="hgProfileSub">…</div>
+        </div>
+        <button type="button" class="hg-icon-btn hg-profile-more-gal hg-glass" id="hgProfileMoreGal" aria-label="Поиск" hidden>${ICO.search || '<span aria-hidden="true">🔍</span>'}</button>
+        <div class="hg-profile-actions">
+          <button type="button" class="hg-profile-act" id="hgProfileMute" aria-label="Без звука">
+            <span class="hg-profile-act-ico">${ICO.bell || ICO.mute || '🔔'}</span><span>звук</span>
+          </button>
+          <button type="button" class="hg-profile-act" id="hgProfileSearch" aria-label="Поиск">
+            <span class="hg-profile-act-ico">${ICO.search || '🔍'}</span><span>поиск</span>
+          </button>
+          <button type="button" class="hg-profile-act" id="hgProfileMore" aria-label="Ещё">
+            <span class="hg-profile-act-ico">${ICO.more || '⋯'}</span><span>ещё</span>
+          </button>
+        </div>
+      </div>
+      ${!isGroup ? `<div class="hg-profile-segment hg-glass" data-role="segment" role="tablist">
+        <button type="button" class="hg-profile-seg is-active" data-stab="publications">Публикации</button>
+        <button type="button" class="hg-profile-seg" data-stab="archive">Архив</button>
+      </div>` : ''}
+      <div class="hg-profile-tabs" role="tablist">
+        ${isGroup ? '<button type="button" class="hg-profile-tab is-active" data-stab="members">Участники</button>' : ''}
+        <button type="button" class="hg-profile-tab${!isGroup ? ' is-active' : ''}" data-stab="media">Медиа</button>
+        <button type="button" class="hg-profile-tab" data-stab="files">Файлы</button>
+        <button type="button" class="hg-profile-tab" data-stab="voice">Голосовые</button>
+        <button type="button" class="hg-profile-tab" data-stab="links">Ссылки</button>
+      </div>
+      <div class="hg-profile-body" id="hgProfileBody"><div class="hg-empty">Загрузка…</div></div>`;
+    host.appendChild(el);
+    el.querySelector('#hgProfileClose').onclick = () => el.remove();
+    const searchBtn = el.querySelector('#hgProfileSearch');
+    if (searchBtn) searchBtn.onclick = () => showToast('Поиск в чате — DEFER S15');
+    const openSoundMenu = () => {
+      el.querySelectorAll('.hg-sound-menu').forEach((m) => m.remove());
+      const menu = document.createElement('div');
+      menu.className = 'hg-attach-menu hg-glass hg-sound-menu';
+      menu.setAttribute('data-role', 'menu');
+      menu.innerHTML = `<button type="button" data-mute="8h">${ICO.clock || '⏱'} Выключить на время…</button>
+        <button type="button" data-mute="forever">${ICO.bellOff || ICO.mute || '🔇'} Выключить звук</button>
+        <button type="button" data-mute="1d">${ICO.settings || '⚙'} Настроить</button>
+        <button type="button" data-mute="off" class="is-danger">${ICO.bellOff || '🔕'} Выкл. уведомления</button>`;
+      el.appendChild(menu);
+      menu.querySelectorAll('[data-mute]').forEach((btn) => {
+        btn.onclick = async () => {
+          const mode = btn.getAttribute('data-mute');
+          try {
+            if (mode === 'off') {
+              await api('/api/chat-groups/' + state.chatId + '/mute', { method: 'PUT', body: { until: null } });
+              showToast('Звук включён');
+            } else {
+              const ms = mode === '1d' ? 24 * 3600 * 1000 : (mode === 'forever' ? 3650 * 24 * 3600 * 1000 : 8 * 3600 * 1000);
+              const until = new Date(Date.now() + ms).toISOString();
+              await api('/api/chat-groups/' + state.chatId + '/mute', { method: 'PUT', body: { until } });
+              showToast(mode === 'forever' ? 'Звук выключен' : ('Без звука: ' + btn.textContent));
+            }
+          } catch (e) {
+            showToast(e.message || 'Mute error');
+          }
+          menu.remove();
+        };
+      });
+    };
+    const openProfileMoreMenu = () => {
+      el.querySelectorAll('.hg-profile-menu').forEach((m) => m.remove());
+      const menu = document.createElement('div');
+      menu.className = 'hg-attach-menu hg-glass hg-profile-menu';
+      menu.setAttribute('data-role', 'menu');
+      menu.innerHTML = `<button type="button" data-a="sound">${ICO.bell || '🔔'} Звук…</button>
+        <button type="button" data-a="search">${ICO.search || '🔍'} Поиск</button>
+        <button type="button" data-a="leave" class="is-danger">${ICO.x || '✕'} Покинуть</button>`;
+      el.appendChild(menu);
+      menu.querySelector('[data-a="sound"]').onclick = () => { menu.remove(); openSoundMenu(); };
+      menu.querySelector('[data-a="search"]').onclick = () => { showToast('Поиск в чате — DEFER S15'); menu.remove(); };
+      menu.querySelector('[data-a="leave"]').onclick = () => { menu.remove(); el.remove(); };
+    };
+    el.querySelector('#hgProfileMore').onclick = () => openProfileMoreMenu();
+    const moreGal = el.querySelector('#hgProfileMoreGal');
+    if (moreGal) moreGal.onclick = () => showToast('Поиск в чате — DEFER S15');
+    el.querySelector('#hgProfileMute').onclick = () => openSoundMenu();
+
+    let shared = { media: [], files: [], links: [], voices: [] };
+    let members = [];
+    try {
+      const detail = await api('/api/chat-groups/' + state.chatId);
+      members = detail.members || [];
+      el.querySelector('#hgProfileSub').textContent = (members.length || chat.member_count || 0) + ' участников';
+    } catch (_) {
+      el.querySelector('#hgProfileSub').textContent = '';
+    }
+    try {
+      shared = await api('/api/chat-groups/' + state.chatId + '/shared');
+    } catch (_) {}
+
+    const body = el.querySelector('#hgProfileBody');
+    const syncProfileMeta = (tab) => {
+      const sub = el.querySelector('#hgProfileSub');
+      if (!sub) return;
+      const nMem = members.length || chat.member_count || 0;
+      /* Compact TG chrome for all shared-* tabs (not only media) */
+      const gallery = tab === 'media' || tab === 'files' || tab === 'voice' || tab === 'links'
+        || tab === 'publications' || tab === 'archive';
+      el.classList.toggle('is-media-gallery', gallery);
+      const moreGalBtn = el.querySelector('#hgProfileMoreGal');
+      if (moreGalBtn) moreGalBtn.hidden = !gallery;
+      /* REF S20: gallery strip = Медиа/Файлы/Голосовые/Ссылки — без Участники */
+      el.querySelectorAll('.hg-profile-tab[data-stab="members"]').forEach((b) => {
+        b.style.display = gallery ? 'none' : '';
+      });
+      const seg = el.querySelector('.hg-profile-segment');
+      if (seg) {
+        /* Pubs/Archive only on DM root media surface; hide when deep in files/voice/links */
+        const showSeg = !isGroup && (tab === 'publications' || tab === 'archive' || tab === 'media');
+        seg.style.display = showSeg ? '' : 'none';
+      }
+      if (tab === 'media' || tab === 'publications') {
+        const n = (shared.media || []).length;
+        const nVid = (shared.media || []).filter((m) => m.message_type === 'video' || m.message_type === 'circle').length;
+        const nPhoto = Math.max(0, n - nVid);
+        sub.textContent = n
+          ? (nVid ? (nPhoto + ' фото, ' + nVid + ' видео') : (n + ' фото'))
+          : (nMem ? (nMem + ' участников') : '');
+      } else if (tab === 'archive') {
+        sub.textContent = 'Архив публикаций';
+      } else if (tab === 'files') {
+        const nFiles = (shared.files || []).filter((f) => {
+          const t = String(f.message_type || '');
+          if (t === 'image' || t === 'video' || t === 'circle' || t === 'voice') return false;
+          const n = String(f.original_name || f.file_name || f.name || '');
+          return !(/^seed-photo/i.test(n) || /\.(png|jpe?g|gif|webp)$/i.test(n));
+        }).length;
+        sub.textContent = nFiles + ' файлов';
+      } else if (tab === 'voice') {
+        sub.textContent = ((shared.voices || []).length || 0) + ' голосовых сообщений';
+      } else if (tab === 'links') {
+        sub.textContent = ((shared.links || []).length || 0) + ' ссылок';
+      } else if (tab === 'members') {
+        sub.textContent = nMem + ' участников';
+      } else {
+        sub.textContent = nMem + ' участников';
+      }
+    };
+    const renderMediaGrid = (items, emptyLabel) => {
+      body.innerHTML = items.length
+        ? `<div class="hg-shared-grid">${items.map((m) =>
+          `<button type="button" class="hg-shared-cell" data-src="${esc(m.file_url || m.url || '')}">
+            ${m.message_type === 'circle' || m.message_type === 'video'
+              ? `<video src="${esc(m.file_url || '')}" muted playsinline></video>`
+              : `<img src="${esc(m.file_url || m.url || '')}" alt="" loading="eager" onerror="this.style.display='none';this.parentElement.style.background='color-mix(in srgb, var(--blue-l,#4A90D9) 55%, var(--bg3,#1C2130))'">`}
+          </button>`).join('')}</div>`
+        : `<div class="hg-empty">${esc(emptyLabel || 'Нет медиа')}</div>`;
+      body.querySelectorAll('.hg-shared-cell').forEach((cell) => {
+        cell.onclick = () => { const src = cell.getAttribute('data-src'); if (src) openLightbox(src); };
+      });
+    };
+    const openMemberMenu = (m) => {
+      el.querySelectorAll('.hg-member-menu').forEach((x) => x.remove());
+      const nm = m.name || m.user_name || ('User ' + (m.user_id || m.id));
+      const menu = document.createElement('div');
+      menu.className = 'hg-attach-menu hg-glass hg-member-menu';
+      menu.setAttribute('data-role', 'menu');
+      menu.innerHTML = `<div class="hg-member-preview">
+          <div class="hg-contact-av" style="background:${avatarColor(nm)}">${esc(initials(nm))}</div>
+          <div><strong>${esc(nm)}</strong><div class="hg-muted">${esc(m.role || 'участник')}</div></div>
+        </div>
+        <button type="button" data-a="msg">Написать</button>
+        <button type="button" data-a="info">Инфо</button>
+        <button type="button" data-a="tags" disabled title="DEFER_BE">Метки…</button>
+        <button type="button" data-a="kick" class="is-danger">Исключить</button>`;
+      el.appendChild(menu);
+      menu.querySelector('[data-a="msg"]').onclick = async () => {
+        menu.remove();
+        const uid = m.user_id || m.id;
+        if (!uid) return;
+        try {
+          const data = await api('/api/chat-groups/direct', { method: 'POST', body: { user_id: uid } });
+          el.remove();
+          await openChat((data.chat || data).id);
+        } catch (e) { showToast(e.message || 'Чат'); }
+      };
+      menu.querySelector('[data-a="info"]').onclick = () => { showToast(nm); menu.remove(); };
+      menu.querySelector('[data-a="kick"]').onclick = () => { showToast('Исключение — через админку группы'); menu.remove(); };
+      menu.querySelector('[data-a="tags"]').onclick = () => {};
+    };
+    const renderTab = (tab) => {
+      el.querySelectorAll('.hg-profile-tab, .hg-profile-seg').forEach((b) => {
+        b.classList.toggle('is-active', b.getAttribute('data-stab') === tab);
+      });
+      syncProfileMeta(tab === 'publications' || tab === 'archive' ? 'media' : tab);
+      if (tab === 'publications' || tab === 'media') {
+        renderMediaGrid(shared.media || [], tab === 'publications' ? 'Нет публикаций' : 'Нет медиа');
+        return;
+      }
+      if (tab === 'archive') {
+        /* Archive publications — empty until BE stories-archive; layout HAVE */
+        renderMediaGrid([], 'Архив пуст');
+        return;
+      }
+      if (tab === 'files') {
+        const fmtSize = (n) => {
+          const b = Number(n) || 0;
+          if (b <= 0) return '0 Б';
+          if (b < 1024) return b + ' Б';
+          if (b < 1024 * 1024) return (Math.round((b / 1024) * 10) / 10) + ' Кб';
+          return (Math.round((b / (1024 * 1024)) * 10) / 10) + ' Мб';
+        };
+        const fmtWhen = (iso) => {
+          if (!iso) return '';
+          try {
+            const d = new Date(iso);
+            if (Number.isNaN(d.getTime())) return '';
+            return d.toLocaleString('ru-RU', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+          } catch (_) { return ''; }
+        };
+        const fileBadge = (name, mime) => {
+          const n = String(name || '');
+          const m = String(mime || '');
+          if (/\.pdf$/i.test(n) || /pdf/i.test(m)) return '<span class="hg-file-badge is-pdf">pdf</span>';
+          if (/\.docx?$/i.test(n) || /word|msword|officedocument\.word/i.test(m)) return '<span class="hg-file-badge is-doc">doc</span>';
+          if (/\.xlsx?$/i.test(n) || /excel|spreadsheet/i.test(m)) return '<span class="hg-file-badge is-xls">xls</span>';
+          if (/\.(zip|rar|7z)$/i.test(n) || /zip|rar/i.test(m)) return '<span class="hg-file-badge is-zip">zip</span>';
+          if (/\.(png|jpe?g|gif|webp)$/i.test(n) || /^image\//i.test(m)) return '<span class="hg-file-badge is-img">img</span>';
+          return `<span class="hg-file-badge is-generic">${ICO.file || '📄'}</span>`;
+        };
+        const items = (shared.files || []).filter((f) => {
+          const t = String(f.message_type || '');
+          if (t === 'image' || t === 'video' || t === 'circle' || t === 'voice') return false;
+          const n = String(f.original_name || f.file_name || f.name || '');
+          /* keep docs; drop seed photos that leaked into files */
+          if (/^seed-photo/i.test(n) || /\.(png|jpe?g|gif|webp)$/i.test(n)) return false;
+          return true;
+        });
+        body.innerHTML = items.length
+          ? `<div class="hg-shared-list hg-glass" data-role="card">${items.map((f) => {
+            const name = f.original_name || f.file_name || f.name || 'файл';
+            const size = fmtSize(f.file_size || (f.metadata && f.metadata.file_size) || 0);
+            const when = fmtWhen(f.created_at || f.sent_at || f.timestamp);
+            const sub = [size, when].filter(Boolean).join(' • ');
+            return `<a class="hg-shared-file" href="${esc(f.file_url || f.url || '#')}" target="_blank" rel="noopener">
+              <span class="hg-shared-file-ico">${fileBadge(name, f.mime_type || f.mime)}</span>
+              <span class="hg-shared-file-meta">
+                <span class="hg-shared-file-name">${esc(name)}</span>
+                <span class="hg-shared-file-sub">${esc(sub || 'файл')}</span>
+              </span>
+            </a>`;
+          }).join('')}</div>`
+          : '<div class="hg-empty">Нет файлов</div>';
+        return;
+      }
+      if (tab === 'links') {
+        const items = shared.links || [];
+        body.innerHTML = items.length
+          ? `<div class="hg-shared-list hg-glass" data-role="card">${items.map((l) => {
+            const title = l.title || l.url || 'Ссылка';
+            const host = (() => { try { return new URL(l.url).hostname; } catch (_) { return l.url || ''; } })();
+            return `<a class="hg-shared-file" href="${esc(l.url)}" target="_blank" rel="noopener">
+              <span class="hg-shared-file-ico"><span class="hg-file-badge is-generic">${ICO.globe || '🔗'}</span></span>
+              <span class="hg-shared-file-meta">
+                <span class="hg-shared-file-name">${esc(title)}</span>
+                <span class="hg-shared-file-sub">${esc(host)}</span>
+              </span>
+            </a>`;
+          }).join('')}</div>`
+          : '<div class="hg-empty">Нет ссылок</div>';
+        return;
+      }
+      if (tab === 'voice') {
+        const items = shared.voices || [];
+        body.innerHTML = items.length
+          ? `<div class="hg-shared-list hg-glass" data-role="card">${items.map((v) => {
+            const who = v.user_name || v.sender_name || v.name || 'Голос';
+            const dur = v.file_duration || v.duration || '0:00';
+            return `<button type="button" class="hg-shared-voice" data-src="${esc(v.file_url || '')}">
+              <span class="hg-shared-file-ico" style="border-radius:50%;background:#0A84FF">${ICO.play || '▶'}</span>
+              <span class="hg-shared-file-meta">
+                <span class="hg-shared-file-name">${esc(who)}</span>
+                <span class="hg-shared-file-sub">${esc(String(dur))}</span>
+              </span>
+            </button>`;
+          }).join('')}</div>`
+          : '<div class="hg-empty">Нет голосовых</div>';
+        body.querySelectorAll('.hg-shared-voice').forEach((btn) => {
+          btn.onclick = () => {
+            const src = btn.getAttribute('data-src');
+            if (!src) return;
+            const a = new Audio(src);
+            a.play().catch(() => {});
+          };
+        });
+        return;
+      }
+      if (tab === 'members') {
+        const addBtn = `<button type="button" class="hg-add-members" id="hgAddMembers">${ICO.userPlus || ICO.users || '+'} Добавить участников</button>`;
+        body.innerHTML = addBtn + (members.length
+          ? `<div class="hg-members-card hg-glass" data-role="card">${members.map((m, idx) => {
+            const nm = m.name || m.user_name || ('User ' + (m.user_id || m.id));
+            const role = String(m.role || 'участник').toLowerCase();
+            const badge = /owner|владел/i.test(role) ? '<span class="hg-role-badge is-owner">владелец</span>'
+              : /admin|админ/i.test(role) ? '<span class="hg-role-badge is-admin">админ</span>' : '';
+            const online = !!(m.is_online || m.online || /в\s*сети/i.test(String(m.status || '')));
+            const statusTxt = online
+              ? 'в сети'
+              : (m.last_seen_text || m.last_seen || (m.status && !/owner|admin|member|участ/i.test(String(m.status)) ? m.status : 'был(а) недавно'));
+            const avM = m.avatar_url || m.photo_url || '';
+            const avSt = avM
+              ? `background-image:url('${esc(avM)}');background-size:cover;background-position:center`
+              : `background:${avatarColor(nm)}`;
+            return `<button type="button" class="hg-contact-row hg-member-row" data-member-idx="${idx}">
+              <div class="hg-contact-av" style="${avSt}">${avM ? '' : esc(initials(nm))}</div>
+              <div class="hg-contact-meta"><div class="hg-contact-name">${esc(nm)}</div>
+              <div class="hg-contact-status${online ? ' is-online' : ''}">${esc(statusTxt)}</div></div>
+              ${badge}
+            </button>`;
+          }).join('')}</div>`
+          : '<div class="hg-empty">Нет участников</div>');
+        const add = body.querySelector('#hgAddMembers');
+        if (add) add.onclick = () => showToast('Добавление участников — DEFER S43');
+        body.querySelectorAll('.hg-member-row').forEach((row) => {
+          const idx = Number(row.getAttribute('data-member-idx'));
+          row.onclick = () => openMemberMenu(members[idx] || {});
+        });
+      }
+    };
+    el.querySelectorAll('.hg-profile-tab, .hg-profile-seg').forEach((btn) => {
+      btn.onclick = () => renderTab(btn.getAttribute('data-stab'));
+    });
+    renderTab(isGroup ? 'members' : 'publications');
   }
 
   async function openStoryViewer(storyId) {
@@ -1749,7 +2365,7 @@
     if (!rows.length) {
       box.innerHTML = emptyListHtml(query ? 'search' : 'empty', q);
       const cta = box.querySelector('#hgEmptyNew');
-      if (cta) cta.onclick = () => { if (location.hash !== '#/messenger') location.hash = '#/messenger'; };
+      if (cta) cta.onclick = () => { openComposeSheet(); };
       return;
     }
     const rowHtml = (c) => {
@@ -1963,32 +2579,76 @@
   function renderSettingsPanel(panel) {
     const me = (global.AsgardAuth && AsgardAuth.user) || JSON.parse(localStorage.getItem('asgard_user') || '{}');
     const name = me.name || me.full_name || me.login || 'Никита';
+    const shortName = name.split(' ')[0] || name;
     const phone = me.phone || '+7 900 000-00-00';
     const uname = me.username ? ('@' + me.username) : (me.login ? ('@' + me.login) : '@asgard');
     const fx = applyFxMode(localStorage.getItem('hg_power_saving') || localStorage.getItem('hg_fx'));
-    /* Wired settings only — no «скоро» stub rows (P2) */
-    const groups = [];
-    const actions = [
-      { id: 'msg', label: 'Написать', ico: ICO.chats || ICO.send },
-      { id: 'call', label: 'Звонок', ico: ICO.phone || ICO.calls }
+    /* Root = TG settings main (avatar + quick rows + wired groups). Edit = FX/logout. */
+    const quick = [
+      { label: 'Мой профиль', ico: ICO.user || ICO.contacts || '👤', tone: 'is-red', set: 'profile' },
+      { label: 'Избранное', ico: ICO.bookmark || ICO.pin || '🔖', tone: 'is-blue', set: 'favorites' },
+      { label: 'Недавние звонки', ico: ICO.phone || ICO.calls || '📞', tone: 'is-green', set: 'calls' }
     ];
+    const groups = [
+      [
+        { label: 'Уведомления и звуки', ico: ICO.bell || '🔔', tone: 'is-red' },
+        { label: 'Конфиденциальность', ico: ICO.lock || '🔒', tone: 'is-grey' },
+        { label: 'Данные и память', ico: ICO.database || ICO.file || '💾', tone: 'is-green' },
+        { label: 'Оформление', ico: ICO.palette || ICO.settings || '🎨', tone: 'is-blue' }
+      ],
+      [
+        { label: 'Энергосбережение', ico: ICO.battery || '🔋', tone: 'is-yellow', value: fx === 'off' ? 'Выкл.' : (fx === 'reduced' ? 'Меньше' : 'Полные') },
+        { label: 'Язык', ico: ICO.languages || ICO.globe || '🌐', tone: 'is-purple', value: 'Русский' }
+      ]
+    ];
+    const showEdit = !!state.settingsProfileOpen;
+    const quickTop = quick.slice(0, 1);
+    const quickRest = quick.slice(1);
     panel.innerHTML = `
-      <div class="hg-settings">
-        <div class="hg-settings-profile">
+      <div class="hg-settings${showEdit ? ' is-profile' : ' is-root'}">
+        <div class="hg-settings-head">
+          <strong class="hg-settings-title">${esc(shortName)}</strong>
+          <button type="button" class="hg-settings-edit" id="hgSettingsEdit">${showEdit ? 'Готово' : 'Изм.'}</button>
+        </div>
+        <div class="hg-settings-profile" id="hgSettingsProfileCard">
           <div class="hg-settings-av" style="background:${avatarColor(name)}">${esc(initials(name))}</div>
-          <div class="hg-settings-name">${esc(name)}</div>
-          <div class="hg-settings-sub">${esc([phone, uname].filter(Boolean).join(' · '))}</div>
-          <div class="hg-settings-actions">
-            ${actions.map((a) => `<button type="button" class="hg-settings-action" data-act="${a.id}" title="${esc(a.label)}">
-              <span class="hg-settings-action-ico hg-glass" data-role="fab">${a.ico}</span>
-              <span>${esc(a.label)}</span>
-            </button>`).join('')}
-          </div>
+          <div class="hg-settings-name">${esc(shortName)}</div>
+          <div class="hg-settings-sub"><span class="hg-settings-shield" aria-hidden="true">1</span>${esc(phone)} · ${esc(uname)}</div>
+          <button type="button" class="hg-settings-photo-btn" id="hgSettingsPhoto">${ICO.camera || '📷'} Изменить фотографию</button>
+        </div>
+        ${!showEdit ? `
+        <div class="hg-settings-alert hg-glass" data-role="card">
+          <div class="hg-settings-alert-head"><span class="hg-settings-alert-bang">!</span><strong class="hg-settings-alert-title">${esc(phone)} всё ещё Ваш номер?</strong></div>
+          <div class="hg-settings-alert-body">Чтобы вы всегда могли войти в аккаунт, подтвердите номер. <button type="button" class="hg-settings-alert-link" id="hgSettingsPhoneMore">Подробнее</button></div>
+          <button type="button" class="hg-settings-alert-action" data-phone-keep="1">Оставить ${esc(phone)}</button>
+          <button type="button" class="hg-settings-alert-action" data-phone-change="1">Изменить номер</button>
         </div>
         <div class="hg-settings-card hg-glass" data-role="card">
+          ${quickTop.map((it) => `<button type="button" class="hg-settings-row" data-set="${esc(it.set)}" data-label="${esc(it.label)}">
+            <span class="hg-settings-ico ${it.tone}">${it.ico}</span>
+            <span class="hg-settings-label">${esc(it.label)}</span>
+            <span class="hg-settings-chev">${ICO.chevronRight || '›'}</span>
+          </button>`).join('')}
+        </div>
+        <div class="hg-settings-card hg-glass" data-role="card">
+          ${quickRest.map((it) => `<button type="button" class="hg-settings-row" data-set="${esc(it.set)}" data-label="${esc(it.label)}">
+            <span class="hg-settings-ico ${it.tone}">${it.ico}</span>
+            <span class="hg-settings-label">${esc(it.label)}</span>
+            <span class="hg-settings-chev">${ICO.chevronRight || '›'}</span>
+          </button>`).join('')}
+        </div>
+        ${groups.map((items) => `<div class="hg-settings-card hg-settings-card--secondary hg-glass" data-role="card">
+          ${items.map((it) => `<button type="button" class="hg-settings-row" data-set="${esc(it.label)}">
+            <span class="hg-settings-ico ${it.tone}">${it.ico}</span>
+            <span class="hg-settings-label">${esc(it.label)}</span>
+            ${it.value ? `<span class="hg-settings-value">${esc(it.value)}</span>` : ''}
+            <span class="hg-settings-chev">${ICO.chevronRight || '›'}</span>
+          </button>`).join('')}
+        </div>`).join('')}` : `
+        <div class="hg-settings-card hg-glass" data-role="card">
           <div class="hg-settings-row hg-settings-row--static">
-            <span class="hg-settings-ico is-purple">${ICO.settings}</span>
-            <span class="hg-settings-label">Эффекты (экономия энергии)</span>
+            <span class="hg-settings-ico is-yellow">${ICO.battery || '🔋'}</span>
+            <span class="hg-settings-label">Эффекты</span>
           </div>
           <div class="hg-fx-toggle" role="group" aria-label="Эффекты">
             ${['full', 'reduced', 'off'].map((m) => {
@@ -1997,51 +2657,50 @@
             }).join('')}
           </div>
         </div>
-        <div class="hg-settings-card hg-glass" data-role="card">
-          <label class="hg-settings-row hg-settings-toggle-row">
-            <span class="hg-settings-ico is-purple">🎂</span>
-            <span class="hg-settings-label">Баннеры дней рождения</span>
-            <input type="checkbox" id="hgBdayToggle" ${bdayBannersEnabled() ? 'checked' : ''} aria-label="Баннеры ДР">
-          </label>
-        </div>
-        ${groups.map((items) => `<div class="hg-settings-card hg-glass" data-role="card">
-          ${items.map((it) => `<button type="button" class="hg-settings-row" data-set="${esc(it.label)}">
-            <span class="hg-settings-ico ${it.tone}">${it.ico}</span>
-            <span class="hg-settings-label">${esc(it.label)}</span>
-            <span class="hg-settings-chev">${ICO.chevronRight || '›'}</span>
-          </button>`).join('')}
-        </div>`).join('')}
-        <button type="button" class="hg-settings-logout" id="hgLogout">Выйти</button>
+        <button type="button" class="hg-settings-logout" id="hgLogout">Выйти</button>`}
       </div>`;
-    panel.querySelectorAll('[data-act]').forEach((btn) => {
-      btn.onclick = () => {
-        const act = btn.getAttribute('data-act');
-        if (act === 'msg') { state.tab = 'huginn'; state.chatId = null; renderPanel(); }
-        else if (act === 'call') { state.tab = 'phone'; renderPanel(); }
-      };
-    });
     panel.querySelectorAll('[data-fx]').forEach((btn) => {
       btn.onclick = () => {
         applyFxMode(btn.getAttribute('data-fx'));
         renderSettingsPanel(panel);
       };
     });
-    const bdayTog = panel.querySelector('#hgBdayToggle');
-    if (bdayTog) {
-      bdayTog.onchange = async () => {
-        try { localStorage.setItem('hg_bday_banners', bdayTog.checked ? '1' : '0'); } catch (_) {}
-        await loadBirthdays();
-        showToast(bdayTog.checked ? 'Баннеры ДР включены' : 'Баннеры ДР выключены');
+    const photoBtn = panel.querySelector('#hgSettingsPhoto');
+    if (photoBtn) photoBtn.onclick = () => showToast('Смена фото — DEFER S31');
+    panel.querySelectorAll('[data-phone-keep],[data-phone-change],#hgSettingsPhoneMore').forEach((btn) => {
+      btn.onclick = () => {
+        const card = panel.querySelector('.hg-settings-alert');
+        if (card) card.remove();
+        showToast(btn.getAttribute('data-phone-change') ? 'Смена номера' : 'Номер подтверждён');
+      };
+    });
+    const logoutBtn = panel.querySelector('#hgLogout');
+    if (logoutBtn) {
+      logoutBtn.onclick = () => {
+        if (!confirm('Выйти из аккаунта?')) return;
+        try {
+          localStorage.removeItem('asgard_token');
+          localStorage.removeItem('auth_token');
+        } catch (_) {}
+        location.href = '/';
       };
     }
-    panel.querySelector('#hgLogout').onclick = () => {
-      if (!confirm('Выйти из аккаунта?')) return;
-      try {
-        localStorage.removeItem('asgard_token');
-        localStorage.removeItem('auth_token');
-      } catch (_) {}
-      location.href = '/';
-    };
+    const editBtn = panel.querySelector('#hgSettingsEdit');
+    if (editBtn) {
+      editBtn.onclick = () => {
+        state.settingsProfileOpen = !state.settingsProfileOpen;
+        renderSettingsPanel(panel);
+      };
+    }
+    panel.querySelectorAll('[data-set]').forEach((btn) => {
+      btn.onclick = () => {
+        const set = btn.getAttribute('data-set') || '';
+        if (set === 'calls') { state.tab = 'phone'; state.mobileNav = 'calls'; renderPanel(); return; }
+        if (set === 'favorites') { state.tab = 'huginn'; state.mobileNav = 'chats'; state.folder = 'favorites'; renderPanel(); return; }
+        if (set === 'profile') { state.settingsProfileOpen = true; renderSettingsPanel(panel); return; }
+        showToast(btn.getAttribute('data-label') || set || 'Настройки');
+      };
+    });
   }
 
   function syncSendButton() {
@@ -2058,6 +2717,17 @@
     }
     const has = !!(input.value || '').trim() || !!state.pendingFile;
     const wasSend = send.classList.contains('is-send');
+    // Mimir mode: always show send icon, never mic
+    if (isMimirMode()) {
+      send.classList.add('is-send');
+      send.classList.remove('is-mic', 'is-recording');
+      send.classList.toggle('is-ready', has);
+      send.innerHTML = ICO.sendUp || ICO['arrow-up'] || ICO.send || '↑';
+      send.setAttribute('aria-label', 'Отправить');
+      send.title = 'Отправить';
+      if (has && !wasSend) { send.style.animation = 'none'; void send.offsetWidth; send.style.animation = ''; }
+      return;
+    }
     send.classList.toggle('is-send', has);
     send.classList.toggle('is-mic', !has);
     send.classList.toggle('is-ready', has);
@@ -2106,11 +2776,13 @@
     el.className = 'hg-attach-menu hg-glass';
     el.setAttribute('data-role', 'menu');
     el.setAttribute('role', 'menu');
+    const mimirAttach = isMimirMode();
     el.innerHTML = `
       <button type="button" data-kind="image" role="menuitem">${ICO.image}<span>Фото</span></button>
       <button type="button" data-kind="file" role="menuitem">${ICO.file}<span>Файл</span></button>
       <button type="button" data-kind="document" role="menuitem">${ICO.file}<span>Документ</span></button>
-      <button type="button" data-kind="voice" role="menuitem">${ICO.mic}<span>Голосовое</span></button>
+      ${mimirAttach ? '' : `<button type="button" data-kind="voice" role="menuitem">${ICO.mic}<span>Голосовое</span></button>`}
+      ${mimirAttach ? '' : `<button type="button" data-kind="circle" role="menuitem">${ICO.video || ICO.circle || '◎'}<span>Кружок</span></button>`}
     `;
     thread.appendChild(el);
     if (root) root.classList.add('is-composer-focus');
@@ -2119,6 +2791,7 @@
         const kind = btn.getAttribute('data-kind');
         el.remove();
         if (kind === 'voice') { recordMedia('voice'); return; }
+        if (kind === 'circle') { recordMedia('circle'); return; }
         const file = root.querySelector('#hgFile');
         if (kind === 'image') file.accept = 'image/*';
         else file.accept = '*/*';
@@ -2131,6 +2804,10 @@
     panel.querySelector('#hgBack').onclick = () => {
       state.chatId = null;
       state.replyTo = null;
+      if (state.isMimirThread || state.tab === 'mimir') {
+        state.isMimirThread = false;
+        state.tab = 'huginn';
+      }
       renderPanel();
     };
     const head = panel.querySelector('#hgThreadHead');
@@ -2186,11 +2863,7 @@
     }
     const profileBtn = panel.querySelector('#hgThreadProfile');
     if (profileBtn) {
-      profileBtn.onclick = () => {
-        /* Profile screen — open settings for now (no stub toast) */
-        state.tab = 'settings';
-        renderPanel();
-      };
+      profileBtn.onclick = () => { openChatProfile(); };
     }
     const replyClr = panel.querySelector('#hgReplyClear');
     if (replyClr) replyClr.onclick = () => setReplyTo(null);
@@ -2209,7 +2882,7 @@
         }
         sendText();
       } else {
-        recordMedia('voice');
+        if (!isMimirMode()) recordMedia('voice');
       }
     };
     const input = panel.querySelector('#hgInput');
@@ -2333,9 +3006,26 @@
     const stop = panel.querySelector('#hgRecStop');
     if (stop) stop.onclick = () => {
       if (state.recording && state.recording.rec && state.recording.rec.state === 'recording') {
+        state.recording.discard = false;
         state.recording.rec.stop();
       }
     };
+    const cancelRec = panel.querySelector('#hgRecCancel');
+    if (cancelRec) cancelRec.onclick = () => {
+      if (state.recording && state.recording.rec && state.recording.rec.state === 'recording') {
+        state.recording.discard = true;
+        state.recording.rec.stop();
+      }
+    };
+    const lockRec = panel.querySelector('#hgRecLock');
+    if (lockRec) lockRec.onclick = () => {
+      if (!state.recording) return;
+      state.recording.locked = !state.recording.locked;
+      lockRec.classList.toggle('is-on', !!state.recording.locked);
+      showToast(state.recording.locked ? 'Однократно' : 'Обычная запись');
+    };
+    const pauseRec = panel.querySelector('#hgRecPause');
+    if (pauseRec) pauseRec.onclick = () => showToast('Пауза');
     const aiBtn = panel.querySelector('#hgAiEditorBtn');
     if (aiBtn) aiBtn.onclick = () => openAiEditorSheet();
     syncSendButton();
@@ -2436,6 +3126,71 @@
     });
     const body = { text };
     if (reply && reply.id) body.reply_to_id = Number(reply.id);
+
+    // ── Mimir AI path ─────────────────────────────────────────────
+    if (isMimirMode()) {
+      // Show AI-is-thinking placeholder
+      const thinkingId = 'mimir-think-' + Date.now();
+      const thinkingMsg = {
+        id: thinkingId, user_id: 0, message: '…', message_type: 'text',
+        created_at: new Date().toISOString(), is_mimir_bot: true, user_name: 'Мимир', _thinking: true
+      };
+      state.messages.push(thinkingMsg);
+      const tBox = root && root.querySelector('.hg-msgs');
+      if (tBox) { renderMessagesIntoBox(); if (wasAtBottom) tBox.scrollTo({ top: tBox.scrollHeight, behavior: 'smooth' }); }
+
+      let data;
+      try {
+        data = await api('/api/chat-groups/' + state.chatId + '/mimir', { method: 'POST', body: { message: text } });
+      } catch (e) {
+        state.messages = state.messages.filter((m) => m.id !== thinkingId);
+        optimistic._failed = true;
+        optimistic.delivery_status = 'failed';
+        haptic('error');
+        renderMessagesIntoBox();
+        showToast(e.message || 'Ошибка связи с Мимиром');
+        return;
+      }
+
+      // Remove thinking bubble
+      state.messages = state.messages.filter((m) => m.id !== thinkingId);
+
+      if (data.user_message || data.mimir_message) {
+        state.messages = state.messages.filter((m) => m.id !== optimistic.id);
+        const userMsg = data.user_message;
+        const aiMsg = data.mimir_message;
+        if (userMsg && userMsg.id && !state.knownMsgIds.has(Number(userMsg.id))) {
+          state.knownMsgIds.add(Number(userMsg.id));
+          state.messages.push(Object.assign({}, userMsg, { delivery_status: 'delivered' }));
+        }
+        if (aiMsg) {
+          const normalized = Object.assign({}, aiMsg, {
+            is_mimir: true, is_mimir_bot: true, user_id: 0,
+            user_name: aiMsg.user_name || 'Мимир', delivery_status: 'delivered'
+          });
+          if (normalized.id && !state.knownMsgIds.has(Number(normalized.id))) {
+            state.knownMsgIds.add(Number(normalized.id));
+            state.messages.push(normalized);
+          }
+        }
+      } else if (data.error) {
+        optimistic._failed = true;
+        optimistic.delivery_status = 'failed';
+        haptic('error');
+        renderMessagesIntoBox();
+        showToast(data.error || 'Мимир не ответил');
+        return;
+      }
+
+      renderPanel();
+      requestAnimationFrame(() => {
+        const inp = root && root.querySelector('#hgInput');
+        if (inp) { inp.focus({ preventScroll: true }); if (root) root.classList.add('is-composer-focus'); }
+        if (wasAtBottom) { const box = root && root.querySelector('.hg-msgs'); if (box) box.scrollTo({ top: box.scrollHeight, behavior: 'smooth' }); }
+      });
+      return;
+    }
+    // ── Regular chat path ─────────────────────────────────────────
     const data = await api('/api/chat-groups/' + state.chatId + '/messages', {
       method: 'POST',
       body
@@ -2487,36 +3242,139 @@
     }
   }
 
+  function clearRecordingUi() {
+    document.querySelectorAll('.hg-circle-record').forEach((el) => el.remove());
+    if (state.recording && state.recording.timerId) {
+      try { clearInterval(state.recording.timerId); } catch (_) {}
+    }
+  }
+
+  function formatRecTimer(sec) {
+    const totalMs = Math.max(0, Math.floor(sec * 100));
+    const m = Math.floor(totalMs / 6000);
+    const s = Math.floor((totalMs % 6000) / 100);
+    const cs = totalMs % 100;
+    return m + ':' + String(s).padStart(2, '0') + ',' + String(cs).padStart(2, '0');
+  }
+
+  function mountCircleOverlay(stream, onCancel, onSend) {
+    document.querySelectorAll('.hg-circle-record').forEach((el) => el.remove());
+    const overlay = document.createElement('div');
+    overlay.className = 'hg-circle-record';
+    overlay.setAttribute('data-role', 'circle-record');
+    overlay.innerHTML = `
+      <div class="hg-circle-stage">
+        <video class="hg-circle-preview" playsinline muted autoplay></video>
+        <div class="hg-circle-fallback" aria-hidden="true"></div>
+      </div>
+      <div class="hg-circle-chrome">
+        <div class="hg-circle-bar">
+          <button type="button" class="hg-circle-flip" id="hgCircleFlip" aria-label="Камера">↻</button>
+          <button type="button" class="hg-circle-flash" id="hgCircleFlash" aria-label="Вспышка">⚡</button>
+          <div class="hg-circle-mid">
+            <span class="hg-rec-dot"></span>
+            <span class="hg-rec-timer" id="hgCircleTimer">0:00,00</span>
+            <button type="button" class="hg-circle-cancel" id="hgCircleCancel">Отмена</button>
+          </div>
+        </div>
+        <div class="hg-circle-side">
+          <button type="button" class="hg-rec-once" aria-label="1">1</button>
+          <button type="button" class="hg-rec-pause" aria-label="Пауза">⏸</button>
+          <button type="button" class="hg-circle-send" id="hgCircleSend" aria-label="Отправить">${ICO.sendUp || ICO['arrow-up'] || '↑'}</button>
+        </div>
+      </div>`;
+    document.body.appendChild(overlay);
+    const video = overlay.querySelector('video');
+    if (video && stream) {
+      video.srcObject = stream;
+      try { video.play(); } catch (_) {}
+      overlay.classList.add('has-stream');
+    }
+    overlay.querySelector('#hgCircleCancel').onclick = () => onCancel && onCancel();
+    overlay.querySelector('#hgCircleSend').onclick = () => onSend && onSend();
+    return overlay;
+  }
+
   async function recordMedia(kind) {
     try {
+      clearRecordingUi();
       const stream = await navigator.mediaDevices.getUserMedia(
-        kind === 'circle' ? { audio: true, video: true } : { audio: true }
+        kind === 'circle' ? { audio: true, video: { facingMode: 'user' } } : { audio: true }
       );
       const mime = kind === 'circle'
         ? (MediaRecorder.isTypeSupported('video/webm;codecs=vp9,opus') ? 'video/webm;codecs=vp9,opus' : 'video/webm')
         : (MediaRecorder.isTypeSupported('audio/webm;codecs=opus') ? 'audio/webm;codecs=opus' : 'audio/webm');
       const rec = new MediaRecorder(stream, { mimeType: mime });
       const chunks = [];
+      let cancelled = false;
+      let startedAt = Date.now();
       rec.ondataavailable = (e) => { if (e.data.size) chunks.push(e.data); };
       rec.onstop = async () => {
         stream.getTracks().forEach((t) => t.stop());
+        clearRecordingUi();
+        document.body.classList.remove('hg-circle-recording');
+        const was = state.recording;
+        const discard = cancelled || !!(was && was.discard);
         state.recording = null;
         setRecordingChrome(false);
+        renderPanel();
+        if (was && was.timerId) {
+          try { clearInterval(was.timerId); } catch (_) {}
+        }
+        if (discard || !chunks.length) return;
         const blob = new Blob(chunks, { type: mime });
         const file = new File([blob], kind === 'circle' ? 'circle.webm' : 'voice.webm', { type: mime });
         await uploadSelected(file, kind === 'circle' ? 'circle' : 'voice');
       };
-      rec.start();
+      const stopRec = (asCancel) => {
+        cancelled = !!asCancel;
+        if (state.recording) state.recording.discard = cancelled;
+        if (rec.state === 'recording') {
+          try { rec.stop(); } catch (_) {}
+        } else {
+          stream.getTracks().forEach((t) => t.stop());
+          clearRecordingUi();
+          document.body.classList.remove('hg-circle-recording');
+          state.recording = null;
+          setRecordingChrome(false);
+          renderPanel();
+        }
+      };
+      rec.start(250);
+      const timerId = setInterval(() => {
+        if (!state.recording) return;
+        const sec = (Date.now() - startedAt) / 1000;
+        state.recording.elapsed = sec;
+        state.recording.timerText = formatRecTimer(sec);
+        const tEl = document.querySelector('#hgRecTimer, #hgCircleTimer');
+        if (tEl) tEl.textContent = state.recording.timerText;
+      }, 200);
       state.recording = {
         rec,
-        label: kind === 'circle' ? 'Запись кружка…' : 'Запись голоса…'
+        kind,
+        locked: false,
+        label: kind === 'circle' ? 'Запись кружка…' : 'Запись голоса…',
+        timerText: '0:00',
+        elapsed: 0,
+        timerId,
+        cancel: () => stopRec(true),
+        send: () => stopRec(false)
       };
       setRecordingChrome(true);
-      renderPanel();
-      setTimeout(() => { if (rec.state === 'recording') rec.stop(); }, kind === 'circle' ? 15000 : 60000);
+      if (kind === 'circle') {
+        mountCircleOverlay(stream, () => stopRec(true), () => stopRec(false));
+        document.body.classList.add('hg-circle-recording');
+      } else {
+        renderPanel();
+      }
+      setTimeout(() => {
+        if (state.recording && state.recording.rec === rec && rec.state === 'recording') stopRec(false);
+      }, kind === 'circle' ? 15000 : 60000);
     } catch (e) {
+      clearRecordingUi();
       state.recording = null;
       setRecordingChrome(false);
+      document.body.classList.remove('hg-circle-recording');
       alert('Нет доступа к микрофону/камере: ' + e.message);
     }
   }
@@ -2571,7 +3429,7 @@
 
   function clearFloats() {
     if (!root) return;
-    root.querySelectorAll('.hg-float, .hg-sheet, .hg-attach-menu').forEach((el) => el.remove());
+    root.querySelectorAll('.hg-float, .hg-sheet, .hg-attach-menu, .hg-compose-sheet, .hg-chat-profile, .hg-ai-sheet').forEach((el) => el.remove());
     const smile = root.querySelector('#hgStickers');
     if (smile) smile.classList.remove('is-open');
   }
@@ -2719,7 +3577,14 @@
       style: ICO.wand || ICO.sparkles || '✨',
       grammar: ICO.check || ICO['check-circle'] || '✓'
     };
-    const presetHtml = (styles.presets || []).map((s) =>
+    const genBtn = `<button type="button" class="hg-ai-style" data-style="clarify"><span class="hg-ai-style-ico">💬</span><span>Генерация</span></button>`;
+    const createBtn = `<button type="button" class="hg-ai-style" data-new-style="1"><span class="hg-ai-style-ico">✨</span><span>Создать</span></button>`;
+    const presetOrder = ['formal', 'viking', 'short', 'tribal', 'corp', 'zen', 'biblical', 'friendly', 'clarify'];
+    const presets = styles.presets || [];
+    const byId = Object.fromEntries(presets.map((s) => [s.id, s]));
+    const ordered = presetOrder.map((id) => byId[id]).filter(Boolean)
+      .concat(presets.filter((s) => !presetOrder.includes(s.id)));
+    const presetHtml = ordered.map((s) =>
       `<button type="button" class="hg-ai-style" data-style="${esc(s.id)}"><span class="hg-ai-style-ico">${esc(s.icon_emoji || '✦')}</span><span>${esc(s.name)}</span></button>`
     ).join('');
     const customHtml = (styles.custom || []).map((s) =>
@@ -2727,36 +3592,40 @@
     ).join('');
     el.innerHTML = `
       <div class="hg-ai-sheet-head">
-        <button type="button" class="hg-ai-close" aria-label="Закрыть">${ICO.close || '✕'}</button>
+        <button type="button" class="hg-ai-close hg-ai-close--circle" aria-label="Закрыть"><span aria-hidden="true">✕</span></button>
         <strong>ИИ-редактор</strong>
-        <span class="hg-ai-info" title="Обработка на сервере CRM, тексты не используются для обучения моделей">ⓘ</span>
+        <span class="hg-ai-info hg-ai-close--circle" title="Обработка на сервере CRM, тексты не используются для обучения моделей">ⓘ</span>
       </div>
       <div class="hg-ai-tabs" role="tablist">
-        <button type="button" class="hg-ai-tab is-active" data-tab="translate"><span class="hg-ai-tab-ico">${tabIco.translate}</span><span>Перевод</span></button>
-        <button type="button" class="hg-ai-tab" data-tab="style"><span class="hg-ai-tab-ico">${tabIco.style}</span><span>Стилизация</span></button>
+        <button type="button" class="hg-ai-tab" data-tab="translate"><span class="hg-ai-tab-ico">${tabIco.translate}</span><span>Перевод</span></button>
+        <button type="button" class="hg-ai-tab is-active" data-tab="style"><span class="hg-ai-tab-ico">${tabIco.style}</span><span>Стилизация</span></button>
         <button type="button" class="hg-ai-tab" data-tab="grammar"><span class="hg-ai-tab-ico">${tabIco.grammar}</span><span>Исправление</span></button>
       </div>
       <div class="hg-ai-body">
-        <div class="hg-ai-pane" data-pane="translate">
-          <div class="hg-ai-label">Оригинал: русский</div>
-          <div class="hg-ai-orig">${esc(original)}</div>
-          <label class="hg-ai-label">Перевод: <select id="hgAiLang"><option value="английский">английский</option><option value="немецкий">немецкий</option><option value="китайский">китайский</option></select></label>
-        </div>
-        <div class="hg-ai-pane" data-pane="style" hidden>
-          <div class="hg-ai-styles">${presetHtml}${customHtml}
-            <button type="button" class="hg-ai-style" data-new-style="1"><span class="hg-ai-style-ico">✨</span><span>Создать</span></button>
+        <div class="hg-ai-pane" data-pane="translate" hidden>
+          <div class="hg-ai-label-row"><span>Оригинал: русский</span>
+            <button type="button" class="hg-ai-link" data-expand-orig="1">развернуть</button>
           </div>
+          <div class="hg-ai-orig">${esc(original)}</div>
+          <label class="hg-ai-label hg-ai-lang-row">Перевод
+            <select id="hgAiLang" class="hg-ai-lang"><option value="английский">английский</option><option value="немецкий">немецкий</option><option value="китайский">китайский</option></select>
+          </label>
+        </div>
+        <div class="hg-ai-pane" data-pane="style">
+          <div class="hg-ai-styles">${genBtn}${createBtn}${presetHtml}${customHtml}</div>
+          <input type="text" class="hg-ai-field hg-ai-field--pill" id="hgAiStylePrompt" placeholder="Генерация текста, формул, таблиц…" maxlength="500" readonly value="">
         </div>
         <div class="hg-ai-pane" data-pane="grammar" hidden>
-          <div class="hg-ai-label">Оригинал</div>
+          <div class="hg-ai-label-row"><span>Оригинал</span>
+            <button type="button" class="hg-ai-link" data-expand-orig="1">развернуть</button>
+          </div>
           <div class="hg-ai-orig">${esc(original)}</div>
         </div>
         <div class="hg-ai-result-box">
           <div class="hg-ai-label-row"><span>Результат</span>
             <div class="hg-ai-result-tools">
-              <label class="hg-ai-emoji-tog"><input type="checkbox" id="hgAiEmoji"> Эмодзи</label>
-              <button type="button" class="hg-ai-tool-btn" id="hgAiCopy" title="Копировать" aria-label="Копировать">${ICO.copy || '⧉'}</button>
-              <button type="button" class="hg-ai-tool-btn" id="hgAiExpand" title="Развернуть" aria-label="Развернуть">${ICO.maximize || ICO.expand || '⤢'}</button>
+              <label class="hg-ai-emoji-tog hg-ai-emoji-radio"><input type="checkbox" id="hgAiEmoji"> <span class="hg-ai-radio"></span> Эмодзи</label>
+              <button type="button" class="hg-ai-tool-btn" id="hgAiCopy" title="Копировать" aria-label="Копировать"><span aria-hidden="true">⧉</span></button>
             </div>
           </div>
           <div class="hg-ai-result" id="hgAiResult"></div>
@@ -2764,14 +3633,14 @@
         </div>
       </div>
       <div class="hg-ai-actions">
-        <button type="button" class="hg-ai-primary" id="hgAiRun">Сгенерировать</button>
-        <button type="button" class="hg-ai-round" id="hgAiRefresh" title="Повторить" aria-label="Повторить" hidden>${ICO.refresh || ICO.rotate || '↻'}</button>
-        <button type="button" class="hg-ai-primary" id="hgAiApply" hidden>Применить</button>
+        <button type="button" class="hg-ai-primary hg-ai-primary--pill" id="hgAiRun">Сгенерировать</button>
+        <button type="button" class="hg-ai-round" id="hgAiRefresh" title="Повторить" aria-label="Повторить">${ICO.refresh || ICO.rotate || '↻'}</button>
+        <button type="button" class="hg-ai-primary hg-ai-primary--pill" id="hgAiApply" hidden>Применить</button>
         <button type="button" class="hg-ai-round" id="hgAiSend" hidden title="Отправить">${ICO.send || '➤'}</button>
       </div>`;
     const thread = root.querySelector('.hg-thread') || root;
     thread.appendChild(el);
-    let tab = 'translate';
+    let tab = 'style';
     let styleId = 'formal';
     let lastOut = '';
     const setTab = (t) => {
@@ -2806,7 +3675,11 @@
     const resultEl = el.querySelector('#hgAiResult');
     const errEl = el.querySelector('#hgAiError');
     const copyBtn = el.querySelector('#hgAiCopy');
-    const expandBtn = el.querySelector('#hgAiExpand');
+    el.querySelectorAll('[data-expand-orig]').forEach((b) => {
+      b.onclick = () => {
+        el.querySelectorAll('.hg-ai-orig').forEach((o) => o.classList.toggle('is-expanded'));
+      };
+    });
     const runRewrite = async () => {
       runBtn.disabled = true;
       if (refreshBtn) refreshBtn.disabled = true;
@@ -2826,11 +3699,18 @@
         }
         lastOut = data.text || '';
         resultEl.textContent = lastOut;
-        applyBtn.hidden = !lastOut;
-        sendBtn.hidden = !lastOut;
-        if (refreshBtn) refreshBtn.hidden = !lastOut;
-        runBtn.textContent = 'Сгенерировать';
-        runBtn.hidden = !!lastOut;
+        /* After result: Применить (primary) + round send; refresh stays for retry */
+        if (lastOut) {
+          runBtn.hidden = true;
+          applyBtn.hidden = false;
+          sendBtn.hidden = false;
+          if (refreshBtn) refreshBtn.hidden = true;
+        } else {
+          runBtn.hidden = false;
+          applyBtn.hidden = true;
+          sendBtn.hidden = true;
+          if (refreshBtn) refreshBtn.hidden = false;
+        }
       } catch (e) {
         lastOut = '';
         resultEl.textContent = '';
@@ -2864,11 +3744,6 @@
         }
       };
     }
-    if (expandBtn) {
-      expandBtn.onclick = () => {
-        el.classList.toggle('is-expanded');
-      };
-    }
     applyBtn.onclick = () => {
       if (!input || !lastOut) return;
       input.value = lastOut;
@@ -2894,24 +3769,21 @@
     el.setAttribute('aria-label', 'Новый стиль');
     el.innerHTML = `
       <div class="hg-ai-sheet-head">
-        <button type="button" class="hg-ai-close" aria-label="Закрыть">${ICO.close || '✕'}</button>
+        <button type="button" class="hg-ai-close hg-ai-close--circle" aria-label="Закрыть"><span aria-hidden="true">✕</span></button>
         <strong>Новый стиль</strong>
         <span style="width:36px"></span>
       </div>
-      <div class="hg-ai-body">
-        <div class="hg-ai-style-avatar" aria-hidden="true">+</div>
-        <label class="hg-ai-label">Название
-          <input type="text" class="hg-ai-field" id="hgNewStyleName" placeholder="Название стиля…" maxlength="64">
-        </label>
-        <label class="hg-ai-label">Инструкция
-          <textarea class="hg-ai-field hg-ai-field-area" id="hgNewStylePrompt" placeholder="Как переписывать текст…" rows="4" maxlength="4000"></textarea>
-        </label>
-        <label class="hg-ai-emoji-tog hg-ai-profile-tog">
-          <input type="checkbox" id="hgNewStylePublic"> Со ссылкой на мой профиль
-        </label>
+      <div class="hg-ai-body hg-ai-body--new-style">
+        <div class="hg-ai-style-avatar" aria-hidden="true"><span class="hg-ai-style-face">☺+</span></div>
+        <input type="text" class="hg-ai-field hg-ai-field--pill" id="hgNewStyleName" placeholder="Название стиля (например, «Pirate»)" maxlength="64">
+        <textarea class="hg-ai-field hg-ai-field-area hg-ai-field--pill" id="hgNewStylePrompt" placeholder="Инструкция (например: «Пиши как лихой пират. Используй слова «йо-хо-хо», «полундра», «приятель» и говори о сокровищах и море»)" rows="4" maxlength="4000"></textarea>
       </div>
-      <div class="hg-ai-actions">
-        <button type="button" class="hg-ai-primary" id="hgNewStyleCreate">Создать</button>
+      <div class="hg-ai-actions hg-ai-actions--stack">
+        <label class="hg-ai-emoji-tog hg-ai-profile-tog hg-ai-emoji-radio" id="hgNewStylePublicRow">
+          <input type="checkbox" id="hgNewStylePublic"> <span class="hg-ai-radio" aria-hidden="true"></span>
+          <span>Со ссылкой на мой профиль</span>
+        </label>
+        <button type="button" class="hg-ai-primary hg-ai-primary--pill" id="hgNewStyleCreate">Создать</button>
       </div>`;
     const host = root.querySelector('.hg-thread') || root;
     host.appendChild(el);
@@ -3079,6 +3951,7 @@
   function closeChat() {
     state.chatId = null;
     state.messages = [];
+    state.settingsProfileOpen = false;
     renderPanel();
   }
 
@@ -3119,7 +3992,81 @@
         renderPanel();
       },
       rerender: () => renderPanel(),
-      syncBadge: () => syncRailBadge()
+      syncBadge: () => syncRailBadge(),
+      /** Visual-only record chrome for capture (no MediaRecorder). */
+      showRecChrome: (kind = 'voice') => {
+        state.recording = {
+          kind,
+          locked: kind === 'voice',
+          label: kind === 'circle' ? 'Запись кружка…' : 'Запись голоса…',
+          timerText: kind === 'circle' ? '0:00,00' : '0:02,02',
+          elapsed: kind === 'circle' ? 0 : 2.02,
+          discard: false,
+          rec: { state: 'recording', stop() {} },
+          cancel: () => {},
+          send: () => {}
+        };
+        setRecordingChrome(true);
+        if (kind === 'circle') {
+          mountCircleOverlay(null, () => {}, () => {});
+          document.body.classList.add('hg-circle-recording');
+        } else {
+          renderPanel();
+        }
+      },
+      clearRecChrome: () => {
+        clearRecordingUi();
+        document.body.classList.remove('hg-circle-recording');
+        state.recording = null;
+        setRecordingChrome(false);
+        renderPanel();
+      },
+      /** Visual-only outgoing voice bubble for S07 capture. */
+      showVoiceDemo: () => {
+        const box = root && root.querySelector('.hg-msgs');
+        if (!box) return;
+        box.querySelectorAll('.hg-capture-voice').forEach((el) => el.remove());
+        box.querySelectorAll('.hg-bubble').forEach((b) => { b.setAttribute('data-cap-hide', '1'); b.style.display = 'none'; });
+        const pauseIco = ICO.pause || '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></svg>';
+        const el = document.createElement('div');
+        el.className = 'hg-bubble me voice hg-capture-voice';
+        el.setAttribute('data-mid', 'capture-voice');
+        el.innerHTML = `<div class="hg-voice is-paused" data-voice-src="">
+          <button type="button" class="hg-voice-play" aria-label="Пауза">${pauseIco}</button>
+          <div class="hg-voice-wave" aria-hidden="true">${voiceWaveBars(11, { count: 52, played: 0.7 })}</div>
+          <span class="hg-voice-dur">0:11</span>
+        </div>
+        <span class="hg-meta"><span class="hg-time">21:09</span><span class="hg-ticks is-read">✓✓</span></span>`;
+        box.appendChild(el);
+        el.scrollIntoView({ block: 'center' });
+        const ta = root.querySelector('#hgInput');
+        if (ta) { ta.value = ''; ta.dispatchEvent(new Event('input', { bubbles: true })); }
+      },
+      clearVoiceDemo: () => {
+        const box = root && root.querySelector('.hg-msgs');
+        if (!box) return;
+        box.querySelectorAll('.hg-capture-voice').forEach((el) => el.remove());
+        box.querySelectorAll('.hg-bubble[data-cap-hide]').forEach((b) => {
+          b.removeAttribute('data-cap-hide');
+          b.style.display = '';
+        });
+      },
+      setConnecting: (on) => setConnecting(!!on),
+      setListEdit: (on) => {
+        state.listEditMode = !!on;
+        if (!on) state.selectedChatIds = new Set();
+        else if (!state.selectedChatIds.size && state.chats[0]) {
+          state.selectedChatIds = new Set([Number(state.chats[0].id)]);
+        }
+        try { document.body.classList.toggle('hg-list-edit', !!on); } catch (_) {}
+        renderPanel();
+      },
+      setReplyDemo: () => {
+        const msg = state.messages.find((m) => (m.message || m.text)) || {
+          id: 'cap-reply', user_id: 0, user_name: 'Коллега', message: 'Исходное сообщение для ответа'
+        };
+        setReplyTo(msg);
+      }
     }
   };
 

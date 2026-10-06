@@ -350,7 +350,7 @@ console.log('[ASGARD] Global period functions loaded');
     {r:"/pm-balance",l:"Баланс подотчётников",d:"Наличные на руках",roles:["ADMIN","BUH",...DIRECTOR_ROLES],i:"money",p:"pm_balance",g:"personnel"},
 
     // ── КОММУНИКАЦИИ ──
-    {r:"/messenger",l:"Хугинн",d:"Вороний Вестник — чаты",roles:ALL_ROLES,i:"correspondence",p:"chat_groups",g:"comm"},
+    // «Хугинн» убран из левого меню — доступ через правый rail dock; deep-link /messenger остаётся
     {r:"/meetings",l:"Совещания",d:"Планирование и протоколы",roles:ALL_ROLES,i:"schedule",p:"meetings",g:"comm"},
     {r:"/ting",l:"Тинг",d:"Видеосовещания LiveKit",roles:ALL_ROLES,i:"schedule",p:"ting",g:"comm"},
     {r:"/alerts",l:"Уведомления",d:"Воронья почта",roles:ALL_ROLES,i:"alerts",p:"alerts",g:"comm"},
@@ -810,6 +810,35 @@ try{
         const D = window.HuginnDock;
         if (D && typeof D.isUsable === 'function' && D.isUsable() && typeof D.open === 'function') {
           try { D.open('phone'); } catch (_) {}
+        }
+      });
+    });
+    // Deep-links старого мессенджера / Мимира → только правый Huginn dock
+    $$('.navitem[href="#/messenger"], .navitem[href="#/chat"], .navitem[href="#/chat-groups"], .m-tab[href="#/chat"], .m-tab[href="#/messenger"]').forEach((a) => {
+      if (a.dataset.huginnDockBound) return;
+      a.dataset.huginnDockBound = '1';
+      a.addEventListener('click', (ev) => {
+        const D = window.HuginnDock;
+        if (D && typeof D.open === 'function') {
+          ev.preventDefault();
+          try {
+            if (typeof D.mount === 'function') D.mount();
+            D.open('huginn');
+          } catch (_) {}
+        }
+      });
+    });
+    $$('.navitem[href="#/mimir"]').forEach((a) => {
+      if (a.dataset.mimirDockBound) return;
+      a.dataset.mimirDockBound = '1';
+      a.addEventListener('click', (ev) => {
+        const D = window.HuginnDock;
+        if (D && typeof D.open === 'function') {
+          ev.preventDefault();
+          try {
+            if (typeof D.mount === 'function') D.mount();
+            D.open('mimir');
+          } catch (_) {}
         }
       });
     });
@@ -2310,7 +2339,6 @@ var _setupPinKeypad = null;
     AsgardRouter.add("/telegram", ()=>AsgardTelegram.renderSettings({layout, title:"Telegram"}), {auth:true, roles:["ADMIN"]});
     AsgardRouter.add("/sync", ()=>AsgardSync.renderSettings({layout, title:"PostgreSQL Sync"}), {auth:true, roles:["ADMIN"]});
     AsgardRouter.add("/mango", ()=>AsgardMango.renderSettings({layout, title:"Телефония"}), {auth:true, roles:["ADMIN"]});
-    AsgardRouter.add("/chat", ()=>{ location.hash = '#/messenger'; }, {auth:true, roles:ALL_ROLES});
     AsgardRouter.add("/my-dashboard", () => {
       location.hash = "#/home";
     }, {auth:true, roles:["ADMIN","PM","TO","HR","OFFICE_MANAGER","BUH",...DIRECTOR_ROLES,...HEAD_ROLES]});
@@ -2471,16 +2499,35 @@ AsgardRouter.add("/assembly", () => {
       await AsgardKanban.render({layout});
     }, {auth:true, roles:ALL_ROLES});
 
-    // Unified Messenger (both direct + group chats)
+    // Unified Messenger → только правый Huginn dock (левый AsgardChatGroups больше не открываем)
+    const openHuginnRoute = (tab) => {
+      const D = window.HuginnDock;
+      if (!D) return false;
+      try {
+        if (typeof D.mount === 'function') D.mount();
+        if (typeof D.open === 'function') D.open(tab || 'huginn');
+        return true;
+      } catch (_) {
+        return false;
+      }
+    };
     AsgardRouter.add("/messenger", async ()=>{
-      await AsgardChatGroups.render({layout});
+      openHuginnRoute('huginn');
+      const auth = await AsgardAuth.requireUser();
+      await layout({
+        title: 'Хугинн',
+        user: auth && auth.user,
+        body: '<div class="card" style="padding:20px;opacity:.75">Мессенджер открыт в правой панели Хугинн.</div>'
+      });
     }, {auth:true, roles:ALL_ROLES});
     // Backward compatibility aliases
     AsgardRouter.add("/chat-groups", async ()=>{
-      location.hash = '#/messenger';
+      openHuginnRoute('huginn');
+      location.replace('#/home');
     }, {auth:true, roles:ALL_ROLES});
     AsgardRouter.add("/chat", async ()=>{
-      location.hash = '#/messenger';
+      openHuginnRoute('huginn');
+      location.replace('#/home');
     }, {auth:true, roles:ALL_ROLES});
 
     AsgardRouter.add("/meetings", async ()=>{
@@ -2525,7 +2572,8 @@ AsgardRouter.add("/assembly", () => {
     // Фаза 10: Интеграции (Банк/1С, Площадки, ERP)
     AsgardRouter.add("/integrations", ()=>AsgardIntegrationsPage.render({layout, title:"Интеграции"}), {auth:true, roles:["ADMIN","BUH","DIRECTOR_GEN","DIRECTOR_COMM","DIRECTOR_DEV","HEAD_TO","TO"]});
     AsgardRouter.add("/mimir", async ()=>{
-      location.hash = "#/home";
+      openHuginnRoute('mimir');
+      location.replace('#/home');
     }, {auth:true, roles:ALL_ROLES});
 
     // Mobile "More" screen — new m-* design
