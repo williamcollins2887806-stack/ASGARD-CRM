@@ -93,11 +93,18 @@
   function toggleSimple(){
     const current = get();
     const html = document.documentElement;
-    // Add transition class for smooth animation
-    html.classList.add('theme-transitioning');
+    /* Перекраска CRM с анимацией ВСЕГО (12k+ dom-узлов) блокирует main thread:
+       замер на клоне — первый кадр 6.8с, полная перекраска 10.8с. Поэтому:
+       1) цветовые переходы — только на html/body (дешёвый слой), не на *;
+       2) на время переключения глушим остальные transition (иначе «полу-тема»
+          на 1-1.5с: часть элементов меняет цвет мгновенно, часть — плавно). */
+    if (!matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      html.classList.add('theme-transitioning');
+    }
     const result = apply(current === "light" ? "dark" : "light");
-    // Remove transition class after animation completes
-    setTimeout(function(){ html.classList.remove('theme-transitioning'); }, 500);
+    // Снять класс СРАЗУ после перекраски: rule `html.theme-transitioning *`
+    // держать нельзя (дорого), достаточно плавности на корне.
+    html.classList.remove('theme-transitioning');
     return result;
   }
 

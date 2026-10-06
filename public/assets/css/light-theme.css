@@ -264,16 +264,15 @@
    §1. SMOOTH TRANSITION
    ═══════════════════════════════════════════════════════════════════════════════ */
 html.theme-transitioning,
+html.theme-transitioning body {
+  transition: background-color 0.28s ease, color 0.22s ease, border-color 0.22s ease !important;
+}
+/* Кроме корня НИЧЕГО не анимируем: путь `*` на 12k узлов блокирует main thread
+   (замер: первый кадр 6.8с, полный settle 10.8с). */
 html.theme-transitioning *,
 html.theme-transitioning *::before,
 html.theme-transitioning *::after {
-  transition:
-    background-color 0.38s ease,
-    color 0.28s ease,
-    border-color 0.28s ease,
-    box-shadow 0.28s ease,
-    fill 0.28s ease,
-    stroke 0.28s ease !important;
+  transition: none !important;
 }
 
 
@@ -6168,3 +6167,33 @@ html[data-theme="light"] .pk3-col-sum .pk3-money {
   content: none !important;
   display: none !important;
 }
+
+/* P13b — sidenav = wall (same as body --bg1), not a panel */
+html[data-theme="light"] .sidenav {
+  background: var(--bg1, #F4EFE6) !important;
+  background-image: none !important;
+  border-right: none !important;
+  box-shadow: none !important;
+}
+
+/* P13c — light: .main card --bg2, nested widgets --bg3 */
+html[data-theme="light"] .main,
+html[data-theme="light"] .asg-main-wrap {
+  background: var(--bg2, #FDFAF5) !important;
+}
+html[data-theme="light"] .main .card,
+html[data-theme="light"] .main .panel,
+html[data-theme="light"] .main .widget,
+html[data-theme="light"] .main .dash-widget-v2 {
+  background: var(--bg3, #EDE8DC) !important;
+}
+html[data-theme="light"] .main .card:hover,
+html[data-theme="light"] .main .panel:hover,
+html[data-theme="light"] .main .widget:hover,
+html[data-theme="light"] .main .dash-widget-v2:hover {
+  background: var(--bg4, #E3DCCE) !important;
+}
+
+/* Sidebar footer: роль читаема (был gold на #E3DCCE = 2.4:1) */
+html[data-theme="light"] .sidefoot .pill .role,
+html[data-theme="light"] .sidefoot .role { color: var(--t2) !important; }

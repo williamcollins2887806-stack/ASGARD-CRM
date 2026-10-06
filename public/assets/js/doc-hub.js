@@ -1630,6 +1630,16 @@ window.AsgardDocHubPage = (function () {
       d.classList.remove('is-on');
       d.setAttribute('aria-hidden', 'true');
       d.innerHTML = '';
+      /* Drawer порталится в <body> — иначе .sidenav (z-index 300+) перекрывает
+         его внутри stacking-context #layout{z-index:1}. Возвращаем на место. */
+      if (d.dataset.portaled === '1') {
+        const home = document.querySelector('.dh-app--embedded');
+        if (home) {
+          home.appendChild(d);
+          d.classList.remove('dh-drawer--portal');
+          delete d.dataset.portaled;
+        }
+      }
     }
     if (ov) {
       ov.hidden = true;
@@ -1697,6 +1707,18 @@ window.AsgardDocHubPage = (function () {
       const d = document.getElementById('dhDrawer');
       const ov = document.getElementById('dhOverlay');
       if (!d) return;
+      /* Portal overlay+drawer to <body>: #layout creates a stacking context
+         (z-index:1), so .sidenav (z-index 300+) painted over the drawer.
+         Portal keeps drawer above sidebar while staying below Huginn dock (1200). */
+      if (ov && ov.parentElement !== document.body) {
+        document.body.appendChild(ov);
+        ov.classList.add('dh-overlay--portal');
+      }
+      if (d.parentElement !== document.body) {
+        document.body.appendChild(d);
+        d.classList.add('dh-drawer--portal');
+        d.dataset.portaled = '1';
+      }
       d.hidden = false;
       d.classList.add('is-on');
       d.setAttribute('aria-hidden', 'false');

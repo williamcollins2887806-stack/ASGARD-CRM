@@ -2744,10 +2744,13 @@ AsgardRouter.add("/assembly", () => {
       const btnThemeMob = document.getElementById('btnThemeMob');
       if (btnThemeMob) {
         btnThemeMob.addEventListener('click', () => {
+          /* Единый путь: AsgardTheme (ключ asgard_theme + событие asgard:theme).
+             Раньше здесь писался чужой ключ asg_theme и не слалось событие —
+             из-за этого «часть UI светлая, часть тёмная». */
+          if (window.AsgardTheme) { AsgardTheme.toggleSimple(); return; }
           const html = document.documentElement;
           const curTheme = html.getAttribute('data-theme');
           html.setAttribute('data-theme', curTheme === 'light' ? 'dark' : 'light');
-          localStorage.setItem('asg_theme', curTheme === 'light' ? 'dark' : 'light');
         });
       }
 

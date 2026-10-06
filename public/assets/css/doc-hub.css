@@ -1224,11 +1224,13 @@ a:hover { text-decoration: underline; }
 .dh-modal__card { background: var(--panel, #0f172a); border: 1px solid var(--line, #334155); border-radius: 14px; max-width: 640px; width: 100%; max-height: 90vh; overflow: auto; padding: 20px; }
 
 /* Embedded drawer: keep flex column from base .dh-drawer; offset under Huginn */
-.dh-app--embedded .dh-overlay {
+.dh-app--embedded .dh-overlay,
+.dh-overlay--portal {
   z-index: 10990;
   background: rgba(0, 0, 0, 0.35);
 }
-.dh-app--embedded .dh-drawer {
+.dh-app--embedded .dh-drawer,
+.dh-drawer--portal {
   right: calc(var(--hg-rail-w, 56px) + 24px);
   width: min(520px, calc(100vw - var(--hg-rail-w, 56px) - 48px));
   height: 100vh;
@@ -1245,18 +1247,21 @@ body.hg-dock-open .dh-app--embedded .dh-drawer {
 body.hg-dock-collapsed .dh-app--embedded .dh-drawer {
   right: calc(var(--hg-rail-w, 56px) + 24px);
 }
-.dh-app--embedded .dh-drawer__card {
+.dh-app--embedded .dh-drawer__card,
+.dh-drawer--portal .dh-drawer__card {
   min-height: 100%;
   height: 100%;
   display: flex;
   flex-direction: column;
 }
-.dh-app--embedded .dh-drawer__body {
+.dh-app--embedded .dh-drawer__body,
+.dh-drawer--portal .dh-drawer__body {
   flex: 1 1 auto;
   overflow: auto;
   min-height: 0;
 }
-.dh-app--embedded .dh-drawer__foot {
+.dh-app--embedded .dh-drawer__foot,
+.dh-drawer--portal .dh-drawer__foot {
   position: relative;
   flex: 0 0 auto;
   margin-top: 0;
@@ -2168,25 +2173,36 @@ body.hg-dock-open .dh-hscroll-bar {
 .dh-drawer textarea { resize: vertical; min-height: 72px; }
 
 /* ── Drawer: correct embedded layout (body scroll, foot fixed) ── */
-.dh-app--embedded .dh-drawer {
+.dh-app--embedded .dh-drawer,
+.dh-drawer--portal {
   display: flex;
   flex-direction: column;
   overflow: hidden;
 }
-.dh-app--embedded .dh-drawer__card {
+.dh-app--embedded .dh-drawer__card,
+.dh-drawer--portal .dh-drawer__card {
   display: flex;
   flex-direction: column;
   height: 100%;
   min-height: 0;
   overflow: hidden;
 }
-.dh-app--embedded .dh-drawer__body {
+.dh-app--embedded .dh-drawer__body,
+.dh-drawer--portal .dh-drawer__body {
   flex: 1 1 auto;
   overflow-y: auto;
   min-height: 0;
   padding-bottom: 16px;
 }
-.dh-app--embedded .dh-drawer__foot {
+/* КРИТИЧНО: body — flex-column. Без flex-shrink:0 секции сжимаются в полоски
+   (overflow:hidden у .dh-section обнуляет min-height:auto → контент обрезан). */
+.dh-app--embedded .dh-drawer__body > *,
+.dh-drawer--portal .dh-drawer__body > * {
+  flex: 0 0 auto;
+  min-height: 0;
+}
+.dh-app--embedded .dh-drawer__foot,
+.dh-drawer--portal .dh-drawer__foot {
   flex: 0 0 auto;
   position: relative; /* not covering content — it's part of flex flow */
 }
@@ -2247,3 +2263,37 @@ body.hg-dock-open .dh-hscroll-bar {
   border-top: 1px solid var(--brd-m, #334155);
   flex: 0 0 auto;
 }
+
+/* ══ Light theme (Soldag) — контраст: тёмные чернила вместо светлых на светлом ══
+   Темная тема рисует светлый текст на цветном фоне; на пергаменте это невидимо
+   (title 1.0-1.1 → нечитаемо). Здесь те же пилюли/кнопки получают тёмные чернила. */
+html[data-theme="light"] .dh-btn--primary { color: #1C1914; }
+html[data-theme="light"] .dh-top__eyebrow { color: var(--gold-h, #9A6E12); }
+html[data-theme="light"] .dh-pill { border-color: rgba(139,120,90,0.22); }
+html[data-theme="light"] .dh-pill--ok {
+  background: color-mix(in srgb, var(--ok) 16%, var(--bg2));
+  color: #24503B;
+  border-color: color-mix(in srgb, var(--ok) 42%, transparent);
+}
+html[data-theme="light"] .dh-pill--warn {
+  background: color-mix(in srgb, var(--warn) 16%, var(--bg2));
+  color: #7A5607;
+  border-color: color-mix(in srgb, var(--warn) 42%, transparent);
+}
+html[data-theme="light"] .dh-pill--err {
+  background: color-mix(in srgb, var(--err) 12%, var(--bg2));
+  color: #8C1828;
+  border-color: color-mix(in srgb, var(--err) 42%, transparent);
+}
+html[data-theme="light"] .dh-pill--info {
+  background: color-mix(in srgb, var(--info) 12%, var(--bg2));
+  color: #16325A;
+  border-color: color-mix(in srgb, var(--info) 40%, transparent);
+}
+html[data-theme="light"] .dh-pill--gold {
+  background: color-mix(in srgb, var(--gold) 18%, var(--bg2));
+  color: #7A5607;
+  border-color: color-mix(in srgb, var(--gold) 45%, transparent);
+}
+html[data-theme="light"] .dh-pill--muted { background: var(--bg4); color: var(--t2); }
+html[data-theme="light"] .dh-dot { border-color: var(--bg2); }

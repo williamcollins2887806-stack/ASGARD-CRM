@@ -3003,8 +3003,11 @@ html[data-theme="light"] .funnel-card-meta {
 /* ─────────────────────────────────────────────────────────────────────────────
    CONTENT OVERFLOW PROTECTION
    ───────────────────────────────────────────────────────────────────────────── */
-.tbl-wrap {
+.tbl-wrap,
+.table-wrap,
+.table-scroll {
   width: 100%;
+  max-width: 100%;
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
 }
@@ -8707,7 +8710,7 @@ h3[class*="title"] {
 .grid,
 .card-grid,
 .cards-grid,
-[class*="-grid"]:not(.cal-grid):not(.calendar-grid):not(.sched-grid):not(.bs-kpi):not(.dash-grid):not(.cash-balance-grid):not(.cash-detail-grid):not(.cash-cards-grid):not(.form-grid) {
+[class*="-grid"]:not(.cal-grid):not(.calendar-grid):not(.sched-grid):not(.bs-kpi):not(.dash-grid):not(.cash-balance-grid):not(.cash-detail-grid):not(.cash-cards-grid):not(.form-grid):not(.hg-shared-grid) {
   gap: 20px !important;
 }
 
@@ -8763,6 +8766,8 @@ a { color: var(--blue-l, #4A90D9); }
   background: linear-gradient(180deg, #0A1025 0%, #070D1A 100%) !important;
   border-right: 1px solid rgba(30,77,140,0.15) !important;
   box-shadow: 4px 0 20px rgba(0,0,0,0.25) !important;
+  /* Страховка: меню всегда доступнее контента (drawer — портал, см. doc-hub.css) */
+  z-index: 350 !important;
 }
 
 .sidebar-header {
@@ -9110,7 +9115,10 @@ table.asg tbody tr:hover td:first-child,
 
 .tbl-wrap,
 .table-wrap,
-.tablewrap {
+.tablewrap,
+.table-scroll {
+  width: 100% !important;
+  max-width: 100% !important;
   border-radius: 12px !important;
   border: 1px solid rgba(30,77,140,0.08) !important;
   background: rgba(19,25,41,0.5) !important;
@@ -13050,3 +13058,110 @@ table.reg-table tbody tr.reg-row-unread > td:first-child {
   vertical-align: middle;
 }
 .emp-assign-row.is-hl td { background: color-mix(in srgb, var(--info) 16%, transparent) !important; }
+
+/* P13b — sidenav = wall (same as body), not a panel */
+.sidenav {
+  background: #0B0F19 !important;
+  background-image: none !important;
+  border-right: none !important;
+  box-shadow: none !important;
+}
+html[data-theme="light"] .sidenav {
+  background: var(--bg1, #F4EFE6) !important;
+  background-image: none !important;
+  border-right: none !important;
+  box-shadow: none !important;
+}
+
+/* P13c — center CRM = floating card; nested widgets one step up */
+/* P13d — height not min-height so overflow-y:auto scrolls inside the card */
+@media (min-width: 769px) {
+  html, body {
+    overflow: hidden;
+    height: 100%;
+  }
+  html:has(#asgard-v2-banner:not([hidden]):not(.is-dismissed)) {
+    --banner-h: 49px;
+  }
+}
+.main, .asg-main-wrap {
+  box-sizing: border-box !important;
+  background: var(--bg2, #151922) !important;
+  border-radius: 16px !important;
+  border: none !important;
+  overflow-x: hidden !important;
+  overflow-y: auto !important;
+  padding-right: 6px !important;
+  box-shadow:
+    0 4px 12px rgba(0, 0, 0, 0.20),
+    0 12px 32px rgba(0, 0, 0, 0.28),
+    0 24px 64px rgba(0, 0, 0, 0.20);
+  margin-top: 12px !important;
+  margin-bottom: 12px !important;
+  margin-left: calc(var(--sidebar-w, 64px) + 12px) !important;
+  margin-right: 0 !important;
+  width: auto !important;
+  max-width: none !important;
+  min-height: 0 !important;
+  height: calc(100vh - 24px - var(--banner-h, 0px)) !important;
+  max-height: calc(100vh - 24px - var(--banner-h, 0px)) !important;
+}
+.main > *,
+.asg-main-wrap > * {
+  flex-shrink: 0;
+}
+.main .card, .main .panel, .main .widget, .main .dash-widget-v2 {
+  background: var(--bg3, #1C2130) !important;
+}
+.main .card:hover, .main .panel:hover, .main .widget:hover, .main .dash-widget-v2:hover {
+  background: var(--bg4, #222838) !important;
+}
+#asgard-v2-banner {
+  display: flex !important;
+  flex-wrap: nowrap !important;
+  align-items: center !important;
+  margin-left: var(--sidebar-w, 64px) !important;
+  margin-right: 12px !important;
+  width: auto !important;
+  box-sizing: border-box !important;
+  z-index: 1 !important;
+  min-height: 36px !important;
+  white-space: nowrap !important;
+}
+#asgard-v2-banner[hidden],
+#asgard-v2-banner.is-dismissed {
+  display: none !important;
+}
+#asgard-v2-banner span,
+#asgard-v2-banner a {
+  white-space: nowrap !important;
+}
+body.hg-dock-open #asgard-v2-banner,
+body.hg-dock-collapsed #asgard-v2-banner {
+  margin-right: 0 !important;
+}
+@media (max-width: 768px) {
+  html, body {
+    overflow: auto;
+    height: auto;
+  }
+  .main, .asg-main-wrap {
+    margin: 0 !important;
+    border-radius: 0 !important;
+    min-height: 100vh !important;
+    min-height: 100dvh !important;
+    height: auto !important;
+    max-height: none !important;
+    padding-right: 0 !important;
+    box-shadow: none !important;
+    overflow: auto !important;
+  }
+  #asgard-v2-banner {
+    margin-left: 0 !important;
+    margin-right: 0 !important;
+  }
+  body.hg-dock-open #asgard-v2-banner,
+  body.hg-dock-collapsed #asgard-v2-banner {
+    margin-right: 0 !important;
+  }
+}
