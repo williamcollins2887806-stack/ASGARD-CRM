@@ -3,7 +3,7 @@
 const MangoService = require('../services/mango');
 const { normalizePhone, getCallDirection } = require('../services/mango');
 const CallPipeline = require('../services/call-pipeline');
-const { createNotification } = require('../services/notify');
+const { createNotification, sendIncomingCallPush } = require('../services/notify');
 const https = require('https');
 const {
   entryIdAliases,
@@ -320,6 +320,12 @@ module.exports = async function telephonyRoutes(fastify, opts) {
           responsibleManager: assignedUserName,
           timestamp: event.timestamp
         });
+        const who = client ? (client.contact_person || client.name) : fromNumber;
+        sendIncomingCallPush(db, assignedUserId, {
+          title: 'Входящий звонок',
+          body: who || 'Ответьте в приложении',
+          from: fromNumber,
+        }).catch(() => {});
       }
 
       // DaData обогащение (async — не блокируем ответ)
@@ -723,8 +729,11 @@ module.exports = async function telephonyRoutes(fastify, opts) {
     const conditions = [];
     let paramIdx = 1;
 
-    // Менеджеры видят только свои звонки, руководство — все
-    if (!TEL_ADMIN_ROLES.includes(user.role) && user.role !== 'HEAD_PM') {
+    // Менеджеры видят только свои звонки, руководство — все; scope=mine — всегда свои (мобильное приложение)
+    if (String(request.query.scope) === 'mine') {
+      conditions.push(`ch.user_id = $${paramIdx++}`);
+      params.push(user.id);
+    } else if (!TEL_ADMIN_ROLES.includes(user.role) && user.role !== 'HEAD_PM') {
       conditions.push(`ch.user_id = $${paramIdx++}`);
       params.push(user.id);
     }
@@ -1085,8 +1094,14 @@ module.exports = async function telephonyRoutes(fastify, opts) {
     const params = [];
     let paramIdx = 1;
 
-    if (!TEL_ADMIN_ROLES.includes(user.role)) {
-      conditions.push(`(ch.user_id = $${paramIdx++} OR ch.user_id IS NULL)`);
+    const scope = String(request.query.scope || '');
+    if (scope === 'office') {
+      if (!hasFullCallView(user)) {
+        return reply.code(403).send({ error: 'Forbidden' });
+      }
+      conditions.push('ch.user_id IS NULL');
+    } else if (scope === 'mine' || !TEL_ADMIN_ROLES.includes(user.role)) {
+      conditions.push(`ch.user_id = $${paramIdx++}`);
       params.push(user.id);
     }
     if (acknowledged === 'false') {
@@ -1115,8 +1130,10 @@ module.exports = async function telephonyRoutes(fastify, opts) {
     // Счётчик непросмотренных
     const unackParams = [];
     let unackWhere = "WHERE ch.call_type = 'missed' AND ch.missed_acknowledged = false";
-    if (!TEL_ADMIN_ROLES.includes(user.role)) {
-      unackWhere += ' AND (ch.user_id = $1 OR ch.user_id IS NULL)';
+    if (scope === 'office') {
+      unackWhere += ' AND ch.user_id IS NULL';
+    } else if (scope === 'mine' || !TEL_ADMIN_ROLES.includes(user.role)) {
+      unackWhere += ' AND ch.user_id = $1';
       unackParams.push(user.id);
     }
     const unackRes = await db.query(`SELECT COUNT(*) FROM call_history ch ${unackWhere}`, unackParams);
@@ -1141,6 +1158,69 @@ module.exports = async function telephonyRoutes(fastify, opts) {
       [request.params.id]
     );
     reply.send({ status: 'ok' });
+  });
+
+  // --- Сводка для мобильной телефонии (только свои) ---
+  fastify.get('/me/summary', {
+    preHandler: [fastify.authenticate]
+  }, async (request, reply) => {
+    if (!TEL_ROLES.includes(request.user.role)) {
+      return reply.code(403).send({ error: 'Forbidden' });
+    }
+    const uid = request.user.id;
+    const missed = await db.query(
+      `SELECT COUNT(*)::int AS n FROM call_history
+       WHERE call_type = 'missed' AND user_id = $1 AND COALESCE(missed_acknowledged, false) = false
+         AND created_at >= (timezone('Europe/Moscow', now()))::date`,
+      [uid]
+    );
+    const todayTotal = await db.query(
+      `SELECT COUNT(*)::int AS n FROM call_history
+       WHERE user_id = $1
+         AND created_at >= (timezone('Europe/Moscow', now()))::date`,
+      [uid]
+    );
+    let officeUnack = 0;
+    if (hasFullCallView(request.user)) {
+      const off = await db.query(
+        `SELECT COUNT(*)::int AS n FROM call_history
+         WHERE call_type = 'missed' AND user_id IS NULL AND COALESCE(missed_acknowledged, false) = false
+           AND created_at >= (timezone('Europe/Moscow', now()))::date`
+      );
+      officeUnack = off.rows[0].n;
+    }
+    const recent = await db.query(
+      `SELECT ch.id, ch.call_type, ch.direction, ch.from_number, ch.to_number, ch.duration_seconds,
+              ch.created_at, ch.ai_summary, c.name as client_name
+       FROM call_history ch
+       LEFT JOIN customers c ON c.inn = ch.client_inn
+       WHERE ch.user_id = $1
+       ORDER BY ch.created_at DESC
+       LIMIT 8`,
+      [uid]
+    );
+    const spark = await db.query(
+      `SELECT (timezone('Europe/Moscow', gs))::date AS d, COUNT(ch.id)::int AS n
+       FROM generate_series(
+         (timezone('Europe/Moscow', now()))::date - 6,
+         (timezone('Europe/Moscow', now()))::date,
+         interval '1 day'
+       ) gs
+       LEFT JOIN call_history ch
+         ON ch.user_id = $1
+        AND (timezone('Europe/Moscow', ch.created_at))::date = (timezone('Europe/Moscow', gs))::date
+       GROUP BY 1
+       ORDER BY 1`,
+      [uid]
+    );
+    reply.send({
+      missed_unack: missed.rows[0].n,
+      today_total: todayTotal.rows[0].n,
+      office_unack: officeUnack,
+      week_spark: spark.rows.map((r) => r.n),
+      can_see_office: hasFullCallView(request.user),
+      recent: recent.rows,
+    });
   });
 
   // --- Статистика ---

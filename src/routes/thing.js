@@ -345,50 +345,58 @@ module.exports = async function thingRoutes(fastify) {
     }
     const { token: joinToken, hash: joinHash } = makeJoinToken();
     const lobbyStatus = needLobby ? 'waiting' : 'admitted';
-    if (existing[0] && existing[0].left_at && existing[0].lobby_status !== 'rejected') {
-      await db.query(
-        `UPDATE thing_participants
-         SET left_at = NULL, lobby_status = $6,
-             display_name = $3, role = $4, user_id = $5,
-             join_token_hash = $7,
-             joined_at = CASE WHEN $6 = 'admitted' THEN COALESCE(joined_at, NOW()) ELSE joined_at END
-         WHERE room_id = $1 AND identity = $2`,
-        [room.id, identity, displayName, role, request.user.id, lobbyStatus, joinHash]
-      );
-    } else if (existing[0] && existing[0].lobby_status === 'waiting' && needLobby) {
-      await db.query(
-        `UPDATE thing_participants
-         SET display_name = $3, role = $4, user_id = $5, join_token_hash = $6, left_at = NULL
-         WHERE room_id = $1 AND identity = $2`,
-        [room.id, identity, displayName, role, request.user.id, joinHash]
-      );
-    } else {
-      await db.query(
-        `INSERT INTO thing_participants
-           (room_id, user_id, role, display_name, identity, lobby_status, left_at, joined_at, join_token_hash)
-         VALUES ($1, $2, $3, $4, $5, $6, NULL, CASE WHEN $6 = 'admitted' THEN NOW() ELSE NULL END, $7)
-         ON CONFLICT (room_id, identity) DO UPDATE SET
-           user_id = EXCLUDED.user_id,
-           role = EXCLUDED.role,
-           display_name = EXCLUDED.display_name,
-           join_token_hash = EXCLUDED.join_token_hash,
-           lobby_status = CASE
-             WHEN thing_participants.lobby_status = 'rejected' THEN thing_participants.lobby_status
-             WHEN thing_participants.lobby_status = 'admitted' AND thing_participants.left_at IS NULL
-               THEN 'admitted'
-             ELSE EXCLUDED.lobby_status
-           END,
-           left_at = CASE
-             WHEN thing_participants.lobby_status = 'rejected' THEN thing_participants.left_at
-             ELSE NULL
-           END,
-           joined_at = CASE
-             WHEN EXCLUDED.lobby_status = 'admitted'
-               THEN COALESCE(thing_participants.joined_at, NOW())
-             ELSE thing_participants.joined_at
-           END`,
-        [room.id, request.user.id, role, displayName, identity, lobbyStatus, joinHash]
-      );
+    try {
+      if (existing[0] && existing[0].left_at && existing[0].lobby_status !== 'rejected') {
+        await db.query(
+          `UPDATE thing_participants
+           SET left_at = NULL, lobby_status = $6::text,
+               display_name = $3, role = $4, user_id = $5,
+               join_token_hash = $7,
+               joined_at = CASE WHEN $6::text = 'admitted' THEN COALESCE(joined_at, NOW()) ELSE joined_at END
+           WHERE room_id = $1 AND identity = $2`,
+          [room.id, identity, displayName, role, request.user.id, lobbyStatus, joinHash]
+        );
+      } else if (existing[0] && existing[0].lobby_status === 'waiting' && needLobby) {
+        await db.query(
+          `UPDATE thing_participants
+           SET display_name = $3, role = $4, user_id = $5, join_token_hash = $6, left_at = NULL
+           WHERE room_id = $1 AND identity = $2`,
+          [room.id, identity, displayName, role, request.user.id, joinHash]
+        );
+      } else {
+        await db.query(
+          `INSERT INTO thing_participants
+             (room_id, user_id, role, display_name, identity, lobby_status, left_at, joined_at, join_token_hash)
+           VALUES ($1, $2, $3, $4, $5, $6::text, NULL, CASE WHEN $6::text = 'admitted' THEN NOW() ELSE NULL END, $7)
+           ON CONFLICT (room_id, identity) DO UPDATE SET
+             user_id = EXCLUDED.user_id,
+             role = EXCLUDED.role,
+             display_name = EXCLUDED.display_name,
+             join_token_hash = EXCLUDED.join_token_hash,
+             lobby_status = CASE
+               WHEN thing_participants.lobby_status = 'rejected' THEN thing_participants.lobby_status
+               WHEN thing_participants.lobby_status = 'admitted' AND thing_participants.left_at IS NULL
+                 THEN 'admitted'
+               ELSE EXCLUDED.lobby_status
+             END,
+             left_at = CASE
+               WHEN thing_participants.lobby_status = 'rejected' THEN thing_participants.left_at
+               ELSE NULL
+             END,
+             joined_at = CASE
+               WHEN EXCLUDED.lobby_status = 'admitted'
+                 THEN COALESCE(thing_participants.joined_at, NOW())
+               ELSE thing_participants.joined_at
+             END`,
+          [room.id, request.user.id, role, displayName, identity, lobbyStatus, joinHash]
+        );
+      }
+    } catch (err) {
+      fastify.log.error({ err, slug: room.slug, userId: request.user.id }, '[thing] participant upsert failed');
+      return reply.code(502).send({
+        error: err.message || 'Не удалось зарегистрировать участника',
+        code: 'PARTICIPANT_UPSERT_FAILED'
+      });
     }
 
     if (needLobby) {

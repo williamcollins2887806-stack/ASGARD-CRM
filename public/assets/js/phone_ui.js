@@ -569,10 +569,24 @@
 
   // ── Панель «Телефон» в Huginn-доке ─────────────────────────────────────────
 
+  var _apiGetFailToast = Object.create(null);
   function apiGet(url) {
     return fetch(url, {
       headers: { Authorization: 'Bearer ' + (localStorage.getItem('asgard_token') || '') },
-    }).then(function (r) { return r.ok ? r.json() : null; }).catch(function () { return null; });
+    }).then(function (r) {
+      if (r.ok) return r.json();
+      if (!_apiGetFailToast[url]) {
+        _apiGetFailToast[url] = true;
+        toast('Телефон', 'Не удалось загрузить ' + url.replace(/^\/api\/telephony\/?/, '') + ' (' + r.status + ')', 'warn');
+      }
+      return null;
+    }).catch(function () {
+      if (!_apiGetFailToast[url]) {
+        _apiGetFailToast[url] = true;
+        toast('Телефон', 'Сеть: ' + url.replace(/^\/api\/telephony\/?/, ''), 'warn');
+      }
+      return null;
+    });
   }
 
   var panelData = { missed: null, recent: null, loadedAt: 0, loading: false, opStatus: null, transferStatus: null };

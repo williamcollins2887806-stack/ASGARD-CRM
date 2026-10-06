@@ -64,20 +64,12 @@ window.AsgardMango = (function(){
   }
 
   // Установить статус приёма звонков
+  // user_call_status в WRITE_PROTECTED_ACL — запись через /api/data всегда 403.
+  // Живой приём звонков — PBX (phone_ui / telephony-pbx), не Mango put.
   async function setUserCallStatus(userId, accepting) {
     try {
-      await AsgardDB.put('user_call_status', {
-        user_id: String(userId),
-        accepting: accepting,
-        busy: false,
-        updated_at: new Date().toISOString()
-      });
-      
       userCallStatus.set(String(userId), { accepting, busy: false });
-      
-      // Уведомляем сервер (если настроен webhook)
       await notifyStatusChange(userId, accepting);
-      
       return true;
     } catch(e) {
       return false;
@@ -115,27 +107,13 @@ window.AsgardMango = (function(){
     }
   }
 
-  // Инициализация статусов для ТО по умолчанию
+  // Автосоздание через /api/data/user_call_status мертвое (WRITE_PROTECTED_ACL → 403).
+  // Раньше лавина put на каждый логин засоряла консоль; статусы линии — в PBX.
+  let _ucsWriteWarned = false;
   async function initDefaultStatuses() {
-    try {
-      const users = await AsgardDB.getAll('users') || [];
-      
-      for (const user of users) {
-        const existing = await AsgardDB.get('user_call_status', String(user.id));
-        if (!existing) {
-          // По умолчанию только ТО принимают звонки
-          const accepting = user.role === 'TO';
-          await AsgardDB.put('user_call_status', {
-            user_id: String(user.id),
-            accepting: accepting,
-            busy: false,
-            created_at: new Date().toISOString()
-          });
-        }
-      }
-    } catch(e) {
-      console.error('Init call statuses error:', e);
-    }
+    if (_ucsWriteWarned) return;
+    _ucsWriteWarned = true;
+    console.warn('[mango] user_call_status write skipped (WRITE_PROTECTED); use PBX operator status');
   }
 
   // ========== ВИДЖЕТ ПЕРЕКЛЮЧАТЕЛЯ ==========
