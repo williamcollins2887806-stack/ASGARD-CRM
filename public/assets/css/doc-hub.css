@@ -2297,3 +2297,37 @@ html[data-theme="light"] .dh-pill--gold {
 }
 html[data-theme="light"] .dh-pill--muted { background: var(--bg4); color: var(--t2); }
 html[data-theme="light"] .dh-dot { border-color: var(--bg2); }
+
+/* ── Светлая тема: шторка (drawer) сверена с пиксельными замерами ──
+   Раньше хардкод тёмных заливок/светлых чернил (#0b1220, #f8fafc, #cbd5e1,
+   --gold-l #f5d76e) давал 1.06-2.13:1. Здесь — чернила на пергаменте. */
+html[data-theme="light"] .dh-sum-hero {
+  background: linear-gradient(135deg, color-mix(in srgb, var(--gold) 14%, var(--bg2)), var(--bg2) 60%);
+  border-color: color-mix(in srgb, var(--gold) 40%, var(--brd));
+}
+html[data-theme="light"] .dh-sum-hero__main {
+  color: #1C1914 !important;
+  text-shadow: none;
+}
+html[data-theme="light"] .dh-sum-hero__sub,
+html[data-theme="light"] .dh-sum-hero__due { color: #4B5563 !important; }
+html[data-theme="light"] .dh-sum-hero__grid .k { color: #6B7280; }
+html[data-theme="light"] .dh-sum-hero__grid .v { color: #1C1914; }
+html[data-theme="light"] .dh-drawer__amt { color: #8A6212; }
+html[data-theme="light"] .dh-section--sums .dh-section__h { color: #8A6212; }
+html[data-theme="light"] .dh-confirm .preview b,
+html[data-theme="light"] .dh-gcard .n,
+html[data-theme="light"] .dh-cmt-btn.is-filled { color: #8A6212; }
+html[data-theme="light"] .dh-mini--pay { color: #8A6212; border-color: color-mix(in srgb, var(--gold) 45%, var(--brd)); }
+html[data-theme="light"] .dh-vat-chip {
+  background: var(--bg2);
+  border-color: var(--brd);
+  color: #4B5563;
+}
+html[data-theme="light"] .dh-vat-chip:hover { color: #1C1914; }
+html[data-theme="light"] .dh-vat-chip.is-on {
+  border-color: var(--gold);
+  background: color-mix(in srgb, var(--gold) 22%, var(--bg2));
+  color: #6F4E0A;
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--gold) 16%, transparent);
+}
