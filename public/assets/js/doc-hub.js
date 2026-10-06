@@ -117,11 +117,140 @@ window.AsgardDocHubPage = (function () {
     }
   }
   function canWh() { return WH_ROLES.includes(role()); }
+
+  /** API GET /api/users → { users: [...] }; never return a bare object. */
+  function parseUsersList(j) {
+    if (!j) return [];
+    if (Array.isArray(j)) return j;
+    if (Array.isArray(j.users)) return j.users;
+    if (Array.isArray(j.items)) return j.items;
+    if (Array.isArray(j.data)) return j.data;
+    return [];
+  }
+  /** API GET /api/works → { works: [...] }. */
+  function parseWorksList(j) {
+    if (!j) return [];
+    if (Array.isArray(j)) return j;
+    if (Array.isArray(j.works)) return j.works;
+    if (Array.isArray(j.items)) return j.items;
+    if (Array.isArray(j.data)) return j.data;
+    return [];
+  }
+  function workLabel(w) {
+    if (!w) return '';
+    const t = w.work_title || w.title || w.name || w.object_name || '';
+    return '#' + w.id + (t ? (' ' + t) : '');
+  }
+  function userLabel(u) {
+    if (!u) return '';
+    return u.name || u.full_name || u.username || ('ID ' + u.id);
+  }
+  function docSummary(row) {
+    if (!row) return '';
+    const no = row.invoice_number ? ('Счёт ' + row.invoice_number) : ('Документ #' + row.id);
+    const cp = row.counterparty_name || '—';
+    const amt = money(row.amount_gross);
+    return no + ' · ' + cp + ' · ' + amt;
+  }
+  function currentUserId() {
+    try {
+      const u = JSON.parse(localStorage.getItem('asgard_user') || '{}');
+      return u.id || null;
+    } catch (_) { return null; }
+  }
+
   async function confirm(title, body) {
     if (window.AsgardConfirm && typeof AsgardConfirm.open === 'function') {
       return !!(await AsgardConfirm.open({ title, body }));
     }
     return window.confirm(String(body || title));
+  }
+
+  /**
+   * Contract picker: list by counterparty name/INN + optional create link.
+   * AsgardContractsPage.openContractSelector expects counterparty_id (DB id), not INN.
+   */
+  function openDhContractPicker({ inn, cpName, onSelect }) {
+    const ACP = window.AsgardContractsPage;
+    const done = (c) => { if (typeof onSelect === 'function' && c) onSelect(c); };
+
+    async function buildFromAll() {
+      let list = [];
+      try {
+        if (ACP && typeof ACP.getAll === 'function') list = await ACP.getAll();
+        else if (window.AsgardDB && AsgardDB.getAll) list = (await AsgardDB.getAll('contracts')) || [];
+      } catch (_) { list = []; }
+      const qInn = String(inn || '').replace(/\D/g, '');
+      const qName = String(cpName || '').toLowerCase().trim();
+      const filtered = list.filter((c) => {
+        const cInn = String(c.counterparty_inn || c.inn || '').replace(/\D/g, '');
+        const cName = String(c.counterparty_name || c.customer_name || c.party_name || '').toLowerCase();
+        if (qInn && cInn && (cInn === qInn || cInn.includes(qInn) || qInn.includes(cInn))) return true;
+        if (qName && cName && (cName.includes(qName) || qName.includes(cName.slice(0, 8)))) return true;
+        return false;
+      });
+      showInlineContractModal(filtered.length ? filtered : list.slice(0, 40), done, qName || qInn);
+    }
+
+    if (ACP && typeof ACP.openContractSelector === 'function' && /^\d+$/.test(String(inn || ''))) {
+      // Only use stock selector when we have numeric counterparty id
+      ACP.openContractSelector(Number(inn), 'supplier', done);
+      return;
+    }
+    buildFromAll().catch(() => {
+      toast('Договоры', 'Не удалось загрузить реестр договоров', 'err');
+    });
+  }
+
+  function showInlineContractModal(contracts, onSelect, hint) {
+    document.getElementById('dhContractModal')?.remove();
+    const wrap = document.createElement('div');
+    wrap.id = 'dhContractModal';
+    wrap.className = 'dh-cmodal';
+    const rows = (contracts || []).slice(0, 60).map((c) => {
+      const label = c.number || c.label || ('#' + c.id);
+      const sub = [c.subject, c.counterparty_name || c.customer_name, c.amount != null ? money(c.amount) : '']
+        .filter(Boolean).join(' · ');
+      return `<button type="button" class="dh-cmodal__item" data-id="${esc(String(c.id))}"
+        data-label="${esc(label)}" data-date="${esc(String(c.date || c.signed_at || c.start_date || '').slice(0, 10))}">
+        <div class="t">${esc(label)}</div>
+        <div class="s">${esc(sub || '—')}</div>
+      </button>`;
+    }).join('');
+    wrap.innerHTML = `
+      <div class="dh-cmodal__card" role="dialog" aria-modal="true">
+        <header class="dh-cmodal__head">
+          <strong>Выберите договор</strong>
+          <button type="button" class="dh-cmodal__x" aria-label="Закрыть">✕</button>
+        </header>
+        <div class="dh-cmodal__hint">${hint ? ('По контрагенту: ' + esc(hint)) : 'Все договоры (уточните контрагента для фильтра)'}</div>
+        <div class="dh-cmodal__list">${rows || '<div class="dh-empty dh-empty--sm"><div class="dh-empty__t">Нет договоров</div></div>'}</div>
+        <footer class="dh-cmodal__foot">
+          <button type="button" class="dh-btn dh-btn--ghost" id="dhCmodalCancel">Отмена</button>
+          <button type="button" class="dh-btn dh-btn--primary" id="dhCmodalCreate">+ Создать договор</button>
+        </footer>
+      </div>`;
+    document.body.appendChild(wrap);
+    const close = () => wrap.remove();
+    wrap.querySelector('.dh-cmodal__x')?.addEventListener('click', close);
+    wrap.querySelector('#dhCmodalCancel')?.addEventListener('click', close);
+    wrap.addEventListener('click', (e) => { if (e.target === wrap) close(); });
+    wrap.querySelectorAll('.dh-cmodal__item').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        onSelect({
+          id: btn.getAttribute('data-id'),
+          label: btn.getAttribute('data-label'),
+          number: btn.getAttribute('data-label'),
+          date: btn.getAttribute('data-date')
+        });
+        close();
+      });
+    });
+    wrap.querySelector('#dhCmodalCreate')?.addEventListener('click', () => {
+      close();
+      location.hash = '#/contracts';
+      toast('Договоры', 'Откройте создание договора, затем вернитесь в Doc Hub', 'ok');
+    });
   }
 
   async function api(path, opts = {}) {
@@ -185,9 +314,9 @@ window.AsgardDocHubPage = (function () {
       no_invoice_number: 'нет № счёта',
       no_invoice_date: 'нет даты',
       no_counterparty: 'нет контрагента',
-      no_contract: 'нет договора',
+      no_contract: 'нет привязанного договора (режим «Привязать»)',
       no_payment_due: 'нет срока оплаты',
-      no_work: 'нет объекта / назначения'
+      no_work: 'нет объекта (для вида «Работы»)'
     };
     if (!reasons.length) return 'дозаполните обязательные поля';
     return reasons.map((r) => labels[r] || r).join(', ');
@@ -783,25 +912,16 @@ window.AsgardDocHubPage = (function () {
             <div class="dh-vat-rate-chips" id="dhWizVatChips" role="group" aria-label="Ставка НДС">${vatRateChipsHtml(curRate)}</div>
             <input type="hidden" id="dhWizVatRate" name="vat_rate" value="${curRate === null ? 'null' : esc(String(curRate))}" />
           </div>
-        </div>
-        <div class="dh-dup" id="dhWizDup" hidden>
-          <strong>Похожий расход уже есть на объекте</strong>
-          <p>РП мог внести этот счёт в расходы. Связать с существующей записью или оставить только в реестре?</p>
-          <div class="dh-gap-row">
-            <button class="dh-btn dh-btn--sm" type="button" id="dhWizDupLink">Связать с расходом</button>
-            <button class="dh-btn dh-btn--sm dh-btn--ghost" type="button" id="dhWizDupSkip">Это другой документ</button>
-          </div>
-          <div id="dhWizDupItems" class="dh-dup-items"></div>
         </div>`;
     }
     if (step === 3) {
-      const cmode = d.contract_mode || 'none';
+      const cmode = d.contract_mode || (d.spend_kind === 'warehouse' || d.spend_kind === 'office' ? 'general' : 'none');
       const sk = d.spend_kind || 'work';
       return steps + `
-        <div class="dh-coach"><div class="dh-coach__ico">3</div><div class="dh-coach__body"><strong>Договор, расход и объект</strong><p>Без договора строка попадёт в «Неполные». Вид расхода и объект можно дозаполнить позже.</p></div></div>
+        <div class="dh-coach"><div class="dh-coach__ico">3</div><div class="dh-coach__body"><strong>Договор, расход и объект</strong><p>«Без договора» и «Общий / заявка» — нормально. «Привязать» — выбор из реестра. Вид расхода: работы / склад / офис / прочее.</p></div></div>
         <input type="hidden" name="contract_mode" id="dhWizContract" value="${esc(cmode)}" />
         <div class="dh-mode-cards" id="dhModeCards">
-          ${[['linked','Привязать договор','Из реестра договоров'],['once','Разовая','Разовая поставка'],['general','Общий / заявка','Рамочный договор'],['none','Без договора','Не указан / позже']].map(([v,t,s]) =>
+          ${[['linked','Привязать договор','Из реестра договоров'],['once','Разовая','Разовая поставка'],['general','Общий / заявка','Рамочный'],['none','Без договора','Не указан / позже']].map(([v,t,s]) =>
             `<button type="button" class="dh-mode-card ${cmode === v ? 'is-on' : ''}" data-mode="${v}"><div class="t">${t}</div><div class="s">${s}</div></button>`
           ).join('')}
         </div>
@@ -835,12 +955,21 @@ window.AsgardDocHubPage = (function () {
           <div id="dhWizWork_w" class="dh-crselect-host"></div>
           <div class="dh-help">Список загружается при открытии шага</div>
         </div>
+        <div class="dh-dup" id="dhWizDup" hidden>
+          <strong>Похожий расход уже есть на объекте</strong>
+          <p>После выбора работы: РП мог внести этот счёт в расходы. Связать или оставить только в реестре?</p>
+          <div class="dh-gap-row">
+            <button class="dh-btn dh-btn--sm" type="button" id="dhWizDupLink">Связать с расходом</button>
+            <button class="dh-btn dh-btn--sm dh-btn--ghost" type="button" id="dhWizDupSkip">Это другой документ</button>
+          </div>
+          <div id="dhWizDupItems" class="dh-dup-items"></div>
+        </div>
         <div class="dh-checkrow">
           <label class="dh-check"><input type="checkbox" name="purpose_customer" ${d.purpose_customer ? 'checked' : ''}/> На объект заказчика</label>
           <label class="dh-check"><input type="checkbox" name="purpose_asgard" ${d.purpose_asgard ? 'checked' : ''}/> Собственность АСГАРД</label>
           <label class="dh-check"><input type="checkbox" name="purpose_consumables" ${d.purpose_consumables ? 'checked' : ''}/> Расходники</label>
         </div>
-        <div class="dh-field"><label>Получение</label>
+        <div class="dh-field"><label>Способ получения закрывающих <span class="dh-help" title="Как в Excel: ЭДО / скан / оригинал">(как в Excel)</span></label>
           <select name="receive_channel">
             <option value="" ${!d.receive_channel ? 'selected' : ''}>— не указано —</option>
             <option value="edo" ${d.receive_channel === 'edo' ? 'selected' : ''}>ЭДО</option>
@@ -881,13 +1010,15 @@ window.AsgardDocHubPage = (function () {
         <div class="dh-review-card"><div class="k">Направление</div><div class="v">${d.dir === 'out' ? 'Исходящий' : 'Входящий'}</div></div>
         <div class="dh-review-card"><div class="k">Типы</div><div class="v">${esc((d.doc_kinds || []).map((x) => ({ invoice: 'Счёт', sf: 'СФ', upd: 'УПД', act: 'Акт' }[x] || x)).join(', ') || 'Счёт')}</div></div>
         <div class="dh-review-card"><div class="k">Счёт</div><div class="v">${esc(d.invoice_number || 'б/н')} · ${fmtDate(d.invoice_date)}</div></div>
-        <div class="dh-review-card"><div class="k">Контрагент</div><div class="v">${esc(d.counterparty_name || '—')}</div></div>
+        <div class="dh-review-card"><div class="k">Контрагент</div><div class="v">${esc(d.counterparty_name || '—')}</div><div class="s">${esc([d.counterparty_email, d.counterparty_phone].filter(Boolean).join(' · ') || '—')}</div></div>
         <div class="dh-review-card"><div class="k">Сумма</div><div class="v dh-money">${money(parts4.gross)}</div><div class="s">${parts4.hasVat ? 'нетто ' + money(parts4.net) + ' · НДС ' + money(parts4.vat) : 'без НДС'}</div></div>
         <div class="dh-review-card"><div class="k">Ставка НДС</div><div class="v">${esc(rateLabel4)}</div></div>
         <div class="dh-review-card"><div class="k">Договор</div><div class="v">${esc(contractModeLabel(d.contract_mode))}${d.contract_label ? ' · ' + esc(d.contract_label) : ''}</div></div>
         <div class="dh-review-card"><div class="k">Вид расхода</div><div class="v">${esc(spendKindLabel(d.spend_kind))}</div></div>
-        <div class="dh-review-card"><div class="k">Работа</div><div class="v">${d.work_id ? '#' + esc(String(d.work_id)) : '—'}</div></div>
-        <div class="dh-review-card"><div class="k">Ответственные</div><div class="v">${d.doc_owner_id ? 'doc #' + esc(d.doc_owner_id) : '—'}</div></div>
+        <div class="dh-review-card"><div class="k">Работа</div><div class="v">${d.work_id ? '#' + esc(String(d.work_id)) : (d.spend_kind === 'work' ? 'не выбран' : '—')}</div></div>
+        <div class="dh-review-card"><div class="k">Отв. документы</div><div class="v">${d.doc_owner_id ? esc(String(d.doc_owner_name || ('#' + d.doc_owner_id))) : 'я (по умолчанию)'}</div></div>
+        <div class="dh-review-card"><div class="k">РП</div><div class="v">${d.pm_id ? esc(String(d.pm_name || ('#' + d.pm_id))) : '—'}</div></div>
+        <div class="dh-review-card"><div class="k">Получение закрывающих</div><div class="v">${esc(d.receive_channel || '—')}</div></div>
       </div>
       <div class="dh-field"><label>Позиции для каталога (входящие)</label>
         <div class="dh-lines-head"><span>Наименование</span><span>Цена</span><span>Кол-во</span><span>Ед.</span><span></span></div>
@@ -1078,16 +1209,7 @@ window.AsgardDocHubPage = (function () {
           pickBtn.textContent = '✓ ' + (contract.label || contract.number || 'Договор выбран');
           toast('Договор', 'Привязан: ' + (contract.label || contract.number || contract.id), 'ok');
         };
-        if (window.AsgardContractsPage && typeof AsgardContractsPage.openContractSelector === 'function') {
-          AsgardContractsPage.openContractSelector(inn, 'supplier', cb);
-        } else if (window.AsgardContractsPage && typeof AsgardContractsPage.findByCounterparty === 'function') {
-          AsgardContractsPage.findByCounterparty(cpName).then((list) => {
-            if (list && list[0]) cb(list[0]);
-            else toast('Договоры', 'Не найдено по контрагенту', 'warn');
-          }).catch(() => toast('Договоры', 'Ошибка поиска', 'err'));
-        } else {
-          toast('Договоры', 'Откройте раздел Договоры', 'warn');
-        }
+        openDhContractPicker({ inn, cpName, onSelect: cb });
       };
     }
 
@@ -1116,7 +1238,9 @@ window.AsgardDocHubPage = (function () {
     const checkWizDup = async (wid) => {
       if (!dup) return;
       if (!wid) { dup.hidden = true; return; }
-      const gross = parseFloat(grossEl?.value) || 0;
+      const gross = parseFloat(grossEl?.value)
+        || parseFloat(state.wizDraft && state.wizDraft.amount_gross)
+        || 0;
       if (!gross) { dup.hidden = true; return; }
       try {
         const r = await fetch('/api/works/' + wid, { headers: authHeaders() });
@@ -1143,12 +1267,12 @@ window.AsgardDocHubPage = (function () {
       const workWrap = form.querySelector('#dhWizWork_w');
       if (!workWrap) return;
       try {
-        const res = await fetch('/api/works?limit=300&status=active', { headers: authHeaders() });
+        const res = await fetch('/api/works?limit=300', { headers: authHeaders() });
         const j = await res.json();
-        const items = j.items || j.data || j || [];
+        const items = parseWorksList(j);
         const curWid = String((state.wizDraft && state.wizDraft.work_id) || '');
         const wopts = [{ value: '', label: '— выбрать объект —' }].concat(
-          items.map((w) => ({ value: String(w.id), label: '#' + w.id + ' ' + (w.title || w.name || '') }))
+          items.map((w) => ({ value: String(w.id), label: workLabel(w) }))
         );
         if (window.CRSelect) {
           workWrap.innerHTML = '';
@@ -1190,14 +1314,14 @@ window.AsgardDocHubPage = (function () {
       const pmWrap = form.querySelector('#dhWizPm_w');
       if (!ownerWrap && !pmWrap) return;
       try {
-        const res = await fetch('/api/users?limit=200', { headers: authHeaders() });
-        const j = await res.json();
-        const users = j.items || j.data || j || [];
-        const curOwner = String((state.wizDraft && state.wizDraft.doc_owner_id) || '');
-        const curPm = String((state.wizDraft && state.wizDraft.pm_id) || '');
-        const uopts = [{ value: '', label: '— выбрать —' }].concat(
-          users.map((u) => ({ value: String(u.id), label: u.name || u.full_name || u.username || 'ID ' + u.id }))
-        );
+          const res = await fetch('/api/users?limit=200', { headers: authHeaders() });
+          const j = await res.json();
+          const users = parseUsersList(j);
+          const curOwner = String((state.wizDraft && state.wizDraft.doc_owner_id) || '');
+          const curPm = String((state.wizDraft && state.wizDraft.pm_id) || '');
+          const uopts = [{ value: '', label: '— выбрать —' }].concat(
+            users.map((u) => ({ value: String(u.id), label: userLabel(u) }))
+          );
         if (ownerWrap) {
           if (window.CRSelect) {
             ownerWrap.innerHTML = '';
@@ -1442,7 +1566,9 @@ window.AsgardDocHubPage = (function () {
 
   async function quick(id, action) {
     const labels = { sf: 'СФ получена', wh: 'Шаг склада', pay: 'К оплате' };
-    const ok = await confirm('Подтвердите', (labels[action] || action) + ' для #' + id + '?');
+    const row = (state.rows || []).find((r) => String(r.id) === String(id));
+    const summary = row ? docSummary(row) : ('документ #' + id);
+    const ok = await confirm('Подтвердите', (labels[action] || action) + ' — ' + summary + '?');
     if (!ok) return;
     try {
       const res = await api('/' + id + '/quick', { method: 'POST', body: JSON.stringify({ action }) });
@@ -1560,9 +1686,9 @@ window.AsgardDocHubPage = (function () {
       // Fetch row + users concurrently; works lazy via select
       const [row, usersRes] = await Promise.all([
         api('/' + id),
-        fetch('/api/users?limit=200', { headers: authHeaders() }).then((r) => r.json()).catch(() => ({ items: [] }))
+        fetch('/api/users?limit=200', { headers: authHeaders() }).then((r) => r.json()).catch(() => ({ users: [] }))
       ]);
-      const users = usersRes.items || usersRes.data || usersRes || [];
+      const users = parseUsersList(usersRes);
 
       state.selectedId = id;
       document.querySelectorAll('#dhTableHost tr[data-id].is-selected').forEach((tr) => tr.classList.remove('is-selected'));
@@ -1644,7 +1770,10 @@ window.AsgardDocHubPage = (function () {
             <div class="dh-section">
               <div class="dh-section__h">Контрагент</div>
               <div class="dh-section__b">
-                <div class="dh-field"><label>Название *</label><input id="drCpName" value="${esc(row.counterparty_name || '')}"/></div>
+                <div class="dh-field" id="drCpContainer">
+                  <label>Название *</label>
+                  <input id="drCpName" autocomplete="off" value="${esc(row.counterparty_name || '')}" placeholder="Название или ИНН…"/>
+                </div>
                 <div class="dh-grid2">
                   <div class="dh-field"><label>ИНН</label><input id="drCpInn" value="${esc(row.inn || row.counterparty_inn || '')}"/></div>
                   <div class="dh-field"><label>Email</label><input type="email" id="drCpEmail" value="${esc(row.counterparty_email || row.email || '')}"/></div>
@@ -1658,7 +1787,7 @@ window.AsgardDocHubPage = (function () {
               <div class="dh-section__h">Договор</div>
               <div class="dh-section__b">
                 <div class="dh-mode-cards" id="drContractModeCards">
-                  ${[['linked','Привязан'],['once','Разовая'],['general','Общий'],['none','Без договора']].map(([v,t]) =>
+                  ${[['linked','Привязать договор'],['once','Разовая'],['general','Общий / заявка'],['none','Без договора']].map(([v,t]) =>
                     `<button type="button" class="dh-mode-card${cmode === v ? ' is-on' : ''}" data-mode="${v}"><div class="t">${t}</div></button>`
                   ).join('')}
                 </div>
@@ -1703,7 +1832,7 @@ window.AsgardDocHubPage = (function () {
             <div class="dh-section">
               <div class="dh-section__h">Получение и назначение</div>
               <div class="dh-section__b">
-                <div class="dh-field"><label>Канал получения</label>
+                <div class="dh-field"><label>Способ получения закрывающих <span class="dh-help">(ЭДО / скан / оригинал)</span></label>
                   <select id="drReceive">
                     <option value="" ${!recvVal ? 'selected' : ''}>— не указано —</option>
                     <option value="edo" ${recvVal === 'edo' ? 'selected' : ''}>ЭДО</option>
@@ -1822,12 +1951,12 @@ window.AsgardDocHubPage = (function () {
         if (!wWrap) return;
         if (window.CRSelect) { try { CRSelect.destroy('drWork'); } catch (_) {} }
         try {
-          const r2 = await fetch('/api/works?limit=300&status=active', { headers: authHeaders() });
+          const r2 = await fetch('/api/works?limit=300', { headers: authHeaders() });
           const j2 = await r2.json();
-          const wlist = j2.items || j2.data || j2 || [];
+          const wlist = parseWorksList(j2);
           const curWid = String(row.work_id || '');
           const wopts = [{ value: '', label: '— выбрать объект —' }].concat(
-            wlist.map((w) => ({ value: String(w.id), label: '#' + w.id + ' ' + (w.title || w.name || '') }))
+            wlist.map((w) => ({ value: String(w.id), label: workLabel(w) }))
           );
           if (window.CRSelect) {
             wWrap.innerHTML = '';
@@ -1860,7 +1989,7 @@ window.AsgardDocHubPage = (function () {
         const curOwner = String(row.doc_owner_id || '');
         const curPm = String(row.pm_id || '');
         const uopts = [{ value: '', label: '— выбрать —' }].concat(
-          users.map((u) => ({ value: String(u.id), label: u.name || u.full_name || u.username || 'ID ' + u.id }))
+          users.map((u) => ({ value: String(u.id), label: userLabel(u) }))
         );
         if (ownerWrap) {
           if (window.CRSelect) {
@@ -1932,14 +2061,40 @@ window.AsgardDocHubPage = (function () {
           d.querySelector('#drContractPick').textContent = '✓ ' + (contract.label || contract.number || 'Привязан');
           toast('Договор', 'Привязан: ' + (contract.label || contract.number || contract.id), 'ok');
         };
-        if (window.AsgardContractsPage && typeof AsgardContractsPage.openContractSelector === 'function') {
-          AsgardContractsPage.openContractSelector(inn, 'supplier', cb);
-        } else if (window.AsgardContractsPage && typeof AsgardContractsPage.findByCounterparty === 'function') {
-          AsgardContractsPage.findByCounterparty(cpName).then((list) => { if (list && list[0]) cb(list[0]); else toast('Договоры', 'Не найдено', 'warn'); }).catch(() => toast('Договоры', 'Ошибка', 'err'));
-        } else {
-          toast('Договоры', 'Откройте раздел Договоры', 'warn');
-        }
+        openDhContractPicker({ inn, cpName, onSelect: cb });
       });
+
+      // CRAutocomplete for drawer counterparty
+      (function mountDrCp() {
+        const cpContainer = d.querySelector('#drCpContainer');
+        const cpInput = d.querySelector('#drCpName');
+        if (!cpContainer || !cpInput || !window.CRAutocomplete || typeof CRAutocomplete.create !== 'function') return;
+        try {
+          CRAutocomplete.create(cpContainer, {
+            input: cpInput,
+            suggest: async (q) => {
+              if (!q || q.length < 2) return (state.facets.counterparties || []).slice(0, 12).map((n) => ({ label: n, value: n }));
+              try {
+                const res = await fetch('/api/customers/suggest?q=' + encodeURIComponent(q), { headers: authHeaders() });
+                const j = await res.json();
+                const list = Array.isArray(j) ? j : (j.items || j.data || j.suggestions || []);
+                return (list || []).map((x) => ({
+                  label: x.name || x.value || x.counterparty_name || String(x),
+                  value: x.name || x.value || x.counterparty_name || String(x),
+                  inn: x.inn || (x.data && x.data.inn),
+                  email: x.email,
+                  phone: x.phone
+                }));
+              } catch { return []; }
+            },
+            onSelect: (item) => {
+              if (item.inn) { const el = d.querySelector('#drCpInn'); if (el) el.value = item.inn || ''; }
+              if (item.email) { const el = d.querySelector('#drCpEmail'); if (el) el.value = item.email || ''; }
+              if (item.phone) { const el = d.querySelector('#drCpPhone'); if (el) el.value = item.phone || ''; }
+            }
+          });
+        } catch (_) { /* native input stays */ }
+      })();
 
       // spend_kind cards in drawer
       d.querySelectorAll('#drSpendCards [data-spend]').forEach((btn) => {
@@ -2035,7 +2190,7 @@ window.AsgardDocHubPage = (function () {
         btn.addEventListener('click', () => quick(id, btn.getAttribute('data-qa')));
       });
       d.querySelector('#dhParseCatalog')?.addEventListener('click', async () => {
-        const ok = await confirm('В каталог', 'Разобрать позиции и обновить номенклатуру для #' + id + '?');
+        const ok = await confirm('В каталог', 'Разобрать позиции и обновить номенклатуру — ' + docSummary(row) + '?');
         if (!ok) return;
         try {
           let items = null;

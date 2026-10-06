@@ -120,8 +120,12 @@ function mapRow(raw) {
 }
 
 function boolCell(v) {
-  const s = cellStr(v).toLowerCase();
-  return s === 'да' || s === 'yes' || s === 'true' || s === '1' || s === 'x' || s === '✓' || s === 'v';
+  const s = cellStr(v).toLowerCase().trim();
+  if (!s || s === '-' || s === '—' || s === '---' || s === 'нет' || s === 'no') return false;
+  // Excel often marks scan/original with "+"
+  if (s === '+' || s === '✓' || s === 'v' || s === 'x' || s === 'да' || s === 'yes' || s === 'true' || s === '1') return true;
+  if (/^(скан|оригинал|есть|есть скан|есть оригинал)/i.test(s)) return true;
+  return false;
 }
 
 async function main() {
