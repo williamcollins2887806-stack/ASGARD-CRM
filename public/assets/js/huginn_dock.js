@@ -124,6 +124,27 @@
       .trim() || 'Чат';
   }
 
+  /** Display title for list/thread — direct chats show peer, not legacy «Me — Peer». */
+  function displayChatName(chat) {
+    if (!chat) return 'Чат';
+    if (chat.is_mimir || chat.type === 'mimir') return humanizeChatName(chat.name || 'Мимир');
+    if (!isGroupChat(chat)) {
+      if (chat.direct_user_name) return humanizeChatName(chat.direct_user_name);
+      const raw = String(chat.name || chat.title || '');
+      if (raw.includes(' — ')) {
+        const tail = raw.split(' — ').pop().trim();
+        if (tail) return humanizeChatName(tail);
+      }
+      return humanizeChatName(raw || 'Чат');
+    }
+    return humanizeChatName(chat.name || chat.title || 'Чат');
+  }
+
+  function peerFirstName(chat) {
+    const nm = displayChatName(chat);
+    return String(nm || 'Собеседник').split(/\s+/)[0] || 'Собеседник';
+  }
+
   function isJunkChatName(name) {
     const n = String(name || '');
     return /^PerShot\b/i.test(n)
@@ -615,11 +636,8 @@
   async function ensureChatOpened(chat, extras) {
     if (!chat || !chat.id) return;
     const cid = Number(chat.id);
-    const nm = (extras && extras.name)
-      || chat.direct_user_name
-      || chat.name
-      || chat.title
-      || 'Чат';
+    const merged = { ...chat, ...(extras || {}) };
+    const nm = displayChatName(merged);
     state.tab = 'huginn';
     state.mobileNav = 'chats';
     // New chat may be outside active folder — show under «Все» and persist
@@ -641,18 +659,21 @@
         id: cid,
         name: nm,
         title: nm,
-        direct_user_name: (extras && extras.direct_user_name) || chat.direct_user_name || nm,
-        direct_user_id: (extras && extras.direct_user_id) || chat.direct_user_id || null,
-        is_group: !!chat.is_group,
-        type: chat.type || (chat.is_group ? 'group' : 'direct'),
+        direct_user_name: merged.direct_user_name || (!isGroupChat(merged) ? nm : null),
+        direct_user_id: merged.direct_user_id || merged.peer_user_id || null,
+        is_group: !!merged.is_group,
+        type: merged.type || (merged.is_group ? 'group' : 'direct'),
         unread_count: 0,
-        member_count: chat.member_count || (chat.is_group ? 2 : 2)
+        member_count: merged.member_count || (merged.is_group ? 2 : 2)
       });
     } else {
       const row = state.chats.find((c) => Number(c.id) === cid);
-      if (row && extras && extras.direct_user_name) {
-        row.direct_user_name = extras.direct_user_name;
-        row.name = row.name || extras.direct_user_name;
+      if (row && !isGroupChat(merged)) {
+        if (merged.direct_user_name) row.direct_user_name = merged.direct_user_name;
+        if (merged.direct_user_id || merged.peer_user_id) {
+          row.direct_user_id = merged.direct_user_id || merged.peer_user_id;
+        }
+        row.name = nm;
       }
     }
     await openChat(cid);
@@ -891,7 +912,7 @@
       el.textContent = n ? (n + ' участник' + (n === 1 ? '' : (n >= 2 && n <= 4 ? 'а' : 'ов'))) : 'группа';
       return;
     }
-    const peers = (chat.members || []).map((m) => m.user_id || m.id).filter((id) => id && id !== myId());
+    const peers = (chat.members || []).map((m) => m.user_id || m.id).filter((id) => id && Number(id) !== Number(myId()));
     if (!peers.length && (chat.peer_user_id || chat.direct_user_id)) {
       peers.push(chat.peer_user_id || chat.direct_user_id);
     }
@@ -903,9 +924,12 @@
       const data = await api('/api/chat-groups/presence?user_ids=' + peers.join(','));
       (data.presence || []).forEach((p) => { state.presence[p.user_id] = p; });
       const p = (data.presence || [])[0];
+      const peerLabel = peerFirstName(chat);
       if (p) {
         el.classList.toggle('is-online', !!p.online);
-        el.textContent = p.online ? 'в сети' : (p.last_seen_at ? ('был(а) ' + formatSeen(p.last_seen_at)) : 'не в сети');
+        el.textContent = p.online
+          ? (peerLabel + ' в сети')
+          : (p.last_seen_at ? (peerLabel + ' был(а) ' + formatSeen(p.last_seen_at)) : (peerLabel + ' не в сети'));
       } else {
         el.classList.remove('is-online');
         el.textContent = 'не в сети';
@@ -1545,7 +1569,7 @@
     if (state.chatId) {
       const chat = state.chats.find((c) => c.id === state.chatId) || { name: 'Чат' };
       const mimirMode = isMimirMode();
-      const cname = mimirMode ? 'Мимир' : humanizeChatName(chat.name || chat.title || chat.direct_user_name || 'Чат');
+      const cname = mimirMode ? 'Мимир' : displayChatName(chat);
       const avUrl = mimirMode ? '' : (chat.avatar_url || chat.photo_url || chat.image_url
         || (/офис\s*асгард/i.test(cname) ? '/assets/img/huginn/office-asgard.png' : ''));
       const avStyle = avUrl
@@ -1855,7 +1879,7 @@
       meBtn.onclick = () => {
         state.tab = 'settings';
         state.mobileNav = 'settings';
-        state.settingsProfileOpen = true;
+        state.settingsProfileOpen = false;
         state.settingsEditOpen = false;
         state.chatId = null;
         renderPanel();
@@ -1985,15 +2009,8 @@
             try {
               const data = await api('/api/chat-groups/direct', { method: 'POST', body: { user_id: uid } });
               const chat = data.chat || data;
-              const peerName = (users.find((u) => Number(u.id || u.user_id) === uid) || {}).name
-                || (users.find((u) => Number(u.id || u.user_id) === uid) || {}).full_name
-                || null;
               el.remove();
-              await ensureChatOpened(chat, {
-                direct_user_id: uid,
-                direct_user_name: peerName,
-                name: peerName
-              });
+              await ensureChatOpened(chat);
             } catch (e) {
               showToast(e.message || 'Не удалось открыть чат');
               loadUsers(el.querySelector('#hgComposeSearch').value);
@@ -2038,7 +2055,7 @@
     clearFloats();
     root.querySelectorAll('.hg-compose-sheet,.hg-chat-profile,.hg-invite-sheet').forEach((el) => el.remove());
     const chat = state.chats.find((c) => Number(c.id) === Number(state.chatId)) || {};
-    const title = humanizeChatName(chat.name || chat.title || chat.direct_user_name || 'Чат');
+    const title = displayChatName(chat);
     const host = sheetHost();
     const el = document.createElement('div');
     el.className = 'hg-chat-profile hg-sheet';
@@ -2079,7 +2096,7 @@
       </div>` : ''}
       <div class="hg-profile-tabs" role="tablist">
         ${isGroup ? '<button type="button" class="hg-profile-tab is-active" data-stab="members">Участники</button>' : ''}
-        <button type="button" class="hg-profile-tab${!isGroup ? ' is-active' : ''}" data-stab="media">Медиа</button>
+        <button type="button" class="hg-profile-tab" data-stab="media">Медиа</button>
         <button type="button" class="hg-profile-tab" data-stab="files">Файлы</button>
         <button type="button" class="hg-profile-tab" data-stab="voice">Голосовые</button>
         <button type="button" class="hg-profile-tab" data-stab="links">Ссылки</button>
@@ -2139,35 +2156,22 @@
 
     let shared = { media: [], files: [], links: [], voices: [] };
     let members = [];
-    try {
-      const detail = await api('/api/chat-groups/' + state.chatId);
-      members = detail.members || [];
-      el.querySelector('#hgProfileSub').textContent = (members.length || chat.member_count || 0) + ' участников';
-    } catch (_) {
-      el.querySelector('#hgProfileSub').textContent = '';
-    }
-    try {
-      shared = await api('/api/chat-groups/' + state.chatId + '/shared');
-    } catch (_) {}
-
+    let activeProfileTab = isGroup ? 'members' : 'publications';
     const body = el.querySelector('#hgProfileBody');
     const syncProfileMeta = (tab) => {
       const sub = el.querySelector('#hgProfileSub');
       if (!sub) return;
       const nMem = members.length || chat.member_count || 0;
-      /* Compact TG chrome for all shared-* tabs (not only media) */
       const gallery = tab === 'media' || tab === 'files' || tab === 'voice' || tab === 'links'
         || tab === 'publications' || tab === 'archive';
       el.classList.toggle('is-media-gallery', gallery);
       const moreGalBtn = el.querySelector('#hgProfileMoreGal');
       if (moreGalBtn) moreGalBtn.hidden = !gallery;
-      /* REF S20: gallery strip = Медиа/Файлы/Голосовые/Ссылки — без Участники */
       el.querySelectorAll('.hg-profile-tab[data-stab="members"]').forEach((b) => {
         b.style.display = gallery ? 'none' : '';
       });
       const seg = el.querySelector('.hg-profile-segment');
       if (seg) {
-        /* Pubs/Archive only on DM root media surface; hide when deep in files/voice/links */
         const showSeg = !isGroup && (tab === 'publications' || tab === 'archive' || tab === 'media');
         seg.style.display = showSeg ? '' : 'none';
       }
@@ -2177,7 +2181,7 @@
         const nPhoto = Math.max(0, n - nVid);
         sub.textContent = n
           ? (nVid ? (nPhoto + ' фото, ' + nVid + ' видео') : (n + ' фото'))
-          : (nMem ? (nMem + ' участников') : '');
+          : (isGroup ? ((nMem ? (nMem + ' участников') : '')) : peerFirstName(chat));
       } else if (tab === 'archive') {
         sub.textContent = 'Архив публикаций';
       } else if (tab === 'files') {
@@ -2241,6 +2245,7 @@
       menu.querySelector('[data-a="tags"]').onclick = () => {};
     };
     const renderTab = (tab) => {
+      activeProfileTab = tab;
       el.querySelectorAll('.hg-profile-tab, .hg-profile-seg').forEach((b) => {
         b.classList.toggle('is-active', b.getAttribute('data-stab') === tab);
       });
@@ -2250,7 +2255,6 @@
         return;
       }
       if (tab === 'archive') {
-        /* Archive publications — empty until BE stories-archive; layout HAVE */
         renderMediaGrid([], 'Архив пуст');
         return;
       }
@@ -2284,7 +2288,6 @@
           const t = String(f.message_type || '');
           if (t === 'image' || t === 'video' || t === 'circle' || t === 'voice') return false;
           const n = String(f.original_name || f.file_name || f.name || '');
-          /* keep docs; drop seed photos that leaked into files */
           if (/^seed-photo/i.test(n) || /\.(png|jpe?g|gif|webp)$/i.test(n)) return false;
           return true;
         });
@@ -2358,15 +2361,13 @@
             const online = !!(m.is_online || m.online || /в\s*сети/i.test(String(m.status || '')));
             const statusTxt = online
               ? 'в сети'
-              : (m.last_seen_text || m.last_seen || (m.status && !/owner|admin|member|участ/i.test(String(m.status)) ? m.status : 'был(а) недавно'));
-            const avM = m.avatar_url || m.photo_url || '';
-            const avSt = avM
-              ? `background-image:url('${esc(avM)}');background-size:cover;background-position:center`
-              : `background:${avatarColor(nm)}`;
-            return `<button type="button" class="hg-contact-row hg-member-row" data-member-idx="${idx}">
-              <div class="hg-contact-av" style="${avSt}">${avM ? '' : esc(initials(nm))}</div>
-              <div class="hg-contact-meta"><div class="hg-contact-name">${esc(nm)}</div>
-              <div class="hg-contact-status${online ? ' is-online' : ''}">${esc(statusTxt)}</div></div>
+              : (m.last_seen_at ? ('был(а) ' + formatSeen(m.last_seen_at)) : 'был(а) недавно');
+            return `<button type="button" class="hg-member-row" data-member-idx="${idx}">
+              <div class="hg-contact-av" style="background:${avatarColor(nm)}">${esc(initials(nm))}</div>
+              <div class="hg-member-meta">
+                <div class="hg-member-name">${esc(nm)}</div>
+                <div class="hg-member-sub ${online ? 'is-online' : ''}">${esc(statusTxt)}</div>
+              </div>
               ${badge}
             </button>`;
           }).join('')}</div>`
@@ -2382,7 +2383,23 @@
     el.querySelectorAll('.hg-profile-tab, .hg-profile-seg').forEach((btn) => {
       btn.onclick = () => renderTab(btn.getAttribute('data-stab'));
     });
-    renderTab(isGroup ? 'members' : 'publications');
+    renderTab(activeProfileTab);
+
+    try {
+      const detail = await api('/api/chat-groups/' + state.chatId);
+      members = detail.members || [];
+      if (detail.chat) {
+        if (detail.chat.direct_user_name) chat.direct_user_name = detail.chat.direct_user_name;
+        if (detail.chat.direct_user_id) chat.direct_user_id = detail.chat.direct_user_id;
+        const nmEl = el.querySelector('.hg-profile-name');
+        if (nmEl) nmEl.textContent = displayChatName(detail.chat);
+      }
+    } catch (_) { /* keep peer subtitle from initial renderTab */ }
+    try {
+      const sh = await api('/api/chat-groups/' + state.chatId + '/shared');
+      if (sh && (sh.media || sh.files || sh.links || sh.voices)) shared = sh;
+    } catch (_) {}
+    renderTab(activeProfileTab);
   }
 
   async function openStoryViewer(storyId) {
@@ -2509,7 +2526,7 @@
       else if ((prevType === 'file' || prevType === 'document') && !/📄/.test(prev)) prev = '📄 ' + (prev || 'Файл');
       else if (prevType === 'video' && !/🎬/.test(prev)) prev = '🎬 ' + (prev || 'Видео');
       else if (prevType === 'voice') prev = '🎤 ' + (prev || 'Голосовое');
-      const cname = humanizeChatName(c.name || c.direct_user_name);
+      const cname = displayChatName(c);
       const t = c.last_message_at
         ? new Date(c.last_message_at).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })
         : '';
@@ -2579,7 +2596,7 @@
           if (!uid || Number(uid) === Number(myId()) || map.has(Number(uid))) return;
           map.set(Number(uid), {
             user_id: uid,
-            name: m.name || m.full_name || c.name || 'Контакт',
+            name: m.name || m.full_name || displayChatName(c) || 'Контакт',
             chat_id: c.id
           });
         });
@@ -2588,7 +2605,7 @@
         if (!map.has(Number(uid))) {
           map.set(Number(uid), {
             user_id: uid,
-            name: c.name || c.direct_user_name || 'Контакт',
+            name: displayChatName(c) || c.direct_user_name || 'Контакт',
             chat_id: c.id
           });
         }
@@ -2736,14 +2753,14 @@
     const quickTop = quick.slice(0, 1);
     const quickRest = quick.slice(1);
     const headTitle = showProfile ? 'Профиль' : shortName;
-    const headBtn = showProfile || showEdit ? 'Готово' : 'Изм.';
+    const headBtn = showProfile ? 'Назад' : (showEdit ? 'Готово' : 'Изм.');
     panel.innerHTML = `
       <div class="hg-settings${showProfile || showEdit ? ' is-profile' : ' is-root'}">
         <div class="hg-settings-head">
           <strong class="hg-settings-title">${esc(headTitle)}</strong>
           <button type="button" class="hg-settings-edit" id="hgSettingsEdit">${headBtn}</button>
         </div>
-        <div class="hg-settings-profile" id="hgSettingsProfileCard">
+        <div class="hg-settings-profile${!showProfile && !showEdit ? ' is-clickable' : ''}" id="hgSettingsProfileCard" role="${!showProfile && !showEdit ? 'button' : 'group'}" tabindex="${!showProfile && !showEdit ? '0' : '-1'}">
           <div class="hg-settings-av" style="background:${avatarColor(name)}">${esc(initials(name))}</div>
           <div class="hg-settings-name">${esc(name)}</div>
           <div class="hg-settings-sub"><span class="hg-settings-shield" aria-hidden="true">1</span>${esc(phone)} · ${esc(uname)}</div>
@@ -2830,14 +2847,33 @@
     const editBtn = panel.querySelector('#hgSettingsEdit');
     if (editBtn) {
       editBtn.onclick = () => {
-        if (showProfile || showEdit) {
+        if (showProfile) {
           state.settingsProfileOpen = false;
           state.settingsEditOpen = false;
+        } else if (showEdit) {
+          state.settingsEditOpen = false;
+          state.settingsProfileOpen = false;
         } else {
           state.settingsEditOpen = true;
           state.settingsProfileOpen = false;
         }
         renderSettingsPanel(panel);
+      };
+    }
+    const profileCard = panel.querySelector('#hgSettingsProfileCard');
+    if (profileCard && !showProfile && !showEdit) {
+      const openProfileDetail = () => {
+        state.settingsProfileOpen = true;
+        state.settingsEditOpen = false;
+        renderSettingsPanel(panel);
+        enrichMyProfile(panel);
+      };
+      profileCard.onclick = (e) => {
+        if (e.target.closest('#hgSettingsPhoto')) return;
+        openProfileDetail();
+      };
+      profileCard.onkeydown = (e) => {
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openProfileDetail(); }
       };
     }
     panel.querySelectorAll('[data-set]').forEach((btn) => {

@@ -137,6 +137,44 @@ module.exports = async function(fastify) {
     return member && (member.role === 'owner' || member.role === 'admin');
   }
 
+  /** Other participant in a 1:1 direct chat (viewer-relative). */
+  async function getDirectPeerForChat(chatId, viewerUserId) {
+    const { rows } = await db.query(`
+      SELECT u.id, u.name, u.last_login_at
+      FROM chat_group_members cm
+      JOIN users u ON u.id = cm.user_id
+      WHERE cm.chat_id = $1 AND cm.user_id != $2
+      LIMIT 1
+    `, [chatId, viewerUserId]);
+    return rows[0] || null;
+  }
+
+  async function repairLegacyDirectChatName(chatId, currentName, peerName) {
+    const legacy = String(currentName || '');
+    const peer = String(peerName || '').trim();
+    if (!peer || !legacy.includes(' — ')) return peer || legacy;
+    await db.query('UPDATE chats SET name = $1 WHERE id = $2', [peer, chatId]);
+    return peer;
+  }
+
+  async function attachDirectPeer(chat, viewerUserId, opts = {}) {
+    if (!chat || chat.is_group || chat.type === 'mimir' || chat.is_mimir) return chat;
+    const peer = await getDirectPeerForChat(chat.id, viewerUserId);
+    if (!peer) return chat;
+    let name = chat.name;
+    if (opts.repairLegacy) {
+      name = await repairLegacyDirectChatName(chat.id, name, peer.name);
+    }
+    return {
+      ...chat,
+      name,
+      direct_user_id: peer.id,
+      direct_user_name: peer.name,
+      peer_user_id: peer.id,
+      is_online: isUserOnline(peer.id)
+    };
+  }
+
   // ═══════════════════════════════════════════════════════════════
   // HELPER: Уведомление
   // ═══════════════════════════════════════════════════════════════
@@ -235,7 +273,8 @@ module.exports = async function(fastify) {
       `, [myId, user_id]);
 
       if (existing.rows.length > 0) {
-        return { chat: existing.rows[0] };
+        const chat = await attachDirectPeer(existing.rows[0], myId, { repairLegacy: true });
+        return { chat };
       }
 
       // Create new direct chat
@@ -244,8 +283,7 @@ module.exports = async function(fastify) {
         return reply.code(404).send({ error: 'Пользователь не найден' });
       }
 
-      const myUser = await db.query('SELECT id, name FROM users WHERE id = $1', [myId]);
-      const chatName = `${myUser.rows[0].name} — ${otherUser.rows[0].name}`;
+      const chatName = String(otherUser.rows[0].name || '').trim() || 'Чат';
 
       const result = await db.query(`
         INSERT INTO chats (name, type, is_group, created_at, last_message_at)
@@ -253,14 +291,15 @@ module.exports = async function(fastify) {
         RETURNING *
       `, [chatName]);
 
-      const chat = result.rows[0];
+      const chatRow = result.rows[0];
 
       // Add both members
       await db.query(`
         INSERT INTO chat_group_members (chat_id, user_id, role, joined_at)
         VALUES ($1, $2, 'owner', NOW()), ($1, $3, 'member', NOW())
-      `, [chat.id, myId, user_id]);
+      `, [chatRow.id, myId, user_id]);
 
+      const chat = await attachDirectPeer(chatRow, myId);
       return { chat, created: true };
     } catch (err) {
       fastify.log.error({ err }, 'Direct chat error');
@@ -406,7 +445,8 @@ module.exports = async function(fastify) {
     for (const m of members) {
       m.is_online = isUserOnline(m.user_id);
     }
-    return { chat, members, myRole: member.role };
+    const enrichedChat = await attachDirectPeer(chat, userId, { repairLegacy: true });
+    return { chat: enrichedChat, members, myRole: member.role };
   });
 
   // ───────────────────────────────────────────────────────────────
@@ -1141,7 +1181,7 @@ module.exports = async function(fastify) {
       // Раньше брали `path.extname(originalName)` из имени клиента, файл лежит в uploads/chat
       // (раздаётся статикой) → `.html` исполнялся в домене CRM.
       const { safeStoredExt } = require('../lib/upload-ext');
-      const ext = safeStoredExt(data.mimetype, data.filename, { allow: 'doc' });
+      const ext = safeStoredExt(data.mimetype, data.filename, { allow: 'chat' });
       if (!ext) {
         return reply.code(415).send({ error: 'Недопустимый тип файла' });
       }
@@ -1408,6 +1448,52 @@ module.exports = async function(fastify) {
     `, [chatId]);
 
     return { files: rows };
+  });
+
+  // GET /api/chat-groups/:id/shared — media / files / links / voice aggregates (S18/S20–S22)
+  fastify.get('/:id/shared', {
+    preHandler: [fastify.authenticate]
+  }, async (request, reply) => {
+    const chatId = parseInt(request.params.id);
+    if (isNaN(chatId)) return reply.code(400).send({ error: 'Некорректный ID' });
+    const member = await getChatMembership(chatId, request.user.id);
+    if (!member) return reply.code(403).send({ error: 'Нет доступа' });
+
+    const tab = String(request.query.tab || 'all').toLowerCase();
+    const { rows: msgs } = await db.query(`
+      SELECT id, message, message_type, file_url, file_duration, created_at, user_id, metadata
+      FROM chat_messages
+      WHERE chat_id = $1 AND deleted_at IS NULL
+      ORDER BY created_at DESC
+      LIMIT 500
+    `, [chatId]);
+
+    const media = msgs.filter((m) => ['image', 'video', 'circle'].includes(m.message_type) && m.file_url);
+    const voices = msgs.filter((m) => m.message_type === 'voice' && m.file_url);
+    const urlRe = /https?:\/\/[^\s<>"']+/gi;
+    const links = [];
+    for (const m of msgs) {
+      const t = String(m.message || '');
+      const found = t.match(urlRe);
+      if (found) {
+        for (const u of found) links.push({ url: u, message_id: m.id, created_at: m.created_at });
+      }
+    }
+    const { rows: files } = await db.query(`
+      SELECT a.id, a.file_name, a.original_name, a.file_path, a.file_size, a.mime_type, a.created_at,
+        u.name as user_name, m.id as message_id
+      FROM chat_attachments a
+      JOIN chat_messages m ON m.id = a.message_id
+      JOIN users u ON u.id = m.user_id
+      WHERE m.chat_id = $1 AND m.deleted_at IS NULL
+      ORDER BY a.created_at DESC
+    `, [chatId]);
+
+    if (tab === 'media') return { media };
+    if (tab === 'files') return { files };
+    if (tab === 'links') return { links };
+    if (tab === 'voice') return { voices };
+    return { media, files, links, voices };
   });
 
   // ───────────────────────────────────────────────────────────────

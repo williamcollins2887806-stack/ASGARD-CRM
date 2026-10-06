@@ -1,0 +1,1 @@
+-- Irreversible data fix: do not restore composite "Me — Peer" names.

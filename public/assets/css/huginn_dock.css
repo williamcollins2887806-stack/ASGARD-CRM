@@ -3884,6 +3884,9 @@ html[data-theme="light"] .hg-settings { background: var(--hg-bg, var(--bg1, #F4E
   gap: 6px;
   padding: 8px 0 4px;
 }
+.hg-settings-profile.is-clickable {
+  cursor: pointer;
+}
 .hg-settings-av {
   width: 110px;
   height: 110px;
