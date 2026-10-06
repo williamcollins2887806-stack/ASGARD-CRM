@@ -89,23 +89,46 @@
     return apply(next);
   }
 
-  // Simple toggle: just dark <-> light with smooth transition
-  function toggleSimple(){
-    const current = get();
-    const html = document.documentElement;
-    /* Перекраска CRM с анимацией ВСЕГО (12k+ dom-узлов) блокирует main thread:
-       замер на клоне — первый кадр 6.8с, полная перекраска 10.8с. Поэтому:
-       1) цветовые переходы — только на html/body (дешёвый слой), не на *;
-       2) на время переключения глушим остальные transition (иначе «полу-тема»
-          на 1-1.5с: часть элементов меняет цвет мгновенно, часть — плавно). */
-    if (!matchMedia('(prefers-reduced-motion: reduce)').matches) {
-      html.classList.add('theme-transitioning');
+  /**
+   * Мгновенная перекраска: на время смены темы глушим ВСЕ transitions.
+   * Причина: элементы с собственными transition (.dh-vat-chip .12s, ховеры,
+   * backdrop-blur слои) догоняют тему на 300+ мс позже остальных — пользователь
+   * видит «часть светлая, часть тёмная» ~0.4с. Лок — один <style> на 2 кадра.
+   */
+  function _instant(fn){
+    var lock = document.getElementById('asg-theme-lock');
+    var created = false;
+    if (!lock) {
+      try {
+        lock = document.createElement('style');
+        lock.id = 'asg-theme-lock';
+        lock.textContent = '*,*::before,*::after{transition:none!important;animation-duration:0s!important}';
+        document.head.appendChild(lock);
+        created = true;
+        // гарантируем, что лок применён ДО смены цветов
+        void getComputedStyle(document.documentElement).transitionProperty;
+      } catch (e) { lock = null; }
     }
-    const result = apply(current === "light" ? "dark" : "light");
-    // Снять класс СРАЗУ после перекраски: rule `html.theme-transitioning *`
-    // держать нельзя (дорого), достаточно плавности на корне.
-    html.classList.remove('theme-transitioning');
-    return result;
+    var r = fn();
+    if (created && lock) {
+      requestAnimationFrame(function(){ requestAnimationFrame(function(){
+        try { lock.remove(); } catch (e) {}
+      }); });
+    }
+    return r;
+  }
+
+  // Simple toggle: just dark <-> light, мгновенно и одновременно
+  function toggleSimple(){
+    var current = get();
+    return _instant(function(){
+      return apply(current === "light" ? "dark" : "light");
+    });
+  }
+
+  /** Установить конкретную тему мгновенно (без «полу-темы»), напр. экран выбора. */
+  function applyInstant(pref){
+    return _instant(function(){ return apply(pref); });
   }
 
   // Initialize theme
@@ -194,6 +217,7 @@
     apply,
     toggle,
     toggleSimple,
+    applyInstant,
     init,
     // Sidebar
     getSidebarCollapsed,

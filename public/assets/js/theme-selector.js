@@ -28,7 +28,9 @@
     el.classList.add('ats-selected');
     var btn = document.getElementById('atsContinue');
     if (btn) btn.removeAttribute('disabled');
-    if (window.AsgardTheme) window.AsgardTheme.apply(theme);
+    if (window.AsgardTheme) {
+      (AsgardTheme.applyInstant || AsgardTheme.apply).call(AsgardTheme, theme);
+    }
   }
 
   function confirm() {
