@@ -92,6 +92,13 @@ window.AsgardTelephonyAdmin = (function () {
       if (strategy === 'parallel') strategy = 'simultaneous';
       var whFrom = (cfg.work_hours && cfg.work_hours.mon && cfg.work_hours.mon.start) || cfg.work_hours_from || '09:00';
       var whTo = (cfg.work_hours && cfg.work_hours.mon && cfg.work_hours.mon.end) || cfg.work_hours_to || '18:00';
+      var dutyUntil = cfg.duty_until || '';
+      if (!dutyUntil && whTo) {
+        var parts = whTo.split(':');
+        var dh = (parseInt(parts[0], 10) || 18) + 2;
+        if (dh > 23) dh = 23;
+        dutyUntil = (dh < 10 ? '0' : '') + dh + ':' + (parts[1] || '00');
+      }
 
       body.innerHTML =
         '<div class="pbx-settings-shell">' +
@@ -109,6 +116,7 @@ window.AsgardTelephonyAdmin = (function () {
               '</select></label></div>' +
               '<div class="pbx-field"><label>Начало рабочего дня<input type="time" id="pbxWorkFrom" value="' + esc(whFrom) + '"></label></div>' +
               '<div class="pbx-field"><label>Конец рабочего дня<input type="time" id="pbxWorkTo" value="' + esc(whTo) + '"></label></div>' +
+              '<div class="pbx-field"><label>Дежурство до<input type="time" id="pbxDutyUntil" value="' + esc(dutyUntil) + '"><span class="help" style="display:block;font-size:11px;color:var(--t3);margin-top:4px">После конца смены дежурный остаётся на линии до этого времени</span></label></div>' +
               '<div class="pbx-field"><label><input type="checkbox" id="pbxRec"' + (cfg.recording_enabled !== false ? ' checked' : '') + '> Запись разговоров</label></div>' +
               '<div class="pbx-field"><label><input type="checkbox" id="pbxAi"' + (cfg.ai_postcall_enabled ? ' checked' : '') + '> AI после звонка</label></div>' +
             '</div>' +
@@ -125,6 +133,7 @@ window.AsgardTelephonyAdmin = (function () {
         var strat = (body.querySelector('#pbxDialStrategy') || {}).value || 'duty_first';
         var from = (body.querySelector('#pbxWorkFrom') || {}).value || '09:00';
         var to = (body.querySelector('#pbxWorkTo') || {}).value || '18:00';
+        var duty = (body.querySelector('#pbxDutyUntil') || {}).value || '';
         var routing = strat === 'simultaneous' ? 'parallel' : strat;
         var next = Object.assign({}, cfg, {
           routing_mode: routing,
@@ -132,6 +141,7 @@ window.AsgardTelephonyAdmin = (function () {
           parallel_ring: routing === 'parallel',
           work_hours_from: from,
           work_hours_to: to,
+          duty_until: duty || undefined,
           work_hours: {
             mon: { start: from, end: to },
             tue: { start: from, end: to },

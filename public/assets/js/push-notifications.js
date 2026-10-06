@@ -247,25 +247,31 @@ window.AsgardPush = (function() {
   // ═══════════════════════════════════════════════════════════════
   // INSTALL PROMPT — предложение установить на главный экран
   // ═══════════════════════════════════════════════════════════════
+  function isYandexBrowser() {
+    return /YaBrowser|Yandex/i.test(navigator.userAgent || '');
+  }
+
   function initInstallPrompt() {
-    // Android/Chrome: intercept beforeinstallprompt
+    // Install не зависит от PushManager — слушаем BIP всегда.
     window.addEventListener('beforeinstallprompt', function(e) {
       e.preventDefault();
       _deferredInstallPrompt = e;
-      // Don't show immediately — delay to avoid annoying user on first visit
       var dismissed = parseInt(localStorage.getItem('asgard_install_dismissed') || '0', 10);
       if (dismissed >= 3) return;
-      // Show after 30 seconds of usage
       setTimeout(function() {
         if (_deferredInstallPrompt) showInstallBanner();
       }, 30000);
     });
 
-    // iOS: detect if not installed and show manual instruction
     if (isIOS() && !isStandalone()) {
       var dismissed = parseInt(localStorage.getItem('asgard_install_dismissed') || '0', 10);
       if (dismissed >= 3) return;
       setTimeout(function() { showIOSInstallBanner(); }, 30000);
+    } else if (isYandexBrowser() && !isStandalone() && !_deferredInstallPrompt) {
+      var yd = parseInt(localStorage.getItem('asgard_install_dismissed') || '0', 10);
+      if (yd < 3) {
+        setTimeout(function() { showManualInstallBanner('yandex'); }, 45000);
+      }
     }
   }
 
@@ -278,47 +284,132 @@ window.AsgardPush = (function() {
            window.navigator.standalone === true;
   }
 
-  function showInstallBanner() {
-    if (!window.M || !M.BottomSheet) {
-      // Fallback: no UI library
+  function installInstructionHtml(kind) {
+    if (kind === 'yandex') {
+      return ''
+        + '<div style="font-size:13px;color:var(--t1);line-height:1.55">'
+        +   '<div style="margin-bottom:8px">В Яндекс.Браузере:</div>'
+        +   '<ol style="margin:0;padding-left:18px">'
+        +     '<li>Откройте меню ⋮</li>'
+        +     '<li>Выберите «Установить сайт» или «Добавить на рабочий стол»</li>'
+        +     '<li>Подтвердите установку</li>'
+        +   '</ol>'
+        + '</div>';
+    }
+    if (kind === 'ios') {
+      return ''
+        + '<div style="font-size:13px;color:var(--t1);line-height:1.6">'
+        +   '<div style="margin-bottom:8px">1) Нажмите «Поделиться»</div>'
+        +   '<div>2) Выберите «На экран Домой»</div>'
+        + '</div>';
+    }
+    return '<div style="font-size:13px;color:var(--t2)">Установите приложение через меню браузера: «Установить» / «Добавить на главный экран».</div>';
+  }
+
+  function showInstallToastCard(html, onPrimary, primaryLabel) {
+    var host = document.getElementById('asgard-install-card');
+    if (host) host.remove();
+    host = document.createElement('div');
+    host.id = 'asgard-install-card';
+    host.setAttribute('role', 'dialog');
+    host.style.cssText = 'position:fixed;z-index:100050;left:16px;right:16px;bottom:16px;max-width:420px;margin:0 auto;padding:16px;border-radius:16px;background:var(--bg2,#121a2b);border:1px solid var(--brd);box-shadow:0 12px 40px rgba(0,0,0,.35);display:grid;gap:12px';
+    host.innerHTML = html
+      + '<div style="display:grid;gap:8px;grid-template-columns:1fr 1fr">'
+      +   '<button type="button" id="asgardInstallPrimary" class="btn" style="height:44px">' + (primaryLabel || 'Установить') + '</button>'
+      +   '<button type="button" id="asgardInstallDismiss" class="btn ghost" style="height:44px">Не сейчас</button>'
+      + '</div>';
+    document.body.appendChild(host);
+    host.querySelector('#asgardInstallPrimary').onclick = function () {
+      host.remove();
+      if (onPrimary) onPrimary();
+    };
+    host.querySelector('#asgardInstallDismiss').onclick = function () {
+      var c = parseInt(localStorage.getItem('asgard_install_dismissed') || '0', 10);
+      localStorage.setItem('asgard_install_dismissed', String(c + 1));
+      host.remove();
+    };
+  }
+
+  function promptInstall() {
+    if (isStandalone()) {
+      if (window.AsgardUI && AsgardUI.toast) AsgardUI.toast('PWA', 'Уже установлено', 'ok');
+      return Promise.resolve({ ok: true, installed: true });
+    }
+    if (_deferredInstallPrompt) {
+      return _deferredInstallPrompt.prompt().then(function () {
+        return _deferredInstallPrompt.userChoice;
+      }).then(function (result) {
+        _deferredInstallPrompt = null;
+        return { ok: true, outcome: result && result.outcome };
+      }).catch(function (e) {
+        return { ok: false, error: e.message };
+      });
+    }
+    var kind = isIOS() ? 'ios' : (isYandexBrowser() ? 'yandex' : 'manual');
+    showManualInstallBanner(kind);
+    return Promise.resolve({ ok: true, manual: true, kind: kind });
+  }
+
+  function showManualInstallBanner(kind) {
+    var title = kind === 'yandex' ? 'Установка в Яндекс.Браузере' : (kind === 'ios' ? 'Установка на iPhone' : 'Установка приложения');
+    var body = ''
+      + '<div style="display:flex;align-items:center;gap:12px">'
+      +   '<img src="./assets/img/icon-96.png" width="48" height="48" style="border-radius:12px" alt="ASGARD">'
+      +   '<div><div style="font-size:15px;font-weight:700;color:var(--t1)">' + title + '</div>'
+      +   '<div style="font-size:12px;color:var(--t2);margin-top:2px">АСГАРД CRM на рабочий стол</div></div></div>'
+      + installInstructionHtml(kind);
+    if (window.M && M.BottomSheet) {
+      var content = document.createElement('div');
+      content.innerHTML = body + '<button type="button" id="btnInstallManualOk" class="btn" style="margin-top:12px;width:100%;height:48px">Понятно</button>';
+      var sheet = M.BottomSheet({ title: 'Установка', content: content });
+      content.querySelector('#btnInstallManualOk').onclick = function () {
+        var c = parseInt(localStorage.getItem('asgard_install_dismissed') || '0', 10);
+        localStorage.setItem('asgard_install_dismissed', String(c + 1));
+        sheet.close();
+      };
       return;
     }
-    var content = document.createElement('div');
-    content.innerHTML = ''
-      + '<div style="display:grid;gap:14px">'
-      +   '<div style="display:flex;align-items:center;gap:14px;padding:16px;border-radius:16px;background:var(--bg3);border:1px solid var(--brd)">'
-      +     '<img src="./assets/img/icon-96.png" width="48" height="48" style="border-radius:12px" alt="ASGARD">'
-      +     '<div>'
-      +       '<div style="font-size:15px;font-weight:700;color:var(--t1)">Установить АСГАРД CRM</div>'
-      +       '<div style="font-size:12px;color:var(--t2);margin-top:2px">Быстрый доступ с главного экрана</div>'
-      +     '</div>'
-      +   '</div>'
-      +   '<div style="display:grid;gap:10px">'
-      +     '<button id="btnInstallYes" type="button" style="height:52px;border:none;border-radius:16px;background:var(--hero-grad,linear-gradient(135deg,#1E4D8C,#C8293B));color:#fff;font-size:15px;font-weight:800;letter-spacing:-0.2px;box-shadow:0 4px 20px rgba(30,77,140,0.35);cursor:pointer">Установить</button>'
-      +     '<button id="btnInstallNo" type="button" style="height:48px;border-radius:16px;border:1px solid var(--brd);background:var(--bg3);color:var(--t2);font-size:14px;font-weight:700;cursor:pointer">Не сейчас</button>'
-      +   '</div>'
-      + '</div>';
+    showInstallToastCard(body, function () {}, 'Понятно');
+  }
 
-    var sheet = M.BottomSheet({ title: 'Установка', content: content });
+  function showInstallBanner() {
+    var body = ''
+      + '<div style="display:flex;align-items:center;gap:12px">'
+      +   '<img src="./assets/img/icon-96.png" width="48" height="48" style="border-radius:12px" alt="ASGARD">'
+      +   '<div><div style="font-size:15px;font-weight:700;color:var(--t1)">Установить АСГАРД CRM</div>'
+      +   '<div style="font-size:12px;color:var(--t2);margin-top:2px">Быстрый доступ с главного экрана</div></div></div>';
 
-    content.querySelector('#btnInstallYes').addEventListener('click', function() {
-      sheet.close();
+    function doPrompt() {
       if (_deferredInstallPrompt) {
         _deferredInstallPrompt.prompt();
-        _deferredInstallPrompt.userChoice.then(function(result) {
-          if (result.outcome === 'accepted') {
-            if (window.M && M.Toast) M.Toast({ message: 'Приложение установлено!', type: 'success' });
+        _deferredInstallPrompt.userChoice.then(function (result) {
+          if (result.outcome === 'accepted' && window.AsgardUI && AsgardUI.toast) {
+            AsgardUI.toast('PWA', 'Приложение установлено', 'ok');
           }
           _deferredInstallPrompt = null;
         });
+      } else {
+        showManualInstallBanner(isYandexBrowser() ? 'yandex' : (isIOS() ? 'ios' : 'manual'));
       }
-    });
+    }
 
-    content.querySelector('#btnInstallNo').addEventListener('click', function() {
-      var c = parseInt(localStorage.getItem('asgard_install_dismissed') || '0', 10);
-      localStorage.setItem('asgard_install_dismissed', String(c + 1));
-      sheet.close();
-    });
+    if (window.M && M.BottomSheet) {
+      var content = document.createElement('div');
+      content.innerHTML = body
+        + '<div style="display:grid;gap:10px;margin-top:12px">'
+        +   '<button id="btnInstallYes" type="button" class="btn" style="height:52px">Установить</button>'
+        +   '<button id="btnInstallNo" type="button" class="btn ghost" style="height:48px">Не сейчас</button>'
+        + '</div>';
+      var sheet = M.BottomSheet({ title: 'Установка', content: content });
+      content.querySelector('#btnInstallYes').onclick = function () { sheet.close(); doPrompt(); };
+      content.querySelector('#btnInstallNo').onclick = function () {
+        var c = parseInt(localStorage.getItem('asgard_install_dismissed') || '0', 10);
+        localStorage.setItem('asgard_install_dismissed', String(c + 1));
+        sheet.close();
+      };
+      return;
+    }
+    showInstallToastCard(body, doPrompt, 'Установить');
   }
 
   function showIOSInstallBanner() {
@@ -476,6 +567,9 @@ window.AsgardPush = (function() {
 
   // ── Init ──
   function init() {
+    // Install — всегда, даже без PushManager (Яндекс и др.)
+    initInstallPrompt();
+
     if (!isSupported()) return;
 
     // Badge polling
@@ -483,9 +577,6 @@ window.AsgardPush = (function() {
 
     // Notification click handler
     initNotificationClickHandler();
-
-    // Install prompt
-    initInstallPrompt();
 
     // If already subscribed, just run badge
     if (isSubscribed() && Notification.permission === 'granted') return;
@@ -495,6 +586,16 @@ window.AsgardPush = (function() {
   }
 
   // ── Notification preferences UI (for settings page) ──
+  function renderInstallSettingsBlock() {
+    if (isStandalone()) {
+      return '<div class="card" style="margin-top:14px"><h3>Установка приложения</h3>'
+        + '<div class="help">АСГАРД уже установлен как приложение.</div></div>';
+    }
+    return '<div class="card" style="margin-top:14px"><h3>Установка приложения</h3>'
+      + '<div class="help" style="margin-bottom:10px">Добавьте CRM на рабочий стол. Работает и без push; в Яндекс.Браузере — через меню «Установить сайт».</div>'
+      + '<button type="button" class="btn" id="btnPwaInstall">Установить</button></div>';
+  }
+
   function renderSettingsSection() {
     var supported = isSupported();
     var subscribed = isSubscribed();
@@ -512,7 +613,8 @@ window.AsgardPush = (function() {
       { key: 'payment', label: 'Оплата' }
     ];
 
-    var html = '<div class="card" style="margin-top:14px">';
+    var html = renderInstallSettingsBlock();
+    html += '<div class="card" style="margin-top:14px">';
     html += '<h3>🔔 Push-уведомления</h3>';
 
     if (!supported) {
@@ -547,6 +649,13 @@ window.AsgardPush = (function() {
   }
 
   function bindSettingsEvents() {
+    var btnInstall = document.getElementById('btnPwaInstall');
+    if (btnInstall) {
+      btnInstall.addEventListener('click', function () {
+        promptInstall();
+      });
+    }
+
     var btnOn = document.getElementById('btnPushOn');
     if (btnOn) {
       btnOn.addEventListener('click', async function() {
@@ -592,6 +701,9 @@ window.AsgardPush = (function() {
     isTypeEnabled: isTypeEnabled,
     setTypeEnabled: setTypeEnabled,
     showInstallBanner: showInstallBanner,
-    isStandalone: isStandalone
+    showManualInstallBanner: showManualInstallBanner,
+    promptInstall: promptInstall,
+    isStandalone: isStandalone,
+    isYandexBrowser: isYandexBrowser
   };
 })();

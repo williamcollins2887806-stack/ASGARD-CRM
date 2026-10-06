@@ -6,7 +6,7 @@
   "scope": "./",
   "id": "/",
   "display": "standalone",
-  "orientation": "portrait",
+  "orientation": "any",
   "background_color": "#0d1428",
   "theme_color": "#0d1428",
   "icons": [
@@ -29,6 +29,13 @@
       "type": "image/png",
       "form_factor": "narrow",
       "label": "АСГАРД CRM"
+    },
+    {
+      "src": "assets/img/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "form_factor": "wide",
+      "label": "АСГАРД CRM desktop"
     }
   ],
   "categories": ["business", "productivity"],

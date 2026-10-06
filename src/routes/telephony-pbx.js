@@ -3,6 +3,9 @@
 const crypto = require('crypto');
 const { lookupCaller } = require('../services/caller-lookup');
 const { config: pbxEnv } = require('../pbx/config');
+const { normalizePbxConfig } = require('../pbx/call-lifecycle');
+const { minutesUntilWorkEnd, isWithinWorkHours, resolveDutyUntilMinutes, getTzParts } = require('../pbx/dial-engine');
+const { runOperatorMaintenance } = require('../pbx/operator-lifecycle');
 
 const TEL_ROLES = ['ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV', 'PM', 'HEAD_PM', 'TO', 'HEAD_TO', 'BUH'];
 const PBX_ADMIN_ROLES = ['ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV', 'HEAD_TO'];
@@ -59,12 +62,39 @@ function genSipUsername(userId, name) {
 module.exports = async function telephonyPbxRoutes(fastify) {
   const db = fastify.db;
 
+  async function syncOperatorMobilePhone(userId) {
+    await db.query(
+      `UPDATE pbx_operators o SET
+         mobile_phone = COALESCE(
+           NULLIF(BTRIM(o.mobile_phone), ''),
+           NULLIF(BTRIM(u.phone), ''),
+           NULLIF(BTRIM(ucs.fallback_mobile), '')
+         ),
+         updated_at = NOW()
+       FROM users u
+       LEFT JOIN user_call_status ucs ON ucs.user_id = u.id
+       WHERE o.user_id = u.id AND o.user_id = $1
+         AND (o.mobile_phone IS NULL OR BTRIM(o.mobile_phone) = '')`,
+      [userId]
+    );
+  }
+
   async function ensureOperatorRow(userId) {
     await db.query(
-      `INSERT INTO pbx_operators (user_id) VALUES ($1)
+      `INSERT INTO pbx_operators (user_id, receive_mode) VALUES ($1, 'both')
        ON CONFLICT (user_id) DO NOTHING`,
       [userId]
     );
+    await syncOperatorMobilePhone(userId);
+  }
+
+  async function loadPbxCfg() {
+    const { rows } = await db.query(`SELECT value_json FROM settings WHERE key = 'pbx_config' LIMIT 1`);
+    let raw = rows[0]?.value_json || {};
+    if (typeof raw === 'string') {
+      try { raw = JSON.parse(raw); } catch (_) { raw = {}; }
+    }
+    return normalizePbxConfig(raw);
   }
 
   // GET/POST /operator/status
@@ -76,11 +106,37 @@ module.exports = async function telephonyPbxRoutes(fastify) {
     }
     await ensureOperatorRow(req.user.id);
     const { rows } = await db.query(
-      `SELECT on_line, receive_mode, webrtc_registered, paused_until, miss_streak, last_seen_at
-       FROM pbx_operators WHERE user_id = $1`,
+      `SELECT o.on_line, o.receive_mode, o.webrtc_registered, o.paused_until, o.miss_streak, o.last_seen_at,
+              COALESCE(NULLIF(BTRIM(o.mobile_phone), ''), NULLIF(BTRIM(u.phone), ''), NULLIF(BTRIM(ucs.fallback_mobile), '')) AS mobile_phone,
+              (o.sip_username IS NOT NULL AND o.sip_username <> '') AS has_sip
+       FROM pbx_operators o
+       JOIN users u ON u.id = o.user_id
+       LEFT JOIN user_call_status ucs ON ucs.user_id = o.user_id
+       WHERE o.user_id = $1`,
       [req.user.id]
     );
-    return rows[0] || { on_line: false, receive_mode: 'browser' };
+    const st = rows[0] || { on_line: false, receive_mode: 'both', has_sip: false };
+    const cfg = await loadPbxCfg();
+    const now = new Date();
+    const tz = cfg.timezone || 'Europe/Moscow';
+    const minsLeft = minutesUntilWorkEnd(cfg, now, tz);
+    const within = isWithinWorkHours(cfg.work_hours, now, tz);
+    const parts = getTzParts(now, tz);
+    const dutyUntilMin = resolveDutyUntilMinutes(cfg, parts.key);
+    const hh = String(Math.floor(dutyUntilMin / 60)).padStart(2, '0');
+    const mm = String(dutyUntilMin % 60).padStart(2, '0');
+    const onlineCount = await db.query(
+      `SELECT COUNT(*)::int AS n FROM pbx_operators WHERE on_line = true`
+    );
+    return {
+      ...st,
+      has_mobile: !!(st.mobile_phone),
+      work_hours_active: within,
+      minutes_to_work_end: minsLeft,
+      duty_until: cfg.duty_until || `${hh}:${mm}`,
+      online_count: onlineCount.rows[0]?.n || 0,
+      reachability_ok: !st.on_line || !!(st.webrtc_registered || st.mobile_phone),
+    };
   });
 
   fastify.post('/operator/status', { preHandler: [fastify.authenticate] }, async (req) => {
@@ -89,7 +145,11 @@ module.exports = async function telephonyPbxRoutes(fastify) {
       err.statusCode = 403;
       throw err;
     }
-    const { on_line, receive_mode } = req.body || {};
+    const { on_line } = req.body || {};
+    let { receive_mode } = req.body || {};
+    if (receive_mode != null && !['browser', 'mobile', 'both'].includes(receive_mode)) {
+      receive_mode = undefined;
+    }
     await ensureOperatorRow(req.user.id);
     const { rows } = await db.query(
       `UPDATE pbx_operators SET
@@ -98,10 +158,34 @@ module.exports = async function telephonyPbxRoutes(fastify) {
          last_seen_at = NOW(),
          updated_at = NOW()
        WHERE user_id = $1
-       RETURNING on_line, receive_mode, webrtc_registered, paused_until, miss_streak`,
+       RETURNING on_line, receive_mode, webrtc_registered, paused_until, miss_streak, last_seen_at`,
       [req.user.id, on_line, receive_mode]
     );
     return rows[0];
+  });
+
+  fastify.post('/operator/heartbeat', { preHandler: [fastify.authenticate] }, async (req) => {
+    if (!TEL_ROLES.includes(req.user.role)) {
+      const err = new Error('Forbidden');
+      err.statusCode = 403;
+      throw err;
+    }
+    await ensureOperatorRow(req.user.id);
+    const { rows } = await db.query(
+      `UPDATE pbx_operators SET last_seen_at = NOW(), updated_at = NOW()
+       WHERE user_id = $1 AND on_line = true
+       RETURNING on_line, last_seen_at, webrtc_registered`,
+      [req.user.id]
+    );
+    return rows[0] || { on_line: false, skipped: true };
+  });
+
+  fastify.post('/operator/maintenance', { preHandler: [fastify.authenticate, fastify.requireRoles(PBX_ADMIN_ROLES)] }, async (req) => {
+    const result = await runOperatorMaintenance(db, {
+      now: req.body?.now ? new Date(req.body.now) : new Date(),
+      activeUserIds: Array.isArray(req.body?.active_user_ids) ? req.body.active_user_ids : [],
+    });
+    return { ok: true, ...result };
   });
 
   fastify.post('/operator/toggle', { preHandler: [fastify.authenticate] }, async (req) => {
@@ -244,6 +328,26 @@ module.exports = async function telephonyPbxRoutes(fastify) {
   const { normalizePbxConfig } = require('../pbx/call-lifecycle');
   const { canViewCall, hasFullCallView } = require('../lib/telephony-access');
 
+  // Staff list for transfer UI (PM+), not only PBX admins
+  fastify.get('/transfer/staff', { preHandler: [fastify.authenticate] }, async (req) => {
+    if (!TEL_ROLES.includes(req.user.role)) {
+      const err = new Error('Forbidden');
+      err.statusCode = 403;
+      throw err;
+    }
+    const { rows } = await db.query(
+      `SELECT o.user_id, u.name, u.role, o.on_line, o.receive_mode, o.miss_streak,
+              o.webrtc_registered, o.last_seen_at, o.sip_username,
+              COALESCE(NULLIF(BTRIM(o.mobile_phone), ''), NULLIF(BTRIM(u.phone), ''), NULLIF(BTRIM(ucs.fallback_mobile), '')) AS mobile_phone
+       FROM pbx_operators o
+       JOIN users u ON u.id = o.user_id
+       LEFT JOIN user_call_status ucs ON ucs.user_id = o.user_id
+       WHERE u.is_active = true
+       ORDER BY o.on_line DESC, o.sort_order, u.name`
+    );
+    return { staff: rows };
+  });
+
   fastify.get('/settings', { preHandler: [fastify.authenticate, fastify.requireRoles(PBX_ADMIN_ROLES)] }, async () => {
     const { rows } = await db.query(`SELECT value_json FROM settings WHERE key = 'pbx_config'`);
     let raw = rows[0]?.value_json || {};
@@ -374,6 +478,15 @@ module.exports = async function telephonyPbxRoutes(fastify) {
     }
     return lookupCaller(db, req.params.phone);
   });
+
+  // Fallback тик (если asgard-pbx не запущен): stale + work_hours offline
+  const maint = setInterval(() => {
+    runOperatorMaintenance(db).catch((e) => {
+      fastify.log?.warn?.({ err: e }, 'pbx operator maintenance');
+    });
+  }, 60 * 1000);
+  if (typeof maint.unref === 'function') maint.unref();
+  fastify.addHook('onClose', async () => { clearInterval(maint); });
 };
 
 // Registration (parent index.js):

@@ -481,12 +481,35 @@
 
   var EVENTS = ['mousedown', 'keydown', 'scroll', 'touchstart', 'click'];
 
+  function phoneBlocksIdlePin() {
+    if (!window.AsgardPhone || !AsgardPhone.getState) return false;
+    var st = AsgardPhone.getState();
+    return st === 'on_line_browser' || st === 'on_line_mobile' ||
+      st === 'ringing' || st === 'in_call' || st === 'held';
+  }
+
+  function phoneDefersShellReload() {
+    if (!window.AsgardPhone) return false;
+    if (AsgardPhone.shouldDeferShellReload && AsgardPhone.shouldDeferShellReload()) return true;
+    if (AsgardPhone.isInCallOrRinging && AsgardPhone.isInCallOrRinging()) return true;
+    var st = AsgardPhone.getState ? AsgardPhone.getState() : '';
+    return st === 'on_line_browser' || st === 'on_line_mobile';
+  }
+
+  function onLockHotkey(e) {
+    if (!(e.ctrlKey && e.shiftKey && (e.key === 'L' || e.key === 'l'))) return;
+    if (e.altKey || e.metaKey) return;
+    e.preventDefault();
+    lockAway();
+  }
+
   function bindEvents() {
     for (var i = 0; i < EVENTS.length; i++) {
       window.addEventListener(EVENTS[i], onActivity, { passive: true });
     }
     window.addEventListener('mousemove', onMouseMove, { passive: true });
     window.addEventListener('hashchange', onHashChange);
+    window.addEventListener('keydown', onLockHotkey, true);
   }
 
   function unbindEvents() {
@@ -495,6 +518,7 @@
     }
     window.removeEventListener('mousemove', onMouseMove);
     window.removeEventListener('hashchange', onHashChange);
+    window.removeEventListener('keydown', onLockHotkey, true);
   }
 
 
@@ -819,9 +843,17 @@
   /* ═══════════════════════════════════════════ */
   /*  LOCK / UNLOCK                              */
   /* ═══════════════════════════════════════════ */
-  function lock() {
+  function lock(opts) {
+    opts = opts || {};
     if (_locked) return;
     if (isExemptPage()) return;
+
+    /* На линии / в звонке idle-PIN не показываем (только сброс таймера).
+       Ручной «отошёл» (Ctrl+Shift+L) передаёт force:true. */
+    if (!opts.force && phoneBlocksIdlePin()) {
+      resetTimer();
+      return;
+    }
 
     /* Проверяем что пользователь залогинен */
     var auth = AsgardAuth.getAuth();
@@ -910,14 +942,25 @@
       AsgardAuth.requireUser();
     }
 
-    /* Во время звонка полный reload рвёт WebRTC — откладываем или только снимаем PIN. */
-    if (window.AsgardPhone && AsgardPhone.isInCallOrRinging && AsgardPhone.isInCallOrRinging()) {
-      if (AsgardPhone.markPendingReload) AsgardPhone.markPendingReload();
+    /* Во время звонка или «на линии» полный reload рвёт WebRTC — откладываем. */
+    if (phoneDefersShellReload()) {
+      if (window.AsgardPhone && AsgardPhone.markPendingReload) AsgardPhone.markPendingReload();
       return;
     }
     setTimeout(function() {
       location.reload();
     }, 450);
+  }
+
+  /** Ручной «отошёл»: снять с линии + показать PIN (force). */
+  function lockAway() {
+    var p = Promise.resolve();
+    if (window.AsgardPhone && AsgardPhone.goOffline) {
+      p = AsgardPhone.goOffline().catch(function () {});
+    }
+    return Promise.resolve(p).then(function () {
+      lock({ force: true });
+    });
   }
 
   function doFullLogout() {
@@ -1164,6 +1207,7 @@
     init: init,
     reset: resetTimer,
     lock: lock,
+    lockAway: lockAway,
     unlock: unlock,
     isLocked: function() { return _locked; },
     destroy: destroy,

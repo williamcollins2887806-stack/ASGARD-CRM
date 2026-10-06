@@ -29,7 +29,7 @@ function targetToDialPart(target) {
 /**
  * @param {Array} targets — из buildRingPlan
  * @param {object} cfg
- * @returns {{ dialString: string, ringTimeout: number, firstTarget: object|null }}
+ * @returns {{ dialString: string, ringTimeout: number, firstTarget: object|null, cascade: Array }}
  */
 function buildDialVars(targets, cfg) {
   const list = Array.isArray(targets) ? targets.filter(Boolean) : [];
@@ -50,10 +50,36 @@ function buildDialVars(targets, cfg) {
   if (parallel && list.length) {
     ringTimeout = Math.max(...list.map((t) => t.ringSec || ringTimeout));
   }
+  /** @type {{ dial: string, timeout: number, target: object }[]} */
+  const cascade = [];
+  if (!parallel) {
+    for (let i = 1; i < list.length; i++) {
+      const p = targetToDialPart(list[i]);
+      if (!p) continue;
+      cascade.push({
+        dial: p,
+        timeout: Math.max(1, Number(list[i].ringSec) || (cfg?.mobile_ring_sec ?? 20)),
+        target: list[i],
+      });
+    }
+  }
+  const fallbackDial = cascade[0]?.dial || null;
+  const fallbackTimeout = cascade[0]?.timeout || (cfg?.mobile_ring_sec ?? 20);
   return {
     dialString,
     ringTimeout: Math.max(1, Number(ringTimeout) || 5),
     firstTarget: list[0] || null,
+    fallbackDial,
+    fallbackTimeout: Math.max(1, Number(fallbackTimeout) || 20),
+    cascade,
+    cascade2: cascade[0]?.dial || '',
+    cascade2Timeout: cascade[0]?.timeout || 20,
+    cascade3: cascade[1]?.dial || '',
+    cascade3Timeout: cascade[1]?.timeout || 20,
+    cascade4: cascade[2]?.dial || '',
+    cascade4Timeout: cascade[2]?.timeout || 20,
+    cascade5: cascade[3]?.dial || '',
+    cascade5Timeout: cascade[3]?.timeout || 20,
   };
 }
 
@@ -229,6 +255,22 @@ function normalizePbxConfig(raw) {
       sun: null,
     };
   }
+  if (!cfg.duty_until) {
+    const endStr =
+      (cfg.work_hours && cfg.work_hours.mon && cfg.work_hours.mon.end) ||
+      cfg.work_hours_to ||
+      '18:00';
+    const m = String(endStr).match(/^(\d{1,2}):(\d{2})$/);
+    if (m) {
+      let h = parseInt(m[1], 10) + 2;
+      let min = parseInt(m[2], 10);
+      if (h >= 24) h = 23;
+      cfg.duty_until = `${String(h).padStart(2, '0')}:${String(min).padStart(2, '0')}`;
+    } else {
+      cfg.duty_until = '20:00';
+    }
+  }
+  if (cfg.max_agents == null) cfg.max_agents = 3;
   return cfg;
 }
 

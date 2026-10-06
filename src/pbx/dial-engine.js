@@ -1,6 +1,7 @@
 'use strict';
 
 const WEEKDAY_KEYS = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
+const HEARTBEAT_TTL_MS = 120000; // 2 min — без свежего heartbeat browser ≠ на линии
 
 /**
  * @typedef {object} PbxOperator
@@ -34,6 +35,32 @@ function parseTimeToMinutes(hhmm) {
   return parseInt(m[1], 10) * 60 + parseInt(m[2], 10);
 }
 
+function getTzParts(now, tz = 'Europe/Moscow') {
+  try {
+    const fmt = new Intl.DateTimeFormat('en-US', {
+      timeZone: tz,
+      weekday: 'short',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    });
+    const parts = fmt.formatToParts(now);
+    const wd = parts.find((p) => p.type === 'weekday')?.value?.toLowerCase().slice(0, 3);
+    const map = { sun: 0, mon: 1, tue: 2, wed: 3, thu: 4, fri: 5, sat: 6 };
+    const weekday = map[wd] ?? now.getUTCDay();
+    const hour = parseInt(parts.find((p) => p.type === 'hour')?.value || '0', 10);
+    const minute = parseInt(parts.find((p) => p.type === 'minute')?.value || '0', 10);
+    return { weekday, minutes: hour * 60 + minute, key: WEEKDAY_KEYS[weekday] };
+  } catch (_) {
+    const weekday = now.getDay();
+    return {
+      weekday,
+      minutes: now.getHours() * 60 + now.getMinutes(),
+      key: WEEKDAY_KEYS[weekday],
+    };
+  }
+}
+
 /**
  * @param {object} workHours — config.work_hours
  * @param {Date} now
@@ -41,21 +68,7 @@ function parseTimeToMinutes(hhmm) {
  */
 function isWithinWorkHours(workHours, now, tz = 'Europe/Moscow') {
   if (!workHours || typeof workHours !== 'object') return true;
-  let weekday;
-  let minutes;
-  try {
-    const fmt = new Intl.DateTimeFormat('en-US', { timeZone: tz, weekday: 'short', hour: '2-digit', minute: '2-digit', hour12: false });
-    const parts = fmt.formatToParts(now);
-    const wd = parts.find((p) => p.type === 'weekday')?.value?.toLowerCase().slice(0, 3);
-    const map = { sun: 0, mon: 1, tue: 2, wed: 3, thu: 4, fri: 5, sat: 6 };
-    weekday = map[wd] ?? now.getUTCDay();
-    const hour = parseInt(parts.find((p) => p.type === 'hour')?.value || '0', 10);
-    const minute = parseInt(parts.find((p) => p.type === 'minute')?.value || '0', 10);
-    minutes = hour * 60 + minute;
-  } catch (_) {
-    weekday = now.getDay();
-    minutes = now.getHours() * 60 + now.getMinutes();
-  }
+  const { weekday, minutes } = getTzParts(now, tz);
   const key = WEEKDAY_KEYS[weekday];
   const day = workHours[key];
   if (!day || day.start == null || day.end == null) return false;
@@ -65,30 +78,84 @@ function isWithinWorkHours(workHours, now, tz = 'Europe/Moscow') {
   return minutes >= start && minutes < end;
 }
 
+/**
+ * Дежурство после конца work_hours до duty_until (default end+2h).
+ */
+function resolveDutyUntilMinutes(cfg, weekdayKey) {
+  if (cfg && cfg.duty_until) {
+    const d = parseTimeToMinutes(String(cfg.duty_until));
+    if (d != null) return d;
+  }
+  const day = cfg && cfg.work_hours && cfg.work_hours[weekdayKey];
+  const endStr = (day && day.end) || (cfg && cfg.work_hours_to) || '18:00';
+  const end = parseTimeToMinutes(endStr);
+  if (end == null) return 20 * 60;
+  return Math.min(end + 120, 24 * 60 - 1);
+}
+
+/**
+ * true если сейчас в окне «дежурный может оставаться on_line» после конца смены.
+ */
+function isWithinDutyWindow(cfg, now, tz = 'Europe/Moscow') {
+  const config = cfg || {};
+  const { weekday, minutes, key } = getTzParts(now, tz);
+  const day = config.work_hours && config.work_hours[key];
+  if (!day || day.end == null) return false;
+  const end = parseTimeToMinutes(day.end);
+  if (end == null) return false;
+  const dutyUntil = resolveDutyUntilMinutes(config, key);
+  if (dutyUntil > end) {
+    return minutes >= end && minutes < dutyUntil;
+  }
+  // duty_until через полночь
+  return minutes >= end || minutes < dutyUntil;
+}
+
+function minutesUntilWorkEnd(cfg, now, tz = 'Europe/Moscow') {
+  const config = cfg || {};
+  const { weekday, minutes, key } = getTzParts(now, tz);
+  const day = config.work_hours && config.work_hours[key];
+  if (!day || day.end == null) return null;
+  const end = parseTimeToMinutes(day.end);
+  if (end == null) return null;
+  return end - minutes;
+}
+
 function isOperatorPaused(op, nowMs) {
   if (!op.paused_until) return false;
   const t = Date.parse(op.paused_until);
   return Number.isFinite(t) && t > nowMs;
 }
 
-function isOperatorReachable(op) {
+function isHeartbeatFresh(op, nowMs, ttlMs = HEARTBEAT_TTL_MS) {
+  if (!op || !op.last_seen_at) return false;
+  const t = Date.parse(op.last_seen_at);
+  return Number.isFinite(t) && (nowMs - t) <= ttlMs;
+}
+
+function hasFreshWebRtc(op, nowMs) {
+  return !!(op.webrtc_registered && op.sip_username && isHeartbeatFresh(op, nowMs));
+}
+
+function isOperatorReachable(op, nowMs = Date.now()) {
   if (!op.can_accept || !op.on_line) return false;
-  const hasWeb = op.webrtc_registered && !!op.sip_username;
+  const hasWeb = hasFreshWebRtc(op, nowMs);
   const hasMob = !!op.mobile_phone;
   if (op.receive_mode === 'browser') return hasWeb || hasMob;
   if (op.receive_mode === 'mobile') return hasMob;
   return hasWeb || hasMob;
 }
 
-function expandOperatorTargets(op, config) {
+function expandOperatorTargets(op, config, nowMs = Date.now()) {
   const browserSec = config.browser_ring_sec ?? 5;
   const mobileSec = config.mobile_ring_sec ?? 20;
   /** @type {RingTarget[]} */
   const targets = [];
   const baseOrder = op.sort_order ?? 100;
+  const freshWeb = hasFreshWebRtc(op, nowMs);
 
   if (op.receive_mode === 'browser' || op.receive_mode === 'both') {
-    if (op.webrtc_registered && op.sip_username) {
+    if (freshWeb) {
       targets.push({
         userId: op.user_id,
         targetType: 'webrtc',
@@ -109,6 +176,7 @@ function expandOperatorTargets(op, config) {
       sortOrder: baseOrder + 1,
     });
   }
+  // browser без свежего heartbeat, но есть mobile → только GSM
   if (op.receive_mode === 'browser' && !targets.length && op.mobile_phone) {
     targets.push({
       userId: op.user_id,
@@ -129,7 +197,7 @@ function filterEligibleOperators(operators, nowMs) {
     if (shouldPauseOperator(op, { miss_pause_after: 999999 })) {
       /* streak alone does not block until advanceAfterMiss sets paused_until */
     }
-    return isOperatorReachable(op);
+    return isOperatorReachable(op, nowMs);
   });
 }
 
@@ -172,6 +240,7 @@ function buildRingPlan(operators, dutyUserId, config, now = new Date()) {
 
   const mode = cfg.routing_mode || 'duty_first';
   const parallel = !!cfg.parallel_ring || mode === 'parallel';
+  const maxAgents = Math.max(1, Number(cfg.max_agents) || 3);
   /** @type {PbxOperator[]} */
   let ordered = eligible;
 
@@ -193,33 +262,21 @@ function buildRingPlan(operators, dutyUserId, config, now = new Date()) {
   const targets = [];
   if (parallel) {
     for (const op of ordered) {
-      targets.push(...expandOperatorTargets(op, cfg));
+      targets.push(...expandOperatorTargets(op, cfg, nowMs));
     }
   } else {
+    let agentsTaken = 0;
     for (const op of ordered) {
-      const expanded = expandOperatorTargets(op, cfg);
-      if (expanded.length) {
-        targets.push(...expanded);
-        break;
-      }
-    }
-    if (!targets.length && mode === 'duty_first' && ordered.length > 1) {
-      for (const op of ordered.slice(1)) {
-        const expanded = expandOperatorTargets(op, cfg);
-        if (expanded.length) {
-          targets.push(...expanded);
-          break;
-        }
-      }
-    }
-    if (!targets.length && mode !== 'parallel') {
-      for (const op of ordered) {
-        targets.push(...expandOperatorTargets(op, cfg));
-      }
+      const expanded = expandOperatorTargets(op, cfg, nowMs);
+      if (!expanded.length) continue;
+      targets.push(...expanded);
+      agentsTaken += 1;
+      if (agentsTaken >= maxAgents) break;
     }
   }
 
-  targets.sort((a, b) => a.sortOrder - b.sortOrder || a.userId - b.userId);
+  // Перенумеровать sortOrder по порядку каскада (агент → webrtc затем mobile)
+  targets.forEach((t, i) => { t.sortOrder = i; });
   return { withinHours: true, targets, mode };
 }
 
@@ -244,13 +301,40 @@ function shouldPauseOperator(operator, config) {
   return (operator.miss_streak ?? 0) >= threshold;
 }
 
+/**
+ * Резолв цели перевода → ring targets (webrtc/GSM) как inbound.
+ * @param {object|null} op — строка pbx_operators (+ mobile_phone)
+ * @param {object} config
+ * @param {Date} [now]
+ */
+function resolveTransferTargets(op, config, now = new Date()) {
+  if (!op) return [];
+  return expandOperatorTargets(
+    {
+      ...op,
+      can_accept: op.can_accept !== false,
+      on_line: op.on_line !== false,
+    },
+    config || {},
+    now.getTime()
+  );
+}
+
 module.exports = {
   buildRingPlan,
   advanceAfterMiss,
   shouldPauseOperator,
   isWithinWorkHours,
+  isWithinDutyWindow,
+  resolveDutyUntilMinutes,
+  minutesUntilWorkEnd,
   isOperatorPaused,
+  isHeartbeatFresh,
+  isOperatorReachable,
   filterEligibleOperators,
   expandOperatorTargets,
+  resolveTransferTargets,
   parseTimeToMinutes,
+  getTzParts,
+  HEARTBEAT_TTL_MS,
 };

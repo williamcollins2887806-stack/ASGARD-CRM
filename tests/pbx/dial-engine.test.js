@@ -6,6 +6,8 @@ const {
   advanceAfterMiss,
   shouldPauseOperator,
   isWithinWorkHours,
+  isWithinDutyWindow,
+  HEARTBEAT_TTL_MS,
 } = require('../../src/pbx/dial-engine');
 
 let passed = 0;
@@ -51,7 +53,7 @@ function op(id, overrides = {}) {
     miss_streak: 0,
     paused_until: null,
     webrtc_registered: true,
-    last_seen_at: new Date(Date.now() - id * 60000).toISOString(),
+    last_seen_at: new Date(workNow.getTime() - 30000).toISOString(),
     ...overrides,
   };
 }
@@ -121,6 +123,14 @@ test('miss streak pause — advanceAfterMiss и shouldPauseOperator', () => {
   assert.ok(o.paused_until);
 });
 
+test('both receive_mode webrtc then gsm', () => {
+  const ops = [op(6, { receive_mode: 'both', webrtc_registered: true, sip_username: 'u6' })];
+  const plan = buildRingPlan(ops, null, baseConfig, workNow);
+  assert.strictEqual(plan.targets.length, 2);
+  assert.strictEqual(plan.targets[0].targetType, 'webrtc');
+  assert.strictEqual(plan.targets[1].targetType, 'mobile');
+});
+
 test('mobile receive_mode', () => {
   const ops = [op(5, { receive_mode: 'mobile', webrtc_registered: false, sip_username: null })];
   const plan = buildRingPlan(ops, null, baseConfig, workNow);
@@ -130,6 +140,33 @@ test('mobile receive_mode', () => {
 test('isWithinWorkHours sanity', () => {
   assert.strictEqual(isWithinWorkHours(baseConfig.work_hours, workNow, 'Europe/Moscow'), true);
   assert.strictEqual(isWithinWorkHours(baseConfig.work_hours, offNow, 'Europe/Moscow'), false);
+});
+
+test('stale heartbeat — только GSM', () => {
+  const stale = new Date(workNow.getTime() - HEARTBEAT_TTL_MS - 1000).toISOString();
+  const plan = buildRingPlan(
+    [op(1, { last_seen_at: stale, webrtc_registered: true, mobile_phone: '+79001234567' })],
+    null,
+    baseConfig,
+    workNow
+  );
+  assert.strictEqual(plan.targets.length, 1);
+  assert.strictEqual(plan.targets[0].targetType, 'mobile');
+});
+
+test('cascade max_agents — несколько операторов', () => {
+  const cfg = { ...baseConfig, max_agents: 3, routing_mode: 'ordered' };
+  const plan = buildRingPlan([op(1), op(2), op(3), op(4)], null, cfg, workNow);
+  const users = new Set(plan.targets.map((t) => t.userId));
+  assert.ok(users.size <= 3);
+  assert.ok(users.size >= 2);
+});
+
+test('duty window after hours', () => {
+  const cfg = { ...baseConfig, duty_until: '20:00' };
+  const after = new Date('2026-10-02T16:00:00.000Z'); // 19:00 MSK
+  assert.strictEqual(isWithinWorkHours(cfg.work_hours, after, 'Europe/Moscow'), false);
+  assert.strictEqual(isWithinDutyWindow(cfg, after, 'Europe/Moscow'), true);
 });
 
 console.log(`\n${passed} passed, ${failed} failed`);

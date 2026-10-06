@@ -6,7 +6,7 @@ const { config, amiConfigured } = require('./config');
 const { AgiServer } = require('./agi-server');
 const { getAmiClient } = require('./ami-client');
 const { attachNotifyBridge } = require('./notify-bridge');
-const { buildRingPlan } = require('./dial-engine');
+const { buildRingPlan, resolveTransferTargets, expandOperatorTargets } = require('./dial-engine');
 const { lookupCaller } = require('../services/caller-lookup');
 const {
   buildDialVars,
@@ -16,13 +16,16 @@ const {
   markCallMissed,
   buildRingNotifyPayload,
   normalizePbxConfig,
+  targetToDialPart,
 } = require('./call-lifecycle');
 const { finalizeRecording, finalizeOnHangup } = require('./recording');
+const { runOperatorMaintenance } = require('./operator-lifecycle');
 
 let pool = null;
 let agiServer = null;
 let cmdServer = null;
 let notifyBridge = null;
+let maintenanceTimer = null;
 /** @type {Map<string, { channel: string, pbxUid: string, userId: number }>} */
 const activeChannels = new Map();
 
@@ -50,7 +53,12 @@ async function loadPbxConfig(client) {
 
 async function loadOperators(client) {
   const { rows } = await client.query(
-    `SELECT o.*, u.name FROM pbx_operators o JOIN users u ON u.id = o.user_id WHERE u.is_active = true`
+    `SELECT o.*, u.name,
+            COALESCE(NULLIF(BTRIM(o.mobile_phone), ''), NULLIF(BTRIM(u.phone), ''), NULLIF(BTRIM(ucs.fallback_mobile), '')) AS mobile_phone
+     FROM pbx_operators o
+     JOIN users u ON u.id = o.user_id
+     LEFT JOIN user_call_status ucs ON ucs.user_id = o.user_id
+     WHERE u.is_active = true`
   );
   return rows;
 }
@@ -133,9 +141,17 @@ async function handleInboundAgi(session) {
       return { ok: false, reason: 'empty_dial', plan };
     }
 
-    // Контракт dialplan: Dial(${ASGARD_DIAL_STRING},${ASGARD_RING_TIMEOUT},g)
+    // Контракт dialplan: Dial + cascade 2..5
     await session.setVariable('ASGARD_DIAL_STRING', dial.dialString);
     await session.setVariable('ASGARD_RING_TIMEOUT', String(dial.ringTimeout));
+    await session.setVariable('ASGARD_FALLBACK_DIAL', dial.fallbackDial || '');
+    await session.setVariable('ASGARD_FALLBACK_TIMEOUT', String(dial.fallbackTimeout || 20));
+    await session.setVariable('ASGARD_CASCADE_3', dial.cascade3 || '');
+    await session.setVariable('ASGARD_CASCADE_3_TO', String(dial.cascade3Timeout || 20));
+    await session.setVariable('ASGARD_CASCADE_4', dial.cascade4 || '');
+    await session.setVariable('ASGARD_CASCADE_4_TO', String(dial.cascade4Timeout || 20));
+    await session.setVariable('ASGARD_CASCADE_5', dial.cascade5 || '');
+    await session.setVariable('ASGARD_CASCADE_5_TO', String(dial.cascade5Timeout || 20));
     await session.setVariable('ASGARD_RING_PLAN', JSON.stringify(plan.targets.slice(0, 8)));
     await session.setVariable('ASGARD_CALLER_JSON', JSON.stringify(lookup));
     await session.setVariable('ASGARD_PBX_UID', String(uniqueId));
@@ -211,6 +227,146 @@ function parseBody(req) {
     });
     req.on('error', reject);
   });
+}
+
+async function notifyTransfer(db, payload) {
+  if (!db || !payload) return;
+  const c = await db.connect();
+  try {
+    await notifyRing(c, payload);
+  } finally {
+    c.release();
+  }
+}
+
+/**
+ * Резолв цели перевода в Dial() tech/resource + return к инициатору.
+ */
+async function resolveTransferDial(db, body) {
+  const empty = {
+    dial: '',
+    timeout: 30,
+    fallback: '',
+    fallbackTimeout: 20,
+    returnDial: '',
+    returnTimeout: 30,
+    targets: [],
+  };
+  if (!db || !body) return empty;
+  const targetRaw = body.target;
+  if (targetRaw == null || targetRaw === '') return empty;
+
+  const client = await db.connect();
+  try {
+    const cfg = await loadPbxConfig(client);
+    let op = null;
+    const asNum = Number(targetRaw);
+    if (Number.isFinite(asNum) && asNum > 0 && String(asNum) === String(targetRaw).trim()) {
+      const { rows } = await client.query(
+        `SELECT o.*, 
+                COALESCE(NULLIF(BTRIM(o.mobile_phone), ''), NULLIF(BTRIM(u.phone), ''), NULLIF(BTRIM(ucs.fallback_mobile), '')) AS mobile_phone
+         FROM pbx_operators o
+         JOIN users u ON u.id = o.user_id
+         LEFT JOIN user_call_status ucs ON ucs.user_id = o.user_id
+         WHERE o.user_id = $1`,
+        [asNum]
+      );
+      op = rows[0] || null;
+    }
+    if (!op) {
+      const digits = String(targetRaw).replace(/\D/g, '');
+      if (digits) {
+        const { rows } = await client.query(
+          `SELECT o.*,
+                  COALESCE(NULLIF(BTRIM(o.mobile_phone), ''), NULLIF(BTRIM(u.phone), ''), NULLIF(BTRIM(ucs.fallback_mobile), '')) AS mobile_phone
+           FROM pbx_operators o
+           JOIN users u ON u.id = o.user_id
+           LEFT JOIN user_call_status ucs ON ucs.user_id = o.user_id
+           WHERE o.sip_username = $1
+              OR regexp_replace(COALESCE(o.mobile_phone,''), '\\D', '', 'g') = $2
+              OR regexp_replace(COALESCE(u.phone,''), '\\D', '', 'g') = $2
+           LIMIT 1`,
+          [String(targetRaw), digits]
+        );
+        op = rows[0] || null;
+      }
+    }
+
+    let targets = [];
+    if (op) {
+      const fakeOn = { ...op, on_line: true, can_accept: true };
+      // Для перевода допускаем webrtc даже без heartbeat, если registered;
+      // иначе GSM. Поднимаем last_seen если registered.
+      if (op.webrtc_registered && op.sip_username) {
+        fakeOn.last_seen_at = new Date().toISOString();
+      }
+      targets = resolveTransferTargets(fakeOn, cfg, new Date());
+      if (!targets.length && op.mobile_phone) {
+        targets = expandOperatorTargets(
+          { ...fakeOn, receive_mode: 'mobile', webrtc_registered: false },
+          cfg,
+          Date.now()
+        );
+      }
+    } else if (/^[A-Za-z0-9_.-]+$/.test(String(targetRaw)) && !/^\d+$/.test(String(targetRaw))) {
+      // сырой sip username
+      targets = [{
+        userId: 0,
+        targetType: 'webrtc',
+        targetAddr: String(targetRaw),
+        role: 'ring',
+        ringSec: cfg.browser_ring_sec ?? 5,
+        sortOrder: 0,
+      }];
+    } else {
+      const digits = String(targetRaw).replace(/\D/g, '');
+      if (digits) {
+        targets = [{
+          userId: 0,
+          targetType: 'mobile',
+          targetAddr: digits,
+          role: 'ring',
+          ringSec: cfg.mobile_ring_sec ?? 20,
+          sortOrder: 0,
+        }];
+      }
+    }
+
+    const dialVars = buildDialVars(targets, { ...cfg, parallel_ring: false, routing_mode: 'ordered' });
+    let returnDial = '';
+    if (body.user_id) {
+      const { rows: initRows } = await client.query(
+        `SELECT o.sip_username, o.webrtc_registered, o.receive_mode,
+                COALESCE(NULLIF(BTRIM(o.mobile_phone), ''), NULLIF(BTRIM(u.phone), ''), NULLIF(BTRIM(ucs.fallback_mobile), '')) AS mobile_phone
+         FROM pbx_operators o
+         JOIN users u ON u.id = o.user_id
+         LEFT JOIN user_call_status ucs ON ucs.user_id = o.user_id
+         WHERE o.user_id = $1`,
+        [body.user_id]
+      );
+      const init = initRows[0];
+      if (init?.sip_username) {
+        returnDial = `PJSIP/${init.sip_username}`;
+      } else if (init?.mobile_phone) {
+        returnDial = targetToDialPart({
+          targetType: 'mobile',
+          targetAddr: init.mobile_phone,
+        }) || '';
+      }
+    }
+
+    return {
+      dial: dialVars.dialString || '',
+      timeout: dialVars.ringTimeout || 30,
+      fallback: dialVars.fallbackDial || '',
+      fallbackTimeout: dialVars.fallbackTimeout || 20,
+      returnDial,
+      returnTimeout: 30,
+      targets,
+    };
+  } finally {
+    client.release();
+  }
 }
 
 function createCmdServer() {
@@ -316,23 +472,58 @@ function createCmdServer() {
         if (!amiConfigured()) throw new Error('AMI not configured');
         if (!body.channel) throw new Error('channel required');
         const mode = body.mode || 'blind';
+        const resolved = await resolveTransferDial(db, body);
+        const xferNotify = {
+          event: 'call:transfer',
+          user_id: body.user_id,
+          data: {
+            status: 'trying',
+            mode,
+            target: body.target,
+            dial: resolved.dial,
+            return_dial: resolved.returnDial,
+          },
+        };
         if (mode === 'consult') {
           await ami.redirect(body.channel, 'hold', 's', 1);
-          if (body.target) {
+          const consultChan = resolved.dial || (body.target
+            ? (String(body.target).includes('/') ? body.target : `PJSIP/${body.target}`)
+            : null);
+          if (consultChan) {
             await ami.originate({
-              Channel: body.target.includes('/') ? body.target : `PJSIP/${body.target}`,
+              Channel: consultChan,
               Context: 'transfer',
               Exten: 'consult',
               Priority: 1,
               Async: 'true',
-              Variable: `CONSULT_TARGET=${body.target}`,
+              Variable: [
+                `CONSULT_TARGET=${body.target || ''}`,
+                `TRANSFER_DIAL=${resolved.dial || ''}`,
+                `TRANSFER_TIMEOUT=${resolved.timeout || 30}`,
+              ].join(','),
             });
           }
         } else {
           await ami.setVar(body.channel, 'TRANSFER_TARGET', body.target || '');
+          await ami.setVar(body.channel, 'TRANSFER_DIAL', resolved.dial || '');
+          await ami.setVar(body.channel, 'TRANSFER_TIMEOUT', String(resolved.timeout || 30));
+          await ami.setVar(body.channel, 'TRANSFER_FALLBACK', resolved.fallback || '');
+          await ami.setVar(body.channel, 'TRANSFER_FALLBACK_TO', String(resolved.fallbackTimeout || 20));
+          await ami.setVar(body.channel, 'TRANSFER_RETURN_DIAL', resolved.returnDial || '');
+          await ami.setVar(body.channel, 'TRANSFER_RETURN_TO', String(resolved.returnTimeout || 30));
           await ami.redirect(body.channel, 'transfer', 'blind', 1);
         }
-        return send(200, { ok: true, mode });
+        try { await notifyTransfer(db, xferNotify); } catch (_) { /* ignore */ }
+        return send(200, { ok: true, mode, transfer: resolved });
+      }
+      if (req.method === 'POST' && url.pathname === '/operator/maintenance') {
+        if (!db) throw new Error('DATABASE_URL not set');
+        const activeIds = [...activeChannels.values()].map((v) => v.userId).filter(Boolean);
+        const result = await runOperatorMaintenance(db, {
+          now: body.now ? new Date(body.now) : new Date(),
+          activeUserIds: activeIds,
+        });
+        return send(200, { ok: true, ...result });
       }
       if (req.method === 'POST' && url.pathname === '/call/hold') {
         if (!amiConfigured()) throw new Error('AMI not configured');
@@ -414,6 +605,16 @@ async function start() {
   if (db) {
     notifyBridge = attachNotifyBridge(db);
     notifyBridge.emitter.on('error', (e) => console.error('[asgard-pbx] notify', e.message));
+    const tick = async () => {
+      try {
+        const activeIds = [...activeChannels.values()].map((v) => v.userId).filter(Boolean);
+        await runOperatorMaintenance(db, { activeUserIds: activeIds });
+      } catch (e) {
+        console.warn('[asgard-pbx] maintenance:', e.message);
+      }
+    };
+    maintenanceTimer = setInterval(tick, 60 * 1000);
+    if (typeof maintenanceTimer.unref === 'function') maintenanceTimer.unref();
   }
 
   if (amiConfigured()) {
@@ -439,6 +640,10 @@ async function start() {
 }
 
 async function stop() {
+  if (maintenanceTimer) {
+    clearInterval(maintenanceTimer);
+    maintenanceTimer = null;
+  }
   if (agiServer) await agiServer.stop();
   if (cmdServer) {
     await new Promise((r) => cmdServer.close(r));
@@ -469,4 +674,6 @@ module.exports = {
   loadPbxConfig,
   activeChannels,
   createCmdServer,
+  resolveTransferDial,
+  runOperatorMaintenance,
 };

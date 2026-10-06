@@ -1,8 +1,22 @@
 # TELEPHONY-LIVE-CHECKLIST — путь к живым звонкам Mango
 
 Статус эмуляции без SIP: см. [`TELEPHONY-EMU-GATE.md`](TELEPHONY-EMU-GATE.md) (ожидается **E01–E09 GREEN**).
+Сценарии волны 1 (PIN/heartbeat/hours): [`TELEPHONY-SCENARIO-W1.md`](TELEPHONY-SCENARIO-W1.md) — `node tests/pbx/scenario-matrix-w1.js`.
 
 **Прод / cutover apply — только по явной команде.** Этот документ — чеклист, не скрипт выкатки.
+
+---
+
+## B0. Wave 1 smoke (после выката shell/бэкенда; тестовая линия)
+
+Только по команде «гоняй LIVE» / «смотри smoke». Не на основной Bitrix.
+
+1. Встал на линию (браузер) → жду > idle PIN (30 мин или укороченный idle в тесте) — PIN **не** появляется.
+2. `Ctrl+Shift+L` → снят с линии + PIN.
+3. Unlock во время «на линии» / in_call — без reload (SIP жив).
+4. Закрыл вкладку при on_line → через ≤2 мин оператор не в ring plan (stale heartbeat).
+5. После `work_hours.end` только дежурный on_line до `duty_until`; после `duty_until` — все offline.
+6. «Призрак» без heartbeat, но с mobile у дежурного → входящий на GSM, не на мёртвый browser.
 
 Источники: `ops/asterisk/README.md`, `tools/deploy_pbx_cutover.py`, journal cutover / runbook.
 

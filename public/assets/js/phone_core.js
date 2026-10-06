@@ -31,8 +31,82 @@
   var callMeta = {};
   var _pendingReload = false;
   var micMuted = false;
+  var _hbTimer = null;
+  var HEARTBEAT_MS = 45000;
 
   var bc = typeof BroadcastChannel !== 'undefined' ? new BroadcastChannel(BC_NAME) : null;
+
+  function isOnLineState(st) {
+    st = st || state;
+    return st === STATES.on_line_browser || st === STATES.on_line_mobile ||
+      st === STATES.ringing || st === STATES.in_call || st === STATES.held;
+  }
+
+  function sendHeartbeat() {
+    if (!isOnLineState()) return;
+    pbxApi('/operator/heartbeat', { method: 'POST', body: '{}' }).catch(function () {});
+  }
+
+  function startHeartbeat() {
+    stopHeartbeat();
+    sendHeartbeat();
+    _hbTimer = setInterval(sendHeartbeat, HEARTBEAT_MS);
+  }
+
+  function stopHeartbeat() {
+    if (_hbTimer) {
+      clearInterval(_hbTimer);
+      _hbTimer = null;
+    }
+  }
+
+  function beaconGoOffline() {
+    try {
+      var t = token();
+      var url = '/api/telephony/pbx/operator/status';
+      var body = JSON.stringify({ on_line: false });
+      if (navigator.sendBeacon) {
+        var blob = new Blob([body], { type: 'application/json' });
+        // sendBeacon can't set Authorization — use keepalive fetch
+      }
+      if (typeof fetch === 'function') {
+        fetch(url, {
+          method: 'POST',
+          headers: { Authorization: 'Bearer ' + t, 'Content-Type': 'application/json' },
+          body: body,
+          keepalive: true,
+        }).catch(function () {});
+      }
+    } catch (_) {}
+  }
+
+  function onPageHide() {
+    if (isOnLineState()) beaconGoOffline();
+  }
+
+  function onBeforeUnload(e) {
+    if (state === STATES.ringing || state === STATES.in_call || state === STATES.held) {
+      e.preventDefault();
+      e.returnValue = '';
+      return '';
+    }
+    if (isOnLineState()) beaconGoOffline();
+  }
+
+  function onVisibilityHeartbeat() {
+    if (document.visibilityState === 'visible' && isOnLineState()) sendHeartbeat();
+  }
+
+  function maybeConsumePendingReload() {
+    if (!_pendingReload) return;
+    if (state === STATES.ringing || state === STATES.in_call || state === STATES.held) return;
+    _pendingReload = false;
+    setTimeout(function () { location.reload(); }, 450);
+  }
+
+  window.addEventListener('pagehide', onPageHide);
+  window.addEventListener('beforeunload', onBeforeUnload);
+  document.addEventListener('visibilitychange', onVisibilityHeartbeat);
 
   function token() {
     return localStorage.getItem('asgard_token') || '';
@@ -153,6 +227,7 @@
       if (mode) setState(mode === 'mobile' ? STATES.on_line_mobile : STATES.on_line_browser);
       else setState(STATES.offline);
       emit('ended', {});
+      maybeConsumePendingReload();
     });
     session.on('failed', function () {
       activeSession = null;
@@ -160,6 +235,7 @@
       if (mode) setState(mode === 'mobile' ? STATES.on_line_mobile : STATES.on_line_browser);
       else setState(STATES.offline);
       emit('failed', {});
+      maybeConsumePendingReload();
     });
   }
 
@@ -298,7 +374,12 @@
     isInCallOrRinging: function () {
       return state === STATES.ringing || state === STATES.in_call || state === STATES.held;
     },
-    shouldDeferShellReload: function () { return api.isInCallOrRinging(); },
+    isOnLine: function () { return isOnLineState(); },
+    shouldDeferShellReload: function () {
+      return api.isInCallOrRinging() ||
+        state === STATES.on_line_browser ||
+        state === STATES.on_line_mobile;
+    },
     markPendingReload: function () { _pendingReload = true; emit('reload_deferred', {}); },
     consumePendingReload: function () {
       var v = _pendingReload;
@@ -357,11 +438,17 @@
             }
             startUA(creds);
             setState(receiveMode === 'mobile' ? STATES.on_line_mobile : STATES.on_line_browser);
+            pbxApi('/operator/status', {
+              method: 'POST',
+              body: JSON.stringify({ on_line: true, receive_mode: receiveMode }),
+            }).catch(function () {});
+            startHeartbeat();
             return { ok: true };
           })
           .catch(function (e) {
             releaseLeader();
             mode = null;
+            stopHeartbeat();
             setState(STATES.offline);
             throw e;
           });
@@ -369,6 +456,7 @@
     },
 
     goOffline: function () {
+      stopHeartbeat();
       return pbxApi('/operator/status', { method: 'POST', body: JSON.stringify({ on_line: false }) })
         .catch(function () {})
         .then(function () {
@@ -385,6 +473,7 @@
           setState(STATES.offline);
           releaseLeader();
           emit('offline', {});
+          maybeConsumePendingReload();
           return { ok: true };
         });
     },
@@ -424,8 +513,13 @@
           setState(mode ? (mode === 'mobile' ? STATES.on_line_mobile : STATES.on_line_browser) : STATES.offline);
           callMeta = {};
           emit('hangup', {});
+          maybeConsumePendingReload();
           return { ok: true };
         });
+    },
+
+    transferStatus: function (status, extra) {
+      emit('transfer_status', Object.assign({ status: status || 'unknown' }, extra || {}));
     },
 
     setMuted: function (on) {

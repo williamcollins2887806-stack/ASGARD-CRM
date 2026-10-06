@@ -1276,6 +1276,23 @@ body.theme-dark .ph-seg__btn.is-active {
 .ph-dp-input:disabled { opacity: 0.5; }
 .ph-dp-hint { font-size: 12px; color: var(--hg-muted, var(--t2)); margin-top: -6px; }
 .ph-dp--call .ph-dp-hint { margin-top: 0; text-align: center; }
+.ph-dp-banner {
+  font-size: 12px;
+  line-height: 1.35;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--bg3, #1a2236) 88%, transparent);
+  border: 1px solid var(--brd, rgba(255,255,255,0.08));
+  color: var(--t2, #a8b0c0);
+}
+.ph-dp-banner--warn {
+  border-color: color-mix(in srgb, var(--warn, #e6a23c) 55%, var(--brd, #333));
+  color: var(--warn-t, var(--warn, #e6a23c));
+}
+.ph-dp-banner--err {
+  border-color: color-mix(in srgb, var(--err, #e74c3c) 55%, var(--brd, #333));
+  color: var(--err-t, var(--err, #e74c3c));
+}
 .ph-dp-sec { display: flex; flex-direction: column; gap: 2px; }
 .ph-dp-sec-head {
   display: flex;

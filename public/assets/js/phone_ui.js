@@ -575,15 +575,20 @@
     }).then(function (r) { return r.ok ? r.json() : null; }).catch(function () { return null; });
   }
 
-  var panelData = { missed: null, recent: null, loadedAt: 0, loading: false };
+  var panelData = { missed: null, recent: null, loadedAt: 0, loading: false, opStatus: null, transferStatus: null };
 
   function loadPanelData(force) {
     if (panelData.loading) return;
     if (!force && panelData.loadedAt && Date.now() - panelData.loadedAt < 30000) return;
     panelData.loading = true;
-    Promise.all([refreshBadge(), apiGet('/api/telephony/me/summary')]).then(function (res) {
+    Promise.all([
+      refreshBadge(),
+      apiGet('/api/telephony/me/summary'),
+      apiGet('/api/telephony/pbx/operator/status'),
+    ]).then(function (res) {
       panelData.missed = (res[0] && res[0].items) || [];
       panelData.recent = (res[1] && res[1].recent) || [];
+      panelData.opStatus = res[2] || panelData.opStatus;
       panelData.loadedAt = Date.now();
     }).finally(function () {
       panelData.loading = false;
@@ -648,6 +653,37 @@
     return d.toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit' }) + ' ' + hm;
   }
 
+  function lineBannersHtml(opSt) {
+    opSt = opSt || panelData.opStatus || {};
+    var banners = [];
+    if (opSt.on_line) {
+      banners.push('<div class="ph-dp-hint">Пока вы на линии, автоблокировка PIN отключена. Ctrl+Shift+L — отойти и заблокировать.</div>');
+      var noSip = !opSt.webrtc_registered && !opSt.has_sip;
+      var noMob = !opSt.has_mobile && !opSt.mobile_phone;
+      if (noSip && noMob) {
+        banners.push('<div class="ph-dp-banner ph-dp-banner--err">Вас не дозвонятся: нет SIP и нет мобильного.</div>');
+      } else if (noSip && opSt.receive_mode !== 'mobile') {
+        banners.push('<div class="ph-dp-banner ph-dp-banner--warn">SIP не зарегистрирован — входящие пойдут на мобильный (если указан).</div>');
+      }
+      if (typeof opSt.minutes_to_work_end === 'number' && opSt.minutes_to_work_end >= 0 && opSt.minutes_to_work_end <= 5 && opSt.work_hours_active) {
+        banners.push('<div class="ph-dp-banner ph-dp-banner--warn">Рабочий день заканчивается — с линии снимут в конце смены' +
+          (opSt.duty_until ? ' (дежурный до ' + esc(opSt.duty_until) + ')' : '') + '.</div>');
+      }
+      if (!opSt.work_hours_active) {
+        banners.push('<div class="ph-dp-banner ph-dp-banner--warn">Вне рабочих часов. Дежурный остаётся до ' + esc(opSt.duty_until || '—') + '.</div>');
+      }
+      if (opSt.online_count === 1) {
+        banners.push('<div class="ph-dp-hint">Сейчас на линии только вы — входящие пойдут вам.</div>');
+      }
+    }
+    if (panelData.transferStatus) {
+      var ts = panelData.transferStatus;
+      var label = ({ trying: 'Перевод…', answered: 'Перевод: ответил', noanswer: 'Перевод: не ответил', returned: 'Перевод: возврат', failed: 'Перевод не удался' })[ts.status] || ('Перевод: ' + ts.status);
+      banners.push('<div class="ph-dp-banner">' + esc(label) + '</div>');
+    }
+    return banners.join('');
+  }
+
   function idlePanelHtml() {
     var P = window.AsgardPhone;
     var st = P ? P.getState() : 'offline';
@@ -684,7 +720,7 @@
         : '<div class="ph-dp-empty">Сегодня звонков не было</div>');
     return panelHead('Телефон') +
       '<div class="ph-dp">' +
-        line + dial +
+        line + lineBannersHtml() + dial +
         '<div class="ph-dp-sec">' +
           '<div class="ph-dp-sec-head"><span>Мои пропущенные' + (missedUnack ? ' <b class="ph-dp-count">' + missedUnack + '</b>' : '') + '</span>' +
             '<a href="#/telephony?tab=missed" class="ph-dp-link">Все</a></div>' +
@@ -966,14 +1002,22 @@
     });
     Promise.all([
       fetch('/api/telephony/employees', { headers: { Authorization: 'Bearer ' + (localStorage.getItem('asgard_token') || '') } }).then(function (r) { return r.json(); }),
-      fetch('/api/telephony/pbx/reports/staff', { headers: { Authorization: 'Bearer ' + (localStorage.getItem('asgard_token') || '') } }).catch(function () { return { staff: [] }; }).then(function (r) { return r.json ? r : { staff: [] }; }),
+      fetch('/api/telephony/pbx/transfer/staff', { headers: { Authorization: 'Bearer ' + (localStorage.getItem('asgard_token') || '') } })
+        .then(function (r) { return r.ok ? r.json() : { staff: [] }; })
+        .catch(function () { return { staff: [] }; }),
     ]).then(function (parts) {
       var emps = (parts[0] && parts[0].employees) || [];
       var online = {};
       ((parts[1] && parts[1].staff) || []).forEach(function (s) { online[s.user_id] = s; });
       staff = emps.map(function (e) {
         var st = online[e.id] || {};
-        return { id: e.id, name: e.name || e.full_name, phone: e.phone || e.internal_phone, on_line: st.on_line, mode: st.receive_mode };
+        return {
+          id: e.id,
+          name: e.name || e.full_name,
+          phone: st.sip_username || e.phone || e.internal_phone || st.mobile_phone,
+          on_line: st.on_line,
+          mode: st.receive_mode,
+        };
       });
       paintStaff('');
     }).catch(function () {
@@ -1001,12 +1045,18 @@
       listEl.querySelectorAll('.ph-tr-row').forEach(function (row) {
         row.addEventListener('click', function () {
           var mode = transferMode || 'blind';
-          var target = row.getAttribute('data-phone') || row.getAttribute('data-id');
-          AsgardPhone.transfer(mode, target).then(function () {
+          var tid = row.getAttribute('data-id') || row.getAttribute('data-phone');
+          panelData.transferStatus = { status: 'trying', target: tid };
+          AsgardPhone.transfer(mode, tid).then(function () {
             playTone('ok');
-            toast('Перевод', 'Запрос отправлен', 'ok');
+            toast('Перевод', 'Перевод…', 'ok');
             AsgardUI.closeModal && AsgardUI.closeModal();
-          }).catch(function (e) { toast('Перевод', e.message, 'err'); });
+            if (panelShown()) paintPanel();
+          }).catch(function (e) {
+            panelData.transferStatus = { status: 'failed', target: tid };
+            toast('Перевод', e.message, 'err');
+            if (panelShown()) paintPanel();
+          });
         });
       });
     }
@@ -1054,6 +1104,23 @@
       panelData.loadedAt = 0;
       syncUi(P.getState());
       if (!panelShown()) refreshBadge();
+      if (AsgardPhone.consumePendingReload && AsgardPhone.consumePendingReload()) {
+        setTimeout(function () { location.reload(); }, 450);
+      }
+    }
+    if (type === 'transfer' || type === 'transfer_status') {
+      panelData.transferStatus = {
+        status: (d.status || (d.detail && d.detail.status) || 'trying'),
+        target: d.target,
+      };
+      toast('Перевод', ({
+        trying: 'Перевод…',
+        answered: 'Абонент ответил',
+        noanswer: 'Не ответил — возврат',
+        returned: 'Звонок вернулся',
+        failed: 'Перевод не удался',
+      })[panelData.transferStatus.status] || panelData.transferStatus.status, 'info');
+      if (panelShown()) paintPanel();
     }
     if (type === 'audio_blocked') dom.audioBanner.style.display = 'flex';
   }
