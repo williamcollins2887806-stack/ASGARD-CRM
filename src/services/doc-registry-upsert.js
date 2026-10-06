@@ -43,9 +43,14 @@ function calcIncomplete(row) {
   if (!(row.invoice_number || '').toString().trim()) r.push('no_invoice_number');
   if (!row.invoice_date) r.push('no_invoice_date');
   if (!(row.counterparty_name || '').toString().trim()) r.push('no_counterparty');
-  if ((row.contract_mode || 'none') === 'none' && !row.contract_id) r.push('no_contract');
+  const mode = row.contract_mode || 'none';
+  // once/general/none не дают no_contract; только linked без contract_id
+  if (mode === 'linked' && !row.contract_id) r.push('no_contract');
   if (row.dir === 'in' && !row.payment_due_at) r.push('no_payment_due');
-  if (row.dir === 'in' && !row.work_id && !row.purpose_asgard && !row.purpose_consumables) r.push('no_work');
+  const sk = row.spend_kind || 'work';
+  if (row.dir === 'in' && sk === 'work' && !row.work_id && !row.purpose_asgard && !row.purpose_consumables) {
+    r.push('no_work');
+  }
   return { is_incomplete: r.length > 0, incomplete_reasons: r };
 }
 

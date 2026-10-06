@@ -14,7 +14,34 @@ window.AsgardDocHubPage = (function () {
   // остальным. Кнопку остальным НЕ показываем, иначе роль видит действие,
   // которое всегда падает.
   const WH_ROLES = ['WAREHOUSE', 'ADMIN', 'BUH'];
-  const VAT_RATE = 0.22;
+  // Selectable VAT rates: null = без НДС, 0 = 0%, 0.05/0.1/0.2/0.22 = ставка
+  const VAT_RATES = [
+    { label: 'Без НДС', value: null },
+    { label: '0%',  value: 0 },
+    { label: '5%',  value: 0.05 },
+    { label: '10%', value: 0.1 },
+    { label: '20%', value: 0.2 },
+    { label: '22%', value: 0.22 }
+  ];
+  const DEFAULT_VAT_RATE = 0.22;
+
+  /**
+   * Shared VAT calculator (wizard step 2 + drawer).
+   * @param {number} gross  - брутто сумма
+   * @param {number|null} rateOrNull - ставка (0.22 и т.д.) или null (без НДС)
+   */
+  function recalcVat(gross, rateOrNull) {
+    const g = Number(gross) || 0;
+    if (rateOrNull === null || rateOrNull === undefined) {
+      return { gross: g, net: g, vat: 0, hasVat: false };
+    }
+    const r = Number(rateOrNull);
+    if (!(r > 0)) return { gross: g, net: g, vat: 0, hasVat: true }; // 0% ставка
+    const net = Math.round((g / (1 + r)) * 100) / 100;
+    const vat = Math.round((g - net) * 100) / 100;
+    return { gross: g, net, vat, hasVat: true };
+  }
+
   const OPS_OPTIONS = [
     ['', 'Все статусы'],
     ['draft', 'Черновик'],
@@ -296,8 +323,47 @@ window.AsgardDocHubPage = (function () {
     if (row.has_vat === false || row.has_vat === 0 || row.has_vat === '0') {
       return `<span class="dh-pill dh-pill--muted">без НДС</span>`;
     }
-    const vat = row.vat_amount != null ? money(row.vat_amount) : '';
-    return `<div class="dh-stack"><span class="dh-pill dh-pill--ok">с НДС</span>${vat ? `<span class="b">${vat}</span>` : ''}</div>`;
+    const rate = row.vat_rate != null ? Number(row.vat_rate) : DEFAULT_VAT_RATE;
+    const rateLabel = Math.round(rate * 100) + '%';
+    let vatAmt = Number(row.vat_amount);
+    if (!(vatAmt > 0)) {
+      const gross = Number(row.amount_gross) || 0;
+      if (gross > 0 && rate > 0) vatAmt = Math.round((gross - gross / (1 + rate)) * 100) / 100;
+    }
+    if (!(vatAmt > 0)) {
+      return `<span class="dh-pill dh-pill--ok">НДС ${rateLabel}</span>`;
+    }
+    return `<div class="dh-stack"><span class="dh-pill dh-pill--ok">НДС ${rateLabel}</span><span class="b">${money(vatAmt)}</span></div>`;
+  }
+  function contractCell(row) {
+    const label = String(row.contract_label || '').trim();
+    const mode = contractModeLabel(row.contract_mode);
+    if (label) {
+      return `<div class="dh-stack"><span class="a">${esc(label)}</span><span class="b">${esc(mode)}</span></div>`;
+    }
+    return `<span class="dh-muted">${esc(mode)}</span>`;
+  }
+  function receiveChannelLabel(ch) {
+    const raw = String(ch || '').trim().toLowerCase();
+    if (!raw) return '';
+    if (/^(edo|эдо)$/i.test(raw)) return 'ЭДО';
+    if (/scan|скан|скан\s*копи/i.test(raw)) return 'скан';
+    if (/original|оригинал/i.test(raw)) return 'оригинал';
+    return String(ch).trim();
+  }
+  function receiveCell(row) {
+    const label = receiveChannelLabel(row.receive_channel);
+    if (!label) return '<span class="dh-muted">—</span>';
+    let kind = 'muted';
+    if (label === 'ЭДО') kind = 'info';
+    else if (label === 'скан') kind = 'warn';
+    else if (label === 'оригинал') kind = 'ok';
+    return `<span class="dh-pill dh-pill--${kind}">${esc(label)}</span>`;
+  }
+  function ownersCell(row) {
+    const owner = row.doc_owner_name || '—';
+    const pm = row.pm_name || '—';
+    return `<div class="dh-stack"><span class="a" title="Отв. за документ">${esc(owner)}</span><span class="b" title="РП">${esc(pm)}</span></div>`;
   }
   function payCell(row) {
     const due = fmtDate(row.payment_due_at);
@@ -373,14 +439,14 @@ window.AsgardDocHubPage = (function () {
         if (qinfo) {
           const isTransition = prevKey && prevKey !== 'none';
           parts.push(`<tr class="dh-qtr-sep" data-qtr="${qinfo.q}" data-year="${qinfo.y}">
-            <td colspan="10"><div class="dh-qtr-sep__in ${isTransition ? 'is-next' : ''}">
+            <td colspan="14"><div class="dh-qtr-sep__in ${isTransition ? 'is-next' : ''}">
               ${isTransition ? '<span class="dh-qtr-sep__arrow">↓</span>' : ''}
               <strong>${esc(quarterLabel(qinfo.q, qinfo.y))}</strong>
               <span class="dh-qtr-sep__hint">по дате документа</span>
             </div></td>
           </tr>`);
         } else {
-          parts.push(`<tr class="dh-qtr-sep" data-qtr="0"><td colspan="10"><div class="dh-qtr-sep__in"><strong>Без даты документа</strong></div></td></tr>`);
+          parts.push(`<tr class="dh-qtr-sep" data-qtr="0"><td colspan="14"><div class="dh-qtr-sep__in"><strong>Без даты документа</strong></div></td></tr>`);
         }
         prevKey = key;
       }
@@ -394,9 +460,13 @@ window.AsgardDocHubPage = (function () {
           <div class="dh-stack"><span class="a">${esc(r.counterparty_name)}</span><span class="b dh-muted">${r.inn ? ('ИНН ' + esc(r.inn)) : esc(r.counterparty_email || r.email || '—')}</span></div>
         </td>
         <td class="dh-col-work"><div class="dh-stack"><span class="a">${esc(r.work_title || 'без объекта')}</span><span class="b">${r.work_id ? ('#' + r.work_id) : '—'}</span></div></td>
+        <td class="dh-col-contract">${contractCell(r)}</td>
+        <td class="dh-col-recv">${receiveCell(r)}</td>
+        <td class="dh-col-purpose">${purposeFlags(r)}</td>
+        <td class="dh-col-owners">${ownersCell(r)}</td>
         <td class="dh-money" title="${esc(moneyFine(r.amount_gross))}">${money(r.amount_gross)}</td>
         <td class="dh-col-vat">${vatCell(r)}</td>
-                <td>${payCell(r)}</td>
+        <td>${payCell(r)}</td>
         <td class="dh-col-sf">${closingCell(r)}</td>
         <td class="dh-actions">
           <div class="dh-qa" aria-label="Действия">
@@ -404,16 +474,19 @@ window.AsgardDocHubPage = (function () {
             <button type="button" data-qa="sf" title="СФ получена">${ico.sf}</button>
             ${canWh() ? `<button type="button" data-qa="wh" title="Склад">${ico.wh}</button>` : ''}
             <button type="button" data-qa="open" title="Карточка">${ico.open}</button>
+            <button type="button" class="dh-cmt-btn${r.comment_text ? ' is-filled' : ''}" data-cmt="${r.id}" data-comment="${esc(r.comment_text || '')}" title="${r.comment_text ? esc(String(r.comment_text).slice(0, 60)) : 'Комментарий'}" aria-label="Комментарий"><svg viewBox="0 0 24 24" fill="${r.comment_text ? 'currentColor' : 'none'}" stroke="currentColor" stroke-width="1.8"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></button>
           </div>
         </td>
       </tr>`);
     });
-    return `<div class="dh-table-wrap"><table class="dh-table dh-table--rich">
+    return `<div class="dh-table-wrap" id="dhTableWrap"><table class="dh-table dh-table--rich">
       <thead><tr>
-        <th>Статус</th><th>Напр.</th><th>Счёт</th><th>Контрагент</th><th>Объект</th><th>Сумма</th><th>НДС</th><th>Оплата</th><th>СФ/УПД</th><th class="dh-actions">Действия</th>
+        <th>Статус</th><th>Напр.</th><th>Счёт</th><th>Контрагент</th><th>Объект</th>
+        <th>Договор</th><th>Получение</th><th>Назначение</th><th>Ответственные</th>
+        <th>Сумма</th><th>НДС</th><th>Оплата</th><th>СФ/УПД</th><th class="dh-actions">Действия</th>
       </tr></thead>
       <tbody>${parts.join('')}</tbody>
-    </table></div>`;
+    </table></div><div class="dh-hscroll-bar" id="dhHScrollBar" hidden><div class="dh-hscroll-bar__inner"></div></div>`;
   }
 
   function renderGuideView() {
@@ -528,7 +601,6 @@ window.AsgardDocHubPage = (function () {
         ? 'Пошаговое заполнение с авторасчётом НДС и проверкой дублей'
         : 'Единый хаб входящих и исходящих · работы, договоры, закупки и 1С');
     return `
-      <link rel="stylesheet" href="assets/css/doc-hub.css?v=20.28.84" />
       <div class="dh-app dh-app--embedded${isWizard ? ' dh-app--wizard' : ''}">
         <div class="dh-shell">
           <header class="dh-top">
@@ -551,29 +623,45 @@ window.AsgardDocHubPage = (function () {
             ${isGuide ? renderGuideView() : (isWizard ? '<div class="dh-wizard-page" id="dhWizardHost"></div>' : registryMainHtml(scopeAll))}
           </main>
         </div>
-        <div class="dh-drawer" id="dhDrawer" hidden></div>
+        <div class="dh-overlay" id="dhOverlay" hidden></div>
+        <aside class="dh-drawer" id="dhDrawer" hidden aria-hidden="true"></aside>
         <div class="dh-modal" id="dhModal" hidden></div>
       </div>`;
   }
 
   function emptyWizDraft() {
+    let currentUserId = '';
+    try { currentUserId = String(JSON.parse(localStorage.getItem('asgard_user') || '{}').id || ''); } catch (_) {}
     return {
       dir: 'in',
       doc_kinds: ['invoice'],
       invoice_number: '',
       invoice_date: new Date().toISOString().slice(0, 10),
       counterparty_name: '',
+      counterparty_inn: '',
+      counterparty_email: '',
+      counterparty_phone: '',
       amount_gross: '',
       amount_net: '',
-      has_vat: '1',
+      vat_rate: DEFAULT_VAT_RATE, // null = без НДС
       contract_mode: 'none',
+      contract_id: null,
+      contract_label: '',
+      contract_date: '',
+      contract_has_scan: false,
+      contract_has_original: false,
+      spend_kind: 'work', // work|warehouse|office|other
       payment_due_at: '',
       sf_due_at: '',
       work_id: '',
+      work_expense_id: null,
+      doc_owner_id: currentUserId,
+      pm_id: '',
       comment_text: '',
       purpose_customer: true,
       purpose_asgard: false,
       purpose_consumables: false,
+      receive_channel: '',
       parsed_json: '',
       file: null
     };
@@ -583,17 +671,46 @@ window.AsgardDocHubPage = (function () {
     if (!form || !state.wizDraft) return;
     const fd = new FormData(form);
     const d = state.wizDraft;
-    for (const k of ['dir', 'invoice_number', 'invoice_date', 'counterparty_name', 'amount_gross', 'amount_net', 'has_vat',
-      'contract_mode', 'payment_due_at', 'sf_due_at', 'work_id', 'comment_text', 'parsed_json']) {
+    const strFields = ['dir', 'invoice_number', 'invoice_date', 'counterparty_name',
+      'counterparty_inn', 'counterparty_email', 'counterparty_phone',
+      'amount_gross', 'amount_net',
+      'contract_mode', 'contract_label', 'contract_date',
+      'spend_kind', 'payment_due_at', 'sf_due_at', 'work_id',
+      'doc_owner_id', 'pm_id',
+      'comment_text', 'parsed_json', 'receive_channel'];
+    for (const k of strFields) {
       if (fd.has(k)) d[k] = String(fd.get(k) ?? '');
     }
+    // VAT rate from hidden field
+    const vatRateEl = form.querySelector('#dhWizVatRate');
+    if (vatRateEl) {
+      const raw = vatRateEl.value;
+      d.vat_rate = raw === '' || raw === 'null' ? null : parseFloat(raw);
+    }
+    // contract flags
+    d.contract_has_scan = !!form.querySelector('input[name="contract_has_scan"]')?.checked;
+    d.contract_has_original = !!form.querySelector('input[name="contract_has_original"]')?.checked;
+    // doc_kinds
     d.doc_kinds = [...form.querySelectorAll('input[name="doc_kind"]:checked')].map((el) => el.value);
     if (!d.doc_kinds.length) d.doc_kinds = ['invoice'];
+    // purpose flags
     d.purpose_customer = !!form.querySelector('input[name="purpose_customer"]')?.checked;
     d.purpose_asgard = !!form.querySelector('input[name="purpose_asgard"]')?.checked;
     d.purpose_consumables = !!form.querySelector('input[name="purpose_consumables"]')?.checked;
+    // file
     const fileInput = form.querySelector('input[name="attachment"]');
     if (fileInput && fileInput.files && fileInput.files[0]) d.file = fileInput.files[0];
+  }
+
+  function vatRateChipsHtml(currentRate) {
+    return VAT_RATES.map((r) => {
+      const selected = currentRate === r.value || (currentRate == null && r.value === null);
+      return `<button type="button" class="dh-vat-chip${selected ? ' is-on' : ''}" data-vat-rate="${r.value === null ? 'null' : r.value}">${esc(r.label)}</button>`;
+    }).join('');
+  }
+
+  function spendKindLabel(k) {
+    return ({ work: 'Работы', warehouse: 'Склад/Материалы', office: 'Офис/АХО', other: 'Прочее' })[k] || k || '—';
   }
 
   function wizStepHtml(step) {
@@ -633,15 +750,39 @@ window.AsgardDocHubPage = (function () {
         </div>`;
     }
     if (step === 2) {
-      const g0 = parseFloat(d.amount_gross) || 0;
-      const n0 = parseFloat(d.amount_net) || (g0 ? +(g0 / (1 + VAT_RATE)).toFixed(2) : 0);
-      const v0 = g0 ? +(g0 - n0).toFixed(2) : 0;
+      const curRate = d.vat_rate !== undefined ? d.vat_rate : DEFAULT_VAT_RATE;
+      const parts0 = recalcVat(parseFloat(d.amount_gross) || 0, curRate);
       return steps + `
-        <div class="dh-coach"><div class="dh-coach__ico">2</div><div class="dh-coach__body"><strong>Суммы</strong><p>Введите сумму с НДС или без — вторая и сам НДС посчитаются. Ставка по умолчанию 22%.</p></div></div>
+        <div class="dh-coach"><div class="dh-coach__ico">2</div><div class="dh-coach__body"><strong>Суммы и контрагент</strong><p>Введите сумму, выберите ставку НДС, укажите поставщика.</p></div></div>
         <div class="dh-sum-strip" id="dhWizSumStrip" aria-live="polite">
-          <div><span class="k">С НДС</span><span class="v" id="dhWizStripGross">${moneyFine(g0 || 2200)}</span></div>
-          <div><span class="k">Без НДС</span><span class="v" id="dhWizStripNet">${moneyFine(n0 || 1803.28)}</span></div>
-          <div><span class="k">НДС 22%</span><span class="v" id="dhWizStripVat">${moneyFine(v0 || 396.72)}</span></div>
+          <div><span class="k">С НДС</span><span class="v" id="dhWizStripGross">${moneyFine(parts0.gross || 0)}</span></div>
+          <div><span class="k">Без НДС</span><span class="v" id="dhWizStripNet">${moneyFine(parts0.net || 0)}</span></div>
+          <div><span class="k">НДС</span><span class="v" id="dhWizStripVat">${moneyFine(parts0.vat || 0)}</span></div>
+        </div>
+        <div class="dh-grid2">
+          <div class="dh-field"><label>№ счёта *</label><input name="invoice_number" required value="${esc(d.invoice_number)}" placeholder="например ФР-2019" /></div>
+          <div class="dh-field"><label>Дата счёта *</label><input type="date" name="invoice_date" required value="${esc((d.invoice_date || '').slice(0, 10))}" /></div>
+        </div>
+        <div class="dh-field" id="dhWizCpContainer">
+          <label>Контрагент *</label>
+          <input name="counterparty_name" required id="dhWizCpInput" autocomplete="off"
+                 list="dhCpListWiz" value="${esc(d.counterparty_name)}" placeholder="Начните вводить название или ИНН…" />
+          <datalist id="dhCpListWiz">${(state.facets.counterparties || []).map((c) => `<option value="${esc(c)}"></option>`).join('')}</datalist>
+        </div>
+        <div class="dh-grid2">
+          <div class="dh-field"><label>ИНН</label><input name="counterparty_inn" id="dhWizInn" value="${esc(d.counterparty_inn || '')}" placeholder="XXXXXXXXXX" /></div>
+          <div class="dh-field"><label>Email</label><input name="counterparty_email" id="dhWizEmail" type="email" value="${esc(d.counterparty_email || '')}" /></div>
+          <div class="dh-field"><label>Телефон</label><input name="counterparty_phone" id="dhWizPhone" value="${esc(d.counterparty_phone || '')}" /></div>
+        </div>
+        <div class="dh-vat-box">
+          <div class="dh-field"><label>Сумма с НДС</label><input name="amount_gross" type="number" step="0.01" min="0" required value="${esc(d.amount_gross)}" placeholder="0.00" id="dhWizGross" /><div class="dh-help">меняете — пересчитаем без НДС</div></div>
+          <div class="dh-field"><label>Сумма без НДС</label><input name="amount_net" type="number" step="0.01" min="0" value="${esc(d.amount_net)}" placeholder="0.00" id="dhWizNet" /><div class="dh-help">или вводите сюда</div></div>
+          <div class="dh-field">
+            <label>НДС</label>
+            <div class="dh-vat-box__big" id="dhWizVatAmt">—</div>
+            <div class="dh-vat-rate-chips" id="dhWizVatChips" role="group" aria-label="Ставка НДС">${vatRateChipsHtml(curRate)}</div>
+            <input type="hidden" id="dhWizVatRate" name="vat_rate" value="${curRate === null ? 'null' : esc(String(curRate))}" />
+          </div>
         </div>
         <div class="dh-dup" id="dhWizDup" hidden>
           <strong>Похожий расход уже есть на объекте</strong>
@@ -650,50 +791,83 @@ window.AsgardDocHubPage = (function () {
             <button class="dh-btn dh-btn--sm" type="button" id="dhWizDupLink">Связать с расходом</button>
             <button class="dh-btn dh-btn--sm dh-btn--ghost" type="button" id="dhWizDupSkip">Это другой документ</button>
           </div>
-        </div>
-        <div class="dh-grid2">
-          <div class="dh-field"><label>№ счёта *</label><input name="invoice_number" required value="${esc(d.invoice_number)}" placeholder="например ФР-2019" /></div>
-          <div class="dh-field"><label>Дата счёта *</label><input type="text" name="invoice_date" required pattern="\\d{4}-\\d{2}-\\d{2}" placeholder="2026-09-14" value="${esc(d.invoice_date)}" /><div class="dh-help">формат ГГГГ-ММ-ДД</div></div>
-        </div>
-        <div class="dh-field"><label>Контрагент *</label><input name="counterparty_name" required list="dhCpListWiz" value="${esc(d.counterparty_name)}" placeholder="Начните вводить название или ИНН" />
-          <datalist id="dhCpListWiz">${(state.facets.counterparties || []).map((c) => `<option value="${esc(c)}"></option>`).join('')}</datalist>
-        </div>
-        <div class="dh-vat-box">
-          <div class="dh-field"><label>Сумма с НДС</label><input name="amount_gross" type="number" step="0.01" min="0" required value="${esc(d.amount_gross)}" placeholder="0.00" id="dhWizGross" /><div class="dh-help">меняете — пересчитаем без НДС</div></div>
-          <div class="dh-field"><label>Сумма без НДС</label><input name="amount_net" type="number" step="0.01" min="0" value="${esc(d.amount_net)}" placeholder="0.00" id="dhWizNet" /><div class="dh-help">или вводите сюда</div></div>
-          <div class="dh-field"><label>НДС 22%</label>
-            <div class="dh-vat-box__big" id="dhWizVatAmt">—</div>
-            <div class="dh-help"><label class="dh-check dh-check--bare"><input type="checkbox" id="dhWizHasVatChk" ${d.has_vat === '1' ? 'checked' : ''}/> с НДС</label></div>
-            <input type="hidden" name="has_vat" id="dhWizHasVat" value="${esc(d.has_vat)}" />
-          </div>
+          <div id="dhWizDupItems" class="dh-dup-items"></div>
         </div>`;
     }
     if (step === 3) {
+      const cmode = d.contract_mode || 'none';
+      const sk = d.spend_kind || 'work';
       return steps + `
-        <div class="dh-coach"><div class="dh-coach__ico">3</div><div class="dh-coach__body"><strong>Объект и договор</strong><p>Без договора сохранение возможно, но строка попадёт в «Неполные» и придёт уведомление.</p></div></div>
-        <input type="hidden" name="contract_mode" id="dhWizContract" value="${esc(d.contract_mode || 'none')}" />
+        <div class="dh-coach"><div class="dh-coach__ico">3</div><div class="dh-coach__body"><strong>Договор, расход и объект</strong><p>Без договора строка попадёт в «Неполные». Вид расхода и объект можно дозаполнить позже.</p></div></div>
+        <input type="hidden" name="contract_mode" id="dhWizContract" value="${esc(cmode)}" />
         <div class="dh-mode-cards" id="dhModeCards">
-          ${[['linked','Привязать договор','Из реестра договоров'],['once','Разовая','Без договора'],['general','Общий / заявка','Рамочный'],['none','Без договора','Не указан / позже']].map(([v,t,s]) =>
-            `<button type="button" class="dh-mode-card ${d.contract_mode === v ? 'is-on' : ''}" data-mode="${v}"><div class="t">${t}</div><div class="s">${s}</div></button>`
+          ${[['linked','Привязать договор','Из реестра договоров'],['once','Разовая','Разовая поставка'],['general','Общий / заявка','Рамочный договор'],['none','Без договора','Не указан / позже']].map(([v,t,s]) =>
+            `<button type="button" class="dh-mode-card ${cmode === v ? 'is-on' : ''}" data-mode="${v}"><div class="t">${t}</div><div class="s">${s}</div></button>`
           ).join('')}
+        </div>
+        <div id="dhContractExtra">
+          <div id="dhContractPickerRow" ${cmode !== 'linked' ? 'hidden' : ''} style="margin-bottom:10px">
+            <button type="button" class="dh-btn dh-btn--ghost" id="dhWizContractPick">
+              ${d.contract_id ? '✓ ' + esc(d.contract_label || ('Договор #' + d.contract_id)) : '📎 Выбрать договор из реестра'}
+            </button>
+          </div>
+          <div id="dhContractLabelRow" ${cmode === 'none' ? 'hidden' : ''}>
+            <div class="dh-grid2">
+              <div class="dh-field"><label>Метка / номер договора</label><input name="contract_label" id="dhWizContractLabel" value="${esc(d.contract_label || '')}" placeholder="Например, ДП-2025/01" /></div>
+              <div class="dh-field"><label>Дата договора</label><input type="date" name="contract_date" id="dhWizContractDate" value="${esc((d.contract_date || '').slice(0, 10))}" /></div>
+            </div>
+            <div class="dh-checkrow" style="margin-bottom:12px">
+              <label class="dh-check"><input type="checkbox" name="contract_has_scan" ${d.contract_has_scan ? 'checked' : ''}/> Скан есть</label>
+              <label class="dh-check"><input type="checkbox" name="contract_has_original" ${d.contract_has_original ? 'checked' : ''}/> Оригинал есть</label>
+            </div>
+          </div>
+        </div>
+        <div class="dh-section-label">Вид расхода</div>
+        <div class="dh-spend-cards" id="dhSpendCards">
+          ${[['work','Работы','Субподряд, монтаж, услуги на объекте'],['warehouse','Склад/Материалы','Оборудование, стройматериалы'],['office','Офис/АХО','Офисные нужды, связь, аренда'],['other','Прочее','Не вписывается в категории']].map(([v,t,s]) =>
+            `<button type="button" class="dh-spend-card${sk === v ? ' is-on' : ''}" data-spend="${v}"><div class="t">${t}</div><div class="s">${s}</div></button>`
+          ).join('')}
+        </div>
+        <input type="hidden" name="spend_kind" id="dhWizSpendKind" value="${esc(sk)}" />
+        <div class="dh-field" id="dhWorkField" ${sk !== 'work' ? 'style="display:none"' : ''}>
+          <label>Работа / объект <span style="color:var(--t3)">(обязательно для работ)</span></label>
+          <input type="hidden" name="work_id" id="dhWizWorkId" value="${esc(d.work_id || '')}" />
+          <div id="dhWizWork_w" class="dh-crselect-host"></div>
+          <div class="dh-help">Список загружается при открытии шага</div>
         </div>
         <div class="dh-checkrow">
           <label class="dh-check"><input type="checkbox" name="purpose_customer" ${d.purpose_customer ? 'checked' : ''}/> На объект заказчика</label>
           <label class="dh-check"><input type="checkbox" name="purpose_asgard" ${d.purpose_asgard ? 'checked' : ''}/> Собственность АСГАРД</label>
           <label class="dh-check"><input type="checkbox" name="purpose_consumables" ${d.purpose_consumables ? 'checked' : ''}/> Расходники</label>
         </div>
-        <div class="dh-grid2">
-          <div class="dh-field"><label>Срок оплаты</label><input type="text" name="payment_due_at" pattern="\\d{4}-\\d{2}-\\d{2}" placeholder="2026-09-30" value="${esc(d.payment_due_at)}" /><div class="dh-help">ГГГГ-ММ-ДД</div></div>
-          <div class="dh-field"><label>Срок ожидания СФ</label><input type="text" name="sf_due_at" pattern="\\d{4}-\\d{2}-\\d{2}" placeholder="2026-10-15" value="${esc(d.sf_due_at)}" /><div class="dh-help">ГГГГ-ММ-ДД</div></div>
+        <div class="dh-field"><label>Получение</label>
+          <select name="receive_channel">
+            <option value="" ${!d.receive_channel ? 'selected' : ''}>— не указано —</option>
+            <option value="edo" ${d.receive_channel === 'edo' ? 'selected' : ''}>ЭДО</option>
+            <option value="scan" ${d.receive_channel === 'scan' ? 'selected' : ''}>скан</option>
+            <option value="original" ${d.receive_channel === 'original' ? 'selected' : ''}>оригинал</option>
+          </select>
         </div>
-        <div class="dh-field"><label>Работа / объект (ID в CRM)</label><input name="work_id" type="number" min="1" step="1" placeholder="оставьте пустым, если объекта ещё нет" value="${esc(d.work_id)}" /><div class="dh-help">необязательно — можно дозаполнить позже</div></div>`;
+        <div class="dh-grid2">
+          <div class="dh-field"><label>Срок оплаты</label><input type="date" name="payment_due_at" value="${esc((d.payment_due_at || '').slice(0, 10))}" /></div>
+          <div class="dh-field"><label>Срок ожидания СФ</label><input type="date" name="sf_due_at" value="${esc((d.sf_due_at || '').slice(0, 10))}" /></div>
+        </div>
+        <div class="dh-grid2">
+          <div class="dh-field"><label>Отв. за документы</label>
+            <input type="hidden" name="doc_owner_id" id="dhWizDocOwnerId" value="${esc(d.doc_owner_id || '')}" />
+            <div id="dhWizDocOwner_w" class="dh-crselect-host"></div>
+          </div>
+          <div class="dh-field"><label>РП</label>
+            <input type="hidden" name="pm_id" id="dhWizPmId" value="${esc(d.pm_id || '')}" />
+            <div id="dhWizPm_w" class="dh-crselect-host"></div>
+          </div>
+        </div>`;
     }
-    const hasVat = d.has_vat === '1';
-    const gross = parseFloat(d.amount_gross) || 0;
-    const net = hasVat ? +(gross / (1 + VAT_RATE)).toFixed(2) : gross;
-    const vat = hasVat ? +(gross - net).toFixed(2) : 0;
+    const curRate4 = d.vat_rate !== undefined ? d.vat_rate : DEFAULT_VAT_RATE;
+    const parts4 = recalcVat(parseFloat(d.amount_gross) || 0, curRate4);
+    const rateLabel4 = curRate4 === null ? 'без НДС' : (Math.round(curRate4 * 100) + '% НДС');
     return steps + `
-      <div class="dh-coach"><div class="dh-coach__ico">4</div><div class="dh-coach__body"><strong>Сканы и проверка</strong><p>Прикрепите скан и сверьте суммы. Для входящих добавьте позиции каталога — по строкам с названием, ценой и количеством.</p></div></div>
+      <div class="dh-coach"><div class="dh-coach__ico">4</div><div class="dh-coach__body"><strong>Сканы и проверка</strong><p>Прикрепите скан и сверьте суммы. Для входящих добавьте позиции каталога.</p></div></div>
       <div class="dh-field">
         <label>Вложение (скан счёта)</label>
         <label class="dh-drop">
@@ -706,10 +880,14 @@ window.AsgardDocHubPage = (function () {
       <div class="dh-review-grid">
         <div class="dh-review-card"><div class="k">Направление</div><div class="v">${d.dir === 'out' ? 'Исходящий' : 'Входящий'}</div></div>
         <div class="dh-review-card"><div class="k">Типы</div><div class="v">${esc((d.doc_kinds || []).map((x) => ({ invoice: 'Счёт', sf: 'СФ', upd: 'УПД', act: 'Акт' }[x] || x)).join(', ') || 'Счёт')}</div></div>
-        <div class="dh-review-card"><div class="k">Счёт</div><div class="v">${esc(d.invoice_number)} · ${fmtDate(d.invoice_date)}</div></div>
-        <div class="dh-review-card"><div class="k">Контрагент</div><div class="v">${esc(d.counterparty_name)}</div></div>
-        <div class="dh-review-card"><div class="k">Сумма</div><div class="v dh-money">${money(gross)}</div><div class="s">${hasVat ? 'НДС ' + money(vat) + ' · нетто ' + money(net) : 'без НДС'}</div></div>
-        <div class="dh-review-card"><div class="k">Договор</div><div class="v">${esc(contractModeLabel(d.contract_mode))}</div></div>
+        <div class="dh-review-card"><div class="k">Счёт</div><div class="v">${esc(d.invoice_number || 'б/н')} · ${fmtDate(d.invoice_date)}</div></div>
+        <div class="dh-review-card"><div class="k">Контрагент</div><div class="v">${esc(d.counterparty_name || '—')}</div></div>
+        <div class="dh-review-card"><div class="k">Сумма</div><div class="v dh-money">${money(parts4.gross)}</div><div class="s">${parts4.hasVat ? 'нетто ' + money(parts4.net) + ' · НДС ' + money(parts4.vat) : 'без НДС'}</div></div>
+        <div class="dh-review-card"><div class="k">Ставка НДС</div><div class="v">${esc(rateLabel4)}</div></div>
+        <div class="dh-review-card"><div class="k">Договор</div><div class="v">${esc(contractModeLabel(d.contract_mode))}${d.contract_label ? ' · ' + esc(d.contract_label) : ''}</div></div>
+        <div class="dh-review-card"><div class="k">Вид расхода</div><div class="v">${esc(spendKindLabel(d.spend_kind))}</div></div>
+        <div class="dh-review-card"><div class="k">Работа</div><div class="v">${d.work_id ? '#' + esc(String(d.work_id)) : '—'}</div></div>
+        <div class="dh-review-card"><div class="k">Ответственные</div><div class="v">${d.doc_owner_id ? 'doc #' + esc(d.doc_owner_id) : '—'}</div></div>
       </div>
       <div class="dh-field"><label>Позиции для каталога (входящие)</label>
         <div class="dh-lines-head"><span>Наименование</span><span>Цена</span><span>Кол-во</span><span>Ед.</span><span></span></div>
@@ -768,7 +946,7 @@ window.AsgardDocHubPage = (function () {
           <div>
             <div class="dh-top__eyebrow">Мастер внесения</div>
             <h2>Внести документ</h2>
-            <p class="dh-modal__sub">Пошагово · авто-НДС 22% · проверка похожих расходов</p>
+            <p class="dh-modal__sub">Пошагово · авто-НДС · проверка похожих расходов</p>
           </div>
           <button type="button" class="dh-modal__x" id="dhModalClose">✕</button>
         </header>
@@ -840,6 +1018,8 @@ window.AsgardDocHubPage = (function () {
 
   function bindWizExtras(form) {
     if (!form) return;
+
+    // Dir cards (step 1)
     form.querySelectorAll('#dhDirCards [data-dir]').forEach((btn) => {
       btn.onclick = () => {
         const v = btn.getAttribute('data-dir');
@@ -848,6 +1028,8 @@ window.AsgardDocHubPage = (function () {
         form.querySelectorAll('#dhDirCards .dh-dir-card').forEach((b) => b.classList.toggle('is-on', b === btn));
       };
     });
+
+    // Type cards (step 1)
     form.querySelectorAll('#dhTypeCards [data-kind]').forEach((btn) => {
       btn.onclick = () => {
         const v = btn.getAttribute('data-kind');
@@ -855,89 +1037,321 @@ window.AsgardDocHubPage = (function () {
         if (!cb) return;
         cb.checked = !cb.checked;
         btn.classList.toggle('is-on', cb.checked);
-        const any = form.querySelector('input[name="doc_kind"]:checked');
-        if (!any) {
-          cb.checked = true;
-          btn.classList.add('is-on');
-        }
+        if (!form.querySelector('input[name="doc_kind"]:checked')) { cb.checked = true; btn.classList.add('is-on'); }
       };
     });
+
+    // Contract mode cards (step 3)
     form.querySelectorAll('#dhModeCards [data-mode]').forEach((btn) => {
       btn.onclick = () => {
         const v = btn.getAttribute('data-mode');
         const hid = form.querySelector('#dhWizContract, input[name="contract_mode"]');
         if (hid) hid.value = v;
+        if (state.wizDraft) state.wizDraft.contract_mode = v;
         form.querySelectorAll('#dhModeCards .dh-mode-card').forEach((b) => b.classList.toggle('is-on', b === btn));
+        // show/hide linked picker
+        const pickerRow = form.querySelector('#dhContractPickerRow');
+        if (pickerRow) pickerRow.hidden = v !== 'linked';
+        // show/hide label/date/flags
+        const labelRow = form.querySelector('#dhContractLabelRow');
+        if (labelRow) labelRow.hidden = v === 'none';
       };
     });
+
+    // Contract picker (step 3 — linked mode)
+    const pickBtn = form.querySelector('#dhWizContractPick');
+    if (pickBtn) {
+      pickBtn.onclick = () => {
+        const inn = form.querySelector('#dhWizInn')?.value || (state.wizDraft && state.wizDraft.counterparty_inn) || '';
+        const cpName = form.querySelector('#dhWizCpInput, input[name="counterparty_name"]')?.value || '';
+        const cb = (contract) => {
+          if (!contract) return;
+          if (state.wizDraft) {
+            state.wizDraft.contract_id = contract.id;
+            state.wizDraft.contract_label = contract.label || contract.number || '';
+            state.wizDraft.contract_date = contract.date || '';
+          }
+          const labelEl = form.querySelector('#dhWizContractLabel');
+          const dateEl = form.querySelector('#dhWizContractDate');
+          if (labelEl) labelEl.value = contract.label || contract.number || '';
+          if (dateEl && contract.date) dateEl.value = String(contract.date).slice(0, 10);
+          pickBtn.textContent = '✓ ' + (contract.label || contract.number || 'Договор выбран');
+          toast('Договор', 'Привязан: ' + (contract.label || contract.number || contract.id), 'ok');
+        };
+        if (window.AsgardContractsPage && typeof AsgardContractsPage.openContractSelector === 'function') {
+          AsgardContractsPage.openContractSelector(inn, 'supplier', cb);
+        } else if (window.AsgardContractsPage && typeof AsgardContractsPage.findByCounterparty === 'function') {
+          AsgardContractsPage.findByCounterparty(cpName).then((list) => {
+            if (list && list[0]) cb(list[0]);
+            else toast('Договоры', 'Не найдено по контрагенту', 'warn');
+          }).catch(() => toast('Договоры', 'Ошибка поиска', 'err'));
+        } else {
+          toast('Договоры', 'Откройте раздел Договоры', 'warn');
+        }
+      };
+    }
+
+    // Destroy previous CRSelect instances (step 3)
+    if (window.CRSelect) {
+      ['dhWizWork', 'dhWizDocOwner', 'dhWizPm'].forEach((cid) => { try { CRSelect.destroy(cid); } catch (_) {} });
+    }
+
+    // spend_kind cards (step 3)
+    form.querySelectorAll('#dhSpendCards [data-spend]').forEach((btn) => {
+      btn.onclick = () => {
+        const v = btn.getAttribute('data-spend');
+        const hid = form.querySelector('#dhWizSpendKind');
+        if (hid) hid.value = v;
+        if (state.wizDraft) state.wizDraft.spend_kind = v;
+        form.querySelectorAll('#dhSpendCards .dh-spend-card').forEach((b) => b.classList.toggle('is-on', b === btn));
+        const workField = form.querySelector('#dhWorkField');
+        if (workField) workField.style.display = v === 'work' ? '' : 'none';
+        if (window.CRSelect && typeof CRSelect.setDisabled === 'function') {
+          try { CRSelect.setDisabled('dhWizWork', v !== 'work'); } catch (_) {}
+        }
+      };
+    });
+
+    // Dup check helper (used by CRSelect onChange below)
+    const checkWizDup = async (wid) => {
+      if (!dup) return;
+      if (!wid) { dup.hidden = true; return; }
+      const gross = parseFloat(grossEl?.value) || 0;
+      if (!gross) { dup.hidden = true; return; }
+      try {
+        const r = await fetch('/api/works/' + wid, { headers: authHeaders() });
+        const j = await r.json();
+        const expenses = j.expenses || [];
+        const cpName = (state.wizDraft && state.wizDraft.counterparty_name || '').toLowerCase();
+        const similar = expenses.filter((e) => {
+          const amtMatch = Math.abs((Number(e.amount) || 0) - gross) <= 1;
+          const cpMatch = !cpName || (String(e.counterparty_name || '').toLowerCase().includes(cpName.slice(0, 5)));
+          return amtMatch || cpMatch;
+        });
+        if (similar.length) {
+          dup.hidden = false;
+          const itemsEl = dup.querySelector('#dhWizDupItems');
+          if (itemsEl) itemsEl.innerHTML = similar.slice(0, 3).map((e) =>
+            `<div class="dh-dup-item" data-exp-id="${e.id}">Расход #${e.id} · ${money(e.amount)} · ${esc(e.counterparty_name || '—')}</div>`
+          ).join('');
+        } else { dup.hidden = true; }
+      } catch (_) { dup.hidden = true; }
+    };
+
+    // Load works → CRSelect or native fallback (step 3, async)
+    (async () => {
+      const workWrap = form.querySelector('#dhWizWork_w');
+      if (!workWrap) return;
+      try {
+        const res = await fetch('/api/works?limit=300&status=active', { headers: authHeaders() });
+        const j = await res.json();
+        const items = j.items || j.data || j || [];
+        const curWid = String((state.wizDraft && state.wizDraft.work_id) || '');
+        const wopts = [{ value: '', label: '— выбрать объект —' }].concat(
+          items.map((w) => ({ value: String(w.id), label: '#' + w.id + ' ' + (w.title || w.name || '') }))
+        );
+        if (window.CRSelect) {
+          workWrap.innerHTML = '';
+          workWrap.appendChild(CRSelect.create({
+            id: 'dhWizWork',
+            searchable: true,
+            clearable: true,
+            dropdownClass: 'z-modal',
+            placeholder: 'Найти объект…',
+            options: wopts,
+            value: curWid,
+            onChange: (v) => {
+              const hid = form.querySelector('#dhWizWorkId');
+              if (hid) hid.value = v || '';
+              if (state.wizDraft) state.wizDraft.work_id = v || '';
+              checkWizDup(v);
+            }
+          }));
+        } else {
+          // Graceful fallback: native select
+          const sel = document.createElement('select');
+          sel.innerHTML = wopts.map((o) => `<option value="${esc(o.value)}"${o.value === curWid ? ' selected' : ''}>${esc(o.label)}</option>`).join('');
+          sel.addEventListener('change', () => {
+            const hid = form.querySelector('#dhWizWorkId');
+            if (hid) hid.value = sel.value;
+            if (state.wizDraft) state.wizDraft.work_id = sel.value;
+            checkWizDup(sel.value);
+          });
+          workWrap.appendChild(sel);
+        }
+      } catch (_) {
+        if (workWrap) workWrap.innerHTML = '<span style="color:var(--err,#f87171)">Ошибка загрузки объектов</span>';
+      }
+    })();
+
+    // Load users → CRSelect or native fallback (doc_owner + pm, step 3, async)
+    (async () => {
+      const ownerWrap = form.querySelector('#dhWizDocOwner_w');
+      const pmWrap = form.querySelector('#dhWizPm_w');
+      if (!ownerWrap && !pmWrap) return;
+      try {
+        const res = await fetch('/api/users?limit=200', { headers: authHeaders() });
+        const j = await res.json();
+        const users = j.items || j.data || j || [];
+        const curOwner = String((state.wizDraft && state.wizDraft.doc_owner_id) || '');
+        const curPm = String((state.wizDraft && state.wizDraft.pm_id) || '');
+        const uopts = [{ value: '', label: '— выбрать —' }].concat(
+          users.map((u) => ({ value: String(u.id), label: u.name || u.full_name || u.username || 'ID ' + u.id }))
+        );
+        if (ownerWrap) {
+          if (window.CRSelect) {
+            ownerWrap.innerHTML = '';
+            ownerWrap.appendChild(CRSelect.create({
+              id: 'dhWizDocOwner',
+              searchable: true, clearable: true, dropdownClass: 'z-modal',
+              placeholder: 'Отв. за документы…', options: uopts, value: curOwner,
+              onChange: (v) => {
+                const hid = form.querySelector('#dhWizDocOwnerId');
+                if (hid) hid.value = v || '';
+                if (state.wizDraft) state.wizDraft.doc_owner_id = v || '';
+              }
+            }));
+          } else {
+            const sel = document.createElement('select');
+            sel.innerHTML = uopts.map((o) => `<option value="${esc(o.value)}"${o.value === curOwner ? ' selected' : ''}>${esc(o.label)}</option>`).join('');
+            sel.addEventListener('change', () => { const hid = form.querySelector('#dhWizDocOwnerId'); if (hid) hid.value = sel.value; if (state.wizDraft) state.wizDraft.doc_owner_id = sel.value; });
+            ownerWrap.appendChild(sel);
+          }
+        }
+        if (pmWrap) {
+          if (window.CRSelect) {
+            pmWrap.innerHTML = '';
+            pmWrap.appendChild(CRSelect.create({
+              id: 'dhWizPm',
+              searchable: true, clearable: true, dropdownClass: 'z-modal',
+              placeholder: 'РП…', options: uopts, value: curPm,
+              onChange: (v) => {
+                const hid = form.querySelector('#dhWizPmId');
+                if (hid) hid.value = v || '';
+                if (state.wizDraft) state.wizDraft.pm_id = v || '';
+              }
+            }));
+          } else {
+            const sel = document.createElement('select');
+            sel.innerHTML = uopts.map((o) => `<option value="${esc(o.value)}"${o.value === curPm ? ' selected' : ''}>${esc(o.label)}</option>`).join('');
+            sel.addEventListener('change', () => { const hid = form.querySelector('#dhWizPmId'); if (hid) hid.value = sel.value; if (state.wizDraft) state.wizDraft.pm_id = sel.value; });
+            pmWrap.appendChild(sel);
+          }
+        }
+      } catch (_) { /* keep empty */ }
+    })();
+
+    // CRAutocomplete for counterparty (step 2, graceful)
+    const cpContainer = form.querySelector('#dhWizCpContainer');
+    const cpInput = form.querySelector('#dhWizCpInput');
+    if (cpContainer && cpInput && window.CRAutocomplete && typeof CRAutocomplete.create === 'function') {
+      try {
+        CRAutocomplete.create(cpContainer, {
+          input: cpInput,
+          suggest: async (q) => {
+            if (!q || q.length < 2) return (state.facets.counterparties || []).slice(0, 12).map((n) => ({ label: n, value: n }));
+            try {
+              const res = await fetch('/api/customers/suggest?q=' + encodeURIComponent(q), { headers: authHeaders() });
+              const j = await res.json();
+              return (j.items || j.data || j || []).map((x) => ({
+                label: x.name || x.counterparty_name || String(x),
+                value: x.name || x.counterparty_name || String(x),
+                inn: x.inn, email: x.email, phone: x.phone
+              }));
+            } catch { return []; }
+          },
+          onSelect: (item) => {
+            if (state.wizDraft) state.wizDraft.counterparty_name = item.value;
+            if (item.inn) { if (state.wizDraft) state.wizDraft.counterparty_inn = item.inn; const el = form.querySelector('#dhWizInn'); if (el) el.value = item.inn || ''; }
+            if (item.email) { const el = form.querySelector('#dhWizEmail'); if (el) el.value = item.email || ''; }
+            if (item.phone) { const el = form.querySelector('#dhWizPhone'); if (el) el.value = item.phone || ''; }
+          }
+        });
+      } catch (_) { /* CRAutocomplete mount failed; native datalist stays */ }
+    }
+
+    // Catalog lines (step 4)
     const add = form.querySelector('#dhWizAddLine');
     if (add) {
       let initial = [];
-      try {
-        const raw = (state.wizDraft && state.wizDraft.parsed_json) || '';
-        if (raw) initial = JSON.parse(raw);
-      } catch (_) { initial = []; }
+      try { const raw = (state.wizDraft && state.wizDraft.parsed_json) || ''; if (raw) initial = JSON.parse(raw); } catch (_) { initial = []; }
       if (Array.isArray(initial) && initial.length) initial.forEach((x) => addWizLine(form, x));
-      else {
-        addWizLine(form, { name: '', unit_price: '', quantity: 1, unit: 'шт' });
-        addWizLine(form, { name: '', unit_price: '', quantity: 1, unit: 'шт' });
-      }
+      else { addWizLine(form, { name: '', unit_price: '', quantity: 1, unit: 'шт' }); addWizLine(form, { name: '', unit_price: '', quantity: 1, unit: 'шт' }); }
       add.onclick = () => addWizLine(form);
     }
+
+    // VAT rate chips (step 2) + amount recalc
     const grossEl = form.querySelector('#dhWizGross');
     const netEl = form.querySelector('#dhWizNet');
-    const vatAmt = form.querySelector('#dhWizVatAmt');
-    const hasChk = form.querySelector('#dhWizHasVatChk');
-    const hasHid = form.querySelector('#dhWizHasVat');
+    const vatAmtEl = form.querySelector('#dhWizVatAmt');
+    const vatRateHid = form.querySelector('#dhWizVatRate');
     const dup = form.querySelector('#dhWizDup');
     let lock = false;
+
+    const currentVatRate = () => {
+      if (!vatRateHid) return DEFAULT_VAT_RATE;
+      const raw = vatRateHid.value;
+      return raw === '' || raw === 'null' ? null : parseFloat(raw);
+    };
+
     const paintVat = (from) => {
       if (!grossEl || lock) return;
       lock = true;
-      const on = hasChk ? !!hasChk.checked : (hasHid && hasHid.value === '1');
-      if (hasHid) hasHid.value = on ? '1' : '0';
+      const rate = currentVatRate();
       if (from === 'net' && netEl) {
         const n = parseFloat(netEl.value) || 0;
-        if (on) {
-          const g = Math.round(n * (1 + VAT_RATE) * 100) / 100;
-          const v = Math.round((g - n) * 100) / 100;
-          grossEl.value = String(g);
-          if (vatAmt) vatAmt.textContent = moneyFine(v);
-        } else {
-          grossEl.value = String(n);
-          if (vatAmt) vatAmt.textContent = moneyFine(0);
-        }
+        const parts = rate !== null && rate > 0
+          ? { gross: Math.round(n * (1 + rate) * 100) / 100, vat: Math.round(n * rate * 100) / 100 }
+          : { gross: n, vat: 0 };
+        grossEl.value = String(parts.gross);
+        if (vatAmtEl) vatAmtEl.textContent = moneyFine(parts.vat);
       } else {
         const g = parseFloat(grossEl.value) || 0;
-        if (on) {
-          const n = Math.round((g / (1 + VAT_RATE)) * 100) / 100;
-          const v = Math.round((g - n) * 100) / 100;
-          if (netEl) netEl.value = String(n);
-          if (vatAmt) vatAmt.textContent = moneyFine(v);
-        } else {
-          if (netEl) netEl.value = String(g);
-          if (vatAmt) vatAmt.textContent = moneyFine(0);
-        }
-        if (dup) {
-          const g2 = parseFloat(grossEl.value) || 0;
-          dup.hidden = !(g2 === 2200 || g2 === 500 || g2 === 1000);
-        }
+        const parts = recalcVat(g, rate);
+        if (netEl) netEl.value = String(parts.net);
+        if (vatAmtEl) vatAmtEl.textContent = moneyFine(parts.vat);
       }
+      // strip
       const sg = form.querySelector('#dhWizStripGross');
       const sn = form.querySelector('#dhWizStripNet');
       const sv = form.querySelector('#dhWizStripVat');
       if (sg) sg.textContent = moneyFine(parseFloat(grossEl.value) || 0);
       if (sn) sn.textContent = moneyFine(parseFloat(netEl && netEl.value) || 0);
-      if (sv) sv.textContent = (vatAmt && vatAmt.textContent) || moneyFine(0);
+      if (sv) sv.textContent = vatAmtEl ? vatAmtEl.textContent : moneyFine(0);
+      // real dup: only show after work_id selected
+      if (dup) {
+        const wid = (window.CRSelect ? CRSelect.getValue('dhWizWork') : null) || form.querySelector('#dhWizWorkId')?.value || (state.wizDraft && state.wizDraft.work_id);
+        dup.hidden = !wid; // only relevant when object chosen; async check below
+      }
       lock = false;
     };
+
     if (grossEl) grossEl.addEventListener('input', () => paintVat('gross'));
     if (netEl) netEl.addEventListener('input', () => paintVat('net'));
-    if (hasChk) hasChk.addEventListener('change', () => paintVat('gross'));
+
+    // VAT rate chip click
+    form.querySelectorAll('#dhWizVatChips .dh-vat-chip').forEach((btn) => {
+      btn.onclick = () => {
+        const raw = btn.getAttribute('data-vat-rate');
+        const rate = raw === 'null' ? null : parseFloat(raw);
+        if (state.wizDraft) state.wizDraft.vat_rate = rate;
+        if (vatRateHid) vatRateHid.value = rate === null ? 'null' : String(rate);
+        form.querySelectorAll('#dhWizVatChips .dh-vat-chip').forEach((b) => b.classList.toggle('is-on', b === btn));
+        paintVat('gross');
+      };
+    });
     paintVat('gross');
+
+    // Work dup check is triggered via CRSelect onChange or native-select fallback (see work load block above).
+
     const dupLink = form.querySelector('#dhWizDupLink');
     const dupSkip = form.querySelector('#dhWizDupSkip');
-    if (dupLink) dupLink.onclick = () => { if (dup) dup.hidden = true; toast('Связь', 'После сохранения проверьте расходы объекта', 'ok'); };
+    if (dupLink) dupLink.onclick = () => {
+      const expId = form.querySelector('.dh-dup-item')?.getAttribute('data-exp-id');
+      if (state.wizDraft && expId) state.wizDraft.work_expense_id = parseInt(expId, 10);
+      if (dup) dup.hidden = true;
+      toast('Связь', 'Расход будет привязан при сохранении', 'ok');
+    };
     if (dupSkip) dupSkip.onclick = () => { if (dup) dup.hidden = true; };
   }
 
@@ -956,24 +1370,41 @@ window.AsgardDocHubPage = (function () {
         return;
       }
     }
-    const hasVat = d.has_vat === '1';
+    const vatRate = d.vat_rate !== undefined ? d.vat_rate : DEFAULT_VAT_RATE;
+    const hasVat = vatRate !== null;
     const gross = parseFloat(d.amount_gross) || 0;
     const body = {
       dir: d.dir,
       invoice_number: d.invoice_number,
       invoice_date: d.invoice_date,
       counterparty_name: d.counterparty_name,
+      counterparty_inn: d.counterparty_inn || null,
+      counterparty_email: d.counterparty_email || null,
+      counterparty_phone: d.counterparty_phone || null,
       amount_gross: gross,
       has_vat: hasVat,
-      vat_rate: VAT_RATE,
+      vat_rate: vatRate,
+      contract_mode: d.contract_mode || 'none',
+      contract_id: d.contract_id || null,
+      contract_label: d.contract_label || null,
+      contract_date: d.contract_date || null,
+      contract_has_scan: !!d.contract_has_scan,
+      contract_has_original: !!d.contract_has_original,
+      spend_kind: d.spend_kind || 'other',
       payment_due_at: d.payment_due_at || null,
       sf_due_at: d.sf_due_at || null,
-      contract_mode: d.contract_mode || 'none',
       comment_text: d.comment_text || '',
+      purpose_customer: !!d.purpose_customer,
+      purpose_asgard: !!d.purpose_asgard,
+      purpose_consumables: !!d.purpose_consumables,
+      receive_channel: d.receive_channel || null,
       parsed_json: parsed,
       ops_status: 'draft'
     };
     if (d.work_id) body.work_id = parseInt(d.work_id, 10);
+    if (d.work_expense_id) body.work_expense_id = d.work_expense_id;
+    if (d.doc_owner_id) body.doc_owner_id = parseInt(d.doc_owner_id, 10) || null;
+    if (d.pm_id) body.pm_id = parseInt(d.pm_id, 10) || null;
     try {
       const created = await api('/', { method: 'POST', body: JSON.stringify(body) });
       const id = created && created.id;
@@ -1051,29 +1482,38 @@ window.AsgardDocHubPage = (function () {
     }).join('');
   }
 
-  function editIncompleteHtml(row) {
-    if (!row.is_incomplete) return '';
-    return `
-      <div class="dh-section" id="dhEditIncomplete">
-        <div class="dh-section__h">Дозаполнить</div>
-        <div class="dh-section__b">
-          <div class="dh-field"><label>Режим договора</label>
-            <select id="dhEditContract">
-              <option value="none" ${row.contract_mode === 'none' ? 'selected' : ''}>Без договора</option>
-              <option value="linked" ${row.contract_mode === 'linked' ? 'selected' : ''}>Привязан</option>
-              <option value="once" ${row.contract_mode === 'once' ? 'selected' : ''}>Разовая поставка</option>
-              <option value="general" ${row.contract_mode === 'general' ? 'selected' : ''}>Общий / заявка</option>
-              <option value="created" ${row.contract_mode === 'created' ? 'selected' : ''}>Создать позже</option>
-            </select>
-          </div>
-          <div class="dh-grid2">
-            <div class="dh-field"><label>Срок оплаты</label><input type="text" id="dhEditPayDue" pattern="\\d{4}-\\d{2}-\\d{2}" placeholder="ГГГГ-ММ-ДД" value="${esc(String(row.payment_due_at || '').slice(0, 10))}" /></div>
-            <div class="dh-field"><label>Срок СФ</label><input type="text" id="dhEditSfDue" pattern="\\d{4}-\\d{2}-\\d{2}" placeholder="ГГГГ-ММ-ДД" value="${esc(String(row.sf_due_at || '').slice(0, 10))}" /></div>
-          </div>
-          <div class="dh-field"><label>ID работы в CRM</label><input type="number" id="dhEditWorkId" value="${row.work_id || ''}" placeholder="необязательно" /></div>
-          <button type="button" class="dh-btn dh-btn--primary dh-btn--sm" id="dhEditSave">Сохранить поля</button>
-        </div>
-      </div>`;
+  function sourceBadge(row) {
+    const raw = row.excel_source || row.import_source || row.source_label || row.external_ref || '';
+    const comment = String(row.comment_text || '');
+    const fromExcel = !!(raw || /excel|реестр|xlsx/i.test(comment));
+    if (fromExcel) {
+      const line = String(raw || comment || 'Excel').slice(0, 80);
+      return `<div class="dh-drawer__src">ИЗ EXCEL · ${esc(line)}</div>`;
+    }
+    return `<div class="dh-drawer__src dh-drawer__src--muted">РЕЕСТР · #${esc(String(row.id))}</div>`;
+  }
+
+  function closeDrawer() {
+    const d = document.getElementById('dhDrawer');
+    const ov = document.getElementById('dhOverlay');
+    if (d) {
+      if (window.CRSelect) {
+        ['drWork', 'drDocOwner', 'drPm'].forEach((cid) => { try { CRSelect.destroy(cid); } catch (_) {} });
+      }
+      d.hidden = true;
+      d.classList.remove('is-on');
+      d.setAttribute('aria-hidden', 'true');
+      d.innerHTML = '';
+    }
+    if (ov) {
+      ov.hidden = true;
+      ov.classList.remove('is-on');
+    }
+    const prev = state.selectedId;
+    state.selectedId = null;
+    if (prev) {
+      document.querySelector(`#dhTableHost tr[data-id="${prev}"]`)?.classList.remove('is-selected');
+    }
   }
 
   function timelineHtml(row) {
@@ -1101,42 +1541,77 @@ window.AsgardDocHubPage = (function () {
   function sumParts(row) {
     const gross = Number(row.amount_gross) || 0;
     const hasVat = !(row.has_vat === false || row.has_vat === 0 || row.has_vat === '0');
+    const rate = row.vat_rate != null ? Number(row.vat_rate) : DEFAULT_VAT_RATE;
     let net = row.amount_net != null ? Number(row.amount_net) : NaN;
     let vat = row.vat_amount != null ? Number(row.vat_amount) : NaN;
-    if (!Number.isFinite(net)) net = hasVat ? +(gross / (1 + VAT_RATE)).toFixed(2) : gross;
-    if (!Number.isFinite(vat)) vat = hasVat ? +(gross - net).toFixed(2) : 0;
-    return { gross, net, vat, hasVat };
+    if (!hasVat) return { gross, net: gross, vat: 0, hasVat: false, rate: null };
+    if (!(rate > 0)) return { gross, net: gross, vat: 0, hasVat: true, rate: 0 };
+    if (!Number.isFinite(net) || !(net > 0) || (Number.isFinite(vat) && !(vat > 0) && gross > 0)) {
+      net = Math.round((gross / (1 + rate)) * 100) / 100;
+      vat = Math.round((gross - net) * 100) / 100;
+    } else if (!Number.isFinite(vat) || !(vat > 0)) {
+      vat = Math.round((gross - net) * 100) / 100;
+    }
+    return { gross, net, vat, hasVat, rate };
   }
 
   async function openDrawer(id) {
     try {
-      const row = await api('/' + id);
+      // Fetch row + users concurrently; works lazy via select
+      const [row, usersRes] = await Promise.all([
+        api('/' + id),
+        fetch('/api/users?limit=200', { headers: authHeaders() }).then((r) => r.json()).catch(() => ({ items: [] }))
+      ]);
+      const users = usersRes.items || usersRes.data || usersRes || [];
+
       state.selectedId = id;
+      document.querySelectorAll('#dhTableHost tr[data-id].is-selected').forEach((tr) => tr.classList.remove('is-selected'));
+      document.querySelector(`#dhTableHost tr[data-id="${id}"]`)?.classList.add('is-selected');
+
       const d = document.getElementById('dhDrawer');
+      const ov = document.getElementById('dhOverlay');
       if (!d) return;
       d.hidden = false;
       d.classList.add('is-on');
-      const payLink = row.payment_invoice_id
-        ? `<p class="dh-pay-link"><a href="#/approval-payment?id=${row.payment_invoice_id}">Очередь оплаты #${row.payment_invoice_id}</a></p>`
-        : '';
+      d.setAttribute('aria-hidden', 'false');
+      if (ov) { ov.hidden = false; ov.classList.add('is-on'); ov.onclick = () => closeDrawer(); }
+
       const sums = sumParts(row);
       const titleNo = row.invoice_number ? ('Счёт ' + row.invoice_number) : ('#' + row.id);
-      const srcLine = row.excel_source || row.import_source || row.source_label || row.external_ref
-        || (row.comment_text && /excel|реестр/i.test(row.comment_text) ? row.comment_text : null)
-        || 'реестр';
       const grossTxt = money(sums.gross);
       const netTxt = moneyFine(sums.net);
       const vatTxt = moneyFine(sums.vat);
+      const rateLabel = sums.rate !== null ? Math.round((sums.rate || 0) * 100) + '%' : 'без НДС';
+      const sumSub = sums.hasVat ? `НДС ${rateLabel} · нетто ${netTxt} · НДС ${vatTxt}` : `без НДС · ${grossTxt}`;
+
+      const recv = String(row.receive_channel || '').toLowerCase();
+      const recvVal = /edo|эдо/.test(recv) ? 'edo' : (/scan|скан/.test(recv) ? 'scan' : (/original|оригинал/.test(recv) ? 'original' : ''));
+      const cmode = row.contract_mode || 'none';
+      const sk = row.spend_kind || 'other';
+      const payLink = row.payment_invoice_id
+        ? `<p class="dh-pay-link"><a href="#/approval-payment?id=${row.payment_invoice_id}">Очередь оплаты #${row.payment_invoice_id}</a></p>`
+        : '';
+
+      // Closing JSON editor rows
+      let closingItems = [];
+      try { closingItems = Array.isArray(row.closing_json) ? row.closing_json : (row.closing_json ? JSON.parse(row.closing_json) : []); } catch (_) {}
+
+      const userOpts = users.map((u) => `<option value="${u.id}">${esc(u.name || u.full_name || u.username || 'ID ' + u.id)}</option>`).join('');
+      const makeUserSel = (selId, val) =>
+        `<select id="${selId}"><option value="">— выбрать —</option>${userOpts.replace(`value="${val}"`, `value="${val}" selected`)}</select>`;
+
+      const vitya_states = ['', 'ожидает', 'принято', 'отклонено'];
+
       d.innerHTML = `
         <div class="dh-drawer__card">
           <header class="dh-drawer__head">
-            <div>
+            <div class="dh-drawer__head-main">
               <h3>${esc(titleNo)}</h3>
               <p>${esc(row.counterparty_name || '')} · ${esc(row.work_title || 'без объекта')}</p>
               <div class="dh-drawer__amt" data-qa="drawer-amt">${esc(grossTxt)}</div>
-              <div class="dh-drawer__src">ИЗ EXCEL · ${esc(String(srcLine))}</div>
+              ${sourceBadge(row)}
             </div>
-            <button type="button" id="dhDrawerClose" aria-label="Закрыть">✕</button>
+            <button type="button" class="dh-drawer__close" id="dhDrawerClose" aria-label="Закрыть">✕</button>
           </header>
           <div class="dh-drawer__body">
             <div class="dh-coach">
@@ -1144,89 +1619,420 @@ window.AsgardDocHubPage = (function () {
               <div class="dh-coach__body"><strong>Что дальше</strong><p>${esc(nextActionText(row))}</p></div>
             </div>
             ${payLink}
+
+            <!-- ─── Суммы ─── -->
             <div class="dh-section dh-section--sums">
               <div class="dh-section__h">Суммы</div>
               <div class="dh-section__b">
-                <div class="dh-sum-hero" data-qa="sum-hero" data-gross="${esc(String(sums.gross))}">
-                  <div class="dh-sum-hero__main" data-qa="sum-hero-main">${esc(grossTxt)}</div>
-                  <div class="dh-sum-hero__sub">с НДС · нетто ${esc(netTxt)} · НДС ${esc(vatTxt)}</div>
+                <div class="dh-sum-hero" data-gross="${esc(String(sums.gross))}">
+                  <div class="dh-sum-hero__main">${esc(grossTxt)}</div>
+                  <div class="dh-sum-hero__sub">${esc(sumSub)}</div>
                   <div class="dh-sum-hero__due">Срок оплаты: ${fmtDate(row.payment_due_at) || 'не указан'}</div>
-                  <div class="dh-sum-hero__grid">
-                    <div><span class="k">С НДС</span><span class="v">${esc(grossTxt)}</span></div>
-                    <div><span class="k">Без НДС</span><span class="v">${esc(netTxt)}</span></div>
-                    <div><span class="k">НДС</span><span class="v">${esc(vatTxt)}</span></div>
+                </div>
+                <div class="dh-grid2" style="margin-top:12px">
+                  <div class="dh-field"><label>Сумма с НДС</label><input type="number" id="drGross" step="0.01" min="0" value="${esc(String(sums.gross))}"/></div>
+                  <div class="dh-field"><label>Сумма без НДС</label><input type="number" id="drNet" step="0.01" min="0" value="${esc(String(sums.net))}"/></div>
+                </div>
+                <div class="dh-field"><label>Ставка НДС</label>
+                  <div class="dh-vat-rate-chips" id="drVatChips">${vatRateChipsHtml(sums.rate)}</div>
+                  <input type="hidden" id="drVatRate" value="${sums.rate === null ? 'null' : esc(String(sums.rate || 0))}"/>
+                </div>
+              </div>
+            </div>
+
+            <!-- ─── Контрагент ─── -->
+            <div class="dh-section">
+              <div class="dh-section__h">Контрагент</div>
+              <div class="dh-section__b">
+                <div class="dh-field"><label>Название *</label><input id="drCpName" value="${esc(row.counterparty_name || '')}"/></div>
+                <div class="dh-grid2">
+                  <div class="dh-field"><label>ИНН</label><input id="drCpInn" value="${esc(row.inn || row.counterparty_inn || '')}"/></div>
+                  <div class="dh-field"><label>Email</label><input type="email" id="drCpEmail" value="${esc(row.counterparty_email || row.email || '')}"/></div>
+                  <div class="dh-field"><label>Телефон</label><input id="drCpPhone" value="${esc(row.counterparty_phone || row.phone || '')}"/></div>
+                </div>
+              </div>
+            </div>
+
+            <!-- ─── Договор ─── -->
+            <div class="dh-section">
+              <div class="dh-section__h">Договор</div>
+              <div class="dh-section__b">
+                <div class="dh-mode-cards" id="drContractModeCards">
+                  ${[['linked','Привязан'],['once','Разовая'],['general','Общий'],['none','Без договора']].map(([v,t]) =>
+                    `<button type="button" class="dh-mode-card${cmode === v ? ' is-on' : ''}" data-mode="${v}"><div class="t">${t}</div></button>`
+                  ).join('')}
+                </div>
+                <input type="hidden" id="drContractMode" value="${esc(cmode)}"/>
+                <div id="drContractPickerRow" ${cmode !== 'linked' ? 'hidden' : ''}>
+                  <button type="button" class="dh-btn dh-btn--ghost dh-btn--sm" id="drContractPick">
+                    ${row.contract_id ? '✓ ' + esc(row.contract_label || 'Договор #' + row.contract_id) : '📎 Выбрать договор'}
+                  </button>
+                  <input type="hidden" id="drContractId" value="${esc(String(row.contract_id || ''))}"/>
+                </div>
+                <div id="drContractLabelRow" ${cmode === 'none' ? 'hidden' : ''}>
+                  <div class="dh-grid2" style="margin-top:8px">
+                    <div class="dh-field"><label>Метка / номер</label><input id="drContractLabel" value="${esc(row.contract_label || '')}"/></div>
+                    <div class="dh-field"><label>Дата договора</label><input type="date" id="drContractDate" value="${esc(String(row.contract_date || '').slice(0, 10))}"/></div>
+                  </div>
+                  <div class="dh-checkrow" style="margin-top:4px">
+                    <label class="dh-check"><input type="checkbox" id="drHasScan" ${row.contract_has_scan ? 'checked' : ''}/> Скан есть</label>
+                    <label class="dh-check"><input type="checkbox" id="drHasOriginal" ${row.contract_has_original ? 'checked' : ''}/> Оригинал есть</label>
                   </div>
                 </div>
               </div>
             </div>
+
+            <!-- ─── Вид расхода + Работа ─── -->
             <div class="dh-section">
-              <div class="dh-section__h">Договор и связи</div>
+              <div class="dh-section__h">Вид расхода</div>
               <div class="dh-section__b">
-                <div class="dh-grid2">
-                  <div class="dh-field"><label>Договор</label><div class="val">${esc(contractModeLabel(row.contract_mode))}</div>
-                    <div class="hint">${row.is_incomplete ? 'Нужно привязать или отметить разовую поставку' : 'Можно сменить не выходя из реестра'}</div></div>
-                  <div class="dh-field"><label>Работа</label><div class="val">${esc(row.work_title || '—')}${row.work_id ? ' (#' + row.work_id + ')' : ''}</div></div>
-                  <div class="dh-field"><label>Статус</label><div class="val">${statusPill(row)}</div></div>
-                  <div class="dh-field"><label>Склад</label><div class="val">${esc(whLabel(row))}</div></div>
+                <div class="dh-spend-cards" id="drSpendCards">
+                  ${[['work','Работы'],['warehouse','Склад'],['office','Офис'],['other','Прочее']].map(([v,t]) =>
+                    `<button type="button" class="dh-spend-card${sk === v ? ' is-on' : ''}" data-spend="${v}"><div class="t">${t}</div></button>`
+                  ).join('')}
+                </div>
+                <input type="hidden" id="drSpendKind" value="${esc(sk)}"/>
+                <div class="dh-field" id="drWorkField" ${sk !== 'work' ? 'style="display:none"' : ''}>
+                  <label>Работа / объект</label>
+                  <input type="hidden" id="drWorkId" value="${esc(String(row.work_id || ''))}" /><div id="drWork_w" class="dh-crselect-host"></div>
                 </div>
               </div>
             </div>
+
+            <!-- ─── Получение и назначение ─── -->
             <div class="dh-section">
-              <div class="dh-section__h">Жизненный цикл</div>
-              <div class="dh-section__b"><div class="dh-timeline">${timelineHtml(row)}</div></div>
+              <div class="dh-section__h">Получение и назначение</div>
+              <div class="dh-section__b">
+                <div class="dh-field"><label>Канал получения</label>
+                  <select id="drReceive">
+                    <option value="" ${!recvVal ? 'selected' : ''}>— не указано —</option>
+                    <option value="edo" ${recvVal === 'edo' ? 'selected' : ''}>ЭДО</option>
+                    <option value="scan" ${recvVal === 'scan' ? 'selected' : ''}>скан</option>
+                    <option value="original" ${recvVal === 'original' ? 'selected' : ''}>оригинал</option>
+                  </select>
+                </div>
+                <div class="dh-checkrow">
+                  <label class="dh-check"><input type="checkbox" id="drPurpCust" ${row.purpose_customer ? 'checked' : ''}/> На объект заказчика</label>
+                  <label class="dh-check"><input type="checkbox" id="drPurpAsg" ${row.purpose_asgard ? 'checked' : ''}/> Собственность АСГАРД</label>
+                  <label class="dh-check"><input type="checkbox" id="drPurpCons" ${row.purpose_consumables ? 'checked' : ''}/> Расходники</label>
+                </div>
+              </div>
             </div>
+
+            <!-- ─── Витя ─── -->
+            <div class="dh-section">
+              <div class="dh-section__h">Витя (согласование)</div>
+              <div class="dh-section__b">
+                <div class="dh-grid2">
+                  <div class="dh-field"><label>Статус согласования</label>
+                    <select id="drVityaState">
+                      ${vitya_states.map((v) => `<option value="${v}" ${(row.vitya_state || '') === v ? 'selected' : ''}>${v || '— не задан —'}</option>`).join('')}
+                    </select>
+                  </div>
+                  <div class="dh-field"><label>Дата передачи</label><input type="date" id="drDelivDue" value="${esc(String(row.delivery_due_at || '').slice(0, 10))}"/></div>
+                </div>
+                <div class="dh-field"><label>Примечание передачи</label><textarea id="drDelivNote" rows="2">${esc(row.delivery_note || '')}</textarea></div>
+              </div>
+            </div>
+
+            <!-- ─── Закрывающие ─── -->
+            <div class="dh-section">
+              <div class="dh-section__h">Закрывающие (СФ / УПД)</div>
+              <div class="dh-section__b">
+                <div id="drClosingList">${closingItems.map((cl, i) => `
+                  <div class="dh-closing-row dr-closing-row" data-i="${i}">
+                    <select data-k="kind"><option value="СФ" ${(cl.kind||'СФ')==='СФ'?'selected':''}>СФ</option><option value="УПД" ${cl.kind==='УПД'?'selected':''}>УПД</option><option value="Акт" ${cl.kind==='Акт'?'selected':''}>Акт</option></select>
+                    <input data-k="no" placeholder="Номер" value="${esc(cl.no||'')}"/>
+                    <input type="date" data-k="date" value="${esc(String(cl.date||'').slice(0,10))}"/>
+                    <input type="number" data-k="sum" step="0.01" placeholder="Сумма" value="${esc(String(cl.sum||''))}"/>
+                    <button type="button" class="dr-closing-del dh-line__x">✕</button>
+                  </div>`).join('')}
+                </div>
+                <button type="button" class="dh-btn dh-btn--sm dh-btn--ghost" id="drAddClosing">+ добавить</button>
+              </div>
+            </div>
+
+            <!-- ─── Прочее ─── -->
+            <div class="dh-section">
+              <div class="dh-section__h">Сроки и примечание сверки</div>
+              <div class="dh-section__b">
+                <div class="dh-grid2">
+                  <div class="dh-field"><label>Срок оплаты</label><input type="date" id="drPayDue" value="${esc(String(row.payment_due_at || '').slice(0, 10))}"/></div>
+                  <div class="dh-field"><label>Срок СФ</label><input type="date" id="drSfDue" value="${esc(String(row.sf_due_at || '').slice(0, 10))}"/></div>
+                </div>
+                <div class="dh-field"><label>Примечание сверки</label><textarea id="drRecNote" rows="2" placeholder="Акт сверки, расхождения…">${esc(row.reconciliation_note || '')}</textarea></div>
+              </div>
+            </div>
+
+            <!-- ─── Ответственные ─── -->
+            <div class="dh-section">
+              <div class="dh-section__h">Ответственные</div>
+              <div class="dh-section__b dh-grid2">
+                <div class="dh-field"><label>Отв. за документы</label><input type="hidden" id="drDocOwner" value="${esc(String(row.doc_owner_id || ''))}" /><div id="drDocOwner_w" class="dh-crselect-host"></div></div>
+                <div class="dh-field"><label>РП / объект</label><input type="hidden" id="drPmId" value="${esc(String(row.pm_id || ''))}" /><div id="drPm_w" class="dh-crselect-host"></div></div>
+                <div class="dh-field"><label>Код 1С</label><input id="drOnecId" value="${esc(row.onec_id || '')}"/></div>
+              </div>
+            </div>
+
+            <!-- ─── Комментарий ─── -->
+            <div class="dh-section">
+              <div class="dh-section__h">Комментарий</div>
+              <div class="dh-section__b">
+                <textarea id="drComment" rows="3" placeholder="Условия оплаты, примечания, ТК…">${esc(row.comment_text || '')}</textarea>
+              </div>
+            </div>
+
+            <!-- ─── Вложения ─── -->
             <div class="dh-section">
               <div class="dh-section__h">Вложения</div>
               <div class="dh-section__b">
                 ${attachmentsHtml(row)}
                 <div class="dh-attach">
                   <div class="dh-attach__ico">+</div>
-                  <div class="dh-attach__meta"><div class="a">Добавить скан СФ / УПД</div><div class="b">файл или путь, где лежит оригинал</div></div>
+                  <div class="dh-attach__meta"><div class="a">Добавить скан СФ / УПД</div><div class="b">файл или путь</div></div>
                   <button class="dh-btn dh-btn--sm dh-btn--primary" type="button" data-qa="sf">СФ</button>
                 </div>
               </div>
             </div>
+
+            <!-- ─── Жизненный цикл ─── -->
             <div class="dh-section">
-              <div class="dh-section__h">Ответственные</div>
-              <div class="dh-section__b dh-grid2">
-                <div class="dh-field"><label>Отв. за документы</label><div class="val">${esc(row.doc_owner_name || '—')}</div></div>
-                <div class="dh-field"><label>РП / объект</label><div class="val">${esc(row.pm_name || '—')}</div></div>
-                <div class="dh-field"><label>1С</label><div class="val">${esc(row.onec_id || 'не связан')}</div></div>
-                <div class="dh-field"><label>Комментарий</label><div class="val">${esc(row.comment_text || '—')}</div></div>
-              </div>
+              <div class="dh-section__h">Жизненный цикл</div>
+              <div class="dh-section__b"><div class="dh-timeline">${timelineHtml(row)}</div></div>
             </div>
-            ${editIncompleteHtml(row)}
+
+            ${row.is_incomplete ? `<div class="dh-coach" style="border-color:color-mix(in srgb,var(--blue-l,#38bdf8) 40%,var(--brd,#334155))">
+              <div class="dh-coach__ico" style="background:var(--info-bg);color:var(--info-t)">!</div>
+              <div class="dh-coach__body"><strong>Дозаполните</strong><p>${esc(incompleteReasonsText(row))}</p></div>
+            </div>` : ''}
           </div>
           <footer class="dh-drawer__foot">
-            <button type="button" class="dh-btn dh-btn--ghost" id="dhDrawerEdit">Править</button>
-            <button type="button" class="dh-btn dh-btn--ghost" id="dhDrawerSave">Сохранить</button>
+            <button type="button" class="dh-btn dh-btn--ghost" id="dhDrawerClose2">Закрыть</button>
+            <button type="button" class="dh-btn dh-btn--ghost" id="dhDrawerSave">💾 Сохранить</button>
             <button type="button" class="dh-btn dh-btn--ok" id="dhParseCatalog" ${row.dir !== 'in' ? 'disabled title="Только входящие"' : ''}>В каталог</button>
             <button type="button" class="dh-btn dh-btn--ghost" id="dhDrawerExpense" ${!row.work_id ? 'disabled title="Нет объекта"' : ''}>В расходы</button>
             ${canWh() ? '<button type="button" class="dh-btn dh-btn--ghost" data-qa="wh">Склад</button>' : ''}
             <button type="button" class="dh-btn dh-btn--primary" data-qa="pay">К оплате</button>
           </footer>
         </div>`;
-      d.querySelector('#dhDrawerClose').onclick = () => {
-        d.hidden = true;
-        d.classList.remove('is-on');
-        state.selectedId = null;
+
+      // Load works → CRSelect in drawer (async)
+      (async () => {
+        const wWrap = d.querySelector('#drWork_w');
+        if (!wWrap) return;
+        if (window.CRSelect) { try { CRSelect.destroy('drWork'); } catch (_) {} }
+        try {
+          const r2 = await fetch('/api/works?limit=300&status=active', { headers: authHeaders() });
+          const j2 = await r2.json();
+          const wlist = j2.items || j2.data || j2 || [];
+          const curWid = String(row.work_id || '');
+          const wopts = [{ value: '', label: '— выбрать объект —' }].concat(
+            wlist.map((w) => ({ value: String(w.id), label: '#' + w.id + ' ' + (w.title || w.name || '') }))
+          );
+          if (window.CRSelect) {
+            wWrap.innerHTML = '';
+            wWrap.appendChild(CRSelect.create({
+              id: 'drWork',
+              searchable: true, clearable: true, dropdownClass: 'z-modal',
+              placeholder: 'Найти объект…', options: wopts, value: curWid,
+              onChange: (v) => { const hid = d.querySelector('#drWorkId'); if (hid) hid.value = v || ''; }
+            }));
+          } else {
+            // Graceful fallback: native select
+            const sel = document.createElement('select');
+            sel.innerHTML = wopts.map((o) => `<option value="${esc(o.value)}"${o.value === curWid ? ' selected' : ''}>${esc(o.label)}</option>`).join('');
+            sel.addEventListener('change', () => { const hid = d.querySelector('#drWorkId'); if (hid) hid.value = sel.value; });
+            wWrap.appendChild(sel);
+          }
+        } catch (_) {}
+      })();
+
+      // Mount user CRSelects (doc_owner + pm) in drawer
+      (async () => {
+        const ownerWrap = d.querySelector('#drDocOwner_w');
+        const pmWrap = d.querySelector('#drPm_w');
+        if (!ownerWrap && !pmWrap) return;
+        if (window.CRSelect) {
+          try { CRSelect.destroy('drDocOwner'); } catch (_) {}
+          try { CRSelect.destroy('drPm'); } catch (_) {}
+        }
+        // users already fetched above
+        const curOwner = String(row.doc_owner_id || '');
+        const curPm = String(row.pm_id || '');
+        const uopts = [{ value: '', label: '— выбрать —' }].concat(
+          users.map((u) => ({ value: String(u.id), label: u.name || u.full_name || u.username || 'ID ' + u.id }))
+        );
+        if (ownerWrap) {
+          if (window.CRSelect) {
+            ownerWrap.innerHTML = '';
+            ownerWrap.appendChild(CRSelect.create({
+              id: 'drDocOwner', searchable: true, clearable: true, dropdownClass: 'z-modal',
+              placeholder: 'Отв. за документы…', options: uopts, value: curOwner,
+              onChange: (v) => { const hid = d.querySelector('#drDocOwner'); if (hid) hid.value = v || ''; }
+            }));
+          } else {
+            const sel = document.createElement('select');
+            sel.innerHTML = uopts.map((o) => `<option value="${esc(o.value)}"${o.value === curOwner ? ' selected' : ''}>${esc(o.label)}</option>`).join('');
+            sel.addEventListener('change', () => { const hid = d.querySelector('#drDocOwner'); if (hid) hid.value = sel.value; });
+            ownerWrap.appendChild(sel);
+          }
+        }
+        if (pmWrap) {
+          if (window.CRSelect) {
+            pmWrap.innerHTML = '';
+            pmWrap.appendChild(CRSelect.create({
+              id: 'drPm', searchable: true, clearable: true, dropdownClass: 'z-modal',
+              placeholder: 'РП…', options: uopts, value: curPm,
+              onChange: (v) => { const hid = d.querySelector('#drPmId'); if (hid) hid.value = v || ''; }
+            }));
+          } else {
+            const sel = document.createElement('select');
+            sel.innerHTML = uopts.map((o) => `<option value="${esc(o.value)}"${o.value === curPm ? ' selected' : ''}>${esc(o.label)}</option>`).join('');
+            sel.addEventListener('change', () => { const hid = d.querySelector('#drPmId'); if (hid) hid.value = sel.value; });
+            pmWrap.appendChild(sel);
+          }
+        }
+      })();
+
+      // VAT chips in drawer
+      d.querySelectorAll('#drVatChips .dh-vat-chip').forEach((btn) => {
+        btn.onclick = () => {
+          const raw = btn.getAttribute('data-vat-rate');
+          d.querySelectorAll('#drVatChips .dh-vat-chip').forEach((b) => b.classList.toggle('is-on', b === btn));
+          const hid = d.querySelector('#drVatRate');
+          if (hid) hid.value = raw;
+        };
+      });
+
+      // Contract mode cards in drawer
+      d.querySelectorAll('#drContractModeCards [data-mode]').forEach((btn) => {
+        btn.onclick = () => {
+          const v = btn.getAttribute('data-mode');
+          d.querySelector('#drContractMode').value = v;
+          d.querySelectorAll('#drContractModeCards .dh-mode-card').forEach((b) => b.classList.toggle('is-on', b === btn));
+          const pickRow = d.querySelector('#drContractPickerRow');
+          const labelRow = d.querySelector('#drContractLabelRow');
+          if (pickRow) pickRow.hidden = v !== 'linked';
+          if (labelRow) labelRow.hidden = v === 'none';
+        };
+      });
+
+      // Contract picker in drawer
+      d.querySelector('#drContractPick')?.addEventListener('click', () => {
+        const inn = d.querySelector('#drCpInn')?.value || row.inn || '';
+        const cpName = d.querySelector('#drCpName')?.value || row.counterparty_name || '';
+        const cb = (contract) => {
+          if (!contract) return;
+          const idHid = d.querySelector('#drContractId');
+          if (idHid) idHid.value = contract.id || '';
+          const lbl = d.querySelector('#drContractLabel');
+          if (lbl) lbl.value = contract.label || contract.number || '';
+          const dt = d.querySelector('#drContractDate');
+          if (dt && contract.date) dt.value = String(contract.date).slice(0, 10);
+          d.querySelector('#drContractPick').textContent = '✓ ' + (contract.label || contract.number || 'Привязан');
+          toast('Договор', 'Привязан: ' + (contract.label || contract.number || contract.id), 'ok');
+        };
+        if (window.AsgardContractsPage && typeof AsgardContractsPage.openContractSelector === 'function') {
+          AsgardContractsPage.openContractSelector(inn, 'supplier', cb);
+        } else if (window.AsgardContractsPage && typeof AsgardContractsPage.findByCounterparty === 'function') {
+          AsgardContractsPage.findByCounterparty(cpName).then((list) => { if (list && list[0]) cb(list[0]); else toast('Договоры', 'Не найдено', 'warn'); }).catch(() => toast('Договоры', 'Ошибка', 'err'));
+        } else {
+          toast('Договоры', 'Откройте раздел Договоры', 'warn');
+        }
+      });
+
+      // spend_kind cards in drawer
+      d.querySelectorAll('#drSpendCards [data-spend]').forEach((btn) => {
+        btn.onclick = () => {
+          const v = btn.getAttribute('data-spend');
+          d.querySelector('#drSpendKind').value = v;
+          d.querySelectorAll('#drSpendCards .dh-spend-card').forEach((b) => b.classList.toggle('is-on', b === btn));
+          const wf = d.querySelector('#drWorkField');
+          if (wf) wf.style.display = v === 'work' ? '' : 'none';
+        };
+      });
+
+      // Closing rows: add + delete
+      const addClosingRow = (pre) => {
+        const list = d.querySelector('#drClosingList');
+        if (!list) return;
+        const row2 = document.createElement('div');
+        row2.className = 'dh-closing-row dr-closing-row';
+        row2.innerHTML = `
+          <select data-k="kind"><option value="СФ">СФ</option><option value="УПД">УПД</option><option value="Акт">Акт</option></select>
+          <input data-k="no" placeholder="Номер" value="${esc((pre && pre.no) || '')}"/>
+          <input type="date" data-k="date" value="${esc(pre && pre.date ? String(pre.date).slice(0, 10) : '')}"/>
+          <input type="number" data-k="sum" step="0.01" placeholder="Сумма" value="${esc(pre && pre.sum != null ? String(pre.sum) : '')}"/>
+          <button type="button" class="dr-closing-del dh-line__x">✕</button>`;
+        if (pre && pre.kind) row2.querySelector('[data-k="kind"]').value = pre.kind;
+        row2.querySelector('.dr-closing-del').onclick = () => row2.remove();
+        list.appendChild(row2);
       };
-      d.querySelector('#dhDrawerEdit')?.addEventListener('click', () => {
-        const block = d.querySelector('#dhEditIncomplete') || d.querySelector('.dh-section');
-        if (block) block.scrollIntoView({ behavior: 'smooth', block: 'start' });
-        toast('Правка', row.is_incomplete ? 'Заполните поля ниже и сохраните' : 'Откройте неполные поля или обновите сроки в блоке договора', 'ok');
-      });
-      d.querySelector('#dhDrawerSave')?.addEventListener('click', () => {
-        const save = d.querySelector('#dhEditSave');
-        if (save) save.click();
-        else toast('Сохранено', 'Нет изменяемых полей — карточка актуальна', 'ok');
-      });
+      d.querySelector('#drAddClosing')?.addEventListener('click', () => addClosingRow(null));
+      d.querySelectorAll('.dr-closing-del').forEach((btn) => { btn.onclick = () => btn.closest('.dr-closing-row').remove(); });
+
+      // saveDrawer: PUT all WRITE fields
+      const saveDrawer = async () => {
+        const drVatRaw = d.querySelector('#drVatRate')?.value;
+        const drVatRate = drVatRaw === '' || drVatRaw === 'null' ? null : parseFloat(drVatRaw);
+        const grossVal = parseFloat(d.querySelector('#drGross')?.value);
+        const netVal = parseFloat(d.querySelector('#drNet')?.value);
+        const closingRows = [...d.querySelectorAll('.dr-closing-row')].map((row2) => ({
+          kind: row2.querySelector('[data-k="kind"]')?.value || 'СФ',
+          no: row2.querySelector('[data-k="no"]')?.value || '',
+          date: row2.querySelector('[data-k="date"]')?.value || null,
+          sum: parseFloat(row2.querySelector('[data-k="sum"]')?.value) || null
+        })).filter((cl) => cl.no || cl.date);
+        const patch = {
+          counterparty_name: d.querySelector('#drCpName')?.value || '',
+          counterparty_inn: d.querySelector('#drCpInn')?.value || null,
+          counterparty_email: d.querySelector('#drCpEmail')?.value || null,
+          counterparty_phone: d.querySelector('#drCpPhone')?.value || null,
+          amount_gross: Number.isFinite(grossVal) ? grossVal : (sums.gross),
+          amount_net: Number.isFinite(netVal) ? netVal : null,
+          has_vat: drVatRate !== null,
+          vat_rate: drVatRate,
+          contract_mode: d.querySelector('#drContractMode')?.value || 'none',
+          contract_id: parseInt(d.querySelector('#drContractId')?.value) || null,
+          contract_label: d.querySelector('#drContractLabel')?.value || null,
+          contract_date: d.querySelector('#drContractDate')?.value || null,
+          contract_has_scan: !!d.querySelector('#drHasScan')?.checked,
+          contract_has_original: !!d.querySelector('#drHasOriginal')?.checked,
+          spend_kind: d.querySelector('#drSpendKind')?.value || 'other',
+          work_id: parseInt((window.CRSelect ? CRSelect.getValue('drWork') : null) || d.querySelector('#drWorkId')?.value) || null,
+          receive_channel: d.querySelector('#drReceive')?.value || null,
+          purpose_customer: !!d.querySelector('#drPurpCust')?.checked,
+          purpose_asgard: !!d.querySelector('#drPurpAsg')?.checked,
+          purpose_consumables: !!d.querySelector('#drPurpCons')?.checked,
+          vitya_state: d.querySelector('#drVityaState')?.value || null,
+          delivery_note: d.querySelector('#drDelivNote')?.value || null,
+          delivery_due_at: d.querySelector('#drDelivDue')?.value || null,
+          payment_due_at: d.querySelector('#drPayDue')?.value || null,
+          sf_due_at: d.querySelector('#drSfDue')?.value || null,
+          reconciliation_note: d.querySelector('#drRecNote')?.value || null,
+          doc_owner_id: parseInt((window.CRSelect ? CRSelect.getValue('drDocOwner') : null) || d.querySelector('#drDocOwner')?.value) || null,
+          pm_id: parseInt((window.CRSelect ? CRSelect.getValue('drPm') : null) || d.querySelector('#drPmId')?.value) || null,
+          onec_id: d.querySelector('#drOnecId')?.value || null,
+          comment_text: d.querySelector('#drComment')?.value || ''
+        };
+        if (closingRows.length) patch.closing_json = closingRows;
+        try {
+          await api('/' + id, { method: 'PUT', body: JSON.stringify(patch) });
+          toast('Сохранено', 'Карточка обновлена', 'ok');
+          await refresh();
+          openDrawer(id);
+        } catch (e) { toast('Ошибка', e.message || 'PUT failed', 'err'); }
+      };
+
+      d.querySelector('#dhDrawerClose')?.addEventListener('click', closeDrawer);
+      d.querySelector('#dhDrawerClose2')?.addEventListener('click', closeDrawer);
+      d.querySelector('#dhDrawerSave')?.addEventListener('click', saveDrawer);
       d.querySelector('#dhDrawerExpense')?.addEventListener('click', () => {
         if (row.work_id) location.hash = '#/works/' + row.work_id;
         else toast('Объект', 'Сначала укажите работу в карточке', 'warn');
       });
       d.querySelectorAll('[data-qa]').forEach((btn) => {
-        btn.onclick = () => quick(id, btn.getAttribute('data-qa'));
+        btn.addEventListener('click', () => quick(id, btn.getAttribute('data-qa')));
       });
       d.querySelector('#dhParseCatalog')?.addEventListener('click', async () => {
         const ok = await confirm('В каталог', 'Разобрать позиции и обновить номенклатуру для #' + id + '?');
@@ -1240,36 +2046,10 @@ window.AsgardDocHubPage = (function () {
           const res = await api('/' + id + '/parse-catalog', { method: 'POST', body: JSON.stringify(body) });
           const n = Array.isArray(res && res.lines) ? res.lines.length : 0;
           const touched = res && res.catalog && (res.catalog.products_touched || res.catalog.created || 0);
-          toast(
-            'Каталог',
-            n
-              ? ('Позиций: ' + n + (touched ? ('; каталог ±' + touched) : '') + '. См. #/suppliers-catalog')
-              : (res && res.pending ? 'Ожидает разбора скана' : 'Готово'),
-            'ok'
-          );
+          toast('Каталог', n ? ('Позиций: ' + n + (touched ? ('; каталог ±' + touched) : '') + '. См. #/suppliers-catalog') : (res && res.pending ? 'Ожидает разбора скана' : 'Готово'), 'ok');
           await refresh();
           openDrawer(id);
-        } catch (e) {
-          toast('Ошибка', e.message || 'parse-catalog', 'err');
-        }
-      });
-      d.querySelector('#dhEditSave')?.addEventListener('click', async () => {
-        const patch = {
-          contract_mode: d.querySelector('#dhEditContract')?.value || 'none',
-          payment_due_at: d.querySelector('#dhEditPayDue')?.value || null,
-          sf_due_at: d.querySelector('#dhEditSfDue')?.value || null
-        };
-        const wid = d.querySelector('#dhEditWorkId')?.value;
-        if (wid) patch.work_id = parseInt(wid, 10);
-        else patch.work_id = null;
-        try {
-          await api('/' + id, { method: 'PUT', body: JSON.stringify(patch) });
-          toast('Сохранено', 'Поля обновлены', 'ok');
-          await refresh();
-          openDrawer(id);
-        } catch (e) {
-          toast('Ошибка', e.message || 'PUT failed', 'err');
-        }
+        } catch (e) { toast('Ошибка', e.message || 'parse-catalog', 'err'); }
       });
     } catch (e) {
       toast('Ошибка', e.message, 'err');
@@ -1412,6 +2192,64 @@ window.AsgardDocHubPage = (function () {
     } catch (_) { /* ignore */ }
   }
 
+  /**
+   * Comment bubble for table rows. stopPropagation prevents row → drawer open.
+   */
+  function bindTableCmt(root) {
+    const host = root.querySelector('#dhTableHost');
+    if (!host) return;
+    let pop = null;
+    const closePop = () => { if (pop) { pop.remove(); pop = null; } };
+
+    host.addEventListener('click', (e) => {
+      const btn = e.target.closest('.dh-cmt-btn');
+      if (!btn) { if (!e.target.closest('.dh-cmt-pop')) closePop(); return; }
+      e.stopPropagation();
+      if (pop) { closePop(); return; }
+      const id = Number(btn.getAttribute('data-cmt'));
+      if (!id) return;
+      const existing = btn.getAttribute('data-comment') || '';
+      const rect = btn.getBoundingClientRect();
+      pop = document.createElement('div');
+      pop.className = 'dh-cmt-pop';
+      pop.innerHTML = `
+        <div class="dh-cmt-pop__head">Комментарий</div>
+        <textarea class="dh-cmt-pop__ta" rows="4" placeholder="Условия, примечания, ТК…">${esc(existing)}</textarea>
+        <div class="dh-cmt-pop__foot">
+          <button class="dh-btn dh-btn--sm dh-btn--ghost" id="dhCmtClear">Очистить</button>
+          <button class="dh-btn dh-btn--sm dh-btn--primary" id="dhCmtSave">Сохранить</button>
+        </div>`;
+      // Position near button, avoid overflow
+      const top = Math.min(rect.bottom + 6, window.innerHeight - 220);
+      const right = Math.max(4, window.innerWidth - rect.right);
+      pop.style.cssText = `position:fixed;top:${top}px;right:${right}px;`;
+      document.body.appendChild(pop);
+      pop.querySelector('.dh-cmt-pop__ta').focus();
+
+      const doSave = async () => {
+        const text = pop.querySelector('.dh-cmt-pop__ta').value.trim();
+        try {
+          await api('/' + id, { method: 'PUT', body: JSON.stringify({ comment_text: text }) });
+          btn.setAttribute('data-comment', text);
+          btn.classList.toggle('is-filled', !!text);
+          btn.title = text ? String(text).slice(0, 60) : 'Комментарий';
+          const svg = btn.querySelector('svg');
+          if (svg) svg.setAttribute('fill', text ? 'currentColor' : 'none');
+          toast('Комментарий', 'Сохранён', 'ok');
+          closePop();
+          if (state.selectedId === id) openDrawer(id);
+        } catch (err) { toast('Ошибка', err.message, 'err'); }
+      };
+      pop.querySelector('#dhCmtSave').onclick = (ev) => { ev.stopPropagation(); doSave(); };
+      pop.querySelector('#dhCmtClear').onclick = (ev) => { ev.stopPropagation(); pop.querySelector('.dh-cmt-pop__ta').value = ''; };
+      pop.addEventListener('keydown', (ev) => { if (ev.key === 'Enter' && (ev.ctrlKey || ev.metaKey)) doSave(); ev.stopPropagation(); });
+    }, true);
+
+    document.addEventListener('click', (e) => {
+      if (pop && !pop.contains(e.target) && !e.target.closest('.dh-cmt-btn')) closePop();
+    });
+  }
+
   function bind(root) {
     root.querySelector('#dhWizToRegistry')?.addEventListener('click', async () => {
       state.view = 'registry';
@@ -1467,6 +2305,7 @@ window.AsgardDocHubPage = (function () {
       }, 280);
     });
     bindFacets(root);
+    bindTableCmt(root);
     root.querySelector('#dhTableHost')?.addEventListener('click', (e) => {
       const btn = e.target.closest('[data-qa]');
       const tr = e.target.closest('tr[data-id]');
@@ -1480,6 +2319,14 @@ window.AsgardDocHubPage = (function () {
       }
       openDrawer(id);
     });
+    if (!window.__dhEscBound) {
+      window.__dhEscBound = true;
+      document.addEventListener('keydown', (e) => {
+        if (e.key !== 'Escape') return;
+        const d = document.getElementById('dhDrawer');
+        if (d && !d.hidden) closeDrawer();
+      });
+    }
   }
 
   function updateKpiDom() {
@@ -1506,6 +2353,76 @@ window.AsgardDocHubPage = (function () {
       const n = chip.querySelector('.n');
       if (n) n.textContent = kpiVal('incomplete');
     }
+  }
+
+  function bindHScroll() {
+    const wrap = document.querySelector('#dhTableHost .dh-table-wrap') || document.getElementById('dhTableWrap');
+    const bar = document.getElementById('dhHScrollBar');
+    if (!wrap || !bar) return;
+    const inner = bar.querySelector('.dh-hscroll-bar__inner');
+    if (!inner) return;
+
+    const syncSize = () => {
+      const need = wrap.scrollWidth > wrap.clientWidth + 2;
+      bar.hidden = !need;
+      bar.classList.toggle('is-on', need);
+      inner.style.width = need ? wrap.scrollWidth + 'px' : '0px';
+      if (need && Math.abs(bar.scrollLeft - wrap.scrollLeft) > 1) bar.scrollLeft = wrap.scrollLeft;
+    };
+    const onWrapScroll = () => {
+      if (bar._dhLock) return;
+      bar._dhLock = true;
+      bar.scrollLeft = wrap.scrollLeft;
+      bar._dhLock = false;
+    };
+    const onBarScroll = () => {
+      if (bar._dhLock) return;
+      bar._dhLock = true;
+      wrap.scrollLeft = bar.scrollLeft;
+      bar._dhLock = false;
+    };
+    const onWheel = (e) => {
+      if (wrap.scrollWidth <= wrap.clientWidth + 2) return;
+      const dx = e.deltaX || 0;
+      const dy = e.deltaY || 0;
+      // Trackpad horizontal → X
+      if (Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > 0) {
+        wrap.scrollLeft += dx;
+        e.preventDefault();
+        return;
+      }
+      // Shift+wheel → X (явный гориз.)
+      if (e.shiftKey && Math.abs(dy) > 0) {
+        wrap.scrollLeft += dy;
+        e.preventDefault();
+        return;
+      }
+      // Нет вертикального overflow в wrap → deltaY в горизонт (как в плане)
+      const canY = wrap.scrollHeight > wrap.clientHeight + 2;
+      if (!canY && Math.abs(dy) > 0) {
+        wrap.scrollLeft += dy;
+        e.preventDefault();
+      }
+      // иначе оставляем нативный вертикальный скролл таблицы/страницы
+    };
+
+    wrap.removeEventListener('scroll', wrap.__dhHScroll || (() => {}));
+    wrap.removeEventListener('wheel', wrap.__dhHWheel || (() => {}));
+    bar.removeEventListener('scroll', bar.__dhHScroll || (() => {}));
+    if (wrap.__dhHRo) try { wrap.__dhHRo.disconnect(); } catch (_) { /* ignore */ }
+
+    wrap.__dhHScroll = onWrapScroll;
+    wrap.__dhHWheel = onWheel;
+    bar.__dhHScroll = onBarScroll;
+    wrap.addEventListener('scroll', onWrapScroll, { passive: true });
+    wrap.addEventListener('wheel', onWheel, { passive: false });
+    bar.addEventListener('scroll', onBarScroll, { passive: true });
+    wrap.__dhHRo = new ResizeObserver(syncSize);
+    wrap.__dhHRo.observe(wrap);
+    const table = wrap.querySelector('table');
+    if (table) wrap.__dhHRo.observe(table);
+    syncSize();
+    requestAnimationFrame(syncSize);
   }
 
   function bindQuarterLive() {
@@ -1553,6 +2470,7 @@ window.AsgardDocHubPage = (function () {
     await loadData();
     host.innerHTML = renderTable();
     bindQuarterLive();
+    bindHScroll();
     updateKpiDom();
     const scopeEl = document.getElementById('dhScopeAll');
     if (scopeEl) scopeEl.checked = state.scope === 'all';
@@ -1577,7 +2495,10 @@ window.AsgardDocHubPage = (function () {
       await window.layout(html, { title: state.view === 'wizard' ? 'Внести документ' : 'Реестр документов' });
     }
     bind(document);
-    if (state.view === 'registry') bindQuarterLive();
+    if (state.view === 'registry') {
+      bindQuarterLive();
+      bindHScroll();
+    }
     if (state.view === 'wizard') {
       const host = document.getElementById('dhWizardHost');
       if (host) paintWizard(host);

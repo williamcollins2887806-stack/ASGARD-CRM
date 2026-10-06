@@ -19,18 +19,76 @@ function boolish(v) {
   return v === true || v === 1 || v === '1' || v === 'true' || v === 'yes' || v === 'да';
 }
 
+/** Ставка НДС Doc Hub (как в UI / DEFAULT schema). */
+const VAT_RATE_DEFAULT = 0.22;
+
+function resolveHasVat(raw) {
+  if (raw.has_vat === false || raw.has_vat === 'false' || raw.has_vat === 0 || raw.has_vat === '0') return false;
+  if (raw.has_vat === true || raw.has_vat === 'true' || raw.has_vat === 1 || raw.has_vat === '1') return true;
+  const nds = String(raw.nds != null ? raw.nds : raw.vat_flag != null ? raw.vat_flag : '').trim();
+  if (/^(нет|no|false|0|-)$/i.test(nds)) return false;
+  return true; // пусто / «да» → с НДС
+}
+
+function computeVatFields(amount, hasVat, raw = {}) {
+  if (!hasVat || !(amount > 0)) {
+    return { has_vat: false, vat_rate: 0, vat_amount: 0, amount_net: amount, amount_gross: amount };
+  }
+  let rate = num(raw.vat_rate);
+  if (raw.vat_rate == null || raw.vat_rate === '') rate = VAT_RATE_DEFAULT;
+  if (rate > 1) rate = rate / 100;
+  if (rate < 0) rate = 0;
+  const allowed = [0, 0.05, 0.1, 0.2, 0.22];
+  const hit = allowed.find((a) => Math.abs(a - rate) < 0.0001);
+  rate = hit != null ? hit : VAT_RATE_DEFAULT;
+  const givenVat = raw.vat_amount != null ? num(raw.vat_amount) : 0;
+  const givenNet = raw.amount_net != null ? num(raw.amount_net) : 0;
+  if (givenVat > 0 && givenNet > 0) {
+    return { has_vat: true, vat_rate: rate, vat_amount: givenVat, amount_net: givenNet, amount_gross: amount };
+  }
+  if (rate === 0) {
+    return { has_vat: true, vat_rate: 0, vat_amount: 0, amount_net: amount, amount_gross: amount };
+  }
+  const net = +(amount / (1 + rate)).toFixed(2);
+  const vat = +(amount - net).toFixed(2);
+  return { has_vat: true, vat_rate: rate, vat_amount: vat, amount_net: net, amount_gross: amount };
+}
+
 function normalizeRow(raw = {}) {
   const amount = num(raw.amount_gross != null ? raw.amount_gross : raw.amount);
+  const hasVat = resolveHasVat(raw);
+  const vat = computeVatFields(amount, hasVat, raw);
+  const contractLabel = raw.contract_label != null ? String(raw.contract_label).trim() : '';
+  const spend = String(raw.spend_kind || '').toLowerCase();
+  const spendKind = ['work', 'warehouse', 'office', 'other'].includes(spend)
+    ? spend
+    : (boolish(raw.purpose_consumables) || boolish(raw.office) ? 'office' : 'work');
+  let closingJson = [];
+  if (Array.isArray(raw.closing_json)) {
+    closingJson = raw.closing_json.filter((x) => x && (x.no || x.date || x.sum != null));
+  } else if (raw.closing_json && typeof raw.closing_json === 'object') {
+    closingJson = [raw.closing_json];
+  } else if (raw.closing_no || raw.sf_number) {
+    closingJson = [{
+      kind: raw.closing_kind || 'СФ',
+      no: String(raw.closing_no || raw.sf_number || '').trim() || null,
+      date: raw.closing_date ? String(raw.closing_date).slice(0, 10) : null,
+      sum: raw.closing_sum != null ? num(raw.closing_sum) : null
+    }];
+  }
   return {
     dir: raw.dir === 'out' ? 'out' : 'in',
     package_type: raw.package_type || 'invoice',
     invoice_number: raw.invoice_number != null ? String(raw.invoice_number).trim() : null,
     invoice_date: raw.invoice_date ? String(raw.invoice_date).slice(0, 10) : null,
     counterparty_name: String(raw.counterparty_name || raw.supplier_name || '').trim(),
-    amount_gross: amount,
-    amount_net: raw.amount_net != null ? num(raw.amount_net) : amount,
-    vat_amount: raw.vat_amount != null ? num(raw.vat_amount) : 0,
-    has_vat: raw.has_vat !== false && raw.has_vat !== 'false',
+    counterparty_email: raw.counterparty_email ? String(raw.counterparty_email).trim() : null,
+    counterparty_phone: raw.counterparty_phone ? String(raw.counterparty_phone).trim() : null,
+    amount_gross: vat.amount_gross,
+    amount_net: vat.amount_net,
+    vat_amount: vat.vat_amount,
+    vat_rate: vat.vat_rate,
+    has_vat: vat.has_vat,
     payment_due_at: raw.payment_due_at ? String(raw.payment_due_at).slice(0, 10) : null,
     work_id: raw.work_id != null && raw.work_id !== '' ? parseInt(raw.work_id, 10) : null,
     work_title: raw.work_title ? String(raw.work_title).trim() : null,
@@ -43,7 +101,18 @@ function normalizeRow(raw = {}) {
     ops_status: raw.ops_status || 'draft',
     pay_status: raw.pay_status || 'none',
     wh_status: raw.wh_status || 'none',
-    contract_mode: raw.contract_mode || 'none',
+    contract_mode: raw.contract_mode || (contractLabel ? 'linked' : 'none'),
+    contract_label: contractLabel || null,
+    contract_date: raw.contract_date ? String(raw.contract_date).slice(0, 10) : null,
+    contract_has_scan: boolish(raw.contract_has_scan),
+    contract_has_original: boolish(raw.contract_has_original),
+    receive_channel: raw.receive_channel ? String(raw.receive_channel).trim() : null,
+    delivery_note: raw.delivery_note ? String(raw.delivery_note).trim() : null,
+    delivery_due_at: raw.delivery_due_at ? String(raw.delivery_due_at).slice(0, 10) : null,
+    vitya_state: raw.vitya_state != null ? String(raw.vitya_state).trim() : null,
+    reconciliation_note: raw.reconciliation_note ? String(raw.reconciliation_note).trim() : null,
+    closing_json: closingJson,
+    spend_kind: spendKind,
     doc_owner_id: raw.doc_owner_id != null ? parseInt(raw.doc_owner_id, 10) : null,
     link_expense: boolish(raw.link_expense) || boolish(raw.create_expense)
   };
@@ -179,27 +248,37 @@ async function apply(db, rowsIn, userId) {
       };
       Object.assign(draft, calcIncomplete(draft));
 
+      const closingPayload = Array.isArray(draft.closing_json) ? JSON.stringify(draft.closing_json) : '[]';
       const { rows: ins } = await db.query(
         `INSERT INTO doc_registry(
-           dir, package_type, ops_status, pay_status, wh_status, contract_mode,
-           invoice_number, invoice_date, counterparty_name,
-           amount_gross, amount_net, vat_amount, has_vat,
-           payment_due_at, work_id, pm_id, doc_owner_id,
+           dir, package_type, ops_status, pay_status, wh_status, contract_mode, contract_label,
+           contract_date, contract_has_scan, contract_has_original,
+           invoice_number, invoice_date, counterparty_name, counterparty_email, counterparty_phone,
+           amount_gross, amount_net, vat_amount, vat_rate, has_vat,
+           payment_due_at, work_id, pm_id, doc_owner_id, receive_channel,
+           delivery_note, delivery_due_at, vitya_state, reconciliation_note, spend_kind,
+           closing_json,
            purpose_consumables, purpose_asgard, purpose_customer, comment_text,
            is_incomplete, incomplete_reasons, created_by, updated_by
          ) VALUES (
-           $1,$2,$3,$4,$5,$6,
-           $7,$8::date,$9,
-           $10,$11,$12,$13,
-           $14::date,$15,$16,$17,
-           $18,$19,$20,$21,
-           $22,$23::text[],$24,$24
+           $1,$2,$3,$4,$5,$6,$7,
+           $8::date,$9,$10,
+           $11,$12::date,$13,$14,$15,
+           $16,$17,$18,$19,$20,
+           $21::date,$22,$23,$24,$25,
+           $26,$27::date,$28,$29,$30,
+           $31::jsonb,
+           $32,$33,$34,$35,
+           $36,$37::text[],$38,$38
          ) RETURNING *`,
         [
-          draft.dir, draft.package_type, draft.ops_status, draft.pay_status, draft.wh_status, draft.contract_mode,
-          draft.invoice_number, draft.invoice_date, draft.counterparty_name,
-          draft.amount_gross, draft.amount_net, draft.vat_amount, draft.has_vat,
-          draft.payment_due_at, draft.work_id, draft.pm_id, draft.doc_owner_id,
+          draft.dir, draft.package_type, draft.ops_status, draft.pay_status, draft.wh_status, draft.contract_mode, draft.contract_label,
+          draft.contract_date || null, !!draft.contract_has_scan, !!draft.contract_has_original,
+          draft.invoice_number, draft.invoice_date, draft.counterparty_name, draft.counterparty_email || null, draft.counterparty_phone || null,
+          draft.amount_gross, draft.amount_net, draft.vat_amount, draft.vat_rate, draft.has_vat,
+          draft.payment_due_at, draft.work_id, draft.pm_id, draft.doc_owner_id, draft.receive_channel,
+          draft.delivery_note || null, draft.delivery_due_at || null, draft.vitya_state || null, draft.reconciliation_note || null, draft.spend_kind || 'work',
+          closingPayload,
           !!draft.purpose_consumables, !!draft.purpose_asgard, !!draft.purpose_customer, draft.comment_text,
           draft.is_incomplete, draft.incomplete_reasons, userId || null
         ]

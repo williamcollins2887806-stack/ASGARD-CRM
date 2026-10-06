@@ -32,30 +32,87 @@ function mapRow(raw) {
   const inv = cellStr(get('№ счёта', 'Счёт', 'invoice_number', 'Номер'));
   const invDate = parseDate(get('Дата счёта', 'Дата', 'invoice_date'));
   const contract = cellStr(get('Договор'));
-  const nds = cellStr(get('НДС'));
-  const hasVat = /да|yes|true|1/i.test(nds) || nds === '';
+  const nds = cellStr(get('НДС')).trim();
+  // «нет» → без НДС; пусто / «да» → с НДС 22%; «5%»/«10»/… → явная ставка
+  let hasVat = !/^(нет|no|false|0|-)$/i.test(nds);
+  let vatRate = 0;
+  if (hasVat) {
+    const pct = parseFloat(String(nds).replace(',', '.').replace(/%/g, ''));
+    if (Number.isFinite(pct) && pct >= 0 && /%|\d/.test(nds) && !/^(да|yes|true)$/i.test(nds)) {
+      vatRate = pct > 1 ? pct / 100 : pct;
+      if (![0, 0.05, 0.1, 0.2, 0.22].some((a) => Math.abs(a - vatRate) < 0.0001)) vatRate = 0.22;
+    } else {
+      vatRate = 0.22;
+    }
+  }
+  const amountNet = hasVat && amount > 0 && vatRate > 0 ? +(amount / (1 + vatRate)).toFixed(2) : amount;
+  const vatAmount = hasVat && amount > 0 ? +(amount - amountNet).toFixed(2) : 0;
+  const receiveChannel = cellStr(get('Получение', 'Способ получения', 'Канал', 'receive_channel', 'ЭДО'));
   const purposeOffice = boolCell(get('Назначение закупаемых ТМЦ — Расходники', 'Расходники'));
   const purposeAsgard = boolCell(get('Назначение закупаемых ТМЦ — Собственность "АСГАРД"', 'Собственность'));
   const purposeCustomer = boolCell(get('Назначение закупаемых ТМЦ — На объект Заказчика', 'На объект'));
   const officeHint = purposeOffice
     || /офис|канц|хоз/i.test(cellStr(get('Назначение', 'Тип', 'purpose')))
     || /офис/i.test(workTitle);
+  const email = cellStr(get('E-mail', 'Email', 'Почта', 'counterparty_email'));
+  const phone = cellStr(get('Телефон', 'Phone', 'counterparty_phone'));
+  const payDue = parseDate(get('СРОК ОПЛАТЫ', 'Срок оплаты', 'payment_due'));
+  const contractDate = parseDate(get('Договор — Дата', 'Дата договора', 'contract_date'));
+  const contractScan = boolCell(get('Договор — Скан', 'Скан договора'));
+  const contractOrig = boolCell(get('Договор — Оригинал', 'Оригинал договора'));
+  const vityaState = cellStr(get('Для Вити — Состояние', 'Состояние'));
+  const deliveryNote = cellStr(get('Для Вити — Доставка', 'Доставка'));
+  const deliveryDue = parseDate(get('Для Вити — Срок доставки', 'Срок доставки'));
+  const vityaComment = cellStr(get('Для Вити — Комментарий'));
+  const recon = cellStr(get('Акт сверки', 'reconciliation'));
+  const commentMain = cellStr(get('Комментарий', 'comment'));
+  const closingNo = cellStr(get('Закрывающие документы — Номер', 'Закрывающие — Номер'));
+  const closingDate = parseDate(get('Закрывающие документы — Дата', 'Закрывающие — Дата'));
+  const closingSumRaw = get('Закрывающие документы — Сумма', 'Закрывающие — Сумма');
+  const closingSum = closingSumRaw != null && cellStr(closingSumRaw) ? parseAmount(closingSumRaw) : null;
+  let closing_json = [];
+  if (closingNo || closingDate || (closingSum != null && closingSum > 0)) {
+    closing_json = [{
+      kind: 'СФ',
+      no: closingNo || null,
+      date: closingDate || null,
+      sum: closingSum != null && Number.isFinite(closingSum) ? closingSum : null
+    }];
+  }
+  const spendKind = officeHint ? 'office'
+    : (/склад/i.test(workTitle) ? 'warehouse' : 'work');
   return {
     dir: /исход/i.test(cellStr(get('Направление', 'dir'))) ? 'out' : 'in',
     invoice_number: inv || null,
     invoice_date: invDate,
     counterparty_name: cp,
+    counterparty_email: email || null,
+    counterparty_phone: phone || null,
     amount_gross: amount,
+    amount_net: amountNet,
+    vat_amount: vatAmount,
+    vat_rate: vatRate,
     has_vat: hasVat,
     contract_mode: contract ? 'linked' : 'none',
     contract_label: contract || null,
+    contract_date: contractDate,
+    contract_has_scan: contractScan,
+    contract_has_original: contractOrig,
+    receive_channel: receiveChannel || null,
+    payment_due_at: payDue,
+    delivery_note: deliveryNote || null,
+    delivery_due_at: deliveryDue,
+    vitya_state: vityaState || null,
+    reconciliation_note: recon || null,
+    closing_json,
+    spend_kind: spendKind,
     work_title: workTitle || null,
     work_pm_name: workPm || null,
     doc_owner_name: docOwner || null,
     purpose_consumables: officeHint,
     purpose_asgard: purposeAsgard || (!officeHint && !workTitle && !purposeCustomer),
     purpose_customer: purposeCustomer,
-    comment_text: cellStr(get('Комментарий', 'comment', 'Для Вити — Комментарий', 'Для Вити', 'Состояние')),
+    comment_text: [commentMain, vityaComment].filter(Boolean).join('\n') || null,
     _source: raw._source,
     _row: raw._row,
     _sheet: raw._sheet
@@ -67,7 +124,7 @@ function boolCell(v) {
   return s === 'да' || s === 'yes' || s === 'true' || s === '1' || s === 'x' || s === '✓' || s === 'v';
 }
 
-(async () => {
+async function main() {
   const a = process.argv[2];
   const b = process.argv[3];
   const outDir = process.argv[4] || path.join('tests', 'reports', 'doc-hub-excel');
@@ -164,4 +221,10 @@ function boolCell(v) {
     headersA: fileA.headers,
     headersB: fileB.headers
   }, null, 2));
-})().catch((e) => { console.error(e); process.exit(1); });
+}
+
+module.exports = { mapRow, boolCell, normKey };
+
+if (require.main === module) {
+  main().catch((e) => { console.error(e); process.exit(1); });
+}

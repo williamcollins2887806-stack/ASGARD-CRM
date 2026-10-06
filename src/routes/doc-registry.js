@@ -24,9 +24,10 @@ const WRITE_COLS = [
   'dir', 'package_type', 'ops_status', 'invoice_number', 'invoice_date',
   'counterparty_name', 'counterparty_email', 'counterparty_phone',
   'supplier_id', 'customer_id', 'work_id', 'contract_id', 'contract_mode', 'contract_label',
+  'contract_date', 'contract_has_scan', 'contract_has_original',
   'amount_gross', 'amount_net', 'vat_amount', 'vat_rate', 'has_vat',
   'payment_due_at', 'sf_due_at', 'delivery_due_at', 'delivery_note', 'pay_status',
-  'closing_json', 'receive_channel', 'reconciliation_note',
+  'closing_json', 'receive_channel', 'reconciliation_note', 'vitya_state', 'spend_kind',
   'purpose_customer', 'purpose_asgard', 'purpose_consumables', 'comment_text',
   'wh_status', 'procurement_id', 'payment_invoice_id', 'office_expense_id',
   'work_expense_id', 'billing_invoice_id', 'billing_act_id',
@@ -46,20 +47,36 @@ const JOIN_SQL = `SELECT d.*,
 function num(v) { const n = parseFloat(v); return Number.isFinite(n) ? n : 0; }
 function today() { return new Date().toISOString().slice(0, 10); }
 
+function normalizeVatRate(raw, hasVat) {
+  if (!hasVat) return 0;
+  if (raw == null || raw === '') return 0.22;
+  let rate = num(raw);
+  if (rate > 1) rate = rate / 100;
+  if (rate < 0) rate = 0;
+  const allowed = [0, 0.05, 0.1, 0.2, 0.22];
+  const hit = allowed.find((a) => Math.abs(a - rate) < 0.0001);
+  return hit != null ? hit : 0.22;
+}
+
 function computeAmounts(b = {}) {
-  const rate = num(b.vat_rate) > 0 ? num(b.vat_rate) : 0.22;
+  const hasVat = !(b.has_vat === false || b.has_vat === 'false' || b.has_vat === 0 || b.has_vat === '0');
+  const rate = normalizeVatRate(b.vat_rate, hasVat);
   const gross = num(b.amount_gross);
-  const hasVat = !(b.has_vat === false || b.has_vat === 'false' || b.has_vat === 0);
+  if (!hasVat) {
+    return { amount_gross: gross, amount_net: gross, vat_amount: 0, vat_rate: 0, has_vat: false };
+  }
   if (b.amount_net != null && b.amount_net !== '' && Number.isFinite(parseFloat(b.amount_net))) {
     const net = num(b.amount_net);
-    const vat = (b.vat_amount != null && b.vat_amount !== '') ? num(b.vat_amount) : Math.max(0, +(gross - net).toFixed(2));
-    return { amount_gross: gross, amount_net: net, vat_amount: vat, vat_rate: rate, has_vat: hasVat };
+    const vat = (b.vat_amount != null && b.vat_amount !== '')
+      ? num(b.vat_amount)
+      : Math.max(0, +(gross - net).toFixed(2));
+    return { amount_gross: gross, amount_net: net, vat_amount: vat, vat_rate: rate, has_vat: true };
   }
-  if (hasVat) {
-    const net = +(gross / (1 + rate)).toFixed(2);
-    return { amount_gross: gross, amount_net: net, vat_amount: +(gross - net).toFixed(2), vat_rate: rate, has_vat: true };
+  if (rate === 0) {
+    return { amount_gross: gross, amount_net: gross, vat_amount: 0, vat_rate: 0, has_vat: true };
   }
-  return { amount_gross: gross, amount_net: gross, vat_amount: 0, vat_rate: rate, has_vat: false };
+  const net = +(gross / (1 + rate)).toFixed(2);
+  return { amount_gross: gross, amount_net: net, vat_amount: +(gross - net).toFixed(2), vat_rate: rate, has_vat: true };
 }
 
 function calcIncomplete(row) {
@@ -67,9 +84,15 @@ function calcIncomplete(row) {
   if (!(row.invoice_number || '').toString().trim()) r.push('no_invoice_number');
   if (!row.invoice_date) r.push('no_invoice_date');
   if (!(row.counterparty_name || '').toString().trim()) r.push('no_counterparty');
-  if ((row.contract_mode || 'none') === 'none' && !row.contract_id) r.push('no_contract');
+  const mode = row.contract_mode || 'none';
+  // once/general/none не дают no_contract; только linked без contract_id
+  if (mode === 'linked' && !row.contract_id) r.push('no_contract');
   if (row.dir === 'in' && !row.payment_due_at) r.push('no_payment_due');
-  if (row.dir === 'in' && !row.work_id && !row.purpose_asgard && !row.purpose_consumables) r.push('no_work');
+  const sk = row.spend_kind || 'work';
+  const needsWork = sk === 'work';
+  if (row.dir === 'in' && needsWork && !row.work_id && !row.purpose_asgard && !row.purpose_consumables) {
+    r.push('no_work');
+  }
   return { is_incomplete: r.length > 0, incomplete_reasons: r };
 }
 
