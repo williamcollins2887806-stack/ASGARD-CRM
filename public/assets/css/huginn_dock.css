@@ -418,6 +418,7 @@ html[data-theme="light"] .hg-rail-badge {
 
 .hg-panel {
   order: 0;
+  position: relative;
   width: var(--hg-panel-w);
   height: 100%;
   background: var(--hg-panel);
@@ -429,6 +430,7 @@ html[data-theme="light"] .hg-rail-badge {
   transition: width 0.2s var(--hg-ease-ui), opacity 150ms var(--hg-ease-ui);
   box-shadow: none;
   color: var(--hg-text);
+  overflow: hidden;
 }
 .hg-chrome.is-collapsed .hg-panel {
   width: 0;
@@ -2120,18 +2122,18 @@ html[data-theme="light"] .hg-thread-title strong { color: rgba(0, 0, 0, 0.82); }
   box-shadow: none;
   background-color: #2C2C2E;
 }
-.hg-thread-actions,
+.hg-thread-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  flex: 0 0 auto;
+  margin: 0;
+  padding: 0;
+  visibility: visible;
+  pointer-events: auto;
+}
 .hg-thread-actions[hidden] {
-  display: none !important;
-  width: 0 !important;
-  min-width: 0 !important;
-  max-width: 0 !important;
-  overflow: hidden !important;
-  margin: 0 !important;
-  padding: 0 !important;
-  border: 0 !important;
-  visibility: hidden !important;
-  pointer-events: none !important;
+  display: none;
 }
 
 .hg-pin-banner {
@@ -4412,25 +4414,151 @@ html[data-hg-fx="off"] {
 .hg-composer.is-mimir [data-kind="circle"],
 .hg-composer.is-mimir [data-kind="voice"] { display: none !important; }
 
-/* Compose / chat profile sheets (S13 / S06 / S18–S23) */
-#huginnDock .hg-compose-sheet,
-#huginnDock .hg-chat-profile,
-.hg-chrome .hg-compose-sheet,
-.hg-chrome .hg-chat-profile {
-  position: fixed;
+/* Compose / chat profile / invite sheets — dock panel only (not fullscreen CRM) */
+#huginnDock .hg-panel .hg-compose-sheet,
+#huginnDock .hg-panel .hg-chat-profile,
+#huginnDock .hg-panel .hg-invite-sheet,
+.hg-chrome .hg-panel .hg-compose-sheet,
+.hg-chrome .hg-panel .hg-chat-profile,
+.hg-chrome .hg-panel .hg-invite-sheet {
+  position: absolute;
   inset: 0;
+  left: 0;
+  right: 0;
+  top: 0;
+  bottom: 0;
   z-index: 4000;
   display: flex;
   flex-direction: column;
   width: 100%;
   height: 100%;
-  min-height: 100%;
+  min-height: 0;
+  max-height: none;
+  max-width: 100%;
+  margin: 0;
+  padding: 0;
+  border-radius: 0;
+  box-shadow: none;
   background: #000;
   overflow: hidden;
   opacity: 1;
   pointer-events: auto;
   backdrop-filter: none;
   -webkit-backdrop-filter: none;
+  animation: none;
+}
+.hg-compose-modes {
+  display: flex;
+  gap: 6px;
+  padding: 0 14px 8px;
+}
+.hg-compose-mode {
+  flex: 1;
+  height: 32px;
+  border: 0;
+  border-radius: 10px;
+  background: rgba(120, 120, 128, 0.28);
+  color: var(--hg-muted, #8e8e93);
+  font: 600 13px/1 var(--hg-font);
+  cursor: pointer;
+}
+.hg-compose-mode.is-active {
+  background: color-mix(in srgb, var(--hg-accent-chat, #0A84FF) 28%, transparent);
+  color: #fff;
+}
+.hg-compose-invite-cta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 12px 8px;
+  padding: 10px 12px;
+  border: 0;
+  border-radius: 12px;
+  background: rgba(10, 132, 255, 0.16);
+  color: #0A84FF;
+  font: 600 13px/1.2 var(--hg-font);
+  cursor: pointer;
+  text-align: left;
+  width: calc(100% - 24px);
+}
+.hg-compose-group-name {
+  margin: 0 12px 8px;
+  width: calc(100% - 24px);
+  height: 36px;
+  border: 0;
+  border-radius: 10px;
+  padding: 0 12px;
+  background: rgba(120, 120, 128, 0.24);
+  color: #fff;
+  font: 400 14px/1 var(--hg-font);
+}
+.hg-compose-group-name[hidden] { display: none; }
+.hg-invite-sheet .hg-invite-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px 14px;
+}
+.hg-invite-sheet .hg-invite-fields input {
+  height: 40px;
+  border: 0;
+  border-radius: 10px;
+  padding: 0 12px;
+  background: rgba(120, 120, 128, 0.24);
+  color: #fff;
+  font: 400 14px/1 var(--hg-font);
+}
+.hg-invite-sheet .hg-invite-submit {
+  margin: 8px 14px 16px;
+  height: 44px;
+  border: 0;
+  border-radius: 12px;
+  background: var(--hg-accent-chat, #0A84FF);
+  color: #fff;
+  font: 600 15px/1 var(--hg-font);
+  cursor: pointer;
+}
+.hg-invite-sheet .hg-invite-submit:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+.hg-settings-profile-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 8px 0 16px;
+}
+.hg-settings-profile-detail .hg-settings-kv {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 14px;
+  border-radius: 12px;
+  background: rgba(120, 120, 128, 0.18);
+}
+.hg-settings-profile-detail .hg-settings-k {
+  font: 500 11px/1.2 var(--hg-font);
+  color: var(--hg-muted, #8e8e93);
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+.hg-settings-profile-detail .hg-settings-v {
+  font: 500 15px/1.3 var(--hg-font);
+  color: #fff;
+}
+.hg-list-me-btn {
+  width: 32px;
+  height: 32px;
+  border: 0;
+  border-radius: 50%;
+  padding: 0;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font: 600 11px/1 var(--hg-font);
+  color: #fff;
+  flex: 0 0 auto;
 }
 .hg-compose-search-wrap {
   position: relative;

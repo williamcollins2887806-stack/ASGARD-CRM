@@ -48,6 +48,9 @@
     /* §E Mimir thread */
     isMimirThread: false,
     mimirChatId: null,
+    /* settings: profile detail vs FX edit */
+    settingsProfileOpen: false,
+    settingsEditOpen: false,
     /* F3 connecting subtitle (SSE/WS gap or forced via _capture) */
     connecting: false
   };
@@ -586,9 +589,10 @@
         seenFolder.add(key);
         return true;
       });
-      if (state.activeFolderId == null && data.active_folder_id != null) {
+      if (state.activeFolderId == null && data.active_folder_id != null && !state._folderClearedForCompose) {
         state.activeFolderId = data.active_folder_id;
       }
+      state._folderClearedForCompose = false;
     } catch (_) {
       state.folders = state.folders || [];
     }
@@ -601,6 +605,76 @@
     state.chats = (data.chats || data.items || [])
       .filter((c) => !isJunkChatName(c && c.name))
       .filter((c) => !c._seed && Number(c.id) > 0);
+  }
+
+  function sheetHost() {
+    return (root && root.querySelector('#hgPanel')) || root;
+  }
+
+  /** After create/direct: refresh list (reset folder if needed) and open thread. */
+  async function ensureChatOpened(chat, extras) {
+    if (!chat || !chat.id) return;
+    const cid = Number(chat.id);
+    const nm = (extras && extras.name)
+      || chat.direct_user_name
+      || chat.name
+      || chat.title
+      || 'Чат';
+    state.tab = 'huginn';
+    state.mobileNav = 'chats';
+    // New chat may be outside active folder — show under «Все» and persist
+    if (state.activeFolderId != null) {
+      state.activeFolderId = null;
+      state._folderClearedForCompose = true;
+      try {
+        await api('/api/chat-groups/folders/active', {
+          method: 'PUT',
+          body: { folder_id: null }
+        });
+      } catch (_) {}
+    }
+    try {
+      await loadChats();
+    } catch (_) {}
+    if (!state.chats.some((c) => Number(c.id) === cid)) {
+      state.chats.unshift({
+        id: cid,
+        name: nm,
+        title: nm,
+        direct_user_name: (extras && extras.direct_user_name) || chat.direct_user_name || nm,
+        direct_user_id: (extras && extras.direct_user_id) || chat.direct_user_id || null,
+        is_group: !!chat.is_group,
+        type: chat.type || (chat.is_group ? 'group' : 'direct'),
+        unread_count: 0,
+        member_count: chat.member_count || (chat.is_group ? 2 : 2)
+      });
+    } else {
+      const row = state.chats.find((c) => Number(c.id) === cid);
+      if (row && extras && extras.direct_user_name) {
+        row.direct_user_name = extras.direct_user_name;
+        row.name = row.name || extras.direct_user_name;
+      }
+    }
+    await openChat(cid);
+  }
+
+  const HUGINN_PICKER_SKIP_ROLES = new Set([
+    'FIELD_WORKER', 'GUEST', 'huginn_guest', 'HUGINN_GUEST'
+  ]);
+
+  function isWritableComposeUser(u) {
+    if (!u) return false;
+    if (u.is_active === false || u.is_active === 'false') return false;
+    const role = String(u.role || '');
+    if (HUGINN_PICKER_SKIP_ROLES.has(role)) return false;
+    return true;
+  }
+
+  function composeUserStatus(u) {
+    if (u.last_seen_at || u.last_login_at) {
+      return 'был(а) ' + formatSeen(u.last_seen_at || u.last_login_at);
+    }
+    return 'нет в Хугинне';
   }
 
   function countComposerLines(text) {
@@ -1537,8 +1611,8 @@
             <button type="button" class="hg-thread-av-btn" id="hgThreadProfile" aria-label="Профиль чата">
               <div class="hg-thread-av" style="${avStyle}">${avInner}</div>
             </button>
-            <div class="hg-thread-actions" hidden>
-              <button type="button" class="hg-icon-btn" id="hgCallAudio" title="Звонок" aria-label="Звонок">${ICO.phone}</button>
+            <div class="hg-thread-actions">
+              ${!mimirMode && !isGroupChat(chat) ? `<button type="button" class="hg-icon-btn" id="hgCallAudio" title="Звонок" aria-label="Звонок">${ICO.phone}</button>` : ''}
               <button type="button" class="hg-icon-btn" id="hgThreadMore" title="Ещё" aria-label="Ещё">${ICO.more || ICO['more-horizontal']}</button>
             </div>
           </div>
@@ -1634,6 +1708,8 @@
         <button type="button" class="hg-head-edit" id="hgListEdit">${state.listEditMode ? 'Готово' : 'Изм.'}</button>
         <h2>Чаты</h2>
         <div class="hg-head-actions">
+          <button type="button" class="hg-list-me-btn" id="hgListMe" title="Мой профиль" aria-label="Мой профиль"
+            style="background:${avatarColor(((global.AsgardAuth && AsgardAuth.user) || JSON.parse(localStorage.getItem('asgard_user') || '{}')).name || 'Я')}">${esc(initials((((global.AsgardAuth && AsgardAuth.user) || JSON.parse(localStorage.getItem('asgard_user') || '{}')).name || 'Я')))}</button>
           <button type="button" class="hg-icon-btn" id="hgCompose" title="Написать">${ICO.compose || ICO.pen || '✎'}</button>
           <button type="button" class="hg-icon-btn" data-collapse title="Свернуть">${ICO.close || '✕'}</button>
         </div>
@@ -1774,23 +1850,41 @@
     panel.querySelector('#hgCompose').onclick = () => {
       openComposeSheet();
     };
+    const meBtn = panel.querySelector('#hgListMe');
+    if (meBtn) {
+      meBtn.onclick = () => {
+        state.tab = 'settings';
+        state.mobileNav = 'settings';
+        state.settingsProfileOpen = true;
+        state.settingsEditOpen = false;
+        state.chatId = null;
+        renderPanel();
+      };
+    }
   }
 
   async function openComposeSheet() {
     clearFloats();
-    root.querySelectorAll('.hg-compose-sheet,.hg-chat-profile').forEach((el) => el.remove());
-    const host = root.querySelector('.hg-chrome') || root;
+    root.querySelectorAll('.hg-compose-sheet,.hg-chat-profile,.hg-invite-sheet').forEach((el) => el.remove());
+    const host = sheetHost();
     const el = document.createElement('div');
     el.className = 'hg-compose-sheet hg-sheet';
     el.setAttribute('data-role', 'card');
     el.setAttribute('role', 'dialog');
     el.setAttribute('aria-label', 'Новый чат');
+    let mode = 'chat'; // chat | group
     el.innerHTML = `
       <div class="hg-compose-head">
         <button type="button" class="hg-icon-btn hg-compose-x" id="hgComposeClose" aria-label="Закрыть"><span aria-hidden="true">✕</span></button>
         <strong>Добавить</strong>
         <button type="button" class="hg-icon-btn hg-compose-ok" id="hgComposeDone" aria-label="Готово" disabled><span aria-hidden="true">✓</span></button>
       </div>
+      <div class="hg-compose-modes" role="tablist" aria-label="Режим">
+        <button type="button" class="hg-compose-mode is-active" data-cmode="chat" role="tab" aria-selected="true">Чат</button>
+        <button type="button" class="hg-compose-mode" data-cmode="group" role="tab" aria-selected="false">Группа</button>
+      </div>
+      <button type="button" class="hg-compose-invite-cta" id="hgComposeInvite">${ICO.invite || ICO.userPlus || '+'} Пригласить в Хугинн</button>
+      <input class="hg-compose-group-name" id="hgComposeGroupName" placeholder="Название группы" hidden />
       <div class="hg-compose-search-wrap">
         <span class="hg-compose-search-ico" aria-hidden="true">${ICO.search || '🔍'}</span>
         <input class="hg-search" id="hgComposeSearch" placeholder="Поиск" />
@@ -1803,18 +1897,48 @@
     const selected = new Set();
     const listEl = el.querySelector('#hgComposeList');
     const doneBtn = el.querySelector('#hgComposeDone');
+    const groupNameInput = el.querySelector('#hgComposeGroupName');
     el.querySelector('#hgComposeClose').onclick = () => el.remove();
+    el.querySelector('#hgComposeInvite').onclick = () => {
+      el.remove();
+      openInviteSheet();
+    };
+
+    function syncModeUi() {
+      el.querySelectorAll('[data-cmode]').forEach((btn) => {
+        const on = btn.getAttribute('data-cmode') === mode;
+        btn.classList.toggle('is-active', on);
+        btn.setAttribute('aria-selected', on ? 'true' : 'false');
+      });
+      if (groupNameInput) groupNameInput.hidden = mode !== 'group';
+      doneBtn.disabled = mode === 'group' ? selected.size < 2 : selected.size === 0;
+      doneBtn.hidden = mode === 'chat';
+    }
+
+    el.querySelectorAll('[data-cmode]').forEach((btn) => {
+      btn.onclick = () => {
+        mode = btn.getAttribute('data-cmode') === 'group' ? 'group' : 'chat';
+        selected.clear();
+        syncModeUi();
+        loadUsers(el.querySelector('#hgComposeSearch').value);
+      };
+    });
+    syncModeUi();
 
     async function loadUsers(q) {
       let users = [];
       try {
-        const data = await api('/api/users?limit=200' + (q ? ('&q=' + encodeURIComponent(q)) : ''));
+        const qs = new URLSearchParams({ is_active: 'true', limit: '200' });
+        if (q) qs.set('search', q);
+        const data = await api('/api/users?' + qs.toString());
         users = data.users || data.items || (Array.isArray(data) ? data : []);
       } catch (_) {
-        users = contactRowsFromChats().map((r) => ({ id: r.user_id, name: r.name }));
+        users = contactRowsFromChats().map((r) => ({ id: r.user_id, name: r.name, is_active: true }));
       }
       const me = myId();
-      users = (users || []).filter((u) => Number(u.id || u.user_id) !== Number(me));
+      users = (users || [])
+        .filter((u) => Number(u.id || u.user_id) !== Number(me))
+        .filter(isWritableComposeUser);
       if (q) {
         const qq = String(q).toLowerCase();
         users = users.filter((u) => String(u.name || u.full_name || u.login || '').toLowerCase().includes(qq));
@@ -1835,10 +1959,17 @@
           <span class="hg-compose-check${on ? ' is-on' : ''}" aria-hidden="true"></span>
           <div class="hg-contact-av" style="background:${avatarColor(nm)}">${esc(initials(nm))}</div>
           <div class="hg-contact-meta"><div class="hg-contact-name">${esc(nm)}</div>
-          <div class="hg-contact-status">${esc(u.last_seen_at ? ('был(а) ' + formatSeen(u.last_seen_at)) : 'был(а) недавно')}</div></div>
+          <div class="hg-contact-status">${esc(composeUserStatus(u))}</div></div>
         </button>`;
       }
-      listEl.innerHTML = html || '<div class="hg-empty">Никого не найдено</div>';
+      if (!users.length) {
+        listEl.innerHTML = `<div class="hg-empty">${q ? 'Никого не найдено' : 'Нет доступных контактов'}</div>
+          <button type="button" class="hg-compose-invite-cta" id="hgComposeInviteEmpty">${ICO.invite || '+'} Пригласить в Хугинн</button>`;
+        const emptyInv = listEl.querySelector('#hgComposeInviteEmpty');
+        if (emptyInv) emptyInv.onclick = () => { el.remove(); openInviteSheet(); };
+      } else {
+        listEl.innerHTML = html;
+      }
       const idx = el.querySelector('#hgComposeIndex');
       if (idx) {
         const letters = [...new Set((users || []).map((u) => {
@@ -1850,26 +1981,28 @@
       listEl.querySelectorAll('.hg-compose-row').forEach((row) => {
         row.onclick = async () => {
           const uid = Number(row.getAttribute('data-uid'));
-          if (selected.has(uid)) selected.delete(uid);
-          else selected.add(uid);
-          doneBtn.disabled = selected.size === 0;
-          if (selected.size === 1) {
-            // single tap → open direct immediately (TG-like)
+          if (mode === 'chat') {
             try {
               const data = await api('/api/chat-groups/direct', { method: 'POST', body: { user_id: uid } });
               const chat = data.chat || data;
+              const peerName = (users.find((u) => Number(u.id || u.user_id) === uid) || {}).name
+                || (users.find((u) => Number(u.id || u.user_id) === uid) || {}).full_name
+                || null;
               el.remove();
-              if (chat && chat.id) {
-                state.tab = 'huginn';
-                state.mobileNav = 'chats';
-                await openChat(chat.id);
-              }
+              await ensureChatOpened(chat, {
+                direct_user_id: uid,
+                direct_user_name: peerName,
+                name: peerName
+              });
             } catch (e) {
               showToast(e.message || 'Не удалось открыть чат');
               loadUsers(el.querySelector('#hgComposeSearch').value);
             }
             return;
           }
+          if (selected.has(uid)) selected.delete(uid);
+          else selected.add(uid);
+          syncModeUi();
           loadUsers(el.querySelector('#hgComposeSearch').value);
         };
       });
@@ -1877,21 +2010,16 @@
 
     doneBtn.onclick = async () => {
       const ids = [...selected];
-      if (!ids.length) return;
+      if (mode !== 'group' || ids.length < 2) return;
+      const gName = ((groupNameInput && groupNameInput.value) || '').trim() || 'Группа';
       try {
-        if (ids.length === 1) {
-          const data = await api('/api/chat-groups/direct', { method: 'POST', body: { user_id: ids[0] } });
-          el.remove();
-          await openChat((data.chat || data).id);
-          return;
-        }
         const data = await api('/api/chat-groups', {
           method: 'POST',
-          body: { name: 'Группа', member_ids: ids, group_kind: 'work' }
+          body: { name: gName, member_ids: ids, group_kind: 'work' }
         });
         const chat = data.chat || data;
         el.remove();
-        if (chat && chat.id) await openChat(chat.id);
+        await ensureChatOpened(chat, { name: gName });
       } catch (e) {
         showToast(e.message || 'Не удалось создать');
       }
@@ -1908,10 +2036,10 @@
   async function openChatProfile() {
     if (!state.chatId) return;
     clearFloats();
-    root.querySelectorAll('.hg-compose-sheet,.hg-chat-profile').forEach((el) => el.remove());
+    root.querySelectorAll('.hg-compose-sheet,.hg-chat-profile,.hg-invite-sheet').forEach((el) => el.remove());
     const chat = state.chats.find((c) => Number(c.id) === Number(state.chatId)) || {};
     const title = humanizeChatName(chat.name || chat.title || chat.direct_user_name || 'Чат');
-    const host = root.querySelector('.hg-chrome') || root;
+    const host = sheetHost();
     const el = document.createElement('div');
     el.className = 'hg-chat-profile hg-sheet';
     el.setAttribute('data-role', 'card');
@@ -2577,13 +2705,15 @@
   }
 
   function renderSettingsPanel(panel) {
-    const me = (global.AsgardAuth && AsgardAuth.user) || JSON.parse(localStorage.getItem('asgard_user') || '{}');
-    const name = me.name || me.full_name || me.login || 'Никита';
+    const meLocal = (global.AsgardAuth && AsgardAuth.user) || JSON.parse(localStorage.getItem('asgard_user') || '{}');
+    let me = meLocal;
+    const name = me.name || me.full_name || me.login || 'Пользователь';
     const shortName = name.split(' ')[0] || name;
-    const phone = me.phone || '+7 900 000-00-00';
-    const uname = me.username ? ('@' + me.username) : (me.login ? ('@' + me.login) : '@asgard');
+    const phone = me.phone || '—';
+    const role = me.role || '—';
+    const email = me.email || '—';
+    const uname = me.username ? ('@' + me.username) : (me.login ? ('@' + me.login) : '—');
     const fx = applyFxMode(localStorage.getItem('hg_power_saving') || localStorage.getItem('hg_fx'));
-    /* Root = TG settings main (avatar + quick rows + wired groups). Edit = FX/logout. */
     const quick = [
       { label: 'Мой профиль', ico: ICO.user || ICO.contacts || '👤', tone: 'is-red', set: 'profile' },
       { label: 'Избранное', ico: ICO.bookmark || ICO.pin || '🔖', tone: 'is-blue', set: 'favorites' },
@@ -2601,22 +2731,33 @@
         { label: 'Язык', ico: ICO.languages || ICO.globe || '🌐', tone: 'is-purple', value: 'Русский' }
       ]
     ];
-    const showEdit = !!state.settingsProfileOpen;
+    const showProfile = !!state.settingsProfileOpen && !state.settingsEditOpen;
+    const showEdit = !!state.settingsEditOpen;
     const quickTop = quick.slice(0, 1);
     const quickRest = quick.slice(1);
+    const headTitle = showProfile ? 'Профиль' : shortName;
+    const headBtn = showProfile || showEdit ? 'Готово' : 'Изм.';
     panel.innerHTML = `
-      <div class="hg-settings${showEdit ? ' is-profile' : ' is-root'}">
+      <div class="hg-settings${showProfile || showEdit ? ' is-profile' : ' is-root'}">
         <div class="hg-settings-head">
-          <strong class="hg-settings-title">${esc(shortName)}</strong>
-          <button type="button" class="hg-settings-edit" id="hgSettingsEdit">${showEdit ? 'Готово' : 'Изм.'}</button>
+          <strong class="hg-settings-title">${esc(headTitle)}</strong>
+          <button type="button" class="hg-settings-edit" id="hgSettingsEdit">${headBtn}</button>
         </div>
         <div class="hg-settings-profile" id="hgSettingsProfileCard">
           <div class="hg-settings-av" style="background:${avatarColor(name)}">${esc(initials(name))}</div>
-          <div class="hg-settings-name">${esc(shortName)}</div>
+          <div class="hg-settings-name">${esc(name)}</div>
           <div class="hg-settings-sub"><span class="hg-settings-shield" aria-hidden="true">1</span>${esc(phone)} · ${esc(uname)}</div>
-          <button type="button" class="hg-settings-photo-btn" id="hgSettingsPhoto">${ICO.camera || '📷'} Изменить фотографию</button>
+          ${!showProfile && !showEdit ? `<button type="button" class="hg-settings-photo-btn" id="hgSettingsPhoto">${ICO.camera || '📷'} Изменить фотографию</button>` : ''}
         </div>
-        ${!showEdit ? `
+        ${showProfile ? `
+        <div class="hg-settings-card hg-glass hg-settings-profile-detail" data-role="card" id="hgMyProfileDetail">
+          <div class="hg-settings-kv"><span class="hg-settings-k">Имя</span><span class="hg-settings-v">${esc(name)}</span></div>
+          <div class="hg-settings-kv"><span class="hg-settings-k">Роль</span><span class="hg-settings-v">${esc(role)}</span></div>
+          <div class="hg-settings-kv"><span class="hg-settings-k">Телефон</span><span class="hg-settings-v">${esc(phone)}</span></div>
+          <div class="hg-settings-kv"><span class="hg-settings-k">Email</span><span class="hg-settings-v">${esc(email)}</span></div>
+          <div class="hg-settings-kv"><span class="hg-settings-k">Логин</span><span class="hg-settings-v">${esc(uname)}</span></div>
+        </div>` : ''}
+        ${!showProfile && !showEdit ? `
         <div class="hg-settings-alert hg-glass" data-role="card">
           <div class="hg-settings-alert-head"><span class="hg-settings-alert-bang">!</span><strong class="hg-settings-alert-title">${esc(phone)} всё ещё Ваш номер?</strong></div>
           <div class="hg-settings-alert-body">Чтобы вы всегда могли войти в аккаунт, подтвердите номер. <button type="button" class="hg-settings-alert-link" id="hgSettingsPhoneMore">Подробнее</button></div>
@@ -2644,7 +2785,8 @@
             ${it.value ? `<span class="hg-settings-value">${esc(it.value)}</span>` : ''}
             <span class="hg-settings-chev">${ICO.chevronRight || '›'}</span>
           </button>`).join('')}
-        </div>`).join('')}` : `
+        </div>`).join('')}` : ''}
+        ${showEdit ? `
         <div class="hg-settings-card hg-glass" data-role="card">
           <div class="hg-settings-row hg-settings-row--static">
             <span class="hg-settings-ico is-yellow">${ICO.battery || '🔋'}</span>
@@ -2657,7 +2799,7 @@
             }).join('')}
           </div>
         </div>
-        <button type="button" class="hg-settings-logout" id="hgLogout">Выйти</button>`}
+        <button type="button" class="hg-settings-logout" id="hgLogout">Выйти</button>` : ''}
       </div>`;
     panel.querySelectorAll('[data-fx]').forEach((btn) => {
       btn.onclick = () => {
@@ -2688,7 +2830,13 @@
     const editBtn = panel.querySelector('#hgSettingsEdit');
     if (editBtn) {
       editBtn.onclick = () => {
-        state.settingsProfileOpen = !state.settingsProfileOpen;
+        if (showProfile || showEdit) {
+          state.settingsProfileOpen = false;
+          state.settingsEditOpen = false;
+        } else {
+          state.settingsEditOpen = true;
+          state.settingsProfileOpen = false;
+        }
         renderSettingsPanel(panel);
       };
     }
@@ -2697,10 +2845,48 @@
         const set = btn.getAttribute('data-set') || '';
         if (set === 'calls') { state.tab = 'phone'; state.mobileNav = 'calls'; renderPanel(); return; }
         if (set === 'favorites') { state.tab = 'huginn'; state.mobileNav = 'chats'; state.folder = 'favorites'; renderPanel(); return; }
-        if (set === 'profile') { state.settingsProfileOpen = true; renderSettingsPanel(panel); return; }
+        if (set === 'profile') {
+          state.settingsProfileOpen = true;
+          state.settingsEditOpen = false;
+          renderSettingsPanel(panel);
+          enrichMyProfile(panel);
+          return;
+        }
         showToast(btn.getAttribute('data-label') || set || 'Настройки');
       };
     });
+    if (showProfile) enrichMyProfile(panel);
+  }
+
+  async function enrichMyProfile(panel) {
+    try {
+      const data = await api('/api/users/me');
+      const u = data.user || data;
+      if (!u) return;
+      try {
+        const cur = JSON.parse(localStorage.getItem('asgard_user') || '{}');
+        localStorage.setItem('asgard_user', JSON.stringify({ ...cur, ...u }));
+      } catch (_) {}
+      const detail = panel && panel.querySelector('#hgMyProfileDetail');
+      if (!detail) return;
+      const name = u.name || u.full_name || u.login || '—';
+      const phone = u.phone || '—';
+      const role = u.role || '—';
+      const email = u.email || '—';
+      const uname = u.login ? ('@' + u.login) : '—';
+      detail.innerHTML = `
+        <div class="hg-settings-kv"><span class="hg-settings-k">Имя</span><span class="hg-settings-v">${esc(name)}</span></div>
+        <div class="hg-settings-kv"><span class="hg-settings-k">Роль</span><span class="hg-settings-v">${esc(role)}</span></div>
+        <div class="hg-settings-kv"><span class="hg-settings-k">Телефон</span><span class="hg-settings-v">${esc(phone)}</span></div>
+        <div class="hg-settings-kv"><span class="hg-settings-k">Email</span><span class="hg-settings-v">${esc(email)}</span></div>
+        <div class="hg-settings-kv"><span class="hg-settings-k">Логин</span><span class="hg-settings-v">${esc(uname)}</span></div>`;
+      const av = panel.querySelector('.hg-settings-av');
+      const nm = panel.querySelector('.hg-settings-name');
+      const sub = panel.querySelector('.hg-settings-sub');
+      if (av) { av.style.background = avatarColor(name); av.textContent = initials(name); }
+      if (nm) nm.textContent = name;
+      if (sub) sub.innerHTML = `<span class="hg-settings-shield" aria-hidden="true">1</span>${esc(phone)} · ${esc(uname)}`;
+    } catch (_) {}
   }
 
   function syncSendButton() {
@@ -3537,20 +3723,62 @@
     };
   }
 
+  async function openInviteSheet(opts) {
+    clearFloats();
+    root.querySelectorAll('.hg-invite-sheet').forEach((el) => el.remove());
+    const host = sheetHost();
+    const el = document.createElement('div');
+    el.className = 'hg-invite-sheet hg-sheet hg-compose-sheet';
+    el.setAttribute('data-role', 'card');
+    el.setAttribute('role', 'dialog');
+    el.setAttribute('aria-label', 'Пригласить в Хугинн');
+    el.innerHTML = `
+      <div class="hg-compose-head">
+        <button type="button" class="hg-icon-btn hg-compose-x" id="hgInviteClose" aria-label="Закрыть"><span aria-hidden="true">✕</span></button>
+        <strong>Пригласить</strong>
+        <span style="width:32px"></span>
+      </div>
+      <div class="hg-invite-fields">
+        <input id="hgInviteName" placeholder="Имя (необязательно)" autocomplete="name" />
+        <input id="hgInvitePhone" placeholder="Телефон" inputmode="tel" autocomplete="tel" />
+        <input id="hgInviteEmail" placeholder="Email" inputmode="email" autocomplete="email" />
+      </div>
+      <button type="button" class="hg-invite-submit" id="hgInviteSubmit">Создать ссылку</button>`;
+    host.appendChild(el);
+    el.querySelector('#hgInviteClose').onclick = () => el.remove();
+    const submit = el.querySelector('#hgInviteSubmit');
+    submit.onclick = async () => {
+      const phone = (el.querySelector('#hgInvitePhone').value || '').trim();
+      const email = (el.querySelector('#hgInviteEmail').value || '').trim();
+      const displayName = (el.querySelector('#hgInviteName').value || '').trim() || phone || email || null;
+      if (!phone && !email) {
+        showToast('Укажите телефон или email');
+        return;
+      }
+      submit.disabled = true;
+      try {
+        const body = { phone: phone || null, email: email || null, display_name: displayName };
+        if (opts && opts.chatId) body.chat_id = opts.chatId;
+        else if (state.chatId) body.chat_id = state.chatId;
+        const data = await api('/api/chat-groups/invites', { method: 'POST', body });
+        if (data.invite_url) {
+          const full = location.origin + data.invite_url;
+          try { await navigator.clipboard.writeText(full); } catch (_) {}
+          showToast('Ссылка скопирована');
+          el.remove();
+        } else {
+          showToast(data.error || 'Не удалось создать приглашение');
+          submit.disabled = false;
+        }
+      } catch (e) {
+        showToast(e.message || 'Ошибка приглашения');
+        submit.disabled = false;
+      }
+    };
+  }
+
   async function inviteSomeone() {
-    const phone = prompt('Телефон гостя (для приглашения в Хугинн):');
-    if (!phone) return;
-    const data = await api('/api/chat-groups/invites', {
-      method: 'POST',
-      body: { phone, chat_id: state.chatId, display_name: phone }
-    });
-    if (data.invite_url) {
-      const full = location.origin + data.invite_url;
-      try { await navigator.clipboard.writeText(full); } catch (_) {}
-      alert('Ссылка приглашения скопирована:\n' + full);
-    } else {
-      alert(data.error || 'Не удалось создать приглашение');
-    }
+    await openInviteSheet({ chatId: state.chatId || null });
   }
 
   /* F11 AI Editor sheet — /api/chat-groups/ai/* (not Mimir) */
@@ -3819,28 +4047,49 @@
 
   /* F11 AI Editor — chips removed (visual wave) */
 
-  function startAudioCall() {
-    const started = Date.now();
-    state.callStrip = `<div class="hg-ting-strip">Аудио звонок… <button type="button" class="hg-chip" id="hgHang">Завершить</button></div>`;
-    renderPanel();
-    const hang = () => {
-      const sec = Math.round((Date.now() - started) / 1000);
-      state.callStrip = null;
-      api('/api/chat-groups/' + state.chatId + '/call-event', {
-        method: 'POST',
-        body: { kind: 'audio', status: 'ended', duration_sec: sec, direction: 'outgoing' }
-      }).then((data) => {
-        if (data.message) {
-          state.knownMsgIds.add(data.message.id);
-          state.messages.push(data.message);
-        }
+  async function startAudioCall() {
+    const chat = state.chats.find((c) => Number(c.id) === Number(state.chatId)) || {};
+    if (isMimirMode() || isGroupChat(chat)) {
+      showToast('Звонок доступен в личном чате');
+      return;
+    }
+    const peerId = chat.direct_user_id || chat.peer_user_id || null;
+    let phone = chat.direct_user_phone || chat.peer_phone || null;
+    if (!phone && peerId) {
+      try {
+        const data = await api('/api/users/' + peerId);
+        const u = data.user || data;
+        phone = u && u.phone;
+      } catch (_) {}
+    }
+    const digits = String(phone || '').replace(/\D/g, '');
+    if (!digits || digits.length < 10) {
+      showToast('Нет номера');
+      return;
+    }
+    const display = String(phone).trim();
+    if (window.AsgardPhone && typeof AsgardPhone.outbound === 'function') {
+      try {
+        state.tab = 'phone';
+        state.mobileNav = 'calls';
+        state.chatId = null;
         renderPanel();
-      });
-    };
-    setTimeout(() => {
-      const btn = root.querySelector('#hgHang');
-      if (btn) btn.onclick = hang;
-    }, 0);
+        await AsgardPhone.outbound(digits);
+        return;
+      } catch (e) {
+        showToast(e.message || 'Не удалось позвонить');
+        return;
+      }
+    }
+    if (window.AsgardPhoneUI && typeof AsgardPhoneUI.openDialPad === 'function') {
+      state.tab = 'phone';
+      state.mobileNav = 'calls';
+      state.chatId = null;
+      renderPanel();
+      setTimeout(() => AsgardPhoneUI.openDialPad(display), 0);
+      return;
+    }
+    showToast('Нет номера');
   }
 
   function ingestMessage(msg, chatId) {
@@ -3952,6 +4201,7 @@
     state.chatId = null;
     state.messages = [];
     state.settingsProfileOpen = false;
+    state.settingsEditOpen = false;
     renderPanel();
   }
 
