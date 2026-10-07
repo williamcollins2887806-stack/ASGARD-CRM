@@ -512,6 +512,25 @@ module.exports = async function thingRoutes(fastify) {
     if (!room) return reply.code(404).send({ error: 'Тинг не найден' });
     if (!isHost(room, request.user)) return reply.code(403).send({ error: 'Только инициатор может завершить Тинг' });
 
+    // Сначала закрываем активную запись: иначе egress продолжает писать в удалённую
+    // комнату, а строка записи остаётся в 'recording' и протокол никогда не соберётся.
+    const { rows: recs } = await db.query(
+      `SELECT * FROM thing_recordings WHERE room_id = $1 AND status = 'recording' ORDER BY id DESC LIMIT 1`,
+      [room.id]
+    );
+    const activeRec = recs[0];
+    if (activeRec) {
+      if (activeRec.egress_id && livekit.isConfigured()) {
+        try { await livekit.stopEgress(activeRec.egress_id); } catch (e) {
+          fastify.log.warn('[thing] end stopEgress: ' + e.message);
+        }
+      }
+      await db.query(
+        `UPDATE thing_recordings SET status = 'ready', ended_at = NOW(), updated_at = NOW() WHERE id = $1`,
+        [activeRec.id]
+      );
+    }
+
     await livekit.deleteLiveKitRoom(room.livekit_room_name);
     const { rows } = await db.query(
       `UPDATE thing_rooms SET status = 'ended', ended_at = NOW(), updated_at = NOW()
@@ -589,7 +608,17 @@ module.exports = async function thingRoutes(fastify) {
        WHERE id = $1 RETURNING *`,
       [rec.id]
     );
-    return { recording: rows[0] };
+    // Остановка записи и есть момент, когда можно расшифровывать: ставим в очередь сразу,
+    // не дожидаясь закрытия комнаты (иначе egress останавливали — и конвейер не стартовал).
+    let protocol = 'skipped';
+    try {
+      const res = await pipeline.onRecordingReady(db, { ...rows[0], room_id: room.id });
+      protocol = res.protocol;
+    } catch (e) {
+      fastify.log.error({ err: e }, '[thing] onRecordingReady failed');
+      protocol = 'error';
+    }
+    return { recording: rows[0], protocol };
   });
 
   fastify.get('/rooms/:id/recording', { preHandler: [fastify.authenticate] }, async (request, reply) => {
@@ -640,12 +669,23 @@ module.exports = async function thingRoutes(fastify) {
       minutes = m;
     }
     const { rows: runs } = await db.query(
-      `SELECT id, status, model, created_at, completed_at, error_text
+      `SELECT id, status, model, raw_json, created_at, completed_at, error_text
        FROM thing_protocol_runs
        WHERE recording_id = $1
        ORDER BY id DESC LIMIT 5`,
       [rec ? rec.id : 0]
     );
+    // Протокол живёт в raw_json последнего успешного прогона. Отдаём его клиенту,
+    // даже если Тинг не привязан к совещанию (иначе UI показывает «Протокол пуст»).
+    const readyRun = runs.find((r) => r.status === 'ready' && r.raw_json) || null;
+    const rawJson = (readyRun && readyRun.raw_json) || {};
+    const { rows: parts } = await db.query(
+      `SELECT display_name, role FROM thing_participants WHERE room_id = $1 ORDER BY id`,
+      [room.id]
+    );
+    const summary = rawJson.summary
+      || (room.meeting_id ? ((minutes.find((m) => m.item_type === 'summary') || {}).content || '') : '')
+      || '';
     return {
       protocol_enabled: true,
       protocol_status: rec ? rec.protocol_status : 'queued',
@@ -654,6 +694,9 @@ module.exports = async function thingRoutes(fastify) {
       meeting_id: room.meeting_id || null,
       recording: rec || null,
       runs,
+      raw: rawJson,
+      summary,
+      participants: parts.map((p) => ({ display_name: p.display_name, role: p.role })),
       minutes,
       status_labels: {
         queued: 'Запись получена, протокол в очереди…',

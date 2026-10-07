@@ -1616,12 +1616,25 @@
       if (p.view === 'protocol' && p.slug) {
         const raw = await api(`/api/thing/rooms/${encodeURIComponent(p.slug)}/protocol`);
         const minutes = raw.minutes || [];
-        const tasks = minutes.filter(m => m.item_type === 'action' || m.item_type === 'task').map(m => ({
-          title: m.content,
-          assignee: m.assignee || m.owner || '—',
-          due: m.due || m.deadline || '—',
-          status: m.status || (harnessDemo() ? 'open' : 'open')
-        }));
+        const proto = raw.raw || {};
+        // Пункты берём из minutes (совещание) + raw_json (протокол без совещания)
+        const srcItems = minutes.length
+          ? minutes
+          : (proto.items || []).map((it) => ({
+              item_type: it.type,
+              content: it.content,
+              assignee: it.assignee,
+              due: it.due,
+              status: it.status
+            }));
+        const tasks = srcItems
+          .filter(m => m.item_type === 'assignment' || m.item_type === 'action' || m.item_type === 'task')
+          .map(m => ({
+            title: m.content,
+            assignee: m.assignee || m.owner || '—',
+            due: m.due || m.deadline || '—',
+            status: m.status || 'open'
+          }));
         const parts = (raw.participants || []).map(p => p.display_name || p.name || p).filter(Boolean);
         if (!parts.length && harnessDemo()) parts.push('Никита (организатор)', 'Елена', 'Гость');
         const participant_rows = (raw.participants || []).map(p => ({
@@ -1639,20 +1652,21 @@
         if (raw.meeting_id && state.room && !state.room.meeting_id) {
           state.room.meeting_id = raw.meeting_id;
         }
+        const pick = (types) => srcItems.filter(m => types.includes(m.item_type)).map(m => m.content).join('\n');
         state.protocol = {
           status: raw.protocol_status || 'queued',
           can_edit: !!raw.can_edit,
           document: {
-            title: (state.room && state.room.title) || raw.title || 'Протокол Тинга',
+            title: (state.room && state.room.title) || proto.title || raw.title || 'Протокол Тинга',
             date: raw.date || new Date().toLocaleDateString('ru-RU'),
             duration: raw.duration || (harnessDemo() ? '24 мин' : ''),
             protocol_no: raw.protocol_no || '',
-            agenda: minutes.filter(m => m.item_type === 'agenda').map(m => m.content).join('\n') || '',
-            decisions: minutes.filter(m => m.item_type === 'decision' || m.item_type === 'summary').map(m => m.content).join('\n') || '',
-            summary: raw.summary || '',
+            agenda: pick(['agenda']) || (proto.agenda || []).join('\n') || '',
+            decisions: pick(['decision', 'summary']) || proto.summary || '',
+            summary: raw.summary || proto.summary || '',
             participants: parts,
             participant_rows,
-            open_questions: minutes.filter(m => m.item_type === 'question' || m.item_type === 'open').map(m => m.content).join('\n')
+            open_questions: pick(['question', 'open']) || (proto.open_questions || []).join('\n')
               || (harnessDemo() ? 'Нужен ли выезд на объект до подписания?' : ''),
             tasks
           },

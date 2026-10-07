@@ -45,28 +45,32 @@ async function setRecordingProtocolStatus(db, recordingId, status, errorText = n
   return rows[0];
 }
 
-async function onRoomEnded(db, room) {
+async function onRecordingReady(db, rec) {
+  const { rows: rooms } = await db.query('SELECT * FROM thing_rooms WHERE id = $1', [rec.room_id]);
+  const room = rooms[0];
+  if (!room) return { protocol: 'no_room' };
   if (!room.protocol_enabled) {
     await db.query(
       `UPDATE thing_recordings
        SET protocol_status = 'skipped', updated_at = NOW()
-       WHERE room_id = $1 AND protocol_status NOT IN ('ready', 'failed')`,
-      [room.id]
+       WHERE id = $1 AND protocol_status NOT IN ('ready', 'failed')`,
+      [rec.id]
     );
     return { protocol: 'skipped' };
   }
-
-  const { rows: recs } = await db.query(
-    `SELECT * FROM thing_recordings
-     WHERE room_id = $1
-     ORDER BY id DESC
-     LIMIT 1`,
-    [room.id]
-  );
-  const rec = recs[0];
-  if (!rec) {
-    return { protocol: 'no_recording' };
+  if (rec.protocol_status === 'ready') {
+    return { protocol: 'ready', recordingId: rec.id };
   }
+
+  // Снимаем «зависшие» задачи прошлых попыток. Иначе воркер подхватит старую
+  // запись (с прежним file_path) и перетрёт статус — классический баг, когда
+  // запись висит в processing сутками.
+  await db.query(
+    `UPDATE thing_jobs
+     SET status = 'failed', error = 'superseded by new protocol run', completed_at = NOW()
+     WHERE recording_id = $1 AND status IN ('pending', 'retry', 'processing')`,
+    [rec.id]
+  );
 
   await setRecordingProtocolStatus(db, rec.id, 'queued');
   await enqueueJob(db, {
@@ -76,6 +80,23 @@ async function onRoomEnded(db, room) {
     payload: { meeting_id: room.meeting_id }
   });
   return { protocol: 'queued', recordingId: rec.id };
+}
+
+async function onRoomEnded(db, room) {
+  const { rows: recs } = await db.query(
+    `SELECT * FROM thing_recordings
+     WHERE room_id = $1
+     ORDER BY id DESC
+     LIMIT 1`,
+    [room.id]
+  );
+  const rec = recs[0];
+  if (!rec) {
+    // Записей не было: Tинг или без записи, или запись оборвалась до строки в БД
+    if (!room.protocol_enabled) return { protocol: 'skipped' };
+    return { protocol: 'no_recording' };
+  }
+  return onRecordingReady(db, rec);
 }
 
 function _parseProtocolJson(text) {
@@ -175,11 +196,32 @@ async function handleProtocol(db, job, log) {
   });
 
   const parsed = _parseProtocolJson(aiResult.text);
+
+  // Пункты протокола собираем ВСЕГДА — UI читает их из raw_json, даже когда Тинг
+  // не привязан к совещанию (иначе протокол выглядит пустым).
+  const items = [];
+  if (parsed.summary) items.push({ type: 'summary', content: parsed.summary });
+  for (const d of parsed.decisions || []) items.push({ type: 'decision', content: String(d) });
+  for (const a of parsed.assignments || []) {
+    const obj = a && typeof a === 'object' ? a : { text: a };
+    const text = String(obj.text || '').trim();
+    if (!text) continue;
+    const meta = [obj.responsible ? `→ ${obj.responsible}` : null,
+      obj.deadline ? `(срок: ${obj.deadline})` : null].filter(Boolean).join(' ');
+    items.push({
+      type: 'assignment',
+      content: [text, meta].filter(Boolean).join(' '),
+      assignee: obj.responsible || null,
+      due: obj.deadline || null,
+      status: 'open'
+    });
+  }
+
   await db.query(
     `UPDATE thing_protocol_runs
      SET status = 'ready', raw_json = $2::jsonb, model = $3, completed_at = NOW()
      WHERE id = $1`,
-    [run.id, JSON.stringify({ ...parsed, _usage: aiResult.usage || null }), aiResult.model || null]
+    [run.id, JSON.stringify({ ...parsed, items, _usage: aiResult.usage || null }), aiResult.model || null]
   );
 
   if (room.meeting_id) {
@@ -189,20 +231,6 @@ async function handleProtocol(db, job, log) {
       [room.meeting_id]
     );
     order = Number(maxRows[0].m) || 0;
-
-    const items = [];
-    if (parsed.summary) {
-      items.push({ type: 'summary', content: parsed.summary });
-    }
-    for (const d of parsed.decisions || []) {
-      items.push({ type: 'decision', content: String(d) });
-    }
-    for (const a of parsed.assignments || []) {
-      const line = [a.text, a.responsible ? `→ ${a.responsible}` : null, a.deadline ? `(срок: ${a.deadline})` : null]
-        .filter(Boolean)
-        .join(' ');
-      items.push({ type: 'assignment', content: line });
-    }
 
     for (const it of items) {
       order += 1;
@@ -324,6 +352,7 @@ module.exports = {
   PROTOCOL_STATUSES,
   enqueueJob,
   setRecordingProtocolStatus,
+  onRecordingReady,
   onRoomEnded,
   createThingWorker
 };
