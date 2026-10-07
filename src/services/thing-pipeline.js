@@ -156,8 +156,7 @@ async function handleTranscribe(db, job, log) {
 
 async function handleProtocol(db, job, log) {
   const ai = require('./ai-provider');
-  const recId = job.recording_id;
-  const { rows } = await db.query('SELECT * FROM thing_recordings WHERE id = $1', [recId]);
+  const recId = job.recording_id;  const { rows } = await db.query('SELECT * FROM thing_recordings WHERE id = $1', [recId]);
   const rec = rows[0];
   if (!rec) throw new Error('recording not found');
 
@@ -192,8 +191,16 @@ async function handleProtocol(db, job, log) {
     messages: [{ role: 'user', content: prompt.user }],
     maxTokens: 4000,
     temperature: 0.2,
-    responseFormat: { type: 'json_object' }
+    responseFormat: { type: 'json_object' },
+    // Reasoning-модель (deepseek-v4-pro) сжигает весь лимит на размышления и
+    // возвращает пустой content — протокол получался пустым. Flash отвечает
+    // сразу и валидным JSON. Переопределяется через THING_PROTOCOL_MODEL.
+    model: process.env.THING_PROTOCOL_MODEL || 'deepseek/deepseek-v4.1-flash'
   });
+
+  if (!aiResult || !String(aiResult.text || '').trim()) {
+    throw new Error('AI вернул пустой ответ (модель ' + (aiResult && aiResult.model || '?') + ')');
+  }
 
   const parsed = _parseProtocolJson(aiResult.text);
 
