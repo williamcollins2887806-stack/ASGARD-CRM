@@ -190,7 +190,9 @@ class RecordingFetcher {
 
   async _tryBasicStats(entryMap, minDate, now) {
     const dateFrom = Math.floor(minDate.getTime() / 1000);
-    const dateTo = Math.floor(now.getTime() / 1000);
+    // Mango: нельзя запрашивать будущее — иначе «Invalid date_to value» и 0 записей.
+    // window может заходить на сутки вперёд (setHours(+6)), поэтому жёстко режем на now.
+    const dateTo = Math.min(Math.floor(now.getTime() / 1000), Math.floor(Date.now() / 1000));
 
     let statsKey;
     try {

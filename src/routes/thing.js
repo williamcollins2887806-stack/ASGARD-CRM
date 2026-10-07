@@ -654,6 +654,37 @@ module.exports = async function thingRoutes(fastify) {
     if (!room.protocol_enabled) {
       return { protocol_enabled: false, protocol_status: 'skipped', can_edit: false, minutes: [] };
     }
+    // Записи нет — честно говорим почему, а не показываем вечное «Протокол пуст».
+    {
+      const { rows: any } = await db.query(
+        `SELECT 1 FROM thing_recordings WHERE room_id = $1 LIMIT 1`,
+        [room.id]
+      );
+      if (!any.length) {
+        return {
+          protocol_enabled: true,
+          protocol_status: 'no_recording',
+          protocol_error: 'Запись не велась — протоколировать нечего. Включите «Запись» (или «AI-протокол») при создании Тинга.',
+          can_edit: false,
+          meeting_id: room.meeting_id || null,
+          recording: null,
+          runs: [],
+          raw: {},
+          summary: '',
+          participants: [],
+          minutes: [],
+          status_labels: {
+            no_recording: 'Запись не велась',
+            queued: 'Запись получена, протокол в очереди…',
+            transcribing: 'Разбираем речь…',
+            generating: 'ИИ составляет протокол…',
+            ready: 'Протокол готов',
+            failed: 'Не удалось собрать протокол',
+            skipped: 'Протокол не заказывался'
+          }
+        };
+      }
+    }
     const { rows: recs } = await db.query(
       `SELECT id, protocol_status, protocol_error, transcript_status, status, updated_at
        FROM thing_recordings WHERE room_id = $1 ORDER BY id DESC LIMIT 1`,

@@ -348,7 +348,18 @@ module.exports = async function telephonyRoutes(fastify, opts) {
         mango.startRecording(callId, fromNumber).then(() => {
           console.log('[Telephony] Recording started for call ' + callId);
         }).catch(e => {
-          console.warn('[Telephony] startRecording failed:', e.message);
+          const msg = String(e && e.message || e);
+          // 3103 = запись отключена на стороне Mango VPBX. Без неё звонки не расшифровываются:
+          // включите запись в ЛК Mango (или пришлите рабочий ключ с правом на запись).
+          if (/3103/.test(msg)) {
+            if (!global.__mangoRecWarned) {
+              global.__mangoRecWarned = true;
+              console.error('[Telephony] Mango отказывает в записи (код 3103): запись отключена в ЛК Mango. '
+                + 'Расшифровка звонков работать не будет, пока запись не включат на стороне Mango.');
+            }
+          } else {
+            console.warn('[Telephony] startRecording failed:', msg);
+          }
         });
       }
 
@@ -1096,7 +1107,9 @@ module.exports = async function telephonyRoutes(fastify, opts) {
 
     const scope = String(request.query.scope || '');
     if (scope === 'office') {
-      if (!hasFullCallView(user)) {
+      // Очередь непрочитанных офисных (user_id IS NULL) — видна всем с доступом к телефонии.
+      // Полный офисный журнал без фильтра — только full-view (ниже по UI «Все»).
+      if (!TEL_ROLES.includes(user.role)) {
         return reply.code(403).send({ error: 'Forbidden' });
       }
       conditions.push('ch.user_id IS NULL');
@@ -1181,7 +1194,8 @@ module.exports = async function telephonyRoutes(fastify, opts) {
       [uid]
     );
     let officeUnack = 0;
-    if (hasFullCallView(request.user)) {
+    // Офисная очередь пропущенных нужна операторам на линии (не только директорам)
+    if (TEL_ROLES.includes(request.user.role)) {
       const off = await db.query(
         `SELECT COUNT(*)::int AS n FROM call_history
          WHERE call_type = 'missed' AND user_id IS NULL AND COALESCE(missed_acknowledged, false) = false
@@ -1195,6 +1209,16 @@ module.exports = async function telephonyRoutes(fastify, opts) {
        FROM call_history ch
        LEFT JOIN customers c ON c.inn = ch.client_inn
        WHERE ch.user_id = $1
+          OR ch.answered_by = $1
+          OR EXISTS (
+               SELECT 1 FROM pbx_call_legs l
+               WHERE l.user_id = $1
+                 AND (
+                   l.call_id = ch.call_id
+                   OR l.call_id = ch.pbx_uid
+                   OR l.call_id = ('pbx_' || NULLIF(ch.pbx_uid, ''))
+                 )
+             )
        ORDER BY ch.created_at DESC
        LIMIT 8`,
       [uid]
@@ -1218,7 +1242,7 @@ module.exports = async function telephonyRoutes(fastify, opts) {
       today_total: todayTotal.rows[0].n,
       office_unack: officeUnack,
       week_spark: spark.rows.map((r) => r.n),
-      can_see_office: hasFullCallView(request.user),
+      can_see_office: TEL_ROLES.includes(request.user.role),
       recent: recent.rows,
     });
   });

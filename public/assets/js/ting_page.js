@@ -349,6 +349,8 @@
         <p class="ting-muted">Участники по ссылке входят сами. Зал ожидания — по желанию.</p>
         <input class="ting-field" id="ting-title" placeholder="Название" maxlength="200" />
         <label class="ting-switch"><input type="checkbox" id="ting-lobby" /><span class="ting-switch-ui"></span><span>${esc(COPY.lobbyWait)}</span><span class="ting-tip" tabindex="0" data-tip="Гость ждёт, пока организатор пустит из панели участников">?</span></label>
+        <label class="ting-switch"><input type="checkbox" id="ting-rec" /><span class="ting-switch-ui"></span><span>Запись разговора</span><span class="ting-tip" tabindex="0" data-tip="Запись начнётся автоматически при входе организатора. Файл пишется на сервер.">?</span></label>
+        <label class="ting-switch"><input type="checkbox" id="ting-proto" /><span class="ting-switch-ui"></span><span>AI-протокол</span><span class="ting-tip" tabindex="0" data-tip="ИИ соберёт решения и поручения из расшифровки. Требует записи — включит её автоматически.">?</span></label>
         <div class="ting-cta-row">
           <button type="button" class="ting-btn ting-btn-primary" data-act="create">${esc(COPY.createNow)}</button>
           <button type="button" class="ting-btn ting-btn-ghost" data-act="hub">${esc(COPY.cancel)}</button>
@@ -414,6 +416,8 @@
         </div>
         <p class="ting-muted ting-label-sm" id="ting-when-hint">${esc(when.label)}</p>
         <label class="ting-switch"><input type="checkbox" id="ting-lobby" /><span class="ting-switch-ui"></span><span>${esc(COPY.lobbyWait)}</span><span class="ting-tip" tabindex="0" data-tip="Гость ждёт, пока организатор пустит из панели участников">?</span></label>
+        <label class="ting-switch"><input type="checkbox" id="ting-rec" /><span class="ting-switch-ui"></span><span>Запись разговора</span><span class="ting-tip" tabindex="0" data-tip="Запись начнётся автоматически при входе организатора.">?</span></label>
+        <label class="ting-switch"><input type="checkbox" id="ting-proto" /><span class="ting-switch-ui"></span><span>AI-протокол</span><span class="ting-tip" tabindex="0" data-tip="ИИ соберёт решения и поручения из расшифровки.">?</span></label>
         <div class="ting-cta-row">
           <button type="button" class="ting-btn ting-btn-primary" data-act="create-sched">Сохранить</button>
           <button type="button" class="ting-btn ting-btn-ghost" data-act="hub">${esc(COPY.back)}</button>
@@ -469,6 +473,8 @@
           <button type="button" class="ting-invite-add" data-act="invite-guest">+ гость</button>
         </div>
         <label class="ting-switch"><input type="checkbox" id="ting-lobby" /><span class="ting-switch-ui"></span><span>${esc(COPY.lobbyWait)}</span><span class="ting-tip" tabindex="0" data-tip="Гость ждёт, пока организатор пустит из панели участников">?</span></label>
+        <label class="ting-switch"><input type="checkbox" id="ting-rec" /><span class="ting-switch-ui"></span><span>Запись разговора</span><span class="ting-tip" tabindex="0" data-tip="Запись начнётся автоматически при входе организатора.">?</span></label>
+        <label class="ting-switch"><input type="checkbox" id="ting-proto" /><span class="ting-switch-ui"></span><span>AI-протокол</span><span class="ting-tip" tabindex="0" data-tip="ИИ соберёт решения и поручения из расшифровки.">?</span></label>
         <label class="ting-switch"><input type="checkbox" id="ting-with-room" checked /><span class="ting-switch-ui"></span><span>Тинг-конференция</span><span class="ting-tip" tabindex="0" data-tip="Создать видеокомнату LiveKit вместе с карточкой совещания">?</span></label>
         <div class="ting-cta-row ting-stack">
           <button type="button" class="ting-btn ting-btn-primary" data-act="create-meeting">Создать совещание и комнату Тинга</button>
@@ -817,7 +823,10 @@
     const openQ = d.open_questions || '';
     const hasBody = !!(parts || decisions || agenda || tasks || openQ);
     const preparing = !statusKey || ['queued', 'pending', 'processing', 'transcribing', 'generating'].includes(statusKey);
-    const emptyHint = preparing ? 'Протокол готовится' : 'Протокол пуст';
+    const noRecording = statusKey === 'no_recording';
+    const emptyHint = noRecording
+      ? (raw.protocol_error || 'Запись не велась — протоколировать нечего')
+      : (preparing ? 'Протокол готовится' : 'Протокол пуст');
     const meetingId = (state.room && state.room.meeting_id) || raw.meeting_id || null;
     const meetingHref = meetingId ? `#/meetings/${meetingId}` : (state.room && state.room.slug ? `#/ting?view=meeting&slug=${encodeURIComponent(state.room.slug)}` : '#/meetings');
     const summary = d.summary || decisions || (harnessDemo() ? 'Согласовали объёмы ОВКВ; КП уходит заказчику до пятницы.' : '');
@@ -1707,10 +1716,33 @@
       await refreshChat(slug);
       startLiveLoop(slug);
       setIncall(true);
+      autoStartRecording(slug);
       return;
     }
     if (!state.lkRoom || (state.room && state.room.slug !== slug)) {
       await connectRoom(slug);
+    }
+  }
+
+  /**
+   * Запись в режиме 'auto' стартует сама при входе организатора (один раз на комнату).
+   * Если протокол включён, а записи нет — подскажем, что протокол будет пустым.
+   */
+  const autoRecStarted = {};
+  async function autoStartRecording(slug) {
+    if (!slug || autoRecStarted[slug]) return;
+    const room = state.room || {};
+    if (String(room.recording_mode || '') !== 'auto') return;
+    if (room.status === 'ended' || room.status === 'cancelled') return;
+    autoRecStarted[slug] = true;
+    try {
+      await api(`/api/thing/rooms/${encodeURIComponent(slug)}/recording/start`, { method: 'POST', body: '{}' });
+      state.recording = true;
+      toast('Запись включена автоматически');
+      if (state.view === 'room') render();
+    } catch (e) {
+      autoRecStarted[slug] = false;
+      toast('Не удалось начать запись: ' + (e.message || 'ошибка'), false);
     }
   }
 
@@ -1740,6 +1772,7 @@
         state.recording = true;
       }
       renderRoom();
+      autoStartRecording(state.room && state.room.slug);
     }
     else if (v === 'ended') renderEnded();
     else if (v === 'protocol') renderProtocol();
@@ -1812,7 +1845,15 @@
       if (act === 'create' || act === 'create-sched') {
         const title = (qs('#ting-title') && qs('#ting-title').value || '').trim() || 'Тинг';
         const lobby = qs('#ting-lobby') ? qs('#ting-lobby').checked : false;
-        const body = { title, lobby_enabled: lobby };
+        let rec = qs('#ting-rec') ? qs('#ting-rec').checked : false;
+        let proto = qs('#ting-proto') ? qs('#ting-proto').checked : false;
+        if (proto) rec = true;   // протокол без расшифровки бессмыслен
+        const body = {
+          title,
+          lobby_enabled: lobby,
+          recording_mode: rec ? 'auto' : 'manual',
+          protocol_enabled: proto
+        };
         if (act === 'create-sched') {
           const when = readWhenField();
           if (when) {
@@ -1828,6 +1869,9 @@
       if (act === 'create-meeting' || act === 'create-meeting-only') {
         const title = (qs('#ting-title') && qs('#ting-title').value || '').trim() || 'Совещание';
         const lobby = qs('#ting-lobby') ? qs('#ting-lobby').checked : false;
+        let rec = qs('#ting-rec') ? qs('#ting-rec').checked : false;
+        let proto = qs('#ting-proto') ? qs('#ting-proto').checked : false;
+        if (proto) rec = true;
         const withRoom = act === 'create-meeting-only'
           ? false
           : (!qs('#ting-with-room') || qs('#ting-with-room').checked);
@@ -1864,7 +1908,13 @@
           }
           const tr = await api('/api/thing/rooms', {
             method: 'POST',
-            body: JSON.stringify({ title, meeting_id: meetingId, lobby_enabled: lobby, protocol_enabled: true })
+            body: JSON.stringify({
+              title,
+              meeting_id: meetingId,
+              lobby_enabled: lobby,
+              protocol_enabled: proto,
+              recording_mode: rec ? 'auto' : 'manual'
+            })
           });
           const room = unwrapRoom(tr);
           if (!room || !room.slug) throw new Error('Комната Тинга не создана');

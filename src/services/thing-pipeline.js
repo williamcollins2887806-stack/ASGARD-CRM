@@ -92,8 +92,18 @@ async function onRoomEnded(db, room) {
   );
   const rec = recs[0];
   if (!rec) {
-    // Записей не было: Tинг или без записи, или запись оборвалась до строки в БД
+    // Записи не было: Tинг или без записи, или писали вручную и не включали.
+    // Протокол из воздуха не делаем — отдаём понятный статус вместо пустого экрана.
     if (!room.protocol_enabled) return { protocol: 'skipped' };
+    try {
+      await createNotification(db, {
+        user_id: room.host_user_id,
+        title: 'Протокол не собран',
+        message: room.title + ' — запись не велась',
+        type: 'thing',
+        link: `#/ting?view=protocol&slug=${room.slug}`
+      });
+    } catch (_) { /* уведомление не критично */ }
     return { protocol: 'no_recording' };
   }
   return onRecordingReady(db, rec);
