@@ -2050,9 +2050,11 @@ details > *:not(summary) {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: var(--sp-3);
   padding: var(--sp-3) 0;
   border-bottom: 1px solid var(--brd);
 }
+.info-row > * { min-width: 0; overflow-wrap: anywhere; }
 
 .info-section {
   margin-bottom: var(--sp-6);

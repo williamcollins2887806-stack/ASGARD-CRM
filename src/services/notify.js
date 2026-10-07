@@ -106,4 +106,55 @@ async function createNotification(db, { user_id, title, message, type, link }) {
   }
 }
 
-module.exports = { createNotification, toPushUrl };
+/**
+ * Только web-push (без строки в notifications): входящий звонок, tag схлопывается.
+ */
+async function sendIncomingCallPush(db, userId, { title, body, from, tag, type, call_id, kind } = {}) {
+  if (!userId) return;
+  try {
+    let webpush;
+    try { webpush = require('web-push'); } catch (e) { webpush = null; }
+    if (!webpush) return;
+    const publicKey = process.env.VAPID_PUBLIC_KEY;
+    const privateKey = process.env.VAPID_PRIVATE_KEY;
+    if (!publicKey || !privateKey) return;
+    const email = process.env.VAPID_EMAIL || 'mailto:admin@asgard-crm.ru';
+    webpush.setVapidDetails(email, publicKey, privateKey);
+    const subs = await db.query(
+      'SELECT id, endpoint, p256dh, auth FROM push_subscriptions WHERE user_id = $1',
+      [userId]
+    );
+    const who = from || '';
+    const isHuginnCall = String(type) === 'call' && call_id != null;
+    const payload = JSON.stringify({
+      title: title || 'Входящий звонок',
+      body: body || (who ? String(who) : 'Ответьте в приложении'),
+      url: isHuginnCall ? ('/?call=' + encodeURIComponent(call_id)) : '/m/telephony?wake=1',
+      tag: tag || (isHuginnCall ? ('call-' + call_id) : 'telephony-incoming'),
+      requireInteraction: true,
+      icon: './assets/img/icon-192.png',
+      type: type || null,
+      call_id: call_id != null ? call_id : null,
+      kind: kind || null,
+      actions: isHuginnCall
+        ? [{ action: 'accept', title: 'Принять' }, { action: 'decline', title: 'Отклонить' }]
+        : undefined
+    });
+    for (const sub of subs.rows) {
+      try {
+        await webpush.sendNotification({
+          endpoint: sub.endpoint,
+          keys: { p256dh: sub.p256dh, auth: sub.auth },
+        }, payload);
+      } catch (pushErr) {
+        if (pushErr.statusCode === 410 || pushErr.statusCode === 404) {
+          await db.query('DELETE FROM push_subscriptions WHERE id = $1', [sub.id]);
+        }
+      }
+    }
+  } catch (e) {
+    console.error('[notify] incoming push:', e.message);
+  }
+}
+
+module.exports = { createNotification, toPushUrl, sendIncomingCallPush };

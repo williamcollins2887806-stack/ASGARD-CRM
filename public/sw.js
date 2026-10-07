@@ -2,7 +2,7 @@
 // Shell caching + Push Notifications + Offline Support + Background Sync
 // Session 15: PWA + Push Actions + Badge + Offline
 
-const SHELL_VERSION = '20.28.100';
+const SHELL_VERSION = '20.28.101';
 const CACHE_NAME = `asgard-crm-shell-${SHELL_VERSION}`;
 const API_CACHE_NAME = 'asgard-crm-api-v2';
 
@@ -376,7 +376,7 @@ self.addEventListener('push', function(event) {
     icon: payload.icon || './assets/img/icon-192.png',
     badge: payload.badge || './assets/img/icon-96.png',
     tag: payload.tag || 'asgard-notification',
-    data: payload.data || { url: payload.url || '/' },
+    data: payload.data || { url: payload.url || '/', type: payload.type || null, call_id: payload.call_id || null, kind: payload.kind || null },
     vibrate: payload.tag === 'telephony-incoming' ? [300, 120, 300, 120, 300] : [200, 100, 200],
     requireInteraction: payload.requireInteraction || payload.tag === 'telephony-incoming' || !!(payload.actions && payload.actions.length),
     actions: (payload.actions || []).slice(0, 2)
@@ -406,6 +406,26 @@ self.addEventListener('notificationclick', function(event) {
 
   var action = event.action;
   var data = event.notification.data || {};
+
+  // Huginn 1:1 call: accept/decline ride on the deep-link (?call=<id>).
+  if (data && data.type === 'call' && data.call_id) {
+    var callTarget = '/?call=' + encodeURIComponent(data.call_id)
+      + (action ? ('&call_action=' + encodeURIComponent(action)) : '');
+    event.waitUntil(
+      clients.matchAll({ type: 'window', includeUncontrolled: true })
+        .then(function(clientList) {
+          for (var ci = 0; ci < clientList.length; ci++) {
+            if (new URL(clientList[ci].url).origin === location.origin) {
+              clientList[ci].focus();
+              clientList[ci].postMessage({ type: 'NOTIFICATION_CLICK', url: callTarget, action: action, data: data });
+              return clientList[ci];
+            }
+          }
+          return clients.openWindow(callTarget);
+        })
+    );
+    return;
+  }
 
   // Build target URL with action params
   var targetUrl = data.url || '/';

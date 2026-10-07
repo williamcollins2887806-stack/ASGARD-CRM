@@ -534,8 +534,8 @@
   gap: 8px;
   font-size: 13px;
 }
-.kv-key { color: var(--t-3); }
-.kv-val { color: var(--t-1); }
+.kv-key { color: var(--t-3); min-width: 0; }
+.kv-val { color: var(--t-1); min-width: 0; overflow-wrap: anywhere; }
 
 /* Mimir-banner — фиолетовая плашка-подсказка про эталоны */
 .mimir-banner {

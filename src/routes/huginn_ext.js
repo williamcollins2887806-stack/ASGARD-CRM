@@ -10,7 +10,9 @@ const huginnEvents = require('../services/huginn-events');
 const chatVoiceStt = require('../services/chat-voice-stt');
 const huginnFolders = require('../services/huginn-folders');
 const huginnAiEditor = require('../services/huginn-ai-editor');
-const { sendToUser, isUserOnline } = require('./sse');
+const livekit = require('../services/thing-livekit');
+const { sendIncomingCallPush } = require('../services/notify');
+const { sendToUser, isUserOnline, getOnlineUserIds } = require('./sse');
 
 function parsePositiveInt(value) {
   const raw = String(value || '').trim();
@@ -687,6 +689,426 @@ module.exports = async function registerHuginnExt(fastify, { db, uploadDir, getC
       if (e.code === 'not_found') return reply.code(404).send({ error: e.message });
       throw e;
     }
+  });
+
+  // ═══════════════════════════════════════════════════════════════
+  // 1:1 calls (LiveKit) — direct chats only, exactly two humans
+  // ═══════════════════════════════════════════════════════════════
+
+  async function getDirectPairForCall(chatId) {
+    const { rows: [chat] } = await db.query(
+      'SELECT id, name, type, is_group, is_mimir FROM chats WHERE id = $1',
+      [chatId]
+    );
+    if (!chat) return { error: 'not_found' };
+    if (chat.is_group || chat.type !== 'direct' || chat.is_mimir) return { error: 'not_direct' };
+    const { rows: members } = await db.query(
+      `SELECT m.user_id, u.name, u.role
+         FROM chat_group_members m
+         JOIN users u ON u.id = m.user_id
+        WHERE m.chat_id = $1
+        ORDER BY m.user_id`,
+      [chatId]
+    );
+    if (members.length !== 2) return { error: 'not_pair' };
+    return { chat, members };
+  }
+
+  async function getActiveCallForUser(userId) {
+    const { rows: [row] } = await db.query(
+      `SELECT * FROM huginn_calls
+        WHERE status IN ('ringing', 'active')
+          AND (caller_id = $1 OR callee_id = $1)
+        ORDER BY created_at DESC
+        LIMIT 1`,
+      [userId]
+    );
+    return row || null;
+  }
+
+  function identityForCall(userId) {
+    return 'user-' + userId;
+  }
+
+  async function tokenForCall(call, userId) {
+    try {
+      const out = await livekit.createAccessToken({
+        roomName: call.livekit_room,
+        identity: identityForCall(userId),
+        name: String(userId),
+        ttlSec: 2 * 60 * 60
+      });
+      return { token: out.token, ws_url: out.url };
+    } catch (e) {
+      return { token: null, ws_url: livekit.publicWsUrl(), error: e.message };
+    }
+  }
+
+  function callPublicShape(call, extra) {
+    return Object.assign({
+      id: call.id,
+      chat_id: call.chat_id,
+      caller_id: call.caller_id,
+      callee_id: call.callee_id,
+      kind: call.kind,
+      status: call.status,
+      created_at: call.created_at,
+      answered_at: call.answered_at,
+      ended_at: call.ended_at,
+      duration_sec: call.duration_sec
+    }, extra || {});
+  }
+
+  /** Peer display name relative to a viewer (for the call window title). */
+  async function peerNameForCall(call, viewerId) {
+    const peerId = Number(call.caller_id) === Number(viewerId) ? call.callee_id : call.caller_id;
+    const { rows: [u] } = await db.query('SELECT name FROM users WHERE id = $1', [peerId]);
+    return u ? u.name : 'Сотрудник';
+  }
+
+  // POST /calls — start ringing a 1:1 call
+  fastify.post('/calls', {
+    preHandler: [fastify.authenticate]
+  }, async (request, reply) => {
+    const body = request.body || {};
+    const chatId = parsePositiveInt(body.chat_id);
+    const kind = body.kind === 'video' ? 'video' : 'audio';
+    if (chatId == null) return reply.code(400).send({ error: 'chat_id required' });
+
+    const pair = await getDirectPairForCall(chatId);
+    if (pair.error === 'not_found') return reply.code(404).send({ error: 'Чат не найден' });
+    if (pair.error === 'not_direct') return reply.code(400).send({ error: 'Звонок доступен только в личном чате' });
+    if (pair.error === 'not_pair') return reply.code(409).send({ error: 'В этом чате не двое участников' });
+
+    const me = Number(request.user.id);
+    const other = pair.members.find((m) => Number(m.user_id) !== me);
+    if (!other) return reply.code(403).send({ error: 'Вы не участник чата' });
+
+    const myActive = await getActiveCallForUser(me);
+    if (myActive) return reply.code(409).send({ error: 'У вас уже есть активный звонок', busy: true });
+    const peerActive = await getActiveCallForUser(Number(other.user_id));
+    if (peerActive) return reply.code(409).send({ error: 'Собеседник сейчас говорит по другому звонку', busy: true });
+
+    const { rows: [call] } = await db.query(
+      `INSERT INTO huginn_calls (chat_id, caller_id, callee_id, kind, status, livekit_room)
+       VALUES ($1, $2, $3, $4, 'ringing', $5)
+       RETURNING *`,
+      [chatId, me, Number(other.user_id), kind, 'pending']
+    );
+    const room = 'huginn-call-' + call.id;
+    await db.query('UPDATE huginn_calls SET livekit_room = $1 WHERE id = $2', [room, call.id]);
+    call.livekit_room = room;
+
+    if (livekit.isConfigured()) {
+      try {
+        await livekit.ensureLiveKitRoom(room, { maxParticipants: 2, emptyTimeout: 120 });
+      } catch (e) {
+        fastify.log.warn('ensureLiveKitRoom:', e.message);
+      }
+    }
+
+    const callerName = request.user.name || 'Сотрудник';
+    // Ring the callee: durable SSE (works across tabs) + web-push (works closed)
+    try {
+      await huginnEvents.publish(db, {
+        userIds: [Number(other.user_id)],
+        eventType: 'call:incoming',
+        payload: { ...callPublicShape(call), from_name: callerName, peer_name: callerName, room }
+      });
+    } catch (_) {}
+    sendToUser(Number(other.user_id), 'call:incoming', { ...callPublicShape(call), from_name: callerName, peer_name: callerName, room });
+    sendIncomingCallPush(db, Number(other.user_id), {
+      title: kind === 'video' ? 'Видеозвонок' : 'Звонок',
+      body: callerName,
+      from: callerName,
+      tag: 'call-' + call.id,
+      type: 'call',
+      call_id: call.id,
+      kind
+    }).catch(() => {});
+
+    const mine = await tokenForCall(call, me);
+    return {
+      call: callPublicShape(call, { peer_name: other.name }),
+      room,
+      ws_url: mine.ws_url,
+      token: mine.token,
+      livekit_ready: livekit.isConfigured()
+    };
+  });
+
+  // GET /calls/active — my current ring/active call (reconnect after reload)
+  fastify.get('/calls/active', {
+    preHandler: [fastify.authenticate]
+  }, async (request) => {
+    const call = await getActiveCallForUser(Number(request.user.id));
+    if (!call) return { call: null };
+    const { rows: [row] } = await db.query(
+      `SELECT id, name, type, is_group, is_mimir,
+              (SELECT u.name FROM chat_group_members m JOIN users u ON u.id = m.user_id
+                WHERE m.chat_id = c.id AND m.user_id <> $2 LIMIT 1) AS peer_name
+         FROM chats c WHERE c.id = $1`,
+      [call.chat_id, Number(request.user.id)]
+    );
+    return {
+      call: callPublicShape(call, { peer_name: (row && row.peer_name) || 'Сотрудник' }),
+      room: call.livekit_room,
+      ws_url: livekit.publicWsUrl(),
+      chat: row || null,
+      incoming: Number(call.callee_id) === Number(request.user.id) && call.status === 'ringing'
+    };
+  });
+
+  // GET /calls/:id — status (poll fallback)
+  fastify.get('/calls/:id', {
+    preHandler: [fastify.authenticate]
+  }, async (request, reply) => {
+    const id = parsePositiveInt(request.params.id);
+    if (id == null) return reply.code(400).send({ error: 'bad id' });
+    const { rows: [call] } = await db.query('SELECT * FROM huginn_calls WHERE id = $1', [id]);
+    if (!call) return reply.code(404).send({ error: 'Звонок не найден' });
+    const me = Number(request.user.id);
+    if (Number(call.caller_id) !== me && Number(call.callee_id) !== me) {
+      return reply.code(403).send({ error: 'Нет доступа' });
+    }
+    return { call: callPublicShape(call), room: call.livekit_room };
+  });
+
+  // POST /calls/:id/token — (re)issue media token while the call is alive
+  fastify.post('/calls/:id/token', {
+    preHandler: [fastify.authenticate]
+  }, async (request, reply) => {
+    const id = parsePositiveInt(request.params.id);
+    if (id == null) return reply.code(400).send({ error: 'bad id' });
+    const { rows: [call] } = await db.query('SELECT * FROM huginn_calls WHERE id = $1', [id]);
+    if (!call) return reply.code(404).send({ error: 'Звонок не найден' });
+    const me = Number(request.user.id);
+    if (Number(call.caller_id) !== me && Number(call.callee_id) !== me) {
+      return reply.code(403).send({ error: 'Нет доступа' });
+    }
+    if (!['ringing', 'active'].includes(call.status)) {
+      return reply.code(409).send({ error: 'Звонок завершён' });
+    }
+    const out = await tokenForCall(call, me);
+    return { call: callPublicShape(call), room: call.livekit_room, ws_url: out.ws_url, token: out.token };
+  });
+
+  // POST /calls/:id/answer — callee accepts
+  fastify.post('/calls/:id/answer', {
+    preHandler: [fastify.authenticate]
+  }, async (request, reply) => {
+    const id = parsePositiveInt(request.params.id);
+    const me = Number(request.user.id);
+    const { rows: [call] } = await db.query('SELECT * FROM huginn_calls WHERE id = $1', [id]);
+    if (!call) return reply.code(404).send({ error: 'Звонок не найден' });
+    if (Number(call.callee_id) !== me) return reply.code(403).send({ error: 'Не ваш звонок' });
+    if (call.status !== 'ringing') return reply.code(409).send({ error: 'Звонок уже не звонит' });
+
+    const { rows: [updated] } = await db.query(
+      `UPDATE huginn_calls SET status = 'active', answered_at = NOW()
+        WHERE id = $1 AND status = 'ringing' RETURNING *`,
+      [id]
+    );
+    if (!updated) return reply.code(409).send({ error: 'Звонок уже не звонит' });
+
+    const payload = { ...callPublicShape(updated), room: updated.livekit_room };
+    try {
+      await huginnEvents.publish(db, {
+        userIds: [Number(updated.caller_id)],
+        eventType: 'call:accepted',
+        payload
+      });
+    } catch (_) {}
+    sendToUser(Number(updated.caller_id), 'call:accepted', payload);
+
+    const mine = await tokenForCall(updated, me);
+    const peerName = await peerNameForCall(updated, me);
+    return {
+      call: callPublicShape(updated, { peer_name: peerName }),
+      room: updated.livekit_room,
+      ws_url: mine.ws_url,
+      token: mine.token
+    };
+  });
+
+  // POST /calls/:id/decline — callee rejects
+  fastify.post('/calls/:id/decline', {
+    preHandler: [fastify.authenticate]
+  }, async (request, reply) => {
+    const id = parsePositiveInt(request.params.id);
+    const me = Number(request.user.id);
+    const { rows: [call] } = await db.query('SELECT * FROM huginn_calls WHERE id = $1', [id]);
+    if (!call) return reply.code(404).send({ error: 'Звонок не найден' });
+    if (Number(call.callee_id) !== me) return reply.code(403).send({ error: 'Не ваш звонок' });
+
+    const { rows: [updated] } = await db.query(
+      `UPDATE huginn_calls SET status = 'declined', ended_at = NOW()
+        WHERE id = $1 AND status IN ('ringing', 'active') RETURNING *`,
+      [id]
+    );
+    if (!updated) return reply.code(409).send({ error: 'Звонок уже завершён' });
+
+    const payload = { ...callPublicShape(updated), room: updated.livekit_room, reason: 'declined' };
+    try {
+      await huginnEvents.publish(db, {
+        userIds: [Number(updated.caller_id)],
+        eventType: 'call:declined',
+        payload
+      });
+    } catch (_) {}
+    sendToUser(Number(updated.caller_id), 'call:declined', payload);
+    await writeCallEvent(updated, 'missed', Number(updated.caller_id));
+    return { call: callPublicShape(updated) };
+  });
+
+  // POST /calls/:id/end — either side hangs up
+  fastify.post('/calls/:id/end', {
+    preHandler: [fastify.authenticate]
+  }, async (request, reply) => {
+    const id = parsePositiveInt(request.params.id);
+    const me = Number(request.user.id);
+    const { rows: [call] } = await db.query('SELECT * FROM huginn_calls WHERE id = $1', [id]);
+    if (!call) return reply.code(404).send({ error: 'Звонок не найден' });
+    if (Number(call.caller_id) !== me && Number(call.callee_id) !== me) {
+      return reply.code(403).send({ error: 'Нет доступа' });
+    }
+    const { rows: [updated] } = await db.query(
+      `UPDATE huginn_calls
+          SET status = CASE WHEN answered_at IS NULL THEN 'canceled' ELSE 'ended' END,
+              ended_at = NOW(),
+              duration_sec = CASE WHEN answered_at IS NULL THEN 0
+                                  ELSE GREATEST(0, EXTRACT(EPOCH FROM (NOW() - answered_at))::int) END
+        WHERE id = $1 AND status IN ('ringing', 'active') RETURNING *`,
+      [id]
+    );
+    if (!updated) return { call: callPublicShape(call), already: true };
+
+    const payload = { ...callPublicShape(updated), room: updated.livekit_room, reason: updated.status };
+    const peerId = Number(updated.caller_id) === me ? Number(updated.callee_id) : Number(updated.caller_id);
+    try {
+      await huginnEvents.publish(db, {
+        userIds: [peerId],
+        eventType: 'call:ended',
+        payload
+      });
+    } catch (_) {}
+    sendToUser(peerId, 'call:ended', payload);
+    await writeCallEvent(updated, updated.status, me);
+    return { call: callPublicShape(updated) };
+  });
+
+  /** System chat bubble about a finished call (reuses the call_event message type). */
+  async function writeCallEvent(call, status, actorId) {
+    try {
+      const label = status === 'missed'
+        ? 'Пропущенный звонок'
+        : `Звонок · ${Number(call.duration_sec) || 0}с`;
+      const meta = {
+        kind: call.kind === 'video' ? 'video' : 'audio',
+        direction: Number(call.caller_id) === Number(actorId) ? 'outgoing' : 'incoming',
+        status: status === 'canceled' ? 'canceled' : status,
+        duration_sec: Number(call.duration_sec) || 0,
+        call_id: call.id
+      };
+      const { rows: [msg] } = await db.query(
+        `INSERT INTO chat_messages
+           (chat_id, user_id, message, message_type, metadata, is_system, created_at)
+         VALUES ($1,$2,$3,'call_event',$4::jsonb,true,NOW())
+         RETURNING *`,
+        [call.chat_id, actorId, label, JSON.stringify(meta)]
+      );
+      await huginnEvents.publishToChatMembers(db, {
+        chatId: call.chat_id,
+        eventType: 'chat:new_message',
+        payload: { chat_id: call.chat_id, message: msg }
+      });
+      return msg;
+    } catch (e) {
+      fastify.log.warn('writeCallEvent:', e.message);
+      return null;
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  // Presence map (all) + Huginn directory
+  // ═══════════════════════════════════════════════════════════════
+
+  fastify.get('/presence/all', {
+    preHandler: [fastify.authenticate]
+  }, async () => {
+    const ids = getOnlineUserIds();
+    const onlineSet = new Set(ids);
+    const { rows } = await db.query(
+      `SELECT id AS user_id, name, last_seen_at
+         FROM users
+        WHERE is_active = true AND COALESCE(is_blocked, false) = false
+        ORDER BY name`
+    );
+    return {
+      presence: rows.map((r) => ({
+        user_id: r.user_id,
+        name: r.name,
+        last_seen_at: r.last_seen_at,
+        online: onlineSet.has(Number(r.user_id))
+      }))
+    };
+  });
+
+  fastify.get('/directory', {
+    preHandler: [fastify.authenticate]
+  }, async (request) => {
+    const me = Number(request.user.id);
+    const onlineSet = new Set(getOnlineUserIds());
+    const { rows } = await db.query(
+      `SELECT u.id AS user_id, u.name, u.role, u.last_seen_at,
+              COALESCE(u.is_huginn_guest, false) AS is_huginn_guest,
+              (SELECT c.id
+                 FROM chats c
+                 JOIN chat_group_members m1 ON m1.chat_id = c.id AND m1.user_id = $1
+                 JOIN chat_group_members m2 ON m2.chat_id = c.id AND m2.user_id = u.id
+                WHERE c.type = 'direct' AND COALESCE(c.is_group, false) = false
+                  AND COALESCE(c.is_mimir, false) = false
+                LIMIT 1) AS chat_id
+         FROM users u
+        WHERE u.id <> $1
+          AND u.is_active = true
+          AND COALESCE(u.is_blocked, false) = false
+        ORDER BY u.name`,
+      [me]
+    );
+    return {
+      users: rows.map((r) => ({
+        user_id: r.user_id,
+        name: r.name,
+        role: r.role,
+        is_huginn_guest: r.is_huginn_guest,
+        online: onlineSet.has(Number(r.user_id)),
+        last_seen_at: r.last_seen_at,
+        chat_id: r.chat_id || null
+      }))
+    };
+  });
+
+  // ═══════════════════════════════════════════════════════════════
+  // Clear chat history
+  // ═══════════════════════════════════════════════════════════════
+
+  fastify.delete('/:id/messages', {
+    preHandler: [fastify.authenticate]
+  }, async (request, reply) => {
+    const chatId = parsePositiveInt(request.params.id);
+    if (chatId == null) return reply.code(400).send({ error: 'bad chat id' });
+    const member = await getChatMembership(chatId, request.user.id);
+    if (!member) return reply.code(403).send({ error: 'Нет доступа' });
+    if (member.role !== 'owner' && member.role !== 'admin') {
+      return reply.code(403).send({ error: 'Очистить историю может владелец чата' });
+    }
+    await db.query(
+      'UPDATE chat_messages SET deleted_at = NOW() WHERE chat_id = $1 AND deleted_at IS NULL',
+      [chatId]
+    );
+    await sseToMembers(chatId, request.user.id, 'chat:cleared', { chat_id: chatId });
+    return { success: true };
   });
 
   // silence unused lint

@@ -35,6 +35,7 @@
     replyTo: null,
     contactsQ: '',
     selectedContactUid: null,
+    contactsDirectory: null,
     /* F10 */
     folders: [],
     activeFolderId: null,
@@ -192,7 +193,15 @@
         ? JSON.stringify(opts.body)
         : opts.body
     });
-    return res.json();
+    let data = {};
+    try { data = await res.json(); } catch (_) {}
+    if (!res.ok) {
+      const err = new Error((data && data.error) || ('HTTP ' + res.status));
+      err.status = res.status;
+      err.data = data;
+      throw err;
+    }
+    return data;
   }
 
   function esc(s) {
@@ -242,10 +251,14 @@
           ${ICO.sparkles || ICO.ai}
           <span>Мимир</span>
         </button>
-        <button type="button" class="hg-rail-btn is-active" data-hg-tab="huginn" title="Хугинн">
+        <button type="button" class="hg-rail-btn" data-hg-tab="huginn" title="Хугинн">
           ${ICO.chats || ICO.empty}
           <span>Хугинн</span>
           <span class="hg-rail-badge" data-rail-badge="huginn" hidden>0</span>
+        </button>
+        <button type="button" class="hg-rail-btn" data-hg-tab="contacts" title="Контакты">
+          ${ICO.contacts || ICO.users || ICO.empty}
+          <span>Контакты</span>
         </button>
         <button type="button" class="hg-rail-btn" data-hg-tab="ting" title="Тинг">
           ${ICO.video}
@@ -1637,6 +1650,7 @@
             </button>
             <div class="hg-thread-actions">
               ${!mimirMode && !isGroupChat(chat) ? `<button type="button" class="hg-icon-btn" id="hgCallAudio" title="Звонок" aria-label="Звонок">${ICO.phone}</button>` : ''}
+              ${!mimirMode && !isGroupChat(chat) ? `<button type="button" class="hg-icon-btn" id="hgCallVideo" title="Видеозвонок" aria-label="Видеозвонок">${ICO.video || ICO.camera || '🎥'}</button>` : ''}
               <button type="button" class="hg-icon-btn" id="hgThreadMore" title="Ещё" aria-label="Ещё">${ICO.more || ICO['more-horizontal']}</button>
             </div>
           </div>
@@ -1742,6 +1756,7 @@
       <div class="hg-tabs" id="hgTabs">
         <button type="button" class="hg-tab ${state.listTab === 'all' ? 'is-active' : ''}" data-ltab="all">Все${unreadSum ? `<span class="hg-tab-n">${unreadSum}</span>` : ''}</button>
         <button type="button" class="hg-tab ${state.listTab === 'personal' ? 'is-active' : ''}" data-ltab="personal">Личные</button>
+        <button type="button" class="hg-tab ${state.listTab === 'favorites' ? 'is-active' : ''}" data-ltab="favorites">Избранное</button>
         <button type="button" class="hg-tab ${state.listTab === 'new' ? 'is-active' : ''}" data-ltab="new">Новые</button>
         <button type="button" class="hg-tab ${state.listTab === 'clients' ? 'is-active' : ''}" data-ltab="clients">Клиенты</button>
       </div>
@@ -1830,7 +1845,7 @@
     });
     const storyAdd = panel.querySelector('#hgStoryAdd');
     if (storyAdd) {
-      storyAdd.onclick = () => showToast('Создание истории — через профиль / API stories');
+      storyAdd.onclick = () => openStoryComposer();
     }
     renderChatList(state.searchQ);
     panel.querySelector('#hgSearch').oninput = (e) => {
@@ -1844,7 +1859,9 @@
       };
     });
     panel.querySelectorAll('[data-folder]').forEach((btn) => {
-      btn.onclick = async () => {
+      const isAdd = btn.hasAttribute('data-folder-add');
+      btn.onclick = async (ev) => {
+        if (isAdd) { ev.stopPropagation(); promptNewFolder(); return; }
         const raw = btn.getAttribute('data-folder');
         state.activeFolderId = raw ? Number(raw) : null;
         try {
@@ -1856,20 +1873,16 @@
         await loadChats();
         renderPanel();
       };
+      if (!isAdd) {
+        btn.oncontextmenu = (ev) => {
+          ev.preventDefault();
+          openFolderMenu(Number(btn.getAttribute('data-folder')));
+        };
+      }
     });
     const addFolder = panel.querySelector('[data-folder-add]');
     if (addFolder) {
-      addFolder.onclick = async () => {
-        const name = prompt('Название папки');
-        if (!name || !name.trim()) return;
-        try {
-          await api('/api/chat-groups/folders', { method: 'POST', body: { name: name.trim() } });
-          await loadFolders();
-          renderPanel();
-        } catch (e) {
-          showToast(e.message || 'Не удалось создать папку');
-        }
-      };
+      addFolder.onclick = () => promptNewFolder();
     }
     panel.querySelector('#hgCompose').onclick = () => {
       openComposeSheet();
@@ -2050,6 +2063,299 @@
     await loadUsers('');
   }
 
+  /** In-chat message search (backend GET /:id/messages?search=). */
+  async function openInChatSearch() {
+    if (!state.chatId) return;
+    clearFloats();
+    const host = sheetHost();
+    root.querySelectorAll('.hg-search-sheet').forEach((el) => el.remove());
+    const el = document.createElement('div');
+    el.className = 'hg-search-sheet hg-sheet hg-compose-sheet';
+    el.setAttribute('data-role', 'card');
+    el.setAttribute('role', 'dialog');
+    el.setAttribute('aria-label', 'Поиск в чате');
+    el.innerHTML = `
+      <div class="hg-compose-head">
+        <button type="button" class="hg-icon-btn hg-compose-x" id="hgSearchClose" aria-label="Закрыть"><span aria-hidden="true">✕</span></button>
+        <strong>Поиск в чате</strong>
+        <span style="width:32px"></span>
+      </div>
+      <div class="hg-compose-search-wrap">
+        <span class="hg-compose-search-ico" aria-hidden="true">${ICO.search || '🔍'}</span>
+        <input class="hg-search" id="hgSearchInput" placeholder="Найти сообщение" />
+      </div>
+      <div class="hg-compose-body"><div class="hg-compose-list" id="hgSearchResults"><div class="hg-empty">Введите запрос</div></div></div>`;
+    host.appendChild(el);
+    el.querySelector('#hgSearchClose').onclick = () => el.remove();
+    const listEl = el.querySelector('#hgSearchResults');
+    let t = null;
+    const run = async (q) => {
+      const query = String(q || '').trim();
+      if (query.length < 2) { listEl.innerHTML = '<div class="hg-empty">Введите запрос</div>'; return; }
+      try {
+        const data = await api('/api/chat-groups/' + state.chatId + '/messages?search=' + encodeURIComponent(query) + '&limit=50');
+        const msgs = data.messages || data.items || [];
+        if (!msgs.length) { listEl.innerHTML = '<div class="hg-empty">Ничего не найдено</div>'; return; }
+        listEl.innerHTML = msgs.map((m) => {
+          const nm = m.user_name || m.name || 'Сообщение';
+          return `<button type="button" class="hg-contact-row" data-mid="${m.id}">
+            <div class="hg-contact-av" style="background:${avatarColor(nm)}">${esc(initials(nm))}</div>
+            <div class="hg-contact-meta"><div class="hg-contact-name">${esc(nm)}</div>
+            <div class="hg-contact-status">${esc(humanizeDisplayText(m.message || '', m)).slice(0, 80)}</div></div>
+          </button>`;
+        }).join('');
+        listEl.querySelectorAll('[data-mid]').forEach((row) => {
+          row.onclick = () => {
+            const mid = Number(row.getAttribute('data-mid'));
+            el.remove();
+            scrollToMessage(mid);
+          };
+        });
+      } catch (e) {
+        listEl.innerHTML = '<div class="hg-empty">' + esc(e.message || 'Ошибка поиска') + '</div>';
+      }
+    };
+    el.querySelector('#hgSearchInput').oninput = (e) => {
+      clearTimeout(t);
+      t = setTimeout(() => run(e.target.value), 220);
+    };
+    setTimeout(() => { const inp = el.querySelector('#hgSearchInput'); if (inp) inp.focus(); }, 0);
+  }
+
+  function scrollToMessage(mid) {
+    const box = root && root.querySelector('.hg-msgs');
+    if (!box) return;
+    const bubble = box.querySelector('.hg-bubble[data-mid="' + mid + '"]');
+    if (!bubble) { showToast('Сообщение не в текущей ленте'); return; }
+    try { bubble.scrollIntoView({ block: 'center' }); } catch (_) {}
+    bubble.classList.add('is-highlight');
+    setTimeout(() => bubble.classList.remove('is-highlight'), 1600);
+  }
+
+  /** Add members to a group chat (POST /:id/members). */
+  async function openAddMembers(existing) {
+    if (!state.chatId) return;
+    clearFloats();
+    const have = new Set((existing || []).map((m) => Number(m.user_id || m.id)));
+    const host = sheetHost();
+    root.querySelectorAll('.hg-addmem-sheet').forEach((el) => el.remove());
+    const el = document.createElement('div');
+    el.className = 'hg-addmem-sheet hg-sheet hg-compose-sheet';
+    el.setAttribute('role', 'dialog');
+    el.setAttribute('aria-label', 'Добавить участников');
+    el.innerHTML = `
+      <div class="hg-compose-head">
+        <button type="button" class="hg-icon-btn hg-compose-x" id="hgAddMemClose" aria-label="Закрыть"><span aria-hidden="true">✕</span></button>
+        <strong>Добавить</strong>
+        <button type="button" class="hg-icon-btn hg-compose-ok" id="hgAddMemDone" aria-label="Готово" disabled><span aria-hidden="true">✓</span></button>
+      </div>
+      <div class="hg-compose-search-wrap">
+        <span class="hg-compose-search-ico" aria-hidden="true">${ICO.search || '🔍'}</span>
+        <input class="hg-search" id="hgAddMemSearch" placeholder="Поиск" />
+      </div>
+      <div class="hg-compose-body"><div class="hg-compose-list" id="hgAddMemList"><div class="hg-empty">Загрузка…</div></div></div>`;
+    host.appendChild(el);
+    el.querySelector('#hgAddMemClose').onclick = () => el.remove();
+    const selected = new Set();
+    const listEl = el.querySelector('#hgAddMemList');
+    const doneBtn = el.querySelector('#hgAddMemDone');
+    let candidates = [];
+    try {
+      const data = await api('/api/users?is_active=true&limit=200');
+      candidates = (data.users || data.items || []).filter((u) => !have.has(Number(u.id || u.user_id)));
+    } catch (_) { candidates = []; }
+    const render = (q) => {
+      const qq = String(q || '').toLowerCase().trim();
+      const rows = candidates.filter((u) => !qq || String(u.name || u.login || '').toLowerCase().includes(qq));
+      if (!rows.length) { listEl.innerHTML = '<div class="hg-empty">Никого не найдено</div>'; return; }
+      listEl.innerHTML = rows.map((u) => {
+        const uid = u.id || u.user_id;
+        const nm = u.name || u.login || ('#' + uid);
+        const on = selected.has(Number(uid));
+        return `<button type="button" class="hg-contact-row hg-compose-row${on ? ' is-selected' : ''}" data-uid="${uid}">
+          <span class="hg-compose-check${on ? ' is-on' : ''}" aria-hidden="true"></span>
+          <div class="hg-contact-av" style="background:${avatarColor(nm)}">${esc(initials(nm))}</div>
+          <div class="hg-contact-meta"><div class="hg-contact-name">${esc(nm)}</div></div>
+        </button>`;
+      }).join('');
+      listEl.querySelectorAll('.hg-compose-row').forEach((row) => {
+        row.onclick = () => {
+          const uid = Number(row.getAttribute('data-uid'));
+          if (selected.has(uid)) selected.delete(uid); else selected.add(uid);
+          doneBtn.disabled = selected.size === 0;
+          render(el.querySelector('#hgAddMemSearch').value);
+        };
+      });
+    };
+    render('');
+    el.querySelector('#hgAddMemSearch').oninput = (e) => render(e.target.value);
+    doneBtn.onclick = async () => {
+      const ids = [...selected];
+      if (!ids.length) return;
+      try {
+        for (const uid of ids) {
+          await api('/api/chat-groups/' + state.chatId + '/members', { method: 'POST', body: { user_id: uid } });
+        }
+        el.remove();
+        showToast('Добавлено: ' + ids.length);
+        await openChatProfile();
+      } catch (e) {
+        showToast(e.message || 'Не удалось добавить');
+      }
+    };
+  }
+
+  /** Compose and publish a story (POST /api/stories). */
+  async function openStoryComposer() {
+    clearFloats();
+    const host = sheetHost();
+    root.querySelectorAll('.hg-story-sheet').forEach((el) => el.remove());
+    const el = document.createElement('div');
+    el.className = 'hg-story-sheet hg-sheet hg-compose-sheet';
+    el.setAttribute('role', 'dialog');
+    el.setAttribute('aria-label', 'Новая история');
+    el.innerHTML = `
+      <div class="hg-compose-head">
+        <button type="button" class="hg-icon-btn hg-compose-x" id="hgStoryClose" aria-label="Закрыть"><span aria-hidden="true">✕</span></button>
+        <strong>История</strong>
+        <span style="width:32px"></span>
+      </div>
+      <div class="hg-invite-fields">
+        <input id="hgStoryFile" type="file" accept="image/*,video/*" />
+        <input id="hgStoryCaption" placeholder="Подпись (необязательно)" />
+      </div>
+      <button type="button" class="hg-invite-submit" id="hgStoryPublish">Опубликовать</button>`;
+    host.appendChild(el);
+    el.querySelector('#hgStoryClose').onclick = () => el.remove();
+    el.querySelector('#hgStoryPublish').onclick = async () => {
+      const fileInput = el.querySelector('#hgStoryFile');
+      const caption = (el.querySelector('#hgStoryCaption').value || '').trim();
+      const file = fileInput.files && fileInput.files[0];
+      if (!file && !caption) { showToast('Добавьте файл или подпись'); return; }
+      const btn = el.querySelector('#hgStoryPublish');
+      btn.disabled = true;
+      try {
+        let mediaUrl = null;
+        if (file) {
+          const fd = new FormData();
+          fd.append('file', file);
+          const up = await fetch('/api/chat-groups/upload', {
+            method: 'POST',
+            headers: { Authorization: 'Bearer ' + token() },
+            body: fd
+          });
+          const upData = await up.json().catch(() => ({}));
+          if (!up.ok) throw new Error(upData.error || 'Не удалось загрузить файл');
+          mediaUrl = upData.url || upData.file_url || null;
+        }
+        await api('/api/stories', { method: 'POST', body: { content: caption || 'История', image_url: mediaUrl } });
+        el.remove();
+        showToast('История опубликована');
+        loadStories().then(() => renderPanel());
+      } catch (e) {
+        showToast(e.message || 'Не удалось опубликовать');
+        btn.disabled = false;
+      }
+    };
+  }
+
+  async function promptNewFolder() {
+    const name = prompt('Название папки');
+    if (!name || !name.trim()) return;
+    try {
+      await api('/api/chat-groups/folders', { method: 'POST', body: { name: name.trim() } });
+      await loadFolders();
+      renderPanel();
+    } catch (e) {
+      showToast(e.message || 'Не удалось создать папку');
+    }
+  }
+
+  /** Folder management menu: rename / delete / assign dialog. */
+  function openFolderMenu(folderId) {
+    if (!folderId) return;
+    clearFloats();
+    const el = document.createElement('div');
+    el.className = 'hg-float hg-glass';
+    el.setAttribute('data-role', 'menu');
+    el.innerHTML = `<div class="hg-float-actions">
+      <button type="button" data-fa="rename">${ICO.pen || ICO.compose || '✎'}<span>Переименовать</span></button>
+      <button type="button" data-fa="assign">${ICO.plus || '+'}<span>Добавить чат…</span></button>
+      <button type="button" class="danger" data-fa="delete">${ICO.trash || '🗑'}<span>Удалить папку</span></button>
+    </div>`;
+    placeFloat(el, window.innerWidth / 2, 240);
+    el.onclick = async (e) => {
+      const btn = e.target.closest('[data-fa]');
+      if (!btn) return;
+      const a = btn.getAttribute('data-fa');
+      clearFloats();
+      const folder = (state.folders || []).find((f) => Number(f.id) === Number(folderId));
+      if (a === 'rename') {
+        const name = prompt('Новое название', (folder && folder.name) || '');
+        if (!name || !name.trim()) return;
+        try {
+          await api('/api/chat-groups/folders/' + folderId, { method: 'PATCH', body: { name: name.trim() } });
+          await loadFolders();
+          renderPanel();
+        } catch (err) { showToast(err.message || 'Не удалось переименовать'); }
+      }
+      if (a === 'delete') {
+        if (!confirm('Удалить папку ' + ((folder && folder.name) || '') + '?')) return;
+        try {
+          await api('/api/chat-groups/folders/' + folderId, { method: 'DELETE' });
+          if (Number(state.activeFolderId) === Number(folderId)) state.activeFolderId = null;
+          await loadFolders();
+          await loadChats();
+          renderPanel();
+        } catch (err) { showToast(err.message || 'Не удалось удалить папку'); }
+      }
+      if (a === 'assign') openAssignFolderDialog(folderId);
+    };
+  }
+
+  /** Pick a chat and drop it into the folder (PUT /:id/folder). */
+  function openAssignFolderDialog(folderId) {
+    clearFloats();
+    const panel = root && root.querySelector('#hgPanel');
+    if (!panel) return;
+    const host = sheetHost();
+    root.querySelectorAll('.hg-assign-sheet').forEach((x) => x.remove());
+    const el = document.createElement('div');
+    el.className = 'hg-assign-sheet hg-sheet hg-compose-sheet';
+    el.setAttribute('role', 'dialog');
+    el.setAttribute('aria-label', 'Добавить чат в папку');
+    const rows = (state.chats || []).slice(0, 200).map((c) => {
+      const nm = displayChatName(c);
+      return `<button type="button" class="hg-contact-row" data-assign="${c.id}">
+        <div class="hg-contact-av" style="background:${avatarColor(nm)}">${esc(initials(nm))}</div>
+        <div class="hg-contact-meta"><div class="hg-contact-name">${esc(nm)}</div></div>
+      </button>`;
+    }).join('');
+    el.innerHTML = `
+      <div class="hg-compose-head">
+        <button type="button" class="hg-icon-btn hg-compose-x" id="hgAssignClose" aria-label="Закрыть"><span aria-hidden="true">✕</span></button>
+        <strong>В папку</strong>
+        <span style="width:32px"></span>
+      </div>
+      <div class="hg-compose-body"><div class="hg-compose-list">${rows || '<div class="hg-empty">Нет чатов</div>'}</div></div>`;
+    host.appendChild(el);
+    el.querySelector('#hgAssignClose').onclick = () => el.remove();
+    el.querySelectorAll('[data-assign]').forEach((btn) => {
+      btn.onclick = async () => {
+        try {
+          await api('/api/chat-groups/' + btn.getAttribute('data-assign') + '/folder', {
+            method: 'PUT',
+            body: { folder_id: Number(folderId) }
+          });
+          el.remove();
+          showToast('Чат добавлен в папку');
+          await loadChats();
+          renderPanel();
+        } catch (e) { showToast(e.message || 'Не удалось'); }
+      };
+    });
+  }
+
   async function openChatProfile() {
     if (!state.chatId) return;
     clearFloats();
@@ -2105,7 +2411,7 @@
     host.appendChild(el);
     el.querySelector('#hgProfileClose').onclick = () => el.remove();
     const searchBtn = el.querySelector('#hgProfileSearch');
-    if (searchBtn) searchBtn.onclick = () => showToast('Поиск в чате — DEFER S15');
+    if (searchBtn) searchBtn.onclick = () => openInChatSearch();
     const openSoundMenu = () => {
       el.querySelectorAll('.hg-sound-menu').forEach((m) => m.remove());
       const menu = document.createElement('div');
@@ -2137,21 +2443,60 @@
       });
     };
     const openProfileMoreMenu = () => {
+      const ch = state.chats.find((c) => Number(c.id) === Number(state.chatId)) || chat;
+      const isPinned = !!ch.is_pinned;
+      const isFav = !!ch.is_favorite;
       el.querySelectorAll('.hg-profile-menu').forEach((m) => m.remove());
       const menu = document.createElement('div');
       menu.className = 'hg-attach-menu hg-glass hg-profile-menu';
       menu.setAttribute('data-role', 'menu');
-      menu.innerHTML = `<button type="button" data-a="sound">${ICO.bell || '🔔'} Звук…</button>
+      menu.innerHTML = `        <button type="button" data-a="pin" class="${isPinned ? 'is-active' : ''}">${ICO.pin || ICO.bookmark || '📌'} ${isPinned ? 'Убрать закреплённое' : 'Закрепить чат'}</button>
+        <button type="button" data-a="favorite" class="${isFav ? 'is-active' : ''}">${isFav ? '★' : '☆'} ${isFav ? 'Убрать из избранного' : 'В избранное'}</button>
+        <button type="button" data-a="sound">${ICO.bell || '🔔'} Звук…</button>
         <button type="button" data-a="search">${ICO.search || '🔍'} Поиск</button>
         <button type="button" data-a="leave" class="is-danger">${ICO.x || '✕'} Покинуть</button>`;
       el.appendChild(menu);
       menu.querySelector('[data-a="sound"]').onclick = () => { menu.remove(); openSoundMenu(); };
-      menu.querySelector('[data-a="search"]').onclick = () => { showToast('Поиск в чате — DEFER S15'); menu.remove(); };
-      menu.querySelector('[data-a="leave"]').onclick = () => { menu.remove(); el.remove(); };
+      menu.querySelector('[data-a="search"]').onclick = () => { menu.remove(); openInChatSearch(); };
+      menu.querySelector('[data-a="pin"]').onclick = async () => {
+        menu.remove();
+        if (!state.chatId) return;
+        try {
+          await api('/api/chat-groups/' + state.chatId, { method: 'PUT', body: { is_pinned: !isPinned } });
+          const ch = state.chats.find((c) => Number(c.id) === Number(state.chatId));
+          if (ch) ch.is_pinned = !isPinned;
+          showToast(!isPinned ? 'Чат закреплён' : 'Чат откреплён');
+          renderPanel();
+        } catch (e) { showToast(e.message || 'Не удалось закрепить'); }
+      };
+      menu.querySelector('[data-a="favorite"]').onclick = async () => {
+        menu.remove();
+        if (!state.chatId) return;
+        try {
+          await api('/api/chat-groups/' + state.chatId, { method: 'PUT', body: { is_favorite: !isFav } });
+          const ch = state.chats.find((c) => Number(c.id) === Number(state.chatId));
+          if (ch) ch.is_favorite = !isFav;
+          showToast(!isFav ? 'В избранном' : 'Убрано из избранного');
+          renderPanel();
+        } catch (e) { showToast(e.message || 'Не удалось'); }
+      };
+      menu.querySelector('[data-a="leave"]').onclick = async () => {
+        menu.remove();
+        if (!state.chatId) return;
+        try {
+          await api('/api/chat-groups/' + state.chatId + '/members/' + myId(), { method: 'DELETE' });
+          showToast('Вы покинули чат');
+          state.chats = state.chats.filter((c) => Number(c.id) !== Number(state.chatId));
+          el.remove();
+          closeChat();
+        } catch (e) {
+          showToast(e.message || 'Не удалось покинуть чат');
+        }
+      };
     };
     el.querySelector('#hgProfileMore').onclick = () => openProfileMoreMenu();
     const moreGal = el.querySelector('#hgProfileMoreGal');
-    if (moreGal) moreGal.onclick = () => showToast('Поиск в чате — DEFER S15');
+    if (moreGal) moreGal.onclick = () => openInChatSearch();
     el.querySelector('#hgProfileMute').onclick = () => openSoundMenu();
 
     let shared = { media: [], files: [], links: [], voices: [] };
@@ -2241,7 +2586,19 @@
         } catch (e) { showToast(e.message || 'Чат'); }
       };
       menu.querySelector('[data-a="info"]').onclick = () => { showToast(nm); menu.remove(); };
-      menu.querySelector('[data-a="kick"]').onclick = () => { showToast('Исключение — через админку группы'); menu.remove(); };
+      menu.querySelector('[data-a="kick"]').onclick = async () => {
+        const uid = m.user_id || m.id;
+        menu.remove();
+        if (!uid || !state.chatId) return;
+        try {
+          await api('/api/chat-groups/' + state.chatId + '/members/' + uid, { method: 'DELETE' });
+          showToast('Участник исключён');
+          el.remove();
+          await openChatProfile();
+        } catch (err) {
+          showToast(err.message || 'Не удалось исключить');
+        }
+      };
       menu.querySelector('[data-a="tags"]').onclick = () => {};
     };
     const renderTab = (tab) => {
@@ -2373,7 +2730,7 @@
           }).join('')}</div>`
           : '<div class="hg-empty">Нет участников</div>');
         const add = body.querySelector('#hgAddMembers');
-        if (add) add.onclick = () => showToast('Добавление участников — DEFER S43');
+        if (add) add.onclick = () => openAddMembers(members);
         body.querySelectorAll('.hg-member-row').forEach((row) => {
           const idx = Number(row.getAttribute('data-member-idx'));
           row.onclick = () => openMemberMenu(members[idx] || {});
@@ -2502,6 +2859,8 @@
     let rows = state.chats.filter((c) => !query || String(c.name || '').toLowerCase().includes(query));
     if (state.listTab === 'personal') {
       rows = rows.filter((c) => !c.is_group && !c.is_mimir);
+    } else if (state.listTab === 'favorites') {
+      rows = rows.filter((c) => !!c.is_favorite);
     } else if (state.listTab === 'new') {
       rows = rows.filter((c) => Number(c.unread_count) > 0);
     } else if (state.listTab === 'clients') {
@@ -2535,7 +2894,7 @@
       const pinned = !!(c.is_pinned || c.pinned_at);
       const mineLast = Number(c.last_message_user_id) === Number(myId());
       const peerId = c.peer_user_id || c.direct_user_id;
-      const online = peerId && state.presence[peerId] && state.presence[peerId].online;
+      const online = !!(peerId && ((c.is_online === true) || (state.presence[peerId] && state.presence[peerId].online)));
       const readCls = (c.last_message_is_read || c.last_read) ? ' is-read' : '';
       const ticks = (!unread && mineLast && !draft) ? `<span class="hg-ticks${readCls}">✓✓</span>` : '';
       const prevHtml = draft
@@ -2586,7 +2945,31 @@
     syncRailBadge();
   }
 
+  /** Contacts source: full Huginn directory (all active users), not just chats. */
+  async function loadContactsDirectory() {
+    try {
+      const data = await api('/api/chat-groups/directory');
+      state.contactsDirectory = data.users || [];
+    } catch (_) {
+      state.contactsDirectory = state.contactsDirectory || [];
+    }
+    return state.contactsDirectory;
+  }
+
   function contactRowsFromChats() {
+    const dir = state.contactsDirectory;
+    if (Array.isArray(dir) && dir.length) {
+      return dir
+        .filter((u) => Number(u.user_id) !== Number(myId()))
+        .map((u) => ({
+          user_id: u.user_id,
+          name: u.name || 'Контакт',
+          chat_id: u.chat_id || 0,
+          online: !!u.online,
+          last_seen_at: u.last_seen_at || null,
+          is_huginn_guest: !!u.is_huginn_guest
+        }));
+    }
     const map = new Map();
     state.chats.forEach((c) => {
       const members = c.members || [];
@@ -2614,13 +2997,17 @@
     return [...map.values()].sort((a, b) => String(a.name).localeCompare(String(b.name), 'ru'));
   }
 
-  function renderContactsPanel(panel) {
+  async function renderContactsPanel(panel) {
     const q = (state.contactsQ || '').toLowerCase().trim();
+    if (!state.contactsDirectory || !state.contactsDirectory.length) {
+      panel.innerHTML = '<div class="hg-empty">Загрузка…</div>';
+      await loadContactsDirectory();
+    }
     let rows = contactRowsFromChats();
-    if (!q) rows = padContactsToSixteen(rows);
     if (q) rows = rows.filter((r) => String(r.name || '').toLowerCase().includes(q));
     const letters = 'АБВГДЕЁЖЗИЙКЛМНОПРСТУФХЦЧШЩЪЫЬЭЮЯABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('');
     rows = rows.slice().sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''), 'ru'));
+    const onlineCount = rows.filter((r) => (r.online != null ? r.online : (state.presence[r.user_id] || {}).online)).length;
     let listHtml = '';
     if (!rows.length) {
       listHtml = emptyListHtml(q ? 'search' : 'empty', state.contactsQ);
@@ -2634,14 +3021,16 @@
           listHtml += `<div class="hg-contact-letter" data-letter-head="${esc(letter)}">${esc(letter)}</div>`;
         }
         const p = state.presence[r.user_id];
-        const statusKey = (p && p.status) || (p && p.online ? 'online' : 'off');
+        const isOnline = r.online != null ? r.online : !!(p && p.online);
+        const seen = r.last_seen_at || (p && p.last_seen_at);
         const statusMap = {
           online: ['is-online', 'в сети'],
           vacation: ['is-away', 'в отпуске'],
           meeting: ['is-busy', 'на встрече'],
           dnd: ['is-busy', 'не беспокоить'],
-          off: ['is-off', p && p.last_seen_at ? ('был(а) ' + formatSeen(p.last_seen_at)) : 'был(а) недавно']
+          off: ['is-off', seen ? ('был(а) ' + formatSeen(seen)) : 'не в сети']
         };
+        const statusKey = (p && p.status) || (isOnline ? 'online' : 'off');
         const [dotCls, status] = statusMap[statusKey] || statusMap.off;
         const contactActive =
           (Number(r.chat_id) > 0 && Number(r.chat_id) === Number(state.chatId)) ||
@@ -2675,15 +3064,32 @@
     panel.querySelector('#hgContactSort').onclick = () => showToast('Сортировка по имени');
     panel.querySelector('#hgContactAdd').onclick = () => inviteSomeone();
     panel.querySelectorAll('.hg-contact-row').forEach((el) => {
-      el.onclick = () => {
+      el.onclick = async () => {
         const cid = Number(el.getAttribute('data-cid'));
         const uid = Number(el.getAttribute('data-uid'));
         state.selectedContactUid = uid || null;
         panel.querySelectorAll('.hg-contact-row').forEach((row) => {
           row.classList.toggle('is-active', row === el);
         });
-        if (cid > 0) { state.tab = 'huginn'; state.mobileNav = 'chats'; openChat(cid); }
-        else showToast('Контакт без чата');
+        if (cid > 0) { state.tab = 'huginn'; state.mobileNav = 'chats'; openChat(cid); return; }
+        if (uid > 0) {
+          try {
+            const data = await api('/api/chat-groups/direct', { method: 'POST', body: { user_id: uid } });
+            const chat = data.chat || data;
+            state.tab = 'huginn';
+            state.mobileNav = 'chats';
+            const row = state.contactsDirectory && state.contactsDirectory.find((u) => Number(u.user_id) === uid);
+            await ensureChatOpened(chat, {
+              direct_user_id: uid,
+              direct_user_name: (row && row.name) || null,
+              name: (row && row.name) || null
+            });
+          } catch (e) {
+            showToast(e.message || 'Не удалось открыть чат');
+          }
+          return;
+        }
+        showToast('Контакт недоступен');
       };
     });
   }
@@ -2880,7 +3286,7 @@
       btn.onclick = () => {
         const set = btn.getAttribute('data-set') || '';
         if (set === 'calls') { state.tab = 'phone'; state.mobileNav = 'calls'; renderPanel(); return; }
-        if (set === 'favorites') { state.tab = 'huginn'; state.mobileNav = 'chats'; state.folder = 'favorites'; renderPanel(); return; }
+        if (set === 'favorites') { state.tab = 'huginn'; state.mobileNav = 'chats'; state.listTab = 'favorites'; renderPanel(); return; }
         if (set === 'profile') {
           state.settingsProfileOpen = true;
           state.settingsEditOpen = false;
@@ -3160,7 +3566,9 @@
     const stickersBtn = panel.querySelector('#hgStickers');
     if (stickersBtn) stickersBtn.onclick = openStickers;
     const callBtn = panel.querySelector('#hgCallAudio');
-    if (callBtn) callBtn.onclick = () => startAudioCall();
+    if (callBtn) callBtn.onclick = () => startHuginnCall('audio');
+    const callVideoBtn = panel.querySelector('#hgCallVideo');
+    if (callVideoBtn) callVideoBtn.onclick = () => startHuginnCall('video');
     const moreBtn = panel.querySelector('#hgThreadMore');
     if (moreBtn) {
       moreBtn.onclick = (ev) => {
@@ -3717,12 +4125,14 @@
   }
 
   function openMsgMenu(messageId, x, y) {
+    const pinnedIds = new Set((state.pins || []).map((p) => Number(p.message_id || (p.message && p.message.id))));
     const el = document.createElement('div');
     el.className = 'hg-float hg-glass';
     el.setAttribute('data-role', 'menu');
     el.innerHTML = `<div class="hg-float-actions">
       <button type="button" data-a="react">${ICO.smile}<span>Реакция</span></button>
       <button type="button" data-a="reply">${ICO.reply}<span>Ответить</span></button>
+      <button type="button" data-a="pin">${ICO.pin || ICO.bookmark || '📌'}<span>${pinnedIds.has(Number(messageId)) ? 'Открепить' : 'Закрепить'}</span></button>
       <button type="button" data-a="forward">${ICO.forward}<span>Переслать</span></button>
       <button type="button" data-a="copy">${ICO.copy}<span>Копировать</span></button>
       <button type="button" class="danger" data-a="delete">${ICO.trash}<span>Удалить</span></button>
@@ -3734,6 +4144,24 @@
       const a = btn.getAttribute('data-a');
       const msg = state.messages.find((m) => Number(m.id) === Number(messageId));
       if (a === 'react') { openReactions(messageId, x, y); return; }
+      if (a === 'pin') {
+        try {
+          if (pinnedIds.has(Number(messageId))) {
+            await api('/api/chat-groups/' + state.chatId + '/pin/' + messageId, { method: 'DELETE' });
+            state.pins = (state.pins || []).filter((p) => Number(p.message_id || (p.message && p.message.id)) !== Number(messageId));
+            showToast('Откреплено');
+          } else {
+            await api('/api/chat-groups/' + state.chatId + '/pin/' + messageId, { method: 'POST', body: {} });
+            const m = state.messages.find((x) => Number(x.id) === Number(messageId));
+            state.pins = [{ message_id: Number(messageId), message: m || null }];
+            showToast('Закреплено');
+          }
+          renderPanel();
+        } catch (err) {
+          showToast(err.message || 'Не удалось закрепить');
+        }
+        return;
+      }
       if (a === 'copy' && msg) {
         try { await navigator.clipboard.writeText(humanizeDisplayText(msg.message || '', msg)); } catch (_) {}
       }
@@ -4083,49 +4511,23 @@
 
   /* F11 AI Editor — chips removed (visual wave) */
 
-  async function startAudioCall() {
+  /** 1:1 call via HuginnCall (LiveKit). Replaces the old PBX dial-to-phone path. */
+  async function startHuginnCall(kind) {
     const chat = state.chats.find((c) => Number(c.id) === Number(state.chatId)) || {};
     if (isMimirMode() || isGroupChat(chat)) {
       showToast('Звонок доступен в личном чате');
       return;
     }
-    const peerId = chat.direct_user_id || chat.peer_user_id || null;
-    let phone = chat.direct_user_phone || chat.peer_phone || null;
-    if (!phone && peerId) {
-      try {
-        const data = await api('/api/users/' + peerId);
-        const u = data.user || data;
-        phone = u && u.phone;
-      } catch (_) {}
-    }
-    const digits = String(phone || '').replace(/\D/g, '');
-    if (!digits || digits.length < 10) {
-      showToast('Нет номера');
+    if (!global.HuginnCall) {
+      showToast('Звонки недоступны');
       return;
     }
-    const display = String(phone).trim();
-    if (window.AsgardPhone && typeof AsgardPhone.outbound === 'function') {
-      try {
-        state.tab = 'phone';
-        state.mobileNav = 'calls';
-        state.chatId = null;
-        renderPanel();
-        await AsgardPhone.outbound(digits);
-        return;
-      } catch (e) {
-        showToast(e.message || 'Не удалось позвонить');
-        return;
-      }
+    try {
+      await global.HuginnCall.start(kind);
+    } catch (e) {
+      const msg = e && e.message ? e.message : 'Не удалось позвонить';
+      showToast(msg.includes('занят') ? 'Трубка занята' : msg);
     }
-    if (window.AsgardPhoneUI && typeof AsgardPhoneUI.openDialPad === 'function') {
-      state.tab = 'phone';
-      state.mobileNav = 'calls';
-      state.chatId = null;
-      renderPanel();
-      setTimeout(() => AsgardPhoneUI.openDialPad(display), 0);
-      return;
-    }
-    showToast('Нет номера');
   }
 
   function ingestMessage(msg, chatId) {
@@ -4194,9 +4596,59 @@
           last_seen_at: new Date().toISOString()
         });
         refreshPeerPresence();
-        if (!state.chatId) renderPresenceStrip();
+        // Repaint the chat list so the online dot updates without reopening a chat.
+        if (!state.chatId) renderPanel();
+        else renderChatList(state.searchQ);
       }
     }
+    if (event === 'chat:message_deleted' && data) {
+      const mid = Number(data.message_id);
+      if (!mid) return;
+      const chat = state.chats.find((c) => Number(c.id) === Number(data.chat_id));
+      if (chat && chat.last_message_id && Number(chat.last_message_id) === mid) chat.last_message = '';
+      if (Number(data.chat_id) === Number(state.chatId)) {
+        state.messages = state.messages.filter((m) => Number(m.id) !== mid);
+        renderMessagesIntoBox();
+      }
+      renderChatList(state.searchQ);
+    }
+    if (event === 'chat:message_edited' && data) {
+      const mid = Number(data.message_id);
+      if (Number(data.chat_id) !== Number(state.chatId) || !mid) return;
+      const m = state.messages.find((x) => Number(x.id) === mid);
+      if (m) {
+        m.message = data.message != null ? data.message : m.message;
+        m.is_edited = true;
+        renderMessagesIntoBox();
+      }
+    }
+    if (event === 'chat:cleared' && data && Number(data.chat_id) === Number(state.chatId)) {
+      state.messages = [];
+      renderMessagesIntoBox();
+    }
+    if (event === 'chat:deleted' && data && data.chat_id != null) {
+      state.chats = state.chats.filter((c) => Number(c.id) !== Number(data.chat_id));
+      if (Number(data.chat_id) === Number(state.chatId)) closeChat();
+      renderChatList(state.searchQ);
+    }
+  }
+
+  /** Bulk presence map for the whole chat list + contacts (not just the open chat). */
+  async function warmPresence() {
+    try {
+      const data = await api('/api/chat-groups/presence/all');
+      (data.presence || []).forEach((p) => {
+        state.presence[p.user_id] = Object.assign({}, state.presence[p.user_id] || {}, p);
+      });
+    } catch (_) {}
+  }
+
+  let _presenceTimer = null;
+  function startPresencePolling() {
+    if (_presenceTimer) return;
+    _presenceTimer = setInterval(() => { warmPresence().then(() => {
+      if (!state.chatId && state.tab === 'huginn') renderChatList(state.searchQ);
+    }); }, 30000);
   }
 
   let _mounting = null;
@@ -4208,27 +4660,14 @@
       ensureDom();
       await Promise.all([loadFolders(), loadChats(), loadStories(), loadBirthdays()]);
       syncRailBadge();
-      // warm presence for strip
-      try {
-        const ids = [];
-        state.chats.forEach((c) => {
-          if (c.peer_user_id) ids.push(c.peer_user_id);
-          (c.members || []).forEach((m) => {
-            const uid = m.user_id || m.id;
-            if (uid && Number(uid) !== Number(myId())) ids.push(uid);
-          });
-        });
-        const uniq = [...new Set(ids)].slice(0, 40);
-        if (uniq.length) {
-          const data = await api('/api/chat-groups/presence?user_ids=' + uniq.join(','));
-          (data.presence || []).forEach((p) => { state.presence[p.user_id] = p; });
-        }
-      } catch (_) {}
+      await warmPresence();
       renderPanel();
       if (global.HuginnSSE) {
         global.HuginnSSE.start();
         global.HuginnSSE.on('*', onLiveEvent);
       }
+      if (global.HuginnCall) global.HuginnCall.mount();
+      startPresencePolling();
     })().finally(() => { _mounting = null; });
     return _mounting;
   }
@@ -4254,6 +4693,8 @@
     collapse: () => setCollapsed(true),
     openTab,
     getTab: () => state.tab,
+    getChatId: () => state.chatId,
+    getState: () => state,
     isCollapsed: () => state.collapsed,
     isPanelOpen: (tab) => !!root && !state.collapsed && state.tab === tab,
     isUsable,

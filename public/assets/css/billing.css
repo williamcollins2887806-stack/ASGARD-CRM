@@ -959,12 +959,13 @@
 }
 .bill-kv {
   display: grid;
-  grid-template-columns: 160px 1fr;
+  grid-template-columns: 160px minmax(0, 1fr);
   gap: 12px;
   padding: 7px 0;
   border-bottom: 1px solid var(--brd-m);
   font-size: 13px;
 }
+.bill-kv > *:last-child { min-width: 0; overflow-wrap: anywhere; }
 .bill-kv:last-of-type { border-bottom: none; }
 .bill-eyebrow {
   font-size: 11px;

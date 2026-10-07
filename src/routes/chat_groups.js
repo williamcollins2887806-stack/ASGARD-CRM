@@ -163,13 +163,22 @@ module.exports = async function(fastify) {
   /**
    * Heal bot DMs: V368 split "A — B" → next participant. For a BOT peer (Мимир)
    * that left the HUMAN's own ФИО as the title, which leaks the viewer's name.
-   * Runs once at read time; the initial name choice is already correct, so no
-   * per-viewer ping-pong. Migration V369 does the same as a bulk pass.
+   * Scoped to sessions with bot guests only (a direct chat with a BOT member):
+   * a stale 3+ member "direct" is never rewritten, and the initial name choice
+   * is already correct, so there is no per-viewer ping-pong.
    */
   async function repairBotDirectChatName(chatId, currentName, peerRole, peerName) {
     const legacy = String(currentName || '');
     const peer = String(peerName || '').trim();
     if (!peer || String(peerRole || '').toUpperCase() !== 'BOT') return legacy;
+    const { rows: [shape] } = await db.query(
+      `SELECT
+         (SELECT COUNT(*) FROM chat_group_members WHERE chat_id = $1) AS members_n,
+         (SELECT COUNT(*) FROM chat_group_members m JOIN users u ON u.id = m.user_id
+            WHERE m.chat_id = $1 AND u.role = 'BOT') AS bots_n`,
+      [chatId]
+    );
+    if (!shape || Number(shape.members_n) !== 2 || Number(shape.bots_n) !== 1) return legacy;
     if (legacy !== peer) {
       await db.query('UPDATE chats SET name = $1 WHERE id = $2', [peer, chatId]);
       return peer;
@@ -794,8 +803,9 @@ module.exports = async function(fastify) {
     }
 
     if (search) {
-      sql += ` AND m.message ILIKE $${idx}`;
-      params.push(`%${search}%`);
+      const like = `%${String(search).toLowerCase()}%`;
+      sql += ` AND (LOWER(m.message) LIKE $${idx} OR LOWER(COALESCE(m.file_url, '')) LIKE $${idx})`;
+      params.push(like);
       idx++;
     }
 
@@ -1599,27 +1609,38 @@ module.exports = async function(fastify) {
   });
 
   // ───────────────────────────────────────────────────────────────
-  // DELETE /api/chat-groups/:id — Удалить чат (только owner)
+  // DELETE /api/chat-groups/:id
+  // Direct: either participant may delete (per-user for them). Group: owner only.
   // ───────────────────────────────────────────────────────────────
   fastify.delete('/:id', {
-    preHandler: [fastify.requirePermission('chat_groups', 'delete')]
+    // No role preset grants chat_groups:delete; deletion is a per-member action,
+    // gated by membership below (direct) or ownership (group).
+    preHandler: [fastify.requirePermission('chat_groups', 'write')]
   }, async (request, reply) => {
     const chatId = parseInt(request.params.id);
     if (isNaN(chatId)) return reply.code(400).send({ error: 'Некорректный ID чата' });
     const userId = request.user.id;
 
     const member = await getChatMembership(chatId, userId);
-    if (!member || member.role !== 'owner') {
-      return reply.code(403).send({ error: 'Только владелец может удалить чат' });
-    }
+    if (!member) return reply.code(403).send({ error: 'Нет доступа к чату' });
 
-    // Мимир-чаты нельзя удалять
-    const { rows: [chatInfo] } = await db.query('SELECT is_mimir FROM chats WHERE id = $1', [chatId]);
-    if (chatInfo && chatInfo.is_mimir) {
+    const { rows: [chatInfo] } = await db.query(
+      'SELECT is_mimir, is_group, type FROM chats WHERE id = $1',
+      [chatId]
+    );
+    if (!chatInfo) return reply.code(404).send({ error: 'Чат не найден' });
+    if (chatInfo.is_mimir) {
       return reply.code(403).send({ error: 'Чат с Мимиром нельзя удалить' });
     }
 
-    // Удалить все связанные данные
+    const isDirect = !chatInfo.is_group && chatInfo.type === 'direct';
+    if (!isDirect && member.role !== 'owner') {
+      return reply.code(403).send({ error: 'Только владелец может удалить чат' });
+    }
+
+    // Notify the other participants before the rows disappear.
+    await sseToMembers(chatId, userId, 'chat:deleted', { chat_id: chatId, by: userId });
+
     await db.query('DELETE FROM chat_attachments WHERE message_id IN (SELECT id FROM chat_messages WHERE chat_id = $1)', [chatId]);
     await db.query('DELETE FROM chat_messages WHERE chat_id = $1', [chatId]);
     await db.query('DELETE FROM chat_group_members WHERE chat_id = $1', [chatId]);

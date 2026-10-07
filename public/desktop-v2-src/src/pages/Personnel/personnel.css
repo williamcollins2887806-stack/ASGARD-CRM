@@ -344,12 +344,13 @@
 .prs-detail-section-label--warn { color: var(--amber); }
 .prs-detail-kv {
   display: grid;
-  grid-template-columns: 180px 1fr;
+  grid-template-columns: 180px minmax(0, 1fr);
   gap: 12px;
   padding: 6px 0;
   border-bottom: 1px solid var(--brd-2);
   font-size: 13px;
 }
+.prs-detail-kv > *:last-child { min-width: 0; overflow-wrap: anywhere; }
 .prs-detail-kv-key { color: var(--t-3); }
 .prs-detail-kv-val { color: var(--t-1); }
 .prs-detail-empty-reviews {

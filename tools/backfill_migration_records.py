@@ -63,6 +63,10 @@ CHECKS = [
         "AND c.name IS DISTINCT FROM (SELECT u2.name FROM chat_group_members m2 "
         "JOIN users u2 ON u2.id=m2.user_id WHERE m2.chat_id=c.id AND u2.role='BOT' LIMIT 1)",
     ),
+    (
+        "V370__huginn_calls",
+        "SELECT to_regclass('public.huginn_calls')",
+    ),
 ]
 
 

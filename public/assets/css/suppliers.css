@@ -102,9 +102,9 @@
 .sup-detail__title{font-size:18px;font-weight:700;color:var(--t1);margin:0}
 .sup-detail__section{margin-bottom:var(--sp-4)}
 .sup-detail__section-title{font-size:14px;font-weight:600;color:var(--t1);margin-bottom:var(--sp-2);padding-bottom:var(--sp-1);border-bottom:1px solid var(--brd)}
-.sup-meta{display:grid;grid-template-columns:140px 1fr;gap:var(--sp-1) var(--sp-2);font-size:13px;margin-bottom:var(--sp-3)}
+.sup-meta{display:grid;grid-template-columns:140px minmax(0,1fr);gap:var(--sp-1) var(--sp-2);font-size:13px;margin-bottom:var(--sp-3)}
 .sup-meta dt{color:var(--t2);font-weight:500}
-.sup-meta dd{color:var(--t1);margin:0}
+.sup-meta dd{color:var(--t1);margin:0;min-width:0;overflow-wrap:anywhere}
 
 /* ─── Form inside modal ─── */
 .sup-form{display:grid;grid-template-columns:1fr 1fr;gap:var(--sp-3);padding:var(--sp-3)}

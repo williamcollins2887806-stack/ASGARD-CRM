@@ -3844,6 +3844,15 @@ html[data-theme="light"] .hg-nav-search {
   padding: 8px 16px calc(92px + env(safe-area-inset-bottom, 0px));
   gap: 14px;
 }
+/* CRIT: flex-column scroller — children must not shrink below content.
+   Without flex:0 0 auto (and with overflow:hidden on cards) min-height:auto
+   collapses to 0 and cards squash into strips, text slipping under the
+   rounded plates. Same class of bug already fixed in the doc registry
+   (doc-hub.css .dh-drawer__body > * { flex: 0 0 auto }). */
+.hg-settings > * {
+  flex: 0 0 auto;
+  min-height: 0;
+}
 html[data-theme="light"] .hg-settings { background: var(--hg-bg, var(--bg1, #F4EFE6)); }
 .hg-settings.is-root .hg-settings-title {
   font: 600 17px/1.2 var(--hg-font);
@@ -3966,9 +3975,10 @@ html[data-theme="light"] .hg-settings { background: var(--hg-bg, var(--bg1, #F4E
   font: inherit; padding: 0; cursor: pointer;
 }
 .hg-settings-alert-action {
-  width: 100%; height: 40px; border: 0; border-top: 0.5px solid rgba(84, 84, 88, 0.45);
+  width: 100%; min-height: 40px; height: auto; border: 0; border-top: 0.5px solid rgba(84, 84, 88, 0.45);
   background: transparent; color: #0A84FF;
-  font: 400 16px/1 var(--hg-font); cursor: pointer;
+  font: 400 16px/1.2 var(--hg-font); cursor: pointer;
+  overflow-wrap: anywhere;
 }
 .hg-settings-actions {
   display: flex;
@@ -4421,9 +4431,11 @@ html[data-hg-fx="off"] {
 #huginnDock .hg-panel .hg-compose-sheet,
 #huginnDock .hg-panel .hg-chat-profile,
 #huginnDock .hg-panel .hg-invite-sheet,
+#huginnDock .hg-panel .hg-call-sheet,
 .hg-chrome .hg-panel .hg-compose-sheet,
 .hg-chrome .hg-panel .hg-chat-profile,
-.hg-chrome .hg-panel .hg-invite-sheet {
+.hg-chrome .hg-panel .hg-invite-sheet,
+.hg-chrome .hg-panel .hg-call-sheet {
   position: absolute;
   inset: 0;
   left: 0;
@@ -4450,6 +4462,91 @@ html[data-hg-fx="off"] {
   -webkit-backdrop-filter: none;
   animation: none;
 }
+
+/* ── 1:1 call overlay (inside dock panel) ─────────────────────── */
+.hg-call-sheet {
+  background: #0B0E13;
+}
+.hg-call-stage {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  background: radial-gradient(120% 90% at 50% 0%, #1B2230 0%, #0B0E13 70%);
+}
+.hg-call-remote {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: none;
+  background: #000;
+}
+.hg-call-sheet.is-video .hg-call-remote,
+.hg-call-stage--active .hg-call-remote { display: block; }
+.hg-call-sheet.is-video .hg-call-meta,
+.hg-call-stage--active .hg-call-meta { position: absolute; left: 0; right: 0; bottom: 12px; }
+.hg-call-meta {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 24px 16px;
+  text-align: center;
+}
+.hg-call-av {
+  width: 96px;
+  height: 96px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #3B82F6;
+  color: #fff;
+  font: 700 34px/1 var(--hg-font);
+}
+.hg-call-name {
+  font: 600 20px/1.2 var(--hg-font);
+  color: #fff;
+  max-width: 90%;
+  overflow-wrap: anywhere;
+}
+.hg-call-status {
+  font: 400 14px/1.2 var(--hg-font);
+  color: var(--hg-muted, #8e8e93);
+  font-variant-numeric: tabular-nums;
+}
+.hg-call-controls {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  padding: 18px 16px calc(22px + env(safe-area-inset-bottom, 0px));
+}
+.hg-call-btn {
+  width: 56px;
+  height: 56px;
+  border: 0;
+  border-radius: 50%;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(120, 120, 128, 0.28);
+  color: #fff;
+  font-size: 22px;
+}
+.hg-call-btn:hover { background: rgba(120, 120, 128, 0.42); }
+.hg-call-btn.is-accept { background: #30D158; }
+.hg-call-btn.is-danger { background: #FF453A; }
+.hg-call-btn svg { width: 24px; height: 24px; }
 .hg-compose-modes {
   display: flex;
   gap: 6px;
@@ -4538,6 +4635,8 @@ html[data-hg-fx="off"] {
   padding: 10px 14px;
   border-radius: 12px;
   background: rgba(120, 120, 128, 0.18);
+  flex: 0 0 auto;
+  min-width: 0;
 }
 .hg-settings-profile-detail .hg-settings-k {
   font: 500 11px/1.2 var(--hg-font);
@@ -4548,6 +4647,9 @@ html[data-hg-fx="off"] {
 .hg-settings-profile-detail .hg-settings-v {
   font: 500 15px/1.3 var(--hg-font);
   color: #fff;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 .hg-list-me-btn {
   width: 32px;
