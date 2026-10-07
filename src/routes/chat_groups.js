@@ -152,9 +152,17 @@ module.exports = async function(fastify) {
   async function repairLegacyDirectChatName(chatId, currentName, peerName) {
     const legacy = String(currentName || '');
     const peer = String(peerName || '').trim();
-    if (!peer || !legacy.includes(' — ')) return peer || legacy;
-    await db.query('UPDATE chats SET name = $1 WHERE id = $2', [peer, chatId]);
-    return peer;
+    if (!peer) return legacy;
+    if (legacy.includes(' — ')) {
+      await db.query('UPDATE chats SET name = $1 WHERE id = $2', [peer, chatId]);
+      return peer;
+    }
+    // Bot chats ("Мимир"): V368 left the human's own name — heal to the bot's name.
+    if (legacy && legacy !== peer) {
+      await db.query('UPDATE chats SET name = $1 WHERE id = $2', [peer, chatId]);
+      return peer;
+    }
+    return legacy || peer;
   }
 
   async function attachDirectPeer(chat, viewerUserId, opts = {}) {

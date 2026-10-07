@@ -124,6 +124,19 @@ async function main() {
       'direct_user_name=' + JSON.stringify(dc.direct_user_name)
     );
 
+    // Bot chat (Мимир): title must be the bot's name, not the human's own ФИО.
+    {
+      const mimir = await api(a.token, 'GET', '/api/chat-groups/mimir');
+      const mimirId = Number(mimir.data.chat_id || (mimir.data.chat && mimir.data.chat.id) || 0);
+      caseResult('MIMIR-CHAT-ID', mimirId > 0, 'chat_id=' + mimirId);
+      if (mimirId > 0) {
+        const md = await api(a.token, 'GET', '/api/chat-groups/' + mimirId);
+        const mName = String((md.data.chat && md.data.chat.name) || '').trim();
+        const selfLeak = aName && mName.includes(aName) && mName !== 'Мимир';
+        caseResult('MIMIR-NOT-SELF-NAME', !selfLeak, 'name=' + JSON.stringify(mName));
+      }
+    }
+
     const group = await api(a.token, 'POST', '/api/chat-groups', {
       name: 'GapGroup ' + Date.now(),
       member_ids: [b.user.id],
