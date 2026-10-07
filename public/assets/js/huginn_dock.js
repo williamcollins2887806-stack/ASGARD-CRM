@@ -4753,6 +4753,9 @@
     getState: () => state,
     isCollapsed: () => state.collapsed,
     isPanelOpen: (tab) => !!root && !state.collapsed && state.tab === tab,
+    // Alias used by huginn_ting.js when polling the Ting panel. Without it the
+    // 30s refresh exits immediately and the room list never updates.
+    isTabOpen: (tab) => !!root && state.tab === tab,
     isUsable,
     setPhoneRail,
     openChat,
