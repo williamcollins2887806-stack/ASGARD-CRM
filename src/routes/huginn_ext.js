@@ -1153,10 +1153,12 @@ module.exports = async function registerHuginnExt(fastify, { db, uploadDir, getC
   fastify.get('/presence/all', {
     preHandler: [fastify.authenticate]
   }, async () => {
-    const ids = getOnlineUserIds();
-    const onlineSet = new Set(ids);
+    // Freshness > socket presence: a tab can hold a dead SSE socket open (phone
+    // in pocket, laptop asleep) and would show as online forever. The client
+    // pings /presence/ping every 25s, so last_seen_at is the honest signal.
     const { rows } = await db.query(
-      `SELECT id AS user_id, name, last_seen_at
+      `SELECT id AS user_id, name, last_seen_at,
+              (last_seen_at IS NOT NULL AND last_seen_at > NOW() - INTERVAL '2 minutes') AS fresh
          FROM users
         WHERE is_active = true AND COALESCE(is_blocked, false) = false
         ORDER BY name`
@@ -1166,7 +1168,7 @@ module.exports = async function registerHuginnExt(fastify, { db, uploadDir, getC
         user_id: r.user_id,
         name: r.name,
         last_seen_at: r.last_seen_at,
-        online: onlineSet.has(Number(r.user_id))
+        online: !!r.fresh
       }))
     };
   });
@@ -1175,9 +1177,9 @@ module.exports = async function registerHuginnExt(fastify, { db, uploadDir, getC
     preHandler: [fastify.authenticate]
   }, async (request) => {
     const me = Number(request.user.id);
-    const onlineSet = new Set(getOnlineUserIds());
     const { rows } = await db.query(
       `SELECT u.id AS user_id, u.name, u.role, u.last_seen_at,
+              (u.last_seen_at IS NOT NULL AND u.last_seen_at > NOW() - INTERVAL '2 minutes') AS fresh,
               COALESCE(u.is_huginn_guest, false) AS is_huginn_guest,
               (SELECT c.id
                  FROM chats c
@@ -1199,7 +1201,7 @@ module.exports = async function registerHuginnExt(fastify, { db, uploadDir, getC
         name: r.name,
         role: r.role,
         is_huginn_guest: r.is_huginn_guest,
-        online: onlineSet.has(Number(r.user_id)),
+        online: !!r.fresh,
         last_seen_at: r.last_seen_at,
         chat_id: r.chat_id || null
       }))

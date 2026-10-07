@@ -4449,6 +4449,32 @@ html[data-hg-fx="off"] {
 .hg-composer.is-mimir [data-kind="circle"],
 .hg-composer.is-mimir [data-kind="voice"] { display: none !important; }
 
+.hg-ai-h2 { font: 600 15px/1.35 var(--hg-font); color: #fff; margin: 8px 0 4px; }
+.hg-ai-h3 { font: 600 14px/1.35 var(--hg-font); color: #fff; margin: 6px 0 3px; }
+.hg-ai-hr { border: 0; border-top: 1px solid rgba(255, 255, 255, 0.14); margin: 8px 0; }
+.hg-ai-li { padding-left: 12px; position: relative; }
+.hg-ai-li::before { content: '•'; position: absolute; left: 2px; opacity: 0.6; }
+.hg-ai-li-n { font-weight: 600; margin-right: 3px; }
+.hg-ai-inline {
+  padding: 1px 5px; border-radius: 5px;
+  background: rgba(255, 255, 255, 0.10);
+  font: 500 12px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+.hg-ai-code {
+  margin: 6px 0; padding: 8px 10px; border-radius: 8px;
+  background: rgba(0, 0, 0, 0.35); overflow-x: auto;
+  font: 400 12px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace;
+  white-space: pre;
+}
+.hg-ai-table { border-collapse: collapse; margin: 6px 0; max-width: 100%; font-size: 12px; }
+.hg-ai-table th, .hg-ai-table td {
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  padding: 4px 8px; text-align: left; vertical-align: top;
+}
+.hg-ai-table th { background: rgba(255, 255, 255, 0.06); font-weight: 600; }
+.hg-bubble.is-ai .hg-ai-table,
+.hg-bubble.is-ai .hg-ai-code { max-width: 100%; }
+
 /* Compose / chat profile / invite sheets — dock panel only (not fullscreen CRM) */
 #huginnDock .hg-panel .hg-compose-sheet,
 #huginnDock .hg-panel .hg-chat-profile,

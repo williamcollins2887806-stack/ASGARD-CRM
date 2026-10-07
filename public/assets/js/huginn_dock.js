@@ -256,10 +256,6 @@
           <span>Хугинн</span>
           <span class="hg-rail-badge" data-rail-badge="huginn" hidden>0</span>
         </button>
-        <button type="button" class="hg-rail-btn" data-hg-tab="contacts" title="Контакты">
-          ${ICO.contacts || ICO.users || ICO.empty}
-          <span>Контакты</span>
-        </button>
         <button type="button" class="hg-rail-btn" data-hg-tab="ting" title="Тинг">
           ${ICO.video}
           <span>Тинг</span>
@@ -273,10 +269,6 @@
         </button>
       </aside>
       <nav class="hg-bottom-nav hg-glass" data-role="nav" aria-label="Huginn mobile">
-        <button type="button" data-mnav="contacts" aria-label="Контакты">
-          <span class="hg-nav-ico">${ICO.contacts || ICO.users}</span>
-          <span class="hg-nav-label">Контакты</span>
-        </button>
         <button type="button" data-mnav="chats" class="is-active" aria-label="Чаты">
           <span class="hg-nav-ico">${ICO.chats}<span class="hg-nav-badge" data-nav-badge hidden>0</span></span>
           <span class="hg-nav-label">Чаты</span>
@@ -1113,7 +1105,48 @@
         }).join('')}
       </div>`;
     }
-    return esc(display);
+    return isAi ? renderAiMarkdown(display) : esc(display);
+  }
+
+  /**
+   * Minimal, XSS-safe markdown for AI (Mimir) replies. The model emits
+   * `**bold**`, `*italic*`, `# headings`, lists and `| tables |`, which used to
+   * arrive as literal asterisks and pipes (raw escaped text).
+   * Input is escaped FIRST, then a closed set of inline/block rules is applied,
+   * so no HTML from the model can reach the DOM.
+   */
+  function renderAiMarkdown(text) {
+    let html = esc(String(text || ''));
+    if (!html) return '';
+    html = html.replace(/```(\w*)\n([\s\S]*?)```/g, (mm, lang, code) => `<pre class="hg-ai-code"><code>${code.trim()}</code></pre>`);
+    html = html.replace(/`([^`\n]+)`/g, '<code class="hg-ai-inline">$1</code>');
+    html = html.replace(/^### (.+)$/gm, '<div class="hg-ai-h3">$1</div>');
+    html = html.replace(/^## (.+)$/gm, '<div class="hg-ai-h2">$1</div>');
+    html = html.replace(/^# (.+)$/gm, '<div class="hg-ai-h2">$1</div>');
+    html = html.replace(/\*\*([^*\n]+)\*\*/g, '<strong>$1</strong>');
+    // single-asterisk emphasis and *Heading* (common LLM output) → bold text
+    html = html.replace(/\*([^*\n]+)\*/g, '<strong>$1</strong>');
+    html = html.replace(/_([^_\n]+)_/g, '<em>$1</em>');
+    html = html.replace(/^- (.+)$/gm, '<div class="hg-ai-li">$1</div>');
+    html = html.replace(/^(\d+)\. (.+)$/gm, '<div class="hg-ai-li"><span class="hg-ai-li-n">$1.</span> $2</div>');
+    html = html.replace(/(\|.+\|(?:\r?\n|$))+/g, (block) => {
+      const rows = block.trim().split('\n').filter((r) => r.trim());
+      if (rows.length < 2) return block;
+      let out = '<table class="hg-ai-table">';
+      let head = true;
+      for (const row of rows) {
+        if (/^\|[\s\-:|]+\|$/.test(row.trim())) { head = false; continue; }
+        const cells = row.split('|').filter((c) => c.trim() !== '');
+        const tag = head ? 'th' : 'td';
+        out += '<tr>' + cells.map((c) => `<${tag}>${c.trim()}</${tag}>`).join('') + '</tr>';
+        if (head) head = false;
+      }
+      return out + '</table>';
+    });
+    html = html.replace(/^---$/gm, '<hr class="hg-ai-hr">');
+    html = html.replace(/\n/g, '<br>');
+    html = html.replace(/(<br>){3,}/g, '<br><br>');
+    return html;
   }
 
   function deliveryStatus(m) {
@@ -1760,6 +1793,7 @@
         <button type="button" class="hg-tab ${state.listTab === 'all' ? 'is-active' : ''}" data-ltab="all">Все${unreadSum ? `<span class="hg-tab-n">${unreadSum}</span>` : ''}</button>
         <button type="button" class="hg-tab ${state.listTab === 'personal' ? 'is-active' : ''}" data-ltab="personal">Личные</button>
         <button type="button" class="hg-tab ${state.listTab === 'favorites' ? 'is-active' : ''}" data-ltab="favorites">Избранное</button>
+        <button type="button" class="hg-tab ${state.listTab === 'contacts' ? 'is-active' : ''}" data-ltab="contacts">Контакты</button>
         <button type="button" class="hg-tab ${state.listTab === 'new' ? 'is-active' : ''}" data-ltab="new">Новые</button>
         <button type="button" class="hg-tab ${state.listTab === 'clients' ? 'is-active' : ''}" data-ltab="clients">Клиенты</button>
       </div>
@@ -1859,9 +1893,22 @@
     panel.querySelectorAll('[data-ltab]').forEach((btn) => {
       btn.onclick = () => {
         state.listTab = btn.getAttribute('data-ltab');
-        renderPanel();
+        if (state.listTab === 'contacts') loadContactsDirectory().then(() => renderPanel());
+        else renderPanel();
       };
     });
+    if (state.listTab === 'contacts') {
+      // Contacts live INSIDE the chat list (Telegram-like), not as a separate panel.
+      renderContactsInline(panel.querySelector('#hgList'));
+      const searchEl = panel.querySelector('#hgSearch');
+      if (searchEl) {
+        searchEl.oninput = (e) => {
+          state.contactsQ = e.target.value;
+          renderContactsInline(panel.querySelector('#hgList'));
+        };
+      }
+      return;
+    }
     panel.querySelectorAll('[data-folder]').forEach((btn) => {
       const isAdd = btn.hasAttribute('data-folder-add');
       btn.onclick = async (ev) => {
@@ -3007,6 +3054,63 @@
       }
     });
     return [...map.values()].sort((a, b) => String(a.name).localeCompare(String(b.name), 'ru'));
+  }
+
+  /** Contacts rendered INSIDE the chat list (tab «Контакты»), Telegram-like. */
+  function renderContactsInline(listEl) {
+    if (!listEl) return;
+    const q = (state.contactsQ || '').toLowerCase().trim();
+    const dir = state.contactsDirectory || [];
+    if (!dir.length) { listEl.innerHTML = '<div class="hg-empty">Загрузка…</div>'; return; }
+    let rows = contactRowsFromChats();
+    if (q) rows = rows.filter((r) => String(r.name || '').toLowerCase().includes(q));
+    rows = rows.slice().sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''), 'ru'));
+    if (!rows.length) {
+      listEl.innerHTML = emptyListHtml(q ? 'search' : 'empty', state.contactsQ);
+      return;
+    }
+    let lastLetter = '';
+    let html = '';
+    for (const r of rows) {
+      const nm = humanizeChatName(r.name);
+      const letter = (nm.trim().charAt(0) || '#').toUpperCase();
+      if (letter !== lastLetter) {
+        lastLetter = letter;
+        html += `<div class="hg-contact-letter">${esc(letter)}</div>`;
+      }
+      const p = state.presence[r.user_id];
+      const isOnline = r.online != null ? r.online : !!(p && p.online);
+      const seen = r.last_seen_at || (p && p.last_seen_at);
+      const statusTxt = isOnline ? 'в сети' : (seen ? ('был(а) ' + formatSeen(seen)) : 'не в сети');
+      html += `<button type="button" class="hg-contact-row" data-cid="${r.chat_id || ''}" data-uid="${r.user_id}">
+        <div class="hg-contact-av" style="background:${avatarColor(nm)}">${esc(initials(nm))}</div>
+        <div class="hg-contact-meta">
+          <div class="hg-contact-name">${esc(nm)}</div>
+          <div class="hg-contact-status"><span class="hg-status-dot ${isOnline ? 'is-online' : 'is-off'}"></span>${esc(statusTxt)}</div>
+        </div>
+      </button>`;
+    }
+    listEl.innerHTML = html;
+    listEl.querySelectorAll('.hg-contact-row').forEach((el) => {
+      el.onclick = async () => {
+        const cid = Number(el.getAttribute('data-cid'));
+        const uid = Number(el.getAttribute('data-uid'));
+        if (cid > 0) { openChat(cid); return; }
+        if (uid > 0) {
+          try {
+            const data = await api('/api/chat-groups/direct', { method: 'POST', body: { user_id: uid } });
+            const row = (state.contactsDirectory || []).find((u) => Number(u.user_id) === uid);
+            await ensureChatOpened(data.chat || data, {
+              direct_user_id: uid,
+              direct_user_name: (row && row.name) || null,
+              name: (row && row.name) || null
+            });
+          } catch (e) {
+            showToast(e.message || 'Не удалось открыть чат');
+          }
+        }
+      };
+    });
   }
 
   async function renderContactsPanel(panel) {
