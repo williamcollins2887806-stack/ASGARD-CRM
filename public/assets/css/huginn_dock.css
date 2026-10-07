@@ -40,9 +40,9 @@
   --hg-tg-back-badge-fg: #000000;
   --hg-tg-bubble-radius: 17px;
   --hg-tg-bubble-tail-radius: 7px;
-  /* glassier bubbles — wallpaper bleeds through (DS: CRM blue, not TG purple) */
-  --hg-tg-bubble-them: color-mix(in srgb, var(--bg3, #2C2C2E) 68%, transparent);
-  --hg-tg-bubble-me: color-mix(in srgb, var(--blue-l, #5B8DEF) 72%, transparent);
+  /* DS §5.5: mixes against --bg3 (not transparent) so dark theme stops looking dirty */
+  --hg-tg-bubble-them: color-mix(in srgb, var(--bg3, #2C2C2E) 92%, transparent);
+  --hg-tg-bubble-me: color-mix(in srgb, var(--blue-l, #5B8DEF) 72%, var(--bg3, #2C2C2E));
   --hg-tg-av-msg: 32px;
   --hg-tg-row-h: 72px;
   --hg-tg-contact-row-h: 53px;
@@ -102,7 +102,7 @@
   --hg-av-list: 54px;
   --hg-av-head: 36px;
   --hg-av-contact: 48px;
-  --hg-msg-indent: 44px;
+  --hg-msg-indent: 40px;
 
   --hg-blur-float: 24px;
   --hg-blur-menu: 16px;
@@ -539,7 +539,10 @@ body.hg-list-edit .hg-nav-search {
 .hg-presence-wrap {
   border-bottom: 1px solid var(--hg-border);
   background: var(--hg-panel);
+  display: flex;
+  flex-direction: column;
 }
+.hg-presence-wrap[hidden] { display: none; }
 .hg-presence-caption {
   padding: 8px 16px 0;
   font: 600 var(--hg-font-meta) var(--hg-font);
@@ -1478,33 +1481,52 @@ html[data-theme="light"] .hg-bubble {
   align-self: flex-end;
   background: var(--hg-tg-bubble-me);
   opacity: 1;
-  border-radius: var(--hg-tg-bubble-radius) var(--hg-tg-bubble-radius) var(--hg-tg-bubble-tail-radius) var(--hg-tg-bubble-radius);
-  backdrop-filter: blur(20px) saturate(180%);
-  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  /* base radius is uniform; the tail is only on .is-last (Telegram: one tail per series) */
+  border-radius: var(--hg-tg-bubble-radius) var(--hg-tg-bubble-radius)
+    var(--hg-tg-bubble-radius) var(--hg-tg-bubble-radius);
+  backdrop-filter: blur(12px) saturate(150%);
+  -webkit-backdrop-filter: blur(12px) saturate(150%);
   box-shadow:
     inset 0 0.5px 0 color-mix(in srgb, var(--t1, #fff) 22%, transparent),
     inset 0 0 0 0.5px color-mix(in srgb, var(--t1, #fff) 14%, transparent),
     0 2px 10px rgba(0, 0, 0, 0.18);
-  /* asymmetric tail (DS r17 + tip) — keep CSS radius as fallback if clip SVG missing */
-  clip-path: url(#hg-tail-me);
-  -webkit-clip-path: url(#hg-tail-me);
+  /* clip-path (SVG tail in objectBoundingBox) removed: it scaled with bubble height,
+     sheared the right edge, clipped box-shadow and cut the time row. */
 }
 .hg-bubble.them {
   align-self: flex-start;
   background: var(--hg-tg-bubble-them);
   opacity: 1;
-  border-radius: var(--hg-tg-bubble-radius) var(--hg-tg-bubble-radius) var(--hg-tg-bubble-radius) var(--hg-tg-bubble-tail-radius);
+  border-radius: var(--hg-tg-bubble-radius) var(--hg-tg-bubble-radius)
+    var(--hg-tg-bubble-radius) var(--hg-tg-bubble-radius);
   max-width: min(82%, 320px);
-  backdrop-filter: blur(20px) saturate(180%);
-  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  backdrop-filter: blur(12px) saturate(150%);
+  -webkit-backdrop-filter: blur(12px) saturate(150%);
   box-shadow:
     inset 0 0.5px 0 color-mix(in srgb, var(--t1, #fff) 16%, transparent),
     inset 0 0 0 0.5px color-mix(in srgb, var(--t1, #fff) 12%, transparent),
     0 2px 10px rgba(0, 0, 0, 0.16);
-  clip-path: url(#hg-tail-them);
-  -webkit-clip-path: url(#hg-tail-them);
 }
-/* media/file bubbles keep soft rect (tail clip fights square media) */
+/* Tail corner: only the last bubble of a run and only for plain text/voice,
+   never for media (square corners fight the tail). */
+.hg-bubble.me.is-last {
+  border-bottom-right-radius: var(--hg-tg-bubble-tail-radius);
+}
+.hg-bubble.them.is-last {
+  border-bottom-left-radius: var(--hg-tg-bubble-tail-radius);
+}
+.hg-bubble.me.is-last.image,
+.hg-bubble.me.is-last.file,
+.hg-bubble.me.is-last.document,
+.hg-bubble.me.is-last.voice,
+.hg-bubble.them.is-last.image,
+.hg-bubble.them.is-last.file,
+.hg-bubble.them.is-last.document,
+.hg-bubble.them.is-last.voice {
+  border-bottom-right-radius: var(--hg-tg-bubble-radius);
+  border-bottom-left-radius: var(--hg-tg-bubble-radius);
+}
+/* media/file bubbles keep soft rect (no tail for square media) */
 .hg-bubble.me.image,
 .hg-bubble.me.file,
 .hg-bubble.me.document,
@@ -1514,16 +1536,8 @@ html[data-theme="light"] .hg-bubble {
 .hg-bubble.them.document,
 .hg-bubble.them.voice {
   border-radius: var(--hg-tg-bubble-radius);
-  border-bottom-right-radius: var(--hg-tg-bubble-tail-radius, 7px);
   clip-path: none;
   -webkit-clip-path: none;
-}
-.hg-bubble.them.image,
-.hg-bubble.them.file,
-.hg-bubble.them.document,
-.hg-bubble.them.voice {
-  border-bottom-right-radius: var(--hg-tg-bubble-radius);
-  border-bottom-left-radius: var(--hg-tg-bubble-tail-radius, 7px);
 }
 .hg-bubble.system {
   align-self: center;
@@ -1533,6 +1547,9 @@ html[data-theme="light"] .hg-bubble {
   font: 500 var(--hg-font-meta) var(--hg-font);
   text-align: center;
   padding: 6px 12px;
+}
+.hg-bubble .hg-time {
+  font-variant-numeric: tabular-nums;
 }
 .hg-bubble .hg-meta {
   display: inline-flex;
@@ -1800,8 +1817,8 @@ html[data-theme="light"] .hg-reply:hover {
   display: inline-flex;
   flex-wrap: wrap;
   gap: 4px;
-  margin-top: 6px;
-  clear: both;
+  margin-top: 4px;
+  clear: none;
 }
 .hg-reacts button {
   border: 1px solid transparent;
@@ -3710,8 +3727,9 @@ html[data-theme="light"] .hg-nav-search {
   to { transform: scale(1); opacity: 1; }
 }
 
-/* Hide non-Telegram «На линии» strip */
-.hg-presence-wrap { display: none !important; }
+/* Presence strip visibility is controlled by .hg-presence-wrap[hidden] /
+   renderPresenceStrip() (Telegram-like "N в сети" row under the header). */
+.hg-presence-wrap { }
 
 /* Contacts (screen 3) */
 .hg-contacts {
@@ -4607,6 +4625,37 @@ html[data-hg-fx="off"] {
   background: rgba(120, 120, 128, 0.24);
   color: #fff;
   font: 400 14px/1 var(--hg-font);
+}
+.hg-invite-sheet .hg-invite-modes {
+  display: flex;
+  gap: 6px;
+  padding: 0 14px 10px;
+}
+.hg-invite-sheet .hg-invite-result {
+  margin: 4px 14px 16px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: rgba(120, 120, 128, 0.18);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font: 400 13px/1.3 var(--hg-font);
+  color: var(--hg-muted, #8e8e93);
+}
+.hg-invite-sheet .hg-invite-result[hidden] { display: none; }
+.hg-invite-sheet .hg-invite-download,
+.hg-invite-sheet .hg-invite-copy {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 36px;
+  border: 0;
+  border-radius: 10px;
+  background: rgba(10, 132, 255, 0.18);
+  color: #0A84FF;
+  font: 600 13px/1 var(--hg-font);
+  cursor: pointer;
+  text-decoration: none;
 }
 .hg-invite-sheet .hg-invite-submit {
   margin: 8px 14px 16px;

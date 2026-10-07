@@ -277,13 +277,13 @@
           <span class="hg-nav-ico">${ICO.contacts || ICO.users}</span>
           <span class="hg-nav-label">Контакты</span>
         </button>
-        <button type="button" data-mnav="calls" aria-label="Звонки">
-          <span class="hg-nav-ico">${ICO.calls || ICO.phone}</span>
-          <span class="hg-nav-label">Звонки</span>
-        </button>
         <button type="button" data-mnav="chats" class="is-active" aria-label="Чаты">
           <span class="hg-nav-ico">${ICO.chats}<span class="hg-nav-badge" data-nav-badge hidden>0</span></span>
           <span class="hg-nav-label">Чаты</span>
+        </button>
+        <button type="button" data-mnav="ting" aria-label="Тинг">
+          <span class="hg-nav-ico">${ICO.video || ICO.camera}</span>
+          <span class="hg-nav-label">Тинг</span>
         </button>
         <button type="button" data-mnav="settings" aria-label="Настройки">
           <span class="hg-nav-ico">${ICO.settings}<span class="hg-nav-dot" data-nav-dot aria-hidden="true">!</span></span>
@@ -355,6 +355,12 @@
           state.chatId = null;
           setCollapsed(false);
           renderPanel();
+        } else if (state.mobileNav === 'ting') {
+          state.tab = 'ting';
+          state.chatId = null;
+          setCollapsed(false);
+          renderPanel();
+          haptic('tab');
         } else if (state.mobileNav === 'calls') {
           /* S14 = phone recent calls, not Ting meetings */
           state.tab = 'phone';
@@ -474,24 +480,10 @@
     });
   }
 
-  /** P4.5 bubble tails — SVG clipPaths in dock root. */
+  /** P4.5 — tails now use plain asymmetric border-radius (DS §5.5 r17/tail7).
+   *  Kept as a no-op so older captures/tests that expect #hg-tail-defs don't break. */
   function ensureTailDefs() {
-    if (!root || root.querySelector('#hg-tail-defs')) return;
-    const wrap = document.createElement('div');
-    wrap.id = 'hg-tail-defs';
-    wrap.setAttribute('aria-hidden', 'true');
-    wrap.style.cssText = 'position:absolute;width:0;height:0;overflow:hidden;pointer-events:none';
-    wrap.innerHTML = `<svg width="0" height="0">
-      <defs>
-        <clipPath id="hg-tail-me" clipPathUnits="objectBoundingBox">
-          <path d="M0,0 H0.92 Q1,0 1,0.08 V0.78 Q1,0.92 0.86,0.95 L1,1 L0.78,0.95 Q0,0.95 0,0.78 Z"/>
-        </clipPath>
-        <clipPath id="hg-tail-them" clipPathUnits="objectBoundingBox">
-          <path d="M0.08,0 H1 V0.78 Q1,0.95 0.22,0.95 L0,1 L0.14,0.95 Q0,0.92 0,0.78 V0.08 Q0,0 0.08,0 Z"/>
-        </clipPath>
-      </defs>
-    </svg>`;
-    root.appendChild(wrap);
+    return;
   }
 
   function syncFloatNavBodyClasses() {
@@ -1273,13 +1265,14 @@
       ? `<div class="hg-forwarded">Переслано от ${esc(fwdName)}</div>`
       : '';
     const bounce = m._bounce ? ' is-bounce' : '';
-    return `<div class="hg-bubble ${cls} ${esc(type)}${bounce}${thinkCls}" data-mid="${m.id}">
+    const lastCls = opts.last ? ' is-last' : '';
+    return `<div class="hg-bubble ${cls} ${esc(type)}${bounce}${thinkCls}${lastCls}" data-mid="${m.id}">
       ${aiBadge}
       ${forwarded}
       ${renderReplyPreview(m)}
       ${body}
-      ${renderReactions(m)}
       ${meta}
+      ${renderReactions(m)}
     </div>`;
   }
 
@@ -1325,10 +1318,11 @@
       }
       html += maybeDate(g.messages[0]);
       if (g.mine) {
+        const lastMineIdx = g.messages.length - 1;
         html += `<div class="hg-msg-group me">`;
         g.messages.forEach((m, i) => {
           html += maybeUnread(m);
-          html += `<div class="hg-msg-row me"><div class="hg-msg-stack">${renderMessage(m, { showMeta: true })}</div></div>`;
+          html += `<div class="hg-msg-row me"><div class="hg-msg-stack">${renderMessage(m, { showMeta: true, last: i === lastMineIdx })}</div></div>`;
         });
         html += `</div>`;
       } else {
@@ -1341,7 +1335,7 @@
           const lead = i === 0;
           html += `<div class="hg-msg-row them${lead ? ' is-lead' : ' is-cont'}">`;
           if (lead) html += avHtml;
-          html += `<div class="hg-msg-stack">${renderMessage(m, { showMeta: i === lastIdx })}</div>`;
+          html += `<div class="hg-msg-stack">${renderMessage(m, { showMeta: i === lastIdx, last: i === lastIdx })}</div>`;
           html += `</div>`;
         });
         html += `</div>`;
@@ -1702,6 +1696,11 @@
     }
 
     const unreadSum = state.chats.reduce((n, c) => n + (Number(c.unread_count) || 0), 0);
+    const onlineCount = state.chats.reduce((n, c) => {
+      const pid = c.direct_user_id || c.peer_user_id;
+      const on = (c.is_online === true) || (pid && state.presence[pid] && state.presence[pid].online);
+      return n + (on ? 1 : 0);
+    }, 0);
     const folderCaps = [
       `<button type="button" class="hg-folder-cap hg-glass${state.activeFolderId == null ? ' is-active' : ''}" data-role="segment" data-folder="">Все</button>`,
       ...(state.folders || []).map((f) =>
@@ -1753,6 +1752,10 @@
         </div>
       </div>
       <div class="hg-folder-row" id="hgFolders" role="tablist" aria-label="Папки чатов">${folderCaps}</div>
+      <div class="hg-presence-wrap" id="hgPresenceWrap" ${onlineCount ? '' : 'hidden'}>
+        <div class="hg-presence-caption">${onlineCount ? ('В сети: ' + onlineCount) : ''}</div>
+        <div class="hg-presence" id="hgPresence"></div>
+      </div>
       <div class="hg-tabs" id="hgTabs">
         <button type="button" class="hg-tab ${state.listTab === 'all' ? 'is-active' : ''}" data-ltab="all">Все${unreadSum ? `<span class="hg-tab-n">${unreadSum}</span>` : ''}</button>
         <button type="button" class="hg-tab ${state.listTab === 'personal' ? 'is-active' : ''}" data-ltab="personal">Личные</button>
@@ -2810,32 +2813,53 @@
         }
       }
     });
-    // Fallback: recent chat peers (compact), label «На линии»
-    let items = onlinePeers.slice(0, 8);
+    // Fallback: recent chat peers (compact), label «На линии».
+    // Prefer the global presence map (presence/all) so users with no open chat
+    // are still visible; fall back to chat rows only when nobody is online.
+    let items = [];
+    const dir = state.contactsDirectory || [];
+    if (Array.isArray(dir) && dir.length) {
+      items = dir
+        .filter((u) => u.online)
+        .slice(0, 8)
+        .map((u) => ({ user_id: u.user_id, name: u.name, chat_id: u.chat_id || 0 }));
+    }
+    if (!items.length) items = onlinePeers.slice(0, 8);
     if (!items.length) {
       items = state.chats.filter((c) => !c.is_mimir).slice(0, 6).map((c) => ({
-        user_id: c.peer_user_id || c.id,
+        user_id: c.peer_user_id || c.direct_user_id || c.id,
         name: c.name || 'Чат',
         chat_id: c.id,
         soft: true
       }));
     }
     if (!items.length) {
-      box.innerHTML = `<button type="button" class="hg-presence-item" id="hgPresenceHint" title="На линии">
-        <div class="hg-presence-av" style="background:var(--hg-elev);color:var(--hg-muted)">${ICO.users || '+'}</div>
-        <span class="hg-presence-label">На линии</span>
-      </button>`;
+      const wrap = root.querySelector('#hgPresenceWrap');
+      if (wrap) wrap.hidden = true;
+      box.innerHTML = '';
       return;
     }
+    const wrap = root.querySelector('#hgPresenceWrap');
+    if (wrap) wrap.hidden = false;
     box.innerHTML = items.map((p) => {
-      const nm = humanizeChatName(p.name);
-      return `<button type="button" class="hg-presence-item" data-pcid="${p.chat_id}" title="${esc(nm)}">
+      const nm = p.name || 'Коллега';
+      return `<button type="button" class="hg-presence-item" data-pcid="${p.chat_id || ''}" data-puid="${p.user_id}" title="${esc(nm)}">
         <div class="hg-presence-av${!p.soft ? ' is-online' : ''}" style="background:${avatarColor(nm)}">${esc(initials(nm))}</div>
         <span class="hg-presence-label">${esc((nm || '').split(/\s+/)[0] || '—')}</span>
       </button>`;
     }).join('');
     box.querySelectorAll('[data-pcid]').forEach((el) => {
-      el.onclick = () => openChat(Number(el.getAttribute('data-pcid')));
+      el.onclick = async () => {
+        const cid = Number(el.getAttribute('data-pcid'));
+        if (cid > 0) { openChat(cid); return; }
+        const uid = Number(el.getAttribute('data-puid'));
+        if (uid > 0) {
+          try {
+            const data = await api('/api/chat-groups/direct', { method: 'POST', body: { user_id: uid } });
+            await ensureChatOpened(data.chat || data, { direct_user_id: uid, direct_user_name: el.getAttribute('title') });
+          } catch (e) { showToast(e.message || 'Не удалось открыть чат'); }
+        }
+      };
     });
   }
 
@@ -4194,29 +4218,73 @@
         <input id="hgInvitePhone" placeholder="Телефон" inputmode="tel" autocomplete="tel" />
         <input id="hgInviteEmail" placeholder="Email" inputmode="email" autocomplete="email" />
       </div>
-      <button type="button" class="hg-invite-submit" id="hgInviteSubmit">Создать ссылку</button>`;
+      <div class="hg-invite-modes" role="tablist" aria-label="Куда отправить">
+        <button type="button" class="hg-compose-mode is-active" data-ich="email" role="tab" aria-selected="true">На почту</button>
+        <button type="button" class="hg-compose-mode" data-ich="sms" role="tab" aria-selected="false">По SMS</button>
+        <button type="button" class="hg-compose-mode" data-ich="none" role="tab" aria-selected="false">Только ссылка</button>
+      </div>
+      <button type="button" class="hg-invite-submit" id="hgInviteSubmit">Отправить приглашение</button>
+      <div class="hg-invite-result" id="hgInviteResult" hidden></div>`;
     host.appendChild(el);
     el.querySelector('#hgInviteClose').onclick = () => el.remove();
+  let channel = 'email';
+  el.querySelectorAll('[data-ich]').forEach((btn) => {
+    btn.onclick = () => {
+      channel = btn.getAttribute('data-ich');
+      el.querySelectorAll('[data-ich]').forEach((b) => {
+        const on = b === btn;
+        b.classList.toggle('is-active', on);
+        b.setAttribute('aria-selected', on ? 'true' : 'false');
+      });
+      const needEmail = channel === 'email';
+      const needPhone = channel === 'sms';
+      el.querySelector('#hgInviteEmail').style.opacity = needPhone ? '0.5' : '1';
+      el.querySelector('#hgInvitePhone').style.opacity = needEmail ? '0.5' : '1';
+    };
+  });
     const submit = el.querySelector('#hgInviteSubmit');
+    const resultBox = el.querySelector('#hgInviteResult');
+    const showResult = (fullUrl, delivery) => {
+      const sentText = delivery && delivery.sent
+        ? (delivery.channel === 'email' ? 'Письмо отправлено на ' + esc(delivery.to)
+          : 'SMS отправлено на ' + esc(delivery.to))
+        : (delivery && delivery.error ? ('Отправка не удалась: ' + esc(delivery.error)) : 'Ссылка готова');
+      resultBox.hidden = false;
+      resultBox.innerHTML = `<div class="hg-invite-result-text">${sentText}</div>
+        <a class="hg-invite-download" href="${esc(fullUrl)}" download="huginn-invite.txt" target="_blank" rel="noopener">Скачать ссылку</a>
+        <button type="button" class="hg-invite-copy" id="hgInviteCopy">Скопировать</button>`;
+      const copy = resultBox.querySelector('#hgInviteCopy');
+      if (copy) copy.onclick = async () => {
+        try { await navigator.clipboard.writeText(fullUrl); showToast('Ссылка скопирована'); } catch (_) {}
+      };
+      resultBox.querySelector('.hg-invite-download').onclick = () => {
+        try { URL.revokeObjectURL(resultBox.dataset.blob || ''); } catch (_) {}
+      };
+      // make the download a real blob so "скачать ссылку" works offline too
+      try {
+        const blob = new Blob([fullUrl + '\n'], { type: 'text/plain' });
+        const url = URL.createObjectURL(blob);
+        resultBox.dataset.blob = url;
+        resultBox.querySelector('.hg-invite-download').setAttribute('href', url);
+      } catch (_) {}
+    };
     submit.onclick = async () => {
       const phone = (el.querySelector('#hgInvitePhone').value || '').trim();
       const email = (el.querySelector('#hgInviteEmail').value || '').trim();
       const displayName = (el.querySelector('#hgInviteName').value || '').trim() || phone || email || null;
-      if (!phone && !email) {
-        showToast('Укажите телефон или email');
-        return;
-      }
+      if (channel === 'email' && !email) { showToast('Укажите email'); return; }
+      if (channel === 'sms' && !phone) { showToast('Укажите телефон'); return; }
+      if (channel === 'none' && !phone && !email) { showToast('Укажите телефон или email'); return; }
       submit.disabled = true;
       try {
-        const body = { phone: phone || null, email: email || null, display_name: displayName };
+        const body = { phone: phone || null, email: email || null, display_name: displayName, channel };
         if (opts && opts.chatId) body.chat_id = opts.chatId;
         else if (state.chatId) body.chat_id = state.chatId;
         const data = await api('/api/chat-groups/invites', { method: 'POST', body });
-        if (data.invite_url) {
-          const full = location.origin + data.invite_url;
-          try { await navigator.clipboard.writeText(full); } catch (_) {}
-          showToast('Ссылка скопирована');
-          el.remove();
+        if (data.full_url) {
+          showResult(data.full_url, data.delivery);
+          showToast(data.delivery && data.delivery.sent ? 'Приглашение отправлено' : 'Ссылка готова');
+          submit.disabled = false;
         } else {
           showToast(data.error || 'Не удалось создать приглашение');
           submit.disabled = false;

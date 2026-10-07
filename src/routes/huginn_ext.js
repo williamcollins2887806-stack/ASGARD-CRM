@@ -269,10 +269,53 @@ module.exports = async function registerHuginnExt(fastify, { db, uploadDir, getC
       [token, request.user.id, phone, email, displayName, chatId]
     );
     const invite = rows[0];
+    const baseUrl = (process.env.PUBLIC_BASE_URL || 'https://asgard-crm.ru').replace(/\/+$/, '');
+    const inviteUrl = `/h/?invite=${encodeURIComponent(token)}`;
+    const fullUrl = baseUrl + inviteUrl;
+
+    // Optional delivery: channel = 'email' | 'sms' | 'none' (link only).
+    const channel = ['email', 'sms'].includes(String(body.channel || '')) ? String(body.channel) : 'none';
+    const who = displayName || 'коллега';
+    let delivery = { channel: 'none', sent: false };
+    const msgText = `${who}, вас приглашают в мессенджер АСГАРД Хугинн. Установите приложение или откройте ссылку: ${fullUrl} (действует 7 дней)`;
+
+    if (channel === 'email' && email) {
+      try {
+        const { sendCrmEmail } = require('../services/crm-mailer');
+        const html = `<p>Здравствуйте${displayName ? ', ' + displayName : ''}!</p>
+<p>${request.user.name || 'Коллега'} приглашает вас в корпоративный мессенджер <b>АСГАРД Хугинн</b>.</p>
+<p>Откройте ссылку с телефона — приложение установится на экран «Домой» и откроет чат:</p>
+<p><a href="${fullUrl}">${fullUrl}</a></p>
+<p>Ссылка действует 7 дней.</p>`;
+        await sendCrmEmail(db, request.user.id, {
+          to: email,
+          subject: 'Приглашение в АСГАРД Хугинн',
+          text: msgText,
+          html,
+          skipBcc: true
+        });
+        delivery = { channel: 'email', sent: true, to: email };
+      } catch (e) {
+        delivery = { channel: 'email', sent: false, error: e.message };
+      }
+    } else if (channel === 'sms' && phone) {
+      try {
+        const MangoService = require('../services/mango');
+        const client = new MangoService();
+        const digits = String(phone).replace(/\D/g, '');
+        await client.sendSms(process.env.MANGO_SMS_FROM || '', digits, `ASGARD: ${msgText}`, process.env.MANGO_SMS_SENDER || '');
+        delivery = { channel: 'sms', sent: true, to: phone };
+      } catch (e) {
+        delivery = { channel: 'sms', sent: false, error: e.message };
+      }
+    }
+
     return {
       invite,
-      invite_url: `/h/?invite=${encodeURIComponent(token)}`,
-      accept_api: `/api/chat-groups/invites/${token}/accept`
+      invite_url: inviteUrl,
+      accept_api: `/api/chat-groups/invites/${token}/accept`,
+      full_url: fullUrl,
+      delivery
     };
   });
 
