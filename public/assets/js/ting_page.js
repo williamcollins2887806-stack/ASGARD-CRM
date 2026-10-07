@@ -86,11 +86,13 @@
     previewStream: null,
     error: null,
     hubError: null,
-    layout: 'grid',
+    layout: 'speaker',
     isHost: false,
     unreadChat: 0,
     myIdentity: null,
     activeSpeakerId: null,
+    swapPrimary: false,
+    pinnedId: null,
     joinToken: null
   };
 
@@ -630,20 +632,44 @@
   function peopleDrawerHtml() {
     if (!state.peopleOpen) return '';
     const wait = (state.waiting || []).map(p =>
-      `<div class="ting-list-item"><span>${esc(p.display_name || p.guest_name)}</span>
+      `<div class="ting-list-item ting-people-row">
+        <span class="ting-people-av">${esc(initials(p.display_name || p.guest_name))}</span>
+        <span class="ting-people-meta"><strong>${esc(p.display_name || p.guest_name || 'Гость')}</strong>
+        <em class="ting-muted">зал ожидания</em></span>
       <span class="ting-list-actions"><button type="button" class="ting-btn ting-btn-primary" data-act="admit" data-id="${p.id}">${esc(COPY.admit)}</button>
       <button type="button" class="ting-btn ting-btn-ghost" data-act="reject" data-id="${p.id}">${esc(COPY.reject)}</button></span></div>`
     ).join('') || `<div class="ting-muted">${esc(COPY.waitingNone)}</div>`;
-    const parts = (state.participants || []).map(p =>
-      `<div class="ting-list-item"><span>${esc(p.display_name || p.identity)}${p.role === 'host' ? ' · организатор' : ''}</span>
-      ${p.role !== 'host' ? `<span class="ting-list-actions"><button type="button" class="ting-btn ting-btn-ghost" data-act="remove" data-id="${esc(p.identity)}">${esc(COPY.remove)}</button></span>` : ''}</div>`
-    ).join('');
+    const parts = (state.participants || []).map(p => {
+      const label = p.label || p.display_name || p.identity || 'Участник';
+      const host = p.role === 'host';
+      const lk = state.lkRoom && (
+        (state.lkRoom.localParticipant && state.lkRoom.localParticipant.identity === p.identity)
+          ? state.lkRoom.localParticipant
+          : (state.lkRoom.remoteParticipants && state.lkRoom.remoteParticipants.get(p.identity))
+      );
+      const micOff = lk ? lk.isMicrophoneEnabled === false : false;
+      const camOff = lk ? !Array.from((lk.videoTrackPublications || new Map()).values()).some(x => x.track) : false;
+      return `<div class="ting-list-item ting-people-row">
+        <span class="ting-people-av">${esc(initials(label))}</span>
+        <span class="ting-people-meta">
+          <strong>${esc(label)}</strong>
+          ${host ? '<span class="ting-host-chip">хост</span>' : ''}
+          ${p.job_title && !String(label).includes(p.job_title) ? `<em class="ting-muted">${esc(p.job_title)}</em>` : ''}
+        </span>
+        <span class="ting-people-status" title="Мик / камера">
+          <span class="${micOff ? 'off' : ''}">${svgMic(!!micOff)}</span>
+          <span class="${camOff ? 'off' : ''}">${svgCam(!!camOff)}</span>
+        </span>
+        ${p.role !== 'host' ? `<span class="ting-list-actions"><button type="button" class="ting-btn ting-btn-ghost" data-act="remove" data-id="${esc(p.identity)}">${esc(COPY.remove)}</button></span>` : ''}
+      </div>`;
+    }).join('');
+    const count = (state.participants || []).length;
     return `<div class="ting-people-drawer" id="ting-people">
       <div class="ting-drawer-head">
-        <strong>${esc(COPY.people)}</strong>
+        <strong>${esc(COPY.people)} · ${count}</strong>
         <button type="button" class="ting-icon-btn ting-icon-sm" data-act="toggle-people">✕</button>
       </div>
-      ${parts}
+      ${parts || '<div class="ting-muted">Пока никого нет</div>'}
       ${(state.waiting || []).length || state.isHost ? `<h4 class="ting-drawer-sub">Зал ожидания</h4>${wait}` : ''}
       ${state.isHost ? `<button type="button" class="ting-btn ting-btn-ghost ting-full-btn ting-mt-12" data-act="mute-all">${esc(COPY.muteAll)}</button>` : ''}
       ${state.isHost ? `<div class="ting-cta-row ting-mt-12"><button type="button" class="ting-btn ting-btn-ghost ting-btn-compact" data-act="rec-start">Запись</button><button type="button" class="ting-btn ting-btn-ghost ting-btn-compact" data-act="rec-stop">Стоп записи</button></div>` : ''}
@@ -943,20 +969,35 @@
     stage.innerHTML = '';
     if (strip) strip.innerHTML = '';
 
+    function resolvePartLabel(identity, fallback) {
+      if (fallback === 'Вы') {
+        const me = (state.participants || []).find(p => p.identity === (state.myIdentity || identity));
+        if (me && (me.label || me.display_name)) return 'Вы · ' + (me.label || me.display_name);
+        return 'Вы';
+      }
+      const row = (state.participants || []).find(p => p.identity === identity);
+      if (row && (row.label || row.display_name)) return row.label || row.display_name;
+      if (fallback && !/^user_\d+$/i.test(fallback) && fallback !== identity) return fallback;
+      return fallback || 'Участник';
+    }
+
     const makeTile = (identity, videoTrack, name, micMuted, opts) => {
       const div = document.createElement('div');
       const cinematic = !!(opts && opts.cinematic);
       const speaking = !!(opts && opts.speak);
       const tone = avatarTone(identity || name);
+      const resolved = resolvePartLabel(identity, name);
       div.className = 'ting-tile'
-        + (opts && opts.span2 ? ' span2' : '')
         + (speaking ? ' speak' : '')
-        + (cinematic ? ' ting-tile-cinematic' : '');
+        + (cinematic ? ' ting-tile-cinematic' : '')
+        + (opts && opts.pip ? ' is-pip is-swappable' : '')
+        + (opts && opts.swap ? ' is-swappable' : '');
       div.dataset.id = identity;
       if (videoTrack) {
         const v = document.createElement('video');
         v.playsInline = true; v.autoplay = true;
         v.muted = !!(opts && opts.mutedLocal);
+        if (opts && opts.contain) v.classList.add('is-contain');
         videoTrack.attach(v);
         div.appendChild(v);
       } else {
@@ -964,13 +1005,44 @@
         ph.className = 'ting-tile-ph tone-' + tone + (cinematic ? ' cinematic' : '');
         const gold = opts && opts.gold ? ' gold' : '';
         const speakCls = speaking ? ' speaking' : '';
-        ph.innerHTML = `<div class="ting-avatar tone-${tone}${gold}${speakCls}">${esc(initials(name || identity))}</div>`;
+        ph.innerHTML = `<div class="ting-avatar tone-${tone}${gold}${speakCls}">${esc(initials(resolved || identity))}</div>`;
         div.appendChild(ph);
       }
       const lab = document.createElement('div');
       lab.className = 'lbl';
-      lab.innerHTML = `<span class="mic ${micMuted ? 'off' : ''}">${svgMic(!!micMuted)}</span><span class="name">${esc(name || identity)}</span>`;
+      lab.innerHTML = `<span class="mic ${micMuted ? 'off' : ''}">${svgMic(!!micMuted)}</span><span class="name">${esc(resolved || identity)}</span>`;
       div.appendChild(lab);
+      // Клик по тайлу участника:
+      //  - PiP в 1-на-1 (opts.pip)   → swap «я ↔ собеседник»;
+      //  - тайл ленты в группе (opts.swap) → поставить выбранного в центр (pin), повторный клик снимает.
+      if (opts && opts.pip) {
+        div.title = state.swapPrimary
+          ? 'Вернуть собеседника в центр'
+          : 'Нажмите, чтобы показать себя крупно';
+        div.addEventListener('click', () => {
+          state.swapPrimary = !state.swapPrimary;
+          state.pinnedId = null;
+          paintTiles();
+        });
+      } else if (opts && opts.swap) {
+        const applied = state.pinnedId === identity;
+        div.title = applied
+          ? 'Вернуть активного спикера в центр'
+          : 'Нажмите, чтобы вывести участника в центр';
+        div.addEventListener('click', () => {
+          state.pinnedId = applied ? null : identity; // повторный клик снимает пин
+          state.swapPrimary = false;
+          paintTiles();
+        });
+      } else if (opts && opts.pin && state.pinnedId) {
+        /* Центральный тайл в группе: клик снимает пин и возвращает авто-спикера */
+        div.classList.add('is-swappable');
+        div.title = 'Вернуть активного спикера в центр';
+        div.addEventListener('click', () => {
+          state.pinnedId = null;
+          paintTiles();
+        });
+      }
       return div;
     };
 
@@ -979,15 +1051,29 @@
       if (harnessDemo()) {
         if (state.layout === 'speaker') {
           stage.className = 'ting-stage speaker';
-          const main = makeTile('host', null, 'Никита · организатор', false, { speak: true, gold: true, cinematic: true });
-          stage.appendChild(main);
-          if (strip) {
-            strip.appendChild(makeTile('e', null, 'Елена', false, { cinematic: true }));
-            strip.appendChild(makeTile('p', null, 'Гость', true, { cinematic: true }));
+          // Демо зеркалит реальную логику: roster=2 → 1-на-1 (центр + PiP),
+          // roster=3 (demo=group) → группа (центр + лента, без PiP).
+          const roster = (typeof window !== 'undefined' && window.__TING_DEMO_EXTRA__) ? ['host', 'e', 'p'] : ['host', 'e'];
+          const people = { host: 'Никита · организатор', e: 'Елена', p: 'Гость' };
+          if (roster.length <= 2) {
+            const mainId = state.swapPrimary ? 'host' : 'e';
+            const pipId = mainId === 'host' ? 'e' : 'host';
+            stage.appendChild(makeTile(mainId, null, people[mainId], false, { speak: true, gold: true, cinematic: true }));
+            stage.appendChild(makeTile(pipId, null, people[pipId], false, { pip: true, cinematic: true }));
+          } else {
+            const mainId = state.pinnedId || 'e';
+            stage.appendChild(makeTile(mainId, null, people[mainId], false, {
+              speak: true, gold: true, cinematic: true, pin: !!state.pinnedId
+            }));
+            if (strip) {
+              roster.filter((id) => id !== mainId).forEach((id) => {
+                strip.appendChild(makeTile(id, null, people[id], id === 'p', { cinematic: true, swap: true }));
+              });
+            }
           }
         } else {
-          stage.className = 'ting-stage g2';
-          stage.appendChild(makeTile('host', null, 'Никита · организатор', false, { span2: true, speak: true, gold: true, cinematic: true }));
+          stage.className = 'ting-stage auto';
+          stage.appendChild(makeTile('host', null, 'Никита · организатор', false, { speak: true, gold: true, cinematic: true }));
           stage.appendChild(makeTile('e', null, 'Елена', false, { cinematic: true, gold: true }));
           stage.appendChild(makeTile('p', null, 'Гость', true, { cinematic: true }));
         }
@@ -1001,6 +1087,11 @@
     const room = state.lkRoom;
     const speakerMode = state.layout === 'speaker';
     const lp = room.localParticipant;
+    /* Запиненный участник мог выйти — тогда пин недействителен (иначе центр пустой) */
+    if (state.pinnedId && state.pinnedId !== lp.identity
+      && !Array.from(room.remoteParticipants.values()).some(p => p.identity === state.pinnedId)) {
+      state.pinnedId = null;
+    }
     const localVid = Array.from(lp.videoTrackPublications.values()).find(p => p.track && p.source !== (window.LivekitClient && LivekitClient.Track && LivekitClient.Track.Source.ScreenShare));
     const screenPub = Array.from(lp.videoTrackPublications.values()).find(p => {
       try { return p.source === LivekitClient.Track.Source.ScreenShare; } catch (_) { return /screen/i.test(String(p.source || '')); }
@@ -1008,6 +1099,14 @@
     const remotes = Array.from(room.remoteParticipants.values());
 
     const activeId = state.activeSpeakerId;
+    const isScreenPub = (pub) => {
+      try { return /screen/i.test(String((pub && pub.source) || '')); } catch (_) { return false; }
+    };
+    const hasScreen = (p) => {
+      try {
+        return Array.from(p.videoTrackPublications.values()).some(x => x.track && isScreenPub(x));
+      } catch (_) { return false; }
+    };
     const pickVideo = (p) => {
       const pubs = Array.from(p.videoTrackPublications.values());
       const screen = pubs.find(x => x.track && /screen/i.test(String(x.source || '')));
@@ -1018,10 +1117,12 @@
 
     if (speakerMode) {
       stage.className = 'ting-stage speaker';
+      const joinCount = 1 + remotes.length;   // видимых участников (включая себя)
       let mainP = lp;
       let mainTrack = screenPub && screenPub.track ? screenPub.track : (localVid && localVid.track);
       let mainName = 'Вы';
-      /* Screen-share always wins; else ActiveSpeaker; else first remote with video */
+      let contain = !!(screenPub && screenPub.track);
+      /* Приоритет центра: своя презентация → свап (себя в центр) → активный спикер → первый с видео */
       let screenOwner = null;
       if (screenPub && screenPub.track) screenOwner = lp;
       remotes.forEach(p => {
@@ -1032,6 +1133,18 @@
         mainP = screenOwner;
         mainTrack = pickVideo(screenOwner);
         mainName = screenOwner.identity === lp.identity ? 'Вы' : (screenOwner.name || screenOwner.identity);
+        contain = true;
+      } else if (state.pinnedId) {
+        /* Ручной пин (клик по тайлу участника) — приоритетнее активного спикера */
+        if (lp.identity === state.pinnedId) {
+          mainP = lp; mainTrack = localVid && localVid.track; mainName = 'Вы';
+        } else {
+          const pp = remotes.find(p => p.identity === state.pinnedId);
+          if (pp) { mainP = pp; mainTrack = pickVideo(pp); mainName = pp.name || pp.identity; }
+        }
+      } else if (state.swapPrimary) {
+        mainP = lp; mainTrack = localVid && localVid.track; mainName = 'Вы';
+        contain = false;
       } else if (activeId) {
         if (lp.identity === activeId) {
           mainP = lp; mainTrack = localVid && localVid.track; mainName = 'Вы';
@@ -1048,30 +1161,49 @@
       stage.appendChild(makeTile(mainP.identity, mainTrack, mainName, mainP.isMicrophoneEnabled === false, {
         speak: !activeId || mainP.identity === activeId || !!screenOwner,
         mutedLocal: mainP.identity === lp.identity,
-        gold: !mainTrack
+        gold: !mainTrack,
+        contain,
+        pin: joinCount > 2
       }));
+      /* 1-на-1: второй — прямоугольный PiP прямо на стейдже (клик = swap).
+         Группа: остальные — лента снизу, клик по любому = поставить в центр. */
       const others = [{ p: lp, name: 'Вы' }].concat(remotes.map(p => ({ p, name: p.name || p.identity })))
         .filter(x => x.p.identity !== mainP.identity);
-      others.forEach(({ p, name }) => {
-        const vt = pickVideo(p);
-        const tile = makeTile(p.identity, vt, name, p.isMicrophoneEnabled === false, {
-          mutedLocal: p.identity === lp.identity,
-          speak: !!(activeId && p.identity === activeId)
+      if (joinCount === 2) {
+        const only = others[0];
+        if (only) {
+          stage.appendChild(makeTile(only.p.identity, pickVideo(only.p), only.name, only.p.isMicrophoneEnabled === false, {
+            mutedLocal: only.p.identity === lp.identity,
+            speak: !!(activeId && only.p.identity === activeId),
+            pip: true,
+            contain: false
+          }));
+        }
+      } else {
+        others.forEach(({ p, name }) => {
+          const vt = pickVideo(p);
+          const tile = makeTile(p.identity, vt, name, p.isMicrophoneEnabled === false, {
+            mutedLocal: p.identity === lp.identity,
+            speak: !!(activeId && p.identity === activeId),
+            swap: true
+          });
+          if (strip) strip.appendChild(tile);
         });
-        if (strip) strip.appendChild(tile);
-      });
+      }
     } else {
       const count = 1 + remotes.length;
-      stage.className = count <= 3 ? 'ting-stage g2' : 'ting-stage auto';
+      stage.className = 'ting-stage auto';
       const localSpeak = !activeId || lp.identity === activeId;
       const hostTile = makeTile(lp.identity, (screenPub && screenPub.track) || (localVid && localVid.track), 'Вы', lp.isMicrophoneEnabled === false, {
-        span2: count <= 3, speak: localSpeak, mutedLocal: true, gold: !(localVid && localVid.track) && !(screenPub && screenPub.track)
+        speak: localSpeak, mutedLocal: true, contain: !!(screenPub && screenPub.track),
+        gold: !(localVid && localVid.track) && !(screenPub && screenPub.track)
       });
       stage.appendChild(hostTile);
       remotes.forEach(p => {
         const vt = pickVideo(p);
         stage.appendChild(makeTile(p.identity, vt, p.name || p.identity, p.isMicrophoneEnabled === false, {
-          speak: !!(activeId && p.identity === activeId)
+          speak: !!(activeId && p.identity === activeId),
+          contain: hasScreen(p)
         }));
       });
     }
@@ -1214,10 +1346,21 @@
     connectBusy = true;
     stopPreview();
     try {
-      const name = (qs('#ting-disp') && qs('#ting-disp').value) || 'Участник';
+      const typed = qs('#ting-disp') && qs('#ting-disp').value;
+      const fromCrm = (window.ASGARD_USER && (ASGARD_USER.full_name || ASGARD_USER.name))
+        || (window.AsgardAuth && AsgardAuth.user && (AsgardAuth.user.full_name || AsgardAuth.user.name))
+        || (function () {
+          try {
+            const u = JSON.parse(localStorage.getItem('asgard_user') || '{}');
+            return u.full_name || u.name || '';
+          } catch (_) { return ''; }
+        })();
+      const name = String(typed || fromCrm || '').trim();
+      const body = {};
+      if (name && !/^участник(\s+\d+)?$/i.test(name)) body.display_name = name;
       const tok = await api(`/api/thing/rooms/${encodeURIComponent(slug)}/token`, {
         method: 'POST',
-        body: JSON.stringify({ display_name: name })
+        body: JSON.stringify(body)
       });
       tokenFailAt = 0;
       tokenFailSlug = null;
@@ -1407,6 +1550,8 @@
     const slug = state.room && state.room.slug;
     TingSound.play('end');
     state.activeSpeakerId = null;
+    state.swapPrimary = false;
+    state.pinnedId = null;
     stopLiveLoop();
     stopCrmLobbyPoll();
     if (state.timerId) { clearInterval(state.timerId); state.timerId = null; }
@@ -1517,11 +1662,42 @@
       if (p.view === 'lobby' && p.slug) {
         state.room = state.room || unwrapRoom(await api(`/api/thing/rooms/${encodeURIComponent(p.slug)}`));
       }
+      if (p.view === 'room' && p.slug) {
+        await adoptOrConnectRoom(p.slug);
+      }
     } catch (e) {
       state.view = 'error';
       state.error = e.message;
     }
     render();
+  }
+
+  async function adoptOrConnectRoom(slug) {
+    const sess = window.TingSession;
+    const meta = sess && typeof sess.getMeta === 'function' ? sess.getMeta() : null;
+    const liveRoom = sess && typeof sess.getRoom === 'function' ? sess.getRoom() : null;
+    if (sess && sess.isActive() && meta && meta.slug === slug && liveRoom) {
+      state.lkRoom = liveRoom;
+      state.myIdentity = meta.identity || state.myIdentity;
+      const st = sess.getState ? sess.getState() : {};
+      if (typeof st.timerSec === 'number') state.timerSec = st.timerSec;
+      if (!state.timerId) {
+        state.timerId = setInterval(() => {
+          const sst = sess.getState ? sess.getState() : null;
+          state.timerSec = sst && typeof sst.timerSec === 'number' ? sst.timerSec : (state.timerSec + 1);
+          const el = qs('#ting-timer');
+          if (el) el.textContent = fmtTime(state.timerSec);
+        }, 1000);
+      }
+      await refreshPeople(slug);
+      await refreshChat(slug);
+      startLiveLoop(slug);
+      setIncall(true);
+      return;
+    }
+    if (!state.lkRoom || (state.room && state.room.slug !== slug)) {
+      await connectRoom(slug);
+    }
   }
 
   function render() {
@@ -1760,8 +1936,10 @@
       }
       if (act === 'layout-toggle') {
         state.layout = state.layout === 'speaker' ? 'grid' : 'speaker';
+        state.swapPrimary = false;
+        state.pinnedId = null;
         const stage = qs('#ting-stage');
-        if (stage) updateDockMedia();
+        if (stage) { paintTiles(); updateDockMedia(); }
         else render();
         return;
       }

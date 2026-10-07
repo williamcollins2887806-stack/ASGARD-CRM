@@ -154,6 +154,7 @@ window.fetch = async function(url, opts) {
 };
 if (!location.hash || location.hash.indexOf('#/ting') !== 0) location.hash = '#/ting';
 window.__TING_HARNESS_DEMO__ = true;
+window.__TING_DEMO_EXTRA__ = /demo=group/.test(location.hash);
 TingPage.mount('#ting-root');
 window.addEventListener('hashchange', () => TingPage.onHash());
 </script></body></html>`;

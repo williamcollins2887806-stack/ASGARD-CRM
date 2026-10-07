@@ -53,6 +53,21 @@ check('C27_dial', /ting-dial/.test(tingPage) && /isDialCode/.test(thing), 'dial-
 check('C28_mobile', /@media \(max-width: 820px\)/.test(tingCss) && /\.ting-chat\.open/.test(tingCss) && /ting-people-drawer/.test(tingCss), 'mobile breakpoints + sheets');
 check('C29_lobby_admit_api', /lobby\/:participantId\/admit/.test(thing), 'admit API still exists');
 check('C30_no_iframe', !/iframe.*ting|ting.*iframe/i.test(tingPage + app), 'not iframe');
+// ── C31..C36: видео-раскладка (анти-сплющивание) + имена ──
+check('C31_no_legacy_fixed_height', !/\.ting-stage\.speaker[^{]*\{[^}]*min-height:\s*420px\s*!important/.test(tingCss),
+  'легаси min-height:420px!important убран');
+check('C32_aspect_ratio_16x9', /\.ting-stage\.speaker\s*>\s*\.ting-tile[^{]*\{[^}]*aspect-ratio:\s*16\s*\/\s*9/.test(tingCss)
+  && /\.ting-stage\.auto\s+\.ting-tile\s*\{[^}]*aspect-ratio:\s*16\s*\/\s*9/.test(tingCss), 'aspect-ratio 16/9 на тайлах');
+check('C33_pip_4x3', /\.ting-tile\.is-pip\s*\{[^}]*aspect-ratio:\s*4\s*\/\s*3/.test(tingCss) && /is-pip/.test(tingPage),
+  'PiP-сам-вид 4:3');
+check('C34_swap_click', /swapPrimary/.test(tingPage) && /state\.swapPrimary\s*=\s*!state\.swapPrimary/.test(tingPage),
+  'swap по клику');
+check('C35_contain_screenshare', /video\.is-contain/.test(tingCss) && /classList\.add\('is-contain'\)/.test(tingPage) && /hasScreen/.test(tingPage),
+  'screen-share object-fit: contain + подпись track по source=screen');
+check('C36_placeholder_name_fallback', /isPlaceholderDisplayName/.test(thing) && /r\.user_name\s*\|\|\s*r\.guest_name/.test(thing),
+  'заглушка «Участник» → ФИО из users');
+check('C37_landscape_low_height', /orientation:\s*landscape/.test(tingCss) && /max-height:\s*600px/.test(tingCss),
+  'ландшафт телефона: ограничение по высоте');
 
 const fail = checks.filter((c) => !c.pass);
 const md = [

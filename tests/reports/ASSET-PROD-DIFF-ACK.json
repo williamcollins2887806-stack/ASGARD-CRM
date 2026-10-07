@@ -46,6 +46,20 @@
       "reason": "Prod-only 3 строки — <script>-теги мёртвых модулей warehouse.js / assembly-page.js / assembly-dnd.js (на проде оболочка 20.28.37, теги ещё не сняты). Это ровно те теги, которые задача C2 (20.09) осознанно удаляет вместе с самими файлами.",
       "evidence": "prod содержит `assets/js/warehouse.js?v=20.28.37`, `assets/js/assembly-page.js?v=20.28.37`, `assets/js/assembly-dnd.js?v=20.28.37`; в локальном index.html тегов нет (после C2), сами файлы удалены из дерева. Мёртвость подтверждена статикой: app.js:2311 роут /assembly редиректит на #/warehouse-v2?tab=assemblies (AsgardAssemblyPage не вызывается), AsgardAssemblyDnD дёргается только из assembly-page.js, AsgardWarehouse (v1) не вызывается ни из app.js (роут /warehouse → хэш-редирект на /warehouse-v2), ни из warehouse-v2.js. Гейт verify_index_tags.js: OK (0 MISSING/BROKEN). Прод-файлы этих модулей остаются на сервере как осиротевшие ассеты (scp их не удаляет), потому что белые-листы — на git-show локального index.html, где тегов уже нет, а не на grep прода. Потери прод-работы нет: prod-only строки не несут функциональности (теги на неиспользуемые скрипты).",
       "verdict": "superseded_by_local"
+    },
+    "public/assets/js/huginn_ting.js": {
+      "reason": "Prod-only 9 строк — СТАРАЯ версия той же функции localDisplayProfile/joinSlug, которую локальные правки 20.28.100 заменяют намеренно (фикс D-200 «Участник»).",
+      "evidence": "Факт (unified diff LOCAL -> PROD, tools/probe_shell_drift.py): prod `let u = global.ASGARD_USER || {};` против local `let u = {}; ... Object.assign(..., AsgardAuth.user) ... Object.assign(..., global.ASGARD_USER)`; prod `name: name || 'Участник'` против local `name: name || ''`; prod `body: JSON.stringify({ display_name: me.name })` против local `if (me.name) body.display_name = me.name;`; prod `displayName: tok.display_name || me.name` против local `|| me.name || 'Участник'`; prod `const name = (meta && meta.displayName) || me.name` против local с фильтром заглушки. В git этих prod-хelper'ов нет (они были залиты scp-ом в 14:14, коммита нет). Проверено: ни одна prod-строка не несёт поведения, которого нет в локальной версии; локальная строго перекрывает (исправляет показ «Участник»). Гейт: tests/ting/verifiers/layout_verify.js 40/40, code_verify 37/37.",
+      "verdict": "superseded_by_local",
+      "acked_at": "2026-10-07",
+      "acked_by": "deploy 20.28.100 (Ting video layout + name fix)"
+    },
+    "public/assets/js/ting_page.js": {
+      "reason": "Prod-only 3 строки — СТАРЫЙ блок получения имени в connectRoom (`qs('#ting-disp').value || window.ASGARD_USER...`), заменённый local-версией с fallback на asgard_user/AsgardAuth и фильтром заглушки.",
+      "evidence": "Факт (unified diff LOCAL -> PROD): prod `const name = (qs('#ting-disp') && qs('#ting-disp').value) || (window.ASGARD_USER && (ASGARD_USER.full_name || ASGARD_USER.name)) || 'Участник';` против local с `typed`/`fromCrm` и `if (name && !/^участник(\\s+\\d+)?$/i.test(name)) body.display_name = name;`. Остальные 12 prod-only строк — старые ветки рендера тайлов (без `aspect-ratio`/`is-pip`/`is-contain`/пина), которые local-версия замещает полностью (анти-«сплющивание», swap, пин, screen-share contain). Ни одна prod-строка не даёт поведения, отсутствующего локально; локальная версия проверена гейтами. Остальные diff-строки — не prod-only (есть в git/локально).",
+      "verdict": "superseded_by_local",
+      "acked_at": "2026-10-07",
+      "acked_by": "deploy 20.28.100 (Ting video layout + name fix)"
     }
   }
 }

@@ -8,6 +8,8 @@
   --ting-bg1: #12151a;
   --ting-bg2: #1a1f27;
   --ting-bg3: #242b36;
+  --ting-pip-bg: #000;
+  --ting-on-gold: #141414;
   --ting-line: rgba(255,255,255,.08);
   --ting-t1: #F2F5F8;
   --ting-t2: #8B96A8;
@@ -336,16 +338,11 @@ body.ting-guest {
   width: 100%; color: inherit; font: inherit; text-align: left;
 }
 .ting-call-row:hover { background: rgba(255,255,255,.04); }
-.ting-stage.speaker {
-  flex: 1;
-  min-height: 420px !important;
-}
-.ting-stage.speaker .ting-tile {
-  min-height: 420px !important;
-  height: 100%;
-}
+/* Легаси-правило спикера с фиксированной min-height 420px удалено (важно):
+   оно перебивало пропорции 16:9 и растягивало тайлы в «плоские полосы». */
 .ting-stage.g2 {
-  min-height: 420px;
+  /* Оставлено для совместимости; в коде используем .auto — гaрантирует 16:9 каждому тайлу */
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
 }
 .ting-avatar {
   width: 48px; height: 48px; border-radius: 50%; flex: 0 0 auto;
@@ -753,8 +750,46 @@ body.ting-guest .ting-card,
 }
 @media (max-width: 820px) {
   .ting-consent { top: 8px; font-size: 10px; padding: 5px 10px; }
-  .ting-stage-wrap { padding: 40px 12px 118px; }
+  /* Верхний бар уводим в поток: иначе absolute-бар (z-index:3) перекрывает ленту
+     и тайлы становятся некликабельными на телефоне. */
+  .ting-room-shell .ting-room-top {
+    position: static;
+    background: none;
+  }
+  .ting-stage-wrap {
+    padding: 8px 10px 108px;
+    flex: 1 1 auto;
+    min-height: 0;
+  }
   .ting-filmstrip { margin-top: 4px; }
+  .ting-stage.speaker,
+  .ting-stage.g1,
+  .ting-stage.g2,
+  .ting-stage.auto {
+    flex: 1 1 auto;
+    min-height: 0;
+  }
+  /* Портрет: сетка в один столбец, пропорции 16:9 — без сплющивания */
+  .ting-stage.g2,
+  .ting-stage.auto {
+    grid-template-columns: 1fr;
+    grid-template-rows: none;
+    align-content: start;
+  }
+  .ting-stage.g2 .ting-tile,
+  .ting-stage.auto .ting-tile,
+  .ting-stage.speaker .ting-tile {
+    aspect-ratio: 16 / 9;
+    height: auto !important;
+    min-height: 0 !important;
+  }
+  .ting-tile.is-pip {
+    width: clamp(112px, 34%, 168px);
+    right: 10px;
+    bottom: 84px;
+  }
+  .ting-room-shell { min-height: 100dvh; }
+  .ting-room-main { display: flex; flex-direction: column; min-height: 100dvh; }
 }
 .ting-filmstrip {
   display: flex; gap: 8px; padding: 0 0 10px; overflow-x: auto;
@@ -769,6 +804,7 @@ body.ting-guest .ting-card,
   display: grid;
   gap: 10px;
   align-content: center;
+  position: relative; /* база для PiP-сам-вида */
 }
 .ting-stage.g2 {
   grid-template-columns: 1.4fr 1fr;
@@ -776,11 +812,34 @@ body.ting-guest .ting-card,
 }
 .ting-stage.g1, .ting-stage.speaker {
   grid-template-columns: 1fr;
+  /* Строка должна быть определённой, иначе height:100% у тайла даёт цикл и строка схлопывается */
+  grid-template-rows: minmax(0, 1fr);
 }
-.ting-stage.speaker .ting-tile { min-height: 100%; }
+/* Спикер: главный тайл всегда 16:9 и целиком влезает в стейдж.
+   container-type задаётcя, чтобы считать размер из И ширины, И высоты стейджа —
+   иначе на низком (ландшафт) тайл либо схлопывается, либо растягивается в полосу. */
+.ting-stage.speaker { container-type: size; align-content: center; }
+.ting-stage.speaker > .ting-tile {
+  width: min(100cqw, calc(100cqh * 16 / 9));
+  height: auto;
+  aspect-ratio: 16 / 9;
+  min-height: 0;
+  justify-self: center;
+  align-self: center;
+}
+/* Ландшафт телефона: высота стейджа низкая — учитывается через cqh в правиле выше.
+   Бар тоже уводим в поток (ширина > 820px, поэтому правило выше не сработало). */
+@media (orientation: landscape) and (max-height: 600px) {
+  .ting-room-shell .ting-room-top { position: static; background: none; }
+  .ting-stage-wrap { padding: 8px 12px 96px; }
+}
 .ting-stage.auto {
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  align-content: start;
+  /* Одна строка не может тянуться — иначе тайлы «плющит»; все тайлы строго 16:9 */
+  grid-auto-rows: min-content;
 }
+.ting-stage.auto .ting-tile { aspect-ratio: 16 / 9; min-height: 0; }
 
 .ting-tile {
   position: relative; min-height: 160px; border-radius: 18px;
@@ -794,7 +853,6 @@ body.ting-guest .ting-card,
   z-index: 2; pointer-events: none;
   background: linear-gradient(180deg, transparent 0%, rgba(0,0,0,.22) 55%, rgba(0,0,0,.42) 100%);
 }
-.ting-tile.span2 { grid-row: span 2; min-height: 100%; }
 .ting-tile.speak {
   border-color: rgba(212,168,67,.85);
   outline: 3px solid rgba(212,168,67,.75);
@@ -811,6 +869,29 @@ body.ting-guest .ting-card,
   width: 100%; height: 100%;
   object-fit: cover; display: block;
 }
+/* Презентация/демонстрация экрана: не режем содержимое */
+.ting-tile video.is-contain { object-fit: contain; background: var(--ting-pip-bg); }
+/* PiP-сам-вид: аккуратный прямоугольник в углу стейджа, свап по клику.
+   Селектор со `.ting-stage.speaker` — иначе проигрывает `.ting-stage.speaker > .ting-tile`. */
+.ting-stage.speaker > .ting-tile.is-pip,
+.ting-tile.is-pip {
+  position: absolute;
+  right: 14px;
+  bottom: 14px;
+  width: clamp(140px, 22%, 240px);
+  height: auto;
+  aspect-ratio: 4 / 3;
+  min-height: 0;
+  max-height: none;
+  z-index: 4;
+  border-radius: 14px;
+  cursor: pointer;
+  box-shadow: 0 10px 32px rgba(0,0,0,.5);
+  border: 1px solid rgba(255,255,255,.16);
+}
+.ting-tile.is-pip .ting-tile-ph { border-radius: 13px; }
+.ting-tile.is-swappable { cursor: pointer; }
+.ting-tile.is-swappable:hover { border-color: rgba(212,168,67,.7); }
 .ting-tile .ting-tile-ph {
   display: grid; place-items: center;
   background:
@@ -1033,6 +1114,38 @@ body.ting-guest .ting-card,
 }
 .ting-list-item .ting-btn { min-height: 36px; padding: 6px 10px; font-size: 12px; }
 .ting-list-item:last-child { border-bottom: 0; }
+.ting-people-row {
+  display: grid;
+  grid-template-columns: 40px minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 10px;
+}
+.ting-people-av {
+  width: 40px; height: 40px; border-radius: 50%;
+  display: inline-flex; align-items: center; justify-content: center;
+  font: 700 12px/1 var(--ting-font, inherit);
+  color: var(--ting-on-gold);
+  background: linear-gradient(145deg, var(--ting-gold-l), var(--ting-gold));
+  flex: 0 0 auto;
+}
+.ting-people-meta {
+  display: flex; flex-direction: column; gap: 2px; min-width: 0;
+}
+.ting-people-meta strong {
+  font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.ting-people-meta em { font-style: normal; font-size: 11px; }
+.ting-host-chip {
+  display: inline-block; margin-top: 2px; padding: 1px 7px; border-radius: 999px;
+  font: 600 10px/1.4 var(--ting-font, inherit);
+  background: color-mix(in srgb, var(--ting-gold) 18%, transparent); color: var(--ting-gold-l);
+  width: fit-content;
+}
+.ting-people-status {
+  display: inline-flex; gap: 6px; align-items: center; opacity: .85;
+}
+.ting-people-status .off { opacity: .35; }
+.ting-people-status svg { width: 14px; height: 14px; }
 
 .ting-modal-backdrop {
   position: fixed; inset: 0; z-index: 13000;
@@ -1175,15 +1288,16 @@ body.ting-guest .ting-card,
   .ting-dock-sep { margin: 2px 4px 8px; }
   .ting-page .ting-wrap { padding-bottom: 48px; }
   .ting-stage.g2 { grid-template-columns: 1fr; grid-template-rows: auto; }
-  .ting-tile.span2 { grid-row: auto; min-height: 260px; }
+  /* Портрет: один столбец (правило .ting-stage.g2 выше уже переводит сетку в 1fr) */
   .ting-ready-foot { flex-direction: column; text-align: center; }
   .ting-count-chip { font-size: 11px; padding: 6px 10px; }
   .ting-call-row .ting-btn { padding: 8px 12px; min-height: 40px; font-size: 13px; }
 }
 @media (max-width: 480px) {
   .ting-hub-hero { grid-template-columns: 1fr; }
-  .ting-stage.auto { grid-template-columns: 1fr 1fr; gap: 8px; }
-  .ting-tile { min-height: 120px; border-radius: 16px; }
+  /* Портрет: строго один столбец (анти-«плоские полосы») */
+  .ting-stage.auto { grid-template-columns: 1fr; gap: 8px; }
+  .ting-tile { min-height: 0; border-radius: 16px; }
   .ting-dock-btn { width: 48px; height: 48px; }
   .ting-dock-btn.danger { width: 52px; height: 52px; }
   .ting-dial-lg { font-size: 32px; }

@@ -14,6 +14,35 @@ const { createNotification } = require('../services/notify');
 
 const DIRECTOR_ROLES = ['ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV'];
 
+const CRM_ROLE_TITLE = {
+  ADMIN: 'администратор',
+  DIRECTOR_GEN: 'генеральный директор',
+  DIRECTOR_COMM: 'коммерческий директор',
+  DIRECTOR_DEV: 'директор по развитию',
+  PM: 'руководитель проекта',
+  HEAD_PM: 'руководитель проектов',
+  TO: 'технический отдел',
+  HEAD_TO: 'руководитель ТО',
+  BUH: 'бухгалтер',
+  HR: 'HR',
+  HR_MANAGER: 'руководитель HR',
+  OM: 'офис-менеджер'
+};
+
+function roleTitle(role) {
+  return CRM_ROLE_TITLE[role] || '';
+}
+
+/** Клиент иногда шлёт заглушку «Участник» — не перекрываем ею ФИО из CRM. */
+function isPlaceholderDisplayName(name) {
+  const s = String(name || '').trim();
+  if (!s) return true;
+  if (/^участник(\s+\d+)?$/i.test(s)) return true;
+  if (/^user_\d+$/i.test(s)) return true;
+  if (/^(гость|вы)$/i.test(s)) return true;
+  return false;
+}
+
 function roomPublicUrl(slug) {
   return `${publicBaseUrl()}/ting/${slug}`;
 }
@@ -314,8 +343,24 @@ module.exports = async function thingRoutes(fastify) {
     }
 
     const identity = `user_${request.user.id}`;
-    const displayName = (request.body && request.body.display_name)
-      || request.user.name || request.user.email || `Участник ${request.user.id}`;
+    const bodyName = request.body && String(request.body.display_name || '').trim();
+    let displayName = request.user.name || request.user.email || `Участник ${request.user.id}`;
+    let jobTitle = roleTitle(request.user.role);
+    try {
+      const { rows: urows } = await db.query(
+        `SELECT name, role FROM users WHERE id = $1 LIMIT 1`,
+        [request.user.id]
+      );
+      if (urows[0]) {
+        // ФИО из CRM — источник истины; body.display_name только если это не заглушка
+        if (urows[0].name) displayName = urows[0].name;
+        jobTitle = roleTitle(urows[0].role) || jobTitle;
+      }
+    } catch (_) { /* */ }
+    if (bodyName && !isPlaceholderDisplayName(bodyName)) {
+      displayName = bodyName.slice(0, 80);
+    }
+    displayName = String(displayName || `Участник ${request.user.id}`).slice(0, 80);
     const host = isHost(room, request.user);
     const role = host ? 'host' : 'member';
 
@@ -424,6 +469,9 @@ module.exports = async function thingRoutes(fastify) {
         lobby_status: 'admitted',
         join_token: joinToken,
         identity,
+        display_name: displayName,
+        job_title: jobTitle || null,
+        role,
         room: serializeRoom(room, { includeSecrets: host })
       };
     } catch (err) {
@@ -768,7 +816,7 @@ module.exports = async function thingRoutes(fastify) {
       const creds = await livekit.createAccessToken({
         roomName: room.livekit_room_name,
         identity: p.identity,
-        name: p.display_name,
+        name: !isPlaceholderDisplayName(p.display_name) ? p.display_name : (p.guest_name || p.identity),
         roomAdmin: false,
         canPublish: true
       });
@@ -812,8 +860,12 @@ module.exports = async function thingRoutes(fastify) {
     if (!room) return reply.code(404).send({ error: 'Тинг не найден' });
     if (!(await canAccessRoom(room, request.user))) return reply.code(403).send({ error: 'Нет доступа' });
     const { rows } = await db.query(
-      `SELECT id, user_id, guest_name, role, display_name, identity, lobby_status, joined_at, left_at, created_at
-       FROM thing_participants WHERE room_id = $1 ORDER BY id`,
+      `SELECT tp.id, tp.user_id, tp.guest_name, tp.role, tp.display_name, tp.identity,
+              tp.lobby_status, tp.joined_at, tp.left_at, tp.created_at,
+              u.role AS crm_role, u.name AS user_name
+       FROM thing_participants tp
+       LEFT JOIN users u ON u.id = tp.user_id
+       WHERE tp.room_id = $1 ORDER BY tp.id`,
       [room.id]
     );
     let live = [];
@@ -822,8 +874,31 @@ module.exports = async function thingRoutes(fastify) {
     } catch (e) {
       fastify.log.warn({ err: e }, 'thing: listLiveKitParticipants failed');
     }
+    const participants = rows.map((r) => {
+      const job = roleTitle(r.crm_role);
+      // Старые строки (до фикса ФИО) хранят заглушку «Участник» — отдаём ФИО из users,
+      // чтобы ростер/плитки были верными и для уже созданных комнат.
+      const name = !isPlaceholderDisplayName(r.display_name)
+        ? r.display_name
+        : (r.user_name || r.guest_name || r.identity);
+      return {
+        id: r.id,
+        user_id: r.user_id,
+        guest_name: r.guest_name,
+        role: r.role,
+        display_name: name,
+        job_title: job || null,
+        label: job ? `${name} · ${job}` : name,
+        identity: r.identity,
+        lobby_status: r.lobby_status,
+        joined_at: r.joined_at,
+        left_at: r.left_at,
+        created_at: r.created_at,
+        crm_role: r.crm_role || null
+      };
+    });
     return {
-      participants: rows,
+      participants,
       live: live.map((p) => ({
         identity: p.identity,
         name: p.name || p.identity,
