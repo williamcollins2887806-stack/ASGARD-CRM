@@ -1851,6 +1851,7 @@
       storyAdd.onclick = () => openStoryComposer();
     }
     renderChatList(state.searchQ);
+    renderPresenceStrip();
     panel.querySelector('#hgSearch').oninput = (e) => {
       state.searchQ = e.target.value;
       renderChatList(e.target.value);
@@ -4702,7 +4703,7 @@
   function startPresencePolling() {
     if (_presenceTimer) return;
     _presenceTimer = setInterval(() => { warmPresence().then(() => {
-      if (!state.chatId && state.tab === 'huginn') renderChatList(state.searchQ);
+      if (!state.chatId && state.tab === 'huginn') { renderChatList(state.searchQ); renderPresenceStrip(); }
     }); }, 30000);
   }
 
