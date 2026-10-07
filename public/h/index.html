@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"/>
+  <meta name="theme-color" content="#0D1117"/>
+  <meta name="apple-mobile-web-app-capable" content="yes"/>
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
+  <meta name="apple-mobile-web-app-title" content="Хугинн"/>
+  <link rel="manifest" href="/h/manifest.webmanifest"/>
+  <link rel="apple-touch-icon" href="/assets/img/apple-touch-icon.png"/>
+  <title>Хугинн</title>
+  <link rel="stylesheet" href="/assets/css/design-tokens.css"/>
+  <link rel="stylesheet" href="/assets/css/huginn_dock.css"/>
+  <style>
+    html, body {
+      margin: 0; height: 100%;
+      background: var(--hg-bg, var(--bg1));
+      color: var(--hg-text, var(--t1));
+      font-family: var(--hg-font, var(--ff));
+    }
+    #app { height: 100%; display: flex; flex-direction: column; }
+    .h-login {
+      max-width: 380px; margin: auto; padding: 28px 24px;
+      background: var(--hg-panel); border-radius: var(--hg-radius-panel, 16px);
+      border: 1px solid var(--hg-border);
+    }
+    .h-logo {
+      width: 64px; height: 64px; margin: 0 auto 16px;
+      border-radius: 50%;
+      background: var(--hg-elev);
+      border: 1.5px solid var(--hg-border);
+      display: flex; align-items: center; justify-content: center;
+      color: var(--hg-accent);
+    }
+    .h-logo svg { width: 28px; height: 28px; }
+    .h-login h1 {
+      margin: 0 0 8px; font: 600 22px/1.25 var(--hg-font); text-align: center;
+      color: var(--hg-text);
+    }
+    .h-login p {
+      margin: 0 0 18px; color: var(--hg-muted); font: 400 14px/1.4 var(--hg-font);
+      text-align: center;
+    }
+    .h-login input {
+      width: 100%; margin: 0 0 10px; height: 48px; border-radius: 10px;
+      border: 1px solid var(--hg-border); background: var(--hg-elev); color: var(--hg-text);
+      padding: 0 16px; font: inherit; box-sizing: border-box; outline: none;
+      transition: border-color 120ms var(--hg-ease-ui, ease);
+    }
+    .h-login input:focus { border-color: var(--hg-accent); }
+    .h-login input:focus-visible { outline: 2px solid var(--hg-accent); outline-offset: 2px; }
+    .h-login button#go, .h-btn-primary,
+    .h-login button#sendCode, .h-login button#verifyCode,
+    .h-login button#sendLink, .h-login button#staffGo {
+      width: 100%; height: 48px; border: 0; border-radius: 10px;
+      background: var(--hg-accent); color: #141414; font: 600 14px/1.2 var(--hg-font);
+      cursor: pointer; margin-top: 4px;
+      transition: filter 120ms var(--hg-ease-ui, ease), transform 120ms var(--hg-ease-ui, ease);
+    }
+    .h-login button#sendCode:disabled,
+    .h-login button#sendLink:disabled { opacity: .6; cursor: default; }
+    .h-login button#sendCode:hover, .h-login button#sendLink:hover,
+    .h-login button#verifyCode:hover, .h-login button#staffGo:hover { filter: brightness(1.06); }
+    .h-login button#sendCode:active, .h-login button#sendLink:active,
+    .h-login button#verifyCode:active, .h-login button#staffGo:active { transform: scale(0.98); }
+    .h-login button#go:hover { filter: brightness(1.06); }
+    .h-login button#go:active { transform: scale(0.98); }
+    .h-login button#go:focus-visible { outline: 2px solid var(--hg-accent); outline-offset: 2px; }
+    .h-code-row { display: flex; gap: 8px; margin-bottom: 10px; }
+    .h-code-row input { margin: 0; flex: 1; }
+    .h-code-row button { width: auto; min-width: 96px; margin: 0; padding: 0 16px; }
+    .h-or {
+      display: flex; align-items: center; gap: 10px;
+      color: var(--hg-muted); font: 400 12px/1 var(--hg-font); margin: 6px 0 12px;
+    }
+    .h-or::before, .h-or::after {
+      content: ''; flex: 1; height: 1px; background: var(--hg-border);
+    }
+    .h-link {
+      width: 100%; height: 40px; margin-top: 10px; border: 0; background: transparent;
+      color: var(--hg-muted); font: 500 13px/1.2 var(--hg-font); cursor: pointer;
+      text-decoration: underline; text-underline-offset: 3px;
+    }
+    #staffBox { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--hg-border); }
+    .h-err {
+      color: var(--hg-danger, var(--red)); font-size: 13px; min-height: 18px;
+      margin-bottom: 8px; text-align: center;
+    }
+    .h-top {
+      height: 56px; display: flex; align-items: center; gap: 8px;
+      padding: 0 12px; border-bottom: 1px solid var(--hg-border); background: var(--hg-panel);
+      flex: 0 0 auto;
+    }
+    .h-top h1 { font: 600 16px/1.3 var(--hg-font); margin: 0; flex: 1; }
+    .h-icon {
+      width: 40px; height: 40px; border: 0; border-radius: 10px;
+      background: transparent; color: var(--hg-muted); cursor: pointer;
+      display: inline-flex; align-items: center; justify-content: center;
+      transition: background 120ms var(--hg-ease-ui, ease), color 120ms var(--hg-ease-ui, ease);
+    }
+    .h-icon:hover { color: var(--hg-text); background: var(--hg-hover, rgba(255,255,255,.06)); }
+    .h-icon:focus-visible { outline: 2px solid var(--hg-accent); outline-offset: 2px; }
+    .h-main { flex: 1; min-height: 0; position: relative; }
+    #hgHost { position: absolute; inset: 0; }
+    #hgHost .hg-chrome { position: absolute; inset: 0; height: 100%; }
+    #hgHost .hg-rail { display: none; }
+    #hgHost .hg-panel {
+      width: 100%; transform: none !important; opacity: 1 !important;
+      pointer-events: auto !important; box-shadow: none; border: 0;
+    }
+    body.hg-dock-open, body.hg-dock-collapsed { padding-right: 0 !important; }
+    .h-pwa {
+      margin-top: 16px; font-size: 12px; color: var(--hg-muted); text-align: center;
+    }
+    .h-pwa summary {
+      cursor: pointer; color: var(--hg-muted); list-style: none;
+      text-decoration: underline; text-underline-offset: 3px;
+    }
+    .h-pwa summary::-webkit-details-marker { display: none; }
+    .h-pwa .h-pwa-body {
+      margin-top: 10px; padding: 12px; text-align: left;
+      background: var(--hg-elev); border-radius: 10px; border: 1px solid var(--hg-border);
+      line-height: 1.45;
+    }
+    .h-pwa a { color: var(--hg-accent); }
+    .h-theme-toggle {
+      display: flex; justify-content: center; gap: 8px; margin-top: 14px;
+    }
+    .h-theme-toggle button {
+      border: 1px solid var(--hg-border); background: var(--hg-elev); color: var(--hg-muted);
+      border-radius: 999px; padding: 6px 12px; font: 500 12px/1.2 var(--hg-font); cursor: pointer;
+    }
+    .h-theme-toggle button.is-active {
+      color: var(--hg-text); border-color: rgba(212,168,67,.4);
+      background: var(--gold-bg, rgba(212,168,67,.1));
+    }
+  </style>
+</head>
+<body>
+  <div id="app"></div>
+  <script src="/assets/js/huginn_icons.js"></script>
+  <script src="/assets/js/huginn_sse.js"></script>
+  <script src="/assets/js/huginn_ting.js"></script>
+  <script src="/assets/js/huginn_dock.js"></script>
+  <script src="/h/app.js"></script>
+  <script>
+    (function () {
+      var saved = localStorage.getItem('asgard_theme') || localStorage.getItem('hg_theme');
+      if (saved === 'light' || saved === 'dark') {
+        document.documentElement.setAttribute('data-theme', saved);
+      }
+      var meta = document.querySelector('meta[name="theme-color"]');
+      function syncThemeColor() {
+        var light = document.documentElement.getAttribute('data-theme') === 'light';
+        if (meta) meta.setAttribute('content', light ? '#F4EFE6' : '#0D1117');
+      }
+      syncThemeColor();
+      window.__hgSetTheme = function (t) {
+        document.documentElement.setAttribute('data-theme', t);
+        localStorage.setItem('hg_theme', t);
+        try { localStorage.setItem('asgard_theme', t); } catch (_) {}
+        syncThemeColor();
+      };
+    })();
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('/h/sw.js').catch(() => {});
+    }
+  </script>
+</body>
+</html>

@@ -494,17 +494,44 @@ module.exports = async function thingRoutes(fastify) {
   });
 
   // ─── START / END ────────────────────────────────────────────
+  // ─── START (notify participants) ────────────────────────────
   fastify.post('/rooms/:id/start', { preHandler: [fastify.authenticate] }, async (request, reply) => {
-    const room = await loadRoom(request.params.id);
-    if (!room) return reply.code(404).send({ error: 'Тинг не найден' });
-    if (!isHost(room, request.user)) return reply.code(403).send({ error: 'Только инициатор' });
-    if (room.status === 'ended') return reply.code(410).send({ error: 'Уже завершён' });
-    const { rows } = await db.query(
-      `UPDATE thing_rooms SET status = 'live', started_at = COALESCE(started_at, NOW()), updated_at = NOW()
-       WHERE id = $1 RETURNING *`,
-      [room.id]
-    );
-    return { room: serializeRoom(rows[0], { includeSecrets: true }) };
+    try {
+      const roomId = parseInt(request.params.id, 10);
+      const { rows: [room] } = await db.query('SELECT * FROM thing_rooms WHERE id = $1', [roomId]);
+      if (!room) return reply.code(404).send({ error: 'Комната не найдена' });
+      if (room.host_user_id !== request.user.id && !DIRECTOR_ROLES.includes(request.user.role)) {
+        return reply.code(403).send({ error: 'Только организатор может начать Тинг' });
+      }
+      await db.query(
+        `UPDATE thing_rooms SET status = 'active', started_at = COALESCE(started_at, NOW()) WHERE id = $1`,
+        [roomId]
+      );
+      // Push everyone who will join: without this a Ting start is silent.
+      const { rows: people } = await db.query(
+        `SELECT DISTINCT user_id FROM thing_participants
+          WHERE room_id = $1 AND user_id IS NOT NULL
+            AND COALESCE(lobby_status, '') NOT IN ('rejected')
+          UNION
+         SELECT user_id FROM meeting_participants WHERE meeting_id = $2 AND user_id IS NOT NULL`,
+        [roomId, room.meeting_id]
+      ).catch(() => ({ rows: [] }));
+      const host = request.user.name || 'Коллега';
+      for (const p of people) {
+        if (Number(p.user_id) === Number(request.user.id)) continue;
+        // eslint-disable-next-line no-await-in-loop
+        await createNotification(db, {
+          user_id: p.user_id,
+          type: 'ting',
+          title: 'Тинг начался',
+          message: `${host}: ${room.title || 'видеовстреча'}`,
+          link: `/ting/?room=${roomId}`
+        }).catch(() => {});
+      }
+      return { success: true, notified: people.length };
+    } catch (e) {
+      return reply.code(500).send({ error: e.message || 'Ошибка старта' });
+    }
   });
 
   fastify.post('/rooms/:id/end', { preHandler: [fastify.authenticate] }, async (request, reply) => {
@@ -824,6 +851,16 @@ module.exports = async function thingRoutes(fastify) {
     );
 
     if (lobby === 'waiting') {
+      // Tell the host somebody is waiting in the lobby — otherwise guests sit silently.
+      if (room.host_user_id) {
+        await createNotification(db, {
+          user_id: room.host_user_id,
+          type: 'ting',
+          title: 'Гость в лобби Тинга',
+          message: `${name} ждёт допуска: ${room.title || 'видеовстреча'}`,
+          link: `/ting/?room=${room.id}`
+        }).catch(() => {});
+      }
       return {
         lobby_status: 'waiting',
         participant_id: ins[0].id,
