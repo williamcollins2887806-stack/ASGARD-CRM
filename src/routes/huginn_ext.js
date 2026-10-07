@@ -1312,6 +1312,29 @@ module.exports = async function registerHuginnExt(fastify, { db, uploadDir, getC
   const LOGIN_CODE_TTL_MIN = 15;
   const LOGIN_MAX_ATTEMPTS = 5;
   const LOGIN_COOLDOWN_SEC = 45;
+  // Per-IP guard for the public code/link endpoints: without it anyone could
+  // trigger paid SMS to arbitrary numbers.
+  const LOGIN_IP_WINDOW_MS = 10 * 60 * 1000;
+  const LOGIN_IP_MAX_PER_WINDOW = 8;
+  const loginIpHits = new Map();
+
+  function loginIpAllowed(ip) {
+    const key = String(ip || 'unknown');
+    const now = Date.now();
+    const arr = (loginIpHits.get(key) || []).filter((t) => now - t < LOGIN_IP_WINDOW_MS);
+    if (arr.length >= LOGIN_IP_MAX_PER_WINDOW) {
+      loginIpHits.set(key, arr);
+      return false;
+    }
+    arr.push(now);
+    loginIpHits.set(key, arr);
+    if (loginIpHits.size > 5000) {
+      for (const [k, v] of loginIpHits) {
+        if (!v.length || now - v[v.length - 1] > LOGIN_IP_WINDOW_MS) loginIpHits.delete(k);
+      }
+    }
+    return true;
+  }
 
   function normPhone(raw) {
     try {
@@ -1357,6 +1380,9 @@ module.exports = async function registerHuginnExt(fastify, { db, uploadDir, getC
 
   // POST /auth/request-code  { phone } — 4-digit code via SMS/Max
   fastify.post('/auth/request-code', async (request, reply) => {
+    if (!loginIpAllowed(request.ip)) {
+      return reply.code(429).send({ error: 'Слишком много запросов. Попробуйте позже' });
+    }
     const body = request.body || {};
     const rawPhone = String(body.phone || '').trim();
     if (!rawPhone) return reply.code(400).send({ error: 'Укажите телефон' });
@@ -1414,6 +1440,9 @@ module.exports = async function registerHuginnExt(fastify, { db, uploadDir, getC
 
   // POST /auth/request-link  { email } — magic link (always 200: no user enumeration)
   fastify.post('/auth/request-link', async (request, reply) => {
+    if (!loginIpAllowed(request.ip)) {
+      return reply.code(429).send({ error: 'Слишком много запросов. Попробуйте позже' });
+    }
     const body = request.body || {};
     const email = String(body.email || '').trim().toLowerCase();
     if (!email || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
