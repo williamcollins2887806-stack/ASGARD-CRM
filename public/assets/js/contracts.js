@@ -378,8 +378,22 @@ window.AsgardContractsPage = (function(){
   }
 
   // Модальное окно создания/редактирования
-  async function openContractModal(contract, customers) {
+  async function openContractModal(contract, customers, opts) {
     ensureModalStyles();
+    opts = opts || {};
+    // Standalone-режим (вызов из реестра счетов): список контрагентов и колбэк
+    if (!Array.isArray(customers) || !customers.length) {
+      try { customers = (await AsgardDB.getAll('customers')) || []; } catch (_) { customers = []; }
+    }
+    // Предзаполнение контрагентом из реестра счетов (даже если его нет в customers)
+    const preset = opts.preset || null;
+    if (preset && preset.name) {
+      const pInn = String(preset.inn || '').trim();
+      const hit = customers.find((c) => (pInn && String(c.inn || '') === pInn)
+        || String(c.name || '').trim().toLowerCase() === String(preset.name).trim().toLowerCase());
+      if (!hit) customers = customers.concat([{ inn: pInn || preset.name, name: preset.name }]);
+      else if (pInn && !hit.inn) hit.inn = pInn;
+    }
     const isEdit = !!contract;
     const esc = AsgardUI.esc;
     const isPerpetual = !!contract?.is_perpetual;
@@ -517,8 +531,10 @@ window.AsgardContractsPage = (function(){
     const form = document.getElementById('contractForm');
 
     // ─── CRSelect: contract form fields ───
-    document.getElementById('cm_type_w').appendChild(CRSelect.create({ id: 'cm_type', options: CONTRACT_TYPES.map(t => ({ value: t.id, label: t.name })), value: contract?.type || CONTRACT_TYPES[0]?.id || '', dropdownClass: 'z-modal', onChange: v => { document.getElementById('cm_type_hidden').value = v; } }));
-    document.getElementById('cm_counterparty_w').appendChild(CRSelect.create({ id: 'cm_counterparty', options: [{ value: '', label: '-- Выберите контрагента --' }, ...customers.map(c => ({ value: c.inn, label: c.name + (c.inn ? ' (' + c.inn + ')' : '') }))], value: contract?.counterparty_id || '', searchable: true, dropdownClass: 'z-modal', onChange: v => { document.getElementById('cm_counterparty_hidden').value = v; } }));
+    document.getElementById('cm_type_w').appendChild(CRSelect.create({ id: 'cm_type', options: CONTRACT_TYPES.map(t => ({ value: t.id, label: t.name })), value: contract?.type || opts.preset?.type || CONTRACT_TYPES[0]?.id || '', dropdownClass: 'z-modal', onChange: v => { document.getElementById('cm_type_hidden').value = v; } }));
+    const presetInn = preset ? (String(preset.inn || '') || (customers.find((c) => String(c.name || '').trim().toLowerCase() === String(preset.name).trim().toLowerCase()) || {}).inn || '') : '';
+    document.getElementById('cm_counterparty_w').appendChild(CRSelect.create({ id: 'cm_counterparty', options: [{ value: '', label: '-- Выберите контрагента --' }, ...customers.map(c => ({ value: c.inn, label: c.name + (c.inn ? ' (' + c.inn + ')' : '') }))], value: contract?.counterparty_id || presetInn || '', searchable: true, dropdownClass: 'z-modal', onChange: v => { document.getElementById('cm_counterparty_hidden').value = v; } }));
+    if (!contract && presetInn) document.getElementById('cm_counterparty_hidden').value = presetInn;
     document.getElementById('cm_status_w').appendChild(CRSelect.create({ id: 'cm_status', options: [{ value: 'draft', label: 'Черновик' }, { value: 'active', label: 'Действует' }, { value: 'terminated', label: 'Расторгнут' }], value: contract?.status || 'active', dropdownClass: 'z-modal', onChange: v => { document.getElementById('cm_status_hidden').value = v; } }));
 
     const endDateInput = document.getElementById('cmEndDate');
@@ -637,10 +653,15 @@ window.AsgardContractsPage = (function(){
         updated_at: new Date().toISOString()
       };
 
-      await save(data);
+      const saved = await save(data);
       closeModal();
       AsgardUI.toast('Сохранено', isEdit ? 'Договор обновлён' : 'Договор добавлен', 'ok');
-      render({ layout: window.layout, title: 'Реестр договоров' });
+      // Не уходим со страницы, если модалку открыли не из реестра договоров
+      if (typeof opts.onSaved === 'function') {
+        try { opts.onSaved(data, saved); } catch (_) {}
+      } else {
+        render({ layout: window.layout, title: 'Реестр договоров' });
+      }
     });
   }
 

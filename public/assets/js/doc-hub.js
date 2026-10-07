@@ -173,6 +173,7 @@ window.AsgardDocHubPage = (function () {
   function openDhContractPicker({ inn, cpName, onSelect }) {
     const ACP = window.AsgardContractsPage;
     const done = (c) => { if (typeof onSelect === 'function' && c) onSelect(c); };
+    const hasCp = !!(String(inn || '').trim() || String(cpName || '').trim());
 
     async function buildFromAll() {
       let list = [];
@@ -189,22 +190,18 @@ window.AsgardDocHubPage = (function () {
         if (qName && cName && (cName.includes(qName) || qName.includes(cName.slice(0, 8)))) return true;
         return false;
       });
-      // Сначала — договоры этого контрагента; если совпадений нет, показываем все с поиском.
-      showInlineContractModal(filtered.length ? filtered : list, done, qName || qInn, filtered.length > 0);
+      showInlineContractModal(filtered, done, qName || qInn, hasCp, { inn, cpName });
     }
 
-    if (ACP && typeof ACP.openContractSelector === 'function' && /^\d+$/.test(String(inn || ''))) {
-      ACP.openContractSelector(Number(inn), 'supplier', done);
-      return;
-    }
     buildFromAll().catch(() => {
       toast('Договоры', 'Не удалось загрузить реестр договоров', 'err');
     });
   }
 
-  function showInlineContractModal(contracts, onSelect, hint, scoped) {
+  function showInlineContractModal(contracts, onSelect, hint, scoped, ctx) {
     document.getElementById('dhContractModal')?.remove();
     const all = contracts || [];
+    const ACP = window.AsgardContractsPage;
     const wrap = document.createElement('div');
     wrap.id = 'dhContractModal';
     wrap.className = 'dh-cmodal';
@@ -218,17 +215,20 @@ window.AsgardDocHubPage = (function () {
         <div class="s">${esc(sub || '—')}</div>
       </button>`;
     };
+    const emptyText = scoped
+      ? 'У этого контрагента договоров нет. Создайте новый — он привяжется автоматически.'
+      : 'Договоров нет. Создайте первый.';
     wrap.innerHTML = `
       <div class="dh-cmodal__card" role="dialog" aria-modal="true">
         <header class="dh-cmodal__head">
           <strong>Выберите договор</strong>
           <button type="button" class="dh-cmodal__x" aria-label="Закрыть">✕</button>
         </header>
-        <div class="dh-cmodal__hint">${hint
-          ? (scoped ? ('По контрагенту: ' + esc(hint)) : ('Совпадений по контрагенту нет — все договоры. Поиск: ' + esc(hint)))
-          : ('Всего договоров: ' + all.length)}</div>
-        <div class="dh-cmodal__search"><input type="text" id="dhCmodalQ" placeholder="Поиск по номеру, предмету, контрагенту…" autocomplete="off"/></div>
-        <div class="dh-cmodal__list" id="dhCmodalList">${all.length ? all.map(itemHtml).join('') : '<div class="dh-empty dh-empty--sm"><div class="dh-empty__t">Нет договоров</div></div>'}</div>
+        <div class="dh-cmodal__hint">${scoped
+          ? ('Договоры контрагента: ' + esc(hint || '—'))
+          : (hint ? esc(hint) : 'Контрагент не выбран — сначала укажите контрагента в мастере')}</div>
+        ${scoped ? '' : '<div class="dh-cmodal__search"><input type="text" id="dhCmodalQ" placeholder="Поиск по номеру, предмету, контрагенту…" autocomplete="off"/></div>'}
+        <div class="dh-cmodal__list" id="dhCmodalList">${all.length ? all.map(itemHtml).join('') : ('<div class="dh-empty dh-empty--sm"><div class="dh-empty__t">Нет договоров</div><p>' + esc(emptyText) + '</p></div>')}</div>
         <footer class="dh-cmodal__foot">
           <button type="button" class="dh-btn dh-btn--ghost" id="dhCmodalCancel">Отмена</button>
           <button type="button" class="dh-btn dh-btn--primary" id="dhCmodalCreate">+ Создать договор</button>
@@ -236,32 +236,27 @@ window.AsgardDocHubPage = (function () {
       </div>`;
     document.body.appendChild(wrap);
     const listEl = wrap.querySelector('#dhCmodalList');
-    // Живой поиск по номеру/предмету/контрагенту
     const qEl = wrap.querySelector('#dhCmodalQ');
-    qEl?.addEventListener('input', () => {
-      const s = qEl.value.toLowerCase().trim();
-      const hit = all.filter((c) => {
-        if (!s) return true;
-        const hay = [c.number, c.label, c.subject, c.counterparty_name, c.customer_name, c.counterparty_id, c.customer_inn]
-          .filter(Boolean).join(' ').toLowerCase();
-        return hay.includes(s);
-      });
-      listEl.innerHTML = hit.length ? hit.map(itemHtml).join('') : '<div class="dh-empty dh-empty--sm"><div class="dh-empty__t">Ничего не найдено</div></div>';
-      bindItems();
-    });
     const bindItems = () => {
       listEl.querySelectorAll('.dh-cmodal__item').forEach((btn) => {
         btn.addEventListener('click', () => {
-          onSelect({
-            id: btn.getAttribute('data-id'),
-            label: btn.getAttribute('data-label'),
-            number: btn.getAttribute('data-label'),
-            date: btn.getAttribute('data-date')
-          });
+          onSelect({ id: btn.getAttribute('data-id'), label: btn.getAttribute('data-label'), number: btn.getAttribute('data-label'), date: btn.getAttribute('data-date') });
           close();
         });
       });
     };
+    if (qEl) {
+      qEl.addEventListener('input', () => {
+        const s = qEl.value.toLowerCase().trim();
+        const hit = all.filter((c) => {
+          if (!s) return true;
+          const hay = [c.number, c.label, c.subject, c.counterparty_name, c.customer_name, c.counterparty_id, c.customer_inn].filter(Boolean).join(' ').toLowerCase();
+          return hay.includes(s);
+        });
+        listEl.innerHTML = hit.length ? hit.map(itemHtml).join('') : '<div class="dh-empty dh-empty--sm"><div class="dh-empty__t">Ничего не найдено</div></div>';
+        bindItems();
+      });
+    }
     bindItems();
     const close = () => wrap.remove();
     wrap.querySelector('.dh-cmodal__x')?.addEventListener('click', close);
@@ -269,15 +264,19 @@ window.AsgardDocHubPage = (function () {
     wrap.addEventListener('click', (e) => { if (e.target === wrap) close(); });
     wrap.querySelector('#dhCmodalCreate')?.addEventListener('click', () => {
       close();
-      // Настоящая форма договора (та же, что в реестре договоров) — без ухода со страницы.
+      const preset = { name: (ctx && ctx.cpName) || '', inn: (ctx && ctx.inn) || '', type: 'supplier' };
       if (ACP && typeof ACP.openContractModal === 'function') {
-        try {
-          ACP.openContractModal({ counterparty_name: hint || '', type: 'supplier' }, []);
-          return;
-        } catch (_) { /* fallback ниже */ }
+        ACP.openContractModal(null, [], {
+          preset,
+          onSaved: (data) => {
+            // Сразу связываем созданный договор со строкой и закрываем пикер
+            onSelect({ id: data.id, number: data.number, label: data.number, date: data.start_date || '' });
+          }
+        });
+      } else {
+        location.hash = '#/contracts';
+        toast('Договоры', 'Откройте создание договора', 'ok');
       }
-      location.hash = '#/contracts';
-      toast('Договоры', 'Откройте создание договора, затем вернитесь в Doc Hub', 'ok');
     });
     setTimeout(() => qEl && qEl.focus(), 30);
   }
@@ -1222,8 +1221,11 @@ window.AsgardDocHubPage = (function () {
     const pickBtn = form.querySelector('#dhWizContractPick');
     if (pickBtn) {
       pickBtn.onclick = () => {
-        const inn = form.querySelector('#dhWizInn')?.value || (state.wizDraft && state.wizDraft.counterparty_inn) || '';
-        const cpName = form.querySelector('#dhWizCpInput, input[name="counterparty_name"]')?.value || '';
+        const d = state.wizDraft || {};
+        const inn = form.querySelector('#dhWizInn')?.value || d.counterparty_inn || '';
+        // Имя может быть только в черновике: шаг 2 уже размонтирован, поля в DOM нет.
+        const cpName = (form.querySelector('#dhWizCpInput, input[name="counterparty_name"]')?.value || '')
+          || d.counterparty_name || '';
         const cb = (contract) => {
           if (!contract) return;
           if (state.wizDraft) {
