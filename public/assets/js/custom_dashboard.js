@@ -1035,7 +1035,7 @@ window.AsgardCustomDashboard = (function(){
       badge(groups.upcoming.length, '#3b82f6', '< 60 \u0434\u043d.') +
     '</div>';
 
-    html += '<div>';
+    html += '<div class="tbl-wrap">';
     html += '<table style="width:100%;border-collapse:collapse">';
 
     if (groups.expired.length) {

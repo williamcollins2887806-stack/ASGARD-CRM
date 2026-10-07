@@ -811,7 +811,7 @@ window.AsgardPmWorksPage=(function(){
           </div>
         </div>
         <hr class="hr"/>
-        <div style="overflow:auto">
+        <div class="tbl-wrap" style="overflow:auto">
           <table class="asg">
             <thead>
               <tr>

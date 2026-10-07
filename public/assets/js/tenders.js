@@ -900,7 +900,7 @@ window.AsgardTendersPage = (function(){
         </div>
         <hr class="hr"/>
         <div id="tkp_ready_panel"></div>
-        <div style="overflow:auto">
+        <div class="tbl-wrap" style="overflow:auto">
           <table class="asg">
             <thead>
               <tr>
@@ -1059,7 +1059,7 @@ window.AsgardTendersPage = (function(){
             <span class="badge">${pending.length}</span>
           </div>
           <div class="help">Рук. ТО анализирует тендер и решает: 🟦 ТО может посчитать сам (мелкий) — нажмите «Одобрить»; 💡 либо назначьте РП. Лимит активных просчётов у РП: ${lim||"без лимита"}.</div>
-          <div style="overflow:auto; margin-top:10px">
+          <div class="tbl-wrap" style="overflow:auto; margin-top:10px">
             <table class="t" style="min-width:1100px">
               <thead>
                 <tr><th>Заказчик</th><th>Тендер</th><th>Тип</th><th>Дедлайн</th><th>Внёс</th><th>Кто будет считать</th><th>Действия</th></tr>
@@ -1232,7 +1232,7 @@ window.AsgardTendersPage = (function(){
             <span class="badge">${items.length}</span>
           </div>
           <div class="help" style="margin-top:6px">Можно выбрать того же РП что считал тендер (подсвечен 💡) или другого. После назначения работа появится у РП в разделе «Работы».</div>
-          <div style="overflow:auto; margin-top:12px">
+          <div class="tbl-wrap" style="overflow:auto; margin-top:12px">
             <table class="t" style="min-width:900px">
               <thead>
                 <tr><th>Тендер</th><th>Период (план)</th><th>Сумма</th><th>💡 Считал тендер</th><th>РП на работы</th></tr>
@@ -1383,7 +1383,7 @@ window.AsgardTendersPage = (function(){
             <span class="badge">${reqs.length}</span>
           </div>
           <div class="help">Запрос создаётся после статуса «Выиграли» у РП в просчёте. Пересечение плановых сроков: ≤7 дней — предупреждение, >7 дней — блок (override только после согласия РП).</div>
-          <div style="overflow:auto; margin-top:10px">
+          <div class="tbl-wrap" style="overflow:auto; margin-top:10px">
             <table class="t" style="min-width:1050px">
               <thead>
                 <tr><th>Заказчик</th><th>Работа</th><th>Период (план)</th><th>Цена/Себест.</th><th>Просчитал</th><th></th></tr>
