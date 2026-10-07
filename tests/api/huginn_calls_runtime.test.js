@@ -208,6 +208,12 @@ async function main() {
     }
   }
 
+  // ── call hygiene: webhook guard + stale-active expiry ────────
+  {
+    const wh = await api(a.token, 'POST', '/api/chat-groups/calls/webhook', { event: 'room_finished' });
+    caseResult('CALL-WEBHOOK-GUARDED', [401, 503].includes(wh.status), 'status=' + wh.status);
+  }
+
   // ── is_favorite round-trip (PUT /:id) ────────────────────────
   {
     const fresh = await api(a.token, 'POST', '/api/chat-groups/direct', { user_id: b.user.id });

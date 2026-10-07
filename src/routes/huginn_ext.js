@@ -715,10 +715,18 @@ module.exports = async function registerHuginnExt(fastify, { db, uploadDir, getC
   }
 
   async function getActiveCallForUser(userId) {
-    // Expire stale rings (crash/network drop) so a dead row can never block calls.
+    // Expire stale rows so a dead call can never block the user forever:
+    // - ringing that nobody answered;
+    // - active that outlived any plausible call (token TTL is 2h).
     await db.query(
       `UPDATE huginn_calls SET status = 'canceled', ended_at = NOW()
         WHERE status = 'ringing' AND created_at < NOW() - INTERVAL '2 minutes'`
+    ).catch(() => {});
+    await db.query(
+      `UPDATE huginn_calls SET status = 'ended', ended_at = NOW(),
+              duration_sec = CASE WHEN answered_at IS NULL THEN 0
+                                  ELSE GREATEST(0, EXTRACT(EPOCH FROM (NOW() - answered_at))::int) END
+        WHERE status = 'active' AND created_at < NOW() - INTERVAL '4 hours'`
     ).catch(() => {});
     const { rows: [row] } = await db.query(
       `SELECT * FROM huginn_calls
@@ -729,6 +737,61 @@ module.exports = async function registerHuginnExt(fastify, { db, uploadDir, getC
       [userId]
     );
     return row || null;
+  }
+
+  /** End a live call and notify both sides (used by webhook and sweeper). */
+  async function finalizeCall(call, reason) {
+    const { rows: [updated] } = await db.query(
+      `UPDATE huginn_calls
+          SET status = CASE WHEN answered_at IS NULL THEN 'canceled' ELSE 'ended' END,
+              ended_at = NOW(),
+              duration_sec = CASE WHEN answered_at IS NULL THEN 0
+                                  ELSE GREATEST(0, EXTRACT(EPOCH FROM (NOW() - answered_at))::int) END
+        WHERE id = $1 AND status IN ('ringing', 'active') RETURNING *`,
+      [call.id]
+    );
+    if (!updated) return null;
+    const payload = { ...callPublicShape(updated), room: updated.livekit_room, reason: reason || updated.status };
+    for (const uid of [Number(updated.caller_id), Number(updated.callee_id)]) {
+      try {
+        await huginnEvents.publish(db, { userIds: [uid], eventType: 'call:ended', payload });
+      } catch (_) {}
+      sendToUser(uid, 'call:ended', payload);
+    }
+    try { await livekit.deleteLiveKitRoom(updated.livekit_room); } catch (_) {}
+    return updated;
+  }
+
+  /**
+   * Reap 'active' calls whose LiveKit room is empty (backend crash, closed tab,
+   * lost network). Without this a dead room would keep the user "busy" forever.
+   */
+  async function sweepStaleCalls() {
+    if (!livekit.isConfigured()) return { swept: 0, checked: 0 };
+    const { rows } = await db.query(
+      `SELECT * FROM huginn_calls
+        WHERE status = 'active' AND created_at > NOW() - INTERVAL '4 hours'
+        ORDER BY created_at ASC LIMIT 25`
+    ).catch(() => ({ rows: [] }));
+    let swept = 0;
+    for (const call of rows) {
+      try {
+        const parts = await livekit.listLiveKitParticipants(call.livekit_room);
+        if (!parts || parts.length === 0) {
+          // Grace: room may be empty only for a moment right after accept.
+          const ageSec = (Date.now() - new Date(call.answered_at || call.created_at).getTime()) / 1000;
+          if (ageSec < 45) continue;
+          await finalizeCall(call, 'room_empty');
+          swept++;
+        }
+      } catch (e) {
+        // Room already gone on the SFU side — treat as finished.
+        if (/not found|does not exist|no room/i.test(String(e.message || e))) {
+          try { await finalizeCall(call, 'room_missing'); swept++; } catch (_) {}
+        }
+      }
+    }
+    return { swept, checked: rows.length };
   }
 
   function identityForCall(userId) {
@@ -1126,8 +1189,76 @@ module.exports = async function registerHuginnExt(fastify, { db, uploadDir, getC
     return { success: true };
   });
 
+  /**
+   * LiveKit webhook: when the SFU reports the room finished, close the call row
+   * so nobody stays "busy". The endpoint is public (no auth) and only the
+   * signature is trusted; it is a no-op unless LIVEKIT_WEBHOOK_SECRET is set.
+   */
+  fastify.post('/calls/webhook', {
+    config: { rawBody: true }
+  }, async (request, reply) => {
+    let Receiver;
+    try {
+      ({ WebhookReceiver: Receiver } = require('livekit-server-sdk'));
+    } catch (_) {
+      return reply.code(503).send({ error: 'livekit sdk unavailable' });
+    }
+    const secret = String(process.env.LIVEKIT_WEBHOOK_SECRET || '').trim();
+    if (!secret || !Receiver) {
+      // Anti-stub: without a secret we cannot trust the payload, so refuse.
+      return reply.code(503).send({ error: 'webhook not configured' });
+    }
+    const raw = request.rawBody
+      ? Buffer.isBuffer(request.rawBody) ? request.rawBody.toString('utf8') : String(request.rawBody)
+      : JSON.stringify(request.body || {});
+    let event;
+    try {
+      const receiver = new Receiver(secret);
+      event = await receiver.receive(raw, String(request.headers.authorization || ''));
+    } catch (e) {
+      return reply.code(401).send({ error: 'invalid signature' });
+    }
+    const ev = String(event && event.event || '');
+    const roomName = String((event && event.room && event.room.name) || '');
+    if (!roomName || !/room_finished|participant_left|room_started/.test(ev)) {
+      return { ok: true, ignored: ev || 'unknown' };
+    }
+    const { rows } = await db.query(
+      `SELECT * FROM huginn_calls WHERE livekit_room = $1 AND status IN ('ringing','active') LIMIT 1`,
+      [roomName]
+    ).catch(() => ({ rows: [] }));
+    const call = rows[0];
+    if (!call) return { ok: true, ignored: 'no live call for room' };
+
+    if (ev === 'room_finished') {
+      await finalizeCall(call, 'room_finished');
+      return { ok: true, ended: call.id };
+    }
+    if (ev === 'participant_left') {
+      // One side dropped: end only if nobody is left in the room.
+      try {
+        const parts = await livekit.listLiveKitParticipants(roomName);
+        if (!parts || parts.length === 0) {
+          await finalizeCall(call, 'participant_left');
+          return { ok: true, ended: call.id };
+        }
+      } catch (_) {
+        await finalizeCall(call, 'participant_left');
+        return { ok: true, ended: call.id };
+      }
+      return { ok: true, remaining: true };
+    }
+    return { ok: true, event: ev };
+  });
+
   // silence unused lint
   void sendToUser;
   void isUserOnline;
   void sseToMembers;
+  // Periodic sweep of dead LiveKit rooms (safe no-op without LiveKit).
+  try {
+    const SWEEP_MS = 5 * 60 * 1000;
+    const t = setInterval(() => { sweepStaleCalls().catch(() => {}); }, SWEEP_MS);
+    if (t.unref) t.unref();
+  } catch (_) {}
 };
