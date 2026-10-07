@@ -156,12 +156,18 @@ async function _loadKeysFromDB() {
         OPENAI_API_KEY = cfg.openai_api_key;
         console.log('[AI Provider] OpenAI API key loaded from DB settings');
       }
-      if (cfg.provider) AI_PROVIDER = cfg.provider;
-      if (cfg.anthropic_model) ANTHROPIC_MODEL = cfg.anthropic_model;
-      if (cfg.openai_model) OPENAI_MODEL = normalizeModelId(cfg.openai_model);
-      if (cfg.openai_url) {
+      if (cfg.provider && !process.env.AI_PROVIDER) AI_PROVIDER = cfg.provider;
+      if (cfg.anthropic_model && !process.env.ANTHROPIC_MODEL) ANTHROPIC_MODEL = cfg.anthropic_model;
+      // Env wins over DB for model/url so clone can pin DeepSeek Flash + local proxy without fighting settings.
+      if (cfg.openai_model && !process.env.OPENAI_MODEL) OPENAI_MODEL = normalizeModelId(cfg.openai_model);
+      if (cfg.openai_url && !process.env.OPENAI_URL) {
         OPENAI_URL = cfg.openai_url;
         console.log('[AI Provider] Custom OpenAI URL:', OPENAI_URL);
+      } else if (process.env.OPENAI_URL) {
+        console.log('[AI Provider] OPENAI_URL from env:', OPENAI_URL);
+      }
+      if (process.env.OPENAI_MODEL) {
+        OPENAI_MODEL = normalizeModelId(process.env.OPENAI_MODEL);
       }
     }
   } catch (e) {
@@ -554,7 +560,10 @@ async function _callOpenAIOnce({ system, messages, maxTokens, temperature, strea
 
   // AP6: детальное логирование если ответ подозрительный (пустой content)
   const choice = data.choices?.[0] || {};
-  const content = choice.message?.content;
+  // DeepSeek Flash/reasoning: иногда финальный текст в content, иногда только reasoning при малом max_tokens.
+  // Берём content; если пусто и нет tool_calls — не подставляем reasoning как ответ (это chain-of-thought).
+  let content = choice.message?.content;
+  if (typeof content !== 'string') content = content == null ? '' : String(content);
   const hasToolCalls = Array.isArray(choice.message?.tool_calls) && choice.message.tool_calls.length > 0;
   const isEmpty = (!content || (typeof content === 'string' && content.trim().length === 0)) && !hasToolCalls;
   if (isEmpty) {
@@ -1643,6 +1652,7 @@ module.exports = {
   parseAnthropicStream,
   parseOpenAIStream,
   getConfig,
+  _loadKeysFromDB,
   getProvider,
   _loadKeysFromDB, // AP5: agent needs to ensure keys are loaded
   _resetKeysCache: function () { _dbKeysLoaded = false; }, // сброс кэша после изменения ai_config из админ-панели

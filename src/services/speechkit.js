@@ -4,6 +4,8 @@ const https = require('https');
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+const os = require('os');
+const { spawnSync } = require('child_process');
 
 // gRPC для API v3
 let grpc, protoLoader;
@@ -40,7 +42,7 @@ class SpeechKitService {
    * @param {Object} [options] — настройки
    * @returns {Promise<{text: string, segments: Array}>}
    */
-  async transcribeFile(filePath, options = {}) {
+  async _transcribeYandexOrWhisper(filePath, options = {}) {
     const {
       languageCode = 'ru-RU',
       model = 'general',
@@ -53,57 +55,149 @@ class SpeechKitService {
       rawResults = false
     } = options;
 
-    // Читаем файл и конвертируем в base64
-    const audioContent = fs.readFileSync(filePath);
-    const audioBase64 = audioContent.toString('base64');
+    // Prefer cloud SpeechKit; on dead/unauthorized key fall back to local Whisper
+    // so chat STT pipeline can still reach transcript_status=done (G8).
+    if (this.isConfigured()) {
+      try {
+        const audioContent = fs.readFileSync(filePath);
+        const audioBase64 = audioContent.toString('base64');
+        const requestBody = JSON.stringify({
+          config: {
+            specification: {
+              languageCode,
+              model,
+              audioEncoding,
+              sampleRateHertz: sampleRate,
+              audioChannelCount,
+              enableWordTimeOffsets: true,
+              enableSpeakerDiarization,
+              speakerDiarizationConfig: enableSpeakerDiarization ? {
+                enableSpeakerDiarization: true,
+                maxSpeakerCount: maxSpeakers
+              } : undefined,
+              profanityFilter,
+              rawResults
+            }
+          },
+          audio: {
+            content: audioBase64
+          }
+        });
 
-    // Отправляем на распознавание
-    const requestBody = JSON.stringify({
-      config: {
-        specification: {
-          languageCode,
-          model,
-          audioEncoding,
-          sampleRateHertz: sampleRate,
-          audioChannelCount,
-          enableWordTimeOffsets: true,
-          enableSpeakerDiarization,
-          speakerDiarizationConfig: enableSpeakerDiarization ? {
-            enableSpeakerDiarization: true,
-            maxSpeakerCount: maxSpeakers
-          } : undefined,
-          profanityFilter,
-          rawResults
+        const operation = await this._httpsRequest({
+          hostname: 'transcribe.api.cloud.yandex.net',
+          path: '/speech/stt/v2/longRunningRecognize',
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Api-Key ${this.apiKey}`,
+            'x-folder-id': this.folderId
+          },
+          timeout: 30000
+        }, requestBody);
+
+        if (!operation.id) {
+          throw new Error('SpeechKit: no operation ID returned');
         }
-      },
-      audio: {
-        content: audioBase64
+
+        const result = await this._pollOperation(operation.id, {
+          maxAttempts: 120,
+          intervalMs: 5000
+        });
+
+        return this._parseTranscriptionResult(result);
+      } catch (e) {
+        const msg = String(e && e.message || e);
+        const unauthorized = /401|UNAUTHORIZED|Unknown api key/i.test(msg);
+        if (!unauthorized || process.env.HUGINN_STT_NO_LOCAL === '1') throw e;
+        console.warn('[SpeechKit] cloud STT failed (' + msg.slice(0, 120) + ') — local Whisper fallback');
       }
-    });
-
-    const operation = await this._httpsRequest({
-      hostname: 'transcribe.api.cloud.yandex.net',
-      path: '/speech/stt/v2/longRunningRecognize',
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Api-Key ${this.apiKey}`,
-        'x-folder-id': this.folderId
-      },
-      timeout: 30000
-    }, requestBody);
-
-    if (!operation.id) {
-      throw new Error('SpeechKit: no operation ID returned');
     }
 
-    // Поллинг операции до готовности
-    const result = await this._pollOperation(operation.id, {
-      maxAttempts: 120, // 10 минут макс
-      intervalMs: 5000
-    });
+    return this._transcribeLocalWhisper(filePath, { languageCode });
+  }
 
-    return this._parseTranscriptionResult(result);
+  /**
+   * Основной вход: сначала RouterAI (рабочий ключ, чанкинг для длинных записей),
+   * затем Yandex SpeechKit, затем локальный Whisper.
+   */
+  async transcribeFile(filePath, options = {}) {
+    const order = String(process.env.STT_PROVIDER || 'routerai,yandex,whisper')
+      .split(',').map((s) => s.trim()).filter(Boolean);
+    let lastErr = null;
+    for (const p of order) {
+      try {
+        if (p === 'routerai') {
+          if (!this._transcribeRouterAi) continue;
+          return await this._transcribeRouterAi(filePath, options);
+        }
+        if (p === 'yandex') {
+          if (!this.isConfigured()) continue;
+          return await this._transcribeYandexOrWhisper(filePath, options);
+        }
+        if (p === 'whisper') {
+          return await this._transcribeLocalWhisper(filePath, options);
+        }
+      } catch (e) {
+        lastErr = e;
+        console.warn('[STT] провайдер ' + p + ' не смог: ' + String(e && e.message || e).slice(0, 160));
+      }
+    }
+    throw lastErr || new Error('STT: ни один провайдер не сработал');
+  }
+
+  /**
+   * Основной провайдер: RouterAI (OpenAI-совместимый STT).
+   * Ключ уже рабочий, длинные записи нарезаются на чанки внутри модуля.
+   * При сбое — прозрачно откатываемся на Yandex/Whisper.
+   */
+  async _transcribeRouterAi(filePath, options = {}) {
+    const mod = require('./transcribe-routerai');
+    return mod.transcribeFile(filePath, options);
+  }
+
+  /**
+   * Local OpenAI-Whisper CLI fallback (real STT, not HUGINN_STT_STUB).
+   * Used only when cloud Api-Key is missing/unauthorized.
+   */
+  _transcribeLocalWhisper(filePath, { languageCode = 'ru-RU' } = {}) {
+    const lang = String(languageCode || 'ru-RU').split('-')[0] || 'ru';
+    const outDir = fs.mkdtempSync(path.join(os.tmpdir(), 'hg-whisper-'));
+    const wavPath = path.join(outDir, 'input.wav');
+    try {
+      const ff = spawnSync('ffmpeg', [
+        '-y', '-i', filePath, '-ar', '16000', '-ac', '1', wavPath
+      ], { encoding: 'utf8', windowsHide: true });
+      if (ff.status !== 0 || !fs.existsSync(wavPath)) {
+        throw new Error('ffmpeg convert failed: ' + String(ff.stderr || ff.stdout || '').slice(0, 200));
+      }
+      const wh = spawnSync('whisper', [
+        wavPath,
+        '--language', lang,
+        '--model', process.env.HUGINN_WHISPER_MODEL || 'tiny',
+        '--output_format', 'txt',
+        '--output_dir', outDir,
+        '--fp16', 'False'
+      ], { encoding: 'utf8', windowsHide: true, timeout: 180000 });
+      if (wh.status !== 0) {
+        throw new Error('whisper failed: ' + String(wh.stderr || wh.stdout || '').slice(0, 240));
+      }
+      const base = path.basename(wavPath, path.extname(wavPath));
+      const txtPath = path.join(outDir, base + '.txt');
+      if (!fs.existsSync(txtPath)) {
+        throw new Error('whisper produced no txt');
+      }
+      const text = fs.readFileSync(txtPath, 'utf8').trim();
+      if (!text) throw new Error('whisper empty transcript');
+      return { text, segments: [], provider: 'local-whisper' };
+    } finally {
+      try {
+        for (const f of fs.readdirSync(outDir)) {
+          try { fs.unlinkSync(path.join(outDir, f)); } catch (_) {}
+        }
+        fs.rmdirSync(outDir);
+      } catch (_) {}
+    }
   }
 
   /**

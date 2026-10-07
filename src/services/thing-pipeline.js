@@ -189,7 +189,7 @@ async function handleProtocol(db, job, log) {
   const aiResult = await ai.complete({
     system: prompt.system,
     messages: [{ role: 'user', content: prompt.user }],
-    maxTokens: 4000,
+    maxTokens: 16000,
     temperature: 0.2,
     responseFormat: { type: 'json_object' },
     // Reasoning-модель (deepseek-v4-pro) сжигает весь лимит на размышления и
