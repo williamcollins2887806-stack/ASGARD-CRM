@@ -140,7 +140,7 @@ module.exports = async function(fastify) {
   /** Other participant in a 1:1 direct chat (viewer-relative). */
   async function getDirectPeerForChat(chatId, viewerUserId) {
     const { rows } = await db.query(`
-      SELECT u.id, u.name, u.last_login_at
+      SELECT u.id, u.name, u.role, u.last_login_at
       FROM chat_group_members cm
       JOIN users u ON u.id = cm.user_id
       WHERE cm.chat_id = $1 AND cm.user_id != $2
@@ -157,12 +157,24 @@ module.exports = async function(fastify) {
       await db.query('UPDATE chats SET name = $1 WHERE id = $2', [peer, chatId]);
       return peer;
     }
-    // Bot chats ("Мимир"): V368 left the human's own name — heal to the bot's name.
-    if (legacy && legacy !== peer) {
+    return legacy || peer;
+  }
+
+  /**
+   * Heal bot DMs: V368 split "A — B" → next participant. For a BOT peer (Мимир)
+   * that left the HUMAN's own ФИО as the title, which leaks the viewer's name.
+   * Runs once at read time; the initial name choice is already correct, so no
+   * per-viewer ping-pong. Migration V369 does the same as a bulk pass.
+   */
+  async function repairBotDirectChatName(chatId, currentName, peerRole, peerName) {
+    const legacy = String(currentName || '');
+    const peer = String(peerName || '').trim();
+    if (!peer || String(peerRole || '').toUpperCase() !== 'BOT') return legacy;
+    if (legacy !== peer) {
       await db.query('UPDATE chats SET name = $1 WHERE id = $2', [peer, chatId]);
       return peer;
     }
-    return legacy || peer;
+    return legacy;
   }
 
   async function attachDirectPeer(chat, viewerUserId, opts = {}) {
@@ -172,6 +184,7 @@ module.exports = async function(fastify) {
     let name = chat.name;
     if (opts.repairLegacy) {
       name = await repairLegacyDirectChatName(chat.id, name, peer.name);
+      name = await repairBotDirectChatName(chat.id, name, peer.role, peer.name);
     }
     return {
       ...chat,

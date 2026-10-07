@@ -124,7 +124,25 @@ async function main() {
       'direct_user_name=' + JSON.stringify(dc.direct_user_name)
     );
 
-    // Bot chat (Мимир): title must be the bot's name, not the human's own ФИО.
+    // Bot DM (peer role=BOT, «Мимир»): title must be the bot's name, never the viewer's own ФИО.
+    {
+      const bots = await (await fetch(BASE + '/api/chat-groups', {
+        headers: { Authorization: 'Bearer ' + a.token },
+      })).json();
+      const botChat = (bots.chats || []).find((c) => Number(c.direct_user_id) > 0 && /мимир/i.test(String(c.direct_user_name || '')));
+      caseResult('BOT-DM-FOUND', !!botChat, 'id=' + (botChat && botChat.id));
+      if (botChat) {
+        caseResult(
+          'BOT-DM-NAME-IS-PEER',
+          String(botChat.name || '').trim() === String(botChat.direct_user_name || '').trim(),
+          `name=${JSON.stringify(botChat.name)} peer=${JSON.stringify(botChat.direct_user_name)}`
+        );
+        const selfInName = aName && String(botChat.name || '').includes(aName);
+        caseResult('BOT-DM-NOT-SELF', !selfInName && !/андросов/i.test(String(botChat.name || '')), 'name=' + JSON.stringify(botChat.name));
+      }
+    }
+
+    // Mimir AI chat (is_mimir=true) must not be renamed by the repair path.
     {
       const mimir = await api(a.token, 'GET', '/api/chat-groups/mimir');
       const mimirId = Number(mimir.data.chat_id || (mimir.data.chat && mimir.data.chat.id) || 0);
@@ -132,8 +150,7 @@ async function main() {
       if (mimirId > 0) {
         const md = await api(a.token, 'GET', '/api/chat-groups/' + mimirId);
         const mName = String((md.data.chat && md.data.chat.name) || '').trim();
-        const selfLeak = aName && mName.includes(aName) && mName !== 'Мимир';
-        caseResult('MIMIR-NOT-SELF-NAME', !selfLeak, 'name=' + JSON.stringify(mName));
+        caseResult('MIMIR-KEEPS-NAME', /^Мимир$/i.test(mName), 'name=' + JSON.stringify(mName));
       }
     }
 

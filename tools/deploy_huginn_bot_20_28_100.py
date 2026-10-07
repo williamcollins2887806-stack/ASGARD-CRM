@@ -66,9 +66,12 @@ def main() -> int:
     print("shell_guard: OK (shell integrity; deploy_gate off - git stale by design)")
 
     cg = (ROOT / "src/routes/chat_groups.js").read_text(encoding="utf-8")
-    for needle in ("attachDirectPeer", "repairLegacyDirectChatName", "getDirectPeerForChat", "Bot chats"):
+    for needle in ("attachDirectPeer", "repairLegacyDirectChatName", "repairBotDirectChatName", "getDirectPeerForChat"):
         if needle not in cg:
             raise SystemExit(f"chat_groups.js missing: {needle}")
+    # Regression guard: bot healing must be gated on the BOT role, not on any name difference.
+    if "peerRole" not in cg:
+        raise SystemExit("chat_groups.js missing bot-role gate")
 
     for rel in FILES:
         if not (ROOT / rel).is_file():
@@ -127,7 +130,7 @@ def main() -> int:
     run("systemctl restart asgard-crm")
     run("systemctl is-active asgard-crm")
     run(BOT_CHECK)
-    run(f"grep -c 'Bot chats' {REMOTE}/src/routes/chat_groups.js")
+    run(f"grep -c 'repairBotDirectChatName' {REMOTE}/src/routes/chat_groups.js")
 
     ssh.close()
     print("=== DEPLOY OK ===", VER)
