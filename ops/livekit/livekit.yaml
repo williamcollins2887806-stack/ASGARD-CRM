@@ -26,11 +26,15 @@ room:
   empty_timeout: 300
   max_participants: 50
 
-# Huginn 1:1 call hygiene (optional but recommended).
-# LiveKit posts room lifecycle events here; the CRM closes the call row so a
-# crashed client never leaves the user "busy". Requires LIVEKIT_WEBHOOK_SECRET
-# in the app env AND the same value as api_key here.
-# webhook:
-#   api_key: <LIVEKIT_API_KEY>
-#   urls:
-#     - https://asgard-crm.ru/api/chat-groups/calls/webhook
+# Huginn 1:1 call hygiene — ENABLED on prod (applied to
+# /opt/asgard-livekit/livekit.yaml on 2026-10-07, verified: LiveKit logs
+# "sent webhook" for room_started/room_finished with 200 OK).
+#
+# `api_key` must be one of the keys above (the app verifies the signature with
+# LIVEKIT_API_KEY + LIVEKIT_WEBHOOK_SECRET || LIVEKIT_API_SECRET).
+# The path is public and signature-only: no secret -> 503, wrong content-type
+# -> 415, bad signature -> 401.
+webhook:
+  api_key: APItingdevkey
+  urls:
+    - https://asgard-crm.ru/api/chat-groups/calls/webhook
