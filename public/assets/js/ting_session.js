@@ -98,11 +98,36 @@
     }
   }
 
+  function wireRoomEvents(lkRoom) {
+    if (!lkRoom || lkRoom.__tingWired) return;
+    lkRoom.__tingWired = true;
+    const bump = () => emit('media', { micOn: micOn && !phoneForcedMute, camOn: camOn && !videoPaused });
+    try {
+      const LK = global.LivekitClient;
+      const Ev = LK && LK.RoomEvent;
+      if (!Ev) {
+        lkRoom.on && lkRoom.on('trackSubscribed', bump);
+        lkRoom.on && lkRoom.on('participantConnected', bump);
+        lkRoom.on && lkRoom.on('participantDisconnected', bump);
+        return;
+      }
+      lkRoom.on(Ev.TrackSubscribed, bump);
+      lkRoom.on(Ev.TrackUnsubscribed, bump);
+      lkRoom.on(Ev.TrackMuted, bump);
+      lkRoom.on(Ev.TrackUnmuted, bump);
+      lkRoom.on(Ev.ParticipantConnected, bump);
+      lkRoom.on(Ev.ParticipantDisconnected, bump);
+      if (Ev.LocalTrackPublished) lkRoom.on(Ev.LocalTrackPublished, bump);
+      if (Ev.LocalTrackUnpublished) lkRoom.on(Ev.LocalTrackUnpublished, bump);
+    } catch (_) { /* */ }
+  }
+
   function adoptRoom(lkRoom, info) {
     room = lkRoom;
     meta = Object.assign({ startedAt: Date.now() }, info || {});
     connecting = false;
-    startTimer();
+    wireRoomEvents(lkRoom);
+    if (!timerId) startTimer();
     syncChrome();
     emit('connected', { meta: meta });
   }
@@ -145,6 +170,8 @@
         title: opts.title || (opts.room && opts.room.title) || opts.slug,
         identity: opts.identity,
         role: opts.role || null,
+        displayName: opts.displayName || opts.display_name || null,
+        jobTitle: opts.jobTitle || opts.job_title || null,
         startedAt: Date.now()
       };
       micOn = opts.listenOnly ? false : opts.micOn !== false;
@@ -155,6 +182,7 @@
         await next.localParticipant.setCameraEnabled(camOn);
       } catch (_) {}
       connecting = false;
+      wireRoomEvents(next);
       startTimer();
       syncChrome();
       emit('connected', { meta: meta });
