@@ -210,8 +210,10 @@ async function main() {
 
   // ── call hygiene: webhook guard + stale-active expiry ────────
   {
+    // Without a configured signature the endpoint must refuse (503) or reject
+    // the request (401/415 for wrong content-type) — never silently accept.
     const wh = await api(a.token, 'POST', '/api/chat-groups/calls/webhook', { event: 'room_finished' });
-    caseResult('CALL-WEBHOOK-GUARDED', [401, 503].includes(wh.status), 'status=' + wh.status);
+    caseResult('CALL-WEBHOOK-GUARDED', [401, 415, 503].includes(wh.status), 'status=' + wh.status);
   }
 
   // ── is_favorite round-trip (PUT /:id) ────────────────────────

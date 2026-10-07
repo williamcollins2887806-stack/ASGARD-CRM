@@ -739,16 +739,19 @@ module.exports = async function registerHuginnExt(fastify, { db, uploadDir, getC
     return row || null;
   }
 
-  /** End a live call and notify both sides (used by webhook and sweeper). */
-  async function finalizeCall(call, reason) {
+  /** End a live call and notify both sides (single entry point for webhook/sweeper/end). */
+  async function finalizeCall(call, reason, opts = {}) {
+    // Default terminal status keeps decline distinguishable from a hangup.
+    const terminal = opts.status === 'declined' ? 'declined'
+      : opts.status === 'canceled' ? 'canceled' : null;
     const { rows: [updated] } = await db.query(
       `UPDATE huginn_calls
-          SET status = CASE WHEN answered_at IS NULL THEN 'canceled' ELSE 'ended' END,
+          SET status = COALESCE($2, CASE WHEN answered_at IS NULL THEN 'canceled' ELSE 'ended' END),
               ended_at = NOW(),
               duration_sec = CASE WHEN answered_at IS NULL THEN 0
                                   ELSE GREATEST(0, EXTRACT(EPOCH FROM (NOW() - answered_at))::int) END
         WHERE id = $1 AND status IN ('ringing', 'active') RETURNING *`,
-      [call.id]
+      [call.id, terminal]
     );
     if (!updated) return null;
     const payload = { ...callPublicShape(updated), room: updated.livekit_room, reason: reason || updated.status };
@@ -1019,11 +1022,8 @@ module.exports = async function registerHuginnExt(fastify, { db, uploadDir, getC
     if (!call) return reply.code(404).send({ error: 'Звонок не найден' });
     if (Number(call.callee_id) !== me) return reply.code(403).send({ error: 'Не ваш звонок' });
 
-    const { rows: [updated] } = await db.query(
-      `UPDATE huginn_calls SET status = 'declined', ended_at = NOW()
-        WHERE id = $1 AND status IN ('ringing', 'active') RETURNING *`,
-      [id]
-    );
+    // Single entry point keeps status 'declined' while still closing the room.
+    const updated = await finalizeCall(call, 'declined', { status: 'declined' });
     if (!updated) return reply.code(409).send({ error: 'Звонок уже завершён' });
 
     const payload = { ...callPublicShape(updated), room: updated.livekit_room, reason: 'declined' };
@@ -1050,27 +1050,9 @@ module.exports = async function registerHuginnExt(fastify, { db, uploadDir, getC
     if (Number(call.caller_id) !== me && Number(call.callee_id) !== me) {
       return reply.code(403).send({ error: 'Нет доступа' });
     }
-    const { rows: [updated] } = await db.query(
-      `UPDATE huginn_calls
-          SET status = CASE WHEN answered_at IS NULL THEN 'canceled' ELSE 'ended' END,
-              ended_at = NOW(),
-              duration_sec = CASE WHEN answered_at IS NULL THEN 0
-                                  ELSE GREATEST(0, EXTRACT(EPOCH FROM (NOW() - answered_at))::int) END
-        WHERE id = $1 AND status IN ('ringing', 'active') RETURNING *`,
-      [id]
-    );
+    // Single entry point: flip the row, notify BOTH sides, tear down the room.
+    const updated = await finalizeCall(call, 'ended');
     if (!updated) return { call: callPublicShape(call), already: true };
-
-    const payload = { ...callPublicShape(updated), room: updated.livekit_room, reason: updated.status };
-    const peerId = Number(updated.caller_id) === me ? Number(updated.callee_id) : Number(updated.caller_id);
-    try {
-      await huginnEvents.publish(db, {
-        userIds: [peerId],
-        eventType: 'call:ended',
-        payload
-      });
-    } catch (_) {}
-    sendToUser(peerId, 'call:ended', payload);
     await writeCallEvent(updated, updated.status, me);
     return { call: callPublicShape(updated) };
   });
@@ -1191,29 +1173,44 @@ module.exports = async function registerHuginnExt(fastify, { db, uploadDir, getC
 
   /**
    * LiveKit webhook: when the SFU reports the room finished, close the call row
-   * so nobody stays "busy". The endpoint is public (no auth) and only the
-   * signature is trusted; it is a no-op unless LIVEKIT_WEBHOOK_SECRET is set.
+   * so nobody stays "busy". Public endpoint, signature-verified only, and a
+   * no-op unless the LiveKit keys are set.
+   *
+   * Fastify 4 has no built-in `rawBody`, and LiveKit posts
+   * `application/webhook+json`, so we register a Buffer parser for that exact
+   * type. Body-based JSON cannot be verified (no raw bytes), so it is refused
+   * with 415 instead of being trusted.
    */
-  fastify.post('/calls/webhook', {
-    config: { rawBody: true }
-  }, async (request, reply) => {
+  const LIVEKIT_WEBHOOK_CT = 'application/webhook+json';
+  fastify.addContentTypeParser(LIVEKIT_WEBHOOK_CT, { parseAs: 'buffer' }, (req, body, done) => done(null, body));
+  fastify.post('/calls/webhook', async (request, reply) => {
     let Receiver;
     try {
       ({ WebhookReceiver: Receiver } = require('livekit-server-sdk'));
     } catch (_) {
       return reply.code(503).send({ error: 'livekit sdk unavailable' });
     }
-    const secret = String(process.env.LIVEKIT_WEBHOOK_SECRET || '').trim();
-    if (!secret || !Receiver) {
-      // Anti-stub: without a secret we cannot trust the payload, so refuse.
+    // WebhookReceiver(apiKey, apiSecret) — both are required, not one secret.
+    const apiKey = String(process.env.LIVEKIT_API_KEY || '').trim();
+    const apiSecret = String(process.env.LIVEKIT_WEBHOOK_SECRET || process.env.LIVEKIT_API_SECRET || '').trim();
+    if (!Receiver || !apiKey || !apiSecret) {
+      // Anti-stub: without keys we cannot verify the signature, so refuse.
       return reply.code(503).send({ error: 'webhook not configured' });
     }
-    const raw = request.rawBody
-      ? Buffer.isBuffer(request.rawBody) ? request.rawBody.toString('utf8') : String(request.rawBody)
-      : JSON.stringify(request.body || {});
+
+    const ctype = String(request.headers['content-type'] || '').split(';')[0].trim().toLowerCase();
+    if (ctype !== LIVEKIT_WEBHOOK_CT) {
+      // Only the raw-body type can be signature-verified.
+      return reply.code(415).send({ error: 'unsupported content-type' });
+    }
+    const raw = Buffer.isBuffer(request.body)
+      ? request.body.toString('utf8')
+      : (typeof request.body === 'string' ? request.body : null);
+    if (raw == null) return reply.code(400).send({ error: 'raw body required' });
+
     let event;
     try {
-      const receiver = new Receiver(secret);
+      const receiver = new Receiver(apiKey, apiSecret);
       event = await receiver.receive(raw, String(request.headers.authorization || ''));
     } catch (e) {
       return reply.code(401).send({ error: 'invalid signature' });
