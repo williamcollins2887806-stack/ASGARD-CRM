@@ -1407,6 +1407,13 @@
       room.on(LK.RoomEvent.TrackUnmuted, bump);
       room.on(LK.RoomEvent.ParticipantConnected, bump);
       room.on(LK.RoomEvent.ParticipantDisconnected, bump);
+      // Своя камера/микрофон публикуются ПОСЛЕ connect — без этих событий
+      // собственная плитка не перерисовывалась и «себя не видно».
+      if (LK.RoomEvent.LocalTrackPublished) room.on(LK.RoomEvent.LocalTrackPublished, bump);
+      if (LK.RoomEvent.LocalTrackUnpublished) room.on(LK.RoomEvent.LocalTrackUnpublished, bump);
+      if (LK.RoomEvent.LocalTrackPublished) {
+        try { room.localParticipant.on(LK.RoomEvent.LocalTrackPublished, bump); } catch (_) { /* */ }
+      }
       if (LK.RoomEvent.ActiveSpeakersChanged) {
         room.on(LK.RoomEvent.ActiveSpeakersChanged, (speakers) => {
           if (harnessDemo()) return;
@@ -1483,6 +1490,8 @@
       try {
         await room.localParticipant.setMicrophoneEnabled(state.micOn);
         await room.localParticipant.setCameraEnabled(state.camOn);
+        // Показываем себя сразу после включения камеры, не дожидаясь событий.
+        paintTiles();
       } catch (e) { console.warn('local media', e); }
       state.view = 'room';
       state.timerSec = 0;
