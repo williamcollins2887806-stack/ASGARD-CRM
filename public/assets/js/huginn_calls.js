@@ -453,6 +453,7 @@
   }
 
   const _sseOff = [];
+  let _mounted = false;
   function attachSse() {
     if (!global.HuginnSSE || !global.HuginnSSE.on) return;
     _sseOff.splice(0).forEach((off) => { try { off(); } catch (_) {} });
