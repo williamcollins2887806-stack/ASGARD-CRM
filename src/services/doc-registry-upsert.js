@@ -46,7 +46,8 @@ function calcIncomplete(row) {
   const mode = row.contract_mode || 'none';
   // once/general/none не дают no_contract; только linked без contract_id
   if (mode === 'linked' && !row.contract_id) r.push('no_contract');
-  if (row.dir === 'in' && !row.payment_due_at) r.push('no_payment_due');
+  // no_payment_due убран (D-238): срок оплаты в Excel почти не заполнен, из-за
+  // этого 100% реестра горело «неполным». Поле дозаполняют вручную.
   const sk = row.spend_kind || 'work';
   if (row.dir === 'in' && sk === 'work' && !row.work_id && !row.purpose_asgard && !row.purpose_consumables) {
     r.push('no_work');
