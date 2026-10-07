@@ -571,7 +571,7 @@ module.exports = async function(fastify) {
       return reply.code(403).send({ error: 'Только владелец или админ может редактировать' });
     }
 
-    const { name, description, is_readonly, group_kind } = request.body;
+    const { name, description, is_readonly, group_kind, is_favorite } = request.body;
     const updates = [];
     const values = [];
     let idx = 1;
@@ -579,6 +579,8 @@ module.exports = async function(fastify) {
     if (name !== undefined) { updates.push(`name = $${idx}`); values.push(name.trim()); idx++; }
     if (description !== undefined) { updates.push(`description = $${idx}`); values.push(description); idx++; }
     if (is_readonly !== undefined) { updates.push(`is_readonly = $${idx}`); values.push(is_readonly === true); idx++; }
+    // Per-user favorite flag lives on the chat row (single-owner direct) — admins set it via dock.
+    if (is_favorite !== undefined) { updates.push(`is_favorite = $${idx}`); values.push(is_favorite === true); idx++; }
     // D-83: group_kind whitelist
     if (group_kind !== undefined) {
       const allowedKinds = ['public', 'private', 'work', 'broadcast'];
@@ -1638,7 +1640,9 @@ module.exports = async function(fastify) {
       return reply.code(403).send({ error: 'Только владелец может удалить чат' });
     }
 
-    // Notify the other participants before the rows disappear.
+    // Notify the other participants before the rows disappear. Direct chats are a
+    // shared row, so a leaving member also destroys the peer's copy — that is the
+    // intended Telegram-like "delete for both" behaviour for 1:1.
     await sseToMembers(chatId, userId, 'chat:deleted', { chat_id: chatId, by: userId });
 
     await db.query('DELETE FROM chat_attachments WHERE message_id IN (SELECT id FROM chat_messages WHERE chat_id = $1)', [chatId]);

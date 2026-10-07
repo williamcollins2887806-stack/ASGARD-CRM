@@ -20,7 +20,9 @@
   let camOn = false;
   let timerId = null;
   let timerSec = 0;
+  let ringTimeoutId = null;
   let overlayEl = null;
+  const RING_TIMEOUT_MS = 45000;
 
   function token() {
     return localStorage.getItem('asgard_token') || '';
@@ -296,8 +298,25 @@
     emit('media', { micOn: micOn, camOn: camOn });
   }
 
+  function startRingTimeout() {
+    stopRingTimeout();
+    ringTimeoutId = setTimeout(() => {
+      if (call && call.status === 'ringing') {
+        // Nobody picked up — cancel so the row never stays 'ringing' and blocks calls.
+        cancel();
+        emit('missed', { reason: 'timeout' });
+      }
+    }, RING_TIMEOUT_MS);
+  }
+
+  function stopRingTimeout() {
+    if (ringTimeoutId) clearTimeout(ringTimeoutId);
+    ringTimeoutId = null;
+  }
+
   function finishLocal(reason) {
     stopTimer();
+    stopRingTimeout();
     ringtone(false);
     disconnectLiveKit();
     const had = call;
@@ -326,13 +345,19 @@
     peerName = (data.call && data.call.peer_name) || peerName || 'Сотрудник';
     renderOverlay('outgoing');
     emit('outgoing', { call: call });
+    startRingTimeout();
+
+    // Anti-stub: no media token means no media. Never show a fake "calling" state.
+    if (!data.token) {
+      try { await api('/calls/' + call.id + '/end', { method: 'POST', body: {} }); } catch (_) {}
+      finishLocal('no_media');
+      throw new Error('Звонки недоступны: медиасервер не настроен');
+    }
 
     try {
-      if (data.token && data.ws_url) {
-        await connectLiveKit(data.ws_url, data.token);
-        if (call && call.status === 'ringing') {
-          // caller waits for accept; keep outgoing UI until call:accepted arrives
-        }
+      await connectLiveKit(data.ws_url, data.token);
+      if (call && call.status === 'ringing') {
+        // caller waits for accept; keep outgoing UI until call:accepted arrives
       }
     } catch (e) {
       emit('error', { message: e.message });
@@ -349,6 +374,12 @@
     camOn = call.kind === 'video';
     renderOverlay('active');
     startTimer();
+    if (!data.token) {
+      try { await api('/calls/' + call.id + '/end', { method: 'POST', body: {} }); } catch (_) {}
+      finishLocal('no_media');
+      emit('error', { message: 'Звонки недоступны: медиасервер не настроен' });
+      return;
+    }
     try {
       await connectLiveKit(data.ws_url, data.token);
     } catch (e) {
@@ -402,6 +433,7 @@
     micOn = false; // don't broadcast until accepted
     renderOverlay('incoming');
     ringtone(true);
+    startRingTimeout();
     emit('incoming', { call: call });
   }
 
@@ -410,6 +442,7 @@
     call = Object.assign(call, payload);
     call.status = 'active';
     renderOverlay('active');
+    stopRingTimeout();
     startTimer();
     emit('active', { call: call });
   }
@@ -419,12 +452,14 @@
     finishLocal(payload.reason || 'ended');
   }
 
+  const _sseOff = [];
   function attachSse() {
     if (!global.HuginnSSE || !global.HuginnSSE.on) return;
-    global.HuginnSSE.on('call:incoming', (p) => onIncoming(p && (p.detail || p)));
-    global.HuginnSSE.on('call:accepted', (p) => onAccepted(p && (p.detail || p)));
-    global.HuginnSSE.on('call:declined', (p) => onEnded(p && (p.detail || p)));
-    global.HuginnSSE.on('call:ended', (p) => onEnded(p && (p.detail || p)));
+    _sseOff.splice(0).forEach((off) => { try { off(); } catch (_) {} });
+    _sseOff.push(global.HuginnSSE.on('call:incoming', (p) => onIncoming(p && (p.detail || p))));
+    _sseOff.push(global.HuginnSSE.on('call:accepted', (p) => onAccepted(p && (p.detail || p))));
+    _sseOff.push(global.HuginnSSE.on('call:declined', (p) => onEnded(p && (p.detail || p))));
+    _sseOff.push(global.HuginnSSE.on('call:ended', (p) => onEnded(p && (p.detail || p))));
   }
 
   /** Reconnect after reload / push deep-link (?call=<id>). */
@@ -474,6 +509,8 @@
   }
 
   function mount() {
+    if (_mounted) return;
+    _mounted = true;
     attachSse();
     initFromUrl();
   }

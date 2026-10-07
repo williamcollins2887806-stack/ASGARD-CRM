@@ -46,7 +46,8 @@ FILES = [
 ]
 
 CHECKS_JS = ["startHuginnCall", "warmPresence", "loadContactsDirectory", "openInChatSearch", "openAddMembers"]
-CHECKS_EXT = ["calls/active", "presence/all", "/directory", "repairBotDirectChatName"]
+CHECKS_EXT = ["calls/active", "presence/all", "/directory"]
+CHECKS_CG = ["repairBotDirectChatName", "chat:deleted", "search"]
 
 
 def load_pkey(path: str):
@@ -78,6 +79,10 @@ def main() -> int:
     for n in CHECKS_EXT:
         if n not in ext:
             raise SystemExit(f"huginn_ext.js missing: {n}")
+    cg = (ROOT / "src/routes/chat_groups.js").read_text(encoding="utf-8")
+    for n in CHECKS_CG:
+        if n not in cg:
+            raise SystemExit(f"chat_groups.js missing: {n}")
     calls = (ROOT / "public/assets/js/huginn_calls.js").read_text(encoding="utf-8")
     if "HuginnCall" not in calls or "LivekitClient" not in calls:
         raise SystemExit("huginn_calls.js incomplete")

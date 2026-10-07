@@ -100,7 +100,9 @@
     };
     ['chat:new_message', 'chat:read', 'chat:message_edited', 'chat:message_deleted',
       'chat:reaction', 'chat:typing', 'chat:transcript_ready', 'presence:online',
-      'presence:offline', 'huginn:invite_accepted', 'connected'].forEach(wire);
+      'presence:offline', 'huginn:invite_accepted', 'connected',
+      'chat:cleared', 'chat:deleted',
+      'call:incoming', 'call:accepted', 'call:declined', 'call:ended'].forEach(wire);
 
     source.addEventListener('error', () => { noteFail(); });
     catchUp();

@@ -715,6 +715,11 @@ module.exports = async function registerHuginnExt(fastify, { db, uploadDir, getC
   }
 
   async function getActiveCallForUser(userId) {
+    // Expire stale rings (crash/network drop) so a dead row can never block calls.
+    await db.query(
+      `UPDATE huginn_calls SET status = 'canceled', ended_at = NOW()
+        WHERE status = 'ringing' AND created_at < NOW() - INTERVAL '2 minutes'`
+    ).catch(() => {});
     const { rows: [row] } = await db.query(
       `SELECT * FROM huginn_calls
         WHERE status IN ('ringing', 'active')
@@ -794,7 +799,14 @@ module.exports = async function registerHuginnExt(fastify, { db, uploadDir, getC
        VALUES ($1, $2, $3, $4, 'ringing', $5)
        RETURNING *`,
       [chatId, me, Number(other.user_id), kind, 'pending']
-    );
+    ).catch((err) => {
+      // uniq_huginn_calls_live_chat: someone already has a live call in this chat
+      if (err && err.code === '23505') return { rows: [] };
+      throw err;
+    });
+    if (!call) {
+      return reply.code(409).send({ error: 'В этом чате уже идёт звонок', busy: true });
+    }
     const room = 'huginn-call-' + call.id;
     await db.query('UPDATE huginn_calls SET livekit_room = $1 WHERE id = $2', [room, call.id]);
     call.livekit_room = room;
@@ -833,7 +845,10 @@ module.exports = async function registerHuginnExt(fastify, { db, uploadDir, getC
       room,
       ws_url: mine.ws_url,
       token: mine.token,
-      livekit_ready: livekit.isConfigured()
+      livekit_ready: livekit.isConfigured(),
+      // Anti-stub: without LiveKit there is no media, so the client must not
+      // pretend a call is up — it shows the honest "calls unavailable" state.
+      media_ok: !!mine.token
     };
   });
 

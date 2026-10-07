@@ -2444,31 +2444,18 @@
     };
     const openProfileMoreMenu = () => {
       const ch = state.chats.find((c) => Number(c.id) === Number(state.chatId)) || chat;
-      const isPinned = !!ch.is_pinned;
       const isFav = !!ch.is_favorite;
       el.querySelectorAll('.hg-profile-menu').forEach((m) => m.remove());
       const menu = document.createElement('div');
       menu.className = 'hg-attach-menu hg-glass hg-profile-menu';
       menu.setAttribute('data-role', 'menu');
-      menu.innerHTML = `        <button type="button" data-a="pin" class="${isPinned ? 'is-active' : ''}">${ICO.pin || ICO.bookmark || '📌'} ${isPinned ? 'Убрать закреплённое' : 'Закрепить чат'}</button>
-        <button type="button" data-a="favorite" class="${isFav ? 'is-active' : ''}">${isFav ? '★' : '☆'} ${isFav ? 'Убрать из избранного' : 'В избранное'}</button>
+      menu.innerHTML = `        <button type="button" data-a="favorite" class="${isFav ? 'is-active' : ''}">${isFav ? '★' : '☆'} ${isFav ? 'Убрать из избранного' : 'В избранное'}</button>
         <button type="button" data-a="sound">${ICO.bell || '🔔'} Звук…</button>
         <button type="button" data-a="search">${ICO.search || '🔍'} Поиск</button>
         <button type="button" data-a="leave" class="is-danger">${ICO.x || '✕'} Покинуть</button>`;
       el.appendChild(menu);
       menu.querySelector('[data-a="sound"]').onclick = () => { menu.remove(); openSoundMenu(); };
       menu.querySelector('[data-a="search"]').onclick = () => { menu.remove(); openInChatSearch(); };
-      menu.querySelector('[data-a="pin"]').onclick = async () => {
-        menu.remove();
-        if (!state.chatId) return;
-        try {
-          await api('/api/chat-groups/' + state.chatId, { method: 'PUT', body: { is_pinned: !isPinned } });
-          const ch = state.chats.find((c) => Number(c.id) === Number(state.chatId));
-          if (ch) ch.is_pinned = !isPinned;
-          showToast(!isPinned ? 'Чат закреплён' : 'Чат откреплён');
-          renderPanel();
-        } catch (e) { showToast(e.message || 'Не удалось закрепить'); }
-      };
       menu.querySelector('[data-a="favorite"]').onclick = async () => {
         menu.remove();
         if (!state.chatId) return;

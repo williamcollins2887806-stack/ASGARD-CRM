@@ -30,5 +30,10 @@ CREATE INDEX IF NOT EXISTS idx_huginn_calls_caller_status
 CREATE INDEX IF NOT EXISTS idx_huginn_calls_chat
   ON huginn_calls (chat_id, created_at DESC);
 
+-- At most one live (ringing/active) call per chat: closes the double-POST race.
+CREATE UNIQUE INDEX IF NOT EXISTS uniq_huginn_calls_live_chat
+  ON huginn_calls (chat_id)
+  WHERE status IN ('ringing', 'active');
+
 -- "Избранное": per-user flag on a chat.
 ALTER TABLE chats ADD COLUMN IF NOT EXISTS is_favorite BOOLEAN NOT NULL DEFAULT false;

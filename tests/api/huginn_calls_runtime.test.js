@@ -192,17 +192,44 @@ async function main() {
     caseResult('DELETE-DIRECT-GONE', after.status === 404 || after.status === 403, 'status=' + after.status);
   }
 
+  // ── calls: simultaneous POST race → exactly one wins ─────────
+  {
+    const fresh = await api(a.token, 'POST', '/api/chat-groups/direct', { user_id: b.user.id });
+    const raceChat = fresh.data.chat && fresh.data.chat.id;
+    const [r1, r2] = await Promise.all([
+      api(a.token, 'POST', '/api/chat-groups/calls', { chat_id: Number(raceChat), kind: 'audio' }),
+      api(b.token, 'POST', '/api/chat-groups/calls', { chat_id: Number(raceChat), kind: 'audio' })
+    ]);
+    const codes = [r1.status, r2.status].sort().join(',');
+    caseResult('CALL-RACE-SINGLE-WINNER', codes === '200,409', 'codes=' + codes + ' chat=' + raceChat);
+    for (const tok of [a.token, b.token]) {
+      const act = await api(tok, 'GET', '/api/chat-groups/calls/active');
+      if (act.data.call) await api(tok, 'POST', '/api/chat-groups/calls/' + act.data.call.id + '/end', {});
+    }
+  }
+
+  // ── is_favorite round-trip (PUT /:id) ────────────────────────
+  {
+    const fresh = await api(a.token, 'POST', '/api/chat-groups/direct', { user_id: b.user.id });
+    const favChat = fresh.data.chat && fresh.data.chat.id;
+    const on = await api(a.token, 'PUT', '/api/chat-groups/' + favChat, { is_favorite: true });
+    caseResult('FAVORITE-SET', on.status === 200, 'status=' + on.status);
+    const list = await api(a.token, 'GET', '/api/chat-groups');
+    const row = (list.data.chats || []).find((c) => Number(c.id) === Number(favChat));
+    caseResult('FAVORITE-IN-LIST', !!(row && row.is_favorite === true), 'is_favorite=' + (row && row.is_favorite));
+    const off = await api(a.token, 'PUT', '/api/chat-groups/' + favChat, { is_favorite: false });
+    caseResult('FAVORITE-UNSET', off.status === 200, 'status=' + off.status);
+  }
+
   // ── bot DM guard: 3+ member direct is never renamed ───────────
   {
     const botChat = await api(b.token, 'GET', '/api/chat-groups');
     const bots = (botChat.data.chats || []).filter((c) => Number(c.direct_user_id) > 0 && /мимир/i.test(String(c.direct_user_name || '')));
     caseResult('BOT-DM-PRESENT', bots.length > 0, 'n=' + bots.length);
-    if (bots.length) {
-      const ok = bots.every((c) => String(c.name || '').trim() === String(c.direct_user_name || '').trim());
-      caseResult('BOT-DM-NAME-EQ-PEER', ok, bots.map((c) => c.name + '/' + c.direct_user_name).slice(0, 3).join(' | '));
-    } else {
-      caseResult('BOT-DM-NAME-EQ-PEER', true, 'skipped: no bot DM for this user');
-    }
+    const botsOk = !bots.length
+      || bots.every((c) => String(c.name || '').trim() === String(c.direct_user_name || '').trim());
+    caseResult('BOT-DM-NAME-EQ-PEER', botsOk,
+      bots.length ? bots.map((c) => c.name + '/' + c.direct_user_name).slice(0, 3).join(' | ') : 'skipped: no bot DM');
   }
 
   const pass = results.filter((r) => r.ok).length;
