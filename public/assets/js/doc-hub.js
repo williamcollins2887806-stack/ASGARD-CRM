@@ -45,7 +45,7 @@ window.AsgardDocHubPage = (function () {
   const OPS_OPTIONS = [
     ['', 'Все статусы'],
     ['draft', 'Черновик'],
-    ['wait_pay', 'Ждём оплату'],
+    ['wait_pay', 'К оплате'],
     ['paid', 'Оплачен'],
     ['wait_sf', 'Ждём СФ'],
     ['wait_closing', 'Ждём закрывающие'],
@@ -302,7 +302,7 @@ window.AsgardDocHubPage = (function () {
     if (row.dir === 'out' && row.ops_status === 'out_sent') return 'Выставлено';
     if (row.dir === 'out') return 'Черновик исх.';
     if (row.ops_status === 'wait_sf' || row.ops_status === 'wait_closing') return 'Ждём СФ';
-    if (row.ops_status === 'wait_pay') return 'Ждём оплату';
+    if (row.ops_status === 'wait_pay') return row.dir === 'out' ? 'Ждём оплату' : 'К оплате';
     if (row.ops_status === 'paid' || row.pay_status === 'paid') return 'Оплачен';
     const map = Object.fromEntries(OPS_OPTIONS.filter(([k]) => k));
     return map[row.ops_status] || 'В работе';
