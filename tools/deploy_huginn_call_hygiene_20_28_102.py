@@ -20,7 +20,7 @@ sys.path.insert(0, str(ROOT / "tools"))
 import shell_guard  # noqa: E402
 import paramiko
 
-VER = "20.28.102"
+VER = "20.28.103"
 SSH_HOST = "92.242.61.184"
 SSH_USER = "root"
 SSH_KEY = str(Path.home() / ".ssh" / "asgard_crm_deploy")
