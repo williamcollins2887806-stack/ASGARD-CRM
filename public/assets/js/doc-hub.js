@@ -183,17 +183,17 @@ window.AsgardDocHubPage = (function () {
       const qInn = String(inn || '').replace(/\D/g, '');
       const qName = String(cpName || '').toLowerCase().trim();
       const filtered = list.filter((c) => {
-        const cInn = String(c.counterparty_inn || c.inn || '').replace(/\D/g, '');
+        const cInn = String(c.counterparty_inn || c.inn || c.customer_inn || c.counterparty_id || '').replace(/\D/g, '');
         const cName = String(c.counterparty_name || c.customer_name || c.party_name || '').toLowerCase();
         if (qInn && cInn && (cInn === qInn || cInn.includes(qInn) || qInn.includes(cInn))) return true;
         if (qName && cName && (cName.includes(qName) || qName.includes(cName.slice(0, 8)))) return true;
         return false;
       });
-      showInlineContractModal(filtered.length ? filtered : list.slice(0, 40), done, qName || qInn);
+      // Сначала — договоры этого контрагента; если совпадений нет, показываем все с поиском.
+      showInlineContractModal(filtered.length ? filtered : list, done, qName || qInn, filtered.length > 0);
     }
 
     if (ACP && typeof ACP.openContractSelector === 'function' && /^\d+$/.test(String(inn || ''))) {
-      // Only use stock selector when we have numeric counterparty id
       ACP.openContractSelector(Number(inn), 'supplier', done);
       return;
     }
@@ -202,12 +202,13 @@ window.AsgardDocHubPage = (function () {
     });
   }
 
-  function showInlineContractModal(contracts, onSelect, hint) {
+  function showInlineContractModal(contracts, onSelect, hint, scoped) {
     document.getElementById('dhContractModal')?.remove();
+    const all = contracts || [];
     const wrap = document.createElement('div');
     wrap.id = 'dhContractModal';
     wrap.className = 'dh-cmodal';
-    const rows = (contracts || []).slice(0, 60).map((c) => {
+    const itemHtml = (c) => {
       const label = c.number || c.label || ('#' + c.id);
       const sub = [c.subject, c.counterparty_name || c.customer_name, c.amount != null ? money(c.amount) : '']
         .filter(Boolean).join(' · ');
@@ -216,41 +217,69 @@ window.AsgardDocHubPage = (function () {
         <div class="t">${esc(label)}</div>
         <div class="s">${esc(sub || '—')}</div>
       </button>`;
-    }).join('');
+    };
     wrap.innerHTML = `
       <div class="dh-cmodal__card" role="dialog" aria-modal="true">
         <header class="dh-cmodal__head">
           <strong>Выберите договор</strong>
           <button type="button" class="dh-cmodal__x" aria-label="Закрыть">✕</button>
         </header>
-        <div class="dh-cmodal__hint">${hint ? ('По контрагенту: ' + esc(hint)) : 'Все договоры (уточните контрагента для фильтра)'}</div>
-        <div class="dh-cmodal__list">${rows || '<div class="dh-empty dh-empty--sm"><div class="dh-empty__t">Нет договоров</div></div>'}</div>
+        <div class="dh-cmodal__hint">${hint
+          ? (scoped ? ('По контрагенту: ' + esc(hint)) : ('Совпадений по контрагенту нет — все договоры. Поиск: ' + esc(hint)))
+          : ('Всего договоров: ' + all.length)}</div>
+        <div class="dh-cmodal__search"><input type="text" id="dhCmodalQ" placeholder="Поиск по номеру, предмету, контрагенту…" autocomplete="off"/></div>
+        <div class="dh-cmodal__list" id="dhCmodalList">${all.length ? all.map(itemHtml).join('') : '<div class="dh-empty dh-empty--sm"><div class="dh-empty__t">Нет договоров</div></div>'}</div>
         <footer class="dh-cmodal__foot">
           <button type="button" class="dh-btn dh-btn--ghost" id="dhCmodalCancel">Отмена</button>
           <button type="button" class="dh-btn dh-btn--primary" id="dhCmodalCreate">+ Создать договор</button>
         </footer>
       </div>`;
     document.body.appendChild(wrap);
+    const listEl = wrap.querySelector('#dhCmodalList');
+    // Живой поиск по номеру/предмету/контрагенту
+    const qEl = wrap.querySelector('#dhCmodalQ');
+    qEl?.addEventListener('input', () => {
+      const s = qEl.value.toLowerCase().trim();
+      const hit = all.filter((c) => {
+        if (!s) return true;
+        const hay = [c.number, c.label, c.subject, c.counterparty_name, c.customer_name, c.counterparty_id, c.customer_inn]
+          .filter(Boolean).join(' ').toLowerCase();
+        return hay.includes(s);
+      });
+      listEl.innerHTML = hit.length ? hit.map(itemHtml).join('') : '<div class="dh-empty dh-empty--sm"><div class="dh-empty__t">Ничего не найдено</div></div>';
+      bindItems();
+    });
+    const bindItems = () => {
+      listEl.querySelectorAll('.dh-cmodal__item').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          onSelect({
+            id: btn.getAttribute('data-id'),
+            label: btn.getAttribute('data-label'),
+            number: btn.getAttribute('data-label'),
+            date: btn.getAttribute('data-date')
+          });
+          close();
+        });
+      });
+    };
+    bindItems();
     const close = () => wrap.remove();
     wrap.querySelector('.dh-cmodal__x')?.addEventListener('click', close);
     wrap.querySelector('#dhCmodalCancel')?.addEventListener('click', close);
     wrap.addEventListener('click', (e) => { if (e.target === wrap) close(); });
-    wrap.querySelectorAll('.dh-cmodal__item').forEach((btn) => {
-      btn.addEventListener('click', () => {
-        onSelect({
-          id: btn.getAttribute('data-id'),
-          label: btn.getAttribute('data-label'),
-          number: btn.getAttribute('data-label'),
-          date: btn.getAttribute('data-date')
-        });
-        close();
-      });
-    });
     wrap.querySelector('#dhCmodalCreate')?.addEventListener('click', () => {
       close();
+      // Настоящая форма договора (та же, что в реестре договоров) — без ухода со страницы.
+      if (ACP && typeof ACP.openContractModal === 'function') {
+        try {
+          ACP.openContractModal({ counterparty_name: hint || '', type: 'supplier' }, []);
+          return;
+        } catch (_) { /* fallback ниже */ }
+      }
       location.hash = '#/contracts';
       toast('Договоры', 'Откройте создание договора, затем вернитесь в Doc Hub', 'ok');
     });
+    setTimeout(() => qEl && qEl.focus(), 30);
   }
 
   async function api(path, opts = {}) {

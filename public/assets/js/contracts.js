@@ -1324,6 +1324,7 @@ window.AsgardContractsPage = (function(){
     remove,
     findByCounterparty,
     openContractSelector,
+    openContractModal,
     checkExpiringContracts,
     openNewCustomerModal,
     CONTRACT_TYPES,

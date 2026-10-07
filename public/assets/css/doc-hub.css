@@ -2331,3 +2331,15 @@ html[data-theme="light"] .dh-vat-chip.is-on {
   color: #6F4E0A;
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--gold) 16%, transparent);
 }
+
+/* Поиск в пикере договоров */
+.dh-cmodal__search { padding: 0 16px 8px; }
+.dh-cmodal__search input {
+  width: 100%; padding: 9px 12px; border-radius: 9px;
+  border: 1px solid var(--brd-m, #334155); background: var(--bg3, #1e293b);
+  color: var(--t1, #f8fafc); font: inherit; font-size: 13px;
+}
+.dh-cmodal__search input:focus {
+  outline: none;
+  border-color: color-mix(in srgb, var(--gold, #d4a017) 50%, var(--brd, #334155));
+}
