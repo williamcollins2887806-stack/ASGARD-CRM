@@ -46,6 +46,23 @@ CHECKS = [
         "SELECT 1 FROM pg_indexes "
         "WHERE tablename='works' AND indexname='idx_works_one_main_per_tender' LIMIT 1",
     ),
+    # Data-only migrations: marker = "the data fix is already in place".
+    # chr(8212) = em dash, avoids Cyrillic in the shell-quoted psql command (D-142b).
+    (
+        "V368__direct_chat_peer_name",
+        "SELECT CASE WHEN count(*)=0 THEN 1 ELSE 0 END FROM chats "
+        "WHERE type='direct' AND COALESCE(is_group,false)=false "
+        "AND position(chr(8212) in name) > 0",
+    ),
+    (
+        "V369__direct_bot_chat_peer_name",
+        "SELECT CASE WHEN count(*)=0 THEN 1 ELSE 0 END FROM chats c "
+        "WHERE c.type='direct' AND COALESCE(c.is_group,false)=false "
+        "AND EXISTS (SELECT 1 FROM chat_group_members m JOIN users u ON u.id=m.user_id "
+        "WHERE m.chat_id=c.id AND u.role='BOT') "
+        "AND c.name IS DISTINCT FROM (SELECT u2.name FROM chat_group_members m2 "
+        "JOIN users u2 ON u2.id=m2.user_id WHERE m2.chat_id=c.id AND u2.role='BOT' LIMIT 1)",
+    ),
 ]
 
 
