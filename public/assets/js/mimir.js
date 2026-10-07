@@ -47,13 +47,18 @@ window.AsgardMimir = (function(){
   const styles = `
     <style id="mimir-styles">
       /* ── FAB кнопка ── */
-      .mimir-widget { position:fixed; bottom:24px; right:24px; z-index:500; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif; }
+      .mimir-widget { position:fixed; bottom:24px; right:24px; z-index:500; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif; pointer-events:none; width:0; height:0; overflow:visible; }
+      #mimirFab, .mimir-fab, #mimirFabMenu {
+        display:none !important; visibility:hidden !important; pointer-events:none !important;
+        width:0 !important; height:0 !important; opacity:0 !important;
+      }
 
       .mimir-fab {
         width:60px; height:60px; border-radius:50%;
         background:linear-gradient(135deg, #c0392b 0%, #2a3b66 100%);
         border:none; cursor:pointer;
-        display:flex; align-items:center; justify-content:center;
+        display:none;
+        align-items:center; justify-content:center;
         box-shadow:0 6px 24px rgba(192,57,43,0.45), 0 0 0 0 rgba(245,215,142,0.3);
         transition:all 0.35s cubic-bezier(0.34,1.56,0.64,1);
         position:relative;
@@ -143,6 +148,7 @@ window.AsgardMimir = (function(){
         max-height:calc(100vh - 120px);
         display:none; flex-direction:column;
         z-index:501;
+        pointer-events:auto;
       }
       .mimir-iphone.open {
         display:flex;
@@ -520,6 +526,7 @@ window.AsgardMimir = (function(){
     widget.id = 'mimirWidget';
     widget.className = 'mimir-widget';
     widget.innerHTML = buildWidgetHTML();
+    // P12: entry is Huginn rail, not the old bottom-right FAB.
 
     document.body.appendChild(widget);
     bindEvents();
@@ -535,13 +542,6 @@ window.AsgardMimir = (function(){
 
   function buildWidgetHTML() {
     return `
-      <button class="mimir-fab" id="mimirFab">
-        <span class="mimir-fab-emoji">\uD83E\uDDD9</span>
-        <span class="mimir-fab-rune">\u16D7</span>
-        <span class="mimir-fab-count" id="mimirFabCount"></span>
-        <span class="mimir-fab-tooltip">\uD83E\uDDD9 Мимир \u2014 Хранитель Мудрости</span>
-      </button>
-
       <div class="mimir-iphone" id="mimirIphone">
         <div class="mimir-iphone-body">
           <div class="mimir-iphone-btn-power"></div>
