@@ -5324,3 +5324,22 @@ body:has(.hg-ai-sheet) .hg-nav-search {
   color: #fff; font-size: 40px; text-shadow: 0 2px 8px rgba(0,0,0,.5); transition: opacity 160ms ease;
 }
 .hg-voice-wave { cursor: pointer; }
+
+/* -- Invite sheet polish + hint -- */
+.hg-invite-hint {
+  font: 400 12px/1.4 var(--hg-font); color: var(--hg-muted);
+  margin: 8px 2px 0; text-align: center;
+}
+.hg-invite-sheet[data-role="card"] { padding: 16px; }
+.hg-invite-submit {
+  width: 100%; min-height: 46px; border: 0; border-radius: 12px;
+  background: var(--blue-l, #4A90D9); color: #fff;
+  font: 600 15px/1.2 var(--hg-font); cursor: pointer; margin-top: 12px;
+  transition: filter 120ms ease, transform 120ms ease;
+}
+.hg-invite-submit:hover { filter: brightness(1.06); }
+.hg-invite-submit:active { transform: scale(0.98); }
+.hg-invite-modes .hg-compose-mode.is-active {
+  background: color-mix(in srgb, var(--blue-l, #4A90D9) 18%, transparent);
+  color: var(--hg-text);
+}

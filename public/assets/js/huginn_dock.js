@@ -4650,6 +4650,7 @@
         <button type="button" class="hg-compose-mode" data-ich="none" role="tab" aria-selected="false">Только ссылка</button>
       </div>
       <button type="button" class="hg-invite-submit" id="hgInviteSubmit">Отправить приглашение</button>
+      <div class="hg-invite-hint">Ссылка действует 24 часа. Гость войдёт по телефону + SMS-коду.</div>
       <div class="hg-invite-result" id="hgInviteResult" hidden></div>`;
     host.appendChild(el);
     el.querySelector('#hgInviteClose').onclick = () => el.remove();
