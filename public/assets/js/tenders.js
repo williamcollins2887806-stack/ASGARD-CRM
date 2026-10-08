@@ -532,33 +532,36 @@ window.AsgardTendersPage = (function(){
       .tenders-page .m-tender-tools > .field{margin:0}
       .tenders-page .m-tender-tools .field > div{min-width:0}
       .tenders-page .tenders-table-scroll{
-        width:100%;
-        max-width:100%;
-        min-width:0;
-        overflow-x:hidden;
-        overflow-y:visible;
+        display:block;
+        width:100% !important;
+        max-width:100% !important;
+        min-width:0 !important;
+        overflow:hidden !important;
         border-radius:8px;
       }
       .tenders-page table.asg.tenders-table{
-        width:100%;
-        max-width:100%;
-        min-width:0;
-        table-layout:fixed;
+        display:table !important;
+        width:100% !important;
+        max-width:100% !important;
+        min-width:0 !important;
+        table-layout:fixed !important;
         border-collapse:separate;
-        border-spacing:0 6px;
+        border-spacing:0 3px;
       }
       .tenders-page table.asg.tenders-table th,
       .tenders-page table.asg.tenders-table td{
-        min-width:0;
-        max-width:0;
-        padding:8px 6px;
+        min-width:0 !important;
+        max-width:0 !important;
+        width:auto;
+        padding:4px 4px;
         vertical-align:middle;
         text-align:left;
         white-space:normal;
+        overflow:hidden;
         overflow-wrap:anywhere;
         word-break:break-word;
-        line-height:1.25;
-        font-size:11px;
+        line-height:1.12;
+        font-size:9px;
       }
       .tenders-page table.asg.tenders-table th{
         vertical-align:middle;
@@ -571,8 +574,8 @@ window.AsgardTendersPage = (function(){
         white-space:normal;
         overflow-wrap:anywhere;
         text-align:left;
-        padding:4px 6px;
-        min-height:30px;
+        padding:3px 4px;
+        min-height:24px;
         align-items:center;
       }
       /* Keep all original 12 columns: proportions tuned so the full register stays visible. */
@@ -595,6 +598,15 @@ window.AsgardTendersPage = (function(){
       .tenders-page table.asg.tenders-table th:nth-child(16),.tenders-page table.asg.tenders-table td:nth-child(16){width:5%}
       .tenders-page table.asg.tenders-table th:nth-child(17),.tenders-page table.asg.tenders-table td:nth-child(17){width:7%}
       .tenders-page table.asg.tenders-table th:nth-child(18),.tenders-page table.asg.tenders-table td:nth-child(18){width:3%}
+      .tenders-page table.asg.tenders-table th,
+      .tenders-page table.asg.tenders-table td{box-sizing:border-box}
+      .tenders-page table.asg.tenders-table td:nth-child(9) .cr-status-badge{
+        display:inline-flex;
+        white-space:nowrap !important;
+        word-break:normal !important;
+        overflow-wrap:normal !important;
+        max-width:100%;
+      }
       .tenders-page table.asg.tenders-table td:nth-child(9) .badge{
         white-space:nowrap;
         overflow-wrap:normal;
