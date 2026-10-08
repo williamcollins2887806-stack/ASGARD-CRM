@@ -399,8 +399,7 @@ html[data-theme="light"] .hg-rail-badge {
 /* PBX phone button (state from phone_ui.js via HuginnDock.setPhoneRail) */
 .hg-rail-btn[hidden] { display: none; }
 .hg-rail-badge[data-rail-badge="phone"],
-.hg-rail-badge[data-rail-badge="huginn"],
-.hg-rail-badge[data-rail-badge="ting"] {
+.hg-rail-badge[data-rail-badge="huginn"] {
   background: var(--hg-tg-badge, var(--hg-danger, #FF3B30));
   color: #fff;
 }
@@ -3212,16 +3211,6 @@ html[data-theme="light"] .hg-send.is-mic:hover {
   flex: 1 1 auto;
   min-height: 0;
 }
-.hg-rail-btn[data-hg-tab="ting"].is-live::after {
-  content: '';
-  position: absolute;
-  width: 8px; height: 8px; border-radius: 50%;
-  background: var(--hg-tg-badge, var(--hg-danger, #FF3B30));
-  top: 8px; right: 10px;
-  z-index: 1;
-  box-shadow: 0 0 0 2px var(--hg-bg);
-}
-
 /* Empty */
 .hg-empty {
   padding: 32px 20px;

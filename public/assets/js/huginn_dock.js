@@ -2725,7 +2725,6 @@
           showToast(err.message || 'Не удалось исключить');
         }
       };
-      menu.querySelector('[data-a="tags"]').onclick = () => {};
     };
     const renderTab = (tab) => {
       activeProfileTab = tab;
