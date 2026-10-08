@@ -12,7 +12,7 @@ const aiProvider = require('./ai-provider');
 const PRESET_STYLES = [
   { id: 'formal', name: 'Formal', icon_emoji: '🤝', prompt: 'Перепиши текст формальным деловым стилем. Только результат, без пояснений.' },
   { id: 'short', name: 'Short', icon_emoji: '🎯', prompt: 'Сократи текст, сохрани смысл. Только результат.' },
-  { id: 'tribal', name: 'Tribal', icon_emoji: '🪓', prompt: 'Перепиши энергично, коротко, как для рабочей бригады. Только результат.' },
+  { id: 'tribal', name: 'Tribal', icon_emoji: '🍗', prompt: 'Перепиши энергично, коротко, как для рабочей бригады. Только результат.' },
   { id: 'corp', name: 'Corp', icon_emoji: '💼', prompt: 'Перепиши в корпоративном тоне ASGARD CRM. Только результат.' },
   { id: 'zen', name: 'Zen', icon_emoji: '🧘', prompt: 'Перепиши спокойно и ясно. Только результат.' },
   { id: 'biblical', name: 'Biblical', icon_emoji: '📜', prompt: 'Перепиши возвышенным архаичным стилем. Только результат.' },
@@ -98,16 +98,29 @@ async function rewrite(db, {
   let ok = true;
   let errorText = null;
   try {
-    const result = await aiProvider.completeFast({
-      system,
-      messages: [{ role: 'user', content: clean }],
-      maxTokens: 2048,
-      temperature: 0.3
-    });
-    out = String((result && (result.text || result.content)) || '').trim();
-    if (!out) {
-      ok = false;
-      errorText = 'empty_response';
+    if (process.env.HUGINN_AI_STUB === '1') {
+      // Clone/cert stub: prove route+apply without spending provider balance
+      if (m === 'translate') out = `[stub-${m}] ${clean}`;
+      else if (m === 'style') out = `[stub-style:${styleId || 'formal'}] ${clean}`;
+      else out = `[stub-grammar] ${clean.replace(/\s+/g, ' ').trim()}`;
+    } else {
+      // DeepSeek Flash may spend budget on reasoning and return empty content once — retry once.
+      const callOnce = (maxTokens) => aiProvider.completeFast({
+        system,
+        messages: [{ role: 'user', content: clean }],
+        maxTokens,
+        temperature: 0.3
+      });
+      let result = await callOnce(2048);
+      out = String((result && (result.text || result.content)) || '').trim();
+      if (!out) {
+        result = await callOnce(4096);
+        out = String((result && (result.text || result.content)) || '').trim();
+      }
+      if (!out) {
+        ok = false;
+        errorText = 'empty_response';
+      }
     }
   } catch (e) {
     ok = false;

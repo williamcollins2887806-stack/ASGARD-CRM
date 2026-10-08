@@ -55,12 +55,29 @@ const DOC_MIME_EXT = {
   'application/x-tar': '.tar',
 };
 
+/** Audio/video for Huginn voice/circle (не исполняемые в браузере как HTML). */
+const MEDIA_MIME_EXT = {
+  'audio/webm': '.webm',
+  'audio/ogg': '.ogg',
+  'audio/mpeg': '.mp3',
+  'audio/mp4': '.m4a',
+  'audio/aac': '.aac',
+  'audio/wav': '.wav',
+  'audio/x-wav': '.wav',
+  'audio/wave': '.wav',
+  'video/webm': '.webm',
+  'video/mp4': '.mp4',
+  'video/quicktime': '.mov',
+  'application/ogg': '.ogg',
+};
+
 /** Хранимые расширения, безопасные для раздачи статикой (без исполнения). */
 const SAFE_STORED_EXT = new Set([
   '.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp', '.heic', '.heif', '.tiff', '.tif',
   '.pdf', '.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx',
   '.txt', '.csv', '.rtf', '.odt', '.ods', '.odp',
   '.zip', '.rar', '.7z', '.tar', '.gz',
+  '.webm', '.ogg', '.mp3', '.m4a', '.aac', '.wav', '.mp4', '.mov',
   '.bin',
 ]);
 
@@ -77,7 +94,7 @@ function normMime(mime) {
  * Определить безопасное расширение для хранения.
  * @param {string} mimetype — MIME из multipart (не доверяем как единственному источнику истины)
  * @param {string} [filename] — имя от клиента (используем ТОЛЬКО для fallback-сверки)
- * @param {{allow?: 'photo'|'doc'|'any'}} [opts]
+ * @param {{allow?: 'photo'|'doc'|'chat'|'any'}} [opts]
  * @returns {string|null} каноничное расширение (с точкой) или null, если тип недопустим
  */
 function safeStoredExt(mimetype, filename, opts = {}) {
@@ -85,9 +102,16 @@ function safeStoredExt(mimetype, filename, opts = {}) {
   const mime = normMime(mimetype);
 
   // Расширение определяем по MIME в первую очередь (имя клиента — не источник истины).
-  const fromMime = allow === 'photo'
-    ? PHOTO_MIME_EXT[mime]
-    : (PHOTO_MIME_EXT[mime] || DOC_MIME_EXT[mime]);
+  let fromMime = null;
+  if (allow === 'photo') {
+    fromMime = PHOTO_MIME_EXT[mime];
+  } else if (allow === 'chat') {
+    fromMime = PHOTO_MIME_EXT[mime] || DOC_MIME_EXT[mime] || MEDIA_MIME_EXT[mime];
+  } else if (allow === 'doc') {
+    fromMime = PHOTO_MIME_EXT[mime] || DOC_MIME_EXT[mime];
+  } else {
+    fromMime = PHOTO_MIME_EXT[mime] || DOC_MIME_EXT[mime] || MEDIA_MIME_EXT[mime];
+  }
   if (fromMime) return fromMime;
 
   // MIME пустой/незнакомый (частый случай multipart с кривым Content-Type).
@@ -130,6 +154,9 @@ const EXT_CONTENT_TYPE = {
   '.txt': 'text/plain', '.csv': 'text/csv', '.rtf': 'application/rtf',
   '.zip': 'application/zip', '.rar': 'application/vnd.rar', '.7z': 'application/x-7z-compressed',
   '.tar': 'application/x-tar', '.gz': 'application/gzip',
+  '.webm': 'video/webm', '.ogg': 'audio/ogg', '.mp3': 'audio/mpeg',
+  '.m4a': 'audio/mp4', '.aac': 'audio/aac', '.wav': 'audio/wav',
+  '.mp4': 'video/mp4', '.mov': 'video/quicktime',
 };
 
 /**
@@ -157,6 +184,7 @@ module.exports = {
   DANGEROUS_EXT,
   PHOTO_MIME_EXT,
   DOC_MIME_EXT,
+  MEDIA_MIME_EXT,
   SAFE_STORED_EXT,
   PHOTO_EXT_SET,
   EXT_CONTENT_TYPE,

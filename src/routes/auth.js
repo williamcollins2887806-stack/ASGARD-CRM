@@ -121,6 +121,7 @@ async function routes(fastify, options) {
       [user.id]
     );
 
+    const isHuginnGuest = !!user.is_huginn_guest || user.role === 'huginn_guest';
     const userData = {
       id: user.id,
       login: user.login,
@@ -129,8 +130,23 @@ async function routes(fastify, options) {
       email: user.email,
       must_change_password: user.must_change_password || false,
       patronymic: user.patronymic || null,
-      has_pin: !!user.pin_hash
+      has_pin: !!user.pin_hash,
+      is_huginn_guest: isHuginnGuest
     };
+
+    // Huginn guests: no CRM PIN wall; messenger token only
+    if (isHuginnGuest) {
+      const token = fastify.jwt.sign({
+        id: user.id,
+        login: user.login,
+        name: user.name,
+        role: 'huginn_guest',
+        email: user.email,
+        pinVerified: true,
+        is_huginn_guest: true
+      });
+      return { status: 'ok', token, user: { ...userData, role: 'huginn_guest', permissions: {}, menu_settings: {} } };
+    }
 
     // Check if user needs to set up password (first login with temp password)
     if (user.must_change_password) {
@@ -142,7 +158,8 @@ async function routes(fastify, options) {
         role: user.role,
         email: user.email,
         pinVerified: false,
-        mustChangePassword: true
+        mustChangePassword: true,
+        is_huginn_guest: false
       });
       return {
         status: 'need_setup',
@@ -160,7 +177,8 @@ async function routes(fastify, options) {
         name: user.name,
         role: user.role,
         email: user.email,
-        pinVerified: false
+        pinVerified: false,
+        is_huginn_guest: false
       });
       return {
         status: 'need_pin',
@@ -176,7 +194,8 @@ async function routes(fastify, options) {
       name: user.name,
       role: user.role,
       email: user.email,
-      pinVerified: true
+      pinVerified: true,
+      is_huginn_guest: false
     });
 
     // M1: Загрузка пермишенов и настроек меню
@@ -649,18 +668,20 @@ async function routes(fastify, options) {
 
     // SECURITY: Генерируем новый токен с pinVerified: true (HIGH-7)
     const userResult = await db.query(
-      'SELECT id, login, name, role, email FROM users WHERE id = $1',
+      'SELECT id, login, name, role, email, is_huginn_guest FROM users WHERE id = $1',
       [userId]
     );
     const user = userResult.rows[0];
+    const guest = !!user.is_huginn_guest || user.role === 'huginn_guest';
 
     const newToken = fastify.jwt.sign({
       id: user.id,
       login: user.login,
       name: user.name,
-      role: user.role,
+      role: guest ? 'huginn_guest' : user.role,
       email: user.email,
-      pinVerified: true
+      pinVerified: true,
+      is_huginn_guest: guest
     });
 
     // M1: Загрузка пермишенов и настроек меню

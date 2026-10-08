@@ -946,6 +946,11 @@ try {
       const data = payload && payload.data != null ? payload.data : payload;
       if (userId) sendToUser(userId, event, data);
       else broadcast(event, data);
+      if (event === 'call:incoming' && userId) {
+        const { sendIncomingCallPush } = require('./services/notify');
+        const who = (data && (data.client_name || data.from_number || data.from)) || 'Ответьте в приложении';
+        sendIncomingCallPush(db, userId, { title: 'Входящий звонок', body: who, from: who }).catch(() => {});
+      }
     } catch (e) {
       fastify.log.warn('[PBX→SSE] ' + e.message);
     }

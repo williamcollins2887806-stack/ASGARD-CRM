@@ -27,7 +27,8 @@ auth_type=userpass
 [aor-webrtc-template](!)
 type=aor
 max_contacts=3
-remove_existing=yes
+; Не вытеснять второе устройство (десктоп + PWA на одном sip_username)
+remove_existing=no
 
 ; Пример оператора (sip_username из pbx_operators):
 ; [u42_pmivanov](webrtc-template)

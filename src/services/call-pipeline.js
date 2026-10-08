@@ -324,28 +324,32 @@ class CallPipeline {
 
     const settings = await this._getSettings();
     const deadlineMinutes = settings.missed_deadline_minutes || 30;
-
-    // Находим ответственного менеджера (дежурный РП из pm_duty_roster по МСК)
-    let assigneeId = call.user_id;
-    if (!assigneeId) {
-      try {
-        const { getCurrentDuty } = require('./tender-registry-helpers');
-        const duty = await getCurrentDuty(this.db);
-        if (duty?.pm_user_id) assigneeId = duty.pm_user_id;
-      } catch (_) { /* ignore */ }
-    }
-    if (!assigneeId) {
-      const duty = await this.db.query(
-        'SELECT user_id FROM user_call_status WHERE is_duty = true AND accepting = true LIMIT 1'
-      );
-      if (duty.rows.length) assigneeId = duty.rows[0].user_id;
-    }
-
-    if (!assigneeId) return;
-
-    // Создаём задачу
-    const deadline = new Date(Date.now() + deadlineMinutes * 60 * 1000);
     const fromDisplay = call.from_number || call.caller_number || 'неизвестный номер';
+
+    // Общий входящий без оператора — не вешаем на дежурного РП (мобильное «мои пропущенные»).
+    if (!call.user_id) {
+      const office = await this.db.query(
+        `SELECT id FROM users
+         WHERE is_active = true
+           AND role IN ('ADMIN','DIRECTOR_GEN','DIRECTOR_COMM','DIRECTOR_DEV','HEAD_TO')`
+      );
+      if (this.notify) {
+        for (const row of office.rows) {
+          await this.notify(this.db, {
+            user_id: row.id,
+            title: 'Пропущенный на общий',
+            message: 'Звонок на общую линию от ' + fromDisplay,
+            type: 'telephony',
+            link: '/telephony?tab=office',
+          });
+        }
+      }
+      return;
+    }
+
+    const assigneeId = call.user_id;
+
+    const deadline = new Date(Date.now() + deadlineMinutes * 60 * 1000);
 
     const task = await this.db.query(
       `INSERT INTO tasks (title, description, assignee_id, creator_id, deadline, priority, status, tags, created_at)

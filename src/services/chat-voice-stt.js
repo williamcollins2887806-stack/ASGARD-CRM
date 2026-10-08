@@ -38,9 +38,29 @@ function resolveAudioPath(fileUrl, uploadRoot) {
   return abs;
 }
 
+async function finishTranscript(db, msg, transcript) {
+  const meta = typeof msg.metadata === 'object' && msg.metadata ? { ...msg.metadata } : {};
+  meta.transcript = transcript;
+  meta.transcript_status = 'done';
+  await db.query(
+    `UPDATE chat_messages SET metadata = $2::jsonb WHERE id = $1`,
+    [msg.id, JSON.stringify(meta)]
+  );
+  await huginnEvents.publishToChatMembers(db, {
+    chatId: msg.chat_id,
+    eventType: 'chat:transcript_ready',
+    payload: {
+      chat_id: msg.chat_id,
+      message_id: msg.id,
+      transcript
+    }
+  });
+}
+
 async function processOne(db, job, uploadRoot) {
+  const stub = process.env.HUGINN_STT_STUB === '1';
   const sk = getSpeechKitService();
-  if (!sk || !sk.isConfigured()) {
+  if ((!sk || !sk.isConfigured()) && !stub) {
     await db.query(
       `UPDATE chat_voice_jobs
        SET status = 'failed', error_text = $2, finished_at = NOW(), attempts = attempts + 1
@@ -81,36 +101,24 @@ async function processOne(db, job, uploadRoot) {
   }
 
   try {
-    const result = await sk.transcribeFile(audioPath, {
-      languageCode: 'ru-RU',
-      enableSpeakerDiarization: false,
-      maxSpeakers: 1
-    });
-    const transcript = (result && result.text) ? String(result.text).trim() : '';
-    const meta = typeof msg.metadata === 'object' && msg.metadata ? { ...msg.metadata } : {};
-    meta.transcript = transcript;
-    meta.transcript_status = 'done';
-
-    await db.query(
-      `UPDATE chat_messages SET metadata = $2::jsonb WHERE id = $1`,
-      [msg.id, JSON.stringify(meta)]
-    );
+    let transcript = '';
+    if (stub && (!sk || !sk.isConfigured())) {
+      transcript = 'stub-transcript-' + job.message_id;
+    } else {
+      const result = await sk.transcribeFile(audioPath, {
+        languageCode: 'ru-RU',
+        enableSpeakerDiarization: false,
+        maxSpeakers: 1
+      });
+      transcript = (result && result.text) ? String(result.text).trim() : '';
+    }
+    await finishTranscript(db, msg, transcript);
     await db.query(
       `UPDATE chat_voice_jobs
        SET status = 'done', transcript = $2, finished_at = NOW(), error_text = NULL
        WHERE id = $1`,
       [job.id, transcript]
     );
-
-    await huginnEvents.publishToChatMembers(db, {
-      chatId: msg.chat_id,
-      eventType: 'chat:transcript_ready',
-      payload: {
-        chat_id: msg.chat_id,
-        message_id: msg.id,
-        transcript
-      }
-    });
   } catch (e) {
     await db.query(
       `UPDATE chat_voice_jobs
