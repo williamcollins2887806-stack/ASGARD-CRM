@@ -596,25 +596,30 @@ window.AsgardTendersPage = (function(){
         align-items:center;
       }
       /* Keep all original 12 columns: proportions tuned so the full register stays visible. */
-      /* All 18 original live-register columns; intentionally compact. */
+      /* Final compact proportions: status gets enough room for "Рассмотрение". */
       .tenders-page table.asg.tenders-table th:nth-child(1),.tenders-page table.asg.tenders-table td:nth-child(1){width:3%}
-      .tenders-page table.asg.tenders-table th:nth-child(2),.tenders-page table.asg.tenders-table td:nth-child(2){width:8.5%}
-      .tenders-page table.asg.tenders-table th:nth-child(3),.tenders-page table.asg.tenders-table td:nth-child(3){width:9.5%}
-      .tenders-page table.asg.tenders-table th:nth-child(4),.tenders-page table.asg.tenders-table td:nth-child(4){width:6%}
+      .tenders-page table.asg.tenders-table th:nth-child(2),.tenders-page table.asg.tenders-table td:nth-child(2){width:8%}
+      .tenders-page table.asg.tenders-table th:nth-child(3),.tenders-page table.asg.tenders-table td:nth-child(3){width:9%}
+      .tenders-page table.asg.tenders-table th:nth-child(4),.tenders-page table.asg.tenders-table td:nth-child(4){width:5.5%}
       .tenders-page table.asg.tenders-table th:nth-child(5),.tenders-page table.asg.tenders-table td:nth-child(5){width:5%}
       .tenders-page table.asg.tenders-table th:nth-child(6),.tenders-page table.asg.tenders-table td:nth-child(6){width:5%}
-      .tenders-page table.asg.tenders-table th:nth-child(7),.tenders-page table.asg.tenders-table td:nth-child(7){width:5%}
-      .tenders-page table.asg.tenders-table th:nth-child(8),.tenders-page table.asg.tenders-table td:nth-child(8){width:5%}
-      .tenders-page table.asg.tenders-table th:nth-child(9),.tenders-page table.asg.tenders-table td:nth-child(9){width:7%}
+      .tenders-page table.asg.tenders-table th:nth-child(7),.tenders-page table.asg.tenders-table td:nth-child(7){width:4.5%}
+      .tenders-page table.asg.tenders-table th:nth-child(8),.tenders-page table.asg.tenders-table td:nth-child(8){width:4.5%}
+      .tenders-page table.asg.tenders-table th:nth-child(9),.tenders-page table.asg.tenders-table td:nth-child(9){width:9%}
       .tenders-page table.asg.tenders-table th:nth-child(10),.tenders-page table.asg.tenders-table td:nth-child(10){width:5%}
-      .tenders-page table.asg.tenders-table th:nth-child(11),.tenders-page table.asg.tenders-table td:nth-child(11){width:5.5%}
+      .tenders-page table.asg.tenders-table th:nth-child(11),.tenders-page table.asg.tenders-table td:nth-child(11){width:5%}
       .tenders-page table.asg.tenders-table th:nth-child(12),.tenders-page table.asg.tenders-table td:nth-child(12){width:5%}
-      .tenders-page table.asg.tenders-table th:nth-child(13),.tenders-page table.asg.tenders-table td:nth-child(13){width:7%}
+      .tenders-page table.asg.tenders-table th:nth-child(13),.tenders-page table.asg.tenders-table td:nth-child(13){width:6.5%}
       .tenders-page table.asg.tenders-table th:nth-child(14),.tenders-page table.asg.tenders-table td:nth-child(14){width:4%}
       .tenders-page table.asg.tenders-table th:nth-child(15),.tenders-page table.asg.tenders-table td:nth-child(15){width:6%}
-      .tenders-page table.asg.tenders-table th:nth-child(16),.tenders-page table.asg.tenders-table td:nth-child(16){width:6%}
+      .tenders-page table.asg.tenders-table th:nth-child(16),.tenders-page table.asg.tenders-table td:nth-child(16){width:5%}
       .tenders-page table.asg.tenders-table th:nth-child(17),.tenders-page table.asg.tenders-table td:nth-child(17){width:7%}
       .tenders-page table.asg.tenders-table th:nth-child(18),.tenders-page table.asg.tenders-table td:nth-child(18){width:3%}
+      .tenders-page table.asg.tenders-table td:nth-child(9) .badge{
+        white-space:nowrap;
+        overflow-wrap:normal;
+        word-break:normal;
+      }
       .tenders-page table.asg.tenders-table .help{
         line-height:1.3;
         overflow-wrap:anywhere;
