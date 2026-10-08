@@ -16,7 +16,7 @@ const fs = require('fs').promises;
 const dns = require('dns').promises;
 const net = require('net');
 const { randomUUID } = require('crypto');
-const { sendToUser, isUserOnline } = require('./sse');
+const { sendToUser } = require('./sse');
 const aiProvider = require('../services/ai-provider');
 const mimirData = require('../services/mimir-data');
 const estimateChat = require('../services/estimateChat');
@@ -140,7 +140,8 @@ module.exports = async function(fastify) {
   /** Other participant in a 1:1 direct chat (viewer-relative). */
   async function getDirectPeerForChat(chatId, viewerUserId) {
     const { rows } = await db.query(`
-      SELECT u.id, u.name, u.role, u.last_login_at
+      SELECT u.id, u.name, u.role, u.last_seen_at,
+             (u.last_seen_at IS NOT NULL AND u.last_seen_at > NOW() - INTERVAL '2 minutes') AS online
       FROM chat_group_members cm
       JOIN users u ON u.id = cm.user_id
       WHERE cm.chat_id = $1 AND cm.user_id != $2
@@ -201,7 +202,8 @@ module.exports = async function(fastify) {
       direct_user_id: peer.id,
       direct_user_name: peer.name,
       peer_user_id: peer.id,
-      is_online: isUserOnline(peer.id)
+      peer_last_seen_at: peer.last_seen_at || null,
+      is_online: !!peer.online
     };
   }
 
@@ -386,11 +388,18 @@ module.exports = async function(fastify) {
           LIMIT 1
         ) ELSE NULL END as direct_user_id,
         CASE WHEN c.is_group = false THEN (
-          SELECT u.last_login_at FROM chat_group_members cm
+          SELECT u.last_seen_at FROM chat_group_members cm
           JOIN users u ON u.id = cm.user_id
           WHERE cm.chat_id = c.id AND cm.user_id != $1
           LIMIT 1
-        ) ELSE NULL END as direct_user_last_login
+        ) ELSE NULL END as direct_user_last_seen_at,
+        CASE WHEN c.is_group = false THEN (
+          SELECT (u.last_seen_at IS NOT NULL AND u.last_seen_at > NOW() - INTERVAL '2 minutes')
+          FROM chat_group_members cm
+          JOIN users u ON u.id = cm.user_id
+          WHERE cm.chat_id = c.id AND cm.user_id != $1
+          LIMIT 1
+        ) ELSE NULL END as direct_user_online
       FROM chats c
       JOIN chat_group_members m ON m.chat_id = c.id AND m.user_id = $1
       WHERE 1=1
@@ -430,10 +439,11 @@ module.exports = async function(fastify) {
     sql += ` ORDER BY c.last_message_at DESC NULLS LAST, c.created_at DESC`;
 
     const { rows } = await db.query(sql, params);
-    // BUG-8: Add is_online for direct chats
+    // Single source of truth: freshness of last_seen_at (was socket isUserOnline,
+    // which kept «online» after the tab went to background and never returned).
     for (const chat of rows) {
       if (!chat.is_group && chat.direct_user_id) {
-        chat.is_online = isUserOnline(chat.direct_user_id);
+        chat.is_online = chat.direct_user_online === true;
       }
     }
     return { chats: rows };
@@ -462,7 +472,8 @@ module.exports = async function(fastify) {
 
     // Получить участников
     const { rows: members } = await db.query(`
-      SELECT m.*, u.name, u.role as user_role, u.is_active, u.last_login_at
+      SELECT m.*, u.name, u.role as user_role, u.is_active, u.last_seen_at,
+             (u.last_seen_at IS NOT NULL AND u.last_seen_at > NOW() - INTERVAL '2 minutes') AS is_online
       FROM chat_group_members m
       JOIN users u ON m.user_id = u.id
       WHERE m.chat_id = $1
@@ -471,10 +482,6 @@ module.exports = async function(fastify) {
         u.name
     `, [chatId]);
 
-    // BUG-8: Add is_online to each member
-    for (const m of members) {
-      m.is_online = isUserOnline(m.user_id);
-    }
     const enrichedChat = await attachDirectPeer(chat, userId, { repairLegacy: true });
     return { chat: enrichedChat, members, myRole: member.role };
   });

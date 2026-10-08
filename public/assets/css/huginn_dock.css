@@ -1307,6 +1307,11 @@ body.hg-list-edit .hg-nav-search {
   letter-spacing: -1px;
 }
 .hg-chat-prev .hg-ticks.is-read { color: var(--hg-ticks-read); }
+.hg-chat-prev .hg-chat-seen {
+  color: var(--hg-accent);
+  font-weight: 500;
+  margin-left: 6px;
+}
 .hg-chat-icons {
   display: inline-flex;
   align-items: center;
@@ -3829,10 +3834,50 @@ html[data-theme="light"] .hg-nav-search {
 .hg-contact-status {
   font: 400 14px/1.3 var(--hg-font);
   color: var(--hg-muted);
+  display: flex;
+  align-items: center;
+  gap: 6px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
+/* Contacts without an existing chat → «Пригласить» instead of open-chat. */
+.hg-contact-invite {
+  flex: 0 0 auto;
+  font: 600 12px/1 var(--hg-font);
+  color: var(--hg-accent, var(--gold, #D4A843));
+  border: 1px solid color-mix(in srgb, var(--hg-accent, #D4A843) 45%, transparent);
+  border-radius: 999px;
+  padding: 6px 12px;
+}
+.hg-contact-row.is-invite:hover { background: var(--hg-hover); }
+/* Journal звонков */
+.hg-calls { overflow-y: auto; height: 100%; padding: 6px 0 16px; }
+.hg-call-row {
+  display: flex; align-items: center; gap: 12px; width: 100%;
+  padding: 10px 16px; border: 0; background: transparent; color: inherit;
+  text-align: left; cursor: pointer; box-sizing: border-box;
+  transition: background 120ms var(--hg-ease-ui, ease);
+}
+.hg-call-row:hover { background: var(--hg-hover); }
+.hg-call-row:active { background: var(--hg-active-row, var(--hg-hover)); }
+.hg-call-ico {
+  width: 40px; height: 40px; flex: 0 0 auto; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--hg-elev); font-size: 18px;
+}
+.hg-call-meta { min-width: 0; flex: 1; }
+.hg-call-name {
+  font: 500 16px/1.25 var(--hg-font); color: var(--hg-text);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.hg-call-sub {
+  font: 400 13px/1.3 var(--hg-font); color: var(--hg-muted);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.hg-call-arrow { margin-right: 6px; color: var(--hg-muted); }
+.hg-call-row.is-missed .hg-call-name,
+.hg-call-row.is-missed .hg-call-arrow { color: var(--hg-danger); }
 .hg-alpha-index {
   position: absolute;
   right: 2px;

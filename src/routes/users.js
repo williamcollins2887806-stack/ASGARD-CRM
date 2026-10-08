@@ -37,7 +37,8 @@ async function routes(fastify, options) {
       LEFT JOIN user_email_accounts ea ON ea.user_id = u.id
       WHERE 1=1
     ` : `
-      SELECT u.id, u.login, u.name, u.role, u.is_active
+      SELECT u.id, u.login, u.name, u.role, u.is_active, u.last_seen_at,
+             (u.last_seen_at IS NOT NULL AND u.last_seen_at > NOW() - INTERVAL '2 minutes') AS is_online
       FROM users u
       WHERE 1=1
     `;

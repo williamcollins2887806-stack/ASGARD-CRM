@@ -88,6 +88,11 @@
     }
   }
 
+  function closeSource() {
+    try { if (es) { es.close(); es = null; } } catch (_) {}
+    try { if (global._asgardSSE) { global._asgardSSE.close(); global._asgardSSE = null; } } catch (_) {}
+  }
+
   function bindSource(source) {
     if (!source || source === es) return;
     es = source;
@@ -104,7 +109,11 @@
       'chat:cleared', 'chat:deleted',
       'call:incoming', 'call:accepted', 'call:declined', 'call:ended'].forEach(wire);
 
-    source.addEventListener('error', () => { noteFail(); });
+    source.addEventListener('error', () => {
+      // Permanently closed (e.g. we closed it on tab hide): don't reconnect.
+      if (source.readyState === 2) { if (es === source) es = null; return; }
+      noteFail();
+    });
     catchUp();
   }
 
@@ -145,7 +154,14 @@
   function onVisibility() {
     if (document.visibilityState === 'visible' && navigator.onLine !== false) {
       paused = false;
+      ensureSource();
       catchUp();
+    } else if (document.visibilityState === 'hidden') {
+      // Hidden tab: stop pinging, but ALSO drop the SSE socket. Otherwise the
+      // socket-based presence kept this user «online» for up to ~1h (nginx
+      // proxy_read_timeout) — the root of «миражи». Cold catch-up on return.
+      paused = true;
+      closeSource();
     }
   }
 
@@ -159,6 +175,7 @@
 
   function onOffline() {
     paused = true;
+    closeSource();
   }
 
   function start(opts) {

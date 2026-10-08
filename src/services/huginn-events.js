@@ -6,7 +6,7 @@
  * Read path: GET /api/chat-groups/events?since=
  */
 
-const { sendToUser, isUserOnline } = require('../routes/sse');
+const { sendToUser } = require('../routes/sse');
 
 async function publish(db, { userIds, eventType, payload, chatId = null, excludeUserId = null }) {
   const ids = [...new Set((userIds || []).map((id) => Number(id)).filter((id) => Number.isFinite(id) && id > 0))];
@@ -76,8 +76,12 @@ async function touchLastSeen(db, userId) {
 async function getPresence(db, userIds) {
   const ids = [...new Set((userIds || []).map(Number).filter((n) => n > 0))];
   if (!ids.length) return [];
+  // Single source of truth: freshness of last_seen_at (client pings every 25s).
+  // Socket presence (isUserOnline) used to leak here and produced «миражи» —
+  // a hidden tab keeps its SSE socket alive, so it looked online forever.
   const { rows } = await db.query(
-    `SELECT id AS user_id, last_seen_at, name
+    `SELECT id AS user_id, last_seen_at, name,
+            (last_seen_at IS NOT NULL AND last_seen_at > NOW() - INTERVAL '2 minutes') AS fresh
      FROM users WHERE id = ANY($1::int[])`,
     [ids]
   );
@@ -85,7 +89,7 @@ async function getPresence(db, userIds) {
     user_id: r.user_id,
     name: r.name,
     last_seen_at: r.last_seen_at,
-    online: isUserOnline(r.user_id)
+    online: !!r.fresh
   }));
 }
 

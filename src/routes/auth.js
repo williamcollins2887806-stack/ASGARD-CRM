@@ -115,9 +115,10 @@ async function routes(fastify, options) {
       return reply.code(401).send({ error: 'Неверный логин или пароль' });
     }
 
-    // Update last login
+    // Update last login + honest last-seen (login counts as activity; Huginn
+    // presence is derived solely from last_seen_at freshness).
     await db.query(
-      'UPDATE users SET last_login_at = NOW() WHERE id = $1',
+      'UPDATE users SET last_login_at = NOW(), last_seen_at = NOW() WHERE id = $1',
       [user.id]
     );
 

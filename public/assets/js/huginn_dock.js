@@ -1593,6 +1593,11 @@
       return;
     }
 
+    if (state.tab === 'calls') {
+      renderCallsPanel(panel);
+      return;
+    }
+
     if (state.tab === 'phone') {
       if (global.AsgardPhoneUI && typeof global.AsgardPhoneUI.renderPanel === 'function') {
         global.AsgardPhoneUI.renderPanel(panel);
@@ -2977,9 +2982,17 @@
       const online = !!(peerId && ((c.is_online === true) || (state.presence[peerId] && state.presence[peerId].online)));
       const readCls = (c.last_message_is_read || c.last_read) ? ' is-read' : '';
       const ticks = (!unread && mineLast && !draft) ? `<span class="hg-ticks${readCls}">✓✓</span>` : '';
+      // Honest last-seen for direct chats (contacts/header already show it; here
+      // only when there is no message preview, to avoid noise on a busy chat).
+      const seenIso = (peerId && !isGroupChat(c))
+        ? (c.direct_user_last_seen_at || (state.presence[peerId] && state.presence[peerId].last_seen_at) || null)
+        : null;
+      const seenHtml = (!online && seenIso && !draft && !rawPrev)
+        ? `<span class="hg-chat-seen">был(а) ${esc(formatSeen(seenIso))}</span>`
+        : '';
       const prevHtml = draft
         ? `<span class="hg-draft">Черновик: </span>${esc(draft)}`
-        : `${ticks}${esc(prev)}`;
+        : `${ticks}${esc(prev)}${seenHtml}`;
       const avBg = c._seedColor || avatarColor(cname);
       const pinIco = pinned ? `<span class="hg-chat-icons" title="Закреплён">${ICO.pin || ''}</span>` : '';
       const muteIco = muted ? `<span class="hg-chat-icons" title="Без звука">${ICO.mute || ICO['volume-x'] || ''}</span>` : '';
@@ -3103,6 +3116,20 @@
       const isOnline = r.online != null ? r.online : !!(p && p.online);
       const seen = r.last_seen_at || (p && p.last_seen_at);
       const statusTxt = isOnline ? 'в сети' : (seen ? ('был(а) ' + formatSeen(seen)) : 'не в сети');
+      const hasChat = Number(r.chat_id) > 0;
+      // Contacts without an existing chat are the «not in Huginn yet» bucket:
+      // show «Пригласить» instead of «открыть чат» (user requirement).
+      if (!hasChat) {
+        html += `<button type="button" class="hg-contact-row is-invite" data-invite-uid="${r.user_id}" data-invite-name="${esc(nm)}">
+          <div class="hg-contact-av" style="background:${avatarColor(nm)}">${esc(initials(nm))}</div>
+          <div class="hg-contact-meta">
+            <div class="hg-contact-name">${esc(nm)}</div>
+            <div class="hg-contact-status"><span class="hg-status-dot is-off"></span>ещё не в Хугинне</div>
+          </div>
+          <span class="hg-contact-invite">Пригласить</span>
+        </button>`;
+        continue;
+      }
       html += `<button type="button" class="hg-contact-row" data-cid="${r.chat_id || ''}" data-uid="${r.user_id}">
         <div class="hg-contact-av" style="background:${avatarColor(nm)}">${esc(initials(nm))}</div>
         <div class="hg-contact-meta">
@@ -3112,7 +3139,10 @@
       </button>`;
     }
     listEl.innerHTML = html;
-    listEl.querySelectorAll('.hg-contact-row').forEach((el) => {
+    listEl.querySelectorAll('.hg-contact-row.is-invite').forEach((el) => {
+      el.onclick = () => openInviteSheet({ name: el.getAttribute('data-invite-name') });
+    });
+    listEl.querySelectorAll('.hg-contact-row:not(.is-invite)').forEach((el) => {
       el.onclick = async () => {
         const cid = Number(el.getAttribute('data-cid'));
         const uid = Number(el.getAttribute('data-uid'));
@@ -3172,6 +3202,18 @@
         const contactActive =
           (Number(r.chat_id) > 0 && Number(r.chat_id) === Number(state.chatId)) ||
           (Number(r.user_id) > 0 && Number(r.user_id) === Number(state.selectedContactUid));
+        if (Number(r.chat_id) <= 0) {
+          // Not in Huginn yet → invite, not open a chat.
+          listHtml += `<button type="button" class="hg-contact-row is-invite" data-invite-uid="${r.user_id}" data-invite-name="${esc(nm)}">
+            <div class="hg-contact-av" style="background:${avatarColor(nm)}">${esc(initials(nm))}</div>
+            <div class="hg-contact-meta">
+              <div class="hg-contact-name">${esc(nm)}</div>
+              <div class="hg-contact-status"><span class="hg-status-dot is-off"></span>ещё не в Хугинне</div>
+            </div>
+            <span class="hg-contact-invite">Пригласить</span>
+          </button>`;
+          continue;
+        }
         listHtml += `<button type="button" class="hg-contact-row${contactActive ? ' is-active' : ''}" data-cid="${r.chat_id || ''}" data-uid="${r.user_id}">
           <div class="hg-contact-av" style="background:${avatarColor(nm)}">${esc(initials(nm))}</div>
           <div class="hg-contact-meta">
@@ -3200,7 +3242,10 @@
     };
     panel.querySelector('#hgContactSort').onclick = () => showToast('Сортировка по имени');
     panel.querySelector('#hgContactAdd').onclick = () => inviteSomeone();
-    panel.querySelectorAll('.hg-contact-row').forEach((el) => {
+    panel.querySelectorAll('.hg-contact-row.is-invite').forEach((el) => {
+      el.onclick = () => openInviteSheet({ name: el.getAttribute('data-invite-name') });
+    });
+    panel.querySelectorAll('.hg-contact-row:not(.is-invite)').forEach((el) => {
       el.onclick = async () => {
         const cid = Number(el.getAttribute('data-cid'));
         const uid = Number(el.getAttribute('data-uid'));
@@ -3262,6 +3307,66 @@
     document.documentElement.setAttribute('data-hg-fx', fx);
     try { localStorage.setItem('hg_power_saving', fx); } catch (_) {}
     return fx;
+  }
+
+  /** Журнал звонков Хугинна (читаемый список вместо call_event-пузыря). */
+  function renderCallsPanel(panel) {
+    panel.innerHTML = `
+      <div class="hg-panel-head">
+        <h2>Звонки</h2>
+        <button type="button" class="hg-icon-btn" data-collapse title="Свернуть">${ICO.close || '✕'}</button>
+      </div>
+      <div class="hg-calls" id="hgCallsList">
+        <div class="hg-empty"><div class="hg-empty-s">Загрузка…</div></div>
+      </div>`;
+    panel.querySelector('[data-collapse]').onclick = () => setCollapsed(true);
+    const listEl = panel.querySelector('#hgCallsList');
+    api('/api/chat-groups/calls/history?limit=50').then((data) => {
+      const calls = (data && data.calls) || [];
+      if (!calls.length) {
+        listEl.innerHTML = `<div class="hg-empty">${ICO.phone || ''}<h3>Звонков пока нет</h3><p>Аудио и видео звонки появятся здесь</p></div>`;
+        return;
+      }
+      const fmtDur = (s) => {
+        const n = Number(s) || 0;
+        const m = Math.floor(n / 60);
+        return m ? (m + ' мин ' + (n % 60) + ' с') : (n + ' с');
+      };
+      const fmtWhen = (iso) => {
+        try {
+          const d = new Date(iso);
+          const today = new Date();
+          const sameDay = d.toDateString() === today.toDateString();
+          return sameDay
+            ? d.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })
+            : d.toLocaleString('ru-RU', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+        } catch (_) { return ''; }
+      };
+      listEl.innerHTML = calls.map((c) => {
+        const missed = c.missed && c.direction === 'in';
+        const cls = missed ? ' is-missed' : '';
+        const arrow = c.direction === 'out' ? '↗' : '↙';
+        const kindIco = c.kind === 'video' ? '🎥' : '📞';
+        const statusTxt = missed ? 'Пропущенный'
+          : (c.status === 'ended' && c.answered_at ? fmtDur(c.duration_sec)
+            : (c.status === 'declined' ? 'Отклонён' : (c.status === 'canceled' ? 'Отменён' : 'Завершён')));
+        return `<button type="button" class="hg-call-row${cls}" data-cid="${c.chat_id || ''}" data-peer="${esc(c.peer_name)}">
+          <div class="hg-call-ico">${kindIco}</div>
+          <div class="hg-call-meta">
+            <div class="hg-call-name">${esc(c.peer_name)}</div>
+            <div class="hg-call-sub"><span class="hg-call-arrow">${arrow}</span>${esc(statusTxt)} · ${esc(fmtWhen(c.created_at))}</div>
+          </div>
+        </button>`;
+      }).join('');
+      listEl.querySelectorAll('.hg-call-row').forEach((el) => {
+        el.onclick = () => {
+          const cid = Number(el.getAttribute('data-cid'));
+          if (cid > 0) { state.tab = 'huginn'; state.mobileNav = 'chats'; openChat(cid); }
+        };
+      });
+    }).catch((e) => {
+      listEl.innerHTML = `<div class="hg-empty"><div class="hg-empty-s">${esc(e.message || 'Не удалось загрузить')}</div></div>`;
+    });
   }
 
   function renderSettingsPanel(panel) {
@@ -3422,7 +3527,7 @@
     panel.querySelectorAll('[data-set]').forEach((btn) => {
       btn.onclick = () => {
         const set = btn.getAttribute('data-set') || '';
-        if (set === 'calls') { state.tab = 'phone'; state.mobileNav = 'calls'; renderPanel(); return; }
+        if (set === 'calls') { state.tab = 'calls'; state.mobileNav = 'calls'; renderPanel(); return; }
         if (set === 'favorites') { state.tab = 'huginn'; state.mobileNav = 'chats'; state.listTab = 'favorites'; renderPanel(); return; }
         if (set === 'profile') {
           state.settingsProfileOpen = true;
@@ -4326,6 +4431,7 @@
 
   async function openInviteSheet(opts) {
     clearFloats();
+    const preset = opts || {};
     root.querySelectorAll('.hg-invite-sheet').forEach((el) => el.remove());
     const host = sheetHost();
     const el = document.createElement('div');
@@ -4340,7 +4446,7 @@
         <span style="width:32px"></span>
       </div>
       <div class="hg-invite-fields">
-        <input id="hgInviteName" placeholder="Имя (необязательно)" autocomplete="name" />
+        <input id="hgInviteName" placeholder="Имя (необязательно)" autocomplete="name" value="${esc(preset.name || '')}" />
         <input id="hgInvitePhone" placeholder="Телефон" inputmode="tel" autocomplete="tel" />
         <input id="hgInviteEmail" placeholder="Email" inputmode="email" autocomplete="email" />
       </div>
@@ -4772,9 +4878,11 @@
     }
     if (event === 'presence:online' || event === 'presence:offline') {
       if (data && data.user_id) {
+        // Socket event is only a fast hint. Do NOT fabricate last_seen_at from the
+        // client clock (that was the «был(а) только что» mirage); keep the DB value
+        // and let refreshPeerPresence() reconcile from the honest source.
         state.presence[data.user_id] = Object.assign({}, state.presence[data.user_id] || {}, {
-          online: event === 'presence:online',
-          last_seen_at: new Date().toISOString()
+          online: event === 'presence:online'
         });
         refreshPeerPresence();
         // Repaint the chat list so the online dot updates without reopening a chat.

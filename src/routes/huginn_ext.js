@@ -997,6 +997,41 @@ module.exports = async function registerHuginnExt(fastify, { db, uploadDir, getC
     };
   });
 
+  // GET /calls/history — читаемый журнал звонков пользователя.
+  fastify.get('/calls/history', {
+    preHandler: [fastify.authenticate]
+  }, async (request) => {
+    const me = Number(request.user.id);
+    const limitRaw = parsePositiveInt(request.query.limit);
+    const limit = Math.min(Math.max(limitRaw || 50, 1), 100);
+    const { rows } = await db.query(`
+      SELECT c.id, c.chat_id, c.caller_id, c.callee_id, c.kind, c.status,
+             c.created_at, c.answered_at, c.ended_at, c.duration_sec,
+             CASE WHEN c.caller_id = $1 THEN c.callee_id ELSE c.caller_id END AS peer_id,
+             (SELECT u.name FROM users u
+               WHERE u.id = CASE WHEN c.caller_id = $1 THEN c.callee_id ELSE c.caller_id END) AS peer_name
+        FROM huginn_calls c
+       WHERE c.caller_id = $1 OR c.callee_id = $1
+       ORDER BY c.created_at DESC
+       LIMIT $2
+    `, [me, limit]);
+    return {
+      calls: rows.map((r) => ({
+        id: r.id,
+        chat_id: r.chat_id,
+        kind: r.kind,
+        status: r.status,
+        direction: Number(r.caller_id) === me ? 'out' : 'in',
+        peer_id: r.peer_id,
+        peer_name: r.peer_name || 'Сотрудник',
+        created_at: r.created_at,
+        duration_sec: r.duration_sec || 0,
+        missed: r.status === 'missed' || r.status === 'declined' || r.status === 'canceled'
+          || (r.status === 'ended' && !r.answered_at)
+      }))
+    };
+  });
+
   // GET /calls/:id — status (poll fallback)
   fastify.get('/calls/:id', {
     preHandler: [fastify.authenticate]
@@ -1359,6 +1394,9 @@ module.exports = async function registerHuginnExt(fastify, { db, uploadDir, getC
       name: user.name,
       login: 'hg_guest_' + user.id
     });
+    // Honest last-seen: guest login is activity. Without this, guests (and old
+    // NULL rows) read as «не в сети» forever until their first presence ping.
+    db.query('UPDATE users SET last_seen_at = NOW() WHERE id = $1', [user.id]).catch(() => {});
     return { token: fastify.jwt.sign(claims, { expiresIn: '30d' }), user: claims };
   }
 
