@@ -1338,23 +1338,8 @@ window.AsgardDocHubPage = (function () {
     });
 
     // Contract mode cards (step 3)
-    form.querySelectorAll('#dhModeCards [data-mode]').forEach((btn) => {
-      btn.onclick = () => {
-        const v = btn.getAttribute('data-mode');
-        const hid = form.querySelector('#dhWizContract, input[name="contract_mode"]');
-        if (hid) hid.value = v;
-        if (state.wizDraft) state.wizDraft.contract_mode = v;
-        form.querySelectorAll('#dhModeCards .dh-mode-card').forEach((b) => b.classList.toggle('is-on', b === btn));
-        // show/hide linked picker
-        const pickerRow = form.querySelector('#dhContractPickerRow');
-        if (pickerRow) pickerRow.hidden = v !== 'linked';
-        // show/hide label/date/flags
-        const labelRow = form.querySelector('#dhContractLabelRow');
-        if (labelRow) labelRow.hidden = v === 'none';
-      };
-    });
-
-    // Contract picker (step 3 — linked mode)
+    // Contract picker (step 3 — linked mode) — объявляем до карточек режима,
+    // т.к. вход в режим «Привязать» может сразу открыть список договоров
     const pickBtn = form.querySelector('#dhWizContractPick');
     const dhPickCtx = () => {
       const d = state.wizDraft || {};
@@ -1364,6 +1349,25 @@ window.AsgardDocHubPage = (function () {
         || d.counterparty_name || '';
       return { inn, cpName };
     };
+
+    form.querySelectorAll('#dhModeCards [data-mode]').forEach((btn) => {
+      btn.onclick = () => {
+        const v = btn.getAttribute('data-mode');
+        const hid = form.querySelector('#dhWizContract, input[name="contract_mode"]');
+        if (hid) hid.value = v;
+        if (state.wizDraft) state.wizDraft.contract_mode = v;
+        form.querySelectorAll('#dhModeCards .dh-mode-card').forEach((b) => b.classList.toggle('is-on', b === btn));
+        const pickerRow = form.querySelector('#dhContractPickerRow');
+        if (pickerRow) pickerRow.hidden = v !== 'linked';
+        const labelRow = form.querySelector('#dhContractLabelRow');
+        if (labelRow) labelRow.hidden = v === 'none';
+        // Если контрагент известен — сразу показать его договоры
+        if (v === 'linked' && pickBtn) {
+          const { inn, cpName } = dhPickCtx();
+          if (inn || cpName) setTimeout(() => { try { pickBtn.click(); } catch (_) {} }, 80);
+        }
+      };
+    });
     const dhBindPick = (btn) => {
       if (!btn) return;
       btn.onclick = () => {
