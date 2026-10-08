@@ -510,6 +510,124 @@ window.AsgardTendersPage = (function(){
         border:none; background:var(--bg-card); font-size:12px; color:var(--text-secondary); font-family:var(--font-sans)}
       .tag b{color:var(--gold)}
 
+      /* ═══ CRM-1.0 desktop: tender register fits laptop viewport at 100% ═══ */
+      .tenders-page{min-width:0;overflow:hidden}
+      .tenders-page .m-tender-tools{
+        display:grid;
+        grid-template-columns:repeat(5,minmax(0,1fr)) auto;
+        gap:12px;
+        align-items:end;
+        min-width:0;
+      }
+      .tenders-page .m-tender-tools > .field,
+      .tenders-page .m-tender-tools > div:last-child{
+        min-width:0 !important;
+        width:auto;
+      }
+      .tenders-page .m-tender-tools > .field{margin:0}
+      .tenders-page .m-tender-tools .field > div{min-width:0}
+      .tenders-page .tenders-table-scroll{
+        width:100%;
+        max-width:100%;
+        min-width:0;
+        overflow-x:hidden;
+        overflow-y:visible;
+        border-radius:8px;
+      }
+      .tenders-page table.asg.tenders-table{
+        width:100%;
+        max-width:100%;
+        min-width:0;
+        table-layout:fixed;
+        border-collapse:separate;
+        border-spacing:0 6px;
+      }
+      .tenders-page table.asg.tenders-table th,
+      .tenders-page table.asg.tenders-table td{
+        min-width:0;
+        max-width:0;
+        padding:9px 8px;
+        vertical-align:top;
+        text-align:left;
+        white-space:normal;
+        overflow-wrap:anywhere;
+        word-break:break-word;
+        line-height:1.35;
+        font-size:12px;
+      }
+      .tenders-page table.asg.tenders-table th{
+        vertical-align:middle;
+      }
+      .tenders-page table.asg.tenders-table th .btn{
+        display:block;
+        width:100%;
+        min-width:0;
+        white-space:normal;
+        overflow-wrap:anywhere;
+        text-align:left;
+        padding:5px 7px;
+      }
+      .tenders-page table.asg.tenders-table th:nth-child(1),
+      .tenders-page table.asg.tenders-table td:nth-child(1){width:3%;text-align:center}
+      .tenders-page table.asg.tenders-table th:nth-child(2),
+      .tenders-page table.asg.tenders-table td:nth-child(2){width:6%;text-align:center}
+      .tenders-page table.asg.tenders-table th:nth-child(3),
+      .tenders-page table.asg.tenders-table td:nth-child(3){width:22%}
+      .tenders-page table.asg.tenders-table th:nth-child(4),
+      .tenders-page table.asg.tenders-table td:nth-child(4){width:8%}
+      .tenders-page table.asg.tenders-table th:nth-child(5),
+      .tenders-page table.asg.tenders-table td:nth-child(5){width:8%}
+      .tenders-page table.asg.tenders-table th:nth-child(6),
+      .tenders-page table.asg.tenders-table td:nth-child(6){width:9%}
+      .tenders-page table.asg.tenders-table th:nth-child(7),
+      .tenders-page table.asg.tenders-table td:nth-child(7){width:7%;text-align:center}
+      .tenders-page table.asg.tenders-table th:nth-child(8),
+      .tenders-page table.asg.tenders-table td:nth-child(8){width:8%}
+      .tenders-page table.asg.tenders-table th:nth-child(9),
+      .tenders-page table.asg.tenders-table td:nth-child(9){width:9%;text-align:right}
+      .tenders-page table.asg.tenders-table th:nth-child(10),
+      .tenders-page table.asg.tenders-table td:nth-child(10){width:10%;text-align:center}
+      .tenders-page table.asg.tenders-table th:nth-child(11),
+      .tenders-page table.asg.tenders-table td:nth-child(11){width:5%;text-align:center}
+      .tenders-page table.asg.tenders-table th:nth-child(12),
+      .tenders-page table.asg.tenders-table td:nth-child(12){width:5%;text-align:center}
+      .tenders-page table.asg.tenders-table .help{
+        line-height:1.3;
+        overflow-wrap:anywhere;
+        word-break:break-word;
+      }
+      .tenders-page table.asg.tenders-table td > b{
+        display:block;
+        line-height:1.3;
+        overflow-wrap:anywhere;
+        word-break:break-word;
+      }
+      .tenders-page table.asg.tenders-table td .btn{
+        max-width:100%;
+        white-space:normal;
+        overflow-wrap:anywhere;
+      }
+
+      @media (max-width:1300px) and (min-width:769px){
+        .tenders-page .m-tender-tools{
+          grid-template-columns:repeat(3,minmax(0,1fr));
+        }
+        .tenders-page .m-tender-tools > div:last-child{
+          grid-column:1 / -1;
+        }
+        .tenders-page table.asg.tenders-table th,
+        .tenders-page table.asg.tenders-table td{
+          padding:8px 6px;
+          font-size:11px;
+        }
+      }
+
+      @media (max-width:1000px) and (min-width:769px){
+        .tenders-page .m-tender-tools{
+          grid-template-columns:repeat(2,minmax(0,1fr));
+        }
+      }
+
       /* ═══ Mobile Tender Cards ═══ */
       @media(max-width:768px) {
         .m-tender-cards { display:flex; flex-direction:column; gap:12px; }
@@ -572,7 +690,7 @@ window.AsgardTendersPage = (function(){
         .archive-info-row { display:flex; gap:16px; align-items:center; padding:10px 14px; background:rgba(149,165,166,.1); border-radius:8px; margin-bottom:8px; font-size:13px; color:var(--t2); }
         .archive-info-row b { color:var(--t1); }
       </style>
-      <div class="panel">
+      <div class="panel tenders-page">
         <div class="help">
           Реестр тендеров и передача в просчёт. После передачи ТО ограничен: документы/ссылка/тег/комментарий ТО.
           Переназначение РП — только директор/админ, с причиной и записью в журнал.
@@ -612,8 +730,8 @@ window.AsgardTendersPage = (function(){
         <hr class="hr"/>
         <div id="dist_panel"></div>
         <div id="win_panel"></div>
-        <div style="overflow:auto">
-          <table class="asg">
+        <div class="tenders-table-scroll">
+          <table class="asg tenders-table">
             <thead>
               <tr>
                 <th><input type="checkbox" id="selectAllTenders" title="Выбрать все"/></th>
