@@ -1775,9 +1775,9 @@ window.AsgardChatGroups = (function(){
     showModal('Новый чат', html);
 
     const ds = document.getElementById('directUserSearch');
-    if (ds) { ds.addEventListener('input', function() { const q = this.value.toLowerCase(); document.querySelectorAll('#directUserList .emp-selector-item').forEach(i => { i.style.display = (i.querySelector('.emp-selector-name')?.textContent || '').toLowerCase().includes(q) ? '' : 'none'; }); }); ds.focus(); }
+    if (ds) { const _filterDirect = function() { const el = document.getElementById('directUserSearch'); const q = (el ? el.value : '').toLowerCase(); document.querySelectorAll('#directUserList .emp-selector-item').forEach(i => { i.style.display = (i.querySelector('.emp-selector-name')?.textContent || '').toLowerCase().includes(q) ? '' : 'none'; }); }; ds.addEventListener('input', (window.AsgardDebounce ? AsgardDebounce(_filterDirect, 200) : _filterDirect)); ds.focus(); }
     const ms = document.getElementById('memberSearch');
-    if (ms) { ms.addEventListener('input', function() { const q = this.value.toLowerCase(); document.querySelectorAll('#memberList .emp-selector-item').forEach(i => { i.style.display = (i.querySelector('.emp-selector-name')?.textContent || '').toLowerCase().includes(q) ? '' : 'none'; }); }); }
+    if (ms) { const _filterMembers = function() { const el = document.getElementById('memberSearch'); const q = (el ? el.value : '').toLowerCase(); document.querySelectorAll('#memberList .emp-selector-item').forEach(i => { i.style.display = (i.querySelector('.emp-selector-name')?.textContent || '').toLowerCase().includes(q) ? '' : 'none'; }); }; ms.addEventListener('input', (window.AsgardDebounce ? AsgardDebounce(_filterMembers, 200) : _filterMembers)); }
   }
 
   async function startDirect(userId) {

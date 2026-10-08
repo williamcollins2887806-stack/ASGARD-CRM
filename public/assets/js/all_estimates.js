@@ -294,7 +294,9 @@ window.AsgardAllEstimatesPage = (function() {
     // ─── Events ───
     estimates = await _fetchList('/api/estimates?limit=1000', 'estimates', 'estimates');
     apply();
-    $('#f_q').addEventListener('input', apply);
+    // P1.4: debounce 300мс — реестр просчётов грузится с limit=1000.
+    const _fqDeb = (window.AsgardDebounce ? AsgardDebounce(apply, 300) : (() => { let t=null; return () => { clearTimeout(t); t=setTimeout(apply,300); }; })());
+    $('#f_q').addEventListener('input', _fqDeb);
     $$('[data-sort]').forEach(th => {
       th.addEventListener('click', () => {
         const k = th.getAttribute('data-sort');

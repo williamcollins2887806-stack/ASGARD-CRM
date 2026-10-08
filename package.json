@@ -43,6 +43,9 @@
     "audit:lighthouse": "node audit-prep/scripts/run-lighthouse.js",
     "audit:graph": "node audit-prep/scripts/export-vault-graph.js",
     "audit:gate": "node audit-prep/scripts/check-pass-gate.js",
+    "verify:perf": "node tools/verify_debounce.js && node tools/verify_innerhtml.js",
+    "verify:debounce": "node tools/verify_debounce.js",
+    "verify:innerhtml": "node tools/verify_innerhtml.js",
     "release": "node scripts/bump-version.js",
     "generate-vapid-keys": "node scripts/generate-vapid-keys.js",
     "test:smoke:jest": "jest --selectProjects smoke",
@@ -86,7 +89,8 @@
     "qrcode": "^1.5.4",
     "sanitize-html": "^2.17.0",
     "uuid": "^9.0.1",
-    "web-push": "^3.6.7"
+    "web-push": "^3.6.7",
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.11.3",

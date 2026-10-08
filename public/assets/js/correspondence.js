@@ -856,7 +856,10 @@ window.AsgardCorrespondencePage = (function(){
       const searchEl = $('#f_search');
       if (searchEl && searchEl.dataset.corrBound !== '1') {
         searchEl.dataset.corrBound = '1';
-        searchEl.addEventListener('input', e => { filters.search = e.target.value; corrCurrentPage = 1; renderPage(); });
+        // P1.4: debounce 300мс — переписка с пагинацией, перерисовка на каждый символ дорогая.
+        searchEl.addEventListener('input', (window.AsgardDebounce
+          ? AsgardDebounce(e => { filters.search = e.target.value; corrCurrentPage = 1; renderPage(); }, 300)
+          : (() => { let t=null; return (e) => { clearTimeout(t); t=setTimeout(()=>{ filters.search = e.target.value; corrCurrentPage = 1; renderPage(); }, 300); }; })()));
       }
 
       // Pagination controls

@@ -261,7 +261,9 @@ window.AsgardAllWorksPage=(function(){
     }
 
     apply();
-    $("#f_q").addEventListener("input", apply);
+    // P1.4: debounce 300мс — реестр работ может быть большим.
+    const _fqDeb = (window.AsgardDebounce ? AsgardDebounce(apply, 300) : (() => { let t=null; return () => { clearTimeout(t); t=setTimeout(apply,300); }; })());
+    $("#f_q").addEventListener("input", _fqDeb);
 
     $$("[data-sort]").forEach(b=>{
       b.addEventListener("click", ()=>{

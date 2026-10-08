@@ -751,6 +751,7 @@ window.AsgardTendersPage = (function(){
     let registryPeriod = 'current';
     let registryBurnOnly = false;
     let feedCache = null; // последний результат /api/tenders-hub/feed (для applications/all)
+    let feedCacheKey = null; // ключ (tab|sub|period), для которого загружен feedCache
     // Агрегаты вкладок (грузятся в фоне при init, не зависят от активной вкладки).
     let feedCountsMeta = null;
     // ТО: скрыть чужие тендеры (default false = видеть всех)
@@ -1902,7 +1903,9 @@ window.AsgardTendersPage = (function(){
           params.set('period', periodVal);
         }
         if (!opts.countsOnly) {
-          const q = ($("#f_q")?.value||"").trim();
+          // P1.2: серверный поиск — только когда явно передан opts.search.
+          // Раньше здесь безусловно читалось поле #f_q → сеть на каждый символ.
+          const q = (opts.search != null ? opts.search : '').trim();
           if (q) params.set('search', q);
         }
         params.set('limit', String(opts.limit != null ? opts.limit : 200));
@@ -2004,29 +2007,49 @@ window.AsgardTendersPage = (function(){
       </tr>`;
     }
 
-    async function applyAndRenderFromFeed(){
+    // P1.2: рендер feed-табов. Данные грузим из сети только когда меняется
+    // ключ (tab/sub/period), либо при явном force (кнопка «Повторить»).
+    // Ввод в поиск фильтрует уже загруженный набор локально.
+    async function applyAndRenderFromFeed(force){
       // Для applications — учитываем sub-tab, для all — без sub-tab.
       const tab = currentMainTab; // 'applications' | 'all'
       const sub = (tab === 'applications') ? currentSubTab : null;
-      tb.innerHTML = `<tr><td colspan="14" style="padding:20px;text-align:center;color:var(--t3)">Загрузка…</td></tr>`;
-      const feed = await loadFeed(tab, sub);
-      feedCache = feed;
-      feedCountsMeta = {
-        applications_total: feed.applications_total != null ? feed.applications_total : feed.total,
-        all_total: feed.all_total,
-        subtab_counts: feed.subtab_counts || (feedCountsMeta && feedCountsMeta.subtab_counts) || null
-      };
+      // periodVal: на feed-табах период задаётся расширенным виджетом
+      // (periodFilterState / TenderPeriodFilter), а не CRSelect('f_period').
+      // Берём ПОЛНЫЙ набор параметров периода (не только .period), иначе
+      // диапазон дат не инвалидирует кэш.
+      let periodVal;
+      if (window.TenderPeriodFilter && periodFilterState) {
+        const qp = window.TenderPeriodFilter.toQueryParams(periodFilterState) || {};
+        periodVal = [qp.period || '', qp.date_from || '', qp.date_to || '', qp.date_field || ''].join('~');
+      } else {
+        periodVal = (typeof CRSelect !== 'undefined' ? CRSelect.getValue('f_period') || 'all' : 'all');
+      }
+      const cacheKey = `${tab}|${sub || ''}|${periodVal}|${norm($("#f_q")?.value||"")}`;
+
+      if (force || !feedCache || feedCacheKey !== cacheKey) {
+        tb.innerHTML = `<tr><td colspan="14" style="padding:20px;text-align:center;color:var(--t3)">Загрузка…</td></tr>`;
+        // Серверный поиск: запрос уходит по debounce (обработчик #f_q обёрнут),
+        // т.е. один раз на паузу ввода, а не на каждый символ. Так поиск идёт
+        // по всему набору, а не только по первым 200 записям.
+        const feed = await loadFeed(tab, sub, { search: norm($("#f_q")?.value||"") });
+        feedCache = feed;
+        feedCacheKey = cacheKey;
+        feedCountsMeta = {
+          applications_total: feed.applications_total != null ? feed.applications_total : feed.total,
+          all_total: feed.all_total,
+          subtab_counts: feed.subtab_counts || (feedCountsMeta && feedCountsMeta.subtab_counts) || null
+        };
+      }
+      const feed = feedCache;
       const items = Array.isArray(feed.items) ? feed.items : [];
-      const q = norm($("#f_q")?.value||"");
       const src = CRSelect.getValue('f_source')||"";
       const filtered = items.filter(x => {
         if (src) {
           const sk = feedSourceKind(x);
           if (sk !== src) return false;
         }
-        if (!q) return true;
-        const hay = `${x.customer_name||''} ${x.customer_inn||x.inn||''} ${x.tender_title||x.title||''} ${x.tender_type||''}`.toLowerCase();
-        return hay.includes(q);
+        return true;
       });
       if (!filtered.length) {
         // S-31.1 F-3: user-friendly error без internal-pipeline-жаргона (раньше — «ждёт S-7 backend»).
@@ -2046,7 +2069,7 @@ window.AsgardTendersPage = (function(){
       }
       // S-31.1 F-3: bind retry-кнопки (если она отрендерилась).
       const retryBtn = tb.querySelector('[data-feed-retry]');
-      if (retryBtn) retryBtn.addEventListener('click', () => applyAndRenderFromFeed(), { once: true });
+      if (retryBtn) retryBtn.addEventListener('click', () => applyAndRenderFromFeed(true), { once: true });
       cnt.textContent = `Показано: ${filtered.length} из ${feed.total != null ? feed.total : items.length}.`;
       updateKpi();
     }
@@ -2239,7 +2262,12 @@ window.AsgardTendersPage = (function(){
     }
 
     // CRSelect onChange уже вызывает applyAndRender()
-    $("#f_q").addEventListener("input", applyAndRender);
+    // P1.2: поиск через debounce 300мс — иначе каждый символ перерисовывает
+    // таблицу (а на feed-табах раньше ещё и дёргал сеть).
+    const _fqDebounced = (window.AsgardDebounce
+      ? AsgardDebounce(() => applyAndRender(), 300)
+      : (() => { let t=null; return () => { clearTimeout(t); t=setTimeout(()=>applyAndRender(),300); }; })());
+    $("#f_q").addEventListener("input", _fqDebounced);
 
     $("#btnReset").addEventListener("click", async ()=>{
       if (periodFilterWidget && window.TenderPeriodFilter) {
@@ -2254,6 +2282,7 @@ window.AsgardTendersPage = (function(){
       CRSelect.setValue('f_status', '');
       CRSelect.setValue('f_pm', '');
       CRSelect.setValue('f_source', '');
+      if (_fqDebounced && _fqDebounced.cancel) _fqDebounced.cancel();
       applyAndRender();
     });
 

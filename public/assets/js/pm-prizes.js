@@ -297,10 +297,13 @@ ${workers.map(w => {
       if (noMatch) noMatch.style.display = anyVisible ? 'none' : '';
     }
 
-    container.querySelector('#pp-search').addEventListener('input', e => {
+    container.querySelector('#pp-search').addEventListener('input', (window.AsgardDebounce ? AsgardDebounce(e => {
       searchQ = e.target.value.toLowerCase().trim();
       applyFilters();
-    });
+    }, 250) : e => {
+      searchQ = e.target.value.toLowerCase().trim();
+      applyFilters();
+    }));
 
     container.querySelector('#pp-status-chips').addEventListener('click', e => {
       const chip = e.target.closest('.pp-chip[data-filter]');

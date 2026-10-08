@@ -759,12 +759,12 @@ window.AsgardAI = (function(){
       const hint = thinkSeconds > 0
         ? `Мимир думает… ${thinkSeconds}с${thinkSeconds >= 30 ? ' (бывает до минуты)' : ''}`
         : 'Мимир печатает…';
-      container.innerHTML += `
+      container.insertAdjacentHTML('beforeend', `
         <div class="ai-typing" title="${esc(hint)}">
           <span></span><span></span><span></span>
         </div>
         <div style="font-size:11px;color:var(--text-tertiary,#888);padding:2px 12px;">${esc(hint)}</div>
-      `;
+      `);
       // (lastIsEmptyBot переменная зарезервирована для будущего варианта со стримом «в пузырь»)
       void lastIsEmptyBot;
     }

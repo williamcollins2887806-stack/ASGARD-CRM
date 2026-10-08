@@ -1353,18 +1353,18 @@ window.AsgardCustomDashboard = (function(){
         const listData = await listResp.json();
         if (listData.items?.length) {
           const colorDots = { green: 'var(--ok-t)', yellow: 'var(--amber)', red: 'var(--err-t)', gray: 'var(--t2)' };
-          el.innerHTML += listData.items.map(function(i) {
+          el.insertAdjacentHTML('beforeend', listData.items.map(function(i) {
             var dot = colorDots[i.ai_color] || colorDots.gray;
             return '<div style="padding:10px 0;display:flex;align-items:center;gap:8px;font-size:12px">' +
               '<div style="width:10px;height:10px;border-radius:50%;background:' + dot + ';flex-shrink:0"></div>' +
               '<div style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(i.customer_name || i.email_from_name || '-') + '</div>' +
               '<div style="color:var(--text-muted);font-size:10px">' + (i.created_at ? new Date(i.created_at).toLocaleDateString('ru-RU') : '') + '</div>' +
             '</div>';
-          }).join('');
+          }).join(''));
         }
       } catch(e2) {}
 
-      el.innerHTML += '<a href="#/pre-tenders" class="btn mini ghost" style="margin-top:8px;font-size:11px;display:block;text-align:center">Все заявки →</a>';
+      el.insertAdjacentHTML('beforeend', '<a href="#/pre-tenders" class="btn mini ghost" style="margin-top:8px;font-size:11px;display:block;text-align:center">Все заявки →</a>');
     } catch(e) {
       el.innerHTML = '<div class="help" style="text-align:center">Ошибка загрузки</div>';
     }
@@ -1394,18 +1394,18 @@ window.AsgardCustomDashboard = (function(){
         });
         const txData = await txResp.json();
         if (txData.items?.length) {
-          el.innerHTML += txData.items.map(function(t) {
+          el.insertAdjacentHTML('beforeend', txData.items.map(function(t) {
             var color = t.direction === 'income' ? 'var(--ok-t)' : 'var(--err-t)';
             var sign = t.direction === 'income' ? '+' : '-';
             return '<div style="padding:10px 0;display:flex;align-items:center;gap:6px;font-size:11px">' +
               '<div style="color:' + color + ';font-weight:700;white-space:nowrap">' + sign + formatMoney(Math.abs(t.amount)) + '</div>' +
               '<div style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text-muted)">' + esc(t.counterparty_name || t.payment_purpose || '-') + '</div>' +
             '</div>';
-          }).join('');
+          }).join(''));
         }
       } catch(e2) {}
 
-      el.innerHTML += '<a href="#/integrations" class="btn mini ghost" style="margin-top:8px;font-size:11px;display:block;text-align:center">Банк / 1С →</a>';
+      el.insertAdjacentHTML('beforeend', '<a href="#/integrations" class="btn mini ghost" style="margin-top:8px;font-size:11px;display:block;text-align:center">Банк / 1С →</a>');
     } catch(e) {
       el.innerHTML = '<div class="help" style="text-align:center">Ошибка загрузки</div>';
     }
@@ -1436,7 +1436,7 @@ window.AsgardCustomDashboard = (function(){
         var dlData = await dlResp.json();
         if (dlData.items?.length) {
           var now = Date.now();
-          el.innerHTML += dlData.items.filter(function(p) {
+          el.insertAdjacentHTML('beforeend', dlData.items.filter(function(p) {
             return p.application_deadline && new Date(p.application_deadline) > new Date();
           }).slice(0, 4).map(function(p) {
             var dl = new Date(p.application_deadline);
@@ -1447,11 +1447,11 @@ window.AsgardCustomDashboard = (function(){
               '<div style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(p.customer_name || p.purchase_number || '-') + '</div>' +
               '<div style="color:' + urgColor + ';font-size:10px;font-weight:700;white-space:nowrap">' + daysLeft + 'д</div>' +
             '</div>';
-          }).join('');
+          }).join(''));
         }
       } catch(e2) {}
 
-      el.innerHTML += '<a href="#/integrations" class="btn mini ghost" style="margin-top:8px;font-size:11px;display:block;text-align:center">Все площадки →</a>';
+      el.insertAdjacentHTML('beforeend', '<a href="#/integrations" class="btn mini ghost" style="margin-top:8px;font-size:11px;display:block;text-align:center">Все площадки →</a>');
     } catch(e) {
       el.innerHTML = '<div class="help" style="text-align:center">Ошибка загрузки</div>';
     }

@@ -521,8 +521,12 @@ window.CrField = (function () {
     if (opts && opts.cols === 2) el.classList.add('cr-f-row--2');
     if (opts && opts.fullWidth) el.style.gridColumn = '1 / -1';
     (children || []).forEach(c => {
-      if (typeof c === 'string') { el.innerHTML += c; }
-      else if (c instanceof HTMLElement) el.appendChild(c);
+      // P1.5: без innerHTML += в цикле — строки разбираем через временный контейнер.
+      if (typeof c === 'string') {
+        const tmp = document.createElement('template');
+        tmp.innerHTML = c;
+        el.appendChild(tmp.content);
+      } else if (c instanceof HTMLElement) el.appendChild(c);
     });
     return el;
   }

@@ -380,7 +380,7 @@ window.AsgardApprovalsPage = (function(){
 
     await listEstimates();
 
-    $("#f_q").addEventListener("input", listEstimates);
+    $("#f_q").addEventListener("input", (window.AsgardDebounce ? AsgardDebounce(listEstimates, 300) : listEstimates));
 
     $("#btnReset").addEventListener("click", ()=>{
       CRSelect.setValue('f_period', '');

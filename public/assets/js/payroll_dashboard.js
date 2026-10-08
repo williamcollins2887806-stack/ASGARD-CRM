@@ -1072,7 +1072,7 @@ window.AsgardPayrollDashboard=(function(){
       bulkRenderPickList('');
       bulkRenderConfig();
 
-      $('#bulkse_search').addEventListener('input', (e) => bulkRenderPickList(e.target.value));
+      $('#bulkse_search').addEventListener('input', (window.AsgardDebounce ? AsgardDebounce((e) => bulkRenderPickList(e.target.value), 250) : (e) => bulkRenderPickList(e.target.value)));
       $('#bulkse_cancel').addEventListener('click', () => closeModal());
       $('#bulkse_submit').addEventListener('click', bulkSubmit);
     }

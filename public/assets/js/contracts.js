@@ -188,7 +188,12 @@ window.AsgardContractsPage = (function(){
       options: CONTRACT_STATUSES.map(s => ({ value: s.id, label: s.name })),
       onChange: applyFilters
     }));
-    document.getElementById('fltSearch')?.addEventListener('input', applyFilters);
+    // P1.3: debounce 300мс — иначе каждый символ перебирает весь реестр и
+    // перерисовывает tbody (attachRowHandlers навешивает обработчики заново).
+    const _fltDebounced = (window.AsgardDebounce
+      ? AsgardDebounce(applyFilters, 300)
+      : (() => { let t=null; return () => { clearTimeout(t); t=setTimeout(applyFilters,300); }; })());
+    document.getElementById('fltSearch')?.addEventListener('input', _fltDebounced);
 
     attachRowHandlers(customers);
   }

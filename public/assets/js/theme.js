@@ -89,46 +89,58 @@
     return apply(next);
   }
 
-  /**
-   * Мгновенная перекраска: на время смены темы глушим ВСЕ transitions.
-   * Причина: элементы с собственными transition (.dh-vat-chip .12s, ховеры,
-   * backdrop-blur слои) догоняют тему на 300+ мс позже остальных — пользователь
-   * видит «часть светлая, часть тёмная» ~0.4с. Лок — один <style> на 2 кадра.
-   */
-  function _instant(fn){
-    var lock = document.getElementById('asg-theme-lock');
-    var created = false;
-    if (!lock) {
-      try {
-        lock = document.createElement('style');
-        lock.id = 'asg-theme-lock';
-        lock.textContent = '*,*::before,*::after{transition:none!important;animation-duration:0s!important}';
-        document.head.appendChild(lock);
-        created = true;
-        // гарантируем, что лок применён ДО смены цветов
-        void getComputedStyle(document.documentElement).transitionProperty;
-      } catch (e) { lock = null; }
-    }
-    var r = fn();
-    if (created && lock) {
-      requestAnimationFrame(function(){ requestAnimationFrame(function(){
-        try { lock.remove(); } catch (e) {}
-      }); });
-    }
-    return r;
+  // ─────────────────────────────────────────────────────
+  // Smooth transition (P2)
+  // ─────────────────────────────────────────────────────
+  // Перекраска идёт через CSS-переменные на :root — все узлы меняют цвет за
+  // один кадр. Класс html.theme-transitioning добавляет transition ТОЛЬКО на
+  // корень (html/body), давая визуальную плавность без блокировки main thread
+  // (путь `*` на 12k узлов раньше давал первый кадр 6.8с).
+  function _prefersReducedMotion(){
+    try {
+      return window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    } catch(e) { return false; }
   }
 
-  // Simple toggle: just dark <-> light, мгновенно и одновременно
+  var _transitionTimer = null;
+
+  /**
+   * Плавная смена темы: html.theme-transitioning → apply → снять класс.
+   * @param {string} pref  'dark' | 'light' | 'system'
+   * @param {object} [opts] { instant: boolean } — без анимации (первый рендер, экран выбора)
+   */
+  function applySmooth(pref, opts){
+    var instant = !!(opts && opts.instant) || _prefersReducedMotion();
+    var root = document.documentElement;
+
+    if (instant) {
+      if (_transitionTimer) { clearTimeout(_transitionTimer); _transitionTimer = null; }
+      root.classList.remove('theme-transitioning');
+      return apply(pref);
+    }
+
+    // Стартуем переход: включаем transition на корне, меняем тему, снимаем класс.
+    root.classList.add('theme-transitioning');
+    var theme = apply(pref);
+
+    if (_transitionTimer) clearTimeout(_transitionTimer);
+    var finish = function(){
+      _transitionTimer = null;
+      root.classList.remove('theme-transitioning');
+    };
+    _transitionTimer = setTimeout(finish, 320);
+    return theme;
+  }
+
+  // Simple toggle: dark <-> light с плавным переходом
   function toggleSimple(){
     var current = get();
-    return _instant(function(){
-      return apply(current === "light" ? "dark" : "light");
-    });
+    return applySmooth(current === "light" ? "dark" : "light");
   }
 
-  /** Установить конкретную тему мгновенно (без «полу-темы»), напр. экран выбора. */
+  /** Мгновенная установка темы без анимации (напр. экран выбора, первый рендер). */
   function applyInstant(pref){
-    return _instant(function(){ return apply(pref); });
+    return applySmooth(pref, { instant: true });
   }
 
   // Initialize theme

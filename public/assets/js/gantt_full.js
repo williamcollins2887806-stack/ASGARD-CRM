@@ -321,7 +321,8 @@ await layout(body,{title:"Гантт • Просчёты", motto:"Сроки в
       }
     }
 
-    $("#q").addEventListener("input", apply);
+    // P1.4: debounce 300мс — Гантт пересчитывает шкалу/недели на каждое изменение.
+    $("#q").addEventListener("input", (window.AsgardDebounce ? AsgardDebounce(apply, 300) : apply));
     // CRSelect onChange handlers already set above
     $("#fs").addEventListener("click", ()=>{
       AsgardUI.showModal("Гантт • Просчёты (полный экран)", `<div id="gfs" style="height:76vh; overflow:auto">${$("#g").innerHTML}</div>`);
@@ -560,7 +561,8 @@ await layout(body,{title:"Гантт • Работы", motto:"Клятва да
       }
     }
 
-    $("#q").addEventListener("input", apply);
+    // P1.4: debounce 300мс — Гантт пересчитывает шкалу/недели на каждое изменение.
+    $("#q").addEventListener("input", (window.AsgardDebounce ? AsgardDebounce(apply, 300) : apply));
     // CRSelect onChange handlers already set above
 
     $("#fs").addEventListener("click", ()=>{
@@ -893,7 +895,8 @@ await layout(body,{title:"Гантт • Работы", motto:"Клятва да
       }
     }
 
-    $("#q").addEventListener("input", apply);
+    // P1.4: debounce 300мс — Гантт пересчитывает шкалу/недели на каждое изменение.
+    $("#q").addEventListener("input", (window.AsgardDebounce ? AsgardDebounce(apply, 300) : apply));
     // CRSelect onChange handlers already set above
     fromInp.addEventListener("change", ()=>{ CRSelect.setValue('g-per','custom'); apply(); });
     $("#fs").addEventListener("click", ()=>{

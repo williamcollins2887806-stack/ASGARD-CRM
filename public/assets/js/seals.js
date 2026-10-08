@@ -131,7 +131,8 @@ window.AsgardSealsPage = (function(){
     // Handlers
     $('#btnAddSeal')?.addEventListener('click', () => openSealModal(null, users));
     
-    $('#fltSearch')?.addEventListener('input', (e) => {
+    // P1.4: debounce 300мс — реестр печатей, перерисовка tbody на каждый символ.
+    $('#fltSearch')?.addEventListener('input', (window.AsgardDebounce ? AsgardDebounce((e) => {
       const q = e.target.value.toLowerCase();
       const filtered = seals.filter(s => 
         (s.name || '').toLowerCase().includes(q) ||
@@ -139,7 +140,15 @@ window.AsgardSealsPage = (function(){
       );
       $('#sealsBody').innerHTML = renderRows(filtered, users);
       attachHandlers(users);
-    });
+    }, 300) : (e) => {
+      const q = e.target.value.toLowerCase();
+      const filtered = seals.filter(s => 
+        (s.name || '').toLowerCase().includes(q) ||
+        (s.inv_number || '').toLowerCase().includes(q)
+      );
+      $('#sealsBody').innerHTML = renderRows(filtered, users);
+      attachHandlers(users);
+    }));
 
     attachHandlers(users);
   }

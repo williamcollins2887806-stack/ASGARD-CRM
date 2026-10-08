@@ -316,10 +316,12 @@ window.AsgardOfficeAcademyPage = (function () {
     }
 
     $('#btnLeaderboard').addEventListener('click', openLeaderboard);
-    $('#oa_search').addEventListener('input', function (e) {
+    // P1.4: debounce 250мс — Академия пересобирает список на каждый символ.
+    const _oaSearch = function (e) {
       searchQuery = e.target.value.toLowerCase();
       applyFilters();
-    });
+    };
+    $('#oa_search').addEventListener('input', (window.AsgardDebounce ? AsgardDebounce(_oaSearch, 250) : _oaSearch));
   }
 
   function renderFilters() {

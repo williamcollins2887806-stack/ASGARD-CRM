@@ -328,11 +328,11 @@ window.AsgardTravelPage = (function(){
         });
       });
 
-      // Поиск
-      $('#tlSearch')?.addEventListener('input', e => {
-        searchQ = e.target.value;
-        renderPage();
-      });
+      // Поиск (P1.4: debounce 300мс — реестр командировок с пагинацией)
+      const _tlSearchDeb = (window.AsgardDebounce
+        ? AsgardDebounce((e) => { searchQ = e.target.value; renderPage(); }, 300)
+        : (() => { let t=null; return (e) => { clearTimeout(t); t=setTimeout(()=>{ searchQ = e.target.value; renderPage(); }, 300); }; })());
+      $('#tlSearch')?.addEventListener('input', _tlSearchDeb);
 
       // Добавить
       $('#btnAddItem')?.addEventListener('click', () => openAddModal());

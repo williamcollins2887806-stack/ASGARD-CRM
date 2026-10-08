@@ -719,7 +719,7 @@ window.AsgardHrRequestsPage = (function () {
       await loadAvailableWorkers(id, token, positions);
 
       // Search and filter
-      $('#hr_worker_search').addEventListener('input', () => loadAvailableWorkers(id, token, positions));
+      $('#hr_worker_search').addEventListener('input', (window.AsgardDebounce ? AsgardDebounce(() => loadAvailableWorkers(id, token, positions), 300) : () => loadAvailableWorkers(id, token, positions)));
       $('#hr_role_filter').addEventListener('change', () => loadAvailableWorkers(id, token, positions));
 
       // Bottom buttons

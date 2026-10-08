@@ -124,7 +124,8 @@ window.AsgardAlertsPage=(function(){
       }));
     }
 
-    $("#q").addEventListener("input", ()=>renderList());
+    // P1.4: debounce 300мс — список алертов может быть большим.
+    $("#q").addEventListener("input", (window.AsgardDebounce ? AsgardDebounce(()=>renderList(), 300) : ()=>renderList()));
 
     $("#markAll").addEventListener("click", async ()=>{
       const scope=CRSelect.getValue("scope")||"me";

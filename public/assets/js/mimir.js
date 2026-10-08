@@ -1046,12 +1046,12 @@ window.AsgardMimir = (function(){
     }).join('');
 
     if (isLoading && !messages[messages.length - 1]?.isStreaming) {
-      container.innerHTML +=
+      container.insertAdjacentHTML('beforeend',
         '<div class="mimir-typing-dots">' +
           '<span class="mimir-typing-dot"></span>' +
           '<span class="mimir-typing-dot"></span>' +
           '<span class="mimir-typing-dot"></span>' +
-        '</div>';
+        '</div>');
     }
 
     container.scrollTop = container.scrollHeight;

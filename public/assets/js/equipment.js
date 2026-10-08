@@ -214,15 +214,19 @@ window.AsgardEquipment = (function () {
     var clearBtn = document.getElementById('fkIconClear');
     if (clearBtn) clearBtn.addEventListener('click', function() { onSelect(null); closeModal(); });
     var searchIn = document.getElementById('fkIconSearch');
-    if (searchIn) searchIn.addEventListener('input', function(e) {
-      var q = e.target.value.toLowerCase();
-      document.querySelectorAll('.fk-icon-cat').forEach(function(cat) {
-        var match = !q || cat.textContent.toLowerCase().includes(q);
-        cat.style.display = match ? '' : 'none';
-        var grid = cat.nextElementSibling;
-        if (grid) grid.style.display = match ? '' : 'none';
-      });
-    });
+    if (searchIn) {
+      // P1.4: debounce 200мс — каталог иконок большой (1000+ SVG).
+      var _fkIconFilter = function(e) {
+        var q = e.target.value.toLowerCase();
+        document.querySelectorAll('.fk-icon-cat').forEach(function(cat) {
+          var match = !q || cat.textContent.toLowerCase().includes(q);
+          cat.style.display = match ? '' : 'none';
+          var grid = cat.nextElementSibling;
+          if (grid) grid.style.display = match ? '' : 'none';
+        });
+      };
+      searchIn.addEventListener('input', (window.AsgardDebounce ? AsgardDebounce(_fkIconFilter, 200) : _fkIconFilter));
+    }
   }
 
   /* --- PHOTO UPLOAD HELPERS --- */
@@ -835,7 +839,7 @@ window.AsgardEquipment = (function () {
         message: searchTerm || Object.keys(activeFilters).length ? 'Попробуйте изменить фильтры' : 'Добавьте первое оборудование' });
       /* Add action button for empty state */
       if (isAdmin() && !searchTerm && !Object.keys(activeFilters).length) {
-        el.innerHTML += '<div style="text-align:center;margin-top:12px"><button class="btn" onclick="AsgardEquipment.openEditForm && AsgardEquipment.render ? document.getElementById(\'btnAddEquipment\')?.click() : void 0">+ Добавить</button></div>';
+        el.insertAdjacentHTML('beforeend', '<div style="text-align:center;margin-top:12px"><button class="btn" onclick="AsgardEquipment.openEditForm && AsgardEquipment.render ? document.getElementById(\'btnAddEquipment\')?.click() : void 0">+ Добавить</button></div>');
       }
       return;
     }

@@ -253,13 +253,19 @@ window.AsgardUserRequestsPage = (function(){
       });
 
       // Search
-      $('#userSearch')?.addEventListener('input', (e) => {
+      $('#userSearch')?.addEventListener('input', (window.AsgardDebounce ? AsgardDebounce((e) => {
         const q = e.target.value.toLowerCase();
         $$('.ur-card').forEach(card => {
           const text = card.textContent.toLowerCase();
           card.style.display = text.includes(q) ? 'grid' : 'none';
         });
-      });
+      }, 250) : (e) => {
+        const q = e.target.value.toLowerCase();
+        $$('.ur-card').forEach(card => {
+          const text = card.textContent.toLowerCase();
+          card.style.display = text.includes(q) ? 'grid' : 'none';
+        });
+      }));
 
       // Create user
       $('#btnAddUser')?.addEventListener('click', openCreateUserModal);

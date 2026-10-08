@@ -218,13 +218,13 @@ window.AsgardMailboxPage = (function(){
 
     // Unread by type (below folders)
     if (stats.unread_direct > 0 || stats.unread_tender > 0) {
-      container.innerHTML += `
+      container.insertAdjacentHTML('beforeend', `
         <div style="padding:12px 16px 4px; font-size:11px; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.5px;">По типу</div>
         ${stats.unread_direct > 0 ? `<div class="mail-type-item" data-type="direct_request" style="padding:4px 16px; cursor:pointer; font-size:12px; color:var(--ok-t); display:flex; justify-content:space-between;">
           <span>Прямые запросы</span><span>${stats.unread_direct}</span></div>` : ''}
         ${stats.unread_tender > 0 ? `<div class="mail-type-item" data-type="platform_tender" style="padding:4px 16px; cursor:pointer; font-size:12px; color:var(--amber); display:flex; justify-content:space-between;">
           <span>Тендерные</span><span>${stats.unread_tender}</span></div>` : ''}
-      `;
+      `);
     }
 
     // Event listeners

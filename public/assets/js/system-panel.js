@@ -1013,7 +1013,7 @@ ${CSS}
 
 </div>`;
     } catch (e) {
-      body.innerHTML += `<div class="sysp-empty" style="color:var(--err-t)">Ошибка: ${esc(e.message)}</div>`;
+      body.insertAdjacentHTML('beforeend', `<div class="sysp-empty" style="color:var(--err-t)">Ошибка: ${esc(e.message)}</div>`);
     }
   }
 

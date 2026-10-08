@@ -260,7 +260,9 @@ window.AsgardCustomersPage = (function(){
       if (!tb.innerHTML.trim()) tb.innerHTML = '<tr><td colspan="5" class="help">Пусто.</td></tr>';
     }
     renderTable("");
-    $("#q").addEventListener("input", (e)=>renderTable(e.target.value));
+    // P1.4: debounce 300мс — иначе каждый символ перерисовывает таблицу заказчиков.
+    const _qDeb = (window.AsgardDebounce ? AsgardDebounce((e)=>renderTable(e.target.value), 300) : (() => { let t=null; return (e) => { clearTimeout(t); t=setTimeout(()=>renderTable(e.target.value),300); }; })());
+    $("#q").addEventListener("input", _qDeb);
     $("#btnNew").addEventListener("click", ()=>{ location.hash = "#/customer?inn=&new=1"; });
   }
 

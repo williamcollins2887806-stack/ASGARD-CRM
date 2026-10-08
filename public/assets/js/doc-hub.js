@@ -246,7 +246,8 @@ window.AsgardDocHubPage = (function () {
       });
     };
     if (qEl) {
-      qEl.addEventListener('input', () => {
+      // P1.4: фильтрация списка договоров по debounce 250мс.
+      const _cmodalFilter = () => {
         const s = qEl.value.toLowerCase().trim();
         const hit = all.filter((c) => {
           if (!s) return true;
@@ -255,7 +256,8 @@ window.AsgardDocHubPage = (function () {
         });
         listEl.innerHTML = hit.length ? hit.map(itemHtml).join('') : '<div class="dh-empty dh-empty--sm"><div class="dh-empty__t">Ничего не найдено</div></div>';
         bindItems();
-      });
+      };
+      qEl.addEventListener('input', (window.AsgardDebounce ? AsgardDebounce(_cmodalFilter, 250) : _cmodalFilter));
     }
     bindItems();
     const close = () => wrap.remove();

@@ -263,6 +263,10 @@
 /* ═══════════════════════════════════════════════════════════════════════════════
    §1. SMOOTH TRANSITION
    ═══════════════════════════════════════════════════════════════════════════════ */
+/* P2: плавная смена темы. Анимируем ТОЛЬКО корневые узлы (html/body) — их
+   два, а не 12k. Цвета на дочерних элементах переключаются мгновенно, потому
+   что ссылаются на CSS-переменные (:root) — вся страница меняет цвет за один
+   кадр, а transition на корне даёт визуальную плавность без блокировки потока. */
 html.theme-transitioning,
 html.theme-transitioning body {
   transition: background-color 0.28s ease, color 0.22s ease, border-color 0.22s ease !important;
@@ -273,6 +277,13 @@ html.theme-transitioning *,
 html.theme-transitioning *::before,
 html.theme-transitioning *::after {
   transition: none !important;
+}
+/* Уважаем настройку ОС «уменьшить движение»: смена темы мгновенная. */
+@media (prefers-reduced-motion: reduce) {
+  html.theme-transitioning,
+  html.theme-transitioning body {
+    transition: none !important;
+  }
 }
 
 

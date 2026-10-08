@@ -1172,7 +1172,7 @@
     }
 
     var search = body.querySelector('#phTrSearch');
-    if (search) search.addEventListener('input', function () { paintStaff(search.value); });
+    if (search) search.addEventListener('input', (window.AsgardDebounce ? AsgardDebounce(function () { paintStaff(search.value); }, 200) : function () { paintStaff(search.value); }));
   }
 
   function syncUi(st) {

@@ -699,7 +699,7 @@ window.AsgardFieldTab = (function () {
         : (total ? `${total} чел.` : '');
     }
 
-    searchInput.addEventListener('input', applyCrewFioFilter);
+    searchInput.addEventListener('input', (window.AsgardDebounce ? AsgardDebounce(applyCrewFioFilter, 200) : applyCrewFioFilter));
     sortBtn.addEventListener('click', () => {
       sortCrewRowsByFio(tbody, allEmployees);
       applyCrewFioFilter();
@@ -3561,7 +3561,7 @@ window.AsgardFieldTab = (function () {
     container.appendChild(topBar);
 
     if (!data || !data.funds || data.funds.length === 0) {
-      container.innerHTML += '<div class="help" style="padding:32px;text-align:center">Нет подотчётов для этого проекта</div>';
+      container.insertAdjacentHTML('beforeend', '<div class="help" style="padding:32px;text-align:center">Нет подотчётов для этого проекта</div>');
       return;
     }
 
@@ -4003,25 +4003,28 @@ window.AsgardFieldTab = (function () {
 
       const thead = document.createElement('thead');
       const headerRow = document.createElement('tr');
-      headerRow.innerHTML = '<th style="padding:4px 8px;text-align:left;white-space:nowrap;position:sticky;left:0;background:var(--bg2);z-index:1">Сотрудник</th>';
+      // P1.5: сборка всей строки за один innerHTML (раньше += в цикле → O(n²)).
+      let headerHtml = '<th style="padding:4px 8px;text-align:left;white-space:nowrap;position:sticky;left:0;background:var(--bg2);z-index:1">Сотрудник</th>';
       for (const d of dates) {
         const dd = new Date(d);
         const isToday = d === now.toISOString().slice(0, 10);
-        headerRow.innerHTML += `<th style="padding:2px 1px;text-align:center;min-width:22px;font-weight:${isToday ? '700' : '400'};${isToday ? 'color:var(--gold)' : ''}">${dd.getDate()}</th>`;
+        headerHtml += `<th style="padding:2px 1px;text-align:center;min-width:22px;font-weight:${isToday ? '700' : '400'};${isToday ? 'color:var(--gold)' : ''}">${dd.getDate()}</th>`;
       }
+      headerRow.innerHTML = headerHtml;
       thead.appendChild(headerRow);
       table.appendChild(thead);
 
       const tbody = document.createElement('tbody');
       for (const emp of calData.employees) {
         const tr = document.createElement('tr');
-        tr.innerHTML = `<td style="padding:4px 8px;white-space:nowrap;position:sticky;left:0;background:var(--bg2);z-index:1;border-top:1px solid var(--brd-m)">${esc(emp.fio)}</td>`;
+        let rowHtml = `<td style="padding:4px 8px;white-space:nowrap;position:sticky;left:0;background:var(--bg2);z-index:1;border-top:1px solid var(--brd-m)">${esc(emp.fio)}</td>`;
         for (const d of dates) {
           const cell = emp.days[d];
           const bg = cell ? STAGE_COLORS[cell.type] || '#666' : 'transparent';
           const title = cell ? `${STAGE_LABELS_DT[cell.type] || cell.type} (${cell.status})` : '';
-          tr.innerHTML += `<td style="padding:2px 1px;text-align:center;border-top:1px solid var(--brd-m)" title="${esc(title)}"><span style="display:inline-block;width:16px;height:16px;border-radius:4px;background:${bg}${cell ? '' : ';opacity:0.15'}"></span></td>`;
+          rowHtml += `<td style="padding:2px 1px;text-align:center;border-top:1px solid var(--brd-m)" title="${esc(title)}"><span style="display:inline-block;width:16px;height:16px;border-radius:4px;background:${bg}${cell ? '' : ';opacity:0.15'}"></span></td>`;
         }
+        tr.innerHTML = rowHtml;
         tbody.appendChild(tr);
       }
       table.appendChild(tbody);
@@ -4032,7 +4035,7 @@ window.AsgardFieldTab = (function () {
     // ── Employee list with stages ──
     const employees = (listData && listData.employees) || [];
     if (employees.length === 0) {
-      container.innerHTML += '<div class="help">Нет этапов на этом проекте</div>';
+      container.insertAdjacentHTML('beforeend', '<div class="help">Нет этапов на этом проекте</div>');
       return;
     }
 
@@ -4407,7 +4410,7 @@ window.AsgardFieldTab = (function () {
         });
       });
     } else if (emps.length === 0) {
-      container.innerHTML += '<div class="help" style="padding:32px;text-align:center">Нет выплат для этого проекта</div>';
+      container.insertAdjacentHTML('beforeend', '<div class="help" style="padding:32px;text-align:center">Нет выплат для этого проекта</div>');
     }
   }
 

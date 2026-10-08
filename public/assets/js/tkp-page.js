@@ -1739,7 +1739,7 @@ window.AsgardTkpPage = (function() {
         if (!msg) return;
         inputEl.value = '';
         var msgBox = document.getElementById('mqChatMessages');
-        if (msgBox) { msgBox.innerHTML += '\n\n[Вы]: ' + esc(msg) + '\n[Мимир]: <span id="mqReplySpan"><span class="mimir-spinner"></span></span>'; msgBox.scrollTop = msgBox.scrollHeight; }
+        if (msgBox) { msgBox.insertAdjacentHTML('beforeend', '\n\n[Вы]: ' + esc(msg) + '\n[Мимир]: <span id="mqReplySpan"><span class="mimir-spinner"></span></span>'); msgBox.scrollTop = msgBox.scrollHeight; }
         var sendBtn = document.getElementById('btnMqSend');
         if (sendBtn) sendBtn.disabled = true;
         var token = localStorage.getItem('asgard_token');

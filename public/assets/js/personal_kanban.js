@@ -3228,9 +3228,7 @@ html[data-theme="light"] .pk3-stk-float-bar { background: rgba(255,255,255,.94);
   // Stubs (заполнены в следующих Edit'ах)
   function _v3AttachEvents() {
     // search
-    const s = $('#pk3-search'); if (s) s.addEventListener('input', (e) => {
-      _searchQ = e.target.value || ''; _v3RenderBoard();
-    });
+    const s = $('#pk3-search'); if (s) { const _pk3Search = (e) => { _searchQ = e.target.value || ''; _v3RenderBoard(); }; s.addEventListener('input', (window.AsgardDebounce ? AsgardDebounce(_pk3Search, 300) : _pk3Search)); }
     // S-15: scope-toggle (HEAD_TO) «Мои / Отдел»
     $$('#pk3-scope-toggle button').forEach(b => b.addEventListener('click', async () => {
       const val = b.dataset.scope; // 'mine' | 'team'
