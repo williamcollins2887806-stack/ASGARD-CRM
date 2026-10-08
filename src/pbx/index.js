@@ -320,7 +320,7 @@ async function originateOutbound(db, body) {
       throw err;
     }
     if (op.mobile_phone) {
-      channel = `SIP/mango-trunk/${String(op.mobile_phone).replace(/[^\d]/g, '')}`;
+      channel = `PJSIP/mango-trunk/${String(op.mobile_phone).replace(/[^\d]/g, '')}`;
     }
   }
   if (!channel) {
