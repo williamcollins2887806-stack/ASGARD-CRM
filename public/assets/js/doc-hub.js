@@ -1553,7 +1553,7 @@ window.AsgardDocHubPage = (function () {
 
     // CRAutocomplete для контрагента (шаг 2) — наша база + ЕГРЮЛ
     const cpMount = form.querySelector('#dhWizCpMount');
-    if (cpMount && window.CRAutocomplete && typeof CRAutocomplete.create === 'function') {
+    if (cpMount && typeof CRAutocomplete !== 'undefined' && typeof CRAutocomplete.create === 'function') {
       try {
         try { CRAutocomplete.destroy('dhWizCp'); } catch (_) {}
         cpMount.innerHTML = '';
@@ -2276,7 +2276,7 @@ window.AsgardDocHubPage = (function () {
       // CRAutocomplete для контрагента в карточке — наша база + ЕГРЮЛ
       (function mountDrCp() {
         const cpMount = d.querySelector('#drCpMount');
-        if (!cpMount || !window.CRAutocomplete || typeof CRAutocomplete.create !== 'function') return;
+        if (!cpMount || typeof CRAutocomplete === 'undefined' || typeof CRAutocomplete.create !== 'function') return;
         try {
           try { CRAutocomplete.destroy('drCp'); } catch (_) {}
           cpMount.innerHTML = '';

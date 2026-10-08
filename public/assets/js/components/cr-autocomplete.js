@@ -429,3 +429,9 @@ const CRAutocomplete = (() => {
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = CRAutocomplete;
 }
+
+// Как и CRSelect — публикуем в window, иначе внешние модули (doc-hub, contracts)
+// не видят компонент через window.CRAutocomplete.
+if (typeof window !== 'undefined') {
+  window.CRAutocomplete = CRAutocomplete;
+}
