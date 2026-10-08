@@ -452,30 +452,33 @@ window.AsgardTendersPage = (function(){
     const fmtDate = AsgardUI.formatDate || (d => d ? new Date(d).toLocaleDateString('ru-RU') : '—');
     const ds = fmtDate(t.work_start_plan);
     const de = fmtDate(t.work_end_plan);
-    const link = t.purchase_url ? `<a class="btn ghost" style="padding:6px 10px" target="_blank" href="${esc(t.purchase_url)}">Ссылка</a>` : "—";
     const ddl = fmtDate(t.docs_deadline);
+    const submit = fmtDate(t.submission_date || t.submission_deadline || t.bid_submission_date);
+    const added = fmtDate(t.created_at);
+    const link = t.purchase_url ? `<a class="btn ghost" style="padding:6px 10px" target="_blank" href="${esc(t.purchase_url)}">↗</a>` : "—";
     const archiveInfo = t.tender_status === 'Не подходит' ? `<div class="help" style="color:var(--t3);margin-top:4px">📁 ${esc(t.archive_reason||'—')} · ${esc((t.archive_comment||'').substring(0,60))}${(t.archive_comment||'').length>60?'...':''}</div>` : '';
+    const actor = initialsAuthorName(createdByName);
     return `<tr data-id="${t.id}">
       <td><input type="checkbox" class="tender-check" value="${t.id}" onchange="window._asgTenderBulkCount&&window._asgTenderBulkCount()"/></td>
-      <td>${fmtPeriod(t.period)}</td>
-      <td>
-        <b>${esc(t.customer_name||"")}</b>
-        <div class="help">${esc(t.customer_inn||"")}</div>
-        <div class="help">${esc(t.tender_title||"")}</div>
-        ${archiveInfo}
-      </td>
-      <td>${esc(pmName||"—")}</td>
-      <td>${esc(t.tender_type||"—")}</td>
-      <td>${tenderStatusBadge(t.tender_status)}${(t.distribution_requested_at && !t.handoff_at)?" <span class=\"badge\">На распределении</span>":""}</td>
-      <td>${ddl}</td>
-      <td>${esc(initialsAuthorName(createdByName))}</td>
-      <td>${t.tender_price?money(t.tender_price):"—"}</td>
-      <td>${ds} → ${de}</td>
-      <td>${link}</td>
+      <td><b>${esc(t.customer_name||"")}</b><div class="help">${esc(t.customer_inn||"")}</div></td>
+      <td><b>${esc(t.tender_title||"—")}</b></td>
+      <td>${t.nmc ?? t.nmcp ?? t.initial_price ?? t.tender_price ? money(t.nmc ?? t.nmcp ?? t.initial_price ?? t.tender_price) : "—"}</td>
+      <td>${submit}</td>
+      <td>${de}</td>
+      <td>${esc(t.collect_status||t.collection_status||"—")}</td>
+      <td>${esc(t.analysis_status||t.analiz_status||"—")}</td>
+      <td>${tenderStatusBadge(t.tender_status)}${(t.distribution_requested_at && !t.handoff_at)?" <span class="badge">На распределении</span>":""}</td>
+      <td>${esc(t.analyst_name||t.analyst||"—")}</td>
+      <td>${esc(pmName||t.calculator_name||t.responsible_pm_name||"—")}</td>
+      <td>${esc(t.report_status||t.report||"—")}</td>
+      <td>${esc(t.comment||t.tender_comment_to||t.archive_comment||"—")}</td>
+      <td>${esc(t.score ?? t.rating ?? "—")}</td>
+      <td>${esc(actor)}</td>
+      <td>${added}</td>
       <td><button class="btn" style="padding:6px 10px" data-act="open">Открыть</button></td>
+      <td>${link}</td>
     </tr>`;
   }
-
   // ═══ MOBILE_CARD_RENDER ═══
   const _isMobile = () => document.body.classList.contains('is-mobile') || window.innerWidth <= 768;
 
@@ -593,43 +596,25 @@ window.AsgardTendersPage = (function(){
         align-items:center;
       }
       /* Keep all original 12 columns: proportions tuned so the full register stays visible. */
-      /* 18 original columns from the live CRM register — all remain visible. */
-      .tenders-page table.asg.tenders-table th:nth-child(1),
-      .tenders-page table.asg.tenders-table td:nth-child(1){width:3%}
-      .tenders-page table.asg.tenders-table th:nth-child(2),
-      .tenders-page table.asg.tenders-table td:nth-child(2){width:5.5%}
-      .tenders-page table.asg.tenders-table th:nth-child(3),
-      .tenders-page table.asg.tenders-table td:nth-child(3){width:8.5%}
-      .tenders-page table.asg.tenders-table th:nth-child(4),
-      .tenders-page table.asg.tenders-table td:nth-child(4){width:5%}
-      .tenders-page table.asg.tenders-table th:nth-child(5),
-      .tenders-page table.asg.tenders-table td:nth-child(5){width:5%}
-      .tenders-page table.asg.tenders-table th:nth-child(6),
-      .tenders-page table.asg.tenders-table td:nth-child(6){width:5%}
-      .tenders-page table.asg.tenders-table th:nth-child(7),
-      .tenders-page table.asg.tenders-table td:nth-child(7){width:5%}
-      .tenders-page table.asg.tenders-table th:nth-child(8),
-      .tenders-page table.asg.tenders-table td:nth-child(8){width:6%}
-      .tenders-page table.asg.tenders-table th:nth-child(9),
-      .tenders-page table.asg.tenders-table td:nth-child(9){width:6%}
-      .tenders-page table.asg.tenders-table th:nth-child(10),
-      .tenders-page table.asg.tenders-table td:nth-child(10){width:5%}
-      .tenders-page table.asg.tenders-table th:nth-child(11),
-      .tenders-page table.asg.tenders-table td:nth-child(11){width:5%}
-      .tenders-page table.asg.tenders-table th:nth-child(12),
-      .tenders-page table.asg.tenders-table td:nth-child(12){width:5%}
-      .tenders-page table.asg.tenders-table th:nth-child(13),
-      .tenders-page table.asg.tenders-table td:nth-child(13){width:8%}
-      .tenders-page table.asg.tenders-table th:nth-child(14),
-      .tenders-page table.asg.tenders-table td:nth-child(14){width:5%}
-      .tenders-page table.asg.tenders-table th:nth-child(15),
-      .tenders-page table.asg.tenders-table td:nth-child(15){width:6%}
-      .tenders-page table.asg.tenders-table th:nth-child(16),
-      .tenders-page table.asg.tenders-table td:nth-child(16){width:5%}
-      .tenders-page table.asg.tenders-table th:nth-child(17),
-      .tenders-page table.asg.tenders-table td:nth-child(17){width:7%}
-      .tenders-page table.asg.tenders-table th:nth-child(18),
-      .tenders-page table.asg.tenders-table td:nth-child(18){width:3%;text-align:center}
+      /* All 18 original live-register columns; intentionally compact. */
+      .tenders-page table.asg.tenders-table th:nth-child(1),.tenders-page table.asg.tenders-table td:nth-child(1){width:3%}
+      .tenders-page table.asg.tenders-table th:nth-child(2),.tenders-page table.asg.tenders-table td:nth-child(2){width:8.5%}
+      .tenders-page table.asg.tenders-table th:nth-child(3),.tenders-page table.asg.tenders-table td:nth-child(3){width:9.5%}
+      .tenders-page table.asg.tenders-table th:nth-child(4),.tenders-page table.asg.tenders-table td:nth-child(4){width:6%}
+      .tenders-page table.asg.tenders-table th:nth-child(5),.tenders-page table.asg.tenders-table td:nth-child(5){width:5%}
+      .tenders-page table.asg.tenders-table th:nth-child(6),.tenders-page table.asg.tenders-table td:nth-child(6){width:5%}
+      .tenders-page table.asg.tenders-table th:nth-child(7),.tenders-page table.asg.tenders-table td:nth-child(7){width:5%}
+      .tenders-page table.asg.tenders-table th:nth-child(8),.tenders-page table.asg.tenders-table td:nth-child(8){width:5%}
+      .tenders-page table.asg.tenders-table th:nth-child(9),.tenders-page table.asg.tenders-table td:nth-child(9){width:7%}
+      .tenders-page table.asg.tenders-table th:nth-child(10),.tenders-page table.asg.tenders-table td:nth-child(10){width:5%}
+      .tenders-page table.asg.tenders-table th:nth-child(11),.tenders-page table.asg.tenders-table td:nth-child(11){width:5.5%}
+      .tenders-page table.asg.tenders-table th:nth-child(12),.tenders-page table.asg.tenders-table td:nth-child(12){width:5%}
+      .tenders-page table.asg.tenders-table th:nth-child(13),.tenders-page table.asg.tenders-table td:nth-child(13){width:7%}
+      .tenders-page table.asg.tenders-table th:nth-child(14),.tenders-page table.asg.tenders-table td:nth-child(14){width:4%}
+      .tenders-page table.asg.tenders-table th:nth-child(15),.tenders-page table.asg.tenders-table td:nth-child(15){width:6%}
+      .tenders-page table.asg.tenders-table th:nth-child(16),.tenders-page table.asg.tenders-table td:nth-child(16){width:6%}
+      .tenders-page table.asg.tenders-table th:nth-child(17),.tenders-page table.asg.tenders-table td:nth-child(17){width:7%}
+      .tenders-page table.asg.tenders-table th:nth-child(18),.tenders-page table.asg.tenders-table td:nth-child(18){width:3%}
       .tenders-page table.asg.tenders-table .help{
         line-height:1.3;
         overflow-wrap:anywhere;
@@ -775,17 +760,23 @@ window.AsgardTendersPage = (function(){
             <thead>
               <tr>
                 <th><input type="checkbox" id="selectAllTenders" title="Выбрать все"/></th>
-                <th><button class="btn ghost" style="padding:6px 10px" data-sort="period">Период</button></th>
-                <th><button class="btn ghost" style="padding:6px 10px" data-sort="customer_name">Заказчик / Тендер</button></th>
-                <th><button class="btn ghost" style="padding:6px 10px" data-sort="responsible_pm_id">РП</button></th>
-                <th><button class="btn ghost" style="padding:6px 10px" data-sort="tender_type">Тип</button></th>
+                <th><button class="btn ghost" style="padding:6px 10px" data-sort="customer_name">Заказчик</button></th>
+                <th><button class="btn ghost" style="padding:6px 10px" data-sort="tender_title">Тендер</button></th>
+                <th><button class="btn ghost" style="padding:6px 10px" data-sort="nmcp">НМЦ</button></th>
+                <th><button class="btn ghost" style="padding:6px 10px" data-sort="submission_date">Подача</button></th>
+                <th><button class="btn ghost" style="padding:6px 10px" data-sort="work_end_plan">Срок</button></th>
+                <th>Сбор</th>
+                <th>Анализ</th>
                 <th><button class="btn ghost" style="padding:6px 10px" data-sort="tender_status">Статус</button></th>
-                <th><button class="btn ghost" style="padding:6px 10px" data-sort="docs_deadline">Дедлайн</button></th>
+                <th>Аналитик</th>
+                <th>Считает</th>
+                <th>Отчёт</th>
+                <th>Коммент</th>
+                <th>Скор</th>
                 <th><button class="btn ghost" style="padding:6px 10px" data-sort="created_by_user_id">Внёс</button></th>
-                <th><button class="btn ghost" style="padding:6px 10px" data-sort="tender_price">Сумма</button></th>
-                <th><button class="btn ghost" style="padding:6px 10px" data-sort="work_start_plan">Сроки (план)</button></th>
-                <th>Документы</th>
-                <th></th>
+                <th><button class="btn ghost" style="padding:6px 10px" data-sort="created_at">Добавлен</button></th>
+                <th>Действие</th>
+                <th>↗</th>
               </tr>
             </thead>
             <tbody id="tb"></tbody>
