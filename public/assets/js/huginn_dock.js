@@ -4895,14 +4895,12 @@
     }
     if (event === 'presence:online' || event === 'presence:offline') {
       if (data && data.user_id) {
-        // Socket event is only a fast hint. Do NOT fabricate last_seen_at from the
-        // client clock (that was the «был(а) только что» mirage); keep the DB value
-        // and let refreshPeerPresence() reconcile from the honest source.
-        state.presence[data.user_id] = Object.assign({}, state.presence[data.user_id] || {}, {
-          online: event === 'presence:online'
-        });
+        // Socket event is a HINT ONLY — never a source of truth. Writing
+        // `online` from the socket was the «миражи» source (a hidden tab keeps
+        // its SSE socket alive). Reconcile from the honest last_seen_at endpoint
+        // and repaint; state.presence.online is then only ever honest.
+        warmPresence();
         refreshPeerPresence();
-        // Repaint the chat list so the online dot updates without reopening a chat.
         if (!state.chatId) renderPanel();
         else renderChatList(state.searchQ);
       }

@@ -8023,6 +8023,27 @@ window.AsgardPKv3Modals = (function () {
         toast('Превью', e.message || String(e), 'err');
       }
     }
+    /** Attach extra ТЗ files from disk (referenced by the «📎 Добавить файл(ы) ТЗ» button). */
+    function _pickExtraFiles() {
+      try {
+        const inp = document.createElement('input');
+        inp.type = 'file';
+        inp.multiple = true;
+        inp.style.display = 'none';
+        inp.onchange = () => {
+          const fl = Array.from(inp.files || []);
+          if (fl.length) {
+            extraFiles = (extraFiles || []).concat(fl);
+            rerender();
+          }
+          inp.remove();
+        };
+        document.body.appendChild(inp);
+        inp.click();
+      } catch (e) {
+        toast('Файлы ТЗ', e.message || String(e), 'err');
+      }
+    }
     function _renderStep4() {
       const totals = _calcTotals(lastEstimate);
       return `

@@ -12,7 +12,7 @@ const huginnFolders = require('../services/huginn-folders');
 const huginnAiEditor = require('../services/huginn-ai-editor');
 const livekit = require('../services/thing-livekit');
 const { sendIncomingCallPush } = require('../services/notify');
-const { sendToUser, isUserOnline, getOnlineUserIds } = require('./sse');
+const { sendToUser } = require('./sse');
 
 function parsePositiveInt(value) {
   const raw = String(value || '').trim();
@@ -1585,10 +1585,6 @@ module.exports = async function registerHuginnExt(fastify, { db, uploadDir, getC
     return { guest: !!guest, name: guest ? guest.name : null };
   });
 
-  // silence unused lint
-  void sendToUser;
-  void isUserOnline;
-  void sseToMembers;
   // Periodic sweep of dead LiveKit rooms (safe no-op without LiveKit).
   try {
     const SWEEP_MS = 5 * 60 * 1000;
