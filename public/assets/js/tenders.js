@@ -526,17 +526,25 @@ window.AsgardTendersPage = (function(){
       /* ═══ CRM-1.0 desktop: tender register fits laptop viewport at 100% ═══ */
       .tenders-page{min-width:0;overflow:hidden}
       .tenders-page .m-tender-tools{
-        display:grid;
-        grid-template-columns:repeat(5,minmax(0,1fr));
+        display:flex;
+        flex-wrap:wrap;
         gap:8px;
-        align-items:end;
+        align-items:flex-end;
         min-width:0;
       }
-      .tenders-page .m-tender-tools > .field,
+      .tenders-page .m-tender-tools > .field{
+        flex:0 1 180px;
+        min-width:150px !important;
+        width:auto;
+      }
+      .tenders-page .m-tender-tools > .field:nth-child(2){
+        flex:1 1 300px;
+      }
       .tenders-page .m-tender-tools > div:last-child{
+        flex:0 0 auto;
         min-width:0 !important;
         width:auto;
-        grid-column:1 / -1;
+        margin-left:auto;
       }
       .tenders-page .m-tender-tools > .field{margin:0}
       .tenders-page .m-tender-tools .field > div{min-width:0}
@@ -560,55 +568,68 @@ window.AsgardTendersPage = (function(){
       .tenders-page table.asg.tenders-table td{
         min-width:0;
         max-width:0;
-        padding:9px 8px;
-        vertical-align:top;
+        padding:8px 6px;
+        vertical-align:middle;
         text-align:left;
         white-space:normal;
         overflow-wrap:anywhere;
         word-break:break-word;
-        line-height:1.35;
-        font-size:12px;
+        line-height:1.25;
+        font-size:11px;
       }
       .tenders-page table.asg.tenders-table th{
         vertical-align:middle;
+        white-space:normal;
       }
       .tenders-page table.asg.tenders-table th .btn{
-        display:block;
+        display:flex;
         width:100%;
         min-width:0;
         white-space:normal;
         overflow-wrap:anywhere;
         text-align:left;
-        padding:5px 7px;
-        min-height:34px;
-        display:flex;
+        padding:4px 6px;
+        min-height:30px;
         align-items:center;
       }
       /* Keep all original 12 columns: proportions tuned so the full register stays visible. */
+      /* 18 original columns from the live CRM register — all remain visible. */
       .tenders-page table.asg.tenders-table th:nth-child(1),
-      .tenders-page table.asg.tenders-table td:nth-child(1){width:3%;text-align:center}
+      .tenders-page table.asg.tenders-table td:nth-child(1){width:3%}
       .tenders-page table.asg.tenders-table th:nth-child(2),
-      .tenders-page table.asg.tenders-table td:nth-child(2){width:7%;text-align:center}
+      .tenders-page table.asg.tenders-table td:nth-child(2){width:5.5%}
       .tenders-page table.asg.tenders-table th:nth-child(3),
-      .tenders-page table.asg.tenders-table td:nth-child(3){width:21%}
+      .tenders-page table.asg.tenders-table td:nth-child(3){width:8.5%}
       .tenders-page table.asg.tenders-table th:nth-child(4),
-      .tenders-page table.asg.tenders-table td:nth-child(4){width:7%}
+      .tenders-page table.asg.tenders-table td:nth-child(4){width:5%}
       .tenders-page table.asg.tenders-table th:nth-child(5),
-      .tenders-page table.asg.tenders-table td:nth-child(5){width:8%}
+      .tenders-page table.asg.tenders-table td:nth-child(5){width:5%}
       .tenders-page table.asg.tenders-table th:nth-child(6),
-      .tenders-page table.asg.tenders-table td:nth-child(6){width:10%}
+      .tenders-page table.asg.tenders-table td:nth-child(6){width:5%}
       .tenders-page table.asg.tenders-table th:nth-child(7),
-      .tenders-page table.asg.tenders-table td:nth-child(7){width:7%}
+      .tenders-page table.asg.tenders-table td:nth-child(7){width:5%}
       .tenders-page table.asg.tenders-table th:nth-child(8),
-      .tenders-page table.asg.tenders-table td:nth-child(8){width:8%}
+      .tenders-page table.asg.tenders-table td:nth-child(8){width:6%}
       .tenders-page table.asg.tenders-table th:nth-child(9),
-      .tenders-page table.asg.tenders-table td:nth-child(9){width:8%}
+      .tenders-page table.asg.tenders-table td:nth-child(9){width:6%}
       .tenders-page table.asg.tenders-table th:nth-child(10),
-      .tenders-page table.asg.tenders-table td:nth-child(10){width:9%}
+      .tenders-page table.asg.tenders-table td:nth-child(10){width:5%}
       .tenders-page table.asg.tenders-table th:nth-child(11),
       .tenders-page table.asg.tenders-table td:nth-child(11){width:5%}
       .tenders-page table.asg.tenders-table th:nth-child(12),
-      .tenders-page table.asg.tenders-table td:nth-child(12){width:7%}
+      .tenders-page table.asg.tenders-table td:nth-child(12){width:5%}
+      .tenders-page table.asg.tenders-table th:nth-child(13),
+      .tenders-page table.asg.tenders-table td:nth-child(13){width:8%}
+      .tenders-page table.asg.tenders-table th:nth-child(14),
+      .tenders-page table.asg.tenders-table td:nth-child(14){width:5%}
+      .tenders-page table.asg.tenders-table th:nth-child(15),
+      .tenders-page table.asg.tenders-table td:nth-child(15){width:6%}
+      .tenders-page table.asg.tenders-table th:nth-child(16),
+      .tenders-page table.asg.tenders-table td:nth-child(16){width:5%}
+      .tenders-page table.asg.tenders-table th:nth-child(17),
+      .tenders-page table.asg.tenders-table td:nth-child(17){width:7%}
+      .tenders-page table.asg.tenders-table th:nth-child(18),
+      .tenders-page table.asg.tenders-table td:nth-child(18){width:3%;text-align:center}
       .tenders-page table.asg.tenders-table .help{
         line-height:1.3;
         overflow-wrap:anywhere;
