@@ -25,7 +25,7 @@ function slugify(text) {
   return 'asgard_' + h;
 }
 
-function fetchSilero(text) {
+function fetchSileroOnce(text) {
   const url = `${SILERO_URL}/tts?text=${encodeURIComponent(text)}&speaker=${encodeURIComponent(SILERO_SPEAKER)}&speed=${encodeURIComponent(SILERO_SPEED)}`;
   const lib = url.startsWith('https') ? https : http;
   return new Promise((resolve, reject) => {
@@ -39,8 +39,23 @@ function fetchSilero(text) {
       res.on('end', () => resolve(Buffer.concat(chunks)));
     });
     req.on('error', reject);
-    req.setTimeout(30000, () => { req.destroy(new Error('silero timeout')); });
+    req.setTimeout(40000, () => { req.destroy(new Error('silero timeout')); });
   });
+}
+
+async function fetchSilero(text) {
+  let lastErr;
+  for (let i = 0; i < 3; i++) {
+    try {
+      const buf = await fetchSileroOnce(text);
+      if (buf && buf.length > 400) return buf;
+      lastErr = new Error('silero too short');
+    } catch (e) {
+      lastErr = e;
+    }
+    await new Promise((r) => setTimeout(r, 800));
+  }
+  throw lastErr || new Error('silero failed');
 }
 
 function toAsteriskWav(rawWav, outPath) {

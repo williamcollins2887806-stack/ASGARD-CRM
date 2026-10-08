@@ -15,7 +15,7 @@ process.chdir(ROOT);
 
 const { getPool } = require(path.join(ROOT, 'src/pbx'));
 const { normalizePbxConfig } = require(path.join(ROOT, 'src/pbx/call-lifecycle'));
-const { generatePrompt } = require(path.join(ROOT, 'src/pbx/prompts'));
+const { generatePrompt, ensurePrompt } = require(path.join(ROOT, 'src/pbx/prompts'));
 
 async function main() {
   const pool = getPool();
@@ -34,6 +34,21 @@ async function main() {
 
   const out = await generatePrompt(defs);
   for (const o of out) console.log('OK', o.name, '->', o.path);
+
+  // Прогреть хэш-файлы, которые реально запрашивает AGI (ensurePrompt).
+  for (const [label, text] of [
+    ['greeting', cfg.greeting_text],
+    ['after_hours', cfg.after_hours_text],
+  ]) {
+    if (!text) continue;
+    try {
+      const p = await ensurePrompt(text);
+      console.log('warm', label, '->', p);
+    } catch (e) {
+      console.log('warm FAIL', label, e.message);
+    }
+  }
+
   console.log('generated', out.length, 'of', defs.length);
   await pool.end();
   return out.length === defs.length ? 0 : 1;

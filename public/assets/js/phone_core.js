@@ -579,6 +579,21 @@
         .then(function (r) {
           emit('transfer', { kind: kind, target: target });
           return r;
+        })
+        .catch(function (e) {
+          // GSM-режим (звонок на мобильный через транк): канала в Asterisk нет —
+          // просим сервер перевести вызов через транк.
+          if (e && /channel required/i.test(e.message || '')) {
+            var digits = normalizePhone(target);
+            return pbxApi('/call/outbound', {
+              method: 'POST',
+              body: JSON.stringify({ number: digits, transfer: 'gsm' }),
+            }).then(function (r2) {
+              emit('transfer', { kind: kind, target: target, via: 'gsm' });
+              return r2;
+            });
+          }
+          throw e;
         });
     },
 

@@ -157,12 +157,13 @@ async function handleInboundAgi(session) {
     await session.setVariable('ASGARD_DIAL_STRING', dial.dialString);
     await session.setVariable('ASGARD_RING_TIMEOUT', String(dial.ringTimeout));
 
-    // Приветствие из настроек (Silero → 8 kHz WAV) поставить в очередь до Dial.
+    // Приветствие из настроек (Silero → 8 kHz WAV) перед дозвоном операторам.
     if (pbxConfig.greeting_text) {
       try {
         const g = await ensurePrompt(pbxConfig.greeting_text);
         if (g) {
           await session.setVariable('ASGARD_GREETING', g);
+          await session.answer();
           await session.streamFile(g);
         }
       } catch (e) {
@@ -315,13 +316,13 @@ async function originateOutbound(db, body) {
 
   const ami = getAmiClient();
   await ami.originate({
-    Channel: channel,
-    Context: 'outbound-crm',
-    Exten: number,
-    Priority: 1,
-    CallerID: cli || '',
-    Async: true,
-    Timeout: 45000,
+    channel,
+    context: 'outbound-crm',
+    exten: number,
+    priority: 1,
+    callerId: cli || '',
+    async: true,
+    timeout: 45000,
   });
 
   if (db) {
@@ -530,7 +531,10 @@ function createCmdServer() {
       }
       if (req.method === 'POST' && url.pathname === '/call/hangup') {
         if (!amiConfigured()) throw new Error('AMI not configured');
-        if (!body.channel) throw new Error('channel required');
+        if (!body.channel) {
+          // GSM-режим: телефонного канала в Asterisk у клиента нет — не 500, а no-op.
+          return send(200, { ok: true, skipped: true, reason: 'no_channel' });
+        }
         await ami.hangup(body.channel);
         return send(200, { ok: true });
       }
@@ -596,12 +600,12 @@ function createCmdServer() {
             : null);
           if (consultChan) {
             await ami.originate({
-              Channel: consultChan,
-              Context: 'transfer',
-              Exten: 'consult',
-              Priority: 1,
-              Async: 'true',
-              Variable: [
+              channel: consultChan,
+              context: 'transfer',
+              exten: 'consult',
+              priority: 1,
+              async: true,
+              variable: [
                 `CONSULT_TARGET=${body.target || ''}`,
                 `TRANSFER_DIAL=${resolved.dial || ''}`,
                 `TRANSFER_TIMEOUT=${resolved.timeout || 30}`,
@@ -632,7 +636,10 @@ function createCmdServer() {
       }
       if (req.method === 'POST' && url.pathname === '/call/hold') {
         if (!amiConfigured()) throw new Error('AMI not configured');
-        if (!body.channel) throw new Error('channel required');
+        if (!body.channel) {
+          // GSM-режим: удерживать в Asterisk нечего.
+          return send(200, { ok: true, skipped: true, reason: 'no_channel' });
+        }
         if (body.hold === false) {
           await ami.redirect(body.channel, 'from-mango-inbound', 's', 1);
         } else {
