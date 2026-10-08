@@ -12127,12 +12127,15 @@ table.reg-table select.inp:focus {
 table.reg-table td { vertical-align: top; max-width: none; }
 table.reg-table {
   table-layout: fixed;
-  width: max(100%, 1560px);
+  width: 100%;
 }
 .reg-table-wrap {
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
 }
+/* Компактный режим: второстепенные колонки скрыты (кнопка «Все колонки» включает) */
+table.reg-table th.reg-opt-col,
+table.reg-table td.reg-opt-col { display: none; }
 table.reg-table th.reg-th-no,
 table.reg-table td.reg-no-cell { width: 56px; min-width: 56px; max-width: 64px; }
 table.reg-table th:nth-child(2),
@@ -13165,3 +13168,23 @@ body.hg-dock-collapsed #asgard-v2-banner {
     margin-right: 0 !important;
   }
 }
+
+/* Реестр тендеров (видимая tnd-table): 11 основных колонок в сумме = 100%.
+   Раньше стояли width: max(100%,1560px) + min-width:1480px, из-за чего таблица
+   уходила вправо (при открытой панели Хугинна доступно ~690px).
+   Скрытые второстепенные колонки — кнопка «Все колонки». */
+table.reg-table { table-layout: fixed !important; width: 100% !important; min-width: 0 !important; max-width: 100% !important; }
+table.reg-table th, table.reg-table td { box-sizing: border-box; min-width: 0 !important; overflow: hidden; overflow-wrap: anywhere; }
+/* 1 № / 2 Заказчик / 3 Тендер / 4 НМЦ / 5 Подача / 6 Срок / 7 Сбор */
+/* 8 Анализ / 9 Статус / 10 Отчёт / 11 Коммент / 12 Действие / 13 Внёс */
+table.reg-table th.reg-th-no,       table.reg-table td.reg-no-cell          { width: 4%  !important; }
+table.reg-table th:nth-child(2),    table.reg-table td:nth-child(2)          { width: 13% !important; }
+table.reg-table th:nth-child(3),    table.reg-table td:nth-child(3)          { width: 15% !important; }
+table.reg-table th.reg-th-money,    table.reg-table td.reg-col-money        { width: 8%  !important; }
+table.reg-table th.reg-th-date,     table.reg-table td.reg-col-date         { width: 7%  !important; }
+table.reg-table th.reg-th-participation, table.reg-table td.reg-col-participation { width: 7% !important; }
+table.reg-table th.reg-th-analysis, table.reg-table td.reg-col-analysis     { width: 8%  !important; }
+table.reg-table th.reg-th-status,   table.reg-table td:nth-child(9)         { width: 9%  !important; }
+table.reg-table th.reg-th-rp,       table.reg-table td:nth-child(11)        { width: 8%  !important; }
+table.reg-table td.reg-purchase-cell, table.reg-table th:nth-last-child(2)  { width: 10% !important; min-width: 0 !important; }
+table.reg-table td.reg-action-cell, table.reg-table th:last-child           { width: 11% !important; min-width: 0 !important; }

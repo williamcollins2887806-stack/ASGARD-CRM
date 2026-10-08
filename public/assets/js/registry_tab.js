@@ -362,6 +362,14 @@ window.AsgardRegistryTab = (function () {
 
   const COL_FILTER_KEYS = ['id', 'customer_name', 'tender_title', 'created_by_name', 'created_at', 'docs_deadline'];
 
+  /* Компактный режим (по умолчанию): на экране ~1366px с открытой панелью Хугинна
+     реестру достаётся ~690px — 19 колонок туда не влезают и уходят вправо.
+     Скрываем второстепенные колонки (класс reg-opt-col на th и td), полный
+     набор доступен кнопкой «Все колонки». */
+  const OPT_COL_KEYS = ['analyst_name', 'calculator_user_name', 'comment_to', '_score_pct', 'created_by_name', 'created_at'];
+
+  function isCompact() { return state.compact !== false; }
+
   function hasColFilters() {
     return COL_FILTER_KEYS.some((k) => String(state.colFilters[k] || '').trim());
   }
@@ -493,7 +501,7 @@ window.AsgardRegistryTab = (function () {
     const title = key === 'analysis_deadline'
       ? 'Внутренний срок анализа (срок подачи минус 3 или 5 раб. дней)'
       : (key === 'participation_fee' ? 'Сбор за участие в тендере' : '');
-    let h = '<th class="reg-th-wrap' + extraTh + '"' + (title ? ' title="' + esc(title) + '"' : '') + '>' +
+    let h = '<th class="reg-th-wrap' + extraTh + (isCompact() && OPT_COL_KEYS.indexOf(key) >= 0 ? ' reg-opt-col' : '') + '"' + (title ? ' title="' + esc(title) + '"' : '') + '>' +
       '<button type="button" class="reg-th-sort' + (active ? ' reg-th-sort-active' : '') + '" data-sort="' + key + '">' +
       esc(label) + (ind ? ' <span class="reg-sort-ind">' + ind + '</span>' : '') + '</button>';
     if (filterKey) {
@@ -1433,6 +1441,8 @@ window.AsgardRegistryTab = (function () {
       ((state.statusFilter || state.searchQ || hasColFilters() || state.burnOnly) ? '' : ' hidden') +
       '>Сбросить все фильтры</button>' +
       '<button type="button" class="btn mini" id="regAddRow">+ Строка</button>' +
+      '<button type="button" class="btn mini ghost" id="regColsToggle" title="Показать все колонки или только основные">' +
+      (isCompact() ? '▸ Все колонки' : '◂ Основные') + '</button>' +
       '<button type="button" class="btn mini ghost" id="regRefresh">↻</button>' +
       '<a href="#/pm-calculations" class="btn mini ghost">Просчёты РП</a>' +
       '</div>' +
@@ -1463,6 +1473,7 @@ window.AsgardRegistryTab = (function () {
       : '<span class="muted">—</span>';
     const comment = row.comment_to || '';
     const dlIso = row.docs_deadline ? API.fmtDateIso(row.docs_deadline) : '';
+    const oc = (key) => (isCompact() && OPT_COL_KEYS.indexOf(key) >= 0 ? ' reg-opt-col' : '');
     return '<tr class="reg-row ' + cls + actionCls + rejectCls + unreadCls + '" data-id="' + row.id + '">' +
       '<td class="reg-no-cell" title="ID: ' + row.id + '"><div class="reg-no-main">' + unreadDot + esc(regNo) + '</div>' +
       '<div class="reg-no-sub">id ' + row.id + '</div></td>' +
@@ -1477,13 +1488,13 @@ window.AsgardRegistryTab = (function () {
       '<td class="reg-col-participation">' + participationCell(row) + '</td>' +
       '<td class="reg-col-analysis">' + analysisDeadlineCell(row) + '</td>' +
       '<td>' + statusPill(st, row.id) + '</td>' +
-      '<td class="muted reg-col-person" style="font-size:12px" title="Кто ведёт анализ">' + esc(row.analyst_name || '—') + '</td>' +
-      '<td class="muted reg-col-person" style="font-size:12px">' + esc(calcName) + '</td>' +
+      '<td class="muted reg-col-person' + oc('analyst_name') + '" style="font-size:12px" title="Кто ведёт анализ">' + esc(row.analyst_name || '—') + '</td>' +
+      '<td class="muted reg-col-person' + oc('calculator_user_name') + '" style="font-size:12px">' + esc(calcName) + '</td>' +
       '<td>' + rpPill + '</td>' +
-      '<td class="reg-col-comment"><div class="reg-comment-full">' + (comment ? esc(comment) : '<span class="muted">—</span>') + '</div></td>' +
-      '<td class="reg-col-score" title="' + scoreTitle + '">' + esc(scoreTxt) + '</td>' +
-      '<td class="muted reg-col-person" style="font-size:11px">' + esc(row.created_by_name || '—') + '</td>' +
-      '<td class="muted reg-col-date" style="font-size:11px" title="' + esc(row.created_at || '') + '">' + esc(fmtShortDate(row.created_at)) + '</td>' +
+      '<td class="reg-col-comment' + oc('comment_to') + '"><div class="reg-comment-full">' + (comment ? esc(comment) : '<span class="muted">—</span>') + '</div></td>' +
+      '<td class="reg-col-score' + oc('_score_pct') + '" title="' + scoreTitle + '">' + esc(scoreTxt) + '</td>' +
+      '<td class="muted reg-col-person' + oc('created_by_name') + '" style="font-size:11px">' + esc(row.created_by_name || '—') + '</td>' +
+      '<td class="muted reg-col-date' + oc('created_at') + '" style="font-size:11px" title="' + esc(row.created_at || '') + '">' + esc(fmtShortDate(row.created_at)) + '</td>' +
       '<td class="reg-purchase-cell">' + renderPurchaseCell(row) + '</td>' +
       '<td class="reg-action-cell">' + renderActionCell(row) + '</td>' +
       '<td><button type="button" class="btn mini ghost reg-detail" data-id="' + row.id + '" title="Карточка">⋯</button></td>' +
@@ -1647,6 +1658,11 @@ window.AsgardRegistryTab = (function () {
     });
     document.getElementById('regAddRow')?.addEventListener('click', openAddRowModal);
     document.getElementById('regAddRowEmpty')?.addEventListener('click', openAddRowModal);
+    document.getElementById('regColsToggle')?.addEventListener('click', (e) => {
+      state.compact = !isCompact();
+      e.currentTarget.textContent = isCompact() ? '▸ Все колонки' : '◂ Основные';
+      rerenderTable();
+    });
     document.getElementById('regRefresh')?.addEventListener('click', refresh);
     const clearBurn = () => {
       state.burnOnly = false;

@@ -486,8 +486,8 @@
   -webkit-overflow-scrolling: touch;
 }
 table.reg-table {
-  table-layout: auto;
-  min-width: 1480px;
+  table-layout: fixed;
+  min-width: 0;
 }
 table.reg-table td.reg-action-cell,
 table.reg-table th:nth-last-child(2) {
