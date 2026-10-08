@@ -86,7 +86,11 @@ window.AsgardTelephonyAdmin = (function () {
             return '<div class="pbx-field"><label>Линия ' + (i + 1) +
               '<input type="text" data-line="' + i + '" value="' + esc(l.name || l.did || '') + '"></label></div>';
           }).join('')
-        : '<p style="color:var(--t3);font-size:13px">Входящие линии ещё не настроены. Добавьте номера в разделе настроек PBX или обратитесь к администратору.</p>';
+        : '<div class="help" style="font-size:13px;color:var(--t2);line-height:1.5">' +
+            'Входящая линия одна и приходит на Asterisk напрямую из Mango (номера задаются в ЛК Mango, ' +
+            'а не здесь). Приём звонков настраивается не номерами, а режимом операторов: ' +
+            '<b>«На линии»</b> (браузер) или <b>«На мобильный»</b> — панель «Телефон».' +
+            '<br>Проверить: встать на линию и позвонить на номер организации.</div>';
 
       var strategy = cfg.routing_mode || cfg.dial_strategy || 'duty_first';
       if (strategy === 'parallel') strategy = 'simultaneous';
