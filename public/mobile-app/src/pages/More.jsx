@@ -16,7 +16,7 @@ import {
   Inbox, Calendar, HardHat, Warehouse, Package,
   ShoppingCart, Disc3, GanttChartSquare, LayoutGrid, Target,
   // Настройки
-\n  // Прочее
+  // Прочее
   Sun, Moon, LogOut, ChevronRight,
 } from 'lucide-react';
 

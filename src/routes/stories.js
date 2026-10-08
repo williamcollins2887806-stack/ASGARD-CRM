@@ -17,14 +17,21 @@ module.exports = async function (fastify) {
     return { stories: result.rows };
   });
 
-  // POST /api/stories — создать сторис
+  // POST /api/stories — создать сторис (media_url/media_type + content)
   fastify.post('/', {
     preHandler: [fastify.authenticate]
   }, async (request) => {
-    const { content, image_url } = request.body || {};
+    const body = request.body || {};
+    const content = body.content != null ? String(body.content) : '';
+    // Accept both the new (media_url/media_type) and the legacy (image_url) field
+    // so the dock composer and any old caller agree on one row.
+    const mediaUrl = body.media_url || body.image_url || null;
+    const mediaType = body.media_type
+      || (/\.(mp4|webm|mov)(\?|$)/i.test(String(mediaUrl || '')) ? 'video' : 'image');
     const result = await db.query(
-      'INSERT INTO user_stories (user_id, content, image_url) VALUES ($1, $2, $3) RETURNING *',
-      [request.user.id, content || '', image_url || null]
+      `INSERT INTO user_stories (user_id, content, image_url, media_url, media_type)
+       VALUES ($1, $2, $3, $4, $5) RETURNING *`,
+      [request.user.id, content, mediaUrl, mediaUrl, mediaUrl ? mediaType : 'text']
     );
     return { success: true, story: result.rows[0] };
   });

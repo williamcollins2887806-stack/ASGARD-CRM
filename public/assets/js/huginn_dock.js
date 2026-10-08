@@ -260,10 +260,14 @@
           <span>Хугинн</span>
           <span class="hg-rail-badge" data-rail-badge="huginn" hidden>0</span>
         </button>
-        <button type="button" class="hg-rail-btn" data-hg-tab="ting" title="Тинг">
-          ${ICO.video}
-          <span>Тинг</span>
-          <span class="hg-rail-badge" data-rail-badge="ting" hidden>0</span>
+        <button type="button" class="hg-rail-btn" data-hg-tab="contacts" title="Контакты">
+          ${ICO.contacts || ICO.user || ICO.empty}
+          <span>Контакты</span>
+        </button>
+        <button type="button" class="hg-rail-btn" data-hg-tab="calls" title="Звонки">
+          ${ICO.phone || ICO.calls}
+          <span>Звонки</span>
+          <span class="hg-rail-badge" data-rail-badge="calls" hidden>0</span>
         </button>
         <button type="button" class="hg-rail-btn hg-rail-btn--phone" data-hg-tab="phone" title="Телефон" hidden>
           ${ICO.phone}
@@ -277,9 +281,13 @@
           <span class="hg-nav-ico">${ICO.chats}<span class="hg-nav-badge" data-nav-badge hidden>0</span></span>
           <span class="hg-nav-label">Чаты</span>
         </button>
-        <button type="button" data-mnav="ting" aria-label="Тинг">
-          <span class="hg-nav-ico">${ICO.video || ICO.camera}</span>
-          <span class="hg-nav-label">Тинг</span>
+        <button type="button" data-mnav="contacts" aria-label="Контакты">
+          <span class="hg-nav-ico">${ICO.contacts || ICO.user || ICO.empty}</span>
+          <span class="hg-nav-label">Контакты</span>
+        </button>
+        <button type="button" data-mnav="calls" aria-label="Звонки">
+          <span class="hg-nav-ico">${ICO.phone || ICO.calls}</span>
+          <span class="hg-nav-label">Звонки</span>
         </button>
         <button type="button" data-mnav="settings" aria-label="Настройки">
           <span class="hg-nav-ico">${ICO.settings}<span class="hg-nav-dot" data-nav-dot aria-hidden="true">!</span></span>
@@ -351,15 +359,8 @@
           state.chatId = null;
           setCollapsed(false);
           renderPanel();
-        } else if (state.mobileNav === 'ting') {
-          state.tab = 'ting';
-          state.chatId = null;
-          setCollapsed(false);
-          renderPanel();
-          haptic('tab');
         } else if (state.mobileNav === 'calls') {
-          /* S14 = phone recent calls, not Ting meetings */
-          state.tab = 'phone';
+          state.tab = 'calls';
           state.chatId = null;
           setCollapsed(false);
           renderPanel();
@@ -367,8 +368,8 @@
         } else if (state.mobileNav === 'contacts') {
           state.tab = 'contacts';
           state.chatId = null;
-          setCollapsed(false);
-          renderPanel();
+          state.listTab = 'contacts';
+          loadContactsDirectory().then(() => { setCollapsed(false); renderPanel(); });
           haptic('tab');
         } else if (state.mobileNav === 'settings') {
           state.tab = 'settings';
@@ -1067,7 +1068,8 @@
       return body;
     }
     if (type === 'circle' && m.file_url) {
-      return `<div class="hg-circle-wrap"><video class="hg-circle" src="${esc(m.file_url)}" playsinline muted loop></video><span class="hg-circle-ring" aria-hidden="true"></span></div>`;
+      // TG-like: tap toggles play/pause; ring shows progress; not looped forever.
+      return `<div class="hg-circle-wrap" data-circle><video class="hg-circle" src="${esc(m.file_url)}" playsinline muted preload="metadata"></video><svg class="hg-circle-progress" viewBox="0 0 100 100" aria-hidden="true"><circle cx="50" cy="50" r="48"/></svg><span class="hg-circle-play" aria-hidden="true">${ICO.play || ''}</span></div>`;
     }
     if (type === 'image' && m.file_url) {
       return `<img class="hg-media-photo" src="${esc(m.file_url)}" alt="Фото" data-lightbox="${esc(m.file_url)}">`;
@@ -1437,25 +1439,63 @@
     box.querySelectorAll('.hg-voice').forEach((wrap) => {
       const btn = wrap.querySelector('.hg-voice-play');
       const audio = wrap.querySelector('audio');
+      const wave = wrap.querySelector('.hg-voice-wave');
       if (!btn || !audio) return;
+      const bars = () => Array.from(wave ? wave.querySelectorAll('i') : []);
+      const paint = (frac) => {
+        const list = bars();
+        const upto = Math.round(list.length * Math.max(0, Math.min(1, frac || 0)));
+        list.forEach((b, i) => b.classList.toggle('is-played', i < upto));
+      };
+      const syncBtn = (playing) => {
+        btn.innerHTML = playing ? (ICO.pause || ICO.play) : ICO.play;
+        btn.setAttribute('aria-label', playing ? 'Пауза' : 'Воспроизвести');
+        wrap.classList.toggle('is-playing', playing);
+      };
       btn.onclick = (e) => {
         e.stopPropagation();
-        if (audio.paused) {
-          audio.play();
-          wrap.classList.add('is-playing');
-          btn.innerHTML = ICO.pause || ICO.play;
-          btn.setAttribute('aria-label', 'Пауза');
-        } else {
-          audio.pause();
-          wrap.classList.remove('is-playing');
-          btn.innerHTML = ICO.play;
-          btn.setAttribute('aria-label', 'Воспроизвести');
-        }
+        if (audio.paused) audio.play().catch(() => {}); else audio.pause();
       };
-      audio.onended = () => {
-        wrap.classList.remove('is-playing');
-        btn.innerHTML = ICO.play;
+      audio.onplay = () => syncBtn(true);
+      audio.onpause = () => syncBtn(false);
+      audio.onended = () => { syncBtn(false); paint(0); wrap.classList.remove('is-playing'); };
+      // Waveform follows real playback; clicking it seeks (TG-like scrub).
+      audio.ontimeupdate = () => {
+        const d = audio.duration;
+        if (Number.isFinite(d) && d > 0) paint(audio.currentTime / d);
       };
+      if (wave) {
+        wave.style.cursor = 'pointer';
+        wave.onclick = (e) => {
+          e.stopPropagation();
+          const d = audio.duration;
+          if (!Number.isFinite(d) || d <= 0) return;
+          const r = wave.getBoundingClientRect();
+          const frac = Math.max(0, Math.min(1, (e.clientX - r.left) / r.width));
+          audio.currentTime = frac * d;
+          paint(frac);
+        };
+      }
+    });
+    // Circles: tap toggles play/pause + progress ring (was an auto-loop).
+    box.querySelectorAll('[data-circle]').forEach((wrap) => {
+      const video = wrap.querySelector('video');
+      const prog = wrap.querySelector('.hg-circle-progress circle');
+      const badge = wrap.querySelector('.hg-circle-play');
+      if (!video) return;
+      const LEN = 2 * Math.PI * 48;
+      if (prog) { prog.style.strokeDasharray = String(LEN); prog.style.strokeDashoffset = String(LEN); }
+      const sync = () => {
+        const d = video.duration;
+        const frac = (Number.isFinite(d) && d > 0) ? (video.currentTime / d) : 0;
+        if (prog) prog.style.strokeDashoffset = String(LEN * (1 - frac));
+        if (badge) badge.style.opacity = video.paused ? '1' : '0';
+      };
+      wrap.onclick = () => { if (video.paused) video.play().catch(() => {}); else video.pause(); };
+      video.onplay = () => { wrap.classList.add('is-playing'); sync(); };
+      video.onpause = () => { wrap.classList.remove('is-playing'); sync(); };
+      video.ontimeupdate = sync;
+      video.onended = () => { video.currentTime = 0; sync(); };
     });
     box.querySelectorAll('.hg-ticks.is-failed[data-retry]').forEach((el) => {
       el.onclick = (e) => {
@@ -1524,10 +1564,6 @@
   function renderPanel() {
     const panel = root.querySelector('#hgPanel');
     if (!panel) return;
-    if (lastPanelTab === 'ting' && state.tab !== 'ting'
-      && global.HuginnTing && typeof global.HuginnTing.unmountPanel === 'function') {
-      try { global.HuginnTing.unmountPanel(); } catch (_) {}
-    }
     const tabChanged = state.tab !== lastPanelTab;
     if (tabChanged) {
       lastPanelTab = state.tab;
@@ -1581,25 +1617,6 @@
         }
         return;
       }
-    }
-
-    if (state.tab === 'ting') {
-      if (global.HuginnTing && typeof global.HuginnTing.mountPanel === 'function') {
-        global.HuginnTing.mountPanel(panel);
-      } else {
-        panel.innerHTML = `
-          <div class="hg-panel-head">
-            <h2>Тинг</h2>
-            <button type="button" class="hg-icon-btn" data-collapse>${ICO.close || '✕'}</button>
-          </div>
-          <div class="hg-list" style="padding:16px">
-            <p style="margin:0 0 12px;font:400 var(--hg-font-preview) var(--hg-font);color:var(--hg-muted)">Видеозвонок. Откройте хаб для полного UI.</p>
-            <button type="button" class="hg-chip" id="hgTingHub">Открыть хаб Тинг</button>
-          </div>`;
-        panel.querySelector('[data-collapse]').onclick = () => setCollapsed(true);
-        panel.querySelector('#hgTingHub').onclick = () => { location.hash = '#/ting'; };
-      }
-      return;
     }
 
     if (state.tab === 'calls') {
@@ -1777,19 +1794,43 @@
       </div>`;
     }).join('');
     const stories = state.stories || [];
-    const storiesHtml = stories.length
-      ? stories.map((s) => {
-        const nm = s.user_name || 'Story';
-        const unread = !s.viewed;
-        return `<button type="button" class="hg-story-item${unread ? ' is-unread' : ''}" data-story="${s.id}" title="${esc(nm)}">
-          <div class="hg-story-ring"><div class="hg-story-av" style="background:${avatarColor(nm)}${s.avatar_url ? `;background-image:url('${esc(s.avatar_url)}');background-size:cover` : ''}">${s.avatar_url ? '' : esc(initials(nm))}</div></div>
-          <span class="hg-story-label">${esc((nm || '').split(/\s+/)[0] || '—')}</span>
-        </button>`;
-      }).join('')
-      : `<button type="button" class="hg-story-item is-add" id="hgStoryAdd" title="Истории">
-          <div class="hg-story-ring"><div class="hg-story-av is-add">+</div></div>
+    const myStory = stories.find((s) => Number(s.user_id) === Number(myId()));
+    const others = stories.filter((s) => Number(s.user_id) !== Number(myId()));
+    // Own circle is always first (view own story, or «+» to add one).
+    let storiesHtml = myStory
+      ? `<button type="button" class="hg-story-item is-mine" data-story="${myStory.id}" title="Моя история">
+          <div class="hg-story-ring is-mine"><div class="hg-story-av" style="background:${avatarColor('Я')}">${esc(initials((((global.AsgardAuth && AsgardAuth.user) || JSON.parse(localStorage.getItem('asgard_user') || '{}')).name || 'Я')))}</div></div>
+          <span class="hg-story-label">Моя</span>
+        </button>`
+      : `<button type="button" class="hg-story-item is-add" id="hgStoryAdd" title="Добавить историю">
+          <div class="hg-story-ring is-add"><div class="hg-story-av is-add">+</div></div>
           <span class="hg-story-label">История</span>
         </button>`;
+    // Other people's stories next.
+    storiesHtml += others.map((s) => {
+      const nm = s.user_name || 'Story';
+      const unread = !s.viewed;
+      return `<button type="button" class="hg-story-item${unread ? ' is-unread' : ''}" data-story="${s.id}" title="${esc(nm)}">
+        <div class="hg-story-ring"><div class="hg-story-av" style="background:${avatarColor(nm)}${s.avatar_url ? `;background-image:url('${esc(s.avatar_url)}');background-size:cover` : ''}">${s.avatar_url ? '' : esc(initials(nm))}</div></div>
+        <span class="hg-story-label">${esc((nm || '').split(/\s+/)[0] || '—')}</span>
+      </button>`;
+    }).join('');
+    // If nobody has a story yet, still keep the rail alive with recent direct
+    // chats (tap opens the chat) so the row is never a lone «+».
+    if (!others.length) {
+      const peers = (state.chats || [])
+        .filter((c) => !c.is_group && !c.is_mimir && (c.peer_user_id || c.direct_user_id))
+        .slice(0, 10);
+      storiesHtml += peers.map((c) => {
+        const nm = displayChatName(c);
+        const uid = c.peer_user_id || c.direct_user_id;
+        const online = c.is_online === true || (state.presence[uid] && state.presence[uid].online);
+        return `<button type="button" class="hg-story-item is-peer" data-peer-chat="${c.id}" title="${esc(nm)}">
+          <div class="hg-story-ring is-peer${online ? ' is-online' : ''}"><div class="hg-story-av" style="background:${avatarColor(nm)}">${esc(initials(nm))}</div></div>
+          <span class="hg-story-label">${esc((nm || '').split(/\s+/)[0] || '—')}</span>
+        </button>`;
+      }).join('');
+    }
     try {
       document.body.classList.toggle('hg-list-edit', !!state.listEditMode);
     } catch (_) {}
@@ -1812,10 +1853,6 @@
         </div>
       </div>
       <div class="hg-folder-row" id="hgFolders" role="tablist" aria-label="Папки чатов">${folderCaps}</div>
-      <div class="hg-presence-wrap" id="hgPresenceWrap" ${onlineCount ? '' : 'hidden'}>
-        <div class="hg-presence-caption">${onlineCount ? ('В сети: ' + onlineCount) : ''}</div>
-        <div class="hg-presence" id="hgPresence"></div>
-      </div>
       <div class="hg-tabs" id="hgTabs">
         <button type="button" class="hg-tab ${state.listTab === 'all' ? 'is-active' : ''}" data-ltab="all">Все${unreadSum ? `<span class="hg-tab-n">${unreadSum}</span>` : ''}</button>
         <button type="button" class="hg-tab ${state.listTab === 'personal' ? 'is-active' : ''}" data-ltab="personal">Личные</button>
@@ -1911,12 +1948,28 @@
     if (storyAdd) {
       storyAdd.onclick = () => openStoryComposer();
     }
+    panel.querySelectorAll('[data-peer-chat]').forEach((btn) => {
+      btn.onclick = () => openChat(Number(btn.getAttribute('data-peer-chat')));
+    });
     renderChatList(state.searchQ);
     renderPresenceStrip();
     panel.querySelector('#hgSearch').oninput = (e) => {
       state.searchQ = e.target.value;
       renderChatList(e.target.value);
     };
+    // Stories rail: hide on scroll up, reveal on scroll down (TG-like).
+    const listEl = panel.querySelector('#hgList');
+    const railEl = panel.querySelector('#hgStoriesRail');
+    if (listEl && railEl && !listEl._hgRailBound) {
+      listEl._hgRailBound = true;
+      let lastTop = 0;
+      listEl.addEventListener('scroll', () => {
+        const top = listEl.scrollTop;
+        const down = top > lastTop;
+        railEl.classList.toggle('is-hidden', down && top > 24);
+        lastTop = top;
+      }, { passive: true });
+    }
     panel.querySelectorAll('[data-ltab]').forEach((btn) => {
       btn.onclick = () => {
         state.listTab = btn.getAttribute('data-ltab');
@@ -2326,7 +2379,14 @@
           if (!up.ok) throw new Error(upData.error || 'Не удалось загрузить файл');
           mediaUrl = upData.url || upData.file_url || null;
         }
-        await api('/api/stories', { method: 'POST', body: { content: caption || 'История', image_url: mediaUrl } });
+        await api('/api/stories', {
+          method: 'POST',
+          body: {
+            content: caption || 'История',
+            media_url: mediaUrl,
+            media_type: mediaUrl ? (file && /^video\//.test(file.type) ? 'video' : 'image') : 'text'
+          }
+        });
         el.remove();
         showToast('История опубликована');
         loadStories().then(() => renderPanel());
@@ -2637,7 +2697,7 @@
         </div>
         <button type="button" data-a="msg">Написать</button>
         <button type="button" data-a="info">Инфо</button>
-        <button type="button" data-a="tags" disabled title="DEFER_BE">Метки…</button>
+        <button type="button" data-a="tags">Метки…</button>
         <button type="button" data-a="kick" class="is-danger">Исключить</button>`;
       el.appendChild(menu);
       menu.querySelector('[data-a="msg"]').onclick = async () => {
@@ -2651,6 +2711,7 @@
         } catch (e) { showToast(e.message || 'Чат'); }
       };
       menu.querySelector('[data-a="info"]').onclick = () => { showToast(nm); menu.remove(); };
+      menu.querySelector('[data-a="tags"]').onclick = () => { openMemberTags(m, el); menu.remove(); };
       menu.querySelector('[data-a="kick"]').onclick = async () => {
         const uid = m.user_id || m.id;
         menu.remove();
@@ -3069,7 +3130,8 @@
           chat_id: u.chat_id || 0,
           online: !!u.online,
           last_seen_at: u.last_seen_at || null,
-          is_huginn_guest: !!u.is_huginn_guest
+          is_huginn_guest: !!u.is_huginn_guest,
+          has_huginn: u.has_huginn !== false
         }));
     }
     const map = new Map();
@@ -3126,9 +3188,10 @@
       const seen = r.last_seen_at || (p && p.last_seen_at);
       const statusTxt = isOnline ? 'в сети' : (seen ? ('был(а) ' + formatSeen(seen)) : 'не в сети');
       const hasChat = Number(r.chat_id) > 0;
-      // Contacts without an existing chat are the «not in Huginn yet» bucket:
-      // show «Пригласить» instead of «открыть чат» (user requirement).
-      if (!hasChat) {
+      // «Есть в Хугинне» (не рабочий/не бот, либо гость) → можно написать;
+      // остальным (field/без аккаунта) — только пригласить.
+      const canWrite = r.has_huginn !== false || hasChat;
+      if (!canWrite) {
         html += `<button type="button" class="hg-contact-row is-invite" data-invite-uid="${r.user_id}" data-invite-name="${esc(nm)}">
           <div class="hg-contact-av" style="background:${avatarColor(nm)}">${esc(initials(nm))}</div>
           <div class="hg-contact-meta">
@@ -3211,8 +3274,8 @@
         const contactActive =
           (Number(r.chat_id) > 0 && Number(r.chat_id) === Number(state.chatId)) ||
           (Number(r.user_id) > 0 && Number(r.user_id) === Number(state.selectedContactUid));
-        if (Number(r.chat_id) <= 0) {
-          // Not in Huginn yet → invite, not open a chat.
+        if (Number(r.chat_id) <= 0 && r.has_huginn === false) {
+          // Not in Huginn yet (field worker without an account) → invite only.
           listHtml += `<button type="button" class="hg-contact-row is-invite" data-invite-uid="${r.user_id}" data-invite-name="${esc(nm)}">
             <div class="hg-contact-av" style="background:${avatarColor(nm)}">${esc(initials(nm))}</div>
             <div class="hg-contact-meta">
@@ -3239,7 +3302,11 @@
           <h2>Контакты</h2>
           <button type="button" class="hg-icon-btn" id="hgContactAdd" title="Добавить">${ICO.plus || '+'}</button>
         </div>
-        <input class="hg-search" id="hgContactSearch" placeholder="Поиск" value="${esc(state.contactsQ || '')}" />
+        <div class="hg-presence-wrap" id="hgPresenceWrap" hidden>
+        <div class="hg-presence-caption">В сети</div>
+        <div class="hg-presence" id="hgPresence"></div>
+      </div>
+      <input class="hg-search" id="hgContactSearch" placeholder="Поиск" value="${esc(state.contactsQ || '')}" />
         <div class="hg-contacts-body">
           <div class="hg-contacts-list" id="hgContactList">${listHtml}</div>
           <div class="hg-alpha-index" id="hgAlpha">${letters.map((L) => `<span data-letter="${L}">${L}</span>`).join('')}</div>
@@ -3316,6 +3383,47 @@
     document.documentElement.setAttribute('data-hg-fx', fx);
     try { localStorage.setItem('hg_power_saving', fx); } catch (_) {}
     return fx;
+  }
+
+  /** Выбор файла аватара → загрузка → PUT /api/users/me → обновление UI. */
+  async function pickAndUploadAvatar() {
+    const inp = document.createElement('input');
+    inp.type = 'file';
+    inp.accept = 'image/*';
+    inp.style.display = 'none';
+    inp.onchange = async () => {
+      const file = inp.files && inp.files[0];
+      inp.remove();
+      if (!file) return;
+      try {
+        showToast('Загружаю фото…');
+        const fd = new FormData();
+        fd.append('file', file, file.name || 'avatar');
+        const up = await fetch('/api/chat-groups/upload', {
+          method: 'POST',
+          headers: { Authorization: 'Bearer ' + token() },
+          body: fd
+        });
+        const upData = await up.json().catch(() => ({}));
+        if (!up.ok || !upData.url) throw new Error(upData.error || 'Не удалось загрузить фото');
+        const res = await api('/api/users/me', {
+          method: 'PUT',
+          body: { avatar_url: upData.url }
+        });
+        // Mirror into the local session so avatars update without a reload.
+        try {
+          const u = JSON.parse(localStorage.getItem('asgard_user') || '{}');
+          u.avatar_url = (res && res.user && res.user.avatar_url) || upData.url;
+          localStorage.setItem('asgard_user', JSON.stringify(u));
+        } catch (_) {}
+        showToast('Фото обновлено');
+        renderPanel();
+      } catch (e) {
+        showToast(e.message || 'Не удалось обновить фото');
+      }
+    };
+    document.body.appendChild(inp);
+    inp.click();
   }
 
   /** Журнал звонков Хугинна (читаемый список вместо call_event-пузыря). */
@@ -3418,7 +3526,7 @@
           <button type="button" class="hg-settings-edit" id="hgSettingsEdit">${headBtn}</button>
         </div>
         <div class="hg-settings-profile${!showProfile && !showEdit ? ' is-clickable' : ''}" id="hgSettingsProfileCard" role="${!showProfile && !showEdit ? 'button' : 'group'}" tabindex="${!showProfile && !showEdit ? '0' : '-1'}">
-          <div class="hg-settings-av" style="background:${avatarColor(name)}">${esc(initials(name))}</div>
+          <div class="hg-settings-av" style="background:${avatarColor(name)}${me.avatar_url ? `;background-image:url('${esc(me.avatar_url)}');background-size:cover;background-position:center` : ''}">${me.avatar_url ? '' : esc(initials(name))}</div>
           <div class="hg-settings-name">${esc(name)}</div>
           <div class="hg-settings-sub"><span class="hg-settings-shield" aria-hidden="true">1</span>${esc(phone)} · ${esc(uname)}</div>
           ${!showProfile && !showEdit ? `<button type="button" class="hg-settings-photo-btn" id="hgSettingsPhoto">${ICO.camera || '📷'} Изменить фотографию</button>` : ''}
@@ -3482,7 +3590,7 @@
       };
     });
     const photoBtn = panel.querySelector('#hgSettingsPhoto');
-    if (photoBtn) photoBtn.onclick = () => showToast('Смена фото — DEFER S31');
+    if (photoBtn) photoBtn.onclick = () => pickAndUploadAvatar();
     panel.querySelectorAll('[data-phone-keep],[data-phone-change],#hgSettingsPhoneMore').forEach((btn) => {
       btn.onclick = () => {
         const card = panel.querySelector('.hg-settings-alert');
@@ -3838,7 +3946,6 @@
     el.setAttribute('data-role', 'menu');
         el.innerHTML = `<div class="hg-float-actions">
           <button type="button" data-a="invite">${ICO.invite}<span>Пригласить</span></button>
-          <button type="button" data-a="video">${ICO.video}<span>Тинг</span></button>
           <button type="button" data-a="collapse">${ICO.close}<span>Свернуть</span></button>
         </div>`;
         placeFloat(el, ev.clientX, ev.clientY);
@@ -3847,10 +3954,6 @@
           if (!a) return;
           clearFloats();
           if (a === 'invite') inviteSomeone();
-          if (a === 'video') {
-            if (typeof HuginnTing !== 'undefined' && HuginnTing.openOverlay) HuginnTing.openOverlay({ chatId: state.chatId });
-            else location.hash = '#/ting';
-          }
           if (a === 'collapse') setCollapsed(true);
         };
       };
@@ -4286,7 +4389,7 @@
     const emojiGrid = FALLBACK.map((e) =>
       `<button type="button" class="hg-sticker-emoji" data-emoji="${e}" title="${e}">${e}</button>`
     ).join('');
-    sheet.innerHTML = `<div class="hg-sticker-label">Эмодзи</div><div class="hg-sticker-grid" data-sticker-grid="1" data-emoji-grid="1">${emojiGrid}</div><button type="button" class="hg-sheet-close" data-close>Закрыть</button>`;
+    sheet.innerHTML = `<div class="hg-sticker-label">Эмодзи</div><div class="hg-sticker-grid" data-sticker-grid="1" data-emoji-grid="1">${emojiGrid}</div><div class="hg-sticker-packs" id="hgStickerPacks"></div><button type="button" class="hg-sheet-close" data-close>Закрыть</button>`;
     const thread = root.querySelector('.hg-thread');
     if (!thread) return;
     thread.appendChild(sheet);
@@ -4296,6 +4399,32 @@
       sheet.remove();
       if (smile) smile.classList.remove('is-open');
     };
+    // Stickers catalog (backend /stickers); emoji grid stays as a quick fallback.
+    api('/api/chat-groups/stickers').then((cat) => {
+      const packs = (cat && cat.packs) || [];
+      const box = sheet.querySelector('#hgStickerPacks');
+      if (!box || !packs.length) return;
+      box.innerHTML = packs.map((p) => `<div class="hg-sticker-label">${esc(p.name || p.slug)}</div>
+        <div class="hg-sticker-grid">${(p.stickers || []).map((s) => `<button type="button" class="hg-sticker-emoji" data-sid="${s.id}" title="Стикер">${s.emoji || '🖼'}</button>`).join('')}</div>`).join('');
+      box.querySelectorAll('[data-sid]').forEach((btn) => {
+        btn.onclick = async () => {
+          try {
+            const d = await api('/api/chat-groups/' + state.chatId + '/stickers', {
+              method: 'POST', body: { sticker_id: Number(btn.getAttribute('data-sid')) }
+            });
+            const msg = d.message || d;
+            if (msg && msg.id) {
+              state.knownMsgIds.add(Number(msg.id));
+              state.messages.push(msg);
+              state.stickToBottom = true;
+              renderPanel();
+            }
+          } catch (e) { showToast(e.message || 'Стикер'); }
+          sheet.remove();
+          if (smile) smile.classList.remove('is-open');
+        };
+      });
+    }).catch(() => {});
     sheet.querySelectorAll('[data-emoji]').forEach((btn) => {
       btn.onclick = async () => {
         const emoji = btn.getAttribute('data-emoji');
@@ -4314,6 +4443,54 @@
         if (smile) smile.classList.remove('is-open');
       };
     });
+  }
+
+  /** Метки участника чата (chat_member_tags): добавить/удалить чипы. */
+  async function openMemberTags(m, hostEl) {
+    const uid = m.user_id || m.id;
+    const chatId = state.chatId;
+    if (!uid || !chatId) return;
+    const nm = m.name || m.user_name || ('User ' + uid);
+    hostEl.querySelectorAll('.hg-tags-pop').forEach((x) => x.remove());
+    const pop = document.createElement('div');
+    pop.className = 'hg-attach-menu hg-glass hg-tags-pop';
+    pop.setAttribute('data-role', 'menu');
+    pop.innerHTML = `<div class="hg-tags-title">Метки · ${esc(nm)}</div>
+      <div class="hg-tags-list" id="hgTagsList"><span class="hg-muted">Загрузка…</span></div>
+      <div class="hg-tags-add">
+        <input id="hgTagInput" placeholder="Новая метка" maxlength="32" />
+        <button type="button" id="hgTagAdd" class="hg-chip">Добавить</button>
+      </div>
+      <button type="button" class="hg-sheet-close" data-close>Закрыть</button>`;
+    hostEl.appendChild(pop);
+    pop.querySelector('[data-close]').onclick = () => pop.remove();
+
+    const renderTags = async () => {
+      const list = pop.querySelector('#hgTagsList');
+      try {
+        const { tags } = await api('/api/chat-groups/' + chatId + '/members/' + uid + '/tags');
+        list.innerHTML = (tags || []).length
+          ? tags.map((t) => `<span class="hg-tag-chip">${esc(t.tag)}<button type="button" data-del="${t.id}" aria-label="Убрать">✕</button></span>`).join('')
+          : '<span class="hg-muted">Пока нет меток</span>';
+        list.querySelectorAll('[data-del]').forEach((b) => {
+          b.onclick = async () => {
+            try { await api('/api/chat-groups/' + chatId + '/members/' + uid + '/tags/' + b.getAttribute('data-del'), { method: 'DELETE' }); } catch (_) {}
+            renderTags();
+          };
+        });
+      } catch (e) { list.innerHTML = `<span class="hg-muted">${esc(e.message || 'Ошибка')}</span>`; }
+    };
+    pop.querySelector('#hgTagAdd').onclick = async () => {
+      const inp = pop.querySelector('#hgTagInput');
+      const tag = (inp.value || '').trim();
+      if (!tag) return;
+      try {
+        await api('/api/chat-groups/' + chatId + '/members/' + uid + '/tags', { method: 'POST', body: { tag } });
+        inp.value = '';
+        renderTags();
+      } catch (e) { showToast(e.message || 'Не удалось добавить метку'); }
+    };
+    renderTags();
   }
 
   function clearFloats() {

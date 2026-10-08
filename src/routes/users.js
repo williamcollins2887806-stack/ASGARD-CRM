@@ -115,11 +115,53 @@ async function routes(fastify, options) {
     preHandler: [fastify.authenticate]
   }, async (request, reply) => {
     const result = await db.query(
-      'SELECT id, login, name, patronymic, email, role, is_active, created_at, last_login_at, birth_date, employment_date, phone, telegram_chat_id, is_blocked, block_reason, must_change_password FROM users WHERE id = $1',
+      'SELECT id, login, name, patronymic, email, role, is_active, created_at, last_login_at, birth_date, employment_date, phone, telegram_chat_id, is_blocked, block_reason, must_change_password, avatar_url FROM users WHERE id = $1',
       [request.user.id]
     );
     if (!result.rows[0]) return reply.code(404).send({ error: 'Пользователь не найден' });
     return { user: result.rows[0] };
+  });
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // PUT /api/users/me - Обновить СВОЙ профиль (имя / avatar_url)
+  // Отдельно от PUT /:id (там requirePermission('users','write')). Свой профиль
+  // правит владелец: имя и аватар. Пароль/PIN/роль — не здесь.
+  // ─────────────────────────────────────────────────────────────────────────────
+  fastify.put('/me', {
+    preHandler: [fastify.authenticate]
+  }, async (request, reply) => {
+    const body = request.body || {};
+    const updates = [];
+    const values = [];
+    let idx = 1;
+    if (typeof body.name === 'string' && body.name.trim()) {
+      updates.push(`name = $${idx++}`);
+      values.push(body.name.trim().slice(0, 200));
+    }
+    if (body.avatar_url !== undefined) {
+      // Only local upload paths (uploads/chat/...) — never arbitrary remote URLs.
+      const av = body.avatar_url == null ? null : String(body.avatar_url).trim();
+      if (av && !/^\/uploads\/[A-Za-z0-9._\/-]+$/.test(av)) {
+        return reply.code(400).send({ error: 'Недопустимый путь аватара' });
+      }
+      updates.push(`avatar_url = $${idx++}`);
+      values.push(av || null);
+    }
+    if (!updates.length) return reply.code(400).send({ error: 'Нет полей для обновления' });
+    values.push(request.user.id);
+    try {
+      const result = await db.query(
+        `UPDATE users SET ${updates.join(', ')} WHERE id = $${idx} RETURNING id, login, name, avatar_url`,
+        values
+      );
+      return { success: true, user: result.rows[0] };
+    } catch (e) {
+      // Column may be absent on a drifted DB — surface honestly, not as 500.
+      if (/avatar_url/.test(String(e.message))) {
+        return reply.code(400).send({ error: 'Аватары не поддерживаются на этой БД' });
+      }
+      throw e;
+    }
   });
 
   // ─────────────────────────────────────────────────────────────────────────────

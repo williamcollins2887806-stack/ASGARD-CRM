@@ -69,7 +69,7 @@ export const WIDGET_REGISTRY = {
 
 /** Дефолтный набор виджетов по роли */
 export const DEFAULT_LAYOUTS = {
-\n  CHIEF_ENGINEER: ['welcome','academy','equipment_value','equipment_alerts','my_mail','notifications'],
+  CHIEF_ENGINEER: ['welcome','academy','equipment_value','equipment_alerts','my_mail','notifications'],
   HR:             ['welcome','academy','permits_expiry','birthdays','my_mail','notifications','calendar'],
   BUH:            ['welcome','telephony_status','academy','cash_balance','bank_summary','money_summary','my_mail','notifications'],
   DEFAULT:        ['welcome','academy','my_mail','notifications','todo','calendar','birthdays'],

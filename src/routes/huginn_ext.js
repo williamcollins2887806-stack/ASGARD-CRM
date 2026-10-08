@@ -185,6 +185,61 @@ module.exports = async function registerHuginnExt(fastify, { db, uploadDir, getC
     return { message: full };
   });
 
+  // ── Member tags (метки участника чата) ────────────────────────
+  fastify.get('/:id/members/:userId/tags', {
+    preHandler: [fastify.authenticate]
+  }, async (request, reply) => {
+    const chatId = parsePositiveInt(request.params.id);
+    const userId = parsePositiveInt(request.params.userId);
+    if (chatId == null || userId == null) return reply.code(400).send({ error: 'bad id' });
+    const member = await getChatMembership(chatId, request.user.id);
+    if (!member) return reply.code(403).send({ error: 'Нет доступа' });
+    const { rows } = await db.query(
+      'SELECT id, tag FROM chat_member_tags WHERE chat_id = $1 AND user_id = $2 ORDER BY id',
+      [chatId, userId]
+    ).catch(() => ({ rows: [] }));
+    return { tags: rows };
+  });
+
+  fastify.post('/:id/members/:userId/tags', {
+    preHandler: [fastify.authenticate]
+  }, async (request, reply) => {
+    const chatId = parsePositiveInt(request.params.id);
+    const userId = parsePositiveInt(request.params.userId);
+    const tag = String((request.body || {}).tag || '').trim().slice(0, 32);
+    if (chatId == null || userId == null) return reply.code(400).send({ error: 'bad id' });
+    if (!tag) return reply.code(400).send({ error: 'Метка пустая' });
+    const member = await getChatMembership(chatId, request.user.id);
+    if (!member) return reply.code(403).send({ error: 'Нет доступа' });
+    try {
+      const { rows } = await db.query(
+        `INSERT INTO chat_member_tags (chat_id, user_id, tag, created_by)
+         VALUES ($1,$2,$3,$4)
+         ON CONFLICT (chat_id, user_id, tag) DO UPDATE SET tag = EXCLUDED.tag
+         RETURNING id, tag`,
+        [chatId, userId, tag, request.user.id]
+      );
+      return { tag: rows[0] };
+    } catch (e) {
+      if (/chat_member_tags/.test(String(e.message))) {
+        return reply.code(400).send({ error: 'Метки не поддерживаются на этой БД' });
+      }
+      throw e;
+    }
+  });
+
+  fastify.delete('/:id/members/:userId/tags/:tagId', {
+    preHandler: [fastify.authenticate]
+  }, async (request, reply) => {
+    const chatId = parsePositiveInt(request.params.id);
+    const tagId = parsePositiveInt(request.params.tagId);
+    if (chatId == null || tagId == null) return reply.code(400).send({ error: 'bad id' });
+    const member = await getChatMembership(chatId, request.user.id);
+    if (!member) return reply.code(403).send({ error: 'Нет доступа' });
+    await db.query('DELETE FROM chat_member_tags WHERE id = $1 AND chat_id = $2', [tagId, chatId]).catch(() => {});
+    return { success: true };
+  });
+
   // ── Stickers ──────────────────────────────────────────────────
   fastify.get('/stickers', {
     preHandler: [fastify.authenticate]
@@ -264,7 +319,7 @@ module.exports = async function registerHuginnExt(fastify, { db, uploadDir, getC
     const { rows } = await db.query(
       `INSERT INTO huginn_invites
          (token, inviter_user_id, phone, email, display_name, chat_id, status, expires_at)
-       VALUES ($1,$2,$3,$4,$5,$6,'pending', NOW() + INTERVAL '7 days')
+       VALUES ($1,$2,$3,$4,$5,$6,'pending', NOW() + INTERVAL '24 hours')
        RETURNING id, token, phone, email, display_name, chat_id, status, expires_at, created_at`,
       [token, request.user.id, phone, email, displayName, chatId]
     );
@@ -277,7 +332,7 @@ module.exports = async function registerHuginnExt(fastify, { db, uploadDir, getC
     const channel = ['email', 'sms'].includes(String(body.channel || '')) ? String(body.channel) : 'none';
     const who = displayName || 'коллега';
     let delivery = { channel: 'none', sent: false };
-    const msgText = `${who}, вас приглашают в мессенджер АСГАРД Хугинн. Установите приложение или откройте ссылку: ${fullUrl} (действует 7 дней)`;
+    const msgText = `${who}, вас приглашают в мессенджер АСГАРД Хугинн. Установите приложение или откройте ссылку: ${fullUrl} (действует 24 часа)`;
 
     if (channel === 'email' && email) {
       try {
@@ -286,7 +341,7 @@ module.exports = async function registerHuginnExt(fastify, { db, uploadDir, getC
 <p>${request.user.name || 'Коллега'} приглашает вас в корпоративный мессенджер <b>АСГАРД Хугинн</b>.</p>
 <p>Откройте ссылку с телефона — приложение установится на экран «Домой» и откроет чат:</p>
 <p><a href="${fullUrl}">${fullUrl}</a></p>
-<p>Ссылка действует 7 дней.</p>`;
+<p>Ссылка действует 24 часа.</p>`;
         await sendCrmEmail(db, request.user.id, {
           to: email,
           subject: 'Приглашение в АСГАРД Хугинн',
@@ -525,19 +580,32 @@ module.exports = async function registerHuginnExt(fastify, { db, uploadDir, getC
     preHandler: [fastify.authenticate]
   }, async (request) => {
     const uid = request.user.id;
-    const { rows } = await db.query(
-      `SELECT s.*, u.name AS user_name, u.avatar_url,
-              EXISTS(
-                SELECT 1 FROM chat_story_views v
-                WHERE v.story_id = s.id AND v.user_id = $1
-              ) AS viewed
-       FROM user_stories s
-       JOIN users u ON u.id = s.user_id
-       WHERE s.expires_at > NOW()
-       ORDER BY viewed ASC, s.created_at DESC`,
-      [uid]
-    );
-    return { stories: rows };
+    try {
+      const { rows } = await db.query(
+        `SELECT s.*, u.name AS user_name, u.avatar_url,
+                EXISTS(
+                  SELECT 1 FROM chat_story_views v
+                  WHERE v.story_id = s.id AND v.user_id = $1
+                ) AS viewed
+         FROM user_stories s
+         JOIN users u ON u.id = s.user_id
+         WHERE s.expires_at > NOW()
+         ORDER BY viewed ASC, s.created_at DESC`,
+        [uid]
+      );
+      return { stories: rows };
+    } catch (e) {
+      // chat_story_views may be absent on a drifted DB — stories still work, no rings.
+      if (/chat_story_views/.test(String(e.message))) {
+        const { rows } = await db.query(
+          `SELECT s.*, u.name AS user_name, u.avatar_url, false AS viewed
+           FROM user_stories s JOIN users u ON u.id = s.user_id
+           WHERE s.expires_at > NOW() ORDER BY s.created_at DESC`
+        );
+        return { stories: rows };
+      }
+      throw e;
+    }
   });
 
   // call_event helper used by dock/ting integration
@@ -1216,6 +1284,8 @@ module.exports = async function registerHuginnExt(fastify, { db, uploadDir, getC
       `SELECT u.id AS user_id, u.name, u.role, u.last_seen_at,
               (u.last_seen_at IS NOT NULL AND u.last_seen_at > NOW() - INTERVAL '2 minutes') AS fresh,
               COALESCE(u.is_huginn_guest, false) AS is_huginn_guest,
+              (COALESCE(u.is_huginn_guest, false) = true
+                 OR u.role NOT IN ('FIELD_WORKER', 'BOT')) AS has_huginn,
               (SELECT c.id
                  FROM chats c
                  JOIN chat_group_members m1 ON m1.chat_id = c.id AND m1.user_id = $1
@@ -1236,6 +1306,7 @@ module.exports = async function registerHuginnExt(fastify, { db, uploadDir, getC
         name: r.name,
         role: r.role,
         is_huginn_guest: r.is_huginn_guest,
+        has_huginn: r.has_huginn === true,
         online: !!r.fresh,
         last_seen_at: r.last_seen_at,
         chat_id: r.chat_id || null

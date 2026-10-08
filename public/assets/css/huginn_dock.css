@@ -151,6 +151,17 @@
   border: 0;
   transform: none; /* transforms kill backdrop-filter sampling */
 }
+/* Specular top highlight — the «expensive glass» cue (composer/nav/fab/menu/header). */
+.hg-glass[data-role="composer"],
+.hg-glass[data-role="nav"],
+.hg-glass[data-role="fab"],
+.hg-glass[data-role="header"],
+.hg-glass[data-role="menu"],
+.hg-glass[data-role="pin"] {
+  box-shadow:
+    inset 0 0.5px 0 color-mix(in srgb, var(--t1, #fff) 22%, transparent),
+    inset 0 0 0 1px color-mix(in srgb, var(--t1, #fff) var(--hg-glass-rim-pct), transparent);
+}
 .hg-glass[data-role="composer"] {
   --hg-glass-fill-pct: 65%;
   --hg-glass-blur: 20px;
@@ -634,7 +645,12 @@ body.hg-list-edit .hg-nav-search {
   padding: 4px 12px 8px;
   overflow-x: auto;
   scrollbar-width: none;
+  transition: max-height 220ms var(--hg-ease-ui, ease), opacity 180ms var(--hg-ease-ui, ease), margin 220ms var(--hg-ease-ui, ease);
+  max-height: 96px;
+  opacity: 1;
 }
+/* TG-like: hide the rail when scrolling up through the list. */
+.hg-stories-rail.is-hidden { max-height: 0; opacity: 0; margin: 0; padding-top: 0; padding-bottom: 0; overflow: hidden; }
 .hg-stories-rail::-webkit-scrollbar { display: none; }
 .hg-story-item {
   flex: 0 0 auto;
@@ -658,6 +674,16 @@ body.hg-list-edit .hg-nav-search {
 .hg-story-item.is-unread .hg-story-ring {
   background: linear-gradient(135deg, var(--blue-l, #4A90D9), color-mix(in srgb, var(--blue-l, #4A90D9) 40%, #fff));
 }
+/* Own story ring + brand gradient (TG-like). */
+.hg-story-ring.is-mine {
+  background: linear-gradient(135deg, var(--blue-l, #4A90D9), color-mix(in srgb, var(--blue-l, #4A90D9) 35%, #fff));
+}
+.hg-story-ring.is-add {
+  background: color-mix(in srgb, var(--hg-muted) 30%, transparent);
+}
+/* Direct peer without a story: quiet ring, online = soft accent. */
+.hg-story-ring.is-peer { background: color-mix(in srgb, var(--hg-muted) 28%, transparent); }
+.hg-story-ring.is-peer.is-online { background: color-mix(in srgb, var(--ok-t, #4ADE80) 55%, transparent); }
 .hg-story-av {
   width: 100%; height: 100%;
   border-radius: 50%;
@@ -5260,3 +5286,41 @@ body:has(.hg-ai-sheet) .hg-nav-search {
   }
   .hg-msgs { -webkit-overflow-scrolling: touch; }
 }
+
+/* -- Member tags (chat_member_tags) -- */
+.hg-tags-pop {
+  position: absolute; z-index: 40; right: 12px; top: 12px;
+  min-width: 240px; max-width: 300px; padding: 12px;
+}
+.hg-tags-title { font: 600 14px/1.3 var(--hg-font); color: var(--hg-text); margin-bottom: 8px; }
+.hg-tags-list { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
+.hg-tag-chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 4px 8px; border-radius: 999px;
+  background: color-mix(in srgb, var(--hg-accent, var(--blue-l, #4A90D9)) 16%, transparent);
+  color: var(--hg-text); font: 500 12px/1 var(--hg-font);
+}
+.hg-tag-chip button {
+  border: 0; background: transparent; color: inherit; cursor: pointer;
+  font-size: 11px; line-height: 1; padding: 0;
+}
+.hg-tags-add { display: flex; gap: 6px; }
+.hg-tags-add input {
+  flex: 1; min-width: 0; height: 34px; border-radius: 10px;
+  border: 1px solid var(--hg-border); background: var(--hg-elev);
+  color: var(--hg-text); padding: 0 10px; font: 400 14px var(--hg-font);
+}
+.hg-sticker-packs { margin-top: 10px; }
+
+/* -- Voice/circle playback progress (TG-like) -- */
+.hg-circle-wrap:not(.is-playing) .hg-circle-progress { display: none; }
+.hg-circle-progress {
+  position: absolute; inset: -3px; width: calc(100% + 6px); height: calc(100% + 6px);
+  pointer-events: none; transform: rotate(-90deg);
+}
+.hg-circle-progress circle { fill: none; stroke: var(--blue-l, #4A90D9); stroke-width: 3; stroke-linecap: round; }
+.hg-circle-play {
+  position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+  color: #fff; font-size: 40px; text-shadow: 0 2px 8px rgba(0,0,0,.5); transition: opacity 160ms ease;
+}
+.hg-voice-wave { cursor: pointer; }

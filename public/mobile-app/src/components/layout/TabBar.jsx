@@ -49,7 +49,6 @@ const TabIcon = ({ name, active, size = 22 }) => {
 const TABS = [
   { path: '/',      icon: 'home',  label: 'Главная' },
   { path: '/tasks', icon: 'tasks', label: 'Задачи' },
-  { path: '/chat',  icon: 'chat',  label: 'Хугинн' },
   { path: '/works', icon: 'works', label: 'Работы' },
   { path: '/more',  icon: 'more',  label: 'Ещё' },
 ];

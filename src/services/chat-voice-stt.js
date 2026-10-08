@@ -60,7 +60,11 @@ async function finishTranscript(db, msg, transcript) {
 async function processOne(db, job, uploadRoot) {
   const stub = process.env.HUGINN_STT_STUB === '1';
   const sk = getSpeechKitService();
-  if ((!sk || !sk.isConfigured()) && !stub) {
+  // Gate must accept ANY configured provider, not only Yandex: the primary STT is
+  // RouterAI (same path Ting uses), and Yandex keys may be empty.
+  let routerai = false;
+  try { routerai = await require('./transcribe-routerai').isConfiguredAsync(); } catch (_) {}
+  if ((!sk || !sk.isConfigured()) && !routerai && !stub) {
     await db.query(
       `UPDATE chat_voice_jobs
        SET status = 'failed', error_text = $2, finished_at = NOW(), attempts = attempts + 1

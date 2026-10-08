@@ -243,18 +243,61 @@
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Ошибка входа');
-      // Staff tokens can be gated by PIN/setup (auth.js returns need_pin/need_setup).
-      // The messenger dock cannot confirm a CRM PIN, so send staff to the full CRM.
-      if (data.status === 'need_pin' || data.status === 'need_setup') {
+      // Staff tokens can be gated by PIN (auth.js returns need_pin). Ask for the
+      // PIN right here instead of dumping the user into the CRM.
+      if (data.status === 'need_pin') {
         localStorage.setItem('asgard_token', data.token || '');
         localStorage.setItem('asgard_user', JSON.stringify(data.user || {}));
-        location.href = '/';
+        renderPinStep(data.token || '');
+        return;
+      }
+      // First login with a temp password: password change lives in the full CRM.
+      if (data.status === 'need_setup') {
+        localStorage.setItem('asgard_token', data.token || '');
+        localStorage.setItem('asgard_user', JSON.stringify(data.user || {}));
+        app.innerHTML = `<div class="h-login"><div class="h-logo" aria-hidden="true">${logoSvg()}</div>
+          <h1>Нужно сменить пароль</h1>
+          <p>Первый вход: задайте новый пароль и PIN в CRM, затем вернитесь в Хугинн.</p>
+          <div class="h-err" id="err"></div>
+          <button type="button" id="toCrm">Открыть CRM</button></div>`;
+        document.getElementById('toCrm').onclick = () => { location.href = '/'; };
         return;
       }
       saveSessionAndBoot(data, false);
     } catch (e) {
       err.textContent = e.message;
     }
+  }
+
+  /** PIN step inside /h/ (uses the existing /api/auth/verify-pin). */
+  function renderPinStep(tempToken) {
+    app.innerHTML = `
+      <div class="h-login">
+        <div class="h-logo" aria-hidden="true">${logoSvg()}</div>
+        <h1>Хугинн</h1>
+        <p>Введите PIN сотрудника</p>
+        <div class="h-err" id="err"></div>
+        <input id="staffPin" inputmode="numeric" autocomplete="one-time-code" placeholder="PIN" />
+        <button type="button" id="staffPinGo">Войти</button>
+      </div>`;
+    const go = async () => {
+      const pin = (document.getElementById('staffPin').value || '').trim();
+      const err = document.getElementById('err');
+      err.textContent = '';
+      if (!pin) { err.textContent = 'Введите PIN'; return; }
+      try {
+        const res = await fetch('/api/auth/verify-pin', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + tempToken },
+          body: JSON.stringify({ pin })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Неверный PIN');
+        saveSessionAndBoot(data, true);
+      } catch (e) { err.textContent = e.message; }
+    };
+    document.getElementById('staffPinGo').onclick = go;
+    document.getElementById('staffPin').addEventListener('keydown', (e) => { if (e.key === 'Enter') go(); });
   }
 
   /** Deep link from the login email: /h/?login=<token>. */
