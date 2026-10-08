@@ -212,23 +212,26 @@ module.exports = async function telephonyPbxRoutes(fastify) {
     await ensureOperatorRow(req.user.id);
     const u = await db.query('SELECT name FROM users WHERE id = $1', [req.user.id]);
     const name = u.rows[0]?.name;
-    let { rows } = await db.query('SELECT sip_username, sip_password_hash FROM pbx_operators WHERE user_id = $1', [
-      req.user.id,
-    ]);
+    let { rows } = await db.query(
+      'SELECT sip_username, sip_password, sip_password_hash FROM pbx_operators WHERE user_id = $1',
+      [req.user.id]
+    );
     let sipUsername = rows[0]?.sip_username;
-    let plainPass = null;
+    let plainPass = rows[0]?.sip_password || null;
     if (!sipUsername) {
       sipUsername = genSipUsername(req.user.id, name);
       plainPass = crypto.randomBytes(12).toString('base64url');
       await db.query(
-        `UPDATE pbx_operators SET sip_username = $2, sip_password_hash = $3, updated_at = NOW() WHERE user_id = $1`,
-        [req.user.id, sipUsername, hashSipPassword(plainPass)]
+        `UPDATE pbx_operators SET sip_username = $2, sip_password_hash = $3, sip_password = $4, updated_at = NOW() WHERE user_id = $1`,
+        [req.user.id, sipUsername, hashSipPassword(plainPass), plainPass]
       );
-    } else if (req.query.regenerate === '1') {
+    } else if (req.query.regenerate === '1' || !plainPass) {
+      // Выданных паролей нет (миграция до V374) — выпустить новый.
+      // PJSIP-эндпоинт заводится root-скриптом tools/provision_pjsip_operators.js.
       plainPass = crypto.randomBytes(12).toString('base64url');
       await db.query(
-        `UPDATE pbx_operators SET sip_password_hash = $2, updated_at = NOW() WHERE user_id = $1`,
-        [req.user.id, hashSipPassword(plainPass)]
+        `UPDATE pbx_operators SET sip_password_hash = $2, sip_password = $3, updated_at = NOW() WHERE user_id = $1`,
+        [req.user.id, hashSipPassword(plainPass), plainPass]
       );
     }
     return {

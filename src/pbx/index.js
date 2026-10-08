@@ -20,6 +20,7 @@ const {
 } = require('./call-lifecycle');
 const { finalizeRecording, finalizeOnHangup } = require('./recording');
 const { runOperatorMaintenance } = require('./operator-lifecycle');
+const { ensurePrompt } = require('./prompts');
 
 let pool = null;
 let agiServer = null;
@@ -112,11 +113,22 @@ async function handleInboundAgi(session) {
 
     if (!plan.withinHours || !plan.targets.length) {
       await session.answer();
-      const msgFile = plan.withinHours ? 'custom/all-busy' : 'custom/after-hours';
+      const customText = plan.withinHours ? pbxConfig.greeting_text : pbxConfig.after_hours_text;
+      const fallbackFile = plan.withinHours ? 'custom/all-busy' : 'custom/after-hours';
+      let played = false;
       try {
-        await session.streamFile(msgFile);
-      } catch (_) {
-        await session.streamFile('beep');
+        const file = await ensurePrompt(customText);
+        if (file) {
+          await session.streamFile(file);
+          played = true;
+        }
+      } catch (e) {
+        console.warn('[asgard-pbx] prompt synth failed:', e.message);
+      }
+      if (!played) {
+        for (const f of [fallbackFile, 'custom/all-busy', 'beep']) {
+          try { await session.streamFile(f); played = true; break; } catch (_) { /* next */ }
+        }
       }
       await markCallMissed(client, uniqueId, plan.withinHours ? 'no_agents' : 'off_hours');
       await notifyRing(client, {
@@ -144,6 +156,19 @@ async function handleInboundAgi(session) {
     // Контракт dialplan: Dial + cascade 2..5
     await session.setVariable('ASGARD_DIAL_STRING', dial.dialString);
     await session.setVariable('ASGARD_RING_TIMEOUT', String(dial.ringTimeout));
+
+    // Приветствие из настроек (Silero → 8 kHz WAV) поставить в очередь до Dial.
+    if (pbxConfig.greeting_text) {
+      try {
+        const g = await ensurePrompt(pbxConfig.greeting_text);
+        if (g) {
+          await session.setVariable('ASGARD_GREETING', g);
+          await session.streamFile(g);
+        }
+      } catch (e) {
+        console.warn('[asgard-pbx] greeting synth failed:', e.message);
+      }
+    }
     await session.setVariable('ASGARD_FALLBACK_DIAL', dial.fallbackDial || '');
     await session.setVariable('ASGARD_FALLBACK_TIMEOUT', String(dial.fallbackTimeout || 20));
     await session.setVariable('ASGARD_CASCADE_3', dial.cascade3 || '');
@@ -758,4 +783,5 @@ module.exports = {
   originateOutbound,
   normalizeOutboundNumber,
   runOperatorMaintenance,
+  ensurePrompt,
 };
