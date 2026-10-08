@@ -1,4 +1,4 @@
-'use strict';
+﻿'use strict';
 
 const crypto = require('crypto');
 const { lookupCaller } = require('../services/caller-lookup');
@@ -6,9 +6,24 @@ const { config: pbxEnv } = require('../pbx/config');
 const { normalizePbxConfig } = require('../pbx/call-lifecycle');
 const { minutesUntilWorkEnd, isWithinWorkHours, resolveDutyUntilMinutes, getTzParts } = require('../pbx/dial-engine');
 const { runOperatorMaintenance } = require('../pbx/operator-lifecycle');
+const { claimLine } = require('../pbx/line-claim');
 
+/**
+ * РўРµР»РµС„РѕРЅРёСЏ РґРѕСЃС‚СѓРїРЅР° Р»СЋР±РѕРјСѓ Р°РєС‚РёРІРЅРѕРјСѓ СЃРѕС‚СЂСѓРґРЅРёРєСѓ (РєСЂРѕРјРµ СЃР»СѓР¶РµР±РЅС‹С…),
+ * С‡С‚РѕР±С‹ РєР°Р¶РґС‹Р№ РјРѕРі РїРѕР·РІРѕРЅРёС‚СЊ РёР· Р±СЂР°СѓР·РµСЂР°. Р Р°РЅРµРµ Р±С‹Р» СѓР·РєРёР№ СЃРїРёСЃРѕРє СЂРѕР»РµР№.
+ * Р’С…РѕРґСЏС‰РёРµ РїСЂРё СЌС‚РѕРј РїРѕР»СѓС‡Р°СЋС‚ С‚РѕР»СЊРєРѕ С‚Рµ, РєС‚Рѕ СЏРІРЅРѕ РІСЃС‚Р°Р» РЅР° Р»РёРЅРёСЋ.
+ */
 const TEL_ROLES = ['ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV', 'PM', 'HEAD_PM', 'TO', 'HEAD_TO', 'BUH'];
+const TEL_DENY_ROLES = ['BOT', 'FIELD_WORKER'];
 const PBX_ADMIN_ROLES = ['ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV', 'HEAD_TO'];
+
+/** РњРѕР¶РµС‚ Р»Рё РїРѕР»СЊР·РѕРІР°С‚РµР»СЊ РїРѕР»СЊР·РѕРІР°С‚СЊСЃСЏ С‚РµР»РµС„РѕРЅРёРµР№ (РІРєР»Р°РґРєР° + РёСЃС…РѕРґСЏС‰РёРµ). */
+function canUseTelephony(user) {
+  if (!user) return false;
+  if (TEL_DENY_ROLES.includes(user.role)) return false;
+  return true;
+}
+
 
 function pbxCmdBase() {
   const host = process.env.PBX_CMD_HOST || '127.0.0.1';
@@ -99,7 +114,7 @@ module.exports = async function telephonyPbxRoutes(fastify) {
 
   // GET/POST /operator/status
   fastify.get('/operator/status', { preHandler: [fastify.authenticate] }, async (req) => {
-    if (!TEL_ROLES.includes(req.user.role)) {
+    if (!canUseTelephony(req.user)) {
       const err = new Error('Forbidden');
       err.statusCode = 403;
       throw err;
@@ -135,8 +150,8 @@ module.exports = async function telephonyPbxRoutes(fastify) {
       minutes_to_work_end: minsLeft,
       duty_until: cfg.duty_until || `${hh}:${mm}`,
       online_count: onlineCount.rows[0]?.n || 0,
-      // Явная достижимость: «browser» требует зарегистрированного SIP, иначе панель
-      // должна предупредить, а не молча уйти на GSM.
+      // РЇРІРЅР°СЏ РґРѕСЃС‚РёР¶РёРјРѕСЃС‚СЊ: В«browserВ» С‚СЂРµР±СѓРµС‚ Р·Р°СЂРµРіРёСЃС‚СЂРёСЂРѕРІР°РЅРЅРѕРіРѕ SIP, РёРЅР°С‡Рµ РїР°РЅРµР»СЊ
+      // РґРѕР»Р¶РЅР° РїСЂРµРґСѓРїСЂРµРґРёС‚СЊ, Р° РЅРµ РјРѕР»С‡Р° СѓР№С‚Рё РЅР° GSM.
       reachable: st.receive_mode === 'mobile'
         ? !!st.mobile_phone
         : (st.receive_mode === 'browser'
@@ -149,7 +164,7 @@ module.exports = async function telephonyPbxRoutes(fastify) {
   });
 
   fastify.post('/operator/status', { preHandler: [fastify.authenticate] }, async (req) => {
-    if (!TEL_ROLES.includes(req.user.role)) {
+    if (!canUseTelephony(req.user)) {
       const err = new Error('Forbidden');
       err.statusCode = 403;
       throw err;
@@ -174,7 +189,7 @@ module.exports = async function telephonyPbxRoutes(fastify) {
   });
 
   fastify.post('/operator/heartbeat', { preHandler: [fastify.authenticate] }, async (req) => {
-    if (!TEL_ROLES.includes(req.user.role)) {
+    if (!canUseTelephony(req.user)) {
       const err = new Error('Forbidden');
       err.statusCode = 403;
       throw err;
@@ -189,6 +204,37 @@ module.exports = async function telephonyPbxRoutes(fastify) {
     return rows[0] || { on_line: false, skipped: true };
   });
 
+  /** Регистрация SIP без постановки на линию: сотрудник может звонить, но входящие к нему не идут. */
+  fastify.post('/softphone/register', { preHandler: [fastify.authenticate] }, async (req) => {
+    if (!canUseTelephony(req.user)) {
+      const err = new Error('Forbidden');
+      err.statusCode = 403;
+      throw err;
+    }
+    await ensureOperatorRow(req.user.id);
+    const registered = req.body?.registered !== false;
+    const { rows } = await db.query(
+      `UPDATE pbx_operators
+          SET webrtc_registered = $2, last_seen_at = NOW(), updated_at = NOW()
+        WHERE user_id = $1
+        RETURNING on_line, receive_mode, webrtc_registered`,
+      [req.user.id, registered]
+    );
+    return { ok: true, ...(rows[0] || {}) };
+  });
+
+  /** Взять линию (перехват): у прежнего владельца снимается on_line. */
+  fastify.post('/operator/claim-line', { preHandler: [fastify.authenticate] }, async (req, reply) => {
+    if (!canUseTelephony(req.user)) return reply.code(403).send({ error: 'Forbidden' });
+    const receiveMode = req.body?.receive_mode;
+    try {
+      const r = await claimLine(db, req.user.id, { receiveMode });
+      return { ...r, on_line: true };
+    } catch (e) {
+      return reply.code(409).send({ error: e.message || 'line_claim_failed' });
+    }
+  });
+
   fastify.post('/operator/maintenance', { preHandler: [fastify.authenticate, fastify.requireRoles(PBX_ADMIN_ROLES)] }, async (req) => {
     const result = await runOperatorMaintenance(db, {
       now: req.body?.now ? new Date(req.body.now) : new Date(),
@@ -198,7 +244,7 @@ module.exports = async function telephonyPbxRoutes(fastify) {
   });
 
   fastify.post('/operator/toggle', { preHandler: [fastify.authenticate] }, async (req) => {
-    if (!TEL_ROLES.includes(req.user.role)) {
+    if (!canUseTelephony(req.user)) {
       const err = new Error('Forbidden');
       err.statusCode = 403;
       throw err;
@@ -213,7 +259,7 @@ module.exports = async function telephonyPbxRoutes(fastify) {
   });
 
   fastify.get('/softphone/credentials', { preHandler: [fastify.authenticate] }, async (req) => {
-    if (!TEL_ROLES.includes(req.user.role)) {
+    if (!canUseTelephony(req.user)) {
       const err = new Error('Forbidden');
       err.statusCode = 403;
       throw err;
@@ -235,8 +281,8 @@ module.exports = async function telephonyPbxRoutes(fastify) {
         [req.user.id, sipUsername, hashSipPassword(plainPass), plainPass]
       );
     } else if (req.query.regenerate === '1' || !plainPass) {
-      // Выданных паролей нет (миграция до V374) — выпустить новый.
-      // PJSIP-эндпоинт заводится root-скриптом tools/provision_pjsip_operators.js.
+      // Р’С‹РґР°РЅРЅС‹С… РїР°СЂРѕР»РµР№ РЅРµС‚ (РјРёРіСЂР°С†РёСЏ РґРѕ V374) вЂ” РІС‹РїСѓСЃС‚РёС‚СЊ РЅРѕРІС‹Р№.
+      // PJSIP-СЌРЅРґРїРѕРёРЅС‚ Р·Р°РІРѕРґРёС‚СЃСЏ root-СЃРєСЂРёРїС‚РѕРј tools/provision_pjsip_operators.js.
       plainPass = crypto.randomBytes(12).toString('base64url');
       await db.query(
         `UPDATE pbx_operators SET sip_password_hash = $2, sip_password = $3, updated_at = NOW() WHERE user_id = $1`,
@@ -253,7 +299,7 @@ module.exports = async function telephonyPbxRoutes(fastify) {
 
   function callCtrl(action) {
     return async (req, reply) => {
-      if (!TEL_ROLES.includes(req.user.role)) {
+      if (!canUseTelephony(req.user)) {
         return reply.code(403).send({ error: 'Forbidden' });
       }
       try {
@@ -269,7 +315,7 @@ module.exports = async function telephonyPbxRoutes(fastify) {
   }
 
   fastify.post('/call/answer', { preHandler: [fastify.authenticate] }, async (req, reply) => {
-    if (!TEL_ROLES.includes(req.user.role)) return reply.code(403).send({ error: 'Forbidden' });
+    if (!canUseTelephony(req.user)) return reply.code(403).send({ error: 'Forbidden' });
     try {
       return await pbxFetch('/call/answer', {
         method: 'POST',
@@ -285,7 +331,7 @@ module.exports = async function telephonyPbxRoutes(fastify) {
   });
   fastify.post('/call/hangup', { preHandler: [fastify.authenticate] }, callCtrl('hangup'));
   fastify.post('/call/hold', { preHandler: [fastify.authenticate] }, async (req, reply) => {
-    if (!TEL_ROLES.includes(req.user.role)) return reply.code(403).send({ error: 'Forbidden' });
+    if (!canUseTelephony(req.user)) return reply.code(403).send({ error: 'Forbidden' });
     try {
       return await pbxFetch('/call/hold', {
         method: 'POST',
@@ -299,7 +345,7 @@ module.exports = async function telephonyPbxRoutes(fastify) {
     }
   });
   fastify.post('/call/transfer', { preHandler: [fastify.authenticate] }, async (req, reply) => {
-    if (!TEL_ROLES.includes(req.user.role)) return reply.code(403).send({ error: 'Forbidden' });
+    if (!canUseTelephony(req.user)) return reply.code(403).send({ error: 'Forbidden' });
     try {
       return await pbxFetch('/call/transfer', {
         method: 'POST',
@@ -319,7 +365,7 @@ module.exports = async function telephonyPbxRoutes(fastify) {
   fastify.post('/call/outbound', { preHandler: [fastify.authenticate] }, callCtrl('originate'));
 
   fastify.post('/operator/webrtc', { preHandler: [fastify.authenticate] }, async (req, reply) => {
-    if (!TEL_ROLES.includes(req.user.role)) return reply.code(403).send({ error: 'Forbidden' });
+    if (!canUseTelephony(req.user)) return reply.code(403).send({ error: 'Forbidden' });
     try {
       return await pbxFetch('/operator/webrtc', {
         method: 'POST',
@@ -344,7 +390,7 @@ module.exports = async function telephonyPbxRoutes(fastify) {
 
   // Staff list for transfer UI (PM+), not only PBX admins
   fastify.get('/transfer/staff', { preHandler: [fastify.authenticate] }, async (req) => {
-    if (!TEL_ROLES.includes(req.user.role)) {
+    if (!canUseTelephony(req.user)) {
       const err = new Error('Forbidden');
       err.statusCode = 403;
       throw err;
@@ -382,7 +428,7 @@ module.exports = async function telephonyPbxRoutes(fastify) {
   });
 
   fastify.get('/health', { preHandler: [fastify.authenticate] }, async (req, reply) => {
-    if (!TEL_ROLES.includes(req.user.role)) {
+    if (!canUseTelephony(req.user)) {
       return reply.code(403).send({ error: 'Forbidden' });
     }
     try {
@@ -394,7 +440,7 @@ module.exports = async function telephonyPbxRoutes(fastify) {
   });
 
   fastify.get('/reports/journal', { preHandler: [fastify.authenticate] }, async (req) => {
-    if (!TEL_ROLES.includes(req.user.role)) {
+    if (!canUseTelephony(req.user)) {
       const err = new Error('Forbidden');
       err.statusCode = 403;
       throw err;
@@ -422,7 +468,7 @@ module.exports = async function telephonyPbxRoutes(fastify) {
   });
 
   fastify.get('/reports/timeline/:callId', { preHandler: [fastify.authenticate] }, async (req, reply) => {
-    if (!TEL_ROLES.includes(req.user.role)) {
+    if (!canUseTelephony(req.user)) {
       return reply.code(403).send({ error: 'Forbidden' });
     }
     const callId = req.params.callId;
@@ -453,7 +499,7 @@ module.exports = async function telephonyPbxRoutes(fastify) {
   });
 
   fastify.get('/reports/missed', { preHandler: [fastify.authenticate] }, async (req) => {
-    if (!TEL_ROLES.includes(req.user.role)) {
+    if (!canUseTelephony(req.user)) {
       const err = new Error('Forbidden');
       err.statusCode = 403;
       throw err;
@@ -485,7 +531,7 @@ module.exports = async function telephonyPbxRoutes(fastify) {
   });
 
   fastify.get('/lookup/:phone', { preHandler: [fastify.authenticate] }, async (req) => {
-    if (!TEL_ROLES.includes(req.user.role)) {
+    if (!canUseTelephony(req.user)) {
       const err = new Error('Forbidden');
       err.statusCode = 403;
       throw err;
@@ -494,10 +540,10 @@ module.exports = async function telephonyPbxRoutes(fastify) {
   });
 
   /**
-   * Провижининг PJSIP-эндпоинтов всех операторов с выданным sip_password.
-   * Вызывается при деплое/старте, чтобы новые операторы не требовали ручного шага.
-   * Требует прав root (пишет /etc/asterisk) — поэтому, если процесс не root,
-   * возвращаем подсказку запустить tools/provision_pjsip_operators.js.
+   * РџСЂРѕРІРёР¶РёРЅРёРЅРі PJSIP-СЌРЅРґРїРѕРёРЅС‚РѕРІ РІСЃРµС… РѕРїРµСЂР°С‚РѕСЂРѕРІ СЃ РІС‹РґР°РЅРЅС‹Рј sip_password.
+   * Р’С‹Р·С‹РІР°РµС‚СЃСЏ РїСЂРё РґРµРїР»РѕРµ/СЃС‚Р°СЂС‚Рµ, С‡С‚РѕР±С‹ РЅРѕРІС‹Рµ РѕРїРµСЂР°С‚РѕСЂС‹ РЅРµ С‚СЂРµР±РѕРІР°Р»Рё СЂСѓС‡РЅРѕРіРѕ С€Р°РіР°.
+   * РўСЂРµР±СѓРµС‚ РїСЂР°РІ root (РїРёС€РµС‚ /etc/asterisk) вЂ” РїРѕСЌС‚РѕРјСѓ, РµСЃР»Рё РїСЂРѕС†РµСЃСЃ РЅРµ root,
+   * РІРѕР·РІСЂР°С‰Р°РµРј РїРѕРґСЃРєР°Р·РєСѓ Р·Р°РїСѓСЃС‚РёС‚СЊ tools/provision_pjsip_operators.js.
    */
   fastify.post('/operator/provision-all', { preHandler: [fastify.authenticate, fastify.requireRoles(PBX_ADMIN_ROLES)] }, async () => {
     const { rows } = await db.query(
@@ -521,7 +567,7 @@ module.exports = async function telephonyPbxRoutes(fastify) {
     }
   });
 
-  // Fallback тик (если asgard-pbx не запущен): stale + work_hours offline
+  // Fallback С‚РёРє (РµСЃР»Рё asgard-pbx РЅРµ Р·Р°РїСѓС‰РµРЅ): stale + work_hours offline
   const maint = setInterval(() => {
     runOperatorMaintenance(db).catch((e) => {
       fastify.log?.warn?.({ err: e }, 'pbx operator maintenance');

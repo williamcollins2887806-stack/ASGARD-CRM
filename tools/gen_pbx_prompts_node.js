@@ -31,6 +31,8 @@ async function main() {
   if (cfg.greeting_text) defs.push({ name: 'all-busy', text: cfg.greeting_text });
   if (cfg.after_hours_text) defs.push({ name: 'after-hours', text: cfg.after_hours_text });
   defs.push({ name: 'confirm-press-1', text: 'Нажмите один, чтобы принять звонок.' });
+  defs.push({ name: 'voicemail-prompt', text: 'Оставьте сообщение после сигнала. Завершите запись клавишей решётка.' });
+  defs.push({ name: 'voicemail-thanks', text: 'Спасибо! Мы перезвоним вам.' });
 
   const out = await generatePrompt(defs);
   for (const o of out) console.log('OK', o.name, '->', o.path);

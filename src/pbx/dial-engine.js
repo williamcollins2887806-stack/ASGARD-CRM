@@ -148,8 +148,8 @@ function isOperatorReachable(op, nowMs = Date.now()) {
 }
 
 function expandOperatorTargets(op, config, nowMs = Date.now()) {
-  const browserSec = config.browser_ring_sec ?? 5;
-  const mobileSec = config.mobile_ring_sec ?? 20;
+  const browserSec = config.browser_ring_sec ?? 10;
+  const mobileSec = config.mobile_ring_sec ?? 30;
   /** @type {RingTarget[]} */
   const targets = [];
   const baseOrder = op.sort_order ?? 100;

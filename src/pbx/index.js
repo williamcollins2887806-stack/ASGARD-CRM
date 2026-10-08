@@ -18,7 +18,7 @@ const {
   normalizePbxConfig,
   targetToDialPart,
 } = require('./call-lifecycle');
-const { finalizeRecording, finalizeOnHangup, sweepRecordings } = require('./recording');
+const { finalizeRecording, finalizeOnHangup, sweepRecordings, saveVoicemail } = require('./recording');
 const { runOperatorMaintenance } = require('./operator-lifecycle');
 const { ensurePrompt } = require('./prompts');
 
@@ -63,6 +63,25 @@ async function loadOperators(client) {
      WHERE u.is_active = true`
   );
   return rows;
+}
+
+/** Мобильный дежурного для фолбэка (когда никто не на линии). */
+async function loadDutyMobile(client, dutyUserId) {
+  if (!dutyUserId) return null;
+  try {
+    const { rows } = await client.query(
+      `SELECT COALESCE(NULLIF(BTRIM(o.mobile_phone), ''), NULLIF(BTRIM(u.phone), ''), NULLIF(BTRIM(ucs.fallback_mobile), '')) AS mobile
+         FROM users u
+         LEFT JOIN pbx_operators o ON o.user_id = u.id
+         LEFT JOIN user_call_status ucs ON ucs.user_id = u.id
+        WHERE u.id = $1`,
+      [dutyUserId]
+    );
+    const m = rows[0]?.mobile;
+    return m ? String(m).replace(/[^\d]/g, '') : null;
+  } catch (_) {
+    return null;
+  }
 }
 
 async function notifyRing(client, payload) {
@@ -114,6 +133,10 @@ async function handleInboundAgi(session) {
 
     if (!plan.withinHours || !plan.targets.length) {
       const announce = pbxConfig.greeting_in_crm !== false;
+      // Нет свободных операторов: не теряем вызов — приветствие → дежурный на мобильный → почта.
+      const dutyMobile = pbxConfig.duty_mobile_fallback !== false
+        ? await loadDutyMobile(client, dutyUserId)
+        : null;
       if (announce) {
         await session.answer();
         const customText = plan.withinHours ? pbxConfig.greeting_text : pbxConfig.after_hours_text;
@@ -133,8 +156,16 @@ async function handleInboundAgi(session) {
             try { await session.streamFile(f); played = true; break; } catch (_) { /* next */ }
           }
         }
-      } else {
-        // Приветствие озвучивает Mango — просто завершаем вызов.
+      }
+      if (dutyMobile) {
+        await session.setVariable('ASGARD_DUTY_MOBILE', dutyMobile);
+        await session.setVariable('ASGARD_DUTY_MOBILE_TO', String(pbxConfig.mobile_ring_sec ?? 30));
+        if (!announce) await session.answer();
+        await session.verbose(`Duty mobile fallback ${dutyMobile}`, 1);
+        return { ok: true, fallback: 'duty_mobile', plan, hist };
+      }
+      if (!announce) {
+        // Приветствие озвучивает Mango — сразу в голосовую почту.
         await session.hangup();
       }
       await markCallMissed(client, uniqueId, plan.withinHours ? 'no_agents' : 'off_hours');
@@ -160,9 +191,18 @@ async function handleInboundAgi(session) {
       return { ok: false, reason: 'empty_dial', plan };
     }
 
-    // Контракт dialplan: Dial + cascade 2..5
+    // Контракт dialplan: Dial + cascade 2..5 + дежурный + почта
     await session.setVariable('ASGARD_DIAL_STRING', dial.dialString);
     await session.setVariable('ASGARD_RING_TIMEOUT', String(dial.ringTimeout));
+    // Дежурный на мобильный как звено цепочки (если не ответил никто из браузерных).
+    if (pbxConfig.duty_mobile_fallback !== false) {
+      const dutyMobile = await loadDutyMobile(client, dutyUserId);
+      if (dutyMobile) {
+        await session.setVariable('ASGARD_DUTY_MOBILE', dutyMobile);
+        await session.setVariable('ASGARD_DUTY_MOBILE_TO', String(pbxConfig.mobile_ring_sec ?? 30));
+      }
+    }
+    await session.setVariable('ASGARD_VM_MAX_SEC', String(pbxConfig.voicemail_max_sec ?? 60));
 
     // Приветствие из настроек (Silero → 8 kHz WAV) перед дозвоном операторам.
     // greeting_in_crm=false → приветствие озвучивает Mango IVR, здесь молчим.
@@ -312,9 +352,8 @@ async function originateOutbound(db, body) {
     );
     op = rows[0] || {};
     if (op.webrtc_registered && op.sip_username) {
-      // WebRTC уже зарегистрирован → звонок идёт из браузера (JsSIP) на клиента
-      // напрямую через context from-internal/outbound-crm, серверный originate
-      // оператору не нужен (иначе получаем «двойной набор»).
+      // WebRTC зарегистрирован → звонок идёт из браузера (JsSIP) напрямую,
+      // серверный originate оператору не нужен (иначе «двойной набор»).
       const err = new Error('Оператор на WebRTC — звонок инициируется из браузера');
       err.statusCode = 409;
       err.via = 'webrtc';
@@ -325,9 +364,9 @@ async function originateOutbound(db, body) {
     }
   }
   if (!channel) {
-    const err = new Error('Оператор не на линии: нет WebRTC и мобильного');
-    err.statusCode = 409;
-    throw err;
+    // Без user_id (или без мобильного) — прямой исходящий через транк:
+    // сотруднику не нужен ни WebRTC, ни «на линии», чтобы позвонить из CRM.
+    channel = `PJSIP/mango-trunk/${number}`;
   }
 
   const ami = getAmiClient();
@@ -696,6 +735,11 @@ function createCmdServer() {
         if (!r.ok && r.reason === 'pending_file') {
           return send(202, r);
         }
+        if (!r.ok) return send(400, r);
+        return send(200, r);
+      }
+      if (req.method === 'POST' && url.pathname === '/recording/voicemail') {
+        const r = await saveVoicemail(db, body);
         if (!r.ok) return send(400, r);
         return send(200, r);
       }

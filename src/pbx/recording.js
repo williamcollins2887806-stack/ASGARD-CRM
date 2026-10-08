@@ -159,4 +159,52 @@ async function sweepRecordings(pool, { lookbackMinutes = 15, limit = 30 } = {}) 
   return { ok: true, scanned: rows.length, attached };
 }
 
-module.exports = { finalizeRecording, finalizeOnHangup, findRecordingSource, sweepRecordings };
+/**
+ * Сохранить голосовое сообщение: перенести WAV в recordings, привязать к звонку,
+ * пометить как голосовую почту и разослать пуш пропущенного.
+ * @param {import('pg').Pool} pool
+ * @param {{pbxUid?: string, callId?: string, file?: string}} opts
+ */
+async function saveVoicemail(pool, opts) {
+  const pbxUid = opts.pbxUid || opts.pbx_uid;
+  const file = opts.file || opts.sourcePath;
+  if (!pbxUid || !file || !fs.existsSync(file)) {
+    return { ok: false, reason: 'no_file', file };
+  }
+  const now = new Date();
+  const yyyy = String(now.getFullYear());
+  const mm = String(now.getMonth() + 1).padStart(2, '0');
+  const destDir = path.join(config.recordingsRoot, yyyy, mm);
+  fs.mkdirSync(destDir, { recursive: true });
+  const base = `vm_${pbxUid}.wav`;
+  const destPath = path.join(destDir, base);
+  try {
+    fs.renameSync(file, destPath);
+  } catch (_) {
+    fs.copyFileSync(file, destPath);
+    try { fs.unlinkSync(file); } catch (_) { /* ignore */ }
+  }
+  const relUrl = `/recordings/${yyyy}/${mm}/${base}`;
+
+  if (pool) {
+    const client = await pool.connect();
+    try {
+      await client.query(
+        `UPDATE call_history
+            SET recording_url = $1, record_path = $2, call_type = 'missed',
+                status = 'missed', outcome = 'voicemail', updated_at = NOW()
+          WHERE pbx_uid = $3`,
+        [relUrl, destPath, pbxUid]
+      );
+      await client.query('SELECT pg_notify($1, $2)', [
+        'pbx_recording_ready',
+        JSON.stringify({ call_id: 'pbx_' + pbxUid, pbx_uid: pbxUid, path: destPath, url: relUrl, voicemail: true }),
+      ]);
+    } finally {
+      client.release();
+    }
+  }
+  return { ok: true, destPath, relUrl, voicemail: true };
+}
+
+module.exports = { finalizeRecording, finalizeOnHangup, findRecordingSource, sweepRecordings, saveVoicemail };

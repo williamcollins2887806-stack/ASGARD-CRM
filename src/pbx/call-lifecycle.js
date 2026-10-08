@@ -1,8 +1,8 @@
-'use strict';
+﻿'use strict';
 
 /**
- * Жизненный цикл PBX-звонка: dial string, call_history, pbx_call_legs, NOTIFY.
- * Без заглушек — каждый шаг пишет реальные side-effects в БД.
+ * Р–РёР·РЅРµРЅРЅС‹Р№ С†РёРєР» PBX-Р·РІРѕРЅРєР°: dial string, call_history, pbx_call_legs, NOTIFY.
+ * Р‘РµР· Р·Р°РіР»СѓС€РµРє вЂ” РєР°Р¶РґС‹Р№ С€Р°Рі РїРёС€РµС‚ СЂРµР°Р»СЊРЅС‹Рµ side-effects РІ Р‘Р”.
  */
 
 const { buildRingPlan } = require('./dial-engine');
@@ -12,9 +12,9 @@ function digitsOnly(s) {
 }
 
 /**
- * Один target → Asterisk Dial() tech/resource.
- * webrtc → PJSIP/<sip_username>
- * mobile → Local/<digits>@asgard-mobile-confirm (нажать 1)
+ * РћРґРёРЅ target в†’ Asterisk Dial() tech/resource.
+ * webrtc в†’ PJSIP/<sip_username>
+ * mobile в†’ Local/<digits>@asgard-mobile-confirm (РЅР°Р¶Р°С‚СЊ 1)
  */
 function targetToDialPart(target) {
   if (!target || !target.targetAddr) return null;
@@ -27,7 +27,7 @@ function targetToDialPart(target) {
 }
 
 /**
- * @param {Array} targets — из buildRingPlan
+ * @param {Array} targets вЂ” РёР· buildRingPlan
  * @param {object} cfg
  * @returns {{ dialString: string, ringTimeout: number, firstTarget: object|null, cascade: Array }}
  */
@@ -45,8 +45,8 @@ function buildDialVars(targets, cfg) {
     if (p) parts.push(p);
   }
   const dialString = parts.join('&');
-  let ringTimeout = cfg?.browser_ring_sec ?? 5;
-  if (list[0]?.targetType === 'mobile') ringTimeout = cfg?.mobile_ring_sec ?? 20;
+  let ringTimeout = cfg?.browser_ring_sec ?? 10;
+  if (list[0]?.targetType === 'mobile') ringTimeout = cfg?.mobile_ring_sec ?? 30;
   if (parallel && list.length) {
     ringTimeout = Math.max(...list.map((t) => t.ringSec || ringTimeout));
   }
@@ -58,13 +58,13 @@ function buildDialVars(targets, cfg) {
       if (!p) continue;
       cascade.push({
         dial: p,
-        timeout: Math.max(1, Number(list[i].ringSec) || (cfg?.mobile_ring_sec ?? 20)),
+        timeout: Math.max(1, Number(list[i].ringSec) || (cfg?.mobile_ring_sec ?? 30)),
         target: list[i],
       });
     }
   }
   const fallbackDial = cascade[0]?.dial || null;
-  const fallbackTimeout = cascade[0]?.timeout || (cfg?.mobile_ring_sec ?? 20);
+  const fallbackTimeout = cascade[0]?.timeout || (cfg?.mobile_ring_sec ?? 30);
   return {
     dialString,
     ringTimeout: Math.max(1, Number(ringTimeout) || 5),
@@ -100,8 +100,8 @@ async function loadDutyUserIdMsk(client) {
 }
 
 /**
- * Создать строку call_history для PBX inbound.
- * call_id = pbx_<uid> — совместимо с PK varchar на проде.
+ * РЎРѕР·РґР°С‚СЊ СЃС‚СЂРѕРєСѓ call_history РґР»СЏ PBX inbound.
+ * call_id = pbx_<uid> вЂ” СЃРѕРІРјРµСЃС‚РёРјРѕ СЃ PK varchar РЅР° РїСЂРѕРґРµ.
  */
 async function insertPbxCallHistory(client, { pbxUid, caller, toNumber, lookup, source = 'pbx' }) {
   const callId = 'pbx_' + String(pbxUid);
@@ -197,7 +197,7 @@ async function markCallMissed(client, pbxUid, outcome = 'no_answer') {
 }
 
 /**
- * NOTIFY payload для CRM SSE (обязательны event + user_id).
+ * NOTIFY payload РґР»СЏ CRM SSE (РѕР±СЏР·Р°С‚РµР»СЊРЅС‹ event + user_id).
  */
 function buildRingNotifyPayload({ pbxUid, caller, lookup, target, channel, callHistoryId }) {
   const fromNumber = caller || null;
@@ -227,8 +227,8 @@ function buildRingNotifyPayload({ pbxUid, caller, lookup, target, channel, callH
 }
 
 /**
- * Нормализация admin UI ↔ dial-engine.
- * Admin писал dial_strategy / work_hours_from; engine ждёт routing_mode / work_hours.
+ * РќРѕСЂРјР°Р»РёР·Р°С†РёСЏ admin UI в†” dial-engine.
+ * Admin РїРёСЃР°Р» dial_strategy / work_hours_from; engine Р¶РґС‘С‚ routing_mode / work_hours.
  */
 function normalizePbxConfig(raw) {
   const cfg = raw && typeof raw === 'object' ? { ...raw } : {};
@@ -271,8 +271,10 @@ function normalizePbxConfig(raw) {
     }
   }
   if (cfg.max_agents == null) cfg.max_agents = 3;
-  // Приветствие по умолчанию озвучивает CRM (Silero). Выкл → приветствие в Mango IVR.
+  // РџСЂРёРІРµС‚СЃС‚РІРёРµ РїРѕ СѓРјРѕР»С‡Р°РЅРёСЋ РѕР·РІСѓС‡РёРІР°РµС‚ CRM (Silero). Р’С‹РєР» в†’ РїСЂРёРІРµС‚СЃС‚РІРёРµ РІ Mango IVR.
   if (cfg.greeting_in_crm == null) cfg.greeting_in_crm = true;
+  if (cfg.duty_mobile_fallback == null) cfg.duty_mobile_fallback = true;
+  if (cfg.voicemail_max_sec == null) cfg.voicemail_max_sec = 60;
   return cfg;
 }
 

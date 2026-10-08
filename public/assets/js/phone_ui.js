@@ -118,6 +118,14 @@
     return '';
   }
 
+  /** Телефония доступна всем активным, кроме служебных ролей (совпадает с сервером). */
+  function canUseTelephony() {
+    var role = userRole();
+    if (!role) return false;
+    if (role === 'BOT' || role === 'FIELD_WORKER') return false;
+    return true;
+  }
+
   function fmtPhone(p) {
     var d = String(p || '').replace(/\D/g, '');
     if (d.length === 11 && d.charAt(0) === '7') {
@@ -188,8 +196,7 @@
       dom.takeover.id = 'asgardPhoneTakeover';
       dom.takeover.className = 'ph-takeover';
       dom.takeover.style.display = 'none';
-      dom.takeover.innerHTML = '<div class="ph-takeover-inner"><p>Телефон активен в другой вкладке</p><button type="button" class="btn sm primary" id="phClaimTab">Перехватить</button></div>';
-      document.body.appendChild(dom.takeover);
+        dom.takeover.innerHTML = '<div class="ph-takeover-inner"><p>Телефон активен в другой вкладке</p><button type="button" class="btn sm primary" id="phClaimTab">Перехватить</button></div>';      document.body.appendChild(dom.takeover);
       dom.takeover.querySelector('#phClaimTab').addEventListener('click', function () {
         if (window.AsgardPhone) AsgardPhone.claimTab().catch(function (e) { toast('Телефон', e.message, 'err'); });
       });
@@ -795,8 +802,8 @@
             '</div>') +
         lineBannersHtml() +
         '<form class="ph-dp-dial" data-ph-dp="dial">' +
-          '<input type="tel" class="ph-dp-input" id="phDpDial" placeholder="+7…" autocomplete="off"' + (online ? '' : ' disabled') + '>' +
-          '<button type="submit" class="ph-dp-btn ph-dp-btn--primary"' + (online ? '' : ' disabled') + '>Позвонить</button>' +
+          '<input type="tel" class="ph-dp-input" id="phDpDial" placeholder="+7…" autocomplete="off">' +
+          '<button type="submit" class="ph-dp-btn ph-dp-btn--primary">Позвонить</button>' +
         '</form>')
       : '';
     return '<div class="hg-panel-head ph-ios-head">' +
@@ -1216,6 +1223,22 @@
     if (!P) return;
     if (type === 'takeover') showTakeover(true);
     if (type === 'leader') showTakeover(false);
+    if (type === 'line_taken' || type === 'line_taken_by_me') {
+      // Линию забрал другой сотрудник / я забрал у другого.
+      var P2 = window.AsgardPhone;
+      if (type === 'line_taken') {
+        toast('Телефон', 'Линию забрал другой сотрудник — вы сняты с линии', 'warn');
+        if (P2 && P2.getState && P2.getState() !== 'offline') {
+          try { P2.goOffline(); } catch (_) { /* ignore */ }
+        }
+      } else {
+        toast('Телефон', 'Линия ваша', 'ok');
+      }
+      panelData.loadedAt = 0;
+      syncUi(P2 ? P2.getState() : 'offline');
+      if (panelShown()) paintPanel();
+      return;
+    }
     if (type === 'state' || type === 'ready') syncUi(P.getState());
     if (type === 'incoming') renderIncoming(d);
     if (type === 'lookup' && uiMode === 'incoming' && panelShown()) paintPanel();
@@ -1354,7 +1377,7 @@
 
   var phoneUiReady = false;
   function ensurePhoneUiBound() {
-    if (TEL_ROLES.indexOf(userRole()) === -1) return false;
+    if (!canUseTelephony()) return false;
     if (!phoneUiReady) {
       phoneUiReady = true;
       document.addEventListener('asgard-phone', onPhoneEvent);

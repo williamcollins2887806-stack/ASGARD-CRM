@@ -429,10 +429,13 @@
         });
     },
 
-    goOnline: function (receiveMode) {
+    /**
+     * Регистрация SIP без постановки на линию.
+     * Сотрудник может звонить из браузера, но входящие к нему не идут.
+     */
+    register: function (receiveMode) {
       receiveMode = receiveMode === 'mobile' ? 'mobile' : 'browser';
       try { localStorage.setItem('asgard_phone_mode', receiveMode); } catch (_) {}
-      if (!TEL_ROLES.length) { /* role check on server */ }
       return holdLeaderLock().then(function (got) {
         if (!got) return { ok: false, reason: 'takeover' };
         mode = receiveMode;
@@ -446,22 +449,40 @@
               });
             }
             startUA(creds);
-            setState(receiveMode === 'mobile' ? STATES.on_line_mobile : STATES.on_line_browser);
-            pbxApi('/operator/status', {
-              method: 'POST',
-              body: JSON.stringify({ on_line: true, receive_mode: receiveMode }),
-            }).catch(function () {});
-            startHeartbeat();
-            return { ok: true };
+            return { ok: true, mode: receiveMode };
           })
           .catch(function (e) {
             releaseLeader();
             mode = null;
-            stopHeartbeat();
-            setState(STATES.offline);
             throw e;
           });
       });
+    },
+
+    /** Встать на линию (перехват): SIP + on_line=true у себя, у прежнего снимается. */
+    goOnDuty: function (receiveMode) {
+      receiveMode = receiveMode === 'mobile' ? 'mobile' : 'browser';
+      return api.register(receiveMode).then(function (r) {
+        if (!r.ok) return r;
+        return pbxApi('/operator/claim-line', {
+          method: 'POST',
+          body: JSON.stringify({ receive_mode: receiveMode }),
+        }).then(function (claim) {
+          setState(receiveMode === 'mobile' ? STATES.on_line_mobile : STATES.on_line_browser);
+          startHeartbeat();
+          if (claim && claim.previousUserId) emit('line_taken_by_me', claim);
+          return { ok: true, ...claim };
+        }).catch(function (e) {
+          stopHeartbeat();
+          setState(STATES.offline);
+          throw e;
+        });
+      });
+    },
+
+    /** Совместимость: «на линии» = регистрация + постановка (кнопка в панели). */
+    goOnline: function (receiveMode) {
+      return api.goOnDuty(receiveMode);
     },
 
     goOffline: function () {
@@ -617,9 +638,10 @@
     },
 
     claimTab: function () {
-      if (bc) bc.postMessage({ type: 'request-leader' });
+      // Перехват линии: SIP-регистрация + снятие on_line у прежнего владельца
+      // (не только между вкладками одного браузера).
       return api.goOffline().then(function () {
-        return api.goOnline(mode || 'browser');
+        return api.goOnDuty(mode || 'browser');
       });
     },
 
