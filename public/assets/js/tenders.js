@@ -965,7 +965,8 @@ window.AsgardTendersPage = (function(){
   .tenders-page table.asg.tenders-register td{padding:3px 2px!important;font-size:8.5px!important}
   .tenders-page table.asg.tenders-register th{font-size:8px!important}
 }
-</style>        <div style="display:flex; gap:12px; align-items:center; flex-wrap:wrap; margin-top:8px">
+</style>
+        <div style="display:flex; gap:12px; align-items:center; flex-wrap:wrap; margin-top:8px">
           <div class="help" id="cnt"></div>
           <div id="bulkCount" style="font-weight:600; color:var(--primary); display:none"></div>
           <button class="btn ghost" id="btnBulkSelected" style="display:none">Переназначить выбранные</button>
