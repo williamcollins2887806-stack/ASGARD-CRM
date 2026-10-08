@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useAuthStore } from '@/stores/authStore';
 import { useHaptic } from '@/hooks/useHaptic';
 import { api } from '@/api/client';
@@ -336,7 +337,7 @@ function TaskDetail({ task, onClose, onRefresh, userId, role }) {
 }
 
 // ─── Форма создания задачи ────────────────────────────────────────────────────
-function CreateTaskSheet({ open, onClose, onCreated }) {
+function CreateTaskSheet({ open, onClose, onCreated, initialTitle = '' }) {
   const haptic = useHaptic();
   const [employees, setEmployees] = useState([]);
   const [title, setTitle]       = useState('');
@@ -349,11 +350,12 @@ function CreateTaskSheet({ open, onClose, onCreated }) {
 
   useEffect(() => {
     if (!open) return;
+    setTitle(initialTitle || '');
     api.get('/users').then((res) => {
       const rows = api.extractRows(res) || [];
       setEmployees(rows.filter((u) => u.is_active));
     }).catch(() => {});
-  }, [open]);
+  }, [open, initialTitle]);
 
   const reset = () => {
     setTitle(''); setDesc(''); setAssigneeId('');
@@ -496,12 +498,14 @@ function Field({ label, children }) {
 export default function Tasks() {
   const user    = useAuthStore((s) => s.user);
   const haptic  = useHaptic();
+  const [params, setParams] = useSearchParams();
   const [tasks,   setTasks]   = useState([]);
   const [stats,   setStats]   = useState(null);
   const [loading, setLoading] = useState(true);
   const [filter,  setFilter]  = useState('active');
   const [detail,  setDetail]  = useState(null);
   const [showCreate, setShowCreate] = useState(false);
+  const [createTitle, setCreateTitle] = useState('');
   // Директор: переключение между "Мне назначили" и "Я назначил"
   const [view, setView] = useState('my');
 
@@ -526,6 +530,18 @@ export default function Tasks() {
   }, [view]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
+
+  useEffect(() => {
+    const text = params.get('text');
+    const wantNew = params.get('new') === '1' || !!text;
+    if (!wantNew) return;
+    setCreateTitle(text || '');
+    setShowCreate(true);
+    const next = new URLSearchParams(params);
+    next.delete('text');
+    next.delete('new');
+    setParams(next, { replace: true });
+  }, [params, setParams]);
 
   const filtered = useMemo(() => {
     if (filter === 'active')  return tasks.filter((t) => ['new','accepted','in_progress'].includes(t.status));
@@ -667,7 +683,8 @@ export default function Tasks() {
 
       <CreateTaskSheet
         open={showCreate}
-        onClose={() => setShowCreate(false)}
+        initialTitle={createTitle}
+        onClose={() => { setShowCreate(false); setCreateTitle(''); }}
         onCreated={fetchData}
       />
     </PageShell>
