@@ -527,7 +527,7 @@ window.AsgardTendersPage = (function(){
       .tenders-page{min-width:0;overflow:hidden}
       .tenders-page .m-tender-tools{
         display:grid;
-        grid-template-columns:1.05fr 1.65fr .95fr .95fr 1.1fr auto;
+        grid-template-columns:repeat(5,minmax(0,1fr));
         gap:8px;
         align-items:end;
         min-width:0;
@@ -536,6 +536,7 @@ window.AsgardTendersPage = (function(){
       .tenders-page .m-tender-tools > div:last-child{
         min-width:0 !important;
         width:auto;
+        grid-column:1 / -1;
       }
       .tenders-page .m-tender-tools > .field{margin:0}
       .tenders-page .m-tender-tools .field > div{min-width:0}
@@ -579,31 +580,35 @@ window.AsgardTendersPage = (function(){
         overflow-wrap:anywhere;
         text-align:left;
         padding:5px 7px;
+        min-height:34px;
+        display:flex;
+        align-items:center;
       }
+      /* Keep all original 12 columns: proportions tuned so the full register stays visible. */
       .tenders-page table.asg.tenders-table th:nth-child(1),
-      .tenders-page table.asg.tenders-table td:nth-child(1){width:2.5%;text-align:center}
+      .tenders-page table.asg.tenders-table td:nth-child(1){width:3%;text-align:center}
       .tenders-page table.asg.tenders-table th:nth-child(2),
-      .tenders-page table.asg.tenders-table td:nth-child(2){width:5%;text-align:center}
+      .tenders-page table.asg.tenders-table td:nth-child(2){width:7%;text-align:center}
       .tenders-page table.asg.tenders-table th:nth-child(3),
-      .tenders-page table.asg.tenders-table td:nth-child(3){width:22.5%}
+      .tenders-page table.asg.tenders-table td:nth-child(3){width:21%}
       .tenders-page table.asg.tenders-table th:nth-child(4),
-      .tenders-page table.asg.tenders-table td:nth-child(4){width:6.5%}
+      .tenders-page table.asg.tenders-table td:nth-child(4){width:7%}
       .tenders-page table.asg.tenders-table th:nth-child(5),
-      .tenders-page table.asg.tenders-table td:nth-child(5){width:7%}
+      .tenders-page table.asg.tenders-table td:nth-child(5){width:8%}
       .tenders-page table.asg.tenders-table th:nth-child(6),
-      .tenders-page table.asg.tenders-table td:nth-child(6){width:8.5%}
+      .tenders-page table.asg.tenders-table td:nth-child(6){width:10%}
       .tenders-page table.asg.tenders-table th:nth-child(7),
-      .tenders-page table.asg.tenders-table td:nth-child(7){width:6.5%;text-align:center}
+      .tenders-page table.asg.tenders-table td:nth-child(7){width:7%}
       .tenders-page table.asg.tenders-table th:nth-child(8),
       .tenders-page table.asg.tenders-table td:nth-child(8){width:8%}
       .tenders-page table.asg.tenders-table th:nth-child(9),
-      .tenders-page table.asg.tenders-table td:nth-child(9){width:8%;text-align:right}
+      .tenders-page table.asg.tenders-table td:nth-child(9){width:8%}
       .tenders-page table.asg.tenders-table th:nth-child(10),
-      .tenders-page table.asg.tenders-table td:nth-child(10){width:9%;text-align:center}
+      .tenders-page table.asg.tenders-table td:nth-child(10){width:9%}
       .tenders-page table.asg.tenders-table th:nth-child(11),
-      .tenders-page table.asg.tenders-table td:nth-child(11){width:4%;text-align:center}
+      .tenders-page table.asg.tenders-table td:nth-child(11){width:5%}
       .tenders-page table.asg.tenders-table th:nth-child(12),
-      .tenders-page table.asg.tenders-table td:nth-child(12){width:11%;text-align:center}
+      .tenders-page table.asg.tenders-table td:nth-child(12){width:7%}
       .tenders-page table.asg.tenders-table .help{
         line-height:1.3;
         overflow-wrap:anywhere;
@@ -625,9 +630,6 @@ window.AsgardTendersPage = (function(){
         .tenders-page .m-tender-tools{
           grid-template-columns:repeat(3,minmax(0,1fr));
         }
-        .tenders-page .m-tender-tools > div:last-child{
-          grid-column:1 / -1;
-        }
         .tenders-page table.asg.tenders-table th,
         .tenders-page table.asg.tenders-table td{
           padding:7px 5px;
@@ -639,6 +641,9 @@ window.AsgardTendersPage = (function(){
       @media (max-width:1000px) and (min-width:769px){
         .tenders-page .m-tender-tools{
           grid-template-columns:repeat(2,minmax(0,1fr));
+        }
+        .tenders-page .m-tender-tools > div:last-child{
+          grid-column:1 / -1;
         }
       }
 
