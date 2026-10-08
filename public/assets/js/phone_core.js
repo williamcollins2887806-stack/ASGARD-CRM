@@ -431,6 +431,7 @@
 
     goOnline: function (receiveMode) {
       receiveMode = receiveMode === 'mobile' ? 'mobile' : 'browser';
+      try { localStorage.setItem('asgard_phone_mode', receiveMode); } catch (_) {}
       if (!TEL_ROLES.length) { /* role check on server */ }
       return holdLeaderLock().then(function (got) {
         if (!got) return { ok: false, reason: 'takeover' };
@@ -612,8 +613,24 @@
       if (a.srcObject) return a.play().catch(function (e) { emit('audio_blocked', { error: e.message }); });
       return Promise.resolve();
     },
+
+    getSipRegistered: function () { return sipRegistered; },
   };
 
   window.AsgardPhone = api;
   emit('ready', {});
+
+  // Клик-ту-колл (CRM) открывает этот URL после приёма вызова на телефоне оператора.
+  try {
+    if (/[?&]call=1/.test(location.search)) {
+      var savedMode = localStorage.getItem('asgard_phone_mode');
+      if (!isOnLineState() && savedMode) {
+        var cleanUrl = location.pathname + location.hash;
+        try { history.replaceState(null, '', cleanUrl); } catch (_) {}
+        setTimeout(function () {
+          api.goOnline(savedMode === 'mobile' ? 'mobile' : 'browser').catch(function () {});
+        }, 600);
+      }
+    }
+  } catch (_) {}
 })();
