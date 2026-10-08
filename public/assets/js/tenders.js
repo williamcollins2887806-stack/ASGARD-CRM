@@ -951,7 +951,12 @@ window.AsgardTendersPage = (function(){
 .tenders-page table.asg.tenders-register td{
   box-sizing:border-box;min-width:0!important;max-width:0!important;
   padding:4px 3px!important;font-size:9px!important;line-height:1.1;
-  vertical-align:middle;text-align:left;overflow:hidden;overflow-wrap:anywhere;word-break:break-word;white-space:normal;
+  /* PERF: было overflow-wrap:anywhere + word-break:break-word — пара, которая
+     заставляет браузер вычислять перенос в КАЖДОЙ из ~23k ячеек и влияет на
+     расчёт min-content ширины. break-word даёт тот же визуальный результат,
+     но дешевле. text-overflow:ellipsis страхует от вылезания. */
+  vertical-align:middle;text-align:left;overflow:hidden;text-overflow:ellipsis;
+  overflow-wrap:break-word;white-space:normal;
 }
 .tenders-page table.asg.tenders-register th{font-size:8.5px!important}
 .tenders-page table.asg.tenders-register th .btn{

@@ -206,6 +206,10 @@ window.AsgardTimesheetV2 = (function () {
         50% { box-shadow:inset 0 0 0 2px var(--gold); }
       }
       .tsv2-table { border-collapse:separate; border-spacing:0; font-size:12px; width:max-content; min-width:100%; }
+      /* PERF: табель рендерит ВСЕХ сотрудников × все дни месяца. content-visibility
+         пропускает отрисовку строк вне вьюпорта (строки остаются в DOM — важно для
+         sticky-колонок и кликов), убирая основной вклад в блокировку главного потока. */
+      .tsv2-table tbody tr { content-visibility:auto; contain-intrinsic-size:auto 32px; }
       .tsv2-table th, .tsv2-table td {
         padding:4px 6px; border-bottom:1px solid var(--brd); border-right:1px solid var(--brd);
         white-space:nowrap; text-align:center; background:var(--bg1);

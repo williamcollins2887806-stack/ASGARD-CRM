@@ -69,6 +69,8 @@ window.AsgardDocHubPage = (function () {
     facets: { counterparties: [] },
     rows: [],
     total: 0,
+    page: 1,
+    pageSize: (window.AsgardPagination ? AsgardPagination.getPageSize() : 20),
     kpiData: {},
     selectedId: null,
     wizStep: 1,
@@ -714,7 +716,13 @@ window.AsgardDocHubPage = (function () {
     }
     const ico = qaIcons();
     // Keep API order (invoice_date DESC) so quarter separators work
-    const rows = state.rows;
+    // PERF: рендерим только страницу (10/20/50/Все). Раньше при 500+ строках
+    // в DOM строились все строки разом → блокировка главного потока на секунды.
+    const allRows = state.rows;
+    const paged = (window.AsgardPagination)
+      ? AsgardPagination.paginate(allRows, state.page, state.pageSize)
+      : allRows;
+    const rows = paged;
     const parts = [];
     let prevKey = null;
     rows.forEach((r) => {
@@ -771,7 +779,11 @@ window.AsgardDocHubPage = (function () {
         <th>Сумма</th><th>НДС</th><th>Оплата</th><th>СФ/УПД</th><th class="dh-actions">Действия</th>
       </tr></thead>
       <tbody>${parts.join('')}</tbody>
-    </table></div><div class="dh-hscroll-bar" id="dhHScrollBar" hidden><div class="dh-hscroll-bar__inner"></div></div>`;
+    </table></div><div class="dh-hscroll-bar" id="dhHScrollBar" hidden><div class="dh-hscroll-bar__inner"></div></div>`
+      // PERF: контролы пагинации — «Строк: 10 20 50 Все» + номера страниц.
+      + (window.AsgardPagination && allRows.length > 20
+          ? '<div id="dhPagination">' + AsgardPagination.renderControls(allRows.length, state.page, state.pageSize) + '</div>'
+          : '');
   }
 
   function renderGuideView() {
@@ -2706,7 +2718,16 @@ window.AsgardDocHubPage = (function () {
     });
     const meta = document.getElementById('dhRowsMeta');
     if (meta) {
-      meta.textContent = `показано ${state.rows.length} из ${state.total || state.rows.length}${state.scope === 'all' ? ' · все строки' : ' · только мои'}`;
+      // PERF: показываем диапазон видимой страницы, а не только общее число.
+      const total = state.total || state.rows.length;
+      const ps = state.pageSize;
+      let shown = `${state.rows.length} из ${total}`;
+      if (window.AsgardPagination && ps > 0 && state.rows.length > ps) {
+        const from = (state.page - 1) * ps + 1;
+        const to = Math.min(state.rows.length, state.page * ps);
+        shown = `${from}–${to} из ${total}`;
+      }
+      meta.textContent = `показано ${shown}${state.scope === 'all' ? ' · все строки' : ' · только мои'}`;
     }
     const chip = document.getElementById('dhChipIncomplete');
     if (chip) {
@@ -2829,9 +2850,21 @@ window.AsgardDocHubPage = (function () {
     const host = document.getElementById('dhTableHost');
     if (!host) return;
     await loadData();
+    // PERF: не сбрасываем страницу при перерисовке; клампим к доступному диапазону.
+    if (window.AsgardPagination && state.pageSize > 0) {
+      const maxPage = Math.max(1, Math.ceil(state.rows.length / state.pageSize));
+      if (state.page > maxPage) state.page = maxPage;
+    }
     host.innerHTML = renderTable();
     bindQuarterLive();
     bindHScroll();
+    // PERF: переключение страницы/размера без полного refresh() — только перерисовка таблицы.
+    if (window.AsgardPagination) {
+      AsgardPagination.attachHandlers('dhPagination',
+        (p) => { state.page = p; if (host) { host.innerHTML = renderTable(); bindQuarterLive(); bindHScroll(); } },
+        (s) => { state.pageSize = s; state.page = 1; if (host) { host.innerHTML = renderTable(); bindQuarterLive(); bindHScroll(); } }
+      );
+    }
     updateKpiDom();
     const scopeEl = document.getElementById('dhScopeAll');
     if (scopeEl) scopeEl.checked = state.scope === 'all';
