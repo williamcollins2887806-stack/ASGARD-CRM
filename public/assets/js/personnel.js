@@ -916,34 +916,34 @@ window.AsgardPersonnelPage = (function () {
 
         tbodyHtml += `
           <tr class="prs-row" data-id="${e.id}" style="cursor:pointer" title="Открыть карточку">
-            <td>
+            <td class="prs-col-fio-td">
               <div class="bc-cell">
                 ${(window.AsgardBrigadeCart && AsgardBrigadeCart.cartBtnHtml) ? AsgardBrigadeCart.cartBtnHtml(e.id) : ''}
                 <div class="bc-cell__body">${prsIdentityCell(e)}</div>
               </div>
             </td>
-            <td style="color:var(--t2);font-size:13px">${prsCopyWrap(esc(e.role_tag || e.position || '—'), e.role_tag || e.position || '')}</td>
-            <td>${statusBadge(e.effective_status || e.readiness_status)}</td>
-            <td class="prs-col-work">
-              <div class="prs-work" tabindex="0"
+            <td class="prs-col-spec-td" style="color:var(--t2);font-size:13px">${prsCopyWrap(esc(e.role_tag || e.position || '—'), e.role_tag || e.position || '')}</td>
+            <td class="prs-col-status-td">${statusBadge(e.effective_status || e.readiness_status)}</td>
+            <td class="prs-col-work-td" data-work-tip="1">
+              <div class="prs-work" tabindex="0" aria-describedby="prsTip"
                    data-fio="${esc(e.fio || '')}"
                    data-obj="${esc(workTitle || '—')}"
                    data-plan="${esc(e.planned_info ? (e.planned_info.work_title || '—') : '—')}"
                    data-from="${esc(e.planned_info && e.planned_info.planned_from ? fmtDate(e.planned_info.planned_from) : '')}"
                    data-pm="${esc(pmName || '—')}">
                 ${prsCopyWrap(`${titleHtml}${pmHtml}`, [workTitle, pmName].filter(Boolean).join(' · '))}
-                ${e.planned_info ? `<div class="prs-work__plan"><span class="prs-plan-badge">План</span>${esc(e.planned_info.work_title || '')}${e.planned_info.planned_from ? `<span class="prs-plan-from">с ${fmtDate(e.planned_info.planned_from)}</span>` : ''}</div>` : ''}
+                ${e.planned_info ? `<div class="prs-work__plan"><span class="prs-plan-badge">План</span><span class="prs-plan-txt">${esc(e.planned_info.work_title || '')}</span>${e.planned_info.planned_from ? `<span class="prs-plan-from">с ${fmtDate(e.planned_info.planned_from)}</span>` : ''}</div>` : ''}
               </div>
             </td>
-            <td class="prs-col-start" style="white-space:nowrap;font-size:13px;color:var(--t2)">${prsCopyWrap(startDate, startDate !== '—' ? startDate : '')}</td>
-            <td class="prs-col-docs" style="text-align:center">${docIndicator(e.permits)}</td>
-            <td class="prs-col-permits" style="text-align:center">${keyPermChipsHtml(e.key_permits)}</td>
-            <td class="prs-col-siz" style="font-size:11px">${sizSizesHtml(e)}</td>
-            <td class="prs-col-city" style="font-size:12.5px;color:var(--t2)">${prsCopyWrap(e.city ? esc(e.city) : '<span style="color:var(--t3)">—</span>', e.city || '')}</td>
-            <td class="prs-col-se">${e.is_self_employed
+            <td class="prs-col-start-td" style="white-space:nowrap;font-size:13px;color:var(--t2)">${prsCopyWrap(startDate, startDate !== '—' ? startDate : '')}</td>
+            <td class="prs-col-docs-td" style="text-align:center">${docIndicator(e.permits)}</td>
+            <td class="prs-col-permits-td" style="text-align:center">${keyPermChipsHtml(e.key_permits)}</td>
+            <td class="prs-col-siz-td" style="font-size:11px">${sizSizesHtml(e)}</td>
+            <td class="prs-col-city-td" style="font-size:12.5px;color:var(--t2)">${prsCopyWrap(e.city ? esc(e.city) : '<span style="color:var(--t3)">—</span>', e.city || '')}</td>
+            <td class="prs-col-se-td">${e.is_self_employed
               ? prsCopyWrap(seLimitBar(seTrans, SE_YEAR_LIMIT), `${Math.round(seTrans)} / ${SE_YEAR_LIMIT}`)
               : '<span style="color:var(--t3);font-size:12px">—</span>'}</td>
-            <td class="prs-col-rating" style="text-align:right">${ratingHtml(e.rating_avg)}</td>
+            <td class="prs-col-rating-td" style="text-align:right">${ratingHtml(e.rating_avg)}</td>
           </tr>`;
       });
     });
@@ -1074,7 +1074,7 @@ window.AsgardPersonnelPage = (function () {
 
         <!-- Таблица / По проектам -->
         ${viewMode === 'by_project' ? `<div id="prs_byProject">${byProjectHtml}</div>` : `
-        <div class="tablewrap">
+        <div class="tablewrap prs-tablewrap">
           <table class="asg" id="prs_table">
             <thead>
               <tr>
@@ -1108,12 +1108,72 @@ window.AsgardPersonnelPage = (function () {
         <!-- Пагинация -->
         <div id="prs_pagination"></div>
 
+        <!-- Пузырик с деталями строки (position: fixed, не режется overflow таблицы) -->
+        <div id="prsTip" class="prs-tip" role="tooltip"></div>
+
         <div class="help" style="margin-top:12px">
           Всего найдено: <b>${rows.length}</b> рабочих
         </div>
       </div>`;
 
     await layout(html, { title: title || 'Дружина • Реестр рабочих' });
+
+    // ── Пузырик со стеклом: Объект / План / РП (fixed, не режется overflow) ────
+    (function initPrsTip() {
+      const tip = document.getElementById('prsTip');
+      if (!tip) return;
+      // ВАЖНО: position:fixed ломается, если у предка есть transform/backdrop-filter.
+      // Переносим в body — тогда координаты считаются от viewport.
+      if (tip.parentElement !== document.body) document.body.appendChild(tip);
+      const HIDE = (e) => { if (e && e.target && e.target.closest && e.target.closest('#prsTip')) return; tip.classList.remove('is-on'); };
+      function fill(el) {
+        const fio = el.getAttribute('data-fio') || '';
+        const obj = el.getAttribute('data-obj') || '—';
+        const plan = el.getAttribute('data-plan') || '—';
+        const from = el.getAttribute('data-from') || '';
+        const pm = el.getAttribute('data-pm') || '—';
+        tip.innerHTML =
+          '<div class="prs-tip__fio">' + esc(fio) + '</div>' +
+          '<div class="prs-tip__row"><span class="k">Объект</span><span class="v">' + esc(obj) + '</span></div>' +
+          '<div class="prs-tip__row"><span class="k">План</span><span class="v">' + esc(plan) + (from ? ' <span class="muted">(с ' + esc(from) + ')</span>' : '') + '</span></div>' +
+          '<div class="prs-tip__row"><span class="k">РП</span><span class="v">' + esc(pm) + '</span></div>';
+      }
+      function place(el) {
+        fill(el);
+        // Сначала показываем, чтобы измерить реальные размеры (display:none → 0)
+        tip.style.top = '-9999px';
+        tip.style.left = '-9999px';
+        tip.classList.add('is-on');
+        const r = el.getBoundingClientRect();
+        const tw = tip.offsetWidth, th = tip.offsetHeight;
+        const vw = window.innerWidth, vh = window.innerHeight;
+        // Приоритет: над ячейкой; если сверху мало места — под ней
+        let top = r.top - th - 8;
+        if (top < 8) top = r.bottom + 8;
+        if (top + th > vh - 8) top = Math.max(8, vh - th - 8);
+        let left = Math.min(r.left, vw - tw - 8);
+        if (left < 8) left = 8;
+        tip.style.top = Math.max(8, top) + 'px';
+        tip.style.left = left + 'px';
+      }
+      document.addEventListener('mouseover', (e) => {
+        const el = e.target.closest && e.target.closest('.prs-work[data-fio]');
+        if (el) place(el);
+      });
+      document.addEventListener('mouseout', (e) => {
+        const el = e.target.closest && e.target.closest('.prs-work[data-fio]');
+        if (el) HIDE();
+      });
+      document.addEventListener('focusin', (e) => {
+        const el = e.target.closest && e.target.closest('.prs-work[data-fio]');
+        if (el) place(el);
+      });
+      document.addEventListener('focusout', (e) => {
+        const el = e.target.closest && e.target.closest('.prs-work[data-fio]');
+        if (el) HIDE();
+      });
+      document.addEventListener('scroll', () => tip.classList.remove('is-on'), true);
+    })();
 
     // Корзина бригады (persist + UI)
     if (window.AsgardBrigadeCart) {

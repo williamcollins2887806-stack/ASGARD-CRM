@@ -379,7 +379,9 @@ table.asg td {
   background: var(--bg2);
   border-bottom: 1px solid var(--brd-m);
   color: var(--t1);
-  transition: background var(--fast);
+  /* PERF: transition на КАЖДОЙ td (в больших таблицах — десятки тысяч ячеек)
+     заставлял браузер держать слои для hover-анимации и тормозил раскладку.
+     Hover-подсветка строки остаётся, но без transition — визуально мгновенно. */
 }
 
 table.asg tbody tr:hover td {
@@ -396,6 +398,25 @@ table.asg tbody tr:last-child td:first-child {
 
 table.asg tbody tr:last-child td:last-child {
   border-radius: 0 0 var(--r-md) 0;
+}
+
+/* PERF (Фаза B): браузер пропускает отрисовку строк вне вьюпорта.
+   Это «бесплатная виртуализация»: layout/style всё ещё считаются, но
+   paint/composite для невидимых строк не выполняется. Даёт основной
+   выигрыш на таблицах 500+ строк без изменения JS-логики.
+   contain-intrinsic-size задаёт предполагаемую высоту, чтобы скроллбар
+   не «прыгал» при доскролле. */
+table.asg tbody tr {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 44px;
+}
+
+/* PERF: тяжёлые vanilla-таблицы дружины/нарядов (класс t-list) — тот же приём.
+   Строки остаются в DOM (важно: сохранение бригады читает все tr), но
+   невидимые не отрисовываются. */
+table.t-list tbody tr {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 40px;
 }
 
 /* Таблица внутри карточки */
@@ -13209,13 +13230,31 @@ table.reg-table td.reg-action-cell, table.reg-table th:last-child           { wi
 #prs_table th.prs-col-rating,  #prs_table td:nth-child(11)   { width: 7%; }
 
 /* Объект · план: друг под другом, обрезка длинных названий */
-.prs-work { position: relative; display: flex; flex-direction: column; gap: 2px; }
+.prs-work { position: relative; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .prs-work > * { max-width: 100%; }
+/* Текст усекается многоточием, а не уезжает под правый край */
+.prs-work .prs-copy-cell { min-width: 0; }
+.prs-work .prs-copy-cell > div { min-width: 0; overflow: hidden; }
+.prs-work .prs-copy-cell > div > div {
+  min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.prs-work .prs-copy { flex: 0 0 auto; }
 .prs-work__plan {
   display: flex; align-items: baseline; gap: 5px;
   font-size: 11.5px; color: var(--t3);
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  min-width: 0;
 }
+.prs-plan-txt { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.prs-plan-from { flex: 0 0 auto; opacity: .85; }
+
+/* Все ячейки дружины: содержимое не вылезает за правый край */
+#prs_table td { overflow: hidden; }
+#prs_table td * { max-width: 100%; }
+.prs-id-name, .prs-id-phone-num {
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0;
+}
+.prs-copy-cell { min-width: 0; }
+.prs-copy-cell > div { min-width: 0; overflow: hidden; }
 .prs-plan-badge {
   flex: 0 0 auto; font-size: 10px; font-weight: 700;
   color: var(--info-t, #7dd3fc); background: var(--info-bg, rgba(56,189,248,.14));
@@ -13223,41 +13262,70 @@ table.reg-table td.reg-action-cell, table.reg-table th:last-child           { wi
 }
 .prs-plan-from { flex: 0 0 auto; opacity: .85; }
 
-/* Пузырик со стеклом: Объект / План / РП (наведение или фокус) */
-.prs-work[data-fio]:hover::after,
-.prs-work[data-fio]:focus-visible::after {
-  content: attr(data-fio) "\A" "Объект: " attr(data-obj) "\A" "План: " attr(data-plan) attr(data-from) "\A" "РП: " attr(data-pm);
-  position: absolute; left: 0; top: calc(100% + 6px); z-index: 60;
-  white-space: pre-line; width: max-content; max-width: min(360px, 70vw);
+/* Пузырик: отдельный fixed-элемент (не режется overflow таблицы) */
+.prs-tip {
+  position: fixed; z-index: 4000; display: none;
+  width: max-content; max-width: min(380px, calc(100vw - 24px));
   padding: 10px 12px; border-radius: 12px;
-  background: color-mix(in srgb, var(--bg2, #151922) 82%, transparent);
+  background: color-mix(in srgb, var(--bg2, #151922) 84%, transparent);
   -webkit-backdrop-filter: blur(16px) saturate(1.4);
   backdrop-filter: blur(16px) saturate(1.4);
   border: 1px solid color-mix(in srgb, var(--gold, #d4a843) 34%, var(--brd, rgba(255,255,255,.14)));
   box-shadow: 0 12px 34px rgba(0,0,0,.42), inset 0 1px 0 rgba(255,255,255,.06);
-  color: var(--t1, #f1f5f9); font-size: 12px; line-height: 1.45; font-weight: 500;
+  color: var(--t1, #f1f5f9); font-size: 12px; line-height: 1.45;
   pointer-events: none;
 }
-html.theme-light .prs-work[data-fio]:hover::after,
-html.theme-light .prs-work[data-fio]:focus-visible::after,
-html[data-theme="light"] .prs-work[data-fio]:hover::after,
-html[data-theme="light"] .prs-work[data-fio]:focus-visible::after {
-  background: color-mix(in srgb, var(--bg2, #FDFAF5) 88%, transparent);
+.prs-tip.is-on { display: block; }
+.prs-tip__fio { font-weight: 700; margin-bottom: 6px; }
+.prs-tip__row { display: flex; gap: 8px; align-items: baseline; }
+.prs-tip__row .k { flex: 0 0 auto; min-width: 52px; color: var(--t3, #94a3b8); }
+.prs-tip__row .v { min-width: 0; overflow-wrap: anywhere; }
+html.theme-light .prs-tip,
+html[data-theme="light"] .prs-tip {
+  background: color-mix(in srgb, var(--bg2, #FDFAF5) 90%, transparent);
   border-color: color-mix(in srgb, var(--gold, #B8841A) 38%, var(--brd, rgba(0,0,0,.12)));
   box-shadow: 0 12px 34px rgba(40,36,28,.22), inset 0 1px 0 rgba(255,255,255,.6);
   color: var(--t1, #1C1914);
 }
 
-/* Узкие экраны: убираем второстепенные колонки, детали остаются в пузырике */
-@media (max-width: 1500px) {
-  #prs_table th.prs-col-siz,     #prs_table td:nth-child(8),
-  #prs_table th.prs-col-se,      #prs_table td:nth-child(10) { display: none; }
+/* Пороги подобраны по ФАКТИЧЕСКОЙ ширине контейнера (замеры на проде):
+   окно 2560 → ~1882px, 1920 → ~1242px, 1366 → ~690px (сайдбар + панель Хугинна). */
+.prs-tablewrap { container-type: inline-size; container-name: prstable; }
+@container prstable (max-width: 1250px) {
+  #prs_table th.prs-col-siz,     #prs_table td.prs-col-siz-td,
+  #prs_table th.prs-col-se,      #prs_table td.prs-col-se-td { display: none; }
 }
-@media (max-width: 1200px) {
-  #prs_table th.prs-col-start,   #prs_table td:nth-child(5),
-  #prs_table th.prs-col-city,    #prs_table td:nth-child(9)  { display: none; }
+@container prstable (max-width: 1050px) {
+  #prs_table th.prs-col-start,   #prs_table td.prs-col-start-td,
+  #prs_table th.prs-col-city,    #prs_table td.prs-col-city-td  { display: none; }
 }
-@media (max-width: 980px) {
-  #prs_table th.prs-col-permits, #prs_table td:nth-child(7),
-  #prs_table th.prs-col-rating,  #prs_table td:nth-child(11) { display: none; }
+@container prstable (max-width: 860px) {
+  #prs_table th.prs-col-permits, #prs_table td.prs-col-permits-td,
+  #prs_table th.prs-col-rating,  #prs_table td.prs-col-rating-td { display: none; }
+}
+/* «Объект · план» скрывается последней — полный текст остаётся в пузырике */
+@container prstable (max-width: 640px) {
+  #prs_table th.prs-col-work,    #prs_table td.prs-col-work-td   { display: none; }
+}
+@container prstable (max-width: 520px) {
+  #prs_table th.prs-col-spec,    #prs_table td.prs-col-spec-td   { display: none; }
+}
+
+/* Fallback для браузеров без container queries — по ширине окна */
+@supports not (container-type: inline-size) {
+  @media (max-width: 1500px) {
+    #prs_table th.prs-col-siz,     #prs_table td.prs-col-siz-td,
+    #prs_table th.prs-col-se,      #prs_table td.prs-col-se-td { display: none; }
+  }
+  @media (max-width: 1300px) {
+    #prs_table th.prs-col-start,   #prs_table td.prs-col-start-td,
+    #prs_table th.prs-col-city,    #prs_table td.prs-col-city-td  { display: none; }
+  }
+  @media (max-width: 1150px) {
+    #prs_table th.prs-col-permits, #prs_table td.prs-col-permits-td,
+    #prs_table th.prs-col-rating,  #prs_table td.prs-col-rating-td { display: none; }
+  }
+  @media (max-width: 1000px) {
+    #prs_table th.prs-col-work,    #prs_table td.prs-col-work-td   { display: none; }
+  }
 }
