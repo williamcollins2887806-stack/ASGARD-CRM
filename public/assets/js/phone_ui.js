@@ -835,6 +835,18 @@
           '<button type="button" class="ph-act ph-act--answer" data-ph-dp="answer" title="Ответить (Space)">Ответить</button>' +
           '<button type="button" class="ph-act ph-act--hangup" data-ph-dp="hangup" title="Сбросить (Esc)">Сбросить</button>' +
         '</div>' +
+        (function () {
+          var P2 = window.AsgardPhone;
+          var m = P2 && P2.getMode ? P2.getMode() : '';
+          var reg = P2 && P2.getSipRegistered ? P2.getSipRegistered() : false;
+          if (m === 'mobile') {
+            return '<div class="ph-dp-banner ph-dp-banner--warn">Звонок на мобильный: ответить/сбросить нужно с телефона.</div>';
+          }
+          if (!reg) {
+            return '<div class="ph-dp-banner ph-dp-banner--warn">SIP не зарегистрирован — отвечать нечем. Перезайдите на линию.</div>';
+          }
+          return '';
+        })() +
         '<div class="ph-dp-hint">Space — ответить, Esc — сбросить</div>' +
       '</div>';
   }
