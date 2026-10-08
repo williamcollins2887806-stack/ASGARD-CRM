@@ -901,8 +901,8 @@ window.AsgardTendersPage = (function(){
         </div>
         <hr class="hr"/>
         <div id="tkp_ready_panel"></div>
-        <div class="tbl-wrap" style="overflow:auto">
-          <table class="asg">
+        <div class="tbl-wrap tenders-register-wrap" style="overflow:hidden">
+          <table class="asg tenders-register" style="width:100%;max-width:100%;min-width:0;table-layout:fixed">
             <thead>
               <tr>
                 <th><input type="checkbox" id="selectAllTenders" title="Выбрать все"/></th>
@@ -924,7 +924,54 @@ window.AsgardTendersPage = (function(){
             <tbody id="tb"></tbody>
           </table>
         </div>
-        <div style="display:flex; gap:12px; align-items:center; flex-wrap:wrap; margin-top:8px">
+<style>
+/* CRM-1.0 tender register: 18 columns, laptop-fit without horizontal scrolling.
+   Scoped strictly to the tender register; surrounding CRM-1.0 UI is unchanged. */
+.tenders-page .tenders-register-wrap{width:100%;max-width:100%;min-width:0;overflow:hidden!important}
+.tenders-page table.asg.tenders-register{width:100%!important;max-width:100%!important;min-width:0!important;table-layout:fixed!important}
+.tenders-page table.asg.tenders-register th,
+.tenders-page table.asg.tenders-register td{
+  box-sizing:border-box;min-width:0!important;max-width:none;
+  padding:4px 3px!important;font-size:9px!important;line-height:1.1;
+  vertical-align:middle;overflow:hidden;overflow-wrap:anywhere;word-break:break-word;white-space:normal;
+}
+.tenders-page table.asg.tenders-register th{font-size:8.5px!important;text-align:left}
+.tenders-page table.asg.tenders-register th .btn{
+  width:100%;min-width:0;min-height:22px;padding:2px 3px!important;
+  justify-content:flex-start;align-items:center;text-align:left;white-space:normal;overflow-wrap:anywhere;
+}
+.tenders-page table.asg.tenders-register td:nth-child(7) .badge,
+.tenders-page table.asg.tenders-register td:nth-child(7) .cr-status-badge{
+  display:inline-flex;white-space:nowrap!important;word-break:normal!important;overflow-wrap:normal!important;max-width:100%;
+}
+.tenders-page table.asg.tenders-register td .btn{
+  display:flex;align-items:center;justify-content:flex-start;min-height:24px;padding:3px 4px!important;
+  line-height:1.1;max-width:100%;
+}
+.tenders-page table.asg.tenders-register th:nth-child(1),.tenders-page table.asg.tenders-register td:nth-child(1){width:3%}
+.tenders-page table.asg.tenders-register th:nth-child(2),.tenders-page table.asg.tenders-register td:nth-child(2){width:5%}
+.tenders-page table.asg.tenders-register th:nth-child(3),.tenders-page table.asg.tenders-register td:nth-child(3){width:12%}
+.tenders-page table.asg.tenders-register th:nth-child(4),.tenders-page table.asg.tenders-register td:nth-child(4){width:5%}
+.tenders-page table.asg.tenders-register th:nth-child(5),.tenders-page table.asg.tenders-register td:nth-child(5){width:5%}
+.tenders-page table.asg.tenders-register th:nth-child(6),.tenders-page table.asg.tenders-register td:nth-child(6){width:6%}
+.tenders-page table.asg.tenders-register th:nth-child(7),.tenders-page table.asg.tenders-register td:nth-child(7){width:9%}
+.tenders-page table.asg.tenders-register th:nth-child(8),.tenders-page table.asg.tenders-register td:nth-child(8){width:6%}
+.tenders-page table.asg.tenders-register th:nth-child(9),.tenders-page table.asg.tenders-register td:nth-child(9){width:6%}
+.tenders-page table.asg.tenders-register th:nth-child(10),.tenders-page table.asg.tenders-register td:nth-child(10){width:8%}
+.tenders-page table.asg.tenders-register th:nth-child(11),.tenders-page table.asg.tenders-register td:nth-child(11){width:7%}
+.tenders-page table.asg.tenders-register th:nth-child(12),.tenders-page table.asg.tenders-register td:nth-child(12){width:5%}
+.tenders-page table.asg.tenders-register th:nth-child(13),.tenders-page table.asg.tenders-register td:nth-child(13){width:5%}
+.tenders-page table.asg.tenders-register th:nth-child(14),.tenders-page table.asg.tenders-register td:nth-child(14){width:8%}
+.tenders-page table.asg.tenders-register th:nth-child(15),.tenders-page table.asg.tenders-register td:nth-child(15){width:4%}
+.tenders-page table.asg.tenders-register th:nth-child(16),.tenders-page table.asg.tenders-register td:nth-child(16){width:4%}
+.tenders-page table.asg.tenders-register th:nth-child(17),.tenders-page table.asg.tenders-register td:nth-child(17){width:5%}
+.tenders-page table.asg.tenders-register th:nth-child(18),.tenders-page table.asg.tenders-register td:nth-child(18){width:3%}
+@media (min-width:769px) and (max-width:1300px){
+  .tenders-page table.asg.tenders-register th,
+  .tenders-page table.asg.tenders-register td{padding:3px 2px!important;font-size:8.5px!important}
+  .tenders-page table.asg.tenders-register th{font-size:8px!important}
+}
+</style>        <div style="display:flex; gap:12px; align-items:center; flex-wrap:wrap; margin-top:8px">
           <div class="help" id="cnt"></div>
           <div id="bulkCount" style="font-weight:600; color:var(--primary); display:none"></div>
           <button class="btn ghost" id="btnBulkSelected" style="display:none">Переназначить выбранные</button>
