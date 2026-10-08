@@ -7976,6 +7976,53 @@ window.AsgardPKv3Modals = (function () {
       table += `**КП с НДС ${vatPct}%:** ${totals.kp_with_vat.toLocaleString('ru-RU')} ₽\n`;
       _downloadFile(`mimir-quick-${card.id || 'report'}.md`, head + ai + table, 'text/markdown;charset=utf-8');
     }
+    // Shared download helper (was referenced but never defined -> RuntimeError).
+    function _downloadFile(name, content, mime) {
+      try {
+        const blob = new Blob([content], { type: mime || 'application/octet-stream' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url; a.download = name || 'download';
+        document.body.appendChild(a); a.click(); a.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+      } catch (e) {
+        toast('Скачивание', e.message || String(e), 'err');
+      }
+    }
+    // HTML-превью текущей сметы в новой вкладке (кнопка «Превью»).
+    function _previewHtml() {
+      const items = (lastEstimate && Array.isArray(lastEstimate.items)) ? lastEstimate.items : [];
+      const totals = _calcTotals(lastEstimate);
+      const escHtml = (s) => String(s == null ? '' : s)
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+      const rows = items.map((it, i) => {
+        const sum = (Number(it.qty) * Number(it.price)) || 0;
+        return `<tr><td>${i + 1}</td><td>${escHtml(it.name)}</td><td>${escHtml(it.unit)}</td>`
+          + `<td>${escHtml(it.qty)}</td><td>${Number(it.price || 0).toLocaleString('ru-RU')}</td>`
+          + `<td>${sum.toLocaleString('ru-RU')}</td></tr>`;
+      }).join('');
+      const html = `<!doctype html><html lang="ru"><head><meta charset="utf-8">`
+        + `<title>Смета · ${escHtml(card && card.customer_name || 'Quick')}</title>`
+        + `<style>body{font:14px/1.5 system-ui,sans-serif;margin:24px;color:#111;background:#fff}`
+        + `h1{font-size:18px}table{border-collapse:collapse;width:100%}`
+        + `th,td{border:1px solid #ddd;padding:6px 8px;text-align:left}`
+        + `tfoot td{font-weight:700}</style></head><body>`
+        + `<h1>Смета · ${escHtml(card && card.customer_name || '')}</h1>`
+        + `<table><thead><tr><th>№</th><th>Позиция</th><th>Ед.</th><th>Кол-во</th><th>Цена ₽</th><th>Сумма ₽</th></tr></thead>`
+        + `<tbody>${rows}</tbody><tfoot>`
+        + `<tr><td colspan="5">Итого с/с</td><td>${totals.cost.toLocaleString('ru-RU')}</td></tr>`
+        + `<tr><td colspan="5">КП без НДС (маржа ${marginPct}%)</td><td>${totals.kp_no_vat.toLocaleString('ru-RU')}</td></tr>`
+        + `<tr><td colspan="5">КП с НДС ${vatPct}%</td><td>${totals.kp_with_vat.toLocaleString('ru-RU')}</td></tr>`
+        + `</tfoot></table></body></html>`;
+      try {
+        const w = window.open('', '_blank');
+        if (!w) { toast('Превью', 'Разрешите всплывающие окна', 'err'); return; }
+        w.document.write(html);
+        w.document.close();
+      } catch (e) {
+        toast('Превью', e.message || String(e), 'err');
+      }
+    }
     function _renderStep4() {
       const totals = _calcTotals(lastEstimate);
       return `

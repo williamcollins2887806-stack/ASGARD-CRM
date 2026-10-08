@@ -724,12 +724,12 @@ module.exports = async function (fastify, options) {
         `, [uid]);
         kpi.pm_works = rows[0] || {};
         const { rows: near } = await db.query(`
-          SELECT id, work_title, work_status, end_date
+          SELECT id, work_title, work_status, end_plan AS end_date
           FROM works
           WHERE pm_id = $1 AND deleted_at IS NULL
             AND work_status IN ('В работе','Мобилизация','Подготовка')
-            AND end_date IS NOT NULL
-          ORDER BY end_date ASC NULLS LAST
+            AND end_plan IS NOT NULL
+          ORDER BY end_plan ASC NULLS LAST
           LIMIT 3
         `, [uid]);
         kpi.near_deadlines = near;
