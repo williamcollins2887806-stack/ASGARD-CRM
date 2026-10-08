@@ -62,6 +62,49 @@
     chevronUp: SVG_FILL('<path d="M7.41 15.41 12 10.83l4.59 4.58L18 14l-6-6-6 6z"/>'),
   };
 
+  var soundEnabled = true;
+  var audioCtx = null;
+  var ringAudio = null;
+
+  /**
+   * Рингтон: зацикленный аудиофайл (assets/sounds/ring.ogg|mp3),
+   * fallback — короткий WebAudio-бип, если файл недоступен.
+   */
+  function startRingtone() {
+    if (!soundEnabled || document.body.classList.contains('is-gallery')) return;
+    try {
+      if (!ringAudio) {
+        ringAudio = document.createElement('audio');
+        ringAudio.loop = true;
+        ringAudio.preload = 'auto';
+        ringAudio.volume = 0.6;
+        var ogg = document.createElement('source');
+        ogg.src = 'assets/sounds/ring.ogg';
+        ogg.type = 'audio/ogg';
+        var mp3 = document.createElement('source');
+        mp3.src = 'assets/sounds/ring.mp3';
+        mp3.type = 'audio/mpeg';
+        ringAudio.appendChild(ogg);
+        ringAudio.appendChild(mp3);
+      }
+      var p = ringAudio.play();
+      if (p && p.catch) {
+        p.catch(function () { playTone('ring'); });
+      }
+    } catch (_) {
+      playTone('ring');
+    }
+  }
+
+  function stopRingtone() {
+    try {
+      if (ringAudio) {
+        ringAudio.pause();
+        ringAudio.currentTime = 0;
+      }
+    } catch (_) { /* ignore */ }
+  }
+
   function playTone(kind) {
     if (!soundEnabled || document.body.classList.contains('is-gallery')) return;
     try {
@@ -380,7 +423,7 @@
     lastIncoming = detail || {};
     uiMode = 'incoming';
     setBtnState('ring');
-    playTone('ring');
+    startRingtone();
     var D = dock();
     if (D) {
       if (!D.isPanelOpen('phone')) {
@@ -441,6 +484,7 @@
 
   function hideIncoming() {
     hideIncomingCard();
+    stopRingtone();
     lastIncoming = null;
     if (uiMode === 'incoming') uiMode = 'idle';
   }

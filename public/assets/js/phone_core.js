@@ -449,6 +449,8 @@
               });
             }
             startUA(creds);
+            // Авто-провижининг PJSIP-эндпоинта (best-effort, не блокирует регистрацию).
+            pbxApi('/softphone/provision', { method: 'POST', body: '{}' }).catch(function () {});
             return { ok: true, mode: receiveMode };
           })
           .catch(function (e) {

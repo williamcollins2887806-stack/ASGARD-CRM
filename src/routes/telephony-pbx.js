@@ -297,6 +297,41 @@ module.exports = async function telephonyPbxRoutes(fastify) {
     };
   });
 
+  /**
+   * Авто-провижининг PJSIP-эндпоинта текущего сотрудника.
+   * Вызывается самим сотрудником после получения credentials, чтобы не требовать
+   * ручного запуска tools/provision_pjsip_operators.js. Писать в /etc/asterisk
+   * может только root, поэтому при отказе возвращаем признак для админа.
+   */
+  fastify.post('/softphone/provision', { preHandler: [fastify.authenticate] }, async (req) => {
+    if (!canUseTelephony(req.user)) {
+      const err = new Error('Forbidden');
+      err.statusCode = 403;
+      throw err;
+    }
+    await ensureOperatorRow(req.user.id);
+    const { rows } = await db.query(
+      `SELECT sip_username, sip_password FROM pbx_operators WHERE user_id = $1`,
+      [req.user.id]
+    );
+    const u = rows[0];
+    if (!u || !u.sip_username || !u.sip_password) {
+      return { ok: false, reason: 'no_credentials' };
+    }
+    try {
+      const { spawnSync } = require('child_process');
+      const r = spawnSync('node', ['tools/provision_pjsip_operators.js'], {
+        cwd: process.cwd(), encoding: 'utf8', timeout: 60000,
+      });
+      if (r.status !== 0) {
+        return { ok: false, reason: 'provision_failed', error: (r.stderr || '').trim().slice(0, 200) };
+      }
+      return { ok: true };
+    } catch (e) {
+      return { ok: false, reason: 'provision_error', error: e.message };
+    }
+  });
+
   function callCtrl(action) {
     return async (req, reply) => {
       if (!canUseTelephony(req.user)) {
