@@ -874,7 +874,7 @@ window.AsgardPersonnelPage = (function () {
       // Заголовок группы
       tbodyHtml += `
         <tr>
-          <td colspan="12" style="background:var(${st.bgVar});color:var(${st.tVar});
+          <td colspan="11" style="background:var(${st.bgVar});color:var(${st.tVar});
               font-weight:700;font-size:12px;letter-spacing:.5px;padding:6px 12px;border:none">
             ${esc(st.label.toUpperCase())} &nbsp;·&nbsp; ${list.length}
           </td>
@@ -924,33 +924,33 @@ window.AsgardPersonnelPage = (function () {
             </td>
             <td style="color:var(--t2);font-size:13px">${prsCopyWrap(esc(e.role_tag || e.position || '—'), e.role_tag || e.position || '')}</td>
             <td>${statusBadge(e.effective_status || e.readiness_status)}</td>
-            <td>
-              ${prsCopyWrap(`${titleHtml}${pmHtml}`, [workTitle, pmName].filter(Boolean).join(' · '))}
+            <td class="prs-col-work">
+              <div class="prs-work" tabindex="0"
+                   data-fio="${esc(e.fio || '')}"
+                   data-obj="${esc(workTitle || '—')}"
+                   data-plan="${esc(e.planned_info ? (e.planned_info.work_title || '—') : '—')}"
+                   data-from="${esc(e.planned_info && e.planned_info.planned_from ? fmtDate(e.planned_info.planned_from) : '')}"
+                   data-pm="${esc(pmName || '—')}">
+                ${prsCopyWrap(`${titleHtml}${pmHtml}`, [workTitle, pmName].filter(Boolean).join(' · '))}
+                ${e.planned_info ? `<div class="prs-work__plan"><span class="prs-plan-badge">План</span>${esc(e.planned_info.work_title || '')}${e.planned_info.planned_from ? `<span class="prs-plan-from">с ${fmtDate(e.planned_info.planned_from)}</span>` : ''}</div>` : ''}
+              </div>
             </td>
-            <td style="font-size:12px;color:var(--t2)">
-              ${e.planned_info
-                ? prsCopyWrap(
-                    `<span style="font-size:10px;font-weight:700;color:var(--info-t);background:var(--info-bg);padding:2px 5px;border-radius:4px;margin-right:4px">План</span>${esc(e.planned_info.work_title || '')}${e.planned_info.planned_from ? '<div style="font-size:11px;color:var(--t3)">с '+fmtDate(e.planned_info.planned_from)+'</div>' : ''}`,
-                    e.planned_info.work_title || ''
-                  )
-                : '<span style="color:var(--t3)">—</span>'}
-            </td>
-            <td style="white-space:nowrap;font-size:13px;color:var(--t2)">${prsCopyWrap(startDate, startDate !== '—' ? startDate : '')}</td>
-            <td style="text-align:center">${docIndicator(e.permits)}</td>
-            <td style="text-align:center">${keyPermChipsHtml(e.key_permits)}</td>
-            <td style="font-size:11px;min-width:110px">${sizSizesHtml(e)}</td>
-            <td style="font-size:12.5px;color:var(--t2)" class="prs-city" title="${e.city ? esc(e.city) : ''}">${prsCopyWrap(e.city ? esc(e.city) : '<span style="color:var(--t3)">—</span>', e.city || '')}</td>
-            <td>${e.is_self_employed
+            <td class="prs-col-start" style="white-space:nowrap;font-size:13px;color:var(--t2)">${prsCopyWrap(startDate, startDate !== '—' ? startDate : '')}</td>
+            <td class="prs-col-docs" style="text-align:center">${docIndicator(e.permits)}</td>
+            <td class="prs-col-permits" style="text-align:center">${keyPermChipsHtml(e.key_permits)}</td>
+            <td class="prs-col-siz" style="font-size:11px">${sizSizesHtml(e)}</td>
+            <td class="prs-col-city" style="font-size:12.5px;color:var(--t2)">${prsCopyWrap(e.city ? esc(e.city) : '<span style="color:var(--t3)">—</span>', e.city || '')}</td>
+            <td class="prs-col-se">${e.is_self_employed
               ? prsCopyWrap(seLimitBar(seTrans, SE_YEAR_LIMIT), `${Math.round(seTrans)} / ${SE_YEAR_LIMIT}`)
               : '<span style="color:var(--t3);font-size:12px">—</span>'}</td>
-            <td style="text-align:right">${ratingHtml(e.rating_avg)}</td>
+            <td class="prs-col-rating" style="text-align:right">${ratingHtml(e.rating_avg)}</td>
           </tr>`;
       });
     });
     } // end !isMlspView
 
     if (!anyRow) {
-      tbodyHtml = `<tr><td colspan="${isMlspView ? 9 : 12}" class="muted" style="text-align:center;padding:32px">
+      tbodyHtml = `<tr><td colspan="${isMlspView ? 9 : 11}" class="muted" style="text-align:center;padding:32px">
         ${isMlspView ? 'Нет вахт МЛСП по фильтру' : 'Нет рабочих, соответствующих фильтрам'}
       </td></tr>`;
     }
@@ -1078,25 +1078,24 @@ window.AsgardPersonnelPage = (function () {
           <table class="asg" id="prs_table">
             <thead>
               <tr>
-                <th>ФИО / Телефон</th>
-                <th>Специальность</th>
-                <th>Статус</th>
-                <th>Объект / РП</th>
+                <th class="prs-col-fio">ФИО / Телефон</th>
+                <th class="prs-col-spec">Специальность</th>
+                <th class="prs-col-status">Статус</th>
+                <th class="prs-col-work">Объект · план</th>
                 ${isMlspView ? `
                 <th>Заезд</th>
                 <th>Дней</th>
                 <th>Вывоз</th>
                 <th>Транспорт</th>
-                <th style="width:160px">Действия</th>
+                <th class="prs-col-actions">Действия</th>
                 ` : `
-                <th>→ План</th>
-                <th>Начало работ</th>
-                <th style="text-align:center;width:60px">Документы</th>
-                <th style="text-align:center;width:170px" title="БОСИЕТ · РУКАВ · МЛСП · ФСБ">Ключевые допуски</th>
-                <th style="width:120px">СИЗ</th>
-                <th style="width:120px" class="prs-city">Город</th>
-                <th style="width:140px">Лимит СЗ</th>
-                <th style="text-align:right;width:70px">Рейтинг</th>
+                <th class="prs-col-start">Начало работ</th>
+                <th class="prs-col-docs" title="Наличие документов">Док</th>
+                <th class="prs-col-permits" title="БОСИЕТ · РУКАВ · МЛСП · ФСБ">Ключевые допуски</th>
+                <th class="prs-col-siz">СИЗ</th>
+                <th class="prs-col-city">Город</th>
+                <th class="prs-col-se">Лимит СЗ</th>
+                <th class="prs-col-rating">Рейтинг</th>
                 `}
               </tr>
             </thead>
