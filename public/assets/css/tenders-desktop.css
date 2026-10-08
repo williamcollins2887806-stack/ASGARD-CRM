@@ -1,0 +1,118 @@
+/* ASGARD CRM — CRM-1.0 desktop tender registry fix.
+   Scope: desktop/vanilla only. Mobile frontend is intentionally untouched. */
+
+.tenders-table-wrap{
+  width:100%;
+  max-width:100%;
+  min-width:0;
+  overflow-x:auto;
+  overflow-y:visible;
+  -webkit-overflow-scrolling:touch;
+}
+
+.tenders-table-wrap table.asg{
+  width:100%;
+  min-width:0;
+  table-layout:fixed;
+  font-size:12px;
+}
+
+.tenders-table-wrap table.asg th,
+.tenders-table-wrap table.asg td{
+  vertical-align:middle;
+  text-align:left;
+  white-space:normal;
+  overflow-wrap:anywhere;
+  word-break:break-word;
+  line-height:1.35;
+}
+
+.tenders-table-wrap table.asg th{
+  padding:9px 8px;
+  font-size:10px;
+  letter-spacing:.04em;
+}
+
+.tenders-table-wrap table.asg td{
+  padding:9px 8px;
+}
+
+.tenders-table-wrap table.asg th:nth-child(1){width:40px}
+.tenders-table-wrap table.asg th:nth-child(2){width:72px}
+.tenders-table-wrap table.asg th:nth-child(3){width:24%}
+.tenders-table-wrap table.asg th:nth-child(4){width:9%}
+.tenders-table-wrap table.asg th:nth-child(5){width:9%}
+.tenders-table-wrap table.asg th:nth-child(6){width:10%}
+.tenders-table-wrap table.asg th:nth-child(7){width:8%}
+.tenders-table-wrap table.asg th:nth-child(8){width:9%}
+.tenders-table-wrap table.asg th:nth-child(9){width:8%}
+.tenders-table-wrap table.asg th:nth-child(10){width:10%}
+.tenders-table-wrap table.asg th:nth-child(11){width:7%}
+.tenders-table-wrap table.asg th:nth-child(12){width:78px}
+
+.tenders-table-wrap table.asg th > .btn,
+.tenders-table-wrap table.asg td > .btn{
+  max-width:100%;
+  min-width:0;
+  white-space:normal;
+  padding:6px 8px !important;
+  line-height:1.2;
+}
+
+.tenders-table-wrap table.asg td:nth-child(6) .cr-status-badge,
+.tenders-table-wrap table.asg td:nth-child(11) a{
+  display:inline-flex;
+  max-width:100%;
+  white-space:normal;
+  overflow-wrap:anywhere;
+}
+
+.tenders-table-wrap table.asg td:nth-child(3) b{
+  display:block;
+  margin-bottom:2px;
+  line-height:1.3;
+}
+
+.tenders-table-wrap table.asg td:nth-child(3) .help{
+  line-height:1.3;
+}
+
+@media (min-width:769px) and (max-width:1500px){
+  .main,
+  .asg-main-wrap{
+    overflow-x:auto;
+  }
+
+  .asg-content,
+  #layout{
+    max-width:none;
+    min-width:0;
+  }
+
+  .tenders-table-wrap table.asg{
+    font-size:11px;
+  }
+
+  .tenders-table-wrap table.asg th,
+  .tenders-table-wrap table.asg td{
+    padding:7px 6px;
+    line-height:1.28;
+  }
+
+  .tenders-table-wrap table.asg th:nth-child(1){width:36px}
+  .tenders-table-wrap table.asg th:nth-child(2){width:62px}
+  .tenders-table-wrap table.asg th:nth-child(3){width:25%}
+  .tenders-table-wrap table.asg th:nth-child(4){width:8%}
+  .tenders-table-wrap table.asg th:nth-child(5){width:8%}
+  .tenders-table-wrap table.asg th:nth-child(6){width:10%}
+  .tenders-table-wrap table.asg th:nth-child(7){width:8%}
+  .tenders-table-wrap table.asg th:nth-child(8){width:8%}
+  .tenders-table-wrap table.asg th:nth-child(9){width:8%}
+  .tenders-table-wrap table.asg th:nth-child(10){width:10%}
+  .tenders-table-wrap table.asg th:nth-child(11){width:7%}
+  .tenders-table-wrap table.asg th:nth-child(12){width:70px}
+}
+
+@media (max-width:768px){
+  .tenders-table-wrap{overflow-x:visible}
+}
