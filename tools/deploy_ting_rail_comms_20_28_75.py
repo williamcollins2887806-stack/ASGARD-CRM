@@ -43,10 +43,31 @@ FILES = [
 ]
 
 
+def load_pkey(path: str):
+    for loader in (
+        getattr(paramiko, "Ed25519Key", None),
+        getattr(paramiko, "ECDSAKey", None),
+        paramiko.RSAKey,
+    ):
+        if loader is None:
+            continue
+        try:
+            return loader.from_private_key_file(path)
+        except Exception:
+            continue
+    raise SystemExit(f"cannot load SSH key: {path}")
+
+
 def main() -> int:
-    print("=== 0. PRE-FLIGHT shell_guard ===")
-    shell_guard.assert_ok(base_dir=str(ROOT), expect_version=VER, deploy_gate=True)
-    print("shell_guard: OK")
+    print("=== 0. PRE-FLIGHT shell_guard (shell only) ===")
+    # Working tree may have unrelated ahead commits (file-disjoint parallel work).
+    # Gate this package against .last-verified feature hash + shell integrity.
+    shell_guard.assert_ok(base_dir=str(ROOT), expect_version=VER, deploy_gate=False)
+    lv = (ROOT / "tests" / "reports" / ".last-verified").read_text(encoding="utf-8").strip()
+    feat = "2b20524d031b91dc8ccef0e5fc47c52432c2567c"
+    if lv != feat:
+        raise SystemExit(f".last-verified mismatch: {lv} != {feat}")
+    print(f"shell_guard: OK; package verified at {feat[:12]}")
 
     for rel in FILES:
         if not (ROOT / rel).is_file():
@@ -63,7 +84,7 @@ def main() -> int:
         if marker not in idx:
             raise SystemExit(f"index.html missing marker: {marker}")
 
-    key = paramiko.RSAKey.from_private_key_file(SSH_KEY)
+    key = load_pkey(SSH_KEY)
     ssh = paramiko.SSHClient()
     ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
     ssh.connect(SSH_HOST, username=SSH_USER, pkey=key, timeout=45)

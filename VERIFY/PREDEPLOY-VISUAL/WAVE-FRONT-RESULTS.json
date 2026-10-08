@@ -1,0 +1,16 @@
+{
+  "wave1_pass": 0,
+  "wave1_fail": 54,
+  "agents": [
+    "e4df60bf",
+    "5bba91cc",
+    "a3f08ab4",
+    "b18c743a",
+    "759a834b",
+    "627184ef",
+    "08839401",
+    "3db74a68",
+    "8f4f13c4"
+  ],
+  "note": "Full wave 0 PASS; recapture+gallery fix applied; reverify pending"
+}

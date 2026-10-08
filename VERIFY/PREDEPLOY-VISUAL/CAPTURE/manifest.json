@@ -1,0 +1,12 @@
+{
+  "status": "SHOT_MATRIX_LIVE_CAPTURE",
+  "base": "http://127.0.0.1:3100",
+  "viewport": "414x896@2x",
+  "generated_at": "2026-10-06T14:03:56.711Z",
+  "opened_chat": {
+    "ok": true,
+    "id": 236,
+    "hasComposer": true
+  },
+  "out": "C:\\Users\\Nikita-ASGARD\\ASGARD-CRM\\VERIFY\\PREDEPLOY-VISUAL\\CAPTURE"
+}

@@ -21,7 +21,7 @@ sys.path.insert(0, str(ROOT / "tools"))
 import shell_guard  # noqa: E402
 import paramiko
 
-VER = "20.28.101"
+VER = "20.28.102"
 MIG = "V370__huginn_calls"
 SSH_HOST = "92.242.61.184"
 SSH_USER = "root"
@@ -33,8 +33,9 @@ FILES = [
     "public/index.html",
     "public/sw.js",
     "public/assets/js/huginn_dock.js",
-    "public/assets/css/huginn_dock.css",
     "public/assets/js/huginn_calls.js",
+    "public/assets/js/huginn_sse.js",
+    "public/assets/css/huginn_dock.css",
     "public/assets/css/billing.css",
     "public/assets/css/components.css",
     "public/assets/css/suppliers.css",

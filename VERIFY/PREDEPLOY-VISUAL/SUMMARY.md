@@ -1,39 +1,22 @@
-# PREDEPLOY-VISUAL SUMMARY — Huginn visual wave
+# PREDEPLOY-VISUAL SUMMARY — full matrix 66 wave
 
-**Дата:** 2026-10-05  
-**Статус:** REVIEW → **human-gate** (деплой только по команде)  
-**ACK:** [`ACK-SCOPE.md`](./ACK-SCOPE.md) — OUT = live-geo only
+**Дата:** 2026-10-06
+**Статус:** REVIEW — Iter-5 closed
+**Front VERIFIED / IN-scope = 18 / ~53**
+**Сдача 1в1 — нет**
 
-## Сделано (код)
+## Закрытые корни
 
-| Зона | Доказательство |
-|------|----------------|
-| Chips removed | `#hgAiChips` / `loadAiChips` удалены; CSS `display:none` |
-| List header hybrid | `Изм.` \| `Чаты` \| compose; `LIST-HEADER-HYBRID.md` |
-| Multi-select → folder | `PUT /:id/folder` из edit bar |
-| Stories rail | `#hgStoriesRail` + viewer + `POST .../view` |
-| Birthday banners | `/api/birthdays` + dismiss + settings toggle; **no geo** |
-| Pinned block | `.hg-pinned-block` отдельная секция |
-| Glass island | nav/FAB blur↑ sat↑ rim↑ shadow↑; size **64** retained |
-| Thread pin/file | pin jump + flash; file card as download link |
-| AI 1в1 | Ai над attach; tab icons; copy/expand/refresh; New Style sheet |
-| Mock-overlay | `tools/huginn_visual_mock_overlay.js` → `MOCKS/pair-*-diff.png` |
+| Корень | PASS |
+|--------|------|
+| Profile | S03 S18 S20–S23 |
+| Calls | S14 |
+| AI sheet | A01–A05 |
+| Bubbles | S05 S07 S11 S58 |
+| Menus | S16 S19 |
 
-## V-PAIR (mock)
+## Next
 
-| Pair | File |
-|------|------|
-| List | `MOCKS/pair-list-diff.png` |
-| Thread | `MOCKS/pair-thread-diff.png` |
-| AI | `MOCKS/pair-ai-diff.png` |
+List glass S01/S12/S36 · pin/reply S24/S26 · settings · A06–A08
 
-Live CRM captures поверх mock — следующий шаг human-gate (≤3 shots / batch). Placeholder mocks без `--crm` валидны как zone annotation tool smoke.
-
-## OUT
-
-- Live-location / geo banners — **не** реализовано (намеренно).
-
-## Вердикт для человека
-
-Код волны IN-scope закрыт на уровне SELF-CHECK/REVIEW.  
-**DONE/deploy запрещён** без вашей явной команды после просмотра SUMMARY + live shots.
+Deploy only by command.
