@@ -1,0 +1,14 @@
+{
+  "name": "huginn-prototype",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Huginn messenger UI prototype screenshots",
+  "main": "_shot.js",
+  "scripts": {
+    "serve": "npx --yes serve -l 4178 .",
+    "shots": "node _shot.js"
+  },
+  "dependencies": {
+    "playwright": "^1.49.0"
+  }
+}

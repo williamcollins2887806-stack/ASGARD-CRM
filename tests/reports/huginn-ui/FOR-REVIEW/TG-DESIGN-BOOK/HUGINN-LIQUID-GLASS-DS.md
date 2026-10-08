@@ -1,6 +1,6 @@
 # Huginn Liquid Glass — Design System (канон для кодеров)
 
-**Статус:** Phase 2 overlay — бриф Telegram iOS 2026 + 38 vision-shots + CRM tokens.  
+**Статус:** Phase 2 overlay — бриф Telegram iOS 2026 + **58** vision-shots (Batch 1 S01–S38 + Batch 2 S39–S58) + CRM tokens + UX/tap-maps Batch 2.  
 **Код Huginn не менять**, пока нет команды «кодить Wave F0».  
 **Viewport эталона shots:** 414×896 pt @2x (`pt = px_828/2`). Huginn dock — CSS px в том же логическом масштабе.
 
@@ -9,14 +9,15 @@
 1. Этот документ + [`HUGINN-LIQUID-GLASS-TOKENS.json`](HUGINN-LIQUID-GLASS-TOKENS.json)
 2. Бриф пользователя «Telegram для iOS (2026): функциональность и дизайн» (оставленные фичи)
 3. Phase-1 book: [`TG-DESIGN-SYSTEM.md`](TG-DESIGN-SYSTEM.md), [`shots/`](shots/), [`REFS/`](REFS/)
-4. [`../TG-ATLAS.json`](../TG-ATLAS.json) — baseline размеров, не палитра TG
-5. Текущий [`public/assets/css/huginn_dock.css`](../../../../public/assets/css/huginn_dock.css) — craft tradeoffs (помечать TARGET)
+4. Batch 2 UX: [`BATCH-2-UX/`](BATCH-2-UX/) (merged descriptions + tap maps + [`FACT-CHECK.md`](BATCH-2-UX/FACT-CHECK.md))
+5. [`../TG-ATLAS.json`](../TG-ATLAS.json) — baseline размеров, не палитра TG
+6. Текущий [`public/assets/css/huginn_dock.css`](../../../../public/assets/css/huginn_dock.css) — craft tradeoffs (помечать TARGET)
 
 ---
 
 ## 0. Закон единого стиля
 
-1. **Один материал стекла** — `.hg-glass` + роли (`--hg-glass-role: composer|nav|header|menu|pin|card|fab`). Запрещены разовые `background`/`backdrop-filter` вне ролей.
+1. **Один материал стекла** — `.hg-glass` + роли (`composer|nav|header|menu|pin|card|fab|segment|media-chrome|edit-action`). Запрещены разовые `background`/`backdrop-filter` вне ролей.
 2. **Только CRM-цвета** — `--bg2`, `--bg3`, `--t1`, `--t2`, `--t3`, `--blue-l`, `--brd-m`, `--gold` (только rail). Светлее/темнее/прозрачнее — через `color-mix`, не hex TG.
 3. **Геометрия из shots**, палитра из CRM. Purple `#7358FF` с рефов — **запрещён** в Huginn.
 4. **Screen bg = `--bg2`**, не OLED `#000` (мессенджер сливается с CRM canvas).
@@ -40,9 +41,16 @@
 | 9 | Context menus glass + scale | S16/S19 | F6 |
 | 10 | Профиль: 4 round actions + soft cards | S03/S17/S23 | F7: 3–4 circles + `--bg3` cards r26 |
 | 11 | Анимации морфинг / scale; Power Saving | бриф §1/§8 | F0 prefs + F9 motion |
-| 12 | AI Editor после 3 строк | нет в API | **BE first** → F11 |
+| 12 | AI Editor после 3 строк | нет TG-shot; BE V366 ready | **TARGET** [`PIXEL-SPEC-F11-AI-EDITOR.md`](PIXEL-SPEC-F11-AI-EDITOR.md) → front F11 |
 | 13 | iPad ⌘+Enter | бриф §9 | F12 polish |
 | 14 | Цвета «свои» | shots purple/OLED | **CRM only** |
+| 15 | List Edit Mode + 3 action pills | **S46** | `.hg-glass` role `edit-action`; не tabbar |
+| 16 | Member long-press menu | **S52** | menu role + preview card; Member Tags DEFER if no API |
+| 17 | Connecting subtitle | S46 S56–S58 | `header.connecting` state |
+| 18 | Checklist bubble | **S56** | bubble layout; Premium TG ≠ Huginn stub — DEFER_BE if no todo API |
+| 19 | Publications / Archive segment | S39 S40 | segment role + stories grid |
+| 20 | Reply strip in composer + keyboard | **S58** | composer.reply; keyboard insets (не продукт-клавиатура) |
+| 21 | Sound / mute submenu | **S50** | F6 menu variant |
 
 **Вне скоупа (удалено брифом):** sticker panel redesign, keyboard product, Gift Crafting, AI Summaries, Live Photos, Document Scanner, Colored Bot Buttons, Mighty Polls, radial reactions, refraction scroll.
 
@@ -125,8 +133,9 @@ Light theme: те же роли; проценты glass могут быть вы
 | `pin` | 72% | 20px | 8% | 20px | 160% | S24 |
 | `menu` | 80% | 32px | 10% | 18px | 180% | S16/S19 |
 | `card` | 100% (solid `--bg3`) | 0 | 0; separator `--brd-m` | 26px | — | S20/S32 |
-| `segment` | 55% | 16px | 10% | 20px | 160% | S17–S23 |
+| `segment` | 55% | 16px | 10% | 20px | 160% | S17–S23, **S39–S40** |
 | `media-chrome` | 70% | 28px | 10% | 50% / 16px | 180% | F8 |
+| `edit-action` | 75% | 24px | 10% | 22px (pill) | 160% | **S46** — три отдельные pills, не nav |
 
 Опциональный specular (блик): `inset 0 0.5px 0 color-mix(t1 22%, transparent)` — только composer/nav.
 
@@ -191,33 +200,38 @@ Active tab: disc under icon from `--bg3` mix — **not** blue bloom (R100 alread
 - Badge: `--hg-tg-badge`.
 - При скролле списка island остаётся; контент блюрится под стеклом.
 
-### 5.3 Header (S04, S05, S24)
+### 5.3 Header (S04, S05, S24, **S56–S58**)
 
 - Floating capsules: back(+badge), title, avatar — не continuous bar.
 - Pin / live-location / reply: glass `pin` role, width ~ content max with 16 inset.
+- **Connecting:** subtitle `соединение…` + spinner в title-pill (`header.connecting`) — S46/S56–S58.
 
-### 5.4 Chat list (S01, S37)
+### 5.4 Chat list (S01, S37, **S46**)
 
 Structure top→bottom in row: avatar → name → preview (1 line) → time; unread badge.
 Thin separators via `--brd-m`.
 Pinned block: `card` role.
+**Edit Mode (S46):** left checkboxes; pinned reorder handles; nav «Готово»; bottom **три** `.hg-glass[data-role=edit-action]` pills (`Прочитать все` / `В архив` / `Удалить`) — **запрещено** сливать с tabbar/FAB.
 
-### 5.5 Bubbles (S05, S07, S11)
+### 5.5 Bubbles (S05, S07, S11, **S56**)
 
 - Radius 17; **tail corner 7** (asymmetric, same family).
-- me / them CRM mixes.
+- me / them CRM mixes (**не** purple с рефа).
 - Meta in-bubble ~55% white/`t1`.
 - Voice: play disc; waveform played = t1, rest = t1@45%.
+- **Checklist (S56):** structured todo rows внутри bubble-me; без stub API — если нет todo endpoint → DEFER_BE.
 
-### 5.6 Context menus (S16, S19)
+### 5.6 Context menus (S16, S19, **S49–S52**)
 
 - `.hg-glass[data-role=menu]`.
 - Appear: scale from touch point (F9); underlay blur; full scrim optional — shots often dim sibling controls instead of heavy overlay.
+- **S50** sound submenu; **S52** member preview card + Написать / тег / Исключить.
 
-### 5.7 Profile (S03, S17)
+### 5.7 Profile (S03, S17, **S39–S40, S45, S47, S53**)
 
 - 3–4 round glass action buttons.
 - Soft cards `--bg3` r26; rows 52.
+- **Publications | Archive** segment (S39–S40); group edit form (S53).
 
 ### 5.8 Media viewer (F8)
 
@@ -227,14 +241,35 @@ Pinned block: `card` role.
 
 ### 5.9 Segmented / folders
 
-- Segment (profile media tabs): 382×40 pattern scaled to panel width.
+- Segment (profile media tabs): 382×40 pattern scaled to panel width; Batch2 publications segment same role.
 - Folder capsule: token only until BE.
 
-### 5.10 AI Editor (F11, BE first)
+### 5.10 AI Editor (F11)
 
-- Icon «Ai» after >3 lines in composer.
-- Sheet: grammar / rewrite / translate; encrypted; Premium gate policy на бэке.
-- Не рисовать stub.
+**BE:** ready (`V366`, `BE-READY.md`) — **no Premium**; `POST /ai/rewrite` + styles.  
+**Pixel-spec:** [`AI-EDITOR-PIXEL-SPEC.md`](AI-EDITOR-PIXEL-SPEC.md) (Desktop A01–A07) + [`PIXEL-SPEC-F11-AI-EDITOR.md`](PIXEL-SPEC-F11-AI-EDITOR.md) (dock fixture)  
+**Gap:** [`AI-EDITOR-GAP.md`](AI-EDITOR-GAP.md)  
+**Desktop refs:** [`REFS-DESKTOP/Новая папка (2)/`](REFS-DESKTOP/Новая%20папка%20(2)/) (`INDEX.json`) + `FOR-REVIEW/F11-AI-EDITOR/`
+
+| Rule | TARGET |
+|------|--------|
+| Trigger | Ai glyph **28×28** inside input capsule after **>3 lines**; hide otherwise |
+| Sheet | `.hg-glass[data-role="card"]` — r**28–32**, tabs Перевод/Стилизация/Исправление, primary pill h48 |
+| Actions | `translate` / `style` (+ presets) / `grammar` → `/ai/rewrite` |
+| Colors | CRM only; no Premium star / purple |
+| Stub | forbidden — real API or disable+error |
+
+Do not ship fake rewrite. Live 1в1 vs Desktop — PREDEPLOY-VISUAL.
+
+### 5.11 Composer reply + keyboard (S58)
+
+- Reply strip **внутри** input glass (не отдельный continuous bar).
+- Keyboard open: поднимает composer; **не** редизайнить iOS keyboard (вне скоупа).
+- Scroll-down FAB над composer — circle glass.
+
+### 5.12 Batch 2 UX layer
+
+Поведение / tap maps / фактчек: [`BATCH-2-UX/README.md`](BATCH-2-UX/README.md). Пиксели — `shots/S39*…S58*`.
 
 ---
 
@@ -261,7 +296,7 @@ Pinned block: `card` role.
 | Media viewer chrome | media exists | F8 OK |
 | Power saving | no | F0 localStorage |
 | Chat folders | no | **BE → F10** |
-| AI Editor | no | **BE → F11** |
+| AI Editor | **yes** (`/ai/rewrite`, styles) | **front F11** + pixel-spec |
 | iPad ⌘+Enter | n/a | F12 front |
 
 ---
@@ -272,16 +307,16 @@ Pinned block: `card` role.
 |------|-------|------|-----|
 | F0 | `--hg-glass-*`, roles, power-saving classes; kill one-off fills | DS | no |
 | F1 | Nav 64 + FAB 64 + charcoal disc + scroll blur | S36 S01 S12 | no |
-| F2 | Composer 3 glass + rim + mic/send | S28 S27 S04 | no |
-| F3 | Header capsules + pin | S04 S05 S24 | no |
-| F4 | List row / separators / badges / 1-line preview | S01 S37 | no |
-| F5 | Bubbles r17/tail7 + CRM colors + voice | S05 S07 S11 | no |
-| F6 | Context menus glass + scale | S16 S19 | no |
-| F7 | Profile round actions + cards | S03 S17 | no |
+| F2 | Composer 3 glass + rim + mic/send + **reply strip** | S28 S27 S04 **S58** | no |
+| F3 | Header capsules + pin + **connecting** | S04 S05 S24 **S56–S58** | no |
+| F4 | List row / separators / badges / 1-line preview + **Edit Mode pills** | S01 S37 **S46** | no |
+| F5 | Bubbles r17/tail7 + CRM colors + voice + **checklist layout** | S05 S07 S11 **S56** | checklist API? DEFER |
+| F6 | Context menus glass + scale + **member/sound** | S16 S19 **S50 S52** | member tags? DEFER |
+| F7 | Profile round actions + cards + **publications/archive** | S03 S17 **S39 S40 S53** | no |
 | F8 | Media viewer chrome | S18 S30 | no |
 | F9 | Motion + power-saving wiring | brief §8 | no |
 | F10 | Folder capsules | token | **BE first** |
-| F11 | AI Editor | brief §10 | **BE first** |
+| F11 | AI Editor | PIXEL-SPEC-F11 + F11-AI-EDITOR | BE ready → front |
 | F12 | iPad ⌘+Enter + wide polish | brief §9 | no |
 
 После каждого F0–F9: [`VERIFY-PROTOCOL.md`](VERIFY-PROTOCOL.md).

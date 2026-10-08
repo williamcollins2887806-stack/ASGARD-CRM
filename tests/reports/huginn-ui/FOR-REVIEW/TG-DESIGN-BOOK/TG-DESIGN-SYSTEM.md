@@ -1,15 +1,17 @@
-# Telegram iOS 26 → Huginn Design Book (Phase 1)
+# Telegram iOS 26 → Huginn Design Book (Phase 1 + Batch 2)
 
-**Статус:** Phase 1 complete — vision + measured consensus. Код Huginn **не** менялся.  
+**Статус:** Phase 1 + **Batch 2** (S39–S58) complete — vision + measured consensus. Код Huginn **не** менялся.  
 **Viewport канон:** **414 × 896 pt @2x** (`pt = px_828 / 2`). Все `shots/S*.md` нормализованы к этой базе.  
 **Артефакты:**
 
 | Файл | Назначение |
 |------|------------|
-| [`MANIFEST.json`](MANIFEST.json) | S01…S38 → source JPG + slug + status |
-| [`shots/`](shots/) | 38 попиксельных описаний (10 секций каждое) |
+| [`MANIFEST.json`](MANIFEST.json) | S01…S58 → source JPG + slug + status (`batch` 1\|2) |
+| [`shots/`](shots/) | 58 попиксельных описаний (10 секций каждое) |
 | [`TG-DESIGN-TOKENS.json`](TG-DESIGN-TOKENS.json) | канонические токены + coverage + diff для кодеров |
-| [`PIXEL-SAMPLE.json`](PIXEL-SAMPLE.json) | Pillow samples + конфликты с ATLAS |
+| [`BATCH-2-DELTA.md`](BATCH-2-DELTA.md) | новое vs Batch 1 / напряжения с Liquid Glass DS |
+| [`PIXEL-SAMPLE.json`](PIXEL-SAMPLE.json) | Pillow samples Batch 1 + конфликты с ATLAS |
+| [`PIXEL-SAMPLE-B2.json`](PIXEL-SAMPLE-B2.json) | Pillow samples ключевых chrome-зон Batch 2 |
 | [`../TG-ATLAS.json`](../TG-ATLAS.json) | предшествующий машинный слой (не затираем) |
 
 **Как читать:** book = истина по **геометрии/стеклу iOS 26 Liquid Glass** на этих рефах. ATLAS = полезный baseline + то, что уже вшито в `huginn_dock.css`. Конфликты — явная таблица ниже, без усреднения «на глаз».
@@ -226,25 +228,32 @@ Floating capsules вместо continuous bar:
 
 | Компонент | Shots |
 |-----------|-------|
-| composer | S04 S05 S08 S25 S27 **S28** S30 |
+| composer | S04 S05 S08 S25 S27 **S28** S30 **S56 S57 S58** |
 | nav_tabbar | S01 S02 S06 S12 S14 S29 S31–S34 **S36** S37 S38 |
-| header | S04 S05 S08 S15 **S24** S25 S26 S30 |
-| list_chats | S01 S35 S36 S37 S38 |
-| list_contacts | S02 S12 S13 |
-| thread_bubbles | S04 S05 S07 S08 S11 S15 S25 S26 S30 |
+| header | S04 S05 S08 S15 **S24** S25 S26 S30 **S56 S57 S58** |
+| list_chats | S01 S35 S36 S37 S38 **S46** |
+| list_contacts | S02 S12 S13 **S42 S43 S54** |
+| thread_bubbles | S04 S05 S07 S08 S11 S15 S25 S26 S30 **S56 S57 S58** |
 | voice | S07 S09 S22 |
 | video_note | S08 S09 S10 |
-| overlays_menus | S06 S13 S16 S19 |
-| profile_group | S03 S16 S17 S19 S23 |
+| overlays_menus | S06 S13 S16 S19 **S49 S50 S51 S52** |
+| profile_group | S03 S16 S17 S19 S23 **S47–S51 S53 S55** |
+| profile_user | **S39 S40 S41 S44** |
 | shared_media | S18 S20 S21 S22 |
-| settings | S06 S29 S31–S34 |
+| settings | S06 S29 S31–S34 **S41 S44** |
 | calls | S14 |
-| keyboard | S04 S15 S25 S27 |
-| live_location | S08 S09 S11 S25 S30 |
-| reactions_reply_unread | S26 |
-| stories | S35 S37 S38 |
+| keyboard | S04 S15 S25 S27 **S58** |
+| live_location | S08 S09 S11 S25 S30 **S46** |
+| reactions_reply_unread | S26 **S58** |
+| stories | S35 S37 S38 **S39 S40** |
+| edit_mode_chats | **S46** |
+| member_context | **S52** |
+| group_participants | **S45 S48 S55** |
+| add_participants | **S43 S54** |
+| connecting_state | **S46 S56 S57 S58** |
+| checklist_bubble | **S56** |
 
-**Дыр по обязательным chrome-блокам плана нет** (composer, nav, header, list, thread, bubbles, voice, overlays — все покрыты ≥1 shot).
+**Batch 1:** дыр по обязательным chrome-блокам нет. **Batch 2** добавляет edit-mode списка, member context, publications/archive профиля, sound submenu, reply+keyboard, connecting subtitle, checklist bubble.
 
 ---
 
@@ -290,8 +299,49 @@ Floating capsules вместо continuous bar:
 | S36 | chats-glass-tabbar-fab | IMG_20261005_110225 |
 | S37 | chats-stories-liquid-glass | IMG_20261005_110226 |
 | S38 | chats-stories-liquid-glass | IMG_20261005_110227 |
+| S39 | user-profile-publications | IMG_20261006_104720 |
+| S40 | stories-archive-view | IMG_20261006_104721 |
+| S41 | profile-edit-ios-dark | IMG_20261006_104722 |
+| S42 | new-message-contacts | IMG_20261006_104723 |
+| S43 | add-participants-list | IMG_20261006_104724 (1) |
+| S44 | edit-profile-settings | IMG_20261006_104724 |
+| S45 | group-participants | IMG_20261006_104725 |
+| S46 | chat-list-edit-mode-live-location | IMG_20261006_104726 |
+| S47 | group-profile-cover-participants | IMG_20261006_104727 (1) |
+| S48 | group-profile-participants | IMG_20261006_104727 |
+| S49 | group-profile-menu | IMG_20261006_104728 |
+| S50 | group-profile-sound-menu | IMG_20261006_104729 |
+| S51 | group-profile-menu | IMG_20261006_104730 (1) |
+| S52 | member-context-menu | IMG_20261006_104730 |
+| S53 | group-edit | IMG_20261006_104731 |
+| S54 | add-contacts-picker | IMG_20261006_104732 (1) |
+| S55 | group-profile-participants | IMG_20261006_104732 |
+| S56 | tender-checklist-connecting | IMG_20261006_104733 |
+| S57 | group-chat-ios-dark-liquid | IMG_20261006_104734 |
+| S58 | chat-reply-keyboard | IMG_20261006_104735 |
 
-Skipped dupe: `IMG_20261005_110228.jpg` (= S38 source).
+Skipped dupe Batch 1: `IMG_20261005_110228.jpg` (= S38 source).  
+Skipped dupe Batch 2: `IMG_20261006_104735 (1).jpg` (= S58 source).
+
+---
+
+## 8b. Batch 2 — новые экраны / состояния
+
+Источник: `Desktop\Новая папка (3)` → `REFS/S39…S58.jpg`. Детальная дельта для кодеров: [`BATCH-2-DELTA.md`](BATCH-2-DELTA.md).
+
+| Кластер | Shots | Суть |
+|---------|-------|------|
+| User profile + publications / archive | S39–S40 | сегмент Публикации/Архив, media grid, stories actions |
+| Profile edit / settings forms | S41, S44 | edit profile iOS dark forms |
+| New message / add contacts pickers | S42–S43, S54 | search capsule, checkbox lists |
+| Group participants / cover / edit | S45, S47–S48, S53, S55 | участники, cover, group edit |
+| Chat list **Edit Mode** + geo | S46 | чекбоксы, reorder pinned, 3 floating action pills, «Соединение...» |
+| Group profile menus + sound | S49–S51 | more-menu; S50 = sound submenu |
+| Member long-press context | S52 | preview card + меню (Написать / тег / Исключить) |
+| Thread + checklist + connecting | S56–S57 | checklist bubble, nav «соединение...», action pill |
+| Reply composer + keyboard | S58 | reply strip в composer, iOS keyboard, pinned, scroll FAB |
+
+Существующие слои **не затираются**: Phase-1 book, [`TG-ATLAS.json`](../TG-ATLAS.json), [`HUGINN-LIQUID-GLASS-DS.md`](HUGINN-LIQUID-GLASS-DS.md). Overlay Batch 2 → Liquid Glass DS — только по отдельной команде.
 
 ---
 

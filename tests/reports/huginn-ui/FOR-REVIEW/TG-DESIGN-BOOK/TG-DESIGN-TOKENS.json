@@ -11,10 +11,15 @@
       "shots_dir": "shots/",
       "atlas": "../TG-ATLAS.json",
       "pixel_sample": "PIXEL-SAMPLE.json",
-      "huginn_css": "public/assets/css/huginn_dock.css"
+      "huginn_css": "public/assets/css/huginn_dock.css",
+      "pixel_sample_b2": "PIXEL-SAMPLE-B2.json",
+      "batch2_delta": "BATCH-2-DELTA.md"
     },
     "phase": 1,
-    "note": "Phase 1 = vision book + measured consensus. Phase 2 = overlay external sources from user."
+    "note": "Phase 1 = vision book + measured consensus. Phase 2 = overlay external sources from user.",
+    "updated_batch2": "2026-10-06T11:22:19.173539+03:00",
+    "pixel_sample_b2": "PIXEL-SAMPLE-B2.json",
+    "done_shots": 58
   },
   "foundations": {
     "bg_oled": {
@@ -408,7 +413,10 @@
       "S25",
       "S27",
       "S28",
-      "S30"
+      "S30",
+      "S56",
+      "S57",
+      "S58"
     ],
     "nav_tabbar": [
       "S01",
@@ -433,19 +441,26 @@
       "S24",
       "S25",
       "S26",
-      "S30"
+      "S30",
+      "S56",
+      "S57",
+      "S58"
     ],
     "list_chats": [
       "S01",
       "S35",
       "S36",
       "S37",
-      "S38"
+      "S38",
+      "S46"
     ],
     "list_contacts": [
       "S02",
       "S12",
-      "S13"
+      "S13",
+      "S42",
+      "S43",
+      "S54"
     ],
     "thread_bubbles": [
       "S04",
@@ -456,7 +471,10 @@
       "S15",
       "S25",
       "S26",
-      "S30"
+      "S30",
+      "S56",
+      "S57",
+      "S58"
     ],
     "voice": [
       "S07",
@@ -472,14 +490,25 @@
       "S06",
       "S13",
       "S16",
-      "S19"
+      "S19",
+      "S49",
+      "S50",
+      "S51",
+      "S52"
     ],
     "profile_group": [
       "S03",
       "S16",
       "S17",
       "S19",
-      "S23"
+      "S23",
+      "S47",
+      "S48",
+      "S49",
+      "S50",
+      "S51",
+      "S53",
+      "S55"
     ],
     "shared_media": [
       "S18",
@@ -493,7 +522,9 @@
       "S31",
       "S32",
       "S33",
-      "S34"
+      "S34",
+      "S41",
+      "S44"
     ],
     "calls": [
       "S14"
@@ -502,7 +533,8 @@
       "S04",
       "S15",
       "S25",
-      "S27"
+      "S27",
+      "S58"
     ],
     "live_location": [
       "S08",
@@ -517,7 +549,42 @@
     "stories": [
       "S35",
       "S37",
-      "S38"
+      "S38",
+      "S39",
+      "S40"
+    ],
+    "profile_user": [
+      "S39",
+      "S40",
+      "S41",
+      "S44"
+    ],
+    "edit_mode_chats": [
+      "S46"
+    ],
+    "member_context": [
+      "S52"
+    ],
+    "group_participants": [
+      "S45",
+      "S48",
+      "S55"
+    ],
+    "add_participants": [
+      "S43",
+      "S54"
+    ],
+    "reply": [
+      "S58"
+    ],
+    "connecting_state": [
+      "S46",
+      "S56",
+      "S57",
+      "S58"
+    ],
+    "checklist_bubble": [
+      "S56"
     ]
   },
   "hg_token_diff_proposal": {
@@ -546,5 +613,39 @@
     "do_not_hardcode": [
       "--hg-tg-bubble-me — брать accent темы пользователя / CRM, на рефах purple"
     ]
+  },
+  "batch2_measured_notes": {
+    "edit_action_pill_fill": {
+      "value": "#383838",
+      "role": "S46 left floating edit action (sampled avg)",
+      "source_shots": [
+        "S46"
+      ],
+      "confidence": "sampled-jpeg"
+    },
+    "member_menu_fill": {
+      "value": "#111112",
+      "role": "S52 context menu glass fill (sampled avg)",
+      "source_shots": [
+        "S52"
+      ],
+      "confidence": "sampled-jpeg"
+    },
+    "search_capsule": {
+      "value": "#181818",
+      "role": "S42 new-message search capsule",
+      "source_shots": [
+        "S42"
+      ],
+      "confidence": "sampled-jpeg"
+    },
+    "keyboard_key": {
+      "value": "#302F2F",
+      "role": "S58 iOS key fill avg",
+      "source_shots": [
+        "S58"
+      ],
+      "confidence": "sampled-jpeg"
+    }
   }
 }

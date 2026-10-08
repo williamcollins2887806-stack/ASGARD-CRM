@@ -54,6 +54,9 @@ async function api(token, method, p, body) {
 
 async function main() {
   console.log('BASE', BASE);
+  if (process.env.HUGINN_AI_STUB === '1') {
+    throw new Error('Refuse: HUGINN_AI_STUB=1 — anti-stub gate (real rewrite required)');
+  }
   const token = await login(LOGIN_A, PASS_A);
 
   // F10 create
@@ -124,12 +127,13 @@ async function main() {
     text: 'Привет как дела',
     mode: 'grammar'
   });
-  assert.ok(r.status === 200 || r.status === 502, 'rewrite status ' + r.status + ' ' + JSON.stringify(r.data));
   if (r.status === 200) {
-    assert.ok(r.data.text, 'rewrite text');
+    assert.ok(r.data.text || r.data.result || r.data.rewritten, 'rewrite text: ' + JSON.stringify(r.data));
     console.log('PASS F11 rewrite grammar');
+  } else if (r.status === 502 && /авторизац|api.?ключ|ai_error/i.test(JSON.stringify(r.data))) {
+    console.log('DEFER F11 rewrite grammar — AI-provider-auth', r.status, JSON.stringify(r.data).slice(0, 120));
   } else {
-    console.log('PASS F11 rewrite grammar (provider down, 502 accepted on clone)');
+    assert.equal(r.status, 200, 'rewrite must be 200 (no soft 502): ' + JSON.stringify(r.data));
   }
 
   r = await api(token, 'POST', '/api/chat-groups/ai/styles/' + styleId + '/share', {

@@ -1,0 +1,155 @@
+/* Presentation host only — device bezels & boards. Not prod CRM CSS. */
+html, body { height: 100%; }
+body {
+  margin: 0;
+  font-family: Inter, system-ui, sans-serif;
+  background: #0a0b10;
+  color: #f2f2f2;
+  overflow: hidden;
+}
+html[data-theme="light"] body.present-host { background: #ddd5c4; color: #1c1914; }
+
+.present-host {
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  height: 100vh;
+  min-height: 100vh;
+}
+.present-top {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 14px 28px 8px; gap: 16px;
+}
+.present-brand { display: flex; align-items: center; gap: 12px; }
+.present-brand .mark {
+  width: 36px; height: 36px; border-radius: 10px;
+  background: linear-gradient(145deg, #E8C35A, #B8922E);
+  color: #1a1205; display: grid; place-items: center; font-weight: 800;
+}
+.present-brand h1 { font-size: 15px; font-weight: 750; margin: 0; }
+.present-brand p { font-size: 11px; opacity: 0.55; margin: 2px 0 0; }
+.present-caption h2 { font-size: 18px; font-weight: 750; margin: 0; }
+.present-caption p { font-size: 13px; opacity: 0.65; margin: 4px 0 0; max-width: 720px; }
+
+.present-stage {
+  display: flex; align-items: center; justify-content: center;
+  padding: 8px 20px 12px; overflow: auto;
+}
+.board { display: none; width: 100%; justify-content: center; align-items: center; gap: 24px; flex-wrap: wrap; }
+.board.is-on { display: flex; }
+
+.present-dots {
+  display: flex; justify-content: center; gap: 7px; padding: 8px 16px 16px; flex-wrap: wrap;
+}
+.present-dots button {
+  width: 9px; height: 9px; border-radius: 50%; border: 0;
+  background: rgba(255,255,255,0.2); cursor: pointer;
+}
+.present-dots button.is-on { background: #D4A843; transform: scale(1.15); }
+html[data-theme="light"] .present-dots button { background: rgba(28,25,20,0.18); }
+html[data-theme="light"] .present-dots button.is-on { background: #B8841A; }
+.present-theme {
+  border: 1px solid rgba(255,255,255,0.15); background: rgba(255,255,255,0.06);
+  color: inherit; border-radius: 999px; padding: 8px 14px; font: 600 12px Inter, system-ui;
+  cursor: pointer;
+}
+html[data-theme="light"] .present-theme {
+  border-color: rgba(28,25,20,0.12); background: rgba(255,255,255,0.45);
+}
+
+/* MacBook 16:10 */
+.macbook {
+  width: min(1280px, 95vw);
+  background: #1a1d24;
+  border-radius: 18px 18px 12px 12px;
+  padding: 12px 12px 0;
+  box-shadow: 0 36px 70px rgba(0,0,0,0.45), 0 0 0 1px rgba(255,255,255,0.05);
+}
+.macbook-screen {
+  border-radius: 10px; overflow: hidden;
+  height: min(800px, 74vh);
+  aspect-ratio: 16 / 10;
+  max-height: min(800px, 74vh);
+  width: 100%;
+  height: auto;
+  max-height: min(800px, 74vh);
+  background: #0d1117;
+  position: relative;
+}
+/* Prefer height-driven for presentation stage */
+.macbook-screen {
+  aspect-ratio: auto;
+  height: min(800px, 74vh);
+}
+.macbook-chin {
+  height: 18px; margin-top: 8px;
+  background: linear-gradient(180deg, #2a2e38, #151820);
+  border-radius: 0 0 4px 4px;
+  position: relative;
+}
+.macbook-chin::after {
+  content: "";
+  position: absolute; left: 50%; top: 4px; transform: translateX(-50%);
+  width: 80px; height: 4px; border-radius: 4px; background: #0a0c10;
+}
+html[data-theme="light"] .macbook { background: #cfc6b4; }
+html[data-theme="light"] .macbook-chin { background: linear-gradient(180deg, #ddd4c4, #b8ae9a); }
+
+/* iPhone ~9:19.5 (320×693) */
+.iphone {
+  width: 320px; height: 693px;
+  background: #11141b;
+  border-radius: 44px;
+  padding: 11px;
+  border: 2px solid #2a3040;
+  box-shadow: 0 28px 56px rgba(0,0,0,0.42);
+  position: relative; flex-shrink: 0;
+}
+.iphone::before {
+  content: "";
+  position: absolute; top: 16px; left: 50%; transform: translateX(-50%);
+  width: 100px; height: 24px; background: #0a0c10; border-radius: 16px; z-index: 4;
+}
+.iphone-screen {
+  width: 100%; height: 100%; border-radius: 34px; overflow: hidden;
+  background: #0d1117;
+}
+html[data-theme="light"] .iphone { background: #b8ae9a; border-color: #a39886; }
+
+.phone-wrap { display: flex; flex-direction: column; align-items: center; }
+.phone-row {
+  display: flex; gap: 20px; align-items: flex-end; flex-wrap: wrap; justify-content: center;
+}
+.phone-label {
+  text-align: center; font-size: 11px; font-weight: 600; opacity: 0.55;
+  margin-top: 10px;
+}
+
+/* Hero */
+.hero-board {
+  width: min(1320px, 96vw);
+  padding: 32px 28px 22px;
+  border-radius: 28px;
+  background:
+    radial-gradient(700px 360px at 10% 0%, rgba(212,168,67,0.14), transparent 55%),
+    radial-gradient(600px 320px at 90% 20%, rgba(30,77,140,0.14), transparent 50%),
+    #0b0e14;
+  border: 1px solid rgba(255,255,255,0.08);
+  display: flex; flex-direction: column; align-items: center; gap: 20px;
+}
+.hero-board-light {
+  background:
+    radial-gradient(700px 360px at 10% 0%, rgba(184,132,26,0.12), transparent 55%),
+    radial-gradient(600px 320px at 90% 20%, rgba(26,63,116,0.08), transparent 50%),
+    #f4efe6;
+  border-color: rgba(139,120,90,0.14);
+}
+.hero-board h2 { font-size: 28px; font-weight: 800; letter-spacing: -0.02em; text-align: center; }
+.hero-board .tag {
+  max-width: 640px; text-align: center; margin: 8px auto 0;
+  font-size: 14px; opacity: 0.7; line-height: 1.45;
+}
+.hero-devices { display: flex; align-items: flex-end; gap: 28px; justify-content: center; flex-wrap: wrap; }
+.hero-devices-thesis .macbook { width: min(980px, 72vw); }
+.hero-devices-thesis .macbook-screen { height: min(560px, 56vh); }
+.hero-phones-side .iphone { width: 240px; height: 520px; }
+.hero-phones-side .iphone::before { width: 78px; height: 20px; }

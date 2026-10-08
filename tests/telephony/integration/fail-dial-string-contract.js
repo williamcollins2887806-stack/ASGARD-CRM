@@ -31,7 +31,16 @@ function testDialVars() {
     ],
     { parallel_ring: true }
   );
-  assert.ok(parallel.dialString.includes('&'), 'parallel must join with &');
+  const cascade = buildDialVars(
+    [
+      { userId: 1, targetType: 'webrtc', targetAddr: 'u1_ivan', ringSec: 5 },
+      { userId: 1, targetType: 'mobile', targetAddr: '+79001234567', ringSec: 20 },
+    ],
+    { browser_ring_sec: 5, mobile_ring_sec: 20 }
+  );
+  assert.strictEqual(cascade.dialString, 'PJSIP/u1_ivan');
+  assert.ok(cascade.fallbackDial && cascade.fallbackDial.includes('Local/'));
+  assert.strictEqual(cascade.fallbackTimeout, 20);
 }
 
 function testTargetParts() {

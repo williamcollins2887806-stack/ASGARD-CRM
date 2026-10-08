@@ -18,7 +18,7 @@
 1. tests/reports/huginn-ui/FOR-REVIEW/TG-DESIGN-BOOK/HUGINN-LIQUID-GLASS-DS.md
 2. tests/reports/huginn-ui/FOR-REVIEW/TG-DESIGN-BOOK/HUGINN-LIQUID-GLASS-TOKENS.json
 3. tests/reports/huginn-ui/FOR-REVIEW/TG-DESIGN-BOOK/BRIEF-SHOTS-MATRIX.md
-4. Эталонные shots для этого wave (см. таблицу ниже) — файлы shots/Sxx-*.md + глазами REFS/Sxx.jpg
+4. Эталонные shots для этого wave (см. таблицу ниже) — файлы shots/Sxx-*.md + глазами REFS/Sxx.jpg; для Batch2 ещё BATCH-2-UX/shots/Sxx-*-UX.md
 5. public/assets/css/huginn_dock.css
 6. public/assets/js/huginn_dock.js
 7. При BE-wave: tests/reports/HUGINN-API-CONTRACT.md и существующие src/routes chat-groups / huginn*
@@ -47,7 +47,7 @@
 
 ### F0 — Glass foundation
 - [ ] Ввести --hg-glass-fill-pct, --hg-glass-blur, --hg-glass-rim-pct, --hg-glass-radius, --hg-glass-sat
-- [ ] Класс .hg-glass + роли: composer, nav, fab, header, pin, menu, card, segment, media-chrome
+- [ ] Класс .hg-glass + роли: composer, nav, fab, header, pin, menu, card, segment, media-chrome, **edit-action**
 - [ ] Классы #huginnDock.hg-power-full|reduced|off + localStorage.hg_power_saving
 - [ ] Убрать/свести разрозненные fills chrome к ролям (не ломая layout)
 - [ ] --hg-side-inset: 16px
@@ -62,44 +62,50 @@ Refs: REFS/S36.jpg, S01, S12 + shots
 Acceptance: ±2px к 64; нет blue bloom.
 
 ### F2 — Composer
-Refs: S28, S27, S04
+Refs: S28, S27, S04, **S58**
 - [ ] tool/input 40; radius 20; gap 6–8
 - [ ] Три независимых glass объекта (attach / input / mic|send)
 - [ ] Rim ~11% t1; fill ~65% bg3
 - [ ] States empty→mic, text→send (--blue-l)
+- [ ] **Reply strip** внутри input (S58); не continuous bar
 Acceptance: визуально как S28 по геометрии; цвета CRM.
 
 ### F3 — Header + pin
-Refs: S04, S05, S24
+Refs: S04, S05, S24, **S56–S58**
 - [ ] Floating capsules h44 r22 (back/title/avatar)
 - [ ] Back badge white/t1 + dark digits
 - [ ] Pin/live bar glass pin role ~40h r20
+- [ ] **Connecting** subtitle state (S46/S56–S58)
 Acceptance: нет continuous header bar.
 
 ### F4 — Chat list
-Refs: S01, S37
+Refs: S01, S37, **S46**
 - [ ] Row ~68–76 (target 72); 1-line preview ellipsis
 - [ ] Separators --brd-m; unread badge; avatar list size
 - [ ] Contact row target 53 если этот экран в скоупе
+- [ ] **Edit Mode:** checkboxes + **3** `edit-action` pills (не tabbar) — S46
 Acceptance: row не прыгает; preview одна строка.
 
 ### F5 — Bubbles + voice
-Refs: S05, S07, S11
+Refs: S05, S07, S11, **S56**
 - [ ] radius 17; tail 7
 - [ ] me/them CRM mixes
 - [ ] voice play disc + waveform opacities
+- [ ] Checklist layout (S56) — без stub API (DEFER_BE если нет endpoint)
 Acceptance: нет purple; tail видимо острее body.
 
 ### F6 — Context menus
-Refs: S16, S19
+Refs: S16, S19, **S50, S52**
 - [ ] menu glass role; destructive row danger color
+- [ ] Sound submenu (S50); member preview+actions (S52)
 - [ ] (scale animation может доехать в F9 — тогда хотя бы структура)
 Acceptance: меню читается на --bg2; blur/rim по роли.
 
 ### F7 — Profile
-Refs: S03, S17
+Refs: S03, S17, **S39, S40, S53**
 - [ ] 3–4 round glass actions
 - [ ] cards solid bg3 r26; rows ~52
+- [ ] Publications | Archive segment (S39–S40)
 Acceptance: меньше «жёстких» границ, air + glass.
 
 ### F8 — Media viewer
@@ -118,9 +124,12 @@ Acceptance: power-off = без blur и без длинных motion.
 - [ ] Если нет API папок → BE-BLOCKER.md и стоп
 - [ ] Иначе capsule active folder token
 
-### F11 — AI Editor (BE FIRST)
-- [ ] Если нет API → BE-BLOCKER.md и стоп
-- [ ] Иначе icon после >3 lines + sheet; Premium на бэке
+### F11 — AI Editor
+Refs: [`PIXEL-SPEC-F11-AI-EDITOR.md`](PIXEL-SPEC-F11-AI-EDITOR.md), `../F11-AI-EDITOR/`
+- [ ] BE: `BE-READY.md` (V366) — нет API → стоп; **Premium нет** (corporate)
+- [ ] Ai 28×28 в capsule после >3 lines; иначе hidden
+- [ ] Sheet `.hg-glass[data-role="menu"]` r18, row 44, max-w 320; grammar/style/translate → `/ai/rewrite`
+- [ ] Нет stub rewrite; ошибки/429 — disable + сообщение
 
 ### F12 — iPad
 - [ ] Cmd+Enter send

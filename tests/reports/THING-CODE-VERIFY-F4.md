@@ -1,7 +1,7 @@
 # THING-CODE-VERIFY-F4
 
-at: 2026-10-03T18:32:55.922Z
-result: VERIFIED (30/30)
+at: 2026-10-07T13:56:29.769Z
+result: VERIFIED (37/37)
 
 | ID | PASS | Evidence |
 |----|------|----------|
@@ -35,5 +35,12 @@ result: VERIFIED (30/30)
 | C28_mobile | PASS | mobile breakpoints + sheets |
 | C29_lobby_admit_api | PASS | admit API still exists |
 | C30_no_iframe | PASS | not iframe |
+| C31_no_legacy_fixed_height | PASS | легаси min-height:420px!important убран |
+| C32_aspect_ratio_16x9 | PASS | aspect-ratio 16/9 на тайлах |
+| C33_pip_4x3 | PASS | PiP-сам-вид 4:3 |
+| C34_swap_click | PASS | swap по клику |
+| C35_contain_screenshare | PASS | screen-share object-fit: contain + подпись track по source=screen |
+| C36_placeholder_name_fallback | PASS | заглушка «Участник» → ФИО из users |
+| C37_landscape_low_height | PASS | ландшафт телефона: ограничение по высоте |
 
 ## All PASS

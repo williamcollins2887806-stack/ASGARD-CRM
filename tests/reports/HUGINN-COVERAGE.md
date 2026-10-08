@@ -1,14 +1,14 @@
 # Huginn API coverage
 
-at: 2026-10-05T11:11:10.847Z
+at: 2026-10-05T22:19:32.710Z
 base: http://127.0.0.1:3100
 
 | Case | Result | Detail |
 |---|---|---|
 | auth_two_users | PASS | A=1 B=3455 |
 | presence_ping | PASS | status=200 |
-| presence_get | PASS | [{"user_id":3455,"name":"Кудряшов Олег Сергеевич","last_seen_at":"2026-10-05T11:10:11.513Z","online":false}] |
-| events_catchup_endpoint | PASS | n=55 |
+| presence_get | PASS | [{"user_id":3455,"name":"Кудряшов Олег Сергеевич","last_seen_at":"2026-10-05T22:17:17.392Z","online":false}] |
+| events_catchup_endpoint | PASS | n=110 |
 | direct_chat | PASS |  |
 | message_send | PASS |  |
 | message_reply | PASS |  |
@@ -20,8 +20,8 @@ base: http://127.0.0.1:3100
 | stickers_catalog | PASS |  |
 | sticker_send | PASS |  |
 | upload_image | PASS | 200 |
-| upload_voice | PASS | SOFT: MIME whitelist 415 on synthetic webm — UI recorder path still covered in browser |
-| upload_circle | PASS | status=415 |
+| upload_voice | PASS | 200 |
+| upload_circle | PASS | 200 |
 | story_create | PASS | 200 |
 | stories_feed | PASS | 200 |
 | story_view | PASS | 200 |
