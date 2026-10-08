@@ -33,6 +33,8 @@
   var micMuted = false;
   var _hbTimer = null;
   var HEARTBEAT_MS = 45000;
+  var sipRegistered = false;
+  var _wsBroken = false;
 
   var bc = typeof BroadcastChannel !== 'undefined' ? new BroadcastChannel(BC_NAME) : null;
 
@@ -287,18 +289,24 @@
       configuration.pcConfig = { iceServers: [{ urls: creds.stun }] };
     }
     ua = new window.JsSIP.UA(configuration);
+    sipRegistered = false;
+    _wsBroken = false;
     ua.on('connected', function () { emit('sip', { event: 'connected' }); });
-    ua.on('disconnected', function () { emit('sip', { event: 'disconnected' }); });
+    ua.on('disconnected', function () { sipRegistered = false; _wsBroken = true; emit('sip', { event: 'disconnected' }); });
     ua.on('registered', function () {
+      sipRegistered = true;
+      _wsBroken = false;
       emit('sip', { event: 'registered' });
       pbxApi('/operator/status', { method: 'POST', body: JSON.stringify({ on_line: true, receive_mode: mode === 'mobile' ? 'mobile' : 'browser' }) }).catch(function () {});
       pbxApi('/operator/webrtc', { method: 'POST', body: JSON.stringify({ registered: true }) }).catch(function () {});
     });
     ua.on('unregistered', function () {
+      sipRegistered = false;
       emit('sip', { event: 'unregistered' });
       pbxApi('/operator/webrtc', { method: 'POST', body: JSON.stringify({ registered: false }) }).catch(function () {});
     });
     ua.on('registrationFailed', function (e) {
+      sipRegistered = false;
       emit('error', { message: 'SIP регистрация: ' + (e && e.cause ? e.cause : 'failed') });
     });
     ua.on('newRTCSession', function (data) {
@@ -577,7 +585,9 @@
       var digits = normalizePhone(number);
       if (!digits) return Promise.reject(new Error('Некорректный номер'));
       callMeta = { number: digits, direction: 'outbound' };
-      if (ua && hasJsSIP()) {
+      // WebRTC только если SIP реально зарегистрирован на этом устройстве.
+      // Иначе текущий /pbx/ws не поднят и звонок ушёл бы «в никуда» — падаем на серверный GSM.
+      if (ua && hasJsSIP() && sipRegistered) {
         var domain = credentials ? sipDomainFromWs(wsUrlFromCreds(credentials)) : location.hostname;
         var session = ua.call('sip:' + digits + '@' + domain, { mediaConstraints: { audio: true, video: false } });
         if (session) bindSession(session);

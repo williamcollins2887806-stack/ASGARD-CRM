@@ -240,6 +240,81 @@ async function notifyTransfer(db, payload) {
 }
 
 /**
+ * Нормализация номера для Mango trunk: 8XXXXXXXXXX → 7XXXXXXXXXX, +7 → 7.
+ */
+function normalizeOutboundNumber(raw) {
+  let d = String(raw || '').replace(/\D/g, '');
+  if (d.length === 11 && d.startsWith('8')) d = '7' + d.slice(1);
+  if (d.length === 11 && d.startsWith('7')) return d;
+  return d;
+}
+
+/**
+ * Серверный исходящий (клик-ту-колл): поднять канал оператора и соединить с транком.
+ * - WebRTC-оператор звонит из браузера сам (JsSIP), сюда не попадает.
+ * - GSM-режим: звоним на mobile оператора через Mango, после ответа — набираем номер
+ *   в контексте outbound-crm (соединение с внешним номером через тот же транк).
+ */
+async function originateOutbound(db, body) {
+  const number = normalizeOutboundNumber(body.number || body.exten);
+  if (!number) throw new Error('number required');
+  if (!db) throw new Error('DATABASE_URL not set');
+
+  const cfg = await loadPbxConfig(db);
+  const line = cfg.outbound_line || '';
+  const cli = line ? line.replace(/\D/g, '') : undefined;
+
+  let channel = null;
+  if (body.user_id) {
+    const { rows } = await db.query(
+      `SELECT o.sip_username, o.webrtc_registered, o.receive_mode,
+              COALESCE(NULLIF(BTRIM(o.mobile_phone), ''), NULLIF(BTRIM(u.phone), ''), NULLIF(BTRIM(ucs.fallback_mobile), '')) AS mobile_phone
+       FROM pbx_operators o
+       JOIN users u ON u.id = o.user_id
+       LEFT JOIN user_call_status ucs ON ucs.user_id = o.user_id
+       WHERE o.user_id = $1`,
+      [body.user_id]
+    );
+    const op = rows[0] || {};
+    if (op.webrtc_registered && op.sip_username) {
+      channel = `PJSIP/${op.sip_username}`;
+    } else if (op.mobile_phone) {
+      channel = `SIP/mango-trunk/${String(op.mobile_phone).replace(/[^\d]/g, '')}`;
+    }
+  }
+  if (!channel) {
+    const err = new Error('Оператор не на линии: нет WebRTC и мобильного');
+    err.statusCode = 409;
+    throw err;
+  }
+
+  const ami = getAmiClient();
+  await ami.originate({
+    Channel: channel,
+    Context: 'outbound-crm',
+    Exten: number,
+    Priority: 1,
+    CallerID: cli || '',
+    Async: true,
+    Timeout: 45000,
+  });
+
+  if (db) {
+    try {
+      const c = await db.connect();
+      try {
+        await notifyRing(c, {
+          event: 'call:outbound',
+          user_id: body.user_id,
+          data: { number, channel, direction: 'outbound' },
+        });
+      } finally { c.release(); }
+    } catch (_) { /* ignore */ }
+  }
+  return { ok: true, number, channel, via: channel.startsWith('PJSIP/') ? 'webrtc' : 'gsm' };
+}
+
+/**
  * Резолв цели перевода в Dial() tech/resource + return к инициатору.
  */
 async function resolveTransferDial(db, body) {
@@ -420,6 +495,11 @@ function createCmdServer() {
 
       if (req.method === 'POST' && url.pathname === '/call/originate') {
         if (!amiConfigured()) throw new Error('AMI not configured');
+        // Клик-ту-колл из CRM: { number, user_id } → серверный originate через транк.
+        if (!body.channel && (body.number || body.exten)) {
+          const r = await originateOutbound(db, body);
+          return send(200, r);
+        }
         const r = await ami.originate(body);
         return send(200, { ok: true, ami: r });
       }
@@ -675,5 +755,7 @@ module.exports = {
   activeChannels,
   createCmdServer,
   resolveTransferDial,
+  originateOutbound,
+  normalizeOutboundNumber,
   runOperatorMaintenance,
 };
