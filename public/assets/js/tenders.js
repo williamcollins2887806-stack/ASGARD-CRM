@@ -528,27 +528,7 @@ window.AsgardTendersPage = (function(){
 
       /* ═══ CRM-1.0 desktop: tender register fits laptop viewport at 100% ═══ */
       .tenders-page{min-width:0;overflow:hidden}
-      .tenders-page .m-tender-tools{
-        display:flex;
-        flex-wrap:wrap;
-        gap:8px;
-        align-items:flex-end;
-        min-width:0;
-      }
-      .tenders-page .m-tender-tools > .field{
-        flex:0 1 180px;
-        min-width:150px !important;
-        width:auto;
-      }
-      .tenders-page .m-tender-tools > .field:nth-child(2){
-        flex:1 1 300px;
-      }
-      .tenders-page .m-tender-tools > div:last-child{
-        flex:0 0 auto;
-        min-width:0 !important;
-        width:auto;
-        margin-left:auto;
-      }
+      /* Filters intentionally left on their original CRM-1.0 layout. */
       .tenders-page .m-tender-tools > .field{margin:0}
       .tenders-page .m-tender-tools .field > div{min-width:0}
       .tenders-page .tenders-table-scroll{
@@ -619,6 +599,18 @@ window.AsgardTendersPage = (function(){
         white-space:nowrap;
         overflow-wrap:normal;
         word-break:normal;
+      }
+      .tenders-page table.asg.tenders-table td:nth-child(9) .cr-status-badge{
+        white-space:nowrap !important;
+        word-break:normal !important;
+        overflow-wrap:normal !important;
+      }
+      .tenders-page table.asg.tenders-table td .btn{
+        display:flex;
+        align-items:center;
+        justify-content:flex-start;
+        min-height:30px;
+        line-height:1.2;
       }
       .tenders-page table.asg.tenders-table .help{
         line-height:1.3;
