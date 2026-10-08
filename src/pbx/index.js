@@ -18,7 +18,7 @@ const {
   normalizePbxConfig,
   targetToDialPart,
 } = require('./call-lifecycle');
-const { finalizeRecording, finalizeOnHangup } = require('./recording');
+const { finalizeRecording, finalizeOnHangup, sweepRecordings } = require('./recording');
 const { runOperatorMaintenance } = require('./operator-lifecycle');
 const { ensurePrompt } = require('./prompts');
 
@@ -27,6 +27,7 @@ let agiServer = null;
 let cmdServer = null;
 let notifyBridge = null;
 let maintenanceTimer = null;
+let recordingTimer = null;
 /** @type {Map<string, { channel: string, pbxUid: string, userId: number }>} */
 const activeChannels = new Map();
 
@@ -517,6 +518,11 @@ function createCmdServer() {
       res.end(JSON.stringify(obj));
     };
 
+    // Диагностика: видеть, доходят ли внутренние вызовы (dialplan h-curl, AMI-хуки).
+    if (process.env.PBX_CMD_DEBUG === '1') {
+      console.log(`[cmd] ${req.method} ${url.pathname} from ${remote}`);
+    }
+
     try {
       if (req.method === 'GET' && url.pathname === '/health') {
         return send(200, {
@@ -760,6 +766,22 @@ async function start() {
     };
     maintenanceTimer = setInterval(tick, 60 * 1000);
     if (typeof maintenanceTimer.unref === 'function') maintenanceTimer.unref();
+
+    // Гарантированная привязка записей: h-хук/AMI-событие могут не долететь
+    // (MixMonitor сбрасывает WAV позже, curl из dialplan не всегда проходит).
+    const recTick = async () => {
+      try {
+        const r = await sweepRecordings(db, { lookbackMinutes: 20, limit: 30 });
+        if (r.attached && r.attached.length) {
+          console.log('[asgard-pbx] recordings attached:', r.attached.join(','));
+        }
+      } catch (e) {
+        console.warn('[asgard-pbx] recording sweep:', e.message);
+      }
+    };
+    recordingTimer = setInterval(recTick, 45 * 1000);
+    if (typeof recordingTimer.unref === 'function') recordingTimer.unref();
+    recTick();
   }
 
   if (amiConfigured()) {
@@ -788,6 +810,10 @@ async function stop() {
   if (maintenanceTimer) {
     clearInterval(maintenanceTimer);
     maintenanceTimer = null;
+  }
+  if (recordingTimer) {
+    clearInterval(recordingTimer);
+    recordingTimer = null;
   }
   if (agiServer) await agiServer.stop();
   if (cmdServer) {

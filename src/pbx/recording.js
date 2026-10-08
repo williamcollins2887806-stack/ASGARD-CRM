@@ -66,7 +66,14 @@ async function finalizeRecording(pool, opts) {
   const base = path.basename(sourcePath);
   const destPath = path.join(destDir, base);
   if (path.resolve(sourcePath) !== path.resolve(destPath)) {
-    fs.renameSync(sourcePath, destPath);
+    try {
+      // rename работает только в пределах одной ФС и требует прав на исходный каталог;
+      // asterisk-спул нам недоступен на запись — копируем, затем best-effort удаляем.
+      fs.renameSync(sourcePath, destPath);
+    } catch (e) {
+      fs.copyFileSync(sourcePath, destPath);
+      try { fs.unlinkSync(sourcePath); } catch (_) { /* оставляем исходник asterisk */ }
+    }
   }
 
   const relUrl = `/recordings/${yyyy}/${mm}/${base}`;
@@ -102,21 +109,54 @@ async function finalizeRecording(pool, opts) {
 
 /**
  * Hangup-хук: найти файл и finalize. Не бросает, если файла ещё нет (MixMonitor flush).
+ * Asterisk закрывает WAV с задержкой, поэтому при pending_file ждём и пробуем снова.
  */
 async function finalizeOnHangup(pool, opts) {
   const pbxUid = opts.pbxUid || opts.pbx_uid;
   if (!pbxUid && !opts.sourcePath && !opts.monFile) {
     return { ok: false, reason: 'no_uid' };
   }
-  try {
-    const r = await finalizeRecording(pool, opts);
-    return { ok: true, ...r };
-  } catch (e) {
-    if (String(e.message || '').includes('Recording source missing')) {
-      return { ok: false, reason: 'pending_file', error: e.message };
+  const maxAttempts = Number(process.env.PBX_FINALIZE_ATTEMPTS || 8);
+  let lastPending = null;
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    try {
+      const r = await finalizeRecording(pool, opts);
+      return { ok: true, attempt, ...r };
+    } catch (e) {
+      if (String(e.message || '').includes('Recording source missing')) {
+        lastPending = e.message;
+        // Ждём сброса MixMonitor: 1с, 2с, 3с… (в сумме ~30с)
+        await new Promise((res) => setTimeout(res, Math.min(attempt, 5) * 1000));
+        continue;
+      }
+      throw e;
     }
-    throw e;
   }
+  return { ok: false, reason: 'pending_file', error: lastPending };
 }
 
-module.exports = { finalizeRecording, finalizeOnHangup, findRecordingSource };
+/**
+ * Фоновый sweep: привязать записи, у которых h-хук/AMI-событие не долетели.
+ * Ищет свежие call_history с pbx_uid без recording_url и пробует finalize.
+ */
+async function sweepRecordings(pool, { lookbackMinutes = 15, limit = 30 } = {}) {
+  if (!pool) return { ok: false, reason: 'no_pool' };
+  const { rows } = await pool.query(
+    `SELECT pbx_uid FROM call_history
+      WHERE pbx_uid IS NOT NULL AND pbx_uid <> ''
+        AND (recording_url IS NULL OR recording_url = '')
+        AND started_at > NOW() - ($1 || ' minutes')::interval
+      ORDER BY id DESC LIMIT $2`,
+    [String(lookbackMinutes), limit]
+  );
+  const attached = [];
+  for (const r of rows) {
+    try {
+      const res = await finalizeOnHangup(pool, { pbxUid: r.pbx_uid, callId: 'pbx_' + r.pbx_uid });
+      if (res.ok) attached.push(r.pbx_uid);
+    } catch (_) { /* пропускаем — попробуем на следующем тике */ }
+  }
+  return { ok: true, scanned: rows.length, attached };
+}
+
+module.exports = { finalizeRecording, finalizeOnHangup, findRecordingSource, sweepRecordings };
