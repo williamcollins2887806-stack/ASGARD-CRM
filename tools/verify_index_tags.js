@@ -96,6 +96,11 @@ const CSS_ALLOWLIST = {};
 const JS_ALLOWLIST = {
   'assets/js/calculator.js':
     'legacy vanilla-калькулятор (IIFE без глобала), вытеснен calculator_v2.js; тега нет ни в одном HTML',
+  'assets/js/huginn_ting.js':
+    'мёртвый Ting-rail (глобал HuginnTing никем не используется после удаления таба Тинг из Хугинна). ' +
+    'Гейт ошибочно считает его определителем ASGARD_USER: genDefRe матчит сравнение ' +
+    "`global.ASGARD_USER === 'object'` как присваивание. ASGARD_USER в проекте не создаётся; " +
+    'ting_page.js читает его только под guard (window.ASGARD_USER && …), поэтому undefined безопасен.',
 };
 
 /** Файлы, чьи обращения к Asgard* считаем «контрактом загрузки». */
@@ -231,7 +236,7 @@ for (const name of [...users.keys()].sort()) {
 // тега нет, а registry_api.js / registry_tab.js / tenders.js на него ссылаются.
 const genDefiners = new Map(); // глобал -> Set('assets/js/...')
 const genUsers = new Map();
-const genDefRe = /(?:window\.|globalThis\.|global\.|root\.)([A-Z][A-Za-z0-9_$]{4,})\s*=/g;
+const genDefRe = /(?:window\.|globalThis\.|global\.|root\.)([A-Z][A-Za-z0-9_$]{4,})\s*=(?!=)/g;
 const genUseRe = /\b([A-Z][A-Za-z0-9_$]{4,})\b(?![/\w$])/g;
 
 for (const abs of jsFiles) {
