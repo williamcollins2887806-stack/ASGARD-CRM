@@ -2343,3 +2343,15 @@ html[data-theme="light"] .dh-vat-chip.is-on {
   outline: none;
   border-color: color-mix(in srgb, var(--gold, #d4a017) 50%, var(--brd, #334155));
 }
+
+/* CRAutocomplete host (мастер + карточка): контейнер под компонент */
+.dh-cra-host { width: 100%; }
+.dh-cra-host .cr-ac { width: 100%; }
+.dh-cra-host .cr-ac__input {
+  padding: 9px 12px; border-radius: 8px;
+  border: 1px solid var(--brd, #334155); background: var(--bg3, #1e293b);
+  color: var(--t1, #f8fafc); font: inherit; font-size: 13px;
+}
+.dh-cra-host .cr-ac--open .cr-ac__input {
+  border-color: color-mix(in srgb, var(--gold, #d4a017) 50%, var(--brd, #334155));
+}

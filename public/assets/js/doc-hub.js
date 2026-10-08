@@ -167,6 +167,132 @@ window.AsgardDocHubPage = (function () {
   }
 
   /**
+   * Подсказки контрагента для Doc Hub (мастер + карточка).
+   * 1) наша база `/api/customers` (тут есть телефон/почта, которых нет у DaData);
+   * 2) DaData: точный lookup по ИНН (10/12 цифр) либо suggest по названию.
+   * Формат опций совпадает с CRAutocomplete (value/label/sublabel + полезные поля).
+   */
+  function normDigits(s) { return String(s || '').replace(/\D/g, ''); }
+
+  async function dhCustomerFetch(path) {
+    const r = await fetch(path, { headers: authHeaders(false), cache: 'no-store' });
+    if (!r.ok) return null;
+    try { return await r.json(); } catch (_) { return null; }
+  }
+
+  async function dhCounterpartySuggest(q) {
+    const query = String(q || '').trim();
+    if (query.length < 2) return [];
+    const isDigits = /^\d+$/.test(query);
+    const out = [];
+
+    // 1) Наша база контрагентов
+    try {
+      const j = await dhCustomerFetch('/api/customers?search=' + encodeURIComponent(query) + '&limit=15');
+      for (const c of (j && j.customers) || []) {
+        const name = c.name || c.full_name || '';
+        if (!name) continue;
+        const bits = ['в базе'];
+        if (c.inn) bits.unshift('ИНН ' + c.inn);
+        if (c.phone) bits.push(c.phone);
+        out.push({
+          value: name, label: name,
+          sublabel: bits.join(' · '),
+          inn: c.inn || '', email: c.email || '', phone: c.phone || '',
+          _source: 'local'
+        });
+      }
+    } catch (_) { /* база недоступна — не блокируем */ }
+
+    // 2) DaData / ЕГРЮЛ
+    try {
+      if (isDigits && (query.length === 10 || query.length === 12)) {
+        const d = await dhCustomerFetch('/api/customers/lookup/' + query);
+        const s = d && d.suggestion;
+        if (s && s.name) {
+          out.push({
+            value: s.name, label: s.name,
+            sublabel: 'ИНН ' + (s.inn || query) + ' · ЕГРЮЛ',
+            inn: s.inn || query, email: '', phone: '', kpp: s.kpp || '', _source: 'dadata'
+          });
+        }
+      } else if (!isDigits && query.length >= 3) {
+        const d = await dhCustomerFetch('/api/customers/suggest?q=' + encodeURIComponent(query) + '&type=party');
+        for (const s of (d && d.suggestions) || []) {
+          const name = (s && s.name) || '';
+          if (!name) continue;
+          // не дублируем то, что уже есть в нашей базе тем же ИНН
+          if (s.inn && out.some((x) => x._source === 'local' && normDigits(x.inn) === normDigits(s.inn))) continue;
+          out.push({
+            value: name, label: name,
+            sublabel: 'ИНН ' + (s.inn || '—') + ' · ЕГРЮЛ',
+            inn: s.inn || '', email: '', phone: '', kpp: s.kpp || '', _source: 'dadata'
+          });
+        }
+      }
+    } catch (_) { /* DaData недоступна — остаются локальные */ }
+
+    return out;
+  }
+
+  /**
+   * Применить выбранного контрагента к полям.
+   * scope: 'wiz' (мастер, шаг 2) | 'dr' (карточка, drawer).
+   */
+  function dhApplyCounterparty(scope, item, opts) {
+    if (!item) return;
+    opts = opts || {};
+    const name = item.value || item.label || '';
+    const inn = normDigits(item.inn) || '';
+    const email = item.email || '';
+    const phone = item.phone || '';
+
+    if (scope === 'wiz') {
+      const form = document.getElementById('dhWizForm');
+      const d = state.wizDraft;
+      if (d) { d.counterparty_name = name; if (inn) d.counterparty_inn = inn; if (email) d.counterparty_email = email; if (phone) d.counterparty_phone = phone; }
+      const set = (sel, val) => { const el = form && form.querySelector(sel); if (el && val) el.value = val; };
+      set('#dhWizCpName', name);
+      set('#dhWizInn', inn);
+      set('#dhWizEmail', email);
+      set('#dhWizPhone', phone);
+    } else {
+      const d = document.getElementById('dhDrawer');
+      const set = (sel, val) => { const el = d && d.querySelector(sel); if (el && val) el.value = val; };
+      set('#drCpName', name);
+      set('#drCpInn', inn);
+      set('#drCpEmail', email);
+      set('#drCpPhone', phone);
+    }
+
+    // Новый контрагент из ЕГРЮЛ — предложить создать карточку
+    if (opts.askCreate && item._source === 'dadata' && inn) {
+      dhPromptCreateCustomer({ inn, name, email, phone });
+    }
+  }
+
+  /** Подтверждение создания карточки контрагента (+ POST /api/customers). */
+  async function dhPromptCreateCustomer({ inn, name, email, phone }) {
+    const exists = await dhCustomerFetch('/api/customers/' + inn).catch(() => null);
+    if (exists && exists.customer) return; // уже есть карточка
+    const ok = await confirm('Создать контрагента?',
+      `${name}\nИНН ${inn}\n\nКарточки с таким ИНН нет в базе. Создать?`);
+    if (!ok) return;
+    try {
+      const r = await fetch('/api/customers', {
+        method: 'POST',
+        headers: authHeaders(true),
+        body: JSON.stringify({ inn, name, email: email || null, phone: phone || null })
+      });
+      const j = await r.json().catch(() => null);
+      if (!r.ok) throw new Error((j && (j.error || j.message)) || ('HTTP ' + r.status));
+      toast('Контрагент', 'Карточка создана: ' + name, 'ok');
+    } catch (e) {
+      toast('Контрагент', e.message || 'Не удалось создать карточку', 'err');
+    }
+  }
+
+  /**
    * Contract picker: list by counterparty name/INN + optional create link.
    * AsgardContractsPage.openContractSelector expects counterparty_id (DB id), not INN.
    */
@@ -924,9 +1050,9 @@ window.AsgardDocHubPage = (function () {
         </div>
         <div class="dh-field" id="dhWizCpContainer">
           <label>Контрагент *</label>
-          <input name="counterparty_name" required id="dhWizCpInput" autocomplete="off"
-                 list="dhCpListWiz" value="${esc(d.counterparty_name)}" placeholder="Начните вводить название или ИНН…" />
-          <datalist id="dhCpListWiz">${(state.facets.counterparties || []).map((c) => `<option value="${esc(c)}"></option>`).join('')}</datalist>
+          <input type="hidden" name="counterparty_name" id="dhWizCpName" value="${esc(d.counterparty_name)}" />
+          <div id="dhWizCpMount" class="dh-cra-host"></div>
+          <div class="dh-help">Начните вводить название или ИНН — подскажем из базы и ЕГРЮЛ</div>
         </div>
         <div class="dh-grid2">
           <div class="dh-field"><label>ИНН</label><input name="counterparty_inn" id="dhWizInn" value="${esc(d.counterparty_inn || '')}" placeholder="XXXXXXXXXX" /></div>
@@ -1133,8 +1259,17 @@ window.AsgardDocHubPage = (function () {
     const next = modal.querySelector('#dhWizNext');
     if (next) {
       next.onclick = () => {
-        if (!form.reportValidity()) return;
         readWizStepFields(form);
+        // Скрытые поля браузер не валидирует (required на hidden не работает) — проверяем сами
+        if (state.wizStep === 2) {
+          const d2 = state.wizDraft || {};
+          const miss = [];
+          if (!String(d2.invoice_number || '').trim()) miss.push('№ счёта');
+          if (!String(d2.invoice_date || '').trim()) miss.push('дата счёта');
+          if (!String(d2.counterparty_name || '').trim()) miss.push('контрагент');
+          if (!(Number(d2.amount_gross) > 0)) miss.push('сумма');
+          if (miss.length) { toast('Заполните', miss.join(', '), 'warn'); return; }
+        } else if (!form.reportValidity()) return;
         state.wizStep = Math.min(4, state.wizStep + 1);
         paintWizard(container);
       };
@@ -1221,13 +1356,18 @@ window.AsgardDocHubPage = (function () {
 
     // Contract picker (step 3 — linked mode)
     const pickBtn = form.querySelector('#dhWizContractPick');
-    if (pickBtn) {
-      pickBtn.onclick = () => {
-        const d = state.wizDraft || {};
-        const inn = form.querySelector('#dhWizInn')?.value || d.counterparty_inn || '';
-        // Имя может быть только в черновике: шаг 2 уже размонтирован, поля в DOM нет.
-        const cpName = (form.querySelector('#dhWizCpInput, input[name="counterparty_name"]')?.value || '')
-          || d.counterparty_name || '';
+    const dhPickCtx = () => {
+      const d = state.wizDraft || {};
+      const inn = (form.querySelector('#dhWizInn')?.value || d.counterparty_inn || '').trim();
+      // Имя может быть только в черновике: шаг 2 уже размонтирован, поля в DOM нет.
+      const cpName = (form.querySelector('#dhWizCpName, input[name="counterparty_name"]')?.value || '')
+        || d.counterparty_name || '';
+      return { inn, cpName };
+    };
+    const dhBindPick = (btn) => {
+      if (!btn) return;
+      btn.onclick = () => {
+        const { inn, cpName } = dhPickCtx();
         const cb = (contract) => {
           if (!contract) return;
           if (state.wizDraft) {
@@ -1239,12 +1379,25 @@ window.AsgardDocHubPage = (function () {
           const dateEl = form.querySelector('#dhWizContractDate');
           if (labelEl) labelEl.value = contract.label || contract.number || '';
           if (dateEl && contract.date) dateEl.value = String(contract.date).slice(0, 10);
-          pickBtn.textContent = '✓ ' + (contract.label || contract.number || 'Договор выбран');
+          btn.textContent = '✓ ' + (contract.label || contract.number || 'Договор выбран');
           toast('Договор', 'Привязан: ' + (contract.label || contract.number || contract.id), 'ok');
         };
         openDhContractPicker({ inn, cpName, onSelect: cb });
       };
-    }
+    };
+    dhBindPick(pickBtn);
+
+    // Если контрагент известен и режим «Привязать» — открываем список сразу
+    (function autoOpenContractPicker() {
+      if (!pickBtn) return;
+      const mode = (form.querySelector('#dhWizContract')?.value) || 'none';
+      if (mode !== 'linked') return;
+      const { inn, cpName } = dhPickCtx();
+      if (!inn && !cpName) return;
+      if (pickBtn.dataset.autoOpened === '1') return;
+      pickBtn.dataset.autoOpened = '1';
+      setTimeout(() => { try { pickBtn.click(); } catch (_) {} }, 120);
+    })();
 
     // Destroy previous CRSelect instances (step 3)
     if (window.CRSelect) {
@@ -1398,33 +1551,33 @@ window.AsgardDocHubPage = (function () {
       } catch (_) { /* keep empty */ }
     })();
 
-    // CRAutocomplete for counterparty (step 2, graceful)
-    const cpContainer = form.querySelector('#dhWizCpContainer');
-    const cpInput = form.querySelector('#dhWizCpInput');
-    if (cpContainer && cpInput && window.CRAutocomplete && typeof CRAutocomplete.create === 'function') {
+    // CRAutocomplete для контрагента (шаг 2) — наша база + ЕГРЮЛ
+    const cpMount = form.querySelector('#dhWizCpMount');
+    if (cpMount && window.CRAutocomplete && typeof CRAutocomplete.create === 'function') {
       try {
-        CRAutocomplete.create(cpContainer, {
-          input: cpInput,
-          suggest: async (q) => {
-            if (!q || q.length < 2) return (state.facets.counterparties || []).slice(0, 12).map((n) => ({ label: n, value: n }));
-            try {
-              const res = await fetch('/api/customers/suggest?q=' + encodeURIComponent(q), { headers: authHeaders() });
-              const j = await res.json();
-              return (j.items || j.data || j || []).map((x) => ({
-                label: x.name || x.counterparty_name || String(x),
-                value: x.name || x.counterparty_name || String(x),
-                inn: x.inn, email: x.email, phone: x.phone
-              }));
-            } catch { return []; }
-          },
+        try { CRAutocomplete.destroy('dhWizCp'); } catch (_) {}
+        cpMount.innerHTML = '';
+        cpMount.appendChild(CRAutocomplete.create({
+          id: 'dhWizCp',
+          placeholder: 'Название организации или ИНН',
+          minChars: 2,
+          debounce: 300,
+          fullWidth: true,
+          clearable: true,
+          dropdownClass: 'z-modal-ac',
+          value: (state.wizDraft && state.wizDraft.counterparty_name) || '',
+          fetchOptions: dhCounterpartySuggest,
           onSelect: (item) => {
-            if (state.wizDraft) state.wizDraft.counterparty_name = item.value;
-            if (item.inn) { if (state.wizDraft) state.wizDraft.counterparty_inn = item.inn; const el = form.querySelector('#dhWizInn'); if (el) el.value = item.inn || ''; }
-            if (item.email) { const el = form.querySelector('#dhWizEmail'); if (el) el.value = item.email || ''; }
-            if (item.phone) { const el = form.querySelector('#dhWizPhone'); if (el) el.value = item.phone || ''; }
+            if (item === null) {
+              // очистка поля
+              const nm = form.querySelector('#dhWizCpName'); if (nm) nm.value = '';
+              if (state.wizDraft) state.wizDraft.counterparty_name = '';
+              return;
+            }
+            dhApplyCounterparty('wiz', item, { askCreate: true });
           }
-        });
-      } catch (_) { /* CRAutocomplete mount failed; native datalist stays */ }
+        }));
+      } catch (_) { /* CRAutocomplete недоступен — скрытое поле остаётся */ }
     }
 
     // Catalog lines (step 4)
@@ -1827,7 +1980,8 @@ window.AsgardDocHubPage = (function () {
               <div class="dh-section__b">
                 <div class="dh-field" id="drCpContainer">
                   <label>Название *</label>
-                  <input id="drCpName" autocomplete="off" value="${esc(row.counterparty_name || '')}" placeholder="Название или ИНН…"/>
+                  <input type="hidden" id="drCpName" value="${esc(row.counterparty_name || '')}"/>
+                  <div id="drCpMount" class="dh-cra-host"></div>
                 </div>
                 <div class="dh-grid2">
                   <div class="dh-field"><label>ИНН</label><input id="drCpInn" value="${esc(row.inn || row.counterparty_inn || '')}"/></div>
@@ -2119,36 +2273,29 @@ window.AsgardDocHubPage = (function () {
         openDhContractPicker({ inn, cpName, onSelect: cb });
       });
 
-      // CRAutocomplete for drawer counterparty
+      // CRAutocomplete для контрагента в карточке — наша база + ЕГРЮЛ
       (function mountDrCp() {
-        const cpContainer = d.querySelector('#drCpContainer');
-        const cpInput = d.querySelector('#drCpName');
-        if (!cpContainer || !cpInput || !window.CRAutocomplete || typeof CRAutocomplete.create !== 'function') return;
+        const cpMount = d.querySelector('#drCpMount');
+        if (!cpMount || !window.CRAutocomplete || typeof CRAutocomplete.create !== 'function') return;
         try {
-          CRAutocomplete.create(cpContainer, {
-            input: cpInput,
-            suggest: async (q) => {
-              if (!q || q.length < 2) return (state.facets.counterparties || []).slice(0, 12).map((n) => ({ label: n, value: n }));
-              try {
-                const res = await fetch('/api/customers/suggest?q=' + encodeURIComponent(q), { headers: authHeaders() });
-                const j = await res.json();
-                const list = Array.isArray(j) ? j : (j.items || j.data || j.suggestions || []);
-                return (list || []).map((x) => ({
-                  label: x.name || x.value || x.counterparty_name || String(x),
-                  value: x.name || x.value || x.counterparty_name || String(x),
-                  inn: x.inn || (x.data && x.data.inn),
-                  email: x.email,
-                  phone: x.phone
-                }));
-              } catch { return []; }
-            },
+          try { CRAutocomplete.destroy('drCp'); } catch (_) {}
+          cpMount.innerHTML = '';
+          cpMount.appendChild(CRAutocomplete.create({
+            id: 'drCp',
+            placeholder: 'Название организации или ИНН',
+            minChars: 2,
+            debounce: 300,
+            fullWidth: true,
+            clearable: true,
+            dropdownClass: 'z-modal-ac',
+            value: (row.counterparty_name || ''),
+            fetchOptions: dhCounterpartySuggest,
             onSelect: (item) => {
-              if (item.inn) { const el = d.querySelector('#drCpInn'); if (el) el.value = item.inn || ''; }
-              if (item.email) { const el = d.querySelector('#drCpEmail'); if (el) el.value = item.email || ''; }
-              if (item.phone) { const el = d.querySelector('#drCpPhone'); if (el) el.value = item.phone || ''; }
+              if (item === null) { const el = d.querySelector('#drCpName'); if (el) el.value = ''; return; }
+              dhApplyCounterparty('dr', item, { askCreate: true });
             }
-          });
-        } catch (_) { /* native input stays */ }
+          }));
+        } catch (_) { /* CRAutocomplete недоступен — скрытое поле остаётся */ }
       })();
 
       // spend_kind cards in drawer
