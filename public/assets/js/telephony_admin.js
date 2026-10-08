@@ -123,6 +123,7 @@ window.AsgardTelephonyAdmin = (function () {
               '<div class="pbx-field"><label>Дежурство до<input type="time" id="pbxDutyUntil" value="' + esc(dutyUntil) + '"><span class="help" style="display:block;font-size:11px;color:var(--t3);margin-top:4px">После конца смены дежурный остаётся на линии до этого времени</span></label></div>' +
               '<div class="pbx-field"><label><input type="checkbox" id="pbxRec"' + (cfg.recording_enabled !== false ? ' checked' : '') + '> Запись разговоров</label></div>' +
               '<div class="pbx-field"><label><input type="checkbox" id="pbxAi"' + (cfg.ai_postcall_enabled ? ' checked' : '') + '> AI после звонка</label></div>' +
+              '<div class="pbx-field"><label><input type="checkbox" id="pbxGreetingCrm"' + (cfg.greeting_in_crm !== false ? ' checked' : '') + '> Приветствие в CRM<span class="help" style="display:block;font-size:11px;color:var(--t3);margin-top:4px">Выкл. — приветствие озвучивает Mango IVR (настраивается в ЛК Mango)</span></label></div>' +
             '</div>' +
             '<div class="pbx-field" style="margin-top:12px"><label>Текст приветствия<textarea id="pbxGreeting" rows="2">' + esc(cfg.greeting_text || '') + '</textarea></label></div>' +
             '<div class="pbx-field"><label>Текст вне часов<textarea id="pbxAfterHours" rows="2">' + esc(cfg.after_hours_text || '') + '</textarea></label></div>' +
@@ -157,6 +158,7 @@ window.AsgardTelephonyAdmin = (function () {
           },
           recording_enabled: !!(body.querySelector('#pbxRec') && body.querySelector('#pbxRec').checked),
           ai_postcall_enabled: !!(body.querySelector('#pbxAi') && body.querySelector('#pbxAi').checked),
+          greeting_in_crm: !!(body.querySelector('#pbxGreetingCrm') && body.querySelector('#pbxGreetingCrm').checked),
           greeting_text: (body.querySelector('#pbxGreeting') || {}).value,
           after_hours_text: (body.querySelector('#pbxAfterHours') || {}).value,
         });

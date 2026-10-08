@@ -5,25 +5,30 @@ const path = require('path');
 const { config } = require('./config');
 
 function monitorCandidates(pbxUid, monFile) {
-  const spool = process.env.ASTERISK_MONITOR_DIR || '/var/spool/asterisk/monitor';
-  const root = config.recordingsRoot;
+  // MixMonitor в dialplan пишет в /var/spool/asterisk/recordings (см. extensions_asgard.conf).
+  const ASG_REC = process.env.ASTERISK_RECORDINGS_DIR || '/var/spool/asterisk/recordings';
+  const dirs = [
+    ASG_REC,
+    process.env.ASTERISK_MONITOR_DIR || '/var/spool/asterisk/monitor',
+    config.recordingsRoot,
+  ];
   const list = [];
   if (monFile) {
     list.push(monFile);
     if (!path.isAbsolute(monFile)) {
-      list.push(path.join(spool, monFile));
-      list.push(path.join(root, monFile));
+      for (const d of dirs) list.push(path.join(d, monFile));
     }
   }
   if (pbxUid) {
     const base = String(pbxUid);
-    list.push(path.join(spool, base + '.wav'));
-    list.push(path.join(spool, base + '.WAV'));
     const now = new Date();
     const yyyy = String(now.getFullYear());
     const mm = String(now.getMonth() + 1).padStart(2, '0');
-    list.push(path.join(spool, yyyy, mm, base + '.wav'));
-    list.push(path.join(root, yyyy, mm, base + '.wav'));
+    for (const d of dirs) {
+      list.push(path.join(d, base + '.wav'));
+      list.push(path.join(d, base + '.WAV'));
+      list.push(path.join(d, yyyy, mm, base + '.wav'));
+    }
   }
   return list;
 }

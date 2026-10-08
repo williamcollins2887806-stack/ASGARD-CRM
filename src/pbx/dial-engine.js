@@ -141,7 +141,8 @@ function isOperatorReachable(op, nowMs = Date.now()) {
   if (!op.can_accept || !op.on_line) return false;
   const hasWeb = hasFreshWebRtc(op, nowMs);
   const hasMob = !!op.mobile_phone;
-  if (op.receive_mode === 'browser') return hasWeb || hasMob;
+  // «browser» = чистый WebRTC: без зарегистрированного SIP оператор не на линии.
+  if (op.receive_mode === 'browser') return hasWeb;
   if (op.receive_mode === 'mobile') return hasMob;
   return hasWeb || hasMob;
 }
@@ -176,17 +177,7 @@ function expandOperatorTargets(op, config, nowMs = Date.now()) {
       sortOrder: baseOrder + 1,
     });
   }
-  // browser без свежего heartbeat, но есть mobile → только GSM
-  if (op.receive_mode === 'browser' && !targets.length && op.mobile_phone) {
-    targets.push({
-      userId: op.user_id,
-      targetType: 'mobile',
-      targetAddr: op.mobile_phone,
-      role: 'ring',
-      ringSec: mobileSec,
-      sortOrder: baseOrder,
-    });
-  }
+  // 'browser' — строго WebRTC. Никакого авто-фолбэка на GSM.
   return targets;
 }
 

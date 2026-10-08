@@ -145,9 +145,10 @@ export function createMobileSoftphone({ onIncoming, onHangup, onState } = {}) {
       onIncoming && onIncoming(callMeta);
       return callMeta;
     },
-    async goOnline() {
+    async goOnline(receiveMode = 'browser') {
+      const mode = receiveMode === 'mobile' ? 'mobile' : (receiveMode === 'both' ? 'both' : 'browser');
       const creds = await resolveCreds();
-      await api.post('/telephony/pbx/operator/status', { on_line: true, receive_mode: 'both' });
+      await api.post('/telephony/pbx/operator/status', { on_line: true, receive_mode: mode });
       startUA(creds);
       setState('connecting');
       return { ok: true };

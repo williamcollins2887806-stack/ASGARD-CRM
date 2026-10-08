@@ -705,7 +705,9 @@
       banners.push('<div class="ph-dp-hint">Пока вы на линии, автоблокировка PIN отключена. Ctrl+Shift+L — отойти и заблокировать.</div>');
       var noSip = !opSt.webrtc_registered && !opSt.has_sip;
       var noMob = !opSt.has_mobile && !opSt.mobile_phone;
-      if (noSip && noMob) {
+      if (opSt.receive_mode === 'browser' && !opSt.webrtc_registered) {
+        banners.push('<div class="ph-dp-banner ph-dp-banner--err">SIP не зарегистрирован — входящие в браузер не придут. Перезайдите на линию.</div>');
+      } else if (noSip && noMob) {
         banners.push('<div class="ph-dp-banner ph-dp-banner--err">Вас не дозвонятся: нет SIP и нет мобильного.</div>');
       } else if (noSip && opSt.receive_mode !== 'mobile') {
         banners.push('<div class="ph-dp-banner ph-dp-banner--warn">SIP не зарегистрирован — входящие пойдут на мобильный (если указан).</div>');

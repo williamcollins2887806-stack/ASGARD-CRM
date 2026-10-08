@@ -112,23 +112,29 @@ async function handleInboundAgi(session) {
     });
 
     if (!plan.withinHours || !plan.targets.length) {
-      await session.answer();
-      const customText = plan.withinHours ? pbxConfig.greeting_text : pbxConfig.after_hours_text;
-      const fallbackFile = plan.withinHours ? 'custom/all-busy' : 'custom/after-hours';
-      let played = false;
-      try {
-        const file = await ensurePrompt(customText);
-        if (file) {
-          await session.streamFile(file);
-          played = true;
+      const announce = pbxConfig.greeting_in_crm !== false;
+      if (announce) {
+        await session.answer();
+        const customText = plan.withinHours ? pbxConfig.greeting_text : pbxConfig.after_hours_text;
+        const fallbackFile = plan.withinHours ? 'custom/all-busy' : 'custom/after-hours';
+        let played = false;
+        try {
+          const file = await ensurePrompt(customText);
+          if (file) {
+            await session.streamFile(file);
+            played = true;
+          }
+        } catch (e) {
+          console.warn('[asgard-pbx] prompt synth failed:', e.message);
         }
-      } catch (e) {
-        console.warn('[asgard-pbx] prompt synth failed:', e.message);
-      }
-      if (!played) {
-        for (const f of [fallbackFile, 'custom/all-busy', 'beep']) {
-          try { await session.streamFile(f); played = true; break; } catch (_) { /* next */ }
+        if (!played) {
+          for (const f of [fallbackFile, 'custom/all-busy', 'beep']) {
+            try { await session.streamFile(f); played = true; break; } catch (_) { /* next */ }
+          }
         }
+      } else {
+        // Приветствие озвучивает Mango — просто завершаем вызов.
+        await session.hangup();
       }
       await markCallMissed(client, uniqueId, plan.withinHours ? 'no_agents' : 'off_hours');
       await notifyRing(client, {
@@ -158,7 +164,8 @@ async function handleInboundAgi(session) {
     await session.setVariable('ASGARD_RING_TIMEOUT', String(dial.ringTimeout));
 
     // Приветствие из настроек (Silero → 8 kHz WAV) перед дозвоном операторам.
-    if (pbxConfig.greeting_text) {
+    // greeting_in_crm=false → приветствие озвучивает Mango IVR, здесь молчим.
+    if (pbxConfig.greeting_in_crm !== false && pbxConfig.greeting_text) {
       try {
         const g = await ensurePrompt(pbxConfig.greeting_text);
         if (g) {
@@ -291,6 +298,7 @@ async function originateOutbound(db, body) {
   const cli = line ? line.replace(/\D/g, '') : undefined;
 
   let channel = null;
+  let op = null;
   if (body.user_id) {
     const { rows } = await db.query(
       `SELECT o.sip_username, o.webrtc_registered, o.receive_mode,
@@ -301,10 +309,17 @@ async function originateOutbound(db, body) {
        WHERE o.user_id = $1`,
       [body.user_id]
     );
-    const op = rows[0] || {};
+    op = rows[0] || {};
     if (op.webrtc_registered && op.sip_username) {
-      channel = `PJSIP/${op.sip_username}`;
-    } else if (op.mobile_phone) {
+      // WebRTC уже зарегистрирован → звонок идёт из браузера (JsSIP) на клиента
+      // напрямую через context from-internal/outbound-crm, серверный originate
+      // оператору не нужен (иначе получаем «двойной набор»).
+      const err = new Error('Оператор на WebRTC — звонок инициируется из браузера');
+      err.statusCode = 409;
+      err.via = 'webrtc';
+      throw err;
+    }
+    if (op.mobile_phone) {
       channel = `SIP/mango-trunk/${String(op.mobile_phone).replace(/[^\d]/g, '')}`;
     }
   }
@@ -531,12 +546,30 @@ function createCmdServer() {
       }
       if (req.method === 'POST' && url.pathname === '/call/hangup') {
         if (!amiConfigured()) throw new Error('AMI not configured');
-        if (!body.channel) {
-          // GSM-режим: телефонного канала в Asterisk у клиента нет — не 500, а no-op.
+        // Сброс всех плеч звонка: ищем каналы по pbx_uid (Linkedid/Uniqueid) и
+        // снимаем их; `channel` — частный случай, когда клиент знает своё плечо.
+        const uid = String(body.pbx_uid || body.call_id || '').replace(/^pbx_/, '');
+        let hung = 0;
+        if (uid) {
+          try {
+            const res = await ami.coreShowChannels();
+            const channels = (res && res.List && Array.isArray(res.List)) ? res.List : [];
+            for (const ch of channels) {
+              const linked = String(ch.Linkedid || '');
+              const unique = String(ch.Uniqueid || '');
+              if (linked === uid || unique === uid) {
+                try { await ami.hangup(ch.Channel); hung += 1; } catch (_) { /* next */ }
+              }
+            }
+          } catch (_) { /* fall through to single channel */ }
+        }
+        if (body.channel) {
+          try { await ami.hangup(body.channel); hung += 1; } catch (_) { /* ignore */ }
+        }
+        if (!hung && !body.channel && !uid) {
           return send(200, { ok: true, skipped: true, reason: 'no_channel' });
         }
-        await ami.hangup(body.channel);
-        return send(200, { ok: true });
+        return send(200, { ok: true, hung });
       }
       if (req.method === 'POST' && url.pathname === '/call/redirect') {
         if (!amiConfigured()) throw new Error('AMI not configured');

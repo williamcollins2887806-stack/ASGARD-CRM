@@ -76,8 +76,8 @@ test('duty_first — дежурный первый', () => {
 test('round_robin — меньший last_seen раньше без дежурного', () => {
   const cfg = { ...baseConfig, routing_mode: 'round_robin' };
   const ops = [
-    op(1, { last_seen_at: new Date('2026-01-01T10:00:00Z').toISOString() }),
-    op(2, { last_seen_at: new Date('2026-01-01T08:00:00Z').toISOString() }),
+    op(1, { receive_mode: 'both', last_seen_at: new Date('2026-01-01T10:00:00Z').toISOString() }),
+    op(2, { receive_mode: 'both', last_seen_at: new Date('2026-01-01T08:00:00Z').toISOString() }),
   ];
   const plan = buildRingPlan(ops, null, cfg, workNow);
   assert.strictEqual(plan.targets[0].userId, 2);
@@ -145,13 +145,27 @@ test('isWithinWorkHours sanity', () => {
 test('stale heartbeat — только GSM', () => {
   const stale = new Date(workNow.getTime() - HEARTBEAT_TTL_MS - 1000).toISOString();
   const plan = buildRingPlan(
-    [op(1, { last_seen_at: stale, webrtc_registered: true, mobile_phone: '+79001234567' })],
+    [op(1, { receive_mode: 'both', last_seen_at: stale, webrtc_registered: true, mobile_phone: '+79001234567' })],
     null,
     baseConfig,
     workNow
   );
   assert.strictEqual(plan.targets.length, 1);
   assert.strictEqual(plan.targets[0].targetType, 'mobile');
+});
+
+test('browser без webrtc не eligible (чистый WebRTC)', () => {
+  const ops = [op(1, { receive_mode: 'browser', webrtc_registered: false, mobile_phone: '+79001234567' })];
+  const plan = buildRingPlan(ops, null, baseConfig, workNow);
+  assert.strictEqual(plan.withinHours, true);
+  assert.strictEqual(plan.targets.length, 0);
+});
+
+test('browser с webrtc — только webrtc, без GSM', () => {
+  const ops = [op(1, { receive_mode: 'browser', webrtc_registered: true, sip_username: 'sip1', mobile_phone: '+79001234567' })];
+  const plan = buildRingPlan(ops, null, baseConfig, workNow);
+  assert.strictEqual(plan.targets.length, 1);
+  assert.strictEqual(plan.targets[0].targetType, 'webrtc');
 });
 
 test('cascade max_agents — несколько операторов', () => {

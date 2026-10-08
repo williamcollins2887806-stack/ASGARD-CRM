@@ -297,36 +297,13 @@ module.exports = async function telephonyRoutes(fastify, opts) {
         ]
       );
 
-      // SSE уведомление менеджеру (snake_case + camelCase для совместимости)
-      if (sseSendToUser && assignedUserId) {
-        sseSendToUser(assignedUserId, 'call:incoming', {
-          call_id: callId,
-          callId,
-          entry_id: entryId,
-          entryId,
-          from: fromNumber,
-          from_number: fromNumber,
-          fromNumber,
-          to: toNumber,
-          to_number: toNumber,
-          toNumber,
-          client_name: client ? (client.contact_person || client.name) : null,
-          clientName: client ? (client.contact_person || client.name) : null,
-          client_company: client ? client.name : null,
-          clientCompany: client ? client.name : null,
-          client_inn: client ? client.inn : null,
-          clientInn: client ? client.inn : null,
-          responsible_manager: assignedUserName,
-          responsibleManager: assignedUserName,
-          timestamp: event.timestamp
-        });
-        const who = client ? (client.contact_person || client.name) : fromNumber;
-        sendIncomingCallPush(db, assignedUserId, {
-          title: 'Входящий звонок',
-          body: who || 'Ответьте в приложении',
-          from: fromNumber,
-        }).catch(() => {});
-      }
+      // PBX-контур — единственный драйвер панели «Телефон».
+      // Mango-webhook ведёт только историю (active_calls/call_history) и обогащение;
+      // SSE call:incoming и push отсюда больше НЕ шлём, чтобы не было двойного звонка
+      // (второй источник — asgard-pbx AGI → pg NOTIFY → SSE).
+      void assignedUserName;
+      void sseSendToUser;
+      void sendIncomingCallPush;
 
       // DaData обогащение (async — не блокируем ответ)
       if (fromNumber) {
@@ -364,22 +341,16 @@ module.exports = async function telephonyRoutes(fastify, opts) {
       }
 
       const ac = await db.query('SELECT assigned_user_id FROM active_calls WHERE mango_call_id = $1', [callId]);
-      if (sseSendToUser && ac.rows.length && ac.rows[0].assigned_user_id) {
-        sseSendToUser(ac.rows[0].assigned_user_id, 'call:connected', { callId });
-      }
+      // call:connected/ended из Mango-контура не шлём: панель ведёт PBX (asgard-pbx).
+      void ac;
     }
 
     // Звонок завершён
     if (callState === 'Disconnected') {
       const ac = await db.query('SELECT assigned_user_id FROM active_calls WHERE mango_call_id = $1', [callId]);
-      const assigned = ac.rows[0]?.assigned_user_id || null;
+      void ac;
       await db.query("DELETE FROM active_calls WHERE mango_call_id = $1", [callId]);
-
-      if (sseSendToUser && assigned) {
-        sseSendToUser(assigned, 'call:ended', { callId, call_id: callId });
-      } else if (sseBroadcast) {
-        sseBroadcast('call:ended', { callId, call_id: callId });
-      }
+      // call:ended из Mango-контура не шлём (единственный источник — PBX).
     }
 
     reply.send({ status: 'ok' });

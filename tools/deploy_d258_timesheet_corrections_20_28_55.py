@@ -70,11 +70,7 @@ MARKERS_PRESENT = [
     ("public/index.html", f"ASGARD_SHELL_VERSION = '{VER}'"),
 ]
 
-MARKERS_ABSENT = [
-    ("public/index.html", "phone.css"),
-    ("public/index.html", "jssip.min.js"),
-    ("public/index.html", "phone_core.js"),
-]
+MARKERS_ABSENT = []
 
 
 def md5_file(path: Path) -> str:

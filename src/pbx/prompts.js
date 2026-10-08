@@ -12,7 +12,7 @@ const https = require('https');
 const crypto = require('crypto');
 const { spawnSync } = require('child_process');
 
-const SOUNDS_DIR = process.env.ASTERISK_SOUNDS_DIR || '/var/lib/asterisk/sounds';
+const SOUNDS_DIR = process.env.ASTERISK_SOUNDS_DIR || '/usr/share/asterisk/sounds';
 const SILERO_URL = process.env.SILERO_URL || 'http://127.0.0.1:5500';
 const SILERO_SPEAKER = process.env.SILERO_SPEAKER || 'aidar';
 const SILERO_SPEED = process.env.SILERO_SPEED || '0.9';

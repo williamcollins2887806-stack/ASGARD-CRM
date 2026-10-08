@@ -73,9 +73,6 @@ MARKERS_PRESENT = [
 ]
 
 MARKERS_ABSENT = [
-    ("public/index.html", "phone.css"),
-    ("public/index.html", "jssip.min.js"),
-    ("public/index.html", "phone_core.js"),
     ("public/assets/js/pm_duty.js", "Math.max(3.5, pe - ps)"),
 ]
 

@@ -271,6 +271,8 @@ function normalizePbxConfig(raw) {
     }
   }
   if (cfg.max_agents == null) cfg.max_agents = 3;
+  // Приветствие по умолчанию озвучивает CRM (Silero). Выкл → приветствие в Mango IVR.
+  if (cfg.greeting_in_crm == null) cfg.greeting_in_crm = true;
   return cfg;
 }
 

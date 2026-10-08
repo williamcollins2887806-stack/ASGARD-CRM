@@ -516,7 +516,7 @@
       if (activeSession) {
         try { activeSession.terminate(); } catch (_) {}
       }
-      return pbxApi('/call/hangup', { method: 'POST', body: JSON.stringify({ channel: callMeta.channel }) })
+      return pbxApi('/call/hangup', { method: 'POST', body: JSON.stringify({ channel: callMeta.channel, pbx_uid: callMeta.pbx_uid, call_id: callMeta.call_id }) })
         .catch(function () {})
         .then(function () {
           setState(mode ? (mode === 'mobile' ? STATES.on_line_mobile : STATES.on_line_browser) : STATES.offline);
@@ -571,7 +571,7 @@
 
     transfer: function (kind, target) {
       kind = kind === 'consult' ? 'consult' : 'blind';
-      var body = { channel: callMeta.channel, target: target, mode: kind };
+      var body = { channel: callMeta.channel, pbx_uid: callMeta.pbx_uid, call_id: callMeta.call_id, target: target, mode: kind };
       if (kind === 'consult' && consultSession) {
         body.consult_channel = consultSession.id;
       }
@@ -601,8 +601,7 @@
       var digits = normalizePhone(number);
       if (!digits) return Promise.reject(new Error('Некорректный номер'));
       callMeta = { number: digits, direction: 'outbound' };
-      // WebRTC только если SIP реально зарегистрирован на этом устройстве.
-      // Иначе текущий /pbx/ws не поднят и звонок ушёл бы «в никуда» — падаем на серверный GSM.
+      // WebRTC зарегистрирован → звоним из браузера напрямую (медиа в браузере).
       if (ua && hasJsSIP() && sipRegistered) {
         var domain = credentials ? sipDomainFromWs(wsUrlFromCreds(credentials)) : location.hostname;
         var session = ua.call('sip:' + digits + '@' + domain, { mediaConstraints: { audio: true, video: false } });
@@ -610,6 +609,7 @@
         setState(STATES.ringing, { number: digits, outbound: true });
         return Promise.resolve({ ok: true, via: 'webrtc' });
       }
+      // Иначе — серверный GSM-путь (оператор без WebRTC получает плечо на мобильный).
       return pbxApi('/call/outbound', { method: 'POST', body: JSON.stringify({ number: digits }) }).then(function (r) {
         setState(STATES.ringing, { number: digits, outbound: true });
         return r;

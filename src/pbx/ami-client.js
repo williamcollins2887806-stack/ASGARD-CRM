@@ -178,6 +178,12 @@ class AmiClient extends EventEmitter {
     return this.action({ Action: 'Hangup', Channel: channel });
   }
 
+  /** Список активных каналов (для снятия всех плеч звонка по Linkedid/Uniqueid). */
+  async coreShowChannels() {
+    const res = await this.action({ Action: 'CoreShowChannels' });
+    return res;
+  }
+
   async setVar(channel, variable, value) {
     return this.action({
       Action: 'Setvar',

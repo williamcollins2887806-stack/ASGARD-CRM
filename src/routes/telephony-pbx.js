@@ -81,7 +81,7 @@ module.exports = async function telephonyPbxRoutes(fastify) {
 
   async function ensureOperatorRow(userId) {
     await db.query(
-      `INSERT INTO pbx_operators (user_id, receive_mode) VALUES ($1, 'both')
+      `INSERT INTO pbx_operators (user_id, receive_mode) VALUES ($1, 'browser')
        ON CONFLICT (user_id) DO NOTHING`,
       [userId]
     );
@@ -115,7 +115,7 @@ module.exports = async function telephonyPbxRoutes(fastify) {
        WHERE o.user_id = $1`,
       [req.user.id]
     );
-    const st = rows[0] || { on_line: false, receive_mode: 'both', has_sip: false };
+    const st = rows[0] || { on_line: false, receive_mode: 'browser', has_sip: false };
     const cfg = await loadPbxCfg();
     const now = new Date();
     const tz = cfg.timezone || 'Europe/Moscow';
@@ -135,7 +135,16 @@ module.exports = async function telephonyPbxRoutes(fastify) {
       minutes_to_work_end: minsLeft,
       duty_until: cfg.duty_until || `${hh}:${mm}`,
       online_count: onlineCount.rows[0]?.n || 0,
-      reachability_ok: !st.on_line || !!(st.webrtc_registered || st.mobile_phone),
+      // Явная достижимость: «browser» требует зарегистрированного SIP, иначе панель
+      // должна предупредить, а не молча уйти на GSM.
+      reachable: st.receive_mode === 'mobile'
+        ? !!st.mobile_phone
+        : (st.receive_mode === 'browser'
+          ? !!st.webrtc_registered
+          : !!(st.webrtc_registered || st.mobile_phone)),
+      reachability_ok: st.receive_mode === 'browser'
+        ? !st.on_line || !!st.webrtc_registered
+        : (!st.on_line || !!(st.webrtc_registered || st.mobile_phone)),
     };
   });
 
@@ -296,6 +305,8 @@ module.exports = async function telephonyPbxRoutes(fastify) {
         method: 'POST',
         body: JSON.stringify({
           channel: req.body?.channel,
+          pbx_uid: req.body?.pbx_uid,
+          call_id: req.body?.call_id,
           target: req.body?.target,
           mode: req.body?.mode || 'blind',
           user_id: req.user.id,
@@ -480,6 +491,34 @@ module.exports = async function telephonyPbxRoutes(fastify) {
       throw err;
     }
     return lookupCaller(db, req.params.phone);
+  });
+
+  /**
+   * Провижининг PJSIP-эндпоинтов всех операторов с выданным sip_password.
+   * Вызывается при деплое/старте, чтобы новые операторы не требовали ручного шага.
+   * Требует прав root (пишет /etc/asterisk) — поэтому, если процесс не root,
+   * возвращаем подсказку запустить tools/provision_pjsip_operators.js.
+   */
+  fastify.post('/operator/provision-all', { preHandler: [fastify.authenticate, fastify.requireRoles(PBX_ADMIN_ROLES)] }, async () => {
+    const { rows } = await db.query(
+      `SELECT sip_username, sip_password FROM pbx_operators
+       WHERE sip_username IS NOT NULL AND sip_username <> ''
+         AND sip_password IS NOT NULL AND sip_password <> ''`
+    );
+    try {
+      const { spawnSync } = require('child_process');
+      const r = spawnSync('node', ['tools/provision_pjsip_operators.js'], {
+        cwd: process.cwd(),
+        encoding: 'utf8',
+        timeout: 60000,
+      });
+      if (r.status !== 0) {
+        return { ok: false, count: rows.length, error: (r.stderr || r.stdout || 'provision failed').trim() };
+      }
+      return { ok: true, count: rows.length, output: (r.stdout || '').trim().split('\n').slice(-3) };
+    } catch (e) {
+      return { ok: false, count: rows.length, error: e.message };
+    }
   });
 
   // Fallback тик (если asgard-pbx не запущен): stale + work_hours offline

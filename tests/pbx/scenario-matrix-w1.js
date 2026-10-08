@@ -128,21 +128,22 @@ async function main() {
     assert.ok(route.includes("'/operator/heartbeat'") || route.includes('/operator/heartbeat'), 'API heartbeat missing');
   });
 
-  await test('P5', 'stale heartbeat → GSM only (duty+mobile)', () => {
+  await test('P5', 'stale heartbeat: browser-оператор не звонится, both → GSM', () => {
     const stale = new Date(workNow.getTime() - HEARTBEAT_TTL_MS - 5000).toISOString();
-    const ops = [
-      op(1, {
-        on_line: true,
-        webrtc_registered: true,
-        last_seen_at: stale,
-        mobile_phone: '+79001112233',
-        receive_mode: 'browser',
-      }),
-    ];
-    const plan = buildRingPlan(ops, 1, baseConfig, workNow);
-    assert.ok(plan.targets.length >= 1, 'expected GSM target');
-    assert.strictEqual(plan.targets[0].targetType, 'mobile');
-    assert.ok(!plan.targets.some((t) => t.targetType === 'webrtc'), 'webrtc must not ring without heartbeat');
+    // browser без свежего heartbeat — не eligible (чистый WebRTC).
+    const browserPlan = buildRingPlan(
+      [op(1, { on_line: true, webrtc_registered: true, last_seen_at: stale, mobile_phone: '+79001112233', receive_mode: 'browser' })],
+      1, baseConfig, workNow
+    );
+    assert.strictEqual(browserPlan.targets.length, 0, 'browser без heartbeat не должен звониться');
+    // both — каскад: webrtc просрочен → остаётся GSM.
+    const bothPlan = buildRingPlan(
+      [op(2, { on_line: true, webrtc_registered: true, last_seen_at: stale, mobile_phone: '+79001112244', receive_mode: 'both' })],
+      2, baseConfig, workNow
+    );
+    assert.ok(bothPlan.targets.length >= 1, 'both: ожидался GSM');
+    assert.strictEqual(bothPlan.targets[0].targetType, 'mobile');
+    assert.ok(!bothPlan.targets.some((t) => t.targetType === 'webrtc'), 'webrtc не должен звонить без heartbeat');
   });
 
   await test('P6', 'nobody online in hours → empty (all-busy)', () => {
