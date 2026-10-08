@@ -16,8 +16,7 @@ import {
   Inbox, Calendar, HardHat, Warehouse, Package,
   ShoppingCart, Disc3, GanttChartSquare, LayoutGrid, Target,
   // Настройки
-  Bell, GraduationCap, Mail, Cpu, Plug, Stethoscope, ListChecks, CheckCircle,
-  // Прочее
+\n  // Прочее
   Sun, Moon, LogOut, ChevronRight,
 } from 'lucide-react';
 
@@ -55,7 +54,7 @@ const GROUPS = [
       { path: '/head-to-approvals', icon: FileCheck2, label: 'Согласования ТО', section: 'tenders', roles: ['HEAD_TO', 'ADMIN'] },
       { path: '/contracts',   icon: FilePen,          label: 'Договоры',     section: 'tenders' },
       { path: '/customers',   icon: Building2,        label: 'Контрагенты',  section: 'tenders' },
-      { path: '/tenders',     icon: Filter,           label: 'Тендеры',      section: 'tenders' },
+      { path: '/funnel',      icon: Filter,           label: 'Воронка',      section: 'tenders' },
       { path: '/all-estimates',icon: Calculator,      label: 'Расчёты',      section: 'tenders' },
       { path: '/pm-calcs',    icon: Calculator,       label: 'Мои расчёты',  section: 'tenders' },
     ],
@@ -68,7 +67,7 @@ const GROUPS = [
       { path: '/finances',         icon: BarChart2,  label: 'Финансы',       section: 'finances' },
       { path: '/invoices',         icon: Receipt,    label: 'Счета',         section: 'finances' },
       { path: '/acts',             icon: FileCheck2, label: 'Акты',          section: 'finances' },
-      { path: '/cash',             icon: Banknote,   label: 'Касса',         section: 'cash' },
+      { path: '/cash',             icon: Banknote,   label: 'Касса',         section: 'finances' },
       { path: '/payroll',          icon: Users2,     label: 'Ведомости ЗП',  section: 'finances' },
       { path: '/office-expenses',  icon: Building,   label: 'Офис расходы',  section: 'finances' },
       { path: '/cash-admin',       icon: Landmark,   label: 'Касса (упр.)',  section: 'finances' },
@@ -91,7 +90,7 @@ const GROUPS = [
       { path: '/my-timesheet',        icon: Table2,    label: 'Табель моей дружины',      section: 'works',     roles: ['PM','HEAD_PM'] },
       { path: '/timesheet-warehouse', icon: Table2,    label: 'Табель работы на складе',  section: 'personnel', roles: ['WAREHOUSE','ADMIN','DIRECTOR_GEN'] },
       { path: '/timesheet-medical',   icon: Table2,    label: 'Табель учёта МО',          section: 'personnel', roles: ['TO','HEAD_TO','ADMIN','DIRECTOR_GEN'] },
-      { path: '/timesheet-travel',    icon: Table2,    label: 'Табель учёта дороги',      section: 'personnel', roles: ['OFFICE_MANAGER','HEAD_TO','ADMIN','DIRECTOR_GEN'] },
+      { path: '/timesheet-travel',    icon: Table2,    label: 'Табель учёта дороги',      section: 'personnel', roles: ['OFFICE_MANAGER','ADMIN','DIRECTOR_GEN'] },
       { path: '/training-board',   icon: GraduationCap,label: 'Обучение',        section: 'personnel' },
       { path: '/travel',           icon: Plane,       label: 'Командировки',     section: 'personnel' },
       { path: '/permits',          icon: ShieldCheck, label: 'Допуски',          section: 'personnel' },
@@ -114,13 +113,11 @@ const GROUPS = [
     color: 'var(--blue)',
     items: [
       { path: '/director-inbox', icon: Inbox,            label: 'Корзина заявок',  section: 'inbox' },
-      { path: '/director-tender-approvals', icon: CheckCircle, label: 'Согласование тендеров', section: 'tenders', roles: ['DIRECTOR_GEN','DIRECTOR_COMM','DIRECTOR_DEV','ADMIN'] },
       { path: '/marketplace',    icon: Target,           label: '🎯 Маркетплейс заявок', section: 'marketplace', roles: ['PM','HEAD_PM'] },
       { path: '/correspondence', icon: Inbox,            label: 'Корреспонденция', section: 'works' },
       { path: '/meetings',       icon: Calendar,         label: 'Совещания',       section: 'dashboard' },
       { path: '/works',          icon: HardHat,          label: 'Работы',          section: 'works' },
       { path: '/warehouse',      icon: Warehouse,        label: 'Склад',           section: 'dashboard' },
-      { path: '/warehouse-wms',  icon: Warehouse,        label: 'WMS помощник',    section: 'dashboard', roles: ['WAREHOUSE','ADMIN','PM','HEAD_PM','CHIEF_ENGINEER'] },
       { path: '/procurement',    icon: ShoppingCart,     label: 'Заявки на закупку', section: 'works' },
       { path: '/seals',          icon: Disc3,            label: 'Печати',          section: 'works' },
       { path: '/gantt',          icon: GanttChartSquare, label: 'Диаграмма Ганта', section: 'works' },
@@ -132,6 +129,7 @@ const GROUPS = [
     color: 'var(--text-secondary)',
     items: [
       { path: '/alerts',       icon: Bell,         label: 'Уведомления',    section: 'dashboard' },
+      { path: '/telephony',    icon: Phone,        label: 'Телефон',        section: 'dashboard', roles: ['ADMIN','DIRECTOR_GEN','DIRECTOR_COMM','DIRECTOR_DEV','PM','HEAD_PM','TO','HEAD_TO','BUH'] },
       { path: '/training',     icon: GraduationCap,label: 'Обучение',       section: 'dashboard' },
       { path: '/office-academy', icon: GraduationCap, label: 'Академия Асгарда', section: 'dashboard' },
       { path: '/my-mail',      icon: Mail,         label: 'Почта',          section: 'profile' },

@@ -33,15 +33,7 @@ async function login(login, password) {
   });
   let data = await res.json();
   assert.ok(res.ok, 'login ' + login + ': ' + JSON.stringify(data));
-  if (data.status === 'need_setup') {
-    res = await fetch(BASE + '/api/auth/setup-credentials', {
-      method: 'POST',
-      headers: { Authorization: 'Bearer ' + data.token, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ newPassword: password, pin: PIN })
-    });
-    data = await res.json();
-    assert.ok(res.ok, 'setup ' + login + ': ' + JSON.stringify(data));
-  } else if (data.status === 'need_pin' || data.pinVerified === false) {
+  if (data.status === 'need_pin' || data.pinVerified === false) {
     res = await fetch(BASE + '/api/auth/verify-pin', {
       method: 'POST',
       headers: { Authorization: 'Bearer ' + data.token, 'Content-Type': 'application/json' },
@@ -91,7 +83,7 @@ function tinyPng() {
 }
 
 function tinyWebm() {
-  // minimal bytes — may 415 if MIME whitelist strict; then mark soft
+  // minimal webm header — MIME must be accepted via allow:chat (hard 200, no soft 415)
   return Buffer.from([
     0x1a, 0x45, 0xdf, 0xa3, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x1f,
     0x42, 0x86, 0x81, 0x01, 0x42, 0xf7, 0x81, 0x01, 0x42, 0xf2, 0x81, 0x04,
@@ -178,7 +170,7 @@ async function main() {
   });
   caseResult('upload_image', img.status === 200 && img.data.message, img.data.error || String(img.status));
 
-  // Upload voice (webm) — accept 200 or 415 (whitelist)
+  // Upload voice (webm) — must be 200 (media whitelist via allow:chat)
   const voice = await upload(a.token, chatId, {
     buf: tinyWebm(),
     name: 'voice.webm',
@@ -186,27 +178,16 @@ async function main() {
     messageType: 'voice',
     extraFields: { file_duration: '2' }
   });
-  if (voice.status === 200) {
-    caseResult('upload_voice', true, 'id=' + (voice.data.message && voice.data.message.id));
-  } else if (voice.status === 415) {
-    // fallback: send typed voice message without file bytes via JSON if supported — else document skip as infra
-    caseResult('upload_voice', true, 'SOFT: MIME whitelist 415 on synthetic webm — UI recorder path still covered in browser');
-  } else {
-    caseResult('upload_voice', false, voice.data.error || String(voice.status));
-  }
+  caseResult('upload_voice', voice.status === 200 && voice.data.message, voice.data.error || String(voice.status));
 
-  // Circle
+  // Circle — must be 200
   const circle = await upload(a.token, chatId, {
     buf: tinyWebm(),
     name: 'circle.webm',
     mime: 'video/webm',
     messageType: 'circle'
   });
-  if (circle.status === 200 || circle.status === 415) {
-    caseResult('upload_circle', true, 'status=' + circle.status);
-  } else {
-    caseResult('upload_circle', false, circle.data.error || String(circle.status));
-  }
+  caseResult('upload_circle', circle.status === 200 && circle.data.message, circle.data.error || String(circle.status));
 
   // Stories
   const storyCreate = await api(a.token, 'POST', '/api/stories', { content: 'huginn-story-' + Date.now() });

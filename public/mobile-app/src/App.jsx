@@ -19,14 +19,15 @@ import FieldShift from '@/pages/field/FieldShift';
 import FieldTimesheet from '@/pages/field/FieldTimesheet';
 import FieldProfile from '@/pages/field/FieldProfile';
 import FieldMyWorks from '@/pages/field/FieldMyWorks';
+import FieldMoney from '@/pages/field/FieldMoney';
+import FieldEarnings from '@/pages/field/FieldEarnings';
 import FieldFunds from '@/pages/field/FieldFunds';
 import FieldLogistics from '@/pages/field/FieldLogistics';
 import FieldCrew from '@/pages/field/FieldCrew';
 import FieldReport from '@/pages/field/FieldReport';
 import FieldIncidents from '@/pages/field/FieldIncidents';
 import FieldPhotos from '@/pages/field/FieldPhotos';
-import FieldPermits from '@/pages/field/FieldPermits';
-import FieldPermitDetail from '@/pages/field/FieldPermitDetail';
+import FieldPacking from '@/pages/field/FieldPacking';
 import FieldStages from '@/pages/field/FieldStages';
 import FieldCrewStages from '@/pages/field/FieldCrewStages';
 import FieldAchievements from '@/pages/field/FieldAchievements';
@@ -44,11 +45,11 @@ import FieldAcademy from '@/pages/field/FieldAcademy';
 import FieldLesson from '@/pages/field/FieldLesson';
 import FieldAcademyQuiz from '@/pages/field/FieldAcademyQuiz';
 import FieldAcademyLibrary from '@/pages/field/FieldAcademyLibrary';
+import FieldEarningsMonthly from '@/pages/field/FieldEarningsMonthly';
 import FieldSeasonal from '@/pages/field/FieldSeasonal';
 import FieldDiary from '@/pages/field/FieldDiary';
 import FieldReadiness from '@/pages/field/FieldReadiness';
 import PipelineGame from '@/pages/field/PipelineGame';
-import ChemLabGame from '@/pages/field/ChemLabGame';
 import PmDashboard from '@/pages/pm/PmDashboard';
 import PmWorkers from '@/pages/pm/PmWorkers';
 import PmWorkerProfile from '@/pages/pm/PmWorkerProfile';
@@ -96,7 +97,6 @@ import OfficeExpenses from '@/pages/OfficeExpenses';
 import CashAdmin from '@/pages/CashAdmin';
 import TasksAdmin from '@/pages/TasksAdmin';
 import Warehouse from '@/pages/Warehouse';
-import WarehouseMapHelper from '@/pages/WarehouseMapHelper';
 import Assembly from '@/pages/Assembly';
 import Gantt from '@/pages/Gantt';
 import WorkersSchedule from '@/pages/WorkersSchedule';
@@ -123,6 +123,10 @@ import TrainingBoard from '@/pages/TrainingBoard';
 import StaffRequests from '@/pages/StaffRequests';
 import PmBalance from '@/pages/PmBalance';
 import CallAnalytics from '@/pages/CallAnalytics';
+import TelephonyHome from '@/pages/TelephonyHome';
+import TelephonyMissed from '@/pages/TelephonyMissed';
+import TelephonyHistory from '@/pages/TelephonyHistory';
+import TelephonyCallDetail from '@/pages/TelephonyCallDetail';
 import EstimateReport from '@/pages/EstimateReport';
 import MimirAutoEstimate from '@/pages/MimirAutoEstimate';
 import HuginnEstimateChat from '@/pages/HuginnEstimateChat';
@@ -132,6 +136,7 @@ import DirectorTenderApprovals from '@/pages/director/TenderApprovals';
 import MarketplaceMobile from '@/pages/MarketplaceMobile';
 import { Toaster } from '@/components/ui/sonner';
 import { usePushSubscription } from '@/hooks/usePushSubscription';
+import { SoftphoneProvider } from '@/components/telephony/SoftphoneProvider';
 
 const PersonalKanban       = lazy(() => import('@/pages/PersonalKanban'));
 const PersonalKanbanConfig = lazy(() => import('@/pages/PersonalKanbanConfig'));
@@ -263,6 +268,7 @@ function AppLayout() {
       {showPresenceGate && <PresenceGateMobile />}
       <OfficePushBootstrap />
       <NotificationClickListener />
+      <SoftphoneProvider>
       <div
         key={location.pathname}
         style={{
@@ -294,7 +300,7 @@ function AppLayout() {
           <Route path="/correspondence" element={<ProtectedRoute section="works"><PinGuard><Correspondence /></PinGuard></ProtectedRoute>} />
           <Route path="/alerts" element={<ProtectedRoute section="dashboard"><PinGuard><Alerts /></PinGuard></ProtectedRoute>} />
           <Route path="/meetings" element={<ProtectedRoute section="dashboard"><PinGuard><Meetings /></PinGuard></ProtectedRoute>} />
-          <Route path="/cash" element={<ProtectedRoute section="cash"><PinGuard><Cash /></PinGuard></ProtectedRoute>} />
+          <Route path="/cash" element={<ProtectedRoute section="finances"><PinGuard><Cash /></PinGuard></ProtectedRoute>} />
           <Route path="/acts" element={<ProtectedRoute section="finances"><PinGuard><Acts /></PinGuard></ProtectedRoute>} />
           <Route path="/invoices" element={<ProtectedRoute section="finances"><PinGuard><Invoices /></PinGuard></ProtectedRoute>} />
           <Route path="/hr-requests" element={<ProtectedRoute section="personnel"><PinGuard><HrRequests /></PinGuard></ProtectedRoute>} />
@@ -316,7 +322,6 @@ function AppLayout() {
           <Route path="/cash-admin" element={<ProtectedRoute section="finances"><PinGuard><CashAdmin /></PinGuard></ProtectedRoute>} />
           <Route path="/tasks-admin" element={<ProtectedRoute section="settings"><PinGuard><TasksAdmin /></PinGuard></ProtectedRoute>} />
           <Route path="/warehouse" element={<ProtectedRoute section="dashboard"><PinGuard><Warehouse /></PinGuard></ProtectedRoute>} />
-          <Route path="/warehouse-wms" element={<ProtectedRoute section="dashboard"><PinGuard><WarehouseMapHelper /></PinGuard></ProtectedRoute>} />
           <Route path="/assembly" element={<ProtectedRoute section="works"><PinGuard><Assembly /></PinGuard></ProtectedRoute>} />
           <Route path="/gantt" element={<ProtectedRoute section="works"><PinGuard><Gantt /></PinGuard></ProtectedRoute>} />
           <Route path="/workers-schedule" element={<ProtectedRoute section="personnel"><PinGuard><WorkersSchedule /></PinGuard></ProtectedRoute>} />
@@ -346,6 +351,10 @@ function AppLayout() {
           <Route path="/office-academy/:id" element={<ProtectedRoute section="dashboard"><PinGuard><OfficeLesson /></PinGuard></ProtectedRoute>} />
           <Route path="/integrations" element={<ProtectedRoute section="settings"><PinGuard><Integrations /></PinGuard></ProtectedRoute>} />
           <Route path="/call-analytics" element={<ProtectedRoute section="dashboard"><PinGuard><CallAnalytics /></PinGuard></ProtectedRoute>} />
+          <Route path="/telephony" element={<ProtectedRoute section="dashboard"><PinGuard><TelephonyHome /></PinGuard></ProtectedRoute>} />
+          <Route path="/telephony/missed" element={<ProtectedRoute section="dashboard"><PinGuard><TelephonyMissed /></PinGuard></ProtectedRoute>} />
+          <Route path="/telephony/history" element={<ProtectedRoute section="dashboard"><PinGuard><TelephonyHistory /></PinGuard></ProtectedRoute>} />
+          <Route path="/telephony/calls/:id" element={<ProtectedRoute section="dashboard"><PinGuard><TelephonyCallDetail /></PinGuard></ProtectedRoute>} />
           <Route path="/estimate-report/:id" element={<ProtectedRoute section="tenders"><PinGuard><EstimateReport /></PinGuard></ProtectedRoute>} />
           <Route path="/mimir-estimate/:workId" element={<ProtectedRoute section="works"><PinGuard><MimirAutoEstimate /></PinGuard></ProtectedRoute>} />
           <Route path="/huginn-chat/:chatId" element={<ProtectedRoute section="chat"><PinGuard><HuginnEstimateChat /></PinGuard></ProtectedRoute>} />
@@ -423,8 +432,8 @@ function AppLayout() {
               <Route path="/field" element={<FieldLayout />}>
                 <Route path="home" element={<FieldHome />} />
                 <Route path="shift" element={<FieldShift />} />
-                <Route path="money" element={<Navigate to="/field/timesheet" replace />} />
-                <Route path="earnings" element={<Navigate to="/field/timesheet" replace />} />
+                <Route path="money" element={<FieldMoney />} />
+                <Route path="earnings" element={<FieldEarnings />} />
                 <Route path="funds" element={<FieldFunds />} />
                 <Route path="history" element={<FieldTimesheet />} />
                 <Route path="timesheet" element={<FieldTimesheet />} />
@@ -435,9 +444,7 @@ function AppLayout() {
                 <Route path="report" element={<FieldReport />} />
                 <Route path="incidents" element={<FieldIncidents />} />
                 <Route path="photos" element={<FieldPhotos />} />
-                <Route path="packing" element={<Navigate to="/field/assembly" replace />} />
-                <Route path="permits" element={<FieldPermits />} />
-                <Route path="permits/:id" element={<FieldPermitDetail />} />
+                <Route path="packing" element={<FieldPacking />} />
                 <Route path="assembly" element={<FieldAssembly />} />
                 <Route path="assembly/:id" element={<FieldPalletBuilder />} />
                 <Route path="receiving" element={<FieldReceiving />} />
@@ -448,7 +455,6 @@ function AppLayout() {
                 <Route path="hall/:id" element={<FieldHall />} />
                 <Route path="wheel" element={<WheelOfNorns />} />
                 <Route path="pipeline" element={<PipelineGame />} />
-                <Route path="chemlab" element={<ChemLabGame />} />
                 <Route path="shop" element={<FieldShop />} />
                 <Route path="inventory" element={<FieldInventory />} />
                 <Route path="quests" element={<FieldQuests />} />
@@ -460,7 +466,7 @@ function AppLayout() {
                 <Route path="academy/library" element={<FieldAcademyLibrary />} />
                 <Route path="academy/lesson/:lessonId" element={<FieldLesson />} />
                 <Route path="academy/quiz/:lessonId" element={<FieldAcademyQuiz />} />
-                <Route path="earnings/monthly" element={<Navigate to="/field/timesheet" replace />} />
+                <Route path="earnings/monthly" element={<FieldEarningsMonthly />} />
                 <Route index element={<Navigate to="home" replace />} />
               </Route>
             </>
@@ -471,6 +477,7 @@ function AppLayout() {
       </div>
       {!hideTabBar && <TabBar />}
       <Toaster position="top-center" richColors closeButton />
+      </SoftphoneProvider>
     </div>
   );
 }
