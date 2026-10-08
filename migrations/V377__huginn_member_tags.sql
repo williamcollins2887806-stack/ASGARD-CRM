@@ -1,4 +1,4 @@
--- V376: Huginn member tags (метки участников чата).
+-- V377: Huginn member tags (метки участников чата).
 --
 -- The design-book contract lists «member tags / checklist» as the only open
 -- defer_be item. Tags are per (chat, member): a short label the chat owner/admin
