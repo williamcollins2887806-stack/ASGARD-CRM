@@ -490,7 +490,7 @@ table.reg-table {
   min-width: 1480px;
 }
 table.reg-table td.reg-action-cell,
-table.reg-table th:nth-last-child(2) {
+table.reg-table th:nth-last-child(3) {
   min-width: 210px !important;
   width: 230px;
   max-width: 280px;

@@ -341,20 +341,16 @@ window.AsgardRegistryTab = (function () {
   ];
 
   const SORT_COLUMNS = [
-    { key: 'registry_no', label: '№', filterKey: 'id' },
-    { key: 'customer_name', label: 'Заказчик', filterKey: 'customer_name' },
-    { key: 'tender_title', label: 'Тендер', filterKey: 'tender_title' },
+    { key: '_work', label: 'Тендер / заказчик' },
     { key: 'tender_price', label: 'НМЦ' },
     { key: 'submission_price_with_vat', label: 'Подача' },
     { key: 'docs_deadline', label: 'Срок', filterKey: 'docs_deadline' },
     { key: 'participation_fee', label: 'Сбор' },
-    { key: 'analysis_deadline', label: 'Анализ' },
     { key: 'registry_status', label: 'Статус' },
     { key: 'analyst_name', label: 'Аналитик' },
     { key: 'calculator_user_name', label: 'Считает' },
     { key: '_rp_sort', label: 'Отчёт' },
     { key: 'comment_to', label: 'Коммент' },
-    { key: '_score_pct', label: 'Скор' },
     { key: 'created_by_name', label: 'Внёс', filterKey: 'created_by_name' },
     { key: 'created_at', label: 'Добавлен', filterKey: 'created_at' },
     { key: '_action_sort', label: 'Действие' }
@@ -448,8 +444,9 @@ window.AsgardRegistryTab = (function () {
         return row.calculator_user_name || row.rp_review?.calculator_name || '';
       case '_rp_sort':
         return rpSortRank(row);
-      case '_score_pct':
-        return row.score?.win_chance_pct != null ? Number(row.score.win_chance_pct) : -Infinity;
+      case '_work':
+        // Объединённая колонка «Тендер / заказчик» — сортируем по названию тендера
+        return row.tender_title || '';
       case '_action_sort':
         return actionSortRank(row);
       default:
@@ -483,6 +480,12 @@ window.AsgardRegistryTab = (function () {
   }
 
   function renderSortTh(key, label, filterKey) {
+    // Объединённая колонка «Тендер / заказчик»: название сверху, заказчик+ИНН снизу
+    if (key === '_work') {
+      return '<th class="reg-th-wrap reg-th-work">' +
+        '<button type="button" class="reg-th-sort" data-sort="tender_title">Тендер / заказчик</button>' +
+        '</th>';
+    }
     const active = state.sortKey === key;
     const ind = active ? (state.sortDir === 1 ? '▲' : '▼') : '';
     const extraTh = key === 'participation_fee' ? ' reg-th-participation'
@@ -566,8 +569,7 @@ window.AsgardRegistryTab = (function () {
     return '<button type="button" class="pill reg-status-pill reg-status-change ' + cls + '" data-id="' + rowId + '" title="Нажмите, чтобы сменить статус">' + esc(statusLabel(st)) + '</button>';
   }
 
-  async function applyStatusChange(row, nextOrBody) {
-    const payload = typeof nextOrBody === 'string' ? { registry_status: nextOrBody } : (nextOrBody || {});
+  async function applyStatusChange(row, nextOrBody) {    const payload = typeof nextOrBody === 'string' ? { registry_status: nextOrBody } : (nextOrBody || {});
     const nextStatus = payload.registry_status;
     const st = row.registry_status || 'рассмотрение';
     if (nextStatus === st && !payload.submission_price && !payload.submission_price_with_vat) return;
@@ -808,6 +810,16 @@ window.AsgardRegistryTab = (function () {
     try {
       return new Date(iso).toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric' });
     } catch (_) { return '—'; }
+  }
+
+  /** «Андросов Никита Андреевич» → «Андросов Н.А.» (сокращает ширину колонок). */
+  function shortFio(name) {
+    const s = String(name || '').trim();
+    if (!s || s === '—') return '—';
+    const parts = s.split(/\s+/);
+    if (parts.length < 2) return s;
+    const initials = parts.slice(1).map((p) => (p[0] ? p[0].toUpperCase() + '.' : '')).join('');
+    return parts[0] + ' ' + initials;
   }
 
   function renderCustomerCell(row) {
@@ -1463,11 +1475,14 @@ window.AsgardRegistryTab = (function () {
       : '<span class="muted">—</span>';
     const comment = row.comment_to || '';
     const dlIso = row.docs_deadline ? API.fmtDateIso(row.docs_deadline) : '';
+    // Собираем ФИО для title объединённой ячейки (видно при наведении)
+    const cpTitle = [title, row.customer_name || '—', row.customer_inn ? 'ИНН ' + row.customer_inn : ''].filter(Boolean).join(' · ');
     return '<tr class="reg-row ' + cls + actionCls + rejectCls + unreadCls + '" data-id="' + row.id + '">' +
-      '<td class="reg-no-cell" title="ID: ' + row.id + '"><div class="reg-no-main">' + unreadDot + esc(regNo) + '</div>' +
-      '<div class="reg-no-sub">id ' + row.id + '</div></td>' +
-      '<td class="reg-editable">' + renderCustomerCell(row) + '</td>' +
-      '<td><span class="reg-cell-text reg-title" title="' + esc(title) + '">' + docIcon + esc(title) + '</span></td>' +
+      '<td class="reg-editable reg-cell-work" title="' + esc(cpTitle) + '">' +
+      '<div class="reg-work-top"><span class="reg-no-inline" title="№ реестра">' + unreadDot + esc(regNo) + '</span>' +
+      '<span class="reg-cell-text reg-title">' + docIcon + esc(title) + '</span></div>' +
+      renderCustomerCell(row) +
+      '</td>' +
       '<td class="reg-col-money"><span class="reg-cell-text reg-price-text" title="' + esc(formatMoney(row.tender_price)) + '">' + esc(formatMoney(row.tender_price)) + '</span></td>' +
       '<td class="reg-col-money reg-col-submit">' + submitHtml + '</td>' +
       '<td class="reg-col-date reg-deadline-cell' + (canEditDeadlineCell() ? '' : ' reg-deadline-readonly') +
@@ -1475,14 +1490,12 @@ window.AsgardRegistryTab = (function () {
       (canEditDeadlineCell() ? ' title="Клик — изменить срок"' : ' title="Срок подачи меняет ТО или администратор"') + '>' +
       '<span class="reg-cell-text reg-deadline-text">' + esc(fmtShortDate(row.docs_deadline)) + '</span></td>' +
       '<td class="reg-col-participation">' + participationCell(row) + '</td>' +
-      '<td class="reg-col-analysis">' + analysisDeadlineCell(row) + '</td>' +
       '<td>' + statusPill(st, row.id) + '</td>' +
-      '<td class="muted reg-col-person" style="font-size:12px" title="Кто ведёт анализ">' + esc(row.analyst_name || '—') + '</td>' +
-      '<td class="muted reg-col-person" style="font-size:12px">' + esc(calcName) + '</td>' +
+      '<td class="muted reg-col-person" style="font-size:12px" title="' + esc(row.analyst_name || '') + '">' + esc(shortFio(row.analyst_name)) + '</td>' +
+      '<td class="muted reg-col-person" style="font-size:12px" title="' + esc(calcName) + '">' + esc(shortFio(calcName)) + '</td>' +
       '<td>' + rpPill + '</td>' +
       '<td class="reg-col-comment"><div class="reg-comment-full">' + (comment ? esc(comment) : '<span class="muted">—</span>') + '</div></td>' +
-      '<td class="reg-col-score" title="' + scoreTitle + '">' + esc(scoreTxt) + '</td>' +
-      '<td class="muted reg-col-person" style="font-size:11px">' + esc(row.created_by_name || '—') + '</td>' +
+      '<td class="muted reg-col-person" style="font-size:11px" title="' + esc(row.created_by_name || '') + '">' + esc(shortFio(row.created_by_name)) + '</td>' +
       '<td class="muted reg-col-date" style="font-size:11px" title="' + esc(row.created_at || '') + '">' + esc(fmtShortDate(row.created_at)) + '</td>' +
       '<td class="reg-purchase-cell">' + renderPurchaseCell(row) + '</td>' +
       '<td class="reg-action-cell">' + renderActionCell(row) + '</td>' +

@@ -12154,20 +12154,22 @@ table.reg-table {
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
 }
-table.reg-table th.reg-th-no,
-table.reg-table td.reg-no-cell { width: 56px; min-width: 56px; max-width: 64px; }
-table.reg-table th:nth-child(2),
-table.reg-table td:nth-child(2) { width: 16%; min-width: 160px; }
-table.reg-table th:nth-child(3),
-table.reg-table td:nth-child(3) { width: 18%; min-width: 180px; }
+/* Объединённая колонка «Тендер / заказчик»: название сверху, заказчик+ИНН снизу.
+   Раньше это были две колонки (Заказчик 16% + Тендер 18%) — теперь одна. */
+table.reg-table th.reg-th-work,
+table.reg-table td.reg-cell-work { width: 34%; min-width: 220px; }
+.reg-work-top { display: flex; align-items: baseline; gap: 6px; }
+.reg-no-inline {
+  flex: 0 0 auto; font-weight: 700; font-size: 12px;
+  color: var(--gold, #d4a843); font-variant-numeric: tabular-nums;
+}
+.reg-work-top .reg-title { min-width: 0; }
 table.reg-table th.reg-th-money,
 table.reg-table td.reg-col-money { width: 88px; min-width: 80px; }
 table.reg-table th.reg-th-date,
 table.reg-table td.reg-col-date { width: 78px; min-width: 72px; }
 table.reg-table th.reg-th-participation,
 table.reg-table td.reg-col-participation { width: 96px; min-width: 88px; }
-table.reg-table th.reg-th-analysis,
-table.reg-table td.reg-col-analysis { width: 86px; min-width: 80px; }
 table.reg-table .reg-cell-text {
   display: block;
   overflow: hidden;
