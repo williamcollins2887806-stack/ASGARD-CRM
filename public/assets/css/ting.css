@@ -1,39 +1,55 @@
 /* ASGARD Ting — Telemost-level polish + Ting brand (gold) */
 @import url('https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700;800&display=swap');
+/* Above kept only for legacy "#/ting" CRM chrome; guest surfaces use --ting-font (= --ff). */
 
 :root {
-  --ting-gold: #D4A843;
-  --ting-gold-l: #E8C35A;
-  --ting-bg0: #0a0b0e;
-  --ting-bg1: #12151a;
-  --ting-bg2: #1a1f27;
-  --ting-bg3: #242b36;
-  --ting-pip-bg: #000;
+  /* Ting aliases → CRM tokens (single source of truth: design-tokens.css).
+     Kept as --ting-* so existing rules keep working; values follow the CRM map
+     (DS §2: only CRM colours, gold = rail chrome only). */
+  --ting-gold: var(--gold, #D4A843);
+  --ting-gold-l: var(--gold-l, #E8C35A);
+  --ting-bg0: var(--bg0, #08090C);
+  --ting-bg1: var(--bg1, #0D1117);
+  --ting-bg2: var(--bg2, #151922);
+  --ting-bg3: var(--bg3, #1C2130);
+  --ting-pip-bg: var(--bg3, #1C2130);
   --ting-on-gold: #141414;
-  --ting-line: rgba(255,255,255,.08);
-  --ting-t1: #F2F5F8;
-  --ting-t2: #8B96A8;
-  --ting-t3: #5C6675;
-  --ting-danger: #E24B4B;
-  --ting-ok: #3DCC7A;
+  --ting-line: var(--brd-m, rgba(255,255,255,.07));
+  --ting-t1: var(--t1, rgba(255,255,255,.95));
+  --ting-t2: var(--t2, rgba(255,255,255,.65));
+  --ting-t3: var(--t3, rgba(255,255,255,.40));
+  --ting-danger: var(--red-l, #E8475A);
+  --ting-ok: var(--ok-t, #4ADE80);
   --ting-radius: 22px;
   --ting-radius-sm: 14px;
   --ting-radius-min: 10px;
   --ting-dock-h: 88px;
   --ting-chat-w: 340px;
+  --ting-font: var(--ff, 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif);
 }
 
-/* Light theme — follow CRM data-theme (not a separate Ting toggle) */
-html[data-theme="light"] {
-  --ting-bg0: #F4EFE6;
-  --ting-bg1: #FDFAF5;
-  --ting-bg2: #F7F1E8;
-  --ting-bg3: #EDE4D6;
-  --ting-line: rgba(40, 32, 24, .10);
-  --ting-t1: #1A1612;
-  --ting-t2: #6B5E4E;
-  --ting-t3: #9A8B78;
+/* Press/tap hygiene: no native grey flash, custom focus ring everywhere. */
+button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
+.ting-btn:active, .ting-icon-btn:active, .ting-dock-btn:active,
+.ting-hub-card:active, .ting-tabs button:active, .ting-call-row:active,
+.ting-invite-add:active, .ting-invite-x:active, .ting-chip:active {
+  transform: scale(0.96);
+  filter: brightness(0.96);
+  transition: transform 90ms ease, filter 90ms ease;
 }
+.ting-btn:focus-visible, .ting-icon-btn:focus-visible, .ting-dock-btn:focus-visible,
+.ting-hub-card:focus-visible, .ting-tabs button:focus-visible, .ting-field:focus-visible,
+.ting-invite-add:focus-visible, .ting-invite-x:focus-visible {
+  outline: 2px solid var(--blue-l, #4A90D9);
+  outline-offset: 2px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .ting-orbit, .ting-speak-pulse { animation: none !important; }
+  .ting-btn, .ting-dock-btn, .ting-card, .ting-modal { transition: none !important; }
+}
+
+/* Light theme — design-tokens.css owns the values (html[data-theme="light"]);
+   Ting inherits them via the var() aliases above. No hardcoded light palette here. */
 
 html[data-theme="light"] .ting-page,
 html[data-theme="light"] body.ting-guest {
@@ -143,7 +159,7 @@ body.ting-guest {
 .ting-cta-center { justify-content: center; }
 .ting-btn-compact { padding: 8px 12px; min-height: 40px; }
 .ting-btn-send { padding: 10px 14px; }
-.ting-icon-sm { width: 32px; height: 32px; }
+.ting-icon-sm { width: 44px; height: 44px; }
 .ting-tabs-trail { margin-left: auto; }
 .ting-card-tight { padding: 8px 10px; }
 .ting-h2-tight { margin-top: 0; }
@@ -238,11 +254,12 @@ body.ting-guest {
 
 .g-screen {
   min-height: 100vh;
+  min-height: 100dvh;
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 24px;
-  font-family: "Manrope", system-ui, sans-serif;
+  padding: calc(24px + env(safe-area-inset-top)) 24px calc(24px + env(safe-area-inset-bottom));
+  font-family: var(--ting-font);
   color: var(--ting-t1);
 }
 
@@ -461,7 +478,8 @@ body.ting-guest .ting-card,
   display: block; width: 100%; max-width: 100%;
   padding: 13px 14px; border-radius: 12px;
   border: 1px solid var(--ting-line); background: var(--ting-bg0);
-  color: inherit; font: inherit; margin: 0 0 10px;
+  color: inherit; font-family: inherit; font-size: 16px; line-height: 1.2;
+  margin: 0 0 10px;
   box-sizing: border-box;
   min-height: 48px;
   color-scheme: dark;
@@ -721,7 +739,7 @@ body.ting-guest .ting-card,
   color: var(--ting-t1);
 }
 .ting-icon-btn {
-  width: 40px; height: 40px; border-radius: 12px; border: 0;
+  width: 44px; height: 44px; border-radius: 14px; border: 0;
   background: rgba(255,255,255,.08); color: var(--ting-t1);
   cursor: pointer; display: grid; place-items: center; position: relative;
 }
@@ -944,15 +962,33 @@ body.ting-guest .ting-card,
 }
 
 .ting-stage-connecting {
-  display: grid;
-  place-items: center;
-  min-height: 420px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  min-height: 240px;
   width: 100%;
   color: var(--ting-t3);
   font-size: 15px;
   font-weight: 600;
   letter-spacing: .02em;
   user-select: none;
+}
+.ting-stage-connecting::before {
+  content: '';
+  width: 132px; height: 74px; border-radius: 14px;
+  background:
+    linear-gradient(90deg,
+      color-mix(in srgb, var(--ting-t3) 12%, transparent) 25%,
+      color-mix(in srgb, var(--ting-t3) 22%, transparent) 37%,
+      color-mix(in srgb, var(--ting-t3) 12%, transparent) 63%);
+  background-size: 400% 100%;
+  animation: ting-skeleton 1.4s ease infinite;
+}
+@keyframes ting-skeleton {
+  0% { background-position: 100% 50%; }
+  100% { background-position: 0 50%; }
 }
 .ting-tile .lbl {
   position: absolute; left: 10px; bottom: 10px; z-index: 3;
@@ -980,12 +1016,14 @@ body.ting-guest .ting-card,
 
 /* Floating dock — glass + depth + ergonomic groups */
 .ting-dock {
-  position: absolute; left: 50%; bottom: 18px; transform: translateX(-50%);
+  position: absolute; left: 50%; bottom: calc(18px + env(safe-area-inset-bottom));
+  transform: translateX(-50%);
   z-index: 5; background: transparent; padding: 0;
 }
 .ting-dock-inner {
-  display: flex; gap: 10px; align-items: flex-end;
-  padding: 14px 18px 12px;
+  display: flex; gap: clamp(4px, 1.6vw, 10px); align-items: flex-end;
+  padding: 12px clamp(8px, 2.2vw, 18px) 10px;
+  max-width: calc(100vw - 12px);
   border-radius: 28px;
   background: rgba(10,14,22,.52);
   border: 1px solid rgba(255,255,255,.16);
@@ -1005,7 +1043,7 @@ body.ting-guest .ting-card,
   flex: 0 0 auto;
 }
 .ting-dock-btn {
-  width: 52px; height: 52px; border-radius: 50%; border: 0;
+  width: clamp(42px, 11.5vw, 52px); height: clamp(42px, 11.5vw, 52px); border-radius: 50%; border: 0;
   background: rgba(255,255,255,.1); color: var(--ting-t1);
   cursor: pointer; display: grid; place-items: center;
   transition: background .15s ease, transform .15s ease, color .15s ease, box-shadow .15s ease;
@@ -1018,14 +1056,15 @@ body.ting-guest .ting-card,
 }
 .ting-dock-btn svg { width: 22px; height: 22px; }
 .ting-dock-btn.active {
-  background: #fff; color: #111;
-  box-shadow: 0 4px 14px rgba(255,255,255,.18);
+  background: color-mix(in srgb, var(--ting-t1) 16%, transparent);
+  color: var(--ting-t1);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--ting-t1) 22%, transparent);
 }
 .ting-dock-btn.off { background: rgba(226,75,75,.18); color: var(--ting-danger); }
 .ting-dock-btn.on-gold { background: rgba(212,168,67,.22); color: var(--ting-gold-l); }
 .ting-dock-btn.danger {
   background: var(--ting-danger); color: #fff;
-  width: 56px; height: 56px;
+  width: clamp(46px, 12.5vw, 56px); height: clamp(46px, 12.5vw, 56px);
   box-shadow: 0 8px 24px rgba(226,75,75,.5), 0 0 0 1px rgba(255,255,255,.08);
 }
 .ting-dock-cap {
@@ -1060,7 +1099,8 @@ body.ting-guest .ting-card,
   box-shadow: 0 4px 14px rgba(0,0,0,.18);
 }
 .ting-chat-bubble.me {
-  margin-left: auto; background: rgba(212,168,67,.2);
+  margin-left: auto;
+  background: color-mix(in srgb, var(--blue-l, #4A90D9) 72%, var(--ting-bg3));
 }
 .ting-chat-bubble b {
   display: block; font-size: 11px; color: var(--ting-t2); margin-bottom: 4px; font-weight: 700;
@@ -1077,7 +1117,8 @@ body.ting-guest .ting-card,
 .ting-chat-input input {
   flex: 1 1 auto; width: 100%; min-width: 0; margin: 0; border-radius: 18px;
   border: 1px solid rgba(255,255,255,.16);
-  background: rgba(8,10,14,.88); color: inherit; font: inherit;
+  background: rgba(8,10,14,.88); color: inherit;
+  font-family: inherit; font-size: 16px; line-height: 1.2;
   padding: 12px 48px 12px 14px;
   box-shadow: inset 0 1px 0 rgba(255,255,255,.04);
 }
@@ -1215,8 +1256,8 @@ body.ting-guest .ting-card,
   background: linear-gradient(180deg, #faf7f1 0%, #f3efe6 100%);
   color: #1a1a1a; border-radius: 16px; padding: 32px 28px;
   max-width: 720px; margin: 0 auto;
-  box-shadow: 0 12px 40px rgba(0,0,0,.4);
-  border: 1px solid rgba(212,168,67,.25);
+  box-shadow: var(--shadow-xl, 0 20px 50px rgba(0,0,0,.55));
+  border: 1px solid color-mix(in srgb, var(--ting-gold) 25%, transparent);
 }
 .ting-proto-doc h1 { font-size: 22px; margin: 12px 0; color: #1a1a1a; }
 .ting-proto-doc h2 { font-size: 15px; margin: 18px 0 8px; color: #333; }
@@ -1320,10 +1361,20 @@ body.ting-guest .ting-card,
   /* Портрет: строго один столбец (анти-«плоские полосы») */
   .ting-stage.auto { grid-template-columns: 1fr; gap: 8px; }
   .ting-tile { min-height: 0; border-radius: 16px; }
-  .ting-dock-btn { width: 48px; height: 48px; }
-  .ting-dock-btn.danger { width: 52px; height: 52px; }
+  /* Dock keeps tap targets >=44px but fits 360px: clamp handles width, hide labels */
+  .ting-dock-sep { margin: 2px 3px 8px; }
   .ting-dial-lg { font-size: 32px; }
   .ting-call-row { flex-wrap: wrap; }
   .ting-call-row .ting-chip { order: 3; }
   .ting-call-row .ting-btn { order: 4; margin-left: auto; }
+}
+/* Very narrow phones (iPhone SE, 360px): tighter dock, never overflow */
+@media (max-width: 380px) {
+  .ting-dock-inner { gap: 4px; padding: 10px 8px 8px; }
+  .ting-dock-sep { display: none; }
+  .ting-dock-cap span { display: none; }
+}
+@media (max-width: 480px) and (orientation: landscape) {
+  .ting-dock { bottom: calc(8px + env(safe-area-inset-bottom)); }
+  .ting-stage-wrap { padding: 8px 10px 84px; }
 }
