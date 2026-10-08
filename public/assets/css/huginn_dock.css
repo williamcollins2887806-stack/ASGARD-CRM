@@ -5249,3 +5249,14 @@ body:has(.hg-ai-sheet) .hg-nav-search {
   color: #8E8E93;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
+
+/* -- Mobile touch hardening (F3: no zoom, native-like scroll) -- */
+@media (max-width: 768px) {
+  .hg-chrome, .hg-panel, .hg-list, .hg-msgs, .hg-contacts, .hg-calls { touch-action: pan-y; }
+  .hg-chrome, .hg-panel, .hg-list, .hg-msgs { overscroll-behavior: contain; }
+  .hg-thread-head, .hg-composer, .hg-bottom-nav, .hg-chat-row, .hg-contact-row, .hg-call-row {
+    -webkit-touch-callout: none;
+    user-select: none;
+  }
+  .hg-msgs { -webkit-overflow-scrolling: touch; }
+}

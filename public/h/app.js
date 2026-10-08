@@ -180,6 +180,9 @@
         sendBtn.textContent = 'Код отправлен';
         if (!req.ok || !reqData.sent) {
           err.textContent = (reqData && reqData.error) || 'SMS не ушла — войдите позже по почте';
+          // Do not leave the button dead: allow retry.
+          sendBtn.disabled = false;
+          sendBtn.textContent = 'Получить код в SMS';
         }
       } catch (e) {
         err.textContent = e.message;
@@ -240,6 +243,14 @@
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Ошибка входа');
+      // Staff tokens can be gated by PIN/setup (auth.js returns need_pin/need_setup).
+      // The messenger dock cannot confirm a CRM PIN, so send staff to the full CRM.
+      if (data.status === 'need_pin' || data.status === 'need_setup') {
+        localStorage.setItem('asgard_token', data.token || '');
+        localStorage.setItem('asgard_user', JSON.stringify(data.user || {}));
+        location.href = '/';
+        return;
+      }
       saveSessionAndBoot(data, false);
     } catch (e) {
       err.textContent = e.message;
@@ -293,7 +304,31 @@
     const host = document.getElementById('hgHost');
     if (chrome && host) host.appendChild(chrome);
     HuginnDock.open();
+    // Calls: mount the LiveKit call UI (was desktop-only; /h/ had no calls at all).
+    if (window.HuginnCall && typeof window.HuginnCall.mount === 'function') {
+      try { window.HuginnCall.mount(); } catch (_) {}
+    }
+    handleCallDeepLink();
     if (openChatId) HuginnDock.openChat(openChatId);
+
+    if (window.HuginnSSE && typeof window.HuginnSSE.on === 'function') {
+      window.HuginnSSE.on('call:incoming', () => handleCallDeepLink());
+    }
+    navigator.serviceWorker && navigator.serviceWorker.addEventListener('message', (ev) => {
+      const d = ev.data || {};
+      if (d.type === 'NOTIFICATION_CLICK' && d.url) {
+        const cu = new URL(d.url, location.origin);
+        const callId = cu.searchParams.get('call');
+        if (callId) {
+          try { history.replaceState({}, '', '/h/?call=' + encodeURIComponent(callId)); } catch (_) {}
+          handleCallDeepLink();
+        } else {
+          const m = cu.searchParams.get('chat');
+          if (m) HuginnDock.openChat(Number(m));
+        }
+      }
+      if (d.type === 'PUSH_RESUBSCRIBE') subscribePush();
+    });
 
     if ('Notification' in window && Notification.permission === 'default') {
       setTimeout(() => Notification.requestPermission().then(() => subscribePush()).catch(() => {}), 1500);
@@ -335,6 +370,13 @@
         })
       });
     } catch (_) { /* push is best-effort */ }
+  }
+
+  /** Deep link from a call push: /h/?call=<id>[&call_action=accept|decline].
+   *  HuginnCall.initFromUrl() owns the ?call= parsing (ringing/accept/decline/active). */
+  function handleCallDeepLink() {
+    if (!window.HuginnCall || typeof window.HuginnCall.initFromUrl !== 'function') return;
+    try { window.HuginnCall.initFromUrl(); } catch (_) {}
   }
 
   function urlBase64ToUint8Array(base64String) {

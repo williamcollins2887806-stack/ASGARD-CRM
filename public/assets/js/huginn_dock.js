@@ -174,6 +174,10 @@
   }
 
   const token = () => localStorage.getItem('asgard_token') || '';
+  // Standalone /h/ PWA manages its own screen stack (and only it): the system
+  // Back button should close a thread, not the whole app.
+  const WANTS_HISTORY = (typeof location !== 'undefined')
+    && /^\/h\//.test(location.pathname);
   const myId = () => {
     try {
       const u = JSON.parse(localStorage.getItem('asgard_user') || '{}');
@@ -773,6 +777,11 @@
     if (!cid || cid < 0 || (existing && existing._seed)) {
       showToast('Чат недоступен');
       return;
+    }
+    // Push a History entry so the system Back button returns to the list (PWA).
+    if (WANTS_HISTORY && !state._threadPushed) {
+      state._threadPushed = true;
+      try { history.pushState({ hg: 'thread', id: cid }, '', location.pathname + location.search); } catch (_) {}
     }
     state.chatId = cid;
     state.knownMsgIds = new Set();
@@ -3670,16 +3679,26 @@
     });
   }
 
+  /** Back from a thread: also unwind the History entry we pushed for it. */
+  function goBack() {
+    state.chatId = null;
+    state.replyTo = null;
+    if (state.isMimirThread || state.tab === 'mimir') {
+      state.isMimirThread = false;
+      state.tab = 'huginn';
+    }
+    if (WANTS_HISTORY && state._threadPushed) {
+      state._threadPushed = false;
+      // popstate handler will renderPanel; fall back to a direct render if not.
+      try { history.back(); } catch (_) { renderPanel(); }
+      setTimeout(() => { if (!state.chatId) renderPanel(); }, 60);
+      return;
+    }
+    renderPanel();
+  }
+
   function wireThread(panel) {
-    panel.querySelector('#hgBack').onclick = () => {
-      state.chatId = null;
-      state.replyTo = null;
-      if (state.isMimirThread || state.tab === 'mimir') {
-        state.isMimirThread = false;
-        state.tab = 'huginn';
-      }
-      renderPanel();
-    };
+    panel.querySelector('#hgBack').onclick = () => goBack();
     const head = panel.querySelector('#hgThreadHead');
     const msgsBox = panel.querySelector('.hg-msgs');
     if (head && msgsBox) {
@@ -3921,10 +3940,8 @@
         const dx = t.clientX - sx;
         const dy = Math.abs(t.clientY - sy);
         if (dx > 80 && dy < 60) {
-          state.chatId = null;
-          state.replyTo = null;
           haptic('tab');
-          renderPanel();
+          goBack();
         }
       }, { passive: true });
     }
@@ -4969,6 +4986,22 @@
     state.settingsProfileOpen = false;
     state.settingsEditOpen = false;
     renderPanel();
+  }
+
+  // Standalone PWA: system/gesture Back unwinds the in-app stack.
+  if (WANTS_HISTORY && typeof window !== 'undefined') {
+    window.addEventListener('popstate', () => {
+      if (state.chatId) {
+        state._threadPushed = false;
+        state.chatId = null;
+        state.replyTo = null;
+        if (state.isMimirThread || state.tab === 'mimir') {
+          state.isMimirThread = false;
+          state.tab = 'huginn';
+        }
+        renderPanel();
+      }
+    });
   }
 
   global.HuginnDock = {

@@ -1,12 +1,25 @@
 /* Huginn PWA SW — cache shell only, network-first for API */
-const CACHE = 'huginn-h-v1';
-const SHELL = ['/h/', '/h/app.js', '/h/manifest.webmanifest', '/assets/css/huginn_dock.css', '/assets/js/huginn_sse.js', '/assets/js/huginn_dock.js', '/assets/js/huginn_ting.js'];
+const CACHE = 'huginn-h-20.28.136';
+const SHELL = [
+  '/h/', '/h/app.js', '/h/manifest.webmanifest',
+  '/assets/css/design-tokens.css', '/assets/css/huginn_dock.css',
+  '/assets/js/huginn_icons.js', '/assets/js/huginn_sse.js',
+  '/assets/js/huginn_dock.js', '/assets/js/huginn_ting.js', '/assets/js/huginn_calls.js'
+];
 
 self.addEventListener('install', (e) => {
-  e.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting()));
+  // One bad URL must not fail the whole install (addAll rejects atomically).
+  e.waitUntil(
+    caches.open(CACHE)
+      .then((c) => Promise.all(SHELL.map((u) => c.add(u).catch(() => {}))))
+      .then(() => self.skipWaiting())
+  );
 });
 self.addEventListener('activate', (e) => {
   e.waitUntil(caches.keys().then((keys) => Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k)))).then(() => self.clients.claim()));
+});
+self.addEventListener('message', (e) => {
+  if (e.data && e.data.type === 'SKIP_WAITING') self.skipWaiting();
 });
 self.addEventListener('fetch', (e) => {
   const url = new URL(e.request.url);
@@ -97,7 +110,10 @@ self.addEventListener('notificationclick', function (event) {
 });
 
 self.addEventListener('pushsubscriptionchange', function (event) {
-  // Without a token here the CRM cannot authorise a re-subscribe; the client
-  // re-creates the subscription on next app start instead.
-  event.waitUntil(Promise.resolve());
+  // Best-effort: notify open clients so they re-subscribe (they hold the token).
+  event.waitUntil(
+    clients.matchAll({ type: 'window', includeUncontrolled: true }).then(function (list) {
+      list.forEach(function (c) { try { c.postMessage({ type: 'PUSH_RESUBSCRIBE' }); } catch (_) {} });
+    })
+  );
 });
