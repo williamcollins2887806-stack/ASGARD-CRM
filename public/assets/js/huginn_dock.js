@@ -619,10 +619,20 @@
   async function loadChats() {
     let q = '/api/chat-groups?archived=false';
     if (state.activeFolderId) q += '&folder_id=' + encodeURIComponent(state.activeFolderId);
-    const data = await api(q);
-    state.chats = (data.chats || data.items || [])
-      .filter((c) => !isJunkChatName(c && c.name))
-      .filter((c) => !c._seed && Number(c.id) > 0);
+    try {
+      const data = await api(q);
+      state.chats = (data.chats || data.items || [])
+        .filter((c) => !isJunkChatName(c && c.name))
+        .filter((c) => !c._seed && Number(c.id) > 0);
+      state.chatsError = null;
+    } catch (e) {
+      // Never let a list failure kill mount() (was the «пустой экран» cause):
+      // keep whatever we had and surface an honest reason in the UI.
+      state.chats = state.chats || [];
+      state.chatsError = (e && e.status) === 401 ? 'auth' : 'load';
+      if ((e && e.status) === 401) state.unauthorized = true;
+    }
+    return state.chats;
   }
 
   function sheetHost() {
@@ -1031,6 +1041,9 @@
 
   function renderMediaBody(m, display) {
     const type = m.message_type || 'text';
+    // Mimir (AI) detection must live here too: renderMediaBody is also called
+    // from paths where renderMessage's local `isAi` is not in scope.
+    const isAi = !!(m.is_mimir_bot || m.is_mimir || (Number(m.user_id) === 0 && isMimirMode()));
     if (type === 'voice' && m.file_url) {
       const dur = (m.metadata && m.metadata.duration) || m.duration || '';
       let body = `<div class="hg-voice" data-voice-src="${esc(m.file_url)}">
@@ -2289,7 +2302,7 @@
         let mediaUrl = null;
         if (file) {
           const fd = new FormData();
-          fd.append('file', file);
+          fd.append('file', file, file.name || 'story');
           const up = await fetch('/api/chat-groups/upload', {
             method: 'POST',
             headers: { Authorization: 'Bearer ' + token() },
@@ -2915,6 +2928,14 @@
     const box = root.querySelector('#hgList');
     if (!box) return;
     const query = (q || '').toLowerCase().trim();
+    // Honest state: if the list failed to load (e.g. guest 403), say so instead
+    // of pretending the user has no chats.
+    if (state.chatsError && !(state.chats && state.chats.length)) {
+      box.innerHTML = state.chatsError === 'auth'
+        ? `<div class="hg-empty"><div class="hg-empty-t">Сессия истекла</div><div class="hg-empty-s">Войдите заново</div></div>`
+        : `<div class="hg-empty"><div class="hg-empty-t">Не удалось загрузить чаты</div><div class="hg-empty-s">Проверьте соединение и обновите</div></div>`;
+      return;
+    }
     let rows = state.chats.filter((c) => !query || String(c.name || '').toLowerCase().includes(query));
     if (state.listTab === 'personal') {
       rows = rows.filter((c) => !c.is_group && !c.is_mimir);
@@ -4818,9 +4839,11 @@
     _mounting = (async () => {
       applyFxMode(localStorage.getItem('hg_power_saving') || localStorage.getItem('hg_fx'));
       ensureDom();
-      await Promise.all([loadFolders(), loadChats(), loadStories(), loadBirthdays()]);
+      // Parallel loaders must not take each other down: if chats 403/401 (guest
+      // permission gap) the dock still has to render with an honest state.
+      await Promise.allSettled([loadFolders(), loadChats(), loadStories(), loadBirthdays()]);
       syncRailBadge();
-      await warmPresence();
+      try { await warmPresence(); } catch (_) {}
       renderPanel();
       if (global.HuginnSSE) {
         global.HuginnSSE.start();

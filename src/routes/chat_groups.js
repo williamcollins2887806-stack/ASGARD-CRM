@@ -1186,6 +1186,48 @@ module.exports = async function(fastify) {
   });
 
   // ---------------------------------------------------------------
+  // POST /api/chat-groups/upload — автономная загрузка файла (без чата).
+  // Нужна композеру историй (mediaUrl для POST /api/stories) и любому
+  // контексту, где chatId ещё/уже не существует. Файл кладём в uploads/chat/
+  // и раздаём общим путём /uploads/chat/<name> (как и медиа чата).
+  // D-220: расширение берём ТОЛЬКО из белого списка (safeStoredExt), имя клиента
+  // не является источником истины.
+  // ---------------------------------------------------------------
+  fastify.post('/upload', {
+    preHandler: [fastify.authenticate]
+  }, async (request, reply) => {
+    try {
+      const data = await request.file();
+      if (!data) return reply.code(400).send({ error: 'File not found' });
+
+      await fs.mkdir(chatUploadDir, { recursive: true });
+      const { safeStoredExt } = require('../lib/upload-ext');
+      const ext = safeStoredExt(data.mimetype, data.filename, { allow: 'chat' });
+      if (!ext) return reply.code(415).send({ error: 'Недопустимый тип файла' });
+
+      const safeName = Date.now() + '_' + Math.random().toString(36).substring(2, 8) + ext;
+      const filePath = path.resolve(chatUploadDir, safeName);
+      const chunks = [];
+      for await (const chunk of data.file) chunks.push(chunk);
+      const buffer = Buffer.concat(chunks);
+      if (buffer.length > 50 * 1024 * 1024) {
+        return reply.code(413).send({ error: 'Файл слишком большой (макс. 50 МБ)' });
+      }
+      await fs.writeFile(filePath, buffer);
+
+      return {
+        url: `/uploads/chat/${safeName}`,
+        file_name: safeName,
+        size: buffer.length,
+        mime_type: data.mimetype || 'application/octet-stream'
+      };
+    } catch (e) {
+      fastify.log.error('Standalone upload error:', e.message || e);
+      return reply.code(500).send({ error: 'File upload failed' });
+    }
+  });
+
+  // ---------------------------------------------------------------
   // POST /api/chat-groups/:id/upload-file - multipart upload
   // ---------------------------------------------------------------
   fastify.post('/:id/upload-file', {
