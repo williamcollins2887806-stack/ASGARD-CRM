@@ -570,17 +570,16 @@ window.AsgardTendersPage = (function(){
     const fmtDate = AsgardUI.formatDate || (d => d ? new Date(d).toLocaleDateString('ru-RU') : '—');
     const ds = fmtDate(t.work_start_plan);
     const de = fmtDate(t.work_end_plan);
-    const link = t.purchase_url ? `<a class="btn ghost" style="padding:6px 10px" target="_blank" href="${esc(t.purchase_url)}">Ссылка</a>` : "—";
     const ddl = fmtDate(t.docs_deadline);
-    const archiveInfo = t.tender_status === 'Не подходит' ? `<div class="help" style="color:var(--t3);margin-top:4px">📁 ${esc(t.archive_reason||'—')} · ${esc((t.archive_comment||'').substring(0,60))}${(t.archive_comment||'').length>60?'...':''}</div>` : '';
-    // Срочность: подсветка левой границы строки (см. .hub-row-burn/soon в app.css)
+    const purchaseUrl = appendTokenToUrl(t.purchase_url || '');
+    const link = purchaseUrl ? '<a class="btn ghost" style="padding:6px 10px" target="_blank" rel="noopener" href="' + esc(purchaseUrl) + '">Ссылка</a>' : '—';
+    const archiveInfo = t.tender_status === 'Не подходит' ? '<div class="help" style="color:var(--t3);margin-top:4px">📁 ' + esc(t.archive_reason||'—') + ' · ' + esc((t.archive_comment||'').substring(0,60)) + ((t.archive_comment||'').length>60?'...':'') + '</div>' : '';
     let urgencyCls = '';
     if (t.docs_deadline) {
       const days = Math.floor((new Date(t.docs_deadline).getTime() - Date.now()) / 86400000);
       if (days <= 3) urgencyCls = 'hub-row-burn';
       else if (days <= 7) urgencyCls = 'hub-row-soon';
     }
-    // Контекст-чувствительные действия по статусу (см. actionsForStatus)
     const ctxActions = actionsForStatusHtml(t.tender_status);
     const autoEstBtn = _showAutoEstBtn ? (function(){
       const st = t.tender_status||'';
@@ -589,29 +588,24 @@ window.AsgardTendersPage = (function(){
       if(st === 'Выиграли' || st === 'Проиграли' || st === 'Не подходит') return '';
       return '<button class="btn ghost" style="padding:6px 10px;opacity:0.5;margin-right:6px" disabled title="Тендер просчитан">⚡</button>';
     })() : '';
-    return `<tr data-id="${t.id}"${urgencyCls?` class="${urgencyCls}"`:''}>
-      <td><input type="checkbox" class="tender-check" value="${t.id}" onchange="window._asgTenderBulkCount&&window._asgTenderBulkCount()"/></td>
-      <td>${fmtPeriod(t.period)}</td>
-      <td>
-        <b>${esc(t.customer_name||"")}</b>
-        <div class="help">${esc(t.customer_inn||"")}</div>
-        <div class="help">${esc(t.tender_title||"")}</div>
-        ${archiveInfo}
-      </td>
-      <td>${esc(pmName||"—")}</td>
-      <td>${esc(t.tender_type||"—")}</td>
-      <td>${srcBadge(t.source_kind)}</td>
-      <td>${tenderStatusBadge(t.tender_status)}</td>
-      <td>${ddl}</td>
-      <td>${esc(createdByName||"—")}</td>
-      <td>${(function(){var n=t.tender_price?'<div style="font-size:11px"><span style="font-size:10px;color:var(--t3)">НМЦ</span> '+money(t.tender_price)+'</div>':'';var s=t.submission_price?'<div style="font-size:11px;margin-top:3px"><span style="font-size:10px;color:#4cd964">Подача</span> '+money(t.submission_price)+'</div>':'';return (n+s)||'—';}())}</td>
-      <td>${ds} → ${de}</td>
-      <td>${link}</td>
-      <td>${tenderWorkBadge(t)}</td>
-      <td style="white-space:nowrap">
-        ${autoEstBtn}${ctxActions}
-      </td>
-    </tr>`;
+    const nmcp = t.tender_price ? '<div style="font-size:11px"><span style="font-size:10px;color:var(--t3)">НМЦ</span> ' + money(t.tender_price) + (t.tender_price_with_vat ? '<span style="font-size:10px;color:var(--t3);margin-left:3px">(с НДС ' + money(t.tender_price_with_vat) + ')</span>' : '') + '</div>' : '';
+    const subp = t.submission_price ? '<div style="font-size:11px;margin-top:3px"><span style="font-size:10px;color:#4cd964">Подача</span> ' + money(t.submission_price) + (t.submission_price_with_vat ? '<span style="font-size:10px;color:var(--t3);margin-left:3px">(с НДС ' + money(t.submission_price_with_vat) + ')</span>' : '') + '</div>' : '';
+    return '<tr data-id="' + t.id + '"' + (urgencyCls ? ' class="' + urgencyCls + '"' : '') + '>' +
+      '<td><input type="checkbox" class="tender-check" value="' + t.id + '" onchange="window._asgTenderBulkCount&&window._asgTenderBulkCount()"/></td>' +
+      '<td>' + fmtPeriod(t.period) + '</td>' +
+      '<td><b>' + esc(t.customer_name||'') + '</b><div class="help">' + esc(t.customer_inn||'') + '</div><div class="help">' + esc(t.tender_title||'') + '</div>' + archiveInfo + '</td>' +
+      '<td>' + esc(pmName||'—') + '</td>' +
+      '<td>' + esc(t.tender_type||'—') + '</td>' +
+      '<td>' + srcBadge(t.source_kind) + '</td>' +
+      '<td>' + tenderStatusBadge(t.tender_status) + '</td>' +
+      '<td>' + ddl + '</td>' +
+      '<td>' + esc(createdByName||'—') + '</td>' +
+      '<td>' + ((nmcp + subp) || '—') + '</td>' +
+      '<td>' + ds + ' → ' + de + '</td>' +
+      '<td>' + link + '</td>' +
+      '<td>' + tenderWorkBadge(t) + '</td>' +
+      '<td style="white-space:nowrap">' + autoEstBtn + ctxActions + '</td>' +
+      '</tr>';
   }
 
   // ═══ MOBILE_CARD_RENDER ═══
