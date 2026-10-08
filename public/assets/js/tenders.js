@@ -566,14 +566,29 @@ window.AsgardTendersPage = (function(){
 
   var _showAutoEstBtn = false;
 
+  function initialsAuthorName(fullName){
+    const raw = String(fullName || "").trim().replace(/\s+/g, " ");
+    if(!raw) return "—";
+    if(/\b[А-ЯЁ]\.[ ]?[А-ЯЁ]\.?$/u.test(raw)) return raw;
+    const parts = raw.split(" ").filter(Boolean);
+    if(parts.length === 1) return parts[0];
+    const surname = parts[0];
+    const first = parts[1] ? parts[1][0] + "." : "";
+    const patronymic = parts[2] ? " " + parts[2][0] + "." : "";
+    return surname + " " + first + patronymic;
+  }
+
   function tenderRow(t, pmName, createdByName){
     const fmtDate = AsgardUI.formatDate || (d => d ? new Date(d).toLocaleDateString('ru-RU') : '—');
     const ds = fmtDate(t.work_start_plan);
     const de = fmtDate(t.work_end_plan);
     const ddl = fmtDate(t.docs_deadline);
+    const submit = fmtDate(t.submission_date || t.submission_deadline || t.bid_submission_date);
+    const added = fmtDate(t.created_at);
     const purchaseUrl = appendTokenToUrl(t.purchase_url || '');
-    const link = purchaseUrl ? '<a class="btn ghost" style="padding:6px 10px" target="_blank" rel="noopener" href="' + esc(purchaseUrl) + '">Ссылка</a>' : '—';
+    const link = purchaseUrl ? '<a class="btn ghost" style="padding:6px 10px" target="_blank" rel="noopener" href="' + esc(purchaseUrl) + '">↗</a>' : '—';
     const archiveInfo = t.tender_status === 'Не подходит' ? '<div class="help" style="color:var(--t3);margin-top:4px">📁 ' + esc(t.archive_reason||'—') + ' · ' + esc((t.archive_comment||'').substring(0,60)) + ((t.archive_comment||'').length>60?'...':'') + '</div>' : '';
+    const actor = initialsAuthorName(createdByName);
     let urgencyCls = '';
     if (t.docs_deadline) {
       const days = Math.floor((new Date(t.docs_deadline).getTime() - Date.now()) / 86400000);
@@ -590,24 +605,28 @@ window.AsgardTendersPage = (function(){
     })() : '';
     const nmcp = t.tender_price ? '<div style="font-size:11px"><span style="font-size:10px;color:var(--t3)">НМЦ</span> ' + money(t.tender_price) + (t.tender_price_with_vat ? '<span style="font-size:10px;color:var(--t3);margin-left:3px">(с НДС ' + money(t.tender_price_with_vat) + ')</span>' : '') + '</div>' : '';
     const subp = t.submission_price ? '<div style="font-size:11px;margin-top:3px"><span style="font-size:10px;color:#4cd964">Подача</span> ' + money(t.submission_price) + (t.submission_price_with_vat ? '<span style="font-size:10px;color:var(--t3);margin-left:3px">(с НДС ' + money(t.submission_price_with_vat) + ')</span>' : '') + '</div>' : '';
+    const actionHtml = '<button class="btn" style="padding:6px 10px" data-act="open">Открыть</button>' + autoEstBtn + ctxActions;
     return '<tr data-id="' + t.id + '"' + (urgencyCls ? ' class="' + urgencyCls + '"' : '') + '>' +
       '<td><input type="checkbox" class="tender-check" value="' + t.id + '" onchange="window._asgTenderBulkCount&&window._asgTenderBulkCount()"/></td>' +
-      '<td>' + fmtPeriod(t.period) + '</td>' +
-      '<td><b>' + esc(t.customer_name||'') + '</b><div class="help">' + esc(t.customer_inn||'') + '</div><div class="help">' + esc(t.tender_title||'') + '</div>' + archiveInfo + '</td>' +
-      '<td>' + esc(pmName||'—') + '</td>' +
-      '<td>' + esc(t.tender_type||'—') + '</td>' +
-      '<td>' + srcBadge(t.source_kind) + '</td>' +
+      '<td><b>' + esc(t.customer_name||'') + '</b><div class="help">' + esc(t.customer_inn||'') + '</div></td>' +
+      '<td><b>' + esc(t.tender_title||'—') + '</b>' + archiveInfo + '</td>' +
+      '<td>' + (nmcp || '—') + '</td>' +
+      '<td>' + submit + '</td>' +
+      '<td>' + de + '</td>' +
+      '<td>' + esc(t.collect_status||t.collection_status||'—') + '</td>' +
+      '<td>' + esc(t.analysis_status||t.analiz_status||'—') + '</td>' +
       '<td>' + tenderStatusBadge(t.tender_status) + '</td>' +
-      '<td>' + ddl + '</td>' +
-      '<td>' + esc(createdByName||'—') + '</td>' +
-      '<td>' + ((nmcp + subp) || '—') + '</td>' +
-      '<td>' + ds + ' → ' + de + '</td>' +
+      '<td>' + esc(t.analyst_name||t.analyst||'—') + '</td>' +
+      '<td>' + esc(pmName||t.calculator_name||t.responsible_pm_name||'—') + '</td>' +
+      '<td>' + esc(t.report_status||t.report||'—') + '</td>' +
+      '<td>' + esc(t.comment||t.tender_comment_to||t.archive_comment||'—') + '</td>' +
+      '<td>' + esc(t.score ?? t.rating ?? '—') + '</td>' +
+      '<td>' + esc(actor) + '</td>' +
+      '<td>' + added + '</td>' +
+      '<td>' + actionHtml + '</td>' +
       '<td>' + link + '</td>' +
-      '<td>' + tenderWorkBadge(t) + '</td>' +
-      '<td style="white-space:nowrap">' + autoEstBtn + ctxActions + '</td>' +
       '</tr>';
   }
-
   // ═══ MOBILE_CARD_RENDER ═══
   const _isMobile = () => document.body.classList.contains('is-mobile') || window.innerWidth <= 768;
 
@@ -900,19 +919,23 @@ window.AsgardTendersPage = (function(){
             <thead>
               <tr>
                 <th><input type="checkbox" id="selectAllTenders" title="Выбрать все"/></th>
-                <th><button class="btn ghost" style="padding:6px 10px" data-sort="period">Период</button></th>
-                <th><button class="btn ghost" style="padding:6px 10px" data-sort="customer_name">Заказчик / Тендер</button></th>
-                <th><button class="btn ghost" style="padding:6px 10px" data-sort="responsible_pm_id">РП</button></th>
-                <th><button class="btn ghost" style="padding:6px 10px" data-sort="tender_type">Тип</button></th>
-                <th><button class="btn ghost" style="padding:6px 10px" data-sort="source_kind">Источник</button></th>
+                <th><button class="btn ghost" style="padding:6px 10px" data-sort="customer_name">Заказчик</button></th>
+                <th><button class="btn ghost" style="padding:6px 10px" data-sort="tender_title">Тендер</button></th>
+                <th><button class="btn ghost" style="padding:6px 10px" data-sort="nmcp">НМЦ</button></th>
+                <th><button class="btn ghost" style="padding:6px 10px" data-sort="submission_date">Подача</button></th>
+                <th><button class="btn ghost" style="padding:6px 10px" data-sort="work_end_plan">Срок</button></th>
+                <th>Сбор</th>
+                <th>Анализ</th>
                 <th><button class="btn ghost" style="padding:6px 10px" data-sort="tender_status">Статус</button></th>
-                <th><button class="btn ghost" style="padding:6px 10px" data-sort="docs_deadline">Дедлайн</button></th>
+                <th>Аналитик</th>
+                <th>Считает</th>
+                <th>Отчёт</th>
+                <th>Коммент</th>
+                <th>Скор</th>
                 <th><button class="btn ghost" style="padding:6px 10px" data-sort="created_by_user_id">Внёс</button></th>
-                <th><button class="btn ghost" style="padding:6px 10px" data-sort="tender_price">НМЦ / Подача</button></th>
-                <th><button class="btn ghost" style="padding:6px 10px" data-sort="work_start_plan">Сроки (план)</button></th>
-                <th>Документы</th>
-                <th>Работа</th>
-                <th></th>
+                <th><button class="btn ghost" style="padding:6px 10px" data-sort="created_at">Добавлен</button></th>
+                <th>Действие</th>
+                <th>↗</th>
               </tr>
             </thead>
             <tbody id="tb"></tbody>
@@ -921,21 +944,22 @@ window.AsgardTendersPage = (function(){
 <style>
 /* CRM-1.0 tender register: 18 columns, laptop-fit without horizontal scrolling.
    Scoped strictly to the tender register; surrounding CRM-1.0 UI is unchanged. */
+.tenders-page{min-width:0;overflow:hidden}
 .tenders-page .tenders-register-wrap{width:100%;max-width:100%;min-width:0;overflow:hidden!important}
-.tenders-page table.asg.tenders-register{width:100%!important;max-width:100%!important;min-width:0!important;table-layout:fixed!important}
+.tenders-page table.asg.tenders-register{width:100%!important;max-width:100%!important;min-width:0!important;table-layout:fixed!important;border-collapse:separate;border-spacing:0 3px}
 .tenders-page table.asg.tenders-register th,
 .tenders-page table.asg.tenders-register td{
-  box-sizing:border-box;min-width:0!important;max-width:none;
+  box-sizing:border-box;min-width:0!important;max-width:0!important;
   padding:4px 3px!important;font-size:9px!important;line-height:1.1;
-  vertical-align:middle;overflow:hidden;overflow-wrap:anywhere;word-break:break-word;white-space:normal;
+  vertical-align:middle;text-align:left;overflow:hidden;overflow-wrap:anywhere;word-break:break-word;white-space:normal;
 }
-.tenders-page table.asg.tenders-register th{font-size:8.5px!important;text-align:left}
+.tenders-page table.asg.tenders-register th{font-size:8.5px!important}
 .tenders-page table.asg.tenders-register th .btn{
-  width:100%;min-width:0;min-height:22px;padding:2px 3px!important;
+  display:flex;width:100%;min-width:0;min-height:22px;padding:2px 3px!important;
   justify-content:flex-start;align-items:center;text-align:left;white-space:normal;overflow-wrap:anywhere;
 }
-.tenders-page table.asg.tenders-register td:nth-child(7) .badge,
-.tenders-page table.asg.tenders-register td:nth-child(7) .cr-status-badge{
+.tenders-page table.asg.tenders-register td:nth-child(9) .badge,
+.tenders-page table.asg.tenders-register td:nth-child(9) .cr-status-badge{
   display:inline-flex;white-space:nowrap!important;word-break:normal!important;overflow-wrap:normal!important;max-width:100%;
 }
 .tenders-page table.asg.tenders-register td .btn{
@@ -943,22 +967,22 @@ window.AsgardTendersPage = (function(){
   line-height:1.1;max-width:100%;
 }
 .tenders-page table.asg.tenders-register th:nth-child(1),.tenders-page table.asg.tenders-register td:nth-child(1){width:3%}
-.tenders-page table.asg.tenders-register th:nth-child(2),.tenders-page table.asg.tenders-register td:nth-child(2){width:5%}
-.tenders-page table.asg.tenders-register th:nth-child(3),.tenders-page table.asg.tenders-register td:nth-child(3){width:12%}
-.tenders-page table.asg.tenders-register th:nth-child(4),.tenders-page table.asg.tenders-register td:nth-child(4){width:5%}
+.tenders-page table.asg.tenders-register th:nth-child(2),.tenders-page table.asg.tenders-register td:nth-child(2){width:8%}
+.tenders-page table.asg.tenders-register th:nth-child(3),.tenders-page table.asg.tenders-register td:nth-child(3){width:9%}
+.tenders-page table.asg.tenders-register th:nth-child(4),.tenders-page table.asg.tenders-register td:nth-child(4){width:5.5%}
 .tenders-page table.asg.tenders-register th:nth-child(5),.tenders-page table.asg.tenders-register td:nth-child(5){width:5%}
-.tenders-page table.asg.tenders-register th:nth-child(6),.tenders-page table.asg.tenders-register td:nth-child(6){width:6%}
-.tenders-page table.asg.tenders-register th:nth-child(7),.tenders-page table.asg.tenders-register td:nth-child(7){width:9%}
-.tenders-page table.asg.tenders-register th:nth-child(8),.tenders-page table.asg.tenders-register td:nth-child(8){width:6%}
-.tenders-page table.asg.tenders-register th:nth-child(9),.tenders-page table.asg.tenders-register td:nth-child(9){width:6%}
-.tenders-page table.asg.tenders-register th:nth-child(10),.tenders-page table.asg.tenders-register td:nth-child(10){width:8%}
-.tenders-page table.asg.tenders-register th:nth-child(11),.tenders-page table.asg.tenders-register td:nth-child(11){width:7%}
+.tenders-page table.asg.tenders-register th:nth-child(6),.tenders-page table.asg.tenders-register td:nth-child(6){width:5%}
+.tenders-page table.asg.tenders-register th:nth-child(7),.tenders-page table.asg.tenders-register td:nth-child(7){width:4.5%}
+.tenders-page table.asg.tenders-register th:nth-child(8),.tenders-page table.asg.tenders-register td:nth-child(8){width:4.5%}
+.tenders-page table.asg.tenders-register th:nth-child(9),.tenders-page table.asg.tenders-register td:nth-child(9){width:9%}
+.tenders-page table.asg.tenders-register th:nth-child(10),.tenders-page table.asg.tenders-register td:nth-child(10){width:5%}
+.tenders-page table.asg.tenders-register th:nth-child(11),.tenders-page table.asg.tenders-register td:nth-child(11){width:5%}
 .tenders-page table.asg.tenders-register th:nth-child(12),.tenders-page table.asg.tenders-register td:nth-child(12){width:5%}
-.tenders-page table.asg.tenders-register th:nth-child(13),.tenders-page table.asg.tenders-register td:nth-child(13){width:5%}
-.tenders-page table.asg.tenders-register th:nth-child(14),.tenders-page table.asg.tenders-register td:nth-child(14){width:8%}
-.tenders-page table.asg.tenders-register th:nth-child(15),.tenders-page table.asg.tenders-register td:nth-child(15){width:4%}
-.tenders-page table.asg.tenders-register th:nth-child(16),.tenders-page table.asg.tenders-register td:nth-child(16){width:4%}
-.tenders-page table.asg.tenders-register th:nth-child(17),.tenders-page table.asg.tenders-register td:nth-child(17){width:5%}
+.tenders-page table.asg.tenders-register th:nth-child(13),.tenders-page table.asg.tenders-register td:nth-child(13){width:6.5%}
+.tenders-page table.asg.tenders-register th:nth-child(14),.tenders-page table.asg.tenders-register td:nth-child(14){width:4%}
+.tenders-page table.asg.tenders-register th:nth-child(15),.tenders-page table.asg.tenders-register td:nth-child(15){width:6%}
+.tenders-page table.asg.tenders-register th:nth-child(16),.tenders-page table.asg.tenders-register td:nth-child(16){width:5%}
+.tenders-page table.asg.tenders-register th:nth-child(17),.tenders-page table.asg.tenders-register td:nth-child(17){width:7%}
 .tenders-page table.asg.tenders-register th:nth-child(18),.tenders-page table.asg.tenders-register td:nth-child(18){width:3%}
 @media (min-width:769px) and (max-width:1300px){
   .tenders-page table.asg.tenders-register th,
