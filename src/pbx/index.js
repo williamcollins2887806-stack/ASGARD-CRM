@@ -677,7 +677,37 @@ function createCmdServer() {
       }
       if (req.method === 'POST' && url.pathname === '/call/transfer') {
         if (!amiConfigured()) throw new Error('AMI not configured');
-        if (!body.channel) throw new Error('channel required');
+        // Канал может не прийти от клиента: звонок из браузера (WebRTC) живёт
+        // под управлением Asterisk, и фронт знает только pbx_uid. Раньше здесь
+        // сразу бросалось «channel required» → 409, и перевод не работал
+        // (жалоба 10.10.2026: «не могу перевести звонок на Андросова»).
+        // Ищем плечо сами: сначала по pbx_uid/call_id, затем по sip_username
+        // оператора (PJSIP/u<id>-…).
+        let transferChannel = body.channel || null;
+        if (!transferChannel) {
+          const uid = String(body.pbx_uid || body.call_id || '').replace(/^pbx_/, '');
+          let sipUser = '';
+          if (body.user_id && db) {
+            try {
+              const r = await db.query('SELECT sip_username FROM pbx_operators WHERE user_id = $1', [body.user_id]);
+              sipUser = String((r.rows[0] || {}).sip_username || '');
+            } catch (_) { /* ignore */ }
+          }
+          try {
+            const res = await ami.coreShowChannels();
+            const list = (res && res.List) || [];
+            for (const ch of list) {
+              const name = String(ch.Channel || '');
+              const linked = String(ch.Linkedid || '');
+              const unique = String(ch.Uniqueid || '');
+              const byUid = uid && (linked === uid || unique === uid);
+              const bySip = sipUser && (name === 'PJSIP/' + sipUser || name.indexOf('PJSIP/' + sipUser + '-') === 0);
+              if (byUid || bySip) { transferChannel = name; break; }
+            }
+          } catch (_) { /* ниже отдадим понятную ошибку */ }
+        }
+        if (!transferChannel) throw new Error('channel required');
+        body.channel = transferChannel;
         const mode = body.mode || 'blind';
         const resolved = await resolveTransferDial(db, body);
         const xferNotify = {

@@ -10204,17 +10204,30 @@ html[data-theme="light"] .chat-header {
 
 .call-detail-panel {
   position: fixed;
-  top: 0;
-  right: 0;
-  width: 520px;
-  height: 100vh;
+  /* Сдвигаем левее бокового меню Huginn и ниже верхнего баннера: раньше
+     панель уходила под рейл (56px) и под топбар (56px) — они наплывали на
+     карточку (замечание 10.10.2026). */
+  --cd-top: var(--topbar-h, 56px);
+  --cd-right: calc(var(--hg-rail-w, 56px) + 12px);
+  top: var(--cd-top);
+  right: var(--cd-right);
+  width: min(520px, calc(100vw - var(--hg-rail-w, 56px) - 24px));
+  height: calc(100vh - var(--cd-top));
   background: var(--bg2);
   border-left: 1px solid var(--brd);
+  border-radius: 12px 0 0 12px;
   box-shadow: -10px 0 40px rgba(0,0,0,0.4);
   z-index: 5000;
   overflow-y: auto;
   transform: translateX(100%);
   transition: transform 0.3s ease;
+}
+
+/* Когда открыта панель Huginn, сдвигаем ещё левее — иначе карточка
+   перекрывается списком чатов/звонков. */
+body:has(#huginnDock:not(.is-collapsed)) .call-detail-panel,
+body:has(.hg-panel) .call-detail-panel {
+  --cd-right: calc(var(--hg-panel-w, 400px) + var(--hg-rail-w, 56px) + 12px);
 }
 
 .call-detail-panel--open {

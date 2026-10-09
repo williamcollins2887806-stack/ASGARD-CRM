@@ -885,15 +885,16 @@ window.AsgardTelephonyPage = (function () {
     applyColPrefsToTable(wrap);
 
     wrap.querySelectorAll('.call-row').forEach(function (row) {
-      var next = row.nextElementSibling;
-      if (next && next.classList.contains('cr-call-expand')) {
-        row.style.cursor = 'pointer';
-        row.addEventListener('click', function () {
-          next.classList.toggle('is-collapsed');
-        });
-      } else {
-        row.addEventListener('click', function () { openDetailPanel(row.dataset.id); });
-      }
+      // Клик по строке сразу открывает карточку звонка (детали, запись,
+      // субтитры). Раньше строка лишь раскрывала inline-анализ, а карточку
+      // нужно было звать отдельной кнопкой — лишний шаг (замечание 10.10.2026).
+      row.style.cursor = 'pointer';
+      row.addEventListener('click', function (e) {
+        // Кнопки внутри строки обрабатывают клик сами (и не должны открывать
+        // карточку дважды).
+        if (e.target.closest && e.target.closest('button, a, .call-record-play')) return;
+        openDetailPanel(row.dataset.id);
+      });
     });
     wrap.querySelectorAll('.tel-open-detail').forEach(function (btn) {
       btn.addEventListener('click', function (e) {
