@@ -218,6 +218,24 @@
     return String(name || '?').trim().split(/\s+/).map((p) => p[0]).slice(0, 2).join('').toUpperCase() || '?';
   }
 
+  /**
+   * Avatar style: if a picture URL is given, use it centered with a transparent
+   * background (background-position:center is REQUIRED — otherwise the image is
+   * anchored top-left and looks off-center). Otherwise a deterministic colour.
+   */
+  function avatarStyle(url, name) {
+    const u = url ? String(url).trim() : '';
+    if (u) {
+      return `background-color:transparent;background-image:url('${esc(u)}');background-size:cover;background-position:center;background-repeat:no-repeat`;
+    }
+    return `background:${avatarColor(name)}`;
+  }
+
+  /** Inner text for an avatar: '' when a picture is shown, initials otherwise. */
+  function avatarInner(url, name) {
+    return url ? '' : esc(initials(name));
+  }
+
   function formatBytes(n) {
     const v = Number(n) || 0;
     if (v < 1024) return v + ' B';
@@ -1782,8 +1800,7 @@
       `<button type="button" class="hg-folder-cap hg-glass${state.activeFolderId == null ? ' is-active' : ''}" data-role="segment" data-folder="">Все</button>`,
       ...(state.folders || []).map((f) =>
         `<button type="button" class="hg-folder-cap hg-glass${Number(state.activeFolderId) === Number(f.id) ? ' is-active' : ''}" data-role="segment" data-folder="${f.id}">${esc(f.icon_emoji || '')} ${esc(f.name)}</button>`
-      ),
-      `<button type="button" class="hg-folder-cap hg-folder-add hg-glass" data-role="segment" data-folder-add="1" title="Новая папка">+</button>`
+      )
     ].join('');
     const bdayHtml = (state.birthdays || []).map((b) => {
       const when = b.is_today ? 'сегодня' : ('через ' + b.days_until + ' дн.');
@@ -1806,12 +1823,19 @@
           <div class="hg-story-ring is-add"><div class="hg-story-av is-add">+</div></div>
           <span class="hg-story-label">История</span>
         </button>`;
-    // Other people's stories next.
+    // Other people's stories next. Show the story MEDIA in the ring (the user
+    // complained the circle showed no story preview until opened).
     storiesHtml += others.map((s) => {
       const nm = s.user_name || 'Story';
+      const media = s.media_url || s.image_url || s.file_url || '';
+      const isVideo = s.media_type === 'video' || /\.(mp4|webm|mov)(\?|$)/i.test(String(media));
       const unread = !s.viewed;
+      const inner = media
+        ? `<video class="hg-story-av" src="${esc(media)}" muted playsinline preload="metadata"></video>`
+        : `<div class="hg-story-av" style="${s.avatar_url ? avatarStyle(s.avatar_url, nm) : `background:${avatarColor(nm)}`}">${avatarInner(s.avatar_url, nm)}</div>`;
+      void isVideo;
       return `<button type="button" class="hg-story-item${unread ? ' is-unread' : ''}" data-story="${s.id}" title="${esc(nm)}">
-        <div class="hg-story-ring"><div class="hg-story-av" style="background:${avatarColor(nm)}${s.avatar_url ? `;background-image:url('${esc(s.avatar_url)}');background-size:cover` : ''}">${s.avatar_url ? '' : esc(initials(nm))}</div></div>
+        <div class="hg-story-ring">${inner}</div>
         <span class="hg-story-label">${esc((nm || '').split(/\s+/)[0] || '—')}</span>
       </button>`;
     }).join('');
@@ -1852,7 +1876,8 @@
           <button type="button" class="hg-icon-btn" data-collapse title="Свернуть">${ICO.close || '✕'}</button>
         </div>
       </div>
-      <div class="hg-folder-row" id="hgFolders" role="tablist" aria-label="Папки чатов">${folderCaps}</div>
+      ${bdayHtml ? `<div class="hg-bday-rail" id="hgBdayRail">${bdayHtml}</div>` : ''}
+      <div class="hg-stories-rail" id="hgStoriesRail" aria-label="Истории">${storiesHtml}</div>
       <div class="hg-tabs" id="hgTabs">
         <button type="button" class="hg-tab ${state.listTab === 'all' ? 'is-active' : ''}" data-ltab="all">Все${unreadSum ? `<span class="hg-tab-n">${unreadSum}</span>` : ''}</button>
         <button type="button" class="hg-tab ${state.listTab === 'personal' ? 'is-active' : ''}" data-ltab="personal">Личные</button>
@@ -1861,8 +1886,6 @@
         <button type="button" class="hg-tab ${state.listTab === 'new' ? 'is-active' : ''}" data-ltab="new">Новые</button>
         <button type="button" class="hg-tab ${state.listTab === 'clients' ? 'is-active' : ''}" data-ltab="clients">Клиенты</button>
       </div>
-      ${bdayHtml ? `<div class="hg-bday-rail" id="hgBdayRail">${bdayHtml}</div>` : ''}
-      <div class="hg-stories-rail" id="hgStoriesRail" aria-label="Истории">${storiesHtml}</div>
       ${editBar}
       <input class="hg-search" id="hgSearch" placeholder="Поиск" value="${esc(state.searchQ || '')}" />
       <div class="hg-list" id="hgList"></div>`;
@@ -2905,8 +2928,10 @@
             : `<img src="${esc(media)}" alt="">`)
           : `<div class="hg-story-viewer-text">${esc(story.caption || story.text || 'История')}</div>`}
       </div>`;
-    (root.querySelector('.hg-chrome') || root).appendChild(el);
-    el.querySelector('.hg-story-viewer-close').onclick = () => el.remove();
+    // Mount on <body>: .hg-chrome may be transformed, and `position:fixed` inside
+    // a transformed ancestor becomes relative — that broke the close button.
+    document.body.appendChild(el);
+    el.querySelector('.hg-story-viewer-close').onclick = (e) => { e.stopPropagation(); el.remove(); };
     el.onclick = (e) => { if (e.target === el) el.remove(); };
     try {
       await api('/api/chat-groups/stories/' + storyId + '/view', { method: 'POST', body: {} });
@@ -3062,7 +3087,11 @@
       const prevHtml = draft
         ? `<span class="hg-draft">Черновик: </span>${esc(draft)}`
         : `${ticks}${esc(prev)}${seenHtml}`;
-      const avBg = c._seedColor || avatarColor(cname);
+      const peerAv = c.peer_avatar || c.avatar_url || c.direct_user_avatar || '';
+      const avStyle = peerAv
+        ? avatarStyle(peerAv, cname)
+        : (c._seedColor ? `background:${c._seedColor}` : avatarStyle('', cname));
+      const avText = peerAv ? '' : esc(initials(cname));
       const pinIco = pinned ? `<span class="hg-chat-icons" title="Закреплён">${ICO.pin || ''}</span>` : '';
       const muteIco = muted ? `<span class="hg-chat-icons" title="Без звука">${ICO.mute || ICO['volume-x'] || ''}</span>` : '';
       const selected = state.selectedChatIds.has(Number(c.id));
@@ -3071,7 +3100,7 @@
         : '';
       return `<button type="button" class="hg-chat-row${Number(c.id) === Number(state.chatId) ? ' is-active' : ''}${selected ? ' is-selected' : ''}${state.listEditMode ? ' is-edit' : ''}" data-cid="${c.id}">
         ${check}
-        <div class="hg-chat-av${online ? ' is-online' : ''}" style="background:${avBg}">${esc(initials(cname))}</div>
+        <div class="hg-chat-av${online ? ' is-online' : ''}" style="${avStyle}">${avText}</div>
         <div class="hg-chat-name">${esc(cname)}${muteIco}</div>
         <div class="hg-chat-time">${pinIco}${esc(t)}</div>
         <div class="hg-chat-prev${unread ? ' is-unread' : ''}">${prevHtml}</div>
@@ -3130,7 +3159,8 @@
           online: !!u.online,
           last_seen_at: u.last_seen_at || null,
           is_huginn_guest: !!u.is_huginn_guest,
-          has_huginn: u.has_huginn !== false
+          has_huginn: u.has_huginn !== false,
+          avatar_url: u.avatar_url || null
         }));
     }
     const map = new Map();
@@ -3202,7 +3232,7 @@
         continue;
       }
       html += `<button type="button" class="hg-contact-row" data-cid="${r.chat_id || ''}" data-uid="${r.user_id}">
-        <div class="hg-contact-av" style="background:${avatarColor(nm)}">${esc(initials(nm))}</div>
+        <div class="hg-contact-av" style="${r.avatar_url ? avatarStyle(r.avatar_url, nm) : `background:${avatarColor(nm)}`}">${r.avatar_url ? '' : esc(initials(nm))}</div>
         <div class="hg-contact-meta">
           <div class="hg-contact-name">${esc(nm)}</div>
           <div class="hg-contact-status"><span class="hg-status-dot ${isOnline ? 'is-online' : 'is-off'}"></span>${esc(statusTxt)}</div>
@@ -3310,24 +3340,26 @@
     };
   }
 
-  /** Звонок контакту через Mango: в браузере (WebRTC) или серверный на мобильный. */
+  /** Звонок контакту: всегда сначала из браузера (WebRTC), GSM — только как fallback. */
   async function callContactViaMango(uid, nm) {
     const row = (state.contactsDirectory || []).find((u) => Number(u.user_id) === uid) || {};
     const phone = row.phone;
     if (!phone) { showToast('У контакта не заполнен номер в CRM'); return; }
     const P = window.AsgardPhone;
-    const canWebrtc = !!(P && P.getSipRegistered && P.getSipRegistered());
-    if (canWebrtc) {
+    if (P && P.outbound) {
       try {
-        await P.outbound(phone);
-        showToast('Звонок ' + (nm || '') + ' — в браузере');
+        // outbound() сам лениво поднимет SIP-регистрацию для исходящих,
+        // не занимая линию и не перехватывая входящие.
+        const r = await P.outbound(phone);
+        if (r && r.via === 'webrtc') { showToast('Звонок ' + (nm || '') + ' — в браузере'); return; }
+        showToast('Звонок ' + (nm || '') + ' — примите на телефоне');
         return;
       } catch (e) {
         showToast(e.message || 'Не удалось позвонить');
         return;
       }
     }
-    // Нет SIP-регистрации — сервер поднимет плечо на мобильный и наберёт контакт.
+    // Нет софтфона на странице — серверный путь.
     try {
       const r = await api('/api/chat-groups/contacts/' + uid + '/call', { method: 'POST' });
       showToast('Звонок ' + (nm || '') + (r && r.via === 'gsm' ? ' — примите на телефоне' : ''));
@@ -3387,7 +3419,7 @@
           continue;
         }
         listHtml += `<button type="button" class="hg-contact-row${contactActive ? ' is-active' : ''}" data-cid="${r.chat_id || ''}" data-uid="${r.user_id}">
-          <div class="hg-contact-av" style="background:${avatarColor(nm)}">${esc(initials(nm))}</div>
+          <div class="hg-contact-av" style="${r.avatar_url ? avatarStyle(r.avatar_url, nm) : `background:${avatarColor(nm)}`}">${r.avatar_url ? '' : esc(initials(nm))}</div>
           <div class="hg-contact-meta">
             <div class="hg-contact-name">${esc(nm)}</div>
             <div class="hg-contact-status"><span class="hg-status-dot ${dotCls}"></span>${esc(status)}</div>
@@ -3539,7 +3571,7 @@
     inp.click();
   }
 
-  /** Журнал звонков Хугинна (читаемый список вместо call_event-пузыря). */
+  /** Единый журнал звонков: Хугинн (VoIP) + Телефония (PBX), с бейджем источника. */
   function renderCallsPanel(panel) {
     panel.innerHTML = `
       <div class="hg-panel-head">
@@ -3551,40 +3583,80 @@
       </div>`;
     panel.querySelector('[data-collapse]').onclick = () => setCollapsed(true);
     const listEl = panel.querySelector('#hgCallsList');
-    api('/api/chat-groups/calls/history?limit=50').then((data) => {
-      const calls = (data && data.calls) || [];
-      if (!calls.length) {
-        listEl.innerHTML = `<div class="hg-empty">${ICO.phone || ''}<h3>Звонков пока нет</h3><p>Аудио и видео звонки появятся здесь</p></div>`;
+
+    const fmtDur = (s) => {
+      const n = Number(s) || 0;
+      const m = Math.floor(n / 60);
+      return m ? (m + ' мин ' + (n % 60) + ' с') : (n + ' с');
+    };
+    const fmtWhen = (iso) => {
+      try {
+        const d = new Date(iso);
+        const today = new Date();
+        const sameDay = d.toDateString() === today.toDateString();
+        return sameDay
+          ? d.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })
+          : d.toLocaleString('ru-RU', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+      } catch (_) { return ''; }
+    };
+
+    Promise.allSettled([
+      api('/api/chat-groups/calls/history?limit=50'),
+      api('/api/telephony/pbx/reports/journal?limit=50')
+    ]).then(([hgRes, pbxRes]) => {
+      const merged = [];
+      if (hgRes.status === 'fulfilled') {
+        ((hgRes.value && hgRes.value.calls) || []).forEach((c) => {
+          merged.push({
+            source: 'huginn',
+            at: c.created_at,
+            peer: c.peer_name || 'Сотрудник',
+            chatId: c.chat_id || 0,
+            missed: !!c.missed,
+            direction: c.direction,
+            kind: c.kind,
+            detail: c.missed ? 'Пропущенный'
+              : (c.status === 'ended' && c.answered_at ? fmtDur(c.duration_sec)
+                : (c.status === 'declined' ? 'Отклонён' : (c.status === 'canceled' ? 'Отменён' : 'Завершён')))
+          });
+        });
+      }
+      if (pbxRes.status === 'fulfilled') {
+        ((pbxRes.value && pbxRes.value.items) || []).forEach((c) => {
+          const peer = c.call_type === 'out' ? (c.to_number || '') : (c.from_number || '');
+          const missed = c.outcome === 'missed' || c.outcome === 'no_answer';
+          merged.push({
+            source: 'pbx',
+            at: c.started_at,
+            peer: peer || 'Неизвестный',
+            chatId: 0,
+            missed,
+            direction: c.call_type === 'out' ? 'out' : 'in',
+            kind: 'audio',
+            detail: missed ? 'Пропущенный'
+              : (c.duration_seconds ? fmtDur(c.duration_seconds) : (c.outcome || 'Завершён'))
+          });
+        });
+      }
+      merged.sort((a, b) => {
+        const ta = a.at ? new Date(a.at).getTime() : 0;
+        const tb = b.at ? new Date(b.at).getTime() : 0;
+        return tb - ta;
+      });
+      if (!merged.length) {
+        listEl.innerHTML = `<div class="hg-empty">${ICO.phone || ''}<h3>Звонков пока нет</h3><p>Звонки Хугинн и телефонии появятся здесь</p></div>`;
         return;
       }
-      const fmtDur = (s) => {
-        const n = Number(s) || 0;
-        const m = Math.floor(n / 60);
-        return m ? (m + ' мин ' + (n % 60) + ' с') : (n + ' с');
-      };
-      const fmtWhen = (iso) => {
-        try {
-          const d = new Date(iso);
-          const today = new Date();
-          const sameDay = d.toDateString() === today.toDateString();
-          return sameDay
-            ? d.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })
-            : d.toLocaleString('ru-RU', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
-        } catch (_) { return ''; }
-      };
-      listEl.innerHTML = calls.map((c) => {
-        const missed = c.missed && c.direction === 'in';
-        const cls = missed ? ' is-missed' : '';
+      listEl.innerHTML = merged.slice(0, 60).map((c) => {
+        const cls = c.missed ? ' is-missed' : '';
         const arrow = c.direction === 'out' ? '↗' : '↙';
         const kindIco = c.kind === 'video' ? '🎥' : '📞';
-        const statusTxt = missed ? 'Пропущенный'
-          : (c.status === 'ended' && c.answered_at ? fmtDur(c.duration_sec)
-            : (c.status === 'declined' ? 'Отклонён' : (c.status === 'canceled' ? 'Отменён' : 'Завершён')));
-        return `<button type="button" class="hg-call-row${cls}" data-cid="${c.chat_id || ''}" data-peer="${esc(c.peer_name)}">
+        const badge = c.source === 'pbx' ? 'Телефония' : 'Хугинн';
+        return `<button type="button" class="hg-call-row${cls}" data-cid="${c.chatId || ''}" data-src="${c.source}">
           <div class="hg-call-ico">${kindIco}</div>
           <div class="hg-call-meta">
-            <div class="hg-call-name">${esc(c.peer_name)}</div>
-            <div class="hg-call-sub"><span class="hg-call-arrow">${arrow}</span>${esc(statusTxt)} · ${esc(fmtWhen(c.created_at))}</div>
+            <div class="hg-call-name">${esc(c.peer)}<span class="hg-call-src hg-call-src--${c.source}">${badge}</span></div>
+            <div class="hg-call-sub"><span class="hg-call-arrow">${arrow}</span>${esc(c.detail)} · ${esc(fmtWhen(c.at))}</div>
           </div>
         </button>`;
       }).join('');
@@ -3639,7 +3711,7 @@
           <button type="button" class="hg-settings-edit" id="hgSettingsEdit">${headBtn}</button>
         </div>
         <div class="hg-settings-profile${!showProfile && !showEdit ? ' is-clickable' : ''}" id="hgSettingsProfileCard" role="${!showProfile && !showEdit ? 'button' : 'group'}" tabindex="${!showProfile && !showEdit ? '0' : '-1'}">
-          <div class="hg-settings-av" style="background:${avatarColor(name)}${me.avatar_url ? `;background-image:url('${esc(me.avatar_url)}');background-size:cover;background-position:center` : ''}">${me.avatar_url ? '' : esc(initials(name))}</div>
+          <div class="hg-settings-av" style="${me.avatar_url ? avatarStyle(me.avatar_url, name) : `background:${avatarColor(name)}`}">${avatarInner(me.avatar_url, name)}</div>
           <div class="hg-settings-name">${esc(name)}</div>
           <div class="hg-settings-sub"><span class="hg-settings-shield" aria-hidden="true">1</span>${esc(phone)} · ${esc(uname)}</div>
           ${!showProfile && !showEdit ? `<button type="button" class="hg-settings-photo-btn" id="hgSettingsPhoto">${ICO.camera || '📷'} Изменить фотографию</button>` : ''}
@@ -4681,6 +4753,11 @@
 
   function openMsgMenu(messageId, x, y) {
     const pinnedIds = new Set((state.pins || []).map((p) => Number(p.message_id || (p.message && p.message.id))));
+    const target = state.messages.find((m) => Number(m.id) === Number(messageId));
+    const mine = !!(target && Number(target.user_id) === Number(myId()));
+    const chat = state.chats.find((c) => Number(c.id) === Number(state.chatId)) || {};
+    const canDeleteAll = mine || !!(chat.my_role === 'owner' || chat.my_role === 'admin'
+      || chat.is_owner === true || chat.is_admin === true);
     const el = document.createElement('div');
     el.className = 'hg-float hg-glass';
     el.setAttribute('data-role', 'menu');
@@ -4690,7 +4767,8 @@
       <button type="button" data-a="pin">${ICO.pin || ICO.bookmark || '📌'}<span>${pinnedIds.has(Number(messageId)) ? 'Открепить' : 'Закрепить'}</span></button>
       <button type="button" data-a="forward">${ICO.forward}<span>Переслать</span></button>
       <button type="button" data-a="copy">${ICO.copy}<span>Копировать</span></button>
-      <button type="button" class="danger" data-a="delete">${ICO.trash}<span>Удалить</span></button>
+      <button type="button" data-a="delete-me">${ICO.trash}<span>Удалить у себя</span></button>
+      ${canDeleteAll ? `<button type="button" class="danger" data-a="delete">${ICO.trash}<span>Удалить у всех</span></button>` : ''}
     </div>`;
     placeFloat(el, x, y);
     el.onclick = async (e) => {
@@ -4719,6 +4797,12 @@
       }
       if (a === 'copy' && msg) {
         try { await navigator.clipboard.writeText(humanizeDisplayText(msg.message || '', msg)); } catch (_) {}
+      }
+      if (a === 'delete-me' && msg) {
+        await api('/api/chat-groups/' + state.chatId + '/messages/' + messageId + '?scope=me', { method: 'DELETE' });
+        state.messages = state.messages.filter((m) => Number(m.id) !== Number(messageId));
+        renderPanel();
+        return;
       }
       if (a === 'delete' && msg) {
         await api('/api/chat-groups/' + state.chatId + '/messages/' + messageId, { method: 'DELETE' });
@@ -4759,9 +4843,9 @@
         <span style="width:32px"></span>
       </div>
       <div class="hg-invite-fields">
-        <input id="hgInviteName" placeholder="Имя (необязательно)" autocomplete="name" value="${esc(preset.name || '')}" />
-        <input id="hgInvitePhone" placeholder="Телефон" inputmode="tel" autocomplete="tel" />
-        <input id="hgInviteEmail" placeholder="Email" inputmode="email" autocomplete="email" />
+        <input id="hgInviteName" class="h-field" placeholder="Имя (необязательно)" autocomplete="name" value="${esc(preset.name || '')}" />
+        <input id="hgInvitePhone" class="h-field" placeholder="Телефон" inputmode="tel" autocomplete="tel" />
+        <input id="hgInviteEmail" class="h-field" placeholder="Email" inputmode="email" autocomplete="email" />
       </div>
       <div class="hg-invite-modes" role="tablist" aria-label="Куда отправить">
         <button type="button" class="hg-compose-mode is-active" data-ich="email" role="tab" aria-selected="true">На почту</button>

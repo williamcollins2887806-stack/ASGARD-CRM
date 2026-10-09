@@ -140,7 +140,7 @@ module.exports = async function(fastify) {
   /** Other participant in a 1:1 direct chat (viewer-relative). */
   async function getDirectPeerForChat(chatId, viewerUserId) {
     const { rows } = await db.query(`
-      SELECT u.id, u.name, u.role, u.last_seen_at,
+      SELECT u.id, u.name, u.role, u.last_seen_at, u.avatar_url,
              (u.last_seen_at IS NOT NULL AND u.last_seen_at > NOW() - INTERVAL '2 minutes') AS online
       FROM chat_group_members cm
       JOIN users u ON u.id = cm.user_id
@@ -203,6 +203,7 @@ module.exports = async function(fastify) {
       direct_user_name: peer.name,
       peer_user_id: peer.id,
       peer_last_seen_at: peer.last_seen_at || null,
+      peer_avatar: peer.avatar_url || null,
       is_online: !!peer.online
     };
   }
@@ -394,6 +395,12 @@ module.exports = async function(fastify) {
           LIMIT 1
         ) ELSE NULL END as direct_user_last_seen_at,
         CASE WHEN c.is_group = false THEN (
+          SELECT u.avatar_url FROM chat_group_members cm
+          JOIN users u ON u.id = cm.user_id
+          WHERE cm.chat_id = c.id AND cm.user_id != $1
+          LIMIT 1
+        ) ELSE NULL END as direct_user_avatar,
+        CASE WHEN c.is_group = false THEN (
           SELECT (u.last_seen_at IS NOT NULL AND u.last_seen_at > NOW() - INTERVAL '2 minutes')
           FROM chat_group_members cm
           JOIN users u ON u.id = cm.user_id
@@ -444,6 +451,7 @@ module.exports = async function(fastify) {
     for (const chat of rows) {
       if (!chat.is_group && chat.direct_user_id) {
         chat.is_online = chat.direct_user_online === true;
+        chat.peer_avatar = chat.direct_user_avatar || null;
       }
     }
     return { chats: rows };
@@ -795,9 +803,13 @@ module.exports = async function(fastify) {
       LEFT JOIN chat_messages rm ON m.reply_to = rm.id
       LEFT JOIN users ru ON rm.user_id = ru.id
       WHERE m.chat_id = $1 AND m.deleted_at IS NULL
+        AND NOT EXISTS (
+          SELECT 1 FROM chat_message_hidden h
+          WHERE h.message_id = m.id AND h.user_id = $2
+        )
     `;
-    const params = [chatId];
-    let idx = 2;
+    const params = [chatId, userId];
+    let idx = 3;
 
     if (before_id) {
       sql += ` AND m.id < $${idx}`;
@@ -999,6 +1011,28 @@ module.exports = async function(fastify) {
     if (isNaN(chatId) || isNaN(messageId)) return reply.code(400).send({ error: 'Некорректный ID' });
     const userId = request.user.id;
 
+    const member = await getChatMembership(chatId, userId);
+    if (!member) return reply.code(403).send({ error: 'Нет доступа к чату' });
+
+    // scope=me → hide only for the caller (any participant); default → delete
+    // for everyone (author or chat admin only).
+    const scope = String((request.query || {}).scope || '').toLowerCase();
+    if (scope === 'me') {
+      const { rows: [exists] } = await db.query(
+        'SELECT 1 AS ok FROM chat_messages WHERE id = $1 AND chat_id = $2 AND deleted_at IS NULL',
+        [messageId, chatId]
+      );
+      if (!exists) return reply.code(404).send({ error: 'Сообщение не найдено' });
+      await db.query(
+        `INSERT INTO chat_message_hidden (message_id, user_id) VALUES ($1, $2)
+         ON CONFLICT (message_id, user_id) DO NOTHING`,
+        [messageId, userId]
+      ).catch((e) => {
+        if (/chat_message_hidden/.test(String(e.message))) throw e;
+      });
+      return { success: true, scope: 'me' };
+    }
+
     // Автор или админ чата может удалить
     const { rows: [msg] } = await db.query(
       'SELECT user_id FROM chat_messages WHERE id = $1 AND chat_id = $2 AND deleted_at IS NULL',
@@ -1024,7 +1058,7 @@ module.exports = async function(fastify) {
       chat_id: chatId, message_id: messageId
     });
 
-    return { success: true };
+    return { success: true, scope: 'all' };
   });
 
   // ───────────────────────────────────────────────────────────────

@@ -7,6 +7,13 @@
 
   function token() { return localStorage.getItem('asgard_token') || ''; }
 
+  /** Local XSS-safe escape (ui.js is not loaded on /h/). */
+  function esc(s) {
+    return String(s == null ? '' : s)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  }
+
   function logoSvg() {
     const ico = (window.HuginnIcons && window.HuginnIcons.ICO) || {};
     return ico.empty || ico['message-circle'] ||
@@ -34,179 +41,289 @@
     });
   }
 
+  // ── TG-style step flow: phone → confirm → code, or email → check ──
+  // Country list kept tiny (RU default); extend as needed.
+  const COUNTRIES = [
+    { code: 'RU', flag: '🇷🇺', dial: '+7', name: 'Россия', len: 10 },
+    { code: 'KZ', flag: '🇰🇿', dial: '+7', name: 'Казахстан', len: 10 },
+    { code: 'BY', flag: '🇧🇾', dial: '+375', name: 'Беларусь', len: 9 },
+    { code: 'UA', flag: '🇺🇦', dial: '+380', name: 'Украина', len: 9 },
+    { code: 'UZ', flag: '🇺🇿', dial: '+998', name: 'Узбекистан', len: 9 },
+    { code: 'AM', flag: '🇦🇲', dial: '+374', name: 'Армения', len: 8 },
+    { code: 'GE', flag: '🇬🇪', dial: '+995', name: 'Грузия', len: 9 }
+  ];
+
+  function stepShell(inner) {
+    app.innerHTML = `<div class="h-step">${inner}</div>`;
+  }
+
   function renderLogin(opts) {
     const invite = opts && opts.invite;
-    app.innerHTML = `
-      <div class="h-login">
-        <div class="h-logo" aria-hidden="true">${logoSvg()}</div>
-        <h1>Хугинн</h1>
-        <p>${invite
-          ? ('Приглашение от ' + (invite.inviter_name || 'сотрудника') + '. Подтвердите телефон — код придёт в SMS.')
-          : 'Войдите по коду из SMS или ссылке на почту. Пароль не нужен.'}</p>
-        <div class="h-err" id="err"></div>
-        ${invite ? `<input id="name" placeholder="Ваше имя" autocomplete="name" />` : ''}
-        <input id="phone" type="tel" inputmode="tel" placeholder="Телефон" autocomplete="tel" value="${invite && invite.phone ? invite.phone : ''}" />
-        <button type="button" id="sendCode">Получить код в SMS</button>
-        <div class="h-code-row" id="codeRow" hidden>
-          <input id="code" inputmode="numeric" placeholder="Код из SMS" autocomplete="one-time-code" />
-          <button type="button" id="verifyCode">Войти</button>
+    let country = COUNTRIES[0];
+    let syncContacts = true;
+    let lastPhoneFull = '';
+    stepShell(`
+      ${!invite ? '<div class="h-step-top"><button type="button" class="h-step-cancel" id="toEmail">Отмена</button></div>' : ''}
+      <div class="h-step-art" aria-hidden="true">${invite ? '📨' : '☎️'}</div>
+      <h1 class="h-step-title">${invite ? 'Хугинн' : 'Телефон'}</h1>
+      <p class="h-step-sub">${invite
+        ? ('Приглашение от ' + esc(invite.inviter_name || 'сотрудника') + '. Подтвердите телефон — код придёт в SMS.')
+        : 'Проверьте код страны и введите свой номер телефона.'}</p>
+      <div class="h-err" id="err"></div>
+      ${invite ? `<input id="name" placeholder="Ваше имя" autocomplete="name" />` : ''}
+      <button type="button" class="h-country" id="countryBtn">
+        <span class="flag">${country.flag}</span><span>${esc(country.name)}</span><span class="chev">›</span>
+      </button>
+      <div class="h-phone-row">
+        <span class="h-phone-prefix" id="dialCode">${country.dial}</span>
+        <input id="phone" type="tel" inputmode="tel" placeholder="Номер телефона" autocomplete="tel"
+          value="${invite && invite.phone ? esc(invite.phone) : ''}" />
+      </div>
+      <label class="h-sync">
+        <span>Синхронизировать контакты</span>
+        <button type="button" class="h-switch is-on" id="syncSwitch" role="switch" aria-checked="true" aria-label="Синхронизировать контакты"></button>
+      </label>
+      <button type="button" class="h-step-cta" id="continueBtn">Продолжить</button>
+      ${!invite ? '<button type="button" class="h-step-link" id="staffToggle">Вход для сотрудника CRM</button>' : ''}
+      <div id="staffBox" hidden style="margin-top:12px">
+        <input id="staffLogin" placeholder="Логин или email" autocomplete="username" />
+        <input id="staffPassword" type="password" placeholder="Пароль" autocomplete="current-password" />
+        <button type="button" class="h-step-cta" id="staffGo">Войти как сотрудник</button>
+      </div>
+      <details class="h-pwa">
+        <summary>Как установить приложение?</summary>
+        <div class="h-pwa-body">
+          <div>iPhone: Safari → Поделиться → «На экран Домой».</div>
+          <div style="margin-top:8px">Android: <a href="/h/android.html">скачать APK</a></div>
         </div>
-        <div class="h-or"><span>или</span></div>
-        <input id="email" type="email" inputmode="email" placeholder="Email — пришлём ссылку для входа" autocomplete="email" />
-        <button type="button" id="sendLink">Прислать ссылку на почту</button>
-        ${!invite ? '<button type="button" id="staffToggle" class="h-link">Вход для сотрудника CRM</button>' : ''}
-        <div id="staffBox" hidden>
-          <input id="staffLogin" placeholder="Логин или email" autocomplete="username" />
-          <input id="staffPassword" type="password" placeholder="Пароль" autocomplete="current-password" />
-          <button type="button" id="staffGo">Войти как сотрудник</button>
-        </div>
-        ${themeToggleHtml()}
-        <details class="h-pwa">
-          <summary>Как установить приложение?</summary>
-          <div class="h-pwa-body">
-            <div>iPhone: Safari → Поделиться → «На экран Домой».</div>
-            <div style="margin-top:8px">Android: <a href="/h/android.html">скачать APK</a></div>
-          </div>
-        </details>
-      </div>`;
+      </details>
+    `);
     const err = () => document.getElementById('err');
     const setErr = (m) => { const e = err(); if (e) e.textContent = m || ''; };
 
-    document.getElementById('sendCode').onclick = async () => {
-      const phone = document.getElementById('phone').value.trim();
-      if (!phone) { setErr('Укажите телефон'); return; }
-      const btn = document.getElementById('sendCode');
-      btn.disabled = true;
+    const dial = document.getElementById('dialCode');
+    document.getElementById('syncSwitch').onclick = (e) => {
+      syncContacts = !syncContacts;
+      e.currentTarget.classList.toggle('is-on', syncContacts);
+      e.currentTarget.setAttribute('aria-checked', syncContacts ? 'true' : 'false');
+    };
+    document.getElementById('countryBtn').onclick = () => {
+      const next = COUNTRIES[(COUNTRIES.indexOf(country) + 1) % COUNTRIES.length];
+      country = next;
+      const btn = document.getElementById('countryBtn');
+      btn.innerHTML = `<span class="flag">${country.flag}</span><span>${esc(country.name)}</span><span class="chev">›</span>`;
+      dial.textContent = country.dial;
+    };
+    const phoneFull = () => {
+      const raw = (document.getElementById('phone').value || '').replace(/\D/g, '');
+      const cc = country.dial.replace(/\D/g, '');
+      const local = raw.startsWith(cc) ? raw.slice(cc.length) : raw;
+      return country.dial + local;
+    };
+
+    const continueBtn = document.getElementById('continueBtn');
+    continueBtn.onclick = () => {
+      const full = phoneFull();
+      const digits = full.replace(/\D/g, '');
+      if (digits.length < (country.dial.replace(/\D/g, '').length + country.len - 1)) { setErr('Введите номер полностью'); return; }
+      lastPhoneFull = full;
+      openConfirm(full);
+    };
+    const toEmail = document.getElementById('toEmail');
+    if (toEmail) toEmail.onclick = () => renderEmailStep();
+    const staffToggle = document.getElementById('staffToggle');
+    if (staffToggle) staffToggle.onclick = () => { const b = document.getElementById('staffBox'); b.hidden = !b.hidden; };
+    const staffGo = document.getElementById('staffGo');
+    if (staffGo) staffGo.onclick = () => doStaffLogin();
+    wireThemeToggle();
+
+    /** Confirm-number modal (TG: «Правильно ли указан номер?»). */
+    function openConfirm(full) {
+      const m = document.createElement('div');
+      m.className = 'h-modal-back';
+      m.innerHTML = `<div class="h-modal">
+        <p class="h-modal-num">${esc(full)}</p>
+        <p class="h-modal-q">Правильно ли указан номер?</p>
+        <button type="button" class="h-modal-change" id="mChange">Изменить</button>
+        <button type="button" class="h-step-cta" id="mOk">Продолжить</button>
+      </div>`;
+      document.body.appendChild(m);
+      m.querySelector('#mChange').onclick = () => m.remove();
+      m.querySelector('#mOk').onclick = async () => {
+        m.remove();
+        if (inviteToken) await acceptInviteThenCode(full);
+        else await sendCodeThenCodeStep(full);
+      };
+    }
+
+    async function sendCodeThenCodeStep(full) {
       setErr('');
       try {
         const res = await fetch('/api/chat-groups/auth/request-code', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ phone })
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ phone: full })
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || 'Не удалось отправить код');
-        document.getElementById('codeRow').hidden = false;
-        document.getElementById('code').focus();
-        btn.textContent = 'Код отправлен';
-        if (!data.sent) setErr(data.error || 'SMS не ушла — попробуйте ссылку на почту');
-      } catch (e) {
-        setErr(e.message);
-        btn.disabled = false;
-      }
-    };
+        renderCodeStep(full, !data.sent ? (data.error || 'SMS не ушла — попробуйте ссылку на почту') : '');
+      } catch (e) { setErr(e.message); }
+    }
 
-    document.getElementById('verifyCode').onclick = async () => {
-      const phone = document.getElementById('phone').value.trim();
-      const code = document.getElementById('code').value.trim();
-      if (!phone || !code) { setErr('Введите телефон и код'); return; }
+    async function acceptInviteThenCode(full) {
+      const name = (document.getElementById('name') && document.getElementById('name').value || '').trim();
+      if (!name || name.length < 2) { setErr('Укажите имя'); return; }
       setErr('');
       try {
+        const acc = await fetch('/api/chat-groups/invites/' + encodeURIComponent(inviteToken) + '/accept', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name, phone: full })
+        });
+        const accData = await acc.json();
+        if (!acc.ok) throw new Error(accData.error || 'Не удалось принять приглашение');
+        const req = await fetch('/api/chat-groups/auth/request-code', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ phone: full })
+        });
+        const reqData = await req.json();
+        renderCodeStep(full, (!req.ok || !reqData.sent) ? ((reqData && reqData.error) || 'SMS не ушла') : '');
+      } catch (e) { setErr(e.message); }
+    }
+
+    void lastPhoneFull;
+    void syncContacts;
+    if (inviteToken) {
+      // Invite keeps the same step flow; accept happens on «Продолжить».
+    }
+  }
+
+  /** 6-cell code step (SMS). */
+  function renderCodeStep(phone, warn) {
+    const cells = Array.from({ length: 6 }, (_, i) =>
+      `<input class="h-code-cell" inputmode="numeric" maxlength="1" data-cell="${i}" ${i === 0 ? 'autofocus' : ''} />`).join('');
+    stepShell(`
+      <div class="h-step-top"><button type="button" class="h-step-cancel" id="back">Назад</button></div>
+      <div class="h-step-art" aria-hidden="true">💬</div>
+      <h1 class="h-step-title">Введите код</h1>
+      <p class="h-step-sub">Мы отправили SMS с кодом проверки на ${esc(phone)}.</p>
+      <div class="h-err" id="err">${warn ? esc(warn) : ''}</div>
+      <div class="h-code-cells" id="cells">${cells}</div>
+      <button type="button" class="h-step-cta" id="verify" disabled>Продолжить</button>
+      <button type="button" class="h-step-link" id="again">Отправить код ещё раз</button>
+    `);
+    const inputs = Array.from(document.querySelectorAll('.h-code-cell'));
+    const verify = document.getElementById('verify');
+    const read = () => inputs.map((i) => i.value.replace(/\D/g, '')).join('');
+    const refresh = () => { verify.disabled = read().length !== 6; };
+    inputs.forEach((inp, idx) => {
+      inp.addEventListener('input', () => {
+        inp.value = inp.value.replace(/\D/g, '').slice(0, 1);
+        if (inp.value && idx < 5) inputs[idx + 1].focus();
+        refresh();
+      });
+      inp.addEventListener('keydown', (e) => {
+        if (e.key === 'Backspace' && !inp.value && idx > 0) inputs[idx - 1].focus();
+      });
+      inp.addEventListener('paste', (e) => {
+        const txt = (e.clipboardData || window.clipboardData).getData('text').replace(/\D/g, '').slice(0, 6);
+        if (!txt) return;
+        e.preventDefault();
+        txt.split('').forEach((ch, i) => { if (inputs[i]) inputs[i].value = ch; });
+        inputs[Math.min(txt.length, 5)].focus();
+        refresh();
+      });
+    });
+    document.getElementById('back').onclick = () => renderLogin({ invite: inviteToken ? { inviter_name: '' } : null });
+    document.getElementById('again').onclick = async () => {
+      try {
+        await fetch('/api/chat-groups/auth/request-code', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ phone })
+        });
+      } catch (_) {}
+    };
+    verify.onclick = async () => {
+      const e = document.getElementById('err');
+      e.textContent = '';
+      try {
         const res = await fetch('/api/chat-groups/auth/verify', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ phone: phone, code: code })
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ phone, code: read() })
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || 'Не удалось войти');
         saveSessionAndBoot(data, inviteToken && !token());
-      } catch (e) {
-        setErr(e.message);
-      }
+      } catch (ex) { e.textContent = ex.message; }
     };
+  }
 
-    document.getElementById('sendLink').onclick = async () => {
-      const email = document.getElementById('email').value.trim();
-      if (!email) { setErr('Укажите email'); return; }
-      setErr('');
+  /** Email step: «Укажите почту для входа» → «Проверьте почту». */
+  function renderEmailStep() {
+    stepShell(`
+      <div class="h-step-top"><button type="button" class="h-step-cancel" id="back">Назад</button></div>
+      <div class="h-step-art" aria-hidden="true">📫</div>
+      <h1 class="h-step-title">Укажите почту для входа</h1>
+      <p class="h-step-sub">Вы будете получать коды для входа в АСГАРД Хугинн на адрес электронной почты, а не через SMS.</p>
+      <div class="h-err" id="err"></div>
+      <input id="email" type="email" inputmode="email" placeholder="Email" autocomplete="email" />
+      <button type="button" class="h-step-cta" id="sendEmail">Продолжить</button>
+    `);
+    document.getElementById('back').onclick = () => renderLogin({});
+    document.getElementById('sendEmail').onclick = async () => {
+      const email = (document.getElementById('email').value || '').trim();
+      const e = document.getElementById('err');
+      e.textContent = '';
+      if (!email) { e.textContent = 'Укажите email'; return; }
       try {
         const res = await fetch('/api/chat-groups/auth/request-link', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email: email })
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email })
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || 'Не удалось отправить ссылку');
-        setErr('Если адрес приглашён, ссылка отправлена. Проверьте почту.');
-      } catch (e) {
-        setErr(e.message);
-      }
+        renderEmailCheck(email);
+      } catch (ex) { e.textContent = ex.message; }
     };
-
-    const staffToggle = document.getElementById('staffToggle');
-    if (staffToggle) staffToggle.onclick = () => {
-      const box = document.getElementById('staffBox');
-      box.hidden = !box.hidden;
-    };
-    const staffGo = document.getElementById('staffGo');
-    if (staffGo) staffGo.onclick = () => doStaffLogin();
-
-    if (inviteToken) {
-      // Invitation: entering a code grants access right away, so create the guest
-      // record first (passwordless) and then continue to verification.
-      wireInviteAccept();
-    }
-    wireThemeToggle();
   }
 
-  /** Create the guest from the invite (no password), then show SMS verification. */
-  function wireInviteAccept() {
-    const sendBtn = document.getElementById('sendCode');
-    sendBtn.onclick = async () => {
-      const name = (document.getElementById('name') && document.getElementById('name').value || '').trim();
-      const phone = document.getElementById('phone').value.trim();
-      const err = document.getElementById('err');
-      err.textContent = '';
-      if (!name || name.length < 2) { err.textContent = 'Укажите имя'; return; }
-      if (!phone) { err.textContent = 'Укажите телефон'; return; }
-      sendBtn.disabled = true;
-      try {
-        const acc = await fetch('/api/chat-groups/invites/' + encodeURIComponent(inviteToken) + '/accept', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ name: name, phone: phone })
-        });
-        const accData = await acc.json();
-        if (!acc.ok) throw new Error(accData.error || 'Не удалось принять приглашение');
-        // не логинимся сразу — просим подтвердить телефон кодом
-        const req = await fetch('/api/chat-groups/auth/request-code', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ phone: phone })
-        });
-        const reqData = await req.json();
-        document.getElementById('codeRow').hidden = false;
-        document.getElementById('code').focus();
-        sendBtn.textContent = 'Код отправлен';
-        if (!req.ok || !reqData.sent) {
-          err.textContent = (reqData && reqData.error) || 'SMS не ушла — войдите позже по почте';
-          // Do not leave the button dead: allow retry.
-          sendBtn.disabled = false;
-          sendBtn.textContent = 'Получить код в SMS';
-        }
-      } catch (e) {
-        err.textContent = e.message;
-        sendBtn.disabled = false;
-      }
+  /** «Проверьте почту» + 6 ячеек (код из письма). */
+  function renderEmailCheck(email) {
+    const cells = Array.from({ length: 6 }, (_, i) =>
+      `<input class="h-code-cell" inputmode="numeric" maxlength="1" data-cell="${i}" ${i === 0 ? 'autofocus' : ''} />`).join('');
+    stepShell(`
+      <div class="h-step-top"><button type="button" class="h-step-cancel" id="back">Назад</button></div>
+      <div class="h-step-art" aria-hidden="true">📧</div>
+      <h1 class="h-step-title">Проверьте почту</h1>
+      <p class="h-step-sub">Введите код, который пришёл на ${esc(email)}.</p>
+      <div class="h-err" id="err"></div>
+      <div class="h-code-cells" id="cells">${cells}</div>
+      <button type="button" class="h-step-link" id="again">Отправить ссылку ещё раз</button>
+    `);
+    const inputs = Array.from(document.querySelectorAll('.h-code-cell'));
+    const read = () => inputs.map((i) => i.value.replace(/\D/g, '')).join('');
+    inputs.forEach((inp, idx) => {
+      inp.addEventListener('input', () => {
+        inp.value = inp.value.replace(/\D/g, '').slice(0, 1);
+        if (inp.value && idx < 5) inputs[idx + 1].focus();
+        if (read().length === 6) submit();
+      });
+    });
+    document.getElementById('back').onclick = () => renderEmailStep();
+    document.getElementById('again').onclick = async () => {
+      try { await fetch('/api/chat-groups/auth/request-link', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email }) }); } catch (_) {}
     };
-    document.getElementById('verifyCode').onclick = async () => {
-      const phone = document.getElementById('phone').value.trim();
-      const code = document.getElementById('code').value.trim();
-      const err = document.getElementById('err');
-      err.textContent = '';
+    async function submit() {
+      const e = document.getElementById('err');
+      e.textContent = '';
       try {
         const res = await fetch('/api/chat-groups/auth/verify', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ phone: phone, code: code })
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, code: read() })
         });
         const data = await res.json();
-        if (!res.ok) throw new Error(data.error || 'Не удалось войти');
+        if (!res.ok) throw new Error(data.error || 'Неверный код');
         saveSessionAndBoot(data, true);
-      } catch (e) {
-        err.textContent = e.message;
-      }
-    };
+      } catch (ex) { e.textContent = ex.message; }
+    }
   }
 
   function saveSessionAndBoot(data, cleanUrl) {

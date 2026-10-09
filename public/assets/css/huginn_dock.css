@@ -691,6 +691,9 @@ body.hg-list-edit .hg-nav-search {
   color: #fff;
   background: var(--bg3, #1C2130);
   border: 2px solid var(--bg2, #151922);
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
 }
 .hg-story-av.is-add {
   background: color-mix(in srgb, var(--bg3, #1C2130) 80%, transparent);
@@ -706,9 +709,9 @@ body.hg-list-edit .hg-nav-search {
   white-space: nowrap;
 }
 .hg-story-viewer {
-  position: absolute;
+  position: fixed;
   inset: 0;
-  z-index: 80;
+  z-index: 9500;
   background: color-mix(in srgb, var(--bg1, #0b0e14) 92%, transparent);
   display: flex;
   flex-direction: column;
@@ -1286,6 +1289,9 @@ body.hg-list-edit .hg-nav-search {
   font: 600 15px/1 var(--hg-font);
   color: #fff;
   flex: 0 0 auto;
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
 }
 .hg-chat-name {
   grid-column: 2;
@@ -5339,3 +5345,22 @@ body:has(.hg-ai-sheet) .hg-nav-search {
   background: color-mix(in srgb, var(--blue-l, #4A90D9) 18%, transparent);
   color: var(--hg-text);
 }
+
+/* -- Source badge in unified calls journal (Huginn vs PBX) -- */
+.hg-call-src {
+  display: inline-block; margin-left: 8px; padding: 1px 7px; border-radius: 999px;
+  font: 600 10px/1.6 var(--hg-font); vertical-align: middle;
+}
+.hg-call-src--huginn { background: color-mix(in srgb, var(--blue-l, #4A90D9) 22%, transparent); color: var(--blue-l, #4A90D9); }
+.hg-call-src--pbx { background: color-mix(in srgb, var(--t2, #8B96A8) 22%, transparent); color: var(--t2, #8B96A8); }
+
+/* -- Invite sheet: TG-style fields (shared with /h/ login look) -- */
+.hg-invite-sheet .h-field,
+.hg-invite-fields input {
+  width: 100%; height: 48px; border-radius: 12px;
+  border: 1px solid var(--hg-border); background: var(--hg-elev); color: var(--hg-text);
+  padding: 0 14px; font: 400 16px var(--hg-font); box-sizing: border-box; outline: none;
+  margin: 0 0 10px;
+}
+.hg-invite-sheet .h-field:focus,
+.hg-invite-fields input:focus { border-color: var(--blue-l, #4A90D9); }

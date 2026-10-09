@@ -1281,7 +1281,7 @@ module.exports = async function registerHuginnExt(fastify, { db, uploadDir, getC
   }, async (request) => {
     const me = Number(request.user.id);
     const { rows } = await db.query(
-      `SELECT u.id AS user_id, u.name, u.role, u.last_seen_at,
+      `SELECT u.id AS user_id, u.name, u.role, u.last_seen_at, u.avatar_url,
               (u.last_seen_at IS NOT NULL AND u.last_seen_at > NOW() - INTERVAL '2 minutes') AS fresh,
               COALESCE(u.is_huginn_guest, false) AS is_huginn_guest,
               (COALESCE(u.is_huginn_guest, false) = true
@@ -1308,6 +1308,7 @@ module.exports = async function registerHuginnExt(fastify, { db, uploadDir, getC
         role: r.role,
         is_huginn_guest: r.is_huginn_guest,
         has_huginn: r.has_huginn === true,
+        avatar_url: r.avatar_url || null,
         online: !!r.fresh,
         last_seen_at: r.last_seen_at,
         chat_id: r.chat_id || null,
@@ -1360,17 +1361,21 @@ module.exports = async function registerHuginnExt(fastify, { db, uploadDir, getC
       if (!res.ok) {
         return reply.code(res.status === 409 ? 409 : 502).send({
           error: data.error || 'Не удалось инициировать звонок',
-          via: useBrowser ? 'webrtc' : 'gsm',
+          via: data.via || (useBrowser ? 'webrtc' : 'gsm'),
         });
       }
+      // Реальный путь звонка решает PBX (данные ответа), а не предварительный флаг.
+      const via = data.via || (useBrowser ? 'webrtc' : 'gsm');
       // Открыть клиенту исходящий звонок в UI (media/статус).
       sendToUser(me, 'call:outbound_started', {
         number: target.phone,
         target_user_id: targetId,
         target_name: target.name,
-        via: useBrowser ? 'webrtc' : 'gsm',
+        via: via,
+        channel: data.channel || null,
+        pbx_uid: data.pbx_uid || null,
       });
-      return { ok: true, number: target.phone, target_name: target.name, via: useBrowser ? 'webrtc' : 'gsm' };
+      return { ok: true, number: target.phone, target_name: target.name, via: via };
     } catch (e) {
       return reply.code(502).send({ error: e.message });
     }

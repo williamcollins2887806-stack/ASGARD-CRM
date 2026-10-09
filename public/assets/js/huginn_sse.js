@@ -10,7 +10,6 @@
   let es = null;
   let pollTimer = null;
   let pingTimer = null;
-  let backoffMs = 15000;
   let failStreak = 0;
   let paused = false;
   let tokenFn = () => localStorage.getItem('asgard_token') || '';
@@ -39,19 +38,27 @@
 
   function shouldSkipNetwork() {
     if (typeof navigator !== 'undefined' && navigator.onLine === false) return true;
-    if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return true;
     return paused;
+  }
+
+  /** Ping (presence) should not run while the tab is hidden — last_seen_at then
+   *  ages out honestly. The SSE socket itself must stay open: closing it on hide
+   *  broke instant delivery (messages only arrived on return/F5). */
+  function shouldSkipPing() {
+    if (shouldSkipNetwork()) return true;
+    if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return true;
+    return false;
   }
 
   function noteFail() {
     failStreak += 1;
-    backoffMs = Math.min(120000, Math.round(15000 * Math.pow(1.6, Math.min(failStreak, 6))));
-    schedulePoll();
+    // Safety catch-up failed — the socket is the delivery channel; just retry
+    // the catch-up on the next safety tick. No long backoff (it delayed nothing
+    // critical, but skewed reconnect timing).
   }
 
   function noteOk() {
     failStreak = 0;
-    backoffMs = 15000;
   }
 
   async function catchUp() {
@@ -83,7 +90,7 @@
     } catch (e) {
       noteFail();
       if (failStreak <= 2 || failStreak % 4 === 0) {
-        console.warn('[huginn_sse] catchUp', e.message, 'backoff=' + backoffMs + 'ms');
+        console.warn('[huginn_sse] catchUp', e.message);
       }
     }
   }
@@ -110,9 +117,9 @@
       'call:incoming', 'call:accepted', 'call:declined', 'call:ended'].forEach(wire);
 
     source.addEventListener('error', () => {
-      // Permanently closed (e.g. we closed it on tab hide): don't reconnect.
-      if (source.readyState === 2) { if (es === source) es = null; return; }
-      noteFail();
+      // CLOSED (2) — recreate fast. CONNECTING (0) — the browser retries itself.
+      if (source.readyState === 2) { if (es === source) es = null; scheduleReconnect(); return; }
+      scheduleReconnect();
     });
     catchUp();
   }
@@ -132,17 +139,35 @@
       global._asgardSSE = source;
       bindSource(source);
     } catch (e) {
-      noteFail();
+      scheduleReconnect();
     }
   }
 
+  /** Fast socket reconnect (instant delivery) — a dropped EventSource must be
+   *  restored in well under a second, not after a 15–120s backoff. */
+  let reconnectTimer = null;
+  function scheduleReconnect() {
+    if (reconnectTimer) return;
+    reconnectTimer = setTimeout(() => {
+      reconnectTimer = null;
+      if (shouldSkipNetwork()) return;
+      if (es && es.readyState === 2) { es = null; }
+      try { if (global._asgardSSE && global._asgardSSE.readyState === 2) global._asgardSSE = null; } catch (_) {}
+      ensureSource();
+      catchUp();
+    }, 800);
+  }
+
+  /** Safety catch-up cadence: the socket is the primary channel, this only
+   *  heals rare missed events. Not an instant-delivery transport. */
+  const SAFETY_POLL_MS = 30000;
   function schedulePoll() {
     if (pollTimer) clearInterval(pollTimer);
     pollTimer = setInterval(() => {
       if (shouldSkipNetwork()) return;
       ensureSource();
       catchUp();
-    }, backoffMs);
+    }, SAFETY_POLL_MS);
   }
 
   function on(event, fn) {
@@ -154,21 +179,19 @@
   function onVisibility() {
     if (document.visibilityState === 'visible' && navigator.onLine !== false) {
       paused = false;
+      // Reconnect + immediate catch-up: if the socket dropped while hidden we
+      // must not wait for a poll tick to deliver missed messages.
       ensureSource();
       catchUp();
-    } else if (document.visibilityState === 'hidden') {
-      // Hidden tab: stop pinging, but ALSO drop the SSE socket. Otherwise the
-      // socket-based presence kept this user «online» for up to ~1h (nginx
-      // proxy_read_timeout) — the root of «миражи». Cold catch-up on return.
-      paused = true;
-      closeSource();
     }
+    // Hidden: keep the socket OPEN. Only the presence ping is skipped (see
+    // shouldSkipPing) so `last_seen_at` still ages out honestly.
   }
 
   function onOnline() {
     paused = false;
     failStreak = 0;
-    backoffMs = 15000;
+    scheduleReconnect();
     schedulePoll();
     catchUp();
   }
@@ -185,7 +208,7 @@
     schedulePoll();
     if (pingTimer) clearInterval(pingTimer);
     pingTimer = setInterval(async () => {
-      if (shouldSkipNetwork()) return;
+      if (shouldSkipPing()) return;
       const token = tokenFn();
       if (!token) return;
       try {
@@ -204,8 +227,10 @@
   function stop() {
     if (pollTimer) clearInterval(pollTimer);
     if (pingTimer) clearInterval(pingTimer);
+    if (reconnectTimer) clearTimeout(reconnectTimer);
     pollTimer = null;
     pingTimer = null;
+    reconnectTimer = null;
     document.removeEventListener('visibilitychange', onVisibility);
     window.removeEventListener('online', onOnline);
     window.removeEventListener('offline', onOffline);

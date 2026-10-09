@@ -1,10 +1,11 @@
-/* Huginn PWA SW — cache shell only, network-first for API */
-const CACHE = 'huginn-h-20.28.136';
+/* Huginn PWA SW — network-first (fresh shell wins), cache as offline fallback */
+const SHELL_VERSION = '20.28.160';
+const CACHE = 'huginn-h-' + SHELL_VERSION;
 const SHELL = [
   '/h/', '/h/app.js', '/h/manifest.webmanifest',
   '/assets/css/design-tokens.css', '/assets/css/huginn_dock.css',
   '/assets/js/huginn_icons.js', '/assets/js/huginn_sse.js',
-  '/assets/js/huginn_dock.js', '/assets/js/huginn_ting.js', '/assets/js/huginn_calls.js'
+  '/assets/js/huginn_dock.js', '/assets/js/huginn_calls.js'
 ];
 
 self.addEventListener('install', (e) => {
@@ -16,7 +17,12 @@ self.addEventListener('install', (e) => {
   );
 });
 self.addEventListener('activate', (e) => {
-  e.waitUntil(caches.keys().then((keys) => Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k)))).then(() => self.clients.claim()));
+  // Drop every older huginn cache; a stale JS bundle here showed an old UI forever.
+  e.waitUntil(
+    caches.keys()
+      .then((keys) => Promise.all(keys.filter((k) => k !== CACHE && k.indexOf('huginn-h-') === 0).map((k) => caches.delete(k))))
+      .then(() => self.clients.claim())
+  );
 });
 self.addEventListener('message', (e) => {
   if (e.data && e.data.type === 'SKIP_WAITING') self.skipWaiting();
@@ -24,10 +30,14 @@ self.addEventListener('message', (e) => {
 self.addEventListener('fetch', (e) => {
   const url = new URL(e.request.url);
   if (url.pathname.startsWith('/api/')) return;
+  // Network-first: a redeploy must reach the phone without manual cache clear.
+  // On network failure fall back to the cached copy (offline still works).
   e.respondWith(
     fetch(e.request).then((res) => {
-      const copy = res.clone();
-      caches.open(CACHE).then((c) => c.put(e.request, copy)).catch(() => {});
+      if (res && res.ok && url.origin === location.origin) {
+        const copy = res.clone();
+        caches.open(CACHE).then((c) => c.put(e.request, copy)).catch(() => {});
+      }
       return res;
     }).catch(() => caches.match(e.request))
   );

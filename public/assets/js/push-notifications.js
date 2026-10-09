@@ -55,16 +55,31 @@ window.AsgardPush = (function() {
     if (permission !== 'granted') {
       return { success: false, reason: 'denied' };
     }
+    return subscribeSilent();
+  }
+
+  /**
+   * Subscribe/refresh WITHOUT prompting (permission must be granted already).
+   * Used at startup and on pushsubscriptionchange so a rotated/stale endpoint
+   * (e.g. an old Apple subscription) is replaced silently.
+   */
+  async function subscribeSilent() {
+    if (!isSupported() || Notification.permission !== 'granted') {
+      return { success: false, reason: 'no_permission' };
+    }
 
     try {
       var vapidKey = await getVapidKey();
       if (!vapidKey) return { success: false, reason: 'no_vapid_key' };
 
       var reg = await navigator.serviceWorker.ready;
-      var subscription = await reg.pushManager.subscribe({
-        userVisibleOnly: true,
-        applicationServerKey: urlBase64ToUint8Array(vapidKey)
-      });
+      var subscription = await reg.pushManager.getSubscription();
+      if (!subscription) {
+        subscription = await reg.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: urlBase64ToUint8Array(vapidKey)
+        });
+      }
 
       var sub = subscription.toJSON();
       var auth = window.AsgardAuth ? AsgardAuth.getAuth() : null;
@@ -578,10 +593,22 @@ window.AsgardPush = (function() {
     // Notification click handler
     initNotificationClickHandler();
 
-    // If already subscribed, just run badge
-    if (isSubscribed() && Notification.permission === 'granted') return;
+    // SW may rotate the endpoint — re-subscribe silently so the server never
+    // holds a dead subscription (that broke push for closed tabs).
+    if (navigator.serviceWorker && navigator.serviceWorker.addEventListener) {
+      navigator.serviceWorker.addEventListener('message', function (ev) {
+        if (ev.data && ev.data.type === 'PUSH_RESUBSCRIBE') subscribeSilent().catch(function () {});
+      });
+    }
 
-    // Show prompt for new users
+    // Already granted → refresh subscription silently on every start (heals a
+    // stale/rotated endpoint without waiting for a manual re-enable).
+    if (Notification.permission === 'granted') {
+      subscribeSilent().catch(function () {});
+      return;
+    }
+
+    // First time: gentle prompt.
     showEnablePrompt();
   }
 
@@ -690,6 +717,7 @@ window.AsgardPush = (function() {
     isSubscribed: isSubscribed,
     getPermissionState: getPermissionState,
     subscribe: subscribe,
+    subscribeSilent: subscribeSilent,
     unsubscribe: unsubscribe,
     updateBadge: updateBadge,
     startBadgePolling: startBadgePolling,

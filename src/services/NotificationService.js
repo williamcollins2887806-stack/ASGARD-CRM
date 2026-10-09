@@ -74,6 +74,7 @@ async function send(db, opts) {
   });
 
   const staleIds = [];
+  let sentOk = 0;
 
   for (const sub of subs.rows) {
     try {
@@ -81,18 +82,26 @@ async function send(db, opts) {
         endpoint: sub.endpoint,
         keys: { p256dh: sub.p256dh, auth: sub.auth }
       }, payload);
+      sentOk += 1;
     } catch (err) {
       // 410 Gone or 404 — endpoint expired, remove subscription
       if (err.statusCode === 410 || err.statusCode === 404) {
         staleIds.push(sub.id);
+      } else if (typeof console !== 'undefined') {
+        console.warn('[push] send failed', err.statusCode || err.message);
       }
-      // Other errors (e.g. network) — just log and continue
     }
   }
 
   // Clean up stale subscriptions
   if (staleIds.length > 0) {
     await db.query('DELETE FROM push_subscriptions WHERE id = ANY($1)', [staleIds]);
+    if (typeof console !== 'undefined') {
+      console.warn(`[push] removed ${staleIds.length} stale subscription(s) for user ${user_id}`);
+    }
+  }
+  if (typeof console !== 'undefined' && subs.rows.length > 0 && sentOk === 0 && staleIds.length === 0) {
+    console.warn(`[push] no device reached for user ${user_id} (subs=${subs.rows.length})`);
   }
 }
 
