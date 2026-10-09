@@ -1,5 +1,5 @@
 /* Huginn PWA SW — network-first (fresh shell wins), cache as offline fallback */
-const SHELL_VERSION = '20.28.160';
+const SHELL_VERSION = '20.28.162';
 const CACHE = 'huginn-h-' + SHELL_VERSION;
 const SHELL = [
   '/h/', '/h/app.js', '/h/manifest.webmanifest',
