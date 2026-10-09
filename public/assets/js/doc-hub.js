@@ -932,7 +932,8 @@ window.AsgardDocHubPage = (function () {
       const id = host.id;
       const opts = () => {
         const key = id.indexOf('Owner') >= 0 ? 'doc_owners' : 'pms';
-        return (state.facets && state.facets[key]) || [];
+        const raw = (state.facets && state.facets[key]) || [];
+        return raw.map((u) => ({ value: u.id, label: u.name }));
       };
       trig?.addEventListener('click', (e) => {
         e.stopPropagation();
@@ -2904,6 +2905,10 @@ window.AsgardDocHubPage = (function () {
     root.querySelector('#dhScopeAll')?.addEventListener('change', async (e) => {
       state.scope = e.target.checked ? 'all' : 'mine';
       await loadFacets();
+      // Фасеты зависят от scope (для «мои» ответственных может не быть) —
+      // перерисовываем блок фильтров, иначе списки останутся пустыми.
+      const f = root.querySelector('#dhFacets');
+      if (f) { f.outerHTML = facetsHtml(); bindFacets(root); }
       await refresh();
     });
     root.querySelector('#dhChipIncomplete')?.addEventListener('click', async () => {
