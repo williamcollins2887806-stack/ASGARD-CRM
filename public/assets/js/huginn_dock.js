@@ -1813,15 +1813,18 @@
     const stories = state.stories || [];
     const myStory = stories.find((s) => Number(s.user_id) === Number(myId()));
     const others = stories.filter((s) => Number(s.user_id) !== Number(myId()));
+    const meUser = (global.AsgardAuth && AsgardAuth.user) || JSON.parse(localStorage.getItem('asgard_user') || '{}');
+    const myName = meUser.name || meUser.full_name || 'Я';
+    const myAvatar = meUser.avatar_url || '';
     // Own circle is always first (view own story, or «+» to add one).
     let storiesHtml = myStory
       ? `<button type="button" class="hg-story-item is-mine" data-story="${myStory.id}" title="Моя история">
-          <div class="hg-story-ring is-mine"><div class="hg-story-av" style="background:${avatarColor('Я')}">${esc(initials((((global.AsgardAuth && AsgardAuth.user) || JSON.parse(localStorage.getItem('asgard_user') || '{}')).name || 'Я')))}</div></div>
+          <div class="hg-story-ring is-mine"><div class="hg-story-av" style="${myAvatar ? avatarStyle(myAvatar, myName) : `background:${avatarColor(myName)}`}">${avatarInner(myAvatar, myName)}</div></div>
           <span class="hg-story-label">Моя</span>
         </button>`
-      : `<button type="button" class="hg-story-item is-add" id="hgStoryAdd" title="Добавить историю">
-          <div class="hg-story-ring is-add"><div class="hg-story-av is-add">+</div></div>
-          <span class="hg-story-label">История</span>
+      : `<button type="button" class="hg-story-item is-mine is-add" id="hgStoryAdd" title="Добавить историю">
+          <div class="hg-story-ring is-mine"><div class="hg-story-av" style="${myAvatar ? avatarStyle(myAvatar, myName) : `background:${avatarColor(myName)}`}">${avatarInner(myAvatar, myName)}<span class="hg-story-plus" aria-hidden="true">+</span></div></div>
+          <span class="hg-story-label">Моя</span>
         </button>`;
     // Other people's stories next. Show the story MEDIA in the ring (the user
     // complained the circle showed no story preview until opened).
@@ -1871,7 +1874,7 @@
         <h2>Чаты</h2>
         <div class="hg-head-actions">
           <button type="button" class="hg-list-me-btn" id="hgListMe" title="Мой профиль" aria-label="Мой профиль"
-            style="background:${avatarColor(((global.AsgardAuth && AsgardAuth.user) || JSON.parse(localStorage.getItem('asgard_user') || '{}')).name || 'Я')}">${esc(initials((((global.AsgardAuth && AsgardAuth.user) || JSON.parse(localStorage.getItem('asgard_user') || '{}')).name || 'Я')))}</button>
+            style="${myAvatar ? avatarStyle(myAvatar, myName) : `background:${avatarColor(myName)}`}">${avatarInner(myAvatar, myName)}</button>
           <button type="button" class="hg-icon-btn" id="hgCompose" title="Написать">${ICO.compose || ICO.pen || '✎'}</button>
           <button type="button" class="hg-icon-btn" data-collapse title="Свернуть">${ICO.close || '✕'}</button>
         </div>
@@ -5318,6 +5321,19 @@
     }
   }
 
+  /** Pull own profile (avatar_url/name) into localStorage before first render. */
+  async function refreshMyAvatar() {
+    try {
+      const data = await api('/api/users/me');
+      const u = data && (data.user || data);
+      if (!u) return;
+      const cur = JSON.parse(localStorage.getItem('asgard_user') || '{}');
+      const merged = { ...cur, ...u };
+      localStorage.setItem('asgard_user', JSON.stringify(merged));
+      if (global.AsgardAuth) global.AsgardAuth.user = merged;
+    } catch (_) { /* best-effort */ }
+  }
+
   /** Bulk presence map for the whole chat list + contacts (not just the open chat). */
   async function warmPresence() {
     try {
@@ -5346,6 +5362,9 @@
       // Parallel loaders must not take each other down: if chats 403/401 (guest
       // permission gap) the dock still has to render with an honest state.
       await Promise.allSettled([loadFolders(), loadChats(), loadStories(), loadBirthdays()]);
+      // Own avatar must be fresh on boot: without this the «Моя» circle falls
+      // back to initials until the user opens Settings (enrichMyProfile).
+      await refreshMyAvatar();
       syncRailBadge();
       try { await warmPresence(); } catch (_) {}
       renderPanel();

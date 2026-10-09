@@ -5364,3 +5364,14 @@ body:has(.hg-ai-sheet) .hg-nav-search {
 }
 .hg-invite-sheet .h-field:focus,
 .hg-invite-fields input:focus { border-color: var(--blue-l, #4A90D9); }
+
+/* Own story avatar with a small "+" badge (no story yet) */
+.hg-story-plus {
+  position: absolute; right: -2px; bottom: -2px;
+  width: 20px; height: 20px; border-radius: 50%;
+  background: var(--blue-l, #4A90D9); color: #fff;
+  display: flex; align-items: center; justify-content: center;
+  font: 700 14px/1 var(--hg-font);
+  border: 2px solid var(--hg-bg, var(--bg2));
+}
+.hg-story-av { position: relative; }
