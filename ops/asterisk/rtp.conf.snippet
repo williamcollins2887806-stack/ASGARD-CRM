@@ -1,5 +1,21 @@
-; RTP port range for ASGARD PBX (include in rtp.conf)
+; RTP port range + ICE для ASGARD PBX (include в rtp.conf)
 [general]
 rtpstart=10000
 rtpend=20000
-; Ensure firewall allows UDP 10000-20000 to this host
+; Убедиться, что фаервол пропускает UDP 10000-20000 на этот хост
+;
+; ⚠️ МЕДИА WebRTC = ЗВУК В ЗВОНКЕ (инцидент 09.10.2026)
+; «Звонок доходит, но ни я ни меня не слышат. Запись разговора есть и там всё слышно.»
+;
+; transport-ws слушает 127.0.0.1:8088 (nginx проксирует wss на loopback), поэтому
+; ICE host candidates уходили браузеру как 127.0.0.1. Браузер шлёт RTP «сам себе»
+; → медиа не сходится. При этом вызов проходит и MixMonitor пишет серверный
+; тракт Asterisk↔Mango — поэтому в записи разговор слышно, а в трубке нет.
+;
+; Лечится здесь + external_media_address/external_signaling_address
+; у [transport-ws] в pjsip_asgard_webrtc.conf (см. тот файл).
+
+[ice_host_candidates]
+; Заменяем loopback на публичный адрес, локальный кандидат оставляем
+; (include_local_address — чтобы работало и локально, и снаружи).
+127.0.0.1 => 92.242.61.184,include_local_address

@@ -394,7 +394,15 @@ module.exports = async function telephonyPbxRoutes(fastify) {
         }),
       });
     } catch (e) {
-      return reply.code(e.statusCode || 502).send({ error: e.message });
+      // «channel required» = нет активного канала в Asterisk (звонок шёл
+      // серверным/GSM-путём). Фронт на это уже умеет уходить в GSM-перевод,
+      // поэтому отдаём 409, а не 500 — иначе в консоли «ошибка сервера»
+      // (инцидент 09.10.2026: «попытался перевести звонок — ошибка»).
+      const isNoChannel = /channel required/i.test(e.message || '');
+      return reply.code(isNoChannel ? 409 : (e.statusCode || 502)).send({
+        error: e.message,
+        via: isNoChannel ? 'gsm' : undefined,
+      });
     }
   });
   fastify.post('/call/outbound', { preHandler: [fastify.authenticate] }, callCtrl('originate'));
@@ -430,6 +438,9 @@ module.exports = async function telephonyPbxRoutes(fastify) {
       err.statusCode = 403;
       throw err;
     }
+    // Перевод делаем только офисным сотрудникам с ЛК в CRM. Рабочие
+    // (FIELD_WORKER) и служебные (BOT) исключены: у них нет софтфона и рабочего
+    // места за CRM, им нельзя переводить живой вызов (требование 09.10.2026).
     const { rows } = await db.query(
       `SELECT o.user_id, u.name, u.role, o.on_line, o.receive_mode, o.miss_streak,
               o.webrtc_registered, o.last_seen_at, o.sip_username,
@@ -438,7 +449,9 @@ module.exports = async function telephonyPbxRoutes(fastify) {
        JOIN users u ON u.id = o.user_id
        LEFT JOIN user_call_status ucs ON ucs.user_id = o.user_id
        WHERE u.is_active = true
-       ORDER BY o.on_line DESC, o.sort_order, u.name`
+         AND u.role <> ALL($1::text[])
+       ORDER BY o.on_line DESC, o.sort_order, u.name`,
+      [TEL_DENY_ROLES]
     );
     return { staff: rows };
   });

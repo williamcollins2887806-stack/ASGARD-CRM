@@ -800,7 +800,10 @@ function createCmdServer() {
 
       send(404, { error: 'not_found' });
     } catch (err) {
-      send(500, { error: err.message });
+      // Отдаём статус, который выставил обработчик (напр. 409 «оператор на WebRTC —
+      // звонок инициируется из браузера»). Иначе клиент видит 500 на нормальный
+      // случай и фронт решает, что звонок сломан (инцидент 09.10.2026).
+      send(err.statusCode || 500, { error: err.message, via: err.via || undefined });
     }
   });
 }

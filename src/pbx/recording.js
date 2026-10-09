@@ -123,6 +123,11 @@ async function finalizeRecording(pool, opts) {
         // направления и номера в пределах окна, и только потом создаём новую.
         if (upd.rowCount === 0) {
           const numCol = direction === 'inbound' ? 'from_number' : 'to_number';
+          // Почему не только по номеру: dialplan может не передать
+          // ASGARD_OUT_NUMBER (пустая переменная), и тогда прежняя версия с
+          // LIKE по номеру не находила строку — появлялся дубль (жалоба 09.10).
+          // Поэтому ищем по номеру, а если его нет — по самому свежему
+          // «осиротевшему» исходящему за окно 5 минут.
           const match = outNumber ? await client.query(
             `UPDATE call_history SET
                pbx_uid = $1, recording_url = $2, record_path = $3,
@@ -142,10 +147,59 @@ async function finalizeRecording(pool, opts) {
              )
              RETURNING id`,
             [String(pbxUid), relUrl, destPath, outNumber, opUserId, direction, callType]
-          ) : { rowCount: 0 };
+          ) : await client.query(
+            `UPDATE call_history SET
+               pbx_uid = $1, recording_url = $2, record_path = $3,
+               user_id = COALESCE(user_id, $4),
+               answered_by = COALESCE(answered_by, $4),
+               direction = COALESCE(direction, $5),
+               call_type = COALESCE(call_type, $6),
+               updated_at = NOW()
+             WHERE id = (
+               SELECT id FROM call_history
+                WHERE pbx_uid IS NULL
+                  AND (recording_url IS NULL OR recording_url = '')
+                  AND direction = COALESCE($5, direction)
+                  AND ABS(EXTRACT(EPOCH FROM (COALESCE(started_at, created_at) - NOW()))) < 300
+                ORDER BY COALESCE(started_at, created_at) DESC
+                LIMIT 1
+             )
+             RETURNING id`,
+            [String(pbxUid), relUrl, destPath, opUserId, direction, callType]
+          );
           if (match.rowCount > 0) {
             // Слили с существующей строкой — дубль не создаём.
           } else {
+            // ГОНКА (замер на проде 09.10.2026): PBX-строка создавалась в
+            // 23:28:19.21, а строку Mango-вебхук заводил в 23:28:19.26 — на 50 мс
+            // ПОЗЖЕ. Оба запроса вставки пришли раньше вебхука, поэтому слияние
+            // снова не находило пару и появлялся дубль. Даём вебхуку короткое
+            // окно и повторяем поиск ещё раз (важно для живого журнала: строку
+            // без номера видно сразу, поэтому ждём немного).
+            for (let i = 0; i < 4 && match.rowCount === 0; i += 1) {
+              await new Promise((res) => setTimeout(res, 400));
+              const late = outNumber ? await client.query(
+                `UPDATE call_history SET
+                   pbx_uid = $1, recording_url = $2, record_path = $3,
+                   user_id = COALESCE(user_id, $5),
+                   answered_by = COALESCE(answered_by, $5),
+                   updated_at = NOW()
+                 WHERE id = (
+                   SELECT id FROM call_history
+                    WHERE pbx_uid IS NULL
+                      AND (recording_url IS NULL OR recording_url = '')
+                      AND ${numCol} LIKE '%' || $4 || '%'
+                      AND ABS(EXTRACT(EPOCH FROM (COALESCE(started_at, created_at) - NOW()))) < 600
+                    ORDER BY COALESCE(started_at, created_at) DESC
+                    LIMIT 1
+                 )
+                 RETURNING id`,
+                [String(pbxUid), relUrl, destPath, outNumber, opUserId]
+              ) : { rowCount: 0 };
+              if (late.rowCount > 0) { match.rowCount = late.rowCount; break; }
+            }
+          }
+          if (match.rowCount === 0) {
             await client.query(
               `INSERT INTO call_history (
                  call_id, pbx_uid, source, direction, call_type, status, outcome,
