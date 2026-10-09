@@ -45,6 +45,17 @@
   var SVG_FILL = function (paths) {
     return '<svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" stroke="none" aria-hidden="true">' + paths + '</svg>';
   };
+  var SVG_STROKE = function (paths) {
+    return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"'
+      + ' stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + paths + '</svg>';
+  };
+  // Иконка-трубка направления звонка для строки журнала (вид как в ТГ):
+  // отдельный элемент слева от аватара, а не стрелка поверх круга.
+  var CALL_DIR_SVG = {
+    out: SVG_STROKE('<path d="M18 15.5v2.6a1.8 1.8 0 0 1-2 1.8 17.8 17.8 0 0 1-7.7-2.7 17.5 17.5 0 0 1-5.4-5.4A17.8 17.8 0 0 1 .2 4a1.8 1.8 0 0 1 1.8-2h2.6a1.8 1.8 0 0 1 1.8 1.6c.1.9.3 1.7.6 2.5a1.8 1.8 0 0 1-.4 1.9L5.5 9.1a14.4 14.4 0 0 0 5.4 5.4l1.1-1.1a1.8 1.8 0 0 1 1.9-.4c.8.3 1.6.5 2.5.6A1.8 1.8 0 0 1 18 15.5z"/><path d="M15 4h6v6"/><path d="M21 4l-7 7"/>'),
+    in: SVG_STROKE('<path d="M18 15.5v2.6a1.8 1.8 0 0 1-2 1.8 17.8 17.8 0 0 1-7.7-2.7 17.5 17.5 0 0 1-5.4-5.4A17.8 17.8 0 0 1 .2 4a1.8 1.8 0 0 1 1.8-2h2.6a1.8 1.8 0 0 1 1.8 1.6c.1.9.3 1.7.6 2.5a1.8 1.8 0 0 1-.4 1.9L5.5 9.1a14.4 14.4 0 0 0 5.4 5.4l1.1-1.1a1.8 1.8 0 0 1 1.9-.4c.8.3 1.6.5 2.5.6A1.8 1.8 0 0 1 18 15.5z"/><path d="M21 10h-6V4"/><path d="M15 10l6-6"/>'),
+    missed: SVG_STROKE('<path d="M18 15.5v2.6a1.8 1.8 0 0 1-2 1.8 17.8 17.8 0 0 1-7.7-2.7 17.5 17.5 0 0 1-5.4-5.4A17.8 17.8 0 0 1 .2 4a1.8 1.8 0 0 1 1.8-2h2.6a1.8 1.8 0 0 1 1.8 1.6c.1.9.3 1.7.6 2.5a1.8 1.8 0 0 1-.4 1.9L5.5 9.1a14.4 14.4 0 0 0 5.4 5.4l1.1-1.1a1.8 1.8 0 0 1 1.9-.4c.8.3 1.6.5 2.5.6A1.8 1.8 0 0 1 18 15.5z"/><path d="M14 4h7v7"/><path d="M21 4l-7 7"/>')
+  };
   var ICON = {
     mic: SVG_FILL('<path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm5.3-3c0 3-2.54 5.1-5.3 5.1S6.7 14 6.7 11H5c0 3.41 2.72 6.23 6 6.72V21h2v-3.28c3.28-.49 6-3.31 6-6.72h-1.7z"/>'),
     micOff: SVG_FILL('<path d="M19 11h-1.7c0 .74-.16 1.43-.43 2.05l1.23 1.23c.56-.98.9-2.09.9-3.28zm-4.02.17c0-.06.02-.11.02-.17V5c0-1.66-1.34-3-3-3-.06 0-.11.02-.17.02l3.15 3.15zM4.41 2.86 3 4.27l6 6V11c0 1.66 1.34 3 3 3 .23 0 .44-.03.65-.08l1.66 1.66c-.7.33-1.48.52-2.31.52-2.76 0-5.3-2.1-5.3-5.1H5c0 3.41 2.72 6.23 6 6.72V21h2v-3.28c.91-.13 1.77-.45 2.54-.9L19.73 21l1.41-1.41L4.41 2.86z"/>'),
@@ -136,12 +147,16 @@
 
   function initialsFrom(name, phone) {
     var s = String(name || '').trim();
-    if (s) {
-      var parts = s.split(/\s+/).filter(Boolean);
+    // Инициалы строим ТОЛЬКО из букв. Если «имя» — это номер («+7 (916)…»),
+    // из него получались «+(»: режем по пробелам и брали '+' и '('. См. баг «+(».
+    if (/[A-Za-zА-Яа-яЁё]/.test(s)) {
+      var parts = s.split(/\s+/).map(function (w) {
+        return w.replace(/[^A-Za-zА-Яа-яЁё]/g, '');
+      }).filter(Boolean);
       if (parts.length >= 2) return (parts[0].charAt(0) + parts[1].charAt(0)).toUpperCase();
-      return s.slice(0, 2).toUpperCase();
+      if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
     }
-    var d = String(phone || '').replace(/\D/g, '');
+    var d = String(phone || s).replace(/\D/g, '');
     return d.slice(-2) || '•';
   }
 
@@ -283,7 +298,8 @@
 
   function panelShown() {
     var D = dock();
-    return !!(D && panelEl && document.body.contains(panelEl) && D.isPanelOpen('phone'));
+    return !!(D && panelEl && document.body.contains(panelEl)
+      && (D.isPanelOpen('phone') || D.isPanelOpen('calls')));
   }
 
   function syncRail() {
@@ -653,6 +669,8 @@
       apiGet('/api/telephony/pbx/operator/status'),
       // Fallback history if summary recent empty (mine + legs)
       apiGet('/api/telephony/missed?scope=mine&limit=8'),
+      // Звонки Хугинн (VoIP) — те же «свои» входящие/исходящие, но идут через LiveKit.
+      apiGet('/api/chat-groups/calls/history?limit=50')
     ]).then(function (res) {
       var badge = res[0] || {};
       var sum = res[1] || {};
@@ -660,6 +678,7 @@
       // If "mine" empty but summary reports office_unack — fetch office queue for full-view roles
       panelData.missed = missedList;
       panelData.recent = (sum && sum.recent) || [];
+      panelData.huginn = (res[4] && res[4].calls) || [];
       panelData.opStatus = res[2] || panelData.opStatus;
       panelData.canSeeOffice = !!(sum && sum.can_see_office);
       panelData.officeUnack = Number(sum && sum.office_unack) || 0;
@@ -705,10 +724,43 @@
     '</div>';
   }
 
+  /** Звонки Хугинна (VoIP) → та же строка журнала, что и телефония. */
+  function huginnRows() {
+    var arr = panelData.huginn || [];
+    return arr.map(function (c) {
+      var out = c.direction === 'out';
+      return {
+        id: 'hg_' + c.id,
+        source: 'huginn',
+        chat_id: c.chat_id || 0,
+        peer_name: c.peer_name || 'Сотрудник',
+        kind: c.kind || 'audio',
+        direction: out ? 'outbound' : 'inbound',
+        call_type: c.missed ? 'missed' : (out ? 'outbound' : 'inbound'),
+        created_at: c.created_at,
+        duration_seconds: c.duration_sec || 0,
+        answered_at: c.answered_at,
+        status: c.status,
+        missed: !!c.missed
+      };
+    });
+  }
+
+  /** Слить телефонию (Mango) и Хугинн в единый журнал по времени. */
+  function mergeRecent(telephony, huginn) {
+    var out = (telephony || []).slice();
+    (huginn || []).forEach(function (r) { out.push(r); });
+    out.sort(function (a, b) {
+      return new Date(b.created_at || 0) - new Date(a.created_at || 0);
+    });
+    return out;
+  }
+
   function callRowHtml(it, kind, online) {
     var missed = kind === 'missed';
+    var isHuginn = it.source === 'huginn';
     var num = missed ? it.from_number : (it.direction === 'outbound' ? it.to_number : it.from_number);
-    var name = it.client_name || fmtPhone(num || '');
+    var name = it.peer_name || it.caller_name || it.client_name || fmtPhone(num || '');
     var dirCls = missed || it.call_type === 'missed' ? 'is-missed' : (it.direction === 'outbound' ? 'is-out' : 'is-in');
     var dirLabel = missed || it.call_type === 'missed'
       ? 'Пропущенный'
@@ -716,24 +768,35 @@
     if (!missed && it.duration_seconds) {
       dirLabel += ' (' + Math.max(1, Number(it.duration_seconds) || 0) + ' сек.)';
     }
+    // Вид как в ТГ: слева иконка-трубка направления, затем круг-аватар,
+    // затем имя/номер и время. Бейдж источника показываем только у Хугинна.
+    var srcBadge = isHuginn ? '<span class="ph-ios-src is-huginn">Хугинн</span>' : '';
     var when = fmtWhen(it.created_at);
     var ini = initialsFrom(name, num);
     var dirIco = missed || it.call_type === 'missed'
-      ? '<span class="ph-ios-dir is-missed" aria-hidden="true">↙</span>'
+      ? '<span class="hg-call-dir is-missed" aria-hidden="true">' + CALL_DIR_SVG.missed + '</span>'
       : (it.direction === 'outbound'
-        ? '<span class="ph-ios-dir is-out" aria-hidden="true">↗</span>'
-        : '<span class="ph-ios-dir is-in" aria-hidden="true">↙</span>');
+        ? '<span class="hg-call-dir is-out" aria-hidden="true">' + CALL_DIR_SVG.out + '</span>'
+        : '<span class="hg-call-dir is-in" aria-hidden="true">' + CALL_DIR_SVG.in + '</span>');
+    // Повтор звонка: у Хугинна — по chat_id (data-ph-call-hg), у Манго — по номеру.
+    // data-ph-call присутствует буквально в обоих случаях (гейт phone-number-tap).
+    var hgAttr = isHuginn ? (' data-ph-call-hg="' + esc(it.chat_id || '') + '"') : '';
+    var hasTarget = isHuginn ? (Number(it.chat_id) > 0) : !!num;
+    var callBtn = hasTarget
+      ? '<button type="button" class="ph-ios-call" data-ph-call="' + esc(num || '') + '"' + hgAttr + ' aria-label="Позвонить" title="Позвонить">' + (ICON && ICON.call ? ICON.call : '📞') + '</button>'
+      : '';
     return '<div class="ph-dp-row ph-ios-row ' + dirCls + '" data-ph-open="' + (missed ? 'missed' : 'log') + '" data-id="' + esc(it.id) + '">' +
-      '<div class="ph-ios-av-wrap">' + dirIco +
+      dirIco +
+      '<div class="ph-ios-av-wrap">' +
         '<div class="ph-ios-av" aria-hidden="true">' + esc(ini) + '</div>' +
       '</div>' +
-      '<div class="ph-dp-row-main" data-ph-call="' + esc(num || '') + '" title="Позвонить">' +
+      '<div class="ph-dp-row-main" data-ph-call="' + esc(num || '') + '"' + hgAttr + ' title="Позвонить">' +
         '<div class="ph-dp-row-name">' + esc(name) + '</div>' +
-        '<div class="ph-dp-row-meta">' + esc(dirLabel) + '</div>' +
+        '<div class="ph-dp-row-meta">' + esc(dirLabel) + ' ' + srcBadge + '</div>' +
       '</div>' +
       '<div class="ph-ios-right">' +
         '<span class="ph-ios-when">' + esc(when) + '</span>' +
-        (num ? '<button type="button" class="ph-ios-call" data-ph-call="' + esc(num) + '" aria-label="Позвонить" title="Позвонить">' + (ICON && ICON.call ? ICON.call : '📞') + '</button>' : '') +
+        callBtn +
         '<button type="button" class="ph-ios-info" data-ph-open="' + (missed ? 'missed' : 'log') + '" data-id="' + esc(it.id) + '" aria-label="Инфо">ⓘ</button>' +
       '</div>' +
     '</div>';
@@ -820,6 +883,8 @@
     var peers = peerFallbackRecent();
     /* Prefer live journal; while API loads or empty — seed from Huginn chats for S14 chrome */
     if (!recent.length && phoneListFilter !== 'missed') recent = peers;
+    // Единый журнал: телефония (Манго) + звонки Хугинна, по СВОИМ звонкам.
+    if (phoneListFilter !== 'missed') recent = mergeRecent(recent, huginnRows());
     if (phoneListFilter === 'missed' && !missed.length && panelData.missed !== null) {
       /* keep empty missed honestly */
     }
@@ -998,6 +1063,18 @@
     }
     var actBtn = t.closest('[data-ph-act]');
     if (actBtn) { runPhoneAction(actBtn.getAttribute('data-ph-act')); return; }
+    // Повтор звонка через Хугинн (VoIP): открыть чат и запустить 1:1 звонок.
+    var hgCallBtn = t.closest('[data-ph-call-hg]');
+    if (hgCallBtn) {
+      e.stopPropagation();
+      var hgCid = Number(hgCallBtn.getAttribute('data-ph-call-hg'));
+      if (hgCid > 0 && window.HuginnDock && HuginnDock.openChat) {
+        Promise.resolve(HuginnDock.openChat(hgCid)).then(function () {
+          if (window.HuginnCall && HuginnCall.start) return HuginnCall.start('audio');
+        }).catch(function (err) { toast('Звонок', (err && err.message) || 'Не удалось', 'err'); });
+      }
+      return;
+    }
     var callBtn = t.closest('[data-ph-call]');
     if (callBtn) {
       e.stopPropagation();
@@ -1073,7 +1150,8 @@
       if (!el.__phDpBound) {
         el.__phDpBound = true;
         var mine = function () {
-          return !!el.getAttribute('data-ph-view') && !!window.HuginnDock && HuginnDock.getTab() === 'phone';
+          return !!el.getAttribute('data-ph-view') && !!window.HuginnDock
+            && (HuginnDock.getTab() === 'phone' || HuginnDock.getTab() === 'calls');
         };
         el.addEventListener('click', function (e) { if (mine()) onPanelClick(e); });
         el.addEventListener('submit', function (e) { if (mine()) onPanelSubmit(e); });
@@ -1095,7 +1173,7 @@
     syncHeaderBtn();
     if (panelEl && !panelShown()) {
       savePanelNote();
-      if (panelEl.getAttribute('data-ph-view') && !(window.HuginnDock && HuginnDock.getTab && HuginnDock.getTab() === 'phone')) {
+      if (panelEl.getAttribute('data-ph-view') && !(window.HuginnDock && HuginnDock.getTab && (HuginnDock.getTab() === 'phone' || HuginnDock.getTab() === 'calls'))) {
         panelEl.removeAttribute('data-ph-view');
       }
     }
@@ -1513,6 +1591,9 @@
     openDialPad: openDialPad,
     openHotkeyHelp: function () { ensureHotkeyHint().classList.add('is-open'); },
     renderPanel: renderPanel,
+    // Тестовый хук: позволяет отрисовать строку журнала без входа в CRM
+    // (визуальная проверка вида списка звонков).
+    __renderCallRow: callRowHtml,
   };
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);

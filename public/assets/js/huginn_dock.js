@@ -219,39 +219,6 @@
   }
 
   /**
-   * Инициалы для аватара звонка. Для номеров возвращает '' — тогда рисуем
-   * иконку трубки (как в ТГ для несохранённого номера), а не знаки пунктуации
-   * вида «+ (» (скриншот 09.10).
-   */
-  function callInitials(peer) {
-    const s = String(peer || '').trim();
-    if (!s || s === '?' || /^неизвест/i.test(s)) return '';
-    if (/[A-Za-zА-Яа-яЁё]/.test(s)) {
-      const letters = s.replace(/[^A-Za-zА-Яа-яЁё]/g, '');
-      return (letters.slice(0, 2) || '').toUpperCase();
-    }
-    return '';
-  }
-
-  /** Внутренность аватара: инициалы или иконка трубки для чистого номера. */
-  function callAvatarInner(peer) {
-    const ini = callInitials(peer);
-    if (ini) return esc(ini);
-    return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"'
-      + ' stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'
-      + '<path d="M18 15.5v2.6a1.8 1.8 0 0 1-2 1.8 17.8 17.8 0 0 1-7.7-2.7 17.5 17.5 0 0 1-5.4-5.4A17.8 17.8 0 0 1 .2 4a1.8 1.8 0 0 1 1.8-2h2.6a1.8 1.8 0 0 1 1.8 1.6c.1.9.3 1.7.6 2.5a1.8 1.8 0 0 1-.4 1.9L5.5 9.1a14.4 14.4 0 0 0 5.4 5.4l1.1-1.1a1.8 1.8 0 0 1 1.9-.4c.8.3 1.6.5 2.5.6A1.8 1.8 0 0 1 18 15.5z"/></svg>';
-  }
-
-  /** «+79160614809» → «+7 (916) 061-48-09»; нечисловые значения не трогаем. */
-  function fmtPhone(p) {
-    const d = String(p || '').replace(/\D/g, '');
-    if (d.length === 11 && d.charAt(0) === '7') {
-      return '+7 (' + d.substr(1, 3) + ') ' + d.substr(4, 3) + '-' + d.substr(7, 2) + '-' + d.substr(9, 2);
-    }
-    return String(p || '');
-  }
-
-  /**
    * Avatar style: if a picture URL is given, use it centered with a transparent
    * background (background-position:center is REQUIRED — otherwise the image is
    * anchored top-left and looks off-center). Otherwise a deterministic colour.
@@ -315,14 +282,9 @@
           ${ICO.contacts || ICO.user || ICO.empty}
           <span>Контакты</span>
         </button>
-        <button type="button" class="hg-rail-btn" data-hg-tab="calls" title="Звонки">
+        <button type="button" class="hg-rail-btn" data-hg-tab="phone" title="Звонки">
           ${ICO.phone || ICO.calls}
           <span>Звонки</span>
-          <span class="hg-rail-badge" data-rail-badge="calls" hidden>0</span>
-        </button>
-        <button type="button" class="hg-rail-btn hg-rail-btn--phone" data-hg-tab="phone" title="Телефон" hidden>
-          ${ICO.phone}
-          <span>Телефон</span>
           <span class="hg-rail-dot" aria-hidden="true"></span>
           <span class="hg-rail-badge" data-rail-badge="phone" hidden>0</span>
         </button>
@@ -447,9 +409,8 @@
     if (!root) return;
     const btn = root.querySelector('.hg-rail-btn[data-hg-tab="phone"]');
     if (!btn) return;
-    // Только diff-запись: phone_ui слушает MutationObserver(childList) на body
-    // и зовёт setPhoneRail — безусловная запись textContent зациклит страницу.
-    if (btn.hidden !== !phoneRail.visible) btn.hidden = !phoneRail.visible;
+    // Единая вкладка «Звонки»: кнопка видна всегда. Точка — наличие телефонии/линии.
+    if (btn.hidden) btn.hidden = false;
     const st = phoneRail.status || 'offline';
     if (btn.getAttribute('data-phone-status') !== st) btn.setAttribute('data-phone-status', st);
     const badge = btn.querySelector('[data-rail-badge="phone"]');
@@ -478,8 +439,10 @@
 
   function syncRailActive() {
     if (!root) return;
+    // Вкладка «Звонки» может быть выбрана как 'calls' (мобильный) — это та же кнопка рейла.
+    const activeTab = state.tab === 'calls' ? 'phone' : state.tab;
     root.querySelectorAll('.hg-rail-btn').forEach((b) => {
-      b.classList.toggle('is-active', b.getAttribute('data-hg-tab') === state.tab);
+      b.classList.toggle('is-active', b.getAttribute('data-hg-tab') === activeTab);
     });
   }
 
@@ -1692,18 +1655,13 @@
       }
     }
 
-    if (state.tab === 'calls') {
-      renderCallsPanel(panel);
-      return;
-    }
-
-    if (state.tab === 'phone') {
+    if (state.tab === 'calls' || state.tab === 'phone') {
       if (global.AsgardPhoneUI && typeof global.AsgardPhoneUI.renderPanel === 'function') {
         global.AsgardPhoneUI.renderPanel(panel);
       } else {
         panel.innerHTML = `
           <div class="hg-panel-head">
-            <h2>Телефон</h2>
+            <h2>Звонки</h2>
             <button type="button" class="hg-icon-btn" data-collapse>${ICO.close || '✕'}</button>
           </div>
           <div class="hg-list" style="padding:16px">
@@ -3630,139 +3588,8 @@
   }
 
   /** Иконка-трубка направления звонка (вид как в ТГ). */
-  const CALL_DIR_ICO = {
-    out: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 15.5v2.6a1.8 1.8 0 0 1-2 1.8 17.8 17.8 0 0 1-7.7-2.7 17.5 17.5 0 0 1-5.4-5.4A17.8 17.8 0 0 1 .2 4a1.8 1.8 0 0 1 1.8-2h2.6a1.8 1.8 0 0 1 1.8 1.6c.1.9.3 1.7.6 2.5a1.8 1.8 0 0 1-.4 1.9L5.5 9.1a14.4 14.4 0 0 0 5.4 5.4l1.1-1.1a1.8 1.8 0 0 1 1.9-.4c.8.3 1.6.5 2.5.6A1.8 1.8 0 0 1 18 15.5z"/><path d="M15 4h6v6"/><path d="M21 4l-7 7"/></svg>',
-    in: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 15.5v2.6a1.8 1.8 0 0 1-2 1.8 17.8 17.8 0 0 1-7.7-2.7 17.5 17.5 0 0 1-5.4-5.4A17.8 17.8 0 0 1 .2 4a1.8 1.8 0 0 1 1.8-2h2.6a1.8 1.8 0 0 1 1.8 1.6c.1.9.3 1.7.6 2.5a1.8 1.8 0 0 1-.4 1.9L5.5 9.1a14.4 14.4 0 0 0 5.4 5.4l1.1-1.1a1.8 1.8 0 0 1 1.9-.4c.8.3 1.6.5 2.5.6A1.8 1.8 0 0 1 18 15.5z"/><path d="M21 10h-6V4"/><path d="M15 10l6-6"/></svg>',
-    missed: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 15.5v2.6a1.8 1.8 0 0 1-2 1.8 17.8 17.8 0 0 1-7.7-2.7 17.5 17.5 0 0 1-5.4-5.4A17.8 17.8 0 0 1 .2 4a1.8 1.8 0 0 1 1.8-2h2.6a1.8 1.8 0 0 1 1.8 1.6c.1.9.3 1.7.6 2.5a1.8 1.8 0 0 1-.4 1.9L5.5 9.1a14.4 14.4 0 0 0 5.4 5.4l1.1-1.1a1.8 1.8 0 0 1 1.9-.4c.8.3 1.6.5 2.5.6A1.8 1.8 0 0 1 18 15.5z"/><path d="M14 4h7v7"/><path d="M21 4l-7 7"/></svg>',
-  };
-
-  /** Единый журнал звонков: Хугинн (VoIP) + Телефония (PBX), с бейджем источника. */
-  function renderCallsPanel(panel) {    panel.innerHTML = `
-      <div class="hg-panel-head">
-        <h2>Звонки</h2>
-        <button type="button" class="hg-icon-btn" data-collapse title="Свернуть">${ICO.close || '✕'}</button>
-      </div>
-      <div class="hg-calls" id="hgCallsList">
-        <div class="hg-empty"><div class="hg-empty-s">Загрузка…</div></div>
-      </div>`;
-    panel.querySelector('[data-collapse]').onclick = () => setCollapsed(true);
-    const listEl = panel.querySelector('#hgCallsList');
-
-    const fmtDur = (s) => {
-      const n = Number(s) || 0;
-      const m = Math.floor(n / 60);
-      return m ? (m + ' мин ' + (n % 60) + ' с') : (n + ' с');
-    };
-    const fmtWhen = (iso) => {
-      try {
-        const d = new Date(iso);
-        const today = new Date();
-        const sameDay = d.toDateString() === today.toDateString();
-        return sameDay
-          ? d.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })
-          : d.toLocaleString('ru-RU', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
-      } catch (_) { return ''; }
-    };
-
-    Promise.allSettled([
-      api('/api/chat-groups/calls/history?limit=50'),
-      api('/api/telephony/pbx/reports/journal?limit=50'),
-      // Реальные номера живут в записях Mango (source IS NULL, pbx_uid IS NULL):
-      // у PBX-строк номеров нет, а без них журнал показывал «Неизвестный».
-      api('/api/telephony/calls?scope=all&limit=50')
-    ]).then(([hgRes, pbxRes, telRes]) => {
-      const merged = [];
-      if (hgRes.status === 'fulfilled') {
-        ((hgRes.value && hgRes.value.calls) || []).forEach((c) => {
-          merged.push({
-            source: 'huginn',
-            at: c.created_at,
-            peer: c.peer_name || 'Сотрудник',
-            chatId: c.chat_id || 0,
-            missed: !!c.missed,
-            direction: c.direction,
-            kind: c.kind,
-            detail: c.missed ? 'Пропущенный'
-              : (c.status === 'ended' && c.answered_at ? fmtDur(c.duration_sec)
-                : (c.status === 'declined' ? 'Отклонён' : (c.status === 'canceled' ? 'Отменён' : 'Завершён')))
-          });
-        });
-      }
-      if (pbxRes.status === 'fulfilled') {
-        ((pbxRes.value && pbxRes.value.items) || []).forEach((c) => {
-          const peer = c.call_type === 'out' ? (c.to_number || '') : (c.from_number || '');
-          const missed = c.outcome === 'missed' || c.outcome === 'no_answer';
-          merged.push({
-            source: 'pbx',
-            at: c.started_at,
-            peer: peer || 'Неизвестный',
-            chatId: 0,
-            missed,
-            direction: c.call_type === 'out' ? 'out' : 'in',
-            kind: 'audio',
-            detail: missed ? 'Пропущенный'
-              : (c.duration_seconds ? fmtDur(c.duration_seconds) : (c.outcome || 'Завершён'))
-          });
-        });
-      }
-      // Телефония (Mango/CRM): здесь есть настоящие номера и client_name.
-      if (telRes.status === 'fulfilled') {
-        ((telRes.value && (telRes.value.items || telRes.value.calls)) || []).forEach((c) => {
-          const out = c.direction === 'outbound';
-          const num = out ? (c.to_number || c.called_number || '') : (c.from_number || c.caller_number || '');
-          const name = c.client_name || c.client_contact || '';
-          const missed = c.call_type === 'missed' || c.outcome === 'missed' || c.outcome === 'no_answer';
-          const dur = Number(c.duration_seconds || c.duration) || 0;
-          merged.push({
-            source: 'tel',
-            at: c.started_at || c.created_at || c.timestamp,
-            peer: name || fmtPhone(num) || 'Неизвестный',
-            chatId: 0,
-            missed,
-            direction: out ? 'out' : 'in',
-            kind: 'audio',
-            detail: missed ? 'Пропущенный'
-              : (dur > 0 ? fmtDur(dur)
-                : (out ? 'Исходящий' : 'Входящий'))
-          });
-        });
-      }
-      merged.sort((a, b) => {
-        const ta = a.at ? new Date(a.at).getTime() : 0;
-        const tb = b.at ? new Date(b.at).getTime() : 0;
-        return tb - ta;
-      });
-      if (!merged.length) {
-        listEl.innerHTML = `<div class="hg-empty">${ICO.phone || ''}<h3>Звонков пока нет</h3><p>Звонки Хугинн и телефонии появятся здесь</p></div>`;
-        return;
-      }
-      listEl.innerHTML = merged.slice(0, 60).map((c) => {
-        const cls = c.missed ? ' is-missed' : (c.direction === 'out' ? ' is-out' : ' is-in');
-        const dirKind = c.missed ? 'missed' : (c.direction === 'out' ? 'out' : 'in');
-        return `<button type="button" class="hg-call-row ph-ios-row${cls}" data-cid="${c.chatId || ''}" data-src="${c.source}">
-          <span class="hg-call-dir is-${dirKind}">${CALL_DIR_ICO[dirKind]}</span>
-          <div class="ph-ios-av-wrap">
-            <div class="ph-ios-av" aria-hidden="true">${callAvatarInner(c.peer)}</div>
-          </div>
-          <div class="hg-call-meta ph-dp-row-main">
-            <div class="hg-call-name ph-dp-row-name">${esc(c.peer)}</div>
-            <div class="hg-call-sub ph-dp-row-meta">${esc(c.detail)}</div>
-          </div>
-          <div class="ph-ios-right">
-            <span class="ph-ios-when">${esc(fmtWhen(c.at))}</span>
-          </div>
-        </button>`;
-      }).join('');
-      listEl.querySelectorAll('.hg-call-row').forEach((el) => {
-        el.onclick = () => {
-          const cid = Number(el.getAttribute('data-cid'));
-          if (cid > 0) { state.tab = 'huginn'; state.mobileNav = 'chats'; openChat(cid); }
-        };
-      });
-    }).catch((e) => {
-      listEl.innerHTML = `<div class="hg-empty"><div class="hg-empty-s">${esc(e.message || 'Не удалось загрузить')}</div></div>`;
-    });
-  }
+  // Единая вкладка «Звонки» рендерится phone_ui.js (журнал + панель оператора) —
+  // см. ветку state.tab === 'calls' || 'phone' в renderPanel. Отдельного дубля нет.
 
   function renderSettingsPanel(panel) {
     const meLocal = (global.AsgardAuth && AsgardAuth.user) || JSON.parse(localStorage.getItem('asgard_user') || '{}');
@@ -5308,6 +5135,18 @@
     }
   }
 
+  /** Чаты: закреплённые сверху, затем по времени последнего сообщения (TG-порядок). */
+  function sortChatsByActivity() {
+    state.chats.sort((a, b) => {
+      const pa = (a.is_pinned || a.pinned_at) ? 1 : 0;
+      const pb = (b.is_pinned || b.pinned_at) ? 1 : 0;
+      if (pa !== pb) return pb - pa;
+      const ta = a.last_message_at ? new Date(a.last_message_at).getTime() : 0;
+      const tb = b.last_message_at ? new Date(b.last_message_at).getTime() : 0;
+      return tb - ta;
+    });
+  }
+
   function ingestMessage(msg, chatId) {
     if (!msg || msg.id == null) return false;
     const mid = Number(msg.id);
@@ -5316,9 +5155,22 @@
     const chat = state.chats.find((c) => Number(c.id) === cid);
     if (chat) {
       chat.last_message = humanizeDisplayText(msg.message || '', msg);
-      chat.last_message_at = msg.created_at;
+      chat.last_message_at = msg.created_at || new Date().toISOString();
+      chat.last_message_type = msg.message_type || chat.last_message_type;
+      if (msg.user_id != null) chat.last_message_user_id = msg.user_id;
       if (cid !== Number(state.chatId)) {
         chat.unread_count = (Number(chat.unread_count) || 0) + 1;
+      }
+      // Поднять чат наверх и обновить бейдж — даже если док свёрнут/на другой вкладке.
+      sortChatsByActivity();
+    }
+    // Бейдж рейла/иконки обновляем ВСЕГДА (не зависит от смонтированного списка).
+    syncRailBadge();
+    if (cid !== Number(state.chatId)) {
+      // Список виден — перерисуем; иначе достаточно бейджа + сортировки в state.
+      const listBox = root && root.querySelector('#hgList');
+      if (listBox) {
+        renderChatList(root.querySelector('#hgSearch') && root.querySelector('#hgSearch').value);
       }
     }
     if (cid === Number(state.chatId) && !state.knownMsgIds.has(mid)) {

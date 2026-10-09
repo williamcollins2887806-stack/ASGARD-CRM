@@ -1639,28 +1639,29 @@ html[data-theme="light"] .hg-bubble {
 }
 .hg-voice {
   display: grid;
-  grid-template-columns: 46px minmax(0, 1fr) auto;
+  grid-template-columns: 44px minmax(0, 1fr) auto;
   grid-template-rows: 1fr auto;
-  column-gap: 12px;
-  row-gap: 2px;
+  column-gap: 10px;
+  row-gap: 3px;
   align-items: center;
-  min-width: 220px;
-  min-height: 56px;
+  min-width: 216px;
+  min-height: 54px;
   width: min(300px, 78vw);
+  padding: 1px 0;
 }
 .hg-voice-play {
   grid-row: 1 / span 2;
   grid-column: 1;
-  width: 46px;
-  height: 46px;
-  min-width: 46px;
-  min-height: 46px;
-  max-width: 46px;
-  max-height: 46px;
+  width: 44px;
+  height: 44px;
+  min-width: 44px;
+  min-height: 44px;
+  max-width: 44px;
+  max-height: 44px;
   aspect-ratio: 1 / 1;
   padding: 0;
   border: 0;
-  border-radius: 999px !important;
+  border-radius: 50% !important;
   background: #fff;
   color: var(--blue-l, #5B8DEF);
   display: inline-flex;
@@ -1673,7 +1674,9 @@ html[data-theme="light"] .hg-bubble {
   flex: none;
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12);
   overflow: hidden;
+  transition: transform 120ms var(--hg-ease-ui, ease), filter 120ms var(--hg-ease-ui, ease);
 }
+.hg-voice-play:active { transform: scale(0.94); }
 .hg-voice-play svg {
   width: 18px; height: 18px;
   fill: currentColor;
@@ -1696,13 +1699,16 @@ html[data-theme="light"] .hg-bubble {
   height: 28px;
   min-width: 0;
   width: 100%;
+  cursor: pointer;
 }
 .hg-voice-wave i {
   width: 2px;
-  border-radius: 1px;
-  background: color-mix(in srgb, var(--t1, #fff) 45%, transparent);
+  min-height: 3px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--t1, #fff) 42%, transparent);
   display: block;
   flex: 0 0 2px;
+  transition: background 90ms linear;
 }
 .hg-bubble.me.voice {
   background: color-mix(in srgb, var(--blue-l, #5B8DEF) 78%, transparent) !important;
@@ -1722,16 +1728,17 @@ html[data-theme="light"] .hg-bubble {
 .hg-voice-dur {
   grid-column: 2;
   grid-row: 2;
-  font: 500 11.5px/1 var(--hg-font);
-  color: color-mix(in srgb, var(--t1, #fff) 62%, transparent);
+  font: 400 11px/1 var(--hg-font);
+  color: color-mix(in srgb, var(--t1, #fff) 58%, transparent);
   justify-self: start;
   font-variant-numeric: tabular-nums;
+  letter-spacing: 0.01em;
 }
 .hg-voice-time {
   grid-column: 3;
   grid-row: 2;
-  font: 400 11.5px/1 var(--hg-font);
-  color: color-mix(in srgb, var(--t1, #fff) 45%, transparent);
+  font: 400 11px/1 var(--hg-font);
+  color: color-mix(in srgb, var(--t1, #fff) 46%, transparent);
   justify-self: end;
   font-variant-numeric: tabular-nums;
 }
@@ -1740,15 +1747,17 @@ html[data-theme="light"] .hg-bubble {
   grid-column: 3;
   grid-row: 1;
   flex: none;
-  width: 34px; height: 34px; border-radius: 50%;
+  align-self: center;
+  width: 32px; height: 32px; border-radius: 50%;
   border: 0; cursor: pointer;
-  background: color-mix(in srgb, var(--t1, #fff) 14%, transparent);
+  background: color-mix(in srgb, var(--t1, #fff) 13%, transparent);
   color: color-mix(in srgb, var(--t1, #fff) 88%, transparent);
-  font: 700 14px/1 var(--hg-font);
+  font: 700 13px/1 var(--hg-font);
   letter-spacing: -0.5px;
   display: inline-flex; align-items: center; justify-content: center;
-  transition: background 120ms ease;
+  transition: background 120ms ease, transform 120ms ease;
 }
+.hg-voice-aa:active { transform: scale(0.92); }
 .hg-voice-aa:hover { background: color-mix(in srgb, var(--t1, #fff) 22%, transparent); }
 .hg-voice-aa.is-active { background: color-mix(in srgb, var(--blue-l, #4A90D9) 40%, transparent); }
 .hg-bubble.me .hg-voice-aa {
@@ -3908,53 +3917,8 @@ html[data-theme="light"] .hg-nav-search {
   padding: 6px 12px;
 }
 .hg-contact-row.is-invite:hover { background: var(--hg-hover); }
-/* Journal звонков — вид как в ТГ: слева иконка трубки, затем аватар,
-   затем имя/номер и время. Образец панели «Телефон» (#phPanel). */
-.hg-calls { overflow-y: auto; height: 100%; padding: 6px 0 16px; }
-.hg-call-row {
-  display: flex; align-items: center; gap: 10px; width: 100%;
-  padding: 7px 16px; border: 0; border-bottom: 0.5px solid var(--hg-line, #38383A);
-  background: transparent; color: inherit;
-  text-align: left; cursor: pointer; box-sizing: border-box;
-  transition: background 120ms var(--hg-ease-ui, ease);
-}
-.hg-call-row:hover { background: var(--hg-hover); }
-.hg-call-row:active { background: var(--hg-active-row, var(--hg-hover)); }
-
-/* Иконка-трубка направления (как в ТГ) */
-.hg-call-dir {
-  flex: 0 0 auto; width: 20px; height: 20px;
-  display: inline-flex; align-items: center; justify-content: center;
-  color: var(--hg-muted, #8E8E93);
-}
-.hg-call-dir svg { width: 18px; height: 18px; display: block; }
-.hg-call-dir.is-out { color: #34C759; }
-.hg-call-dir.is-missed { color: #FF453A; }
-.hg-call-dir.is-in { color: #34C759; }
-
-.hg-calls .ph-ios-av-wrap { position: relative; width: 40px; height: 40px; flex: 0 0 auto; }
-.hg-calls .ph-ios-av {
-  width: 40px; height: 40px; border-radius: 50%;
-  background: var(--hg-elev, #3A3A3C); color: var(--hg-muted, #8E8E93);
-  display: inline-flex; align-items: center; justify-content: center;
-  font: 600 15px/1 var(--hg-font, system-ui); letter-spacing: 0.01em;
-}
-.hg-calls .ph-ios-av svg { width: 20px; height: 20px; display: block; }
-.hg-calls .ph-ios-right {
-  display: flex; flex-direction: column; align-items: flex-end; gap: 4px;
-  flex: 0 0 auto;
-}
-.hg-calls .ph-ios-when { font-size: 14px; color: var(--hg-muted, #8E8E93); }
-.hg-call-meta { min-width: 0; flex: 1; }
-.hg-call-name {
-  font: 400 16px/1.25 var(--hg-font); color: var(--hg-text);
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-}
-.hg-call-sub {
-  font: 400 13px/1.3 var(--hg-font); color: var(--hg-muted);
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-}
-.hg-call-row.is-missed .hg-call-name { color: var(--hg-danger); }
+/* Journal звонков (единая вкладка «Звонки») рендерит phone_ui.js своими
+   .ph-ios-* классами — отдельный дубль .hg-calls/.hg-call-* удалён. */
 .hg-alpha-index {
   position: absolute;
   right: 2px;
@@ -5329,9 +5293,9 @@ body:has(.hg-ai-sheet) .hg-nav-search {
 
 /* -- Mobile touch hardening (F3: no zoom, native-like scroll) -- */
 @media (max-width: 768px) {
-  .hg-chrome, .hg-panel, .hg-list, .hg-msgs, .hg-contacts, .hg-calls { touch-action: pan-y; }
+  .hg-chrome, .hg-panel, .hg-list, .hg-msgs, .hg-contacts { touch-action: pan-y; }
   .hg-chrome, .hg-panel, .hg-list, .hg-msgs { overscroll-behavior: contain; }
-  .hg-thread-head, .hg-composer, .hg-bottom-nav, .hg-chat-row, .hg-contact-row, .hg-call-row {
+  .hg-thread-head, .hg-composer, .hg-bottom-nav, .hg-chat-row, .hg-contact-row {
     -webkit-touch-callout: none;
     user-select: none;
   }
