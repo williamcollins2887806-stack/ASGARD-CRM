@@ -52,6 +52,7 @@
     keypad: SVG_FILL('<circle cx="5" cy="5" r="2"/><circle cx="12" cy="5" r="2"/><circle cx="19" cy="5" r="2"/><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/><circle cx="5" cy="19" r="2"/><circle cx="12" cy="19" r="2"/><circle cx="19" cy="19" r="2"/>'),
     transfer: SVG_FILL('<path d="M8 4v3H3v3h5v3l5-4.5L8 4zm8 16v-3h5v-3h-5v-3l-5 4.5L16 20z"/>'),
     hangup: SVG_FILL('<path d="M6.62 10.79c1.44 2.83 3.76 5.14 6.59 6.59l2.2-2.2c.27-.27.67-.36 1.02-.24 1.12.37 2.33.57 3.57.57.55 0 1 .45 1 1V20c0 .55-.45 1-1 1C10.61 21 3 13.39 3 4c0-.55.45-1 1-1h3.5c.55 0 1 .45 1 1 0 1.25.2 2.45.57 3.57.11.35.03.74-.25 1.02l-2.2 2.2z"/>'),
+    call: SVG_FILL('<path d="M20 15.5c-1.25 0-2.45-.2-3.57-.57-.35-.11-.74-.03-1.02.25l-2.2 2.2a15.05 15.05 0 0 1-6.59-6.59l2.2-2.2c.28-.28.36-.67.25-1.02A11.36 11.36 0 0 1 8.5 4c0-.55-.45-1-1-1H4a1 1 0 0 0-1 1c0 9.39 7.61 17 17 17a1 1 0 0 0 1-1v-3.5c0-.55-.45-1-1-1z"/>'),
     browser: SVG_FILL('<path d="M3 4h18a1 1 0 0 1 1 1v11a1 1 0 0 1-1 1h-7v2h3v2H8v-2h3v-2H3a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1zm1 2v8h16V6H4z"/>'),
     mobile: SVG_FILL('<path d="M8 1h8a2 2 0 0 1 2 2v18a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V3a2 2 0 0 1 2-2zm4 19a1.25 1.25 0 1 0 0-2.5A1.25 1.25 0 0 0 12 20z"/>'),
     micCheck: SVG_FILL('<path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm5.3-3c0 3-2.54 5.1-5.3 5.1S6.7 14 6.7 11H5c0 3.41 2.72 6.23 6 6.72V21h2v-3.28c3.28-.49 6-3.31 6-6.72h-1.7z"/>'),
@@ -726,12 +727,13 @@
       '<div class="ph-ios-av-wrap">' + dirIco +
         '<div class="ph-ios-av" aria-hidden="true">' + esc(ini) + '</div>' +
       '</div>' +
-      '<div class="ph-dp-row-main">' +
+      '<div class="ph-dp-row-main" data-ph-call="' + esc(num || '') + '" title="Позвонить">' +
         '<div class="ph-dp-row-name">' + esc(name) + '</div>' +
         '<div class="ph-dp-row-meta">' + esc(dirLabel) + '</div>' +
       '</div>' +
       '<div class="ph-ios-right">' +
         '<span class="ph-ios-when">' + esc(when) + '</span>' +
+        (num ? '<button type="button" class="ph-ios-call" data-ph-call="' + esc(num) + '" aria-label="Позвонить" title="Позвонить">' + (ICON && ICON.call ? ICON.call : '📞') + '</button>' : '') +
         '<button type="button" class="ph-ios-info" data-ph-open="' + (missed ? 'missed' : 'log') + '" data-id="' + esc(it.id) + '" aria-label="Инфо">ⓘ</button>' +
       '</div>' +
     '</div>';
@@ -999,7 +1001,10 @@
     var callBtn = t.closest('[data-ph-call]');
     if (callBtn) {
       e.stopPropagation();
-      if (P) P.outbound(callBtn.getAttribute('data-ph-call')).catch(function (err) { toast('Телефон', err.message, 'err'); });
+      var num = callBtn.getAttribute('data-ph-call');
+      var rowEl = t.closest('.ph-dp-row');
+      var nameEl = rowEl && rowEl.querySelector('.ph-dp-row-name');
+      openNumberActions(num, nameEl ? nameEl.textContent : '');
       return;
     }
     var b = t.closest('[data-ph-dp]');
@@ -1112,6 +1117,48 @@
     if (D.getTab() !== 'phone') return;
     if (prev.prevTab && prev.prevTab !== 'phone') D.openTab(prev.prevTab);
     if (prev.wasCollapsed) D.collapse();
+  }
+
+  /**
+   * Клик по номеру в журнале: предложить действие, а не молча открывать журнал.
+   * Позвонить (через Mango), набрать номер, скопировать.
+   */
+  function openNumberActions(num, name) {
+    var digits = String(num || '').replace(/[^\d+]/g, '');
+    if (!digits) return;
+    if (!window.AsgardUI || !AsgardUI.showModal) {
+      var P0 = window.AsgardPhone;
+      if (P0) P0.outbound(digits).catch(function (e) { toast('Телефон', e.message, 'err'); });
+      return;
+    }
+    var html =
+      '<div class="ph-num-head">' + esc(name || fmtPhone(digits)) + '<span>' + esc(fmtPhone(digits)) + '</span></div>' +
+      '<div class="ph-num-actions">' +
+        '<button type="button" class="btn primary" id="phNumCall">Позвонить</button>' +
+        '<button type="button" class="btn ghost" id="phNumDial">Набрать вручную</button>' +
+        '<button type="button" class="btn ghost" id="phNumCopy">Скопировать номер</button>' +
+      '</div>';
+    var overlay = AsgardUI.showModal({ title: 'Номер', html: html, wide: false });
+    var modalEl = overlay.querySelector('.cr-m');
+    if (modalEl) modalEl.classList.add('ph-modal');
+    var body = overlay.querySelector('#modalBody') || overlay;
+    body.querySelector('#phNumCall').onclick = function () {
+      AsgardUI.closeModal && AsgardUI.closeModal();
+      var P = window.AsgardPhone;
+      if (!P) return;
+      P.outbound(digits).catch(function (e) { toast('Телефон', e.message, 'err'); });
+    };
+    body.querySelector('#phNumDial').onclick = function () {
+      AsgardUI.closeModal && AsgardUI.closeModal();
+      openDialPad(digits);
+    };
+    body.querySelector('#phNumCopy').onclick = function () {
+      try {
+        if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(digits);
+        toast('Телефон', 'Номер скопирован', 'ok');
+      } catch (_) { toast('Телефон', digits, 'ok'); }
+      AsgardUI.closeModal && AsgardUI.closeModal();
+    };
   }
 
   function openDialPad(prefill) {

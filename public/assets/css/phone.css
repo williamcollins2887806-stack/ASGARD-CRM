@@ -1551,6 +1551,22 @@ body.theme-dark .ph-seg__btn.is-active {
   border: 0; background: transparent; color: #0A84FF;
   font-size: 18px; cursor: pointer; line-height: 1; padding: 0;
 }
+.ph-ios-call {
+  border: 0; background: transparent; color: #34C759;
+  width: 28px; height: 28px; cursor: pointer; padding: 0;
+  display: inline-flex; align-items: center; justify-content: center;
+  border-radius: 50%;
+}
+.ph-ios-call svg { width: 20px; height: 20px; fill: currentColor; }
+.ph-ios-call:hover { background: rgba(52, 199, 89, .16); }
+.ph-dp-row-main[data-ph-call] { cursor: pointer; }
+.ph-num-head {
+  display: flex; flex-direction: column; gap: 2px;
+  font: 700 15px/1.3 var(--ph-font, inherit); margin-bottom: 12px;
+}
+.ph-num-head span { font-weight: 500; font-size: 13px; color: var(--t2, #8b95a7); }
+.ph-num-actions { display: grid; gap: 8px; }
+.ph-num-actions .btn { width: 100%; }
 .ph-dp--ios .ph-dp-line, .ph-dp--ios .ph-dp-dial {
   margin: 8px 12px;
 }
