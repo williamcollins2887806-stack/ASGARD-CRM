@@ -859,7 +859,15 @@ async function start() {
           if (!msg || msg.Event !== 'Hangup') return;
           const uid = msg.Uniqueid || msg.Linkedid;
           if (!uid || !db) return;
-          finalizeOnHangup(db, { pbxUid: uid, callId: 'pbx_' + uid }).catch((e) => {
+          // Оператора берём из имени канала WebRTC-плеча (PJSIP/u3474-…), иначе
+          // исходящий из браузера не привязан к сотруднику (инцидент 09.10.2026).
+          const chName = String(msg.Channel || '');
+          const mop = /PJSIP\/(u\d+)-/.exec(chName);
+          finalizeOnHangup(db, {
+            pbxUid: uid,
+            callId: 'pbx_' + uid,
+            operator: mop ? mop[1] : null,
+          }).catch((e) => {
             console.warn('[asgard-pbx] hangup finalize:', e.message);
           });
         });

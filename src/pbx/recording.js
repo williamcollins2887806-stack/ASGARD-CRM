@@ -78,6 +78,17 @@ async function finalizeRecording(pool, opts) {
 
   const relUrl = `/recordings/${yyyy}/${mm}/${base}`;
   const pbxUid = opts.pbxUid || opts.pbx_uid || null;
+  // Атрибуция звонка оператору: dialplan шлёт endpoint вызывающего (u<user_id>).
+  // Без неё исходящий из браузера не привязан к сотруднику и не виден ему в
+  // журнале (user_id в call_history оставался NULL — инцидент 09.10.2026).
+  let opUserId = null;
+  const opRaw = String(opts.operator || opts.operatorUser || '').trim();
+  const m = /^u(\d+)$/.exec(opRaw);
+  if (m) opUserId = parseInt(m[1], 10);
+  const direction = (opts.direction === 'inbound') ? 'inbound'
+    : (opts.direction === 'outbound' ? 'outbound' : null);
+  const callType = opts.callType || opts.call_type || direction || null;
+  const outNumber = opts.number ? String(opts.number).replace(/[^\d+]/g, '') || null : null;
   const payload = {
     call_id: opts.callId || opts.call_id || (pbxUid ? 'pbx_' + pbxUid : null),
     pbx_uid: pbxUid,
@@ -90,9 +101,19 @@ async function finalizeRecording(pool, opts) {
     try {
       if (pbxUid) {
         const upd = await client.query(
-          `UPDATE call_history SET recording_url = $1, record_path = $2, updated_at = NOW()
+          `UPDATE call_history SET
+             recording_url = $1, record_path = $2,
+             user_id = COALESCE(user_id, $4),
+             answered_by = COALESCE(answered_by, $4),
+             direction = COALESCE($5, direction),
+             call_type = COALESCE($6, call_type),
+             from_number = COALESCE(from_number, $7),
+             to_number = COALESCE(to_number, $8),
+             updated_at = NOW()
            WHERE pbx_uid = $3`,
-          [relUrl, destPath, pbxUid]
+          [relUrl, destPath, pbxUid, opUserId, direction, callType,
+            direction === 'outbound' ? null : outNumber,
+            direction === 'outbound' ? outNumber : null]
         );
         // Исходящие из браузера (from-internal) не создают строку заранее —
         // журнал должен увидеть звонок, поэтому заводим запись здесь.
@@ -100,14 +121,21 @@ async function finalizeRecording(pool, opts) {
           await client.query(
             `INSERT INTO call_history (
                call_id, pbx_uid, source, direction, call_type, status, outcome,
-               recording_url, record_path, started_at, timestamp, created_at, updated_at
-             ) VALUES ($1, $2, 'pbx', 'outbound', 'outbound', 'completed', 'recorded',
-               $3, $4, NOW(), NOW(), NOW(), NOW())
+               recording_url, record_path, user_id, answered_by,
+               from_number, to_number, started_at, timestamp, created_at, updated_at
+             ) VALUES ($1, $2, 'pbx', $5, $6, 'completed', 'recorded',
+               $3, $4, $7, $7,
+               $8, $9, NOW(), NOW(), NOW(), NOW())
              ON CONFLICT (call_id) DO UPDATE SET
                recording_url = EXCLUDED.recording_url,
                record_path = EXCLUDED.record_path,
+               user_id = COALESCE(call_history.user_id, EXCLUDED.user_id),
+               answered_by = COALESCE(call_history.answered_by, EXCLUDED.answered_by),
                updated_at = NOW()`,
-            ['pbx_' + pbxUid, String(pbxUid), relUrl, destPath]
+            ['pbx_' + pbxUid, String(pbxUid), relUrl, destPath,
+              direction || 'outbound', callType || 'outbound', opUserId,
+              direction === 'outbound' ? null : outNumber,
+              direction === 'outbound' ? outNumber : null]
           );
         }
       }

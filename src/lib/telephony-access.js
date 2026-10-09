@@ -1,10 +1,19 @@
 'use strict';
 
 /** Roles that see all telephony calls / reports. */
-const TEL_FULL_VIEW_ROLES = ['ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV', 'HEAD_TO'];
+const TEL_FULL_VIEW_ROLES = ['ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV', 'HEAD_TO', 'HEAD_PM', 'PM'];
 const TEL_ADMIN_ROLES = ['ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV'];
 const TEL_SETTINGS_ROLES = ['ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV', 'HEAD_TO'];
 
+/**
+ * Роли, видящие журнал звонков всей компании.
+ *
+ * PM/HEAD_PM включены осознанно: РП звонит клиентам из браузера, и исходящее
+ * плечо WebRTC (PJSIP/u<id>) не всегда удаётся связать со строкой call_history.
+ * Если РП видел только «свои» строки, его собственные звонки из браузера
+ * пропадали из журнала (жалоба 09.10.2026: «нет звонков, когда я звонил»).
+ * Атрибуция по оператору всё равно пишется — это широта чтения, не запись.
+ */
 function hasFullCallView(user) {
   return !!(user && TEL_FULL_VIEW_ROLES.includes(user.role));
 }

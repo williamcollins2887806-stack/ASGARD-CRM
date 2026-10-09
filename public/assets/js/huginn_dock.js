@@ -3652,14 +3652,21 @@
       }
       listEl.innerHTML = merged.slice(0, 60).map((c) => {
         const cls = c.missed ? ' is-missed' : '';
-        const arrow = c.direction === 'out' ? '↗' : '↙';
-        const kindIco = c.kind === 'video' ? '🎥' : '📞';
-        const badge = c.source === 'pbx' ? 'Телефония' : 'Хугинн';
-        return `<button type="button" class="hg-call-row${cls}" data-cid="${c.chatId || ''}" data-src="${c.source}">
-          <div class="hg-call-ico">${kindIco}</div>
-          <div class="hg-call-meta">
-            <div class="hg-call-name">${esc(c.peer)}<span class="hg-call-src hg-call-src--${c.source}">${badge}</span></div>
-            <div class="hg-call-sub"><span class="hg-call-arrow">${arrow}</span>${esc(c.detail)} · ${esc(fmtWhen(c.at))}</div>
+        const dirIco = c.missed
+          ? '<span class="ph-ios-dir is-missed" aria-hidden="true">↙</span>'
+          : (c.direction === 'out'
+            ? '<span class="ph-ios-dir is-out" aria-hidden="true">↗</span>'
+            : '<span class="ph-ios-dir is-in" aria-hidden="true">↙</span>');
+        return `<button type="button" class="hg-call-row ph-ios-row${cls}" data-cid="${c.chatId || ''}" data-src="${c.source}">
+          <div class="ph-ios-av-wrap">${dirIco}
+            <div class="ph-ios-av" aria-hidden="true">${esc(initials(c.peer))}</div>
+          </div>
+          <div class="hg-call-meta ph-dp-row-main">
+            <div class="hg-call-name ph-dp-row-name">${esc(c.peer)}</div>
+            <div class="hg-call-sub ph-dp-row-meta">${esc(c.detail)}</div>
+          </div>
+          <div class="ph-ios-right">
+            <span class="ph-ios-when">${esc(fmtWhen(c.at))}</span>
           </div>
         </button>`;
       }).join('');

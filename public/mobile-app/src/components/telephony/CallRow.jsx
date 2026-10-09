@@ -132,16 +132,18 @@ export function CallRow({ row, to }) {
           </span>
         </div>
         <div className="flex-1 min-w-0">
-          <div className="truncate" style={{ fontSize: 16, fontWeight: 800, letterSpacing: '-0.02em', color: 'var(--text-primary)' }}>
+          <div className="truncate" style={{ fontSize: 16, fontWeight: 400, letterSpacing: '-0.01em', color: 'var(--text-primary)' }}>
             {title}
           </div>
-          <div className="truncate mt-0.5" style={{ fontSize: 12, fontWeight: 500, color: 'var(--text-secondary)', opacity: 0.7 }}>
-            {formatCallTime(row.created_at)}
-            {row.ai_summary ? ' · резюме' : ''}
+          <div className="truncate mt-0.5" style={{ fontSize: 13, fontWeight: 400, color: 'var(--text-secondary)' }}>
+            {missed ? 'Пропущенный' : outbound ? 'Исходящий' : 'Входящий'}
+            {Number(row.duration_seconds || row.duration) > 0
+              ? ` · ${formatDuration(row.duration_seconds || row.duration)}`
+              : ''}
           </div>
         </div>
-        <span style={{ fontSize: 13, fontWeight: 600, fontVariantNumeric: 'tabular-nums', color: 'var(--text-secondary)' }}>
-          {formatDuration(row.duration_seconds || row.duration)}
+        <span style={{ fontSize: 14, fontWeight: 400, fontVariantNumeric: 'tabular-nums', color: 'var(--text-secondary)' }}>
+          {formatCallTime(row.created_at)}
         </span>
       </button>
     </div>
