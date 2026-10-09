@@ -2355,3 +2355,20 @@ html[data-theme="light"] .dh-vat-chip.is-on {
 .dh-cra-host .cr-ac--open .cr-ac__input {
   border-color: color-mix(in srgb, var(--gold, #d4a017) 50%, var(--brd, #334155));
 }
+
+/* Подсказка контрагента: наш контрагент (уже есть в CRM) подсвечен */
+.dh-cp-in { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.dh-cp-badge {
+  flex: 0 0 auto; font-size: 10px; font-weight: 800; letter-spacing: .04em;
+  padding: 1px 6px; border-radius: 999px;
+  color: var(--ok-t, #4ade80);
+  background: color-mix(in srgb, var(--ok, #22c55e) 18%, transparent);
+  border: 1px solid color-mix(in srgb, var(--ok, #22c55e) 38%, transparent);
+}
+.dh-cp-cnt { flex: 0 0 auto; font-size: 11px; color: var(--t3, #94a3b8); font-variant-numeric: tabular-nums; }
+.cr-ac__option:has(.dh-cp-badge) { border-left: 3px solid color-mix(in srgb, var(--ok, #22c55e) 55%, transparent); }
+html[data-theme="light"] .dh-cp-badge { color: #24503B; background: rgba(45,106,79,.12); border-color: rgba(45,106,79,.32); }
+
+/* Кнопки быстрых действий: снятие СФ и ручная отметка оплаты */
+.dh-qa__undo { color: var(--warn-t, #fbbf24); }
+.dh-qa__paid { color: var(--ok-t, #4ade80); font-weight: 800; }

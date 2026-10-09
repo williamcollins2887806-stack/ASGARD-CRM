@@ -140,8 +140,7 @@ window.AsgardDocHubPage = (function () {
   }
   function workLabel(w) {
     if (!w) return '';
-    const t = w.work_title || w.title || w.name || w.object_name || '';
-    return '#' + w.id + (t ? (' ' + t) : '');
+    return w.work_title || w.title || w.name || w.object_name || ('Работа #' + w.id);
   }
   function userLabel(u) {
     if (!u) return '';
@@ -176,6 +175,22 @@ window.AsgardDocHubPage = (function () {
    */
   function normDigits(s) { return String(s || '').replace(/\D/g, ''); }
 
+  /** Разметка строки подсказки: наш контрагент подсвечен бейджем «В CRM». */
+  function dhCounterpartyItemHtml(item) {
+    const name = esc(item.label || item.value || '');
+    const sub = esc(item.sublabel || '');
+    if (item._crm) {
+      const bits = [];
+      if (item.docs_count) bits.push(item.docs_count + ' сч.');
+      if (item.contracts_count) bits.push(item.contracts_count + ' дог.');
+      return '<div class="cr-ac__option-label dh-cp-in"><span class="dh-cp-badge">В CRM</span>' + name +
+        (bits.length ? '<span class="dh-cp-cnt">' + esc(bits.join(' · ')) + '</span>' : '') + '</div>' +
+        (sub ? '<div class="cr-ac__option-sublabel">' + sub + '</div>' : '');
+    }
+    return '<div class="cr-ac__option-label">' + name + '</div>' +
+      (sub ? '<div class="cr-ac__option-sublabel">' + sub + '</div>' : '');
+  }
+
   async function dhCustomerFetch(path) {
     const r = await fetch(path, { headers: authHeaders(false), cache: 'no-store' });
     if (!r.ok) return null;
@@ -188,23 +203,45 @@ window.AsgardDocHubPage = (function () {
     const isDigits = /^\d+$/.test(query);
     const out = [];
 
-    // 1) Наша база контрагентов
+    // 1) Наши контрагенты (поставщики, с которыми уже работаем).
+    // Приоритет: у кого больше счетов в реестре — тот и первый в списке.
     try {
-      const j = await dhCustomerFetch('/api/customers?search=' + encodeURIComponent(query) + '&limit=15');
-      for (const c of (j && j.customers) || []) {
-        const name = c.name || c.full_name || '';
+      const j = await dhCustomerFetch('/api/customers/registry-suggest?q=' + encodeURIComponent(query) + '&limit=12');
+      for (const c of (j && j.suppliers) || []) {
+        const name = c.name || '';
         if (!name) continue;
-        const bits = ['в базе'];
-        if (c.inn) bits.unshift('ИНН ' + c.inn);
+        const bits = [];
+        if (c.inn) bits.push('ИНН ' + c.inn);
         if (c.phone) bits.push(c.phone);
+        if (c.email) bits.push(c.email);
         out.push({
           value: name, label: name,
           sublabel: bits.join(' · '),
           inn: c.inn || '', email: c.email || '', phone: c.phone || '',
-          _source: 'local'
+          docs_count: c.docs_count || 0, contracts_count: c.contracts_count || 0,
+          _crm: true, _source: 'local'
         });
       }
     } catch (_) { /* база недоступна — не блокируем */ }
+
+    // 1b) Заказчики из customers (у них контакты заполнены чаще)
+    try {
+      const j2 = await dhCustomerFetch('/api/customers?search=' + encodeURIComponent(query) + '&limit=8');
+      for (const c of (j2 && j2.customers) || []) {
+        const name = c.name || c.full_name || '';
+        if (!name) continue;
+        if (c.inn && out.some((x) => normDigits(x.inn) === normDigits(c.inn))) continue;
+        const bits = [];
+        if (c.inn) bits.push('ИНН ' + c.inn);
+        if (c.phone) bits.push(c.phone);
+        bits.push('заказчик');
+        out.push({
+          value: name, label: name, sublabel: bits.join(' · '),
+          inn: c.inn || '', email: c.email || '', phone: c.phone || '',
+          _crm: true, _source: 'customer'
+        });
+      }
+    } catch (_) { /* ignore */ }
 
     // 2) DaData / ЕГРЮЛ
     try {
@@ -224,7 +261,7 @@ window.AsgardDocHubPage = (function () {
           const name = (s && s.name) || '';
           if (!name) continue;
           // не дублируем то, что уже есть в нашей базе тем же ИНН
-          if (s.inn && out.some((x) => x._source === 'local' && normDigits(x.inn) === normDigits(s.inn))) continue;
+          if (s.inn && out.some((x) => normDigits(x.inn) === normDigits(s.inn))) continue;
           out.push({
             value: name, label: name,
             sublabel: 'ИНН ' + (s.inn || '—') + ' · ЕГРЮЛ',
@@ -234,6 +271,8 @@ window.AsgardDocHubPage = (function () {
       }
     } catch (_) { /* DaData недоступна — остаются локальные */ }
 
+    // Наши контрагенты — всегда выше ЕГРЮЛ
+    out.sort((a, b) => (b._crm ? 1 : 0) - (a._crm ? 1 : 0) || (b.docs_count || 0) - (a.docs_count || 0));
     return out;
   }
 
@@ -246,8 +285,8 @@ window.AsgardDocHubPage = (function () {
     opts = opts || {};
     const name = item.value || item.label || '';
     const inn = normDigits(item.inn) || '';
-    const email = item.email || '';
-    const phone = item.phone || '';
+    let email = item.email || '';
+    let phone = item.phone || '';
 
     if (scope === 'wiz') {
       const form = document.getElementById('dhWizForm');
@@ -265,6 +304,28 @@ window.AsgardDocHubPage = (function () {
       set('#drCpInn', inn);
       set('#drCpEmail', email);
       set('#drCpPhone', phone);
+    }
+
+    // Телефон/почта могли не прийти в подсказке — догружаем из карточки/документов
+    if (inn && (!phone || !email)) {
+      dhCustomerFetch('/api/customers/registry-contacts/' + inn).then((c) => {
+        if (!c) return;
+        const ph = phone || c.phone || '';
+        const em = email || c.email || '';
+        if (scope === 'wiz') {
+          const form = document.getElementById('dhWizForm');
+          const d = state.wizDraft;
+          if (d) { if (ph) d.counterparty_phone = ph; if (em) d.counterparty_email = em; }
+          const set = (sel, val) => { const el = form && form.querySelector(sel); if (el && val) el.value = val; };
+          set('#dhWizEmail', em);
+          set('#dhWizPhone', ph);
+        } else {
+          const d = document.getElementById('dhDrawer');
+          const set = (sel, val) => { const el = d && d.querySelector(sel); if (el && val) el.value = val; };
+          set('#drCpEmail', em);
+          set('#drCpPhone', ph);
+        }
+      }).catch(() => {});
     }
 
     // Новый контрагент из ЕГРЮЛ — предложить создать карточку
@@ -752,7 +813,7 @@ window.AsgardDocHubPage = (function () {
         <td>
           <div class="dh-stack"><span class="a">${esc(r.counterparty_name)}</span><span class="b dh-muted">${r.inn ? ('ИНН ' + esc(r.inn)) : esc(r.counterparty_email || r.email || '—')}</span></div>
         </td>
-        <td class="dh-col-work"><div class="dh-stack"><span class="a">${esc(r.work_title || 'без объекта')}</span><span class="b">${r.work_id ? ('#' + r.work_id) : '—'}</span></div></td>
+        <td class="dh-col-work"><div class="dh-stack"><span class="a">${esc(r.work_title || 'без объекта')}</span>${r.work_number ? `<span class="b">№ ${esc(r.work_number)}</span>` : ''}</div></td>
         <td class="dh-col-contract">${contractCell(r)}</td>
         <td class="dh-col-recv">${receiveCell(r)}</td>
         <td class="dh-col-purpose">${purposeFlags(r)}</td>
@@ -763,8 +824,10 @@ window.AsgardDocHubPage = (function () {
         <td class="dh-col-sf">${closingCell(r)}</td>
         <td class="dh-actions">
           <div class="dh-qa" aria-label="Действия">
-            <button type="button" data-qa="pay" title="К оплате" ${r.pay_status === 'paid' ? 'disabled' : ''}>${ico.pay}</button>
+            <button type="button" data-qa="pay" title="В очередь оплаты (со сканом)" ${r.pay_status === 'paid' ? 'disabled' : ''}>${ico.pay}</button>
             <button type="button" data-qa="sf" title="СФ получена">${ico.sf}</button>
+            ${(Array.isArray(r.closing_json) && r.closing_json.length) ? '<button type="button" data-qa="unmark_sf" title="Снять отметку «СФ получена»" class="dh-qa__undo">↩</button>' : ''}
+            ${(canWh() && r.pay_status !== 'paid') ? '<button type="button" data-qa="mark_paid" title="Отметить оплачено без согласования" class="dh-qa__paid">₽✓</button>' : ''}
             ${canWh() ? `<button type="button" data-qa="wh" title="Склад">${ico.wh}</button>` : ''}
             <button type="button" data-qa="open" title="Карточка">${ico.open}</button>
             <button type="button" class="dh-cmt-btn${r.comment_text ? ' is-filled' : ''}" data-cmt="${r.id}" data-comment="${esc(r.comment_text || '')}" title="${r.comment_text ? esc(String(r.comment_text).slice(0, 60)) : 'Комментарий'}" aria-label="Комментарий"><svg viewBox="0 0 24 24" fill="${r.comment_text ? 'currentColor' : 'none'}" stroke="currentColor" stroke-width="1.8"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></button>
@@ -1583,6 +1646,7 @@ window.AsgardDocHubPage = (function () {
           dropdownClass: 'z-modal-ac',
           value: (state.wizDraft && state.wizDraft.counterparty_name) || '',
           fetchOptions: dhCounterpartySuggest,
+          renderItem: dhCounterpartyItemHtml,
           onSelect: (item) => {
             if (item === null) {
               // очистка поля
@@ -1767,10 +1831,21 @@ window.AsgardDocHubPage = (function () {
   }
 
   async function quick(id, action) {
-    const labels = { sf: 'СФ получена', wh: 'Шаг склада', pay: 'К оплате' };
+    const labels = {
+      sf: 'СФ получена',
+      unmark_sf: 'Снять отметку «СФ получена»',
+      wh: 'Шаг склада',
+      pay: 'Отправить в очередь оплаты',
+      mark_paid: 'Отметить оплачено (без согласования)'
+    };
+    const notes = {
+      unmark_sf: 'Закрывающий документ уберётся из карточки, статус вернётся в «ждём закрывающие».',
+      mark_paid: 'Ручная отметка для старых оплат: очередь согласования и скан счёта не требуются.'
+    };
     const row = (state.rows || []).find((r) => String(r.id) === String(id));
     const summary = row ? docSummary(row) : ('документ #' + id);
-    const ok = await confirm('Подтвердите', (labels[action] || action) + ' — ' + summary + '?');
+    const body = (labels[action] || action) + ' — ' + summary + '?' + (notes[action] ? ('\n\n' + notes[action]) : '');
+    const ok = await confirm('Подтвердите', body);
     if (!ok) return;
     try {
       const res = await api('/' + id + '/quick', { method: 'POST', body: JSON.stringify({ action }) });
@@ -2166,7 +2241,9 @@ window.AsgardDocHubPage = (function () {
             <button type="button" class="dh-btn dh-btn--ok" id="dhParseCatalog" ${row.dir !== 'in' ? 'disabled title="Только входящие"' : ''}>В каталог</button>
             <button type="button" class="dh-btn dh-btn--ghost" id="dhDrawerExpense" ${!row.work_id ? 'disabled title="Нет объекта"' : ''}>В расходы</button>
             ${canWh() ? '<button type="button" class="dh-btn dh-btn--ghost" data-qa="wh">Склад</button>' : ''}
-            <button type="button" class="dh-btn dh-btn--primary" data-qa="pay">К оплате</button>
+            ${(Array.isArray(row.closing_json) && row.closing_json.length) ? '<button type="button" class="dh-btn dh-btn--ghost" data-qa="unmark_sf" title="Убрать последний закрывающий, вернуть статус">↩ Снять СФ</button>' : ''}
+            ${(canWh() && row.pay_status !== 'paid') ? '<button type="button" class="dh-btn dh-btn--ghost" data-qa="mark_paid" title="Ручная отметка для старых оплат, без очереди и скана">₽ Отметить оплачено</button>' : ''}
+            <button type="button" class="dh-btn dh-btn--primary" data-qa="pay">В очередь оплаты</button>
           </footer>
         </div>`;
 
@@ -2306,6 +2383,7 @@ window.AsgardDocHubPage = (function () {
             dropdownClass: 'z-modal-ac',
             value: (row.counterparty_name || ''),
             fetchOptions: dhCounterpartySuggest,
+            renderItem: dhCounterpartyItemHtml,
             onSelect: (item) => {
               if (item === null) { const el = d.querySelector('#drCpName'); if (el) el.value = ''; return; }
               dhApplyCounterparty('dr', item, { askCreate: true });

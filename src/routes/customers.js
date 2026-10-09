@@ -155,6 +155,88 @@ async function routes(fastify, options) {
     }
   });
 
+  // ── Подсказки контрагента для Doc Hub: приоритет — поставщики, с которыми
+  //    уже работаем (таблица suppliers + статистика по реестру и договорам).
+  //    Возвращает: inn, name, phone/email (из карточки, иначе из документов),
+  //    docs_count (счетов в реестре), contracts_count (договоров).
+  fastify.get('/registry-suggest', { preHandler: [fastify.authenticate] }, async (request) => {
+    const q = String((request.query || {}).q || '').trim();
+    const limit = Math.min(Math.max(parseInt((request.query || {}).limit, 10) || 12, 1), 30);
+    if (q.length < 2) return { suppliers: [] };
+    const like = '%' + q.toLowerCase() + '%';
+    try {
+      const { rows } = await db.query(
+        `SELECT s.id, s.name, s.inn, s.kpp, s.ogrn,
+                COALESCE(NULLIF(TRIM(s.phone), ''), dc.phone, '') AS phone,
+                COALESCE(NULLIF(TRIM(s.email), ''), dc.email, '') AS email,
+                COALESCE(dc.docs, 0)::int      AS docs_count,
+                COALESCE(ct.contracts, 0)::int AS contracts_count
+           FROM suppliers s
+           LEFT JOIN LATERAL (
+             SELECT count(*) AS docs,
+                    max(NULLIF(TRIM(counterparty_phone), '')) AS phone,
+                    max(NULLIF(TRIM(counterparty_email), '')) AS email
+               FROM doc_registry d
+              WHERE d.deleted_at IS NULL AND d.supplier_id = s.id
+           ) dc ON true
+           LEFT JOIN LATERAL (
+             SELECT count(*) AS contracts FROM contracts c
+              WHERE COALESCE(TRIM(c.counterparty_name), '') <> ''
+                AND lower(TRIM(c.counterparty_name)) = lower(TRIM(s.name))
+           ) ct ON true
+          WHERE s.deleted_at IS NULL
+            AND (s.name ILIKE $1 OR COALESCE(s.inn, '') LIKE $1 OR lower(COALESCE(s.inn, '')) LIKE $1)
+          ORDER BY COALESCE(dc.docs, 0) DESC, COALESCE(ct.contracts, 0) DESC, s.name ASC
+          LIMIT $2`,
+        [like, limit]
+      );
+      return { suppliers: rows };
+    } catch (e) {
+      logError(fastify, 'registry-suggest error', e, request);
+      return { suppliers: [] };
+    }
+  });
+
+  // ── Контакты контрагента для автозаполнения: карточка, при пустых —
+  //    из последнего документа реестра (+ backfill карточки).
+  fastify.get('/registry-contacts/:inn', { preHandler: [fastify.authenticate] }, async (request) => {
+    const inn = String(request.params.inn || '').replace(/\D/g, '');
+    if (!inn) return reply.code(400).send({ error: 'ИНН обязателен' });
+    try {
+      const sup = (await db.query(
+        `SELECT id, name, COALESCE(TRIM(phone), '') AS phone, COALESCE(TRIM(email), '') AS email
+           FROM suppliers WHERE deleted_at IS NULL AND inn = $1 LIMIT 1`, [inn])).rows[0] || null;
+      const doc = (await db.query(
+        `SELECT NULLIF(TRIM(counterparty_phone), '') AS phone, NULLIF(TRIM(counterparty_email), '') AS email
+           FROM doc_registry
+          WHERE deleted_at IS NULL AND supplier_id = $1
+            AND (COALESCE(TRIM(counterparty_phone), '') <> '' OR COALESCE(TRIM(counterparty_email), '') <> '')
+          ORDER BY invoice_date DESC NULLS LAST, id DESC LIMIT 1`, [sup ? sup.id : -1])).rows[0] || null;
+      const phone = (sup && sup.phone) || (doc && doc.phone) || '';
+      const email = (sup && sup.email) || (doc && doc.email) || '';
+      // backfill карточки, чтобы в следующий раз отдавать сразу
+      if (sup && ((!sup.phone && phone) || (!sup.email && email))) {
+        await db.query(
+          `UPDATE suppliers SET phone = COALESCE(NULLIF(TRIM(phone), ''), $2),
+                                email = COALESCE(NULLIF(TRIM(email), ''), $3),
+                                updated_at = NOW()
+            WHERE id = $1`, [sup.id, phone || null, email || null]
+        ).catch(() => {});
+      }
+      const docs = sup ? (await db.query(
+        `SELECT count(*)::int AS n FROM doc_registry WHERE deleted_at IS NULL AND supplier_id = $1`, [sup.id]
+      )).rows[0].n : 0;
+      const contracts = sup ? (await db.query(
+        `SELECT count(*)::int AS n FROM contracts WHERE COALESCE(TRIM(counterparty_name), '') <> ''
+           AND lower(TRIM(counterparty_name)) = lower(TRIM($1))`, [sup.name]
+      )).rows[0].n : 0;
+      return { inn, name: sup ? sup.name : '', phone, email, docs_count: docs, contracts_count: contracts };
+    } catch (e) {
+      logError(fastify, 'registry-contacts error', e, request);
+      return { inn, phone: '', email: '', docs_count: 0, contracts_count: 0 };
+    }
+  });
+
   fastify.get('/', { preHandler: [fastify.authenticate] }, async (request) => {
     const { search, limit = 100, offset = 0 } = request.query;
     let sql = 'SELECT * FROM customers WHERE 1=1';

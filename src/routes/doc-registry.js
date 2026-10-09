@@ -38,6 +38,7 @@ const WRITE_COLS = [
 
 const JOIN_SQL = `SELECT d.*,
   COALESCE(w.work_title, w.object_name) AS work_title,
+  w.work_number AS work_number,
   uo.name AS doc_owner_name, up.name AS pm_name
  FROM doc_registry d
  LEFT JOIN works w ON w.id = d.work_id
@@ -845,6 +846,41 @@ module.exports = async function docRegistryRoutes(fastify) {
       return decorate(rows[0]);
     }
 
+    if (b.action === 'unmark_sf') {
+      // Снять отметку «СФ получена»: убрать закрывающий из closing_json
+      // (последний добавленный), вернуть статус «ждём закрывающие».
+      let closing = doc.closing_json;
+      if (typeof closing === 'string') try { closing = JSON.parse(closing); } catch (_) { closing = []; }
+      if (!Array.isArray(closing)) closing = closing ? [closing] : [];
+      if (!closing.length) return reply.code(400).send({ error: 'Нет отмеченных закрывающих' });
+      const removed = closing.pop();
+      const ops = (doc.ops_status === 'done' && !closing.length) ? 'wait_closing' : doc.ops_status;
+      const { rows } = await db.query(
+        `UPDATE doc_registry SET closing_json=$2::jsonb, ops_status=$3, updated_by=$4, updated_at=NOW()
+         WHERE id=$1 RETURNING *`,
+        [id, JSON.stringify(closing), ops, req.user.id]
+      );
+      await audit(db, id, req.user.id, 'quick_unmark_sf', { ops, removed: removed || null });
+      return decorate(rows[0]);
+    }
+
+    if (b.action === 'mark_paid') {
+      // Ручная отметка «оплачено» — без вложения и без очереди согласования
+      // (для старых оплат, где цепочка не нужна).
+      const allowed = ['ADMIN', 'BUH', 'TO', 'HEAD_TO', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV', 'DIRECTOR'];
+      if (!allowed.includes(req.user.role)) {
+        return reply.code(403).send({ error: 'Отметить оплату может бухгалтерия, администратор или директор' });
+      }
+      const { rows } = await db.query(
+        `UPDATE doc_registry SET pay_status='paid', ops_status=CASE
+           WHEN ops_status IN ('wait_pay','wait_sf','wait_closing','draft') THEN 'done' ELSE ops_status END,
+           updated_by=$2, updated_at=NOW() WHERE id=$1 RETURNING *`,
+        [id, req.user.id]
+      );
+      await audit(db, id, req.user.id, 'quick_mark_paid', { manual: true, note: 'отмечено вручную, без согласования' });
+      return decorate(rows[0]);
+    }
+
     if (b.action === 'due') {
       const sets = []; const vals = [];
       for (const f of ['delivery_due_at', 'payment_due_at', 'sf_due_at']) {
@@ -885,7 +921,7 @@ module.exports = async function docRegistryRoutes(fastify) {
       return decorate(rows[0]);
     }
 
-    return reply.code(400).send({ error: 'action: sf|due|wh|pay' });
+    return reply.code(400).send({ error: 'action: sf|unmark_sf|due|wh|pay|mark_paid' });
   });
 
   fastify.post('/:id/link-expense', auth, async (req, reply) => {
