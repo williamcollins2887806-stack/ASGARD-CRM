@@ -1107,15 +1107,23 @@
     const isAi = !!(m.is_mimir_bot || m.is_mimir || (Number(m.user_id) === 0 && isMimirMode()));
     if (type === 'voice' && m.file_url) {
       const dur = (m.metadata && m.metadata.duration) || m.duration || '';
+      const tr = m.metadata && m.metadata.transcript;
+      const trPending = !!(m.metadata && m.metadata.transcript_status === 'pending');
+      const time = m.created_at
+        ? new Date(m.created_at).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })
+        : '';
+      // TG-like layout: round play | bars | [Aa transcript] ; duration + time beneath.
       let body = `<div class="hg-voice" data-voice-src="${esc(m.file_url)}">
         <button type="button" class="hg-voice-play" aria-label="Воспроизвести">${ICO.play}</button>
         <div class="hg-voice-wave" aria-hidden="true">${voiceWaveBars(m.id)}</div>
+        <button type="button" class="hg-voice-aa" aria-label="Расшифровка" title="Расшифровка">Aa</button>
         <span class="hg-voice-dur">${esc(dur ? String(dur) : '0:00')}</span>
+        ${time ? `<span class="hg-voice-time">${esc(time)}</span>` : ''}
         <audio preload="metadata" src="${esc(m.file_url)}" hidden></audio>
       </div>`;
-      const tr = m.metadata && m.metadata.transcript;
-      if (tr) body += `<div class="hg-transcript">${esc(tr)}</div>`;
-      else if (m.metadata && m.metadata.transcript_status === 'pending') body += `<div class="hg-transcript">Расшифровка…</div>`;
+      // Transcript lives in a collapsible block; «Aa» toggles it (auto-loaded).
+      const trInner = tr ? esc(tr) : (trPending ? 'Расшифровка…' : 'Расшифровки пока нет');
+      body += `<div class="hg-transcript" data-transcript hidden>${trInner}</div>`;
       return body;
     }
     if (type === 'circle' && m.file_url) {
@@ -1526,6 +1534,20 @@
           audio.currentTime = frac * d;
           paint(frac);
         };
+      }
+      // «Aa» — show/hide the transcript block (transcript is auto-loaded).
+      const aa = wrap.querySelector('.hg-voice-aa');
+      const bubble = wrap.closest('.hg-bubble');
+      const trBox = bubble && bubble.querySelector('.hg-transcript');
+      if (aa && trBox) {
+        aa.onclick = (e) => {
+          e.stopPropagation();
+          const show = trBox.hidden;
+          trBox.hidden = !show;
+          aa.classList.toggle('is-active', show);
+        };
+      } else if (aa) {
+        aa.onclick = (e) => { e.stopPropagation(); };
       }
     });
     // Circles: tap toggles play/pause + progress ring (was an auto-loop).

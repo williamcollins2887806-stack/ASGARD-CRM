@@ -224,7 +224,9 @@ module.exports = async function(fastify) {
           title: title,
           body: message,
           url: chatLink,
-          tag: 'chat-' + (link || '').split('/').pop()
+          // Unique tag per message: a shared tag made the OS silently collapse
+          // consecutive chat messages into one silent notification (no sound).
+          tag: 'chat-' + (link || '').split('=').pop() + '-' + Date.now()
         });
       } catch (pushErr) {
         // Push may fail silently — still save DB notification below

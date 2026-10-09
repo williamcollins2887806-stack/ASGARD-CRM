@@ -1639,7 +1639,7 @@ html[data-theme="light"] .hg-bubble {
 }
 .hg-voice {
   display: grid;
-  grid-template-columns: 46px minmax(0, 1fr);
+  grid-template-columns: 46px minmax(0, 1fr) auto;
   grid-template-rows: 1fr auto;
   column-gap: 12px;
   row-gap: 2px;
@@ -1727,6 +1727,35 @@ html[data-theme="light"] .hg-bubble {
   justify-self: start;
   font-variant-numeric: tabular-nums;
 }
+.hg-voice-time {
+  grid-column: 3;
+  grid-row: 2;
+  font: 400 11.5px/1 var(--hg-font);
+  color: color-mix(in srgb, var(--t1, #fff) 45%, transparent);
+  justify-self: end;
+  font-variant-numeric: tabular-nums;
+}
+/* «Aa» transcript toggle (TG-like), to the right of the waveform. */
+.hg-voice-aa {
+  grid-column: 3;
+  grid-row: 1;
+  flex: none;
+  width: 34px; height: 34px; border-radius: 50%;
+  border: 0; cursor: pointer;
+  background: color-mix(in srgb, var(--t1, #fff) 14%, transparent);
+  color: color-mix(in srgb, var(--t1, #fff) 88%, transparent);
+  font: 700 14px/1 var(--hg-font);
+  letter-spacing: -0.5px;
+  display: inline-flex; align-items: center; justify-content: center;
+  transition: background 120ms ease;
+}
+.hg-voice-aa:hover { background: color-mix(in srgb, var(--t1, #fff) 22%, transparent); }
+.hg-voice-aa.is-active { background: color-mix(in srgb, var(--blue-l, #4A90D9) 40%, transparent); }
+.hg-bubble.me .hg-voice-aa {
+  background: color-mix(in srgb, #fff 24%, transparent);
+  color: #fff;
+}
+.hg-bubble.me .hg-voice-aa.is-active { background: color-mix(in srgb, #fff 42%, transparent); }
 .hg-bubble.voice .hg-meta {
   margin-top: 0;
 }

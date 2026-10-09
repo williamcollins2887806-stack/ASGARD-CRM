@@ -1,5 +1,5 @@
 /* Huginn PWA SW — network-first (fresh shell wins), cache as offline fallback */
-const SHELL_VERSION = '20.28.163';
+const SHELL_VERSION = '20.28.166';
 const CACHE = 'huginn-h-' + SHELL_VERSION;
 const SHELL = [
   '/h/', '/h/app.js', '/h/manifest.webmanifest',
@@ -56,6 +56,10 @@ self.addEventListener('push', function (event) {
     icon: payload.icon || '/assets/img/icon-192.png',
     badge: payload.badge || '/assets/img/icon-96.png',
     tag: payload.tag || 'huginn-notification',
+    // Every message must alert (sound/vibration). With a shared tag the OS
+    // silently replaces the previous notification, so renotify is required.
+    renotify: true,
+    silent: false,
     data: payload.data || {
       url: payload.url || '/h/',
       type: payload.type || null,

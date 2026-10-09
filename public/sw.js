@@ -2,7 +2,7 @@
 // Shell caching + Push Notifications + Offline Support + Background Sync
 // Session 15: PWA + Push Actions + Badge + Offline
 
-const SHELL_VERSION = '20.28.165';
+const SHELL_VERSION = '20.28.166';
 const CACHE_NAME = `asgard-crm-shell-${SHELL_VERSION}`;
 const API_CACHE_NAME = 'asgard-crm-api-v2';
 
@@ -377,6 +377,11 @@ self.addEventListener('push', function(event) {
     icon: payload.icon || './assets/img/icon-192.png',
     badge: payload.badge || './assets/img/icon-96.png',
     tag: payload.tag || 'asgard-notification',
+    // renotify: re-alert (sound + vibration) on EVERY push that reuses a tag.
+    // Without it a second notification with the same tag silently replaces the
+    // first, so the user hears nothing. silent:false forces audible alert.
+    renotify: true,
+    silent: false,
     data: payload.data || { url: payload.url || '/', type: payload.type || null, call_id: payload.call_id || null, kind: payload.kind || null },
     vibrate: payload.tag === 'telephony-incoming' ? [300, 120, 300, 120, 300] : [200, 100, 200],
     requireInteraction: payload.requireInteraction || payload.tag === 'telephony-incoming' || !!(payload.actions && payload.actions.length),
