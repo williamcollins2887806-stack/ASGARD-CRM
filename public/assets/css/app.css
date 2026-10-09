@@ -10204,9 +10204,13 @@ html[data-theme="light"] .chat-header {
 
 .call-detail-panel {
   position: fixed;
-  /* Сдвигаем левее бокового меню Huginn и ниже верхнего баннера: раньше
-     панель уходила под рейл (56px) и под топбар (56px) — они наплывали на
-     карточку (замечание 10.10.2026). */
+  /* Сдвигаем левее бокового рейла Huginn (56px) и ниже верхнего баннера (56px):
+     раньше панель уходила под них, и они наплывали на карточку.
+     ПРИМЕЧАНИЕ: не завязываемся на --hg-panel-w. Раньше здесь было правило
+     body:has(.hg-panel) с большим сдвигом (панель+рейл), но тогда translateX(100%)
+     не прятал карточку полностью — она оставалась видимой ~468px и выглядела
+     «всегда открытой» (жалоба 10.10.2026). Панель Huginn при открытии карточки
+     и так сворачивается (см. openDetailPanel → HuginnDock.collapse). */
   --cd-top: var(--topbar-h, 56px);
   --cd-right: calc(var(--hg-rail-w, 56px) + 12px);
   top: var(--cd-top);
@@ -10221,13 +10225,6 @@ html[data-theme="light"] .chat-header {
   overflow-y: auto;
   transform: translateX(100%);
   transition: transform 0.3s ease;
-}
-
-/* Когда открыта панель Huginn, сдвигаем ещё левее — иначе карточка
-   перекрывается списком чатов/звонков. */
-body:has(#huginnDock:not(.is-collapsed)) .call-detail-panel,
-body:has(.hg-panel) .call-detail-panel {
-  --cd-right: calc(var(--hg-panel-w, 400px) + var(--hg-rail-w, 56px) + 12px);
 }
 
 .call-detail-panel--open {

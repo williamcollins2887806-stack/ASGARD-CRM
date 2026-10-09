@@ -17,6 +17,45 @@ const TEL_ROLES = ['ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV', 'PM
 const TEL_DENY_ROLES = ['BOT', 'FIELD_WORKER'];
 const PBX_ADMIN_ROLES = ['ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV', 'HEAD_TO'];
 
+/**
+ * ICE-серверы для браузера: STUN (узнать публичный адрес) + TURN (relay).
+ *
+ * TURN обязателен, когда NAT не пробивается напрямую: в замере SDP 10.10.2026
+ * у браузера не было ни одного публичного кандидата (typ srflx = 0), поэтому
+ * медиа-путь не строился и в звонке не было слышно ни одну сторону.
+ *
+ * Credentials — временные (coturn `use-auth-secret`):
+ *   username = `<unix_expiry>:<user_id>`
+ *   password = base64(HMAC-SHA1(secret, username))
+ * Секрет живёт только на сервере, в браузер не уходит.
+ */
+function buildIceServers(userId) {
+  const stun = process.env.PBX_STUN_URL || 'stun:stun.l.google.com:19302';
+  const servers = [{ urls: stun }];
+  const secret = process.env.PBX_TURN_SECRET || '';
+  const host = process.env.PBX_TURN_HOST || '';
+  if (!secret || !host) return servers;
+  try {
+    const ttl = Number(process.env.PBX_TURN_TTL || 43200); // 12 часов
+    const expiry = Math.floor(Date.now() / 1000) + ttl;
+    const username = `${expiry}:${userId}`;
+    const password = require('crypto')
+      .createHmac('sha1', secret)
+      .update(username)
+      .digest('base64');
+    const port = process.env.PBX_TURN_PORT || '3478';
+    servers.push({
+      urls: [
+        `turn:${host}:${port}?transport=udp`,
+        `turn:${host}:${port}?transport=tcp`,
+      ],
+      username,
+      credential: password,
+    });
+  } catch (_) { /* без TURN остаётся STUN */ }
+  return servers;
+}
+
 /** РњРѕР¶РµС‚ Р»Рё РїРѕР»СЊР·РѕРІР°С‚РµР»СЊ РїРѕР»СЊР·РѕРІР°С‚СЊСЃСЏ С‚РµР»РµС„РѕРЅРёРµР№ (РІРєР»Р°РґРєР° + РёСЃС…РѕРґСЏС‰РёРµ). */
 function canUseTelephony(user) {
   if (!user) return false;
@@ -294,6 +333,11 @@ module.exports = async function telephonyPbxRoutes(fastify) {
       sip_password: plainPass,
       ws_url: process.env.PBX_WS_PUBLIC_URL || '/pbx/ws',
       stun: process.env.PBX_STUN_URL || '',
+      // TURN нужен, когда браузер за NAT и STUN не пробивает путь: он даёт
+      // relay-адрес, который работает всегда. Credentials временные
+      // (REST-схема coturn): username = <expiry>:<метка>, password =
+      // base64(HMAC-SHA1(secret, username)).
+      ice_servers: buildIceServers(req.user.id),
     };
   });
 

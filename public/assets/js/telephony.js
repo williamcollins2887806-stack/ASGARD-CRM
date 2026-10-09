@@ -447,7 +447,13 @@ window.AsgardTelephonyPage = (function () {
 
     var overlay = $('#detailOverlay');
     if (overlay) overlay.addEventListener('click', closeDetailPanel);
-    if (query.id && /^\d+$/.test(String(query.id))) openDetailPanel(query.id);
+    // Карточка НЕ открывается автоматически по query.id: из-за этого при каждом
+    // заходе на «Телефонию» выезжала панель и не закрывалась (жалоба 10.10.2026).
+    // Убираем id из URL, карточку открывает только клик по строке.
+    if (query.id) {
+      var clean = location.hash.replace(/[?&]id=\d+/, '').replace(/\?$/, '');
+      try { history.replaceState(null, '', clean); } catch (_) {}
+    }
   }
 
   /* ---- Tabs ---- */

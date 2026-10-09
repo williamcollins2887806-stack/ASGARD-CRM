@@ -293,22 +293,15 @@
       register: true,
       session_timers: false,
     };
-    if (creds.stun) {
-      configuration.pcConfig = { iceServers: [{ urls: creds.stun }] };
-    } else {
-      // Без STUN браузер объявляет ТОЛЬКО приватные ICE-кандидаты (172.16.x,
-      // 192.168.x) — снаружи они недостижимы, медиа-путь не строится, и в
-      // звонке не слышно НИ одну сторону, хотя запись (серверный тракт
-      // Asterisk↔Mango) получается. Замер SDP 10.10.2026: ни одного typ srflx.
-      // Поэтому всегда даём публичные STUN-серверы как fallback.
-      configuration.pcConfig = {
-        iceServers: [
-          { urls: 'stun:stun.l.google.com:19302' },
-          { urls: 'stun:stun1.l.google.com:19302' },
-        ],
-        iceCandidatePoolSize: 2,
-      };
-    }
+    // ICE-серверы: STUN + TURN (relay). TURN критичен, когда NAT не пробивается:
+    // без него у браузера только приватные кандидаты и в звонке никого не слышно.
+    var iceServers = (creds.ice_servers && creds.ice_servers.length)
+      ? creds.ice_servers
+      : [
+        { urls: creds.stun || 'stun:stun.l.google.com:19302' },
+        { urls: 'stun:stun1.l.google.com:19302' },
+      ];
+    configuration.pcConfig = { iceServers: iceServers, iceCandidatePoolSize: 2 };
     ua = new window.JsSIP.UA(configuration);
     sipRegistered = false;
     _wsBroken = false;
