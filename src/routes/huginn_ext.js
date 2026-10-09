@@ -357,8 +357,10 @@ module.exports = async function registerHuginnExt(fastify, { db, uploadDir, getC
       try {
         const MangoService = require('../services/mango');
         const client = new MangoService();
-        const digits = String(phone).replace(/\D/g, '');
-        await client.sendSms(process.env.MANGO_SMS_FROM || '', digits, `ASGARD: ${msgText}`, process.env.MANGO_SMS_SENDER || '');
+        const digits = normPhone(phone);
+        // Раньше здесь читался MANGO_SMS_FROM (нет в .env) → from_extension='' →
+        // Mango «3103». Общий хелпер берёт MANGO_SMS_EXTENSION.
+        await client.sendSms(MangoService.smsSenderExtension(), digits, `ASGARD: ${msgText}`, process.env.MANGO_SMS_SENDER || '');
         delivery = { channel: 'sms', sent: true, to: phone };
       } catch (e) {
         delivery = { channel: 'sms', sent: false, error: e.message };
@@ -1594,7 +1596,7 @@ module.exports = async function registerHuginnExt(fastify, { db, uploadDir, getC
       const client = new MangoService();
       const digits = String(phone).replace(/\D/g, '');
       await client.sendSms(
-        process.env.MANGO_SMS_EXTENSION || process.env.MANGO_SMS_FROM || '101',
+        MangoService.smsSenderExtension(),
         digits,
         `Kod vhoda Huginn: ${code}`,
         process.env.MANGO_SMS_SENDER || ''

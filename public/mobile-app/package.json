@@ -5,10 +5,11 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "prebuild": "node tools/scan-undefined.mjs",
+    "prebuild": "node tools/scan-undefined.mjs && node tools/sync-phone-mask.mjs",
     "build": "vite build",
     "lint": "eslint .",
     "verify:icons": "node tools/scan-undefined.mjs",
+    "verify:phone-mask": "node tools/sync-phone-mask.mjs",
     "preview": "vite preview"
   },
   "dependencies": {

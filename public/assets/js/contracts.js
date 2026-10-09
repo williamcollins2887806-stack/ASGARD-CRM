@@ -818,9 +818,11 @@ window.AsgardContractsPage = (function(){
     ensureModalStyles();
     const esc = AsgardUI.esc;
 
-    // Маска телефона: +7 (XXX) XXX-XX-XX
+    // Маска телефона — единый модуль AsgardPhoneMask (+7 (XXX) XXX-XX-XX).
+    // Локальный fallback: если модуль не подключён на странице.
     const formatPhone = (val) => {
-      const d = val.replace(/\D/g, '').slice(0, 11);
+      if (window.AsgardPhoneMask && AsgardPhoneMask.format) return AsgardPhoneMask.format(val);
+      const d = String(val || '').replace(/\D/g, '').slice(0, 11);
       if (!d) return '';
       let r = '+7';
       if (d.length > 1) r += ' (' + d.slice(1, 4);

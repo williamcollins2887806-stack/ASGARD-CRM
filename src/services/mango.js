@@ -6,6 +6,22 @@ const querystring = require('querystring');
 
 const BASE_URL = 'https://app.mango-office.ru/vpbx/';
 
+/**
+ * Номер-отправитель SMS для Mango.
+ *
+ * MANGO_SMS_EXTENSION (в проде = 10) — рабочий внутренний номер.
+ * Раньше часть роутов читала MANGO_SMS_FROM, которой нет в .env → уходила
+ * ПУСТАЯ строка, и Mango отвечал «3103» (invite-SMS не отправлялись, хотя
+ * SMS-код входа работал). Единый источник — эта функция.
+ */
+function smsSenderExtension() {
+  return String(
+    process.env.MANGO_SMS_EXTENSION
+    || process.env.MANGO_SMS_FROM
+    || ''
+  ).trim();
+}
+
 class MangoService {
   constructor(apiKey, apiSalt) {
     this.apiKey = apiKey || process.env.MANGO_API_KEY || '';
@@ -158,9 +174,13 @@ class MangoService {
   }
 
   async sendSms(fromExtension, toNumber, text, senderName) {
+    // Пустой отправитель = Mango 3103. Если вызвали без номера — берём
+    // MANGO_SMS_EXTENSION; если и его нет — явная ошибка, а не «3103 непонятно».
+    const from = String(fromExtension == null ? '' : fromExtension).trim() || smsSenderExtension();
+    if (!from) throw new Error('SMS: не задан номер отправителя (MANGO_SMS_EXTENSION в .env)');
     const payload = {
       command_id: `sms-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-      from_extension: String(fromExtension),
+      from_extension: from,
       to_number: String(toNumber),
       text,
     };
@@ -370,3 +390,4 @@ module.exports = MangoService;
 module.exports.getMangoService = getMangoService;
 module.exports.normalizePhone = MangoService.normalizePhone;
 module.exports.getCallDirection = MangoService.getCallDirection;
+module.exports.smsSenderExtension = smsSenderExtension;
