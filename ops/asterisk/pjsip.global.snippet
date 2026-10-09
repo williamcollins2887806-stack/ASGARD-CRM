@@ -1,0 +1,23 @@
+; ASGARD CRM — PJSIP global (include from pjsip.conf).
+;
+; endpoint_identifier_order — порядок опознания эндпоинта по входящему запросу.
+; По умолчанию Asterisk использует «ip,username,anonymous»: сначала правило
+; identify (по IP), потом имя пользователя.
+;
+; Это ломало WebRTC: браузеры подключаются к Asterisk через nginx, т.е. с
+; 127.0.0.1:8088, а в pjsip_asgard_trunks.conf есть [identify-livekit]
+; match=127.0.0.1/32. В результате REGISTER от оператора (u3474 и т.п.)
+; опознавался как эндпоинт livekit-ting, у которого нет AOR, и Asterisk
+; отвечал 404 Not Found. SIP-регистрация не поднималась, из-за чего звонок
+; уходил серверным путём (на мобильный), а не из браузера.
+;
+; Порядок ниже ставит username раньше ip: операторские эндпоинты (uNNNN)
+; опознаются по имени, а IP-правила остаются для trunk-эндпоинтов, которые
+; регистрируются/ходят по IP без username.
+;
+; Применение: включать в pjsip.conf. Требуется ПОЛНЫЙ рестарт asterisk —
+; endpoint_identifier_order не поддерживает reload.
+; Проверка: node tools/verify_sip_register.js (или сырой REGISTER → 200 OK).
+
+[global]
+endpoint_identifier_order=username,ip,anonymous
