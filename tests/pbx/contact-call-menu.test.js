@@ -54,6 +54,18 @@ test('CM5', 'ПКМ открывает меню контакта', () => {
   assert.ok(/openContactMenu\(/.test(dock), 'нет функции openContactMenu');
 });
 
+test('CM5b', 'ПКМ привязан и в inline-списке, и в панели контактов', () => {
+  const n = (dock.match(/el\.oncontextmenu = \(ev\) =>/g) || []).length;
+  assert.ok(n >= 4, `ожидалось ≥4 обработчиков (inline+panel, обычные+приглашение), найдено ${n}`);
+  assert.ok(/renderContactsPanel/.test(dock), 'нет renderContactsPanel');
+});
+
+test('CM5c', 'меню позиционируется в #hgPanel (есть и в списке контактов)', () => {
+  const fn = dock.slice(dock.indexOf('function placeFloat'), dock.indexOf('async function toggleReaction'));
+  assert.ok(/#hgPanel/.test(fn), 'placeFloat не берёт #hgPanel — в списке контактов .hg-thread нет');
+  assert.ok(!/querySelector\('\.hg-thread'\)\s*;/.test(fn), 'placeFloat всё ещё жёстко требует .hg-thread');
+});
+
 test('CM6', 'меню содержит все 4 действия', () => {
   const menu = dock.slice(dock.indexOf('function openContactMenu'), dock.indexOf('async function callContactViaMango'));
   assert.ok(/data-cm="mango"/.test(menu), 'нет действия «Позвонить через Mango»');

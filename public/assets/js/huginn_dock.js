@@ -3211,6 +3211,13 @@
     }
     listEl.innerHTML = html;
     listEl.querySelectorAll('.hg-contact-row.is-invite').forEach((el) => {
+      const uid = Number(el.getAttribute('data-invite-uid'));
+      // ПКМ и по «ещё не в Хугинне»: можно позвонить, если номер есть в CRM.
+      el.oncontextmenu = (ev) => {
+        ev.preventDefault();
+        ev.stopPropagation();
+        openContactMenu(uid, ev.clientX, ev.clientY);
+      };
       el.onclick = () => openInviteSheet({ name: el.getAttribute('data-invite-name') });
     });
     listEl.querySelectorAll('.hg-contact-row:not(.is-invite)').forEach((el) => {
@@ -3397,9 +3404,22 @@
     panel.querySelector('#hgContactSort').onclick = () => showToast('Сортировка по имени');
     panel.querySelector('#hgContactAdd').onclick = () => inviteSomeone();
     panel.querySelectorAll('.hg-contact-row.is-invite').forEach((el) => {
+      const uid = Number(el.getAttribute('data-invite-uid'));
+      el.oncontextmenu = (ev) => {
+        ev.preventDefault();
+        ev.stopPropagation();
+        openContactMenu(uid, ev.clientX, ev.clientY);
+      };
       el.onclick = () => openInviteSheet({ name: el.getAttribute('data-invite-name') });
     });
     panel.querySelectorAll('.hg-contact-row:not(.is-invite)').forEach((el) => {
+      const uidAttr = Number(el.getAttribute('data-uid'));
+      // Правая кнопка: звонок через Mango / Huginn / чат / приглашение.
+      el.oncontextmenu = (ev) => {
+        ev.preventDefault();
+        ev.stopPropagation();
+        openContactMenu(uidAttr, ev.clientX, ev.clientY);
+      };
       el.onclick = async () => {
         const cid = Number(el.getAttribute('data-cid'));
         const uid = Number(el.getAttribute('data-uid'));
@@ -4578,16 +4598,22 @@
     if (smile) smile.classList.remove('is-open');
   }
 
+  /**
+   * Расположить всплывающее меню в пределах панели Huginn (не только чат-треда).
+   * В списке контактов `.hg-thread` нет — поэтому host берём универсально.
+   */
   function placeFloat(el, clientX, clientY) {
-    const thread = root.querySelector('.hg-thread');
-    if (!thread) return;
     clearFloats();
-    thread.appendChild(el);
-    const rect = thread.getBoundingClientRect();
-    let left = clientX - rect.left - 20;
-    let top = clientY - rect.top - 20;
-    left = Math.max(8, Math.min(left, rect.width - 220));
-    top = Math.max(8, Math.min(top, rect.height - 160));
+    const host = (root && root.querySelector('#hgPanel')) || root;
+    if (!host) return;
+    host.appendChild(el);
+    const rect = host.getBoundingClientRect();
+    const w = 260;
+    const h = 230;
+    let left = clientX - rect.left;
+    let top = clientY - rect.top;
+    left = Math.max(8, Math.min(left, Math.max(8, rect.width - w - 8)));
+    top = Math.max(8, Math.min(top, Math.max(8, rect.height - h - 8)));
     el.style.left = left + 'px';
     el.style.top = top + 'px';
   }
