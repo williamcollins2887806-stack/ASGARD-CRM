@@ -91,10 +91,13 @@ test('CM7', 'нет disabled-заглушек в меню (пункты прос
   assert.ok(!/нет аккаунта/.test(menu), 'осталась заглушка «нет аккаунта»');
 });
 
-test('CM8', 'SIP зарегистрирован → звонок из браузера (WebRTC)', () => {
+test('CM8', 'звонок контакту всегда идёт из браузера (outbound сам поднимает SIP)', () => {
   const fn = dock.slice(dock.indexOf('async function callContactViaMango'), dock.indexOf('async function callContactViaMango') + 1600);
-  assert.ok(/getSipRegistered/.test(fn), 'не проверяет SIP-регистрацию');
   assert.ok(/P\.outbound\(phone\)/.test(fn), 'не звонит через AsgardPhone.outbound');
+  // Раньше звонили серверно (на мобильный) при отсутствии SIP до клика: это
+  // давало «звонок от Асгарда на телефон» вместо звонка из браузера.
+  assert.ok(!/getSipRegistered/.test(fn), 'не должен гейтить по предварительной SIP-регистрации');
+  assert.ok(/P\.outbound\(phone\)/.test(fn), 'outbound поднимает SIP лениво и звонит из браузера');
 });
 
 test('CM9', 'CSS для заголовка меню и disabled', () => {

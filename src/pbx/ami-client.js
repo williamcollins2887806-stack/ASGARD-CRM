@@ -178,10 +178,37 @@ class AmiClient extends EventEmitter {
     return this.action({ Action: 'Hangup', Channel: channel });
   }
 
-  /** Список активных каналов (для снятия всех плеч звонка по Linkedid/Uniqueid). */
-  async coreShowChannels() {
-    const res = await this.action({ Action: 'CoreShowChannels' });
-    return res;
+  /**
+   * Список активных каналов (для снятия всех плеч звонка по Linkedid/Uniqueid).
+   *
+   * Важно: AMI на CoreShowChannels отвечает `Response: Follows` (без списка),
+   * а сами каналы приходят отдельными событиями `CoreShowChannel`, завершает
+   * поток `CoreShowChannelsComplete`. Раньше возвращался только Follows-ответ,
+   * поэтому список всегда был пуст и «Сбросить» не рвал звонок (баг 09.10).
+   */
+  async coreShowChannels({ timeoutMs = 5000 } = {}) {
+    await this.connect();
+    const actionId = String(++this._actionId);
+    const list = [];
+    const events = this;
+    let done = false;
+    return new Promise((resolve) => {
+      const finish = () => {
+        if (done) return;
+        done = true;
+        events.removeListener('event', onEvent);
+        clearTimeout(timer);
+        resolve({ List: list });
+      };
+      const onEvent = (msg) => {
+        if (msg.Event === 'CoreShowChannel') list.push(msg);
+        else if (msg.Event === 'CoreShowChannelsComplete') finish();
+      };
+      const timer = setTimeout(finish, timeoutMs);
+      events.on('event', onEvent);
+      // Follows-ответ по ActionID закрывает _pending; отдельный ACK нам не нужен.
+      this.action({ Action: 'CoreShowChannels' }).catch(() => finish());
+    });
   }
 
   async setVar(channel, variable, value) {

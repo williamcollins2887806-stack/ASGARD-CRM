@@ -118,6 +118,52 @@ async function main() {
     assert.ok(/claim-line/.test(dutyBody), 'goOnDuty() должен звать claim-line');
   });
 
+  await test('A4', 'успешная SIP-регистрация НЕ занимает линию (on_line не шлётся)', () => {
+    const core = readSrc('public/assets/js/phone_core.js');
+    const regIdx = core.indexOf("ua.on('registered'");
+    assert.ok(regIdx !== -1, 'нет обработчика registered');
+    const body = core.slice(regIdx, regIdx + 700);
+    assert.ok(/operator\/webrtc/.test(body), 'registered должен отмечать webrtc_registered');
+    assert.ok(!/on_line: true/.test(body), 'registered не должен выставлять on_line=true (захват линии)');
+  });
+
+  await test('A5', 'исходящий поднимает SIP лениво и звонит из браузера', () => {
+    const core = readSrc('public/assets/js/phone_core.js');
+    const outIdx = core.indexOf('outbound: function');
+    assert.ok(outIdx !== -1, 'нет outbound');
+    const body = core.slice(outIdx, outIdx + 1600);
+    assert.ok(/ensureRegistered\(\)/.test(body), 'outbound не поднимает SIP лениво');
+    assert.ok(/waitRegistered\(/.test(body), 'outbound не ждёт регистрацию');
+    assert.ok(/ua\.call\(/.test(body), 'нет звонка из браузера через ua.call');
+    assert.ok(/ensureRegistered: function/.test(core), 'нет ensureRegistered');
+  });
+
+  await test('A6', 'ленивая регистрация не берёт leader-lock (не запирает линию)', () => {
+    const core = readSrc('public/assets/js/phone_core.js');
+    const eIdx = core.indexOf('ensureRegistered: function');
+    const wIdx = core.indexOf('waitRegistered: function');
+    assert.ok(eIdx !== -1 && wIdx !== -1, 'нет ensureRegistered/waitRegistered');
+    const body = core.slice(eIdx, wIdx);
+    assert.ok(!/holdLeaderLock/.test(body), 'ensureRegistered не должен держать leader-lock');
+    assert.ok(!/on_line: true/.test(body), 'ensureRegistered не должен ставить on_line');
+  });
+
+  await test('A7', 'статус «на линии» отделён от mode (флаг onDuty)', () => {
+    const core = readSrc('public/assets/js/phone_core.js');
+    assert.ok(/var onDuty = false/.test(core), 'нет флага onDuty');
+    const hang = core.slice(core.indexOf('hangup: function'), core.indexOf('hangup: function') + 700);
+    assert.ok(/onDuty \?/.test(hang), 'hangup по mode вернёт ложное «на линии»');
+  });
+
+  await test('A8', 'меню контакта звонит из браузера, а не гейтит на getSipRegistered', () => {
+    const dock = readSrc('public/assets/js/huginn_dock.js');
+    const idx = dock.indexOf('async function callContactViaMango');
+    assert.ok(idx !== -1, 'нет callContactViaMango');
+    const body = dock.slice(idx, idx + 1400);
+    assert.ok(!/getSipRegistered/.test(body), 'callContactViaMango не должен гейтить по предварительной регистрации');
+    assert.ok(/P\.outbound\(phone\)/.test(body), 'должен звонить через AsgardPhone.outbound (браузер)');
+  });
+
   // ── L1. Одна линия с перехватом ──
   await test('L1a', 'миграция: partial unique index на одну линию', () => {
     const sql = readSrc('migrations/V376__pbx_single_line.sql');

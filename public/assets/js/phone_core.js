@@ -20,6 +20,7 @@
 
   var state = STATES.offline;
   var mode = null;
+  var onDuty = false;
   var isLeader = false;
   var takeover = false;
   var credentials = null;
@@ -226,7 +227,7 @@
       activeSession = null;
       micMuted = false;
       callMeta = {};
-      if (mode) setState(mode === 'mobile' ? STATES.on_line_mobile : STATES.on_line_browser);
+      if (onDuty) setState(mode === 'mobile' ? STATES.on_line_mobile : STATES.on_line_browser);
       else setState(STATES.offline);
       emit('ended', {});
       maybeConsumePendingReload();
@@ -234,7 +235,7 @@
     session.on('failed', function () {
       activeSession = null;
       callMeta = {};
-      if (mode) setState(mode === 'mobile' ? STATES.on_line_mobile : STATES.on_line_browser);
+      if (onDuty) setState(mode === 'mobile' ? STATES.on_line_mobile : STATES.on_line_browser);
       else setState(STATES.offline);
       emit('failed', {});
       maybeConsumePendingReload();
@@ -242,6 +243,13 @@
   }
 
   function onIncomingSession(session) {
+    // Входящие получает ТОЛЬКО тот, кто стоит на линии. Регистрация «для
+    // исходящих» (ленивая, без on_line) не должна принимать звонки — иначе
+    // открытая вкладка «не на линии» перехватывала бы чужие входящие.
+    if (!onDuty) {
+      try { session.terminate({ status_code: 486, reason_phrase: 'Busy Here' }); } catch (_) {}
+      return;
+    }
     if (activeSession && activeSession !== session) {
       try { session.terminate({ status_code: 486, reason_phrase: 'Busy Here' }); } catch (_) {}
       return;
@@ -297,7 +305,8 @@
       sipRegistered = true;
       _wsBroken = false;
       emit('sip', { event: 'registered' });
-      pbxApi('/operator/status', { method: 'POST', body: JSON.stringify({ on_line: true, receive_mode: mode === 'mobile' ? 'mobile' : 'browser' }) }).catch(function () {});
+      // SIP жив → отмечаем webrtc_registered, но ЛИНИЮ не занимаем:
+      // «зарегистрирован для исходящих» != «на линии для входящих».
       pbxApi('/operator/webrtc', { method: 'POST', body: JSON.stringify({ registered: true }) }).catch(function () {});
     });
     ua.on('unregistered', function () {
@@ -322,21 +331,26 @@
   }
 
   var _lockRelease = null;
+  var lockHeld = false;
 
   function holdLeaderLock() {
+    if (lockHeld) return Promise.resolve(true);
     if (!navigator.locks || !navigator.locks.request) {
       isLeader = true;
       takeover = false;
+      lockHeld = true;
       return Promise.resolve(true);
     }
     return navigator.locks.request(LOCK_NAME, { ifAvailable: true }, function (lock) {
       if (!lock) {
         isLeader = false;
         takeover = true;
+        lockHeld = false;
         emit('takeover', {});
         return undefined;
       }
       isLeader = true;
+      lockHeld = true;
       takeover = false;
       emit('leader', {});
       navigator.locks.request(LOCK_NAME, function () {
@@ -347,6 +361,7 @@
       return undefined;
     }).then(function () { return isLeader; }).catch(function () {
       isLeader = true;
+      lockHeld = true;
       return true;
     });
   }
@@ -354,6 +369,7 @@
   function releaseLeader() {
     isLeader = false;
     takeover = false;
+    lockHeld = false;
     if (_lockRelease) {
       try { _lockRelease(); } catch (_) {}
       _lockRelease = null;
@@ -461,6 +477,49 @@
       });
     },
 
+    /**
+     * Ленивая регистрация SIP «для исходящих» без занятия линии.
+     * Нужна, чтобы любой сотрудник мог звонить ИЗ БРАУЗЕРА (медиа в браузере),
+     * не вставая на линию и не перехватывая входящие у дежурного.
+     *
+     * Намеренно НЕ берёт leader-lock и не ставит on_line:
+     *  - регистрация только для исходящих безопасна и в нескольких вкладках;
+     *  - иначе вкладка, позвонившая один раз, «заперла» бы кнопку «На линии»
+     *    в остальных вкладках того же браузера.
+     */
+    ensureRegistered: function () {
+      if (sipRegistered && ua) return Promise.resolve({ ok: true, already: true });
+      if (!mode) { try { mode = localStorage.getItem('asgard_phone_mode') || 'browser'; } catch (_) { mode = 'browser'; } }
+      return pbxApi('/softphone/credentials')
+        .then(function (creds) {
+          credentials = creds;
+          if (!creds.sip_password) {
+            return pbxApi('/softphone/credentials?regenerate=1').then(function (c2) {
+              credentials = c2;
+              startUA(c2);
+              pbxApi('/softphone/provision', { method: 'POST', body: '{}' }).catch(function () {});
+              return { ok: true, mode: mode, outboundOnly: true };
+            });
+          }
+          startUA(creds);
+          pbxApi('/softphone/provision', { method: 'POST', body: '{}' }).catch(function () {});
+          return { ok: true, mode: mode, outboundOnly: true };
+        });
+    },
+
+    /** Ждём фактическую SIP-регистрацию (событие registered), макс ~4с. */
+    waitRegistered: function (timeoutMs) {
+      if (sipRegistered) return Promise.resolve(true);
+      var deadline = Date.now() + (timeoutMs || 4000);
+      return new Promise(function (resolve) {
+        (function poll() {
+          if (sipRegistered) return resolve(true);
+          if (Date.now() > deadline) return resolve(false);
+          setTimeout(poll, 150);
+        })();
+      });
+    },
+
     /** Встать на линию (перехват): SIP + on_line=true у себя, у прежнего снимается. */
     goOnDuty: function (receiveMode) {
       receiveMode = receiveMode === 'mobile' ? 'mobile' : 'browser';
@@ -470,12 +529,14 @@
           method: 'POST',
           body: JSON.stringify({ receive_mode: receiveMode }),
         }).then(function (claim) {
+          onDuty = true;
           setState(receiveMode === 'mobile' ? STATES.on_line_mobile : STATES.on_line_browser);
           startHeartbeat();
           if (claim && claim.previousUserId) emit('line_taken_by_me', claim);
           return { ok: true, ...claim };
         }).catch(function (e) {
           stopHeartbeat();
+          onDuty = false;
           setState(STATES.offline);
           throw e;
         });
@@ -502,6 +563,7 @@
           }
           mode = null;
           credentials = null;
+          onDuty = false;
           setState(STATES.offline);
           releaseLeader();
           emit('offline', {});
@@ -539,10 +601,21 @@
       if (activeSession) {
         try { activeSession.terminate(); } catch (_) {}
       }
-      return pbxApi('/call/hangup', { method: 'POST', body: JSON.stringify({ channel: callMeta.channel, pbx_uid: callMeta.pbx_uid, call_id: callMeta.call_id }) })
+      var uid = '';
+      try {
+        var a = JSON.parse(localStorage.getItem('asgard_user') || '{}');
+        uid = (a && a.id) || (a && a.user && a.user.id) || '';
+      } catch (_) {}
+      return pbxApi('/call/hangup', { method: 'POST', body: JSON.stringify({
+        channel: callMeta.channel,
+        pbx_uid: callMeta.pbx_uid,
+        call_id: callMeta.call_id,
+        user_id: uid || undefined,
+        direction: callMeta.direction,
+      }) })
         .catch(function () {})
         .then(function () {
-          setState(mode ? (mode === 'mobile' ? STATES.on_line_mobile : STATES.on_line_browser) : STATES.offline);
+          setState(onDuty ? (mode === 'mobile' ? STATES.on_line_mobile : STATES.on_line_browser) : STATES.offline);
           callMeta = {};
           emit('hangup', {});
           maybeConsumePendingReload();
@@ -624,18 +697,29 @@
       var digits = normalizePhone(number);
       if (!digits) return Promise.reject(new Error('Некорректный номер'));
       callMeta = { number: digits, direction: 'outbound' };
-      // WebRTC зарегистрирован → звоним из браузера напрямую (медиа в браузере).
-      if (ua && hasJsSIP() && sipRegistered) {
-        var domain = credentials ? sipDomainFromWs(wsUrlFromCreds(credentials)) : location.hostname;
-        var session = ua.call('sip:' + digits + '@' + domain, { mediaConstraints: { audio: true, video: false } });
-        if (session) bindSession(session);
-        setState(STATES.ringing, { number: digits, outbound: true });
-        return Promise.resolve({ ok: true, via: 'webrtc' });
-      }
-      // Иначе — серверный GSM-путь (оператор без WebRTC получает плечо на мобильный).
-      return pbxApi('/call/outbound', { method: 'POST', body: JSON.stringify({ number: digits }) }).then(function (r) {
-        setState(STATES.ringing, { number: digits, outbound: true });
-        return r;
+      // Любой сотрудник звонит ИЗ БРАУЗЕРА: при отсутствии SIP-регистрации
+      // поднимаем её лениво (без занятия линии) и ждём до ~4с.
+      var prep = (sipRegistered && ua) ? Promise.resolve(true) : api
+        .ensureRegistered()
+        .then(function () { return api.waitRegistered(4000); })
+        .catch(function () { return false; });
+      return prep.then(function (ok) {
+        if (ok && ua && hasJsSIP() && sipRegistered) {
+          var domain = credentials ? sipDomainFromWs(wsUrlFromCreds(credentials)) : location.hostname;
+          var session = ua.call('sip:' + digits + '@' + domain, { mediaConstraints: { audio: true, video: false } });
+          if (session) bindSession(session);
+          setState(STATES.ringing, { number: digits, outbound: true });
+          return { ok: true, via: 'webrtc' };
+        }
+        // WebRTC недоступен — серверный путь (плечо на мобильный оператора → контакт).
+        return pbxApi('/call/outbound', { method: 'POST', body: JSON.stringify({ number: digits }) }).then(function (r) {
+          // Запоминаем канал серверного плеча: иначе «Сбросить» в CRM не найдёт,
+          // что рвать, и звонок продолжит идти (жалоба 09.10).
+          if (r && r.channel) callMeta.channel = r.channel;
+          if (r && r.pbx_uid) callMeta.pbx_uid = r.pbx_uid;
+          setState(STATES.ringing, { number: digits, outbound: true });
+          return r;
+        });
       });
     },
 

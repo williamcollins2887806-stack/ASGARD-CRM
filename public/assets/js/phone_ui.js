@@ -1367,7 +1367,8 @@
     document.addEventListener('click', function (e) {
       var a = e.target.closest && e.target.closest('a[href^="tel:"]');
       if (!a) return;
-      if (!window.AsgardPhone || AsgardPhone.getState() === 'offline') return;
+      if (!window.AsgardPhone) return;
+      // Исходящий доступен и «не на линии»: outbound() сам поднимет SIP для звонка.
       e.preventDefault();
       var num = a.getAttribute('href').replace(/^tel:/i, '');
       AsgardPhone.outbound(num).catch(function (err) { toast('Телефон', err.message, 'err'); });

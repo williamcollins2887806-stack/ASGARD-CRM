@@ -370,6 +370,7 @@ async function originateOutbound(db, body) {
   }
 
   const ami = getAmiClient();
+  const OriginateUniqueid = `asgard-out-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   await ami.originate({
     channel,
     context: 'outbound-crm',
@@ -378,6 +379,7 @@ async function originateOutbound(db, body) {
     callerId: cli || '',
     async: true,
     timeout: 45000,
+    variable: `ASGARD_OUT_UID=${OriginateUniqueid}`,
   });
 
   if (db) {
@@ -394,7 +396,7 @@ async function originateOutbound(db, body) {
   }
   // Канал на транк (`…@mango-trunk`) — это GSM-плечо; WebRTC — только `PJSIP/<sip_username>`.
   const via = /@mango-trunk$/.test(channel) ? 'gsm' : 'webrtc';
-  return { ok: true, number, channel, via };
+  return { ok: true, number, channel, via, pbx_uid: OriginateUniqueid };
 }
 
 /**
@@ -596,24 +598,40 @@ function createCmdServer() {
         // РЎР±СЂРѕСЃ РІСЃРµС… РїР»РµС‡ Р·РІРѕРЅРєР°: РёС‰РµРј РєР°РЅР°Р»С‹ РїРѕ pbx_uid (Linkedid/Uniqueid) Рё
         // СЃРЅРёРјР°РµРј РёС…; `channel` вЂ” С‡Р°СЃС‚РЅС‹Р№ СЃР»СѓС‡Р°Р№, РєРѕРіРґР° РєР»РёРµРЅС‚ Р·РЅР°РµС‚ СЃРІРѕС‘ РїР»РµС‡Рѕ.
         const uid = String(body.pbx_uid || body.call_id || '').replace(/^pbx_/, '');
+        const wantChannel = String(body.channel || '');
+        // WebRTC: клиент шлёт BYE сам, но если сессия зависла — снимаем плечо по
+        // SIP-эндпоинту оператора (`PJSIP/<sip_username>`).
+        let sipUser = '';
+        if (body.user_id && db) {
+          try {
+            const r = await db.query('SELECT sip_username FROM pbx_operators WHERE user_id = $1', [body.user_id]);
+            sipUser = String((r.rows[0] || {}).sip_username || '');
+          } catch (_) { /* ignore */ }
+        }
         let hung = 0;
-        if (uid) {
+        if (uid || wantChannel || sipUser) {
           try {
             const res = await ami.coreShowChannels();
             const channels = (res && res.List && Array.isArray(res.List)) ? res.List : [];
             for (const ch of channels) {
+              const name = String(ch.Channel || '');
               const linked = String(ch.Linkedid || '');
               const unique = String(ch.Uniqueid || '');
-              if (linked === uid || unique === uid) {
-                try { await ami.hangup(ch.Channel); hung += 1; } catch (_) { /* next */ }
+              const byUid = uid && (linked === uid || unique === uid);
+              // Клиент шлёт dial-string («PJSIP/79…@mango-trunk»), а живой канал
+              // называется с суффиксом («…-0000001») — сверяем и по префиксу.
+              const byChannel = wantChannel && (name === wantChannel || name.indexOf(wantChannel + '-') === 0);
+              const bySip = sipUser && (name === 'PJSIP/' + sipUser || name.indexOf('PJSIP/' + sipUser + '-') === 0);
+              if (byUid || byChannel || bySip) {
+                try { await ami.hangup(name); hung += 1; } catch (_) { /* next */ }
               }
             }
           } catch (_) { /* fall through to single channel */ }
         }
-        if (body.channel) {
-          try { await ami.hangup(body.channel); hung += 1; } catch (_) { /* ignore */ }
+        if (wantChannel && !hung) {
+          try { await ami.hangup(wantChannel); hung += 1; } catch (_) { /* ignore */ }
         }
-        if (!hung && !body.channel && !uid) {
+        if (!hung && !body.channel && !uid && !sipUser) {
           return send(200, { ok: true, skipped: true, reason: 'no_channel' });
         }
         return send(200, { ok: true, hung });
