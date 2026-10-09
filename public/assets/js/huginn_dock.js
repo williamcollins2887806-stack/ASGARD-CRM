@@ -3214,9 +3214,16 @@
       el.onclick = () => openInviteSheet({ name: el.getAttribute('data-invite-name') });
     });
     listEl.querySelectorAll('.hg-contact-row:not(.is-invite)').forEach((el) => {
+      const uidAttr = Number(el.getAttribute('data-uid'));
+      // Правая кнопка мыши: компактное меню «Позвонить через Mango / Позвонить в Huginn / Открыть чат».
+      el.oncontextmenu = (ev) => {
+        ev.preventDefault();
+        ev.stopPropagation();
+        openContactMenu(uidAttr, ev.clientX, ev.clientY);
+      };
       el.onclick = async () => {
         const cid = Number(el.getAttribute('data-cid'));
-        const uid = Number(el.getAttribute('data-uid'));
+        const uid = uidAttr;
         if (cid > 0) { openChat(cid); return; }
         if (uid > 0) {
           try {
@@ -3233,6 +3240,78 @@
         }
       };
     });
+  }
+
+  /**
+   * Контекстное меню контакта (ПКМ): звонок через Mango, звонок в Huginn, чат, приглашение.
+   * Номер берём из CRM (directory.phone); если пуст — звонок через Mango недоступен.
+   */
+  function openContactMenu(uid, x, y) {
+    if (!uid) return;
+    clearFloats();
+    const row = (state.contactsDirectory || []).find((u) => Number(u.user_id) === uid) || {};
+    const nm = humanizeChatName(row.name || 'Контакт');
+    const phone = row.phone || null;
+    const hasHuginn = row.has_huginn !== false;
+    const el = document.createElement('div');
+    el.className = 'hg-float hg-glass';
+    el.setAttribute('data-role', 'menu');
+    el.innerHTML = `<div class="hg-float-head">${esc(nm)}${phone ? ' · ' + esc(phone) : ''}</div>
+      <div class="hg-float-actions">
+        <button type="button" data-cm="mango"${phone ? '' : ' disabled'}>${ICO.phone || '📞'}<span>Позвонить через Mango${phone ? '' : ' (нет номера)'}</span></button>
+        <button type="button" data-cm="huginn"${hasHuginn ? '' : ' disabled'}>${ICO.huginn || ICO.phone || '📞'}<span>Позвонить в Huginn${hasHuginn ? '' : ' (нет аккаунта)'}</span></button>
+        <button type="button" data-cm="chat">${ICO.chat || ICO.compose || '💬'}<span>Открыть чат</span></button>
+        <button type="button" data-cm="invite">${ICO.invite || ICO.userPlus || '+'}<span>Пригласить</span></button>
+      </div>`;
+    placeFloat(el, x, y);
+    el.onclick = async (e) => {
+      const btn = e.target.closest('[data-cm]');
+      if (!btn || btn.disabled) return;
+      const a = btn.getAttribute('data-cm');
+      clearFloats();
+      if (a === 'mango') { callContactViaMango(uid, nm); return; }
+      if (a === 'huginn') {
+        try {
+          if (window.HuginnCall && HuginnCall.start) await HuginnCall.start('audio');
+        } catch (err) { showToast(err.message || 'Не удалось позвонить в Huginn'); }
+        return;
+      }
+      if (a === 'invite') { openInviteSheet({ name: nm }); return; }
+      if (a === 'chat') {
+        const cid = Number(row.chat_id);
+        if (cid > 0) { openChat(cid); return; }
+        try {
+          const data = await api('/api/chat-groups/direct', { method: 'POST', body: { user_id: uid } });
+          await ensureChatOpened(data.chat || data, { direct_user_id: uid, direct_user_name: row.name });
+        } catch (err) { showToast(err.message || 'Не удалось открыть чат'); }
+      }
+    };
+  }
+
+  /** Звонок контакту через Mango: в браузере (WebRTC) или серверный на мобильный. */
+  async function callContactViaMango(uid, nm) {
+    const row = (state.contactsDirectory || []).find((u) => Number(u.user_id) === uid) || {};
+    const phone = row.phone;
+    if (!phone) { showToast('У контакта не заполнен номер в CRM'); return; }
+    const P = window.AsgardPhone;
+    const canWebrtc = !!(P && P.getSipRegistered && P.getSipRegistered());
+    if (canWebrtc) {
+      try {
+        await P.outbound(phone);
+        showToast('Звонок ' + (nm || '') + ' — в браузере');
+        return;
+      } catch (e) {
+        showToast(e.message || 'Не удалось позвонить');
+        return;
+      }
+    }
+    // Нет SIP-регистрации — сервер поднимет плечо на мобильный и наберёт контакт.
+    try {
+      const r = await api('/api/chat-groups/contacts/' + uid + '/call', { method: 'POST' });
+      showToast('Звонок ' + (nm || '') + (r && r.via === 'gsm' ? ' — примите на телефоне' : ''));
+    } catch (e) {
+      showToast(e.message || 'Не удалось позвонить');
+    }
   }
 
   async function renderContactsPanel(panel) {

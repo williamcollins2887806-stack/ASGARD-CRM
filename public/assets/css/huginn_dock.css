@@ -2901,8 +2901,15 @@ html[data-theme="light"] .hg-send.is-mic:hover {
 }
 .hg-float-actions button svg { width: 18px; height: 18px; color: var(--hg-muted); }
 .hg-float-actions button:hover { background: var(--hg-hover); }
+.hg-float-actions button:disabled { opacity: .45; cursor: default; }
+.hg-float-actions button:disabled:hover { background: transparent; }
 .hg-float-actions button.danger { color: var(--hg-danger, var(--red, #FF453A)); }
 .hg-float-actions button.danger svg { color: var(--hg-danger, var(--red, #FF453A)); }
+.hg-float-head {
+  padding: 8px 12px 6px; font: 700 13px/1.3 var(--hg-font); color: var(--hg-text);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 240px;
+  border-bottom: 1px solid var(--hg-border, rgba(255,255,255,.08)); margin-bottom: 4px;
+}
 
 .hg-sheet {
   position: absolute;

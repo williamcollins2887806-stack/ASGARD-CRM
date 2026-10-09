@@ -1286,6 +1286,7 @@ module.exports = async function registerHuginnExt(fastify, { db, uploadDir, getC
               COALESCE(u.is_huginn_guest, false) AS is_huginn_guest,
               (COALESCE(u.is_huginn_guest, false) = true
                  OR u.role NOT IN ('FIELD_WORKER', 'BOT')) AS has_huginn,
+              NULLIF(BTRIM(COALESCE(u.phone, '')), '') AS phone,
               (SELECT c.id
                  FROM chats c
                  JOIN chat_group_members m1 ON m1.chat_id = c.id AND m1.user_id = $1
@@ -1309,15 +1310,75 @@ module.exports = async function registerHuginnExt(fastify, { db, uploadDir, getC
         has_huginn: r.has_huginn === true,
         online: !!r.fresh,
         last_seen_at: r.last_seen_at,
-        chat_id: r.chat_id || null
+        chat_id: r.chat_id || null,
+        phone: r.phone || null
       }))
     };
+  });
+
+  /**
+   * Позвонить контакту через Mango (клик-ту-колл из Huginn).
+   * Звоним мне (оператору) на устройство по режиму, после ответа — на номер контакта.
+   */
+  fastify.post('/contacts/:userId/call', {
+    preHandler: [fastify.authenticate]
+  }, async (request, reply) => {
+    const me = Number(request.user.id);
+    const targetId = parsePositiveInt(request.params.userId);
+    if (!targetId) return reply.code(400).send({ error: 'bad user id' });
+
+    const { rows } = await db.query(
+      `SELECT id, name, NULLIF(BTRIM(COALESCE(phone, '')), '') AS phone
+         FROM users
+        WHERE id = $1 AND is_active = true`,
+      [targetId]
+    );
+    const target = rows[0];
+    if (!target) return reply.code(404).send({ error: 'Контакт не найден' });
+    if (!target.phone) {
+      return reply.code(409).send({ error: 'У контакта не заполнен номер в CRM' });
+    }
+
+    // Мой режим приёма: browser → плечо WebRTC, иначе мобильный.
+    const { rows: opRows } = await db.query(
+      `SELECT webrtc_registered, receive_mode
+         FROM pbx_operators WHERE user_id = $1`,
+      [me]
+    );
+    const op = opRows[0] || {};
+    const useBrowser = op.webrtc_registered === true;
+
+    try {
+      const pbxBase = `http://127.0.0.1:${process.env.CMD_PORT || '4575'}`;
+      const secret = process.env.PBX_CMD_SECRET || '';
+      const res = await fetch(pbxBase + '/call/originate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-PBX-Secret': secret },
+        body: JSON.stringify({ number: target.phone, user_id: me }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        return reply.code(res.status === 409 ? 409 : 502).send({
+          error: data.error || 'Не удалось инициировать звонок',
+          via: useBrowser ? 'webrtc' : 'gsm',
+        });
+      }
+      // Открыть клиенту исходящий звонок в UI (media/статус).
+      sendToUser(me, 'call:outbound_started', {
+        number: target.phone,
+        target_user_id: targetId,
+        target_name: target.name,
+        via: useBrowser ? 'webrtc' : 'gsm',
+      });
+      return { ok: true, number: target.phone, target_name: target.name, via: useBrowser ? 'webrtc' : 'gsm' };
+    } catch (e) {
+      return reply.code(502).send({ error: e.message });
+    }
   });
 
   // ═══════════════════════════════════════════════════════════════
   // Clear chat history
   // ═══════════════════════════════════════════════════════════════
-
   fastify.delete('/:id/messages', {
     preHandler: [fastify.authenticate]
   }, async (request, reply) => {
