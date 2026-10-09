@@ -1388,6 +1388,8 @@ body.theme-dark .ph-seg__btn.is-active {
 .ph-dp-avatar.is-ring { animation: ph-dp-ring 1.4s ease-out infinite; }
 .ph-dp-avatar.is-live { box-shadow: 0 0 0 3px color-mix(in srgb, var(--hg-online, var(--ok)) 55%, transparent); }
 .ph-dp-avatar.is-held { box-shadow: 0 0 0 3px color-mix(in srgb, var(--gold, var(--hg-accent)) 55%, transparent); }
+/* Несохранённый номер → иконка трубки вместо случайных цифр («55»). */
+.ph-dp-avatar svg { width: 38px; height: 38px; display: block; opacity: .9; }
 @keyframes ph-dp-ring {
   0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--gold, var(--hg-accent)) 55%, transparent); }
   100% { box-shadow: 0 0 0 22px transparent; }

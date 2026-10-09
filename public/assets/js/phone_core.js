@@ -667,6 +667,8 @@
 
     transfer: function (kind, target) {
       kind = kind === 'consult' ? 'consult' : 'blind';
+      // Для WebRTC-звонка канала в Asterisk ещё нет (плечо переводит Asterisk по
+      // pbx_uid). Передаём pbx_uid и call_id — сервер сам найдёт канал.
       var body = { channel: callMeta.channel, pbx_uid: callMeta.pbx_uid, call_id: callMeta.call_id, target: target, mode: kind };
       if (kind === 'consult' && consultSession) {
         body.consult_channel = consultSession.id;
@@ -677,9 +679,9 @@
           return r;
         })
         .catch(function (e) {
-          // GSM-режим (звонок на мобильный через транк): канала в Asterisk нет —
-          // просим сервер перевести вызов через транк.
-          if (e && /channel required/i.test(e.message || '')) {
+          var msg = (e && e.message) || '';
+          // GSM-путь: канала нет, переводим через транк (набор нового плеча).
+          if (/channel required/i.test(msg)) {
             var digits = normalizePhone(target);
             return pbxApi('/call/outbound', {
               method: 'POST',
@@ -688,6 +690,12 @@
               emit('transfer', { kind: kind, target: target, via: 'gsm' });
               return r2;
             });
+          }
+          // 409 «оператор на WebRTC» — это НЕ повод дозваниваться серверным путём
+          // (иначе звонок уходит на мобильный вместо перевода). Показываем понятное
+          // сообщение и оставляем вызов на линии (инцидент 10.10.2026).
+          if (/webrtc/i.test(msg)) {
+            throw new Error('Перевод недоступен: звонок идёт из браузера. Освободите линию или переведите после ответа абонента.');
           }
           throw e;
         });

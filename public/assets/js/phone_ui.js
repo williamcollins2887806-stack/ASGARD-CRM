@@ -156,8 +156,19 @@
       if (parts.length >= 2) return (parts[0].charAt(0) + parts[1].charAt(0)).toUpperCase();
       if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
     }
-    var d = String(phone || s).replace(/\D/g, '');
-    return d.slice(-2) || '•';
+    // Чистый номер → без текста: раньше возвращали последние 2 цифры и в круге
+    // висело «55» (последние цифры номера), что выглядело как случайное число.
+    // Теперь показываем иконку трубки — так делают TG/WhatsApp.
+    return '';
+  }
+
+  /** Внутренность аватара: инициалы либо иконка трубки для несохранённого номера. */
+  function avatarInner(name, phone) {
+    var ini = initialsFrom(name, phone);
+    if (ini) return esc(ini);
+    return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"'
+      + ' stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'
+      + '<path d="M18 15.5v2.6a1.8 1.8 0 0 1-2 1.8 17.8 17.8 0 0 1-7.7-2.7 17.5 17.5 0 0 1-5.4-5.4A17.8 17.8 0 0 1 .2 4a1.8 1.8 0 0 1 1.8-2h2.6a1.8 1.8 0 0 1 1.8 1.6c.1.9.3 1.7.6 2.5a1.8 1.8 0 0 1-.4 1.9L5.5 9.1a14.4 14.4 0 0 0 5.4 5.4l1.1-1.1a1.8 1.8 0 0 1 1.9-.4c.8.3 1.6.5 2.5.6A1.8 1.8 0 0 1 18 15.5z"/></svg>';
   }
 
   function dockBtn(id, ico, label, extraClass) {
@@ -464,7 +475,7 @@
     dom.incoming.innerHTML =
       '<div class="ph-card-inner">' +
         '<div class="ph-card-top">' +
-          '<div class="ph-avatar" aria-hidden="true">' + esc(ini) + '</div>' +
+          '<div class="ph-avatar" aria-hidden="true">' + (ini ? esc(ini) : '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M18 15.5v2.6a1.8 1.8 0 0 1-2 1.8 17.8 17.8 0 0 1-7.7-2.7 17.5 17.5 0 0 1-5.4-5.4A17.8 17.8 0 0 1 .2 4a1.8 1.8 0 0 1 1.8-2h2.6a1.8 1.8 0 0 1 1.8 1.6c.1.9.3 1.7.6 2.5a1.8 1.8 0 0 1-.4 1.9L5.5 9.1a14.4 14.4 0 0 0 5.4 5.4l1.1-1.1a1.8 1.8 0 0 1 1.9-.4c.8.3 1.6.5 2.5.6A1.8 1.8 0 0 1 18 15.5z"/></svg>') + '</div>' +
           '<div class="ph-card-meta">' +
             '<div class="ph-card-title">Входящий звонок</div>' +
             '<div class="ph-card-name">' + esc(title) + '</div>' +
@@ -772,7 +783,6 @@
     // затем имя/номер и время. Бейдж источника показываем только у Хугинна.
     var srcBadge = isHuginn ? '<span class="ph-ios-src is-huginn">Хугинн</span>' : '';
     var when = fmtWhen(it.created_at);
-    var ini = initialsFrom(name, num);
     var dirIco = missed || it.call_type === 'missed'
       ? '<span class="hg-call-dir is-missed" aria-hidden="true">' + CALL_DIR_SVG.missed + '</span>'
       : (it.direction === 'outbound'
@@ -788,7 +798,7 @@
     return '<div class="ph-dp-row ph-ios-row ' + dirCls + '" data-ph-open="' + (missed ? 'missed' : 'log') + '" data-id="' + esc(it.id) + '">' +
       dirIco +
       '<div class="ph-ios-av-wrap">' +
-        '<div class="ph-ios-av" aria-hidden="true">' + esc(ini) + '</div>' +
+        '<div class="ph-ios-av" aria-hidden="true">' + avatarInner(name, num) + '</div>' +
       '</div>' +
       '<div class="ph-dp-row-main" data-ph-call="' + esc(num || '') + '"' + hgAttr + ' title="Позвонить">' +
         '<div class="ph-dp-row-name">' + esc(name) + '</div>' +
@@ -978,7 +988,7 @@
     return panelHead('Исходящий звонок') +
       '<div class="ph-dp ph-dp--call">' +
         '<div class="ph-dp-who">' +
-          '<div class="ph-dp-avatar is-ring" aria-hidden="true">' + esc(initialsFrom(lookup.name || lookup.client_name, num)) + '</div>' +
+          '<div class="ph-dp-avatar is-ring" aria-hidden="true">' + avatarInner(lookup.name || lookup.client_name, num) + '</div>' +
           '<div class="ph-dp-who-name">' + esc(title) + '</div>' +
           '<div class="ph-dp-who-sub">Вызов…</div>' +
         '</div>' +
@@ -1007,7 +1017,7 @@
     return panelHead('Разговор', isHeld ? 'на удержании' : '') +
       '<div class="ph-dp ph-dp--call">' +
         '<div class="ph-dp-who">' +
-          '<div class="ph-dp-avatar' + (isHeld ? ' is-held' : ' is-live') + '" aria-hidden="true">' + esc(initialsFrom(lookup.name || lookup.client_name, num)) + '</div>' +
+          '<div class="ph-dp-avatar' + (isHeld ? ' is-held' : ' is-live') + '" aria-hidden="true">' + avatarInner(lookup.name || lookup.client_name, num) + '</div>' +
           '<div class="ph-dp-who-name">' + esc(title) + '</div>' +
           '<div class="ph-dp-who-sub">' + esc(sub) + '</div>' +
           '<div class="ph-dp-timer ph-js-timer">' + fmtTimer(Date.now() - (timerStart || Date.now())) + '</div>' +
@@ -1333,10 +1343,9 @@
         return;
       }
       listEl.innerHTML = rows.map(function (s) {
-        var ini = initialsFrom(s.name, s.phone);
         var on = !!s.on_line;
         return '<button type="button" class="ph-tr-row" data-id="' + s.id + '" data-phone="' + esc(s.phone || '') + '">' +
-          '<span class="ph-tr-ava" aria-hidden="true">' + esc(ini) +
+          '<span class="ph-tr-ava" aria-hidden="true">' + avatarInner(s.name, s.phone) +
             '<span class="ph-tr-dot ' + (on ? 'ph-tr-dot--on' : 'ph-tr-dot--off') + '" title="' + (on ? 'на линии' : 'не в сети') + '"></span>' +
           '</span>' +
           '<span class="ph-tr-name">' + esc(s.name) + '</span>' +
@@ -1594,6 +1603,9 @@
     // Тестовый хук: позволяет отрисовать строку журнала без входа в CRM
     // (визуальная проверка вида списка звонков).
     __renderCallRow: callRowHtml,
+    // Тестовые хуки для проверки аватаров (инициалы/иконка трубки).
+    __initialsFrom: initialsFrom,
+    __avatarInner: avatarInner,
   };
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);

@@ -38,7 +38,8 @@ test('G1', 'transport-ws объявляет публичные media/signaling �
 test('G2', 'rtp.conf задаёт ICE host candidate override (сниппет в репо)', () => {
   const s = read('ops/asterisk/rtp.conf.snippet');
   assert.ok(/\[ice_host_candidates\]/.test(s), 'нет секции ice_host_candidates');
-  assert.ok(/=>\s*[0-9]/.test(s), 'нет переопределения адреса');
+  assert.ok(/192\.168\.0\.135 => 92\.242\.61\.184/.test(s),
+    'override должен подменять реальный адрес интерфейса (ens3), иначе браузер получает приватный кандидат');
   assert.ok(/include_local_address/.test(s), 'нет include_local_address (нужен и локальный кандидат)');
 });
 
