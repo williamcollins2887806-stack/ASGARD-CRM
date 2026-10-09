@@ -89,11 +89,27 @@ async function finalizeRecording(pool, opts) {
     const client = await pool.connect();
     try {
       if (pbxUid) {
-        await client.query(
+        const upd = await client.query(
           `UPDATE call_history SET recording_url = $1, record_path = $2, updated_at = NOW()
            WHERE pbx_uid = $3`,
           [relUrl, destPath, pbxUid]
         );
+        // Исходящие из браузера (from-internal) не создают строку заранее —
+        // журнал должен увидеть звонок, поэтому заводим запись здесь.
+        if (upd.rowCount === 0) {
+          await client.query(
+            `INSERT INTO call_history (
+               call_id, pbx_uid, source, direction, call_type, status, outcome,
+               recording_url, record_path, started_at, timestamp, created_at, updated_at
+             ) VALUES ($1, $2, 'pbx', 'outbound', 'outbound', 'completed', 'recorded',
+               $3, $4, NOW(), NOW(), NOW(), NOW())
+             ON CONFLICT (call_id) DO UPDATE SET
+               recording_url = EXCLUDED.recording_url,
+               record_path = EXCLUDED.record_path,
+               updated_at = NOW()`,
+            ['pbx_' + pbxUid, String(pbxUid), relUrl, destPath]
+          );
+        }
       }
       await client.query('SELECT pg_notify($1, $2)', [
         'pbx_recording_ready',

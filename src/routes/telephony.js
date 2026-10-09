@@ -198,6 +198,37 @@ module.exports = async function telephonyRoutes(fastify, opts) {
     return r.rows[0] || null;
   }
 
+  /**
+   * Найти уже созданную PBX-строку (source='pbx', pbx_uid) для того же звонка,
+   * чтобы summary от Mango ОБНОВИЛ её, а не создал вторую запись в журнале.
+   *
+   * Связь по номерам + узкое окно времени: Mango не сообщает Asterisk UNIQUEID,
+   * поэтому иных надёжных ключей нет. Окно сознательно короткое (5 мин),
+   * чтобы не склеить два разных звонка с теми же номерами.
+   */
+  async function findPbxCallByNumbers({ fromNum, toNum, createTime }) {
+    const clientNum = (fromNum || '').replace(/\D/g, '').slice(-10);
+    const did = (toNum || '').replace(/\D/g, '').slice(-10);
+    if (!clientNum) return null;
+    try {
+      const r = await db.query(
+        `SELECT id, recording_id FROM call_history
+          WHERE source = 'pbx'
+            AND (mango_entry_id IS NULL OR mango_entry_id = '')
+            AND right(regexp_replace(COALESCE(from_number, ''), '\\D', '', 'g'), 10) = $1
+            AND ($2 = '' OR right(regexp_replace(COALESCE(to_number, ''), '\\D', '', 'g'), 10) = $2)
+            AND started_at > COALESCE($3::timestamptz, NOW()) - interval '5 minutes'
+            AND started_at < COALESCE($3::timestamptz, NOW()) + interval '5 minutes'
+          ORDER BY started_at DESC
+          LIMIT 1`,
+        [clientNum, did, createTime || null]
+      );
+      return r.rows[0] || null;
+    } catch (_) {
+      return null;
+    }
+  }
+
   async function recordingIdFromLog(entryId) {
     const aliases = entryIdAliases(entryId);
     if (!aliases.length) return null;
@@ -474,7 +505,12 @@ module.exports = async function telephonyRoutes(fastify, opts) {
     if (cust.rows.length) clientInn = cust.rows[0].inn;
 
     // Upsert в call_history (entry_id: raw и numeric/base64 alias)
-    const existing = await findCallByEntryId(entryId);
+    let existing = await findCallByEntryId(entryId);
+    if (!existing) {
+      // Тот же звонок уже создан PBX-контуром (source='pbx') — обновляем его,
+      // а не плодим дубль в журнале.
+      existing = await findPbxCallByNumbers({ fromNum, toNum, createTime });
+    }
     const recFromLog = recordingId || await recordingIdFromLog(entryId);
 
     let callHistoryId;
@@ -483,6 +519,7 @@ module.exports = async function telephonyRoutes(fastify, opts) {
       callHistoryId = existing.id;
       await db.query(
         `UPDATE call_history SET
+          mango_entry_id = COALESCE(mango_entry_id, $14),
           direction = $1, call_type = $2, from_number = $3, to_number = $4,
           duration = $5, duration_seconds = $5, started_at = $6, ended_at = $7,
           recording_id = COALESCE(NULLIF($8, ''), recording_id),
