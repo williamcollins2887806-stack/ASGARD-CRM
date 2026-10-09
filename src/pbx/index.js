@@ -1,4 +1,4 @@
-'use strict';
+﻿'use strict';
 
 const http = require('http');
 const { Pool } = require('pg');
@@ -65,7 +65,7 @@ async function loadOperators(client) {
   return rows;
 }
 
-/** Мобильный дежурного для фолбэка (когда никто не на линии). */
+/** РњРѕР±РёР»СЊРЅС‹Р№ РґРµР¶СѓСЂРЅРѕРіРѕ РґР»СЏ С„РѕР»Р±СЌРєР° (РєРѕРіРґР° РЅРёРєС‚Рѕ РЅРµ РЅР° Р»РёРЅРёРё). */
 async function loadDutyMobile(client, dutyUserId) {
   if (!dutyUserId) return null;
   try {
@@ -96,8 +96,8 @@ async function notifyRing(client, payload) {
 }
 
 /**
- * Реальный inbound AGI: dial string + history + legs + NOTIFY.
- * Экспортируется для integration-тестов.
+ * Р РµР°Р»СЊРЅС‹Р№ inbound AGI: dial string + history + legs + NOTIFY.
+ * Р­РєСЃРїРѕСЂС‚РёСЂСѓРµС‚СЃСЏ РґР»СЏ integration-С‚РµСЃС‚РѕРІ.
  */
 async function handleInboundAgi(session) {
   const caller = session.env.agi_callerid || session.env.callerid || '';
@@ -133,7 +133,7 @@ async function handleInboundAgi(session) {
 
     if (!plan.withinHours || !plan.targets.length) {
       const announce = pbxConfig.greeting_in_crm !== false;
-      // Нет свободных операторов: не теряем вызов — приветствие → дежурный на мобильный → почта.
+      // РќРµС‚ СЃРІРѕР±РѕРґРЅС‹С… РѕРїРµСЂР°С‚РѕСЂРѕРІ: РЅРµ С‚РµСЂСЏРµРј РІС‹Р·РѕРІ вЂ” РїСЂРёРІРµС‚СЃС‚РІРёРµ в†’ РґРµР¶СѓСЂРЅС‹Р№ РЅР° РјРѕР±РёР»СЊРЅС‹Р№ в†’ РїРѕС‡С‚Р°.
       const dutyMobile = pbxConfig.duty_mobile_fallback !== false
         ? await loadDutyMobile(client, dutyUserId)
         : null;
@@ -165,7 +165,7 @@ async function handleInboundAgi(session) {
         return { ok: true, fallback: 'duty_mobile', plan, hist };
       }
       if (!announce) {
-        // Приветствие озвучивает Mango — сразу в голосовую почту.
+        // РџСЂРёРІРµС‚СЃС‚РІРёРµ РѕР·РІСѓС‡РёРІР°РµС‚ Mango вЂ” СЃСЂР°Р·Сѓ РІ РіРѕР»РѕСЃРѕРІСѓСЋ РїРѕС‡С‚Сѓ.
         await session.hangup();
       }
       await markCallMissed(client, uniqueId, plan.withinHours ? 'no_agents' : 'off_hours');
@@ -191,10 +191,10 @@ async function handleInboundAgi(session) {
       return { ok: false, reason: 'empty_dial', plan };
     }
 
-    // Контракт dialplan: Dial + cascade 2..5 + дежурный + почта
+    // РљРѕРЅС‚СЂР°РєС‚ dialplan: Dial + cascade 2..5 + РґРµР¶СѓСЂРЅС‹Р№ + РїРѕС‡С‚Р°
     await session.setVariable('ASGARD_DIAL_STRING', dial.dialString);
     await session.setVariable('ASGARD_RING_TIMEOUT', String(dial.ringTimeout));
-    // Дежурный на мобильный как звено цепочки (если не ответил никто из браузерных).
+    // Р”РµР¶СѓСЂРЅС‹Р№ РЅР° РјРѕР±РёР»СЊРЅС‹Р№ РєР°Рє Р·РІРµРЅРѕ С†РµРїРѕС‡РєРё (РµСЃР»Рё РЅРµ РѕС‚РІРµС‚РёР» РЅРёРєС‚Рѕ РёР· Р±СЂР°СѓР·РµСЂРЅС‹С…).
     if (pbxConfig.duty_mobile_fallback !== false) {
       const dutyMobile = await loadDutyMobile(client, dutyUserId);
       if (dutyMobile) {
@@ -204,8 +204,8 @@ async function handleInboundAgi(session) {
     }
     await session.setVariable('ASGARD_VM_MAX_SEC', String(pbxConfig.voicemail_max_sec ?? 60));
 
-    // Приветствие из настроек (Silero → 8 kHz WAV) перед дозвоном операторам.
-    // greeting_in_crm=false → приветствие озвучивает Mango IVR, здесь молчим.
+    // РџСЂРёРІРµС‚СЃС‚РІРёРµ РёР· РЅР°СЃС‚СЂРѕРµРє (Silero в†’ 8 kHz WAV) РїРµСЂРµРґ РґРѕР·РІРѕРЅРѕРј РѕРїРµСЂР°С‚РѕСЂР°Рј.
+    // greeting_in_crm=false в†’ РїСЂРёРІРµС‚СЃС‚РІРёРµ РѕР·РІСѓС‡РёРІР°РµС‚ Mango IVR, Р·РґРµСЃСЊ РјРѕР»С‡РёРј.
     if (pbxConfig.greeting_in_crm !== false && pbxConfig.greeting_text) {
       try {
         const g = await ensurePrompt(pbxConfig.greeting_text);
@@ -314,7 +314,7 @@ async function notifyTransfer(db, payload) {
 }
 
 /**
- * Нормализация номера для Mango trunk: 8XXXXXXXXXX → 7XXXXXXXXXX, +7 → 7.
+ * РќРѕСЂРјР°Р»РёР·Р°С†РёСЏ РЅРѕРјРµСЂР° РґР»СЏ Mango trunk: 8XXXXXXXXXX в†’ 7XXXXXXXXXX, +7 в†’ 7.
  */
 function normalizeOutboundNumber(raw) {
   let d = String(raw || '').replace(/\D/g, '');
@@ -324,10 +324,10 @@ function normalizeOutboundNumber(raw) {
 }
 
 /**
- * Серверный исходящий (клик-ту-колл): поднять канал оператора и соединить с транком.
- * - WebRTC-оператор звонит из браузера сам (JsSIP), сюда не попадает.
- * - GSM-режим: звоним на mobile оператора через Mango, после ответа — набираем номер
- *   в контексте outbound-crm (соединение с внешним номером через тот же транк).
+ * РЎРµСЂРІРµСЂРЅС‹Р№ РёСЃС…РѕРґСЏС‰РёР№ (РєР»РёРє-С‚Сѓ-РєРѕР»Р»): РїРѕРґРЅСЏС‚СЊ РєР°РЅР°Р» РѕРїРµСЂР°С‚РѕСЂР° Рё СЃРѕРµРґРёРЅРёС‚СЊ СЃ С‚СЂР°РЅРєРѕРј.
+ * - WebRTC-РѕРїРµСЂР°С‚РѕСЂ Р·РІРѕРЅРёС‚ РёР· Р±СЂР°СѓР·РµСЂР° СЃР°Рј (JsSIP), СЃСЋРґР° РЅРµ РїРѕРїР°РґР°РµС‚.
+ * - GSM-СЂРµР¶РёРј: Р·РІРѕРЅРёРј РЅР° mobile РѕРїРµСЂР°С‚РѕСЂР° С‡РµСЂРµР· Mango, РїРѕСЃР»Рµ РѕС‚РІРµС‚Р° вЂ” РЅР°Р±РёСЂР°РµРј РЅРѕРјРµСЂ
+ *   РІ РєРѕРЅС‚РµРєСЃС‚Рµ outbound-crm (СЃРѕРµРґРёРЅРµРЅРёРµ СЃ РІРЅРµС€РЅРёРј РЅРѕРјРµСЂРѕРј С‡РµСЂРµР· С‚РѕС‚ Р¶Рµ С‚СЂР°РЅРє).
  */
 async function originateOutbound(db, body) {
   const number = normalizeOutboundNumber(body.number || body.exten);
@@ -352,21 +352,21 @@ async function originateOutbound(db, body) {
     );
     op = rows[0] || {};
     if (op.webrtc_registered && op.sip_username) {
-      // WebRTC зарегистрирован → звонок идёт из браузера (JsSIP) напрямую,
-      // серверный originate оператору не нужен (иначе «двойной набор»).
-      const err = new Error('Оператор на WebRTC — звонок инициируется из браузера');
+      // WebRTC Р·Р°СЂРµРіРёСЃС‚СЂРёСЂРѕРІР°РЅ в†’ Р·РІРѕРЅРѕРє РёРґС‘С‚ РёР· Р±СЂР°СѓР·РµСЂР° (JsSIP) РЅР°РїСЂСЏРјСѓСЋ,
+      // СЃРµСЂРІРµСЂРЅС‹Р№ originate РѕРїРµСЂР°С‚РѕСЂСѓ РЅРµ РЅСѓР¶РµРЅ (РёРЅР°С‡Рµ В«РґРІРѕР№РЅРѕР№ РЅР°Р±РѕСЂВ»).
+      const err = new Error('РћРїРµСЂР°С‚РѕСЂ РЅР° WebRTC вЂ” Р·РІРѕРЅРѕРє РёРЅРёС†РёРёСЂСѓРµС‚СЃСЏ РёР· Р±СЂР°СѓР·РµСЂР°');
       err.statusCode = 409;
       err.via = 'webrtc';
       throw err;
     }
     if (op.mobile_phone) {
-      channel = `PJSIP/mango-trunk/${String(op.mobile_phone).replace(/[^\d]/g, '')}`;
+      channel = `PJSIP/${String(op.mobile_phone).replace(/[^\d]/g, '')}@mango-trunk`;
     }
   }
   if (!channel) {
-    // Без user_id (или без мобильного) — прямой исходящий через транк:
-    // сотруднику не нужен ни WebRTC, ни «на линии», чтобы позвонить из CRM.
-    channel = `PJSIP/mango-trunk/${number}`;
+    // Р‘РµР· user_id (РёР»Рё Р±РµР· РјРѕР±РёР»СЊРЅРѕРіРѕ) вЂ” РїСЂСЏРјРѕР№ РёСЃС…РѕРґСЏС‰РёР№ С‡РµСЂРµР· С‚СЂР°РЅРє:
+    // СЃРѕС‚СЂСѓРґРЅРёРєСѓ РЅРµ РЅСѓР¶РµРЅ РЅРё WebRTC, РЅРё В«РЅР° Р»РёРЅРёРёВ», С‡С‚РѕР±С‹ РїРѕР·РІРѕРЅРёС‚СЊ РёР· CRM.
+    channel = `PJSIP/${number}@mango-trunk`;
   }
 
   const ami = getAmiClient();
@@ -396,7 +396,7 @@ async function originateOutbound(db, body) {
 }
 
 /**
- * Резолв цели перевода в Dial() tech/resource + return к инициатору.
+ * Р РµР·РѕР»РІ С†РµР»Рё РїРµСЂРµРІРѕРґР° РІ Dial() tech/resource + return Рє РёРЅРёС†РёР°С‚РѕСЂСѓ.
  */
 async function resolveTransferDial(db, body) {
   const empty = {
@@ -451,8 +451,8 @@ async function resolveTransferDial(db, body) {
     let targets = [];
     if (op) {
       const fakeOn = { ...op, on_line: true, can_accept: true };
-      // Для перевода допускаем webrtc даже без heartbeat, если registered;
-      // иначе GSM. Поднимаем last_seen если registered.
+      // Р”Р»СЏ РїРµСЂРµРІРѕРґР° РґРѕРїСѓСЃРєР°РµРј webrtc РґР°Р¶Рµ Р±РµР· heartbeat, РµСЃР»Рё registered;
+      // РёРЅР°С‡Рµ GSM. РџРѕРґРЅРёРјР°РµРј last_seen РµСЃР»Рё registered.
       if (op.webrtc_registered && op.sip_username) {
         fakeOn.last_seen_at = new Date().toISOString();
       }
@@ -465,7 +465,7 @@ async function resolveTransferDial(db, body) {
         );
       }
     } else if (/^[A-Za-z0-9_.-]+$/.test(String(targetRaw)) && !/^\d+$/.test(String(targetRaw))) {
-      // сырой sip username
+      // СЃС‹СЂРѕР№ sip username
       targets = [{
         userId: 0,
         targetType: 'webrtc',
@@ -535,9 +535,9 @@ function createCmdServer() {
     }
     const url = new URL(req.url, 'http://127.0.0.1');
     const secret = req.headers['x-pbx-secret'];
-    // Hangup finalize + health: loopback-only, allow without secret —
-    // Asterisk ${ENV(PBX_CMD_SECRET)} часто не видит pbx.env asgard-pbx.
-    // Остальные CMD (AMI answer/hangup/…) — только с совпадением secret.
+    // Hangup finalize + health: loopback-only, allow without secret вЂ”
+    // Asterisk ${ENV(PBX_CMD_SECRET)} С‡Р°СЃС‚Рѕ РЅРµ РІРёРґРёС‚ pbx.env asgard-pbx.
+    // РћСЃС‚Р°Р»СЊРЅС‹Рµ CMD (AMI answer/hangup/вЂ¦) вЂ” С‚РѕР»СЊРєРѕ СЃ СЃРѕРІРїР°РґРµРЅРёРµРј secret.
     const openPaths = url.pathname === '/recording/finalize' || url.pathname === '/health';
     if (!openPaths) {
       if (!config.pbxCmdSecret || secret !== config.pbxCmdSecret) {
@@ -546,7 +546,7 @@ function createCmdServer() {
         return;
       }
     } else if (config.pbxCmdSecret && secret && secret !== config.pbxCmdSecret) {
-      // If client sends a wrong secret on open path — still reject (tamper signal)
+      // If client sends a wrong secret on open path вЂ” still reject (tamper signal)
       res.writeHead(401);
       res.end('Unauthorized');
       return;
@@ -557,7 +557,7 @@ function createCmdServer() {
       res.end(JSON.stringify(obj));
     };
 
-    // Диагностика: видеть, доходят ли внутренние вызовы (dialplan h-curl, AMI-хуки).
+    // Р”РёР°РіРЅРѕСЃС‚РёРєР°: РІРёРґРµС‚СЊ, РґРѕС…РѕРґСЏС‚ Р»Рё РІРЅСѓС‚СЂРµРЅРЅРёРµ РІС‹Р·РѕРІС‹ (dialplan h-curl, AMI-С…СѓРєРё).
     if (process.env.PBX_CMD_DEBUG === '1') {
       console.log(`[cmd] ${req.method} ${url.pathname} from ${remote}`);
     }
@@ -581,7 +581,7 @@ function createCmdServer() {
 
       if (req.method === 'POST' && url.pathname === '/call/originate') {
         if (!amiConfigured()) throw new Error('AMI not configured');
-        // Клик-ту-колл из CRM: { number, user_id } → серверный originate через транк.
+        // РљР»РёРє-С‚Сѓ-РєРѕР»Р» РёР· CRM: { number, user_id } в†’ СЃРµСЂРІРµСЂРЅС‹Р№ originate С‡РµСЂРµР· С‚СЂР°РЅРє.
         if (!body.channel && (body.number || body.exten)) {
           const r = await originateOutbound(db, body);
           return send(200, r);
@@ -591,8 +591,8 @@ function createCmdServer() {
       }
       if (req.method === 'POST' && url.pathname === '/call/hangup') {
         if (!amiConfigured()) throw new Error('AMI not configured');
-        // Сброс всех плеч звонка: ищем каналы по pbx_uid (Linkedid/Uniqueid) и
-        // снимаем их; `channel` — частный случай, когда клиент знает своё плечо.
+        // РЎР±СЂРѕСЃ РІСЃРµС… РїР»РµС‡ Р·РІРѕРЅРєР°: РёС‰РµРј РєР°РЅР°Р»С‹ РїРѕ pbx_uid (Linkedid/Uniqueid) Рё
+        // СЃРЅРёРјР°РµРј РёС…; `channel` вЂ” С‡Р°СЃС‚РЅС‹Р№ СЃР»СѓС‡Р°Р№, РєРѕРіРґР° РєР»РёРµРЅС‚ Р·РЅР°РµС‚ СЃРІРѕС‘ РїР»РµС‡Рѕ.
         const uid = String(body.pbx_uid || body.call_id || '').replace(/^pbx_/, '');
         let hung = 0;
         if (uid) {
@@ -624,7 +624,7 @@ function createCmdServer() {
       if (req.method === 'POST' && url.pathname === '/call/bridge') {
         if (!amiConfigured()) throw new Error('AMI not configured');
         // Softphone answer: bridge client channel with agent channel if both given;
-        // otherwise Redirect agent session is already bridged by Dial — just ACK + mark answered.
+        // otherwise Redirect agent session is already bridged by Dial вЂ” just ACK + mark answered.
         if (body.channel1 && body.channel2) {
           await ami.bridge(body.channel1, body.channel2);
         }
@@ -715,7 +715,7 @@ function createCmdServer() {
       if (req.method === 'POST' && url.pathname === '/call/hold') {
         if (!amiConfigured()) throw new Error('AMI not configured');
         if (!body.channel) {
-          // GSM-режим: удерживать в Asterisk нечего.
+          // GSM-СЂРµР¶РёРј: СѓРґРµСЂР¶РёРІР°С‚СЊ РІ Asterisk РЅРµС‡РµРіРѕ.
           return send(200, { ok: true, skipped: true, reason: 'no_channel' });
         }
         if (body.hold === false) {
@@ -811,8 +811,8 @@ async function start() {
     maintenanceTimer = setInterval(tick, 60 * 1000);
     if (typeof maintenanceTimer.unref === 'function') maintenanceTimer.unref();
 
-    // Гарантированная привязка записей: h-хук/AMI-событие могут не долететь
-    // (MixMonitor сбрасывает WAV позже, curl из dialplan не всегда проходит).
+    // Р“Р°СЂР°РЅС‚РёСЂРѕРІР°РЅРЅР°СЏ РїСЂРёРІСЏР·РєР° Р·Р°РїРёСЃРµР№: h-С…СѓРє/AMI-СЃРѕР±С‹С‚РёРµ РјРѕРіСѓС‚ РЅРµ РґРѕР»РµС‚РµС‚СЊ
+    // (MixMonitor СЃР±СЂР°СЃС‹РІР°РµС‚ WAV РїРѕР·Р¶Рµ, curl РёР· dialplan РЅРµ РІСЃРµРіРґР° РїСЂРѕС…РѕРґРёС‚).
     const recTick = async () => {
       try {
         const r = await sweepRecordings(db, { lookbackMinutes: 20, limit: 30 });
@@ -834,7 +834,7 @@ async function start() {
       .connect()
       .then(() => {
         console.log('[asgard-pbx] AMI connected');
-        // Backup path if dialplan `h`/curl missed: Hangup → finalize by Uniqueid
+        // Backup path if dialplan `h`/curl missed: Hangup в†’ finalize by Uniqueid
         ami.on('event', (msg) => {
           if (!msg || msg.Event !== 'Hangup') return;
           const uid = msg.Uniqueid || msg.Linkedid;
@@ -846,7 +846,7 @@ async function start() {
       })
       .catch((e) => console.warn('[asgard-pbx] AMI connect failed:', e.message));
   } else {
-    console.warn('[asgard-pbx] AMI not configured — dial-engine via API only');
+    console.warn('[asgard-pbx] AMI not configured вЂ” dial-engine via API only');
   }
 }
 
