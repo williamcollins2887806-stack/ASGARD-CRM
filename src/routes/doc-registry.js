@@ -9,6 +9,7 @@ const fsp = require('fs').promises;
 const { randomUUID } = require('crypto');
 const { enrichCatalogFromLines } = require('../services/catalog-from-invoice');
 const excelSvc = require('../services/doc-registry-excel');
+const ExcelJS = require('exceljs');
 
 let normalizeUploadUrl = (p) => p;
 try { ({ normalizeUploadUrl } = require('../utils/upload-url')); } catch (_) { /* optional */ }
@@ -330,6 +331,15 @@ function buildFilters(q, userId) {
     } else eq('d.wh_status', raw);
   }
   if (q.work_id) eq('d.work_id', parseInt(q.work_id, 10));
+  // Мультивыбор ответственных: doc_owner_id=1,2,3 / pm_id=1,2 (см. фильтр в UI)
+  const manyIds = (col, raw) => {
+    const vals = String(raw).split(',').map((s) => parseInt(s, 10)).filter((n) => !isNaN(n));
+    if (!vals.length) return;
+    params.push(vals);
+    where += ` AND ${col} = ANY($${params.length}::int[])`;
+  };
+  if (q.doc_owner_id) manyIds('d.doc_owner_id', q.doc_owner_id);
+  if (q.pm_id) manyIds('d.pm_id', q.pm_id);
   if (q.counterparty) { params.push(`%${q.counterparty}%`); where += ` AND d.counterparty_name ILIKE $${params.length}`; }
   if (q.q) {
     params.push(`%${q.q}%`);
@@ -478,6 +488,68 @@ module.exports = async function docRegistryRoutes(fastify) {
     const csv = [head, ...body].join('\n');
     reply.header('Content-Type', 'application/json; charset=utf-8');
     return { csv, count: rows.length };
+  });
+
+  /**
+   * Выгрузка реестра в Excel по форме исходного файла «Реестр счетов 2026»
+   * (27 колонок). Работает СТРОГО по текущим фильтрам и берёт ВСЕ совпавшие
+   * строки (не только загруженную страницу) — «убрали фильтр → все строки».
+   */
+  fastify.get('/export-xlsx', auth, async (req, reply) => {
+    const { where, params } = buildFilters(req.query || {}, req.user && req.user.id);
+    const { rows } = await db.query(`${JOIN_SQL}${where} ORDER BY d.invoice_date NULLS LAST, d.id`, params);
+
+    const vatLabel = (r) => {
+      if (r.has_vat === false) return 'нет';
+      const rate = r.vat_rate != null ? Number(r.vat_rate) : 0;
+      if (!rate) return 'нет';
+      return Math.round(rate * 100) + '%';
+    };
+    const clos = (r, field) => {
+      let arr = r.closing_json;
+      if (typeof arr === 'string') { try { arr = JSON.parse(arr); } catch (_) { arr = []; } }
+      if (!Array.isArray(arr) || !arr.length) return '';
+      const v = arr[0][field];
+      return v == null ? '' : v;
+    };
+    const iso = (v) => (v ? String(v).slice(0, 10) : '');
+
+    const HEADERS = [
+      'Ответственный за документы', 'Ответственный за работу', 'Объект', '№ счёта', 'Дата счёта',
+      'Сумма', 'НДС', 'Контрагент', 'Контрагент — E-mail', 'Контрагент — Телефон', 'Договор',
+      'Дата договора', 'Договор — Скан', 'Договор — Оригинал', 'Для Вити — Состояние',
+      'Для Вити — Доставка', 'Для Вити — Срок доставки', 'Для Вити — Комментарий',
+      'Назначение закупаемых ТМЦ — На объект Заказчика', 'Назначение закупаемых ТМЦ — Собственность "АСГАРД"',
+      'Назначение закупаемых ТМЦ — Расходники', 'Закрывающие документы — Номер',
+      'Закрывающие документы — Дата', 'Закрывающие документы — Сумма',
+      'Закрывающие документы — Способ получения', 'Акт сверки', 'СРОК ОПЛАТЫ'
+    ];
+    const yesNo = (b) => (b ? 'да' : '');
+
+    const wb = new ExcelJS.Workbook();
+    const ws = wb.addWorksheet('Реестр счетов');
+    ws.addRow(HEADERS);
+    ws.getRow(1).font = { bold: true };
+    ws.views = [{ state: 'frozen', ySplit: 1 }];
+
+    for (const r of rows) {
+      ws.addRow([
+        r.doc_owner_name || '', r.pm_name || '', r.work_title || '', r.invoice_number || '', iso(r.invoice_date),
+        Number(r.amount_gross) || 0, vatLabel(r), r.counterparty_name || '', r.counterparty_email || '', r.counterparty_phone || '',
+        r.contract_label || '', iso(r.contract_date), yesNo(r.contract_has_scan), yesNo(r.contract_has_original),
+        r.vitya_state || '', r.delivery_note || '', iso(r.delivery_due_at), '',
+        yesNo(r.purpose_customer), yesNo(r.purpose_asgard), yesNo(r.purpose_consumables),
+        clos(r, 'no'), iso(clos(r, 'date')), clos(r, 'sum') === '' ? '' : Number(clos(r, 'sum')) || 0,
+        r.receive_channel || '', r.reconciliation_note || '', iso(r.payment_due_at)
+      ]);
+    }
+
+    const buf = await wb.xlsx.writeBuffer();
+    reply
+      .header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+      .header('Content-Disposition', 'attachment; filename="doc-registry.xlsx"')
+      .header('Cache-Control', 'no-store');
+    return reply.send(Buffer.from(buf));
   });
 
   fastify.post('/import-1c', auth, async (req) => {

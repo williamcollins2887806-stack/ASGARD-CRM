@@ -63,6 +63,8 @@ window.AsgardDocHubPage = (function () {
     scope: 'mine', // только в памяти модуля; F5 → mine
     facetCounterparty: '',
     facetOps: '',
+    facetOwners: [],
+    facetPms: [],
     facetIncomplete: false,
     quarter: '',
     year: '',
@@ -572,6 +574,8 @@ window.AsgardDocHubPage = (function () {
     if (state.q) p.set('q', state.q);
     if (state.facetCounterparty) p.set('counterparty', state.facetCounterparty);
     if (state.facetOps) p.set('ops_status', state.facetOps);
+    if (state.facetOwners && state.facetOwners.length) p.set('doc_owner_id', state.facetOwners.join(','));
+    if (state.facetPms && state.facetPms.length) p.set('pm_id', state.facetPms.join(','));
     if (state.facetIncomplete || state.kpi === 'incomplete') p.set('incomplete', '1');
     if (state.kpi === 'pay') p.set('kpi', 'pay');
     if (state.kpi === 'sf') p.set('kpi', 'sf');
@@ -592,10 +596,13 @@ window.AsgardDocHubPage = (function () {
       state.facets = {
         counterparties: Array.isArray(list)
           ? list.map((x) => (typeof x === 'string' ? x : (x.name || x.counterparty_name || ''))).filter(Boolean)
-          : []
+          : [],
+        // Ответственные для мультивыбора: отв. за документы и РП
+        doc_owners: Array.isArray(f.doc_owners) ? f.doc_owners : [],
+        pms: Array.isArray(f.pms) ? f.pms : []
       };
     } catch (_) {
-      state.facets = { counterparties: [] };
+      state.facets = { counterparties: [], doc_owners: [], pms: [] };
     }
   }
 
@@ -863,6 +870,116 @@ window.AsgardDocHubPage = (function () {
       </div>`;
   }
 
+  /**
+   * Мультивыбор с поиском и чипами (ответственные: отв. документы / РП).
+   * Возвращает HTML; логика — в bindDhMultiSelect.
+   */
+  function dhMultiSelectHtml({ id, options, selected, placeholder }) {
+    const sel = Array.isArray(selected) ? selected.map(String) : [];
+    const byId = new Map((options || []).map((o) => [String(o.value), o.label || String(o.value)]));
+    const chips = sel.slice(0, 2).map((v) =>
+      `<span class="dh-ms__chip">${esc(byId.get(v) || v)}<button type="button" class="dh-ms__chip-x" data-unset="${esc(v)}" aria-label="Убрать">✕</button></span>`
+    ).join('');
+    const more = sel.length > 2 ? `<span class="dh-ms__more">+${sel.length - 2}</span>` : '';
+    return `<div class="dh-ms" id="${esc(id)}" data-ms>
+      <button type="button" class="dh-ms__trigger" aria-expanded="false">
+        <span class="dh-ms__chips">${sel.length ? chips + more : `<span class="dh-ms__ph">${esc(placeholder || 'Все')}</span>`}</span>
+        <span class="dh-ms__caret">▾</span>
+      </button>
+      <div class="dh-ms__drop" hidden>
+        <input type="text" class="dh-ms__search" placeholder="Поиск…" autocomplete="off"/>
+        <div class="dh-ms__acts">
+          <button type="button" class="dh-ms__all">Выбрать все</button>
+          <button type="button" class="dh-ms__clear">Очистить</button>
+        </div>
+        <div class="dh-ms__list">
+          ${(options || []).map((o) => `<label class="dh-ms__item" data-label="${esc(String(o.label || o.value).toLowerCase())}">
+            <input type="checkbox" value="${esc(String(o.value))}" ${sel.includes(String(o.value)) ? 'checked' : ''}/>
+            <span>${esc(o.label || o.value)}</span></label>`).join('') || '<div class="dh-ms__empty">Нет данных</div>'}
+        </div>
+      </div>
+    </div>`;
+  }
+
+  /** Значение мультивыбора (массив id-строк). */
+  function dhMultiSelectValue(id) {
+    const host = document.getElementById(id);
+    if (!host) return [];
+    return [...host.querySelectorAll('.dh-ms__item input:checked')].map((i) => i.value);
+  }
+
+  /** Перерисовать чипы в триггере по текущим отметкам. */
+  function dhMultiSelectSync(id, options, placeholder) {
+    const host = document.getElementById(id);
+    if (!host) return;
+    const sel = dhMultiSelectValue(id);
+    const byId = new Map((options || []).map((o) => [String(o.value), o.label || String(o.value)]));
+    const box = host.querySelector('.dh-ms__chips');
+    if (!box) return;
+    const chips = sel.slice(0, 2).map((v) =>
+      `<span class="dh-ms__chip">${esc(byId.get(v) || v)}<button type="button" class="dh-ms__chip-x" data-unset="${esc(v)}" aria-label="Убрать">✕</button></span>`
+    ).join('');
+    const more = sel.length > 2 ? `<span class="dh-ms__more">+${sel.length - 2}</span>` : '';
+    box.innerHTML = sel.length ? chips + more : `<span class="dh-ms__ph">${esc(placeholder || 'Все')}</span>`;
+  }
+
+  /** Открытие/закрытие/поиск для всех мультивыборов внутри root. */
+  function bindDhMultiSelects(root, onChange) {
+    root.querySelectorAll('[data-ms]').forEach((host) => {
+      const trig = host.querySelector('.dh-ms__trigger');
+      const drop = host.querySelector('.dh-ms__drop');
+      const search = host.querySelector('.dh-ms__search');
+      const id = host.id;
+      const opts = () => {
+        const key = id.indexOf('Owner') >= 0 ? 'doc_owners' : 'pms';
+        return (state.facets && state.facets[key]) || [];
+      };
+      trig?.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const open = !drop.hidden;
+        document.querySelectorAll('.dh-ms__drop').forEach((d) => { d.hidden = true; });
+        document.querySelectorAll('.dh-ms__trigger').forEach((t) => t.setAttribute('aria-expanded', 'false'));
+        drop.hidden = open;
+        trig.setAttribute('aria-expanded', open ? 'false' : 'true');
+        if (!open && search) { search.value = ''; host.querySelectorAll('.dh-ms__item').forEach((i) => { i.hidden = false; }); search.focus(); }
+      });
+      drop?.addEventListener('click', (e) => e.stopPropagation());
+      search?.addEventListener('input', () => {
+        const q = search.value.trim().toLowerCase();
+        host.querySelectorAll('.dh-ms__item').forEach((it) => {
+          it.hidden = !!q && !String(it.getAttribute('data-label') || '').includes(q);
+        });
+      });
+      host.querySelectorAll('.dh-ms__item input').forEach((cb) => {
+        cb.addEventListener('change', () => { dhMultiSelectSync(id, opts(), 'Все'); onChange && onChange(); });
+      });
+      host.querySelector('.dh-ms__all')?.addEventListener('click', () => {
+        host.querySelectorAll('.dh-ms__item:not([hidden]) input').forEach((cb) => { cb.checked = true; });
+        dhMultiSelectSync(id, opts(), 'Все'); onChange && onChange();
+      });
+      host.querySelector('.dh-ms__clear')?.addEventListener('click', () => {
+        host.querySelectorAll('.dh-ms__item input').forEach((cb) => { cb.checked = false; });
+        dhMultiSelectSync(id, opts(), 'Все'); onChange && onChange();
+      });
+      host.querySelector('.dh-ms__chips')?.addEventListener('click', (e) => {
+        const x = e.target.closest('.dh-ms__chip-x');
+        if (!x) return;
+        e.stopPropagation();
+        const v = x.getAttribute('data-unset');
+        const cb = host.querySelector('.dh-ms__item input[value="' + CSS.escape(v) + '"]');
+        if (cb) cb.checked = false;
+        dhMultiSelectSync(id, opts(), 'Все'); onChange && onChange();
+      });
+    });
+    if (!bindDhMultiSelects._outside) {
+      bindDhMultiSelects._outside = true;
+      document.addEventListener('click', () => {
+        document.querySelectorAll('.dh-ms__drop').forEach((d) => { d.hidden = true; });
+        document.querySelectorAll('.dh-ms__trigger').forEach((t) => t.setAttribute('aria-expanded', 'false'));
+      });
+    }
+  }
+
   function facetsHtml() {
     const cps = state.facets.counterparties || [];
     const opts = OPS_OPTIONS.map(([v, l]) =>
@@ -898,6 +1015,24 @@ window.AsgardDocHubPage = (function () {
           <span>Статус</span>
           <select id="dhFacetOps">${opts}</select>
         </label>
+        <div class="dh-facet">
+          <span>Отв. документы</span>
+          ${dhMultiSelectHtml({
+            id: 'dhFacetOwners',
+            options: (state.facets.doc_owners || []).map((u) => ({ value: u.id, label: u.name })),
+            selected: state.facetOwners,
+            placeholder: 'Все'
+          })}
+        </div>
+        <div class="dh-facet">
+          <span>РП</span>
+          ${dhMultiSelectHtml({
+            id: 'dhFacetPms',
+            options: (state.facets.pms || []).map((u) => ({ value: u.id, label: u.name })),
+            selected: state.facetPms,
+            placeholder: 'Все'
+          })}
+        </div>
         <label class="dh-facet dh-facet--check">
           <input type="checkbox" id="dhFacetIncomplete" ${state.facetIncomplete ? 'checked' : ''}/>
           <span>Только неполные</span>
@@ -976,6 +1111,7 @@ window.AsgardDocHubPage = (function () {
               <button class="dh-btn dh-btn--ghost" type="button" id="dhBtnHelp" title="Подсказка">?</button>
               <button class="dh-btn dh-btn--ghost" type="button" id="dhBtnImport1c">Из 1С</button>
               <button class="dh-btn dh-btn--ghost" type="button" id="dhBtnExport1c">В 1С</button>
+              <button class="dh-btn dh-btn--ghost" type="button" id="dhBtnExportXlsx" title="Выгрузить в Excel все строки по текущему фильтру">Экспорт в Excel</button>
               <button class="dh-btn dh-btn--primary" type="button" id="dhBtnNew">Внести документ</button>`}
             </div>
           </header>
@@ -2507,6 +2643,46 @@ window.AsgardDocHubPage = (function () {
     }
   }
 
+  /**
+   * Выгрузка в Excel по текущему фильтру — сервер берёт ВСЕ совпавшие строки
+   * (не только загруженную страницу) и отдаёт файл по форме реестра 2026.
+   */
+  async function exportXlsx() {
+    const btn = document.getElementById('dhBtnExportXlsx');
+    const prev = btn ? btn.textContent : '';
+    if (btn) { btn.disabled = true; btn.textContent = 'Готовим файл…'; }
+    try {
+      const tok = (window.AsgardAuth && AsgardAuth.token) || localStorage.getItem('asgard_token');
+      // buildQuery отдаёт '?...'; убираем limit/sort — сервер отдаёт всё по фильтру
+      const qs = new URLSearchParams(buildQuery().replace(/^\?/, ''));
+      qs.delete('limit');
+      qs.delete('page');
+      qs.delete('sort');
+      const r = await fetch('/api/doc-registry/export-xlsx?' + qs.toString(), {
+        headers: { Authorization: 'Bearer ' + tok }
+      });
+      if (!r.ok) {
+        let msg = 'HTTP ' + r.status;
+        try { const j = await r.json(); msg = j.error || j.message || msg; } catch (_) {}
+        throw new Error(msg);
+      }
+      const blob = await r.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'Реестр счетов ' + new Date().toISOString().slice(0, 10) + '.xlsx';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 2000);
+      toast('Экспорт', 'Файл сформирован по текущему фильтру', 'ok');
+    } catch (e) {
+      toast('Экспорт', e.message || 'Не удалось выгрузить', 'err');
+    } finally {
+      if (btn) { btn.disabled = false; btn.textContent = prev || 'Экспорт в Excel'; }
+    }
+  }
+
   async function export1c() {
     try {
       const tok = (window.AsgardAuth && AsgardAuth.token) || localStorage.getItem('asgard_token');
@@ -2593,6 +2769,8 @@ window.AsgardDocHubPage = (function () {
     const apply = async () => {
       state.facetCounterparty = (root.querySelector('#dhFacetCp')?.value || '').trim();
       state.facetOps = root.querySelector('#dhFacetOps')?.value || '';
+      state.facetOwners = dhMultiSelectValue('dhFacetOwners');
+      state.facetPms = dhMultiSelectValue('dhFacetPms');
       state.facetIncomplete = !!root.querySelector('#dhFacetIncomplete')?.checked;
       state.year = root.querySelector('#dhFacetYear')?.value || '';
       if (state.facetIncomplete) state.kpi = 'incomplete';
@@ -2600,6 +2778,7 @@ window.AsgardDocHubPage = (function () {
       await refresh();
     };
     let t = null;
+    bindDhMultiSelects(root, () => { apply(); });
     root.querySelector('#dhFacetCp')?.addEventListener('change', apply);
     root.querySelector('#dhFacetCp')?.addEventListener('input', () => {
       clearTimeout(t);
@@ -2708,6 +2887,7 @@ window.AsgardDocHubPage = (function () {
     });
     root.querySelector('#dhBtnNew')?.addEventListener('click', () => { openWizard(); });
     root.querySelector('#dhBtnExport1c')?.addEventListener('click', export1c);
+    root.querySelector('#dhBtnExportXlsx')?.addEventListener('click', exportXlsx);
     root.querySelector('#dhBtnImport1c')?.addEventListener('click', import1c);
     root.querySelector('#dhBtnGuide')?.addEventListener('click', async () => {
       state.view = state.view === 'guide' ? 'registry' : 'guide';

@@ -2372,3 +2372,47 @@ html[data-theme="light"] .dh-cp-badge { color: #24503B; background: rgba(45,106,
 /* Кнопки быстрых действий: снятие СФ и ручная отметка оплаты */
 .dh-qa__undo { color: var(--warn-t, #fbbf24); }
 .dh-qa__paid { color: var(--ok-t, #4ade80); font-weight: 800; }
+
+/* Мультивыбор ответственных (фильтр реестра): чипы + поиск */
+.dh-ms { position: relative; min-width: 170px; }
+.dh-ms__trigger {
+  display: flex; align-items: center; justify-content: space-between; gap: 6px;
+  width: 100%; min-height: 32px; padding: 4px 8px; cursor: pointer;
+  border-radius: 8px; border: 1px solid var(--brd-m, #334155);
+  background: var(--bg3, #1e293b); color: var(--t1, #f8fafc);
+  font: inherit; font-size: 12px; text-align: left;
+}
+.dh-ms__trigger:hover { border-color: color-mix(in srgb, var(--gold, #d4a017) 40%, var(--brd, #334155)); }
+.dh-ms__chips { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; min-width: 0; }
+.dh-ms__ph { color: var(--t3, #94a3b8); }
+.dh-ms__chip {
+  display: inline-flex; align-items: center; gap: 4px; max-width: 130px;
+  padding: 1px 6px; border-radius: 999px; font-size: 11px;
+  background: color-mix(in srgb, var(--gold, #d4a017) 16%, transparent);
+  border: 1px solid color-mix(in srgb, var(--gold, #d4a017) 40%, transparent);
+  color: var(--t1, #f8fafc); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.dh-ms__chip-x { border: 0; background: transparent; color: inherit; cursor: pointer; font-size: 10px; padding: 0 1px; }
+.dh-ms__more { font-size: 11px; color: var(--t3, #94a3b8); }
+.dh-ms__caret { flex: 0 0 auto; color: var(--t3, #94a3b8); font-size: 10px; }
+.dh-ms__drop {
+  position: absolute; z-index: 20000; left: 0; top: calc(100% + 4px);
+  width: max(240px, 100%); max-height: 320px; overflow: auto;
+  padding: 8px; border-radius: 10px;
+  background: var(--bg2, #151922); border: 1px solid var(--brd, #334155);
+  box-shadow: 0 16px 40px rgba(0,0,0,.45);
+}
+.dh-ms__search {
+  width: 100%; padding: 6px 9px; margin-bottom: 6px;
+  border-radius: 7px; border: 1px solid var(--brd-m, #334155);
+  background: var(--bg3, #1e293b); color: var(--t1, #f8fafc); font: inherit; font-size: 12px;
+}
+.dh-ms__acts { display: flex; gap: 8px; margin-bottom: 6px; }
+.dh-ms__acts button {
+  border: 0; background: transparent; color: var(--blue-l, #60a5fa);
+  cursor: pointer; font-size: 11.5px; padding: 0;
+}
+.dh-ms__list { display: flex; flex-direction: column; max-height: 220px; overflow: auto; }
+.dh-ms__item { display: flex; align-items: center; gap: 8px; padding: 4px 6px; border-radius: 6px; cursor: pointer; font-size: 12.5px; }
+.dh-ms__item:hover { background: var(--bg3, #1e293b); }
+.dh-ms__empty { padding: 10px; color: var(--t3, #94a3b8); font-size: 12px; text-align: center; }
