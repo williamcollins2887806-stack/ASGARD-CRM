@@ -219,6 +219,39 @@
   }
 
   /**
+   * Инициалы для аватара звонка. Для номеров возвращает '' — тогда рисуем
+   * иконку трубки (как в ТГ для несохранённого номера), а не знаки пунктуации
+   * вида «+ (» (скриншот 09.10).
+   */
+  function callInitials(peer) {
+    const s = String(peer || '').trim();
+    if (!s || s === '?' || /^неизвест/i.test(s)) return '';
+    if (/[A-Za-zА-Яа-яЁё]/.test(s)) {
+      const letters = s.replace(/[^A-Za-zА-Яа-яЁё]/g, '');
+      return (letters.slice(0, 2) || '').toUpperCase();
+    }
+    return '';
+  }
+
+  /** Внутренность аватара: инициалы или иконка трубки для чистого номера. */
+  function callAvatarInner(peer) {
+    const ini = callInitials(peer);
+    if (ini) return esc(ini);
+    return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"'
+      + ' stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'
+      + '<path d="M18 15.5v2.6a1.8 1.8 0 0 1-2 1.8 17.8 17.8 0 0 1-7.7-2.7 17.5 17.5 0 0 1-5.4-5.4A17.8 17.8 0 0 1 .2 4a1.8 1.8 0 0 1 1.8-2h2.6a1.8 1.8 0 0 1 1.8 1.6c.1.9.3 1.7.6 2.5a1.8 1.8 0 0 1-.4 1.9L5.5 9.1a14.4 14.4 0 0 0 5.4 5.4l1.1-1.1a1.8 1.8 0 0 1 1.9-.4c.8.3 1.6.5 2.5.6A1.8 1.8 0 0 1 18 15.5z"/></svg>';
+  }
+
+  /** «+79160614809» → «+7 (916) 061-48-09»; нечисловые значения не трогаем. */
+  function fmtPhone(p) {
+    const d = String(p || '').replace(/\D/g, '');
+    if (d.length === 11 && d.charAt(0) === '7') {
+      return '+7 (' + d.substr(1, 3) + ') ' + d.substr(4, 3) + '-' + d.substr(7, 2) + '-' + d.substr(9, 2);
+    }
+    return String(p || '');
+  }
+
+  /**
    * Avatar style: if a picture URL is given, use it centered with a transparent
    * background (background-position:center is REQUIRED — otherwise the image is
    * anchored top-left and looks off-center). Otherwise a deterministic colour.
@@ -3574,9 +3607,15 @@
     inp.click();
   }
 
+  /** Иконка-трубка направления звонка (вид как в ТГ). */
+  const CALL_DIR_ICO = {
+    out: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 15.5v2.6a1.8 1.8 0 0 1-2 1.8 17.8 17.8 0 0 1-7.7-2.7 17.5 17.5 0 0 1-5.4-5.4A17.8 17.8 0 0 1 .2 4a1.8 1.8 0 0 1 1.8-2h2.6a1.8 1.8 0 0 1 1.8 1.6c.1.9.3 1.7.6 2.5a1.8 1.8 0 0 1-.4 1.9L5.5 9.1a14.4 14.4 0 0 0 5.4 5.4l1.1-1.1a1.8 1.8 0 0 1 1.9-.4c.8.3 1.6.5 2.5.6A1.8 1.8 0 0 1 18 15.5z"/><path d="M15 4h6v6"/><path d="M21 4l-7 7"/></svg>',
+    in: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 15.5v2.6a1.8 1.8 0 0 1-2 1.8 17.8 17.8 0 0 1-7.7-2.7 17.5 17.5 0 0 1-5.4-5.4A17.8 17.8 0 0 1 .2 4a1.8 1.8 0 0 1 1.8-2h2.6a1.8 1.8 0 0 1 1.8 1.6c.1.9.3 1.7.6 2.5a1.8 1.8 0 0 1-.4 1.9L5.5 9.1a14.4 14.4 0 0 0 5.4 5.4l1.1-1.1a1.8 1.8 0 0 1 1.9-.4c.8.3 1.6.5 2.5.6A1.8 1.8 0 0 1 18 15.5z"/><path d="M21 10h-6V4"/><path d="M15 10l6-6"/></svg>',
+    missed: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 15.5v2.6a1.8 1.8 0 0 1-2 1.8 17.8 17.8 0 0 1-7.7-2.7 17.5 17.5 0 0 1-5.4-5.4A17.8 17.8 0 0 1 .2 4a1.8 1.8 0 0 1 1.8-2h2.6a1.8 1.8 0 0 1 1.8 1.6c.1.9.3 1.7.6 2.5a1.8 1.8 0 0 1-.4 1.9L5.5 9.1a14.4 14.4 0 0 0 5.4 5.4l1.1-1.1a1.8 1.8 0 0 1 1.9-.4c.8.3 1.6.5 2.5.6A1.8 1.8 0 0 1 18 15.5z"/><path d="M14 4h7v7"/><path d="M21 4l-7 7"/></svg>',
+  };
+
   /** Единый журнал звонков: Хугинн (VoIP) + Телефония (PBX), с бейджем источника. */
-  function renderCallsPanel(panel) {
-    panel.innerHTML = `
+  function renderCallsPanel(panel) {    panel.innerHTML = `
       <div class="hg-panel-head">
         <h2>Звонки</h2>
         <button type="button" class="hg-icon-btn" data-collapse title="Свернуть">${ICO.close || '✕'}</button>
@@ -3605,8 +3644,11 @@
 
     Promise.allSettled([
       api('/api/chat-groups/calls/history?limit=50'),
-      api('/api/telephony/pbx/reports/journal?limit=50')
-    ]).then(([hgRes, pbxRes]) => {
+      api('/api/telephony/pbx/reports/journal?limit=50'),
+      // Реальные номера живут в записях Mango (source IS NULL, pbx_uid IS NULL):
+      // у PBX-строк номеров нет, а без них журнал показывал «Неизвестный».
+      api('/api/telephony/calls?scope=all&limit=50')
+    ]).then(([hgRes, pbxRes, telRes]) => {
       const merged = [];
       if (hgRes.status === 'fulfilled') {
         ((hgRes.value && hgRes.value.calls) || []).forEach((c) => {
@@ -3641,6 +3683,28 @@
           });
         });
       }
+      // Телефония (Mango/CRM): здесь есть настоящие номера и client_name.
+      if (telRes.status === 'fulfilled') {
+        ((telRes.value && (telRes.value.items || telRes.value.calls)) || []).forEach((c) => {
+          const out = c.direction === 'outbound';
+          const num = out ? (c.to_number || c.called_number || '') : (c.from_number || c.caller_number || '');
+          const name = c.client_name || c.client_contact || '';
+          const missed = c.call_type === 'missed' || c.outcome === 'missed' || c.outcome === 'no_answer';
+          const dur = Number(c.duration_seconds || c.duration) || 0;
+          merged.push({
+            source: 'tel',
+            at: c.started_at || c.created_at || c.timestamp,
+            peer: name || fmtPhone(num) || 'Неизвестный',
+            chatId: 0,
+            missed,
+            direction: out ? 'out' : 'in',
+            kind: 'audio',
+            detail: missed ? 'Пропущенный'
+              : (dur > 0 ? fmtDur(dur)
+                : (out ? 'Исходящий' : 'Входящий'))
+          });
+        });
+      }
       merged.sort((a, b) => {
         const ta = a.at ? new Date(a.at).getTime() : 0;
         const tb = b.at ? new Date(b.at).getTime() : 0;
@@ -3651,15 +3715,12 @@
         return;
       }
       listEl.innerHTML = merged.slice(0, 60).map((c) => {
-        const cls = c.missed ? ' is-missed' : '';
-        const dirIco = c.missed
-          ? '<span class="ph-ios-dir is-missed" aria-hidden="true">↙</span>'
-          : (c.direction === 'out'
-            ? '<span class="ph-ios-dir is-out" aria-hidden="true">↗</span>'
-            : '<span class="ph-ios-dir is-in" aria-hidden="true">↙</span>');
+        const cls = c.missed ? ' is-missed' : (c.direction === 'out' ? ' is-out' : ' is-in');
+        const dirKind = c.missed ? 'missed' : (c.direction === 'out' ? 'out' : 'in');
         return `<button type="button" class="hg-call-row ph-ios-row${cls}" data-cid="${c.chatId || ''}" data-src="${c.source}">
-          <div class="ph-ios-av-wrap">${dirIco}
-            <div class="ph-ios-av" aria-hidden="true">${esc(initials(c.peer))}</div>
+          <span class="hg-call-dir is-${dirKind}">${CALL_DIR_ICO[dirKind]}</span>
+          <div class="ph-ios-av-wrap">
+            <div class="ph-ios-av" aria-hidden="true">${callAvatarInner(c.peer)}</div>
           </div>
           <div class="hg-call-meta ph-dp-row-main">
             <div class="hg-call-name ph-dp-row-name">${esc(c.peer)}</div>

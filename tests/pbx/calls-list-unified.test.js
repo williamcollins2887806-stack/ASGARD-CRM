@@ -35,23 +35,25 @@ test('U1', 'образец: phone_ui использует .ph-ios-row с ава�
 });
 
 // ── Huginn ──
-test('U2', 'Хугинн: строка звонка использует ту же разметку, что образец', () => {
+test('U2', 'Хугинн: строка = иконка трубки → аватар → имя → время (как в ТГ)', () => {
   const dock = read('public/assets/js/huginn_dock.js');
   const fn = dock.slice(dock.indexOf('function renderCallsPanel'), dock.indexOf('function renderSettingsPanel'));
-  assert.ok(/hg-call-row ph-ios-row/.test(fn), 'нет .ph-ios-row');
-  assert.ok(/ph-ios-av-wrap/.test(fn), 'нет аватара как в образце');
-  assert.ok(/ph-ios-av/.test(fn), 'нет круга-аватара');
-  assert.ok(/ph-ios-dir/.test(fn), 'нет глифа направления');
+  assert.ok(/hg-call-dir/.test(fn), 'нет иконки-трубки направления');
+  assert.ok(/CALL_DIR_ICO/.test(fn), 'нет набора SVG-иконок направления');
+  assert.ok(/ph-ios-av/.test(fn), 'нет аватара');
   assert.ok(/ph-ios-when/.test(fn), 'нет времени в правом блоке');
   assert.ok(/ph-ios-right/.test(fn), 'нет правого блока');
+  // Порядок в разметке: иконка направления раньше аватара.
+  assert.ok(fn.indexOf('hg-call-dir') < fn.indexOf('ph-ios-av-wrap'),
+    'иконка трубки должна идти перед аватаром (как в ТГ)');
 });
 
-test('U3', 'Хугинн: убраны бейджи источника и иконка типа', () => {
+test('U3', 'Хугинн: убраны бейджи источника, эмодзи и глиф на аватаре', () => {
   const dock = read('public/assets/js/huginn_dock.js');
   const fn = dock.slice(dock.indexOf('function renderCallsPanel'), dock.indexOf('function renderSettingsPanel'));
   assert.ok(!/hg-call-src/.test(fn), 'остался бейдж источника');
   assert.ok(!/hg-call-ico/.test(fn), 'осталась иконка-эмодзи типа');
-  assert.ok(!/kindIco/.test(fn), 'осталась переменная иконки типа');
+  assert.ok(!/ph-ios-dir/.test(fn), 'стрелка-глиф на аватаре осталась (нужна отдельная иконка трубки)');
 });
 
 test('U4', 'Хугинн: подпись — тип звонка, время справа', () => {
@@ -59,6 +61,23 @@ test('U4', 'Хугинн: подпись — тип звонка, время с�
   const fn = dock.slice(dock.indexOf('function renderCallsPanel'), dock.indexOf('function renderSettingsPanel'));
   assert.ok(/esc\(c\.detail\)/.test(fn), 'подпись не выводится');
   assert.ok(/fmtWhen\(c\.at\)/.test(fn), 'время не выводится');
+});
+
+test('U4b', 'Хугинн: чистый номер даёт иконку трубки, а не «+ (»', () => {
+  const dock = read('public/assets/js/huginn_dock.js');
+  assert.ok(/function callInitials/.test(dock), 'нет callInitials');
+  assert.ok(/function callAvatarInner/.test(dock), 'нет callAvatarInner');
+  const fn = dock.slice(dock.indexOf('function callInitials'), dock.indexOf('function callAvatarInner'));
+  assert.ok(/A-Za-zА-Яа-яЁё/.test(fn), 'не проверяет наличие букв (для имён)');
+  assert.ok(!/\+\' \+ d\.slice/.test(fn), 'всё ещё подставляет цифры вместо иконки');
+});
+
+test('U4c', 'Хугинн: номера форматируются и берутся из телефонии', () => {
+  const dock = read('public/assets/js/huginn_dock.js');
+  const fn = dock.slice(dock.indexOf('function renderCallsPanel'), dock.indexOf('function renderSettingsPanel'));
+  assert.ok(/fmtPhone\(num\)/.test(fn), 'номер не форматируется');
+  assert.ok(/\/api\/telephony\/calls/.test(fn), 'не подтягивает номера из телефонии (Mango)');
+  assert.ok(/client_name/.test(fn), 'не использует имя клиента из CRM');
 });
 
 // ── Мобильный ──
@@ -76,10 +95,12 @@ test('U6', 'мобильный: убраны английские answered/perce
 });
 
 // ── CSS ──
-test('U7', 'CSS Хугинна: аватар/глиф/время как в образце', () => {
+test('U7', 'CSS Хугинна: иконка трубки, аватар и время', () => {
   const css = read('public/assets/css/huginn_dock.css');
+  assert.ok(/\.hg-call-dir/.test(css), 'нет стиля иконки-трубки');
+  assert.ok(/\.hg-call-dir\.is-out/.test(css), 'нет цвета исходящего');
+  assert.ok(/\.hg-call-dir\.is-missed/.test(css), 'нет цвета пропущенного');
   assert.ok(/\.hg-calls \.ph-ios-av-wrap/.test(css), 'нет стиля аватара');
-  assert.ok(/\.hg-calls \.ph-ios-dir/.test(css), 'нет стиля глифа');
   assert.ok(/\.hg-calls \.ph-ios-when/.test(css), 'нет стиля времени');
   assert.ok(/\.hg-calls \.ph-ios-right/.test(css), 'нет стиля правого блока');
 });
@@ -88,6 +109,7 @@ test('U8', 'CSS Хугинна: не осталось правил удалён�
   const css = read('public/assets/css/huginn_dock.css');
   assert.ok(!/\.hg-call-ico\s*\{/.test(css), 'осталось правило .hg-call-ico');
   assert.ok(!/\.hg-call-arrow/.test(css), 'осталось правило .hg-call-arrow');
+  assert.ok(!/\.hg-calls \.ph-ios-dir/.test(css), 'остался стиль глифа на аватаре');
 });
 
 console.log(`\n${passed} passed, ${failed} failed`);

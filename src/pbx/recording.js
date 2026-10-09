@@ -115,28 +115,57 @@ async function finalizeRecording(pool, opts) {
             direction === 'outbound' ? null : outNumber,
             direction === 'outbound' ? outNumber : null]
         );
-        // Исходящие из браузера (from-internal) не создают строку заранее —
-        // журнал должен увидеть звонок, поэтому заводим запись здесь.
+        // Исходящие из браузера (from-internal) часто уже есть в call_history —
+        // строку завёл вебхук Mango (source IS NULL) с реальным номером. Раньше
+        // finalize не находил её по pbx_uid, создавал вторую строку без номеров,
+        // и в журнале появлялись дубли «Неизвестный» (инцидент 09.10.2026).
+        // Поэтому сначала пробуем привязать запись к такой строке по совпадению
+        // направления и номера в пределах окна, и только потом создаём новую.
         if (upd.rowCount === 0) {
-          await client.query(
-            `INSERT INTO call_history (
-               call_id, pbx_uid, source, direction, call_type, status, outcome,
-               recording_url, record_path, user_id, answered_by,
-               from_number, to_number, started_at, timestamp, created_at, updated_at
-             ) VALUES ($1, $2, 'pbx', $5, $6, 'completed', 'recorded',
-               $3, $4, $7, $7,
-               $8, $9, NOW(), NOW(), NOW(), NOW())
-             ON CONFLICT (call_id) DO UPDATE SET
-               recording_url = EXCLUDED.recording_url,
-               record_path = EXCLUDED.record_path,
-               user_id = COALESCE(call_history.user_id, EXCLUDED.user_id),
-               answered_by = COALESCE(call_history.answered_by, EXCLUDED.answered_by),
-               updated_at = NOW()`,
-            ['pbx_' + pbxUid, String(pbxUid), relUrl, destPath,
-              direction || 'outbound', callType || 'outbound', opUserId,
-              direction === 'outbound' ? null : outNumber,
-              direction === 'outbound' ? outNumber : null]
-          );
+          const numCol = direction === 'inbound' ? 'from_number' : 'to_number';
+          const match = outNumber ? await client.query(
+            `UPDATE call_history SET
+               pbx_uid = $1, recording_url = $2, record_path = $3,
+               user_id = COALESCE(user_id, $5),
+               answered_by = COALESCE(answered_by, $5),
+               direction = COALESCE(direction, $6),
+               call_type = COALESCE(call_type, $7),
+               updated_at = NOW()
+             WHERE id = (
+               SELECT id FROM call_history
+                WHERE pbx_uid IS NULL
+                  AND (recording_url IS NULL OR recording_url = '')
+                  AND ${numCol} LIKE '%' || $4 || '%'
+                  AND ABS(EXTRACT(EPOCH FROM (COALESCE(started_at, created_at) - NOW()))) < 600
+                ORDER BY COALESCE(started_at, created_at) DESC
+                LIMIT 1
+             )
+             RETURNING id`,
+            [String(pbxUid), relUrl, destPath, outNumber, opUserId, direction, callType]
+          ) : { rowCount: 0 };
+          if (match.rowCount > 0) {
+            // Слили с существующей строкой — дубль не создаём.
+          } else {
+            await client.query(
+              `INSERT INTO call_history (
+                 call_id, pbx_uid, source, direction, call_type, status, outcome,
+                 recording_url, record_path, user_id, answered_by,
+                 from_number, to_number, started_at, timestamp, created_at, updated_at
+               ) VALUES ($1, $2, 'pbx', $5, $6, 'completed', 'recorded',
+                 $3, $4, $7, $7,
+                 $8, $9, NOW(), NOW(), NOW(), NOW())
+               ON CONFLICT (call_id) DO UPDATE SET
+                 recording_url = EXCLUDED.recording_url,
+                 record_path = EXCLUDED.record_path,
+                 user_id = COALESCE(call_history.user_id, EXCLUDED.user_id),
+                 answered_by = COALESCE(call_history.answered_by, EXCLUDED.answered_by),
+                 updated_at = NOW()`,
+              ['pbx_' + pbxUid, String(pbxUid), relUrl, destPath,
+                direction || 'outbound', callType || 'outbound', opUserId,
+                direction === 'outbound' ? null : outNumber,
+                direction === 'outbound' ? outNumber : null]
+            );
+          }
         }
       }
       await client.query('SELECT pg_notify($1, $2)', [

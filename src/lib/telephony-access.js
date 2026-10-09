@@ -68,11 +68,27 @@ function resolveSafeRecordPath(recordPath) {
   return ok ? resolved : null;
 }
 
+/**
+ * Роли, видящие журнал звонков. Раньше PM/HEAD_PM видели только свои строки —
+ * но исходящее плечо WebRTC (PJSIP/u<id>) не всегда связывается со строкой
+ * call_history, и звонки РП из браузера пропадали из журнала (09.10.2026).
+ */
+const TEL_VIEW_ALL_ROLES = [
+  ...TEL_FULL_VIEW_ROLES,
+  'HEAD_PM', 'PM',
+];
+
+function canViewAllCalls(user) {
+  return !!(user && TEL_VIEW_ALL_ROLES.includes(user.role));
+}
+
 module.exports = {
   TEL_FULL_VIEW_ROLES,
   TEL_ADMIN_ROLES,
   TEL_SETTINGS_ROLES,
+  TEL_VIEW_ALL_ROLES,
   hasFullCallView,
+  canViewAllCalls,
   canViewCall,
   loadCallForAccess,
   resolveSafeRecordPath,

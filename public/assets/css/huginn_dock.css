@@ -3879,9 +3879,8 @@ html[data-theme="light"] .hg-nav-search {
   padding: 6px 12px;
 }
 .hg-contact-row.is-invite:hover { background: var(--hg-hover); }
-/* Journal звонков — единый вид с телефонной панелью (образец: #phPanel).
-   Классы .ph-ios-* берём из phone.css, но панель Huginn может грузиться без
-   него, поэтому дублируем ключевые правила под .hg-calls. */
+/* Journal звонков — вид как в ТГ: слева иконка трубки, затем аватар,
+   затем имя/номер и время. Образец панели «Телефон» (#phPanel). */
 .hg-calls { overflow-y: auto; height: 100%; padding: 6px 0 16px; }
 .hg-call-row {
   display: flex; align-items: center; gap: 10px; width: 100%;
@@ -3892,18 +3891,26 @@ html[data-theme="light"] .hg-nav-search {
 }
 .hg-call-row:hover { background: var(--hg-hover); }
 .hg-call-row:active { background: var(--hg-active-row, var(--hg-hover)); }
+
+/* Иконка-трубка направления (как в ТГ) */
+.hg-call-dir {
+  flex: 0 0 auto; width: 20px; height: 20px;
+  display: inline-flex; align-items: center; justify-content: center;
+  color: var(--hg-muted, #8E8E93);
+}
+.hg-call-dir svg { width: 18px; height: 18px; display: block; }
+.hg-call-dir.is-out { color: #34C759; }
+.hg-call-dir.is-missed { color: #FF453A; }
+.hg-call-dir.is-in { color: #34C759; }
+
 .hg-calls .ph-ios-av-wrap { position: relative; width: 40px; height: 40px; flex: 0 0 auto; }
 .hg-calls .ph-ios-av {
   width: 40px; height: 40px; border-radius: 50%;
-  background: var(--hg-elev, #3A3A3C); color: var(--hg-text, #fff);
+  background: var(--hg-elev, #3A3A3C); color: var(--hg-muted, #8E8E93);
   display: inline-flex; align-items: center; justify-content: center;
-  font: 600 14px/1 var(--hg-font, system-ui);
+  font: 600 15px/1 var(--hg-font, system-ui); letter-spacing: 0.01em;
 }
-.hg-calls .ph-ios-dir {
-  position: absolute; left: -2px; bottom: -1px; z-index: 1;
-  font-size: 11px; line-height: 1; color: var(--hg-muted, #8E8E93);
-}
-.hg-calls .ph-ios-dir.is-missed { color: var(--hg-danger, #FF453A); }
+.hg-calls .ph-ios-av svg { width: 20px; height: 20px; display: block; }
 .hg-calls .ph-ios-right {
   display: flex; flex-direction: column; align-items: flex-end; gap: 4px;
   flex: 0 0 auto;

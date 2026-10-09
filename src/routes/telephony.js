@@ -14,6 +14,7 @@ const {
   TEL_FULL_VIEW_ROLES,
   TEL_ADMIN_ROLES: TEL_ADMIN_ROLES_LIB,
   canViewCall,
+  canViewAllCalls,
   loadCallForAccess,
   resolveSafeRecordPath,
   hasFullCallView,
@@ -748,11 +749,11 @@ module.exports = async function telephonyRoutes(fastify, opts) {
     const conditions = [];
     let paramIdx = 1;
 
-    // Менеджеры видят только свои звонки, руководство — все; scope=mine — всегда свои (мобильное приложение)
+    // Менеджеры видят только свои звонки; руководство, РП и старшие РП — все.
     if (String(request.query.scope) === 'mine') {
       conditions.push(`ch.user_id = $${paramIdx++}`);
       params.push(user.id);
-    } else if (!TEL_ADMIN_ROLES.includes(user.role) && user.role !== 'HEAD_PM') {
+    } else if (!canViewAllCalls(user)) {
       conditions.push(`ch.user_id = $${paramIdx++}`);
       params.push(user.id);
     }
