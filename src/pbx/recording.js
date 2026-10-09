@@ -9,6 +9,9 @@ function monitorCandidates(pbxUid, monFile) {
   const ASG_REC = process.env.ASTERISK_RECORDINGS_DIR || '/var/spool/asterisk/recordings';
   const dirs = [
     ASG_REC,
+    // Приоритет — спул Asterisk. Копия в recordingsRoot может оказаться
+    // «пустышкой» (44 байта), если её сделали до окончания записи, поэтому
+    // сначала всегда пробуем первоисточник (инцидент 09.10.2026).
     process.env.ASTERISK_MONITOR_DIR || '/var/spool/asterisk/monitor',
     config.recordingsRoot,
   ];
@@ -45,6 +48,42 @@ function findRecordingSource(opts) {
 }
 
 /**
+ * Запись «пустая»: только WAV-заголовок, аудио-данных нет.
+ *
+ * Причина (замер на проде 09.10.2026): в спуле Asterisk файл создаётся сразу, а
+ * MixMonitor пишет данные по ходу разговора. Если скопировать файл рано (или
+ * скопировать заголовок целиком), получается 44 байта с `data size = 0`:
+ *   RIFF size_field=36, chunk 'data' size=0
+ * → 24 из 33 записей были битыми, STT получал пустоту и расшифровывался в 0 символов.
+ */
+function isEmptyWav(filePath) {
+  try {
+    const st = fs.statSync(filePath);
+    if (st.size < 1000) return true;
+    const fd = fs.openSync(filePath, 'r');
+    try {
+      const head = Buffer.alloc(64);
+      const n = fs.readSync(fd, head, 0, 64, 0);
+      if (n < 44) return true;
+      if (head.toString('ascii', 0, 4) !== 'RIFF') return false; // не WAV — не нам судить
+      // Ищем чанк data и читаем его заявленный размер.
+      let i = 12;
+      while (i + 8 <= n) {
+        const id = head.toString('ascii', i, i + 4);
+        const size = head.readUInt32LE(i + 4);
+        if (id === 'data') return size === 0;
+        i += 8 + size + (size & 1);
+      }
+      return false;
+    } finally {
+      fs.closeSync(fd);
+    }
+  } catch (_) {
+    return false;
+  }
+}
+
+/**
  * Перенос MixMonitor файла в иерархию YYYY/MM и NOTIFY в PostgreSQL.
  * @param {object} pool — pg Pool
  * @param {object} opts — { sourcePath, callId, pbxUid, monFile }
@@ -56,6 +95,11 @@ async function finalizeRecording(pool, opts) {
   }
   if (!sourcePath || !fs.existsSync(sourcePath)) {
     throw new Error(`Recording source missing: ${opts.sourcePath || opts.pbxUid || opts.monFile}`);
+  }
+  // Не копируем «пустышку»: Asterisk ещё не дописал аудио. Бросаем ошибку с тем
+  // же маркером, что и отсутствие файла, — finalizeOnHangup повторит попытку.
+  if (isEmptyWav(sourcePath)) {
+    throw new Error(`Recording source missing (empty wav, ${fs.statSync(sourcePath).size} bytes): ${sourcePath}`);
   }
   const now = new Date();
   const yyyy = String(now.getFullYear());
@@ -178,24 +222,45 @@ async function finalizeRecording(pool, opts) {
             // без номера видно сразу, поэтому ждём немного).
             for (let i = 0; i < 4 && match.rowCount === 0; i += 1) {
               await new Promise((res) => setTimeout(res, 400));
-              const late = outNumber ? await client.query(
-                `UPDATE call_history SET
-                   pbx_uid = $1, recording_url = $2, record_path = $3,
-                   user_id = COALESCE(user_id, $5),
-                   answered_by = COALESCE(answered_by, $5),
-                   updated_at = NOW()
-                 WHERE id = (
-                   SELECT id FROM call_history
-                    WHERE pbx_uid IS NULL
-                      AND (recording_url IS NULL OR recording_url = '')
-                      AND ${numCol} LIKE '%' || $4 || '%'
-                      AND ABS(EXTRACT(EPOCH FROM (COALESCE(started_at, created_at) - NOW()))) < 600
-                    ORDER BY COALESCE(started_at, created_at) DESC
-                    LIMIT 1
-                 )
-                 RETURNING id`,
-                [String(pbxUid), relUrl, destPath, outNumber, opUserId]
-              ) : { rowCount: 0 };
+              // ВАЖНО: номер может не прийти из dialplan (пустая переменная),
+              // поэтому ретрай обязан работать и без него — иначе дубль всё равно
+              // появится (проверено на проде: to_number = NULL у PBX-строк).
+              const late = await client.query(
+                outNumber
+                  ? `UPDATE call_history SET
+                       pbx_uid = $1, recording_url = $2, record_path = $3,
+                       user_id = COALESCE(user_id, $5),
+                       answered_by = COALESCE(answered_by, $5),
+                       updated_at = NOW()
+                     WHERE id = (
+                       SELECT id FROM call_history
+                        WHERE pbx_uid IS NULL
+                          AND (recording_url IS NULL OR recording_url = '')
+                          AND ${numCol} LIKE '%' || $4 || '%'
+                          AND ABS(EXTRACT(EPOCH FROM (COALESCE(started_at, created_at) - NOW()))) < 600
+                        ORDER BY COALESCE(started_at, created_at) DESC
+                        LIMIT 1
+                     )
+                     RETURNING id`
+                  : `UPDATE call_history SET
+                       pbx_uid = $1, recording_url = $2, record_path = $3,
+                       user_id = COALESCE(user_id, $4),
+                       answered_by = COALESCE(answered_by, $4),
+                       updated_at = NOW()
+                     WHERE id = (
+                       SELECT id FROM call_history
+                        WHERE pbx_uid IS NULL
+                          AND (recording_url IS NULL OR recording_url = '')
+                          AND direction = COALESCE($5, direction)
+                          AND ABS(EXTRACT(EPOCH FROM (COALESCE(started_at, created_at) - NOW()))) < 300
+                        ORDER BY COALESCE(started_at, created_at) DESC
+                        LIMIT 1
+                     )
+                     RETURNING id`,
+                outNumber
+                  ? [String(pbxUid), relUrl, destPath, outNumber, opUserId]
+                  : [String(pbxUid), relUrl, destPath, opUserId, direction]
+              );
               if (late.rowCount > 0) { match.rowCount = late.rowCount; break; }
             }
           }

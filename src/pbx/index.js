@@ -858,18 +858,38 @@ async function start() {
       .then(() => {
         console.log('[asgard-pbx] AMI connected');
         // Backup path if dialplan `h`/curl missed: Hangup в†’ finalize by Uniqueid
-        ami.on('event', (msg) => {
+        ami.on('event', async (msg) => {
           if (!msg || msg.Event !== 'Hangup') return;
           const uid = msg.Uniqueid || msg.Linkedid;
           if (!uid || !db) return;
-          // Оператора берём из имени канала WebRTC-плеча (PJSIP/u3474-…), иначе
-          // исходящий из браузера не привязан к сотруднику (инцидент 09.10.2026).
+          // Оператор и номер. dialplan-вариант `h` может не сработать (звонок
+          // завершился на ответвлённом канале), тогда строка создавалась без
+          // номера — в журнале «Клиент/Номер» показывал «—» (жалоба 09.10.2026).
+          // Здесь перебираем активные каналы с тем же Linkedid: плечо WebRTC даёт
+          // оператора (PJSIP/u<id>-…), плечо на транк — номер абонента.
           const chName = String(msg.Channel || '');
           const mop = /PJSIP\/(u\d+)-/.exec(chName);
+          let operator = mop ? mop[1] : null;
+          let peerNumber = null;
+          try {
+            const res = await ami.coreShowChannels();
+            const list = (res && res.List) || [];
+            for (const ch of list) {
+              const nm = String(ch.Channel || '');
+              if (String(ch.Linkedid || '') !== String(uid) && nm !== chName) continue;
+              const u = /PJSIP\/(u\d+)-/.exec(nm);
+              if (u && !operator) operator = u[1];
+              const m = /PJSIP\/(\d{10,})@mango-trunk/.exec(nm);
+              if (m) peerNumber = m[1];
+            }
+          } catch (_) { /* перебор не удался — работаем с тем, что есть */ }
           finalizeOnHangup(db, {
             pbxUid: uid,
             callId: 'pbx_' + uid,
-            operator: mop ? mop[1] : null,
+            operator: operator,
+            number: peerNumber,
+            direction: 'outbound',
+            callType: 'outbound',
           }).catch((e) => {
             console.warn('[asgard-pbx] hangup finalize:', e.message);
           });

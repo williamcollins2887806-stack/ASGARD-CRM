@@ -955,11 +955,32 @@ try {
       fastify.log.warn('[PBX→SSE] ' + e.message);
     }
   });
-  bridge.emitter.on('pbx_recording_ready', (payload) => {
+  bridge.emitter.on('pbx_recording_ready', async (payload) => {
     try {
       const userId = payload && payload.user_id;
       if (userId) sendToUser(userId, 'call:recording_ready', payload);
       else broadcast('call:recording_ready', payload);
+
+      // Запись готова → запускаем транскрипцию и AI-анализ.
+      // Звонки из браузера (PBX/from-internal) НЕ приходят через вебхук Mango,
+      // поэтому paйплайн раньше не получал по ним работы: в журнале стояло
+      // «Нет расшифровки» и «Резюме —» (жалоба 09.10.2026).
+      const pbxUid = payload && (payload.pbx_uid || (payload.call_id || '').replace(/^pbx_/, ''));
+      if (!pbxUid) return;
+      const pipeline = fastify.telephonyPipeline;
+      if (!pipeline || typeof pipeline.processCall !== 'function') return;
+      const { rows } = await db.query(
+        'SELECT id FROM call_history WHERE pbx_uid = $1 ORDER BY id DESC LIMIT 1',
+        [String(pbxUid)]
+      );
+      if (!rows.length) return;
+      const callId = rows[0].id;
+      // Небольшая задержка: файл записи закрывается на стороне Asterisk.
+      setTimeout(() => {
+        pipeline.processCall(callId).catch((e) => {
+          fastify.log.warn('[PBX→pipeline] ' + (e && e.message));
+        });
+      }, 800);
     } catch (e) {
       fastify.log.warn('[PBX→SSE recording] ' + e.message);
     }
