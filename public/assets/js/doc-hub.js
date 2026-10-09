@@ -967,7 +967,8 @@ window.AsgardDocHubPage = (function () {
         if (!x) return;
         e.stopPropagation();
         const v = x.getAttribute('data-unset');
-        const cb = host.querySelector('.dh-ms__item input[value="' + CSS.escape(v) + '"]');
+        const esc2 = (window.CSS && CSS.escape) ? CSS.escape(v) : String(v).replace(/"/g, '\\"');
+        const cb = host.querySelector('.dh-ms__item input[value="' + esc2 + '"]');
         if (cb) cb.checked = false;
         dhMultiSelectSync(id, opts(), 'Все'); onChange && onChange();
       });

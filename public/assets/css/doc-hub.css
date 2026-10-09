@@ -2414,5 +2414,6 @@ html[data-theme="light"] .dh-cp-badge { color: #24503B; background: rgba(45,106,
 }
 .dh-ms__list { display: flex; flex-direction: column; max-height: 220px; overflow: auto; }
 .dh-ms__item { display: flex; align-items: center; gap: 8px; padding: 4px 6px; border-radius: 6px; cursor: pointer; font-size: 12.5px; }
+.dh-ms__item[hidden] { display: none; }
 .dh-ms__item:hover { background: var(--bg3, #1e293b); }
 .dh-ms__empty { padding: 10px; color: var(--t3, #94a3b8); font-size: 12px; text-align: center; }
