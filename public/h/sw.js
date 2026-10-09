@@ -1,11 +1,15 @@
 /* Huginn PWA SW — network-first (fresh shell wins), cache as offline fallback */
-const SHELL_VERSION = '20.28.166';
+const SHELL_VERSION = '20.28.169';
 const CACHE = 'huginn-h-' + SHELL_VERSION;
+// ?v= обязателен: /assets/* и /h/app.js отдаются с immutable, max-age=30д.
+// Без версии в URL телефон держал старый JS месяцами (и старый SW, т.к.
+// location = /h/sw.js раньше не имел no-cache в nginx).
+const V = '?v=' + SHELL_VERSION;
 const SHELL = [
-  '/h/', '/h/app.js', '/h/manifest.webmanifest',
-  '/assets/css/design-tokens.css', '/assets/css/huginn_dock.css',
-  '/assets/js/huginn_icons.js', '/assets/js/huginn_sse.js',
-  '/assets/js/huginn_dock.js', '/assets/js/huginn_calls.js'
+  '/h/', '/h/app.js' + V, '/h/manifest.webmanifest',
+  '/assets/css/design-tokens.css' + V, '/assets/css/huginn_dock.css' + V,
+  '/assets/js/huginn_icons.js' + V, '/assets/js/huginn_sse.js' + V,
+  '/assets/js/huginn_dock.js' + V, '/assets/js/huginn_calls.js' + V
 ];
 
 self.addEventListener('install', (e) => {

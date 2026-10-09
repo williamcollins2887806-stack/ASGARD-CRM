@@ -10,8 +10,8 @@
   <link rel="manifest" href="/h/manifest.webmanifest"/>
   <link rel="apple-touch-icon" href="/assets/img/apple-touch-icon.png"/>
   <title>Хугинн</title>
-  <link rel="stylesheet" href="/assets/css/design-tokens.css"/>
-  <link rel="stylesheet" href="/assets/css/huginn_dock.css"/>
+  <link rel="stylesheet" href="/assets/css/design-tokens.css?v=20.28.169"/>
+  <link rel="stylesheet" href="/assets/css/huginn_dock.css?v=20.28.169"/>
   <style>
     html, body {
       margin: 0; height: 100%;
@@ -195,11 +195,13 @@
 </head>
 <body>
   <div id="app"></div>
-  <script src="/assets/js/huginn_icons.js"></script>
-  <script src="/assets/js/huginn_sse.js"></script>
-  <script src="/assets/js/huginn_calls.js"></script>
-  <script src="/assets/js/huginn_dock.js"></script>
-  <script src="/h/app.js"></script>
+  <!-- ?v= обязателен: /assets/* отдаётся с Cache-Control: immutable, max-age=30д.
+       Без версии в URL телефон держал старый JS/CSS месяцами и «не видел» деплой. -->
+  <script src="/assets/js/huginn_icons.js?v=20.28.169"></script>
+  <script src="/assets/js/huginn_sse.js?v=20.28.169"></script>
+  <script src="/assets/js/huginn_calls.js?v=20.28.169"></script>
+  <script src="/assets/js/huginn_dock.js?v=20.28.169"></script>
+  <script src="/h/app.js?v=20.28.169"></script>
   <script>
     (function () {
       var saved = localStorage.getItem('asgard_theme') || localStorage.getItem('hg_theme');
@@ -220,7 +222,7 @@
       };
     })();
     if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('/h/sw.js').catch(() => {});
+      navigator.serviceWorker.register('/h/sw.js?v=' + encodeURIComponent('20.28.169')).catch(() => {});
     }
   </script>
 </body>
