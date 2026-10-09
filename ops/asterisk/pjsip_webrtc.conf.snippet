@@ -10,7 +10,10 @@ bind=0.0.0.0
 type=endpoint
 context=from-internal
 disallow=all
-allow=opus,ulaw,alaw
+; Совпадает с набором транка Mango (g722,alaw,ulaw) — транскодинг не нужен.
+; Opus НЕЛЬЗЯ, пока в сборке нет codec_opus.so: «opus → ulaw» не имеет пути
+; трансляции, и Asterisk рвёт звонок сразу после ответа (инцидент 09.10.2026).
+allow=g722,ulaw,alaw
 webrtc=yes
 dtls_auto_generate_cert=yes
 media_encryption=dtls

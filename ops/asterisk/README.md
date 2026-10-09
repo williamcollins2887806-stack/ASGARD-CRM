@@ -39,6 +39,36 @@ node tools/verify_sip_register.js      # ожидается N/N зарегист
 ```
 
 
+### ⚠️ Обязательно: кодеки WebRTC = кодеки транка (инцидент 09.10.2026)
+
+`pjsip_asgard_webrtc.conf`, шаблон `[webrtc-template]`:
+
+```
+disallow=all
+allow=g722,ulaw,alaw     ; НЕ добавлять opus
+```
+
+**Opus ставить нельзя, пока в сборке нет `codec_opus.so`.** Симптом при opus:
+
+```
+channel.c: Unable to find a codec translation path: (opus) -> (ulaw)
+app_dial.c: Had to drop call because I couldn't make PJSIP/u<id> compatible with PJSIP/mango-trunk
+```
+
+То есть браузер отдаёт Opus, транк принимает ulaw/alaw/g722, пути пересчёта нет —
+и вызов рвётся **сразу после ответа** оператора. Собственный набор транка Mango
+менять не нужно: держим WebRTC-эндпоинты в том же наборе.
+
+Проверка после деплоя:
+
+```bash
+asterisk -rx "pjsip show endpoint u3474" | grep -E " allow| disallow"   # g722|ulaw|alaw
+asterisk -rx "core show translation paths opus" | grep "To ulaw"        # No Translation Path — норма
+```
+
+Установка opus (если понадобится): `codec_opus` отсутствует в репозиториях
+Ubuntu, нужен пакет с сайта Asterisk (sangoma) под ту же версию ядра.
+
 ## Проверка
 
 - `curl -s -H "X-PBX-Secret: $PBX_CMD_SECRET" http://127.0.0.1:4575/health`
