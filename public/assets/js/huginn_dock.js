@@ -3250,8 +3250,11 @@
   }
 
   /**
-   * Контекстное меню контакта (ПКМ): звонок через Mango, звонок в Huginn, чат, приглашение.
-   * Номер берём из CRM (directory.phone); если пуст — звонок через Mango недоступен.
+   * Контекстное меню контакта (ПКМ). Набор действий зависит от данных:
+   *   в Huginn + есть номер → Mango + Huginn + чат (без «Пригласить»);
+   *   в Huginn, без номера  → Huginn + чат;
+   *   нет в Huginn + номер  → Mango + «Пригласить»;
+   *   нет в Huginn, без номера → только «Пригласить».
    */
   function openContactMenu(uid, x, y) {
     if (!uid) return;
@@ -3260,16 +3263,28 @@
     const nm = humanizeChatName(row.name || 'Контакт');
     const phone = row.phone || null;
     const hasHuginn = row.has_huginn !== false;
+    const canChat = hasHuginn || Number(row.chat_id) > 0;
+
+    const items = [];
+    if (phone) {
+      items.push(`<button type="button" data-cm="mango">${ICO.phone || '📞'}<span>Позвонить через Mango</span></button>`);
+    }
+    if (hasHuginn) {
+      items.push(`<button type="button" data-cm="huginn">${ICO.phone || '📞'}<span>Позвонить в Huginn</span></button>`);
+    }
+    if (canChat) {
+      items.push(`<button type="button" data-cm="chat">${ICO.compose || '💬'}<span>Открыть чат</span></button>`);
+    }
+    if (!hasHuginn) {
+      items.push(`<button type="button" data-cm="invite">${ICO.invite || ICO.userPlus || '➕'}<span>Пригласить</span></button>`);
+    }
+    if (!items.length) return;
+
     const el = document.createElement('div');
     el.className = 'hg-float hg-glass';
     el.setAttribute('data-role', 'menu');
     el.innerHTML = `<div class="hg-float-head">${esc(nm)}${phone ? ' · ' + esc(phone) : ''}</div>
-      <div class="hg-float-actions">
-        <button type="button" data-cm="mango"${phone ? '' : ' disabled'}>${ICO.phone || '📞'}<span>Позвонить через Mango${phone ? '' : ' (нет номера)'}</span></button>
-        <button type="button" data-cm="huginn"${hasHuginn ? '' : ' disabled'}>${ICO.huginn || ICO.phone || '📞'}<span>Позвонить в Huginn${hasHuginn ? '' : ' (нет аккаунта)'}</span></button>
-        <button type="button" data-cm="chat">${ICO.chat || ICO.compose || '💬'}<span>Открыть чат</span></button>
-        <button type="button" data-cm="invite">${ICO.invite || ICO.userPlus || '+'}<span>Пригласить</span></button>
-      </div>`;
+      <div class="hg-float-actions">${items.join('')}</div>`;
     placeFloat(el, x, y);
     el.onclick = async (e) => {
       const btn = e.target.closest('[data-cm]');

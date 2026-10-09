@@ -66,17 +66,29 @@ test('CM5c', 'меню позиционируется в #hgPanel (есть и �
   assert.ok(!/querySelector\('\.hg-thread'\)\s*;/.test(fn), 'placeFloat всё ещё жёстко требует .hg-thread');
 });
 
-test('CM6', 'меню содержит все 4 действия', () => {
+test('CM6', 'меню собирается условно, все 4 действия возможны', () => {
   const menu = dock.slice(dock.indexOf('function openContactMenu'), dock.indexOf('async function callContactViaMango'));
-  assert.ok(/data-cm="mango"/.test(menu), 'нет действия «Позвонить через Mango»');
-  assert.ok(/data-cm="huginn"/.test(menu), 'нет действия «Позвонить в Huginn»');
-  assert.ok(/data-cm="chat"/.test(menu), 'нет действия «Открыть чат»');
-  assert.ok(/data-cm="invite"/.test(menu), 'нет действия «Пригласить»');
+  assert.ok(/data-cm="mango"/.test(menu), 'нет «Позвонить через Mango»');
+  assert.ok(/data-cm="huginn"/.test(menu), 'нет «Позвонить в Huginn»');
+  assert.ok(/data-cm="chat"/.test(menu), 'нет «Открыть чат»');
+  assert.ok(/data-cm="invite"/.test(menu), 'нет «Пригласить»');
 });
 
-test('CM7', 'без номера кнопка Mango недоступна', () => {
+test('CM6b', 'приглашение только тем, кого нет в Huginn', () => {
   const menu = dock.slice(dock.indexOf('function openContactMenu'), dock.indexOf('async function callContactViaMango'));
-  assert.ok(/data-cm="mango"\$\{phone \? '' : ' disabled'\}/.test(menu), 'Mango не блокируется при пустом номере');
+  assert.ok(/if \(!hasHuginn\) \{[\s\S]*data-cm="invite"/.test(menu), '«Пригласить» не под условием !hasHuginn');
+});
+
+test('CM6c', 'Mango только при наличии номера; Huginn только при аккаунте', () => {
+  const menu = dock.slice(dock.indexOf('function openContactMenu'), dock.indexOf('async function callContactViaMango'));
+  assert.ok(/if \(phone\) \{[\s\S]*data-cm="mango"/.test(menu), 'Mango не под условием phone');
+  assert.ok(/if \(hasHuginn\) \{[\s\S]*data-cm="huginn"/.test(menu), 'Huginn не под условием hasHuginn');
+});
+
+test('CM7', 'нет disabled-заглушек в меню (пункты просто не показываются)', () => {
+  const menu = dock.slice(dock.indexOf('function openContactMenu'), dock.indexOf('async function callContactViaMango'));
+  assert.ok(!/нет номера/.test(menu), 'осталась заглушка «нет номера»');
+  assert.ok(!/нет аккаунта/.test(menu), 'осталась заглушка «нет аккаунта»');
 });
 
 test('CM8', 'SIP зарегистрирован → звонок из браузера (WebRTC)', () => {
