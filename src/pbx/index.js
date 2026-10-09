@@ -392,7 +392,9 @@ async function originateOutbound(db, body) {
       } finally { c.release(); }
     } catch (_) { /* ignore */ }
   }
-  return { ok: true, number, channel, via: channel.startsWith('PJSIP/') ? 'webrtc' : 'gsm' };
+  // Канал на транк (`…@mango-trunk`) — это GSM-плечо; WebRTC — только `PJSIP/<sip_username>`.
+  const via = /@mango-trunk$/.test(channel) ? 'gsm' : 'webrtc';
+  return { ok: true, number, channel, via };
 }
 
 /**
