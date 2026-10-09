@@ -18,7 +18,8 @@ import { toast } from '@/modals/Notifications';
 import {
   CONTRACT_TYPES, CONTRACT_STATUSES,
   createContract, updateContract,
-  suggestCustomers, lookupCustomerByInn, mimirSuggestForm
+  suggestCustomers, lookupCustomerByInn, mimirSuggestForm,
+  loadCounterpartyContacts
 } from './api';
 
 function emitChanged() {
@@ -42,7 +43,11 @@ export function ContractEditModal({ contract, customers = [], onSaved }) {
     responsible:       contract?.responsible || '',
     status:            contract?.status || 'active',
     file_url:          contract?.file_url || '',
-    comment:           contract?.comment || ''
+    comment:           contract?.comment || '',
+    // Контакты по договору (синхронизируются в карточку контрагента)
+    contact_person:    contract?.contact_person || '',
+    contact_phone:     contract?.contact_phone || '',
+    contact_email:     contract?.contact_email || ''
   });
   const [saving, setSaving] = useState(false);
 
@@ -174,6 +179,27 @@ export function ContractEditModal({ contract, customers = [], onSaved }) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [form.is_perpetual]);
 
+  // Автоподстановка контактов из карточки контрагента: если в договоре пусто,
+  // подтягиваем телефон/почту карточки по ИНН выбранного контрагента.
+  useEffect(() => {
+    const inn = String(form.counterparty_id || '').replace(/\D/g, '');
+    if (!inn) return undefined;
+    let alive = true;
+    loadCounterpartyContacts(inn).then((c) => {
+      if (!alive || !c) return;
+      setForm((f) => {
+        if (String(f.counterparty_id).replace(/\D/g, '') !== inn) return f;
+        return {
+          ...f,
+          contact_phone: f.contact_phone || c.phone || '',
+          contact_email: f.contact_email || c.email || ''
+        };
+      });
+    }).catch(() => {});
+    return () => { alive = false; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form.counterparty_id]);
+
   const dateHint = useMemo(() => {
     if (!form.end_date || form.is_perpetual) return null;
     const end = new Date(form.end_date);
@@ -212,7 +238,10 @@ export function ContractEditModal({ contract, customers = [], onSaved }) {
       responsible:       form.responsible.trim() || null,
       status:            form.status,
       file_url:          form.file_url.trim() || null,
-      comment:           form.comment.trim() || null
+      comment:           form.comment.trim() || null,
+      contact_person:    form.contact_person.trim() || null,
+      contact_phone:     form.contact_phone.trim() || null,
+      contact_email:     form.contact_email.trim() || null
     };
 
     setSaving(true);
@@ -316,6 +345,37 @@ export function ContractEditModal({ contract, customers = [], onSaved }) {
               maxRows={6}
             />
           </Field>
+
+          {/* Контакты по договору: сохраняются в договоре и уезжают в карточку контрагента */}
+          <div className="p-10 bg-inner r-md col gap-8">
+            <strong className="mini-kpi-label">📞 Контакты по договору</strong>
+            <div className="grid-2 gap-10">
+              <Field label="Контактное лицо">
+                <TextInput
+                  value={form.contact_person}
+                  onChange={(v) => set('contact_person', v)}
+                  placeholder="ФИО"
+                />
+              </Field>
+              <Field label="Телефон">
+                <TextInput
+                  value={form.contact_phone}
+                  onChange={(v) => set('contact_phone', v)}
+                  placeholder="+7 (___) ___-__-__"
+                />
+              </Field>
+            </div>
+            <Field label="E-mail">
+              <TextInput
+                value={form.contact_email}
+                onChange={(v) => set('contact_email', v)}
+                placeholder="info@company.ru"
+              />
+            </Field>
+            <div className="c-t3 fs-11">
+              При сохранении контакты попадут в карточку контрагента (пустые поля карточки).
+            </div>
+          </div>
 
           <div className="grid-2 gap-10">
             <Field label="Дата заключения">

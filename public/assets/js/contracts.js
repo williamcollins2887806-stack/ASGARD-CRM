@@ -463,6 +463,25 @@ window.AsgardContractsPage = (function(){
                 </div>
 
                 <div class="cm-section">
+                  <div class="cm-section-title"><svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 5h10v7H3z"/><path d="M3 6l5 3.5L13 6"/></svg>Контакты по договору</div>
+                  <div class="cm-grid2">
+                    <div>
+                      <div class="cm-label">Контактное лицо</div>
+                      <input type="text" name="contact_person" class="cm-inp" value="${esc(contract?.contact_person || '')}" placeholder="ФИО"/>
+                    </div>
+                    <div>
+                      <div class="cm-label">Телефон</div>
+                      <input type="tel" name="contact_phone" class="cm-inp" value="${esc(contract?.contact_phone || '')}" placeholder="+7 (___) ___-__-__"/>
+                    </div>
+                  </div>
+                  <div class="cm-mt">
+                    <div class="cm-label">E-mail</div>
+                    <input type="email" name="contact_email" class="cm-inp" value="${esc(contract?.contact_email || '')}" placeholder="info@company.ru"/>
+                  </div>
+                  <div class="cm-mt" style="font-size:11px;color:var(--t3)">При сохранении контакты попадут в карточку контрагента (пустые поля карточки).</div>
+                </div>
+
+                <div class="cm-section">
                   <div class="cm-section-title"><svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="10" height="10" rx="1.5"/><path d="M3 7h10M7 3v10"/></svg>Сроки и финансы</div>
                   <div class="cm-grid2">
                     <div>
@@ -538,7 +557,23 @@ window.AsgardContractsPage = (function(){
     // ─── CRSelect: contract form fields ───
     document.getElementById('cm_type_w').appendChild(CRSelect.create({ id: 'cm_type', options: CONTRACT_TYPES.map(t => ({ value: t.id, label: t.name })), value: contract?.type || opts.preset?.type || CONTRACT_TYPES[0]?.id || '', dropdownClass: 'z-modal', onChange: v => { document.getElementById('cm_type_hidden').value = v; } }));
     const presetInn = preset ? (String(preset.inn || '') || (customers.find((c) => String(c.name || '').trim().toLowerCase() === String(preset.name).trim().toLowerCase()) || {}).inn || '') : '';
-    document.getElementById('cm_counterparty_w').appendChild(CRSelect.create({ id: 'cm_counterparty', options: [{ value: '', label: '-- Выберите контрагента --' }, ...customers.map(c => ({ value: c.inn, label: c.name + (c.inn ? ' (' + c.inn + ')' : '') }))], value: contract?.counterparty_id || presetInn || '', searchable: true, dropdownClass: 'z-modal', onChange: v => { document.getElementById('cm_counterparty_hidden').value = v; } }));
+    document.getElementById('cm_counterparty_w').appendChild(CRSelect.create({ id: 'cm_counterparty', options: [{ value: '', label: '-- Выберите контрагента --' }, ...customers.map(c => ({ value: c.inn, label: c.name + (c.inn ? ' (' + c.inn + ')' : '') }))], value: contract?.counterparty_id || presetInn || '', searchable: true, dropdownClass: 'z-modal', onChange: v => {
+      document.getElementById('cm_counterparty_hidden').value = v;
+      // Автоподстановка контактов из карточки контрагента (только в пустые поля)
+      const digits = String(v || '').replace(/\D/g, '');
+      if (digits) {
+        fetch('/api/customers/registry-contacts/' + digits, { headers: { Authorization: 'Bearer ' + ((window.AsgardAuth && AsgardAuth.token) || localStorage.getItem('asgard_token')) } })
+          .then(r => r.ok ? r.json() : null)
+          .then(c => {
+            if (!c) return;
+            const ph = form.querySelector('[name="contact_phone"]');
+            const em = form.querySelector('[name="contact_email"]');
+            if (ph && !ph.value && c.phone) ph.value = c.phone;
+            if (em && !em.value && c.email) em.value = c.email;
+          })
+          .catch(() => {});
+      }
+    } }));
     if (!contract && presetInn) document.getElementById('cm_counterparty_hidden').value = presetInn;
     document.getElementById('cm_status_w').appendChild(CRSelect.create({ id: 'cm_status', options: [{ value: 'draft', label: 'Черновик' }, { value: 'active', label: 'Действует' }, { value: 'terminated', label: 'Расторгнут' }], value: contract?.status || 'active', dropdownClass: 'z-modal', onChange: v => { document.getElementById('cm_status_hidden').value = v; } }));
 
@@ -654,6 +689,9 @@ window.AsgardContractsPage = (function(){
         status: fd.get('status'),
         file_url: fd.get('file_url')?.trim() || '',
         comment: fd.get('comment')?.trim() || '',
+        contact_person: fd.get('contact_person')?.trim() || '',
+        contact_phone: fd.get('contact_phone')?.trim() || '',
+        contact_email: fd.get('contact_email')?.trim() || '',
         created_at: contract?.created_at || new Date().toISOString(),
         updated_at: new Date().toISOString()
       };

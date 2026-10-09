@@ -73,6 +73,15 @@ export function loadContract(id) {
   return api('/api/data/contracts/' + id).then((d) => d.item || d);
 }
 
+/* Контакты контрагента для автоподстановки в договор (карточка → телефон/почта). */
+export function loadCounterpartyContacts(inn) {
+  const digits = String(inn || '').replace(/\D/g, '');
+  if (!digits) return Promise.resolve(null);
+  return api('/api/customers/registry-contacts/' + digits)
+    .then((d) => (d && (d.phone || d.email)) ? d : null)
+    .catch(() => null);
+}
+
 export function createContract(payload) {
   return api('/api/data/contracts', { method: 'POST', body: payload }).then(
     (d) => d.item || d

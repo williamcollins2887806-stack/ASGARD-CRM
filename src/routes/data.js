@@ -8,6 +8,7 @@ const {
   shouldHideTestUsersFromLists,
 } = require('../lib/user-filters');
 const { recalcAnalysisDeadlinePatch } = require('../lib/analysis-deadline');
+const { syncContractContactsToSupplier } = require('../services/contract-contact-sync');
 
 async function dataRoutes(fastify, options) {
   const db = fastify.db;
@@ -636,6 +637,15 @@ async function dataRoutes(fastify, options) {
 
       const result = await db.query(query, values);
 
+      // Контакты договора → карточка контрагента (fill-only, не ломает сохранение).
+      if (table === 'contracts' && result.rows[0]) {
+        try {
+          await syncContractContactsToSupplier(db, result.rows[0], fastify.log);
+        } catch (e) {
+          fastify.log.warn('[DATA API POST] contract contact sync failed: ' + e.message);
+        }
+      }
+
       return { success: true, item: result.rows[0], id: result.rows[0][pk] };
     } catch (err) {
       console.error(`[DATA API POST] Table: ${table}, Error: ${err.message}, Code: ${err.code}`);
@@ -835,6 +845,15 @@ async function dataRoutes(fastify, options) {
 
       if (result.rows.length === 0) {
         return reply.code(404).send({ error: 'Запись не найдена' });
+      }
+
+      // Контакты договора → карточка контрагента (fill-only, не ломает сохранение).
+      if (table === 'contracts') {
+        try {
+          await syncContractContactsToSupplier(db, result.rows[0], fastify.log);
+        } catch (e) {
+          fastify.log.warn('[DATA API PUT] contract contact sync failed: ' + e.message);
+        }
       }
 
       if (table === 'tenders' && oldTender) {
