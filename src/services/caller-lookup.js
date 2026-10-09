@@ -189,6 +189,32 @@ async function lookupCaller(db, phone) {
     };
   }
 
+  // 3b. Контакт из карточки компании (customers.contacts jsonb: [{name, phone, phone2, ...}])
+  try {
+    const cc = await db.query(
+      `SELECT c.id AS customer_id, c.inn, c.name AS company,
+              ce->>'name' AS contact_name
+         FROM customers c, jsonb_array_elements(COALESCE(c.contacts, '[]'::jsonb)) ce
+        WHERE RIGHT(REGEXP_REPLACE(COALESCE(ce->>'phone', ''), '[^0-9]', '', 'g'), 10) = $1
+           OR RIGHT(REGEXP_REPLACE(COALESCE(ce->>'phone2', ''), '[^0-9]', '', 'g'), 10) = $1
+        LIMIT 1`,
+      [tail]
+    );
+    if (cc.rows.length) {
+      const row = cc.rows[0];
+      return {
+        type: 'customer_contact',
+        customer_id: row.customer_id,
+        inn: row.inn || undefined,
+        name: row.contact_name || row.company,
+        company: row.company,
+        responsible_name: null,
+        last_tender_title: null,
+        region: null,
+      };
+    }
+  } catch (_) { /* jsonb contacts */ }
+
   // 4. Контакт из заявок (inbox / pre_tender)
   try {
     const app = await db.query(
@@ -261,4 +287,68 @@ async function lookupCaller(db, phone) {
   };
 }
 
-module.exports = { lookupCaller, last10, digitsOnly };
+/**
+ * Батч-резолв номеров → имена. Один проход по уникальным хвостам номеров,
+ * ограниченная параллельность, ключ результата — последние 10 цифр.
+ * @param {object} db
+ * @param {Array<string>} phones
+ * @returns {Promise<Object<string, object>>} map[last10] = lookup-результат
+ */
+async function enrichCallers(db, phones) {
+  const tails = [];
+  const seen = new Set();
+  (phones || []).forEach((p) => {
+    const t = last10(p);
+    if (t && t.length >= 10 && !seen.has(t)) { seen.add(t); tails.push(t); }
+  });
+  const out = {};
+  const CONC = 6;
+  let idx = 0;
+  async function worker() {
+    while (idx < tails.length) {
+      const t = tails[idx++];
+      try { out[t] = await lookupCaller(db, t); }
+      catch (_) { out[t] = { type: 'unknown', name: 'Неизвестный номер' }; }
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(CONC, tails.length) }, worker));
+  return out;
+}
+
+/**
+ * Обогащение строк журнала именем звонящего по ВСЕМ справочникам CRM.
+ * Поле client_name меняется только если справочник дал осмысленное имя;
+ * всегда добавляются caller_name / caller_company / caller_type.
+ * @param {object} db
+ * @param {Array<object>} rows
+ * @returns {Promise<Array<object>>}
+ */
+async function enrichCallRows(db, rows) {
+  if (!Array.isArray(rows) || !rows.length) return rows || [];
+  const nums = rows.map((r) => {
+    const out = r.direction === 'outbound' || r.call_type === 'out' || r.call_type === 'outbound';
+    return out
+      ? (r.to_number || r.called_number)
+      : (r.from_number || r.caller_number);
+  });
+  let map = {};
+  try { map = await enrichCallers(db, nums); } catch (_) { map = {}; }
+  return rows.map((r, i) => {
+    const t = last10(nums[i]);
+    const info = t && map[t];
+    if (!info || info.type === 'unknown') return r;
+    const name = info.name || info.company || '';
+    if (!name) return r;
+    return {
+      ...r,
+      caller_name: name,
+      caller_company: info.company || null,
+      caller_type: info.type,
+      client_name: (r.client_name && String(r.client_name).trim())
+        ? r.client_name
+        : (name || r.client_name),
+    };
+  });
+}
+
+module.exports = { lookupCaller, enrichCallers, enrichCallRows, last10, digitsOnly };

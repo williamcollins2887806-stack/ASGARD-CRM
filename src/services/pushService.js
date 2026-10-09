@@ -68,7 +68,7 @@ async function sendPush(db, userId, payload) {
     body: payload.body || '',
     icon: payload.icon || './assets/img/icon-192.png',
     badge: './assets/img/icon-96.png',
-    tag: payload.tag || 'asgard-notification',
+    tag: payload.tag || ('asgard-' + Date.now()),
     badge_count: badgeCount,
     actions: (payload.actions || []).slice(0, 2),
     data: Object.assign({
@@ -83,7 +83,7 @@ async function sendPush(db, userId, payload) {
       await webpush.sendNotification({
         endpoint: sub.endpoint,
         keys: { p256dh: sub.p256dh, auth: sub.auth }
-      }, pushPayload);
+      }, pushPayload, { urgency: 'high', TTL: 60 * 60 });
       sent++;
     } catch (pushErr) {
       if (pushErr.statusCode === 410 || pushErr.statusCode === 404) {
@@ -199,10 +199,11 @@ async function pushTaskAssigned(db, assigneeId, { taskId, taskTitle, actorName }
  */
 async function pushChatMessage(db, recipientId, { chatId, senderName, messagePreview }) {
   return sendPush(db, recipientId, {
-    title: '💬 ' + (senderName || 'Сообщение'),
-    body: (messagePreview || '').substring(0, 100),
-    tag: 'chat-' + chatId,
-    url: '#/messenger/' + chatId,
+    title: '💬 Хугинн',
+    body: (senderName ? senderName + ': ' : '') + (messagePreview || '').substring(0, 100),
+    // Уникальный tag: статичный 'chat-<id>' давал тихое схлопывание уведомлений.
+    tag: 'chat-' + chatId + '-' + Date.now(),
+    url: '#/messenger?id=' + chatId,
     actions: [
       { action: 'reply', title: '💬 Ответить' }
     ],

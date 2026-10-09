@@ -12,6 +12,9 @@ import {
   Building, Landmark, CreditCard, Briefcase, Wallet,
   // Персонал
   Users, UserPlus, Plane, ShieldCheck, Stamp, CalendarDays, Table2,
+  GraduationCap, ListChecks, Bell,
+  // Телефон / почта / сервис
+  Phone, Mail, Cpu, Plug, Stethoscope,
   // Документы
   Inbox, Calendar, HardHat, Warehouse, Package,
   ShoppingCart, Disc3, GanttChartSquare, LayoutGrid, Target,

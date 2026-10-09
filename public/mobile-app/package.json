@@ -5,8 +5,10 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "prebuild": "node tools/scan-undefined.mjs",
     "build": "vite build",
     "lint": "eslint .",
+    "verify:icons": "node tools/scan-undefined.mjs",
     "preview": "vite preview"
   },
   "dependencies": {

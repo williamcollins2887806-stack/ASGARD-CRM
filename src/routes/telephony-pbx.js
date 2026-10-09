@@ -1,7 +1,7 @@
 ﻿'use strict';
 
 const crypto = require('crypto');
-const { lookupCaller } = require('../services/caller-lookup');
+const { lookupCaller, enrichCallRows } = require('../services/caller-lookup');
 const { config: pbxEnv } = require('../pbx/config');
 const { normalizePbxConfig } = require('../pbx/call-lifecycle');
 const { minutesUntilWorkEnd, isWithinWorkHours, resolveDutyUntilMinutes, getTzParts } = require('../pbx/dial-engine');
@@ -499,7 +499,9 @@ module.exports = async function telephonyPbxRoutes(fastify) {
            LIMIT $1`,
       full ? [limit] : [limit, req.user.id]
     );
-    return { items: rows };
+    // Резолв имён по справочникам CRM (коллеги/клиенты/карточки компаний).
+    const items = await enrichCallRows(db, rows);
+    return { items };
   });
 
   fastify.get('/reports/timeline/:callId', { preHandler: [fastify.authenticate] }, async (req, reply) => {
@@ -562,7 +564,8 @@ module.exports = async function telephonyPbxRoutes(fastify) {
            LIMIT 100`,
       full ? [] : [req.user.id]
     );
-    return { items: rows };
+    const items = await enrichCallRows(db, rows);
+    return { items };
   });
 
   fastify.get('/lookup/:phone', { preHandler: [fastify.authenticate] }, async (req) => {

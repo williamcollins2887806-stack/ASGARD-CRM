@@ -188,6 +188,21 @@ export default function ChatPage() {
     if (!activeGroupIdRef.current && gs.length > 0) setActiveGroupId(gs[0].id);
   }), []);
 
+  // Deep-link: #/messenger?id=248 (push «новое сообщение») и #/chat?id=… —
+  // без этого страница открывалась без выбранного чата.
+  const deepLinkApplied = useRef(false);
+  useEffect(() => {
+    if (deepLinkApplied.current) return;
+    try {
+      const hash = window.location.hash || '';
+      const qs = hash.indexOf('?');
+      if (qs === -1) return;
+      const params = new URLSearchParams(hash.slice(qs + 1));
+      const id = Number(params.get('id') || params.get('chat') || params.get('chat_id'));
+      if (id > 0) { setActiveGroupId(id); deepLinkApplied.current = true; }
+    } catch { /* noop */ }
+  }, []);
+
   const refreshActive = useCallback((gid) => {
     // gid опционален: если не передан — читаем актуальный id из ref (для SSE-
     // listener'ов, которые живут в стабильном замыкании одного useEffect).

@@ -11,19 +11,27 @@ import { NotificationBell, AnnouncementBanner, toast } from '@/modals/Notificati
  */
 const POLL_INTERVAL_MS = 60_000;
 
+// Безопасный текст: не показываем «[object Object]», если бэк прислал объект.
+function asText(v, fallback = '') {
+  if (v == null) return fallback;
+  if (typeof v === 'string') return v;
+  if (typeof v === 'number' || typeof v === 'boolean') return String(v);
+  return String(v.message || v.text || v.title || v.body || fallback);
+}
+
 function mapToBell(n) {
   // Backend notifications.js возвращает {id, title, message, link, type, is_read, created_at}.
   // NotificationBell ожидает {icon, title, message, when, read}.
   const iconByType = {
     tender: '📋', estimate: '📊', work: '🏗', invoice: '🧾',
     act: '📑', payment: '💰', task: '✅', approval: '👍',
-    rejection: '❌', message: '💬', system: '⚙'
+    rejection: '❌', message: '💬', system: '⚙', chat_message: '💬'
   };
   return {
     id: n.id,
     icon: iconByType[n.type] || '🔔',
-    title: n.title || 'Уведомление',
-    message: n.message || '',
+    title: asText(n.title, 'Уведомление'),
+    message: asText(n.message),
     when: formatRelativeTime(n.created_at),
     read: !!n.is_read,
     link: n.link || null

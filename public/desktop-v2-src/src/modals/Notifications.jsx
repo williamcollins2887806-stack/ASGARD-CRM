@@ -184,6 +184,13 @@ export function NotificationBell({ items = [] }) {
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
   const unread = items.filter((x) => !x.read).length;
+  // Не показываем «[object Object]», если пришёл объект вместо строки.
+  const txt = (v, fb = '') => {
+    if (v == null) return fb;
+    if (typeof v === 'string') return v;
+    if (typeof v === 'number' || typeof v === 'boolean') return String(v);
+    return String(v.message || v.text || v.title || fb);
+  };
   return (
     <>
       <button
@@ -209,9 +216,9 @@ export function NotificationBell({ items = [] }) {
             <div key={i} className={'bell-i ' + (!n.read ? 'unread' : '')}>
               <span className="bell-i-ic">{n.icon || '🔔'}</span>
               <div className="flex-1">
-                <div className="bell-i-t">{n.title}</div>
-                <div className="bell-i-m">{n.message}</div>
-                <div className="bell-i-w">{n.when}</div>
+                <div className="bell-i-t">{txt(n.title, 'Уведомление')}</div>
+                <div className="bell-i-m">{txt(n.message)}</div>
+                <div className="bell-i-w">{txt(n.when)}</div>
               </div>
               {!n.read && <span className="bell-dot" />}
             </div>

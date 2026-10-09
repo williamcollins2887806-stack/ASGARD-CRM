@@ -1119,11 +1119,14 @@ try{
           const when = n.created_at ? AsgardUI.formatDateTime(n.created_at) : "—";
           const dot = n.is_read ? `<span class="dot" style="background:var(--t2)"></span>` : `<span class="dot" style="background:var(--amber)"></span>`;
           const link = n.link || n.link_hash || "#/alerts";
+          // Не показываем «[object Object]», если поле пришло объектом.
+          const tTitle = (typeof n.title === 'string' ? n.title : (n.title && (n.title.title || n.title.text))) || "Уведомление";
+          const tMsg = (typeof n.message === 'string' ? n.message : (n.message && (n.message.message || n.message.text))) || "";
           return `<a class="bellitem" href="${esc(link)}" data-nid="${n.id}">
             <div class="belli">${dot}</div>
             <div class="bellc">
-              <div class="belltt"><b>${esc(n.title||"Уведомление")}</b></div>
-              <div class="bellmsg">${esc(n.message||"")}</div>
+              <div class="belltt"><b>${esc(tTitle)}</b></div>
+              <div class="bellmsg">${esc(tMsg)}</div>
               <div class="bellwhen">${esc(when)}</div>
             </div>
           </a>`;
@@ -2511,8 +2514,13 @@ AsgardRouter.add("/assembly", () => {
         return false;
       }
     };
-    AsgardRouter.add("/messenger", async ()=>{
+    AsgardRouter.add("/messenger", async ({ query })=>{
       openHuginnRoute('huginn');
+      // Deep-link из пуша «новое сообщение»: #/messenger?id=248 → открыть чат.
+      try {
+        const cid = Number((query && (query.id || query.chat)) || 0);
+        if (cid > 0 && window.HuginnDock && HuginnDock.openChat) HuginnDock.openChat(cid);
+      } catch (_) {}
       const auth = await AsgardAuth.requireUser();
       await layout({
         title: 'Хугинн',

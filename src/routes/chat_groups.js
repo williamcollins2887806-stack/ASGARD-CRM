@@ -211,9 +211,14 @@ module.exports = async function(fastify) {
   // ═══════════════════════════════════════════════════════════════
   // HELPER: Уведомление
   // ═══════════════════════════════════════════════════════════════
-  async function notify(userId, title, message, link) {
+  async function notify(userId, title, message, link, chatId) {
     try {
-      const chatLink = link || '#/chat';
+      const chatLink = link || '#/messenger';
+      // Защита от «[object Object]» в уведомлении: в поле ожидается строка.
+      const safeTitle = typeof title === 'string' ? title : (title && title.title) || 'Хугинн';
+      const safeBody = typeof message === 'string'
+        ? message
+        : String((message && (message.message || message.text)) || 'Новое сообщение');
 
       // 1. Push notification (web-push to all devices)
       try {
@@ -221,12 +226,13 @@ module.exports = async function(fastify) {
         await NotificationService.send(db, {
           user_id: userId,
           type: 'chat_message',
-          title: title,
-          body: message,
+          title: safeTitle,
+          body: safeBody,
           url: chatLink,
-          // Unique tag per message: a shared tag made the OS silently collapse
-          // consecutive chat messages into one silent notification (no sound).
-          tag: 'chat-' + (link || '').split('=').pop() + '-' + Date.now()
+          // Unique tag per message: a shared/static tag made the OS silently
+          // collapse consecutive chat messages into one (no sound) AND let a DB
+          // notification with the same tag suppress the next message's push.
+          tag: 'chat-' + (chatId || 0) + '-' + Date.now(),
         });
       } catch (pushErr) {
         // Push may fail silently — still save DB notification below
@@ -235,14 +241,14 @@ module.exports = async function(fastify) {
         await db.query(`
           INSERT INTO notifications (user_id, title, message, type, link, is_read, created_at)
           VALUES ($1, $2, $3, 'chat', $4, false, NOW())
-        `, [userId, title, message, chatLink]);
+        `, [userId, safeTitle, safeBody, chatLink]);
       }
 
       // 2. Telegram notification
       try {
         const telegram = require('../services/telegram');
         if (telegram && telegram.sendNotification) {
-          await telegram.sendNotification(userId, `💬 *${title}*\n\n${message}`);
+          await telegram.sendNotification(userId, `💬 *${safeTitle}*\n\n${safeBody}`);
         }
       } catch (tgErr) {
         // Telegram may not be configured
@@ -886,7 +892,7 @@ module.exports = async function(fastify) {
     if (!member) return reply.code(403).send({ error: 'Нет доступа' });
 
     // Получить данные чата
-    const { rows: [chat] } = await db.query('SELECT name FROM chats WHERE id = $1', [chatId]);
+    const { rows: [chat] } = await db.query('SELECT name, is_group FROM chats WHERE id = $1', [chatId]);
 
     if ((!text || !text.trim()) && !file_url) {
       return reply.code(400).send({ error: 'Текст сообщения обязателен' });
@@ -922,9 +928,18 @@ module.exports = async function(fastify) {
     `, [chatId, userId]);
 
     const senderName = request.user.name || request.user.login;
+    // Push/DB: заголовок «Хугинн», чтобы было понятно, откуда сообщение;
+    // в теле — имя отправителя + текст (в личке имя не дублируем в заголовке).
+    const isDirect = !chat || chat.is_group === false;
+    const preview = (message_type === 'voice') ? '🎤 Голосовое сообщение'
+      : (message_type === 'video') ? '🎬 Видеосообщение'
+        : (message_type === 'image') ? '📷 Фото'
+          : String((text || '').trim()).substring(0, 140);
+    const pushTitle = isDirect ? '💬 Хугинн' : ('💬 ' + (chat && chat.name ? chat.name : 'Хугинн'));
+    const pushBody = senderName + ': ' + (preview || 'Новое сообщение');
     // Batch notifications (non-blocking)
     Promise.allSettled(members.map(m =>
-      notify(m.user_id, `💬 ${chat.name}`, `${senderName}: ${text.trim().substring(0, 100)}${text.length > 100 ? '...' : ''}`, `#/messenger?id=${chatId}`)
+      notify(m.user_id, pushTitle, pushBody, `#/messenger?id=${chatId}`, chatId)
     )).catch(() => {});
 
     // SSE + durable outbox (await so catch-up sees the event immediately)

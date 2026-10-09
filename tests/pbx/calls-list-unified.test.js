@@ -1,11 +1,13 @@
 'use strict';
 
 /**
- * Унификация журналов звонков под образец телефонной панели (скриншот 09.10):
- * аватар с глифом направления, название, подпись (тип + длительность),
- * справа — время. Никаких источников/бейджей/иконок-duration.
+ * Унификация журналов звонков под образец телефонной панели.
  *
- * Образец: public/assets/js/phone_ui.js → callRowHtml (классы .ph-ios-*).
+ * Канон 09.10 (правка после скриншотов): «Звонки» и «Телефон» — ОДНА вкладка.
+ * Рейл содержит одну кнопку data-hg-tab="phone" (title «Звонки»), а журнал
+ * Хугинна + телефонии рендерит ЕДИНЫЙ образец phone_ui.js → callRowHtml
+ * (классы .ph-ios-*): аватар с глифом направления, имя, подпись (тип + канал),
+ * время справа. Отдельного дубля renderCallsPanel в huginn_dock.js нет.
  *
  * Usage: node tests/pbx/calls-list-unified.test.js
  */
@@ -34,50 +36,46 @@ test('U1', 'образец: phone_ui использует .ph-ios-row с ава�
   assert.ok(/ph-ios-when/.test(row), 'нет времени справа');
 });
 
-// ── Huginn ──
-test('U2', 'Хугинн: строка = иконка трубки → аватар → имя → время (как в ТГ)', () => {
+// ── Единая вкладка ──
+test('U2', 'Хугинн: вкладка «Звонки» рендерится ЕДИНЫМ образцом phone_ui', () => {
   const dock = read('public/assets/js/huginn_dock.js');
-  const fn = dock.slice(dock.indexOf('function renderCallsPanel'), dock.indexOf('function renderSettingsPanel'));
-  assert.ok(/hg-call-dir/.test(fn), 'нет иконки-трубки направления');
-  assert.ok(/CALL_DIR_ICO/.test(fn), 'нет набора SVG-иконок направления');
-  assert.ok(/ph-ios-av/.test(fn), 'нет аватара');
-  assert.ok(/ph-ios-when/.test(fn), 'нет времени в правом блоке');
-  assert.ok(/ph-ios-right/.test(fn), 'нет правого блока');
-  // Порядок в разметке: иконка направления раньше аватара.
-  assert.ok(fn.indexOf('hg-call-dir') < fn.indexOf('ph-ios-av-wrap'),
-    'иконка трубки должна идти перед аватаром (как в ТГ)');
+  assert.ok(/state\.tab === 'calls' \|\| state\.tab === 'phone'/.test(dock),
+    'нет маршрутизации calls/phone в один рендерер');
+  assert.ok(/global\.AsgardPhoneUI && typeof global\.AsgardPhoneUI\.renderPanel/.test(dock),
+    'вкладка звонков не делегирует в AsgardPhoneUI.renderPanel');
+  // Дубль удалён: отдельного рендерера журнала в доке быть не должно.
+  assert.ok(!/function renderCallsPanel/.test(dock), 'остался дубль renderCallsPanel');
 });
 
-test('U3', 'Хугинн: убраны бейджи источника, эмодзи и глиф на аватаре', () => {
+test('U3', 'Хугинн: одна кнопка рейла «Звонки» (нет отдельного таба «Телефон»)', () => {
   const dock = read('public/assets/js/huginn_dock.js');
-  const fn = dock.slice(dock.indexOf('function renderCallsPanel'), dock.indexOf('function renderSettingsPanel'));
-  assert.ok(!/hg-call-src/.test(fn), 'остался бейдж источника');
-  assert.ok(!/hg-call-ico/.test(fn), 'осталась иконка-эмодзи типа');
-  assert.ok(!/ph-ios-dir/.test(fn), 'стрелка-глиф на аватаре осталась (нужна отдельная иконка трубки)');
+  assert.ok(/data-hg-tab="phone" title="Звонки"/.test(dock), 'нет единой кнопки «Звонки»');
+  assert.ok(!/hg-rail-btn--phone/.test(dock), 'осталась вторая кнопка «Телефон»');
+  assert.ok(!/data-hg-tab="calls"/.test(dock), 'осталась кнопка-дубль data-hg-tab="calls"');
 });
 
-test('U4', 'Хугинн: подпись — тип звонка, время справа', () => {
-  const dock = read('public/assets/js/huginn_dock.js');
-  const fn = dock.slice(dock.indexOf('function renderCallsPanel'), dock.indexOf('function renderSettingsPanel'));
-  assert.ok(/esc\(c\.detail\)/.test(fn), 'подпись не выводится');
-  assert.ok(/fmtWhen\(c\.at\)/.test(fn), 'время не выводится');
+test('U4', 'образец: подпись — тип звонка + канал (Хугинн/Манго), время справа', () => {
+  const ui = read('public/assets/js/phone_ui.js');
+  const row = ui.slice(ui.indexOf('function callRowHtml'), ui.indexOf('function fmtWhen'));
+  assert.ok(/Пропущенный/.test(row) && /Исходящий/.test(row) && /Входящий/.test(row),
+    'нет типа звонка в подписи');
+  assert.ok(/ph-ios-src/.test(row) && /Хугинн/.test(row) && /Манго/.test(row),
+    'нет бейджа канала (Хугинн/Манго)');
+  assert.ok(/fmtWhen\(it\.created_at\)/.test(row), 'время не выводится');
 });
 
-test('U4b', 'Хугинн: чистый номер даёт иконку трубки, а не «+ (»', () => {
-  const dock = read('public/assets/js/huginn_dock.js');
-  assert.ok(/function callInitials/.test(dock), 'нет callInitials');
-  assert.ok(/function callAvatarInner/.test(dock), 'нет callAvatarInner');
-  const fn = dock.slice(dock.indexOf('function callInitials'), dock.indexOf('function callAvatarInner'));
+test('U4b', 'чистый номер даёт инициалы-цифры, а не «+ (»', () => {
+  const ui = read('public/assets/js/phone_ui.js');
+  const fn = ui.slice(ui.indexOf('function initialsFrom'), ui.indexOf('function dockBtn'));
   assert.ok(/A-Za-zА-Яа-яЁё/.test(fn), 'не проверяет наличие букв (для имён)');
-  assert.ok(!/\+\' \+ d\.slice/.test(fn), 'всё ещё подставляет цифры вместо иконки');
+  assert.ok(/d\.slice\(-2\)/.test(fn), 'не подставляет цифры для строки-номера');
 });
 
-test('U4c', 'Хугинн: номера форматируются и берутся из телефонии', () => {
-  const dock = read('public/assets/js/huginn_dock.js');
-  const fn = dock.slice(dock.indexOf('function renderCallsPanel'), dock.indexOf('function renderSettingsPanel'));
-  assert.ok(/fmtPhone\(num\)/.test(fn), 'номер не форматируется');
-  assert.ok(/\/api\/telephony\/calls/.test(fn), 'не подтягивает номера из телефонии (Mango)');
-  assert.ok(/client_name/.test(fn), 'не использует имя клиента из CRM');
+test('U4c', 'образец: номера форматируются и берутся из телефонии (Mango)', () => {
+  const ui = read('public/assets/js/phone_ui.js');
+  const row = ui.slice(ui.indexOf('function callRowHtml'), ui.indexOf('function fmtWhen'));
+  assert.ok(/fmtPhone\(num \|\| ''\)/.test(row), 'номер не форматируется');
+  assert.ok(/it\.caller_name \|\| it\.client_name/.test(row), 'не использует имя звонящего из CRM');
 });
 
 // ── Мобильный ──
@@ -95,21 +93,27 @@ test('U6', 'мобильный: убраны английские answered/perce
 });
 
 // ── CSS ──
-test('U7', 'CSS Хугинна: иконка трубки, аватар и время', () => {
-  const css = read('public/assets/css/huginn_dock.css');
-  assert.ok(/\.hg-call-dir/.test(css), 'нет стиля иконки-трубки');
-  assert.ok(/\.hg-call-dir\.is-out/.test(css), 'нет цвета исходящего');
-  assert.ok(/\.hg-call-dir\.is-missed/.test(css), 'нет цвета пропущенного');
-  assert.ok(/\.hg-calls \.ph-ios-av-wrap/.test(css), 'нет стиля аватара');
-  assert.ok(/\.hg-calls \.ph-ios-when/.test(css), 'нет стиля времени');
-  assert.ok(/\.hg-calls \.ph-ios-right/.test(css), 'нет стиля правого блока');
+test('U7', 'CSS Хугинна: аватар, время и бейдж канала в едином журнале', () => {
+  const css = read('public/assets/css/phone.css');
+  assert.ok(/\.ph-ios-av-wrap/.test(css), 'нет стиля аватара');
+  assert.ok(/\.ph-ios-when/.test(css), 'нет стиля времени');
+  assert.ok(/\.ph-ios-right/.test(css), 'нет стиля правого блока');
+  assert.ok(/\.ph-ios-src\.is-huginn/.test(css) && /\.ph-ios-src\.is-mango/.test(css),
+    'нет стилей бейджа канала Хугинн/Манго');
 });
 
-test('U8', 'CSS Хугинна: не осталось правил удалённых классов', () => {
+test('U8', 'CSS: не осталось правил удалённого дубля журнала', () => {
   const css = read('public/assets/css/huginn_dock.css');
   assert.ok(!/\.hg-call-ico\s*\{/.test(css), 'осталось правило .hg-call-ico');
   assert.ok(!/\.hg-call-arrow/.test(css), 'осталось правило .hg-call-arrow');
   assert.ok(!/\.hg-calls \.ph-ios-dir/.test(css), 'остался стиль глифа на аватаре');
+  // Латинские селекторы удалённой разметки ЖУРНАЛА (не оверлея .hg-call-*):
+  // .hg-calls / .hg-call-row / .hg-call-dir / .hg-call-sub
+  const code = css.replace(/\/\*[\s\S]*?\*\//g, '');
+  assert.ok(!/\.hg-calls\b/.test(code), 'остался orphan-селектор .hg-calls');
+  assert.ok(!/\.hg-call-row\b/.test(code), 'остался orphan-селектор .hg-call-row');
+  assert.ok(!/\.hg-call-dir\b/.test(code), 'остался orphan-селектор .hg-call-dir');
+  assert.ok(!/\.hg-call-sub\b/.test(code), 'остался orphan-селектор .hg-call-sub');
 });
 
 console.log(`\n${passed} passed, ${failed} failed`);

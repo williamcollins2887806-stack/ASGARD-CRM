@@ -46,6 +46,7 @@
     "verify:perf": "node tools/verify_debounce.js && node tools/verify_innerhtml.js",
     "verify:debounce": "node tools/verify_debounce.js",
     "verify:innerhtml": "node tools/verify_innerhtml.js",
+    "verify:pbx": "node tests/pbx/calls-list-unified.test.js && node tests/pbx/phone-number-tap.test.js && node tests/pbx/call-attribution.test.js && node tests/pbx/contact-call-menu.test.js && node tests/pbx/browser-hangup-runtime.test.js",
     "release": "node scripts/bump-version.js",
     "generate-vapid-keys": "node scripts/generate-vapid-keys.js",
     "test:smoke:jest": "jest --selectProjects smoke",

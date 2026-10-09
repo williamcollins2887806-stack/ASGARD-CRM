@@ -2,6 +2,7 @@
 
 const MangoService = require('../services/mango');
 const { normalizePhone, getCallDirection } = require('../services/mango');
+const { enrichCallRows } = require('../services/caller-lookup');
 const CallPipeline = require('../services/call-pipeline');
 const { createNotification, sendIncomingCallPush } = require('../services/notify');
 const https = require('https');
@@ -26,6 +27,7 @@ const TEL_ADMIN_ROLES = TEL_ADMIN_ROLES_LIB.length
   ? TEL_ADMIN_ROLES_LIB
   : ['ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV'];
 void TEL_FULL_VIEW_ROLES;
+
 // ── Webhook Rate Limiter ──
 const _webhookRateMap = new Map();
 const WEBHOOK_RATE_LIMIT = 100;  // max requests per window
@@ -751,8 +753,10 @@ module.exports = async function telephonyRoutes(fastify, opts) {
 
     // Менеджеры видят только свои звонки; руководство, РП и старшие РП — все.
     if (String(request.query.scope) === 'mine') {
-      conditions.push(`ch.user_id = $${paramIdx++}`);
+      // «Свои» = где я инициатор ИЛИ где я ответил (legs/answered_by).
+      conditions.push(`(ch.user_id = $${paramIdx} OR ch.answered_by = $${paramIdx})`);
       params.push(user.id);
+      paramIdx++;
     } else if (!canViewAllCalls(user)) {
       conditions.push(`ch.user_id = $${paramIdx++}`);
       params.push(user.id);
@@ -796,12 +800,12 @@ module.exports = async function telephonyRoutes(fastify, opts) {
     );
 
     reply.send({
-      items: rows.rows.map(r => ({
+      items: await enrichCallRows(db, rows.rows.map(r => ({
         ...r,
         transcript: undefined, // Не отправляем полный транскрипт в списке
         webhook_payload: undefined,
         transcript_preview: r.transcript ? r.transcript.slice(0, 150) + '...' : null
-      })),
+      }))),
       total,
       page,
       limit,
@@ -1214,7 +1218,7 @@ module.exports = async function telephonyRoutes(fastify, opts) {
     }
     const recent = await db.query(
       `SELECT ch.id, ch.call_type, ch.direction, ch.from_number, ch.to_number, ch.duration_seconds,
-              ch.created_at, ch.ai_summary, c.name as client_name
+              ch.created_at, ch.ai_summary, ch.source, ch.outcome, c.name as client_name
        FROM call_history ch
        LEFT JOIN customers c ON c.inn = ch.client_inn
        WHERE ch.user_id = $1
@@ -1229,9 +1233,12 @@ module.exports = async function telephonyRoutes(fastify, opts) {
                  )
              )
        ORDER BY ch.created_at DESC
-       LIMIT 8`,
+       LIMIT 50`,
       [uid]
     );
+    // Резолв имён по ВСЕМ справочникам (коллеги, клиенты, карточки компаний, заявки):
+    // в журнале показываем имя, а не «сырой» номер (напр. +7 916 061-48-09 → Андросов Н.А.).
+    const recentRows = await enrichCallRows(db, recent.rows);
     const spark = await db.query(
       `SELECT (timezone('Europe/Moscow', gs))::date AS d, COUNT(ch.id)::int AS n
        FROM generate_series(
@@ -1252,7 +1259,7 @@ module.exports = async function telephonyRoutes(fastify, opts) {
       office_unack: officeUnack,
       week_spark: spark.rows.map((r) => r.n),
       can_see_office: TEL_ROLES.includes(request.user.role),
-      recent: recent.rows,
+      recent: recentRows,
     });
   });
 

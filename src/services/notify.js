@@ -77,7 +77,9 @@ async function createNotification(db, { user_id, title, message, type, link }) {
             title,
             body: message || '',
             url: toPushUrl(link),
-            tag: type || 'asgard-notification',
+            // Уникальный tag на каждое уведомление: одинаковый tag заставлял ОС
+            // молча подменять предыдущее уведомление (без звука/вибрации).
+            tag: (type || 'asgard') + '-' + Date.now(),
             badge_count: badgeCount,
             icon: './assets/img/icon-192.png'
           });
@@ -87,7 +89,7 @@ async function createNotification(db, { user_id, title, message, type, link }) {
               await webpush.sendNotification({
                 endpoint: sub.endpoint,
                 keys: { p256dh: sub.p256dh, auth: sub.auth }
-              }, payload);
+              }, payload, { urgency: 'high', TTL: 60 * 60 });
               pushSent++;
             } catch (pushErr) {
               if (pushErr.statusCode === 410 || pushErr.statusCode === 404) {
@@ -145,7 +147,7 @@ async function sendIncomingCallPush(db, userId, { title, body, from, tag, type, 
         await webpush.sendNotification({
           endpoint: sub.endpoint,
           keys: { p256dh: sub.p256dh, auth: sub.auth },
-        }, payload);
+        }, payload, { urgency: 'high', TTL: 60 });
       } catch (pushErr) {
         if (pushErr.statusCode === 410 || pushErr.statusCode === 404) {
           await db.query('DELETE FROM push_subscriptions WHERE id = $1', [sub.id]);

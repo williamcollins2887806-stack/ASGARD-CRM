@@ -81,7 +81,12 @@ async function send(db, opts) {
       await webpush.sendNotification({
         endpoint: sub.endpoint,
         keys: { p256dh: sub.p256dh, auth: sub.auth }
-      }, payload);
+      }, payload, {
+        // high urgency: без него Android/Chrome могут доставлять push «тихо»
+        // и с задержкой (dose/троттлинг), уведомление приходит без звука.
+        urgency: 'high',
+        TTL: 60 * 60
+      });
       sentOk += 1;
     } catch (err) {
       // 410 Gone or 404 — endpoint expired, remove subscription

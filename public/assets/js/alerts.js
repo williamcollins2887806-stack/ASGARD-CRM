@@ -77,14 +77,17 @@ window.AsgardAlertsPage=(function(){
       const cls = n.is_read ? "pill read" : "pill unread";
       const dot = n.is_read ? `<span class="dot" style="background:var(--t2)"></span>` : `<span class="dot" style="background:var(--amber)"></span>`;
       const link = n.link_hash || n.link || "#/home";
+      // Не показываем «[object Object]», если поле пришло объектом.
+      const tTitle = (typeof n.title === 'string' ? n.title : (n.title && (n.title.title || n.title.text))) || "Уведомление";
+      const tMsg = (typeof n.message === 'string' ? n.message : (n.message && (n.message.message || n.message.text))) || "";
       return `<div class="${cls}" style="gap:10px; align-items:flex-start">
         <div style="margin-top:3px">${dot}</div>
         <div style="flex:1">
           <div class="row" style="justify-content:space-between; gap:10px">
-            <div><b>${esc(n.title||"Уведомление")}</b></div>
+            <div><b>${esc(tTitle)}</b></div>
             <div class="help">${esc(when)}</div>
           </div>
-          <div class="help" style="margin-top:6px">${esc(n.message||"")}</div>
+          <div class="help" style="margin-top:6px">${esc(tMsg)}</div>
           <div class="row" style="gap:8px; margin-top:10px; flex-wrap:wrap">
             <a class="btn" style="padding:6px 10px" href="${esc(link)}" data-open="${n.id}">Открыть</a>
             <button class="btn ghost" style="padding:6px 10px" data-toggle="${n.id}">${n.is_read?"Пометить непроч.":"Пометить прочит."}</button>
