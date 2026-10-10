@@ -16,12 +16,32 @@ const PBX_CHANNEL = 'pbx_call_event';
  * @param {{receiveMode?: string}} [opts]
  * @returns {Promise<{ok: boolean, previousUserId: number|null, previousChannel: string|null}>}
  */
+/**
+ * Достать клиента для транзакции.
+ *
+ * ВАЖНО (инцидент 10.10.2026): модуль src/services/db.js экспортирует `pool`,
+ * но НЕ экспортирует `connect`. Вызов db.connect() падает с
+ * «db.connect is not a function» — из-за этого оператор не мог встать на линию
+ * (/operator/claim-line отвечал 409/500). Поддерживаем оба варианта: если
+ * у переданного объекта есть connect — берём его, иначе идём через pool.connect.
+ */
+function getPool(db) {
+  if (db && typeof db.connect === 'function') return db;
+  if (db && db.pool && typeof db.pool.connect === 'function') return db.pool;
+  throw new Error('db.connect is not a function (нет ни connect, ни pool.connect)');
+}
+
+/**
+ * @param {import('pg').Pool|{pool: import('pg').Pool}} db
+ * @param {number} userId
+ * @param {{receiveMode?: string}} [opts]
+ */
 async function claimLine(db, userId, opts = {}) {
   const receiveMode = ['browser', 'mobile', 'both'].includes(opts.receiveMode)
     ? opts.receiveMode
     : undefined;
 
-  const client = await db.connect();
+  const client = await getPool(db).connect();
   let previousUserId = null;
   try {
     await client.query('BEGIN');
