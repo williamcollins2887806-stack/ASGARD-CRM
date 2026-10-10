@@ -30,10 +30,19 @@ const PBX_ADMIN_ROLES = ['ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV
  * Секрет живёт только на сервере, в браузер не уходит.
  */
 function buildIceServers(userId) {
-  const stun = process.env.PBX_STUN_URL || 'stun:stun.l.google.com:19302';
-  const servers = [{ urls: stun }];
   const secret = process.env.PBX_TURN_SECRET || '';
   const host = process.env.PBX_TURN_HOST || '';
+  const turnPort = process.env.PBX_TURN_PORT || '3478';
+  // STUN по умолчанию — НАШ coturn (тот же host), а не stun.l.google.com.
+  //
+  // Инцидент 10.10.2026: PBX_STUN_URL=stun:l.google в .env, но Google STUN из
+  // РФ отдаёт таймаут по RFC 5389 (7 ретрансмиссий ≈ 30-60с), а JsSIP в этой
+  // сборке БЕЗ trickle ICE ждёт iceGatheringState==="complete" ДО отправки
+  // INVITE → «Позвонить» висело 30-60с до первого гудка. coturn отвечает за
+  // 0.00с. Google оставляем лишь как последний резерв, если TURN не задан.
+  const stunDefault = host ? `stun:${host}:${turnPort}` : 'stun:stun.l.google.com:19302';
+  const stun = process.env.PBX_STUN_URL || stunDefault;
+  const servers = [{ urls: stun }];
   if (!secret || !host) return servers;
   try {
     const ttl = Number(process.env.PBX_TURN_TTL || 43200); // 12 часов
@@ -43,7 +52,7 @@ function buildIceServers(userId) {
       .createHmac('sha1', secret)
       .update(username)
       .digest('base64');
-    const port = process.env.PBX_TURN_PORT || '3478';
+    const port = turnPort;
     servers.push({
       urls: [
         `turn:${host}:${port}?transport=udp`,

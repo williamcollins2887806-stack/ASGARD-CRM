@@ -66,5 +66,26 @@ test('J6', 'в репо зафиксирована причина (коммен�
   assert.ok(/cloneObject\(n\.pcConfig/.test(js), 'нет пояснения, почему pcConfig нужен в call()');
 });
 
+test('J7', 'STUN по умолчанию = свой coturn, а не Google (инцидент задержки 10.10.2026)', () => {
+  const js = read('src/routes/telephony-pbx.js');
+  // Дефолт STUN должен ссылаться на PBX_TURN_HOST, а google — только last-resort.
+  assert.ok(/stunDefault/.test(js), 'нет stunDefault — дефолт STUN не завязан на coturn');
+  assert.ok(/stun:\$\{host\}:\$\{turnPort\}/.test(js), 'дефолт STUN не указывает на свой coturn');
+  // Проверяем, что строка с google-дефолтом напрямую в присвоении stun убрана:
+  assert.ok(!/const stun = process\.env\.PBX_STUN_URL \|\| 'stun:stun\.l\.google/.test(js),
+    'STUN снова дефолтится на Google → задержка 30-60с (JsSIP без trickle ICE)');
+});
+
+test('J8', 'fallback-список в браузере не завязан на Google первым', () => {
+  const js = read('public/assets/js/phone_core.js');
+  // Основной путь — creds.ice_servers (там свой coturn). Google допустим лишь
+  // как крайний fallback, когда сервер вообще не отдал ICE-серверы.
+  assert.ok(/creds\.ice_servers/.test(js), 'нет основного пути через ice_servers');
+  const i = js.indexOf('var iceServers');
+  const blk = js.slice(i, i + 400);
+  assert.ok(/ice_servers && creds\.ice_servers\.length/.test(blk),
+    'iceServers не проверяет непустой список из API перед fallback на Google');
+});
+
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);
