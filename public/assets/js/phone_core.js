@@ -24,6 +24,7 @@
   var isLeader = false;
   var takeover = false;
   var credentials = null;
+  var pcConfig = null;
   var ua = null;
   var activeSession = null;
   var consultSession = null;
@@ -302,6 +303,9 @@
         { urls: 'stun:stun1.l.google.com:19302' },
       ];
     configuration.pcConfig = { iceServers: iceServers, iceCandidatePoolSize: 2 };
+    // Запоминаем отдельно: JsSIP читает pcConfig из аргументов call()/answer(),
+    // а не из конфигурации UA (см. комментарий в outbound()).
+    pcConfig = configuration.pcConfig;
     ua = new window.JsSIP.UA(configuration);
     sipRegistered = false;
     _wsBroken = false;
@@ -585,7 +589,8 @@
       }
       if (activeSession) {
         try {
-          activeSession.answer({ mediaConstraints: { audio: true, video: false } });
+          // pcConfig и здесь: JsSIP читает его из аргументов answer(), не из UA.
+          activeSession.answer({ mediaConstraints: { audio: true, video: false }, pcConfig: pcConfig });
         } catch (e) {
           return Promise.reject(e);
         }
@@ -721,7 +726,16 @@
       return prep.then(function (ok) {
         if (ok && ua && hasJsSIP() && sipRegistered) {
           var domain = credentials ? sipDomainFromWs(wsUrlFromCreds(credentials)) : location.hostname;
-          var session = ua.call('sip:' + digits + '@' + domain, { mediaConstraints: { audio: true, video: false } });
+          // ВАЖНО (корень тишины в звонках, 10.10.2026): JsSIP НЕ берёт pcConfig
+          // из конфигурации UA — он читает его из аргументов call():
+          //   u = R.cloneObject(n.pcConfig, { iceServers: [] })
+          // Поэтому без явной передачи iceServers здесь сбор кандидатов идёт с
+          // пустым списком STUN/TURN → в SDP только приватные host-кандидаты
+          // (srflx=0, relay=0) → медиа-путь не строится и в трубке тишина.
+          var session = ua.call('sip:' + digits + '@' + domain, {
+            mediaConstraints: { audio: true, video: false },
+            pcConfig: pcConfig,
+          });
           if (session) bindSession(session);
           setState(STATES.ringing, { number: digits, outbound: true });
           return { ok: true, via: 'webrtc' };
