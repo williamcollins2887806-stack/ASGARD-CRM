@@ -35,6 +35,21 @@
   var micMuted = false;
   var _hbTimer = null;
   var HEARTBEAT_MS = 45000;
+  // JsSIP (эта сборка) НЕ умеет trickle ICE: перед отправкой INVITE он ждёт
+  // iceGatheringState === "complete". Chrome/Chromium может держать сбор ~40с
+  // даже когда ВСЕ нужные кандидаты собраны за ~1.2с (прямой замер в живом
+  // Chrome 10.10.2026: host+srflx+relay есть за 1.2с, complete — через 40с).
+  // Поэтому принудительно финализируем сбор через хук ready() из события
+  // icecandidate. Это работает во всех браузерах (Chrome/Firefox/Safari):
+  // ready() — это API JsSIP, а не поведение браузера.
+  //
+  // Значения подобраны по замеру: host ~5мс, srflx ~40-135мс, relay ~380-1200мс.
+  // Целимся в «мгновенный» финиш сразу после ПЕРВОГО публичного кандидата
+  // (srflx/relay), но с коротким дозреванием, чтобы не потерять остальные.
+  var ICE_RELAY_GRACE_MS = 250;    // relay уже есть -> короткая пауза на дозревание
+  var ICE_GATHER_GRACE_MS = 400;   // srflx есть (relay ещё нет) -> пауза, ждём relay
+  var ICE_GATHER_QUIET_MS = 800;   // тишина после последнего кандидата
+  var ICE_GATHER_MAX_MS = 1500;    // жёсткий потолок от первого кандидата
   var sipRegistered = false;
   var _wsBroken = false;
 
@@ -214,6 +229,7 @@
   function bindSession(session) {
     activeSession = session;
     attachSessionMedia(session);
+    attachIceFastFinish(session);
     session.on('accepted', function () {
       setState(STATES.in_call, { number: sessionNumber(session), callMeta: callMeta });
       emit('connected', { number: sessionNumber(session) });
@@ -243,10 +259,81 @@
     });
   }
 
+  /**
+   * Принудительное завершение сбора ICE-кандидатов.
+   *
+   * Контекст (замер в живом Chrome 10.10.2026, asgard-crm.ru):
+   *   no iceServers    -> gathering complete за 135мс (но нет srflx/relay -> тишина)
+   *   stun:наш coturn  -> все кандидаты за ~100мс, complete ЧЕРЕЗ ~40с
+   *   turn:udp наш     -> то же, complete ~40с
+   *   turn:tcp наш     -> complete за 218мс (но браузер за NAT часто НЕ поднимает
+   *                       TCP-кандидата -> риск тишины; поэтому TCP-only не годится)
+   *
+   * Итог: дело не в доступности сервера, а в том, что Chromium долго НЕ
+   * объявляет gathering завершённым. JsSIP ждёт именно это событие, поэтому
+   * INVITE уходил на «Позвонить» только через 40с.
+   *
+   * Решение: слушаем session.on('icecandidate') и сами зовём ready() (который
+   * JsSIP передаёт вместе с каждым кандидатом), как только собрали достаточно
+   * кандидатов. Работает во всех браузерах, т.к. ready() — это API JsSIP.
+   */
+  function attachIceFastFinish(session) {
+    var done = false;
+    var firstAt = 0;
+    var quietTimer = null;
+    var maxTimer = null;
+    var finishTimer = null;
+    function finish(reason) {
+      if (done) return;
+      done = true;
+      if (quietTimer) clearTimeout(quietTimer);
+      if (maxTimer) clearTimeout(maxTimer);
+      if (finishTimer) clearTimeout(finishTimer);
+      try {
+        if (typeof session._iceFinish === 'function') session._iceFinish();
+      } catch (e) {
+        emit('error', { message: 'ICE fast-finish: ' + (e && e.message ? e.message : e) });
+      }
+      try { debugIce('finish: ' + reason); } catch (_) {}
+    }
+    function finishAfter(ms, reason) {
+      if (done || finishTimer) return;
+      finishTimer = setTimeout(function () { finish(reason); }, ms);
+    }
+    function armQuiet() {
+      if (quietTimer) clearTimeout(quietTimer);
+      quietTimer = setTimeout(function () { finish('quiet ' + ICE_GATHER_QUIET_MS + 'ms'); }, ICE_GATHER_QUIET_MS);
+    }
+    function armMax() {
+      if (maxTimer) return;
+      maxTimer = setTimeout(function () { finish('max ' + ICE_GATHER_MAX_MS + 'ms'); }, ICE_GATHER_MAX_MS);
+    }
+    session.on('icecandidate', function (data) {
+      // ВАЖНО: JsSIP отдаёт ОДИН объект {candidate, ready}, а не два аргумента.
+      if (!data) return;
+      if (typeof data.ready === 'function') session._iceFinish = data.ready;
+      var cand = data.candidate;
+      if (!cand) { finish('end-of-candidates'); return; }
+      if (!firstAt) { firstAt = Date.now(); armMax(); }
+      var typ = cand.type || '';
+      // Самый ранний безопасный момент: есть публичный кандидат (собеседник
+      // сможет достучаться). relay — надёжнее всего, srflx — тоже публичный.
+      if (typ === 'relay') {
+        finishAfter(ICE_RELAY_GRACE_MS, 'relay + ' + ICE_RELAY_GRACE_MS + 'ms');
+      } else if (typ === 'srflx') {
+        finishAfter(ICE_GATHER_GRACE_MS, 'srflx + ' + ICE_GATHER_GRACE_MS + 'ms');
+      }
+      armQuiet();
+      try { debugIce('cand: ' + typ); } catch (_) {}
+    });
+  }
+
+  function debugIce(msg) {
+    if (!window.ASGARD_PHONE_DEBUG) return;
+    try { console.debug('[phone:ice] ' + msg); } catch (_) {}
+  }
+
   function onIncomingSession(session) {
-    // Входящие получает ТОЛЬКО тот, кто стоит на линии. Регистрация «для
-    // исходящих» (ленивая, без on_line) не должна принимать звонки — иначе
-    // открытая вкладка «не на линии» перехватывала бы чужие входящие.
     if (!onDuty) {
       try { session.terminate({ status_code: 486, reason_phrase: 'Busy Here' }); } catch (_) {}
       return;
