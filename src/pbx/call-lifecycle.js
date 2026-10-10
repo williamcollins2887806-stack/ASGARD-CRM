@@ -23,7 +23,15 @@ function targetToDialPart(target) {
   }
   const d = digitsOnly(target.targetAddr);
   if (!d) return null;
-  return `Local/${d}@asgard-mobile-confirm`;
+  // ⚠️ Без Local/@asgard-mobile-confirm (инцидент 10.10.2026).
+  // Раньше мобильный набор шёл через звено подтверждения:
+  //   Local/<d>@asgard-mobile-confirm → Dial(...,25,gU(confirm-press-1))
+  //                                     + Read(DTMF_CONFIRM,...,5)
+  // Это давало 25+5 = 30 секунд ожидания перед вызовом у абонента
+  // («жду 30 сек, потом звонок идёт»). Подтверждение нажатием нужно для
+  // ВХОДЯЩИХ на мобильный, а исходящий из CRM должен соединять сразу:
+  // оператор уже нажал кнопку. Поднимаем плечо напрямую через транк.
+  return `PJSIP/${d}@mango-trunk`;
 }
 
 /**
