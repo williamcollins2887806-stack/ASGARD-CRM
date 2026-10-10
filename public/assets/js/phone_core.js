@@ -234,6 +234,12 @@
       setState(STATES.in_call, { number: sessionNumber(session), callMeta: callMeta });
       emit('connected', { number: sessionNumber(session) });
     });
+    // Удалённый ответ 180/183: абонент дозванивается (гудки). На этой сборке
+    // early-media не пробрасывается, но событие приходит -> UI показывает
+    // «Гудки…», а гудок генерирует панель (WebAudio).
+    session.on('progress', function () {
+      emit('progress', { number: sessionNumber(session) });
+    });
     session.on('hold', function () {
       setState(STATES.held, { number: sessionNumber(session) });
     });

@@ -23,6 +23,9 @@
   var dockMini = false;
   var incomingPulseTimer = null;
   var ringbackTimer = null;
+  // true, когда абонент уже дозванивается (есть ответ 180/early) — тогда
+  // панель показывает «Гудки…», а не «Соединение…».
+  var ringingStarted = false;
   var transferMode = 'blind';
   var transferChannel = 'webrtc';
   var soundEnabled = localStorage.getItem('tel:sound') !== '0';
@@ -129,14 +132,22 @@
   function startRingback() {
     if (!soundEnabled || document.body.classList.contains('is-gallery')) return;
     if (ringbackTimer) return;
+    ensureAudioCtx();
     function beep() {
       try {
-        audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+        if (!audioCtx) ensureAudioCtx();
+        // Autoplay policy: без resume() контекст остаётся 'suspended' и гудка
+        // НЕТ. Пробуем резюмировать (звонок инициирован кликом — жест был).
+        if (audioCtx.state === 'suspended' && audioCtx.resume) {
+          audioCtx.resume().catch(function () {});
+        }
         var o = audioCtx.createOscillator();
         var g = audioCtx.createGain();
         o.connect(g); g.connect(audioCtx.destination);
         var now = audioCtx.currentTime;
         // 425 Гц (стандарт РФ) — 1с звон + 4с пауза = «длинный гудок».
+        // Раннее медиа на этой сборке Asterisk не пробрасывается (нет 183/
+        // progressinband), поэтому двойного гудка не будет.
         o.frequency.value = 425;
         g.gain.setValueAtTime(0.0001, now);
         g.gain.exponentialRampToValueAtTime(0.035, now + 0.05);
@@ -148,6 +159,14 @@
     }
     beep();
     ringbackTimer = setInterval(beep, 4000);
+  }
+
+  /** Общий AudioContext + разблокировка по первому жесту (autoplay policy). */
+  function ensureAudioCtx() {
+    try {
+      if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      if (audioCtx.state === 'suspended' && audioCtx.resume) audioCtx.resume().catch(function () {});
+    } catch (_) { audioCtx = null; }
   }
 
   function stopRingback() {
@@ -1027,7 +1046,7 @@
         '<div class="ph-dp-who">' +
           '<div class="ph-dp-avatar is-ring" aria-hidden="true">' + avatarInner(lookup.name || lookup.client_name, num) + '</div>' +
           '<div class="ph-dp-who-name">' + esc(title) + '</div>' +
-          '<div class="ph-dp-who-sub">Вызов…</div>' +
+          '<div class="ph-dp-who-sub">' + (ringingStarted ? 'Гудки… абонент дозванивается' : 'Соединение…') + '</div>' +
         '</div>' +
         '<div class="ph-dp-callacts">' +
           '<button type="button" class="ph-act ph-act--hangup" data-ph-dp="hangup">Отменить</button>' +
@@ -1334,7 +1353,9 @@
       '</div>' +
       '<div class="ph-seg" role="group" aria-label="Режим перевода">' +
         '<button type="button" class="ph-seg__btn is-active" data-mode="blind">Слепой</button>' +
-        '<button type="button" class="ph-seg__btn" data-mode="consult">Консультативный</button>' +
+        // Консультативный перевод пока не реализован до конца (нет сведения
+        // консультанта в мост) — оставлять активную кнопку опасно: вызов может
+        // «подвесить» абонента на hold. Прячем до реализации (10.10.2026).
       '</div>' +
       '<input type="hidden" name="phTrMode" id="phTrMode" value="blind">';
     var overlay = AsgardUI.showModal({ title: 'Перевод звонка', html: html });
@@ -1477,9 +1498,14 @@
       }
     }
     if (type === 'incoming') renderIncoming(d);
+    if (type === 'progress') {
+      // Абонент дозванивается: показать «Гудки…».
+      ringingStarted = true;
+      if (panelShown() && currentPanelView() === 'dialing') paintPanel();
+    }
     if (type === 'lookup' && uiMode === 'incoming' && panelShown()) paintPanel();
     if (type === 'mute' && uiMode === 'incall' && panelShown()) paintPanel();
-    if (type === 'connected' || (type === 'state' && P.getState() === 'in_call')) { stopRingback(); renderIncall(d); }
+    if (type === 'connected' || (type === 'state' && P.getState() === 'in_call')) { stopRingback(); ringingStarted = false; renderIncall(d); }
     if (type === 'ended' || type === 'failed' || type === 'hangup') {
       stopRingback();
       hideIncoming();

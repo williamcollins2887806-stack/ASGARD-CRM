@@ -106,7 +106,7 @@ test('U3', 'гудок останавливается при ответе и з�
   const js = read('public/assets/js/phone_ui.js');
   const conn = js.indexOf("type === 'connected'");
   assert.ok(conn !== -1, 'нет обработки connected');
-  assert.ok(/stopRingback\(\);\s*renderIncall/.test(js.slice(conn - 40, conn + 120)),
+  assert.ok(/stopRingback\(\);[\s\S]{0,60}renderIncall/.test(js.slice(conn - 40, conn + 200)),
     'гудок не гасится при connected');
   const end = js.indexOf("type === 'ended'");
   assert.ok(/stopRingback\(\)/.test(js.slice(end - 40, end + 120)), 'гудок не гасится при ended');
