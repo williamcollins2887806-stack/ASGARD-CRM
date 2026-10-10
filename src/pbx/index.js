@@ -408,6 +408,66 @@ async function originateOutbound(db, body) {
 /**
  * Р РµР·РѕР»РІ С†РµР»Рё РїРµСЂРµРІРѕРґР° РІ Dial() tech/resource + return Рє РёРЅРёС†РёР°С‚РѕСЂСѓ.
  */
+/**
+ * Выбор каналов перевода.
+ *
+ * Blind-перевод обязан переносить ПЛЕЧО АБОНЕНТА, а не оператора. Иначе:
+ *   • перевод «на себя» (оператор == цель) даёт Dial(PJSIP/u<id>) самому себе
+ *     → busy → fail → Hangup обоим (инцидент 10.10.2026);
+ *   • для коллеги абонент остаётся один в мосту и обрывается.
+ *
+ * Ищем канал оператора (по явному channel / pbx_uid / sip_username), затем
+ * среди каналов с его Linkedid берём ПАРТНЁРА (не сам канал, не Local/).
+ *
+ * @param {Array} list — результат ami.coreShowChannels().List
+ * @param {{channel?:string, uid?:string, sipUser?:string}} ctx
+ * @returns {{operatorChannel: string|null, transferChannel: string|null, partnerChannel: string|null}}
+ */
+function pickTransferChannels(list, ctx = {}) {
+  const norm = (s) => String(s || '');
+  const arr = Array.isArray(list) ? list : [];
+  const sipUser = ctx.sipUser || '';
+  const uid = ctx.uid || '';
+  const isSelfSip = (name) => sipUser && (name === 'PJSIP/' + sipUser || name.indexOf('PJSIP/' + sipUser + '-') === 0);
+
+  let operatorChannel = ctx.channel || null;
+  let operatorEntry = operatorChannel ? arr.find((ch) => norm(ch.Channel) === operatorChannel) : null;
+  if (!operatorChannel) {
+    for (const ch of arr) {
+      const name = norm(ch.Channel);
+      const linked = norm(ch.Linkedid);
+      const unique = norm(ch.Uniqueid);
+      if ((uid && (linked === uid || unique === uid)) || isSelfSip(name)) {
+        operatorChannel = name;
+        operatorEntry = ch;
+        break;
+      }
+    }
+  }
+
+  const partnerChannel = pickPartnerChannel(arr, operatorChannel, operatorEntry);
+  return {
+    operatorChannel,
+    transferChannel: partnerChannel || ctx.channel || operatorChannel || null,
+    partnerChannel,
+  };
+}
+
+/** Партнёр в мосте: с тем же Linkedid, не сам канал, не служебный Local/. */
+function pickPartnerChannel(list, operatorChannel, operatorEntry) {
+  const norm = (s) => String(s || '');
+  if (!operatorChannel) return null;
+  const linkedId = operatorEntry ? norm(operatorEntry.Linkedid) : '';
+  if (!linkedId) return null;
+  for (const ch of list) {
+    const name = norm(ch.Channel);
+    if (name === operatorChannel) continue;
+    if (name.indexOf('Local/') === 0) continue;
+    if (norm(ch.Linkedid) === linkedId) return name;
+  }
+  return null;
+}
+
 async function resolveTransferDial(db, body) {
   const empty = {
     dial: '',
@@ -461,15 +521,33 @@ async function resolveTransferDial(db, body) {
     let targets = [];
     if (op) {
       const fakeOn = { ...op, on_line: true, can_accept: true };
-      // Р”Р»СЏ РїРµСЂРµРІРѕРґР° РґРѕРїСѓСЃРєР°РµРј webrtc РґР°Р¶Рµ Р±РµР· heartbeat, РµСЃР»Рё registered;
-      // РёРЅР°С‡Рµ GSM. РџРѕРґРЅРёРјР°РµРј last_seen РµСЃР»Рё registered.
+      // Для перевода допускаем webrtc даже без heartbeat, если registered;
+      // иначе GSM. Поднимаем last_seen если registered.
       if (op.webrtc_registered && op.sip_username) {
         fakeOn.last_seen_at = new Date().toISOString();
       }
       targets = resolveTransferTargets(fakeOn, cfg, new Date());
-      if (!targets.length && op.mobile_phone) {
+      // Выбор канала оператором: СРМ (webrtc) или мобильный (GSM).
+      // Раньше выбора не было вообще — это и просили (10.10.2026).
+      const wantMode = body.target_mode === 'mobile' || body.target_mode === 'webrtc'
+        ? body.target_mode : null;
+      if (wantMode === 'webrtc') {
+        targets = targets.filter((t) => t.targetType === 'webrtc');
+      } else if (wantMode === 'mobile') {
+        targets = targets.filter((t) => t.targetType === 'mobile');
+      }
+      // Если выбранный канал недоступен — добираем недостающий (мобильный/СРМ),
+      // чтобы перевод не «пропадал» молча.
+      if (!targets.length && op.mobile_phone && wantMode !== 'webrtc') {
         targets = expandOperatorTargets(
           { ...fakeOn, receive_mode: 'mobile', webrtc_registered: false },
+          cfg,
+          Date.now()
+        );
+      }
+      if (!targets.length && op.sip_username && wantMode !== 'mobile') {
+        targets = expandOperatorTargets(
+          { ...fakeOn, receive_mode: 'browser' },
           cfg,
           Date.now()
         );
@@ -683,37 +761,36 @@ function createCmdServer() {
       }
       if (req.method === 'POST' && url.pathname === '/call/transfer') {
         if (!amiConfigured()) throw new Error('AMI not configured');
-        // Канал может не прийти от клиента: звонок из браузера (WebRTC) живёт
-        // под управлением Asterisk, и фронт знает только pbx_uid. Раньше здесь
-        // сразу бросалось «channel required» → 409, и перевод не работал
-        // (жалоба 10.10.2026: «не могу перевести звонок на Андросова»).
-        // Ищем плечо сами: сначала по pbx_uid/call_id, затем по sip_username
-        // оператора (PJSIP/u<id>-…).
-        let transferChannel = body.channel || null;
-        if (!transferChannel) {
-          const uid = String(body.pbx_uid || body.call_id || '').replace(/^pbx_/, '');
-          let sipUser = '';
-          if (body.user_id && db) {
-            try {
-              const r = await db.query('SELECT sip_username FROM pbx_operators WHERE user_id = $1', [body.user_id]);
-              sipUser = String((r.rows[0] || {}).sip_username || '');
-            } catch (_) { /* ignore */ }
-          }
+        // ВАЖНО (корень сброса звонка при переводе, 10.10.2026):
+        // Переводить нужно ПЛЕЧО АБОНЕНТА (клиента/собеседника), а не плечо
+        // оператора. Раньше redirect вешался на канал оператора (PJSIP/u<id>),
+        // и перевод «на себя» (оператор = цель) давал Dial(PJSIP/u3474) самому
+        // себе → busy → fail → Hangup обоим. Для коллеги — абонент оставался
+        // один в мосту и тоже обрывался.
+        // Теперь: находим канал оператора по pbx_uid/Linkedid, среди каналов с
+        // тем же Linkedid выбираем ПАРТНЁРА (а не сам канал и не Local/),
+        // и редиректим именно его. Оператор выходит из звонка.
+        const uid = String(body.pbx_uid || body.call_id || '').replace(/^pbx_/, '');
+        let sipUser = '';
+        if (body.user_id && db) {
           try {
-            const res = await ami.coreShowChannels();
-            const list = (res && res.List) || [];
-            for (const ch of list) {
-              const name = String(ch.Channel || '');
-              const linked = String(ch.Linkedid || '');
-              const unique = String(ch.Uniqueid || '');
-              const byUid = uid && (linked === uid || unique === uid);
-              const bySip = sipUser && (name === 'PJSIP/' + sipUser || name.indexOf('PJSIP/' + sipUser + '-') === 0);
-              if (byUid || bySip) { transferChannel = name; break; }
-            }
-          } catch (_) { /* ниже отдадим понятную ошибку */ }
+            const r = await db.query('SELECT sip_username FROM pbx_operators WHERE user_id = $1', [body.user_id]);
+            sipUser = String((r.rows[0] || {}).sip_username || '');
+          } catch (_) { /* ignore */ }
         }
+        let operatorChannel = body.channel || null;
+        let transferChannel = null;
+        try {
+          const res = await ami.coreShowChannels();
+          const pick = pickTransferChannels((res && res.List) || [], { channel: body.channel, uid, sipUser });
+          operatorChannel = pick.operatorChannel;
+          transferChannel = pick.transferChannel;
+        } catch (_) { /* ниже попробуем фолбэки */ }
+        // 3) Фолбэк: явный channel от клиента (GSM-путь / тесты).
+        if (!transferChannel && body.channel) transferChannel = body.channel;
+        // 4) Последний фолбэк: сам канал оператора (для не-бридж-сценариев).
+        if (!transferChannel) transferChannel = operatorChannel;
         if (!transferChannel) throw new Error('channel required');
-        body.channel = transferChannel;
         const mode = body.mode || 'blind';
         const resolved = await resolveTransferDial(db, body);
         const xferNotify = {
@@ -723,12 +800,14 @@ function createCmdServer() {
             status: 'trying',
             mode,
             target: body.target,
+            target_mode: body.target_mode || null,
             dial: resolved.dial,
             return_dial: resolved.returnDial,
           },
         };
         if (mode === 'consult') {
-          await ami.redirect(body.channel, 'hold', 's', 1);
+          // Консультативный: оператора на hold, к цели — отдельное плечо.
+          await ami.redirect(operatorChannel || transferChannel, 'hold', 's', 1);
           const consultChan = resolved.dial || (body.target
             ? (String(body.target).includes('/') ? body.target : `PJSIP/${body.target}`)
             : null);
@@ -747,17 +826,21 @@ function createCmdServer() {
             });
           }
         } else {
-          await ami.setVar(body.channel, 'TRANSFER_TARGET', body.target || '');
-          await ami.setVar(body.channel, 'TRANSFER_DIAL', resolved.dial || '');
-          await ami.setVar(body.channel, 'TRANSFER_TIMEOUT', String(resolved.timeout || 30));
-          await ami.setVar(body.channel, 'TRANSFER_FALLBACK', resolved.fallback || '');
-          await ami.setVar(body.channel, 'TRANSFER_FALLBACK_TO', String(resolved.fallbackTimeout || 20));
-          await ami.setVar(body.channel, 'TRANSFER_RETURN_DIAL', resolved.returnDial || '');
-          await ami.setVar(body.channel, 'TRANSFER_RETURN_TO', String(resolved.returnTimeout || 30));
-          await ami.redirect(body.channel, 'transfer', 'blind', 1);
+          // Слепой: переносим ПЛЕЧО АБОНЕНТА на цель. Оператор выходит из звонка
+          // (его канал после redirect клиента сам закончится — мост распадётся).
+          await ami.setVar(transferChannel, 'TRANSFER_TARGET', body.target || '');
+          await ami.setVar(transferChannel, 'TRANSFER_DIAL', resolved.dial || '');
+          await ami.setVar(transferChannel, 'TRANSFER_TIMEOUT', String(resolved.timeout || 30));
+          await ami.setVar(transferChannel, 'TRANSFER_FALLBACK', resolved.fallback || '');
+          await ami.setVar(transferChannel, 'TRANSFER_FALLBACK_TO', String(resolved.fallbackTimeout || 20));
+          // Возврат к инициатору бессмыслен для плеча абонента: если цель не
+          // ответила, клиент должен услышать возврат к оператору, а не тишину.
+          await ami.setVar(transferChannel, 'TRANSFER_RETURN_DIAL', resolved.returnDial || '');
+          await ami.setVar(transferChannel, 'TRANSFER_RETURN_TO', String(resolved.returnTimeout || 30));
+          await ami.redirect(transferChannel, 'transfer', 'blind', 1);
         }
         try { await notifyTransfer(db, xferNotify); } catch (_) { /* ignore */ }
-        return send(200, { ok: true, mode, transfer: resolved });
+        return send(200, { ok: true, mode, channel: transferChannel, operator_channel: operatorChannel, transfer: resolved });
       }
       if (req.method === 'POST' && url.pathname === '/operator/maintenance') {
         if (!db) throw new Error('DATABASE_URL not set');
@@ -977,6 +1060,8 @@ module.exports = {
   activeChannels,
   createCmdServer,
   resolveTransferDial,
+  pickTransferChannels,
+  pickPartnerChannel,
   originateOutbound,
   normalizeOutboundNumber,
   runOperatorMaintenance,

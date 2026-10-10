@@ -22,7 +22,9 @@
   var noteKey = 'asgard_phone_note';
   var dockMini = false;
   var incomingPulseTimer = null;
+  var ringbackTimer = null;
   var transferMode = 'blind';
+  var transferChannel = 'webrtc';
   var soundEnabled = localStorage.getItem('tel:sound') !== '0';
   var audioCtx = null;
   // Гибрид с Huginn-рейлом: пока док доступен, звонок живёт в его панели (#hgPanel),
@@ -115,6 +117,41 @@
         ringAudio.currentTime = 0;
       }
     } catch (_) { /* ignore */ }
+  }
+
+  /**
+   * Гудок ожидания (ringback) для ИСХОДЯЩЕГО вызова: пока абонент не ответил,
+   * оператор слышит стандартный «длинный гудок». JsSIP без early-media не
+   * отдаёт удалённый ringback, поэтому генерируем сами (WebAudio), громкость
+   * низкая — чтобы не перекрывать медиа, если провайдер шлёт свой гудок.
+   * Останавливается при connected/ended, чтобы не мешать разговору.
+   */
+  function startRingback() {
+    if (!soundEnabled || document.body.classList.contains('is-gallery')) return;
+    if (ringbackTimer) return;
+    function beep() {
+      try {
+        audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+        var o = audioCtx.createOscillator();
+        var g = audioCtx.createGain();
+        o.connect(g); g.connect(audioCtx.destination);
+        var now = audioCtx.currentTime;
+        // 425 Гц (стандарт РФ) — 1с звон + 4с пауза = «длинный гудок».
+        o.frequency.value = 425;
+        g.gain.setValueAtTime(0.0001, now);
+        g.gain.exponentialRampToValueAtTime(0.035, now + 0.05);
+        g.gain.setValueAtTime(0.035, now + 0.95);
+        g.gain.exponentialRampToValueAtTime(0.0001, now + 1.0);
+        o.type = 'sine';
+        o.start(now); o.stop(now + 1.05);
+      } catch (_) { /* без звука — не критично */ }
+    }
+    beep();
+    ringbackTimer = setInterval(beep, 4000);
+  }
+
+  function stopRingback() {
+    if (ringbackTimer) { clearInterval(ringbackTimer); ringbackTimer = null; }
   }
 
   function playTone(kind) {
@@ -1287,9 +1324,14 @@
   function openTransferModal() {
     if (!window.AsgardUI || !AsgardUI.showModal) return;
     transferMode = 'blind';
+    transferChannel = 'webrtc';
     var html =
       '<input type="search" class="inp" id="phTrSearch" placeholder="Поиск сотрудника…">' +
       '<div class="ph-tr-list" id="phTrList">Загрузка…</div>' +
+      '<div class="ph-seg" role="group" aria-label="Куда переводить">' +
+        '<button type="button" class="ph-seg__btn is-active" data-chan="webrtc">В СРМ (браузер)</button>' +
+        '<button type="button" class="ph-seg__btn" data-chan="mobile">На мобильный</button>' +
+      '</div>' +
       '<div class="ph-seg" role="group" aria-label="Режим перевода">' +
         '<button type="button" class="ph-seg__btn is-active" data-mode="blind">Слепой</button>' +
         '<button type="button" class="ph-seg__btn" data-mode="consult">Консультативный</button>' +
@@ -1301,9 +1343,16 @@
     var body = overlay.querySelector('#modalBody') || overlay;
     var listEl = body.querySelector('#phTrList');
     var staff = [];
-    body.querySelectorAll('.ph-seg__btn').forEach(function (btn) {
+    body.querySelectorAll('.ph-seg__btn[data-chan]').forEach(function (btn) {
       btn.addEventListener('click', function () {
-        body.querySelectorAll('.ph-seg__btn').forEach(function (b) { b.classList.remove('is-active'); });
+        body.querySelectorAll('.ph-seg__btn[data-chan]').forEach(function (b) { b.classList.remove('is-active'); });
+        btn.classList.add('is-active');
+        transferChannel = btn.getAttribute('data-chan') || 'webrtc';
+      });
+    });
+    body.querySelectorAll('.ph-seg__btn[data-mode]').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        body.querySelectorAll('.ph-seg__btn[data-mode]').forEach(function (b) { b.classList.remove('is-active'); });
         btn.classList.add('is-active');
         transferMode = btn.getAttribute('data-mode') || 'blind';
         var hid = body.querySelector('#phTrMode');
@@ -1356,7 +1405,7 @@
           var mode = transferMode || 'blind';
           var tid = row.getAttribute('data-id') || row.getAttribute('data-phone');
           panelData.transferStatus = { status: 'trying', target: tid };
-          AsgardPhone.transfer(mode, tid).then(function () {
+          AsgardPhone.transfer(mode, tid, transferChannel).then(function () {
             playTone('ok');
             toast('Перевод', 'Перевод…', 'ok');
             AsgardUI.closeModal && AsgardUI.closeModal();
@@ -1417,12 +1466,22 @@
       if (panelShown()) paintPanel();
       return;
     }
-    if (type === 'state' || type === 'ready') syncUi(P.getState());
+    if (type === 'state' || type === 'ready') {
+      syncUi(P.getState());
+      // Гудок ожидания для исходящего: старт на 'ringing', стоп при ответе/конце.
+      if (P.getState() === 'ringing') {
+        var cm = P.getCallMeta && P.getCallMeta();
+        if (cm && cm.direction === 'outbound') startRingback(); else stopRingback();
+      } else {
+        stopRingback();
+      }
+    }
     if (type === 'incoming') renderIncoming(d);
     if (type === 'lookup' && uiMode === 'incoming' && panelShown()) paintPanel();
     if (type === 'mute' && uiMode === 'incall' && panelShown()) paintPanel();
-    if (type === 'connected' || (type === 'state' && P.getState() === 'in_call')) renderIncall(d);
+    if (type === 'connected' || (type === 'state' && P.getState() === 'in_call')) { stopRingback(); renderIncall(d); }
     if (type === 'ended' || type === 'failed' || type === 'hangup') {
+      stopRingback();
       hideIncoming();
       hideIncall();
       restoreAfterCall();

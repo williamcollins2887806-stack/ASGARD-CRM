@@ -442,6 +442,7 @@ module.exports = async function telephonyPbxRoutes(fastify) {
           pbx_uid: req.body?.pbx_uid,
           call_id: req.body?.call_id,
           target: req.body?.target,
+          target_mode: req.body?.target_mode,
           mode: req.body?.mode || 'blind',
           user_id: req.user.id,
         }),

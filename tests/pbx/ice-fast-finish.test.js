@@ -86,5 +86,37 @@ test('F7', 'есть флаг отладки для ICE-событий', () => {
   assert.ok(/function debugIce/.test(js), 'нет debugIce');
 });
 
+test('U1', 'гудок ожидания (ringback) для исходящего', () => {
+  const js = read('public/assets/js/phone_ui.js');
+  assert.ok(/function startRingback\(\)/.test(js), 'нет startRingback');
+  assert.ok(/function stopRingback\(\)/.test(js), 'нет stopRingback');
+  assert.ok(/var ringbackTimer = null/.test(js), 'нет ringbackTimer');
+  assert.ok(/startRingback\(\)/.test(js), 'startRingback не вызывается');
+  assert.ok(/stopRingback\(\)/.test(js), 'stopRingback не вызывается');
+});
+
+test('U2', 'гудок стартует только для ИСХОДЯЩЕГО (не для входящего)', () => {
+  const js = read('public/assets/js/phone_ui.js');
+  const i = js.indexOf('startRingback();');
+  const blk = js.slice(Math.max(0, i - 300), i + 60);
+  assert.ok(/direction === 'outbound'/.test(blk), 'гудок не привязан к исходящему');
+});
+
+test('U3', 'гудок останавливается при ответе и завершении', () => {
+  const js = read('public/assets/js/phone_ui.js');
+  const conn = js.indexOf("type === 'connected'");
+  assert.ok(conn !== -1, 'нет обработки connected');
+  assert.ok(/stopRingback\(\);\s*renderIncall/.test(js.slice(conn - 40, conn + 120)),
+    'гудок не гасится при connected');
+  const end = js.indexOf("type === 'ended'");
+  assert.ok(/stopRingback\(\)/.test(js.slice(end - 40, end + 120)), 'гудок не гасится при ended');
+});
+
+test('U4', 'частота гудка 425 Гц (стандарт), период ~4с', () => {
+  const js = read('public/assets/js/phone_ui.js');
+  assert.ok(/frequency\.value = 425/.test(js), 'нет 425 Гц');
+  assert.ok(/setInterval\(beep, 4000\)/.test(js), 'нет периода 4с');
+});
+
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);

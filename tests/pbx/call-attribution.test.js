@@ -55,9 +55,11 @@ test('A3', 'INSERT страховочной строки тоже содержи
 
 test('A4', 'AMI-дублёр извлекает оператора из имени канала PJSIP/u<id>', () => {
   const js = read('src/pbx/index.js');
-  assert.ok(/PJSIP\\\\\/\(u\\d\+\)-/.test(js) || /PJSIP\\\/\(u\\d\+\)-/.test(js),
+  assert.ok(/PJSIP\\\/\(u\\d\+\)-/.test(js) || /PJSIP\\\/\(u\\d\+\)-/.test(js),
     'нет разбора имени канала на оператора');
-  assert.ok(/operator: mop \? mop\[1\] : null/.test(js), 'оператор не передаётся в finalize');
+  // Оператор проходит в finalizeOnHangup({ operator: ... }) — проверяем передачу.
+  assert.ok(/finalizeOnHangup\(db,\s*\{[\s\S]{0,200}operator:\s*operator/.test(js),
+    'оператор не передаётся в finalize');
 });
 
 test('A5', 'PM/HEAD_PM видят журнал компании (hasFullCallView)', () => {

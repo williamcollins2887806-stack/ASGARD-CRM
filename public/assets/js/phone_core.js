@@ -763,11 +763,12 @@
       });
     },
 
-    transfer: function (kind, target) {
+    transfer: function (kind, target, targetMode) {
       kind = kind === 'consult' ? 'consult' : 'blind';
       // Для WebRTC-звонка канала в Asterisk ещё нет (плечо переводит Asterisk по
       // pbx_uid). Передаём pbx_uid и call_id — сервер сам найдёт канал.
-      var body = { channel: callMeta.channel, pbx_uid: callMeta.pbx_uid, call_id: callMeta.call_id, target: target, mode: kind };
+      // target_mode: 'webrtc' (СРМ) или 'mobile' (телефон) — выбор оператора.
+      var body = { channel: callMeta.channel, pbx_uid: callMeta.pbx_uid, call_id: callMeta.call_id, target: target, mode: kind, target_mode: targetMode || undefined };
       if (kind === 'consult' && consultSession) {
         body.consult_channel = consultSession.id;
       }
