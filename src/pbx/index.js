@@ -351,10 +351,16 @@ async function originateOutbound(db, body) {
       [body.user_id]
     );
     op = rows[0] || {};
-    if (op.webrtc_registered && op.sip_username) {
-      // WebRTC Р·Р°СЂРµРіРёСЃС‚СЂРёСЂРѕРІР°РЅ в†’ Р·РІРѕРЅРѕРє РёРґС‘С‚ РёР· Р±СЂР°СѓР·РµСЂР° (JsSIP) РЅР°РїСЂСЏРјСѓСЋ,
-      // СЃРµСЂРІРµСЂРЅС‹Р№ originate РѕРїРµСЂР°С‚РѕСЂСѓ РЅРµ РЅСѓР¶РµРЅ (РёРЅР°С‡Рµ В«РґРІРѕР№РЅРѕР№ РЅР°Р±РѕСЂВ»).
-      const err = new Error('РћРїРµСЂР°С‚РѕСЂ РЅР° WebRTC вЂ” Р·РІРѕРЅРѕРє РёРЅРёС†РёРёСЂСѓРµС‚СЃСЏ РёР· Р±СЂР°СѓР·РµСЂР°');
+    // 409 только если оператор реально ждёт звонок В БРАУЗЕРЕ.
+    // Раньше проверялся один webrtc_registered: после переключения на
+    // receive_mode=mobile браузер всё ещё зарегистрирован (для исходящих), и
+    // сервер ошибочно отказывал 409 — «звонок вообще не доходит» (10.10.2026).
+    const wantsBrowser = op.receive_mode === 'browser'
+      || (op.receive_mode === 'both' && op.webrtc_registered);
+    if (wantsBrowser && op.webrtc_registered && op.sip_username) {
+      // WebRTC зарегистрирован → звонок идёт из браузера (JsSIP) напрямую,
+      // серверный originate оператору не нужен (иначе «двойной набор»).
+      const err = new Error('Оператор на WebRTC — звонок инициируется из браузера');
       err.statusCode = 409;
       err.via = 'webrtc';
       throw err;
