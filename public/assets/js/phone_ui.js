@@ -227,6 +227,30 @@
       + '<path d="M18 15.5v2.6a1.8 1.8 0 0 1-2 1.8 17.8 17.8 0 0 1-7.7-2.7 17.5 17.5 0 0 1-5.4-5.4A17.8 17.8 0 0 1 .2 4a1.8 1.8 0 0 1 1.8-2h2.6a1.8 1.8 0 0 1 1.8 1.6c.1.9.3 1.7.6 2.5a1.8 1.8 0 0 1-.4 1.9L5.5 9.1a14.4 14.4 0 0 0 5.4 5.4l1.1-1.1a1.8 1.8 0 0 1 1.9-.4c.8.3 1.6.5 2.5.6A1.8 1.8 0 0 1 18 15.5z"/></svg>';
   }
 
+  /**
+   * Аватар строки звонка: как в Контактах — цветной кружок по имени/номеру,
+   * инициалы (или фото контакта, если известно). Раньше пустой кружок с
+   * иконкой трубки не совпадал с Контактами (жалоба 11.10.2026).
+   */
+  function avatarHtml(name, phone, photoUrl) {
+    var color = avatarColor(name || phone || '?');
+    var photo = photoUrl ? String(photoUrl).trim() : '';
+    var inner;
+    if (photo) {
+      inner = '<img src="' + esc(photo) + '" alt="" loading="lazy">';
+    } else {
+      var ini = initialsFrom(name, phone);
+      // Неизвестный номер: показываем последние 2 цифры, чтобы кружок не пустовал
+      // (уникальность как в Контактах), иначе иконку трубки.
+      if (!ini) {
+        var d = String(phone || '').replace(/\D/g, '');
+        ini = d.length >= 2 ? d.slice(-2) : '';
+      }
+      inner = ini ? esc(ini) : avatarInner(name, phone);
+    }
+    return '<div class="ph-ios-av" style="background:' + color + '" aria-hidden="true">' + inner + '</div>';
+  }
+
   function dockBtn(id, ico, label, extraClass) {
     return (
       '<div class="ph-dock-item">' +
@@ -823,6 +847,15 @@
     return out;
   }
 
+  // Палитра как в Контактах/чатах (huginn_dock AV_PALETTE) — единый вид.
+  var AV_PALETTE = ['#3B82F6', '#8B5CF6', '#EC4899', '#F59E0B', '#10B981', '#06B6D4', '#EF4444', '#6366F1'];
+  function avatarColor(name) {
+    var s = String(name || '?');
+    var h = 0;
+    for (var i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
+    return AV_PALETTE[h % AV_PALETTE.length];
+  }
+
   function callRowHtml(it, kind, online) {
     var missed = kind === 'missed';
     var isHuginn = it.source === 'huginn';
@@ -854,7 +887,9 @@
     return '<div class="ph-dp-row ph-ios-row ' + dirCls + '" data-ph-open="' + (missed ? 'missed' : 'log') + '" data-id="' + esc(it.id) + '">' +
       dirIco +
       '<div class="ph-ios-av-wrap">' +
-        '<div class="ph-ios-av" aria-hidden="true">' + avatarInner(name, num) + '</div>' +
+        // Цвет по имени/номеру — как в Контактах; для известных контактов
+        // подставляем аватар/инициалы из тех же данных (caller_name/photo).
+        avatarHtml(name, num, it.avatar_url) +
       '</div>' +
       '<div class="ph-dp-row-main" data-ph-call="' + esc(num || '') + '"' + hgAttr + ' title="Позвонить">' +
         '<div class="ph-dp-row-name">' + esc(name) + '</div>' +

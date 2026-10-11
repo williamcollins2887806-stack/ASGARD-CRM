@@ -846,7 +846,19 @@ function createCmdServer() {
         // redirect). role: transfer_blind / transfer_consult.
         try {
           if (db) {
-            const callId = String(body.pbx_uid || body.call_id || '');
+            // call_id: pbx_uid от фронта (WebRTC исходящий) ИЛИ Linkedid канала
+            // оператора (у исходящих из браузера pbx_uid не всегда приходит —
+            // тогда плечо писалось с пустым call_id и не привязывалось к звонку).
+            let callId = String(body.pbx_uid || body.call_id || '');
+            if (!callId && operatorChannel) {
+              try {
+                const chs = await ami.coreShowChannels();
+                const oc = ((chs && chs.List) || []).find(
+                  (ch) => String(ch.Channel || '') === operatorChannel
+                );
+                if (oc && oc.Linkedid) callId = String(oc.Linkedid);
+              } catch (_) { /* ignore */ }
+            }
             const c = await db.connect();
             let legSeq = 99;
             try {

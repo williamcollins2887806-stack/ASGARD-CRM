@@ -1556,7 +1556,11 @@ body.theme-dark .ph-seg__btn.is-active {
   color: var(--hg-text, var(--t1));
   display: inline-flex; align-items: center; justify-content: center;
   font: 600 14px/1 var(--hg-font, system-ui);
+  overflow: hidden;
 }
+/* svg без размеров раздувался и «вылезал» из кружка — фиксируем и центрируем. */
+.ph-ios-av svg { width: 20px; height: 20px; display: block; flex: 0 0 auto; }
+.ph-ios-av img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .ph-ios-dir {
   position: absolute; left: -2px; bottom: -1px; z-index: 1;
   font-size: 11px; line-height: 1;

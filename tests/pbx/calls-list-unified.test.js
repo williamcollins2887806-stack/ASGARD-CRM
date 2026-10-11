@@ -64,13 +64,22 @@ test('U4', 'образец: подпись — тип звонка + канал 
   assert.ok(/fmtWhen\(it\.created_at\)/.test(row), 'время не выводится');
 });
 
-test('U4b', 'чистый номер НЕ даёт «+ (» и не подставляет случайные цифры', () => {
+test('U4b', 'initialsFrom: чистый номер НЕ даёт «+ (» и не фабрикует цифры', () => {
   const ui = read('public/assets/js/phone_ui.js');
-  const fn = ui.slice(ui.indexOf('function initialsFrom'), ui.indexOf('function dockBtn'));
+  const i = ui.indexOf('function initialsFrom');
+  const fn = ui.slice(i, ui.indexOf('function avatarInner'));
   assert.ok(/A-Za-zА-Яа-яЁё/.test(fn), 'не проверяет наличие букв (для имён)');
-  // Раньше для номера возвращали последние 2 цифры — в круге висело «55».
-  assert.ok(!/slice\(-2\)/.test(fn), 'снова подставляет последние цифры номера («55»)');
-  assert.ok(/avatarInner/.test(ui), 'нет отрисовки иконки трубки вместо цифр');
+  // initialsFrom не должен возвращать цифры — иначе в круге висело «55».
+  assert.ok(!/slice\(-2\)/.test(fn), 'initialsFrom снова подставляет последние цифры («55»)');
+});
+
+test('U4b2', 'avatarHtml: для неизвестного номера цветной кружок с цифрами (как в Контактах)', () => {
+  const ui = read('public/assets/js/phone_ui.js');
+  const i = ui.indexOf('function avatarHtml');
+  const blk = ui.slice(i, i + 1200);
+  assert.ok(/avatarColor\(/.test(blk), 'нет цвета по имени/номеру (как в Контактах)');
+  assert.ok(/slice\(-2\)/.test(blk), 'нет цифр для неизвестного номера');
+  assert.ok(/background:/.test(blk), 'нет цветного фона кружка');
 });
 
 test('U4c', 'образец: номера форматируются и берутся из телефонии (Mango)', () => {

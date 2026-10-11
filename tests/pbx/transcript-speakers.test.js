@@ -114,8 +114,10 @@ test('B2', 'dialplan пишет раздельные дорожки r()/t()', ()
   assert.ok(/-r\.wav/.test(dp) && /-t\.wav/.test(dp), 'нет дорожек r/t');
   assert.ok(/r\(\/var\/spool\/asterisk\/recordings\/\$\{ASGARD_MONBASE\}-r\.wav\)/.test(dp), 'нет r() дорожки');
   assert.ok(/t\(\/var\/spool\/asterisk\/recordings\/\$\{ASGARD_MONBASE\}-t\.wav\)/.test(dp), 'нет t() дорожки');
-  // Флаг b обязателен (защита от MOH/ringback в записи).
-  assert.ok(/\},b,r\(/.test(dp), 'потерян флаг b при r()/t()');
+  // Флаг b обязателен (защита от MOH/ringback в записи). Опции Asterisk —
+  // БЕЗ запятых между ними: b+r(...)+t(...) в одном поле options.
+  assert.ok(/,br\(/.test(dp), 'нет ,br( — флаг b и r() в одном поле опций');
+  assert.ok(!/,b,r\(/.test(dp), 'запятая между опциями ломает MixMonitor (r попадает в команду)');
 });
 
 test('B3', 'finalizeRecording использует стерео-путь и не теряет relUrl', () => {
