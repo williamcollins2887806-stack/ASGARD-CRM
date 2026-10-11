@@ -1,0 +1,577 @@
+{
+ "generated_at": "2026-10-11",
+ "note": "Список 2 (остаток): разделения (нужно куда положить 2-й номер) и ручные (городские/неоднозначные). В БД НЕ применено.",
+ "count": 57,
+ "rows": [
+  {
+   "table": "contracts",
+   "column": "contact_phone",
+   "id": 36,
+   "raw": "8-908-611-19-19 +7 908 611-45-45",
+   "proposed": "+79086111919 | +79086114545",
+   "action": "split",
+   "class": "two_numbers",
+   "confidence": "high"
+  },
+  {
+   "table": "contracts",
+   "column": "contact_phone",
+   "id": 41,
+   "raw": "(812) 679-70-03",
+   "proposed": "MANUAL: +78126797003? (требует подтверждения)",
+   "action": "manual",
+   "class": "city_local",
+   "confidence": "medium"
+  },
+  {
+   "table": "contracts",
+   "column": "contact_phone",
+   "id": 75,
+   "raw": "+7(495) 032-34-75, +7 925 509 7616",
+   "proposed": "+74950323475 | +79255097616",
+   "action": "split",
+   "class": "two_numbers",
+   "confidence": "high"
+  },
+  {
+   "table": "contracts",
+   "column": "contact_phone",
+   "id": 84,
+   "raw": "79371233888; +79371302888",
+   "proposed": "+79371233888 | +79371302888",
+   "action": "split",
+   "class": "two_numbers",
+   "confidence": "high"
+  },
+  {
+   "table": "contracts",
+   "column": "contact_phone",
+   "id": 102,
+   "raw": "(843) 227-42-98, 79872653289",
+   "proposed": "MANUAL(городской Казань 843) | +79872653289",
+   "action": "split",
+   "class": "two_numbers",
+   "confidence": "medium"
+  },
+  {
+   "table": "contracts",
+   "column": "contact_phone",
+   "id": 119,
+   "raw": "(4722) 21-18-19",
+   "proposed": "MANUAL: городской Белгород (4722) без кода страны",
+   "action": "manual",
+   "class": "city_local",
+   "confidence": "medium"
+  },
+  {
+   "table": "contracts",
+   "column": "contact_phone",
+   "id": 126,
+   "raw": "8(916)714-73-38, 8(985)068-6-061",
+   "proposed": "+79167147338 | +79850686061",
+   "action": "split",
+   "class": "two_numbers",
+   "confidence": "high"
+  },
+  {
+   "table": "contracts",
+   "column": "contact_phone",
+   "id": 152,
+   "raw": "(843) 227-42-98, 79872653289",
+   "proposed": "MANUAL(городской Казань 843) | +79872653289",
+   "action": "split",
+   "class": "two_numbers",
+   "confidence": "medium"
+  },
+  {
+   "table": "tkp",
+   "column": "contact_phone",
+   "id": 2994,
+   "raw": "+7 915 162 74 01, +7 985 105 55 12",
+   "proposed": "+79151627401 | +79851055512",
+   "action": "split",
+   "class": "two_numbers",
+   "confidence": "high"
+  },
+  {
+   "table": "tkp",
+   "column": "contact_phone",
+   "id": 2995,
+   "raw": "+7 999 972 76 12, +7 (495) 916-59-00 (вн. 32-0-33)",
+   "proposed": "+79999727612 | +74959165900",
+   "action": "split",
+   "class": "two_numbers",
+   "confidence": "high"
+  },
+  {
+   "table": "tkp",
+   "column": "contact_phone",
+   "id": 2997,
+   "raw": "+7 (496-44) 40-289, +7 985 863 52 75",
+   "proposed": "+74964440289 | +79858635275",
+   "action": "split",
+   "class": "two_numbers",
+   "confidence": "high"
+  },
+  {
+   "table": "tkp",
+   "column": "contact_phone",
+   "id": 3001,
+   "raw": " +7(48535) 3-15-23, 3-17-86",
+   "proposed": "+74853531523 | MANUAL: местный 3-17-86",
+   "action": "split",
+   "class": "two_numbers",
+   "confidence": "medium"
+  },
+  {
+   "table": "tkp",
+   "column": "contact_phone",
+   "id": 3025,
+   "raw": "(3519) 58-07-58",
+   "proposed": "MANUAL: городской Челябинск (3519) без кода страны",
+   "action": "manual",
+   "class": "city_local",
+   "confidence": "medium"
+  },
+  {
+   "table": "suppliers",
+   "column": "phone",
+   "id": 63,
+   "raw": "8(916)714-73-38, 8(985)068-6-061",
+   "proposed": "+79167147338; +79850686061",
+   "action": "split",
+   "class": "two_numbers",
+   "confidence": "medium"
+  },
+  {
+   "table": "suppliers",
+   "column": "phone",
+   "id": 75,
+   "raw": "8-908-611-19-19 +7 908 611-45-45",
+   "proposed": "+79086111919; +79086114545",
+   "action": "split",
+   "class": "two_numbers",
+   "confidence": "medium"
+  },
+  {
+   "table": "suppliers",
+   "column": "phone",
+   "id": 126,
+   "raw": "+7 (495) 995-15-16, +7(903) 243-95-05",
+   "proposed": "+74959951516; +79032439505",
+   "action": "split",
+   "class": "two_numbers",
+   "confidence": "medium"
+  },
+  {
+   "table": "suppliers",
+   "column": "phone",
+   "id": 150,
+   "raw": "79371233888; +79371302888",
+   "proposed": "+79371233888; +79371302888",
+   "action": "split",
+   "class": "two_numbers",
+   "confidence": "medium"
+  },
+  {
+   "table": "suppliers",
+   "column": "phone",
+   "id": 170,
+   "raw": "7 (960) 251 45 20 , +7 (812) 441 29 12",
+   "proposed": "+79602514520; +78124412912",
+   "action": "split",
+   "class": "two_numbers",
+   "confidence": "medium"
+  },
+  {
+   "table": "suppliers",
+   "column": "phone",
+   "id": 184,
+   "raw": "+7 (905)760-27-30 +7 (495)790-03-49",
+   "proposed": "+79057602730; +74957900349",
+   "action": "split",
+   "class": "two_numbers",
+   "confidence": "medium"
+  },
+  {
+   "table": "suppliers",
+   "column": "phone",
+   "id": 196,
+   "raw": "(843) 227-42-98, 79872653289",
+   "proposed": "+78432274298; +79872653289",
+   "action": "split",
+   "class": "two_numbers",
+   "confidence": "medium"
+  },
+  {
+   "table": "suppliers",
+   "column": "phone",
+   "id": 289,
+   "raw": "8-4993933651 +7 9093782723",
+   "proposed": "+74993933651; +79093782723",
+   "action": "split",
+   "class": "two_numbers",
+   "confidence": "medium"
+  },
+  {
+   "table": "suppliers",
+   "column": "phone",
+   "id": 333,
+   "raw": "(4852) 60-99-05 (1010), +7(915)964-69-11",
+   "proposed": "+74852609905; +79159646911",
+   "action": "split",
+   "class": "two_numbers",
+   "confidence": "medium"
+  },
+  {
+   "table": "suppliers",
+   "column": "phone",
+   "id": 384,
+   "raw": "+7(495) 032-34-75, +7 925 509 7616",
+   "proposed": "+74950323475; +79255097616",
+   "action": "split",
+   "class": "two_numbers",
+   "confidence": "medium"
+  },
+  {
+   "table": "suppliers",
+   "column": "phone",
+   "id": 426,
+   "raw": "8(831)274-69-88, 8(910)873-68-85",
+   "proposed": "+78312746988; +79108736885",
+   "action": "split",
+   "class": "two_numbers",
+   "confidence": "medium"
+  },
+  {
+   "table": "suppliers",
+   "column": "phone",
+   "id": 428,
+   "raw": "88312993286, 89081561656",
+   "proposed": "+78312993286; +79081561656",
+   "action": "split",
+   "class": "two_numbers",
+   "confidence": "medium"
+  },
+  {
+   "table": "doc_registry",
+   "column": "counterparty_phone",
+   "id": 29,
+   "raw": "+7 (495) 995-15-16, +7(903) 243-95-05",
+   "proposed": "+74959951516; +79032439505",
+   "action": "split",
+   "class": "two_numbers",
+   "confidence": "high"
+  },
+  {
+   "table": "doc_registry",
+   "column": "counterparty_phone",
+   "id": 58,
+   "raw": "+7 926 828-95-18, 8(925)001-26-16",
+   "proposed": "+79268289518; +79250012616",
+   "action": "split",
+   "class": "two_numbers",
+   "confidence": "high"
+  },
+  {
+   "table": "doc_registry",
+   "column": "counterparty_phone",
+   "id": 93,
+   "raw": "369216",
+   "proposed": "",
+   "action": "manual",
+   "class": "ambiguous",
+   "confidence": "low"
+  },
+  {
+   "table": "doc_registry",
+   "column": "counterparty_phone",
+   "id": 117,
+   "raw": "+7 926 828-95-18, 8(925)001-26-16",
+   "proposed": "+79268289518; +79250012616",
+   "action": "split",
+   "class": "two_numbers",
+   "confidence": "high"
+  },
+  {
+   "table": "doc_registry",
+   "column": "counterparty_phone",
+   "id": 141,
+   "raw": "500303",
+   "proposed": "",
+   "action": "manual",
+   "class": "ambiguous",
+   "confidence": "low"
+  },
+  {
+   "table": "doc_registry",
+   "column": "counterparty_phone",
+   "id": 183,
+   "raw": "8-4993933651 +7 9093782723",
+   "proposed": "+74993933651; +79093782723",
+   "action": "split",
+   "class": "two_numbers",
+   "confidence": "high"
+  },
+  {
+   "table": "doc_registry",
+   "column": "counterparty_phone",
+   "id": 211,
+   "raw": "(495)-787-90-20 доб. 22-03",
+   "proposed": "",
+   "action": "manual",
+   "class": "city_local",
+   "confidence": "high"
+  },
+  {
+   "table": "doc_registry",
+   "column": "counterparty_phone",
+   "id": 297,
+   "raw": "+7 926 828-95-18, 8(925)001-26-16",
+   "proposed": "+79268289518; +79250012616",
+   "action": "split",
+   "class": "two_numbers",
+   "confidence": "high"
+  },
+  {
+   "table": "doc_registry",
+   "column": "counterparty_phone",
+   "id": 300,
+   "raw": "(843) 227-42-98, 79872653289",
+   "proposed": "+79872653289",
+   "action": "manual",
+   "class": "two_numbers",
+   "confidence": "medium"
+  },
+  {
+   "table": "doc_registry",
+   "column": "counterparty_phone",
+   "id": 353,
+   "raw": "8(916)714-73-38, 8(985)068-6-061",
+   "proposed": "+79167147338; +79850686061",
+   "action": "split",
+   "class": "two_numbers",
+   "confidence": "high"
+  },
+  {
+   "table": "doc_registry",
+   "column": "counterparty_phone",
+   "id": 399,
+   "raw": "7 (960) 251 45 20 , +7 (812) 441 29 12",
+   "proposed": "+79602514520; +78124412912",
+   "action": "split",
+   "class": "two_numbers",
+   "confidence": "high"
+  },
+  {
+   "table": "doc_registry",
+   "column": "counterparty_phone",
+   "id": 404,
+   "raw": "(4852) 60-99-05 (1010), +7(915)964-69-11",
+   "proposed": "+79159646911",
+   "action": "manual",
+   "class": "two_numbers",
+   "confidence": "medium"
+  },
+  {
+   "table": "doc_registry",
+   "column": "counterparty_phone",
+   "id": 405,
+   "raw": "7 (960) 251 45 20 , +7 (812) 441 29 12",
+   "proposed": "+79602514520; +78124412912",
+   "action": "split",
+   "class": "two_numbers",
+   "confidence": "high"
+  },
+  {
+   "table": "doc_registry",
+   "column": "counterparty_phone",
+   "id": 421,
+   "raw": "8(831)274-69-88, 8(910)873-68-85",
+   "proposed": "+78312746988; +79108736885",
+   "action": "split",
+   "class": "two_numbers",
+   "confidence": "high"
+  },
+  {
+   "table": "doc_registry",
+   "column": "counterparty_phone",
+   "id": 598,
+   "raw": "+7 (905)760-27-30 +7 (495)790-03-49",
+   "proposed": "+79057602730; +74957900349",
+   "action": "split",
+   "class": "two_numbers",
+   "confidence": "high"
+  },
+  {
+   "table": "doc_registry",
+   "column": "counterparty_phone",
+   "id": 702,
+   "raw": "8-908-611-19-19 +7 908 611-45-45",
+   "proposed": "+79086111919; +79086114545",
+   "action": "split",
+   "class": "two_numbers",
+   "confidence": "high"
+  },
+  {
+   "table": "doc_registry",
+   "column": "counterparty_phone",
+   "id": 733,
+   "raw": "8-908-611-19-19 +7 908 611-45-45",
+   "proposed": "+79086111919; +79086114545",
+   "action": "split",
+   "class": "two_numbers",
+   "confidence": "high"
+  },
+  {
+   "table": "doc_registry",
+   "column": "counterparty_phone",
+   "id": 765,
+   "raw": "8-908-611-19-19 +7 908 611-45-45",
+   "proposed": "+79086111919; +79086114545",
+   "action": "split",
+   "class": "two_numbers",
+   "confidence": "high"
+  },
+  {
+   "table": "doc_registry",
+   "column": "counterparty_phone",
+   "id": 798,
+   "raw": "(495)-787-90-20 доб. 22-03",
+   "proposed": "",
+   "action": "manual",
+   "class": "city_local",
+   "confidence": "high"
+  },
+  {
+   "table": "doc_registry",
+   "column": "counterparty_phone",
+   "id": 808,
+   "raw": "(495)-787-90-20 доб. 22-03",
+   "proposed": "",
+   "action": "manual",
+   "class": "city_local",
+   "confidence": "high"
+  },
+  {
+   "table": "doc_registry",
+   "column": "counterparty_phone",
+   "id": 811,
+   "raw": "8-908-611-19-19 +7 908 611-45-45",
+   "proposed": "+79086111919; +79086114545",
+   "action": "split",
+   "class": "two_numbers",
+   "confidence": "high"
+  },
+  {
+   "table": "doc_registry",
+   "column": "counterparty_phone",
+   "id": 829,
+   "raw": "(495)-787-90-20 доб. 22-03",
+   "proposed": "",
+   "action": "manual",
+   "class": "city_local",
+   "confidence": "high"
+  },
+  {
+   "table": "doc_registry",
+   "column": "counterparty_phone",
+   "id": 846,
+   "raw": "8-908-611-19-19 +7 908 611-45-45",
+   "proposed": "+79086111919; +79086114545",
+   "action": "split",
+   "class": "two_numbers",
+   "confidence": "high"
+  },
+  {
+   "table": "doc_registry",
+   "column": "counterparty_phone",
+   "id": 957,
+   "raw": "8-908-611-19-19 +7 908 611-45-45",
+   "proposed": "+79086111919; +79086114545",
+   "action": "split",
+   "class": "two_numbers",
+   "confidence": "high"
+  },
+  {
+   "table": "doc_registry",
+   "column": "counterparty_phone",
+   "id": 980,
+   "raw": "79371233888; +79371302888",
+   "proposed": "+79371233888; +79371302888",
+   "action": "split",
+   "class": "two_numbers",
+   "confidence": "high"
+  },
+  {
+   "table": "doc_registry",
+   "column": "counterparty_phone",
+   "id": 981,
+   "raw": "79371233888; +79371302888",
+   "proposed": "+79371233888; +79371302888",
+   "action": "split",
+   "class": "two_numbers",
+   "confidence": "high"
+  },
+  {
+   "table": "doc_registry",
+   "column": "counterparty_phone",
+   "id": 995,
+   "raw": "8(916)714-73-38, 8(985)068-6-061",
+   "proposed": "+79167147338; +79850686061",
+   "action": "split",
+   "class": "two_numbers",
+   "confidence": "high"
+  },
+  {
+   "table": "doc_registry",
+   "column": "counterparty_phone",
+   "id": 1156,
+   "raw": "(812) 209 06 50 доб. 203, 213",
+   "proposed": "",
+   "action": "manual",
+   "class": "city_local",
+   "confidence": "high"
+  },
+  {
+   "table": "doc_registry",
+   "column": "counterparty_phone",
+   "id": 1184,
+   "raw": "(812) 209 06 50 доб. 203, 213",
+   "proposed": "",
+   "action": "manual",
+   "class": "city_local",
+   "confidence": "high"
+  },
+  {
+   "table": "doc_registry",
+   "column": "counterparty_phone",
+   "id": 1223,
+   "raw": "88312993286, 89081561656",
+   "proposed": "+78312993286; +79081561656",
+   "action": "split",
+   "class": "two_numbers",
+   "confidence": "high"
+  },
+  {
+   "table": "doc_registry",
+   "column": "counterparty_phone",
+   "id": 1335,
+   "raw": "502-502",
+   "proposed": "",
+   "action": "manual",
+   "class": "ambiguous",
+   "confidence": "low"
+  },
+  {
+   "table": "doc_registry",
+   "column": "counterparty_phone",
+   "id": 1484,
+   "raw": "+7(495) 032-34-75, +7 925 509 7616",
+   "proposed": "+74950323475; +79255097616",
+   "action": "split",
+   "class": "two_numbers",
+   "confidence": "high"
+  }
+ ]
+}
