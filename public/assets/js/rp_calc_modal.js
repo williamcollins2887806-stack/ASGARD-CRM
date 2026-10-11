@@ -606,6 +606,9 @@ window.AsgardRpCalcModal = (function () {
     const totals = est.totals || {};
     const tab = state.tab || 'inputs';
     const demo = !!state.demo;
+    // Смета посчитана? Если нет — не показываем выдуманные цифры из дефолтного скелета.
+    const ready = demo || !!state.smetaReady;
+    const money = ready ? fmtMoney : function () { return '—'; };
 
     const tabsHtml = TABS.map(function (tb) {
       return '<button type="button" class="rp-calc-tab' + (tab === tb.id ? ' is-active' : '') +
@@ -630,6 +633,7 @@ window.AsgardRpCalcModal = (function () {
       '</div></div>' +
       '<div class="rp-calc-tabs-wrap"><div class="rp-calc-tabs" role="tablist">' + tabsHtml + '</div></div>' +
       '<div class="rp-calc-body">' +
+      (ready ? '' : renderSmetaNeededBanner(state)) +
       renderInputs(state) +
       renderSmeta(state) +
       renderChecklist(state) +
@@ -638,16 +642,16 @@ window.AsgardRpCalcModal = (function () {
       '</div>' +
       '<div class="rp-calc-footer">' +
       '<div class="rp-calc-footer__kpis">' +
-      '<div class="rp-calc-footer__kpi"><span>Себестоимость</span><b data-kpi="cost">' + esc(fmtMoney(totals.cost)) + '</b></div>' +
-      (Number(totals.equipment) > 0
-        ? '<div class="rp-calc-footer__kpi"><span>Оборудование в с/с</span><b data-kpi="equipment">' + esc(fmtMoney(totals.equipment)) + '</b></div>'
+      '<div class="rp-calc-footer__kpi"><span>Себестоимость</span><b data-kpi="cost">' + esc(money(totals.cost)) + '</b></div>' +
+      (ready && Number(totals.equipment) > 0
+        ? '<div class="rp-calc-footer__kpi"><span>Оборудование в с/с</span><b data-kpi="equipment">' + esc(money(totals.equipment)) + '</b></div>'
         : '') +
-      '<div class="rp-calc-footer__kpi"><span>Цена без НДС</span><b data-kpi="price_no_vat">' + esc(fmtMoney(totals.price_no_vat)) + '</b></div>' +
-      '<div class="rp-calc-footer__kpi is-gold"><span>Цена с НДС</span><b data-kpi="price_with_vat">' + esc(fmtMoney(totals.price_with_vat)) + '</b></div>' +
+      '<div class="rp-calc-footer__kpi"><span>Цена без НДС</span><b data-kpi="price_no_vat">' + esc(money(totals.price_no_vat)) + '</b></div>' +
+      '<div class="rp-calc-footer__kpi is-gold"><span>Цена с НДС</span><b data-kpi="price_with_vat">' + esc(money(totals.price_with_vat)) + '</b></div>' +
       '<div class="rp-calc-footer__kpi is-profit"><span>Чистая прибыль' +
-        (totals.income_tax_pct != null ? ' (после ' + esc(pctLabel(totals.income_tax_pct / 100)) + '%)' : '') +
-        '</span><b data-kpi="net_profit">' + esc(fmtMoney(totals.net_profit)) + '</b></div>' +
-      (totals.profit_per_person_shift != null
+        (ready && totals.income_tax_pct != null ? ' (после ' + esc(pctLabel(totals.income_tax_pct / 100)) + '%)' : '') +
+        '</span><b data-kpi="net_profit">' + esc(money(totals.net_profit)) + '</b></div>' +
+      (ready && totals.profit_per_person_shift != null
         ? '<div class="rp-calc-footer__kpi"><span>Прибыль / чел·смен' +
           (Number(totals.person_shifts) > 0 ? ' (' + esc(String(totals.person_shifts)) + ')' : '') +
           '</span><b data-kpi="profit_per_person_shift">' + esc(fmtMoney(totals.profit_per_person_shift)) + '</b></div>'
@@ -660,10 +664,40 @@ window.AsgardRpCalcModal = (function () {
         : (demo
           ? '<button type="button" class="btn ghost" data-rp-act="demo-draft">Сохранить черновик</button>' +
             '<button type="button" class="btn primary" data-rp-act="demo-send">Отправить директору</button>'
-          : '<button type="button" class="btn ghost" data-rp-act="save-draft"' + (state.busy ? ' disabled' : '') + '>Сохранить черновик</button>' +
-            '<button type="button" class="btn primary" data-rp-act="send-director"' + (state.busy ? ' disabled' : '') + '>' +
+          : '<button type="button" class="btn ghost" data-rp-act="save-draft"' + (state.busy || !ready ? ' disabled' : '') + '>Сохранить черновик</button>' +
+            '<button type="button" class="btn primary" data-rp-act="send-director"' + (state.busy || !ready ? ' disabled' : '') +
+            (ready ? '' : ' title="Сначала рассчитайте смету"') + '>' +
             esc(stateApprovalNeeded(state) ? 'Отправить директору' : 'Завершить просчёт') + '</button>')) +
       '</div></div></div>';
+  }
+
+  /**
+   * Баннер «смета не рассчитана». Показываем, пока в отчёте нет `asgard_smeta`
+   * (ни переноса из анализа, ни ручного старта) — иначе просчёт рисовал бы
+   * дефолтный скелет с одной и той же суммой у всех карточек.
+   */
+  function renderSmetaNeededBanner(state) {
+    // Только просмотр: активные кнопки расчёта здесь — мёртвый путь (правки не сохраняются),
+    // поэтому показываем лишь пояснение.
+    if (state.readOnly) {
+      return '<div class="rp-calc-need-smeta"><strong>Смета не рассчитана</strong>' +
+        '<p class="muted">В карточке нет расчёта — просмотр без данных.</p></div>';
+    }
+    const hasAnalysis = !!(state.analysisSmeta && state.analysisSmeta.totals
+      && (state.analysisSmeta.totals.price_no_vat != null || state.analysisSmeta.totals.cost != null));
+    let h = '<div class="rp-calc-need-smeta">';
+    h += '<strong>Смета не рассчитана</strong>';
+    h += '<p class="muted">В карточке нет расчёта из анализа. Возьмите готовый расчёт из анализа или начните считать заново — иначе цифры просчёта будут выдуманными.</p>';
+    h += '<div class="rp-calc-need-smeta__acts">';
+    if (hasAnalysis) {
+      h += '<button type="button" class="btn primary" data-rp-act="take-analysis-smeta">Взять расчёт из анализа</button>';
+    }
+    h += '<button type="button" class="btn' + (hasAnalysis ? ' ghost' : ' primary') + '" data-rp-act="start-skeleton">Считать заново</button>';
+    if (window.AsgardMimirQuick) {
+      h += '<button type="button" class="btn ghost" data-rp-act="open-mimir">Рассчитать через Мимира</button>';
+    }
+    h += '</div></div>';
+    return h;
   }
 
   function renderInputs(state) {
@@ -765,6 +799,8 @@ window.AsgardRpCalcModal = (function () {
     const params = est.params || {};
     const meta = est.meta || {};
     const active = state.tab === 'smeta' ? ' is-active' : '';
+    const ready = !!state.demo || !!state.smetaReady;
+    const money = ready ? fmtMoney : function () { return '—'; };
     // Колонка «Доля, %» нужна, если в смете есть блок закупки оборудования (G).
     const withShare = rows.some(function (r) { return r.kind === 'line' && r.section === 'G'; });
     const COLS = withShare ? 7 : 6;
@@ -862,8 +898,15 @@ window.AsgardRpCalcModal = (function () {
     const body = parts.join('');
     const taxPct = pctLabel(params.fot_tax != null ? params.fot_tax : 0.55);
     const equipKpi = Number(totals.equipment) > 0
-      ? '<div class="kpi"><span>Оборудование в с/с</span><b>' + esc(fmtMoney(totals.equipment)) + '</b></div>'
+      ? '<div class="kpi"><span>Оборудование в с/с</span><b>' + esc(money(totals.equipment)) + '</b></div>'
       : '';
+
+    // Смета не рассчитана: не показываем таблицу со скелетом и выдуманные итоги.
+    if (!ready) {
+      return '<div class="rp-calc-panel' + active + '" data-panel="smeta">' +
+        '<div class="rp-calc-smeta-empty"><p class="muted">Смета не рассчитана. ' +
+        'Возьмите расчёт из анализа или начните считать — баннер сверху.</p></div></div>';
+    }
 
     return '<div class="rp-calc-panel' + active + '" data-panel="smeta">' +
       '<p class="rp-calc-hint">Строки с нулевой суммой скрыты. Ед. — выпадающий список. ' +
@@ -880,19 +923,19 @@ window.AsgardRpCalcModal = (function () {
       '<tbody>' + (body || '<tr><td colspan="' + COLS + '" style="padding:16px;text-align:center;color:var(--muted)">Нет строк</td></tr>') +
       '</tbody></table>' +
       '<div class="rp-calc-smeta-totals">' +
-      '<div class="kpi"><span>Себестоимость</span><b>' + esc(fmtMoney(totals.cost)) + '</b></div>' +
+      '<div class="kpi"><span>Себестоимость</span><b>' + esc(money(totals.cost)) + '</b></div>' +
       equipKpi +
-      '<div class="kpi"><span>Без НДС</span><b>' + esc(fmtMoney(totals.price_no_vat)) + '</b></div>' +
-      '<div class="kpi is-gold"><span>С НДС</span><b>' + esc(fmtMoney(totals.price_with_vat)) + '</b></div>' +
-      '<div class="kpi is-profit"><span>Маржа</span><b>' + esc(fmtMoney(totals.margin_rub)) + '</b></div>' +
+      '<div class="kpi"><span>Без НДС</span><b>' + esc(money(totals.price_no_vat)) + '</b></div>' +
+      '<div class="kpi is-gold"><span>С НДС</span><b>' + esc(money(totals.price_with_vat)) + '</b></div>' +
+      '<div class="kpi is-profit"><span>Маржа</span><b>' + esc(money(totals.margin_rub)) + '</b></div>' +
       '<div class="kpi"><span>Налог на прибыль' +
         (totals.income_tax_pct != null ? ' (' + esc(pctLabel(totals.income_tax_pct / 100)) + '%)' : '') +
-        '</span><b>' + esc(fmtMoney(totals.income_tax_amount)) + '</b></div>' +
-      '<div class="kpi is-profit"><span>Чистая прибыль</span><b>' + esc(fmtMoney(totals.net_profit)) + '</b></div>' +
+        '</span><b>' + esc(money(totals.income_tax_amount)) + '</b></div>' +
+      '<div class="kpi is-profit"><span>Чистая прибыль</span><b>' + esc(money(totals.net_profit)) + '</b></div>' +
       (totals.profit_per_person_shift != null
         ? '<div class="kpi is-profit"><span>Прибыль / чел·смен' +
           (Number(totals.person_shifts) > 0 ? ' (' + esc(String(totals.person_shifts)) + ')' : '') +
-          '</span><b>' + esc(fmtMoney(totals.profit_per_person_shift)) + '</b></div>'
+          '</span><b>' + esc(money(totals.profit_per_person_shift)) + '</b></div>'
         : '') +
       '</div></div></div>';
   }
@@ -1015,6 +1058,12 @@ window.AsgardRpCalcModal = (function () {
       readOnly: !!initial.readOnly,
       role: initial.role || '',
       directorThreshold: initial.directorThreshold || DIRECTOR_THRESHOLD_FALLBACK,
+      // Смета просчёта готова? Пока false — «скелет» с дефолтными параметрами не показываем
+      // и не сохраняем: иначе у всех карточек одна и та же сумма (2 818 084,50 ₽).
+      // true только если смета пришла из анализа/Мимира или РП явно начал считать вручную.
+      smetaReady: !!initial.smetaReady,
+      // Смета из снимка анализа — источник кнопки «Взять расчёт из анализа».
+      analysisSmeta: initial.analysisSmeta || null,
       saving: false,
       savedAt: null,
       busy: false,
@@ -1114,6 +1163,9 @@ window.AsgardRpCalcModal = (function () {
     /** Только пересчёт модели, без перерисовки (для «живого» ввода). */
     function recalcModel() {
       const sm = S();
+      // Пока смета не «посчитана» (нет переноса из анализа/Мимира и РП не начинал),
+      // движок не гоняем: иначе на экран и в KPI попадает дефолтный скелет.
+      if (!state.demo && !state.smetaReady) return;
       if (sm && sm.recalcAsgardSmeta) {
         state.estimate = sm.recalcAsgardSmeta(state.estimate);
       }
@@ -1137,6 +1189,8 @@ window.AsgardRpCalcModal = (function () {
       // Автосейв — только владельцу просчёта; остальные не должны перебивать чужой отчёт.
       const r = state.review;
       if (!r || r.is_final) return false;
+      // Смета не рассчитана → сохранять нечего (иначе уйдёт пустышка/дефолтный скелет).
+      if (!state.demo && !state.smetaReady) return false;
       // Без посчитанной цены автосейв запрещён: buildPayload отправил бы work_price=null,
       // а пустой work_price в PUT обнуляет цену просчёта (D-176). Ручное сохранение
       // остаётся доступным — там пользователь видит результат нажатия.
@@ -1186,6 +1240,7 @@ window.AsgardRpCalcModal = (function () {
     function patchTotals(activeEl) {
       const root = getRoot();
       if (!root) return;
+      if (!state.demo && !state.smetaReady) return; // смета не посчитана — цифры не трогаем
       const est = state.estimate || {};
       const totals = est.totals || {};
       const rows = est.rows || [];
@@ -1431,9 +1486,68 @@ window.AsgardRpCalcModal = (function () {
           if (act === 'save-draft') save(false);
           else if (act === 'send-director') openSendPreview();
           else if (act === 'open-analysis') openAnalysisView();
+          else if (act === 'take-analysis-smeta') takeAnalysisSmeta();
+          else if (act === 'start-skeleton') startSkeleton();
+          else if (act === 'open-mimir') openMimirQuick();
           else if (act === 'demo-draft') toast('Демо', 'Черновик сохранён локально (без API)', 'ok');
           else if (act === 'demo-send') openSendPreview();
         });
+      });
+    }
+
+    /** Смета из снимка анализа → в просчёт (кнопка «Взять расчёт из анализа»). */
+    function takeAnalysisSmeta() {
+      const src = state.analysisSmeta;
+      if (!src) { toast('Нет данных', 'В анализе нет рассчитанной сметы', 'err'); return; }
+      const sm = S();
+      const seed = src.template === 'asgard_v1' && Array.isArray(src.rows) && src.rows.length
+        ? src
+        : { ...src, meta: { ...(src.meta || {}), customer: state.tender.customer_name || (src.meta && src.meta.customer) } };
+      const est = sm && sm.recalcAsgardSmeta ? sm.recalcAsgardSmeta(seed) : seed;
+      if (!est || !Array.isArray(est.rows) || !est.rows.length) {
+        toast('Ошибка', 'Смета в анализе неполная — начните расчёт заново', 'err');
+        return;
+      }
+      state.estimate = est;
+      state.smetaReady = true;
+      toast('Готово', 'Расчёт из анализа перенесён в просчёт', 'ok');
+      // Автосейв подхватит — владельцу просчёта останется доработать и завершить.
+      paint();
+      scheduleAutosave();
+    }
+
+    /** Явный старт расчёта с нуля: только по действию пользователя сеем скелет. */
+    function startSkeleton() {
+      state.smetaReady = true;
+      recalcModel();
+      paint();
+      scheduleAutosave();
+    }
+
+    /** Опциональный расчёт Мимиром из просчёта: результат сразу применяется к смете. */
+    function openMimirQuick() {
+      if (!window.AsgardMimirQuick || typeof AsgardMimirQuick.openForRpReview !== 'function') {
+        toast('Мимир', 'Модуль ещё не загружен — обновите страницу', 'err');
+        return;
+      }
+      AsgardMimirQuick.openForRpReview({
+        tenderId: state.tender && state.tender.id,
+        phase: 'calc',
+        tender: state.tender,
+        isFinalOwner: true,
+        onApplied: function (result) {
+          const patch = (result && result.field_patch) || {};
+          if (patch.asgard_smeta) {
+            state.estimate = patch.asgard_smeta;
+            state.smetaReady = true;
+          }
+          if (patch.work_price != null) state.workPriceFromMimir = patch.work_price;
+          if (result && result.review) state.review = result.review;
+          if (result && result.estimate_file) state.files.estimate = result.estimate_file;
+          if (result && result.report_file) state.files.report = result.report_file;
+          toast('Мимир', 'Расчёт применён к смете', 'ok');
+          paint();
+        }
       });
     }
 
@@ -1489,12 +1603,19 @@ window.AsgardRpCalcModal = (function () {
     function buildPayload(finalize) {
       syncMetaFromDom(getRoot());
       const sm = S();
-      if (sm && sm.recalcAsgardSmeta) state.estimate = sm.recalcAsgardSmeta(state.estimate);
+      // Пока смета не рассчитана — не гоняем движок и не отправляем фантомные итоги.
+      const ready = !!state.demo || !!state.smetaReady;
+      if (ready && sm && sm.recalcAsgardSmeta) state.estimate = sm.recalcAsgardSmeta(state.estimate);
       const totals = state.estimate.totals || {};
       const rj = parseReportJson(state.review && state.review.report_json);
       rj.mode = 'calc';
-      rj.asgard_smeta = state.estimate;
-      rj.cost_without_vat = totals.cost != null ? Math.round(totals.cost) : null;
+      // Без посчитанной сметы не перезаписываем серверную смету «пустышкой».
+      if (ready) {
+        rj.asgard_smeta = state.estimate;
+        rj.cost_without_vat = totals.cost != null ? Math.round(totals.cost) : null;
+      } else if (rj.asgard_smeta == null) {
+        delete rj.cost_without_vat;
+      }
       if (state.brief) {
         if (state.brief.summary != null) rj.summary = state.brief.summary;
         if (state.brief.rp_comment != null) {
@@ -1560,6 +1681,10 @@ window.AsgardRpCalcModal = (function () {
 
     function openSendPreview() {
       syncMetaFromDom(getRoot());
+      if (!state.demo && !state.smetaReady) {
+        toast('Смета не рассчитана', 'Сначала возьмите расчёт из анализа или начните считать', 'err');
+        return;
+      }
       const sm = S();
       if (sm && sm.recalcAsgardSmeta) state.estimate = sm.recalcAsgardSmeta(state.estimate);
       const rj = parseReportJson(state.review && state.review.report_json);
@@ -1767,7 +1892,15 @@ window.AsgardRpCalcModal = (function () {
             if (Number.isFinite(th) && th > 0) session.state.directorThreshold = th;
           }
           const rj = parseReportJson(d.review && d.review.report_json);
+          // Смету берём только «настоящую»: (1) уже сохранённую в отчёте, (2) из снимка анализа
+          // (закрытие анализа переносит туда asgard_smeta). Дефолтный скелет НЕ сеем — иначе
+          // у всех карточек одна и та же сумма (см. renderSmetaNeededBanner).
           const seed = rj.asgard_smeta || null;
+          const seedOk = !!(seed && seed.template === 'asgard_v1' && Array.isArray(seed.rows) && seed.rows.length);
+          session.state.analysisSmeta = (d.analysis_snapshot && d.analysis_snapshot.asgard_smeta)
+            || (rj.analysis_snapshot && rj.analysis_snapshot.asgard_smeta)
+            || null;
+          session.state.smetaReady = seedOk;
           session.state.estimate = ensureEstimate(seed || {
             meta: {
               customer: session.state.tender.customer_name || '',

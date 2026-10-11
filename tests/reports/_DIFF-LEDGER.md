@@ -7595,3 +7595,80 @@ Fade `opacity 0→1` на каждый `renderPanel` усиливал мерца
 4. Регресс: `tests/huginn/browser_rail_toggle.spec.js`.
 
 **Статус:** VERIFIED ROUND-7 (5/5 verifiers; deploy pending command).
+
+## D-261. Разрыв цепочки «анализ → просчёт»: смета Мимира не сохранялась, просчёт сеял дефолтный скелет (11.10.2026)
+
+- **Тип:** defect (разрыв цепочки «анализ → просчёт → директор»; деньги + данные)
+- **Приоритет:** HIGH (РП открывает просчёт и видит не свой расчёт, а чужую цифру; можно унести её директору)
+- **Симптом (со слов пользователя, дежурный РП):** «закрываю анализ → тендер летит в просчёты → открываю просчёт,
+  но сметы из анализа нет; сумма у всех просчётов при открытии всегда одна; данные не подставляются».
+- **Диагноз (машинно подтверждён, три независимых дефекта):**
+  1. **Структурная смета не сохранялась.** Мимир-Quick считает расчёт в `tkp_quick_sessions.estimate_draft`,
+     но `POST /:id/rp-review/mimir-apply` (`src/routes/rp-review-collab.js`) клал в отчёт только
+     `mapMimirToReportFields(...)` — числа `work_price`/`cost_without_vat`/текст + приложенные XLSX/DOCX.
+     Ключа `asgard_smeta` (строки+параметры) там не было ни на анализе, ни в фазе calc.
+  2. **Просчёт без `asgard_smeta` рисовал выдуманную смету.** `public/assets/js/rp_calc_modal.js` (`open`)
+     читал `const seed = rj.asgard_smeta || null` и при `null` вызывал `ensureEstimate` → дефолтный скелет
+     с `DEFAULT_PARAMS`. Прогон движка: пустой скелет даёт **ровно `price_no_vat = 2 818 084.50 ₽`** —
+     это и есть «одна и та же сумма у всех». Autosave/finalize (`buildPayload`) отправлял
+     `work_price = Math.round(totals.price_no_vat)`, то есть фантомную сумму можно было унести в карточку.
+  3. **Закрытие анализа не переносило расчёт** (следствие п.1): `buildAnalysisSnapshot` (`src/routes/pm-duty.js`)
+     складывал в снимок только вердикт/выжимку, сметы там не было by design.
+- **Правки:**
+  - `src/services/rp-review-drafts.js`: новый `buildSmetaFromMimir(estimate)` — `asgard_v1` с `rows` пропускает
+    через `recalcAsgardSmeta`, AI-форму с `ai_meta` — через `composeFromRecomputed`; `mapMimirToReportFields`
+    кладёт результат в `patch.asgard_smeta` (try/catch: смета — обогащение, числа уезжают и без неё).
+    `fieldPatch` уже уходил во все три ветки (`mimir-apply` draft/target=final, `import-draft`) — правок там нет.
+  - `src/routes/pm-duty.js`: `buildAnalysisSnapshot` кладёт `asgard_smeta` в снимок; ветка `finalize_analysis`
+    явно переносит `asgard_smeta` в `report_json` фазы calc (раньше спасал `...rj`, теперь закреплено + тест).
+  - `public/assets/js/rp_review_modal.js`: в отчёте анализа — read-only блок «Предварительный расчёт»
+    (себестоимость/без НДС/с НДС/чистая прибыль) + CTA «Просчёт Мимир». `onApplied` уже делал
+    `Object.assign(reportJson, result.field_patch)` → смета сохраняется при закрытии анализа.
+  - `public/assets/js/rp_calc_modal.js`: флаг `smetaReady`; без сметы не сеем дефолтный скелет — KPI «—»,
+    баннер «Смета не рассчитана» с действиями «Взять расчёт из анализа» / «Считать заново» / «Рассчитать
+    через Мимира», autosave и «Завершить просчёт» заблокированы, `buildPayload` не перезаписывает серверную
+    смету пустышкой. `renderSmeta` при отсутствии сметы — empty-state.
+  - CSS: `.rp-calc-need-smeta`, `.rp-calc-smeta-empty` (`rp-calc-modal.css`), `.rp-review-smeta-block`
+    (`rp-review-modal.css`) — только токены темы, хардкод-цветов нет.
+- **Легаси-карточки:** закрытые до этой правки `asgard_smeta` не имеют — для них работает empty-state + CTA
+  (массовый backfill не делался осознанно).
+- **Доказательство:**
+  - `node tests/tender-approval-chain.js` (клон `asgard_crm_test`, двойник `:3100`) — **14/14 PASS, exit 0**,
+    новый кейс **SMETA**: `asgard_smeta.price_no_vat=3793413` и в снимке, и в фазе calc; дефолтный скелет
+    был бы `2818085` — то есть тест различает перенос и подделку. Фикстура кейсов закрывает чек-лист
+    анализа штатным `PUT /:id/analysis-checklist` (D-203) — иначе сценарий краснел не по своей причине.
+  - `node tools/verify_rp_calc_improvements.js` (реальный chromium, настоящие vanilla-скрипты) — **28/28 PASS**,
+    новые B8 (смета только в снимке анализа → баннер + перенос: `—` → `1 500 000 ₽`, 51 строка, завершение
+    доступно) и B9 (сметы нет нигде → KPI `—`, баннер, сохранение/завершение disabled, автосейв `calls=0`,
+    фантомной суммы `2 818 084` нет).
+  - `node tools/verify_rp_modal_render.js` — **19/19 PASS** (каскад/скролл модалки РП не сломан).
+  - `node tests/asgard-smeta-share.test.js` — **16/16 PASS**; `node tools/build_smeta_mirror.js --check` — OK.
+  - Живая цепочка на клоне (`GET`/`PUT` через `:3100`): анализ с расчётом → закрытие → фаза calc отдаёт
+    `asgard_smeta` с той же `price_no_vat` (3793413), `work_price` карточки не обнулён.
+- **Статус:** FIXED + VERIFIED (детерминированные гейты + живой прогон на клоне). Выкатка — по команде
+  пользователя (затрагиваются `public/assets/js/**` → бамп `SHELL_VERSION`).
+
+### D-261 — проход L3-верификатора (11.10.2026): 2 FAIL, оба закрыты
+
+- **FAIL-1 (критичный, деньги/данные).** В AI-ветке (расчёт Мимира формой `ai_meta`, без `rows`)
+  `buildSmetaFromMimir` передавал в `composeFromRecomputed(ai, recomputed)` **сам `estimate`** как `ai`,
+  тогда как функция читает `ai.estimate` (`src/services/asgard-smeta.js:567,571`). Эталонный вызов
+  (`src/services/mimir-tkp-quick.js` `_xlsxFromEstimateDraft`) передаёт `{ estimate: ai_meta.estimate }`.
+  Последствие: дни/бригада/наценка брались дефолтные (`work_days=10`), цена расходилась с расчётом Мимира
+  (на реальных сессиях — до ×2), а на вырожденном `ai_meta:{}` получался **ровно фантомный скелет
+  2 818 084,50 ₽** (тот самый симптом). `try/catch` делал дефект бесшумным.
+  **Фикс:** форма вызова приведена к эталону (`{ estimate: aiMeta.estimate || estimate, ... }`,
+  `recomputed = { settings:{}, calculation, totals }`); пустой/битый AI-расчёт (нет ключей в `estimate`
+  и ни одной строки калькуляции) → `null`, а не слепок скелета. Добавлен тест в
+  `tests/asgard-smeta-share.test.js` («перенос сметы Мимира (D-261)») — сверяет с эталоном `composeFromRecomputed`
+  и требует `null` на пустых входах.
+- **FAIL-2 (низкий, редакция интерфейса).** При `readOnly` без сметы `renderSmetaNeededBanner` показывал
+  активные кнопки («Взять расчёт из анализа» / «Считать заново» / «Рассчитать через Мимира»), хотя
+  readOnly-пользователю правки недоступны — мёртвый путь и ложный сигнал.
+  **Фикс:** в `renderSmetaNeededBanner` при `state.readOnly` — только пояснение без кнопок.
+- **Перепроверка после фиксов:** `tender-approval-chain.js` **14/14 PASS** (в т.ч. SMETA), 
+  `verify_rp_calc_improvements.js` **28/28 PASS**, `verify_rp_modal_render.js` **19/19 PASS**,
+  `asgard-smeta-share.test.js` **17/17 PASS**, `build_smeta_mirror.js --check` — OK.
+- **Мутационный контроль (верификатор):** закомментированный перенос `asgard_smeta` в `pm-duty.js` делает
+  кейс SMETA КРАСНЫМ (`top_no_vat=NaN` / `snap_no_vat=NaN`) при зелёных остальных 13 кейсах — гейт
+  различает перенос и дефолтный скелет, тавтологии нет.

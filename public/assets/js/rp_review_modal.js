@@ -127,6 +127,35 @@ window.AsgardRpReviewModal = (function () {
     return (AsgardUI.moneyRub || AsgardMoney.formatMoney)(v);
   }
 
+  /**
+   * Предварительный расчёт Мимира в фазе анализа: итоги структурной сметы
+   * (`report_json.asgard_smeta`), которую собрал `mimir-apply`.
+   * Просчёт берёт ровно эту смету — блок нужен, чтобы дежурный видел, что переносится.
+   */
+  function renderAnalysisSmetaBlock(rj, opts) {
+    const est = rj && rj.asgard_smeta;
+    const t = est && est.totals;
+    const isRich = !!(t && (t.price_no_vat != null || t.cost != null));
+    if (!isRich) {
+      if (opts && opts.locked) return '';
+      return '<div class="rp-review-smeta-block"><p class="muted" style="font-size:12px;margin:0 0 8px">' +
+        'Предварительная смета не рассчитана. Нажмите «Просчёт Мимир» — расчёт попадёт в просчёт готовой сметой.</p></div>';
+    }
+    const n = (v) => (v == null ? '—' : fmtMoney(v));
+    let h = '<div class="rp-review-smeta-block">';
+    h += '<div class="rp-review-analysis-ref-head"><strong>Предварительный расчёт</strong>' +
+      '<span class="muted">Мимир · переносится в просчёт</span></div>';
+    h += '<div class="rp-review-smeta-kpi">' +
+      '<div class="kpi"><span>Себестоимость</span><b>' + esc(n(t.cost)) + '</b></div>' +
+      '<div class="kpi"><span>Без НДС</span><b>' + esc(n(t.price_no_vat)) + '</b></div>' +
+      '<div class="kpi is-gold"><span>С НДС</span><b>' + esc(n(t.price_with_vat)) + '</b></div>' +
+      (t.net_profit != null
+        ? '<div class="kpi is-profit"><span>Чистая прибыль</span><b>' + esc(n(t.net_profit)) + '</b></div>'
+        : '') +
+      '</div>';
+    return h + '</div>';
+  }
+
   function feasibilityLabel(v) {
     return { yes: 'Да', conditional: 'Условно', no: 'Нет' }[v] || '—';
   }
@@ -663,6 +692,11 @@ window.AsgardRpReviewModal = (function () {
       if (!isLocked) {
         const pr = progressPct(reportJson, mode, decision, workPrice, !!estimateFile);
         h += '<div class="rp-review-progress">Заполнено ' + pr.done + '/' + pr.total + ' разделов<bar><i style="width:' + pr.pct + '%"></i></bar></div>';
+      }
+
+      // Фаза анализа: предварительный расчёт Мимира (структурная смета), который просчёт подхватит как есть.
+      if (mode === 'analysis') {
+        h += renderAnalysisSmetaBlock(reportJson, { locked: isLocked });
       }
 
       if (decision === 'reject' && mode !== 'calc') {

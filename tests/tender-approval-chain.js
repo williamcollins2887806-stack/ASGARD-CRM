@@ -11,6 +11,7 @@
 const fs = require('fs');
 const path = require('path');
 const { Client } = require('pg');
+const smeta = require('../src/services/asgard-smeta');
 
 // Mail safety — client-side gate + module check (server must also have TENDER_MAIL_DISABLED=1)
 process.env.TENDER_MAIL_DISABLED = process.env.TENDER_MAIL_DISABLED || '1';
@@ -295,22 +296,52 @@ async function insertFakeTkp(pg, tenderId, uploadedBy) {
   return tkpId;
 }
 
-async function finalizeAnalysis(tenderId, pg) {
+/**
+ * D-203: анализ нельзя закрыть без заполненного чек-листа. Кейсы сценария закрывают
+ * анализ штатным PUT, поэтому чек-лист нужно подготовить — иначе тест красный
+ * по причине, не связанной с проверяемым поведением (порог директора, перенос сметы).
+ * Пишем через API `PUT /:id/analysis-checklist` — тот же путь, что и у пользователя,
+ * а не INSERT: иначе тест проверял бы свою фикстуру, а не контур.
+ */
+async function seedAnalysisChecklist(tenderId, role) {
+  const pg = await pgConnect();
+  try {
+    const r = await pg.query(`SELECT value_json FROM settings WHERE key = 'analysis_checklist_template'`);
+    const answers = {};
+    for (let i = 1; i <= 10; i++) answers['q' + i] = `${RUN_TAG}: ответ ${i}`;
+    const resp = await api('PUT', `/api/tenders/${tenderId}/analysis-checklist`, {
+      role,
+      body: { answers, free_answers: [], require_complete: true },
+    });
+    if (resp.status >= 400) {
+      throw new Error(`seedAnalysisChecklist HTTP ${resp.status} ${JSON.stringify(resp.data).slice(0, 300)}`);
+    }
+  } finally {
+    await pg.end().catch(() => {});
+  }
+}
+
+async function finalizeAnalysis(tenderId, pg, opts = {}) {
   const role = calcRole();
+  await seedAnalysisChecklist(tenderId, role);
   const expected = await getReviewUpdatedAt(tenderId, role);
+  const reportJson = {
+    mode: 'analysis',
+    feasibility: 'yes',
+    competition: 'medium',
+    summary: `${RUN_TAG}: суть для ТО — анализ дежурного РП`,
+    recommendation: 'Подаём',
+    risks: 'Тестовый риск',
+  };
+  // Опциональная структурная смета Мимира на анализе: закрытие анализа обязано
+  // протащить её в фазу calc (кейс SMETA), иначе просчёт сеет дефолтный скелет.
+  if (opts.asgard_smeta) reportJson.asgard_smeta = opts.asgard_smeta;
   const resp = await api('PUT', `/api/tenders/${tenderId}/rp-review`, {
     role,
     body: withOverride({
       decision: 'submit',
       report_kind: 'work',
-      report_json: {
-        mode: 'analysis',
-        feasibility: 'yes',
-        competition: 'medium',
-        summary: `${RUN_TAG}: суть для ТО — анализ дежурного РП`,
-        recommendation: 'Подаём',
-        risks: 'Тестовый риск',
-      },
+      report_json: reportJson,
       missing_info_flags: [],
       finalize: true,
       expected_updated_at: expected,
@@ -880,6 +911,70 @@ async function caseCanonPair(pg) {
   }
 }
 
+/**
+ * Цепочка «анализ → просчёт»: структурная смета (`asgard_smeta`), посчитанная Мимиром
+ * на анализе, обязана быть в снимке анализа И в `report_json` фазы calc — иначе просчёт
+ * открывается с дефолтным скелетом и показывает всем одну и ту же сумму (2 818 084,50 ₽).
+ *
+ * Фикстура — минимальная валидная `asgard_v1` с явно «своей» ценой, которую невозможно
+ * спутать со скелетом. Проверяем через API (`GET rp-review`), а не SQL: важно, что фронт
+ * просчёта увидит ровно этот объект.
+ */
+async function caseSmetaTransfer(pg) {
+  const id = 'SMETA';
+  const name = 'Анализ → просчёт: asgard_smeta переносится в снимок и в фазу calc';
+  try {
+    const params = {
+      shifts_per_day: 2, workers_per_shift: 4, masters_per_shift: 1,
+      work_days: 11, road_days: 2, mob_days: 4, trip_count: 1,
+      rate_worker: 6100, rate_master: 7300, rate_itr: 10000, rate_road: 3000,
+      meals: 1000, lodging: 1250, siz: 15000,
+      fot_tax: 0.55, overhead: 0.1, contingency: 0.05, consumables_pct: 0.03,
+      markup: 1.5, material_markup: 1.25, vat: 0.22, income_tax: 0.25
+    };
+    const est = smeta.recalcAsgardSmeta({
+      template: 'asgard_v1',
+      meta: { title: `${RUN_TAG}: смета анализа`, customer: RUN_TAG },
+      params
+    });
+    const expectedNoVat = Math.round(est.totals.price_no_vat);
+    if (!(expectedNoVat > 0)) {
+      return fail(id, name, `фикстура сметы не дала цены: ${JSON.stringify(est.totals)}`);
+    }
+    // Контроль: пустой скелет даёт другую сумму — если совпадёт, кейс не различает перенос.
+    const skeletonNoVat = Math.round(smeta.recalcAsgardSmeta({ template: 'asgard_v1', meta: {}, params: {} }).totals.price_no_vat);
+    if (skeletonNoVat === expectedNoVat) {
+      return fail(id, name, `цена фикстуры совпала со скелетом (${expectedNoVat}) — тест не различает перенос`);
+    }
+
+    const tenderId = await createRegistryTender('case-smeta', 'TO');
+    await finalizeAnalysis(tenderId, pg, { asgard_smeta: est });
+
+    const resp = await api('GET', `/api/tenders/${tenderId}/rp-review`, { role: 'PM' });
+    if (resp.status >= 400) {
+      return fail(id, name, `GET rp-review HTTP ${resp.status} ${JSON.stringify(resp.data).slice(0, 200)}`);
+    }
+    const rj = typeof resp.data?.review?.report_json === 'string'
+      ? JSON.parse(resp.data.review.report_json || '{}')
+      : (resp.data?.review?.report_json || {});
+    const topNoVat = Math.round(Number(rj?.asgard_smeta?.totals?.price_no_vat));
+    const snapNoVat = Math.round(Number(resp.data?.analysis_snapshot?.asgard_smeta?.totals?.price_no_vat));
+    const okMode = rj.mode === 'calc';
+    const okTop = topNoVat === expectedNoVat;
+    const okSnap = snapNoVat === expectedNoVat;
+    if (okMode && okTop && okSnap) {
+      return pass(id, name,
+        `tenderId=${tenderId} mode=calc; asgard_smeta.price_no_vat=${topNoVat} (снимок=${snapNoVat}), ` +
+        `дефолтный скелет был бы ${skeletonNoVat} — смета перенесена`);
+    }
+    return fail(id, name,
+      `mode=${rj.mode} top_no_vat=${topNoVat} snap_no_vat=${snapNoVat} expected=${expectedNoVat} ` +
+      `(okMode=${okMode} okTop=${okTop} okSnap=${okSnap})`);
+  } catch (e) {
+    return fail(id, name, e.message);
+  }
+}
+
 // ── Main ─────────────────────────────────────────────────────────
 (async () => {
   console.log(`\n=== Tender approval chain ===`);
@@ -921,6 +1016,7 @@ async function caseCanonPair(pg) {
       ['H', caseH],
       ['ORPH', caseOrphan],
       ['PAIR', caseCanonPair],
+      ['SMETA', caseSmetaTransfer],
     ];
 
     for (const [, fn] of cases) {

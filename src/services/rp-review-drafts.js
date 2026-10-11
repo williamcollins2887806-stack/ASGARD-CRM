@@ -4,6 +4,8 @@
  * Helpers for RP-review participant drafts + Mimor apply + final-owner checks.
  */
 
+const asgardSmeta = require('./asgard-smeta');
+
 function parseJson(raw) {
   if (!raw) return {};
   if (typeof raw === 'object') return raw;
@@ -227,6 +229,52 @@ async function enrichDraft(db, draft) {
   };
 }
 
+/**
+ * Структурная смета `asgard_v1` из расчёта Мимира.
+ *
+ * Зачем: анализ и просчёт — две фазы одного отчёта (`tender_rp_reviews.report_json`).
+ * Мимир считает расчёт в `tkp_quick_sessions.estimate_draft`, но `mimir-apply` клал в отчёт
+ * только числа (`work_price`/`cost_without_vat`) и приложенный XLSX. Ключа `asgard_smeta`
+ * (строки + параметры) там не было, поэтому просчёт (`rp_calc_modal.js`) при открытии не находил
+ * смету и сеял дефолтный скелет — «у всех просчётов одна и та же сумма» (2 818 084,50 ₽).
+ *
+ * Здесь расчёт превращается в `asgard_v1`:
+ *  - `estimate.template === 'asgard_v1'` с непустыми `rows` → берём как есть (recalc);
+ *  - иначе (AI-форма с `ai_meta`) → `composeFromRecomputed`.
+ * Возвращает `null`, когда собрать нечего — вызывающий код тогда просто не пишет поле.
+ */
+function buildSmetaFromMimir(estimate) {
+  if (!estimate || typeof estimate !== 'object') return null;
+  try {
+    if (estimate.template === 'asgard_v1' && Array.isArray(estimate.rows) && estimate.rows.length) {
+      return asgardSmeta.recalcAsgardSmeta(estimate);
+    }
+    const aiMeta = estimate.ai_meta;
+    if (aiMeta && typeof aiMeta === 'object') {
+      // Пустой/битый AI-расчёт отдал бы скелет с DEFAULT_PARAMS (та же «чужая» сумма) —
+      // лучше не писать смету вовсе, чем подсунуть её. Осмысленным считаем расчёт,
+      // где есть параметры (`ai_meta.estimate`) или хотя бы одна строка калькуляции.
+      const estKeys = aiMeta.estimate && typeof aiMeta.estimate === 'object' ? Object.keys(aiMeta.estimate).length : 0;
+      const calc = (aiMeta.calculation && typeof aiMeta.calculation === 'object') ? aiMeta.calculation : {};
+      const calcRows = ['personnel', 'current_costs', 'travel', 'transport', 'chemistry']
+        .reduce((n, k) => n + (Array.isArray(calc[k]) ? calc[k].length : 0), 0);
+      if (!estKeys && !calcRows) return null;
+      // Форма вызова — ровно как в эталонной генерации XLSX Мимира
+      // (`src/services/mimir-tkp-quick.js` `_xlsxFromEstimateDraft`): ai = { estimate: ai_meta.estimate },
+      // recomputed = { calculation, totals, settings }. Иначе `composeFromRecomputed` читает
+      // `ai.estimate` и берёт дефолты → смета разъезжается с расчётом Мимира.
+      const composed = asgardSmeta.composeFromRecomputed(
+        { estimate: aiMeta.estimate || estimate, customer_name: '' },
+        { settings: {}, calculation: aiMeta.calculation || {}, totals: aiMeta.totals || {} }
+      );
+      return asgardSmeta.recalcAsgardSmeta(composed);
+    }
+  } catch (_) {
+    return null; // смета — обогащение: без неё числа work_price/cost всё равно уезжают
+  }
+  return null;
+}
+
 /** Best-effort field mapping from Mimor estimate + chat markdown into report fields. */
 function mapMimirToReportFields(phase, estimate, chatMd) {
   const patch = {};
@@ -273,6 +321,11 @@ function mapMimirToReportFields(phase, estimate, chatMd) {
     const recMatch = plain.match(/(?:рекомендация|recommendation)[:\s]+([^\n]{5,400})/i);
     if (recMatch) patch.recommendation = recMatch[1].trim().slice(0, 1500);
   }
+
+  // Структурная смета (asgard_v1) — чтобы просчёт не начинался с чужого скелета.
+  const smeta = buildSmetaFromMimir(estimate);
+  if (smeta) patch.asgard_smeta = smeta;
+
   return patch;
 }
 
@@ -289,5 +342,6 @@ module.exports = {
   listTeamDrafts,
   enrichDraft,
   loadDocMeta,
-  mapMimirToReportFields
+  mapMimirToReportFields,
+  buildSmetaFromMimir
 };

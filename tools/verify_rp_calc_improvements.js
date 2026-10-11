@@ -25,6 +25,9 @@
  *   A9 read-only: при readOnly=true поле не пересчитывается и автосейв не уходит
  *  A10 «Открыть анализ»: кнопка есть и вызывает AsgardRpReviewModal с readOnly+viewer
  *  A11 кнопка «Сохранить черновик» не закрывает модалку (никто не требует ручного сейва)
+ *   B8 смета есть только в снимке анализа → баннер + «Взять расчёт из анализа» переносит её
+ *   B9 сметы нет нигде → KPI «—», баннер, сохранение/завершение заблокированы, автосейв молчит
+ *      (просчёт не показывает дефолтный скелет — «у всех одна и та же сумма»)
  *
  * Использование: node tools/verify_rp_calc_improvements.js
  */
@@ -151,6 +154,7 @@ ${scriptTags()}
 <script>
 (function () {
 ${BUILD_SEED}
+  const SMETA_MODE = ${JSON.stringify(o.smetaMode || 'seeded')};
   // Цена без НДС 1 000 000 → 2 000 000 при markup=2 (ставка наценки ниже правится из теста).
   const seed = buildSeed(${o.rowPrice || 1000000});
   const tender = { id: ${TENDER_ID}, customer_name: 'Тестовый заказчик', tender_title: 'Проверка', docs_deadline: '2026-12-20' };
@@ -160,8 +164,13 @@ ${BUILD_SEED}
     review: {
       id: 1, decision: 'submit', work_price: seed.totals.price_no_vat,
       is_final: false, is_final_owner: true, can_finalize: true,
-      report_json: { mode: 'calc', asgard_smeta: seed }
+      report_json: SMETA_MODE === 'seeded'
+        ? { mode: 'calc', asgard_smeta: seed }
+        : { mode: 'calc' }
     },
+    // «analysis» — смета лежит только в снимке анализа (кнопка «Взять расчёт из анализа»);
+    // «empty» — сметы нет нигде (баннер + «Считать заново»).
+    analysis_snapshot: SMETA_MODE === 'analysis' ? { decision: 'submit', asgard_smeta: seed } : null,
     director_threshold: ${o.threshold != null ? o.threshold : 10000000},
     estimate_file: { id: 11, original_name: 'смета.xlsx', filename: 'smeta.xlsx', download_url: '/uploads/rp_estimates/1/smeta.xlsx' },
     report_file: null,
@@ -206,6 +215,14 @@ fs.writeFileSync(FILE_CUSTOM_TH, harness({ rowPrice: 2000000, threshold: 2500000
 
 const FILE_RO = path.join(os.tmpdir(), 'asgard-rp-calc-ro.html');
 fs.writeFileSync(FILE_RO, harness({ rowPrice: 1000000, threshold: 10000000 }), 'utf8');
+
+// Смета есть только в снимке анализа — просчёт обязан предложить «Взять расчёт из анализа».
+const FILE_FROM_ANALYSIS = path.join(os.tmpdir(), 'asgard-rp-calc-from-analysis.html');
+fs.writeFileSync(FILE_FROM_ANALYSIS, harness({ rowPrice: 1000000, threshold: 10000000, smetaMode: 'analysis' }), 'utf8');
+
+// Сметы нет нигде — просчёт не должен показывать дефолтный скелет (2 818 084,50 ₽).
+const FILE_NO_SMETA = path.join(os.tmpdir(), 'asgard-rp-calc-no-smeta.html');
+fs.writeFileSync(FILE_NO_SMETA, harness({ rowPrice: 1000000, threshold: 10000000, smetaMode: 'empty' }), 'utf8');
 
 (async () => {
   let chromium;
@@ -439,6 +456,65 @@ fs.writeFileSync(FILE_RO, harness({ rowPrice: 1000000, threshold: 10000000 }), '
     ro.before + ' → ' + ro.afterEdit + ' → ' + roAfter.kpiNet + ' (roots=' + roAfter.roots + ')');
   check('A9 read-only: автосейв НЕ уходит', roAfter.calls === 0, 'calls=' + roAfter.calls);
   await page4.close();
+
+  // ─── Сценарий 5: смета только в снимке анализа → «Взять расчёт из анализа» ──
+  const page5 = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+  await page5.goto('file:///' + FILE_FROM_ANALYSIS.replace(/\\/g, '/'));
+  await page5.waitForTimeout(150);
+  await page5.evaluate(() => window.AsgardRpCalcModal.open({ id: 990001 }, [], function () {}));
+  await page5.waitForTimeout(600);
+  const fromAnalysis = await page5.evaluate(() => {
+    const root = document.querySelector('[data-rp-calc-root]');
+    const takeBtn = root.querySelector('[data-rp-act="take-analysis-smeta"]');
+    const kpiBefore = root.querySelector('[data-kpi="price_no_vat"]');
+    const before = kpiBefore ? kpiBefore.textContent.trim() : null;
+    if (takeBtn) takeBtn.click();
+    return { hasBanner: !!root.querySelector('.rp-calc-need-smeta'), hasTakeBtn: !!takeBtn, before: before };
+  });
+  await page5.waitForTimeout(500);
+  const afterTake = await page5.evaluate(() => {
+    const root = document.querySelector('[data-rp-calc-root]');
+    const el = root.querySelector('[data-kpi="price_no_vat"]');
+    const banner = root.querySelector('.rp-calc-need-smeta');
+    const rows = root.querySelectorAll('.rp-calc-smeta tbody tr').length;
+    const sendBtn = root.querySelector('[data-rp-act="send-director"]');
+    return { noVat: el ? el.textContent.trim() : null, hasBanner: !!banner, rows: rows, sendDisabled: !!(sendBtn && sendBtn.disabled) };
+  });
+  check('B8 сметы нет в карточке, но есть в анализе → баннер и кнопка «Взять расчёт из анализа»',
+    fromAnalysis.hasBanner && fromAnalysis.hasTakeBtn, 'banner=' + fromAnalysis.hasBanner + ' takeBtn=' + fromAnalysis.hasTakeBtn);
+  check('B8 «Взять расчёт из анализа» переносит смету: KPI ≠ «—», появились строки, завершение доступно',
+    fromAnalysis.before === '—' && /₽/.test(afterTake.noVat || '') && afterTake.rows > 0 && !afterTake.sendDisabled,
+    `было=${fromAnalysis.before} → ${afterTake.noVat}, строк=${afterTake.rows}, sendDisabled=${afterTake.sendDisabled}`);
+  await page5.close();
+
+  // ─── Сценарий 6: сметы нет нигде → не показываем дефолтный скелет ───────────
+  const page6 = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+  await page6.goto('file:///' + FILE_NO_SMETA.replace(/\\/g, '/'));
+  await page6.waitForTimeout(150);
+  await page6.evaluate(() => window.AsgardRpCalcModal.open({ id: 990001 }, [], function () {}));
+  await page6.waitForTimeout(600);
+  const noSmeta = await page6.evaluate(() => {
+    const root = document.querySelector('[data-rp-calc-root]');
+    const el = root.querySelector('[data-kpi="price_no_vat"]');
+    const sendBtn = root.querySelector('[data-rp-act="send-director"]');
+    const saveBtn = root.querySelector('[data-rp-act="save-draft"]');
+    const bodyText = root.textContent.replace(/\s+/g, ' ');
+    return {
+      noVat: el ? el.textContent.trim() : null,
+      hasBanner: !!root.querySelector('.rp-calc-need-smeta'),
+      sendDisabled: !!(sendBtn && sendBtn.disabled),
+      saveDisabled: !!(saveBtn && saveBtn.disabled),
+      phantom: /2\s?818\s?084/.test(bodyText),
+    };
+  });
+  await page6.waitForTimeout(3200);
+  const noSmetaCalls = await page6.evaluate(() => (window.__calls || []).length);
+  check('B9 без сметы KPI «Цена без НДС» = «—» (не дефолтный скелет 2 818 084,50)',
+    noSmeta.noVat === '—' && noSmeta.phantom === false, `no_vat=${noSmeta.noVat} phantom=${noSmeta.phantom}`);
+  check('B9 без сметы баннер «Смета не рассчитана», кнопки сохранения/завершения заблокированы, автосейв молчит',
+    noSmeta.hasBanner && noSmeta.sendDisabled && noSmeta.saveDisabled && noSmetaCalls === 0,
+    `banner=${noSmeta.hasBanner} send=${noSmeta.sendDisabled} save=${noSmeta.saveDisabled} calls=${noSmetaCalls}`);
+  await page6.close();
 
   await browser.close();
 

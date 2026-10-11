@@ -463,6 +463,41 @@ check('порог директора берётся из settings, а не из 
 
 const pending = [];
 
+check('перенос сметы Мимира (D-261): форма вызова как в эталоне генерации XLSX', () => {
+  const { buildSmetaFromMimir } = require('../src/services/rp-review-drafts');
+  const draft = {
+    ai_meta: {
+      estimate: { work_days: 7, crew_count: 4, trip_count: 1 },
+      calculation: { personnel: [{ role: 'Рабочий', count: 3, rate_per_day: 6000, days: 7 }] },
+      totals: { markup_multiplier: 1.5 }
+    }
+  };
+  // Эталон: ровно то, что делает src/services/mimir-tkp-quick.js `_xlsxFromEstimateDraft`.
+  const ref = server.recalcAsgardSmeta(server.composeFromRecomputed(
+    { estimate: draft.ai_meta.estimate, customer_name: '' },
+    { settings: {}, calculation: draft.ai_meta.calculation, totals: draft.ai_meta.totals }
+  ));
+  const got = buildSmetaFromMimir(draft);
+  assert.ok(got, 'AI-форма собирается в смету');
+  assert.strictEqual(got.params.work_days, ref.params.work_days, 'дни работ из расчёта Мимира, не дефолт');
+  assert.strictEqual(got.totals.price_no_vat, ref.totals.price_no_vat, 'цена совпадает с расчётом Мимира');
+  assert.notStrictEqual(got.params.work_days, 10, 'не дефолтные 10 суток скелета');
+
+  // Вырожденные входы: лучше null, чем подсунуть дефолтный скелет (2 818 084,50).
+  const skeletonNoVat = server.recalcAsgardSmeta({ template: 'asgard_v1', meta: {}, params: {} }).totals.price_no_vat;
+  assert.strictEqual(buildSmetaFromMimir({ ai_meta: {} }), null, 'пустой ai_meta → null');
+  assert.strictEqual(buildSmetaFromMimir({ ai_meta: { calculation: {} } }), null, 'ai_meta без данных → null');
+  assert.strictEqual(buildSmetaFromMimir({}), null, 'пустой объект → null');
+  assert.strictEqual(buildSmetaFromMimir(null), null, 'null → null');
+  // Пустой estimate + пустой calculation + только «настройки» — это слепок дефолтного
+  // скелета; такой сметой нельзя подменять «нет сметы» (иначе снова «у всех одна сумма»).
+  assert.strictEqual(
+    buildSmetaFromMimir({ ai_meta: { estimate: {}, calculation: {}, totals: { markup_multiplier: 1.5 } } }),
+    null,
+    'дефолтный слепок без данных → null, а не 2 818 084,50'
+  );
+});
+
 check('письмо директору: перечень, колонка «Доля, %» и плановые даты на месте', () => {
   const mail = require('../src/services/tender-director-mail');
   const est = server.recalcAsgardSmeta(estimateWithEquipment());

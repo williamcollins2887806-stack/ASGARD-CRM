@@ -107,7 +107,10 @@ function buildAnalysisSnapshot(rj, decision, userId, userName) {
     points: rj.points || [],
     finalized_at: at,
     finalized_by_user_id: userId,
-    finalized_by_name: userName || ''
+    finalized_by_name: userName || '',
+    // Структурная смета Мимира (если считали на анализе) — просчёт фазы calc берёт ровно её,
+    // а не дефолтный скелет. Живёт и в snapshot, и в report_json верхнего уровня.
+    asgard_smeta: rj.asgard_smeta || null
   };
 }
 
@@ -1664,6 +1667,9 @@ async function reviewRoutes(fastify) {
         report_json = { ...rj, mode: 'analysis' };
       } else {
         const snapshot = buildAnalysisSnapshot(rj, decision, userId, userName);
+        // Цепочка «анализ → просчёт»: структурную смету (`asgard_smeta`), собранную Мимиром
+        // на анализе, переносим через `...rj` в фазу calc — иначе просчёт сеет дефолтный скелет
+        // и показывает одну и ту же сумму у всех карточек (никакого «ручного» копирования нет).
         report_json = {
           ...rj,
           mode: 'calc',
@@ -1673,6 +1679,7 @@ async function reviewRoutes(fastify) {
           resources: rj.resources || '',
           questions_for_customer: rj.questions_for_customer || []
         };
+        if (rj.asgard_smeta) report_json.asgard_smeta = rj.asgard_smeta;
         setFinal = false;
         analysisFinalizedAt = new Date();
         analysisFinalizedBy = userId;
