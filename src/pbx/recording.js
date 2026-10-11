@@ -84,6 +84,60 @@ function isEmptyWav(filePath) {
 }
 
 /**
+ * Склейка раздельных дорожек MixMonitor r()/t() в один стерео-файл.
+ *
+ * r() = что СЛЫШИТ канал, на котором висит запись, t() = что ГОВОРИТ.
+ * Запись inbound стоит на канале клиента → r = оператор, t = клиент.
+ * Запись outbound стоит на канале оператора → r = клиент, t = оператор.
+ * Нормализуем так, чтобы L = клиент, R = оператор (для STT по каналам).
+ *
+ * Проверки (инцидент-разбор 11.10.2026, ffmpeg amerge):
+ *  - amerge падает (rc=254, файл не создан) на битой/отсутствующей дорожке;
+ *  - без -shortest результат обрезается по короткой, теряя конец длинной.
+ * Поэтому: обе валидны → amerge + -shortest (или одна → дублируем в стерео).
+ * Возвращает путь к стерео или null (тогда остаётся моно).
+ */
+function mergeStereo(rPath, tPath, outPath, direction) {
+  const fsx = require('fs');
+  const { spawnSync } = require('child_process');
+  const has = (p) => { try { return fsx.existsSync(p) && fsx.statSync(p).size > 1000; } catch (_) { return false; } };
+  const valid = (p) => {
+    if (!has(p)) return false;
+    const r = spawnSync('ffprobe', ['-v', 'error', '-show_entries', 'format=duration', '-of', 'default=nw=1:nk=1', p], { encoding: 'utf8' });
+    const d = parseFloat(String(r.stdout || '').trim());
+    return Number.isFinite(d) && d > 0;
+  };
+  const rOk = valid(rPath);
+  const tOk = valid(tPath);
+  if (!rOk && !tOk) return null;
+
+  // L = клиент, R = оператор.
+  // inbound: r = оператор → в R, t = клиент → в L.
+  // outbound: r = клиент → в L, t = оператор → в R.
+  let leftSrc, rightSrc;
+  if (rOk && tOk) {
+    leftSrc = direction === 'inbound' ? tPath : rPath;
+    rightSrc = direction === 'inbound' ? rPath : tPath;
+  } else {
+    leftSrc = rOk ? rPath : tPath;
+    rightSrc = leftSrc; // одна сторона — дублируем (сторона известна как unknown)
+  }
+
+  if (leftSrc === rightSrc) {
+    const r = spawnSync('ffmpeg', ['-v', 'error', '-i', leftSrc, '-af', 'pan=stereo|c0=c0|c1=c0', '-y', outPath], { encoding: 'utf8' });
+    return r.status === 0 && valid(outPath) ? outPath : null;
+  }
+  const r = spawnSync('ffmpeg', [
+    '-v', 'error', '-i', leftSrc, '-i', rightSrc,
+    '-filter_complex', '[0:a][1:a]amerge=inputs=2[a]', '-map', '[a]', '-shortest',
+    '-y', outPath,
+  ], { encoding: 'utf8' });
+  if (r.status === 0 && valid(outPath)) return outPath;
+  console.warn('[recording] amerge failed:', String(r.stderr || '').slice(0, 200));
+  return null;
+}
+
+/**
  * Перенос MixMonitor файла в иерархию YYYY/MM и NOTIFY в PostgreSQL.
  * @param {object} pool — pg Pool
  * @param {object} opts — { sourcePath, callId, pbxUid, monFile }
@@ -122,9 +176,8 @@ async function finalizeRecording(pool, opts) {
 
   const relUrl = `/recordings/${yyyy}/${mm}/${base}`;
   const pbxUid = opts.pbxUid || opts.pbx_uid || null;
+
   // Атрибуция звонка оператору: dialplan шлёт endpoint вызывающего (u<user_id>).
-  // Без неё исходящий из браузера не привязан к сотруднику и не виден ему в
-  // журнале (user_id в call_history оставался NULL — инцидент 09.10.2026).
   let opUserId = null;
   const opRaw = String(opts.operator || opts.operatorUser || '').trim();
   const m = /^u(\d+)$/.exec(opRaw);
@@ -133,11 +186,43 @@ async function finalizeRecording(pool, opts) {
     : (opts.direction === 'outbound' ? 'outbound' : null);
   const callType = opts.callType || opts.call_type || direction || null;
   const outNumber = opts.number ? String(opts.number).replace(/[^\d+]/g, '') || null : null;
+
+  // Стерео из раздельных дорожек r()/t() (dialplan их пишет как <base>-r/-t.wav).
+  // Нормализуем L = клиент, R = оператор (для STT по каналам). Моно остаётся.
+  let effDestPath = destPath;
+  let effRelUrl = relUrl;
+  try {
+    const srcBase = base.replace(/\.(wav|WAV)$/, '');
+    const spool = [
+      process.env.ASTERISK_RECORDINGS_DIR || '/var/spool/asterisk/recordings',
+      config.recordingsRoot,
+    ];
+    let rPath = null;
+    let tPath = null;
+    for (const d of spool) {
+      const rC = path.join(d, srcBase + '-r.wav');
+      const tC = path.join(d, srcBase + '-t.wav');
+      if (!rPath && fs.existsSync(rC)) rPath = rC;
+      if (!tPath && fs.existsSync(tC)) tPath = tC;
+    }
+    if (rPath || tPath) {
+      const stereoOut = path.join(destDir, srcBase + '.stereo.wav');
+      const merged = mergeStereo(rPath, tPath, stereoOut, direction);
+      if (merged) {
+        effDestPath = merged;
+        effRelUrl = `/recordings/${yyyy}/${mm}/${path.basename(merged)}`;
+        for (const p of [rPath, tPath]) { try { if (p) fs.unlinkSync(p); } catch (_) {} }
+      }
+    }
+  } catch (e) {
+    console.warn('[recording] stereo merge skipped:', e.message);
+  }
+
   const payload = {
     call_id: opts.callId || opts.call_id || (pbxUid ? 'pbx_' + pbxUid : null),
     pbx_uid: pbxUid,
-    path: destPath,
-    url: relUrl,
+    path: effDestPath,
+    url: effRelUrl,
   };
 
   if (pool) {
@@ -155,7 +240,7 @@ async function finalizeRecording(pool, opts) {
              to_number = COALESCE(to_number, $8),
              updated_at = NOW()
            WHERE pbx_uid = $3`,
-          [relUrl, destPath, pbxUid, opUserId, direction, callType,
+          [effRelUrl, effDestPath, pbxUid, opUserId, direction, callType,
             direction === 'outbound' ? null : outNumber,
             direction === 'outbound' ? outNumber : null]
         );
@@ -190,7 +275,7 @@ async function finalizeRecording(pool, opts) {
                 LIMIT 1
              )
              RETURNING id`,
-            [String(pbxUid), relUrl, destPath, outNumber, opUserId, direction, callType]
+            [String(pbxUid), effRelUrl, effDestPath, outNumber, opUserId, direction, callType]
           ) : await client.query(
             `UPDATE call_history SET
                pbx_uid = $1, recording_url = $2, record_path = $3,
@@ -209,7 +294,7 @@ async function finalizeRecording(pool, opts) {
                 LIMIT 1
              )
              RETURNING id`,
-            [String(pbxUid), relUrl, destPath, opUserId, direction, callType]
+            [String(pbxUid), effRelUrl, effDestPath, opUserId, direction, callType]
           );
           if (match.rowCount > 0) {
             // Слили с существующей строкой — дубль не создаём.
@@ -258,8 +343,8 @@ async function finalizeRecording(pool, opts) {
                      )
                      RETURNING id`,
                 outNumber
-                  ? [String(pbxUid), relUrl, destPath, outNumber, opUserId]
-                  : [String(pbxUid), relUrl, destPath, opUserId, direction]
+                  ? [String(pbxUid), effRelUrl, effDestPath, outNumber, opUserId]
+                  : [String(pbxUid), effRelUrl, effDestPath, opUserId, direction]
               );
               if (late.rowCount > 0) { match.rowCount = late.rowCount; break; }
             }
@@ -279,7 +364,7 @@ async function finalizeRecording(pool, opts) {
                  user_id = COALESCE(call_history.user_id, EXCLUDED.user_id),
                  answered_by = COALESCE(call_history.answered_by, EXCLUDED.answered_by),
                  updated_at = NOW()`,
-              ['pbx_' + pbxUid, String(pbxUid), relUrl, destPath,
+              ['pbx_' + pbxUid, String(pbxUid), effRelUrl, effDestPath,
                 direction || 'outbound', callType || 'outbound', opUserId,
                 direction === 'outbound' ? null : outNumber,
                 direction === 'outbound' ? outNumber : null]
@@ -296,7 +381,7 @@ async function finalizeRecording(pool, opts) {
     }
   }
 
-  return { destPath, relUrl };
+  return { destPath: effDestPath, relUrl: effRelUrl };
 }
 
 /**

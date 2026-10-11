@@ -935,26 +935,34 @@ class SpeechKitService {
         audioChannelCount: 1,
       });
 
-      const segments = [];
-      for (const s of left.segments || []) {
-        segments.push({
-          ...s,
-          speaker: 0,
-          speakerLabel: leftLabel,
-          channel: 'L',
-        });
-      }
-      for (const s of right.segments || []) {
-        segments.push({
-          ...s,
-          speaker: 1,
-          speakerLabel: rightLabel,
-          channel: 'R',
-        });
-      }
-      segments.sort((a, b) => (a.startTime || 0) - (b.startTime || 0));
+      // Нормализация таймкодов: провайдер может вернуть строки "MM:SS" или
+      // числа; приводим к секундам (float). Иначе UI получает NaN.
+      const toSec = (v) => {
+        if (typeof v === 'number') return Number.isFinite(v) ? v : 0;
+        if (typeof v === 'string') {
+          const mm = /^(\d+):(\d+(?:\.\d+)?)$/.exec(v.trim());
+          if (mm) return parseInt(mm[1], 10) * 60 + parseFloat(mm[2]);
+          const n = parseFloat(v);
+          return Number.isFinite(n) ? n : 0;
+        }
+        return 0;
+      };
+      const norm = (segs, speakerIdx, label, channel) => (segs || []).map((s) => ({
+        text: s.text || '',
+        start: toSec(s.start),
+        end: toSec(s.end),
+        speaker: speakerIdx,
+        speakerLabel: label,
+        channel,
+      }));
 
-      const text = segments.map((s) => `[${s.speakerLabel}]: ${s.text || ''}`).join('\n');
+      // L = клиент, R = оператор (лежат в отдельных каналах; порядок — по start).
+      const segments = [
+        ...norm(left.segments, 0, leftLabel, 'L'),
+        ...norm(right.segments, 1, rightLabel, 'R'),
+      ].sort((a, b) => (a.start || 0) - (b.start || 0));
+
+      const text = segments.map((s) => `[${s.speakerLabel}]: ${s.text}`).join('\n');
       return { text, segments, stereo: true, usedSox };
     } finally {
       for (const f of [leftPath, rightPath]) {

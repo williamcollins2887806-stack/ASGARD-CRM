@@ -839,6 +839,47 @@ function createCmdServer() {
           await ami.setVar(transferChannel, 'TRANSFER_RETURN_TO', String(resolved.returnTimeout || 30));
           await ami.redirect(transferChannel, 'transfer', 'blind', 1);
         }
+        // Персистенция перевода (11.10.2026): «кто, на кого, когда». Раньше уходило
+        // только pg_notify (SSE) — в истории не оставалось, и третьего спикера
+        // (сотрудник, на кого перевели) взять было неоткуда. Пишем плечо в
+        // pbx_call_legs со своим started_at (время близко к реальному моменту
+        // redirect). role: transfer_blind / transfer_consult.
+        try {
+          if (db) {
+            const callId = String(body.pbx_uid || body.call_id || '');
+            const c = await db.connect();
+            let legSeq = 99;
+            try {
+              const seqRes = await c.query(
+                'SELECT COALESCE(MAX(leg_seq), 0) + 1 AS next FROM pbx_call_legs WHERE call_id = $1',
+                [callId]
+              );
+              legSeq = seqRes.rows[0].next;
+            } catch (_) { /* оставим дефолт */ }
+            try {
+              await c.query(
+                `INSERT INTO pbx_call_legs
+                   (call_id, leg_seq, user_id, target_type, target_addr, role, outcome, meta, started_at)
+                 VALUES ($1,$2,$3,$4,$5,$6,'bridged',$7::jsonb,NOW())`,
+                [
+                  callId,
+                  legSeq,
+                  body.user_id || null,
+                  body.target_mode === 'mobile' ? 'mobile' : 'webrtc',
+                  String(body.target || ''),
+                  mode === 'consult' ? 'transfer_consult' : 'transfer_blind',
+                  JSON.stringify({
+                    to: body.target || null,
+                    target_mode: body.target_mode || null,
+                    from_user_id: body.user_id || null,
+                    dial: resolved.dial || null,
+                    operator_channel: operatorChannel || null,
+                  }),
+                ]
+              );
+            } finally { c.release(); }
+          }
+        } catch (_) { /* персистенция не должна ронять перевод */ }
         try { await notifyTransfer(db, xferNotify); } catch (_) { /* ignore */ }
         return send(200, { ok: true, mode, channel: transferChannel, operator_channel: operatorChannel, transfer: resolved });
       }

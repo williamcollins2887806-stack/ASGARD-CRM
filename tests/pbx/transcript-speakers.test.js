@@ -96,5 +96,75 @@ test('T8', 'CSS субтитров имеет классы --2/--3/--u', () => {
   assert.ok(/transcript-seg-speaker--u/.test(css), 'нет нейтрального --u');
 });
 
+// ── Этап B: стерео-склейка и третий спикер ──
+test('B1', 'mergeStereo: проверка обеих дорожек + amerge + -shortest + fallback', () => {
+  const js = read('src/pbx/recording.js');
+  const i = js.indexOf('function mergeStereo');
+  assert.ok(i !== -1, 'нет mergeStereo');
+  const blk = js.slice(i, i + 2600);
+  assert.ok(/spawnSync\('ffprobe'/.test(blk), 'нет проверки валидности дорожек (ffprobe)');
+  assert.ok(/-shortest/.test(blk), 'amerge без -shortest теряет конец длинной дорожки');
+  assert.ok(/pan=stereo\|c0=c0\|c1=c0/.test(blk), 'нет fallback одной дорожки в стерео');
+  assert.ok(/inbound/.test(blk) && /outbound/.test(blk), 'нет нормализации L/R по направлению');
+});
+
+test('B2', 'dialplan пишет раздельные дорожки r()/t()', () => {
+  const dp = read('ops/asterisk/extensions_asgard.conf');
+  assert.ok(/MonBase|MONBASE/.test(dp), 'нет ASGARD_MONBASE');
+  assert.ok(/-r\.wav/.test(dp) && /-t\.wav/.test(dp), 'нет дорожек r/t');
+  assert.ok(/r\(\/var\/spool\/asterisk\/recordings\/\$\{ASGARD_MONBASE\}-r\.wav\)/.test(dp), 'нет r() дорожки');
+  assert.ok(/t\(\/var\/spool\/asterisk\/recordings\/\$\{ASGARD_MONBASE\}-t\.wav\)/.test(dp), 'нет t() дорожки');
+  // Флаг b обязателен (защита от MOH/ringback в записи).
+  assert.ok(/\},b,r\(/.test(dp), 'потерян флаг b при r()/t()');
+});
+
+test('B3', 'finalizeRecording использует стерео-путь и не теряет relUrl', () => {
+  const js = read('src/pbx/recording.js');
+  assert.ok(/mergeStereo\(rPath, tPath, stereoOut, direction\)/.test(js), 'нет вызова mergeStereo');
+  assert.ok(/effDestPath/.test(js) && /effRelUrl/.test(js), 'нет effective путей');
+  assert.ok(/return \{ destPath: effDestPath, relUrl: effRelUrl \}/.test(js), 'return не отдаёт стерео-путь');
+});
+
+test('B4', 'transcribeStereoChannels: без startTime-сортировки, секунды, offset по каналам', () => {
+  const js = read('src/services/speechkit.js');
+  const i = js.indexOf('transcribeStereoChannels');
+  const blk = js.slice(i, i + 3200);
+  assert.ok(!/a\.startTime \|\| 0\) - \(b\.startTime/.test(blk), 'осталась сортировка по несуществующему startTime');
+  assert.ok(/const toSec =/.test(blk), 'нет нормализации таймкодов в секунды');
+  assert.ok(/speaker: speakerIdx/.test(blk), 'speaker не числом');
+});
+
+test('B5', 'pipeline: стерео-путь только для реального стерео (ffprobe channels>=2)', () => {
+  const js = read('src/services/call-pipeline.js');
+  assert.ok(/stream=channels/.test(js), 'нет проверки числа каналов');
+  assert.ok(/channels'[\s\S]{0,80}>= 2/.test(js) || />= 2/.test(js), 'нет условия channels>=2');
+  assert.ok(/isStereo && typeof this\.speechKit\.transcribeStereoChannels/.test(js),
+    'стерео-путь не защищён проверкой каналов');
+});
+
+test('B6', 'pipeline: разметка третьего спикера по времени перевода + мёртвая зона', () => {
+  const js = read('src/services/call-pipeline.js');
+  assert.ok(/_markTransferSpeakers/.test(js), 'нет _markTransferSpeakers');
+  const i = js.indexOf('async _markTransferSpeakers');
+  const blk = js.slice(i, i + 3600);
+  assert.ok(/transfer_blind[\s\S]{0,60}transfer_consult/.test(blk), 'не читает переводы из pbx_call_legs');
+  assert.ok(/DEAD_ZONE = 1/.test(blk), 'нет мёртвой зоны ±1 с');
+  assert.ok(/seg\.speaker = idx/.test(blk), 'нет динамического индекса спикера');
+});
+
+test('B7', 'перевод персистится в pbx_call_legs (role transfer_*)', () => {
+  const js = read('src/pbx/index.js');
+  const i = js.indexOf("url.pathname === '/call/transfer'");
+  const blk = js.slice(i, i + 9000);
+  assert.ok(/INSERT INTO pbx_call_legs/.test(blk), 'перевод не пишется в pbx_call_legs');
+  assert.ok(/transfer_blind|transfer_consult/.test(blk), 'неверная role перевода');
+});
+
+test('B8', 'GET /calls/:id отдаёт transfers (массив) с ФИО', () => {
+  const js = read('src/routes/telephony.js');
+  assert.ok(/call\.transfers = tr\.rows\.map/.test(js), 'нет массива transfers');
+  assert.ok(/to_name/.test(js), 'нет ФИО получателя перевода');
+});
+
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);

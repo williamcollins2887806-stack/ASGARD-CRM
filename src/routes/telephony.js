@@ -854,6 +854,31 @@ module.exports = async function telephonyRoutes(fastify, opts) {
       call.caller_type = e.caller_type || null;
     } catch (_) { /* идентификация не критична для карточки */ }
 
+    // Переводы звонка (кто/на кого/когда) — для третьего спикера в субтитрах.
+    // Источник: pbx_call_legs с role transfer_* (пишется в /call/transfer).
+    try {
+      const tr = await db.query(
+        `SELECT l.started_at, l.meta->>'to' AS to_target,
+                l.meta->>'target_mode' AS target_mode,
+                l.user_id AS to_user_id, u.name AS to_name
+           FROM pbx_call_legs l
+           LEFT JOIN users u ON u.id = l.user_id
+          WHERE l.role IN ('transfer_blind','transfer_consult')
+            AND (l.call_id = $1
+                 OR l.call_id = ('pbx_' || COALESCE($2,''))
+                 OR l.call_id = COALESCE($2,''))
+          ORDER BY l.started_at ASC`,
+        [call.call_id || '', call.pbx_uid || '']
+      );
+      call.transfers = tr.rows.map((r) => ({
+        at: r.started_at,
+        to_user_id: r.to_user_id,
+        to_name: r.to_name || null,
+        to_target: r.to_target || null,
+        target_mode: r.target_mode || null,
+      }));
+    } catch (_) { call.transfers = []; }
+
     reply.send(call);
   });
 

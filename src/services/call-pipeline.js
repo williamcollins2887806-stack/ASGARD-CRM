@@ -171,9 +171,21 @@ class CallPipeline {
 
       console.log(`[CallPipeline] Transcribing ${call.record_path}...`);
 
-      // Стерео MixMonitor: L=клиент, R=сотрудники — предпочтительно по каналам
+      // Стерео (L=клиент, R=оператор) обрабатываем ПО КАНАЛАМ — только если файл
+      // реально стерео (после склейки r()/t()). Для моно — обычный путь, иначе
+      // правая дорожка была бы пустой и мы бы «потеряли» половину разговора.
+      const isStereo = (() => {
+        try {
+          const { spawnSync } = require('child_process');
+          const r = spawnSync('ffprobe', ['-v', 'error', '-select_streams', 'a:0',
+            '-show_entries', 'stream=channels', '-of', 'default=nw=1:nk=1', call.record_path],
+            { encoding: 'utf8' });
+          return parseInt(String(r.stdout || '').trim(), 10) >= 2;
+        } catch (_) { return false; }
+      })();
+
       let result;
-      if (typeof this.speechKit.transcribeStereoChannels === 'function') {
+      if (isStereo && typeof this.speechKit.transcribeStereoChannels === 'function') {
         result = await this.speechKit.transcribeStereoChannels(call.record_path, {
           leftLabel: 'Клиент',
           rightLabel: 'Оператор',
@@ -186,6 +198,12 @@ class CallPipeline {
           audioChannelCount: 2,
         });
       }
+
+      // Третий и последующие спикеры (перевод). Диаризация по каналу даёт лишь
+      // «оператор», но голоса Оператора1/Оператора2 в одном канале. Размечаем
+      // ПО ВРЕМЕНИ перевода (pbx_call_legs, role transfer_*), с мёртвой зоной
+      // ±1 с: реплики в ней — нейтральны, чтобы не приписать не тому.
+      await this._markTransferSpeakers(call, result);
 
       await this.db.query(
         `UPDATE call_history SET
@@ -204,6 +222,75 @@ class CallPipeline {
         'UPDATE call_history SET transcript_status = $1, updated_at = NOW() WHERE id = $2',
         ['error', call.id]
       );
+    }
+  }
+
+  /**
+   * Разметка третьего и последующих спикеров (переводы).
+   *
+   * Диаризация по каналам различает только «клиент»/«оператор». Голоса
+   * Оператора1 и Оператора2 физически в одном канале — разделяем ПО ВРЕМЕНИ
+   * переводов из pbx_call_legs (role transfer_*). Мёртвая зона ±1 с вокруг
+   * перевода: реплики в ней получают нейтральную метку (speaker: null), чтобы
+   * не приписать не тому оператору.
+   *
+   * @param {object} call — строка call_history
+   * @param {{segments:Array}} result — результат транскрибации (мутируется)
+   */
+  async _markTransferSpeakers(call, result) {
+    try {
+      if (!result || !Array.isArray(result.segments) || !result.segments.length) return;
+      const key = call.pbx_uid || call.call_id || '';
+      if (!key) return;
+      const { rows } = await this.db.query(
+        `SELECT l.started_at, l.user_id, u.name
+           FROM pbx_call_legs l
+           LEFT JOIN users u ON u.id = l.user_id
+          WHERE l.role IN ('transfer_blind','transfer_consult')
+            AND (l.call_id = $1 OR l.call_id = ('pbx_' || $1))
+          ORDER BY l.started_at ASC`,
+        [String(key).replace(/^pbx_/, '')]
+      );
+      if (!rows.length) return;
+
+      // Время сегментов — относительно начала записи. Пересчитываем переводы
+      // относительно call.started_at (recording начинается с ответа/начала звонка).
+      const baseMs = call.started_at ? new Date(call.started_at).getTime() : null;
+      const transfers = rows.map((r) => ({
+        tSec: baseMs ? (new Date(r.started_at).getTime() - baseMs) / 1000 : null,
+        name: r.name || null,
+        userId: r.user_id || null,
+      }));
+      const DEAD_ZONE = 1; // секунды
+
+      result.segments.forEach((seg) => {
+        // Только реплики оператора (speaker 1) меняют «личность» при переводе.
+        if (Number(seg.speaker) !== 1) return;
+        const t = Number(seg.start);
+        if (!Number.isFinite(t)) return;
+        let idx = 1;
+        let label = seg.speakerLabel || 'Оператор';
+        let neutral = false;
+        for (const tr of transfers) {
+          if (tr.tSec == null) continue;
+          if (t >= tr.tSec + DEAD_ZONE) {
+            idx += 1;
+            label = tr.name || ('Сотрудник ' + (idx));
+            neutral = false;
+          } else if (t >= tr.tSec - DEAD_ZONE && t < tr.tSec + DEAD_ZONE) {
+            neutral = true;
+          }
+        }
+        if (neutral) {
+          seg.speaker = null;
+          seg.speakerLabel = 'Спикер';
+        } else if (idx > 1) {
+          seg.speaker = idx;         // 2, 3, ...
+          seg.speakerLabel = label;
+        }
+      });
+    } catch (e) {
+      console.warn('[CallPipeline] transfer speaker marking skipped:', e.message);
     }
   }
 
