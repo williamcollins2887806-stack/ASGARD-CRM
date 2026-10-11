@@ -1422,6 +1422,19 @@ body.theme-dark .ph-seg__btn.is-active {
   border-color: color-mix(in srgb, var(--hg-accent, var(--gold)) 55%, transparent);
 }
 .ph-dp-hangup { flex: none; min-height: 44px; font-size: 14px; }
+/* Громкость входящего: гейн до 3x (WebRTC 8 кГц звучит тихо). */
+.ph-dp-vol {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 2px;
+}
+.ph-dp-vol-ico { font-size: 16px; line-height: 1; opacity: 0.85; }
+.ph-dp-vol-range { flex: 1; accent-color: var(--hg-accent-chat, var(--blue-l)); height: 20px; }
+.ph-dp-vol-val {
+  min-width: 44px; text-align: right; font-size: 12px; font-variant-numeric: tabular-nums;
+  color: var(--hg-muted, var(--t2));
+}
 .ph-dp-notelbl {
   display: flex;
   flex-direction: column;

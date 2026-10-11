@@ -1084,6 +1084,13 @@
           ctl('keypad', ICON.keypad, 'Клавиши', false) +
           ctl('transfer', ICON.transfer, 'Перевод', false) +
         '</div>' +
+        // Громкость входящего звука (WebRTC на 8 кГц звучит тихо; гейн до 3x).
+        '<div class="ph-dp-vol">' +
+          '<span class="ph-dp-vol-ico" aria-hidden="true">' + (ICON.volume || ICON.speaker || '🔊') + '</span>' +
+          '<input type="range" class="ph-dp-vol-range" id="phVolRange" min="0" max="3" step="0.1" value="' +
+            (window.AsgardPhone && AsgardPhone.getVolume ? AsgardPhone.getVolume() : 1.6) + '" aria-label="Громкость собеседника">' +
+          '<span class="ph-dp-vol-val ph-js-volval">' + Math.round((window.AsgardPhone && AsgardPhone.getVolume ? AsgardPhone.getVolume() : 1.6) * 100) + '%</span>' +
+        '</div>' +
         '<button type="button" class="ph-act ph-act--hangup ph-dp-hangup" data-ph-dp="hangup" title="Завершить (Esc)">Завершить</button>' +
         '<label class="ph-dp-notelbl">Заметка к звонку' +
           '<textarea class="ph-dp-note" id="phDpNote" data-num="' + esc(num) + '" rows="4" placeholder="Что обсудили…">' + esc(note) + '</textarea>' +
@@ -1112,6 +1119,15 @@
           noteTimer = setTimeout(function () {
             localStorage.setItem(noteKey + ':' + (noteEl.getAttribute('data-num') || ''), noteEl.value);
           }, 400);
+        });
+      }
+      // Регулятор громкости входящего (0..3x). Пишем в localStorage через API.
+      var volEl = panelEl.querySelector('#phVolRange');
+      if (volEl && window.AsgardPhone && AsgardPhone.setVolume) {
+        var volVal = panelEl.querySelector('.ph-js-volval');
+        volEl.addEventListener('input', function () {
+          var v = AsgardPhone.setVolume(volEl.value);
+          if (volVal) volVal.textContent = Math.round(v * 100) + '%';
         });
       }
     }

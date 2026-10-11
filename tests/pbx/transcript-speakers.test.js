@@ -166,5 +166,33 @@ test('B8', 'GET /calls/:id отдаёт transfers (массив) с ФИО', () 
   assert.ok(/to_name/.test(js), 'нет ФИО получателя перевода');
 });
 
+// ── Громкость входящего звука ──
+test('V1', 'core: усиление входящего через WebAudio GainNode (volume>1 невозможен в <audio>)', () => {
+  const js = read('public/assets/js/phone_core.js');
+  assert.ok(/function wireRemoteGain/.test(js), 'нет wireRemoteGain');
+  const i = js.indexOf('function wireRemoteGain');
+  const blk = js.slice(i, i + 1400);
+  assert.ok(/createGain\(\)/.test(blk), 'нет GainNode');
+  assert.ok(/createMediaStreamSource\(stream\)/.test(blk), 'нет источника из потока');
+  assert.ok(/remoteGain\.gain\.value = remoteVolume/.test(blk), 'gain не применяется');
+  assert.ok(/remoteAudio\.volume = 0/.test(blk), 'двойное воспроизведение (элемент не заглушён)');
+});
+
+test('V2', 'core: setVolume/getVolume + персистентность', () => {
+  const js = read('public/assets/js/phone_core.js');
+  assert.ok(/setVolume: function/.test(js), 'нет setVolume');
+  assert.ok(/getVolume: function/.test(js), 'нет getVolume');
+  assert.ok(/localStorage\.setItem\('asgard_phone_volume'/.test(js), 'громкость не сохраняется');
+  assert.ok(/Math\.min\(3,/.test(js), 'нет ограничения максимума 3x');
+});
+
+test('V3', 'UI: регулятор громкости в панели разговора', () => {
+  const js = read('public/assets/js/phone_ui.js');
+  assert.ok(/id="phVolRange"/.test(js), 'нет слайдера громкости');
+  assert.ok(/AsgardPhone\.setVolume/.test(js), 'слайдер не связан с API');
+  const css = read('public/assets/css/phone.css');
+  assert.ok(/\.ph-dp-vol-range/.test(css), 'нет CSS слайдера');
+});
+
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);

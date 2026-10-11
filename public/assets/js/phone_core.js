@@ -198,8 +198,46 @@
       remoteAudio.playsInline = true;
       remoteAudio.style.display = 'none';
       document.body.appendChild(remoteAudio);
+      applyRemoteVolume();
     }
     return remoteAudio;
+  }
+
+  // Громкость входящего (0..3, где 1 = обычная). Значение хранится локально,
+  // по умолчанию слегка усилено (1.6), т.к. WebRTC-приём на 8 кГц звучит тихо.
+  // Гейн делаем через WebAudio GainNode — HTMLAudioElement.volume>1 не работает.
+  var remoteVolume = parseFloat(localStorage.getItem('asgard_phone_volume') || '1.6');
+  var remoteGain = null;
+  var remoteSrc = null;
+  var audioCtxRemote = null;
+
+  function applyRemoteVolume() {
+    if (remoteAudio) { try { remoteAudio.volume = 1.0; } catch (_) {} }
+    if (remoteGain) { try { remoteGain.gain.value = remoteVolume; } catch (_) {} }
+  }
+
+  function wireRemoteGain(stream) {
+    if (!stream) return;
+    try {
+      var Ctx = window.AudioContext || window.webkitAudioContext;
+      if (!Ctx) return;
+      audioCtxRemote = audioCtxRemote || new Ctx();
+      if (audioCtxRemote.state === 'suspended' && audioCtxRemote.resume) {
+        audioCtxRemote.resume().catch(function () {});
+      }
+      if (remoteSrc) { try { remoteSrc.disconnect(); } catch (_) {} }
+      remoteSrc = audioCtxRemote.createMediaStreamSource(stream);
+      remoteGain = audioCtxRemote.createGain();
+      remoteGain.gain.value = remoteVolume;
+      remoteSrc.connect(remoteGain);
+      // Усиленный звук — в колонки; сам <audio> остаётся беззвучным (volume=0),
+      // чтобы не было двойного воспроизведения.
+      remoteGain.connect(audioCtxRemote.destination);
+      if (remoteAudio) { try { remoteAudio.volume = 0; } catch (_) {} }
+    } catch (e) {
+      // WebAudio недоступен — играем через элемент (усиление не применится).
+      if (remoteAudio) { try { remoteAudio.volume = 1.0; } catch (_) {} }
+    }
   }
 
   function attachSessionMedia(session) {
@@ -207,11 +245,11 @@
     session.on('peerconnection', function (data) {
       var pc = data.peerconnection;
       pc.addEventListener('track', function (ev) {
-        if (ev.streams && ev.streams[0]) audio.srcObject = ev.streams[0];
+        if (ev.streams && ev.streams[0]) { audio.srcObject = ev.streams[0]; wireRemoteGain(ev.streams[0]); }
       });
     });
     session.connection && session.connection.addEventListener('track', function (ev) {
-      if (ev.streams && ev.streams[0]) audio.srcObject = ev.streams[0];
+      if (ev.streams && ev.streams[0]) { audio.srcObject = ev.streams[0]; wireRemoteGain(ev.streams[0]); }
     });
   }
 
@@ -859,6 +897,21 @@
       if (a.srcObject) return a.play().catch(function (e) { emit('audio_blocked', { error: e.message }); });
       return Promise.resolve();
     },
+
+    /** Громкость входящего звука (0..3). 1 = обычная, >1 — усиление. */
+    setVolume: function (v) {
+      var n = Number(v);
+      if (!Number.isFinite(n)) return remoteVolume;
+      remoteVolume = Math.max(0, Math.min(3, n));
+      try { localStorage.setItem('asgard_phone_volume', String(remoteVolume)); } catch (_) {}
+      applyRemoteVolume();
+      if (remoteGain) { try { remoteGain.gain.value = remoteVolume; } catch (_) {} }
+      // Если WebAudio не поднялся (например, запрет политики) — применим к элементу.
+      if (remoteAudio && !remoteGain) { try { remoteAudio.volume = Math.min(1, remoteVolume); } catch (_) {} }
+      emit('volume', { volume: remoteVolume });
+      return remoteVolume;
+    },
+    getVolume: function () { return remoteVolume; },
 
     getSipRegistered: function () { return sipRegistered; },
   };
