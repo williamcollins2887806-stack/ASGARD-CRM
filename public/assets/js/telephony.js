@@ -110,13 +110,46 @@ window.AsgardTelephonyPage = (function () {
     return 'ok';
   }
 
+  /**
+   * Секунды из значения сегмента. RouterAI отдаёт строки "MM:SS",
+   * Yandex/стерео — числа. Иначе — NaN → «--:--»/нейтрально.
+   */
+  function parseSec(v) {
+    if (typeof v === 'number') return Number.isFinite(v) ? v : null;
+    if (typeof v === 'string') {
+      var t = v.trim();
+      if (!t) return null;
+      var mm = t.match(/^(\d+):(\d+(?:\.\d+)?)$/);
+      if (mm) return parseInt(mm[1], 10) * 60 + parseFloat(mm[2]);
+      var n = parseFloat(t);
+      return Number.isFinite(n) ? n : null;
+    }
+    return null;
+  }
+
+  /**
+   * Нормализация говорящего к 0/1/2/… Возвращает null, если однозначно
+   * определить нельзя (тогда UI показывает нейтральную метку, а НЕ «Клиент»).
+   */
+  function normalizeSpeaker(seg) {
+    var s = seg && seg.speaker;
+    if (typeof s === 'number' && Number.isFinite(s)) return s;
+    if (typeof s === 'string') {
+      if (/^\d+$/.test(s)) return parseInt(s, 10);
+      var m = /^SPEAKER[_\s-]?(\d+)$/i.exec(s.trim());
+      if (m) return parseInt(m[1], 10);
+    }
+    return null;
+  }
+
   function segmentsPlainText(segs) {
     if (!segs) return '';
     if (typeof segs === 'string') { try { segs = JSON.parse(segs); } catch (_) { return ''; } }
     if (!Array.isArray(segs) || !segs.length) return '';
     return segs.map(function (seg) {
-      var sp = seg.speaker === 0 || seg.speaker === '0' ? 'Менеджер' : 'Клиент';
-      if (seg.speaker_label) sp = seg.speaker_label;
+      var idx = normalizeSpeaker(seg);
+      var sp = seg.speaker_label;
+      if (!sp) sp = idx == null ? 'Спикер' : (idx === 0 ? 'Оператор' : 'Клиент');
       return sp + ': ' + (seg.text || '');
     }).join('\n');
   }
@@ -156,9 +189,10 @@ window.AsgardTelephonyPage = (function () {
   }
 
   function fmtDuration(sec) {
-    if (sec == null || sec < 0) return '\u2014';
-    var m = Math.floor(sec / 60);
-    var s = Math.floor(sec % 60);
+    var v = parseSec(sec);
+    if (v == null || v < 0) return '\u2014';
+    var m = Math.floor(v / 60);
+    var s = Math.floor(v % 60);
     return String(m).padStart(2, '0') + ':' + String(s).padStart(2, '0');
   }
 
@@ -1964,14 +1998,21 @@ window.AsgardTelephonyPage = (function () {
           '<p class="call-section-hint">Клик по фразе перематывает запись (если плеер загружен).</p>' +
           '<div class="transcript-viewer" id="transcriptViewer">';
         segs.forEach(function(seg) {
-          var startSec = seg.start || 0;
-          var endSec = seg.end || 0;
-          var speaker = seg.speaker != null ? seg.speaker : 0;
-          var spkCls = 'transcript-seg-speaker--' + (speaker % 2);
-          var spkLabel = (speaker === 0 || speaker === '0') ? 'Менеджер' : 'Клиент';
+          var startSec = parseSec(seg.start);
+          var endSec = parseSec(seg.end);
+          // Нормализуем speaker (0/1/2, "SPEAKER_00", "0"), а не считаем всё «Клиент».
+          var idx = seg.speaker_css != null ? seg.speaker_css : normalizeSpeaker(seg);
+          var spkCls = 'transcript-seg-speaker--' + (idx == null ? 'u' : (idx % 4));
+          var spkLabel;
           if (seg.speaker_label) spkLabel = seg.speaker_label;
+          else if (idx == null) spkLabel = 'Спикер';
+          else if (idx === 0) spkLabel = call.manager_name || 'Оператор';
+          else if (idx === 1) spkLabel = call.caller_company || call.caller_name || 'Абонент';
+          else spkLabel = 'Участник ' + (idx + 1);
           var timeFmt = fmtDuration(startSec);
-          segmentsHtml += '<div class="transcript-seg-row" data-start="' + startSec + '" data-end="' + endSec + '">' +
+          var startAttr = startSec == null ? '' : startSec;
+          var endAttr = endSec == null ? '' : endSec;
+          segmentsHtml += '<div class="transcript-seg-row" data-start="' + startAttr + '" data-end="' + endAttr + '">' +
             '<span class="transcript-seg-time">' + timeFmt + '</span>' +
             '<span class="' + spkCls + '">' + esc(spkLabel) + '</span>' +
             '<span class="transcript-seg-text">' + esc(seg.text || '') + '</span>' +

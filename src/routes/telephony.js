@@ -843,6 +843,17 @@ module.exports = async function telephonyRoutes(fastify, opts) {
     const call = res.rows[0];
     delete call.webhook_payload; // Не отдаём сырые данные клиенту
 
+    // Идентификация СТОРОН по данным звонка (не по индексу спикера):
+    // клиент — по номеру (входящий: from_number, исходящий: to_number),
+    // оператор — user_id/answered_by. Имена нужны субтитрам для подписей.
+    try {
+      const enriched = await enrichCallRows(db, [call]);
+      const e = enriched[0] || call;
+      call.caller_name = e.caller_name || null;
+      call.caller_company = e.caller_company || null;
+      call.caller_type = e.caller_type || null;
+    } catch (_) { /* идентификация не критична для карточки */ }
+
     reply.send(call);
   });
 
