@@ -227,6 +227,7 @@ export function PhoneInput({ value, onChange, ...rest }) {
       <span className="inp-icon">📞</span>
       <input
         type="tel"
+        data-phone-mask="off"
         className="inp-text"
         value={formatRuPhoneDisplay(value || '')}
         onChange={(e) => onChange?.(normalizeRuPhoneDigits(e.target.value))}

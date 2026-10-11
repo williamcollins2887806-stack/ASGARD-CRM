@@ -76,8 +76,8 @@
       </button>
       <div class="h-phone-row">
         <span class="h-phone-prefix" id="dialCode">${country.dial}</span>
-        <input id="phone" type="tel" inputmode="tel" placeholder="Номер телефона" autocomplete="tel"
-          value="${invite && invite.phone ? esc(invite.phone) : ''}" />
+        <input id="phone" type="tel" inputmode="tel" data-phone-mask="off" placeholder="Номер телефона" autocomplete="tel"
+          value="${invite && invite.phone ? esc(String(invite.phone).replace(/\D/g, '').replace(/^7/, '')) : ''}" />
       </div>
       <label class="h-sync">
         <span>Синхронизировать контакты</span>
@@ -125,7 +125,8 @@
     continueBtn.onclick = () => {
       const full = phoneFull();
       const digits = full.replace(/\D/g, '');
-      if (digits.length < (country.dial.replace(/\D/g, '').length + country.len - 1)) { setErr('Введите номер полностью'); return; }
+      // Ожидаемая полная длина: код страны + локальный номер.
+      if (digits.length < (country.dial.replace(/\D/g, '').length + country.len)) { setErr('Введите номер полностью'); return; }
       lastPhoneFull = full;
       openConfirm(full);
     };

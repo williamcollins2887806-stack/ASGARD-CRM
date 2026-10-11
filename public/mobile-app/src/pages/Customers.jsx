@@ -268,8 +268,17 @@ function CreateCustomerSheet({ open, onClose, onCreated }) {
     setSaving(true);
     try {
       const contactName = contact.trim();
-      const phone1 = phone.trim();
-      const phone2val = phone2.trim();
+      // Единый канон: отдаём 11 цифр без «+» (бэк/справочники) — если номер разбирается.
+      const normPhone = (v) => {
+        const raw = String(v || '').trim();
+        if (!raw) return '';
+        let d = raw.replace(/\D/g, '');
+        if (d.length === 11 && d.startsWith('8')) d = '7' + d.slice(1);
+        if (d.length === 10) d = '7' + d;
+        return d.length === 11 && d.startsWith('7') ? d : raw;
+      };
+      const phone1 = normPhone(phone);
+      const phone2val = normPhone(phone2);
       const payload = {
         inn: inn.trim(),
         name: name.trim(),

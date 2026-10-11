@@ -573,7 +573,7 @@ window.AsgardEmployeePage=(function(){
                 <div>
                   <label>Телефон основной</label>
                   <div class="emp-ws-phone-row">
-                    <input id="phone" value="${esc(phoneDisp)}" ${canEdit?"":"disabled"}/>
+                    <input id="phone" data-phone-mask="off" value="${esc(phoneDisp)}" ${canEdit?"":"disabled"}/>
                     <button type="button" class="asg-copy-btn asg-copy-btn--always" id="btnCopyPhone" title="Скопировать телефон" aria-label="Скопировать телефон">
                       <svg class="asg-copy-btn__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
                       <svg class="asg-copy-btn__done" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>
@@ -582,7 +582,7 @@ window.AsgardEmployeePage=(function(){
                 </div>
                 <div>
                   <label>Телефон дополнительный</label>
-                  <input id="phone2" value="${esc(phone2Disp)}" ${canEdit?"":"disabled"}/>
+                  <input id="phone2" data-phone-mask="off" value="${esc(phone2Disp)}" ${canEdit?"":"disabled"}/>
                 </div>
                 <div>
                   <label>Email</label>
@@ -601,7 +601,7 @@ window.AsgardEmployeePage=(function(){
                 </div>
                 <div>
                   <label>Телефон супруга(и)</label>
-                  <input id="spouse_phone" value="${esc(spousePhoneDisp)}" ${canEdit?"":"disabled"}/>
+                  <input id="spouse_phone" data-phone-mask="off" value="${esc(spousePhoneDisp)}" ${canEdit?"":"disabled"}/>
                 </div>
                 <div>
                   <label>ФИО родственника</label>
@@ -613,7 +613,7 @@ window.AsgardEmployeePage=(function(){
                 </div>
                 <div>
                   <label>Телефон родственника</label>
-                  <input id="relative_phone" value="${esc(relativePhoneDisp)}" ${canEdit?"":"disabled"}/>
+                  <input id="relative_phone" data-phone-mask="off" value="${esc(relativePhoneDisp)}" ${canEdit?"":"disabled"}/>
                 </div>
               </div>
             </section>

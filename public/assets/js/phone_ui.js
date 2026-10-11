@@ -1014,7 +1014,7 @@
             '</div>') +
         lineBannersHtml() +
         '<form class="ph-dp-dial" data-ph-dp="dial">' +
-          '<input type="tel" class="ph-dp-input" id="phDpDial" placeholder="+7…" autocomplete="off">' +
+          '<input type="tel" class="ph-dp-input" id="phDpDial" data-phone-mask="off" placeholder="+7…" autocomplete="off">' +
           '<button type="submit" class="ph-dp-btn ph-dp-btn--primary">Позвонить</button>' +
         '</form>')
       : '';
@@ -1359,7 +1359,7 @@
   function openDialPad(prefill) {
     if (!window.AsgardUI || !AsgardUI.showModal) return;
     var html =
-      '<label class="ph-dial-label">Номер<input type="tel" class="inp" id="phDialNum" value="' + esc(prefill || '') + '" placeholder="+7…"></label>' +
+      '<label class="ph-dial-label">Номер<input type="tel" class="inp" id="phDialNum" data-phone-mask="off" value="' + esc(prefill || '') + '" placeholder="+7…"></label>' +
       '<div class="ph-dial-grid" id="phDialGrid"></div>' +
       '<button type="button" class="btn primary ph-dial-call" id="phDialCall">Позвонить</button>';
     var overlay = AsgardUI.showModal({ title: 'Набор номера', html: html, wide: false });
