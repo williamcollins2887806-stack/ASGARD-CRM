@@ -17,11 +17,26 @@ const WEIGHTS = Object.freeze({
 const SPEED_TARGET_HOURS = 24;
 const COLLAB_NORM = 3; // invites с активностью helper → полный вес Collab
 
+// Слишком короткие «циклы» (карточка закрыта тем же запросом, что и открыта) не несут
+// сигнала о скорости, но обнуляют медиану → «Медиана 0 ч». Такие замеры не учитываем.
+const MIN_MEASURABLE_HOURS = 0.05; // < 3 минут — не рабочий цикл
+// Свежее приглашение, на которое коллега ещё не успел отреагировать, — это тоже
+// сотрудничество: даём ему частичный вес, иначе только что привлечённый РП «обнуляет» компонент.
+const COLLAB_PENDING_CREDIT = 0.5;
+
+/** Реестровый статус, в котором карточка — рабочая задача РП (не терминальная). */
+function isWorkingRegistryStatus(status) {
+  const s = String(status == null ? '' : status).trim();
+  return !s || s === 'рассмотрение' || s === 'готовим';
+}
+
 const PENALTY = Object.freeze({
   overdue: { per: 12, cap: 36 },
   abandoned: { per: 5, cap: 20 },
   rejectNoPreset: { per: 3, cap: 9 },
-  registryCancel: { per: 4, cap: 12 }
+  // Отмена тендера — решение ТО/заказчика, а не «хаос РП». Штраф оставляем (softened),
+  // но уменьшенным: раньше −4/шт до −12, теперь −2/шт до −6.
+  registryCancel: { per: 2, cap: 6 }
 });
 
 const BONUS = Object.freeze({
@@ -360,7 +375,8 @@ async function computeUserRating(db, userId, windowKind, asOfDate) {
     if (mine && finalizedInWindow) {
       doneIds.add(tid);
       const h = hoursBetween(started, closedAt);
-      if (h != null) speedHours.push(h);
+      // Только реальные рабочие циклы: мгновенные (старт==финал) искажали медиану до нуля.
+      if (h != null && h >= MIN_MEASURABLE_HOURS) speedHours.push(h);
 
       if (row.decision === 'reject') {
         rejectTotal += 1;
@@ -390,7 +406,9 @@ async function computeUserRating(db, userId, windowKind, asOfDate) {
 
     // Abandoned: mine, started, not closed, age > 7d — только пока дежурит / в окне duty.
     // Не используем pe < today для d30 (там pe=asOf) — это давало ложный drip после смены.
-    if (mine && takenFlag && !finalized) {
+    // Терминальные статусы (отмена/подались/проиграли/выиграли) НЕ «брошены»: работа по ним
+    // завершена вовне (отменена ТО/заказчиком либо отправлена), закрывать её РП не должен.
+    if (mine && takenFlag && !finalized && isWorkingRegistryStatus(row.registry_status)) {
       const olderThan7 = startedDate && addDaysIso(startedDate, 7) < today;
       const dutyWindowEnded = window_kind === 'duty' && pe < today;
       if (olderThan7 || dutyWindowEnded) {
@@ -399,8 +417,10 @@ async function computeUserRating(db, userId, windowKind, asOfDate) {
       }
     }
 
-    // Registry cancel chaos: owner mine, отмена, без закрытого анализа и без preset
-    if (mine && row.registry_status === 'отмена') {
+    // Registry cancel chaos: owner mine, отмена, без закрытого анализа и без preset.
+    // Штрафуем только если РП реально вёл карточку (`takenFlag`): отменённый тендер,
+    // который РП даже не начинал (пустой `analysis_started_at`), — это не «хаос РП».
+    if (mine && takenFlag && row.registry_status === 'отмена') {
       const preset = parseRejectPreset(row.report_json);
       if (!finalized && !preset) {
         registryCancelBad += 1;
@@ -428,7 +448,11 @@ async function computeUserRating(db, userId, windowKind, asOfDate) {
   const discipline01 = (rejectDiscipline + deadlineDiscipline) / 2;
 
   const activeCollabs = collabs.filter((c) => c.helper_active).length;
-  const collab01 = clamp(activeCollabs / COLLAB_NORM, 0, 1);
+  const pendingCollabs = collabs.filter((c) => !c.helper_active).length;
+  // Свежее приглашение без активности — частичный вес (см. COLLAB_PENDING_CREDIT).
+  // Раньше «Я пригласил коллегу, он ещё не отреагировал» давало ровно 0 из 10.
+  const collabCredit = activeCollabs + pendingCollabs * COLLAB_PENDING_CREDIT;
+  const collab01 = clamp(collabCredit / COLLAB_NORM, 0, 1);
 
   const components = {
     take: {
@@ -468,6 +492,7 @@ async function computeUserRating(db, userId, windowKind, asOfDate) {
       points: Math.round(collab01 * WEIGHTS.collab * 100) / 100,
       invites: collabs.length,
       active: activeCollabs,
+      pending: pendingCollabs,
       norm: COLLAB_NORM
     }
   };

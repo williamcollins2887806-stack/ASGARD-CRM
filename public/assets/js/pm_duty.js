@@ -288,7 +288,16 @@ window.AsgardPmDutyPage = (function () {
           : 'Мало закрытий для медианы';
       }
       if (key === 'discipline') return 'Отказы с причиной ' + (c.reject_with_preset || 0) + '/' + (c.reject_total || 0);
-      if (key === 'collab') return 'Активных привлечений ' + (c.active || 0) + ' / норма ' + (c.norm || 3);
+      if (key === 'collab') {
+        // Приглашение без активности тоже показываем: иначе «0 из норма 3» читается
+        // как «я никого не привлекал», хотя коллега приглашён и ещё не отреагировал.
+        const parts = [];
+        if (c.active) parts.push('активных ' + c.active);
+        if (c.pending) parts.push('ожидают ' + c.pending);
+        const detail = parts.length ? ' (' + parts.join(' · ') + ')' : '';
+        return 'Приглашений ' + (c.invites || 0) + ' · зачтено ' + (c.active || 0) +
+          (c.pending ? ' + ' + c.pending + '×0.5' : '') + ' / норма ' + (c.norm || 3) + detail;
+      }
       return '';
     }
 

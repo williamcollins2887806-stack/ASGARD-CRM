@@ -72,6 +72,12 @@ async function main() {
     'scareQueue',
     'finalized_by_user_id'
   ]);
+  assertSrc('SRC_RATING_FAIR_PENALTIES', 'src/services/pm-analysis-rating.js', [
+    'isWorkingRegistryStatus',
+    'MIN_MEASURABLE_HOURS',
+    'COLLAB_PENDING_CREDIT',
+    'pendingCollabs'
+  ]);
   assertSrc('SRC_QUEUE_TERMINAL_FILTER', 'src/routes/pm-duty.js', [
     'notTerminalStatusesSql',
     'TERMINAL_REGISTRY_STATUSES',
