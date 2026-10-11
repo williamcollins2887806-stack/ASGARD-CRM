@@ -1,4 +1,5 @@
 const { logError } = require('../lib/log-error');
+const { toDigitsRu } = require('../lib/phone');
 /**
  * Customers Routes
  */
@@ -41,6 +42,9 @@ function filterData(data) {
     if (k === 'contacts') {
       // pg umеет JSONB-приём через JSON.stringify; нормализуем структуру.
       filtered[k] = JSON.stringify(normalizeContacts(v));
+    } else if (k === 'phone') {
+      // Контрагент — может быть и городской/8-800; канонизируем только уверенные РФ-мобильные.
+      filtered[k] = toDigitsRu(v) || v;
     } else {
       filtered[k] = v;
     }

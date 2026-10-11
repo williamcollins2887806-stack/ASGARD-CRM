@@ -4,6 +4,7 @@
 
 const { closedSql, notClosedSql } = require('../helpers/work-status');
 const { assertPpeSizes } = require('../lib/ppe-sizes');
+const { toDigitsRu, normalizePhoneFields, EMPLOYEE_PHONE_KEYS } = require('../lib/phone');
 
 // SECURITY: Allowlist of columns
 const EMPLOYEE_COLS = new Set([
@@ -502,6 +503,7 @@ async function routes(fastify, options) {
       }
     }
     if ('gender' in body) body.gender = normalizeGender(body.gender);
+    normalizePhoneFields(body, EMPLOYEE_PHONE_KEYS);
     const data = filterData({ ...body, created_at: new Date().toISOString() }, EMPLOYEE_COLS);
     const keys = Object.keys(data);
     const values = Object.values(data);
@@ -616,6 +618,7 @@ async function routes(fastify, options) {
 
     // ── 6) Whitelist + UPDATE employees.
     if ('gender' in body) body.gender = normalizeGender(body.gender);
+    normalizePhoneFields(body, EMPLOYEE_PHONE_KEYS);
     const data = filterData(body, EMPLOYEE_COLS);
     const updates = [];
     const values = [];
@@ -753,7 +756,7 @@ async function routes(fastify, options) {
   }, async (request, reply) => {
     const body = request.body || {};
     const fio = String(body.fio || '').trim();
-    const phone = body.phone == null ? null : String(body.phone).trim() || null;
+    const phone = body.phone == null ? null : (toDigitsRu(body.phone) || String(body.phone).trim() || null);
     const innRaw = body.inn == null ? null : String(body.inn).trim() || null;
     if (!fio) return reply.code(400).send({ error: 'Обязательное поле: fio' });
 
@@ -1372,7 +1375,7 @@ async function routes(fastify, options) {
               errors.push({ idx: i, error: `${action}: fio обязателен` });
               continue;
             }
-            const phone = r.phone == null ? null : String(r.phone).trim() || null;
+            const phone = r.phone == null ? null : (toDigitsRu(r.phone) || String(r.phone).trim() || null);
             const remaining = r.remaining == null ? null : Number(r.remaining);
             const remValid = remaining != null && Number.isFinite(remaining) && remaining >= 0;
 

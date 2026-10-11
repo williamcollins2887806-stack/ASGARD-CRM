@@ -9,6 +9,7 @@
 'use strict';
 
 const crypto = require('crypto');
+const { toDigitsRu } = require('../lib/phone');
 const db = require('../services/db');
 const bankProcessor = require('../services/bank-processor');
 const platformParser = require('../services/platform-parser');
@@ -803,7 +804,7 @@ module.exports = async function (fastify) {
           await db.query(`INSERT INTO customers (name, inn, kpp, address, phone, email, created_at)
             VALUES ($1,$2,$3,$4,$5,$6,NOW()) ON CONFLICT DO NOTHING`,
             [row.name || row.Наименование, row.inn || row.ИНН, row.kpp || row.КПП,
-             row.address || row.Адрес || '', row.phone || row.Телефон || '', row.email || row.Email || '']);
+             row.address || row.Адрес || '', (row.phone || row.Телефон || '') ? (toDigitsRu(row.phone || row.Телефон) || (row.phone || row.Телефон)) : '', row.email || row.Email || '']);
           success++;
         } else if (entity_type === 'bank_statement') {
           // Обрабатываем через bank-processor

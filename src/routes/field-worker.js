@@ -14,6 +14,7 @@
 const { getWorkerFinances } = require('../lib/worker-finances');
 const { logError } = require('../lib/log-error');
 const { assertPpeSizes } = require('../lib/ppe-sizes');
+const { toDigitsRu } = require('../lib/phone');
 
 const FIELD_ACHIEVEMENTS = [
   { id: 'first_shift',    icon: '🔥', name: 'Пе��вая смена',    desc: 'Отработал первый день', check: s => s.total_shifts >= 1 },
@@ -980,14 +981,9 @@ async function routes(fastify, options) {
 
   const PHONE_FIELDS = new Set(['phone', 'phone2', 'spouse_phone', 'relative_phone']);
 
-  function normalizeRuPhoneDigits(raw) {
-    let d = String(raw || '').replace(/\D/g, '');
-    if (!d) return '';
-    if (d.startsWith('8') && d.length === 11) d = '7' + d.slice(1);
-    if (d.length === 10) d = '7' + d;
-    if (d.length > 11) d = d.slice(0, 11);
-    return d;
-  }
+  // Единый нормализатор (src/lib/phone.js): 8/10 цифр → 11 цифр с ведущей 7.
+  // Невалидное (городской, «доб.», два номера) → '' → пишем null, не портим.
+  const normalizeRuPhoneDigits = toDigitsRu;
 
   function filled(v) {
     return v != null && String(v).trim() !== '';

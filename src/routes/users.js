@@ -6,6 +6,7 @@
 const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
 const { logError } = require('../lib/log-error');
+const { toDigitsRu } = require('../lib/phone');
 const {
   shouldHideTestUsersFromLists,
   usersExcludeSql,
@@ -239,7 +240,7 @@ async function routes(fastify, options) {
       INSERT INTO users (login, password_hash, name, email, phone, role, birth_date, employment_date, telegram_chat_id, is_active, must_change_password, created_at)
       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, true, NOW())
       RETURNING id, login, name, patronymic, email, role, is_active, birth_date, employment_date, phone, telegram_chat_id, created_at
-    `, [login, passwordHash, name, email || null, phone || null, role, birth_date || null, employment_date || null, telegram_chat_id || null, is_active]);
+    `, [login, passwordHash, name, email || null, phone ? (toDigitsRu(phone) || phone) : null, role, birth_date || null, employment_date || null, telegram_chat_id || null, is_active]);
 
     const user = result.rows[0];
 
@@ -559,7 +560,7 @@ async function routes(fastify, options) {
 
     if (birth_date !== undefined) { updates.push("birth_date = $" + idx); values.push(birth_date || null); idx++; }
     if (employment_date !== undefined) { updates.push("employment_date = $" + idx); values.push(employment_date || null); idx++; }
-    if (phone !== undefined) { updates.push("phone = $" + idx); values.push(phone || null); idx++; }
+    if (phone !== undefined) { updates.push("phone = $" + idx); values.push(phone ? (toDigitsRu(phone) || phone) : null); idx++; }
     if (telegram_chat_id !== undefined) { updates.push("telegram_chat_id = $" + idx); values.push(telegram_chat_id || null); idx++; }
 if (patronymic !== undefined) { updates.push("patronymic = $" + idx); values.push(patronymic || null); idx++; }
     if (avatar_url !== undefined) { updates.push("avatar_url = $" + idx); values.push(avatar_url || null); idx++; }

@@ -1,4 +1,5 @@
 'use strict';
+const { toDigitsRu } = require('../lib/phone');
 /**
  * АСГАРД CRM — Справочники закупок 2.0
  * ═══════════════════════════════════════════════════════════════════════════
@@ -64,10 +65,11 @@ async function routes(fastify) {
     if (!name || !name.trim()) return bad(reply, 'Название обязательно');
     const cat = category || 'materials';
     if (!SUPPLIER_CATEGORIES.includes(cat)) return bad(reply, 'Неверная категория поставщика');
+    const phoneNorm = phone ? (toDigitsRu(phone) || phone) : null;
     const { rows } = await db.query(
       `INSERT INTO suppliers(name,inn,kpp,ogrn,phone,email,website,address,category,rating,notes,created_by)
        VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *`,
-      [name.trim(), inn || null, kpp || null, ogrn || null, phone || null, email || null,
+      [name.trim(), inn || null, kpp || null, ogrn || null, phoneNorm, email || null,
        website || null, address || null, cat, rating || null, notes || null, req.user.id]);
     return { item: rows[0] };
   });
@@ -77,7 +79,11 @@ async function routes(fastify) {
     if (req.body.category !== undefined && !SUPPLIER_CATEGORIES.includes(req.body.category)) return bad(reply, 'Неверная категория');
     const allowed = ['name', 'inn', 'kpp', 'ogrn', 'phone', 'email', 'website', 'address', 'category', 'rating', 'notes', 'is_active'];
     const upd = [], vals = []; let i = 1;
-    for (const k of allowed) if (req.body[k] !== undefined) { upd.push(`${k}=$${i++}`); vals.push(req.body[k]); }
+    for (const k of allowed) if (req.body[k] !== undefined) {
+      let v = req.body[k];
+      if (k === 'phone' && v) v = toDigitsRu(v) || v;
+      upd.push(`${k}=$${i++}`); vals.push(v);
+    }
     if (!upd.length) return bad(reply, 'Нет данных');
     upd.push('updated_at=NOW()'); vals.push(id);
     const { rows } = await db.query(`UPDATE suppliers SET ${upd.join(',')} WHERE id=$${i} AND deleted_at IS NULL RETURNING *`, vals);

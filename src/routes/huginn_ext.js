@@ -6,6 +6,7 @@
  */
 
 const crypto = require('crypto');
+const { toDigitsRu } = require('../lib/phone');
 const huginnEvents = require('../services/huginn-events');
 const chatVoiceStt = require('../services/chat-voice-stt');
 const huginnFolders = require('../services/huginn-folders');
@@ -426,6 +427,9 @@ module.exports = async function registerHuginnExt(fastify, { db, uploadDir, getC
     }
 
     const loginPhone = phone || inv.phone || '';
+    // Единый ключ: у гостя telefon/login хранятся цифрами (11 цифр с ведущей 7).
+    // Ищем и пишем одним и тем же значением, иначе повторный вход «по сырому» invite не найдёт гостя.
+    const invPhoneDigits = inv.phone ? (toDigitsRu(inv.phone) || String(inv.phone).replace(/\D/g, '')) : '';
     const bcrypt = require('bcryptjs');
     const hash = await bcrypt.hash(password || crypto.randomBytes(24).toString('hex'), 10);
 
@@ -435,7 +439,7 @@ module.exports = async function registerHuginnExt(fastify, { db, uploadDir, getC
       const existing = await db.query(
         `SELECT id, COALESCE(is_huginn_guest, false) AS is_huginn_guest, role, login
          FROM users WHERE phone = $1 OR login = $1 LIMIT 1`,
-        [inv.phone]
+        [invPhoneDigits || loginPhone]
       );
       if (existing.rows[0]) {
         const u = existing.rows[0];
@@ -457,7 +461,7 @@ module.exports = async function registerHuginnExt(fastify, { db, uploadDir, getC
         `INSERT INTO users (name, login, password_hash, role, is_active, phone, email, created_at)
          VALUES ($1, $2, $3, 'FIELD_WORKER', true, $4, $5, NOW())
          RETURNING id, name, login, role`,
-        [name, login, hash, inv.phone || null, inv.email || null]
+        [name, login, hash, invPhoneDigits || null, inv.email || null]
       );
       userId = created[0].id;
       try {
@@ -472,7 +476,7 @@ module.exports = async function registerHuginnExt(fastify, { db, uploadDir, getC
                 email = COALESCE($5, email),
                 is_huginn_guest = true
           WHERE id = $1`,
-        [userId, hash, name, inv.phone || null, inv.email || null]
+        [userId, hash, name, invPhoneDigits || null, inv.email || null]
       );
     }
 

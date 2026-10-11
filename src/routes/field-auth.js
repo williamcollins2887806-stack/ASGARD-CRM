@@ -55,6 +55,13 @@ function normalizePhone(phone) {
   return '+' + digits;
 }
 
+// Строгая нормализация РФ-номера → '+7XXXXXXXXXX' | ''.
+// Используется только для проверки формы (не для поиска): режет 13-значный мусор («+7+7…»),
+// короткие хвосты, пустое и «не 7/8 в начале». Поиск же идёт по последним 10 цифрам.
+function isValidPhone(normalized) {
+  return /^\+7\d{10}$/.test(normalized || '');
+}
+
 function digitsTail(phone) {
   return String(phone || '').replace(/\D/g, '').slice(-10);
 }
@@ -63,7 +70,7 @@ function maxDeliveryPhone(employee, loginPhone) {
   return employee.max_phone || employee.phone2 || loginPhone;
 }
 
-async function findActiveEmployeeByPhone(db, normalized) {
+async function findActiveEmployeesByPhone(db, normalized) {
   const tail = digitsTail(normalized);
   const { rows } = await db.query(
     `SELECT e.id, e.fio, e.phone, e.phone2, e.max_phone, e.city, e.position, e.user_id,
@@ -72,18 +79,34 @@ async function findActiveEmployeeByPhone(db, normalized) {
      LEFT JOIN users u ON u.id = e.user_id
      WHERE e.is_active = true
        AND (
-         REPLACE(REPLACE(REPLACE(REPLACE(COALESCE(e.phone, ''), ' ', ''), '-', ''), '(', ''), ')', '') LIKE $1
-         OR REPLACE(REPLACE(REPLACE(REPLACE(COALESCE(e.phone2, ''), ' ', ''), '-', ''), '(', ''), ')', '') LIKE $1
-         OR REPLACE(REPLACE(REPLACE(REPLACE(COALESCE(e.max_phone, ''), ' ', ''), '-', ''), '(', ''), ')', '') LIKE $1
+         right(regexp_replace(COALESCE(e.phone, ''),     '[^0-9]', '', 'g'), 10) = $1
+         OR right(regexp_replace(COALESCE(e.phone2, ''),    '[^0-9]', '', 'g'), 10) = $1
+         OR right(regexp_replace(COALESCE(e.max_phone, ''), '[^0-9]', '', 'g'), 10) = $1
        )
-     ORDER BY CASE
-       WHEN REPLACE(REPLACE(REPLACE(REPLACE(COALESCE(e.phone, ''), ' ', ''), '-', ''), '(', ''), ')', '') LIKE $1 THEN 0
-       ELSE 1
-     END
-     LIMIT 1`,
-    ['%' + tail]
+     ORDER BY
+       CASE WHEN right(regexp_replace(COALESCE(e.phone, ''), '[^0-9]', '', 'g'), 10) = $1 THEN 0 ELSE 1 END,
+       (u.pin_hash IS NOT NULL) DESC,
+       e.id ASC
+     LIMIT 10`,
+    [tail]
   );
-  return rows[0] || null;
+  return rows;
+}
+
+// Определяем, кого именно авторизуем при неоднозначном номере:
+//  • передан employee_id (работник выбрал себя) — только он;
+//  • иначе единственный кандидат — он;
+//  • иначе единственный с PIN — он (вариант владельца);
+//  • иначе null → нужен выбор «Кто вы?».
+async function resolveEmployeeForAuth(db, employees, employeeId) {
+  if (employeeId != null) {
+    const n = Number(employeeId);
+    return employees.find((e) => Number(e.id) === n) || null;
+  }
+  if (employees.length === 1) return employees[0];
+  const withPin = employees.filter((e) => e.has_pin);
+  if (withPin.length === 1) return withPin[0];
+  return null;
 }
 
 async function routes(fastify, options) {
@@ -95,19 +118,31 @@ async function routes(fastify, options) {
   // ─────────────────────────────────────────────────────────────────────
   fastify.post('/request-code', async (req, reply) => {
     try {
-      const { phone } = req.body || {};
+      const { phone, employee_id: employeeId } = req.body || {};
       if (!phone) {
         return reply.code(400).send({ error: 'Укажите номер телефона' });
       }
 
       const normalized = normalizePhone(phone);
-      if (normalized.length < 12) {
+      if (!isValidPhone(normalized)) {
         return reply.code(400).send({ error: 'Некорректный номер телефона' });
       }
 
-      const employee = await findActiveEmployeeByPhone(db, normalized);
-      if (!employee) {
+      const candidates = await findActiveEmployeesByPhone(db, normalized);
+      if (candidates.length === 0) {
         return reply.code(404).send({ error: 'Сотрудник с таким номером не найден' });
+      }
+
+      // Неоднозначный номер и выбор не сделан → просим выбрать «Кто вы?»
+      const employee = await resolveEmployeeForAuth(db, candidates, employeeId);
+      if (!employee) {
+        return reply.code(409).send({
+          error: 'На этот номер заведено несколько сотрудников. Выберите себя',
+          need_employee_choice: true,
+          employees: candidates.map((e) => ({
+            id: e.id, fio: e.fio, position: e.position, has_pin: !!e.has_pin,
+          })),
+        });
       }
 
       // Rate limit: 1 code per 60 sec per phone
@@ -187,18 +222,29 @@ async function routes(fastify, options) {
   // POST /check-phone — если PIN уже есть, SMS не нужен
   fastify.post('/check-phone', async (req, reply) => {
     try {
-      const { phone } = req.body || {};
+      const { phone, employee_id: employeeId } = req.body || {};
       if (!phone) {
         return reply.code(400).send({ error: 'Укажите номер телефона' });
       }
       const normalized = normalizePhone(phone);
-      if (normalized.length < 12) {
+      if (!isValidPhone(normalized)) {
         return reply.code(400).send({ error: 'Некорректный номер телефона' });
       }
 
-      const employee = await findActiveEmployeeByPhone(db, normalized);
-      if (!employee) {
+      const candidates = await findActiveEmployeesByPhone(db, normalized);
+      if (candidates.length === 0) {
         return reply.code(404).send({ error: 'Сотрудник с таким номером не найден' });
+      }
+
+      // Неоднозначный номер → фронт покажет «Кто вы?» и пришлёт employee_id
+      const employee = await resolveEmployeeForAuth(db, candidates, employeeId);
+      if (!employee) {
+        return {
+          need_employee_choice: true,
+          employees: candidates.map((e) => ({
+            id: e.id, fio: e.fio, position: e.position, has_pin: !!e.has_pin,
+          })),
+        };
       }
 
       return {
@@ -224,7 +270,7 @@ async function routes(fastify, options) {
   // ─────────────────────────────────────────────────────────────────────
   fastify.post('/verify-code', async (req, reply) => {
     try {
-      const { phone, code, reset_pin: resetPin } = req.body || {};
+      const { phone, code, reset_pin: resetPin, employee_id: employeeId } = req.body || {};
       if (!phone || !code) {
         return reply.code(400).send({ error: 'Укажите номер и код' });
       }
@@ -249,7 +295,14 @@ async function routes(fastify, options) {
         return reply.code(401).send({ error: 'Код не найден или истёк. Запросите новый' });
       }
 
-      const match = codes.find((c) => String(c.code) === entered);
+      let match = codes.find((c) => String(c.code) === entered);
+      // Если работник выбрал себя («Кто вы?») — берём код именно под его employee_id
+      if (match && employeeId != null) {
+        const own = codes.find(
+          (c) => String(c.code) === entered && Number(c.employee_id) === Number(employeeId)
+        );
+        if (own) match = own;
+      }
       if (!match) {
         const latest = codes[0];
         if (latest.attempts >= SMS_MAX_ATTEMPTS) {
