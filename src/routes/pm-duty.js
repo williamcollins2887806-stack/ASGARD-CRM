@@ -258,6 +258,20 @@ async function syncCalculatorActor(db, tenderId, userId, userRole, tenderRow, { 
 const CALC_OWNER_ACTIVE_STATUSES = ['рассмотрение', 'готовим'];
 
 /**
+ * D-177: терминальные реестровые статусы — карточка уже не рабочая задача фазы просчёта.
+ * Исключаются из вкладок дежурного (analysis / calc / mine) и из бейджей вкладок.
+ * `отмена`/`проиграли` были и раньше; `подались`/`выиграли` висели у дежурного как
+ * «взять дежурному» вплоть до сроков июня (D-177).
+ */
+const TERMINAL_REGISTRY_STATUSES = ['отмена', 'проиграли', 'подались', 'выиграли'];
+
+/** SQL-фрагмент: карточка в рабочем статусе (не терминальная). */
+function notTerminalStatusesSql(alias = 't') {
+  const list = TERMINAL_REGISTRY_STATUSES.map((s) => `'${s}'`).join(', ');
+  return `AND COALESCE(${alias}.registry_status, 'рассмотрение') NOT IN (${list})`;
+}
+
+/**
  * Self-heal «осиротевшего» просчёта.
  *
  * Анализ закрыт («подаём»), но владелец просчёта не проставлен: так бывает у карточек,
@@ -688,9 +702,13 @@ async function routes(fastify) {
       return { items: r.rows, tab, duty, is_duty: isDuty };
     }
 
-    // Cancelled / lost tenders must leave RP working queues (calc + collab analysis).
-    const notArchivedStatuses = `AND t.registry_status IS DISTINCT FROM 'отмена'
-          AND t.registry_status IS DISTINCT FROM 'проиграли'`;
+    // D-177: из рабочих вкладок (analysis / calc / mine) уходят все терминальные статусы —
+    // см. `notTerminalStatusesSql`. Раньше исключались только `отмена`/`проиграли`, поэтому
+    // `подались` и `выиграли` висели у дежурного как «взять дежурному».
+    const notArchivedStatuses = notTerminalStatusesSql('t');
+
+    /** Статус карточки «активен» для фазы просчёта: только рассмотрение/готовим. */
+    const isActiveCalcStatus = (status) => CALC_OWNER_ACTIVE_STATUSES.includes(String(status || ''));
 
     if (tab === 'mine') {
       const r = await db.query(`
@@ -743,7 +761,10 @@ async function routes(fastify) {
       `, [userId, isDuty]);
       const items = r.rows.map((row) => {
         const ownerless = row.calculator_user_id == null && row.calculator_user_name == null;
-        if (!ownerless || !isDuty) return row;
+        // D-177: «взять дежурному» показываем только на активных статусах — self-heal
+        // (`ensureCalcOwner`) лечит ровно те же `рассмотрение`/`готовим`. Иначе дежурный
+        // видел кнопку там, где карточку нельзя взять (лечение выходит без изменений).
+        if (!ownerless || !isDuty || !isActiveCalcStatus(row.registry_status)) return row;
         return {
           ...row,
           queue_source: 'Просчёт без владельца — взять дежурному',
@@ -851,6 +872,94 @@ async function routes(fastify) {
       is_duty: isDuty,
       queue_mode: queueMode,
       banner
+    };
+  });
+
+  // GET /queue/counts — счётчики для бейджей вкладок.
+  // Каждая вкладка — свой WHERE, поэтому «в списке» в шапке относится только к активной.
+  // Эндпоинт отдаёт ровно те числа, что появятся при переключении, — чтобы не читалось
+  // как рассинхрон (вкладки дежурного: analysis / calc / mine / archive).
+  fastify.get('/queue/counts', {
+    preHandler: [fastify.requireRoles(PM_ROLES)]
+  }, async (request) => {
+    const userId = request.user.id;
+    const duty = await getCurrentDuty(db);
+    const isDuty = !!(duty && Number(duty.pm_user_id) === Number(userId));
+    // Роли надзора видят полную очередь анализа; обычный РП — только свои приглашения.
+    const userRole = request.user.role || '';
+    const oversight = ASSIGN_ROLES.includes(userRole) || userRole === 'HEAD_PM' || userRole === 'ADMIN';
+    // Те же рабочие фильтры, что и в /queue (терминальные статусы — вон).
+    const working = notTerminalStatusesSql('t');
+    const excludeClause = buildRegistryExclusionClause('t', 'cb');
+    const noFinal = 'AND (rev.is_final IS NULL OR rev.is_final = false)';
+
+    const [analysis, calc, mine, archive] = await Promise.all([
+      // analysis: две разные выборки, как в /queue — дежурный/надзор видят полную
+      // очередь, обычный РП только свои приглашения. Счётчик обязан повторять это
+      // ветвление: иначе бейдж обещает строки, которых у пользователя нет в списке.
+      (isDuty || oversight)
+        ? db.query(`SELECT COUNT(*)::int AS c
+            FROM tenders t
+            LEFT JOIN tender_rp_reviews rev ON rev.tender_id = t.id
+            LEFT JOIN users cb ON cb.id = t.created_by
+            WHERE t.deleted_at IS NULL AND t.registry_status = 'рассмотрение'
+              ${noFinal} AND rev.analysis_finalized_at IS NULL
+              AND COALESCE(t.calculator_kind, '') != 'to'
+              ${excludeClause}`)
+        : db.query(`SELECT COUNT(*)::int AS c
+            FROM tenders t
+            JOIN tender_rp_reviews rev ON rev.tender_id = t.id
+            JOIN tender_rp_review_collaborators c ON c.review_id = rev.id AND c.revoked_at IS NULL
+            LEFT JOIN users cb ON cb.id = t.created_by
+            WHERE t.deleted_at IS NULL AND c.pm_user_id = $1
+              ${noFinal} AND rev.analysis_finalized_at IS NULL
+              ${working}
+              AND COALESCE(t.calculator_kind, '') != 'to'
+              ${excludeClause}`, [userId]),
+      // calc: анализ закрыт; мои (владелец) + безвладельные при дежурстве.
+      db.query(`SELECT COUNT(*)::int AS c
+        FROM tenders t
+        JOIN tender_rp_reviews rev ON rev.tender_id = t.id
+        LEFT JOIN users cb ON cb.id = t.created_by
+        WHERE t.deleted_at IS NULL ${noFinal}
+          AND rev.analysis_finalized_at IS NOT NULL
+          ${working}
+          AND (
+            t.calculator_user_id = $1 OR rev.calculator_user_id = $1
+            OR EXISTS (SELECT 1 FROM tender_rp_review_collaborators c
+                       WHERE c.review_id = rev.id AND c.pm_user_id = $1 AND c.revoked_at IS NULL)
+            OR ($2::boolean AND t.calculator_user_id IS NULL AND rev.calculator_user_id IS NULL)
+          )
+          ${excludeClause}`, [userId, isDuty]),
+      // mine: всё, где пользователь участник; рабочие статусы, не финал.
+      db.query(`SELECT COUNT(*)::int AS c
+        FROM tenders t
+        JOIN tender_rp_reviews rev ON rev.tender_id = t.id
+        LEFT JOIN users cb ON cb.id = t.created_by
+        WHERE t.deleted_at IS NULL ${noFinal}
+          AND ${participatedSql('$1')}
+          ${working}
+          ${excludeClause}`, [userId]),
+      // archive: закрытые отчёты, где пользователь участник (как в /queue).
+      db.query(`SELECT COUNT(*)::int AS c
+        FROM tenders t
+        JOIN tender_rp_reviews rev ON rev.tender_id = t.id
+        LEFT JOIN users cb ON cb.id = t.created_by
+        WHERE t.deleted_at IS NULL AND rev.is_final = true
+          AND (
+            rev.started_by_user_id = $1 OR rev.finalized_by_user_id = $1
+            OR rev.calculator_user_id = $1 OR t.calculator_user_id = $1
+            OR EXISTS (SELECT 1 FROM tender_rp_review_log l
+                       WHERE l.review_id = rev.id AND l.actor_user_id = $1)
+          )
+          ${excludeClause}`, [userId]),
+    ]);
+
+    return {
+      analysis: Number(analysis.rows[0]?.c) || 0,
+      calc: Number(calc.rows[0]?.c) || 0,
+      mine: Number(mine.rows[0]?.c) || 0,
+      archive: Number(archive.rows[0]?.c) || 0
     };
   });
 

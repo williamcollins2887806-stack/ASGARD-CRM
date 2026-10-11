@@ -346,6 +346,9 @@ window.AsgardRegistryApi = (function () {
     loadPmDutyQueue(tab) {
       return api('/api/pm-duty/queue?tab=' + (tab || 'analysis'));
     },
+    loadPmDutyQueueCounts() {
+      return api('/api/pm-duty/queue/counts');
+    },
     loadPmDutyRatingMe(window) {
       return api('/api/pm-duty/rating/me?window=' + encodeURIComponent(window || 'duty'));
     },

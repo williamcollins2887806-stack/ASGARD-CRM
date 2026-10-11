@@ -337,11 +337,17 @@ async function computeUserRating(db, userId, windowKind, asOfDate) {
     const startedDate = started ? isoDate(started) : null;
     const startedInWindow = !!(startedDate && startedDate >= ps && startedDate <= pe);
 
-    // Pool для take: только МОИ карточки + незабранные из очереди на дежурстве.
-    // Чужой backlog / чужие финалы больше не раздувают знаменатель (лояльность).
+    // Pool для take: только карточки, реально относящиеся к оцениваемому окну.
+    //  • «мои» — лишь если закрыты в окне ЛИБО открыты и (начаты в окне ИЛИ окно = смена).
+    //    Раньше добавлялись ВСЕ «мои» карточки без привязки к окну: исторический backlog
+    //    раздувал знаменатель, а числитель (taken) фильтровался по окну → «Покрытие очереди»
+    //    падало почти до нуля (−25 из 100 «на ровном месте»).
+    //  • незабранные из общей очереди — только пока дежурим (это и есть смысл покрытия).
     const openQueue = !finalized && (row.registry_status === 'рассмотрение' || !row.registry_status);
+    const inWindowForPool = finalizedInWindow
+      || (!finalized && (startedInWindow || window_kind === 'duty'));
     if (mine) {
-      poolIds.add(tid);
+      if (inWindowForPool) poolIds.add(tid);
     } else if (!takenFlag && openQueue && (window_kind === 'duty' || onDutyAtAsOf)) {
       poolIds.add(tid);
     }

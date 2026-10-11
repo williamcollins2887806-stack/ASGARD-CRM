@@ -798,6 +798,78 @@ async function caseOrphan(pg) {
 }
 
 /**
+ * D-177: терминальные статусы не должны попадать в рабочие вкладки дежурного, а пометка
+ * «взять дежурному» (`duty_orphan`) — вешаться только на активные статусы (рассмотрение/готовим).
+ *
+ * Проверяем на живой очереди: карточка с `registry_status='подались'` и без владельца,
+ * эмулированная как «закрыта до выкатки автопривязки», НЕ появляется во вкладке «Просчёты»
+ * и НЕ помечается `duty_orphan`. Контроль: та же карточка в статусе `рассмотрение` —
+ * появляется (иначе тест не различал бы фильтр и просто пустую очередь).
+ */
+async function caseTerminalQueue(pg) {
+  const id = 'TERM';
+  const name = 'D-177: `подались` не висит в «Просчётах» дежурного; `duty_orphan` — только на активных статусах';
+  let rosterId = null;
+  try {
+    const pmId = state.dutyPmUserId || TEST_USERS.PM?.id;
+    if (!pmId) return fail(id, name, 'нет test_pm — кейс невозможен');
+    const today = new Date().toISOString().slice(0, 10);
+    const admin = await pg.query(`SELECT id FROM users WHERE login = 'test_admin' LIMIT 1`);
+    const ins = await pg.query(`
+      INSERT INTO pm_duty_roster (pm_user_id, period_start, period_end, assigned_by_user_id, created_at)
+      VALUES ($1, $2::date, $2::date, $3, NOW())
+      RETURNING id
+    `, [pmId, today, admin.rows[0]?.id || pmId]);
+    rosterId = ins.rows[0].id;
+
+    // Реальному автору, чтобы карточка не отсекалась фильтром test-данных.
+    const realAuthor = await pg.query(`
+      SELECT id FROM users
+      WHERE name NOT ILIKE 'test %' AND COALESCE(is_active, true) = true AND id <> $1
+      ORDER BY id LIMIT 1
+    `, [pmId]);
+    const authorId = realAuthor.rows[0]?.id || null;
+
+    async function makeOwnerless(status) {
+      const tid = await createRegistryTender(`case-term-${status}`, 'TO');
+      await finalizeAnalysis(tid, pg);
+      await pg.query('UPDATE tenders SET calculator_user_id = NULL WHERE id = $1', [tid]);
+      await pg.query('UPDATE tender_rp_reviews SET calculator_user_id = NULL WHERE tender_id = $1', [tid]);
+      if (authorId) await pg.query('UPDATE tenders SET created_by = $1 WHERE id = $2', [authorId, tid]);
+      await pg.query('UPDATE tenders SET registry_status = $1 WHERE id = $2', [status, tid]);
+      return tid;
+    }
+
+    const submitted = await makeOwnerless('подались');
+    const review = await makeOwnerless('рассмотрение');
+
+    const queue = await api('GET', '/api/pm-duty/queue?tab=calc', { role: 'PM' });
+    if (queue.status >= 400) {
+      return fail(id, name, `queue HTTP ${queue.status} ${JSON.stringify(queue.data).slice(0, 200)}`);
+    }
+    const items = queue.data?.items || [];
+    const submittedRow = items.find((x) => Number(x.id) === Number(submitted));
+    const reviewRow = items.find((x) => Number(x.id) === Number(review));
+
+    const okSubmittedHidden = !submittedRow;
+    const okReviewVisible = !!reviewRow && (reviewRow.queue_mode === 'duty_orphan'
+      || reviewRow.queue_source === 'Просчёт без владельца — взять дежурному');
+
+    if (okSubmittedHidden && okReviewVisible) {
+      return pass(id, name,
+        `подались ${submitted} скрыта; рассмотрение ${review} видна как duty_orphan — фильтр и лечение согласованы`);
+    }
+    return fail(id, name,
+      `submitted(${submitted}) hidden=${okSubmittedHidden}, review(${review}) visible+orphan=${okReviewVisible} ` +
+      `(в очереди ${items.length})`);
+  } catch (e) {
+    return fail(id, name, e.message);
+  } finally {
+    if (rosterId) await pg.query('DELETE FROM pm_duty_roster WHERE id = $1', [rosterId]).catch(() => {});
+  }
+}
+
+/**
  * Канон D-173 — пара `work_price` / `work_price_ex_vat` пишется согласованно.
  *
  * Закрывает два дефекта, найденных L3-верификатором 16.09:
@@ -1015,6 +1087,7 @@ async function caseSmetaTransfer(pg) {
       ['G', caseG],
       ['H', caseH],
       ['ORPH', caseOrphan],
+      ['TERM', caseTerminalQueue],
       ['PAIR', caseCanonPair],
       ['SMETA', caseSmetaTransfer],
     ];

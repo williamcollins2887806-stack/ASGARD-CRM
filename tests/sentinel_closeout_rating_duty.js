@@ -67,10 +67,17 @@ async function main() {
     'loadRatingCrew'
   ]);
   assertSrc('SRC_RATING_POOL', 'src/services/pm-analysis-rating.js', [
-    'только МОИ карточки',
+    'inWindowForPool',
     'BONUS.volume',
     'scareQueue',
     'finalized_by_user_id'
+  ]);
+  assertSrc('SRC_QUEUE_TERMINAL_FILTER', 'src/routes/pm-duty.js', [
+    'notTerminalStatusesSql',
+    'TERMINAL_REGISTRY_STATUSES',
+    "'подались'",
+    "'выиграли'",
+    'isActiveCalcStatus'
   ]);
   assertSrc('SRC_DUTY_GANTT', 'public/assets/js/pm_duty.js', [
     'intersectsViewport',

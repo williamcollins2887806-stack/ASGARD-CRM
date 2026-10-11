@@ -373,6 +373,7 @@ window.AsgardPmDutyPage = (function () {
     let dutyRating = null;
     let leaderboard = [];
     let lbWindow = 'd30';
+    let tabCounts = {};
 
     async function loadQueue() {
       if (tab === 'norms') {
@@ -387,6 +388,16 @@ window.AsgardPmDutyPage = (function () {
       duty = d.duty;
       isDuty = !!d.is_duty;
       queueMode = d.queue_mode || (isDuty ? 'duty' : 'preview');
+    }
+
+    /** Счётчики вкладок: каждая вкладка — свой WHERE, поэтому считаем все сразу. */
+    async function loadCounts() {
+      try {
+        const c = await API.loadPmDutyQueueCounts();
+        tabCounts = c || {};
+      } catch (_) {
+        tabCounts = {};
+      }
     }
 
     async function loadRoster() {
@@ -484,7 +495,7 @@ window.AsgardPmDutyPage = (function () {
             : '<div class="pm-duty-hero-period muted">Нет активного периода в графике</div>') +
           (kpis
             ? ('<div class="pm-duty-kpi-strip">' +
-                '<div class="pm-duty-kpi"><b>' + kpis.total + '</b><span>в списке</span></div>' +
+                '<div class="pm-duty-kpi"><b>' + kpis.total + '</b><span>в этой вкладке</span></div>' +
                 '<div class="pm-duty-kpi"><b>' + kpis.drafts + '</b><span>черновики</span></div>' +
                 '<div class="pm-duty-kpi' + (kpis.hot ? ' is-hot' : '') + '"><b>' + kpis.hot + '</b><span>горят</span></div>' +
                 '<div class="pm-duty-kpi' + (kpis.overdue ? ' is-over' : '') + '"><b>' + kpis.overdue + '</b><span>просрочено</span></div>' +
@@ -496,15 +507,20 @@ window.AsgardPmDutyPage = (function () {
     }
 
     function renderTabs() {
+      function badgeCount(id) {
+        if (tabCounts && tabCounts[id] != null) return Number(tabCounts[id]) || 0;
+        return id === tab ? items.length : null;
+      }
       return '<div class="pm-duty-tabs-wrap">' +
         '<div class="pm-duty-tabs" role="tablist">' +
-        QUEUE_TABS.map((t) =>
-          '<button type="button" role="tab" class="pm-duty-tab' + (tab === t.id ? ' is-active' : '') +
+        QUEUE_TABS.map((t) => {
+          const n = badgeCount(t.id);
+          return '<button type="button" role="tab" class="pm-duty-tab' + (tab === t.id ? ' is-active' : '') +
             '" data-tab="' + t.id + '" aria-selected="' + (tab === t.id ? 'true' : 'false') + '">' +
             esc(t.label) +
-            (t.id === 'analysis' && items.length ? '<em>' + items.length + '</em>' : '') +
-          '</button>'
-        ).join('') +
+            (n ? '<em>' + n + '</em>' : '') +
+          '</button>';
+        }).join('') +
         '</div>' +
         '<p class="pm-duty-tab-hint muted">' + esc(tabHint(tab)) + '</p></div>';
     }
@@ -677,6 +693,7 @@ window.AsgardPmDutyPage = (function () {
     async function refreshUI() {
       await Promise.all([
         loadQueue(),
+        loadCounts(),
         loadCurrent(),
         tab !== 'norms' ? loadRoster() : Promise.resolve(),
         loadRatings()
