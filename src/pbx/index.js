@@ -793,6 +793,29 @@ function createCmdServer() {
         if (!transferChannel) throw new Error('channel required');
         const mode = body.mode || 'blind';
         const resolved = await resolveTransferDial(db, body);
+
+        // ПРОВЕРКА ДОСТУПНОСТИ ЦЕЛИ (инцидент 11.10.2026): если переводим на
+        // WebRTC-сотрудника, а он НЕ зарегистрирован (закрыл браузер), то
+        // Dial(PJSIP/u<id>) падает «No route to destination» и звонок рвётся
+        // ОБОИМ. Вместо этого — не трогаем звонок, отдаём понятную ошибку,
+        // чтобы оператор перевёл на мобильный или позвонил иначе.
+        const targetIsWebrtc = /^PJSIP\/u\d+$/i.test(String(resolved.dial || ''));
+        if (targetIsWebrtc && typeof ami.isEndpointAvailable === 'function') {
+          const epName = String(resolved.dial).split('/')[1];
+          try {
+            const av = await ami.isEndpointAvailable(epName);
+            if (!av.available) {
+              return send(409, {
+                ok: false,
+                error: 'Сотрудник не на линии в СРМ (браузер закрыт). Звонок не переведён — выберите «На мобильный» или другого сотрудника.',
+                reason: 'target_offline',
+                target: body.target,
+                endpoint: epName,
+              });
+            }
+          } catch (_) { /* не смогли проверить — не блокируем перевод */ }
+        }
+
         const xferNotify = {
           event: 'call:transfer',
           user_id: body.user_id,

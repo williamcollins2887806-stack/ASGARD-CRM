@@ -220,6 +220,44 @@ class AmiClient extends EventEmitter {
     });
   }
 
+  /**
+   * Доступен ли контакт PJSIP-эндпоинта (зарегистрирован ли оператор).
+   * Нужно перед переводом: если цель выключила браузер, Dial(PJSIP/u<id>)
+   * падает с «No route to destination» и рвёт звонок обоим (инцидент 11.10.2026).
+   * Возвращает { available, contacts: [...] }.
+   */
+  async isEndpointAvailable(endpoint) {
+    const want = String(endpoint || '').trim();
+    if (!want) return { available: false, contacts: [] };
+    await this.connect();
+    const actionId = String(++this._actionId);
+    const list = [];
+    const events = this;
+    let done = false;
+    return new Promise((resolve) => {
+      const finish = () => {
+        if (done) return;
+        done = true;
+        events.removeListener('event', onEvent);
+        clearTimeout(timer);
+        const mine = list.filter((c) => {
+          const aor = String(c.AOR || c.Aor || '');
+          const re = new RegExp('(^|/)' + want.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '$', 'i');
+          return re.test(aor) || new RegExp('\\b' + want.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\b', 'i').test(String(c.ObjectName || ''));
+        });
+        const avail = mine.some((c) => /Avail|Reachable|Registered/i.test(String(c.Status || '')));
+        resolve({ available: avail, contacts: mine.map((c) => String(c.URI || c.Contact || '')) });
+      };
+      const onEvent = (msg) => {
+        if (msg.Event === 'ContactList') list.push(msg);
+        else if (msg.Event === 'ContactListComplete') finish();
+      };
+      const timer = setTimeout(finish, 4000);
+      events.on('event', onEvent);
+      this.action({ Action: 'PJSIPShowContacts' }).catch(() => finish());
+    });
+  }
+
   async getVar(channel, variable) {
     const res = await this.action({
       Action: 'Getvar',

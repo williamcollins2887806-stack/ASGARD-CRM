@@ -762,6 +762,17 @@ module.exports = async function telephonyRoutes(fastify, opts) {
       params.push(user.id);
     }
 
+    // Скрываем «сироты» — служебные плечи Mango без нашей записи и транскрипта
+    // (перевод через транк порождает отдельные строки-плечи, incident 11.10.2026).
+    // НЕ трогаем: пропущенные, строки с записью/транскриптом, инициированные в CRM.
+    conditions.push(`(
+      ch.call_type = 'missed'
+      OR COALESCE(ch.recording_url, '') <> ''
+      OR COALESCE(ch.record_path, '') <> ''
+      OR ch.transcript_status IN ('done', 'processing', 'pending')
+      OR COALESCE(ch.pbx_uid, '') <> ''
+    )`);
+
     if (date_from) { conditions.push(`ch.created_at >= $${paramIdx++}`); params.push(date_from); }
     if (date_to) { conditions.push(`ch.created_at <= $${paramIdx++}`); params.push(date_to + 'T23:59:59'); }
     if (direction) { conditions.push(`ch.direction = $${paramIdx++}`); params.push(direction); }

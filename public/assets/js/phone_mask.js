@@ -74,16 +74,24 @@
     var before = el.value;
     var after = format(before);
     if (after === before) return;
-    // Сохраняем позицию каретки по числу цифр слева, чтобы ввод в середину не «прыгал».
     var start = el.selectionStart;
+    var wasAtEnd = (start == null || start >= before.length);
     var digitsLeft = digits(String(before).slice(0, start == null ? before.length : start)).length;
     el.value = after;
     try {
-      var pos = after.length;
-      var seen = 0;
-      for (var i = 0; i < after.length; i++) {
-        if (/\d/.test(after[i])) seen++;
-        if (seen >= digitsLeft) { pos = i + 1; break; }
+      var pos;
+      if (wasAtEnd) {
+        // Печать в конец — каретка всегда в конец маски. Это основной сценарий:
+        // раньше палочка вставала «+7|9» вместо «+79|», потому что счёт цифр
+        // включал префикс «7» из маски.
+        pos = after.length;
+      } else {
+        pos = after.length;
+        var seen = 0;
+        for (var i = 0; i < after.length; i++) {
+          if (/\d/.test(after[i])) seen++;
+          if (seen >= digitsLeft) { pos = i + 1; break; }
+        }
       }
       el.setSelectionRange(pos, pos);
     } catch (_) { /* type=tel обычно поддерживает setSelectionRange */ }

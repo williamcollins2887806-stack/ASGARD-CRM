@@ -196,5 +196,43 @@ test('V3', 'UI: регулятор громкости в панели разго
   assert.ok(/\.ph-dp-vol-range/.test(css), 'нет CSS слайдера');
 });
 
+// ── 11.10.2026: путь r/t, фильтр сирот, цель офлайн, маска ──
+test('F1', 'stereo merge ищет r/t рядом с моно (подкаталог YYYY/MM)', () => {
+  const js = read('src/pbx/recording.js');
+  const i = js.indexOf('let effDestPath = destPath;');
+  const blk = js.slice(i, i + 1800);
+  assert.ok(/path\.dirname\(sourcePath\)/.test(blk), 'не ищет дорожки рядом с исходником');
+  assert.ok(/yyyy, mm/.test(blk), 'нет fallback на YYYY/MM');
+});
+
+test('F2', 'журнал скрывает сирот (Mango-плечи без записи)', () => {
+  const js = read('src/routes/telephony.js');
+  const i = js.indexOf("fastify.get('/calls',");
+  const blk = js.slice(i, i + 2600);
+  assert.ok(/ch\.call_type = 'missed'/.test(blk), 'фильтр не сохраняет пропущенные');
+  assert.ok(/recording_url, ''\) <> ''/.test(blk), 'фильтр не учитывает запись');
+  assert.ok(/transcript_status IN \('done', 'processing', 'pending'\)/.test(blk), 'фильтр не учитывает транскрипт');
+});
+
+test('F3', 'перевод на офлайн-цель не рвёт звонок (проверка доступности)', () => {
+  const idx = read('src/pbx/index.js');
+  assert.ok(/isEndpointAvailable/.test(idx), 'нет проверки доступности цели');
+  const i = idx.indexOf('isEndpointAvailable');
+  const blk = idx.slice(i, i + 900);
+  assert.ok(/target_offline/.test(blk), 'нет reason target_offline');
+  assert.ok(/send\(409/.test(blk), 'нет ответа 409 вместо сброса');
+  const ami = read('src/pbx/ami-client.js');
+  assert.ok(/async isEndpointAvailable/.test(ami), 'нет метода в AMI-клиенте');
+  assert.ok(/PJSIPShowContacts/.test(ami), 'AMI не запрашивает контакты');
+});
+
+test('F4', 'маска: печать в конец ставит каретку в конец (+79|, не +7|9)', () => {
+  const js = read('public/assets/js/phone_mask.js');
+  const i = js.indexOf('function mask(el)');
+  const blk = js.slice(i, i + 900);
+  assert.ok(/wasAtEnd/.test(blk), 'нет определения «печать в конец»');
+  assert.ok(/pos = after\.length/.test(blk), 'каретка не ставится в конец при печати');
+});
+
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);

@@ -189,16 +189,31 @@ async function finalizeRecording(pool, opts) {
 
   // Стерео из раздельных дорожек r()/t() (dialplan их пишет как <base>-r/-t.wav).
   // Нормализуем L = клиент, R = оператор (для STT по каналам). Моно остаётся.
+  // ВАЖНО: дорожки лежат в ТОМ ЖЕ подкаталоге, что и моно (YYYY/MM) — раньше
+  // искали по basename без подкаталога, поэтому стерео не собиралось
+  // (инцидент 11.10.2026: -r/-t есть, .stereo.wav нет).
   let effDestPath = destPath;
   let effRelUrl = relUrl;
   try {
     const srcBase = base.replace(/\.(wav|WAV)$/, '');
+    // Дорожки r()/t() лежат рядом с исходным моно-файлом (тот же YYYY/MM).
+    // Раньше искали по basename в корне спула → стерео не собиралось.
+    const srcDir = path.dirname(sourcePath);
     const spool = [
       process.env.ASTERISK_RECORDINGS_DIR || '/var/spool/asterisk/recordings',
       config.recordingsRoot,
     ];
     let rPath = null;
     let tPath = null;
+    const tryDirs = [srcDir, path.join(config.recordingsRoot, yyyy, mm),
+      path.join(process.env.ASTERISK_RECORDINGS_DIR || '/var/spool/asterisk/recordings', yyyy, mm)];
+    for (const d of tryDirs) {
+      const rC = path.join(d, srcBase + '-r.wav');
+      const tC = path.join(d, srcBase + '-t.wav');
+      if (!rPath && fs.existsSync(rC)) rPath = rC;
+      if (!tPath && fs.existsSync(tC)) tPath = tC;
+    }
+    // Плюс плоский поиск в корне спула (на случай старого dialplan).
     for (const d of spool) {
       const rC = path.join(d, srcBase + '-r.wav');
       const tC = path.join(d, srcBase + '-t.wav');
