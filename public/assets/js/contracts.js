@@ -97,7 +97,7 @@ window.AsgardContractsPage = (function(){
     if (!auth) { location.hash = "#/login"; return; }
     
     const user = auth.user;
-    const allowedRoles = ['ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV', 'OFFICE_MANAGER', 'BUH', 'PROC', 'TO'];
+    const allowedRoles = ['ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV', 'OFFICE_MANAGER', 'BUH', 'PROC', 'TO', 'HEAD_TO'];
     if (!allowedRoles.includes(user.role)) {
       AsgardUI.toast('Доступ', 'Недостаточно прав', 'err');
       location.hash = '#/home';

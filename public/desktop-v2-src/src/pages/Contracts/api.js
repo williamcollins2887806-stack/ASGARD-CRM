@@ -23,7 +23,7 @@ export { formatMoney as fmtMoney, formatMoneyShort as fmtMoneyShort } from '@/li
 
 export const ALLOWED_VIEW_ROLES = [
   'ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV',
-  'OFFICE_MANAGER', 'BUH', 'PM', 'HEAD_PM', 'PROC', 'TO'
+  'OFFICE_MANAGER', 'BUH', 'PM', 'HEAD_PM', 'PROC', 'TO', 'HEAD_TO'
 ];
 
 export const CONTRACT_TYPES = [

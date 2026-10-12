@@ -174,7 +174,7 @@ async function dataRoutes(fastify, options) {
         'cash_requests', 'cash_expenses', 'cash_returns', 'cash_messages',
         'correspondence', 'chats', 'chat_messages', 'notifications',
         'sync_meta', 'reminders', 'doc_sets', 'user_dashboard',
-        'permits', 'tasks', 'pre_tender_requests'
+        'permits', 'tasks', 'pre_tender_requests', 'contracts'
       ],
       ops: ['read', 'create', 'update']
     },
