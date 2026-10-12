@@ -31,6 +31,11 @@ let recordingTimer = null;
 /** @type {Map<string, { channel: string, pbxUid: string, userId: number }>} */
 const activeChannels = new Map();
 
+// Каскад перевода (12.10.2026): сколько звонить в браузер и на мобильный.
+// Цепочка: webRTC → mobile → возврат инициатору (ret в [transfer]).
+const TRANSFER_BROWSER_SEC = Number(process.env.TRANSFER_BROWSER_SEC || 15);
+const TRANSFER_MOBILE_SEC = Number(process.env.TRANSFER_MOBILE_SEC || 15);
+
 function setPool(p) {
   pool = p;
 }
@@ -520,37 +525,38 @@ async function resolveTransferDial(db, body) {
 
     let targets = [];
     if (op) {
-      const fakeOn = { ...op, on_line: true, can_accept: true };
-      // Для перевода допускаем webrtc даже без heartbeat, если registered;
-      // иначе GSM. Поднимаем last_seen если registered.
-      if (op.webrtc_registered && op.sip_username) {
-        fakeOn.last_seen_at = new Date().toISOString();
-      }
-      targets = resolveTransferTargets(fakeOn, cfg, new Date());
-      // Выбор канала оператором: СРМ (webrtc) или мобильный (GSM).
-      // Раньше выбора не было вообще — это и просили (10.10.2026).
+      // КАСКАД перевода (12.10.2026): браузер → мобильный → возврат (ret).
+      // Раньше при target_mode='webrtc' и офлайн-сотруднике Dial(PJSIP/uX)
+      // падал «No route to destination» и рвал звонок ОБОИМ. Теперь всегда
+      // строим упорядоченную цепочку [webRTC (15с), mobile (15с)] — dialplan
+      // [blind] уже умеет: Dial(TRANSFER_DIAL) → не ANSWER → Dial(TRANSFER_FALLBACK)
+      // → не ANSWER → ret. Офлайн-webRTC падает моментально (CHANUNAVAIL) → сразу mobile.
+      // ВАЖНО: для перевода берём ОБА канала независимо от receive_mode оператора
+      // (иначе browser-mode оператор не имел бы мобильного фолбэка).
       const wantMode = body.target_mode === 'mobile' || body.target_mode === 'webrtc'
         ? body.target_mode : null;
-      if (wantMode === 'webrtc') {
-        targets = targets.filter((t) => t.targetType === 'webrtc');
-      } else if (wantMode === 'mobile') {
-        targets = targets.filter((t) => t.targetType === 'mobile');
-      }
-      // Если выбранный канал недоступен — добираем недостающий (мобильный/СРМ),
-      // чтобы перевод не «пропадал» молча.
-      if (!targets.length && op.mobile_phone && wantMode !== 'webrtc') {
-        targets = expandOperatorTargets(
-          { ...fakeOn, receive_mode: 'mobile', webrtc_registered: false },
-          cfg,
-          Date.now()
-        );
-      }
-      if (!targets.length && op.sip_username && wantMode !== 'mobile') {
-        targets = expandOperatorTargets(
-          { ...fakeOn, receive_mode: 'browser' },
-          cfg,
-          Date.now()
-        );
+      const webTarget = op.sip_username ? {
+        userId: op.user_id,
+        targetType: 'webrtc',
+        targetAddr: op.sip_username,
+        role: 'ring',
+        ringSec: TRANSFER_BROWSER_SEC,
+        sortOrder: 0,
+      } : null;
+      const mobTarget = op.mobile_phone ? {
+        userId: op.user_id,
+        targetType: 'mobile',
+        targetAddr: op.mobile_phone,
+        role: 'ring',
+        ringSec: TRANSFER_MOBILE_SEC,
+        sortOrder: 1,
+      } : null;
+      if (wantMode === 'mobile') {
+        // Явно выбрали «На мобильный» — сразу мобильный, без попытки браузера.
+        targets = [mobTarget].filter(Boolean);
+      } else {
+        // «В СРМ» или выбор не задан → каскад: браузер 15с → мобильный 15с.
+        targets = [webTarget, mobTarget].filter(Boolean);
       }
     } else if (/^[A-Za-z0-9_.-]+$/.test(String(targetRaw)) && !/^\d+$/.test(String(targetRaw))) {
       // СЃС‹СЂРѕР№ sip username
@@ -577,6 +583,14 @@ async function resolveTransferDial(db, body) {
     }
 
     const dialVars = buildDialVars(targets, { ...cfg, parallel_ring: false, routing_mode: 'ordered' });
+    // Каскад перевода: таймауты из TRANSFER_*_SEC, а не из общих ring_sec
+    // (иначе браузерное ожидание было бы 10с, мобильное — 30с из конфига).
+    if (op) {
+      const first = targets[0];
+      const second = targets[1];
+      dialVars.ringTimeout = first?.targetType === 'mobile' ? TRANSFER_MOBILE_SEC : TRANSFER_BROWSER_SEC;
+      dialVars.fallbackTimeout = second?.targetType === 'mobile' ? TRANSFER_MOBILE_SEC : TRANSFER_BROWSER_SEC;
+    }
     let returnDial = '';
     if (body.user_id) {
       const { rows: initRows } = await client.query(
@@ -794,26 +808,20 @@ function createCmdServer() {
         const mode = body.mode || 'blind';
         const resolved = await resolveTransferDial(db, body);
 
-        // ПРОВЕРКА ДОСТУПНОСТИ ЦЕЛИ (инцидент 11.10.2026): если переводим на
-        // WebRTC-сотрудника, а он НЕ зарегистрирован (закрыл браузер), то
-        // Dial(PJSIP/u<id>) падает «No route to destination» и звонок рвётся
-        // ОБОИМ. Вместо этого — не трогаем звонок, отдаём понятную ошибку,
-        // чтобы оператор перевёл на мобильный или позвонил иначе.
-        const targetIsWebrtc = /^PJSIP\/u\d+$/i.test(String(resolved.dial || ''));
-        if (targetIsWebrtc && typeof ami.isEndpointAvailable === 'function') {
-          const epName = String(resolved.dial).split('/')[1];
+        // КАСКАД (12.10.2026): раньше здесь была БЛОКИРОВКА 409 target_offline —
+        // если сотрудник офлайн, перевод запрещался. Это было неверно: нужен
+        // фолбэк. Теперь офлайн-webRTC просто падает моментально (CHANUNAVAIL)
+        // в [blind], и dialplan сразу переходит к мобильному (TRANSFER_FALLBACK),
+        // затем к возврату инициатору (ret). Ничего не блокируем.
+        // Проверку isEndpointAvailable оставляем только как подсказку в уведомлении
+        // (не влияет на ход перевода).
+        let targetWebrtcOffline = false;
+        if (/^PJSIP\/u\d+$/i.test(String(resolved.dial || '')) && typeof ami.isEndpointAvailable === 'function') {
           try {
+            const epName = String(resolved.dial).split('/')[1];
             const av = await ami.isEndpointAvailable(epName);
-            if (!av.available) {
-              return send(409, {
-                ok: false,
-                error: 'Сотрудник не на линии в СРМ (браузер закрыт). Звонок не переведён — выберите «На мобильный» или другого сотрудника.',
-                reason: 'target_offline',
-                target: body.target,
-                endpoint: epName,
-              });
-            }
-          } catch (_) { /* не смогли проверить — не блокируем перевод */ }
+            targetWebrtcOffline = !av.available;
+          } catch (_) { /* не смогли проверить — не влияем на перевод */ }
         }
 
         const xferNotify = {

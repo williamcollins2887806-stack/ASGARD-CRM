@@ -10,7 +10,9 @@
  * Usage: node tests/pbx/transfer-topology.test.js
  */
 const assert = require('assert');
+const path = require('path');
 const { pickTransferChannels, pickPartnerChannel } = require('../../src/pbx/index');
+const ROOT = path.resolve(__dirname, '../..');
 
 let passed = 0;
 let failed = 0;
@@ -86,6 +88,33 @@ test('T8', 'pickPartnerChannel не возвращает сам канал оп�
   const list = [{ Channel: 'PJSIP/u3474-00000006', Linkedid: 'X' }];
   const p = pickPartnerChannel(list, 'PJSIP/u3474-00000006', list[0]);
   assert.strictEqual(p, null);
+});
+
+// ── Каскад перевода (12.10.2026): браузер → мобильный → ret, без блокировки ──
+const fsx = require('fs');
+const idx = fsx.readFileSync(path.join(ROOT, 'src/pbx/index.js'), 'utf8');
+
+test('C1', 'каскад: цепочка [webRTC, mobile] для «В СРМ», мобильный сразу для «На мобильный»', () => {
+  assert.ok(/TRANSFER_BROWSER_SEC/.test(idx) && /TRANSFER_MOBILE_SEC/.test(idx), 'нет констант таймаутов');
+  assert.ok(/targets = \[webTarget, mobTarget\]\.filter\(Boolean\)/.test(idx), 'нет каскада webRTC→mobile');
+  assert.ok(/targets = \[mobTarget\]\.filter\(Boolean\)/.test(idx), 'нет прямого мобильного для target_mode=mobile');
+});
+
+test('C2', 'блокировка 409 target_offline убрана (каскад вместо запрета)', () => {
+  assert.ok(!/send\(409, \{[\s\S]{0,200}target_offline/.test(idx), 'остался 409-блок перевода');
+  assert.ok(!/Звонок не переведён/.test(idx), 'остался текст блокировки');
+});
+
+test('C3', 'таймауты каскада из TRANSFER_*_SEC, а не из ring_sec', () => {
+  assert.ok(/dialVars\.ringTimeout = first\?\.targetType === 'mobile' \? TRANSFER_MOBILE_SEC : TRANSFER_BROWSER_SEC/.test(idx),
+    'таймаут первого плеча не из TRANSFER_*_SEC');
+  assert.ok(/dialVars\.fallbackTimeout = second\?\.targetType === 'mobile'/.test(idx),
+    'таймаут фолбэка не из TRANSFER_*_SEC');
+});
+
+test('C4', 'фронт не ловит target_offline (его больше нет)', () => {
+  const core = fsx.readFileSync(path.join(ROOT, 'public/assets/js/phone_core.js'), 'utf8');
+  assert.ok(!/target_offline/.test(core), 'осталась обработка target_offline в UI');
 });
 
 console.log(`\n${passed} passed, ${failed} failed`);

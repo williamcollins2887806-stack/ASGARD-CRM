@@ -214,13 +214,14 @@ test('F2', 'журнал скрывает сирот (Mango-плечи без з
   assert.ok(/transcript_status IN \('done', 'processing', 'pending'\)/.test(blk), 'фильтр не учитывает транскрипт');
 });
 
-test('F3', 'перевод на офлайн-цель не рвёт звонок (проверка доступности)', () => {
+test('F3', 'перевод на офлайн-цель не рвёт звонок (каскад вместо блокировки)', () => {
   const idx = read('src/pbx/index.js');
   assert.ok(/isEndpointAvailable/.test(idx), 'нет проверки доступности цели');
-  const i = idx.indexOf('isEndpointAvailable');
+  // Проверка — только подсказка (targetWebrtcOffline), НЕ блокировка 409.
+  const i = idx.indexOf('targetWebrtcOffline');
   const blk = idx.slice(i, i + 900);
-  assert.ok(/target_offline/.test(blk), 'нет reason target_offline');
-  assert.ok(/send\(409/.test(blk), 'нет ответа 409 вместо сброса');
+  assert.ok(/targetWebrtcOffline = !av\.available/.test(blk), 'нет записи офлайн-состояния');
+  assert.ok(!/send\(409[\s\S]{0,120}target_offline/.test(idx), 'осталась блокировка 409');
   const ami = read('src/pbx/ami-client.js');
   assert.ok(/async isEndpointAvailable/.test(ami), 'нет метода в AMI-клиенте');
   assert.ok(/PJSIPShowContacts/.test(ami), 'AMI не запрашивает контакты');
