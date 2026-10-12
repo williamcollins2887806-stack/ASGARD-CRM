@@ -51,6 +51,13 @@ async function post(path, body, key) {
 (async () => {
   console.log(`\nДашборд разработки — sentinel @ ${BASE}\n`);
 
+  // Ожидания берём из roadmap.json (источник структуры), а не хардкодим:
+  // иначе любое изменение плана ломает гейт «на ровном месте».
+  const root = require('path').resolve(__dirname, '../..');
+  const roadmap = JSON.parse(require('fs').readFileSync(require('path').join(root, 'docs/dev-roadmap/roadmap.json'), 'utf8'));
+  const expStages = roadmap.stages.length;
+  const expCps = roadmap.stages.reduce((a, s) => a + s.items.reduce((b, i) => b + i.checkpoints.length, 0), 0);
+
   // 1. Fail closed
   const noKey = await get('/api/dev-roadmap/state');
   check('без ключа → 404', noKey.status === 404, `status=${noKey.status}`);
@@ -60,10 +67,12 @@ async function post(path, body, key) {
   // 2. Baseline
   const s0 = await get('/api/dev-roadmap/state', KEY);
   check('state → 200', s0.status === 200, `status=${s0.status}`);
-  check('7 этапов', s0.body && Array.isArray(s0.body.stages) && s0.body.stages.length === 7,
-    `stages=${s0.body && s0.body.stages && s0.body.stages.length}`);
-  check('108 чекпоинтов', s0.body && s0.body.overall && s0.body.overall.total === 108,
-    `total=${s0.body && s0.body.overall && s0.body.overall.total}`);
+  check(`${expStages} этапов (как в roadmap.json)`,
+    s0.body && Array.isArray(s0.body.stages) && s0.body.stages.length === expStages,
+    `stages=${s0.body && s0.body.stages && s0.body.stages.length}, ожидалось ${expStages}`);
+  check(`${expCps} чекпоинтов (как в roadmap.json)`,
+    s0.body && s0.body.overall && s0.body.overall.total === expCps,
+    `total=${s0.body && s0.body.overall && s0.body.overall.total}, ожидалось ${expCps}`);
   const total0 = s0.body.overall.total;
   const done0 = s0.body.overall.done;
 

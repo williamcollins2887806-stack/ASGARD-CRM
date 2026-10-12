@@ -190,6 +190,38 @@ html[data-theme="light"] .cp .sign { color: var(--ok); }
 .cp .sign-badge { display: inline-flex; align-items: center; gap: 5px; }
 .cp .note { font-size: 12px; color: var(--t2); font-style: italic; margin-top: 5px; }
 
+/* ── Комментарии к чек-поинту (доска) ── */
+.cp .cbtn { display: inline-flex; align-items: center; gap: 5px; font-size: 11.5px; font-weight: 600; color: var(--blue-l); padding: 2px 0; }
+.cp .cbtn:hover { text-decoration: underline; }
+html[data-theme="light"] .cp .cbtn { color: var(--blue); }
+.cp .cbtn .cnt { background: var(--blue-bg); border-radius: var(--r-full); padding: 1px 7px; font-size: 10.5px; }
+.cps-wrap { padding: 0 12px 12px; }
+.cps-wrap textarea {
+  width: 100%; padding: 10px 12px; border-radius: var(--r-md); border: 1px solid var(--brd);
+  background: var(--bg3); outline: none; font-size: 13px; resize: vertical; min-height: 62px;
+}
+.cps-wrap textarea:focus { border-color: var(--blue-l); }
+.cps-actions { display: flex; align-items: center; gap: 10px; margin-top: 8px; flex-wrap: wrap; }
+.cps-actions .signer-mini { padding: 7px 12px; border-radius: var(--r-md); border: 1.5px solid var(--brd); background: var(--bg3); font-size: 12.5px; font-weight: 650; }
+.cps-actions .signer-mini.is-on { border-color: var(--blue-l); background: var(--blue-bg); color: var(--blue-l); }
+.cps-actions input[type=file] { font-size: 12px; max-width: 200px; }
+.cps-actions .btn { flex: 0 0 auto; padding: 9px 16px; font-size: 13px; }
+.cps-actions .err { font-size: 12px; color: var(--red-l); }
+html[data-theme="light"] .cps-actions .err { color: var(--red); }
+.cmt { border: 1px solid var(--brd-m); border-radius: var(--r-md); padding: 10px 12px; margin-top: 10px; background: var(--bg2); }
+.cmt-head { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--t3); }
+.cmt-head .avatar { width: 20px; height: 20px; border-radius: var(--r-full); display: grid; place-items: center; font-size: 10px; font-weight: 700; background: var(--blue-bg); color: var(--blue-l); flex: 0 0 auto; }
+.cmt-head b { color: var(--t1); font-size: 12.5px; font-weight: 650; }
+.cmt-body { font-size: 13px; color: var(--t1); line-height: 1.5; margin-top: 8px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.cmt-file { display: inline-flex; align-items: center; gap: 7px; margin-top: 9px; font-size: 12.5px; color: var(--blue-l); text-decoration: none; border: 1px solid var(--brd); border-radius: var(--r-md); padding: 6px 11px; }
+.cmt-file:hover { border-color: var(--blue-l); }
+html[data-theme="light"] .cmt-file { color: var(--blue); }
+.cmt-tools { display: flex; gap: 12px; margin-top: 9px; font-size: 11.5px; }
+.cmt-tools button { color: var(--t3); font-weight: 600; }
+.cmt-tools button:hover { color: var(--t1); }
+.cmt-tools .del:hover { color: var(--red-l); }
+.cmt.editing textarea { width: 100%; margin-top: 8px; padding: 9px 11px; border-radius: var(--r-md); border: 1px solid var(--brd); background: var(--bg3); font-size: 13px; resize: vertical; min-height: 56px; }
+
 /* ── Лента событий ── */
 .events { max-height: 320px; overflow-y: auto; }
 .ev { display: flex; gap: 11px; padding: 9px 2px; border-bottom: 1px solid var(--brd-m); font-size: 12.5px; }
@@ -222,6 +254,8 @@ html[data-theme="light"] .ev .av.close { color: var(--ok); }
 }
 .field input:focus, .field textarea:focus { border-color: var(--blue-l); }
 .field textarea { resize: vertical; min-height: 62px; font-size: 13px; }
+.field .hint { font-size: 11.5px; color: var(--t3); margin-top: 6px; }
+.field input[type=file] { padding: 9px 10px; }
 .signers { display: flex; gap: 9px; flex-wrap: wrap; }
 .signer {
   flex: 1 1 0; min-width: 96px; padding: 12px 10px; border-radius: var(--r-md);

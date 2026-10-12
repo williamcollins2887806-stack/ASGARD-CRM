@@ -48,10 +48,12 @@ FILES = [
     "src/routes/dev-roadmap.js",
     "migrations/V380__dev_roadmap.sql",
     "migrations/V380__dev_roadmap_down.sql",
+    "migrations/V381__dev_roadmap_comments.sql",
+    "migrations/V381__dev_roadmap_comments_down.sql",
     "tools/dev-roadmap-seed.js",
     "public/robots.txt",
 ]
-TAR_DIRS = ["public/dev-roadmap", "docs/dev-roadmap"]
+TAR_DIRS = ["public/dev-roadmap", "docs/dev-roadmap", "tests/roadmap"]
 
 
 def load_pkey(path: str):
@@ -146,6 +148,7 @@ def main() -> int:
     run(f"rm -f {remote_tar}")
     run(
         f"chmod 644 {REMOTE}/public/robots.txt {REMOTE}/migrations/V380__dev_roadmap*.sql "
+        f"{REMOTE}/migrations/V381__dev_roadmap_comments*.sql "
         f"{REMOTE}/src/routes/dev-roadmap.js {REMOTE}/src/index.js {REMOTE}/tools/dev-roadmap-seed.js"
     )
     run(f"find {REMOTE}/public/dev-roadmap -type f -exec chmod 644 {{}} \\;")
@@ -154,11 +157,12 @@ def main() -> int:
     # ── 4. SYNTAX CHECK ─────────────────────────────────────────────
     run(f"cd {REMOTE} && node --check src/routes/dev-roadmap.js && node --check src/index.js && echo SYNTAX_OK")
 
-    # ── 5. MIGRATION V380 (идемпотентно: IF NOT EXISTS) ─────────────
-    run(
-        "cd {remote} && PGPASSWORD=123456789 psql -U asgard -d asgard_crm -v ON_ERROR_STOP=1 "
-        "-f migrations/V380__dev_roadmap.sql >/dev/null && echo MIGRATION_OK".format(remote=REMOTE)
-    )
+    # ── 5. MIGRATIONS (идемпотентно: IF NOT EXISTS) ──────────────────
+    for mig in ("V380__dev_roadmap.sql", "V381__dev_roadmap_comments.sql"):
+        run(
+            "cd {remote} && PGPASSWORD=123456789 psql -U asgard -d asgard_crm -v ON_ERROR_STOP=1 "
+            "-f migrations/{mig} >/dev/null && echo MIGRATION_OK {mig}".format(remote=REMOTE, mig=mig)
+        )
 
     # ── 6. SEED СТРУКТУРЫ (не трогает done/done_by) ─────────────────
     run(f"cd {REMOTE} && DB_NAME=asgard_crm node tools/dev-roadmap-seed.js")
@@ -193,15 +197,20 @@ def main() -> int:
         "(SELECT COUNT(*) FROM dev_roadmap_items) AS items, "
         "(SELECT COUNT(*) FROM dev_roadmap_checkpoints) AS cps;\"".format(remote=REMOTE)
     )
+    # Таблица комментариев (V381) должна существовать.
+    run(
+        "echo -n 'comments-table: '; cd {remote} && PGPASSWORD=123456789 psql -U asgard -d asgard_crm -t -c "
+        "\"SELECT to_regclass('public.dev_roadmap_comments');\"".format(remote=REMOTE)
+    )
 
     print("\n" + "=" * 70)
     print("ССЫЛКА ДЛЯ ДИРЕКТОРА РАЗВИТИЯ:")
-    print(f"  https://<домен-CRM>/dev-roadmap/?k={SECRET}")
-    print(f"  (запасной вариант по IP: http://92.242.61.184/dev-roadmap/?k={SECRET})")
+    print(f"  https://asgard-crm.ru/dev-roadmap/?k={SECRET}")
     print("PIN: Никита={} Костя={} Андрей={}".format(PIN_NIKITA, PIN_KOSTYA, PIN_ANDREY))
     print("=" * 70)
     print(f"\nРоллбэк: tar -xzf {snap} -C {REMOTE} && systemctl restart asgard-crm")
-    print(f"Роллбэк миграции: PGPASSWORD=... psql -U asgard -d asgard_crm -f {REMOTE}/migrations/V380__dev_roadmap_down.sql")
+    print(f"Роллбэк миграций: psql ... -f {REMOTE}/migrations/V381__dev_roadmap_comments_down.sql "
+          f"и -f {REMOTE}/migrations/V380__dev_roadmap_down.sql")
     ssh.close()
     return 0
 

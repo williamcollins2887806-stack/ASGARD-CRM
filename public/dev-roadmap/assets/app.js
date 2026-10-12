@@ -14,6 +14,7 @@
   var pendingAction = 'close';
   var selectedSigner = null;
   var timer = null;
+  var expandedCps = new Set(); // какие блоки комментариев раскрыты (не терять при перерисовке)
 
   // ── Секретный ключ: из URL ?k=..., иначе из localStorage (чтобы пережить refresh) ──
   var KEY = (function () {
@@ -304,11 +305,190 @@
 
     $('#view').innerHTML = html;
     $('#view').querySelectorAll('.cp').forEach(function (el) {
-      el.addEventListener('click', function () {
+      el.addEventListener('click', function (ev) {
+        if (ev.target.closest('.cp-comments')) return; // клики внутри комментариев не открывают подпись
         var id = Number(el.getAttribute('data-id'));
         var done = el.getAttribute('data-done') === '1';
         openModal(id, el.getAttribute('data-title'), done);
       });
+    });
+    // Форма добавления комментария + правка/удаление своих
+    $('#view').querySelectorAll('.cp-comments').forEach(function (box) {
+      var id = Number(box.getAttribute('data-cp'));
+      var ta = box.querySelector('.new-cmt-body');
+      var body = box.querySelector('.cps-body');
+      // Свёрнутый блок: разворачивает сам заголовок, клики по нему не открывают модалку подписи
+      box.querySelector('.cbtn').addEventListener('click', function (ev) {
+        ev.stopPropagation();
+        body.hidden = !body.hidden;
+        if (body.hidden) expandedCps.delete(id); else expandedCps.add(id);
+      });
+      box.addEventListener('click', function (ev) { ev.stopPropagation(); });
+      box.querySelectorAll('.signer-mini').forEach(function (b) {
+        b.addEventListener('click', function () {
+          box.querySelectorAll('.signer-mini').forEach(function (x) { x.classList.remove('is-on'); });
+          b.classList.add('is-on');
+        });
+      });
+      var send = box.querySelector('.send-cmt');
+      if (send) send.addEventListener('click', function () { submitComment(box, id, ta); });
+      box.querySelectorAll('[data-edit]').forEach(function (b) {
+        b.addEventListener('click', function () { startEditComment(box, b.getAttribute('data-edit')); });
+      });
+      box.querySelectorAll('[data-del]').forEach(function (b) {
+        b.addEventListener('click', function () { deleteComment(box, b.getAttribute('data-del')); });
+      });
+    });
+  }
+
+  function commentBlock(cp) {
+    var cs = cp.comments || [];
+    var expanded = expandedCps.has(cp.id);
+    var html = '<div class="cps-wrap cp-comments" data-cp="' + cp.id + '">' +
+      '<button class="cbtn" type="button">Комментарии' +
+        (cs.length ? ' <span class="cnt">' + cs.length + '</span>' : '') + '</button>' +
+      '<div class="cps-body"' + (expanded ? '' : ' hidden') + '>';
+    cs.forEach(function (c) {
+      html += '<div class="cmt" data-cid="' + c.id + '">' +
+        '<div class="cmt-head"><span class="avatar">' + esc(initials(c.author_name)) + '</span>' +
+          '<b>' + esc(c.author_name) + '</b> · ' + fmtTime(c.updated_at || c.created_at) +
+        '</div>' +
+        '<div class="cmt-body">' + esc(c.body) + '</div>' +
+        (c.file_url ? '<a class="cmt-file" href="' + esc(c.file_url) + '" target="_blank" rel="noopener" download>' +
+          '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M7 10l5 5 5-5M12 15V3"/></svg>' +
+          esc(c.file_name || 'файл') + '</a>' : '') +
+        '<div class="cmt-tools">' +
+          '<button data-edit="' + c.id + '">Изменить</button>' +
+          '<button class="del" data-del="' + c.id + '">Удалить</button>' +
+        '</div>' +
+      '</div>';
+    });
+    html += '<textarea class="new-cmt-body" maxlength="20000" rows="2" placeholder="План, комментарий, заметка для себя…"></textarea>' +
+      '<div class="cps-actions">' +
+        '<span style="font-size:12px;color:var(--t3)">Подпись:</span>' +
+        (state.signers || []).map(function (s) { return '<button class="signer-mini" data-sid="' + esc(s.id) + '">' + esc(s.name) + '</button>'; }).join('') +
+        '<input class="pin-mini" type="password" inputmode="numeric" placeholder="PIN" maxlength="8" style="width:76px;padding:7px 10px;border-radius:8px;border:1px solid var(--brd);background:var(--bg3)" />' +
+        '<input type="file" class="file-mini" />' +
+        '<button class="btn btn-primary send-cmt">Добавить</button>' +
+        '<span class="err"></span>' +
+      '</div></div></div>';
+    return html;
+  }
+
+  function boxSigner(box) {
+    var on = box.querySelector('.signer-mini.is-on');
+    return on ? on.getAttribute('data-sid') : null;
+  }
+
+  function submitComment(box, cpId, ta) {
+    var err = box.querySelector('.err');
+    err.textContent = '';
+    var signer = boxSigner(box);
+    var pin = (box.querySelector('.pin-mini').value || '').trim();
+    var body = (ta.value || '').trim();
+    var fileInput = box.querySelector('.file-mini');
+    var file = fileInput && fileInput.files && fileInput.files[0];
+    if (!signer) { err.textContent = 'Выберите, кто пишет'; return; }
+    if (!pin) { err.textContent = 'Введите PIN'; return; }
+    if (!body && !file) { err.textContent = 'Нужен текст или файл'; return; }
+
+    var fd = new FormData();
+    fd.append('signer', signer);
+    fd.append('pin', pin);
+    fd.append('checkpoint_id', String(cpId));
+    fd.append('body', body);
+    if (file) fd.append('file', file);
+
+    var btn = box.querySelector('.send-cmt');
+    btn.disabled = true;
+    fetch(API + '/comment', { method: 'POST', headers: { 'X-Roadmap-Key': KEY }, body: fd })
+      .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, status: r.status, body: j }; }); })
+      .then(function (res) {
+        btn.disabled = false;
+        if (!res.ok) { err.textContent = res.body.error || ('Ошибка ' + res.status); return; }
+        var cp = findCheckpoint(cpId);
+        if (cp) { (cp.comments = cp.comments || []).push(res.body.comment); }
+        rerenderStage();
+        setLive('ok', 'комментарий добавлен: ' + res.body.comment.author_name);
+      }).catch(function (e) { btn.disabled = false; err.textContent = 'Сеть: ' + e.message; });
+  }
+
+  function startEditComment(box, id) {
+    var el = box.querySelector('.cmt[data-cid="' + id + '"]');
+    if (!el) return;
+    var bodyEl = el.querySelector('.cmt-body');
+    var cur = bodyEl.textContent;
+    el.classList.add('editing');
+    bodyEl.style.display = 'none';
+    if (!el.querySelector('textarea')) {
+      var t = document.createElement('textarea');
+      t.value = cur;
+      el.insertBefore(t, bodyEl.nextSibling);
+      var box2 = document.createElement('div');
+      box2.className = 'cmt-tools';
+      box2.innerHTML = '<button data-save="' + id + '">Сохранить</button><button data-cancel="1">Отмена</button>';
+      el.appendChild(box2);
+      box2.querySelector('[data-save]').addEventListener('click', function () { saveEditComment(box, id); });
+      box2.querySelector('[data-cancel]').addEventListener('click', function () { rerenderStage(); });
+    }
+  }
+
+  function saveEditComment(box, id) {
+    var el = box.querySelector('.cmt[data-cid="' + id + '"]');
+    var ta = el && el.querySelector('textarea');
+    var signer = boxSigner(box);
+    var pin = (box.querySelector('.pin-mini').value || '').trim();
+    var err = box.querySelector('.err');
+    if (!signer || !pin) { err.textContent = 'Выберите имя и введите PIN'; return; }
+    fetch(API + '/comment/' + id, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', 'X-Roadmap-Key': KEY },
+      body: JSON.stringify({ signer: signer, pin: pin, body: ta.value })
+    }).then(function (r) { return r.json().then(function (j) { return { ok: r.ok, body: j }; }); })
+      .then(function (res) {
+        if (!res.ok) { err.textContent = res.body.error || 'Ошибка'; return; }
+        rerenderStage();
+      }).catch(function (e) { err.textContent = 'Сеть: ' + e.message; });
+  }
+
+  function deleteComment(box, id) {
+    var signer = boxSigner(box);
+    var pin = (box.querySelector('.pin-mini').value || '').trim();
+    var err = box.querySelector('.err');
+    if (!signer || !pin) { err.textContent = 'Выберите имя и введите PIN'; return; }
+    if (!confirm('Удалить комментарий?')) return;
+    fetch(API + '/comment/' + id, {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json', 'X-Roadmap-Key': KEY },
+      body: JSON.stringify({ signer: signer, pin: pin })
+    }).then(function (r) { return r.json().then(function (j) { return { ok: r.ok, body: j }; }); })
+      .then(function (res) {
+        if (!res.ok) { err.textContent = res.body.error || 'Ошибка'; return; }
+        rerenderStage();
+      }).catch(function (e) { err.textContent = 'Сеть: ' + e.message; });
+  }
+
+  function findCheckpoint(cpId) {
+    var found = null;
+    (state.stages || []).forEach(function (s) {
+      s.items.forEach(function (it) {
+        it.checkpoints.forEach(function (c) { if (c.id === cpId) found = c; });
+      });
+    });
+    return found;
+  }
+
+  function rerenderStage() {
+    if (activeTab === 'overview') renderOverview(); else renderStage(activeTab);
+  }
+
+  // Есть ли открытая форма/правка? Тогда авто-перерисовка запрещена (иначе сотрём набранное).
+  function hasOpenForm() {
+    if ($('#modalBg').classList.contains('is-on')) return true;
+    var v = $('#view');
+    if (v.querySelector('.cmt.editing')) return true;
+    return Array.prototype.some.call(v.querySelectorAll('.cp-comments .cps-body'), function (b) {
+      return !b.hidden;
     });
   }
 
@@ -330,7 +510,7 @@
       '<div class="box"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg></div>' +
       '<div class="body"><div class="ttl">' + esc(cp.title) + '</div><div class="sub">' + sub + '</div>' +
         (cp.note ? '<div class="note">' + esc(cp.note) + '</div>' : '') +
-      '</div></div>';
+      '</div></div>' + commentBlock(cp);
   }
 
   // ── Вкладки ──
@@ -447,6 +627,12 @@
     }).then(function (data) {
       if (!data) return;
       state = data;
+      // Пока открыта форма комментария/правка — не перерисовываем, чтобы не стереть набранное.
+      // Данные обновим, свежесть покажем в статусе.
+      if (hasOpenForm()) {
+        setLive('ok', 'обновлено ' + fmtTime(data.generated_at) + ' (форма открыта)');
+        return;
+      }
       renderTabs();
       if (activeTab === 'overview' || !state.stages.some(function (s) { return s.code === activeTab; })) {
         renderOverview();

@@ -25,6 +25,8 @@ const fs = require('fs');
 const path = require('path');
 
 const META_PATH = path.join(__dirname, '../../docs/dev-roadmap/roadmap.json');
+const UPLOAD_DIR = path.resolve(process.env.UPLOAD_DIR || './uploads');
+const MAX_COMMENT_FILE = 20 * 1024 * 1024; // 20 МБ на вложение к комментарию
 
 function timingSafeEqualStr(a, b) {
   const ab = Buffer.from(String(a == null ? '' : a), 'utf8');
@@ -107,6 +109,32 @@ module.exports = async function (fastify, options) {
     const signerName = {};
     signers().forEach(s => { signerName[s.id] = s.name; });
 
+    // Комментарии к пунктам (доска) — одним запросом, группируем по чекпоинту.
+    const commentsByCp = {};
+    try {
+      const { rows: cRows } = await db.query(
+        `SELECT c.id, c.checkpoint_id, c.body, c.author_id, c.author_name,
+                c.file_url, c.file_name, c.created_at, c.updated_at
+           FROM dev_roadmap_comments c
+           JOIN dev_roadmap_checkpoints cp ON cp.id = c.checkpoint_id
+          ORDER BY c.created_at`
+      );
+      for (const r of cRows) {
+        const cid = Number(r.checkpoint_id);
+        (commentsByCp[cid] = commentsByCp[cid] || []).push({
+          id: Number(r.id),
+          body: r.body,
+          author_id: r.author_id,
+          author_name: r.author_name,
+          file_url: r.file_url,
+          file_name: r.file_name,
+          created_at: r.created_at,
+          updated_at: r.updated_at,
+          editable_by: r.author_id // кто может править (для UI: подсветить свои)
+        });
+      }
+    } catch (_) { /* таблица появится после миграции V381 */ }
+
     const cpsByItem = {};
     for (const cp of cpRows) {
       (cpsByItem[cp.item_id] = cpsByItem[cp.item_id] || []).push({
@@ -122,7 +150,8 @@ module.exports = async function (fastify, options) {
         done_at: cp.done_at,
         done_by: cp.done_by,
         done_by_name: cp.done_by ? (signerName[cp.done_by] || cp.done_by) : null,
-        note: cp.note
+        note: cp.note,
+        comments: commentsByCp[cp.id] || []
       });
     }
 
@@ -326,6 +355,149 @@ module.exports = async function (fastify, options) {
 
   fastify.post('/checkpoint/:id/close', async (request, reply) => applySignature(request, reply, 'close'));
   fastify.post('/checkpoint/:id/reopen', async (request, reply) => applySignature(request, reply, 'reopen'));
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // Комментарии к пунктам (доска разработки): текст + файл, читают все,
+  // пишут/правят/удаляют по PIN; чужие записи править нельзя (только автор).
+  // ═══════════════════════════════════════════════════════════════════════
+  const uuidv4 = () => crypto.randomUUID();
+  const { safeStoredExt } = require('../lib/upload-ext');
+
+  function cpIdFrom(value) {
+    // Принимаем только примитив строки/числа: массивы/объекты JS-коэрцией давали валидный id.
+    if (typeof value !== 'string' && typeof value !== 'number') return null;
+    const raw = String(value);
+    if (!/^\d{1,10}$/.test(raw)) return null;
+    const n = Number(raw);
+    return (Number.isSafeInteger(n) && n >= 1 && n <= 2147483647) ? n : null;
+  }
+
+  // Проверка подписи для мутаций комментария: PIN обязателен, возвращаем автора.
+  async function verifyCommentAuthor(body, request) {
+    const chk = await verifySigner(body, request);
+    if (chk.locked) return { locked: true, error: chk.error, code: 429 };
+    if (chk.error) return { error: chk.error, code: 401 };
+    return { signer: chk.signer };
+  }
+
+  // Приём необязательного вложения (multipart) ВМЕСТЕ с полями формы.
+  // В multipart поля (signer/pin/...) не попадают в request.body — читаем их из тех же parts.
+  async function readAttachment(request) {
+    if (!request.isMultipart || !request.isMultipart()) return { error: null, file: null, fields: {} };
+    const parts = request.parts();
+    let file = null;
+    const fields = {};
+    for await (const part of parts) {
+      if (part.file) {
+        const buf = await part.toBuffer();
+        if (buf.length > MAX_COMMENT_FILE) { await part.file.resume(); return { error: 'Файл больше 20 МБ' }; }
+        if (file) { await part.file.resume(); continue; }
+        const ext = safeStoredExt(part.mimetype, part.filename, { allow: 'doc' });
+        if (!ext) { await part.file.resume(); return { error: 'Недопустимый тип файла' }; }
+        file = { ext, buffer: buf, name: String(part.filename || 'файл').slice(0, 240) };
+      } else {
+        fields[part.fieldname] = part.value;
+      }
+    }
+    return { error: null, file, fields };
+  }
+
+  function saveAttachment(file) {
+    const diskName = `roadmap-c-${uuidv4()}${file.ext}`;
+    fs.mkdirSync(UPLOAD_DIR, { recursive: true });
+    fs.writeFileSync(path.join(UPLOAD_DIR, diskName), file.buffer);
+    return { url: '/uploads/' + diskName, name: file.name };
+  }
+
+  async function commentById(id) {
+    const { rows } = await db.query(
+      `SELECT id, checkpoint_id, body, author_id, author_name, file_url, file_name, created_at, updated_at
+         FROM dev_roadmap_comments WHERE id = $1`,
+      [id]
+    );
+    return rows[0] || null;
+  }
+
+  function normalizeComment(c) {
+    return Object.assign({}, c, { id: Number(c.id), checkpoint_id: Number(c.checkpoint_id) });
+  }
+
+  // POST /comment — multipart или JSON: { signer, pin, checkpoint_id, body? } + файл
+  fastify.post('/comment', async (request, reply) => {
+    const att = await readAttachment(request);
+    if (att.error) return reply.code(400).send({ error: att.error });
+
+    const src = Object.assign({}, request.body || {}, att.fields || {});
+    const auth = await verifyCommentAuthor(src, request);
+    if (auth.locked) return reply.code(429).send({ error: auth.error });
+    if (auth.error) return reply.code(401).send({ error: auth.error });
+
+    const cpId = cpIdFrom(src.checkpoint_id);
+    if (!cpId) return reply.code(400).send({ error: 'Некорректный checkpoint_id' });
+    const body = String(src.body || '').trim();
+    if (!body && !att.file) return reply.code(400).send({ error: 'Нужен текст или файл' });
+    if (body.length > 20000) return reply.code(400).send({ error: 'Слишком длинный текст' });
+
+    const { rows: cpRows } = await db.query('SELECT id FROM dev_roadmap_checkpoints WHERE id = $1', [cpId]);
+    if (!cpRows.length) return reply.code(404).send({ error: 'Чекпоинт не найден' });
+
+    let saved = { url: null, name: null };
+    if (att.file) saved = saveAttachment(att.file);
+
+    const { rows } = await db.query(
+      `INSERT INTO dev_roadmap_comments
+         (checkpoint_id, body, author_id, author_name, file_url, file_name)
+       VALUES ($1,$2,$3,$4,$5,$6)
+       RETURNING id, checkpoint_id, body, author_id, author_name, file_url, file_name, created_at, updated_at`,
+      [cpId, body, auth.signer.id, auth.signer.name, saved.url, saved.name]
+    );
+    return { ok: true, comment: normalizeComment(rows[0]) };
+  });
+
+  // PATCH /comment/:id — правит ТОЛЬКО автор. body: { signer, pin, body }
+  fastify.patch('/comment/:id', async (request, reply) => {
+    const id = cpIdFrom(request.params.id);
+    if (!id) return reply.code(400).send({ error: 'Некорректный id' });
+    const auth = await verifyCommentAuthor(request.body || {}, request);
+    if (auth.locked) return reply.code(429).send({ error: auth.error });
+    if (auth.error) return reply.code(401).send({ error: auth.error });
+
+    const cur = await commentById(id);
+    if (!cur) return reply.code(404).send({ error: 'Комментарий не найден' });
+    if (cur.author_id !== auth.signer.id) {
+      return reply.code(403).send({ error: 'Править может только автор записи' });
+    }
+    const body = String((request.body && request.body.body) || '').trim();
+    if (!body && !cur.file_url) return reply.code(400).send({ error: 'Нужен текст или файл' });
+    if (body.length > 20000) return reply.code(400).send({ error: 'Слишком длинный текст' });
+
+    const { rows } = await db.query(
+      `UPDATE dev_roadmap_comments SET body = $2, updated_at = NOW() WHERE id = $1
+       RETURNING id, checkpoint_id, body, author_id, author_name, file_url, file_name, created_at, updated_at`,
+      [id, body]
+    );
+    return { ok: true, comment: normalizeComment(rows[0]) };
+  });
+
+  // DELETE /comment/:id — удаляет ТОЛЬКО автор. body: { signer, pin }
+  fastify.delete('/comment/:id', async (request, reply) => {
+    const id = cpIdFrom(request.params.id);
+    if (!id) return reply.code(400).send({ error: 'Некорректный id' });
+    const auth = await verifyCommentAuthor(request.body || {}, request);
+    if (auth.locked) return reply.code(429).send({ error: auth.error });
+    if (auth.error) return reply.code(401).send({ error: auth.error });
+
+    const cur = await commentById(id);
+    if (!cur) return reply.code(404).send({ error: 'Комментарий не найден' });
+    if (cur.author_id !== auth.signer.id) {
+      return reply.code(403).send({ error: 'Удалить может только автор записи' });
+    }
+    if (cur.file_url) {
+      try { fs.unlinkSync(path.join(UPLOAD_DIR, path.basename(cur.file_url))); } catch (_) { /* файл мог быть удалён */ }
+    }
+    await db.query('DELETE FROM dev_roadmap_comments WHERE id = $1', [id]);
+    return { ok: true };
+  });
 };
 
 module.exports.KIND_LABELS = KIND_LABELS;
