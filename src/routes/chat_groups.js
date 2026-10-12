@@ -451,7 +451,7 @@ module.exports = async function(fastify) {
       idx++;
     }
 
-    sql += ` ORDER BY c.last_message_at DESC NULLS LAST, c.created_at DESC`;
+    sql += ` ORDER BY c.is_pinned DESC, c.pinned_at DESC NULLS LAST, c.last_message_at DESC NULLS LAST, c.created_at DESC`;
 
     const { rows } = await db.query(sql, params);
     // Single source of truth: freshness of last_seen_at (was socket isUserOnline,

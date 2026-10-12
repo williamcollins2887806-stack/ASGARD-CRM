@@ -666,7 +666,9 @@
         return true;
       });
       if (state.activeFolderId == null && data.active_folder_id != null && !state._folderClearedForCompose) {
-        state.activeFolderId = data.active_folder_id;
+        // Папки убраны из UI (решение 12.10) — активную папку не восстанавливаем,
+        // иначе список чатов окажется отфильтрованным и «пустым».
+        state.activeFolderId = null;
       }
       state._folderClearedForCompose = false;
     } catch (_) {
@@ -1172,9 +1174,9 @@
       </div>`;
     }
     if (type === 'call_event') return `${ICO.phone} ${esc(display || 'Звонок')}`;
-    /* S56 checklist layout only — interactive sync DEFER_BE (no todo API) */
-    if (type === 'checklist' || type === 'todo' || (m.metadata && Array.isArray(m.metadata.checklist))) {
-      const items = (m.metadata && m.metadata.checklist) || m.checklist || [];
+    /* A11: чек-лист интерактивный — пункты из API (id) кликабельны (PATCH is_done). */
+    if (type === 'checklist' || type === 'todo' || (m.metadata && Array.isArray(m.metadata.checklist)) || (m.metadata && Array.isArray(m.metadata.checklist_items))) {
+      const items = (m.metadata && (m.metadata.checklist_items || m.metadata.checklist)) || m.checklist || [];
       const list = Array.isArray(items) && items.length
         ? items
         : String(display || '').split(/\n+/).filter(Boolean).map((t) => ({ text: t, done: false }));
@@ -1182,11 +1184,13 @@
         <div class="hg-checklist-title">${esc((m.metadata && m.metadata.title) || 'Чеклист')}</div>
         ${list.map((it, i) => {
           const text = typeof it === 'string' ? it : (it.text || it.label || '');
-          const done = !!(typeof it === 'object' && (it.done || it.checked));
-          return `<label class="hg-checklist-row${done ? ' is-done' : ''}">
+          const done = !!(typeof it === 'object' && (it.is_done || it.done || it.checked));
+          const id = typeof it === 'object' && it.id != null ? it.id : '';
+          const clickable = id !== '';
+          return `<button type="button" class="hg-checklist-row${done ? ' is-done' : ''}"${clickable ? ` data-check-item="${id}"` : ' disabled'}>
             <span class="hg-checklist-box" aria-hidden="true">${done ? '✓' : ''}</span>
             <span class="hg-checklist-text">${esc(text || ('Пункт ' + (i + 1)))}</span>
-          </label>`;
+          </button>`;
         }).join('')}
       </div>`;
     }
@@ -1494,6 +1498,26 @@
           target.scrollIntoView({ behavior: 'smooth', block: 'center' });
           target.classList.add('is-flash');
           setTimeout(() => target.classList.remove('is-flash'), 900);
+        }
+      };
+    });
+    box.querySelectorAll('.hg-checklist-row[data-check-item]').forEach((row) => {
+      row.onclick = async (e) => {
+        e.stopPropagation();
+        const id = row.getAttribute('data-check-item');
+        if (!id) return;
+        const wasDone = row.classList.contains('is-done');
+        // Оптимистично
+        row.classList.toggle('is-done', !wasDone);
+        const boxEl = row.querySelector('.hg-checklist-box');
+        if (boxEl) boxEl.textContent = !wasDone ? '✓' : '';
+        try {
+          await api('/api/chat-groups/checklist/' + id, { method: 'PATCH', body: { is_done: !wasDone } });
+        } catch (_) {
+          // откат при ошибке
+          row.classList.toggle('is-done', wasDone);
+          if (boxEl) boxEl.textContent = wasDone ? '✓' : '';
+          showToast('Не удалось обновить пункт');
         }
       };
     });
@@ -1848,12 +1872,6 @@
       const on = (c.is_online === true) || (pid && state.presence[pid] && state.presence[pid].online);
       return n + (on ? 1 : 0);
     }, 0);
-    const folderCaps = [
-      `<button type="button" class="hg-folder-cap hg-glass${state.activeFolderId == null ? ' is-active' : ''}" data-role="segment" data-folder="">Все</button>`,
-      ...(state.folders || []).map((f) =>
-        `<button type="button" class="hg-folder-cap hg-glass${Number(state.activeFolderId) === Number(f.id) ? ' is-active' : ''}" data-role="segment" data-folder="${f.id}">${esc(f.icon_emoji || '')} ${esc(f.name)}</button>`
-      )
-    ].join('');
     const bdayHtml = (state.birthdays || []).map((b) => {
       const when = b.is_today ? 'сегодня' : ('через ' + b.days_until + ' дн.');
       return `<div class="hg-bday-card hg-glass" data-role="card" data-bday="${b.id}">
@@ -2066,32 +2084,6 @@
         };
       }
       return;
-    }
-    panel.querySelectorAll('[data-folder]').forEach((btn) => {
-      const isAdd = btn.hasAttribute('data-folder-add');
-      btn.onclick = async (ev) => {
-        if (isAdd) { ev.stopPropagation(); promptNewFolder(); return; }
-        const raw = btn.getAttribute('data-folder');
-        state.activeFolderId = raw ? Number(raw) : null;
-        try {
-          await api('/api/chat-groups/folders/active', {
-            method: 'PUT',
-            body: { folder_id: state.activeFolderId }
-          });
-        } catch (_) {}
-        await loadChats();
-        renderPanel();
-      };
-      if (!isAdd) {
-        btn.oncontextmenu = (ev) => {
-          ev.preventDefault();
-          openFolderMenu(Number(btn.getAttribute('data-folder')));
-        };
-      }
-    });
-    const addFolder = panel.querySelector('[data-folder-add]');
-    if (addFolder) {
-      addFolder.onclick = () => promptNewFolder();
     }
     panel.querySelector('#hgCompose').onclick = () => {
       openComposeSheet();
@@ -2516,103 +2508,6 @@
         btn.disabled = false;
       }
     };
-  }
-
-  async function promptNewFolder() {
-    const name = await hgPrompt({ title: 'Название папки', placeholder: 'Например: Важное', okText: 'Создать' });
-    if (!name || !name.trim()) return;
-    try {
-      await api('/api/chat-groups/folders', { method: 'POST', body: { name: name.trim() } });
-      await loadFolders();
-      renderPanel();
-    } catch (e) {
-      showToast(e.message || 'Не удалось создать папку');
-    }
-  }
-
-  /** Folder management menu: rename / delete / assign dialog. */
-  function openFolderMenu(folderId) {
-    if (!folderId) return;
-    clearFloats();
-    const el = document.createElement('div');
-    el.className = 'hg-float hg-glass';
-    el.setAttribute('data-role', 'menu');
-    el.innerHTML = `<div class="hg-float-actions">
-      <button type="button" data-fa="rename">${ICO.pen || ICO.compose || '✎'}<span>Переименовать</span></button>
-      <button type="button" data-fa="assign">${ICO.plus || '+'}<span>Добавить чат…</span></button>
-      <button type="button" class="danger" data-fa="delete">${ICO.trash || '🗑'}<span>Удалить папку</span></button>
-    </div>`;
-    placeFloat(el, window.innerWidth / 2, 240);
-    el.onclick = async (e) => {
-      const btn = e.target.closest('[data-fa]');
-      if (!btn) return;
-      const a = btn.getAttribute('data-fa');
-      clearFloats();
-      const folder = (state.folders || []).find((f) => Number(f.id) === Number(folderId));
-      if (a === 'rename') {
-        const name = await hgPrompt({ title: 'Новое название', value: (folder && folder.name) || '', okText: 'Сохранить' });
-        if (!name || !name.trim()) return;
-        try {
-          await api('/api/chat-groups/folders/' + folderId, { method: 'PATCH', body: { name: name.trim() } });
-          await loadFolders();
-          renderPanel();
-        } catch (err) { showToast(err.message || 'Не удалось переименовать'); }
-      }
-      if (a === 'delete') {
-        if (!(await hgConfirm({ title: 'Удалить папку?', body: (folder && folder.name) || '', okText: 'Удалить', danger: true }))) return;
-        try {
-          await api('/api/chat-groups/folders/' + folderId, { method: 'DELETE' });
-          if (Number(state.activeFolderId) === Number(folderId)) state.activeFolderId = null;
-          await loadFolders();
-          await loadChats();
-          renderPanel();
-        } catch (err) { showToast(err.message || 'Не удалось удалить папку'); }
-      }
-      if (a === 'assign') openAssignFolderDialog(folderId);
-    };
-  }
-
-  /** Pick a chat and drop it into the folder (PUT /:id/folder). */
-  function openAssignFolderDialog(folderId) {
-    clearFloats();
-    const panel = root && root.querySelector('#hgPanel');
-    if (!panel) return;
-    const host = sheetHost();
-    root.querySelectorAll('.hg-assign-sheet').forEach((x) => x.remove());
-    const el = document.createElement('div');
-    el.className = 'hg-assign-sheet hg-sheet hg-compose-sheet';
-    el.setAttribute('role', 'dialog');
-    el.setAttribute('aria-label', 'Добавить чат в папку');
-    const rows = (state.chats || []).slice(0, 200).map((c) => {
-      const nm = displayChatName(c);
-      return `<button type="button" class="hg-contact-row" data-assign="${c.id}">
-        <div class="hg-contact-av" style="background:${avatarColor(nm)}">${esc(initials(nm))}</div>
-        <div class="hg-contact-meta"><div class="hg-contact-name">${esc(nm)}</div></div>
-      </button>`;
-    }).join('');
-    el.innerHTML = `
-      <div class="hg-compose-head">
-        <button type="button" class="hg-icon-btn hg-compose-x" id="hgAssignClose" aria-label="Закрыть"><span aria-hidden="true">✕</span></button>
-        <strong>В папку</strong>
-        <span style="width:32px"></span>
-      </div>
-      <div class="hg-compose-body"><div class="hg-compose-list">${rows || '<div class="hg-empty">Нет чатов</div>'}</div></div>`;
-    host.appendChild(el);
-    el.querySelector('#hgAssignClose').onclick = () => el.remove();
-    el.querySelectorAll('[data-assign]').forEach((btn) => {
-      btn.onclick = async () => {
-        try {
-          await api('/api/chat-groups/' + btn.getAttribute('data-assign') + '/folder', {
-            method: 'PUT',
-            body: { folder_id: Number(folderId) }
-          });
-          el.remove();
-          showToast('Чат добавлен в папку');
-          await loadChats();
-          renderPanel();
-        } catch (e) { showToast(e.message || 'Не удалось'); }
-      };
-    });
   }
 
   async function openChatProfile() {
@@ -3792,9 +3687,44 @@
     };
   }
 
-  /** A1 (ещё без бэка — будет на Этапе 3): честно сообщаем, а не пустой toast. */
-  function openSettingsComingSheet(title) {
-    openSettingsSheet(title, `<div class="hg-confirm-body">Раздел появится в ближайшем обновлении.</div>`, null);
+  /** A1: Уведомления и звуки — реальные настройки из API. */
+  async function openNotifySettingsSheet() {
+    let s = { push_enabled: true, sound_enabled: true };
+    try { const r = await api('/api/chat-groups/user/settings/notifications'); s = (r && r.settings) || s; } catch (_) {}
+    const el = openSettingsSheet('Уведомления и звуки', `
+      <button type="button" class="hg-sort-row" data-notify="push"><span>Push-уведомления</span><span data-val="push">${s.push_enabled ? 'Вкл' : 'Выкл'}</span></button>
+      <button type="button" class="hg-sort-row" data-notify="sound"><span>Звук</span><span data-val="sound">${s.sound_enabled ? 'Вкл' : 'Выкл'}</span></button>`, null);
+    const save = async (patch) => {
+      try { await api('/api/chat-groups/user/settings/notifications', { method: 'PUT', body: Object.assign({}, s, patch) }); } catch (_) {}
+    };
+    el.querySelector('[data-notify="push"]').onclick = () => {
+      s.push_enabled = !s.push_enabled;
+      el.querySelector('[data-val="push"]').textContent = s.push_enabled ? 'Вкл' : 'Выкл';
+      save({ push_enabled: s.push_enabled });
+    };
+    el.querySelector('[data-notify="sound"]').onclick = () => {
+      s.sound_enabled = !s.sound_enabled;
+      el.querySelector('[data-val="sound"]').textContent = s.sound_enabled ? 'Вкл' : 'Выкл';
+      save({ sound_enabled: s.sound_enabled });
+    };
+  }
+
+  /** A1: Конфиденциальность — реальные настройки из API. */
+  async function openPrivacySettingsSheet() {
+    let s = { show_online: true, show_phone: true, allow_messages_from: 'everyone', last_seen_visibility: 'everyone' };
+    try { const r = await api('/api/chat-groups/user/settings/privacy'); s = (r && r.settings) || s; } catch (_) {}
+    const visLabel = { everyone: 'Все', contacts: 'Контакты', nobody: 'Никто' };
+    const el = openSettingsSheet('Конфиденциальность', `
+      <button type="button" class="hg-sort-row" data-priv="show_online"><span>Показывать «в сети»</span><span data-val="show_online">${s.show_online ? 'Да' : 'Нет'}</span></button>
+      <button type="button" class="hg-sort-row" data-priv="show_phone"><span>Показывать телефон</span><span data-val="show_phone">${s.show_phone ? 'Да' : 'Нет'}</span></button>
+      <button type="button" class="hg-sort-row" data-priv="last_seen_visibility"><span>Кто видит «был(а)»</span><span data-val="last_seen_visibility">${esc(visLabel[s.last_seen_visibility] || 'Все')}</span></button>
+      <button type="button" class="hg-sort-row" data-priv="allow_messages_from"><span>Кто может писать</span><span data-val="allow_messages_from">${esc(visLabel[s.allow_messages_from] || 'Все')}</span></button>`, null);
+    const save = async () => { try { await api('/api/chat-groups/user/settings/privacy', { method: 'PUT', body: s }); } catch (_) {} };
+    const cycleVis = (v) => (v === 'everyone' ? 'contacts' : (v === 'contacts' ? 'nobody' : 'everyone'));
+    el.querySelector('[data-priv="show_online"]').onclick = () => { s.show_online = !s.show_online; el.querySelector('[data-val="show_online"]').textContent = s.show_online ? 'Да' : 'Нет'; save(); };
+    el.querySelector('[data-priv="show_phone"]').onclick = () => { s.show_phone = !s.show_phone; el.querySelector('[data-val="show_phone"]').textContent = s.show_phone ? 'Да' : 'Нет'; save(); };
+    el.querySelector('[data-priv="last_seen_visibility"]').onclick = () => { s.last_seen_visibility = cycleVis(s.last_seen_visibility); el.querySelector('[data-val="last_seen_visibility"]').textContent = visLabel[s.last_seen_visibility]; save(); };
+    el.querySelector('[data-priv="allow_messages_from"]').onclick = () => { s.allow_messages_from = cycleVis(s.allow_messages_from); el.querySelector('[data-val="allow_messages_from"]').textContent = visLabel[s.allow_messages_from]; save(); };
   }
 
   function renderSettingsPanel(panel) {
@@ -3971,7 +3901,8 @@
         if (set === 'lang') { openLanguageSheet(); return; }
         if (set === 'data') { openDataSheet(); return; }
         if (set === 'fx') { state.settingsEditOpen = true; renderSettingsPanel(panel); return; }
-        if (set === 'notify' || set === 'privacy') { openSettingsComingSheet(btn.getAttribute('data-label') || set); return; }
+        if (set === 'notify') { openNotifySettingsSheet(); return; }
+        if (set === 'privacy') { openPrivacySettingsSheet(); return; }
         if (set === 'profile') {
           state.settingsProfileOpen = true;
           state.settingsEditOpen = false;
@@ -3979,7 +3910,7 @@
           enrichMyProfile(panel);
           return;
         }
-        showToast(btn.getAttribute('data-label') || set || 'Настройки');
+        // Все ключи выше обработаны; сюда попадать нечему.
       };
     });
     if (showProfile) enrichMyProfile(panel);

@@ -15,9 +15,8 @@ import { useAuthStore } from '@/stores/authStore';
 import { useChatStore } from '@/stores/chatStore';
 import { relativeTime } from '@/lib/utils';
 
-// Кнопка «Закрепить» включается на Этапе 3 (нужен chat-level pin на бэке).
-// Пока не показываем в свайпе, чтобы не было мёртвой кнопки.
-const CHAT_PIN_ENABLED = false;
+// Кнопка «Закрепить» включена — chat-level pin добавлен на бэке (V383).
+const CHAT_PIN_ENABLED = true;
 
 const STATUS_COLORS = {
   draft: '#888888',

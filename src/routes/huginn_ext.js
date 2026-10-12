@@ -750,6 +750,154 @@ module.exports = async function registerHuginnExt(fastify, { db, uploadDir, getC
     }
   });
 
+  // ── Этап 3: настройки пользователя (A1) ───────────────────────
+  fastify.get('/user/settings/notifications', {
+    preHandler: [fastify.authenticate]
+  }, async (request) => {
+    const { rows } = await db.query(
+      'SELECT push_enabled, sound_enabled, dnd_start, dnd_end, categories FROM user_notification_settings WHERE user_id = $1',
+      [request.user.id]
+    );
+    const r = rows[0] || {};
+    return {
+      settings: {
+        push_enabled: r.push_enabled !== false,
+        sound_enabled: r.sound_enabled !== false,
+        dnd_start: r.dnd_start || null,
+        dnd_end: r.dnd_end || null,
+        categories: r.categories || {}
+      }
+    };
+  });
+
+  fastify.put('/user/settings/notifications', {
+    preHandler: [fastify.authenticate]
+  }, async (request) => {
+    const b = request.body || {};
+    const { rows } = await db.query(`
+      INSERT INTO user_notification_settings (user_id, push_enabled, sound_enabled, dnd_start, dnd_end, categories, updated_at)
+      VALUES ($1, $2, $3, $4, $5, $6::jsonb, NOW())
+      ON CONFLICT (user_id) DO UPDATE SET
+        push_enabled = EXCLUDED.push_enabled,
+        sound_enabled = EXCLUDED.sound_enabled,
+        dnd_start = EXCLUDED.dnd_start,
+        dnd_end = EXCLUDED.dnd_end,
+        categories = EXCLUDED.categories,
+        updated_at = NOW()
+      RETURNING push_enabled, sound_enabled, dnd_start, dnd_end, categories
+    `, [
+      request.user.id,
+      b.push_enabled !== false,
+      b.sound_enabled !== false,
+      b.dnd_start || null,
+      b.dnd_end || null,
+      JSON.stringify(b.categories || {})
+    ]);
+    return { settings: rows[0] };
+  });
+
+  fastify.get('/user/settings/privacy', {
+    preHandler: [fastify.authenticate]
+  }, async (request) => {
+    const { rows } = await db.query(
+      'SELECT show_online, show_phone, allow_messages_from, last_seen_visibility FROM user_privacy_settings WHERE user_id = $1',
+      [request.user.id]
+    );
+    const r = rows[0] || {};
+    return {
+      settings: {
+        show_online: r.show_online !== false,
+        show_phone: r.show_phone !== false,
+        allow_messages_from: r.allow_messages_from || 'everyone',
+        last_seen_visibility: r.last_seen_visibility || 'everyone'
+      }
+    };
+  });
+
+  fastify.put('/user/settings/privacy', {
+    preHandler: [fastify.authenticate]
+  }, async (request, reply) => {
+    const b = request.body || {};
+    const allow = ['everyone', 'contacts', 'nobody'].includes(b.allow_messages_from) ? b.allow_messages_from : 'everyone';
+    const seen = ['everyone', 'contacts', 'nobody'].includes(b.last_seen_visibility) ? b.last_seen_visibility : 'everyone';
+    const { rows } = await db.query(`
+      INSERT INTO user_privacy_settings (user_id, show_online, show_phone, allow_messages_from, last_seen_visibility, updated_at)
+      VALUES ($1, $2, $3, $4, $5, NOW())
+      ON CONFLICT (user_id) DO UPDATE SET
+        show_online = EXCLUDED.show_online,
+        show_phone = EXCLUDED.show_phone,
+        allow_messages_from = EXCLUDED.allow_messages_from,
+        last_seen_visibility = EXCLUDED.last_seen_visibility,
+        updated_at = NOW()
+      RETURNING show_online, show_phone, allow_messages_from, last_seen_visibility
+    `, [request.user.id, b.show_online !== false, b.show_phone !== false, allow, seen]);
+    return { settings: rows[0] };
+  });
+
+  // ── Этап 3: чек-листы сообщений (A11) ──────────────────────────
+  fastify.post('/:id/messages/:messageId/checklist', {
+    preHandler: [fastify.authenticate]
+  }, async (request, reply) => {
+    const chatId = parsePositiveInt(request.params.id);
+    const messageId = parsePositiveInt(request.params.messageId);
+    if (chatId == null || messageId == null) return reply.code(400).send({ error: 'bad id' });
+    if (!(await getChatMembership(chatId, request.user.id))) return reply.code(403).send({ error: 'Нет доступа' });
+    const items = Array.isArray((request.body || {}).items) ? request.body.items : [];
+    await db.query('DELETE FROM message_checklist_items WHERE message_id = $1', [messageId]);
+    const out = [];
+    for (let i = 0; i < items.length; i++) {
+      const text = String((items[i] && items[i].text) || items[i] || '').trim();
+      if (!text) continue;
+      const { rows } = await db.query(
+        'INSERT INTO message_checklist_items (message_id, text, position) VALUES ($1, $2, $3) RETURNING *',
+        [messageId, text, i]
+      );
+      out.push(rows[0]);
+    }
+    return { items: out };
+  });
+
+  fastify.patch('/checklist/:itemId', {
+    preHandler: [fastify.authenticate]
+  }, async (request, reply) => {
+    const itemId = parsePositiveInt(request.params.itemId);
+    if (itemId == null) return reply.code(400).send({ error: 'bad id' });
+    const isDone = (request.body || {}).is_done !== false;
+    const { rows } = await db.query(`
+      UPDATE message_checklist_items
+         SET is_done = $1, done_by = CASE WHEN $1 THEN $2 ELSE NULL END,
+             done_at = CASE WHEN $1 THEN NOW() ELSE NULL END
+       WHERE id = $3
+      RETURNING *
+    `, [isDone, request.user.id, itemId]);
+    if (!rows.length) return reply.code(404).send({ error: 'Пункт не найден' });
+    return { item: rows[0] };
+  });
+
+  fastify.delete('/checklist/:itemId', {
+    preHandler: [fastify.authenticate]
+  }, async (request, reply) => {
+    const itemId = parsePositiveInt(request.params.itemId);
+    if (itemId == null) return reply.code(400).send({ error: 'bad id' });
+    await db.query('DELETE FROM message_checklist_items WHERE id = $1', [itemId]);
+    return { success: true };
+  });
+
+  // ── Этап 3: закрепление чата (C2-pin) ──────────────────────────
+  fastify.put('/:id/pin', {
+    preHandler: [fastify.authenticate]
+  }, async (request, reply) => {
+    const chatId = parsePositiveInt(request.params.id);
+    if (chatId == null) return reply.code(400).send({ error: 'bad chat id' });
+    if (!(await getChatMembership(chatId, request.user.id))) return reply.code(403).send({ error: 'Нет доступа' });
+    const pin = (request.body || {}).pin !== false;
+    await db.query(
+      'UPDATE chats SET is_pinned = $1, pinned_at = CASE WHEN $1 THEN NOW() ELSE NULL END, updated_at = NOW() WHERE id = $2',
+      [pin, chatId]
+    );
+    return { success: true, is_pinned: pin };
+  });
+
   // ── F11 AI Editor (corporate, all users, not Mimir stub) ──────
   fastify.post('/ai/rewrite', {
     preHandler: [fastify.authenticate]
