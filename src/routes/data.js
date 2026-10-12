@@ -88,7 +88,7 @@ async function dataRoutes(fastify, options) {
         'tenders', 'estimates', 'customers', 'calendar_events', 'documents',
         'correspondence', 'chats', 'chat_messages', 'notifications',
         'sync_meta', 'reminders', 'doc_sets', 'user_dashboard',
-        'permits', 'tasks', 'pre_tender_requests'
+        'permits', 'tasks', 'pre_tender_requests', 'contracts'
       ],
       ops: ['read', 'create', 'update']
     },
@@ -147,7 +147,7 @@ async function dataRoutes(fastify, options) {
         'purchase_requests', 'equipment', 'equipment_categories',
         'invoices', 'invoice_payments', 'documents', 'calendar_events',
         'chats', 'chat_messages', 'notifications', 'sync_meta', 'reminders',
-        'user_dashboard', 'works'
+        'user_dashboard', 'works', 'contracts'
       ],
       ops: ['read', 'create', 'update']
     },

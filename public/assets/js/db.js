@@ -361,7 +361,6 @@ window.AsgardDB = (function(){
     if (_forbiddenStores.has(String(store || '').toLowerCase())) {
       return [];
     }
-    
     // Проверяем кэш
     const cacheKey = store + ':all';
     const cached = cache.get(cacheKey);
@@ -389,6 +388,11 @@ window.AsgardDB = (function(){
   
   // Алиас для all
   const getAll = all;
+
+  /** Публичный признак: сервер ответил 403 на эту таблицу (нет прав). */
+  function isForbidden(store) {
+    return _forbiddenStores.has(String(store || '').toLowerCase());
+  }
   
   /**
    * Добавить запись (INSERT)
@@ -662,6 +666,7 @@ window.AsgardDB = (function(){
     getSettingNumber: getSettingNumber,
     all: all,
     getAll: getAll,
+    isForbidden: isForbidden,
     add: add,
     put: put,
     del: del,

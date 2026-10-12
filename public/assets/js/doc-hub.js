@@ -368,10 +368,20 @@ window.AsgardDocHubPage = (function () {
 
     async function buildFromAll() {
       let list = [];
+      let forbidden = false;
       try {
+        // 403 кэшируется в AsgardDB как запрещённая таблица — проверяем явно,
+        // чтобы не писать ложно «договоров нет» вместо «нет доступа».
+        if (window.AsgardDB && typeof AsgardDB.isForbidden === 'function') {
+          forbidden = AsgardDB.isForbidden('contracts');
+        }
         if (ACP && typeof ACP.getAll === 'function') list = await ACP.getAll();
         else if (window.AsgardDB && AsgardDB.getAll) list = (await AsgardDB.getAll('contracts')) || [];
+        if (!list || !list.length) {
+          if (window.AsgardDB && typeof AsgardDB.isForbidden === 'function') forbidden = AsgardDB.isForbidden('contracts');
+        }
       } catch (_) { list = []; }
+      if (forbidden) { showNoAccessModal(); return; }
       const qInn = String(inn || '').replace(/\D/g, '');
       const qName = String(cpName || '').toLowerCase().trim();
       const filtered = list.filter((c) => {
@@ -387,6 +397,31 @@ window.AsgardDocHubPage = (function () {
     buildFromAll().catch(() => {
       toast('Договоры', 'Не удалось загрузить реестр договоров', 'err');
     });
+  }
+
+  /** Отдельная модалка: реестр договоров недоступен по правам (403). */
+  function showNoAccessModal() {
+    document.getElementById('dhContractModal')?.remove();
+    const wrap = document.createElement('div');
+    wrap.id = 'dhContractModal';
+    wrap.className = 'dh-cmodal';
+    wrap.innerHTML = `
+      <div class="dh-cmodal__card" role="dialog" aria-modal="true">
+        <header class="dh-cmodal__head">
+          <strong>Договоры недоступны</strong>
+          <button type="button" class="dh-cmodal__x" aria-label="Закрыть">✕</button>
+        </header>
+        <div class="dh-empty dh-empty--sm" style="padding:18px">
+          <div class="dh-empty__t">Нет доступа к реестру договоров</div>
+          <p>У вашей роли нет прав на чтение договоров, поэтому список пуст. Обратитесь к администратору.</p>
+        </div>
+        <footer class="dh-cmodal__foot">
+          <button type="button" class="dh-btn dh-btn--ghost" id="dhCmodalCancel">Закрыть</button>
+        </footer>
+      </div>`;
+    document.body.appendChild(wrap);
+    wrap.querySelector('.dh-cmodal__x')?.addEventListener('click', () => wrap.remove());
+    wrap.querySelector('#dhCmodalCancel')?.addEventListener('click', () => wrap.remove());
   }
 
   function showInlineContractModal(contracts, onSelect, hint, scoped, ctx) {
