@@ -687,7 +687,7 @@ export default function FieldHome() {
       {showIOSHint && (
         <div style={{
           position: 'fixed', bottom: 80, left: 16, right: 16, zIndex: 500,
-          background: 'linear-gradient(135deg, #1a1a24, #141420)',
+          background: 'var(--field-card)',
           border: '1px solid rgba(200,168,78,0.4)',
           borderRadius: 18, padding: '16px',
           boxShadow: '0 8px 32px rgba(0,0,0,0.5)',
@@ -726,7 +726,7 @@ export default function FieldHome() {
       {showPushPrompt && !push.subscribed && push.permission !== 'denied' && (
         <div style={{
           position: 'fixed', bottom: 80, left: 16, right: 16, zIndex: 500,
-          background: 'linear-gradient(135deg, #1a1a24, #141420)',
+          background: 'var(--field-card)',
           border: '1px solid rgba(74,144,217,0.4)',
           borderRadius: 18, padding: '16px',
           boxShadow: '0 8px 32px rgba(0,0,0,0.5)',
@@ -881,14 +881,17 @@ export default function FieldHome() {
           unknown:   { ic: '❔', label: 'Готов на объект?',    sub: 'Отметь свою готовность',     col: '#EF4444' },
         };
         const r = RS[readinessStatus] || RS.unknown;
+        // Если чек-ин заблокирован непройденным уроком — не показываем «зелёное» противоречие
+        const blockedByAcademy = academyAlert?.type === 'blocked' && !isActive;
+        const shown = blockedByAcademy ? { ...r, col: '#EF4444', sub: 'Пройди обязательный урок' } : r;
         return (
           <button onClick={() => { haptic.light(); navigate('/field/readiness'); }}
             className="w-full rounded-xl p-4 mb-4 flex items-center gap-3 text-left"
-            style={{ backgroundColor: 'var(--bg-elevated)', border: `2px solid ${r.col}` }}>
-            <span style={{ fontSize: 26 }}>{r.ic}</span>
+            style={{ backgroundColor: 'var(--bg-elevated)', border: `2px solid ${shown.col}`, opacity: blockedByAcademy ? 0.85 : 1 }}>
+            <span style={{ fontSize: 26 }}>{shown.ic}</span>
             <div style={{ flex: 1, minWidth: 0 }}>
-              <p className="font-semibold" style={{ color: r.col }}>{r.label}</p>
-              {r.sub && <p className="text-sm" style={{ color: 'var(--text-tertiary)' }}>{r.sub}</p>}
+              <p className="font-semibold" style={{ color: shown.col }}>{shown.label}</p>
+              {shown.sub && <p className="text-sm" style={{ color: 'var(--text-tertiary)' }}>{shown.sub}</p>}
             </div>
             <span className="text-xs px-2 py-1 rounded-lg" style={{ backgroundColor: 'var(--bg-primary)', color: 'var(--text-secondary)', border: '1px solid var(--border-norse)' }}>
               {readinessStatus === 'unknown' ? 'Отметить' : 'Изменить'}
@@ -994,10 +997,10 @@ export default function FieldHome() {
             </>
           ) : (
             <>
-              <button disabled={actionLoading} onClick={handleCheckin}
+              <button disabled={actionLoading || academyAlert?.type === 'blocked'} onClick={handleCheckin}
                 className="w-full py-3 rounded-xl font-semibold text-white text-sm disabled:opacity-50"
                 style={{ background: 'linear-gradient(135deg, var(--gold), #b8860b)' }}>
-                {actionLoading ? 'Отмечаемся...' : '⚔️ Начать смену'}
+                {actionLoading ? 'Отмечаемся...' : academyAlert?.type === 'blocked' ? '🚫 Сначала пройди урок' : '⚔️ Начать смену'}
               </button>
             </>
           )}
@@ -1096,19 +1099,19 @@ export default function FieldHome() {
               width: '100%', maxWidth: 320,
               borderRadius: 28,
               padding: '22px 18px 18px',
-              background: 'linear-gradient(160deg, rgba(40,44,56,0.92), rgba(18,20,28,0.96))',
-              border: '1px solid rgba(255,255,255,0.12)',
+              background: 'var(--field-card)',
+              border: '1px solid var(--field-hairline)',
               boxShadow: '0 24px 80px rgba(0,0,0,0.55)',
             }}
           >
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16, padding: '0 4px' }}>
-              <p style={{ margin: 0, fontSize: 17, fontWeight: 900, color: '#fff' }}>Игры</p>
+              <p style={{ margin: 0, fontSize: 17, fontWeight: 900, color: 'var(--field-text)' }}>Игры</p>
               <button
                 type="button"
                 onClick={() => setShowGamesFolder(false)}
                 style={{
                   width: 32, height: 32, borderRadius: 16, border: 'none',
-                  background: 'rgba(255,255,255,0.1)', color: '#fff', fontSize: 18, cursor: 'pointer',
+                  background: 'var(--field-card-3)', color: 'var(--field-text)', fontSize: 18, cursor: 'pointer',
                 }}
               >×</button>
             </div>
@@ -1147,7 +1150,7 @@ export default function FieldHome() {
                       }}>{g.badge}</span>
                     )}
                   </div>
-                  <span style={{ fontSize: 12, fontWeight: 700, color: '#fff' }}>{g.label}</span>
+                  <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--field-text)' }}>{g.label}</span>
                 </button>
               ))}
             </div>
@@ -1174,7 +1177,7 @@ export default function FieldHome() {
       {myRank && (
         <button onClick={() => { haptic.medium(); navigate('/field/leaderboard'); }}
           className="w-full rounded-2xl p-4 mb-5 text-left active:scale-95 transition-transform"
-          style={{ background: 'linear-gradient(135deg,#1a1400,#0e0c00)', border: '1.5px solid rgba(212,168,67,.4)', boxShadow: '0 4px 20px rgba(212,168,67,.08)' }}>
+          style={{ background: 'var(--field-card)', border: '1.5px solid rgba(212,168,67,.4)', boxShadow: '0 4px 20px rgba(212,168,67,.08)' }}>
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
               <span style={{ fontSize: 32 }}>🏆</span>

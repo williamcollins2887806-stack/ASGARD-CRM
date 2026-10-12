@@ -18,7 +18,7 @@
   --bg-elevated: #242430;
   --text-primary: #F5F5F7;
   --text-secondary: #8E8E93;
-  --text-tertiary: #48484A;
+  --text-tertiary: #8E8E93;
   /* Text-on-color tokens (stable across themes — colored gradients keep
      their dark hue in both modes, so white reads cleanly in either). */
   --text-on-accent: #FFFFFF;     /* white on blue/green/red gradients */
@@ -51,6 +51,22 @@
   /* Custom borders & shadows */
   --border-norse: #1f1f28;
   --border-light: #2a2a36;
+
+  /* === Field (полевое приложение рабочих) theme-aware tokens ===
+     Экраны /field/* завязаны на эти токены вместо литеральных тёмных цветов,
+     чтобы светлая тема (класс .light) применялась целиком, а не «лоскутно». */
+  --field-hero-bg: linear-gradient(180deg, #0a0e1a 0%, #111827 60%, #0a0a0a 100%);
+  --field-bg: #0b0e1a;
+  --field-bg-2: #080d1f;
+  --field-bg-3: #070a0e;
+  --field-card: #141828;
+  --field-card-2: #1a2040;
+  --field-card-3: #1e2550;
+  --field-text: #FFFFFF;
+  --field-text-2: rgba(255,255,255,0.7);
+  --field-text-3: rgba(255,255,255,0.4);
+  --field-hairline: rgba(255,255,255,0.08);
+  --field-overlay: rgba(10,14,24,0.88);
   --shadow-sm: 0 1px 2px rgba(0,0,0,0.3);
   --shadow-md: 0 4px 12px rgba(0,0,0,0.4);
   --shadow-lg: 0 8px 32px rgba(0,0,0,0.5);
@@ -108,7 +124,7 @@
   --bg-elevated: #FFFFFF;
   --text-primary: #1C1C1E;
   --text-secondary: #6C6C70;
-  --text-tertiary: #AEAEB2;
+  --text-tertiary: #8E8E93;
   /* On-color tokens stay the same in light theme — colored gradients
      (blue/green/gold) are bright in both modes, so contrast holds. */
   --text-on-accent: #FFFFFF;
@@ -143,6 +159,20 @@
   --border: #E5E5EA;
   --input: #E5E5EA;
   --ring: #c8a84e;
+
+  /* === Field tokens (light) === */
+  --field-hero-bg: linear-gradient(180deg, #ffffff 0%, #f2f2f7 100%);
+  --field-bg: #F2F2F7;
+  --field-bg-2: #F7F7FA;
+  --field-bg-3: #FFFFFF;
+  --field-card: #FFFFFF;
+  --field-card-2: #F7F7FA;
+  --field-card-3: #EFEFF4;
+  --field-text: #1C1C1E;
+  --field-text-2: #6C6C70;
+  --field-text-3: #8E8E93;
+  --field-hairline: rgba(0,0,0,0.08);
+  --field-overlay: rgba(255,255,255,0.9);
 }
 
 @theme inline {
@@ -203,6 +233,18 @@
 html, body, #root {
   height: 100%;
 }
+/* iOS: 100% = layout-viewport, снизу остаётся полоса. dvh закрывает динамический вьюпорт. */
+@supports (height: 100dvh) {
+  html, body, #root { height: 100dvh; }
+}
+/* Утилита для полевых экранов без своего inset: не даёт шапке заезжать под чёлку,
+   а контенту — под домашний индикатор (таббара на /field нет). */
+.field-safe {
+  padding-top: max(env(safe-area-inset-top), 12px);
+  padding-bottom: max(env(safe-area-inset-bottom), 16px);
+}
+.field-safe-top { padding-top: max(env(safe-area-inset-top), 12px); }
+.field-safe-bottom { padding-bottom: max(env(safe-area-inset-bottom), 16px); }
 
 body {
   margin: 0;

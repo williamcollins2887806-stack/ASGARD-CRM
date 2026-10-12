@@ -71,6 +71,9 @@ export default function FieldLogin() {
   const [otp, setOtp] = useState(['', '', '', '']);
   const [cooldown, setCooldown] = useState(0);
   const [employeeName, setEmployeeName] = useState('');
+  // Несколько сотрудников на один номер → экран «Кто вы?»
+  const [candidates, setCandidates] = useState(null);
+  const [chosenEmployeeId, setChosenEmployeeId] = useState(null);
   const otpRefs = [useRef(), useRef(), useRef(), useRef()];
   const autoSmsSent = useRef(false);
 
@@ -135,10 +138,18 @@ export default function FieldLogin() {
   const handleRequestCode = async () => {
     if (rawPhone.length < 10) return;
     clearError();
+    setCandidates(null);
+    setChosenEmployeeId(null);
     const wantReset = pendingResetPin || searchParams.get('reset') === '1';
     try {
       if (!wantReset) {
         const looked = await checkPhone(fullPhone);
+        // Несколько сотрудников на один номер → сначала «Кто вы?»
+        if (looked?.need_employee_choice) {
+          setCandidates(looked.employees || []);
+          setStep('choose');
+          return;
+        }
         if (looked?.has_pin && looked.employee?.id) {
           rememberForPin(looked.employee);
           navigate('/field/pin-entry', { replace: true });
@@ -146,6 +157,24 @@ export default function FieldLogin() {
         }
       }
       await requestCode(fullPhone);
+      setStep('code');
+      setCooldown(60);
+      setTimeout(() => otpRefs[0].current?.focus(), 300);
+    } catch (_) {}
+  };
+
+  // Работник выбрал себя из списка → с PIN идём на ввод PIN, иначе шлём SMS
+  const handleChooseEmployee = async (emp) => {
+    if (!emp?.id) return;
+    clearError();
+    setChosenEmployeeId(emp.id);
+    try {
+      if (emp.has_pin) {
+        rememberForPin(emp);
+        navigate('/field/pin-entry', { replace: true });
+        return;
+      }
+      await requestCode(fullPhone, emp.id);
       setStep('code');
       setCooldown(60);
       setTimeout(() => otpRefs[0].current?.focus(), 300);
@@ -175,6 +204,7 @@ export default function FieldLogin() {
     try {
       const result = await verifyCode(fullPhone, code, {
         resetPin: pendingResetPin || searchParams.get('reset') === '1',
+        employeeId: chosenEmployeeId,
       });
       goAfterAuth(
         result?.status || useFieldAuthStore.getState().status,
@@ -188,7 +218,7 @@ export default function FieldLogin() {
     if (cooldown > 0) return;
     clearError();
     try {
-      await requestCode(fullPhone);
+      await requestCode(fullPhone, chosenEmployeeId);
       setCooldown(60);
       setOtp(['', '', '', '']);
     } catch (_) {}
@@ -213,7 +243,7 @@ export default function FieldLogin() {
 
       <div className="fa-login-header">
         <button className="fa-back-btn" onClick={() => {
-          if (step === 'code') { setStep('phone'); setOtp(['','','','']); clearError(); }
+          if (step === 'code' || step === 'choose') { setStep('phone'); setOtp(['','','','']); setCandidates(null); setChosenEmployeeId(null); clearError(); }
           else navigate('/field/welcome');
         }}>←</button>
         <img
@@ -243,6 +273,7 @@ export default function FieldLogin() {
                 className="fa-phone-input"
                 type="tel"
                 inputMode="numeric"
+                data-phone-mask="off"
                 placeholder="(999) 123-45-67"
                 value={formatPhone(phone)}
                 onChange={(e) => setPhone(e.target.value.replace(/\D/g, '').slice(0, 10))}
@@ -285,6 +316,35 @@ export default function FieldLogin() {
           </div>
         )}
 
+        {step === 'choose' && (
+          <div className="fa-slide-in" style={{ width: '100%', maxWidth: 320 }}>
+            <h2 className="fa-heading">Кто из вас,<br />воин?</h2>
+            <p className="fa-desc">
+              На этот номер заведено несколько сотрудников. Выбери себя.
+            </p>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 8 }}>
+              {(candidates || []).map((emp) => (
+                <button
+                  key={emp.id}
+                  type="button"
+                  className="fa-btn-gold"
+                  style={{ textAlign: 'left', padding: '14px 16px' }}
+                  disabled={loading}
+                  onClick={() => handleChooseEmployee(emp)}
+                >
+                  <span style={{ display: 'block', fontWeight: 700, fontSize: 15 }}>{emp.fio}</span>
+                  {emp.position && (
+                    <span style={{ display: 'block', fontSize: 11, opacity: 0.7, marginTop: 2 }}>
+                      {emp.position}{emp.has_pin ? ' · PIN настроен' : ''}
+                    </span>
+                  )}
+                </button>
+              ))}
+            </div>
+            {error && <div className="fa-error">{error}</div>}
+          </div>
+        )}
+
         {step === 'code' && (
           <div className="fa-slide-in" style={{ width: '100%', maxWidth: 320 }}>
             <h2 className="fa-heading">Код из SMS</h2>
@@ -298,6 +358,7 @@ export default function FieldLogin() {
                   className="fa-otp-box"
                   type="tel"
                   inputMode="numeric"
+                  data-phone-mask="off"
                   maxLength={1}
                   value={digit}
                   onChange={(e) => handleOtpChange(i, e.target.value)}

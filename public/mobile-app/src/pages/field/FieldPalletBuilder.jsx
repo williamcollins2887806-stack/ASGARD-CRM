@@ -123,10 +123,10 @@ export default function FieldPalletBuilder() {
   if (loading) return <ScreenSkeleton onBack={() => nav(-1)} />;
 
   return (
-    <div className="min-h-screen pb-28" style={{ background: 'var(--bg-base,#0a0a14)', color: '#e6e9ef' }}>
+    <div className="min-h-screen" style={{ background: 'var(--bg-base,#0a0a14)', color: '#e6e9ef', paddingBottom: 'max(env(safe-area-inset-bottom), 24px)' }}>
       {/* Шапка */}
       <div className="sticky top-0 z-20 px-4 py-3"
-        style={{ background: 'rgba(10,10,20,.92)', backdropFilter: 'blur(12px)', borderBottom: '1px solid rgba(240,200,80,.15)' }}>
+        style={{ background: 'rgba(10,10,20,.92)', backdropFilter: 'blur(12px)', borderBottom: '1px solid rgba(240,200,80,.15)', paddingTop: 'max(env(safe-area-inset-top), 12px)' }}>
         <div className="flex items-center gap-3">
           <button onClick={() => { haptic.light(); nav(-1); }} className="p-2 -ml-2 rounded-xl active:scale-90 transition"><ArrowLeft size={22} /></button>
           <div className="flex-1 min-w-0">
@@ -407,7 +407,7 @@ function AddItemSheet({ assemblyId, activePallet, pallets, onClose, onAdded, onE
 
 function ScreenSkeleton({ onBack }) {
   return (
-    <div className="min-h-screen p-4" style={{ background: 'var(--bg-base,#0a0a14)' }}>
+    <div className="min-h-screen p-4" style={{ background: 'var(--bg-base,#0a0a14)', paddingTop: 'max(env(safe-area-inset-top), 16px)', paddingBottom: 'max(env(safe-area-inset-bottom), 16px)' }}>
       <div className="flex items-center gap-3 mb-5">
         <button onClick={onBack} className="p-2 -ml-2"><ArrowLeft size={22} color="#e6e9ef" /></button>
         <div className="h-5 w-40 rounded animate-pulse" style={{ background: 'rgba(255,255,255,.08)' }} />

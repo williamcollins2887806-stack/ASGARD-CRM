@@ -45,11 +45,16 @@ const STRIP_CSS = `
 }
 `;
 
-export function NornsPauseStrip({ text = PAUSE_STRIP, style }) {
+export function NornsPauseStrip({ text = PAUSE_STRIP, style, onClick }) {
   return (
     <>
       <style>{STRIP_CSS}</style>
-      <div className="norns-pause-strip" style={style} role="status">
+      <div
+        className="norns-pause-strip"
+        style={{ cursor: onClick ? 'pointer' : undefined, ...style }}
+        role={onClick ? 'button' : 'status'}
+        onClick={onClick}
+      >
         <span className="norns-pause-strip-icon" aria-hidden>ᚱ</span>
         <div className="norns-pause-strip-text">{text}</div>
       </div>

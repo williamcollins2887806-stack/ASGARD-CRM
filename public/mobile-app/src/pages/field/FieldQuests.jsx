@@ -317,12 +317,10 @@ export default function FieldQuests() {
             </div>
             <span className="fq-ribbon-val" style={{ color: 'var(--fq-daily)' }}>{done}/{q.length}</span>
           </div>
-          {userStreak > 0 && (
-            <div className="fq-ribbon-streak">
-              <span className="fq-streak-fire">{'\uD83D\uDD25'}</span>
-              <span className="fq-streak-txt"><b>{userStreak} {userStreak === 1 ? 'день' : userStreak < 5 ? 'дня' : 'дней'}</b> подряд</span>
-            </div>
-          )}
+          <div className="fq-ribbon-streak">
+            <span className="fq-streak-fire">{'\uD83D\uDD25'}</span>
+            <span className="fq-streak-txt"><b>{userStreak} {userStreak % 10 === 1 && userStreak % 100 !== 11 ? 'день' : [2, 3, 4].includes(userStreak % 10) && ![12, 13, 14].includes(userStreak % 100) ? 'дня' : 'дней'}</b> подряд</span>
+          </div>
         </div>
       );
     }
@@ -691,7 +689,7 @@ export default function FieldQuests() {
 
         {/* ═══ DANGER TOAST ═══ */}
         <div className={`fq-danger-toast${showDangerToast ? ' show' : ''}`}>
-          <span className="fq-dt-fire">{'\uD83D\uDD25'}</span> Серия {userStreak} {userStreak === 1 ? 'день' : userStreak < 5 ? 'дня' : 'дней'} под угрозой!
+          <span className="fq-dt-fire">{'\uD83D\uDD25'}</span> Серия {userStreak} {userStreak % 10 === 1 && userStreak % 100 !== 11 ? 'день' : [2, 3, 4].includes(userStreak % 10) && ![12, 13, 14].includes(userStreak % 100) ? 'дня' : 'дней'} под угрозой!
         </div>
 
         {/* ═══ CLAIM MODAL ═══ */}
@@ -769,6 +767,8 @@ const QUEST_CSS = `
   font-family:-apple-system,BlinkMacSystemFont,'SF Pro Round',system-ui,sans-serif;
   -webkit-user-select:none;user-select:none;-webkit-tap-highlight-color:transparent;overflow:hidden;
 }
+/* Светлая тема: те же токены, но под .light — экран перекрашивается целиком */
+.light .fq{--fq-bg:#F2F2F7;--fq-card:#FFFFFF;--fq-card2:#F7F7FA;--fq-t1:#1C1C1E;--fq-t2:#6C6C70;--fq-t3:#8E8E93}
 .fq-bg{position:fixed;inset:0;z-index:0;overflow:hidden}
 .fq-bg-glow{position:absolute;border-radius:50%;filter:blur(80px);opacity:.25;transition:opacity 1s}
 .fq-bg-glow.g1{width:300px;height:300px;top:-50px;left:-50px;background:var(--fq-blue)}

@@ -99,6 +99,7 @@ export default function FieldPinEntry() {
 
         <input
           type="tel"
+          data-phone-mask="off"
           value={pin}
           onChange={handlePinChange}
           maxLength={4}

@@ -57,7 +57,7 @@ function MoneyDetail({ workId, onBack }) {
   if (loading) return <Skeleton />;
   if (!data || data.error) {
     return (
-      <div className="p-4 pb-24" style={{ backgroundColor: 'var(--bg-primary)' }}>
+      <div className="p-4" style={{ backgroundColor: 'var(--bg-primary)', paddingTop: 'max(env(safe-area-inset-top), 16px)', paddingBottom: 'max(env(safe-area-inset-bottom), 24px)' }}>
         <div className="flex items-center gap-3 mb-4">
           <button onClick={onBack} className="p-2 rounded-lg" style={{ backgroundColor: 'var(--bg-elevated)' }}>
             <ArrowLeft size={20} style={{ color: 'var(--text-primary)' }} />
@@ -80,7 +80,7 @@ function MoneyDetail({ workId, onBack }) {
   rows.push({ label: 'К выплате', value: `${fmt(data.remaining)}`, bold: true, sep: true, color: 'var(--gold)' });
 
   return (
-    <div className="p-4 pb-24 space-y-4" style={{ backgroundColor: 'var(--bg-primary)' }}>
+    <div className="p-4 space-y-4" style={{ backgroundColor: 'var(--bg-primary)', paddingTop: 'max(env(safe-area-inset-top), 16px)', paddingBottom: 'max(env(safe-area-inset-bottom), 24px)' }}>
       {/* Header */}
       <div className="flex items-center gap-3">
         <button onClick={onBack} className="p-2 rounded-lg" style={{ backgroundColor: 'var(--bg-elevated)' }}>
@@ -206,7 +206,7 @@ export default function FieldMoney() {
 
   if (finances?.error === 'per_diem_not_set') {
     return (
-      <div className="p-4 pb-24" style={{ backgroundColor: 'var(--bg-primary)' }}>
+      <div className="p-4" style={{ backgroundColor: 'var(--bg-primary)', paddingTop: 'max(env(safe-area-inset-top), 16px)', paddingBottom: 'max(env(safe-area-inset-bottom), 24px)' }}>
         <div className="flex items-center gap-3 mb-4">
           <button onClick={() => navigate('/field/home')} className="p-2 rounded-lg" style={{ backgroundColor: 'var(--bg-elevated)' }}>
             <ArrowLeft size={20} style={{ color: 'var(--text-primary)' }} />
@@ -240,7 +240,7 @@ export default function FieldMoney() {
   const stagesTotal = stagesList.reduce((s, st) => s + parseFloat(st.amount_earned || 0), 0);
 
   return (
-    <div className="p-4 pb-24 space-y-4" style={{ backgroundColor: 'var(--bg-primary)' }}>
+    <div className="p-4 space-y-4" style={{ backgroundColor: 'var(--bg-primary)', paddingTop: 'max(env(safe-area-inset-top), 16px)', paddingBottom: 'max(env(safe-area-inset-bottom), 24px)' }}>
       {/* Header */}
       <div className="flex items-center gap-3">
         <button onClick={() => { haptic.light(); navigate('/field/home'); }} className="p-2 rounded-lg" style={{ backgroundColor: 'var(--bg-elevated)' }}>

@@ -6,9 +6,9 @@ import { useNavigate } from 'react-router-dom';
 import { fieldApi } from '@/api/fieldClient';
 
 const C = {
-  bg: '#0d0d12', card: '#16161f', gold: '#c8a84b',
+  bg: 'var(--field-bg)', card: 'var(--field-card)', gold: '#c8a84b',
   rune: '#7b61ff', green: '#22c55e', red: '#ef4444',
-  amber: '#f59e0b', text: '#e8e8f0', muted: '#6b7280',
+  amber: '#f59e0b', text: 'var(--field-text)', muted: '#8E8E93',
 };
 
 const TAG_LABELS = {
@@ -140,7 +140,7 @@ export default function FieldAcademyLibrary() {
   const totalCount = lessons.length;
 
   return (
-    <div style={{ minHeight: '100vh', background: C.bg, paddingBottom: 80 }}>
+    <div style={{ minHeight: '100dvh', background: C.bg, paddingTop: 'max(env(safe-area-inset-top), 16px)', paddingBottom: 'max(env(safe-area-inset-bottom), 24px)' }}>
       {/* Header */}
       <div style={{ padding: '48px 16px 20px', background: 'linear-gradient(180deg, #1a0d2e 0%, transparent 100%)' }}>
         <button

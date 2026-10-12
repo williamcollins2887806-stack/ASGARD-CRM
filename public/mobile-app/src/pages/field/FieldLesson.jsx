@@ -7,9 +7,9 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { fieldApi } from '@/api/fieldClient';
 
 const C = {
-  bg: '#0d0d12', card: '#16161f', gold: '#c8a84b',
+  bg: 'var(--field-bg)', card: 'var(--field-card)', gold: '#c8a84b',
   rune: '#7b61ff', green: '#22c55e', red: '#ef4444',
-  amber: '#f59e0b', text: '#e8e8f0', muted: '#6b7280',
+  amber: '#f59e0b', text: 'var(--field-text)', muted: '#8E8E93',
 };
 
 /** Совпадает с MIN_READ_SECONDS в src/routes/field-academy.js */
@@ -248,7 +248,7 @@ export default function FieldLesson() {
 
   if (loading) {
     return (
-      <div style={{ minHeight: '100vh', background: C.bg, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <div style={{ minHeight: '100dvh', background: C.bg, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
         <div style={{ color: C.gold, fontSize: 32 }}>⚡</div>
       </div>
     );
@@ -256,7 +256,7 @@ export default function FieldLesson() {
 
   if (!lesson) {
     return (
-      <div style={{ minHeight: '100vh', background: C.bg, padding: '80px 20px', textAlign: 'center' }}>
+      <div style={{ minHeight: '100dvh', background: C.bg, padding: '80px 20px', textAlign: 'center' }}>
         <div style={{ fontSize: 48, marginBottom: 16 }}>📜</div>
         <div style={{ color: C.muted }}>Руна не найдена</div>
         <button onClick={() => navigate(-1)} style={{ marginTop: 20, color: C.gold, background: 'none', border: 'none', cursor: 'pointer' }}>
@@ -269,7 +269,7 @@ export default function FieldLesson() {
   const blocks = lesson.blocks || [];
 
   return (
-    <div style={{ minHeight: '100vh', background: C.bg, paddingBottom: 120 }}>
+    <div style={{ minHeight: '100dvh', background: C.bg, paddingTop: 'max(env(safe-area-inset-top), 16px)', paddingBottom: 'max(env(safe-area-inset-bottom), 24px)' }}>
       {/* Back button */}
       <button
         onClick={() => navigate(-1)}

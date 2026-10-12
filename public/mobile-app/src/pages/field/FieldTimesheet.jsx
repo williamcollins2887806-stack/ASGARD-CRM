@@ -263,7 +263,7 @@ export default function FieldTimesheet() {
   };
 
   return (
-    <div className="pb-24 min-h-screen" style={{ backgroundColor: 'var(--bg-primary)' }}>
+    <div style={{ backgroundColor: 'var(--bg-primary)', minHeight: '100dvh', paddingTop: 'max(env(safe-area-inset-top), 16px)', paddingBottom: 'max(env(safe-area-inset-bottom), 24px)' }}>
       <div className="p-4 space-y-4">
         <div className="flex items-center gap-3">
           <button

@@ -132,7 +132,7 @@ export default function FieldMyWorks() {
   const totalEarned = projects.reduce((s, p) => s + (parseFloat(p.total_earned) || 0), 0);
 
   return (
-    <div className="p-4 pb-24 space-y-4">
+    <div className="p-4 space-y-4" style={{ paddingTop: 'max(env(safe-area-inset-top), 16px)', paddingBottom: 'max(env(safe-area-inset-bottom), 24px)' }}>
       {/* Header */}
       <div className="flex items-center gap-3">
         <Briefcase size={22} style={{ color: 'var(--gold)' }} />

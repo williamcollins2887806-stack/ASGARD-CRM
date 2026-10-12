@@ -153,7 +153,7 @@ function HistoryDetail({ workId, onBack }) {
   const periodEnd = dates[dates.length - 1];
 
   return (
-    <div className="pb-24" style={{ backgroundColor: 'var(--bg-primary)' }}>
+    <div style={{ backgroundColor: 'var(--bg-primary)', paddingTop: 'max(env(safe-area-inset-top), 16px)', paddingBottom: 'max(env(safe-area-inset-bottom), 24px)' }}>
       {/* Keyframes */}
       <style>{`
         @keyframes fieldHistSlideUp { from { opacity:0; transform:translateY(16px) } to { opacity:1; transform:translateY(0) } }
@@ -472,7 +472,7 @@ export default function FieldHistory() {
   );
 
   return (
-    <div className="p-4 pb-24 space-y-4" style={{ backgroundColor: 'var(--bg-primary)' }}>
+    <div className="p-4 space-y-4" style={{ backgroundColor: 'var(--bg-primary)', paddingTop: 'max(env(safe-area-inset-top), 16px)', paddingBottom: 'max(env(safe-area-inset-bottom), 24px)' }}>
       <style>{`@keyframes fieldHistSlideUp { from { opacity:0; transform:translateY(16px) } to { opacity:1; transform:translateY(0) } }`}</style>
 
       {/* Header */}

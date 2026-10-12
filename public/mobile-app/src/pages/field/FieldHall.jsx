@@ -47,7 +47,7 @@ export default function FieldHall() {
 
   if (loading) {
     return (
-      <div style={{ minHeight: '100vh', background: '#080d1f', color: '#9ca3af', padding: 24, textAlign: 'center' }}>
+      <div style={{ minHeight: '100dvh', background: 'var(--field-bg-2)', color: 'var(--field-text-2)', padding: 24, paddingTop: 'max(env(safe-area-inset-top), 24px)', textAlign: 'center' }}>
         Открываем зал воина…
       </div>
     );
@@ -55,7 +55,7 @@ export default function FieldHall() {
 
   if (error || !data?.host) {
     return (
-      <div style={{ minHeight: '100vh', background: '#080d1f', padding: 24 }}>
+      <div style={{ minHeight: '100dvh', background: 'var(--field-bg-2)', padding: 24, paddingTop: 'max(env(safe-area-inset-top), 24px)' }}>
         <button onClick={() => navigate(-1)} style={{ background: 'none', border: 'none', color: '#D4A843' }}>← Назад</button>
         <p style={{ color: '#ef4444', marginTop: 16 }}>{error || 'Воин не найден'}</p>
       </div>
@@ -68,9 +68,10 @@ export default function FieldHall() {
   const rankInfo = getRank(level);
 
   return (
-    <div style={{ minHeight: '100vh', background: '#080d1f', paddingBottom: 100 }}>
+    <div style={{ minHeight: '100dvh', background: 'var(--field-bg-2)', paddingBottom: 'max(env(safe-area-inset-bottom), 24px)' }}>
       <div style={{
         position: 'sticky', top: 0, zIndex: 10, padding: '14px 16px',
+        paddingTop: 'max(env(safe-area-inset-top), 14px)',
         background: 'linear-gradient(180deg,#080d1f 70%, transparent)',
         display: 'flex', alignItems: 'center', gap: 12,
       }}>
@@ -82,7 +83,7 @@ export default function FieldHall() {
         </button>
         <div style={{ flex: 1 }}>
           <div style={{ fontSize: 16, fontWeight: 800, color: '#e2e8f0' }}>Зал воина</div>
-          <div style={{ fontSize: 11, color: '#6b7280' }}>{h.fio}</div>
+          <div style={{ fontSize: 11, color: '#8E8E93' }}>{h.fio}</div>
         </div>
       </div>
 
@@ -127,7 +128,7 @@ export default function FieldHall() {
             ['Аватар', h.cosmetics?.active_avatar],
           ].map(([label, val]) => (
             <div key={label} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, padding: '4px 0', color: '#cbd5e1' }}>
-              <span style={{ color: '#6b7280' }}>{label}</span>
+              <span style={{ color: '#8E8E93' }}>{label}</span>
               <span>{val || '—'}</span>
             </div>
           ))}

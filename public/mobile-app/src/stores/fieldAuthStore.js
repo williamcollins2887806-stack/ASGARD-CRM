@@ -89,13 +89,13 @@ export const useFieldAuthStore = create((set, get) => ({
     });
   },
 
-  requestCode: async (phone) => {
+  requestCode: async (phone, employeeId = null) => {
     set({ loading: true, error: null });
     try {
       const res = await fetch('/api/field/auth/request-code', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ phone }),
+        body: JSON.stringify(employeeId != null ? { phone, employee_id: employeeId } : { phone }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Ошибка отправки кода');
@@ -107,7 +107,7 @@ export const useFieldAuthStore = create((set, get) => ({
     }
   },
 
-  verifyCode: async (phone, code, { resetPin = false } = {}) => {
+  verifyCode: async (phone, code, { resetPin = false, employeeId = null } = {}) => {
     set({ loading: true, error: null });
     try {
       const res = await fetch('/api/field/auth/verify-code', {
@@ -117,6 +117,7 @@ export const useFieldAuthStore = create((set, get) => ({
           phone,
           code,
           reset_pin: resetPin || get().pendingResetPin,
+          ...(employeeId != null ? { employee_id: employeeId } : {}),
         }),
       });
       const data = await res.json();

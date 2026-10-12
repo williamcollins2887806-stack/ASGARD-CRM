@@ -88,6 +88,7 @@ export default function FieldPinSetup() {
 
         <input
           type="tel"
+          data-phone-mask="off"
           value={step === 'create' ? pin : confirmPin}
           onChange={handlePinChange}
           maxLength={4}

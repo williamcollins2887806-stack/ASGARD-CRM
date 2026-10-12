@@ -7,9 +7,9 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { fieldApi } from '@/api/fieldClient';
 
 const C = {
-  bg: '#0d0d12', card: '#16161f', gold: '#c8a84b',
+  bg: 'var(--field-bg)', card: 'var(--field-card)', gold: '#c8a84b',
   rune: '#7b61ff', green: '#22c55e', red: '#ef4444',
-  amber: '#f59e0b', text: '#e8e8f0', muted: '#6b7280',
+  amber: '#f59e0b', text: 'var(--field-text)', muted: '#8E8E93',
 };
 
 const TIME_LIMIT = 20 * 60; // 20 minutes in seconds
@@ -40,7 +40,7 @@ function ResultScreen({ result, lessonId, navigate }) {
 
   return (
     <div style={{
-      minHeight: '100vh', background: C.bg,
+      minHeight: '100dvh', background: C.bg,
       display: 'flex', flexDirection: 'column', alignItems: 'center',
       justifyContent: 'center', padding: 24,
     }}>
@@ -281,7 +281,7 @@ export default function FieldAcademyQuiz() {
 
   if (loading) {
     return (
-      <div style={{ minHeight: '100vh', background: C.bg, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <div style={{ minHeight: '100dvh', background: C.bg, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
         <div style={{ color: C.gold, fontSize: 32 }}>⚡</div>
       </div>
     );
@@ -289,7 +289,7 @@ export default function FieldAcademyQuiz() {
 
   if (error) {
     return (
-      <div style={{ minHeight: '100vh', background: C.bg, padding: '80px 20px', textAlign: 'center' }}>
+      <div style={{ minHeight: '100dvh', background: C.bg, padding: '80px 20px', textAlign: 'center' }}>
         <div style={{ fontSize: 48, marginBottom: 16 }}>⛔</div>
         <div style={{ color: C.red, marginBottom: 16 }}>{error}</div>
         <button onClick={() => navigate(-1)} style={{ color: C.gold, background: 'none', border: 'none', cursor: 'pointer', fontSize: 15 }}>
@@ -312,7 +312,7 @@ export default function FieldAcademyQuiz() {
   const isLast = current === totalQ - 1;
 
   return (
-    <div style={{ minHeight: '100vh', background: C.bg, display: 'flex', flexDirection: 'column' }}>
+    <div style={{ minHeight: '100dvh', background: C.bg, display: 'flex', flexDirection: 'column' }}>
       {/* Header */}
       <div style={{
         padding: '48px 16px 12px',

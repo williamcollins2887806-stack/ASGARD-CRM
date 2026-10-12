@@ -143,7 +143,7 @@ export default function FieldReadiness() {
   }
 
   return (
-    <div className="p-4 pb-24 min-h-screen" style={{ backgroundColor: 'var(--bg-primary)' }}>
+    <div className="p-4" style={{ backgroundColor: 'var(--bg-primary)', minHeight: '100dvh', paddingTop: 'max(env(safe-area-inset-top), 16px)', paddingBottom: 'max(env(safe-area-inset-bottom), 24px)' }}>
       {/* Header */}
       <div className="flex items-center gap-3 mb-5">
         <button onClick={() => navigate(-1)} className="p-1">

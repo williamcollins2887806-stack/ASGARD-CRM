@@ -297,7 +297,7 @@ export default function FieldPhotos() {
   // ── Loading skeleton ──
   if (loading) {
     return (
-      <div className="p-4 space-y-4 animate-pulse" style={{ backgroundColor: 'var(--bg-primary)', minHeight: '100vh' }}>
+      <div className="p-4 space-y-4 animate-pulse" style={{ backgroundColor: 'var(--bg-primary)', minHeight: '100dvh' }}>
         <div className="h-12 rounded-xl" style={{ backgroundColor: 'var(--bg-elevated)' }} />
         <div className="h-24 rounded-2xl" style={{ backgroundColor: 'var(--bg-elevated)' }} />
         <div className="grid grid-cols-3 gap-2">
@@ -310,8 +310,7 @@ export default function FieldPhotos() {
   return (
     <div
       ref={containerRef}
-      className="pb-24"
-      style={{ backgroundColor: 'var(--bg-primary)', minHeight: '100vh', overflowY: 'auto' }}
+      style={{ backgroundColor: 'var(--bg-primary)', minHeight: '100dvh', overflowY: 'auto', paddingTop: 'max(env(safe-area-inset-top), 12px)', paddingBottom: 'max(env(safe-area-inset-bottom), 16px)' }}
       onTouchStart={onTouchStart}
       onTouchMove={onTouchMove}
       onTouchEnd={onTouchEnd}

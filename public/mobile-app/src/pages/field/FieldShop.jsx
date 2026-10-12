@@ -614,6 +614,7 @@ const SHOP_CSS = `
   font-family:-apple-system,BlinkMacSystemFont,'SF Pro Round',system-ui,sans-serif;
   -webkit-user-select:none;user-select:none;overflow-x:hidden;
 }
+.light .fshop{--fshop-bg:#F2F2F7;--fshop-card:#FFFFFF;--fshop-card2:#F7F7FA;--fshop-card3:#EFEFF4;--fshop-t1:#1C1C1E;--fshop-t2:#6C6C70;--fshop-t3:#8E8E93}
 @keyframes fshop-shimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}
 .fshop-skeleton{display:block}
 
@@ -685,12 +686,12 @@ const SHOP_CSS = `
 .fshop-section-count{font-size:11px;color:var(--fshop-t3)}
 
 /* ═══ GRID ═══ */
-.fshop-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;padding:0 16px}
+.fshop-grid{display:grid;grid-template-columns:1fr 1fr;grid-auto-rows:1fr;gap:10px;padding:0 16px}
 
 /* ═══ CARD ═══ */
 .fshop-card{position:relative;border-radius:var(--fshop-radius);overflow:hidden;
-  background:var(--fshop-card);border:1px solid rgba(255,255,255,.04);
-  box-shadow:0 4px 16px rgba(0,0,0,.2);transition:all .3s cubic-bezier(.34,1.56,.64,1);cursor:pointer}
+  background:var(--fshop-card);border:1px solid var(--field-hairline);
+  display:flex;flex-direction:column;box-shadow:0 4px 16px rgba(0,0,0,.2);transition:all .3s cubic-bezier(.34,1.56,.64,1);cursor:pointer}
 .fshop-card:active{transform:scale(.96)}
 @media(hover:hover){.fshop-card:hover{transform:translateY(-4px) scale(1.02);
   box-shadow:0 8px 30px rgba(0,0,0,.35);border-color:rgba(255,255,255,.08)}}

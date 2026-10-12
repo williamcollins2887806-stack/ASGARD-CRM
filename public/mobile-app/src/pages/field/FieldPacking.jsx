@@ -5,7 +5,7 @@ import { useHaptic } from '@/hooks/useHaptic';
 import { ArrowLeft, Package, CheckCircle, Circle, PlayCircle, AlertTriangle, RefreshCw, Camera } from 'lucide-react';
 
 const STATUS_CONFIG = {
-  draft: { label: 'Черновик', color: '#6b7280' },
+  draft: { label: 'Черновик', color: '#8E8E93' },
   sent: { label: 'Назначен', color: '#f59e0b' },
   active: { label: 'Активный', color: '#3b82f6' },
   in_progress: { label: 'В сборке', color: '#5AC8FA' },
@@ -14,7 +14,7 @@ const STATUS_CONFIG = {
 };
 
 const ITEM_STATUS = {
-  pending: { label: 'Ожидает', color: '#6b7280', icon: '⬜' },
+  pending: { label: 'Ожидает', color: '#8E8E93', icon: '⬜' },
   packed: { label: 'Собрано', color: '#22c55e', icon: '✅' },
   shortage: { label: 'Недостача', color: '#ef4444', icon: '⚠️' },
   replaced: { label: 'Замена', color: '#f59e0b', icon: '🔄' },
@@ -120,7 +120,7 @@ export default function FieldPacking() {
   const pct = totalItems > 0 ? Math.round((totalPacked / totalItems) * 100) : 0;
 
   return (
-    <div className="p-4 pb-24 space-y-4" style={{ backgroundColor: 'var(--bg-primary)' }}>
+    <div className="p-4 space-y-4" style={{ backgroundColor: 'var(--bg-primary)', paddingTop: 'max(env(safe-area-inset-top), 16px)', paddingBottom: 'max(env(safe-area-inset-bottom), 24px)' }}>
       {/* Header */}
       <div className="flex items-center gap-3">
         <button onClick={() => navigate('/field/home')} className="p-2 rounded-lg" style={{ backgroundColor: 'var(--bg-elevated)' }}>

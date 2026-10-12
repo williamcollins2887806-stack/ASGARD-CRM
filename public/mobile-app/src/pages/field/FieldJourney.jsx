@@ -21,7 +21,7 @@ export default function FieldJourney() {
   }, []);
 
   if (loading) return (
-    <div style={{ background: '#0b0e1a', minHeight: '100dvh', padding: 20 }}>
+    <div style={{ background: 'var(--field-bg)', minHeight: '100dvh', padding: 20 }}>
       {[1,2,3].map(i => (
         <div key={i} style={{ height: 120, borderRadius: 18, marginBottom: 12,
           background: 'linear-gradient(90deg,#141828 25%,#1a2040 50%,#141828 75%)',
@@ -37,7 +37,7 @@ export default function FieldJourney() {
 
   return (
     <div style={{
-      background: '#0b0e1a', minHeight: '100dvh', color: '#fff',
+      background: 'var(--field-bg)', minHeight: '100dvh', color: 'var(--field-text)',
       fontFamily: "-apple-system,BlinkMacSystemFont,'SF Pro Round',system-ui,sans-serif",
     }}>
       {/* Header */}

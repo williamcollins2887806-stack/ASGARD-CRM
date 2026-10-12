@@ -9,7 +9,7 @@ const STATUS_MAP = {
   issued: { label: 'Выдан', bg: 'rgba(234,179,8,0.15)', color: '#eab308' },
   confirmed: { label: 'Получено', bg: 'rgba(59,130,246,0.15)', color: '#3b82f6' },
   reporting: { label: 'Отчёт', bg: 'rgba(249,115,22,0.15)', color: '#f97316' },
-  closed: { label: 'Закрыто', bg: 'rgba(107,114,128,0.15)', color: '#6b7280' },
+  closed: { label: 'Закрыто', bg: 'rgba(107,114,128,0.15)', color: '#8E8E93' },
 };
 
 // Категории расходов полевого модуля.
@@ -108,7 +108,7 @@ function FundDetail({ fundId, fund, onBack, onRefresh }) {
   }
 
   return (
-    <div className="p-4 pb-24 space-y-4" style={{ backgroundColor: 'var(--bg-primary)' }}>
+    <div className="p-4 space-y-4" style={{ backgroundColor: 'var(--bg-primary)', paddingTop: 'max(env(safe-area-inset-top), 16px)', paddingBottom: 'max(env(safe-area-inset-bottom), 24px)' }}>
       <div className="flex items-center gap-3">
         <button onClick={onBack} className="p-2 rounded-lg" style={{ backgroundColor: 'var(--bg-elevated)' }}>
           <ArrowLeft size={20} style={{ color: 'var(--text-primary)' }} />
@@ -318,7 +318,7 @@ export default function FieldFunds() {
   );
 
   return (
-    <div className="p-4 pb-24 space-y-4" style={{ backgroundColor: 'var(--bg-primary)' }}>
+    <div className="p-4 space-y-4" style={{ backgroundColor: 'var(--bg-primary)', paddingTop: 'max(env(safe-area-inset-top), 16px)', paddingBottom: 'max(env(safe-area-inset-bottom), 24px)' }}>
       {/* Header */}
       <div className="flex items-center gap-3">
         <button onClick={() => navigate(-1)} className="p-2 rounded-lg" style={{ backgroundColor: 'var(--bg-elevated)' }}>

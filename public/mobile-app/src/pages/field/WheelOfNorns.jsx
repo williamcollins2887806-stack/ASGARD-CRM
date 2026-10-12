@@ -37,6 +37,7 @@ const WHEEL_CSS = `
   --red:#E84057;--blue:#4A90FF;--purple:#A56EFF;--green:#3DDC84;--t1:#fff;--t2:rgba(255,255,255,.7);--t3:rgba(255,255,255,.4);
   background:var(--bg);color:var(--t1);font-family:-apple-system,BlinkMacSystemFont,'SF Pro Round',system-ui,sans-serif;
   overflow:hidden;height:100%;width:100%;-webkit-user-select:none;user-select:none;position:relative}
+.light .wn-root{--bg:#F2F2F7;--card:#FFFFFF;--card2:#F7F7FA;--t1:#1C1C1E;--t2:#6C6C70;--t3:#8E8E93}
 .wn-bg{position:absolute;inset:0;z-index:0;overflow:hidden}
 .wn-glow{position:absolute;border-radius:50%;filter:blur(80px);opacity:.25}
 .wn-g1{width:300px;height:300px;top:-50px;left:-50px;background:var(--blue)}
@@ -44,7 +45,9 @@ const WHEEL_CSS = `
 .wn-g3{width:200px;height:200px;top:40%;left:50%;transform:translateX(-50%);background:var(--gold);opacity:.08}
 .wn-stars{position:absolute;inset:0}.wn-s{position:absolute;background:#fff;border-radius:50%;animation:wnTw 3s ease-in-out infinite alternate}
 @keyframes wnTw{0%{opacity:.1;transform:scale(.8)}100%{opacity:.5;transform:scale(1.3)}}
-.wn-page{position:relative;z-index:5;display:flex;flex-direction:column;height:100%;max-width:430px;margin:0 auto}
+.wn-page{position:relative;z-index:5;display:flex;flex-direction:column;height:100%;min-height:0;max-width:430px;margin:0 auto;overflow:hidden}
+/* Нижний блок (кнопка+награды) фиксируется снизу; центральная зона (викинг+рулетка) сжимается. */
+.wn-bottom{flex-shrink:0;position:relative;z-index:11}
 .wn-top{display:flex;align-items:center;justify-content:space-between;padding:10px 16px;padding-top:max(env(safe-area-inset-top),10px)}
 .wn-back{width:36px;height:36px;border-radius:12px;background:rgba(255,255,255,.06);display:flex;align-items:center;justify-content:center;cursor:pointer;border:none}
 .wn-title{font-size:15px;font-weight:800;letter-spacing:.08em;color:var(--gold)}
@@ -71,7 +74,7 @@ const WHEEL_CSS = `
 .wn-dot-now{border:1.5px solid var(--gold);animation:wnDotP 1.5s ease-in-out infinite}
 @keyframes wnDotP{0%,100%{box-shadow:0 0 3px var(--gold-d)}50%{box-shadow:0 0 10px var(--gold)}}
 .wn-mult{padding:4px 10px;border-radius:10px;font-size:12px;font-weight:800;background:linear-gradient(135deg,var(--red),#ff6b6b);color:#fff;box-shadow:0 2px 8px rgba(232,64,87,.3)}
-.wn-viking-area{position:relative;z-index:15;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;margin-top:4px;height:196px;pointer-events:none}
+.wn-viking-area{position:relative;z-index:15;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;margin-top:4px;height:196px;min-height:0;flex-shrink:0;pointer-events:none}
 .wn-viking{position:relative;width:160px;height:160px;display:flex;align-items:center;justify-content:center}
 .wn-viking svg{width:100%;height:100%;overflow:visible;filter:drop-shadow(0 6px 15px rgba(0,0,0,.5))}
 .wn-viking-3d{width:160px;height:160px;border-radius:20px;overflow:hidden;
@@ -88,9 +91,9 @@ const WHEEL_CSS = `
   box-shadow:0 0 36px rgba(240,200,80,.55),0 0 16px rgba(232,64,87,.3),0 8px 28px rgba(0,0,0,.45),inset 0 0 0 1px rgba(240,200,80,.45)}
 /* no CSS filter — blanks WebGL avatar on mobile; glow via box-shadow on .wn-viking-3d */
 .wn-viking-area.engaged .wn-viking-3d{box-shadow:0 0 28px rgba(240,200,80,.35),0 8px 28px rgba(0,0,0,.45),inset 0 0 0 1px rgba(240,200,80,.35)}
-.wn-rank-badge{margin-top:4px;display:inline-flex;align-items:center;gap:6px;padding:3px 10px 3px 8px;border-radius:999px;
+.wn-rank-badge{margin-top:6px;display:inline-flex;align-items:center;gap:6px;padding:3px 10px 3px 8px;border-radius:999px;
   background:rgba(12,14,24,.72);border:1px solid rgba(255,255,255,.12);backdrop-filter:blur(8px);
-  font-size:11px;font-weight:700;letter-spacing:.04em;pointer-events:none}
+  font-size:11px;font-weight:700;letter-spacing:.04em;pointer-events:none;position:relative;z-index:16}
 .wn-rank-rune{font-size:13px;line-height:1}
 .wn-rw-actions{display:flex;flex-direction:column;gap:8px;width:100%;margin-top:4px}
 .wn-rw-equip{width:100%;padding:12px 18px;border-radius:14px;border:1.5px solid rgba(240,200,80,.45);
@@ -102,8 +105,8 @@ const WHEEL_CSS = `
   box-shadow:0 4px 15px rgba(0,0,0,.4);opacity:0;transition:all .25s cubic-bezier(.34,1.56,.64,1);pointer-events:none;z-index:6}
 .wn-bubble::before{content:'';position:absolute;left:50%;bottom:-5px;transform:translateX(-50%);border:5px solid transparent;border-top-color:var(--card2)}
 .wn-bubble-on{opacity:1;transform:translateX(-50%) scale(1)}
-.wn-wheel{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;position:relative;z-index:10}
-.wn-drum-wrap{position:relative;width:calc(100% - 32px);max-width:360px;height:228px}
+.wn-wheel{flex:1;min-height:0;display:flex;flex-direction:column;align-items:center;justify-content:center;position:relative;z-index:10;padding:10px 0 4px}
+.wn-drum-wrap{position:relative;width:calc(100% - 32px);max-width:360px;height:min(228px, 30vh)}
 .wn-reel3d{position:absolute;inset:0;width:100%;height:100%;display:block;border-radius:22px;z-index:4}
 .wn-drum-wrap.wn-has3d .wn-frame{display:none}
 .wn-drum-wrap.wn-has3d .wn-viewport{background:transparent;box-shadow:none}
@@ -154,6 +157,8 @@ const WHEEL_CSS = `
 @keyframes wnShine{0%,100%{left:-100%}50%{left:150%}}
 .wn-btn-pulse{animation:wnBtnP 2s ease-in-out infinite}
 @keyframes wnBtnP{0%,100%{box-shadow:0 6px 0 #7a1a28,0 8px 25px rgba(232,64,87,.3)}50%{box-shadow:0 6px 0 #7a1a28,0 8px 35px rgba(232,64,87,.45)}}
+/* Заблокировано и «спины кончились» — нейтральная плашка, не путается с активным красным CTA */
+.wn-btn-disabled{background:linear-gradient(135deg,#3a3a44,#26262e)!important;box-shadow:0 6px 0 #16161c,0 8px 18px rgba(0,0,0,.35)!important;opacity:.75}
 .wn-hint{text-align:center;font-size:12px;color:var(--t3);margin-top:6px;min-height:18px;position:relative;z-index:10}
 .wn-loot{padding:8px 16px;padding-bottom:max(env(safe-area-inset-bottom),14px);position:relative;z-index:10}
 .wn-loot-h{font-size:10px;font-weight:700;color:var(--t3);letter-spacing:.1em;text-transform:uppercase;margin-bottom:8px;text-align:center}
@@ -460,7 +465,7 @@ export default function WheelOfNorns() {
         if (streakQ) setStreak(streakQ.progress || 0);
       }
     }).catch(() => {});
-    if (shouldShowPauseModal()) setPauseModalOpen(true);
+    if (shouldShowPauseModal()) markPauseModalSeen();
     loadSpinStatus();
     return () => { cancelled = true; };
   }, [loadSpinStatus, loadMeAvatar]);
@@ -884,7 +889,7 @@ export default function WheelOfNorns() {
           </div>
         </div>
 
-        <NornsPauseStrip style={{ marginTop: 8 }} />
+        <NornsPauseStrip style={{ marginTop: 8 }} onClick={() => setPauseModalOpen(true)} />
 
         {/* LEVEL */}
         <div className="wn-lvl">
@@ -897,7 +902,7 @@ export default function WheelOfNorns() {
         <div className="wn-streak">
           <div className="wn-fire">🔥</div>
           <div className="wn-streak-info">
-            <div className="wn-streak-title"><b style={{ color: 'var(--gold)' }}>{streak} {streak === 1 ? 'день' : streak < 5 ? 'дня' : 'дней'}</b> подряд!</div>
+            <div className="wn-streak-title"><b style={{ color: 'var(--gold)' }}>{streak} {streak % 10 === 1 && streak % 100 !== 11 ? 'день' : [2, 3, 4].includes(streak % 10) && ![12, 13, 14].includes(streak % 100) ? 'дня' : 'дней'}</b> подряд!</div>
             <div className="wn-dots">{streakDots.map((s, i) => <div key={i} className={`wn-dot ${s === 'on' ? 'wn-dot-on' : s === 'now' ? 'wn-dot-now' : ''}`} />)}</div>
           </div>
           {streak >= 5 && <div className="wn-mult">×2</div>}
@@ -1125,54 +1130,54 @@ export default function WheelOfNorns() {
           </div>
         </div>
 
-        {/* БЛОКИРОВКА ОБЯЗАТЕЛЬНЫМ УРОКОМ */}
-        {blockedByLesson && (
-          <div
-            onClick={() => navigate('/field/academy')}
-            style={{
-              margin: '0 16px 12px',
-              background: 'linear-gradient(135deg, rgba(239,68,68,0.15), rgba(239,68,68,0.08))',
-              border: '1px solid rgba(239,68,68,0.4)',
-              borderRadius: 14, padding: '12px 16px',
-              cursor: 'pointer', textAlign: 'center',
-            }}
-          >
-            <div style={{ fontSize: 13, fontWeight: 800, color: '#ef4444', marginBottom: 4 }}>
-              ⚠️ Колесо Норн закрыто
-            </div>
-            <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.6)', marginBottom: 8 }}>
-              Пройди обязательный урок чтобы разблокировать
-            </div>
+        {/* НИЖНИЙ БЛОК: плашка урока (если закрыто) → единый CTA → награды.
+            flex-shrink:0 — блок не наезжает на рулетку выше и не режется снизу. */}
+        <div className="wn-bottom">
+          {/* Плашка урока — только текст-подсказка, кнопка одна (жёлтая, ниже) */}
+          {blockedByLesson && (
             <div style={{
-              fontSize: 13, fontWeight: 700,
-              color: '#c8a84b',
-              background: 'rgba(200,168,75,0.15)',
-              border: '1px solid rgba(200,168,75,0.3)',
-              borderRadius: 10, padding: '8px 14px',
+              margin: '0 16px 8px',
+              background: 'var(--field-card-2)',
+              border: '1px solid var(--field-hairline)',
+              borderRadius: 14, padding: '10px 16px',
+              textAlign: 'center',
             }}>
-              📖 {blockedByLesson.title} →
+              <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--field-text-3)' }}>
+                Колесо закрыто — сначала пройди обязательный урок
+              </div>
             </div>
-          </div>
-        )}
+          )}
 
-        {/* SPIN BUTTON */}
-        <div className="wn-spin-area">
-          <button className={`wn-btn ${spinning ? 'wn-btn-off' : !canSpin ? '' : 'wn-btn-pulse'}`} onClick={handleSpin} disabled={spinning}
-            style={!canSpin && !spinning ? { background: 'linear-gradient(135deg, #333, #222)', boxShadow: '0 6px 0 #111, 0 8px 15px rgba(0,0,0,.3)', opacity: 0.7 } : {}}>
-            <span style={{ fontSize: 22 }}>ᚾ</span> {canSpin ? 'КРУТИТЬ КОЛЕСО' : 'СПИНЫ ЗАКОНЧИЛИСЬ'}
-          </button>
-        </div>
-        <div className="wn-hint">{hint}</div>
+          {/* ЕДИНЫЙ CTA: при закрытом уроке — жёлтая кнопка «Пройти урок» */}
+          {blockedByLesson ? (
+            <div className="wn-spin-area">
+              <button
+                type="button"
+                className="wn-btn"
+                onClick={() => navigate('/field/academy')}
+                style={{ background: 'linear-gradient(135deg, var(--gold-dim), var(--gold))', color: 'var(--text-on-gold)', boxShadow: '0 6px 0 #7a5a12, 0 8px 25px rgba(240,200,80,.28)' }}
+              >
+                📖 Пройти урок{blockedByLesson.title ? `: ${blockedByLesson.title}` : ''} →
+              </button>
+            </div>
+          ) : (
+            <div className="wn-spin-area">
+              <button className={`wn-btn ${spinning ? 'wn-btn-off' : canSpin ? 'wn-btn-pulse' : 'wn-btn-disabled'}`} onClick={handleSpin} disabled={spinning}>
+                <span style={{ fontSize: 22 }}>ᚾ</span> {canSpin ? 'КРУТИТЬ КОЛЕСО' : 'СПИНЫ ЗАКОНЧИЛИСЬ'}
+              </button>
+            </div>
+          )}
+          <div className="wn-hint">{hint}</div>
 
-        {/* LOOT PREVIEW */}
-        <div className="wn-loot">
-          <div className="wn-loot-h">Возможные награды</div>
-          <div className="wn-loot-row">
-            {[
-              { name: 'Руны', tier: 'common', label: 'Руны' },
-              { name: 'XP', tier: 'rare', label: 'XP' },
-              { name: 'Шлем', tier: 'rare', label: 'Облик' },
-              { name: 'Рамка', tier: 'epic', label: 'Рамки' },
+          {/* LOOT PREVIEW */}
+          <div className="wn-loot">
+            <div className="wn-loot-h">Возможные награды</div>
+            <div className="wn-loot-row">
+              {[
+                { name: 'Руны', tier: 'common', label: 'Руны' },
+                { name: 'XP', tier: 'rare', label: 'XP' },
+                { name: 'Шлем', tier: 'rare', label: 'Облик' },
+                { name: 'Рамка', tier: 'epic', label: 'Рамки' },
               { name: 'Множ. ×2', tier: 'legendary', label: 'Бусты' },
             ].map((p) => (
               <div key={p.label} className={`wn-lc ${p.tier === 'legendary' ? 'leg' : p.tier === 'epic' ? 'epc' : p.tier === 'rare' ? 'rar' : ''}`}>
@@ -1181,6 +1186,7 @@ export default function WheelOfNorns() {
               </div>
             ))}
           </div>
+        </div>
         </div>
       </div>
 

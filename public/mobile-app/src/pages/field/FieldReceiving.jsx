@@ -62,9 +62,9 @@ export default function FieldReceiving() {
   }
 
   return (
-    <div className="min-h-screen pb-28" style={{ background: 'var(--bg-base,#0a0a14)', color: '#e6e9ef' }}>
+    <div className="min-h-screen" style={{ background: 'var(--bg-base,#0a0a14)', color: '#e6e9ef', paddingBottom: 'max(env(safe-area-inset-bottom), 24px)' }}>
       <div className="sticky top-0 z-10 flex items-center gap-3 px-4 py-3"
-        style={{ background: 'rgba(10,10,20,.92)', backdropFilter: 'blur(12px)', borderBottom: '1px solid rgba(240,200,80,.15)' }}>
+        style={{ background: 'rgba(10,10,20,.92)', backdropFilter: 'blur(12px)', borderBottom: '1px solid rgba(240,200,80,.15)', paddingTop: 'max(env(safe-area-inset-top), 12px)' }}>
         <button onClick={() => nav(-1)} className="p-2 -ml-2 rounded-xl active:scale-90 transition"><ArrowLeft size={22} /></button>
         <div className="flex-1">
           <div className="font-bold" style={{ color: '#F0C850' }}>Приёмка / разбор</div>

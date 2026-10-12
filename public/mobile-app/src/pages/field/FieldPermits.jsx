@@ -53,8 +53,10 @@ export default function FieldPermits() {
 
   return (
     <div
-      className="min-h-screen pb-24"
       style={{
+        minHeight: '100dvh',
+        paddingTop: 'max(env(safe-area-inset-top), 16px)',
+        paddingBottom: 'max(env(safe-area-inset-bottom), 24px)',
         background:
           'radial-gradient(ellipse 90% 50% at 50% -10%, rgba(212,168,67,.12), transparent 55%), linear-gradient(180deg,#070a0e 0%,#10161f 45%,#070a0e 100%)',
       }}

@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import { fieldApi } from '@/api/fieldClient';
 import { useFieldAuthStore } from '@/stores/fieldAuthStore';
+import { useThemeStore } from '@/stores/themeStore';
 import { useHaptic } from '@/hooks/useHaptic';
 import { VikingAvatarLazy } from '@/components/field/VikingAvatar3D';
 import RankUpCeremony, { checkRankCeremony } from '@/components/field/RankUpCeremony';
@@ -168,7 +169,7 @@ function resolveThemeStyle(activeTheme, assetKey) {
   }
   return {
     accent: '#F0C850',
-    bg: 'linear-gradient(180deg,#0a0e1a 0%,#111827 60%,#0a0a0a 100%)',
+    bg: 'var(--field-hero-bg)',
     anim: 'goldPulse',
   };
 }
@@ -249,14 +250,14 @@ function XpBar({ xpCurrent, xpNext, level }) {
   return (
     <div style={{ width: '100%', padding: '0 20px' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
-        <span style={{ fontSize: 10, color: 'rgba(255,255,255,.45)', letterSpacing: .5 }}>
+        <span style={{ fontSize: 10, color: 'var(--field-text-3)', letterSpacing: .5 }}>
           XP {xpCurrent.toLocaleString('ru-RU')} / {xpNext?.toLocaleString('ru-RU') || '—'}
         </span>
-        <span style={{ fontSize: 10, color: 'rgba(255,255,255,.45)' }}>
+        <span style={{ fontSize: 10, color: 'var(--field-text-3)' }}>
           Ур.{level} → Ур.{level + 1}
         </span>
       </div>
-      <div style={{ height: 6, borderRadius: 3, background: 'rgba(255,255,255,.08)', overflow: 'hidden' }}>
+      <div style={{ height: 6, borderRadius: 3, background: 'var(--field-hairline)', overflow: 'hidden' }}>
         <div ref={barRef} style={{
           height: '100%', borderRadius: 3, width: '0%',
           background: 'linear-gradient(90deg, #F0C850, #ff8c00)',
@@ -275,9 +276,9 @@ function StatPill({ icon, value, label, delay = 0 }) {
     <div style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:2, animation:`statSlide .5s ease ${delay}s both` }}>
       <div style={{ display:'flex', alignItems:'baseline', gap:3 }}>
         <span style={{ fontSize:14, color:'#F0C850', fontFamily:'serif' }}>{icon}</span>
-        <span style={{ fontSize:18, fontWeight:800, color:'#fff', letterSpacing:-.5 }}>{value}</span>
+        <span style={{ fontSize:18, fontWeight:800, color:'var(--field-text)', letterSpacing:-.5 }}>{value}</span>
       </div>
-      <span style={{ fontSize:10, color:'rgba(255,255,255,.38)', textTransform:'uppercase', letterSpacing:.8 }}>{label}</span>
+      <span style={{ fontSize:10, color:'var(--field-text-3)', textTransform:'uppercase', letterSpacing:.8 }}>{label}</span>
     </div>
   );
 }
@@ -353,7 +354,7 @@ function VikingHeroCard({ profile, runes, xp, level, totalShifts, cosmetics, tit
                 width: 56,
                 height: 56,
                 borderRadius: 14,
-                background: 'rgba(10,14,24,.88)',
+                background: 'var(--field-overlay)',
                 border: `1.5px solid ${accent}`,
                 boxShadow: `0 0 16px ${accent}55, 0 4px 12px rgba(0,0,0,.45)`,
                 display: 'flex',
@@ -370,10 +371,10 @@ function VikingHeroCard({ profile, runes, xp, level, totalShifts, cosmetics, tit
         </div>
 
         {/* Name */}
-        <h1 style={{ color: '#fff', fontSize: 19, fontWeight: 800, marginTop: 6, textAlign: 'center', padding: '0 16px', lineHeight: 1.2 }}>
+        <h1 style={{ color: 'var(--field-text)', fontSize: 19, fontWeight: 800, marginTop: 6, textAlign: 'center', padding: '0 16px', lineHeight: 1.2 }}>
           {profile?.fio || 'Воин Асгарда'}
         </h1>
-        <p style={{ color: 'rgba(255,255,255,.45)', fontSize: 12, marginTop: 3 }}>
+        <p style={{ color: 'var(--field-text-2)', fontSize: 12, marginTop: 3 }}>
           {[profile?.position, profile?.city].filter(Boolean).join(' · ')}
         </p>
 
@@ -410,9 +411,9 @@ function VikingHeroCard({ profile, runes, xp, level, totalShifts, cosmetics, tit
         {/* Stats */}
         <div style={{ display: 'flex', gap: 24, marginTop: 16, marginBottom: 10 }}>
           <StatPill icon="ᚱ" value={runes.toLocaleString('ru-RU')} label="рун" delay={0.1} />
-          <div style={{ width: 1, background: 'rgba(255,255,255,.1)', alignSelf: 'stretch' }} />
+          <div style={{ width: 1, background: 'var(--field-hairline)', alignSelf: 'stretch' }} />
           <StatPill icon="⚡" value={xp.toLocaleString('ru-RU')} label="XP" delay={0.2} />
-          <div style={{ width: 1, background: 'rgba(255,255,255,.1)', alignSelf: 'stretch' }} />
+          <div style={{ width: 1, background: 'var(--field-hairline)', alignSelf: 'stretch' }} />
           <StatPill icon="🗡" value={totalShifts} label="смен" delay={0.3} />
         </div>
 
@@ -450,20 +451,23 @@ function SlotGrid({ slots, cosmetics, navigate, haptic }) {
         return (
           <button key={slot.key}
             onClick={() => { haptic.light(); navigate('/field/inventory'); }}
+            aria-label={val ? `${slot.label}: ${shortName}. Изменить` : `${slot.label}: не выбрано. Выбрать`}
             style={{
               display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4,
               padding: '10px 4px', borderRadius: 12,
-              background: val ? 'rgba(240,200,80,.07)' : 'var(--bg-primary)',
-              border: `1px solid ${val ? 'rgba(240,200,80,.28)' : 'var(--border-norse)'}`,
+              background: val ? 'rgba(240,200,80,.07)' : 'var(--bg-surface-alt)',
+              border: val
+                ? '1px solid rgba(240,200,80,.28)'
+                : '1.5px dashed var(--border-light)',
               cursor: 'pointer', WebkitTapHighlightColor: 'transparent',
             }}>
-            <span style={{ fontSize: 20 }}>{val ? '✨' : slot.rune}</span>
-            <span style={{ fontSize: 9, color: 'var(--text-tertiary)', textAlign: 'center' }}>{slot.label}</span>
+            <span style={{ fontSize: 20 }}>{val ? '✨' : '＋'}</span>
+            <span style={{ fontSize: 9, color: 'var(--field-text-3)', textAlign: 'center' }}>{slot.label}</span>
             <span style={{
-              fontSize: 8, color: val ? 'var(--gold)' : 'rgba(255,255,255,.18)',
+              fontSize: 8, color: val ? 'var(--gold)' : 'var(--field-text-3)',
               textAlign: 'center', maxWidth: 60, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
             }}>
-              {shortName || '—'}
+              {shortName || 'Выбрать'}
             </span>
           </button>
         );
@@ -526,7 +530,7 @@ function EquipmentSlots({ cosmetics, navigate, haptic }) {
 ═══════════════════════════════════════════════════════════════════ */
 function Skeleton() {
   return (
-    <div style={{ background: 'linear-gradient(180deg,#0a0e1a,#111827)', borderRadius: '0 0 28px 28px', padding: '32px 24px 28px' }}>
+    <div style={{ background: 'var(--field-hero-bg)', borderRadius: '0 0 28px 28px', padding: '32px 24px 28px' }}>
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12 }}>
         <div style={{ width: 120, height: 170, borderRadius: 16, background: 'rgba(255,255,255,.06)', animation: 'statSlide 1s ease infinite alternate' }} />
         <div style={{ width: 160, height: 16, borderRadius: 8, background: 'rgba(255,255,255,.06)' }} />
@@ -559,7 +563,10 @@ export default function FieldProfile() {
   const [editErrors, setEditErrors] = useState({});
   const [saveError, setSaveError] = useState('');
   const [saving, setSaving] = useState(false);
-  const [darkMode, setDarkMode] = useState(() => document.documentElement.classList.contains('dark'));
+  // Тема — единый источник (класс `light` + ключ `asgard_theme`), как в More/Profile/Settings.
+  const themeMode = useThemeStore((s) => s.theme);
+  const toggleTheme = useThemeStore((s) => s.toggleTheme);
+  const darkMode = themeMode !== 'light';
   const [rankCeremony, setRankCeremony] = useState(null);
   const ceremonyShownRef = useRef(false);
 
@@ -622,12 +629,9 @@ export default function FieldProfile() {
     setRankCeremony({ rank, prevTitle: chk.prevTitle, level: lvl, welcome: !!chk.welcome });
   }, [profile, employee?.id]);
 
-  const toggleTheme = () => {
+  const handleThemeToggle = () => {
     haptic.light();
-    const next = !darkMode;
-    setDarkMode(next);
-    document.documentElement.classList.toggle('dark', next);
-    localStorage.setItem('theme', next ? 'dark' : 'light');
+    toggleTheme();
   };
   const handleLogout = () => {
     haptic.heavy();
@@ -704,7 +708,7 @@ export default function FieldProfile() {
           onClose={() => setRankCeremony(null)}
         />
       )}
-      <div className="pb-24" style={{ backgroundColor: 'var(--bg-primary)', minHeight: '100%' }}>
+      <div style={{ backgroundColor: 'var(--bg-primary)', minHeight: '100%', paddingBottom: 'max(env(safe-area-inset-bottom), 24px)' }}>
 
         {/* ═══ HERO CARD ══════════════════════════════════════════════ */}
         <VikingHeroCard
@@ -1059,7 +1063,7 @@ export default function FieldProfile() {
 
           {/* ═══ THEME TOGGLE ═════════════════════════════════════════ */}
           <button className="w-full flex items-center justify-between rounded-xl p-4"
-            style={{ backgroundColor: 'var(--bg-elevated)', border: '1px solid var(--border-norse)' }} onClick={toggleTheme}>
+            style={{ backgroundColor: 'var(--bg-elevated)', border: '1px solid var(--border-norse)' }} onClick={handleThemeToggle}>
             <span className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>{darkMode ? 'Тёмная тема' : 'Светлая тема'}</span>
             {darkMode ? <Moon size={18} style={{ color: 'var(--gold)' }} /> : <Sun size={18} style={{ color: 'var(--gold)' }} />}
           </button>

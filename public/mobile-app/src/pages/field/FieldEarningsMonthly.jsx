@@ -14,10 +14,10 @@ import DisputeForm from '@/components/field/DisputeForm';
 import { formatMoney as fmtMoney } from '@/lib/utils';
 
 const C = {
-  bg: '#0d0d12', card: '#16161f', gold: '#c8a84b',
+  bg: 'var(--field-bg)', card: 'var(--field-card)', gold: '#c8a84b',
   green: '#22c55e', red: '#ef4444', amber: '#f59e0b',
   blue: '#3b82f6', rune: '#7b61ff',
-  text: '#e8e8f0', muted: '#6b7280',
+  text: 'var(--field-text)', muted: '#8E8E93',
 };
 
 const STATUS_CFG = {
@@ -296,7 +296,7 @@ export default function FieldEarningsMonthly() {
   }
 
   return (
-    <div style={{ minHeight: '100vh', background: C.bg, paddingBottom: 80 }}>
+    <div style={{ minHeight: '100dvh', background: C.bg, paddingTop: 'max(env(safe-area-inset-top), 16px)', paddingBottom: 'max(env(safe-area-inset-bottom), 24px)' }}>
       {/* Header */}
       <div style={{ padding: '48px 16px 16px', background: 'linear-gradient(180deg, #0d1a0d 0%, transparent 100%)' }}>
         <button onClick={() => navigate(-1)}

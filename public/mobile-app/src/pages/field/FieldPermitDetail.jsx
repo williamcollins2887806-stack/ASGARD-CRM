@@ -110,7 +110,7 @@ export default function FieldPermitDetail() {
 
   if (!permit && !error) {
     return (
-      <div className="min-h-screen flex items-center justify-center text-sm" style={{ background: '#070a0e', color: 'var(--text-tertiary)' }}>
+      <div className="min-h-screen flex items-center justify-center text-sm" style={{ background: 'var(--field-bg-3)', color: 'var(--field-text-3)' }}>
         Загрузка наряда…
       </div>
     );
@@ -118,7 +118,7 @@ export default function FieldPermitDetail() {
 
   if (!permit) {
     return (
-      <div className="min-h-screen p-6" style={{ background: '#070a0e' }}>
+      <div className="min-h-screen p-6" style={{ background: 'var(--field-bg-3)' }}>
         <button type="button" onClick={() => navigate('/field/permits')} className="text-sm mb-4" style={{ color: 'var(--gold)' }}>
           ← Назад
         </button>
@@ -145,7 +145,7 @@ export default function FieldPermitDetail() {
   };
 
   return (
-    <div className="min-h-screen pb-28" style={{ background: '#070a0e' }}>
+    <div className="min-h-screen" style={{ background: 'var(--field-bg-3)', paddingBottom: 'max(env(safe-area-inset-bottom), 24px)' }}>
       <div
         className="sticky top-0 z-20 px-4 py-3 flex items-center gap-3"
         style={{

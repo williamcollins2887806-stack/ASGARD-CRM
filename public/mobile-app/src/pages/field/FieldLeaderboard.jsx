@@ -220,7 +220,7 @@ function PlayerRow({ player, isSelf, idx, visible, onOpen }) {
       <div style={{ width: 28, textAlign: 'center', flexShrink: 0 }}>
         {isTop3
           ? <span style={{ fontSize: 18 }}>{MEDAL[rank]}</span>
-          : <span style={{ fontSize: 12, fontWeight: 700, color: '#6b7280' }}>#{rank}</span>
+          : <span style={{ fontSize: 12, fontWeight: 700, color: '#8E8E93' }}>#{rank}</span>
         }
       </div>
 
@@ -242,8 +242,8 @@ function PlayerRow({ player, isSelf, idx, visible, onOpen }) {
           <RankBadge title={rt.title} icon={rt.icon} small />
         </div>
         <div style={{ display: 'flex', gap: 8, marginTop: 2, flexWrap: 'wrap' }}>
-          <span style={{ fontSize: 10, color: '#6b7280' }}>Ур.{player.level}</span>
-          <span style={{ fontSize: 10, color: '#6b7280' }}>📅 {player.total_shifts} смен</span>
+          <span style={{ fontSize: 10, color: '#8E8E93' }}>Ур.{player.level}</span>
+          <span style={{ fontSize: 10, color: '#8E8E93' }}>📅 {player.total_shifts} смен</span>
           {player.streak > 0 && <span style={{ fontSize: 10, color: '#f97316' }}>🔥 {player.streak}</span>}
         </div>
         <XpBar xp={player.xp} />
@@ -257,7 +257,7 @@ function PlayerRow({ player, isSelf, idx, visible, onOpen }) {
         <span style={{ fontSize: 11, fontWeight: 600, color: '#D4A843' }}>
           {parseInt(player.earned_runes || 0).toLocaleString('ru-RU')} <span style={{ fontSize: 9, opacity: 0.7 }}>ᚱ</span>
         </span>
-        <span style={{ fontSize: 8, color: '#6b7280', marginTop: -2 }}>заработано</span>
+        <span style={{ fontSize: 8, color: '#8E8E93', marginTop: -2 }}>заработано</span>
       </div>
     </div>
   );
@@ -284,7 +284,7 @@ function MatchCard({ match, myId, small }) {
         <span style={{ fontSize: small ? 10 : 11, fontWeight: isMe ? 800 : 600, color: isWinner ? '#D4A843' : '#9ca3af', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 70 }}>
           {isMe ? '⚡' : ''}{p.name}
         </span>
-        <span style={{ fontSize: small ? 9 : 10, color: isWinner ? '#f97316' : '#6b7280', fontWeight: 700, flexShrink: 0 }}>
+        <span style={{ fontSize: small ? 9 : 10, color: isWinner ? '#f97316' : '#8E8E93', fontWeight: 700, flexShrink: 0 }}>
           {(parseInt(p.warrior_power)||0).toLocaleString('ru-RU')}⚔️
         </span>
       </div>
@@ -326,7 +326,7 @@ function TournamentBracket({ tournament, myId }) {
           ⚔️ Битва за Вальхаллу
         </div>
         {weekLabel && (
-          <div style={{ fontSize: 11, color: '#6b7280', marginTop: 2 }}>
+          <div style={{ fontSize: 11, color: '#8E8E93', marginTop: 2 }}>
             {weekLabel} · {status === 'completed' ? '✅ Завершён' : '🔥 Идёт'}
           </div>
         )}
@@ -342,7 +342,7 @@ function TournamentBracket({ tournament, myId }) {
         <div style={{ display: 'flex', gap: 0, minWidth: 'max-content' }}>
           {rounds.map((round, ri) => (
             <div key={ri} style={{ display: 'flex', flexDirection: 'column' }}>
-              <div style={{ textAlign: 'center', fontSize: 9, fontWeight: 700, color: '#6b7280', padding: '0 8px', marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+              <div style={{ textAlign: 'center', fontSize: 9, fontWeight: 700, color: '#8E8E93', padding: '0 8px', marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.5 }}>
                 {ROUND_LABELS[ri]}
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-around', flex: 1, gap: 4, padding: '0 4px' }}>
@@ -428,7 +428,7 @@ function PipelineRow({ player, isSelf, idx, visible }) {
       animationDelay: `${idx * 0.04}s`,
     }}>
       <div style={{ width: 28, textAlign: 'center', flexShrink: 0 }}>
-        {isTop3 ? <span style={{ fontSize: 18 }}>{MEDAL[rank]}</span> : <span style={{ fontSize: 12, fontWeight: 700, color: '#6b7280' }}>#{rank}</span>}
+        {isTop3 ? <span style={{ fontSize: 18 }}>{MEDAL[rank]}</span> : <span style={{ fontSize: 12, fontWeight: 700, color: '#8E8E93' }}>#{rank}</span>}
       </div>
       <AvatarCircle fio={player.fio} rank={rank} size={40} />
       <div style={{ flex: 1, minWidth: 0 }}>
@@ -436,13 +436,13 @@ function PipelineRow({ player, isSelf, idx, visible }) {
           {firstName}
         </div>
         <div style={{ display: 'flex', gap: 8, marginTop: 2, flexWrap: 'wrap' }}>
-          <span style={{ fontSize: 10, color: '#6b7280' }}>Макс ур. {player.max_level}</span>
+          <span style={{ fontSize: 10, color: '#8E8E93' }}>Макс ур. {player.max_level}</span>
           {player.current_streak > 0 && <span style={{ fontSize: 10, color: '#f97316' }}>🔥 {player.current_streak}</span>}
         </div>
       </div>
       <div style={{ textAlign: 'right', flexShrink: 0 }}>
         <div style={{ fontSize: 14, fontWeight: 800, color: '#D4A843' }}>⭐ {player.weekly_stars}</div>
-        <div style={{ fontSize: 10, color: '#6b7280' }}>всего ⭐{player.total_stars}</div>
+        <div style={{ fontSize: 10, color: '#8E8E93' }}>всего ⭐{player.total_stars}</div>
       </div>
     </div>
   );
@@ -513,12 +513,13 @@ export default function FieldLeaderboard() {
   const totalRunes = useCountUp(totalRunesSum, 1400, countersActive);
 
   return (
-    <div style={{ backgroundColor: '#080d1f', minHeight: '100vh', paddingBottom: 100 }}>
+    <div style={{ backgroundColor: 'var(--field-bg-2)', minHeight: '100dvh', paddingBottom: 'max(env(safe-area-inset-bottom), 24px)' }}>
       <style>{CSS}</style>
 
       {/* ── STICKY HEADER ── */}
       <div style={{
         position: 'sticky', top: 0, zIndex: 20, padding: '14px 16px 10px',
+        paddingTop: 'max(env(safe-area-inset-top), 14px)',
         background: 'linear-gradient(180deg, #080d1f 70%, rgba(8,13,31,0))',
         borderBottom: '1px solid rgba(255,255,255,0.06)',
       }}>
@@ -529,7 +530,7 @@ export default function FieldLeaderboard() {
           <Trophy size={22} color="#D4A843" />
           <div style={{ flex: 1 }}>
             <div style={{ fontSize: 16, fontWeight: 800, color: '#e2e8f0' }}>Зал Одина</div>
-            <div style={{ fontSize: 10, color: '#6b7280' }}>
+            <div style={{ fontSize: 10, color: '#8E8E93' }}>
               {totalWorkers} воинов · {totalRunes.toLocaleString('ru-RU')} ᚱ выдано суммарно
             </div>
           </div>
@@ -592,7 +593,7 @@ export default function FieldLeaderboard() {
               {pipelineBoard.length === 0 ? (
                 <div style={{ textAlign: 'center', padding: 48 }}>
                   <span style={{ fontSize: 40 }}>🌊</span>
-                  <p style={{ color: '#6b7280', marginTop: 10 }}>Пока никто не прошёл уровни</p>
+                  <p style={{ color: '#8E8E93', marginTop: 10 }}>Пока никто не прошёл уровни</p>
                   <button onClick={() => navigate('/field/pipeline')} style={{
                     marginTop: 12, padding: '10px 20px', borderRadius: 12, border: 'none',
                     background: '#38bdf8', color: '#000', fontWeight: 800, cursor: 'pointer',
@@ -602,7 +603,7 @@ export default function FieldLeaderboard() {
                 </div>
               ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                  <p style={{ fontSize: 10, color: '#6b7280', textAlign: 'center', marginBottom: 4 }}>
+                  <p style={{ fontSize: 10, color: '#8E8E93', textAlign: 'center', marginBottom: 4 }}>
                     Недельный рейтинг · ⭐ звёзды за прохождения
                   </p>
                   {pipelineBoard.map((player, idx) => (
@@ -639,7 +640,7 @@ export default function FieldLeaderboard() {
               {chemlabBoard.length === 0 ? (
                 <div style={{ textAlign: 'center', padding: 48 }}>
                   <span style={{ fontSize: 40 }}>🧪</span>
-                  <p style={{ color: '#6b7280', marginTop: 10 }}>Пока никто не закрыл наряды</p>
+                  <p style={{ color: '#8E8E93', marginTop: 10 }}>Пока никто не закрыл наряды</p>
                   <button onClick={() => navigate('/field/chemlab')} style={{
                     marginTop: 12, padding: '10px 20px', borderRadius: 12, border: 'none',
                     background: '#e8a838', color: '#000', fontWeight: 800, cursor: 'pointer',
@@ -649,7 +650,7 @@ export default function FieldLeaderboard() {
                 </div>
               ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                  <p style={{ fontSize: 10, color: '#6b7280', textAlign: 'center', marginBottom: 4 }}>
+                  <p style={{ fontSize: 10, color: '#8E8E93', textAlign: 'center', marginBottom: 4 }}>
                     Недельный рейтинг Химцеха · ⭐ за наряды
                   </p>
                   {chemlabBoard.map((player, idx) => (
@@ -666,7 +667,7 @@ export default function FieldLeaderboard() {
             }}>
               {tournament
                 ? <TournamentBracket tournament={tournament} myId={myId} />
-                : <div style={{ textAlign: 'center', color: '#6b7280', padding: 40 }}>Недостаточно данных для турнира</div>
+                : <div style={{ textAlign: 'center', color: '#8E8E93', padding: 40 }}>Недостаточно данных для турнира</div>
               }
             </div>
           ) : (
@@ -708,7 +709,7 @@ export default function FieldLeaderboard() {
                     flex: 1, padding: '6px 0', borderRadius: 10, fontSize: 11, fontWeight: 700,
                     border: `1px solid ${sortBy === s.key ? s.color + '88' : 'rgba(255,255,255,0.08)'}`,
                     backgroundColor: sortBy === s.key ? `${s.color}22` : 'rgba(255,255,255,0.03)',
-                    color: sortBy === s.key ? s.color : '#6b7280',
+                    color: sortBy === s.key ? s.color : '#8E8E93',
                     cursor: 'pointer', transition: 'all .2s',
                   }}>
                     {s.label}
@@ -720,7 +721,7 @@ export default function FieldLeaderboard() {
               {sorted.length === 0 ? (
                 <div style={{ textAlign: 'center', padding: 48 }}>
                   <Users size={40} color="#374151" style={{ margin: '0 auto 10px' }} />
-                  <p style={{ color: '#6b7280' }}>Пока нет данных</p>
+                  <p style={{ color: '#8E8E93' }}>Пока нет данных</p>
                 </div>
               ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>

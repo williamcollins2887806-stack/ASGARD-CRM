@@ -7,19 +7,19 @@ import { useNavigate } from 'react-router-dom';
 import { fieldApi } from '@/api/fieldClient';
 
 const COLORS = {
-  bg: '#0d0d12',
-  card: '#16161f',
+  bg: 'var(--field-bg)',
+  card: 'var(--field-card)',
   gold: '#c8a84b',
   rune: '#7b61ff',
   green: '#22c55e',
   red: '#ef4444',
   amber: '#f59e0b',
-  text: '#e8e8f0',
-  muted: '#6b7280',
+  text: 'var(--field-text)',
+  muted: '#8E8E93',
 };
 
 const RANK_COLORS = {
-  'Новобранец': '#6b7280',
+  'Новобранец': '#8E8E93',
   'Дружинник':  '#3b82f6',
   'Хирдман':    '#8b5cf6',
   'Ярл':        '#c8a84b',
@@ -48,7 +48,7 @@ function StreakBadge({ streak }) {
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 4, color }}>
       <span style={{ fontSize: 16 }}>🔥</span>
-      <span style={{ fontSize: 13, fontWeight: 700 }}>{streak} {streak === 1 ? 'неделя' : streak < 5 ? 'недели' : 'недель'}</span>
+      <span style={{ fontSize: 13, fontWeight: 700 }}>{streak} {streak % 10 === 1 && streak % 100 !== 11 ? 'неделя' : [2, 3, 4].includes(streak % 10) && ![12, 13, 14].includes(streak % 100) ? 'недели' : 'недель'}</span>
     </div>
   );
 }
@@ -399,7 +399,7 @@ export default function FieldAcademy() {
 
   if (loading) {
     return (
-      <div style={{ minHeight: '100vh', background: COLORS.bg, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <div style={{ minHeight: '100dvh', background: COLORS.bg, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
         <div style={{ color: COLORS.gold, fontSize: 32 }}>⚡</div>
       </div>
     );
@@ -412,7 +412,7 @@ export default function FieldAcademy() {
     && (!primary || current_week.id !== primary.id);
 
   return (
-    <div style={{ minHeight: '100vh', background: COLORS.bg, paddingBottom: 100 }}>
+    <div style={{ minHeight: '100dvh', background: COLORS.bg, paddingTop: 'max(env(safe-area-inset-top), 16px)', paddingBottom: 'max(env(safe-area-inset-bottom), 24px)' }}>
       {/* Header */}
       <div style={{
         padding: '48px 20px 20px',
