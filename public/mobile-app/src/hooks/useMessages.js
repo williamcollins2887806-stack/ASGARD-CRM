@@ -13,14 +13,16 @@ export function useMessages(chatId) {
   const loadingRef = useRef(false);
 
   const loadMessages = useCallback(async () => {
-    if (!chatId) return;
+    if (!chatId) return [];
     try {
       const data = await api.get(`/chat-groups/${chatId}/messages?limit=50`);
       const msgs = data.messages || api.extractRows(data);
       setMessages(msgs);
       setHasOlder(msgs.length >= 50);
+      return msgs;
     } catch {
       setMessages([]);
+      return [];
     } finally {
       setLoading(false);
     }

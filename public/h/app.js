@@ -519,6 +519,9 @@
           applicationServerKey: urlBase64ToUint8Array(publicKey)
         });
       }
+      // Бэк (src/routes/push.js) требует endpoint отдельно и keys.p256dh/keys.auth.
+      // Раньше уходило `endpoint: sub.toJSON()` без keys → 400 → пуш на /h/ не работал.
+      const json = sub.toJSON ? sub.toJSON() : sub;
       await fetch('/api/push/subscribe', {
         method: 'POST',
         headers: {
@@ -526,7 +529,8 @@
           Authorization: 'Bearer ' + token()
         },
         body: JSON.stringify({
-          endpoint: sub.toJSON ? sub.toJSON() : sub,
+          endpoint: json.endpoint,
+          keys: json.keys,
           device_info: navigator.userAgent.slice(0, 200)
         })
       });

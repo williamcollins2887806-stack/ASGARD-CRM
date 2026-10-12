@@ -45,11 +45,16 @@ function snapshot() {
 
 function checkQuiet() {
   const s = snapshot();
+  const hHtml = fs.readFileSync(H_HTML, 'utf8');
+  // Нерезолвленный плейсхолдер нельзя выкатывать: на клиенте получится
+  // `/h/sw.js?v=__SHELL_VERSION__` (литерал). bump подставляет номер.
+  const unresolved = /__SHELL_VERSION__/.test(hHtml);
   const ok = s.sw && s.sw === s.html
     && s.qv.length === 1 && s.qv[0] === `?v=${s.sw}`
     && s.hSw === s.sw
-    && s.hQv.length === 1 && s.hQv[0] === `?v=${s.sw}`;
-  return { ok: !!ok, ...s };
+    && s.hQv.length === 1 && s.hQv[0] === `?v=${s.sw}`
+    && !unresolved;
+  return { ok: !!ok, unresolved, ...s };
 }
 
 function main() {
@@ -57,7 +62,8 @@ function main() {
   if (arg === '--check') {
     const s = checkQuiet();
     if (!s.ok) {
-      console.error(`FAIL: версии рассогласованы — sw=${s.sw} html=${s.html} h/sw=${s.hSw} qv=${s.qv.join(',')} h/qv=${s.hQv.join(',')}`);
+      const extra = s.unresolved ? ' + есть нерезолвленный __SHELL_VERSION__ в /h/index.html' : '';
+      console.error(`FAIL: версии рассогласованы — sw=${s.sw} html=${s.html} h/sw=${s.hSw} qv=${s.qv.join(',')} h/qv=${s.hQv.join(',')}${extra}`);
       process.exit(1);
     }
     console.log(`OK: оболочка согласована на ${s.sw}`);

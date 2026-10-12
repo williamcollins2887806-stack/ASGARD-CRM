@@ -130,8 +130,13 @@ export function removeMember(groupId, userId) {
   return api(`/api/chat-groups/${groupId}/members/${userId}`, { method: 'DELETE' });
 }
 
-export function markRead(groupId) {
-  return api(`/api/chat-groups/${groupId}/read`, { method: 'POST', body: {} });
+export function markRead(groupId, lastMessageId) {
+  // Бэк требует last_message_id (иначе 400). Если он неизвестен — не шлём вовсе.
+  if (lastMessageId == null) return Promise.resolve({ skipped: true });
+  return api(`/api/chat-groups/${groupId}/read`, {
+    method: 'POST',
+    body: { last_message_id: lastMessageId }
+  });
 }
 
 export function loadUsers() {

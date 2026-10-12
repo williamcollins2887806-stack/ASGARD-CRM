@@ -40,7 +40,8 @@ export default function Alerts() {
   const markRead = async (id) => {
     haptic.light();
     try {
-      await api.post(`/notifications/${id}/read`);
+      // Бэк объявляет PUT /notifications/:id/read (POST → 404).
+      await api.put(`/notifications/${id}/read`);
       setNotifications((p) => p.map((n) => n.id === id ? { ...n, read: true, is_read: true } : n));
     } catch {}
   };
@@ -56,7 +57,8 @@ export default function Alerts() {
   const markAllRead = async () => {
     haptic.medium();
     try {
-      await api.post('/notifications/read-all');
+      // Бэк объявляет PUT /notifications/read-all (POST → 404).
+      await api.put('/notifications/read-all');
       setNotifications((p) => p.map((n) => ({ ...n, read: true, is_read: true })));
     } catch {}
   };

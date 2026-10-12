@@ -213,7 +213,9 @@ export default function ChatPage() {
       .then(([g, ms]) => {
         if (g) setActiveGroup(g);
         setMessages(ms);
-        markRead(id).catch(() => {});
+        // Отметка «прочитано»: last_message_id обязателен на бэке.
+        const last = [...(ms || [])].reverse().find((m) => !m.deleted_at) || (ms || [])[(ms || []).length - 1];
+        markRead(id, last && last.id).catch(() => {});
       })
       .catch(() => {});
   }, []);

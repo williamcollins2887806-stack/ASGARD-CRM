@@ -59,11 +59,15 @@ export default function ChatView() {
   useEffect(() => {
     if (!chatId) return;
     (async () => {
-      await loadMessages();
+      const msgs = await loadMessages();
+      // Отметка «прочитано»: бэк требует last_message_id (иначе 400).
+      // Берём id последнего НЕ удалённого сообщения из только что загруженных.
+      const last = [...(msgs || [])].reverse().find((m) => !m.deleted_at) || (msgs || [])[(msgs || []).length - 1];
+      if (last && last.id != null) {
+        api.post(`/chat-groups/${chatId}/read`, { last_message_id: last.id }).catch(() => {});
+      }
+      markChatRead(chatId);
     })();
-    // Mark chat as read — API + глобальный store (TabBar badge)
-    api.post(`/chat-groups/${chatId}/read`).catch(() => {});
-    markChatRead(chatId);
     // Сбросить firstUnreadId при смене чата
     firstUnreadIdRef.current = null;
     setFirstUnreadId(null);
