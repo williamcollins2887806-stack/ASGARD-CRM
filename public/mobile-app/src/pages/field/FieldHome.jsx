@@ -554,7 +554,7 @@ export default function FieldHome() {
   actions.push({ icon: UserCircle, label: 'Профиль', path: '/field/profile' });
 
   return (
-    <div className="p-4 pb-24 min-h-screen" onTouchStart={onTouchStart} onTouchEnd={onTouchEnd} style={{ backgroundColor: 'var(--bg-primary)' }}>
+    <div className="p-4 min-h-screen" onTouchStart={onTouchStart} onTouchEnd={onTouchEnd} style={{ backgroundColor: 'var(--bg-primary)', paddingTop: 'max(env(safe-area-inset-top), 16px)', paddingBottom: 'max(env(safe-area-inset-bottom), 24px)' }}>
       {rankCeremony && (
         <RankUpCeremony
           open

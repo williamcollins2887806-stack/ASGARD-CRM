@@ -237,14 +237,6 @@ html, body, #root {
 @supports (height: 100dvh) {
   html, body, #root { height: 100dvh; }
 }
-/* Утилита для полевых экранов без своего inset: не даёт шапке заезжать под чёлку,
-   а контенту — под домашний индикатор (таббара на /field нет). */
-.field-safe {
-  padding-top: max(env(safe-area-inset-top), 12px);
-  padding-bottom: max(env(safe-area-inset-bottom), 16px);
-}
-.field-safe-top { padding-top: max(env(safe-area-inset-top), 12px); }
-.field-safe-bottom { padding-bottom: max(env(safe-area-inset-bottom), 16px); }
 
 body {
   margin: 0;
