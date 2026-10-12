@@ -7834,7 +7834,18 @@ Fade `opacity 0→1` на каждый `renderPanel` усиливал мерца
 - **Уточнение по /v2:** модуль авто-маски подключён только в vanilla `/`, `/h` и `/m`; сборка `/v2`
   его не грузит. Инцидент «Дружины» — про vanilla-страницу (виджеты «Корзина»/«Excel перевахтовка»
   и счётчики из скриншота пользователя есть только в vanilla `personnel.js`).
-- **Статус:** FIXED, гейты зелёные; независимый верификатор дал FAIL трижды (три раунда: границы
+- **ВЫКАЧЕНО НА ПРОД (12.10.2026):** коммиты `863399cc` (правка+тесты+ledger) → `3cfecbb9`
+  (бамп `SHELL_VERSION` 20.28.190→20.28.191) → `630b0406` (подпись `.last-verified`).
+  Pre-deploy гейты: `shell_guard --deploy-gate` **37/37**, `verify_index_tags` **OK (0 MISSING/DUPLICATE/BROKEN)**,
+  `verify_vendor_bundles` **3/3 OK**, `audit_silent_reverts` (pre) **PROD_HANDEDIT=0**, `restore_asset_sync plan`
+  `differ_prod_newer=0 / index_reference_problems=0`, `verify_rp_modal_render` **19/19**.
+  Снапшот: `/root/snapshots/asgard-d264-phone-mask-20261012-135711.tgz`.
+  Post-deploy (read-only, наш сервер): `phoneStrength`=4, `getAttribute('placeholder')` в опознании=**0**,
+  weak-страховка=1, `ASGARD_SHELL_VERSION`/`SHELL_VERSION`=**20.28.191**, `phone_mask.js?v=20.28.191`,
+  `/m` обновлён, 11 бандлов v2 с `type:"tel"`; root `/` `/h/` `/m/` `/v2/` = **200**, `systemctl is-active`=active,
+  health=200, ошибок в журнале за 5 мин = **0**. Post-deploy `audit_silent_reverts --post-deploy` —
+  «прод совпадает с локальным, расхождений 0».
+- **Статус:** DONE (выкачено и проверено на проде). независимый верификатор дал FAIL трижды (три раунда: границы
   первого аудита → недостоверная формулировка → остаточные поля/точность). Все конкретные находки
   закрыты; третий раунд дал одну проверяемо ложную претензию (`.seimp_phone` — опровергнута vm-прогоном)
   и признанный незакрытым хвост (сплошная переканонизация телефонных полей v2 — отдельная задача).
