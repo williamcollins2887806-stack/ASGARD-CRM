@@ -423,6 +423,10 @@
       uri: uri,
       password: creds.sip_password || '',
       register: true,
+      // Регистрация на 5 минут: JsSIP сам шлёт REGISTER-refresh до истечения
+      // (инцидент 12.10.2026: с дефолтными 600с контакт отваливался в
+      // «due to shutdown» → Unreachable → исходящий молча уходил на мобильный).
+      register_expires: 300,
       session_timers: false,
     };
     // ICE-серверы: STUN + TURN (relay). TURN критичен, когда NAT не пробивается:
@@ -469,6 +473,20 @@
       }
     });
     ua.start();
+
+    // Вкладку могли свернуть/заморозить → JS не выполнялся, REGISTER-refresh не
+    // ушёл, контакт в Asterisk протух. Возвращаемся — сразу перерегистрируемся,
+    // не дожидаясь, пока оператор нажмёт «Позвонить» и уйдёт в мобильный callback
+    // (инцидент 12.10.2026: «сначала звонит мой телефон, а не цель»).
+    if (!document.__asgardVisHook) {
+      document.__asgardVisHook = true;
+      document.addEventListener('visibilitychange', function () {
+        if (document.hidden) return;
+        if (!sipRegistered) {
+          try { api.ensureRegistered().then(function () { api.waitRegistered(4000); }).catch(function () {}); } catch (_) {}
+        }
+      });
+    }
   }
 
   var _lockRelease = null;
