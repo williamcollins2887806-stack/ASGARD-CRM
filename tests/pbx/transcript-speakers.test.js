@@ -230,7 +230,10 @@ test('F3', 'перевод на офлайн-цель не рвёт звонок
 test('F4', 'маска: печать в конец ставит каретку в конец (+79|, не +7|9)', () => {
   const js = read('public/assets/js/phone_mask.js');
   const i = js.indexOf('function mask(el)');
-  const blk = js.slice(i, i + 900);
+  // Границы функции — по следующей функции, а не по «магическому» окну:
+  // фиксированное число символов ломается от любого комментария выше логики.
+  const end = js.indexOf('function attach(el)', i);
+  const blk = js.slice(i, end > i ? end : undefined);
   assert.ok(/wasAtEnd/.test(blk), 'нет определения «печать в конец»');
   assert.ok(/pos = after\.length/.test(blk), 'каретка не ставится в конец при печати');
 });

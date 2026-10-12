@@ -685,6 +685,8 @@ function DrawerV3({ card, onClose, onChanged, openModal }) {
               onChange={(e) => setCustomer({ ...customer, phone: e.target.value })}
               onBlur={() => canEditCustomer && patchCard(card.id, { contact_phone: customer.phone || null }).catch(() => {})}
               placeholder="+7 (___) ___-__-__"
+              type="tel"
+              data-phone-mask="off"
             />
           </Row>
           <Row label="Город / Объект">

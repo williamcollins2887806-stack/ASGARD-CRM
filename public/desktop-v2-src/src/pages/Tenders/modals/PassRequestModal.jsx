@@ -176,7 +176,7 @@ export function PassRequestModal({ tender }) {
               <TextInput value={contactPerson} onChange={setContactPerson} placeholder="ФИО" />
             </Field>
             <Field label="Телефон">
-              <TextInput value={contactPhone} onChange={setContactPhone} placeholder="+7…" />
+              <TextInput value={contactPhone} onChange={setContactPhone} placeholder="+7…" type="tel" data-phone-mask="off" />
             </Field>
           </div>
 

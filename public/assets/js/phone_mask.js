@@ -23,6 +23,7 @@
   'use strict';
 
   var MARK = 'phoneMaskBound';
+  var STRENGTH = 'phoneMaskStrength';
   var SKIP = 'phoneMaskOff';
 
   function digits(v) {
@@ -58,20 +59,50 @@
     return d.length === 11 ? ('+' + d) : '';
   }
 
-  /** Похоже ли поле на телефон. */
+  /**
+   * Насколько поле похоже на телефон.
+   *
+   * ВАЖНО (регрессия 12.10.2026): placeholder в опознание НЕ входит.
+   * Раньше входил, и любое поле с подсказкой «Поиск по ФИО, телефону…»
+   * (Дружина, поиск получателя НПД, контакты в настройках, адрес отеля)
+   * попадало под маску: format() стирает всё нецифровое, поэтому буквы
+   * в такое поле ввести было невозможно.
+   *
+   * Возвращает силу признака:
+   *   'strong' — автор поля прямо объявил телефон (type=tel / inputmode=tel);
+   *   'weak'   — телефон угадан по name/id/class;
+   *   ''       — не телефон.
+   * «tel» ищем как отдельное слово — иначе «telegram», «telemost» и «hotel»
+   * ложно опознаются как телефоны.
+   */
+  function phoneStrength(el) {
+    if (!el || el.tagName !== 'INPUT' && el.tagName !== 'TEXTAREA') return '';
+    if (el.getAttribute('data-phone-mask') === 'off') return '';
+    if (el.type === 'tel') return 'strong';
+    if ((el.getAttribute('inputmode') || '').toLowerCase() === 'tel') return 'strong';
+    var name = (el.getAttribute('name') || '') + ' ' + (el.getAttribute('id') || '')
+             + ' ' + (el.getAttribute('class') || '') + ' ' + (el.className || '');
+    if (/phone|telefon|телефон|мобил/i.test(name)) return 'weak';
+    if (/(^|[^a-z])tel([^a-z]|$)/i.test(name)) return 'weak';
+    return '';
+  }
+
   function looksLikePhone(el) {
-    if (!el || el.tagName !== 'INPUT' && el.tagName !== 'TEXTAREA') return false;
-    if (el.getAttribute('data-phone-mask') === 'off') return false;
-    if (el.type === 'tel') return true;
-    if ((el.getAttribute('inputmode') || '').toLowerCase() === 'tel') return true;
-    var name = (el.getAttribute('name') || '') + ' ' + (el.getAttribute('id') || '') + ' ' + (el.getAttribute('placeholder') || '');
-    if (/phone|tel|телефон|мобил/i.test(name)) return true;
-    return false;
+    return !!phoneStrength(el);
   }
 
   function mask(el) {
-    if (!looksLikePhone(el)) return;
+    // Сила признака фиксируется в attach(): attach сам проставляет
+    // inputmode="tel", и при повторной проверке угаданное поле выглядело бы
+    // как явное. Для ещё не привязанных полей считаем заново.
+    var strength = el[STRENGTH] || phoneStrength(el);
+    if (!strength) return;
     var before = el.value;
+    // Страховка для УГАДАННЫХ телефонов: телефон не содержит букв. Если в поле
+    // есть буквы — это свободный текст (поиск, адрес, email, конференц-ссылка),
+    // и переформатирование его сотрёт. Явно объявленные (strong) поля
+    // маскируются как раньше.
+    if (strength === 'weak' && /[A-Za-zА-Яа-яЁё]/.test(before)) return;
     var after = format(before);
     if (after === before) return;
     var start = el.selectionStart;
@@ -99,8 +130,10 @@
 
   function attach(el) {
     if (!el || el[MARK]) return el;
-    if (!looksLikePhone(el)) return el;
+    var strength = phoneStrength(el);
+    if (!strength) return el;
     el[MARK] = true;
+    el[STRENGTH] = strength;
     if (el.getAttribute('autocomplete') == null) el.setAttribute('autocomplete', 'tel');
     if (el.getAttribute('inputmode') == null) el.setAttribute('inputmode', 'tel');
     // Стартовое значение (если пришло из БД в «сыром» виде).

@@ -361,7 +361,7 @@ export function ProxyEditModal({ type, proxy, onSaved, copyFrom }) {
                 <DatePicker value={form.birth_date} onChange={(v) => set('birth_date', v || '')} />
               </Field>
               <Field label="Телефон">
-                <TextInput value={form.phone} onChange={(v) => set('phone', v)} />
+                <TextInput value={form.phone} onChange={(v) => set('phone', v)} type="tel" data-phone-mask="off" />
               </Field>
               <Field label="Паспорт серия">
                 <TextInput value={form.passport_series} onChange={(v) => set('passport_series', v)} />

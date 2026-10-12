@@ -362,6 +362,8 @@ export function ContractEditModal({ contract, customers = [], onSaved }) {
                   value={form.contact_phone}
                   onChange={(v) => set('contact_phone', v)}
                   placeholder="+7 (___) ___-__-__"
+                  type="tel"
+                  data-phone-mask="off"
                 />
               </Field>
             </div>

@@ -185,7 +185,7 @@ export function TravelAddModal({ employees, works, onSaved }) {
           {isTransfer && (
             <div className="col-span-2">
               <Field label="📞 Телефон водителя" help="Кому позвонить по приезде.">
-                <TextInput value={driverPhone} onChange={setDriverPhone} placeholder="+7 999 123 45 67" />
+                <TextInput value={driverPhone} onChange={setDriverPhone} placeholder="+7 999 123 45 67" type="tel" data-phone-mask="off" />
               </Field>
             </div>
           )}

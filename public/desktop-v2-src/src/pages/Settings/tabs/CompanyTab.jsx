@@ -66,6 +66,8 @@ export default function CompanyTab({ app, setApp }) {
               className="inp-text"
               value={c.phone || ''}
               onChange={(e) => set('phone', e.target.value)}
+              type="tel"
+              data-phone-mask="off"
             />
           </div>
         </div>

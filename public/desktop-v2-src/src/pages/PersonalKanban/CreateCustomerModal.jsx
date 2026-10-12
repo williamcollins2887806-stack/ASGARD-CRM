@@ -220,6 +220,8 @@ export default function CreateCustomerModal({ onClose, onCreated }) {
               value={phone}
               onChange={(e) => setPhone(e.target.value)}
               placeholder="Телефон"
+              type="tel"
+              inputMode="tel"
               style={{ ...inputStyle, flex: 1 }}
             />
           </div>

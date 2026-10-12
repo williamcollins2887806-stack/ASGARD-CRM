@@ -546,6 +546,8 @@ function SeNewTable({ rows, decisions, updateDec, employees, limit }) {
                     value={d.phone || ''}
                     onChange={(v) => updateDec(idx, { phone: v })}
                     placeholder="Телефон"
+                    type="tel"
+                    data-phone-mask="off"
                   />
                 </div>
               </td>
