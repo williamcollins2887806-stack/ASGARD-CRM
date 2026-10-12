@@ -49,12 +49,17 @@ function checkQuiet() {
   // Нерезолвленный плейсхолдер нельзя выкатывать: на клиенте получится
   // `/h/sw.js?v=__SHELL_VERSION__` (литерал). bump подставляет номер.
   const unresolved = /__SHELL_VERSION__/.test(hHtml);
+  // Любой ДРУГОЙ литерал версии в /h/index.html — тоже рассогласование.
+  // Раньше рега SW оставалась на старом хардкоде, а --check был зелёным (fail-open).
+  const hVersions = [...new Set((hHtml.match(/\d+\.\d+\.\d+/g) || []))]
+    .filter((v) => v !== s.sw);
   const ok = s.sw && s.sw === s.html
     && s.qv.length === 1 && s.qv[0] === `?v=${s.sw}`
     && s.hSw === s.sw
     && s.hQv.length === 1 && s.hQv[0] === `?v=${s.sw}`
-    && !unresolved;
-  return { ok: !!ok, unresolved, ...s };
+    && !unresolved
+    && hVersions.length === 0;
+  return { ok: !!ok, unresolved, hVersions, ...s };
 }
 
 function main() {
@@ -63,7 +68,8 @@ function main() {
     const s = checkQuiet();
     if (!s.ok) {
       const extra = s.unresolved ? ' + есть нерезолвленный __SHELL_VERSION__ в /h/index.html' : '';
-      console.error(`FAIL: версии рассогласованы — sw=${s.sw} html=${s.html} h/sw=${s.hSw} qv=${s.qv.join(',')} h/qv=${s.hQv.join(',')}${extra}`);
+      const extra2 = (s.hVersions && s.hVersions.length) ? ` + чужой хардкод версии в /h/index.html: ${s.hVersions.join(',')}` : '';
+      console.error(`FAIL: версии рассогласованы — sw=${s.sw} html=${s.html} h/sw=${s.hSw} qv=${s.qv.join(',')} h/qv=${s.hQv.join(',')}${extra}${extra2}`);
       process.exit(1);
     }
     console.log(`OK: оболочка согласована на ${s.sw}`);

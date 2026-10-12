@@ -4668,7 +4668,7 @@ html[data-hg-fx="off"] {
 
 /* ── 1:1 call overlay (inside dock panel) ─────────────────────── */
 .hg-call-sheet {
-  background: #0B0E13;
+  background: var(--hg-bg, var(--bg2));
 }
 .hg-call-stage {
   position: relative;
@@ -5346,6 +5346,10 @@ body:has(.hg-ai-sheet) .hg-nav-search {
 .hg-file-badge.is-zip { background: var(--purple, #8B5CF6); }
 .hg-file-badge.is-img { background: var(--info-t, #60A5FA); }
 .hg-file-badge.is-generic { background: rgba(120, 120, 128, 0.45); }
+.hg-shared-voice-ico {
+  border-radius: 50%;
+  background: var(--hg-accent-chat, var(--blue-l, #4A90D9));
+}
 .hg-shared-file-meta {
   flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px;
 }

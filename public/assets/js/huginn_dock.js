@@ -323,7 +323,6 @@
     const navSearch = root.querySelector('#hgNavSearch');
     if (bottomNavEl) document.body.appendChild(bottomNavEl);
     if (navSearch) document.body.appendChild(navSearch);
-    ensureTailDefs();
     bindComposerChrome();
     syncNavIconStrokes();
     if (navSearch) {
@@ -530,11 +529,7 @@
     });
   }
 
-  /** P4.5 — tails now use plain asymmetric border-radius (DS §5.5 r17/tail7).
-   *  Kept as a no-op so older captures/tests that expect #hg-tail-defs don't break. */
-  function ensureTailDefs() {
-    return;
-  }
+  /** P4.5 — tails используют асимметричный border-radius (DS §5.5 r17/tail7). */
 
   function syncFloatNavBodyClasses() {
     if (!root) return;
@@ -778,16 +773,6 @@
     const lines = countComposerLines(input.value);
     /* brief / DS: icon after >3 lines → show from 4th line */
     btn.hidden = lines < 4;
-  }
-
-  /** @deprecated visual density seeds — kept as no-op so capture/tests don't reintroduce ghosts */
-  function padChatListToTen() {
-    state.chats = (state.chats || []).filter((c) => !c._seed && Number(c.id) > 0);
-  }
-
-  /** Contacts: real rows only (no fake А–Я fillers without chat_id). */
-  function padContactsToSixteen(rows) {
-    return (rows || []).filter((r) => r && (r.user_id || r.chat_id) && !r._seed);
   }
 
   async function loadStories() {
@@ -2839,7 +2824,7 @@
             const who = v.user_name || v.sender_name || v.name || 'Голос';
             const dur = v.file_duration || v.duration || '0:00';
             return `<button type="button" class="hg-shared-voice" data-src="${esc(v.file_url || '')}">
-              <span class="hg-shared-file-ico" style="border-radius:50%;background:#0A84FF">${ICO.play || '▶'}</span>
+              <span class="hg-shared-file-ico hg-shared-voice-ico">${ICO.play || '▶'}</span>
               <span class="hg-shared-file-meta">
                 <span class="hg-shared-file-name">${esc(who)}</span>
                 <span class="hg-shared-file-sub">${esc(String(dur))}</span>
@@ -4034,6 +4019,7 @@
       <button type="button" data-kind="image" role="menuitem">${ICO.image}<span>Фото</span></button>
       <button type="button" data-kind="file" role="menuitem">${ICO.file}<span>Файл</span></button>
       <button type="button" data-kind="document" role="menuitem">${ICO.file}<span>Документ</span></button>
+      <button type="button" data-kind="checklist" role="menuitem">${ICO.check || ICO.list || '☑'}<span>Чек-лист</span></button>
       ${mimirAttach ? '' : `<button type="button" data-kind="voice" role="menuitem">${ICO.mic}<span>Голосовое</span></button>`}
       ${mimirAttach ? '' : `<button type="button" data-kind="circle" role="menuitem">${ICO.video || ICO.circle || '◎'}<span>Кружок</span></button>`}
     `;
@@ -4045,12 +4031,56 @@
         el.remove();
         if (kind === 'voice') { recordMedia('voice'); return; }
         if (kind === 'circle') { recordMedia('circle'); return; }
+        if (kind === 'checklist') { openChecklistComposer(); return; }
         const file = root.querySelector('#hgFile');
         if (kind === 'image') file.accept = 'image/*';
         else file.accept = '*/*';
         file.click();
       };
     });
+  }
+
+  /** A11: создание чек-листа — пункты построчно, отправляем вместе с сообщением. */
+  function openChecklistComposer() {
+    clearFloats();
+    const host = sheetHost();
+    root.querySelectorAll('.hg-checklist-sheet').forEach((el) => el.remove());
+    const el = document.createElement('div');
+    el.className = 'hg-sheet hg-checklist-sheet hg-compose-sheet';
+    el.setAttribute('role', 'dialog');
+    el.setAttribute('aria-label', 'Чек-лист');
+    el.innerHTML = `
+      <div class="hg-compose-head">
+        <button type="button" class="hg-icon-btn hg-compose-x" id="hgClClose" aria-label="Закрыть"><span aria-hidden="true">✕</span></button>
+        <strong>Чек-лист</strong>
+        <button type="button" class="hg-icon-btn hg-compose-ok" id="hgClDone" aria-label="Отправить"><span aria-hidden="true">✓</span></button>
+      </div>
+      <div class="hg-compose-body">
+        <input class="hg-search" id="hgClTitle" placeholder="Название (необязательно)" />
+        <textarea class="hg-search" id="hgClItems" rows="6" placeholder="Пункты — каждый с новой строки"></textarea>
+      </div>`;
+    host.appendChild(el);
+    el.querySelector('#hgClClose').onclick = () => el.remove();
+    const ta = el.querySelector('#hgClItems');
+    setTimeout(() => { try { ta.focus(); } catch (_) {} }, 30);
+    el.querySelector('#hgClDone').onclick = async () => {
+      const items = String(ta.value || '').split(/\n+/).map((t) => t.trim()).filter(Boolean);
+      if (!items.length) { showToast('Добавьте пункты'); return; }
+      const title = String(el.querySelector('#hgClTitle').value || '').trim();
+      el.remove();
+      try {
+        await api('/api/chat-groups/' + state.chatId + '/messages', {
+          method: 'POST',
+          body: {
+            text: title || 'Чек-лист',
+            message_type: 'checklist',
+            checklist: items.map((t) => ({ text: t }))
+          }
+        });
+        showToast('Чек-лист отправлен');
+        await refreshOpenChat();
+      } catch (e) { showToast(e.message || 'Не удалось отправить'); }
+    };
   }
 
   /** Back from a thread: also unwind the History entry we pushed for it. */

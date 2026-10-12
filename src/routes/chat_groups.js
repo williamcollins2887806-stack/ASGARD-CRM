@@ -844,6 +844,7 @@ module.exports = async function(fastify) {
         const { rows } = await db.query(sql, params);
     const orderedMessages = rows.reverse();
     const attachmentsByMessageId = new Map();
+    const checklistByMessageId = new Map();
 
     if (orderedMessages.length > 0) {
       const messageIds = orderedMessages.map((row) => row.id);
@@ -861,6 +862,22 @@ module.exports = async function(fastify) {
         }
         attachmentsByMessageId.get(attachment.message_id).push(serializedAttachment);
       }
+
+      // A11: чек-листы сообщений (иначе пункты не дойдут до клиента и будут мёртвыми).
+      try {
+        const clRes = await db.query(`
+          SELECT id, message_id, text, is_done, position
+          FROM message_checklist_items
+          WHERE message_id = ANY($1::int[])
+          ORDER BY position ASC, id ASC
+        `, [messageIds]);
+        for (const it of clRes.rows) {
+          if (!checklistByMessageId.has(it.message_id)) checklistByMessageId.set(it.message_id, []);
+          checklistByMessageId.get(it.message_id).push({
+            id: it.id, text: it.text, is_done: it.is_done, position: it.position
+          });
+        }
+      } catch (_) { /* таблица может отсутствовать до миграции */ }
     }
 
     // Update last_read_at
@@ -870,10 +887,16 @@ module.exports = async function(fastify) {
     );
 
     return {
-      messages: orderedMessages.map((row) => ({
-        ...row,
-        attachments: attachmentsByMessageId.get(row.id) || []
-      }))
+      messages: orderedMessages.map((row) => {
+        const checklistItems = checklistByMessageId.get(row.id) || [];
+        return {
+          ...row,
+          attachments: attachmentsByMessageId.get(row.id) || [],
+          metadata: checklistItems.length
+            ? Object.assign({}, row.metadata || {}, { checklist_items: checklistItems, checklist: checklistItems })
+            : row.metadata
+        };
+      })
     };
   });
 
@@ -919,6 +942,26 @@ module.exports = async function(fastify) {
       UPDATE chats SET message_count = COALESCE(message_count, 0) + 1, last_message_at = NOW(), updated_at = NOW()
       WHERE id = $1
     `, [chatId]);
+
+    // A11: если в теле пришёл чек-лист — сохраняем пункты этого сообщения.
+    let checklistItems = [];
+    try {
+      const clRaw = request.body && (request.body.checklist || (request.body.metadata && request.body.metadata.checklist));
+      if (Array.isArray(clRaw) && clRaw.length) {
+        for (let i = 0; i < clRaw.length; i++) {
+          const t = String((clRaw[i] && clRaw[i].text) || clRaw[i] || '').trim();
+          if (!t) continue;
+          const ins = await db.query(
+            'INSERT INTO message_checklist_items (message_id, text, position) VALUES ($1, $2, $3) RETURNING id, text, is_done, position',
+            [message.id, t, i]
+          );
+          checklistItems.push(ins.rows[0]);
+        }
+        if (checklistItems.length) {
+          message.metadata = Object.assign({}, message.metadata || {}, { checklist_items: checklistItems, checklist: checklistItems });
+        }
+      }
+    } catch (_) { /* таблица может отсутствовать до миграции */ }
 
     // Уведомить участников (кроме отправителя и замьюченных)
     const { rows: members } = await db.query(`
