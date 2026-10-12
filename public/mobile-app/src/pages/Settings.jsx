@@ -1,7 +1,9 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { toast } from 'sonner';
 import { useAuthStore } from '@/stores/authStore';
 import { useThemeStore } from '@/stores/themeStore';
 import { useHaptic } from '@/hooks/useHaptic';
+import { usePushSubscription } from '@/hooks/usePushSubscription';
 import { PageShell } from '@/components/layout/PageShell';
 import {
   Bell, Sun, Moon, Smartphone, Trash2, Info,
@@ -11,16 +13,32 @@ export default function Settings() {
   const user = useAuthStore((s) => s.user);
   const { theme, toggleTheme } = useThemeStore();
   const haptic = useHaptic();
-  const [pushEnabled, setPushEnabled] = useState(Notification?.permission === 'granted');
+  const push = usePushSubscription();
+  const [pushEnabled, setPushEnabled] = useState(false);
   const [cacheSize, setCacheSize] = useState(null);
+
+  // Реальное состояние подписки из браузера (а не только permission).
+  useEffect(() => {
+    setPushEnabled(!!push.subscribed);
+  }, [push.subscribed]);
 
   const togglePush = async () => {
     haptic.light();
-    if (!pushEnabled && 'Notification' in window) {
-      const perm = await Notification.requestPermission();
-      setPushEnabled(perm === 'granted');
+    if (push.loading) return;
+    if (!push.subscribed) {
+      const res = await push.subscribe();
+      if (res.ok) {
+        setPushEnabled(true);
+        toast.success('Push-уведомления включены');
+      } else if (res.reason === 'denied') {
+        toast.error('Доступ к уведомлениям отклонён');
+      } else {
+        toast.error('Не удалось включить уведомления');
+      }
     } else {
-      setPushEnabled(!pushEnabled);
+      await push.unsubscribe();
+      setPushEnabled(false);
+      toast.success('Push-уведомления выключены');
     }
   };
 

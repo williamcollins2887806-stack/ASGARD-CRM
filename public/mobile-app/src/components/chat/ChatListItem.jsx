@@ -105,6 +105,7 @@ export function ChatListItem({ chat, onPin, onMute, onArchive }) {
           className="swipe-action-btn"
           style={{ background: 'var(--gold)' }}
           onClick={() => { onPin?.(chat.id); closeSwipe(); }}
+          hidden={!onPin}
         >
           <Pin size={18} />
           <span>Закрепить</span>

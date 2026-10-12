@@ -1,7 +1,11 @@
 import { useState, useRef } from 'react';
-import { ChevronLeft, Phone, MoreVertical, Search, X } from 'lucide-react';
+import { ChevronLeft, Phone, MoreVertical, Search, X, Archive, Link2, LogOut } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { toast } from 'sonner';
+import { api } from '@/api/client';
 import { useHaptic } from '@/hooks/useHaptic';
+import { useAuthStore } from '@/stores/authStore';
+import { BottomSheet } from '@/components/shared/BottomSheet';
 
 const AVATAR_COLORS = [
   { bg: 'rgba(74,144,217,0.18)', color: '#4A90D9' },
@@ -33,9 +37,63 @@ function getOnlineLabel(lastLogin) {
 export function ChatHeader({ chat, members, onSearch }) {
   const navigate = useNavigate();
   const haptic = useHaptic();
+  const myUserId = useAuthStore((s) => s.user?.id);
   const [searching, setSearching] = useState(false);
   const [query, setQuery] = useState('');
+  const [menuOpen, setMenuOpen] = useState(false);
   const searchRef = useRef(null);
+
+  // Телефон собеседника (прямой чат): из участника, если бэк его отдаёт.
+  const peerPhone = (() => {
+    if (chat?.is_group) return '';
+    const other = (members || []).find((m) => String(m.user_id) !== String(myUserId));
+    return (other && other.phone) || '';
+  })();
+
+  const handleCall = () => {
+    haptic.light();
+    if (peerPhone) {
+      window.location.href = `tel:${peerPhone}`;
+    } else {
+      toast.info('Номер собеседника не указан');
+    }
+  };
+
+  const handleCopyLink = async () => {
+    haptic.light();
+    setMenuOpen(false);
+    try {
+      const url = `${window.location.origin}/m/chat/${chat?.id}`;
+      await navigator.clipboard.writeText(url);
+      toast.success('Ссылка на чат скопирована');
+    } catch {
+      toast.error('Не удалось скопировать');
+    }
+  };
+
+  const handleArchive = async () => {
+    haptic.light();
+    setMenuOpen(false);
+    try {
+      await api.put(`/chat-groups/${chat?.id}/archive`, { archive: true });
+      toast.success('Чат в архиве');
+      navigate('/chat');
+    } catch (e) {
+      toast.error(e?.message || 'Не удалось архивировать');
+    }
+  };
+
+  const handleLeave = async () => {
+    haptic.medium();
+    setMenuOpen(false);
+    try {
+      await api.delete(`/chat-groups/${chat?.id}/members/${myUserId}`).catch(() => {});
+      toast.success('Вы вышли из чата');
+      navigate('/chat');
+    } catch (e) {
+      toast.error(e?.message || 'Не удалось выйти');
+    }
+  };
 
   // For direct chats, find the OTHER member (not self)
   const otherMember = !chat?.is_group
@@ -161,10 +219,10 @@ export function ChatHeader({ chat, members, onSearch }) {
         </button>
 
         {/* Actions */}
-        <button className="btn-icon spring-tap">
+        <button className="btn-icon spring-tap" onClick={handleCall} aria-label="Позвонить">
           <Phone size={20} />
         </button>
-        <button className="btn-icon spring-tap">
+        <button className="btn-icon spring-tap" onClick={() => { haptic.light(); setMenuOpen(true); }} aria-label="Действия чата">
           <MoreVertical size={20} />
         </button>
       </div>
@@ -186,6 +244,40 @@ export function ChatHeader({ chat, members, onSearch }) {
           </div>
         </div>
       )}
+
+      {/* Меню действий чата */}
+      <BottomSheet open={menuOpen} onClose={() => setMenuOpen(false)} title={chat?.name || 'Чат'}>
+        <div className="flex flex-col gap-1 pb-4">
+          <button
+            className="flex items-center gap-3 px-3 py-3 rounded-xl text-left active:bg-white/5"
+            onClick={() => { setMenuOpen(false); handleCall(); }}
+          >
+            <Phone size={20} className="c-blue shrink-0" />
+            <span className="text-[15px] c-primary">{peerPhone ? 'Позвонить' : 'Позвонить (нет номера)'}</span>
+          </button>
+          <button
+            className="flex items-center gap-3 px-3 py-3 rounded-xl text-left active:bg-white/5"
+            onClick={handleCopyLink}
+          >
+            <Link2 size={20} className="c-tertiary shrink-0" />
+            <span className="text-[15px] c-primary">Скопировать ссылку</span>
+          </button>
+          <button
+            className="flex items-center gap-3 px-3 py-3 rounded-xl text-left active:bg-white/5"
+            onClick={handleArchive}
+          >
+            <Archive size={20} className="c-tertiary shrink-0" />
+            <span className="text-[15px] c-primary">В архив</span>
+          </button>
+          <button
+            className="flex items-center gap-3 px-3 py-3 rounded-xl text-left active:bg-white/5"
+            onClick={handleLeave}
+          >
+            <LogOut size={20} style={{ color: 'var(--red-soft)' }} className="shrink-0" />
+            <span className="text-[15px]" style={{ color: 'var(--red-soft)' }}>Выйти из чата</span>
+          </button>
+        </div>
+      </BottomSheet>
     </header>
   );
 }

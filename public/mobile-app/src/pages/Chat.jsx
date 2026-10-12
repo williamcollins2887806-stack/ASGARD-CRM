@@ -1,6 +1,8 @@
 import { useState, useCallback, useMemo, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Edit3, Search } from 'lucide-react';
+import { toast } from 'sonner';
+import { api } from '@/api/client';
 import { PageShell } from '@/components/layout/PageShell';
 import { ChatListItem } from '@/components/chat/ChatListItem';
 import { MimirChatItem } from '@/components/chat/MimirChatItem';
@@ -12,6 +14,10 @@ import { useHaptic } from '@/hooks/useHaptic';
 import { useAuthStore } from '@/stores/authStore';
 import { useChatStore } from '@/stores/chatStore';
 import { relativeTime } from '@/lib/utils';
+
+// Кнопка «Закрепить» включается на Этапе 3 (нужен chat-level pin на бэке).
+// Пока не показываем в свайпе, чтобы не было мёртвой кнопки.
+const CHAT_PIN_ENABLED = false;
 
 const STATUS_COLORS = {
   draft: '#888888',
@@ -377,13 +383,56 @@ export default function Chat() {
     );
   };
 
+  // ─── Chat actions (swipe) ───
+  const handleMute = useCallback(async (id) => {
+    const chat = chats.find((c) => String(c.id) === String(id));
+    const nextMuted = !(chat && chat.is_muted);
+    try {
+      // until = ISO-время окончания mute; for unmute отправляем null.
+      const until = nextMuted ? new Date(Date.now() + 8 * 3600 * 1000).toISOString() : null;
+      await api.put(`/chat-groups/${id}/mute`, { until });
+      updateChat(id, { is_muted: nextMuted, muted_until: until });
+      toast.success(nextMuted ? 'Уведомления выключены' : 'Уведомления включены');
+    } catch (e) {
+      toast.error(e?.message || 'Не удалось изменить уведомления');
+    }
+  }, [chats, updateChat]);
+
+  const handleArchive = useCallback(async (id) => {
+    try {
+      await api.put(`/chat-groups/${id}/archive`, { archive: true });
+      toast.success('Чат в архиве');
+      refetch();
+    } catch (e) {
+      toast.error(e?.message || 'Не удалось архивировать');
+    }
+  }, [refetch]);
+
+  const handlePin = useCallback(async (id) => {
+    const chat = chats.find((c) => String(c.id) === String(id));
+    const nextPinned = !(chat && chat.is_pinned);
+    try {
+      await api.put(`/chat-groups/${id}/pin`, { pin: nextPinned });
+      updateChat(id, { is_pinned: nextPinned });
+      toast.success(nextPinned ? 'Чат закреплён' : 'Чат откреплён');
+    } catch (e) {
+      toast.error(e?.message || 'Не удалось закрепить');
+    }
+  }, [chats, updateChat]);
+
   const renderList = (items, type, tabKey) => {
     if (items.length === 0) return renderEmptyState(tabKey);
     return items.map((chat) =>
       type === 'estimate' ? (
         <EstimateChatItem key={chat.id} chat={chat} />
       ) : (
-        <ChatListItem key={chat.id} chat={chat} />
+        <ChatListItem
+          key={chat.id}
+          chat={chat}
+          onMute={handleMute}
+          onArchive={handleArchive}
+          onPin={CHAT_PIN_ENABLED ? handlePin : undefined}
+        />
       )
     );
   };
