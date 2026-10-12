@@ -339,7 +339,7 @@ console.log('[ASGARD] Global period functions loaded');
     {r:"/workers-schedule",l:"График: Рабочие",d:"Бронь и доступность",roles:["ADMIN","HR","HR_MANAGER",...DIRECTOR_ROLES],i:"workers",p:"workers_schedule",g:"personnel"},
     {r:"/hr-rating",l:"Рейтинг Дружины",d:"Оценки и средний балл",roles:["ADMIN","HR","HR_MANAGER",...DIRECTOR_ROLES],i:"rating",p:"hr_rating",g:"personnel"},
     {r:"/travel",l:"Логистика дружины",d:"Жильё, билеты, направления, обучение",roles:["ADMIN","OFFICE_MANAGER","HR","HR_MANAGER","PM",...DIRECTOR_ROLES],i:"travel",p:"travel",g:"personnel"},
-    {r:"/timesheet",l:"Табель",d:"Общий табель дружины: все рабочие за месяц, ФОТ, Excel",roles:["ADMIN","BUH","HR","HR_MANAGER","PROC",...DIRECTOR_ROLES],i:"calendar",p:"timesheet",g:"personnel"},
+    {r:"/timesheet",l:"Табель",d:"Общий табель дружины: все рабочие за месяц, ФОТ, Excel",roles:["ADMIN","BUH","HR","HR_MANAGER","PROC",...DIRECTOR_ROLES],perm:"timesheet_global",i:"calendar",p:"timesheet",g:"personnel"},
     {r:"/timesheet-warehouse",l:"Табель учёта работы на складе",d:"Отметки склада · закрытие месяца",roles:["ADMIN","WAREHOUSE",...DIRECTOR_ROLES],i:"calendar",p:"timesheet_warehouse",g:"personnel"},
     {r:"/timesheet-medical",l:"Табель учёта МО/обучения/иной транспорт",d:"Медосмотры, обучение, корабль, вертолёт",roles:["ADMIN","TO","HEAD_TO",...DIRECTOR_ROLES],i:"calendar",p:"timesheet_medical",g:"personnel"},
     {r:"/timesheet-travel",l:"Табель учёта дороги",d:"Отметки дороги · закрытие месяца",roles:["ADMIN","OFFICE_MANAGER","HEAD_TO",...DIRECTOR_ROLES],i:"calendar",p:"timesheet_travel",g:"personnel"},
@@ -557,7 +557,11 @@ try{
     // Фильтруем NAV по ролям (permissions НЕ фильтруют меню — только API доступ)
     const filteredNav = (role==="GUEST") ? [] : NAV.filter(n => {
       // 1. Проверка по ролям
-      if (!roleAllowed(n.roles, role)) return false;
+      if (!roleAllowed(n.roles, role)) {
+        // 1b. Персональный грант: показываем пункт, если выдан пермишен (напр. timesheet_global)
+        const permOk = n.perm && window.AsgardAuth && AsgardAuth.hasPermission && AsgardAuth.hasPermission(n.perm, 'read');
+        if (!permOk) return false;
+      }
       // 2. Скрытые пользователем вкладки
       if (hiddenRoutes.includes('#' + n.r)) return false;
       if (n.navHide) return false;
@@ -2362,7 +2366,7 @@ var _setupPinKeypad = null;
       AsgardHrRequestsPage.render({layout, title:"Заявки персонала"});
     }, {auth:true, roles:["ADMIN","HR","HR_MANAGER","PM","HEAD_PM",...DIRECTOR_ROLES]});
     // Timesheet v2 — единый модуль, разные mode по URL
-    AsgardRouter.add("/timesheet", ()=>AsgardTimesheetV2.renderGlobal({layout, title:"Общий табель — Табель дружины"}), {auth:true, roles:["ADMIN","BUH","HR","HR_MANAGER","PROC",...DIRECTOR_ROLES]});
+    AsgardRouter.add("/timesheet", ()=>AsgardTimesheetV2.renderGlobal({layout, title:"Общий табель — Табель дружины"}), {auth:true, roles:["ADMIN","BUH","HR","HR_MANAGER","PROC",...DIRECTOR_ROLES], perm:"timesheet_global"});
     AsgardRouter.add("/my-timesheet", ()=>AsgardTimesheetV2.renderPm({layout, title:"Табель моей дружины"}), {auth:true, roles:["PM","HEAD_PM"]});
     AsgardRouter.add("/timesheet-warehouse", ()=>AsgardTimesheetV2.renderWarehouse({layout, title:"Табель учёта работы на складе"}), {auth:true, roles:["ADMIN","WAREHOUSE",...DIRECTOR_ROLES]});
     AsgardRouter.add("/timesheet-medical", ()=>AsgardTimesheetV2.renderMedical({layout, title:"Табель учёта МО/обучения/иной транспорт"}), {auth:true, roles:["ADMIN","TO","HEAD_TO",...DIRECTOR_ROLES]});

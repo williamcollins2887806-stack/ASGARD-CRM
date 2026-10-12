@@ -16,6 +16,13 @@ async function routes(fastify, options) {
   async function loadUserPermissions(userId, role) {
     let permissions = {};
 
+    // Персональный доступ к «Общему табелю» (settings.timesheet_global_viewer_user_ids).
+    // Это НЕ роль: грант только добавляет синтетический модуль-пермишен, по которому
+    // фронт-роутер/NAV пускают на #/timesheet. Роль пользователя не меняется.
+    const { isGlobalViewerGranted } = require('../lib/timesheet-access');
+    let timesheetGlobalGrant = false;
+    try { timesheetGlobalGrant = await isGlobalViewerGranted(db, { id: userId }); } catch (_) {}
+
     // ADMIN получает всё
     if (role === 'ADMIN') {
       const { rows: mods } = await db.query('SELECT key as module_key FROM modules WHERE is_active = true');
@@ -24,7 +31,6 @@ async function routes(fastify, options) {
       }
       return permissions;
     }
-
     const { rows: perms } = await db.query(
       'SELECT module_key, can_read, can_write, can_delete FROM user_permissions WHERE user_id = $1',
       [userId]
@@ -33,6 +39,9 @@ async function routes(fastify, options) {
     if (perms.length > 0) {
       for (const p of perms) {
         permissions[p.module_key] = { read: p.can_read, write: p.can_write, delete: p.can_delete };
+      }
+      if (timesheetGlobalGrant && !permissions.timesheet_global) {
+        permissions.timesheet_global = { read: true, write: false, delete: false };
       }
       return permissions;
     }
@@ -58,6 +67,10 @@ async function routes(fastify, options) {
       if (!permissions[p.module_key]) {
         permissions[p.module_key] = { read: p.can_read, write: p.can_write, delete: p.can_delete };
       }
+    }
+
+    if (timesheetGlobalGrant && !permissions.timesheet_global) {
+      permissions.timesheet_global = { read: true, write: false, delete: false };
     }
 
     return permissions;

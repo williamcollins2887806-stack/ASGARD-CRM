@@ -1695,11 +1695,12 @@ window.AsgardTimesheetV2 = (function () {
         );
         // Общий
         const globalSl = scopeLocks.global || { locked: false };
+        const grantedRo = !!(data && data.granted_readonly);
         rows.push(
           `<div class="tsv2-lock-row">
              <div class="tsv2-lock-row-label">Общий:</div>
              ${renderScopeBadge('global', globalSl)}
-             ${!globalSl.locked ? `<button class="btn primary" id="tsv2_lock_inline">🔒 Закрыть месяц</button>` : ''}
+             ${(!globalSl.locked && !grantedRo) ? `<button class="btn primary" id="tsv2_lock_inline">🔒 Закрыть месяц</button>` : ''}
            </div>`
         );
       } else {
@@ -1815,7 +1816,7 @@ window.AsgardTimesheetV2 = (function () {
       const un = locked && canUn
         ? `<button class="unlock" data-lockid="${p.lock_id}" title="Открыть месяц ${esc(p.fio)}">🔓</button>`
         : '';
-      const remind = !locked
+      const remind = (!locked && !(data && data.granted_readonly))
         ? `<button class="tsv2-pm-remind" data-fio="${esc(p.fio)}" data-uid="${p.user_id || ''}" title="Напомнить РП закрыть">Напомнить</button>`
         : '';
       const status = locked
@@ -2963,10 +2964,12 @@ window.AsgardTimesheetV2 = (function () {
         data = null;
       }
       // canEdit: есть хоть один разрешённый тип, и месяц не заперт.
-      // Lean (PROC) — только просмотр.
+      // Lean (PROC) — только просмотр. Персональный грант (granted_readonly) —
+      // тоже только просмотр: роль остаётся PM/иной, запись общий табель не даёт.
       const allowedTypes = MODE_ALLOWED_TYPES[mode] || [];
       const isLean = data && data.view_profile === 'lean';
-      canEdit = !isLean && allowedTypes.length > 0 && !isModeLockedForViewer();
+      const isGrantedRo = !!(data && data.granted_readonly);
+      canEdit = !isLean && !isGrantedRo && allowedTypes.length > 0 && !isModeLockedForViewer();
       renderLocks();
       renderDashboard();
       renderKpi();

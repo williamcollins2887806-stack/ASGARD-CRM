@@ -30,6 +30,15 @@ window.AsgardRouter=(function(){
     return false;
   }
 
+  // Персональный грант (M1-пермишен): маршрут открыт, если у пользователя есть
+  // право чтения на указанный модуль. Используется для «Общего табеля»
+  // (settings.timesheet_global_viewer_user_ids → пермишен timesheet_global).
+  function permAllowed(perm){
+    if(!perm) return false;
+    if(!window.AsgardAuth || !AsgardAuth.hasPermission) return false;
+    try { return !!AsgardAuth.hasPermission(perm, 'read'); } catch(_) { return false; }
+  }
+
   async function render(){
     // Закрываем модалку при переходе между страницами
     try { if(window.AsgardUI && AsgardUI.hideModal) AsgardUI.hideModal(); } catch(_) {}
@@ -42,7 +51,7 @@ window.AsgardRouter=(function(){
       const u=await AsgardAuth.requireUser();
       if(!u){ location.hash="#/login"; return; }
       const role=u.user.role;
-      if(r.opts.roles && !roleAllowed(r.opts.roles, role)){
+      if(r.opts.roles && !roleAllowed(r.opts.roles, role) && !permAllowed(r.opts.perm)){
         AsgardUI.toast("Доступ закрыт","Недостаточно прав","err");
         location.hash="#/home";
         return;

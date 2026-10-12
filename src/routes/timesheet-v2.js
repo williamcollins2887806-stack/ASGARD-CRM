@@ -19,6 +19,7 @@
 
 const { isPmOverwriteType, normalizeLogisticsType } = require('../lib/timesheet-logistics-types');
 const { createNotification } = require('../services/notify');
+const { isGlobalViewerGranted } = require('../lib/timesheet-access');
 
 const ALL_VIEW_ROLES = [
   'ADMIN',
@@ -48,8 +49,9 @@ function isGlobalLeanRole(role) {
   return GLOBAL_LEAN_ROLES.includes(role);
 }
 
-function viewProfileFor(role, mode) {
+function viewProfileFor(role, mode, granted) {
   if (mode !== 'global') return 'scoped';
+  if (granted) return 'full'; // персональный грант: полный вид (см. lib/timesheet-access)
   if (isGlobalLeanRole(role)) return 'lean';
   if (GLOBAL_FULL_ROLES.includes(role)) return 'full';
   return 'scoped';
@@ -474,7 +476,21 @@ async function routes(fastify) {
   const db = fastify.db;
   const viewAuth = { preHandler: [fastify.requireRoles(ALL_VIEW_ROLES)] };
   const settingsWriteAuth = { preHandler: [fastify.requireRoles(['ADMIN', 'DIRECTOR_GEN'])] };
-  const exportAuth = { preHandler: [fastify.requireRoles([...GLOBAL_ROLES, ...GLOBAL_LEAN_ROLES, 'HEAD_TO', 'TO'])] };
+  const exportAuth = { preHandler: [
+    async (request, reply) => {
+      await fastify.authenticate(request, reply);
+      if (reply.sent) return;
+      if (request.user && request.user.role === 'ADMIN') return;
+      const allowed = [...GLOBAL_ROLES, ...GLOBAL_LEAN_ROLES, 'HEAD_TO', 'TO'];
+      if (allowed.includes(request.user && request.user.role)) return;
+      // Персональный грант на общий табель (settings.timesheet_global_viewer_user_ids).
+      if (await isGlobalViewerGranted(fastify.db, request.user)) {
+        request._tsGlobalGranted = true;
+        return;
+      }
+      reply.code(403).send({ error: 'Forbidden', message: 'Недостаточно прав' });
+    }
+  ] };
 
   // ────────────────────────────────────────────────────────────────
   // GET /api/timesheet/v2/works-options — список работ для фильтра табеля
@@ -696,6 +712,9 @@ async function routes(fastify) {
 
       const viewer = request.user || {};
       const requestedMode = (request.query && request.query.mode) || null;
+      // Персональный грант (settings.timesheet_global_viewer_user_ids): пользователь
+      // (например РП) получает read-only доступ к общему табелю в полном виде.
+      const globalGranted = await isGlobalViewerGranted(db, viewer);
       let mode = modeOfRole(viewer.role);
       // FIX #5: глобал-роли могут запросить любой mode.
       // HEAD_TO (и др. dual-scope): могут запросить любой СВОЙ mode
@@ -703,7 +722,11 @@ async function routes(fastify) {
       if (requestedMode && VALID_MODES.includes(requestedMode)) {
         if (GLOBAL_ROLES.includes(viewer.role) || modesOfRole(viewer.role).includes(requestedMode)) {
           mode = requestedMode;
+        } else if (globalGranted && requestedMode === 'global') {
+          mode = 'global'; // персональный грант: только чтение общего табеля
         }
+      } else if (globalGranted && !mode) {
+        mode = 'global';
       }
       if (!mode) return reply.code(403).send({ error: 'role_not_supported' });
 
@@ -819,7 +842,7 @@ async function routes(fastify) {
         };
         // PHASE 1A: summary при пустом списке — нулевая сводка для global FULL,
         // null для lean (PROC) и остальных mode.
-        const viewProfileEmpty = viewProfileFor(viewer.role, mode);
+        const viewProfileEmpty = viewProfileFor(viewer.role, mode, globalGranted);
         let summary = null;
         if (mode === 'global' && viewProfileEmpty === 'full') {
           let monthlyLimit = 350000, yearlyLimit = 2400000;
@@ -874,6 +897,7 @@ async function routes(fastify) {
         return {
           year, month, days_in_month: dim, mode,
           view_profile: viewProfileEmpty,
+          granted_readonly: !!globalGranted,
           viewer: { id: viewer.id, role: viewer.role, fio: viewer.name || viewer.full_name || viewer.fio || '' },
           employees: [],
           locks,
@@ -1748,7 +1772,7 @@ async function routes(fastify) {
       };
 
       // ── summary (ТОЛЬКО для global FULL — директора/бух/HR) ───────────
-      const viewProfile = viewProfileFor(viewer.role, mode);
+      const viewProfile = viewProfileFor(viewer.role, mode, globalGranted);
       let summary = null;
       if (mode === 'global' && viewProfile === 'full') {
         const empArr = employees.map(e => empById[e.id]);
@@ -1858,6 +1882,7 @@ async function routes(fastify) {
       return {
         year, month, days_in_month: dim, mode,
         view_profile: viewProfile,
+        granted_readonly: !!globalGranted,
         viewer: { id: viewer.id, role: viewer.role, fio: viewer.name || viewer.full_name || viewer.fio || '' },
         employees: employees.map(e => projectEmployeeForView(empById[e.id], viewProfile)),
         locks,
@@ -2718,7 +2743,7 @@ async function routes(fastify) {
           request.headers.authorization = 'Bearer ' + request.query.token;
         }
       },
-      fastify.requireRoles([...GLOBAL_ROLES, ...GLOBAL_LEAN_ROLES, 'HEAD_TO', 'TO'])
+      exportAuth.preHandler[0]
     ]
   }, async (request, reply) => {
     try {
@@ -2731,10 +2756,14 @@ async function routes(fastify) {
       }
 
       const viewerRole = request.user?.role || '';
+      const grantedExport = !!request._tsGlobalGranted;
       const isLeanExport = isGlobalLeanRole(viewerRole);
       const requestedExportMode = (request.query && request.query.mode) || null;
       let exportMode = modeOfRole(viewerRole) || 'medical';
-      if (GLOBAL_ROLES.includes(viewerRole)) {
+      if (grantedExport) {
+        // Персональный грант: выгружаем ровно общий табель (полный вид).
+        exportMode = 'global';
+      } else if (GLOBAL_ROLES.includes(viewerRole)) {
         exportMode = (requestedExportMode && VALID_MODES.includes(requestedExportMode))
           ? requestedExportMode
           : 'global';

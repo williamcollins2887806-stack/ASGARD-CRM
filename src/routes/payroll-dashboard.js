@@ -27,6 +27,21 @@
 
 const ACCESS_ROLES = ['ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'BUH'];
 
+// PRE-DEPLOY: персональный грант общего табеля (settings.timesheet_global_viewer_user_ids)
+// нужен для карточки «Касса» (cash-coverage) и её внутреннего inject в /summary.
+// Это ЧТЕНИЕ; запись (PUT/confirm/se-transfers) по-прежнему только ACCESS_ROLES.
+const { isGlobalViewerGranted } = require('../lib/timesheet-access');
+function accessRolesOrGranted(fastify) {
+  return async function (request, reply) {
+    await fastify.authenticate(request, reply);
+    if (reply.sent) return;
+    const role = request.user && request.user.role;
+    if (role === 'ADMIN' || ACCESS_ROLES.includes(role)) return;
+    if (await isGlobalViewerGranted(fastify.db, request.user)) return;
+    reply.code(403).send({ error: 'Forbidden', message: 'Недостаточно прав' });
+  };
+}
+
 const crypto = require('crypto');
 const { getCashBalance } = require('../services/approvalService');
 const { calcAllPmBalances, calcPmBalance } = require('../lib/pm-balance');
@@ -52,9 +67,10 @@ async function getSettingNumber(db, key, fallback) {
 
 async function routes(fastify, options) {
   const db = fastify.db;
+  const readAuth = { preHandler: [accessRolesOrGranted(fastify)] };
 
   // ─── GET /summary/:year/:month ────────────────────────────────────────────
-  fastify.get('/summary/:year/:month', { preHandler: [fastify.requireRoles(ACCESS_ROLES)] }, async (request, reply) => {
+  fastify.get('/summary/:year/:month', readAuth, async (request, reply) => {
     const year  = parseInt(request.params.year, 10);
     const month = parseInt(request.params.month, 10);
     if (!Number.isFinite(year) || !Number.isFinite(month)) return reply.code(400).send({ error: 'Bad year/month' });
@@ -401,7 +417,7 @@ async function routes(fastify, options) {
   //   advances_outstanding — авансы у РП (cash_requests money_issued/received/reporting).
   //   effective_balance    — cash_balance + pending_returns (после получения возвратов).
   //   status: ok | ok_with_returns | tight | shortage.
-  fastify.get('/cash-coverage/:year/:month', { preHandler: [fastify.requireRoles(ACCESS_ROLES)] }, async (request, reply) => {
+  fastify.get('/cash-coverage/:year/:month', readAuth, async (request, reply) => {
     const year  = parseInt(request.params.year, 10);
     const month = parseInt(request.params.month, 10);
     if (!Number.isFinite(year) || !Number.isFinite(month)) return reply.code(400).send({ error: 'Bad year/month' });
