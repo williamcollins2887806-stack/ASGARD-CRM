@@ -349,6 +349,13 @@ fastify.register(require('@fastify/static'), {
   root: path.join(__dirname, '../public'),
   prefix: '/',
   setHeaders(res, filePath) {
+    // Дашборд разработки (/dev-roadmap/*): правится мной и должен доезжать сразу, без 30-дневного immutable.
+    // Проверяем ДО html-ветки, иначе index.html вернётся раньше и не получит X-Robots-Tag.
+    if (filePath.includes(`${path.sep}dev-roadmap${path.sep}`) || filePath.includes('/dev-roadmap/')) {
+      res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+      res.setHeader('X-Robots-Tag', 'noindex, nofollow');
+      return;
+    }
     // HTML files: always revalidate (browser checks freshness each time)
     if (filePath.endsWith('.html')) {
       res.setHeader('Cache-Control', 'no-cache');
@@ -737,6 +744,8 @@ const pmDuty = require('./routes/pm-duty');
 fastify.register(pmDuty, { prefix: '/api/pm-duty' });
 fastify.register(pmDuty.reviewRoutes, { prefix: '/api/tenders' });
 fastify.register(require('./routes/tenders-hub'), { prefix: '/api/tenders-hub' }); // S-7: единый агрегатор feed
+// Дашборд разработки директора развития: доступ по секретной ссылке (ROADMAP_SECRET), не через логин CRM.
+fastify.register(require('./routes/dev-roadmap'), { prefix: '/api/dev-roadmap' });
 fastify.register(require('./routes/estimates'), { prefix: '/api/estimates' });
 fastify.register(require('./routes/works'), { prefix: '/api/works' });
 fastify.register(require('./routes/work-readiness'), { prefix: '/api/work-readiness' });

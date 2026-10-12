@@ -1,0 +1,442 @@
+{
+  "meta": {
+    "title": "Разработка и внедрение ASGARD CRM",
+    "subtitle": "План директора развития",
+    "start": "2026-10-12",
+    "updated": "2026-10-12",
+    "signers": [
+      { "id": "nikita", "name": "Никита" },
+      { "id": "kostya", "name": "Костя" },
+      { "id": "andrey", "name": "Андрей" }
+    ]
+  },
+  "stages": [
+    {
+      "code": "fin-docs",
+      "title": "Финансы, документы, согласования",
+      "short": "Финансы",
+      "color": "gold",
+      "start": "2026-10-12",
+      "deadline": "2026-11-15",
+      "items": [
+        {
+          "code": "oleg-app",
+          "title": "Приложение Олега Викторовича: счета, касса, оплаты СЗ",
+          "description": "Мобильная версия под удобство и простоту: зашёл — увидел — согласовал. До 15.11 Олег Викторович подтверждает всё в почте; параллельно на десктопе в CRM уже можно подтверждать и согласовывать выплаты.",
+          "owner": "nikita",
+          "deadline": "2026-11-15",
+          "checkpoints": [
+            { "code": "analysis", "kind": "analysis", "title": "Анализ сценариев согласования: счета, касса, оплаты СЗ", "owner": "nikita", "deadline": "2026-10-16" },
+            { "code": "design", "kind": "design", "title": "Макет мобильного экрана «зашёл — увидел — согласовал»", "owner": "nikita", "deadline": "2026-10-21" },
+            { "code": "approval", "kind": "approval", "title": "Утверждение макета Олегом Викторовичем", "owner": "andrey", "deadline": "2026-10-24" },
+            { "code": "dev", "kind": "dev", "title": "Доработка мобильной версии согласования", "owner": "nikita", "deadline": "2026-11-06" },
+            { "code": "test", "kind": "test", "title": "Тесты под ролью Олега Викторовича", "owner": "kostya", "deadline": "2026-11-11" },
+            { "code": "launch", "kind": "launch", "title": "Работает параллельно с почтой; десктоп подтверждает выплаты", "owner": "nikita", "deadline": "2026-11-15" }
+          ]
+        },
+        {
+          "code": "registry-launch",
+          "title": "Запуск реестра счетов и документов",
+          "description": "Запуск реестра 15.10.2026 + 2 недели тестирования с параллельным ведением Excel.",
+          "owner": "nikita",
+          "deadline": "2026-10-29",
+          "checkpoints": [
+            { "code": "dev", "kind": "dev", "title": "Готовность реестра к запуску", "owner": "nikita", "deadline": "2026-10-15" },
+            { "code": "launch", "kind": "launch", "title": "Запуск 15.10.2026", "owner": "nikita", "deadline": "2026-10-15" },
+            { "code": "test", "kind": "test", "title": "2 недели тестов с параллельным Excel", "owner": "kostya", "deadline": "2026-10-29" },
+            { "code": "approval", "kind": "approval", "title": "Приёмка: Excel можно отключать", "owner": "andrey", "deadline": "2026-10-29" }
+          ]
+        },
+        {
+          "code": "registry-sf-act",
+          "title": "Реестр: кнопка «СФ или акт некорректен» + индикация красным",
+          "description": "Для бухгалтерии — кнопка «СФ или акт некорректен» в реестре документов. Индикация: нет акта сверки — красным, нет СФ — красным.",
+          "owner": "kostya",
+          "deadline": "2026-11-01",
+          "checkpoints": [
+            { "code": "analysis", "kind": "analysis", "title": "Согласовать с бухгалтерией правила «некорректности»", "owner": "kostya", "deadline": "2026-10-15" },
+            { "code": "design", "kind": "design", "title": "Макет кнопки и красной индикации в реестре", "owner": "kostya", "deadline": "2026-10-18" },
+            { "code": "approval", "kind": "approval", "title": "Утверждение правил бухгалтерией", "owner": "andrey", "deadline": "2026-10-20" },
+            { "code": "dev", "kind": "dev", "title": "Разработка кнопки + статусы «нет акта» / «нет СФ»", "owner": "kostya", "deadline": "2026-10-28" },
+            { "code": "test", "kind": "test", "title": "Тесты: подсветка по отсутствию документов", "owner": "kostya", "deadline": "2026-10-31" },
+            { "code": "launch", "kind": "launch", "title": "В проде", "owner": "nikita", "deadline": "2026-11-01" }
+          ]
+        },
+        {
+          "code": "reconciliation",
+          "title": "Акты сверки: витрина «готов / получен» и сроки",
+          "description": "Где и как видим, что акт сверки готов и получен. Сроки: квартальный — до 10 числа следующего месяца, годовой — до 15 января.",
+          "owner": "kostya",
+          "deadline": "2026-11-01",
+          "checkpoints": [
+            { "code": "analysis", "kind": "analysis", "title": "Правила статусов акта сверки + напоминания о сроках", "owner": "kostya", "deadline": "2026-10-15" },
+            { "code": "design", "kind": "design", "title": "Макет витрины актов сверки в реестре", "owner": "kostya", "deadline": "2026-10-18" },
+            { "code": "dev", "kind": "dev", "title": "Статусы готов / получен + дедлайны (10 число, 15 января)", "owner": "kostya", "deadline": "2026-10-28" },
+            { "code": "test", "kind": "test", "title": "Тесты сроков и статусов", "owner": "kostya", "deadline": "2026-10-31" },
+            { "code": "launch", "kind": "launch", "title": "В проде", "owner": "nikita", "deadline": "2026-11-01" }
+          ]
+        },
+        {
+          "code": "payment-schedule",
+          "title": "График оплат и переключатели оплаты",
+          "description": "Срок оплаты проставлять обязательно либо галочка «уже оплачена». Переключатель в оплате: СФ или акт; по оплате или по услуге.",
+          "owner": "kostya",
+          "deadline": "2026-11-01",
+          "checkpoints": [
+            { "code": "analysis", "kind": "analysis", "title": "Правила графика оплат и типов оплат", "owner": "kostya", "deadline": "2026-10-15" },
+            { "code": "design", "kind": "design", "title": "Макет: обязательный срок / «уже оплачена» + переключатели", "owner": "kostya", "deadline": "2026-10-18" },
+            { "code": "dev", "kind": "dev", "title": "Разработка графика и переключателей", "owner": "kostya", "deadline": "2026-10-28" },
+            { "code": "test", "kind": "test", "title": "Тесты переключателей и валидации срока", "owner": "kostya", "deadline": "2026-10-31" },
+            { "code": "launch", "kind": "launch", "title": "В проде", "owner": "nikita", "deadline": "2026-11-01" }
+          ]
+        },
+        {
+          "code": "worker-confirm",
+          "title": "Подтверждение выплаты рабочими",
+          "description": "Рабочие заходят в приложение, видят что им отправили деньги и нажимают «получил». Если не нажали в течение 3 дней — Дима звонит и спрашивает.",
+          "owner": "nikita",
+          "deadline": "2026-11-01",
+          "checkpoints": [
+            { "code": "analysis", "kind": "analysis", "title": "Сценарий подтверждения + эскалация на 3-й день", "owner": "nikita", "deadline": "2026-10-15" },
+            { "code": "design", "kind": "design", "title": "Макет экрана «деньги отправлены / получил»", "owner": "nikita", "deadline": "2026-10-18" },
+            { "code": "dev", "kind": "dev", "title": "Разработка подтверждения + счётчик 3 дней", "owner": "nikita", "deadline": "2026-10-28" },
+            { "code": "test", "kind": "test", "title": "Тесты: подтверждение, просрочка, список на обзвон", "owner": "kostya", "deadline": "2026-10-31" },
+            { "code": "launch", "kind": "launch", "title": "В проде", "owner": "nikita", "deadline": "2026-11-01" }
+          ]
+        }
+      ]
+    },
+    {
+      "code": "workers",
+      "title": "Рабочие, рейтинг, выплаты",
+      "short": "Рабочие",
+      "color": "blue",
+      "start": "2026-10-12",
+      "deadline": "2026-11-01",
+      "items": [
+        {
+          "code": "rating-filter",
+          "title": "Рейтинг по рабочим: фильтр месяц / год / произвольный период",
+          "description": "Фильтрация рейтинга рабочих по месяцу, году и произвольному периоду.",
+          "owner": "nikita",
+          "deadline": "2026-11-01",
+          "checkpoints": [
+            { "code": "analysis", "kind": "analysis", "title": "Источники данных рейтинга и правила периода", "owner": "nikita", "deadline": "2026-10-15" },
+            { "code": "design", "kind": "design", "title": "Макет фильтра периода", "owner": "nikita", "deadline": "2026-10-18" },
+            { "code": "dev", "kind": "dev", "title": "Разработка фильтров месяц / год / период", "owner": "nikita", "deadline": "2026-10-28" },
+            { "code": "test", "kind": "test", "title": "Тесты: корректность выборок по периодам", "owner": "kostya", "deadline": "2026-10-31" },
+            { "code": "launch", "kind": "launch", "title": "В проде", "owner": "nikita", "deadline": "2026-11-01" }
+          ]
+        },
+        {
+          "code": "putkov-payouts",
+          "title": "Выплаты рабочим: экран выплат и остатки к выплатам",
+          "description": "Проверить, где Путков будет выплачивать рабочим, на каком экране и как видеть остатки к выплатам. Доделать страницу выплат, обсудить с Димой, получить обратную связь и реализовать.",
+          "owner": "nikita",
+          "deadline": "2026-11-01",
+          "checkpoints": [
+            { "code": "analysis", "kind": "analysis", "title": "Разбор с Путковым и Димой: экран выплат и остатки", "owner": "nikita", "deadline": "2026-10-15" },
+            { "code": "design", "kind": "design", "title": "Макет страницы выплат с остатками", "owner": "nikita", "deadline": "2026-10-20" },
+            { "code": "approval", "kind": "approval", "title": "Обратная связь от Димы и Путкова получена", "owner": "andrey", "deadline": "2026-10-23" },
+            { "code": "dev", "kind": "dev", "title": "Доработка страницы выплат", "owner": "nikita", "deadline": "2026-10-28" },
+            { "code": "test", "kind": "test", "title": "Тесты: остатки к выплатам и отражение выплат", "owner": "kostya", "deadline": "2026-10-31" },
+            { "code": "launch", "kind": "launch", "title": "В проде", "owner": "nikita", "deadline": "2026-11-01" }
+          ]
+        }
+      ]
+    },
+    {
+      "code": "office-schedule",
+      "title": "График офиса и дашборд",
+      "short": "График офиса",
+      "color": "ok",
+      "start": "2026-10-12",
+      "deadline": "2026-11-01",
+      "items": [
+        {
+          "code": "office-vacation",
+          "title": "График: офисный отпуск",
+          "description": "Добавить в график офисный отпуск.",
+          "owner": "kostya",
+          "deadline": "2026-11-01",
+          "checkpoints": [
+            { "code": "analysis", "kind": "analysis", "title": "Правила отображения офисного отпуска", "owner": "kostya", "deadline": "2026-10-15" },
+            { "code": "dev", "kind": "dev", "title": "Разработка офисного отпуска в графике", "owner": "kostya", "deadline": "2026-10-27" },
+            { "code": "test", "kind": "test", "title": "Тесты: пересечение отпуска и смен", "owner": "kostya", "deadline": "2026-10-31" },
+            { "code": "launch", "kind": "launch", "title": "В проде", "owner": "nikita", "deadline": "2026-11-01" }
+          ]
+        },
+        {
+          "code": "office-fill",
+          "title": "Обязательное заполнение графика офиса на неделю вперёд",
+          "description": "В понедельник при входе CRM просит заполнить, где человек будет эту неделю. При следующих входах — «подтверждаешь или меняем». Возможность корректировки каждый день. Доработать существующий опрос по офису.",
+          "owner": "kostya",
+          "deadline": "2026-11-01",
+          "checkpoints": [
+            { "code": "analysis", "kind": "analysis", "title": "Сценарии: понедельник, повторный вход, правка дня", "owner": "kostya", "deadline": "2026-10-15" },
+            { "code": "design", "kind": "design", "title": "Макет доработки существующего опроса", "owner": "kostya", "deadline": "2026-10-18" },
+            { "code": "dev", "kind": "dev", "title": "Понедельник: запрос + ежедневное подтверждение + правка дня", "owner": "kostya", "deadline": "2026-10-28" },
+            { "code": "test", "kind": "test", "title": "Тесты: обязательность, подтверждение, ежедневная правка", "owner": "kostya", "deadline": "2026-10-31" },
+            { "code": "launch", "kind": "launch", "title": "В проде", "owner": "nikita", "deadline": "2026-11-01" }
+          ]
+        },
+        {
+          "code": "roadmap-dashboard",
+          "title": "Дашборд разработки и внедрения: кольца, чек-поинты, онлайн",
+          "description": "Этот самый экран: кольца завершения по этапам, чек-поинты с подписью закрывшего, онлайн-пересчёт, прогресс-бар с дедлайном и диаграмма Ганта.",
+          "owner": "nikita",
+          "deadline": "2026-10-25",
+          "checkpoints": [
+            { "code": "design", "kind": "design", "title": "Макет дашборда: кольца, Гант, чек-лист, модалка подписи", "owner": "nikita", "deadline": "2026-10-18" },
+            { "code": "approval", "kind": "approval", "title": "Утверждение макета директором развития", "owner": "andrey", "deadline": "2026-10-20" },
+            { "code": "dev", "kind": "dev", "title": "Сборка дашборда + API + онлайн-пересчёт", "owner": "nikita", "deadline": "2026-10-23" },
+            { "code": "test", "kind": "test", "title": "Тесты: подпись, пересчёт, адаптив", "owner": "kostya", "deadline": "2026-10-24" },
+            { "code": "launch", "kind": "launch", "title": "Открыт доступ директору развития", "owner": "andrey", "deadline": "2026-10-25" }
+          ]
+        }
+      ]
+    },
+    {
+      "code": "biometry",
+      "title": "Модуль биометрии для рабочих",
+      "short": "Биометрия",
+      "color": "red",
+      "start": "2026-10-12",
+      "deadline": "2026-12-01",
+      "items": [
+        {
+          "code": "geozone",
+          "title": "Геозона из адреса объекта",
+          "description": "sites.address/lat/lng + works.site_id. Геокодинг POST /api/sites/geocode (Nominatim). Переиспользовать карту Leaflet + OSM из ObjectMap: ручная точка, reverse-geocode, круг зоны. Исправить баг: geo_lat/geo_lng/geo_radius против object_lat/object_lng/geo_radius_meters. Привести к единым полям и покрыть тестом. Радиус жёстко ≤100 м.",
+          "owner": "nikita",
+          "start": "2026-10-12",
+          "deadline": "2026-11-15",
+          "checkpoints": [
+            { "code": "analysis", "kind": "analysis", "title": "Аудит полей геозоны + план унификации", "owner": "nikita", "deadline": "2026-10-17" },
+            { "code": "dev", "kind": "dev", "title": "Единые поля + фикс чтения/записи", "owner": "nikita", "deadline": "2026-10-27" },
+            { "code": "dev2", "kind": "dev", "title": "Карта: ручная точка, reverse-geocode, круг, лимит ≤100 м", "owner": "kostya", "deadline": "2026-11-06" },
+            { "code": "test", "kind": "test", "title": "Тест: единые поля и радиус", "owner": "kostya", "deadline": "2026-11-12" }
+          ]
+        },
+        {
+          "code": "alco",
+          "title": "Алкотестер: ручной + ответственность мастера",
+          "description": "Ручной алкотестер: мастер жмёт «Трезв / Нетрезв», опционально фото рабочего. Дисциплинарная ответственность мастера за ложное подтверждение.",
+          "owner": "kostya",
+          "start": "2026-10-20",
+          "deadline": "2026-11-15",
+          "checkpoints": [
+            { "code": "analysis", "kind": "analysis", "title": "Сценарий отметки: трезв/нетрезв + фото", "owner": "kostya", "deadline": "2026-10-24" },
+            { "code": "design", "kind": "design", "title": "Макет экрана алкотеста", "owner": "kostya", "deadline": "2026-10-29" },
+            { "code": "dev", "kind": "dev", "title": "Разработка алкотеста + фиксация мастера", "owner": "kostya", "deadline": "2026-11-09" },
+            { "code": "test", "kind": "test", "title": "Тесты: результат, фото, автор отметки", "owner": "kostya", "deadline": "2026-11-13" }
+          ]
+        },
+        {
+          "code": "consent",
+          "title": "Согласие на биометрию: АЭП через SMS",
+          "description": "Переиспользовать SMS-инфраструктуру из field-auth.js. Без подписанного согласия эталон лица не заводить. Согласие версионировать, хранить как доказательство, предусмотреть отзыв.",
+          "owner": "nikita",
+          "start": "2026-10-20",
+          "deadline": "2026-11-15",
+          "checkpoints": [
+            { "code": "analysis", "kind": "analysis", "title": "Поток АЭП: текст → подпись → SMS-код", "owner": "nikita", "deadline": "2026-10-24" },
+            { "code": "design", "kind": "design", "title": "Макет экрана подписания согласия", "owner": "nikita", "deadline": "2026-10-29" },
+            { "code": "dev", "kind": "dev", "title": "Разработка АЭП + версионирование и отзыв согласия", "owner": "nikita", "deadline": "2026-11-09" },
+            { "code": "test", "kind": "test", "title": "Тесты: без согласия эталон не заводится", "owner": "kostya", "deadline": "2026-11-13" }
+          ]
+        },
+        {
+          "code": "history",
+          "title": "История и логи отметок",
+          "description": "У админа вкладка «История отметок»: карта точек, круги точности, кластеризация, таймлайн, фильтры, экспорт. У РП — подвкладка «История» рядом с «Отметками». РП: подвкладка «Отметки» внутри «Разногласий» (Disputes.jsx), тумблер «Споры рабочих | Отметки | История».",
+          "owner": "kostya",
+          "start": "2026-10-20",
+          "deadline": "2026-11-15",
+          "checkpoints": [
+            { "code": "analysis", "kind": "analysis", "title": "Состав вкладки истории и фильтров", "owner": "kostya", "deadline": "2026-10-24" },
+            { "code": "design", "kind": "design", "title": "Макет: карта точек, таймлайн, тумблер у РП", "owner": "kostya", "deadline": "2026-10-29" },
+            { "code": "approval", "kind": "approval", "title": "Утверждение состава истории", "owner": "andrey", "deadline": "2026-11-02" },
+            { "code": "dev", "kind": "dev", "title": "Разработка вкладки у админа и подвкладок у РП", "owner": "kostya", "deadline": "2026-11-09" },
+            { "code": "test", "kind": "test", "title": "Тесты: фильтры, карта, экспорт", "owner": "kostya", "deadline": "2026-11-13" }
+          ]
+        },
+        {
+          "code": "renders",
+          "title": "Рендеры и прототипы prototypes/attendance/",
+          "description": "На дизайн-системе CRM: планшет, телефон ≤15 сек, QR-тикет, офлайн-очередь, РП, админ, история с картой, экран подписания согласия, карта геозоны. Интерактивно, с листанием и кликабельными состояниями.",
+          "owner": "nikita",
+          "start": "2026-10-12",
+          "deadline": "2026-11-05",
+          "checkpoints": [
+            { "code": "design", "kind": "design", "title": "Сборка прототипов на дизайн-системе CRM", "owner": "nikita", "deadline": "2026-10-28" },
+            { "code": "dev", "kind": "dev", "title": "Интерактив: листание, кликабельные состояния", "owner": "nikita", "deadline": "2026-11-02" },
+            { "code": "approval", "kind": "approval", "title": "Показ директорам состоялся", "owner": "andrey", "deadline": "2026-11-05" }
+          ]
+        },
+        {
+          "code": "inputs",
+          "title": "Получить входные данные по биометрии",
+          "description": "Текст согласия, реквизиты оператора ПДн, подтверждение радиуса ≤100 м, обязательность карты при отсутствии координат, список админов для разбора очереди.",
+          "owner": "andrey",
+          "start": "2026-10-12",
+          "deadline": "2026-11-01",
+          "checkpoints": [
+            { "code": "analysis", "kind": "analysis", "title": "Текст согласия и реквизиты оператора ПДн получены", "owner": "andrey", "deadline": "2026-11-01" },
+            { "code": "approval", "kind": "approval", "title": "Подтверждены: радиус ≤100 м, карта, список админов", "owner": "andrey", "deadline": "2026-11-01" }
+          ]
+        },
+        {
+          "code": "docs",
+          "title": "16 документов в docs/attendance-module/ + Obsidian",
+          "description": "Создать 16 документов в docs/attendance-module/ и синхронизировать в Obsidian.",
+          "owner": "nikita",
+          "start": "2026-10-25",
+          "deadline": "2026-11-15",
+          "checkpoints": [
+            { "code": "dev", "kind": "dev", "title": "Создано 16 документов", "owner": "nikita", "deadline": "2026-11-12" },
+            { "code": "test", "kind": "test", "title": "Синхронизировано в Obsidian", "owner": "nikita", "deadline": "2026-11-15" }
+          ]
+        },
+        {
+          "code": "test-module",
+          "title": "Тестирование модуля биометрии",
+          "description": "Тестирование после завершения разработки (до 15.11), перед запуском в Астрахани.",
+          "owner": "kostya",
+          "start": "2026-11-15",
+          "deadline": "2026-11-25",
+          "checkpoints": [
+            { "code": "test", "kind": "test", "title": "Сквозной тест модуля на клоне", "owner": "kostya", "deadline": "2026-11-22" },
+            { "code": "approval", "kind": "approval", "title": "Приёмка модуля директором развития", "owner": "andrey", "deadline": "2026-11-25" }
+          ]
+        },
+        {
+          "code": "launch-astra",
+          "title": "Запуск в г. Астрахань",
+          "description": "Запуск модуля биометрии в г. Астрахань 01.12.2026.",
+          "owner": "andrey",
+          "start": "2026-11-25",
+          "deadline": "2026-12-01",
+          "checkpoints": [
+            { "code": "launch", "kind": "launch", "title": "Запуск в Астрахани", "owner": "andrey", "deadline": "2026-12-01" }
+          ]
+        }
+      ]
+    },
+    {
+      "code": "tablets",
+      "title": "Планшеты и инфраструктура",
+      "short": "Планшеты",
+      "color": "blue",
+      "start": "2026-10-12",
+      "deadline": "2026-11-30",
+      "items": [
+        {
+          "code": "mlsp-vpn",
+          "title": "Планшет МЛСП: Прокси и VPN для обновлений",
+          "description": "Настроить на планшете для МЛСП прокси и VPN для обновления.",
+          "owner": "kostya",
+          "start": "2026-10-12",
+          "deadline": "2026-11-15",
+          "checkpoints": [
+            { "code": "analysis", "kind": "analysis", "title": "Схема прокси и VPN на планшете", "owner": "kostya", "deadline": "2026-10-20" },
+            { "code": "dev", "kind": "dev", "title": "Настройка прокси и VPN", "owner": "kostya", "deadline": "2026-11-05" },
+            { "code": "test", "kind": "test", "title": "Тест: обновление проходит через прокси/VPN", "owner": "kostya", "deadline": "2026-11-12" },
+            { "code": "launch", "kind": "launch", "title": "Планшет в работе", "owner": "kostya", "deadline": "2026-11-15" }
+          ]
+        },
+        {
+          "code": "offline-notify",
+          "title": "Уведомление при отсутствии интернета более 24 часов",
+          "description": "Если интернета нет более 24 часов и синхронизации не было — уведомлять на планшете.",
+          "owner": "kostya",
+          "start": "2026-11-01",
+          "deadline": "2026-11-30",
+          "checkpoints": [
+            { "code": "analysis", "kind": "analysis", "title": "Правило: 24 часа без синхронизации → предупреждение", "owner": "kostya", "deadline": "2026-11-08" },
+            { "code": "dev", "kind": "dev", "title": "Разработка уведомления на планшете", "owner": "kostya", "deadline": "2026-11-22" },
+            { "code": "test", "kind": "test", "title": "Тест: срабатывание по таймауту", "owner": "kostya", "deadline": "2026-11-28" }
+          ]
+        }
+      ]
+    },
+    {
+      "code": "comms",
+      "title": "Коммуникации, обратная связь, рейтинг Асгарда",
+      "short": "Коммуникации",
+      "color": "gold",
+      "start": "2026-10-12",
+      "deadline": "2026-11-01",
+      "items": [
+        {
+          "code": "weekly-digest",
+          "title": "Крон: еженедельная рассылка «что добавили и починили»",
+          "description": "Раз в неделю рассылка, что добавилось в CRM, что починили или доработали. Рассылка интересная и интерактивная, понятным языком: что не работало и зачем чинили. Источник данных для ИИ — коммиты с пояснением; ввести шаблон коммита/PR с человеко-понятным описанием.",
+          "owner": "nikita",
+          "start": "2026-10-12",
+          "deadline": "2026-11-01",
+          "checkpoints": [
+            { "code": "analysis", "kind": "analysis", "title": "Источник данных и шаблон коммита/PR", "owner": "nikita", "deadline": "2026-10-17" },
+            { "code": "design", "kind": "design", "title": "Формат интерактивной рассылки", "owner": "nikita", "deadline": "2026-10-21" },
+            { "code": "approval", "kind": "approval", "title": "Утверждение формата рассылки", "owner": "andrey", "deadline": "2026-10-24" },
+            { "code": "dev", "kind": "dev", "title": "Крон + сборка дайджеста из коммитов", "owner": "nikita", "deadline": "2026-10-28" },
+            { "code": "test", "kind": "test", "title": "Тест: первая рассылка ушла корректно", "owner": "kostya", "deadline": "2026-10-31" },
+            { "code": "launch", "kind": "launch", "title": "Еженедельная рассылка работает", "owner": "nikita", "deadline": "2026-11-01" }
+          ]
+        },
+        {
+          "code": "feedback-book",
+          "title": "Анонимная книга отзывов и предложений",
+          "description": "Создать анонимную базу для пожеланий и недовольств — книга отзывов и предложений.",
+          "owner": "kostya",
+          "start": "2026-10-15",
+          "deadline": "2026-11-01",
+          "checkpoints": [
+            { "code": "analysis", "kind": "analysis", "title": "Правила анонимности и модерации", "owner": "kostya", "deadline": "2026-10-20" },
+            { "code": "dev", "kind": "dev", "title": "Разработка книги отзывов", "owner": "kostya", "deadline": "2026-10-28" },
+            { "code": "test", "kind": "test", "title": "Тест: анонимность и доставка", "owner": "kostya", "deadline": "2026-10-31" },
+            { "code": "launch", "kind": "launch", "title": "Опубликовано", "owner": "nikita", "deadline": "2026-11-01" }
+          ]
+        },
+        {
+          "code": "asgard-rating",
+          "title": "Опрос «Рейтинг Асгарда»",
+          "description": "Рассылка офисным сотрудникам до 15.10.2026, закрытие и публикация результатов до 20.10.2026.",
+          "owner": "andrey",
+          "start": "2026-10-12",
+          "deadline": "2026-10-20",
+          "checkpoints": [
+            { "code": "launch", "kind": "launch", "title": "Рассылка опроса 15.10.2026", "owner": "andrey", "deadline": "2026-10-15" },
+            { "code": "approval", "kind": "approval", "title": "Закрытие и публикация результатов 20.10.2026", "owner": "andrey", "deadline": "2026-10-20" }
+          ]
+        }
+      ]
+    },
+    {
+      "code": "agents",
+      "title": "Агенты в повседневных задачах",
+      "short": "Агенты",
+      "color": "ok",
+      "start": "2026-10-12",
+      "deadline": "2026-11-30",
+      "items": [
+        {
+          "code": "travel-agents",
+          "title": "Агенты: билеты, цены, маршруты, бронь, контроль посадки",
+          "description": "Внедрение агентов в повседневные задачи: заказы билетов, анализ цен, поиск лучших маршрутов, бронирование и покупка с дальнейшей рассылкой и проверкой, что сотрудник сел на самолёт или поезд. Подгрузка билетов в систему.",
+          "owner": "nikita",
+          "start": "2026-10-12",
+          "deadline": "2026-11-30",
+          "checkpoints": [
+            { "code": "analysis", "kind": "analysis", "title": "Сценарии: поиск, анализ цен, бронь, контроль посадки", "owner": "nikita", "deadline": "2026-10-22" },
+            { "code": "design", "kind": "design", "title": "Макет: заявка → агент → бронь → уведомления", "owner": "nikita", "deadline": "2026-10-29" },
+            { "code": "approval", "kind": "approval", "title": "Утверждение сценария директором развития", "owner": "andrey", "deadline": "2026-11-05" },
+            { "code": "dev", "kind": "dev", "title": "Разработка агента билетов + подгрузка в систему", "owner": "nikita", "deadline": "2026-11-20" },
+            { "code": "test", "kind": "test", "title": "Тесты: маршруты, цены, контроль посадки", "owner": "kostya", "deadline": "2026-11-27" },
+            { "code": "launch", "kind": "launch", "title": "Пилот на реальной заявке", "owner": "nikita", "deadline": "2026-11-30" }
+          ]
+        }
+      ]
+    }
+  ]
+}
