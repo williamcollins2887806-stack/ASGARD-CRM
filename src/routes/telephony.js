@@ -1268,7 +1268,8 @@ module.exports = async function telephonyRoutes(fastify, opts) {
               ch.created_at, ch.ai_summary, ch.source, ch.outcome, c.name as client_name
        FROM call_history ch
        LEFT JOIN customers c ON c.inn = ch.client_inn
-       WHERE ch.user_id = $1
+       WHERE (
+         ch.user_id = $1
           OR ch.answered_by = $1
           OR EXISTS (
                SELECT 1 FROM pbx_call_legs l
@@ -1279,6 +1280,18 @@ module.exports = async function telephonyRoutes(fastify, opts) {
                    OR l.call_id = ('pbx_' || NULLIF(ch.pbx_uid, ''))
                  )
              )
+       )
+       -- Скрываем «сироты» — служебные плечи Mango (перевод через транк создаёт
+       -- отдельные строки без нашей записи/транскрипта; инцидент 11.10.2026).
+       -- Не трогаем: пропущенные, строки с записью/транскриптом, инициированные PBX.
+       AND (
+         ch.call_type = 'missed'
+         OR COALESCE(ch.recording_url, '') <> ''
+         OR COALESCE(ch.record_path, '') <> ''
+         OR ch.transcript_status IN ('done', 'processing', 'pending')
+         OR COALESCE(ch.pbx_uid, '') <> ''
+         OR ch.source = 'pbx'
+       )
        ORDER BY ch.created_at DESC
        LIMIT 50`,
       [uid]
