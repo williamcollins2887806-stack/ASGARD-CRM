@@ -50,6 +50,8 @@ FILES = [
     "migrations/V380__dev_roadmap_down.sql",
     "migrations/V381__dev_roadmap_comments.sql",
     "migrations/V381__dev_roadmap_comments_down.sql",
+    "migrations/V382__dev_roadmap_comments_item.sql",
+    "migrations/V382__dev_roadmap_comments_item_down.sql",
     "tools/dev-roadmap-seed.js",
     "public/robots.txt",
 ]
@@ -149,6 +151,7 @@ def main() -> int:
     run(
         f"chmod 644 {REMOTE}/public/robots.txt {REMOTE}/migrations/V380__dev_roadmap*.sql "
         f"{REMOTE}/migrations/V381__dev_roadmap_comments*.sql "
+        f"{REMOTE}/migrations/V382__dev_roadmap_comments_item*.sql "
         f"{REMOTE}/src/routes/dev-roadmap.js {REMOTE}/src/index.js {REMOTE}/tools/dev-roadmap-seed.js"
     )
     run(f"find {REMOTE}/public/dev-roadmap -type f -exec chmod 644 {{}} \\;")
@@ -158,7 +161,7 @@ def main() -> int:
     run(f"cd {REMOTE} && node --check src/routes/dev-roadmap.js && node --check src/index.js && echo SYNTAX_OK")
 
     # ── 5. MIGRATIONS (идемпотентно: IF NOT EXISTS) ──────────────────
-    for mig in ("V380__dev_roadmap.sql", "V381__dev_roadmap_comments.sql"):
+    for mig in ("V380__dev_roadmap.sql", "V381__dev_roadmap_comments.sql", "V382__dev_roadmap_comments_item.sql"):
         run(
             "cd {remote} && PGPASSWORD=123456789 psql -U asgard -d asgard_crm -v ON_ERROR_STOP=1 "
             "-f migrations/{mig} >/dev/null && echo MIGRATION_OK {mig}".format(remote=REMOTE, mig=mig)

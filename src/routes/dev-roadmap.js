@@ -109,19 +109,18 @@ module.exports = async function (fastify, options) {
     const signerName = {};
     signers().forEach(s => { signerName[s.id] = s.name; });
 
-    // Комментарии к пунктам (доска) — одним запросом, группируем по чекпоинту.
-    const commentsByCp = {};
+    // Комментарии — на уровне ЗАДАЧИ (пункта), одним запросом.
+    const commentsByItem = {};
     try {
       const { rows: cRows } = await db.query(
-        `SELECT c.id, c.checkpoint_id, c.body, c.author_id, c.author_name,
+        `SELECT c.id, c.item_id, c.body, c.author_id, c.author_name,
                 c.file_url, c.file_name, c.created_at, c.updated_at
            FROM dev_roadmap_comments c
-           JOIN dev_roadmap_checkpoints cp ON cp.id = c.checkpoint_id
           ORDER BY c.created_at`
       );
       for (const r of cRows) {
-        const cid = Number(r.checkpoint_id);
-        (commentsByCp[cid] = commentsByCp[cid] || []).push({
+        const iid = Number(r.item_id);
+        (commentsByItem[iid] = commentsByItem[iid] || []).push({
           id: Number(r.id),
           body: r.body,
           author_id: r.author_id,
@@ -133,7 +132,7 @@ module.exports = async function (fastify, options) {
           editable_by: r.author_id // кто может править (для UI: подсветить свои)
         });
       }
-    } catch (_) { /* таблица появится после миграции V381 */ }
+    } catch (_) { /* таблица появится после миграции V381/V382 */ }
 
     const cpsByItem = {};
     for (const cp of cpRows) {
@@ -150,8 +149,7 @@ module.exports = async function (fastify, options) {
         done_at: cp.done_at,
         done_by: cp.done_by,
         done_by_name: cp.done_by ? (signerName[cp.done_by] || cp.done_by) : null,
-        note: cp.note,
-        comments: commentsByCp[cp.id] || []
+        note: cp.note
       });
     }
 
@@ -169,6 +167,7 @@ module.exports = async function (fastify, options) {
         start_date: it.start_date,
         deadline: it.deadline,
         checkpoints: cps,
+        comments: commentsByItem[it.id] || [],
         progress: { done, total: cps.length, percent: cps.length ? Math.round(done / cps.length * 100) : 0 }
       });
     }
@@ -411,7 +410,7 @@ module.exports = async function (fastify, options) {
 
   async function commentById(id) {
     const { rows } = await db.query(
-      `SELECT id, checkpoint_id, body, author_id, author_name, file_url, file_name, created_at, updated_at
+      `SELECT id, item_id, body, author_id, author_name, file_url, file_name, created_at, updated_at
          FROM dev_roadmap_comments WHERE id = $1`,
       [id]
     );
@@ -419,10 +418,10 @@ module.exports = async function (fastify, options) {
   }
 
   function normalizeComment(c) {
-    return Object.assign({}, c, { id: Number(c.id), checkpoint_id: Number(c.checkpoint_id) });
+    return Object.assign({}, c, { id: Number(c.id), item_id: c.item_id == null ? null : Number(c.item_id) });
   }
 
-  // POST /comment — multipart или JSON: { signer, pin, checkpoint_id, body? } + файл
+  // POST /comment — multipart или JSON: { signer, pin, item_id, body? } + файл
   fastify.post('/comment', async (request, reply) => {
     const att = await readAttachment(request);
     if (att.error) return reply.code(400).send({ error: att.error });
@@ -432,24 +431,24 @@ module.exports = async function (fastify, options) {
     if (auth.locked) return reply.code(429).send({ error: auth.error });
     if (auth.error) return reply.code(401).send({ error: auth.error });
 
-    const cpId = cpIdFrom(src.checkpoint_id);
-    if (!cpId) return reply.code(400).send({ error: 'Некорректный checkpoint_id' });
+    const itemId = cpIdFrom(src.item_id);
+    if (!itemId) return reply.code(400).send({ error: 'Некорректный item_id' });
     const body = String(src.body || '').trim();
     if (!body && !att.file) return reply.code(400).send({ error: 'Нужен текст или файл' });
     if (body.length > 20000) return reply.code(400).send({ error: 'Слишком длинный текст' });
 
-    const { rows: cpRows } = await db.query('SELECT id FROM dev_roadmap_checkpoints WHERE id = $1', [cpId]);
-    if (!cpRows.length) return reply.code(404).send({ error: 'Чекпоинт не найден' });
+    const { rows: itRows } = await db.query('SELECT id FROM dev_roadmap_items WHERE id = $1', [itemId]);
+    if (!itRows.length) return reply.code(404).send({ error: 'Задача не найдена' });
 
     let saved = { url: null, name: null };
     if (att.file) saved = saveAttachment(att.file);
 
     const { rows } = await db.query(
       `INSERT INTO dev_roadmap_comments
-         (checkpoint_id, body, author_id, author_name, file_url, file_name)
+         (item_id, body, author_id, author_name, file_url, file_name)
        VALUES ($1,$2,$3,$4,$5,$6)
-       RETURNING id, checkpoint_id, body, author_id, author_name, file_url, file_name, created_at, updated_at`,
-      [cpId, body, auth.signer.id, auth.signer.name, saved.url, saved.name]
+       RETURNING id, item_id, body, author_id, author_name, file_url, file_name, created_at, updated_at`,
+      [itemId, body, auth.signer.id, auth.signer.name, saved.url, saved.name]
     );
     return { ok: true, comment: normalizeComment(rows[0]) };
   });
@@ -473,7 +472,7 @@ module.exports = async function (fastify, options) {
 
     const { rows } = await db.query(
       `UPDATE dev_roadmap_comments SET body = $2, updated_at = NOW() WHERE id = $1
-       RETURNING id, checkpoint_id, body, author_id, author_name, file_url, file_name, created_at, updated_at`,
+       RETURNING id, item_id, body, author_id, author_name, file_url, file_name, created_at, updated_at`,
       [id, body]
     );
     return { ok: true, comment: normalizeComment(rows[0]) };

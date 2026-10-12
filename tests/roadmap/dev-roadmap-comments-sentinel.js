@@ -60,28 +60,28 @@ async function get(path, key) {
 (async () => {
   console.log(`\nКомментарии к пунктам — sentinel @ ${BASE}\n`);
 
-  // Первый чекпоинт
+  // Первый пункт (задача) — комментарии теперь на уровне задачи
   const s0 = await get('/api/dev-roadmap/state', KEY);
   check('state доступен', s0.status === 200, `status=${s0.status}`);
-  let cp = null;
-  for (const st of s0.body.stages) for (const it of st.items) for (const c of it.checkpoints) { if (!cp) cp = c; }
-  check('найден чекпоинт', !!cp, 'нет чекпоинтов');
+  let item0 = null;
+  for (const st of s0.body.stages) for (const it of st.items) { if (!item0) item0 = it; }
+  check('найдена задача', !!item0, 'нет пунктов');
 
   // 1. Без ключа
-  const noKey = await jpost('/api/dev-roadmap/comment', { signer: 'nikita', pin: PIN_NIKITA, body: 'x', checkpoint_id: cp.id }, '');
+  const noKey = await jpost('/api/dev-roadmap/comment', { signer: 'nikita', pin: PIN_NIKITA, body: 'x', item_id: item0.id }, '');
   check('без ключа → 404', noKey.status === 404, `status=${noKey.status}`);
 
   // 2. Без PIN
-  const noPin = await jpost('/api/dev-roadmap/comment', { signer: 'nikita', pin: '', body: 'x', checkpoint_id: cp.id });
+  const noPin = await jpost('/api/dev-roadmap/comment', { signer: 'nikita', pin: '', body: 'x', item_id: item0.id });
   check('без PIN → 401', noPin.status === 401, `status=${noPin.status}`);
 
   // 3. Пусто (нет текста и файла)
-  const empty = await jpost('/api/dev-roadmap/comment', { signer: 'nikita', pin: PIN_NIKITA, checkpoint_id: cp.id });
+  const empty = await jpost('/api/dev-roadmap/comment', { signer: 'nikita', pin: PIN_NIKITA, item_id: item0.id });
   check('без текста и файла → 400', empty.status === 400, `status=${empty.status}`);
 
   // 4. Текст
   const c1 = await jpost('/api/dev-roadmap/comment',
-    { signer: 'nikita', pin: PIN_NIKITA, checkpoint_id: cp.id, body: 'План: разбить на 3 спринта' });
+    { signer: 'nikita', pin: PIN_NIKITA, item_id: item0.id, body: 'План: разбить на 3 спринта' });
   check('добавление текста → 200', c1.status === 200, `status=${c1.status} ${JSON.stringify(c1.body).slice(0, 120)}`);
   check('автор = Никита', c1.body && c1.body.comment && c1.body.comment.author_name === 'Никита',
     `author=${c1.body && c1.body.comment && c1.body.comment.author_name}`);
@@ -91,7 +91,7 @@ async function get(path, key) {
   const fd = new FormData();
   fd.append('signer', 'kostya');
   fd.append('pin', PIN_KOSTYA);
-  fd.append('checkpoint_id', String(cp.id));
+  fd.append('item_id', String(item0.id));
   fd.append('body', 'Прикрепляю план');
   fd.append('file', new Blob([Buffer.from('%PDF-1.4 test attachment')], { type: 'application/pdf' }), 'plan.pdf');
   const fr = await fetch(BASE + '/api/dev-roadmap/comment', { method: 'POST', headers: { 'X-Roadmap-Key': KEY }, body: fd });
@@ -108,13 +108,15 @@ async function get(path, key) {
     check('файл отдаётся НЕ как html (без XSS)', !/text\/html/i.test(ct), `content-type=${ct}`);
   }
 
-  // 6. Видно всем
+  // 6. Видно всем — на уровне задачи
   const s1 = await get('/api/dev-roadmap/state', KEY);
   let got = 0;
-  for (const st of s1.body.stages) for (const it of st.items) for (const c of it.checkpoints) {
-    if (c.id === cp.id) got = (c.comments || []).length;
-  }
-  check('комментарии видны в state', got >= 2, `comments=${got}`);
+  for (const st of s1.body.stages) for (const it of st.items) { if (it.id === item0.id) got = (it.comments || []).length; }
+  check('комментарии видны на задаче', got >= 2, `comments=${got}`);
+  // и их нет больше на чекпоинтах
+  let cpHas = 0;
+  for (const st of s1.body.stages) for (const it of st.items) for (const c of it.checkpoints) { if (c.comments) cpHas++; }
+  check('на чекпоинтах комментариев больше нет', cpHas === 0, `checkpoints with comments=${cpHas}`);
 
   // 7. Чужой не правит
   const foreign = await jreq('PATCH', `/api/dev-roadmap/comment/${c1id}`,
@@ -137,8 +139,8 @@ async function get(path, key) {
   check('свой DELETE → 200', ownDel.status === 200, `status=${ownDel.status}`);
   const s2 = await get('/api/dev-roadmap/state', KEY);
   let stillThere = false;
-  for (const st of s2.body.stages) for (const it of st.items) for (const c of it.checkpoints) {
-    (c.comments || []).forEach(x => { if (x.id === c2id) stillThere = true; });
+  for (const st of s2.body.stages) for (const it of st.items) {
+    (it.comments || []).forEach(x => { if (x.id === c2id) stillThere = true; });
   }
   check('удалённый комментарий пропал', !stillThere, 'всё ещё в state');
 

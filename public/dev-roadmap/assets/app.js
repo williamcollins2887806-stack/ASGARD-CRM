@@ -300,6 +300,7 @@
           '</div>' +
         '</div>' +
         '<div class="cps">' + it.checkpoints.map(renderCp).join('') + '</div>' +
+        commentBlock(it) +
       '</div>';
     });
 
@@ -312,9 +313,9 @@
         openModal(id, el.getAttribute('data-title'), done);
       });
     });
-    // Форма добавления комментария + правка/удаление своих
+    // Форма добавления комментария + правка/удаление своих (на уровне задачи)
     $('#view').querySelectorAll('.cp-comments').forEach(function (box) {
-      var id = Number(box.getAttribute('data-cp'));
+      var id = Number(box.getAttribute('data-item'));
       var ta = box.querySelector('.new-cmt-body');
       var body = box.querySelector('.cps-body');
       // Свёрнутый блок: разворачивает сам заголовок, клики по нему не открывают модалку подписи
@@ -341,11 +342,11 @@
     });
   }
 
-  function commentBlock(cp) {
-    var cs = cp.comments || [];
-    var expanded = expandedCps.has(cp.id);
-    var html = '<div class="cps-wrap cp-comments" data-cp="' + cp.id + '">' +
-      '<button class="cbtn" type="button">Комментарии' +
+  function commentBlock(item) {
+    var cs = item.comments || [];
+    var expanded = expandedCps.has(item.id);
+    var html = '<div class="cps-wrap cp-comments" data-item="' + item.id + '">' +
+      '<button class="cbtn" type="button">Комментарии и файлы' +
         (cs.length ? ' <span class="cnt">' + cs.length + '</span>' : '') + '</button>' +
       '<div class="cps-body"' + (expanded ? '' : ' hidden') + '>';
     cs.forEach(function (c) {
@@ -395,7 +396,7 @@
     var fd = new FormData();
     fd.append('signer', signer);
     fd.append('pin', pin);
-    fd.append('checkpoint_id', String(cpId));
+    fd.append('item_id', String(cpId));
     fd.append('body', body);
     if (file) fd.append('file', file);
 
@@ -406,8 +407,8 @@
       .then(function (res) {
         btn.disabled = false;
         if (!res.ok) { err.textContent = res.body.error || ('Ошибка ' + res.status); return; }
-        var cp = findCheckpoint(cpId);
-        if (cp) { (cp.comments = cp.comments || []).push(res.body.comment); }
+        var it = findItem(cpId);
+        if (it) { (it.comments = it.comments || []).push(res.body.comment); }
         rerenderStage();
         setLive('ok', 'комментарий добавлен: ' + res.body.comment.author_name);
       }).catch(function (e) { btn.disabled = false; err.textContent = 'Сеть: ' + e.message; });
@@ -468,12 +469,10 @@
       }).catch(function (e) { err.textContent = 'Сеть: ' + e.message; });
   }
 
-  function findCheckpoint(cpId) {
+  function findItem(itemId) {
     var found = null;
     (state.stages || []).forEach(function (s) {
-      s.items.forEach(function (it) {
-        it.checkpoints.forEach(function (c) { if (c.id === cpId) found = c; });
-      });
+      s.items.forEach(function (it) { if (it.id === itemId) found = it; });
     });
     return found;
   }
@@ -510,7 +509,7 @@
       '<div class="box"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg></div>' +
       '<div class="body"><div class="ttl">' + esc(cp.title) + '</div><div class="sub">' + sub + '</div>' +
         (cp.note ? '<div class="note">' + esc(cp.note) + '</div>' : '') +
-      '</div></div>' + commentBlock(cp);
+      '</div></div>';
   }
 
   // ── Вкладки ──
