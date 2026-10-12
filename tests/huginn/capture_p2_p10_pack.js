@@ -418,9 +418,11 @@ async function openMode(ctx, theme, mode) {
   // Source gates
   const typoCount = (TOKENS.match(/--hg-typo-/g) || []).length;
   if (typoCount < 36) fails.push(`fonts tokens ${typoCount}<36`);
-  if (!/padChatListToTen/.test(DOCK_JS)) fails.push('missing padChatListToTen');
-  if (!/padContactsToSixteen/.test(DOCK_JS)) fails.push('missing padContactsToSixteen');
-  if (!/ensureTailDefs/.test(DOCK_JS)) fails.push('missing ensureTailDefs');
+  // padChatListToTen/padContactsToSixteen/ensureTailDefs удалены как мёртвый код
+  // (12.10.2026) — ассерты на них сняты осознанно.
+  if (/padChatListToTen|padContactsToSixteen|ensureTailDefs/.test(DOCK_JS)) {
+    fails.push('dead code reintroduced (padChatListToTen/padContactsToSixteen/ensureTailDefs)');
+  }
   if (!/syncNavIconStrokes/.test(DOCK_JS)) fails.push('missing syncNavIconStrokes');
   if (!/clip-path:\s*url\(#hg-tail-me\)/.test(CSS)) fails.push('CSS missing me clip-path');
   if (!/О Хугинне/.test(DOCK_JS)) fails.push('settings missing О Хугинне');

@@ -958,7 +958,12 @@ module.exports = async function(fastify) {
           checklistItems.push(ins.rows[0]);
         }
         if (checklistItems.length) {
-          message.metadata = Object.assign({}, message.metadata || {}, { checklist_items: checklistItems, checklist: checklistItems });
+          const clTitle = String((request.body && request.body.metadata && request.body.metadata.title) || '').trim();
+          message.metadata = Object.assign({}, message.metadata || {}, {
+            checklist_items: checklistItems,
+            checklist: checklistItems,
+            ...(clTitle ? { title: clTitle } : {})
+          });
         }
       }
     } catch (_) { /* таблица может отсутствовать до миграции */ }

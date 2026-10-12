@@ -862,6 +862,17 @@ module.exports = async function registerHuginnExt(fastify, { db, uploadDir, getC
   }, async (request, reply) => {
     const itemId = parsePositiveInt(request.params.itemId);
     if (itemId == null) return reply.code(400).send({ error: 'bad id' });
+    // Проверка доступа: пункт → сообщение → чат → членство (иначе IDOR по id).
+    const owner = await db.query(
+      `SELECT cm.chat_id FROM message_checklist_items ci
+         JOIN chat_messages cm ON cm.id = ci.message_id
+        WHERE ci.id = $1`,
+      [itemId]
+    );
+    if (!owner.rows.length) return reply.code(404).send({ error: 'Пункт не найден' });
+    if (!(await getChatMembership(owner.rows[0].chat_id, request.user.id))) {
+      return reply.code(403).send({ error: 'Нет доступа' });
+    }
     const isDone = (request.body || {}).is_done !== false;
     const { rows } = await db.query(`
       UPDATE message_checklist_items
@@ -879,6 +890,16 @@ module.exports = async function registerHuginnExt(fastify, { db, uploadDir, getC
   }, async (request, reply) => {
     const itemId = parsePositiveInt(request.params.itemId);
     if (itemId == null) return reply.code(400).send({ error: 'bad id' });
+    const owner = await db.query(
+      `SELECT cm.chat_id FROM message_checklist_items ci
+         JOIN chat_messages cm ON cm.id = ci.message_id
+        WHERE ci.id = $1`,
+      [itemId]
+    );
+    if (!owner.rows.length) return reply.code(404).send({ error: 'Пункт не найден' });
+    if (!(await getChatMembership(owner.rows[0].chat_id, request.user.id))) {
+      return reply.code(403).send({ error: 'Нет доступа' });
+    }
     await db.query('DELETE FROM message_checklist_items WHERE id = $1', [itemId]);
     return { success: true };
   });

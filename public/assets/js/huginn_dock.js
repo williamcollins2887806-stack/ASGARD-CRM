@@ -4074,6 +4074,7 @@
           body: {
             text: title || 'Чек-лист',
             message_type: 'checklist',
+            metadata: title ? { title } : {},
             checklist: items.map((t) => ({ text: t }))
           }
         });
