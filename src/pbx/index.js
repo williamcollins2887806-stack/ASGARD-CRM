@@ -36,6 +36,9 @@ const activeChannels = new Map();
 const TRANSFER_BROWSER_SEC = Number(process.env.TRANSFER_BROWSER_SEC || 15);
 const TRANSFER_MOBILE_SEC = Number(process.env.TRANSFER_MOBILE_SEC || 15);
 
+// Rate-limit логов расхождения БД-флага и AMI-факта (правка 5).
+const webrtcMismatchLogged = new Map();
+
 function setPool(p) {
   pool = p;
 }
@@ -356,19 +359,47 @@ async function originateOutbound(db, body) {
       [body.user_id]
     );
     op = rows[0] || {};
-    // 409 только если оператор реально ждёт звонок В БРАУЗЕРЕ.
-    // Раньше проверялся один webrtc_registered: после переключения на
-    // receive_mode=mobile браузер всё ещё зарегистрирован (для исходящих), и
-    // сервер ошибочно отказывал 409 — «звонок вообще не доходит» (10.10.2026).
+    // ПРАВКА 5 (12.10.2026): решение «браузер или мобильный» принимаем по
+    // ФАКТУ доступности endpoint в Asterisk (AMI isEndpointAvailable), а НЕ по
+    // БД-флагу webrtc_registered. Флаг сбрасывается applyStaleOffline (2 мин),
+    // claimLine и т.п. — при этом SIP-контакт может быть жив. Тогда БД врёт
+    // «не зарегистрирован» → звонок молча уходил на мобильный оператору
+    // (callback), хотя браузер зарегистрирован.
     const wantsBrowser = op.receive_mode === 'browser'
-      || (op.receive_mode === 'both' && op.webrtc_registered);
-    if (wantsBrowser && op.webrtc_registered && op.sip_username) {
-      // WebRTC зарегистрирован → звонок идёт из браузера (JsSIP) напрямую,
-      // серверный originate оператору не нужен (иначе «двойной набор»).
-      const err = new Error('Оператор на WebRTC — звонок инициируется из браузера');
-      err.statusCode = 409;
-      err.via = 'webrtc';
-      throw err;
+      || op.receive_mode === 'both';
+    if (wantsBrowser && op.sip_username) {
+      // Факт: доступен ли контакт в Asterisk. Таймаут 500мс, чтобы не подвесить
+      // исходящий звонок; при сбое/таймауте AMI — fail-safe В СТОРОНУ БРАУЗЕРА
+      // (не знаем → не звоним оператору на мобильный без его выбора).
+      let avail = true;
+      try {
+        const ami = getAmiClient();
+        avail = await Promise.race([
+          ami.isEndpointAvailable(op.sip_username).then((r) => !!r.available),
+          new Promise((res) => setTimeout(() => res(true), 500)),
+        ]);
+      } catch (_) { avail = true; }
+      if (avail) {
+        // Расхождение БД/факта — логируем (rate-limit 1/мин на пользователя),
+        // чтобы понимать, как часто флаг врёт.
+        if (!op.webrtc_registered) {
+          try {
+            const now = Date.now();
+            const last = webrtcMismatchLogged.get(body.user_id) || 0;
+            if (now - last > 60000) {
+              webrtcMismatchLogged.set(body.user_id, now);
+              console.warn('[pbx] webrtc_flag_mismatch', JSON.stringify({
+                user_id: body.user_id, sip: op.sip_username, db: false, ami: true,
+              }));
+            }
+          } catch (_) { /* логирование не критично */ }
+        }
+        const err = new Error('Оператор на WebRTC — звонок инициируется из браузера');
+        err.statusCode = 409;
+        err.via = 'webrtc';
+        throw err;
+      }
+      // Endpoint реально недоступен → идём на мобильный (fallback, ожидаемо).
     }
     if (op.mobile_phone) {
       channel = `PJSIP/${String(op.mobile_phone).replace(/[^\d]/g, '')}@mango-trunk`;

@@ -105,6 +105,9 @@ async function pbxFetch(pathname, opts = {}) {
   if (!res.ok) {
     const err = new Error(body.error || `PBX command ${res.status}`);
     err.statusCode = res.status;
+    // Правка 5-клиент: сохраняем via/reason из CMD-ответа PBX-сайдкара.
+    if (body.via) err.via = body.via;
+    if (body.reason) err.reason = body.reason;
     throw err;
   }
   return body;
@@ -397,7 +400,13 @@ module.exports = async function telephonyPbxRoutes(fastify) {
         });
         return body;
       } catch (e) {
-        return reply.code(e.statusCode || 502).send({ error: e.message });
+        // Правка 5-клиент: пробрасываем via/reason из CMD-ответа, иначе 409
+        // «звони из браузера» придёт как обычная ошибка и фронт её покажет.
+        return reply.code(e.statusCode || 502).send({
+          error: e.message,
+          ...(e.via ? { via: e.via } : {}),
+          ...(e.reason ? { reason: e.reason } : {}),
+        });
       }
     };
   }

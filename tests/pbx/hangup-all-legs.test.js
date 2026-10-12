@@ -86,9 +86,11 @@ function collect(steps) {
   });
 
   await test('H5', 'клиент сохраняет channel/pbx_uid серверного исходящего', () => {
-    const out = core.slice(core.indexOf('outbound: function'), core.indexOf('outbound: function') + 2200);
-    assert.ok(/callMeta\.channel = r\.channel/.test(out), 'клиент не запоминает канал плеча');
-    assert.ok(/callMeta\.pbx_uid = r\.pbx_uid/.test(out), 'клиент не запоминает pbx_uid');
+    // Правка 5+5c: серверный путь вынесен в callViaServer() — ищем там.
+    const i = core.indexOf('function callViaServer');
+    const blk = core.slice(i, i + 900);
+    assert.ok(/callMeta\.channel = r\.channel/.test(blk), 'клиент не запоминает канал плеча');
+    assert.ok(/callMeta\.pbx_uid = r\.pbx_uid/.test(blk), 'клиент не запоминает pbx_uid');
   });
 
   console.log(`\n${passed} passed, ${failed} failed`);

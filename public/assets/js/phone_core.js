@@ -143,7 +143,15 @@
       return r.text().then(function (text) {
         var body = {};
         try { body = text ? JSON.parse(text) : {}; } catch (_) { body = { raw: text }; }
-        if (!r.ok) throw new Error(body.error || body.message || 'HTTP ' + r.status);
+        if (!r.ok) {
+          var err = new Error(body.error || body.message || 'HTTP ' + r.status);
+          // Правка 5-клиент: пробрасываем via/reason, чтобы отличить
+          // «звони из браузера» (409 via:'webrtc') от прочих ошибок.
+          if (body.via) err.via = body.via;
+          if (body.reason) err.reason = body.reason;
+          err.status = r.status;
+          throw err;
+        }
         return body;
       });
     });
@@ -293,12 +301,22 @@
       emit('ended', {});
       maybeConsumePendingReload();
     });
-    session.on('failed', function () {
+    session.on('failed', function (data) {
       activeSession = null;
+      // ПРАВКА 5c: если локальный исходящий упал из-за протухшего контакта
+      // (Asterisk → SIP 404/480), JsSIP даёт cause NOT_FOUND/UNAVAILABLE.
+      // Делаем ОДИН retry (ensureRegistered → повтор локально или серверный путь).
+      // Whitelist ТОЧНЫЙ: BUSY/NO_ANSWER/REJECTED/CANCELED и пр. — НЕ ретраим.
+      var cause = data && (data.cause || (data.message && data.message.cause));
+      var retryable = /^(UNAVAILABLE|NOT_FOUND)$/i.test(String(cause || ''));
+      if (retryable && pendingOutbound && !outboundRetried) {
+        try { retryViaServer(pendingOutbound); } catch (_) {}
+      }
+      pendingOutbound = null;
       callMeta = {};
       if (onDuty) setState(mode === 'mobile' ? STATES.on_line_mobile : STATES.on_line_browser);
       else setState(STATES.offline);
-      emit('failed', {});
+      emit('failed', { cause: cause || null });
       maybeConsumePendingReload();
     });
   }
@@ -546,6 +564,70 @@
         bc.postMessage({ type: 'leader-busy' });
       }
     };
+  }
+
+  // ── ПРАВКА 5+5c: retry исходящего при протухшем контакте ──
+  // outboundRetried: не более ОДНОГО retry на звонок (защита от цикла).
+  // pendingOutbound: номер текущего исходящего (для retry из session 'failed').
+  var outboundRetried = false;
+  var pendingOutbound = null;
+
+  /** Поставить локальный исходящий вызов (ua.call) и вернуть промис-результат. */
+  function placeLocalCall(digits) {
+    if (!(ua && hasJsSIP() && sipRegistered)) return null;
+    var domain = credentials ? sipDomainFromWs(wsUrlFromCreds(credentials)) : location.hostname;
+    var session = ua.call('sip:' + digits + '@' + domain, {
+      mediaConstraints: { audio: true, video: false },
+      pcConfig: pcConfig,
+    });
+    if (session) bindSession(session);
+    setState(STATES.ringing, { number: digits, outbound: true });
+    return { ok: true, via: 'webrtc' };
+  }
+
+  /** Серверный путь исходящего. При 409 via:'webrtc' — повторить локально
+   *  (сервер по AMI-факту сказал, что браузер доступен — правка 5). */
+  function callViaServer(digits) {
+    return pbxApi('/call/outbound', { method: 'POST', body: JSON.stringify({ number: digits }) })
+      .then(function (r) {
+        if (r && r.channel) callMeta.channel = r.channel;
+        if (r && r.pbx_uid) callMeta.pbx_uid = r.pbx_uid;
+        setState(STATES.ringing, { number: digits, outbound: true });
+        return r;
+      })
+      .catch(function (e) {
+        var msg = String((e && e.message) || '');
+        var via = e && e.via;
+        // 409 via:'webrtc' → сервер говорит: браузер доступен (AMI-факт).
+        // Не показываем ошибку — повторяем звонок из браузера.
+        if (via === 'webrtc' || /инициируется из браузера|webrtc/i.test(msg)) {
+          var r = null;
+          try { r = placeLocalCall(digits); } catch (_) {}
+          if (r) return r;
+          throw new Error('Браузер не на связи. Обновите страницу (F5) и повторите.');
+        }
+        throw e;
+      });
+  }
+
+  /**
+   * Retry протухшего локального звонка (5c): Asterisk вернул UNAVAILABLE/NOT_FOUND
+   * (контакт протух) → поднимаем регистрацию и повторяем; если не поднялось за
+   * 2с — идём серверным путём (там правка 5 решит по AMI-факту).
+   * Вызывается ТОЛЬКО из session 'failed' при точном whitelist cause и один раз.
+   */
+  function retryViaServer(digits) {
+    if (outboundRetried) return Promise.resolve(false);
+    outboundRetried = true;
+    return api.ensureRegistered()
+      .then(function () { return api.waitRegistered(2000); })
+      .then(function (ok) {
+        if (ok && ua && hasJsSIP() && sipRegistered) {
+          try { return !!placeLocalCall(digits); } catch (_) { /* ниже серверный путь */ }
+        }
+        return callViaServer(digits).then(function () { return true; });
+      })
+      .catch(function () { return false; });
   }
 
   var api = {
@@ -867,6 +949,11 @@
       var digits = normalizePhone(number);
       if (!digits) return Promise.reject(new Error('Некорректный номер'));
       callMeta = { number: digits, direction: 'outbound' };
+      // ПРАВКА 5c (12.10.2026): сброс ограничителя retry в НАЧАЛЕ нового звонка —
+      // иначе после первого retry повторные звонки в той же сессии не смогли бы
+      // сделать fallback (флаг остался бы взведён от прошлого звонка).
+      outboundRetried = false;
+      pendingOutbound = digits;
       // Любой сотрудник звонит ИЗ БРАУЗЕРА: при отсутствии SIP-регистрации
       // поднимаем её лениво (без занятия линии) и ждём до ~4с.
       var prep = (sipRegistered && ua) ? Promise.resolve(true) : api
@@ -891,14 +978,7 @@
           return { ok: true, via: 'webrtc' };
         }
         // WebRTC недоступен — серверный путь (плечо на мобильный оператора → контакт).
-        return pbxApi('/call/outbound', { method: 'POST', body: JSON.stringify({ number: digits }) }).then(function (r) {
-          // Запоминаем канал серверного плеча: иначе «Сбросить» в CRM не найдёт,
-          // что рвать, и звонок продолжит идти (жалоба 09.10).
-          if (r && r.channel) callMeta.channel = r.channel;
-          if (r && r.pbx_uid) callMeta.pbx_uid = r.pbx_uid;
-          setState(STATES.ringing, { number: digits, outbound: true });
-          return r;
-        });
+        return callViaServer(digits);
       });
     },
 
