@@ -3034,6 +3034,17 @@ html[data-theme="light"] .hg-send.is-mic:hover {
 .hg-member-info-name { font: 600 18px/1.3 var(--hg-font); color: var(--hg-text); margin-top: 8px; text-align: center; }
 .hg-member-info-role { font: 400 13px/1.3 var(--hg-font); color: var(--hg-muted); }
 .hg-member-info-rows { display: grid; gap: 2px; }
+.hg-sort-sheet { left: 24px; right: 24px; max-width: 340px; margin: 0 auto; padding: 14px; }
+.hg-sort-row {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  width: 100%; padding: 12px 14px; border: 0; border-radius: 10px; margin-top: 4px;
+  background: transparent; color: var(--hg-text); cursor: pointer;
+  font: 400 15px var(--hg-font); text-align: left;
+  transition: background 120ms ease;
+}
+.hg-sort-row:hover { background: var(--hg-hover, rgba(255,255,255,.06)); }
+.hg-sort-row.is-active { color: var(--blue-l, #5B8DEF); font-weight: 600; }
+.hg-data-rows { display: grid; gap: 2px; }
 .hg-sheet-stickers { max-height: 70%; }
 .hg-sticker-label {
   font: 600 var(--hg-font-meta) var(--hg-font);

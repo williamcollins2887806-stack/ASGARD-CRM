@@ -34,6 +34,10 @@
     drafts: {},
     replyTo: null,
     contactsQ: '',
+    contactsSort: (function () {
+      try { var s = localStorage.getItem('hg_contacts_sort'); return (s === 'online' || s === 'date') ? s : 'name'; } catch (_) { return 'name'; }
+    })(),
+    lang: (function () { try { return localStorage.getItem('hg_lang') === 'en' ? 'en' : 'ru'; } catch (_) { return 'ru'; } })(),
     selectedContactUid: null,
     contactsDirectory: null,
     /* F10 */
@@ -307,7 +311,7 @@
           <span class="hg-nav-label">Звонки</span>
         </button>
         <button type="button" data-mnav="settings" aria-label="Настройки">
-          <span class="hg-nav-ico">${ICO.settings}<span class="hg-nav-dot" data-nav-dot aria-hidden="true">!</span></span>
+          <span class="hg-nav-ico">${ICO.settings}<span class="hg-nav-dot" data-nav-dot aria-hidden="true" hidden>!</span></span>
           <span class="hg-nav-label">Настройки</span>
         </button>
       </nav>
@@ -477,6 +481,30 @@
   function syncBodyPad() {
     document.body.classList.toggle('hg-dock-open', !state.collapsed);
     document.body.classList.toggle('hg-dock-collapsed', state.collapsed);
+  }
+
+  /**
+   * A10: красный «!» на «Настройках» — только при реальном событии:
+   *  (а) у пользователя не указан телефон; (б) есть непройденный обязательный урок.
+   *  Если оба закрыты — индикатор скрыт. Больше ничего не зажигает «!».
+   */
+  async function refreshSettingsDot() {
+    if (!root) return;
+    const dot = root.querySelector('[data-nav-dot]');
+    if (!dot) return;
+    let needPhone = false;
+    let needLesson = false;
+    try {
+      const me = window.AsgardAuth && AsgardAuth.user ? AsgardAuth.user : JSON.parse(localStorage.getItem('asgard_user') || '{}');
+      needPhone = !(me && me.phone && String(me.phone).replace(/\D/g, '').length >= 10);
+    } catch (_) {}
+    try {
+      const r = await api('/api/office-academy/reminder');
+      needLesson = !!(r && r.show && Number(r.mandatory_pending) > 0);
+    } catch (_) {}
+    const show = needPhone || needLesson;
+    dot.hidden = !show;
+    state._settingsDot = show;
   }
 
   function syncRailBadge() {
@@ -3438,6 +3466,35 @@
     }
   }
 
+  /** A3: меню сортировки контактов; выбор сохраняется в localStorage. */
+  function openContactSortMenu() {
+    clearFloats();
+    const host = sheetHost();
+    root.querySelectorAll('.hg-sort-sheet').forEach((el) => el.remove());
+    const cur = state.contactsSort || 'name';
+    const opts = [
+      ['name', 'По имени'],
+      ['online', 'По онлайну'],
+      ['date', 'По дате']
+    ];
+    const el = document.createElement('div');
+    el.className = 'hg-sheet hg-sort-sheet';
+    el.setAttribute('role', 'menu');
+    el.innerHTML = `<div class="hg-confirm-title">Сортировка</div>` + opts.map(([k, label]) =>
+      `<button type="button" class="hg-sort-row${k === cur ? ' is-active' : ''}" data-sort="${k}">
+        <span>${esc(label)}</span>${k === cur ? '<span aria-hidden="true">✓</span>' : ''}
+      </button>`).join('');
+    (root || host).appendChild(el);
+    el.querySelectorAll('[data-sort]').forEach((btn) => {
+      btn.onclick = () => {
+        state.contactsSort = btn.getAttribute('data-sort');
+        try { localStorage.setItem('hg_contacts_sort', state.contactsSort); } catch (_) {}
+        el.remove();
+        renderPanel();
+      };
+    });
+  }
+
   async function renderContactsPanel(panel) {
     const q = (state.contactsQ || '').toLowerCase().trim();
     if (!state.contactsDirectory || !state.contactsDirectory.length) {
@@ -3447,7 +3504,23 @@
     let rows = contactRowsFromChats();
     if (q) rows = rows.filter((r) => String(r.name || '').toLowerCase().includes(q));
     const letters = 'АБВГДЕЁЖЗИЙКЛМНОПРСТУФХЦЧШЩЪЫЬЭЮЯABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('');
-    rows = rows.slice().sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''), 'ru'));
+    // A3: выбор сортировки сохраняется; применяем до группировки по буквам.
+    const sortMode = state.contactsSort || 'name';
+    const statusRank = (r) => {
+      const online = r.online != null ? r.online : !!((state.presence[r.user_id] || {}).online);
+      return online ? 0 : 1;
+    };
+    rows = rows.slice().sort((a, b) => {
+      if (sortMode === 'online') {
+        const d = statusRank(a) - statusRank(b);
+        if (d) return d;
+      } else if (sortMode === 'date') {
+        const ta = new Date(a.last_message_at || a.created_at || 0).getTime();
+        const tb = new Date(b.last_message_at || b.created_at || 0).getTime();
+        if (tb !== ta) return tb - ta;
+      }
+      return String(a.name || '').localeCompare(String(b.name || ''), 'ru');
+    });
     const onlineCount = rows.filter((r) => (r.online != null ? r.online : (state.presence[r.user_id] || {}).online)).length;
     let listHtml = '';
     if (!rows.length) {
@@ -3518,8 +3591,16 @@
       state.contactsQ = e.target.value;
       renderContactsPanel(panel);
     };
-    panel.querySelector('#hgContactSort').onclick = () => showToast('Сортировка по имени');
+    panel.querySelector('#hgContactSort').onclick = () => openContactSortMenu();
     panel.querySelector('#hgContactAdd').onclick = () => inviteSomeone();
+    // A9: алфавитный индекс — клик скроллит к букве.
+    panel.querySelectorAll('#hgAlpha [data-letter]').forEach((el) => {
+      el.onclick = () => {
+        const L = el.getAttribute('data-letter');
+        const head = panel.querySelector('.hg-contact-letter[data-letter-head="' + (window.CSS && CSS.escape ? CSS.escape(L) : L) + '"]');
+        if (head) head.scrollIntoView({ block: 'start', behavior: 'smooth' });
+      };
+    });
     panel.querySelectorAll('.hg-contact-row.is-invite').forEach((el) => {
       const uid = Number(el.getAttribute('data-invite-uid'));
       el.oncontextmenu = (ev) => {
@@ -3645,6 +3726,77 @@
   // Единая вкладка «Звонки» рендерится phone_ui.js (журнал + панель оператора) —
   // см. ветку state.tab === 'calls' || 'phone' в renderPanel. Отдельного дубля нет.
 
+  /** Универсальный шит настроек Хугинна (Оформление/Язык/Данные). */
+  function openSettingsSheet(title, bodyHtml, wire) {
+    clearFloats();
+    const host = sheetHost();
+    root.querySelectorAll('.hg-set-sheet').forEach((el) => el.remove());
+    const el = document.createElement('div');
+    el.className = 'hg-sheet hg-set-sheet';
+    el.setAttribute('role', 'dialog');
+    el.innerHTML = `<div class="hg-confirm-title">${esc(title)}</div>${bodyHtml}`;
+    (root || host).appendChild(el);
+    if (typeof wire === 'function') wire(el);
+    return el;
+  }
+
+  function openAppearanceSheet() {
+    const cur = document.documentElement.getAttribute('data-theme') === 'light' ? 'light' : 'dark';
+    const row = (k, label) => `<button type="button" class="hg-sort-row${k === cur ? ' is-active' : ''}" data-theme-set2="${k}"><span>${label}</span>${k === cur ? '<span aria-hidden="true">✓</span>' : ''}</button>`;
+    openSettingsSheet('Оформление', row('dark', 'Тёмная тема') + row('light', 'Светлая тема'), (el) => {
+      el.querySelectorAll('[data-theme-set2]').forEach((b) => {
+        b.onclick = () => {
+          const t = b.getAttribute('data-theme-set2');
+          if (typeof window.__hgSetTheme === 'function') window.__hgSetTheme(t);
+          else { document.documentElement.setAttribute('data-theme', t); try { localStorage.setItem('asgard_theme', t); } catch (_) {} }
+          el.remove();
+          renderPanel();
+        };
+      });
+    });
+  }
+
+  function openLanguageSheet() {
+    const cur = state.lang === 'en' ? 'en' : 'ru';
+    const row = (k, label) => `<button type="button" class="hg-sort-row${k === cur ? ' is-active' : ''}" data-lang="${k}"><span>${label}</span>${k === cur ? '<span aria-hidden="true">✓</span>' : ''}</button>`;
+    openSettingsSheet('Язык', row('ru', 'Русский') + row('en', 'English'), (el) => {
+      el.querySelectorAll('[data-lang]').forEach((b) => {
+        b.onclick = () => {
+          state.lang = b.getAttribute('data-lang');
+          try { localStorage.setItem('hg_lang', state.lang); } catch (_) {}
+          el.remove();
+          renderPanel();
+        };
+      });
+    });
+  }
+
+  async function openDataSheet() {
+    const el = openSettingsSheet('Данные и память', `<div class="hg-data-rows" id="hgDataRows"><div class="hg-empty-s">Подсчёт…</div></div>`, null);
+    const rowsEl = el.querySelector('#hgDataRows');
+    let usage = '—';
+    try {
+      if (navigator.storage && navigator.storage.estimate) {
+        const e = await navigator.storage.estimate();
+        usage = ((e.usage || 0) / 1048576).toFixed(1) + ' МБ';
+      }
+    } catch (_) {}
+    rowsEl.innerHTML = `
+      <div class="hg-settings-kv"><span class="hg-settings-k">Занято кэшем</span><span class="hg-settings-v">${esc(usage)}</span></div>
+      <button type="button" class="hg-confirm-btn is-danger" id="hgDataClear" style="margin-top:10px">Очистить кэш</button>`;
+    el.querySelector('#hgDataClear').onclick = async () => {
+      try { const keys = await caches.keys(); await Promise.all(keys.map((k) => caches.delete(k))); } catch (_) {}
+      try { localStorage.removeItem('asgard_mobile_state'); } catch (_) {}
+      showToast('Кэш очищен');
+      el.remove();
+    };
+  }
+
+  /** A1 (ещё без бэка — будет на Этапе 3): честно сообщаем, а не пустой toast. */
+  function openSettingsComingSheet(title) {
+    openSettingsSheet(title, `<div class="hg-confirm-body">Раздел появится в ближайшем обновлении.</div>`, null);
+  }
+
   function renderSettingsPanel(panel) {
     const meLocal = (global.AsgardAuth && AsgardAuth.user) || JSON.parse(localStorage.getItem('asgard_user') || '{}');
     let me = meLocal;
@@ -3662,14 +3814,14 @@
     ];
     const groups = [
       [
-        { label: 'Уведомления и звуки', ico: ICO.bell || '🔔', tone: 'is-red' },
-        { label: 'Конфиденциальность', ico: ICO.lock || '🔒', tone: 'is-grey' },
-        { label: 'Данные и память', ico: ICO.database || ICO.file || '💾', tone: 'is-green' },
-        { label: 'Оформление', ico: ICO.palette || ICO.settings || '🎨', tone: 'is-blue' }
+        { label: 'Уведомления и звуки', ico: ICO.bell || '🔔', tone: 'is-red', key: 'notify' },
+        { label: 'Конфиденциальность', ico: ICO.lock || '🔒', tone: 'is-grey', key: 'privacy' },
+        { label: 'Данные и память', ico: ICO.database || ICO.file || '💾', tone: 'is-green', key: 'data' },
+        { label: 'Оформление', ico: ICO.palette || ICO.settings || '🎨', tone: 'is-blue', key: 'appearance' }
       ],
       [
-        { label: 'Энергосбережение', ico: ICO.battery || '🔋', tone: 'is-yellow', value: fx === 'off' ? 'Выкл.' : (fx === 'reduced' ? 'Меньше' : 'Полные') },
-        { label: 'Язык', ico: ICO.languages || ICO.globe || '🌐', tone: 'is-purple', value: 'Русский' }
+        { label: 'Энергосбережение', ico: ICO.battery || '🔋', tone: 'is-yellow', key: 'fx', value: fx === 'off' ? 'Выкл.' : (fx === 'reduced' ? 'Меньше' : 'Полные') },
+        { label: 'Язык', ico: ICO.languages || ICO.globe || '🌐', tone: 'is-purple', key: 'lang', value: (state.lang === 'en' ? 'English' : 'Русский') }
       ]
     ];
     const showProfile = !!state.settingsProfileOpen && !state.settingsEditOpen;
@@ -3720,7 +3872,7 @@
           </button>`).join('')}
         </div>
         ${groups.map((items) => `<div class="hg-settings-card hg-settings-card--secondary hg-glass" data-role="card">
-          ${items.map((it) => `<button type="button" class="hg-settings-row" data-set="${esc(it.label)}">
+          ${items.map((it) => `<button type="button" class="hg-settings-row" data-set="${esc(it.key || it.label)}" data-label="${esc(it.label)}">
             <span class="hg-settings-ico ${it.tone}">${it.ico}</span>
             <span class="hg-settings-label">${esc(it.label)}</span>
             ${it.value ? `<span class="hg-settings-value">${esc(it.value)}</span>` : ''}
@@ -3752,9 +3904,19 @@
     if (photoBtn) photoBtn.onclick = () => pickAndUploadAvatar();
     panel.querySelectorAll('[data-phone-keep],[data-phone-change],#hgSettingsPhoneMore').forEach((btn) => {
       btn.onclick = () => {
+        if (btn.id === 'hgSettingsPhoneMore') {
+          openSettingsSheet('Номер телефона', `<div class="hg-confirm-body">Этот номер привязан к вашему аккаунту и используется для входа. Смена номера оформляется через отдел кадров.</div>`, null);
+          return;
+        }
+        if (btn.getAttribute('data-phone-change')) {
+          // A2: смена номера = смена логина (security-sensitive) — self-service не делаем.
+          openSettingsSheet('Изменить номер', `<div class="hg-confirm-body">Смена номера выполняется через отдел кадров.</div>`, null);
+          return;
+        }
+        // «Оставить» — подтверждение текущего номера: просто убираем карточку.
         const card = panel.querySelector('.hg-settings-alert');
         if (card) card.remove();
-        showToast(btn.getAttribute('data-phone-change') ? 'Смена номера' : 'Номер подтверждён');
+        showToast('Номер подтверждён');
       };
     });
     const logoutBtn = panel.querySelector('#hgLogout');
@@ -3805,6 +3967,11 @@
         const set = btn.getAttribute('data-set') || '';
         if (set === 'calls') { state.tab = 'calls'; state.mobileNav = 'calls'; renderPanel(); return; }
         if (set === 'favorites') { state.tab = 'huginn'; state.mobileNav = 'chats'; state.listTab = 'favorites'; renderPanel(); return; }
+        if (set === 'appearance') { openAppearanceSheet(); return; }
+        if (set === 'lang') { openLanguageSheet(); return; }
+        if (set === 'data') { openDataSheet(); return; }
+        if (set === 'fx') { state.settingsEditOpen = true; renderSettingsPanel(panel); return; }
+        if (set === 'notify' || set === 'privacy') { openSettingsComingSheet(btn.getAttribute('data-label') || set); return; }
         if (set === 'profile') {
           state.settingsProfileOpen = true;
           state.settingsEditOpen = false;
@@ -4408,7 +4575,7 @@
     return m + ':' + String(s).padStart(2, '0') + ',' + String(cs).padStart(2, '0');
   }
 
-  function mountCircleOverlay(stream, onCancel, onSend) {
+  function mountCircleOverlay(stream, onCancel, onSend, onFlip, onTorch) {
     document.querySelectorAll('.hg-circle-record').forEach((el) => el.remove());
     const overlay = document.createElement('div');
     overlay.className = 'hg-circle-record';
@@ -4443,6 +4610,10 @@
     }
     overlay.querySelector('#hgCircleCancel').onclick = () => onCancel && onCancel();
     overlay.querySelector('#hgCircleSend').onclick = () => onSend && onSend();
+    const flipBtn = overlay.querySelector('#hgCircleFlip');
+    if (flipBtn) flipBtn.onclick = () => { if (onFlip) onFlip(); };
+    const torchBtn = overlay.querySelector('#hgCircleFlash');
+    if (torchBtn) torchBtn.onclick = () => { if (onTorch) onTorch(); };
     return overlay;
   }
 
@@ -4513,7 +4684,26 @@
       };
       setRecordingChrome(true);
       if (kind === 'circle') {
-        mountCircleOverlay(stream, () => stopRec(true), () => stopRec(false));
+        // A6: переворот камеры (facingMode) и вспышка (torch) — реальные действия,
+        // с фолбэком, когда устройство/браузер их не поддерживает.
+        let facing = 'user';
+        const flip = async () => {
+          facing = facing === 'user' ? 'environment' : 'user';
+          try {
+            const track = stream.getVideoTracks()[0];
+            if (track && track.applyConstraints) await track.applyConstraints({ facingMode: facing });
+          } catch (_) { showToast('Переключение камеры недоступно'); }
+        };
+        let torchOn = false;
+        const torch = async () => {
+          try {
+            const track = stream.getVideoTracks()[0];
+            if (!track) return;
+            torchOn = !torchOn;
+            await track.applyConstraints({ advanced: [{ torch: torchOn }] });
+          } catch (_) { showToast('Вспышка недоступна'); }
+        };
+        mountCircleOverlay(stream, () => stopRec(true), () => stopRec(false), flip, torch);
         document.body.classList.add('hg-circle-recording');
       } else {
         renderPanel();
@@ -5462,6 +5652,7 @@
       // back to initials until the user opens Settings (enrichMyProfile).
       await refreshMyAvatar();
       syncRailBadge();
+      refreshSettingsDot();
       try { await warmPresence(); } catch (_) {}
       renderPanel();
       if (global.HuginnSSE) {
