@@ -996,12 +996,12 @@
       const data = await api('/api/chat-groups/presence?user_ids=' + peers.join(','));
       (data.presence || []).forEach((p) => { state.presence[p.user_id] = p; });
       const p = (data.presence || [])[0];
-      const peerLabel = peerFirstName(chat);
       if (p) {
         el.classList.toggle('is-online', !!p.online);
+        // E5: в подзаголовке — только статус (имя уже в заголовке выше).
         el.textContent = p.online
-          ? (peerLabel + ' в сети')
-          : (p.last_seen_at ? (peerLabel + ' был(а) ' + formatSeen(p.last_seen_at)) : (peerLabel + ' не в сети'));
+          ? 'в сети'
+          : (p.last_seen_at ? ('был(а) ' + formatSeen(p.last_seen_at)) : 'не в сети');
       } else {
         el.classList.remove('is-online');
         el.textContent = 'не в сети';
@@ -1209,6 +1209,15 @@
     if (!html) return '';
     html = html.replace(/```(\w*)\n([\s\S]*?)```/g, (mm, lang, code) => `<pre class="hg-ai-code"><code>${code.trim()}</code></pre>`);
     html = html.replace(/`([^`\n]+)`/g, '<code class="hg-ai-inline">$1</code>');
+    // E6: markdown-ссылки [текст](url) → реальные <a>. URL уже escaped выше,
+    // поэтому разрешаем только безопасные схемы (http/https/#/относительные).
+    html = html.replace(/\[([^\]\n]+)\]\(([^)\s]+)\)/g, (mm, label, href) => {
+      const h = String(href).replace(/&amp;/g, '&');
+      const safe = /^(https?:\/\/|\/|#)/i.test(h);
+      if (!safe) return label;
+      const target = /^https?:\/\//i.test(h) ? ' target="_blank" rel="noopener noreferrer"' : '';
+      return `<a class="hg-ai-link" href="${esc(h)}"${target}>${label}</a>`;
+    });
     html = html.replace(/^### (.+)$/gm, '<div class="hg-ai-h3">$1</div>');
     html = html.replace(/^## (.+)$/gm, '<div class="hg-ai-h2">$1</div>');
     html = html.replace(/^# (.+)$/gm, '<div class="hg-ai-h2">$1</div>');

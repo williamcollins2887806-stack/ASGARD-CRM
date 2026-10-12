@@ -292,10 +292,12 @@ class ReportScheduler {
       msg += `\n${(report.summary_text || '').slice(0, 300)}`;
       msg += `\n\n[Открыть полный отчёт](#/telephony?tab=analytics&report=${report.id})`;
 
-      // chat_messages.text (колонка text, не message)
+      // chat_messages: колонка text + message_type + metadata.is_mimir_bot
+      // (фронт по is_mimir_bot включает markdown-рендер для ответов Мимира).
       const result = await db.query(
-        "INSERT INTO chat_messages (chat_id, user_id, user_name, text, created_at) VALUES ($1, $2, 'Мимир', $3, NOW()) RETURNING *",
-        [chatId, mimirId, msg]
+        `INSERT INTO chat_messages (chat_id, user_id, user_name, text, message, message_type, metadata, created_at)
+         VALUES ($1, $2, 'Мимир', $3, $3, 'text', $4::jsonb, NOW()) RETURNING *`,
+        [chatId, mimirId, msg, JSON.stringify({ is_mimir_bot: true })]
       );
 
       // Обновим last_message_at в чате
@@ -304,16 +306,21 @@ class ReportScheduler {
         [chatId]
       ).catch(() => {});
 
-      // SSE
+      // SSE — как обычное сообщение чата (message + is_mimir_bot, чтобы
+      // клиент отрисовал markdown Мимира).
       try {
         const { sendToUser } = require('../routes/sse');
         sendToUser(directorId, 'chat:new_message', {
           chat_id: chatId,
           message: {
             id: result.rows[0].id,
+            chat_id: chatId,
+            message: msg,
             text: msg,
+            message_type: 'text',
             user_id: mimirId,
             user_name: 'Мимир',
+            is_mimir_bot: true,
             created_at: result.rows[0].created_at
           }
         });

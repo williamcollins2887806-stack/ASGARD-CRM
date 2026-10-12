@@ -10,19 +10,22 @@
   <link rel="manifest" href="/h/manifest.webmanifest"/>
   <link rel="apple-touch-icon" href="/assets/img/apple-touch-icon.png"/>
   <title>Хугинн</title>
-  <link rel="stylesheet" href="/assets/css/design-tokens.css?v=20.28.197"/>
-  <link rel="stylesheet" href="/assets/css/huginn_dock.css?v=20.28.197"/>
+  <link rel="stylesheet" href="/assets/css/design-tokens.css?v=20.28.198"/>
+  <link rel="stylesheet" href="/assets/css/huginn_dock.css?v=20.28.198"/>
   <!-- Звонки (PBX-панель) на /h/: те же файлы, что на десктопе. -->
-  <link rel="stylesheet" href="/assets/css/phone.css?v=20.28.197"/>
+  <link rel="stylesheet" href="/assets/css/phone.css?v=20.28.198"/>
   <style>
     html, body {
       margin: 0; height: 100%;
+      /* E1: нативные контролы/скроллбары — под тёмную тему (иначе белые поля). */
+      color-scheme: dark;
       background: var(--hg-bg, var(--bg1));
       color: var(--hg-text, var(--t1));
       font-family: var(--hg-font, var(--ff));
       overscroll-behavior: none;
       -webkit-tap-highlight-color: transparent;
     }
+    html[data-theme="light"], html[data-theme="light"] body { color-scheme: light; }
     #app { height: 100dvh; min-height: 100dvh; display: flex; flex-direction: column; }
     .h-login {
       max-width: 380px; margin: auto; padding: 28px 24px;
@@ -152,6 +155,20 @@
     .h-step { max-width: 380px; margin: auto; width: 100%; padding: 16px 20px;
       padding-top: calc(16px + env(safe-area-inset-top));
       padding-bottom: calc(16px + env(safe-area-inset-bottom)); }
+    /* E1: инпуты TG-шагов были не стилизованы → нативные белые поля на тёмном.
+       Единый вид из токенов Хугинна (как .h-login input). */
+    .h-step input {
+      width: 100%; height: 48px; box-sizing: border-box; margin: 0 0 10px;
+      border-radius: 12px; border: 1px solid var(--hg-border);
+      background: var(--hg-elev); color: var(--hg-text);
+      padding: 0 16px; font: inherit; outline: none;
+      transition: border-color 120ms var(--hg-ease-ui, ease);
+    }
+    .h-step input:focus { border-color: var(--blue-l, #4A90D9); }
+    .h-step input::placeholder { color: var(--hg-muted); }
+    .h-step .h-phone-row input { margin: 0; }
+    /* Kнопки TG-шагов: единый селектор (раньше #staffPinGo/#toCrm выпадали и были белыми). */
+    .h-step .h-step-cta, .h-step button.h-step-cta { width: 100%; }
     .h-step-top { height: 44px; display: flex; align-items: center; }
     .h-step-cancel { border: 0; background: transparent; color: var(--blue-l, #4A90D9);
       font: 400 16px/1 var(--hg-font); cursor: pointer; padding: 8px 0; }
@@ -199,15 +216,15 @@
   <div id="app"></div>
   <!-- ?v= обязателен: /assets/* отдаётся с Cache-Control: immutable, max-age=30д.
        Без версии в URL телефон держал старый JS/CSS месяцами и «не видел» деплой. -->
-  <script src="/assets/js/huginn_icons.js?v=20.28.197"></script>
-  <script src="/assets/js/phone_mask.js?v=20.28.197"></script>
-  <script src="/assets/js/huginn_sse.js?v=20.28.197"></script>
-  <script src="/assets/js/huginn_calls.js?v=20.28.197"></script>
-  <script src="/assets/js/huginn_dock.js?v=20.28.197"></script>
-  <script src="/assets/vendor/jssip.min.js?v=20.28.197"></script>
-  <script src="/assets/js/phone_core.js?v=20.28.197"></script>
-  <script src="/assets/js/phone_ui.js?v=20.28.197"></script>
-  <script src="/h/app.js?v=20.28.197"></script>
+  <script src="/assets/js/huginn_icons.js?v=20.28.198"></script>
+  <script src="/assets/js/phone_mask.js?v=20.28.198"></script>
+  <script src="/assets/js/huginn_sse.js?v=20.28.198"></script>
+  <script src="/assets/js/huginn_calls.js?v=20.28.198"></script>
+  <script src="/assets/js/huginn_dock.js?v=20.28.198"></script>
+  <script src="/assets/vendor/jssip.min.js?v=20.28.198"></script>
+  <script src="/assets/js/phone_core.js?v=20.28.198"></script>
+  <script src="/assets/js/phone_ui.js?v=20.28.198"></script>
+  <script src="/h/app.js?v=20.28.198"></script>
   <script>
     (function () {
       var saved = localStorage.getItem('asgard_theme') || localStorage.getItem('hg_theme');
