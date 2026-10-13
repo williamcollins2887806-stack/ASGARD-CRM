@@ -20,6 +20,7 @@ const { requirePayoutAccess, hasPayoutAccess, getPayoutManagerIds } = require('.
 const { getPeriodWarnings } = require('../lib/payout-period');
 const { buildPayoutRows } = require('../lib/payout-row');
 const { logError } = require('../lib/log-error');
+const crypto = require('crypto');
 
 function isValidPeriod(year, month) {
   const yStr = String(year).trim();
@@ -29,6 +30,22 @@ function isValidPeriod(year, month) {
   const y = Number(yStr);
   const m = Number(mStr);
   return Number.isInteger(y) && y >= 2020 && y <= 2099 && Number.isInteger(m) && m >= 1 && m <= 12;
+}
+
+/** Строгий разбор денежной суммы: '10abc', '10,5', '1,000', '1e5' → null.
+ *  Допускается только точка как десятичный разделитель и максимум 2 знака
+ *  (деньги в рублях/копейках). Запятая НЕ принимается: '1,000' в русской
+ *  локали читается как 1000, а не 1 — неоднозначность опасна для выплат. */
+function parseMoney(v) {
+  if (v == null || v === '') return null;
+  if (typeof v === 'number') {
+    return Number.isFinite(v) ? Math.round(v * 100) / 100 : null;
+  }
+  const s = String(v).trim();
+  if (!/^-?\d+(\.\d{1,2})?$/.test(s)) return null;
+  const n = parseFloat(s);
+  if (!Number.isFinite(n)) return null;
+  return Math.round(n * 100) / 100;
 }
 
 async function routes(fastify, options) {
@@ -229,6 +246,205 @@ async function routes(fastify, options) {
       return reply.send({ employee_id: empId, operations: rows });
     } catch (err) {
       logError(fastify, '[payouts] GET /history error', err, request);
+      return reply.code(500).send({ error: 'Ошибка сервера' });
+    }
+  });
+
+  // ─── POST /pay — совершить выплату ────────────────────────────────────────
+  // Тело: { employee_id, year, month, kind: 'advance'|'salary', pay_amount,
+  //         transfer_amount?, payout_platform?, payout_recipient_note?,
+  //         confirm_over? }
+  // СЗ: переводим = выплачиваем × (1 + tax_rate), tax_amount = разница.
+  // Записывает worker_payments(status='paid'), audit_log. Баланс РП/касса
+  // выводятся ИЗ worker_payments (pm-balance.js) — вручную cash_balance_log
+  // не пишем, иначе двойной счёт.
+  fastify.post('/pay', payoutAuth, async (request, reply) => {
+    const b = request.body || {};
+    const empId = parseInt(b.employee_id, 10);
+    const y = parseInt(b.year, 10);
+    const m = parseInt(b.month, 10);
+    const kind = b.kind;
+    if (!Number.isInteger(empId) || empId <= 0) return reply.code(400).send({ error: 'employee_id обязателен' });
+    if (!isValidPeriod(y, m)) return reply.code(400).send({ error: 'Некорректный период' });
+    if (!['advance', 'salary'].includes(kind)) return reply.code(400).send({ error: 'kind: advance|salary' });
+
+    const payAmount = parseMoney(b.pay_amount);
+    if (payAmount === null || payAmount <= 0) return reply.code(400).send({ error: 'pay_amount > 0' });
+
+    // Площадка выплаты — строгий allowlist (иначе 400, а не 500 от CHECK)
+    const PLATFORMS = ['restaff', 'card', 'bank', 'cash', 'other'];
+    if (b.payout_platform != null && b.payout_platform !== '' && !PLATFORMS.includes(b.payout_platform)) {
+      return reply.code(400).send({ error: `payout_platform: ${PLATFORMS.join(', ')}` });
+    }
+
+    const userId = request.user.id;
+    const client = await db.pool.connect();
+    try {
+      await client.query('BEGIN');
+      // Анти-гонка: сериализуем выплаты по (сотрудник, тип, период).
+      // Иначе два одновременных запроса (двойной клик) создадут две выплаты.
+      const lockKey2 = (kind === 'advance' ? 1 : 2) * 1000000 + (y % 100) * 100 + m;
+      await client.query('SELECT pg_advisory_xact_lock($1, $2)', [empId, lockKey2]);
+
+      // Профиль сотрудника + СЗ
+      const { rows: empRows } = await client.query(
+        `SELECT id, COALESCE(NULLIF(TRIM(fio),''), NULLIF(TRIM(full_name),''), 'ID '||id) AS fio,
+                is_self_employed, is_officially_employed, user_id
+           FROM employees WHERE id = $1`, [empId]);
+      if (!empRows.length) { await client.query('ROLLBACK'); return reply.code(404).send({ error: 'Сотрудник не найден' }); }
+      const emp = empRows[0];
+
+      // Ставка налога СЗ (из настроек)
+      let taxRate = 0.06;
+      try {
+        const { rows: st } = await client.query("SELECT value_json FROM settings WHERE key='self_employed_tax_rate' LIMIT 1");
+        if (st[0]) { const v = parseFloat(String(st[0].value_json).replace(/[^\d.\-]/g, '')); if (Number.isFinite(v)) taxRate = v; }
+      } catch (_) {}
+
+      const isSe = !!emp.is_self_employed;
+      // ТЗ: два поля — «сколько выплачиваем» (amount) и «сколько переводим»
+      // (transfer_amount). Для не-СЗ «переводим» может быть БОЛЬШЕ «выплачиваем»
+      // (пример заказчика: выплачиваем 70т, переводим 100т → 30 рабочий несёт
+      // в кассу). Для СЗ налог 6% добавляется сверху к переведённой сумме.
+      let taxAmount = 0;
+      let transferAmount = payAmount;
+      if (isSe) {
+        taxAmount = Math.round(payAmount * taxRate * 100) / 100;
+        transferAmount = Math.round((payAmount + taxAmount) * 100) / 100;
+      } else if (b.transfer_amount != null && b.transfer_amount !== '') {
+        const ta = parseMoney(b.transfer_amount);
+        if (ta === null || ta <= 0) return reply.code(400).send({ error: 'transfer_amount: некорректная сумма' });
+        transferAmount = ta;
+      }
+
+      // Проверка «сотрудник столько не заработал»
+      let earnings = null;
+      if (!b.confirm_over) {
+        const list = await buildPayoutRows(client, y, m);
+        const row = list.rows.find((r) => r.employee_id === empId);
+        earnings = row ? row.to_pay : 0;
+        if (payAmount > (earnings || 0)) {
+          await client.query('ROLLBACK');
+          return reply.code(409).send({
+            error: 'over_earnings',
+            message: `Сотрудник заработал ${earnings} ₽, а выплата ${payAmount} ₽. Подтвердите, если это осознанно.`,
+            available: earnings,
+            requires_confirmation: true,
+          });
+        }
+      }
+
+      // Защита от дубля (по сотруднику+типу+периоду), если не подтверждено явно
+      if (!b.confirm_duplicate) {
+        const { rows: dup } = await client.query(`
+          SELECT id, amount FROM worker_payments
+           WHERE employee_id=$1 AND type=$2 AND status IN ('paid','confirmed')
+             AND COALESCE(pay_year, EXTRACT(YEAR FROM created_at)::int)=$3
+             AND COALESCE(pay_month, EXTRACT(MONTH FROM created_at)::int)=$4
+        `, [empId, kind, y, m]);
+        if (dup.length) {
+          await client.query('ROLLBACK');
+          return reply.code(409).send({
+            error: 'duplicate_payment',
+            message: `За ${m}.${y} уже есть ${kind === 'advance' ? 'аванс' : 'зарплата'} (${dup.length}). Подтвердите повтор.`,
+            already: dup, requires_confirmation: true,
+          });
+        }
+      }
+
+      const batchId = crypto.randomUUID();
+      const deadline = new Date(Date.now() + 72 * 3600 * 1000);
+      // payment_method выводим из площадки (влияет на источник денег в worker_payment_source_v):
+      //   bank → company_bank, restaff → company_se, card → pm_cash/card, cash → cash, other → transfer.
+      const PLATFORM_METHOD = { bank: 'bank', restaff: 'self', card: 'card', cash: 'cash', other: 'transfer' };
+      const paymentMethod = PLATFORM_METHOD[b.payout_platform] || 'bank';
+      // paid_by_role — из роли плательщика (для отчётности/фильтров).
+      const ROLE_TO_PAID_BY = { ADMIN: 'admin', BUH: 'buh', DIRECTOR_GEN: 'director', DIRECTOR_COMM: 'director', DIRECTOR_DEV: 'director' };
+      const paidByRole = ROLE_TO_PAID_BY[request.user.role] || 'buh';
+      const { rows: ins } = await client.query(`
+        INSERT INTO worker_payments (
+          employee_id, work_id, type, amount, status, payment_method, paid_by, paid_by_role, paid_at,
+          pay_year, pay_month, comment, created_by, created_at,
+          payout_platform, payout_recipient_note, transfer_amount, tax_amount,
+          confirmation_status, confirmation_deadline, payout_batch_id
+        ) VALUES ($1, NULL, $2, $3, 'paid', $4, $5, $6, NOW(), $7, $8, $9, $5, NOW(),
+                  $10, $11, $12, $13, 'awaiting', $14, $15)
+        RETURNING id, amount, transfer_amount, tax_amount, confirmation_status, confirmation_deadline
+      `, [
+        empId, kind, payAmount, paymentMethod,
+        userId, paidByRole, y, m, b.comment || null,
+        b.payout_platform || null, b.payout_recipient_note || null,
+        transferAmount, taxAmount, deadline, batchId,
+      ]);
+
+      await client.query(`
+        INSERT INTO audit_log (actor_user_id, entity_type, entity_id, action, payload_json, created_at)
+        VALUES ($1, 'worker_payments', $2, 'payout_paid', $3::jsonb, NOW())
+      `, [userId, ins[0].id, JSON.stringify({
+        kind, pay_amount: payAmount, transfer_amount: transferAmount, tax_amount: taxAmount,
+        employee_id: empId, employee_fio: emp.fio, year: y, month: m,
+        payout_platform: b.payout_platform || null, batch_id: batchId,
+      })]);
+
+      await client.query('COMMIT');
+
+      // Уведомление (in-app) — SMS/MAX в Этапе 5
+      try {
+        if (emp.user_id) {
+          const notify = require('../services/notify');
+          await notify.createNotification(db, {
+            user_id: emp.user_id,
+            title: `💰 Выплата ${Math.round(payAmount)}₽`,
+            message: 'Зайдите в приложение и подтвердите получение.',
+            type: 'payment_received',
+            link: '/field/earnings',
+          });
+        }
+      } catch (_) {}
+
+      return reply.send({
+        ok: true,
+        payment: ins[0],
+        preview: {
+          employee_id: empId, fio: emp.fio, kind,
+          pay_amount: payAmount, transfer_amount: transferAmount, tax_amount: taxAmount,
+          is_self_employed: isSe, year: y, month: m,
+        },
+      });
+    } catch (err) {
+      try { await client.query('ROLLBACK'); } catch (_) {}
+      logError(fastify, '[payouts] POST /pay error', err, request);
+      return reply.code(500).send({ error: 'Ошибка сервера' });
+    } finally {
+      client.release();
+    }
+  });
+
+  // ─── GET /preview/:employeeId — предпросмотр расчётной ведомости ──────────
+  fastify.get('/preview/:employeeId', payoutAuth, async (request, reply) => {
+    const empId = parseInt(request.params.employeeId, 10);
+    const y = parseInt(request.query.year, 10);
+    const m = parseInt(request.query.month, 10);
+    if (!Number.isInteger(empId) || empId <= 0) return reply.code(400).send({ error: 'Некорректный id' });
+    if (!isValidPeriod(y, m)) return reply.code(400).send({ error: 'Некорректный период' });
+    try {
+      const list = await buildPayoutRows(db, y, m);
+      const row = list.rows.find((r) => r.employee_id === empId) || null;
+      const { rows: empRows } = await db.query(
+        `SELECT id, COALESCE(NULLIF(TRIM(fio),''), NULLIF(TRIM(full_name),''), 'ID '||id) AS fio,
+                is_self_employed, is_officially_employed FROM employees WHERE id=$1`, [empId]);
+      let taxRate = 0.06;
+      try {
+        const { rows: st } = await db.query("SELECT value_json FROM settings WHERE key='self_employed_tax_rate' LIMIT 1");
+        if (st[0]) { const v = parseFloat(String(st[0].value_json).replace(/[^\d.\-]/g, '')); if (Number.isFinite(v)) taxRate = v; }
+      } catch (_) {}
+      return reply.send({
+        employee: empRows[0] || { id: empId },
+        row, tax_rate: taxRate,
+        is_self_employed: !!(empRows[0] && empRows[0].is_self_employed),
+      });
+    } catch (err) {
+      logError(fastify, '[payouts] GET /preview error', err, request);
       return reply.code(500).send({ error: 'Ошибка сервера' });
     }
   });
