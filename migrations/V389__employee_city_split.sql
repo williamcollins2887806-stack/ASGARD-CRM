@@ -74,3 +74,11 @@ END $$;
 CREATE INDEX IF NOT EXISTS idx_employees_city
   ON employees (city)
   WHERE city IS NOT NULL AND btrim(city) <> '';
+
+-- ── 4. Маркер однократности (ДО правок города бэкфиллом!) ───────────────────
+-- Порядок критичен: пока строки нет, снимок выше делает первый прогон;
+-- бэкфилл при каждом запуске повторяет тот же `city_legacy = city`, и без
+-- маркера он сбил бы снимок на уже очищенный город (реальная дыра, найдена
+-- верификатором). Тот же маркер дублирует tools/backfill_employee_city.js.
+INSERT INTO migrations (name) VALUES ('V389__employee_city_split')
+ON CONFLICT (name) DO NOTHING;

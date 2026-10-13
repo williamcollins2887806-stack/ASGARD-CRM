@@ -33,7 +33,7 @@
 const fs = require('fs');
 const path = require('path');
 const { Client } = require('pg');
-const { extractCity, looksLikeAddress } = require('../src/lib/city');
+const { extractCity, looksLikeAddress, isAcceptableCity } = require('../src/lib/city');
 
 const argv = process.argv.slice(2);
 const APPLY = argv.includes('--apply');
@@ -94,22 +94,48 @@ function planOne(row) {
   }
 
   // ═══ A. city ПУСТ ═════════════════════════════════════════════════════════
+  // Читаем и пишем по ОДНОМУ контракту (isAcceptableCity): иначе бэкфилл
+  // записывает значение, которое потом отвергает валидация при повторной записи
+  // (read/write-асимметрия, найденная верификатором).
   if (!city) {
-    if (pick && !pick.low) return { action: 'set', reason: 'из ' + source, value: pick.city, source, confidence: 'high' };
-    if (fromCity && !fromCity.low) return { action: 'set', reason: 'из city', value: fromCity.city, source: 'city', confidence: 'high' };
+    if (pick && !pick.low && isAcceptableCity(pick.city)) {
+      return { action: 'set', reason: 'из ' + source, value: pick.city, source, confidence: 'high' };
+    }
+    if (fromCity && !fromCity.low) {
+      const norm1 = extractCity(fromCity.city);
+      if (norm1 && !norm1.low && isAcceptableCity(norm1.city)) {
+        return { action: 'set', reason: 'из city', value: norm1.city, source: 'city', confidence: 'high' };
+      }
+    }
     if (pick && pick.low) {
       return { action: 'report_low', reason: 'адрес обрезан', value: pick.city, source, candidates: { fromReg: fromReg && fromReg.city, fromAddr: fromAddr && fromAddr.city } };
     }
     if (birth && !isPlaceholder(birth)) {
       const b = extractCity(birth);
-      if (b && !b.low) {
-        return { action: 'report_birth', reason: 'адреса нет; место рождения — только ориентир', value: b.city, source: 'birth_place' };
+      const bn = b && extractCity(b.city);
+      if (bn && !bn.low && isAcceptableCity(bn.city)) {
+        return { action: 'report_birth', reason: 'адреса нет; место рождения — только ориентир', value: bn.city, source: 'birth_place' };
       }
     }
     return { action: 'report_empty', reason: 'нет данных', value: null, source: null };
   }
 
   // ═══ B. city ЗАПОЛНЕН ════════════════════════════════════════════════════
+
+  // B0. Адресов нет вообще — сверять не с чем. Проверяем ДО B1, иначе регион
+  //     (#10161 «Волгоградская обл») попадает в «ручной разбор» и остаётся
+  //     в «Городе», хотя это прямо запрещено критерием. Но сначала пробуем
+  //     нормализовать само значение: «Москва(Московская область)» → «Москва».
+  if (!hasAddresses) {
+    const fromSelf = extractCity(city);
+    if (fromSelf && !fromSelf.low && isAcceptableCity(fromSelf.city)) {
+      return fromSelf.city === city
+        ? { action: 'skip', reason: 'city уже город', value: city, source: 'keep' }
+        : { action: 'set', reason: 'city нормализован', value: fromSelf.city, source: 'city', confidence: 'high', wasAddress: city };
+    }
+    // Регион / маркер / латиница / улица / мусор в «Городе» не храним.
+    return { action: 'set', reason: 'city = не-город без адресов → обнуляем', value: null, source: null, confidence: 'high', wasAddress: city };
+  }
 
   // B1. В «Городе» лежит адрес/регион/мусор — нормализуем, если уверенный город
   //     есть в адресах ИЛИ в самом значении city (кейсы #10227, #10228: адресов
@@ -119,9 +145,9 @@ function planOne(row) {
       fromCity && !fromCity.low && !looksRegionOnly(fromCity.city) && !looksLikeAddress(fromCity.city)
         ? fromCity
         : null;
-    const sourcePick = pick && !pick.low
+    const sourcePick = pick && !pick.low && isAcceptableCity(pick.city)
       ? { res: pick, source }
-      : (fromCityItself ? { res: fromCityItself, source: 'city' } : null);
+      : (fromCityItself && isAcceptableCity(fromCityItself.city) ? { res: fromCityItself, source: 'city' } : null);
     if (sourcePick) {
       return {
         action: 'set',
@@ -132,20 +158,17 @@ function planOne(row) {
         wasAddress: city
       };
     }
+    // Нормализовать не удалось. Если само значение — не город (регион/страна/
+    // маркер), в «Городе» его оставлять НЕЛЬЗЯ: обнуляем. Иначе бэкфилл записывает
+    // значение, которое потом отвергает валидация (read/write-асимметрия, id=27
+    // «Казахстан» — найдено верификатором).
+    if (!isAcceptableCity(city)) {
+      return { action: 'set', reason: 'city = не-город, город из адреса не извлекается → обнуляем', value: null, source: null, confidence: 'high', wasAddress: city };
+    }
     return { action: 'report_conflict', reason: 'city = адрес/регион, город уверенно не извлекается', value: city, candidates: { fromReg: fromReg && fromReg.city, fromAddr: fromAddr && fromAddr.city } };
   }
 
-  // B2. Адресов нет вообще — сверять не с чем.
-  //     Но если само значение — регион/латиница/мусор, в «Городе» его оставлять
-  //     нельзя (критерий: регион ≠ город). Обнуляем и отдаём в отчёт.
-  if (!hasAddresses) {
-    if (looksLikeAddress(city) || !/[А-ЯЁа-яё]/.test(city)) {
-      return { action: 'set', reason: 'city = регион/не-город без адресов → обнуляем', value: null, source: null, confidence: 'high', wasAddress: city };
-    }
-    return { action: 'skip', reason: 'адресов нет, city не трогаем', value: city, source: 'keep' };
-  }
-
-  // B3. Конфликт: city не встречается ни в одном адресе → РУЧНОЙ РАЗБОР.
+  // B2. Конфликт: city не встречается ни в одном адресе → РУЧНОЙ РАЗБОР.
   //     Исключение — чистая транслитерация: city='Saratov', адрес='Саратов'.
   //     Это тот же город, просто латиницей; приводим к кириллической форме
   //     (детерминированно, только при точном совпадении транслита).
@@ -161,6 +184,12 @@ function planOne(row) {
   }
 
   // B4. city — уже чистый город и не противоречит адресам → не трогаем.
+  //     Кириллицу проверяем и здесь: латиница в «Городе» недопустима.
+  if (!/[А-ЯЁа-яё]/.test(city)) {
+    const cand = (fromReg && !fromReg.low && fromReg.city) || (fromAddr && !fromAddr.low && fromAddr.city);
+    if (cand) return { action: 'set', reason: 'латиница → ' + cand, value: cand, source, confidence: 'high', wasAddress: city };
+    return { action: 'set', reason: 'city = не-кириллица → обнуляем', value: null, source: null, confidence: 'high', wasAddress: city };
+  }
   return { action: 'skip', reason: 'city уже город', value: city, source: 'keep' };
 }
 
@@ -234,21 +263,46 @@ async function main() {
   }
 
   // ── Запись ────────────────────────────────────────────────────────────────
-  let updated = 0, skippedLow = 0;
+  // Снимок в city_legacy повторяем ТОЛЬКО пока V389 не помечена в реестре
+  // миграций. Иначе каждый прогон бэкфилла сбивал бы аудит-снимок на уже
+  // очищенный город (реальная дыра, найденная верификатором).
+  let updated = 0, skippedLow = 0, cleared = 0;
   await client.query('BEGIN');
   try {
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS migrations (
+        id SERIAL PRIMARY KEY,
+        name VARCHAR(255) NOT NULL UNIQUE,
+        executed_at TIMESTAMP DEFAULT NOW()
+      )
+    `);
+    const mig = await client.query(
+      `SELECT 1 FROM migrations WHERE name = 'V389__employee_city_split'`
+    );
+    if (mig.rowCount === 0) {
+      await client.query(`
+        UPDATE employees e
+           SET city_legacy = e.city
+          FROM (SELECT unnest($1::int[]) AS id) t
+         WHERE e.id = t.id
+           AND e.city_legacy IS NULL
+           AND e.city IS NOT NULL
+           AND btrim(e.city) <> ''
+      `, [willChange.map((r) => r.id)]);
+    }
+
     for (const r of willChange) {
       if (ONLY_CONFIDENCE && r.confidence !== 'high') { skippedLow++; continue; }
       await client.query(
         `UPDATE employees
             SET city = $1,
-                city_source = COALESCE($2, 'migrated_v389'),
+                city_source = $2,
                 city_updated_at = NOW(),
                 updated_at = NOW()
           WHERE id = $3`,
-        [r.value, r.source, r.id]
+        [r.value, r.value === null ? null : (r.source || 'migrated_v389'), r.id]
       );
-      updated++;
+      if (r.value === null) cleared++; else updated++;
     }
 
     // ── Constraint длины: ставим ТОЛЬКО ПОСЛЕ очистки (в БД был адрес на 81
@@ -278,14 +332,7 @@ async function main() {
     }
 
     // ── Реестр миграций: помечаем V389 выполненной, чтобы `node migrations/run.js`
-    //    не пытался применить её повторно (скрипт запускают вручную, вне runner'а).
-    await client.query(`
-      CREATE TABLE IF NOT EXISTS migrations (
-        id SERIAL PRIMARY KEY,
-        name VARCHAR(255) NOT NULL UNIQUE,
-        executed_at TIMESTAMP DEFAULT NOW()
-      )
-    `);
+    //    не пытался применить её повторно. Идемпотентно.
     await client.query(
       `INSERT INTO migrations (name) VALUES ('V389__employee_city_split') ON CONFLICT (name) DO NOTHING`
     );
@@ -295,7 +342,7 @@ async function main() {
     await client.query('ROLLBACK');
     throw e;
   }
-  console.log(`\n[apply] Обновлено: ${updated}` + (skippedLow ? `, пропущено (low): ${skippedLow}` : ''));
+  console.log(`\n[apply] Обновлено: ${updated}` + (cleared ? `, обнулено (регион/не-город): ${cleared}` : '') + (skippedLow ? `, пропущено (low): ${skippedLow}` : ''));
   await client.end();
 }
 

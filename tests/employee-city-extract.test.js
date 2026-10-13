@@ -8,7 +8,7 @@
  *
  * Запуск: node tests/employee-city-extract.test.js
  */
-const { extractCity, looksLikeAddress } = require('../src/lib/city');
+const { extractCity, looksLikeAddress, isAcceptableCity } = require('../src/lib/city');
 
 const cases = [
   ['Пугачев', 'Саратовская область город Пугачев улица переулок татарский дом 12', 'Пугачев'],
@@ -75,6 +75,47 @@ for (const [input, want] of addrCases) {
   const ok = got === want;
   if (!ok) fail++;
   console.log(`${ok ? 'OK  ' : 'FAIL'} ${String(got).padEnd(6)} (ждали ${String(want).padEnd(6)}) ${input.slice(0, 52)}`);
+}
+
+console.log(`\n${fail === 0 ? 'ВСЁ ЗЕЛЁНОЕ' : 'ПРОВАЛОВ: ' + fail}`);
+
+// ── КОНТРАКТ ЗАПИСИ: что вообще допустимо класть в employees.city ──────────
+// Реплика sanitizeCity из src/routes/staff.js: улица/регион/страна/маркер/цифры/
+// латиница в «Город» не попадают. Эти кейсы найдены НЕЗАВИСИМЫМ ВЕРИФИКАТОРОМ.
+console.log('\n=== КОНТРАКТ ЗАПИСИ (isAcceptableCity) ===');
+const writeCases = [
+  ['Москва', true], ['Зерноград', true], ['Нижний Новгород', true], ['Улан-Удэ', true],
+  ['Санкт-Петербург', true], ['П.-Покровка', true], ['Красногорский', true],
+  ['Москва, ул. Тверская, д. 1', true], ['Москва, Тверская', true], ['г. Зерноград', true],
+  ['Москва(Московская область)', true], ['Бийск, Алтайская область', true],
+  ['ул. Тверская', false], ['ул. Советская д. 6', false], ['пер. Гоголя, д. 1', false],
+  ['П', false], ['г.', false], ['ул', false], ['д', false],
+  ['р-н Зерноградский', false], ['обл', false], ['обл. Ленинградская', false],
+  ['Волгоградская обл', false], ['Saratov', false], ['141143', false], ['---', false],
+  ['', false], ['Ростовская обл., р-н Зерноградский', false],
+  // регионы/республики/страны — НЕ город (дыры, найденные верификатором):
+  ['Московская', false], ['Свердловская', false], ['Ленинградская', false],
+  ['Татарстан', false], ['Башкортостан', false], ['Чувашия', false],
+  ['Казахстан', false], ['Россия', false], ['Крым', false], ['Ханты-Мансийский', false],
+  // регион ВМЕСТО города (реальная дыра на проде, id 9931):
+  ['Респ. Башкортостан', false], ['обл. Ленинградская', false], ['Республика Калмыкия', false],
+  ['край. Краснодарский', false], ['Респ. Марий Эл', false], ['ЯНАО', false],
+  ['АО Ханты-Мансийский', false], ['район Зерноградский', false],
+  ['Байконур', true], ['Зерноградский', true],
+  // префиксные ловушки: города, начинающиеся как регионы (регрессия верификатора)
+  ['Крымск', true], ['Дагестанские Огни', true], ['Карельский', true],
+  // станицы/посёлки на «-ская»/«-ский»: НЕЛЬЗЯ резать по суффиксу
+  // (регрессия, найденная верификатором — 6 реальных записей прода).
+  ['Гиагинская', true], ['Зассовская', true], ['Стародеревянковская', true],
+  ['Богоявленская', true], ['Нехаевская', true], ['Придорожная', true],
+  ['Красногорский', true], ['Свердловский', true], ['Инжавино', true],
+];
+for (const [input, want] of writeCases) {
+  const r = extractCity(input);
+  const got = !!r && r.city && r.low === false && isAcceptableCity(r.city);
+  const ok = got === want;
+  if (!ok) fail++;
+  console.log(`${ok ? 'OK  ' : 'FAIL'} ${String(got).padEnd(6)} (ждали ${String(want).padEnd(6)}) ${JSON.stringify(input).slice(0, 46)}`);
 }
 
 console.log(`\n${fail === 0 ? 'ВСЁ ЗЕЛЁНОЕ' : 'ПРОВАЛОВ: ' + fail}`);
