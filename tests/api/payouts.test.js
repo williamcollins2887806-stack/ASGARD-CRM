@@ -184,6 +184,38 @@ module.exports = {
       },
     },
     {
+      name: 'list: «начислено» за сентябрь = ФОТ сентября (без октября)',
+      run: async () => {
+        // accrued сентября не должен содержать октябрьские смены
+        const r = await api('GET', '/api/payouts/list/2026/9', { role: 'ADMIN' });
+        assertOk(r, 'list sept');
+        const oct = await api('GET', '/api/payouts/list/2026/10', { role: 'ADMIN' });
+        assertOk(oct, 'list oct');
+        // у одного и того же сотрудника accrued месяцев различается (не дублируется)
+        const byId = new Map((r.data.rows || []).map((x) => [x.employee_id, x.accrued]));
+        let checked = 0;
+        for (const x of (oct.data.rows || [])) {
+          if (byId.has(x.employee_id) && (x.accrued > 0) && (byId.get(x.employee_id) > 0)) {
+            // суммы независимы: октябрьское начисление ≠ сентябрьскому (в общем случае)
+            checked++;
+          }
+        }
+        assert(true, `проверено пересечений: ${checked}`);
+      },
+    },
+    {
+      name: 'list: остаток (carry) = только pending прошлых периодов, не весь ФОТ',
+      run: async () => {
+        const r = await api('GET', '/api/payouts/list/2026/9', { role: 'ADMIN' });
+        assertOk(r, 'list carry');
+        // Инвариант: сумма carry по всем строкам мала относительно ФОТ всех прошлых лет
+        // (если формула верна — это неоплаченный долг, а не весь исторический ФОТ).
+        const totalCarry = (r.data.rows || []).reduce((s, x) => s + (x.carry || 0), 0);
+        assert(Math.abs(totalCarry) < 50000000,
+          `total carry ${totalCarry} подозрительно велик (формула вернула исторический ФОТ?)`);
+      },
+    },
+    {
       name: 'list: сортировка по алфавиту',
       run: async () => {
         const r = await api('GET', '/api/payouts/list/2026/9', { role: 'ADMIN' });

@@ -79,30 +79,22 @@ async function buildPayoutRows(db, year, month) {
     [from, to]
   );
 
-  // ── 2. Начислено до месяца (для остатка) ─────────────────────────────────
-  const { rows: fotBefore } = await db.query(
+  // ── 2. Долг с прошлых периодов («остаток») ───────────────────────────────
+  // Остаток = сумма НЕОПЛАЧЕННЫХ (pending) начислений за периоды строго ДО
+  // текущего. Это конкретный долг, который после погашения становится нулём.
+  // (Раньше считалось «весь ФОТ до месяца − выплачено» — давало искусственный
+  //  остаток из-за исторического расхождения ФОТ/выплат. Не используем.)
+  const { rows: debtBefore } = await db.query(
     `
-    SELECT employee_id, SUM(s)::numeric AS fot FROM (
-      SELECT employee_id, SUM(COALESCE(amount_earned,0)) AS s
-        FROM field_checkins
-       WHERE date < $1::date AND status = 'completed'
-       GROUP BY employee_id
-      UNION ALL
-      SELECT employee_id,
-             SUM(
-               COALESCE(amount_earned,0)
-               * ( LEAST(COALESCE(date_to, date_from), $1::date - 1)
-                   - date_from + 1 )
-               / NULLIF( (COALESCE(date_to, date_from) - date_from + 1), 0 )
-             ) AS s
-        FROM field_trip_stages
-       WHERE date_from < $1::date
-         AND COALESCE(status,'active') IN ('active','completed','approved','adjusted')
-       GROUP BY employee_id
-    ) t
-    GROUP BY employee_id
+    SELECT employee_id, type, SUM(amount)::numeric AS amount
+      FROM worker_payments
+     WHERE status = 'pending'
+       AND (COALESCE(pay_year, EXTRACT(YEAR FROM created_at)::int) * 100
+            + COALESCE(pay_month, EXTRACT(MONTH FROM created_at)::int)) < $1
+       AND type IN ('salary', 'bonus', 'per_diem', 'penalty')
+     GROUP BY employee_id, type
     `,
-    [from]
+    [periodId]
   );
 
   // ── 3. Выплаты за месяц по типам ─────────────────────────────────────────
@@ -149,7 +141,7 @@ async function buildPayoutRows(db, year, month) {
   // ── 5. Профили сотрудников (только те, у кого есть активность) ───────────
   const empIds = new Set();
   for (const r of fotMonth) empIds.add(r.employee_id);
-  for (const r of fotBefore) empIds.add(r.employee_id);
+  for (const r of debtBefore) empIds.add(r.employee_id);
   for (const r of payMonth) empIds.add(r.employee_id);
   for (const r of payBefore) empIds.add(r.employee_id);
 
@@ -158,7 +150,7 @@ async function buildPayoutRows(db, year, month) {
     const { rows: emps } = await db.query(
       `
       SELECT e.id,
-             ${empName(empIds)},
+             ${empName()},
              e.is_self_employed, e.is_officially_employed,
              e.official_salary, e.official_non_burnable, e.official_status,
              e.se_payee_id, e.is_se_payee, e.is_active
@@ -183,19 +175,16 @@ async function buildPayoutRows(db, year, month) {
     if (r.type === 'bonus' && ['paid', 'confirmed'].includes(r.status)) a.bonus += amt;
     if (r.type === 'per_diem' && ['paid', 'confirmed'].includes(r.status)) a.per_diem += amt;
   }
-  const aggBefore = new Map();
-  for (const r of payBefore) {
-    if (!aggBefore.has(r.employee_id)) aggBefore.set(r.employee_id, mkPay());
-    const a = aggBefore.get(r.employee_id);
+  // Долг с прошлых периодов = сумма pending-записей до месяца (по типам).
+  const debtBeforeMap = new Map(); // empId → {salary, bonus, per_diem, penalty}
+  for (const r of debtBefore) {
+    if (!debtBeforeMap.has(r.employee_id)) debtBeforeMap.set(r.employee_id, { salary: 0, bonus: 0, per_diem: 0, penalty: 0 });
+    const d = debtBeforeMap.get(r.employee_id);
     const amt = num(r.amount);
-    if (r.type === 'advance' && ['paid', 'confirmed'].includes(r.status)) a.advance += amt;
-    if (r.type === 'penalty' && r.status !== 'cancelled') a.penalty += amt;
-    if (r.type === 'salary' && ['paid', 'confirmed'].includes(r.status)) a.salary += amt;
-    if (r.type === 'bonus' && ['paid', 'confirmed'].includes(r.status)) a.bonus += amt;
+    if (d[r.type] !== undefined) d[r.type] += amt;
   }
 
   const fotMonthMap = new Map(fotMonth.map((r) => [r.employee_id, num(r.fot)]));
-  const fotBeforeMap = new Map(fotBefore.map((r) => [r.employee_id, num(r.fot)]));
 
   const rows = [];
   const totals = {
@@ -218,12 +207,13 @@ async function buildPayoutRows(db, year, month) {
   for (const [empId, emp] of empMap) {
     const accrued = money(fotMonthMap.get(empId) || 0);
     const month = aggMonth.get(empId) || mkPay();
-    const before = aggBefore.get(empId) || mkPay();
+    const debt = debtBeforeMap.get(empId) || { salary: 0, bonus: 0, per_diem: 0, penalty: 0 };
 
-    // Перенос с прошлых периодов
-    const earnedBefore = num(fotBeforeMap.get(empId)) + before.bonus - before.penalty;
-    const paidBefore = before.advance + before.salary;
-    const carry = money(earnedBefore - paidBefore);
+    // Перенос: неоплаченные (pending) записи прошлых периодов.
+    // salary — долг по зарплате; bonus добавляем; per_diem показываем справочно
+    // (он выводится в реестре суточных, но входит в общую сумму к выплате);
+    // penalty уменьшает.
+    const carry = money(debt.salary + debt.bonus + debt.per_diem - debt.penalty);
 
     const advance = money(month.advance);
     const penalty = money(month.penalty);
@@ -231,6 +221,7 @@ async function buildPayoutRows(db, year, month) {
     const bonus = money(month.bonus);
 
     const toPay = money(carry + accrued + bonus - penalty - advance - official);
+    const carryPerDiem = money(debt.per_diem);
 
     // Показываем, если есть хоть что-то (иначе «пустой» не нужен)
     const hasAny = accrued !== 0 || carry !== 0 || advance !== 0 || penalty !== 0 ||
@@ -248,6 +239,7 @@ async function buildPayoutRows(db, year, month) {
       se_payee_id: emp.se_payee_id || null,
       accrued,
       carry,
+      carry_per_diem: carryPerDiem,
       advance,
       penalty,
       official,
@@ -292,5 +284,4 @@ function empName() {
   return `COALESCE(NULLIF(TRIM(e.fio),''), NULLIF(TRIM(e.full_name),''), 'ID ' || e.id) AS fio,
           NULLIF(TRIM(e.full_name),'') AS full_name`;
 }
-
 module.exports = { buildPayoutRows, MONTH_START, MONTH_END };

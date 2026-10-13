@@ -88,27 +88,32 @@ window.AsgardPayoutsPage = (function () {
       return;
     }
 
+    // Платим ЗА предыдущий календарный месяц (выплаты 10–15 числа).
+    // В октябре (до 15.10) платим за сентябрь; в ноябре — за октябрь и т.д.
     const now = new Date();
+    let payY = now.getFullYear();
+    let payM = now.getMonth(); // getMonth() 0-based → это уже «предыдущий» в 1-based
+    if (payM < 1) { payM = 12; payY--; }
     const state = {
-      year: now.getFullYear(),
-      month: now.getMonth() + 1,
-      view: 'list',        // list | archive
-      archiveYear: now.getFullYear(),
+      year: payY,
+      month: payM,           // месяц НАЧИСЛЕНИЯ, за который платим
+      view: 'list',          // list | archive
+      archiveYear: payY,
     };
     ctx.state = state;
 
+    const todayLabel = now.toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric' });
+
     await layout(`
       <div class="panel">
-        <div class="row" style="justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:16px">
-          <div style="display:flex;align-items:center;gap:8px">
-            <button class="btn ghost" id="po_prev" aria-label="Предыдущий месяц" title="Предыдущий месяц">‹</button>
-            <span id="po_period" style="font-size:16px;font-weight:600;color:var(--t1);min-width:170px;text-align:center"></span>
-            <button class="btn ghost" id="po_next" aria-label="Следующий месяц" title="Следующий месяц">›</button>
-            <span id="po_ready" style="margin-left:8px"></span>
+        <div class="po-head">
+          <div class="po-head-main">
+            <div class="po-head-title" id="po_period"></div>
+            <div class="po-head-sub">Сегодня ${esc(todayLabel)} — выплачиваем заработок за прошлый месяц</div>
           </div>
-          <div style="display:flex;gap:8px">
+          <div class="po-head-actions">
+            <span id="po_ready"></span>
             <button class="btn ghost" id="po_export">Excel</button>
-            <button class="btn ghost" id="po_tab_list">Текущие выплаты</button>
             <button class="btn ghost" id="po_tab_archive">Архив</button>
           </div>
         </div>
@@ -118,23 +123,12 @@ window.AsgardPayoutsPage = (function () {
       </div>
     `, { title: title || 'Выплаты' });
 
-    $('#po_prev').onclick = () => shiftMonth(-1);
-    $('#po_next').onclick = () => shiftMonth(1);
-    $('#po_tab_list').onclick = () => { state.view = 'list'; load(); };
-    $('#po_tab_archive').onclick = () => { state.view = 'archive'; load(); };
+    $('#po_tab_archive').onclick = () => { state.view = state.view === 'archive' ? 'list' : 'archive'; load(); };
     $('#po_export').onclick = () => downloadFile(`/api/payouts/export/${state.year}/${state.month}`, `payouts-${state.year}-${state.month}.xlsx`);
-
-    function shiftMonth(delta) {
-      let m = state.month + delta, y = state.year;
-      if (m < 1) { m = 12; y--; }
-      if (m > 12) { m = 1; y++; }
-      state.month = m; state.year = y;
-      load();
-    }
 
     // load() живёт в области видимости render() и доступна модалке через ctx.reload.
     async function load() {
-      $('#po_period').textContent = MONTHS[state.month - 1] + ' ' + state.year;
+      $('#po_period').textContent = 'Выплата за ' + MONTHS[state.month - 1] + ' ' + state.year;
       if (state.view === 'list') await loadList(state);
       else await loadArchive(state);
     }
