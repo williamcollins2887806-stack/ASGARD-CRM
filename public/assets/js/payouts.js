@@ -28,7 +28,6 @@ window.AsgardPayoutsPage = (function () {
   };
   const TYPE_LABELS = { salary: 'ЗП', advance: 'Аванс', bonus: 'Премия', penalty: 'Штраф', per_diem: 'Суточные' };
   const typeLabel = (t) => TYPE_LABELS[t] || t;
-  const payoutLabel = (p) => PLATFORM_LABELS[p] || p;
 
   // Состояние активного рендера (одна страница = один контекст).
   let ctx = null; // { token, user, state, reload }
@@ -167,8 +166,9 @@ window.AsgardPayoutsPage = (function () {
     if (!rows.length) {
       html = '<div class="empty-state">Нет сотрудников к выплате за этот месяц</div>';
     } else {
-      html = `<div class="tablewrap"><table class="asg" id="po_table">
+      html = `<div class="tablewrap"><table class="asg po-table" id="po_table">
         <thead><tr>
+          <th class="po-num">№</th>
           <th>ФИО</th><th style="text-align:right">Остаток</th>
           <th style="text-align:right">Начислено</th><th style="text-align:right">Аванс</th>
           <th style="text-align:right">Удержание</th><th style="text-align:right">Оклад</th>
@@ -180,7 +180,14 @@ window.AsgardPayoutsPage = (function () {
       const active = rows.filter((r) => r.to_pay > 0 && !r.paid_this_period);
       const zero = rows.filter((r) => r.to_pay <= 0 && !r.paid_this_period);
       const done = rows.filter((r) => r.paid_this_period);
-      tbody.innerHTML = [...active, ...zero, ...done].map(rowHtml).join('');
+      const ordered = [...active, ...zero, ...done];
+      // Разделитель перед «Выплаченные»
+      let html2 = ordered.map((r, i) => {
+        const sep = (i === active.length + zero.length && done.length) ? '<tr class="po-sep"><td colspan="9">Выплаченные</td></tr>' : '';
+        return sep + rowHtml(r, i + 1);
+      }).join('');
+      // Нумерация: активные+нулевые = 1..N; выплаченные — продолжают список
+      tbody.innerHTML = html2;
 
       // Кнопки — внутри таблицы (контейнер), не по document.
       const root = $('#po_body');
@@ -190,11 +197,14 @@ window.AsgardPayoutsPage = (function () {
       Array.from(root.querySelectorAll('.po-confirm')).forEach((b) => {
         b.onclick = () => confirmByManager(parseInt(b.dataset.pid, 10));
       });
+      Array.from(root.querySelectorAll('.po-revert')).forEach((b) => {
+        b.onclick = () => revertPayout(parseInt(b.dataset.pid, 10));
+      });
     }
     if (!rows.length) body.innerHTML = html;
   }
 
-  function rowHtml(r) {
+  function rowHtml(r, n) {
     const isDone = !!r.paid_this_period;
     let cls = '';
     let flag = '';
@@ -211,14 +221,24 @@ window.AsgardPayoutsPage = (function () {
     if (isDone && r.confirm != null && r.confirm !== 'confirmed') {
       if (r.confirm === 'disputed') confirmBadge = '<span class="badge danger">спор</span>';
       else if (r.overdue) confirmBadge = '<span class="badge danger">не подтвердил</span>';
-      else confirmBadge = '<span class="badge warning">ждёт подтверждения</span>';
+      else confirmBadge = '<span class="badge warning">ждёт подтв.</span>';
+    } else if (isDone && r.confirm === 'confirmed') {
+      confirmBadge = '<span class="badge success">✓ подтв.</span>';
     }
-    // «Подтвердить за рабочего» — только для ещё не подтверждённых (awaiting).
-    const canConfirm = isDone && r.confirm !== 'confirmed';
-    const btn = canConfirm
-      ? `<button class="btn ghost po-confirm" data-pid="${r.payment_id}">Подтвердить за рабочего</button>`
-      : (isDone ? '' : `<button class="btn primary po-pay" data-id="${r.employee_id}">Выплатить</button>`);
+    // Кнопки: пока не выплачено — «Выплатить»; выплачено — «Подтвердить за рабочего» (если ждёт) + «Отменить».
+    let btn = '';
+    if (!isDone) {
+      btn = `<button class="btn primary po-pay" data-id="${r.employee_id}">Выплатить</button>`;
+    } else {
+      if (r.confirm !== 'confirmed') {
+        btn += `<button class="btn ghost po-confirm" data-pid="${r.payment_id}">Подтвердить за рабочего</button> `;
+      }
+      if (r.payment_id) {
+        btn += `<button class="btn ghost danger po-revert" data-pid="${r.payment_id}" title="Удалить выплату и вернуть в реестр">Отменить</button>`;
+      }
+    }
     return `<tr class="${cls} ${flag}">
+      <td class="po-num">${n}</td>
       <td>${esc(r.fio)}${over} ${confirmBadge}</td>
       <td style="text-align:right">${fmt(r.carry)}</td>
       <td style="text-align:right">${fmt(r.accrued)}</td>
@@ -245,53 +265,131 @@ window.AsgardPayoutsPage = (function () {
       <div class="po-kpi-value">${val}</div></div>`;
   }
 
-  // ─────────────────────────────────────────── график по месяцам (canvas)
+  // ─────────────────────────────── график: начислено vs выплачено (canvas)
   async function renderChart(state) {
     const host = $('#po_chart');
     if (!host) return;
     host.innerHTML = `<div class="po-chart-box">
-      <div class="po-chart-cap">Выплаты по месяцам ${state.year} года</div>
-      <canvas class="po-canvas" height="120"></canvas></div>`;
-    let series_;
+      <div class="po-chart-head">
+        <div class="po-chart-cap">Начислено и выплачено по месяцам ${state.year}</div>
+        <div class="po-chart-legend">
+          <span class="po-lg"><i class="po-lg-dot po-lg-acc"></i>Начислено</span>
+          <span class="po-lg"><i class="po-lg-dot po-lg-paid"></i>Выплачено</span>
+        </div>
+      </div>
+      <canvas class="po-canvas"></canvas>
+    </div>`;
+    let accrued, paid;
     try {
       const series = (await apiFetch(`/api/payouts/monthly-series/${state.year}`)).series || [];
-      series_ = series.map((s) => s.paid);
-    } catch (_) { series_ = new Array(12).fill(0); }
-    drawLine(host.querySelector('.po-canvas'), series_, MONTHS.map((x) => x.slice(0, 3)));
+      accrued = series.map((s) => s.accrued || 0);
+      paid = series.map((s) => s.paid || 0);
+    } catch (_) {
+      accrued = new Array(12).fill(0); paid = new Array(12).fill(0);
+    }
+    drawDualChart(host.querySelector('.po-canvas'), accrued, paid, MONTHS.map((x) => x.slice(0, 3)));
   }
 
-  function drawLine(canvas, values, labels) {
+  /** Две сглаженные линии с заливкой — по образцу графика телефонии. */
+  function drawDualChart(canvas, accValues, paidValues, labels) {
     if (!canvas) return;
     const css = getComputedStyle(document.documentElement);
-    const pick = (...names) => {
-      for (const n of names) { const v = css.getPropertyValue(n).trim(); if (v) return v; }
-      return 'transparent';
-    };
-    const cAccent = pick('--blue-l', '--blue', '--info-t');
-    const cText = pick('--t3', '--t2');
+    const pick = (...names) => { for (const n of names) { const v = css.getPropertyValue(n).trim(); if (v) return v; } return 'transparent'; };
+    const colAcc = pick('--blue-l', '--blue', '--info-t');
+    const colPaid = pick('--ok-t', '--ok');
+    const colGrid = pick('--brd');
+    const colText = pick('--t3', '--t2');
+
     const dpr = window.devicePixelRatio || 1;
-    const w = canvas.clientWidth || 600, h = 120;
-    canvas.width = w * dpr; canvas.height = h * dpr;
+    const W = canvas.clientWidth || 640;
+    const H = 220;
+    canvas.width = W * dpr; canvas.height = H * dpr;
+    canvas.style.height = H + 'px';
     const g = canvas.getContext('2d');
     if (!g) return;
-    g.scale(dpr, dpr);
-    g.clearRect(0, 0, w, h);
-    const max = Math.max(1, ...values);
-    const pad = 22, stepX = (w - pad * 2) / Math.max(1, values.length - 1);
-    g.strokeStyle = cAccent; g.lineWidth = 2; g.beginPath();
-    values.forEach((v, i) => {
-      const x = pad + i * stepX, y = (h - pad) - (v / max) * (h - pad * 2);
-      i ? g.lineTo(x, y) : g.moveTo(x, y);
+    g.setTransform(dpr, 0, 0, dpr, 0, 0);
+    g.clearRect(0, 0, W, H);
+
+    const PAD = { top: 16, right: 16, bottom: 28, left: 56 };
+    const cw = W - PAD.left - PAD.right;
+    const ch = H - PAD.top - PAD.bottom;
+    const maxVal = Math.max(1, ...accValues, ...paidValues);
+
+    // Сетка + подписи оси Y
+    g.strokeStyle = colGrid; g.lineWidth = 1;
+    const lines = 4;
+    for (let i = 0; i <= lines; i++) {
+      const yy = PAD.top + (ch / lines) * i;
+      g.beginPath(); g.moveTo(PAD.left, yy); g.lineTo(PAD.left + cw, yy); g.stroke();
+      g.fillStyle = colText; g.font = '11px system-ui, sans-serif'; g.textAlign = 'right';
+      const v = maxVal - (maxVal / lines) * i;
+      g.fillText(shortMoney(v), PAD.left - 8, yy + 4);
+    }
+    // Ось X
+    g.fillStyle = colText; g.font = '11px system-ui, sans-serif'; g.textAlign = 'center';
+    labels.forEach((l, i) => {
+      const x = PAD.left + (cw / Math.max(labels.length - 1, 1)) * i;
+      g.fillText(l, x, H - PAD.bottom + 18);
     });
-    g.stroke();
-    g.fillStyle = cAccent;
-    values.forEach((v, i) => {
-      const x = pad + i * stepX, y = (h - pad) - (v / max) * (h - pad * 2);
-      g.beginPath(); g.arc(x, y, 3, 0, Math.PI * 2); g.fill();
-      g.fillStyle = cText; g.font = '10px sans-serif'; g.textAlign = 'center';
-      g.fillText(labels[i] || '', x, h - 6);
-      g.fillStyle = cAccent;
-    });
+
+    const toPts = (data) => data.map((v, i) => ({
+      x: PAD.left + (cw / Math.max(data.length - 1, 1)) * i,
+      y: PAD.top + ch - (v / maxVal) * ch,
+    }));
+
+    function series(pts, color, fill) {
+      if (pts.length < 2) return;
+      if (fill) {
+        const grad = g.createLinearGradient(0, PAD.top, 0, PAD.top + ch);
+        grad.addColorStop(0, hexA(color, 0.22));
+        grad.addColorStop(1, hexA(color, 0.0));
+        g.beginPath();
+        g.moveTo(pts[0].x, PAD.top + ch);
+        g.lineTo(pts[0].x, pts[0].y);
+        for (let i = 1; i < pts.length; i++) {
+          const p = pts[i - 1], c = pts[i], cx = (p.x + c.x) / 2;
+          g.quadraticCurveTo(p.x + (cx - p.x) * 0.7, p.y, cx, (p.y + c.y) / 2);
+          g.quadraticCurveTo(c.x - (c.x - cx) * 0.7, c.y, c.x, c.y);
+        }
+        g.lineTo(pts[pts.length - 1].x, PAD.top + ch);
+        g.closePath(); g.fillStyle = grad; g.fill();
+      }
+      g.beginPath(); g.strokeStyle = color; g.lineWidth = 2.4;
+      g.lineJoin = 'round'; g.lineCap = 'round';
+      g.moveTo(pts[0].x, pts[0].y);
+      for (let i = 1; i < pts.length; i++) {
+        const p = pts[i - 1], c = pts[i], cx = (p.x + c.x) / 2;
+        g.quadraticCurveTo(p.x + (cx - p.x) * 0.7, p.y, cx, (p.y + c.y) / 2);
+        g.quadraticCurveTo(c.x - (c.x - cx) * 0.7, c.y, c.x, c.y);
+      }
+      g.stroke();
+      // точки
+      pts.forEach((pt) => {
+        g.beginPath(); g.arc(pt.x, pt.y, 3, 0, Math.PI * 2);
+        g.fillStyle = color; g.fill();
+        g.strokeStyle = pick('--bg1', '--bg2'); g.lineWidth = 1.5; g.stroke();
+      });
+    }
+
+    const pAcc = toPts(accValues), pPaid = toPts(paidValues);
+    series(pAcc, colAcc, true);
+    series(pPaid, colPaid, true);
+  }
+
+  /** HEX/rgb → rgba с прозрачностью (для градиента). */
+  function hexA(color, a) {
+    const c = String(color).trim();
+    const m = c.match(/^#([0-9a-f]{6})$/i);
+    if (m) { const n = parseInt(m[1], 16); return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${a})`; }
+    const r = c.match(/^rgba?\(([^)]+)\)$/i);
+    if (r) { const p = r[1].split(',').map((s) => s.trim()); return `rgba(${p[0]},${p[1]},${p[2]},${a})`; }
+    return c;
+  }
+  function shortMoney(v) {
+    const n = Number(v) || 0;
+    if (Math.abs(n) >= 1e6) return (n / 1e6).toFixed(1).replace('.0', '') + 'М';
+    if (Math.abs(n) >= 1e3) return Math.round(n / 1e3) + 'К';
+    return String(Math.round(n));
   }
 
   // ─────────────────────────────────────────────────── архив
@@ -353,49 +451,80 @@ window.AsgardPayoutsPage = (function () {
     const taxRate = preview.tax_rate || 0.06;
 
     let card = { total_paid_all_time: 0, avg_per_year: 0, by_year: [], current_year_months: [] };
-    try { card = await apiFetch(`/api/payouts/employee/${employeeId}/summary`); } catch (_) { /* мягкий фолбэк: данные необязательны */ }
+    let monthly = { series: [] };
+    try {
+      const [c, m] = await Promise.all([
+        apiFetch(`/api/payouts/employee/${employeeId}/summary`),
+        apiFetch(`/api/payouts/employee/${employeeId}/monthly?year=${state.year}`),
+      ]);
+      card = c; monthly = m;
+    } catch (_) { /* мягкий фолбэк: данные необязательны */ }
 
+    const toPay = Math.round((row.to_pay || 0) * 100) / 100;
     const body = `
       <div class="po-modal">
-        <div class="po-kpi-grid" style="margin-bottom:0">
-          ${kpi('Выплачено за всё время', fmtR(card.total_paid_all_time), false)}
-          ${kpi('Среднее за год', fmtR(card.avg_per_year), false)}
-          ${kpi('К выплате сейчас', fmtR(row.to_pay), true)}
-        </div>
-        <div class="po-chart-box">
-          <div class="po-chart-cap">Выплаты за ${state.year} год</div>
-          <canvas class="po-canvas-emp" height="110"></canvas>
-        </div>
-        <div class="po-years"></div>
-
-        <div class="po-kind-row">
-          <span class="po-kind-label">Что выплачиваем:</span>
-          <div class="po-kind-group">
-            <button type="button" class="btn ghost po-kind" data-kind="advance">Аванс</button>
-            <button type="button" class="btn ghost po-kind" data-kind="salary">Зарплата</button>
+        <div class="po-modal-kpis">
+          <div class="po-mk">
+            <div class="po-mk-label">К выплате сейчас</div>
+            <div class="po-mk-value po-mk-accent">${fmtR(toPay)}</div>
+          </div>
+          <div class="po-mk">
+            <div class="po-mk-label">Заработано (начислено)</div>
+            <div class="po-mk-value">${fmtR(row.accrued)}</div>
+          </div>
+          <div class="po-mk">
+            <div class="po-mk-label">Получено за всё время</div>
+            <div class="po-mk-value">${fmtR(card.total_paid_all_time)}</div>
           </div>
         </div>
 
+        <div class="po-chart-box">
+          <div class="po-chart-head">
+            <div class="po-chart-cap">Начислено и получено за ${state.year}</div>
+            <div class="po-chart-legend">
+              <span class="po-lg"><i class="po-lg-dot po-lg-acc"></i>Начислено</span>
+              <span class="po-lg"><i class="po-lg-dot po-lg-paid"></i>Получено</span>
+            </div>
+          </div>
+          <canvas class="po-canvas-emp"></canvas>
+        </div>
+
+        <div class="po-kind-section">
+          <div class="po-section-title">Что выплачиваем</div>
+          <div class="po-kind-cards">
+            <button type="button" class="po-zcard po-kind" data-kind="advance">
+              <span class="po-zcard-ico">💸</span>
+              <span class="po-zcard-t">Аванс</span>
+              <span class="po-zcard-d">часть заработка досрочно</span>
+            </button>
+            <button type="button" class="po-zcard po-kind" data-kind="salary">
+              <span class="po-zcard-ico">💰</span>
+              <span class="po-zcard-t">Зарплата</span>
+              <span class="po-zcard-d">выплата за месяц</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="po-section-title">Сумма</div>
         <div class="po-form-grid">
           <div>
-            <label class="po-lbl po-amount-label" for="po_amount">Сколько выплачиваем</label>
+            <label class="po-lbl" for="po_amount">Выплачиваем (в счёт начисленного)</label>
             <input class="input po-amount" id="po_amount" type="number" min="0" step="0.01" placeholder="0" inputmode="decimal">
           </div>
           <div class="po-transfer-wrap">
-            <label class="po-lbl" for="po_transfer">Сколько переводим (рабочему на руки)</label>
+            <label class="po-lbl" for="po_transfer">Переводим рабочему (на руки)</label>
             <input class="input po-transfer" id="po_transfer" type="number" min="0" step="0.01" placeholder="0" inputmode="decimal">
           </div>
         </div>
         <div class="po-quick" role="group" aria-label="Быстрый выбор суммы">
-          <button type="button" class="po-chip" data-quick="all" aria-label="Вся сумма к выплате">Всё к выплате</button>
-          <button type="button" class="po-chip" data-quick="half" aria-label="Половина суммы">Половина</button>
-          <button type="button" class="po-chip" data-quick="clear" aria-label="Очистить суммы">Очистить</button>
+          <button type="button" class="po-chip" data-quick="all">Всё к выплате</button>
+          <button type="button" class="po-chip" data-quick="half">Половина</button>
+          <button type="button" class="po-chip" data-quick="clear">Очистить</button>
         </div>
-
         <div class="po-hint" aria-live="polite"></div>
 
         <div class="po-method-block">
-          <div class="po-lbl">Способ выплаты</div>
+          <div class="po-section-title">Способ выплаты</div>
           <div class="po-method"><span class="po-method-icon">${isSe ? '📱' : '💵'}</span><span class="po-method-text"></span></div>
           <div class="po-recipient-wrap">
             <label class="po-lbl" for="po_recipient">Кому идти за деньгами (ФИО)</label>
@@ -403,7 +532,8 @@ window.AsgardPayoutsPage = (function () {
           </div>
         </div>
 
-        <div class="po-preview" aria-live="polite"></div>
+        <div class="po-section-title">Так это увидит рабочий в приложении</div>
+        <div class="po-wa" aria-live="polite"></div>
 
         <div class="po-actions">
           <button type="button" class="btn ghost po-cancel">Отмена</button>
@@ -412,15 +542,14 @@ window.AsgardPayoutsPage = (function () {
       </div>`;
 
     let kind = 'advance';
-    let armedOver = false;        // подтверждение превышения заработка
-    let armedDuplicate = false;   // подтверждение повторной выплаты за период
+    let armedOver = false;
+    let armedDuplicate = false;
 
     const KIND_LABEL = { advance: 'Аванс', salary: 'Зарплата' };
     const methodText = isSe
-      ? 'Перевод через СЗ-сервис (ReStaff и др.) — налог 6% сверху'
-      : 'Выплата наличными (способ определяется автоматически)';
+      ? 'Самозанятый: перевод через СЗ-сервис, налог 6% сверху'
+      : 'Наличными (способ определяется системой)';
 
-    // Контракт showModal: все элементы ищем внутри возвращённого overlay (D-226).
     const overlay = showModal({
       title: 'Выплата — ' + esc(preview.employee.fio || ''),
       html: body,
@@ -433,33 +562,28 @@ window.AsgardPayoutsPage = (function () {
       const q = (sel) => root.querySelector(sel);
       const qa = (sel) => Array.from(root.querySelectorAll(sel));
 
-      drawLine(q('.po-canvas-emp'),
-        (card.current_year_months || []).map((m) => m.paid),
+      drawDualChart(q('.po-canvas-emp'),
+        (monthly.series || []).map((m) => m.accrued || 0),
+        (monthly.series || []).map((m) => m.paid || 0),
         MONTHS.map((x) => x.slice(0, 3)));
-      q('.po-years').textContent = (card.by_year || []).length
-        ? (card.by_year || []).map((y) => `${y.year}: ${fmtR(y.paid)}`).join(' · ')
-        : 'выплат за прошлые годы нет';
       q('.po-method-text').textContent = methodText;
 
       const setKind = (k) => {
         kind = k;
         qa('.po-kind').forEach((b) => b.classList.toggle('active', b.dataset.kind === k));
-        // «Сколько переводим» имеет смысл только для НЕ-СЗ (там возможен возврат в кассу).
         q('.po-transfer-wrap').style.display = isSe ? 'none' : 'block';
-        // «Кому идти за деньгами» — для наличных (не-СЗ).
         q('.po-recipient-wrap').style.display = isSe ? 'none' : 'block';
         recalc(root);
       };
       qa('.po-kind').forEach((b) => { b.onclick = () => setKind(b.dataset.kind); });
       q('.po-amount').oninput = () => recalc(root);
       q('.po-transfer').oninput = () => recalc(root);
-      // Быстрый выбор суммы
       qa('.po-chip').forEach((b) => {
         b.onclick = () => {
           const qy = b.dataset.quick;
           if (qy === 'clear') { q('.po-amount').value = ''; q('.po-transfer').value = ''; }
-          else if (qy === 'all') { q('.po-amount').value = String(Math.max(0, row.to_pay || 0)); q('.po-transfer').value = ''; }
-          else if (qy === 'half') { q('.po-amount').value = String(Math.round((row.to_pay || 0) / 2)); q('.po-transfer').value = ''; }
+          else if (qy === 'all') { q('.po-amount').value = String(Math.max(0, toPay)); q('.po-transfer').value = ''; }
+          else if (qy === 'half') { q('.po-amount').value = String(Math.round(toPay / 2)); q('.po-transfer').value = ''; }
           recalc(root);
         };
       });
@@ -479,29 +603,29 @@ window.AsgardPayoutsPage = (function () {
         const t = parseFloat(root.querySelector('.po-transfer').value);
         transfer = Number.isFinite(t) && t > 0 ? t : pay;
       }
-      const earn = (row.to_pay || 0);
-      const over = pay > earn && pay > 0;
-      const after = Math.round((earn - pay) * 100) / 100;
+      const over = pay > toPay && pay > 0;
+      const after = Math.round((toPay - pay) * 100) / 100;
 
       const hint = root.querySelector('.po-hint');
-      if (over) hint.innerHTML = `<span class="po-warn">Сотрудник заработал ${fmtR(earn)} — выплата больше. Нужно подтверждение.</span>`;
-      else if (pay > 0) hint.innerHTML = `После выплаты останется: <b>${fmtR(Math.max(0, after))}</b>`;
+      if (over) hint.innerHTML = `<span class="po-warn">Рабочий заработал ${fmtR(toPay)} — выплата больше. Потребуется подтверждение.</span>`;
+      else if (pay > 0) hint.innerHTML = `Останется к выплате: <b>${fmtR(Math.max(0, after))}</b>`;
       else hint.innerHTML = '';
 
-      const rows = [];
-      rows.push(`<div class="po-preview-row"><span>Выплачиваем (${KIND_LABEL[kind]})</span><b>${fmtR(pay)}</b></div>`);
-      if (isSe) {
-        rows.push(`<div class="po-preview-row"><span>Налог СЗ (${Math.round(taxRate * 100)}%)</span><b>${fmtR(tax)}</b></div>`);
-        rows.push(`<div class="po-preview-row po-preview-total"><span>К переводу на СЗ-сервис</span><b class="po-ok">${fmtR(transfer)}</b></div>`);
-      } else {
-        rows.push(`<div class="po-preview-row po-preview-total"><span>Переводим рабочему</span><b class="po-ok">${fmtR(transfer)}</b></div>`);
-        if (transfer > pay) {
-          rows.push(`<div class="po-preview-row"><span>Рабочий возвращает в кассу</span><b class="po-warn">${fmtR(transfer - pay)}</b></div>`);
-        }
-      }
-      root.querySelector('.po-preview').innerHTML = rows.join('');
+      // Предпросмотр БАННЕРА РАБОЧЕГО (как в приложении) — по-русски и понятно.
+      root.querySelector('.po-wa').innerHTML = `
+        <div class="po-wa-card">
+          <div class="po-wa-head">💰 Вам произведена выплата ${fmtR(pay)}</div>
+          <div class="po-wa-sec">${KIND_LABEL[kind]} за ${MONTHS[state.month - 1]} ${state.year}</div>
+          <div class="po-wa-row"><span>Выплачиваем</span><b>${fmtR(pay)}</b></div>
+          ${isSe ? `<div class="po-wa-row"><span>Налог СЗ (${Math.round(taxRate * 100)}%)</span><b>${fmtR(tax)}</b></div>` : ''}
+          <div class="po-wa-row po-wa-total"><span>Переведено рабочему</span><b class="po-ok">${fmtR(transfer)}</b></div>
+          ${!isSe && transfer > pay ? `<div class="po-wa-row"><span>Возврат в кассу</span><b class="po-warn">${fmtR(transfer - pay)}</b></div>` : ''}
+          <div class="po-wa-row"><span>Способ</span><b>${esc(methodText)}</b></div>
+          <div class="po-wa-note">Рабочий получит уведомление и подтвердит получение кодом.</div>
+        </div>`;
       return { pay, transfer, over };
     }
+
     async function doPay(root) {
       if (!root) return;
       const doBtn = root.querySelector('.po-do');
@@ -510,14 +634,13 @@ window.AsgardPayoutsPage = (function () {
       if (over && !armedOver) {
         armedOver = true;
         doBtn.classList.add('po-armed');
-        toast('Внимание', 'Сотрудник столько не заработал. Нажмите «Подтвердить» ещё раз', 'warn');
+        toast('Внимание', 'Рабочий столько не заработал. Нажмите «Подтвердить» ещё раз', 'warn');
         return;
       }
       const payload = {
         employee_id: employeeId, year: state.year, month: state.month, kind,
         pay_amount: pay, confirm_over: over || undefined,
         confirm_duplicate: armedDuplicate || undefined,
-        // Способ определяется системой: СЗ → restaff, иначе → cash.
         payout_platform: isSe ? 'restaff' : 'cash',
         payout_recipient_note: (!isSe && root.querySelector('.po-recipient'))
           ? (root.querySelector('.po-recipient').value || null) : null,
@@ -535,7 +658,7 @@ window.AsgardPayoutsPage = (function () {
         if (rc && e.data.error === 'duplicate_payment') {
           armedDuplicate = true;
           doBtn.classList.remove('po-armed');
-          toast('Внимание', e.data.message || 'Выплата за этот период уже была. Нажмите «Подтвердить» ещё раз', 'warn');
+          toast('Внимание', e.data.message || 'Выплата за этот период уже была. Нажмите ещё раз', 'warn');
         } else if (rc) {
           armedOver = true;
           doBtn.classList.add('po-armed');
@@ -549,6 +672,21 @@ window.AsgardPayoutsPage = (function () {
     }
   }
 
+  // ─────────────────────────────────────────────── отмена выплаты
+  async function revertPayout(paymentId) {
+    const ok = await (AsgardUI.confirm
+      ? AsgardUI.confirm('Отменить выплату?', 'Запись о выплате будет удалена, а сотрудник вернётся в список «к выплате». Это действие необратимо.')
+      : Promise.resolve(true));
+    if (!ok) return;
+    try {
+      await apiPost(`/api/payouts/${paymentId}/revert`, {});
+      toast('Готово', 'Выплата отменена — сотрудник возвращён в реестр', 'ok');
+      await ctx.reload();
+    } catch (e) {
+      toast('Ошибка', e.data && e.data.message ? e.data.message : e.message, 'err');
+    }
+  }
+
   // Карточка сотрудника (для архива) + экспорт расчётного листа
   async function openEmployeeCard(employeeId, y, m) {
     let card, hist;
@@ -557,22 +695,37 @@ window.AsgardPayoutsPage = (function () {
       hist = await apiFetch(`/api/payouts/history/${employeeId}`);
     } catch (e) { toast('Ошибка', e.message, 'err'); return; }
     const ops = (hist.operations || []).filter((o) => o.pay_year === y && o.pay_month === m);
+    const STATUS_RU = { paid: 'Выплачено', confirmed: 'Получено (подтв.)', pending: 'Ожидает', cancelled: 'Отменено' };
     const body = `
       <div class="po-kpi-grid" style="margin-bottom:12px">
         ${kpi('За всё время', fmtR(card.total_paid_all_time), false)}
         ${kpi('Среднее за год', fmtR(card.avg_per_year), false)}
       </div>
-      <div style="font-size:12px;color:var(--t2);margin-bottom:6px">Расчётная ведомость ${MONTHS[m - 1]} ${y}</div>
-      <div class="tablewrap"><table class="asg"><thead><tr><th>Тип</th><th style="text-align:right">Сумма</th><th>Способ</th><th>Статус</th></tr></thead>
-      <tbody>${ops.map((o) => `<tr><td>${typeLabel(o.type)}</td><td style="text-align:right">${fmtR(o.amount)}</td>
-        <td>${esc(o.payment_method || '—')}${o.payout_platform ? ' · ' + esc(payoutLabel(o.payout_platform)) : ''}</td>
-        <td>${esc(o.confirmation_status || o.status)}</td></tr>`).join('') || '<tr><td colspan="4">Нет операций</td></tr>'}</tbody></table></div>
+      <div class="po-section-title">Расчётная ведомость · ${MONTHS[m - 1]} ${y}</div>
+      <div class="tablewrap"><table class="asg po-table"><thead><tr>
+        <th class="po-num">№</th><th>Что</th><th style="text-align:right">Сумма</th><th>Способ</th><th>Статус</th></tr></thead>
+      <tbody>${ops.map((o, i) => `<tr>
+        <td class="po-num">${i + 1}</td>
+        <td>${typeLabel(o.type)}</td>
+        <td style="text-align:right">${fmtR(o.amount)}</td>
+        <td>${esc(methodRu(o))}</td>
+        <td>${esc(STATUS_RU[o.confirmation_status] || STATUS_RU[o.status] || o.status)}</td>
+      </tr>`).join('') || '<tr><td colspan="5">Нет операций за этот период</td></tr>'}</tbody></table></div>
       <div style="display:flex;justify-content:flex-end;margin-top:12px">
         <button class="btn ghost po-statement">Скачать расчётный лист (Excel)</button>
       </div>`;
     const overlay = showModal({ title: esc(card.employee?.fio || 'Сотрудник'), html: body, wide: true });
     const sb = overlay ? overlay.querySelector('.po-statement') : null;
     if (sb) sb.onclick = () => downloadFile(`/api/payouts/statement/${employeeId}/${y}/${m}`, `statement-${employeeId}-${y}-${m}.xlsx`);
+  }
+
+  /** Способ выплаты по-русски: способ + площадка. */
+  function methodRu(o) {
+    const base = { cash: 'Наличные', card: 'На карту', transfer: 'Перевод', bank: 'Через банк', self: 'СЗ-сервис', auto: 'Авто-ФОТ' }[o.payment_method] || o.payment_method || '—';
+    if (o.payout_platform && o.payout_platform !== 'cash') {
+      return base + ' · ' + (PLATFORM_LABELS[o.payout_platform] || o.payout_platform);
+    }
+    return base;
   }
 
   async function confirmByManager(paymentId) {

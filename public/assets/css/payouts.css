@@ -1,136 +1,130 @@
 /* ══════════════════════════════════════════════════════════════════════════
    ASGARD CRM — страница выплат (#/payouts)
    Только токены темы (design-tokens.css). Никаких системных/хардкод-цветов.
-   Бейджи статусов — существующие варианты дизайн-системы (.badge.success/
-   .badge.warning/.badge.danger из components.css), своих не плодим.
+   Бейджи — варианты DS (.badge.success/warning/danger).
    ══════════════════════════════════════════════════════════════════════════ */
-
-/* ── Таблица списка ─────────────────────────────────────────────────────── */
-#po_table td, #po_table th { white-space: nowrap; }
-#po_table tbody tr { transition: background .15s ease, opacity .15s ease; }
-#po_table tbody tr:hover { background: var(--bg3); }
-.po-row-done { opacity: .45; }
-.po-row-wait { background: var(--warn-bg); }
-.po-row-bad  { background: var(--err-bg); }
 
 /* ── Шапка страницы ─────────────────────────────────────────────────────── */
 .po-head {
   display: flex; justify-content: space-between; align-items: flex-start;
   flex-wrap: wrap; gap: 10px; margin-bottom: 18px;
 }
-.po-head-title { font-size: 20px; font-weight: 700; color: var(--t1); }
-.po-head-sub { font-size: 13px; color: var(--t2); margin-top: 4px; }
+.po-head-title { font-size: 22px; font-weight: 700; color: var(--t1); letter-spacing: -.01em; }
+.po-head-sub { font-size: 13px; color: var(--t2); margin-top: 5px; }
 .po-head-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+
+/* ── Таблица ────────────────────────────────────────────────────────────── */
+.po-table td, .po-table th { white-space: nowrap; }
+.po-table tbody tr { transition: background .15s ease, opacity .15s ease; }
+.po-table tbody tr:hover { background: var(--bg3); }
+.po-num { width: 42px; text-align: center; color: var(--t3); font-variant-numeric: tabular-nums; }
+.po-row-done { opacity: .45; }
+.po-row-wait { background: var(--warn-bg); }
+.po-row-bad  { background: var(--err-bg); }
+.po-sep td {
+  background: var(--bg2); color: var(--t2); font-size: 11px; font-weight: 600;
+  text-transform: uppercase; letter-spacing: .06em; padding: 8px 12px;
+}
+
+/* Кнопка «Отменить» использует существующий .btn.danger из DS */
+
+/* ── KPI ────────────────────────────────────────────────────────────────── */
+.po-kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; margin-bottom: 18px; }
+.po-kpi { padding: 16px 18px; border-radius: var(--r-md); background: var(--bg2); border: 1px solid var(--brd); }
+.po-kpi--accent { background: var(--ok-bg); border-color: transparent; }
+.po-kpi-label { font-size: 12px; color: var(--t2); opacity: .85; margin-bottom: 6px; }
+.po-kpi-value { font-size: 22px; font-weight: 700; color: var(--t1); font-variant-numeric: tabular-nums; }
+.po-kpi--accent .po-kpi-label, .po-kpi--accent .po-kpi-value { color: var(--ok-t); }
 
 /* ── График ─────────────────────────────────────────────────────────────── */
 .po-chart-box {
   background: var(--bg2);
   border: 1px solid var(--brd);
   border-radius: var(--r-md);
-  padding: 14px;
+  padding: 16px 18px;
   margin-bottom: 18px;
 }
-.po-chart-cap { font-size: 12px; color: var(--t2); margin-bottom: 8px; }
+.po-chart-head { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 10px; }
+.po-chart-cap { font-size: 13px; font-weight: 600; color: var(--t1); }
+.po-chart-legend { display: flex; gap: 16px; }
+.po-lg { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--t2); }
+.po-lg-dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+.po-lg-acc { background: var(--blue-l); }
+.po-lg-paid { background: var(--ok-t); }
 .po-canvas, .po-canvas-emp { width: 100%; display: block; }
 
-/* ── KPI ────────────────────────────────────────────────────────────────── */
-.po-kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; margin-bottom: 18px; }
-.po-kpi { padding: 14px; border-radius: var(--r-md); background: var(--bg2); }
-.po-kpi--accent { background: var(--ok-bg); }
-.po-kpi-label { font-size: 12px; color: var(--t2); opacity: .8; }
-.po-kpi-value { font-size: 20px; font-weight: 700; color: var(--t1); }
-.po-kpi--accent .po-kpi-label, .po-kpi--accent .po-kpi-value { color: var(--ok-t); }
-
 /* ── Модалка выплаты ────────────────────────────────────────────────────── */
-.po-modal { display: flex; flex-direction: column; gap: 12px; }
-.po-modal .po-chart-box { margin-bottom: 0; }
-.po-years { font-size: 12px; color: var(--t2); }
+.po-modal { display: flex; flex-direction: column; gap: 14px; }
+.po-section-title {
+  font-size: 12px; font-weight: 600; color: var(--t3);
+  text-transform: uppercase; letter-spacing: .06em; margin-bottom: 2px;
+}
+.po-modal-kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; }
+.po-mk { padding: 14px 16px; border-radius: var(--r-md); background: var(--bg2); border: 1px solid var(--brd); }
+.po-mk-label { font-size: 11.5px; color: var(--t2); margin-bottom: 5px; }
+.po-mk-value { font-size: 20px; font-weight: 700; color: var(--t1); font-variant-numeric: tabular-nums; }
+.po-mk-accent { color: var(--ok-t); }
 
-/* Тип выплаты */
-.po-kind-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
-.po-kind-label { font-size: 13px; color: var(--t2); }
-.po-kind-group { display: flex; gap: 8px; flex: 1; }
-.po-kind-group .po-kind { flex: 1; }
+/* Карточки выбора типа (Аванс / Зарплата) — явный активный выбор */
+.po-kind-cards { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+@media (max-width: 560px) { .po-kind-cards { grid-template-columns: 1fr; } }
+.po-zcard {
+  display: flex; flex-direction: column; gap: 2px; text-align: left; cursor: pointer;
+  padding: 14px 16px; border-radius: var(--r-md); border: 2px solid var(--brd);
+  background: var(--bg2); transition: .15s; font: inherit;
+}
+.po-zcard:hover { border-color: var(--blue-l); }
+.po-zcard.active {
+  border-color: var(--blue-l); background: var(--blue-bg);
+  box-shadow: var(--blue-glow, 0 0 0 1px var(--blue-l));
+}
+.po-zcard-ico { font-size: 18px; }
+.po-zcard-t { font-size: 15px; font-weight: 700; color: var(--t1); }
+.po-zcard-d { font-size: 12px; color: var(--t2); }
+.po-zcard.active .po-zcard-t { color: var(--blue-l); }
 
-/* Поля формы */
+/* Поля ввода */
 .po-form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 @media (max-width: 560px) { .po-form-grid { grid-template-columns: 1fr; } }
-.po-lbl { font-size: 12px; color: var(--t2); margin-bottom: 6px; }
-.po-hint { font-size: 12px; color: var(--t3); min-height: 16px; }
+.po-lbl { font-size: 12px; color: var(--t2); margin-bottom: 6px; display: block; }
+.po-hint { font-size: 12.5px; color: var(--t3); min-height: 18px; }
 
-/* Быстрый выбор суммы */
 .po-quick { display: flex; gap: 8px; flex-wrap: wrap; }
 .po-chip {
-  border: 1px solid var(--brd);
-  background: var(--bg2);
-  color: var(--t2);
-  border-radius: 999px;
-  padding: 5px 12px;
-  font-size: 12px;
-  cursor: pointer;
-  transition: .15s;
+  border: 1px solid var(--brd); background: var(--bg2); color: var(--t2);
+  border-radius: 999px; padding: 6px 14px; font-size: 12.5px; cursor: pointer; transition: .15s;
 }
-.po-chip:hover { color: var(--t1); border-color: var(--blue); }
+.po-chip:hover { color: var(--t1); border-color: var(--blue-l); }
 
-/* Способ выплаты (определяется системой) */
-.po-method-block {
-  background: var(--bg2);
-  border: 1px solid var(--brd);
-  border-radius: var(--r-md);
-  padding: 12px;
-}
-.po-method { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--t1); }
-.po-method-icon { font-size: 16px; }
-.po-recipient-wrap { margin-top: 10px; }
+/* Способ выплаты */
+.po-method-block { background: var(--bg2); border: 1px solid var(--brd); border-radius: var(--r-md); padding: 14px 16px; }
+.po-method { display: flex; align-items: center; gap: 8px; font-size: 13.5px; color: var(--t1); }
+.po-method-icon { font-size: 17px; }
+.po-recipient-wrap { margin-top: 12px; }
 
-/* Предпросмотр расчётной ведомости */
-.po-preview {
-  background: var(--bg3);
-  border-radius: var(--r-md);
-  padding: 12px 14px;
-  font-size: 13px;
-  color: var(--t2);
+/* Предпросмотр баннера рабочего */
+.po-wa-card {
+  border: 1px solid var(--gold, var(--brd)); border-radius: var(--r-md);
+  background: linear-gradient(160deg, var(--bg2), var(--bg3));
+  padding: 16px; display: flex; flex-direction: column; gap: 6px;
 }
-.po-preview-row { display: flex; justify-content: space-between; gap: 12px; padding: 3px 0; }
-.po-preview-row b { color: var(--t1); }
-.po-preview-total {
-  border-top: 1px solid var(--brd);
-  margin-top: 4px;
-  padding-top: 7px;
-  font-weight: 600;
-}
-.po-preview .po-ok { color: var(--ok-t); }
-.po-preview .po-warn { color: var(--warn-t); }
+.po-wa-head { font-size: 16px; font-weight: 800; color: var(--t1); margin-bottom: 2px; }
+.po-wa-sec { font-size: 12.5px; color: var(--t2); margin-bottom: 6px; }
+.po-wa-row { display: flex; justify-content: space-between; gap: 12px; font-size: 13.5px; color: var(--t2); }
+.po-wa-row b { color: var(--t1); }
+.po-wa-total { border-top: 1px solid var(--brd); margin-top: 4px; padding-top: 8px; font-weight: 600; }
+.po-wa .po-ok { color: var(--ok-t); }
+.po-wa .po-warn { color: var(--warn-t); }
+.po-wa-note { font-size: 11.5px; color: var(--t3); margin-top: 8px; }
 
-.po-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
-  margin-top: 4px;
-}
+.po-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 4px; }
 
-/* Кнопка «Аванс/Зарплата» — активное состояние токенами */
-.po-kind.active {
-  background: var(--blue-bg);
-  color: var(--blue-l);
-  border-color: var(--blue);
-}
-
-/* «Взведённая» кнопка выплаты при превышении заработка */
-.po-do.po-armed {
-  background: var(--warn-bg);
-  color: var(--warn-t);
-  border-color: var(--warn);
-}
+/* «Взведённая» кнопка при превышении заработка */
+.po-do.po-armed { background: var(--warn-bg); color: var(--warn-t); border-color: var(--warn); }
 
 /* ── Архив ──────────────────────────────────────────────────────────────── */
 .po-arch-open {
-  color: var(--blue-l);
-  cursor: pointer;
-  text-decoration: none;
-  background: none;
-  border: none;
-  padding: 0;
-  font: inherit;
+  color: var(--blue-l); cursor: pointer; text-decoration: none;
+  background: none; border: none; padding: 0; font: inherit;
 }
 .po-arch-open:hover { text-decoration: underline; }

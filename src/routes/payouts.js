@@ -620,13 +620,62 @@ async function routes(fastify, options) {
          WHERE COALESCE(pay_year, EXTRACT(YEAR FROM created_at)::int) = $1
            AND status IN ('paid','confirmed')
          GROUP BY 1`, [y]);
+      const { rows: accRows } = await db.query(`
+        SELECT EXTRACT(MONTH FROM date)::int AS month,
+               SUM(COALESCE(amount_earned,0))::numeric AS accrued
+          FROM field_checkins
+         WHERE status = 'completed' AND EXTRACT(YEAR FROM date)::int = $1
+         GROUP BY 1`, [y]);
       const series = Array.from({ length: 12 }, (_, i) => {
-        const f = rows.find((r) => r.month === i + 1);
-        return { month: i + 1, paid: f ? Math.round(parseFloat(f.paid) * 100) / 100 : 0 };
+        const mm = i + 1;
+        const f = rows.find((r) => r.month === mm);
+        const a = accRows.find((r) => r.month === mm);
+        return {
+          month: mm,
+          paid: f ? Math.round(parseFloat(f.paid) * 100) / 100 : 0,
+          accrued: a ? Math.round(parseFloat(a.accrued) * 100) / 100 : 0,
+        };
       });
       return reply.send({ year: y, series });
     } catch (err) {
       logError(fastify, '[payouts] GET /monthly-series error', err, request);
+      return reply.code(500).send({ error: 'Ошибка сервера' });
+    }
+  });
+
+  // ─── GET /employee/:id/monthly — начислено/выплачено по месяцам (модалка) ─
+  fastify.get('/employee/:id/monthly', payoutAuth, async (request, reply) => {
+    const empId = parseInt(request.params.id, 10);
+    const y = parseInt(request.query.year, 10) || new Date().getFullYear();
+    if (!Number.isInteger(empId) || empId <= 0) return reply.code(400).send({ error: 'Некорректный id' });
+    try {
+      const { rows: paidRows } = await db.query(`
+        SELECT COALESCE(pay_month, EXTRACT(MONTH FROM created_at)::int) AS month,
+               SUM(CASE WHEN type IN ('salary','advance','bonus') THEN amount ELSE 0 END)
+             - SUM(CASE WHEN type='penalty' THEN amount ELSE 0 END) AS paid
+          FROM worker_payments
+         WHERE employee_id = $1 AND status IN ('paid','confirmed')
+           AND COALESCE(pay_year, EXTRACT(YEAR FROM created_at)::int) = $2
+         GROUP BY 1`, [empId, y]);
+      const { rows: accRows } = await db.query(`
+        SELECT EXTRACT(MONTH FROM date)::int AS month,
+               SUM(COALESCE(amount_earned,0))::numeric AS accrued
+          FROM field_checkins
+         WHERE employee_id = $1 AND status = 'completed' AND EXTRACT(YEAR FROM date)::int = $2
+         GROUP BY 1`, [empId, y]);
+      const series = Array.from({ length: 12 }, (_, i) => {
+        const mm = i + 1;
+        const pr = paidRows.find((r) => r.month === mm);
+        const ar = accRows.find((r) => r.month === mm);
+        return {
+          month: mm,
+          paid: pr ? Math.round(parseFloat(pr.paid) * 100) / 100 : 0,
+          accrued: ar ? Math.round(parseFloat(ar.accrued) * 100) / 100 : 0,
+        };
+      });
+      return reply.send({ employee_id: empId, year: y, series });
+    } catch (err) {
+      logError(fastify, '[payouts] GET /employee/:id/monthly error', err, request);
       return reply.code(500).send({ error: 'Ошибка сервера' });
     }
   });
@@ -738,6 +787,41 @@ async function routes(fastify, options) {
       logError(fastify, '[payouts] GET /statement error', err, request);
       return reply.code(500).send({ error: 'Ошибка сервера' });
     }
+  });
+
+  // ─── POST /:id/revert — отменить выплату (вернуть рабочего в реестр) ──────
+  // Удаляет запись о выплате и код подтверждения; рабочего возвращает в список
+  // «к выплате». Только для выплат нового флоу (с payout_batch_id), не для
+  // исторических. Пишет audit_log.
+  fastify.post('/:id/revert', payoutAuth, async (request, reply) => {
+    const id = parseInt(request.params.id, 10);
+    if (!Number.isInteger(id) || id <= 0) return reply.code(400).send({ error: 'Некорректный id' });
+    const client = await db.pool.connect();
+    try {
+      await client.query('BEGIN');
+      const { rows: pay } = await client.query(
+        `SELECT id, employee_id, amount, type, payout_batch_id, confirmation_status
+           FROM worker_payments WHERE id = $1 FOR UPDATE`, [id]);
+      if (!pay.length) { await client.query('ROLLBACK'); return reply.code(404).send({ error: 'Выплата не найдена' }); }
+      const p = pay[0];
+      if (!p.payout_batch_id) {
+        await client.query('ROLLBACK');
+        return reply.code(400).send({ error: 'not_revertible', message: 'Эту выплату нельзя отменить (историческая запись)' });
+      }
+      await client.query('DELETE FROM payout_confirmation_codes WHERE payment_id = $1', [id]);
+      await client.query('DELETE FROM notifications WHERE type = $1 AND link LIKE $2', ['payment_received', '%field/earnings%']);
+      await client.query('DELETE FROM worker_payments WHERE id = $1', [id]);
+      await client.query(`
+        INSERT INTO audit_log (actor_user_id, entity_type, entity_id, action, payload_json, created_at)
+        VALUES ($1, 'worker_payments', $2, 'payout_reverted', $3::jsonb, NOW())
+      `, [request.user.id, id, JSON.stringify({ employee_id: p.employee_id, amount: p.amount, type: p.type, confirmation_status: p.confirmation_status })]);
+      await client.query('COMMIT');
+      return reply.send({ ok: true, reverted: id, employee_id: p.employee_id });
+    } catch (err) {
+      try { await client.query('ROLLBACK'); } catch (_) {}
+      logError(fastify, '[payouts] POST /revert error', err, request);
+      return reply.code(500).send({ error: 'Ошибка сервера' });
+    } finally { client.release(); }
   });
 
   // ─── GET /access — список грантов (для админ-UI, только базовая роль) ─────
