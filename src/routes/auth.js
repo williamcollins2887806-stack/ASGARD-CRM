@@ -23,6 +23,12 @@ async function routes(fastify, options) {
     let timesheetGlobalGrant = false;
     try { timesheetGlobalGrant = await isGlobalViewerGranted(db, { id: userId }); } catch (_) {}
 
+    // Персональный грант страницы выплат (#/payouts): синтетический модуль-пермишен,
+    // роль не меняется (по образцу timesheet_global).
+    const { hasPayoutAccess } = require('../lib/payouts-access');
+    let payoutsGrant = false;
+    try { payoutsGrant = await hasPayoutAccess(db, { id: userId, role }); } catch (_) {}
+
     // ADMIN получает всё
     if (role === 'ADMIN') {
       const { rows: mods } = await db.query('SELECT key as module_key FROM modules WHERE is_active = true');
@@ -42,6 +48,9 @@ async function routes(fastify, options) {
       }
       if (timesheetGlobalGrant && !permissions.timesheet_global) {
         permissions.timesheet_global = { read: true, write: false, delete: false };
+      }
+      if (payoutsGrant && !permissions.payouts) {
+        permissions.payouts = { read: true, write: true, delete: false };
       }
       return permissions;
     }
@@ -71,6 +80,9 @@ async function routes(fastify, options) {
 
     if (timesheetGlobalGrant && !permissions.timesheet_global) {
       permissions.timesheet_global = { read: true, write: false, delete: false };
+    }
+    if (payoutsGrant && !permissions.payouts) {
+      permissions.payouts = { read: true, write: true, delete: false };
     }
 
     return permissions;

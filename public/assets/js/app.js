@@ -2376,7 +2376,7 @@ var _setupPinKeypad = null;
     // Старые URL — редиректы
     AsgardRouter.add("/global-timesheet", ()=>{ location.hash = '#/timesheet'; }, {auth:true, roles:ALL_ROLES});
     AsgardRouter.add("/payroll-dashboard", ()=>AsgardPayrollDashboard.render({layout, title:"Финансы персонала"}), {auth:true, roles:["ADMIN","BUH",...DIRECTOR_ROLES]});
-    AsgardRouter.add("/payouts", ()=>AsgardPayoutsPage.render({layout, title:"Выплаты"}), {auth:true, roles:["ADMIN","BUH",...DIRECTOR_ROLES]});
+    AsgardRouter.add("/payouts", ()=>AsgardPayoutsPage.render({layout, title:"Выплаты"}), {auth:true, roles:["ADMIN","BUH",...DIRECTOR_ROLES], perm:"payouts"});
     AsgardRouter.add("/official-employees", ()=>AsgardOfficialEmployeesPage.render({layout, title:"Официально устроенные"}), {auth:true, roles:["ADMIN","BUH",...DIRECTOR_ROLES]});
     AsgardRouter.add("/training-board", ()=>AsgardTrainingBoard.render({layout, title:"Обучение и допуски"}), {auth:true, roles:["ADMIN","TO","HEAD_TO",...DIRECTOR_ROLES]});
     AsgardRouter.add("/pm-balance", ()=>AsgardPmBalancePage.render({layout, title:"Баланс подотчётников"}), {auth:true, roles:["ADMIN","BUH",...DIRECTOR_ROLES]});

@@ -6,28 +6,32 @@
  *     оклад / к выплате, кнопки «Выплатить» и «Подтвердить за рабочего»;
  *   • выплаченные уходят вниз серым, ожидающие подтверждения — жёлтые,
  *     просроченные 72ч — красные; бейдж «переплата»;
- *   • мини-дашборд сезона и график по месяцам;
- *   • модалка: карточка сотрудника (выплаты за всё время, среднее по годам,
- *     график текущего года) + форма «Аванс/Зарплата» с налогом СЗ;
- *   • архив: год → месяц → расчётные ведомости.
+ *   • мини-дашборд сезона (KPI) и график по месяцам (canvas);
+ *   • модалка: карточка сотрудника + форма «Аванс/Зарплата» с налогом СЗ;
+ *   • архив: год → месяц → расчётные ведомости; экспорт Excel.
  *
- * Только дизайн-система CRM (токены темы), без системных цветов и сторонних
- * библиотек. Графики — canvas по токенам.
+ * Только дизайн-система CRM (токены темы + классы DS), без системных цветов
+ * и сторонних библиотек.
  */
 window.AsgardPayoutsPage = (function () {
   'use strict';
-  const { $, $$, esc, toast, showModal, hideModal } = AsgardUI;
+  const { $, esc, toast, showModal, hideModal, money } = AsgardUI;
 
-  const fmt = (n) => (n == null ? '—' : new Intl.NumberFormat('ru-RU').format(Math.round(n)));
-  const fmtR = (n) => fmt(n) + ' ₽';
+  // Форматтеры — на базе DS (money), копейки сохраняются в toString.
+  const fmt = (n) => (n == null ? '—' : money(n));
+  const fmtR = (n) => (n == null ? '—' : money(n) + ' ₽');
   const MONTHS = ['январь', 'февраль', 'март', 'апрель', 'май', 'июнь',
     'июль', 'август', 'сентябрь', 'октябрь', 'ноябрь', 'декабрь'];
   const PLATFORM_LABELS = {
     restaff: 'СЗ-сервис (ReStaff)', card: 'Перевод с карты',
     bank: 'Бухгалтерия через банк', cash: 'Наличные', other: 'Иное',
   };
+  const TYPE_LABELS = { salary: 'ЗП', advance: 'Аванс', bonus: 'Премия', penalty: 'Штраф', per_diem: 'Суточные' };
+  const typeLabel = (t) => TYPE_LABELS[t] || t;
+  const payoutLabel = (p) => PLATFORM_LABELS[p] || p;
 
-  let ctx = null; // { token, user, layout }
+  // Состояние активного рендера (одна страница = один контекст).
+  let ctx = null; // { token, user, state, reload }
 
   async function apiFetch(url) {
     const r = await fetch(url, { headers: { Authorization: 'Bearer ' + ctx.token } });
@@ -44,7 +48,11 @@ window.AsgardPayoutsPage = (function () {
       body: JSON.stringify(body || {}),
     });
     const data = await r.json().catch(() => ({}));
-    if (!r.ok) { const err = new Error(data.message || data.error || ('HTTP ' + r.status)); err.data = data; throw err; }
+    if (!r.ok) {
+      const err = new Error(data.message || data.error || ('HTTP ' + r.status));
+      err.data = data;
+      throw err;
+    }
     return data;
   }
 
@@ -66,14 +74,14 @@ window.AsgardPayoutsPage = (function () {
   async function render({ layout, title }) {
     const auth = await AsgardAuth.requireUser();
     if (!auth) { location.hash = '#/login'; return; }
-    ctx = { token: auth.token, user: auth.user, layout };
+    ctx = { token: auth.token, user: auth.user };
 
     // Доступ: базовые роли ИЛИ персональный грант (проверяем на бэке)
     let allowed = ['ADMIN', 'BUH', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV'].includes(auth.user.role);
     try {
       const me = await apiFetch('/api/payouts/me');
       allowed = !!me.allowed;
-    } catch (_) {}
+    } catch (_) { /* сеть/авторизация — решаем по роли */ }
     if (!allowed) {
       toast('Доступ', 'Страница выплат недоступна', 'err');
       location.hash = '#/home';
@@ -86,16 +94,16 @@ window.AsgardPayoutsPage = (function () {
       month: now.getMonth() + 1,
       view: 'list',        // list | archive
       archiveYear: now.getFullYear(),
-      data: null,
     };
+    ctx.state = state;
 
     await layout(`
       <div class="panel">
         <div class="row" style="justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:16px">
           <div style="display:flex;align-items:center;gap:8px">
-            <button class="btn ghost" id="po_prev">‹</button>
+            <button class="btn ghost" id="po_prev" aria-label="Предыдущий месяц" title="Предыдущий месяц">‹</button>
             <span id="po_period" style="font-size:16px;font-weight:600;color:var(--t1);min-width:170px;text-align:center"></span>
-            <button class="btn ghost" id="po_next">›</button>
+            <button class="btn ghost" id="po_next" aria-label="Следующий месяц" title="Следующий месяц">›</button>
             <span id="po_ready" style="margin-left:8px"></span>
           </div>
           <div style="display:flex;gap:8px">
@@ -104,31 +112,33 @@ window.AsgardPayoutsPage = (function () {
             <button class="btn ghost" id="po_tab_archive">Архив</button>
           </div>
         </div>
-        <div id="po_kpi" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-bottom:18px"></div>
+        <div id="po_kpi" class="po-kpi-grid" aria-live="polite"></div>
         <div id="po_chart" style="margin-bottom:18px"></div>
         <div id="po_body"></div>
       </div>
     `, { title: title || 'Выплаты' });
 
-    $('#po_prev').onclick = () => { shiftMonth(-1); };
-    $('#po_next').onclick = () => { shiftMonth(1); };
+    $('#po_prev').onclick = () => shiftMonth(-1);
+    $('#po_next').onclick = () => shiftMonth(1);
     $('#po_tab_list').onclick = () => { state.view = 'list'; load(); };
     $('#po_tab_archive').onclick = () => { state.view = 'archive'; load(); };
     $('#po_export').onclick = () => downloadFile(`/api/payouts/export/${state.year}/${state.month}`, `payouts-${state.year}-${state.month}.xlsx`);
 
-    async function shiftMonth(delta) {
+    function shiftMonth(delta) {
       let m = state.month + delta, y = state.year;
       if (m < 1) { m = 12; y--; }
       if (m > 12) { m = 1; y++; }
       state.month = m; state.year = y;
-      await load();
+      load();
     }
 
+    // load() живёт в области видимости render() и доступна модалке через ctx.reload.
     async function load() {
       $('#po_period').textContent = MONTHS[state.month - 1] + ' ' + state.year;
       if (state.view === 'list') await loadList(state);
       else await loadArchive(state);
     }
+    ctx.reload = load;
 
     await load();
     return () => {};
@@ -137,87 +147,84 @@ window.AsgardPayoutsPage = (function () {
   // ─────────────────────────────────────────────────────── список
   async function loadList(state) {
     const body = $('#po_body');
-    body.innerHTML = '<div class="empty">Загрузка…</div>';
+    body.innerHTML = '<div class="empty-state">Загрузка…</div>';
     let data;
     try {
       data = await apiFetch(`/api/payouts/list/${state.year}/${state.month}`);
     } catch (e) {
-      body.innerHTML = `<div class="empty">Ошибка: ${esc(e.message)}</div>`;
+      body.innerHTML = `<div class="empty-state">Ошибка: ${esc(e.message)}</div>`;
       return;
     }
-    state.data = data;
 
-    // KPI + график сезона
     renderKpi(data);
     renderChart(state);
 
-    // Готовность периода (мягкое предупреждение)
+    // Готовность периода (мягкое предупреждение, не блокирует)
     const ready = $('#po_ready');
     if (data.ready_to_pay) {
-      ready.innerHTML = '<span class="badge" style="background:var(--ok-bg);color:var(--ok-t)">Табель закрыт — можно платить</span>';
+      ready.innerHTML = '<span class="badge success">Табель закрыт — можно платить</span>';
     } else {
       const msgs = (data.warnings || []).filter((w) => w.level === 'warn').map((w) => w.message).join('; ');
-      ready.innerHTML = `<span class="badge" style="background:var(--warn-bg);color:var(--warn-t)">Внимание: ${esc(msgs || 'есть незакрытые данные')}</span>`;
+      ready.innerHTML = `<span class="badge warning">Внимание: ${esc(msgs || 'есть незакрытые данные')}</span>`;
     }
 
     const rows = data.rows || [];
-    const payable = rows.filter((r) => r.to_pay > 0);
-    const paidDown = rows.filter((r) => r.paid_this_period);
-
-    // Раздел «К выплате» + «Выплаченные» (серые)
     let html = '';
     if (!rows.length) {
-      html = '<div class="empty">Нет сотрудников к выплате за этот месяц</div>';
+      html = '<div class="empty-state">Нет сотрудников к выплате за этот месяц</div>';
     } else {
-      html += `<div class="tablewrap"><table class="asg" id="po_table">
+      html = `<div class="tablewrap"><table class="asg" id="po_table">
         <thead><tr>
           <th>ФИО</th><th style="text-align:right">Остаток</th>
           <th style="text-align:right">Начислено</th><th style="text-align:right">Аванс</th>
           <th style="text-align:right">Удержание</th><th style="text-align:right">Оклад</th>
           <th style="text-align:right">К выплате</th><th></th>
         </tr></thead><tbody id="po_rows"></tbody></table></div>`;
-    }
-    body.innerHTML = html;
+      body.innerHTML = html;
 
-    if (rows.length) {
       const tbody = $('#po_rows');
-      ctx._rows = rows;
-      // активные — сверху (to_pay>0), потом нулевые, потом выплаченные (серые)
-      const rest = rows.slice();
-      const active = rest.filter((r) => r.to_pay > 0 && !r.paid_this_period);
-      const zero = rest.filter((r) => r.to_pay <= 0 && !r.paid_this_period);
-      const done = rest.filter((r) => r.paid_this_period);
-      const order = [...active, ...zero, ...done];
-      tbody.innerHTML = order.map((r) => rowHtml(r, done.includes(r))).join('');
-      // кнопки
-      $$('#po_rows .po-pay').forEach((b) => {
-        b.onclick = () => openPayModal(parseInt(b.dataset.id, 10), null, state);
+      const active = rows.filter((r) => r.to_pay > 0 && !r.paid_this_period);
+      const zero = rows.filter((r) => r.to_pay <= 0 && !r.paid_this_period);
+      const done = rows.filter((r) => r.paid_this_period);
+      tbody.innerHTML = [...active, ...zero, ...done].map(rowHtml).join('');
+
+      // Кнопки — внутри таблицы (контейнер), не по document.
+      const root = $('#po_body');
+      Array.from(root.querySelectorAll('.po-pay')).forEach((b) => {
+        b.onclick = () => openPayModal(parseInt(b.dataset.id, 10));
       });
-      $$('#po_rows .po-confirm').forEach((b) => {
-        b.onclick = () => confirmByManager(parseInt(b.dataset.pid, 10), state);
+      Array.from(root.querySelectorAll('.po-confirm')).forEach((b) => {
+        b.onclick = () => confirmByManager(parseInt(b.dataset.pid, 10));
       });
     }
+    if (!rows.length) body.innerHTML = html;
   }
 
-  function rowHtml(r, isDone) {
-    const dim = isDone ? 'opacity:.45;pointer-events:auto;' : '';
-    const flag = r.paid_this_period
-      ? (r.confirm === 'disputed' ? 'background:var(--err-bg);'
-        : (r.confirm === 'confirmed' || r.confirm == null ? '' : (r.overdue ? 'background:var(--err-bg);' : 'background:var(--warn-bg);')))
-      : (r.warning ? 'background:var(--warn-bg);' : '');
-    const over = r.overpaid ? ' <span class="badge" style="background:var(--err-bg);color:var(--err-t)">переплата</span>' : '';
+  function rowHtml(r) {
+    const isDone = !!r.paid_this_period;
+    let cls = '';
+    let flag = '';
+    if (isDone) {
+      cls = 'po-row-done';
+      if (r.confirm === 'disputed') flag = 'po-row-bad';
+      else if (r.confirm != null && r.confirm !== 'confirmed') flag = r.overdue ? 'po-row-bad' : 'po-row-wait';
+    } else if (r.warning) {
+      flag = 'po-row-wait';
+    }
+    const over = r.overpaid ? ' <span class="badge danger">переплата</span>' : '';
     // Бейдж подтверждения — только для выплат нового флоу (confirmation_status задан).
-    const confirmBadge = r.paid_this_period && r.confirm != null && r.confirm !== 'confirmed'
-      ? (r.confirm === 'disputed'
-        ? '<span class="badge" style="background:var(--err-bg);color:var(--err-t)">спор</span>'
-        : (r.overdue
-          ? '<span class="badge" style="background:var(--err-bg);color:var(--err-t)">не подтвердил</span>'
-          : '<span class="badge" style="background:var(--warn-bg);color:var(--warn-t)">ждёт подтверждения</span>'))
-      : '';
-    const btn = r.paid_this_period
-      ? `<button class="btn ghost po-confirm" data-pid="${r.payment_id}" title="Подтвердить за рабочего">Подтвердить за рабочего</button>`
-      : `<button class="btn primary po-pay" data-id="${r.employee_id}">Выплатить</button>`;
-    return `<tr style="${dim}${flag}">
+    let confirmBadge = '';
+    if (isDone && r.confirm != null && r.confirm !== 'confirmed') {
+      if (r.confirm === 'disputed') confirmBadge = '<span class="badge danger">спор</span>';
+      else if (r.overdue) confirmBadge = '<span class="badge danger">не подтвердил</span>';
+      else confirmBadge = '<span class="badge warning">ждёт подтверждения</span>';
+    }
+    // «Подтвердить за рабочего» — только для ещё не подтверждённых (awaiting).
+    const canConfirm = isDone && r.confirm !== 'confirmed';
+    const btn = canConfirm
+      ? `<button class="btn ghost po-confirm" data-pid="${r.payment_id}">Подтвердить за рабочего</button>`
+      : (isDone ? '' : `<button class="btn primary po-pay" data-id="${r.employee_id}">Выплатить</button>`);
+    return `<tr class="${cls} ${flag}">
       <td>${esc(r.fio)}${over} ${confirmBadge}</td>
       <td style="text-align:right">${fmt(r.carry)}</td>
       <td style="text-align:right">${fmt(r.accrued)}</td>
@@ -231,17 +238,17 @@ window.AsgardPayoutsPage = (function () {
 
   function renderKpi(data) {
     const t = data.totals || {};
-    $('#po_kpi').innerHTML = `
-      ${kpi('К выплате за месяц', fmtR(t.to_pay), 'var(--ok-bg)', 'var(--ok-t)')}
-      ${kpi('Начислено', fmtR(t.accrued), 'var(--bg2)', 'var(--t1)')}
-      ${kpi('Остаток с прошлых', fmtR(t.carry), 'var(--bg2)', 'var(--t2)')}
-      ${kpi('Сотрудников', fmt(t.employees), 'var(--bg2)', 'var(--t2)')}
-    `;
+    $('#po_kpi').innerHTML = [
+      kpi('К выплате за месяц', fmtR(t.to_pay), true),
+      kpi('Начислено', fmtR(t.accrued), false),
+      kpi('Остаток с прошлых', fmtR(t.carry), false),
+      kpi('Сотрудников', fmt(t.employees), false),
+    ].join('');
   }
-  function kpi(label, val, bg, color) {
-    return `<div style="padding:14px;background:${bg};border-radius:var(--r-md)">
-      <div style="font-size:12px;color:${color};opacity:.8">${label}</div>
-      <div style="font-size:20px;font-weight:700;color:${color}">${val}</div></div>`;
+  function kpi(label, val, accent) {
+    return `<div class="po-kpi${accent ? ' po-kpi--accent' : ''}">
+      <div class="po-kpi-label">${label}</div>
+      <div class="po-kpi-value">${val}</div></div>`;
   }
 
   // ─────────────────────────────────────────── график по месяцам (canvas)
@@ -251,12 +258,12 @@ window.AsgardPayoutsPage = (function () {
     host.innerHTML = `<div class="po-chart-box">
       <div class="po-chart-cap">Выплаты по месяцам ${state.year} года</div>
       <canvas class="po-canvas" height="120"></canvas></div>`;
-    let series_ = new Array(12).fill(0);
+    let series_;
     try {
       const series = (await apiFetch(`/api/payouts/monthly-series/${state.year}`)).series || [];
       series_ = series.map((s) => s.paid);
     } catch (_) { series_ = new Array(12).fill(0); }
-    drawLine($('.po-canvas'), series_, MONTHS.map((x) => x.slice(0, 3)));
+    drawLine(host.querySelector('.po-canvas'), series_, MONTHS.map((x) => x.slice(0, 3)));
   }
 
   function drawLine(canvas, values, labels) {
@@ -272,18 +279,17 @@ window.AsgardPayoutsPage = (function () {
     const w = canvas.clientWidth || 600, h = 120;
     canvas.width = w * dpr; canvas.height = h * dpr;
     const g = canvas.getContext('2d');
+    if (!g) return;
     g.scale(dpr, dpr);
     g.clearRect(0, 0, w, h);
     const max = Math.max(1, ...values);
     const pad = 22, stepX = (w - pad * 2) / Math.max(1, values.length - 1);
-    // линия
     g.strokeStyle = cAccent; g.lineWidth = 2; g.beginPath();
     values.forEach((v, i) => {
       const x = pad + i * stepX, y = (h - pad) - (v / max) * (h - pad * 2);
       i ? g.lineTo(x, y) : g.moveTo(x, y);
     });
     g.stroke();
-    // точки + подписи
     g.fillStyle = cAccent;
     values.forEach((v, i) => {
       const x = pad + i * stepX, y = (h - pad) - (v / max) * (h - pad * 2);
@@ -297,50 +303,51 @@ window.AsgardPayoutsPage = (function () {
   // ─────────────────────────────────────────────────── архив
   async function loadArchive(state) {
     const body = $('#po_body');
-    body.innerHTML = '<div class="empty">Загрузка…</div>';
+    body.innerHTML = '<div class="empty-state">Загрузка…</div>';
     let years = [];
-    try { years = (await apiFetch('/api/payouts/archive/years')).years || []; } catch (_) {}
+    try { years = (await apiFetch('/api/payouts/archive/years')).years || []; } catch (_) { /* мягкий фолбэк: данные необязательны */ }
     if (!years.length) years = [new Date().getFullYear()];
 
     body.innerHTML = `
       <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:14px">
-        <label style="color:var(--t2)">Год:</label>
+        <label for="po_ay" style="color:var(--t2)">Год:</label>
         <select id="po_ay" class="input" style="max-width:120px">${years.map((y) => `<option ${y === state.archiveYear ? 'selected' : ''}>${y}</option>`).join('')}</select>
-        <label style="color:var(--t2)">Месяц:</label>
+        <label for="po_am" style="color:var(--t2)">Месяц:</label>
         <select id="po_am" class="input" style="max-width:160px">${MONTHS.map((m, i) => `<option value="${i + 1}" ${i + 1 === state.month ? 'selected' : ''}>${m}</option>`).join('')}</select>
       </div>
-      <div id="po_arch_body"><div class="empty">Выберите период</div></div>`;
+      <div id="po_arch_body"><div class="empty-state">Выберите период</div></div>`;
 
+    const hostRoot = body;
     async function loadArchMonth() {
-      const y = parseInt($('#po_ay').value, 10), m = parseInt($('#po_am').value, 10);
-      const host = $('#po_arch_body');
-      host.innerHTML = '<div class="empty">Загрузка…</div>';
+      const y = parseInt(hostRoot.querySelector('#po_ay').value, 10);
+      const m = parseInt(hostRoot.querySelector('#po_am').value, 10);
+      const host = hostRoot.querySelector('#po_arch_body');
+      host.innerHTML = '<div class="empty-state">Загрузка…</div>';
       try {
         const d = await apiFetch(`/api/payouts/archive/${y}/${m}`);
-        if (!d.rows || !d.rows.length) { host.innerHTML = '<div class="empty">Нет выплат за этот период</div>'; return; }
+        if (!d.rows || !d.rows.length) { host.innerHTML = '<div class="empty-state">Нет выплат за этот период</div>'; return; }
         host.innerHTML = `<div class="tablewrap"><table class="asg"><thead><tr>
           <th>ФИО</th><th style="text-align:right">Выплачено</th><th>По типам</th></tr></thead>
           <tbody>${d.rows.map((r) => `<tr>
-            <td><a href="javascript:void(0)" class="po-arch-open" data-id="${r.employee_id}">${esc(r.fio)}</a></td>
+            <td><button type="button" class="po-arch-open" data-id="${r.employee_id}">${esc(r.fio)}</button></td>
             <td style="text-align:right">${fmtR(r.total)}</td>
             <td style="color:var(--t2);font-size:12px">${Object.entries(r.by_type || {}).map(([k, v]) => `${typeLabel(k)}: ${fmt(v)}`).join(' · ')}</td>
           </tr>`).join('')}</tbody></table></div>`;
-        $$('.po-arch-open').forEach((a) => { a.onclick = () => openEmployeeCard(parseInt(a.dataset.id, 10), y, m); });
+        Array.from(host.querySelectorAll('.po-arch-open')).forEach((a) => {
+          a.onclick = () => openEmployeeCard(parseInt(a.dataset.id, 10), y, m);
+        });
       } catch (e) {
-        host.innerHTML = `<div class="empty">Ошибка: ${esc(e.message)}</div>`;
+        host.innerHTML = `<div class="empty-state">Ошибка: ${esc(e.message)}</div>`;
       }
     }
-    $('#po_ay').onchange = loadArchMonth;
-    $('#po_am').onchange = loadArchMonth;
+    hostRoot.querySelector('#po_ay').onchange = loadArchMonth;
+    hostRoot.querySelector('#po_am').onchange = loadArchMonth;
     await loadArchMonth();
   }
 
-  function typeLabel(t) {
-    return { salary: 'ЗП', advance: 'Аванс', bonus: 'Премия', penalty: 'Штраф', per_diem: 'Суточные' }[t] || t;
-  }
-
   // ─────────────────────────────────────────────────── модалка выплаты
-  async function openPayModal(employeeId, _unused, state) {
+  async function openPayModal(employeeId) {
+    const state = ctx.state;
     let preview;
     try {
       preview = await apiFetch(`/api/payouts/preview/${employeeId}?year=${state.year}&month=${state.month}`);
@@ -350,18 +357,18 @@ window.AsgardPayoutsPage = (function () {
     const taxRate = preview.tax_rate || 0.06;
 
     let card = { total_paid_all_time: 0, avg_per_year: 0, by_year: [], current_year_months: [] };
-    try { card = await apiFetch(`/api/payouts/employee/${employeeId}/summary`); } catch (_) {}
+    try { card = await apiFetch(`/api/payouts/employee/${employeeId}/summary`); } catch (_) { /* мягкий фолбэк: данные необязательны */ }
 
     const body = `
       <div class="po-modal">
-        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-bottom:14px">
-          ${kpi('Выплачено за всё время', fmtR(card.total_paid_all_time), 'var(--bg2)', 'var(--t1)')}
-          ${kpi('Среднее за год', fmtR(card.avg_per_year), 'var(--bg2)', 'var(--t2)')}
-          ${kpi('К выплате сейчас', fmtR(row.to_pay), 'var(--ok-bg)', 'var(--ok-t)')}
+        <div class="po-kpi-grid" style="margin-bottom:0">
+          ${kpi('Выплачено за всё время', fmtR(card.total_paid_all_time), false)}
+          ${kpi('Среднее за год', fmtR(card.avg_per_year), false)}
+          ${kpi('К выплате сейчас', fmtR(row.to_pay), true)}
         </div>
         <div class="po-chart-box">
           <div class="po-chart-cap">Выплаты за ${state.year} год</div>
-          <canvas class="po-canvas-emp"></canvas>
+          <canvas class="po-canvas-emp" height="110"></canvas>
         </div>
         <div class="po-years"></div>
         <div style="display:flex;gap:8px;margin-bottom:12px">
@@ -369,105 +376,113 @@ window.AsgardPayoutsPage = (function () {
           <button class="btn ghost po-kind" data-kind="salary" style="flex:1">Зарплата</button>
         </div>
         <div class="po-form-grid">
-          <div><div class="po-lbl">Сколько выплачиваем</div>
-            <input class="input po-amount" type="number" min="0" step="0.01" placeholder="0"></div>
-          <div class="po-transfer-wrap"><div class="po-lbl po-transfer-lbl">Сколько переводим</div>
-            <input class="input po-transfer" type="number" min="0" step="0.01" placeholder="0"></div>
+          <div>
+            <label class="po-lbl" for="po_amount">Сколько выплачиваем</label>
+            <input class="input po-amount" id="po_amount" type="number" min="0" step="0.01" placeholder="0" aria-label="Сколько выплачиваем">
+          </div>
+          <div class="po-transfer-wrap">
+            <label class="po-lbl" for="po_transfer">Сколько переводим</label>
+            <input class="input po-transfer" id="po_transfer" type="number" min="0" step="0.01" placeholder="0" aria-label="Сколько переводим">
+          </div>
         </div>
-        <div class="po-hint"></div>
+        <div class="po-hint" aria-live="polite"></div>
         <div class="po-platforms"></div>
-        <div class="po-preview"></div>
-        <div class="po-actions">
+        <div class="po-preview" aria-live="polite"></div>        <div class="po-actions">
           <button class="btn ghost po-cancel">Назад</button>
           <button class="btn primary po-do">Подтвердить и выплатить</button>
         </div>
       </div>`;
 
     let kind = 'advance';
-    let confirmingOver = false;
+    let armedOver = false;        // подтверждение превышения заработка
+    let armedDuplicate = false;   // подтверждение повторной выплаты за период
 
-    showModal({
+    // Контракт showModal: все элементы ищем внутри возвращённого overlay (D-226).
+    const overlay = showModal({
       title: 'Выплата — ' + esc(preview.employee.fio || ''),
       html: body,
       wide: true,
       icon: '💰',
-      onMount: ({ modal, body: mbody }) => mount(modal, mbody),
+      onMount: () => mount(overlay),
     });
 
-    const q = (root, sel) => root.querySelector(sel);
-    const qa = (root, sel) => Array.from(root.querySelectorAll(sel));
+    function mount(root) {
+      const q = (sel) => root.querySelector(sel);
+      const qa = (sel) => Array.from(root.querySelectorAll(sel));
 
-    function mount(modal, mbody) {
-      if (!modal || !mbody) modal = document;
-      const el = (sel) => qa(document, '.po-modal').slice(-1)[0].querySelector(sel);
-      const root = qa(document, '.po-modal').slice(-1)[0];
-
-      drawLine(q(root, '.po-canvas-emp'),
+      drawLine(q('.po-canvas-emp'),
         (card.current_year_months || []).map((m) => m.paid),
         MONTHS.map((x) => x.slice(0, 3)));
-      q(root, '.po-years').textContent = (card.by_year || []).map((y) => `${y.year}: ${fmtR(y.paid)}`).join(' · ') || 'за текущий год выплат ещё нет';
+      q('.po-years').textContent = (card.by_year || []).map((y) => `${y.year}: ${fmtR(y.paid)}`).join(' · ') || 'за текущий год выплат ещё нет';
 
       const setKind = (k) => {
         kind = k;
-        qa(root, '.po-kind').forEach((b) => { b.classList.toggle('active', b.dataset.kind === k); });
-        q(root, '.po-transfer-wrap').style.display = isSe ? 'none' : 'block';
+        qa('.po-kind').forEach((b) => b.classList.toggle('active', b.dataset.kind === k));
+        q('.po-transfer-wrap').style.display = isSe ? 'none' : 'block';
         recalc();
       };
-      qa(root, '.po-kind').forEach((b) => { b.onclick = () => setKind(b.dataset.kind); });
-      q(root, '.po-amount').oninput = recalc;
-      q(root, '.po-transfer').oninput = recalc;
+      qa('.po-kind').forEach((b) => { b.onclick = () => setKind(b.dataset.kind); });
+      q('.po-amount').oninput = recalc;
+      q('.po-transfer').oninput = recalc;
       renderPlatforms(root);
+      q('.po-cancel').onclick = () => hideModal();
+      q('.po-do').onclick = doPay;
       setKind('advance');
-
-      q(root, '.po-cancel').onclick = () => hideModal();
-      const doBtn = q(root, '.po-do');
-      doBtn.onclick = doPay;
     }
 
     function renderPlatforms(root) {
-      const opts = isSe ? ['restaff', 'other'] : ['cash', 'card', 'bank'];
-      q(root, '.po-platforms').innerHTML = `
-        <div class="po-lbl">Площадка / способ выплаты</div>
-        <select class="input po-platform">${opts.map((o) => `<option value="${o}">${PLATFORM_LABELS[o]}</option>`).join('')}</select>
-        <div class="po-lbl" style="margin-top:8px">Кому идти за деньгами (ФИО)</div>
-        <input class="input po-recipient" placeholder="например: Путков Д. / РП">`;
+      // Способ выплаты система определяет сама по типу сотрудника:
+      //   самозанятый → СЗ-сервис (ReStaff и т.п.); иначе → наличные.
+      // Дима выбирает только сумму; способ показываем справочно.
+      const methodNote = isSe
+        ? 'Самозанятый — перевод через СЗ-сервис'
+        : 'Не самозанятый — выплата наличными';
+      root.querySelector('.po-platforms').innerHTML = `
+        <div class="po-lbl">Способ выплаты</div>
+        <div class="po-method" aria-live="polite">${esc(methodNote)}</div>
+        ${isSe ? '' : `
+          <label class="po-lbl" for="po_recipient" style="margin-top:8px">Кому идти за деньгами (ФИО)</label>
+          <input class="input po-recipient" id="po_recipient" placeholder="например: Путков Д. / РП" aria-label="Кому идти за деньгами">`}`;
     }
 
     function recalc() {
-      const root = qa(document, '.po-modal').slice(-1)[0];
-      const pay = parseFloat(q(root, '.po-amount').value) || 0;
+      const root = Array.from(document.querySelectorAll('.po-modal')).slice(-1)[0];
+      const pay = parseFloat(root.querySelector('.po-amount').value) || 0;
       let transfer = pay, tax = 0;
       if (isSe) { tax = Math.round(pay * taxRate * 100) / 100; transfer = Math.round((pay + tax) * 100) / 100; }
-      else { const t = parseFloat(q(root, '.po-transfer').value); transfer = Number.isFinite(t) && t > 0 ? t : pay; }
+      else { const t = parseFloat(root.querySelector('.po-transfer').value); transfer = Number.isFinite(t) && t > 0 ? t : pay; }
       const earn = (row.to_pay || 0);
       const over = pay > earn && pay > 0;
-      q(root, '.po-hint').innerHTML = over
-        ? `<span style="color:var(--warn-t)">Сотрудник заработал ${fmtR(earn)} — выплата больше</span>`
+      root.querySelector('.po-hint').innerHTML = over
+        ? `<span class="po-warn">Сотрудник заработал ${fmtR(earn)} — выплата больше</span>`
         : `Остаток после выплаты: ${fmtR(Math.max(0, earn - pay))}`;
-      q(root, '.po-preview').innerHTML = `
+      root.querySelector('.po-preview').innerHTML = `
         <div>Выплачиваем: <b>${fmtR(pay)}</b></div>
         ${isSe ? `<div>Налог СЗ (${Math.round(taxRate * 100)}%): <b>${fmtR(tax)}</b></div>` : ''}
-        <div>Переводим рабочему: <b style="color:var(--ok-t)">${fmtR(transfer)}</b></div>
-        ${!isSe && transfer > pay ? `<div style="color:var(--warn-t)">Рабочий возвращает в кассу: ${fmtR(transfer - pay)}</div>` : ''}`;
-      return { pay, transfer, tax, over };
+        <div>Переводим рабочему: <b class="po-ok">${fmtR(transfer)}</b></div>
+        ${!isSe && transfer > pay ? `<div class="po-warn">Рабочий возвращает в кассу: ${fmtR(transfer - pay)}</div>` : ''}`;
+      return { pay, transfer, over };
     }
 
     async function doPay() {
-      const root = qa(document, '.po-modal').slice(-1)[0];
-      const doBtn = q(root, '.po-do');
+      const root = Array.from(document.querySelectorAll('.po-modal')).slice(-1)[0];
+      const doBtn = root.querySelector('.po-do');
       const { pay, transfer, over } = recalc();
       if (!(pay > 0)) { toast('Проверка', 'Введите сумму выплаты', 'err'); return; }
-      if (over && !confirmingOver) {
-        confirmingOver = true;
-        toast('Внимание', 'Сотрудник столько не заработал. Нажмите «Подтвердить» ещё раз', 'warn');
+      if (over && !armedOver) {
+        armedOver = true;
         doBtn.classList.add('po-armed');
+        toast('Внимание', 'Сотрудник столько не заработал. Нажмите «Подтвердить» ещё раз', 'warn');
         return;
       }
       const payload = {
         employee_id: employeeId, year: state.year, month: state.month, kind,
         pay_amount: pay, confirm_over: over || undefined,
-        payout_platform: q(root, '.po-platform') ? q(root, '.po-platform').value : null,
-        payout_recipient_note: q(root, '.po-recipient') ? q(root, '.po-recipient').value : null,
+        confirm_duplicate: armedDuplicate || undefined,
+        // Способ определяется системой: СЗ → restaff, иначе → cash.
+        payout_platform: isSe ? 'restaff' : 'cash',
+        payout_recipient_note: (!isSe && root.querySelector('.po-recipient'))
+          ? root.querySelector('.po-recipient').value : null,
       };
       if (!isSe) payload.transfer_amount = transfer;
       doBtn.disabled = true;
@@ -475,16 +490,26 @@ window.AsgardPayoutsPage = (function () {
         const res = await apiPost('/api/payouts/pay', payload);
         toast('Готово', 'Выплата проведена: ' + fmtR(res.preview.pay_amount), 'ok');
         hideModal();
-        await load();
+        await ctx.reload();
       } catch (e) {
-        if (e.data && e.data.requires_confirmation) { confirmingOver = true; toast('Внимание', e.data.message || 'Нужно подтверждение', 'warn'); }
-        else { toast('Ошибка', e.message, 'err'); }
+        const rc = e.data && e.data.requires_confirmation;
+        if (rc && e.data.error === 'duplicate_payment') {
+          armedDuplicate = true;
+          doBtn.classList.remove('po-armed');
+          toast('Внимание', e.data.message || 'Выплата за этот период уже была. Нажмите «Подтвердить» ещё раз', 'warn');
+        } else if (rc) {
+          armedOver = true;
+          doBtn.classList.add('po-armed');
+          toast('Внимание', e.data.message || 'Нужно подтверждение', 'warn');
+        } else {
+          toast('Ошибка', e.message, 'err');
+        }
         doBtn.disabled = false;
       }
     }
   }
 
-  // Карточка сотрудника (для архива)
+  // Карточка сотрудника (для архива) + экспорт расчётного листа
   async function openEmployeeCard(employeeId, y, m) {
     let card, hist;
     try {
@@ -493,28 +518,28 @@ window.AsgardPayoutsPage = (function () {
     } catch (e) { toast('Ошибка', e.message, 'err'); return; }
     const ops = (hist.operations || []).filter((o) => o.pay_year === y && o.pay_month === m);
     const body = `
-      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-bottom:12px">
-        ${kpi('За всё время', fmtR(card.total_paid_all_time), 'var(--bg2)', 'var(--t1)')}
-        ${kpi('Среднее за год', fmtR(card.avg_per_year), 'var(--bg2)', 'var(--t2)')}
+      <div class="po-kpi-grid" style="margin-bottom:12px">
+        ${kpi('За всё время', fmtR(card.total_paid_all_time), false)}
+        ${kpi('Среднее за год', fmtR(card.avg_per_year), false)}
       </div>
       <div style="font-size:12px;color:var(--t2);margin-bottom:6px">Расчётная ведомость ${MONTHS[m - 1]} ${y}</div>
       <div class="tablewrap"><table class="asg"><thead><tr><th>Тип</th><th style="text-align:right">Сумма</th><th>Способ</th><th>Статус</th></tr></thead>
       <tbody>${ops.map((o) => `<tr><td>${typeLabel(o.type)}</td><td style="text-align:right">${fmtR(o.amount)}</td>
-        <td>${esc(o.payment_method || '—')}${o.payout_platform ? ' · ' + esc(o.payout_platform) : ''}</td>
+        <td>${esc(o.payment_method || '—')}${o.payout_platform ? ' · ' + esc(payoutLabel(o.payout_platform)) : ''}</td>
         <td>${esc(o.confirmation_status || o.status)}</td></tr>`).join('') || '<tr><td colspan="4">Нет операций</td></tr>'}</tbody></table></div>
       <div style="display:flex;justify-content:flex-end;margin-top:12px">
         <button class="btn ghost po-statement">Скачать расчётный лист (Excel)</button>
       </div>`;
     const overlay = showModal({ title: esc(card.employee?.fio || 'Сотрудник'), html: body, wide: true });
-    const sb = overlay && overlay.querySelector ? overlay.querySelector('.po-statement') : null;
+    const sb = overlay ? overlay.querySelector('.po-statement') : null;
     if (sb) sb.onclick = () => downloadFile(`/api/payouts/statement/${employeeId}/${y}/${m}`, `statement-${employeeId}-${y}-${m}.xlsx`);
   }
 
-  async function confirmByManager(paymentId, state) {
+  async function confirmByManager(paymentId) {
     try {
       await apiPost(`/api/payouts/${paymentId}/confirm-by-manager`, {});
       toast('Готово', 'Подтверждено за рабочего', 'ok');
-      await load();
+      await ctx.reload();
     } catch (e) { toast('Ошибка', e.message, 'err'); }
   }
 

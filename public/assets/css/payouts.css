@@ -1,17 +1,17 @@
 /* ══════════════════════════════════════════════════════════════════════════
    ASGARD CRM — страница выплат (#/payouts)
    Только токены темы (design-tokens.css). Никаких системных/хардкод-цветов.
+   Бейджи статусов — существующие варианты дизайн-системы (.badge.success/
+   .badge.warning/.badge.danger из components.css), своих не плодим.
    ══════════════════════════════════════════════════════════════════════════ */
 
 /* ── Таблица списка ─────────────────────────────────────────────────────── */
 #po_table td, #po_table th { white-space: nowrap; }
 #po_table tbody tr { transition: background .15s ease, opacity .15s ease; }
 #po_table tbody tr:hover { background: var(--bg3); }
-
-.po-badge-over   { background: var(--err-bg);  color: var(--err-t); }
-.po-badge-wait   { background: var(--warn-bg); color: var(--warn-t); }
-.po-badge-spor   { background: var(--err-bg);  color: var(--err-t); }
-.po-badge-ok     { background: var(--ok-bg);   color: var(--ok-t); }
+.po-row-done { opacity: .45; }
+.po-row-wait { background: var(--warn-bg); }
+.po-row-bad  { background: var(--err-bg); }
 
 /* ── График ─────────────────────────────────────────────────────────────── */
 .po-chart-box {
@@ -23,6 +23,14 @@
 }
 .po-chart-cap { font-size: 12px; color: var(--t2); margin-bottom: 8px; }
 .po-canvas, .po-canvas-emp { width: 100%; display: block; }
+
+/* ── KPI ────────────────────────────────────────────────────────────────── */
+.po-kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; margin-bottom: 18px; }
+.po-kpi { padding: 14px; border-radius: var(--r-md); background: var(--bg2); }
+.po-kpi--accent { background: var(--ok-bg); }
+.po-kpi-label { font-size: 12px; color: var(--t2); opacity: .8; }
+.po-kpi-value { font-size: 20px; font-weight: 700; color: var(--t1); }
+.po-kpi--accent .po-kpi-label, .po-kpi--accent .po-kpi-value { color: var(--ok-t); }
 
 /* ── Модалка выплаты ────────────────────────────────────────────────────── */
 .po-modal { display: flex; flex-direction: column; gap: 12px; }
@@ -36,6 +44,14 @@
 
 .po-hint { font-size: 12px; color: var(--t3); min-height: 16px; }
 
+.po-method {
+  font-size: 13px;
+  color: var(--t1);
+  background: var(--bg3);
+  border-radius: var(--r-md);
+  padding: 9px 12px;
+}
+
 .po-preview {
   background: var(--bg3);
   border-radius: var(--r-md);
@@ -46,6 +62,8 @@
   flex-direction: column;
   gap: 4px;
 }
+.po-preview .po-ok { color: var(--ok-t); }
+.po-preview .po-warn { color: var(--warn-t); }
 
 .po-actions {
   display: flex;
@@ -69,5 +87,13 @@
 }
 
 /* ── Архив ──────────────────────────────────────────────────────────────── */
-.po-arch-open { color: var(--blue-l); cursor: pointer; text-decoration: none; }
+.po-arch-open {
+  color: var(--blue-l);
+  cursor: pointer;
+  text-decoration: none;
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+}
 .po-arch-open:hover { text-decoration: underline; }
