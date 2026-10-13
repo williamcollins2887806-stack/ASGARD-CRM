@@ -391,7 +391,7 @@ async function routes(fastify, options) {
       // Уведомление + код подтверждения (MAX → SMS, in-app баннер). Этап 5.
       try {
         const { sendPayoutCode } = require('../lib/payout-notify');
-        await sendPayoutCode(fastify, db, { paymentId: ins[0].id, employeeId: empId, amount: payAmount });
+        await sendPayoutCode(fastify, db, { paymentId: ins[0].id, employeeId: empId, amount: payAmount, period: { year: y, month: m } });
       } catch (e) {
         fastify.log.warn(`[payouts] notify fail: ${e.message}`);
       }

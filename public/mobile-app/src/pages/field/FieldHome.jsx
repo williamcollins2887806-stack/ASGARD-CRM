@@ -17,6 +17,7 @@ import { NornsPauseStrip, PAUSE_BADGE } from '@/components/field/NornsPauseBanne
 const PUSH_DISMISSED_KEY = 'asgard_field_push_dismissed_v1';
 const IOS_HINT_DISMISSED_KEY = 'asgard_ios_hint_dismissed_v1';
 const CHEMLAB_BANNER_KEY = 'asgard_chemlab_banner_v1';
+const CHEMLAB_FIXED_KEY = 'asgard_chemlab_fixed_v1';
 
 const GAMES_FOLDER = [
   { emoji: '🎰', label: 'Рулетка', path: '/field/wheel', bg: 'linear-gradient(135deg,#3a0a10,#1a0508)', border: 'rgba(232,64,87,.35)', badge: PAUSE_BADGE },
@@ -189,6 +190,7 @@ export default function FieldHome() {
   const [showIOSHint, setShowIOSHint] = useState(false);
   const [showReadinessPrompt, setShowReadinessPrompt] = useState(false);
   const [showChemLabBanner, setShowChemLabBanner] = useState(false);
+  const [showChemLabFixed, setShowChemLabFixed] = useState(false);
   const [showGamesFolder, setShowGamesFolder] = useState(false);
   const [showProfileConfirm, setShowProfileConfirm] = useState(false);
   const [profileCompleteness, setProfileCompleteness] = useState(null);
@@ -321,6 +323,13 @@ export default function FieldHome() {
   useEffect(() => {
     if (localStorage.getItem(CHEMLAB_BANNER_KEY)) return;
     const t = setTimeout(() => setShowChemLabBanner(true), 800);
+    return () => clearTimeout(t);
+  }, []);
+
+  // «Химцех починен» — показываем один раз (свернул → больше не появится)
+  useEffect(() => {
+    if (localStorage.getItem(CHEMLAB_FIXED_KEY)) return;
+    const t = setTimeout(() => setShowChemLabFixed(true), 1400);
     return () => clearTimeout(t);
   }, []);
 
@@ -641,6 +650,64 @@ export default function FieldHome() {
             }}
           >
             ИГРАТЬ
+          </button>
+        </div>
+      )}
+
+      {/* «Химцех починен» — один раз, сворачивается */}
+      {showChemLabFixed && (
+        <div style={{
+          position: 'relative', display: 'flex', alignItems: 'center', gap: 14,
+          background: 'linear-gradient(135deg, rgba(45,134,89,0.28) 0%, rgba(45,134,89,0.08) 60%, rgba(20,24,32,0.4) 100%)',
+          border: '1.5px solid rgba(74,222,128,0.45)',
+          borderRadius: 18, padding: '14px 16px', marginBottom: 20,
+          boxShadow: '0 8px 30px rgba(45,134,89,0.18), inset 0 1px 0 rgba(255,255,255,0.06)',
+          animation: 'fadeInUp var(--motion-normal) var(--ease-spring) both',
+        }}>
+          <button
+            type="button"
+            onClick={() => { localStorage.setItem(CHEMLAB_FIXED_KEY, '1'); setShowChemLabFixed(false); }}
+            style={{
+              position: 'absolute', top: 8, right: 10, background: 'none', border: 'none',
+              color: 'rgba(255,255,255,0.45)', fontSize: 20, cursor: 'pointer', lineHeight: 1, padding: 4,
+            }}
+            aria-label="Свернуть"
+          >×</button>
+          <div style={{
+            width: 48, height: 48, borderRadius: 14, flexShrink: 0,
+            background: 'linear-gradient(135deg, rgba(74,222,128,0.35), rgba(34,90,60,0.25))',
+            border: '1px solid rgba(74,222,128,0.5)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 26,
+            filter: 'drop-shadow(0 0 10px rgba(74,222,128,0.4))',
+          }}>🧪</div>
+          <div style={{ flex: 1, minWidth: 0, paddingRight: 20 }}>
+            <p style={{ fontSize: 10, fontWeight: 800, letterSpacing: '.14em', color: '#4ADE80', marginBottom: 4 }}>
+              ИГРА СНОВА РАБОТАЕТ
+            </p>
+            <p style={{ fontSize: 15, fontWeight: 800, color: '#fff', marginBottom: 4, lineHeight: 1.25 }}>
+              Химцех починен 🛠️
+            </p>
+            <p style={{ fontSize: 11, color: 'rgba(255,255,255,0.65)', lineHeight: 1.4 }}>
+              Открывал и вылетало — починили. Заходи и переливай реагенты
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              haptic.medium();
+              localStorage.setItem(CHEMLAB_FIXED_KEY, '1');
+              setShowChemLabFixed(false);
+              navigate('/field/chemlab');
+            }}
+            style={{
+              fontSize: 11, fontWeight: 900, color: '#06210f',
+              background: 'linear-gradient(135deg, #4ADE80, #2D8659)',
+              border: 'none', borderRadius: 12, padding: '12px 12px',
+              whiteSpace: 'nowrap', flexShrink: 0, cursor: 'pointer',
+              boxShadow: '0 4px 18px rgba(74,222,128,0.35)',
+            }}
+          >
+            ОТКРЫТЬ
           </button>
         </div>
       )}

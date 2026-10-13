@@ -51,6 +51,7 @@ import FieldSeasonal from '@/pages/field/FieldSeasonal';
 import FieldDiary from '@/pages/field/FieldDiary';
 import FieldReadiness from '@/pages/field/FieldReadiness';
 import PipelineGame from '@/pages/field/PipelineGame';
+import ChemLabGame from '@/pages/field/ChemLabGame';
 import PmDashboard from '@/pages/pm/PmDashboard';
 import PmWorkers from '@/pages/pm/PmWorkers';
 import PmWorkerProfile from '@/pages/pm/PmWorkerProfile';
@@ -457,6 +458,8 @@ function AppLayout() {
                 <Route path="hall/:id" element={<FieldHall />} />
                 <Route path="wheel" element={<WheelOfNorns />} />
                 <Route path="pipeline" element={<PipelineGame />} />
+                <Route path="chemlab" element={<ChemLabGame />} />
+                <Route path="chemlab-game" element={<ChemLabGame />} />
                 <Route path="shop" element={<FieldShop />} />
                 <Route path="inventory" element={<FieldInventory />} />
                 <Route path="quests" element={<FieldQuests />} />

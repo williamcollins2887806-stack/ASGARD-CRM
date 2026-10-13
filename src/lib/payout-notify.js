@@ -25,6 +25,14 @@ function generateCode() {
   return String(crypto.randomInt(min, max));
 }
 
+/** «за сентябрь 2026» из {year, month} — период НАЧИСЛЕНИЯ. */
+const MONTHS_GEN = ['январь', 'февраль', 'март', 'апрель', 'май', 'июнь', 'июль', 'август', 'сентябрь', 'октябрь', 'ноябрь', 'декабрь'];
+function periodLabel(period) {
+  if (!period || !period.year || !period.month) return 'за отработанный период';
+  const mo = MONTHS_GEN[parseInt(period.month, 10) - 1] || '';
+  return `за ${mo} ${period.year}`;
+}
+
 function normalizePhone(phone) {
   if (!phone) return '';
   let digits = String(phone).replace(/\D/g, '');
@@ -69,7 +77,7 @@ async function resolveEmployeeContacts(db, employeeId) {
  * Возвращает { ok, channel, code_sent } — сам код НЕ возвращается.
  * @param {object} opts { paymentId, employeeId, amount }
  */
-async function sendPayoutCode(fastify, db, { paymentId, employeeId, amount }) {
+async function sendPayoutCode(fastify, db, { paymentId, employeeId, amount, period }) {
   const contacts = await resolveEmployeeContacts(db, employeeId);
   if (!contacts) return { ok: false, error: 'employee_not_found' };
 
@@ -100,33 +108,44 @@ async function sendPayoutCode(fastify, db, { paymentId, employeeId, amount }) {
     [paymentId, employeeId, contacts.phone || null, 'sms', hash, String(ttl)]
   );
 
-  // Текст для рабочего
-  const text = `Вам произведена выплата ${Math.round(amount)} ₽. Зайдите в приложение ASGARD CRM и подтвердите получение. Код: ${code}`;
+  // Текст для рабочего — ДВА отдельных сообщения (по требованию заказчика):
+  //   1) информационное о выплате;
+  //   2) отдельно код подтверждения.
+  const infoText = `Вам произведена выплата ${Math.round(amount)} ₽ за ${periodLabel(period)}. Зайдите в приложение ASGARD CRM и подтвердите получение.`;
+  const codeText = `Код подтверждения выплаты: ${code}`;
   let channel = 'none';
 
-  // 1) MAX (если есть адресат/аккаунт) — приоритет по ТЗ
-  let sent = false;
-  try {
-    const greenApi = require('../services/green-api');
-    if (greenApi && typeof greenApi.isMaxEnabled === 'function' && greenApi.isMaxEnabled() && contacts.phone) {
-      const r = await greenApi.sendMaxMessage(contacts.phone, text);
-      if (r && !r.error) { sent = true; channel = 'max'; }
+  const send = async (txt) => {
+    // 1) MAX (приоритет), затем SMS через Mango (fallback).
+    try {
+      const greenApi = require('../services/green-api');
+      if (greenApi && typeof greenApi.isMaxEnabled === 'function' && greenApi.isMaxEnabled() && contacts.phone) {
+        const r = await greenApi.sendMaxMessage(contacts.phone, txt);
+        if (r && !r.error) return 'max';
+      }
+    } catch (e) {
+      fastify.log.warn(`[payout-notify] MAX fail: ${e.message}`);
     }
-  } catch (e) {
-    fastify.log.warn(`[payout-notify] MAX fail: ${e.message}`);
-  }
-
-  // 2) SMS через Mango (fallback, если MAX не ушёл)
-  if (!sent && contacts.phone) {
     try {
       const MangoService = require('../services/mango');
       const mango = new MangoService();
       const from = process.env.MANGO_SMS_EXTENSION || '101';
-      await mango.sendSms(from, contacts.phone, text);
-      sent = true; channel = 'sms';
+      await mango.sendSms(from, contacts.phone, txt);
+      return 'sms';
     } catch (e) {
       fastify.log.warn(`[payout-notify] SMS fail: ${e.message}`);
+      return 'none';
     }
+  };
+
+  let sent = false;
+  if (contacts.phone) {
+    // Информационное сообщение
+    const c1 = await send(infoText);
+    if (c1 !== 'none') { sent = true; channel = c1; }
+    // Отдельное сообщение с кодом
+    const c2 = await send(codeText);
+    if (c2 !== 'none') { sent = true; channel = c2; }
   }
 
   // Фиксируем фактический канал доставки (для отчётности/повторов).

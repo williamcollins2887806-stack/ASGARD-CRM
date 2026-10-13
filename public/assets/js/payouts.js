@@ -589,6 +589,9 @@ window.AsgardPayoutsPage = (function () {
       });
       q('.po-cancel').onclick = () => hideModal();
       q('.po-do').onclick = () => doPay(root);
+      // Сразу заполняем суммой «к выплате», чтобы предпросмотр был виден
+      // без единого ввода (иначе Дима не видел, что получит рабочий).
+      if (toPay > 0) q('.po-amount').value = String(toPay);
       setKind('advance');
     }
 
