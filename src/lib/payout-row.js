@@ -123,7 +123,10 @@ async function buildPayoutRows(db, year, month) {
     [periodId]
   );
 
-  // ── 5b. Детали выплат за период (статус подтверждения для списка) ────────
+  // ── 5b. Детали ВЫПЛАТ за период — только salary/advance/bonus/penalty.
+  // Суточные (per_diem) НЕ делают строку «выплаченной»: это отдельный контур,
+  // у него своя колонка. Иначе человек с оплаченными суточными, но неоплаченной
+  // зарплатой уезжал вниз как «выплачено» (баг 13.10.2026).
   let detailMap = new Map();
   try {
     const { rows: payDetail } = await db.query(
@@ -134,6 +137,7 @@ async function buildPayoutRows(db, year, month) {
         WHERE COALESCE(pay_year, EXTRACT(YEAR FROM created_at)::int) = $1
           AND COALESCE(pay_month, EXTRACT(MONTH FROM created_at)::int) = $2
           AND status IN ('paid','confirmed')
+          AND type IN ('salary','advance','bonus')
         ORDER BY employee_id, id DESC`, [y, m]);
     detailMap = new Map(payDetail.map((r) => [r.employee_id, r]));
   } catch (_) { /* колонок может не быть на старом клоне */ }
