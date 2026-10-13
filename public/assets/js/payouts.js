@@ -371,31 +371,53 @@ window.AsgardPayoutsPage = (function () {
           <canvas class="po-canvas-emp" height="110"></canvas>
         </div>
         <div class="po-years"></div>
-        <div style="display:flex;gap:8px;margin-bottom:12px">
-          <button class="btn ghost po-kind" data-kind="advance" style="flex:1">Аванс</button>
-          <button class="btn ghost po-kind" data-kind="salary" style="flex:1">Зарплата</button>
+
+        <div class="po-kind-row">
+          <span class="po-kind-label">Что выплачиваем:</span>
+          <div class="po-kind-group">
+            <button type="button" class="btn ghost po-kind" data-kind="advance">Аванс</button>
+            <button type="button" class="btn ghost po-kind" data-kind="salary">Зарплата</button>
+          </div>
         </div>
+
         <div class="po-form-grid">
           <div>
-            <label class="po-lbl" for="po_amount">Сколько выплачиваем</label>
-            <input class="input po-amount" id="po_amount" type="number" min="0" step="0.01" placeholder="0" aria-label="Сколько выплачиваем">
+            <label class="po-lbl po-amount-label" for="po_amount">Сколько выплачиваем</label>
+            <input class="input po-amount" id="po_amount" type="number" min="0" step="0.01" placeholder="0" inputmode="decimal">
           </div>
           <div class="po-transfer-wrap">
-            <label class="po-lbl" for="po_transfer">Сколько переводим</label>
-            <input class="input po-transfer" id="po_transfer" type="number" min="0" step="0.01" placeholder="0" aria-label="Сколько переводим">
+            <label class="po-lbl po-transfer-lbl" for="po_transfer">Сколько переводим (рабочему на руки)</label>
+            <input class="input po-transfer" id="po_transfer" type="number" min="0" step="0.01" placeholder="0" inputmode="decimal">
           </div>
         </div>
-        <div class="po-hint" aria-live="polite"></div>
-        <div class="po-platforms"></div>
-        <div class="po-preview" aria-live="polite"></div>        <div class="po-actions">
-          <button class="btn ghost po-cancel">Назад</button>
-          <button class="btn primary po-do">Подтвердить и выплатить</button>
+        <div class="po-quick" role="group" aria-label="Быстрый выбор суммы">
+          <button type="button" class="po-chip" data-quick="all">Всё к выплате</button>
+          <button type="button" class="po-chip" data-quick="half">Половина</button>
+          <button type="button" class="po-chip" data-quick="clear">Очистить</button>
         </div>
+
+        <div class="po-hint" aria-live="polite"></div>
+
+        <div class="po-method-block">
+          <div class="po-lbl">Способ выплаты</div>
+          <div class="po-method"><span class="po-method-icon">${isSe ? '📱' : '💵'}</span><span class="po-method-text"></span></div>
+          <div class="po-recipient-wrap">
+            <label class="po-lbl" for="po_recipient">Кому идти за деньгами (ФИО)</label>
+            <input class="input po-recipient" id="po_recipient" placeholder="например: Путков Д. / РП">
+          </div>
+        </div>
+
+        <div class="po-preview" aria-live="polite"></div>
       </div>`;
 
     let kind = 'advance';
     let armedOver = false;        // подтверждение превышения заработка
     let armedDuplicate = false;   // подтверждение повторной выплаты за период
+
+    const KIND_LABEL = { advance: 'Аванс', salary: 'Зарплата' };
+    const methodText = isSe
+      ? 'Перевод через СЗ-сервис (ReStaff и др.) — налог 6% сверху'
+      : 'Выплата наличными (способ определяется автоматически)';
 
     // Контракт showModal: все элементы ищем внутри возвращённого overlay (D-226).
     const overlay = showModal({
@@ -413,62 +435,85 @@ window.AsgardPayoutsPage = (function () {
       drawLine(q('.po-canvas-emp'),
         (card.current_year_months || []).map((m) => m.paid),
         MONTHS.map((x) => x.slice(0, 3)));
-      q('.po-years').textContent = (card.by_year || []).map((y) => `${y.year}: ${fmtR(y.paid)}`).join(' · ') || 'за текущий год выплат ещё нет';
+      q('.po-years').textContent = (card.by_year || []).length
+        ? (card.by_year || []).map((y) => `${y.year}: ${fmtR(y.paid)}`).join(' · ')
+        : 'выплат за прошлые годы нет';
+      q('.po-method-text').textContent = methodText;
 
       const setKind = (k) => {
         kind = k;
         qa('.po-kind').forEach((b) => b.classList.toggle('active', b.dataset.kind === k));
+        // «Сколько переводим» имеет смысл только для НЕ-СЗ (там возможен возврат в кассу).
         q('.po-transfer-wrap').style.display = isSe ? 'none' : 'block';
+        // «Кому идти за деньгами» — для наличных (не-СЗ).
+        q('.po-recipient-wrap').style.display = isSe ? 'none' : 'block';
         recalc();
       };
       qa('.po-kind').forEach((b) => { b.onclick = () => setKind(b.dataset.kind); });
       q('.po-amount').oninput = recalc;
       q('.po-transfer').oninput = recalc;
-      renderPlatforms(root);
+      // Быстрый выбор суммы
+      qa('.po-chip').forEach((b) => {
+        b.onclick = () => {
+          const qy = b.dataset.quick;
+          if (qy === 'clear') { q('.po-amount').value = ''; q('.po-transfer').value = ''; }
+          else if (qy === 'all') { q('.po-amount').value = String(Math.max(0, row.to_pay || 0)); }
+          else if (qy === 'half') { q('.po-amount').value = String(Math.round((row.to_pay || 0) / 2)); }
+          recalc();
+        };
+      });
       q('.po-cancel').onclick = () => hideModal();
       q('.po-do').onclick = doPay;
       setKind('advance');
     }
 
-    function renderPlatforms(root) {
-      // Способ выплаты система определяет сама по типу сотрудника:
-      //   самозанятый → СЗ-сервис (ReStaff и т.п.); иначе → наличные.
-      // Дима выбирает только сумму; способ показываем справочно.
-      const methodNote = isSe
-        ? 'Самозанятый — перевод через СЗ-сервис'
-        : 'Не самозанятый — выплата наличными';
-      root.querySelector('.po-platforms').innerHTML = `
-        <div class="po-lbl">Способ выплаты</div>
-        <div class="po-method" aria-live="polite">${esc(methodNote)}</div>
-        ${isSe ? '' : `
-          <label class="po-lbl" for="po_recipient" style="margin-top:8px">Кому идти за деньгами (ФИО)</label>
-          <input class="input po-recipient" id="po_recipient" placeholder="например: Путков Д. / РП" aria-label="Кому идти за деньгами">`}`;
-    }
-
     function recalc() {
-      const root = Array.from(document.querySelectorAll('.po-modal')).slice(-1)[0];
+      const root = currentModalRoot();
+      if (!root) return { pay: 0, transfer: 0, over: false };
       const pay = parseFloat(root.querySelector('.po-amount').value) || 0;
       let transfer = pay, tax = 0;
-      if (isSe) { tax = Math.round(pay * taxRate * 100) / 100; transfer = Math.round((pay + tax) * 100) / 100; }
-      else { const t = parseFloat(root.querySelector('.po-transfer').value); transfer = Number.isFinite(t) && t > 0 ? t : pay; }
+      if (isSe) {
+        tax = Math.round(pay * taxRate * 100) / 100;
+        transfer = Math.round((pay + tax) * 100) / 100;
+      } else {
+        const t = parseFloat(root.querySelector('.po-transfer').value);
+        transfer = Number.isFinite(t) && t > 0 ? t : pay;
+      }
       const earn = (row.to_pay || 0);
       const over = pay > earn && pay > 0;
-      root.querySelector('.po-hint').innerHTML = over
-        ? `<span class="po-warn">Сотрудник заработал ${fmtR(earn)} — выплата больше</span>`
-        : `Остаток после выплаты: ${fmtR(Math.max(0, earn - pay))}`;
-      root.querySelector('.po-preview').innerHTML = `
-        <div>Выплачиваем: <b>${fmtR(pay)}</b></div>
-        ${isSe ? `<div>Налог СЗ (${Math.round(taxRate * 100)}%): <b>${fmtR(tax)}</b></div>` : ''}
-        <div>Переводим рабочему: <b class="po-ok">${fmtR(transfer)}</b></div>
-        ${!isSe && transfer > pay ? `<div class="po-warn">Рабочий возвращает в кассу: ${fmtR(transfer - pay)}</div>` : ''}`;
+      const after = Math.round((earn - pay) * 100) / 100;
+
+      const hint = root.querySelector('.po-hint');
+      if (over) hint.innerHTML = `<span class="po-warn">Сотрудник заработал ${fmtR(earn)} — выплата больше. Нужно подтверждение.</span>`;
+      else if (pay > 0) hint.innerHTML = `После выплаты останется: <b>${fmtR(Math.max(0, after))}</b>`;
+      else hint.innerHTML = '';
+
+      const rows = [];
+      rows.push(`<div class="po-preview-row"><span>Выплачиваем (${KIND_LABEL[kind]})</span><b>${fmtR(pay)}</b></div>`);
+      if (isSe) {
+        rows.push(`<div class="po-preview-row"><span>Налог СЗ (${Math.round(taxRate * 100)}%)</span><b>${fmtR(tax)}</b></div>`);
+        rows.push(`<div class="po-preview-row po-preview-total"><span>К переводу на СЗ-сервис</span><b class="po-ok">${fmtR(transfer)}</b></div>`);
+      } else {
+        rows.push(`<div class="po-preview-row po-preview-total"><span>Переводим рабочему</span><b class="po-ok">${fmtR(transfer)}</b></div>`);
+        if (transfer > pay) {
+          rows.push(`<div class="po-preview-row"><span>Рабочий возвращает в кассу</span><b class="po-warn">${fmtR(transfer - pay)}</b></div>`);
+        }
+      }
+      root.querySelector('.po-preview').innerHTML = rows.join('');
       return { pay, transfer, over };
     }
 
+    /** Верхняя (актуальная) модалка выплаты. */
+    function currentModalRoot() {
+      return Array.from(document.querySelectorAll('.po-modal')).slice(-1)[0] || null;
+    }
+
     async function doPay() {
-      const root = Array.from(document.querySelectorAll('.po-modal')).slice(-1)[0];
+      const root = currentModalRoot();
+      if (!root) return;
       const doBtn = root.querySelector('.po-do');
       const { pay, transfer, over } = recalc();
-      if (!(pay > 0)) { toast('Проверка', 'Введите сумму выплаты', 'err'); return; }
+      if (!(pay > 0)) { toast('Проверка', 'Введите сумму выплаты', 'err'); root.querySelector('.po-amount').focus(); return; }
       if (over && !armedOver) {
         armedOver = true;
         doBtn.classList.add('po-armed');
@@ -482,10 +527,11 @@ window.AsgardPayoutsPage = (function () {
         // Способ определяется системой: СЗ → restaff, иначе → cash.
         payout_platform: isSe ? 'restaff' : 'cash',
         payout_recipient_note: (!isSe && root.querySelector('.po-recipient'))
-          ? root.querySelector('.po-recipient').value : null,
+          ? (root.querySelector('.po-recipient').value || null) : null,
       };
       if (!isSe) payload.transfer_amount = transfer;
       doBtn.disabled = true;
+      doBtn.textContent = 'Проводим…';
       try {
         const res = await apiPost('/api/payouts/pay', payload);
         toast('Готово', 'Выплата проведена: ' + fmtR(res.preview.pay_amount), 'ok');
@@ -505,6 +551,7 @@ window.AsgardPayoutsPage = (function () {
           toast('Ошибка', e.message, 'err');
         }
         doBtn.disabled = false;
+        doBtn.textContent = 'Подтвердить и выплатить';
       }
     }
   }

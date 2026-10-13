@@ -37,30 +37,58 @@
 .po-modal .po-chart-box { margin-bottom: 0; }
 .po-years { font-size: 12px; color: var(--t2); }
 
+/* Тип выплаты */
+.po-kind-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.po-kind-label { font-size: 13px; color: var(--t2); }
+.po-kind-group { display: flex; gap: 8px; flex: 1; }
+.po-kind-group .po-kind { flex: 1; }
+
+/* Поля формы */
 .po-form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 @media (max-width: 560px) { .po-form-grid { grid-template-columns: 1fr; } }
-
 .po-lbl { font-size: 12px; color: var(--t2); margin-bottom: 6px; }
-
 .po-hint { font-size: 12px; color: var(--t3); min-height: 16px; }
 
-.po-method {
-  font-size: 13px;
-  color: var(--t1);
-  background: var(--bg3);
-  border-radius: var(--r-md);
-  padding: 9px 12px;
+/* Быстрый выбор суммы */
+.po-quick { display: flex; gap: 8px; flex-wrap: wrap; }
+.po-chip {
+  border: 1px solid var(--brd);
+  background: var(--bg2);
+  color: var(--t2);
+  border-radius: 999px;
+  padding: 5px 12px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: .15s;
 }
+.po-chip:hover { color: var(--t1); border-color: var(--blue); }
 
+/* Способ выплаты (определяется системой) */
+.po-method-block {
+  background: var(--bg2);
+  border: 1px solid var(--brd);
+  border-radius: var(--r-md);
+  padding: 12px;
+}
+.po-method { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--t1); }
+.po-method-icon { font-size: 16px; }
+.po-recipient-wrap { margin-top: 10px; }
+
+/* Предпросмотр расчётной ведомости */
 .po-preview {
   background: var(--bg3);
   border-radius: var(--r-md);
-  padding: 12px;
+  padding: 12px 14px;
   font-size: 13px;
   color: var(--t2);
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
+}
+.po-preview-row { display: flex; justify-content: space-between; gap: 12px; padding: 3px 0; }
+.po-preview-row b { color: var(--t1); }
+.po-preview-total {
+  border-top: 1px solid var(--brd);
+  margin-top: 4px;
+  padding-top: 7px;
+  font-weight: 600;
 }
 .po-preview .po-ok { color: var(--ok-t); }
 .po-preview .po-warn { color: var(--warn-t); }
