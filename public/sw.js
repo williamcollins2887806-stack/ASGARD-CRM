@@ -2,7 +2,7 @@
 // Shell caching + Push Notifications + Offline Support + Background Sync
 // Session 15: PWA + Push Actions + Badge + Offline
 
-const SHELL_VERSION = '20.28.203';
+const SHELL_VERSION = '20.28.204';
 const CACHE_NAME = `asgard-crm-shell-${SHELL_VERSION}`;
 const API_CACHE_NAME = 'asgard-crm-api-v2';
 
@@ -196,15 +196,47 @@ async function networkFirstWithOffline(request) {
       // server отправляет Cache-Control: no-store, must-revalidate
       // и браузер уважает это.
       // HTML shell не кэшируем — после деплоя иначе отдаётся старая версия с другим ?v=
+      return response;
     }
+    // Сервер ответил не-2xx (например 503 на старте) — тоже отдаём HTML-фолбэк,
+    // а не пустой ответ: иначе SPA получает не-HTML и показывает белый экран.
+    if (isNavigationRequest(request)) return offlinePageOrHtml(request);
     return response;
   } catch (err) {
-    // При ошибке сети: НЕ возвращаем закэшированный HTML (он может быть старым)
-    // Вместо этого возвращаем offline.html ТОЛЬКО если это точный запрос на offline.html
+    // При ошибке сети: НЕ возвращаем закэшированный HTML (он может быть старым).
+    // Для навигации отдаём offline.html (HTML!), НЕ plain-текст — иначе белый экран.
+    if (isNavigationRequest(request)) return offlinePageOrHtml(request);
     var offline = await caches.match('./offline.html');
     if (offline) return offline;
     return new Response('Offline', { status: 503, statusText: 'Service Unavailable' });
   }
+}
+
+/** Навигация (HTML) — а не fetch ресурса. */
+function isNavigationRequest(request) {
+  try {
+    return request.mode === 'navigate'
+      || (request.headers.get('accept') || '').includes('text/html');
+  } catch (_) { return false; }
+}
+
+/** HTML-фолбэк: offline.html из кэша, либо минимальный встроенный HTML.
+ *  ВАЖНО: всегда text/html — иначе браузер покажет пустой экран. */
+async function offlinePageOrHtml(request) {
+  var offline = await caches.match('./offline.html');
+  if (offline) return offline;
+  return new Response(
+    '<!DOCTYPE html><html lang="ru"><head><meta charset="utf-8">' +
+    '<meta name="viewport" content="width=device-width,initial-scale=1">' +
+    '<title>АСГАРД CRM</title></head><body style="background:#0a0e1a;color:#f0f2f5;' +
+    'font-family:system-ui,sans-serif;display:flex;align-items:center;justify-content:center;' +
+    'min-height:100vh;margin:0"><div style="text-align:center;padding:24px">' +
+    '<div style="font-size:34px">⚙️</div><h1 style="font-size:19px;margin:10px 0">' +
+    'Чертоги Асгарда обновляются</h1><p style="opacity:.7">Идут технические работы. ' +
+    'Страница перезагрузится автоматически.</p>' +
+    '<script>setTimeout(function(){location.reload();},15000)<\/script></div></body></html>',
+    { status: 503, headers: { 'Content-Type': 'text/html; charset=utf-8' } }
+  );
 }
 
 // ── Stale While Revalidate (for static assets) ──
