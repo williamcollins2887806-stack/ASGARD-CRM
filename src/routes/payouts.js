@@ -630,6 +630,115 @@ async function routes(fastify, options) {
     }
   });
 
+  // ─── GET /export/:year/:month — Excel: список выплат за месяц ──────────────
+  fastify.get('/export/:year/:month', payoutAuth, async (request, reply) => {
+    const { year, month } = request.params;
+    if (!isValidPeriod(year, month)) return reply.code(400).send({ error: 'Некорректный период' });
+    try {
+      const y = parseInt(year, 10), m = parseInt(month, 10);
+      const [list, warns] = await Promise.all([
+        buildPayoutRows(db, y, m), getPeriodWarnings(db, y, m),
+      ]);
+      const ExcelJS = require('exceljs');
+      const wb = new ExcelJS.Workbook();
+      const ws = wb.addWorksheet(`Выплаты ${m}.${y}`);
+
+      ws.columns = [
+        { header: 'ФИО', key: 'fio', width: 34 },
+        { header: 'Остаток', key: 'carry', width: 14 },
+        { header: 'Начислено', key: 'accrued', width: 14 },
+        { header: 'Аванс', key: 'advance', width: 12 },
+        { header: 'Удержание', key: 'penalty', width: 12 },
+        { header: 'Оклад', key: 'official', width: 12 },
+        { header: 'К выплате', key: 'to_pay', width: 14 },
+        { header: 'Статус', key: 'status', width: 20 },
+      ];
+      ws.getRow(1).font = { bold: true };
+      for (const r of list.rows) {
+        ws.addRow({
+          fio: r.fio, carry: r.carry, accrued: r.accrued, advance: r.advance,
+          penalty: r.penalty, official: r.official, to_pay: r.to_pay,
+          status: r.paid_this_period
+            ? (r.confirm === 'confirmed' ? 'выплачено/подтв.' : (r.overdue ? 'не подтвердил' : 'ждёт подтв.'))
+            : (r.overpaid ? 'переплата' : ''),
+        });
+      }
+      ws.addRow({});
+      ws.addRow({ fio: 'ИТОГО', carry: list.totals.carry, accrued: list.totals.accrued, advance: list.totals.advance, penalty: list.totals.penalty, official: list.totals.official, to_pay: list.totals.to_pay }).font = { bold: true };
+      // Мягкие предупреждения периода — отдельным листом, не мешая данным
+      const wsW = wb.addWorksheet('Предупреждения');
+      wsW.columns = [{ header: 'Уровень', width: 10 }, { header: 'Сообщение', width: 70 }];
+      (warns.warnings || []).forEach((w) => wsW.addRow({ Уровень: w.level, Сообщение: w.message }));
+
+      reply.header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      reply.header('Content-Disposition', `attachment; filename="payouts-${y}-${m}.xlsx"`);
+      await wb.xlsx.write(reply.raw);
+      return reply;
+    } catch (err) {
+      logError(fastify, '[payouts] GET /export error', err, request);
+      return reply.code(500).send({ error: 'Ошибка сервера' });
+    }
+  });
+
+  // ─── GET /statement/:employeeId/:year/:month — расчётный лист (Excel) ──────
+  fastify.get('/statement/:employeeId/:year/:month', payoutAuth, async (request, reply) => {
+    const empId = parseInt(request.params.employeeId, 10);
+    const { year, month } = request.params;
+    if (!Number.isInteger(empId) || empId <= 0) return reply.code(400).send({ error: 'Некорректный id' });
+    if (!isValidPeriod(year, month)) return reply.code(400).send({ error: 'Некорректный период' });
+    try {
+      const y = parseInt(year, 10), m = parseInt(month, 10);
+      const list = await buildPayoutRows(db, y, m);
+      const row = list.rows.find((r) => r.employee_id === empId) || null;
+      const { rows: empRows } = await db.query(
+        `SELECT id, COALESCE(NULLIF(TRIM(fio),''), NULLIF(TRIM(full_name),''), 'ID '||id) AS fio, is_self_employed
+           FROM employees WHERE id=$1`, [empId]);
+      const { rows: ops } = await db.query(`
+        SELECT type, amount, transfer_amount, tax_amount, status, payment_method, payout_platform,
+               COALESCE(pay_year, EXTRACT(YEAR FROM created_at)::int) AS pay_year,
+               COALESCE(pay_month, EXTRACT(MONTH FROM created_at)::int) AS pay_month,
+               confirmation_status
+          FROM worker_payments
+         WHERE employee_id = $1 AND status IN ('paid','confirmed')
+           AND COALESCE(pay_year, EXTRACT(YEAR FROM created_at)::int) = $2
+           AND COALESCE(pay_month, EXTRACT(MONTH FROM created_at)::int) = $3
+         ORDER BY id DESC`, [empId, y, m]);
+
+      const ExcelJS = require('exceljs');
+      const wb = new ExcelJS.Workbook();
+      const ws = wb.addWorksheet('Расчётный лист');
+      ws.getCell('A1').value = 'Расчётный лист';
+      ws.getCell('A1').font = { bold: true, size: 14 };
+      ws.getCell('A2').value = (empRows[0] ? empRows[0].fio : 'Сотрудник');
+      ws.getCell('A3').value = `Период: ${String(m).padStart(2, '0')}.${y}`;
+      ws.addRow([]);
+      const head = ws.addRow(['Показатель', 'Сумма']);
+      head.font = { bold: true };
+      if (row) {
+        ws.addRow(['Остаток с прошлых', row.carry]);
+        ws.addRow(['Начислено', row.accrued]);
+        ws.addRow(['Премия', row.bonus]);
+        ws.addRow(['Удержание/штраф', -row.penalty]);
+        ws.addRow(['Аванс', -row.advance]);
+        ws.addRow(['Оклад', -row.official]);
+        const tot = ws.addRow(['К выплате', row.to_pay]);
+        tot.font = { bold: true };
+      }
+      ws.addRow([]);
+      const oh = ws.addRow(['Тип', 'Сумма', 'Переведено', 'Налог', 'Способ', 'Статус']);
+      oh.font = { bold: true };
+      ops.forEach((o) => ws.addRow([o.type, o.amount, o.transfer_amount, o.tax_amount, o.payout_platform || o.payment_method, o.confirmation_status || o.status]));
+
+      reply.header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      reply.header('Content-Disposition', `attachment; filename="statement-${empId}-${y}-${m}.xlsx"`);
+      await wb.xlsx.write(reply.raw);
+      return reply;
+    } catch (err) {
+      logError(fastify, '[payouts] GET /statement error', err, request);
+      return reply.code(500).send({ error: 'Ошибка сервера' });
+    }
+  });
+
   // ─── GET /access — список грантов (для админ-UI, только базовая роль) ─────
   fastify.get('/access', payoutAuth, async (request, reply) => {
     try {

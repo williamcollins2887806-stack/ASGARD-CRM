@@ -9,6 +9,7 @@ import { useChatStore } from '@/stores/chatStore';
 import { features } from '@/config/features';
 import { normalizeMobileNavUrl, savePinReturnTo } from '@/lib/navUrl';
 import PresenceGateMobile from '@/components/PresenceGateMobile';
+import PayoutStatementBanner from '@/components/PayoutStatementBanner';
 import FieldLayout from '@/layouts/FieldLayout';
 import FieldWelcome from '@/pages/field/FieldWelcome';
 import FieldLogin from '@/pages/field/FieldLogin';
@@ -266,6 +267,7 @@ function AppLayout() {
   return (
     <div className="h-full relative" style={{ backgroundColor: 'var(--bg-primary)' }}>
       {showPresenceGate && <PresenceGateMobile />}
+      <PayoutStatementBanner />
       <OfficePushBootstrap />
       <NotificationClickListener />
       <SoftphoneProvider>

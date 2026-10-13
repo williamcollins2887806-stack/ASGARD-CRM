@@ -48,6 +48,20 @@ window.AsgardPayoutsPage = (function () {
     return data;
   }
 
+  /** Скачать файл (Excel) авторизованно → blob → ссылка. */
+  async function downloadFile(url, filename) {
+    try {
+      const r = await fetch(url, { headers: { Authorization: 'Bearer ' + ctx.token } });
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      const blob = await r.blob();
+      const href = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = href; a.download = filename || 'export.xlsx';
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(href), 1000);
+    } catch (e) { toast('Ошибка', 'Не удалось скачать: ' + e.message, 'err'); }
+  }
+
   // ─────────────────────────────────────────────────────────── render
   async function render({ layout, title }) {
     const auth = await AsgardAuth.requireUser();
@@ -85,6 +99,7 @@ window.AsgardPayoutsPage = (function () {
             <span id="po_ready" style="margin-left:8px"></span>
           </div>
           <div style="display:flex;gap:8px">
+            <button class="btn ghost" id="po_export">Excel</button>
             <button class="btn ghost" id="po_tab_list">Текущие выплаты</button>
             <button class="btn ghost" id="po_tab_archive">Архив</button>
           </div>
@@ -99,6 +114,7 @@ window.AsgardPayoutsPage = (function () {
     $('#po_next').onclick = () => { shiftMonth(1); };
     $('#po_tab_list').onclick = () => { state.view = 'list'; load(); };
     $('#po_tab_archive').onclick = () => { state.view = 'archive'; load(); };
+    $('#po_export').onclick = () => downloadFile(`/api/payouts/export/${state.year}/${state.month}`, `payouts-${state.year}-${state.month}.xlsx`);
 
     async function shiftMonth(delta) {
       let m = state.month + delta, y = state.year;
@@ -485,8 +501,13 @@ window.AsgardPayoutsPage = (function () {
       <div class="tablewrap"><table class="asg"><thead><tr><th>Тип</th><th style="text-align:right">Сумма</th><th>Способ</th><th>Статус</th></tr></thead>
       <tbody>${ops.map((o) => `<tr><td>${typeLabel(o.type)}</td><td style="text-align:right">${fmtR(o.amount)}</td>
         <td>${esc(o.payment_method || '—')}${o.payout_platform ? ' · ' + esc(o.payout_platform) : ''}</td>
-        <td>${esc(o.confirmation_status || o.status)}</td></tr>`).join('') || '<tr><td colspan="4">Нет операций</td></tr>'}</tbody></table></div>`;
-    showModal({ title: esc(card.employee?.fio || 'Сотрудник'), html: body, wide: true });
+        <td>${esc(o.confirmation_status || o.status)}</td></tr>`).join('') || '<tr><td colspan="4">Нет операций</td></tr>'}</tbody></table></div>
+      <div style="display:flex;justify-content:flex-end;margin-top:12px">
+        <button class="btn ghost po-statement">Скачать расчётный лист (Excel)</button>
+      </div>`;
+    const overlay = showModal({ title: esc(card.employee?.fio || 'Сотрудник'), html: body, wide: true });
+    const sb = overlay && overlay.querySelector ? overlay.querySelector('.po-statement') : null;
+    if (sb) sb.onclick = () => downloadFile(`/api/payouts/statement/${employeeId}/${y}/${m}`, `statement-${employeeId}-${y}-${m}.xlsx`);
   }
 
   async function confirmByManager(paymentId, state) {
