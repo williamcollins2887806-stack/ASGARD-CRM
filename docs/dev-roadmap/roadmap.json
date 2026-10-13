@@ -655,5 +655,151 @@
         }
       ]
     }
+,
+    {
+      "code": "huginn",
+      "title": "Хугинн: редизайн и жесты",
+      "short": "Хугинн",
+      "color": "blue",
+      "start": "2026-11-01",
+      "deadline": "2026-12-01",
+      "items": [
+        {
+          "code": "huginn-visual",
+          "title": "Визуальный редизайн и сетка",
+          "description": "Палитра (17212B / 232E3C / 2F3B4A / 2AABEE→229ED9), 8pt-сетка, типографика Inter 17/16/13, CSS-переменные. Экраны: список чатов, чат (пузыри, время, бейдж вместо красного AI), настройки (единые иконки вместо Material Icons), «Пригласить» и «История» (поля, кнопки, сегментированный контрол, Drop Zone).",
+          "owner": "nikita",
+          "deadline": "2026-12-01",
+          "checkpoints": [
+            { "code": "design", "kind": "analysis", "title": "Спек редизайна + CSS-переменные", "owner": "nikita", "deadline": "2026-12-01" },
+            { "code": "dev", "kind": "dev", "title": "Редизайн экранов внедрён", "owner": "nikita", "deadline": "2026-12-01" },
+            { "code": "test", "kind": "test", "title": "Контраст и 8pt-сетка проверены", "owner": "nikita", "deadline": "2026-12-01" }
+          ]
+        },
+        {
+          "code": "huginn-geometry",
+          "title": "Геометрия, Edge-to-Edge, Safe Area",
+          "description": "Убрать хардкод-отступы сверху/снизу; WindowInsets / Safe Area; динамический padding-bottom = тап-бар + 8dp; поле ввода прижато к клавиатуре/тап-бару, убрать пустоты 100px.",
+          "owner": "nikita",
+          "deadline": "2026-12-01",
+          "checkpoints": [
+            { "code": "dev", "kind": "dev", "title": "Отступы стали динамическими", "owner": "nikita", "deadline": "2026-12-01" },
+            { "code": "test", "kind": "test", "title": "На разных устройствах не «плывёт»", "owner": "nikita", "deadline": "2026-12-01" }
+          ]
+        },
+        {
+          "code": "huginn-motion",
+          "title": "Микроанимации и интерактив",
+          "description": "Ripple, transition 0.2s на кнопках, подсветка полей на фокусе, слайд «бегунка» сегментированного контрола, плавное появление клавиатуры, градиентные аватары и кольца историй.",
+          "owner": "nikita",
+          "deadline": "2026-12-01",
+          "checkpoints": [
+            { "code": "dev", "kind": "design", "title": "Анимации и градиентные аватары", "owner": "nikita", "deadline": "2026-12-01" },
+            { "code": "test", "kind": "test", "title": "Анимации плавные, без рывков", "owner": "nikita", "deadline": "2026-12-01" }
+          ]
+        },
+        {
+          "code": "huginn-stories",
+          "title": "Скрытие кружочков историй (Telegram-12.4)",
+          "description": "Новая механика: панель историй скрыта по умолчанию, не занимает места; при скролле вниз плавно уезжает вверх, при потягивании снизу вверх — вытягивается обратно. Анимация связана с позицией скролла + пружинистый overscroll.",
+          "owner": "nikita",
+          "deadline": "2026-12-01",
+          "checkpoints": [
+            { "code": "dev", "kind": "dev", "title": "Скрытие/возврат привязаны к скроллу", "owner": "nikita", "deadline": "2026-12-01" },
+            { "code": "test", "kind": "test", "title": "Пружинистый overscroll работает", "owner": "nikita", "deadline": "2026-12-01" }
+          ]
+        },
+        {
+          "code": "huginn-gestures",
+          "title": "Жесты, скролл, свайпы",
+          "description": "Инерционный скролл + отскок; свайпы в списке чатов (архив, mute, pin, удаление, прочитано); свайп-ответ на сообщение; Peeking (подглядывание); PiP для видео.",
+          "owner": "nikita",
+          "deadline": "2026-12-01",
+          "checkpoints": [
+            { "code": "dev", "kind": "dev", "title": "Свайпы и пеекинг работают", "owner": "nikita", "deadline": "2026-12-01" },
+            { "code": "test", "kind": "test", "title": "Жесты без ложных срабатываний", "owner": "nikita", "deadline": "2026-12-01" }
+          ]
+        }
+      ]
+    },
+    {
+      "code": "procurement-ai",
+      "title": "Закупки: ИИ-агент и тендерная модель",
+      "short": "Закупки",
+      "color": "gold",
+      "start": "2026-10-13",
+      "deadline": "2026-12-31",
+      "items": [
+        {
+          "code": "proc-agent",
+          "title": "ИИ-агент закупок: от заявки до полуготового решения",
+          "description": "Заявка уходит закупщику; на пути ИИ-агент оценивает потребность, сопоставляет с номенклатурой и приводит заявку в полуготовности: конкретные поставщики, цены, план отправки.",
+          "owner": "nikita",
+          "deadline": "2026-12-31",
+          "checkpoints": [
+            { "code": "analysis", "kind": "analysis", "title": "Сценарий и источники данных", "owner": "nikita", "deadline": "2026-12-31" },
+            { "code": "design", "kind": "design", "title": "Макет полуготовой заявки", "owner": "nikita", "deadline": "2026-12-31" },
+            { "code": "approval", "kind": "approval", "title": "Утверждение сценария директором развития", "owner": "nikita", "deadline": "2026-12-31" },
+            { "code": "dev", "kind": "dev", "title": "Агент сопоставляет и готовит заявку", "owner": "nikita", "deadline": "2026-12-31" },
+            { "code": "test", "kind": "test", "title": "Тесты: номенклатура, сопоставление, цены", "owner": "nikita", "deadline": "2026-12-31" }
+          ]
+        },
+        {
+          "code": "proc-nomenclature",
+          "title": "Номенклатура и сопоставление",
+          "description": "Единый справочник номенклатуры; ИИ находит аналоги и непонятные позиции, помечает неоднозначные для уточнения закупщиком.",
+          "owner": "nikita",
+          "deadline": "2026-12-31",
+          "checkpoints": [
+            { "code": "dev", "kind": "dev", "title": "Сопоставление с номенклатурой", "owner": "nikita", "deadline": "2026-12-31" },
+            { "code": "test", "kind": "test", "title": "Тесты на аналоги и неоднозначные позиции", "owner": "nikita", "deadline": "2026-12-31" }
+          ]
+        },
+        {
+          "code": "proc-small",
+          "title": "Мелкие закупки: готовые площадки",
+          "description": "По мелкой продукции — предложения с конкретных площадок: Все Инструменты, Озон, ВБ и др. — ссылка, цена, срок. Закупщик выбирает в один клик.",
+          "owner": "nikita",
+          "deadline": "2026-12-31",
+          "checkpoints": [
+            { "code": "dev", "kind": "dev", "title": "Подбор площадок и цен", "owner": "nikita", "deadline": "2026-12-31" },
+            { "code": "test", "kind": "test", "title": "Тесты: подбор по позиции", "owner": "nikita", "deadline": "2026-12-31" }
+          ]
+        },
+        {
+          "code": "proc-tender",
+          "title": "Крупные поставки: тендерная модель",
+          "description": "Для крупных партий — встроенная в закупки тендерная модель: заявка как запрос предложений с конкретными условиями поставки, сравнение коммерческих предложений, выбор.",
+          "owner": "nikita",
+          "deadline": "2026-12-31",
+          "checkpoints": [
+            { "code": "dev", "kind": "dev", "title": "Тендерный контур в закупках", "owner": "nikita", "deadline": "2026-12-31" },
+            { "code": "test", "kind": "test", "title": "Тесты: ЗП, сравнение, выбор", "owner": "nikita", "deadline": "2026-12-31" }
+          ]
+        },
+        {
+          "code": "proc-offer",
+          "title": "Готовое план-предложение закупщику",
+          "description": "Заявка приходит с готовым решением: что, кому, как и по какой цене заказать, куда отправить, какие сроки. Закупщик подтверждает.",
+          "owner": "nikita",
+          "deadline": "2026-12-31",
+          "checkpoints": [
+            { "code": "dev", "kind": "dev", "title": "Сборка план-предложения", "owner": "nikita", "deadline": "2026-12-31" },
+            { "code": "test", "kind": "test", "title": "План полный и понятный", "owner": "nikita", "deadline": "2026-12-31" }
+          ]
+        },
+        {
+          "code": "proc-control",
+          "title": "Контроль, аудит, сквозной тест",
+          "description": "Полный путь: заявка → ИИ-оценка → номенклатура → площадки/тендер → полуготовая заявка → подтверждение закупщика. Аудит каждого шага.",
+          "owner": "nikita",
+          "deadline": "2026-12-31",
+          "checkpoints": [
+            { "code": "test", "kind": "test", "title": "Сквозной тест зелёный", "owner": "nikita", "deadline": "2026-12-31" },
+            { "code": "launch", "kind": "launch", "title": "Пилот на реальной заявке", "owner": "nikita", "deadline": "2026-12-31" }
+          ]
+        }
+      ]
+    }
   ]
 }
