@@ -843,6 +843,7 @@ fastify.register(require("./routes/approval"), { prefix: "/api/approval" });
 fastify.register(require('./routes/stories'), { prefix: '/api/stories' });
 fastify.register(require('./routes/worker_profiles'), { prefix: '/api/worker-profiles' });
 fastify.register(require('./routes/worker-payments'), { prefix: '/api/worker-payments' });
+fastify.register(require('./routes/payouts'),         { prefix: '/api/payouts' });
 fastify.register(require('./routes/call-reports'),     { prefix: '/api/call-reports' });
 fastify.register(require('./routes/office-academy'),   { prefix: '/api/office-academy' });
 fastify.register(require('./routes/max-webhook'),      { prefix: '/api/max' });
