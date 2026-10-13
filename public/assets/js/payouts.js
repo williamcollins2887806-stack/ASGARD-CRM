@@ -326,13 +326,15 @@ window.AsgardPayoutsPage = (function () {
       try {
         const d = await apiFetch(`/api/payouts/archive/${y}/${m}`);
         if (!d.rows || !d.rows.length) { host.innerHTML = '<div class="empty-state">Нет выплат за этот период</div>'; return; }
-        host.innerHTML = `<div class="tablewrap"><table class="asg"><thead><tr>
-          <th>ФИО</th><th style="text-align:right">Выплачено</th><th>По типам</th></tr></thead>
-          <tbody>${d.rows.map((r) => `<tr>
+        const byType = (bt) => Object.entries(bt || {}).map(([k, v]) => `${typeLabel(k)}: ${fmt(v)}`).join(' · ');
+        const archRow = (r) => `<tr>
             <td><button type="button" class="po-arch-open" data-id="${r.employee_id}">${esc(r.fio)}</button></td>
             <td style="text-align:right">${fmtR(r.total)}</td>
-            <td style="color:var(--t2);font-size:12px">${Object.entries(r.by_type || {}).map(([k, v]) => `${typeLabel(k)}: ${fmt(v)}`).join(' · ')}</td>
-          </tr>`).join('')}</tbody></table></div>`;
+            <td style="color:var(--t2);font-size:12px">${byType(r.by_type)}</td>
+          </tr>`;
+        host.innerHTML = `<div class="tablewrap"><table class="asg"><thead><tr>
+          <th>ФИО</th><th style="text-align:right">Выплачено</th><th>По типам</th></tr></thead>
+          <tbody>${d.rows.map(archRow).join('')}</tbody></table></div>`;
         Array.from(host.querySelectorAll('.po-arch-open')).forEach((a) => {
           a.onclick = () => openEmployeeCard(parseInt(a.dataset.id, 10), y, m);
         });
@@ -386,14 +388,14 @@ window.AsgardPayoutsPage = (function () {
             <input class="input po-amount" id="po_amount" type="number" min="0" step="0.01" placeholder="0" inputmode="decimal">
           </div>
           <div class="po-transfer-wrap">
-            <label class="po-lbl po-transfer-lbl" for="po_transfer">Сколько переводим (рабочему на руки)</label>
+            <label class="po-lbl" for="po_transfer">Сколько переводим (рабочему на руки)</label>
             <input class="input po-transfer" id="po_transfer" type="number" min="0" step="0.01" placeholder="0" inputmode="decimal">
           </div>
         </div>
         <div class="po-quick" role="group" aria-label="Быстрый выбор суммы">
-          <button type="button" class="po-chip" data-quick="all">Всё к выплате</button>
-          <button type="button" class="po-chip" data-quick="half">Половина</button>
-          <button type="button" class="po-chip" data-quick="clear">Очистить</button>
+          <button type="button" class="po-chip" data-quick="all" aria-label="Вся сумма к выплате">Всё к выплате</button>
+          <button type="button" class="po-chip" data-quick="half" aria-label="Половина суммы">Половина</button>
+          <button type="button" class="po-chip" data-quick="clear" aria-label="Очистить суммы">Очистить</button>
         </div>
 
         <div class="po-hint" aria-live="polite"></div>
@@ -408,6 +410,11 @@ window.AsgardPayoutsPage = (function () {
         </div>
 
         <div class="po-preview" aria-live="polite"></div>
+
+        <div class="po-actions">
+          <button type="button" class="btn ghost po-cancel">Отмена</button>
+          <button type="button" class="btn primary po-do">Подтвердить и выплатить</button>
+        </div>
       </div>`;
 
     let kind = 'advance';
@@ -447,28 +454,27 @@ window.AsgardPayoutsPage = (function () {
         q('.po-transfer-wrap').style.display = isSe ? 'none' : 'block';
         // «Кому идти за деньгами» — для наличных (не-СЗ).
         q('.po-recipient-wrap').style.display = isSe ? 'none' : 'block';
-        recalc();
+        recalc(root);
       };
       qa('.po-kind').forEach((b) => { b.onclick = () => setKind(b.dataset.kind); });
-      q('.po-amount').oninput = recalc;
-      q('.po-transfer').oninput = recalc;
+      q('.po-amount').oninput = () => recalc(root);
+      q('.po-transfer').oninput = () => recalc(root);
       // Быстрый выбор суммы
       qa('.po-chip').forEach((b) => {
         b.onclick = () => {
           const qy = b.dataset.quick;
           if (qy === 'clear') { q('.po-amount').value = ''; q('.po-transfer').value = ''; }
-          else if (qy === 'all') { q('.po-amount').value = String(Math.max(0, row.to_pay || 0)); }
-          else if (qy === 'half') { q('.po-amount').value = String(Math.round((row.to_pay || 0) / 2)); }
-          recalc();
+          else if (qy === 'all') { q('.po-amount').value = String(Math.max(0, row.to_pay || 0)); q('.po-transfer').value = ''; }
+          else if (qy === 'half') { q('.po-amount').value = String(Math.round((row.to_pay || 0) / 2)); q('.po-transfer').value = ''; }
+          recalc(root);
         };
       });
       q('.po-cancel').onclick = () => hideModal();
-      q('.po-do').onclick = doPay;
+      q('.po-do').onclick = () => doPay(root);
       setKind('advance');
     }
 
-    function recalc() {
-      const root = currentModalRoot();
+    function recalc(root) {
       if (!root) return { pay: 0, transfer: 0, over: false };
       const pay = parseFloat(root.querySelector('.po-amount').value) || 0;
       let transfer = pay, tax = 0;
@@ -502,17 +508,10 @@ window.AsgardPayoutsPage = (function () {
       root.querySelector('.po-preview').innerHTML = rows.join('');
       return { pay, transfer, over };
     }
-
-    /** Верхняя (актуальная) модалка выплаты. */
-    function currentModalRoot() {
-      return Array.from(document.querySelectorAll('.po-modal')).slice(-1)[0] || null;
-    }
-
-    async function doPay() {
-      const root = currentModalRoot();
+    async function doPay(root) {
       if (!root) return;
       const doBtn = root.querySelector('.po-do');
-      const { pay, transfer, over } = recalc();
+      const { pay, transfer, over } = recalc(root);
       if (!(pay > 0)) { toast('Проверка', 'Введите сумму выплаты', 'err'); root.querySelector('.po-amount').focus(); return; }
       if (over && !armedOver) {
         armedOver = true;
