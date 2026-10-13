@@ -32,6 +32,8 @@ export function AddEmployeeModal({ onSaved }) {
     role_tag: '',
     grade: '',
     city: '',
+    address: '',
+    registration_address: '',
     notes: '',
   });
   const [busy, setBusy] = useState(false);
@@ -127,7 +129,7 @@ export function AddEmployeeModal({ onSaved }) {
                 placeholder="3–6"
               />
             </Field>
-            <Field label="Город">
+            <Field label="Город проживания" hint="Только город или посёлок — без улицы и дома.">
               <TextInput
                 value={form.city}
                 onChange={(v) => set('city', v)}
@@ -135,6 +137,22 @@ export function AddEmployeeModal({ onSaved }) {
               />
             </Field>
           </div>
+
+          <Field label="Адрес проживания" help="Полный адрес: регион, город, улица, дом, квартира.">
+            <TextInput
+              value={form.address}
+              onChange={(v) => set('address', v)}
+              placeholder="обл., р-н, г., ул., д., кв."
+            />
+          </Field>
+
+          <Field label="Адрес регистрации" help="Если совпадает с проживанием — можно не заполнять.">
+            <TextInput
+              value={form.registration_address}
+              onChange={(v) => set('registration_address', v)}
+              placeholder="обл., р-н, г., ул., д., кв."
+            />
+          </Field>
 
           <Field label="Примечание">
             <TextareaInput

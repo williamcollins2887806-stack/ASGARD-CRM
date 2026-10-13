@@ -15,6 +15,7 @@ const { getWorkerFinances } = require('../lib/worker-finances');
 const { logError } = require('../lib/log-error');
 const { assertPpeSizes } = require('../lib/ppe-sizes');
 const { toDigitsRu } = require('../lib/phone');
+const { extractCityName } = require('../lib/city');
 
 const FIELD_ACHIEVEMENTS = [
   { id: 'first_shift',    icon: '🔥', name: 'Пе��вая смена',    desc: 'Отработал первый день', check: s => s.total_shifts >= 1 },
@@ -1121,6 +1122,17 @@ async function routes(fastify, options) {
       const ppeErrs = assertPpeSizes(filtered);
       if (ppeErrs.length) {
         return reply.code(400).send({ error: ppeErrs[0], details: ppeErrs });
+      }
+
+      // V389: «Город» — только населённый пункт. Рабочий чаще всего вставляет
+      // полный адрес (он же копирует его из паспорта) — вытаскиваем город,
+      // чтобы «Дружина» и табель снова не показывали улицу.
+      // Улица/регион/маркер («ул. Тверская», «р-н Зероноградский») НЕ сохраняются.
+      if ('city' in filtered) {
+        const raw = String(filtered.city == null ? '' : filtered.city).trim();
+        filtered.city = raw ? extractCityName(raw) : null;
+        if (filtered.city === null) delete filtered.city_source;
+        else filtered.city_source = 'manual';
       }
 
       if ('gender' in filtered) {

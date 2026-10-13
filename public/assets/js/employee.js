@@ -563,6 +563,11 @@ window.AsgardEmployeePage=(function(){
               <h3 class="emp-ws-panel-title"><span class="bar"></span> Контакты</h3>
               <div class="formrow">
                 <div style="grid-column:1/-1">
+                  <label>Город проживания</label>
+                  <input id="emp_city" value="${esc(emp.city||"")}" placeholder="Москва" ${canEdit?"":"disabled"}/>
+                  <div class="help" style="margin-top:4px">Только город или посёлок — без улицы и дома. Адрес — в полях ниже.</div>
+                </div>
+                <div style="grid-column:1/-1">
                   <label>Адрес регистрации (прописка)</label>
                   <input id="registration_address" value="${esc(emp.registration_address||"")}" ${canEdit?"":"disabled"}/>
                 </div>
@@ -1503,6 +1508,9 @@ window.AsgardEmployeePage=(function(){
         emp.driver_license=$("#driver_license")?.value?.trim() || "";
 
         // Адреса и контакты
+        // V389: «Город проживания» — только населённый пункт, не адрес.
+        // Если вставят полный адрес, бэк (sanitizeCity) вытащит город и не запишет мусор.
+        emp.city=$("#emp_city")?.value?.trim() || "";
         emp.registration_address=$("#registration_address")?.value?.trim() || "";
         emp.address=$("#address_fact")?.value?.trim() || "";
         emp.phone = (_RM.phoneDigitsFromInput ? _RM.phoneDigitsFromInput($("#phone")) : ($("#phone")?.value?.trim() || "")) || "";

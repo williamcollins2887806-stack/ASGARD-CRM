@@ -1093,8 +1093,8 @@ const PERSONAL_GROUPS = [
       { key: 'telegram', label: 'Telegram' },
       { key: 'birth_date', label: 'Дата рождения', type: 'date' },
       { key: 'gender', label: 'Пол', type: 'gender' },
-      { key: 'city', label: 'Город' },
-      { key: 'address', label: 'Адрес' },
+      { key: 'city', label: 'Город проживания', hint: 'Только город или посёлок — без улицы и дома' },
+      { key: 'address', label: 'Адрес проживания', hint: 'Полный адрес: регион, город, улица, дом' },
       { key: 'registration_address', label: 'Адрес регистрации' },
     ],
   },
@@ -1343,6 +1343,9 @@ function PersonalEditSheet({ open, editData, setEditData, editErrors, saveError,
               return (
                 <div key={f.key}>
                   <label className="text-xs" style={{ color: 'var(--text-tertiary)' }}>{f.label}</label>
+                  {f.hint && (
+                    <p className="text-[10px] leading-tight mb-0.5" style={{ color: 'var(--text-tertiary)', opacity: 0.75 }}>{f.hint}</p>
+                  )}
                   {f.type === 'bool' ? (
                     <select
                       className="w-full rounded-lg px-3 py-2.5 text-sm mt-0.5 outline-none"

@@ -5,6 +5,39 @@
 const { closedSql, notClosedSql } = require('../helpers/work-status');
 const { assertPpeSizes } = require('../lib/ppe-sizes');
 const { toDigitsRu, normalizePhoneFields, EMPLOYEE_PHONE_KEYS } = require('../lib/phone');
+const { extractCity, isAcceptableCity } = require('../lib/city');
+
+/**
+ * V389: в employees.city должен лежать ТОЛЬКО населённый пункт.
+ * Если клиент (v2 / vanilla / Field-PWA) прислал полный адрес («Москва, ул.
+ * Тверская, д. 1» → «ул. Тверская»), в `city` он НЕ попадает: такие значения
+ * уходят в `address`/`registration_address`, а `city` остаётся пустым.
+ * Раньше улица всё равно записывалась — реальный FAIL, найденный верификатором.
+ *
+ * @param {object} body — тело запроса (мутируется)
+ */
+function sanitizeCity(body) {
+  if (!body || !('city' in body)) return;
+  const raw = String(body.city == null ? '' : body.city).trim();
+  if (!raw) {
+    body.city = null;
+    body.city_source = null;
+    return;
+  }
+  const extracted = extractCityName(raw);
+  // Принимаем ТОЛЬКО чистый город без флага «обрезано» и без адресных признаков.
+  const acceptable = extracted && isAcceptableCity(extracted);
+  if (!acceptable) {
+    // Полный адрес / регион / маркер / латиница — в «Городе» не хранится.
+    body.city = null;
+    body.city_source = null;
+    return;
+  }
+  body.city = extracted;
+  // 'manual' — если админ сам привёл значение к городу (extracted === raw).
+  if (body.city_source === undefined) body.city_source = extracted === raw ? 'manual' : 'manual';
+  if (body.city_updated_at === undefined) body.city_updated_at = new Date().toISOString();
+}
 
 // SECURITY: Allowlist of columns
 const EMPLOYEE_COLS = new Set([
@@ -29,6 +62,10 @@ const EMPLOYEE_COLS = new Set([
   'is_self_employed', 'docs_url', 'skills', 'comment',
   'imt_number', 'imt_expires', 'permits', 'rating_count',
   'is_officially_employed',
+  // V389 (13.10.2026): «Город» отделён от «Адреса». city пишется как населённый
+  // пункт (санитизация в sanitizeCity), city_source/city_updated_at — служебные.
+  // city_legacy в allowlist НЕ входит: это аудит-снимок, клиент его не пишет.
+  'city_source', 'city_updated_at',
   // V217 (16.06.2026): доп. поля анкеты — экстренные контакты + образование + медицина + одежда.
   // Источник: vanilla employee.js блоки «Экстренные контакты» (269-294) и «Дополнительно» (296-337).
   // React v2: public/desktop-v2-src/src/pages/Personnel/EmployeeExtraFields.jsx.
@@ -504,6 +541,7 @@ async function routes(fastify, options) {
     }
     if ('gender' in body) body.gender = normalizeGender(body.gender);
     normalizePhoneFields(body, EMPLOYEE_PHONE_KEYS);
+    sanitizeCity(body); // V389: «Город» — только населённый пункт, не адрес
     const data = filterData({ ...body, created_at: new Date().toISOString() }, EMPLOYEE_COLS);
     const keys = Object.keys(data);
     const values = Object.values(data);
@@ -619,6 +657,7 @@ async function routes(fastify, options) {
     // ── 6) Whitelist + UPDATE employees.
     if ('gender' in body) body.gender = normalizeGender(body.gender);
     normalizePhoneFields(body, EMPLOYEE_PHONE_KEYS);
+    sanitizeCity(body); // V389: «Город» — только населённый пункт, не адрес
     const data = filterData(body, EMPLOYEE_COLS);
     const updates = [];
     const values = [];

@@ -84,16 +84,16 @@ export function EmployeeAnketaForm({
               </Field>
             </div>
             <div className="grid-2 gap-10">
-              <Field label="Город">
-                <TextInput value={form.city} onChange={(v) => set('city', v)} disabled={disabled} />
-              </Field>
-              <Field label="Адрес проживания">
-                <TextInput value={form.address} onChange={(v) => set('address', v)} disabled={disabled} />
-              </Field>
-            </div>
-            <Field label="Адрес регистрации">
-              <TextInput value={form.registration_address} onChange={(v) => set('registration_address', v)} disabled={disabled} />
+            <Field label="Город проживания" help="Только город или посёлок — без улицы и дома. Адрес — в полях ниже.">
+              <TextInput value={form.city} onChange={(v) => set('city', v)} placeholder="Москва" disabled={disabled} />
             </Field>
+            <Field label="Адрес проживания" help="Полный адрес: регион, город, улица, дом.">
+              <TextInput value={form.address} onChange={(v) => set('address', v)} placeholder="обл., р-н, г., ул., д., кв." disabled={disabled} />
+            </Field>
+          </div>
+          <Field label="Адрес регистрации" help="Полный адрес: регион, город, улица, дом.">
+            <TextInput value={form.registration_address} onChange={(v) => set('registration_address', v)} placeholder="обл., р-н, г., ул., д., кв." disabled={disabled} />
+          </Field>
           </FormSection>
 
           <FormSection title="Экстренные контакты">

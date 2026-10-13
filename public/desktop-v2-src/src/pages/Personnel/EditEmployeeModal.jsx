@@ -275,11 +275,11 @@ export function EditEmployeeModal({ employee, onSaved }) {
               </Field>
             </div>
             <div className="grid-2 gap-10">
-              <Field label="Город">
+              <Field label="Город проживания" hint="Только город или посёлок — без улицы и дома. Адрес — в полях ниже.">
                 <TextInput value={form.city} onChange={(v) => set('city', v)} placeholder="Москва" />
               </Field>
-              <Field label="Адрес проживания">
-                <TextInput value={form.address} onChange={(v) => set('address', v)} />
+              <Field label="Адрес проживания" hint="Полный адрес: регион, город, улица, дом.">
+                <TextInput value={form.address} onChange={(v) => set('address', v)} placeholder="обл., р-н, г., ул., д., кв." />
               </Field>
             </div>
           </Section>
@@ -602,8 +602,8 @@ export function EditEmployeeModal({ employee, onSaved }) {
             <Field label="Кем выдан">
               <TextInput value={form.passport_issued} onChange={(v) => set('passport_issued', v)} />
             </Field>
-            <Field label="Адрес регистрации">
-              <TextInput value={form.registration_address} onChange={(v) => set('registration_address', v)} />
+            <Field label="Адрес регистрации" hint="Полный адрес: регион, город, улица, дом.">
+              <TextInput value={form.registration_address} onChange={(v) => set('registration_address', v)} placeholder="обл., р-н, г., ул., д., кв." />
             </Field>
           </Section>
 
