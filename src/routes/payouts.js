@@ -359,7 +359,7 @@ async function routes(fastify, options) {
       const PLATFORM_METHOD = { bank: 'bank', restaff: 'self', card: 'card', cash: 'cash', other: 'transfer' };
       const paymentMethod = PLATFORM_METHOD[b.payout_platform] || 'bank';
       // paid_by_role — из роли плательщика (для отчётности/фильтров).
-      const ROLE_TO_PAID_BY = { ADMIN: 'admin', BUH: 'buh', DIRECTOR_GEN: 'director', DIRECTOR_COMM: 'director', DIRECTOR_DEV: 'director' };
+      const ROLE_TO_PAID_BY = { ADMIN: 'admin', BUH: 'buh', DIRECTOR_GEN: 'director', DIRECTOR_COMM: 'director', DIRECTOR_DEV: 'director', PM: 'pm', HEAD_PM: 'pm', TO: 'buh', HEAD_TO: 'buh', PROC: 'buh' };
       const paidByRole = ROLE_TO_PAID_BY[request.user.role] || 'buh';
       const { rows: ins } = await client.query(`
         INSERT INTO worker_payments (
@@ -457,6 +457,7 @@ async function routes(fastify, options) {
                 confirmed_at = NOW(),
                 updated_at = NOW()
           WHERE id = $1 AND status IN ('paid','confirmed')
+            AND confirmation_status = 'awaiting'
           RETURNING id, employee_id, amount`,
         [id]);
       if (!rows.length) return reply.code(404).send({ error: 'Выплата не найдена или не в статусе paid' });

@@ -399,8 +399,7 @@ module.exports = {
         assert(r.data.payment.confirmation_status === undefined || r.data.payment.id === pid, 'вернулась та же выплата');
         // Повторно подтвердить уже подтверждённую → 404 (не awaiting)
         const again = await api('POST', `/api/payouts/${pid}/confirm-by-manager`, { role: 'ADMIN', body: {} });
-        // бэк confirm-by-manager не проверяет awaiting — фиксируем фактическое поведение (200) — это открытый вопрос, не FAIL
-        assert([200, 404].includes(again.status), `повторный confirm-by-manager вернул ${again.status}`);
+        assertStatus(again, 404, 'повторный confirm-by-manager на подтверждённой');
       },
     },
     {
