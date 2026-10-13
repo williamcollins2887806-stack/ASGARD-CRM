@@ -30,7 +30,9 @@ function pg() {
 /** Выдать field-токен сотруднику (JWT + сессия), как это делает field-auth. */
 async function fieldTokenFor(empId) {
   const c = await pg();
-  const token = jwt.sign({ employee_id: empId, user_id: null, type: 'field' }, FIELD_JWT_SECRET, { expiresIn: '1d' });
+  // jti — уникальность токена (иначе повторный вход того же сотрудника даёт
+  // тот же sha256-хеш → нарушение UNIQUE field_sessions_token_hash_key).
+  const token = jwt.sign({ employee_id: empId, user_id: null, type: 'field', jti: crypto.randomUUID() }, FIELD_JWT_SECRET, { expiresIn: '1d' });
   const hash = crypto.createHash('sha256').update(token).digest('hex');
   await c.query(`INSERT INTO field_sessions (employee_id, token_hash, device_info, expires_at) VALUES ($1,$2,'verify_auto', NOW()+INTERVAL '1 day')`, [empId, hash]);
   return token;
