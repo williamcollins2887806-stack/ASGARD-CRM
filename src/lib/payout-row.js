@@ -131,6 +131,21 @@ async function buildPayoutRows(db, year, month) {
     [periodId]
   );
 
+  // ── 5b. Детали выплат за период (статус подтверждения для списка) ────────
+  let detailMap = new Map();
+  try {
+    const { rows: payDetail } = await db.query(
+      `SELECT DISTINCT ON (employee_id)
+              employee_id, id AS payment_id, type, status,
+              confirmation_status, confirmation_deadline
+         FROM worker_payments
+        WHERE COALESCE(pay_year, EXTRACT(YEAR FROM created_at)::int) = $1
+          AND COALESCE(pay_month, EXTRACT(MONTH FROM created_at)::int) = $2
+          AND status IN ('paid','confirmed')
+        ORDER BY employee_id, id DESC`, [y, m]);
+    detailMap = new Map(payDetail.map((r) => [r.employee_id, r]));
+  } catch (_) { /* колонок может не быть на старом клоне */ }
+
   // ── 5. Профили сотрудников (только те, у кого есть активность) ───────────
   const empIds = new Set();
   for (const r of fotMonth) empIds.add(r.employee_id);
@@ -185,8 +200,20 @@ async function buildPayoutRows(db, year, month) {
   const rows = [];
   const totals = {
     accrued: 0, carry: 0, advance: 0, penalty: 0, official: 0, bonus: 0, to_pay: 0,
-    employees: 0, overpaid_count: 0,
+    employees: 0, overpaid_count: 0, paid_this_month: 0,
   };
+
+  // Выплачено за месяц (paid/confirmed всех типов со знаком) — для KPI/графика
+  try {
+    const { rows: paidAgg } = await db.query(
+      `SELECT COALESCE(SUM(CASE WHEN type IN ('salary','advance','bonus') THEN amount ELSE 0 END)
+                     - SUM(CASE WHEN type='penalty' THEN amount ELSE 0 END), 0)::numeric AS paid
+         FROM worker_payments
+        WHERE COALESCE(pay_year, EXTRACT(YEAR FROM created_at)::int) = $1
+          AND COALESCE(pay_month, EXTRACT(MONTH FROM created_at)::int) = $2
+          AND status IN ('paid','confirmed')`, [y, m]);
+    totals.paid_this_month = money(paidAgg[0] ? paidAgg[0].paid : 0);
+  } catch (_) {}
 
   for (const [empId, emp] of empMap) {
     const accrued = money(fotMonthMap.get(empId) || 0);
@@ -211,7 +238,8 @@ async function buildPayoutRows(db, year, month) {
     if (!hasAny) continue;
 
     const fio = (emp.fio || emp.full_name || '').trim() || ('ID ' + empId);
-    rows.push({
+    const det = detailMap.get(empId);
+    const rec = {
       employee_id: empId,
       fio,
       is_self_employed: !!emp.is_self_employed,
@@ -227,7 +255,14 @@ async function buildPayoutRows(db, year, month) {
       to_pay: toPay,
       overpaid: toPay < 0,
       ready: true,
-    });
+      // Детали выплаты за период (для статусов строки)
+      payment_id: det ? det.payment_id : null,
+      paid_this_period: !!det,
+      confirm: det ? det.confirmation_status : null,
+      overdue: det && det.confirmation_status === 'awaiting' && det.confirmation_deadline
+        ? new Date(det.confirmation_deadline) < new Date() : false,
+    };
+    rows.push(rec);
 
     totals.accrued += accrued;
     totals.carry += carry;

@@ -1058,6 +1058,19 @@ try {
   fastify.log.warn('[PerDiemCron] Init skipped: ' + cronErr.message);
 }
 
+// ── Payout Reminder Cron: напоминания о неподтверждённых выплатах ──
+try {
+  const payoutCron = require('./services/payout-confirmation-cron');
+  fastify.addHook('onReady', async () => {
+    payoutCron.start(fastify.db, fastify.log);
+  });
+  fastify.addHook('onClose', async () => {
+    payoutCron.stop();
+  });
+} catch (cronErr) {
+  fastify.log.warn('[PayoutReminderCron] Init skipped: ' + cronErr.message);
+}
+
 // ── Achievements Cron: daily check ──
 try {
   const achievementsCron = require('./services/achievements-cron');

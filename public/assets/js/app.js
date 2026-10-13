@@ -345,6 +345,7 @@ console.log('[ASGARD] Global period functions loaded');
     {r:"/timesheet-travel",l:"Табель учёта дороги",d:"Отметки дороги · закрытие месяца",roles:["ADMIN","OFFICE_MANAGER","HEAD_TO",...DIRECTOR_ROLES],i:"calendar",p:"timesheet_travel",g:"personnel"},
     {r:"/site-crew",l:"Кто на объектах",d:"Матрица бригад: кто где, снять/добавить",roles:["ADMIN","HEAD_TO",...DIRECTOR_ROLES],i:"workers",p:"site_crew",g:"personnel"},
     {r:"/payroll-dashboard",l:"Финансы персонала",d:"Дашборд выплат",roles:["ADMIN","BUH",...DIRECTOR_ROLES],i:"money",p:"payroll_dashboard",g:"personnel"},
+    {r:"/payouts",l:"Выплаты",d:"Ведомость выплат и расчётные листы",roles:["ADMIN","BUH",...DIRECTOR_ROLES],i:"money",p:"payouts",g:"personnel"},
     {r:"/official-employees",l:"Официально устроенные",d:"Оклады и статусы",roles:["ADMIN","BUH",...DIRECTOR_ROLES],i:"workers",p:"official_employees",g:"personnel"},
     {r:"/training-board",l:"Обучение и допуски",d:"Допуски и обучение рабочих",roles:["ADMIN","TO","HEAD_TO",...DIRECTOR_ROLES],i:"school",p:"training_board",g:"personnel"},
     {r:"/pm-balance",l:"Баланс подотчётников",d:"Наличные на руках",roles:["ADMIN","BUH",...DIRECTOR_ROLES],i:"money",p:"pm_balance",g:"personnel"},
@@ -2375,6 +2376,7 @@ var _setupPinKeypad = null;
     // Старые URL — редиректы
     AsgardRouter.add("/global-timesheet", ()=>{ location.hash = '#/timesheet'; }, {auth:true, roles:ALL_ROLES});
     AsgardRouter.add("/payroll-dashboard", ()=>AsgardPayrollDashboard.render({layout, title:"Финансы персонала"}), {auth:true, roles:["ADMIN","BUH",...DIRECTOR_ROLES]});
+    AsgardRouter.add("/payouts", ()=>AsgardPayoutsPage.render({layout, title:"Выплаты"}), {auth:true, roles:["ADMIN","BUH",...DIRECTOR_ROLES]});
     AsgardRouter.add("/official-employees", ()=>AsgardOfficialEmployeesPage.render({layout, title:"Официально устроенные"}), {auth:true, roles:["ADMIN","BUH",...DIRECTOR_ROLES]});
     AsgardRouter.add("/training-board", ()=>AsgardTrainingBoard.render({layout, title:"Обучение и допуски"}), {auth:true, roles:["ADMIN","TO","HEAD_TO",...DIRECTOR_ROLES]});
     AsgardRouter.add("/pm-balance", ()=>AsgardPmBalancePage.render({layout, title:"Баланс подотчётников"}), {auth:true, roles:["ADMIN","BUH",...DIRECTOR_ROLES]});

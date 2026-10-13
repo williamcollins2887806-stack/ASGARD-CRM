@@ -388,19 +388,13 @@ async function routes(fastify, options) {
 
       await client.query('COMMIT');
 
-      // Уведомление (in-app) — SMS/MAX в Этапе 5
+      // Уведомление + код подтверждения (MAX → SMS, in-app баннер). Этап 5.
       try {
-        if (emp.user_id) {
-          const notify = require('../services/notify');
-          await notify.createNotification(db, {
-            user_id: emp.user_id,
-            title: `💰 Выплата ${Math.round(payAmount)}₽`,
-            message: 'Зайдите в приложение и подтвердите получение.',
-            type: 'payment_received',
-            link: '/field/earnings',
-          });
-        }
-      } catch (_) {}
+        const { sendPayoutCode } = require('../lib/payout-notify');
+        await sendPayoutCode(fastify, db, { paymentId: ins[0].id, employeeId: empId, amount: payAmount });
+      } catch (e) {
+        fastify.log.warn(`[payouts] notify fail: ${e.message}`);
+      }
 
       return reply.send({
         ok: true,
@@ -445,6 +439,193 @@ async function routes(fastify, options) {
       });
     } catch (err) {
       logError(fastify, '[payouts] GET /preview error', err, request);
+      return reply.code(500).send({ error: 'Ошибка сервера' });
+    }
+  });
+
+  // ─── POST /:id/confirm-by-manager — подтвердить за рабочего ────────────────
+  // Для тех, кто не может зайти в приложение. Причина НЕ обязательна (ТЗ),
+  // но фиксируем кто/когда/что — для аудита.
+  fastify.post('/:id/confirm-by-manager', payoutAuth, async (request, reply) => {
+    const id = parseInt(request.params.id, 10);
+    if (!Number.isInteger(id) || id <= 0) return reply.code(400).send({ error: 'Некорректный id' });
+    try {
+      const { rows } = await db.query(
+        `UPDATE worker_payments
+            SET confirmation_status = 'confirmed',
+                confirmed_by_worker = true,
+                confirmed_at = NOW(),
+                updated_at = NOW()
+          WHERE id = $1 AND status IN ('paid','confirmed')
+          RETURNING id, employee_id, amount`,
+        [id]);
+      if (!rows.length) return reply.code(404).send({ error: 'Выплата не найдена или не в статусе paid' });
+      await db.query(`
+        INSERT INTO audit_log (actor_user_id, entity_type, entity_id, action, payload_json, created_at)
+        VALUES ($1, 'worker_payments', $2, 'payout_confirmed_by_manager', $3::jsonb, NOW())
+      `, [request.user.id, id, JSON.stringify({ by_role: request.user.role, reason: request.body?.reason || null })]);
+      return reply.send({ ok: true, payment: rows[0] });
+    } catch (err) {
+      logError(fastify, '[payouts] POST /confirm-by-manager error', err, request);
+      return reply.code(500).send({ error: 'Ошибка сервера' });
+    }
+  });
+
+  // ─── GET /my/pending — неподтверждённые выплаты ТЕКУЩЕГО рабочего ──────────
+  // Для несжимаемого баннера в мобильном PWA.
+  fastify.get('/my/pending', { preHandler: [fastify.fieldAuthenticate] }, async (request, reply) => {
+    try {
+      const empId = request.fieldEmployee ? request.fieldEmployee.id : null;
+      if (!empId) return reply.code(401).send({ error: 'Не авторизован' });
+      const { rows } = await db.query(`
+        SELECT id, amount, transfer_amount, tax_amount, type, paid_at,
+               payout_platform, payout_recipient_note, confirmation_status, confirmation_deadline,
+               COALESCE(pay_year, EXTRACT(YEAR FROM created_at)::int) AS pay_year,
+               COALESCE(pay_month, EXTRACT(MONTH FROM created_at)::int) AS pay_month
+          FROM worker_payments
+         WHERE employee_id = $1
+           AND status IN ('paid','confirmed')
+           AND confirmation_status = 'awaiting'
+         ORDER BY paid_at DESC
+      `, [empId]);
+      return reply.send({ payments: rows });
+    } catch (err) {
+      logError(fastify, '[payouts] GET /my/pending error', err, request);
+      return reply.code(500).send({ error: 'Ошибка сервера' });
+    }
+  });
+
+  // ─── POST /my/:id/confirm — рабочий подтверждает получение ─────────────────
+  fastify.post('/my/:id/confirm', { preHandler: [fastify.fieldAuthenticate] }, async (request, reply) => {
+    const id = parseInt(request.params.id, 10);
+    if (!Number.isInteger(id) || id <= 0) return reply.code(400).send({ error: 'Некорректный id' });
+    try {
+      const empId = request.fieldEmployee ? request.fieldEmployee.id : null;
+      if (!empId) return reply.code(401).send({ error: 'Не авторизован' });
+      const code = request.body && request.body.code;
+      if (!code) return reply.code(400).send({ error: 'Код обязателен' });
+
+      const { rows: payRows } = await db.query(
+        `SELECT id FROM worker_payments
+          WHERE id = $1 AND employee_id = $2 AND status IN ('paid','confirmed')`, [id, empId]);
+      if (!payRows.length) return reply.code(404).send({ error: 'Выплата не найдена' });
+
+      const { verifyPayoutCode } = require('../lib/payout-notify');
+      const v = await verifyPayoutCode(db, { paymentId: id, employeeId: empId, code });
+      if (!v.ok) return reply.code(400).send({ error: v.error, attempts_left: v.attempts_left });
+
+      // Читаем результат UPDATE: если строка не awaiting (уже подтверждена/оспорена),
+      // возвращаем 404, а не лживый 200.
+      const { rows: upd } = await db.query(`
+        UPDATE worker_payments
+           SET confirmation_status = 'confirmed', confirmed_by_worker = true,
+               confirmed_at = NOW(), status = 'confirmed', updated_at = NOW()
+         WHERE id = $1 AND employee_id = $2 AND confirmation_status = 'awaiting'
+         RETURNING id`, [id, empId]);
+      if (!upd.length) return reply.code(404).send({ error: 'Выплата не найдена или уже не ждёт подтверждения' });
+      return reply.send({ ok: true });
+    } catch (err) {
+      logError(fastify, '[payouts] POST /my/confirm error', err, request);
+      return reply.code(500).send({ error: 'Ошибка сервера' });
+    }
+  });
+
+  // ─── POST /my/:id/dispute — «не согласен / не получил» (маркер) ────────────
+  fastify.post('/my/:id/dispute', { preHandler: [fastify.fieldAuthenticate] }, async (request, reply) => {
+    const id = parseInt(request.params.id, 10);
+    if (!Number.isInteger(id) || id <= 0) return reply.code(400).send({ error: 'Некорректный id' });
+    try {
+      const empId = request.fieldEmployee ? request.fieldEmployee.id : null;
+      if (!empId) return reply.code(401).send({ error: 'Не авторизован' });
+
+      // Проверяем, что выплата принадлежит этому сотруднику и ещё ждёт подтверждения
+      const { rows: own } = await db.query(
+        `SELECT id FROM worker_payments
+          WHERE id = $1 AND employee_id = $2 AND status IN ('paid','confirmed')
+            AND confirmation_status = 'awaiting'`, [id, empId]);
+      if (!own.length) return reply.code(404).send({ error: 'Выплата не найдена' });
+
+      // РП: по работе выплаты (works.pm_id) или по последней работе сотрудника
+      const { rows: pmRows } = await db.query(`
+        SELECT COALESCE(
+                 w.pm_id,
+                 (SELECT w2.pm_id FROM field_checkins fc
+                    JOIN works w2 ON w2.id = fc.work_id
+                   WHERE fc.employee_id = $2 AND w2.pm_id IS NOT NULL
+                   ORDER BY fc.date DESC LIMIT 1)
+               ) AS pm_id
+          FROM worker_payments wp
+          LEFT JOIN works w ON w.id = wp.work_id
+         WHERE wp.id = $1`, [id, empId]);
+
+      let pmPhone = null, managerPhone = null;
+      try {
+        const { rows: mgr } = await db.query(
+          `SELECT value_json FROM settings WHERE key='payout_manager_user_ids' LIMIT 1`);
+        if (mgr[0]) {
+          const ids = JSON.parse(mgr[0].value_json);
+          if (Array.isArray(ids) && ids.length) {
+            const { rows: u } = await db.query(`SELECT phone FROM users WHERE id = $1`, [ids[0]]);
+            managerPhone = u[0] ? u[0].phone : null;
+          }
+        }
+      } catch (_) {}
+      if (pmRows[0] && pmRows[0].pm_id) {
+        const { rows: p } = await db.query(`SELECT phone FROM users WHERE id = $1`, [pmRows[0].pm_id]);
+        pmPhone = p[0] ? p[0].phone : null;
+      }
+
+      await db.query(`
+        UPDATE worker_payments
+           SET confirmation_status = 'disputed', dispute_at = NOW(),
+               dispute_reason = $2, updated_at = NOW()
+         WHERE id = $1 AND employee_id = $3 AND confirmation_status = 'awaiting'
+         RETURNING id`, [id, (request.body && request.body.reason) || null, empId]);
+
+      return reply.send({ ok: true, contacts: { manager_phone: managerPhone, pm_phone: pmPhone } });
+    } catch (err) {
+      logError(fastify, '[payouts] POST /my/dispute error', err, request);
+      return reply.code(500).send({ error: 'Ошибка сервера' });
+    }
+  });
+
+  // ─── POST /:id/resend — повторно отправить код (Дима/админ) ────────────────
+  fastify.post('/:id/resend', payoutAuth, async (request, reply) => {
+    const id = parseInt(request.params.id, 10);
+    if (!Number.isInteger(id) || id <= 0) return reply.code(400).send({ error: 'Некорректный id' });
+    try {
+      const { rows } = await db.query(
+        `SELECT id, employee_id, amount FROM worker_payments WHERE id = $1 AND status IN ('paid','confirmed')`, [id]);
+      if (!rows.length) return reply.code(404).send({ error: 'Выплата не найдена' });
+      const { sendPayoutCode } = require('../lib/payout-notify');
+      const r = await sendPayoutCode(fastify, db, { paymentId: id, employeeId: rows[0].employee_id, amount: rows[0].amount });
+      return reply.send(r);
+    } catch (err) {
+      logError(fastify, '[payouts] POST /resend error', err, request);
+      return reply.code(500).send({ error: 'Ошибка сервера' });
+    }
+  });
+
+  // ─── GET /monthly-series/:year — выплачено по месяцам (для графика) ───────
+  fastify.get('/monthly-series/:year', payoutAuth, async (request, reply) => {
+    const y = parseInt(request.params.year, 10);
+    if (!Number.isInteger(y) || y < 2020 || y > 2099) return reply.code(400).send({ error: 'Некорректный год' });
+    try {
+      const { rows } = await db.query(`
+        SELECT COALESCE(pay_month, EXTRACT(MONTH FROM created_at)::int) AS month,
+               SUM(CASE WHEN type IN ('salary','advance','bonus') THEN amount ELSE 0 END)
+             - SUM(CASE WHEN type='penalty' THEN amount ELSE 0 END) AS paid
+          FROM worker_payments
+         WHERE COALESCE(pay_year, EXTRACT(YEAR FROM created_at)::int) = $1
+           AND status IN ('paid','confirmed')
+         GROUP BY 1`, [y]);
+      const series = Array.from({ length: 12 }, (_, i) => {
+        const f = rows.find((r) => r.month === i + 1);
+        return { month: i + 1, paid: f ? Math.round(parseFloat(f.paid) * 100) / 100 : 0 };
+      });
+      return reply.send({ year: y, series });
+    } catch (err) {
+      logError(fastify, '[payouts] GET /monthly-series error', err, request);
       return reply.code(500).send({ error: 'Ошибка сервера' });
     }
   });
