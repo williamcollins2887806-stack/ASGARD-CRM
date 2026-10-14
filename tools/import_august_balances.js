@@ -54,6 +54,9 @@ function arg(name, def) {
 const DB_NAME = arg('--db', 'asgard_crm_test');
 const APPLY = process.argv.includes('--apply');
 const REVERT = process.argv.includes('--revert');
+// --emit-sql: не подключаться к БД, а напечатать SQL для прод-сервера
+// (прод-база снаружи недоступна). SQL резолвит сотрудника по ФИО на самой БД.
+const EMIT_SQL = process.argv.includes('--emit-sql');
 
 /** Разбор « 125 496,00» / -30000 / 29195.25 → число. */
 function parseAmount(v) {
@@ -99,6 +102,50 @@ async function resolveEmployee(db, fio) {
 
 async function main() {
   const xlsxPath = arg('--file', path.join(process.env.USERPROFILE || process.env.HOME || '.', 'Downloads', '111.xlsx'));
+
+  // ── Режим SQL-эмиссии для прод-сервера (БД снаружи недоступна) ────────────
+  if (EMIT_SQL) {
+    const fileRows = readFile(xlsxPath);
+    const q = (s) => String(s).replace(/'/g, "''");
+    const lines = [];
+    lines.push('\\set ON_ERROR_STOP on');
+    lines.push('BEGIN;');
+    lines.push(`-- идемпотентно: чистим прошлый импорт этого тега`);
+    lines.push(`DELETE FROM worker_payments WHERE comment IN ('${q(COMMENT)}', '${q(COMMENT_ADV)}');`);
+    let total = 0, unresolved = 0;
+    for (const fr of fileRows) {
+      const parts = fr.fio.split(/\s+/).filter(Boolean);
+      const resolved = FIO_ALIASES[parts.slice(0, 2).join(' ').toLowerCase()] || parts.slice(0, 2).join(' ');
+      const type = fr.amount > 0 ? 'salary' : 'penalty';
+      const abs = Math.abs(fr.amount);
+      const comment = type === 'salary' ? COMMENT : COMMENT_ADV;
+      const col = type === 'salary' ? 'Остаток' : 'Аванс';
+      // Резолвим сотрудника подзапросом; если строк 0 или >1 — вставится 0 строк.
+      lines.push(`-- ${fr.fio} → ${col} ${abs}`);
+      lines.push(
+        `INSERT INTO worker_payments (employee_id, work_id, type, amount, status, payment_method, paid_by, paid_by_role, pay_year, pay_month, comment, created_by, created_at, confirmation_status)` +
+        ` SELECT e.id, NULL, '${type}', ${abs}, 'pending', 'adjustment',` +
+        ` (SELECT id FROM users WHERE role='ADMIN' AND is_active IS NOT FALSE ORDER BY id LIMIT 1),` +
+        ` 'buh', ${PERIOD_YEAR}, ${PERIOD_MONTH}, '${q(comment)}, ${col}: ${abs} ₽ (сверка авг.2026)',` +
+        ` (SELECT id FROM users WHERE role='ADMIN' AND is_active IS NOT FALSE ORDER BY id LIMIT 1), NOW(), NULL` +
+        ` FROM employees e WHERE e.fio ILIKE '${q(resolved)}%'` +
+        ` AND (SELECT count(*) FROM employees e2 WHERE e2.fio ILIKE '${q(resolved)}%') = 1;`
+      );
+      total++;
+    }
+    lines.push('COMMIT;');
+    lines.push(`SELECT 'ИМПОРТ: заявлено строк=${total}, actual вставлено=' || count(*) AS итог FROM worker_payments WHERE comment LIKE 'Корректировка августа 2026%';`);
+    const out = arg('--out', null);
+    const text = lines.join('\n') + '\n';
+    if (typeof out === 'string') {
+      require('fs').writeFileSync(out, text, 'utf8');
+      process.stdout.write(`SQL записан: ${out} (${Buffer.byteLength(text)} байт, UTF-8)\n`);
+    } else {
+      process.stdout.write(text);
+    }
+    return;
+  }
+
   const db = new Pool({
     host: process.env.DB_HOST || '127.0.0.1',
     port: parseInt(process.env.DB_PORT || '5432', 10),
