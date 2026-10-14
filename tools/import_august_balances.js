@@ -47,6 +47,14 @@ const FIO_ALIASES = {
   'круглов вадим': 'Круглов Николай',
 };
 
+/**
+ * Кого из файла НЕ заводим: у Андрющенко (9869) аванс 30 000 уже проведён
+ * РЕАЛЬНОЙ записью за сентябрь (advance id 3501, paid). Импортная запись за
+ * август давала двойной счёт (−60 000 вместо −30 000). Решение заказчика
+ * 14.10.2026: показывать −30 000 → берём реальную запись, файл игнорируем.
+ */
+const FIO_EXCLUDE = new Set(['андрющенко константин']);
+
 function arg(name, def) {
   const i = process.argv.indexOf(name);
   return i >= 0 ? (process.argv[i + 1] || true) : def;
@@ -115,7 +123,9 @@ async function main() {
     let total = 0, unresolved = 0;
     for (const fr of fileRows) {
       const parts = fr.fio.split(/\s+/).filter(Boolean);
-      const resolved = FIO_ALIASES[parts.slice(0, 2).join(' ').toLowerCase()] || parts.slice(0, 2).join(' ');
+      const key = parts.slice(0, 2).join(' ').toLowerCase();
+      if (FIO_EXCLUDE.has(key)) { lines.push(`-- ${fr.fio} → ПРОПУСК (аванс уже в системе, решение 14.10.2026)`); continue; }
+      const resolved = FIO_ALIASES[key] || parts.slice(0, 2).join(' ');
       const type = fr.amount > 0 ? 'salary' : 'penalty';
       const abs = Math.abs(fr.amount);
       const comment = type === 'salary' ? COMMENT : COMMENT_ADV;
@@ -174,6 +184,8 @@ async function main() {
   const plan = [];
   let problems = 0;
   for (const fr of fileRows) {
+    const key2 = fr.fio.split(/\s+/).filter(Boolean).slice(0, 2).join(' ').toLowerCase();
+    if (FIO_EXCLUDE.has(key2)) { plan.push({ fio: fr.fio, amount: fr.amount, skip: 'исключён (аванс уже в системе)' }); continue; }
     const { emp, amb } = await resolveEmployee(db, fr.fio);
     if (!emp) { problems++; plan.push({ fio: fr.fio, amount: fr.amount, skip: amb }); continue; }
     const type = fr.amount > 0 ? 'salary' : 'penalty';
