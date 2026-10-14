@@ -208,9 +208,13 @@ async function routes(fastify, options) {
       });
 
       const { rows: empRows } = await db.query(
-        `SELECT id, COALESCE(NULLIF(TRIM(fio),''), NULLIF(TRIM(full_name),''), 'ID '||id) AS fio,
-                is_self_employed, is_officially_employed
-           FROM employees WHERE id = $1`, [empId]);
+        `SELECT e.id, COALESCE(NULLIF(TRIM(e.fio),''), NULLIF(TRIM(e.full_name),''), 'ID '||e.id) AS fio,
+                e.is_self_employed, e.is_officially_employed,
+                e.se_payee_id, e.is_se_payee,
+                p.fio AS se_payee_fio, p.phone AS se_payee_phone
+           FROM employees e
+           LEFT JOIN employees p ON p.id = e.se_payee_id
+          WHERE e.id = $1`, [empId]);
 
       return reply.send({
         employee: empRows[0] || { id: empId },
@@ -504,15 +508,20 @@ async function routes(fastify, options) {
       const list = await buildPayoutRows(db, y, m);
       const row = list.rows.find((r) => r.employee_id === empId) || null;
       const { rows: empRows } = await db.query(
-        `SELECT id, COALESCE(NULLIF(TRIM(fio),''), NULLIF(TRIM(full_name),''), 'ID '||id) AS fio,
-                is_self_employed, is_officially_employed FROM employees WHERE id=$1`, [empId]);
+        `SELECT e.id, COALESCE(NULLIF(TRIM(e.fio),''), NULLIF(TRIM(e.full_name),''), 'ID '||e.id) AS fio,
+                e.is_self_employed, e.is_officially_employed,
+                e.se_payee_id, e.is_se_payee,
+                p.fio AS se_payee_fio, p.phone AS se_payee_phone
+           FROM employees e
+           LEFT JOIN employees p ON p.id = e.se_payee_id
+          WHERE e.id = $1`, [empId]);
+
       let taxRate = 0.06;
       try {
         const { rows: st } = await db.query("SELECT value_json FROM settings WHERE key='self_employed_tax_rate' LIMIT 1");
         if (st[0]) { const v = parseFloat(String(st[0].value_json).replace(/[^\d.\-]/g, '')); if (Number.isFinite(v)) taxRate = v; }
       } catch (_) {}
       // Коэффициенты пересчёта для фронта (единый источник — payout-calc.js).
-      // Фронт ими только перемножает — формулы дублировать нельзя.
       const calcSettings = await loadPayoutCalcSettings(db);
       return reply.send({
         employee: empRows[0] || { id: empId },

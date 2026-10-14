@@ -1553,13 +1553,17 @@ window.AsgardEmployeePage=(function(){
         emp.is_self_employed      = flagSE;
         emp.is_officially_employed = flagOFC;
 
-        // Получатель НПД-выплат (V240). Если выбран payee — выплаты идут на него,
-        // сам рабочий формально не СЗ (его ИНН-лимит не тратится).
+        // Получатель НПД-выплат (V240). Если выбран payee — деньги и лимит НПД
+        // идут на получателя (см. src/lib/se-limits.js: resolveLimitsHolderId).
+        // ВАЖНО (баг 15.10.2026): НЕ сбрасываем is_self_employed. Рабочий,
+        // получающий через payee, остаётся самозанятым — так его считает
+        // серверная логика (payout-row/se-limits/payroll-dashboard: payee
+        // учитывается только при is_self_employed=true). Прежний сброс в false
+        // превращал такого рабочего в «наличного» в выплатах и терял привязку.
         const usePayee = !!$("#use_payee")?.checked;
         const payeeIdRaw = $("#payee_id_hidden")?.value || "";
         const payeeId = usePayee && payeeIdRaw ? Number(payeeIdRaw) : null;
         emp.se_payee_id = payeeId;
-        if (payeeId) emp.is_self_employed = false;
 
         // Финансовые поля — пишутся только если у юзера есть права
         if (canEditFinance) {

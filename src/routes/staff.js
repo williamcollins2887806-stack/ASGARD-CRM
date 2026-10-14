@@ -1460,7 +1460,10 @@ async function routes(fastify, options) {
             }
 
             // create_payee: если указан linked_to_employee_id — обновляем рабочего.
-            // Рабочий теряет статус СЗ (выплаты идут на родственника).
+            // Рабочий ОСТАЁТСЯ самозанятым: получатель — это лишь адресат НПД-выплат
+            // и владелец лимита (src/lib/se-limits.js: resolveLimitsHolderId).
+            // Прежний сброс is_self_employed=false ломал контур выплат (баг 15.10.2026):
+            // payroll-dashboard учитывает payee только при is_self_employed=true.
             if (action === 'create_payee' && r.linked_to_employee_id != null) {
               const linkedId = parseInt(r.linked_to_employee_id, 10);
               if (Number.isFinite(linkedId) && linkedId > 0 && linkedId !== newId) {
@@ -1476,7 +1479,7 @@ async function routes(fastify, options) {
                 } else {
                   await client.query(`
                     UPDATE employees
-                    SET se_payee_id = $1, is_self_employed = false, updated_at = NOW()
+                    SET se_payee_id = $1, is_self_employed = true, updated_at = NOW()
                     WHERE id = $2
                   `, [newId, linkedId]);
                 }

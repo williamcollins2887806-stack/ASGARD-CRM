@@ -471,6 +471,11 @@ window.AsgardPayoutsPage = (function () {
     const seTransferCoef = Number(calc.se_transfer_coef) || (1.064 / 0.96) * 1.22;
     const officialMarkupRate = Number(calc.official_markup_rate) || 0.15;
     const isNonSe = !isSe;
+    // Получатель НПД: если у рабочего привязан se_payee_id — выплата идёт на него.
+    // Показываем это в модалке (заказчик 15.10.2026: «в дружине видно, а тут нет»).
+    const payee = preview.employee && preview.employee.se_payee_id
+      ? { id: preview.employee.se_payee_id, fio: preview.employee.se_payee_fio || null, phone: preview.employee.se_payee_phone || null }
+      : null;
 
     let card = { total_paid_all_time: 0, avg_per_year: 0, by_year: [], current_year_months: [] };
     let monthly = { series: [] };
@@ -548,6 +553,15 @@ window.AsgardPayoutsPage = (function () {
         <div class="po-method-block">
           <div class="po-section-title">Способ выплаты</div>
           <div class="po-method"><span class="po-method-icon">${isSe ? '📱' : '💵'}</span><span class="po-method-text"></span></div>
+          ${payee ? `
+          <div class="po-payee">
+            <span class="po-payee-ico">🔁</span>
+            <div class="po-payee-txt">
+              <b>Выплата через получателя НПД</b>
+              <span>${esc(payee.fio || ('ID ' + payee.id))}${payee.phone ? ' · ' + esc(payee.phone) : ''}</span>
+              <small>Деньги и лимит НПД идут на получателя, не на самого рабочего</small>
+            </div>
+          </div>` : ''}
           ${isNonSe ? `
           <label class="po-official-toggle">
             <input type="checkbox" class="po-official">
@@ -617,6 +631,17 @@ window.AsgardPayoutsPage = (function () {
         (monthly.series || []).map((m) => m.paid || 0),
         MONTHS.map((x) => x.slice(0, 3)));
 
+      // Текст способа: СЗ / через получателя / официально / наличные.
+      const methodEl = q('.po-method-text');
+      const paintMethod = () => {
+        if (!methodEl) return;
+        if (isSe && payee) methodEl.textContent = 'Самозанятый: перевод через СЗ-сервис на получателя ' + (payee.fio || ('ID ' + payee.id));
+        else if (isSe) methodEl.textContent = 'Самозанятый: перевод через СЗ-сервис';
+        else if (official) methodEl.textContent = 'Официально: перевод на счёт (+' + Math.round(officialMarkupRate * 100) + '%)';
+        else methodEl.textContent = 'Наличными из кассы';
+      };
+      paintMethod();
+
       const setKind = (k) => {
         kind = k;
         qa('.po-kind').forEach((b) => b.classList.toggle('active', b.dataset.kind === k));
@@ -644,6 +669,7 @@ window.AsgardPayoutsPage = (function () {
           official = offEl.checked;
           q('.po-transfer-wrap').style.display = (isSe || official) ? 'none' : 'block';
           q('.po-recipient-wrap').style.display = (isSe || official) ? 'none' : 'block';
+          paintMethod();
           recalc(root);
         };
       }

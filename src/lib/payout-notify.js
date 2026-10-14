@@ -115,12 +115,22 @@ async function sendPayoutCode(fastify, db, { paymentId, employeeId, amount, peri
   const codeText = `Код подтверждения выплаты: ${code}`;
   let channel = 'none';
 
+  // Таймаут отправки: выплата НЕ должна ждать мессенджер. Если MAX/Mango
+  // подвисли — /pay вернётся сразу, код можно переслать кнопкой «Отправить
+  // повторно». Иначе блокировка транзакции/ответа на минуты (баг 15.10.2026:
+  // без таймаута тестов и прод-выплата висели, пока Mango не ответит).
+  const SEND_TIMEOUT_MS = parseInt(process.env.PAYOUT_SEND_TIMEOUT_MS || '8000', 10);
+  const withTimeout = (p) => Promise.race([
+    p,
+    new Promise((resolve) => setTimeout(() => resolve('timeout'), SEND_TIMEOUT_MS)),
+  ]);
+
   const send = async (txt) => {
     // 1) MAX (приоритет), затем SMS через Mango (fallback).
     try {
       const greenApi = require('../services/green-api');
       if (greenApi && typeof greenApi.isMaxEnabled === 'function' && greenApi.isMaxEnabled() && contacts.phone) {
-        const r = await greenApi.sendMaxMessage(contacts.phone, txt);
+        const r = await withTimeout(greenApi.sendMaxMessage(contacts.phone, txt));
         if (r && !r.error) return 'max';
       }
     } catch (e) {
@@ -130,7 +140,11 @@ async function sendPayoutCode(fastify, db, { paymentId, employeeId, amount, peri
       const MangoService = require('../services/mango');
       const mango = new MangoService();
       const from = process.env.MANGO_SMS_EXTENSION || '101';
-      await mango.sendSms(from, contacts.phone, txt);
+      const r = await withTimeout(mango.sendSms(from, contacts.phone, txt));
+      if (r === 'timeout') {
+        fastify.log.warn('[payout-notify] SMS timeout — выплата не блокируется');
+        return 'none';
+      }
       return 'sms';
     } catch (e) {
       fastify.log.warn(`[payout-notify] SMS fail: ${e.message}`);
