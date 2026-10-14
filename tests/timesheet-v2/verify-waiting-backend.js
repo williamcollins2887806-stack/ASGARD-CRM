@@ -142,8 +142,10 @@ const YEAR = 2026, MONTH = 9;
       const e = JSON.parse(rOM.body).entry;
       createdStageIds.push(e.id);
       check('waiting.tariff_points = 6', Number(e.tariff_points) === 6, `tariff_points=${e.tariff_points}`);
-      check('waiting.amount_earned = 0 (деньги не считаем)', Number(e.amount_earned) === 0, `amount_earned=${e.amount_earned}`);
-      check('waiting.rate_per_day = 0', Number(e.rate_per_day) === 0, `rate_per_day=${e.rate_per_day}`);
+      // D-266 (15.10.2026): «1 балл = 500 ₽» действует и для ожидания —
+      // заказчик подтвердил, что ожидание платное. Было 0 ₽, стало 6 × 500 = 3 000 ₽.
+      check('waiting.amount_earned = 3000 (баллы × 500)', Number(e.amount_earned) === 3000, `amount_earned=${e.amount_earned}`);
+      check('waiting.rate_per_day = 3000', Number(e.rate_per_day) === 3000, `rate_per_day=${e.rate_per_day}`);
     }
 
     // ── 3) HEAD_TO создаёт waiting → должен ЗАМЕНИТЬ отметку офиса (не дубль) ──
@@ -313,7 +315,7 @@ const YEAR = 2026, MONTH = 9;
         insert into field_trip_stages
           (employee_id, work_id, stage_type, date_from, date_to, days_count, tariff_points,
            rate_per_day, amount_earned, status, created_by, entered_by_user_id, source)
-        values ($1,$2,'waiting',$3::date,$3::date,1,6,0,0,'completed',1,1,'manual') returning id`,
+        values ($1,$2,'waiting',$3::date,$3::date,1,6,3000,3000,'completed',1,1,'manual') returning id`,
       [EMP.id, wid, DATE]);
       const rW1 = await insW(W1);                    // цель — СТАРАЯ
       await new Promise((res) => setTimeout(res, 60));

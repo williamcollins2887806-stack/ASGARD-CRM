@@ -472,6 +472,36 @@ function pointsFor(settings, type, position) {
   return 0;
 }
 
+/**
+ * D-266 (15.10.2026): баллы из ДЕНЕГ, а не из справочника по типу.
+ *
+ * Канон заказчика: «1 балл = 500 ₽» (settings.point_value / field_tariff_grid.point_value).
+ * Его подтверждает сама сетка тарифов: дорога «Дом» 6 бал. = 3 000 ₽,
+ * дорога «на Вахту» 12 бал. = 6 000 ₽, Слесарь-монтажник 19 бал. = 9 500 ₽.
+ *
+ * ЧТО БЫЛО СЛОМАНО: для смен day/night баллы выводились из amount_earned
+ * (9 500 / 500 = 19), а для дороги/корабля/ожидания брались из pointsFor()
+ * по ТИПУ (travel = всегда 6). Дорогу за 6 000 ₽ это превращало в 6 баллов
+ * вместо 12 → в одной строке «Сумма» (из денег) и «Баллы × 500» расходились
+ * (реальный кейс: Бабаев, сентябрь 2026 — 350 бал. / 182 500 ₽ → 175 000 ₽).
+ *
+ * ЕДИНОЕ ПРАВИЛО БЕЗ ИСКЛЮЧЕНИЙ (15.10.2026): «1 балл = 500 ₽» действует для
+ * ВСЕХ типов, включая waiting (Ожидание). Заказчик подтвердил: ожидание платное
+ * (6 бал. = 3 000 ₽). Ранее в PUT /entry ожидание намеренно давало 0 ₽ — это
+ * отменено, иначе сумма и баллы в строке расходились бы (D-266).
+ *
+ * @param {{settings: object, type: string, amount: number, position: string}} p
+ * @returns {number} баллы (0 — если считать не из чего)
+ */
+function pointsFromAmount({ settings, type, amount, position }) {
+  const pv = Number(settings.point_value || 500);
+  if (pv > 0 && Number.isFinite(Number(amount)) && Number(amount) > 0) {
+    return Math.round((Number(amount) / pv) * 100) / 100;
+  }
+  // Суммы нет (нет отметки о деньгах) — только тогда справочник по типу.
+  return pointsFor(settings, type, position);
+}
+
 async function routes(fastify) {
   const db = fastify.db;
   const viewAuth = { preHandler: [fastify.requireRoles(ALL_VIEW_ROLES)] };
@@ -1155,7 +1185,10 @@ async function routes(fastify) {
             points = (c.tariff_points != null) ? Number(c.tariff_points) : 0;
           }
         } else {
-          points = pointsFor(settings, type, emp.position);
+          // D-266: дорога/корабль/медицина/… — баллы из денег (1 балл = 500 ₽),
+          // а не фиксированное число по типу. Иначе дорога за 6 000 ₽ показывала
+          // 6 баллов вместо 12, и «Баллы × 500» не сходилось с «Суммой».
+          points = pointsFromAmount({ settings, type, amount: amt, position: emp.position });
         }
         // resolve entered_by_fio/role/phone (FIX #5 + FIX #8 batch + FIX #9 strict source-gating)
         let fio = c.entered_by_fio_user;
@@ -1215,7 +1248,8 @@ async function routes(fastify) {
         const oneDay = 24 * 60 * 60 * 1000;
         const realDays = Math.max(1, Math.round((toMs - fromMs) / oneDay) + 1);
         const perDayAmt = Number(s.amount_earned || 0) / Math.max(1, Number(s.days_count || realDays));
-        const perDayPts = pointsFor(settings, stageType, emp.position);
+        // D-266: баллы этапа — из денег за день (1 балл = 500 ₽), кроме waiting.
+        const perDayPts = pointsFromAmount({ settings, type: stageType, amount: perDayAmt, position: emp.position });
 
         // FIX #5 (phone) + FIX #8 (batch — без N round-trips) + FIX #9 (strict namespace).
         let fio = s.entered_by_fio_user;
@@ -2289,8 +2323,10 @@ async function routes(fastify) {
 
       const pts = pointsFor(settings, type, position);
       const pointValue = Number(settings.point_value || 500);
-      // waiting — баллы есть для табеля, деньги 0; остальное: баллы × цена балла
-      const ratePerDay = type === 'waiting' ? 0 : Math.round(Number(pts || 0) * pointValue);
+      // D-266 (15.10.2026): «1 балл = 500 ₽» для ВСЕХ типов, включая waiting.
+      // Ранее ожидание намеренно давало 0 ₽ (баллы есть, денег нет) — заказчик
+      // подтвердил, что ожидание платное, поэтому исключение снято: 6 бал. = 3 000 ₽.
+      const ratePerDay = Math.round(Number(pts || 0) * pointValue);
       const amountEarned = ratePerDay;
 
       // Свободные этапы: work_id уже резолвнут через resolveFreestandingWorkId

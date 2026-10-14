@@ -5,7 +5,7 @@
 const { closedSql, notClosedSql } = require('../helpers/work-status');
 const { assertPpeSizes } = require('../lib/ppe-sizes');
 const { toDigitsRu, normalizePhoneFields, EMPLOYEE_PHONE_KEYS } = require('../lib/phone');
-const { extractCity, isAcceptableCity } = require('../lib/city');
+const { extractCityName, isAcceptableCity } = require('../lib/city');
 
 /**
  * V389: в employees.city должен лежать ТОЛЬКО населённый пункт.

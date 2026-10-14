@@ -764,29 +764,36 @@ async function routes(fastify, options) {
         return reply.code(404).send({ error: 'Нет данных табеля за указанный период' });
       }
 
-      // Group by employee (may have multiple works)
+      // D-266 (15.10.2026): ведомость считается по ДЕНЬГАМ (total_earned),
+      // а не «1 смена = 1 балл». Прежняя формула брала количество смен и
+      // умножала на 500 — у рабочего с 14 днями по 9 500 ₽ и 11 дорогами
+      // вышло бы 25 × 500 = 12 500 ₽ вместо реальных 182 500 ₽.
+      // Баллы тоже выводим из денег: points = сумма / point_value.
       const byEmployee = {};
       for (const c of checkins) {
         if (!byEmployee[c.employee_id]) {
-          byEmployee[c.employee_id] = { totalPoints: 0, worksDetail: [] };
+          byEmployee[c.employee_id] = { totalPoints: 0, totalAmount: 0, worksDetail: [] };
         }
-        const points = parseFloat(c.shift_count); // 1 смена = 1 балл
+        const amount = parseFloat(c.total_earned) || 0;
+        const points = pointValue > 0 ? Math.round((amount / pointValue) * 100) / 100 : 0;
         byEmployee[c.employee_id].totalPoints += points;
+        byEmployee[c.employee_id].totalAmount += amount;
         byEmployee[c.employee_id].worksDetail.push({
           work_id: c.work_id,
           work_title: c.work_title,
           days: parseInt(c.shift_count),
           points,
-          amount: points * pointValue
+          amount
         });
       }
 
       const created = [];
       for (const [empId, data] of Object.entries(byEmployee)) {
-        const amount = data.totalPoints * pointValue;
+        const amount = data.totalAmount;
+        const totalPoints = Math.round(data.totalPoints * 100) / 100;
         const primaryWorkId = data.worksDetail.length === 1
           ? data.worksDetail[0].work_id
-          : data.worksDetail.sort((a, b) => b.days - a.days)[0].work_id;
+          : data.worksDetail.sort((a, b) => b.amount - a.amount)[0].work_id;
 
         const { rows } = await db.query(`
           INSERT INTO worker_payments (
@@ -795,7 +802,7 @@ async function routes(fastify, options) {
           ) VALUES ($1,$2,'salary',$3,$4,$5,$6,$7,$8,$9)
           RETURNING *
         `, [empId, primaryWorkId, month, year, amount,
-            data.totalPoints, pointValue, JSON.stringify(data.worksDetail), userId]);
+            totalPoints, pointValue, JSON.stringify(data.worksDetail), userId]);
         created.push(rows[0]);
       }
 
