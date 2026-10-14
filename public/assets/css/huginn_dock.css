@@ -4361,6 +4361,20 @@ html[data-theme="light"] .hg-settings-logout { background: var(--bg2, #FDFAF5); 
 body.hg-dock-open { padding-right: calc(var(--hg-panel-w) + var(--hg-rail-w) + 24px); }
 body.hg-dock-collapsed { padding-right: calc(var(--hg-rail-w) + 24px); }
 
+/* ── Правые выезжающие панели: смещаем ЛЕВЕЕ дока «Хугинн», чтобы док не
+   перекрывал их край (образец — реестр документов .dh-drawer). Панель выезжает
+   из-за дока и встаёт вплотную к нему. На узких экранах (≤768px) док — иная
+   раскладка, поэтому правила только в desktop-диапазоне. */
+@media (min-width: 769px) {
+  body.hg-dock-open :is(.cr-d.drawer, .bc-drawer, .pk3-drawer, .wh2-cart-dr) {
+    right: calc(var(--hg-panel-w, 400px) + var(--hg-rail-w, 56px) + 24px);
+  }
+  body.hg-dock-collapsed :is(.cr-d.drawer, .bc-drawer, .pk3-drawer, .wh2-cart-dr) {
+    right: calc(var(--hg-rail-w, 56px) + 24px);
+  }
+}
+
+
 /* P12: old Mimir FAB is gone — entry is rail only. Never paint or hit-test over Huginn. */
 #mimirFab,
 .mimir-fab,

@@ -379,7 +379,7 @@ console.log('[ASGARD] Global period functions loaded');
     {r:"/pm-prizes",l:"Призы рабочих",d:"Запросы на выдачу призов",roles:["ADMIN","PM","HEAD_PM",...DIRECTOR_ROLES],i:"kpiworks",p:"pm_prizes",g:"analytics"},
     {r:"/gamification-dashboard",l:"Геймификация",d:"Монеты, призы, квесты рабочих",roles:["ADMIN",...DIRECTOR_ROLES,...HEAD_ROLES,"HR","HR_MANAGER"],i:"kpiworks",p:"gamification_dashboard",g:"analytics"},
     {r:"/gamification-leaderboard",l:"Рейтинг рабочих",d:"Зал Одина — турнир и рейтинг",roles:["ADMIN","PM","HEAD_PM",...DIRECTOR_ROLES,"HR","HR_MANAGER"],i:"kpiworks",p:"gamification_leaderboard",g:"analytics"},
-    {r:"/gamification-admin",l:"Управление геймификацией",d:"Товары, призы, квесты — CRUD",roles:["ADMIN",...DIRECTOR_ROLES,"HR","OFFICE_MANAGER"],i:"backup",p:"gamification_admin",g:"analytics"},
+    // 13.10.2026: /gamification-admin скрыт из меню и закрыт баннером «Страница на ремонте».
     {r:"/object-map",l:"Карта объектов",d:"География работ",roles:["ADMIN",...DIRECTOR_ROLES,...HEAD_ROLES],i:"kpiworks",p:"object_map",g:"analytics"},
 
     // Фаза 8+9: Почта + AI-анализ заявок (объединено)
@@ -767,7 +767,7 @@ try{
           <div class="badges">${[
   ...(user ? [
     `<span id="asgardPhoneSlot"></span>`,
-    `<a class="v2-switch v2-switch--to-new" href="/v2/" title="Открыть новый интерфейс CRM 2.0"><span class="v2-switch-rune">ᛞ</span><span class="v2-switch-label">CRM 2.0</span><span class="v2-switch-arrow">→</span></a>`,
+    `<a class="v2-switch v2-switch--to-new" href="#/home" title="CRM 2.0 (временно скрыто)" style="display:none"><span class="v2-switch-rune">ᛞ</span><span class="v2-switch-label">CRM 2.0</span><span class="v2-switch-arrow">→</span></a>`,
     `<button class="themebtn" id="btnTheme" type="button" title="Переключить тему" aria-label="Переключить тему"><svg id="themeIcon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg></button>`,
     `<button class="topbar-search" id="btnTopSearch" type="button" title="Поиск (Ctrl+K)"><span class="ts-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg></span><span class="ts-label">Поиск</span><kbd class="ts-kbd">⌘K</kbd></button>`,
     `<button class="bellbtn" id="btnBell" type="button" aria-label="Уведомления">
@@ -2253,6 +2253,35 @@ var _setupPinKeypad = null;
     }
   }
 
+  // ── «Страница на ремонте»: скрытые страницы (ключ = хэш-роут без слэша) ─────
+  // Их нет в левом меню, а ЛЮБОЙ прямой переход закрыт баннером ниже.
+  const MAINTENANCE_PAGES = {
+    'gamification-admin':  'Управление геймификацией',
+    'preview-calc-report': 'Превью модалки просчёта',
+    'tenderguru-settings': 'Настройки TenderGuru',
+    'pm-consents':         'Согласия РП',
+    'estimate-report':     'Отчёт просчёта',
+    'kpi-money':           'Аналитика Ярла • Деньги',
+    'field-tariffs':       'Тарифная сетка • Поле',
+    'mango':               'Настройки телефонии Mango',
+    'reminders':           'Напоминания',
+    'payment-invoices':    'Счета на оплату',
+    'command-map-flat':    'Гео-карта'
+  };
+  function isMaintenance(route){
+    const key = String(route || '').replace(/^\/+/, '').split('?')[0].split('/')[0];
+    return Object.prototype.hasOwnProperty.call(MAINTENANCE_PAGES, key);
+  }
+  function maintenanceCard(name){
+    return `<div class="panel" style="max-width:660px;margin:48px auto;text-align:center;padding:32px 28px">
+      <div style="font-size:40px;line-height:1;margin-bottom:10px">🛠️</div>
+      <h2 style="margin:0 0 8px;font-family:'Cinzel',Georgia,serif;color:var(--t1)">Страница на ремонте</h2>
+      <div class="help" style="margin:0 0 6px">Раздел «${esc(name)}» временно скрыт: он не доработан и/или им не пользуются.</div>
+      <div class="help" style="margin:0 0 18px">Вернём его, как только он снова понадобится.</div>
+      <a class="btn primary" href="#/home">На главную</a>
+    </div>`;
+  }
+
   async function placeholder(title){
     const auth=await AsgardAuth.requireUser();
     if(!auth){ location.hash="#/login"; return; }
@@ -2270,6 +2299,22 @@ var _setupPinKeypad = null;
   async function boot({startRouter=true}={}){
     // await AsgardSeed.ensureSeed(); // disabled - needs auth
     try{ await AsgardTemplates.ensureDefaultDocsSettings(); }catch(e){}
+
+    /* «Страница на ремонте»: перехватываем роуты, помеченные в MAINTENANCE_PAGES —
+       вместо их обработчика показываем баннер. Патч ставится ДО регистраций ниже,
+       поэтому работает для ВСЕХ точек входа (прямой адрес, закладка, сторонний вызов). */
+    (function(){
+      var _origAdd = AsgardRouter.add;
+      AsgardRouter.add = function(path, handler, opts){
+        if (isMaintenance(path)) {
+          var _name = MAINTENANCE_PAGES[String(path||'').replace(/^\/+/, '').split('?')[0].split('/')[0]] || path;
+          return _origAdd.call(AsgardRouter, path, function(){
+            return layout(maintenanceCard(_name), { title: 'Страница на ремонте' });
+          }, opts);
+        }
+        return _origAdd.call(AsgardRouter, path, handler, opts);
+      };
+    })();
 
     AsgardRouter.add("/welcome", pageWelcome, {auth:false});
     AsgardRouter.add("/login", pageLogin, {auth:false});

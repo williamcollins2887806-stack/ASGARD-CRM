@@ -1,0 +1,5470 @@
+[
+  {
+    "route": "/welcome",
+    "name": "Стартовая",
+    "title": null,
+    "desc": "Стартовая (публичная) страница: вход, регистрация, режимы работы",
+    "group": "Вход и регистрация",
+    "type": "Служебная",
+    "inMenu": false,
+    "navHide": false,
+    "pageKey": "",
+    "module": null,
+    "file": null,
+    "redirectTo": null,
+    "views": 0,
+    "used": "н/д",
+    "source": "вне авторизации — трекинг не пишется",
+    "first": "",
+    "last": "",
+    "usedFrom": "",
+    "usedTo": "",
+    "count": 0,
+    "rolesText": "Все роли (по правам)",
+    "ownEndpoints": [],
+    "related": false,
+    "relatedCount": 0,
+    "relatedTo": [],
+    "relatedKinds": [],
+    "relDetail": [],
+    "note": "Публичная страница: сигнал посещения в системе не фиксируется"
+  },
+  {
+    "route": "/login",
+    "name": "Вход по логину и паролю",
+    "title": null,
+    "desc": "Вход по логину и паролю",
+    "group": "Вход и регистрация",
+    "type": "Служебная",
+    "inMenu": false,
+    "navHide": false,
+    "pageKey": "",
+    "module": null,
+    "file": null,
+    "redirectTo": null,
+    "views": 0,
+    "used": "н/д",
+    "source": "вне авторизации — трекинг не пишется",
+    "first": "",
+    "last": "",
+    "usedFrom": "",
+    "usedTo": "",
+    "count": 0,
+    "rolesText": "Все роли (по правам)",
+    "ownEndpoints": [],
+    "related": false,
+    "relatedCount": 0,
+    "relatedTo": [],
+    "relatedKinds": [],
+    "relDetail": [],
+    "note": "Публичная страница: сигнал посещения в системе не фиксируется"
+  },
+  {
+    "route": "/register",
+    "name": "Заявка на регистрацию нового пользователя",
+    "title": null,
+    "desc": "Заявка на регистрацию нового пользователя",
+    "group": "Вход и регистрация",
+    "type": "Служебная",
+    "inMenu": false,
+    "navHide": false,
+    "pageKey": "",
+    "module": null,
+    "file": null,
+    "redirectTo": null,
+    "views": 0,
+    "used": "н/д",
+    "source": "вне авторизации — трекинг не пишется",
+    "first": "",
+    "last": "",
+    "usedFrom": "",
+    "usedTo": "",
+    "count": 0,
+    "rolesText": "Все роли (по правам)",
+    "ownEndpoints": [],
+    "related": false,
+    "relatedCount": 0,
+    "relatedTo": [],
+    "relatedKinds": [],
+    "relDetail": [],
+    "note": "Публичная страница: сигнал посещения в системе не фиксируется"
+  },
+  {
+    "route": "/home",
+    "name": "Зал Ярла",
+    "title": null,
+    "desc": "Порталы и сводка",
+    "group": "Главная",
+    "type": "Страница",
+    "inMenu": true,
+    "navHide": false,
+    "pageKey": "home",
+    "module": null,
+    "file": null,
+    "redirectTo": null,
+    "views": 255,
+    "used": "Да",
+    "source": "рендер страницы",
+    "first": "29.09",
+    "last": "13.10",
+    "usedFrom": "29.09",
+    "usedTo": "13.10",
+    "count": 255,
+    "rolesText": "Все роли (по правам)",
+    "ownEndpoints": [],
+    "related": false,
+    "relatedCount": 0,
+    "relatedTo": [],
+    "relatedKinds": [],
+    "relDetail": [],
+    "note": ""
+  },
+  {
+    "route": "/dashboard",
+    "name": "Дашборд руководителя",
+    "title": "Дашборд руководителя",
+    "desc": "Сводная аналитика",
+    "group": "Главная",
+    "type": "Страница",
+    "inMenu": true,
+    "navHide": false,
+    "pageKey": "dashboard",
+    "module": "AsgardDashboardPage",
+    "file": "dashboard.js",
+    "redirectTo": null,
+    "views": 6,
+    "used": "Да",
+    "source": "рендер страницы",
+    "first": "02.10",
+    "last": "09.10",
+    "usedFrom": "02.10",
+    "usedTo": "09.10",
+    "count": 6,
+    "rolesText": "Администратор, Директора, Руководители отделов",
+    "ownEndpoints": [],
+    "related": true,
+    "relatedCount": 9,
+    "relatedTo": [
+      "/telephony",
+      "/tenders",
+      "/all-works",
+      "/approvals",
+      "/finances",
+      "/user-requests",
+      "/kpi-works",
+      "/kpi-money",
+      "/buh-registry"
+    ],
+    "relatedKinds": [
+      "переход из интерфейса"
+    ],
+    "relDetail": [
+      {
+        "to": "/telephony",
+        "kind": "переход из интерфейса"
+      },
+      {
+        "to": "/tenders",
+        "kind": "переход из интерфейса"
+      },
+      {
+        "to": "/all-works",
+        "kind": "переход из интерфейса"
+      },
+      {
+        "to": "/approvals",
+        "kind": "переход из интерфейса"
+      },
+      {
+        "to": "/finances",
+        "kind": "переход из интерфейса"
+      },
+      {
+        "to": "/user-requests",
+        "kind": "переход из интерфейса"
+      },
+      {
+        "to": "/kpi-works",
+        "kind": "переход из интерфейса"
+      },
+      {
+        "to": "/kpi-money",
+        "kind": "переход из интерфейса"
+      },
+      {
+        "to": "/buh-registry",
+        "kind": "переход из интерфейса"
+      }
+    ],
+    "note": ""
+  },
+  {
+    "route": "/pm-prizes",
+    "name": "Призы рабочих",
+    "title": "Призы рабочих",
+    "desc": "Запросы на выдачу призов",
+    "group": "Аналитика",
+    "type": "Страница",
+    "inMenu": true,
+    "navHide": false,
+    "pageKey": "pm_prizes",
+    "module": "AsgardPmPrizesPage",
+    "file": "pm-prizes.js",
+    "redirectTo": null,
+    "views": 7,
+    "used": "Да",
+    "source": "рендер страницы",
+    "first": "07.10",
+    "last": "12.10",
+    "usedFrom": "07.10",
+    "usedTo": "12.10",
+    "count": 7,
+    "rolesText": "Администратор, РП, Рук. РП, Директора",
+    "ownEndpoints": [],
+    "related": false,
+    "relatedCount": 0,
+    "relatedTo": [],
+    "relatedKinds": [],
+    "relDetail": [],
+    "note": ""
+  },
+  {
+    "route": "/gamification-dashboard",
+    "name": "Геймификация",
+    "title": "Геймификация — Дашборд",
+    "desc": "Монеты, призы, квесты рабочих",
+    "group": "Аналитика",
+    "type": "Страница",
+    "inMenu": true,
+    "navHide": false,
+    "pageKey": "gamification_dashboard",
+    "module": "AsgardGamificationDashboard",
+    "file": "gamification-dashboard.js",
+    "redirectTo": null,
+    "views": 0,
+    "used": "Да",
+    "source": "вызовы API",
+    "first": "07.10",
+    "last": "09.10",
+    "usedFrom": "07.10",
+    "usedTo": "09.10",
+    "count": 5,
+    "rolesText": "Администратор, HR, Рук. HR, Директора, Руководители отделов",
+    "ownEndpoints": [
+      "/api/gamification/admin/dashboard (5)"
+    ],
+    "related": false,
+    "relatedCount": 0,
+    "relatedTo": [],
+    "relatedKinds": [],
+    "relDetail": [],
+    "note": ""
+  },
+  {
+    "route": "/gamification-leaderboard",
+    "name": "Рейтинг рабочих",
+    "title": "Рейтинг рабочих",
+    "desc": "Зал Одина — турнир и рейтинг",
+    "group": "Аналитика",
+    "type": "Страница",
+    "inMenu": true,
+    "navHide": false,
+    "pageKey": "gamification_leaderboard",
+    "module": "AsgardGamificationLeaderboard",
+    "file": "gamification-leaderboard.js",
+    "redirectTo": null,
+    "views": 10,
+    "used": "Да",
+    "source": "рендер страницы",
+    "first": "07.10",
+    "last": "12.10",
+    "usedFrom": "07.10",
+    "usedTo": "12.10",
+    "count": 10,
+    "rolesText": "Администратор, РП, Рук. РП, HR, Рук. HR, Директора",
+    "ownEndpoints": [
+      "/api/gamification/admin/leaderboard (10)"
+    ],
+    "related": false,
+    "relatedCount": 0,
+    "relatedTo": [],
+    "relatedKinds": [],
+    "relDetail": [],
+    "note": ""
+  },
+  {
+    "route": "/gamification-admin",
+    "name": "Управление геймификацией",
+    "title": "Геймификация — Управление",
+    "desc": "Товары, призы, квесты — CRUD",
+    "group": "Аналитика",
+    "type": "Страница",
+    "inMenu": true,
+    "navHide": false,
+    "pageKey": "gamification_admin",
+    "module": "AsgardGamificationCrud",
+    "file": "gamification-crud.js",
+    "redirectTo": null,
+    "views": 0,
+    "used": "Нет",
+    "source": "нет следов",
+    "first": "",
+    "last": "",
+    "usedFrom": "",
+    "usedTo": "",
+    "count": 0,
+    "rolesText": "Администратор, HR, Рук. HR, Офис-менеджер, Директора",
+    "ownEndpoints": [],
+    "related": false,
+    "relatedCount": 0,
+    "relatedTo": [],
+    "relatedKinds": [],
+    "relDetail": [],
+    "note": ""
+  },
+  {
+    "route": "/calendar",
+    "name": "Календарь встреч",
+    "title": "Календарь встреч",
+    "desc": "Совещания и события",
+    "group": "Главная",
+    "type": "Страница",
+    "inMenu": true,
+    "navHide": false,
+    "pageKey": "calendar",
+    "module": "AsgardCalendarPage",
+    "file": "calendar.js",
+    "redirectTo": null,
+    "views": 2,
+    "used": "Да",
+    "source": "рендер страницы",
+    "first": "02.10",
+    "last": "09.10",
+    "usedFrom": "02.10",
+    "usedTo": "09.10",
+    "count": 2,
+    "rolesText": "Все роли (по правам)",
+    "ownEndpoints": [
+      "/api/calendar/feed (4)",
+      "/api/calendar (4)"
+    ],
+    "related": false,
+    "relatedCount": 0,
+    "relatedTo": [],
+    "relatedKinds": [],
+    "relDetail": [],
+    "note": ""
+  },
+  {
+    "route": "/birthdays",
+    "name": "Дни рождения",
+    "title": "Дни рождения",
+    "desc": "Офисный календарь ДР",
+    "group": "Главная",
+    "type": "Страница",
+    "inMenu": true,
+    "navHide": false,
+    "pageKey": "birthdays",
+    "module": "AsgardBirthdaysPage",
+    "file": "birthdays.js",
+    "redirectTo": null,
+    "views": 2,
+    "used": "Да",
+    "source": "рендер страницы",
+    "first": "07.10",
+    "last": "09.10",
+    "usedFrom": "07.10",
+    "usedTo": "09.10",
+    "count": 2,
+    "rolesText": "Все роли (по правам)",
+    "ownEndpoints": [],
+    "related": true,
+    "relatedCount": 3,
+    "relatedTo": [
+      "/alerts",
+      "/settings",
+      "/personnel"
+    ],
+    "relatedKinds": [
+      "переход из интерфейса"
+    ],
+    "relDetail": [
+      {
+        "to": "/alerts",
+        "kind": "переход из интерфейса"
+      },
+      {
+        "to": "/settings",
+        "kind": "переход из интерфейса"
+      },
+      {
+        "to": "/personnel",
+        "kind": "переход из интерфейса"
+      }
+    ],
+    "note": ""
+  },
+  {
+    "route": "/contracts",
+    "name": "Реестр договоров",
+    "title": "Реестр договоров",
+    "desc": "Договора поставщиков",
+    "group": "Ресурсы",
+    "type": "Страница",
+    "inMenu": true,
+    "navHide": false,
+    "pageKey": "contracts",
+    "module": "AsgardContractsPage",
+    "file": "contracts.js",
+    "redirectTo": null,
+    "views": 7,
+    "used": "Да",
+    "source": "рендер страницы",
+    "first": "07.10",
+    "last": "09.10",
+    "usedFrom": "07.10",
+    "usedTo": "09.10",
+    "count": 7,
+    "rolesText": "Администратор, Офис-менеджер, Бухгалтер, Директора",
+    "ownEndpoints": [],
+    "related": false,
+    "relatedCount": 0,
+    "relatedTo": [],
+    "relatedKinds": [],
+    "relDetail": [],
+    "note": ""
+  },
+  {
+    "route": "/seals",
+    "name": "Реестр печатей",
+    "title": "Реестр печатей",
+    "desc": "Учёт и передача",
+    "group": "Ресурсы",
+    "type": "Страница",
+    "inMenu": true,
+    "navHide": false,
+    "pageKey": "seals",
+    "module": "AsgardSealsPage",
+    "file": "seals.js",
+    "redirectTo": null,
+    "views": 6,
+    "used": "Да",
+    "source": "рендер страницы",
+    "first": "07.10",
+    "last": "09.10",
+    "usedFrom": "07.10",
+    "usedTo": "09.10",
+    "count": 6,
+    "rolesText": "Администратор, Офис-менеджер, Директора",
+    "ownEndpoints": [],
+    "related": false,
+    "relatedCount": 0,
+    "relatedTo": [],
+    "relatedKinds": [],
+    "relDetail": [],
+    "note": ""
+  },
+  {
+    "route": "/permits",
+    "name": "Разрешения и допуски",
+    "title": "Разрешения и допуски",
+    "desc": "Сроки действия, матрица",
+    "group": "Персонал",
+    "type": "Страница",
+    "inMenu": true,
+    "navHide": false,
+    "pageKey": "permits",
+    "module": "AsgardPermitsPage",
+    "file": "permits.js",
+    "redirectTo": null,
+    "views": 4,
+    "used": "Да",
+    "source": "рендер страницы",
+    "first": "07.10",
+    "last": "09.10",
+    "usedFrom": "07.10",
+    "usedTo": "09.10",
+    "count": 4,
+    "rolesText": "Администратор, HR, Рук. HR, ТО, Рук. ТО, РП, Гл. инженер, Директора",
+    "ownEndpoints": [
+      "/api/permits (156)"
+    ],
+    "related": false,
+    "relatedCount": 0,
+    "relatedTo": [],
+    "relatedKinds": [],
+    "relDetail": [],
+    "note": ""
+  },
+  {
+    "route": "/nd-permits",
+    "name": "Электронные наряды",
+    "title": "Электронные наряды-допуски",
+    "desc": "Формы 924н/528, риски, конструктор",
+    "group": "Персонал",
+    "type": "Страница",
+    "inMenu": true,
+    "navHide": false,
+    "pageKey": "permits",
+    "module": "AsgardNdPermits",
+    "file": "nd-permits.js",
+    "redirectTo": null,
+    "views": 9,
+    "used": "Да",
+    "source": "рендер страницы",
+    "first": "07.10",
+    "last": "09.10",
+    "usedFrom": "07.10",
+    "usedTo": "09.10",
+    "count": 9,
+    "rolesText": "Администратор, РП, Рук. РП, ТО, Рук. ТО, Гл. инженер, Директора",
+    "ownEndpoints": [
+      "/api/nd (28)"
+    ],
+    "related": false,
+    "relatedCount": 0,
+    "relatedTo": [],
+    "relatedKinds": [],
+    "relDetail": [],
+    "note": ""
+  },
+  {
+    "route": "/permit-applications",
+    "name": "Заявки на оформление",
+    "title": "Заявки на оформление разрешений",
+    "desc": "Реестры разрешений подрядчикам",
+    "group": "Персонал",
+    "type": "Страница",
+    "inMenu": true,
+    "navHide": false,
+    "pageKey": "permit_applications",
+    "module": "AsgardPermitApplications",
+    "file": "permit_applications.js",
+    "redirectTo": null,
+    "views": 5,
+    "used": "Да",
+    "source": "рендер страницы",
+    "first": "07.10",
+    "last": "09.10",
+    "usedFrom": "07.10",
+    "usedTo": "09.10",
+    "count": 5,
+    "rolesText": "Администратор, HR, Рук. HR, ТО, Рук. ТО, Директора",
+    "ownEndpoints": [
+      "/api/permit-applications (35)"
+    ],
+    "related": true,
+    "relatedCount": 2,
+    "relatedTo": [
+      "/permit-application-form"
+    ],
+    "relatedKinds": [
+      "общий модуль",
+      "переход из интерфейса"
+    ],
+    "relDetail": [
+      {
+        "to": "/permit-application-form",
+        "kind": "общий модуль"
+      },
+      {
+        "to": "/permit-application-form",
+        "kind": "переход из интерфейса"
+      }
+    ],
+    "note": ""
+  },
+  {
+    "route": "/permit-application-form",
+    "name": "Форма заявки на допуск",
+    "title": null,
+    "desc": "Форма заявки на оформление разрешения (создание/редактирование)",
+    "group": "Персонал",
+    "type": "Подстраница (по id)",
+    "inMenu": false,
+    "navHide": false,
+    "pageKey": "",
+    "module": "AsgardPermitApplications",
+    "file": "permit_applications.js",
+    "redirectTo": null,
+    "views": 0,
+    "used": "Да",
+    "source": "вызовы API",
+    "first": "07.10",
+    "last": "09.10",
+    "usedFrom": "07.10",
+    "usedTo": "09.10",
+    "count": 35,
+    "rolesText": "Администратор, HR, Рук. HR, ТО, Рук. ТО, Директора",
+    "ownEndpoints": [
+      "/api/permit-applications (35)"
+    ],
+    "related": true,
+    "relatedCount": 2,
+    "relatedTo": [
+      "/permit-applications"
+    ],
+    "relatedKinds": [
+      "общий модуль",
+      "переход из интерфейса"
+    ],
+    "relDetail": [
+      {
+        "to": "/permit-applications",
+        "kind": "общий модуль"
+      },
+      {
+        "to": "/permit-applications",
+        "kind": "переход из интерфейса"
+      }
+    ],
+    "note": ""
+  },
+  {
+    "route": "/pre-tenders",
+    "name": "Переход в «Маркетплейс заявок»",
+    "title": null,
+    "desc": "Переход на /director-inbox",
+    "group": "Тендеры",
+    "type": "Редирект/алиас",
+    "inMenu": false,
+    "navHide": false,
+    "pageKey": "",
+    "module": null,
+    "file": null,
+    "redirectTo": "/director-inbox",
+    "views": 0,
+    "used": "—",
+    "source": "редирект",
+    "first": "",
+    "last": "",
+    "usedFrom": "",
+    "usedTo": "",
+    "count": 0,
+    "rolesText": "Администратор, ТО, Рук. ТО",
+    "ownEndpoints": [],
+    "related": true,
+    "relatedCount": 1,
+    "relatedTo": [
+      "/director-inbox"
+    ],
+    "relatedKinds": [
+      "редирект"
+    ],
+    "relDetail": [
+      {
+        "to": "/director-inbox",
+        "kind": "редирект"
+      }
+    ],
+    "note": "Переадресация на /director-inbox — это адрес-переход, а не отдельный экран · отдельного экрана у адреса нет"
+  },
+  {
+    "route": "/funnel",
+    "name": "Переход в «Сагу Тендеров»",
+    "title": null,
+    "desc": "Переход на /tenders",
+    "group": "Тендеры",
+    "type": "Редирект/алиас",
+    "inMenu": false,
+    "navHide": false,
+    "pageKey": "",
+    "module": null,
+    "file": null,
+    "redirectTo": "/tenders",
+    "views": 0,
+    "used": "—",
+    "source": "редирект",
+    "first": "",
+    "last": "",
+    "usedFrom": "",
+    "usedTo": "",
+    "count": 0,
+    "rolesText": "Администратор, ТО, Рук. ТО, Директора",
+    "ownEndpoints": [],
+    "related": true,
+    "relatedCount": 1,
+    "relatedTo": [
+      "/tenders"
+    ],
+    "relatedKinds": [
+      "редирект"
+    ],
+    "relDetail": [
+      {
+        "to": "/tenders",
+        "kind": "редирект"
+      }
+    ],
+    "note": "Переадресация на /tenders — это адрес-переход, а не отдельный экран · отдельного экрана у адреса нет"
+  },
+  {
+    "route": "/tenders",
+    "name": "Сага Тендеров",
+    "title": "Сага Тендеров",
+    "desc": "Реестр + воронка",
+    "group": "Тендеры",
+    "type": "Страница",
+    "inMenu": true,
+    "navHide": false,
+    "pageKey": "tenders",
+    "module": "AsgardTendersPage",
+    "file": "tenders.js",
+    "redirectTo": null,
+    "views": 223,
+    "used": "Да",
+    "source": "рендер страницы",
+    "first": "29.09",
+    "last": "13.10",
+    "usedFrom": "29.09",
+    "usedTo": "13.10",
+    "count": 223,
+    "rolesText": "Администратор, ТО, Рук. ТО, Директора",
+    "ownEndpoints": [
+      "/api/tenders-hub/feed (231)"
+    ],
+    "related": true,
+    "relatedCount": 8,
+    "relatedTo": [
+      "/pm-works",
+      "/personal-kanban",
+      "/pm-consents",
+      "/inbox-applications",
+      "/pre-tenders",
+      "/telephony",
+      "/pass-requests",
+      "/correspondence"
+    ],
+    "relatedKinds": [
+      "переход из интерфейса"
+    ],
+    "relDetail": [
+      {
+        "to": "/pm-works",
+        "kind": "переход из интерфейса"
+      },
+      {
+        "to": "/personal-kanban",
+        "kind": "переход из интерфейса"
+      },
+      {
+        "to": "/pm-consents",
+        "kind": "переход из интерфейса"
+      },
+      {
+        "to": "/inbox-applications",
+        "kind": "переход из интерфейса"
+      },
+      {
+        "to": "/pre-tenders",
+        "kind": "переход из интерфейса"
+      },
+      {
+        "to": "/telephony",
+        "kind": "переход из интерфейса"
+      },
+      {
+        "to": "/pass-requests",
+        "kind": "переход из интерфейса"
+      },
+      {
+        "to": "/correspondence",
+        "kind": "переход из интерфейса"
+      }
+    ],
+    "note": ""
+  },
+  {
+    "route": "/pm-calculations",
+    "name": "Просчёты РП",
+    "title": "Просчёты РП",
+    "desc": "Анализ, просчёты и архив отчётов",
+    "group": "Тендеры",
+    "type": "Страница",
+    "inMenu": true,
+    "navHide": false,
+    "pageKey": "pm_duty",
+    "module": "AsgardPmDutyPage",
+    "file": "pm_duty.js",
+    "redirectTo": null,
+    "views": 476,
+    "used": "Да",
+    "source": "рендер страницы",
+    "first": "30.09",
+    "last": "13.10",
+    "usedFrom": "30.09",
+    "usedTo": "13.10",
+    "count": 476,
+    "rolesText": "Администратор, РП, Рук. РП, ТО, Рук. ТО, Директора",
+    "ownEndpoints": [],
+    "related": false,
+    "relatedCount": 0,
+    "relatedTo": [],
+    "relatedKinds": [],
+    "relDetail": [],
+    "note": ""
+  },
+  {
+    "route": "/pm-duty",
+    "name": "Переход в «Просчёты РП»",
+    "title": null,
+    "desc": "Переход на /pm-calculations",
+    "group": "Тендеры",
+    "type": "Редирект/алиас",
+    "inMenu": false,
+    "navHide": false,
+    "pageKey": "",
+    "module": null,
+    "file": null,
+    "redirectTo": "/pm-calculations",
+    "views": 0,
+    "used": "—",
+    "source": "редирект",
+    "first": "",
+    "last": "",
+    "usedFrom": "",
+    "usedTo": "",
+    "count": 0,
+    "rolesText": "Администратор, РП, Рук. РП, ТО, Рук. ТО, Директора",
+    "ownEndpoints": [],
+    "related": true,
+    "relatedCount": 1,
+    "relatedTo": [
+      "/pm-calculations"
+    ],
+    "relatedKinds": [
+      "редирект"
+    ],
+    "relDetail": [
+      {
+        "to": "/pm-calculations",
+        "kind": "редирект"
+      }
+    ],
+    "note": "Переадресация на /pm-calculations — это адрес-переход, а не отдельный экран · отдельного экрана у адреса нет"
+  },
+  {
+    "route": "/preview-calc-report",
+    "name": "Превью модалки просчёта",
+    "title": "Превью: модалка просчёта",
+    "desc": "Служебное превью модалки просчёта (только ADMIN)",
+    "group": "Работы",
+    "type": "Служебная",
+    "inMenu": false,
+    "navHide": false,
+    "pageKey": "",
+    "module": "AsgardPreviewCalcReportPage",
+    "file": "preview_calc_report.js",
+    "redirectTo": null,
+    "views": 0,
+    "used": "Нет",
+    "source": "нет следов",
+    "first": "",
+    "last": "",
+    "usedFrom": "",
+    "usedTo": "",
+    "count": 0,
+    "rolesText": "Администратор",
+    "ownEndpoints": [],
+    "related": true,
+    "relatedCount": 2,
+    "relatedTo": [
+      "/director-tender-approvals",
+      "/tenders"
+    ],
+    "relatedKinds": [
+      "переход из интерфейса"
+    ],
+    "relDetail": [
+      {
+        "to": "/director-tender-approvals",
+        "kind": "переход из интерфейса"
+      },
+      {
+        "to": "/tenders",
+        "kind": "переход из интерфейса"
+      }
+    ],
+    "note": ""
+  },
+  {
+    "route": "/tenderguru-settings",
+    "name": "TenderGuru — настройки",
+    "title": "TenderGuru — настройки",
+    "desc": "Настройки TenderGuru (правила скоринга заявок)",
+    "group": "Тендеры",
+    "type": "Служебная",
+    "inMenu": false,
+    "navHide": false,
+    "pageKey": "",
+    "module": "AsgardTenderGuruSettingsPage",
+    "file": "tenderguru_settings.js",
+    "redirectTo": null,
+    "views": 0,
+    "used": "Нет",
+    "source": "нет следов",
+    "first": "",
+    "last": "",
+    "usedFrom": "",
+    "usedTo": "",
+    "count": 0,
+    "rolesText": "Администратор, ТО, Рук. ТО",
+    "ownEndpoints": [],
+    "related": true,
+    "relatedCount": 1,
+    "relatedTo": [
+      "/tenders"
+    ],
+    "relatedKinds": [
+      "переход из интерфейса"
+    ],
+    "relDetail": [
+      {
+        "to": "/tenders",
+        "kind": "переход из интерфейса"
+      }
+    ],
+    "note": ""
+  },
+  {
+    "route": "/customers",
+    "name": "Карта Контрагентов",
+    "title": "Карта Контрагентов",
+    "desc": "Справочник организаций",
+    "group": "Тендеры",
+    "type": "Страница",
+    "inMenu": true,
+    "navHide": false,
+    "pageKey": "customers",
+    "module": "AsgardCustomersPage",
+    "file": "customers.js",
+    "redirectTo": null,
+    "views": 18,
+    "used": "Да",
+    "source": "рендер страницы",
+    "first": "01.10",
+    "last": "12.10",
+    "usedFrom": "01.10",
+    "usedTo": "12.10",
+    "count": 18,
+    "rolesText": "Администратор, ТО, Рук. ТО, РП, Рук. РП, Офис-менеджер, Директора",
+    "ownEndpoints": [
+      "/api/data/customers (42)"
+    ],
+    "related": true,
+    "relatedCount": 2,
+    "relatedTo": [
+      "/customer"
+    ],
+    "relatedKinds": [
+      "общий модуль",
+      "переход из интерфейса"
+    ],
+    "relDetail": [
+      {
+        "to": "/customer",
+        "kind": "общий модуль"
+      },
+      {
+        "to": "/customer",
+        "kind": "переход из интерфейса"
+      }
+    ],
+    "note": ""
+  },
+  {
+    "route": "/customer",
+    "name": "Карточка контрагента",
+    "title": "Карточка контрагента",
+    "desc": "Карточка контрагента (открывается по ИНН)",
+    "group": "Тендеры",
+    "type": "Подстраница (по id)",
+    "inMenu": false,
+    "navHide": false,
+    "pageKey": "",
+    "module": "AsgardCustomersPage",
+    "file": "customers.js",
+    "redirectTo": null,
+    "views": 5,
+    "used": "Да",
+    "source": "рендер страницы",
+    "first": "01.10",
+    "last": "09.10",
+    "usedFrom": "01.10",
+    "usedTo": "09.10",
+    "count": 5,
+    "rolesText": "Администратор, ТО, Рук. ТО, РП, Рук. РП, Офис-менеджер, Директора",
+    "ownEndpoints": [
+      "/api/data/customers (42)"
+    ],
+    "related": true,
+    "relatedCount": 2,
+    "relatedTo": [
+      "/customers"
+    ],
+    "relatedKinds": [
+      "общий модуль",
+      "переход из интерфейса"
+    ],
+    "relDetail": [
+      {
+        "to": "/customers",
+        "kind": "общий модуль"
+      },
+      {
+        "to": "/customers",
+        "kind": "переход из интерфейса"
+      }
+    ],
+    "note": ""
+  },
+  {
+    "route": "/pm-calcs",
+    "name": "Переход в «Просчёты РП»",
+    "title": null,
+    "desc": "Входящие от ТО",
+    "group": "Работы",
+    "type": "Редирект/алиас",
+    "inMenu": true,
+    "navHide": true,
+    "pageKey": "pm_calcs",
+    "module": null,
+    "file": null,
+    "redirectTo": "/pm-calculations",
+    "views": 0,
+    "used": "—",
+    "source": "редирект",
+    "first": "",
+    "last": "",
+    "usedFrom": "",
+    "usedTo": "",
+    "count": 0,
+    "rolesText": "Администратор, РП, Рук. РП, Директора",
+    "ownEndpoints": [],
+    "related": true,
+    "relatedCount": 1,
+    "relatedTo": [
+      "/pm-calculations"
+    ],
+    "relatedKinds": [
+      "редирект"
+    ],
+    "relDetail": [
+      {
+        "to": "/pm-calculations",
+        "kind": "редирект"
+      }
+    ],
+    "note": "Переадресация на /pm-calculations — это адрес-переход, а не отдельный экран · скрыт из меню (вход по ссылке) · отдельного экрана у адреса нет"
+  },
+  {
+    "route": "/to-calcs",
+    "name": "Переход в «Сагу Тендеров»",
+    "title": null,
+    "desc": "Тендеры, которые я считаю сам",
+    "group": "Тендеры",
+    "type": "Редирект/алиас",
+    "inMenu": true,
+    "navHide": true,
+    "pageKey": "to_calcs",
+    "module": null,
+    "file": null,
+    "redirectTo": "/tenders",
+    "views": 0,
+    "used": "—",
+    "source": "редирект",
+    "first": "",
+    "last": "",
+    "usedFrom": "",
+    "usedTo": "",
+    "count": 0,
+    "rolesText": "Администратор, ТО, Рук. ТО",
+    "ownEndpoints": [],
+    "related": true,
+    "relatedCount": 1,
+    "relatedTo": [
+      "/tenders"
+    ],
+    "relatedKinds": [
+      "редирект"
+    ],
+    "relDetail": [
+      {
+        "to": "/tenders",
+        "kind": "редирект"
+      }
+    ],
+    "note": "Переадресация на /tenders — это адрес-переход, а не отдельный экран · скрыт из меню (вход по ссылке) · отдельного экрана у адреса нет"
+  },
+  {
+    "route": "/head-to-approvals",
+    "name": "Переход в «Сагу Тендеров»",
+    "title": null,
+    "desc": "Просчёты ТО на согласование",
+    "group": "Тендеры",
+    "type": "Редирект/алиас",
+    "inMenu": true,
+    "navHide": true,
+    "pageKey": "head_to_approvals",
+    "module": null,
+    "file": null,
+    "redirectTo": "/tenders",
+    "views": 0,
+    "used": "—",
+    "source": "редирект",
+    "first": "",
+    "last": "",
+    "usedFrom": "",
+    "usedTo": "",
+    "count": 0,
+    "rolesText": "Администратор, Рук. ТО",
+    "ownEndpoints": [],
+    "related": true,
+    "relatedCount": 1,
+    "relatedTo": [
+      "/tenders"
+    ],
+    "relatedKinds": [
+      "редирект"
+    ],
+    "relDetail": [
+      {
+        "to": "/tenders",
+        "kind": "редирект"
+      }
+    ],
+    "note": "Переадресация на /tenders — это адрес-переход, а не отдельный экран · скрыт из меню (вход по ссылке) · отдельного экрана у адреса нет"
+  },
+  {
+    "route": "/calculator",
+    "name": "Калькулятор ᚱ",
+    "title": "Калькулятор ᚱ",
+    "desc": "Расчёт стоимости работ",
+    "group": "Работы",
+    "type": "Страница",
+    "inMenu": true,
+    "navHide": false,
+    "pageKey": "calculator",
+    "module": "AsgardCalcV2",
+    "file": "calculator_v2.js",
+    "redirectTo": null,
+    "views": 3,
+    "used": "Да",
+    "source": "рендер страницы",
+    "first": "07.10",
+    "last": "12.10",
+    "usedFrom": "07.10",
+    "usedTo": "12.10",
+    "count": 3,
+    "rolesText": "Администратор, РП, ТО, Рук. РП, Рук. ТО, Директора",
+    "ownEndpoints": [],
+    "related": false,
+    "relatedCount": 0,
+    "relatedTo": [],
+    "relatedKinds": [],
+    "relDetail": [],
+    "note": ""
+  },
+  {
+    "route": "/pm-consents",
+    "name": "Согласия РП",
+    "title": "Согласия РП",
+    "desc": "Согласия РП — журнал подтверждений",
+    "group": "Работы",
+    "type": "Служебная",
+    "inMenu": false,
+    "navHide": false,
+    "pageKey": "",
+    "module": "AsgardPmConsentsPage",
+    "file": "pm_consents.js",
+    "redirectTo": null,
+    "views": 0,
+    "used": "Нет",
+    "source": "нет следов",
+    "first": "",
+    "last": "",
+    "usedFrom": "",
+    "usedTo": "",
+    "count": 0,
+    "rolesText": "Администратор, РП, Директора",
+    "ownEndpoints": [],
+    "related": false,
+    "relatedCount": 0,
+    "relatedTo": [],
+    "relatedKinds": [],
+    "relDetail": [],
+    "note": ""
+  },
+  {
+    "route": "/approvals",
+    "name": "Переход в «Сагу Тендеров»",
+    "title": null,
+    "desc": "Решения Ярла",
+    "group": "Работы",
+    "type": "Редирект/алиас",
+    "inMenu": true,
+    "navHide": true,
+    "pageKey": "approvals",
+    "module": null,
+    "file": null,
+    "redirectTo": "/tenders",
+    "views": 0,
+    "used": "—",
+    "source": "редирект",
+    "first": "",
+    "last": "",
+    "usedFrom": "",
+    "usedTo": "",
+    "count": 0,
+    "rolesText": "Администратор, Рук. РП, Директора",
+    "ownEndpoints": [],
+    "related": true,
+    "relatedCount": 1,
+    "relatedTo": [
+      "/tenders"
+    ],
+    "relatedKinds": [
+      "редирект"
+    ],
+    "relDetail": [
+      {
+        "to": "/tenders",
+        "kind": "редирект"
+      }
+    ],
+    "note": "Переадресация на /tenders — это адрес-переход, а не отдельный экран · скрыт из меню (вход по ссылке) · отдельного экрана у адреса нет"
+  },
+  {
+    "route": "/bonus-approval",
+    "name": "Согласование премий",
+    "title": "Согласование премий",
+    "desc": "Премии рабочим",
+    "group": "Работы",
+    "type": "Страница",
+    "inMenu": true,
+    "navHide": false,
+    "pageKey": "bonus_approval",
+    "module": "AsgardBonusApproval",
+    "file": "bonus_approval.js",
+    "redirectTo": null,
+    "views": 3,
+    "used": "Да",
+    "source": "рендер страницы",
+    "first": "02.10",
+    "last": "08.10",
+    "usedFrom": "02.10",
+    "usedTo": "08.10",
+    "count": 3,
+    "rolesText": "Администратор, РП, Рук. РП, Директора",
+    "ownEndpoints": [],
+    "related": false,
+    "relatedCount": 0,
+    "relatedTo": [],
+    "relatedKinds": [],
+    "relDetail": [],
+    "note": ""
+  },
+  {
+    "route": "/pm-works",
+    "name": "Мои работы (РП)",
+    "title": "Карта Похода • Работы",
+    "desc": "Проекты РП",
+    "group": "Работы",
+    "type": "Страница",
+    "inMenu": true,
+    "navHide": false,
+    "pageKey": "pm_works",
+    "module": "AsgardPmWorksPage",
+    "file": "pm_works.js",
+    "redirectTo": null,
+    "views": 230,
+    "used": "Да",
+    "source": "рендер страницы",
+    "first": "29.09",
+    "last": "13.10",
+    "usedFrom": "29.09",
+    "usedTo": "13.10",
+    "count": 230,
+    "rolesText": "Администратор, РП, Рук. РП, Директора",
+    "ownEndpoints": [],
+    "related": true,
+    "relatedCount": 7,
+    "relatedTo": [
+      "/work-report",
+      "/payroll-sheet",
+      "/correspondence",
+      "/hr-requests",
+      "/workers-schedule",
+      "/procurement",
+      "/assembly"
+    ],
+    "relatedKinds": [
+      "переход из интерфейса"
+    ],
+    "relDetail": [
+      {
+        "to": "/work-report",
+        "kind": "переход из интерфейса"
+      },
+      {
+        "to": "/payroll-sheet",
+        "kind": "переход из интерфейса"
+      },
+      {
+        "to": "/correspondence",
+        "kind": "переход из интерфейса"
+      },
+      {
+        "to": "/hr-requests",
+        "kind": "переход из интерфейса"
+      },
+      {
+        "to": "/workers-schedule",
+        "kind": "переход из интерфейса"
+      },
+      {
+        "to": "/procurement",
+        "kind": "переход из интерфейса"
+      },
+      {
+        "to": "/assembly",
+        "kind": "переход из интерфейса"
+      }
+    ],
+    "note": ""
+  },
+  {
+    "route": "/all-works",
+    "name": "Свод Контрактов",
+    "title": "Свод Контрактов",
+    "desc": "Все работы",
+    "group": "Работы",
+    "type": "Страница",
+    "inMenu": true,
+    "navHide": false,
+    "pageKey": "all_works",
+    "module": "AsgardAllWorksPage",
+    "file": "all_works.js",
+    "redirectTo": null,
+    "views": 7,
+    "used": "Да",
+    "source": "рендер страницы",
+    "first": "07.10",
+    "last": "09.10",
+    "usedFrom": "07.10",
+    "usedTo": "09.10",
+    "count": 7,
+    "rolesText": "Администратор, Рук. РП, Директора",
+    "ownEndpoints": [],
+    "related": true,
+    "relatedCount": 2,
+    "relatedTo": [
+      "/pm-works",
+      "/tkp"
+    ],
+    "relatedKinds": [
+      "переход из интерфейса"
+    ],
+    "relDetail": [
+      {
+        "to": "/pm-works",
+        "kind": "переход из интерфейса"
+      },
+      {
+        "to": "/tkp",
+        "kind": "переход из интерфейса"
+      }
+    ],
+    "note": ""
+  },
+  {
+    "route": "/all-estimates",
+    "name": "Переход в «Просчёты РП» (архив)",
+    "title": null,
+    "desc": "Все просчёты",
+    "group": "Работы",
+    "type": "Редирект/алиас",
+    "inMenu": true,
+    "navHide": true,
+    "pageKey": "all_estimates",
+    "module": null,
+    "file": null,
+    "redirectTo": "/pm-calculations",
+    "views": 0,
+    "used": "—",
+    "source": "редирект",
+    "first": "",
+    "last": "",
+    "usedFrom": "",
+    "usedTo": "",
+    "count": 0,
+    "rolesText": "Администратор, Бухгалтер, Рук. РП, Директора",
+    "ownEndpoints": [],
+    "related": true,
+    "relatedCount": 1,
+    "relatedTo": [
+      "/pm-calculations"
+    ],
+    "relatedKinds": [
+      "редирект"
+    ],
+    "relDetail": [
+      {
+        "to": "/pm-calculations",
+        "kind": "редирект"
+      }
+    ],
+    "note": "Переадресация на /pm-calculations — это адрес-переход, а не отдельный экран · скрыт из меню (вход по ссылке) · отдельного экрана у адреса нет"
+  },
+  {
+    "route": "/estimate-report",
+    "name": "Отчёт просчёта",
+    "title": "Отчёт просчёта",
+    "desc": "Отчёт по просчёту тендера",
+    "group": "Тендеры",
+    "type": "Служебная",
+    "inMenu": false,
+    "navHide": false,
+    "pageKey": "",
+    "module": "AsgardEstimateReportPage",
+    "file": "estimate_report.js",
+    "redirectTo": null,
+    "views": 0,
+    "used": "Нет",
+    "source": "нет следов",
+    "first": "",
+    "last": "",
+    "usedFrom": "",
+    "usedTo": "",
+    "count": 0,
+    "rolesText": "Администратор, РП, Рук. РП, ТО, Рук. ТО, Бухгалтер, Директора",
+    "ownEndpoints": [],
+    "related": true,
+    "relatedCount": 3,
+    "relatedTo": [
+      "/all-estimates",
+      "/pm-works",
+      "/tenders"
+    ],
+    "relatedKinds": [
+      "переход из интерфейса"
+    ],
+    "relDetail": [
+      {
+        "to": "/all-estimates",
+        "kind": "переход из интерфейса"
+      },
+      {
+        "to": "/pm-works",
+        "kind": "переход из интерфейса"
+      },
+      {
+        "to": "/tenders",
+        "kind": "переход из интерфейса"
+      }
+    ],
+    "note": ""
+  },
+  {
+    "route": "/work-report",
+    "name": "Финансовый отчёт",
+    "title": "Финансовый отчёт",
+    "desc": "Финансовый отчёт по работе",
+    "group": "Работы",
+    "type": "Служебная",
+    "inMenu": false,
+    "navHide": false,
+    "pageKey": "",
+    "module": "AsgardWorkReport",
+    "file": "work_report.js",
+    "redirectTo": null,
+    "views": 4,
+    "used": "Да",
+    "source": "рендер страницы",
+    "first": "09.10",
+    "last": "09.10",
+    "usedFrom": "09.10",
+    "usedTo": "09.10",
+    "count": 4,
+    "rolesText": "Администратор, РП, Рук. РП, Бухгалтер, Директора",
+    "ownEndpoints": [],
+    "related": false,
+    "relatedCount": 0,
+    "relatedTo": [],
+    "relatedKinds": [],
+    "relDetail": [],
+    "note": ""
+  },
+  {
+    "route": "/finances",
+    "name": "Финансы",
+    "title": "Деньги • Аналитика",
+    "desc": "Аналитика и реестр",
+    "group": "Финансы",
+    "type": "Страница",
+    "inMenu": true,
+    "navHide": false,
+    "pageKey": "finances",
+    "module": "AsgardFinancesPage",
+    "file": "finances.js",
+    "redirectTo": null,
+    "views": 9,
+    "used": "Да",
+    "source": "рендер страницы",
+    "first": "07.10",
+    "last": "09.10",
+    "usedFrom": "07.10",
+    "usedTo": "09.10",
+    "count": 9,
+    "rolesText": "Администратор, Бухгалтер, Директора",
+    "ownEndpoints": [],
+    "related": false,
+    "relatedCount": 0,
+    "relatedTo": [],
+    "relatedKinds": [],
+    "relDetail": [],
+    "note": ""
+  },
+  {
+    "route": "/buh-registry",
+    "name": "Реестр расходов",
+    "title": "Реестр расходов • BUH",
+    "desc": "Бухгалтерский реестр",
+    "group": "Финансы",
+    "type": "Страница",
+    "inMenu": true,
+    "navHide": false,
+    "pageKey": "buh_registry",
+    "module": "AsgardBuhRegistryPage",
+    "file": "buh_registry.js",
+    "redirectTo": null,
+    "views": 5,
+    "used": "Да",
+    "source": "рендер страницы",
+    "first": "07.10",
+    "last": "12.10",
+    "usedFrom": "07.10",
+    "usedTo": "12.10",
+    "count": 5,
+    "rolesText": "Администратор, Бухгалтер, Директора",
+    "ownEndpoints": [],
+    "related": false,
+    "relatedCount": 0,
+    "relatedTo": [],
+    "relatedKinds": [],
+    "relDetail": [],
+    "note": ""
+  },
+  {
+    "route": "/doc-hub",
+    "name": "Реестр документов",
+    "title": "Реестр документов",
+    "desc": "Счета, СФ, УПД · хаб",
+    "group": "Финансы",
+    "type": "Страница",
+    "inMenu": true,
+    "navHide": false,
+    "pageKey": "doc_hub",
+    "module": "AsgardDocHubPage",
+    "file": "doc-hub.js",
+    "redirectTo": null,
+    "views": 161,
+    "used": "Да",
+    "source": "рендер страницы",
+    "first": "06.10",
+    "last": "12.10",
+    "usedFrom": "06.10",
+    "usedTo": "12.10",
+    "count": 161,
+    "rolesText": "Администратор, Бухгалтер, РП, Рук. РП, ТО, Рук. ТО, Закупщик, Склад, Офис-менеджер, Директора",
+    "ownEndpoints": [
+      "/api/doc-registry (1162)",
+      "/api/customers/registry-suggest (18)",
+      "/api/doc-registry/export-xlsx (13)"
+    ],
+    "related": true,
+    "relatedCount": 2,
+    "relatedTo": [
+      "/contracts",
+      "/approval-payment"
+    ],
+    "relatedKinds": [
+      "переход из интерфейса"
+    ],
+    "relDetail": [
+      {
+        "to": "/contracts",
+        "kind": "переход из интерфейса"
+      },
+      {
+        "to": "/approval-payment",
+        "kind": "переход из интерфейса"
+      }
+    ],
+    "note": ""
+  },
+  {
+    "route": "/office-expenses",
+    "name": "Офисные расходы",
+    "title": "Офисные расходы",
+    "desc": "Управление и согласование",
+    "group": "Финансы",
+    "type": "Страница",
+    "inMenu": true,
+    "navHide": false,
+    "pageKey": "office_expenses",
+    "module": "AsgardOfficeExpensesPage",
+    "file": "office_expenses.js",
+    "redirectTo": null,
+    "views": 13,
+    "used": "Да",
+    "source": "рендер страницы",
+    "first": "07.10",
+    "last": "09.10",
+    "usedFrom": "07.10",
+    "usedTo": "09.10",
+    "count": 13,
+    "rolesText": "Администратор, Офис-менеджер, Директора",
+    "ownEndpoints": [],
+    "related": true,
+    "relatedCount": 1,
+    "relatedTo": [
+      "/cash"
+    ],
+    "relatedKinds": [
+      "переход из интерфейса"
+    ],
+    "relDetail": [
+      {
+        "to": "/cash",
+        "kind": "переход из интерфейса"
+      }
+    ],
+    "note": ""
+  },
+  {
+    "route": "/correspondence",
+    "name": "Корреспонденция",
+    "title": "Корреспонденция",
+    "desc": "Входящие и исходящие",
+    "group": "Ресурсы",
+    "type": "Страница",
+    "inMenu": true,
+    "navHide": false,
+    "pageKey": "correspondence",
+    "module": "AsgardCorrespondencePage",
+    "file": "correspondence.js",
+    "redirectTo": null,
+    "views": 15,
+    "used": "Да",
+    "source": "рендер страницы",
+    "first": "30.09",
+    "last": "09.10",
+    "usedFrom": "30.09",
+    "usedTo": "09.10",
+    "count": 15,
+    "rolesText": "Администратор, Офис-менеджер, Директор (комм.), Директор (ген.), Директор (разв.), РП, Рук. РП, ТО, Рук. ТО",
+    "ownEndpoints": [
+      "/api/data/correspondence (13)",
+      "/api/correspondence/outgoing-number-status (7)"
+    ],
+    "related": false,
+    "relatedCount": 0,
+    "relatedTo": [],
+    "relatedKinds": [],
+    "relDetail": [],
+    "note": ""
+  },
+  {
+    "route": "/telephony",
+    "name": "Телефония",
+    "title": "Телефония",
+    "desc": "Звонки и маршрутизация",
+    "group": "Коммуникации",
+    "type": "Страница",
+    "inMenu": true,
+    "navHide": false,
+    "pageKey": "telephony",
+    "module": "AsgardTelephonyPage",
+    "file": "telephony.js",
+    "redirectTo": null,
+    "views": 107,
+    "used": "Да",
+    "source": "рендер страницы",
+    "first": "05.10",
+    "last": "12.10",
+    "usedFrom": "05.10",
+    "usedTo": "12.10",
+    "count": 107,
+    "rolesText": "Администратор, ТО, Рук. ТО, РП, Рук. РП, Директора",
+    "ownEndpoints": [],
+    "related": true,
+    "relatedCount": 1,
+    "relatedTo": [
+      "/tenders"
+    ],
+    "relatedKinds": [
+      "переход из интерфейса"
+    ],
+    "relDetail": [
+      {
+        "to": "/tenders",
+        "kind": "переход из интерфейса"
+      }
+    ],
+    "note": ""
+  },
+  {
+    "route": "/call-reports",
+    "name": "Аналитика звонков",
+    "title": "Аналитика звонков",
+    "desc": "AI-отчёты по звонкам",
+    "group": "Коммуникации",
+    "type": "Страница",
+    "inMenu": true,
+    "navHide": false,
+    "pageKey": "call_reports",
+    "module": "AsgardCallReportsPage",
+    "file": "call_reports.js",
+    "redirectTo": null,
+    "views": 8,
+    "used": "Да",
+    "source": "рендер страницы",
+    "first": "07.10",
+    "last": "12.10",
+    "usedFrom": "07.10",
+    "usedTo": "12.10",
+    "count": 8,
+    "rolesText": "Администратор, Директора",
+    "ownEndpoints": [],
+    "related": false,
+    "relatedCount": 0,
+    "relatedTo": [],
+    "relatedKinds": [],
+    "relDetail": [],
+    "note": ""
+  },
+  {
+    "route": "/proxies",
+    "name": "Доверенности",
+    "title": "Доверенности",
+    "desc": "Реестр и бланки",
+    "group": "Ресурсы",
+    "type": "Страница",
+    "inMenu": true,
+    "navHide": false,
+    "pageKey": "proxies",
+    "module": "AsgardProxiesPage",
+    "file": "proxies.js",
+    "redirectTo": null,
+    "views": 4,
+    "used": "Да",
+    "source": "рендер страницы",
+    "first": "07.10",
+    "last": "09.10",
+    "usedFrom": "07.10",
+    "usedTo": "09.10",
+    "count": 4,
+    "rolesText": "Администратор, Офис-менеджер, Директора",
+    "ownEndpoints": [
+      "/api/proxies (4)"
+    ],
+    "related": false,
+    "relatedCount": 0,
+    "relatedTo": [],
+    "relatedKinds": [],
+    "relDetail": [],
+    "note": ""
+  },
+  {
+    "route": "/travel",
+    "name": "Логистика дружины",
+    "title": "Логистика дружины",
+    "desc": "Жильё, билеты, направления, обучение",
+    "group": "Персонал",
+    "type": "Страница",
+    "inMenu": true,
+    "navHide": false,
+    "pageKey": "travel",
+    "module": "AsgardTravelPage",
+    "file": "travel.js",
+    "redirectTo": null,
+    "views": 14,
+    "used": "Да",
+    "source": "рендер страницы",
+    "first": "07.10",
+    "last": "09.10",
+    "usedFrom": "07.10",
+    "usedTo": "09.10",
+    "count": 14,
+    "rolesText": "Администратор, Офис-менеджер, HR, Рук. HR, РП, Директора",
+    "ownEndpoints": [
+      "/api/field/logistics (12)"
+    ],
+    "related": false,
+    "relatedCount": 0,
+    "relatedTo": [],
+    "relatedKinds": [],
+    "relDetail": [],
+    "note": ""
+  },
+  {
+    "route": "/user-requests",
+    "name": "Заявки пользователей",
+    "title": "Заявки на регистрацию",
+    "desc": "Одобрение регистраций",
+    "group": "Аналитика",
+    "type": "Страница",
+    "inMenu": true,
+    "navHide": false,
+    "pageKey": "users_admin",
+    "module": "AsgardUserRequestsPage",
+    "file": "user_requests.js",
+    "redirectTo": null,
+    "views": 16,
+    "used": "Да",
+    "source": "рендер страницы",
+    "first": "30.09",
+    "last": "12.10",
+    "usedFrom": "30.09",
+    "usedTo": "12.10",
+    "count": 16,
+    "rolesText": "Администратор",
+    "ownEndpoints": [],
+    "related": false,
+    "relatedCount": 0,
+    "relatedTo": [],
+    "relatedKinds": [],
+    "relDetail": [],
+    "note": ""
+  },
+  {
+    "route": "/analytics",
+    "name": "Переход в «Аналитику Ярла • Работы»",
+    "title": null,
+    "desc": "KPI работ и денег",
+    "group": "Аналитика",
+    "type": "Редирект/алиас",
+    "inMenu": true,
+    "navHide": false,
+    "pageKey": "analytics",
+    "module": null,
+    "file": null,
+    "redirectTo": "/kpi-works",
+    "views": 0,
+    "used": "—",
+    "source": "редирект",
+    "first": "",
+    "last": "",
+    "usedFrom": "",
+    "usedTo": "",
+    "count": 0,
+    "rolesText": "Администратор, Директора",
+    "ownEndpoints": [],
+    "related": true,
+    "relatedCount": 1,
+    "relatedTo": [
+      "/kpi-works"
+    ],
+    "relatedKinds": [
+      "редирект"
+    ],
+    "relDetail": [
+      {
+        "to": "/kpi-works",
+        "kind": "редирект"
+      }
+    ],
+    "note": "Переадресация на /kpi-works — это адрес-переход, а не отдельный экран · отдельного экрана у адреса нет"
+  },
+  {
+    "route": "/kpi-works",
+    "name": "Аналитика Ярла • Работы",
+    "title": "Аналитика Ярла • Работы",
+    "desc": "Аналитика Ярла — KPI по работам",
+    "group": "Аналитика",
+    "type": "Служебная",
+    "inMenu": false,
+    "navHide": false,
+    "pageKey": "",
+    "module": "AsgardKpiWorksPage",
+    "file": "kpi_works.js",
+    "redirectTo": null,
+    "views": 6,
+    "used": "Да",
+    "source": "рендер страницы",
+    "first": "07.10",
+    "last": "12.10",
+    "usedFrom": "07.10",
+    "usedTo": "12.10",
+    "count": 6,
+    "rolesText": "Администратор, Директора",
+    "ownEndpoints": [],
+    "related": false,
+    "relatedCount": 0,
+    "relatedTo": [],
+    "relatedKinds": [],
+    "relDetail": [],
+    "note": ""
+  },
+  {
+    "route": "/kpi-money",
+    "name": "Аналитика Ярла • Деньги",
+    "title": "Аналитика Ярла • Деньги",
+    "desc": "Аналитика Ярла — KPI по деньгам",
+    "group": "Аналитика",
+    "type": "Служебная",
+    "inMenu": false,
+    "navHide": false,
+    "pageKey": "",
+    "module": "AsgardKpiMoneyPage",
+    "file": "kpi_money.js",
+    "redirectTo": null,
+    "views": 0,
+    "used": "Нет",
+    "source": "нет следов",
+    "first": "",
+    "last": "",
+    "usedFrom": "",
+    "usedTo": "",
+    "count": 0,
+    "rolesText": "Администратор, Директора",
+    "ownEndpoints": [],
+    "related": false,
+    "relatedCount": 0,
+    "relatedTo": [],
+    "relatedKinds": [],
+    "relDetail": [],
+    "note": ""
+  },
+  {
+    "route": "/field-tariffs",
+    "name": "Тарифная сетка • Поле",
+    "title": "Тарифная сетка • Поле",
+    "desc": "Тарифная сетка полевых работ (только ADMIN)",
+    "group": "Персонал",
+    "type": "Служебная",
+    "inMenu": false,
+    "navHide": false,
+    "pageKey": "",
+    "module": "AsgardFieldTariffsPage",
+    "file": "field-tariffs.js",
+    "redirectTo": null,
+    "views": 0,
+    "used": "Нет",
+    "source": "нет следов",
+    "first": "",
+    "last": "",
+    "usedFrom": "",
+    "usedTo": "",
+    "count": 0,
+    "rolesText": "Администратор",
+    "ownEndpoints": [],
+    "related": false,
+    "relatedCount": 0,
+    "relatedTo": [],
+    "relatedKinds": [],
+    "relDetail": [],
+    "note": ""
+  },
+  {
+    "route": "/settings",
+    "name": "Настройки",
+    "title": "Кузница Настроек",
+    "desc": "Справочники и цвета",
+    "group": "Система",
+    "type": "Страница",
+    "inMenu": true,
+    "navHide": false,
+    "pageKey": "settings",
+    "module": "AsgardSettingsPage",
+    "file": "settings.js",
+    "redirectTo": null,
+    "views": 2,
+    "used": "Да",
+    "source": "рендер страницы",
+    "first": "07.10",
+    "last": "07.10",
+    "usedFrom": "07.10",
+    "usedTo": "07.10",
+    "count": 2,
+    "rolesText": "Администратор",
+    "ownEndpoints": [],
+    "related": false,
+    "relatedCount": 0,
+    "relatedTo": [],
+    "relatedKinds": [],
+    "relDetail": [],
+    "note": ""
+  },
+  {
+    "route": "/admin/timesheet-settings",
+    "name": "Баллы табеля",
+    "title": "Настройки баллов табеля",
+    "desc": "Очки за склад/МО/дорогу",
+    "group": "Система",
+    "type": "Страница",
+    "inMenu": true,
+    "navHide": false,
+    "pageKey": "admin_timesheet_settings",
+    "module": "AsgardAdminTimesheetSettingsPage",
+    "file": "admin-timesheet-settings.js",
+    "redirectTo": null,
+    "views": 3,
+    "used": "Да",
+    "source": "рендер страницы",
+    "first": "07.10",
+    "last": "09.10",
+    "usedFrom": "07.10",
+    "usedTo": "09.10",
+    "count": 3,
+    "rolesText": "Администратор, Директор (ген.), Директор (комм.), Директор (разв.), Бухгалтер",
+    "ownEndpoints": [
+      "/api/timesheet/v2/settings/position-points (3)"
+    ],
+    "related": false,
+    "relatedCount": 0,
+    "relatedTo": [],
+    "relatedKinds": [],
+    "relDetail": [],
+    "note": ""
+  },
+  {
+    "route": "/telegram",
+    "name": "Telegram",
+    "title": "Telegram",
+    "desc": "Уведомления и SMS",
+    "group": "Коммуникации",
+    "type": "Страница",
+    "inMenu": true,
+    "navHide": false,
+    "pageKey": "telegram_admin",
+    "module": "AsgardTelegram",
+    "file": "telegram.js",
+    "redirectTo": null,
+    "views": 4,
+    "used": "Да",
+    "source": "рендер страницы",
+    "first": "07.10",
+    "last": "09.10",
+    "usedFrom": "07.10",
+    "usedTo": "09.10",
+    "count": 4,
+    "rolesText": "Администратор",
+    "ownEndpoints": [],
+    "related": false,
+    "relatedCount": 0,
+    "relatedTo": [],
+    "relatedKinds": [],
+    "relDetail": [],
+    "note": ""
+  },
+  {
+    "route": "/sync",
+    "name": "PostgreSQL Sync",
+    "title": "PostgreSQL Sync",
+    "desc": "Синхронизация с сервером",
+    "group": "Система",
+    "type": "Страница",
+    "inMenu": true,
+    "navHide": false,
+    "pageKey": "sync",
+    "module": "AsgardSync",
+    "file": "sync.js",
+    "redirectTo": null,
+    "views": 3,
+    "used": "Да",
+    "source": "рендер страницы",
+    "first": "07.10",
+    "last": "09.10",
+    "usedFrom": "07.10",
+    "usedTo": "09.10",
+    "count": 3,
+    "rolesText": "Администратор",
+    "ownEndpoints": [],
+    "related": false,
+    "relatedCount": 0,
+    "relatedTo": [],
+    "relatedKinds": [],
+    "relDetail": [],
+    "note": ""
+  },
+  {
+    "route": "/mango",
+    "name": "Настройки телефонии (Mango)",
+    "title": "Телефония",
+    "desc": "Настройки телефонии Mango Office",
+    "group": "Система",
+    "type": "Служебная",
+    "inMenu": false,
+    "navHide": false,
+    "pageKey": "",
+    "module": "AsgardMango",
+    "file": "mango.js",
+    "redirectTo": null,
+    "views": 0,
+    "used": "Нет",
+    "source": "нет следов",
+    "first": "",
+    "last": "",
+    "usedFrom": "",
+    "usedTo": "",
+    "count": 0,
+    "rolesText": "Администратор",
+    "ownEndpoints": [],
+    "related": true,
+    "relatedCount": 1,
+    "relatedTo": [
+      "/customers"
+    ],
+    "relatedKinds": [
+      "переход из интерфейса"
+    ],
+    "relDetail": [
+      {
+        "to": "/customers",
+        "kind": "переход из интерфейса"
+      }
+    ],
+    "note": ""
+  },
+  {
+    "route": "/my-dashboard",
+    "name": "Переход на «Зал Ярла»",
+    "title": null,
+    "desc": "Настраиваемые виджеты",
+    "group": "Главная",
+    "type": "Редирект/алиас",
+    "inMenu": true,
+    "navHide": false,
+    "pageKey": "my_dashboard",
+    "module": null,
+    "file": null,
+    "redirectTo": "/home",
+    "views": 0,
+    "used": "—",
+    "source": "редирект",
+    "first": "",
+    "last": "",
+    "usedFrom": "",
+    "usedTo": "",
+    "count": 0,
+    "rolesText": "Администратор, РП, ТО, HR, Офис-менеджер, Бухгалтер, Директора, Руководители отделов",
+    "ownEndpoints": [],
+    "related": true,
+    "relatedCount": 1,
+    "relatedTo": [
+      "/home"
+    ],
+    "relatedKinds": [
+      "редирект"
+    ],
+    "relDetail": [
+      {
+        "to": "/home",
+        "kind": "редирект"
+      }
+    ],
+    "note": "Переадресация на /home — это адрес-переход, а не отдельный экран · отдельного экрана у адреса нет"
+  },
+  {
+    "route": "/big-screen",
+    "name": "Большой Экран",
+    "title": "Big Screen",
+    "desc": "Авто-ротация KPI для монитора",
+    "group": "Главная",
+    "type": "Страница",
+    "inMenu": true,
+    "navHide": false,
+    "pageKey": "big_screen",
+    "module": "AsgardBigScreen",
+    "file": "big_screen.js",
+    "redirectTo": null,
+    "views": 3,
+    "used": "Да",
+    "source": "рендер страницы",
+    "first": "07.10",
+    "last": "07.10",
+    "usedFrom": "07.10",
+    "usedTo": "07.10",
+    "count": 3,
+    "rolesText": "Администратор, Директора, Руководители отделов",
+    "ownEndpoints": [],
+    "related": false,
+    "relatedCount": 0,
+    "relatedTo": [],
+    "relatedKinds": [],
+    "relDetail": [],
+    "note": ""
+  },
+  {
+    "route": "/backup",
+    "name": "Резервные копии",
+    "title": "Камень Хроник • Резерв",
+    "desc": "Экспорт/импорт базы",
+    "group": "Система",
+    "type": "Страница",
+    "inMenu": true,
+    "navHide": false,
+    "pageKey": "backup",
+    "module": "AsgardBackupPage",
+    "file": "backup.js",
+    "redirectTo": null,
+    "views": 3,
+    "used": "Да",
+    "source": "рендер страницы",
+    "first": "07.10",
+    "last": "09.10",
+    "usedFrom": "07.10",
+    "usedTo": "09.10",
+    "count": 3,
+    "rolesText": "Администратор",
+    "ownEndpoints": [],
+    "related": false,
+    "relatedCount": 0,
+    "relatedTo": [],
+    "relatedKinds": [],
+    "relDetail": [],
+    "note": ""
+  },
+  {
+    "route": "/diag",
+    "name": "Диагностика",
+    "title": "Диагностика",
+    "desc": "Версия, база, self-test",
+    "group": "Система",
+    "type": "Страница",
+    "inMenu": true,
+    "navHide": false,
+    "pageKey": "diag",
+    "module": "AsgardDiagPage",
+    "file": "diag.js",
+    "redirectTo": null,
+    "views": 3,
+    "used": "Да",
+    "source": "рендер страницы",
+    "first": "07.10",
+    "last": "09.10",
+    "usedFrom": "07.10",
+    "usedTo": "09.10",
+    "count": 3,
+    "rolesText": "Администратор",
+    "ownEndpoints": [],
+    "related": true,
+    "relatedCount": 1,
+    "relatedTo": [
+      "/backup"
+    ],
+    "relatedKinds": [
+      "переход из интерфейса"
+    ],
+    "relDetail": [
+      {
+        "to": "/backup",
+        "kind": "переход из интерфейса"
+      }
+    ],
+    "note": ""
+  },
+  {
+    "route": "/system-panel",
+    "name": "Панель сервера",
+    "title": "Панель сервера",
+    "desc": "Сервер, логи, Мимир",
+    "group": "Система",
+    "type": "Страница",
+    "inMenu": true,
+    "navHide": false,
+    "pageKey": "system_panel",
+    "module": "AsgardSystemPanel",
+    "file": "system-panel.js",
+    "redirectTo": null,
+    "views": 4,
+    "used": "Да",
+    "source": "рендер страницы",
+    "first": "07.10",
+    "last": "09.10",
+    "usedFrom": "07.10",
+    "usedTo": "09.10",
+    "count": 4,
+    "rolesText": "Администратор",
+    "ownEndpoints": [
+      "/api/admin/system (452)"
+    ],
+    "related": false,
+    "relatedCount": 0,
+    "relatedTo": [],
+    "relatedKinds": [],
+    "relDetail": [],
+    "note": ""
+  },
+  {
+    "route": "/alerts",
+    "name": "Уведомления",
+    "title": "Уведомления",
+    "desc": "Воронья почта",
+    "group": "Коммуникации",
+    "type": "Страница",
+    "inMenu": true,
+    "navHide": false,
+    "pageKey": "alerts",
+    "module": "AsgardAlertsPage",
+    "file": "alerts.js",
+    "redirectTo": null,
+    "views": 9,
+    "used": "Да",
+    "source": "рендер страницы",
+    "first": "07.10",
+    "last": "12.10",
+    "usedFrom": "07.10",
+    "usedTo": "12.10",
+    "count": 9,
+    "rolesText": "Все роли (по правам)",
+    "ownEndpoints": [],
+    "related": false,
+    "relatedCount": 0,
+    "relatedTo": [],
+    "relatedKinds": [],
+    "relDetail": [],
+    "note": ""
+  },
+  {
+    "route": "/personnel",
+    "name": "Дружина",
+    "title": "Дружина • Персонал",
+    "desc": "Сотрудники",
+    "group": "Персонал",
+    "type": "Страница",
+    "inMenu": true,
+    "navHide": false,
+    "pageKey": "personnel",
+    "module": "AsgardPersonnelPage",
+    "file": "personnel.js",
+    "redirectTo": null,
+    "views": 561,
+    "used": "Да",
+    "source": "рендер страницы",
+    "first": "29.09",
+    "last": "13.10",
+    "usedFrom": "29.09",
+    "usedTo": "13.10",
+    "count": 561,
+    "rolesText": "Администратор, HR, Рук. HR, РП, Рук. РП, ТО, Рук. ТО, Офис-менеджер, Директора",
+    "ownEndpoints": [
+      "/api/staff/se-limits/last-import (120)"
+    ],
+    "related": true,
+    "relatedCount": 2,
+    "relatedTo": [
+      "/workers-schedule",
+      "/employee"
+    ],
+    "relatedKinds": [
+      "переход из интерфейса"
+    ],
+    "relDetail": [
+      {
+        "to": "/workers-schedule",
+        "kind": "переход из интерфейса"
+      },
+      {
+        "to": "/employee",
+        "kind": "переход из интерфейса"
+      }
+    ],
+    "note": ""
+  },
+  {
+    "route": "/hr-rating",
+    "name": "Рейтинг Дружины",
+    "title": "Рейтинг Дружины",
+    "desc": "Оценки и средний балл",
+    "group": "Персонал",
+    "type": "Страница",
+    "inMenu": true,
+    "navHide": false,
+    "pageKey": "hr_rating",
+    "module": "AsgardHrRatingPage",
+    "file": "hr_rating.js",
+    "redirectTo": null,
+    "views": 10,
+    "used": "Да",
+    "source": "рендер страницы",
+    "first": "07.10",
+    "last": "09.10",
+    "usedFrom": "07.10",
+    "usedTo": "09.10",
+    "count": 10,
+    "rolesText": "Администратор, HR, Рук. HR, Директора",
+    "ownEndpoints": [],
+    "related": true,
+    "relatedCount": 2,
+    "relatedTo": [
+      "/personnel",
+      "/employee"
+    ],
+    "relatedKinds": [
+      "переход из интерфейса"
+    ],
+    "relDetail": [
+      {
+        "to": "/personnel",
+        "kind": "переход из интерфейса"
+      },
+      {
+        "to": "/employee",
+        "kind": "переход из интерфейса"
+      }
+    ],
+    "note": ""
+  },
+  {
+    "route": "/employee",
+    "name": "Личное дело",
+    "title": "Личное дело",
+    "desc": "Личное дело сотрудника (открывается по id)",
+    "group": "Персонал",
+    "type": "Подстраница (по id)",
+    "inMenu": false,
+    "navHide": false,
+    "pageKey": "",
+    "module": "AsgardEmployeePage",
+    "file": "employee.js",
+    "redirectTo": null,
+    "views": 70,
+    "used": "Да",
+    "source": "рендер страницы",
+    "first": "29.09",
+    "last": "12.10",
+    "usedFrom": "29.09",
+    "usedTo": "12.10",
+    "count": 70,
+    "rolesText": "Администратор, HR, Рук. HR, РП, Рук. РП, ТО, Рук. ТО, Офис-менеджер, Директора",
+    "ownEndpoints": [],
+    "related": true,
+    "relatedCount": 2,
+    "relatedTo": [
+      "/personnel",
+      "/workers-schedule"
+    ],
+    "relatedKinds": [
+      "переход из интерфейса"
+    ],
+    "relDetail": [
+      {
+        "to": "/personnel",
+        "kind": "переход из интерфейса"
+      },
+      {
+        "to": "/workers-schedule",
+        "kind": "переход из интерфейса"
+      }
+    ],
+    "note": ""
+  },
+  {
+    "route": "/collections",
+    "name": "Подборки дружины",
+    "title": "Подборки Дружины",
+    "desc": "Именные списки сотрудников",
+    "group": "Персонал",
+    "type": "Страница",
+    "inMenu": true,
+    "navHide": false,
+    "pageKey": "personnel",
+    "module": "AsgardEmployeeCollections",
+    "file": "employee_collections.js",
+    "redirectTo": null,
+    "views": 4,
+    "used": "Да",
+    "source": "рендер страницы",
+    "first": "07.10",
+    "last": "12.10",
+    "usedFrom": "07.10",
+    "usedTo": "12.10",
+    "count": 4,
+    "rolesText": "Администратор, HR, Рук. HR, Директора",
+    "ownEndpoints": [
+      "/api/employee-collections (4)"
+    ],
+    "related": false,
+    "relatedCount": 0,
+    "relatedTo": [],
+    "relatedKinds": [],
+    "relDetail": [],
+    "note": ""
+  },
+  {
+    "route": "/hr-requests",
+    "name": "Заявки персонала",
+    "title": "Заявки персонала",
+    "desc": "HR-заявки",
+    "group": "Персонал",
+    "type": "Страница",
+    "inMenu": true,
+    "navHide": false,
+    "pageKey": "hr_requests",
+    "module": "AsgardHrRequestsPage",
+    "file": "hr_requests.js",
+    "redirectTo": null,
+    "views": 6,
+    "used": "Да",
+    "source": "рендер страницы",
+    "first": "01.10",
+    "last": "09.10",
+    "usedFrom": "01.10",
+    "usedTo": "09.10",
+    "count": 6,
+    "rolesText": "Администратор, HR, Рук. HR, РП, Рук. РП, Директора",
+    "ownEndpoints": [
+      "/api/permits/types (45)",
+      "/api/staff-requests (17)",
+      "/api/staff-requests/pending (15)",
+      "/api/staff-requests/my (2)",
+      "/api/permits/work (1)"
+    ],
+    "related": true,
+    "relatedCount": 1,
+    "relatedTo": [
+      "/permits"
+    ],
+    "relatedKinds": [
+      "переход из интерфейса"
+    ],
+    "relDetail": [
+      {
+        "to": "/permits",
+        "kind": "переход из интерфейса"
+      }
+    ],
+    "note": ""
+  },
+  {
+    "route": "/timesheet",
+    "name": "Табель",
+    "title": "Общий табель — Табель дружины",
+    "desc": "Общий табель дружины: все рабочие за месяц, ФОТ, Excel",
+    "group": "Персонал",
+    "type": "Страница",
+    "inMenu": true,
+    "navHide": false,
+    "pageKey": "timesheet",
+    "module": "AsgardTimesheetV2",
+    "file": "timesheet-v2.js",
+    "redirectTo": null,
+    "views": 45,
+    "used": "Да",
+    "source": "рендер страницы",
+    "first": "02.10",
+    "last": "13.10",
+    "usedFrom": "02.10",
+    "usedTo": "13.10",
+    "count": 45,
+    "rolesText": "Администратор, Бухгалтер, HR, Рук. HR, Закупщик, Директора",
+    "ownEndpoints": [],
+    "related": true,
+    "relatedCount": 4,
+    "relatedTo": [
+      "/my-timesheet",
+      "/timesheet-warehouse",
+      "/timesheet-medical",
+      "/timesheet-travel"
+    ],
+    "relatedKinds": [
+      "вкладки одной страницы"
+    ],
+    "relDetail": [
+      {
+        "to": "/my-timesheet",
+        "kind": "вкладки одной страницы"
+      },
+      {
+        "to": "/timesheet-warehouse",
+        "kind": "вкладки одной страницы"
+      },
+      {
+        "to": "/timesheet-medical",
+        "kind": "вкладки одной страницы"
+      },
+      {
+        "to": "/timesheet-travel",
+        "kind": "вкладки одной страницы"
+      }
+    ],
+    "note": ""
+  },
+  {
+    "route": "/my-timesheet",
+    "name": "Табель моей дружины",
+    "title": "Табель моей дружины",
+    "desc": "Смены, баллы, суточные · закрытие месяца",
+    "group": "Персонал",
+    "type": "Страница",
+    "inMenu": true,
+    "navHide": false,
+    "pageKey": "my_timesheet",
+    "module": "AsgardTimesheetV2",
+    "file": "timesheet-v2.js",
+    "redirectTo": null,
+    "views": 39,
+    "used": "Да",
+    "source": "рендер страницы",
+    "first": "30.09",
+    "last": "13.10",
+    "usedFrom": "30.09",
+    "usedTo": "13.10",
+    "count": 39,
+    "rolesText": "РП, Рук. РП",
+    "ownEndpoints": [],
+    "related": true,
+    "relatedCount": 4,
+    "relatedTo": [
+      "/timesheet",
+      "/timesheet-warehouse",
+      "/timesheet-medical",
+      "/timesheet-travel"
+    ],
+    "relatedKinds": [
+      "вкладки одной страницы"
+    ],
+    "relDetail": [
+      {
+        "to": "/timesheet",
+        "kind": "вкладки одной страницы"
+      },
+      {
+        "to": "/timesheet-warehouse",
+        "kind": "вкладки одной страницы"
+      },
+      {
+        "to": "/timesheet-medical",
+        "kind": "вкладки одной страницы"
+      },
+      {
+        "to": "/timesheet-travel",
+        "kind": "вкладки одной страницы"
+      }
+    ],
+    "note": ""
+  },
+  {
+    "route": "/timesheet-warehouse",
+    "name": "Табель учёта работы на складе",
+    "title": "Табель учёта работы на складе",
+    "desc": "Отметки склада · закрытие месяца",
+    "group": "Персонал",
+    "type": "Страница",
+    "inMenu": true,
+    "navHide": false,
+    "pageKey": "timesheet_warehouse",
+    "module": "AsgardTimesheetV2",
+    "file": "timesheet-v2.js",
+    "redirectTo": null,
+    "views": 5,
+    "used": "Да",
+    "source": "рендер страницы",
+    "first": "02.10",
+    "last": "09.10",
+    "usedFrom": "02.10",
+    "usedTo": "09.10",
+    "count": 5,
+    "rolesText": "Администратор, Склад, Директора",
+    "ownEndpoints": [],
+    "related": true,
+    "relatedCount": 4,
+    "relatedTo": [
+      "/timesheet",
+      "/my-timesheet",
+      "/timesheet-medical",
+      "/timesheet-travel"
+    ],
+    "relatedKinds": [
+      "вкладки одной страницы"
+    ],
+    "relDetail": [
+      {
+        "to": "/timesheet",
+        "kind": "вкладки одной страницы"
+      },
+      {
+        "to": "/my-timesheet",
+        "kind": "вкладки одной страницы"
+      },
+      {
+        "to": "/timesheet-medical",
+        "kind": "вкладки одной страницы"
+      },
+      {
+        "to": "/timesheet-travel",
+        "kind": "вкладки одной страницы"
+      }
+    ],
+    "note": ""
+  },
+  {
+    "route": "/timesheet-medical",
+    "name": "Табель учёта МО/обучения/иной транспорт",
+    "title": "Табель учёта МО/обучения/иной транспорт",
+    "desc": "Медосмотры, обучение, корабль, вертолёт",
+    "group": "Персонал",
+    "type": "Страница",
+    "inMenu": true,
+    "navHide": false,
+    "pageKey": "timesheet_medical",
+    "module": "AsgardTimesheetV2",
+    "file": "timesheet-v2.js",
+    "redirectTo": null,
+    "views": 57,
+    "used": "Да",
+    "source": "рендер страницы",
+    "first": "01.10",
+    "last": "09.10",
+    "usedFrom": "01.10",
+    "usedTo": "09.10",
+    "count": 57,
+    "rolesText": "Администратор, ТО, Рук. ТО, Директора",
+    "ownEndpoints": [],
+    "related": true,
+    "relatedCount": 4,
+    "relatedTo": [
+      "/timesheet",
+      "/my-timesheet",
+      "/timesheet-warehouse",
+      "/timesheet-travel"
+    ],
+    "relatedKinds": [
+      "вкладки одной страницы"
+    ],
+    "relDetail": [
+      {
+        "to": "/timesheet",
+        "kind": "вкладки одной страницы"
+      },
+      {
+        "to": "/my-timesheet",
+        "kind": "вкладки одной страницы"
+      },
+      {
+        "to": "/timesheet-warehouse",
+        "kind": "вкладки одной страницы"
+      },
+      {
+        "to": "/timesheet-travel",
+        "kind": "вкладки одной страницы"
+      }
+    ],
+    "note": ""
+  },
+  {
+    "route": "/timesheet-travel",
+    "name": "Табель учёта дороги",
+    "title": "Табель учёта дороги",
+    "desc": "Отметки дороги · закрытие месяца",
+    "group": "Персонал",
+    "type": "Страница",
+    "inMenu": true,
+    "navHide": false,
+    "pageKey": "timesheet_travel",
+    "module": "AsgardTimesheetV2",
+    "file": "timesheet-v2.js",
+    "redirectTo": null,
+    "views": 37,
+    "used": "Да",
+    "source": "рендер страницы",
+    "first": "29.09",
+    "last": "13.10",
+    "usedFrom": "29.09",
+    "usedTo": "13.10",
+    "count": 37,
+    "rolesText": "Администратор, Офис-менеджер, Рук. ТО, Директора",
+    "ownEndpoints": [],
+    "related": true,
+    "relatedCount": 4,
+    "relatedTo": [
+      "/timesheet",
+      "/my-timesheet",
+      "/timesheet-warehouse",
+      "/timesheet-medical"
+    ],
+    "relatedKinds": [
+      "вкладки одной страницы"
+    ],
+    "relDetail": [
+      {
+        "to": "/timesheet",
+        "kind": "вкладки одной страницы"
+      },
+      {
+        "to": "/my-timesheet",
+        "kind": "вкладки одной страницы"
+      },
+      {
+        "to": "/timesheet-warehouse",
+        "kind": "вкладки одной страницы"
+      },
+      {
+        "to": "/timesheet-medical",
+        "kind": "вкладки одной страницы"
+      }
+    ],
+    "note": ""
+  },
+  {
+    "route": "/site-crew",
+    "name": "Кто на объектах",
+    "title": "Кто на объектах",
+    "desc": "Матрица бригад: кто где, снять/добавить",
+    "group": "Персонал",
+    "type": "Страница",
+    "inMenu": true,
+    "navHide": false,
+    "pageKey": "site_crew",
+    "module": "AsgardSiteCrewPage",
+    "file": "site_crew.js",
+    "redirectTo": null,
+    "views": 5,
+    "used": "Да",
+    "source": "рендер страницы",
+    "first": "07.10",
+    "last": "09.10",
+    "usedFrom": "07.10",
+    "usedTo": "09.10",
+    "count": 5,
+    "rolesText": "Администратор, Рук. ТО, Директора",
+    "ownEndpoints": [
+      "/api/site-crew (5)"
+    ],
+    "related": false,
+    "relatedCount": 0,
+    "relatedTo": [],
+    "relatedKinds": [],
+    "relDetail": [],
+    "note": ""
+  },
+  {
+    "route": "/global-timesheet",
+    "name": "Переход в «Табель»",
+    "title": null,
+    "desc": "Переход на /timesheet",
+    "group": "Персонал",
+    "type": "Редирект/алиас",
+    "inMenu": false,
+    "navHide": false,
+    "pageKey": "",
+    "module": null,
+    "file": null,
+    "redirectTo": "/timesheet",
+    "views": 0,
+    "used": "—",
+    "source": "редирект",
+    "first": "",
+    "last": "",
+    "usedFrom": "",
+    "usedTo": "",
+    "count": 0,
+    "rolesText": "Все роли (по правам)",
+    "ownEndpoints": [],
+    "related": true,
+    "relatedCount": 1,
+    "relatedTo": [
+      "/timesheet"
+    ],
+    "relatedKinds": [
+      "редирект"
+    ],
+    "relDetail": [
+      {
+        "to": "/timesheet",
+        "kind": "редирект"
+      }
+    ],
+    "note": "Переадресация на /timesheet — это адрес-переход, а не отдельный экран · отдельного экрана у адреса нет"
+  },
+  {
+    "route": "/payroll-dashboard",
+    "name": "Финансы персонала",
+    "title": "Финансы персонала",
+    "desc": "Дашборд выплат",
+    "group": "Персонал",
+    "type": "Страница",
+    "inMenu": true,
+    "navHide": false,
+    "pageKey": "payroll_dashboard",
+    "module": "AsgardPayrollDashboard",
+    "file": "payroll_dashboard.js",
+    "redirectTo": null,
+    "views": 4,
+    "used": "Да",
+    "source": "рендер страницы",
+    "first": "07.10",
+    "last": "13.10",
+    "usedFrom": "07.10",
+    "usedTo": "13.10",
+    "count": 4,
+    "rolesText": "Администратор, Бухгалтер, Директора",
+    "ownEndpoints": [
+      "/api/payroll-dashboard/summary (4)",
+      "/api/payroll-dashboard/cash-calc (4)",
+      "/api/payroll-dashboard/payouts-by-source (4)",
+      "/api/payroll-dashboard/se-transfers (4)",
+      "/api/payroll-dashboard/self-employed-limits (4)",
+      "/api/admin/system/settings/finance-limits (1)"
+    ],
+    "related": false,
+    "relatedCount": 0,
+    "relatedTo": [],
+    "relatedKinds": [],
+    "relDetail": [],
+    "note": ""
+  },
+  {
+    "route": "/payouts",
+    "name": "Выплаты",
+    "title": "Выплаты",
+    "desc": "Ведомость выплат и расчётные листы",
+    "group": "Финансы",
+    "type": "Страница",
+    "inMenu": true,
+    "navHide": false,
+    "pageKey": "payouts",
+    "module": "AsgardPayoutsPage",
+    "file": "payouts.js",
+    "redirectTo": null,
+    "views": 9,
+    "used": "Да",
+    "source": "рендер страницы",
+    "first": "13.10",
+    "last": "13.10",
+    "usedFrom": "13.10",
+    "usedTo": "13.10",
+    "count": 9,
+    "rolesText": "Администратор, Бухгалтер, Директора",
+    "ownEndpoints": [
+      "/api/payouts (124)",
+      "/api/payouts/list (29)",
+      "/api/payouts/monthly-series (29)",
+      "/api/payouts/archive (25)",
+      "/api/payouts/employee (16)",
+      "/api/payouts/archive/years (10)"
+    ],
+    "related": false,
+    "relatedCount": 0,
+    "relatedTo": [],
+    "relatedKinds": [],
+    "relDetail": [],
+    "note": ""
+  },
+  {
+    "route": "/official-employees",
+    "name": "Официально устроенные",
+    "title": "Официально устроенные",
+    "desc": "Оклады и статусы",
+    "group": "Персонал",
+    "type": "Страница",
+    "inMenu": true,
+    "navHide": false,
+    "pageKey": "official_employees",
+    "module": "AsgardOfficialEmployeesPage",
+    "file": "official_employees.js",
+    "redirectTo": null,
+    "views": 1,
+    "used": "Да",
+    "source": "рендер страницы",
+    "first": "09.10",
+    "last": "09.10",
+    "usedFrom": "09.10",
+    "usedTo": "09.10",
+    "count": 1,
+    "rolesText": "Администратор, Бухгалтер, Директора",
+    "ownEndpoints": [
+      "/api/payroll-dashboard/official-employees (1)"
+    ],
+    "related": false,
+    "relatedCount": 0,
+    "relatedTo": [],
+    "relatedKinds": [],
+    "relDetail": [],
+    "note": ""
+  },
+  {
+    "route": "/training-board",
+    "name": "Обучение и допуски",
+    "title": "Обучение и допуски",
+    "desc": "Допуски и обучение рабочих",
+    "group": "Персонал",
+    "type": "Страница",
+    "inMenu": true,
+    "navHide": false,
+    "pageKey": "training_board",
+    "module": "AsgardTrainingBoard",
+    "file": "training_board.js",
+    "redirectTo": null,
+    "views": 1,
+    "used": "Да",
+    "source": "рендер страницы",
+    "first": "09.10",
+    "last": "09.10",
+    "usedFrom": "09.10",
+    "usedTo": "09.10",
+    "count": 1,
+    "rolesText": "Администратор, ТО, Рук. ТО, Директора",
+    "ownEndpoints": [
+      "/api/training/pending (1)",
+      "/api/training (1)"
+    ],
+    "related": false,
+    "relatedCount": 0,
+    "relatedTo": [],
+    "relatedKinds": [],
+    "relDetail": [],
+    "note": ""
+  },
+  {
+    "route": "/pm-balance",
+    "name": "Баланс подотчётников",
+    "title": "Баланс подотчётников",
+    "desc": "Наличные на руках",
+    "group": "Персонал",
+    "type": "Страница",
+    "inMenu": true,
+    "navHide": false,
+    "pageKey": "pm_balance",
+    "module": "AsgardPmBalancePage",
+    "file": "pm_balance.js",
+    "redirectTo": null,
+    "views": 2,
+    "used": "Да",
+    "source": "рендер страницы",
+    "first": "07.10",
+    "last": "09.10",
+    "usedFrom": "07.10",
+    "usedTo": "09.10",
+    "count": 2,
+    "rolesText": "Администратор, Бухгалтер, Директора",
+    "ownEndpoints": [
+      "/api/payroll-dashboard/pm-balance (2)"
+    ],
+    "related": true,
+    "relatedCount": 2,
+    "relatedTo": [
+      "/pm-balance/:pm_id",
+      "/timesheet"
+    ],
+    "relatedKinds": [
+      "общий модуль",
+      "переход из интерфейса"
+    ],
+    "relDetail": [
+      {
+        "to": "/pm-balance/:pm_id",
+        "kind": "общий модуль"
+      },
+      {
+        "to": "/timesheet",
+        "kind": "переход из интерфейса"
+      }
+    ],
+    "note": ""
+  },
+  {
+    "route": "/pm-balance/:pm_id",
+    "name": "Баланс подотчётника — карточка",
+    "title": "Баланс подотчётников",
+    "desc": "Детализация баланса подотчётника (карточка РП)",
+    "group": "Персонал",
+    "type": "Подстраница (по id)",
+    "inMenu": false,
+    "navHide": false,
+    "pageKey": "",
+    "module": "AsgardPmBalancePage",
+    "file": "pm_balance.js",
+    "redirectTo": null,
+    "views": 0,
+    "used": "Да",
+    "source": "вызовы API",
+    "first": "07.10",
+    "last": "09.10",
+    "usedFrom": "07.10",
+    "usedTo": "09.10",
+    "count": 2,
+    "rolesText": "Администратор, Бухгалтер, Директора",
+    "ownEndpoints": [
+      "/api/payroll-dashboard/pm-balance (2)"
+    ],
+    "related": true,
+    "relatedCount": 3,
+    "relatedTo": [
+      "/pm-balance",
+      "/timesheet"
+    ],
+    "relatedKinds": [
+      "общий модуль",
+      "переход из интерфейса"
+    ],
+    "relDetail": [
+      {
+        "to": "/pm-balance",
+        "kind": "общий модуль"
+      },
+      {
+        "to": "/timesheet",
+        "kind": "переход из интерфейса"
+      },
+      {
+        "to": "/pm-balance",
+        "kind": "переход из интерфейса"
+      }
+    ],
+    "note": ""
+  },
+  {
+    "route": "/procurement",
+    "name": "Закупки",
+    "title": "Закупки",
+    "desc": "Реестр заявок (закупщик)",
+    "group": "Ресурсы",
+    "type": "Страница",
+    "inMenu": true,
+    "navHide": false,
+    "pageKey": "procurement",
+    "module": "AsgardProcurementPage",
+    "file": "procurement-page.js",
+    "redirectTo": null,
+    "views": 8,
+    "used": "Да",
+    "source": "рендер страницы",
+    "first": "07.10",
+    "last": "12.10",
+    "usedFrom": "07.10",
+    "usedTo": "12.10",
+    "count": 8,
+    "rolesText": "Администратор, Закупщик, Бухгалтер, РП, Рук. РП, Директор (ген.), Директор (комм.), Директор (разв.)",
+    "ownEndpoints": [
+      "/api/procurement/dashboard (10)"
+    ],
+    "related": true,
+    "relatedCount": 6,
+    "relatedTo": [
+      "/my-procurement",
+      "/warehouse",
+      "/warehouse-v2",
+      "/approval-payment",
+      "/assembly",
+      "/correspondence"
+    ],
+    "relatedKinds": [
+      "общий модуль",
+      "переход из интерфейса"
+    ],
+    "relDetail": [
+      {
+        "to": "/my-procurement",
+        "kind": "общий модуль"
+      },
+      {
+        "to": "/warehouse",
+        "kind": "переход из интерфейса"
+      },
+      {
+        "to": "/warehouse-v2",
+        "kind": "переход из интерфейса"
+      },
+      {
+        "to": "/approval-payment",
+        "kind": "переход из интерфейса"
+      },
+      {
+        "to": "/assembly",
+        "kind": "переход из интерфейса"
+      },
+      {
+        "to": "/correspondence",
+        "kind": "переход из интерфейса"
+      }
+    ],
+    "note": ""
+  },
+  {
+    "route": "/my-procurement",
+    "name": "Мои заявки",
+    "title": "Мои заявки",
+    "desc": "Мои заявки на закупку и их статусы",
+    "group": "Ресурсы",
+    "type": "Страница",
+    "inMenu": true,
+    "navHide": false,
+    "pageKey": "procurement",
+    "module": "AsgardProcurementPage",
+    "file": "procurement-page.js",
+    "redirectTo": null,
+    "views": 2,
+    "used": "Да",
+    "source": "рендер страницы",
+    "first": "07.10",
+    "last": "09.10",
+    "usedFrom": "07.10",
+    "usedTo": "09.10",
+    "count": 2,
+    "rolesText": "РП, Рук. РП, Склад, Администратор",
+    "ownEndpoints": [
+      "/api/procurement/dashboard (10)"
+    ],
+    "related": true,
+    "relatedCount": 6,
+    "relatedTo": [
+      "/procurement",
+      "/warehouse",
+      "/warehouse-v2",
+      "/approval-payment",
+      "/assembly",
+      "/correspondence"
+    ],
+    "relatedKinds": [
+      "общий модуль",
+      "переход из интерфейса"
+    ],
+    "relDetail": [
+      {
+        "to": "/procurement",
+        "kind": "общий модуль"
+      },
+      {
+        "to": "/warehouse",
+        "kind": "переход из интерфейса"
+      },
+      {
+        "to": "/warehouse-v2",
+        "kind": "переход из интерфейса"
+      },
+      {
+        "to": "/approval-payment",
+        "kind": "переход из интерфейса"
+      },
+      {
+        "to": "/assembly",
+        "kind": "переход из интерфейса"
+      },
+      {
+        "to": "/correspondence",
+        "kind": "переход из интерфейса"
+      }
+    ],
+    "note": ""
+  },
+  {
+    "route": "/suppliers-catalog",
+    "name": "Поставщики и цены",
+    "title": "Поставщики и цены",
+    "desc": "Справочник поставщиков, каталог товаров, база цен",
+    "group": "Ресурсы",
+    "type": "Страница",
+    "inMenu": true,
+    "navHide": false,
+    "pageKey": "procurement",
+    "module": "AsgardSuppliersPage",
+    "file": "suppliers-page.js",
+    "redirectTo": null,
+    "views": 5,
+    "used": "Да",
+    "source": "рендер страницы",
+    "first": "07.10",
+    "last": "09.10",
+    "usedFrom": "07.10",
+    "usedTo": "09.10",
+    "count": 5,
+    "rolesText": "Администратор, Закупщик, РП, Рук. РП, Директор (ген.), Директор (комм.), Директор (разв.), Бухгалтер",
+    "ownEndpoints": [
+      "/api/price-records (2)"
+    ],
+    "related": false,
+    "relatedCount": 0,
+    "relatedTo": [],
+    "relatedKinds": [],
+    "relDetail": [],
+    "note": ""
+  },
+  {
+    "route": "/assembly",
+    "name": "Переход в «Склад» (вкладка «Сборки»)",
+    "title": null,
+    "desc": "Ведомости сборки и мобилизации → Склад",
+    "group": "Ресурсы",
+    "type": "Редирект/алиас",
+    "inMenu": true,
+    "navHide": false,
+    "pageKey": "warehouse",
+    "module": null,
+    "file": null,
+    "redirectTo": "/warehouse-v2",
+    "views": 0,
+    "used": "—",
+    "source": "редирект",
+    "first": "",
+    "last": "",
+    "usedFrom": "",
+    "usedTo": "",
+    "count": 0,
+    "rolesText": "Администратор, РП, Рук. РП, Склад, Директор (ген.), Директор (комм.), Директор (разв.)",
+    "ownEndpoints": [],
+    "related": true,
+    "relatedCount": 1,
+    "relatedTo": [
+      "/warehouse-v2"
+    ],
+    "relatedKinds": [
+      "редирект"
+    ],
+    "relDetail": [
+      {
+        "to": "/warehouse-v2",
+        "kind": "редирект"
+      }
+    ],
+    "note": "Переадресация на /warehouse-v2 — это адрес-переход, а не отдельный экран · отдельного экрана у адреса нет"
+  },
+  {
+    "route": "/training",
+    "name": "Обучение",
+    "title": "Обучение",
+    "desc": "Заявки на обучение",
+    "group": "Персонал",
+    "type": "Страница",
+    "inMenu": true,
+    "navHide": false,
+    "pageKey": "training_applications",
+    "module": "AsgardTrainingPage",
+    "file": "training-applications-page.js",
+    "redirectTo": null,
+    "views": 4,
+    "used": "Да",
+    "source": "рендер страницы",
+    "first": "07.10",
+    "last": "09.10",
+    "usedFrom": "07.10",
+    "usedTo": "09.10",
+    "count": 4,
+    "rolesText": "Все роли (по правам)",
+    "ownEndpoints": [
+      "/api/training-applications (4)"
+    ],
+    "related": false,
+    "relatedCount": 0,
+    "relatedTo": [],
+    "relatedKinds": [],
+    "relDetail": [],
+    "note": ""
+  },
+  {
+    "route": "/office-academy",
+    "name": "Академия Асгарда",
+    "title": "Академия Асгарда",
+    "desc": "Корпоративное обучение — уроки и квизы",
+    "group": "Персонал",
+    "type": "Страница",
+    "inMenu": true,
+    "navHide": false,
+    "pageKey": "office_academy",
+    "module": "AsgardOfficeAcademyPage",
+    "file": "office_academy.js",
+    "redirectTo": null,
+    "views": 10,
+    "used": "Да",
+    "source": "рендер страницы",
+    "first": "02.10",
+    "last": "12.10",
+    "usedFrom": "02.10",
+    "usedTo": "12.10",
+    "count": 10,
+    "rolesText": "Все роли (по правам)",
+    "ownEndpoints": [
+      "/api/office-academy (1260)"
+    ],
+    "related": false,
+    "relatedCount": 0,
+    "relatedTo": [],
+    "relatedKinds": [],
+    "relDetail": [],
+    "note": ""
+  },
+  {
+    "route": "/workers-schedule",
+    "name": "График: Рабочие",
+    "title": "График рабочих",
+    "desc": "Бронь и доступность",
+    "group": "Персонал",
+    "type": "Страница",
+    "inMenu": true,
+    "navHide": false,
+    "pageKey": "workers_schedule",
+    "module": "AsgardStaffSchedulePage",
+    "file": "staff_schedule.js",
+    "redirectTo": null,
+    "views": 5,
+    "used": "Да",
+    "source": "рендер страницы",
+    "first": "07.10",
+    "last": "09.10",
+    "usedFrom": "07.10",
+    "usedTo": "09.10",
+    "count": 5,
+    "rolesText": "Администратор, HR, Рук. HR, Директора",
+    "ownEndpoints": [],
+    "related": false,
+    "relatedCount": 0,
+    "relatedTo": [],
+    "relatedKinds": [],
+    "relDetail": [],
+    "note": ""
+  },
+  {
+    "route": "/office-schedule",
+    "name": "График: Офис",
+    "title": "График Дружины • Офис",
+    "desc": "Статусы по дням",
+    "group": "Персонал",
+    "type": "Страница",
+    "inMenu": true,
+    "navHide": false,
+    "pageKey": "office_schedule",
+    "module": "AsgardOfficeSchedulePage",
+    "file": "office_schedule.js",
+    "redirectTo": null,
+    "views": 12,
+    "used": "Да",
+    "source": "рендер страницы",
+    "first": "02.10",
+    "last": "12.10",
+    "usedFrom": "02.10",
+    "usedTo": "12.10",
+    "count": 12,
+    "rolesText": "Все роли (по правам)",
+    "ownEndpoints": [],
+    "related": false,
+    "relatedCount": 0,
+    "relatedTo": [],
+    "relatedKinds": [],
+    "relDetail": [],
+    "note": ""
+  },
+  {
+    "route": "/gantt-calcs",
+    "name": "Гантт: Просчёты",
+    "title": null,
+    "desc": "Пересечения по срокам",
+    "group": "Работы",
+    "type": "Страница",
+    "inMenu": true,
+    "navHide": false,
+    "pageKey": "gantt",
+    "module": "AsgardGanttFullPage",
+    "file": "gantt_full.js",
+    "redirectTo": null,
+    "views": 1,
+    "used": "Да",
+    "source": "рендер страницы",
+    "first": "07.10",
+    "last": "07.10",
+    "usedFrom": "07.10",
+    "usedTo": "07.10",
+    "count": 1,
+    "rolesText": "Администратор, РП, Рук. РП, Директора",
+    "ownEndpoints": [],
+    "related": true,
+    "relatedCount": 5,
+    "relatedTo": [
+      "/gantt-works",
+      "/gantt",
+      "/gantt-objects",
+      "/pm-calcs",
+      "/pm-works"
+    ],
+    "relatedKinds": [
+      "вкладки одной страницы",
+      "переход из интерфейса"
+    ],
+    "relDetail": [
+      {
+        "to": "/gantt-works",
+        "kind": "вкладки одной страницы"
+      },
+      {
+        "to": "/gantt",
+        "kind": "вкладки одной страницы"
+      },
+      {
+        "to": "/gantt-objects",
+        "kind": "вкладки одной страницы"
+      },
+      {
+        "to": "/pm-calcs",
+        "kind": "переход из интерфейса"
+      },
+      {
+        "to": "/pm-works",
+        "kind": "переход из интерфейса"
+      }
+    ],
+    "note": ""
+  },
+  {
+    "route": "/gantt-works",
+    "name": "Гантт: Работы",
+    "title": null,
+    "desc": "План и факты",
+    "group": "Работы",
+    "type": "Страница",
+    "inMenu": true,
+    "navHide": false,
+    "pageKey": "gantt",
+    "module": "AsgardGanttFullPage",
+    "file": "gantt_full.js",
+    "redirectTo": null,
+    "views": 2,
+    "used": "Да",
+    "source": "рендер страницы",
+    "first": "07.10",
+    "last": "07.10",
+    "usedFrom": "07.10",
+    "usedTo": "07.10",
+    "count": 2,
+    "rolesText": "Администратор, РП, Рук. РП, Директора",
+    "ownEndpoints": [],
+    "related": true,
+    "relatedCount": 5,
+    "relatedTo": [
+      "/gantt-calcs",
+      "/gantt",
+      "/gantt-objects",
+      "/pm-calcs",
+      "/pm-works"
+    ],
+    "relatedKinds": [
+      "вкладки одной страницы",
+      "переход из интерфейса"
+    ],
+    "relDetail": [
+      {
+        "to": "/gantt-calcs",
+        "kind": "вкладки одной страницы"
+      },
+      {
+        "to": "/gantt",
+        "kind": "вкладки одной страницы"
+      },
+      {
+        "to": "/gantt-objects",
+        "kind": "вкладки одной страницы"
+      },
+      {
+        "to": "/pm-calcs",
+        "kind": "переход из интерфейса"
+      },
+      {
+        "to": "/pm-works",
+        "kind": "переход из интерфейса"
+      }
+    ],
+    "note": ""
+  },
+  {
+    "route": "/gantt",
+    "name": "Гантт",
+    "title": null,
+    "desc": "Гантт — объединённый: просчёты + работы",
+    "group": "Работы",
+    "type": "Служебная",
+    "inMenu": false,
+    "navHide": false,
+    "pageKey": "",
+    "module": "AsgardGanttFullPage",
+    "file": "gantt_full.js",
+    "redirectTo": null,
+    "views": 0,
+    "used": "Да",
+    "source": "косвенно: вкладка/режим другой страницы",
+    "first": "",
+    "last": "",
+    "usedFrom": "",
+    "usedTo": "",
+    "count": 0,
+    "rolesText": "Администратор, РП, Рук. РП, Директора",
+    "ownEndpoints": [],
+    "related": true,
+    "relatedCount": 5,
+    "relatedTo": [
+      "/gantt-calcs",
+      "/gantt-works",
+      "/gantt-objects",
+      "/pm-calcs",
+      "/pm-works"
+    ],
+    "relatedKinds": [
+      "вкладки одной страницы",
+      "переход из интерфейса"
+    ],
+    "relDetail": [
+      {
+        "to": "/gantt-calcs",
+        "kind": "вкладки одной страницы"
+      },
+      {
+        "to": "/gantt-works",
+        "kind": "вкладки одной страницы"
+      },
+      {
+        "to": "/gantt-objects",
+        "kind": "вкладки одной страницы"
+      },
+      {
+        "to": "/pm-calcs",
+        "kind": "переход из интерфейса"
+      },
+      {
+        "to": "/pm-works",
+        "kind": "переход из интерфейса"
+      }
+    ],
+    "note": "Прямого сигнала нет. Открывается как вкладка/режим: /gantt-calcs, /gantt-works — данные сняты с общей страницы"
+  },
+  {
+    "route": "/gantt-objects",
+    "name": "Гантт по объектам",
+    "title": null,
+    "desc": "Гантт по объектам",
+    "group": "Работы",
+    "type": "Служебная",
+    "inMenu": false,
+    "navHide": false,
+    "pageKey": "",
+    "module": "AsgardGanttFullPage",
+    "file": "gantt_full.js",
+    "redirectTo": null,
+    "views": 0,
+    "used": "Да",
+    "source": "косвенно: вкладка/режим другой страницы",
+    "first": "",
+    "last": "",
+    "usedFrom": "",
+    "usedTo": "",
+    "count": 0,
+    "rolesText": "Администратор, РП, Рук. РП, Директора",
+    "ownEndpoints": [],
+    "related": true,
+    "relatedCount": 5,
+    "relatedTo": [
+      "/gantt-calcs",
+      "/gantt-works",
+      "/gantt",
+      "/pm-calcs",
+      "/pm-works"
+    ],
+    "relatedKinds": [
+      "вкладки одной страницы",
+      "переход из интерфейса"
+    ],
+    "relDetail": [
+      {
+        "to": "/gantt-calcs",
+        "kind": "вкладки одной страницы"
+      },
+      {
+        "to": "/gantt-works",
+        "kind": "вкладки одной страницы"
+      },
+      {
+        "to": "/gantt",
+        "kind": "вкладки одной страницы"
+      },
+      {
+        "to": "/pm-calcs",
+        "kind": "переход из интерфейса"
+      },
+      {
+        "to": "/pm-works",
+        "kind": "переход из интерфейса"
+      }
+    ],
+    "note": "Прямого сигнала нет. Открывается как вкладка/режим: /gantt-calcs, /gantt-works — данные сняты с общей страницы"
+  },
+  {
+    "route": "/billing",
+    "name": "Счета и акты",
+    "title": "Счета и акты",
+    "desc": "Выставление, PDF, оплата",
+    "group": "Финансы",
+    "type": "Страница",
+    "inMenu": true,
+    "navHide": false,
+    "pageKey": "invoices",
+    "module": "AsgardBillingPage",
+    "file": "billing.js",
+    "redirectTo": null,
+    "views": 9,
+    "used": "Да",
+    "source": "рендер страницы",
+    "first": "07.10",
+    "last": "09.10",
+    "usedFrom": "07.10",
+    "usedTo": "09.10",
+    "count": 9,
+    "rolesText": "Администратор, РП, Рук. РП, Бухгалтер, Директора",
+    "ownEndpoints": [],
+    "related": true,
+    "relatedCount": 2,
+    "relatedTo": [
+      "/acts",
+      "/invoices"
+    ],
+    "relatedKinds": [
+      "вкладки одной страницы"
+    ],
+    "relDetail": [
+      {
+        "to": "/acts",
+        "kind": "вкладки одной страницы"
+      },
+      {
+        "to": "/invoices",
+        "kind": "вкладки одной страницы"
+      }
+    ],
+    "note": ""
+  },
+  {
+    "route": "/acts",
+    "name": "Акты",
+    "title": "Счета и акты",
+    "desc": "Акты выполненных работ",
+    "group": "Финансы",
+    "type": "Страница",
+    "inMenu": true,
+    "navHide": true,
+    "pageKey": "acts",
+    "module": "AsgardBillingPage",
+    "file": "billing.js",
+    "redirectTo": null,
+    "views": 0,
+    "used": "Да",
+    "source": "косвенно: вкладка/режим другой страницы",
+    "first": "",
+    "last": "",
+    "usedFrom": "",
+    "usedTo": "",
+    "count": 0,
+    "rolesText": "Администратор, РП, Рук. РП, Бухгалтер, Директора",
+    "ownEndpoints": [],
+    "related": true,
+    "relatedCount": 2,
+    "relatedTo": [
+      "/billing",
+      "/invoices"
+    ],
+    "relatedKinds": [
+      "вкладки одной страницы"
+    ],
+    "relDetail": [
+      {
+        "to": "/billing",
+        "kind": "вкладки одной страницы"
+      },
+      {
+        "to": "/invoices",
+        "kind": "вкладки одной страницы"
+      }
+    ],
+    "note": "Прямого сигнала нет. Открывается как вкладка/режим: /billing — данные сняты с общей страницы · скрыт из меню (вход по ссылке)"
+  },
+  {
+    "route": "/invoices",
+    "name": "Счета и оплаты",
+    "title": "Счета и акты",
+    "desc": "Выставление и отслеживание",
+    "group": "Финансы",
+    "type": "Страница",
+    "inMenu": true,
+    "navHide": true,
+    "pageKey": "invoices",
+    "module": "AsgardBillingPage",
+    "file": "billing.js",
+    "redirectTo": null,
+    "views": 0,
+    "used": "Да",
+    "source": "косвенно: вкладка/режим другой страницы",
+    "first": "",
+    "last": "",
+    "usedFrom": "",
+    "usedTo": "",
+    "count": 0,
+    "rolesText": "Администратор, РП, Рук. РП, Бухгалтер, Директора",
+    "ownEndpoints": [],
+    "related": true,
+    "relatedCount": 2,
+    "relatedTo": [
+      "/billing",
+      "/acts"
+    ],
+    "relatedKinds": [
+      "вкладки одной страницы"
+    ],
+    "relDetail": [
+      {
+        "to": "/billing",
+        "kind": "вкладки одной страницы"
+      },
+      {
+        "to": "/acts",
+        "kind": "вкладки одной страницы"
+      }
+    ],
+    "note": "Прямого сигнала нет. Открывается как вкладка/режим: /billing — данные сняты с общей страницы · скрыт из меню (вход по ссылке)"
+  },
+  {
+    "route": "/reminders",
+    "name": "Напоминания",
+    "title": "Напоминания",
+    "desc": "Личные напоминания",
+    "group": "Главная",
+    "type": "Служебная",
+    "inMenu": false,
+    "navHide": false,
+    "pageKey": "",
+    "module": "AsgardReminders",
+    "file": "reminders.js",
+    "redirectTo": null,
+    "views": 0,
+    "used": "Нет",
+    "source": "нет следов",
+    "first": "",
+    "last": "",
+    "usedFrom": "",
+    "usedTo": "",
+    "count": 0,
+    "rolesText": "Все роли (по правам)",
+    "ownEndpoints": [],
+    "related": false,
+    "relatedCount": 0,
+    "relatedTo": [],
+    "relatedKinds": [],
+    "relDetail": [],
+    "note": ""
+  },
+  {
+    "route": "/warehouse",
+    "name": "Переход в «Склад»",
+    "title": null,
+    "desc": "Переход на /warehouse-v2",
+    "group": "Ресурсы",
+    "type": "Редирект/алиас",
+    "inMenu": false,
+    "navHide": false,
+    "pageKey": "",
+    "module": null,
+    "file": null,
+    "redirectTo": "/warehouse-v2",
+    "views": 0,
+    "used": "—",
+    "source": "редирект",
+    "first": "",
+    "last": "",
+    "usedFrom": "",
+    "usedTo": "",
+    "count": 0,
+    "rolesText": "Все роли (по правам)",
+    "ownEndpoints": [],
+    "related": true,
+    "relatedCount": 1,
+    "relatedTo": [
+      "/warehouse-v2"
+    ],
+    "relatedKinds": [
+      "редирект"
+    ],
+    "relDetail": [
+      {
+        "to": "/warehouse-v2",
+        "kind": "редирект"
+      }
+    ],
+    "note": "Переадресация на /warehouse-v2 — это адрес-переход, а не отдельный экран · отдельного экрана у адреса нет"
+  },
+  {
+    "route": "/warehouse-v2",
+    "name": "Склад",
+    "title": "Склад",
+    "desc": "Каталог, наличие, оборудование, ячейки, сборка, готовность",
+    "group": "Ресурсы",
+    "type": "Страница",
+    "inMenu": true,
+    "navHide": false,
+    "pageKey": "warehouse",
+    "module": "AsgardWarehouseV2",
+    "file": "warehouse-v2.js",
+    "redirectTo": null,
+    "views": 80,
+    "used": "Да",
+    "source": "рендер страницы",
+    "first": "07.10",
+    "last": "12.10",
+    "usedFrom": "07.10",
+    "usedTo": "12.10",
+    "count": 80,
+    "rolesText": "Все роли (по правам)",
+    "ownEndpoints": [
+      "/api/stock (1722)",
+      "/api/stock/availability (1400)",
+      "/api/stock/low (149)",
+      "/api/warehouse-cart (80)",
+      "/api/product-categories (80)",
+      "/api/warehouse-ops/sessions (75)"
+    ],
+    "related": true,
+    "relatedCount": 1,
+    "relatedTo": [
+      "/procurement"
+    ],
+    "relatedKinds": [
+      "переход из интерфейса"
+    ],
+    "relDetail": [
+      {
+        "to": "/procurement",
+        "kind": "переход из интерфейса"
+      }
+    ],
+    "note": ""
+  },
+  {
+    "route": "/my-equipment",
+    "name": "Моё оборудование",
+    "title": "Моё оборудование",
+    "desc": "Выданное мне",
+    "group": "Ресурсы",
+    "type": "Страница",
+    "inMenu": true,
+    "navHide": false,
+    "pageKey": "my_equipment",
+    "module": "AsgardMyEquipment",
+    "file": "my_equipment.js",
+    "redirectTo": null,
+    "views": 6,
+    "used": "Да",
+    "source": "рендер страницы",
+    "first": "07.10",
+    "last": "09.10",
+    "usedFrom": "07.10",
+    "usedTo": "09.10",
+    "count": 6,
+    "rolesText": "РП, Рук. РП, Гл. инженер, Администратор, Директора",
+    "ownEndpoints": [],
+    "related": false,
+    "relatedCount": 0,
+    "relatedTo": [],
+    "relatedKinds": [],
+    "relDetail": [],
+    "note": ""
+  },
+  {
+    "route": "/cash",
+    "name": "Касса",
+    "title": "Касса",
+    "desc": "Авансовые отчёты",
+    "group": "Финансы",
+    "type": "Страница",
+    "inMenu": true,
+    "navHide": false,
+    "pageKey": "cash",
+    "module": "AsgardCashPage",
+    "file": "cash.js",
+    "redirectTo": null,
+    "views": 8,
+    "used": "Да",
+    "source": "рендер страницы",
+    "first": "07.10",
+    "last": "09.10",
+    "usedFrom": "07.10",
+    "usedTo": "09.10",
+    "count": 8,
+    "rolesText": "Все роли",
+    "ownEndpoints": [
+      "/api/cash/my (8)",
+      "/api/cash/statement (2)"
+    ],
+    "related": false,
+    "relatedCount": 0,
+    "relatedTo": [],
+    "relatedKinds": [],
+    "relDetail": [],
+    "note": ""
+  },
+  {
+    "route": "/cash-admin",
+    "name": "Касса (управление)",
+    "title": "Касса (управление)",
+    "desc": "Согласование и контроль",
+    "group": "Финансы",
+    "type": "Страница",
+    "inMenu": true,
+    "navHide": false,
+    "pageKey": "cash_admin",
+    "module": "AsgardCashAdminPage",
+    "file": "cash_admin.js",
+    "redirectTo": null,
+    "views": 5,
+    "used": "Да",
+    "source": "рендер страницы",
+    "first": "07.10",
+    "last": "12.10",
+    "usedFrom": "07.10",
+    "usedTo": "12.10",
+    "count": 5,
+    "rolesText": "Администратор, Бухгалтер, Директора",
+    "ownEndpoints": [
+      "/api/cash/all (41)",
+      "/api/cash/balance (9)",
+      "/api/cash/summary (7)"
+    ],
+    "related": false,
+    "relatedCount": 0,
+    "relatedTo": [],
+    "relatedKinds": [],
+    "relDetail": [],
+    "note": ""
+  },
+  {
+    "route": "/approval-payment",
+    "name": "Очередь оплаты",
+    "title": "Очередь оплаты",
+    "desc": "Оплата согласованных заявок",
+    "group": "Финансы",
+    "type": "Страница",
+    "inMenu": true,
+    "navHide": false,
+    "pageKey": "approval_payment",
+    "module": "AsgardApprovalPaymentPage",
+    "file": "approval_payment.js",
+    "redirectTo": null,
+    "views": 8,
+    "used": "Да",
+    "source": "рендер страницы",
+    "first": "07.10",
+    "last": "12.10",
+    "usedFrom": "07.10",
+    "usedTo": "12.10",
+    "count": 8,
+    "rolesText": "Администратор, Бухгалтер, Директора",
+    "ownEndpoints": [],
+    "related": false,
+    "relatedCount": 0,
+    "relatedTo": [],
+    "relatedKinds": [],
+    "relDetail": [],
+    "note": ""
+  },
+  {
+    "route": "/payment-invoices",
+    "name": "Счета на оплату",
+    "title": "Счета на оплату",
+    "desc": "Счета на оплату — очередь директора: согласовать или отказать",
+    "group": "Финансы",
+    "type": "Служебная",
+    "inMenu": false,
+    "navHide": false,
+    "pageKey": "",
+    "module": null,
+    "file": null,
+    "redirectTo": null,
+    "views": 0,
+    "used": "Нет",
+    "source": "нет следов",
+    "first": "",
+    "last": "",
+    "usedFrom": "",
+    "usedTo": "",
+    "count": 0,
+    "rolesText": "Администратор, Закупщик, Бухгалтер, РП, Рук. РП, Рук. ТО, ТО, Директора",
+    "ownEndpoints": [],
+    "related": false,
+    "relatedCount": 0,
+    "relatedTo": [],
+    "relatedKinds": [],
+    "relDetail": [],
+    "note": ""
+  },
+  {
+    "route": "/payroll",
+    "name": "Переход в «Табель»",
+    "title": null,
+    "desc": "Переход на /timesheet",
+    "group": "Персонал",
+    "type": "Редирект/алиас",
+    "inMenu": false,
+    "navHide": false,
+    "pageKey": "",
+    "module": null,
+    "file": null,
+    "redirectTo": "/timesheet",
+    "views": 0,
+    "used": "—",
+    "source": "редирект",
+    "first": "",
+    "last": "",
+    "usedFrom": "",
+    "usedTo": "",
+    "count": 0,
+    "rolesText": "Все роли (по правам)",
+    "ownEndpoints": [],
+    "related": true,
+    "relatedCount": 1,
+    "relatedTo": [
+      "/timesheet"
+    ],
+    "relatedKinds": [
+      "редирект"
+    ],
+    "relDetail": [
+      {
+        "to": "/timesheet",
+        "kind": "редирект"
+      }
+    ],
+    "note": "Переадресация на /timesheet — это адрес-переход, а не отдельный экран · отдельного экрана у адреса нет"
+  },
+  {
+    "route": "/payroll-sheet",
+    "name": "Переход в «Табель»",
+    "title": null,
+    "desc": "Переход на /timesheet",
+    "group": "Персонал",
+    "type": "Редирект/алиас",
+    "inMenu": false,
+    "navHide": false,
+    "pageKey": "",
+    "module": null,
+    "file": null,
+    "redirectTo": "/timesheet",
+    "views": 0,
+    "used": "—",
+    "source": "редирект",
+    "first": "",
+    "last": "",
+    "usedFrom": "",
+    "usedTo": "",
+    "count": 0,
+    "rolesText": "Все роли (по правам)",
+    "ownEndpoints": [],
+    "related": true,
+    "relatedCount": 1,
+    "relatedTo": [
+      "/timesheet"
+    ],
+    "relatedKinds": [
+      "редирект"
+    ],
+    "relDetail": [
+      {
+        "to": "/timesheet",
+        "kind": "редирект"
+      }
+    ],
+    "note": "Переадресация на /timesheet — это адрес-переход, а не отдельный экран · отдельного экрана у адреса нет"
+  },
+  {
+    "route": "/payroll-grid",
+    "name": "Переход в «Табель моей дружины»",
+    "title": null,
+    "desc": "Переход на /my-timesheet",
+    "group": "Персонал",
+    "type": "Редирект/алиас",
+    "inMenu": false,
+    "navHide": false,
+    "pageKey": "",
+    "module": null,
+    "file": null,
+    "redirectTo": "/my-timesheet",
+    "views": 0,
+    "used": "—",
+    "source": "редирект",
+    "first": "",
+    "last": "",
+    "usedFrom": "",
+    "usedTo": "",
+    "count": 0,
+    "rolesText": "Все роли (по правам)",
+    "ownEndpoints": [],
+    "related": true,
+    "relatedCount": 1,
+    "relatedTo": [
+      "/my-timesheet"
+    ],
+    "relatedKinds": [
+      "редирект"
+    ],
+    "relDetail": [
+      {
+        "to": "/my-timesheet",
+        "kind": "редирект"
+      }
+    ],
+    "note": "Переадресация на /my-timesheet — это адрес-переход, а не отдельный экран · отдельного экрана у адреса нет"
+  },
+  {
+    "route": "/self-employed",
+    "name": "Самозанятые",
+    "title": "Самозанятые",
+    "desc": "Реестр СЗ и договора",
+    "group": "Финансы",
+    "type": "Страница",
+    "inMenu": true,
+    "navHide": false,
+    "pageKey": "payroll",
+    "module": "AsgardPayrollPage",
+    "file": "payroll.js",
+    "redirectTo": null,
+    "views": 10,
+    "used": "Да",
+    "source": "рендер страницы",
+    "first": "07.10",
+    "last": "12.10",
+    "usedFrom": "07.10",
+    "usedTo": "12.10",
+    "count": 10,
+    "rolesText": "Администратор, Бухгалтер, Директора",
+    "ownEndpoints": [
+      "/api/payroll (21)"
+    ],
+    "related": true,
+    "relatedCount": 3,
+    "relatedTo": [
+      "/one-time-pay",
+      "/payroll-sheet",
+      "/payroll"
+    ],
+    "relatedKinds": [
+      "общий модуль",
+      "переход из интерфейса"
+    ],
+    "relDetail": [
+      {
+        "to": "/one-time-pay",
+        "kind": "общий модуль"
+      },
+      {
+        "to": "/payroll-sheet",
+        "kind": "переход из интерфейса"
+      },
+      {
+        "to": "/payroll",
+        "kind": "переход из интерфейса"
+      }
+    ],
+    "note": ""
+  },
+  {
+    "route": "/one-time-pay",
+    "name": "Разовые оплаты",
+    "title": "Разовые оплаты",
+    "desc": "Такси, топливо, разовые",
+    "group": "Финансы",
+    "type": "Страница",
+    "inMenu": true,
+    "navHide": false,
+    "pageKey": "payroll",
+    "module": "AsgardPayrollPage",
+    "file": "payroll.js",
+    "redirectTo": null,
+    "views": 11,
+    "used": "Да",
+    "source": "рендер страницы",
+    "first": "07.10",
+    "last": "09.10",
+    "usedFrom": "07.10",
+    "usedTo": "09.10",
+    "count": 11,
+    "rolesText": "Администратор, РП, Рук. РП, Бухгалтер, Директора",
+    "ownEndpoints": [
+      "/api/payroll (21)"
+    ],
+    "related": true,
+    "relatedCount": 3,
+    "relatedTo": [
+      "/self-employed",
+      "/payroll-sheet",
+      "/payroll"
+    ],
+    "relatedKinds": [
+      "общий модуль",
+      "переход из интерфейса"
+    ],
+    "relDetail": [
+      {
+        "to": "/self-employed",
+        "kind": "общий модуль"
+      },
+      {
+        "to": "/payroll-sheet",
+        "kind": "переход из интерфейса"
+      },
+      {
+        "to": "/payroll",
+        "kind": "переход из интерфейса"
+      }
+    ],
+    "note": ""
+  },
+  {
+    "route": "/reports/payroll",
+    "name": "Отчёты по выплатам",
+    "title": "Отчёты по выплатам",
+    "desc": "Сводный табель, ФОТ, суточные, Excel",
+    "group": "Финансы",
+    "type": "Страница",
+    "inMenu": true,
+    "navHide": false,
+    "pageKey": "reports-payroll",
+    "module": "AsgardPaymentsReportPage",
+    "file": "payments-report.js",
+    "redirectTo": null,
+    "views": 7,
+    "used": "Да",
+    "source": "рендер страницы",
+    "first": "07.10",
+    "last": "13.10",
+    "usedFrom": "07.10",
+    "usedTo": "13.10",
+    "count": 7,
+    "rolesText": "Администратор, Бухгалтер, Директора",
+    "ownEndpoints": [],
+    "related": false,
+    "relatedCount": 0,
+    "relatedTo": [],
+    "relatedKinds": [],
+    "relDetail": [],
+    "note": ""
+  },
+  {
+    "route": "/tasks",
+    "name": "Мои задачи",
+    "title": "Мои задачи",
+    "desc": "Задачи и Todo-список",
+    "group": "Главная",
+    "type": "Страница",
+    "inMenu": true,
+    "navHide": false,
+    "pageKey": "tasks",
+    "module": "AsgardTasksPage",
+    "file": "tasks.js",
+    "redirectTo": null,
+    "views": 4,
+    "used": "Да",
+    "source": "рендер страницы",
+    "first": "07.10",
+    "last": "07.10",
+    "usedFrom": "07.10",
+    "usedTo": "07.10",
+    "count": 4,
+    "rolesText": "Все роли (по правам)",
+    "ownEndpoints": [
+      "/api/tasks/created (4)"
+    ],
+    "related": false,
+    "relatedCount": 0,
+    "relatedTo": [],
+    "relatedKinds": [],
+    "relDetail": [],
+    "note": ""
+  },
+  {
+    "route": "/help",
+    "name": "Помощь коллеги",
+    "title": "Помощь коллеги",
+    "desc": "Любой → любому, с чатом",
+    "group": "Коммуникации",
+    "type": "Страница",
+    "inMenu": true,
+    "navHide": false,
+    "pageKey": "tasks",
+    "module": "AsgardHelpTasks",
+    "file": "help_tasks.js",
+    "redirectTo": null,
+    "views": 3,
+    "used": "Да",
+    "source": "рендер страницы",
+    "first": "07.10",
+    "last": "13.10",
+    "usedFrom": "07.10",
+    "usedTo": "13.10",
+    "count": 3,
+    "rolesText": "Все роли (по правам)",
+    "ownEndpoints": [],
+    "related": true,
+    "relatedCount": 1,
+    "relatedTo": [
+      "/messenger"
+    ],
+    "relatedKinds": [
+      "переход из интерфейса"
+    ],
+    "relDetail": [
+      {
+        "to": "/messenger",
+        "kind": "переход из интерфейса"
+      }
+    ],
+    "note": ""
+  },
+  {
+    "route": "/tasks-admin",
+    "name": "Управление задачами",
+    "title": "Управление задачами",
+    "desc": "Контроль задач",
+    "group": "Работы",
+    "type": "Страница",
+    "inMenu": true,
+    "navHide": false,
+    "pageKey": "tasks_admin",
+    "module": "AsgardTasksAdminPage",
+    "file": "tasks_admin.js",
+    "redirectTo": null,
+    "views": 4,
+    "used": "Да",
+    "source": "рендер страницы",
+    "first": "07.10",
+    "last": "07.10",
+    "usedFrom": "07.10",
+    "usedTo": "07.10",
+    "count": 4,
+    "rolesText": "Администратор, Директора",
+    "ownEndpoints": [
+      "/api/tasks/stats (6)",
+      "/api/tasks/all (4)"
+    ],
+    "related": false,
+    "relatedCount": 0,
+    "relatedTo": [],
+    "relatedKinds": [],
+    "relDetail": [],
+    "note": ""
+  },
+  {
+    "route": "/kanban",
+    "name": "Канбан-доска",
+    "title": null,
+    "desc": "Визуальное управление задачами",
+    "group": "Работы",
+    "type": "Страница",
+    "inMenu": true,
+    "navHide": false,
+    "pageKey": "kanban",
+    "module": "AsgardKanban",
+    "file": "kanban.js",
+    "redirectTo": null,
+    "views": 4,
+    "used": "Да",
+    "source": "рендер страницы",
+    "first": "01.10",
+    "last": "08.10",
+    "usedFrom": "01.10",
+    "usedTo": "08.10",
+    "count": 4,
+    "rolesText": "Все роли (по правам)",
+    "ownEndpoints": [
+      "/api/tasks/kanban (4)"
+    ],
+    "related": false,
+    "relatedCount": 0,
+    "relatedTo": [],
+    "relatedKinds": [],
+    "relDetail": [],
+    "note": ""
+  },
+  {
+    "route": "/messenger",
+    "name": "Мессенджер",
+    "title": null,
+    "desc": "Мессенджер (открывает правый док «Хугинн»)",
+    "group": "Коммуникации",
+    "type": "Служебная",
+    "inMenu": false,
+    "navHide": false,
+    "pageKey": "",
+    "module": null,
+    "file": null,
+    "redirectTo": null,
+    "views": 5,
+    "used": "Да",
+    "source": "рендер страницы",
+    "first": "05.10",
+    "last": "09.10",
+    "usedFrom": "05.10",
+    "usedTo": "09.10",
+    "count": 5,
+    "rolesText": "Все роли (по правам)",
+    "ownEndpoints": [],
+    "related": false,
+    "relatedCount": 0,
+    "relatedTo": [],
+    "relatedKinds": [],
+    "relDetail": [],
+    "note": ""
+  },
+  {
+    "route": "/chat-groups",
+    "name": "Переход на «Зал Ярла» (док «Хугинн»)",
+    "title": null,
+    "desc": "Служебный адрес: открывает мессенджер и возвращает на главную",
+    "group": "Главная",
+    "type": "Редирект/алиас",
+    "inMenu": false,
+    "navHide": false,
+    "pageKey": "",
+    "module": null,
+    "file": null,
+    "redirectTo": "/home",
+    "views": 0,
+    "used": "—",
+    "source": "редирект",
+    "first": "",
+    "last": "",
+    "usedFrom": "",
+    "usedTo": "",
+    "count": 0,
+    "rolesText": "Все роли (по правам)",
+    "ownEndpoints": [],
+    "related": true,
+    "relatedCount": 1,
+    "relatedTo": [
+      "/home"
+    ],
+    "relatedKinds": [
+      "редирект"
+    ],
+    "relDetail": [
+      {
+        "to": "/home",
+        "kind": "редирект"
+      }
+    ],
+    "note": "Переадресация на /home — это адрес-переход, а не отдельный экран · отдельного экрана у адреса нет"
+  },
+  {
+    "route": "/chat",
+    "name": "Переход на «Зал Ярла» (док «Хугинн»)",
+    "title": null,
+    "desc": "Служебный адрес: открывает мессенджер и возвращает на главную",
+    "group": "Главная",
+    "type": "Редирект/алиас",
+    "inMenu": false,
+    "navHide": false,
+    "pageKey": "",
+    "module": null,
+    "file": null,
+    "redirectTo": "/home",
+    "views": 0,
+    "used": "—",
+    "source": "редирект",
+    "first": "",
+    "last": "",
+    "usedFrom": "",
+    "usedTo": "",
+    "count": 0,
+    "rolesText": "Все роли (по правам)",
+    "ownEndpoints": [],
+    "related": true,
+    "relatedCount": 1,
+    "relatedTo": [
+      "/home"
+    ],
+    "relatedKinds": [
+      "редирект"
+    ],
+    "relDetail": [
+      {
+        "to": "/home",
+        "kind": "редирект"
+      }
+    ],
+    "note": "Переадресация на /home — это адрес-переход, а не отдельный экран · отдельного экрана у адреса нет"
+  },
+  {
+    "route": "/meetings",
+    "name": "Совещания",
+    "title": null,
+    "desc": "Планирование и протоколы",
+    "group": "Коммуникации",
+    "type": "Страница",
+    "inMenu": true,
+    "navHide": false,
+    "pageKey": "meetings",
+    "module": "AsgardMeetings",
+    "file": "meetings_page.js",
+    "redirectTo": null,
+    "views": 4,
+    "used": "Да",
+    "source": "рендер страницы",
+    "first": "07.10",
+    "last": "09.10",
+    "usedFrom": "07.10",
+    "usedTo": "09.10",
+    "count": 4,
+    "rolesText": "Все роли (по правам)",
+    "ownEndpoints": [
+      "/api/meetings/stats (4)"
+    ],
+    "related": true,
+    "relatedCount": 3,
+    "relatedTo": [
+      "/kanban",
+      "/ting",
+      "/calendar"
+    ],
+    "relatedKinds": [
+      "переход из интерфейса"
+    ],
+    "relDetail": [
+      {
+        "to": "/kanban",
+        "kind": "переход из интерфейса"
+      },
+      {
+        "to": "/ting",
+        "kind": "переход из интерфейса"
+      },
+      {
+        "to": "/calendar",
+        "kind": "переход из интерфейса"
+      }
+    ],
+    "note": ""
+  },
+  {
+    "route": "/ting",
+    "name": "Тинг",
+    "title": null,
+    "desc": "Видеосовещания LiveKit",
+    "group": "Коммуникации",
+    "type": "Страница",
+    "inMenu": true,
+    "navHide": false,
+    "pageKey": "ting",
+    "module": "AsgardTing",
+    "file": "ting_page.js",
+    "redirectTo": null,
+    "views": 67,
+    "used": "Да",
+    "source": "рендер страницы",
+    "first": "02.10",
+    "last": "09.10",
+    "usedFrom": "02.10",
+    "usedTo": "09.10",
+    "count": 67,
+    "rolesText": "Все роли (по правам)",
+    "ownEndpoints": [
+      "/api/thing/public (540)",
+      "/api/thing/dial-in (19)"
+    ],
+    "related": true,
+    "relatedCount": 1,
+    "relatedTo": [
+      "/meetings"
+    ],
+    "relatedKinds": [
+      "переход из интерфейса"
+    ],
+    "relDetail": [
+      {
+        "to": "/meetings",
+        "kind": "переход из интерфейса"
+      }
+    ],
+    "note": ""
+  },
+  {
+    "route": "/to-analytics",
+    "name": "Хроники Тендерного Отдела",
+    "title": "Хроники Тендерного Отдела",
+    "desc": "KPI тендерных специалистов",
+    "group": "Аналитика",
+    "type": "Страница",
+    "inMenu": true,
+    "navHide": false,
+    "pageKey": "to_analytics",
+    "module": "AsgardTOAnalytics",
+    "file": "to_analytics.js",
+    "redirectTo": null,
+    "views": 7,
+    "used": "Да",
+    "source": "рендер страницы",
+    "first": "07.10",
+    "last": "12.10",
+    "usedFrom": "07.10",
+    "usedTo": "12.10",
+    "count": 7,
+    "rolesText": "Администратор, Рук. ТО, Директора",
+    "ownEndpoints": [
+      "/api/tenders/analytics/team (26)"
+    ],
+    "related": false,
+    "relatedCount": 0,
+    "relatedTo": [],
+    "relatedKinds": [],
+    "relDetail": [],
+    "note": ""
+  },
+  {
+    "route": "/pm-analytics",
+    "name": "Хроники Руководителей Проектов",
+    "title": "Хроники Руководителей Проектов",
+    "desc": "KPI и загрузка РП",
+    "group": "Аналитика",
+    "type": "Страница",
+    "inMenu": true,
+    "navHide": false,
+    "pageKey": "pm_analytics",
+    "module": "AsgardPMAnalytics",
+    "file": "pm_analytics.js",
+    "redirectTo": null,
+    "views": 16,
+    "used": "Да",
+    "source": "рендер страницы",
+    "first": "07.10",
+    "last": "09.10",
+    "usedFrom": "07.10",
+    "usedTo": "09.10",
+    "count": 16,
+    "rolesText": "Администратор, Рук. РП, Директора",
+    "ownEndpoints": [],
+    "related": false,
+    "relatedCount": 0,
+    "relatedTo": [],
+    "relatedKinds": [],
+    "relDetail": [],
+    "note": ""
+  },
+  {
+    "route": "/command-map",
+    "name": "Командный экран",
+    "title": "Командный экран",
+    "desc": "Живой офис: люди, объекты, вахта, рейсы",
+    "group": "Главная",
+    "type": "Страница",
+    "inMenu": true,
+    "navHide": false,
+    "pageKey": "command_map",
+    "module": "AsgardOfficeLive",
+    "file": "office-live.js",
+    "redirectTo": null,
+    "views": 5,
+    "used": "Да",
+    "source": "рендер страницы",
+    "first": "07.10",
+    "last": "09.10",
+    "usedFrom": "07.10",
+    "usedTo": "09.10",
+    "count": 5,
+    "rolesText": "Администратор, Директора, Руководители отделов",
+    "ownEndpoints": [
+      "/api/command-map/site (55)",
+      "/api/command-map/office-user (17)",
+      "/api/command-map/worker (7)",
+      "/api/command-map/readiness (5)"
+    ],
+    "related": false,
+    "relatedCount": 0,
+    "relatedTo": [],
+    "relatedKinds": [],
+    "relDetail": [],
+    "note": ""
+  },
+  {
+    "route": "/command-map-flat",
+    "name": "Гео-карта",
+    "title": "Гео-карта",
+    "desc": "Гео-карта офиса — плоский список сотрудников/объектов",
+    "group": "Главная",
+    "type": "Служебная",
+    "inMenu": false,
+    "navHide": false,
+    "pageKey": "",
+    "module": "AsgardCommandMap",
+    "file": "command-map.js",
+    "redirectTo": null,
+    "views": 0,
+    "used": "Нет",
+    "source": "нет следов",
+    "first": "",
+    "last": "",
+    "usedFrom": "",
+    "usedTo": "",
+    "count": 0,
+    "rolesText": "Администратор, Директора, Руководители отделов",
+    "ownEndpoints": [],
+    "related": false,
+    "relatedCount": 0,
+    "relatedTo": [],
+    "relatedKinds": [],
+    "relDetail": [],
+    "note": ""
+  },
+  {
+    "route": "/readiness",
+    "name": "Готовность проектов",
+    "title": "Готовность проектов",
+    "desc": "Готовность к старту по этапам",
+    "group": "Работы",
+    "type": "Страница",
+    "inMenu": true,
+    "navHide": false,
+    "pageKey": "pm_works",
+    "module": "AsgardReadiness",
+    "file": "readiness.js",
+    "redirectTo": null,
+    "views": 5,
+    "used": "Да",
+    "source": "рендер страницы",
+    "first": "01.10",
+    "last": "09.10",
+    "usedFrom": "01.10",
+    "usedTo": "09.10",
+    "count": 5,
+    "rolesText": "Администратор, РП, Рук. РП, Директора",
+    "ownEndpoints": [],
+    "related": true,
+    "relatedCount": 1,
+    "relatedTo": [
+      "/readiness-board"
+    ],
+    "relatedKinds": [
+      "общий модуль"
+    ],
+    "relDetail": [
+      {
+        "to": "/readiness-board",
+        "kind": "общий модуль"
+      }
+    ],
+    "note": ""
+  },
+  {
+    "route": "/readiness-board",
+    "name": "Готовность по РП",
+    "title": "Готовность по РП",
+    "desc": "Сводка готовности проектов всех РП",
+    "group": "Аналитика",
+    "type": "Страница",
+    "inMenu": true,
+    "navHide": false,
+    "pageKey": "pm_analytics",
+    "module": "AsgardReadiness",
+    "file": "readiness.js",
+    "redirectTo": null,
+    "views": 7,
+    "used": "Да",
+    "source": "рендер страницы",
+    "first": "07.10",
+    "last": "12.10",
+    "usedFrom": "07.10",
+    "usedTo": "12.10",
+    "count": 7,
+    "rolesText": "Администратор, Рук. РП, Директора",
+    "ownEndpoints": [],
+    "related": true,
+    "relatedCount": 1,
+    "relatedTo": [
+      "/readiness"
+    ],
+    "relatedKinds": [
+      "общий модуль"
+    ],
+    "relDetail": [
+      {
+        "to": "/readiness",
+        "kind": "общий модуль"
+      }
+    ],
+    "note": ""
+  },
+  {
+    "route": "/engineer-dashboard",
+    "name": "Кузница Инженера",
+    "title": "Кузница Инженера",
+    "desc": "Склад, оборудование, ТО",
+    "group": "Аналитика",
+    "type": "Страница",
+    "inMenu": true,
+    "navHide": false,
+    "pageKey": "engineer_dashboard",
+    "module": "AsgardEngineerDashboard",
+    "file": "engineer_dashboard.js",
+    "redirectTo": null,
+    "views": 7,
+    "used": "Да",
+    "source": "рендер страницы",
+    "first": "07.10",
+    "last": "12.10",
+    "usedFrom": "07.10",
+    "usedTo": "12.10",
+    "count": 7,
+    "rolesText": "Администратор, Гл. инженер",
+    "ownEndpoints": [
+      "/api/equipment/analytics/by-pm (10)"
+    ],
+    "related": true,
+    "relatedCount": 1,
+    "relatedTo": [
+      "/warehouse"
+    ],
+    "relatedKinds": [
+      "переход из интерфейса"
+    ],
+    "relDetail": [
+      {
+        "to": "/warehouse",
+        "kind": "переход из интерфейса"
+      }
+    ],
+    "note": ""
+  },
+  {
+    "route": "/object-map",
+    "name": "Карта объектов",
+    "title": "Карта объектов",
+    "desc": "География работ",
+    "group": "Аналитика",
+    "type": "Страница",
+    "inMenu": true,
+    "navHide": false,
+    "pageKey": "object_map",
+    "module": "AsgardObjectMap",
+    "file": "object_map.js",
+    "redirectTo": null,
+    "views": 7,
+    "used": "Да",
+    "source": "рендер страницы",
+    "first": "07.10",
+    "last": "09.10",
+    "usedFrom": "07.10",
+    "usedTo": "09.10",
+    "count": 7,
+    "rolesText": "Администратор, Директора, Руководители отделов",
+    "ownEndpoints": [
+      "/api/sites (7)"
+    ],
+    "related": true,
+    "relatedCount": 2,
+    "relatedTo": [
+      "/pm-works",
+      "/tenders"
+    ],
+    "relatedKinds": [
+      "переход из интерфейса"
+    ],
+    "relDetail": [
+      {
+        "to": "/pm-works",
+        "kind": "переход из интерфейса"
+      },
+      {
+        "to": "/tenders",
+        "kind": "переход из интерфейса"
+      }
+    ],
+    "note": ""
+  },
+  {
+    "route": "/mailbox",
+    "name": "Почта и заявки",
+    "title": "Почтовый ящик",
+    "desc": "Входящие / исходящие + AI-анализ",
+    "group": "Коммуникации",
+    "type": "Страница",
+    "inMenu": true,
+    "navHide": false,
+    "pageKey": "mailbox",
+    "module": "AsgardMailboxPage",
+    "file": "mailbox.js",
+    "redirectTo": null,
+    "views": 5,
+    "used": "Да",
+    "source": "рендер страницы",
+    "first": "07.10",
+    "last": "09.10",
+    "usedFrom": "07.10",
+    "usedTo": "09.10",
+    "count": 5,
+    "rolesText": "Администратор, Директор (ген.), Директор (комм.), Директор (разв.), Рук. ТО",
+    "ownEndpoints": [],
+    "related": true,
+    "relatedCount": 1,
+    "relatedTo": [
+      "/tenders"
+    ],
+    "relatedKinds": [
+      "переход из интерфейса"
+    ],
+    "relDetail": [
+      {
+        "to": "/tenders",
+        "kind": "переход из интерфейса"
+      }
+    ],
+    "note": ""
+  },
+  {
+    "route": "/my-mail",
+    "name": "Моя почта",
+    "title": "Моя почта",
+    "desc": "Персональная почта сотрудника",
+    "group": "Коммуникации",
+    "type": "Страница",
+    "inMenu": true,
+    "navHide": false,
+    "pageKey": "my_mail",
+    "module": "AsgardMyMailPage",
+    "file": "my_mail.js",
+    "redirectTo": null,
+    "views": 5,
+    "used": "Да",
+    "source": "рендер страницы",
+    "first": "07.10",
+    "last": "09.10",
+    "usedFrom": "07.10",
+    "usedTo": "09.10",
+    "count": 5,
+    "rolesText": "Все роли (по правам)",
+    "ownEndpoints": [
+      "/api/my-mail (479)"
+    ],
+    "related": false,
+    "relatedCount": 0,
+    "relatedTo": [],
+    "relatedKinds": [],
+    "relDetail": [],
+    "note": ""
+  },
+  {
+    "route": "/mail-settings",
+    "name": "Настройки почты",
+    "title": "Настройки почты",
+    "desc": "Аккаунты, правила, шаблоны",
+    "group": "Коммуникации",
+    "type": "Страница",
+    "inMenu": true,
+    "navHide": false,
+    "pageKey": "mail_settings",
+    "module": "AsgardMailSettingsPage",
+    "file": "mail_settings.js",
+    "redirectTo": null,
+    "views": 3,
+    "used": "Да",
+    "source": "рендер страницы",
+    "first": "07.10",
+    "last": "09.10",
+    "usedFrom": "07.10",
+    "usedTo": "09.10",
+    "count": 3,
+    "rolesText": "Администратор, Директор (ген.)",
+    "ownEndpoints": [
+      "/api/mailbox/accounts (3)",
+      "/api/mailbox/classification-rules (1)",
+      "/api/mailbox/sync-log (1)"
+    ],
+    "related": false,
+    "relatedCount": 0,
+    "relatedTo": [],
+    "relatedKinds": [],
+    "relDetail": [],
+    "note": ""
+  },
+  {
+    "route": "/inbox-applications",
+    "name": "Переход в «Маркетплейс заявок»",
+    "title": null,
+    "desc": "Переход на /director-inbox",
+    "group": "Тендеры",
+    "type": "Редирект/алиас",
+    "inMenu": false,
+    "navHide": false,
+    "pageKey": "",
+    "module": null,
+    "file": null,
+    "redirectTo": "/director-inbox",
+    "views": 0,
+    "used": "—",
+    "source": "редирект",
+    "first": "",
+    "last": "",
+    "usedFrom": "",
+    "usedTo": "",
+    "count": 0,
+    "rolesText": "Администратор, Директор (ген.), Директор (комм.), Директор (разв.), Рук. ТО",
+    "ownEndpoints": [],
+    "related": true,
+    "relatedCount": 1,
+    "relatedTo": [
+      "/director-inbox"
+    ],
+    "relatedKinds": [
+      "редирект"
+    ],
+    "relDetail": [
+      {
+        "to": "/director-inbox",
+        "kind": "редирект"
+      }
+    ],
+    "note": "Переадресация на /director-inbox — это адрес-переход, а не отдельный экран · отдельного экрана у адреса нет"
+  },
+  {
+    "route": "/personal-kanban",
+    "name": "Переход в «Мой канбан»",
+    "title": null,
+    "desc": "Переход на /personal-kanban-v3",
+    "group": "Работы",
+    "type": "Редирект/алиас",
+    "inMenu": false,
+    "navHide": false,
+    "pageKey": "",
+    "module": null,
+    "file": null,
+    "redirectTo": "/personal-kanban-v3",
+    "views": 0,
+    "used": "—",
+    "source": "редирект",
+    "first": "",
+    "last": "",
+    "usedFrom": "",
+    "usedTo": "",
+    "count": 0,
+    "rolesText": "РП, Рук. РП, Администратор, Директор (ген.), Директор (комм.), Директор (разв.)",
+    "ownEndpoints": [],
+    "related": true,
+    "relatedCount": 1,
+    "relatedTo": [
+      "/personal-kanban-v3"
+    ],
+    "relatedKinds": [
+      "редирект"
+    ],
+    "relDetail": [
+      {
+        "to": "/personal-kanban-v3",
+        "kind": "редирект"
+      }
+    ],
+    "note": "Переадресация на /personal-kanban-v3 — это адрес-переход, а не отдельный экран · отдельного экрана у адреса нет"
+  },
+  {
+    "route": "/personal-kanban-v3",
+    "name": "Мой канбан",
+    "title": "Мой канбан",
+    "desc": "8 колонок: Новые → Просчёт → Согласование → КП → Победа → В работе",
+    "group": "Работы",
+    "type": "Страница",
+    "inMenu": true,
+    "navHide": false,
+    "pageKey": "personal_kanban",
+    "module": "AsgardPersonalKanbanV3",
+    "file": "personal_kanban.js",
+    "redirectTo": null,
+    "views": 23,
+    "used": "Да",
+    "source": "рендер страницы",
+    "first": "01.10",
+    "last": "13.10",
+    "usedFrom": "01.10",
+    "usedTo": "13.10",
+    "count": 23,
+    "rolesText": "РП, Рук. РП, Администратор, Директор (ген.), Директор (комм.), Директор (разв.)",
+    "ownEndpoints": [
+      "/api/personal-kanban (142)",
+      "/api/personal-kanban/board (89)",
+      "/api/personal-kanban/columns/counts (35)",
+      "/api/tkp-quick (20)",
+      "/api/personal-kanban/cards (17)",
+      "/api/tkp-quick/finance-source (5)"
+    ],
+    "related": true,
+    "relatedCount": 4,
+    "relatedTo": [
+      "/personal-kanban",
+      "/tkp",
+      "/customer",
+      "/pm-works"
+    ],
+    "relatedKinds": [
+      "переход из интерфейса"
+    ],
+    "relDetail": [
+      {
+        "to": "/personal-kanban",
+        "kind": "переход из интерфейса"
+      },
+      {
+        "to": "/tkp",
+        "kind": "переход из интерфейса"
+      },
+      {
+        "to": "/customer",
+        "kind": "переход из интерфейса"
+      },
+      {
+        "to": "/pm-works",
+        "kind": "переход из интерфейса"
+      }
+    ],
+    "note": ""
+  },
+  {
+    "route": "/director-inbox",
+    "name": "Маркетплейс заявок",
+    "title": "Маркетплейс заявок",
+    "desc": "Свободные заявки + распределение РП",
+    "group": "Тендеры",
+    "type": "Страница",
+    "inMenu": true,
+    "navHide": false,
+    "pageKey": "director_inbox",
+    "module": "AsgardDirectorInboxPage",
+    "file": "director_inbox.js",
+    "redirectTo": null,
+    "views": 13,
+    "used": "Да",
+    "source": "рендер страницы",
+    "first": "07.10",
+    "last": "12.10",
+    "usedFrom": "07.10",
+    "usedTo": "12.10",
+    "count": 13,
+    "rolesText": "Администратор, Директор (ген.), Директор (комм.), Директор (разв.), Рук. РП, РП",
+    "ownEndpoints": [],
+    "related": true,
+    "relatedCount": 2,
+    "relatedTo": [
+      "/mailbox",
+      "/tenders"
+    ],
+    "relatedKinds": [
+      "переход из интерфейса"
+    ],
+    "relDetail": [
+      {
+        "to": "/mailbox",
+        "kind": "переход из интерфейса"
+      },
+      {
+        "to": "/tenders",
+        "kind": "переход из интерфейса"
+      }
+    ],
+    "note": ""
+  },
+  {
+    "route": "/director-tender-approvals",
+    "name": "Согласование тендеров",
+    "title": "Согласование тендеров",
+    "desc": "Просчёты РП от 10 млн без НДС",
+    "group": "Тендеры",
+    "type": "Страница",
+    "inMenu": true,
+    "navHide": false,
+    "pageKey": "director_tender_approvals",
+    "module": "AsgardDirectorTenderApprovalsPage",
+    "file": "director_tender_approvals.js",
+    "redirectTo": null,
+    "views": 7,
+    "used": "Да",
+    "source": "рендер страницы",
+    "first": "07.10",
+    "last": "09.10",
+    "usedFrom": "07.10",
+    "usedTo": "09.10",
+    "count": 7,
+    "rolesText": "Администратор, Директор (ген.), Директор (комм.), Директор (разв.)",
+    "ownEndpoints": [],
+    "related": false,
+    "relatedCount": 0,
+    "relatedTo": [],
+    "relatedKinds": [],
+    "relDetail": [],
+    "note": ""
+  },
+  {
+    "route": "/tkp",
+    "name": "ТКП",
+    "title": "ТКП — Коммерческие предложения",
+    "desc": "Коммерческие предложения",
+    "group": "Ресурсы",
+    "type": "Страница",
+    "inMenu": true,
+    "navHide": false,
+    "pageKey": "tkp",
+    "module": "AsgardTkpPage",
+    "file": "tkp-page.js",
+    "redirectTo": null,
+    "views": 23,
+    "used": "Да",
+    "source": "рендер страницы",
+    "first": "07.10",
+    "last": "12.10",
+    "usedFrom": "07.10",
+    "usedTo": "12.10",
+    "count": 23,
+    "rolesText": "Администратор, РП, Рук. РП, ТО, Рук. ТО, Директора",
+    "ownEndpoints": [],
+    "related": false,
+    "relatedCount": 0,
+    "relatedTo": [],
+    "relatedKinds": [],
+    "relDetail": [],
+    "note": ""
+  },
+  {
+    "route": "/pass-requests",
+    "name": "Заявки на пропуск",
+    "title": "Заявки на пропуск",
+    "desc": "Оформление пропусков",
+    "group": "Ресурсы",
+    "type": "Страница",
+    "inMenu": true,
+    "navHide": false,
+    "pageKey": "pass_requests",
+    "module": "AsgardPassRequestsPage",
+    "file": "pass-requests-page.js",
+    "redirectTo": null,
+    "views": 4,
+    "used": "Да",
+    "source": "рендер страницы",
+    "first": "07.10",
+    "last": "09.10",
+    "usedFrom": "07.10",
+    "usedTo": "09.10",
+    "count": 4,
+    "rolesText": "Администратор, РП, Рук. РП, ТО, Рук. ТО, HR, Рук. HR, Директора",
+    "ownEndpoints": [],
+    "related": false,
+    "relatedCount": 0,
+    "relatedTo": [],
+    "relatedKinds": [],
+    "relDetail": [],
+    "note": ""
+  },
+  {
+    "route": "/integrations",
+    "name": "Интеграции",
+    "title": "Интеграции",
+    "desc": "Банк/1С, Тендерные площадки, ERP",
+    "group": "Коммуникации",
+    "type": "Страница",
+    "inMenu": true,
+    "navHide": false,
+    "pageKey": "integrations",
+    "module": "AsgardIntegrationsPage",
+    "file": "integrations.js",
+    "redirectTo": null,
+    "views": 3,
+    "used": "Да",
+    "source": "рендер страницы",
+    "first": "07.10",
+    "last": "09.10",
+    "usedFrom": "07.10",
+    "usedTo": "09.10",
+    "count": 3,
+    "rolesText": "Администратор, Бухгалтер, Директор (ген.), Директор (комм.), Директор (разв.), Рук. ТО, ТО",
+    "ownEndpoints": [
+      "/api/integrations (342)"
+    ],
+    "related": true,
+    "relatedCount": 1,
+    "relatedTo": [
+      "/mailbox"
+    ],
+    "relatedKinds": [
+      "переход из интерфейса"
+    ],
+    "relDetail": [
+      {
+        "to": "/mailbox",
+        "kind": "переход из интерфейса"
+      }
+    ],
+    "note": ""
+  },
+  {
+    "route": "/mimir",
+    "name": "Переход на «Зал Ярла» (док «Хугинн»)",
+    "title": null,
+    "desc": "Служебный адрес: открывает Мимира в доке «Хугинн» и возвращает на главную",
+    "group": "Главная",
+    "type": "Редирект/алиас",
+    "inMenu": false,
+    "navHide": false,
+    "pageKey": "",
+    "module": null,
+    "file": null,
+    "redirectTo": "/home",
+    "views": 0,
+    "used": "—",
+    "source": "редирект",
+    "first": "",
+    "last": "",
+    "usedFrom": "",
+    "usedTo": "",
+    "count": 0,
+    "rolesText": "Все роли (по правам)",
+    "ownEndpoints": [],
+    "related": true,
+    "relatedCount": 1,
+    "relatedTo": [
+      "/home"
+    ],
+    "relatedKinds": [
+      "редирект"
+    ],
+    "relDetail": [
+      {
+        "to": "/home",
+        "kind": "редирект"
+      }
+    ],
+    "note": "Переадресация на /home — это адрес-переход, а не отдельный экран · отдельного экрана у адреса нет"
+  },
+  {
+    "route": "/more",
+    "name": "Переход на /home",
+    "title": null,
+    "desc": "Мобильное меню: все разделы CRM (только телефон/узкий экран)",
+    "group": "Главная",
+    "type": "Редирект/алиас",
+    "inMenu": false,
+    "navHide": false,
+    "pageKey": "",
+    "module": null,
+    "file": null,
+    "redirectTo": "/home",
+    "views": 0,
+    "used": "—",
+    "source": "редирект",
+    "first": "",
+    "last": "",
+    "usedFrom": "",
+    "usedTo": "",
+    "count": 0,
+    "rolesText": "Все роли (по правам)",
+    "ownEndpoints": [],
+    "related": true,
+    "relatedCount": 1,
+    "relatedTo": [
+      "/home"
+    ],
+    "relatedKinds": [
+      "редирект"
+    ],
+    "relDetail": [
+      {
+        "to": "/home",
+        "kind": "редирект"
+      }
+    ],
+    "note": "Переадресация на /home — это адрес-переход, а не отдельный экран · отдельного экрана у адреса нет"
+  }
+]
