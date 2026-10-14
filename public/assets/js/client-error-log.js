@@ -61,7 +61,16 @@
   window.addEventListener('error', function (event) {
     try {
       var err = event && event.error;
-      report('js', (err && err.message) || (event && event.message) || 'window.error', err && err.stack);
+      // Для SyntaxError у <script> err === null, но event.filename/lineno дают
+      // URL упавшего ассета — без этого «Unexpected token '<'» (HTML вместо JS
+      // из-за 404/SPA-fallback) не диагностируется (32× за 7 дней, vanilla).
+      var stack = (err && err.stack) || null;
+      var extra = null;
+      if (!stack && event && (event.filename || event.lineno)) {
+        stack = 'at ' + (event.filename || '?') + ':' + (event.lineno || 0) + ':' + (event.colno || 0);
+      }
+      if (event && event.filename) extra = { endpoint: String(event.filename).slice(0, 300) };
+      report('js', (err && err.message) || (event && event.message) || 'window.error', stack, extra);
     } catch (e) { /* noop */ }
   });
 

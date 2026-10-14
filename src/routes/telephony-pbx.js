@@ -400,6 +400,12 @@ module.exports = async function telephonyPbxRoutes(fastify) {
         });
         return body;
       } catch (e) {
+        // Диагностика: раньше 500 PBX-CMD уходил «слепым» — в журнале не
+        // оставалось ни текста ошибки, ни действия (19× 5xx 08–09.10).
+        fastify.log.error(
+          { err: e, action, user_id: req.user && req.user.id, statusCode: e.statusCode || 502 },
+          `[pbx] call/${action} failed`
+        );
         // Правка 5-клиент: пробрасываем via/reason из CMD-ответа, иначе 409
         // «звони из браузера» придёт как обычная ошибка и фронт её покажет.
         return reply.code(e.statusCode || 502).send({
@@ -438,6 +444,7 @@ module.exports = async function telephonyPbxRoutes(fastify) {
         }),
       });
     } catch (e) {
+      fastify.log.error({ err: e, action: 'hold', statusCode: e.statusCode || 502 }, '[pbx] call/hold failed');
       return reply.code(e.statusCode || 502).send({ error: e.message });
     }
   });
@@ -462,6 +469,9 @@ module.exports = async function telephonyPbxRoutes(fastify) {
       // поэтому отдаём 409, а не 500 — иначе в консоли «ошибка сервера»
       // (инцидент 09.10.2026: «попытался перевести звонок — ошибка»).
       const isNoChannel = /channel required/i.test(e.message || '');
+      if (!isNoChannel) {
+        fastify.log.error({ err: e, action: 'transfer', statusCode: e.statusCode || 502 }, '[pbx] call/transfer failed');
+      }
       return reply.code(isNoChannel ? 409 : (e.statusCode || 502)).send({
         error: e.message,
         via: isNoChannel ? 'gsm' : undefined,

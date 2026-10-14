@@ -7312,6 +7312,18 @@ window.AsgardPKv3Modals = (function () {
 
   const esc = (window.AsgardUI && AsgardUI.esc) ? AsgardUI.esc : (s) => String(s == null ? '' : s)
     .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+
+  // _fmtBytes определена в другом IIFE (строки ~4761) и здесь НЕ видна —
+  // визард «Доп.файлы» падал с «ReferenceError: _fmtBytes is not defined»
+  // (прод client-error 10.10.2026, personal_kanban.js:7603). Свой локальный
+  // хелпер в области видимости этого модуля.
+  function _fmtBytes(n) {
+    if (n == null || isNaN(n)) return '';
+    if (n < 1024) return n + ' Б';
+    if (n < 1024 * 1024) return Math.round(n / 1024) + ' КБ';
+    return (n / (1024 * 1024)).toFixed(1) + ' МБ';
+  }
+
   function toast(t, m, tone) {
     try {
       if (window.AsgardUI && typeof AsgardUI.toast === 'function') return AsgardUI.toast(t, m, tone);

@@ -29,9 +29,16 @@ const pool = new Pool({
   database: process.env.DB_NAME || 'asgard_crm',
   user: process.env.DB_USER || 'asgard',
   password: process.env.DB_PASSWORD, // SECURITY: Без fallback (CRIT-5)
-  max: 20,
+  // Прод-инцидент 14.10.2026 11:30: тяжёлые /api/data/*?limit=10000 (4-8 c)
+  // выжирали пул из 20 соединений → 7 запросов подряд упали с
+  // «timeout exceeded when trying to connect» / «Connection terminated» (500).
+  // max_connections прода = 100, реально занято 5 — запас есть.
+  max: parseInt(process.env.DB_POOL_MAX || '35', 10),
   idleTimeoutMillis: 30000,
-  connectionTimeoutMillis: 2000,
+  connectionTimeoutMillis: parseInt(process.env.DB_CONNECT_TIMEOUT_MS || '5000', 10),
+  // Второй эшелон защиты: ни один одиночный запрос не держит соединение вечно.
+  statement_timeout: parseInt(process.env.DB_STATEMENT_TIMEOUT_MS || '30000', 10),
+  query_timeout: parseInt(process.env.DB_QUERY_TIMEOUT_MS || '32000', 10),
 });
 
 pool.on('error', (err) => {

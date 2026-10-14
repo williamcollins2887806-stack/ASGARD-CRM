@@ -1185,19 +1185,48 @@ async function mimirRoutes(fastify, options) {
         temperature: 0.5
       });
 
-      // 4. Парсинг ответа (агрессивный)
-      let tkpData;
-      try {
-        let text = (aiResult.text || '').trim();
-        text = text.replace(/^```json\s*/i, '').replace(/\s*```$/i, '').trim();
-        const firstBrace = text.indexOf('{');
-        const lastBrace = text.lastIndexOf('}');
-        if (firstBrace >= 0 && lastBrace > firstBrace) {
-          text = text.substring(firstBrace, lastBrace + 1);
+      // 4. Парсинг ответа (агрессивный).
+      // Реальный прод-инцидент: DeepSeek вернул content="" (все completion-токены
+      // ушли в reasoning_content) → JSON.parse('') бросал → 500 «невалидный JSON».
+      // ВАЖНО: ai-provider НЕ возвращает .reasoning — reasoning лежит только в
+      // _rawMessage.reasoning_content (см. src/services/ai-provider.js:619-632).
+      // Пробуем content, затем reasoning_content; если пусто — ОДИН повтор.
+      function extractTkpJson(result) {
+        if (!result) return null;
+        const raw = result._rawMessage || {};
+        const candidates = [result.text, result.reasoning, raw.reasoning_content, raw.reasoning];
+        for (const src of candidates) {
+          let text = String(src || '').trim();
+          if (!text) continue;
+          text = text.replace(/^```json\s*/i, '').replace(/\s*```$/i, '').trim();
+          const firstBrace = text.indexOf('{');
+          const lastBrace = text.lastIndexOf('}');
+          if (firstBrace >= 0 && lastBrace > firstBrace) {
+            text = text.substring(firstBrace, lastBrace + 1);
+          }
+          try { return JSON.parse(text); } catch (_) { /* пробуем следующий источник */ }
         }
-        tkpData = JSON.parse(text);
-      } catch (e) {
-        return reply.code(500).send({ success: false, message: 'AI вернул невалидный JSON' });
+        return null;
+      }
+
+      let tkpData = extractTkpJson(aiResult);
+      if (!tkpData) {
+        // Повтор: просим тот же JSON, но коротко и без «размышлений».
+        try {
+          const retry = await aiProvider.complete({
+            system: 'Отвечай ТОЛЬКО валидным JSON без обёрток и пояснений.',
+            messages: [{ role: 'user', content: prompt }],
+            maxTokens: 2000,
+            temperature: 0.2
+          });
+          tkpData = extractTkpJson(retry);
+        } catch (_) { /* повтор не удался — ниже отдадим понятную ошибку */ }
+      }
+      if (!tkpData) {
+        return reply.code(502).send({
+          success: false,
+          message: 'AI вернул пустой ответ. Повторите запрос через несколько секунд.'
+        });
       }
 
       // mode='items' — вернуть только строки работ

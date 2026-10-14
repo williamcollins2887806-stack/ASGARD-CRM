@@ -305,7 +305,14 @@ async function routes(fastify) {
     }
 
     for (const cat of catalog.categories || []) {
-      const name = String(cat.title || cat.code).slice(0, 28);
+      // Excel запрещает в имени листа символы \ / * ? : [ ] (и лимит 31 знак).
+      // Реальная категория прода — «Химконтуры ТО / систем» → без санитизации
+      // wb.addWorksheet бросал «Worksheet name ... cannot include ...» и весь
+      // экспорт /api/work-norms/export.xlsx падал с 500 (прод-лог 09.10.2026).
+      const name = String(cat.title || cat.code)
+        .replace(/[\\/*?:[\]]/g, '-')
+        .replace(/^'+|'+$/g, '')
+        .slice(0, 28) || 'Категория';
       const ws = wb.addWorksheet(name);
       ws.addRow([
         'id', 'code', 'method_code', 'name', 'unit', 'calc_kind',

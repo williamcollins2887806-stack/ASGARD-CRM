@@ -8,6 +8,15 @@ const C = {
   blue: '#3b82f6', rune: '#7b61ff', text: '#e8e8f0', muted: '#6b7280',
 };
 
+// React error #185: «Objects are not valid as a React child».
+// Прод-краш /m/office-academy/:id (репорт client-error args[]=object with keys {text, title}).
+// Блоки урока могут прийти как объект {text, title} вместо строки — приводим к тексту.
+const asText = (v) => {
+  if (v == null) return '';
+  if (typeof v === 'object') return String(v.text || v.content || v.title || '');
+  return String(v);
+};
+
 // ═══════════════════════════════════════════════════════════════
 // BLOCK RENDERERS — all 15 types
 // ═══════════════════════════════════════════════════════════════
@@ -47,9 +56,9 @@ function Block({ block }) {
           borderRadius: 16, border: `1px solid ${C.rune}20`,
         }}>
           <div style={{ fontSize: 48, marginBottom: 8 }}>{block.icon || '🏛️'}</div>
-          <div style={{ fontSize: 18, fontWeight: 900, color: C.text, lineHeight: 1.3 }}>{block.title}</div>
+          <div style={{ fontSize: 18, fontWeight: 900, color: C.text, lineHeight: 1.3 }}>{asText(block.title)}</div>
           {block.subtitle && (
-            <div style={{ fontSize: 13, color: C.muted, marginTop: 6 }}>{block.subtitle}</div>
+            <div style={{ fontSize: 13, color: C.muted, marginTop: 6 }}>{asText(block.subtitle)}</div>
           )}
         </div>
       );
@@ -61,7 +70,7 @@ function Block({ block }) {
           fontSize: 15, color: '#d0d0e0', lineHeight: 1.9, marginBottom: 18,
           paddingLeft: 14, borderLeft: `3px solid ${C.gold}40`,
         }}>
-          {block.text}
+          {asText(block.text)}
         </div>
       );
 
@@ -71,10 +80,10 @@ function Block({ block }) {
         <div style={{ marginBottom: 18 }}>
           {block.title && (
             <div style={{ fontSize: 16, fontWeight: 800, color: C.text, marginBottom: 8, lineHeight: 1.3 }}>
-              {block.title}
+              {asText(block.title)}
             </div>
           )}
-          <div style={{ fontSize: 15, color: '#c8c8d8', lineHeight: 1.8 }}>{block.text}</div>
+          <div style={{ fontSize: 15, color: '#c8c8d8', lineHeight: 1.8 }}>{asText(block.text)}</div>
         </div>
       );
 
@@ -87,7 +96,7 @@ function Block({ block }) {
         }}>
           {block.title && (
             <div style={{ fontSize: 14, fontWeight: 800, color: C.gold, marginBottom: 12 }}>
-              {block.title}
+              {asText(block.title)}
             </div>
           )}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
@@ -96,11 +105,11 @@ function Block({ block }) {
                 display: 'flex', gap: 10, alignItems: 'flex-start',
                 background: '#ffffff06', borderRadius: 12, padding: '10px 12px',
               }}>
-                <span style={{ fontSize: 22, flexShrink: 0 }}>{item.icon}</span>
+                <span style={{ fontSize: 22, flexShrink: 0 }}>{asText(item.icon)}</span>
                 <div>
-                  <div style={{ fontSize: 12, fontWeight: 700, color: C.text, lineHeight: 1.3 }}>{item.label}</div>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: C.text, lineHeight: 1.3 }}>{asText(item.label)}</div>
                   {item.desc && (
-                    <div style={{ fontSize: 11, color: C.muted, lineHeight: 1.4, marginTop: 2 }}>{item.desc}</div>
+                    <div style={{ fontSize: 11, color: C.muted, lineHeight: 1.4, marginTop: 2 }}>{asText(item.desc)}</div>
                   )}
                 </div>
               </div>
@@ -119,7 +128,7 @@ function Block({ block }) {
         }}>
           {block.title && (
             <div style={{ fontSize: 14, fontWeight: 800, color: C.green, marginBottom: 12 }}>
-              📋 {block.title}
+              📋 {asText(block.title)}
             </div>
           )}
           {(block.items || []).map((step, i) => (
@@ -132,7 +141,7 @@ function Block({ block }) {
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                 fontSize: 11, fontWeight: 800, color: C.green,
               }}>{i + 1}</div>
-              <div style={{ fontSize: 14, color: '#c8c8d8', lineHeight: 1.6, paddingTop: 2 }}>{step}</div>
+              <div style={{ fontSize: 14, color: '#c8c8d8', lineHeight: 1.6, paddingTop: 2 }}>{asText(step)}</div>
             </div>
           ))}
         </div>
@@ -147,9 +156,9 @@ function Block({ block }) {
           padding: '14px 16px', margin: '14px 0',
           display: 'flex', gap: 12, alignItems: 'flex-start',
         }}>
-          <span style={{ fontSize: 28, flexShrink: 0 }}>{block.icon || '💡'}</span>
+          <span style={{ fontSize: 28, flexShrink: 0 }}>{asText(block.icon) || '💡'}</span>
           <div style={{ fontSize: 13, color: '#d8d0b8', lineHeight: 1.7, fontStyle: 'italic' }}>
-            {block.text}
+            {asText(block.text)}
           </div>
         </div>
       );
@@ -158,7 +167,7 @@ function Block({ block }) {
     case 'heading':
       return (
         <div style={{ fontSize: 18, fontWeight: 900, color: C.text, margin: '24px 0 10px', lineHeight: 1.3 }}>
-          {block.text}
+          {asText(block.text)}
         </div>
       );
 
@@ -166,7 +175,7 @@ function Block({ block }) {
     case 'subheading':
       return (
         <div style={{ fontSize: 15, fontWeight: 800, color: C.gold, margin: '16px 0 8px', lineHeight: 1.3 }}>
-          {block.text}
+          {asText(block.text)}
         </div>
       );
 
@@ -174,7 +183,7 @@ function Block({ block }) {
     case 'text':
       return (
         <div style={{ fontSize: 15, color: '#c8c8d8', lineHeight: 1.8, marginBottom: 14 }}>
-          {block.content || block.text}
+          {asText(block.content || block.text)}
         </div>
       );
 
@@ -184,7 +193,7 @@ function Block({ block }) {
         <ul style={{ margin: '0 0 14px', paddingLeft: 20 }}>
           {(block.items || []).map((item, i) => (
             <li key={i} style={{ fontSize: 14, color: '#c8c8d8', lineHeight: 1.7, marginBottom: 6 }}>
-              {item}
+              {asText(item)}
             </li>
           ))}
         </ul>
@@ -196,7 +205,7 @@ function Block({ block }) {
         <ol style={{ margin: '0 0 14px', paddingLeft: 22 }}>
           {(block.items || []).map((item, i) => (
             <li key={i} style={{ fontSize: 14, color: '#c8c8d8', lineHeight: 1.7, marginBottom: 6 }}>
-              {item}
+              {asText(item)}
             </li>
           ))}
         </ol>
@@ -211,7 +220,7 @@ function Block({ block }) {
           borderRadius: 14, padding: '14px 16px', margin: '14px 0',
         }}>
           <div style={{ fontSize: 14, color: C.text, lineHeight: 1.7, fontWeight: 600 }}>
-            💡 {block.text}
+            💡 {asText(block.text)}
           </div>
         </div>
       );
@@ -230,7 +239,7 @@ function Block({ block }) {
             {isDanger ? '🚨 ОПАСНО' : '⚠️ ВАЖНО'}
           </div>
           <div style={{ fontSize: 14, color: isDanger ? '#e8c8c8' : '#e8dcc8', lineHeight: 1.7 }}>
-            {block.text}
+            {asText(block.text)}
           </div>
         </div>
       );
@@ -245,10 +254,10 @@ function Block({ block }) {
           borderRadius: 12, padding: '12px 16px', margin: '14px 0',
         }}>
           <div style={{ fontSize: 14, color: C.text, lineHeight: 1.7, fontStyle: 'italic' }}>
-            «{block.text}»
+            «{asText(block.text)}»
           </div>
           {block.author && (
-            <div style={{ fontSize: 12, color: C.muted, marginTop: 6 }}>— {block.author}</div>
+            <div style={{ fontSize: 12, color: C.muted, marginTop: 6 }}>— {asText(block.author)}</div>
           )}
         </div>
       );
@@ -265,10 +274,10 @@ function Block({ block }) {
             fontSize: 11, fontWeight: 800, color: C.rune,
             textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8,
           }}>
-            📋 {block.title || 'Ситуация из практики'}
+            📋 {asText(block.title) || 'Ситуация из практики'}
           </div>
           <div style={{ fontSize: 14, color: '#c8c8d8', lineHeight: 1.7, marginBottom: block.resolution ? 10 : 0 }}>
-            {block.text}
+            {asText(block.text)}
           </div>
           {block.resolution && (
             <div style={{
@@ -276,7 +285,7 @@ function Block({ block }) {
               borderRadius: 10, padding: '10px 12px', marginTop: 8,
             }}>
               <div style={{ fontSize: 12, fontWeight: 700, color: C.green, marginBottom: 4 }}>✓ Правильное решение</div>
-              <div style={{ fontSize: 13, color: '#c8e8c8', lineHeight: 1.6 }}>{block.resolution}</div>
+              <div style={{ fontSize: 13, color: '#c8e8c8', lineHeight: 1.6 }}>{asText(block.resolution)}</div>
             </div>
           )}
         </div>
@@ -291,10 +300,10 @@ function Block({ block }) {
         }}>
           {block.title && (
             <div style={{ fontSize: 13, fontWeight: 800, color: C.gold, marginBottom: 10 }}>
-              ✅ {block.title}
+              ✅ {asText(block.title)}
             </div>
           )}
-          {(block.items || []).map((item, i) => <ChecklistItem key={i} text={item} />)}
+          {(block.items || []).map((item, i) => <ChecklistItem key={i} text={asText(item)} />)}
         </div>
       );
 
@@ -306,10 +315,10 @@ function Block({ block }) {
           border: `1px solid ${C.rune}30`, borderRadius: 14,
           padding: '16px', margin: '14px 0', textAlign: 'center',
         }}>
-          <div style={{ fontSize: 36, fontWeight: 900, color: C.rune, lineHeight: 1 }}>{block.value}</div>
-          <div style={{ fontSize: 13, color: C.muted, marginTop: 6, lineHeight: 1.5 }}>{block.label}</div>
+          <div style={{ fontSize: 36, fontWeight: 900, color: C.rune, lineHeight: 1 }}>{asText(block.value)}</div>
+          <div style={{ fontSize: 13, color: C.muted, marginTop: 6, lineHeight: 1.5 }}>{asText(block.label)}</div>
           {block.source && (
-            <div style={{ fontSize: 11, color: '#ffffff25', marginTop: 4 }}>Источник: {block.source}</div>
+            <div style={{ fontSize: 11, color: '#ffffff25', marginTop: 4 }}>Источник: {asText(block.source)}</div>
           )}
         </div>
       );
@@ -322,9 +331,9 @@ function Block({ block }) {
       return (
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, margin: '24px 0 14px', paddingBottom: 8, borderBottom: '1px solid #ffffff12' }}>
           <span style={{ fontSize: 11, fontWeight: 800, color: C.gold, textTransform: 'uppercase', letterSpacing: 1 }}>
-            Глава {block.number || ''}
+            Глава {asText(block.number)}
           </span>
-          <span style={{ fontSize: 17, fontWeight: 800, color: C.text }}>{block.title || block.text || ''}</span>
+          <span style={{ fontSize: 17, fontWeight: 800, color: C.text }}>{asText(block.title || block.text)}</span>
         </div>
       );
 
@@ -332,16 +341,16 @@ function Block({ block }) {
     case 'myth_vs_fact':
       return (
         <div style={{ margin: '14px 0' }}>
-          {block.title && <div style={{ fontSize: 13, fontWeight: 800, color: C.gold, marginBottom: 8 }}>{block.title}</div>}
+          {block.title && <div style={{ fontSize: 13, fontWeight: 800, color: C.gold, marginBottom: 8 }}>{asText(block.title)}</div>}
           {(block.items || []).map((it, j) => (
             <div key={j} style={{ display: 'grid', gap: 8, marginBottom: 10 }}>
               <div style={{ borderRadius: 12, padding: '12px 14px', background: C.red + '12', border: `1px solid ${C.red}40` }}>
                 <div style={{ fontSize: 10, fontWeight: 800, color: C.red, marginBottom: 4 }}>МИФ</div>
-                <div style={{ fontSize: 13, color: '#c8c8d8', lineHeight: 1.6 }}>{it.myth || it.false || ''}</div>
+                <div style={{ fontSize: 13, color: '#c8c8d8', lineHeight: 1.6 }}>{asText(it.myth || it.false)}</div>
               </div>
               <div style={{ borderRadius: 12, padding: '12px 14px', background: C.green + '12', border: `1px solid ${C.green}40` }}>
                 <div style={{ fontSize: 10, fontWeight: 800, color: C.green, marginBottom: 4 }}>ФАКТ</div>
-                <div style={{ fontSize: 13, color: '#c8c8d8', lineHeight: 1.6 }}>{it.fact || it.true || ''}</div>
+                <div style={{ fontSize: 13, color: '#c8c8d8', lineHeight: 1.6 }}>{asText(it.fact || it.true)}</div>
               </div>
             </div>
           ))}
@@ -355,10 +364,10 @@ function Block({ block }) {
           background: `linear-gradient(135deg, ${C.gold}18 0%, ${C.card} 100%)`,
           border: `1px solid ${C.gold}50`, borderRadius: 14, padding: '14px 16px', margin: '14px 0',
         }}>
-          <div style={{ fontSize: 14, fontWeight: 800, color: C.gold, marginBottom: 10 }}>🎯 {block.title || 'Забери с собой'}</div>
+          <div style={{ fontSize: 14, fontWeight: 800, color: C.gold, marginBottom: 10 }}>🎯 {asText(block.title) || 'Забери с собой'}</div>
           <ul style={{ margin: 0, paddingLeft: 18 }}>
             {(block.items || []).map((x, j) => (
-              <li key={j} style={{ fontSize: 13, color: C.text, lineHeight: 1.7, marginBottom: 6 }}>{x}</li>
+              <li key={j} style={{ fontSize: 13, color: C.text, lineHeight: 1.7, marginBottom: 6 }}>{asText(x)}</li>
             ))}
           </ul>
         </div>
@@ -367,13 +376,13 @@ function Block({ block }) {
     case 'timeline':
       return (
         <div style={{ margin: '14px 0' }}>
-          {block.title && <div style={{ fontSize: 13, fontWeight: 800, color: C.rune, marginBottom: 10 }}>{block.title}</div>}
+          {block.title && <div style={{ fontSize: 13, fontWeight: 800, color: C.rune, marginBottom: 10 }}>{asText(block.title)}</div>}
           <div style={{ borderLeft: '2px solid #ffffff18', marginLeft: 8, paddingLeft: 14 }}>
             {(block.items || []).map((it, j) => (
               <div key={j} style={{ position: 'relative', marginBottom: 12 }}>
                 <div style={{ position: 'absolute', left: -20, top: 4, width: 10, height: 10, borderRadius: '50%', background: C.gold }} />
-                <div style={{ fontSize: 12, fontWeight: 800, color: C.text }}>{it.label || it.title || `Шаг ${j + 1}`}</div>
-                <div style={{ fontSize: 13, color: '#c8c8d8', lineHeight: 1.6 }}>{it.text || it.desc || ''}</div>
+                <div style={{ fontSize: 12, fontWeight: 800, color: C.text }}>{asText(it.label || it.title) || `Шаг ${j + 1}`}</div>
+                <div style={{ fontSize: 13, color: '#c8c8d8', lineHeight: 1.6 }}>{asText(it.text || it.desc)}</div>
               </div>
             ))}
           </div>
@@ -383,21 +392,21 @@ function Block({ block }) {
     case 'compare':
       return (
         <div style={{ margin: '14px 0' }}>
-          {block.title && <div style={{ fontSize: 13, fontWeight: 800, color: C.text, marginBottom: 8 }}>{block.title}</div>}
+          {block.title && <div style={{ fontSize: 13, fontWeight: 800, color: C.text, marginBottom: 8 }}>{asText(block.title)}</div>}
           <div style={{ display: 'grid', gap: 8 }}>
             <div style={{ borderRadius: 12, padding: 12, background: C.red + '10', border: '1px solid #ffffff12' }}>
-              <div style={{ fontSize: 12, fontWeight: 800, color: C.red, marginBottom: 6 }}>{block.bad_title || 'Плохо'}</div>
+              <div style={{ fontSize: 12, fontWeight: 800, color: C.red, marginBottom: 6 }}>{asText(block.bad_title) || 'Плохо'}</div>
               <ul style={{ margin: 0, paddingLeft: 16 }}>
                 {(block.bad || block.left || []).map((x, j) => (
-                  <li key={j} style={{ fontSize: 12, color: '#c8c8d8', marginBottom: 4 }}>{x}</li>
+                  <li key={j} style={{ fontSize: 12, color: '#c8c8d8', marginBottom: 4 }}>{asText(x)}</li>
                 ))}
               </ul>
             </div>
             <div style={{ borderRadius: 12, padding: 12, background: C.green + '10', border: '1px solid #ffffff12' }}>
-              <div style={{ fontSize: 12, fontWeight: 800, color: C.green, marginBottom: 6 }}>{block.good_title || 'Хорошо'}</div>
+              <div style={{ fontSize: 12, fontWeight: 800, color: C.green, marginBottom: 6 }}>{asText(block.good_title) || 'Хорошо'}</div>
               <ul style={{ margin: 0, paddingLeft: 16 }}>
                 {(block.good || block.right || []).map((x, j) => (
-                  <li key={j} style={{ fontSize: 12, color: '#c8c8d8', marginBottom: 4 }}>{x}</li>
+                  <li key={j} style={{ fontSize: 12, color: '#c8c8d8', marginBottom: 4 }}>{asText(x)}</li>
                 ))}
               </ul>
             </div>
@@ -409,7 +418,7 @@ function Block({ block }) {
       if (block.text || block.content) {
         return (
           <div style={{ fontSize: 15, color: '#c8c8d8', lineHeight: 1.8, marginBottom: 14 }}>
-            {block.text || block.content}
+            {asText(block.text || block.content)}
           </div>
         );
       }
