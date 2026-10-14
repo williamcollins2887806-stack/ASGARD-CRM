@@ -363,7 +363,7 @@ module.exports = {
       },
     },
     {
-      name: 'pay: СЗ — tax = pay×0.06, transfer = pay+tax (дробные копейки)',
+      name: 'pay: СЗ — transfer = pay×(1.064/0.96)×1.22, info = pay×1.064 (ТЗ 14.10.2026)',
       run: async () => {
         const r = await api('GET', '/api/payouts/list/2026/9', { role: 'ADMIN' });
         const se = (r.data.rows || []).find((x) => x.is_self_employed && x.to_pay > 0);
@@ -374,9 +374,17 @@ module.exports = {
         assertOk(resp, 'pay se');
         if (resp.data.payment) createdPaymentIds.push(resp.data.payment.id);
         const pv = resp.data.preview;
-        const expectedTax = Math.round(pay * 0.06 * 100) / 100; // 20.00
-        assert(Math.abs(pv.tax_amount - expectedTax) < 0.01, `tax ${pv.tax_amount} != ${expectedTax}`);
-        assert(Math.abs(pv.transfer_amount - (pay + pv.tax_amount)) < 0.01, `transfer ${pv.transfer_amount}`);
+        const expectedTransfer = Math.round(pay * (1.064 / 0.96) * 1.22 * 100) / 100;
+        assert(Math.abs(pv.transfer_amount - expectedTransfer) < 0.02,
+          `transfer ${pv.transfer_amount} != ${expectedTransfer}`);
+        assert(Math.abs(pv.tax_amount - (expectedTransfer - pay)) < 0.02,
+          `tax ${pv.tax_amount} != transfer−pay`);
+        // Рабочему показываем X×1.064 — проверяем в БД (info_amount)
+        const c = await pg();
+        const { rows } = await c.query('SELECT info_amount FROM worker_payments WHERE id=$1', [resp.data.payment.id]);
+        const expInfo = Math.round(pay * 1.064 * 100) / 100;
+        assert(rows.length && Math.abs(Number(rows[0].info_amount) - expInfo) < 0.02,
+          `info_amount=${rows[0] && rows[0].info_amount}, ожидалось ${expInfo}`);
       },
     },
     {

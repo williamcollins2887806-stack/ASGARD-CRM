@@ -176,7 +176,9 @@ async function buildPayoutRows(db, year, month) {
     if (r.type === 'advance' && ['paid', 'confirmed'].includes(r.status)) a.advance += amt;
     if (r.type === 'penalty' && r.status !== 'cancelled') a.penalty += amt;
     if (r.type === 'salary' && ['paid', 'confirmed'].includes(r.status)) a.salary += amt;
-    if (r.type === 'bonus' && ['paid', 'confirmed'].includes(r.status)) a.bonus += amt;
+    // Премия — при status != cancelled (в т.ч. pending): «начислена, но ещё не
+    // выплачена» уже должна увеличивать «к выплате» (заказчик 14.10.2026).
+    if (r.type === 'bonus' && r.status !== 'cancelled') a.bonus += amt;
     if (r.type === 'per_diem' && ['paid', 'confirmed'].includes(r.status)) a.per_diem += amt;
   }
   // Долг с прошлых периодов = сумма pending-записей до месяца (по типам).
@@ -192,8 +194,8 @@ async function buildPayoutRows(db, year, month) {
 
   const rows = [];
   const totals = {
-    accrued: 0, carry: 0, advance: 0, penalty: 0, official: 0, bonus: 0, to_pay: 0,
-    employees: 0, overpaid_count: 0, paid_this_month: 0,
+      accrued: 0, carry: 0, advance: 0, penalty: 0, official: 0, bonus: 0, to_pay: 0,
+    employees: 0, overpaid_count: 0, paid_this_month: 0, carry_advance: 0,
   };
 
   // Выплачено за месяц (paid/confirmed всех типов со знаком) — для KPI/графика
@@ -226,6 +228,12 @@ async function buildPayoutRows(db, year, month) {
 
     const toPay = money(carry + accrued + bonus - penalty - advance - official);
     const carryPerDiem = money(debt.per_diem);
+    // Остаток на экране: положительный — долг компании рабочему («Остаток»),
+    // отрицательный — переплата/ранее выданный аванс («Аванс»). Заказчик
+    // 14.10.2026: «если остаток отрицательный — значит это аванс, и он должен
+    // быть в колонке Аванс». Математика to_pay не меняется (carry как есть).
+    const carryDebt = carry > 0 ? carry : 0;
+    const carryAdvance = carry < 0 ? money(-carry) : 0;
 
     // Показываем, если есть хоть что-то (иначе «пустой» не нужен)
     const hasAny = accrued !== 0 || carry !== 0 || advance !== 0 || penalty !== 0 ||
@@ -234,6 +242,12 @@ async function buildPayoutRows(db, year, month) {
 
     const fio = (emp.fio || emp.full_name || '').trim() || ('ID ' + empId);
     const det = detailMap.get(empId);
+    // «Выплачено» = платить больше нечего И была выплата за период.
+    // Раньше стояло `paid_this_period: !!det` — один АВАНС уводил человека
+    // в «Выплаченные», хотя `to_pay` оставался > 0 (баг 14.10.2026: Андрющенко
+    // получил аванс 30 000 из 72 500 и пропал из активных). Теперь строка
+    // уезжает вниз, только когда to_pay <= 0.
+    const fullyPaid = !!det && toPay <= 0;
     const rec = {
       employee_id: empId,
       fio,
@@ -243,6 +257,9 @@ async function buildPayoutRows(db, year, month) {
       se_payee_id: emp.se_payee_id || null,
       accrued,
       carry,
+      // Разложение остатка для UI: долг (Остаток) / переплата-аванс (Аванс).
+      carry_debt: carryDebt,
+      carry_advance: carryAdvance,
       carry_per_diem: carryPerDiem,
       advance,
       penalty,
@@ -253,7 +270,8 @@ async function buildPayoutRows(db, year, month) {
       ready: true,
       // Детали выплаты за период (для статусов строки)
       payment_id: det ? det.payment_id : null,
-      paid_this_period: !!det,
+      paid_this_period: fullyPaid,
+      has_payment_this_period: !!det,
       confirm: det ? det.confirmation_status : null,
       overdue: det && det.confirmation_status === 'awaiting' && det.confirmation_deadline
         ? new Date(det.confirmation_deadline) < new Date() : false,
@@ -268,6 +286,7 @@ async function buildPayoutRows(db, year, month) {
     totals.bonus += bonus;
     totals.to_pay += toPay;
     totals.employees += 1;
+    totals.carry_advance += carryAdvance;
     if (toPay < 0) totals.overpaid_count += 1;
   }
 

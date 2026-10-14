@@ -177,16 +177,18 @@ window.AsgardPayoutsPage = (function () {
       body.innerHTML = html;
 
       const tbody = $('#po_rows');
-      const active = rows.filter((r) => r.to_pay > 0 && !r.paid_this_period);
-      const zero = rows.filter((r) => r.to_pay <= 0 && !r.paid_this_period);
+      // Активные — все, кому ещё есть что выплатить (в т.ч. к_выплате = 0,
+      // если это результат аванса). В «Выплаченные» уходит только тот, у кого
+      // платить больше нечего И выплата за период была (см. payout-row.js).
+      const active = rows.filter((r) => !r.paid_this_period);
       const done = rows.filter((r) => r.paid_this_period);
-      const ordered = [...active, ...zero, ...done];
+      const ordered = [...active, ...done];
       // Разделитель перед «Выплаченные»
       let html2 = ordered.map((r, i) => {
-        const sep = (i === active.length + zero.length && done.length) ? '<tr class="po-sep"><td colspan="9">Выплаченные</td></tr>' : '';
+        const sep = (i === active.length && done.length) ? '<tr class="po-sep"><td colspan="9">Выплаченные</td></tr>' : '';
         return sep + rowHtml(r, i + 1);
       }).join('');
-      // Нумерация: активные+нулевые = 1..N; выплаченные — продолжают список
+      // Нумерация: активные = 1..N; выплаченные — продолжают список
       tbody.innerHTML = html2;
 
       // Кнопки — внутри таблицы (контейнер), не по document.
@@ -225,10 +227,19 @@ window.AsgardPayoutsPage = (function () {
     } else if (isDone && r.confirm === 'confirmed') {
       confirmBadge = '<span class="badge success">✓ подтв.</span>';
     }
-    // Кнопки: пока не выплачено — «Выплатить»; выплачено — «Подтвердить за рабочего» (если ждёт) + «Отменить».
+    // Кнопки: активному всегда доступна «Выплатить» (можно доплатить после
+    // аванса, баг 14.10.2026). Если за период уже была выплата, дополнительно
+    // показываем подтверждение и отмену.
+    const hadPayment = !!r.has_payment_this_period;
     let btn = '';
     if (!isDone) {
-      btn = `<button class="btn primary po-pay" data-id="${r.employee_id}">Выплатить</button>`;
+      btn = `<button class="btn primary po-pay" data-id="${r.employee_id}">Выплатить</button> `;
+      if (hadPayment && r.payment_id) {
+        if (r.confirm !== 'confirmed') {
+          btn += `<button class="btn ghost po-confirm" data-pid="${r.payment_id}">Подтвердить за рабочего</button> `;
+        }
+        btn += `<button class="btn ghost danger po-revert" data-pid="${r.payment_id}" title="Удалить выплату и вернуть в реестр">Отменить</button>`;
+      }
     } else {
       if (r.confirm !== 'confirmed') {
         btn += `<button class="btn ghost po-confirm" data-pid="${r.payment_id}">Подтвердить за рабочего</button> `;
@@ -237,12 +248,17 @@ window.AsgardPayoutsPage = (function () {
         btn += `<button class="btn ghost danger po-revert" data-pid="${r.payment_id}" title="Удалить выплату и вернуть в реестр">Отменить</button>`;
       }
     }
+    // Остаток: положительный — долг компании рабочему. Отрицательный — это
+    // переплата/ранее выданный аванс: показываем его в колонке «Аванс»
+    // (заказчик 14.10.2026), а не отрицательным числом в «Остатке».
+    const carryShown = r.carry_debt != null ? r.carry_debt : Math.max(0, r.carry);
+    const advanceShown = (Number(r.advance) || 0) + (r.carry_advance != null ? r.carry_advance : Math.max(0, -(r.carry) || 0));
     return `<tr class="${cls} ${flag}">
       <td class="po-num">${n}</td>
       <td>${esc(r.fio)}${over} ${confirmBadge}</td>
-      <td style="text-align:right">${fmt(r.carry)}</td>
+      <td style="text-align:right">${fmt(carryShown)}</td>
       <td style="text-align:right">${fmt(r.accrued)}</td>
-      <td style="text-align:right">${fmt(r.advance)}</td>
+      <td style="text-align:right">${fmt(advanceShown)}</td>
       <td style="text-align:right">${fmt(r.penalty)}</td>
       <td style="text-align:right">${fmt(r.official)}</td>
       <td style="text-align:right;font-weight:700;color:${r.to_pay > 0 ? 'var(--ok-t)' : 'var(--t2)'}">${fmt(r.to_pay)}</td>
@@ -256,8 +272,7 @@ window.AsgardPayoutsPage = (function () {
       kpi('К выплате за месяц', fmtR(t.to_pay), true),
       kpi('Начислено', fmtR(t.accrued), false),
       kpi('Остаток с прошлых', fmtR(t.carry), false),
-      kpi('Сотрудников', fmt(t.employees), false),
-    ].join('');
+      kpi('Сотрудников', fmt(t.employees), false),    ].join('');
   }
   function kpi(label, val, accent) {
     return `<div class="po-kpi${accent ? ' po-kpi--accent' : ''}">
@@ -449,6 +464,13 @@ window.AsgardPayoutsPage = (function () {
     const row = preview.row || {};
     const isSe = !!preview.is_self_employed;
     const taxRate = preview.tax_rate || 0.06;
+    // Коэффициенты пересчёта — с сервера (единый источник payout-calc.js).
+    // Фронт НЕ дублирует формулы: только перемножает.
+    const calc = preview.calc || {};
+    const seInfoCoef = Number(calc.se_info_coef) || 1.064;
+    const seTransferCoef = Number(calc.se_transfer_coef) || (1.064 / 0.96) * 1.22;
+    const officialMarkupRate = Number(calc.official_markup_rate) || 0.15;
+    const isNonSe = !isSe;
 
     let card = { total_paid_all_time: 0, avg_per_year: 0, by_year: [], current_year_months: [] };
     let monthly = { series: [] };
@@ -526,9 +548,39 @@ window.AsgardPayoutsPage = (function () {
         <div class="po-method-block">
           <div class="po-section-title">Способ выплаты</div>
           <div class="po-method"><span class="po-method-icon">${isSe ? '📱' : '💵'}</span><span class="po-method-text"></span></div>
+          ${isNonSe ? `
+          <label class="po-official-toggle">
+            <input type="checkbox" class="po-official">
+            <span class="po-official-box"></span>
+            <span class="po-official-txt">
+              Переводим официально <b>+${Math.round(officialMarkupRate * 100)}%</b>
+              <small>например: 100 000 ₽ → ${fmtR(Math.round(100000 * (1 + officialMarkupRate)))}</small>
+            </span>
+          </label>` : ''}
           <div class="po-recipient-wrap">
             <label class="po-lbl" for="po_recipient">Кому идти за деньгами (ФИО)</label>
             <input class="input po-recipient" id="po_recipient" placeholder="например: Путков Д. / РП">
+          </div>
+        </div>
+
+        <div class="po-adj-section">
+          <div class="po-section-title">Премия / удержание</div>
+          <p class="po-adj-head">Сумма сразу попадёт в «К выплате», табель и расчётный лист. Деньги переводятся отдельно кнопкой выплаты.</p>
+          <div class="po-form-grid">
+            <div>
+              <label class="po-lbl" for="po_bonus">🎁 Премия, ₽</label>
+              <input class="input po-bonus-amount" id="po_bonus" type="number" min="0" step="0.01" placeholder="0" inputmode="decimal">
+              <input class="input po-bonus-comment" id="po_bonus_comment" placeholder="Кто согласовал и за что" autocomplete="off">
+            </div>
+            <div>
+              <label class="po-lbl" for="po_penalty">⛔ Удержание / штраф, ₽</label>
+              <input class="input po-penalty-amount" id="po_penalty" type="number" min="0" step="0.01" placeholder="0" inputmode="decimal">
+              <input class="input po-penalty-comment" id="po_penalty_comment" placeholder="За что удержание" autocomplete="off">
+            </div>
+          </div>
+          <div class="po-adj-actions">
+            <button type="button" class="btn ghost po-adj-save" disabled>Применить премию / удержание</button>
+            <span class="po-adj-status" aria-live="polite"></span>
           </div>
         </div>
 
@@ -544,11 +596,9 @@ window.AsgardPayoutsPage = (function () {
     let kind = 'advance';
     let armedOver = false;
     let armedDuplicate = false;
+    let official = false; // галка «переводим официально» (только для не-СЗ)
 
     const KIND_LABEL = { advance: 'Аванс', salary: 'Зарплата' };
-    const methodText = isSe
-      ? 'Самозанятый: перевод через СЗ-сервис, налог 6% сверху'
-      : 'Наличными (способ определяется системой)';
 
     const overlay = showModal({
       title: 'Выплата — ' + esc(preview.employee.fio || ''),
@@ -566,13 +616,12 @@ window.AsgardPayoutsPage = (function () {
         (monthly.series || []).map((m) => m.accrued || 0),
         (monthly.series || []).map((m) => m.paid || 0),
         MONTHS.map((x) => x.slice(0, 3)));
-      q('.po-method-text').textContent = methodText;
 
       const setKind = (k) => {
         kind = k;
         qa('.po-kind').forEach((b) => b.classList.toggle('active', b.dataset.kind === k));
-        q('.po-transfer-wrap').style.display = isSe ? 'none' : 'block';
-        q('.po-recipient-wrap').style.display = isSe ? 'none' : 'block';
+        q('.po-transfer-wrap').style.display = (isSe || official) ? 'none' : 'block';
+        q('.po-recipient-wrap').style.display = (isSe || official) ? 'none' : 'block';
         recalc(root);
       };
       qa('.po-kind').forEach((b) => { b.onclick = () => setKind(b.dataset.kind); });
@@ -587,6 +636,36 @@ window.AsgardPayoutsPage = (function () {
           recalc(root);
         };
       });
+
+      // Галка «переводим официально» (+15%, канал банк, кассу не трогаем)
+      const offEl = q('.po-official');
+      if (offEl) {
+        offEl.onchange = () => {
+          official = offEl.checked;
+          q('.po-transfer-wrap').style.display = (isSe || official) ? 'none' : 'block';
+          q('.po-recipient-wrap').style.display = (isSe || official) ? 'none' : 'block';
+          recalc(root);
+        };
+      }
+
+      // Премия / удержание — моментальная запись суммы в «к выплате»
+      const adjSave = q('.po-adj-save');
+      const adjStatus = q('.po-adj-status');
+      const syncAdj = () => {
+        if (!adjSave) return;
+        const hasAmt = parseFloat(q('.po-bonus-amount').value) > 0 || parseFloat(q('.po-penalty-amount').value) > 0;
+        adjSave.disabled = !hasAmt;
+      };
+      q('.po-bonus-amount').oninput = syncAdj;
+      q('.po-penalty-amount').oninput = syncAdj;
+      q('.po-bonus-amount').onchange = () => saveAdjustment(root, 'bonus');
+      q('.po-penalty-amount').onchange = () => saveAdjustment(root, 'penalty');
+      adjSave.onclick = async () => {
+        const b = await saveAdjustment(root, 'bonus');
+        const p = await saveAdjustment(root, 'penalty');
+        if (b || p) { adjStatus.textContent = 'Готово ✓'; setTimeout(() => { adjStatus.textContent = ''; }, 2500); }
+      };
+
       q('.po-cancel').onclick = () => hideModal();
       q('.po-do').onclick = () => doPay(root);
       // Сразу заполняем суммой «к выплате», чтобы предпросмотр был виден
@@ -595,16 +674,54 @@ window.AsgardPayoutsPage = (function () {
       setKind('advance');
     }
 
+    /** Записать премию/удержание, не закрывая модалку. Возвращает true при успехе. */
+    async function saveAdjustment(root, type) {
+      const isBonus = type === 'bonus';
+      const amtEl = root.querySelector(isBonus ? '.po-bonus-amount' : '.po-penalty-amount');
+      const cmtEl = root.querySelector(isBonus ? '.po-bonus-comment' : '.po-penalty-comment');
+      const amount = parseFloat(amtEl.value) || 0;
+      if (!(amount > 0)) return false;
+      const comment = (cmtEl.value || '').trim();
+      if (!comment) {
+        toast('Нужен комментарий', isBonus
+          ? 'Укажите: кто согласовал премию и за что'
+          : 'Укажите: за что удержание/штраф', 'err');
+        cmtEl.focus();
+        return false;
+      }
+      try {
+        await apiPost('/api/payouts/adjustment', {
+          employee_id: employeeId, year: state.year, month: state.month,
+          type, amount, comment,
+        });
+        toast('Записано', (isBonus ? 'Премия ' : 'Удержание ') + fmtR(amount) + ' — учтено в «К выплате»', 'ok');
+        // Пересобрать модалку с новым «к выплате» (пользователь не теряет контекст)
+        hideModal();
+        await ctx.reload();
+        openPayModal(employeeId);
+        return true;
+      } catch (e) {
+        toast('Ошибка', e.message, 'err');
+        return false;
+      }
+    }
+
     function recalc(root) {
       if (!root) return { pay: 0, transfer: 0, over: false };
       const pay = parseFloat(root.querySelector('.po-amount').value) || 0;
-      let transfer = pay, tax = 0;
+      let transfer = pay, info = pay;
       if (isSe) {
-        tax = Math.round(pay * taxRate * 100) / 100;
-        transfer = Math.round((pay + tax) * 100) / 100;
+        // Рабочему показываем X × 1.064; реальный перевод — X × (1.064/0.96) × 1.22.
+        info = Math.round(pay * seInfoCoef * 100) / 100;
+        transfer = Math.round(pay * seTransferCoef * 100) / 100;
+      } else if (official) {
+        // «Официально»: +15% к переводу, канал — банк.
+        transfer = Math.round(pay * (1 + officialMarkupRate) * 100) / 100;
+        info = transfer;
       } else {
         const t = parseFloat(root.querySelector('.po-transfer').value);
         transfer = Number.isFinite(t) && t > 0 ? t : pay;
+        info = transfer;
       }
       const over = pay > toPay && pay > 0;
       const after = Math.round((toPay - pay) * 100) / 100;
@@ -614,16 +731,18 @@ window.AsgardPayoutsPage = (function () {
       else if (pay > 0) hint.innerHTML = `Останется к выплате: <b>${fmtR(Math.max(0, after))}</b>`;
       else hint.innerHTML = '';
 
-      // Предпросмотр БАННЕРА РАБОЧЕГО (как в приложении) — по-русски и понятно.
+      // Предпросмотр БАННЕРА РАБОЧЕГО — ровно то, что увидит рабочий.
+      // СЗ: показываем только X × 1.064 (внутренняя кухня Рестаф/НДС скрыта).
+      // `info` уже посчитан выше в этой же функции.
       root.querySelector('.po-wa').innerHTML = `
         <div class="po-wa-card">
-          <div class="po-wa-head">💰 Вам произведена выплата ${fmtR(pay)}</div>
+          <div class="po-wa-head">💰 Вам произведена выплата ${fmtR(info)}</div>
           <div class="po-wa-sec">${KIND_LABEL[kind]} за ${MONTHS[state.month - 1]} ${state.year}</div>
-          <div class="po-wa-row"><span>Выплачиваем</span><b>${fmtR(pay)}</b></div>
-          ${isSe ? `<div class="po-wa-row"><span>Налог СЗ (${Math.round(taxRate * 100)}%)</span><b>${fmtR(tax)}</b></div>` : ''}
-          <div class="po-wa-row po-wa-total"><span>Переведено рабочему</span><b class="po-ok">${fmtR(transfer)}</b></div>
-          ${!isSe && transfer > pay ? `<div class="po-wa-row"><span>Возврат в кассу</span><b class="po-warn">${fmtR(transfer - pay)}</b></div>` : ''}
-          <div class="po-wa-row"><span>Способ</span><b>${esc(methodText)}</b></div>
+          <div class="po-wa-row po-wa-total"><span>Переведено рабочему</span><b class="po-ok">${fmtR(info)}</b></div>
+          ${!isSe && !official && transfer > pay ? `<div class="po-wa-row"><span>Возврат в кассу</span><b class="po-warn">${fmtR(transfer - pay)}</b></div>` : ''}
+          <div class="po-wa-row"><span>Способ</span><b>${esc(isSe
+            ? 'СЗ-сервис (ReStaff)'
+            : (official ? 'Официально, перевод на счёт' : 'Наличными'))}</b></div>
           <div class="po-wa-note">Рабочий получит уведомление и подтвердит получение кодом.</div>
         </div>`;
       return { pay, transfer, over };
@@ -644,11 +763,12 @@ window.AsgardPayoutsPage = (function () {
         employee_id: employeeId, year: state.year, month: state.month, kind,
         pay_amount: pay, confirm_over: over || undefined,
         confirm_duplicate: armedDuplicate || undefined,
-        payout_platform: isSe ? 'restaff' : 'cash',
-        payout_recipient_note: (!isSe && root.querySelector('.po-recipient'))
+        official_transfer: official || undefined,
+        payout_platform: isSe ? 'restaff' : (official ? 'bank' : 'cash'),
+        payout_recipient_note: (!isSe && !official && root.querySelector('.po-recipient'))
           ? (root.querySelector('.po-recipient').value || null) : null,
       };
-      if (!isSe) payload.transfer_amount = transfer;
+      if (!isSe && !official) payload.transfer_amount = transfer;
       doBtn.disabled = true;
       doBtn.textContent = 'Проводим…';
       try {

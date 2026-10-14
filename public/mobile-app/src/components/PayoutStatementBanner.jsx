@@ -112,13 +112,17 @@ export default function PayoutStatementBanner() {
           {overdue && <span style={{ color: 'var(--red-soft)' }}> Срок (72 ч) истёк, подтвердите.</span>}
         </div>
 
-        {/* Расчётная ведомость */}
+        {/* Расчётная ведомость. По ТЗ заказчика рабочему показываем ТОЛЬКО
+            итоговую сумму (СЗ: X × 1.064). Комиссия площадки и НДС — внутренняя
+            кухня компании, рабочему не показываем. */}
         <div style={statementStyle}>
           <Row label="Тип" value={KIND_LABELS[p.type] || TYPE_LABELS[p.type] || p.type} />
           {p.pay_year && <Row label="Период" value={`${String(p.pay_month).padStart(2, '0')}.${p.pay_year}`} />}
-          <Row label="К выплате" value={money(p.amount)} strong />
-          {p.tax_amount > 0 && <Row label="Налог СЗ (6%)" value={money(p.tax_amount)} />}
-          <Row label="Переведено" value={money(p.transfer_amount || p.amount)} />
+          <Row
+            label="К выплате"
+            value={money(p.info_amount != null ? p.info_amount : (p.transfer_amount || p.amount))}
+            strong
+          />
           {p.payout_platform && <Row label="Способ" value={payoutLabel(p.payout_platform)} />}
           {p.payout_recipient_note && <Row label="Кому обращаться" value={p.payout_recipient_note} />}
         </div>

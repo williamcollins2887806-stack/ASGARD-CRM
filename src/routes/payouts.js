@@ -19,6 +19,7 @@
 const { requirePayoutAccess, hasPayoutAccess, getPayoutManagerIds } = require('../lib/payouts-access');
 const { getPeriodWarnings } = require('../lib/payout-period');
 const { buildPayoutRows } = require('../lib/payout-row');
+const { loadPayoutCalcSettings, calcPayout } = require('../lib/payout-calc');
 const { logError } = require('../lib/log-error');
 const crypto = require('crypto');
 
@@ -250,6 +251,81 @@ async function routes(fastify, options) {
     }
   });
 
+  // ─── POST /adjustment — начисление премии / удержание (штраф) ─────────────
+  // Тело: { employee_id, year, month, type: 'bonus'|'penalty', amount, comment }
+  //   comment обязателен по ТЗ: «кто согласовал и за что» (премия) /
+  //   «за что удержание» (штраф). Пишется в worker_payments (status='paid',
+  //      корректировка «к выплате», физическую выплату проводит /pay.
+  //      status='pending' — деньги ещё не двигались, поэтому факт перевода
+  //      (paid_this_month, «выплачено в поле») этими записями НЕ раздувается.
+  //      Динамика учитывается в payout-row (bonus/penalty при status != cancelled),
+  //      табеле (timesheet-v2) и расчётном листе — там фильтр тот же.
+  fastify.post('/adjustment', payoutAuth, async (request, reply) => {
+    const b = request.body || {};
+    const empId = parseInt(b.employee_id, 10);
+    const y = parseInt(b.year, 10);
+    const m = parseInt(b.month, 10);
+    const type = b.type;
+    if (!Number.isInteger(empId) || empId <= 0) return reply.code(400).send({ error: 'employee_id обязателен' });
+    if (!isValidPeriod(y, m)) return reply.code(400).send({ error: 'Некорректный период' });
+    if (!['bonus', 'penalty'].includes(type)) return reply.code(400).send({ error: 'type: bonus|penalty' });
+    const amount = parseMoney(b.amount);
+    if (amount === null || amount <= 0) return reply.code(400).send({ error: 'amount > 0' });
+    const comment = (b.comment || '').toString().trim();
+    if (!comment) {
+      return reply.code(400).send({
+        error: 'comment_required',
+        message: type === 'bonus'
+          ? 'Укажите комментарий: кто согласовал премию и за что'
+          : 'Укажите комментарий: за что удержание/штраф',
+      });
+    }
+
+    const userId = request.user.id;
+    const client = await db.pool.connect();
+    try {
+      await client.query('BEGIN');
+      // Анти-гонка по (сотрудник, тип, период) — чтобы двойной клик не создал
+      // две премии/удержания.
+      const lockKey2 = (type === 'penalty' ? 5 : 6) * 1000000 + (y % 100) * 100 + m;
+      await client.query('SELECT pg_advisory_xact_lock($1, $2)', [empId, lockKey2]);
+
+      const { rows: empRows } = await client.query(
+        `SELECT id, COALESCE(NULLIF(TRIM(fio),''), NULLIF(TRIM(full_name),''), 'ID '||id) AS fio
+           FROM employees WHERE id = $1`, [empId]);
+      if (!empRows.length) { await client.query('ROLLBACK'); return reply.code(404).send({ error: 'Сотрудник не найден' }); }
+      const emp = empRows[0];
+
+      // paid_by_role — из роли (CHECK chk_wp_paid_by_role_v243 ждёт нижний регистр:
+      // admin|buh|director|pm). Раньше передавали request.user.role ('ADMIN') → 500.
+      const ROLE_TO_PAID_BY = { ADMIN: 'admin', BUH: 'buh', DIRECTOR_GEN: 'director', DIRECTOR_COMM: 'director', DIRECTOR_DEV: 'director', PM: 'pm', HEAD_PM: 'pm', TO: 'buh', HEAD_TO: 'buh', PROC: 'buh' };
+      const paidByRole = ROLE_TO_PAID_BY[request.user.role] || 'buh';
+
+      const { rows: ins } = await client.query(`
+        INSERT INTO worker_payments (
+          employee_id, work_id, type, amount, status, payment_method, paid_by, paid_by_role, paid_at,
+          pay_year, pay_month, comment, created_by, created_at, confirmation_status
+        ) VALUES ($1, NULL, $2, $3, 'pending', 'adjustment', $4, $5, NOW(), $6, $7, $8, $4, NOW(), NULL)
+        RETURNING id, type, amount, comment, pay_year, pay_month
+      `, [empId, type, amount, userId, paidByRole, y, m, comment]);
+
+      await client.query(`
+        INSERT INTO audit_log (actor_user_id, entity_type, entity_id, action, payload_json, created_at)
+        VALUES ($1, 'worker_payments', $2, $3, $4::jsonb, NOW())
+      `, [userId, ins[0].id, type === 'bonus' ? 'payout_bonus_added' : 'payout_penalty_added',
+        JSON.stringify({ employee_id: empId, employee_fio: emp.fio, type, amount, comment, year: y, month: m })]);
+
+      await client.query('COMMIT');
+      return reply.send({ ok: true, adjustment: ins[0] });
+    } catch (err) {
+      try { await client.query('ROLLBACK'); } catch (_) {}
+      logError(fastify, '[payouts] POST /adjustment error', err, request);
+      return reply.code(500).send({ error: 'Ошибка сервера' });
+    } finally {
+      client.release();
+    }
+  });
+
   // ─── POST /pay — совершить выплату ────────────────────────────────────────
   // Тело: { employee_id, year, month, kind: 'advance'|'salary', pay_amount,
   //         transfer_amount?, payout_platform?, payout_recipient_note?,
@@ -294,7 +370,7 @@ async function routes(fastify, options) {
       if (!empRows.length) { await client.query('ROLLBACK'); return reply.code(404).send({ error: 'Сотрудник не найден' }); }
       const emp = empRows[0];
 
-      // Ставка налога СЗ (из настроек)
+      // Ставка налога СЗ (оставлено для справки/логов; расчёт идёт через payout-calc)
       let taxRate = 0.06;
       try {
         const { rows: st } = await client.query("SELECT value_json FROM settings WHERE key='self_employed_tax_rate' LIMIT 1");
@@ -302,20 +378,22 @@ async function routes(fastify, options) {
       } catch (_) {}
 
       const isSe = !!emp.is_self_employed;
-      // ТЗ: два поля — «сколько выплачиваем» (amount) и «сколько переводим»
-      // (transfer_amount). Для не-СЗ «переводим» может быть БОЛЬШЕ «выплачиваем»
-      // (пример заказчика: выплачиваем 70т, переводим 100т → 30 рабочий несёт
-      // в кассу). Для СЗ налог 6% добавляется сверху к переведённой сумме.
-      let taxAmount = 0;
-      let transferAmount = payAmount;
-      if (isSe) {
-        taxAmount = Math.round(payAmount * taxRate * 100) / 100;
-        transferAmount = Math.round((payAmount + taxAmount) * 100) / 100;
-      } else if (b.transfer_amount != null && b.transfer_amount !== '') {
-        const ta = parseMoney(b.transfer_amount);
-        if (ta === null || ta <= 0) return reply.code(400).send({ error: 'transfer_amount: некорректная сумма' });
-        transferAmount = ta;
-      }
+      // Формула пересчёта «выплата → перевод» — единый источник (payout-calc.js):
+      //   СЗ:  переводим = выплата × 1.064/0.96 × 1.22 (Рестаф 3.5% + НДС 22%)
+      //   нал: галка «официально» → +15%; иначе либо ручная сумма, либо 1:1.
+      const calcSettings = await loadPayoutCalcSettings(client);
+      const calc = calcPayout({
+        payAmount,
+        isSelfEmployed: isSe,
+        officialTransfer: b.official_transfer === true,
+        transferAmountManual: b.transfer_amount != null && b.transfer_amount !== ''
+          ? parseMoney(b.transfer_amount) : null,
+        settings: calcSettings,
+      });
+      const transferAmount = calc.transferAmount;
+      const taxAmount = calc.taxAmount;
+      const officialTransfer = calc.officialTransfer;
+      const payoutPlatform = isSe ? 'restaff' : (officialTransfer ? 'bank' : (b.payout_platform || 'cash'));
 
       // Проверка «сотрудник столько не заработал»
       let earnings = null;
@@ -357,7 +435,7 @@ async function routes(fastify, options) {
       // payment_method выводим из площадки (влияет на источник денег в worker_payment_source_v):
       //   bank → company_bank, restaff → company_se, card → pm_cash/card, cash → cash, other → transfer.
       const PLATFORM_METHOD = { bank: 'bank', restaff: 'self', card: 'card', cash: 'cash', other: 'transfer' };
-      const paymentMethod = PLATFORM_METHOD[b.payout_platform] || 'bank';
+      const paymentMethod = PLATFORM_METHOD[payoutPlatform] || 'bank';
       // paid_by_role — из роли плательщика (для отчётности/фильтров).
       const ROLE_TO_PAID_BY = { ADMIN: 'admin', BUH: 'buh', DIRECTOR_GEN: 'director', DIRECTOR_COMM: 'director', DIRECTOR_DEV: 'director', PM: 'pm', HEAD_PM: 'pm', TO: 'buh', HEAD_TO: 'buh', PROC: 'buh' };
       const paidByRole = ROLE_TO_PAID_BY[request.user.role] || 'buh';
@@ -366,15 +444,15 @@ async function routes(fastify, options) {
           employee_id, work_id, type, amount, status, payment_method, paid_by, paid_by_role, paid_at,
           pay_year, pay_month, comment, created_by, created_at,
           payout_platform, payout_recipient_note, transfer_amount, tax_amount,
-          confirmation_status, confirmation_deadline, payout_batch_id
+          confirmation_status, confirmation_deadline, payout_batch_id, official_transfer, info_amount
         ) VALUES ($1, NULL, $2, $3, 'paid', $4, $5, $6, NOW(), $7, $8, $9, $5, NOW(),
-                  $10, $11, $12, $13, 'awaiting', $14, $15)
-        RETURNING id, amount, transfer_amount, tax_amount, confirmation_status, confirmation_deadline
+                  $10, $11, $12, $13, 'awaiting', $14, $15, $16, $17)
+        RETURNING id, amount, transfer_amount, tax_amount, info_amount, confirmation_status, confirmation_deadline
       `, [
         empId, kind, payAmount, paymentMethod,
         userId, paidByRole, y, m, b.comment || null,
-        b.payout_platform || null, b.payout_recipient_note || null,
-        transferAmount, taxAmount, deadline, batchId,
+        payoutPlatform, b.payout_recipient_note || null,
+        transferAmount, taxAmount, deadline, batchId, officialTransfer, calc.infoAmount,
       ]);
 
       await client.query(`
@@ -383,7 +461,7 @@ async function routes(fastify, options) {
       `, [userId, ins[0].id, JSON.stringify({
         kind, pay_amount: payAmount, transfer_amount: transferAmount, tax_amount: taxAmount,
         employee_id: empId, employee_fio: emp.fio, year: y, month: m,
-        payout_platform: b.payout_platform || null, batch_id: batchId,
+        payout_platform: payoutPlatform, official_transfer: officialTransfer, batch_id: batchId,
       })]);
 
       await client.query('COMMIT');
@@ -391,7 +469,7 @@ async function routes(fastify, options) {
       // Уведомление + код подтверждения (MAX → SMS, in-app баннер). Этап 5.
       try {
         const { sendPayoutCode } = require('../lib/payout-notify');
-        await sendPayoutCode(fastify, db, { paymentId: ins[0].id, employeeId: empId, amount: payAmount, period: { year: y, month: m } });
+        await sendPayoutCode(fastify, db, { paymentId: ins[0].id, employeeId: empId, amount: calc.infoAmount, period: { year: y, month: m } });
       } catch (e) {
         fastify.log.warn(`[payouts] notify fail: ${e.message}`);
       }
@@ -402,7 +480,8 @@ async function routes(fastify, options) {
         preview: {
           employee_id: empId, fio: emp.fio, kind,
           pay_amount: payAmount, transfer_amount: transferAmount, tax_amount: taxAmount,
-          is_self_employed: isSe, year: y, month: m,
+          is_self_employed: isSe, official_transfer: officialTransfer,
+          payout_platform: payoutPlatform, year: y, month: m,
         },
       });
     } catch (err) {
@@ -432,10 +511,20 @@ async function routes(fastify, options) {
         const { rows: st } = await db.query("SELECT value_json FROM settings WHERE key='self_employed_tax_rate' LIMIT 1");
         if (st[0]) { const v = parseFloat(String(st[0].value_json).replace(/[^\d.\-]/g, '')); if (Number.isFinite(v)) taxRate = v; }
       } catch (_) {}
+      // Коэффициенты пересчёта для фронта (единый источник — payout-calc.js).
+      // Фронт ими только перемножает — формулы дублировать нельзя.
+      const calcSettings = await loadPayoutCalcSettings(db);
       return reply.send({
         employee: empRows[0] || { id: empId },
         row, tax_rate: taxRate,
         is_self_employed: !!(empRows[0] && empRows[0].is_self_employed),
+        calc: {
+          se_info_coef: calcSettings.seInfoCoef,
+          se_transfer_coef: calcSettings.seTransferCoef,
+          official_markup_rate: calcSettings.officialMarkupRate,
+          se_commission_rate: calcSettings.seCommissionRate,
+          se_vat_rate: calcSettings.seVatRate,
+        },
       });
     } catch (err) {
       logError(fastify, '[payouts] GET /preview error', err, request);
@@ -479,7 +568,7 @@ async function routes(fastify, options) {
       const empId = request.fieldEmployee ? request.fieldEmployee.id : null;
       if (!empId) return reply.code(401).send({ error: 'Не авторизован' });
       const { rows } = await db.query(`
-        SELECT id, amount, transfer_amount, tax_amount, type, paid_at,
+        SELECT id, amount, transfer_amount, tax_amount, info_amount, type, paid_at,
                payout_platform, payout_recipient_note, confirmation_status, confirmation_deadline,
                COALESCE(pay_year, EXTRACT(YEAR FROM created_at)::int) AS pay_year,
                COALESCE(pay_month, EXTRACT(MONTH FROM created_at)::int) AS pay_month
