@@ -22,12 +22,34 @@ function isEnabled() {
 /**
  * MAX (Green API v3) config.
  * GREEN_API_MAX_INSTANCE / GREEN_API_MAX_TOKEN fallback to GREEN_API_* when empty
- * (shared console credentials; Max still uses api.green-api.com/v3 by default).
+ * (shared console credentials).
+ *
+ * Хост MAX определяется ТАК (инцидент 10–14.10.2026): api.green-api.com/v3
+ * оказался недоступен, а номерной хост инстанса (31xx → 3100.api.green-api.com,
+ * 35xx → 3500.api.green-api.com) работал. Молчаливый fallback на мёртвый
+ * api.green-api.com/v3 прятал сбой: коды в MAX не уходили НИКОМУ, а в журнале
+ * было лишь «fetch failed» без адреса. Теперь:
+ *   1) явный GREEN_API_MAX_URL — если задан;
+ *   2) иначе ВЫВОДИМ хост из инстанса (31xx→3100, 35xx→3500, общий случай → XX00);
+ *   3) и только если инстанс не распознан — дефолт 3100.api.green-api.com
+ *      (рабочий номерной хост, НЕ удалённый api.green-api.com/v3).
  */
+function maxShardHost(instance) {
+  const m = String(instance || '').match(/^(\d{2})\d{6,}$/);
+  return m ? `https://${m[1]}00.api.green-api.com` : null;
+}
+
+function maxApiBaseUrl(instance) {
+  const explicit = (process.env.GREEN_API_MAX_URL || '').trim();
+  if (explicit) return explicit.replace(/\/+$/, '');
+  return maxShardHost(instance) || 'https://3100.api.green-api.com';
+}
+
 function getMaxConfig() {
+  const instance = process.env.GREEN_API_MAX_INSTANCE || process.env.GREEN_API_INSTANCE || '';
   return {
-    apiUrl:   process.env.GREEN_API_MAX_URL || 'https://api.green-api.com/v3',
-    instance: process.env.GREEN_API_MAX_INSTANCE || process.env.GREEN_API_INSTANCE || '',
+    apiUrl:   maxApiBaseUrl(instance),
+    instance,
     token:    process.env.GREEN_API_MAX_TOKEN || process.env.GREEN_API_TOKEN || '',
   };
 }
@@ -102,12 +124,22 @@ async function gaMaxRequest(method, endpoint, body) {
   const url = `${apiUrl}/waInstance${instance}/${endpoint}/${token}`;
   const opts = { method, headers: { 'Content-Type': 'application/json' } };
   if (body && method !== 'GET') opts.body = JSON.stringify(body);
-  const res = await fetch(url, opts);
+  let res;
+  try {
+    res = await fetch(url, opts);
+  } catch (e) {
+    // Диагностика (инцидент 10–14.10.2026): «fetch failed» без адреса не давал
+    // понять, что мёртв api.green-api.com, а не сам инстанс MAX. Явно логируем хост.
+    console.error(`[Green API Max] host=${apiUrl} instance=${instance} ${method} ${endpoint} → ${e.message}` +
+      (e.cause ? ` (${e.cause.code || e.cause.message})` : ''));
+    throw e;
+  }
   const text = await res.text();
   let data;
   try { data = JSON.parse(text); } catch { data = { raw: text }; }
   if (!res.ok) {
     const msg = data?.message || data?.error || text;
+    console.error(`[Green API Max] host=${apiUrl} instance=${instance} ${method} ${endpoint} → ${res.status}: ${String(msg).slice(0, 200)}`);
     throw new Error(`Green API Max ${method} ${endpoint} → ${res.status}: ${msg}`);
   }
   return data;
