@@ -27,7 +27,7 @@ sys.path.insert(0, str(ROOT / "tools"))
 import shell_guard  # noqa: E402
 import paramiko
 
-VER = "20.28.205"
+VER = "20.28.207"
 SSH_HOST = "92.242.61.184"
 SSH_USER = "root"
 SSH_KEY = str(Path.home() / ".ssh" / "asgard_crm_deploy")
@@ -45,6 +45,8 @@ MIGRATIONS = [
     "migrations/V388__payout_code_channel_none_down.sql",
     "migrations/V389__employee_city_split.sql",
     "migrations/V389__employee_city_split_down.sql",
+    "migrations/V390__payout_se_transfer_formula.sql",
+    "migrations/V390__payout_se_transfer_formula_down.sql",
 ]
 # Только up-миграции применяем на проде
 MIGRATIONS_UP = [m for m in MIGRATIONS if not m.endswith("_down.sql")]
