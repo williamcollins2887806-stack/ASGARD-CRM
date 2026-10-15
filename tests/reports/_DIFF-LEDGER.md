@@ -8036,8 +8036,10 @@ Fade `opacity 0→1` на каждый `renderPanel` усиливал мерца
 - **Проверено на проде:** доступность `deepseek/deepseek-v4.1-flash` (в каталоге routerai = 568 моделей),
   tool-calling (`finish=tool_calls`, валидные аргументы), `response_format: json_object` (`{"ok":true,"sum":1200}`),
   контекст 1 048 576.
-- **Краевой случай (важно):** v4.1-flash — тоже **reasoning-модель**. При `max_tokens=300` в **2/5** прогонов
-  `content` пустой (`finish_reason=length`, reasoning съедает бюджет). С `reasoning:{enabled:false}` — **0/5** пустых.
+- **Краевой случай (важно):** v4.1-flash — тоже **reasoning-модель**. При `max_tokens=300` и включённом
+  reasoning `content` пустой (`finish_reason=length`, reasoning съедает весь бюджет). Замер на проде, N=10:
+  короткий промпт — **9/10 пустых**, длинный — **2/10**; с `reasoning:{enabled:false}` и `max_tokens=1200` —
+  **0/10** на обоих промптах. Разброс зависит от формулировки промпта, поэтому фиксируем худший случай.
 - **Следствие:** добавлен проброс `reasoning` в `ai-provider` (`complete()` → `callOpenAI()` → `_callOpenAIOnce()` → `body.reasoning`).
 
 ## D-270. Утечка сырого JSON-объекта в чат Мимира (15.10.2026)
