@@ -36,6 +36,8 @@ function toPlainText(input) {
   const INLINE_FENCE = /(^|[\s([{«"'.,;:!?])/;
   const INLINE_TAIL = /(?=[\s)\]}»"'.,;:!?]|$)/;
   for (let pass = 0; pass < 2; pass++) {
+    // `***x***` (жирный курсив) — снять целиком, в т.ч. с пробелами внутри.
+    s = s.replace(/(^|[\s([{«"'.,;:!?])\*{3}([^*\n]+?)\*{3}(?=[\s)\]}»"'.,;:!?]|$)/g, '$1$2');
     s = s.replace(/\*\*([^*\n]+)\*\*/g, '$1');
     s = s.replace(/__([^_\n]+)__/g, '$1');
     const before = s;
