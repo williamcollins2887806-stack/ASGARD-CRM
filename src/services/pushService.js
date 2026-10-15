@@ -11,6 +11,8 @@
  * Session 15: Push Actions + Badge
  */
 
+const { toPlainText } = require('../lib/plain-text');
+
 let webpush;
 try { webpush = require('web-push'); } catch (e) { webpush = null; }
 
@@ -64,8 +66,8 @@ async function sendPush(db, userId, payload) {
   const badgeCount = await getBadgeCount(db, userId);
 
   const pushPayload = JSON.stringify({
-    title: payload.title || 'АСГАРД CRM',
-    body: payload.body || '',
+    title: toPlainText(payload.title || 'АСГАРД CRM').replace(/\s*\n+\s*/g, ' ').trim() || 'АСГАРД CRM',
+    body: toPlainText(payload.body || '').replace(/\s*\n+\s*/g, ' ').trim(),
     icon: payload.icon || './assets/img/icon-192.png',
     badge: './assets/img/icon-96.png',
     tag: payload.tag || ('asgard-' + Date.now()),

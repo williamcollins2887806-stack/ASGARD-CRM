@@ -5,6 +5,8 @@
  * Used across all business event routes.
  */
 
+const { toPlainText } = require('../lib/plain-text');
+
 /** Push / cold-open: desktop `#/path` → mobile `/m/path`. */
 function toPushUrl(link) {
   if (!link) return '/m/';
@@ -44,7 +46,9 @@ async function createNotification(db, { user_id, title, message, type, link }) {
     try {
       const telegram = require('./telegram');
       if (telegram && telegram.sendNotification) {
-        await telegram.sendNotification(user_id, `🔔 *${title}*\n\n${message}`);
+        const plainTitle = toPlainText(title).replace(/\s*\n+\s*/g, ' ').trim() || title;
+        const plainMessage = toPlainText(message || '').trim();
+        await telegram.sendNotification(user_id, `🔔 *${plainTitle}*\n\n${plainMessage}`);
       }
     } catch (e) {
       // Telegram may not be configured
@@ -74,8 +78,8 @@ async function createNotification(db, { user_id, title, message, type, link }) {
             [user_id]
           );
           const payload = JSON.stringify({
-            title,
-            body: message || '',
+            title: toPlainText(title).replace(/\s*\n+\s*/g, ' ').trim() || title,
+            body: toPlainText(message || '').replace(/\s*\n+\s*/g, ' ').trim(),
             url: toPushUrl(link),
             // Уникальный tag на каждое уведомление: одинаковый tag заставлял ОС
             // молча подменять предыдущее уведомление (без звука/вибрации).

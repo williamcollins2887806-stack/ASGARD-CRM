@@ -12,6 +12,8 @@
  *   });
  */
 
+const { toPlainText } = require('../lib/plain-text');
+
 let webpush;
 try {
   webpush = require('web-push');
@@ -65,8 +67,8 @@ async function send(db, opts) {
   );
 
   const payload = JSON.stringify({
-    title,
-    body: body || '',
+    title: toPlainText(title).replace(/\s*\n+\s*/g, ' ').trim() || title,
+    body: toPlainText(body || '').replace(/\s*\n+\s*/g, ' ').trim(),
     url: url || '/',
     tag: tag || type || 'asgard-notification',
     badge_count: badgeCount,

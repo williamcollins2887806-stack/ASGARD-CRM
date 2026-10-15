@@ -35,8 +35,8 @@ export const DEFAULT_KINDS = [
 // ── 3 модели AI (RouterAI tiers, sync с src/services/ai-models.js) ─────────
 export const AI_MODELS = [
   {
-    id: 'deepseek/deepseek-v4-pro',
-    label: 'DeepSeek V4 Pro',
+    id: 'deepseek/deepseek-v4.1-flash',
+    label: 'DeepSeek V4.1 Flash',
     hint: '1M · дешёвая JSON · ×1.0',
     default: true
   },
@@ -54,7 +54,7 @@ export const AI_MODELS = [
   }
 ];
 
-export const DEFAULT_MODEL_ID = 'deepseek/deepseek-v4-pro';
+export const DEFAULT_MODEL_ID = 'deepseek/deepseek-v4.1-flash';
 
 // ── Correspondence CRUD ──────────────────────────────────────────────────
 export function getCorrespondence(id) {

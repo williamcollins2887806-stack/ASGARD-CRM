@@ -7978,3 +7978,92 @@ Fade `opacity 0→1` на каждый `renderPanel` усиливал мерца
 
 
 
+## D-267. Мобильный `/m/` для рабочих: модалки уезжают за экран (15.10.2026)
+
+- **Тип:** defect (мобильный UX полевых рабочих; блокирует вход новичка и заполнение СИЗ).
+- **Симптом.** Рабочий не может закрыть шторку; кнопки «уезжают» за границы экрана.
+- **Причина.** `public/mobile-app/src/App.jsx:275-280` — контейнер страницы с
+  `animation: 'pageTransitionIn … both'`. `animation-fill-mode: both` **навсегда** оставляет
+  computed `transform` (финал `scale(1)`, `index.css:626-629`), а `transform ≠ none` превращает
+  элемент в containing block для `position: fixed` — даже `scale(1)`/`translateY(0)`/`matrix(1,0,0,1,0,0)`.
+  Плюс `PageShell.jsx:104` (`className="page-enter"`, `pageSlideIn … forwards`, финал `translateY(0)`).
+- **Доказательство.** `repro-identity-transform.html`: `none`→2121 (= низ вьюпорта, fixed работает),
+  `matrix(1,0,0,1,0,0)`→240, `scale(1)`→360, `translateY(0)`→480 — все НЕ равны низу вьюпорта.
+  `repro-pageshell-sheet.html`: шторка `{top:2225, bottom:2374}` при `viewportH:2121`, `btnHittable:null`.
+- **Уточнение (важно).** Прод-цепочка `App → FieldLayout → PageShell → BottomSheet` **неверна** для
+  `/field/*`: `FieldLayout` рендерит `<Outlet/>` (`FieldLayout.jsx:30-31`), `PageShell` полевыми страницами
+  не используется, `.page-enter` внутри `/field/*` отсутствует. Прогон реальной цепочки
+  (`verify-fieldlayout-fixed.mjs`): при `scrollTop` 0/600/1200 шторка `bottom == innerH (839)`, CTA
+  `hittable` — на `/field` модалка НЕ обрезается. Дефект касается **офисного** `PageShell`-контура.
+- **План починки (черновик, ещё не реализован).** Убрать вечный `transform` у контейнера перехода
+  (анимировать `opacity`/`clip-path`, либо снимать `transform` по `animationend`), добавить шторке
+  `overscroll-behavior`/`touch-action` и явную кнопку закрытия.
+- **Артефакты:** `tests/reports/_mob-audit/AUDIT.md` §3.1–3.2, `repro-identity-transform.html`,
+  `repro-pageshell-sheet.html`, `verify-pageshell-top.*`, `verify-repro-html.*`, `shot-sheet.png`.
+- **Статус:** `REVIEW` (L3). Прод не трогали.
+
+## D-268. Мобильные шторки `/m/`: закрыть нечем, скролл формы закрывает шторку и стирает ввод (15.10.2026)
+
+- **Тип:** defect (мобильный UX; потеря ввода).
+- **Симптомы.** (1) «Ни одну модалку нельзя закрыть». (2) «Не даёт заполнить размер СИЗ — выкидывает».
+- **Причина.** (1) У `BottomSheet.jsx` нет кнопки закрытия в шапке; закрытие — только тап по верхней
+  полосе backdrop. (2) Свайп-обработчик висит на **всей** шторке (`BottomSheet.jsx:22-44,70-72`):
+  порог `dy > 100` без учёта направления, без `preventDefault` и `touch-action`, поэтому скролл
+  формы вниз-вверх закрывает шторку и теряет введённое.
+- **Доказательство.** `repro-sheet-gesture.mjs`: scenarioB — `scrollTopBefore 322 → after 0`,
+  `sheetStillOpen false`, `closedCount 1`, вердикт B=FAIL; `hasCloseButtonInHeader: 0`.
+  `repro-modal-close.mjs`: `topZoneCloses true`, `bottomZoneCloses false`.
+- **Уточнения к аудиту (перепроверено независимо).** Не «101 из 103 модалок без кнопки закрытия»:
+  минимум 6–7 шторок БЕЗ `footer` имеют «Отмена/Закрыть/×» в теле
+  (`WinWorkSheet.jsx:74`, `PayrollDashboard.jsx:840`, `Procurement.jsx:765,1188`,
+  `PersonalKanbanConfig.jsx:661`, `Tasks.jsx:293`, `Works.jsx:339`) → `withoutAnyBodyClose: 95`.
+  Также у тела шторки **есть** `overscroll-behavior-y: contain` через `className="scroll-container"`
+  (`BottomSheet.jsx:88`, `index.css:257-263`) — исходный тезис был неточен.
+- **План починки (черновик).** Кнопка закрытия в шапке шторки; свайп только по «ручке» с учётом
+  направления (`dy > 0`) и `touch-action: pan-y` на теле; `Escape` + фокус-трап/inert для доступности.
+- **Артефакты:** `tests/reports/_mob-audit/AUDIT.md` §3.3–3.4, `repro-sheet-gesture.mjs`,
+  `repro-modal-close.mjs`, `verify-sheet-gesture.json`, `verify-modal-close.json`,
+  `count-close-buttons*.json`, `shot-modal.png`.
+- **Статус:** `REVIEW` (L3). Прод не трогали.
+
+## D-269. Модель `deepseek-v4-pro` заменена на `deepseek-v4.1-flash` (15.10.2026)
+
+- **Тип:** канон модели (решение заказчика; экономика AI-бюджета).
+- **Решение.** `deepseek/deepseek-v4-pro` больше не используем. Дефолт — `deepseek/deepseek-v4.1-flash`.
+- **Правка:** `src/services/ai-models.js` (`MODEL_DEFAULT`, цены 11/22 ₽ за 1M вместо 61/123, `MODEL_DISABLED_PRO`,
+  legacy-маппинг `deepseek-v4-pro → MODEL_DEFAULT`), `src/services/mimir-conductor/models-config.js` (роли),
+  `public/desktop-v2-src/src/pages/Correspondence/Composer/{api.js,MimirChat.jsx}` + пересборка `public/v2/`.
+- **Проверено на проде:** доступность `deepseek/deepseek-v4.1-flash` (в каталоге routerai = 568 моделей),
+  tool-calling (`finish=tool_calls`, валидные аргументы), `response_format: json_object` (`{"ok":true,"sum":1200}`),
+  контекст 1 048 576.
+- **Краевой случай (важно):** v4.1-flash — тоже **reasoning-модель**. При `max_tokens=300` в **2/5** прогонов
+  `content` пустой (`finish_reason=length`, reasoning съедает бюджет). С `reasoning:{enabled:false}` — **0/5** пустых.
+- **Следствие:** добавлен проброс `reasoning` в `ai-provider` (`complete()` → `callOpenAI()` → `_callOpenAIOnce()` → `body.reasoning`).
+
+## D-270. Утечка сырого JSON-объекта в чат Мимира (15.10.2026)
+
+- **Тип:** данные + код (прод).
+- **Симптом.** В чате Мимира сообщения вида
+  `{"text":"","tool_calls":null,...,"stopReason":"length","rawMessage":{...},"actualApiId":"deepseek/deepseek-v4-pro",...}`.
+- **Причина.** `src/services/mimir-cron.js:179` — `return result.text || result;`. Когда `content` пуст
+  (тот же `finish_reason=length`, см. D-269), возвращался **объект-ответ**, и он записывался строкой
+  в `chat_messages` (`sendDigestToUser`).
+- **Правка кода:** `result.text` берётся строкой (`typeof result === 'string' ? result : String(result.text || result.content || '')`),
+  пусто → `templateSummary(...)`; вызов с `reasoning:{enabled:false}` и `maxTokens` 300 → 1200.
+- **Правка данных:** soft-delete (`deleted_at = NOW()`) сообщений `user_id = 0` с признаками сериализованного ответа
+  (`"stopReason"` / `"rawMessage"` / `"actualApiId"`). Область проверена: **все** строки `user_id = 0`,
+  0 человеческих сообщений, 0 не-JSON. Удалено: клон **5044**, прод **5131** (107 чатов, 15.06–14.10.2026);
+  остаток **0**. Счётчики `chats.message_count` / `last_message_at` пересчитаны.
+- **Скрипты:** `tools/_fix_leaked_json.js` (+ dry-run по умолчанию).
+
+## D-271. `**markdown**` в мобильных push-уведомлениях (15.10.2026)
+
+- **Тип:** канал доставки (web-push / Telegram / SMS).
+- **Симптом.** На мобильном текст уведомления приходил как `**Отчёт по звонкам**`, `Всего: **11**`.
+- **Причина.** `src/services/report-scheduler.js:289-294` кладёт markdown в `chat_messages` (с `metadata.is_mimir_bot`),
+  а `chat_groups.js notify()` / `NotificationService` / `pushService` / `notify.js` отдавали его в push как есть.
+  В чате markdown рендерит `renderAiMarkdown` — там он корректен.
+- **Правка:** новый `src/lib/plain-text.js` (`toPlainText` / `toPlainPreview`) срезает markdown **только** в путях
+  доставки (push-тело, Telegram-копия); сам текст сообщения в БД и рендер в чате не тронуты.
+- **Краевой случай:** `snake_case` (`file_name`, `work_price_no_vat`) не ломается — проверено тестом `tools/_test_plain_text.js`.
+

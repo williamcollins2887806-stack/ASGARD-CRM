@@ -6,7 +6,7 @@
  *   - ✏️ Редактировать (mode='edit') — JSON {ops,summary,confidence} → applyOps
  *     к TipTap doc через editorRef. Применяется СРАЗУ; в чат — summary + confidence.
  *
- * Модели (3) — селектор AI_MODELS. Дефолт deepseek/deepseek-v4-pro (RouterAI).
+ * Модели (3) — селектор AI_MODELS. Дефолт deepseek/deepseek-v4.1-flash (RouterAI).
  *
  * Вызовы — строго ПО ОДНОМУ. Кнопка отправки блокируется на время запроса.
  */

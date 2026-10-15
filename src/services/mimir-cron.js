@@ -170,13 +170,20 @@ async function generateSummary(userName, timeSlot, data) {
 
   try {
     const prompt = buildPrompt(userName, timeSlot, data);
+    // v4.1-flash «думающая»: reasoning съедает бюджет раньше content, и на
+    // коротком max_tokens ответ приходит с finish_reason=length и пустым text.
+    // Выключаем reasoning + поднимаем лимит, иначе сырой объект-ответ уходил
+    // в чат Мимира строкой JSON (id 32663/32641/32629/32626/32625 от 15.10.2026).
     const result = await aiProvider.complete({
       system: prompt.system,
       messages: prompt.messages,
-      maxTokens: 300,
-      temperature: 0.7
+      maxTokens: 1200,
+      temperature: 0.7,
+      reasoning: { enabled: false }
     });
-    return result.text || result;
+    const text = typeof result === 'string' ? result : String((result && (result.text || result.content)) || '').trim();
+    // Пустой/нестроковый ответ — отдаём шаблон, а не объект-ответ.
+    return text || templateSummary(userName, timeSlot, data);
   } catch (e) {
     const msg = e?.message || String(e);
     if (/Insufficient balance|balance_rub/i.test(msg)) {

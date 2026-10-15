@@ -4,26 +4,34 @@
  * ASGARD CRM — единый реестр моделей RouterAI.
  * Все AI-вызовы идут через https://routerai.ru/api/v1 (OpenAI-compatible).
  *
- * Тиры (июль 2026):
- *   DEFAULT — deepseek/deepseek-v4-pro  (1M, дешёвый JSON)
- *   FAST    — google/gemini-3.5-flash   (1M, vision/light chat)
- *   LONG    — x-ai/grok-4.20            (2M, длинные письма/лекции)
+ * Тиры (октябрь 2026):
+ *   DEFAULT — deepseek/deepseek-v4.1-flash (1M, дешёвый JSON, reasoning-модель)
+ *   FAST    — google/gemini-3.5-flash      (1M, vision/light chat)
+ *   LONG    — x-ai/grok-4.20               (2M, длинные письма/лекции)
+ *
+ * ВАЖНО: deepseek-v4-pro больше НЕ используется (решение заказчика 15.10.2026).
+ * v4.1-flash — «думающая» модель: reasoning съедает max_tokens раньше content,
+ * поэтому для коротких сводок её обязательно звать с `reasoning: { enabled: false }`
+ * (см. ai-provider._callOpenAIOnce → body.reasoning). Иначе финал обрывается на
+ * finish_reason=length с пустым content (класс дефекта: сырой JSON в чате Мимира).
  */
 
 const ROUTERAI_BASE_URL = 'https://routerai.ru/api/v1';
 const ROUTERAI_CHAT_URL = `${ROUTERAI_BASE_URL}/chat/completions`;
 
-const MODEL_DEFAULT = 'deepseek/deepseek-v4-pro';
+const MODEL_DEFAULT = 'deepseek/deepseek-v4.1-flash';
 const MODEL_FAST = 'google/gemini-3.5-flash';
 const MODEL_LONG = 'x-ai/grok-4.20';
+/** Отключённая модель — оставлена только для распознавания legacy-записей в БД. */
+const MODEL_DISABLED_PRO = 'deepseek/deepseek-v4-pro';
 const MODEL_EMBED_PRIMARY = 'openai/text-embedding-3-large';
 const MODEL_EMBED_FALLBACK = 'openai/text-embedding-3-small';
 
 const FALLBACK_CHAIN = [MODEL_DEFAULT, MODEL_FAST, MODEL_LONG];
 
-/** Цены RouterAI, ₽ за 1M токенов (каталог routerai.ru, июль 2026). */
+/** Цены RouterAI, ₽ за 1M токенов (каталог routerai.ru, октябрь 2026). */
 const ROUTERAI_PRICES = {
-  [MODEL_DEFAULT]: { input: 61, output: 123 },
+  [MODEL_DEFAULT]: { input: 11, output: 22 },
   [MODEL_FAST]: { input: 150, output: 903 },
   [MODEL_LONG]: { input: 118, output: 237 },
   'google/gemini-3.1-flash-lite': { input: 25, output: 152 },
@@ -43,6 +51,9 @@ const LEGACY_MODEL_MAP = {
   'gemini-2.5-flash': MODEL_FAST,
   'gemini-3.5-flash': MODEL_FAST,
   'deepseek-v4-pro': MODEL_DEFAULT,
+  // Отключённую v4-pro тоже сводим к дефолту: старые записи в БД/настройках
+  // не должны «оживлять» списанную модель.
+  [MODEL_DISABLED_PRO]: MODEL_DEFAULT,
 };
 
 /** Токен-бюджеты для letter-context-builder (оставляем запас под output/reasoning). */
@@ -55,7 +66,7 @@ const LETTER_CONTEXT_BUDGETS = {
 const CHAT_MODELS = [
   {
     id: MODEL_DEFAULT,
-    label: 'DeepSeek V4 Pro',
+    label: 'DeepSeek V4.1 Flash',
     short_hint: '🧠 Думающая, с данными CRM',
     description: 'Дешёвая модель с 1M контекстом. Видит БД, помнит диалог, JSON-ответы.',
     capabilities: {
@@ -97,7 +108,7 @@ const CHAT_MODELS = [
 
 /** UI-модели для composer писем (те же 3 тира). */
 const LETTER_AI_MODELS = [
-  { id: MODEL_DEFAULT, label: 'DeepSeek V4 Pro', hint: '1M · дешёвая JSON · ×1.0', default: true },
+  { id: MODEL_DEFAULT, label: 'DeepSeek V4.1 Flash', hint: '1M · дешёвая JSON · ×1.0', default: true },
   { id: MODEL_FAST, label: 'Gemini 3.5 Flash', hint: '1M · vision/light · быстрая', default: false },
   { id: MODEL_LONG, label: 'Grok 4.20', hint: '2M · длинные письма', default: false },
 ];
@@ -157,6 +168,7 @@ module.exports = {
   MODEL_DEFAULT,
   MODEL_FAST,
   MODEL_LONG,
+  MODEL_DISABLED_PRO,
   MODEL_EMBED_PRIMARY,
   MODEL_EMBED_FALLBACK,
   FALLBACK_CHAIN,

@@ -103,7 +103,8 @@ let AI_PROVIDER = process.env.AI_PROVIDER || 'openai';
 let ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY || '';
 let ANTHROPIC_MODEL = process.env.ANTHROPIC_MODEL || 'claude-sonnet-4-6-20250514';
 let OPENAI_API_KEY = process.env.OPENAI_API_KEY || '';
-// RouterAI: дефолт deepseek/deepseek-v4-pro (1M, дешёвый JSON).
+// RouterAI: дефолт deepseek/deepseek-v4.1-flash (1M, дешёвый JSON; reasoning-модель —
+// для коротких сводок звать с reasoning:{enabled:false}, см. ai-models.js).
 let OPENAI_MODEL = process.env.OPENAI_MODEL || MODEL_DEFAULT;
 const AI_MAX_TOKENS = parseInt(process.env.AI_MAX_TOKENS || '8000', 10);
 const AI_TEMPERATURE = parseFloat(process.env.AI_TEMPERATURE || '0.6');
@@ -342,8 +343,7 @@ function _resolveModelKey(model) {
  */
 async function callOpenAI(opts) {
   // Резолв ключа + получение fallback-цепочки
-  const originalModel = opts.model;
-  let chain = null;
+  const originalModel = opts.model;  let chain = null;
   if (originalModel) {
     const resolved = _resolveModelKey(originalModel);
     if (resolved === null) {
@@ -452,7 +452,7 @@ function _isRateLimitError(err) {
 function _sleep(ms) { return new Promise((resolve) => setTimeout(resolve, ms)); }
 
 /** Внутренний единичный вызов OpenAI (без fallback-логики). */
-async function _callOpenAIOnce({ system, messages, maxTokens, temperature, stream = false, model = null, tools = null, plugins = null, verbosity = null, responseFormat = null }) {
+async function _callOpenAIOnce({ system, messages, maxTokens, temperature, stream = false, model = null, tools = null, plugins = null, verbosity = null, responseFormat = null, reasoning = null }) {
   if (!OPENAI_API_KEY) {
     throw new Error('OPENAI_API_KEY not configured');
   }
@@ -487,6 +487,11 @@ async function _callOpenAIOnce({ system, messages, maxTokens, temperature, strea
   if (verbosity) body.verbosity = verbosity;
   // AP6: structured outputs / json_schema
   if (responseFormat) body.response_format = responseFormat;
+  // Reasoning-контроль для «думающих» моделей (deepseek-v4.1-flash):
+  // reasoning:{enabled:false} отдаёт весь бюджет под content. Без него модель
+  // на коротких max_tokens уходит в finish_reason=length с пустым content
+  // (класс дефекта: сырой объект-ответ записывался в чат Мимира).
+  if (reasoning) body.reasoning = reasoning;
 
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), stream ? AI_TIMEOUT_MS * 3 : AI_TIMEOUT_MS);
@@ -642,7 +647,7 @@ async function _callOpenAIOnce({ system, messages, maxTokens, temperature, strea
  * @param {number} options.temperature - Температура (0-1)
  * @returns {Promise<{text: string, usage: {inputTokens: number, outputTokens: number}, model: string}>}
  */
-async function complete({ system, messages, maxTokens, temperature, tools, plugins, verbosity, responseFormat, model, provider: providerOverride, timeoutMs }) {
+async function complete({ system, messages, maxTokens, temperature, tools, plugins, verbosity, responseFormat, model, provider: providerOverride, timeoutMs, reasoning }) {
   await _loadKeysFromDB();
   let provider = providerOverride || AI_PROVIDER;
   const startTime = Date.now();
@@ -685,7 +690,7 @@ async function complete({ system, messages, maxTokens, temperature, tools, plugi
       result = await callAnthropic({ system, messages, maxTokens, temperature });
       result.provider = 'anthropic';
     } else if (provider === 'openai') {
-      result = await callOpenAI({ system, messages, maxTokens, temperature, tools, plugins, verbosity, responseFormat, model });
+      result = await callOpenAI({ system, messages, maxTokens, temperature, tools, plugins, verbosity, responseFormat, model, reasoning });
       result.provider = 'openai';
     } else {
       throw new Error(`Unknown AI provider: ${provider}`);

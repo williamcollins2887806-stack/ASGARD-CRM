@@ -1,10 +1,10 @@
-/**
+﻿/**
  * ASGARD CRM — Mimir Conductor: конфиг моделей и цен
  * ═══════════════════════════════════════════════════════════════════════════
  * Провайдер: RouterAI (https://routerai.ru/api/v1, OpenAI-compatible).
  *
  * Тиры (см. ai-models.js):
- *   DEFAULT — deepseek/deepseek-v4-pro  (Conductor agents, JSON, email)
+ *   DEFAULT — deepseek/deepseek-v4.1-flash  (Conductor agents, JSON, email)
  *   FAST    — google/gemini-3.5-flash   (vision, light chat, web-search)
  *   LONG    — x-ai/grok-4.20            (длинные документы)
  * ═══════════════════════════════════════════════════════════════════════════
@@ -35,7 +35,7 @@ const models = {
     supports_extended_thinking: true,
     supports_tool_use: true,
     max_context: 1_000_000,
-    role: 'Conductor для крупных контрактов (>50M) — DeepSeek V4 Pro',
+    role: 'Conductor для крупных контрактов (>50M) — DeepSeek V4.1 Flash',
   },
   'sonnet-4-6': {
     provider: 'routerai',
@@ -44,7 +44,7 @@ const models = {
     supports_extended_thinking: true,
     supports_tool_use: true,
     max_context: 1_000_000,
-    role: 'Conductor для средних + структурированные агенты — DeepSeek V4 Pro',
+    role: 'Conductor для средних + структурированные агенты — DeepSeek V4.1 Flash',
   },
   'haiku-4-5': {
     provider: 'routerai',
@@ -53,7 +53,7 @@ const models = {
     supports_extended_thinking: false,
     supports_tool_use: true,
     max_context: 1_000_000,
-    role: 'Быстрые трансформации, JSON-репайр, классификация — DeepSeek V4 Pro',
+    role: 'Быстрые трансформации, JSON-репайр, классификация — DeepSeek V4.1 Flash',
   },
   'gpt-5': {
     provider: 'routerai',
@@ -85,7 +85,7 @@ const models = {
     supports_extended_thinking: false,
     supports_tool_use: true,
     max_context: 1_000_000,
-    role: 'Нормативы РФ (ГЭСН/ФЕР) — DeepSeek V4 Pro',
+    role: 'Нормативы РФ (ГЭСН/ФЕР) — DeepSeek V4.1 Flash',
   },
   'voyage-3': {
     provider: 'routerai',
@@ -103,7 +103,7 @@ const models = {
     supports_extended_thinking: false,
     supports_tool_use: true,
     max_context: 1_000_000,
-    role: 'Монте-Карло + перебор сценариев — DeepSeek V4 Pro',
+    role: 'Монте-Карло + перебор сценариев — DeepSeek V4.1 Flash',
   },
 };
 

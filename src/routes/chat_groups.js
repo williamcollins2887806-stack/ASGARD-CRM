@@ -214,11 +214,16 @@ module.exports = async function(fastify) {
   async function notify(userId, title, message, link, chatId) {
     try {
       const chatLink = link || '#/messenger';
+      const { toPlainText } = require('../lib/plain-text');
       // Защита от «[object Object]» в уведомлении: в поле ожидается строка.
       const safeTitle = typeof title === 'string' ? title : (title && title.title) || 'Хугинн';
       const safeBody = typeof message === 'string'
         ? message
         : String((message && (message.message || message.text)) || 'Новое сообщение');
+      // Push/OS-уведомление не рендерит markdown — срезаем **звёздочки** и т.п.
+      // (класс дефекта: «**Отчёт по звонкам**» в мобильных уведомлениях Мимира).
+      const pushBody = toPlainText(safeBody).replace(/\s*\n+\s*/g, ' ').trim() || safeBody;
+      const pushTitle = toPlainText(safeTitle).replace(/\s*\n+\s*/g, ' ').trim() || safeTitle;
 
       // 1. Push notification (web-push to all devices)
       try {
@@ -226,8 +231,8 @@ module.exports = async function(fastify) {
         await NotificationService.send(db, {
           user_id: userId,
           type: 'chat_message',
-          title: safeTitle,
-          body: safeBody,
+          title: pushTitle,
+          body: pushBody,
           url: chatLink,
           // Unique tag per message: a shared/static tag made the OS silently
           // collapse consecutive chat messages into one (no sound) AND let a DB
@@ -248,7 +253,7 @@ module.exports = async function(fastify) {
       try {
         const telegram = require('../services/telegram');
         if (telegram && telegram.sendNotification) {
-          await telegram.sendNotification(userId, `💬 *${safeTitle}*\n\n${safeBody}`);
+          await telegram.sendNotification(userId, `💬 *${pushTitle}*\n\n${pushBody}`);
         }
       } catch (tgErr) {
         // Telegram may not be configured
