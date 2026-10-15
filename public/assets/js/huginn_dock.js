@@ -773,19 +773,36 @@
     return 'нет в Хугинне';
   }
 
+  /* F11 AI affordance thresholds. Telegram-like: the «Ai» control shows once
+     the draft is worth rewriting — a few words OR a multi-line draft, not only
+     after four literal line breaks (visual wrapping never produced \n before). */
+  const AI_MIN_WORDS = 4;
+  const AI_MIN_LINES = 3;
+
   function countComposerLines(text) {
     const t = String(text || '');
     if (!t.trim()) return 0;
     return t.split(/\r?\n/).length;
   }
 
+  function countComposerWords(text) {
+    const t = String(text || '').trim();
+    if (!t) return 0;
+    return t.split(/\s+/).filter(Boolean).length;
+  }
+
+  /* Eligible = a few words or a multi-line draft (idle stays hidden). */
+  function aiEligible(text) {
+    const t = String(text || '');
+    if (!t.trim()) return false;
+    return countComposerWords(t) >= AI_MIN_WORDS || countComposerLines(t) >= AI_MIN_LINES;
+  }
+
   function syncAiComposerBtn() {
     const btn = root && root.querySelector('#hgAiEditorBtn');
     const input = root && root.querySelector('#hgInput');
     if (!btn || !input) return;
-    const lines = countComposerLines(input.value);
-    /* brief / DS: icon after >3 lines → show from 4th line */
-    btn.hidden = lines < 4;
+    btn.hidden = !aiEligible(input.value);
   }
 
   async function loadStories() {
@@ -5511,8 +5528,8 @@
   async function openAiEditorSheet() {
     const input = root && root.querySelector('#hgInput');
     const original = (input && input.value) || '';
-    if (countComposerLines(original) < 4) {
-      showToast('ИИ-редактор: наберите больше 3 строк');
+    if (!aiEligible(original)) {
+      showToast('ИИ-редактор: наберите хотя бы пару слов');
       return;
     }
     clearFloats();
