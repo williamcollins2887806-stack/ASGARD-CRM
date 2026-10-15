@@ -197,9 +197,11 @@
     }
   }
 
-  /** 6-cell code step (SMS). */
+  /** SMS code step. Бэкенд шлёт 6-значный код (randomInt(100000,1000000)),
+   *  ячеек ровно 6. */
+  const SMS_CODE_LEN = 6;
   function renderCodeStep(phone, warn) {
-    const cells = Array.from({ length: 6 }, (_, i) =>
+    const cells = Array.from({ length: SMS_CODE_LEN }, (_, i) =>
       `<input class="h-code-cell" inputmode="numeric" maxlength="1" data-cell="${i}" ${i === 0 ? 'autofocus' : ''} />`).join('');
     stepShell(`
       <div class="h-step-top"><button type="button" class="h-step-cancel" id="back">Назад</button></div>
@@ -214,22 +216,22 @@
     const inputs = Array.from(document.querySelectorAll('.h-code-cell'));
     const verify = document.getElementById('verify');
     const read = () => inputs.map((i) => i.value.replace(/\D/g, '')).join('');
-    const refresh = () => { verify.disabled = read().length !== 6; };
+    const refresh = () => { verify.disabled = read().length !== SMS_CODE_LEN; };
     inputs.forEach((inp, idx) => {
       inp.addEventListener('input', () => {
         inp.value = inp.value.replace(/\D/g, '').slice(0, 1);
-        if (inp.value && idx < 5) inputs[idx + 1].focus();
+        if (inp.value && idx < SMS_CODE_LEN - 1) inputs[idx + 1].focus();
         refresh();
       });
       inp.addEventListener('keydown', (e) => {
         if (e.key === 'Backspace' && !inp.value && idx > 0) inputs[idx - 1].focus();
       });
       inp.addEventListener('paste', (e) => {
-        const txt = (e.clipboardData || window.clipboardData).getData('text').replace(/\D/g, '').slice(0, 6);
+        const txt = (e.clipboardData || window.clipboardData).getData('text').replace(/\D/g, '').slice(0, SMS_CODE_LEN);
         if (!txt) return;
         e.preventDefault();
         txt.split('').forEach((ch, i) => { if (inputs[i]) inputs[i].value = ch; });
-        inputs[Math.min(txt.length, 5)].focus();
+        inputs[Math.min(txt.length, SMS_CODE_LEN - 1)].focus();
         refresh();
       });
     });
@@ -286,45 +288,64 @@
     };
   }
 
-  /** «Проверьте почту» + 6 ячеек (код из письма). */
+  /** «Проверьте почту». Бэкенд request-link отправляет ССЫЛКУ (?login=token),
+   *  а НЕ 6-значный код. Раньше здесь были 6 ячеек и POST {email,code} — вход
+   *  был невозможен (сервер код по email не принимает). */
   function renderEmailCheck(email) {
-    const cells = Array.from({ length: 6 }, (_, i) =>
-      `<input class="h-code-cell" inputmode="numeric" maxlength="1" data-cell="${i}" ${i === 0 ? 'autofocus' : ''} />`).join('');
     stepShell(`
       <div class="h-step-top"><button type="button" class="h-step-cancel" id="back">Назад</button></div>
       <div class="h-step-art" aria-hidden="true">📧</div>
       <h1 class="h-step-title">Проверьте почту</h1>
-      <p class="h-step-sub">Введите код, который пришёл на ${esc(email)}.</p>
+      <p class="h-step-sub">Мы отправили ссылку для входа на ${esc(email)}. Откройте письмо и перейдите по ссылке.</p>
       <div class="h-err" id="err"></div>
-      <div class="h-code-cells" id="cells">${cells}</div>
-      <button type="button" class="h-step-link" id="again">Отправить ссылку ещё раз</button>
+      <button type="button" class="h-step-cta" id="again">Отправить ссылку ещё раз</button>
+      <button type="button" class="h-step-link" id="back2">Указать другую почту</button>
+      <div class="h-or">или вставьте ссылку из письма</div>
+      <input id="linkField" placeholder="https://…/h/?login=…" autocomplete="off" />
+      <button type="button" class="h-step-link" id="openLink">Войти по ссылке</button>
     `);
-    const inputs = Array.from(document.querySelectorAll('.h-code-cell'));
-    const read = () => inputs.map((i) => i.value.replace(/\D/g, '')).join('');
-    inputs.forEach((inp, idx) => {
-      inp.addEventListener('input', () => {
-        inp.value = inp.value.replace(/\D/g, '').slice(0, 1);
-        if (inp.value && idx < 5) inputs[idx + 1].focus();
-        if (read().length === 6) submit();
-      });
-    });
     document.getElementById('back').onclick = () => renderEmailStep();
+    document.getElementById('back2').onclick = () => renderEmailStep();
     document.getElementById('again').onclick = async () => {
-      try { await fetch('/api/chat-groups/auth/request-link', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email }) }); } catch (_) {}
-    };
-    async function submit() {
       const e = document.getElementById('err');
       e.textContent = '';
       try {
+        const res = await fetch('/api/chat-groups/auth/request-link', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email })
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || data.sent === false) throw new Error((data && data.error) || 'Не удалось отправить письмо');
+        e.textContent = 'Письмо отправлено повторно';
+      } catch (ex) { e.textContent = ex.message; }
+    };
+    const openFromField = async () => {
+      const e = document.getElementById('err');
+      e.textContent = '';
+      const raw = (document.getElementById('linkField').value || '').trim();
+      // Достаём token из вставленной ссылки (или принимаем сам токен).
+      let tok = '';
+      try {
+        const u = new URL(raw, location.origin);
+        tok = u.searchParams.get('login') || '';
+      } catch (_) {
+        tok = /^[a-f0-9]{24,}$/i.test(raw) ? raw : '';
+      }
+      if (!tok) { e.textContent = 'Вставьте ссылку из письма'; return; }
+      try {
         const res = await fetch('/api/chat-groups/auth/verify', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email, code: read() })
+          body: JSON.stringify({ token: tok })
         });
         const data = await res.json();
-        if (!res.ok) throw new Error(data.error || 'Неверный код');
+        if (!res.ok) throw new Error(data.error || 'Ссылка недействительна');
         saveSessionAndBoot(data, true);
       } catch (ex) { e.textContent = ex.message; }
-    }
+    };
+    document.getElementById('openLink').onclick = openFromField;
+    document.getElementById('linkField').addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); openFromField(); }
+    });
   }
 
   function saveSessionAndBoot(data, cleanUrl) {
@@ -441,23 +462,10 @@
   }
 
   async function bootApp(openChatId) {
-    app.innerHTML = `
-      <div class="h-top">
-        <h1>Хугинн</h1>
-        <button type="button" class="h-icon" id="dl" title="Android" aria-label="Android">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="7" y="2" width="10" height="20" rx="2"/><path d="M11 18h2"/></svg>
-        </button>
-        <button type="button" class="h-icon" id="out" title="Выйти" aria-label="Выйти">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9"/></svg>
-        </button>
-      </div>
-      <div class="h-main"><div id="hgHost"></div></div>`;
-    document.getElementById('out').onclick = () => {
-      localStorage.removeItem('asgard_token');
-      localStorage.removeItem('asgard_user');
-      location.href = '/h/';
-    };
-    document.getElementById('dl').onclick = () => { location.href = '/h/android.html'; };
+    // Верхнюю полоску убрали по ТЗ: она дублировала заголовок и занимала место.
+    // Выход живёт в «Настройки → Выйти», установка APK — в инструкции внутри
+    // настроек/логина. Edge-to-edge: Safe Area держит сам док (.hg-chrome).
+    app.innerHTML = `<div class="h-main"><div id="hgHost"></div></div>`;
 
     document.body.dataset.huginnAutostart = '0';
     await HuginnDock.mount();

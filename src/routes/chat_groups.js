@@ -731,8 +731,30 @@ module.exports = async function(fastify) {
       return reply.code(403).send({ error: 'Только владелец может менять роли' });
     }
 
+    // Передача владения: role='owner' понижает прежнего владельца до admin
+    // (находка API-аудита — раньше 'owner' отклонялся 400, передать группу было нельзя).
+    if (role === 'owner') {
+      await db.query('BEGIN');
+      try {
+        await db.query(
+          `UPDATE chat_group_members SET role = 'admin'
+            WHERE chat_id = $1 AND role = 'owner' AND user_id <> $2`,
+          [chatId, targetUserId]
+        );
+        await db.query(
+          'UPDATE chat_group_members SET role = $1 WHERE chat_id = $2 AND user_id = $3',
+          ['owner', chatId, targetUserId]
+        );
+        await db.query('COMMIT');
+      } catch (e) {
+        await db.query('ROLLBACK');
+        throw e;
+      }
+      return { success: true, role: 'owner' };
+    }
+
     if (!['member', 'admin'].includes(role)) {
-      return reply.code(400).send({ error: 'Роль может быть member или admin' });
+      return reply.code(400).send({ error: 'Роль может быть member, admin или owner' });
     }
 
     await db.query(

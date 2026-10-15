@@ -8,7 +8,7 @@
   --hg-tg-tool-size: 40px;
   --hg-tg-tool-bg: var(--bg3, #1C2130); /* fill via .hg-glass composer */
   --hg-tg-input-h: 40px;
-  --hg-tg-input-radius: 22px;
+  --hg-tg-input-radius: 20px;
   --hg-tg-input-bg: var(--bg3, #1C2130); /* fill via .hg-glass composer */
   --hg-tg-composer-gap: 6px;
   --hg-tg-composer-pad: 4px 8px 0;
@@ -24,18 +24,18 @@
   --hg-tg-fab-bg: color-mix(in srgb, var(--bg3, #1C2130) 90%, transparent);
   /* Active tab = charcoal selection disc (DS: bg3 92% + t1) */
   --hg-tg-active-circle: color-mix(in srgb, var(--bg3, #1C2130) 92%, var(--t1, #fff));
-  --hg-tg-badge: #FF3B30;
+  --hg-tg-badge: var(--red, #FF3B30);
   --hg-tg-nav-icon-active: var(--blue-l, #4A90D9);
   --hg-tg-nav-muted: color-mix(in srgb, var(--t1, #fff) 88%, transparent);
-  --hg-tg-header-inset: 12px;
+  --hg-tg-header-inset: 16px;
   --hg-tg-header-radius: 22px;
   --hg-tg-header-h: 44px;
   --hg-tg-header-bg: rgba(22, 19, 20, 0.48);
   --hg-tg-header-blur: 36px;
-  --hg-tg-pin-h: 40px;
+  --hg-tg-pin-h: 48px;
   --hg-tg-pin-radius: 20px;
   --hg-tg-pin-bg: rgba(29, 27, 28, 0.72);
-  --hg-tg-pin-gap: 2px;
+  --hg-tg-pin-gap: 8px;
   --hg-tg-back-badge-bg: #FFFFFF;
   --hg-tg-back-badge-fg: #000000;
   --hg-tg-bubble-radius: 17px;
@@ -95,11 +95,11 @@
   --hg-glass-shadow: 0 8px 32px rgba(0, 0, 0, 0.28);
   --hg-fx: full;
 
-  --hg-pad-bubble: 8px 12px;
+  --hg-pad-bubble: 10px 16px;
   --hg-pad-panel: 12px 16px;
   --hg-pad-menu-item: 10px 12px;
   --hg-head-h: 56px;
-  --hg-av-list: 54px;
+  --hg-av-list: 60px;
   --hg-av-head: 36px;
   --hg-av-contact: 48px;
   --hg-msg-indent: 40px;
@@ -114,7 +114,7 @@
   --hg-font-meta: 11px/1.2;
   --hg-font-name: 17px/1.25;
   --hg-font-preview: 15px/1.35;
-  --hg-font-body: 17px/1.35;
+  --hg-font-body: 17px/1.4;
   --hg-font-title: 17px/1.3;
   --hg-font-status: 12px/1.3;
   --hg-font-screen: 18px/1.2;
@@ -129,6 +129,46 @@
 
   --hg-hover: var(--bg-hover, var(--bg3, rgba(255, 255, 255, 0.04)));
   --hg-press: rgba(255, 255, 255, 0.06);
+  /* ── Depth & Juice (DS §11) — «сочность» на CRM-токенах, без TG-hex ── */
+  /* Elevation: нейтральные тени для поверхностей… */
+  --hg-elev-1: 0 1px 2px rgba(0, 0, 0, 0.22);
+  --hg-elev-2: 0 4px 12px rgba(0, 0, 0, 0.26), 0 1px 3px rgba(0, 0, 0, 0.18);
+  --hg-elev-3: 0 10px 30px rgba(0, 0, 0, 0.34), 0 2px 8px rgba(0, 0, 0, 0.2);
+  --hg-elev-4: 0 18px 48px rgba(0, 0, 0, 0.42), 0 4px 14px rgba(0, 0, 0, 0.24);
+  /* …и ЦВЕТНАЯ акцентная тень для CTA/активных элементов (от --blue-l). */
+  --hg-glow-accent: 0 4px 14px color-mix(in srgb, var(--blue-l, #4A90D9) 40%, transparent);
+  --hg-glow-accent-soft: 0 2px 10px color-mix(in srgb, var(--blue-l, #4A90D9) 26%, transparent);
+  --hg-focus-ring: 0 0 0 2px var(--blue-l, #4A90D9);
+  --hg-focus-glow: 0 0 0 3px color-mix(in srgb, var(--blue-l, #4A90D9) 22%, transparent);
+  /* Градиенты поверхностей (объём из color-mix, не hex). */
+  --hg-grad-surface: linear-gradient(180deg,
+    color-mix(in srgb, var(--t1, #fff) 5%, transparent) 0%,
+    transparent 55%);
+  --hg-grad-accent: linear-gradient(180deg,
+    color-mix(in srgb, var(--blue-l, #4A90D9) 92%, #fff) 0%,
+    var(--blue-l, #4A90D9) 100%);
+  --hg-rim-specular: inset 0 0.5px 0 color-mix(in srgb, var(--t1, #fff) 22%, transparent);
+  --hg-inset-hairline: inset 0 0 0 1px color-mix(in srgb, var(--t1, #fff) 12%, transparent);
+  /* Токены канона DS §11.3/§11.4 (использовались в доке с fallback — теперь определены). */
+  --hg-glass-specular-pct: 22%;
+  --hg-ripple-x: 50%;
+  --hg-ripple-y: 50%;
+  --hg-segment-offset: 0;
+  /* Motion (единый ритм интерактива). */
+  --hg-dur-fast: 140ms;
+  --hg-dur-mid: 200ms;
+  --hg-dur-slow: 300ms;
+  --hg-ease-std: cubic-bezier(0.4, 0, 0.2, 1);
+  --hg-ease-spring: cubic-bezier(0.34, 1.36, 0.64, 1);
+  /* Алиасы имён из DS §11.1/§11.4 (канон) — чтобы документ и код совпадали. */
+  --hg-elev-0: none;
+  --hg-elev-accent: var(--hg-glow-accent);
+  --hg-elev-accent-active: 0 2px 8px color-mix(in srgb, var(--blue-l, #4A90D9) 32%, transparent);
+  --hg-dur-press: 90ms;
+  --hg-dur-base: 180ms;
+  --hg-ease-standard: cubic-bezier(0.2, 0.6, 0.2, 1);
+  --hg-ease-emphasized: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --hg-ease-exit: cubic-bezier(0.4, 0, 1, 1);
   /* List active: CRM charcoal/blue edge — gold ONLY on rail (DS §9.9) */
   --hg-active-row: color-mix(in srgb, var(--bg3, #1C2130) 88%, var(--t1, #fff));
   --hg-active-edge: var(--blue-l, #4A90D9);
@@ -159,7 +199,7 @@
 .hg-glass[data-role="menu"],
 .hg-glass[data-role="pin"] {
   box-shadow:
-    inset 0 0.5px 0 color-mix(in srgb, var(--t1, #fff) 22%, transparent),
+    inset 0 0.5px 0 color-mix(in srgb, var(--t1, #fff) var(--hg-glass-specular-pct, 22%), transparent),
     inset 0 0 0 1px color-mix(in srgb, var(--t1, #fff) var(--hg-glass-rim-pct), transparent);
 }
 .hg-glass[data-role="composer"] {
@@ -272,7 +312,7 @@ html[data-theme="light"] {
   --hg-hover: var(--bg-hover, var(--bg3, rgba(0, 0, 0, 0.04)));
   --hg-press: rgba(0, 0, 0, 0.06);
   --hg-active-row: color-mix(in srgb, var(--bg3, #EDE8DC) 85%, var(--t1, #1A1510));
-  --hg-active-edge: var(--gold, #B8841A);
+  --hg-active-edge: var(--blue-l, #2B5F9E);
   --hg-sticky-bg: color-mix(in srgb, var(--bg2, #FDFAF5) 92%, transparent);
   --hg-nav-bg: color-mix(in srgb, var(--bg2, #FDFAF5) 78%, transparent);
   --hg-quick-bg: var(--bg2, #FDFAF5);
@@ -288,6 +328,24 @@ html[data-theme="light"] {
   --hg-glass-bg-strong: color-mix(in srgb, var(--bg2, #FDFAF5) 88%, transparent);
   --hg-glass-border: color-mix(in srgb, var(--t1, #1A1510) var(--hg-glass-rim-pct), transparent);
   --hg-glass-shadow: 0 8px 28px rgba(80, 60, 30, 0.12);
+  /* Depth & Juice (light): мягкие тёплые тени на пергаменте CRM (DS §11) */
+  --hg-elev-1: 0 1px 2px rgba(80, 60, 30, 0.1);
+  --hg-elev-2: 0 4px 12px rgba(80, 60, 30, 0.14), 0 1px 3px rgba(80, 60, 30, 0.08);
+  --hg-elev-3: 0 10px 30px rgba(80, 60, 30, 0.16), 0 2px 8px rgba(80, 60, 30, 0.1);
+  --hg-elev-4: 0 18px 48px rgba(80, 60, 30, 0.2), 0 4px 14px rgba(80, 60, 30, 0.12);
+  --hg-glow-accent: 0 4px 14px color-mix(in srgb, var(--blue-l, #2B5F9E) 34%, transparent);
+  --hg-glow-accent-soft: 0 2px 10px color-mix(in srgb, var(--blue-l, #2B5F9E) 22%, transparent);
+  --hg-grad-surface: linear-gradient(180deg,
+    color-mix(in srgb, var(--t1, #1A1510) 3%, transparent) 0%,
+    transparent 55%);
+  --hg-grad-accent: linear-gradient(180deg,
+    color-mix(in srgb, var(--blue-l, #2B5F9E) 90%, #fff) 0%,
+    var(--blue-l, #2B5F9E) 100%);
+  --hg-rim-specular: inset 0 0.5px 0 color-mix(in srgb, var(--t1, #1A1510) 6%, transparent);
+  --hg-inset-hairline: inset 0 0 0 1px color-mix(in srgb, var(--t1, #1A1510) 8%, transparent);
+  --hg-focus-ring: 0 0 0 2px var(--blue-l, #2B5F9E);
+  --hg-focus-glow: 0 0 0 3px color-mix(in srgb, var(--blue-l, #2B5F9E) 18%, transparent);
+  --hg-elev-accent: var(--hg-glow-accent);
 }
 html[data-theme="light"] .hg-glass {
   background: color-mix(in srgb, var(--bg3, #EDE8DC) var(--hg-glass-fill-pct), transparent);
@@ -453,12 +511,14 @@ html[data-theme="light"] .hg-rail-badge {
 }
 
 .hg-panel-head {
-  min-height: var(--hg-head-h);
+  /* Дизайн-ревью P1: шапка списка была 61px и «съедала» верх (S01: NavBar ~44).
+     Компактнее + единый ритм с floating-капсулами. */
+  min-height: 48px;
   display: grid;
   grid-template-columns: auto 1fr auto;
   align-items: center;
   gap: 8px;
-  padding: var(--hg-pad-panel);
+  padding: 0 16px;
   border-bottom: 1px solid var(--hg-border);
   background: var(--bg3, var(--hg-panel));
   flex: 0 0 auto;
@@ -629,12 +689,41 @@ body.hg-list-edit .hg-nav-search {
   padding: 4px 12px 8px;
   overflow-x: auto;
   scrollbar-width: none;
-  transition: max-height 220ms var(--hg-ease-ui, ease), opacity 180ms var(--hg-ease-ui, ease), margin 220ms var(--hg-ease-ui, ease);
-  max-height: 96px;
-  opacity: 1;
+  /* ТЗ Часть 5: панель прячется ПРИВЯЗАННО к позиции скролла.
+     ВАЖНО (фикс лагов): скролл-драйв идёт ТОЛЬКО по compositor-свойствам
+     (transform/opacity) через --hg-rail-hide. Анимация max-height на каждом
+     кадре скролла вызывала layout-reflow → кружочки «прыгали» и моргали.
+     Высота схлопывается один раз классом .is-hidden (см. ниже). */
+  --hg-rail-hide: 0;
+  height: 96px;
+  opacity: calc(1 - var(--hg-rail-hide));
+  transform: translateY(calc(-100% * var(--hg-rail-hide)));
+  will-change: transform, opacity;
+  /* Без transition на базовом состоянии: var обновляется каждый кадр скролла,
+     transition «догонял» бы её → панель отставала и дёргалась.
+     Переходы живут только на .is-hidden / .is-spring. */
+  transition: none;
 }
-/* TG-like: hide the rail when scrolling up through the list. */
-.hg-stories-rail.is-hidden { max-height: 0; opacity: 0; margin: 0; padding-top: 0; padding-bottom: 0; overflow: hidden; }
+/* Полностью скрыта: высоту убираем ОДИН раз (не на каждый кадр скролла). */
+.hg-stories-rail.is-hidden {
+  height: 0;
+  min-height: 0;
+  margin: 0;
+  padding-top: 0;
+  padding-bottom: 0;
+  opacity: 0;
+  transform: translateY(-100%);
+  overflow: hidden;
+  transition: height 140ms var(--hg-ease-std, ease), margin 140ms var(--hg-ease-std, ease),
+    opacity 120ms linear, transform 120ms linear;
+}
+/* Пружинистое появление при «потягивании» в самом верху (overscroll, ТЗ §5.4) */
+.hg-stories-rail.is-spring {
+  transition: height 320ms var(--hg-ease-spring, cubic-bezier(.34,1.36,.64,1)),
+    margin 320ms var(--hg-ease-spring, cubic-bezier(.34,1.36,.64,1)),
+    opacity 260ms var(--hg-ease-std, ease),
+    transform 320ms var(--hg-ease-spring, cubic-bezier(.34,1.36,.64,1));
+}
 .hg-stories-rail::-webkit-scrollbar { display: none; }
 .hg-story-item {
   flex: 0 0 auto;
@@ -650,7 +739,8 @@ body.hg-list-edit .hg-nav-search {
   padding: 0;
 }
 .hg-story-ring {
-  width: 56px; height: 56px;
+  /* Дизайн-ревью: кольцо Ø60 (S36/S01: аватар 60). */
+  width: 60px; height: 60px;
   border-radius: 50%;
   padding: 2px;
   background: color-mix(in srgb, var(--hg-muted) 35%, transparent);
@@ -704,6 +794,35 @@ body.hg-list-edit .hg-nav-search {
   justify-content: center;
   padding: 24px 16px;
 }
+/* Прогресс-бары историй (ТЗ §2.6): сегменты сверху, активный заполняется. */
+.hg-story-bars {
+  position: absolute;
+  top: calc(8px + env(safe-area-inset-top, 0px));
+  left: 12px;
+  right: 12px;
+  display: flex;
+  gap: 4px;
+  z-index: 3;
+}
+.hg-story-bar {
+  flex: 1;
+  height: 3px;
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--t1, #fff) 28%, transparent);
+  overflow: hidden;
+}
+.hg-story-bar b { display: block; width: 0; height: 100%; background: #fff; border-radius: 2px; }
+.hg-story-bar.is-done b { width: 100%; }
+/* Тап-зоны: левая треть — назад, правая — вперёд. */
+.hg-story-nav {
+  position: absolute;
+  top: 56px; bottom: 56px;
+  width: 33%;
+  z-index: 2;
+  cursor: pointer;
+}
+.hg-story-nav-prev { left: 0; }
+.hg-story-nav-next { right: 0; }
 .hg-story-viewer-close {
   position: absolute;
   top: 12px; right: 12px;
@@ -1158,47 +1277,15 @@ body.hg-list-edit .hg-nav-search {
 .hg-profile-more-gal[hidden] { display: none !important; }
 .hg-emoji-tog { font: 500 12px/1 var(--hg-font); color: var(--hg-muted); }
 
-.hg-tabs {
-  display: flex;
-  gap: 0;
-  margin: 4px 12px 0;
-  padding: 0;
-  background: transparent !important;
-  border: 0;
-  border-bottom: 1px solid var(--hg-border);
-  border-radius: 0 !important;
-  box-shadow: none !important;
-}
-.hg-tab {
-  flex: 1;
-  border: 0 !important;
-  background: transparent !important;
-  color: var(--hg-muted);
-  font: 500 13px/1.2 var(--hg-font);
-  padding: 10px 6px 8px;
-  border-radius: 0 !important;
-  cursor: pointer;
-  border-bottom: 2px solid transparent !important;
-  margin-bottom: -1px;
-  box-shadow: none !important;
-}
-.hg-tab:hover { color: var(--hg-text); background: transparent !important; }
-.hg-tab.is-active {
-  background: transparent !important;
-  color: var(--hg-text) !important;
-  box-shadow: none !important;
-  border-radius: 0 !important;
-  border-bottom: 2px solid var(--hg-accent-chat) !important;
-  transition: color var(--hg-dur-tab) var(--hg-ease-ui), border-color var(--hg-dur-tab) var(--hg-ease-ui);
-}
-.hg-tab .hg-tab-n { margin-left: 4px; color: var(--hg-accent-chat); font-weight: 600; }
+/* Вкладки списка удалены (решение заказчика) — правила .hg-tabs/.hg-tab убраны. */
 
+/* ТЗ §1.2: поиск прижать ближе к вкладкам; канон §11.7 — h=40, радиус 20. */
 .hg-search {
-  margin: 8px 16px;
-  height: 36px;
-  border-radius: var(--hg-radius);
+  margin: 4px 16px 8px;
+  height: 40px;
+  border-radius: 20px;
   border: 1px solid var(--hg-border);
-  padding: 0 12px;
+  padding: 0 16px;
   background: var(--bg3, var(--hg-elev));
   color: var(--hg-text);
   font: 400 var(--hg-font-preview) var(--hg-font);
@@ -1242,7 +1329,7 @@ body.hg-list-edit .hg-nav-search {
 .hg-chat-row::after {
   content: '';
   position: absolute;
-  left: 78px;
+  left: 88px;
   right: 0;
   bottom: -1px;
   height: 1px;
@@ -1255,11 +1342,11 @@ body.hg-list-edit .hg-nav-search {
 .hg-chat-row.is-active,
 .hg-contact-row.is-active {
   background: var(--hg-active-row);
-  border-left: 2px solid var(--hg-active-edge, var(--gold, #D4A843));
+  border-left: 2px solid var(--hg-active-edge, var(--blue-l, #4A90D9));
 }
 .hg-chat-row:focus-visible,
 .hg-contact-row:focus-visible {
-  outline: 2px solid var(--hg-active-edge, var(--gold, #D4A843));
+  outline: 2px solid var(--hg-active-edge, var(--blue-l, #4A90D9));
   outline-offset: -2px;
 }
 
@@ -1482,9 +1569,9 @@ html[data-theme="light"] .hg-msgs {
   vertical-align: bottom;
 }
 html[data-theme="light"] .hg-bubble {
-  box-shadow:
-    0 1px 0 rgba(255, 255, 255, 0.65) inset,
-    0 2px 8px rgba(0, 0, 0, 0.08);
+  /* TG S04/S05/S57 §7: у пузырей нет ни тени, ни обводки (глубину даёт
+     градиентная заливка). Было: inset-блик + внешняя тень. */
+  box-shadow: none;
 }
 @keyframes hg-bubble-in {
   from { opacity: 0; transform: translateY(8px); }
@@ -2079,15 +2166,16 @@ html[data-theme="light"] .hg-float-chrome {
   top: auto; left: auto;
   z-index: 2;
   width: auto;
-  min-width: 16px;
-  max-width: 32px;
-  height: 16px;
-  padding: 0 4px;
-  border-radius: 8px;
+  /* TG S04 §3: бейдж «38» — 28.5×18, кегль 15/600. */
+  min-width: 28px;
+  max-width: 44px;
+  height: 18px;
+  padding: 0 7px;
+  border-radius: 9px;
   background: var(--hg-tg-back-badge-bg);
   color: var(--hg-tg-back-badge-fg);
-  font: 700 10px/16px var(--hg-font);
-  letter-spacing: -0.03em;
+  font: 700 12px/18px var(--hg-font);
+  letter-spacing: -0.02em;
   text-align: center;
   display: inline-flex;
   align-items: center;
@@ -2143,12 +2231,19 @@ html[data-theme="light"] .hg-back-badge {
   overflow: hidden;
   width: 100%;
 }
+/* Название чата — 17/600/белый (TG S04/S05/S24/S57/S58). Раньше правило
+   `.hg-thread-title span` (ниже) билo и заголовок, и подзаголовок: имя чата
+   рендерилось 12px/400/62% серого = «подзаголовок», теряя иерархию (P0 дизайн-ревью). */
 .hg-thread-title strong .hg-title-text {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  font: 600 17px/1.2 var(--hg-font);
+  color: var(--t1, #FFFFFF);
+  letter-spacing: -0.01em;
 }
+html[data-theme="light"] .hg-thread-title strong .hg-title-text { color: var(--t1, #1A1510); }
 .hg-thread-title strong .hg-mute-ico {
   display: inline-flex;
   align-items: center;
@@ -2168,12 +2263,15 @@ html[data-theme="light"] .hg-back-badge {
   color: rgba(142, 142, 147, 0.85);
   stroke-width: 1.6;
 }
-.hg-thread-title span {
-  font: 400 12px/1.25 var(--hg-font);
-  /* R270: restore subtitle α0.62 (R264 V: α0.05 = content-hiding) */
+.hg-thread-title strong { color: rgba(255, 255, 255, 0.98); }
+/* Подзаголовок (presence/typing) — только эти узлы, НЕ заголовок. */
+.hg-thread-title span[data-hg-presence],
+.hg-thread-title span.is-typing {
+  font: 400 13px/1.25 var(--hg-font);
   color: rgba(142, 142, 147, 0.62);
 }
-html[data-theme="light"] .hg-thread-title span { color: #6E7681; }
+html[data-theme="light"] .hg-thread-title span[data-hg-presence],
+html[data-theme="light"] .hg-thread-title span.is-typing { color: #6E7681; }
 html[data-theme="light"] .hg-thread-title strong { color: rgba(0, 0, 0, 0.82); }
 .hg-thread-title span.is-typing {
   color: var(--hg-accent-chat);
@@ -2181,19 +2279,22 @@ html[data-theme="light"] .hg-thread-title strong { color: rgba(0, 0, 0, 0.82); }
 }
 .hg-thread-head .hg-thread-av,
 .hg-thread-av-btn {
-  width: 40px; height: 40px; border: 0; border-radius: 50% !important;
+  /* TG S05/S57: фото Ø38 в стеклянном кольце Ø44. */
+  width: 44px; height: 44px; border: 0; border-radius: 50% !important;
   padding: 0; background: transparent; cursor: pointer;
   display: inline-flex; align-items: center; justify-content: center;
-  flex: 0 0 40px; margin-left: 0; margin-right: 0;
+  flex: 0 0 44px; margin-left: 0; margin-right: 0;
   box-shadow: none;
   transition: background 150ms ease;
 }
 .hg-thread-av-btn:hover { background: rgba(255, 255, 255, 0.06); }
 .hg-thread-head .hg-thread-av,
 .hg-thread-av-btn .hg-thread-av {
-  width: 36px; height: 36px; border-radius: 50%;
+  width: 38px; height: 38px; min-width: 38px; min-height: 38px;
+  flex: 0 0 38px;
+  border-radius: 50%;
   display: flex; align-items: center; justify-content: center;
-  font: 600 12px/1 var(--hg-font); color: #fff;
+  font: 600 13px/1 var(--hg-font); color: #fff;
   /* R218: kill avatar ring (rim-kill path; measure vs R217) */
   box-shadow: none;
   background-color: #2C2C2E;
@@ -2249,10 +2350,10 @@ html[data-theme="light"] .hg-thread-title strong { color: rgba(0, 0, 0, 0.82); }
   padding-top: 0;
 }
 .hg-thread .hg-msgs {
-  padding-top: calc(var(--hg-tg-header-inset) + var(--hg-tg-header-h) + 10px);
+  padding-top: calc(var(--hg-tg-header-inset) + var(--hg-tg-header-h) + 2px);
 }
 .hg-thread:has(.hg-float-chrome.has-pin) .hg-msgs {
-  padding-top: calc(var(--hg-tg-header-inset) + var(--hg-tg-header-h) + var(--hg-tg-pin-h) + 8px);
+  padding-top: calc(var(--hg-tg-header-inset) + var(--hg-tg-header-h) + var(--hg-tg-pin-h) + 2px);
 }
 .hg-pin-banner::before {
   /* R234: soft TG pin rail (R219 kill was neutral; try 1px/0.10) */
@@ -3576,6 +3677,7 @@ body.hg-circle-recording .hg-nav-search { display: none !important; }
   --hg-glass-rim-pct: 12%;
   --hg-glass-sat: 220%;
   --hg-nav-pill-bg: var(--hg-tg-nav-bg);
+  --hg-nav-pill-active: color-mix(in srgb, var(--blue-l, #4A90D9) 20%, transparent);
   --hg-nav-circle-active: var(--hg-tg-active-circle);
   --hg-nav-circle-hover: rgba(255, 255, 255, 0.06);
   --hg-nav-icon-active: var(--hg-tg-nav-icon-active);
@@ -3620,6 +3722,7 @@ body.hg-circle-recording .hg-nav-search { display: none !important; }
 html[data-theme="light"] .hg-bottom-nav {
   --hg-nav-icon-active: var(--blue-l, #2B5F9E);
   --hg-nav-muted: var(--t2, #6B5E4E);
+  --hg-nav-pill-active: color-mix(in srgb, var(--blue-l, #2B5F9E) 14%, transparent);
   background:
     linear-gradient(180deg, color-mix(in srgb, var(--t1, #1A1510) 6%, transparent) 0%, transparent 40%),
     color-mix(in srgb, var(--bg2, #FDFAF5) 52%, transparent);
@@ -3628,6 +3731,10 @@ html[data-theme="light"] .hg-bottom-nav {
     0 8px 28px rgba(0, 0, 0, 0.08),
     inset 0 0 0 1px color-mix(in srgb, var(--t1, #1A1510) 12%, transparent);
 }
+/* ── Навигация как в Telegram (референс заказчика) ────────────────
+   Активный таб — ОДНА залитая капсула, охватывающая иконку И подпись
+   (а не диск только под иконкой). Подпись всегда видна, у активного —
+   акцентный цвет. */
 .hg-bottom-nav button {
   position: relative;
   flex: 1;
@@ -3635,7 +3742,7 @@ html[data-theme="light"] .hg-bottom-nav {
   height: 100%;
   min-height: 0;
   border: 0;
-  border-radius: 16px;
+  border-radius: 22px;
   background: transparent;
   color: var(--hg-nav-muted);
   cursor: pointer;
@@ -3643,100 +3750,79 @@ html[data-theme="light"] .hg-bottom-nav {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 2px;
-  font: 500 10px/1 var(--hg-font);
+  gap: 3px;
+  font: 500 11px/1 var(--hg-font);
   letter-spacing: 0;
-  transition: color 150ms ease, transform 150ms ease;
+  transition: color 180ms var(--hg-ease-std), background 180ms var(--hg-ease-std);
 }
-.hg-bottom-nav button:active { transform: scale(0.94); }
+.hg-bottom-nav button:active { transform: scale(0.96); }
 .hg-bottom-nav button:focus { outline: none; }
 .hg-bottom-nav button:focus-visible:not(.is-active) {
   outline: 2px solid var(--hg-accent-chat);
   outline-offset: 2px;
-  border-radius: 12px;
+  border-radius: 14px;
 }
 .hg-bottom-nav button.is-active:focus-visible {
   outline: 2px solid var(--hg-accent-chat);
   outline-offset: 2px;
-  border-radius: 12px;
+  border-radius: 22px;
 }
 .hg-bottom-nav .hg-nav-ico {
   position: relative;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 36px;
-  height: 36px;
+  width: 26px;
+  height: 26px;
   overflow: visible;
   background: transparent;
 }
-.hg-bottom-nav .hg-nav-ico::before {
-  content: '';
-  position: absolute;
-  /* R100: TG active charcoal disk ~36 */
-  width: 36px;
-  height: 36px;
-  left: 50%;
-  top: 46%;
-  border-radius: 50%;
-  background: transparent;
-  transform: translate(-50%, -50%);
-  transition: background 200ms ease-out, opacity 200ms ease-out;
-  pointer-events: none;
-  z-index: 0;
-  filter: none;
-}
+/* Диск под иконкой больше не используем — активную форму рисует сама кнопка. */
+.hg-bottom-nav .hg-nav-ico::before { content: none; display: none; }
 .hg-bottom-nav button.is-active {
   color: var(--hg-nav-icon-active);
-  background: transparent !important;
-  box-shadow: none !important;
+  /* Залитая капсула активного таба (TG pill). */
+  background: var(--hg-nav-pill-active, color-mix(in srgb, var(--blue-l, #4A90D9) 20%, transparent)) !important;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--blue-l, #4A90D9) 26%, transparent) !important;
+  margin: 6px 2px;
+  height: calc(100% - 12px);
 }
 .hg-bottom-nav button.is-active .hg-nav-label {
   color: var(--hg-nav-icon-active) !important;
+  font-weight: 600;
 }
 .hg-bottom-nav .hg-nav-badge {
   font: 700 11px/18px var(--hg-font);
   letter-spacing: -0.02em;
 }
-.hg-bottom-nav button.is-active .hg-nav-ico::before {
-  background: var(--hg-nav-circle-active);
-  opacity: 1;
-  /* charcoal disc only — no gold/bloom */
-  box-shadow: none;
-  filter: none;
+.hg-bottom-nav button:hover:not(.is-active) {
+  color: var(--hg-text);
 }
 .hg-bottom-nav button.is-active .hg-nav-ico svg {
   color: var(--hg-nav-icon-active);
   stroke: currentColor;
-  fill: currentColor;
-  stroke-width: 0;
+  fill: none;
+  stroke-width: 2 !important;
 }
 .hg-bottom-nav button:hover:not(.is-active) {
   color: var(--hg-text);
 }
-.hg-bottom-nav button:hover:not(.is-active) .hg-nav-ico::before {
-  background: var(--hg-nav-circle-hover);
-}
 .hg-bottom-nav .hg-nav-ico svg {
   position: relative;
   z-index: 1;
-  width: 26px !important;
-  height: 26px !important;
-  min-width: 26px;
-  min-height: 26px;
+  width: 24px !important;
+  height: 24px !important;
+  min-width: 24px;
+  min-height: 24px;
   flex-shrink: 0;
-  stroke-width: 1.75 !important;
+  stroke-width: 1.9 !important;
   fill: none;
-  transition: color 150ms ease, stroke-width 150ms ease;
-}
-.hg-bottom-nav button.is-active .hg-nav-ico svg {
-  stroke-width: 2 !important;
-  fill: none;
+  transition: color 180ms var(--hg-ease-std), stroke-width 180ms var(--hg-ease-std);
 }
 .hg-bottom-nav .hg-nav-label {
   position: relative;
   z-index: 1;
-  font: 500 10px/1 var(--hg-font);
+  font: 500 11px/1 var(--hg-font);
   letter-spacing: 0;
 }
 .hg-bottom-nav .hg-nav-badge {
@@ -3938,7 +4024,7 @@ html[data-theme="light"] .hg-nav-search {
 .hg-contacts-list .hg-contact-row.is-active,
 .hg-contacts .hg-contact-row.is-active {
   background: var(--hg-active-row);
-  border-left: 2px solid var(--hg-active-edge, var(--gold, #D4A843));
+  border-left: 2px solid var(--hg-active-edge, var(--blue-l, #4A90D9));
 }
 .hg-contacts-list .hg-contact-row:hover,
 .hg-contacts .hg-contact-row:hover {
@@ -3960,7 +4046,8 @@ html[data-theme="light"] .hg-nav-search {
 }
 .hg-contact-meta { min-width: 0; flex: 1; }
 .hg-contact-name {
-  font: 400 16px/1.25 var(--hg-font);
+  /* Дизайн-ревью: имя контакта — 17/600 (TG-канон S02/S12). */
+  font: 600 17px/1.25 var(--hg-font);
   color: var(--hg-text);
   white-space: nowrap;
   overflow: hidden;
@@ -3980,8 +4067,8 @@ html[data-theme="light"] .hg-nav-search {
 .hg-contact-invite {
   flex: 0 0 auto;
   font: 600 12px/1 var(--hg-font);
-  color: var(--hg-accent, var(--gold, #D4A843));
-  border: 1px solid color-mix(in srgb, var(--hg-accent, #D4A843) 45%, transparent);
+  color: var(--hg-accent-chat, var(--blue-l, #4A90D9));
+  border: 1px solid color-mix(in srgb, var(--blue-l, #4A90D9) 45%, transparent);
   border-radius: 999px;
   padding: 6px 12px;
 }
@@ -4057,8 +4144,8 @@ html[data-theme="light"] .hg-settings { background: var(--hg-bg, var(--bg1, #F4E
   padding-right: 4px;
 }
 .hg-settings-ico.is-grey,
-.hg-settings-ico.is-gray { background: var(--hg-muted, #8E8E93); }
-.hg-settings-ico.is-yellow { background: var(--gold, #D4A843); color: var(--bg1, #0D1117); }
+.hg-settings-ico.is-gray { background: color-mix(in srgb, var(--t2, #8E8E93) 16%, transparent); color: color-mix(in srgb, var(--t2, #8E8E93) 80%, var(--t1, #fff)); }
+.hg-settings-ico.is-yellow { background: color-mix(in srgb, var(--warn, var(--amber, #D4A843)) 18%, transparent); color: color-mix(in srgb, var(--warn, var(--amber, #D4A843)) 90%, var(--t1, #fff)); }
 .hg-settings-profile {
   display: flex;
   flex-direction: column;
@@ -4206,9 +4293,10 @@ html[data-theme="light"] .hg-settings { background: var(--hg-bg, var(--bg1, #F4E
   cursor: pointer;
 }
 .hg-fx-btn.is-active {
-  background: var(--gold-bg, rgba(212, 168, 67, 0.16));
+  /* Канон DS §9.9: gold только в rail. Активная кнопка — акцент чата. */
+  background: color-mix(in srgb, var(--blue-l, #4A90D9) 16%, transparent);
   color: var(--hg-text);
-  border-color: var(--gold, #D4A843);
+  border-color: color-mix(in srgb, var(--blue-l, #4A90D9) 55%, transparent);
 }
 .hg-settings-row--static { cursor: default; }
 .hg-settings-row--static:hover { background: transparent; }
@@ -4251,9 +4339,10 @@ html[data-theme="light"] .hg-settings-alert.hg-glass[data-role="card"] {
   align-items: center;
   gap: 12px;
   width: 100%;
-  padding: 10px 14px;
+  height: 52px;
+  padding: 0 14px;
   border: 0;
-  border-bottom: 0.5px solid var(--brd-m, rgba(84, 84, 88, 0.45));
+  border-bottom: 0.5px solid var(--brd-m, rgba(255, 255, 255, 0.08));
   background: transparent;
   color: var(--hg-text);
   cursor: pointer;
@@ -4263,23 +4352,26 @@ html[data-theme="light"] .hg-settings-alert.hg-glass[data-role="card"] {
 .hg-settings-row:last-child { border-bottom: 0; }
 .hg-settings-row:hover { background: rgba(255, 255, 255, 0.04); }
 .hg-settings-ico {
-  width: 29px;
-  height: 29px;
-  border-radius: 7px;
-  color: #fff;
+  width: 30px;
+  height: 30px;
+  border-radius: 9px;
+  color: var(--hg-text);
   display: inline-flex;
   align-items: center;
   justify-content: center;
   flex: 0 0 auto;
+  /* ТЗ §1.4: единый стиль иконок — мягкий tint-фон, а не плашка Material. */
+  background: color-mix(in srgb, var(--t1, #fff) 8%, transparent);
 }
-.hg-settings-ico svg { width: 18px; height: 18px; stroke: #fff; stroke-width: 2; }
-.hg-settings-ico.is-red { background: var(--hg-danger, var(--red, #C8293B)); }
-.hg-settings-ico.is-blue { background: var(--hg-accent-chat, var(--blue-l, #4A90D9)); }
-.hg-settings-ico.is-green { background: var(--ok, #2D8659); }
-.hg-settings-ico.is-orange { background: var(--warn, var(--amber, #D4A843)); }
-.hg-settings-ico.is-purple { background: var(--purple, #8B5CF6); }
-.hg-settings-ico.is-cyan { background: var(--info, #3B82F6); }
-.hg-settings-ico.is-gray { background: #8E8E93; }
+.hg-settings-ico svg { width: 18px; height: 18px; stroke: currentColor; stroke-width: 1.75; }
+/* Единая толщина линий и приглушённые тона (не «радуга» Material-плиток). */
+.hg-settings-ico.is-red { background: color-mix(in srgb, var(--red, #C8293B) 16%, transparent); color: color-mix(in srgb, var(--red, #C8293B) 88%, var(--t1, #fff)); }
+.hg-settings-ico.is-blue { background: color-mix(in srgb, var(--blue-l, #4A90D9) 16%, transparent); color: color-mix(in srgb, var(--blue-l, #4A90D9) 88%, var(--t1, #fff)); }
+.hg-settings-ico.is-green { background: color-mix(in srgb, var(--ok, #2D8659) 16%, transparent); color: color-mix(in srgb, var(--ok, #2D8659) 88%, var(--t1, #fff)); }
+.hg-settings-ico.is-orange { background: color-mix(in srgb, var(--warn, #D4A843) 18%, transparent); color: color-mix(in srgb, var(--warn, #D4A843) 90%, var(--t1, #fff)); }
+.hg-settings-ico.is-purple { background: color-mix(in srgb, var(--purple, #8B5CF6) 16%, transparent); color: color-mix(in srgb, var(--purple, #8B5CF6) 84%, var(--t1, #fff)); }
+.hg-settings-ico.is-cyan { background: color-mix(in srgb, var(--info, #3B82F6) 16%, transparent); color: color-mix(in srgb, var(--info, #3B82F6) 88%, var(--t1, #fff)); }
+.hg-settings-ico.is-gray { background: color-mix(in srgb, var(--t2, #8E8E93) 16%, transparent); color: color-mix(in srgb, var(--t2, #8E8E93) 80%, var(--t1, #fff)); }
 .hg-settings-label { flex: 1; min-width: 0; }
 .hg-settings-chev {
   color: #636366;
@@ -4345,7 +4437,6 @@ html[data-theme="light"] .hg-settings-logout { background: var(--bg2, #FDFAF5); 
 }
 
 /* Phase 7.5 micro-interactions (bottom-nav timings owned by P9 block above) */
-.hg-tab,
 .hg-rail-btn,
 .hg-icon-btn,
 .hg-tool,
@@ -4422,7 +4513,7 @@ body.hg-dock-collapsed { padding-right: calc(var(--hg-rail-w) + 24px); }
     padding-bottom: 12px;
   }
   .hg-chrome.is-thread .hg-msgs {
-    padding-bottom: calc(72px + env(safe-area-inset-bottom, 0px)) !important;
+    padding-bottom: calc(72px + env(safe-area-inset-bottom, 0px) + 16px) !important;
   }
   .hg-chrome:not(.is-thread):not(.is-composer-focus):not(.is-recording) .hg-msgs {
     padding-bottom: calc(56px + 12px + env(safe-area-inset-bottom, 0px)) !important;
@@ -4587,22 +4678,45 @@ html[data-hg-fx="off"] {
   --hg-glass-shadow: none;
   --hg-tg-nav-bg: var(--bg3, #1C2130);
   --hg-tg-fab-bg: var(--bg3, #1C2130);
+  /* Depth & Juice off: глубина → плоский читаемый UI (DS §11 anti-flat rule).
+     Важно: значения должны быть ВАЛИДНЫМИ для `box-shadow` композиции
+     (`var(--hg-elev-N), var(--hg-inset-hairline)`) — `none` ломает шорткат. */
+  --hg-elev-1: 0 0 #0000;
+  --hg-elev-2: 0 0 #0000;
+  --hg-elev-3: 0 0 #0000;
+  --hg-elev-4: 0 0 #0000;
+  --hg-glow-accent: 0 0 #0000;
+  --hg-glow-accent-soft: 0 0 #0000;
+  --hg-grad-surface: none;
+  --hg-grad-accent: var(--blue-l, #4A90D9);
+  --hg-rim-specular: 0 0 #0000;
+  --hg-inset-hairline: inset 0 0 0 1px var(--brd-m, rgba(255,255,255,.08));
+}
+#huginnDock.hg-power-reduced,
+html[data-hg-fx="reduced"] {
+  /* Depth & Juice reduced: глубина мягче, свечение слабее (DS §3.3) */
+  --hg-elev-2: 0 2px 6px rgba(0, 0, 0, 0.2);
+  --hg-elev-3: 0 6px 18px rgba(0, 0, 0, 0.26);
+  --hg-elev-4: 0 10px 28px rgba(0, 0, 0, 0.3);
+  --hg-glow-accent: 0 2px 8px color-mix(in srgb, var(--blue-l, #4A90D9) 28%, transparent);
+  --hg-glow-accent-soft: 0 1px 6px color-mix(in srgb, var(--blue-l, #4A90D9) 20%, transparent);
 }
 
 /* ── Mimir AI thread chrome (§E visual wave) ─────────────────────── */
-/* AI badge — inline in thread title and inside AI bubbles */
+/* AI badge — inline in thread title and inside AI bubbles.
+   ТЗ §1.3: нейтральный серый бейдж вместо акцентного («убрать красный AI»). */
 .hg-mimir-badge {
   display: inline-flex; align-items: center;
   font: 600 10px/1 var(--hg-font, inherit);
   letter-spacing: 0.06em; text-transform: uppercase;
-  color: var(--accent, #5b8cff);
-  background: color-mix(in srgb, var(--accent, #5b8cff) 16%, transparent);
+  color: var(--hg-muted, var(--t2, #8B96A8));
+  background: color-mix(in srgb, var(--t1, #fff) 8%, transparent);
   border-radius: 999px; padding: 3px 7px; margin-left: 6px;
   vertical-align: middle;
 }
 /* Mimir AI reply bubbles — subtle left-border accent */
 .hg-bubble.them.is-ai {
-  border-left: 2px solid color-mix(in srgb, var(--accent, #5b8cff) 40%, transparent);
+  border-left: 2px solid color-mix(in srgb, var(--t2, #8B96A8) 45%, transparent);
 }
 /* Thinking indicator pulsing */
 .hg-bubble._thinking {
@@ -4644,21 +4758,69 @@ html[data-hg-fx="off"] {
 .hg-bubble.is-ai .hg-ai-table,
 .hg-bubble.is-ai .hg-ai-code { max-width: 100%; }
 
-/* Compose / chat profile / invite sheets — dock panel only (not fullscreen CRM) */
-#huginnDock .hg-panel .hg-compose-sheet,
-#huginnDock .hg-panel .hg-chat-profile,
-#huginnDock .hg-panel .hg-invite-sheet,
-#huginnDock .hg-panel .hg-call-sheet,
-.hg-chrome .hg-panel .hg-compose-sheet,
-.hg-chrome .hg-panel .hg-chat-profile,
-.hg-chrome .hg-panel .hg-invite-sheet,
-.hg-chrome .hg-panel .hg-call-sheet {
+/* Заголовок sheet'а — канон DS §11.7: h=44, 17/600 по центру, close слева. */
+.hg-sheet__header {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  height: 44px;
+  min-height: 44px;
+  flex: 0 0 auto;
+  padding: 0 16px;
+  font: 600 17px/1.2 var(--hg-font);
+  color: var(--hg-text);
+  text-align: center;
+  border-bottom: 1px solid var(--hg-border);
+}
+.hg-sheet__header > strong { font: inherit; }
+.hg-sheet__header .hg-sheet__close {
   position: absolute;
-  inset: 0;
-  left: 0;
-  right: 0;
+  left: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 40px; height: 40px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--hg-muted);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Compose / chat profile / invite sheets — dock panel only (not fullscreen CRM) */
+/* Слой шитов: отдельный контейнер в .hg-chrome, выровнен по #hgPanel и лежит
+   ПОВЕРХ неё. Не внутри #hgPanel — иначе renderPanel() (SSE/presence) стирает
+   открытый шит. Геометрия = панель (ширина и позиция справа на desktop). */
+.hg-sheets-host {
+  position: absolute;
   top: 0;
   bottom: 0;
+  right: 0;
+  width: var(--hg-panel-w);
+  max-width: 100%;
+  z-index: 4000;
+  pointer-events: none;
+  overflow: hidden;
+}
+#huginnDock > .hg-sheets-host > .hg-compose-sheet,
+#huginnDock > .hg-sheets-host > .hg-chat-profile,
+#huginnDock > .hg-sheets-host > .hg-invite-sheet,
+#huginnDock > .hg-sheets-host > .hg-call-sheet,
+#huginnDock > .hg-sheets-host > .hg-story-sheet,
+#huginnDock > .hg-sheets-host > .hg-ai-sheet,
+#huginnDock > .hg-sheets-host > .hg-search-sheet,
+#huginnDock > .hg-sheets-host > .hg-forward-sheet,
+#huginnDock > .hg-sheets-host > .hg-checklist-sheet,
+.hg-chrome > .hg-sheets-host > .hg-compose-sheet,
+.hg-chrome > .hg-sheets-host > .hg-chat-profile,
+.hg-chrome > .hg-sheets-host > .hg-invite-sheet,
+.hg-chrome > .hg-sheets-host > .hg-call-sheet,
+.hg-chrome > .hg-sheets-host > .hg-story-sheet {
+  position: absolute;
+  inset: 0;
   z-index: 4000;
   display: flex;
   flex-direction: column;
@@ -4677,7 +4839,12 @@ html[data-hg-fx="off"] {
   pointer-events: auto;
   backdrop-filter: none;
   -webkit-backdrop-filter: none;
-  animation: none;
+  /* Плавное появление шита (было animation:none → «телепорт», P0 аудита). */
+  animation: hg-sheet-in 180ms var(--hg-ease-std, cubic-bezier(.4,0,.2,1));
+}
+@keyframes hg-sheet-in {
+  from { opacity: 0; transform: translateY(10px) scale(0.995); }
+  to { opacity: 1; transform: none; }
 }
 
 /* ── 1:1 call overlay (inside dock panel) ─────────────────────── */
@@ -4798,38 +4965,37 @@ html[data-hg-fx="off"] {
   text-align: left;
   width: calc(100% - 24px);
 }
-.hg-compose-group-name {
-  margin: 0 12px 8px;
-  width: calc(100% - 24px);
-  height: 36px;
-  border: 0;
-  border-radius: 10px;
-  padding: 0 12px;
-  background: rgba(120, 120, 128, 0.24);
-  color: #fff;
-  font: 400 14px/1 var(--hg-font);
-}
-.hg-compose-group-name[hidden] { display: none; }
+/* .hg-compose-group-name удалён вместе с режимом «Группа» (решение заказчика). */
 .hg-invite-sheet .hg-invite-fields {
   display: flex;
   flex-direction: column;
   gap: 10px;
   padding: 12px 14px;
 }
-.hg-invite-sheet .hg-invite-fields input {
-  height: 40px;
-  border: 0;
-  border-radius: 10px;
-  padding: 0 12px;
-  background: rgba(120, 120, 128, 0.24);
-  color: #fff;
-  font: 400 14px/1 var(--hg-font);
+/* Поля шита: глобальные app.css/light-theme.css с `!important` (F2 от верификатора)
+   бьют эти правила (радиус 8px, фон --bg2). Отбиваем `!important` с более
+   высокой специфичностью, оставаясь в CRM-токенах. */
+#huginnDock .hg-invite-sheet .hg-invite-fields input,
+.hg-chrome .hg-invite-sheet .hg-invite-fields input {
+  /* §11.7 .hg-field: h=40, radius 12, фон --bg3 (текст центрируется line-height). */
+  height: 40px !important;
+  min-height: 40px !important;
+  border: 1px solid var(--hg-border, var(--brd-m)) !important;
+  border-radius: 12px !important;
+  padding: 0 16px !important;
+  background: var(--bg3, #1C2130) !important;
+  color: var(--hg-text, #fff) !important;
+  font: 400 16px/1.2 var(--hg-font) !important;
+  box-sizing: border-box;
+  box-shadow: none !important;
+  outline: none;
 }
-.hg-invite-sheet .hg-invite-modes {
-  display: flex;
-  gap: 6px;
-  padding: 0 14px 10px;
+.hg-invite-sheet .hg-invite-fields input::placeholder { color: color-mix(in srgb, var(--t1, #fff) 55%, transparent); }
+.hg-invite-sheet .hg-invite-fields input:focus {
+  border-color: var(--blue-l, #4A90D9);
+  box-shadow: var(--hg-focus-glow);
 }
+/* Сегмент-контрол оформляется общим правилом .hg-invite-modes ниже (пилюля). */
 .hg-invite-sheet .hg-invite-result {
   margin: 4px 14px 16px;
   padding: 10px 12px;
@@ -4858,14 +5024,21 @@ html[data-hg-fx="off"] {
 }
 .hg-invite-sheet .hg-invite-submit {
   margin: 8px 14px 16px;
-  height: 44px;
+  min-height: 50px;
   border: 0;
   border-radius: 12px;
-  background: var(--hg-accent-chat, #0A84FF);
+  /* ТЗ §1.5: CTA = градиент + цветная тень (единый рецепт с экраном «История»). */
+  background: var(--hg-grad-accent);
+  box-shadow: var(--hg-glow-accent);
   color: #fff;
-  font: 600 15px/1 var(--hg-font);
+  font: 600 16px/1.2 var(--hg-font);
   cursor: pointer;
+  transition: filter var(--hg-dur-mid) var(--hg-ease-std),
+    transform var(--hg-dur-fast) var(--hg-ease-std),
+    box-shadow var(--hg-dur-mid) var(--hg-ease-std);
 }
+.hg-invite-sheet .hg-invite-submit:hover { filter: brightness(1.06); }
+.hg-invite-sheet .hg-invite-submit:active { transform: scale(0.98); box-shadow: var(--hg-elev-1); }
 .hg-invite-sheet .hg-invite-submit:disabled {
   opacity: 0.45;
   cursor: default;
@@ -5433,14 +5606,18 @@ body:has(.hg-ai-sheet) .hg-nav-search {
   margin: 8px 2px 0; text-align: center;
 }
 .hg-invite-sheet[data-role="card"] { padding: 16px; }
+/* CTA общая (Пригласить/История): градиент + тень + 50px (§1.5/§1.6). */
 .hg-invite-submit {
-  width: 100%; min-height: 46px; border: 0; border-radius: 12px;
-  background: var(--blue-l, #4A90D9); color: #fff;
-  font: 600 15px/1.2 var(--hg-font); cursor: pointer; margin-top: 12px;
-  transition: filter 120ms ease, transform 120ms ease;
+  width: 100%; min-height: 50px; border: 0; border-radius: 12px;
+  background: var(--hg-grad-accent, var(--blue-l, #4A90D9)); color: #fff;
+  box-shadow: var(--hg-glow-accent);
+  font: 600 16px/1.2 var(--hg-font); cursor: pointer; margin-top: 12px;
+  transition: filter var(--hg-dur-mid) var(--hg-ease-std),
+    transform var(--hg-dur-fast) var(--hg-ease-std),
+    box-shadow var(--hg-dur-mid) var(--hg-ease-std);
 }
-.hg-invite-submit:hover { filter: brightness(1.06); }
-.hg-invite-submit:active { transform: scale(0.98); }
+.hg-invite-submit:hover { filter: brightness(1.06); box-shadow: var(--hg-glow-accent-soft); }
+.hg-invite-submit:active { transform: scale(0.98); box-shadow: var(--hg-elev-1); }
 .hg-invite-modes .hg-compose-mode.is-active {
   background: color-mix(in srgb, var(--blue-l, #4A90D9) 18%, transparent);
   color: var(--hg-text);
@@ -5473,5 +5650,244 @@ body:has(.hg-ai-sheet) .hg-nav-search {
   display: flex; align-items: center; justify-content: center;
   font: 700 14px/1 var(--hg-font);
   border: 2px solid var(--hg-bg, var(--bg2));
+  box-shadow: var(--hg-elev-1);
 }
 .hg-story-av { position: relative; }
+
+/* ═══════════════════════════════════════════════════════════════════
+   DS §11 — Depth & Juice application (CRM tokens, no TG hex)
+   Flat → depth: elevation, gradients, specular rim, coloured CTA glow.
+   NOTE: селекторы здесь намеренно специфичнее `.hg-glass[data-role=...]`,
+   иначе role-правила выше перебивают глубину (находка V-TZ).
+   ═══════════════════════════════════════════════════════════════════ */
+
+/* F5 — bubbles: TG S04/S05/S57 §7 «без тени и обводки, только градиентная
+   заливка». Раньше у пузыря было 3 слоя (elev+specular+rim) → эффект «таблицы».
+   Глубину даёт градиент, а не тени. */
+.hg-glass.hg-bubble, .hg-bubble { box-shadow: none; }
+.hg-bubble.me {
+  background-image: var(--hg-grad-surface);
+  box-shadow: none;
+}
+.hg-bubble.them {
+  background-image: var(--hg-grad-surface);
+  box-shadow: none;
+}
+
+/* F1 — bottom nav + FAB: глубокая тень + specular (глубина, не плоско).
+   Специфичность (0,2,0) — не ниже `.hg-glass[data-role="nav"|"fab"]`. */
+.hg-glass.hg-bottom-nav.hg-bottom-nav { box-shadow: var(--hg-elev-3), var(--hg-inset-hairline); }
+.hg-glass.hg-nav-search.hg-nav-search { box-shadow: var(--hg-elev-3), var(--hg-inset-hairline); }
+
+/* F3 — floating header/pin capsules: лёгкая глубина */
+.hg-thread-title { box-shadow: var(--hg-elev-1); }
+.hg-back-btn,
+.hg-back-cluster,
+.hg-thread-head .hg-icon-btn#hgBack { box-shadow: var(--hg-elev-1); }
+
+/* Секции/меню/шиты — surface gradient + elevation.
+   Compose-шиты занимают весь док (absolute inset:0) — внешняя тень не видна,
+   поэтому им даём не тень, а лёгкий specular-кант. */
+.hg-sheet { box-shadow: var(--hg-elev-4); }
+.hg-float, .hg-quick-react, .hg-attach-menu { box-shadow: var(--hg-elev-3); }
+
+/* F7 — settings cards: карточки с объёмом и «воздухом» (специфичность ≥0,3,0) */
+.hg-settings-card.hg-glass[data-role="card"],
+.hg-settings-alert.hg-glass[data-role="card"] {
+  box-shadow: var(--hg-elev-2), var(--hg-inset-hairline);
+}
+.hg-settings-card { border-radius: 16px; }
+.hg-settings-alert { border-radius: 16px; background-image: var(--hg-grad-surface); }
+
+/* Экраны «Пригласить» / «История» — входы с глубиной, focus-glow, CTA-gradient */
+.hg-invite-fields input,
+.hg-invite-sheet .h-field,
+.hg-story-sheet input {
+  transition: border-color var(--hg-dur-slow) var(--hg-ease-std),
+    box-shadow var(--hg-dur-mid) var(--hg-ease-std), background var(--hg-dur-mid) var(--hg-ease-std);
+}
+.hg-invite-fields input:focus,
+.hg-invite-sheet .h-field:focus,
+.hg-story-sheet input:focus {
+  border-color: var(--blue-l, #4A90D9);
+  box-shadow: var(--hg-focus-glow);
+}
+/* (CTA-стиль задан выше единым правилом .hg-invite-submit — без дубля). */
+.hg-invite-submit:disabled { opacity: 0.5; box-shadow: none; }
+
+/* Сегмент-контрол (F4): пилюля-контейнер + бегунок-слайд, а не «таблетки». */
+.hg-invite-modes {
+  position: relative;
+  display: flex;
+  gap: 4px;
+  margin: 0 14px 10px;
+  padding: 4px;
+  border-radius: 12px;
+  background: var(--bg3, #1C2130);
+  box-shadow: var(--hg-inset-hairline);
+  /* Бегунок: подложка едет через translateX (ТЗ §1.5). --hg-segment-offset
+     задаёт JS (0 / 100% / 200% при трёх сегментах), ширина = (100% - 8px)/N. */
+  --hg-seg-n: 3;
+  --hg-segment-offset: 0%;
+}
+.hg-invite-modes::before {
+  content: '';
+  position: absolute;
+  top: 4px;
+  bottom: 4px;
+  left: 4px;
+  width: calc((100% - 8px) / var(--hg-seg-n));
+  border-radius: 8px;
+  background: var(--bg2, #1C2130);
+  box-shadow: var(--hg-elev-1);
+  transform: translateX(var(--hg-segment-offset, 0%));
+  transition: transform var(--hg-dur-base, 180ms) var(--hg-ease-emphasized, cubic-bezier(.2,.8,.2,1));
+  pointer-events: none;
+  z-index: 0;
+}
+html[data-theme="light"] .hg-invite-modes::before { background: var(--bg2, #FDFAF5); }
+.hg-story-sheet .hg-invite-modes { margin: 0 16px 10px; }
+.hg-invite-modes .hg-compose-mode {
+  position: relative;
+  z-index: 1;
+  flex: 1;
+  border: 0;
+  border-radius: 8px;
+  background: transparent !important;
+  color: var(--hg-muted);
+  font: 500 14px/1.2 var(--hg-font);
+  padding: 8px 10px;
+  cursor: pointer;
+  transition: color var(--hg-dur-base, 180ms) var(--hg-ease-standard, ease);
+}
+.hg-invite-modes .hg-compose-mode.is-active {
+  /* Фон рисует бегунок (::before) — у кнопки только цвет текста. */
+  background: transparent !important;
+  color: var(--hg-text);
+  box-shadow: none;
+}
+html[data-theme="light"] .hg-invite-modes .hg-compose-mode.is-active {
+  background: transparent !important;
+  color: var(--t1, #1A1510);
+}
+
+/* Слайд-анимация «бегунка» сегмент-контрола (Пригласить/История) */
+.hg-compose-mode,
+.hg-invite-modes .hg-compose-mode {
+  transition: background var(--hg-dur-mid) var(--hg-ease-std),
+    color var(--hg-dur-mid) var(--hg-ease-std),
+    transform var(--hg-dur-mid) var(--hg-ease-spring);
+}
+.hg-compose-mode.is-active { transform: translateZ(0) scale(1.02); }
+
+/* Универсальный микро-интерактив кнопок (ТЗ §1.7) */
+.hg-list-me-btn,
+.hg-icon-btn,
+.hg-edit-action,
+.hg-settings-row {
+  transition: background var(--hg-dur-fast) var(--hg-ease-std),
+    color var(--hg-dur-fast) var(--hg-ease-std),
+    transform var(--hg-dur-fast) var(--hg-ease-std),
+    box-shadow var(--hg-dur-fast) var(--hg-ease-std);
+}
+
+/* F7 — мягкая плашка вместо «кричащего» красного баннера номера
+   (background-image задан выше, у карточки-специфичного селектора). */
+.hg-settings-alert-bang {
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--hg-danger, #C8293B) 14%, transparent);
+}
+
+/* F4 — строки чатов: тонкая глубина на hover/active + разделители тоньше */
+.hg-chat-row { transition: background var(--hg-dur-fast) var(--hg-ease-std); }
+.hg-chat-row:hover { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--t1, #fff) 5%, transparent); }
+
+/* F7 — крупнее аватар профиля с красивой обводкой */
+.hg-settings-av { box-shadow: var(--hg-elev-2), 0 0 0 2px color-mix(in srgb, var(--blue-l, #4A90D9) 40%, transparent); }
+
+/* F9 — respect reduced motion уже есть; spring-ритм для pop-элементов */
+@media (prefers-reduced-motion: no-preference) {
+  .hg-bubble { transition: box-shadow var(--hg-dur-mid) var(--hg-ease-std); }
+}
+
+/* ТЗ §1.6 — «История»: Drop Zone вместо дефолтной кнопки «Выбрать файл» */
+.hg-dropzone {
+  width: 100%;
+  min-height: 152px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 24px 16px;
+  border: 2px dashed color-mix(in srgb, var(--t1, #fff) 24%, transparent);
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--t1, #fff) 5%, transparent);
+  color: var(--hg-text);
+  cursor: pointer;
+  text-align: center;
+  transition: border-color var(--hg-dur-mid) var(--hg-ease-std),
+    background var(--hg-dur-mid) var(--hg-ease-std),
+    transform var(--hg-dur-fast) var(--hg-ease-std);
+}
+.hg-dropzone:hover,
+.hg-dropzone.is-drag {
+  border-style: solid;
+  border-color: var(--blue-l, #4A90D9);
+  background: color-mix(in srgb, var(--blue-l, #4A90D9) 10%, var(--bg3, #1C2130));
+}
+.hg-dropzone.is-drag { transform: scale(1.01); }
+.hg-dropzone-ico {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 44px; height: 44px; border-radius: 50%;
+  background: color-mix(in srgb, var(--blue-l, #4A90D9) 16%, transparent);
+  color: var(--blue-l, #4A90D9);
+}
+.hg-dropzone-ico svg { width: 22px; height: 22px; stroke-width: 2; }
+.hg-dropzone-title { font: 400 16px/1.35 var(--hg-font); color: var(--hg-text); }
+.hg-dropzone-sub { font: 400 13px/1.3 var(--hg-font); color: var(--hg-muted); }
+.hg-dropzone-ico { color: var(--blue-l, #4A90D9); }
+.hg-dropzone-preview {
+  width: 100%;
+  border-radius: 12px;
+  overflow: hidden;
+  border: 1px solid var(--hg-border);
+  background: var(--bg3, #1C2130);
+}
+.hg-dropzone-preview[hidden] { display: none; }
+.hg-dropzone-preview img,
+.hg-dropzone-preview video { width: 100%; max-height: 260px; object-fit: cover; display: block; }
+
+/* ТЗ §1.7 — Ripple-эффект от точки касания (строки списков + пузыри + кнопки).
+   Хосты не должны обрезать focus-ring/бейджи: overflow:hidden только там,
+   где нет выступающих за границы элементов. */
+.hg-chat-row,
+.hg-contact-row,
+.hg-settings-row,
+.hg-bubble {
+  position: relative;
+  overflow: hidden;
+  -webkit-tap-highlight-color: transparent;
+}
+.hg-icon-btn,
+.hg-edit-action,
+.hg-list-me-btn,
+.hg-bottom-nav button,
+.hg-send { -webkit-tap-highlight-color: transparent; }
+.hg-ripple {
+  position: absolute;
+  border-radius: 50%;
+  transform: scale(0);
+  background: radial-gradient(circle at var(--hg-ripple-x, 50%) var(--hg-ripple-y, 50%),
+    color-mix(in srgb, var(--t1, #fff) 24%, transparent) 0%,
+    color-mix(in srgb, var(--t1, #fff) 12%, transparent) 70%,
+    transparent 100%);
+  pointer-events: none;
+  animation: hg-ripple-out 520ms var(--hg-ease-std, ease-out) forwards;
+  z-index: 0;
+}
+@keyframes hg-ripple-out {
+  to { transform: scale(2.4); opacity: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .hg-ripple { display: none !important; }
+}

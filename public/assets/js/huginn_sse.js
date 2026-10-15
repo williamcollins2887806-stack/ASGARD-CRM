@@ -117,6 +117,8 @@
       'call:incoming', 'call:accepted', 'call:declined', 'call:ended'].forEach(wire);
 
     source.addEventListener('error', () => {
+      // Уведомляем подписчиков (шапка чата показывает «соединение…»).
+      emit('error', {});
       // CLOSED (2) — recreate fast. CONNECTING (0) — the browser retries itself.
       if (source.readyState === 2) { if (es === source) es = null; scheduleReconnect(); return; }
       scheduleReconnect();

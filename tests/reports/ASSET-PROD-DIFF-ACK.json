@@ -60,6 +60,20 @@
       "verdict": "superseded_by_local",
       "acked_at": "2026-10-07",
       "acked_by": "deploy 20.28.100 (Ting video layout + name fix)"
+    },
+    "public/assets/css/huginn_dock.css": {
+      "reason": "Prod-only строки — ПРОМЕЖУТОЧНАЯ версия той же работы по редизайну Хугинна (мой ранний проход волн F0–F5 + первая редакция Части 5 ТЗ), которую локальная финальная версия заменяет намеренно: старые значения токенов и старая (layout-тяжёлая) анимация панели историй.",
+      "evidence": "Факт (сравнение прод ↔ рабочее дерево, tools/_prove_prod_handedit.js): prod-only — `--hg-tg-input-radius: 22px`, `--hg-tg-badge: #FF3B30`, `--hg-tg-header-inset: 12px`, `--hg-tg-pin-h: 40px`, `--hg-tg-pin-gap: 2px`, `--hg-av-list: 54px`, `--hg-active-edge: var(--gold, #B8841A)`, `padding: var(--hg-pad-panel)`; блок историй со `max-height: calc(96px * (1 - var(--hg-rail-hide)))` + `transition: max-height 90ms linear`. Локально эти значения заменены по ревью дизайнера и аудита (пин 48/gap 8, input-radius 20, av-list 60, active-edge blue-l, inset 16, badge var(--red)), а панель историй переведена на compositor-only (`transform`/`opacity`, без per-frame max-height) — это фикс лагов скролла, найденный заказчиком. Ни одна prod-строка не несёт поведения, которого нет в локальной версии; локальная строго новее и покрывает те же участки. В git prod-состояние не попадало (заливалось scp из рабочего дерева несколькими промежуточными проходами).",
+      "verdict": "superseded_by_local",
+      "acked_at": "2026-10-15",
+      "acked_by": "deploy 20.28.211 (Huginn redesign: tabs/groups removed, SMS 6-digit, calls fix)"
+    },
+    "public/assets/js/huginn_dock.js": {
+      "reason": "Prod-only строки — ПРОМЕЖУТОЧНАЯ версия Хугинна: таб «Мимир» в навигации, блок вкладок `data-ltab` («Все/Личные/Избранное/Контакты/Новые/Клиенты»), `sheetHost` = `#hgPanel`, ripple только на строках, fade только по `tabChanged`, старая логика историй со `REVEAL_RANGE`/`lastTop`. Всё это локальная версия заменяет намеренно по прямому заданию заказчика и аудиту.",
+      "evidence": "Факт (tools/_prove_prod_handedit.js): prod-only — `data-mnav=\"mimir\"` + label «Мимир», шесть кнопок `data-ltab` (Все/Личные/Избранное/Контакты/Новые/Клиенты), `state.listTab = 'contacts'`, `return (root && root.querySelector('#hgPanel')) || root;` (старый sheetHost), `.hg-chat-row,.hg-contact-row,.hg-settings-row` (узкий ripple), `if (!state.collapsed && tabChanged)` (fade без входа в тред), блок историй `const REVEAL_RANGE = 88`, `let lastTop`, `railEl.classList.toggle('is-hidden', progress >= 1)`. Локально: Мимир-таб удалён (он есть в чате), вкладки удалены вместе с фильтрами, sheetHost вынесен в `.hg-sheets-host` (фикс стирания шитов при SSE-перерисовке), ripple расширен на пузыри/кнопки, fade добавлен на `viewChanged`, истории переведены на `requestAnimationFrame` + гистерезис. Ни одна prod-строка не даёт поведения, отсутствующего локально; локальная версия сертифицирована (HUGINN-BATCH-VERIFY-V2 → VERIFIED).",
+      "verdict": "superseded_by_local",
+      "acked_at": "2026-10-15",
+      "acked_by": "deploy 20.28.211 (Huginn redesign: tabs/groups removed, SMS 6-digit, calls fix)"
     }
   }
 }

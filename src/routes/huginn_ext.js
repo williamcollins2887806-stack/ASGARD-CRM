@@ -487,14 +487,27 @@ module.exports = async function registerHuginnExt(fastify, { db, uploadDir, getC
       [inv.id, userId]
     );
 
-    // Ensure chat with inviter
-    let chatId = inv.chat_id;
+    // BUGFIX (находка API-аудита): приглашение с явным chat_id добавляло гостя
+    // в СУЩЕСТВУЮЩИЙ direct-чат → у 1:1 становилось 3 участника, и звонки падали
+    // с 409 «не двое участников». Теперь для direct ВСЕГДА создаём/находим
+    // отдельный чат пары «пригласивший ↔ гость», а inv.chat_id используем только
+    // для групп (там добавление участника — норма).
+    let chatId = null;
+    {
+      const invChat = inv.chat_id
+        ? (await db.query('SELECT id, is_group, type FROM chats WHERE id = $1', [inv.chat_id])).rows[0]
+        : null;
+      if (invChat && invChat.is_group) {
+        chatId = invChat.id;
+      }
+    }
     if (!chatId) {
       const existingChat = await db.query(
         `SELECT c.id FROM chats c
          JOIN chat_group_members m1 ON m1.chat_id = c.id AND m1.user_id = $1
          JOIN chat_group_members m2 ON m2.chat_id = c.id AND m2.user_id = $2
          WHERE c.is_group = false
+           AND (SELECT COUNT(*) FROM chat_group_members WHERE chat_id = c.id) = 2
          LIMIT 1`,
         [inv.inviter_user_id, userId]
       );
@@ -513,16 +526,7 @@ module.exports = async function registerHuginnExt(fastify, { db, uploadDir, getC
            VALUES ($1,$2,'owner',NOW()), ($1,$3,'member',NOW())
            ON CONFLICT DO NOTHING`,
           [chatId, inv.inviter_user_id, userId]
-        ).catch(async () => {
-          await db.query(
-            `INSERT INTO chat_group_members (chat_id, user_id, role) VALUES ($1,$2,'owner')`,
-            [chatId, inv.inviter_user_id]
-          );
-          await db.query(
-            `INSERT INTO chat_group_members (chat_id, user_id, role) VALUES ($1,$2,'member')`,
-            [chatId, userId]
-          );
-        });
+        );
       }
     } else {
       await db.query(
@@ -1730,7 +1734,7 @@ module.exports = async function registerHuginnExt(fastify, { db, uploadDir, getC
     return rows[0] || null;
   }
 
-  // POST /auth/request-code  { phone } — 4-digit code via SMS/Max
+  // POST /auth/request-code  { phone } — 6-digit code via SMS/Max
   fastify.post('/auth/request-code', async (request, reply) => {
     if (!loginIpAllowed(request.ip)) {
       return reply.code(429).send({ error: 'Слишком много запросов. Попробуйте позже' });
@@ -1754,7 +1758,7 @@ module.exports = async function registerHuginnExt(fastify, { db, uploadDir, getC
       return reply.code(429).send({ error: 'Код уже отправлен. Подождите минуту' });
     }
 
-    const code = String(crypto.randomInt(1000, 10000));
+    const code = String(crypto.randomInt(100000, 1000000));
     const codeHash = await require('bcryptjs').hash(code, 8);
     await db.query(
       `INSERT INTO huginn_login_codes (phone, code_hash, kind, expires_at)
@@ -1850,8 +1854,8 @@ module.exports = async function registerHuginnExt(fastify, { db, uploadDir, getC
 
     const rawPhone = String(body.phone || '').trim();
     const entered = String(body.code || '').replace(/\D/g, '');
-    if (!rawPhone || entered.length < 4) {
-      return reply.code(400).send({ error: 'Укажите телефон и код' });
+    if (!rawPhone || entered.length < 6) {
+      return reply.code(400).send({ error: 'Укажите телефон и 6-значный код' });
     }
     const phone = normPhone(rawPhone);
     const { rows: codes } = await db.query(
