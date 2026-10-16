@@ -1,0 +1,127 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   ASGARD FIELD — дизайн-токены (прототип, визуальные ворота)
+   ПОПЫТКА 2: «дорого» = больший разбег слоёв + видимые тени + bevel + стекло.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+:root, [data-theme="dark"] {
+  color-scheme: dark;
+
+  /* Поверхности 0..4 — NAVY-слейт (синий подтон, как в desktop-эталоне), не чистый серый */
+  --bg-0: #06080D;
+  --bg-1: #0B1019;
+  --bg-2: #131A26;
+  --bg-3: #1A2333;
+  --bg-4: #232E42;
+  --overlay: rgba(5, 7, 12, 0.66);
+  --scrim-blur: 18px;
+
+  /* Текст */
+  --fg-1: #EEF2F8;
+  --fg-2: #A7B3C7;
+  --fg-3: #78869C;
+  --fg-4: #59677E;
+
+  --line: rgba(255, 255, 255, 0.07);
+  --line-2: rgba(255, 255, 255, 0.14);
+  --bevel: inset 0 1px 0 rgba(255, 255, 255, 0.07);
+  --bevel-strong: inset 0 1px 0 rgba(255, 255, 255, 0.13);
+
+  /* Бренд — из логотипа: щит синий+красный, золотая руна */
+  --blue: #4A90D9;
+  --blue-deep: #1E4D8C;
+  --red: #D8334A;
+  --red-deep: #A8203A;
+  --gold: #E3BC63;
+  --gold-deep: #B8892B;
+  --violet: #8B7BE8;
+  --teal: #2FB6C4;
+  --on-brand: #FFFFFF;
+
+  /* Семантика */
+  --ok: #4ADE80;  --ok-bg: rgba(74, 222, 128, 0.12);
+  --warn: #F0C24A; --warn-bg: rgba(240, 194, 74, 0.12);
+  --err: #F0808F; --err-bg: rgba(240, 128, 143, 0.12);
+  --info: #6BA3E8; --info-bg: rgba(107, 163, 232, 0.12);
+
+  /* ЦВЕТНЫЕ ТИНТЫ ПОВЕРХНОСТЕЙ — это то, что делает «дорого» */
+  --tint-blue: rgba(74, 144, 217, 0.13);
+  --tint-red: rgba(216, 51, 74, 0.12);
+  --tint-gold: rgba(227, 188, 99, 0.12);
+  --tint-ok: rgba(74, 222, 128, 0.12);
+  --tint-warn: rgba(240, 194, 74, 0.12);
+  --tint-violet: rgba(139, 123, 232, 0.13);
+  --tint-teal: rgba(47, 182, 196, 0.12);
+
+  /* Бренд-градиент — синий → тёмный нави → красный (щит логотипа). Интерполяция в oklab:
+     в sRGB середина синего+красного даёт мутный пурпур, в oklab — чистый переход. */
+  --grad-brand: linear-gradient(115deg in oklab, #2F6FBF 0%, #1E3A63 46%, #93203A 82%, #C42A3E 100%);
+  --grad-brand-soft: linear-gradient(115deg in oklab, rgba(74,144,217,.92) 0%, rgba(200,41,59,.92) 100%);
+  --grad-brand-line: linear-gradient(90deg in oklab, #4A90D9 0%, #E3BC63 50%, #D8334A 100%);
+  --grad-gold: linear-gradient(135deg in oklab, #F0D183 0%, #B8892B 100%);
+  --grad-hero: linear-gradient(140deg in oklab, rgba(74,144,217,.20) 0%, rgba(216,51,74,.15) 100%);
+  --grad-sheen: linear-gradient(180deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0));
+  --glass-bg: rgba(18, 25, 37, 0.72);
+
+  --e1: var(--bevel), 0 1px 2px rgba(0, 0, 0, 0.5), 0 0 0 1px var(--line);
+  --e2: var(--bevel), 0 2px 6px rgba(0, 0, 0, 0.45), 0 10px 28px -12px rgba(0, 0, 0, 0.72), 0 0 0 1px var(--line);
+  --e3: var(--bevel-strong), 0 4px 12px rgba(0, 0, 0, 0.5), 0 22px 48px -18px rgba(0, 0, 0, 0.8), 0 0 0 1px var(--line-2);
+  --e4: var(--bevel-strong), 0 10px 26px rgba(0, 0, 0, 0.55), 0 42px 90px -30px rgba(0, 0, 0, 0.9), 0 0 0 1px var(--line-2);
+  --glow-blue: 0 10px 34px -12px rgba(74, 144, 217, 0.62);
+
+  --r-chip: 10px; --r-ctl: 12px; --r-card: 18px; --r-sheet: 26px; --r-full: 999px;
+  --ff: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  --sp-1: 4px; --sp-2: 8px; --sp-3: 12px; --sp-4: 16px; --sp-5: 20px; --sp-6: 24px; --sp-8: 32px;
+  --e-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --t-1: 120ms; --t-3: 280ms; --t-3x: 210ms;
+  --safe-top: 59px; --safe-bottom: 34px; --tabbar-h: 56px;
+}
+
+[data-theme="light"] {
+  color-scheme: light;
+  --bg-0: #E9EDF3;
+  --bg-1: #F4F6FA;
+  --bg-2: #FFFFFF;
+  --bg-3: #F1F4F9;
+  --bg-4: #E6EBF2;
+  --overlay: rgba(15, 23, 42, 0.34);
+  --fg-1: #0F172A;
+  --fg-2: #475569;
+  --fg-3: #64748B;
+  --fg-4: #94A3B8;
+  --line: rgba(15, 23, 42, 0.07);
+  --line-2: rgba(15, 23, 42, 0.13);
+  --bevel: inset 0 1px 0 #FFFFFF;
+  --bevel-strong: inset 0 1px 0 #FFFFFF;
+  --blue: #1D4E89;
+  --blue-deep: #163C6B;
+  --red: #B7273C;
+  --red-deep: #8F1C2E;
+  --gold: #8A6A14;
+  --gold-deep: #6E530F;
+  --violet: #5B4BA8;
+  --teal: #15808C;
+  --on-brand: #FFFFFF;
+  --ok: #12855F;  --ok-bg: rgba(18, 133, 95, 0.10);
+  --warn: #8A6A14; --warn-bg: rgba(138, 106, 20, 0.10);
+  --err: #C42C3F; --err-bg: rgba(196, 44, 63, 0.09);
+  --info: #1C64C4; --info-bg: rgba(28, 100, 196, 0.08);
+  --tint-blue: rgba(29, 78, 137, 0.07);
+  --tint-red: rgba(183, 39, 60, 0.07);
+  --tint-gold: rgba(138, 106, 20, 0.09);
+  --tint-ok: rgba(18, 133, 95, 0.08);
+  --tint-warn: rgba(138, 106, 20, 0.09);
+  --tint-violet: rgba(91, 75, 168, 0.08);
+  --tint-teal: rgba(21, 128, 140, 0.08);
+  --grad-brand: linear-gradient(115deg in oklab, #24558F 0%, #1B3255 46%, #7E1B31 82%, #A32038 100%);
+  --grad-brand-soft: linear-gradient(115deg in oklab, rgba(29,78,137,.92) 0%, rgba(183,39,60,.92) 100%);
+  --grad-brand-line: linear-gradient(90deg in oklab, #1D4E89 0%, #C9A340 50%, #B7273C 100%);
+  --grad-gold: linear-gradient(135deg in oklab, #E3BC63, #B8892B);
+  --grad-hero: linear-gradient(140deg in oklab, rgba(29,78,137,.12) 0%, rgba(183,39,60,.09) 100%);
+  --grad-sheen: linear-gradient(180deg, rgba(255, 255, 255, 0.9), rgba(255, 255, 255, 0));
+  --glass-bg: rgba(255, 255, 255, 0.78);
+  --e1: var(--bevel), 0 1px 2px rgba(15, 23, 42, 0.06), 0 0 0 1px var(--line);
+  --e2: var(--bevel), 0 2px 6px rgba(15, 23, 42, 0.05), 0 10px 26px -12px rgba(15, 23, 42, 0.20), 0 0 0 1px var(--line);
+  --e3: var(--bevel), 0 4px 12px rgba(15, 23, 42, 0.06), 0 22px 44px -18px rgba(15, 23, 42, 0.24), 0 0 0 1px var(--line-2);
+  --e4: var(--bevel), 0 10px 24px rgba(15, 23, 42, 0.08), 0 40px 80px -30px rgba(15, 23, 42, 0.30), 0 0 0 1px var(--line-2);
+  --glow-blue: 0 12px 32px -14px rgba(29, 78, 137, 0.45);
+}

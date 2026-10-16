@@ -1,0 +1,219 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   4 ФИНАЛЬНЫХ ВАРИАЦИИ: 1:1 блоки главной FieldHome + аккуратный КРАСНЫЙ
+   ═══════════════════════════════════════════════════════════════════════════ */
+@import url("../variants/skins.css");
+
+/* КРАСНЫЙ разделён на два смысла:
+   brand-red — статика (щит, кант, линия): бренд, не «алярм»;
+   danger    — только кнопка «Завершить смену». NEW-бейджи больше НЕ красные. */
+:root, .screen { --brand-red:#D8334A; --brand-red-deep:#B0243A; --red:#E5484D; --red-deep:#C42A3E;
+  --gold-rune:#F0D183; --tint-warn:rgba(240,194,74,.14); }
+.skin-frost { --brand-red:#C8203A; --brand-red-deep:#A3172E; --red:#C8203A; --red-deep:#A3172E; }
+
+/* Финальные 1:1-экраны показываем ЦЕЛИКОМ: экран растёт по контенту,
+   внутренний скролл выключен (иначе снимок обрезан по высоте 833px). */
+.screen { height: auto !important; overflow: hidden !important; }
+.screen .body { overflow: visible !important; flex: none; }
+.screen .app { min-height: 833px; }
+
+/* Приветствие */
+.fh-greet { padding: 2px; }
+.fh-greet__row { display: flex; align-items: center; gap: 12px; }
+.fh-logo { flex-shrink: 0; filter: drop-shadow(0 4px 12px rgba(216,51,74,.35)); }
+.fh-rankword { color: var(--gold-accent); }.fh-h1 { font-size: 24px; font-weight: 850; letter-spacing: -.03em; line-height: 1.16; }
+.fh-date { font-size: 13px; color: var(--t-3); margin-top: 4px; text-transform: capitalize; }
+.fh-quote { font-size: 13px; font-style: italic; color: var(--t-2); margin-top: 10px; }
+
+/* 2. Промо «Химцех» — СОЧНОЕ: насыщенный рэмп + верхний глянец + кант brand blue→red */
+.fh-promo { display: flex; align-items: center; gap: 14px; width: 100%; text-align: left;
+  padding: 15px 16px; border: 0; border-radius: var(--r-card); color: #fff; cursor: pointer;
+  position: relative; overflow: hidden; background-image: var(--promo-rich);
+  box-shadow: 0 12px 30px -10px var(--promo-glow), inset 0 1px 0 rgba(255,255,255,.18); }
+.fh-promo::before { content: ''; position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
+  background: linear-gradient(in oklab 170deg, rgba(255,255,255,.20), rgba(255,255,255,0) 46%); }
+.fh-promo::after { content: ''; position: absolute; inset: 0 auto 0 0; width: 4px;
+  background: linear-gradient(in oklab 180deg, var(--brand-blue), var(--brand-red)); }
+.fh-promo__ico { width: 50px; height: 50px; border-radius: 16px; flex-shrink: 0; display: grid; place-items: center;
+  background: rgba(255,255,255,.20); box-shadow: inset 0 1px 0 rgba(255,255,255,.4); position: relative; z-index: 1; }
+.fh-promo__txt { flex: 1; min-width: 0; position: relative; z-index: 1; }
+.fh-promo__k { display: block; font-size: 12px; font-weight: 900; letter-spacing: .14em; text-transform: uppercase; }
+.fh-promo__t { display: block; font-size: 15.5px; font-weight: 850; margin-top: 4px; letter-spacing: -.01em; }
+.fh-promo__s { display: block; font-size: 12px; margin-top: 3px; }
+.fh-promo__cta { flex-shrink: 0; padding: 11px 15px; border-radius: 12px; font-size: 12px; font-weight: 900;
+  background: #fff; color: var(--promo-cta-ink); position: relative; z-index: 1;
+  box-shadow: 0 4px 14px rgba(0,0,0,.3), inset 0 1px 3px rgba(0,0,0,.05); }
+
+/* Карточки */
+.fh-card { background: var(--card-bg); border: 1px solid var(--card-brd); border-radius: var(--r-card);
+  padding: 17px; box-shadow: var(--card-sh);
+  -webkit-backdrop-filter: blur(var(--card-blur)) saturate(1.5); backdrop-filter: blur(var(--card-blur)) saturate(1.5); }
+.fh-card--nested { background: color-mix(in oklab, var(--card-bg) 70%, transparent); }
+.fh-card--shift { text-align: center; }
+.fh-k { display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 800;
+  letter-spacing: .08em; text-transform: uppercase; color: var(--t-3); margin-bottom: 8px; }
+.fh-k--accent { color: var(--accent-a); }
+.fh-t { font-size: 16px; font-weight: 750; letter-spacing: -.01em; }
+.fh-s { font-size: 12.5px; color: var(--t-2); margin-top: 3px; }
+.fh-s--accent { color: var(--gold-accent); }
+
+.fh-chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.fh-chip { display: inline-flex; align-items: center; gap: 6px; padding: 7px 12px; border-radius: 12px;
+  background: var(--glass-fill); color: var(--t-2); font-size: 12px; font-weight: 650;
+  border: 1px solid var(--glass-brd); box-shadow: inset 0 1px 0 var(--glass-hl); }
+
+.fh-mlsp { margin-top: 12px; padding: 11px 13px; border-radius: 14px; background: var(--tint-warn);
+  border: 1px solid color-mix(in oklab, var(--warn) 34%, transparent); }
+.fh-mlsp__k { font-size: 12px; font-weight: 850; letter-spacing: .04em; text-transform: uppercase; color: var(--warn); }
+.fh-mlsp__s { font-size: 12px; color: var(--t-2); margin-top: 3px; }
+
+/* 4. Готовность */
+.fh-ready { display: flex; align-items: center; gap: 13px; width: 100%; text-align: left; padding: 15px 16px;
+  border-radius: var(--r-card); cursor: pointer; color: var(--t-1); background: var(--card-bg);
+  border: 2px solid color-mix(in oklab, var(--ok) 60%, transparent); box-shadow: var(--card-sh); }
+.fh-ready__ic { width: 44px; height: 44px; border-radius: 14px; flex-shrink: 0; display: grid; place-items: center;
+  background: var(--tint-ok); color: var(--ok); box-shadow: inset 0 1px 0 var(--glass-hl); }
+.fh-ready__t { display: block; font-size: 15px; font-weight: 800; color: var(--ok); }
+.fh-ready__s { display: block; font-size: 12px; color: var(--t-3); margin-top: 2px; }
+.fh-ready__btn { padding: 7px 12px; border-radius: 11px; font-size: 12px; font-weight: 700;
+  background: var(--glass-fill); color: var(--t-2); border: 1px solid var(--glass-brd); }
+
+/* 5. Этап поездки */
+.fh-stage { width: 100%; text-align: left; padding: 15px 16px; border-radius: var(--r-card); cursor: pointer;
+  background: var(--card-bg); border: 2px solid var(--accent-a); box-shadow: var(--card-sh); color: var(--t-1); }
+.fh-stage__t { display: flex; align-items: center; gap: 7px; font-size: 15px; font-weight: 800; color: var(--accent-a); }
+.fh-stage__s { font-size: 12.5px; color: var(--t-2); margin-top: 4px; }
+.fh-stage__m { font-size: 12px; color: var(--gold-accent); margin-top: 4px; }
+
+/* 6. Академия */
+.fh-academy { display: flex; align-items: flex-start; gap: 12px; width: 100%; text-align: left; padding: 14px 16px;
+  border-radius: var(--r-card); cursor: pointer; color: var(--t-1);
+  background: color-mix(in oklab, var(--accent-violet) 12%, var(--card-bg));
+  border: 1px solid color-mix(in oklab, var(--accent-violet) 40%, transparent); box-shadow: var(--card-sh); }
+.fh-academy__ic { width: 40px; height: 40px; border-radius: 13px; flex-shrink: 0; display: grid; place-items: center;
+  background: color-mix(in oklab, var(--accent-violet) 22%, transparent); color: var(--accent-violet); }
+.fh-academy__t { display: block; font-size: 14.5px; font-weight: 800; color: var(--accent-violet); }
+.fh-academy__s { display: block; font-size: 12px; color: var(--t-3); margin-top: 3px; }
+.fh-chev { color: var(--t-3); font-size: 16px; align-self: center; }
+.fh-chev--gold { color: var(--gold-accent); }
+
+/* 7. Смена + таймер + КРАСНАЯ кнопка завершения */
+.fh-shift__lbl { font-size: 12px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; color: var(--t-3); }
+.fh-shift__timer { font-size: 38px; font-weight: 900; letter-spacing: -.03em; margin: 6px 0 14px;
+  background: var(--timer-grad); -webkit-background-clip: text; background-clip: text; color: transparent;
+  filter: drop-shadow(0 2px 0 rgba(0,0,0,.35)); }
+.fh-danger { width: 100%; min-height: 50px; border: 0; border-radius: var(--btn-r); cursor: pointer;
+  font-size: 15px; font-weight: 800; color: #fff; display: inline-flex; align-items: center;
+  justify-content: center; gap: 8px;
+  background: linear-gradient(in oklab 150deg, var(--red) 0%, var(--red-deep) 100%);
+  box-shadow: 0 4px 8px rgba(0,0,0,.3), inset 0 0 0 1px rgba(255,255,255,.34), inset 0 1px 7px 2px rgba(255,255,255,.22); }
+.fh-danger:active { transform: translateY(1px) scale(.985); filter: brightness(.95); }
+
+/* 9. Геймификация */
+.fh-section { font-size: 12px; font-weight: 850; letter-spacing: .12em; text-transform: uppercase;
+  color: var(--t-3); padding: 0 2px; }
+.fh-grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 11px; }
+.fh-tile { position: relative; display: flex; align-items: center; gap: 12px; text-align: left; padding: 14px;
+  border-radius: var(--r-tile); cursor: pointer; color: var(--t-1);
+  background: var(--tile-bg); border: 1px solid var(--tile-brd); box-shadow: var(--tile-sh); overflow: hidden; }
+.fh-tile::before { content: ''; position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
+  background: linear-gradient(in oklab 165deg, rgba(255,255,255,.14), transparent 46%); }
+.fh-tile__ic { width: 42px; height: 42px; border-radius: 13px; flex-shrink: 0; display: grid; place-items: center;
+  color: #fff; box-shadow: inset 0 1px 0 rgba(255,255,255,.35); }
+.fh-tile__t { font-size: 13.5px; font-weight: 750; }
+.fh-tile__badge { position: absolute; top: 9px; right: 9px; font-size: 12px; font-weight: 800; padding: 3px 8px;
+  border-radius: 999px; background: var(--red); color: #fff; box-shadow: 0 0 0 2px color-mix(in oklab, var(--red) 32%, transparent); }
+.t-violet .fh-tile__ic { background: linear-gradient(in oklab 150deg, #A78BFA, #6D3BFF); }
+.t-amber .fh-tile__ic { background: linear-gradient(in oklab 150deg, #F5C542, #C98A0E); }
+.t-blue .fh-tile__ic { background: linear-gradient(in oklab 150deg, #4A90D9, #1E4D8C); }
+.t-teal .fh-tile__ic { background: linear-gradient(in oklab 150deg, #34D0C4, #0E8E86); }
+.t-red .fh-tile__ic { background: linear-gradient(in oklab 150deg, #FF6B6B, #D92644); }
+.t-gold .fh-tile__ic { background: linear-gradient(in oklab 150deg, #F5D580, #B8892B); color: #241A02; }
+
+/* 10. Мимир */
+.fh-mimir { display: flex; align-items: center; gap: 13px; padding: 15px 16px; border-radius: var(--r-card);
+  background: color-mix(in oklab, var(--accent-a) 10%, var(--card-bg));
+  border: 1px solid color-mix(in oklab, var(--accent-a) 30%, transparent); box-shadow: var(--card-sh); }
+.fh-mimir__ic { width: 44px; height: 44px; border-radius: 14px; flex-shrink: 0; display: grid; place-items: center;
+  background: color-mix(in oklab, var(--accent-a) 20%, transparent); color: var(--accent-a); }
+.fh-mimir__k { font-size: 12px; font-weight: 850; letter-spacing: .1em; text-transform: uppercase; color: var(--accent-a); }
+.fh-mimir__t { font-size: 14px; font-weight: 700; margin-top: 3px; color: var(--t-1); }
+
+/* 11. Мой рейтинг */
+.fh-rank { display: flex; align-items: center; gap: 13px; width: 100%; text-align: left; padding: 17px;
+  border-radius: var(--r-card); cursor: pointer; color: var(--t-1); background: var(--card-bg);
+  border: 1.5px solid rgba(212,168,67,.5); box-shadow: var(--card-sh); }
+.fh-rank__ic { width: 46px; height: 46px; border-radius: 15px; flex-shrink: 0; display: grid; place-items: center;
+  background: linear-gradient(in oklab 150deg, #F5D580, #B8892B); color: #241A02;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.5); }
+.fh-rank__k { font-size: 12px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; color: #D4A843; }
+.fh-rank__v { font-size: 18px; font-weight: 850; color: var(--gold-accent); margin-top: 2px; }
+.fh-rank__s { font-size: 12px; color: var(--t-3); margin-top: 2px; }
+
+/* 12. Быстрые действия */
+.fh-grid4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+.fh-qa { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 13px 4px;
+  border-radius: var(--r-tile); cursor: pointer; color: var(--t-1);
+  background: var(--tile-bg); border: 1px solid var(--tile-brd); box-shadow: var(--tile-sh); }
+.fh-qa__i { color: var(--accent-a); }
+.fh-qa__l { font-size: 12px; font-weight: 700; color: var(--t-2); text-align: center; line-height: 1.15; }
+
+/* Брендовая линия: СИНИЙ → КРАСНЫЙ ровно 2 стопа (как щит), без грязной середины */
+.fh-brandline { height: 3px; border-radius: 999px; margin-top: 4px;
+  background: linear-gradient(in oklab 90deg, transparent, var(--brand-blue) 18%, var(--brand-red) 82%, transparent); }
+
+/* ── Палитровые акценты для 4 финальных скинов ─────────────────────────────── */
+.skin-ozon { --accent-a:#2F7BFF; --accent-violet:#8B7BE8; --gold-accent:#F5C542; }
+.skin-aurora { --accent-a:#A78BFA; --accent-violet:#A78BFA; --gold-accent:#2DD4BF; }
+.skin-navy { --accent-a:#5B8DEF; --accent-violet:#8B7BE8; --gold-accent:#E0B44A; }
+.skin-frost { --accent-a:#1D4ED8; --accent-violet:#6D3BFF; --gold-accent:#8A6A14; }
+
+/* Разные цвета геймификация-плиток под скин (чтобы «Асгард» не терял красный/золото) */
+.skin-navy .fh-mimir__k, .skin-navy .fh-mimir__ic { color: var(--gold-accent); }
+.skin-navy .fh-mimir { background: color-mix(in oklab, var(--gold-accent) 10%, var(--card-bg));
+  border-color: color-mix(in oklab, var(--gold-accent) 30%, transparent); }
+.skin-frost .fh-rank, .skin-frost .fh-card, .skin-frost .fh-stage, .skin-frost .fh-ready { color: #0B1220; }
+.skin-frost .fh-mlsp { background: rgba(180,83,9,.10); }
+.skin-frost .fh-tile { box-shadow: 0 6px 18px rgba(30,60,120,.10), inset 0 1px 0 #fff; }
+.skin-frost .fh-tile__t, .skin-frost .fh-qa__l, .skin-frost .fh-t, .skin-frost .fh-s { color: #25324A; }
+.skin-frost .fh-qa__i { color: #1D4ED8; }
+.skin-frost .fh-chip { background: #F0F3F9; border-color: rgba(120,150,200,.26); color: #3D5473; }
+.skin-frost .fh-ready__btn { background: #F0F3F9; color: #3D5473; }
+.skin-frost .fh-brandline { background: linear-gradient(in oklab 90deg, transparent, #1D4ED8 22%, #C8203A 78%, transparent); }
+
+/* ── Насыщенные (НЕ грязные) промо-рэмпы: 2-3 стопа внутри одного hue-семейства ── */
+.skin-ozon  { --brand-blue:#4A90D9; --promo-rich:linear-gradient(in oklab 128deg, #0A46C2 0%, #1E7BFF 46%, #28D1EB 100%); --promo-glow:rgba(30,123,255,.55); --promo-cta-ink:#00439E; }
+.skin-aurora{ --brand-blue:#A78BFA; --promo-rich:linear-gradient(in oklab 128deg, #5B3EF0 0%, #8B5CF6 44%, #2DD4BF 100%); --promo-glow:rgba(120,90,240,.55); --promo-cta-ink:#4A2E9E; }
+.skin-navy  { --brand-blue:#5B8DEF; --promo-rich:linear-gradient(in oklab 128deg, #1B3A8C 0%, #3358C4 46%, #E0B44A 100%); --promo-glow:rgba(200,160,60,.5); --promo-cta-ink:#1A2A5A; }
+.skin-frost { --brand-blue:#1D4ED8; --promo-rich:linear-gradient(in oklab 128deg, #0A46C2 0%, #2F7BFF 50%, #28D1EB 100%); --promo-glow:rgba(0,91,255,.4); --promo-cta-ink:#00439E; }
+
+/* NEW-бейджи — НЕ красные (красный только бренд/danger): золото и синий */
+.fh-tile__badge { position: absolute; top: 9px; right: 9px; font-size: 12px; font-weight: 800; padding: 3px 8px;
+  border-radius: 999px; background: var(--gold-accent); color: #241A02; }
+
+/* Смена: НЕ активна -> золотая «Начать смену» (бренд-золото, не danger) */
+.fh-shift__sub { font-size: 12.5px; color: var(--t-2); margin: 4px 0 14px; }
+.fh-start { width: 100%; min-height: 50px; border: 0; border-radius: var(--btn-r); cursor: pointer;
+  font-size: 15px; font-weight: 850; color: #241A02; display: inline-flex; align-items: center;
+  justify-content: center; gap: 8px; background: linear-gradient(in oklab 150deg, #F5D580, #E0B44A 52%, #B8892B);
+  box-shadow: 0 4px 8px rgba(0,0,0,.3), inset 0 0 0 1px rgba(255,255,255,.5), inset 0 1px 8px 2px rgba(255,255,255,.38); }
+.fh-start:active { transform: translateY(1px) scale(.985); filter: brightness(.96); }
+
+/* Планируемое привлечение / Норны / Скачать */
+.fh-planned-note { font-size: 12px; font-style: italic; color: var(--t-3); margin-top: 8px; }
+.fh-norns { display: flex; align-items: center; gap: 10px; padding: 12px 15px; border-radius: var(--r-card);
+  background: color-mix(in oklab, var(--gold-accent) 12%, var(--card-bg));
+  border: 1px solid color-mix(in oklab, var(--gold-accent) 32%, transparent);
+  font-size: 12.5px; color: var(--t-2); box-shadow: var(--card-sh); }
+.fh-norns__ic { width: 30px; height: 30px; border-radius: 10px; flex-shrink: 0; display: grid; place-items: center;
+  background: color-mix(in oklab, var(--gold-accent) 22%, transparent); color: var(--gold-accent); }
+.fh-download { display: flex; align-items: center; gap: 13px; padding: 14px 16px; border-radius: var(--r-card);
+  text-decoration: none; color: var(--t-1); background: color-mix(in oklab, var(--brand-red) 9%, var(--card-bg));
+  border: 1px solid color-mix(in oklab, var(--brand-red) 26%, transparent); box-shadow: var(--card-sh); }
+.fh-download__ic { width: 46px; height: 46px; border-radius: 14px; flex-shrink: 0; display: grid; place-items: center;
+  background: color-mix(in oklab, var(--brand-red) 14%, transparent); }
+.fh-download__t { display: block; font-size: 14.5px; font-weight: 800; }
+.fh-download__s { display: block; font-size: 12px; color: var(--t-3); margin-top: 2px; }
+.fh-download__cta { flex-shrink: 0; padding: 9px 14px; border-radius: 11px; font-size: 12px; font-weight: 800;
+  background: var(--brand-red); color: #fff; box-shadow: inset 0 1px 0 rgba(255,255,255,.3); }
+.skin-frost .fh-download__t { color: #0B1220; }
+.skin-frost .fh-download__s { color: #5A6B82; }

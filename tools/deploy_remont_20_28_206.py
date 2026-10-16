@@ -27,7 +27,7 @@ sys.path.insert(0, str(ROOT / "tools"))
 import shell_guard  # noqa: E402
 import paramiko
 
-VER = "20.28.206"
+VER = "20.28.207"
 SSH_HOST = "92.242.61.184"
 SSH_USER = "root"
 SSH_KEY = str(Path.home() / ".ssh" / "asgard_crm_deploy")
@@ -39,6 +39,8 @@ FILES = [
     "public/sw.js",
     "public/assets/js/app.js",
     "public/assets/css/huginn_dock.css",
+    "public/h/index.html",
+    "public/h/sw.js",
 ]
 
 

@@ -962,5 +962,336 @@
       "--hg-tg-back-badge-fg": "contrast dark",
       "--hg-accent rail": "var(--gold) rail only"
     }
-  }
+  },
+  "depth_and_juice": {
+    "ds_section": "§11",
+    "code_status": "docs_only_until_wave_F0_command",
+    "principle": "CRM tokens only; juice via shadows/gradients/glass depth/micro-interaction; neutral rgba(0,0,0,a) for surfaces, --blue-l accent shadow for CTA/active",
+    "elevation_levels": {
+      "e0": {
+        "applies_to": "canvas / screen / list rows / text",
+        "shadow": "none",
+        "token": "--hg-elev-0",
+        "wave": "F0"
+      },
+      "e1": {
+        "applies_to": "cards / card-glass / resting inputs",
+        "shadow": "0 1px 2px rgba(0, 0, 0, 0.18), 0 2px 6px rgba(0, 0, 0, 0.12)",
+        "token": "--hg-elev-1",
+        "wave": "F0"
+      },
+      "e2": {
+        "applies_to": "floating chrome: header / nav / pin / segment / fab",
+        "shadow": "0 4px 14px rgba(0, 0, 0, 0.22), 0 1px 3px rgba(0, 0, 0, 0.16)",
+        "token": "--hg-elev-2",
+        "wave": "F1/F3"
+      },
+      "e3": {
+        "applies_to": "overlays: menu / sheet / media-chrome / edit-action",
+        "shadow": "0 12px 32px rgba(0, 0, 0, 0.34), 0 2px 8px rgba(0, 0, 0, 0.20)",
+        "token": "--hg-elev-3",
+        "wave": "F6"
+      },
+      "e4": {
+        "applies_to": "topmost layer / dragover raise / lifted card",
+        "shadow": "0 20px 48px rgba(0, 0, 0, 0.42)",
+        "token": "--hg-elev-4",
+        "wave": "F0"
+      },
+      "e_accent": {
+        "applies_to": "CTA / active element / focus emphasis",
+        "shadow": "0 4px 14px color-mix(in srgb, var(--blue-l) 40%, transparent)",
+        "token": "--hg-elev-accent",
+        "active_shadow": "0 2px 8px color-mix(in srgb, var(--blue-l) 32%, transparent)",
+        "wave": "F0"
+      }
+    },
+    "rules": {
+      "blur_required": true,
+      "one_level_per_element": true,
+      "combine_only_with": "eN + accent",
+      "shadow_color_neutral": "rgba(0, 0, 0, a)",
+      "accent_shadow_source": "var(--blue-l) only",
+      "shadow_survives_power_saving": true
+    }
+  },
+  "gradients": {
+    "ds_section": "§11.2",
+    "allowed_palette": [
+      "--t1",
+      "--t2",
+      "--t3",
+      "--bg2",
+      "--bg3",
+      "--blue-l",
+      "--brd-m"
+    ],
+    "recipes": {
+      "surface_volume": {
+        "css": "linear-gradient(180deg, color-mix(in srgb, var(--t1) 6%, var(--bg3)) 0%, var(--bg3) 100%)",
+        "channel": "background-image",
+        "note": "layered over existing glass background, not replacing it"
+      },
+      "panel_to_sheet": {
+        "css": "linear-gradient(180deg, var(--bg2) 0%, color-mix(in srgb, var(--t1) 4%, var(--bg3)) 100%)",
+        "channel": "background-image"
+      },
+      "cta": {
+        "css": "linear-gradient(180deg, color-mix(in srgb, var(--blue-l) 92%, #fff) 0%, var(--blue-l) 100%)",
+        "literal_allowed": "#fff (top mix reference + text color only)"
+      },
+      "dropzone_hover": {
+        "css": "color-mix(in srgb, var(--bg3) 80%, var(--blue-l) 6%)",
+        "kind": "flat mix, not gradient"
+      }
+    },
+    "rules": {
+      "direction": "180deg",
+      "t1_lighten_range_pct": [
+        4,
+        8
+      ],
+      "forbid_tg_hex": true,
+      "light_theme": "same percentages, direction inverted (t1 darkens on light bg)"
+    }
+  },
+  "motion_tokens": {
+    "ds_section": "§11.4",
+    "durations": {
+      "--hg-dur-press": "90ms",
+      "--hg-dur-fast": "120ms",
+      "--hg-dur-base": "180ms",
+      "--hg-dur-slow": "260ms"
+    },
+    "easings": {
+      "--hg-ease-standard": "cubic-bezier(.2, .6, .2, 1)",
+      "--hg-ease-emphasized": "cubic-bezier(.2, .8, .2, 1)",
+      "--hg-ease-exit": "cubic-bezier(.4, 0, 1, 1)"
+    },
+    "per_component": {
+      "button": {
+        "press": "transform scale(0.98) + accent shadow, --hg-dur-press, --hg-ease-standard",
+        "focus_ring": "outline 2px var(--blue-l), outline-offset 2px"
+      },
+      "input": {
+        "state_change": "border-color + box-shadow, --hg-dur-fast, --hg-ease-standard",
+        "focus_glow": "0 0 0 3px color-mix(in srgb, var(--blue-l) 25%, transparent)"
+      },
+      "segment": {
+        "thumb_slide": "transform translateX, --hg-dur-base (180ms), --hg-ease-emphasized"
+      },
+      "transitions": {
+        "menu_sheet_appear": "--hg-dur-slow, --hg-ease-standard",
+        "exit": "--hg-ease-exit"
+      }
+    },
+    "press_scale_range": [
+      0.96,
+      0.99
+    ],
+    "respect": [
+      "prefers-reduced-motion: reduce",
+      "hg-power-off disables ripple/motion"
+    ]
+  },
+  "eight_pt_grid": {
+    "ds_section": "§11.5",
+    "base_unit_px": 4,
+    "scale_px": [
+      4,
+      8,
+      12,
+      16,
+      24,
+      32
+    ],
+    "assignment": {
+      "4": "icon↔text gap, --hg-tg-composer-gap, micro gaps",
+      "8": "chrome capsule gap, --hg-tg-fab-gap, between form fields",
+      "12": "card vertical rhythm, list row / separator spacing",
+      "16": "screen side inset (--hg-side-inset), card padding, input horizontal",
+      "24": "between section blocks",
+      "32": "section offset from chrome, empty-state / dropzone vertical"
+    },
+    "input_padding": {
+      "horizontal_px": 16,
+      "vertical_px": 14,
+      "why_14": "with 16px body text and line-height ≈1.25 content is 15–17px; 16/16 padding gives height ≥47px and breaks TARGET --hg-tg-input-h 40px; 14 keeps the field at 40px and optical centering",
+      "exception": "only vertical input padding; any other non-4 value is FAIL"
+    }
+  },
+  "typography_scale": {
+    "ds_section": "§11.6",
+    "roles": {
+      "screen_or_sheet_title": {
+        "size_px": 17,
+        "weight": 600,
+        "line_height": 1.3,
+        "color": "var(--t1)"
+      },
+      "list_name": {
+        "size_px": 17,
+        "weight": 600,
+        "line_height": 1.3,
+        "color": "var(--t1)",
+        "note": "bold / white in dark theme"
+      },
+      "bubble_body": {
+        "size_px": 16,
+        "weight": 400,
+        "line_height_min": 1.35,
+        "color": "var(--t1)"
+      },
+      "list_preview": {
+        "size_px": 15,
+        "weight": 400,
+        "line_height": 1.3,
+        "color": "var(--t2)",
+        "note": "smaller than name"
+      },
+      "secondary_caption": {
+        "size_px": 13,
+        "weight": 400,
+        "line_height": 1.35,
+        "color": "var(--t3)"
+      },
+      "list_time": {
+        "size_px": 12,
+        "weight": 400,
+        "line_height": 1.2,
+        "color": "var(--t3)",
+        "note": "faintest"
+      },
+      "bubble_meta": {
+        "size_px": 12,
+        "weight": 400,
+        "line_height": 1.2,
+        "color": "color-mix(in srgb, var(--t1) 55%, transparent)"
+      }
+    }
+  },
+  "component_recipes": {
+    "ds_section": "§11.7",
+    "input": {
+      "background": "var(--bg3)",
+      "border": "1px solid var(--brd-m)",
+      "radius_px": 12,
+      "padding": "14px 16px",
+      "color": "var(--t1)",
+      "font_size_px": 16,
+      "placeholder": "color-mix(in srgb, var(--t3) 60%, transparent)",
+      "focus": {
+        "border_color": "var(--blue-l)",
+        "box_shadow": "0 0 0 3px color-mix(in srgb, var(--blue-l) 25%, transparent)"
+      }
+    },
+    "segment": {
+      "container_background": "var(--bg3)",
+      "container_radius_px": 12,
+      "inner_padding_px": 4,
+      "thumb_background": "color-mix(in srgb, var(--bg3) 60%, var(--t1))",
+      "thumb_radius_px": 8,
+      "thumb_shadow": "var(--hg-elev-1)",
+      "thumb_animation": "transform translateX, --hg-dur-base, --hg-ease-emphasized",
+      "active_label": "var(--t1)",
+      "inactive_label": "var(--t3)"
+    },
+    "cta": {
+      "height_px": 50,
+      "radius_px": 12,
+      "background_image": "linear-gradient(180deg, color-mix(in srgb, var(--blue-l) 92%, #fff) 0%, var(--blue-l) 100%)",
+      "box_shadow": "var(--hg-elev-accent)",
+      "text": "16px / 600 / #fff",
+      "active": {
+        "transform": "scale(0.98)",
+        "box_shadow": "0 2px 8px color-mix(in srgb, var(--blue-l) 32%, transparent)"
+      },
+      "disabled": {
+        "opacity": 0.5
+      }
+    },
+    "dropzone": {
+      "border": "2px dashed var(--brd-m)",
+      "radius_px": 16,
+      "background": "color-mix(in srgb, var(--bg2) 88%, #000)",
+      "padding": "32px 16px",
+      "icon_color": "var(--blue-l)",
+      "caption": "13px / var(--t3)",
+      "hover_dragover": {
+        "border_style": "solid",
+        "border_color": "var(--blue-l)",
+        "background": "color-mix(in srgb, var(--bg3) 80%, var(--blue-l) 6%)"
+      }
+    },
+    "sheet_header": {
+      "align": "center",
+      "height_px": 44,
+      "title": "17px / 600 / var(--t1)",
+      "close_icon": {
+        "position": "left 16px",
+        "color": "var(--t3)"
+      }
+    }
+  },
+  "tz_palette_reference": {
+    "ds_section": "§11.8",
+    "status": "not_for_use",
+    "note": "Literal TZ hex are reference only — forbidden in Huginn CSS (§0.2, §9.2). Use the CRM replacement column.",
+    "map": [
+      {
+        "tz_hex": "#17212B",
+        "intent": "background / panel",
+        "crm_replacement": "var(--bg2)",
+        "not_for_use": true
+      },
+      {
+        "tz_hex": "#232E3C",
+        "intent": "elevated surface / card",
+        "crm_replacement": "var(--bg3)",
+        "not_for_use": true
+      },
+      {
+        "tz_hex": "#2AABEE",
+        "intent": "accent CTA / links",
+        "crm_replacement": "var(--blue-l)",
+        "not_for_use": true
+      },
+      {
+        "tz_hex": "#F5F5F5",
+        "intent": "text",
+        "crm_replacement": "var(--t1)",
+        "not_for_use": true
+      },
+      {
+        "tz_hex": "#8E8E93",
+        "intent": "meta",
+        "crm_replacement": "var(--t2) / var(--t3)",
+        "not_for_use": true
+      },
+      {
+        "tz_hex": "#2B5278",
+        "intent": "outgoing bubble",
+        "crm_replacement": "color-mix(in srgb, var(--blue-l) 72%, var(--bg3))",
+        "not_for_use": true
+      }
+    ],
+    "hard_forbidden": [
+      "#17212B",
+      "#232E3C",
+      "#2AABEE",
+      "#2B5278",
+      "TG purple",
+      "#000000 as screen"
+    ]
+  },
+  "depth_anti_patterns": [
+    "flat solid background without depth/gradient",
+    "uniform gray --brd-m border everywhere",
+    "shadow without blur",
+    "hardcoded TZ hex (#17212B/#232E3C/#2AABEE/#2B5278)",
+    "purple or non-CRM shadow color",
+    "#000 literal as shadow color instead of rgba(0,0,0,a)",
+    "spacing/height outside the 8pt grid (except input vertical 14)",
+    "press scale outside 0.96–0.99 or zoom instead of press"
+  ]
 }

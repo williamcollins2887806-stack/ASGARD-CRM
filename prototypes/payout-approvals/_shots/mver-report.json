@@ -1,0 +1,158 @@
+{
+  "bundle": {
+    "js": "index-DHpKK9G1.js",
+    "jsSha": "4818c61e3b985c6a",
+    "jsMtime": "2026-10-15T22:00:24.784Z",
+    "css": "index-Dz88Otr4.css",
+    "cssSha": "f8cd257c3eb2308e",
+    "indexHtmlSha": "b3fe9985df689959",
+    "approvalsSrcMtime": "2026-10-15T21:57:42.192Z"
+  },
+  "results": [
+    {
+      "item": "1 /m/ у директора → /m/director-approvals",
+      "pass": true,
+      "evidence": "url=http://127.0.0.1:3100/m/director-approvals"
+    },
+    {
+      "item": "1b нет краша/белого экрана",
+      "pass": true,
+      "evidence": "len=1803 head=\"Согласование 19 ждут согласования 🏦 В КАССЕ 1.3 млн ₽ Касса 19 Счета \""
+    },
+    {
+      "item": "3 Таб-бар директора = 2 вкладки [Согласования, Профиль]",
+      "pass": true,
+      "evidence": "[\"Согласования\",\"Профиль\"]"
+    },
+    {
+      "item": "4 4 вкладки экрана согласований",
+      "pass": true,
+      "evidence": "[\"Касса19\",\"Счета\",\"Выплаты3\",\"План\"]"
+    },
+    {
+      "item": "4a Касса: браузерный запрос /cash/all?status=requested → 200",
+      "pass": true,
+      "evidence": "[\"200 GET /api/cash/all?status=requested\"]"
+    },
+    {
+      "item": "4b Касса: счётчик = 19 (как в API)",
+      "pass": true,
+      "evidence": "dapr-count=19"
+    },
+    {
+      "item": "4a2 Касса: тап по карточке открывает шторку «Заявка на выдачу» + 3 кнопки",
+      "pass": true,
+      "evidence": "sheet=true buttons=Одобрить/Уточнить/Отказать"
+    },
+    {
+      "item": "4a3 Касса: нет горизонтального скролла в шторке",
+      "pass": true,
+      "evidence": "{\"sw\":393,\"cw\":393}"
+    },
+    {
+      "item": "4c Счета: запрос /payment-invoices?status=awaiting_dir",
+      "pass": true,
+      "evidence": "[\"200 GET /api/payment-invoices?status=awaiting_dir\"]"
+    },
+    {
+      "item": "4c2 Счета: либо карточки с кнопками, либо честный пустой экран",
+      "pass": true,
+      "evidence": "empty=true approve=false"
+    },
+    {
+      "item": "4d Выплаты: запрос /payout-cart/pending",
+      "pass": true,
+      "evidence": "[\"200 GET /api/payout-cart/pending\"]"
+    },
+    {
+      "item": "4e Выплаты: 4 суммы (Выплачиваем / Налог-сбор / Всего к переводу / Человеку придёт)",
+      "pass": true,
+      "evidence": "[[\"Выплачиваем\",true],[\"Налог / сбор\",true],[\"Всего к переводу\",true],[\"Человеку придёт\",true]]"
+    },
+    {
+      "item": "4f Выплаты: строки Согласовать/Вернуть + «Согласовать всех»",
+      "pass": true,
+      "evidence": "approveAll=true"
+    },
+    {
+      "item": "6a Выплаты: тап-таргеты кнопок решения ≥40px",
+      "pass": true,
+      "evidence": "[{\"t\":\"Согласовать\",\"h\":40},{\"t\":\"Вернуть\",\"h\":40},{\"t\":\"Согласовать\",\"h\":40},{\"t\":\"Вернуть\",\"h\":40},{\"t\":\"Согласовать\",\"h\":40},{\"t\":\"Вернуть\",\"h\":40}]"
+    },
+    {
+      "item": "4f2 Выплаты: «Вернуть» открывает шторку с причиной и словом «Путков»",
+      "pass": true,
+      "evidence": "found=true"
+    },
+    {
+      "item": "4h План: запрос /payout-plan/:y/:m → 200",
+      "pass": true,
+      "evidence": "[\"200 GET /api/payout-plan/2026/11\"]"
+    },
+    {
+      "item": "4i План: строки ФИО/суммы/лимит НПД или честный пустой экран",
+      "pass": true,
+      "evidence": "header=true empty=false limpNpd=true"
+    },
+    {
+      "item": "4i2 План: строки содержат ФИО и суммы",
+      "pass": true,
+      "evidence": "sample=\"К ВЫПЛАТЕ ВСЕГО · 86 ЧЕЛ. 10 550 250 ₽ Согласовано 0 ₽ · 0/86 Абраменко Виталий Наличные 2 000 ₽ макс. 2 тыс ₽ Авдошин Михаил СЗ · лимит свободно 350 тыс ₽ 4 000 ₽ макс. 4 тыс ₽ Андросов Никита Наличн\""
+    },
+    {
+      "item": "5a нет «ОВ» / «Олег Викторович» на мобильных экранах",
+      "pass": true,
+      "evidence": "hits=null"
+    },
+    {
+      "item": "6b нет горизонтального скролла (план, длинный список)",
+      "pass": true,
+      "evidence": "{\"sw\":393,\"cw\":393}"
+    },
+    {
+      "item": "6c тап-таргеты <40px отсутствуют вне вкладок-фильтров",
+      "pass": true,
+      "evidence": "[{\"t\":\"Касса19\",\"h\":38},{\"t\":\"Счета\",\"h\":38},{\"t\":\"Выплаты3\",\"h\":38},{\"t\":\"План\",\"h\":38}]"
+    },
+    {
+      "item": "2a директор: 0 JS-ошибок (console.error + pageerror)",
+      "pass": true,
+      "evidence": "[]"
+    },
+    {
+      "item": "2a2 директор: нет упавших запросов/5xx",
+      "pass": true,
+      "evidence": "failed=[] api=[]"
+    },
+    {
+      "item": "2b ADMIN: Home без краша",
+      "pass": true,
+      "evidence": "url=http://127.0.0.1:3100/m/ len=10677"
+    },
+    {
+      "item": "2c ADMIN: 0 JS-ошибок",
+      "pass": true,
+      "evidence": "[]"
+    },
+    {
+      "item": "3b ADMIN: таб-бар прежний (4 вкладки)",
+      "pass": true,
+      "evidence": "[\"Главная\",\"Задачи\",\"Работы\",\"Ещё\"]"
+    },
+    {
+      "item": "2d BUH: Home без краша",
+      "pass": true,
+      "evidence": "url=http://127.0.0.1:3100/m/ len=14677"
+    },
+    {
+      "item": "2e BUH: 0 JS-ошибок",
+      "pass": true,
+      "evidence": "[]"
+    },
+    {
+      "item": "3c BUH: таб-бар 4 вкладки",
+      "pass": true,
+      "evidence": "[\"Главная\",\"Задачи\",\"Работы\",\"Ещё\"]"
+    }
+  ]
+}

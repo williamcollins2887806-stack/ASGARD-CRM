@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ASGARD Field — 8 разных дизайнов главной</title>
+  <link rel="stylesheet" href="skins.css" />
+</head>
+<body>
+  <div class="stage" id="stage"></div>
+  <script src="../assets/icons.js"></script>
+  <script src="variants.js"></script>
+  <script>
+    (function () {
+      const q = new URLSearchParams(location.search);
+      const only = q.get('only');
+      const stage = document.getElementById('stage');
+      const list = only ? window.VARIANTS.filter((v) => only.includes(v.id)) : window.VARIANTS;
+      for (const v of list) {
+        const col = document.createElement('div');
+        col.className = 'col';
+        col.innerHTML = `<div class="phone">${window.HOME_HTML(v, v.light ? 'light' : 'dark')}</div>
+          <div class="col__cap">${v.name}</div><div class="col__sub">${v.note}</div>`;
+        stage.appendChild(col);
+      }
+    })();
+  </script>
+</body>
+</html>

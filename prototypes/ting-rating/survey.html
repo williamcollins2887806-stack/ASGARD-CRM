@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Тинг Асгарда · опрос</title>
+  <link rel="stylesheet" href="assets/ting-rating.css" />
+  <link rel="stylesheet" href="assets/ting-rating-2.css" />
+  <style>
+    .linkbar {
+      display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+      max-width: 1180px; margin: 0 auto; padding: 14px 22px 0;
+      font-size: 12px; color: var(--t3);
+    }
+    .linkbar .tr-chip { font-family: var(--mono); }
+    .statebar { display: flex; gap: 8px; margin-left: auto; }
+  </style>
+</head>
+<body>
+  <div class="linkbar">
+    <span class="tr-chip tr-chip--ok">🔒 персональная ссылка активна</span>
+    <span class="tr-chip">crm.asgard-service.com/ting/k7f3q9</span>
+    <span class="statebar">
+      <button class="tr-btn tr-btn--ghost tr-btn--sm" data-state="form">Форма</button>
+      <button class="tr-btn tr-btn--ghost tr-btn--sm" data-state="done">После отправки</button>
+      <button class="tr-btn tr-btn--ghost tr-btn--sm" data-state="already">«Вы уже прошли»</button>
+      <button class="tr-btn tr-btn--ghost tr-btn--sm" data-state="closed">Тинг закрыт</button>
+    </span>
+  </div>
+  <div id="svHost"></div>
+
+  <div class="tr-demo">
+    <b>ПРОТОТИП</b>
+    <span style="opacity:.75">опрос по ссылке из письма</span>
+  </div>
+
+  <script src="assets/data.js"></script>
+  <script src="assets/survey.js"></script>
+  <script>
+    (function () {
+      var host = document.getElementById('svHost');
+      function run(state) { window.TING_SURVEY.render(host, { state: state }); }
+      Array.prototype.slice.call(document.querySelectorAll('[data-state]')).forEach(function (b) {
+        b.addEventListener('click', function () { run(b.getAttribute('data-state')); });
+      });
+      run('form');
+    })();
+  </script>
+</body>
+</html>

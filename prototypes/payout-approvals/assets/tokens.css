@@ -1,0 +1,111 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   ASGARD CRM — Design tokens (копия используемых из public/assets/css/design-tokens.css)
+   Премиум-палитра: Nordic Dark (тёмная) + Nordic Manuscript (светлая).
+   Правило: только эти переменные. Никаких хардкод-цветов в компонентах.
+   Золото — только тонкий акцент (VIP, гриф), НЕ основной цвет.
+   ═══════════════════════════════════════════════════════════════════════════ */
+:root {
+  --color-scheme: dark;
+
+  /* Корпоративные акценты */
+  --red: #C8293B;   --red-h: #A82233;  --red-l: #E8475A;  --red-bg: rgba(200,41,59,0.10);
+  --blue: #1E4D8C;  --blue-h: #163E72; --blue-l: #4A90D9; --blue-bg: rgba(30,77,140,0.10);
+  --gold: #D4A843;  --gold-h: #B8922E; --gold-l: #E8C35A; --gold-bg: rgba(212,168,67,0.10);
+
+  /* Фоны */
+  --bg0: #08090C; --bg1: #0D1117; --bg2: #151922; --bg3: #1C2130; --bg4: #222838; --bg5: #2A3248;
+  --overlay: rgba(8,9,12,0.88);
+
+  /* Текст */
+  --t1: rgba(255,255,255,0.95);
+  --t2: rgba(255,255,255,0.70);
+  --t3: rgba(255,255,255,0.52);
+
+  /* Семантика */
+  --ok: #2D8659;   --ok-t: #4ADE80;   --ok-bg: rgba(45,134,89,0.12);
+  --warn: #D4A843; --warn-t: #D4A843; --warn-bg: rgba(212,168,67,0.12);
+  --err: #C8293B;  --err-t: #F87171;  --err-bg: rgba(200,41,59,0.12);
+  --info: #3B82F6; --info-t: #60A5FA; --info-bg: rgba(59,130,246,0.12);
+
+  /* Границы */
+  --brd: rgba(255,255,255,0.12);
+  --brd-m: rgba(255,255,255,0.07);
+
+  /* Типографика */
+  --ff: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --ff-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Consolas, monospace;
+  --fw-med: 500; --fw-semi: 600; --fw-bold: 700; --fw-extra: 800; --fw-black: 900;
+
+  /* Spacing (сетка 8) */
+  --sp-1: 4px; --sp-2: 8px; --sp-3: 12px; --sp-4: 16px; --sp-5: 20px;
+  --sp-6: 24px; --sp-7: 28px; --sp-8: 32px; --sp-10: 40px; --sp-12: 48px; --sp-16: 64px;
+
+  /* Радиусы */
+  --r-xs: 4px; --r-sm: 6px; --r-md: 8px; --r-lg: 12px; --r-xl: 16px; --r-full: 9999px;
+
+  /* Тени */
+  --shadow-sm: 0 1px 3px rgba(0,0,0,0.4);
+  --shadow-md: 0 4px 12px rgba(0,0,0,0.35);
+  --shadow-lg: 0 8px 28px rgba(0,0,0,0.45);
+  --shadow-xl: 0 20px 50px rgba(0,0,0,0.55);
+
+  /* Переходы */
+  --fast: 100ms ease; --base: 200ms ease; --slow: 400ms ease;
+
+  /* Модуль прототипа */
+  --pp-sidebar: 244px;
+  --pp-topbar: 56px;
+  --pp-glow-blue: 0 0 24px rgba(30,77,140,0.28);
+  --pp-glow-ok: 0 0 22px rgba(45,134,89,0.26);
+  --pp-sheen: linear-gradient(135deg, rgba(255,255,255,0.07) 0%, transparent 46%);
+  --sheen-inset: rgba(255,255,255,0.12);
+  --sheen-inset-strong: rgba(255,255,255,0.25);
+  --pp-hairline: linear-gradient(90deg, transparent, var(--gold), transparent);
+
+  /* Контрастные «on-color» (текст/иконки на цветном фоне) и рамки-акценты.
+     Вынесены в токены, чтобы не было хардкода в компонентах. */
+  --on-color: #FFFFFF;         /* белый текст на цветной заливке */
+  --on-gold: #1A1408;          /* тёмный текст на золоте */
+  --ok-h: #246B48;             /* затемнённый зелёный для градиента */
+  --phone-bezel: #05060A;      /* корпус телефона (только рамка макета) */
+  --phone-bezel-line: #262B36;
+  --purple: #7C6BD6; --purple-l: #A99BEF; --purple-bg: rgba(124,107,214,0.14);
+  --brd-ok: rgba(74,222,128,0.32);
+  --brd-info: rgba(96,165,250,0.32);
+  --brd-gold: rgba(212,168,67,0.34);
+  --brd-err: rgba(248,113,113,0.30);
+  --glow-ok: rgba(74,222,128,0.45);
+}
+
+html[data-theme="light"] {
+  --color-scheme: light;
+  /* --on-gold НЕ меняем: на золотой заливке нужен тёмный текст в обеих темах */
+  --phone-bezel: #1A1712;
+  --phone-bezel-line: #3A342A;
+  --bg0: #EAE3D6; --bg1: #F4EFE6; --bg2: #FDFAF5; --bg3: #EDE8DC; --bg4: #E3DCCE; --bg5: #D8D0C0;
+  --overlay: rgba(28,25,20,0.50);
+
+  --t1: #1C1914; --t2: #414A57; --t3: #525C6A;
+
+  --red: #A82030;  --red-h: #8C1828; --red-l: #C8293B; --red-bg: rgba(168,32,48,0.09);
+  --blue: #1A3F74; --blue-h: #16325A; --blue-l: #24568F; --blue-bg: rgba(26,63,116,0.09);
+  --gold: #8E6410; --gold-h: #7A540C; --gold-l: #B8841A; --gold-bg: rgba(142,100,16,0.12);
+  --purple: #4A3B8F; --purple-l: #5B4BA8; --purple-bg: rgba(74,59,143,0.12);
+
+  --ok: #246B48;   --ok-t: #1F6B47;   --ok-bg: rgba(45,106,79,0.09);
+  --warn: #8E6410; --warn-t: #7A540C; --warn-bg: rgba(142,100,16,0.10);
+  --err: #A82030;  --err-t: #9E1F2E;  --err-bg: rgba(168,32,48,0.09);
+  --info: #1A3F74; --info-t: #24568F; --info-bg: rgba(26,63,116,0.09);
+
+  --brd: rgba(139,120,90,0.20);
+  --brd-m: rgba(139,120,90,0.11);
+
+  --shadow-sm: 2px 3px 0 rgba(0,0,0,0.04), 0 1px 6px rgba(0,0,0,0.06);
+  --shadow-md: 3px 4px 0 rgba(0,0,0,0.05), 0 4px 20px rgba(0,0,0,0.08);
+  --shadow-lg: 4px 5px 0 rgba(0,0,0,0.06), 0 8px 36px rgba(0,0,0,0.10);
+  --shadow-xl: 5px 6px 0 rgba(0,0,0,0.07), 0 16px 52px rgba(0,0,0,0.12);
+
+  --pp-glow-blue: 0 0 0 rgba(0,0,0,0);
+  --pp-glow-ok: 0 0 0 rgba(0,0,0,0);
+  --pp-sheen: linear-gradient(135deg, rgba(255,255,255,0.5) 0%, transparent 46%);
+}

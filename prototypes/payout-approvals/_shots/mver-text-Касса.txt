@@ -1,0 +1,189 @@
+Согласование
+
+19
+
+ждут согласования
+
+🏦 В КАССЕ
+
+1.3 млн ₽
+
+Касса
+19
+Счета
+Выплаты
+3
+План
+
+Test ADMIN
+
+25 тыс ₽
+💼
+—
+· E2E autotest: закупка материалов
+99 дн назад
+· ждёт 2389ч
+
+Test ADMIN
+
+25 тыс ₽
+💼
+—
+· E2E autotest: закупка материалов
+99 дн назад
+· ждёт 2389ч
+
+Test HR
+
+1 тыс ₽
+💼
+—
+· hr own cash request autotest
+2 дн назад
+· ждёт 61ч
+
+Test WAREHOUSE
+
+1 тыс ₽
+💼
+—
+· warehouse own cash request autotest
+2 дн назад
+· ждёт 61ч
+
+Test OFFICE_MANAGER
+
+700 ₽
+📦
+Другое
+· autotest cash access OFFICE_MANAGER office
+2 дн назад
+· ждёт 61ч
+
+Test WAREHOUSE
+
+700 ₽
+📦
+Другое
+· autotest cash access WAREHOUSE office
+2 дн назад
+· ждёт 61ч
+
+Test TO
+
+700 ₽
+📦
+Другое
+· autotest cash access TO office
+2 дн назад
+· ждёт 61ч
+
+Test HR
+
+700 ₽
+📦
+Другое
+· autotest cash access HR office
+2 дн назад
+· ждёт 61ч
+
+Test HR_MANAGER
+
+700 ₽
+📦
+Другое
+· autotest cash access HR_MANAGER office
+2 дн назад
+· ждёт 61ч
+
+Test PROC
+
+700 ₽
+📦
+Другое
+· autotest cash access PROC office
+2 дн назад
+· ждёт 61ч
+
+Test CHIEF_ENGINEER
+
+700 ₽
+📦
+Другое
+· autotest cash access CHIEF_ENGINEER office
+2 дн назад
+· ждёт 61ч
+
+Test HEAD_PM
+
+700 ₽
+📦
+Другое
+· autotest cash access HEAD_PM office
+2 дн назад
+· ждёт 61ч
+
+Test HEAD_TO
+
+700 ₽
+📦
+Другое
+· autotest cash access HEAD_TO office
+2 дн назад
+· ждёт 61ч
+
+Test BUH
+
+700 ₽
+📦
+Другое
+· autotest cash access BUH office
+2 дн назад
+· ждёт 61ч
+
+Test PM
+
+700 ₽
+📦
+Другое
+· autotest cash access PM office
+2 дн назад
+· ждёт 61ч
+
+Test DIRECTOR_COMM
+
+700 ₽
+📦
+Другое
+· autotest cash access DIRECTOR_COMM office
+2 дн назад
+· ждёт 61ч
+
+Test DIRECTOR_GEN
+
+700 ₽
+📦
+Другое
+· autotest cash access DIRECTOR_GEN office
+2 дн назад
+· ждёт 61ч
+
+Test DIRECTOR_DEV
+
+700 ₽
+📦
+Другое
+· autotest cash access DIRECTOR_DEV office
+2 дн назад
+· ждёт 61ч
+
+Test OFFICE_MANAGER
+
+1 тыс ₽
+📦
+Другое
+· autotest cash-mail landing page
+2 дн назад
+· ждёт 61ч
+Согласования
+Профиль

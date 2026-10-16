@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="ru" data-theme="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>ASGARD CRM — Корзина выплат и согласования (прототип)</title>
+  <link rel="stylesheet" href="assets/tokens.css" />
+  <link rel="stylesheet" href="assets/app.css" />
+  <link rel="stylesheet" href="assets/features.css" />
+</head>
+<body>
+  <div class="shell">
+    <!-- ── Сайдбар прототипа ─────────────────────────────────────────── -->
+    <aside class="side">
+      <div class="side__brand">
+        <div class="side__mark">⚔</div>
+        <div class="side__name">АСГАРД<i>прототип · выплаты</i></div>
+      </div>
+
+      <div class="side__sec">Экраны Димы Путкова</div>
+      <button class="side__item" data-nav="payouts"><em>💸</em> Выплаты + корзина</button>
+      <button class="side__item" data-nav="m-cart"><em>📱</em> Корзина (мобильный)</button>
+
+      <div class="side__sec">Экран Олега Викторовича</div>
+      <button class="side__item" data-nav="approvals"><em>✓</em> Согласования<span class="side__badge" id="sidePayoutN">0</span></button>
+      <button class="side__item" data-nav="chart"><em>📊</em> График платежей</button>
+      <button class="side__item" data-nav="m-ov"><em>📱</em> Согласования (мобильный)</button>
+
+      <div class="side__sec">Рабочий и пуши</div>
+      <button class="side__item" data-nav="m-worker"><em>🧑‍🏭</em> Баннер рабочего</button>
+      <button class="side__item" data-nav="push"><em>🔔</em> Пуши (push/MAX/SMS/TG)</button>
+      <button class="side__item" data-nav="mimir"><em>🧠</em> Мимир · AI</button>
+
+      <div class="side__sec">Тема</div>
+      <div class="seg" style="margin:0 6px">
+        <button class="seg__b is-on" data-theme-btn="dark">Тёмная</button>
+        <button class="seg__b" data-theme-btn="light">Светлая</button>
+      </div>
+
+      <div style="margin-top:auto;padding:16px 12px 4px">
+        <div class="hairline" style="margin:0 0 12px"></div>
+        <div style="font-size:11px;color:var(--t3);line-height:1.5">
+          Живой прототип. Данные вымышлены, суммы — по реальным формулам СЗ/НДФЛ.
+        </div>
+      </div>
+    </aside>
+
+    <!-- ── Контент ───────────────────────────────────────────────────── -->
+    <main class="main">
+      <div class="topbar">
+        <div class="crumb" id="crumb">Экран Димы · Выплаты<small>прототип</small></div>
+        <span class="spacer"></span>
+        <div class="row" id="phoneBar" style="display:none">
+          <span class="muted" style="font-size:12px">Макет: iPhone 14 Pro (393×852)</span>
+        </div>
+        <span class="badge gold">ПРОТОТИП</span>
+      </div>
+      <div class="page is-wide" id="viewHost"></div>
+    </main>
+  </div>
+
+  <div id="cartHost"></div>
+  <div id="drawerHost"></div>
+  <div id="toast"></div>
+
+  <script src="assets/data.js"></script>
+  <script src="assets/views.js"></script>
+  <script src="assets/app.js"></script>
+</body>
+</html>

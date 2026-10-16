@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ASGARD Field — 4 финальных варианта (1:1 с боевой главной)</title>
+  <link rel="stylesheet" href="final.css" />
+</head>
+<body>
+  <div class="stage" id="stage"></div>
+  <script src="../assets/icons.js"></script>
+  <script src="final.js"></script>
+  <script>
+    (function () {
+      const q = new URLSearchParams(location.search);
+      const only = q.get('only');
+      const stage = document.getElementById('stage');
+      const list = only ? window.FINAL.filter((v) => only.includes(v.id)) : window.FINAL;
+      for (const v of list) {
+        const col = document.createElement('div');
+        col.className = 'col';
+        col.innerHTML = `<div class="phone">${window.HOME_HTML(v, v.light ? 'light' : 'dark')}</div>
+          <div class="col__cap">${v.name}</div><div class="col__sub">${v.note}</div>`;
+        stage.appendChild(col);
+      }
+    })();
+  </script>
+</body>
+</html>

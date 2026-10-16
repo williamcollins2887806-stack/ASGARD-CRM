@@ -1,14 +1,14 @@
 # Huginn API coverage
 
-at: 2026-10-05T22:19:32.710Z
+at: 2026-10-14T21:41:21.444Z
 base: http://127.0.0.1:3100
 
 | Case | Result | Detail |
 |---|---|---|
 | auth_two_users | PASS | A=1 B=3455 |
 | presence_ping | PASS | status=200 |
-| presence_get | PASS | [{"user_id":3455,"name":"Кудряшов Олег Сергеевич","last_seen_at":"2026-10-05T22:17:17.392Z","online":false}] |
-| events_catchup_endpoint | PASS | n=110 |
+| presence_get | PASS | [{"user_id":3455,"name":"Кудряшов Олег Сергеевич","last_seen_at":"2026-10-14T21:41:20.098Z","online":true}] |
+| events_catchup_endpoint | PASS | n=74 |
 | direct_chat | PASS |  |
 | message_send | PASS |  |
 | message_reply | PASS |  |
@@ -34,7 +34,7 @@ base: http://127.0.0.1:3100
 | guest_mimir_denied | PASS | status=403 |
 | guest_estimate_denied | PASS | status=403 |
 | invite_revoke_path | PASS | status=200 |
-| catchup_new_message | PASS | since=213 n=200 |
+| catchup_new_message | PASS | since=792 n=1 |
 | message_delete | PASS | 200 |
 
 TOTAL 31/31

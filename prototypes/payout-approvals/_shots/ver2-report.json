@@ -1,0 +1,77 @@
+{
+  "verifier": "independent round 2 (V391 payout-approvals)",
+  "date": "2026-10-16",
+  "server": "http://127.0.0.1:3100 (clone asgard_crm_test)",
+  "git": { "branch": "feat/payouts-page", "head": "2a018a73d3d9a95349714f1e6c9997f5bae16283" },
+  "artifact_hashes_sha256_at_verification": {
+    "public/assets/js/payouts.js": "65C451B5CE79D09155B3F42FE11FB18265611E80850D05B926896E846CDE715C",
+    "public/assets/js/payout-plan.js": "C97C603590275686BC77C190F0695DD37042094B7F77463D3D2BF0D588C050F7",
+    "public/assets/js/approval_payment.js": "8998F885913B0796C3E8C01C66341EBF90E1E873495908B982E1082353F7C626",
+    "public/assets/css/payout-approval.css": "E3A56CAC4C0F2F819138B9D065BB74BF556425BA25441F204901E21598BBDF01",
+    "src/routes/payout-cart.js": "7074C4D64ED30E19036DD24765FCF344EF30F96654654279F2EAC20EBF97E091",
+    "src/routes/payout-plan.js": "44EBA7AE31F64C89DF408A1548F354DF54FB9533A3D63D5FBEB047CFFE5DA801"
+  },
+  "note": "WORKTREE MUTATED DURING VERIFICATION by a concurrent session in the same working directory (D-147 one-worktree-one-agent violated). payouts.js hash changed 3 times during the run: 5A4E3C71 -> B638DABA -> 65C451B5. The 'Что увидит Олег Викторович на согласовании' header observed live at 00:42 was rewritten to 'Что увидит директор на согласовании' at 00:48. Verdicts below were captured at the stated hashes.",
+  "items": {
+    "1_npd_limit": {
+      "verdict": "PASS",
+      "proof": "GET /api/payout-plan/2027/3 -> 86 rows, 27 SE, se_remaining=350000 (not 0), 0/27 SE rows with max_amount<=0. POST /api/payout-plan/save with to_transfer=max_amount -> {saved:86,capped:0}; read-back 86/86 to_transfer>0 incl. 27/27 SE. src/routes/payout-plan.js:112 now calls seRemainingMap(limit,...) not 0."
+    },
+    "2_cart_delete": {
+      "verdict": "PASS",
+      "proof": "DELETE /api/payout-cart/items/38 -> 200 {ok:true}; DB count 0 for that row; GET cart no longer lists it. Repeat DELETE -> 409; bogus id -> 409; old POST .../items/:id/delete -> 404. UI: unchecking a saved draft row for emp 14 removed it from DB (0 rows) and after F5 the checkbox stayed off."
+    },
+    "3_drawer_clear": {
+      "verdict": "PASS",
+      "proof": "3 drafts seeded (DB=3). UI: opened drawer (2 items after uncheck), clicked 'Очистить' -> drawer closed, sticky-bar innerHTML length 0 (barGone), DB count 0, after F5 bar still gone and 0 chips on."
+    },
+    "4_ov_preview_modal": {
+      "verdict": "PASS (content/wording) / DISCREPANCY (header text)",
+      "proof": "Modal .pp-wa-mini present with .po-ov-preview. Rows=4: 'Выплачиваем 4 000 ₽', 'Налог / сбор (сбор+НДС 22%) 1 152,67 ₽', 'Человеку придёт 4 256 ₽', 'Всего к переводу 5 408,67 ₽'. Numbers match spec exactly (SE 4000 -> 1152.67/4256/5408.67). Live header read 'Что увидит Олег Викторович на согласовании' (payouts.js:1144), but at 00:48 the file was edited by the concurrent session to 'Что увидит директор на согласовании'. Task/claim required the Oleg-Viktorovich wording."
+    },
+    "5_cash_tab": {
+      "verdict": "PASS",
+      "proof": "In #/approval-payment the tab strip has 4 tabs: ['📄 Счета','💰 Выплаты N','💵 Касса','📋 Планирование на 1-е']. Cash tab content renders 19 cards ([data-cash-request]=19), hero 'Касса · 19 ждут решения', 62 900 ₽. Ref data: cash_requests status='requested' = 19."
+    },
+    "6_reject_modal": {
+      "verdict": "PASS",
+      "proof": "In #/approval-payment the payouts tab now has progress bar (.ap-prog '0/5 решено') and a gold note. Clicking 'Вернуть'/'Вернуть всю пачку' opens a MODAL with TEXTAREA #ap_reason (window.prompt/confirm NOT called — interceptor recorded 0 calls); empty reason keeps the modal open (blocked). Backend: reject without/empty reason -> 400 reason_required; with reason -> 200 and item goes approval_status='rejected' with reject_reason='уточните сумму'. Re-edit of an approved item sets reapproved=true and the panel shows '⚠️ В пачке есть позиции, изменённые после согласования' + badge 'повторно'."
+    },
+    "7_unapprove_button": {
+      "verdict": "PASS",
+      "proof": "POST /api/payout-plan/2027/3/unapprove -> 200 {unapproved:86}; plan status approved -> draft, approved rows 86 -> 0. UI plan tab: after 'Согласовать' on a row the button becomes 'Снять' ([data-pl-unapprove]); clicking it reverts to 'Согласовать' and DB approved count -> 0."
+    },
+    "regressions": {
+      "verdict": "PASS",
+      "proof": "409 gate: POST /api/payouts/pay for a pending cart item -> 409 {error:'approval_required',requires_approval:true}. Row statuses render draft/pending/approved/reapproved/rejected. Two-recipient picker code intact (no emp in clone has se_payee_id_2, so UI picker not exercisable here). Schedule /schedule/2026/11 -> 200, 30 days; /day/2026/11/5 -> 200 with items/totals. Carry adjustment: no reason -> 400 reason_required; no-change -> 400 no_change."
+    },
+    "new_holes": {
+      "verdict": "PARTIAL",
+      "stubs_todo": "PASS — grep TODO/FIXME/stub/lorem in payout-plan.js (route), payout-cart.js, payout-plan.js (ui), payout-approval.css: 0 matches.",
+      "hardcoded_colors": "PASS — payout-approval.css uses only var(--...) except the documented theme-token block (lines 10-28) defining missing tokens (--on-color, --on-gold, --ok-h, --glow-ok, --brd-*, --pp-sheen) per dark/light theme; 0 hex outside that block; 199 var(--) usages. approval_payment.js diff added 0 hardcoded colors. No hex in payout-plan.js.",
+      "concurrent_session": "FAIL (process) — a second agent/session is editing the same worktree and running the same clone (:3100 listener restarted mid-run; _pp_tmp/*.js from the other session; payouts.js hash changed 3x in ~7 min). Violates .cursor/rules/protect-prod-shell.mdc §5. Verification of 'what is deployed' cannot be stable while this continues."
+    }
+  },
+  "clone_rollback": {
+    "verdict": "DONE",
+    "proof": "Deleted test batch 19 + its 4 items; deleted test plans 6 & 7 + 87 items; reset batch 2 items to pending and batch 2 status to pending_approval. Final counts: payout_batches=3, payout_batch_items=8, payout_plans=0, payout_plan_items=0. worker_payments carry_adjustment in last 3h = 0. (Batch 21 / items 58-59 in period 2026-09 were created by the concurrent session, not by this verifier, and were left untouched.)"
+  },
+  "screenshots": [
+    "prototypes/payout-approvals/_shots/ver2-01-payouts-admin.png",
+    "prototypes/payout-approvals/_shots/ver2-02-ov-tabs.png",
+    "prototypes/payout-approvals/_shots/ver2-03-ov-cash-tab.png",
+    "prototypes/payout-approvals/_shots/ver2-08-paymodal-ov-preview.png",
+    "prototypes/payout-approvals/_shots/ver2-09-ov-payouts-tab.png",
+    "prototypes/payout-approvals/_shots/ver2-10-reject-modal.png",
+    "prototypes/payout-approvals/_shots/ver2-11-plan-tab.png",
+    "prototypes/payout-approvals/_shots/ver2-12-plan-approved-snyat.png",
+    "prototypes/payout-approvals/_shots/ver2-13-plan-unapproved.png",
+    "prototypes/payout-approvals/_shots/ver2-14-p2-after-uncheck-f5.png",
+    "prototypes/payout-approvals/_shots/ver2-15-p3-drawer-before.png",
+    "prototypes/payout-approvals/_shots/ver2-16-p3-after-clear-f5.png",
+    "prototypes/payout-approvals/_shots/ver2-17-ov-batch.png",
+    "prototypes/payout-approvals/_shots/ver2-18-batch-reject-modal.png",
+    "prototypes/payout-approvals/_shots/ver2-19-reapproved-note.png"
+  ],
+  "result": "VERIFIED (7/7 previously-FAILed points PASS at captured hashes) with 2 open items: (a) concurrent-session worktree mutation makes the artifact revision unstable; (b) modal header wording 'О Викторович' was changed to 'директор' during the run, contradicting the claimed/парity wording."
+}

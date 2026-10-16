@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Тинг Асгарда — прототип (живой рендер)</title>
+  <link rel="stylesheet" href="assets/ting-rating.css" />
+  <link rel="stylesheet" href="assets/ting-rating-2.css" />
+  <link rel="stylesheet" href="assets/emails.css" />
+  <link rel="stylesheet" href="assets/chrome.css" />
+</head>
+<body>
+  <div class="app">
+    <!-- ── SIDEBAR ───────────────────────────────────────────────────── -->
+    <aside class="nav">
+      <div class="nav__brand">
+        <span>⚔</span>
+        <div><b>Тинг Асгарда</b><i>прототип · рендер</i></div>
+      </div>
+
+      <button class="nav__item" data-nav="overview" data-label="Обзор кампании"><em>🗺</em> Обзор кампании</button>
+
+      <div class="nav__sec">Письма сотруднику</div>
+      <button class="nav__item" data-nav="mail-desktop" data-email="invite"    data-label="Письмо-приглашение"><em>✉️</em> Приглашение на Тинг</button>
+      <button class="nav__item" data-nav="mail-desktop" data-email="reminder"  data-label="Напоминание"><em>✉️</em> Напоминание (не прошёл)</button>
+      <button class="nav__item" data-nav="mail-desktop" data-email="published" data-label="Рейтинг опубликован"><em>✉️</em> Рейтинг опубликован</button>
+      <button class="nav__item" data-nav="mail-desktop" data-email="incore"    data-label="Личное: вы в Ядре"><em>⭐</em> Личное: вы в Ядре</button>
+
+      <div class="nav__sec">Поздравления 1 / 2 / 3 место</div>
+      <button class="nav__item" data-nav="mail-desktop" data-email="rank1" data-label="1 место"><em>🥇</em> Письмо · 1 место</button>
+      <button class="nav__item" data-nav="mail-desktop" data-email="rank2" data-label="2 место"><em>🥈</em> Письмо · 2 место</button>
+      <button class="nav__item" data-nav="mail-desktop" data-email="rank3" data-label="3 место"><em>🥉</em> Письмо · 3 место</button>
+
+      <div class="nav__sec">Переход и опрос</div>
+      <button class="nav__item" data-nav="mail-mobile"   data-label="Почта на телефоне"><em>📱</em> Почта на телефоне</button>
+      <button class="nav__item" data-nav="tg"            data-label="Уведомление в Telegram"><em>💬</em> Уведомление в Telegram</button>
+      <button class="nav__item" data-nav="survey-web"    data-label="Опрос по ссылке (ПК)"><em>🧭</em> Опрос по ссылке (ПК)</button>
+      <button class="nav__item" data-nav="survey-mobile" data-label="Опрос на телефоне"><em>📲</em> Опрос на телефоне</button>
+
+      <div class="nav__sec">Итоги</div>
+      <button class="nav__item" data-nav="crm"    data-label="Рейтинг в CRM (виджет на неделю)"><em>🏆</em> Рейтинг в CRM</button>
+      <button class="nav__item" data-nav="report" data-label="Отчёт руководству"><em>🔒</em> Отчёт руководству</button>
+
+      <div class="nav__sec">Открыть отдельно</div>
+      <a class="nav__item" href="survey.html" target="_blank" style="text-decoration:none;"><em>↗</em> Опрос как отдельная ссылка</a>
+    </aside>
+
+    <!-- ── MAIN ──────────────────────────────────────────────────────── -->
+    <main class="main">
+      <div class="main__bar">
+        <span class="crumb" id="crumb">Обзор кампании</span>
+        <span class="hint">· прототип, можно тыкать</span>
+        <span class="spacer"></span>
+        <div class="devbar" id="deviceBar" style="display:none;">
+          <span class="devbar__t">Устройство</span>
+          <div class="seg">
+            <button class="seg__b is-on" data-phone="iphone15">iPhone 15 Pro</button>
+            <button class="seg__b" data-phone="compact">iPhone SE</button>
+          </div>
+        </div>
+      </div>
+      <div id="viewHost"></div>
+    </main>
+  </div>
+
+  <div id="toast"></div>
+
+  <div class="tr-demo">
+    <b>ПРОТОТИП</b>
+    <span style="opacity:.75">данные вымышлены</span>
+  </div>
+
+  <script src="assets/data.js"></script>
+  <script src="assets/emails.js"></script>
+  <script src="assets/survey.js"></script>
+  <script src="assets/rating.js"></script>
+  <script src="assets/main.js"></script>
+</body>
+</html>

@@ -1,0 +1,132 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   ASGARD · прототип — оболочка просмотра (сайдбар, тулбары, обзор, тосты)
+   ═══════════════════════════════════════════════════════════════════════════ */
+body { background: var(--bg0); }
+
+.app { display: grid; grid-template-columns: 264px 1fr; min-height: 100vh; }
+
+/* ── Sidebar ───────────────────────────────────────────────────────────── */
+.nav {
+  position: sticky; top: 0; align-self: start; height: 100vh; overflow: auto;
+  background: var(--bg1); border-right: 1px solid var(--brd);
+  padding: 18px 14px 24px;
+}
+.nav__brand { display: flex; align-items: center; gap: 11px; padding: 0 6px 16px; }
+.nav__brand span {
+  display: inline-grid; place-items: center; width: 34px; height: 34px; border-radius: 11px;
+  background: var(--grad-gold); color: #241B06; font-size: 17px;
+}
+.nav__brand b { font-size: 14.5px; letter-spacing: .4px; }
+.nav__brand i { display: block; font-style: normal; font-size: 10.5px; color: var(--t3); letter-spacing: 1.2px; text-transform: uppercase; margin-top: 2px; }
+.nav__sec { font-size: 10px; font-weight: 700; letter-spacing: 1.4px; text-transform: uppercase; color: var(--t3); padding: 14px 8px 6px; }
+.nav__item {
+  display: flex; align-items: center; gap: 10px; width: 100%; text-align: left;
+  padding: 9px 11px; border-radius: 10px; border: 1px solid transparent;
+  background: transparent; color: var(--t2); font: 500 13px var(--ff); cursor: pointer;
+  transition: background var(--fast), color var(--fast), border-color var(--fast);
+}
+.nav__item:hover { background: rgba(255,255,255,.04); color: var(--t1); }
+.nav__item.is-active { background: rgba(212,168,67,.1); border-color: rgba(212,168,67,.3); color: var(--gold-l); font-weight: 600; }
+.nav__item em { font-style: normal; opacity: .85; }
+
+/* ── Main ──────────────────────────────────────────────────────────────── */
+.main { min-width: 0; }
+.main__bar {
+  position: sticky; top: 0; z-index: 30;
+  display: flex; align-items: center; gap: 14px; height: 56px; padding: 0 22px;
+  background: rgba(13,17,23,.86); backdrop-filter: blur(14px);
+  border-bottom: 1px solid var(--brd);
+}
+.crumb { font-size: 13px; font-weight: 600; color: var(--t1); }
+.main__bar .hint { font-size: 11.5px; color: var(--t3); }
+.main__bar .spacer { flex: 1; }
+.devbar { display: flex; align-items: center; gap: 8px; }
+.devbar__t { font-size: 10.5px; color: var(--t3); text-transform: uppercase; letter-spacing: 1px; }
+.seg { display: inline-flex; padding: 3px; border-radius: 10px; background: var(--bg3); border: 1px solid var(--brd); }
+.seg__b {
+  padding: 6px 12px; border-radius: 8px; border: 0; background: transparent;
+  color: var(--t2); font: 600 11.5px var(--ff); cursor: pointer;
+}
+.seg__b.is-on { background: var(--grad-gold); color: #241B06; }
+
+#viewHost { animation: fade .28s ease; }
+@keyframes fade { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+.view { min-height: calc(100vh - 56px); }
+
+/* ── Toolbars над экранами ─────────────────────────────────────────────── */
+.sv-toolbar, .crm-toolbar {
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  padding: 14px 22px 0;
+}
+.sv-urlbar {
+  flex: 1; min-width: 320px; display: flex; align-items: center; gap: 10px;
+  height: 40px; padding: 0 8px 0 14px; border-radius: 10px;
+  background: var(--bg2); border: 1px solid var(--brd);
+}
+.sv-urlbar .lock { opacity: .5; }
+.sv-urlbar .url { font: 400 13px var(--mono); color: var(--t2); }
+.crm-toolbar { padding-bottom: 16px; }
+
+/* ── Overview ──────────────────────────────────────────────────────────── */
+.ov { max-width: 1180px; margin: 0 auto; padding: 26px 22px 70px; }
+.ov__hero { display: grid; grid-template-columns: 1fr 340px; gap: 24px; align-items: start; margin-bottom: 26px; }
+.ov__hero-chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 18px; }
+.ov__hero-card { padding: 18px; }
+.ov__hero-card .tr-eyebrow { margin-bottom: 10px; }
+.ov__grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-bottom: 22px; }
+.ov-card { display: flex; flex-direction: column; align-items: flex-start; gap: 7px; padding: 18px; text-align: left; cursor: pointer; font: inherit; color: inherit; transition: transform var(--base), border-color var(--base), box-shadow var(--base); }
+.ov-card:hover { transform: translateY(-3px); border-color: rgba(212,168,67,.4); box-shadow: 0 14px 40px rgba(0,0,0,.4); }
+.ov-card__n { font: 800 12px var(--mono); color: var(--gold); letter-spacing: 1px; }
+.ov-card__t { font-size: 15.5px; font-weight: 700; }
+.ov-card__d { font-size: 12.5px; color: var(--t2); line-height: 1.55; }
+.ov-card__go { margin-top: 6px; font-size: 12px; color: var(--gold-l); font-weight: 600; }
+.ov__note { padding: 20px 22px; }
+.ov__note b { font-size: 14px; }
+.ov__note ul { margin: 12px 0 0; padding-left: 20px; }
+.ov__note li { color: var(--t2); font-size: 13px; line-height: 1.7; }
+
+/* ── Встроенное письмо ─────────────────────────────────────────────────── */
+iframe.mail-frame { width: 100%; border: 0; border-radius: 14px; background: #0f0f14; display: block; }
+
+/* ── Мобильная почта ───────────────────────────────────────────────────── */
+.mmail-head { display: flex; align-items: center; justify-content: space-between; padding: 4px 18px 10px; background: #fff; }
+.mmail-head__t { font-size: 20px; font-weight: 800; letter-spacing: -.4px; color: #22262A; }
+.mmail-head__ic { color: #9AA1AC; font-size: 15px; letter-spacing: 2px; }
+.mmail-list { background: #fff; }
+.mmail-item { display: flex; gap: 12px; padding: 12px 16px; border-bottom: 1px solid #EFF1F4; cursor: pointer; align-items: flex-start; }
+.mmail-item:active { background: #F6F7F9; }
+.mmail-ava { flex: 0 0 auto; width: 38px; height: 38px; border-radius: 50%; display: grid; place-items: center; background: linear-gradient(140deg,#C8293B,#1E4D8C); color: #fff; font: 700 12.5px var(--ff); }
+.mmail-mid { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.mmail-top { display: flex; align-items: baseline; gap: 8px; }
+.mmail-top b { font-size: 13.5px; color: #22262A; }
+.mmail-top i { margin-left: auto; font-style: normal; font-size: 11px; color: #9AA1AC; }
+.mmail-subj { font-size: 13px; color: #22262A; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mmail-snip { font-size: 12px; color: #7A828E; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mmail-item.is-unread .mmail-top b, .mmail-item.is-unread .mmail-subj { font-weight: 700; }
+.mmail-dot { flex: 0 0 auto; width: 8px; height: 8px; margin-top: 6px; border-radius: 50%; background: #1E4D8C; opacity: 0; }
+.mmail-item.is-unread .mmail-dot { opacity: 1; }
+.mmail-read-bar { display: flex; align-items: center; gap: 10px; padding: 2px 14px 8px; background: #fff; color: #22262A; }
+.mmail-back { width: 34px; height: 34px; border-radius: 50%; border: 0; background: rgba(0,0,0,.05); font-size: 20px; line-height: 1; color: #22262A; cursor: pointer; }
+.mmail-read-subj { flex: 1; font-size: 14px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mmail-readmeta { display: flex; align-items: center; gap: 11px; padding: 4px 16px 12px; background: #fff; border-bottom: 1px solid #EFF1F4; }
+.mmail-read-from { font-size: 13px; font-weight: 700; color: #22262A; }
+.mmail-read-to { font-size: 11.5px; color: #9AA1AC; }
+.mmail-body { background: #0f0f14; }
+.mmail-body iframe.mail-frame { border-radius: 0; }
+
+/* ── Тост ──────────────────────────────────────────────────────────────── */
+#toast {
+  position: fixed; left: 50%; bottom: 26px; transform: translateX(-50%) translateY(20px);
+  z-index: 9999; opacity: 0; pointer-events: none;
+  padding: 12px 20px; border-radius: 12px; background: rgba(8,9,12,.94);
+  border: 1px solid rgba(212,168,67,.4); color: var(--t1); font-size: 13px;
+  box-shadow: var(--shadow-lg); transition: opacity var(--base), transform var(--base);
+}
+#toast.is-on { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+/* ── Adapt ─────────────────────────────────────────────────────────────── */
+@media (max-width: 1180px) {
+  .app { grid-template-columns: 220px 1fr; }
+  .ov__hero { grid-template-columns: 1fr; }
+  .ov__grid { grid-template-columns: repeat(2, 1fr); }
+}

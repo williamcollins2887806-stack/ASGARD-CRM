@@ -67,6 +67,28 @@ def load_pkey(path: str):
     raise SystemExit(f"cannot load SSH key: {path}")
 
 
+def connect_with_retry(key, attempts: int = 5):
+    last = None
+    for i in range(1, attempts + 1):
+        ssh = paramiko.SSHClient()
+        ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+        try:
+            ssh.connect(SSH_HOST, username=SSH_USER, pkey=key, timeout=45,
+                        banner_timeout=60, auth_timeout=60)
+            print(f"ssh: connected (attempt {i})")
+            return ssh
+        except Exception as e:  # noqa: BLE001 — сеть нестабильна, нужен ретрай
+            last = e
+            print(f"ssh: attempt {i} failed: {e}")
+            try:
+                ssh.close()
+            except Exception:
+                pass
+            import time
+            time.sleep(3)
+    raise SystemExit(f"ssh: cannot connect after {attempts} attempts: {last}")
+
+
 def main() -> int:
     print("=== 0. PRE-FLIGHT shell_guard ===")
     shell_guard.assert_ok(base_dir=str(ROOT), expect_version=VER, deploy_gate=True)
@@ -77,9 +99,7 @@ def main() -> int:
             raise SystemExit(f"missing: {rel}")
 
     key = load_pkey(SSH_KEY)
-    ssh = paramiko.SSHClient()
-    ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-    ssh.connect(SSH_HOST, username=SSH_USER, pkey=key, timeout=45)
+    ssh = connect_with_retry(key)
 
     def run(cmd, check=True, timeout=600, stdin_data=None):
         print(f"$ {cmd[:180]}")

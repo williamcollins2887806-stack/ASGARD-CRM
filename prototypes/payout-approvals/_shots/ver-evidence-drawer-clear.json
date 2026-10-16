@@ -1,0 +1,28 @@
+[
+ {
+  "name": "drawer-footer-buttons",
+  "footerBtns": [
+   {
+    "text": "Очистить",
+    "attrs": "class=btn ghost data-cart-close= style=flex:0 0 auto"
+   },
+   {
+    "text": "Отправить на согласование (2)",
+    "attrs": "class=btn gold data-cart-submit=approve style=flex:1"
+   }
+  ]
+ },
+ {
+  "name": "drawer-Очистить-click",
+  "clicked": "clicked",
+  "drawerStillOpen": false,
+  "barBefore": "🛒 Корзина выплат · 2 получателей 2 нал · 0 СЗ · 0 НДФЛ 2 1 100 ₽ ВСЕГО К ПЕРЕВОДУ Очистить Открыть корзину",
+  "barAfter": "🛒 Корзина выплат · 2 получателей 2 нал · 0 СЗ · 0 НДФЛ 2 1 100 ₽ ВСЕГО К ПЕРЕВОДУ Очистить Открыть корзину",
+  "checkedRowsAfter": 0,
+  "verdict": "FAIL: «Очистить» в drawer закрывает, а НЕ очищает корзину"
+ },
+ {
+  "name": "cleanup",
+  "left": 0
+ }
+]
