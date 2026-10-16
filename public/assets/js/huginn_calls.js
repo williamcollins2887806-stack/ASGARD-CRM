@@ -322,7 +322,31 @@
     const had = call;
     call = null;
     removeOverlay();
+    // Показать ЧЕЛОВЕЧЕСКУЮ причину, а не молча закрыть модалку: раньше
+    // оверлей исчезал без объяснения («открылась и сразу закрылась»),
+    // и вызывающий не понимал, что произошло.
+    const msg = endReasonText(reason, had);
+    if (msg) emit('notice', { message: msg, reason: reason || 'ended', call: had });
     emit('ended', { call: had, reason: reason || 'ended' });
+  }
+
+  /** Текст причины завершения для тоста. Пустая строка = не показывать. */
+  function endReasonText(reason, c) {
+    const declined = reason === 'declined';
+    const byPeer = declined || reason === 'peer_declined';
+    if (declined || byPeer) {
+      // Кто именно отклонил — важно: вызывающему «Вика отклонила», а тому,
+      // кто сам тапнул «Отклонить», тост не нужен.
+      const iAmCaller = c && Number(c.caller_id) === Number(myId());
+      if (iAmCaller) return peerName ? (peerName + ' отклонил(а) звонок') : 'Звонок отклонён';
+      return '';
+    }
+    if (reason === 'busy') return 'Собеседник сейчас говорит';
+    if (reason === 'timeout' || reason === 'missed') return 'Не ответили';
+    if (reason === 'canceled') return '';
+    if (reason === 'no_media') return 'Звонки недоступны: медиасервер не настроен';
+    if (reason === 'room_empty' || reason === 'participant_left' || reason === 'room_finished') return 'Собеседник отключился';
+    return '';
   }
 
   // ── Signalling actions ────────────────────────────────────────
@@ -464,7 +488,22 @@
   }
 
   /** Reconnect after reload / push deep-link (?call=<id>). */
+  let _initFromUrlBusy = false;
   async function initFromUrl() {
+    // Идемпотентность: initFromUrl() зовётся из двух мест — HuginnCall.mount()
+    // (huginn_dock.js) и handleCallDeepLink() (h/app.js:483 на каждый
+    // call:incoming). Без гварда это давало ДВА POST /decline на звонок
+    // (второй всегда 409) и гонку за оверлей.
+    if (_initFromUrlBusy) return;
+    _initFromUrlBusy = true;
+    try {
+      await _initFromUrlInner();
+    } finally {
+      _initFromUrlBusy = false;
+    }
+  }
+
+  async function _initFromUrlInner() {
     let wantId = null;
     let wantAction = null;
     try {
@@ -473,16 +512,24 @@
       wantAction = qs.get('call_action');
     } catch (_) {}
     if (!wantId && !call) return;
+    // Раньше call_action снимался из URL ТОЛЬКО внутри ветки decline при
+    // status==='ringing'. Если звонок успевал завершиться (гонка) — параметр
+    // залипал в адресной строке навсегда, и КАЖДЫЙ следующий call:incoming
+    // автоматически отклонялся (h/app.js:483 → handleCallDeepLink → сюда).
+    // Теперь снимаем флаг сразу, как только прочитали: он одноразовый.
+    const wasDecline = wantAction === 'decline';
+    if (wantAction && wantId) cleanCallUrl();
     try {
       const data = wantId
         ? await api('/calls/' + encodeURIComponent(wantId))
         : await api('/calls/active');
       const c = data.call || (data && data.call);
       if (!c) return;
-      if (wantAction === 'decline') {
+      // Повторный decline уже завершённого звонка не отправляем (было 409),
+      // а живой звенящий — отклоняем по одноразовому флагу.
+      if (wasDecline) {
         if (c.status === 'ringing' && Number(c.callee_id) === Number(myId())) {
           try { await api('/calls/' + c.id + '/decline', { method: 'POST', body: {} }); } catch (_) {}
-          cleanCallUrl();
         }
         return;
       }

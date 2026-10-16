@@ -5994,7 +5994,17 @@
         global.HuginnSSE.on('connected', () => setConnecting(false));
         global.HuginnSSE.on('error', () => setConnecting(true));
       }
-      if (global.HuginnCall) global.HuginnCall.mount();
+      if (global.HuginnCall) {
+        global.HuginnCall.mount();
+        // Причина завершения звонка — тостом, а не молчаливым закрытием
+        // оверлея (жалоба «модалка открылась и сразу закрылась»).
+        if (typeof global.HuginnCall.on === 'function') {
+          global.HuginnCall.on('notice', (e) => {
+            const msg = e && e.message;
+            if (msg) showToast(msg);
+          });
+        }
+      }
       startPresencePolling();
     })().finally(() => { _mounting = null; });
     return _mounting;
