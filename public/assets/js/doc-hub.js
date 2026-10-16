@@ -1225,7 +1225,9 @@ window.AsgardDocHubPage = (function () {
       contract_date: '',
       contract_has_scan: false,
       contract_has_original: false,
-      spend_kind: 'work', // work|warehouse|office|other
+      // D-201/S1: кладовщик создаёт складские строки — иначе он их не увидит
+      // (матрица видимости показывает WAREHOUSE только складское).
+      spend_kind: role() === 'WAREHOUSE' ? 'warehouse' : 'work', // work|warehouse|office|other
       payment_due_at: '',
       sf_due_at: '',
       payment_kind: 'postpay',
