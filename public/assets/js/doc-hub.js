@@ -14,6 +14,16 @@ window.AsgardDocHubPage = (function () {
   // остальным. Кнопку остальным НЕ показываем, иначе роль видит действие,
   // которое всегда падает.
   const WH_ROLES = ['WAREHOUSE', 'ADMIN', 'BUH'];
+  // V394: кто может запрашивать/снимать корректировку СФ/акта (зеркало бэка
+  // src/routes/doc-registry.js action=correction).
+  const CORR_ROLES = ['BUH', 'ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV', 'DIRECTOR'];
+  // Светофор: цвет → человекочитаемая метка (для title/aria).
+  const TRAFFIC_META = {
+    red: 'Красный: просрочка или корректировка',
+    blue: 'Синий: не заполнены обязательные поля',
+    yellow: 'Жёлтый: срок ≤ 5 рабочих дней',
+    green: 'Зелёный: действий не требуется'
+  };
   // Selectable VAT rates: null = без НДС, 0 = 0%, 0.05/0.1/0.2/0.22 = ставка
   const VAT_RATES = [
     { label: 'Без НДС', value: null },
@@ -121,6 +131,7 @@ window.AsgardDocHubPage = (function () {
     }
   }
   function canWh() { return WH_ROLES.includes(role()); }
+  function canCorrect() { return CORR_ROLES.includes(role()); }
 
   /** API GET /api/users → { users: [...] }; never return a bare object. */
   function parseUsersList(j) {
@@ -618,6 +629,8 @@ window.AsgardDocHubPage = (function () {
     if (state.kpi === 'out') p.set('dir', 'out');
     if (state.kpi === '1c') p.set('kpi', '1c');
     if (state.kpi === 'incomplete') p.set('kpi', 'incomplete');
+    // V394: светофор-фильтры (единый цвет с бэком).
+    if (/^tl-(red|blue|yellow|green)$/.test(state.kpi)) p.set('traffic', state.kpi.slice(3));
     if (state.quarter) p.set('quarter', String(state.quarter));
     if (state.year) p.set('year', String(state.year));
     p.set('sort', 'invoice_date');
@@ -673,6 +686,10 @@ window.AsgardDocHubPage = (function () {
       return od ? `${od} просрочены` : (n(k.sf) ? 'ждём закрывающие' : '—');
     }
     if (key === 'wh') return n(k.wh) ? 'ждут передачи в офис' : '—';
+    if (key === 'tl-red') return n(k.traffic_red) ? 'просрочка / корректировка' : 'просрочек нет';
+    if (key === 'tl-blue') return n(k.traffic_blue) ? 'не заполнены поля' : 'всё заполнено';
+    if (key === 'tl-yellow') return n(k.traffic_yellow) ? 'срок близко' : '—';
+    if (key === 'tl-green') return n(k.traffic_green) ? 'действий не требуется' : '—';
     if (key === 'out') return n(k.out) ? 'СФ / УПД по проектам' : '—';
     if (key === 'no_1c') return n(k.no_1c) ? 'к выгрузке' : 'всё связано';
     if (key === 'incomplete') return n(k.incomplete) ? 'дозаполнить' : 'всё полное';
@@ -681,17 +698,35 @@ window.AsgardDocHubPage = (function () {
 
   function rowClass(row) {
     const cls = ['dh-tr'];
-    if (row.is_incomplete) cls.push('is-incomplete');
-    if (row.overdue_pay || row.pay_status === 'overdue' ||
-      (row.payment_due_at && row.pay_status !== 'paid' && row.payment_due_at < new Date().toISOString().slice(0, 10))) {
-      cls.push('is-overdue-pay');
-    } else if (row.overdue_sf || (row.sf_due_at && ['wait_sf', 'wait_closing'].includes(row.ops_status)
-      && row.sf_due_at < new Date().toISOString().slice(0, 10))) {
-      cls.push('is-overdue-sf');
-    }
+    // V394: светофор — единый цвет с бэка (row.traffic), класс строки для левого бара.
+    const tr = row.traffic || '';
+    if (tr) cls.push('is-traffic-' + tr);
     if (row.dir === 'out') cls.push('is-out');
     if (state.selectedId === row.id) cls.push('is-selected');
     return cls.join(' ');
+  }
+
+  /** V394: бейдж-светофор (первая колонка). aria-label — для дальтоников/скринридера. */
+  function trafficPill(row) {
+    const c = ['red', 'blue', 'yellow', 'green'].includes(row.traffic) ? row.traffic : 'green';
+    const label = TRAFFIC_META[c] || '';
+    const reason = row.traffic_reason || label;
+    const corr = String(row.correction_state || '') === 'requested';
+    return `<span class="dh-tl dh-tl--${c}" title="${esc(reason)}" aria-label="${esc(reason)}" role="img">`
+      + `<span class="dh-tl__dot"></span>`
+      + `${corr ? '<span class="dh-tl__flag">🚩</span>' : ''}</span>`;
+  }
+
+  /** V394: крупный баннер корректировки над строкой/в карточке. */
+  function correctionBanner(row) {
+    if (String(row.correction_state || '') !== 'requested') return '';
+    const kind = row.correction_kind === 'both' ? 'СФ И АКТ'
+      : row.correction_kind === 'act' ? 'АКТ' : 'СФ';
+    return `<div class="dh-corr-banner" role="alert">`
+      + `<span class="dh-corr-banner__t">🚩 ${kind} НЕ КОРРЕКТЕН</span>`
+      + (row.correction_comment ? `<span class="dh-corr-banner__c">${esc(row.correction_comment)}</span>` : '')
+      + (canCorrect() ? `<button type="button" class="dh-corr-banner__x" data-corr-clear="${row.id}">Снять</button>` : '')
+      + `</div>`;
   }
 
   function statusPill(row) {
@@ -835,18 +870,19 @@ window.AsgardDocHubPage = (function () {
         if (qinfo) {
           const isTransition = prevKey && prevKey !== 'none';
           parts.push(`<tr class="dh-qtr-sep" data-qtr="${qinfo.q}" data-year="${qinfo.y}">
-            <td colspan="14"><div class="dh-qtr-sep__in ${isTransition ? 'is-next' : ''}">
+            <td colspan="15"><div class="dh-qtr-sep__in ${isTransition ? 'is-next' : ''}">
               ${isTransition ? '<span class="dh-qtr-sep__arrow">↓</span>' : ''}
               <strong>${esc(quarterLabel(qinfo.q, qinfo.y))}</strong>
               <span class="dh-qtr-sep__hint">по дате документа</span>
             </div></td>
           </tr>`);
         } else {
-          parts.push(`<tr class="dh-qtr-sep" data-qtr="0"><td colspan="14"><div class="dh-qtr-sep__in"><strong>Без даты документа</strong></div></td></tr>`);
+          parts.push(`<tr class="dh-qtr-sep" data-qtr="0"><td colspan="15"><div class="dh-qtr-sep__in"><strong>Без даты документа</strong></div></td></tr>`);
         }
         prevKey = key;
       }
       parts.push(`<tr class="${rowClass(r)}" data-id="${r.id}">
+        <td class="dh-col-tl">${trafficPill(r)}</td>
         <td>${statusPill(r)}</td>
         <td><span class="dh-pill dh-pill--${r.dir === 'out' ? 'gold' : 'info'}">${r.dir === 'out' ? 'исх.' : 'вх.'}</span></td>
         <td>
@@ -871,6 +907,7 @@ window.AsgardDocHubPage = (function () {
             ${(Array.isArray(r.closing_json) && r.closing_json.length) ? '<button type="button" data-qa="unmark_sf" title="Снять отметку «СФ получена»" class="dh-qa__undo">↩</button>' : ''}
             ${(canWh() && r.pay_status !== 'paid') ? '<button type="button" data-qa="mark_paid" title="Отметить оплачено без согласования" class="dh-qa__paid">₽✓</button>' : ''}
             ${canWh() ? `<button type="button" data-qa="wh" title="Склад">${ico.wh}</button>` : ''}
+            ${canCorrect() ? `<button type="button" data-qa="corr" class="dh-qa__corr${r.correction_state === 'requested' ? ' is-on' : ''}" title="${r.correction_state === 'requested' ? 'Корректировка запрошена' : 'СФ/Акт не корректен'}" aria-label="Корректировка">🚩</button>` : ''}
             <button type="button" data-qa="open" title="Карточка">${ico.open}</button>
             <button type="button" class="dh-cmt-btn${r.comment_text ? ' is-filled' : ''}" data-cmt="${r.id}" data-comment="${esc(r.comment_text || '')}" title="${r.comment_text ? esc(String(r.comment_text).slice(0, 60)) : 'Комментарий'}" aria-label="Комментарий"><svg viewBox="0 0 24 24" fill="${r.comment_text ? 'currentColor' : 'none'}" stroke="currentColor" stroke-width="1.8"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></button>
           </div>
@@ -879,7 +916,7 @@ window.AsgardDocHubPage = (function () {
     });
     return `<div class="dh-table-wrap" id="dhTableWrap"><table class="dh-table dh-table--rich">
       <thead><tr>
-        <th>Статус</th><th>Напр.</th><th>Счёт</th><th>Контрагент</th><th>Объект</th>
+        <th class="dh-col-tl" title="Светофор">⏱</th><th>Статус</th><th>Напр.</th><th>Счёт</th><th>Контрагент</th><th>Объект</th>
         <th>Договор</th><th>Получение</th><th>Назначение</th><th>Ответственные</th>
         <th>Сумма</th><th>НДС</th><th>Оплата</th><th>СФ/УПД</th><th class="dh-actions">Действия</th>
       </tr></thead>
@@ -1089,12 +1126,12 @@ window.AsgardDocHubPage = (function () {
             </div>
             <div class="dh-kpis" id="dhKpis">
               <button class="dh-kpi ${state.kpi === 'all' ? 'is-on' : ''}" type="button" data-kpi="all"><div class="k">Всего</div><div class="v">${kpiVal('all')}</div><div class="s">${esc(kpiSub('all'))}</div></button>
-              <button class="dh-kpi is-err ${state.kpi === 'pay' ? 'is-on' : ''}" type="button" data-kpi="pay"><div class="k">Просрочка оплаты</div><div class="v">${kpiVal('pay')}</div><div class="s">${esc(kpiSub('pay'))}</div></button>
-              <button class="dh-kpi is-warn ${state.kpi === 'sf' ? 'is-on' : ''}" type="button" data-kpi="sf"><div class="k">Ждём СФ / УПД</div><div class="v">${kpiVal('sf')}</div><div class="s">${esc(kpiSub('sf'))}</div></button>
+              <button class="dh-kpi is-err ${state.kpi === 'tl-red' ? 'is-on' : ''}" type="button" data-kpi="tl-red"><div class="k">🔴 Красный</div><div class="v">${kpiVal('traffic_red')}</div><div class="s">${esc(kpiSub('tl-red'))}</div></button>
+              <button class="dh-kpi is-info ${state.kpi === 'tl-blue' ? 'is-on' : ''}" type="button" data-kpi="tl-blue"><div class="k">🔵 Дозаполнить</div><div class="v">${kpiVal('traffic_blue')}</div><div class="s">${esc(kpiSub('tl-blue'))}</div></button>
+              <button class="dh-kpi is-warn ${state.kpi === 'tl-yellow' ? 'is-on' : ''}" type="button" data-kpi="tl-yellow"><div class="k">🟡 Срок ≤ 5 раб. дн.</div><div class="v">${kpiVal('traffic_yellow')}</div><div class="s">${esc(kpiSub('tl-yellow'))}</div></button>
+              <button class="dh-kpi is-ok ${state.kpi === 'tl-green' ? 'is-on' : ''}" type="button" data-kpi="tl-green"><div class="k">🟢 В норме</div><div class="v">${kpiVal('traffic_green')}</div><div class="s">${esc(kpiSub('tl-green'))}</div></button>
+              <button class="dh-kpi ${state.kpi === 'sf' ? 'is-on' : ''}" type="button" data-kpi="sf"><div class="k">Ждём СФ / УПД</div><div class="v">${kpiVal('sf')}</div><div class="s">${esc(kpiSub('sf'))}</div></button>
               <button class="dh-kpi is-info ${state.kpi === 'wh' ? 'is-on' : ''}" type="button" data-kpi="wh"><div class="k">У кладовщика</div><div class="v">${kpiVal('wh')}</div><div class="s">${esc(kpiSub('wh'))}</div></button>
-              <button class="dh-kpi is-ok ${state.kpi === 'out' ? 'is-on' : ''}" type="button" data-kpi="out"><div class="k">Исходящие</div><div class="v">${kpiVal('out')}</div><div class="s">${esc(kpiSub('out'))}</div></button>
-              <button class="dh-kpi ${state.kpi === '1c' ? 'is-on' : ''}" type="button" data-kpi="1c"><div class="k">Не в 1С</div><div class="v">${kpiVal('no_1c')}</div><div class="s">${esc(kpiSub('no_1c'))}</div></button>
-              <button class="dh-kpi is-info ${state.kpi === 'incomplete' ? 'is-on' : ''}" type="button" data-kpi="incomplete"><div class="k">Неполные</div><div class="v">${kpiVal('incomplete')}</div><div class="s">${esc(kpiSub('incomplete'))}</div></button>
             </div>
             <div class="dh-toolbar">
               <div class="dh-seg" id="dhDirSeg">
@@ -2204,7 +2241,7 @@ window.AsgardDocHubPage = (function () {
         <div class="dh-drawer__card">
           <header class="dh-drawer__head">
             <div class="dh-drawer__head-main">
-              <h3>${esc(titleNo)}</h3>
+              <h3>${trafficPill(row)} ${esc(titleNo)}</h3>
               <p>${esc(row.counterparty_name || '')} · ${esc(row.work_title || 'без объекта')}</p>
               <div class="dh-drawer__amt" data-qa="drawer-amt">${esc(grossTxt)}</div>
               ${sourceBadge(row)}
@@ -2212,6 +2249,7 @@ window.AsgardDocHubPage = (function () {
             <button type="button" class="dh-drawer__close" id="dhDrawerClose" aria-label="Закрыть">✕</button>
           </header>
           <div class="dh-drawer__body">
+            ${correctionBanner(row)}
             <div class="dh-coach">
               <div class="dh-coach__ico">→</div>
               <div class="dh-coach__body"><strong>Что дальше</strong><p>${esc(nextActionText(row))}</p></div>
@@ -2720,6 +2758,68 @@ window.AsgardDocHubPage = (function () {
     }
   }
 
+  /**
+   * V394: модалка корректировки — бухгалтерия/директор/админ помечает СФ или акт
+   * НЕ КОРРЕКТНЫМ (обязательный комментарий) либо снимает пометку.
+   */
+  function openCorrectionModal(id) {
+    const row = (state.rows || []).find((r) => String(r.id) === String(id));
+    const modal = document.getElementById('dhModal');
+    if (!modal) return;
+    const isReq = row && String(row.correction_state || '') === 'requested';
+    const kind = (row && row.correction_kind) || 'sf';
+    modal.hidden = false;
+    modal.innerHTML = `<div class="dh-modal__card dh-modal__card--corr">
+      <header class="dh-modal__head">
+        <h2>${isReq ? 'Корректировка запрошена' : 'Что не корректно?'}</h2>
+        <button type="button" class="dh-modal__x" id="dhCorrX" aria-label="Закрыть">✕</button>
+      </header>
+      <div class="dh-modal__body">
+        <p class="dh-hint">${esc(row ? docSummary(row) : ('документ #' + id))}</p>
+        ${isReq ? `<div class="dh-corr-banner" role="alert"><span class="dh-corr-banner__t">🚩 ${kind === 'both' ? 'СФ И АКТ' : (kind === 'act' ? 'АКТ' : 'СФ')} НЕ КОРРЕКТЕН</span>${row.correction_comment ? `<span class="dh-corr-banner__c">${esc(row.correction_comment)}</span>` : ''}</div>
+          <p class="dh-hint">Пока пометка активна, отправка на оплату и отметка СФ заблокированы. Снимите её после исправления контрагентом.</p>`
+        : `<fieldset class="dh-corr-kinds">
+            <legend>Тип</legend>
+            <label><input type="radio" name="dhCorrKind" value="sf" ${kind !== 'act' && kind !== 'both' ? 'checked' : ''}/> СФ не корректна</label>
+            <label><input type="radio" name="dhCorrKind" value="act" ${kind === 'act' ? 'checked' : ''}/> Акт не корректен</label>
+            <label><input type="radio" name="dhCorrKind" value="both" ${kind === 'both' ? 'checked' : ''}/> И СФ, и акт</label>
+          </fieldset>
+          <label class="dh-corr-comment"><span>Комментарий (обязательно)</span>
+            <textarea id="dhCorrComment" rows="3" maxlength="2000" placeholder="Что именно неверно: номер, сумма, дата, подпись…"></textarea>
+          </label>`}
+      </div>
+      <footer class="dh-modal__foot">
+        <button type="button" class="dh-btn dh-btn--ghost" id="dhCorrCancel">Отмена</button>
+        ${isReq
+          ? '<button type="button" class="dh-btn dh-btn--primary" id="dhCorrClear">Снять пометку</button>'
+          : '<button type="button" class="dh-btn dh-btn--danger" id="dhCorrSend">Запросить корректировку</button>'}
+      </footer>
+    </div>`;
+    const close = () => { modal.hidden = true; modal.innerHTML = ''; };
+    modal.querySelector('#dhCorrX').onclick = close;
+    modal.querySelector('#dhCorrCancel').onclick = close;
+    if (isReq) {
+      modal.querySelector('#dhCorrClear').onclick = async () => {
+        try {
+          await api('/' + id + '/quick', { method: 'POST', body: JSON.stringify({ action: 'correction', clear: true }) });
+          toast('Корректировка', 'Пометка снята', 'ok');
+          close(); await refresh();
+        } catch (e) { toast('Ошибка', e.message || 'не удалось снять', 'err'); }
+      };
+      return;
+    }
+    modal.querySelector('#dhCorrSend').onclick = async () => {
+      const k = modal.querySelector('input[name="dhCorrKind"]:checked')?.value || 'sf';
+      const comment = (modal.querySelector('#dhCorrComment')?.value || '').trim();
+      if (!comment) { toast('Нужен комментарий', 'Опишите, что именно неверно', 'err'); return; }
+      try {
+        await api('/' + id + '/quick', { method: 'POST', body: JSON.stringify({ action: 'correction', kind: k, comment }) });
+        toast('Корректировка', 'Запрошена у владельца', 'ok');
+        close(); await refresh();
+      } catch (e) { toast('Ошибка', e.message || 'не удалось запросить', 'err'); }
+    };
+  }
+
   async function export1c() {
     try {
       const tok = (window.AsgardAuth && AsgardAuth.token) || localStorage.getItem('asgard_token');
@@ -2979,6 +3079,19 @@ window.AsgardDocHubPage = (function () {
     bindFacets(root);
     bindTableCmt(root);
     root.querySelector('#dhTableHost')?.addEventListener('click', (e) => {
+      const clr = e.target.closest('[data-corr-clear]');
+      if (clr) {
+        e.stopPropagation();
+        const cid = Number(clr.getAttribute('data-corr-clear'));
+        (async () => {
+          try {
+            await api('/' + cid + '/quick', { method: 'POST', body: JSON.stringify({ action: 'correction', clear: true }) });
+            toast('Корректировка', 'Пометка снята', 'ok');
+            await refresh();
+          } catch (err) { toast('Ошибка', err.message || 'не удалось снять', 'err'); }
+        })();
+        return;
+      }
       const btn = e.target.closest('[data-qa]');
       const tr = e.target.closest('tr[data-id]');
       if (!tr) return;
@@ -2986,6 +3099,7 @@ window.AsgardDocHubPage = (function () {
       if (btn) {
         const qa = btn.getAttribute('data-qa');
         if (qa === 'open') openDrawer(id);
+        else if (qa === 'corr') openCorrectionModal(id);
         else quick(id, qa);
         return;
       }
@@ -3005,7 +3119,8 @@ window.AsgardDocHubPage = (function () {
     const kpis = document.getElementById('dhKpis');
     if (!kpis) return;
     const map = {
-      all: 'all', pay: 'pay', sf: 'sf', wh: 'wh', out: 'out', '1c': 'no_1c', incomplete: 'incomplete'
+      all: 'all', pay: 'pay', sf: 'sf', wh: 'wh', out: 'out', '1c': 'no_1c', incomplete: 'incomplete',
+      'tl-red': 'traffic_red', 'tl-blue': 'traffic_blue', 'tl-yellow': 'traffic_yellow', 'tl-green': 'traffic_green'
     };
     kpis.querySelectorAll('[data-kpi]').forEach((b) => {
       const key = b.getAttribute('data-kpi');

@@ -36,7 +36,11 @@ const WRITE_COLS = [
   'work_expense_id', 'billing_invoice_id', 'billing_act_id',
   'attachments', 'original_path_url', 'parsed_json',
   'is_incomplete', 'incomplete_reasons', 'onec_id', 'onec_synced_at', 'onec_payload',
-  'edo_status', 'edo_external_id', 'doc_owner_id', 'pm_id'
+  'edo_status', 'edo_external_id', 'doc_owner_id', 'pm_id',
+  // V394: условия оплаты/СФ/акты (correction_* — только через action, не здесь).
+  'payment_kind', 'payment_schedule', 'sf_basis', 'service_done_at', 'no_payment_terms',
+  'sf_requested_at', 'sf_received_at', 'recon_requested_at', 'recon_received_at', 'recon_due_at',
+  'currency', 'amount_currency'
 ];
 
 const JOIN_SQL = `SELECT d.*,
@@ -50,6 +54,29 @@ const JOIN_SQL = `SELECT d.*,
 
 function num(v) { const n = parseFloat(v); return Number.isFinite(n) ? n : 0; }
 function today() { return new Date().toISOString().slice(0, 10); }
+
+/** Человекочитаемое имя строки реестра для уведомлений. */
+function docLabel(row) {
+  if (!row) return 'документ';
+  const n = row.invoice_number ? `Счёт ${row.invoice_number}` : `Документ #${row.id}`;
+  return row.counterparty_name ? `${n} · ${row.counterparty_name}` : n;
+}
+
+/**
+ * Уведомить владельца/РП строки (doc_owner_id или pm_id) — не автора действия.
+ * Тихая ошибка: уведомление не должно ломать основное действие.
+ */
+async function notifyDocOwner(db, row, title, message) {
+  try {
+    const target = row.doc_owner_id || row.pm_id;
+    if (!target) return;
+    const { createNotification } = require('../services/notify');
+    await createNotification(db, {
+      user_id: target, title, message: message || '', type: 'doc_registry',
+      link: `#/doc-hub?doc_id=${row.id}`
+    });
+  } catch (e) { /* уведомление не критично */ }
+}
 
 function normalizeVatRate(raw, hasVat) {
   if (!hasVat) return 0;
@@ -956,6 +983,46 @@ module.exports = async function docRegistryRoutes(fastify) {
     const { rows: found } = await db.query('SELECT * FROM doc_registry WHERE id=$1 AND deleted_at IS NULL', [id]);
     const doc = found[0];
     if (!doc) return reply.code(404).send({ error: 'Не найдено' });
+
+    // ── Корректировка: запросить / снять (BUH/ADMIN/DIRECTOR_*) ──────────────
+    if (b.action === 'correction') {
+      const corrRoles = new Set(['BUH', 'ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV', 'DIRECTOR']);
+      if (!corrRoles.has(String(req.user.role || '').toUpperCase())) {
+        return reply.code(403).send({ error: 'Запрашивать корректировку может только бухгалтерия, директор или админ' });
+      }
+      const kind = ['sf', 'act', 'both'].includes(b.kind) ? b.kind : null;
+      const isClear = b.clear === true || b.clear === 'true' || b.state === 'resolved';
+      if (isClear) {
+        const { rows } = await db.query(
+          `UPDATE doc_registry SET correction_state='resolved', correction_at=NOW(), correction_by=$2,
+             updated_by=$2, updated_at=NOW() WHERE id=$1 RETURNING *`, [id, req.user.id]);
+        await audit(db, id, req.user.id, 'correction_resolved', {});
+        await notifyDocOwner(db, rows[0], `✅ Корректировка снята: ${docLabel(rows[0])}`);
+        return { ok: true, state: 'resolved', doc: decorate(rows[0]) };
+      }
+      const comment = sanitizeText(String(b.comment || '').trim(), 2000);
+      if (!kind) return reply.code(400).send({ error: 'Укажите тип корректировки: sf | act | both' });
+      if (!comment) return reply.code(400).send({ error: 'Комментарий обязателен: опишите, что именно неверно' });
+      const { rows } = await db.query(
+        `UPDATE doc_registry SET correction_state='requested', correction_kind=$3, correction_comment=$4,
+           correction_at=NOW(), correction_by=$2, updated_by=$2, updated_at=NOW()
+         WHERE id=$1 RETURNING *`, [id, req.user.id, kind, comment]);
+      await audit(db, id, req.user.id, 'correction_requested', { kind });
+      const label = kind === 'both' ? 'СФ и АКТ' : kind === 'act' ? 'АКТ' : 'СФ';
+      await notifyDocOwner(db, rows[0], `🚩 ${label} НЕ КОРРЕКТЕН: ${docLabel(rows[0])}`, comment);
+      return { ok: true, state: 'requested', kind, doc: decorate(rows[0]) };
+    }
+
+    // Блокировка действий при незакрытой корректировке.
+    const CORR_BLOCKED = ['pay', 'sf', 'mark_paid', 'receive_sf'];
+    if (CORR_BLOCKED.includes(b.action) && String(doc.correction_state || '') === 'requested') {
+      const kind = doc.correction_kind === 'act' ? 'АКТ' : doc.correction_kind === 'both' ? 'СФ и АКТ' : 'СФ';
+      return reply.code(409).send({
+        error: `Действие заблокировано: ${kind} помечен как НЕ КОРРЕКТЕН`,
+        correction_state: 'requested', correction_kind: doc.correction_kind,
+        correction_comment: doc.correction_comment, hint: 'Снимите корректировку после исправления контрагентом.'
+      });
+    }
 
     if (b.action === 'pay') {
       // E2/E2b: создать payment_invoices из карточки хаба (не только redirect в пустую очередь)

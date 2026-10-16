@@ -500,17 +500,72 @@ a:hover { text-decoration: underline; }
 }
 .dh-table tbody tr:hover { background: color-mix(in srgb, var(--bg4) 55%, transparent); }
 .dh-table tbody tr.is-selected { background: color-mix(in srgb, var(--gold) 10%, var(--bg2)); }
-.dh-table tbody tr.is-overdue-pay {
+
+/* ═══ V394: светофор Doc Hub — 4 цвета, единый с бэком (row.traffic) ═══
+   Классы взаимоисключающие (цвет приходит готовым), bar слева 3px. */
+.dh-table tbody tr.is-traffic-red {
   box-shadow: inset 3px 0 0 var(--red);
   background: color-mix(in srgb, var(--red) 6%, transparent);
 }
-.dh-table tbody tr.is-overdue-sf {
-  box-shadow: inset 3px 0 0 var(--amber);
-  background: color-mix(in srgb, var(--amber) 7%, transparent);
-}
-.dh-table tbody tr.is-incomplete {
+.dh-table tbody tr.is-traffic-blue {
   box-shadow: inset 3px 0 0 var(--blue-l);
+  background: color-mix(in srgb, var(--blue-l) 5%, transparent);
 }
+.dh-table tbody tr.is-traffic-yellow {
+  box-shadow: inset 3px 0 0 var(--amber);
+  background: color-mix(in srgb, var(--amber) 6%, transparent);
+}
+.dh-table tbody tr.is-traffic-green {
+  box-shadow: inset 3px 0 0 color-mix(in srgb, var(--green, #4caf50) 45%, transparent);
+}
+
+/* Бейдж-светофор (первая колонка). */
+.dh-col-tl { width: 34px; text-align: center; }
+.dh-tl { display: inline-flex; align-items: center; gap: 2px; position: relative; }
+.dh-tl__dot {
+  width: 12px; height: 12px; border-radius: 50%;
+  box-shadow: 0 0 0 3px color-mix(in srgb, currentColor 18%, transparent);
+}
+.dh-tl--red .dh-tl__dot { background: var(--red); color: var(--red); }
+.dh-tl--blue .dh-tl__dot { background: var(--blue-l); color: var(--blue-l); }
+.dh-tl--yellow .dh-tl__dot { background: var(--amber); color: var(--amber); }
+.dh-tl--green .dh-tl__dot { background: color-mix(in srgb, var(--green, #4caf50) 80%, #fff); color: var(--green, #4caf50); }
+.dh-tl__flag { font-size: 11px; line-height: 1; }
+
+/* Баннер корректировки (крупный, красный). */
+.dh-corr-banner {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  margin: 0 0 12px; padding: 10px 14px; border-radius: 12px;
+  background: color-mix(in srgb, var(--red) 14%, var(--bg2));
+  border: 1px solid color-mix(in srgb, var(--red) 45%, transparent);
+  border-left-width: 4px;
+}
+.dh-corr-banner__t { font-weight: 700; color: var(--red); letter-spacing: .02em; }
+.dh-corr-banner__c { color: var(--t2); font-size: 13px; flex: 1 1 180px; }
+.dh-corr-banner__x {
+  margin-left: auto; padding: 4px 12px; border-radius: 8px; cursor: pointer;
+  border: 1px solid color-mix(in srgb, var(--red) 45%, transparent);
+  background: color-mix(in srgb, var(--red) 10%, transparent); color: var(--t1);
+}
+.dh-corr-banner__x:hover { background: color-mix(in srgb, var(--red) 22%, transparent); }
+
+/* Модалка корректировки. */
+.dh-modal__card--corr { max-width: 480px; }
+.dh-corr-kinds { border: 0; margin: 0 0 12px; padding: 0; display: grid; gap: 6px; }
+.dh-corr-kinds legend { font-size: 12px; color: var(--t3); margin-bottom: 4px; }
+.dh-corr-kinds label { display: flex; align-items: center; gap: 8px; cursor: pointer; }
+.dh-corr-comment { display: grid; gap: 4px; font-size: 12px; color: var(--t3); }
+.dh-corr-comment textarea {
+  width: 100%; resize: vertical; padding: 8px 10px; border-radius: 10px;
+  border: 1px solid var(--brd); background: var(--bg2); color: var(--t1); font: inherit;
+}
+.dh-qa__corr { font-size: 14px; line-height: 1; }
+.dh-qa__corr.is-on { color: var(--red); }
+.dh-btn--danger {
+  background: color-mix(in srgb, var(--red) 85%, #000);
+  color: #fff; border-color: transparent;
+}
+.dh-btn--danger:hover { background: var(--red); }
 
 .dh-mono {
   font-family: var(--ff-mono);
