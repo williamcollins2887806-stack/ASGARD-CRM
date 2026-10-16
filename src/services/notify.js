@@ -7,6 +7,14 @@
 
 const { toPlainText } = require('../lib/plain-text');
 
+/**
+ * S4: экранирование Telegram-Markdown. Имя контрагента с `*`/`_`/`[`/`` ` ``
+ * ломало разметку (ошибка отправки) — «добро, но в След_раз» и т.п.
+ */
+function escMd(s) {
+  return String(s == null ? '' : s).replace(/([_*\[\]()~`>#+\-=|{}.!\\])/g, '\\$1');
+}
+
 /** Push / cold-open: desktop `#/path` → mobile `/m/path`. */
 function toPushUrl(link) {
   if (!link) return '/m/';
@@ -46,8 +54,8 @@ async function createNotification(db, { user_id, title, message, type, link }) {
     try {
       const telegram = require('./telegram');
       if (telegram && telegram.sendNotification) {
-        const plainTitle = toPlainText(title).replace(/\s*\n+\s*/g, ' ').trim() || title;
-        const plainMessage = toPlainText(message || '').trim();
+        const plainTitle = escMd(toPlainText(title).replace(/\s*\n+\s*/g, ' ').trim() || title);
+        const plainMessage = escMd(toPlainText(message || '').trim());
         await telegram.sendNotification(user_id, `🔔 *${plainTitle}*\n\n${plainMessage}`);
       }
     } catch (e) {

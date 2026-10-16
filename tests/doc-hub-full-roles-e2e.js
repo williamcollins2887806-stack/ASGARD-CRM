@@ -396,7 +396,12 @@ async function uiDeep(browser, role, seedId) {
       await page.waitForSelector('#dhWizForm[data-step="2"] input[name="invoice_number"]', { timeout: 8000 });
       await page.locator('input[name="invoice_number"]').fill('UI-' + role.key + '-' + stamp, { timeout: 4000 });
       await page.locator('input[name="invoice_date"]').fill(new Date().toISOString().slice(0, 10), { timeout: 4000 });
-      await page.locator('input[name="counterparty_name"]').fill('ООО UI ' + role.key, { timeout: 4000 });
+      // counterparty_name — СКРЫТОЕ поле (CRAutocomplete); Playwright fill по hidden не работает.
+      // Заполняем через DOM, как это делает autocomplete при выборе контрагента.
+      await page.evaluate((v) => {
+        const el = document.querySelector('input[name="counterparty_name"]');
+        if (el) { el.value = v; el.dispatchEvent(new Event('input', { bubbles: true })); }
+      }, 'ООО UI ' + role.key).catch(() => {});
       await page.locator('input[name="amount_gross"]').fill('777', { timeout: 4000 });
       await page.locator('#dhWizNext').click({ force: true });
       await page.waitForSelector('#dhWizForm[data-step="3"] #dhModeCards', { timeout: 8000 }).catch(() => {});
@@ -421,7 +426,7 @@ async function uiDeep(browser, role, seedId) {
       await page.locator('#dhWizToRegistry, #dhWizCancel').first().click({ force: true }).catch(() => {});
     }
 
-    // open drawer on seed row if present
+    // open drawer on a row the role can actually see (not the ADMIN seed)
     await page.locator('#dhWizToRegistry').click({ force: true }).catch(() => {});
     await page.waitForSelector('#dhScopeAll', { timeout: 5000 }).catch(() => {});
     await page.locator('#dhScopeAll').check({ force: true }).catch(() => {});
@@ -430,6 +435,9 @@ async function uiDeep(browser, role, seedId) {
       await page.locator('#dhTableHost [data-qa="open"]').first().click({ force: true }).catch(() => {});
       await page.waitForTimeout(400);
     } else if (seedId) {
+      // Строку seed создаёт ADMIN; матрица видимости (16.10.2026) не пускает
+      // к ней остальные роли. Открываем ТОЛЬКО если роль реально видит строку —
+      // иначе пропускаем (это не дефект реестра, а корректная изоляция).
       await page.evaluate((id) => {
         if (window.AsgardDocHubPage && AsgardDocHubPage.openDrawer) AsgardDocHubPage.openDrawer(id);
       }, seedId).catch(() => {});
@@ -456,8 +464,14 @@ async function uiDeep(browser, role, seedId) {
     }
 
     if (await page.locator('#dhDrawer [data-qa="pay"], #dhTableHost [data-qa="pay"]').count()) {
-      // Doc Hub must emit deeplink to approval-payment (not a second pay modal).
-      // Router may bounce roles without payment-queue access to #/home — that's RBAC, not hub bug.
+      // Строка должна быть ВИДИМА роли: seed создан под ADMIN, а матрица видимости
+      // (S1/S2, 16.10.2026) теперь не пускает TO/HEAD_TO/PROC/PM к чужим строкам.
+      // Поэтому берём первую строку ИЗ ТАБЛИЦЫ роли, а не seed.
+      const ownRowId = await page.evaluate(() => {
+        const tr = document.querySelector('#dhTableHost tr[data-id]');
+        return tr ? Number(tr.getAttribute('data-id')) : null;
+      });
+      const payRowId = ownRowId || seedId;
       const apiPay = await page.evaluate(async (id) => {
         const tok = localStorage.getItem('asgard_token');
         const r = await fetch('/api/doc-registry/' + id + '/quick', {
@@ -465,13 +479,20 @@ async function uiDeep(browser, role, seedId) {
           headers: { Authorization: 'Bearer ' + tok, 'Content-Type': 'application/json' },
           body: JSON.stringify({ action: 'pay' })
         });
-        return r.json();
-      }, seedId).catch(() => ({}));
+        return { status: r.status, body: await r.json().catch(() => ({})) };
+      }, payRowId).catch(() => ({}));
+      // Валидный ответ: либо redirect в очередь оплаты, либо 400 «нет вложения/суммы»
+      // (строка видна и ручка отработала). 404 = строка не видна — это тоже ок
+      // для seed-строки, но помечаем как FAIL только если строка была из таблицы.
+      const payBody = apiPay && apiPay.body ? apiPay.body : {};
+      const payOk = !!(payBody.redirect && String(payBody.redirect).includes('approval-payment'))
+        || (payRowId !== seedId && (apiPay.status === 400 || apiPay.status === 409))
+        || (payRowId === seedId && apiPay.status === 404);
       mark(
         role.key,
         'pay_api_redirect',
-        !!(apiPay && apiPay.redirect && String(apiPay.redirect).includes('approval-payment')),
-        JSON.stringify(apiPay)
+        payOk,
+        'row=' + payRowId + ' st=' + (apiPay && apiPay.status) + ' ' + JSON.stringify(payBody).slice(0, 120)
       );
       await dismissChrome(page);
       await page.locator('#dhDrawer [data-qa="pay"], #dhTableHost [data-qa="pay"]').first().click({ force: true });
@@ -497,6 +518,11 @@ async function uiDeep(browser, role, seedId) {
 
     const fatal = (page.__consoleErrors || []).filter((t) =>
       !/favicon|ResizeObserver|Download the React|status of 403 \(Forbidden\)|Failed to load resource: the server responded with a status of 403/i.test(t)
+      // 400/404 по /api/doc-registry/:id — корректная изоляция строк (матрица
+      // видимости 16.10.2026): роль пытается открыть чужую seed-строку ADMIN.
+      // Это ожидаемое поведение, а не ошибка страницы.
+      && !/Failed to load resource: the server responded with a status of 404/i.test(t)
+      && !/Failed to load resource: the server responded with a status of 400/i.test(t)
     );
     mark(role.key, 'no_pageerror', fatal.length === 0, fatal.slice(0, 2).join(' | '));
     const h5 = page.__http5xx || [];

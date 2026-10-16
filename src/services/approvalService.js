@@ -918,16 +918,21 @@ async function payByBankTransfer(db, { entityType, entityId, actor, comment, doc
      buh_id = $3,
      buh_acted_at = NOW(),
      updated_at = NOW()
-     WHERE id = $4`,
-    [comment || null, documentId || null, actor.id, entityId]
+     WHERE id = $4 AND payment_status = $5`,
+    [comment || null, documentId || null, actor.id, entityId, PAYMENT_STATUSES.PENDING]
   );
+  // S5: не подменяем статус, если оплата уже прошла (условный UPDATE выше).
 
   if (entityType === 'payment_invoices') {
-    await db.query(`UPDATE payment_invoices SET status='paid' WHERE id=$1`, [entityId]);
-    try {
-      const payMod = require('../routes/payment-invoices');
-      if (payMod.afterPaid) await payMod.afterPaid(db, record);
-    } catch (_) { /* ignore */ }
+    const paid = await db.query(
+      `UPDATE payment_invoices SET status='paid', updated_at=NOW()
+        WHERE id=$1 AND status <> 'paid' RETURNING id`, [entityId]);
+    if (paid.rowCount) {
+      try {
+        const payMod = require('../routes/payment-invoices');
+        if (payMod.afterPaid) await payMod.afterPaid(db, record);
+      } catch (_) { /* ignore */ }
+    }
   }
 
   const label = `${getLabel(entityType)} #${entityId}`;

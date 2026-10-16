@@ -10,6 +10,7 @@ const { randomUUID } = require('crypto');
 const { enrichCatalogFromLines } = require('../services/catalog-from-invoice');
 const excelSvc = require('../services/doc-registry-excel');
 const ExcelJS = require('exceljs');
+const { visibilitySql, assertDocVisible, canUseScopeAll } = require('../lib/doc-visibility');
 
 let normalizeUploadUrl = (p) => p;
 try { ({ normalizeUploadUrl } = require('../utils/upload-url')); } catch (_) { /* optional */ }
@@ -101,6 +102,26 @@ function calcIncomplete(row) {
 
 function normPath(p) { return normalizeUploadUrl(p) || p; }
 
+/**
+ * S4: текстовые поля реестра приходят из писем/ИИ и видны другим (баннер, дайджест).
+ * Хранится plain-text: срезаем HTML-теги и управляющие символы, ограничиваем длину.
+ * Полноценный sanitize-html тут не нужен — поле не HTML, но нельзя хранить разметку.
+ */
+const sanitizeHtmlLib = require('sanitize-html');
+function sanitizeText(v, maxLen = 4000) {
+  if (v == null) return v;
+  const s = String(v);
+  if (!s) return s;
+  // Убираем HTML-теги и оставляем чистый текст (без разметки).
+  const plain = sanitizeHtmlLib(s, { allowedTags: [], allowedAttributes: {} });
+  return plain.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, '').slice(0, maxLen);
+}
+const TEXT_COLS = new Set([
+  'counterparty_name', 'counterparty_email', 'counterparty_phone', 'comment_text',
+  'contract_label', 'delivery_note', 'receive_channel', 'reconciliation_note',
+  'vitya_state', 'invoice_number', 'onec_id', 'edo_status', 'edo_external_id'
+]);
+
 function pickBody(b) {
   const out = {};
   for (const k of WRITE_COLS) if (b[k] !== undefined) out[k] = b[k];
@@ -117,6 +138,10 @@ function pickBody(b) {
     });
   }
   if (out.original_path_url) out.original_path_url = normPath(out.original_path_url);
+  // S4: санитайз текстовых полей (из писем/ИИ/ручного ввода) перед записью.
+  for (const k of TEXT_COLS) {
+    if (out[k] !== undefined && out[k] !== null) out[k] = sanitizeText(out[k]);
+  }
   if (b.line_items && out.parsed_json === undefined) out.parsed_json = b.line_items;
   return out;
 }
@@ -307,13 +332,12 @@ function cast(k, i) {
   return `$${i}`;
 }
 
-function buildFilters(q, userId) {
+function buildFilters(q, userId, role) {
   const params = [];
   let where = ' WHERE d.deleted_at IS NULL';
-  if ((q.scope || 'mine').toLowerCase() !== 'all') {
-    params.push(userId);
-    where += ` AND (d.doc_owner_id=$${params.length} OR d.pm_id=$${params.length})`;
-  }
+  // Единая матрица видимости (S1/S2): scope=all доступен не всем ролям,
+  // принадлежность строки проверяется по роли, а не только по doc_owner/pm.
+  where += visibilitySql(params, role, userId, { scope: q.scope });
   const eq = (col, val) => { params.push(val); where += ` AND ${col}=$${params.length}`; };
   if (q.dir) eq('d.dir', q.dir);
   if (q.ops_status) {
@@ -379,9 +403,22 @@ module.exports = async function docRegistryRoutes(fastify) {
   const db = fastify.db || fastify.pg;
   const auth = { preHandler: [fastify.requireRoles(ALLOWED)] };
 
+  /**
+   * S2: строку может открыть/изменить только тот, кому она видна по матрице.
+   * Возвращает doc либо отправляет 404 и возвращает null.
+   */
+  async function loadVisibleDoc(req, reply, id) {
+    if (isNaN(id)) { reply.code(400).send({ error: 'Неверный ID' }); return null; }
+    const ok = await assertDocVisible(db, { role: req.user.role, userId: req.user.id }, id);
+    if (!ok) { reply.code(404).send({ error: 'Не найдено' }); return null; }
+    const { rows } = await db.query(`${JOIN_SQL} WHERE d.id=$1 AND d.deleted_at IS NULL`, [id]);
+    if (!rows[0]) { reply.code(404).send({ error: 'Не найдено' }); return null; }
+    return rows[0];
+  }
+
   fastify.get('/', auth, async (req) => {
     const q = req.query || {};
-    const { where, params } = buildFilters(q, req.user.id);
+    const { where, params } = buildFilters(q, req.user.id, req.user.role);
     const limit = Math.min(Math.max(parseInt(q.limit, 10) || 50, 1), 200);
     const page = Math.max(parseInt(q.page, 10) || 1, 1);
     const sort = String(q.sort || 'invoice_date').toLowerCase();
@@ -399,7 +436,7 @@ module.exports = async function docRegistryRoutes(fastify) {
   fastify.get('/kpi', auth, async (req) => {
     const q = { ...(req.query || {}) };
     delete q.kpi; delete q.overdue_pay; delete q.overdue_sf; delete q.incomplete; delete q.no_onec; delete q.wh_status; delete q.dir;
-    const { where, params } = buildFilters(q, req.user.id);
+    const { where, params } = buildFilters(q, req.user.id, req.user.role);
     const t = today();
     params.push(t);
     const ti = `$${params.length}`;
@@ -426,10 +463,8 @@ module.exports = async function docRegistryRoutes(fastify) {
     const scope = ((req.query || {}).scope || 'mine').toLowerCase();
     const params = [];
     let scopeSql = ' WHERE d.deleted_at IS NULL';
-    if (scope !== 'all') {
-      params.push(req.user.id);
-      scopeSql += ` AND (d.doc_owner_id=$${params.length} OR d.pm_id=$${params.length})`;
-    }
+    // Единая матрица видимости (S1): фасеты не должны показывать чужое.
+    scopeSql += visibilitySql(params, req.user.role, req.user.id, { scope });
     try {
       const [cp, ops, owners, pms, works] = await Promise.all([
         db.query(
@@ -475,12 +510,19 @@ module.exports = async function docRegistryRoutes(fastify) {
     const ids = Array.isArray((req.body || {}).ids)
       ? req.body.ids.map((x) => parseInt(x, 10)).filter((n) => !isNaN(n)) : [];
     const params = [];
-    let sql = `SELECT id,dir,invoice_number,invoice_date,counterparty_name,amount_gross,amount_net,vat_amount,work_id,onec_id,ops_status
-               FROM doc_registry WHERE deleted_at IS NULL`;
-    if (ids.length) { params.push(ids); sql += ` AND id=ANY($1::int[])`; }
-    else sql += ` AND (onec_id IS NULL OR trim(onec_id)='')`;
-    const { rows } = await db.query(sql + ' ORDER BY id', params);
-    const esc = (v) => `"${String(v == null ? '' : v).replace(/"/g, '""')}"`;
+    // F2: экспорт обязан уважать видимость (иначе дампит все несвязанные строки любой роли).
+    const vis = visibilitySql(params, req.user.role, req.user.id, { scope: req.query && req.query.scope });
+    let sql = `SELECT d.id,d.dir,d.invoice_number,d.invoice_date,d.counterparty_name,d.amount_gross,d.amount_net,d.vat_amount,d.work_id,d.onec_id,d.ops_status
+               FROM doc_registry d WHERE d.deleted_at IS NULL${vis}`;
+    if (ids.length) { params.push(ids); sql += ` AND d.id=ANY($${params.length}::int[])`; }
+    else sql += ` AND (d.onec_id IS NULL OR trim(d.onec_id)='')`;
+    const { rows } = await db.query(sql + ' ORDER BY d.id', params);
+    // S4: CSV formula injection — значения, начинающиеся с =,+,-,@,\t, префиксуем '.
+    const esc = (v) => {
+      let s = String(v == null ? '' : v);
+      if (/^[=+\-@\t\r]/.test(s)) s = "'" + s;
+      return `"${s.replace(/"/g, '""')}"`;
+    };
     const head = 'id;dir;invoice_number;invoice_date;counterparty_name;amount_gross;amount_net;vat_amount;work_id;onec_id;ops_status';
     const body = rows.map((r) =>
       [r.id, r.dir, r.invoice_number, r.invoice_date, r.counterparty_name, r.amount_gross, r.amount_net, r.vat_amount, r.work_id, r.onec_id, r.ops_status].map(esc).join(';')
@@ -496,7 +538,7 @@ module.exports = async function docRegistryRoutes(fastify) {
    * строки (не только загруженную страницу) — «убрали фильтр → все строки».
    */
   fastify.get('/export-xlsx', auth, async (req, reply) => {
-    const { where, params } = buildFilters(req.query || {}, req.user && req.user.id);
+    const { where, params } = buildFilters(req.query || {}, req.user && req.user.id, req.user && req.user.role);
     const { rows } = await db.query(`${JOIN_SQL}${where} ORDER BY d.invoice_date NULLS LAST, d.id`, params);
 
     const vatLabel = (r) => {
@@ -582,6 +624,10 @@ module.exports = async function docRegistryRoutes(fastify) {
         docId = hit ? hit.id : null;
       }
       if (!docId) { unmatched++; items.push({ onec_id: onecId, status: 'unmatched' }); continue; }
+      // S2: нельзя писать в чужую строку (write-IDOR) — проверяем видимость.
+      if (!(await assertDocVisible(db, { role: req.user.role, userId: req.user.id }, docId))) {
+        unmatched++; items.push({ id: docId, onec_id: onecId, status: 'forbidden' }); continue;
+      }
       await db.query(
         `UPDATE doc_registry SET onec_id=$2, onec_synced_at=NOW(), updated_at=NOW() WHERE id=$1 AND deleted_at IS NULL`,
         [docId, onecId]
@@ -594,13 +640,43 @@ module.exports = async function docRegistryRoutes(fastify) {
   fastify.post('/excel/dry-run', auth, async (req, reply) => {
     const rows = (req.body && req.body.rows) || [];
     if (!Array.isArray(rows)) return reply.code(400).send({ error: 'rows[]' });
-    return excelSvc.dryRun(db, rows);
+    // S2: dry-run не должен быть оракулом существования чужих строк —
+    // показываем только те дубли, что видит текущая роль.
+    const res = await excelSvc.dryRun(db, rows);
+    if (res && Array.isArray(res.items)) {
+      const params = [];
+      const vis = visibilitySql(params, req.user.role, req.user.id, { scope: 'all' });
+      try {
+        const visible = new Set((await db.query(
+          `SELECT d.id FROM doc_registry d WHERE d.deleted_at IS NULL${vis}`, params)).rows.map((r) => r.id));
+        const hiddenFound = [];
+        for (const it of res.items) {
+          if (it && it.existing_id && !visible.has(it.existing_id)) { hiddenFound.push(it.existing_id); it.existing_id = null; if (it.action === 'skip-duplicate') it.action = 'needs-manual'; }
+        }
+        if (hiddenFound.length) res.hidden_duplicates = hiddenFound.length;
+      } catch (_) { /* не валим dry-run из-за проверки */ }
+    }
+    return res;
   });
 
   fastify.post('/excel/apply', auth, async (req, reply) => {
     const rows = (req.body && req.body.rows) || [];
     if (!Array.isArray(rows)) return reply.code(400).send({ error: 'rows[]' });
-    return excelSvc.apply(db, rows, req.user.id);
+    // S2/S4: apply создаёт строки с произвольным doc_owner_id и без санитайза —
+    // разрешаем только привилегированным ролям и санитайзим строки.
+    if (!canUseScopeAll(req.user.role)) {
+      return reply.code(403).send({ error: 'Импорт Excel доступен только офису, бухгалтерии, директорам и админу' });
+    }
+    const cleaned = rows.map((r) => {
+      const o = { ...r };
+      for (const k of Object.keys(o)) {
+        if (['counterparty_name', 'counterparty_email', 'counterparty_phone', 'comment_text', 'contract_label', 'invoice_number'].includes(k) && typeof o[k] === 'string') {
+          o[k] = sanitizeText(o[k]);
+        }
+      }
+      return o;
+    });
+    return excelSvc.apply(db, cleaned, req.user.id);
   });
 
   fastify.post('/', auth, async (req, reply) => {
@@ -644,15 +720,17 @@ module.exports = async function docRegistryRoutes(fastify) {
 
   fastify.get('/:id', auth, async (req, reply) => {
     const id = parseInt(req.params.id, 10);
-    if (isNaN(id)) return reply.code(400).send({ error: 'Неверный ID' });
-    const { rows } = await db.query(`${JOIN_SQL} WHERE d.id=$1 AND d.deleted_at IS NULL`, [id]);
-    if (!rows[0]) return reply.code(404).send({ error: 'Не найдено' });
-    return decorate(rows[0]);
+    const row = await loadVisibleDoc(req, reply, id);
+    if (!row) return reply;
+    return decorate(row);
   });
 
   fastify.put('/:id', auth, async (req, reply) => {
     const id = parseInt(req.params.id, 10);
     if (isNaN(id)) return reply.code(400).send({ error: 'Неверный ID' });
+    if (!(await assertDocVisible(db, { role: req.user.role, userId: req.user.id }, id))) {
+      return reply.code(404).send({ error: 'Не найдено' });
+    }
     const cur = await db.query('SELECT * FROM doc_registry WHERE id=$1 AND deleted_at IS NULL', [id]);
     if (!cur.rows[0]) return reply.code(404).send({ error: 'Не найдено' });
     const b = req.body || {};
@@ -690,6 +768,9 @@ module.exports = async function docRegistryRoutes(fastify) {
   fastify.delete('/:id', auth, async (req, reply) => {
     const id = parseInt(req.params.id, 10);
     if (isNaN(id)) return reply.code(400).send({ error: 'Неверный ID' });
+    if (!(await assertDocVisible(db, { role: req.user.role, userId: req.user.id }, id))) {
+      return reply.code(404).send({ error: 'Не найдено' });
+    }
     const {
       assertSafeBillingDelete,
       hardDeleteBillingForDoc
@@ -718,6 +799,9 @@ module.exports = async function docRegistryRoutes(fastify) {
   fastify.post('/:id/upload', auth, async (req, reply) => {
     const id = parseInt(req.params.id, 10);
     if (isNaN(id)) return reply.code(400).send({ error: 'Неверный ID' });
+    if (!(await assertDocVisible(db, { role: req.user.role, userId: req.user.id }, id))) {
+      return reply.code(404).send({ error: 'Не найдено' });
+    }
     const { rows: found } = await db.query('SELECT * FROM doc_registry WHERE id=$1 AND deleted_at IS NULL', [id]);
     const doc = found[0];
     if (!doc) return reply.code(404).send({ error: 'Не найдено' });
@@ -738,14 +822,21 @@ module.exports = async function docRegistryRoutes(fastify) {
 
     const dir = path.join(process.env.UPLOAD_DIR || './uploads', 'doc-hub');
     await fsp.mkdir(dir, { recursive: true });
-    const safe = String(filePart.filename || 'file.bin').replace(/[^\w.\-а-яА-ЯёЁ]+/gi, '_');
-    const fname = `doc_${id}_${randomUUID()}_${safe}`;
+    // S3: расширение берём из MIME/белого списка (класс D-220), а не из имени клиента —
+    // иначе `evil.html`/USER.svg исполнялись бы в домене CRM.
+    const { safeStoredExt, safeContentType } = require('../lib/upload-ext');
+    const ext = safeStoredExt(filePart.mimetype, filePart.filename, { allow: 'doc' });
+    if (!ext) return reply.code(400).send({ error: 'Недопустимый тип файла' });
+    if (filePart.buffer.length > 20 * 1024 * 1024) {
+      return reply.code(413).send({ error: 'Файл больше 20 МБ' });
+    }
+    const fname = `doc_${id}_${randomUUID()}${ext}`;
     await fsp.writeFile(path.join(dir, fname), filePart.buffer);
     const url = normPath(`uploads/doc-hub/${fname}`);
     const att = {
       url,
-      name: metaName || filePart.filename || fname,
-      mimetype: filePart.mimetype || null,
+      name: String(metaName || filePart.filename || fname).replace(/[<>"'`]/g, '').slice(0, 200),
+      mimetype: safeContentType(ext, filePart.mimetype),
       uploaded_at: new Date().toISOString(),
       by: req.user.id
     };
@@ -765,6 +856,9 @@ module.exports = async function docRegistryRoutes(fastify) {
   fastify.post('/:id/parse-catalog', auth, async (req, reply) => {
     const id = parseInt(req.params.id, 10);
     if (isNaN(id)) return reply.code(400).send({ error: 'Неверный ID' });
+    if (!(await assertDocVisible(db, { role: req.user.role, userId: req.user.id }, id))) {
+      return reply.code(404).send({ error: 'Не найдено' });
+    }
     const { rows: found } = await db.query('SELECT * FROM doc_registry WHERE id=$1 AND deleted_at IS NULL', [id]);
     const doc = found[0];
     if (!doc) return reply.code(404).send({ error: 'Не найдено' });
@@ -809,6 +903,9 @@ module.exports = async function docRegistryRoutes(fastify) {
     const id = parseInt(req.params.id, 10);
     const b = req.body || {};
     if (isNaN(id) || !b.action) return reply.code(400).send({ error: 'id + action' });
+    if (!(await assertDocVisible(db, { role: req.user.role, userId: req.user.id }, id))) {
+      return reply.code(404).send({ error: 'Не найдено' });
+    }
     const { rows: found } = await db.query('SELECT * FROM doc_registry WHERE id=$1 AND deleted_at IS NULL', [id]);
     const doc = found[0];
     if (!doc) return reply.code(404).send({ error: 'Не найдено' });
@@ -999,6 +1096,9 @@ module.exports = async function docRegistryRoutes(fastify) {
   fastify.post('/:id/link-expense', auth, async (req, reply) => {
     const id = parseInt(req.params.id, 10);
     if (isNaN(id)) return reply.code(400).send({ error: 'Неверный ID' });
+    if (!(await assertDocVisible(db, { role: req.user.role, userId: req.user.id }, id))) {
+      return reply.code(404).send({ error: 'Не найдено' });
+    }
     const { rows: found } = await db.query('SELECT * FROM doc_registry WHERE id=$1 AND deleted_at IS NULL', [id]);
     const doc = found[0];
     if (!doc) return reply.code(404).send({ error: 'Не найдено' });

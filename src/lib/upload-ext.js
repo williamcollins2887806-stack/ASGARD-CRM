@@ -45,6 +45,7 @@ const DOC_MIME_EXT = {
   'application/vnd.openxmlformats-officedocument.presentationml.presentation': '.pptx',
   'text/plain': '.txt',
   'text/csv': '.csv',
+  'application/json': '.json',
   'application/rtf': '.rtf',
   'application/zip': '.zip',
   'application/x-zip-compressed': '.zip',
@@ -75,7 +76,7 @@ const MEDIA_MIME_EXT = {
 const SAFE_STORED_EXT = new Set([
   '.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp', '.heic', '.heif', '.tiff', '.tif',
   '.pdf', '.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx',
-  '.txt', '.csv', '.rtf', '.odt', '.ods', '.odp',
+  '.txt', '.csv', '.json', '.rtf', '.odt', '.ods', '.odp',
   '.zip', '.rar', '.7z', '.tar', '.gz',
   '.webm', '.ogg', '.mp3', '.m4a', '.aac', '.wav', '.mp4', '.mov',
   '.bin',

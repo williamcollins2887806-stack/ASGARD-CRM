@@ -472,6 +472,18 @@ async function applyDecision(db, payment, action, actor) {
   const client = await db.pool.connect();
   try {
     await client.query('BEGIN');
+    // S5: закрываем гонку «два директора/бухгалтера одновременно». Решение
+    // атомарно применяется только если статус всё ещё awaiting_dir — проверка
+    // статуса вне транзакции (выше) эту гонку не ловила.
+    const lock = await client.query(
+      `UPDATE payment_invoices SET updated_at=NOW() WHERE id=$1 AND status='awaiting_dir' RETURNING id`,
+      [payment.id]
+    );
+    if (!lock.rowCount) {
+      await client.query('ROLLBACK');
+      const fresh = await db.query('SELECT status FROM payment_invoices WHERE id=$1', [payment.id]);
+      return { ok: true, already: true, status: fresh.rows[0] ? fresh.rows[0].status : payment.status };
+    }
     if (act === 'approve') {
       await client.query(
         `UPDATE payment_invoices SET status='pending_payment', payment_status='pending_payment',

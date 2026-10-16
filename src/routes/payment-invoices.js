@@ -413,13 +413,16 @@ async function routes(fastify) {
     if (!documentId && !skipPp && !(req.body && req.body.allow_no_pp)) {
       // soft: still allow if comment explains; UI should send skip_pp
     }
-    await db.query(
+    const upd = await db.query(
       `UPDATE payment_invoices SET
          status='paid', payment_method='bank_transfer', payment_status='paid',
          payment_comment=$1, payment_doc_id=$2, buh_id=$3, buh_acted_at=NOW(), updated_at=NOW()
-       WHERE id=$4`,
+       WHERE id=$4 AND payment_status='pending_payment'`,
       [comment, documentId, req.user.id, id]
     );
+    // S5: побочные эффекты (расход, карточка Doc Hub, уведомления) — ТОЛЬКО при
+    // реальном переходе. Иначе 8 параллельных запросов плодят дубли.
+    if (!upd.rowCount) return { success: true, already: true, status: 'paid' };
     await afterPaid(db, pay);
     if (pay.created_by && pay.created_by !== req.user.id) {
       createNotification(db, {
