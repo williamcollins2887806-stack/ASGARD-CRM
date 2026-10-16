@@ -122,6 +122,19 @@ const TEXT_COLS = new Set([
   'vitya_state', 'invoice_number', 'onec_id', 'edo_status', 'edo_external_id'
 ]);
 
+/** Рекурсивная очистка строк внутри объектов/массивов (N3). */
+function sanitizeDeep(v, depth = 0) {
+  if (depth > 6) return v;
+  if (typeof v === 'string') return sanitizeText(v, 2000);
+  if (Array.isArray(v)) return v.map((x) => sanitizeDeep(x, depth + 1));
+  if (v && typeof v === 'object') {
+    const o = {};
+    for (const k of Object.keys(v)) o[k] = sanitizeDeep(v[k], depth + 1);
+    return o;
+  }
+  return v;
+}
+
 function pickBody(b) {
   const out = {};
   for (const k of WRITE_COLS) if (b[k] !== undefined) out[k] = b[k];
@@ -141,6 +154,11 @@ function pickBody(b) {
   // S4: санитайз текстовых полей (из писем/ИИ/ручного ввода) перед записью.
   for (const k of TEXT_COLS) {
     if (out[k] !== undefined && out[k] !== null) out[k] = sanitizeText(out[k]);
+  }
+  // N3: вложенные структуры (attachments/closing_json/parsed_json/onec_payload)
+  // тоже несут тексты и рендерятся в UI — чистим строки рекурсивно.
+  for (const k of ['attachments', 'closing_json', 'parsed_json', 'onec_payload']) {
+    if (out[k] !== undefined && out[k] !== null) out[k] = sanitizeDeep(out[k]);
   }
   if (b.line_items && out.parsed_json === undefined) out.parsed_json = b.line_items;
   return out;
@@ -305,8 +323,7 @@ async function audit(db, docId, userId, action, payload) {
   );
 }
 
-async function findDup(db, row) {
-  if (!row.invoice_number || !row.invoice_date) return null;
+async function findDup(db, row) {  if (!row.invoice_number || !row.invoice_date) return null;
   const params = [
     String(row.counterparty_name || '').trim().toLowerCase(),
     String(row.invoice_number || '').trim().toLowerCase(),
@@ -402,6 +419,16 @@ function buildFilters(q, userId, role) {
 module.exports = async function docRegistryRoutes(fastify) {
   const db = fastify.db || fastify.pg;
   const auth = { preHandler: [fastify.requireRoles(ALLOWED)] };
+
+  /**
+   * N3: ответ о дубле не раскрывает id чужой строки (оракул существования).
+   * Факт дубля сообщаем всегда, id — только если строка видна роли.
+   */
+  async function dupBody(db, req, dup) {
+    if (!dup) return { error: 'Дубликат' };
+    const visible = await assertDocVisible(db, { role: req.user.role, userId: req.user.id }, dup.id);
+    return visible ? { error: 'Дубликат', existing_id: dup.id } : { error: 'Дубликат', hidden: true };
+  }
 
   /**
    * S2: строку может открыть/изменить только тот, кому она видна по матрице.
@@ -503,7 +530,11 @@ module.exports = async function docRegistryRoutes(fastify) {
 
   fastify.post('/check-duplicate', auth, async (req) => {
     const hit = await findDup(db, req.body || {});
-    return hit ? { duplicate: true, id: hit.id } : { duplicate: false };
+    if (!hit) return { duplicate: false };
+    // N3: не раскрываем id чужой строки (оракул существования). Факт дубля
+    // сообщаем, но id отдаём только если строка видна роли.
+    const visible = await assertDocVisible(db, { role: req.user.role, userId: req.user.id }, hit.id);
+    return visible ? { duplicate: true, id: hit.id } : { duplicate: true, hidden: true };
   });
 
   fastify.post('/export-1c', auth, async (req, reply) => {
@@ -697,7 +728,7 @@ module.exports = async function docRegistryRoutes(fastify) {
     };
     Object.assign(draft, calcIncomplete(draft));
     const dup = await findDup(db, draft);
-    if (dup) return reply.code(409).send({ error: 'Дубликат', existing_id: dup.id });
+    if (dup) return reply.code(409).send(await dupBody(db, req, dup));
 
     const cols = [...Object.keys(draft).filter((k) => WRITE_COLS.includes(k) || k === 'created_by' || k === 'updated_by')];
     const vals = cols.map((k) => bindVal(k, draft[k]));
@@ -712,7 +743,7 @@ module.exports = async function docRegistryRoutes(fastify) {
     } catch (e) {
       if (e.code === '23505') {
         const again = await findDup(db, draft);
-        return reply.code(409).send({ error: 'Дубликат', existing_id: again ? again.id : null });
+        return reply.code(409).send(await dupBody(db, req, again));
       }
       throw e;
     }
@@ -740,7 +771,7 @@ module.exports = async function docRegistryRoutes(fastify) {
     }
     Object.assign(merged, calcIncomplete(merged));
     const dup = await findDup(db, { ...merged, excludeId: id });
-    if (dup) return reply.code(409).send({ error: 'Дубликат', existing_id: dup.id });
+    if (dup) return reply.code(409).send(await dupBody(db, req, dup));
 
     const patch = { ...pickBody(b), ...computeAmounts({ ...cur.rows[0], ...b }), ...calcIncomplete(merged), updated_by: req.user.id };
     const keys = Object.keys(patch);
@@ -759,7 +790,7 @@ module.exports = async function docRegistryRoutes(fastify) {
     } catch (e) {
       if (e.code === '23505') {
         const again = await findDup(db, { ...merged, excludeId: id });
-        return reply.code(409).send({ error: 'Дубликат', existing_id: again ? again.id : null });
+        return reply.code(409).send(await dupBody(db, req, again));
       }
       throw e;
     }
@@ -949,6 +980,21 @@ module.exports = async function docRegistryRoutes(fastify) {
         doc.counterparty_name || null,
         doc.comment_text || null
       ].filter(Boolean).join(' · ');
+      // N1: атомарно «занимаем слот». Без этого 8 параллельных кликов создают
+      // 8 заявок на оплату (doc.payment_invoice_id читается ДО вставки).
+      const slot = await db.query(
+        `UPDATE doc_registry SET pay_status=CASE WHEN pay_status='paid' THEN pay_status ELSE 'wait' END,
+           updated_by=$2, updated_at=NOW()
+         WHERE id=$1 AND payment_invoice_id IS NULL RETURNING id`,
+        [id, req.user.id]
+      );
+      if (!slot.rowCount) {
+        // Слот занят другой параллельной попыткой — вернуть уже существующую заявку.
+        const cur = await db.query('SELECT payment_invoice_id FROM doc_registry WHERE id=$1', [id]);
+        const pid = cur.rows[0] && cur.rows[0].payment_invoice_id;
+        if (pid) return { redirect: `#/approval-payment?id=${pid}`, payment_invoice_id: pid, reused: true };
+        return reply.code(409).send({ error: 'Заявка на оплату уже создаётся, повторите' });
+      }
       const { rows: payRows } = await db.query(
         `INSERT INTO payment_invoices(
            status, supplier_name, supplier_id, amount, due_date, file_path, file_name,
@@ -976,9 +1022,7 @@ module.exports = async function docRegistryRoutes(fastify) {
       );
       const pay = payRows[0];
       await db.query(
-        `UPDATE doc_registry SET payment_invoice_id=$2, pay_status=CASE
-           WHEN pay_status='paid' THEN pay_status ELSE 'wait' END,
-           updated_by=$3, updated_at=NOW() WHERE id=$1`,
+        `UPDATE doc_registry SET payment_invoice_id=$2, updated_by=$3, updated_at=NOW() WHERE id=$1`,
         [id, pay.id, req.user.id]
       );
       const redirect = `#/approval-payment?id=${pay.id}`;

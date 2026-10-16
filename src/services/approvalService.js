@@ -909,7 +909,7 @@ async function payByBankTransfer(db, { entityType, entityId, actor, comment, doc
     throw Object.assign(new Error('Оплата доступна только на этапе бухгалтерии'), { statusCode: 409 });
   }
 
-  await db.query(
+  const upd = await db.query(
     `UPDATE ${entityType} SET 
      payment_method = 'bank_transfer',
      payment_status = 'paid',
@@ -921,23 +921,31 @@ async function payByBankTransfer(db, { entityType, entityId, actor, comment, doc
      WHERE id = $4 AND payment_status = $5`,
     [comment || null, documentId || null, actor.id, entityId, PAYMENT_STATUSES.PENDING]
   );
-  // S5: не подменяем статус, если оплата уже прошла (условный UPDATE выше).
+  // N2: реальный ли это переход (иначе — идемпотентный повтор, не уведомляем).
+  const payTransitioned = upd.rowCount > 0;
+  let paidInvoice = false;
 
   if (entityType === 'payment_invoices') {
     const paid = await db.query(
       `UPDATE payment_invoices SET status='paid', updated_at=NOW()
         WHERE id=$1 AND status <> 'paid' RETURNING id`, [entityId]);
-    if (paid.rowCount) {
+    paidInvoice = paid.rowCount > 0;
+    if (paidInvoice) {
       try {
         const payMod = require('../routes/payment-invoices');
         if (payMod.afterPaid) await payMod.afterPaid(db, record);
       } catch (_) { /* ignore */ }
     }
   }
+  const initiatorId = getInitiatorId(record, entityType);
+  const initiatorIdNotSelf = !!(initiatorId && initiatorId !== actor.id);
 
   const label = `${getLabel(entityType)} #${entityId}`;
-  const initiatorId = getInitiatorId(record, entityType);
-  if (initiatorId && initiatorId !== actor.id) {
+  // N2: уведомления ТОЛЬКО при реальном переходе в paid. Иначе 8 параллельных
+  // запросов (кнопка «оплатить ПП» в Telegram) рассылают 60+ уведомлений.
+  const alreadyPaid = !!(record && record.payment_status === PAYMENT_STATUSES.PAID);
+  const didTransition = payTransitioned || (entityType === 'payment_invoices' && paidInvoice);
+  if (didTransition && initiatorIdNotSelf) {
     createNotification(db, {
       user_id: initiatorId,
       title: `💳 ${label} — оплачено через ПП`,
@@ -947,11 +955,13 @@ async function payByBankTransfer(db, { entityType, entityId, actor, comment, doc
     });
   }
 
-  // Уведомляем директоров
-  await notifyDirectors(db, actor.id,
-    `💳 ${label} — оплачено`,
-    `Бухгалтерия (${actor.name || ''}) оплатила через ПП.`
-  );
+  if (didTransition) {
+    // Уведомляем директоров
+    await notifyDirectors(db, actor.id,
+      `💳 ${label} — оплачено`,
+      `Бухгалтерия (${actor.name || ''}) оплатила через ПП.`
+    );
+  }
 
   return { status: 'paid', payment_method: 'bank_transfer' };
 }

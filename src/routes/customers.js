@@ -1,5 +1,6 @@
 const { logError } = require('../lib/log-error');
 const { toDigitsRu } = require('../lib/phone');
+const { visibilitySql } = require('../lib/doc-visibility');
 /**
  * Customers Routes
  */
@@ -169,6 +170,10 @@ async function routes(fastify, options) {
     if (q.length < 2) return { suppliers: [] };
     const like = '%' + q.toLowerCase() + '%';
     try {
+      // N3: статистика/контакты берутся только из ВИДИМЫХ роли документов,
+      // иначе оракул существования чужих счетов (docs_count).
+      const vp = [];
+      const vis = visibilitySql(vp, request.user.role, request.user.id, {});
       const { rows } = await db.query(
         `SELECT s.id, s.name, s.inn, s.kpp, s.ogrn,
                 COALESCE(NULLIF(TRIM(s.phone), ''), dc.phone, '') AS phone,
@@ -181,7 +186,7 @@ async function routes(fastify, options) {
                     max(NULLIF(TRIM(counterparty_phone), '')) AS phone,
                     max(NULLIF(TRIM(counterparty_email), '')) AS email
                FROM doc_registry d
-              WHERE d.deleted_at IS NULL AND d.supplier_id = s.id
+              WHERE d.deleted_at IS NULL AND d.supplier_id = s.id${vis}
            ) dc ON true
            LEFT JOIN LATERAL (
              SELECT count(*) AS contracts FROM contracts c
@@ -192,7 +197,7 @@ async function routes(fastify, options) {
             AND (s.name ILIKE $1 OR COALESCE(s.inn, '') LIKE $1 OR lower(COALESCE(s.inn, '')) LIKE $1)
           ORDER BY COALESCE(dc.docs, 0) DESC, COALESCE(ct.contracts, 0) DESC, s.name ASC
           LIMIT $2`,
-        [like, limit]
+        [like, limit, ...vp]
       );
       return { suppliers: rows };
     } catch (e) {
@@ -210,12 +215,15 @@ async function routes(fastify, options) {
       const sup = (await db.query(
         `SELECT id, name, COALESCE(TRIM(phone), '') AS phone, COALESCE(TRIM(email), '') AS email
            FROM suppliers WHERE deleted_at IS NULL AND inn = $1 LIMIT 1`, [inn])).rows[0] || null;
+      // N3: контакты и docs_count — только из видимых роли документов.
+      const vp2 = [];
+      const vis2 = visibilitySql(vp2, request.user.role, request.user.id, {});
       const doc = (await db.query(
         `SELECT NULLIF(TRIM(counterparty_phone), '') AS phone, NULLIF(TRIM(counterparty_email), '') AS email
-           FROM doc_registry
-          WHERE deleted_at IS NULL AND supplier_id = $1
-            AND (COALESCE(TRIM(counterparty_phone), '') <> '' OR COALESCE(TRIM(counterparty_email), '') <> '')
-          ORDER BY invoice_date DESC NULLS LAST, id DESC LIMIT 1`, [sup ? sup.id : -1])).rows[0] || null;
+           FROM doc_registry d
+          WHERE d.deleted_at IS NULL AND d.supplier_id = $1
+            AND (COALESCE(TRIM(counterparty_phone), '') <> '' OR COALESCE(TRIM(counterparty_email), '') <> '')${vis2}
+          ORDER BY d.invoice_date DESC NULLS LAST, d.id DESC LIMIT 1`, [sup ? sup.id : -1, ...vp2])).rows[0] || null;
       const phone = (sup && sup.phone) || (doc && doc.phone) || '';
       const email = (sup && sup.email) || (doc && doc.email) || '';
       // backfill карточки, чтобы в следующий раз отдавать сразу
@@ -228,7 +236,7 @@ async function routes(fastify, options) {
         ).catch(() => {});
       }
       const docs = sup ? (await db.query(
-        `SELECT count(*)::int AS n FROM doc_registry WHERE deleted_at IS NULL AND supplier_id = $1`, [sup.id]
+        `SELECT count(*)::int AS n FROM doc_registry d WHERE d.deleted_at IS NULL AND d.supplier_id = $1${vis2}`, [sup.id, ...vp2]
       )).rows[0].n : 0;
       const contracts = sup ? (await db.query(
         `SELECT count(*)::int AS n FROM contracts WHERE COALESCE(TRIM(counterparty_name), '') <> ''

@@ -77,15 +77,15 @@ function visibilitySql(params, role, userId, opts = {}) {
   }
 
   if (r === 'WAREHOUSE') {
-    // Только складское. Офисные расходы и клиентские — исключаем всегда.
-    // value_json в settings — TEXT, поэтому кастуем и защищаемся regex-гардом
-    // (иначе jsonb_array_elements_text падает 42883 → 500 у кладовщика).
+    // Только складское. Офисные и клиентские — исключаем всегда.
+    // N-остаток: НЕ кастуем value_json к jsonb (битый JSON давал 500) —
+    // извлекаем строки-элементы регуляркой (никогда не бросает исключение).
     return ` AND ((d.spend_kind = 'warehouse'` +
       ` OR d.purpose_consumables IS TRUE` +
       ` OR d.purpose_asgard IS TRUE` +
       ` OR d.wh_status <> 'none'` +
-      ` OR d.counterparty_name IN (SELECT jsonb_array_elements_text(s.value_json::jsonb)` +
-      `   FROM settings s WHERE s.key='doc_wh_counterparties' AND s.value_json ~ '^\\s*\\['))` +
+      ` OR d.counterparty_name = ANY (SELECT (regexp_matches(s.value_json, '"((?:[^"\\\\]|\\\\.)*)"', 'g'))[1]` +
+      `   FROM settings s WHERE s.key='doc_wh_counterparties' AND s.value_json IS NOT NULL))` +
       ` AND d.spend_kind <> 'office'` +
       ` AND d.purpose_customer IS NOT TRUE)`;
   }
