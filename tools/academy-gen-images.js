@@ -456,6 +456,7 @@ function buildBlocks(original, images) {
         aspect: '16 / 9',
         badge: im.badge,
         slug: im.slug,
+        cast: im.cast || [],
       });
     }
   });

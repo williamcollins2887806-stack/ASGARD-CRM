@@ -2514,16 +2514,6 @@ html:not([data-theme="dark"]):not(.theme-dark) .telephony-page .call-log-table t
   flex: 1;
 }
 
-/* Mimír tip: strip emoji chrome on telephony surface */
-.telephony-page .mh-pill-emoji,
-.mh-root .mh-pill-emoji {
-  display: none !important;
-}
-.telephony-page .mh-teaser,
-.mh-root.mh-on-telephony .mh-teaser {
-  font-variant-emoji: text;
-}
-
 /* ══ Premium-2026: saved views, sparklines, AI popover, col menu, transitions ══ */
 .telephony-page .tel-saved-views {
   display: flex;

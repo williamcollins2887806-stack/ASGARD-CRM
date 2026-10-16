@@ -145,11 +145,17 @@ function rel(p) { return path.relative(ROOT, p).replace(/\\/g, '/'); }
 function readSafe(p) { return fs.existsSync(p) ? fs.readFileSync(p, 'utf8') : ''; }
 function countMatches(src, re) { const m = src.match(re); return m ? m.length : 0; }
 
-/** Строки файла без комментариев — чтобы не ловить «руны» в пояснениях. */
+/** Строки файла без комментариев — чтобы не ловить «руны» и эмодзи в пояснениях. */
 function stripComments(src) {
   return src
     .replace(/\/\*[\s\S]*?\*\//g, (mm) => mm.replace(/[^\n]/g, ' '))
     .replace(/(^|[^:])\/\/[^\n]*/g, (mm, p1) => p1 + ' '.repeat(mm.length - p1.length));
+}
+
+/** true, если строка — часть комментария (не попадает в рендер). */
+function isCommentLine(raw) {
+  const t = raw.trim();
+  return t.startsWith('//') || t.startsWith('*') || t.startsWith('/*');
 }
 
 /* ══ Проверка 1 ═══════════════════════════════════════════════════════════ */
@@ -158,10 +164,14 @@ function checkLegacy() {
     path.join(SRC, 'styles', 'field-auth.css')].filter((f) => fs.existsSync(f) && fs.statSync(f).isFile());
   const hits = [];
   for (const f of files) {
-    const src = stripComments(readSafe(f));
+    const raw = readSafe(f);
+    const src = stripComments(raw);
+    const rawLines = raw.split(/\r?\n/);
     const lines = src.split(/\r?\n/);
     for (const pat of LEGACY_PATTERNS) {
       lines.forEach((line, i) => {
+        // комментарии не рендерятся — «эмодзи в комментарии» не нарушение
+        if (pat.id === 'emoji-icon' && isCommentLine(rawLines[i] || '')) return;
         if (pat.re.test(line)) hits.push({ file: rel(f), line: i + 1, kind: pat.id, why: pat.why, text: line.trim().slice(0, 120) });
       });
     }

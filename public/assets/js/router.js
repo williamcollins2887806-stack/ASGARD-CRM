@@ -39,6 +39,20 @@ window.AsgardRouter=(function(){
     try { return !!AsgardAuth.hasPermission(perm, 'read'); } catch(_) { return false; }
   }
 
+  // Учёт заходов на страницу для аналитики (tools/pages-inventory).
+  // Ключ = хэш-роут без ведущего «/» (например /pm-calculations → pm-calculations),
+  // nginx пишет его в access.log, extract-logs.sh считает по page=.
+  // Fire-and-forget: ошибка учёта никогда не должна ломать рендер.
+  function trackPageView(page){
+    try{
+      if(!page) return;
+      const token=localStorage.getItem('asgard_token');
+      if(!token) return;
+      fetch('/api/hints?page='+encodeURIComponent(page),{headers:{Authorization:'Bearer '+token}})
+        .catch(function(){});
+    }catch(_){}
+  }
+
   async function render(){
     // Закрываем модалку при переходе между страницами
     try { if(window.AsgardUI && AsgardUI.hideModal) AsgardUI.hideModal(); } catch(_) {}
@@ -60,6 +74,9 @@ window.AsgardRouter=(function(){
       // SLA tick moved to background interval (see below)
     }
 
+    // Учёт захода на страницу (ключ = хэш-роут без ведущего «/»; пустой хэш → dashboard).
+    trackPageView(location.hash ? (path.replace(/^\//,'') || 'dashboard') : 'dashboard');
+
     try{
       await r.handler({path, query});
     }catch(e){
@@ -78,22 +95,6 @@ window.AsgardRouter=(function(){
 
   function start(){
     window.addEventListener("hashchange", render);
-
-    // Подсказки Мимира — загружаем когда layout готов (событие из app.js layout())
-    window.addEventListener("asgard:layout-ready", function() {
-      if (!window.AsgardHints) return;
-      var hash = (location.hash || '').replace('#/', '');
-      var parts = hash.split('?');
-      var page = parts[0] || 'dashboard';
-      var params = {};
-      if (parts[1]) {
-        parts[1].split('&').forEach(function(kv) {
-          var s = kv.split('=');
-          if (s[0] && s[1]) params[s[0]] = decodeURIComponent(s[1]);
-        });
-      }
-      AsgardHints.load(page, params);
-    });
 
     render();
 

@@ -5,6 +5,9 @@ import {
   MapPin, AlertCircle, RefreshCw, Play, Square,
   Phone, Briefcase, Camera, FileText, AlertTriangle, Package, DollarSign, Map,
   Calendar, Shield, PackageCheck, ClipboardList, ScrollText, Sun, Moon,
+  Gamepad2, ShoppingBag, Gift, Landmark, Swords, Leaf, Trophy, Dices, Waves, FlaskConical, Plus,
+  Stethoscope, Plane, Hourglass, BedDouble, Building2, Ship, HardHat, Archive, HelpCircle,
+  Bell, Smartphone, Wrench, Ban, Ruler, BookOpen, Trophy as TrophyIcon, Home as HomeIcon,
 } from 'lucide-react';
 import { fieldApi } from '@/api/fieldClient';
 import { useFieldAuthStore } from '@/stores/fieldAuthStore';
@@ -13,7 +16,9 @@ import RankUpCeremony, { checkRankCeremony } from '@/components/field/RankUpCere
 import { getLevel, getRank, rankIndex } from '@/lib/fieldRanks';
 import { usePushSubscription } from '@/hooks/usePushSubscription';
 import { NornsPauseStrip, PAUSE_BADGE } from '@/components/field/NornsPauseBanner';
+import { IconTile } from '@/components/field/ui';
 import { useThemeStore } from '@/stores/themeStore';
+import './field-home.css';
 import { buildProfileHref, gapsContainPpe, FOCUS_PPE } from '@/lib/ppeField';
 
 const PUSH_DISMISSED_KEY = 'asgard_field_push_dismissed_v1';
@@ -21,11 +26,14 @@ const IOS_HINT_DISMISSED_KEY = 'asgard_ios_hint_dismissed_v1';
 const CHEMLAB_BANNER_KEY = 'asgard_chemlab_banner_v1';
 const CHEMLAB_FIXED_KEY = 'asgard_chemlab_fixed_v1';
 
+/* Плитки игр: цвет — по смыслу (danger/acc/value), фон — токены темы.
+   Раньше здесь были тёмные градиенты-литералы, из-за которых в светлой теме
+   плитки оставались чёрными. */
 const GAMES_FOLDER = [
-  { emoji: '🎰', label: 'Рулетка', path: '/field/wheel', bg: 'linear-gradient(135deg,#3a0a10,#1a0508)', border: 'color-mix(in oklab, var(--danger) 35%, transparent)', badge: PAUSE_BADGE },
-  { emoji: '🌊', label: 'Рунопровод', path: '/field/pipeline', bg: 'linear-gradient(135deg,#0a1a2a,#051018)', border: 'color-mix(in oklab, var(--acc) 40%, transparent)' },
-  { emoji: '🧪', label: 'Химцех', path: '/field/chemlab', bg: 'linear-gradient(135deg,var(--bg-primary),#0e0c08)', border: 'color-mix(in oklab, var(--danger) 45%, transparent)', badge: 'NEW' },
-  { emoji: '＋', label: 'Скоро', path: null, bg: 'color-mix(in oklab, var(--text-primary) 4%, transparent)', border: 'color-mix(in oklab, var(--text-primary) 10%, transparent)', soon: true },
+  { icon: Dices, label: 'Рулетка', path: '/field/wheel', tone: 'danger', badge: PAUSE_BADGE },
+  { icon: Waves, label: 'Рунопровод', path: '/field/pipeline', tone: 'accent' },
+  { icon: FlaskConical, label: 'Химцех', path: '/field/chemlab', tone: 'danger', badge: 'NEW' },
+  { icon: Plus, label: 'Скоро', path: null, tone: 'neutral', soon: true },
 ];
 
 // Detect iOS Safari (not standalone)
@@ -130,8 +138,8 @@ const STAGE_COLORS = {
   day_off: 'var(--text-secondary)', object: 'var(--ok)', ship: 'var(--acc)', helicopter: 'var(--acc)', training: 'var(--acc)',
 };
 const STAGE_ICONS = {
-  medical: '🏥', travel: '✈️', waiting: '⏳', warehouse: '📦',
-  day_off: '🛏', object: '🏗', ship: '🚢', helicopter: '🚁', training: '📚',
+  medical: Stethoscope, travel: Plane, waiting: Hourglass, warehouse: Package,
+  day_off: BedDouble, object: Building2, ship: Ship, helicopter: Truck, training: BookOpen,
 };
 
 /** Read-only блок вахты МЛСП (токены темы поля). */
@@ -163,14 +171,14 @@ function MlspStayBanner({ stay }) {
 }
 
 const GAMIFICATION_TILES = [
-  { emoji: '🎮', label: 'Игры', path: '__games_folder__', bg: 'linear-gradient(135deg,var(--bg-surface),#0c0a12)', border: 'color-mix(in oklab, var(--danger) 35%, transparent)', badge: 'NEW', folder: true },
-  { emoji: '🛍', label: 'Магазин', path: '/field/shop', bg: 'linear-gradient(135deg,var(--bg-surface),var(--bg-surface))', border: 'color-mix(in oklab, var(--value) 25%, transparent)' },
-  { emoji: '🎁', label: 'Инвентарь', path: '/field/inventory', bg: 'linear-gradient(135deg,#0a1a2a,#081020)', border: 'color-mix(in oklab, var(--acc) 25%, transparent)' },
-  { emoji: '🏛️', label: 'Чертоги Мимира', path: '/field/academy', bg: 'linear-gradient(135deg,var(--bg-surface),#0d0a1a)', border: 'color-mix(in oklab, var(--acc) 35%, transparent)' },
-  { emoji: '⚔️', label: 'Квесты', path: '/field/quests', bg: 'linear-gradient(135deg,#1a0a2a,#100818)', border: 'color-mix(in oklab, var(--acc) 25%, transparent)' },
-  { emoji: '🍂', label: 'Сезон', path: '/field/seasonal', bg: 'linear-gradient(135deg,#2a1208,#1a0c05)', border: 'color-mix(in oklab, var(--danger) 35%, transparent)', badge: 'NEW' },
-  { emoji: '🏆', label: 'Рейтинг', path: '/field/leaderboard', bg: 'linear-gradient(135deg,#1a1400,#0e0c00)', border: 'color-mix(in oklab, var(--value) 35%, transparent)' },
-  { emoji: '🗺️', label: 'Подвиги', path: '/field/journey', bg: 'linear-gradient(135deg,#0a2020,#081818)', border: 'color-mix(in oklab, var(--ok) 25%, transparent)' },
+  { icon: Gamepad2, label: 'Игры', path: '__games_folder__', tone: 'danger', badge: 'NEW', folder: true },
+  { icon: ShoppingBag, label: 'Магазин', path: '/field/shop', tone: 'value' },
+  { icon: Gift, label: 'Инвентарь', path: '/field/inventory', tone: 'accent' },
+  { icon: Landmark, label: 'Чертоги Мимира', path: '/field/academy', tone: 'accent' },
+  { icon: Swords, label: 'Квесты', path: '/field/quests', tone: 'accent' },
+  { icon: Leaf, label: 'Сезон', path: '/field/seasonal', tone: 'danger', badge: 'NEW' },
+  { icon: Trophy, label: 'Рейтинг', path: '/field/leaderboard', tone: 'value' },
+  { icon: Map, label: 'Подвиги', path: '/field/journey', tone: 'status' },
 ];
 
 export default function FieldHome() {
@@ -594,7 +602,13 @@ export default function FieldHome() {
   actions.push({ icon: UserCircle, label: 'Профиль', path: '/field/profile' });
 
   return (
-    <div className="p-4 min-h-screen" onTouchStart={onTouchStart} onTouchEnd={onTouchEnd} style={{ backgroundColor: 'var(--bg-primary)', paddingTop: 'max(env(safe-area-inset-top), 16px)', paddingBottom: 'max(env(safe-area-inset-bottom), 24px)' }}>
+    <div className="fh-root" onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
+      {/* Ambient-сцена: мягкие орбы (не мешают контенту, z-index 0) */}
+      <div className="fh-scene" aria-hidden>
+        <span className="fh-orb fh-orb--a" />
+        <span className="fh-orb fh-orb--b" />
+        <span className="fh-orb fh-orb--c" />
+      </div>
       {rankCeremony && (
         <RankUpCeremony
           open
@@ -610,96 +624,61 @@ export default function FieldHome() {
         />
       )}
       {pulling && (
-        <div className="flex justify-center py-2">
-          <RefreshCw size={20} className="animate-spin" style={{ color: 'var(--gold)' }} />
+        <div className="flex justify-center py-2" style={{ position: 'relative', zIndex: 6 }}>
+          <RefreshCw size={20} className="animate-spin" style={{ color: 'var(--value)' }} />
         </div>
       )}
 
+      <div className="fh-content" style={{ padding: 'max(env(safe-area-inset-top), 16px) 16px max(env(safe-area-inset-bottom), 24px)' }}>
       {/* Greeting + Viking quote + быстрый тумблер темы */}
-      <div className="mb-5" style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <h1 className="text-xl font-bold" style={{ color: 'var(--text-primary)' }}>{getGreeting()}, {firstName}, {vikingTitle}!</h1>
-          <p className="text-sm capitalize mt-0.5" style={{ color: 'var(--text-tertiary)' }}>{fmtDate()}</p>
-          <p className="text-xs italic mt-2" style={{ color: 'var(--text-tertiary)' }}>«{quote}»</p>
+      <div className="fh-greet">
+        <div className="fh-greet__body">
+          <h1 className="fh-h1">{getGreeting()}, {firstName}, <span className="fh-rankword">{vikingTitle}</span>!</h1>
+          <p className="fh-date">{fmtDate()}</p>
+          <p className="fh-quote">«{quote}»</p>
         </div>
         <button
           type="button"
           onClick={() => { haptic.light(); toggleTheme(); }}
           aria-label={theme === 'light' ? 'Включить тёмную тему' : 'Включить светлую тему'}
-          className="haptic-press"
-          style={{
-            display: 'grid', placeItems: 'center', width: 40, height: 40, flexShrink: 0,
-            borderRadius: 999, cursor: 'pointer',
-            background: 'var(--bg-elevated)', border: '1px solid var(--border-norse)',
-            color: 'var(--text-secondary)',
-          }}
+          className="fh-theme-btn"
         >
           {theme === 'light' ? <Moon size={18} strokeWidth={2} /> : <Sun size={18} strokeWidth={2} />}
         </button>
       </div>
-      {/* Химцех — launch banner */}
+      {/* Химцех — launch banner (вёрстка из прототипа: сочный рэмп + блик) */}
       {showChemLabBanner && (
-        <div style={{
-          position: 'relative',
-          display: 'flex', alignItems: 'center', gap: 14,
-          background: 'linear-gradient(135deg, color-mix(in oklab, var(--danger) 28%, transparent) 0%, color-mix(in oklab, var(--danger) 10%, transparent) 50%, rgba(20,24,32,0.5) 100%)',
-          border: '1.5px solid color-mix(in oklab, var(--danger) 50%, transparent)',
-          borderRadius: 18, padding: '14px 16px', marginBottom: 20,
-          boxShadow: '0 8px 32px color-mix(in oklab, var(--danger) 18%, transparent), inset 0 1px 0 color-mix(in oklab, var(--text-primary) 6%, transparent)',
-          animation: 'fadeInUp var(--motion-normal) var(--ease-spring) both',
-        }}>
-          <button
-            type="button"
-            onClick={() => {
+        <button
+          type="button"
+          className="fh-promo"
+          onClick={() => {
+            haptic.medium();
+            localStorage.setItem(CHEMLAB_BANNER_KEY, '1');
+            setShowChemLabBanner(false);
+            navigate('/field/chemlab');
+          }}
+        >
+          <span className="fh-promo__sheen" aria-hidden />
+          <span className="fh-promo__ico"><FlaskConical size={26} strokeWidth={2} /></span>
+          <span className="fh-promo__txt">
+            <span className="fh-promo__k">Новая игра · Химцех</span>
+            <span className="fh-promo__t">Переливай реагенты по протоколу</span>
+            <span className="fh-promo__s">Ошибка = взрыв. Учись на правилах смены</span>
+          </span>
+          <span className="fh-promo__cta">ИГРАТЬ</span>
+          <span
+            className="fh-promo__x"
+            role="button"
+            tabIndex={0}
+            aria-label="Скрыть"
+            onClick={(e) => {
+              e.stopPropagation();
               setShowChemLabBanner(false);
               localStorage.setItem(CHEMLAB_BANNER_KEY, '1');
             }}
-            style={{
-              position: 'absolute', top: 8, right: 10, background: 'none', border: 'none',
-              color: 'color-mix(in oklab, var(--text-primary) 45%, transparent)', fontSize: 20, cursor: 'pointer', lineHeight: 1, padding: 4,
-            }}
-            aria-label="Закрыть"
-          >×</button>
-          <div style={{
-            width: 52, height: 52, borderRadius: 16, flexShrink: 0,
-            background: 'linear-gradient(135deg, color-mix(in oklab, var(--danger) 40%, transparent), rgba(120,80,20,0.25))',
-            border: '1px solid color-mix(in oklab, var(--danger) 55%, transparent)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            fontSize: 28, filter: 'drop-shadow(0 0 12px color-mix(in oklab, var(--danger) 45%, transparent))',
-          }}>🧪</div>
-          <div style={{ flex: 1, minWidth: 0, paddingRight: 20 }}>
-            <p style={{ fontSize: 10, fontWeight: 800, letterSpacing: '.14em', color: 'var(--value)', marginBottom: 4 }}>
-              НОВАЯ ИГРА · ХИМЦЕХ
-            </p>
-            <p style={{ fontSize: 15, fontWeight: 800, color: 'var(--text-primary)', marginBottom: 4, lineHeight: 1.25 }}>
-              Переливай реагенты по протоколу
-            </p>
-            <p style={{ fontSize: 11, color: 'color-mix(in oklab, var(--text-primary) 65%, transparent)', lineHeight: 1.4 }}>
-              Ошибка = взрыв на весь экран. Учись на реальных правилах смены
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={() => {
-              haptic.medium();
-              localStorage.setItem(CHEMLAB_BANNER_KEY, '1');
-              setShowChemLabBanner(false);
-              navigate('/field/chemlab');
-            }}
-            style={{
-              fontSize: 11, fontWeight: 900, color: 'var(--bg-primary)',
-              background: 'linear-gradient(135deg, var(--value), var(--value))',
-              border: 'none', borderRadius: 12,
-              padding: '12px 12px', whiteSpace: 'nowrap', flexShrink: 0, cursor: 'pointer',
-              boxShadow: '0 4px 18px color-mix(in oklab, var(--value) 40%, transparent)',
-              letterSpacing: '0.02em',
-            }}
-          >
-            ИГРАТЬ
-          </button>
-        </div>
+          >×</span>
+        </button>
       )}
-
       {/* «Химцех починен» — один раз, сворачивается */}
       {showChemLabFixed && (
         <div style={{
@@ -721,17 +700,16 @@ export default function FieldHome() {
           >×</button>
           <div style={{
             width: 48, height: 48, borderRadius: 14, flexShrink: 0,
-            background: 'linear-gradient(135deg, color-mix(in oklab, var(--ok) 35%, transparent), color-mix(in oklab, var(--ok) 25%, transparent))',
-            border: '1px solid color-mix(in oklab, var(--ok) 50%, transparent)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 26,
-            filter: 'drop-shadow(0 0 10px color-mix(in oklab, var(--ok) 40%, transparent))',
-          }}>🧪</div>
+            background: 'color-mix(in oklab, var(--ok) 18%, transparent)',
+            border: '1px solid color-mix(in oklab, var(--ok) 45%, transparent)',
+            display: 'grid', placeItems: 'center', color: 'var(--ok)',
+          }}><Wrench size={24} strokeWidth={2} /></div>
           <div style={{ flex: 1, minWidth: 0, paddingRight: 20 }}>
-            <p style={{ fontSize: 10, fontWeight: 800, letterSpacing: '.14em', color: 'var(--ok)', marginBottom: 4 }}>
+            <p style={{ fontSize: 11, fontWeight: 800, letterSpacing: '.14em', color: 'var(--ok)', marginBottom: 4 }}>
               ИГРА СНОВА РАБОТАЕТ
             </p>
             <p style={{ fontSize: 15, fontWeight: 800, color: 'var(--text-primary)', marginBottom: 4, lineHeight: 1.25 }}>
-              Химцех починен 🛠️
+              Химцех починен
             </p>
             <p style={{ fontSize: 11, color: 'color-mix(in oklab, var(--text-primary) 65%, transparent)', lineHeight: 1.4 }}>
               Открывал и вылетало — починили. Заходи и переливай реагенты
@@ -987,11 +965,11 @@ export default function FieldHome() {
       {/* Постоянный баннер готовности — рабочий всегда видит свой статус и может сменить */}
       {readinessStatus && (() => {
         const RS = {
-          ready:     { ic: '⚔️', label: 'Готов к походу',      sub: 'Жду нового объекта',        col: 'var(--ok)' },
-          not_ready: { ic: '🛏', label: 'Пока отдыхаю',        sub: 'Не готов к выезду',          col: 'var(--value)' },
-          on_site:   { ic: '🚧', label: 'На объекте',          sub: 'В строю на работе',          col: 'var(--acc)' },
-          archive:   { ic: '🗄', label: 'В архиве',            sub: '',                           col: 'var(--text-tertiary)' },
-          unknown:   { ic: '❔', label: 'Готов на объект?',    sub: 'Отметь свою готовность',     col: 'var(--danger)' },
+          ready:     { ic: Swords, label: 'Готов к походу',      sub: 'Жду нового объекта',        col: 'var(--ok)' },
+          not_ready: { ic: BedDouble, label: 'Пока отдыхаю',     sub: 'Не готов к выезду',          col: 'var(--value)' },
+          on_site:   { ic: HardHat, label: 'На объекте',         sub: 'В строю на работе',          col: 'var(--acc)' },
+          archive:   { ic: Archive, label: 'В архиве',           sub: '',                           col: 'var(--text-tertiary)' },
+          unknown:   { ic: HelpCircle, label: 'Готов на объект?', sub: 'Отметь свою готовность',    col: 'var(--danger)' },
         };
         const r = RS[readinessStatus] || RS.unknown;
         // Если чек-ин заблокирован непройденным уроком — не показываем «зелёное» противоречие
@@ -1001,7 +979,7 @@ export default function FieldHome() {
           <button onClick={() => { haptic.light(); navigate('/field/readiness'); }}
             className="w-full rounded-xl p-4 mb-4 flex items-center gap-3 text-left"
             style={{ backgroundColor: 'var(--bg-elevated)', border: `2px solid ${shown.col}`, opacity: blockedByAcademy ? 0.85 : 1 }}>
-            <span style={{ fontSize: 26 }}>{shown.ic}</span>
+            <IconTile icon={shown.ic} size={44} tone={blockedByAcademy ? 'danger' : 'status'} />
             <div style={{ flex: 1, minWidth: 0 }}>
               <p className="font-semibold" style={{ color: shown.col }}>{shown.label}</p>
               {shown.sub && <p className="text-sm" style={{ color: 'var(--text-tertiary)' }}>{shown.sub}</p>}
@@ -1018,8 +996,9 @@ export default function FieldHome() {
         <button onClick={() => navigate('/field/stages')}
           className="w-full rounded-xl p-4 mb-4 text-left"
           style={{ backgroundColor: 'var(--bg-elevated)', border: `2px solid ${STAGE_COLORS[currentStage.stage_type] || 'var(--acc)'}` }}>
-          <p className="font-semibold" style={{ color: STAGE_COLORS[currentStage.stage_type] || 'var(--acc)' }}>
-            {STAGE_ICONS[currentStage.stage_type] || ''} {STAGE_LABELS[currentStage.stage_type] || currentStage.stage_type}
+          <p className="font-semibold" style={{ color: STAGE_COLORS[currentStage.stage_type] || 'var(--acc)', display: 'flex', alignItems: 'center', gap: 6 }}>
+            {(() => { const Ic = STAGE_ICONS[currentStage.stage_type]; return Ic ? <Ic size={15} strokeWidth={2.2} /> : null; })()}
+            {STAGE_LABELS[currentStage.stage_type] || currentStage.stage_type}
           </p>
           <p className="text-sm mt-1" style={{ color: 'var(--text-secondary)' }}>
             {Math.max(1, Math.floor((Date.now() - new Date(currentStage.date_from).getTime()) / 86400000) + 1)}-й день
@@ -1139,11 +1118,11 @@ export default function FieldHome() {
       {/* Gamification tiles */}
       <div className="mb-5">
         <p className="text-xs font-semibold uppercase tracking-wide px-1 mb-2" style={{ color: 'var(--text-tertiary)', letterSpacing: '.1em' }}>
-          ⚔ Геймификация
+          Геймификация
         </p>
         <NornsPauseStrip style={{ margin: '0 0 10px' }} />
         <div className="grid grid-cols-2 gap-3">
-          {GAMIFICATION_TILES.map(({ emoji, label, path, bg, border, badge, folder }) => (
+          {GAMIFICATION_TILES.map(({ icon: Icon, label, path, tone, badge, folder }) => (
             <button
               key={path}
               onClick={() => {
@@ -1152,14 +1131,18 @@ export default function FieldHome() {
                 else navigate(path);
               }}
               className="flex items-center gap-3 p-4 rounded-2xl active:scale-95 transition-transform relative"
-              style={{ background: bg, border: `1.5px solid ${border}`, boxShadow: '0 4px 16px color-mix(in oklab, var(--bg-primary) 20%, transparent)' }}
+              style={{
+                background: tone === 'neutral' ? 'var(--bg-surface)' : `color-mix(in oklab, var(--${tone}) 9%, var(--bg-surface))`,
+                border: `1.5px solid ${tone === 'neutral' ? 'var(--border-norse)' : `color-mix(in oklab, var(--${tone}) 30%, transparent)`}`,
+                boxShadow: 'var(--elevation-1)',
+              }}
             >
               {badge && (
                 <span style={{
-                  position: 'absolute', top: 8, right: 8, fontSize: 8, fontWeight: 800,
-                  padding: '2px 6px', borderRadius: 6,
-                  background: badge === PAUSE_BADGE ? 'color-mix(in oklab, var(--value) 92%, transparent)' : 'color-mix(in oklab, var(--danger) 95%, transparent)',
-                  color: 'var(--bg-primary)',
+                  position: 'absolute', top: 8, right: 8, fontSize: 10, fontWeight: 800,
+                  padding: '3px 7px', borderRadius: 999,
+                  background: badge === PAUSE_BADGE ? 'var(--value)' : 'var(--danger)',
+                  color: badge === PAUSE_BADGE ? 'var(--text-on-gold)' : '#fff',
                   letterSpacing: '.06em',
                   maxWidth: '55%',
                   whiteSpace: 'nowrap',
@@ -1169,20 +1152,20 @@ export default function FieldHome() {
               )}
               {folder ? (
                 <div style={{
-                  width: 40, height: 40, borderRadius: 10, flexShrink: 0,
-                  background: 'color-mix(in oklab, var(--bg-primary) 35%, transparent)',
-                  border: '1px solid color-mix(in oklab, var(--text-primary) 10%, transparent)',
+                  width: 40, height: 40, borderRadius: 12, flexShrink: 0,
+                  background: 'var(--bg-elevated)',
+                  border: '1px solid var(--border-norse)',
                   display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 2, padding: 4,
+                  color: 'var(--text-secondary)',
                 }}>
-                  {['🎰', '🌊', '🧪', '·'].map((e, i) => (
-                    <div key={i} style={{
-                      borderRadius: 4, fontSize: 11, display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      background: 'color-mix(in oklab, var(--text-primary) 6%, transparent)',
-                    }}>{e}</div>
+                  {[Dices, Waves, FlaskConical, Plus].map((Ic, i) => (
+                    <div key={i} style={{ display: 'grid', placeItems: 'center' }}>
+                      <Ic size={11} strokeWidth={2.2} />
+                    </div>
                   ))}
                 </div>
               ) : (
-                <span style={{ fontSize: 28, filter: 'drop-shadow(0 2px 6px color-mix(in oklab, var(--bg-primary) 30%, transparent))' }}>{emoji}</span>
+                <IconTile icon={Icon} size={40} tone={tone} />
               )}
               <span className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>{label}</span>
             </button>
@@ -1246,24 +1229,18 @@ export default function FieldHome() {
                     opacity: g.soon ? 0.45 : 1,
                   }}
                 >
-                  <div style={{
-                    width: 64, height: 64, borderRadius: 16, position: 'relative',
-                    background: g.bg, border: `1.5px solid ${g.border}`,
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    fontSize: 30,
-                    boxShadow: '0 8px 24px color-mix(in oklab, var(--bg-primary) 35%, transparent)',
-                  }}>
-                    {g.emoji}
+                  <div style={{ position: 'relative' }}>
+                    <IconTile icon={g.icon} size={64} tone={g.tone} iconSize={30} />
                     {g.badge && (
                       <span style={{
-                        position: 'absolute', top: -4, right: -4, fontSize: 8, fontWeight: 800,
-                        padding: '2px 5px', borderRadius: 6,
-                        background: g.badge === PAUSE_BADGE ? 'color-mix(in oklab, var(--value) 95%, transparent)' : 'color-mix(in oklab, var(--danger) 95%, transparent)',
-                        color: 'var(--bg-primary)',
+                        position: 'absolute', top: -4, right: -4, fontSize: 10, fontWeight: 800,
+                        padding: '3px 6px', borderRadius: 999,
+                        background: g.badge === PAUSE_BADGE ? 'var(--value)' : 'var(--danger)',
+                        color: g.badge === PAUSE_BADGE ? 'var(--text-on-gold)' : '#fff',
                       }}>{g.badge}</span>
                     )}
                   </div>
-                  <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--field-text)' }}>{g.label}</span>
+                  <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-primary)' }}>{g.label}</span>
                 </button>
               ))}
             </div>
@@ -1533,6 +1510,7 @@ export default function FieldHome() {
           </div>
         </>
       )}
+      </div>
     </div>
   );
 }

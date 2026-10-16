@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { Flame, Star, Undo2, ClipboardList, IdCard } from 'lucide-react';
 import { fieldApi } from '@/api/fieldClient';
 import { useHaptic } from '@/hooks/useHaptic';
 import {
@@ -508,17 +509,21 @@ export default function ChemLabGame() {
       <header className="cl-top">
         <button type="button" className="cl-back" onClick={() => navigate('/field')} aria-label="Назад">←</button>
         <div className="cl-title-block">
-          <h1 className="cl-title">Химцех {world?.icon || '🧪'}</h1>
+          <h1 className="cl-title">Химцех</h1>
           <div className="cl-sub">
             {chapter?.title || world?.name || 'Смена'} · №{session?.level ?? '—'}
-            {stats?.current_streak ? ` · 🔥${stats.current_streak}` : ''}
+            {stats?.current_streak ? (
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3, marginLeft: 4, verticalAlign: '-2px' }}>
+                <Flame size={12} strokeWidth={2.4} />{stats.current_streak}
+              </span>
+            ) : ''}
           </div>
         </div>
         <div className="cl-hud-right">
           <div className="cl-pill" aria-live="polite">ход {moves}</div>
           {threeStar != null && (
-            <div className="cl-star-hint" title="Порог 3★">
-              ⭐≤{threeStar}
+            <div className="cl-star-hint" title="Порог 3 звёзд">
+              <Star size={12} strokeWidth={2.2} /> ≤{threeStar}
             </div>
           )}
         </div>
@@ -585,13 +590,13 @@ export default function ChemLabGame() {
 
       <div className="cl-tools">
         <button type="button" className="cl-tool" onClick={undo} disabled={!history.length || locked || phase !== 'playing'}>
-          <span>↩</span> Отмена
+          <Undo2 size={15} strokeWidth={2.2} /> Отмена
         </button>
         <button type="button" className="cl-tool" onClick={useProtocol} disabled={locked || phase !== 'playing'}>
-          <span>📋</span> Протокол
+          <ClipboardList size={15} strokeWidth={2.2} /> Протокол
         </button>
         <button type="button" className="cl-tool" onClick={usePassport} disabled={locked || phase !== 'playing'}>
-          <span>🪪</span> Паспорт
+          <IdCard size={15} strokeWidth={2.2} /> Паспорт
         </button>
       </div>
 

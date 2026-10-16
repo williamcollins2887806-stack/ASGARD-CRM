@@ -1,11 +1,12 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { ArrowLeft, Briefcase, MapPin, ChevronRight, Clock, Check, AlertCircle, Inbox } from 'lucide-react';
+import { ArrowLeft, Briefcase, MapPin, ChevronRight, Clock, Check, AlertCircle, Inbox, BarChart3 } from 'lucide-react';
 import { fieldApi } from '@/api/fieldClient';
 import { api } from '@/api/client';
 import { useHaptic } from '@/hooks/useHaptic';
 import { BottomSheet } from '@/components/shared/BottomSheet';
 import { formatMoney as fmt } from '@/lib/utils';
+import './field-screens.css';
 
 function fmtDate(d) { return d ? new Date(d).toLocaleDateString('ru-RU') : '—'; }
 
@@ -240,48 +241,42 @@ export default function FieldMoney() {
   const stagesTotal = stagesList.reduce((s, st) => s + parseFloat(st.amount_earned || 0), 0);
 
   return (
-    <div className="p-4 space-y-4" style={{ backgroundColor: 'var(--bg-primary)', paddingTop: 'max(env(safe-area-inset-top), 16px)', paddingBottom: 'max(env(safe-area-inset-bottom), 24px)' }}>
+    <div className="fs-root">
+      <div className="fs-scene" aria-hidden><span className="fs-orb fs-orb--a" /><span className="fs-orb fs-orb--b" /></div>
+      <div className="fs-content">
       {/* Header */}
-      <div className="flex items-center gap-3">
-        <button onClick={() => { haptic.light(); navigate('/field/home'); }} className="p-2 rounded-lg" style={{ backgroundColor: 'var(--bg-elevated)' }}>
-          <ArrowLeft size={20} style={{ color: 'var(--text-primary)' }} />
+      <div className="fs-head">
+        <button onClick={() => { haptic.light(); navigate('/field/home'); }} className="fs-head__btn" aria-label="Назад">
+          <ArrowLeft size={20} strokeWidth={2.3} />
         </button>
-        <h1 className="text-lg font-bold" style={{ color: 'var(--text-primary)' }}>Мои деньги</h1>
+        <div>
+          <h1 className="fs-head__title">Мои деньги</h1>
+        </div>
         <button
           onClick={() => { haptic.light(); navigate('/field/earnings/monthly'); }}
-          className="ml-auto text-xs font-semibold px-3 py-1.5 rounded-lg"
-          style={{ backgroundColor: 'var(--bg-elevated)', color: 'var(--gold)', border: '1px solid color-mix(in oklab, var(--value) 30%, transparent)' }}
+          className="fs-head__right fs-chip"
+          style={{ cursor: 'pointer', color: 'var(--value-ink)' }}
         >
-          💰 По месяцам
+          <BarChart3 size={14} strokeWidth={2.2} /> По месяцам
         </button>
       </div>
 
       {error && (
-        <div className="p-3 rounded-lg text-sm" style={{ backgroundColor: 'color-mix(in oklab, var(--danger) 10%, transparent)', color: 'var(--danger)' }}>{error}</div>
+        <div className="fs-card fs-card--danger" style={{ padding: 12, fontSize: 13.5, color: 'var(--danger-ink)', background: 'color-mix(in oklab, var(--danger) 10%, var(--bg-surface))' }}>{error}</div>
       )}
 
       {/* ─── Hero card ──────────────────────────────────────── */}
-      <div className="rounded-xl p-5 relative overflow-hidden" style={{
-        background: 'linear-gradient(135deg, var(--bg-elevated) 0%, color-mix(in oklab, var(--value) 8%, transparent) 100%)',
-        border: '1px solid var(--border-norse)',
-      }}>
-        <div style={{ position: 'absolute', right: '-10px', top: '50%', transform: 'translateY(-50%)', fontSize: '4rem', fontWeight: 900, color: 'color-mix(in oklab, var(--text-primary) 3%, transparent)', letterSpacing: '4px', pointerEvents: 'none' }}>ASGARD</div>
+      <div className="fs-hero">
+        <div className="fs-hero__ghost">ASGARD</div>
         <div style={{ position: 'relative', zIndex: 1 }}>
-          {cur.work_title && (
-            <p className="text-xs font-semibold uppercase tracking-widest mb-1" style={{ color: 'var(--text-tertiary)' }}>
-              Текущий проект: {cur.work_title}
-            </p>
-          )}
-          <p className="text-3xl font-bold" style={{ color: 'var(--gold)' }}>{fmt(cur.total_earned)}</p>
+          {cur.work_title && <p className="fs-hero__label">Текущий проект: {cur.work_title}</p>}
+          <p className="fs-hero__value">{fmt(cur.total_earned)}</p>
 
           {daysWorked > 0 && (
             <>
-              <p className="text-sm mt-2" style={{ color: 'var(--text-secondary)' }}>Отработано {daysWorked} смен</p>
-              {/* Progress bar */}
-              <div className="mt-2 rounded" style={{ background: 'color-mix(in oklab, var(--text-primary) 8%, transparent)', height: '6px', overflow: 'hidden' }}>
-                <div className="rounded" style={{ height: '100%', width: `${pct}%`, background: 'linear-gradient(90deg, var(--gold), var(--value))', transition: 'width 0.8s ease' }} />
-              </div>
-              <p className="text-xs mt-1" style={{ color: 'var(--text-tertiary)' }}>{daysWorked} из {totalShifts} смен</p>
+              <p className="fs-hero__sub">Отработано {daysWorked} смен</p>
+              <div className="fs-progress"><i style={{ width: `${pct}%` }} /></div>
+              <p className="fs-hero__sub" style={{ fontSize: 11.5, color: 'var(--text-tertiary)' }}>{daysWorked} из {totalShifts} смен</p>
             </>
           )}
         </div>
@@ -289,7 +284,7 @@ export default function FieldMoney() {
 
       {/* ─── Tariff card ─────────────────────────────────────── */}
       {(tariff.position_name || proj.day_rate) && (
-        <div className="rounded-xl p-4" style={{ backgroundColor: 'var(--bg-elevated)', border: '1px solid color-mix(in oklab, var(--value) 12%, transparent)' }}>
+        <div className="fs-card fs-card--value">
           <div className="flex items-center gap-2 mb-3">
             <Briefcase size={16} style={{ color: 'var(--gold)' }} />
             <span className="text-xs font-semibold uppercase tracking-widest" style={{ color: 'var(--text-tertiary)' }}>Тарифная сетка</span>
@@ -441,6 +436,7 @@ export default function FieldMoney() {
           })}
         </div>
       )}
+      </div>
     </div>
   );
 }

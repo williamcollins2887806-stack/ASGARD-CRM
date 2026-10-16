@@ -1,7 +1,9 @@
 /* Химцех — App Store polish */
-
+/* S3-тема: обвязка HUD следует теме приложения, а лабораторное полотно
+   (.cl-root--canvas .cl-bench-wrap) остаётся тёмным артом в обеих темах. */
 .cl-root {
-  --cl-bg: #0a0c10;
+  --cl-bg: var(--bg-primary);
+  --cl-surface: var(--bg-surface);
   --cl-amber: var(--value);
   --cl-text: var(--text-primary);
   --cl-muted: color-mix(in oklab, var(--text-primary) 55%, transparent);
@@ -10,9 +12,9 @@
   min-height: 100vh;
   min-height: 100dvh;
   background:
-    radial-gradient(ellipse 110% 55% at 50% -8%, color-mix(in oklab, var(--danger) 16%, transparent), transparent 52%),
-    radial-gradient(ellipse 50% 35% at 90% 95%, rgba(40, 28, 8, 0.35), transparent 55%),
-    linear-gradient(180deg, #151922 0%, var(--cl-bg) 42%, #06070a 100%);
+    radial-gradient(ellipse 110% 55% at 50% -8%, color-mix(in oklab, var(--danger) 14%, transparent), transparent 52%),
+    radial-gradient(ellipse 50% 35% at 90% 95%, color-mix(in oklab, var(--value) 14%, transparent), transparent 55%),
+    var(--cl-bg);
   color: var(--cl-text);
   padding: calc(10px + env(safe-area-inset-top)) 12px calc(14px + env(safe-area-inset-bottom));
   display: flex;
@@ -20,6 +22,11 @@
   box-sizing: border-box;
   overflow: hidden;
   position: relative;
+}
+
+/* Полотно лаборатории — всегда тёмное (это арт, а не UI-поверхность). */
+.cl-root--canvas .cl-bench-wrap {
+  --cl-bg-art: #0a0c10;
 }
 
 .cl-top {
@@ -427,11 +434,11 @@
 }
 .cl-tool {
   flex: 1; padding: 11px 6px; border-radius: 14px;
-  border: 1px solid color-mix(in oklab, var(--text-primary) 10%, transparent);
-  background: linear-gradient(180deg, #1e2430, #141820);
-  color: var(--cl-text); font-size: 11px; font-weight: 800;
+  border: 1px solid var(--border-norse);
+  background: var(--bg-surface);
+  color: var(--cl-text); font-size: 12px; font-weight: 800;
   cursor: pointer; display: flex; flex-direction: column; align-items: center; gap: 3px;
-  box-shadow: 0 4px 14px color-mix(in oklab, var(--bg-primary) 28%, transparent);
+  box-shadow: var(--elevation-1);
 }
 .cl-tool:active:not(:disabled) { transform: scale(0.97); }
 .cl-tool:disabled { opacity: 0.32; cursor: not-allowed; }
@@ -567,7 +574,7 @@
 
 .cl-card {
   width: 100%; max-width: 340px; border-radius: 22px; padding: 26px 22px;
-  background: linear-gradient(160deg, #1e2430, #0e1116);
+  background: var(--bg-surface);
   border: 1px solid color-mix(in oklab, var(--danger) 40%, transparent);
   box-shadow: 0 24px 80px color-mix(in oklab, var(--bg-primary) 60%, transparent), 0 0 40px color-mix(in oklab, var(--danger) 10%, transparent);
   text-align: center;

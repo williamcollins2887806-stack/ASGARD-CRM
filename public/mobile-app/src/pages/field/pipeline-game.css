@@ -1,8 +1,11 @@
-/* Рунопровод — wow visual language */
+/* Рунопровод — wow visual language
+   S3-тема: обвязка (шапка, карточки, кнопки) следует теме приложения;
+   игровое поле пайплайна (.pp-board / .pp-scroll в зоне полотна) остаётся
+   тёмным артом, поэтому world-палитры ниже сохранены. */
 .pp-root {
-  --bg: #070a12;
-  --card: #12182a;
-  --card2: #1a2340;
+  --bg: var(--bg-primary);
+  --card: var(--bg-surface);
+  --card2: var(--bg-surface-alt);
   --gold: var(--value);
   --cyan: var(--acc);
   --red: var(--danger);

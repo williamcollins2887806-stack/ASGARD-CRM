@@ -5,27 +5,28 @@
  */
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, ChevronLeft, ChevronRight, Phone } from 'lucide-react';
+import { ArrowLeft, ChevronLeft, ChevronRight, Phone, Sun, Moon, Plane, Factory, Stethoscope, GraduationCap, Ship, Truck, Hourglass, BedDouble, Building2, CircleDot, Circle } from 'lucide-react';
 import { fieldApi } from '@/api/fieldClient';
 import { useHaptic } from '@/hooks/useHaptic';
 import { formatMoney as fmtMoney, plural } from '@/lib/utils';
 import { BottomSheet } from '@/components/shared/BottomSheet';
+import './field-screens.css';
 
 const TYPE_META = {
-  day:        { icon: '☀️', label: 'Дневная',   bg: 'var(--ts-day-bg)',        fg: 'var(--ts-day-fg)' },
-  night:      { icon: '🌙', label: 'Ночная',    bg: 'var(--ts-night-bg)',      fg: 'var(--ts-night-fg)' },
-  travel:     { icon: '✈️', label: 'Дорога',    bg: 'var(--ts-travel-bg)',     fg: 'var(--ts-travel-fg)' },
-  road:       { icon: '✈️', label: 'Дорога',    bg: 'var(--ts-travel-bg)',     fg: 'var(--ts-travel-fg)' },
-  warehouse:  { icon: '🏭', label: 'Склад',     bg: 'var(--ts-warehouse-bg)',  fg: 'var(--ts-warehouse-fg)' },
-  medical:    { icon: '🏥', label: 'Медосмотр', bg: 'var(--ts-medical-bg)',    fg: 'var(--ts-medical-fg)' },
-  training:   { icon: '🎓', label: 'Обучение',  bg: 'var(--ts-training-bg)',   fg: 'var(--ts-training-fg)' },
-  ship:       { icon: '🚢', label: 'Корабль',   bg: 'var(--ts-ship-bg)',       fg: 'var(--ts-ship-fg)' },
-  helicopter: { icon: '🚁', label: 'Вертолёт',  bg: 'var(--ts-helicopter-bg)', fg: 'var(--ts-helicopter-fg)' },
-  waiting:    { icon: '⏳', label: 'Ожидание',  bg: 'var(--ts-waiting-bg)',    fg: 'var(--ts-waiting-fg)' },
-  standby:    { icon: '⏳', label: 'Дежурство', bg: 'var(--ts-waiting-bg)',    fg: 'var(--ts-waiting-fg)' },
-  day_off:    { icon: '🏖', label: 'Выходной',  bg: 'var(--ts-dayoff-bg, color-mix(in srgb, var(--text-tertiary) 14%, transparent))', fg: 'var(--ts-dayoff-fg, var(--text-tertiary))' },
-  object:     { icon: '🏗', label: 'Объект',    bg: 'var(--ts-day-bg)',        fg: 'var(--ts-day-fg)' },
-  half:       { icon: '½',  label: 'Полсмены',  bg: 'var(--ts-warehouse-bg)',  fg: 'var(--ts-warehouse-fg)' },
+  day:        { Icon: Sun,          label: 'Дневная',   bg: 'var(--ts-day-bg)',        fg: 'var(--ts-day-fg)' },
+  night:      { Icon: Moon,         label: 'Ночная',    bg: 'var(--ts-night-bg)',      fg: 'var(--ts-night-fg)' },
+  travel:     { Icon: Plane,        label: 'Дорога',    bg: 'var(--ts-travel-bg)',     fg: 'var(--ts-travel-fg)' },
+  road:       { Icon: Plane,        label: 'Дорога',    bg: 'var(--ts-travel-bg)',     fg: 'var(--ts-travel-fg)' },
+  warehouse:  { Icon: Factory,      label: 'Склад',     bg: 'var(--ts-warehouse-bg)',  fg: 'var(--ts-warehouse-fg)' },
+  medical:    { Icon: Stethoscope,  label: 'Медосмотр', bg: 'var(--ts-medical-bg)',    fg: 'var(--ts-medical-fg)' },
+  training:   { Icon: GraduationCap, label: 'Обучение', bg: 'var(--ts-training-bg)',   fg: 'var(--ts-training-fg)' },
+  ship:       { Icon: Ship,         label: 'Корабль',   bg: 'var(--ts-ship-bg)',       fg: 'var(--ts-ship-fg)' },
+  helicopter: { Icon: Truck,        label: 'Вертолёт',  bg: 'var(--ts-helicopter-bg)', fg: 'var(--ts-helicopter-fg)' },
+  waiting:    { Icon: Hourglass,    label: 'Ожидание',  bg: 'var(--ts-waiting-bg)',    fg: 'var(--ts-waiting-fg)' },
+  standby:    { Icon: Hourglass,    label: 'Дежурство', bg: 'var(--ts-waiting-bg)',    fg: 'var(--ts-waiting-fg)' },
+  day_off:    { Icon: BedDouble,    label: 'Выходной',  bg: 'var(--ts-dayoff-bg, color-mix(in srgb, var(--text-tertiary) 14%, transparent))', fg: 'var(--ts-dayoff-fg, var(--text-tertiary))' },
+  object:     { Icon: Building2,    label: 'Объект',    bg: 'var(--ts-day-bg)',        fg: 'var(--ts-day-fg)' },
+  half:       { Icon: CircleDot,     label: 'Полсмены',  bg: 'var(--ts-warehouse-bg)',  fg: 'var(--ts-warehouse-fg)' },
 };
 
 const WEEKDAYS_MON = ['пн', 'вт', 'ср', 'чт', 'пт', 'сб', 'вс'];
@@ -46,13 +47,14 @@ const TYPE_PRIORITY = {
 };
 
 function TypeChip({ type }) {
-  const meta = TYPE_META[type] || { icon: '•', label: type || 'Отметка', bg: 'var(--bg-primary)', fg: 'var(--text-secondary)' };
+  const meta = TYPE_META[type] || { Icon: Circle, label: type || 'Отметка', bg: 'var(--bg-surface-alt)', fg: 'var(--text-secondary)' };
+  const Ic = meta.Icon;
   return (
     <span
-      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-semibold shrink-0"
+      className="inline-flex items-center gap-1.5 px-2 py-1 rounded-md text-xs font-semibold shrink-0"
       style={{ background: meta.bg, color: meta.fg }}
     >
-      <span aria-hidden>{meta.icon}</span>
+      <Ic size={13} strokeWidth={2.3} aria-hidden />
       {meta.label}
     </span>
   );
@@ -263,24 +265,24 @@ export default function FieldTimesheet() {
   };
 
   return (
-    <div style={{ backgroundColor: 'var(--bg-primary)', minHeight: '100dvh', paddingTop: 'max(env(safe-area-inset-top), 16px)', paddingBottom: 'max(env(safe-area-inset-bottom), 24px)' }}>
-      <div className="p-4 space-y-4">
-        <div className="flex items-center gap-3">
+    <div className="fs-root">
+      <div className="fs-scene" aria-hidden><span className="fs-orb fs-orb--a" /><span className="fs-orb fs-orb--b" /></div>
+      <div className="fs-content">
+        <div className="fs-head">
           <button
             type="button"
             onClick={() => { haptic.light(); navigate('/field/home'); }}
-            className="p-2 rounded-lg"
-            style={{ backgroundColor: 'var(--bg-elevated)' }}
+            className="fs-head__btn"
             aria-label="Назад"
           >
-            <ArrowLeft size={20} style={{ color: 'var(--text-primary)' }} />
+            <ArrowLeft size={20} strokeWidth={2.3} />
           </button>
-          <h1 className="text-lg font-bold" style={{ color: 'var(--text-primary)' }}>Табель</h1>
+          <h1 className="fs-head__title">Табель</h1>
         </div>
 
         <div
           className="flex items-center justify-between rounded-xl px-2 py-1"
-          style={{ backgroundColor: 'var(--bg-elevated)', border: '1px solid var(--border-norse)' }}
+          style={{ backgroundColor: 'var(--bg-surface)', border: '1px solid var(--border-norse)', boxShadow: 'var(--elevation-1)', marginBottom: 14 }}
         >
           <button
             type="button"
@@ -463,7 +465,6 @@ export default function FieldTimesheet() {
           </>
         )}
       </div>
-
       <DaySheet day={selectedDay} onClose={() => setSelectedDate(null)} />
     </div>
   );

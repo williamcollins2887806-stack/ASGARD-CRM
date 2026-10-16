@@ -523,7 +523,7 @@ export default function FieldInventory() {
                   {'\u2694'} Крутить рулетку {'\u2192'}
                 </button>
               </div>
-            ) : sorted.map((item) => {
+            ) : sorted.map((item, i) => {
               const isVisible = visibleCards.has(item.id);
               const isActing = actionLoading === item.id;
               let statusIcon, statusText, statusClass, subText;
@@ -548,7 +548,7 @@ export default function FieldInventory() {
               }
 
               return (
-                <div key={item.id}
+                <div key={`${item.id}-${i}`}
                   className={`finv-item-card${isVisible ? ' visible' : ''}`}
                   data-status={item.status === 'confirmed' ? 'delivered' : item.status}
                   style={item.status === 'confirmed' ? { opacity: 0.5, filter: 'grayscale(.6)' } : undefined}

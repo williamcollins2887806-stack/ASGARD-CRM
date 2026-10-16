@@ -4,6 +4,9 @@
  */
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
+import {
+  Flame, Check, Ban, BookOpen, Swords, ScrollText, Target, Sparkles, Zap, Circle, BookMarked, Trophy, ArrowDown,
+} from 'lucide-react';
 import { fieldApi } from '@/api/fieldClient';
 
 const COLORS = {
@@ -47,7 +50,7 @@ function StreakBadge({ streak }) {
   const color = streak >= 4 ? COLORS.gold : streak >= 2 ? COLORS.amber : COLORS.muted;
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 4, color }}>
-      <span style={{ fontSize: 16 }}>🔥</span>
+      <Flame size={16} strokeWidth={2.2} />
       <span style={{ fontSize: 13, fontWeight: 700 }}>{streak} {streak % 10 === 1 && streak % 100 !== 11 ? 'неделя' : [2, 3, 4].includes(streak % 10) && ![12, 13, 14].includes(streak % 100) ? 'недели' : 'недель'}</span>
     </div>
   );
@@ -94,7 +97,11 @@ function DailyFactCard({ fact, onView }) {
             <span style={{ fontSize: 11, color: catColor, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 1 }}>
               Факт дня
             </span>
-            {viewed && <span style={{ fontSize: 10, color: COLORS.muted }}>✓ просмотрено</span>}
+            {viewed && (
+              <span style={{ fontSize: 11, color: COLORS.muted, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                <Check size={12} strokeWidth={2.6} /> просмотрено
+              </span>
+            )}
           </div>
           <div style={{ fontSize: 14, fontWeight: 700, color: COLORS.text, marginBottom: 4 }}>{fact.title}</div>
           <div style={{ fontSize: 13, color: COLORS.muted, lineHeight: 1.5 }}>{fact.body}</div>
@@ -112,7 +119,9 @@ function CurrentLessonCard({ lesson, navigate, isOnboarding = false, isBlocking 
         border: '1px solid color-mix(in oklab, var(--text-primary) 7%, transparent)', textAlign: 'center',
         marginBottom: 16,
       }}>
-        <div style={{ fontSize: 32, marginBottom: 8 }}>📖</div>
+        <div style={{ display: 'grid', placeItems: 'center', width: 48, height: 48, margin: '0 auto 8px', borderRadius: 16, background: 'color-mix(in oklab, var(--acc) 14%, transparent)', color: COLORS.rune }}>
+          <BookOpen size={24} strokeWidth={2} />
+        </div>
         <div style={{ color: COLORS.muted, fontSize: 14 }}>Нет активной Руны на этой неделе</div>
       </div>
     );
@@ -127,12 +136,13 @@ function CurrentLessonCard({ lesson, navigate, isOnboarding = false, isBlocking 
 
   const statusColor = isPassed ? COLORS.green : isBlocked ? COLORS.red : daysLeft <= 1 ? COLORS.red : COLORS.gold;
   const statusText = isPassed
-    ? `✓ Пройдено — ${lesson.score}%`
+    ? `Пройдено — ${lesson.score}%`
     : isBlocked
-      ? '⛔ Перечитай Руну'
+      ? 'Перечитай Руну'
       : !lesson.read_completed_at
-        ? '📖 Нужно прочитать'
-        : `⚔️ Пройди Испытание (${attemptsLeft} попытки)`;
+        ? 'Нужно прочитать'
+        : `Пройди Испытание (${attemptsLeft} попытки)`;
+  const statusIcon = isPassed ? Check : isBlocked ? Ban : !lesson.read_completed_at ? BookOpen : Swords;
 
   return (
     <div style={{
@@ -154,13 +164,16 @@ function CurrentLessonCard({ lesson, navigate, isOnboarding = false, isBlocking 
             width: 48, height: 48, borderRadius: 24,
             background: `${COLORS.green}22`, border: `2px solid ${COLORS.green}`,
             display: 'flex', alignItems: 'center', justifyContent: 'center',
-            fontSize: 22, flexShrink: 0,
-          }}>✓</div>
+            color: COLORS.green, flexShrink: 0,
+          }}><Check size={24} strokeWidth={2.6} /></div>
         )}
       </div>
 
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <span style={{ fontSize: 13, color: statusColor, fontWeight: 600 }}>{statusText}</span>
+        <span style={{ fontSize: 13, color: statusColor, fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+          {(() => { const Icon = statusIcon; return <Icon size={14} strokeWidth={2.4} />; })()}
+          {statusText}
+        </span>
         {daysLeft !== null && !isPassed && (
           <span style={{ fontSize: 12, color: daysLeft <= 1 ? COLORS.red : COLORS.muted }}>
             {daysLeft <= 0 ? 'Сегодня дедлайн!' : `${daysLeft}д до дедлайна`}
@@ -176,9 +189,10 @@ function CurrentLessonCard({ lesson, navigate, isOnboarding = false, isBlocking 
             background: `linear-gradient(90deg, ${COLORS.rune}, var(--acc))`,
             border: 'none', borderRadius: 10, color: 'var(--text-primary)',
             fontSize: 14, fontWeight: 700, cursor: 'pointer',
+            display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 7,
           }}
         >
-          ⚔️ Начать Испытание
+          <Swords size={16} strokeWidth={2.3} /> Начать Испытание
         </button>
       )}
 
@@ -190,9 +204,10 @@ function CurrentLessonCard({ lesson, navigate, isOnboarding = false, isBlocking 
             background: `linear-gradient(90deg, ${COLORS.gold}, var(--value))`,
             border: 'none', borderRadius: 10, color: 'var(--bg-primary)',
             fontSize: 14, fontWeight: 700, cursor: 'pointer',
+            display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 7,
           }}
         >
-          {isBlocked ? '📖 Перечитать Руну' : '📖 Читать Руну'}
+          <BookOpen size={16} strokeWidth={2.2} /> {isBlocked ? 'Перечитать Руну' : 'Читать Руну'}
         </button>
       )}
 
@@ -221,16 +236,20 @@ function LessonRow({ lesson, navigate, primaryHint }) {
   const needReread = lesson.need_reread;
   const isRead = !!lesson.read_completed_at;
 
-  let badge = '📖 Читать';
+  let badge = 'Читать';
+  let badgeIcon = BookOpen;
   let badgeColor = COLORS.gold;
   if (isPassed) {
-    badge = `✓ ${lesson.score}%`;
+    badge = `${lesson.score}%`;
+    badgeIcon = Check;
     badgeColor = COLORS.green;
   } else if (needReread) {
-    badge = '📖 Перечитать';
+    badge = 'Перечитать';
+    badgeIcon = BookOpen;
     badgeColor = COLORS.red;
   } else if (isRead) {
-    badge = '⚔ Испытание';
+    badge = 'Испытание';
+    badgeIcon = Swords;
     badgeColor = COLORS.rune;
   }
 
@@ -264,16 +283,18 @@ function LessonRow({ lesson, navigate, primaryHint }) {
           {lesson.title}
         </div>
         {primaryHint && (
-          <div style={{ fontSize: 11, color: COLORS.gold, marginTop: 2, fontWeight: 700 }}>
-            ⬇ Начни отсюда
+          <div style={{ fontSize: 11, color: COLORS.gold, marginTop: 2, fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+            <ArrowDown size={12} strokeWidth={2.6} /> Начни отсюда
           </div>
         )}
       </div>
       <div style={{
-        fontSize: 11, fontWeight: 700, color: badgeColor,
+        fontSize: 12, fontWeight: 700, color: badgeColor,
         background: `${badgeColor}15`, border: `1px solid ${badgeColor}44`,
-        padding: '4px 10px', borderRadius: 10, flexShrink: 0, whiteSpace: 'nowrap',
+        padding: '5px 10px', borderRadius: 10, flexShrink: 0, whiteSpace: 'nowrap',
+        display: 'inline-flex', alignItems: 'center', gap: 5,
       }}>
+        {(() => { const Icon = badgeIcon; return <Icon size={13} strokeWidth={2.4} />; })()}
         {badge}
       </div>
     </div>
@@ -281,11 +302,11 @@ function LessonRow({ lesson, navigate, primaryHint }) {
 }
 
 // Заголовок секции
-function SectionHeader({ icon, title, count, color, subtitle }) {
+function SectionHeader({ icon: Icon, title, count, color, subtitle }) {
   return (
     <div style={{ margin: '20px 4px 10px' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-        <span style={{ fontSize: 16 }}>{icon}</span>
+        {Icon ? <Icon size={16} strokeWidth={2.3} style={{ color }} /> : null}
         <span style={{ fontSize: 13, fontWeight: 800, color, textTransform: 'uppercase', letterSpacing: 1 }}>
           {title}
         </span>
@@ -323,14 +344,14 @@ function StatsRow({ stats }) {
 
       <div style={{ display: 'flex', gap: 12, marginBottom: 12 }}>
         {[
-          { label: 'Рун пройдено', value: `${stats.lessons_passed}/${stats.lessons_total}`, icon: '📜' },
-          { label: 'Средний балл', value: `${stats.avg_score}%`, icon: '🎯' },
-          { label: 'Руны заработано', value: stats.runes_total, icon: '🔮' },
+          { label: 'Рун пройдено', value: `${stats.lessons_passed}/${stats.lessons_total}`, Icon: ScrollText },
+          { label: 'Средний балл', value: `${stats.avg_score}%`, Icon: Target },
+          { label: 'Руны заработано', value: stats.runes_total, Icon: Sparkles },
         ].map((s) => (
           <div key={s.label} style={{ flex: 1, background: 'color-mix(in oklab, var(--text-primary) 3%, transparent)', borderRadius: 10, padding: '10px 8px', textAlign: 'center' }}>
-            <div style={{ fontSize: 18 }}>{s.icon}</div>
+            <s.Icon size={18} strokeWidth={2} style={{ color: COLORS.gold }} />
             <div style={{ fontSize: 16, fontWeight: 800, color: COLORS.text }}>{s.value}</div>
-            <div style={{ fontSize: 10, color: COLORS.muted }}>{s.label}</div>
+            <div style={{ fontSize: 11, color: COLORS.muted }}>{s.label}</div>
           </div>
         ))}
       </div>
@@ -400,7 +421,7 @@ export default function FieldAcademy() {
   if (loading) {
     return (
       <div style={{ minHeight: '100dvh', background: COLORS.bg, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <div style={{ color: COLORS.gold, fontSize: 32 }}>⚡</div>
+        <Zap size={32} strokeWidth={2.2} style={{ color: COLORS.gold }} />
       </div>
     );
   }
@@ -419,7 +440,7 @@ export default function FieldAcademy() {
         background: 'linear-gradient(180deg, var(--bg-surface) 0%, transparent 100%)',
       }}>
         <div style={{ fontSize: 11, color: COLORS.muted, textTransform: 'uppercase', letterSpacing: 2, marginBottom: 4 }}>
-          ᚱ ЧЕРТОГИ МИМИРА
+          ЧЕРТОГИ МИМИРА
         </div>
         <div style={{ fontSize: 24, fontWeight: 900, color: COLORS.text }}>
           Академия воина
@@ -437,7 +458,7 @@ export default function FieldAcademy() {
         {blocking && (
           <>
             <SectionHeader
-              icon="🔴"
+              icon={Ban}
               title={blocking_reason === 'onboarding' ? 'Вводная руна' : 'Для выхода на смену'}
               count={0}
               color={COLORS.red}
@@ -460,7 +481,7 @@ export default function FieldAcademy() {
         {showCurrentWeekSection && (
           <>
             <SectionHeader
-              icon="🟡"
+              icon={BookMarked}
               title="Руна этой недели"
               count={0}
               color={COLORS.gold}
@@ -474,14 +495,14 @@ export default function FieldAcademy() {
         {archive_pending.length > 0 && (
           <>
             <SectionHeader
-              icon="📚"
+              icon={BookOpen}
               title="Летопись — для рун и XP"
               count={archive_pending.length}
               color={COLORS.muted}
               subtitle="Не блокируют выход на смену"
             />
             {archive_pending.map(l => (
-              <LessonRow key={l.id} lesson={l} navigate={navigate} />
+              <LessonRow key={`archive-${l.id}`} lesson={l} navigate={navigate} />
             ))}
           </>
         )}
@@ -490,14 +511,14 @@ export default function FieldAcademy() {
         {optional.length > 0 && (
           <>
             <SectionHeader
-              icon="🟢"
+              icon={Circle}
               title="Для опытных"
               count={optional.length}
               color={COLORS.green}
               subtitle="Необязательные руны — за XP и руны"
             />
             {optional.map(l => (
-              <LessonRow key={l.id} lesson={l} navigate={navigate} />
+              <LessonRow key={`opt-${l.id}`} lesson={l} navigate={navigate} />
             ))}
           </>
         )}
@@ -518,7 +539,7 @@ export default function FieldAcademy() {
             display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
           }}
         >
-          📚 Летопись — все Руны
+          <BookOpen size={16} strokeWidth={2.2} /> Летопись — все Руны
         </button>
       </div>
     </div>

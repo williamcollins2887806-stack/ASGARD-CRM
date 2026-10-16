@@ -1,0 +1,107 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   Общие классы полевых экранов (перенос вёрстки прототипа final2).
+   Только токены приложения → работают в тёмной и светлой теме.
+   Использование: <div className="fs-root"> … <div className="fs-card"> …
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ── Корень экрана + ambient-фон ─────────────────────────────────────────── */
+.fs-root { position: relative; min-height: 100dvh; background: var(--bg-primary); }
+.fs-scene { position: absolute; inset: 0; z-index: 0; overflow: hidden; pointer-events: none; }
+.fs-orb { position: absolute; border-radius: 50%; filter: blur(46px); opacity: .45;
+  animation: fhFloat 12s ease-in-out infinite; }
+.fs-orb--a { width: 240px; height: 240px; left: -80px; top: -60px; background: var(--acc); }
+.fs-orb--b { width: 200px; height: 200px; right: -80px; top: 260px; background: var(--brand-red); opacity: .2; animation-delay: -5s; }
+.fs-content { position: relative; z-index: 5; padding: max(env(safe-area-inset-top), 14px) 16px max(env(safe-area-inset-bottom), 24px); }
+
+/* ── Шапка экрана ────────────────────────────────────────────────────────── */
+.fs-head { display: flex; align-items: center; gap: 12px; margin-bottom: 18px; }
+.fs-head__btn { display: grid; place-items: center; width: 42px; height: 42px; flex-shrink: 0;
+  border: 0; border-radius: 14px; cursor: pointer; color: var(--text-primary);
+  background: color-mix(in oklab, var(--bg-surface) 80%, transparent);
+  border: 1px solid var(--border-norse); box-shadow: var(--elevation-1);
+  transition: transform .1s ease; }
+.fs-head__btn:active { transform: scale(.93); }
+.fs-head__title { margin: 0; font-size: 20px; font-weight: 850; letter-spacing: -.02em; color: var(--text-primary); }
+.fs-head__sub { margin: 2px 0 0; font-size: 12.5px; color: var(--text-tertiary); }
+.fs-head__right { margin-left: auto; flex-shrink: 0; }
+
+/* ── Карточка-стекло ─────────────────────────────────────────────────────── */
+.fs-card { position: relative; border-radius: var(--r-card); padding: 16px; margin-bottom: 14px;
+  background: color-mix(in oklab, var(--bg-surface) 78%, transparent);
+  border: 1px solid var(--border-norse);
+  box-shadow: var(--elevation-2);
+  -webkit-backdrop-filter: blur(14px) saturate(1.5); backdrop-filter: blur(14px) saturate(1.5); }
+.fs-card--nested { background: color-mix(in oklab, var(--bg-surface-alt) 80%, transparent); }
+.fs-card--accent { background: color-mix(in oklab, var(--acc) 9%, var(--bg-surface));
+  border-color: color-mix(in oklab, var(--acc) 28%, transparent); }
+.fs-card--value { background: color-mix(in oklab, var(--value) 10%, var(--bg-surface));
+  border-color: color-mix(in oklab, var(--value) 30%, transparent); }
+
+/* ── Hero-сумма ──────────────────────────────────────────────────────────── */
+.fs-hero { position: relative; overflow: hidden; border-radius: var(--r-card); padding: 20px; margin-bottom: 14px;
+  background:
+    radial-gradient(120% 90% at 100% 0%, color-mix(in oklab, var(--value) 16%, transparent), transparent 60%),
+    color-mix(in oklab, var(--bg-surface) 82%, transparent);
+  border: 1px solid color-mix(in oklab, var(--value) 28%, transparent);
+  box-shadow: var(--elevation-3);
+  -webkit-backdrop-filter: blur(16px) saturate(1.5); backdrop-filter: blur(16px) saturate(1.5); }
+.fs-hero__label { margin: 0; font-size: 11.5px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; color: var(--text-tertiary); }
+.fs-hero__value { margin: 6px 0 0; font-size: 32px; font-weight: 900; letter-spacing: -.03em;
+  color: var(--value-ink); font-variant-numeric: tabular-nums; }
+.fs-hero__sub { margin: 8px 0 0; font-size: 13px; color: var(--text-secondary); }
+.fs-hero__ghost { position: absolute; right: -8px; top: 50%; transform: translateY(-50%);
+  font-size: 3.4rem; font-weight: 900; letter-spacing: .08em; pointer-events: none;
+  color: color-mix(in oklab, var(--text-primary) 4%, transparent); }
+
+/* ── Прогресс ────────────────────────────────────────────────────────────── */
+.fs-progress { margin-top: 10px; height: 7px; border-radius: 999px; background: var(--bg-surface-alt); overflow: hidden; }
+.fs-progress i { display: block; height: 100%; border-radius: 999px;
+  background: linear-gradient(in oklab 90deg, var(--value), var(--acc));
+  transition: width .7s cubic-bezier(.2,.8,.3,1); }
+
+/* ── Строка «метка → значение» ───────────────────────────────────────────── */
+.fs-row { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; padding: 6px 0; }
+.fs-row + .fs-row { border-top: 1px solid color-mix(in oklab, var(--border-norse) 60%, transparent); }
+.fs-row__k { font-size: 13.5px; color: var(--text-secondary); }
+.fs-row__v { font-size: 13.5px; font-weight: 700; color: var(--text-primary); text-align: right; }
+.fs-row__v--value { color: var(--value-ink); }
+.fs-row__v--acc { color: var(--acc); }
+
+/* ── Кнопка-«клавиша» (локальная копия для экранов без ui/index.jsx) ─────── */
+.fs-key { display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  min-height: 48px; padding: 0 18px; border: 0; border-radius: var(--btn-r); cursor: pointer;
+  font-size: 15px; font-weight: 850; color: #fff;
+  background: linear-gradient(in oklab 150deg, var(--acc), var(--acc-deep));
+  box-shadow: 0 5px 0 color-mix(in oklab, var(--acc-deep) 70%, #000),
+    0 12px 22px -6px color-mix(in oklab, var(--acc) 55%, transparent),
+    inset 0 1px 0 rgba(255,255,255,.5);
+  transition: transform .08s ease, box-shadow .08s ease; }
+.fs-key:active { transform: translateY(4px);
+  box-shadow: 0 1px 0 color-mix(in oklab, var(--acc-deep) 70%, #000),
+    0 4px 10px -4px color-mix(in oklab, var(--acc) 55%, transparent),
+    inset 0 1px 0 rgba(255,255,255,.4); }
+.fs-key--gold { color: #2A1E03;
+  background: linear-gradient(in oklab 150deg, #FFE9A8, var(--value) 54%, #B8892B);
+  box-shadow: 0 5px 0 #6E4E0A, 0 12px 22px -6px color-mix(in oklab, var(--value) 55%, transparent), inset 0 1px 0 rgba(255,255,255,.5); }
+.fs-key--block { width: 100%; }
+
+/* ── Чип ─────────────────────────────────────────────────────────────────── */
+.fs-chip { display: inline-flex; align-items: center; gap: 6px; padding: 7px 12px; border-radius: 12px;
+  background: var(--bg-surface-alt); color: var(--text-secondary); font-size: 12px; font-weight: 650;
+  border: 1px solid var(--border-norse); }
+
+/* ── Заголовок секции ────────────────────────────────────────────────────── */
+.fs-section { font-size: 12px; font-weight: 850; letter-spacing: .12em; text-transform: uppercase;
+  color: var(--text-tertiary); padding: 8px 2px 8px; }
+
+/* ── Пустое состояние ────────────────────────────────────────────────────── */
+.fs-empty { text-align: center; padding: 36px 20px; color: var(--text-tertiary); }
+.fs-empty__icon { display: grid; place-items: center; width: 56px; height: 56px; margin: 0 auto 12px;
+  border-radius: 18px; background: var(--bg-surface-alt); color: var(--text-tertiary); }
+
+@keyframes fhFloat { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-16px); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .fs-orb { animation: none; }
+  .fs-key { transition: none; }
+}
