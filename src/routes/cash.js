@@ -1372,7 +1372,11 @@ module.exports = async function(fastify) {
     }
 
     const req = check.rows[0];
-    const amount = parseFloat(req.amount) || 0;
+    // V399: факт-сумма (нет размена) — если бухгалтер передал другую сумму.
+    const bodyAmount = request.body && request.body.actual_amount != null
+      ? parseFloat(request.body.actual_amount) : null;
+    const amount = Number.isFinite(bodyAmount) && bodyAmount > 0
+      ? bodyAmount : (parseFloat(req.amount) || 0);
 
     // Stage W: если заявка с use_se_payee=true — выдача идёт через СЗ-перевод,
     //   касса не трогается, создаётся se_transfers(operation_type='agreement_transfer').
@@ -1459,10 +1463,11 @@ module.exports = async function(fastify) {
             issued_at = NOW(),
             receipt_deadline = NOW() + INTERVAL '12 hours',
             overdue_notified = false,
+            issued_amount = $3,
             updated_at = NOW()
         WHERE id = $2 AND status = 'approved'
         RETURNING id
-      `, [request.user.id, id]);
+      `, [request.user.id, id, amount]);
 
       if (!claimed[0]) {
         await db.query('ROLLBACK');
@@ -1514,7 +1519,10 @@ module.exports = async function(fastify) {
       }
     }
 
-    return { success: true, message: 'Деньги выданы' };
+    const { rows: [bal2] } = await db.query(
+      'SELECT amount FROM cash_balance_log ORDER BY created_at DESC, id DESC LIMIT 1'
+    );
+    return { success: true, message: 'Деньги выданы', issued_amount: amount, cash_balance: bal2 ? parseFloat(bal2.amount) : 0 };
   });
 
   // ─────────────────────────────────────────────────────────────────

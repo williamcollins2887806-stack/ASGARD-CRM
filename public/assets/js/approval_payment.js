@@ -166,7 +166,7 @@ window.AsgardApprovalPaymentPage = (function() {
       </div>`;
       return;
     }
-    list.innerHTML = data.items.map(item => `
+    list.innerHTML = _mode === 'dir' ? data.items.map(item => `
       <div class="card" style="padding:16px;margin-bottom:12px;border:1px solid var(--brd);border-radius:10px;background:var(--bg1);cursor:pointer" data-entity="${item.entity_type}" data-id="${item.id}">
         <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
           <div>
@@ -177,7 +177,67 @@ window.AsgardApprovalPaymentPage = (function() {
           ${pillFor(item)}
         </div>
       </div>
-    `).join('');
+    `).join('') : renderBuhTable(data.items);
+  }
+
+  /**
+   * 17.10: реестр БУХГАЛТЕРИИ — не «согласование», а конкретные выплаты.
+   * Таблица: контрагент · сумма · от кого счёт · [Скачать счёт] · [Оплачено].
+   * Клик по строке открывает модалку с реквизитами для копирования в банк.
+   */
+  function renderBuhTable(items) {
+    const inv = items.filter((x) => x.entity_type === 'payment_invoices');
+    const other = items.filter((x) => x.entity_type !== 'payment_invoices');
+    const rowInv = (it) => `<tr data-entity="${esc(it.entity_type)}" data-id="${it.id}" style="cursor:pointer">
+      <td style="padding:10px 12px;border-bottom:1px solid var(--brd)">${esc(it.supplier_name || '—')}
+        ${it.due_date ? `<div class="help">срок ${new Date(it.due_date).toLocaleDateString('ru-RU')}</div>` : ''}</td>
+      <td style="padding:10px 12px;border-bottom:1px solid var(--brd);text-align:right;font-weight:700;font-variant-numeric:tabular-nums">${money(it.amount)}</td>
+      <td style="padding:10px 12px;border-bottom:1px solid var(--brd)">${esc(it.initiator_name || '—')}</td>
+      <td style="padding:10px 12px;border-bottom:1px solid var(--brd);white-space:nowrap" class="ap-buh-actions">
+        <button type="button" class="btn ghost" data-dl="${it.id}" ${it.file_name ? '' : 'disabled title="Файла нет"'}>⬇ Скачать счёт</button>
+        <button type="button" class="btn primary" data-paid="${it.id}" style="margin-left:6px">✓ Оплачено</button>
+      </td>
+    </tr>`;
+    const rowOther = (it) => `<tr data-entity="${esc(it.entity_type)}" data-id="${it.id}" style="cursor:pointer">
+      <td style="padding:10px 12px;border-bottom:1px solid var(--brd)">${esc(it.label || it.entity_type)} #${it.id}
+        <div class="help">${esc(it.title || it.basis_text || '')}</div></td>
+      <td style="padding:10px 12px;border-bottom:1px solid var(--brd);text-align:right;font-weight:700">${it.amount != null ? money(it.amount) : '—'}</td>
+      <td style="padding:10px 12px;border-bottom:1px solid var(--brd)">${esc(it.initiator_name || '—')}</td>
+      <td style="padding:10px 12px;border-bottom:1px solid var(--brd);white-space:nowrap">
+        <button type="button" class="btn primary" data-paidalt="${esc(it.entity_type)}:${it.id}">✓ Проведено</button>
+      </td>
+    </tr>`;
+    const head = `<thead><tr>
+      <th style="text-align:left;padding:10px 12px">Контрагент / назначение</th>
+      <th style="text-align:right;padding:10px 12px">Сумма</th>
+      <th style="text-align:left;padding:10px 12px">От кого счёт</th>
+      <th style="padding:10px 12px">Действия</th></tr></thead>`;
+    let html = '';
+    if (inv.length) {
+      html += `<div class="ap-buh-block"><div class="ap-buh-block__h">Счета к оплате · ${inv.length}</div>
+        <div style="overflow:auto"><table style="width:100%;border-collapse:collapse;background:var(--bg1);border:1px solid var(--brd);border-radius:10px">${head}<tbody>${inv.map(rowInv).join('')}</tbody></table></div></div>`;
+    }
+    if (other.length) {
+      html += `<div class="ap-buh-block" style="margin-top:16px"><div class="ap-buh-block__h">Прочие к проведению · ${other.length}</div>
+        <div style="overflow:auto"><table style="width:100%;border-collapse:collapse;background:var(--bg1);border:1px solid var(--brd);border-radius:10px">${head}<tbody>${other.map(rowOther).join('')}</tbody></table></div></div>`;
+    }
+    return html || '<div style="text-align:center;padding:40px;color:var(--text-muted)">Нет позиций к исполнению</div>';
+  }
+
+  /** Скачать файл счёта (бухгалтерия) — через blob с токеном. */
+  async function downloadInvoiceFile(id) {
+    try {
+      const r = await fetch(`/api/payment-invoices/${id}/file`, { headers: getHeaders() });
+      if (!r.ok) throw new Error(r.status === 404 ? 'Файл не приложен' : 'Не удалось скачать');
+      const blob = await r.blob();
+      const cd = r.headers.get('content-disposition') || '';
+      const m = cd.match(/filename\*?=(?:UTF-8''|")?([^";]+)/i);
+      const name = m ? decodeURIComponent(m[1].replace(/"/g, '')) : `invoice-${id}.pdf`;
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob); a.download = name;
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(a.href), 3000);
+    } catch (e) { toast('Ошибка', e.message, 'err'); }
   }
 
   // Хост страницы резолвим В ЖИВОМ DOM на каждом шаге, а не один раз.
@@ -200,13 +260,13 @@ window.AsgardApprovalPaymentPage = (function() {
     // Заголовок рисует layout (он же задаёт пункт меню). Приводим его к роли:
     // у директора это решение по счёту, у бухгалтера — очередь на оплату.
     const h1 = document.querySelector('.page-title');
-    if (h1) h1.textContent = dirMode ? 'Согласование оплат' : 'Очередь оплаты';
+    if (h1) h1.textContent = dirMode ? 'Согласование оплат' : 'Бухгалтерия';
     host.innerHTML = `
       <div class="page-header" id="ap_header" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px">
         <div>
           <p style="color:var(--text-muted);font-size:var(--text-sm);margin:0" id="ap-desc">${dirMode
             ? 'Счета, ожидающие вашего решения. Список обновляется автоматически'
-            : 'Заявки, одобренные директором и ожидающие оплаты. Список обновляется автоматически'}</p>
+            : 'Счета к оплате, касса, переводы и расходы — всё к исполнению в одном месте'}</p>
         </div>
         ${dirMode ? `<div id="dir-total" style="padding:10px 16px;border-radius:10px;background:var(--bg2);border:1px solid var(--brd)">
           <div style="font-size:11px;color:var(--t3)">К согласованию</div>
@@ -225,9 +285,17 @@ window.AsgardApprovalPaymentPage = (function() {
           <button class="ap-tab" data-aptab="plan">📋 Планирование на 1-е</button>
         </div>
         <div id="ap_panel"></div>
-        <div id="ap_invoices_panel">` : ''}
+        <div id="ap_invoices_panel">` : `
+        <div class="ap-tabs" id="ap_tabs">
+          <button class="ap-tab is-on" data-aptab="invoices">📄 Счета к оплате</button>
+          <button class="ap-tab" data-aptab="cash">💵 Касса</button>
+          <button class="ap-tab" data-aptab="se">💸 Переводы / СЗ</button>
+          <button class="ap-tab" data-aptab="expenses">📑 Расходы BUH</button>
+        </div>
+        <div id="ap_panel"></div>
+        <div id="ap_invoices_panel">`}
         <div style="text-align:center;padding:40px;color:var(--text-muted)">Загрузка...</div>
-        ${dirMode ? '</div>' : ''}
+        ${'</div>'}
       </div>`;
 
     try {
@@ -247,9 +315,24 @@ window.AsgardApprovalPaymentPage = (function() {
       if (dirMode && live.querySelector('#ap_tabs')) {
         wireDirTabs(live, list, data);
       }
+      // 17.10: вкладки БУХГАЛТЕРИИ — Счета / Касса / Переводы-СЗ / Расходы.
+      if (!dirMode && live.querySelector('#ap_tabs')) {
+        wireBuhTabs(live, list, data);
+      }
 
       let _opening = false;   // защита от дубля модалки: двойной клик по карточке (D-226)
       list.addEventListener('click', async ev => {
+        // 17.10: кнопки реестра бухгалтерии — перехватываем ДО открытия строки.
+        const dl = ev.target.closest('[data-dl]');
+        if (dl) { ev.stopPropagation(); await downloadInvoiceFile(Number(dl.getAttribute('data-dl'))); return; }
+        const paid = ev.target.closest('[data-paid]');
+        if (paid) {
+          ev.stopPropagation();
+          const id = Number(paid.getAttribute('data-paid'));
+          const full = (data.items || []).find((x) => x.entity_type === 'payment_invoices' && +x.id === id);
+          await showPaymentInvoiceBuhModal(full || { id, entity_type: 'payment_invoices' }, data.cash_balance);
+          return;
+        }
         const card = ev.target.closest('[data-entity]');
         if (!card) return;
         const ent = card.dataset.entity;
@@ -273,6 +356,154 @@ window.AsgardApprovalPaymentPage = (function() {
       const list = live && live.querySelector('#payment-list');
       if (list) list.innerHTML = `<div style="text-align:center;padding:40px;color:var(--red)">${esc(err.message)}</div>`;
     }
+  }
+
+  // ─── 17.10: вкладки БУХГАЛТЕРИИ (единая страница бухгалтерии) ────────────
+  // Счета к оплате (существующая очередь) / Касса (выдача налички) /
+  // Переводы-СЗ / Расходы BUH. Симметрично директорским вкладкам, тот же файл.
+  function wireBuhTabs(live, invoicesPanel, data) {
+    const tabs = live.querySelector('#ap_tabs');
+    const panel = live.querySelector('#ap_panel');
+    const setTab = async (tab) => {
+      Array.from(tabs.querySelectorAll('.ap-tab')).forEach((b) => b.classList.toggle('is-on', b.dataset.aptab === tab));
+      invoicesPanel.style.display = tab === 'invoices' ? '' : 'none';
+      const header = live.querySelector('#ap_header');
+      if (header) header.style.display = tab === 'invoices' ? '' : 'none';
+      if (tab === 'invoices') { panel.innerHTML = ''; return; }
+      panel.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text-muted)">Загрузка…</div>';
+      if (tab === 'cash') await renderBuhCashTab(panel);
+      else if (tab === 'se') await renderBuhSeTab(panel);
+      else await renderBuhExpensesTab(panel);
+    };
+    Array.from(tabs.querySelectorAll('.ap-tab')).forEach((b) => {
+      b.onclick = () => setTab(b.dataset.aptab);
+    });
+  }
+
+  /** Вкладка «Касса»: кому выдать, сколько — и кнопка «Выдано» с подтверждением.
+   *  Баланс кассы обновляем ПОСЛЕ выдачи (заказчик: «сразу изменением суммы в кассе»). */
+  async function renderBuhCashTab(panel) {
+    let rows = [];
+    let balance = null;
+    try {
+      const [ra, rb] = await Promise.all([
+        fetch('/api/cash/all', { headers: getHeaders() }),
+        fetch('/api/approval/cash-balance', { headers: getHeaders() }).catch(() => null)
+      ]);
+      if (ra && ra.ok) {
+        const j = await ra.json();
+        // /all отдаёт массив строк (не объект) — поддержим оба вида.
+        rows = Array.isArray(j) ? j : (j.items || j.requests || j.rows || []);
+      }
+      if (rb && rb.ok) { const jb = await rb.json(); balance = jb.balance; }
+    } catch (_) { rows = []; }
+    // Ждём решения директора (approved) — их и выдаём.
+    rows = rows.filter((c) => c.status === 'approved');
+    rows.sort((a, b) => new Date(a.created_at || 0) - new Date(b.created_at || 0));
+    const body = rows.length ? rows.map((c) => `
+      <div class="card" style="padding:14px;margin-bottom:10px;border:1px solid var(--brd);border-radius:10px;background:var(--bg1)">
+        <div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;align-items:center">
+          <div>
+            <div style="font-weight:600">${esc(c.user_name || c.fio || ('#' + c.id))}</div>
+            <div class="help">${esc(c.purpose || c.comment || '')} ${c.created_at ? '· ' + new Date(c.created_at).toLocaleDateString('ru-RU') : ''}</div>
+          </div>
+          <div style="text-align:right">
+            <div style="font-size:18px;font-weight:700">${money(c.amount)}</div>
+            <button type="button" class="btn primary" data-issue="${c.id}" data-amount="${c.amount}" data-who="${esc(c.user_name || '')}" style="margin-top:6px">Выдано</button>
+          </div>
+        </div>
+      </div>`).join('') : '<div style="text-align:center;padding:40px;color:var(--text-muted)">Нет заявок на выдачу</div>';
+    panel.innerHTML = hero('💵', 'Касса — выдача наличных',
+      `К выдаче · ${rows.length}`, rows.reduce((s, c) => s + (Number(c.amount) || 0), 0), 'всего')
+      + (balance != null ? `<div class="help" style="margin:-6px 0 12px">Баланс кассы: <strong id="buh-cash-bal">${money(balance)}</strong></div>` : '')
+      + body;
+    panel.querySelectorAll('[data-issue]').forEach((b) => {
+      b.onclick = () => openIssueModal(Number(b.dataset.issue), Number(b.dataset.amount), b.dataset.who);
+    });
+  }
+
+  /** 17.10: подтверждение выдачи + фактическая сумма → сразу обновляем баланс кассы. */
+  function openIssueModal(cashId, plannedAmount, who) {
+    showModal({
+      title: 'Подтверждение выдачи',
+      html: `<div style="display:grid;gap:12px">
+        <div class="help">${who ? esc(who) + ' · ' : ''}плановая сумма: <strong>${money(plannedAmount)}</strong>. Если выдали другую — укажите фактическую (нет размена).</div>
+        <label class="help">Фактически выдано
+          <input type="number" step="0.01" id="cb-issue-amt" value="${plannedAmount}" style="width:100%;padding:10px;border:1px solid var(--brd);border-radius:8px;background:var(--bg2);color:var(--t1);margin-top:4px"/>
+        </label>
+        <label class="help">Комментарий
+          <input id="cb-issue-comment" placeholder="Необязательно" style="width:100%;padding:10px;border:1px solid var(--brd);border-radius:8px;background:var(--bg2);color:var(--t1);margin-top:4px"/>
+        </label>
+      </div>`,
+      buttons: [
+        { label: 'Отмена', kind: 'ghost' },
+        { label: 'Подтвердить выдачу', kind: 'primary', onClick: async (btn, close) => {
+          const amount = Number(document.getElementById('cb-issue-amt').value);
+          const comment = document.getElementById('cb-issue-comment').value;
+          if (!(amount > 0)) { toast('Сумма', 'Укажите сумму больше нуля', 'err'); return; }
+          try {
+            const r = await fetch(`/api/cash/${cashId}/issue`, {
+              method: 'PUT', headers: getHeaders(),
+              body: JSON.stringify({ amount, comment, actual_amount: amount })
+            });
+            if (!r.ok) { const j = await r.json().catch(() => ({})); throw new Error(j.error || 'Ошибка выдачи'); }
+            const j = await r.json().catch(() => ({}));
+            close();
+            toast('Выдано', 'Наличные выданы, баланс обновлён', 'ok');
+            // Живой баланс без перезагрузки страницы.
+            if (j && j.cash_balance != null) {
+              const el = document.getElementById('buh-cash-bal');
+              if (el) el.textContent = money(j.cash_balance);
+            } else {
+              try {
+                const rb = await fetch('/api/approval/cash-balance', { headers: getHeaders() });
+                if (rb.ok) { const jb = await rb.json(); const el = document.getElementById('buh-cash-bal'); if (el) el.textContent = money(jb.balance); }
+              } catch (_) {}
+            }
+            render();
+          } catch (e) { toast('Ошибка', e.message, 'err'); }
+        } }
+      ]
+    });
+  }
+
+  /** Вкладка «Переводы / СЗ»: суммы к переводу (формулы с сервера, не пересчёт). */
+  async function renderBuhSeTab(panel) {
+    let rows = [];
+    try {
+      const r = await fetch('/api/payout-cart/pending', { headers: getHeaders() });
+      const j = r.ok ? await r.json() : {};
+      rows = j.items || j.rows || [];
+    } catch (_) { rows = []; }
+    panel.innerHTML = hero('💸', 'Переводы / СЗ', `К переводу · ${rows.length}`, 0, 'позиций')
+      + (rows.length ? rows.map((p) => `
+        <div class="card" style="padding:14px;margin-bottom:10px;border:1px solid var(--brd);border-radius:10px;background:var(--bg1)">
+          <div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap">
+            <div><div style="font-weight:600">${esc(p.fio || p.payee_name || ('#' + p.id))}</div>
+              <div class="help">${esc(p.kind_label || p.kind || '')} · ${esc(p.payee_type || '')}</div></div>
+            <div style="text-align:right"><div style="font-weight:700">${money(p.amount_to_transfer != null ? p.amount_to_transfer : p.amount)}</div>
+              ${p.amount_to_worker != null ? `<div class="help">человеку ${money(p.amount_to_worker)}</div>` : ''}</div>
+          </div>
+        </div>`).join('') : '<div style="text-align:center;padding:40px;color:var(--text-muted)">Нет позиций к переводу</div>');
+  }
+
+  /** Вкладка «Расходы BUH». */
+  async function renderBuhExpensesTab(panel) {
+    let rows = [];
+    try {
+      const r = await fetch('/api/office-expenses?status=pending', { headers: getHeaders() });
+      const j = r.ok ? await r.json() : {};
+      rows = j.items || j.expenses || j.rows || [];
+    } catch (_) { rows = []; }
+    panel.innerHTML = hero('📑', 'Расходы BUH', `На проведение · ${rows.length}`, 0, 'записей')
+      + (rows.length ? rows.map((e) => `
+        <div class="card" style="padding:14px;margin-bottom:10px;border:1px solid var(--brd);border-radius:10px;background:var(--bg1)">
+          <div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap">
+            <div><div style="font-weight:600">${esc(e.category_name || e.category || ('#' + e.id))}</div>
+              <div class="help">${esc(e.description || e.comment || '')}</div></div>
+            <div style="text-align:right;font-weight:700">${money(e.amount)}</div>
+          </div>
+        </div>`).join('') : '<div style="text-align:center;padding:40px;color:var(--text-muted)">Нет расходов на проведение</div>');
   }
 
   // ─── V391: вкладки директора на экране согласований ─────────────────────
@@ -506,14 +737,25 @@ window.AsgardApprovalPaymentPage = (function() {
   }
 
   // ─── Модалка директора по payment_invoices (D1, 21.09) ───
+  // V398: остаток TTL согласования (72ч) — директор видит, сколько осталось.
+  function ttlLine(pay) {
+    if (!pay || !pay.approval_expires_at) return '';
+    const left = new Date(pay.approval_expires_at) - Date.now();
+    if (left <= 0) return '<dt>Срок</dt><dd style="color:var(--err,#d33)">истёк — уйдёт в архив</dd>';
+    const h = Math.floor(left / 3600000);
+    const m = Math.floor((left % 3600000) / 60000);
+    const urgent = h < 12;
+    const color = urgent ? 'var(--err,#d33)' : 'var(--t2)';
+    return `<dt>Срок</dt><dd style="color:${color}">осталось ${h} ч ${m} мин</dd>`;
+  }
+
   // Отдельная модалка от бухгалтерской: у директора ДРУГОЕ действие (согласовать/вернуть),
   // и он не видит баланс кассы. Переиспользует те же proc-pay-* классы (правило: без новых модалок).
   //
   // Защита от дубля (D-226, независимый верификатор): двойной клик по карточке запускал
   // ДВЕ модалки (функция `async`, между кликами был await за деталями счёта). Верхняя копия
   // оставалась без обработчиков → кнопка «Согласовать» на вид живая, но не делает ничего.
-  let _dirOpening = false;
-  async function showPaymentInvoiceDirModal(item) {
+  let _dirOpening = false;  async function showPaymentInvoiceDirModal(item) {
     if (_dirOpening) return;    // второй клик, пока первая модалка ещё собирается, игнорируем
     _dirOpening = true;
     try { return await _showPaymentInvoiceDirModalInner(item); }
@@ -548,6 +790,7 @@ window.AsgardApprovalPaymentPage = (function() {
                 <dt>Поставщик</dt><dd>${esc(pay.supplier_name || '—')}</dd>
                 <dt>Основание</dt><dd>${esc(pay.basis_text || pay.basis_type || '—')}</dd>
                 <dt>Файл</dt><dd>${hasFile ? esc(fileName) : 'файл не приложен'}</dd>
+                ${ttlLine(pay)}
               </dl>
             </div>
             <div class="proc-pay-modal__section">

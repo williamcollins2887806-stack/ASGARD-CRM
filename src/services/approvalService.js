@@ -1277,7 +1277,7 @@ async function getPendingForBuh(db) {
   for (const table of tables) {
     try {
       const extra = table === 'payment_invoices'
-        ? ', amount, supplier_name, basis_text, basis_type, file_name, file_path, due_date, work_id, procurement_id, invoice_import_id, line_items_json, payment_doc_id'
+        ? ', amount, supplier_name, basis_text, basis_type, file_name, file_path, due_date, work_id, procurement_id, invoice_import_id, line_items_json, payment_doc_id, created_by'
         : '';
       const result = await db.query(
         `SELECT id, payment_status, requires_payment, updated_at${extra} FROM ${table}
@@ -1285,11 +1285,21 @@ async function getPendingForBuh(db) {
          ORDER BY updated_at DESC`,
         [PAYMENT_STATUSES.PENDING]
       );
+      // «От кого счёт» — имя инициатора (бухгалтерии нужно видеть автора).
+      let initiatorNames = {};
+      if (table === 'payment_invoices') {
+        const ids = [...new Set(result.rows.map((r) => r.created_by).filter(Boolean))];
+        if (ids.length) {
+          const u = await db.query(`SELECT id, name FROM users WHERE id = ANY($1::int[])`, [ids]);
+          initiatorNames = Object.fromEntries(u.rows.map((x) => [Number(x.id), x.name]));
+        }
+      }
       for (const row of result.rows) {
         items.push({
           ...row,
           entity_type: table,
           label: getLabel(table),
+          initiator_name: table === 'payment_invoices' ? (initiatorNames[Number(row.created_by)] || null) : null,
           title: table === 'payment_invoices'
             ? (`Счёт #${row.id}` + (row.supplier_name ? ' · ' + row.supplier_name : '') + (row.amount != null ? ' · ' + Number(row.amount).toLocaleString('ru-RU') + ' ₽' : ''))
             : undefined
