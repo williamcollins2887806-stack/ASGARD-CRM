@@ -587,6 +587,41 @@ module.exports = async function docRegistryRoutes(fastify) {
     }
   });
 
+  /**
+   * V394: экран «Входящие СФ» для кладовщика — минимум полей.
+   * Все входящие СФ, ожидающие получения/подтверждения. Роль WAREHOUSE/ADMIN/BUH.
+   */
+  fastify.get('/incoming-sf', auth, async (req, reply) => {
+    if (!WH_ROLES.has(req.user.role)) {
+      return reply.code(403).send({ error: 'Экран доступен складу, бухгалтерии и админу' });
+    }
+    const q = req.query || {};
+    const p = [];
+    let where = ` WHERE d.deleted_at IS NULL AND d.dir='in'
+      AND (d.ops_status IN ('wait_sf','wait_closing') OR d.sf_received_at IS NOT NULL)`;
+    where += visibilitySql(p, req.user.role, req.user.id, { scope: q.scope });
+    if (q.only_pending === '1') where += ` AND d.sf_received_at IS NULL`;
+    const { rows } = await db.query(
+      `SELECT d.id, d.invoice_number, d.invoice_date, d.counterparty_name, d.supplier_id,
+              d.amount_gross, d.sf_due_at, d.sf_received_at, d.ops_status, d.wh_status,
+              d.spend_kind, d.doc_owner_id, d.attachments, d.original_path_url,
+              u.name AS owner_name
+         FROM doc_registry d LEFT JOIN users u ON u.id = d.doc_owner_id
+        ${where} ORDER BY d.sf_due_at NULLS LAST, d.id DESC LIMIT 300`, p);
+    return {
+      items: rows.map((r) => ({
+        id: r.id, invoice_number: r.invoice_number, invoice_date: r.invoice_date,
+        counterparty_name: r.counterparty_name, amount: Number(r.amount_gross) || 0,
+        sf_due_at: r.sf_due_at, sf_received_at: r.sf_received_at,
+        ops_status: r.ops_status, wh_status: r.wh_status, owner_name: r.owner_name,
+        scan: r.original_path_url || (Array.isArray(r.attachments) && r.attachments[0]
+          ? (typeof r.attachments[0] === 'string' ? r.attachments[0] : (r.attachments[0].url || r.attachments[0].path))
+          : null)
+      })),
+      total: rows.length
+    };
+  });
+
   // ─────────────────────────────────────────────────────────────────────────
   // Архив и график (паритет с «Выплатами», замечание заказчика 16.10.2026).
   // ─────────────────────────────────────────────────────────────────────────
@@ -1419,6 +1454,23 @@ module.exports = async function docRegistryRoutes(fastify) {
         [id, inc.is_incomplete, inc.incomplete_reasons]);
       await audit(db, id, req.user.id, 'quick_due', b);
       return decorate({ ...rows[0], ...inc });
+    }
+
+    // V394: кладовщик отметил «СФ получена» (первый шаг двухшагового флоу).
+    // Отметку получает владелец/бухгалтерия и подтверждает (второй шаг, action=sf).
+    if (b.action === 'receive_sf') {
+      if (!WH_ROLES.has(req.user.role)) return reply.code(403).send({ error: 'Только склад / бух / admin' });
+      const { rows } = await db.query(
+        `UPDATE doc_registry SET sf_received_at = COALESCE(sf_received_at, CURRENT_DATE),
+           wh_status = CASE WHEN wh_status IN ('none','await') THEN 'received' ELSE wh_status END,
+           updated_by=$2, updated_at=NOW()
+         WHERE id=$1 RETURNING *`,
+        [id, req.user.id]
+      );
+      await audit(db, id, req.user.id, 'wh_receive_sf', {});
+      await notifyDocOwner(db, rows[0], `📦 Кладовщик отметил получение СФ: ${docLabel(rows[0])}`,
+        'Требуется подтверждение ответственного за документы.');
+      return decorate(rows[0]);
     }
 
     if (b.action === 'wh') {
