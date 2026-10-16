@@ -1334,11 +1334,11 @@ module.exports = async function docRegistryRoutes(fastify) {
           `INSERT INTO payment_invoices(
              status, supplier_name, supplier_id, amount, due_date, file_path, file_name,
              basis_type, basis_text, work_id, procurement_id,
-             line_items_json, requires_payment, created_by, pay_timing
+             line_items_json, requires_payment, created_by, pay_timing, doc_registry_id
            ) VALUES (
              'awaiting_dir', $1, $2, $3, $4::date, $5, $6,
              $7, $8, $9, $10,
-             $11::jsonb, true, $12, 'immediate'
+             $11::jsonb, true, $12, 'immediate', $13
            ) RETURNING *`,
           [
             doc.counterparty_name || null,
@@ -1352,7 +1352,8 @@ module.exports = async function docRegistryRoutes(fastify) {
             doc.work_id || null,
             doc.procurement_id || null,
             JSON.stringify(Array.isArray(doc.parsed_json) ? doc.parsed_json : []),
-            req.user.id
+            req.user.id,
+            id
           ]
         );
         const pay = payRows[0];
