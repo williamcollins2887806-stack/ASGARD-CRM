@@ -22,7 +22,7 @@ const ALLOWED = [
 ];
 const WH_ROLES = new Set(['WAREHOUSE', 'ADMIN', 'BUH']);
 const WH_CHAIN = ['none', 'await', 'received', 'to_office', 'buh_ok'];
-const JSON_COLS = new Set(['attachments', 'parsed_json', 'closing_json', 'onec_payload']);
+const JSON_COLS = new Set(['attachments', 'parsed_json', 'closing_json', 'onec_payload', 'payment_schedule']);
 const WRITE_COLS = [
   'dir', 'package_type', 'ops_status', 'invoice_number', 'invoice_date',
   'counterparty_name', 'counterparty_email', 'counterparty_phone',
@@ -54,6 +54,14 @@ const JOIN_SQL = `SELECT d.*,
 
 function num(v) { const n = parseFloat(v); return Number.isFinite(n) ? n : 0; }
 function today() { return new Date().toISOString().slice(0, 10); }
+
+// V394 (план, S6): контроль «есть срок оплаты ИЛИ галочка оплачено» включается
+// настройкой и применяется ТОЛЬКО к строкам, созданным не раньше указанной даты —
+// иначе весь исторический архив разом станет «неполным» (синим).
+const NO_PAYMENT_TERMS_ENABLED = process.env.DOC_NO_PAYMENT_TERMS === '1';
+const NO_PAYMENT_TERMS_SINCE = process.env.DOC_NO_PAYMENT_TERMS_SINCE
+  ? new Date(process.env.DOC_NO_PAYMENT_TERMS_SINCE)
+  : new Date('2026-10-20T00:00:00Z');
 
 /** Человекочитаемое имя строки реестра для уведомлений. */
 function docLabel(row) {
@@ -120,6 +128,13 @@ function calcIncomplete(row) {
   if (mode === 'linked' && !row.contract_id) r.push('no_contract');
   // no_payment_due убран (D-238): срок оплаты в Excel почти не заполнен,
   // из-за этого 100% реестра горело «неполным».
+  // V394 (план, S6): новая причина no_payment_terms — но ТОЛЬКО для строк,
+  // созданных после включения контроля (иначе массовое посинение архива).
+  if (NO_PAYMENT_TERMS_ENABLED && !row.no_payment_terms && !row.payment_due_at
+      && String(row.payment_kind || '') !== 'partial'
+      && row.created_at && new Date(row.created_at) >= NO_PAYMENT_TERMS_SINCE) {
+    r.push('no_payment_terms');
+  }
   const sk = row.spend_kind || 'work';
   const needsWork = sk === 'work';
   if (row.dir === 'in' && needsWork && !row.work_id && !row.purpose_asgard && !row.purpose_consumables) {

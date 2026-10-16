@@ -1223,6 +1223,9 @@ window.AsgardDocHubPage = (function () {
       spend_kind: 'work', // work|warehouse|office|other
       payment_due_at: '',
       sf_due_at: '',
+      payment_kind: 'postpay',
+      sf_basis: 'invoice',
+      service_done_at: '',
       work_id: '',
       work_expense_id: null,
       doc_owner_id: currentUserId,
@@ -1246,6 +1249,7 @@ window.AsgardDocHubPage = (function () {
       'amount_gross', 'amount_net',
       'contract_mode', 'contract_label', 'contract_date',
       'spend_kind', 'payment_due_at', 'sf_due_at', 'work_id',
+      'payment_kind', 'sf_basis', 'service_done_at',
       'doc_owner_id', 'pm_id',
       'comment_text', 'parsed_json', 'receive_channel'];
     for (const k of strFields) {
@@ -1422,6 +1426,22 @@ window.AsgardDocHubPage = (function () {
           <div class="dh-field"><label>Срок оплаты</label><input type="date" name="payment_due_at" value="${esc((d.payment_due_at || '').slice(0, 10))}" /></div>
           <div class="dh-field"><label>Срок ожидания СФ</label><input type="date" name="sf_due_at" value="${esc((d.sf_due_at || '').slice(0, 10))}" /></div>
         </div>
+        <div class="dh-grid2">
+          <div class="dh-field"><label>Тип оплаты</label>
+            <select name="payment_kind">
+              <option value="postpay" ${(d.payment_kind || 'postpay') === 'postpay' ? 'selected' : ''}>Постоплата</option>
+              <option value="prepay" ${d.payment_kind === 'prepay' ? 'selected' : ''}>Предоплата</option>
+              <option value="partial" ${d.payment_kind === 'partial' ? 'selected' : ''}>Частичная (график)</option>
+            </select>
+          </div>
+          <div class="dh-field"><label>Основание СФ</label>
+            <select name="sf_basis">
+              <option value="invoice" ${(d.sf_basis || 'invoice') === 'invoice' ? 'selected' : ''}>По счёту</option>
+              <option value="service" ${d.sf_basis === 'service' ? 'selected' : ''}>По оказанию услуги</option>
+            </select>
+          </div>
+        </div>
+        <div class="dh-field"><label>Услуга оказана</label><input type="date" name="service_done_at" value="${esc((d.service_done_at || '').slice(0, 10))}" /></div>
         <div class="dh-grid2">
           <div class="dh-field"><label>Отв. за документы</label>
             <input type="hidden" name="doc_owner_id" id="dhWizDocOwnerId" value="${esc(d.doc_owner_id || '')}" />
@@ -1993,6 +2013,9 @@ window.AsgardDocHubPage = (function () {
       spend_kind: d.spend_kind || 'other',
       payment_due_at: d.payment_due_at || null,
       sf_due_at: d.sf_due_at || null,
+      payment_kind: d.payment_kind || 'postpay',
+      sf_basis: d.sf_basis || 'invoice',
+      service_done_at: d.service_done_at || null,
       comment_text: d.comment_text || '',
       purpose_customer: !!d.purpose_customer,
       purpose_asgard: !!d.purpose_asgard,
@@ -2176,6 +2199,37 @@ window.AsgardDocHubPage = (function () {
       vat = Math.round((gross - net) * 100) / 100;
     }
     return { gross, net, vat, hasVat, rate };
+  }
+
+  /**
+   * V394: строки графика частичной оплаты (payment_schedule) для drawer.
+   * Каждый этап: процент/сумма/срок/оплачен.
+   */
+  function scheduleRowsHtml(row) {
+    let sched = row.payment_schedule;
+    if (typeof sched === 'string') { try { sched = JSON.parse(sched); } catch (_) { sched = null; } }
+    if (!Array.isArray(sched) || !sched.length) sched = [{ pct: 50, amount: null, due_at: '', paid_at: null }];
+    return sched.map((st, i) => `<div class="dh-stage" data-stage="${i}">
+      <input type="number" class="dh-stage__pct" min="0" max="100" step="1" placeholder="%" value="${st.pct != null ? esc(String(st.pct)) : ''}" title="Процент"/>
+      <input type="number" class="dh-stage__amt" min="0" step="0.01" placeholder="Сумма ₽" value="${st.amount != null ? esc(String(st.amount)) : ''}" title="Сумма"/>
+      <input type="date" class="dh-stage__due" value="${esc(String(st.due_at || '').slice(0, 10))}" title="Срок"/>
+      <label class="dh-stage__paid"><input type="checkbox" ${st.paid_at ? 'checked' : ''}/> оплачен</label>
+      <button type="button" class="dh-stage__x" data-stage-del="${i}" aria-label="Удалить этап">✕</button>
+    </div>`).join('');
+  }
+
+  /** Собрать график из DOM drawer. */
+  function readSchedule(d) {
+    const rows = Array.from(d.querySelectorAll('#drScheduleRows .dh-stage'));
+    return rows.map((r) => {
+      const paid = !!r.querySelector('.dh-stage__paid input')?.checked;
+      return {
+        pct: parseFloat(r.querySelector('.dh-stage__pct')?.value) || null,
+        amount: parseFloat(r.querySelector('.dh-stage__amt')?.value) || null,
+        due_at: r.querySelector('.dh-stage__due')?.value || null,
+        paid_at: paid ? new Date().toISOString() : null
+      };
+    }).filter((s) => s.pct != null || s.amount != null || s.due_at);
   }
 
   async function openDrawer(id) {
@@ -2401,6 +2455,38 @@ window.AsgardDocHubPage = (function () {
                   <div class="dh-field"><label>Срок СФ</label><input type="date" id="drSfDue" value="${esc(String(row.sf_due_at || '').slice(0, 10))}"/></div>
                 </div>
                 <div class="dh-field"><label>Примечание сверки</label><textarea id="drRecNote" rows="2" placeholder="Акт сверки, расхождения…">${esc(row.reconciliation_note || '')}</textarea></div>
+              </div>
+            </div>
+
+            <!-- ─── Условия оплаты (V394) ─── -->
+            <div class="dh-section dh-section--terms">
+              <div class="dh-section__h">Условия оплаты</div>
+              <div class="dh-section__b">
+                <div class="dh-grid2">
+                  <div class="dh-field"><label>Тип оплаты</label>
+                    <select id="drPayKind">
+                      <option value="postpay" ${(row.payment_kind || 'postpay') === 'postpay' ? 'selected' : ''}>Постоплата (после услуги)</option>
+                      <option value="prepay" ${row.payment_kind === 'prepay' ? 'selected' : ''}>Предоплата</option>
+                      <option value="partial" ${row.payment_kind === 'partial' ? 'selected' : ''}>Частичная (график)</option>
+                    </select>
+                  </div>
+                  <div class="dh-field"><label>Основание СФ</label>
+                    <select id="drSfBasis">
+                      <option value="invoice" ${(row.sf_basis || 'invoice') === 'invoice' ? 'selected' : ''}>По счёту</option>
+                      <option value="service" ${row.sf_basis === 'service' ? 'selected' : ''}>По оказанию услуги</option>
+                    </select>
+                  </div>
+                  <div class="dh-field"><label>Услуга оказана</label><input type="date" id="drServiceDone" value="${esc(String(row.service_done_at || '').slice(0, 10))}"/></div>
+                  <div class="dh-field"><label>Уже оплачено (без очереди)</label>
+                    <label class="dh-check"><input type="checkbox" id="drNoPaymentTerms" ${row.no_payment_terms ? 'checked' : ''}/> срок оплаты не требуется</label>
+                  </div>
+                </div>
+                <div class="dh-field" id="drScheduleWrap" ${row.payment_kind === 'partial' ? '' : 'hidden'}>
+                  <label>График платежей (этапы)</label>
+                  <div id="drScheduleRows">${scheduleRowsHtml(row)}</div>
+                  <button type="button" class="dh-btn dh-btn--sm dh-btn--ghost" id="drAddStage">+ этап</button>
+                  <p class="dh-hint">Каждый неоплаченный этап — своя контрольная точка светофора. Суммы в ₽, дата — срок.</p>
+                </div>
               </div>
             </div>
 
@@ -2671,6 +2757,11 @@ window.AsgardDocHubPage = (function () {
           delivery_due_at: d.querySelector('#drDelivDue')?.value || null,
           payment_due_at: d.querySelector('#drPayDue')?.value || null,
           sf_due_at: d.querySelector('#drSfDue')?.value || null,
+          payment_kind: d.querySelector('#drPayKind')?.value || null,
+          sf_basis: d.querySelector('#drSfBasis')?.value || null,
+          service_done_at: d.querySelector('#drServiceDone')?.value || null,
+          no_payment_terms: !!d.querySelector('#drNoPaymentTerms')?.checked,
+          payment_schedule: readSchedule(d),
           reconciliation_note: d.querySelector('#drRecNote')?.value || null,
           doc_owner_id: parseInt((window.CRSelect ? CRSelect.getValue('drDocOwner') : null) || d.querySelector('#drDocOwner')?.value) || null,
           pm_id: parseInt((window.CRSelect ? CRSelect.getValue('drPm') : null) || d.querySelector('#drPmId')?.value) || null,
@@ -2689,6 +2780,21 @@ window.AsgardDocHubPage = (function () {
       d.querySelector('#dhDrawerClose')?.addEventListener('click', closeDrawer);
       d.querySelector('#dhDrawerClose2')?.addEventListener('click', closeDrawer);
       d.querySelector('#dhDrawerSave')?.addEventListener('click', saveDrawer);
+      // V394: условия оплаты — переключение графика и добавление/удаление этапов.
+      const payKind = d.querySelector('#drPayKind');
+      const schedWrap = d.querySelector('#drScheduleWrap');
+      payKind?.addEventListener('change', () => {
+        if (schedWrap) schedWrap.hidden = payKind.value !== 'partial';
+      });
+      d.querySelector('#drAddStage')?.addEventListener('click', () => {
+        const host = d.querySelector('#drScheduleRows');
+        if (!host) return;
+        host.insertAdjacentHTML('beforeend', scheduleRowsHtml({ payment_schedule: [{}] }));
+      });
+      d.querySelector('#drScheduleRows')?.addEventListener('click', (e) => {
+        const del = e.target.closest('[data-stage-del]');
+        if (del) del.closest('.dh-stage')?.remove();
+      });
       d.querySelector('#dhDrawerExpense')?.addEventListener('click', () => {
         if (row.work_id) location.hash = '#/works/' + row.work_id;
         else toast('Объект', 'Сначала укажите работу в карточке', 'warn');
