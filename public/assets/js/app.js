@@ -3024,6 +3024,23 @@ AsgardRouter.add("/assembly", () => {
         } catch (_) {}
       });
 
+      // ПРАВКА F (16.10.2026): линию забрал другой сотрудник. Раньше это событие
+      // по SSE НЕ обрабатывалось — оператор думал, что он «на линии», хотя в БД
+      // on_line уже снят (инцидент: «оба на линии», звонок в браузер не приходит).
+      _sseSource.addEventListener('call:line_taken', (e) => {
+        try {
+          const data = JSON.parse(e.data || '{}');
+          const P = window.AsgardPhone;
+          if (P && P.getState && P.getState() !== 'offline') {
+            try { if (P.applyLineTaken) P.applyLineTaken(data); else P.goOffline(); } catch (_) {}
+          }
+          document.dispatchEvent(new CustomEvent('asgard-phone', {
+            detail: { type: 'line_taken', by_user_id: data.by_user_id, reason: data.reason },
+          }));
+          if (window.AsgardUI && AsgardUI.toast) AsgardUI.toast('Телефон', 'Линию забрал другой сотрудник — вы сняты с линии', 'warn');
+        } catch (_) {}
+      });
+
       _sseSource.addEventListener('call:agi_event', (e) => {
         try {
           const data = JSON.parse(e.data);

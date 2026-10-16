@@ -530,8 +530,34 @@
         if (!sipRegistered) {
           try { api.ensureRegistered().then(function () { api.waitRegistered(4000); }).catch(function () {}); } catch (_) {}
         }
+        // ПРАВКА F: сверка линии — если в БД нас уже сняли (забрал другой),
+        // а локально считаем себя «на линии» → честно уходим офлайн.
+        try { checkLineOwnership(); } catch (_) {}
       });
     }
+
+    // ПРАВКА F: раз в 60с сверяем on_line с сервером. Страховка на случай,
+    // если SSE-событие call:line_taken не дошло (reconnect/PWA/фон).
+    if (!_lineCheckTimer) {
+      _lineCheckTimer = setInterval(function () { try { checkLineOwnership(); } catch (_) {} }, 60000);
+      if (_lineCheckTimer.unref) _lineCheckTimer.unref();
+    }
+  }
+
+  var _lineCheckTimer = null;
+  function checkLineOwnership() {
+    if (!onDuty) return;
+    fetch('/api/telephony/pbx/operator/status', { headers: { Authorization: 'Bearer ' + token() } })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (st) {
+        if (!st || typeof st.on_line === 'undefined') return;
+        // Сервер говорит «не на линии», а мы думаем что на линии → линию забрали.
+        if (st.on_line === false && onDuty) {
+          api.applyLineTaken();
+          emit('line_taken', { reason: 'status_poll' });
+        }
+      })
+      .catch(function () {});
   }
 
   var _lockRelease = null;
@@ -819,6 +845,24 @@
     /** Совместимость: «на линии» = регистрация + постановка (кнопка в панели). */
     goOnline: function (receiveMode) {
       return api.goOnDuty(receiveMode);
+    },
+
+    /** Локально выйти с линии без серверного вызова (линию уже забрал другой). */
+    applyLineTaken: function () {
+      stopHeartbeat();
+      if (activeSession) {
+        try { activeSession.terminate(); } catch (_) {}
+        activeSession = null;
+      }
+      if (ua) { try { ua.stop(); } catch (_) {} ua = null; }
+      mode = null;
+      credentials = null;
+      onDuty = false;
+      setState(STATES.offline);
+      releaseLeader();
+      emit('offline', {});
+      maybeConsumePendingReload();
+      return { ok: true, reason: 'line_taken' };
     },
 
     goOffline: function () {
