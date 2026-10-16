@@ -217,6 +217,7 @@ async function processInvoices(db, log) {
  */
 async function processDocRegistry(db, log) {
   let created = 0;
+  let digest = 0;
   const roleRec = await db.query(
     `SELECT id, role FROM users WHERE COALESCE(is_active,true)=true AND role IN ('BUH','PROC')`
   );
@@ -317,20 +318,65 @@ async function processDocRegistry(db, log) {
     );
   }
 
+  // ── V394: корректировки (запрошены — владельцу) ─────────────────────────
+  const corrQ = await db.query(`
+    SELECT id, invoice_number, counterparty_name, correction_kind, correction_comment, doc_owner_id, pm_id
+      FROM doc_registry
+     WHERE deleted_at IS NULL AND correction_state = 'requested'
+     LIMIT 200
+  `);
+  for (const d of corrQ.rows) {
+    const numLabel = d.invoice_number || `#${d.id}`;
+    const kind = d.correction_kind === 'both' ? 'СФ и акт' : d.correction_kind === 'act' ? 'Акт' : 'СФ';
+    await notifyDoc(
+      d,
+      'doc_correction',
+      `🚩 ${kind} НЕ КОРРЕКТЕН: ${numLabel}`,
+      `${d.correction_comment || 'Бухгалтерия запросила исправление.'}`
+    );
+  }
+
+  // ── V394: акты сверки — дедлайн близко / не запрошен ────────────────────
+  let reconDocs = [];
+  try {
+    const cfgRaw = await db.query(
+      `SELECT key, value_json FROM settings WHERE key IN ('doc_recon_quarter_deadline_day','doc_recon_year_deadline')`);
+    const cfg = {};
+    for (const r of cfgRaw.rows) { let v = r.value_json; try { v = JSON.parse(v); } catch (_) {} cfg[r.key] = v; }
+    const reconSvc = require('./doc-reconciliation');
+    const now = new Date();
+    const y = now.getUTCFullYear();
+    const q = Math.floor(now.getUTCMonth() / 3) + 1;
+    const due = reconSvc.periodDeadline(y, q, {
+      quarterDay: parseInt(cfg.doc_recon_quarter_deadline_day, 10) || 10,
+      yearDeadline: typeof cfg.doc_recon_year_deadline === 'string' ? cfg.doc_recon_year_deadline : '01-15'
+    });
+    const soon = new Date(Date.now() + 5 * 86400000).toISOString().slice(0, 10);
+    if (due <= soon) {
+      const { rows } = await db.query(
+        `SELECT counterparty_inn, counterparty_name, status FROM doc_reconciliation_acts
+          WHERE period_year=$1 AND period_quarter=$2 AND status <> 'received'`, [y, q]);
+      reconDocs = rows;
+    }
+  } catch (e) { log?.warn?.({ err: e }, '[ReminderCron] recon digest failed'); }
+
   // Best-effort email только на DOC_HUB_MAIL_TO / PAYMENT_MAIL_TO (Андросов), без директоров.
   const mailTo = String(process.env.DOC_HUB_MAIL_TO || process.env.PAYMENT_MAIL_TO || '').trim();
   const mailOk = mailTo && (process.env.NODE_ENV !== 'production' || process.env.DOC_HUB_MAIL_FORCE === '1');
-  const totalDocs = soonQ.rows.length + overduePayQ.rows.length + overdueSfQ.rows.length + incompleteQ.rows.length;
+  const totalDocs = soonQ.rows.length + overduePayQ.rows.length + overdueSfQ.rows.length
+    + incompleteQ.rows.length + corrQ.rows.length + reconDocs.length;
   if (mailOk && totalDocs > 0) {
     try {
       const { sendCrmEmail } = require('./crm-mailer');
-      const subject = `[Doc Hub] Напоминания: soon=${soonQ.rows.length} overdue_pay=${overduePayQ.rows.length} sf=${overdueSfQ.rows.length} incomplete=${incompleteQ.rows.length}`;
+      const subject = `[Doc Hub] Напоминания: soon=${soonQ.rows.length} overdue_pay=${overduePayQ.rows.length} sf=${overdueSfQ.rows.length} incomplete=${incompleteQ.rows.length} corr=${corrQ.rows.length} acts=${reconDocs.length}`;
       const text = [
-        `Doc Hub reminder tick`,
+        'Doc Hub reminder tick',
         `pay_soon: ${soonQ.rows.length}`,
         `pay_overdue: ${overduePayQ.rows.length}`,
         `sf_overdue: ${overdueSfQ.rows.length}`,
         `incomplete: ${incompleteQ.rows.length}`,
+        `corrections: ${corrQ.rows.length}`,
+        `recon_due: ${reconDocs.length}`,
         `in-app notifications created: ${created}`
       ].join('\n');
       await sendCrmEmail(db, null, { to: mailTo, subject, text, skipBcc: true });
@@ -339,10 +385,106 @@ async function processDocRegistry(db, log) {
     }
   }
 
+  // ── V394: ОДИН digest-email на человека (антидубль doc_reminder_log) ─────
+  try {
+    digest = await sendDailyDigests(db, log);
+  } catch (e) { log?.warn?.({ err: e }, '[ReminderCron] digest failed'); }
+
   log?.info?.(
-    `[ReminderCron] doc_registry: soon=${soonQ.rows.length} overdue_pay=${overduePayQ.rows.length} sf=${overdueSfQ.rows.length} incomplete=${incompleteQ.rows.length} notify=${created}`
+    `[ReminderCron] doc_registry: soon=${soonQ.rows.length} overdue_pay=${overduePayQ.rows.length} sf=${overdueSfQ.rows.length} incomplete=${incompleteQ.rows.length} corr=${corrQ.rows.length} acts=${reconDocs.length} notify=${created} digest=${digest}`
   );
   return created;
+}
+
+/**
+ * V394: крон-дайджест — ОДИН прогон = ОДНО письмо на человека.
+ * Собирает все задачи дня (срок оплаты за 1 рабочий день, СФ, корректировки,
+ * акты сверки) и объединяет их в одно письмо. Антидубль — doc_reminder_log
+ * (UNIQUE doc_id,user_id,kind,due_date): повтор в том же окне не отправляется.
+ * @returns {Promise<number>} число отправленных писем
+ */
+async function sendDailyDigests(db, log) {
+  if (String(process.env.DOC_DIGEST_DISABLED || '') === '1') return 0;
+  const cfg = await db.query(`SELECT value_json FROM settings WHERE key='doc_digest_enabled' LIMIT 1`);
+  if (cfg.rows[0]) {
+    let v = cfg.rows[0].value_json;
+    try { v = JSON.parse(v); } catch (_) {}
+    if (v === false || v === 'false') return 0;
+  }
+  // Задачи по видимым получателям: владелец/РП строки.
+  const { rows: tasks } = await db.query(`
+    SELECT d.id AS doc_id,
+           COALESCE(d.doc_owner_id, d.pm_id) AS user_id,
+           (CASE
+              WHEN d.correction_state='requested' THEN 'correction'
+              WHEN d.payment_due_at IS NOT NULL AND d.payment_due_at::date <= (NOW() + INTERVAL '1 day')::date
+                   AND COALESCE(d.pay_status,'none') NOT IN ('paid','n_a') THEN 'pay_due'
+              WHEN d.sf_due_at IS NOT NULL AND d.sf_due_at::date <= (NOW() + INTERVAL '5 days')::date
+                   AND d.sf_received_at IS NULL THEN 'sf_due'
+              ELSE NULL END) AS kind,
+           COALESCE(d.payment_due_at, d.sf_due_at)::date AS due_date,
+           d.invoice_number, d.counterparty_name
+      FROM doc_registry d
+     WHERE d.deleted_at IS NULL
+       AND COALESCE(d.doc_owner_id, d.pm_id) IS NOT NULL
+       AND (d.correction_state = 'requested'
+            OR (d.payment_due_at IS NOT NULL AND d.payment_due_at::date <= (NOW() + INTERVAL '1 day')::date
+                AND COALESCE(d.pay_status,'none') NOT IN ('paid','n_a'))
+            OR (d.sf_due_at IS NOT NULL AND d.sf_due_at::date <= (NOW() + INTERVAL '5 days')::date
+                AND d.sf_received_at IS NULL))
+     LIMIT 1000`);
+  if (!tasks.length) return 0;
+
+  const byUser = new Map();
+  for (const t of tasks) {
+    if (!t.kind) continue;
+    if (!byUser.has(t.user_id)) byUser.set(t.user_id, []);
+    byUser.get(t.user_id).push(t);
+  }
+  const { sendCrmEmail } = require('./crm-mailer');
+  let sent = 0;
+  for (const [userId, items] of byUser) {
+    // антидубль: какие из задач уже слали сегодня
+    const fresh = [];
+    for (const it of items) {
+      const key = [it.doc_id, userId, it.kind, it.due_date];
+      const ins = await db.query(
+        `INSERT INTO doc_reminder_log (doc_id, user_id, kind, due_date, sent_at, attempts)
+         VALUES ($1,$2,$3,$4,NOW(),0) ON CONFLICT (doc_id,user_id,kind,due_date) DO NOTHING RETURNING id`, key);
+      if (ins.rowCount) fresh.push({ ...it, log_id: ins.rows[0].id });
+    }
+    if (!fresh.length) continue;
+    const u = (await db.query(`SELECT id, name, email FROM users WHERE id=$1`, [userId])).rows[0];
+    if (!u || !u.email) {
+      // нет почты — снимаем лог, чтобы не «съесть» задачу навсегда
+      await db.query(`DELETE FROM doc_reminder_log WHERE id = ANY($1::int[])`, [fresh.map((f) => f.log_id)]);
+      continue;
+    }
+    const lines = fresh.map((f) => {
+      const label = f.invoice_number ? `Счёт ${f.invoice_number}` : `Документ #${f.doc_id}`;
+      const kindTxt = f.kind === 'correction' ? '🚩 корректировка'
+        : f.kind === 'pay_due' ? '💳 срок оплаты' : '📄 ждём СФ';
+      return `${kindTxt}: ${label} · ${f.counterparty_name || ''}${f.due_date ? ' (до ' + String(f.due_date).slice(0, 10) + ')' : ''}`;
+    });
+    try {
+      await sendCrmEmail(db, null, {
+        to: u.email,
+        subject: `[Doc Hub] Задачи на сегодня: ${fresh.length}`,
+        text: `Здравствуйте, ${u.name || ''}!\n\nЗадачи по реестру документов:\n\n`
+          + lines.map((l) => '• ' + l).join('\n')
+          + `\n\nОткрыть реестр: #/doc-hub\n`,
+        skipBcc: true
+      });
+      sent++;
+    } catch (e) {
+      await db.query(
+        `UPDATE doc_reminder_log SET error=$1, attempts=attempts+1 WHERE id = ANY($2::int[])`,
+        [String(e.message || e).slice(0, 500), fresh.map((f) => f.log_id)]);
+      log?.warn?.({ err: e, userId }, '[ReminderCron] digest send failed');
+    }
+  }
+  log?.info?.(`[ReminderCron] digest: users=${byUser.size} sent=${sent}`);
+  return sent;
 }
 
 /**
@@ -384,4 +526,4 @@ function stop() {
   if (_job) { _job.stop(); _job = null; }
 }
 
-module.exports = { start, stop, runOnce, processDocRegistry };
+module.exports = { start, stop, runOnce, processDocRegistry, sendDailyDigests };
