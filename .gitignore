@@ -160,6 +160,13 @@ _*.json
 _*.js
 tmp-*.js
 prototypes/_shots/
+# Скриншоты прототипов: снятые кадры, не код. Любая вложенность (16.10.2026:
+# было 200 файлов / 35 МБ в prototypes/*/_shots). Файлы остаются локально.
+**/_shots/
+# Генерируемые артефакты прототипа Тинг: пересобираются tools/build-ting-rating-pdf.js
+# (9.5 МБ render.html с base64 + 5.4 МБ PDF). В git не место.
+prototypes/ting-rating/render.html
+prototypes/ting-rating/TING-ASGARDA.pdf
 /=
 # Разовые архивы выкаток, кэш Python и прочий локальный мусор в корне
 /*.tar
