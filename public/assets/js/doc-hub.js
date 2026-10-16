@@ -1182,6 +1182,7 @@ window.AsgardDocHubPage = (function () {
               ${isWizard
                 ? '<button class="dh-btn dh-btn--ghost" type="button" id="dhWizToRegistry">К реестру</button>'
                 : `<button class="dh-btn dh-btn--ghost ${state.actsTab ? 'is-on' : ''}" type="button" id="dhBtnActs">Акты сверки</button>
+              <button class="dh-btn dh-btn--ghost ${state.archiveTab ? 'is-on' : ''}" type="button" id="dhBtnArchive">Архив</button>
               <button class="dh-btn dh-btn--ghost ${isGuide ? 'is-on' : ''}" type="button" id="dhBtnGuide">${isGuide ? 'К реестру' : 'Справка'}</button>
               <button class="dh-btn dh-btn--ghost" type="button" id="dhBtnHelp" title="Подсказка">?</button>
               <button class="dh-btn dh-btn--ghost" type="button" id="dhBtnImport1c">Из 1С</button>
@@ -1192,7 +1193,9 @@ window.AsgardDocHubPage = (function () {
           </header>
           <main class="dh-main">
             ${isGuide ? renderGuideView() : (isWizard ? '<div class="dh-wizard-page" id="dhWizardHost"></div>'
-              : (state.actsTab ? '<div class="dh-acts" id="dhActsHost"><div class="dh-empty">Загрузка актов сверки…</div></div>' : registryMainHtml(scopeAll)))}
+              : (state.actsTab ? '<div class="dh-acts" id="dhActsHost"><div class="dh-empty">Загрузка актов сверки…</div></div>'
+                : (state.archiveTab ? '<div class="dh-archive" id="dhArchiveHost"><div class="dh-empty">Загрузка архива…</div></div>'
+                  : registryMainHtml(scopeAll))))}
           </main>
         </div>
         <div class="dh-overlay" id="dhOverlay" hidden></div>
@@ -2346,6 +2349,129 @@ window.AsgardDocHubPage = (function () {
     }
   }
 
+  /**
+   * Паритет с эталоном «Выплаты»: вкладка «Архив» (год/месяц + разбивка + график).
+   */
+  async function renderArchiveTab() {
+    const host = document.getElementById('dhArchiveHost');
+    if (!host) return;
+    const now = new Date();
+    const y = state.archYear || now.getFullYear();
+    const m = state.archMonth || (now.getMonth() + 1);
+    let years = [y];
+    try { years = (await api(`/archive/years?scope=${encodeURIComponent(state.scope)}`)).years || [y]; } catch (_) { /* необязательно */ }
+    if (!years.includes(y)) years.unshift(y);
+    host.innerHTML = `
+      <div class="dh-arch__bar">
+        <label>Год: <select id="dhArchYear" class="input">${years.map((yy) => `<option ${yy === y ? 'selected' : ''}>${yy}</option>`).join('')}</select></label>
+        <label>Месяц: <select id="dhArchMonth" class="input">${MONTH_NAMES.map((mn, i) => `<option value="${i + 1}" ${i + 1 === m ? 'selected' : ''}>${mn}</option>`).join('')}</select></label>
+      </div>
+      <div class="dh-arch__chart" id="dhArchChart"><div class="dh-empty dh-empty--sm">График…</div></div>
+      <div id="dhArchBody"><div class="dh-empty dh-empty--sm">Загрузка…</div></div>`;
+    host.querySelector('#dhArchYear').onchange = (e) => { state.archYear = parseInt(e.target.value, 10); renderArchiveTab(); };
+    host.querySelector('#dhArchMonth').onchange = (e) => { state.archMonth = parseInt(e.target.value, 10); renderArchiveTab(); };
+    await Promise.all([loadArchiveMonth(host, y, m), renderArchiveChart(host, y)]);
+  }
+
+  async function loadArchiveMonth(host, y, m) {
+    const body = host.querySelector('#dhArchBody');
+    try {
+      const d = await api(`/archive/${y}/${m}?scope=${encodeURIComponent(state.scope)}`);
+      const rows = d.rows || [];
+      if (!rows.length) { body.innerHTML = '<div class="dh-empty dh-empty--sm"><div class="dh-empty__t">Нет документов за этот период</div></div>'; return; }
+      const t = d.totals || {};
+      const kpi = (l, v, cls) => `<div class="dh-kpi ${cls || ''}"><div class="k">${l}</div><div class="v">${v}</div></div>`;
+      const kindLabel = (k) => ({ work: 'Работы', warehouse: 'Склад', office: 'Офис', other: 'Прочее' }[k] || k || '—');
+      body.innerHTML = `
+        <div class="dh-kpis dh-kpis--arch">
+          ${kpi('Всего документов', t.cnt != null ? t.cnt : '—', 'is-info')}
+          ${kpi('Сумма', money(t.amount || 0))}
+          ${kpi('🔴 Красный', t.red || 0, 'is-err')}
+          ${kpi('🔵 Дозаполнить', t.blue || 0, 'is-info')}
+          ${kpi('🟡 Срок', t.yellow || 0, 'is-warn')}
+          ${kpi('🟢 В норме', t.green || 0, 'is-ok')}
+        </div>
+        <div class="dh-card"><div class="dh-card__head"><h2>Разбивка · ${esc(MONTH_NAMES[m - 1])} ${y}</h2></div>
+        <div class="dh-table-wrap"><table class="dh-table">
+          <thead><tr><th>Вид расхода</th><th>Документов</th><th>Сумма</th><th>🔴</th><th>🔵</th><th>🟡</th><th>🟢</th></tr></thead>
+          <tbody>${rows.map((r) => `<tr>
+            <td>${esc(kindLabel(r.spend_kind))}</td><td>${r.cnt}</td>
+            <td class="dh-money">${money(Number(r.amount) || 0)}</td>
+            <td>${r.red}</td><td>${r.blue}</td><td>${r.yellow}</td><td>${r.green}</td></tr>`).join('')}</tbody>
+        </table></div></div>`;
+    } catch (e) {
+      body.innerHTML = `<div class="dh-empty"><div class="dh-empty__t">Ошибка загрузки</div><p>${esc(e.message || '')}</p></div>`;
+    }
+  }
+
+  async function renderArchiveChart(host, y) {
+    const box = host.querySelector('#dhArchChart');
+    if (!box) return;
+    box.innerHTML = `<div class="dh-chart-box">
+      <div class="dh-chart-head">
+        <div class="dh-chart-cap">Документы и оплачено по месяцам ${y}</div>
+        <div class="dh-chart-legend">
+          <span class="dh-lg"><i class="dh-lg-dot dh-lg-docs"></i>Документы</span>
+          <span class="dh-lg"><i class="dh-lg-dot dh-lg-paid"></i>Оплачено</span>
+        </div>
+      </div>
+      <canvas class="dh-canvas"></canvas></div>`;
+    let docs; let paid;
+    try {
+      const s = (await api(`/monthly-series/${y}?scope=${encodeURIComponent(state.scope)}`)).series || [];
+      docs = s.map((x) => x.docs || 0); paid = s.map((x) => x.paid || 0);
+    } catch (_) { docs = new Array(12).fill(0); paid = new Array(12).fill(0); }
+    drawDualChart(box.querySelector('.dh-canvas'), docs, paid, MONTH_NAMES.map((x) => x.slice(0, 3)));
+  }
+
+  /** Две линии с заливкой — зеркало графика выплат (единый стиль). */
+  function drawDualChart(canvas, docsValues, paidValues, labels) {
+    if (!canvas) return;
+    const css = getComputedStyle(document.documentElement);
+    const pick = (...names) => { for (const n of names) { const v = css.getPropertyValue(n).trim(); if (v) return v; } return 'transparent'; };
+    const colDocs = pick('--blue-l', '--blue', '--info-t');
+    const colPaid = pick('--ok-t', '--ok', '--green');
+    const colGrid = pick('--brd');
+    const colText = pick('--t3', '--t2');
+    const dpr = window.devicePixelRatio || 1;
+    const W = canvas.clientWidth || 640;
+    const H = 220;
+    canvas.width = W * dpr; canvas.height = H * dpr;
+    canvas.style.height = H + 'px';
+    const g = canvas.getContext('2d');
+    if (!g) return;
+    g.setTransform(dpr, 0, 0, dpr, 0, 0);
+    g.clearRect(0, 0, W, H);
+    const PAD = { top: 16, right: 16, bottom: 28, left: 56 };
+    const cw = W - PAD.left - PAD.right;
+    const ch = H - PAD.top - PAD.bottom;
+    const maxVal = Math.max(1, ...docsValues, ...paidValues);
+    const fmtShort = (v) => (v >= 1000000 ? (v / 1000000).toFixed(1) + 'М' : v >= 1000 ? Math.round(v / 1000) + 'К' : String(Math.round(v)));
+    g.strokeStyle = colGrid; g.lineWidth = 1;
+    const lines = 4;
+    for (let i = 0; i <= lines; i++) {
+      const yy = PAD.top + (ch * i) / lines;
+      g.beginPath(); g.moveTo(PAD.left, yy); g.lineTo(PAD.left + cw, yy); g.stroke();
+      g.fillStyle = colText; g.font = '11px system-ui'; g.textAlign = 'right';
+      g.fillText(fmtShort(maxVal * (1 - i / lines)), PAD.left - 8, yy + 4);
+    }
+    const n = labels.length;
+    const xAt = (i) => PAD.left + (n <= 1 ? cw / 2 : (cw * i) / (n - 1));
+    const yAt = (v) => PAD.top + ch - (ch * (v / maxVal));
+    const line = (vals, color) => {
+      g.strokeStyle = color; g.lineWidth = 2; g.beginPath();
+      vals.forEach((v, i) => { const x = xAt(i); const yy = yAt(v); i ? g.lineTo(x, yy) : g.moveTo(x, yy); });
+      g.stroke();
+      g.fillStyle = color + '22';
+      g.beginPath(); g.moveTo(xAt(0), PAD.top + ch);
+      vals.forEach((v, i) => g.lineTo(xAt(i), yAt(v)));
+      g.lineTo(xAt(n - 1), PAD.top + ch); g.closePath(); g.fill();
+    };
+    line(docsValues, colDocs); line(paidValues, colPaid);
+    g.fillStyle = colText; g.font = '11px system-ui'; g.textAlign = 'center';
+    labels.forEach((l, i) => g.fillText(l, xAt(i), H - 8));
+  }
+
   async function openDrawer(id) {
     try {
       // Fetch row + users concurrently; works lazy via select
@@ -3254,8 +3380,18 @@ window.AsgardDocHubPage = (function () {
     // V394: вкладка «Акты сверки».
     root.querySelector('#dhBtnActs')?.addEventListener('click', async () => {
       state.view = 'registry';
+      state.archiveTab = false;
       state.actsTab = !state.actsTab;
       const hash = state.actsTab ? '#/doc-hub?tab=acts' : '#/doc-hub';
+      if (location.hash !== hash) { location.hash = hash; return; }
+      await paint(window.__docHubLayout || window.layout);
+    });
+    // Паритет с «Выплатами»: вкладка «Архив».
+    root.querySelector('#dhBtnArchive')?.addEventListener('click', async () => {
+      state.view = 'registry';
+      state.actsTab = false;
+      state.archiveTab = !state.archiveTab;
+      const hash = state.archiveTab ? '#/doc-hub?tab=archive' : '#/doc-hub';
       if (location.hash !== hash) { location.hash = hash; return; }
       await paint(window.__docHubLayout || window.layout);
     });
@@ -3532,12 +3668,15 @@ window.AsgardDocHubPage = (function () {
       await window.layout(html, { title: state.view === 'wizard' ? 'Внести документ' : 'Реестр документов' });
     }
     bind(document);
-    if (state.view === 'registry' && !state.actsTab) {
+    if (state.view === 'registry' && !state.actsTab && !state.archiveTab) {
       bindQuarterLive();
       bindHScroll();
     }
     if (state.actsTab) {
       await renderActsTab();
+    }
+    if (state.archiveTab) {
+      await renderArchiveTab();
     }
     if (state.view === 'wizard') {
       const host = document.getElementById('dhWizardHost');
@@ -3572,6 +3711,7 @@ window.AsgardDocHubPage = (function () {
     try {
       const tab = (new URLSearchParams((location.hash.split('?')[1] || ''))).get('tab');
       if (tab === 'acts') state.actsTab = true;
+      if (tab === 'archive') state.archiveTab = true;
     } catch (_) { /* ignore */ }
     await paint(layoutFn || window.layout);
     try {

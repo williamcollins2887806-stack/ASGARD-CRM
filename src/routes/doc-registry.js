@@ -588,8 +588,71 @@ module.exports = async function docRegistryRoutes(fastify) {
   });
 
   // ─────────────────────────────────────────────────────────────────────────
-  // Акты сверки (V394). Вкладка #/doc-hub?tab=acts.
+  // Архив и график (паритет с «Выплатами», замечание заказчика 16.10.2026).
   // ─────────────────────────────────────────────────────────────────────────
+
+  /** Годы, по которым есть строки (для селектора архива). */
+  fastify.get('/archive/years', auth, async (req) => {
+    const p = [];
+    const vis = visibilitySql(p, req.user.role, req.user.id, { scope: (req.query || {}).scope });
+    const { rows } = await db.query(
+      `SELECT DISTINCT EXTRACT(YEAR FROM COALESCE(d.invoice_date, d.created_at::date))::int AS y
+         FROM doc_registry d WHERE d.deleted_at IS NULL${vis}
+        ORDER BY 1 DESC LIMIT 12`, p);
+    return { years: rows.map((r) => r.y).filter(Boolean) };
+  });
+
+  /** Сводка за месяц: суммы по видам расхода и по светофору. */
+  fastify.get('/archive/:year/:month', auth, async (req) => {
+    const y = parseInt(req.params.year, 10);
+    const m = parseInt(req.params.month, 10);
+    if (!y || !m || m < 1 || m > 12) return { rows: [] };
+    const p = [y, m];
+    const vis = visibilitySql(p, req.user.role, req.user.id, { scope: (req.query || {}).scope });
+    const tSql = traffic.trafficSql('d');
+    const { rows } = await db.query(
+      `SELECT d.spend_kind,
+              count(*)::int AS cnt,
+              sum(d.amount_gross)::numeric AS amount,
+              count(*) FILTER (WHERE (${tSql})='red')::int AS red,
+              count(*) FILTER (WHERE (${tSql})='blue')::int AS blue,
+              count(*) FILTER (WHERE (${tSql})='yellow')::int AS yellow,
+              count(*) FILTER (WHERE (${tSql})='green')::int AS green
+         FROM doc_registry d
+        WHERE d.deleted_at IS NULL
+          AND EXTRACT(YEAR FROM COALESCE(d.invoice_date, d.created_at::date))=$1
+          AND EXTRACT(MONTH FROM COALESCE(d.invoice_date, d.created_at::date))=$2${vis}
+        GROUP BY d.spend_kind ORDER BY 3 DESC NULLS LAST`, p);
+    const totals = rows.reduce((a, r) => ({
+      cnt: a.cnt + r.cnt, amount: a.amount + (Number(r.amount) || 0),
+      red: a.red + r.red, blue: a.blue + r.blue, yellow: a.yellow + r.yellow, green: a.green + r.green
+    }), { cnt: 0, amount: 0, red: 0, blue: 0, yellow: 0, green: 0 });
+    return { year: y, month: m, rows, totals };
+  });
+
+  /** Помесячный ряд: документы (сумма) и оплачено — для графика. */
+  fastify.get('/monthly-series/:year', auth, async (req) => {
+    const y = parseInt(req.params.year, 10);
+    if (!y) return { series: [] };
+    const p = [y];
+    const vis = visibilitySql(p, req.user.role, req.user.id, { scope: (req.query || {}).scope });
+    const { rows } = await db.query(
+      `SELECT EXTRACT(MONTH FROM COALESCE(d.invoice_date, d.created_at::date))::int AS mon,
+              count(*)::int AS cnt,
+              COALESCE(sum(d.amount_gross),0)::numeric AS docs,
+              COALESCE(sum(d.amount_gross) FILTER (WHERE d.pay_status IN ('paid','n_a')),0)::numeric AS paid
+         FROM doc_registry d
+        WHERE d.deleted_at IS NULL
+          AND EXTRACT(YEAR FROM COALESCE(d.invoice_date, d.created_at::date))=$1${vis}
+        GROUP BY 1 ORDER BY 1`, p);
+    const series = Array.from({ length: 12 }, (_, i) => {
+      const hit = rows.find((r) => r.mon === i + 1);
+      return { mon: i + 1, cnt: hit ? hit.cnt : 0, docs: hit ? Number(hit.docs) : 0, paid: hit ? Number(hit.paid) : 0 };
+    });
+    return { year: y, series };
+  });
+
+
   const RECON_ROLES = new Set(['BUH', 'ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV', 'DIRECTOR', 'OFFICE_MANAGER']);
 
   /** Настройки регламента актов (не хардкод). */
@@ -614,12 +677,13 @@ module.exports = async function docRegistryRoutes(fastify) {
     const year = parseInt(q.year, 10) || new Date().getFullYear();
     const quarter = parseInt(q.quarter, 10) || 0;
     const cfg = await reconSettings();
-    const vis = visibilitySql([], req.user.role, req.user.id, { scope: q.scope });
     const { rows: saved } = await db.query(
       `SELECT * FROM doc_reconciliation_acts WHERE period_year=$1 AND period_quarter=$2 ORDER BY due_at NULLS LAST`,
       [year, quarter]);
     // Кандидаты: контрагенты с документами (оплата/услуга) за период.
     const { from, to } = reconSvc.periodRange(year, quarter);
+    const p = [from, to];
+    const vis = visibilitySql(p, req.user.role, req.user.id, { scope: q.scope });
     const { rows: cands } = await db.query(
       `SELECT d.counterparty_inn AS inn, max(d.counterparty_name) AS name,
               count(*)::int AS docs, sum(d.amount_gross)::numeric AS amount
@@ -629,7 +693,7 @@ module.exports = async function docRegistryRoutes(fastify) {
           AND (d.pay_status IN ('paid','n_a') OR d.service_done_at IS NOT NULL)${vis}
         GROUP BY d.counterparty_inn HAVING d.counterparty_inn IS NOT NULL AND d.counterparty_inn <> ''
         ORDER BY 4 DESC NULLS LAST LIMIT 500`,
-      [from, to]
+      p
     ).catch(() => ({ rows: [] }));
     const byKey = new Map();
     for (const c of cands) {

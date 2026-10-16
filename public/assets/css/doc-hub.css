@@ -588,6 +588,21 @@ a:hover { text-decoration: underline; }
 }
 
 /* ═══ V394: вкладка «Акты сверки» ═══ */
+.dh-arch__bar { display: flex; gap: 14px; align-items: center; flex-wrap: wrap; margin-bottom: 12px; }
+.dh-arch__bar label { display: flex; align-items: center; gap: 6px; color: var(--t2); font-size: 13px; }
+.dh-chart-box {
+  background: var(--bg2); border: 1px solid var(--brd); border-radius: 14px;
+  padding: 14px 16px; margin-bottom: 12px;
+}
+.dh-chart-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; flex-wrap: wrap; gap: 8px; }
+.dh-chart-cap { color: var(--t2); font-size: 13px; font-weight: 600; }
+.dh-chart-legend { display: flex; gap: 12px; font-size: 12px; color: var(--t3); }
+.dh-lg { display: inline-flex; align-items: center; gap: 5px; }
+.dh-lg-dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; }
+.dh-lg-docs { background: var(--blue-l, var(--blue)); }
+.dh-lg-paid { background: var(--green, #4caf50); }
+.dh-canvas { width: 100%; display: block; }
+.dh-kpis--arch { grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); }
 .dh-acts__bar {
   display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
   margin-bottom: 12px;
