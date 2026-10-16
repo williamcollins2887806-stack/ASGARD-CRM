@@ -502,15 +502,21 @@ async function cleanupOld(db, log) {
 
 async function runOnce(db, log) {
   const t0 = Date.now();
-  let tenders = 0, works = 0, invoices = 0, docs = 0, cleaned = 0;
+  let tenders = 0, works = 0, invoices = 0, docs = 0, cleaned = 0, ttlArchived = 0;
   try { tenders = await processTenders(db, log); } catch (e) { log?.error?.({ err: e }, '[ReminderCron] tenders failed'); }
   try { works = await processWorks(db, log); } catch (e) { log?.error?.({ err: e }, '[ReminderCron] works failed'); }
   try { invoices = await processInvoices(db, log); } catch (e) { log?.error?.({ err: e }, '[ReminderCron] invoices failed'); }
   try { docs = await processDocRegistry(db, log); } catch (e) { log?.error?.({ err: e }, '[ReminderCron] doc_registry failed'); }
+  // V398 (Часть II): TTL согласования директора (72ч) → архив.
+  try {
+    const ttl = require('./doc-approval-ttl');
+    const res = await ttl.archiveExpired(db, log);
+    ttlArchived = res.archived;
+  } catch (e) { log?.error?.({ err: e }, '[ReminderCron] approval TTL failed'); }
   try { cleaned = await cleanupOld(db, log); } catch (e) { log?.error?.({ err: e }, '[ReminderCron] cleanup failed'); }
   const ms = Date.now() - t0;
-  log?.info?.(`[ReminderCron] tick: tenders=${tenders} works=${works} invoices=${invoices} docs=${docs} cleaned=${cleaned} (${ms}ms)`);
-  return { tenders, works, invoices, docs, cleaned, ms };
+  log?.info?.(`[ReminderCron] tick: tenders=${tenders} works=${works} invoices=${invoices} docs=${docs} ttl_archived=${ttlArchived} cleaned=${cleaned} (${ms}ms)`);
+  return { tenders, works, invoices, docs, ttlArchived, cleaned, ms };
 }
 
 function start(db, log) {

@@ -387,6 +387,22 @@ async function saveEmail(account, msg, parsed) {
   }
 
   const emailId = emailRes.rows[0].id;
+
+  // B2/C4 (плана Часть II): маркируем входящую КОПИЮ CRM по account_id ящика
+  // (надёжнее, чем to/cc/bcc — SMTP снимает Bcc). Копии исключаем из общей
+  // AI-очереди, чтобы они не порождали ложных заявок.
+  try {
+    const copyMailboxId = parseInt(process.env.CRM_INTAKE_MAILBOX_ID || '', 10);
+    const isCopyAccount = Number(account.id) === (copyMailboxId || 112);
+    const crmSelf = String(account.email_address || '').toLowerCase();
+    const toSelf = [...(toEmails || []), ...(ccEmails || [])].some((a) => String(a.address || '').toLowerCase() === crmSelf);
+    if (isCopyAccount || toSelf) {
+      await db.query('UPDATE emails SET is_crm_copy = true WHERE id = $1', [emailId]);
+    }
+  } catch (e) {
+    console.error('[IMAP] is_crm_copy mark failed:', e.message);
+  }
+
   let attachmentCount = 0;
 
   // Save attachments
