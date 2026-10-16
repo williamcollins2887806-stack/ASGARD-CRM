@@ -83,9 +83,11 @@ async function upsertFromPaymentInvoice(db, payment) {
     counterparty_name: counterparty,
     supplier_id: payment.supplier_id || null,
     amount_gross: amount,
+    // F5: НЕЗАВИСИМО от НДС сумма без НДС = сумме с НДС, НДС = 0, has_vat=false —
+    // иначе gross ≠ net + vat (в заявке на оплату НДС не разложен).
     amount_net: amount,
     vat_amount: 0,
-    has_vat: true,
+    has_vat: false,
     payment_due_at: due,
     work_id: payment.work_id || null,
     procurement_id: payment.procurement_id || null,
@@ -159,7 +161,7 @@ async function upsertFromPaymentInvoice(db, payment) {
        is_incomplete, incomplete_reasons, contract_mode, wh_status
      ) VALUES (
        'in','invoice','wait_sf','paid',$1,$2,
-       $3,$3,0,true,$4,
+       $3,$3,0,false,$4,
        $5,$6,$7,$8::jsonb,$9,
        $10,$11::date,$12,
        $13,$14::text[],'none','none'
