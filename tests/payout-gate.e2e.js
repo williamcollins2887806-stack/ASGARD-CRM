@@ -278,7 +278,9 @@ function ok(n, c, e) { if (c) { pass++; console.log('  ✅ ' + n + (e ? ' — ' 
       payment_method: 'cash', pay_year: otherY, pay_month: otherM, confirm_duplicate: true,
     });
     ok('director-payments → 200 (полномочие директора)', b.st === 200, `HTTP ${b.st} ${b.d.error || ''}`);
-
+    // ⚠️ Уборка «свободного» периода: director-payments создаёт запись в otherY/otherM,
+    // а teardown чистит только период wp — иначе остаётся мусор (найдено верификатором).
+    await c.query(`DELETE FROM worker_payments WHERE employee_id=$1 AND pay_year=$2 AND pay_month=$3`, [wp.emp, otherY, otherM]);
     await teardown(wp);
   }
 

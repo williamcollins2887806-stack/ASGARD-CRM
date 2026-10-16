@@ -605,7 +605,7 @@ module.exports = async function docRegistryRoutes(fastify) {
 
   fastify.post('/', auth, async (req, reply) => {
     const b = req.body || {};
-    if (!b.dir || !['in', 'out'].includes(b.dir)) return reply.code(400).send({ error: 'dir: in|out' });
+    if (!b.dir || !['in', 'out'].includes(b.dir)) return reply.code(400).send({ error: 'invalid_dir', message: 'Не указано направление документа.', hint: 'Выберите «входящий» или «исходящий» и повторите.' });
     const draft = {
       ...pickBody(b), ...computeAmounts(b),
       dir: b.dir,

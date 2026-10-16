@@ -107,6 +107,67 @@ const BAD = /Ошибка сервера|Внутренняя ошибка се�
     ok('корректный preflight НЕ сломан (2xx)', okOpt.status < 300, `[${okOpt.status}]`);
   }
 
+  console.log('\n=== 5. Ошибки HTTP-ПАРСЕРА (до Fastify): сырой сокет ===');
+  // Эти ошибки Fastify пишет сырым сокетом мимо хуков/onSend — проверяем
+  // низкоуровневым подключением, а не fetch (находки верификатора 16.10.2026).
+  {
+    const net = require('net');
+    const rawSend = (bytes, waitMs = 600) => new Promise((resolve) => {
+      const sock = net.createConnection({ host: '127.0.0.1', port: 3100 });
+      let buf = '';
+      sock.setTimeout(4000);
+      sock.on('data', (d) => { buf += d.toString('utf8'); });
+      sock.on('close', () => resolve(buf));
+      sock.on('timeout', () => { sock.destroy(); resolve(buf); });
+      sock.on('error', () => resolve(buf));
+      sock.write(bytes);
+      setTimeout(() => { try { sock.destroy(); } catch (_) {} }, waitMs);
+    });
+    const parseRaw = (resp) => {
+      const m = resp.match(/^HTTP\/1\.\d\s+(\d+)/);
+      const i = resp.indexOf('\r\n\r\n');
+      const body = i >= 0 ? resp.slice(i + 4) : '';
+      let json = null; try { json = JSON.parse(body); } catch (_) {}
+      return { status: m ? parseInt(m[1], 10) : 0, json, body };
+    };
+    const p1 = parseRaw(await rawSend(Buffer.from('FOOBAR /api/works HTTP/1.1\r\nHost: x\r\n\r\n', 'latin1')));
+    ok('битый метод → человеческий JSON + hint', p1.status >= 400 && p1.json && /[А-Яа-яЁё]/.test(String(p1.json.message || '')) && !!p1.json.hint && !TECH.test(String(p1.json.message || '')),
+      `[${p1.status}] "${String((p1.json || {}).message || p1.body).slice(0, 45)}"`);
+    const big = 'q'.repeat(20000);
+    const p2 = parseRaw(await rawSend(Buffer.from(`GET /api/works HTTP/1.1\r\nHost: x\r\nX-Big: ${big}\r\n\r\n`, 'latin1'), 900));
+    ok('431 заголовки → человеческий JSON + hint', p2.status === 431 && p2.json && /[А-Яа-яЁё]/.test(String(p2.json.message || '')) && !!p2.json.hint,
+      `[${p2.status}] "${String((p2.json || {}).message || p2.body).slice(0, 45)}"`);
+    const p3 = parseRaw(await rawSend(Buffer.from('OPTIONS /api/works HTTP/1.1\r\nHost: x\r\nAccess-Control-Request-Method: GET\r\n\r\n')));
+    ok('OPTIONS с ACRM без Origin → JSON + hint', p3.status >= 400 && p3.json && !!p3.json.hint && !TECH.test(String(p3.json.message || '')),
+      `[${p3.status}] "${String((p3.json || {}).message || p3.body).slice(0, 45)}"`);
+    const p4 = parseRaw(await rawSend(Buffer.from('OPTIONS /api/works HTTP/1.1\r\nHost: x\r\nOrigin: http://127.0.0.1:3100\r\nAccess-Control-Request-Method: GET\r\n\r\n')));
+    ok('корректный preflight по-прежнему 2xx', p4.status < 300, `[${p4.status}]`);
+
+    console.log('  ── волна 13-кватер: HTTP/0.9 и запрос БЕЗ Host ──');
+    const p5 = parseRaw(await rawSend(Buffer.from('GET /api/works HTTP/0.9\r\nHost: x\r\n\r\n', 'latin1')));
+    ok('HTTP/0.9 → человеческий JSON + hint (не сырой 505)',
+      p5.status >= 400 && p5.json && /[А-Яа-яЁё]/.test(String(p5.json.message || '')) && !!p5.json.hint,
+      `[${p5.status}] "${String((p5.json || {}).message || p5.body).slice(0, 45)}"`);
+    const p6 = parseRaw(await rawSend(Buffer.from('GET /api/works HTTP/1.1\r\n\r\n', 'latin1')));
+    ok('запрос без Host → непустой JSON + hint (не голый 400)',
+      p6.status >= 400 && p6.json && !!p6.json.hint && String(p6.body).trim().length > 0,
+      `[${p6.status}] "${String((p6.json || {}).message || p6.body).slice(0, 45)}"`);
+  }
+
+  console.log('\n=== 6. НАЙДЕННЫЕ АНГЛ. ТЕКСТЫ (mimir-conductor, payroll-dashboard, doc-registry) ===');
+  {
+    const TECH2 = /bad run id|Invalid run id|Bad pm id|dir: in\|out|Invalid |Bad |Token required|Run not found|Artifact not found|Letter not found/i;
+    const noEng = (label, r, mustFail) => {
+      const d = r.d || {};
+      const msg = String(d.message || '');
+      const good = (mustFail ? r.st >= 400 : true) && !!msg && /[А-Яа-яЁё]/.test(msg) && !TECH2.test(msg) && !!d.hint;
+      ok(label, good, `[${r.st}] "${msg.slice(0, 50)}"`);
+    };
+    noEng('mimir-conductor: плохой run id', await call('POST', '/api/mimir/conductor/run/abc/approve', {}), true);
+    noEng('payroll-dashboard: плохой pm id', await call('GET', '/api/payroll-dashboard/pm-balance/abc'), true);
+    noEng('doc-registry: без направления', await call('POST', '/api/doc-registry', {}), true);
+  }
+
   await pool.end();
   console.log(`\n═══ ИТОГ: ${pass} PASS / ${fail} FAIL ═══`);
   if (fails.length) { console.log('ПРОВАЛЫ:'); fails.forEach((f) => console.log('  - ' + f)); }

@@ -1572,9 +1572,19 @@ async function routes(fastify, options) {
   // data.cash_expenses, data.cash_returns) + summary (balance, pm_name, cash_in,
   // se_cash_in, cash_out, cash_returned, handovers_pending_*).
   // JOIN'ы зеркалят SSoT src/lib/pm-balance.js (иначе детали не сходятся с балансом).
-  fastify.get('/pm-balance/:pm_id', { preHandler: [fastify.requireRoles(ACCESS_ROLES)] }, async (request) => {
+  fastify.get('/pm-balance/:pm_id', { preHandler: [fastify.requireRoles(ACCESS_ROLES)] }, async (request, reply) => {
     const pmId = parseInt(request.params.pm_id, 10);
-    if (!Number.isFinite(pmId)) return { error: 'Bad pm id' };
+    // ⚠️ Раньше здесь был `return { error: 'Bad pm id' }` — ответ с кодом 200
+    // (успех!) и английским текстом, из-за чего пользователь видел «нет данных»
+    // вместо ошибки, а хук понятных ошибок не срабатывал (найдено верификатором
+    // 16.10.2026). Теперь настоящий 400 с человеческим текстом.
+    if (!Number.isFinite(pmId)) {
+      return reply.code(400).send({
+        error: 'invalid_pm_id',
+        message: 'Некорректный идентификатор руководителя проекта.',
+        hint: 'Обновите страницу и выберите руководителя из списка заново.',
+      });
+    }
 
     // Summary из единой формулы (тот же источник, что список).
     const b = await calcPmBalance(db, pmId);

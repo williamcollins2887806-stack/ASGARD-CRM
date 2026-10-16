@@ -19,6 +19,11 @@ const fastify = require('fastify')({
   // Только loopback: nginx → node. Не доверяем произвольным X-Forwarded-For снаружи.
   trustProxy: process.env.TRUST_PROXY === '0' ? false : '127.0.0.1',
   bodyLimit: 209715200, // 200 MB — для загрузки файлов в pre-tenders, cash и др.
+  // ⚠️ `requireHostHeader: false` — Node иначе отвечает на запрос БЕЗ заголовка
+  // Host голым «400 Bad Request» с ПУСТЫМ телом (пользователь видит только код,
+  // без объяснения). С этой опцией запрос доходит до приложения и получает наш
+  // обычный JSON с message/hint (найдено верификатором 16.10.2026).
+  http: { requireHostHeader: false },
   // ⚠️ ПРАВИЛО ПРОДУКТА (16.10.2026): пользователь должен видеть ЧТО случилось
   // и ЧТО делать, а не сырой английский JSON. Часть ошибок Fastify возникает
   // ДО маршрутизации и НЕ проходит через setErrorHandler/onSend (битый URL,
@@ -35,6 +40,50 @@ const fastify = require('fastify')({
       hint: h.hint,
       statusCode: h.statusCode,
     });
+  },
+  // ⚠️ Собственная фабрика сервера нужна ради HTTP/0.9: Fastify сам проверяет
+  // версию и на неподдерживаемой пишет в сокет захардкоженный английский JSON
+  // `{"error":"HTTP Version Not Supported"…}`, МИНУЯ allё хуки и setErrorHandler
+  // (node_modules/fastify/lib/route.js). При кастомной фабрике Fastify пропускает
+  // эту проверку (`bypass`), и запрос доходит до нашего роутинга — клиент получает
+  // обычный человеческий JSON. Заодно здесь ставится requireHostHeader:false
+  // (дублирует options.http — Fastify использует фабрику вместо своих опций).
+  serverFactory: (handler) => require('http').createServer({ requireHostHeader: false }, handler),
+  // ⚠️ Ошибки HTTP-ПАРСЕРА (до Fastify): битый метод/заголовок → «Client Error»,
+  // слишком большие заголовки → 431 «Exceeded maximum allowed HTTP header size».
+  // Дефолтный обработчик пишет английский JSON ПРЯМО В СОКЕТ, минуя хуки и
+  // setErrorHandler (найдено верификатором 16.10.2026). Отдаём человеческий
+  // ответ тем же низкоуровневым способом.
+  clientErrorHandler: function (err, socket) {
+    if (!socket) return;
+    if (err && err.code === 'ECONNRESET') return;
+    let statusCode = 400;
+    if (err && err.code === 'HPE_HEADER_OVERFLOW') statusCode = 431;
+    let bodyObj;
+    try {
+      const { humanError } = require('./lib/human-error');
+      // Битый запрос парсера: явно маркируем как ошибку формата, иначе словарь
+      // не узнает случай и отдаст общее «Не удалось выполнить действие».
+      const h = humanError({ code: err && err.code, statusCode, message: 'Client Error' });
+      bodyObj = { error: h.error, message: h.message, hint: h.hint, statusCode: h.statusCode };
+    } catch (_) {
+      bodyObj = {
+        error: statusCode === 431 ? 'headers_too_large' : 'bad_request',
+        message: statusCode === 431
+          ? 'Слишком большой размер заголовков запроса.'
+          : 'Запрос передан в неверном формате.',
+        hint: 'Обновите страницу (F5) и повторите действие. Если повторяется — сообщите администратору.',
+        statusCode,
+      };
+    }
+    const body = JSON.stringify(bodyObj);
+    try {
+      if (!socket.destroyed && socket.writable) {
+        socket.write(`HTTP/1.1 ${statusCode} ${statusCode === 431 ? 'Request Header Fields Too Large' : 'Bad Request'}\r\n` +
+          `Content-Type: application/json; charset=utf-8\r\nContent-Length: ${Buffer.byteLength(body)}\r\nConnection: close\r\n\r\n${body}`);
+      }
+      socket.destroy();
+    } catch (_) { socket.destroy(); }
   },
 });
 
@@ -139,7 +188,12 @@ fastify.register(require('@fastify/helmet'), {
 // Хук регистрируем ДО @fastify/cors — иначе плагин отвечает первым.
 fastify.addHook('onRequest', async (request, reply) => {
   if (request.method !== 'OPTIONS') return;
-  if (request.headers['access-control-request-method']) return; // настоящий preflight
+  const hasAcrm = !!request.headers['access-control-request-method'];
+  const hasOrigin = !!request.headers.origin;
+  // Настоящий preflight: и метод, и Origin. Всё остальное — некорректный
+  // запрос: @fastify/cors на ACRM без Origin отдаёт text/plain
+  // «Invalid Preflight Request» (найдено верификатором 16.10.2026).
+  if (hasAcrm && hasOrigin) return;
   reply.code(400).send({
     error: 'bad_preflight',
     message: 'Некорректный предварительный запрос (preflight).',

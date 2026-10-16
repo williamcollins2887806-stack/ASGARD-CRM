@@ -139,13 +139,13 @@ async function mimirConductorRoutes(fastify, options) {
   // ═══════════════════════════════════════════════════════════════════════════
   fastify.get('/conductor/events', async (request, reply) => {
     const token = request.query.token;
-    if (!token) return reply.code(401).send({ error: 'Token required' });
+    if (!token) return reply.code(401).send({ error: 'token_required', message: 'Требуется вход в систему.', hint: 'Войдите заново и повторите действие.' });
 
     let tokenUser;
     try {
       tokenUser = fastify.jwt.verify(token);
     } catch (err) {
-      return reply.code(401).send({ error: 'Invalid token' });
+      return reply.code(401).send({ error: 'invalid_token', message: 'Сессия недействительна.', hint: 'Войдите заново и повторите действие.' });
     }
 
     // Роль-гейт (preHandler здесь не применим — авторизация через ?token=).
@@ -155,12 +155,12 @@ async function mimirConductorRoutes(fastify, options) {
 
     const runId = Number(request.query.run_id);
     if (!Number.isInteger(runId) || runId <= 0) {
-      return reply.code(400).send({ error: 'run_id required' });
+      return reply.code(400).send({ error: 'run_id_required', message: 'Не указан просчёт.', hint: 'Выберите просчёт из списка и повторите.' });
     }
 
     // Проверим, что прогон существует.
     const run = await cr.getRun(runId);
-    if (!run) return reply.code(404).send({ error: 'Run not found' });
+    if (!run) return reply.code(404).send({ error: 'run_not_found', message: 'Просчёт не найден.', hint: 'Обновите страницу — возможно, просчёт удалён.' });
 
     // Доступ — владелец прогона ИЛИ супервизорская роль.
     if (!canAccessRun(tokenUser, run)) {
@@ -234,10 +234,10 @@ async function mimirConductorRoutes(fastify, options) {
   }, async (request, reply) => {
     const runId = Number(request.params.id);
     if (!Number.isInteger(runId) || runId <= 0) {
-      return reply.code(400).send({ error: 'Invalid run id' });
+      return reply.code(400).send({ error: 'invalid_run_id', message: 'Некорректный идентификатор просчёта.', hint: 'Обновите страницу и откройте просчёт заново.' });
     }
     const details = await cr.getFullRunDetails(runId);
-    if (!details) return reply.code(404).send({ error: 'Run not found' });
+    if (!details) return reply.code(404).send({ error: 'run_not_found', message: 'Просчёт не найден.', hint: 'Обновите страницу — возможно, просчёт удалён.' });
     if (!canAccessRun(request.user, details.run)) {
       return reply.code(403).send({ error: 'Нет доступа к этому просчёту' });
     }
@@ -270,10 +270,10 @@ async function mimirConductorRoutes(fastify, options) {
   }, async (request, reply) => {
     const runId = Number(request.params.id);
     if (!Number.isInteger(runId) || runId <= 0) {
-      return reply.code(400).send({ error: 'Invalid run id' });
+      return reply.code(400).send({ error: 'invalid_run_id', message: 'Некорректный идентификатор просчёта.', hint: 'Обновите страницу и откройте просчёт заново.' });
     }
     const run = await cr.getRun(runId);
-    if (!run) return reply.code(404).send({ error: 'Run not found' });
+    if (!run) return reply.code(404).send({ error: 'run_not_found', message: 'Просчёт не найден.', hint: 'Обновите страницу — возможно, просчёт удалён.' });
     // Отчёт строится по готовому просчёту.
     if (!['READY_FOR_REVIEW', 'APPROVED', 'REJECTED'].includes(run.status)) {
       return reply.code(409).send({
@@ -295,10 +295,10 @@ async function mimirConductorRoutes(fastify, options) {
   }, async (request, reply) => {
     const runId = Number(request.params.id);
     if (!Number.isInteger(runId) || runId <= 0) {
-      return reply.code(400).send({ error: 'Invalid run id' });
+      return reply.code(400).send({ error: 'invalid_run_id', message: 'Некорректный идентификатор просчёта.', hint: 'Обновите страницу и откройте просчёт заново.' });
     }
     const run = await cr.getRun(runId);
-    if (!run) return reply.code(404).send({ error: 'Run not found' });
+    if (!run) return reply.code(404).send({ error: 'run_not_found', message: 'Просчёт не найден.', hint: 'Обновите страницу — возможно, просчёт удалён.' });
     if (!canAccessRun(request.user, run)) {
       return reply.code(403).send({ error: 'Нет доступа к этому отчёту' });
     }
@@ -319,10 +319,10 @@ async function mimirConductorRoutes(fastify, options) {
   }, async (request, reply) => {
     const artifactId = Number(request.params.id);
     if (!Number.isInteger(artifactId) || artifactId <= 0) {
-      return reply.code(400).send({ error: 'Invalid artifact id' });
+      return reply.code(400).send({ error: 'invalid_artifact_id', message: 'Некорректный идентификатор файла.', hint: 'Обновите страницу и откройте файл заново.' });
     }
     const artifact = await cr.getArtifactById(artifactId);
-    if (!artifact) return reply.code(404).send({ error: 'Artifact not found' });
+    if (!artifact) return reply.code(404).send({ error: 'artifact_not_found', message: 'Файл не найден.', hint: 'Обновите страницу — возможно, файл удалён.' });
     // Доступ — по владельцу прогона, к которому принадлежит артефакт.
     const run = await cr.getRun(artifact.conductor_run_id);
     if (!canAccessRun(request.user, run)) {
@@ -342,8 +342,8 @@ async function mimirConductorRoutes(fastify, options) {
     const body = request.body || {};
     const runId = Number(body.run_id);
     const ids = Array.isArray(body.clarification_ids) ? body.clarification_ids.map(Number).filter(Boolean) : [];
-    if (!Number.isInteger(runId) || runId <= 0) return reply.code(400).send({ error: 'run_id required' });
-    if (!ids.length) return reply.code(400).send({ error: 'clarification_ids required' });
+    if (!Number.isInteger(runId) || runId <= 0) return reply.code(400).send({ error: 'run_id_required', message: 'Не указан просчёт.', hint: 'Выберите просчёт из списка и повторите.' });
+    if (!ids.length) return reply.code(400).send({ error: 'clarification_ids_required', message: 'Не выбраны уточнения.', hint: 'Отметьте хотя бы одно уточнение и повторите.' });
     try {
       return await generateClarificationLetter({ runId, clarificationIds: ids, pmUserId: request.user.id });
     } catch (e) {
@@ -357,7 +357,7 @@ async function mimirConductorRoutes(fastify, options) {
     preHandler: [fastify.authenticate]
   }, async (request, reply) => {
     const letter = await getLetterById(Number(request.params.id));
-    if (!letter) return reply.code(404).send({ error: 'Letter not found' });
+    if (!letter) return reply.code(404).send({ error: 'letter_not_found', message: 'Письмо не найдено.', hint: 'Обновите страницу — возможно, письмо удалено.' });
     const format = request.params.format === 'pdf' ? 'pdf' : 'docx';
     const filePath = format === 'pdf' ? letter.pdf_path : letter.docx_path;
     if (!filePath || !fs.existsSync(filePath)) return reply.code(404).send({ error: 'Файл письма не найден на диске' });
@@ -377,7 +377,7 @@ async function mimirConductorRoutes(fastify, options) {
   }, async (request, reply) => {
     const letterId = Number(request.params.id);
     const letter = await getLetterById(letterId);
-    if (!letter) return reply.code(404).send({ error: 'Letter not found' });
+    if (!letter) return reply.code(404).send({ error: 'letter_not_found', message: 'Письмо не найдено.', hint: 'Обновите страницу — возможно, письмо удалено.' });
     const body = request.body || {};
     const sentAt = body.sent_at ? new Date(body.sent_at) : new Date();
 
@@ -401,7 +401,7 @@ async function mimirConductorRoutes(fastify, options) {
   }, async (request, reply) => {
     const letterId = Number(request.params.id);
     const letter = await getLetterById(letterId);
-    if (!letter) return reply.code(404).send({ error: 'Letter not found' });
+    if (!letter) return reply.code(404).send({ error: 'letter_not_found', message: 'Письмо не найдено.', hint: 'Обновите страницу — возможно, письмо удалено.' });
 
     let replyPath = null;
     let rawText = null;
@@ -461,7 +461,7 @@ async function mimirConductorRoutes(fastify, options) {
     const letterId = Number(request.params.id);
     const body = request.body || {};
     const mapping = Array.isArray(body.mapping) ? body.mapping : [];
-    if (!mapping.length) return reply.code(400).send({ error: 'mapping required' });
+    if (!mapping.length) return reply.code(400).send({ error: 'mapping_required', message: 'Не передано соответствие ответов и вопросов.', hint: 'Заполните соответствия и повторите.' });
     try {
       const applied = await applyAnswers(letterId, mapping, request.user.id);
       const resume = await resumeConductorIfBlocked(letterId);
@@ -482,7 +482,7 @@ async function mimirConductorRoutes(fastify, options) {
     preHandler: [fastify.authenticate, fastify.requireRoles(ALLOWED_ROLES)]
   }, async (request, reply) => {
     const clarId = Number(request.params.id);
-    if (!clarId) return reply.code(400).send({ error: 'bad clarification id' });
+    if (!clarId) return reply.code(400).send({ error: 'invalid_clarification_id', message: 'Некорректный идентификатор уточнения.', hint: 'Обновите страницу и откройте уточнение заново.' });
     const body = request.body || {};
     const answerText = body.answer_text != null ? String(body.answer_text).trim() : null;
     const docIds = Array.isArray(body.document_ids) ? body.document_ids.filter((x) => Number.isInteger(Number(x))).map(Number) : [];
@@ -639,7 +639,7 @@ async function mimirConductorRoutes(fastify, options) {
     preHandler: [fastify.authenticate, fastify.requireRoles(['ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV', 'HEAD_TO'])]
   }, async (request, reply) => {
     const runId = Number(request.params.id);
-    if (!runId) return reply.code(400).send({ error: 'bad run id' });
+    if (!runId) return reply.code(400).send({ error: 'invalid_run_id', message: 'Некорректный идентификатор просчёта.', hint: 'Обновите страницу и откройте просчёт заново.' });
     const db = fastify.db;
     try {
       const { rows } = await db.query('SELECT id, status, initiated_by, work_id, tender_id FROM mimir_conductor_runs WHERE id=$1', [runId]);
@@ -693,7 +693,7 @@ async function mimirConductorRoutes(fastify, options) {
     preHandler: [fastify.authenticate, fastify.requireRoles(ALLOWED_ROLES)]
   }, async (request, reply) => {
     const runId = Number(request.params.id);
-    if (!runId) return reply.code(400).send({ error: 'bad run id' });
+    if (!runId) return reply.code(400).send({ error: 'invalid_run_id', message: 'Некорректный идентификатор просчёта.', hint: 'Обновите страницу и откройте просчёт заново.' });
     const db = fastify.db;
     try {
       const { rows } = await db.query('SELECT id, status, initiated_by FROM mimir_conductor_runs WHERE id=$1', [runId]);
@@ -738,7 +738,7 @@ async function mimirConductorRoutes(fastify, options) {
     preHandler: [fastify.authenticate, fastify.requireRoles(ALLOWED_ROLES)]
   }, async (request, reply) => {
     const clarId = Number(request.params.id);
-    if (!clarId) return reply.code(400).send({ error: 'bad clarification id' });
+    if (!clarId) return reply.code(400).send({ error: 'invalid_clarification_id', message: 'Некорректный идентификатор уточнения.', hint: 'Обновите страницу и откройте уточнение заново.' });
     const values = (request.body && request.body.values) || {};
     if (!Object.keys(values).length) return reply.code(400).send({ error: 'values пустой' });
 
@@ -901,7 +901,7 @@ async function mimirConductorRoutes(fastify, options) {
     preHandler: [fastify.authenticate, fastify.requireRoles(ALLOWED_ROLES)]
   }, async (request, reply) => {
     const runId = Number(request.params.id);
-    if (!runId) return reply.code(400).send({ error: 'bad run id' });
+    if (!runId) return reply.code(400).send({ error: 'invalid_run_id', message: 'Некорректный идентификатор просчёта.', hint: 'Обновите страницу и откройте просчёт заново.' });
     const db = fastify.db;
     try {
       const { rows } = await db.query(
@@ -941,7 +941,7 @@ async function mimirConductorRoutes(fastify, options) {
   }, async (request, reply) => {
     const runId = Number(request.params.id);
     const feedback = String((request.body && request.body.feedback_text) || '').trim();
-    if (!runId) return reply.code(400).send({ error: 'bad run id' });
+    if (!runId) return reply.code(400).send({ error: 'invalid_run_id', message: 'Некорректный идентификатор просчёта.', hint: 'Обновите страницу и откройте просчёт заново.' });
     if (!feedback) return reply.code(400).send({ error: 'feedback_text обязателен' });
 
     const db = fastify.db;
@@ -1011,7 +1011,7 @@ async function mimirConductorRoutes(fastify, options) {
     preHandler: [fastify.authenticate, fastify.requireRoles(ALLOWED_ROLES)]
   }, async (request, reply) => {
     const runId = Number(request.params.id);
-    if (!runId) return reply.code(400).send({ error: 'bad run id' });
+    if (!runId) return reply.code(400).send({ error: 'invalid_run_id', message: 'Некорректный идентификатор просчёта.', hint: 'Обновите страницу и откройте просчёт заново.' });
     const b = request.body || {};
     const db = fastify.db;
     try {
@@ -1195,7 +1195,7 @@ async function mimirConductorRoutes(fastify, options) {
   }, async (request, reply) => {
     const runId = Number(request.params.id);
     const b = request.body || {};
-    if (!runId) return reply.code(400).send({ error: 'bad run id' });
+    if (!runId) return reply.code(400).send({ error: 'invalid_run_id', message: 'Некорректный идентификатор просчёта.', hint: 'Обновите страницу и откройте просчёт заново.' });
     const db = fastify.db;
     try {
       const { rows: rRows } = await db.query(
@@ -1383,7 +1383,7 @@ async function mimirConductorRoutes(fastify, options) {
       return { success: true, items, total: items.length };
     } catch (e) {
       request.log.error({ err: e }, '[mimir-conductor] /references/search failed');
-      return reply.code(500).send({ error: 'search_failed', message: e.message });
+      return reply.code(500).send({ error: 'search_failed', message: 'Не удалось выполнить поиск из-за внутренней ошибки.', hint: 'Повторите попытку. Если повторяется — сообщите администратору.' });
     }
   });
 

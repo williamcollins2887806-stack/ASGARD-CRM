@@ -392,8 +392,19 @@ function scanText(text) {
       return;
     }
     if (m === 'type') { const args = headerArgs(n.callee, n.arguments); if (args.length >= 1) sinkA(args[0], n, null); return; }
-    if (m === 'headers' || m === 'writehead') {
+    if (m === 'headers') {
       for (const a of headerArgs(n.callee, n.arguments)) analyzeHeaderContainer(a, n);
+      return;
+    }
+    if (m === 'writehead') {
+      // ⚠️ `res.writeHead(statusCode, headers?, statusMessage?)` — ПЕРВЫЙ аргумент
+      // это статус-код (число/литерал), а НЕ контейнер заголовков. Гейт раньше
+      // проверял все аргументы и ложно-краснил любой вызов с переменным кодом,
+      // даже когда Content-Type — литерал 'application/json'
+      // (напр. src/pbx/index.js:689 → [unresolved-container] на `code`).
+      // Проверяем только аргументы-КОНТЕЙНЕРЫ, начиная со второго.
+      const args = headerArgs(n.callee, n.arguments);
+      for (let i = 1; i < args.length; i++) analyzeHeaderContainer(args[i], n);
     }
   });
 
@@ -447,6 +458,7 @@ function runSelfTest() {
     'type(expr)': `reply.type(doc.mime_type);`,
     'объект в reply.headers': `reply.headers({ 'Content-Type': doc.mime_type });`,
     'объект в writeHead': `reply.raw.writeHead(200, {\n 'X-A': 'b',\n 'Content-Type': doc.mime_type\n});`,
+    'объект в writeHead (переменный код)': `const code = 200;\nreply.raw.writeHead(code, {\n 'Content-Type': doc.mime_type\n});`,
     'setHeader': `reply.setHeader('Content-Type', doc.mime_type);`,
     'ключ на след. строке': `reply.header(\n 'Content-Type', doc.mime_type\n);`,
     'импорт политики без применения': `const { safeContentType } = require('../lib/upload-ext');\nreply.header('Content-Type', db.mime_type);`,
@@ -497,6 +509,8 @@ function runSelfTest() {
     'SSE литерал': `reply.headers({ 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache' });`,
     'литеральный ключ-шаблон': "reply.header(`${'Content'}-Type`, 'application/pdf');",
     'D-220 шаблон заголовков': `reply.header('Content-Type', mime === 'pdf' ? 'application/pdf' : 'application/octet-stream');\nreply.header('X-Content-Type-Options', 'nosniff');`,
+    'writeHead с литеральным Content-Type и переменным статусом': `const code = 200;\nreply.raw.writeHead(code, { 'Content-Type': 'application/json' });`,
+    'writeHead только со статусом-литералом': `reply.raw.writeHead(200);`,
   };
   let ok = 0; let total = 0;
   console.log('\n--- САМОПРОВЕРКА ГЕЙТА (тот же scanText, валидные модули-роуты) ---');

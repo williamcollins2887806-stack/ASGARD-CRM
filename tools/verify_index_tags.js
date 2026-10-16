@@ -92,7 +92,13 @@ const WARN_ALLOWLIST = {
  * кнопки «+» рендерились 12×23 px серыми квадратами. Все предыдущие проверки
  * смотрели только на теги, которые ЕСТЬ, поэтому «файл есть, тега нет» не ловилось.
  */
-const CSS_ALLOWLIST = {};
+const CSS_ALLOWLIST = {
+  'assets/css/tenders-desktop.css':
+    'исторический артефакт старого CRM-1.0 desktop-реестра тендеров (сохранён коммитом ' +
+    'bb10d565 из ветки origin/fix/tenders-desktop-laptop). Текущая таблица тендеров ' +
+    'рисуется inline-стилями в tenders.js (класс .tenders-register), а селектор ' +
+    '.tenders-table-wrap нигде не используется — подключение втащило бы мёртвый CSS в прод.',
+};
 const JS_ALLOWLIST = {
   'assets/js/calculator.js':
     'legacy vanilla-калькулятор (IIFE без глобала), вытеснен calculator_v2.js; тега нет ни в одном HTML',
