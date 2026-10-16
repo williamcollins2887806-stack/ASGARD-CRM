@@ -12,6 +12,7 @@ const excelSvc = require('../services/doc-registry-excel');
 const ExcelJS = require('exceljs');
 const { visibilitySql, assertDocVisible, canUseScopeAll } = require('../lib/doc-visibility');
 const traffic = require('../lib/doc-traffic');
+const reconSvc = require('../services/doc-reconciliation');
 
 let normalizeUploadUrl = (p) => p;
 try { ({ normalizeUploadUrl } = require('../utils/upload-url')); } catch (_) { /* optional */ }
@@ -584,6 +585,131 @@ module.exports = async function docRegistryRoutes(fastify) {
       fastify.log.warn('[doc-registry] facets: ' + (e && e.message));
       return { counterparties: [], ops_status: [], doc_owners: [], pms: [], works: [] };
     }
+  });
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Акты сверки (V394). Вкладка #/doc-hub?tab=acts.
+  // ─────────────────────────────────────────────────────────────────────────
+  const RECON_ROLES = new Set(['BUH', 'ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV', 'DIRECTOR', 'OFFICE_MANAGER']);
+
+  /** Настройки регламента актов (не хардкод). */
+  async function reconSettings() {
+    const keys = ['doc_recon_quarter_deadline_day', 'doc_recon_year_deadline'];
+    const { rows } = await db.query(`SELECT key, value_json FROM settings WHERE key = ANY($1::text[])`, [keys]);
+    const m = {};
+    for (const r of rows) {
+      let v = r.value_json;
+      try { v = JSON.parse(v); } catch (_) { /* строка как есть */ }
+      m[r.key] = v;
+    }
+    return {
+      quarterDay: parseInt(m.doc_recon_quarter_deadline_day, 10) || 10,
+      yearDeadline: (typeof m.doc_recon_year_deadline === 'string' && m.doc_recon_year_deadline) || '01-15'
+    };
+  }
+
+  /** Список актов: план (по контрагентам с оборотами за период) + сохранённые. */
+  fastify.get('/reconciliation', auth, async (req) => {
+    const q = req.query || {};
+    const year = parseInt(q.year, 10) || new Date().getFullYear();
+    const quarter = parseInt(q.quarter, 10) || 0;
+    const cfg = await reconSettings();
+    const vis = visibilitySql([], req.user.role, req.user.id, { scope: q.scope });
+    const { rows: saved } = await db.query(
+      `SELECT * FROM doc_reconciliation_acts WHERE period_year=$1 AND period_quarter=$2 ORDER BY due_at NULLS LAST`,
+      [year, quarter]);
+    // Кандидаты: контрагенты с документами (оплата/услуга) за период.
+    const { from, to } = reconSvc.periodRange(year, quarter);
+    const { rows: cands } = await db.query(
+      `SELECT d.counterparty_inn AS inn, max(d.counterparty_name) AS name,
+              count(*)::int AS docs, sum(d.amount_gross)::numeric AS amount
+         FROM doc_registry d
+        WHERE d.deleted_at IS NULL AND d.dir='in'
+          AND COALESCE(d.invoice_date, d.service_done_at) BETWEEN $1::date AND $2::date
+          AND (d.pay_status IN ('paid','n_a') OR d.service_done_at IS NOT NULL)${vis}
+        GROUP BY d.counterparty_inn HAVING d.counterparty_inn IS NOT NULL AND d.counterparty_inn <> ''
+        ORDER BY 4 DESC NULLS LAST LIMIT 500`,
+      [from, to]
+    ).catch(() => ({ rows: [] }));
+    const byKey = new Map();
+    for (const c of cands) {
+      byKey.set(c.inn, {
+        inn: c.inn, name: c.name, docs: c.docs, amount: Number(c.amount) || 0,
+        due_at: reconSvc.periodDeadline(year, quarter, cfg),
+        status: null, received_at: null, balance_rub: null
+      });
+    }
+    for (const s of saved) {
+      const k = s.counterparty_inn || ('name:' + String(s.counterparty_name || '').toLowerCase());
+      const cur = byKey.get(k) || { inn: s.counterparty_inn, name: s.counterparty_name, docs: 0, amount: 0 };
+      cur.due_at = s.due_at || cur.due_at;
+      cur.status = s.status; cur.received_at = s.received_at; cur.file_url = s.file_url;
+      cur.balance_rub = s.balance_rub != null ? Number(s.balance_rub) : null;
+      cur.act_id = s.id;
+      byKey.set(k, cur);
+    }
+    return {
+      period: { year, quarter, ...reconSvc.periodRange(year, quarter) },
+      due_at: reconSvc.periodDeadline(year, quarter, cfg),
+      items: Array.from(byKey.values())
+    };
+  });
+
+  /** Детальная сверка по контрагенту: документы + баланс. */
+  fastify.get('/reconciliation/detail', auth, async (req) => {
+    const q = req.query || {};
+    const year = parseInt(q.year, 10) || new Date().getFullYear();
+    const quarter = parseInt(q.quarter, 10) || 0;
+    const detail = await reconSvc.buildReconciliation(db, {
+      inn: q.inn || null, name: q.name || null, year, quarter
+    });
+    const cfg = await reconSettings();
+    return { ...detail, due_at: reconSvc.periodDeadline(year, quarter, cfg) };
+  });
+
+  /** Отметить «запрошен» / «получен» + приложить файл от контрагента. */
+  fastify.post('/reconciliation/status', auth, async (req, reply) => {
+    if (!RECON_ROLES.has(String(req.user.role || '').toUpperCase())) {
+      return reply.code(403).send({ error: 'Доступно бухгалтерии, офису и директорам' });
+    }
+    const b = req.body || {};
+    const year = parseInt(b.year, 10); const quarter = parseInt(b.quarter, 10) || 0;
+    if (!year) return reply.code(400).send({ error: 'year обязателен' });
+    const status = ['planned', 'requested', 'received', 'overdue'].includes(b.status) ? b.status : 'requested';
+    const inn = b.inn || null;
+    const name = b.name || null;
+    if (!inn && !name) return reply.code(400).send({ error: 'inn или name обязательны' });
+    const cfg = await reconSettings();
+    const dueAt = reconSvc.periodDeadline(year, quarter, cfg);
+    // upsert по уникальному ключу (ИНН либо нормализованное имя)
+    const existing = await db.query(
+      inn
+        ? `SELECT id FROM doc_reconciliation_acts WHERE counterparty_inn=$1 AND period_year=$2 AND period_quarter=$3`
+        : `SELECT id FROM doc_reconciliation_acts WHERE lower(trim(counterparty_name))=$1 AND period_year=$2 AND period_quarter=$3`,
+      [inn || String(name).trim().toLowerCase(), year, quarter]);
+    const fields = {
+      counterparty_inn: inn, counterparty_name: name, period_year: year, period_quarter: quarter,
+      due_at: dueAt, status,
+      received_at: status === 'received' ? new Date().toISOString() : null,
+      received_by: status === 'received' ? req.user.id : null,
+      file_url: b.file_url || null, comment: sanitizeText(String(b.comment || ''), 2000)
+    };
+    let actId;
+    if (existing.rows[0]) {
+      const set = Object.keys(fields).map((k, i) => `${k}=$${i + 1}`).join(', ');
+      const { rows } = await db.query(
+        `UPDATE doc_reconciliation_acts SET ${set}, updated_at=NOW() WHERE id=$${Object.keys(fields).length + 1} RETURNING *`,
+        [...Object.values(fields), existing.rows[0].id]);
+      actId = rows[0].id;
+    } else {
+      const cols = Object.keys(fields);
+      const { rows } = await db.query(
+        `INSERT INTO doc_reconciliation_acts (${cols.join(',')}) VALUES (${cols.map((_, i) => `$${i + 1}`).join(',')}) RETURNING *`,
+        Object.values(fields));
+      actId = rows[0].id;
+    }
+    await audit(db, actId, req.user.id, 'recon_' + status, { inn, name, year, quarter });
+    return { ok: true, act_id: actId, status };
   });
 
   fastify.post('/check-duplicate', auth, async (req) => {
