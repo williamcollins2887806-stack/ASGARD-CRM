@@ -89,6 +89,8 @@ const EMPLOYEE_COLS = new Set([
   // se_payee_id  — ссылка от рабочего на получателя его НПД-выплат.
   // Финансово важное поле (только FIN_ROLES могут менять привязку).
   'se_payee_id', 'is_se_payee',
+  // V391 (15.10.2026): второй СЗ-получатель (у рабочего может быть до двух).
+  'se_payee_id_2',
   // V302 — profile_confirmed_at пишется из Field confirm; max_* только batch-check
   'profile_confirmed_at'
 ]);
@@ -105,7 +107,9 @@ const FIN_RESTRICTED_FIELDS = new Set([
   'official_leave_from', 'official_leave_to',
   // V240: привязка рабочего к СЗ-получателю — финансовое решение,
   // PM/HR_MANAGER не должны её менять (могут случайно сломать выплаты).
-  'se_payee_id'
+  'se_payee_id',
+  // V391: второй получатель — то же финансовое решение.
+  'se_payee_id_2'
 ]);
 const FIN_ROLES = new Set(['ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV', 'BUH']);
 const FIN_ROLES_ARRAY = Array.from(FIN_ROLES);
@@ -189,6 +193,20 @@ async function routes(fastify, options) {
     return row;
   }
   const db = fastify.db;
+
+  // ─── GET /access — есть ли доступ к дружине (для UI: показать/скрыть) ─────
+  // Грант settings.personnel_viewer_user_ids открывает страницу Диме Путкову
+  // (роль BUH), у которого по ролям доступа нет. См. src/lib/personnel-access.js.
+  fastify.get('/access', { preHandler: [fastify.authenticate] }, async (request, reply) => {
+    try {
+      const { hasPersonnelAccess, getPersonnelViewerIds } = require('../lib/personnel-access');
+      const allowed = await hasPersonnelAccess(db, request.user);
+      const ids = await getPersonnelViewerIds(db);
+      return reply.send({ allowed, role: request.user ? request.user.role : null, user_id: request.user ? request.user.id : null, user_ids: ids });
+    } catch (err) {
+      return reply.code(500).send({ error: 'Ошибка сервера' });
+    }
+  });
 
   // GET /api/staff — root list (alias for /employees)
   fastify.get('/', { preHandler: [fastify.authenticate] }, async (request) => {
@@ -633,6 +651,38 @@ async function routes(fastify, options) {
         body.se_payee_id = payeeId;
       }
     }
+
+    // ── 3a-2) V391 второй СЗ-получатель (до 2 получателей у рабочего) ──────
+    // Логика та же, что у se_payee_id. Нельзя указать одного и того же
+    // получателя дважды — иначе «через кого» станет неоднозначным.
+    if ('se_payee_id_2' in body) {
+      const v2 = body.se_payee_id_2;
+      if (v2 === null || v2 === '' || v2 === 0 || v2 === '0') {
+        body.se_payee_id_2 = null;
+      } else {
+        const payeeId2 = parseInt(v2, 10);
+        if (!Number.isFinite(payeeId2) || payeeId2 <= 0) {
+          return reply.code(400).send({ error: 'se_payee_id_2 должен быть числом' });
+        }
+        if (payeeId2 === parseInt(id, 10)) {
+          return reply.code(400).send({ error: 'Рабочий не может быть получателем сам у себя' });
+        }
+        if (body.se_payee_id != null && Number(body.se_payee_id) === payeeId2) {
+          return reply.code(400).send({ error: 'se_payee_id_2: получатель совпадает с первым' });
+        }
+        const { rows: payee2Rows } = await db.query(
+          'SELECT id, is_se_payee FROM employees WHERE id = $1', [payeeId2]);
+        if (!payee2Rows[0]) {
+          return reply.code(400).send({ error: 'se_payee_id_2: получатель не найден' });
+        }
+        if (!payee2Rows[0].is_se_payee) {
+          return reply.code(400).send({
+            error: 'se_payee_id_2: указанный employee не помечен как СЗ-получатель (is_se_payee=false)'
+          });
+        }
+        body.se_payee_id_2 = payeeId2;
+      }
+    }
     // is_se_payee=true → автоматически is_self_employed=true, is_officially_employed=false.
     // «Помощник» — это всегда СЗ, но не работает сам.
     if (body.is_se_payee === true) {
@@ -778,7 +828,7 @@ async function routes(fastify, options) {
         ) AS linked_to_fio,
         (
           SELECT COUNT(*) FROM employees w2
-           WHERE w2.se_payee_id = e.id AND COALESCE(w2.is_active, true) = true
+           WHERE (w2.se_payee_id = e.id OR w2.se_payee_id_2 = e.id) AND COALESCE(w2.is_active, true) = true
         )::int AS linked_count
         FROM employees e
         LEFT JOIN self_employed se ON se.employee_id = e.id AND COALESCE(se.is_active, true) = true

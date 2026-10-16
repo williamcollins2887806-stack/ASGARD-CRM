@@ -552,6 +552,20 @@ async function dataRoutes(fastify, options) {
         delete data.sent_for_approval_at;
       }
 
+    // ─── V391: worker_payments — ЗАПИСЬ ЧЕРЕЗ GENERIC CRUD ЗАПРЕЩЕНА ────────
+    // Почему целиком, а не стрипом полей: верификаторы четыре раза подряд
+    // находили обходы (status, amount, период, сотрудник, тип). Пока таблица
+    // пишется через generic CRUD, каждое новое поле = новый обход.
+    // Проверено: НИ ОДИН фронтенд-файл не пишет в /api/data/worker_payments
+    // (начисления идут через профильные ручки). Чтение остаётся открытым.
+    if (table === 'worker_payments') {
+      return reply.code(409).send({
+        error: 'payout_requires_approval',
+        message: 'Выплаты нельзя создавать или менять через общий API. Используйте контур выплат (корзина → согласование) или профильные ручки.',
+        requires_approval: true,
+      });
+    }
+
       const TEXT_FIELDS = ['description', 'comment', 'notes', 'details', 'message', 'text', 'body', 'content', 'data'];
       for (const key of Object.keys(data)) {
         if (typeof data[key] === 'string' && data[key].length > 1000 && !TEXT_FIELDS.includes(key)) {
@@ -713,6 +727,24 @@ async function dataRoutes(fastify, options) {
           if (f in data) delete data[f];
         }
       }
+    }
+
+    // ─── V391: worker_payments через generic CRUD (PUT) ────────────────
+    // ДЫРА (найдена верификатором 16.10.2026): PUT /api/data/worker_payments/:id
+    // с {"status":"paid"} переводил pending→paid в обход гейта согласования.
+    // Запрещаем установку paid/confirmed и правку денежных полей — выплата и
+    // изменение факта перевода только через профильные ручки с гейтом.
+    // ─── V391: worker_payments — ЗАПИСЬ ЧЕРЕЗ GENERIC CRUD ЗАПРЕЩЕНА ────────
+    // Верификаторы 4 раза находили обходы через эту ручку (status, amount,
+    // период, сотрудник, тип): пока таблица пишется generic-CRUD, каждое новое
+    // поле = новый обход. Проверено: фронт сюда не пишет (только читает),
+    // поэтому закрываем запись целиком. Чтение (GET) остаётся открытым.
+    if (table === 'worker_payments') {
+      return reply.code(409).send({
+        error: 'payout_requires_approval',
+        message: 'Выплаты нельзя менять через общий API. Используйте контур выплат (корзина → согласование) или профильные ручки.',
+        requires_approval: true,
+      });
     }
 
     const dbTable = resolveTable(table);
@@ -942,6 +974,16 @@ async function dataRoutes(fastify, options) {
     const userRole = request.user.role;
     if (!checkAccess(userRole, table, 'delete')) {
       return reply.code(403).send({ error: 'Нет прав на удаление записей в таблице ' + table });
+    }
+
+    // V391: удаление выплат через generic CRUD тоже закрываем — иначе можно
+    // удалить запись и создать её заново в обход гейта согласования.
+    if (table === 'worker_payments') {
+      return reply.code(409).send({
+        error: 'payout_requires_approval',
+        message: 'Выплаты нельзя удалять через общий API — отмена проводится через профильные ручки.',
+        requires_approval: true,
+      });
     }
 
     const dbTable = resolveTable(table);

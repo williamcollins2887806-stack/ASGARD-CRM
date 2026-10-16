@@ -18,7 +18,24 @@ const fastify = require('fastify')({
   },
   // Только loopback: nginx → node. Не доверяем произвольным X-Forwarded-For снаружи.
   trustProxy: process.env.TRUST_PROXY === '0' ? false : '127.0.0.1',
-  bodyLimit: 209715200 // 200 MB — для загрузки файлов в pre-tenders, cash и др.
+  bodyLimit: 209715200, // 200 MB — для загрузки файлов в pre-tenders, cash и др.
+  // ⚠️ ПРАВИЛО ПРОДУКТА (16.10.2026): пользователь должен видеть ЧТО случилось
+  // и ЧТО делать, а не сырой английский JSON. Часть ошибок Fastify возникает
+  // ДО маршрутизации и НЕ проходит через setErrorHandler/onSend (битый URL,
+  // неверный Content-Type, пустое тело, OPTIONS-preflight) — их перехватывает
+  // только frameworkErrors. Без него клиент получал:
+  //   {"error":"Bad Request","message":"'/api/%' is not a valid url component"}
+  //   {"message":"Unsupported Media Type: undefined"}
+  frameworkErrors: function (err, req, reply) {
+    const { humanError } = require('./lib/human-error');
+    const h = humanError(err);
+    reply.code(h.statusCode).send({
+      error: h.error,
+      message: h.message,
+      hint: h.hint,
+      statusCode: h.statusCode,
+    });
+  },
 });
 
 // Allow empty body with Content-Type: application/json (returns {} instead of 400)
@@ -112,6 +129,23 @@ fastify.register(require('@fastify/helmet'), {
   contentSecurityPolicy: false,         // CSP отключён — инлайн-скрипты/стили в SPA
   crossOriginEmbedderPolicy: false,     // не ломать загрузку внешних ресурсов
   crossOriginResourcePolicy: { policy: 'same-site' }
+});
+
+// ⚠️ ПРАВИЛО ПРОДУКТА (16.10.2026): любой ответ ≥400 должен быть понятным
+// JSON (message + hint). CORS-preflight без заголовков обрабатывается
+// @fastify/cors и отдавал text/plain «Invalid Preflight Request» — технический
+// текст без объяснения. Перехватываем ТОЛЬКО «неправильный» OPTIONS (без
+// Access-Control-Request-Method): корректный preflight браузера не трогаем.
+// Хук регистрируем ДО @fastify/cors — иначе плагин отвечает первым.
+fastify.addHook('onRequest', async (request, reply) => {
+  if (request.method !== 'OPTIONS') return;
+  if (request.headers['access-control-request-method']) return; // настоящий preflight
+  reply.code(400).send({
+    error: 'bad_preflight',
+    message: 'Некорректный предварительный запрос (preflight).',
+    hint: 'Обновите страницу (F5) и повторите действие. Если ошибка повторяется — сообщите администратору.',
+    statusCode: 400,
+  });
 });
 
 // CORS
@@ -844,6 +878,8 @@ fastify.register(require('./routes/stories'), { prefix: '/api/stories' });
 fastify.register(require('./routes/worker_profiles'), { prefix: '/api/worker-profiles' });
 fastify.register(require('./routes/worker-payments'), { prefix: '/api/worker-payments' });
 fastify.register(require('./routes/payouts'),         { prefix: '/api/payouts' });
+fastify.register(require('./routes/payout-cart'),     { prefix: '/api/payout-cart' });
+fastify.register(require('./routes/payout-plan'),     { prefix: '/api/payout-plan' });
 fastify.register(require('./routes/call-reports'),     { prefix: '/api/call-reports' });
 fastify.register(require('./routes/office-academy'),   { prefix: '/api/office-academy' });
 fastify.register(require('./routes/max-webhook'),      { prefix: '/api/max' });
@@ -1542,7 +1578,30 @@ fastify.setErrorHandler((error, request, reply) => {
     fastify.log.error(error);
   }
 
+  // JSON-парсер Fastify отдаёт технический текст («Expected property name…») —
+  // пользователю он непонятен. Переводим на человеческий (правило продукта).
+  if (error.code === 'FST_ERR_CTP_INVALID_JSON_BODY' || /JSON at position|Unexpected token|Expected property/i.test(String(error.message))) {
+    error.message = 'Запрос передан в неверном формате.';
+  }
   let message = statusCode === 500 ? 'Внутренняя ошибка сервера' : error.message;
+  let hint = null;
+  let code = null;
+  {
+    // Правило продукта: любая ошибка говорит пользователю ЧТО случилось и ЧТО
+    // делать. Для 5xx — нейтральный безопасный текст + подсказка; для 4xx —
+    // текст ошибки + универсальная подсказка (если ручка не дала свою).
+    const { humanError } = require('./lib/human-error');
+    const h = humanError(error);
+    // Если Fastify-валидация рун уже дала точное сообщение — оставляем его.
+    const runesMsg = /рун/.test(String(message));
+    if (!runesMsg) message = h.message;
+    hint = h.hint;
+    code = h.error;
+    // Для 4xx с осмысленным сообщением от ручки — приоритет у него.
+    if (statusCode < 500 && error.message && !/Ошибка сервера|Внутренняя ошибка/.test(error.message)) {
+      message = error.message;
+    }
+  }
   if (error.code === 'FST_ERR_CTP_INVALID_CONTENT_LENGTH') {
     fastify.log.warn(
       {
@@ -1571,10 +1630,39 @@ fastify.setErrorHandler((error, request, reply) => {
   }
 
   reply.code(statusCode).send({
-    error: message,
+    error: code || message,
     message,
+    ...(hint ? { hint } : {}),
     statusCode
   });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Human-friendly errors: ГАРАНТИЯ понятного сообщения на ЛЮБОЙ ошибке
+// ─────────────────────────────────────────────────────────────────────────────
+// Правило продукта: пользователь должен видеть ЧТО случилось и ЧТО делать,
+// а не «Ошибка сервера». Точечная правка каждой ручки не масштабируется (их
+// сотни), поэтому ставим ОДНУ точку: хук onSend. Если ответ с кодом ≥ 400 и в
+// теле нет человеческого message/hint — подставляем их (словарь известных
+// кодов + подсказка по HTTP-статусу). Полезная нагрузка успешных ответов не
+// трогается: работаем только с объектами, у которых есть error/message.
+fastify.addHook('onSend', async (request, reply, payload) => {
+  try {
+    const status = reply.statusCode;
+    if (status < 400) return payload;
+    if (typeof payload !== 'string' || !payload) return payload;
+    if (!payload.startsWith('{')) return payload; // не JSON (HTML, файлы) — не трогаем
+    const { ensureHumanFields } = require('./lib/human-error');
+    const body = JSON.parse(payload);
+    // Обрабатываем только объекты с признаком ошибки: error / message / hint.
+    if (!body || typeof body !== 'object' || Array.isArray(body)) return payload;
+    const hasErrMarker = body.error !== undefined || body.message !== undefined || body.hint !== undefined;
+    if (!hasErrMarker) return payload;
+    const changed = ensureHumanFields(body, status);
+    return changed ? JSON.stringify(body) : payload;
+  } catch (_) {
+    return payload; // никогда не ломаем ответ из-за косметики
+  }
 });
 
 // ─────────────────────────────────────────────────────────────────────────────

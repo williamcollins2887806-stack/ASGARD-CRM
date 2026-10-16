@@ -191,3 +191,8 @@ _clone_tmp/
 *_tmp/
 tmp_*.js
 tmp_*.py
+
+# S3: backups of original GLB models and temp dirs used by tools/optimize-field-models.js
+_model_backup/
+_model_tmp/
+_draco_test/
