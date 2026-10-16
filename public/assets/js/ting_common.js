@@ -48,6 +48,11 @@
     } catch (_) { /* ignore */ }
   }
 
+  // Таймеры рингтона — объявлены ДО TingSound: `const` не хойстится, иначе
+  // startRing() упал бы с ReferenceError (TDZ) при первом же звонке.
+  let _ringTimer = null;
+  let _ringVibe = null;
+
   const TingSound = {
     play(kind) {
       if (kind === 'join') {
@@ -59,6 +64,53 @@
         tone(392, 0.1, 'sine', 0.04);
         setTimeout(() => tone(293.66, 0.16, 'sine', 0.035), 90);
       }
+    },
+
+    /**
+     * Рингтон звонка Хугинна (входящий/исходящий).
+     *
+     * Раньше huginn_calls.js звал TingSound.startRing/stopRing, которых НЕ
+     * существовало — звонок был полностью БЕЗ ЗВУКА (собеседник не знал, что
+     * ему звонят, пока не посмотрит на экран). Здесь честный повторяющийся
+     * гудок: две ноты, пауза, цикл — как в телефонии.
+     *
+     * @param {boolean} [incoming] — входящий (выше тон) или исходящий (ниже).
+     */
+    startRing(incoming) {
+      this.stopRing();
+      // Уважать пользовательскую настройку «без звука» — иначе интервал
+      // тикал бы впустую, а вибрация всё равно срабатывала.
+      try {
+        if (global.localStorage && global.localStorage.getItem('ting_sound_off') === '1') return;
+      } catch (_) {}
+      const pattern = incoming === false
+        ? [392.0, 0.28, 329.63]   // исходящий: «гудки вызова»
+        : [659.25, 0.22, 523.25]; // входящий: звонок
+      const beep = () => {
+        // Браузер мог усыпить AudioContext (политика автоплея) — будим явно,
+        // иначе рингтон «немой» до первого касания экрана.
+        const c = ac();
+        if (c && c.state === 'suspended') { try { c.resume().catch(() => {}); } catch (_) {} }
+        tone(pattern[0], 0.20, 'sine', 0.06);
+        setTimeout(() => tone(pattern[2], 0.26, 'sine', 0.06), 0.22 * 1000);
+      };
+      beep();
+      // Повтор каждые 2 c, пока не ответили/не отменили.
+      _ringTimer = setInterval(beep, 2000);
+      // Вибрация на телефоне (входящий). Молча, если API нет.
+      try {
+        if (incoming !== false && global.navigator && global.navigator.vibrate) {
+          _ringVibe = setInterval(() => { try { global.navigator.vibrate([220, 120, 220]); } catch (_) {} }, 2000);
+          try { global.navigator.vibrate([220, 120, 220]); } catch (_) {}
+        }
+      } catch (_) {}
+    },
+
+    /** Остановить рингтон и вибрацию. Идемпотентно. */
+    stopRing() {
+      if (_ringTimer) { clearInterval(_ringTimer); _ringTimer = null; }
+      if (_ringVibe) { clearInterval(_ringVibe); _ringVibe = null; }
+      try { if (global.navigator && global.navigator.vibrate) global.navigator.vibrate(0); } catch (_) {}
     }
   };
 

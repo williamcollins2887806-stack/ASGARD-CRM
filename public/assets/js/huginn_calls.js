@@ -132,11 +132,14 @@
     return String(m).padStart(2, '0') + ':' + String(s % 60).padStart(2, '0');
   }
 
-  function ringtone(on) {
+  function ringtone(on, incoming) {
     try {
       if (!global.TingSound) return;
-      if (on && global.TingSound.startRing) global.TingSound.startRing();
-      else if (!on && global.TingSound.stopRing) global.TingSound.stopRing();
+      if (on) {
+        if (global.TingSound.startRing) global.TingSound.startRing(incoming);
+      } else if (global.TingSound.stopRing) {
+        global.TingSound.stopRing();
+      }
     } catch (_) {}
   }
 
@@ -153,14 +156,37 @@
     return document.getElementById('huginnDock');
   }
 
-  function panelHost() {
+  /**
+   * Хост для модалки звонка.
+   *
+   * ВАЖНО (16.10.2026): раньше оверлей клался в #hgPanel, а renderPanel()
+   * перезаписывает panel.innerHTML на КАЖДОМ SSE-событии (presence:online,
+   * chat:new_message, chat:read…). Из-за этого входящая модалка звонка
+   * исчезала сама через секунду — собеседник не успевал нажать «Принять».
+   *
+   * Те же грабли уже проходили со шитами (compose/invite/story): их унесли в
+   * .hg-sheets-host (huginn_dock.js:sheetHost). Для звонка это забыли.
+   * Теперь оверлей живёт в том же устойчивом слое — рендер его не трогает.
+   */
+  function callHost() {
     const r = dockRoot();
-    return (r && r.querySelector('#hgPanel')) || r || document.body;
+    if (!r) return document.body;
+    // Готовый устойчивый слой, если dock его уже создал.
+    let host = r.querySelector('.hg-sheets-host');
+    if (host) return host;
+    // Свой слой, если sheetHost() ещё не вызывался (например, звонок до рендера).
+    host = r.querySelector('.hg-calls-host');
+    if (!host) {
+      host = document.createElement('div');
+      host.className = 'hg-calls-host';
+      r.appendChild(host);
+    }
+    return host;
   }
 
   function ensureOverlay() {
     if (overlayEl && document.body.contains(overlayEl)) return overlayEl;
-    const host = panelHost();
+    const host = callHost();
     const el = document.createElement('div');
     el.className = 'hg-call-sheet hg-call-sheet--out';
     el.setAttribute('role', 'dialog');
@@ -370,6 +396,7 @@
     renderOverlay('outgoing');
     emit('outgoing', { call: call });
     startRingTimeout();
+    ringtone(true, false); // исходящий: гудки вызова, без вибрации
 
     // Anti-stub: no media token means no media. Never show a fake "calling" state.
     if (!data.token) {
@@ -456,7 +483,7 @@
     camOn = call.kind === 'video';
     micOn = false; // don't broadcast until accepted
     renderOverlay('incoming');
-    ringtone(true);
+    ringtone(true, true); // входящий: звонок + вибрация
     startRingTimeout();
     emit('incoming', { call: call });
   }
