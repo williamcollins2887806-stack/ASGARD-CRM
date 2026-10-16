@@ -444,9 +444,24 @@ async function saveEmail(account, msg, parsed) {
   // согласования: письмо+счёт → заявка awaiting_dir + строка реестра. Не ждём
   // общего AI-процессора (он классифицирует, но не создаёт заявок).
   try {
-    const isCopy = await db.query('SELECT is_crm_copy FROM emails WHERE id=$1', [emailId]);
-    if (isCopy.rows[0] && isCopy.rows[0].is_crm_copy) {
+    const isCopy = await db.query('SELECT is_crm_copy, from_email, body_text, thread_id, in_reply_to, references_header FROM emails WHERE id=$1', [emailId]);
+    const row = isCopy.rows[0];
+    if (row && row.is_crm_copy) {
       await runDocIntakeForEmail(db, emailId).catch((e) => console.error('[IMAP] doc-intake failed:', e.message));
+    }
+    // Ответ СОГЛАСУЮЩЕГО (не копия): «Добро» в треде → согласование заявки.
+    if (row && !row.is_crm_copy) {
+      const thr = require('./approval-thread');
+      const aid = await thr.approverId(db).catch(() => null);
+      const sender = String(row.from_email || '').toLowerCase();
+      const fromApprover = aid && (await db.query(`SELECT email FROM users WHERE id=$1`, [aid])).rows[0];
+      const approverEmail = fromApprover && String(fromApprover.email || '').toLowerCase();
+      const looksLikeApprover = approverEmail ? sender === approverEmail : /gazhili|go@|director/i.test(sender);
+      if (looksLikeApprover) {
+        await thr.handleApprovalReply(db, { id: emailId, ...row })
+          .then((r) => { if (r && (r.applied || r.needs_manual)) console.log('[IMAP] approval-thread:', JSON.stringify(r)); })
+          .catch((e) => console.error('[IMAP] approval-thread failed:', e.message));
+      }
     }
   } catch (_) { /* intake не должен ломать sync */ }
 
