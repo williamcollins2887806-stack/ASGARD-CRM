@@ -10,10 +10,10 @@
   <link rel="manifest" href="/h/manifest.webmanifest"/>
   <link rel="apple-touch-icon" href="/assets/img/apple-touch-icon.png"/>
   <title>Хугинн</title>
-  <link rel="stylesheet" href="/assets/css/design-tokens.css?v=20.28.215"/>
-  <link rel="stylesheet" href="/assets/css/huginn_dock.css?v=20.28.215"/>
+  <link rel="stylesheet" href="/assets/css/design-tokens.css?v=20.28.216"/>
+  <link rel="stylesheet" href="/assets/css/huginn_dock.css?v=20.28.216"/>
   <!-- Звонки (PBX-панель) на /h/: те же файлы, что на десктопе. -->
-  <link rel="stylesheet" href="/assets/css/phone.css?v=20.28.215"/>
+  <link rel="stylesheet" href="/assets/css/phone.css?v=20.28.216"/>
   <style>
     html, body {
       margin: 0; height: 100%;
@@ -212,15 +212,15 @@
   <div id="app"></div>
   <!-- ?v= обязателен: /assets/* отдаётся с Cache-Control: immutable, max-age=30д.
        Без версии в URL телефон держал старый JS/CSS месяцами и «не видел» деплой. -->
-  <script src="/assets/js/huginn_icons.js?v=20.28.215"></script>
-  <script src="/assets/js/phone_mask.js?v=20.28.215"></script>
-  <script src="/assets/js/huginn_sse.js?v=20.28.215"></script>
-  <script src="/assets/js/huginn_calls.js?v=20.28.215"></script>
-  <script src="/assets/js/huginn_dock.js?v=20.28.215"></script>
-  <script src="/assets/vendor/jssip.min.js?v=20.28.215"></script>
-  <script src="/assets/js/phone_core.js?v=20.28.215"></script>
-  <script src="/assets/js/phone_ui.js?v=20.28.215"></script>
-  <script src="/h/app.js?v=20.28.215"></script>
+  <script src="/assets/js/huginn_icons.js?v=20.28.216"></script>
+  <script src="/assets/js/phone_mask.js?v=20.28.216"></script>
+  <script src="/assets/js/huginn_sse.js?v=20.28.216"></script>
+  <script src="/assets/js/huginn_calls.js?v=20.28.216"></script>
+  <script src="/assets/js/huginn_dock.js?v=20.28.216"></script>
+  <script src="/assets/vendor/jssip.min.js?v=20.28.216"></script>
+  <script src="/assets/js/phone_core.js?v=20.28.216"></script>
+  <script src="/assets/js/phone_ui.js?v=20.28.216"></script>
+  <script src="/h/app.js?v=20.28.216"></script>
   <script>
     (function () {
       var saved = localStorage.getItem('asgard_theme') || localStorage.getItem('hg_theme');
@@ -245,6 +245,41 @@
       // поэтому версия в URL не нужна и не может «отстать» от SHELL_VERSION.
       navigator.serviceWorker.register('/h/sw.js').catch(() => {});
     }
+
+    // ── ПРАВКА E: сторож версии для PWA Хугинна ──
+    // Раньше /h/ PWA не проверяла версию → оператор (напр. Хосе) месяцами сидел
+    // на старом JS (старая телефония). Теперь сверяем /api/version и жёстко
+    // перезагружаем при расхождении (периодически + при возврате на вкладку).
+    (function () {
+      var VER = '20.28.216';
+      var _busy = false;
+      function check() {
+        if (_busy) return;
+        fetch('/api/version', { cache: 'no-store' })
+          .then(function (r) { return r.ok ? r.json() : null; })
+          .then(function (j) {
+            if (!j || !j.version || j.version === VER) return;
+            _busy = true;
+            var cleared = ('caches' in window)
+              ? caches.keys().then(function (ns) { return Promise.all(ns.map(function (n) { return caches.delete(n); })); }).catch(function () {})
+              : Promise.resolve();
+            cleared.finally(function () {
+              setTimeout(function () {
+                try { location.replace('/h/?_v=' + Date.now() + (location.hash || '')); }
+                catch (_) { location.reload(); }
+              }, 150);
+            });
+          })
+          .catch(function () {});
+      }
+      check();
+      setInterval(check, 45 * 1000);
+      document.addEventListener('visibilitychange', function () {
+        if (document.visibilityState === 'visible') check();
+      });
+      window.addEventListener('focus', check);
+      window.addEventListener('pageshow', check);
+    })();
   </script>
 </body>
 </html>
