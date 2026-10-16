@@ -423,17 +423,42 @@
     }).then(function (r) { return r.ok ? r.json() : null; });
   }
 
+  // Провижининг эндпоинта — ОДИН раз за жизнь страницы (не на каждую
+  // регистрацию). Раньше provision звался при каждом ensureRegistered/register,
+  // а серверный provision делал `pjsip reload` → сбрасывал контакты ВСЕМ
+  // операторам (инцидент 16.10.2026).
+  var _provisioned = false;
+  // Идентичность текущего UA (uri+пароль) — чтобы не пересоздавать его зря.
+  var _uaUri = null;
+  var _uaPassword = null;
+  function provisionOnce() {
+    if (_provisioned) return;
+    _provisioned = true;
+    pbxApi('/softphone/provision', { method: 'POST', body: '{}' }).catch(function () {});
+  }
+
   function startUA(creds) {
     if (!hasJsSIP()) {
       emit('warn', { message: 'JsSIP не загружен — только UI/API режим' });
+      return;
+    }
+    // ПРАВКА C (16.10.2026): если UA уже поднят с ТЕМИ ЖЕ кредами — не трогаем
+    // его. Раньше каждый startUA делал ua.stop() → UNREGISTER + закрытие WS,
+    // и регистрация «мигала» (Unavailable) при каждой перерегистрации.
+    var wsUri = wsUrlFromCreds(creds);
+    var domUri = sipDomainFromWs(wsUri);
+    var wantUri = 'sip:' + creds.sip_username + '@' + domUri;
+    if (ua && _uaUri === wantUri && _uaPassword === (creds.sip_password || '')) {
+      // Тот же эндпоинт/пароль — переиспользуем живой UA (при необходимости
+      // JsSIP сам поддержит регистрацию refresh-ем).
       return;
     }
     if (ua) {
       try { ua.stop(); } catch (_) {}
       ua = null;
     }
-    var ws = wsUrlFromCreds(creds);
-    var domain = sipDomainFromWs(ws);
+    var ws = wsUri;
+    var domain = domUri;
     var socket = new window.JsSIP.WebSocketInterface(ws);
     var uri = 'sip:' + creds.sip_username + '@' + domain;
     var configuration = {
@@ -460,6 +485,8 @@
     // а не из конфигурации UA (см. комментарий в outbound()).
     pcConfig = configuration.pcConfig;
     ua = new window.JsSIP.UA(configuration);
+    _uaUri = wantUri;
+    _uaPassword = creds.sip_password || '';
     sipRegistered = false;
     _wsBroken = false;
     ua.on('connected', function () { emit('sip', { event: 'connected' }); });
@@ -705,18 +732,16 @@
                 startUA(c2);
               });
             }
-            startUA(creds);
-            // Авто-провижининг PJSIP-эндпоинта (best-effort, не блокирует регистрацию).
-            pbxApi('/softphone/provision', { method: 'POST', body: '{}' }).catch(function () {});
-            return { ok: true, mode: receiveMode };
-          })
-          .catch(function (e) {
-            releaseLeader();
-            mode = null;
-            throw e;
-          });
-      });
-    },
+          startUA(creds);
+          return { ok: true, mode: receiveMode };
+        })
+        .catch(function (e) {
+          releaseLeader();
+          mode = null;
+          throw e;
+        });
+    });
+  },
 
     /**
      * Ленивая регистрация SIP «для исходящих» без занятия линии.
@@ -738,12 +763,12 @@
             return pbxApi('/softphone/credentials?regenerate=1').then(function (c2) {
               credentials = c2;
               startUA(c2);
-              pbxApi('/softphone/provision', { method: 'POST', body: '{}' }).catch(function () {});
+              provisionOnce();
               return { ok: true, mode: mode, outboundOnly: true };
             });
           }
           startUA(creds);
-          pbxApi('/softphone/provision', { method: 'POST', body: '{}' }).catch(function () {});
+          provisionOnce();
           return { ok: true, mode: mode, outboundOnly: true };
         });
     },
@@ -764,6 +789,13 @@
     /** Встать на линию (перехват): SIP + on_line=true у себя, у прежнего снимается. */
     goOnDuty: function (receiveMode) {
       receiveMode = receiveMode === 'mobile' ? 'mobile' : 'browser';
+      // ПРАВКА D (16.10.2026): идемпотентность — если уже на линии в этом же
+      // режиме с живой регистрацией, НЕ повторяем register()+claim-line.
+      // Раньше каждый вызов пересоздавал UA (UNREGISTER) и дёргал claim-line,
+      // что при нескольких сессиях рушило регистрацию по кругу.
+      if (onDuty && mode === receiveMode && sipRegistered && ua) {
+        return Promise.resolve({ ok: true, already: true, mode: receiveMode });
+      }
       return api.register(receiveMode).then(function (r) {
         if (!r.ok) return r;
         return pbxApi('/operator/claim-line', {

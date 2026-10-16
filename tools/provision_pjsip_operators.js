@@ -93,15 +93,37 @@ async function main() {
     return 0;
   }
 
-  fs.writeFileSync(OUT, body, { encoding: 'utf8', mode: 0o640 });
-  console.log(`written ${OUT} (${rows.length} endpoints)`);
+  // КРИТИЧНО (инцидент 16.10.2026): НЕ делаем `pjsip reload`, если файл НЕ
+  // изменился. Раньше reload шёл на КАЖДЫЙ /softphone/provision (а фронт зовёт
+  // provision при каждой регистрации/ensureRegistered). `pjsip reload`
+  // перечитывает конфиг и сбрасывает ВСЕ контакты операторов — при 3 открытых
+  // сессиях это рушило регистрацию каждые 1-2 минуты («СИП не зарегистрирован»,
+  // «звонок в браузер не приходит», «звонок идёт на мобильный»).
+  let prevBody = '';
+  try { prevBody = fs.readFileSync(OUT, 'utf8'); } catch (_) { /* файла ещё нет */ }
+  const changed = prevBody !== body;
+
+  if (changed) {
+    fs.writeFileSync(OUT, body, { encoding: 'utf8', mode: 0o640 });
+    console.log(`written ${OUT} (${rows.length} endpoints)`);
+  } else {
+    console.log(`unchanged ${OUT} (${rows.length} endpoints) — reload skipped`);
+  }
 
   // #include в pjsip.conf (одним #include, сам файл генерируется целиком)
   const pj = fs.readFileSync(PJSIP_CONF, 'utf8');
   const marker = 'pjsip_operators.conf';
+  let includeAdded = false;
   if (!pj.includes(marker)) {
     fs.writeFileSync(PJSIP_CONF, pj.replace(/\s*$/, '\n') + `#include ${marker}\n`, 'utf8');
     console.log(`#include добавлен в ${PJSIP_CONF}`);
+    includeAdded = true;
+  }
+
+  // Reload ТОЛЬКО если конфиг реально изменился (или добавлен #include).
+  if (!changed && !includeAdded) {
+    console.log('pjsip reload: skipped (no changes)');
+    return 0;
   }
 
   try {
