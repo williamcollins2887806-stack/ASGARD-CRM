@@ -1181,7 +1181,8 @@ window.AsgardDocHubPage = (function () {
             <div class="dh-top__actions">
               ${isWizard
                 ? '<button class="dh-btn dh-btn--ghost" type="button" id="dhWizToRegistry">К реестру</button>'
-                : `<button class="dh-btn dh-btn--ghost ${isGuide ? 'is-on' : ''}" type="button" id="dhBtnGuide">${isGuide ? 'К реестру' : 'Справка'}</button>
+                : `<button class="dh-btn dh-btn--ghost ${state.actsTab ? 'is-on' : ''}" type="button" id="dhBtnActs">Акты сверки</button>
+              <button class="dh-btn dh-btn--ghost ${isGuide ? 'is-on' : ''}" type="button" id="dhBtnGuide">${isGuide ? 'К реестру' : 'Справка'}</button>
               <button class="dh-btn dh-btn--ghost" type="button" id="dhBtnHelp" title="Подсказка">?</button>
               <button class="dh-btn dh-btn--ghost" type="button" id="dhBtnImport1c">Из 1С</button>
               <button class="dh-btn dh-btn--ghost" type="button" id="dhBtnExport1c">В 1С</button>
@@ -1190,7 +1191,8 @@ window.AsgardDocHubPage = (function () {
             </div>
           </header>
           <main class="dh-main">
-            ${isGuide ? renderGuideView() : (isWizard ? '<div class="dh-wizard-page" id="dhWizardHost"></div>' : registryMainHtml(scopeAll))}
+            ${isGuide ? renderGuideView() : (isWizard ? '<div class="dh-wizard-page" id="dhWizardHost"></div>'
+              : (state.actsTab ? '<div class="dh-acts" id="dhActsHost"><div class="dh-empty">Загрузка актов сверки…</div></div>' : registryMainHtml(scopeAll)))}
           </main>
         </div>
         <div class="dh-overlay" id="dhOverlay" hidden></div>
@@ -2232,6 +2234,118 @@ window.AsgardDocHubPage = (function () {
     }).filter((s) => s.pct != null || s.amount != null || s.due_at);
   }
 
+  /**
+   * V394: вкладка «Акты сверки» (#/doc-hub?tab=acts).
+   * Список контрагентов с оборотами за период, дедлайн, статус, баланс.
+   */
+  const MONTH_NAMES = ['январь', 'февраль', 'март', 'апрель', 'май', 'июнь', 'июль', 'август', 'сентябрь', 'октябрь', 'ноябрь', 'декабрь'];
+  function periodLabel(y, q) { return q ? `${q} кв. ${y}` : `Год ${y}`; }
+
+  async function renderActsTab() {
+    const host = document.getElementById('dhActsHost');
+    if (!host) return;
+    const y = state.actsYear || new Date().getFullYear();
+    const q = state.actsQuarter != null ? state.actsQuarter : Math.floor(new Date().getMonth() / 3) + 1;
+    try {
+      const data = await api(`/reconciliation?year=${y}&quarter=${q}&scope=${encodeURIComponent(state.scope)}`);
+      const items = data.items || [];
+      const rows = items.length ? items.map((it) => {
+        const bal = it.balance_rub != null ? Number(it.balance_rub) : null;
+        const balCls = bal == null ? 'muted' : bal > 0 ? 'ok' : bal < 0 ? 'err' : 'muted';
+        const balTxt = bal == null ? '—'
+          : (bal === 0 ? 'сошлось' : (bal > 0 ? `в нашу пользу ${money(bal)}` : `мы должны ${money(Math.abs(bal))}`));
+        const st = it.status === 'received' ? '<span class="dh-pill dh-pill--ok">получен</span>'
+          : it.status === 'requested' ? '<span class="dh-pill dh-pill--warn">запрошен</span>'
+            : '<span class="dh-pill dh-pill--muted">нужно запросить</span>';
+        return `<tr>
+          <td><div class="dh-stack"><span class="a">${esc(it.name || '—')}</span><span class="b dh-muted">ИНН ${esc(String(it.inn || '—'))}</span></div></td>
+          <td>${it.docs || 0}</td>
+          <td class="dh-money">${it.amount ? money(it.amount) : '—'}</td>
+          <td>${fmtDate(it.due_at) || '—'}</td>
+          <td>${st}</td>
+          <td class="dh-money dh-money--${balCls}">${esc(balTxt)}</td>
+          <td class="dh-actions"><div class="dh-qa">
+            <button type="button" data-act="detail" data-inn="${esc(String(it.inn || ''))}" data-name="${esc(it.name || '')}" title="Детали и баланс">${qaIcons().open}</button>
+            <button type="button" data-act="requested" data-inn="${esc(String(it.inn || ''))}" data-name="${esc(it.name || '')}" title="Запросить акт">↗</button>
+            <button type="button" data-act="received" data-inn="${esc(String(it.inn || ''))}" data-name="${esc(it.name || '')}" title="Отметить полученным">✓</button>
+          </div></td>
+        </tr>`;
+      }).join('') : '<tr><td colspan="7"><div class="dh-empty dh-empty--sm"><div class="dh-empty__t">За период оборотов нет</div><p>Смените период или дождитесь оплат/оказанных услуг.</p></div></td></tr>';
+
+      host.innerHTML = `
+        <div class="dh-acts__bar">
+          <div class="dh-seg" id="dhActsPeriod">
+            ${[1, 2, 3, 4, 0].map((qq) => `<button type="button" class="${qq === q ? 'is-on' : ''}" data-q="${qq}">${qq ? qq + ' кв.' : 'Год'}</button>`).join('')}
+          </div>
+          <select id="dhActsYear" class="input" style="max-width:120px">
+            ${[y - 1, y, y + 1].map((yy) => `<option ${yy === y ? 'selected' : ''}>${yy}</option>`).join('')}
+          </select>
+          <span class="dh-muted">Дедлайн: ${fmtDate(data.due_at) || '—'} · предварительный расчёт</span>
+        </div>
+        <div class="dh-card">
+          <div class="dh-card__head"><h2>Акты сверки · ${esc(periodLabel(y, q))}</h2></div>
+          <div class="dh-table-wrap"><table class="dh-table">
+            <thead><tr><th>Контрагент</th><th>Документов</th><th>Сумма</th><th>Дедлайн</th><th>Статус</th><th>Баланс</th><th class="dh-actions">Действия</th></tr></thead>
+            <tbody>${rows}</tbody>
+          </table></div>
+        </div>
+        <div id="dhActDetail"></div>`;
+      host.querySelector('#dhActsPeriod')?.addEventListener('click', (e) => {
+        const b = e.target.closest('[data-q]');
+        if (b) { state.actsQuarter = parseInt(b.getAttribute('data-q'), 10); renderActsTab(); }
+      });
+      host.querySelector('#dhActsYear')?.addEventListener('change', (e) => {
+        state.actsYear = parseInt(e.target.value, 10); renderActsTab();
+      });
+      host.querySelectorAll('[data-act]').forEach((b) => {
+        b.addEventListener('click', async () => {
+          const act = b.getAttribute('data-act');
+          const inn = b.getAttribute('data-inn'); const name = b.getAttribute('data-name');
+          if (act === 'detail') return renderActDetail(inn, name, y, q);
+          try {
+            await api('/reconciliation/status', { method: 'POST', body: JSON.stringify({ inn: inn || null, name, year: y, quarter: q, status: act }) });
+            toast('Акт сверки', act === 'received' ? 'Отмечен полученным' : 'Запрошен', 'ok');
+            renderActsTab();
+          } catch (e) { toast('Ошибка', e.message || 'не удалось', 'err'); }
+        });
+      });
+    } catch (e) {
+      host.innerHTML = `<div class="dh-empty"><div class="dh-empty__t">Не удалось загрузить</div><p>${esc(e.message || '')}</p></div>`;
+    }
+  }
+
+  async function renderActDetail(inn, name, year, quarter) {
+    const host = document.getElementById('dhActDetail');
+    if (!host) return;
+    host.innerHTML = '<div class="dh-empty dh-empty--sm">Загрузка…</div>';
+    try {
+      const d = await api(`/reconciliation/detail?inn=${encodeURIComponent(inn)}&name=${encodeURIComponent(name)}&year=${year}&quarter=${quarter}`);
+      const docs = (d.docs || []).map((x) => `<tr>
+        <td>${esc(x.invoice_number || 'б/н')}</td>
+        <td>${fmtDate(x.invoice_date) || '—'}</td>
+        <td>${fmtDate(x.service_done_at) || '—'}</td>
+        <td class="dh-money">${money(x.amount)}</td>
+        <td>${x.paid ? '<span class="dh-pill dh-pill--ok">оплачен</span>' : '<span class="dh-pill dh-pill--muted">не оплачен</span>'}</td>
+      </tr>`).join('');
+      const bal = Number(d.balanceRub) || 0;
+      host.innerHTML = `
+        <div class="dh-card">
+          <div class="dh-card__head"><h2>${esc(name || ('ИНН ' + inn))} · ${esc(periodLabel(year, quarter))}</h2>
+            <span class="dh-muted">${esc(d.note || '')}</span></div>
+          <div class="dh-table-wrap"><table class="dh-table">
+            <thead><tr><th>Счёт</th><th>Дата</th><th>Услуга</th><th>Сумма</th><th>Оплата</th></tr></thead>
+            <tbody>${docs || '<tr><td colspan="5">Нет документов</td></tr>'}</tbody>
+          </table></div>
+          <div class="dh-act-balance ${bal > 0 ? 'is-pos' : bal < 0 ? 'is-neg' : ''}">
+            Баланс: <strong>${bal > 0 ? ('в нашу пользу ' + money(bal)) : bal < 0 ? ('мы должны ' + money(Math.abs(bal))) : 'сошлось'}</strong>
+            <span class="dh-muted">· оплаты ${money(d.paidSum)} − документы ${money(d.docsSum)}</span>
+          </div>
+        </div>`;
+    } catch (e) {
+      host.innerHTML = `<div class="dh-empty"><div class="dh-empty__t">Не удалось загрузить детали</div><p>${esc(e.message || '')}</p></div>`;
+    }
+  }
+
   async function openDrawer(id) {
     try {
       // Fetch row + users concurrently; works lazy via select
@@ -3133,7 +3247,16 @@ window.AsgardDocHubPage = (function () {
     root.querySelector('#dhBtnExportXlsx')?.addEventListener('click', exportXlsx);
     root.querySelector('#dhBtnImport1c')?.addEventListener('click', import1c);
     root.querySelector('#dhBtnGuide')?.addEventListener('click', async () => {
+      state.actsTab = false;
       state.view = state.view === 'guide' ? 'registry' : 'guide';
+      await paint(window.__docHubLayout || window.layout);
+    });
+    // V394: вкладка «Акты сверки».
+    root.querySelector('#dhBtnActs')?.addEventListener('click', async () => {
+      state.view = 'registry';
+      state.actsTab = !state.actsTab;
+      const hash = state.actsTab ? '#/doc-hub?tab=acts' : '#/doc-hub';
+      if (location.hash !== hash) { location.hash = hash; return; }
       await paint(window.__docHubLayout || window.layout);
     });
     root.querySelector('#dhBtnHelp')?.addEventListener('click', () => {
@@ -3409,9 +3532,12 @@ window.AsgardDocHubPage = (function () {
       await window.layout(html, { title: state.view === 'wizard' ? 'Внести документ' : 'Реестр документов' });
     }
     bind(document);
-    if (state.view === 'registry') {
+    if (state.view === 'registry' && !state.actsTab) {
       bindQuarterLive();
       bindHScroll();
+    }
+    if (state.actsTab) {
+      await renderActsTab();
     }
     if (state.view === 'wizard') {
       const host = document.getElementById('dhWizardHost');
@@ -3442,6 +3568,11 @@ window.AsgardDocHubPage = (function () {
     state.selectedId = null;
     state.coachOpen = true;
     readHashFilters(); // scope/quarter/year from #/doc-hub?...
+    // V394: вкладка актов сверки по #/doc-hub?tab=acts
+    try {
+      const tab = (new URLSearchParams((location.hash.split('?')[1] || ''))).get('tab');
+      if (tab === 'acts') state.actsTab = true;
+    } catch (_) { /* ignore */ }
     await paint(layoutFn || window.layout);
     try {
       const q = new URLSearchParams((location.hash.split('?')[1] || ''));
