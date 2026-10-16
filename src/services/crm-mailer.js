@@ -159,6 +159,22 @@ async function getCrmBccAddress(db) {
 }
 
 /**
+ * B1 (плана часть II, блокер): адрес CRM для копии при согласовании.
+ * Настройка `crm_cc_address` (settings) приоритетнее, иначе — is_copy_target.
+ */
+async function getCrmCopyAddress(db) {
+  try {
+    const s = await db.query(`SELECT value_json FROM settings WHERE key='crm_cc_address' LIMIT 1`);
+    if (s.rows[0]) {
+      let v = s.rows[0].value_json;
+      try { v = JSON.parse(v); } catch (_) { /* строка как есть */ }
+      if (typeof v === 'string' && v.includes('@')) return v.trim();
+    }
+  } catch (_) { /* настройки может не быть */ }
+  return getCrmBccAddress(db);
+}
+
+/**
  * Отправить письмо от имени пользователя с BCC на CRM
  * @param {Object} db - database pool
  * @param {number} userId - ID пользователя
@@ -180,8 +196,18 @@ async function sendCrmEmail(db, userId, mailOptions) {
   const crmNorm = String(crmBccRaw || '').toLowerCase().trim();
   const crmBcc = (crmNorm && crmNorm !== fromNorm && crmNorm !== toNorm) ? crmBccRaw : null;
   let bccList = mailOptions.bcc ? (Array.isArray(mailOptions.bcc) ? [...mailOptions.bcc] : [mailOptions.bcc]) : [];
+  // B1 (плана, блокер): для согласований CRM ставим в Cc, а не BCC — при BCC
+  // получатель не видит адрес CRM и «Ответить» уходит мимо неё. ccCrm=true
+  // переносит CRM-адрес в Cc и отключает BCC-копию.
+  let ccList = mailOptions.cc ? (Array.isArray(mailOptions.cc) ? [...mailOptions.cc] : [mailOptions.cc]) : [];
   if (mailOptions.skipBcc || mailOptions.noBcc) {
     bccList = [];
+  } else if (mailOptions.ccCrm) {
+    const copyAddr = await getCrmCopyAddress(db);
+    const copyNorm = String(copyAddr || '').toLowerCase().trim();
+    if (copyNorm && copyNorm !== fromNorm && copyNorm !== toNorm && !ccList.some((c) => String(c).toLowerCase().includes(copyNorm))) {
+      ccList.push(copyAddr);
+    }
   } else if (crmBcc) {
     bccList.push(crmBcc);
   }
@@ -214,7 +240,7 @@ async function sendCrmEmail(db, userId, mailOptions) {
     };
   }
 
-  if (mailOptions.cc) options.cc = mailOptions.cc;
+  if (ccList.length > 0) options.cc = Array.isArray(mailOptions.cc) ? ccList : ccList.join(', ');
   if (bccList.length > 0) options.bcc = bccList.join(', ');
 
   const result = await transport.sendMail(options);
@@ -585,6 +611,7 @@ async function sendAutoReply(db, opts) {
 module.exports = {
   getTransportForUser,
   getCrmBccAddress,
+  getCrmCopyAddress,
   sendCrmEmail,
   sendAutoReply
 };
