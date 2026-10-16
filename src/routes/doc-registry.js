@@ -11,6 +11,7 @@ const { enrichCatalogFromLines } = require('../services/catalog-from-invoice');
 const excelSvc = require('../services/doc-registry-excel');
 const ExcelJS = require('exceljs');
 const { visibilitySql, assertDocVisible, canUseScopeAll } = require('../lib/doc-visibility');
+const traffic = require('../lib/doc-traffic');
 
 let normalizeUploadUrl = (p) => p;
 try { ({ normalizeUploadUrl } = require('../utils/upload-url')); } catch (_) { /* optional */ }
@@ -169,11 +170,16 @@ function decorate(row) {
   const t = today();
   const payDue = row.payment_due_at ? String(row.payment_due_at).slice(0, 10) : null;
   const sfDue = row.sf_due_at ? String(row.sf_due_at).slice(0, 10) : null;
+  // Светофор — единое ядро (src/lib/doc-traffic.js). Если трафик уже посчитан
+  // SQL-выражением (d.traffic), не дублируем; иначе считаем JS-зеркалом.
+  const trafficInfo = row.traffic ? { color: row.traffic } : traffic.trafficOf({ ...row, ...(payDue ? { payment_due_at: payDue } : {}), ...(sfDue ? { sf_due_at: sfDue } : {}) }, { today: t });
   return {
     ...row,
     original_path_url: normPath(row.original_path_url),
-    overdue_pay: !!(payDue && payDue < t && !['paid', 'n_a'].includes(row.pay_status)),
-    overdue_sf: !!(sfDue && sfDue < t && ['wait_sf', 'wait_closing'].includes(row.ops_status))
+    overdue_pay: !!(payDue && payDue < t && traffic.payDeadlineActive(row)),
+    overdue_sf: !!(sfDue && sfDue < t && !row.sf_received_at && ['wait_sf', 'wait_closing'].includes(row.ops_status)),
+    traffic: trafficInfo.color,
+    traffic_reason: trafficInfo.reason
   };
 }
 
@@ -388,10 +394,15 @@ function buildFilters(q, userId, role) {
     where += ` AND (d.counterparty_name ILIKE $${i} OR d.invoice_number ILIKE $${i} OR COALESCE(d.comment_text,'') ILIKE $${i} OR COALESCE(w.work_title,w.object_name,'') ILIKE $${i})`;
   }
   const t = today();
-  const payOver = `d.payment_due_at IS NOT NULL AND d.payment_due_at::date < '${t}'::date AND COALESCE(d.pay_status,'none') NOT IN ('paid','n_a')`;
-  const sfOver = `d.sf_due_at IS NOT NULL AND d.sf_due_at::date < '${t}'::date AND d.ops_status IN ('wait_sf','wait_closing')`;
+  // Светофор — единое SQL-ядро (см. src/lib/doc-traffic.js).
+  const payOver = traffic.overduePaySql('d');
+  const sfOver = traffic.overdueSfSql('d');
   if (q.overdue_pay === '1' || q.overdue_pay === 'true') where += ` AND ${payOver}`;
   if (q.overdue_sf === '1' || q.overdue_sf === 'true') where += ` AND ${sfOver}`;
+  const qColor = String(q.traffic || '').toLowerCase();
+  if (['red', 'blue', 'yellow', 'green'].includes(qColor)) {
+    where += ` AND (${traffic.trafficSql('d')}) = '${qColor}'`;
+  }
   if (q.incomplete === '1' || q.incomplete === 'true') where += ' AND d.is_incomplete';
   if (q.no_onec === '1' || q.no_onec === 'true') where += ` AND (d.onec_id IS NULL OR trim(d.onec_id)='')`;
   const kpi = (q.kpi || '').toLowerCase();
@@ -454,7 +465,7 @@ module.exports = async function docRegistryRoutes(fastify) {
       : 'ORDER BY d.invoice_date DESC NULLS LAST, d.id DESC';
     const [cnt, list] = await Promise.all([
       db.query(`SELECT COUNT(*)::int n FROM doc_registry d LEFT JOIN works w ON w.id=d.work_id${where}`, params),
-      db.query(`${JOIN_SQL}${where} ${orderSql} LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
+      db.query(`${JOIN_SQL.replace('SELECT d.*,', `SELECT d.*, (${traffic.trafficSql('d')}) AS traffic,`)}${where} ${orderSql} LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
         [...params, limit, (page - 1) * limit])
     ]);
     return { items: list.rows.map(decorate), total: cnt.rows[0].n, page, limit, sort };
@@ -467,6 +478,7 @@ module.exports = async function docRegistryRoutes(fastify) {
     const t = today();
     params.push(t);
     const ti = `$${params.length}`;
+    const tSql = traffic.trafficSql('d');
     const { rows } = await db.query(
       `SELECT COUNT(*)::int AS "all",
         COUNT(*) FILTER (WHERE d.payment_due_at IS NOT NULL AND d.payment_due_at::date < ${ti}::date
@@ -479,11 +491,15 @@ module.exports = async function docRegistryRoutes(fastify) {
         COUNT(*) FILTER (WHERE d.wh_status IN ('await','received','to_office'))::int AS wh,
         COUNT(*) FILTER (WHERE d.dir='out')::int AS out,
         COUNT(*) FILTER (WHERE d.onec_id IS NULL OR trim(d.onec_id)='')::int AS no_1c,
-        COUNT(*) FILTER (WHERE d.is_incomplete)::int AS incomplete
+        COUNT(*) FILTER (WHERE d.is_incomplete)::int AS incomplete,
+        COUNT(*) FILTER (WHERE (${tSql}) = 'red')::int AS traffic_red,
+        COUNT(*) FILTER (WHERE (${tSql}) = 'blue')::int AS traffic_blue,
+        COUNT(*) FILTER (WHERE (${tSql}) = 'yellow')::int AS traffic_yellow,
+        COUNT(*) FILTER (WHERE (${tSql}) = 'green')::int AS traffic_green
        FROM doc_registry d LEFT JOIN works w ON w.id=d.work_id${where}`,
       params
     );
-    return rows[0] || { all: 0, pay: 0, sf: 0, wh: 0, out: 0, no_1c: 0, incomplete: 0 };
+    return rows[0] || { all: 0, pay: 0, sf: 0, wh: 0, out: 0, no_1c: 0, incomplete: 0, traffic_red: 0, traffic_blue: 0, traffic_yellow: 0, traffic_green: 0 };
   });
 
   fastify.get('/facets', auth, async (req) => {
