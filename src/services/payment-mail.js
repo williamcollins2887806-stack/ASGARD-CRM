@@ -531,6 +531,10 @@ async function applyDecision(db, payment, action, actor) {
         link: `#/approval-payment`
       });
     }
+    // Часть II плана: ПОСЛЕ согласования директором счёт попадает в реестр
+    // («дозаполнить»). Раньше запись появлялась только из afterPaid — после
+    // ОПЛАТЫ, а требование заказчика: «подтвердил → сразу в реестр».
+    await ensureRegistryDoc(db, payment.id);
   } else if (payment.created_by) {
     createNotification(db, {
       user_id: payment.created_by,
@@ -541,6 +545,78 @@ async function applyDecision(db, payment, action, actor) {
     });
   }
   return { ok: true, status: act === 'approve' ? 'pending_payment' : 'rejected' };
+}
+
+/**
+ * Часть II плана: после dir-approve создать/связать строку реестра документов
+ * со статусом «дозаполнить». Идемпотентно: повторный вызов не создаёт дубль
+ * (сначала проверяем doc_registry_id и совпадение по реквизитам).
+ * @returns {Promise<number|null>} id строки реестра
+ */
+async function ensureRegistryDoc(db, paymentId) {  try {
+    const pay = (await db.query(`SELECT * FROM payment_invoices WHERE id=$1`, [paymentId])).rows[0];
+    if (!pay) return null;
+    // Уже связана или уже есть строка из этой заявки?
+    const linked = await db.query(
+      `SELECT id FROM doc_registry WHERE payment_invoice_id=$1 AND deleted_at IS NULL LIMIT 1`, [paymentId]);
+    if (linked.rows[0]) {
+      await db.query(`UPDATE payment_invoices SET doc_registry_id=$2 WHERE id=$1 AND doc_registry_id IS NULL`, [paymentId, linked.rows[0].id]).catch(() => {});
+      return linked.rows[0].id;
+    }
+    if (pay.doc_registry_id) {
+      const d = await db.query(`SELECT id FROM doc_registry WHERE id=$1 AND deleted_at IS NULL`, [pay.doc_registry_id]);
+      if (d.rows[0]) {
+        await db.query(`UPDATE doc_registry SET payment_invoice_id=$2, updated_at=NOW() WHERE id=$1 AND payment_invoice_id IS NULL`, [pay.doc_registry_id, paymentId]).catch(() => {});
+        return pay.doc_registry_id;
+      }
+    }
+    // Совпадение по реквизитам (антидубль с ручным вводом) — только СВЯЗАТЬ.
+    if (pay.supplier_name && pay.amount != null) {
+      const dup = await db.query(
+        `SELECT id FROM doc_registry WHERE deleted_at IS NULL AND dir='in'
+           AND lower(trim(counterparty_name)) = lower(trim($1)) AND amount_gross = $2
+           AND payment_invoice_id IS NULL LIMIT 1`, [pay.supplier_name, pay.amount]);
+      if (dup.rows[0]) {
+        await db.query(`UPDATE doc_registry SET payment_invoice_id=$2, updated_at=NOW() WHERE id=$1`, [dup.rows[0].id, paymentId]);
+        await db.query(`UPDATE payment_invoices SET doc_registry_id=$2 WHERE id=$1`, [paymentId, dup.rows[0].id]).catch(() => {});
+        return dup.rows[0].id;
+      }
+    }
+    // Создаём новую строку «дозаполнить» (синий — не хватает полей для полного вида).
+    // supplier_id ищем по ИНН из реквизитов заявки/строки — иначе реквизиты для
+    // платёжки не подтянутся в модалку бухгалтера.
+    let supplierId = pay.supplier_id || null;
+    if (!supplierId) {
+      try {
+        const rd = await db.query(
+          `SELECT counterparty_inn FROM doc_registry WHERE payment_invoice_id=$1 AND counterparty_inn IS NOT NULL LIMIT 1`, [paymentId]);
+        const inn = rd.rows[0] && rd.rows[0].counterparty_inn;
+        if (inn) {
+          const s = await db.query(`SELECT id FROM suppliers WHERE inn=$1 AND deleted_at IS NULL LIMIT 1`, [inn]);
+          if (s.rows[0]) supplierId = s.rows[0].id;
+        }
+      } catch (_) { /* не критично */ }
+    }
+    const basis = pay.basis_text || (pay.file_name ? ('Счёт: ' + pay.file_name) : 'Счёт из заявки');
+    const ins = await db.query(
+      `INSERT INTO doc_registry(dir, package_type, ops_status, pay_status, counterparty_name, supplier_id,
+         amount_gross, amount_net, vat_amount, has_vat, spend_kind, doc_owner_id, created_by, updated_by,
+         receive_channel, comment_text, payment_invoice_id, is_incomplete, incomplete_reasons)
+       VALUES ('in','invoice','wait_closing','wait',$1,$2,$3,$3,0,false,'other',$4,$4,$4,'email',$5,$6,true,
+               ARRAY['no_invoice_number','no_invoice_date']::text[]) RETURNING id`,
+      [pay.supplier_name || 'Контрагент из заявки', supplierId, pay.amount,
+        pay.created_by || 1, basis, paymentId]);
+    const docId = ins.rows[0].id;
+    if (supplierId && !pay.supplier_id) {
+      await db.query(`UPDATE payment_invoices SET supplier_id=$2 WHERE id=$1`, [paymentId, supplierId]).catch(() => {});
+    }
+    await db.query(`UPDATE payment_invoices SET doc_registry_id=$2 WHERE id=$1`, [paymentId, docId]).catch(() => {});
+    return docId;
+  } catch (e) {
+    // Запись в реестр не должна валить согласование.
+    console.error('[payment-mail] ensureRegistryDoc failed:', e.message);
+    return null;
+  }
 }
 
 async function applyBatchDecision(db, payments, batch, action, actor) {
@@ -577,6 +653,7 @@ module.exports = {
   sendDirectorMailBatch,
   applyDecision,
   applyBatchDecision,
+  ensureRegistryDoc,
   landingMessageHtml,
   landingActionHtml,
   landingBatchActionHtml,

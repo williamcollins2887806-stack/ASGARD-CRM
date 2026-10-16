@@ -76,17 +76,41 @@ async function intakeOne(db, { email, attachment, text, userId = null, dryRun = 
     const gross = parsed.amount_gross != null ? parsed.amount_gross : 0;
     const net = parsed.amount_net != null ? parsed.amount_net : gross;
     const vat = parsed.vat_amount != null ? parsed.vat_amount : 0;
+    // Ищем поставщика по ИНН — чтобы в заявке/модалке были реквизиты для платёжки.
+    let supplierId = null;
+    if (parsed.inn) {
+      try {
+        const s = await db.query(`SELECT id FROM suppliers WHERE inn=$1 AND deleted_at IS NULL LIMIT 1`, [parsed.inn]);
+        if (s.rows[0]) {
+          supplierId = s.rows[0].id;
+          // Если в карточке нет банковских реквизитов — заполняем из распознанного
+          // счёта (иначе бухгалтеру нечего копировать в платёжку).
+          const patch = [];
+          const pv = [];
+          if (parsed.bik) { pv.push(parsed.bik); patch.push(`bik = COALESCE(NULLIF(bik,''), $${pv.length})`); }
+          if (parsed.rs) { pv.push(parsed.rs); patch.push(`rs = COALESCE(NULLIF(rs,''), $${pv.length})`); }
+          if (parsed.ks) { pv.push(parsed.ks); patch.push(`ks = COALESCE(NULLIF(ks,''), $${pv.length})`); }
+          if (parsed.bank_name) { pv.push(parsed.bank_name); patch.push(`bank_name = COALESCE(NULLIF(bank_name,''), $${pv.length})`); }
+          if (patch.length) {
+            pv.push(supplierId);
+            await db.query(`UPDATE suppliers SET ${patch.join(', ')}, updated_at=NOW() WHERE id=$${pv.length}`, pv).catch(() => {});
+          }
+        }
+      } catch (_) { /* не критично */ }
+    }
     const insDoc = await db.query(
       `INSERT INTO doc_registry(dir, package_type, ops_status, pay_status, invoice_number, invoice_date,
-         counterparty_name, counterparty_inn, amount_gross, amount_net, vat_amount, has_vat,
+         counterparty_name, counterparty_inn, supplier_id, amount_gross, amount_net, vat_amount, has_vat,
          spend_kind, doc_owner_id, created_by, updated_by, receive_channel, comment_text)
-       VALUES ('in','invoice','wait_sf','wait',$1,$2::date,$3,$4,$5,$6,$7,$8,
-               'other',$9,$9,$9,'email',$10) RETURNING id`,
-      [parsed.invoice_number, parsed.invoice_date, cpName, parsed.inn,
+       VALUES ('in','invoice','wait_sf','wait',$1,$2::date,$3,$4,$5,$6,$7,$8,$9,
+               'other',$10,$10,$10,'email',$11) RETURNING id`,
+      [parsed.invoice_number, parsed.invoice_date, cpName, parsed.inn, supplierId,
         gross, net, vat, parsed.has_vat !== false,
         userId, lowConfidence ? 'Требует ручной проверки (низкая уверенность разбора)' : null]);
     docId = insDoc.rows[0].id;
     createdDoc = true;
+    // Запоминаем supplier_id для заявки.
+    if (supplierId) parsed._supplierId = supplierId;
   }
 
   // Заявка на оплату — только при приемлемой уверенности.
@@ -100,10 +124,10 @@ async function intakeOne(db, { email, attachment, text, userId = null, dryRun = 
         ? `Счёт ${parsed.invoice_number}${parsed.invoice_date ? ' от ' + parsed.invoice_date : ''}`
         : 'Счёт из письма';
       const insPay = await db.query(
-        `INSERT INTO payment_invoices(status, payment_status, supplier_name, amount, requires_payment,
+        `INSERT INTO payment_invoices(status, payment_status, supplier_name, supplier_id, amount, requires_payment,
            created_by, pay_timing, basis_type, basis_text, doc_registry_id, source_email_id, source_attachment_id)
-         VALUES ('awaiting_dir','awaiting_dir',$1,$2,true,$3,'immediate','other',$4,$5,$6,$7) RETURNING id`,
-        [parsed.counterparty_name, parsed.amount_gross, userId || 1, basis, docId, emailId, attachmentId]);
+         VALUES ('awaiting_dir','awaiting_dir',$1,$2,$3,true,$4,'immediate','other',$5,$6,$7,$8) RETURNING id`,
+        [parsed.counterparty_name, parsed._supplierId || null, parsed.amount_gross, userId || 1, basis, docId, emailId, attachmentId]);
       paymentId = insPay.rows[0].id;
       // TTL 72ч.
       try { require('./doc-approval-ttl').stampExpiry(db, paymentId); } catch (_) {}
