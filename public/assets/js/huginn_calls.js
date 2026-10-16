@@ -143,6 +143,21 @@
     } catch (_) {}
   }
 
+  /** Разблокирован ли звук (autoplay policy). Если нет — показываем подсказку. */
+  function audioBlocked() {
+    try {
+      // ting_common помечает флаг при первом жесте; если его нет — считаем,
+      // что контекст ещё «спит» и рингтон может не прозвучать.
+      if (global.TingSound && typeof global.TingSound.isUnlocked === 'function') {
+        return !global.TingSound.isUnlocked();
+      }
+      const AC = global.AudioContext || global.webkitAudioContext;
+      return !!AC; // без API судить нельзя — не пугаем пользователя
+    } catch (_) {
+      return false;
+    }
+  }
+
   function phoneBusy() {
     try {
       return !!(global.AsgardPhone && global.AsgardPhone.getState && global.AsgardPhone.getState() !== 'offline');
@@ -212,6 +227,12 @@
       : mode === 'outgoing' ? 'Вызов…'
         : (mode === 'active' ? '<span data-hg-call-timer>00:00</span>' : '');
     const canAccept = mode === 'incoming';
+    // Если браузер ещё не дал звук (не было жеста) — честно предупреждаем и
+    // предлагаем тап: он разбудит AudioContext прямо сейчас.
+    const blocked = audioBlocked() && (mode === 'incoming' || mode === 'outgoing');
+    const sndHint = blocked
+      ? '<div class="hg-call-snd-hint" data-hg-call-unlock role="button" tabindex="0">🔇 Нажмите, чтобы включить звук</div>'
+      : '';
     el.innerHTML = `
       <div class="hg-call-stage hg-call-stage--${mode}">
         <video class="hg-call-remote" data-hg-call-remote playsinline autoplay></video>
@@ -219,6 +240,7 @@
           <div class="hg-call-av" aria-hidden="true">${initials || '?'}</div>
           <div class="hg-call-name">${escapeHtml(peerName || 'Сотрудник')}</div>
           <div class="hg-call-status">${statusText}</div>
+          ${sndHint}
         </div>
       </div>
       <div class="hg-call-controls">
@@ -242,6 +264,18 @@
         else if (a === 'cam') toggleCam();
       };
     });
+    // Тап по подсказке «включить звук» = жест пользователя: будим AudioContext
+    // и перерисовываем оверлей (подсказка исчезнет), плюс сразу стартуем рингтон.
+    const unlockBtn = el.querySelector('[data-hg-call-unlock]');
+    if (unlockBtn) {
+      const doUnlock = () => {
+        try { if (global.TingSound && global.TingSound.unlock) global.TingSound.unlock(); } catch (_) {}
+        renderOverlay(mode);
+        if (mode === 'incoming' || mode === 'outgoing') ringtone(true, mode === 'incoming');
+      };
+      unlockBtn.onclick = doUnlock;
+      unlockBtn.onkeydown = (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); doUnlock(); } };
+    }
     if (mode === 'active') {
       const t = el.querySelector('[data-hg-call-timer]');
       if (t) t.textContent = fmtTime(timerSec);

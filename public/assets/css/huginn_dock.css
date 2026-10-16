@@ -4940,6 +4940,30 @@ html[data-hg-fx="reduced"] {
   color: var(--hg-muted, #8e8e93);
   font-variant-numeric: tabular-nums;
 }
+/* Подсказка «включить звук»: показывается, когда браузер ещё не дал звук
+   (autoplay policy — не было жеста). Тап по ней разблокирует AudioContext. */
+.hg-call-snd-hint {
+  margin-top: 10px;
+  padding: 7px 12px;
+  border-radius: 999px;
+  font: 500 13px/1.2 var(--hg-font);
+  color: #fff;
+  background: color-mix(in srgb, var(--blue-l, #4A90D9) 86%, #000 6%);
+  cursor: pointer;
+  user-select: none;
+  animation: hg-call-hint-pulse 1.6s ease-in-out infinite;
+}
+.hg-call-snd-hint:focus-visible {
+  outline: 2px solid var(--blue-l, #4A90D9);
+  outline-offset: 2px;
+}
+@keyframes hg-call-hint-pulse {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.03); opacity: .92; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .hg-call-snd-hint { animation: none; }
+}
 .hg-call-controls {
   flex: 0 0 auto;
   display: flex;

@@ -28,6 +28,52 @@
     return audioCtx;
   }
 
+  // ── Разблокировка звука (autoplay policy) ────────────────────────
+  // Браузер держит AudioContext в 'suspended' (или вовсе не даёт создать), пока
+  // пользователь не коснётся страницы. При входящем звонке касания может не быть
+  // → рингтон немой. Решение: «будим» контекст на ПЕРВОМ любом жесте (тап,
+  // скролл, ввод, Enter) — это всегда происходит раньше звонка, т.к. вход в /h/
+  // требует нажать «Продолжить» и ввести код. Молча: без звука, только resume().
+  let _unlocked = false;
+  function unlockAudio() {
+    if (_unlocked) return;
+    try {
+      const c = ac();
+      if (!c) return;
+      const done = () => { _unlocked = (c.state === 'running'); };
+      if (c.state === 'suspended') c.resume().then(done).catch(() => {});
+      else done();
+      // Пустой буфер: некоторые движки (iOS) «считают» контекст живым только
+      // после реального запуска источника.
+      try {
+        const b = c.createBuffer(1, 1, 22050);
+        const s = c.createBufferSource();
+        s.buffer = b;
+        s.connect(c.destination);
+        if (s.start) s.start(0);
+      } catch (_) {}
+    } catch (_) {}
+  }
+
+  function installUnlock() {
+    if (!global.document || !global.addEventListener) return;
+    const evs = ['touchstart', 'touchend', 'pointerdown', 'mousedown', 'keydown', 'click'];
+    const once = () => {
+      unlockAudio();
+      // Снимаем все обработчики — дальше контекст живёт сам.
+      evs.forEach((e) => { try { global.removeEventListener(e, once, true); } catch (_) {} });
+      try { global.document.removeEventListener('visibilitychange', onVis); } catch (_) {}
+    };
+    evs.forEach((e) => { try { global.addEventListener(e, once, true); } catch (_) {} });
+    // Возврат на вкладку/в приложение тоже считается попыткой (если политика
+    // уже позволила — контекст разбудится без жеста).
+    function onVis() {
+      if (global.document && global.document.visibilityState === 'visible') unlockAudio();
+    }
+    try { global.document.addEventListener('visibilitychange', onVis); } catch (_) {}
+  }
+  installUnlock();
+
   function tone(freq, dur, type, gain) {
     try {
       if (global.localStorage && global.localStorage.getItem('ting_sound_off') === '1') return;
@@ -111,7 +157,20 @@
       if (_ringTimer) { clearInterval(_ringTimer); _ringTimer = null; }
       if (_ringVibe) { clearInterval(_ringVibe); _ringVibe = null; }
       try { if (global.navigator && global.navigator.vibrate) global.navigator.vibrate(0); } catch (_) {}
-    }
+    },
+
+    /** Разблокирован ли звук браузером (autoplay policy). */
+    isUnlocked() {
+      try {
+        if (!audioCtx) return false;
+        return audioCtx.state === 'running';
+      } catch (_) {
+        return false;
+      }
+    },
+
+    /** Принудительно разбудить аудио (вызывать из жеста). */
+    unlock() { unlockAudio(); }
   };
 
   /** Dedupe chat messages by id or author+text+time bucket */
