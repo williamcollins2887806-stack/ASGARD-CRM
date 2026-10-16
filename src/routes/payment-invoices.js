@@ -224,9 +224,14 @@ async function routes(fastify) {
 
   fastify.get('/', { preHandler: [fastify.authenticate] }, async (req) => {
     const status = req.query.status || null;
+    // 17.10: initiator_name в списке — мобильному и директору видно «от кого счёт».
+    const base = `SELECT pi.*, u.name AS initiator_name, s.inn AS supplier_inn
+                    FROM payment_invoices pi
+                    LEFT JOIN users u ON u.id = pi.created_by
+                    LEFT JOIN suppliers s ON s.id = pi.supplier_id`;
     const q = status
-      ? await db.query(`SELECT * FROM payment_invoices WHERE status=$1 ORDER BY id DESC LIMIT 200`, [status])
-      : await db.query(`SELECT * FROM payment_invoices ORDER BY id DESC LIMIT 200`);
+      ? await db.query(`${base} WHERE pi.status=$1 ORDER BY pi.id DESC LIMIT 200`, [status])
+      : await db.query(`${base} ORDER BY pi.id DESC LIMIT 200`);
     return { items: q.rows.map(decoratePayment) };
   });
 

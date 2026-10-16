@@ -389,7 +389,7 @@ export default function DirectorApprovals() {
                 <span
                   style={{
                     minWidth: 18, height: 18, padding: '0 5px', borderRadius: 999,
-                    background: 'var(--gold)', color: '#1A1408',
+                    background: 'var(--value)', color: 'var(--value-ink)',
                     fontSize: 11, fontWeight: 800, display: 'inline-flex',
                     alignItems: 'center', justifyContent: 'center',
                   }}
@@ -724,6 +724,21 @@ function PayoutCard({ it, index, busy, onDecide }) {
 /* ══════════════════════════════════════════════════════════════
    V391: Вкладка «Счета» — счета, ждущие решения директора
    ══════════════════════════════════════════════════════════════ */
+/** TTL 72ч: бейдж остатка на решение директора. */
+function ttlBadge(expiresAt) {
+  if (!expiresAt) return null;
+  const left = new Date(expiresAt) - Date.now();
+  if (left <= 0) return <span style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--red)' }}>срок истёк</span>;
+  const h = Math.floor(left / 3600000);
+  const m = Math.floor((left % 3600000) / 60000);
+  const urgent = h < 12;
+  return (
+    <span style={{ fontSize: 10.5, fontWeight: 600, color: urgent ? 'var(--red)' : 'var(--text-tertiary)' }}>
+      ⏱ {h} ч {m} мин
+    </span>
+  );
+}
+
 function InvoicesTab({ items, busy, onDecide }) {
   if (!items || !items.length) {
     return (
@@ -759,6 +774,16 @@ function InvoicesTab({ items, busy, onDecide }) {
               <p style={{ fontSize: 11.5, color: 'var(--text-tertiary)', marginTop: 2 }}>
                 {inv.basis_text ? String(inv.basis_text).slice(0, 60) : 'Основание не указано'}
               </p>
+              {/* 17.10: директору нужно больше контекста — от кого счёт и сколько осталось на решение (TTL 72ч). */}
+              <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+                {inv.initiator_name && (
+                  <span style={{ fontSize: 10.5, color: 'var(--text-tertiary)' }}>от {String(inv.initiator_name).split(' ')[0]}</span>
+                )}
+                {inv.supplier_inn && (
+                  <span style={{ fontSize: 10.5, color: 'var(--text-tertiary)' }}>ИНН {inv.supplier_inn}</span>
+                )}
+                {ttlBadge(inv.approval_expires_at)}
+              </div>
             </div>
             <span style={{ fontSize: 16, fontWeight: 800, color: 'var(--text-primary)' }}>
               {formatMoney(Number(inv.amount || 0))}
