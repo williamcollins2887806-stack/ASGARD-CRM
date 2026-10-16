@@ -49,7 +49,13 @@ function checkQuiet() {
   // Нерезолвленный плейсхолдер нельзя выкатывать: на клиенте получится
   // `/h/sw.js?v=__SHELL_VERSION__` (литерал). bump подставляет номер.
   const unresolved = /__SHELL_VERSION__/.test(hHtml);
-  // Любой ДРУГОЙ литерал версии в /h/index.html — тоже рассогласование.
+  // Сторож версии PWA (`var VER` в inline-скрипте /h/index.html) обязан
+  // совпадать с SHELL_VERSION. Раньше он считался «чужим хардкодом» и валил
+  // проверку, хотя это легитимное место версии. Теперь — явная проверка.
+  const guardMatch = /var VER = '([^']*)'/.exec(hHtml);
+  const guard = guardMatch ? guardMatch[1] : null;
+  const guardOk = guard === s.sw;
+  // Любой ДРУГОЙ литерал версии в /h/index.html — рассогласование.
   // Раньше рега SW оставалась на старом хардкоде, а --check был зелёным (fail-open).
   const hVersions = [...new Set((hHtml.match(/\d+\.\d+\.\d+/g) || []))]
     .filter((v) => v !== s.sw);
@@ -58,8 +64,9 @@ function checkQuiet() {
     && s.hSw === s.sw
     && s.hQv.length === 1 && s.hQv[0] === `?v=${s.sw}`
     && !unresolved
+    && guardOk
     && hVersions.length === 0;
-  return { ok: !!ok, unresolved, hVersions, ...s };
+  return { ok: !!ok, unresolved, guard, guardOk, hVersions, ...s };
 }
 
 function main() {
@@ -69,7 +76,8 @@ function main() {
     if (!s.ok) {
       const extra = s.unresolved ? ' + есть нерезолвленный __SHELL_VERSION__ в /h/index.html' : '';
       const extra2 = (s.hVersions && s.hVersions.length) ? ` + чужой хардкод версии в /h/index.html: ${s.hVersions.join(',')}` : '';
-      console.error(`FAIL: версии рассогласованы — sw=${s.sw} html=${s.html} h/sw=${s.hSw} qv=${s.qv.join(',')} h/qv=${s.hQv.join(',')}${extra}${extra2}`);
+      const extra3 = (!s.guardOk) ? ` + сторож /h/ (var VER) = ${s.guard === null ? 'НЕ НАЙДЕН' : `'${s.guard}'`}, ожидалось '${s.sw}'` : '';
+      console.error(`FAIL: версии рассогласованы — sw=${s.sw} html=${s.html} h/sw=${s.hSw} qv=${s.qv.join(',')} h/qv=${s.hQv.join(',')}${extra}${extra2}${extra3}`);
       process.exit(1);
     }
     console.log(`OK: оболочка согласована на ${s.sw}`);
@@ -105,6 +113,12 @@ function main() {
   fs.writeFileSync(H_SW, hSw, 'utf8');
   const hHtml = fs.readFileSync(H_HTML, 'utf8')
     .replace(/__SHELL_VERSION__/g, next)
+    // Сторож версии PWA (`var VER` в inline-скрипте): обновляем ЛЮБОЙ номер
+    // и плейсхолдер. Раньше bump его не видел — сторож отставал на версию,
+    // /api/version (новый) ≠ VER (старый) → бесконечный location.replace
+    // у пользователя, а --check падал на «чужом хардкоде». Паттерн принимает
+    // оба состояния, поэтому повторные bump работают.
+    .replace(/var VER = '([0-9.]+|__VER_FOR_GUARD__)'/g, `var VER = '${next}'`)
     .replace(/\?v=[0-9.]+/g, `?v=${next}`);
   fs.writeFileSync(H_HTML, hHtml, 'utf8');
 
