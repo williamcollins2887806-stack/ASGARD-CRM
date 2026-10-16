@@ -26,16 +26,22 @@ const bad = (m) => { fail++; console.log('  FAIL', m); };
   const pm = await login('test_pm', P);
   const me = (await db.query(`SELECT id FROM users WHERE login='test_admin'`)).rows[0].id;
 
-  console.log('\n=== N1: 8 параллельных quick pay → 1 заявка на оплату ===');
-  const doc = (await db.query(
-    `INSERT INTO doc_registry(dir, counterparty_name, amount_gross, original_path_url, doc_owner_id, created_by, updated_by)
-     VALUES ('in','N1-RACE', 1000, 'uploads/fake.pdf', $1, $1, $1) RETURNING id`, [me])).rows[0];
-  const st = await Promise.all(Array.from({ length: 8 }, () =>
-    fetch(`${BASE}/api/doc-registry/${doc.id}/quick`, { method: 'POST', headers: H(admin), body: JSON.stringify({ action: 'pay' }) })
-      .then((r) => r.status).catch(() => 0)));
-  const created = (await db.query(`SELECT count(*)::int n FROM payment_invoices WHERE supplier_name='N1-RACE'`)).rows[0].n;
-  console.log('  статусы:', JSON.stringify(st), '| создано заявок =', created);
-  created === 1 ? ok('создана ровно 1 заявка (not ' + created + ')') : bad('создано ' + created + ' заявок (ожидалось 1)');
+  console.log('\n=== N1: гонка quick pay (2/3/4/8/12 параллельных → ровно 1 заявка) ===');
+  for (const n of [2, 3, 4, 8, 12]) {
+    const tag = 'N1-RACE-' + n + '-' + Date.now();
+    const d = (await db.query(
+      `INSERT INTO doc_registry(dir, counterparty_name, amount_gross, original_path_url, doc_owner_id, created_by, updated_by)
+       VALUES ('in', $1, 1000, 'uploads/fake.pdf', $2, $2, $2) RETURNING id`, [tag, me])).rows[0];
+    const st = await Promise.all(Array.from({ length: n }, () =>
+      fetch(`${BASE}/api/doc-registry/${d.id}/quick`, { method: 'POST', headers: H(admin), body: JSON.stringify({ action: 'pay' }) })
+        .then((r) => r.status).catch(() => 0)));
+    const created = (await db.query(`SELECT count(*)::int n FROM payment_invoices WHERE supplier_name=$1`, [tag])).rows[0].n;
+    const linked = (await db.query(`SELECT payment_invoice_id FROM doc_registry WHERE id=$1`, [d.id])).rows[0].payment_invoice_id;
+    console.log(`  ${n} параллельных → заявок=${created}, linked=${linked}, статусы=${JSON.stringify(st)}`);
+    created === 1 ? ok(`${n} параллельных → ровно 1 заявка`) : bad(`${n} параллельных → ${created} заявок`);
+    await db.query(`DELETE FROM payment_invoices WHERE supplier_name=$1`, [tag]);
+    await db.query(`DELETE FROM doc_registry WHERE id=$1`, [d.id]);
+  }
 
   console.log('\n=== N2: /approval/payment_invoices/:id/pay-bank — уведомления не дублируются ===');
   const buh = await login('test_buh', P);
@@ -73,9 +79,9 @@ const bad = (m) => { fail++; console.log('  FAIL', m); };
   });
   const dj = await rr.json();
   console.log('  ответ =', JSON.stringify(dj));
-  if (dj.duplicate === true && (dj.existing_id == null || dj.existing_id === undefined)) ok('факт дубля сообщён, чужой id скрыт');
-  else if (dj.duplicate === true && dj.existing_id === foreign.id) bad('раскрыт чужой id ' + dj.existing_id);
-  else ok('ответ = ' + JSON.stringify(dj));
+  // N3 (v2): пре-проверка неотличима от «нет дубля» для чужой строки.
+  (dj.duplicate === false) ? ok('чужая строка неотличима от «нет дубля» (нет оракула)')
+    : (dj.duplicate === true && dj.existing_id === foreign.id ? bad('раскрыт чужой id ' + dj.existing_id) : bad('осталась утечка: ' + JSON.stringify(dj)));
 
   console.log('\n=== N3b: POST / (409) не отдаёт чужой existing_id ===');
   const rr2 = await fetch(BASE + '/api/doc-registry', {
@@ -87,8 +93,7 @@ const bad = (m) => { fail++; console.log('  FAIL', m); };
   (rr2.status === 409 && (dj2.existing_id == null || dj2.existing_id === undefined))
     ? ok('409 без чужого existing_id') : bad('409 раскрывает id: ' + JSON.stringify(dj2));
 
-  await db.query(`DELETE FROM payment_invoices WHERE supplier_name='N1-RACE'`);
-  await db.query(`DELETE FROM doc_registry WHERE id IN ($1,$2)`, [doc.id, foreign.id]);
+  await db.query(`DELETE FROM doc_registry WHERE id=$1`, [foreign.id]);
   console.log('\n────────────────────────────────────────');
   console.log(`ИТОГ N-фиксов: PASS ${pass} / FAIL ${fail}`);
   await db.end();

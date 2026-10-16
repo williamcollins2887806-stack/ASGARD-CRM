@@ -465,7 +465,7 @@ module.exports = async function docRegistryRoutes(fastify) {
   async function dupBody(db, req, dup) {
     if (!dup) return { error: 'Дубликат' };
     const visible = await assertDocVisible(db, { role: req.user.role, userId: req.user.id }, dup.id);
-    return visible ? { error: 'Дубликат', existing_id: dup.id } : { error: 'Дубликат', hidden: true };
+    return visible ? { error: 'Дубликат', existing_id: dup.id } : { error: 'Дубликат' };
   }
 
   /**
@@ -574,10 +574,13 @@ module.exports = async function docRegistryRoutes(fastify) {
   fastify.post('/check-duplicate', auth, async (req) => {
     const hit = await findDup(db, req.body || {});
     if (!hit) return { duplicate: false };
-    // N3: не раскрываем id чужой строки (оракул существования). Факт дубля
-    // сообщаем, но id отдаём только если строка видна роли.
+    // N3 (v2, верификатор 16.10): пре-проверка не должна быть оракулом
+    // существования чужой строки. Если строка не видна роли — для неё это
+    // «дубликата нет»; реальный конфликт всё равно поймает POST/PUT (409,
+    // без чужого id) на уровне БД. Иначе перебором пар (поставщик, №) можно
+    // узнать, у кого что есть, даже не зная id.
     const visible = await assertDocVisible(db, { role: req.user.role, userId: req.user.id }, hit.id);
-    return visible ? { duplicate: true, id: hit.id } : { duplicate: true, hidden: true };
+    return visible ? { duplicate: true, id: hit.id } : { duplicate: false };
   });
 
   fastify.post('/export-1c', auth, async (req, reply) => {
@@ -1063,54 +1066,72 @@ module.exports = async function docRegistryRoutes(fastify) {
         doc.counterparty_name || null,
         doc.comment_text || null
       ].filter(Boolean).join(' · ');
-      // N1: атомарно «занимаем слот». Без этого 8 параллельных кликов создают
-      // 8 заявок на оплату (doc.payment_invoice_id читается ДО вставки).
-      const slot = await db.query(
-        `UPDATE doc_registry SET pay_status=CASE WHEN pay_status='paid' THEN pay_status ELSE 'wait' END,
-           updated_by=$2, updated_at=NOW()
-         WHERE id=$1 AND payment_invoice_id IS NULL RETURNING id`,
-        [id, req.user.id]
-      );
-      if (!slot.rowCount) {
-        // Слот занят другой параллельной попыткой — вернуть уже существующую заявку.
-        const cur = await db.query('SELECT payment_invoice_id FROM doc_registry WHERE id=$1', [id]);
-        const pid = cur.rows[0] && cur.rows[0].payment_invoice_id;
-        if (pid) return { redirect: `#/approval-payment?id=${pid}`, payment_invoice_id: pid, reused: true };
-        return reply.code(409).send({ error: 'Заявка на оплату уже создаётся, повторите' });
+      // N1 (v2, верификатор 16.10): «захват слота» и вставка заявки — в ОДНОЙ
+      // транзакции с блокировкой строки. Прежний вариант (UPDATE ... WHERE
+      // payment_invoice_id IS NULL, затем отдельный INSERT и второй UPDATE)
+      // не атомарен: пока второй UPDATE не прошёл, конкурентные запросы снова
+      // видят payment_invoice_id IS NULL → 2-4 параллельных клика = 2-4 заявки.
+      const client = await db.pool.connect();
+      try {
+        await client.query('BEGIN');
+        // Блокируем строку реестра до конца транзакции: конкурент ждёт здесь.
+        const locked = await client.query(
+          `SELECT id, payment_invoice_id FROM doc_registry
+            WHERE id=$1 AND deleted_at IS NULL FOR UPDATE`,
+          [id]
+        );
+        if (!locked.rows[0]) {
+          await client.query('ROLLBACK');
+          return reply.code(404).send({ error: 'Не найдено' });
+        }
+        if (locked.rows[0].payment_invoice_id) {
+          await client.query('ROLLBACK');
+          const pid = locked.rows[0].payment_invoice_id;
+          await audit(db, id, req.user.id, 'quick_pay', { redirect: `#/approval-payment?id=${pid}`, reused: true });
+          return { redirect: `#/approval-payment?id=${pid}`, payment_invoice_id: pid, reused: true };
+        }
+        const { rows: payRows } = await client.query(
+          `INSERT INTO payment_invoices(
+             status, supplier_name, supplier_id, amount, due_date, file_path, file_name,
+             basis_type, basis_text, work_id, procurement_id,
+             line_items_json, requires_payment, created_by, pay_timing
+           ) VALUES (
+             'awaiting_dir', $1, $2, $3, $4::date, $5, $6,
+             $7, $8, $9, $10,
+             $11::jsonb, true, $12, 'immediate'
+           ) RETURNING *`,
+          [
+            doc.counterparty_name || null,
+            doc.supplier_id || null,
+            amount,
+            doc.payment_due_at || null,
+            filePath,
+            fileName,
+            basisType,
+            basisText,
+            doc.work_id || null,
+            doc.procurement_id || null,
+            JSON.stringify(Array.isArray(doc.parsed_json) ? doc.parsed_json : []),
+            req.user.id
+          ]
+        );
+        const pay = payRows[0];
+        await client.query(
+          `UPDATE doc_registry SET payment_invoice_id=$2,
+             pay_status=CASE WHEN pay_status='paid' THEN pay_status ELSE 'wait' END,
+             updated_by=$3, updated_at=NOW() WHERE id=$1`,
+          [id, pay.id, req.user.id]
+        );
+        await client.query('COMMIT');
+        const redirect = `#/approval-payment?id=${pay.id}`;
+        await audit(db, id, req.user.id, 'quick_pay', { redirect, payment_invoice_id: pay.id, created: true });
+        return { redirect, payment_invoice_id: pay.id };
+      } catch (e) {
+        try { await client.query('ROLLBACK'); } catch (_) { /* уже откатили */ }
+        throw e;
+      } finally {
+        client.release();
       }
-      const { rows: payRows } = await db.query(
-        `INSERT INTO payment_invoices(
-           status, supplier_name, supplier_id, amount, due_date, file_path, file_name,
-           basis_type, basis_text, work_id, procurement_id,
-           line_items_json, requires_payment, created_by, pay_timing
-         ) VALUES (
-           'awaiting_dir', $1, $2, $3, $4::date, $5, $6,
-           $7, $8, $9, $10,
-           $11::jsonb, true, $12, 'immediate'
-         ) RETURNING *`,
-        [
-          doc.counterparty_name || null,
-          doc.supplier_id || null,
-          amount,
-          doc.payment_due_at || null,
-          filePath,
-          fileName,
-          basisType,
-          basisText,
-          doc.work_id || null,
-          doc.procurement_id || null,
-          JSON.stringify(Array.isArray(doc.parsed_json) ? doc.parsed_json : []),
-          req.user.id
-        ]
-      );
-      const pay = payRows[0];
-      await db.query(
-        `UPDATE doc_registry SET payment_invoice_id=$2, updated_by=$3, updated_at=NOW() WHERE id=$1`,
-        [id, pay.id, req.user.id]
-      );
-      const redirect = `#/approval-payment?id=${pay.id}`;
-      await audit(db, id, req.user.id, 'quick_pay', { redirect, payment_invoice_id: pay.id, created: true });
-      return { redirect, payment_invoice_id: pay.id };
     }
 
     if (b.action === 'sf') {
