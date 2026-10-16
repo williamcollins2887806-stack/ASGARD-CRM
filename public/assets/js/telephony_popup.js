@@ -1319,7 +1319,11 @@ window.AsgardTelephonyPopup = (function () {
   /* ════════════════════════════════════════════════════════════════════
      Role check & init
      ════════════════════════════════════════════════════════════════════ */
-  var TEL_ROLES = ['ADMIN','DIRECTOR_GEN','DIRECTOR_COMM','DIRECTOR_DEV','PM','HEAD_PM','TO','HEAD_TO','BUH'];
+  // Телефония — DENY-список (как canUseTelephony на бэке и в phone_ui.js).
+  // Whitelist молча отсекал реальные рабочие роли (OFFICE_MANAGER — Тумаева):
+  // сервер пускал её в софтфон, а попап входящего не показывался (16.10.2026).
+  var TEL_DENY_ROLES = ['BOT', 'FIELD_WORKER'];
+  function _telAllowed(role) { return !!role && TEL_DENY_ROLES.indexOf(role) === -1; }
 
   function _getUserRole() {
     try {
@@ -1337,7 +1341,7 @@ window.AsgardTelephonyPopup = (function () {
   }
 
   function init() {
-    if (TEL_ROLES.indexOf(_getUserRole()) === -1) return;
+    if (!_telAllowed(_getUserRole())) return;
     ensureContainer();
   }
 

@@ -523,14 +523,30 @@ async function resolveTransferDial(db, body) {
     const cfg = await loadPbxConfig(client);
     let op = null;
     const asNum = Number(targetRaw);
-    if (Number.isFinite(asNum) && asNum > 0 && String(asNum) === String(targetRaw).trim()) {
+    // Ищем сотрудника по числовому id ТОЛЬКО если цель похожа на внутренний id,
+    // а не на телефон: 11-значный номер (79199900139) не влезает в int4 и ронял
+    // запрос «out of range for type integer» (найдено верификатором 16.10.2026).
+    const looksLikeUserId = Number.isFinite(asNum)
+      && asNum > 0
+      && asNum <= 2147483647
+      && String(asNum) === String(targetRaw).trim();
+    if (looksLikeUserId) {
+      // ИЩЕМ ОТ users, а не от pbx_operators (инцидент 16.10.2026).
+      // Раньше JOIN (INNER) по pbx_operators отсекал сотрудников без строки
+      // оператора (Тумаева, OFFICE_MANAGER): опознание падало, и её внутренний
+      // ID «3471» уходил в Dial как НОМЕР ТЕЛЕФОНА → PJSIP/3471@mango-trunk →
+      // congested → звонок рвался. LEFT JOIN даёт мобильный из users.phone /
+      // user_call_status.fallback_mobile даже без записи оператора.
       const { rows } = await client.query(
-        `SELECT o.*, 
+        `SELECT o.*,
+                u.id AS uid,
+                u.phone AS user_phone,
+                ucs.fallback_mobile,
                 COALESCE(NULLIF(BTRIM(o.mobile_phone), ''), NULLIF(BTRIM(u.phone), ''), NULLIF(BTRIM(ucs.fallback_mobile), '')) AS mobile_phone
-         FROM pbx_operators o
-         JOIN users u ON u.id = o.user_id
-         LEFT JOIN user_call_status ucs ON ucs.user_id = o.user_id
-         WHERE o.user_id = $1`,
+         FROM users u
+         LEFT JOIN pbx_operators o ON o.user_id = u.id
+         LEFT JOIN user_call_status ucs ON ucs.user_id = u.id
+         WHERE u.id = $1`,
         [asNum]
       );
       op = rows[0] || null;
@@ -538,12 +554,17 @@ async function resolveTransferDial(db, body) {
     if (!op) {
       const digits = String(targetRaw).replace(/\D/g, '');
       if (digits) {
+        // ИЩЕМ ОТ users (LEFT JOIN) — сотрудник с телефоном, но без строки
+        // оператора, всё равно должен опознаваться по номеру/sip-username.
         const { rows } = await client.query(
           `SELECT o.*,
+                  u.id AS uid,
+                  u.phone AS user_phone,
+                  ucs.fallback_mobile,
                   COALESCE(NULLIF(BTRIM(o.mobile_phone), ''), NULLIF(BTRIM(u.phone), ''), NULLIF(BTRIM(ucs.fallback_mobile), '')) AS mobile_phone
-           FROM pbx_operators o
-           JOIN users u ON u.id = o.user_id
-           LEFT JOIN user_call_status ucs ON ucs.user_id = o.user_id
+           FROM users u
+           LEFT JOIN pbx_operators o ON o.user_id = u.id
+           LEFT JOIN user_call_status ucs ON ucs.user_id = u.id
            WHERE o.sip_username = $1
               OR regexp_replace(COALESCE(o.mobile_phone,''), '\\D', '', 'g') = $2
               OR regexp_replace(COALESCE(u.phone,''), '\\D', '', 'g') = $2
@@ -553,6 +574,12 @@ async function resolveTransferDial(db, body) {
         op = rows[0] || null;
       }
     }
+    // Нормализация: у сотрудника без строки оператора o.user_id = NULL —
+    // берём id из users (u.uid), иначе нога перевода запишется без владельца.
+    if (op) op.user_id = op.user_id || op.uid || 0;
+    // Мобильный может лежать в users.phone/fallback_mobile — подставляем,
+    // чтобы каскад «браузер → мобильный» работал и без pbx_operators.mobile_phone.
+    if (op && !op.mobile_phone) op.mobile_phone = op.user_phone || op.fallback_mobile || null;
 
     let targets = [];
     if (op) {
@@ -600,8 +627,13 @@ async function resolveTransferDial(db, body) {
         sortOrder: 0,
       }];
     } else {
+      // ФОЛБЭК: транк-набор «как есть». НО (инцидент 16.10.2026) голый
+      // внутренний ID сотрудника (4–5 цифр) НЕ номер телефона — раньше «3471»
+      // улетал в PJSIP/3471@mango-trunk → congested → сброс. Внешний номер
+      // принимаем только как правдоподобный телефон (>= 10 цифр). Иначе —
+      // пусто: перевод не состоится, но звонок не оборвётся фальшивым набором.
       const digits = String(targetRaw).replace(/\D/g, '');
-      if (digits) {
+      if (digits && digits.length >= 10) {
         targets = [{
           userId: 0,
           targetType: 'mobile',
@@ -610,6 +642,10 @@ async function resolveTransferDial(db, body) {
           ringSec: cfg.mobile_ring_sec ?? 20,
           sortOrder: 0,
         }];
+      } else if (digits) {
+        console.warn('[pbx] transfer target unresolved (looks like internal id, not a phone)', JSON.stringify({
+          target: targetRaw, digits,
+        }));
       }
     }
 
@@ -624,13 +660,15 @@ async function resolveTransferDial(db, body) {
     }
     let returnDial = '';
     if (body.user_id) {
+      // Инициатор перевода тоже может быть без строки pbx_operators —
+      // ищем от users (LEFT JOIN), иначе возврат (ret) не построится.
       const { rows: initRows } = await client.query(
         `SELECT o.sip_username, o.webrtc_registered, o.receive_mode,
                 COALESCE(NULLIF(BTRIM(o.mobile_phone), ''), NULLIF(BTRIM(u.phone), ''), NULLIF(BTRIM(ucs.fallback_mobile), '')) AS mobile_phone
-         FROM pbx_operators o
-         JOIN users u ON u.id = o.user_id
-         LEFT JOIN user_call_status ucs ON ucs.user_id = o.user_id
-         WHERE o.user_id = $1`,
+         FROM users u
+         LEFT JOIN pbx_operators o ON o.user_id = u.id
+         LEFT JOIN user_call_status ucs ON ucs.user_id = u.id
+         WHERE u.id = $1`,
         [body.user_id]
       );
       const init = initRows[0];

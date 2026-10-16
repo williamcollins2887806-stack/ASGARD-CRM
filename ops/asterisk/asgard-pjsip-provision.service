@@ -1,0 +1,13 @@
+[Unit]
+Description=ASGARD CRM — provision PJSIP WebRTC endpoints from pbx_operators (safety net)
+Documentation=file:///var/www/asgard-crm/ops/asterisk/README.md
+After=network.target postgresql.service asterisk.service
+
+[Service]
+Type=oneshot
+# root нужен, чтобы писать /etc/asterisk/pjsip_operators.conf и делать chown
+# asterisk:asterisk. Скрипт самодостаточен: читает /etc/asgard-crm/pbx.env,
+# пропускает pjsip reload, если конфиг не изменился (инцидент 16.10.2026).
+User=root
+WorkingDirectory=/var/www/asgard-crm
+ExecStart=/usr/bin/node tools/provision_pjsip_operators.js

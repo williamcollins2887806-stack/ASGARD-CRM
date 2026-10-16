@@ -2,6 +2,7 @@
 """Upload cache-busted shell + key fixes to prod (no restart)."""
 import io
 import os
+import stat
 import sys
 from pathlib import Path
 
@@ -72,6 +73,70 @@ def ensure_dir(sftp, remote_dir):
             sftp.mkdir(cur)
 
 
+def _clean_orphans(sftp, local_dir: Path, remote_dir: str, rel_prefix: str = "") -> int:
+    """Рекурсивно удаляет на проде файлы, которых нет в локальном наборе."""
+    removed = 0
+    local_names = set()
+    local_dirs = set()
+    root = local_dir if not rel_prefix else (local_dir / rel_prefix)
+    for child in root.iterdir():
+        if child.is_dir():
+            local_dirs.add(child.name)
+        else:
+            local_names.add(child.name)
+    try:
+        entries = sftp.listdir_attr(remote_dir)
+    except OSError:
+        return 0
+    for entry in entries:
+        name = entry.filename
+        if name in ('.', '..'):
+            continue
+        rel = f"{rel_prefix}/{name}" if rel_prefix else name
+        rpath = f"{remote_dir}/{name}"
+        is_dir = stat.S_ISDIR(entry.st_mode or 0)
+        if is_dir:
+            if name not in local_dirs:
+                # Каталога нет локально — удаляем целиком (recurse into it).
+                removed += _rm_tree(sftp, rpath)
+            else:
+                removed += _clean_orphans(sftp, local_dir, rpath, rel)
+        else:
+            if name not in local_names:
+                try:
+                    sftp.remove(rpath)
+                    removed += 1
+                except OSError:
+                    pass
+    return removed
+
+
+def _rm_tree(sftp, remote_dir: str) -> int:
+    removed = 0
+    try:
+        entries = sftp.listdir_attr(remote_dir)
+    except OSError:
+        return 0
+    for entry in entries:
+        name = entry.filename
+        if name in ('.', '..'):
+            continue
+        rpath = f"{remote_dir}/{name}"
+        if stat.S_ISDIR(entry.st_mode or 0):
+            removed += _rm_tree(sftp, rpath)
+        else:
+            try:
+                sftp.remove(rpath)
+                removed += 1
+            except OSError:
+                pass
+    try:
+        sftp.rmdir(remote_dir)
+    except OSError:
+        pass
+    return removed
+
+
 def upload_tree(sftp, local_dir: Path, remote_dir: str):
     ensure_dir(sftp, remote_dir)
     count = 0
@@ -84,6 +149,12 @@ def upload_tree(sftp, local_dir: Path, remote_dir: str):
             ensure_dir(sftp, os.path.dirname(remote))
             sftp.put(str(item), remote)
             count += 1
+    # Чистим осиротевшие файлы на проде (D-146/D-151: раздача == локальный набор).
+    # Рекурсивно, т.к. устаревшие чанки живут в <dir>/assets/ — на уровень глубже
+    # (иначе старый монолит index-*.js со старым whitelist'ом остаётся на проде).
+    removed = _clean_orphans(sftp, local_dir, remote_dir)
+    if removed:
+        print(f"  cleaned {removed} orphan file(s)/dir(s) in {remote_dir}")
     return count
 
 

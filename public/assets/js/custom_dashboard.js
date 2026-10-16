@@ -59,7 +59,7 @@ window.AsgardCustomDashboard = (function(){
     calendar: { name: 'Календарь', icon: '📅', size: 'normal', roles: ['*'], render: renderCalendar },
     quick_actions: { name: 'Быстрые действия', icon: '⚡', size: 'normal', roles: ['*'], render: renderQuickActions },
     receipt_scanner: { name: 'Сканер чеков', icon: '📷', size: 'normal', roles: ['PM','HEAD_PM'], render: renderReceiptScanner },
-    telephony_status: { name: 'Телефония', icon: '📞', size: 'normal', roles: ['ADMIN','DIRECTOR_GEN','DIRECTOR_COMM','DIRECTOR_DEV','PM','HEAD_PM','TO','HEAD_TO','BUH'], render: renderTelephonyStatus },
+    telephony_status: { name: 'Телефония', icon: '📞', size: 'normal', roles: ['*'], render: renderTelephonyStatus },
     // ─── M16: Новые виджеты ───
     overdue_works: {
       name: 'Просроченные работы', icon: '⚠️', size: 'wide',

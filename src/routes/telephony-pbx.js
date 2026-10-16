@@ -13,7 +13,6 @@ const { claimLine } = require('../pbx/line-claim');
  * С‡С‚РѕР±С‹ РєР°Р¶РґС‹Р№ РјРѕРі РїРѕР·РІРѕРЅРёС‚СЊ РёР· Р±СЂР°СѓР·РµСЂР°. Р Р°РЅРµРµ Р±С‹Р» СѓР·РєРёР№ СЃРїРёСЃРѕРє СЂРѕР»РµР№.
  * Р’С…РѕРґСЏС‰РёРµ РїСЂРё СЌС‚РѕРј РїРѕР»СѓС‡Р°СЋС‚ С‚РѕР»СЊРєРѕ С‚Рµ, РєС‚Рѕ СЏРІРЅРѕ РІСЃС‚Р°Р» РЅР° Р»РёРЅРёСЋ.
  */
-const TEL_ROLES = ['ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV', 'PM', 'HEAD_PM', 'TO', 'HEAD_TO', 'BUH'];
 const TEL_DENY_ROLES = ['BOT', 'FIELD_WORKER'];
 const PBX_ADMIN_ROLES = ['ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV', 'HEAD_TO'];
 
@@ -376,11 +375,23 @@ module.exports = async function telephonyPbxRoutes(fastify) {
     }
     try {
       const { spawnSync } = require('child_process');
-      const r = spawnSync('node', ['tools/provision_pjsip_operators.js'], {
-        cwd: process.cwd(), encoding: 'utf8', timeout: 60000,
-      });
+      // Приложение работает под ubuntu и НЕ может писать в /etc/asterisk
+      // (root:owner). У ubuntu есть passwordless sudo (sudo -n). Скрипт
+      // самодостаточен: под root читает /etc/asgard-crm/pbx.env и делает
+      // chown asterisk:asterisk. Так эндпоинт появляется без ручных шагов.
+      const asRoot = process.getuid && process.getuid() !== 0;
+      const cmd = asRoot ? 'sudo' : 'node';
+      const args = asRoot
+        ? ['-n', 'node', 'tools/provision_pjsip_operators.js']
+        : ['tools/provision_pjsip_operators.js'];
+      const r = spawnSync(cmd, args, { cwd: process.cwd(), encoding: 'utf8', timeout: 60000 });
       if (r.status !== 0) {
-        return { ok: false, reason: 'provision_failed', error: (r.stderr || '').trim().slice(0, 200) };
+        const errText = ((r.stderr || '') + (r.stdout || '')).trim().slice(0, 300);
+        // sudo без прав → понятная причина для админа, а не «provision_failed».
+        const reason = /sudo:|password is required|a password is required/i.test(errText)
+          ? 'sudo_required'
+          : 'provision_failed';
+        return { ok: false, reason, error: errText };
       }
       return { ok: true };
     } catch (e) {
@@ -514,16 +525,27 @@ module.exports = async function telephonyPbxRoutes(fastify) {
     // Перевод делаем только офисным сотрудникам с ЛК в CRM. Рабочие
     // (FIELD_WORKER) и служебные (BOT) исключены: у них нет софтфона и рабочего
     // места за CRM, им нельзя переводить живой вызов (требование 09.10.2026).
+    //
+    // ИЩЕМ ОТ users (LEFT JOIN) — иначе сотрудник без строки pbx_operators
+    // вообще не появлялся в списке перевода (Тумаева, OFFICE_MANAGER;
+    // инцидент 16.10.2026: «нет выбора, куда перевести»). Строку оператора
+    // заводит ensureOperatorRow при заходе в софтфон, а мобильный берём из
+    // users.phone / user_call_status.fallback_mobile.
+    const { hide } = (() => {
+      const { usersExcludeSql, shouldHideTestUsersFromLists } = require('../lib/user-filters');
+      return { hide: shouldHideTestUsersFromLists(req) ? usersExcludeSql('u') : '' };
+    })();
     const { rows } = await db.query(
-      `SELECT o.user_id, u.name, u.role, o.on_line, o.receive_mode, o.miss_streak,
+      `SELECT u.id AS user_id, u.name, u.role, o.on_line, o.receive_mode, o.miss_streak,
               o.webrtc_registered, o.last_seen_at, o.sip_username,
               COALESCE(NULLIF(BTRIM(o.mobile_phone), ''), NULLIF(BTRIM(u.phone), ''), NULLIF(BTRIM(ucs.fallback_mobile), '')) AS mobile_phone
-       FROM pbx_operators o
-       JOIN users u ON u.id = o.user_id
-       LEFT JOIN user_call_status ucs ON ucs.user_id = o.user_id
+       FROM users u
+       LEFT JOIN pbx_operators o ON o.user_id = u.id
+       LEFT JOIN user_call_status ucs ON ucs.user_id = u.id
        WHERE u.is_active = true
          AND u.role <> ALL($1::text[])
-       ORDER BY o.on_line DESC, o.sort_order, u.name`,
+         ${hide}
+       ORDER BY COALESCE(o.on_line, false) DESC, COALESCE(o.sort_order, 100), u.name`,
       [TEL_DENY_ROLES]
     );
     return { staff: rows };
@@ -677,13 +699,13 @@ module.exports = async function telephonyPbxRoutes(fastify) {
     );
     try {
       const { spawnSync } = require('child_process');
-      const r = spawnSync('node', ['tools/provision_pjsip_operators.js'], {
-        cwd: process.cwd(),
-        encoding: 'utf8',
-        timeout: 60000,
-      });
+      // См. /softphone/provision: приложение под ubuntu → sudo -n до root.
+      const asRoot = process.getuid && process.getuid() !== 0;
+      const r = spawnSync(asRoot ? 'sudo' : 'node',
+        asRoot ? ['-n', 'node', 'tools/provision_pjsip_operators.js'] : ['tools/provision_pjsip_operators.js'],
+        { cwd: process.cwd(), encoding: 'utf8', timeout: 60000 });
       if (r.status !== 0) {
-        return { ok: false, count: rows.length, error: (r.stderr || r.stdout || 'provision failed').trim() };
+        return { ok: false, count: rows.length, error: (r.stderr || r.stdout || 'provision failed').trim().slice(0, 300) };
       }
       return { ok: true, count: rows.length, output: (r.stdout || '').trim().split('\n').slice(-3) };
     } catch (e) {

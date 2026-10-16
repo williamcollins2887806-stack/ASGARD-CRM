@@ -4,7 +4,9 @@
 (function () {
   'use strict';
 
-  var TEL_ROLES = ['ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV', 'PM', 'HEAD_PM', 'TO', 'HEAD_TO', 'BUH'];
+  // Телефония — DENY-список (синхронно с canUseTelephony на бэке).
+  // Whitelist отсекал реальные рабочие роли (OFFICE_MANAGER) — заменено 16.10.2026.
+  var TEL_DENY_ROLES = ['BOT', 'FIELD_WORKER'];
   var esc = function (s) {
     if (s == null) return '';
     var d = document.createElement('div');
@@ -272,7 +274,7 @@
   function canUseTelephony() {
     var role = userRole();
     if (!role) return false;
-    if (role === 'BOT' || role === 'FIELD_WORKER') return false;
+    if (TEL_DENY_ROLES.indexOf(role) !== -1) return false;
     return true;
   }
 

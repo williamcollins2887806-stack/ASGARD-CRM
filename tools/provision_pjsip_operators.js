@@ -18,7 +18,31 @@ const ROOT = path.resolve(__dirname, '..');
 const OUT = process.env.ASTERISK_OPERATORS_CONF || '/etc/asterisk/pjsip_operators.conf';
 const PJSIP_CONF = process.env.ASTERISK_PJSIP_CONF || '/etc/asterisk/pjsip.conf';
 
+function loadEnvFile(file) {
+  try {
+    const txt = require('fs').readFileSync(file, 'utf8');
+    for (const line of txt.split('\n')) {
+      const m = line.match(/^\s*([A-Z_][A-Z0-9_]*)\s*=\s*(.*)\s*$/);
+      if (!m) continue;
+      const key = m[1];
+      if (process.env[key]) continue;
+      let val = m[2].trim();
+      if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
+        val = val.slice(1, -1);
+      }
+      process.env[key] = val;
+    }
+  } catch (_) { /* файла нет — не критично */ }
+}
+
 function loadPool() {
+  // Ищем строку подключения в известных env-файлах, если она не задана явно.
+  // Приложение (ubuntu) не может прочитать /etc/asgard-crm/pbx.env (0600 root),
+  // а самостоятельный запуск под root — может; под sudo env сохраняется.
+  if (!process.env.DATABASE_URL) {
+    loadEnvFile('/etc/asgard-crm/pbx.env');
+    loadEnvFile(path.join(ROOT, '.env'));
+  }
   const { Pool } = require(path.join(ROOT, 'node_modules/pg'));
   const cs = process.env.DATABASE_URL
     || `postgresql://${process.env.DB_USER || 'asgard'}:${process.env.DB_PASSWORD || '123456789'}@${process.env.DB_HOST || '127.0.0.1'}:${process.env.DB_PORT || 5432}/${process.env.DB_NAME || 'asgard_crm'}`;
@@ -42,29 +66,72 @@ function section(username, password) {
   ].join('\n');
 }
 
+/**
+ * СИП-логин оператора. Держать В ТОЧНОСТИ как `genSipUsername` в
+ * src/routes/telephony-pbx.js — иначе фронт ждёт один логин, а в Asterisk
+ * заведён другой, и регистрация падает 404/401.
+ */
+function genSipUsername(userId, name) {
+  const slug = String(name || 'user')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '')
+    .slice(0, 12);
+  return `u${userId}${slug ? '_' + slug : ''}`;
+}
+
+/**
+ * Выдать СИП всем офисным, у кого его нет (и логин, и пароль).
+ *
+ * Раньше СИП появлялся только «лениво» — при первом входе в софтфон. Из-за
+ * этого 20 из 25 офисных не имели СИП вообще и не могли принимать звонки в
+ * браузере (всё уходило на мобильный), а перевести им «в СРМ» было нельзя
+ * (17.10.2026, Тумаева). Теперь СИП раздаётся сразу всем, кто проходит тот же
+ * фильтр, что и миграция V393 (активные, кроме BOT/FIELD_WORKER и тестовых).
+ */
+async function issueAllCredentials(pool, dry) {
+  const { rows } = await pool.query(
+    `SELECT o.user_id, o.sip_username, o.sip_password, u.name
+     FROM users u
+     JOIN pbx_operators o ON o.user_id = u.id
+     WHERE u.is_active = true
+       AND u.role <> ALL (ARRAY['BOT', 'FIELD_WORKER'])
+       AND (u.login IS NULL OR (u.login !~ '^test_' AND u.login <> 'mimir_bot'))
+       AND (COALESCE(o.sip_username, '') = '' OR COALESCE(o.sip_password, '') = '')
+     ORDER BY o.user_id`
+  );
+  if (!rows.length) {
+    console.log('credentials: все офисные уже имеют СИП');
+    return 0;
+  }
+  if (dry) {
+    console.log(`[dry-run] выдать СИП ${rows.length} операторам`);
+    return rows.length;
+  }
+  const crypto = require('crypto');
+  for (const r of rows) {
+    const username = r.sip_username && r.sip_username !== ''
+      ? r.sip_username
+      : genSipUsername(r.user_id, r.name);
+    const pass = r.sip_password && r.sip_password !== ''
+      ? r.sip_password
+      : crypto.randomBytes(12).toString('base64url');
+    await pool.query(
+      `UPDATE pbx_operators
+         SET sip_username = $2, sip_password = $3, sip_password_hash = $4, updated_at = NOW()
+       WHERE user_id = $1`,
+      [r.user_id, username, pass, crypto.createHash('sha256').update(pass).digest('hex')]
+    );
+    console.log(`issued SIP ${username} (user ${r.user_id})`);
+  }
+  return rows.length;
+}
+
 async function main() {
   const dry = process.argv.includes('--dry-run');
   const pool = loadPool();
 
-  // Выпустить пароли тем операторам, у кого есть sip_username, но нет sip_password.
-  const { rows: missing } = await pool.query(
-    `SELECT user_id, sip_username FROM pbx_operators
-     WHERE sip_username IS NOT NULL AND sip_username <> ''
-       AND (sip_password IS NULL OR sip_password = '')`
-  );
-  if (!dry) {
-    const crypto = require('crypto');
-    for (const m of missing) {
-      const pass = crypto.randomBytes(12).toString('base64url');
-      await pool.query(
-        `UPDATE pbx_operators SET sip_password = $2, sip_password_hash = $3, updated_at = NOW() WHERE user_id = $1`,
-        [m.user_id, pass, crypto.createHash('sha256').update(pass).digest('hex')]
-      );
-      console.log(`issued password for ${m.sip_username}`);
-    }
-  } else if (missing.length) {
-    console.log(`[dry-run] will issue ${missing.length} passwords`);
-  }
+  // Раздать СИП всем офисным (логин + пароль) — не ждать, пока зайдут в софтфон.
+  await issueAllCredentials(pool, dry);
 
   const { rows } = await pool.query(
     `SELECT sip_username, sip_password FROM pbx_operators
@@ -105,6 +172,16 @@ async function main() {
 
   if (changed) {
     fs.writeFileSync(OUT, body, { encoding: 'utf8', mode: 0o640 });
+    // Файл лежит в /etc/asterisk и должен читаться пользователем asterisk.
+    // Скрипт запускается под root, поэтому writeFileSync создаст root:root 0640
+    // → asterisk не прочтёт конфиг и эндпоинты не поднимутся (16.10.2026).
+    try {
+      const uid = execFileSync('id', ['-u', 'asterisk'], { encoding: 'utf8' }).trim();
+      const gid = execFileSync('id', ['-g', 'asterisk'], { encoding: 'utf8' }).trim();
+      fs.chownSync(OUT, Number(uid), Number(gid));
+    } catch (e) {
+      console.warn(`chown asterisk:asterisk failed (${e.message}) — проверьте права вручную`);
+    }
     console.log(`written ${OUT} (${rows.length} endpoints)`);
   } else {
     console.log(`unchanged ${OUT} (${rows.length} endpoints) — reload skipped`);

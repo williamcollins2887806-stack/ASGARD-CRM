@@ -21,8 +21,12 @@ const {
   hasFullCallView,
 } = require('../lib/telephony-access');
 
-// Роли с доступом к телефонии
-const TEL_ROLES = ['ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV', 'PM', 'HEAD_PM', 'TO', 'HEAD_TO', 'BUH'];
+// Роли с доступом к телефонии — через DENY-список (как canUseTelephony в
+// telephony-pbx.js и phone_ui.js). Раньше здесь был whitelist, и он молча
+// отсекал реальные рабочие роли (OFFICE_MANAGER у Тумаевой): сервер пускал её
+// в софтфон, а офисная очередь/сводка давали 403 (инцидент 16.10.2026).
+const TEL_DENY_ROLES = ['BOT', 'FIELD_WORKER'];
+const canAccessTelephony = (role) => !!role && !TEL_DENY_ROLES.includes(role);
 const TEL_ADMIN_ROLES = TEL_ADMIN_ROLES_LIB.length
   ? TEL_ADMIN_ROLES_LIB
   : ['ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV'];
@@ -1187,7 +1191,7 @@ module.exports = async function telephonyRoutes(fastify, opts) {
     if (scope === 'office') {
       // Очередь непрочитанных офисных (user_id IS NULL) — видна всем с доступом к телефонии.
       // Полный офисный журнал без фильтра — только full-view (ниже по UI «Все»).
-      if (!TEL_ROLES.includes(user.role)) {
+      if (!canAccessTelephony(user.role)) {
         return reply.code(403).send({ error: 'Forbidden' });
       }
       conditions.push('ch.user_id IS NULL');
@@ -1255,7 +1259,7 @@ module.exports = async function telephonyRoutes(fastify, opts) {
   fastify.get('/me/summary', {
     preHandler: [fastify.authenticate]
   }, async (request, reply) => {
-    if (!TEL_ROLES.includes(request.user.role)) {
+    if (!canAccessTelephony(request.user.role)) {
       return reply.code(403).send({ error: 'Forbidden' });
     }
     const uid = request.user.id;
@@ -1273,7 +1277,7 @@ module.exports = async function telephonyRoutes(fastify, opts) {
     );
     let officeUnack = 0;
     // Офисная очередь пропущенных нужна операторам на линии (не только директорам)
-    if (TEL_ROLES.includes(request.user.role)) {
+    if (canAccessTelephony(request.user.role)) {
       const off = await db.query(
         `SELECT COUNT(*)::int AS n FROM call_history
          WHERE call_type = 'missed' AND user_id IS NULL AND COALESCE(missed_acknowledged, false) = false
@@ -1336,7 +1340,7 @@ module.exports = async function telephonyRoutes(fastify, opts) {
       today_total: todayTotal.rows[0].n,
       office_unack: officeUnack,
       week_spark: spark.rows.map((r) => r.n),
-      can_see_office: TEL_ROLES.includes(request.user.role),
+      can_see_office: canAccessTelephony(request.user.role),
       recent: recentRows,
     });
   });

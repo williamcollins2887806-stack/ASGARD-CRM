@@ -57,7 +57,7 @@ test('G4', 'перевод без канала → 409 (GSM-путь), а не 5
 test('G5', 'список перевода без рабочих и служебных ролей', () => {
   const js = read('src/routes/telephony-pbx.js');
   const i = js.indexOf("'/transfer/staff'");
-  const blk = js.slice(i, i + 1200);
+  const blk = js.slice(i, i + 2200);
   assert.ok(/role <> ALL\(\$1::text\[\]\)/.test(blk), 'нет фильтра по ролям');
   assert.ok(/TEL_DENY_ROLES/.test(blk), 'не исключены BOT/FIELD_WORKER');
 });

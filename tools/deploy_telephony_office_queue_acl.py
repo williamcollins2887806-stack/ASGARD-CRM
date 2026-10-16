@@ -37,8 +37,8 @@ def main() -> int:
     text = LOCAL.read_text(encoding="utf-8")
     if "Очередь непрочитанных офисных" not in text:
         raise SystemExit("local telephony.js missing office-queue ACL comment")
-    if "can_see_office: TEL_ROLES.includes(request.user.role)" not in text:
-        raise SystemExit("local telephony.js missing can_see_office for TEL_ROLES")
+    if "can_see_office: canAccessTelephony(request.user.role)" not in text:
+        raise SystemExit("local telephony.js missing can_see_office for canAccessTelephony")
 
     key = load_pkey(SSH_KEY)
     ssh = paramiko.SSHClient()
@@ -65,7 +65,7 @@ def main() -> int:
     run("systemctl restart asgard-crm")
     run("systemctl is-active asgard-crm")
     run(f"grep -n 'Очередь непрочитанных офисных' {REMOTE}")
-    run(f"grep -n 'can_see_office: TEL_ROLES' {REMOTE}")
+    run(f"grep -n 'can_see_office: canAccessTelephony' {REMOTE}")
     run(
         "PGPASSWORD=123456789 psql -U asgard -d asgard_crm -t -A "
         "-c \"SELECT id, role, name FROM users WHERE id=3474\""

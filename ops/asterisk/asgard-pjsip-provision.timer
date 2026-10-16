@@ -1,0 +1,12 @@
+[Unit]
+Description=ASGARD CRM — run PJSIP provisioning every 5 min (safety net)
+Documentation=file:///var/www/asgard-crm/ops/asterisk/README.md
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=5min
+AccuracySec=30s
+Unit=asgard-pjsip-provision.service
+
+[Install]
+WantedBy=timers.target

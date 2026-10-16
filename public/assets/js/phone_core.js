@@ -16,7 +16,10 @@
 
   var LOCK_NAME = 'asgard-pbx-softphone';
   var BC_NAME = 'asgard-phone-tab';
-  var TEL_ROLES = ['ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV', 'PM', 'HEAD_PM', 'TO', 'HEAD_TO', 'BUH'];
+  // Телефония — DENY-список (синхронно с canUseTelephony на бэке и в phone_ui.js).
+  // Здесь роль не гейтится (гейт — в phone_ui.js); комментарий оставлен, чтобы
+  // при добавлении проверки в этом файле не возродить whitelist (16.10.2026).
+  var TEL_DENY_ROLES = ['BOT', 'FIELD_WORKER'];
 
   var state = STATES.offline;
   var mode = null;
