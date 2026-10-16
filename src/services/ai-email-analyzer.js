@@ -179,9 +179,16 @@ function shouldSkipEmail(email) {
   }
 
   // 2. Skip internal emails (from company domain)
-  const internalDomains = ['asgard-crm.ru', 'asgard-service.ru', 'asgard-s.ru', 'асгард.рф'];
+  // FAIL C2/F10 плана: домен у компании `.com` (asgard-service.com), а в списке
+  // его не было — ответы с `.com` (в т.ч. директора) молча выпадали из анализа.
+  // CRM-КОПИИ с этого домена, наоборот, обязаны проходить (класс crm_invoice_copy).
+  const internalDomains = ['asgard-crm.ru', 'asgard-service.ru', 'asgard-service.com', 'asgard-s.ru', 'асгард.рф'];
   for (const d of internalDomains) {
     if (from.includes(d)) {
+      // CRM-адрес — это наш собственный ящик; письма с него (копии) не «внутренние
+      // сотрудники», а intake-контур согласования. Не пропускаем копии CRM.
+      const crmSelf = String(process.env.CRM_SELF_EMAIL || 'crm@asgard-service.com').toLowerCase();
+      if (from.includes(crmSelf)) break;
       return { skip: true, reason: 'internal_email' };
     }
   }
@@ -218,7 +225,7 @@ const ANALYSIS_SYSTEM_PROMPT = `Ты — AI-ассистент компании 
 
 Верни ответ СТРОГО в JSON формате:
 {
-  "classification": "direct_request" | "platform_tender" | "tender_invitation" | "addendum_response" | "commercial_offer" | "information" | "spam" | "personal" | "other",
+  "classification": "direct_request" | "platform_tender" | "tender_invitation" | "addendum_response" | "commercial_offer" | "information" | "spam" | "personal" | "other" | "invoice_approval_request" | "approval_decision" | "crm_invoice_copy",
   "parent_tender_inn": "ИНН отправителя для поиска тендера (только для addendum_response, иначе null)",
   "parent_tender_hint": "номер тендера/название/лот из темы для fuzzy match (только для addendum_response, иначе null)",
   "parent_tender_id": null,
@@ -263,6 +270,9 @@ const ANALYSIS_SYSTEM_PROMPT = `Ты — AI-ассистент компании 
 - spam: Спам, рассылка
 - personal: Личное письмо
 - other: Другое
+- invoice_approval_request: Письмо-инициатор СОГЛАСОВАНИЯ СЧЁТА(ОВ): сотрудник отправляет счёт(а) директору, ящик CRM в копии. Триггеры: «прошу согласовать оплату», «счёт на согласование», «оплата счёта», вложение — счёт/УПД. Это НЕ direct_request (там запрос работ от клиента).
+- approval_decision: ОТВЕТ директора по согласованию счёта. Согласие выражается СЛОВОМ «Добро» (или «согласовано», «оплачиваем», «да», «утверждаю») в ТЕЛЕ письма, в ответ на письмо-заявку. ВАЖНО: цитаты прежних писем и слова-отрицания («не согласовано», «не добро», «отклоняю», «против») — это НЕ согласие. Если согласие неоднозначно или письмо не является ответом в треде заявки — classification="information", НЕ approval_decision.
+- crm_invoice_copy: Копия письма, пришедшая на ящик CRM (intake-контур). Используется оркестратором doc-email-intake.
 
 ВАЖНО: Классифицируй как "direct_request" или "platform_tender" ТОЛЬКО те письма, которые ЯВНО содержат:
 - Конкретное описание работ (трубопровод, сварка, монтаж, очистка, антикоррозия и т.д.)
@@ -423,7 +433,11 @@ const ANALYSIS_MAX_TOKENS_CEILING = parseInt(process.env.AI_ANALYSIS_MAX_TOKENS_
 // 'other' с ai_processed_at=NOW() и заявка терялась бы молча.
 const VALID_CLASSIFICATIONS = [
   'direct_request', 'platform_tender', 'tender_invitation', 'addendum_response',
-  'commercial_offer', 'information', 'spam', 'personal', 'other'
+  'commercial_offer', 'information', 'spam', 'personal', 'other',
+  // Часть II (V398): контур согласования счетов через почту.
+  'invoice_approval_request',  // письмо-инициатор со счетами, CRM в копии
+  'approval_decision',         // ответ директора («Добро» / отказ) по счёту
+  'crm_invoice_copy'           // копия письма на ящик CRM (intake)
 ];
 const VALID_CLASSIFICATION_SET = new Set(VALID_CLASSIFICATIONS);
 
