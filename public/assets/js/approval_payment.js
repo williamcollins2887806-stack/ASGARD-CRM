@@ -852,6 +852,8 @@ window.AsgardApprovalPaymentPage = (function() {
     const fileStatic = hasFile && pay.file_path && String(pay.file_path).startsWith('/uploads/') ? pay.file_path : null;
     const fileName = pay.file_name || 'счёт';
     const timing = pay.pay_timing === 'deferred' ? 'deferred' : 'immediate';
+    const lines = Array.isArray(pay.line_items_json) ? pay.line_items_json
+      : (typeof pay.line_items_json === 'string' ? (() => { try { return JSON.parse(pay.line_items_json || '[]'); } catch (_) { return []; } })() : []);
 
     const root = showModal({
       title: 'Согласование счёта',
@@ -864,6 +866,10 @@ window.AsgardApprovalPaymentPage = (function() {
               <div class="proc-pay-modal__sum">${money2(pay.amount)}</div>
               <dl class="proc-pay-modal__meta" style="margin-top:12px">
                 <dt>Поставщик</dt><dd>${esc(pay.supplier_name || '—')}</dd>
+                ${pay.supplier && pay.supplier.inn ? `<dt>ИНН / КПП</dt><dd>${esc(pay.supplier.inn)}${pay.supplier.kpp ? ' / ' + esc(pay.supplier.kpp) : ''}</dd>` : ''}
+                ${pay.initiator_name ? `<dt>От кого счёт</dt><dd>${esc(pay.initiator_name)}${pay.initiator_role ? ' · ' + esc(pay.initiator_role) : ''}</dd>` : ''}
+                ${pay.registry_doc && pay.registry_doc.invoice_number ? `<dt>Счёт №</dt><dd>${esc(pay.registry_doc.invoice_number)}${pay.registry_doc.invoice_date ? ' от ' + esc(String(pay.registry_doc.invoice_date).slice(0,10)) : ''}</dd>` : ''}
+                ${lines.length ? `<dt>Позиций</dt><dd>${lines.length}</dd>` : ''}
                 <dt>Основание</dt><dd>${esc(pay.basis_text || pay.basis_type || '—')}</dd>
                 <dt>Файл</dt><dd>${hasFile ? esc(fileName) : 'файл не приложен'}</dd>
                 ${ttlLine(pay)}
