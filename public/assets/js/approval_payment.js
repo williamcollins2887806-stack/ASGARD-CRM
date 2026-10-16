@@ -255,6 +255,17 @@ window.AsgardApprovalPaymentPage = (function() {
     return html || '<div style="text-align:center;padding:40px;color:var(--text-muted)">Нет позиций к исполнению</div>';
   }
 
+  /** V401: фолбэк копирования (clipboard API недоступен в ряде браузеров/HTTP). */
+  function fallbackCopy(text, done) {
+    try {
+      const ta = document.createElement('textarea');
+      ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+      document.body.appendChild(ta); ta.select();
+      document.execCommand('copy'); ta.remove();
+      if (done) done();
+    } catch (_) { toast('Копирование', 'Скопируйте вручную', 'err'); }
+  }
+
   /** Скачать файл счёта (бухгалтерия) — через blob с токеном. */
   async function downloadInvoiceFile(id) {
     try {
@@ -1024,6 +1035,31 @@ window.AsgardApprovalPaymentPage = (function() {
       media = `<div class="proc-pay-modal__preview-empty" data-buh-preview-load="1" style="min-height:80px"><strong>Загрузка файла…</strong></div>`;
     }
     const previewBody = paper + media;
+    // V401: реквизиты для быстрого создания платёжки (копирование в один клик).
+    const req = pay.supplier || {};
+    const rd = pay.registry_doc || {};
+    const payeeName = pay.supplier_name || req.name || '';
+    const purpose = pay.basis_text || (rd.invoice_number ? `Оплата по счёту № ${rd.invoice_number}` : '') || 'Оплата по счёту';
+    const reqFields = [
+      ['Получатель', payeeName],
+      ['ИНН', req.inn || rd.counterparty_inn || ''],
+      ['КПП', req.kpp || ''],
+      ['БИК', req.bik || ''],
+      ['Банк', req.bank_name || ''],
+      ['Р/с', req.rs || ''],
+      ['К/с', req.ks || ''],
+      ['Сумма', pay.amount != null ? String(pay.amount) : ''],
+      ['Назначение', purpose]
+    ].filter(([, v]) => v);
+    const reqBlock = `<div class="proc-pay-modal__section" data-req-block="1">
+      <div class="proc-pay-modal__section-title">Реквизиты для платёжки
+        <button type="button" class="btn ghost" id="buh-copy-all" style="margin-left:8px;padding:2px 10px;font-size:12px">Скопировать всё</button>
+      </div>
+      ${reqFields.length ? `<dl class="proc-pay-req">${reqFields.map(([k, v]) => `
+        <dt>${esc(k)}</dt><dd><span class="proc-pay-req__v">${esc(v)}</span>
+          <button type="button" class="proc-pay-req__cp" data-copy="${esc(String(v))}" title="Скопировать">⧉</button></dd>`).join('')}</dl>`
+        : `<p class="proc-pay-modal__hint">Реквизитов нет — заполните карточку поставщика (ИНН/КПП/БИК/р-с), и они появятся здесь для копирования.</p>`}
+    </div>`;
     const st = pay.status_label || (pay.pay_timing === 'deferred' ? 'Одобрен, ждёт даты' : 'Ожидает оплаты');
     const openUrl = fileApi || fileStatic || '';
     const html = `
@@ -1050,8 +1086,13 @@ window.AsgardApprovalPaymentPage = (function() {
             </div>
             <div class="proc-pay-modal__section">
               <div class="proc-pay-modal__section-title">Платёжное поручение <span class="proc-tooltip" title="Загрузите скан ПП из банка или отметьте «без файла» с причиной в комментарии">?</span></div>
-              <label class="proc-pay-modal__label" for="pi-pay-date">Дата оплаты</label>
-              <input id="pi-pay-date" class="proc-pay-modal__field" type="date">
+              ${reqBlock}
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+                <div><label class="proc-pay-modal__label" for="pi-pp-number">№ ПП</label>
+                  <input id="pi-pp-number" class="proc-pay-modal__field" placeholder="Номер поручения"></div>
+                <div><label class="proc-pay-modal__label" for="pi-pay-date">Дата оплаты</label>
+                  <input id="pi-pay-date" class="proc-pay-modal__field" type="date"></div>
+              </div>
               <label class="proc-pay-modal__label" for="pi-pay-comment">Комментарий / № ПП</label>
               <input id="pi-pay-comment" class="proc-pay-modal__field" placeholder="Номер ПП, банк…">
               <label class="proc-pay-modal__label">Файл ПП</label>
@@ -1152,8 +1193,29 @@ window.AsgardApprovalPaymentPage = (function() {
       return j.id || j.document_id || null;
     }
 
-    document.getElementById('pi-pay-bank').onclick = async () => {
-      try {
+    // V401: копирование реквизитов — в один клик (для быстрой сборки платёжки).
+    document.querySelectorAll('.proc-pay-req__cp').forEach((b) => {
+      b.onclick = (ev) => {
+        ev.stopPropagation();
+        const v = b.getAttribute('data-copy') || '';
+        const done = () => { const t = b.textContent; b.textContent = '✓'; setTimeout(() => { b.textContent = t; }, 1200); };
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(v).then(done).catch(() => fallbackCopy(v, done));
+        } else fallbackCopy(v, done);
+      };
+    });
+    const copyAllBtn = document.getElementById('buh-copy-all');
+    if (copyAllBtn) {
+      copyAllBtn.onclick = (ev) => {
+        ev.stopPropagation();
+        const text = reqFields.map(([k, v]) => `${k}: ${v}`).join('\n');
+        const done = () => { copyAllBtn.textContent = '✓ Скопировано'; setTimeout(() => { copyAllBtn.textContent = 'Скопировать всё'; }, 1500); };
+        if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(done).catch(() => fallbackCopy(text, done));
+        else fallbackCopy(text, done);
+      };
+    }
+
+    document.getElementById('pi-pay-bank').onclick = async () => {      try {
         const comment = (document.getElementById('pi-pay-comment').value || '').trim();
         const date = document.getElementById('pi-pay-date').value;
         const file = document.getElementById('pi-pay-file').files[0];
@@ -1171,7 +1233,9 @@ window.AsgardApprovalPaymentPage = (function() {
         const payload = {
           comment: (date ? ('Оплата ' + date + (comment ? ': ' + comment : '')) : comment),
           document_id: documentId,
-          skip_pp: skipPp
+          skip_pp: skipPp,
+          pp_number: (document.getElementById('pi-pp-number').value || '').trim() || null,
+          pp_date: date || null
         };
         let resp = await fetch(`/api/payment-invoices/${pay.id}/pay-bank`, {
           method: 'POST', headers: getHeaders(), body: JSON.stringify(payload)

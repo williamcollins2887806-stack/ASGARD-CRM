@@ -587,6 +587,24 @@ a:hover { text-decoration: underline; }
   .dh-stage { grid-template-columns: 64px 1fr; grid-auto-rows: auto; }
 }
 
+/* ═══ V401: реквизиты для платёжки в модалке бухгалтера ═══ */
+.proc-pay-req {
+  display: grid; grid-template-columns: auto 1fr; gap: 4px 12px;
+  margin: 8px 0 12px; font-size: 13px;
+}
+.proc-pay-req dt { color: var(--t3); white-space: nowrap; }
+.proc-pay-req dd {
+  margin: 0; display: flex; align-items: center; gap: 6px;
+  font-variant-numeric: tabular-nums;
+}
+.proc-pay-req__v { font-family: var(--ff-mono, monospace); }
+.proc-pay-req__cp {
+  border: 1px solid var(--brd); background: var(--bg2); color: var(--t3);
+  border-radius: 6px; width: 24px; height: 22px; cursor: pointer; line-height: 1;
+  flex: 0 0 auto;
+}
+.proc-pay-req__cp:hover { color: var(--gold); border-color: var(--gold); }
+
 /* ═══ V394: вкладка «Акты сверки» ═══ */
 .dh-arch__bar { display: flex; gap: 14px; align-items: center; flex-wrap: wrap; margin-bottom: 12px; }
 .dh-arch__bar label { display: flex; align-items: center; gap: 6px; color: var(--t2); font-size: 13px; }

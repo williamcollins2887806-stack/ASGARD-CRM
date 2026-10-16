@@ -245,7 +245,7 @@ async function routes(fastify) {
         out.initiator_role = u.rows[0] ? u.rows[0].role : null;
       }
       if (rows[0].supplier_id) {
-        const s = await db.query(`SELECT inn, kpp, ogrn, phone, email, address FROM suppliers WHERE id=$1`, [rows[0].supplier_id]);
+        const s = await db.query(`SELECT inn, kpp, ogrn, phone, email, address, bik, bank_name, rs, ks FROM suppliers WHERE id=$1`, [rows[0].supplier_id]);
         out.supplier = s.rows[0] || null;
       }
       if (rows[0].doc_registry_id) {
@@ -436,15 +436,32 @@ async function routes(fastify) {
     const comment = (req.body && req.body.comment) || null;
     const documentId = (req.body && req.body.document_id) || null;
     const skipPp = !!(req.body && req.body.skip_pp);
+    // V401: № и дата платёжного поручения — бухгалтерия вводит при оплате.
+    const ppNumber = (req.body && req.body.pp_number) ? String(req.body.pp_number).slice(0, 40) : null;
+    const ppDate = (req.body && req.body.pp_date) ? String(req.body.pp_date).slice(0, 10) : null;
     if (!documentId && !skipPp && !(req.body && req.body.allow_no_pp)) {
       // soft: still allow if comment explains; UI should send skip_pp
     }
+    // V401: снимок реквизитов получателя на момент оплаты (для истории/повторов).
+    let payeeRequisites = null;
+    try {
+      const d = await db.query(
+        `SELECT COALESCE(pi.supplier_name, d.counterparty_name) AS name,
+                COALESCE(s.inn, d.counterparty_inn) AS inn, s.kpp, s.bik, s.bank_name, s.rs, s.ks
+           FROM payment_invoices pi
+           LEFT JOIN doc_registry d ON d.id = pi.doc_registry_id
+           LEFT JOIN suppliers s ON s.id = pi.supplier_id
+          WHERE pi.id = $1`, [id]);
+      if (d.rows[0]) payeeRequisites = d.rows[0];
+    } catch (_) { /* реквизиты не критичны для оплаты */ }
     const upd = await db.query(
       `UPDATE payment_invoices SET
          status='paid', payment_method='bank_transfer', payment_status='paid',
-         payment_comment=$1, payment_doc_id=$2, buh_id=$3, buh_acted_at=NOW(), updated_at=NOW()
+         payment_comment=$1, payment_doc_id=$2, buh_id=$3, buh_acted_at=NOW(),
+         pp_number=COALESCE($5, pp_number), pp_date=COALESCE($6::date, pp_date),
+         payee_requisites=COALESCE($7::jsonb, payee_requisites), updated_at=NOW()
        WHERE id=$4 AND payment_status='pending_payment'`,
-      [comment, documentId, req.user.id, id]
+      [comment, documentId, req.user.id, id, ppNumber, ppDate, payeeRequisites ? JSON.stringify(payeeRequisites) : null]
     );
     // S5: побочные эффекты (расход, карточка Doc Hub, уведомления) — ТОЛЬКО при
     // реальном переходе. Иначе 8 параллельных запросов плодят дубли.
