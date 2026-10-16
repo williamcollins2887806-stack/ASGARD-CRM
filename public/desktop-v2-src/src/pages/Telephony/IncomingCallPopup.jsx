@@ -42,7 +42,10 @@ import { Btn, Textarea } from '@/modals/parts';
 import { loadOperators, transferCallTo, answerCall, hangupCall, saveCallNote, fmtPhone } from './api';
 import './incoming-call-popup.css';
 
-const TEL_ROLES = ['ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV', 'PM', 'HEAD_PM', 'TO', 'HEAD_TO', 'BUH'];
+// Deny-список (синхронно с backend canUseTelephony). Whitelist отсекал
+// реальные рабочие роли (OFFICE_MANAGER) — исправлено 16.10.2026.
+const TEL_DENY_ROLES = ['BOT', 'FIELD_WORKER'];
+const canUseTelephony = (role) => !!role && !TEL_DENY_ROLES.includes(role);
 
 /* Source vanilla telephony_popup.js:1113-1134 — типовые фразы Фрейи. */
 const FREYA_PHRASES = {
@@ -106,7 +109,7 @@ function buildMimirHint({ intent, isKnown, lastClientText, dadataCity, hasOpenTk
 
 export default function IncomingCallPopup() {
   const { user } = useAuth();
-  const hasRole = !!user && TEL_ROLES.includes(user.role);
+  const hasRole = canUseTelephony(user?.role);
 
   const [phase, setPhase] = useState('idle');  // idle | ringing | active | ended
   const [call, setCall] = useState(null);

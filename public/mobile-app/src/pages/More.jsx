@@ -132,7 +132,7 @@ const GROUPS = [
     color: 'var(--text-secondary)',
     items: [
       { path: '/alerts',       icon: Bell,         label: 'Уведомления',    section: 'dashboard' },
-      { path: '/telephony',    icon: Phone,        label: 'Телефон',        section: 'dashboard', roles: ['ADMIN','DIRECTOR_GEN','DIRECTOR_COMM','DIRECTOR_DEV','PM','HEAD_PM','TO','HEAD_TO','BUH'] },
+      { path: '/telephony',    icon: Phone,        label: 'Телефон',        section: 'dashboard' },
       { path: '/training',     icon: GraduationCap,label: 'Обучение',       section: 'dashboard' },
       { path: '/office-academy', icon: GraduationCap, label: 'Академия Асгарда', section: 'dashboard' },
       { path: '/my-mail',      icon: Mail,         label: 'Почта',          section: 'profile' },

@@ -7,7 +7,7 @@ import { EmptyState } from '@/components/shared/EmptyState';
 import { SkeletonList } from '@/components/shared/SkeletonKit';
 import { CallList } from '@/components/telephony/CallRow';
 import { glass } from '@/components/telephony/telUi';
-import { TEL_ROLES } from '@/components/telephony/SoftphoneProvider';
+import { canUseTelephony } from '@/components/telephony/SoftphoneProvider';
 import { useAuthStore } from '@/stores/authStore';
 
 export default function TelephonyHistory() {
@@ -31,7 +31,7 @@ export default function TelephonyHistory() {
 
   useEffect(() => { load(); }, [load]);
 
-  if (!TEL_ROLES.includes(role)) {
+  if (!canUseTelephony(role)) {
     return (
       <PageShell title="Журнал" showBack>
         <EmptyState title="Нет доступа" />

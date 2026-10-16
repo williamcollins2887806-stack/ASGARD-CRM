@@ -9,7 +9,7 @@ import { SkeletonList } from '@/components/shared/SkeletonKit';
 import { Sparkline } from '@/components/shared/Sparkline';
 import { CallList } from '@/components/telephony/CallRow';
 import { glass } from '@/components/telephony/telUi';
-import { TEL_ROLES, useSoftphone } from '@/components/telephony/SoftphoneProvider';
+import { useSoftphone, canUseTelephony } from '@/components/telephony/SoftphoneProvider';
 import { useAuthStore } from '@/stores/authStore';
 import { useHaptic } from '@/hooks/useHaptic';
 
@@ -31,7 +31,7 @@ export default function TelephonyHome() {
   const [filter, setFilter] = useState('all');
   const sipTried = useRef(false);
 
-  const allowed = TEL_ROLES.includes(role);
+  const allowed = canUseTelephony(role);
 
   const load = useCallback(async () => {
     if (!allowed) return;

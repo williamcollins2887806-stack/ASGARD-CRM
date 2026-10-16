@@ -58,7 +58,7 @@ export const WIDGET_REGISTRY = {
   pre_tenders:      { component: PreTendersWidget,       name: 'Заявки',                icon: '🤖', size: 'normal', roles: ['ADMIN','HEAD_TO','DIRECTOR_*'] },
   receipt_scanner:  { component: ReceiptScannerWidget,   name: 'Сканер чеков',          icon: '📷', size: 'normal', roles: ['PM','HEAD_PM'] },
   team_workload:    { component: TeamWorkloadWidget,     name: 'Загрузка РП',           icon: '📊', size: 'wide',   roles: ['ADMIN','HEAD_PM','DIRECTOR_*'] },
-  telephony_status: { component: TelephonyWidget,        name: 'Телефония',             icon: '📞', size: 'normal', roles: ['ADMIN','DIRECTOR_*','PM','HEAD_PM','TO','HEAD_TO','BUH'] },
+  telephony_status: { component: TelephonyWidget,        name: 'Телефония',             icon: '📞', size: 'normal', roles: ['*'] },
   tender_dynamics:  { component: TenderDynamicsWidget,   name: 'Динамика тендеров',     icon: '📈', size: 'wide',   roles: ['ADMIN','TO','HEAD_TO','DIRECTOR_*'] },
   tenders_funnel:   { component: TendersFunnelWidget,    name: 'Воронка',               icon: '📊', size: 'normal', roles: ['ADMIN','TO','HEAD_TO','PM','DIRECTOR_*'] },
   call_analytics:   { component: CallAnalyticsWidget,   name: 'Аналитика звонков',     icon: '📊', size: 'normal', roles: ['ADMIN','DIRECTOR_*'] },

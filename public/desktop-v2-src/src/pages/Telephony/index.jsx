@@ -38,9 +38,11 @@ const AnalyticsTab = lazy(() => import('./tabs/Analytics'));
 const RoutingTab = lazy(() => import('./tabs/Routing'));
 const MangoTab = lazy(() => import('./tabs/Mango'));
 
-// RBAC синхронно с backend `src/routes/telephony.js:10` (TEL_ROLES).
-// Inline-литералы нужны скрипту rbac-audit для автопроверки покрытия.
-const ALLOWED_ROLES = ['ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV', 'PM', 'HEAD_PM', 'TO', 'HEAD_TO', 'BUH'];
+// RBAC синхронно с backend (deny-список, как `canUseTelephony`): телефония —
+// всем активным, КРОМЕ служебных ролей. Раньше whitelist отсекал реальные
+// рабочие роли (OFFICE_MANAGER) — исправлено 16.10.2026.
+const TEL_DENY_ROLES = ['BOT', 'FIELD_WORKER'];
+const canUseTelephony = (role) => !!role && !TEL_DENY_ROLES.includes(role);
 
 const TABS = [
   { id: 'journal',   label: '📞 Журнал' },
@@ -63,7 +65,7 @@ export default function TelephonyPage() {
   const [dispatcher, setDispatcher] = useState({});
   const [loading, setLoading] = useState(true);
 
-  const hasAccess = !user || ALLOWED_ROLES.includes(user.role);
+  const hasAccess = !user || canUseTelephony(user.role);
 
   const refresh = useCallback(() => {
     if (!hasAccess) return;
@@ -123,10 +125,10 @@ export default function TelephonyPage() {
   if (user && !hasAccess) {
     return (
       <AccessDenied
-        allowed={ALLOWED_ROLES}
+        allowed={['любая рабочая роль, кроме BOT / FIELD_WORKER']}
         userRole={user.role}
         title="Телефония недоступна"
-        message="Журнал звонков и диспетчер видят директора, PM/HEAD_PM, ТО/HEAD_TO, бухгалтерия и ADMIN."
+        message="Журнал звонков и диспетчер доступны всем рабочим ролям (кроме служебных BOT / FIELD_WORKER)."
       />
     );
   }

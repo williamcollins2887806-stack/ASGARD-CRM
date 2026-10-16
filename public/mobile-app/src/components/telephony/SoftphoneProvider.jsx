@@ -6,6 +6,13 @@ import { createMobileSoftphone } from '@/lib/softphone';
 import { glass, initialsFrom } from '@/components/telephony/telUi';
 import { useHaptic } from '@/hooks/useHaptic';
 
+// Телефония — DENY-список (как canUseTelephony на бэке и в phone_ui.js).
+// Раньше был whitelist → реальные рабочие роли (OFFICE_MANAGER и др.) не
+// получали софтфон, хотя сервер их пускал (инцидент 16.10.2026).
+export const TEL_DENY_ROLES = ['BOT', 'FIELD_WORKER'];
+export const canUseTelephony = (role) => !!role && !TEL_DENY_ROLES.includes(role);
+// @deprecated не используется — оставлено на случай внешних импортов.
+// Логика доступа к телефонии — canUseTelephony (deny-list) выше.
 export const TEL_ROLES = ['ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV', 'PM', 'HEAD_PM', 'TO', 'HEAD_TO', 'BUH'];
 
 const SoftphoneContext = createContext(null);
@@ -123,7 +130,7 @@ export function SoftphoneProvider({ children }) {
   const [sipState, setSipState] = useState('idle');
   const [answering, setAnswering] = useState(false);
 
-  const enabled = TEL_ROLES.includes(role);
+  const enabled = canUseTelephony(role);
 
   useEffect(() => {
     if (!enabled) return undefined;
