@@ -138,6 +138,13 @@
   function show() {
     if (hasChosen()) return;
     if (document.getElementById('asgard-theme-selector')) return;
+    // ⚠️ Показываем ТОЛЬКО на странице приветствия. Раньше show() вызывался по
+    // отложенному таймеру (700 мс от появления .welcome-page), и за это время
+    // пользователь мог уже уйти на рабочую страницу — тогда баннер выбора темы
+    // накрывал интерфейс и перехватывал клики (найдено на ручном тестировании
+    // 16.10.2026: селектор темы висел поверх «Согласования оплат»).
+    if (!document.querySelector('.welcome-page')) return;
+    if (location.hash && location.hash !== '#/welcome' && location.hash !== '' && location.hash !== '#') return;
     var banner = createBanner();
     document.body.appendChild(banner);
     requestAnimationFrame(function() {

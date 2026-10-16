@@ -146,7 +146,11 @@ window.AsgardApprovalPaymentPage = (function() {
     if (document.querySelector('.cr-m-overlay')) return;            // не мешаем открытой модалке
     try {
       const data = await loadPending();
-      const list = container.querySelector('#payment-list');
+      // ⚠️ Целимся в СПИСОК СЧЕТОВ, а не во внешний #payment-list.
+      // В режиме директора #payment-list СОДЕРЖИТ вкладки (#ap_tabs) и панели
+      // (#ap_panel, #ap_invoices_panel) — если переписать его innerHTML, вкладки
+      // исчезают каждые 20 секунд (найдено на ручном тестировании 16.10.2026).
+      const list = container.querySelector('#ap_invoices_panel') || container.querySelector('#payment-list');
       if (list) renderList(list, data);
     } catch (_) { /* тихо: live не должен ломать экран */ }
   }
@@ -198,7 +202,7 @@ window.AsgardApprovalPaymentPage = (function() {
     const h1 = document.querySelector('.page-title');
     if (h1) h1.textContent = dirMode ? 'Согласование оплат' : 'Очередь оплаты';
     host.innerHTML = `
-      <div class="page-header" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px">
+      <div class="page-header" id="ap_header" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px">
         <div>
           <p style="color:var(--text-muted);font-size:var(--text-sm);margin:0" id="ap-desc">${dirMode
             ? 'Счета, ожидающие вашего решения. Список обновляется автоматически'
@@ -282,6 +286,12 @@ window.AsgardApprovalPaymentPage = (function() {
       _apTab = tab;
       Array.from(tabs.querySelectorAll('.ap-tab')).forEach((b) => b.classList.toggle('is-on', b.dataset.aptab === tab));
       invoicesPanel.style.display = tab === 'invoices' ? '' : 'none';
+      // ⚠️ Общий блок «Счета, ожидающие вашего решения» + «К согласованию» относится
+      // ТОЛЬКО к вкладке «Счета». У «Выплат», «Кассы» и «Планирования» свои
+      // заголовок и суммы (рисуются через hero() внутри панели) — иначе на каждой
+      // вкладке висели бы суммы счетов (найдено на ручном тестировании 16.10.2026).
+      const header = live.querySelector('#ap_header');
+      if (header) header.style.display = tab === 'invoices' ? '' : 'none';
       if (tab === 'invoices') { panel.innerHTML = ''; return; }
       panel.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text-muted)">Загрузка…</div>';
       if (tab === 'payouts') await renderPayoutsTab(panel);
