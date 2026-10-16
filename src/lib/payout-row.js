@@ -91,10 +91,26 @@ async function buildPayoutRows(db, year, month) {
      WHERE status = 'pending'
        AND (COALESCE(pay_year, EXTRACT(YEAR FROM created_at)::int) * 100
             + COALESCE(pay_month, EXTRACT(MONTH FROM created_at)::int)) < $1
-       AND type IN ('salary', 'bonus', 'per_diem', 'penalty')
+       AND type IN ('salary', 'bonus', 'per_diem', 'penalty', 'carry_adjustment')
      GROUP BY employee_id, type
     `,
     [periodId]
+  );
+
+  // ── 2b. Корректировки остатка ЗА ТЕКУЩИЙ период (V391) ───────────────────
+  // Дима правит остаток прямо на странице выплат, поэтому корректировка
+  // приходит в СВОМ месяце (целевом), а не в прошлом. Без этой выборки
+  // правка не влияла бы на «Остаток» вообще.
+  const { rows: debtAdjust } = await db.query(
+    `
+    SELECT employee_id, SUM(amount)::numeric AS amount
+      FROM worker_payments
+     WHERE status = 'pending' AND type = 'carry_adjustment'
+       AND COALESCE(pay_year, EXTRACT(YEAR FROM created_at)::int) = $1
+       AND COALESCE(pay_month, EXTRACT(MONTH FROM created_at)::int) = $2
+     GROUP BY employee_id
+    `,
+    [y, m]
   );
 
   // ── 3. Выплаты за месяц по типам ─────────────────────────────────────────
@@ -157,8 +173,12 @@ async function buildPayoutRows(db, year, month) {
              ${empName()},
              e.is_self_employed, e.is_officially_employed,
              e.official_salary, e.official_non_burnable, e.official_status,
-             e.se_payee_id, e.is_se_payee, e.is_active
+             e.se_payee_id, e.se_payee_id_2, e.is_se_payee, e.is_active,
+             p1.fio AS se_payee_fio, p1.phone AS se_payee_phone,
+             p2.fio AS se_payee2_fio, p2.phone AS se_payee2_phone
         FROM employees e
+        LEFT JOIN employees p1 ON p1.id = e.se_payee_id
+        LEFT JOIN employees p2 ON p2.id = e.se_payee_id_2
        WHERE e.id = ANY($1::int[])
       `,
       [Array.from(empIds)]
@@ -182,13 +202,16 @@ async function buildPayoutRows(db, year, month) {
     if (r.type === 'per_diem' && ['paid', 'confirmed'].includes(r.status)) a.per_diem += amt;
   }
   // Долг с прошлых периодов = сумма pending-записей до месяца (по типам).
-  const debtBeforeMap = new Map(); // empId → {salary, bonus, per_diem, penalty}
+  const debtBeforeMap = new Map(); // empId → {salary, bonus, per_diem, penalty, carry_adjustment}
   for (const r of debtBefore) {
-    if (!debtBeforeMap.has(r.employee_id)) debtBeforeMap.set(r.employee_id, { salary: 0, bonus: 0, per_diem: 0, penalty: 0 });
+    if (!debtBeforeMap.has(r.employee_id)) debtBeforeMap.set(r.employee_id, { salary: 0, bonus: 0, per_diem: 0, penalty: 0, carry_adjustment: 0 });
     const d = debtBeforeMap.get(r.employee_id);
     const amt = num(r.amount);
     if (d[r.type] !== undefined) d[r.type] += amt;
   }
+
+  // Корректировки остатка за текущий период (V391) — прибавляются к carry.
+  const debtAdjustMap = new Map(debtAdjust.map((r) => [r.employee_id, num(r.amount)]));
 
   const fotMonthMap = new Map(fotMonth.map((r) => [r.employee_id, num(r.fot)]));
 
@@ -213,13 +236,15 @@ async function buildPayoutRows(db, year, month) {
   for (const [empId, emp] of empMap) {
     const accrued = money(fotMonthMap.get(empId) || 0);
     const month = aggMonth.get(empId) || mkPay();
-    const debt = debtBeforeMap.get(empId) || { salary: 0, bonus: 0, per_diem: 0, penalty: 0 };
+    const debt = debtBeforeMap.get(empId) || { salary: 0, bonus: 0, per_diem: 0, penalty: 0, carry_adjustment: 0 };
 
     // Перенос: неоплаченные (pending) записи прошлых периодов.
     // salary — долг по зарплате; bonus добавляем; per_diem показываем справочно
     // (он выводится в реестре суточных, но входит в общую сумму к выплате);
-    // penalty уменьшает.
-    const carry = money(debt.salary + debt.bonus + debt.per_diem - debt.penalty);
+    // penalty уменьшает. carry_adjustment — ручные корректировки остатка Димы
+    // (прошлые периоды + текущий, V391).
+    const carryAdjust = money((debt.carry_adjustment || 0) + (debtAdjustMap.get(empId) || 0));
+    const carry = money(debt.salary + debt.bonus + debt.per_diem - debt.penalty + carryAdjust);
 
     const advance = money(month.advance);
     const penalty = money(month.penalty);
@@ -255,11 +280,18 @@ async function buildPayoutRows(db, year, month) {
       is_officially_employed: !!emp.is_officially_employed,
       official_salary: num(emp.official_salary),
       se_payee_id: emp.se_payee_id || null,
+      // V391: второй получатель + ФИО обоих — для выбора «через кого».
+      se_payee_id_2: emp.se_payee_id_2 || null,
+      se_payee_fio: emp.se_payee_fio || null,
+      se_payee_phone: emp.se_payee_phone || null,
+      se_payee2_fio: emp.se_payee2_fio || null,
+      se_payee2_phone: emp.se_payee2_phone || null,
       accrued,
       carry,
       // Разложение остатка для UI: долг (Остаток) / переплата-аванс (Аванс).
       carry_debt: carryDebt,
       carry_advance: carryAdvance,
+      carry_adjust: carryAdjust,
       carry_per_diem: carryPerDiem,
       advance,
       penalty,

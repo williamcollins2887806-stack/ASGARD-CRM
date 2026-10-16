@@ -35,6 +35,7 @@
 
 const { getWorkerFinances } = require('../lib/worker-finances');
 const { logError } = require('../lib/log-error');
+const { sendHuman } = require('../lib/human-error');
 
 // Lock helper
 function getLockLib() {
@@ -183,7 +184,7 @@ async function routes(fastify, options) {
       return { payments: rows, total: parseInt(countRows[0].total) };
     } catch (err) {
       logError(fastify, '[worker-payments] GET / error', err, req);
-      return reply.code(500).send({ error: 'Ошибка сервера' });
+      return sendHuman(reply, err);
     }
   });
 
@@ -225,9 +226,35 @@ async function routes(fastify, options) {
       // Это нужно для inline-формы +Премия/+Удержание/+Аванс — юзер ожидает
       // что введённое сразу учтётся в колонке «Удерж.»/«Премии»/«Авансы».
       // payment_method дефолтится в 'cash' если не передан.
+      //
+      // ⚠️ V391: mark_paid ставит status='paid' — значит это ПРОВЕДЕНИЕ ВЫПЛАТЫ,
+      // и оно обязано проходить гейт согласования. Раньше эта ручка была девятым
+      // обходом: любой PM/BUH/ADMIN создавал выплату мимо корзины
+      // (найдено верификатором 16.10.2026).
+      if (mark_paid) {
+        const now0 = new Date();
+        const MOD = require('../lib/payout-approval-gate');
+        // ⚠️ ЕДИНОЕ ПРАВИЛО (решение заказчика 16.10.2026): без согласованного
+        // списка можно платить ТОЛЬКО суточные. Раньше здесь был рублёвый порог
+        // (15 000 ₽/мес) — он позволял РП проводить премии и авансы мимо
+        // согласования мелкими суммами. Порог убран: правило одно на все ручки.
+        const wantSum = parseFloat(amount);
+        const perY = pay_year ? parseInt(pay_year, 10) : now0.getFullYear();
+        const perM = pay_month ? parseInt(pay_month, 10) : (now0.getMonth() + 1);
+        const bad = await MOD.checkPayoutApproved(db, {
+          employeeId: parseInt(employee_id, 10), year: perY, month: perM, amount: wantSum, type,
+        });
+        if (bad) { const { code, ...rest } = bad; return reply.code(code).send(rest); }
+      }
+
       const _status = mark_paid ? 'paid' : 'pending';
       const _paidAt = mark_paid ? 'NOW()' : 'NULL';
-      const _payMethod = payment_method || (mark_paid ? 'cash' : null);
+      // ⚠️ payment_method NOT NULL в БД: при создании pending-начисления способ
+      // может быть не указан (начисление, а не выплата). Раньше это давало 500
+      // (NOT NULL violation) на прямом API-вызове (FAIL-3, верификатор 16.10.2026).
+      // Для pending допускаем NULL → подставляем 'cash' как нейтральный дефолт;
+      // на выплате (mark_paid) способ обязателен и уже провалидирован выше.
+      const _payMethod = payment_method || 'cash';
 
       const { rows: inserted } = await db.query(`
         INSERT INTO worker_payments (
@@ -256,7 +283,7 @@ async function routes(fastify, options) {
       return { payment: inserted[0] };
     } catch (err) {
       logError(fastify, '[worker-payments] POST / error', err, req);
-      return reply.code(500).send({ error: 'Ошибка сервера' });
+      return sendHuman(reply, err);
     }
   });
 
@@ -283,6 +310,72 @@ async function routes(fastify, options) {
       const allowed = ['amount', 'days', 'rate_per_day', 'total_points', 'point_value',
         'payment_method', 'comment', 'period_from', 'period_to', 'pay_month', 'pay_year',
         'works_detail', 'work_id', 'paid_at'];
+
+      // ─── V391: ГЕЙТ ПРИ ПРАВКЕ СУММЫ / ПЕРИОДА ─────────────────────
+      // Дыры, найденные верификатором 16.10.2026:
+      //   • PUT /:id менял сумму — и гейт при последующей выплате обходился;
+      //   • PUT /:id менял pay_year/pay_month — сдвиг периода уводил выплату
+      //     из-под одобренной позиции, и повторный PUT /:id/pay проходил;
+      //   • PUT /:id правил сумму УЖЕ ВЫПЛАЧЕННОЙ записи без контроля.
+      // Правило: если меняем amount или период — проверяем согласование по
+      // НОВЫМ значениям (и не даём увести выплату из-под гейта).
+      {
+        const changesAmount = body.amount !== undefined && parseFloat(body.amount) !== parseFloat(prev.amount);
+        const changesPeriod = (body.pay_year !== undefined && parseInt(body.pay_year, 10) !== Number(prev.pay_year)) ||
+                              (body.pay_month !== undefined && parseInt(body.pay_month, 10) !== Number(prev.pay_month));
+        if (changesAmount || changesPeriod) {
+          // Для уже выплаченной записи правка суммы/периода — только админ (иначе
+          // это тихая подмена факта перевода).
+          if (prev.status === 'paid') {
+            const adminRoles = ['ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV'];
+            if (!adminRoles.includes(req.user.role)) {
+              return reply.code(409).send({
+                error: 'paid_immutable',
+                message: 'Выплата уже проведена — менять сумму нельзя. Отмените выплату и проведите заново.',
+              });
+            }
+          }
+          const MOD = require('../lib/payout-approval-gate');
+
+          // ПЕРИОД. Смена периода опасна: она уводит запись из-под одобренной
+          // позиции, и следующий /:id/pay проходит без гейта (найдено
+          // верификатором 16.10.2026). Правило простое и жёсткое:
+          //   • запись, которая БЫЛА в списке прежнего периода, период менять НЕЛЬЗЯ
+          //     (перенос = обход согласования) — 409;
+          //   • иначе (запись вне контура корзины) — перенос разрешён: это
+          //     обычная правка старых данных, гейту там нечего защищать.
+          if (changesPeriod) {
+            const oldP = MOD.periodOfPayment(prev);
+            const { rows: oldPos } = await db.query(`
+              SELECT i.approval_status FROM payout_batch_items i
+                JOIN payout_batches b ON b.id = i.batch_id
+               WHERE i.employee_id = $1 AND b.period_year = $2 AND b.period_month = $3
+                 AND b.status <> 'cancelled'
+               ORDER BY i.id DESC LIMIT 1`, [prev.employee_id, oldP.year, oldP.month]);
+            if (oldPos.length > 0) {
+              return reply.code(409).send({
+                error: 'period_change_blocked',
+                message: 'Выплата участвует в согласовании за этот период — перенести её нельзя. Согласуйте выплату на новую дату и проведите заново.',
+                requires_approval: true,
+              });
+            }
+          }
+
+          // СУММА. Изменение суммы — по новым значениям.
+          if (changesAmount) {
+            const per = MOD.periodOfPayment({
+              pay_year: body.pay_year !== undefined ? parseInt(body.pay_year, 10) : prev.pay_year,
+              pay_month: body.pay_month !== undefined ? parseInt(body.pay_month, 10) : prev.pay_month,
+              created_at: prev.created_at,
+            });
+            const bad = await MOD.checkPayoutApproved(db, {
+              employeeId: prev.employee_id, year: per.year, month: per.month,
+              amount: parseFloat(body.amount),
+            });
+            if (bad) { const { code, ...rest } = bad; return reply.code(code).send(rest); }
+          }
+        }      }
+
       const sets = [];
       const params = [];
       let idx = 1;
@@ -336,7 +429,7 @@ async function routes(fastify, options) {
       return { payment: updatedPay };
     } catch (err) {
       logError(fastify, '[worker-payments] PUT /:id error', err, req);
-      return reply.code(500).send({ error: 'Ошибка сервера' });
+      return sendHuman(reply, err);
     }
   });
 
@@ -390,6 +483,16 @@ async function routes(fastify, options) {
           error: 'Недостаточно прав',
           details: 'Выплата доступна только руководителю проекта, бухгалтерии или администратору'
         });
+      }
+
+      // ─── V391: ГЕЙТ СОГЛАСОВАНИЯ (единый модуль) ───────────────────
+      // Раньше эта ручка проводила выплату вообще без проверки одобрения
+      // (найдено верификатором 16.10.2026). Период берём из самой записи.
+      {
+        const { checkPayoutApproved, periodOfPayment } = require('../lib/payout-approval-gate');
+        const per = periodOfPayment(p);
+        const bad = await checkPayoutApproved(db, { employeeId: p.employee_id, year: per.year, month: per.month, amount: p.amount, type: p.type });
+        if (bad) { const { code, ...body } = bad; return reply.code(code).send(body); }
       }
 
       // UPDATE — отметить как оплачено
@@ -449,7 +552,7 @@ async function routes(fastify, options) {
       return { ok: true, payment: updated[0] };
     } catch (err) {
       fastify.log.error(`[worker-payments] PUT /:id/pay error: ${err.message}`);
-      return reply.code(500).send({ error: 'Ошибка сервера' });
+      return sendHuman(reply, err);
     }
   });
 
@@ -507,7 +610,7 @@ async function routes(fastify, options) {
       };
     } catch (err) {
       logError(fastify, '[worker-payments] DELETE /:id error', err, req);
-      return reply.code(500).send({ error: 'Ошибка сервера' });
+      return sendHuman(reply, err);
     }
   });
 
@@ -553,7 +656,7 @@ async function routes(fastify, options) {
       };
     } catch (err) {
       logError(fastify, '[worker-payments] GET /employee-summary error', err, req);
-      return reply.code(500).send({ error: 'Ошибка сервера' });
+      return sendHuman(reply, err);
     }
   });
 
@@ -577,7 +680,7 @@ async function routes(fastify, options) {
       const validMethods = ['cash', 'card', 'transfer'];
       if (!validMethods.includes(payment_method)) return reply.code(400).send({ error: 'payment_method: cash, card, transfer' });
       const amt = parseFloat(amount);
-      if (!amt || (type !== 'penalty' && amt <= 0)) return reply.code(400).send({ error: 'amount > 0' });
+      if (!amt || (type !== 'penalty' && amt <= 0)) return reply.code(400).send({ error: 'invalid_amount', message: 'Сумма должна быть больше нуля.', hint: 'Введите сумму в рублях и повторите.' });
       if (!employee_id || !work_id) return reply.code(400).send({ error: 'employee_id и work_id обязательны' });
 
       const eId = parseInt(employee_id), wId = parseInt(work_id);
@@ -601,6 +704,20 @@ async function routes(fastify, options) {
         hasAccess = true;
       }
       if (!hasAccess) return reply.code(403).send({ error: 'Недостаточно прав' });
+
+      // ─── V391: ГЕЙТ СОГЛАСОВАНИЯ (единый модуль) ───────────────────
+      // Эта ручка вставляла запись сразу со status='paid', минуя корзину
+      // (найдено верификатором 16.10.2026). Проверяем согласование по периоду.
+      {
+        const { denyIfNotApproved } = require('../lib/payout-approval-gate');
+        const now0 = new Date();
+        const py0 = pay_year ? parseInt(pay_year) : now0.getFullYear();
+        const pm0 = pay_month ? parseInt(pay_month) : (now0.getMonth() + 1);
+        // ⚠️ pay-worker — это ВЫПЛАТА (INSERT сразу 'paid'), поэтому требуем
+        // согласованный период строго: иначе любой платёж в «свободный» период
+        // проходит без одобрения (FAIL-1, верификатор 16.10.2026).
+        if (await denyIfNotApproved(db, reply, { employeeId: eId, year: py0, month: pm0, amount, type })) return reply;
+      }
 
       // ─── Защита от двойной выплаты (Stage S) ──────────────────────
       // Пропускается, если клиент явно подтвердил повторную выплату.
@@ -640,13 +757,21 @@ async function routes(fastify, options) {
         }
       }
 
+      // ⚠️ F2 (верификатор 16.10.2026): период ОБЯЗАН сохраняться. Раньше
+      // pay_year/pay_month использовались только для гейта и в БД не попадали —
+      // накопительная сверка была слепа, и можно было выплатить 3×40 000 ₽
+      // при одобрении 50 000 ₽.
+      const nowP = new Date();
+      const insPy = pay_year ? parseInt(pay_year, 10) : nowP.getFullYear();
+      const insPm = pay_month ? parseInt(pay_month, 10) : (nowP.getMonth() + 1);
       const { rows: inserted } = await db.query(`
         INSERT INTO worker_payments (
           employee_id, work_id, type, amount, status,
-          payment_method, paid_by, paid_at, comment, created_at, created_by
-        ) VALUES ($1, $2, $3, $4, 'paid', $5, $6, NOW(), $7, NOW(), $6)
+          payment_method, paid_by, paid_at, comment, created_at, created_by,
+          pay_year, pay_month
+        ) VALUES ($1, $2, $3, $4, 'paid', $5, $6, NOW(), $7, NOW(), $6, $8, $9)
         RETURNING *
-      `, [eId, wId, type, amt, payment_method, userId, note || null]);
+      `, [eId, wId, type, amt, payment_method, userId, note || null, insPy, insPm]);
 
       await db.query(`
         INSERT INTO audit_log (actor_user_id, entity_type, entity_id, action, payload_json, created_at)
@@ -676,7 +801,7 @@ async function routes(fastify, options) {
       return { ok: true, payment: inserted[0] };
     } catch (err) {
       fastify.log.error({ err }, '[worker-payments] POST /pay-worker error');
-      return reply.code(500).send({ error: 'Ошибка сервера' });
+      return sendHuman(reply, err);
     }
   });
 
@@ -716,7 +841,7 @@ async function routes(fastify, options) {
       return { payments: created, count: created.length };
     } catch (err) {
       logError(fastify, '[worker-payments] POST /bulk-per-diem error', err, req);
-      return reply.code(500).send({ error: 'Ошибка сервера' });
+      return sendHuman(reply, err);
     }
   });
 
@@ -809,7 +934,7 @@ async function routes(fastify, options) {
       return { payments: created, count: created.length, point_value: pointValue };
     } catch (err) {
       logError(fastify, '[worker-payments] POST /generate-salary error', err, req);
-      return reply.code(500).send({ error: 'Ошибка сервера' });
+      return sendHuman(reply, err);
     }
   });
 
@@ -856,6 +981,38 @@ async function routes(fastify, options) {
         }
       }
 
+      // ─── V391: ГЕЙТ СОГЛАСОВАНИЯ (массовая выплата) ────────────────
+      // Проверяем И СТАТУС, И СУММУ: ручка платит всю pending-зарплату, поэтому
+      // недостаточно убедиться, что позиция «approved» — надо, чтобы одобренная
+      // сумма её покрывала. Иначе одобрение 1 ₽ проводило 50 000 ₽
+      // (найдено верификатором 16.10.2026).
+      const { findAmountBlockedEmployees } = require('../lib/payout-approval-gate');
+      let blockedIds = [];
+      {
+        const { rows: pendEmp } = await db.query(`
+          SELECT DISTINCT employee_id FROM worker_payments
+           WHERE type = 'salary' AND pay_year = $1 AND pay_month = $2 AND status = 'pending'`, [year, month]);
+        const blocked = await findAmountBlockedEmployees(db, {
+          employeeIds: pendEmp.map((r) => r.employee_id), year, month, type: 'salary',
+        });
+        blockedIds = blocked.map((b) => b.employee_id);
+      }
+      if (blockedIds.length) {
+        // Проверяем, есть ли вообще кого платить среди одобренных.
+        const { rows: okCnt } = await db.query(`
+          SELECT COUNT(*)::int AS n FROM worker_payments
+           WHERE type = 'salary' AND pay_year = $1 AND pay_month = $2 AND status = 'pending'
+             AND NOT (employee_id = ANY($3::int[]))`, [year, month, blockedIds]);
+        if (!okCnt[0].n) {
+          return reply.code(409).send({
+            error: 'approval_required',
+            message: `Ни одна зарплата за период не согласована директором на нужную сумму (${blockedIds.length} чел.). Отправьте корзину на согласование.`,
+            requires_approval: true,
+            unapproved_count: blockedIds.length,
+          });
+        }
+      }
+
       let query = `
         UPDATE worker_payments
         SET status = 'paid', paid_at = NOW(), paid_by = $1, payment_method = $2, updated_at = NOW()
@@ -867,13 +1024,18 @@ async function routes(fastify, options) {
         query += ' AND work_id = $5';
         params.push(workId);
       }
+      // Исключаем неодобренных
+      if (blockedIds.length) {
+        params.push(blockedIds);
+        query += ` AND NOT (employee_id = ANY($${params.length}::int[]))`;
+      }
 
       const result = await db.query(query, params);
 
-      return { ok: true, updated: result.rowCount };
+      return { ok: true, updated: result.rowCount, skipped_unapproved: blockedIds.length };
     } catch (err) {
       logError(fastify, '[worker-payments] POST /pay-salary error', err, req);
-      return reply.code(500).send({ error: 'Ошибка сервера' });
+      return sendHuman(reply, err);
     }
   });
 
@@ -940,7 +1102,7 @@ async function routes(fastify, options) {
       return { workers, totals };
     } catch (err) {
       logError(fastify, '[worker-payments] GET /project/:id/summary error', err, req);
-      return reply.code(500).send({ error: 'Ошибка сервера' });
+      return sendHuman(reply, err);
     }
   });
 
@@ -983,7 +1145,7 @@ async function routes(fastify, options) {
       return { on_site: onSite, others };
     } catch (err) {
       logError(fastify, '[worker-payments] GET /project/:id/crew-all error', err, req);
-      return reply.code(500).send({ error: 'Ошибка сервера' });
+      return sendHuman(reply, err);
     }
   });
 
@@ -1017,7 +1179,7 @@ async function routes(fastify, options) {
       return { payments: rows };
     } catch (err) {
       logError(fastify, '[worker-payments] GET /my error', err, req);
-      return reply.code(500).send({ error: 'Ошибка сервера' });
+      return sendHuman(reply, err);
     }
   });
 
@@ -1033,7 +1195,7 @@ async function routes(fastify, options) {
       return result;
     } catch (err) {
       logError(fastify, '[worker-payments] GET /my/balance error', err, req);
-      return reply.code(500).send({ error: 'Ошибка сервера' });
+      return sendHuman(reply, err);
     }
   });
 
@@ -1061,7 +1223,7 @@ async function routes(fastify, options) {
       return { ok: true, status: 'confirmed' };
     } catch (err) {
       logError(fastify, '[worker-payments] POST /my/:id/confirm error', err, req);
-      return reply.code(500).send({ error: 'Ошибка сервера' });
+      return sendHuman(reply, err);
     }
   });
 
@@ -1133,7 +1295,7 @@ async function routes(fastify, options) {
       };
     } catch (err) {
       logError(fastify, '[worker-payments] GET /reports/payroll error', err, req);
-      return reply.code(500).send({ error: 'Ошибка сервера' });
+      return sendHuman(reply, err);
     }
   });
 
@@ -1156,7 +1318,7 @@ async function routes(fastify, options) {
       return { rows };
     } catch (err) {
       logError(fastify, '[worker-payments] GET /reports/per-diem error', err, req);
-      return reply.code(500).send({ error: 'Ошибка сервера' });
+      return sendHuman(reply, err);
     }
   });
 
@@ -1193,7 +1355,7 @@ async function routes(fastify, options) {
       return { rows };
     } catch (err) {
       logError(fastify, '[worker-payments] GET /reports/labor-costs error', err, req);
-      return reply.code(500).send({ error: 'Ошибка сервера' });
+      return sendHuman(reply, err);
     }
   });
 
@@ -1223,7 +1385,7 @@ async function routes(fastify, options) {
       return { employee: emp[0], year, months: rows };
     } catch (err) {
       logError(fastify, '[worker-payments] GET /reports/worker/:id/year/:y error', err, req);
-      return reply.code(500).send({ error: 'Ошибка сервера' });
+      return sendHuman(reply, err);
     }
   });
 
@@ -1256,7 +1418,7 @@ async function routes(fastify, options) {
       return { rows };
     } catch (err) {
       logError(fastify, '[worker-payments] GET /reports/debts error', err, req);
-      return reply.code(500).send({ error: 'Ошибка сервера' });
+      return sendHuman(reply, err);
     }
   });
 
@@ -1619,7 +1781,7 @@ async function routes(fastify, options) {
       };
     } catch (err) {
       logError(fastify, '[worker-payments] GET /reports/payroll-grid error', err, req);
-      return reply.code(500).send({ error: 'Ошибка сервера' });
+      return sendHuman(reply, err);
     }
   });
 
@@ -1729,7 +1891,7 @@ async function routes(fastify, options) {
       return { ok: true, updated };
     } catch (err) {
       logError(fastify, '[worker-payments] PUT /reports/payroll-grid/save error', err, req);
-      return reply.code(500).send({ error: 'Ошибка сервера' });
+      return sendHuman(reply, err);
     }
   });
 

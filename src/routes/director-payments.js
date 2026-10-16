@@ -1,4 +1,5 @@
 'use strict';
+const { sendHuman } = require('../lib/human-error');
 
 /**
  * Director Payments — Stage W (выплаты от директора)
@@ -50,7 +51,7 @@ async function routes(fastify) {
       }
       const amt = parseFloat(amount);
       if (!Number.isFinite(amt) || (type !== 'penalty' && amt <= 0)) {
-        return reply.code(400).send({ error: 'amount > 0' });
+        return reply.code(400).send({ error: 'invalid_amount', message: 'Сумма должна быть больше нуля.', hint: 'Введите сумму в рублях и повторите.' });
       }
       if (!employee_id || !work_id) {
         return reply.code(400).send({ error: 'employee_id, work_id обязательны' });
@@ -111,6 +112,27 @@ async function routes(fastify) {
       const py = pay_year  ? parseInt(pay_year, 10)  : null;
       const pm = pay_month ? parseInt(pay_month, 10) : null;
 
+      // ─── V391: ГЕЙТ СОГЛАСОВАНИЯ ─────────────────────────────────────
+      // Ручка вставляла выплату сразу со status='paid' (найдено верификатором
+      // 16.10.2026). Если по (сотрудник, период) есть неодобренная позиция
+      // списка — отказ. Период берём из полей, иначе — текущий.
+      {
+        const { denyIfNotApproved } = require('../lib/payout-approval-gate');
+        const now0 = new Date();
+        // ⚠️ director-payments — ВЫПЛАТА (INSERT сразу 'paid'): требуем
+        // согласованный период строго (FAIL-1, верификатор 16.10.2026).
+        if (await denyIfNotApproved(db, reply, {
+          employeeId: eId,
+          year: py || now0.getFullYear(),
+          month: pm || (now0.getMonth() + 1),
+          amount: amt,
+          type,
+          // Директор платит напрямую (страница «Выплаты от директора») —
+          // серверное полномочие по роли, НЕ флаг из тела запроса.
+          privileged: true,
+        })) return reply;
+      }
+
       const { rows: inserted } = await db.query(`
         INSERT INTO worker_payments (
           employee_id, work_id, type, amount, status,
@@ -162,7 +184,7 @@ async function routes(fastify) {
       return { ok: true, payment: inserted[0] };
     } catch (err) {
       fastify.log.error({ err }, '[director-payments] POST / error');
-      return reply.code(500).send({ error: 'Ошибка сервера' });
+      return sendHuman(reply, err);
     }
   });
 
@@ -228,7 +250,7 @@ async function routes(fastify) {
       };
     } catch (err) {
       fastify.log.error({ err }, '[director-payments] GET /history error');
-      return reply.code(500).send({ error: 'Ошибка сервера' });
+      return sendHuman(reply, err);
     }
   });
 }

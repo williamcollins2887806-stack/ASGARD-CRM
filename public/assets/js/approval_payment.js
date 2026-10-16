@@ -15,6 +15,19 @@ window.AsgardApprovalPaymentPage = (function() {
   // v2 (src/lib/money.js), поэтому модалки оплаты ниже обязаны брать суммы через money2.
   const money2 = (v) => money(v, { fractionDigits: 2 });
 
+  // Ошибки показываем по-человечески: «что случилось» (message) + «что делать»
+  // (hint). Раньше брали e.error — это машинный код ('amount_exceeds_approved'),
+  // пользователю он ничего не объясняет (правило продукта).
+  function humanErrText(e, fallback) {
+    const b = (e && e.body) || {};
+    const parts = [];
+    const m = (e && e.message) || b.message;
+    if (m && !/^HTTP \d+$/.test(String(m))) parts.push(String(m));
+    else if (b.error && typeof b.error === 'string' && !/^[a-z_]+$/.test(b.error)) parts.push(String(b.error));
+    if (b.hint) parts.push(String(b.hint));
+    return parts.length ? parts.join(' ') : (fallback || 'Не удалось выполнить действие — повторите попытку.');
+  }
+
   const PAYMENT_STATUS_MAP = {
     awaiting_dir:      { label: 'Ожидает решения директора', color: '#a855f7', bg: 'rgba(168,85,247,.12)' },
     pending_payment:   { label: 'Ожидает оплаты',  color: '#f59e0b', bg: 'rgba(245,158,11,.12)' },
@@ -200,7 +213,17 @@ window.AsgardApprovalPaymentPage = (function() {
         </div>`}
       </div>
       <div id="payment-list" data-queue-mode="${dirMode ? 'dir' : 'buh'}" style="margin-top:16px">
+        ${dirMode ? `
+        <div class="ap-tabs" id="ap_tabs">
+          <button class="ap-tab is-on" data-aptab="invoices">📄 Счета</button>
+          <button class="ap-tab" data-aptab="payouts">💰 Выплаты <span class="ap-tab__n ap-tab__n--zero" id="ap_n_payouts">0</span></button>
+          <button class="ap-tab" data-aptab="cash">💵 Касса</button>
+          <button class="ap-tab" data-aptab="plan">📋 Планирование на 1-е</button>
+        </div>
+        <div id="ap_panel"></div>
+        <div id="ap_invoices_panel">` : ''}
         <div style="text-align:center;padding:40px;color:var(--text-muted)">Загрузка...</div>
+        ${dirMode ? '</div>' : ''}
       </div>`;
 
     try {
@@ -213,9 +236,13 @@ window.AsgardApprovalPaymentPage = (function() {
       const dirEl = live.querySelector('#dir-total-val');
       if (dirEl) dirEl.textContent = (data.count || 0) + ' шт · ' + money(data.total || 0);
 
-      const list = live.querySelector('#payment-list');
+      const list = live.querySelector('#ap_invoices_panel') || live.querySelector('#payment-list');
       if (!list) return;
       renderList(list, data);
+      // V391: вкладки директора — Счета / Выплаты (список) / Планирование.
+      if (dirMode && live.querySelector('#ap_tabs')) {
+        wireDirTabs(live, list, data);
+      }
 
       let _opening = false;   // защита от дубля модалки: двойной клик по карточке (D-226)
       list.addEventListener('click', async ev => {
@@ -242,6 +269,230 @@ window.AsgardApprovalPaymentPage = (function() {
       const list = live && live.querySelector('#payment-list');
       if (list) list.innerHTML = `<div style="text-align:center;padding:40px;color:var(--red)">${esc(err.message)}</div>`;
     }
+  }
+
+  // ─── V391: вкладки директора на экране согласований ─────────────────────
+  // Счета — существующая очередь; Выплаты — корзина Димы (список с решениями);
+  // Планирование — распределение сумм и дат на 1-е число + график платежей.
+  let _apTab = 'invoices';
+  function wireDirTabs(live, invoicesPanel, data) {
+    const tabs = live.querySelector('#ap_tabs');
+    const panel = live.querySelector('#ap_panel');
+    const setTab = async (tab) => {
+      _apTab = tab;
+      Array.from(tabs.querySelectorAll('.ap-tab')).forEach((b) => b.classList.toggle('is-on', b.dataset.aptab === tab));
+      invoicesPanel.style.display = tab === 'invoices' ? '' : 'none';
+      if (tab === 'invoices') { panel.innerHTML = ''; return; }
+      panel.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text-muted)">Загрузка…</div>';
+      if (tab === 'payouts') await renderPayoutsTab(panel);
+      else if (tab === 'cash') await renderCashTab(panel);
+      else await renderPlanTab(panel);
+    };
+    Array.from(tabs.querySelectorAll('.ap-tab')).forEach((b) => {
+      b.onclick = () => setTab(b.dataset.aptab);
+    });
+    // Счётчик списка — сразу, чтобы директор видел, что ждёт его решения.
+    (async () => {
+      try {
+        const r = await fetch('/api/payout-cart/pending', { headers: getHeaders() });
+        if (r.ok) {
+          const d = await r.json();
+          const n = live.querySelector('#ap_n_payouts');
+          if (n) {
+            n.textContent = String(d.count || 0);
+            n.classList.toggle('ap-tab__n--zero', !(d.count > 0));
+          }
+        }
+      } catch (_) {}
+    })();
+  }
+
+  /** Вкладка «Выплаты»: список от Димы, прогресс, точечные решения. */
+  async function renderPayoutsTab(panel) {
+    let data;
+    try {
+      const r = await fetch('/api/payout-cart/pending', { headers: getHeaders() });
+      data = await r.json();
+    } catch (e) { panel.innerHTML = `<div class="empty-state">${esc(humanErrText(e, 'Не удалось загрузить данные — обновите страницу.'))}</div>`; return; }
+    const items = data.items || [];
+    if (!items.length) {
+      panel.innerHTML = hero('💰', 'Выплаты рабочим', 'Списков на согласовании нет', 0, 'ожидают решения') +
+        '<div class="empty-state"><div class="icon">✓</div><div class="title">Всё согласовано</div>' +
+        '<div class="desc">Дима Путков ещё не отправлял новую корзину</div></div>';      return;
+    }
+    const total = items.reduce((s, i) => s + Number(i.pay_amount || 0), 0);
+    const gotTotal = items.reduce((s, i) => s + Number(i.info_amount || 0), 0);
+    const transferTotal = items.reduce((s, i) => s + Number(i.transfer_amount || 0), 0);
+    const batchId = items[0].batch_id;
+    const period = `${items[0].period_month}.${items[0].period_year}`;
+    const lines = items.map((it) => {
+      const tag = it.is_self_employed ? '<span class="pp-tag pp-tag--se">СЗ</span>'
+        : (it.official_transfer ? '<span class="pp-tag pp-tag--ndfl">НДФЛ +15%</span>'
+          : '<span class="pp-tag pp-tag--cash">Наличные</span>');
+      const reTag = it.reapproved ? '<span class="badge warning">повторно</span> ' : '';
+      const via = it.payee_fio ? ` · через <b>${esc(it.payee_fio)}</b>` : '';
+      return `<div class="ap-line ap-line--rich" data-pay-item="${it.item_id}">
+        <div class="pp-it__av" style="width:30px;height:30px;font-size:11px">${initials(it.fio)}</div>
+        <div class="ap-line__who"><div class="ap-line__nm">${esc(it.fio)}</div>
+          <div class="ap-line__mt">${reTag}${tag} · ${it.kind === 'advance' ? 'Аванс' : 'Зарплата'}${via}${it.comment ? ' · «' + esc(it.comment) + '»' : ''}</div></div>
+        <div class="ap-line__nums">
+          <span>выплач. <b style="color:var(--info-t)">${money(it.pay_amount)}</b></span>
+          <span>налог/сбор <b>${money(Number(it.transfer_amount || 0) - Number(it.info_amount || 0))}</b></span>
+        </div>
+        <div class="ap-line__res"><span class="ap-line__res-l">человеку</span><b class="num" style="color:var(--ok-t)">${money(it.info_amount)}</b>
+          <span class="ap-line__res-l">всего переводим</span><b class="num" style="color:var(--gold)">${money(it.transfer_amount)}</b></div>
+        <div class="ap-line__act"><span class="badge warning">ждёт согласования</span>
+          <div class="ap-line__acts2">
+            <button class="btn ok sm" data-pay-approve="${it.item_id}">Одобрить</button>
+            <button class="btn danger sm" data-pay-reject="${it.item_id}">Вернуть</button>
+          </div></div>
+      </div>`;
+    }).join('');
+
+    panel.innerHTML = hero('💰', 'Корзина выплат от Дмитрия Путкова',
+      `Ждёт согласования директора · за ${period}`, transferTotal, 'всего к переводу') +
+      `<div class="ap-card is-open">
+        <div class="ap-card__hd"><div class="ap-card__kind ap-card__kind--payout">🛒</div>
+          <div><div class="ap-card__t">Список · ${items.length} получателей</div>
+          <div class="ap-card__s">${items.length} ждут решения</div></div>
+          <div class="ap-card__sum">${money(transferTotal)}<small>к переводу</small></div></div>
+        <div class="ap-card__body">
+          <div class="ap-prog mb-4"><div class="ap-prog__bar"><div class="ap-prog__fill" style="width:0%"></div></div>
+            <div class="ap-prog__t">0/${items.length} решено</div></div>
+          <div class="stat-strip mb-4">
+            <div class="stat-strip__i"><span class="stat-strip__v num">${money(total)}</span><span class="stat-strip__l">выплачиваем</span></div>
+            <div class="stat-strip__i"><span class="stat-strip__v num" style="color:var(--ok-t)">${money(gotTotal)}</span><span class="stat-strip__l">получат работники</span></div>
+            <div class="stat-strip__i"><span class="stat-strip__v num" style="color:var(--gold)">${money(transferTotal - gotTotal)}</span><span class="stat-strip__l">налоги и сбор</span></div>
+            <div class="stat-strip__i"><span class="stat-strip__v num" style="color:var(--gold);font-weight:900">${money(transferTotal)}</span><span class="stat-strip__l">всего к переводу</span></div>
+          </div>
+          ${items.some((i) => i.reapproved) ? '<div class="ap-note ap-note--gold mb-4">⚠️ В списке есть позиции, изменённые после согласования — требуется повторное решение.</div>' : ''}
+          ${lines}
+          <div class="ap-acts mt-4">
+            <button class="btn ok" data-pay-approve-all="${batchId}">Утвердить список целиком</button>
+            <button class="btn danger" data-pay-reject-batch="${batchId}">Вернуть весь список</button>
+          </div>
+        </div></div>`;
+
+    // Обработчики решений
+    Array.from(panel.querySelectorAll('[data-pay-approve]')).forEach((b) => {
+      b.onclick = () => decideItem(panel, 'approve', b.dataset.payApprove);
+    });
+    Array.from(panel.querySelectorAll('[data-pay-reject]')).forEach((b) => {
+      b.onclick = () => decideItem(panel, 'reject', b.dataset.payReject);
+    });
+    const all = panel.querySelector('[data-pay-approve-all]');
+    if (all) all.onclick = async () => {
+      try {
+        await fetch(`/api/payout-cart/batch/${all.dataset.payApproveAll}/approve-all`, { method: 'POST', headers: getHeaders() });
+        toast('Готово', 'Список утверждена — Дима может выплачивать', 'ok');
+        await renderPayoutsTab(panel);
+      } catch (e) { toast('Не удалось', humanErrText(e), 'err'); }
+    };
+    const rej = panel.querySelector('[data-pay-reject-batch]');
+    if (rej) rej.onclick = async () => {
+      const reason = await askReason('Возврат всего списка');
+      if (reason == null) return;
+      fetch(`/api/payout-cart/batch/${rej.dataset.payRejectBatch}/reject`, {
+        method: 'POST', headers: getHeaders(), body: JSON.stringify({ reason }),
+      }).then(() => { toast('Возвращено', 'Список ушла Диме с причиной', 'ok'); renderPayoutsTab(panel); })
+        .catch((e) => toast('Ошибка', e.message, 'err'));
+    };
+  }
+
+  async function decideItem(panel, action, itemId) {
+    try {
+      if (action === 'approve') {
+        await fetch(`/api/payout-cart/items/${itemId}/approve`, { method: 'POST', headers: getHeaders() });
+        toast('Одобрено', 'Позиция согласована', 'ok');
+      } else {
+        const reason = await askReason('Возврат выплаты Диме Путкову');
+        if (reason == null) return;
+        await fetch(`/api/payout-cart/items/${itemId}/reject`, {
+          method: 'POST', headers: getHeaders(), body: JSON.stringify({ reason }),
+        });
+        toast('Возвращено', 'Дима увидит причину', 'ok');
+      }
+      await renderPayoutsTab(panel);
+    } catch (e) { toast('Не удалось', humanErrText(e), 'err'); }
+  }
+
+  /** Модалка причины возврата вместо браузерного prompt() — единый вид с DS. */
+  function askReason(title) {
+    return new Promise((resolve) => {
+      const overlay = showModal({
+        title,
+        html: `<div style="display:flex;flex-direction:column;gap:12px">
+          <label class="help" style="font-size:12.5px">Причина обязательна — её увидит Дима Путков</label>
+          <textarea class="input" id="ap_reason" rows="3" placeholder="Например: уточните сумму, нет лимита НПД, неверный получатель"></textarea>
+          <div style="display:flex;justify-content:flex-end;gap:8px">
+            <button class="btn ghost" id="ap_reason_cancel">Отмена</button>
+            <button class="btn danger" id="ap_reason_ok">Вернуть с причиной</button>
+          </div></div>`,
+        icon: '↩️',
+      });
+      const done = (v) => { hideModal(); resolve(v); };
+      overlay.querySelector('#ap_reason_cancel').onclick = () => done(null);
+      overlay.querySelector('#ap_reason_ok').onclick = () => {
+        const v = (overlay.querySelector('#ap_reason').value || '').trim();
+        if (!v) { toast('Нужна причина', 'Без причины возврат запрещён', 'err'); return; }
+        done(v);
+      };
+    });
+  }
+
+  /** Вкладка «Касса»: заявки на наличные, ждущие решения директора.
+   *  Источник — существующий контур /api/cash (не дублируем логику выдачи). */
+  async function renderCashTab(panel) {
+    let rows = [];
+    try {
+      const r = await fetch('/api/cash/all?status=requested', { headers: getHeaders() });
+      if (r.ok) rows = await r.json();
+      else if (r.status === 403) { panel.innerHTML = '<div class="empty-state"><div class="title">Нет доступа к кассе</div><div class="desc">Требуется право cash_admin</div></div>'; return; }
+    } catch (e) { panel.innerHTML = `<div class="empty-state">${esc(humanErrText(e, 'Не удалось загрузить данные — обновите страницу.'))}</div>`; return; }
+    rows = Array.isArray(rows) ? rows : (rows.rows || []);
+    if (!rows.length) {
+      panel.innerHTML = hero('💵', 'Заявки на наличные из кассы', 'Касса · 0 ждут решения', 0, 'всего запрошено') +
+        '<div class="empty-state"><div class="icon">✓</div><div class="title">Нет заявок на наличные</div><div class="desc">Все заявки обработаны</div></div>';
+      return;
+    }
+    const total = rows.reduce((s, x) => s + Number(x.amount || 0), 0);
+    const list = rows.map((r) => `
+      <div class="ap-card" data-cash-request="${r.id}">
+        <div class="ap-card__hd"><div class="ap-card__kind ap-card__kind--cash">💵</div>
+          <div><div class="ap-card__t">Заявка на наличные · #${r.id}</div>
+            <div class="ap-card__s">${esc(r.initiated_by_name || r.user_name || '')}${r.work_title ? ' · ' + esc(r.work_title) : ''} · ${r.created_at ? new Date(r.created_at).toLocaleDateString('ru-RU') : ''}</div></div>
+          <div class="ap-card__sum">${money(r.amount)}<small>из кассы</small></div>
+        </div>
+        <div class="ap-card__body">
+          <div class="ap-note">${esc(r.purpose || r.comment || 'Назначение не указано')}</div>
+        </div>
+      </div>`).join('');
+    panel.innerHTML = hero('💵', 'Заявки на наличные из кассы',
+      `Касса · ${rows.length} ждут решения`, total, 'всего запрошено') +
+      '<div class="ap-toolbar"><span class="dim">Решение принимается в разделе «Касса» — здесь сводка</span>' +
+      '<a class="btn ghost sm" href="#/cash" style="margin-left:auto">Открыть Кассу →</a></div>' + list;
+  }
+
+  /** Вкладка «Планирование на 1-е»: суммы, даты, лимиты НПД, график.
+   *  ⚠️ Полная реализация — в public/assets/js/payout-plan.js (рендер 1:1).
+   *  Здесь только точка входа, чтобы вкладка была живой. */
+  async function renderPlanTab(panel) {
+    if (window.AsgardPayoutPlan && window.AsgardPayoutPlan.renderInto) {
+      return window.AsgardPayoutPlan.renderInto(panel);
+    }
+    panel.innerHTML = '<div class="empty-state"><div class="title">Планирование загружается…</div></div>';
+  }
+
+  function hero(ic, t, s, sum, sumLbl) {
+    return `<div class="ap-hero"><div class="ap-hero__ic">${ic}</div>
+      <div><div class="ap-hero__t">${esc(t)}</div><div class="ap-hero__s">${esc(s)}</div></div>
+      <div class="ap-hero__sum"><b class="num">${money(sum)}</b><small>${esc(sumLbl)}</small></div></div>`;
+  }
+
+  /** Инициалы для аватарки. */
+  function initials(fio) {
+    const p = String(fio || '').trim().split(/\s+/);
+    return ((p[0] || '')[0] || '') + ((p[1] || '')[0] || '');
   }
 
   // ─── Модалка директора по payment_invoices (D1, 21.09) ───
@@ -348,7 +599,7 @@ window.AsgardApprovalPaymentPage = (function() {
         const r = await fetch(url, { method: 'POST', headers: getHeaders(), body: JSON.stringify(body || {}) });
         const j = await r.json().catch(() => ({}));
         if (!r.ok) {
-          toast('Ошибка', j.error || j.message || 'Не удалось отправить');
+          toast('Не удалось', humanErrText({ body: j }, 'Не удалось отправить — повторите попытку.'));
           _deciding = false;
           [modalRoot.querySelector('#dir-approve'), modalRoot.querySelector('#dir-reject')].forEach(b => {
             if (b) { b.disabled = false; }
@@ -362,7 +613,7 @@ window.AsgardApprovalPaymentPage = (function() {
         const c = document.getElementById('approval-payment-page');
         if (c) render(c);           // обновление списка без ожидания поллинга
       } catch (e) {
-        toast('Ошибка', e.message || 'Не удалось отправить', 'err');
+        toast('Не удалось', humanErrText(e, 'Не удалось отправить — повторите попытку.'), 'err');
         _deciding = false;
         [modalRoot.querySelector('#dir-approve'), modalRoot.querySelector('#dir-reject')].forEach(b => {
           if (b) { b.disabled = false; }
@@ -575,7 +826,7 @@ window.AsgardApprovalPaymentPage = (function() {
       const r = await fetch('/api/documents/upload', { method: 'POST', headers: { Authorization: getHeaders().Authorization }, body: fd });
       if (!r.ok) {
         const e = await r.json().catch(() => ({}));
-        throw new Error(e.error || 'Не удалось загрузить файл ПП');
+        throw new Error(humanErrText({ body: e }, 'Не удалось приложить файл платёжки — попробуйте выбрать файл заново.'));
       }
       const j = await r.json();
       return j.id || j.document_id || null;
@@ -610,18 +861,18 @@ window.AsgardApprovalPaymentPage = (function() {
             method: 'POST', headers: getHeaders(), body: JSON.stringify(payload)
           });
         }
-        if (!resp.ok) { const e = await resp.json().catch(() => ({})); throw new Error(e.error || 'Ошибка оплаты'); }
+        if (!resp.ok) { const e = await resp.json().catch(() => ({})); throw new Error(humanErrText({ body: e }, 'Оплата не проведена — повторите попытку.')); }
         toast('Оплачено', 'ПП зарегистрировано', 'ok');
         hideModal(buhRoot);
         render(document.querySelector('[data-page="approval-payment"]') || document.getElementById('main-content'));
-      } catch (err) { toast('Ошибка', err.message, 'err'); }
+      } catch (err) { toast('Не удалось', humanErrText(err), 'err'); }
     };
     document.getElementById('pi-buh-rework').onclick = () => {
       showCommentModal('На доработку', async (comment) => {
         const resp = await fetch(`/api/approval/payment_invoices/${pay.id}/rework`, {
           method: 'POST', headers: getHeaders(), body: JSON.stringify({ comment })
         });
-        if (!resp.ok) { const e = await resp.json(); throw new Error(e.error); }
+        if (!resp.ok) { const e = await resp.json().catch(() => ({})); throw new Error(humanErrText({ body: e }, 'Действие не выполнено — повторите попытку.')); }
         toast('Готово', 'Возвращено на доработку', 'ok');
         hideModal(buhRoot);
         render(document.querySelector('[data-page="approval-payment"]') || document.getElementById('main-content'));
@@ -715,11 +966,11 @@ window.AsgardApprovalPaymentPage = (function() {
           method: 'POST', headers: getHeaders(),
           body: JSON.stringify({ comment })
         });
-        if (!resp.ok) { const e = await resp.json(); throw new Error(e.error); }
+        if (!resp.ok) { const e = await resp.json().catch(() => ({})); throw new Error(humanErrText({ body: e }, 'Действие не выполнено — повторите попытку.')); }
         toast('Оплачено', 'Платёж через ПП зарегистрирован', 'ok');
         hideModal();
         render(document.querySelector('[data-page="approval-payment"]') || document.getElementById('main-content'));
-      } catch (err) { toast('Ошибка', err.message, 'err'); }
+      } catch (err) { toast('Не удалось', humanErrText(err), 'err'); }
     });
 
     // ─── Выдача наличных ───
@@ -733,12 +984,12 @@ window.AsgardApprovalPaymentPage = (function() {
           method: 'POST', headers: getHeaders(),
           body: JSON.stringify({ amount, comment })
         });
-        if (!resp.ok) { const e = await resp.json(); throw new Error(e.error); }
+        if (!resp.ok) { const e = await resp.json().catch(() => ({})); throw new Error(humanErrText({ body: e }, 'Действие не выполнено — повторите попытку.')); }
         const data = await resp.json();
         toast('Выдано', `${money(amount)} из кассы. Баланс: ${money(data.cash_balance)}`, 'ok');
         hideModal();
         render(document.querySelector('[data-page="approval-payment"]') || document.getElementById('main-content'));
-      } catch (err) { toast('Ошибка', err.message, 'err'); }
+      } catch (err) { toast('Не удалось', humanErrText(err), 'err'); }
     });
 
     // ─── Доработка ───
@@ -748,7 +999,7 @@ window.AsgardApprovalPaymentPage = (function() {
           method: 'POST', headers: getHeaders(),
           body: JSON.stringify({ comment })
         });
-        if (!resp.ok) { const e = await resp.json(); throw new Error(e.error); }
+        if (!resp.ok) { const e = await resp.json().catch(() => ({})); throw new Error(humanErrText({ body: e }, 'Действие не выполнено — повторите попытку.')); }
         toast('Готово', 'Возвращено на доработку', 'ok');
         hideModal();
         render(document.querySelector('[data-page="approval-payment"]') || document.getElementById('main-content'));
@@ -762,7 +1013,7 @@ window.AsgardApprovalPaymentPage = (function() {
           method: 'POST', headers: getHeaders(),
           body: JSON.stringify({ comment })
         });
-        if (!resp.ok) { const e = await resp.json(); throw new Error(e.error); }
+        if (!resp.ok) { const e = await resp.json().catch(() => ({})); throw new Error(humanErrText({ body: e }, 'Действие не выполнено — повторите попытку.')); }
         toast('Готово', 'Вопрос отправлен', 'ok');
         hideModal();
         render(document.querySelector('[data-page="approval-payment"]') || document.getElementById('main-content'));
@@ -784,7 +1035,7 @@ window.AsgardApprovalPaymentPage = (function() {
     document.getElementById('btn-submit-comment').addEventListener('click', async () => {
       const comment = document.getElementById('buh-comment').value.trim();
       if (!comment) { toast('Ошибка', 'Нужен комментарий', 'err'); return; }
-      try { await onSubmit(comment); } catch (err) { toast('Ошибка', err.message, 'err'); }
+      try { await onSubmit(comment); } catch (err) { toast('Не удалось', humanErrText(err), 'err'); }
     });
   }
 

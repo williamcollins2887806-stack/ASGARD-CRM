@@ -390,7 +390,22 @@ module.exports = async function(fastify) {
     }
     const amt = parseFloat(amount);
     if (!Number.isFinite(amt) || amt <= 0) {
-      return reply.code(400).send({ error: 'amount > 0' });
+      return reply.code(400).send({ error: 'invalid_amount', message: 'Сумма должна быть больше нуля.', hint: 'Введите сумму в рублях и повторите.' });
+    }
+
+    // ─── V391: ГЕЙТ СОГЛАСОВАНИЯ — ПЕРВЫМ ДЕЛОМ ────────────────────────
+    // Проверяем ЗАКОННОСТЬ выплаты ДО проверки баланса: иначе 400
+    // «Недостаточно средств» маскирует нарушение согласования
+    // (найдено при проверке 16.10.2026).
+    if (expense_type === 'per_diem') {
+      const eIdGate = parseInt(employee_id, 10);
+      if (eIdGate) {
+        const { denyIfNotApproved } = require('../lib/payout-approval-gate');
+        const now0 = new Date();
+        if (await denyIfNotApproved(db, reply, {
+          employeeId: eIdGate, year: now0.getFullYear(), month: now0.getMonth() + 1, amount: amt, type: 'per_diem',
+        })) return reply;
+      }
     }
 
     const bal = await calcPmBalance(db, userId, request.user.role);
@@ -412,6 +427,7 @@ module.exports = async function(fastify) {
       if (!eId) {
         return reply.code(400).send({ error: 'employee_id обязателен для суточных' });
       }
+      // (гейт согласования уже проверен в начале ручки — до баланса)
       if (work_id != null && String(work_id).trim() !== '' && !Number.isFinite(wId)) {
         return reply.code(400).send({ error: 'work_id некорректен' });
       }
@@ -454,6 +470,8 @@ module.exports = async function(fastify) {
         }
       }
 
+      // (гейт согласования уже проверен выше — перед проверкой баланса)
+
       const { rows: inserted } = await db.query(`
         INSERT INTO worker_payments (
           employee_id, work_id, type, amount, status,
@@ -463,7 +481,6 @@ module.exports = async function(fastify) {
         RETURNING *
       `, [eId, wId, amt, userId, note || description || null,
           new Date().getFullYear(), new Date().getMonth() + 1]);
-
       if (c.employee_user_id) {
         try {
           await createNotification(db, {

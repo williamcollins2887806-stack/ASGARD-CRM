@@ -694,6 +694,24 @@ async function routes(fastify) {
       }
     }
 
+    // ─── V391: ГЕЙТ СОГЛАСОВАНИЯ ДИРЕКТОРОМ ──────────────────────────
+    // Раньше РП мог провести выплату напрямую (PUT .../paid), полностью минуя
+    // согласование — деньги уходили без контроля (найдено независимым
+    // верификатором 16.10.2026). Теперь выплата привязана к одобренной
+    // позиции списка; если позиция есть в списке и не одобрена — отказ.
+    // ⚠️ БЕЗ флага обхода: `skip_approval_check` из тела запроса позволял
+    // обойти контроль одним полем JSON — убран. Если период вообще не
+    // проходил через корзину (старые записи), выплата проходит (совместимость).
+    {
+      const py = existing.pay_year != null ? Number(existing.pay_year) : new Date().getFullYear();
+      const pm = existing.pay_month != null ? Number(existing.pay_month) : (new Date().getMonth() + 1);
+      // Статус + СВЕРКА СУММЫ — в едином модуле (одна точка правды).
+      const MOD = require('../lib/payout-approval-gate');
+      if (await MOD.denyIfNotApproved(db, reply, {
+        employeeId: existing.employee_id, year: py, month: pm, amount: existing.amount, type: existing.type,
+      })) return reply;
+    }
+
     const { rows: [updated] } = await db.query(`
       UPDATE worker_payments SET
         status = 'paid', paid_at = NOW(), paid_by = $2,
