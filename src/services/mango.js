@@ -4,6 +4,14 @@ const crypto = require('crypto');
 const https = require('https');
 const querystring = require('querystring');
 
+// Ленивый require, чтобы не создать цикл (mango → db → …). Нужен только для
+// чтения локального журнала отправок в getSmsStatus().
+let _db = null;
+function getDb() {
+  if (!_db) { try { _db = require('./db'); } catch (_) { _db = null; } }
+  return _db;
+}
+
 const BASE_URL = 'https://app.mango-office.ru/vpbx/';
 
 /**
@@ -192,32 +200,38 @@ class MangoService {
   }
 
   // 26.06.2026: Прямая проверка статуса SMS через Mango Office API.
-  // Полезна когда delivery-webhook не настроен (у нас в .env он не приходит:
-  // 0/406 SMS получили подтверждение от оператора — см. field_sms_log).
-  // Эндпоинт queries/sms возвращает список SMS по фильтру; для одного
-  // command_id ожидаем 1 запись с полем status:
-  //   delivered    — доставлено
-  //   not_delivered/expired — не доставлено
-  //   queued/in_progress — в пути
-  //   rejected     — оператор отклонил
+  // Полезна когда delivery-webhook не настроен.
+  //
+  // ВАЖНО (16.10.2026): раньше метод звал `queries/sms`, которого в API НЕТ —
+  // Mango отвечает `3128 Недействительный URL` на любой такой запрос. Проверено
+  // на проде: `queries/sms` / `queries/users` / `queries/balance` — все 3128.
+  // Поэтому статус теперь берём из собственного журнала `field_sms_log`, куда
+  // пишет webhook `/webhook/events/sms` (поле `reason`, см. telephony.js).
+  //
+  // Если нужен именно запрос в Mango — используй `events/sms`-webhook или ЛК; в
+  // публичном API ВАТС прямого query по SMS нет.
   async getSmsStatus(commandId) {
     if (!commandId) throw new Error('command_id обязателен');
+    const db = getDb();
+    if (!db) return { found: false, error: 'db unavailable' };
     try {
-      const res = await this.request('queries/sms', { command_id: String(commandId) });
-      const items = Array.isArray(res?.items) ? res.items
-                  : Array.isArray(res?.sms)   ? res.sms
-                  : Array.isArray(res?.data)  ? res.data
-                  : [];
-      const item = items[0] || (res?.command_id ? res : null);
-      if (!item) return { found: false, raw: res };
+      const { rows } = await db.query(
+        `SELECT command_id, delivery_status, delivered_at, status, phone, created_at
+           FROM field_sms_log
+          WHERE command_id::text = $1::text
+          ORDER BY id DESC LIMIT 1`,
+        [String(commandId)]
+      );
+      if (!rows.length) return { found: false, source: 'field_sms_log' };
+      const r = rows[0];
       return {
         found: true,
-        command_id: item.command_id || commandId,
-        status: item.status || item.delivery_status || item.state || 'unknown',
-        sent_at: item.sent_at || item.created_at || null,
-        delivered_at: item.delivered_at || item.delivery_time || null,
-        to_number: item.to_number || item.recipient || null,
-        raw: item
+        source: 'field_sms_log',
+        command_id: r.command_id,
+        status: r.delivery_status || r.status || 'unknown',
+        sent_at: r.created_at,
+        delivered_at: r.delivered_at,
+        to_number: r.phone,
       };
     } catch (e) {
       return { found: false, error: e.message };

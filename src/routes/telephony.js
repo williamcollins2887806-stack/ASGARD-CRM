@@ -645,7 +645,17 @@ module.exports = async function telephonyRoutes(fastify, opts) {
   // --- SMS delivery status (shared handler) ---
   // Canonical: /webhook/events/sms
   // Alias:    /webhook/result/sms  — Mango Office often posts here (was 404 in nginx logs)
-  // Fields: command_id, sms_status / status / delivery_status
+  //
+  // Поля (по докам Mango «3.1.3 Уведомление о результате отправки SMS»):
+  //   command_id, timestamp, reason  <-- КЛЮЧЕВОЕ. Раньше парсились только
+  //   sms_status/status/delivery_status/state, которых Mango НЕ шлёт, поэтому
+  //   статус доставки не записывался никогда (в логах вечное «matched=0»).
+  //   reason — числовой код результата:
+  //     1000/0        — доставлено;
+  //     43xx          — ошибка доставки (4300 не отправлено, 4301 устарело,
+  //                     4391 утеряно, 4392 отклонено, 4393 отменено);
+  //     313x          — ошибки номера/оператора (3131 не поддержан провайдером,
+  //                     3132 номер не поддержан оператором, 3134/3135 и т.п.).
   async function handleSmsDeliveryWebhook(request, reply) {
     if (!checkWebhookRate(request.ip)) {
       return reply.code(429).send({ error: 'Too many requests' });
@@ -659,12 +669,20 @@ module.exports = async function telephonyRoutes(fastify, opts) {
 
     try {
       const commandId = event.command_id || event.message_id || null;
-      const rawStatus = event.sms_status ?? event.status ?? event.delivery_status ?? event.state ?? null;
+      const rawStatus = event.reason ?? event.sms_status ?? event.status ?? event.delivery_status ?? event.state ?? null;
       const statusStr = rawStatus != null ? String(rawStatus).toLowerCase() : null;
 
+      // Маппинг: сначала текстовые статусы Mango, затем числовые коды результата.
       let normalized = 'unknown';
       if (statusStr) {
-        if (['1', 'delivered', 'success', 'ok'].includes(statusStr)) normalized = 'delivered';
+        const num = Number(statusStr);
+        if (Number.isFinite(num)) {
+          if (num === 1000 || num === 0) normalized = 'delivered';
+          else if (num === 4300 || num === 4391 || num === 4392 || num === 4393) normalized = 'not_delivered';
+          else if (num === 4301) normalized = 'expired';
+          else if (num >= 3100 && num < 3200) normalized = 'rejected'; // номер/оператор
+          else normalized = 'error_' + num;
+        } else if (['1', 'delivered', 'success', 'ok'].includes(statusStr)) normalized = 'delivered';
         else if (['2', 'not_delivered', 'failed', 'fail', 'undelivered'].includes(statusStr)) normalized = 'not_delivered';
         else if (['3', 'expired', 'timeout'].includes(statusStr)) normalized = 'expired';
         else if (['4', 'rejected', 'blocked', 'denied'].includes(statusStr)) normalized = 'rejected';

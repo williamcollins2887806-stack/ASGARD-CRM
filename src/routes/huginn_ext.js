@@ -1768,19 +1768,40 @@ module.exports = async function registerHuginnExt(fastify, { db, uploadDir, getC
 
     let sent = false;
     let sendError = null;
+    let commandId = null;
+    let mangoRaw = null;
     try {
       const MangoService = require('../services/mango');
       const client = new MangoService();
       const digits = String(phone).replace(/\D/g, '');
-      await client.sendSms(
+      const resp = await client.sendSms(
         MangoService.smsSenderExtension(),
         digits,
         `Kod vhoda Huginn: ${code}`,
         process.env.MANGO_SMS_SENDER || ''
       );
+      commandId = resp && resp.command_id ? resp.command_id : null;
+      mangoRaw = resp || null;
       sent = true;
     } catch (e) {
       sendError = e.message;
+    }
+
+    // Журналируем отправку: раньше вход в Хугинн НЕ логировался, поэтому 3 попытки
+    // Кости (15:24/15:40) вообще не были видны в field_sms_log и отладка слепла.
+    // Пишем всегда — и успех, и ошибку (status фиксирует результат).
+    try {
+      const emp = await db.query('SELECT id FROM employees WHERE user_id IN (SELECT id FROM users WHERE phone = $1 OR login = $1) LIMIT 1', [phone]).catch(() => ({ rows: [] }));
+      const employeeId = emp.rows[0] ? emp.rows[0].id : null;
+      await db.query(
+        `INSERT INTO field_sms_log (employee_id, phone, message_type, message_text, status, mango_response, command_id)
+         VALUES ($1, $2, 'auth_code', $3, $4, $5::jsonb, $6)`,
+        [employeeId, phone, `Kod ${code}`, sent ? 'sent' : 'error',
+         JSON.stringify(sent ? mangoRaw : { error: sendError }), commandId]
+      );
+    } catch (logErr) {
+      // журнал не должен ломать вход
+      request.log && request.log.warn && request.log.warn('huginn auth_code log failed: ' + logErr.message);
     }
 
     // A guest who is already known gets a Max/Telegram-free path too: the code is
