@@ -56,8 +56,8 @@ export default function FieldHall() {
   if (error || !data?.host) {
     return (
       <div style={{ minHeight: '100dvh', background: 'var(--field-bg-2)', padding: 24, paddingTop: 'max(env(safe-area-inset-top), 24px)' }}>
-        <button onClick={() => navigate(-1)} style={{ background: 'none', border: 'none', color: '#D4A843' }}>← Назад</button>
-        <p style={{ color: '#ef4444', marginTop: 16 }}>{error || 'Воин не найден'}</p>
+        <button onClick={() => navigate(-1)} style={{ background: 'none', border: 'none', color: 'var(--value)' }}>← Назад</button>
+        <p style={{ color: 'var(--danger)', marginTop: 16 }}>{error || 'Воин не найден'}</p>
       </div>
     );
   }
@@ -72,18 +72,18 @@ export default function FieldHall() {
       <div style={{
         position: 'sticky', top: 0, zIndex: 10, padding: '14px 16px',
         paddingTop: 'max(env(safe-area-inset-top), 14px)',
-        background: 'linear-gradient(180deg,#080d1f 70%, transparent)',
+        background: 'linear-gradient(180deg,var(--bg-primary) 70%, transparent)',
         display: 'flex', alignItems: 'center', gap: 12,
       }}>
         <button
           onClick={() => navigate(-1)}
-          style={{ background: 'rgba(255,255,255,0.06)', border: 'none', borderRadius: 10, padding: 8, cursor: 'pointer' }}
+          style={{ background: 'color-mix(in oklab, var(--text-primary) 6%, transparent)', border: 'none', borderRadius: 10, padding: 8, cursor: 'pointer' }}
         >
-          <ArrowLeft size={20} color="#9ca3af" />
+          <ArrowLeft size={20} color="var(--text-secondary)" />
         </button>
         <div style={{ flex: 1 }}>
-          <div style={{ fontSize: 16, fontWeight: 800, color: '#e2e8f0' }}>Зал воина</div>
-          <div style={{ fontSize: 11, color: '#8E8E93' }}>{h.fio}</div>
+          <div style={{ fontSize: 16, fontWeight: 800, color: 'var(--text-primary)' }}>Зал воина</div>
+          <div style={{ fontSize: 11, color: 'var(--text-secondary)' }}>{h.fio}</div>
         </div>
       </div>
 
@@ -96,31 +96,31 @@ export default function FieldHall() {
           interactive
         />
 
-        <h1 style={{ color: '#fff', fontSize: 20, fontWeight: 800, margin: 0, textAlign: 'center' }}>{h.fio}</h1>
+        <h1 style={{ color: 'var(--text-primary)', fontSize: 20, fontWeight: 800, margin: 0, textAlign: 'center' }}>{h.fio}</h1>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'center' }}>
-          <StatChip icon={<Trophy size={12} />} label={`#${h.rank || '—'}`} color="#D4A843" />
+          <StatChip icon={<Trophy size={12} />} label={`#${h.rank || '—'}`} color="var(--value)" />
           <StatChip icon={<Swords size={12} />} label={`${rankInfo.rune} ${rankInfo.title} · Ур.${level}`} color={rankInfo.color} />
-          <StatChip icon={<BookOpen size={12} />} label={`${h.lessons_passed} рун`} color="#60a5fa" />
+          <StatChip icon={<BookOpen size={12} />} label={`${h.lessons_passed} рун`} color="var(--acc)" />
           <StatChip icon={<Heart size={12} />} label={`${h.praise_count} ✦`} color="#f472b6" />
         </div>
 
         {/* Compare strength bars */}
         <div style={{
           width: '100%', maxWidth: 360, borderRadius: 16, padding: 14,
-          background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)',
+          background: 'color-mix(in oklab, var(--text-primary) 4%, transparent)', border: '1px solid color-mix(in oklab, var(--text-primary) 8%, transparent)',
         }}>
-          <div style={{ fontSize: 11, fontWeight: 700, color: '#9ca3af', marginBottom: 10, letterSpacing: 1 }}>СИЛА</div>
-          <Bar label="XP" value={h.xp} max={Math.max(h.xp, 500)} color="#a855f7" />
-          <Bar label="Руны" value={h.runes} max={Math.max(h.runes, 200)} color="#D4A843" />
-          <Bar label="Уровень" value={level} max={Math.max(level, 20)} color="#f97316" />
+          <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-secondary)', marginBottom: 10, letterSpacing: 1 }}>СИЛА</div>
+          <Bar label="XP" value={h.xp} max={Math.max(h.xp, 500)} color="var(--acc)" />
+          <Bar label="Руны" value={h.runes} max={Math.max(h.runes, 200)} color="var(--value)" />
+          <Bar label="Уровень" value={level} max={Math.max(level, 20)} color="var(--value)" />
         </div>
 
         {/* Equipped showcase */}
         <div style={{
           width: '100%', maxWidth: 360, borderRadius: 16, padding: 14,
-          background: 'rgba(212,168,67,0.06)', border: '1px solid rgba(212,168,67,0.2)',
+          background: 'color-mix(in oklab, var(--value) 6%, transparent)', border: '1px solid color-mix(in oklab, var(--value) 20%, transparent)',
         }}>
-          <div style={{ fontSize: 11, fontWeight: 700, color: '#D4A843', marginBottom: 10 }}>АМУНИЦИЯ</div>
+          <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--value)', marginBottom: 10 }}>АМУНИЦИЯ</div>
           {[
             ['Шлем', h.cosmetics?.active_helmet],
             ['Оружие', h.cosmetics?.active_weapon],
@@ -128,7 +128,7 @@ export default function FieldHall() {
             ['Аватар', h.cosmetics?.active_avatar],
           ].map(([label, val]) => (
             <div key={label} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, padding: '4px 0', color: '#cbd5e1' }}>
-              <span style={{ color: '#8E8E93' }}>{label}</span>
+              <span style={{ color: 'var(--text-secondary)' }}>{label}</span>
               <span>{val || '—'}</span>
             </div>
           ))}
@@ -140,7 +140,7 @@ export default function FieldHall() {
             disabled={praising}
             style={{
               width: '100%', maxWidth: 360, padding: '14px 0', borderRadius: 14, border: 'none',
-              background: 'linear-gradient(135deg,#D4A843,#b8860b)', color: '#111', fontWeight: 800,
+              background: 'linear-gradient(135deg,var(--value),var(--value))', color: 'var(--bg-primary)', fontWeight: 800,
               fontSize: 14, cursor: praising ? 'wait' : 'pointer', opacity: praising ? 0.7 : 1,
             }}
           >
@@ -148,7 +148,7 @@ export default function FieldHall() {
           </button>
         )}
         {praiseMsg && (
-          <p style={{ color: '#D4A843', fontSize: 12, margin: 0 }}>{praiseMsg}</p>
+          <p style={{ color: 'var(--value)', fontSize: 12, margin: 0 }}>{praiseMsg}</p>
         )}
       </div>
     </div>
@@ -171,11 +171,11 @@ function Bar({ label, value, max, color }) {
   const pct = Math.min(100, Math.round((Number(value) || 0) / (max || 1) * 100));
   return (
     <div style={{ marginBottom: 8 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: '#9ca3af', marginBottom: 3 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: 'var(--text-secondary)', marginBottom: 3 }}>
         <span>{label}</span>
         <span style={{ color }}>{Number(value || 0).toLocaleString('ru-RU')}</span>
       </div>
-      <div style={{ height: 6, borderRadius: 4, background: 'rgba(255,255,255,0.06)' }}>
+      <div style={{ height: 6, borderRadius: 4, background: 'color-mix(in oklab, var(--text-primary) 6%, transparent)' }}>
         <div style={{ width: `${pct}%`, height: '100%', borderRadius: 4, background: color, transition: 'width .6s ease' }} />
       </div>
     </div>

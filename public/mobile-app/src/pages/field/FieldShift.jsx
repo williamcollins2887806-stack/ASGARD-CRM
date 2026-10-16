@@ -138,7 +138,7 @@ export default function FieldShift() {
         <h1 className="text-lg font-bold" style={{ color: 'var(--text-primary)' }}>Смена</h1>
       </div>
 
-      {error && <div className="p-3 rounded-lg text-sm" style={{ backgroundColor: 'rgba(239,68,68,0.1)', color: 'var(--error)' }}>{error}</div>}
+      {error && <div className="p-3 rounded-lg text-sm" style={{ backgroundColor: 'color-mix(in oklab, var(--danger) 10%, transparent)', color: 'var(--error)' }}>{error}</div>}
 
       {/* Status card */}
       <div className="rounded-xl p-5" style={{ backgroundColor: 'var(--bg-elevated)', border: '1px solid var(--border-norse)' }}>
@@ -147,7 +147,7 @@ export default function FieldShift() {
             <div className="text-4xl font-mono font-bold" style={{ color: 'var(--gold)' }}>{hh}:{mm}:{ss}</div>
             <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>Начало: {fmtTime(checkin.checkin_at)}</p>
             <div className="w-full h-2 rounded-full overflow-hidden" style={{ backgroundColor: 'var(--border-norse)' }}>
-              <div className="h-full rounded-full transition-all" style={{ width: `${progress}%`, background: 'linear-gradient(90deg, var(--gold), #f59e0b)' }} />
+              <div className="h-full rounded-full transition-all" style={{ width: `${progress}%`, background: 'linear-gradient(90deg, var(--gold), var(--value))' }} />
             </div>
             {!shiftEndInfo.allowed && (
               <p className="text-center text-xs mb-1" style={{ color: 'var(--text-secondary)' }}>
@@ -156,7 +156,7 @@ export default function FieldShift() {
             )}
             <button onClick={() => shiftEndInfo.allowed && setShowCheckout(true)} disabled={submitting || !shiftEndInfo.allowed}
               className="w-full py-3 rounded-xl font-semibold flex items-center justify-center gap-2"
-              style={{ backgroundColor: shiftEndInfo.allowed ? 'var(--error)' : 'var(--bg-elevated)', color: shiftEndInfo.allowed ? '#fff' : 'var(--text-tertiary)', border: shiftEndInfo.allowed ? 'none' : '1px solid var(--border-norse)', opacity: submitting ? 0.6 : 1 }}>
+              style={{ backgroundColor: shiftEndInfo.allowed ? 'var(--error)' : 'var(--bg-elevated)', color: shiftEndInfo.allowed ? 'var(--text-primary)' : 'var(--text-tertiary)', border: shiftEndInfo.allowed ? 'none' : '1px solid var(--border-norse)', opacity: submitting ? 0.6 : 1 }}>
               <Square size={18} /> {shiftEndInfo.allowed ? 'Завершить' : `Завершить в ${shiftEndInfo.endLabel}`}
             </button>
             {/* Geo accuracy */}
@@ -169,7 +169,7 @@ export default function FieldShift() {
         )}
         {isCompleted && (
           <div className="text-center space-y-3">
-            <CheckCircle size={40} className="mx-auto" style={{ color: '#22c55e' }} />
+            <CheckCircle size={40} className="mx-auto" style={{ color: 'var(--ok)' }} />
             <p className="font-semibold" style={{ color: 'var(--text-primary)' }}>Смена завершена</p>
             <div className="flex justify-between text-sm" style={{ color: 'var(--text-secondary)' }}>
               <span>{fmtTime(checkin.checkin_at)} — {fmtTime(checkin.checkout_at)}</span>
@@ -187,7 +187,7 @@ export default function FieldShift() {
             {data?.assignment && (
               <button onClick={handleStart} disabled={submitting}
                 className="w-full py-3 rounded-xl font-semibold text-white flex items-center justify-center gap-2"
-                style={{ background: 'linear-gradient(135deg, var(--gold), #f59e0b)', opacity: submitting ? 0.6 : 1 }}>
+                style={{ background: 'linear-gradient(135deg, var(--gold), var(--value))', opacity: submitting ? 0.6 : 1 }}>
                 <Play size={18} /> Начать смену
               </button>
             )}
@@ -211,7 +211,7 @@ export default function FieldShift() {
 
       {/* Checkout confirm sheet */}
       {showCheckout && (
-        <div className="fixed inset-0 z-50 flex items-end justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.5)' }} onClick={() => setShowCheckout(false)}>
+        <div className="fixed inset-0 z-50 flex items-end justify-center" style={{ backgroundColor: 'color-mix(in oklab, var(--bg-primary) 50%, transparent)' }} onClick={() => setShowCheckout(false)}>
           <div className="w-full max-w-md rounded-t-2xl p-5 space-y-4" style={{ backgroundColor: 'var(--bg-primary)' }} onClick={e => e.stopPropagation()}>
             <h2 className="text-base font-bold text-center" style={{ color: 'var(--text-primary)' }}>Завершить смену?</h2>
             <p className="text-sm text-center" style={{ color: 'var(--text-secondary)' }}>
@@ -221,7 +221,7 @@ export default function FieldShift() {
               <button onClick={() => setShowCheckout(false)} className="flex-1 py-3 rounded-xl text-sm font-medium"
                 style={{ backgroundColor: 'var(--bg-elevated)', border: '1px solid var(--border-norse)', color: 'var(--text-primary)' }}>Отмена</button>
               <button onClick={handleEnd} className="flex-1 py-3 rounded-xl text-sm font-semibold text-white"
-                style={{ backgroundColor: '#ef4444' }}>Завершить</button>
+                style={{ backgroundColor: 'var(--danger)' }}>Завершить</button>
             </div>
           </div>
         </div>

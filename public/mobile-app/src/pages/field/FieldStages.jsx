@@ -6,17 +6,17 @@ import { ArrowLeft, Truck, Play, Square, MapPin, Plane, Building, Clock, Camera 
 import { formatMoney as fmt } from '@/lib/utils';
 
 const STAGE_CONFIG = {
-  medical: { label: 'Медосмотр', icon: '🏥', color: '#9333EA' },
-  travel: { label: 'Дорога', icon: '✈️', color: '#3B82F6' },
+  medical: { label: 'Медосмотр', icon: '🏥', color: 'var(--acc)' },
+  travel: { label: 'Дорога', icon: '✈️', color: 'var(--acc)' },
   // V255 (23.06.2026): Корабль — альтернатива дороги за 12 баллов × 500 ₽.
   // Рабочему сам ставить нельзя — только отображение, если поставили сверху.
-  ship: { label: 'Корабль', icon: '🚢', color: '#0EA5E9' },
-  helicopter: { label: 'Вертолёт', icon: '🚁', color: '#06B6D4' },
-  training: { label: 'Обучение', icon: '📚', color: '#A855F7' },
-  waiting: { label: 'Ожидание', icon: '⏳', color: '#F59E0B' },
-  warehouse: { label: 'Склад', icon: '📦', color: '#F97316' },
-  day_off: { label: 'Выходной', icon: '🛏', color: '#9CA3AF' },
-  object: { label: 'На объекте', icon: '⚔️', color: '#22C55E' },
+  ship: { label: 'Корабль', icon: '🚢', color: 'var(--acc)' },
+  helicopter: { label: 'Вертолёт', icon: '🚁', color: 'var(--acc)' },
+  training: { label: 'Обучение', icon: '📚', color: 'var(--acc)' },
+  waiting: { label: 'Ожидание', icon: '⏳', color: 'var(--value)' },
+  warehouse: { label: 'Склад', icon: '📦', color: 'var(--value)' },
+  day_off: { label: 'Выходной', icon: '🛏', color: 'var(--text-secondary)' },
+  object: { label: 'На объекте', icon: '⚔️', color: 'var(--ok)' },
 };
 
 const STATUS_LABELS = { planned: 'Запланирован', active: 'Активный', completed: 'Завершён', approved: 'Подтверждён', adjusted: 'Скорректирован', rejected: 'Отклонён' };
@@ -116,12 +116,12 @@ export default function FieldStages() {
         <h1 className="text-lg font-bold" style={{ color: 'var(--text-primary)' }}>Мой маршрут</h1>
       </div>
 
-      {error && <div className="p-3 rounded-lg text-sm" style={{ backgroundColor: 'rgba(239,68,68,0.1)', color: '#ef4444' }}>{error}</div>}
+      {error && <div className="p-3 rounded-lg text-sm" style={{ backgroundColor: 'color-mix(in oklab, var(--danger) 10%, transparent)', color: 'var(--danger)' }}>{error}</div>}
 
       {/* Hero card — earned before object */}
       {preObject.length > 0 && (
         <div className="rounded-xl p-5 relative overflow-hidden" style={{
-          background: 'linear-gradient(135deg, var(--bg-elevated) 0%, rgba(196,154,42,0.08) 100%)',
+          background: 'linear-gradient(135deg, var(--bg-elevated) 0%, color-mix(in oklab, var(--value) 8%, transparent) 100%)',
           border: '1px solid var(--border-norse)',
         }}>
           <p className="text-xs font-semibold uppercase tracking-widest mb-1" style={{ color: 'var(--text-tertiary)' }}>
@@ -200,7 +200,7 @@ export default function FieldStages() {
                     className="px-3 py-1.5 rounded-full text-xs font-medium"
                     style={{
                       backgroundColor: formData.transport === t ? STAGE_CONFIG.travel.color : 'var(--bg-primary)',
-                      color: formData.transport === t ? '#fff' : 'var(--text-secondary)',
+                      color: formData.transport === t ? 'var(--text-primary)' : 'var(--text-secondary)',
                       border: '1px solid var(--border-norse)',
                     }}>
                     {{ plane: '✈️ Самолёт', train: '🚂 Поезд', bus: '🚌 Автобус', car: '🚗 Машина' }[t]}
@@ -275,7 +275,7 @@ function StageCard({ stage, isActive, onEnd }) {
           <span className="text-xs" style={{ color: 'var(--text-tertiary)' }}>⚬ Запланирован</span>
         )}
         {stage.status === 'rejected' && (
-          <span className="text-xs font-semibold" style={{ color: '#ef4444' }}>Отклонён</span>
+          <span className="text-xs font-semibold" style={{ color: 'var(--danger)' }}>Отклонён</span>
         )}
       </div>
 
@@ -308,7 +308,7 @@ function StageCard({ stage, isActive, onEnd }) {
       {isActive && onEnd && (
         <button onClick={onEnd}
           className="mt-3 w-full py-2 rounded-lg text-sm font-medium flex items-center justify-center gap-1"
-          style={{ backgroundColor: 'rgba(239,68,68,0.1)', color: '#ef4444' }}>
+          style={{ backgroundColor: 'color-mix(in oklab, var(--danger) 10%, transparent)', color: 'var(--danger)' }}>
           <Square size={12} /> Завершить этап
         </button>
       )}

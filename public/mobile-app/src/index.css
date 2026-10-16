@@ -24,6 +24,29 @@
   --text-on-accent: #FFFFFF;     /* white on blue/green/red gradients */
   --text-on-gold: #1a1300;       /* near-black on gold/warn gradients */
 
+  /* === Семантический слой (Фаза 1) — цвет = значение, не украшение ===
+     Синий = действие, золото = заработано, красный = опасность,
+     зелёный = только статус. Нет смысла — нет цвета (нейтраль). */
+  --acc: var(--blue);            /* действие */
+  --acc-deep: #2d5a8a;
+  --value: var(--gold);          /* заработано */
+  --value-ink: var(--gold);      /* золото ТЕКСТОМ (в светлой — темнее) */
+  --danger: var(--red);
+  --danger-ink: var(--red);
+  --ok: var(--green);
+  --ink-icon: #C3D0E4;           /* нейтральная иконка */
+  --tile-bg: #141A26;            /* нейтральная плитка */
+  --tile-hi: #26303F;
+  --tile-lo: #161D29;
+  --tile-brd: rgba(255,255,255,.12);
+  --tile-bevel: rgba(255,255,255,.11);
+  --tile-edge: rgba(0,0,0,.55);
+  --tile-shadow: rgba(0,0,0,.9);
+  --gloss: .12;
+  --r-card: 18px;                /* радиус карточки */
+  --r-tile: 16px;                /* радиус плитки/иконки */
+  --btn-r: 14px;                 /* радиус кнопки */
+
   /* Accents */
   --gold: #c8a84e;
   --gold-dim: #a08030;
@@ -129,6 +152,34 @@
      (blue/green/gold) are bright in both modes, so contrast holds. */
   --text-on-accent: #FFFFFF;
   --text-on-gold: #1a1300;
+
+  /* === Фаза 1: акценты светлой темы под WCAG AA ===
+     Причина правки (замер tools/verify-contrast.js): прежние значения давали
+     провал. --blue #4A90D9 на белом = 3.00, --gold #c8a84e = 2.05,
+     --green #30d158 = 1.81. На светлом фоне акцент обязан быть темнее. */
+  --blue: #1D4ED8;        /* 6.55 на #FFFFFF — действие */
+  --gold: #8A5E0B;        /* 5.70 на #FFFFFF — заработано (текстом) */
+  --red: #C8203A;         /* 5.90 на #FFFFFF — опасность */
+  --red-soft: #B01D33;
+  --green: #0E7A3E;       /* 5.15 на #FFFFFF — только статус */
+  --gold-fill: #A87A16;   /* золотая ЗАЛИВКА (не текст) */
+
+  --acc: var(--blue);
+  --acc-deep: #0A46C2;
+  --value: var(--gold);
+  --value-ink: #8A5E0B;
+  --danger: var(--red);
+  --danger-ink: #B01D33;
+  --ok: var(--green);
+  --ink-icon: #2F3E56;
+  --tile-bg: #FFFFFF;
+  --tile-hi: #FFFFFF;
+  --tile-lo: #F7F9FC;
+  --tile-brd: rgba(90,120,180,.28);
+  --tile-bevel: #FFFFFF;
+  --tile-edge: rgba(30,60,120,.12);
+  --tile-shadow: rgba(30,60,120,.35);
+  --gloss: .5;
   --border-norse: #E5E5EA;
   --border-light: #D1D1D6;
   --bubble-other: #E9E9EB;
@@ -286,12 +337,14 @@ body {
 }
 
 /* Page enter animation */
+/* D-267: БЕЗ transform (см. pageTransitionIn выше) — иначе ломается position: fixed
+   у модалок внутри страницы. Анимируем только прозрачность. */
 .page-enter {
   animation: pageSlideIn var(--duration-normal) var(--ease-smooth) forwards;
 }
 @keyframes pageSlideIn {
-  from { opacity: 0; transform: translateY(8px); }
-  to { opacity: 1; transform: translateY(0); }
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 
 /* Skeleton shimmer */
@@ -333,6 +386,48 @@ body {
 @keyframes slideUp {
   from { opacity: 0; transform: translateY(100%); }
   to { opacity: 1; transform: translateY(0); }
+}
+
+/* === D-267: шторка модалок === */
+/* Поверхность шторки: непрозрачный фон вместо blur(24px) — blur на большой
+   площади пересчитывается каждый кадр анимации и «убивает» плавность. */
+.sheet-surface {
+  background: var(--bg-surface);
+  border-top-left-radius: 24px;
+  border-top-right-radius: 24px;
+  box-shadow: 0 -8px 32px rgba(0, 0, 0, 0.45);
+}
+
+/* Кнопка закрытия шторки: тач-таргет 44×44 по Apple HIG. */
+.sheet-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  margin: -8px -8px 0 0;
+  border: 0;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--text-tertiary) 14%, transparent);
+  color: var(--text-secondary);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.sheet-close:active {
+  background: color-mix(in srgb, var(--text-tertiary) 26%, transparent);
+}
+.sheet-close:focus-visible {
+  outline: 2px solid var(--gold);
+  outline-offset: 2px;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes sheetSlideUp {
+  from { transform: translateY(100%); }
+  to { transform: translateY(0); }
 }
 
 /* ============================================
@@ -623,9 +718,12 @@ body {
 }
 
 /* === Page transition (tab switches) === */
+/* D-267: БЕЗ transform. Любой transform на предке (даже scale(1)/translateY(0))
+   делает его containing block для position: fixed — модалки/шторки внутри
+   уезжают за пределы экрана. Анимируем только opacity. */
 @keyframes pageTransitionIn {
-  from { opacity: 0; transform: scale(0.985); }
-  to   { opacity: 1; transform: scale(1); }
+  from { opacity: 0; }
+  to   { opacity: 1; }
 }
 
 /* === Widget entrance variants === */

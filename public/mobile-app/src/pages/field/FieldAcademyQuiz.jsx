@@ -7,9 +7,9 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { fieldApi } from '@/api/fieldClient';
 
 const C = {
-  bg: 'var(--field-bg)', card: 'var(--field-card)', gold: '#c8a84b',
-  rune: '#7b61ff', green: '#22c55e', red: '#ef4444',
-  amber: '#f59e0b', text: 'var(--field-text)', muted: '#8E8E93',
+  bg: 'var(--field-bg)', card: 'var(--field-card)', gold: 'var(--value)',
+  rune: 'var(--acc)', green: 'var(--ok)', red: 'var(--danger)',
+  amber: 'var(--value)', text: 'var(--field-text)', muted: 'var(--text-secondary)',
 };
 
 const TIME_LIMIT = 20 * 60; // 20 minutes in seconds
@@ -22,7 +22,7 @@ function formatTime(s) {
 
 function ProgressBar({ current, total }) {
   return (
-    <div style={{ height: 4, background: '#ffffff11', borderRadius: 2, overflow: 'hidden' }}>
+    <div style={{ height: 4, background: 'color-mix(in oklab, var(--text-primary) 7%, transparent)', borderRadius: 2, overflow: 'hidden' }}>
       <div style={{
         height: '100%',
         width: `${(current / total) * 100}%`,
@@ -130,8 +130,8 @@ function ResultScreen({ result, lessonId, navigate }) {
             onClick={() => navigate(`/field/academy/lesson/${lessonId}`)}
             style={{
               width: '100%', padding: '16px 0',
-              background: `linear-gradient(90deg, ${C.gold}, #a87d20)`,
-              border: 'none', borderRadius: 12, color: '#000',
+              background: `linear-gradient(90deg, ${C.gold}, var(--value))`,
+              border: 'none', borderRadius: 12, color: 'var(--bg-primary)',
               fontSize: 15, fontWeight: 800, cursor: 'pointer',
               boxShadow: `0 4px 14px ${C.gold}33`,
             }}
@@ -168,10 +168,10 @@ function ResultScreen({ result, lessonId, navigate }) {
             style={{
               flex: 1, padding: '13px 0',
               background: isPassed
-                ? `linear-gradient(90deg, ${C.green}, #16a34a)`
+                ? `linear-gradient(90deg, ${C.green}, var(--ok))`
                 : `${C.card}`,
-              border: isPassed ? 'none' : `1px solid #ffffff22`,
-              borderRadius: 12, color: isPassed ? '#000' : C.text,
+              border: isPassed ? 'none' : `1px solid color-mix(in oklab, var(--text-primary) 13%, transparent)`,
+              borderRadius: 12, color: isPassed ? 'var(--bg-primary)' : C.text,
               fontSize: 14, fontWeight: 700, cursor: 'pointer',
             }}
           >
@@ -316,7 +316,7 @@ export default function FieldAcademyQuiz() {
       {/* Header */}
       <div style={{
         padding: '48px 16px 12px',
-        background: 'linear-gradient(180deg, #1a0d2e 0%, transparent 100%)',
+        background: 'linear-gradient(180deg, var(--bg-surface) 0%, transparent 100%)',
         position: 'sticky', top: 0, zIndex: 10, backdropFilter: 'blur(8px)',
       }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
@@ -334,7 +334,7 @@ export default function FieldAcademyQuiz() {
       <div style={{ flex: 1, padding: '16px 16px 120px' }}>
         <div style={{
           background: C.card, borderRadius: 16, padding: 20,
-          border: '1px solid #ffffff11', marginBottom: 16,
+          border: '1px solid color-mix(in oklab, var(--text-primary) 7%, transparent)', marginBottom: 16,
         }}>
           {q.image_url && (
             <img src={q.image_url} alt="" style={{ width: '100%', borderRadius: 10, marginBottom: 12, objectFit: 'cover', maxHeight: 200 }} />
@@ -359,7 +359,7 @@ export default function FieldAcademyQuiz() {
                 style={{
                   width: '100%', textAlign: 'left', padding: '14px 16px',
                   background: isSelected ? `${C.rune}22` : C.card,
-                  border: `2px solid ${isSelected ? C.rune : '#ffffff11'}`,
+                  border: `2px solid ${isSelected ? C.rune : 'color-mix(in oklab, var(--text-primary) 7%, transparent)'}`,
                   borderRadius: 12, color: isSelected ? C.text : '#b0b0c0',
                   fontSize: 14, fontWeight: isSelected ? 700 : 400,
                   cursor: 'pointer', lineHeight: 1.45,
@@ -368,7 +368,7 @@ export default function FieldAcademyQuiz() {
               >
                 <span style={{
                   display: 'inline-block', width: 22, height: 22,
-                  borderRadius: 11, border: `2px solid ${isSelected ? C.rune : '#ffffff33'}`,
+                  borderRadius: 11, border: `2px solid ${isSelected ? C.rune : 'color-mix(in oklab, var(--text-primary) 20%, transparent)'}`,
                   marginRight: 10, verticalAlign: 'middle',
                   background: isSelected ? C.rune : 'transparent',
                   flexShrink: 0,
@@ -394,7 +394,7 @@ export default function FieldAcademyQuiz() {
         <div style={{ display: 'flex', gap: 10 }}>
           {current > 0 && (
             <button onClick={prevQuestion} style={{
-              padding: '13px 20px', background: '#ffffff11',
+              padding: '13px 20px', background: 'color-mix(in oklab, var(--text-primary) 7%, transparent)',
               border: 'none', borderRadius: 12, color: C.text,
               fontSize: 14, cursor: 'pointer',
             }}>←</button>
@@ -406,9 +406,9 @@ export default function FieldAcademyQuiz() {
               style={{
                 flex: 1, padding: '13px 0',
                 background: answers[q.id]
-                  ? `linear-gradient(90deg, ${C.rune}, #9b59b6)`
-                  : '#ffffff11',
-                border: 'none', borderRadius: 12, color: '#fff',
+                  ? `linear-gradient(90deg, ${C.rune}, var(--acc))`
+                  : 'color-mix(in oklab, var(--text-primary) 7%, transparent)',
+                border: 'none', borderRadius: 12, color: 'var(--text-primary)',
                 fontSize: 14, fontWeight: 700, cursor: 'pointer',
               }}
             >
@@ -421,9 +421,9 @@ export default function FieldAcademyQuiz() {
               style={{
                 flex: 1, padding: '13px 0',
                 background: submitting
-                  ? '#ffffff22'
-                  : `linear-gradient(90deg, ${C.gold}, #a87d20)`,
-                border: 'none', borderRadius: 12, color: '#000',
+                  ? 'color-mix(in oklab, var(--text-primary) 13%, transparent)'
+                  : `linear-gradient(90deg, ${C.gold}, var(--value))`,
+                border: 'none', borderRadius: 12, color: 'var(--bg-primary)',
                 fontSize: 15, fontWeight: 800, cursor: submitting ? 'default' : 'pointer',
               }}
             >

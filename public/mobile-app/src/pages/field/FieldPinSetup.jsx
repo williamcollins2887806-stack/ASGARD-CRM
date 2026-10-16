@@ -112,7 +112,7 @@ export default function FieldPinSetup() {
       {error && (
         <div
           className="mt-4 px-4 py-2 rounded-lg text-sm text-center"
-          style={{ backgroundColor: 'rgba(239, 68, 68, 0.1)', color: 'var(--error, #ef4444)' }}
+          style={{ backgroundColor: 'color-mix(in oklab, var(--danger) 12%, transparent)', color: 'var(--danger-ink)' }}
         >
           {error}
         </div>

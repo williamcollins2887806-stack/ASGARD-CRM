@@ -469,6 +469,14 @@ function VikingCanvas({
         scene.add(G);
 
         const loader = new GLTFLoader();
+        // S3: модели сжаты meshopt (EXT_meshopt_compression + KHR_mesh_quantization)
+        // — 3.45 → 1.91 МБ каждая. Без декодера они не распарсятся.
+        try {
+          const { MeshoptDecoder } = await import('three/examples/jsm/libs/meshopt_decoder.module.js');
+          loader.setMeshoptDecoder(MeshoptDecoder);
+        } catch (e) {
+          console.warn('[VikingAvatar3D] meshopt decoder недоступен', e);
+        }
         const loadModel = (url) => new Promise((resolve, reject) => {
           loader.load(url, resolve, undefined, reject);
         });

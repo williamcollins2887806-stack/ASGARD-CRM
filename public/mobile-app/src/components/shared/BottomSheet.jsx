@@ -1,93 +1,221 @@
 /**
  * BottomSheet — iOS-стиль bottom sheet
- * Grab handle, glass-фон, spring-анимация, overlay blur
+ * Grab handle, плотный фон, spring-анимация.
  * Optional sticky `footer` outside scroll area.
+ *
+ * D-267 — правки мобильного UX:
+ *  1) рендер через портал в `#modal-root`: иначе `position: fixed` ломается
+ *     из-за transform на предках (App.jsx `pageTransitionIn`, PageShell `.page-enter`);
+ *  2) ВСЕГДА есть кнопка закрытия «×» в шапке (44×44), плюс свайп вниз за грабер,
+ *     тап по подложке и `Escape`. До правки футер с кнопками был только у 2 из 103 шторок;
+ *  3) свайп-вниз срабатывает ТОЛЬКО за «полоску»-грабер (не за содержимое) —
+ *     раньше обычный скролл формы закрывал шторку и терял введённые данные;
+ *  4) фокус-трап и возврат фокуса, `aria-modal`.
+ *
+ * ВАЖНО (регресс-защита): начальная установка фокуса выполняется РОВНО ОДИН РАЗ
+ * на открытие и НЕ должна зависеть от идентичности `onClose` — иначе при вводе
+ * в поле контролируемого инпута родитель ре-рендерится, эффект перезапускается
+ * и фокус «убегает» из поля на «×» (ровно жалоба «вводим — выкидывает»).
+ * Поэтому `onClose` держим в ref и не включаем в зависимости эффекта фокуса.
  */
-import { useEffect, useRef, useCallback } from 'react';
+import { useEffect, useRef, useCallback, useId } from 'react';
+import { createPortal } from 'react-dom';
+import { X } from 'lucide-react';
+import { getModalRoot } from '@/lib/modalRoot';
+
+const FOCUSABLE = 'a[href],button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])';
 
 export function BottomSheet({ open, onClose, children, title, footer, maxHeight = '85vh' }) {
   const sheetRef = useRef(null);
-  const startY = useRef(0);
-  const currentY = useRef(0);
+  const grabberRef = useRef(null);
+  const uid = useId();
+  const titleId = `bs-title-${uid}`;
+  const lastFocusedRef = useRef(null);
+  const initialFocusDoneRef = useRef(false);
 
+  // onClose в ref: эффекты не должны перезапускаться от смены идентичности колбэка.
+  const onCloseRef = useRef(onClose);
+  useEffect(() => { onCloseRef.current = onClose; }, [onClose]);
+  const close = useCallback(() => onCloseRef.current?.(), []);
+
+  // Свайп тянем только за грабер.
+  const sheetStartY = useRef(0);
+  const sheetCurrentY = useRef(0);
+  const sheetDragging = useRef(false);
+
+  // Блокировка фона. У приложения `body { overflow: hidden }` в index.css, прокрутка
+  // живёт во внутренних контейнерах, поэтому НЕ переводим body в position: fixed —
+  // это ломало бы сохранение/восстановление скролла и конфликтовало с контролами
+  // (AsgardSelect/EmployeePicker), которые сами чистят body.style.overflow.
   useEffect(() => {
-    if (open) {
-      document.body.style.overflow = 'hidden';
-    } else {
-      document.body.style.overflow = '';
-    }
-    return () => { document.body.style.overflow = ''; };
+    if (!open) return undefined;
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => { document.body.style.overflow = prevOverflow; };
   }, [open]);
 
-  const handleTouchStart = useCallback((e) => {
-    startY.current = e.touches[0].clientY;
-  }, []);
+  // Escape + фокус-трап. Зависимость ТОЛЬКО от `open`.
+  useEffect(() => {
+    if (!open) return undefined;
 
-  const handleTouchMove = useCallback((e) => {
-    currentY.current = e.touches[0].clientY;
-    const dy = currentY.current - startY.current;
-    if (dy > 0 && sheetRef.current) {
-      sheetRef.current.style.transform = `translateY(${dy}px)`;
-    }
-  }, []);
+    lastFocusedRef.current = document.activeElement;
+    initialFocusDoneRef.current = false;
 
-  const handleTouchEnd = useCallback(() => {
-    const dy = currentY.current - startY.current;
-    if (dy > 100) {
-      onClose?.();
-    }
-    if (sheetRef.current) {
-      sheetRef.current.style.transform = '';
-    }
-    startY.current = 0;
-    currentY.current = 0;
-  }, [onClose]);
+    const onKeyDown = (e) => {
+      if (e.key === 'Escape') {
+        e.stopPropagation();
+        close();
+        return;
+      }
+      if (e.key !== 'Tab') return;
+      const node = sheetRef.current;
+      if (!node) return;
+      const items = Array.from(node.querySelectorAll(FOCUSABLE)).filter((el) => el.offsetParent !== null);
+      if (!items.length) return;
+      const first = items[0];
+      const last = items[items.length - 1];
+      if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault();
+        first.focus();
+      }
+    };
+
+    document.addEventListener('keydown', onKeyDown, true);
+
+    // Первичный фокус — один раз на открытие.
+    const t = setTimeout(() => {
+      if (initialFocusDoneRef.current) return;
+      initialFocusDoneRef.current = true;
+      const node = sheetRef.current;
+      if (!node) return;
+      const items = Array.from(node.querySelectorAll(FOCUSABLE)).filter((el) => el.offsetParent !== null);
+      (items[0] || node).focus?.({ preventScroll: true });
+    }, 50);
+
+    return () => {
+      clearTimeout(t);
+      document.removeEventListener('keydown', onKeyDown, true);
+      // Возврат фокуса на инициатора.
+      const prevEl = lastFocusedRef.current;
+      if (prevEl && typeof prevEl.focus === 'function' && prevEl.isConnected) {
+        prevEl.focus({ preventScroll: true });
+      }
+    };
+  }, [open, close]);
+
+  /* Свайп-закрытие: нативные слушатели с { passive: false }, иначе preventDefault
+     в пассивном обработчике не работает (и браузер ругается в консоль).
+     Навешены ТОЛЬКО на грабер. */
+  useEffect(() => {
+    if (!open) return undefined;
+    const g = grabberRef.current;
+    if (!g) return undefined;
+
+    const onStart = (e) => {
+      sheetStartY.current = e.touches[0].clientY;
+      sheetCurrentY.current = e.touches[0].clientY;
+      sheetDragging.current = true;
+    };
+    const onMove = (e) => {
+      if (!sheetDragging.current) return;
+      const touch = e.touches[0];
+      const dy = touch.clientY - sheetStartY.current;
+      if (dy > 0) {
+        e.preventDefault();          // работает: слушатель не пассивный
+        sheetCurrentY.current = touch.clientY;
+        // Тянем шторку за пальцем. transform здесь — на самой шторке, а не на её
+        // предке, поэтому position: fixed у содержимого не страдает.
+        if (sheetRef.current) sheetRef.current.style.transform = `translateY(${dy}px)`;
+      }
+    };
+    const onEnd = () => {
+      if (!sheetDragging.current) return;
+      sheetDragging.current = false;
+      const dy = sheetCurrentY.current - sheetStartY.current;
+      if (sheetRef.current) sheetRef.current.style.transform = '';
+      if (dy > 100) close();
+      sheetStartY.current = 0;
+      sheetCurrentY.current = 0;
+    };
+
+    g.addEventListener('touchstart', onStart, { passive: true });
+    g.addEventListener('touchmove', onMove, { passive: false });
+    g.addEventListener('touchend', onEnd);
+    g.addEventListener('touchcancel', onEnd);
+    return () => {
+      g.removeEventListener('touchstart', onStart);
+      g.removeEventListener('touchmove', onMove);
+      g.removeEventListener('touchend', onEnd);
+      g.removeEventListener('touchcancel', onEnd);
+    };
+  }, [open, close]);
 
   if (!open) return null;
 
-  return (
-    <div className="fixed inset-0" style={{ zIndex: 40 }}>
+  const root = getModalRoot();
+  if (!root) return null;
+
+  const content = (
+    <div className="fixed inset-0 flex flex-col justify-end" style={{ zIndex: 10060 }}>
       <div
         className="absolute inset-0"
-        onClick={onClose}
+        onClick={close}
         style={{
           backgroundColor: 'rgba(0,0,0,0.5)',
-          backdropFilter: 'blur(4px)',
-          WebkitBackdropFilter: 'blur(4px)',
           animation: 'fadeIn var(--motion-fast) var(--ease-enter) forwards',
         }}
       />
 
+      {/* Шторка — flex-колонка фиксированной max-высоты: футер/содержимое не могут
+          вытолкнуть кнопки за пределы экрана (иначе «Отмена» уезжала на длинных формах). */}
       <div
         ref={sheetRef}
-        className={'absolute bottom-0 left-0 right-0 glass-strong rounded-t-3xl' + (footer ? ' flex flex-col' : '')}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={title ? titleId : undefined}
+        tabIndex={-1}
+        className={'relative sheet-surface flex flex-col' + (footer ? '' : '')}
         style={{
           maxHeight,
-          ...(footer ? { height: maxHeight } : {}),
+          height: 'auto',
           animation: 'sheetSlideUp var(--motion-normal) var(--ease-spring) forwards',
-          paddingBottom: footer ? 0 : 'calc(var(--safe-bottom) + 16px)',
+          paddingBottom: 'calc(var(--safe-bottom) + 8px)',
         }}
-        onTouchStart={handleTouchStart}
-        onTouchMove={handleTouchMove}
-        onTouchEnd={handleTouchEnd}
       >
-        <div className="flex justify-center pt-3 pb-2 shrink-0">
+        {/* Грабер — единственная зона свайп-закрытия */}
+        <div
+          ref={grabberRef}
+          className="flex justify-center pt-3 pb-1 shrink-0"
+          style={{ touchAction: 'none', cursor: 'grab' }}
+        >
           <div
             className="w-9 h-1 rounded-full"
             style={{ backgroundColor: 'var(--text-tertiary)', opacity: 0.4 }}
           />
         </div>
 
-        {title && (
-          <div className="px-5 pb-3 shrink-0">
-            <h3 className="text-lg font-bold c-primary">{title}</h3>
-          </div>
-        )}
+        {/* Шапка: заголовок + ГАРАНТИРОВАННАЯ кнопка закрытия (всегда видна:
+            шапка прижата к верху шторки, клавиатура приходит снизу). */}
+        <div className="px-5 pb-3 shrink-0 flex items-start gap-2">
+          {title ? (
+            <h3 id={titleId} className="text-lg font-bold c-primary flex-1">{title}</h3>
+          ) : (
+            <span className="flex-1" />
+          )}
+          <button
+            type="button"
+            onClick={close}
+            aria-label="Закрыть"
+            className="sheet-close shrink-0"
+          >
+            <X size={20} strokeWidth={2.5} />
+          </button>
+        </div>
 
-        <div
-          className={'px-5 overflow-y-auto scroll-container' + (footer ? ' flex-1 min-h-0' : '')}
-          style={footer ? undefined : { maxHeight: 'calc(85vh - 80px)' }}
-        >
+        <div className="px-5 overflow-y-auto scroll-container flex-1 min-h-0">
           {children}
         </div>
 
@@ -96,7 +224,6 @@ export function BottomSheet({ open, onClose, children, title, footer, maxHeight 
             className="shrink-0 px-5 pt-3"
             style={{
               borderTop: '0.5px solid var(--border-norse)',
-              paddingBottom: 'calc(var(--safe-bottom) + 12px)',
               background: 'var(--bg-surface)',
             }}
           >
@@ -104,17 +231,8 @@ export function BottomSheet({ open, onClose, children, title, footer, maxHeight 
           </div>
         ) : null}
       </div>
-
-      <style>{`
-        @keyframes fadeIn {
-          from { opacity: 0; }
-          to { opacity: 1; }
-        }
-        @keyframes sheetSlideUp {
-          from { transform: translateY(100%); }
-          to { transform: translateY(0); }
-        }
-      `}</style>
     </div>
   );
+
+  return createPortal(content, root);
 }

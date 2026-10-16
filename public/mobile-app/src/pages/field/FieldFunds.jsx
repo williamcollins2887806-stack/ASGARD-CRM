@@ -6,10 +6,10 @@ import { useHaptic } from '@/hooks/useHaptic';
 import { formatMoney as fmtMoney } from '@/lib/utils';
 
 const STATUS_MAP = {
-  issued: { label: 'Выдан', bg: 'rgba(234,179,8,0.15)', color: '#eab308' },
-  confirmed: { label: 'Получено', bg: 'rgba(59,130,246,0.15)', color: '#3b82f6' },
-  reporting: { label: 'Отчёт', bg: 'rgba(249,115,22,0.15)', color: '#f97316' },
-  closed: { label: 'Закрыто', bg: 'rgba(107,114,128,0.15)', color: '#8E8E93' },
+  issued: { label: 'Выдан', bg: 'color-mix(in oklab, var(--value) 15%, transparent)', color: '#eab308' },
+  confirmed: { label: 'Получено', bg: 'color-mix(in oklab, var(--acc) 15%, transparent)', color: 'var(--acc)' },
+  reporting: { label: 'Отчёт', bg: 'color-mix(in oklab, var(--danger) 15%, transparent)', color: 'var(--value)' },
+  closed: { label: 'Закрыто', bg: 'rgba(107,114,128,0.15)', color: 'var(--text-secondary)' },
 };
 
 // Категории расходов полевого модуля.
@@ -116,7 +116,7 @@ function FundDetail({ fundId, fund, onBack, onRefresh }) {
         <h1 className="text-lg font-bold" style={{ color: 'var(--text-primary)' }}>Расходы</h1>
       </div>
 
-      {error && <div className="p-3 rounded-lg text-sm" style={{ backgroundColor: 'rgba(239,68,68,0.1)', color: '#ef4444' }}>{error}</div>}
+      {error && <div className="p-3 rounded-lg text-sm" style={{ backgroundColor: 'color-mix(in oklab, var(--danger) 10%, transparent)', color: 'var(--danger)' }}>{error}</div>}
 
       {/* Balance */}
       <div className="rounded-xl p-5 text-center" style={{ backgroundColor: 'var(--bg-elevated)', border: '1px solid var(--border-norse)' }}>
@@ -130,9 +130,9 @@ function FundDetail({ fundId, fund, onBack, onRefresh }) {
         <p className="text-xs font-semibold uppercase tracking-widest mb-3" style={{ color: 'var(--text-tertiary)' }}>Сводка</p>
         {[
           { label: 'Выдано', value: fmtMoney(fund.amount) },
-          { label: 'Потрачено (аванс)', value: `−${fmtMoney(fund.spent)}`, color: '#ef4444' },
-          { label: 'Возвращено', value: `−${fmtMoney(fund.returned)}`, color: '#22c55e' },
-          ...(parseFloat(fund.own_spent) > 0 ? [{ label: 'Свои средства', value: fmtMoney(fund.own_spent), color: '#f59e0b' }] : []),
+          { label: 'Потрачено (аванс)', value: `−${fmtMoney(fund.spent)}`, color: 'var(--danger)' },
+          { label: 'Возвращено', value: `−${fmtMoney(fund.returned)}`, color: 'var(--ok)' },
+          ...(parseFloat(fund.own_spent) > 0 ? [{ label: 'Свои средства', value: fmtMoney(fund.own_spent), color: 'var(--value)' }] : []),
           { label: 'Остаток', value: fmtMoney(remainder), color: 'var(--gold)', bold: true },
         ].map((r, i) => (
           <div key={i} className="flex justify-between py-1 text-sm" style={r.bold ? { borderTop: '1px solid var(--border-norse)', marginTop: 4, paddingTop: 8 } : {}}>
@@ -147,7 +147,7 @@ function FundDetail({ fundId, fund, onBack, onRefresh }) {
         <div className="grid grid-cols-2 gap-3">
           <button onClick={() => setShowExpense(true)}
             className="p-4 rounded-xl flex flex-col items-center gap-2 text-sm font-semibold text-white"
-            style={{ background: 'linear-gradient(135deg, var(--gold), #b8860b)' }}>
+            style={{ background: 'linear-gradient(135deg, var(--gold), var(--value))' }}>
             <Receipt size={20} /> Добавить расход
           </button>
           {remainder > 0 && (
@@ -184,7 +184,7 @@ function FundDetail({ fundId, fund, onBack, onRefresh }) {
                   className="px-3 py-1 rounded-full text-xs font-medium"
                   style={{
                     backgroundColor: expenseForm.category === cat.value ? 'var(--gold)' : 'var(--bg-primary)',
-                    color: expenseForm.category === cat.value ? '#000' : 'var(--text-secondary)',
+                    color: expenseForm.category === cat.value ? 'var(--bg-primary)' : 'var(--text-secondary)',
                     border: '1px solid var(--border-norse)',
                   }}>{cat.label}</button>
               ))}
@@ -205,7 +205,7 @@ function FundDetail({ fundId, fund, onBack, onRefresh }) {
                   className="flex-1 py-2 rounded-lg text-xs font-medium"
                   style={{
                     backgroundColor: expenseForm.source === s.val ? 'var(--gold)' : 'var(--bg-primary)',
-                    color: expenseForm.source === s.val ? '#000' : 'var(--text-secondary)',
+                    color: expenseForm.source === s.val ? 'var(--bg-primary)' : 'var(--text-secondary)',
                     border: '1px solid var(--border-norse)',
                   }}>{s.label}</button>
               ))}
@@ -230,7 +230,7 @@ function FundDetail({ fundId, fund, onBack, onRefresh }) {
               style={{ backgroundColor: 'var(--bg-primary)', color: 'var(--text-secondary)' }}>Отмена</button>
             <button onClick={submitExpense} disabled={submitting || !expenseForm.amount || !expenseForm.description}
               className="flex-1 py-2.5 rounded-lg text-sm font-semibold text-white disabled:opacity-50"
-              style={{ background: 'linear-gradient(135deg, var(--gold), #b8860b)' }}>
+              style={{ background: 'linear-gradient(135deg, var(--gold), var(--value))' }}>
               {submitting ? '...' : 'Сохранить'}
             </button>
           </div>
@@ -328,7 +328,7 @@ export default function FieldFunds() {
         <h1 className="text-lg font-bold" style={{ color: 'var(--text-primary)' }}>Подотчёт</h1>
       </div>
 
-      {error && <div className="p-3 rounded-lg text-sm" style={{ backgroundColor: 'rgba(239,68,68,0.1)', color: '#ef4444' }}>{error}</div>}
+      {error && <div className="p-3 rounded-lg text-sm" style={{ backgroundColor: 'color-mix(in oklab, var(--danger) 10%, transparent)', color: 'var(--danger)' }}>{error}</div>}
 
       {/* Balance hero */}
       <div className="rounded-xl p-5 text-center" style={{ backgroundColor: 'var(--bg-elevated)', border: '1px solid var(--border-norse)' }}>
@@ -341,15 +341,15 @@ export default function FieldFunds() {
           </div>
           <div>
             <p className="text-xs" style={{ color: 'var(--text-tertiary)' }}>Потрачено</p>
-            <p className="text-sm font-semibold" style={{ color: '#ef4444' }}>{fmtMoney(data?.total_spent || data?.totals?.spent)}</p>
+            <p className="text-sm font-semibold" style={{ color: 'var(--danger)' }}>{fmtMoney(data?.total_spent || data?.totals?.spent)}</p>
           </div>
           <div>
             <p className="text-xs" style={{ color: 'var(--text-tertiary)' }}>Возвращено</p>
-            <p className="text-sm font-semibold" style={{ color: '#22c55e' }}>{fmtMoney(data?.total_returned || data?.totals?.returned)}</p>
+            <p className="text-sm font-semibold" style={{ color: 'var(--ok)' }}>{fmtMoney(data?.total_returned || data?.totals?.returned)}</p>
           </div>
         </div>
         {totalOwnSpent > 0 && (
-          <p className="text-xs mt-3" style={{ color: '#f59e0b' }}>⚠ Потрачено своих: {fmtMoney(totalOwnSpent)}</p>
+          <p className="text-xs mt-3" style={{ color: 'var(--value)' }}>⚠ Потрачено своих: {fmtMoney(totalOwnSpent)}</p>
         )}
       </div>
 
@@ -378,20 +378,20 @@ export default function FieldFunds() {
             </div>
             {remainder > 0 && <p className="text-sm" style={{ color: 'var(--gold)' }}>Остаток: {fmtMoney(remainder)}</p>}
             {parseFloat(fund.own_spent) > 0 && (
-              <p className="text-xs" style={{ color: '#f59e0b' }}>⚠ Свои: {fmtMoney(fund.own_spent)}</p>
+              <p className="text-xs" style={{ color: 'var(--value)' }}>⚠ Свои: {fmtMoney(fund.own_spent)}</p>
             )}
             <div className="flex gap-2" onClick={e => e.stopPropagation()}>
               {fund.status === 'issued' && (
                 <button onClick={() => handleConfirm(fund.id)} disabled={submitting}
                   className="flex-1 py-2 rounded-lg font-medium text-sm flex items-center justify-center gap-1"
-                  style={{ backgroundColor: 'rgba(59,130,246,0.15)', color: '#3b82f6', opacity: submitting ? 0.6 : 1 }}>
+                  style={{ backgroundColor: 'color-mix(in oklab, var(--acc) 15%, transparent)', color: 'var(--acc)', opacity: submitting ? 0.6 : 1 }}>
                   <CheckCircle size={14} /> Получил
                 </button>
               )}
               {(fund.status === 'confirmed' || fund.status === 'reporting') && remainder > 0 && (
                 <button onClick={() => openReturn(fund)} disabled={submitting}
                   className="flex-1 py-2 rounded-lg font-medium text-sm flex items-center justify-center gap-1"
-                  style={{ backgroundColor: 'rgba(234,179,8,0.15)', color: '#eab308', opacity: submitting ? 0.6 : 1 }}>
+                  style={{ backgroundColor: 'color-mix(in oklab, var(--value) 15%, transparent)', color: '#eab308', opacity: submitting ? 0.6 : 1 }}>
                   <CornerDownLeft size={14} /> Вернуть
                 </button>
               )}
@@ -402,7 +402,7 @@ export default function FieldFunds() {
 
       {/* Return modal */}
       {returnModal && (
-        <div className="fixed inset-0 z-50 flex items-end justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.5)' }} onClick={() => setReturnModal(null)}>
+        <div className="fixed inset-0 z-50 flex items-end justify-center" style={{ backgroundColor: 'color-mix(in oklab, var(--bg-primary) 50%, transparent)' }} onClick={() => setReturnModal(null)}>
           <div className="w-full max-w-md rounded-t-2xl p-5 space-y-4" style={{ backgroundColor: 'var(--bg-primary)' }} onClick={e => e.stopPropagation()}>
             <h2 className="text-base font-bold" style={{ color: 'var(--text-primary)' }}>Возврат средств</h2>
             <input type="number" value={returnAmount} onChange={e => setReturnAmount(e.target.value)}
@@ -413,7 +413,7 @@ export default function FieldFunds() {
               style={{ backgroundColor: 'var(--bg-elevated)', border: '1px solid var(--border-norse)', color: 'var(--text-primary)' }} />
             <button onClick={handleReturn} disabled={submitting}
               className="w-full py-3 rounded-xl font-semibold text-white"
-              style={{ background: 'linear-gradient(135deg, var(--gold), #f59e0b)', opacity: submitting ? 0.6 : 1 }}>Вернуть</button>
+              style={{ background: 'linear-gradient(135deg, var(--gold), var(--value))', opacity: submitting ? 0.6 : 1 }}>Вернуть</button>
           </div>
         </div>
       )}

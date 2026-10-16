@@ -15,12 +15,12 @@ import {
 } from 'lucide-react';
 
 const ST = {
-  draft: { label: 'ЧЕРНОВИК', color: '#94a3b8' },
-  issued: { label: 'УТВЕРЖДЁН', color: '#16a34a' },
-  active: { label: 'ДЕЙСТВУЕТ', color: '#ca8a04' },
-  extended: { label: 'ПРОДЛЁН', color: '#0284c7' },
-  closed: { label: 'ЗАКРЫТ', color: '#64748b' },
-  cancelled: { label: 'АННУЛИРОВАН', color: '#dc2626' },
+  draft: { label: 'ЧЕРНОВИК', color: 'var(--text-secondary)' },
+  issued: { label: 'УТВЕРЖДЁН', color: 'var(--ok)' },
+  active: { label: 'ДЕЙСТВУЕТ', color: 'var(--value)' },
+  extended: { label: 'ПРОДЛЁН', color: 'var(--acc)' },
+  closed: { label: 'ЗАКРЫТ', color: 'var(--text-tertiary)' },
+  cancelled: { label: 'АННУЛИРОВАН', color: 'var(--danger)' },
 };
 
 const READ_LABELS = {
@@ -122,7 +122,7 @@ export default function FieldPermitDetail() {
         <button type="button" onClick={() => navigate('/field/permits')} className="text-sm mb-4" style={{ color: 'var(--gold)' }}>
           ← Назад
         </button>
-        <div className="rounded-xl p-4 text-sm" style={{ background: 'rgba(239,68,68,.12)', color: '#fca5a5' }}>
+        <div className="rounded-xl p-4 text-sm" style={{ background: 'color-mix(in oklab, var(--danger) 12%, transparent)', color: 'var(--danger)' }}>
           {error || 'Наряд не найден'}
         </div>
       </div>
@@ -149,16 +149,16 @@ export default function FieldPermitDetail() {
       <div
         className="sticky top-0 z-20 px-4 py-3 flex items-center gap-3"
         style={{
-          background: 'rgba(7,10,14,.94)',
+          background: 'color-mix(in oklab, var(--bg-primary) 94%, transparent)',
           backdropFilter: 'blur(14px)',
-          borderBottom: '1px solid rgba(212,168,67,.28)',
+          borderBottom: '1px solid color-mix(in oklab, var(--value) 28%, transparent)',
         }}
       >
         <button
           type="button"
           onClick={() => navigate('/field/permits')}
           className="p-2 rounded-xl"
-          style={{ background: 'rgba(255,255,255,.05)' }}
+          style={{ background: 'color-mix(in oklab, var(--text-primary) 5%, transparent)' }}
         >
           <ArrowLeft size={18} style={{ color: 'var(--gold)' }} />
         </button>
@@ -166,7 +166,7 @@ export default function FieldPermitDetail() {
           <div className="text-[10px] font-mono truncate" style={{ color: 'var(--gold)' }}>
             {permit.number || `черновик #${id}`}
           </div>
-          <div className="font-extrabold text-sm truncate" style={{ color: '#f5e6c8' }}>
+          <div className="font-extrabold text-sm truncate" style={{ color: 'color-mix(in oklab, var(--value) 25%, var(--text-primary))' }}>
             {permit.form_title}
           </div>
         </div>
@@ -178,11 +178,11 @@ export default function FieldPermitDetail() {
         </span>
       </div>
 
-      <div style={{ height: 5, background: 'repeating-linear-gradient(-45deg,#111 0 8px,#f5c518 8px 16px)' }} />
+      <div style={{ height: 5, background: 'repeating-linear-gradient(-45deg,var(--bg-primary) 0 8px,var(--value) 8px 16px)' }} />
 
       <div className="p-4 space-y-3">
         {error && (
-          <div className="rounded-xl p-3 text-sm" style={{ background: 'rgba(239,68,68,.12)', color: '#fca5a5' }}>
+          <div className="rounded-xl p-3 text-sm" style={{ background: 'color-mix(in oklab, var(--danger) 12%, transparent)', color: 'var(--danger)' }}>
             {error}
           </div>
         )}
@@ -192,13 +192,13 @@ export default function FieldPermitDetail() {
           className="rounded-lg overflow-hidden"
           style={{
             background: 'linear-gradient(180deg,#fbf6ea,#efe6d2)',
-            color: '#1a1520',
-            boxShadow: '0 16px 48px rgba(0,0,0,.5)',
+            color: 'var(--bg-surface)',
+            boxShadow: '0 16px 48px color-mix(in oklab, var(--bg-primary) 50%, transparent)',
           }}
         >
-          <div style={{ height: 7, background: 'repeating-linear-gradient(-45deg,#111 0 7px,#f5c518 7px 14px)' }} />
+          <div style={{ height: 7, background: 'repeating-linear-gradient(-45deg,var(--bg-primary) 0 7px,var(--value) 7px 14px)' }} />
           <div className="p-4">
-            <div className="text-[9px] uppercase tracking-wider mb-2" style={{ color: '#6b6254' }}>
+            <div className="text-[9px] uppercase tracking-wider mb-2" style={{ color: 'var(--text-secondary)' }}>
               ООО «АСГАРД-СЕРВИС» · электронный наряд-допуск
             </div>
             <div className="text-center mb-4">
@@ -239,17 +239,17 @@ export default function FieldPermitDetail() {
                   <tbody>
                     {(permit.crew || []).length === 0 && (
                       <tr>
-                        <td colSpan={4} className="border border-black/30 bg-[#fff2a8] px-1.5 py-1">
+                        <td colSpan={4} className="border border-black/30 bg-[color-mix(in oklab, var(--value) 35%, var(--text-primary))] px-1.5 py-1">
                           —
                         </td>
                       </tr>
                     )}
                     {(permit.crew || []).map((c, i) => (
                       <tr key={c.id || i}>
-                        <td className="border border-black/30 bg-[#fff2a8] px-1.5 py-1">{i + 1}</td>
-                        <td className="border border-black/30 bg-[#fff2a8] px-1.5 py-1">{c.fio}</td>
-                        <td className="border border-black/30 bg-[#fff2a8] px-1.5 py-1">{c.profession || ''}</td>
-                        <td className="border border-black/30 bg-[#fff2a8] px-1.5 py-1">{c.role_in_permit || 'member'}</td>
+                        <td className="border border-black/30 bg-[color-mix(in oklab, var(--value) 35%, var(--text-primary))] px-1.5 py-1">{i + 1}</td>
+                        <td className="border border-black/30 bg-[color-mix(in oklab, var(--value) 35%, var(--text-primary))] px-1.5 py-1">{c.fio}</td>
+                        <td className="border border-black/30 bg-[color-mix(in oklab, var(--value) 35%, var(--text-primary))] px-1.5 py-1">{c.profession || ''}</td>
+                        <td className="border border-black/30 bg-[color-mix(in oklab, var(--value) 35%, var(--text-primary))] px-1.5 py-1">{c.role_in_permit || 'member'}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -272,16 +272,16 @@ export default function FieldPermitDetail() {
                   <tbody>
                     {(permit.equipment || []).length === 0 && (
                       <tr>
-                        <td colSpan={3} className="border border-black/30 bg-[#fff2a8] px-1.5 py-1">
+                        <td colSpan={3} className="border border-black/30 bg-[color-mix(in oklab, var(--value) 35%, var(--text-primary))] px-1.5 py-1">
                           —
                         </td>
                       </tr>
                     )}
                     {(permit.equipment || []).map((e, i) => (
                       <tr key={e.id || i}>
-                        <td className="border border-black/30 bg-[#fff2a8] px-1.5 py-1">{i + 1}</td>
-                        <td className="border border-black/30 bg-[#fff2a8] px-1.5 py-1">{e.name}</td>
-                        <td className="border border-black/30 bg-[#fff2a8] px-1.5 py-1">{e.qty || '1'}</td>
+                        <td className="border border-black/30 bg-[color-mix(in oklab, var(--value) 35%, var(--text-primary))] px-1.5 py-1">{i + 1}</td>
+                        <td className="border border-black/30 bg-[color-mix(in oklab, var(--value) 35%, var(--text-primary))] px-1.5 py-1">{e.name}</td>
+                        <td className="border border-black/30 bg-[color-mix(in oklab, var(--value) 35%, var(--text-primary))] px-1.5 py-1">{e.qty || '1'}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -293,10 +293,10 @@ export default function FieldPermitDetail() {
                 <SecHead n="G" title="Анализ газовоздушной среды" />
                 <div className="text-xs space-y-1">
                   {(sec.gas_analysis || []).length === 0 && (
-                    <div className="bg-[#fff2a8] px-2 py-1.5 rounded">Строки заполняются при допуске</div>
+                    <div className="bg-[color-mix(in oklab, var(--value) 35%, var(--text-primary))] px-2 py-1.5 rounded">Строки заполняются при допуске</div>
                   )}
                   {(sec.gas_analysis || []).map((g, i) => (
-                    <div key={i} className="bg-[#fff2a8] px-2 py-1.5 rounded">
+                    <div key={i} className="bg-[color-mix(in oklab, var(--value) 35%, var(--text-primary))] px-2 py-1.5 rounded">
                       {g.at || '—'} · {g.place || ''} · {g.component || ''} = {g.value || ''} · {g.fio || ''}
                     </div>
                   ))}
@@ -306,7 +306,7 @@ export default function FieldPermitDetail() {
             {blockOn('fire_watch') && (
               <div className="mt-3 pt-2 border-t border-black/10">
                 <SecHead n="F" title="Постовой огневой охраны" />
-                <div className="text-sm bg-[#fff2a8] px-2 py-1.5 rounded leading-snug">
+                <div className="text-sm bg-[color-mix(in oklab, var(--value) 35%, var(--text-primary))] px-2 py-1.5 rounded leading-snug">
                   {(sec.fire_watch || {}).person || '—'} · {(sec.fire_watch || {}).extinguishers || ''} ·{' '}
                   {(sec.fire_watch || {}).watch_hours || ''}
                 </div>
@@ -317,12 +317,12 @@ export default function FieldPermitDetail() {
                 <SecHead n="A" title="Контроль атмосферы ОЗП" />
                 <div className="text-xs space-y-1">
                   {(sec.atmosphere || []).map((a, i) => (
-                    <div key={i} className="bg-[#fff2a8] px-2 py-1.5 rounded">
+                    <div key={i} className="bg-[color-mix(in oklab, var(--value) 35%, var(--text-primary))] px-2 py-1.5 rounded">
                       O₂ {a.o2 || '—'} · LEL {a.lel || '—'} · CO {a.co || '—'} · H₂S {a.h2s || '—'} · {a.fio || ''}
                     </div>
                   ))}
                   {!(sec.atmosphere || []).length && (
-                    <div className="bg-[#fff2a8] px-2 py-1.5 rounded">Ожидает замеров</div>
+                    <div className="bg-[color-mix(in oklab, var(--value) 35%, var(--text-primary))] px-2 py-1.5 rounded">Ожидает замеров</div>
                   )}
                 </div>
               </div>
@@ -332,11 +332,11 @@ export default function FieldPermitDetail() {
                 <SecHead n="L" title="Отключения / LOTO" />
                 <div className="text-xs space-y-1">
                   {(sec.loto || []).map((p, i) => (
-                    <div key={i} className="bg-[#fff2a8] px-2 py-1.5 rounded">
+                    <div key={i} className="bg-[color-mix(in oklab, var(--value) 35%, var(--text-primary))] px-2 py-1.5 rounded">
                       {p.device || '—'} → {p.action || ''} / {p.lock || ''}
                     </div>
                   ))}
-                  {!(sec.loto || []).length && <div className="bg-[#fff2a8] px-2 py-1.5 rounded">—</div>}
+                  {!(sec.loto || []).length && <div className="bg-[color-mix(in oklab, var(--value) 35%, var(--text-primary))] px-2 py-1.5 rounded">—</div>}
                 </div>
               </div>
             )}
@@ -347,15 +347,15 @@ export default function FieldPermitDetail() {
                   <button
                     type="button"
                     className="text-[10px] font-black underline shrink-0"
-                    style={{ color: '#9b2c2c' }}
+                    style={{ color: 'var(--danger)' }}
                     onClick={() => mark('risks')}
                   >
                     прочитано
                   </button>
                 )}
-                {read.risks && needsAck && <span className="text-[10px] font-bold" style={{ color: '#166534' }}>✓</span>}
+                {read.risks && needsAck && <span className="text-[10px] font-bold" style={{ color: 'var(--ok)' }}>✓</span>}
               </div>
-              {(permit.risks || []).length === 0 && <div className="text-sm" style={{ color: '#6b6254' }}>Риски не указаны</div>}
+              {(permit.risks || []).length === 0 && <div className="text-sm" style={{ color: 'var(--text-secondary)' }}>Риски не указаны</div>}
               {(permit.risks || []).map((r) => {
                 const closed = r.closure?.is_closed;
                 return (
@@ -363,8 +363,8 @@ export default function FieldPermitDetail() {
                     key={r.id}
                     className="mb-2 rounded-md p-2.5"
                     style={{
-                      background: closed ? 'rgba(34,197,94,.1)' : 'rgba(155,44,44,.08)',
-                      borderLeft: `3px solid ${closed ? '#16a34a' : '#9b2c2c'}`,
+                      background: closed ? 'color-mix(in oklab, var(--ok) 10%, transparent)' : 'color-mix(in oklab, var(--danger) 8%, transparent)',
+                      borderLeft: `3px solid ${closed ? 'var(--ok)' : 'var(--danger)'}`,
                       opacity: needsAck && !read.risks ? 0.4 : 1,
                     }}
                   >
@@ -380,7 +380,7 @@ export default function FieldPermitDetail() {
                         type="button"
                         disabled={busy}
                         className="mt-2 text-[11px] font-bold px-2.5 py-1.5 rounded-md"
-                        style={{ background: closed ? '#334155' : '#166534', color: '#fff' }}
+                        style={{ background: closed ? '#334155' : 'var(--ok)', color: 'var(--text-primary)' }}
                         onClick={() =>
                           run(async () => {
                             if (closed) await fieldApi.post(`/nd/${id}/risks/${r.id}/reopen`);
@@ -418,14 +418,14 @@ export default function FieldPermitDetail() {
             <div className="grid grid-cols-2 gap-3 mt-5 pt-3 border-t border-black/15 text-[10px]" style={{ color: '#5c5346' }}>
               <div>
                 Выдал (РП)
-                <div className="mt-1 font-semibold text-xs" style={{ color: '#1a1520' }}>
+                <div className="mt-1 font-semibold text-xs" style={{ color: 'var(--bg-surface)' }}>
                   {permit.created_by_name || '—'}
                 </div>
                 <div className="border-b border-black/40 mt-2 h-4" />
               </div>
               <div>
                 Утвердил (мастер)
-                <div className="mt-1 font-semibold text-xs" style={{ color: '#1a1520' }}>
+                <div className="mt-1 font-semibold text-xs" style={{ color: 'var(--bg-surface)' }}>
                   {permit.issued_by_name || '—'}
                 </div>
                 <div className="border-b border-black/40 mt-2 h-4" />
@@ -438,9 +438,9 @@ export default function FieldPermitDetail() {
         {meta.is_master && permit.status === 'draft' && (
           <div
             className="rounded-2xl p-3.5 space-y-2.5"
-            style={{ border: '1px solid rgba(245,158,11,.45)', background: 'rgba(245,158,11,.08)' }}
+            style={{ border: '1px solid color-mix(in oklab, var(--danger) 45%, transparent)', background: 'color-mix(in oklab, var(--danger) 8%, transparent)' }}
           >
-            <div className="text-xs font-extrabold" style={{ color: '#fbbf24' }}>
+            <div className="text-xs font-extrabold" style={{ color: 'var(--value)' }}>
               Проверка мастера перед утверждением
             </div>
             <label className="text-[10px] font-bold uppercase tracking-wider" style={{ color: 'var(--text-tertiary)' }}>
@@ -486,7 +486,7 @@ export default function FieldPermitDetail() {
               type="button"
               disabled={busy}
               className="w-full rounded-xl py-2.5 text-sm font-semibold"
-              style={{ background: 'rgba(255,255,255,.08)', color: '#e8eef7' }}
+              style={{ background: 'color-mix(in oklab, var(--text-primary) 8%, transparent)', color: 'var(--text-primary)' }}
               onClick={() =>
                 run(async () => {
                   await fieldApi.put(`/nd/${id}`, {
@@ -504,7 +504,7 @@ export default function FieldPermitDetail() {
               type="button"
               disabled={busy}
               className="w-full rounded-xl py-3.5 text-sm font-black flex items-center justify-center gap-2"
-              style={{ background: 'linear-gradient(135deg,#e0b34a,#b8860b)', color: '#1a1205' }}
+              style={{ background: 'linear-gradient(135deg,#e0b34a,var(--value))', color: '#1a1205' }}
               onClick={() =>
                 run(async () => {
                   await fieldApi.put(`/nd/${id}`, {
@@ -526,7 +526,7 @@ export default function FieldPermitDetail() {
         {needsAck && (
           <div
             className="rounded-2xl p-3.5 space-y-2.5"
-            style={{ border: '1px solid rgba(56,189,248,.4)', background: 'rgba(56,189,248,.08)' }}
+            style={{ border: '1px solid color-mix(in oklab, var(--acc) 40%, transparent)', background: 'color-mix(in oklab, var(--acc) 8%, transparent)' }}
           >
             <div className="text-xs font-extrabold" style={{ color: '#7dd3fc' }}>
               Обязательное ознакомление
@@ -536,7 +536,7 @@ export default function FieldPermitDetail() {
             </div>
             <div className="grid grid-cols-2 gap-1.5 text-[11px]">
               {Object.keys(READ_LABELS).map((k) => (
-                <div key={k} className="font-semibold" style={{ color: read[k] ? '#22c55e' : '#94a3b8' }}>
+                <div key={k} className="font-semibold" style={{ color: read[k] ? 'var(--ok)' : 'var(--text-secondary)' }}>
                   {read[k] ? '✓' : '○'} {READ_LABELS[k]}
                 </div>
               ))}
@@ -545,7 +545,7 @@ export default function FieldPermitDetail() {
               type="button"
               disabled={busy || !allRead}
               className="w-full rounded-xl py-3.5 text-sm font-bold flex items-center justify-center gap-2 disabled:opacity-40"
-              style={{ background: '#0369a1', color: '#fff' }}
+              style={{ background: '#0369a1', color: 'var(--text-primary)' }}
               onClick={() =>
                 run(async () => {
                   await fieldApi.post(`/nd/${id}/ack`, {
@@ -563,7 +563,7 @@ export default function FieldPermitDetail() {
         {meta.is_master && permit.status !== 'draft' && permit.status !== 'closed' && permit.status !== 'cancelled' && (
           <div
             className="rounded-2xl p-3.5 space-y-2.5"
-            style={{ border: '1px solid rgba(212,168,67,.28)', background: 'rgba(255,255,255,.03)' }}
+            style={{ border: '1px solid color-mix(in oklab, var(--value) 28%, transparent)', background: 'color-mix(in oklab, var(--text-primary) 3%, transparent)' }}
           >
             <div className="text-xs font-extrabold" style={{ color: 'var(--gold)' }}>
               Смена / продление
@@ -573,7 +573,7 @@ export default function FieldPermitDetail() {
                 type="button"
                 disabled={busy}
                 className="rounded-xl py-2.5 text-xs font-bold flex items-center justify-center gap-1"
-                style={{ background: '#166534', color: '#fff' }}
+                style={{ background: 'var(--ok)', color: 'var(--text-primary)' }}
                 onClick={() => run(() => fieldApi.post(`/nd/${id}/daily`, { action: 'start' }))}
               >
                 <Play size={14} /> Допуск на день
@@ -582,7 +582,7 @@ export default function FieldPermitDetail() {
                 type="button"
                 disabled={busy}
                 className="rounded-xl py-2.5 text-xs font-bold flex items-center justify-center gap-1"
-                style={{ background: '#334155', color: '#fff' }}
+                style={{ background: '#334155', color: 'var(--text-primary)' }}
                 onClick={() => run(() => fieldApi.post(`/nd/${id}/daily`, { action: 'end' }))}
               >
                 <Square size={14} /> Окончание дня
@@ -591,13 +591,13 @@ export default function FieldPermitDetail() {
             {(permit.extensions || [])
               .filter((e) => e.status === 'pending')
               .map((e) => (
-                <div key={e.id} className="rounded-xl p-2.5 text-xs" style={{ background: 'rgba(245,158,11,.12)' }}>
+                <div key={e.id} className="rounded-xl p-2.5 text-xs" style={{ background: 'color-mix(in oklab, var(--danger) 12%, transparent)' }}>
                   Запрос продления до {e.requested_until ? new Date(e.requested_until).toLocaleString('ru-RU') : '—'}
                   <div className="flex gap-2 mt-2">
                     <button
                       type="button"
                       className="flex-1 py-2 rounded-lg font-bold"
-                      style={{ background: '#166534', color: '#fff' }}
+                      style={{ background: 'var(--ok)', color: 'var(--text-primary)' }}
                       onClick={() => run(() => fieldApi.post(`/nd/${id}/extensions/${e.id}/decide`, { approve: true }))}
                     >
                       Одобрить
@@ -605,7 +605,7 @@ export default function FieldPermitDetail() {
                     <button
                       type="button"
                       className="flex-1 py-2 rounded-lg font-bold"
-                      style={{ background: '#7f1d1d', color: '#fff' }}
+                      style={{ background: 'var(--danger)', color: 'var(--text-primary)' }}
                       onClick={() => run(() => fieldApi.post(`/nd/${id}/extensions/${e.id}/decide`, { approve: false }))}
                     >
                       Отклонить
@@ -614,7 +614,7 @@ export default function FieldPermitDetail() {
                 </div>
               ))}
             {openRisks.length > 0 && (
-              <div className="text-[11px] flex items-center gap-1.5 font-semibold" style={{ color: '#fbbf24' }}>
+              <div className="text-[11px] flex items-center gap-1.5 font-semibold" style={{ color: 'var(--value)' }}>
                 <AlertTriangle size={12} /> Открытых рисков: {openRisks.length} — закройте перед сдачей
               </div>
             )}
@@ -622,7 +622,7 @@ export default function FieldPermitDetail() {
               type="button"
               disabled={busy}
               className="w-full rounded-xl py-2.5 text-xs font-bold"
-              style={{ background: 'rgba(239,68,68,.15)', color: '#fca5a5' }}
+              style={{ background: 'color-mix(in oklab, var(--danger) 15%, transparent)', color: 'var(--danger)' }}
               onClick={() =>
                 run(async () => {
                   try {
@@ -649,7 +649,7 @@ export default function FieldPermitDetail() {
             type="button"
             disabled={busy}
             className="w-full rounded-xl py-3 text-sm font-bold flex items-center justify-center gap-2"
-            style={{ background: 'rgba(56,189,248,.12)', color: '#7dd3fc', border: '1px solid rgba(56,189,248,.3)' }}
+            style={{ background: 'color-mix(in oklab, var(--acc) 12%, transparent)', color: '#7dd3fc', border: '1px solid color-mix(in oklab, var(--acc) 30%, transparent)' }}
             onClick={() => run(() => fieldApi.post(`/nd/${id}/extensions`, {}))}
           >
             <Clock size={16} /> Запросить продление
@@ -662,7 +662,7 @@ export default function FieldPermitDetail() {
               type="button"
               disabled={busy}
               className="rounded-xl py-3 text-xs font-bold flex items-center justify-center gap-1"
-              style={{ background: 'rgba(212,168,67,.15)', color: '#f5e6c8' }}
+              style={{ background: 'color-mix(in oklab, var(--value) 15%, transparent)', color: 'color-mix(in oklab, var(--value) 25%, var(--text-primary))' }}
               onClick={() => run(() => downloadDocx(id))}
             >
               <Download size={14} /> Word
@@ -671,7 +671,7 @@ export default function FieldPermitDetail() {
               <button
                 type="button"
                 className="rounded-xl py-3 text-xs font-bold flex items-center justify-center gap-1"
-                style={{ background: 'rgba(255,255,255,.06)', color: '#e8eef7' }}
+                style={{ background: 'color-mix(in oklab, var(--text-primary) 6%, transparent)', color: 'var(--text-primary)' }}
                 onClick={() => setShowEmail((v) => !v)}
               >
                 <Mail size={14} /> Почта
@@ -717,7 +717,7 @@ export default function FieldPermitDetail() {
 
 const fieldStyle = {
   background: '#121820',
-  color: '#e8eef7',
+  color: 'var(--text-primary)',
   border: '1px solid #2c3648',
 };
 
@@ -739,10 +739,10 @@ function fmt(v) {
 function SecHead({ n, title }) {
   return (
     <div className="flex items-baseline gap-2 mb-1">
-      <span className="text-[11px] font-black" style={{ color: '#9b2c2c' }}>
+      <span className="text-[11px] font-black" style={{ color: 'var(--danger)' }}>
         {n}.
       </span>
-      <span className="text-[10px] uppercase tracking-wider font-bold" style={{ color: '#6b6254' }}>
+      <span className="text-[10px] uppercase tracking-wider font-bold" style={{ color: 'var(--text-secondary)' }}>
         {title}
       </span>
     </div>
@@ -756,12 +756,12 @@ function PaperSec({ n, title, text, gate, opened, onOpen }) {
       <div className="flex items-center justify-between gap-2 mb-1">
         <SecHead n={n} title={title} />
         {gate && !opened && (
-          <button type="button" className="text-[10px] font-black underline shrink-0" style={{ color: '#9b2c2c' }} onClick={onOpen}>
+          <button type="button" className="text-[10px] font-black underline shrink-0" style={{ color: 'var(--danger)' }} onClick={onOpen}>
             открыть
           </button>
         )}
         {gate && opened && (
-          <span className="text-[10px] font-bold" style={{ color: '#166534' }}>
+          <span className="text-[10px] font-bold" style={{ color: 'var(--ok)' }}>
             ✓
           </span>
         )}

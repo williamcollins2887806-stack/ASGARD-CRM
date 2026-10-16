@@ -9,7 +9,7 @@ const fmtDate = (d) => d ? new Date(d).toLocaleDateString('ru-RU') : '—';
 
 const TYPE_ICONS = { salary: Banknote, advance: ArrowDownCircle, per_diem: Calendar, bonus: Star, penalty: AlertTriangle };
 const TYPE_LABELS = { per_diem: 'Суточные', salary: 'Зарплата', advance: 'Аванс', bonus: 'Премия', penalty: 'Удержание' };
-const STATUS_COLORS = { paid: '#3b82f6', confirmed: '#22c55e', pending: '#f59e0b' };
+const STATUS_COLORS = { paid: 'var(--acc)', confirmed: 'var(--ok)', pending: 'var(--value)' };
 const STATUS_LABELS = { paid: 'Выплачено', confirmed: 'Получено', pending: 'Ожидает' };
 
 export default function FieldEarnings() {
@@ -84,19 +84,19 @@ export default function FieldEarnings() {
         <h1 className="text-lg font-bold" style={{ color: 'var(--text-primary)' }}>Мои выплаты</h1>
       </div>
 
-      {error && <div className="p-3 rounded-lg text-sm" style={{ backgroundColor: 'rgba(239,68,68,0.1)', color: '#ef4444' }}>{error}</div>}
+      {error && <div className="p-3 rounded-lg text-sm" style={{ backgroundColor: 'color-mix(in oklab, var(--danger) 10%, transparent)', color: 'var(--danger)' }}>{error}</div>}
 
       {/* ─── Hero: К получению ──────────────────────────────── */}
       <div className="rounded-xl p-5 relative overflow-hidden" style={{
-        background: 'linear-gradient(135deg, var(--bg-elevated) 0%, rgba(196,154,42,0.08) 100%)',
+        background: 'linear-gradient(135deg, var(--bg-elevated) 0%, color-mix(in oklab, var(--value) 8%, transparent) 100%)',
         border: '1px solid var(--border-norse)',
       }}>
-        <div style={{ position: 'absolute', right: '-10px', top: '50%', transform: 'translateY(-50%)', fontSize: '4rem', fontWeight: 900, color: 'rgba(255,255,255,0.03)', letterSpacing: '4px', pointerEvents: 'none' }}>ASGARD</div>
+        <div style={{ position: 'absolute', right: '-10px', top: '50%', transform: 'translateY(-50%)', fontSize: '4rem', fontWeight: 900, color: 'color-mix(in oklab, var(--text-primary) 3%, transparent)', letterSpacing: '4px', pointerEvents: 'none' }}>ASGARD</div>
         <div style={{ position: 'relative', zIndex: 1 }}>
           <p className="text-xs font-semibold uppercase tracking-widest mb-1" style={{ color: 'var(--text-tertiary)' }}>
             {isOverpaid ? 'ПЕРЕПЛАТА' : 'К получению'}
           </p>
-          <p className="text-3xl font-bold" style={{ color: isOverpaid ? '#22c55e' : 'var(--gold)' }}>
+          <p className="text-3xl font-bold" style={{ color: isOverpaid ? 'var(--ok)' : 'var(--gold)' }}>
             {fmt(Math.abs(pending))}
           </p>
           <p className="text-sm mt-2" style={{ color: 'var(--text-secondary)' }}>
@@ -116,23 +116,23 @@ export default function FieldEarnings() {
             </div>
             <div className="flex justify-between text-sm">
               <span style={{ color: 'var(--text-secondary)' }}>Получено</span>
-              <span className="font-medium" style={{ color: '#22c55e' }}>{fmt(perDiemPaid)}</span>
+              <span className="font-medium" style={{ color: 'var(--ok)' }}>{fmt(perDiemPaid)}</span>
             </div>
             <div className="flex justify-between text-sm">
               <span style={{ color: 'var(--text-secondary)' }}>
                 {perDiemDiff > 0 ? 'Ожидает' : perDiemDiff < 0 ? 'Переплата' : 'Полностью выплачено'}
               </span>
-              <span className="font-medium" style={{ color: perDiemDiff > 0 ? '#f59e0b' : perDiemDiff < 0 ? '#3b82f6' : '#22c55e' }}>
+              <span className="font-medium" style={{ color: perDiemDiff > 0 ? 'var(--value)' : perDiemDiff < 0 ? 'var(--acc)' : 'var(--ok)' }}>
                 {perDiemDiff === 0 ? '✔' : fmt(Math.abs(perDiemDiff))}
               </span>
             </div>
           </div>
           {/* Progress bar */}
-          <div className="mt-3 rounded" style={{ background: 'rgba(255,255,255,0.08)', height: '6px', overflow: 'hidden' }}>
+          <div className="mt-3 rounded" style={{ background: 'color-mix(in oklab, var(--text-primary) 8%, transparent)', height: '6px', overflow: 'hidden' }}>
             <div className="rounded" style={{
               height: '100%',
               width: `${Math.min(100, perDiemAccrued > 0 ? (perDiemPaid / perDiemAccrued) * 100 : 0)}%`,
-              background: 'linear-gradient(90deg, var(--gold), #f5c542)',
+              background: 'linear-gradient(90deg, var(--gold), var(--value))',
               transition: 'width 0.8s ease',
             }} />
           </div>
@@ -155,11 +155,11 @@ export default function FieldEarnings() {
           </div>
           <div className="flex justify-between">
             <span style={{ color: 'var(--text-secondary)' }}>Премии</span>
-            <span className="font-medium" style={{ color: '#22c55e' }}>+{fmt(finances?.bonus_accrued || finances?.bonus_paid)}</span>
+            <span className="font-medium" style={{ color: 'var(--ok)' }}>+{fmt(finances?.bonus_accrued || finances?.bonus_paid)}</span>
           </div>
           <div className="flex justify-between">
             <span style={{ color: 'var(--text-secondary)' }}>Штрафы</span>
-            <span className="font-medium" style={{ color: '#ef4444' }}>−{fmt(finances?.penalty)}</span>
+            <span className="font-medium" style={{ color: 'var(--danger)' }}>−{fmt(finances?.penalty)}</span>
           </div>
           <div className="flex justify-between pt-2 mt-1 font-semibold" style={{ borderTop: '1px solid var(--border-norse)' }}>
             <span style={{ color: 'var(--text-primary)' }}>Итого начислено</span>
@@ -186,7 +186,7 @@ export default function FieldEarnings() {
           </div>
           <div className="flex justify-between pt-2 mt-1 font-semibold" style={{ borderTop: '1px solid var(--border-norse)' }}>
             <span style={{ color: 'var(--text-primary)' }}>Итого выплачено</span>
-            <span style={{ color: '#22c55e' }}>{fmt(totalPaid)}</span>
+            <span style={{ color: 'var(--ok)' }}>{fmt(totalPaid)}</span>
           </div>
         </div>
       </div>
@@ -194,12 +194,12 @@ export default function FieldEarnings() {
       {/* ─── К ПОЛУЧЕНИЮ ────────────────────────────────────── */}
       <div className="rounded-xl p-4 flex justify-between items-center" style={{
         backgroundColor: 'var(--bg-elevated)',
-        border: `1px solid ${isOverpaid ? 'rgba(34,197,94,0.2)' : 'rgba(196,154,42,0.2)'}`,
+        border: `1px solid ${isOverpaid ? 'color-mix(in oklab, var(--ok) 20%, transparent)' : 'color-mix(in oklab, var(--value) 20%, transparent)'}`,
       }}>
-        <span className="text-sm font-bold" style={{ color: isOverpaid ? '#22c55e' : 'var(--gold)' }}>
+        <span className="text-sm font-bold" style={{ color: isOverpaid ? 'var(--ok)' : 'var(--gold)' }}>
           {isOverpaid ? 'ПЕРЕПЛАТА' : 'К получению'}
         </span>
-        <span className="text-lg font-bold" style={{ color: isOverpaid ? '#22c55e' : 'var(--gold)' }}>
+        <span className="text-lg font-bold" style={{ color: isOverpaid ? 'var(--ok)' : 'var(--gold)' }}>
           {fmt(Math.abs(pending))}
         </span>
       </div>
@@ -215,7 +215,7 @@ export default function FieldEarnings() {
           <div className="space-y-2">
             {payments.sort((a, b) => new Date(b.created_at || b.date) - new Date(a.created_at || a.date)).map((p) => {
               const Icon = TYPE_ICONS[p.type] || Banknote;
-              const statusColor = STATUS_COLORS[p.status] || '#6b7280';
+              const statusColor = STATUS_COLORS[p.status] || 'var(--text-tertiary)';
               const isDeduction = p.type === 'advance' || p.type === 'penalty';
 
               // Build meta line: work_title · period · comment
@@ -242,14 +242,14 @@ export default function FieldEarnings() {
                     </p>
                   </div>
                   <div className="text-right flex-shrink-0">
-                    <p className="text-sm font-semibold" style={{ color: isDeduction ? '#ef4444' : 'var(--text-primary)' }}>
+                    <p className="text-sm font-semibold" style={{ color: isDeduction ? 'var(--danger)' : 'var(--text-primary)' }}>
                       {isDeduction ? '−' : '+'}{fmt(p.amount)}
                     </p>
                     {p.status === 'paid' && !p.confirmed_by_worker && (
                       <button
                         onClick={() => confirmPayment(p.id)}
                         className="text-xs mt-1 flex items-center gap-1"
-                        style={{ color: '#22c55e' }}
+                        style={{ color: 'var(--ok)' }}
                       >
                         <CheckCircle size={12} /> Получил
                       </button>

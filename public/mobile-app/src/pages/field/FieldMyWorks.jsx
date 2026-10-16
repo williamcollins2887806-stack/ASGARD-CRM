@@ -159,7 +159,7 @@ export default function FieldMyWorks() {
       {active.length > 0 && (
         <div className="space-y-3">
           <div className="flex items-center gap-2">
-            <span className="w-2 h-2 rounded-full" style={{ backgroundColor: '#16a34a' }} />
+            <span className="w-2 h-2 rounded-full" style={{ backgroundColor: 'var(--ok)' }} />
             <span className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>Активные</span>
           </div>
           {active.map((p, i) => <ProjectCard key={p.id || i} project={p} isActive navigate={navigate} haptic={haptic} />)}

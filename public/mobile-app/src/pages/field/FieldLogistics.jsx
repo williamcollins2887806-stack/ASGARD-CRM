@@ -30,7 +30,7 @@ const TAB_GROUPS = [
 // Канон бэка field_logistics.status (V183 + field-logistics.js): pending → purchased → ready → sent.
 // До 23.06.2026 здесь были `confirmed` (никогда не пишется бэком) и не было `purchased` —
 // рабочий видел латинскую строку «purchased» на карточке купленного билета.
-const STATUS_COLORS = { pending: '#f59e0b', purchased: '#22c55e', ready: '#6366f1', sent: '#3b82f6' };
+const STATUS_COLORS = { pending: 'var(--value)', purchased: 'var(--ok)', ready: 'var(--acc)', sent: 'var(--acc)' };
 const STATUS_LABELS = { pending: 'Не куплено', purchased: 'Куплено', ready: 'Готово', sent: 'Отправлено' };
 
 const fmtDate = (d) => d ? new Date(d).toLocaleDateString('ru-RU') : '';
@@ -86,7 +86,7 @@ export default function FieldLogistics() {
         <h1 className="text-lg font-bold" style={{ color: 'var(--text-primary)' }}>Поездки и направления</h1>
       </div>
 
-      {error && <div className="p-3 rounded-lg text-sm" style={{ backgroundColor: 'rgba(239,68,68,0.1)', color: '#ef4444' }}>{error}</div>}
+      {error && <div className="p-3 rounded-lg text-sm" style={{ backgroundColor: 'color-mix(in oklab, var(--danger) 10%, transparent)', color: 'var(--danger)' }}>{error}</div>}
 
       {/* Current / History tabs */}
       <div className="flex gap-2">
@@ -97,7 +97,7 @@ export default function FieldLogistics() {
             className="flex-1 py-2 rounded-lg text-sm font-medium transition-colors"
             style={{
               backgroundColor: tab === t ? 'var(--gold)' : 'var(--bg-elevated)',
-              color: tab === t ? '#fff' : 'var(--text-secondary)',
+              color: tab === t ? 'var(--text-primary)' : 'var(--text-secondary)',
             }}
           >
             {t === 'current' ? 'Текущие' : 'Архив'}
@@ -134,7 +134,7 @@ export default function FieldLogistics() {
           {items.map((item) => {
             const cfg = TYPE_CONFIG[item.item_type || item.type] || TYPE_CONFIG.ticket_to;
             const Icon = cfg.Icon;
-            const statusColor = STATUS_COLORS[item.status] || '#6b7280';
+            const statusColor = STATUS_COLORS[item.status] || 'var(--text-tertiary)';
             return (
               <div key={item.id} className="rounded-xl p-4" style={{ backgroundColor: 'var(--bg-elevated)', border: '1px solid var(--border-norse)' }}>
                 <div className="flex items-start gap-3">

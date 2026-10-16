@@ -15,10 +15,10 @@ const TYPES = [
 ];
 
 const SEVERITY = [
-  { value: 'low', label: 'Незначительный', color: '#f59e0b' },
-  { value: 'medium', label: 'Средний', color: '#f97316' },
-  { value: 'high', label: 'Серьёзный', color: '#ef4444' },
-  { value: 'critical', label: 'Критический', color: '#dc2626' },
+  { value: 'low', label: 'Незначительный', color: 'var(--value)' },
+  { value: 'medium', label: 'Средний', color: 'var(--value)' },
+  { value: 'high', label: 'Серьёзный', color: 'var(--danger)' },
+  { value: 'critical', label: 'Критический', color: 'var(--danger)' },
 ];
 
 export default function FieldIncidents() {
@@ -84,9 +84,9 @@ export default function FieldIncidents() {
         <h1 className="text-lg font-bold" style={{ color: 'var(--text-primary)' }}>Инциденты</h1>
       </div>
 
-      {error && <div className="p-3 rounded-lg text-sm" style={{ backgroundColor: 'rgba(239,68,68,0.1)', color: '#ef4444' }}>{error}</div>}
+      {error && <div className="p-3 rounded-lg text-sm" style={{ backgroundColor: 'color-mix(in oklab, var(--danger) 10%, transparent)', color: 'var(--danger)' }}>{error}</div>}
       {success && (
-        <div className="p-3 rounded-lg text-sm flex items-center gap-2" style={{ backgroundColor: 'rgba(34,197,94,0.1)', color: '#22c55e' }}>
+        <div className="p-3 rounded-lg text-sm flex items-center gap-2" style={{ backgroundColor: 'color-mix(in oklab, var(--ok) 10%, transparent)', color: 'var(--ok)' }}>
           <CheckCircle size={16} /> Инцидент зарегистрирован
         </div>
       )}

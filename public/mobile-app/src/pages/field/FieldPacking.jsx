@@ -5,19 +5,19 @@ import { useHaptic } from '@/hooks/useHaptic';
 import { ArrowLeft, Package, CheckCircle, Circle, PlayCircle, AlertTriangle, RefreshCw, Camera } from 'lucide-react';
 
 const STATUS_CONFIG = {
-  draft: { label: 'Черновик', color: '#8E8E93' },
-  sent: { label: 'Назначен', color: '#f59e0b' },
-  active: { label: 'Активный', color: '#3b82f6' },
-  in_progress: { label: 'В сборке', color: '#5AC8FA' },
-  completed: { label: 'Собран', color: '#22c55e' },
-  shipped: { label: 'Отправлен', color: '#8b5cf6' },
+  draft: { label: 'Черновик', color: 'var(--text-secondary)' },
+  sent: { label: 'Назначен', color: 'var(--value)' },
+  active: { label: 'Активный', color: 'var(--acc)' },
+  in_progress: { label: 'В сборке', color: 'var(--acc)' },
+  completed: { label: 'Собран', color: 'var(--ok)' },
+  shipped: { label: 'Отправлен', color: 'var(--acc)' },
 };
 
 const ITEM_STATUS = {
-  pending: { label: 'Ожидает', color: '#8E8E93', icon: '⬜' },
-  packed: { label: 'Собрано', color: '#22c55e', icon: '✅' },
-  shortage: { label: 'Недостача', color: '#ef4444', icon: '⚠️' },
-  replaced: { label: 'Замена', color: '#f59e0b', icon: '🔄' },
+  pending: { label: 'Ожидает', color: 'var(--text-secondary)', icon: '⬜' },
+  packed: { label: 'Собрано', color: 'var(--ok)', icon: '✅' },
+  shortage: { label: 'Недостача', color: 'var(--danger)', icon: '⚠️' },
+  replaced: { label: 'Замена', color: 'var(--value)', icon: '🔄' },
 };
 
 const fmtDate = (d) => d ? new Date(d).toLocaleDateString('ru-RU') : '';
@@ -130,12 +130,12 @@ export default function FieldPacking() {
         <h1 className="text-lg font-bold" style={{ color: 'var(--text-primary)' }}>Сборы</h1>
       </div>
 
-      {error && <div className="p-3 rounded-lg text-sm" style={{ backgroundColor: 'rgba(239,68,68,0.1)', color: '#ef4444' }}>{error}</div>}
+      {error && <div className="p-3 rounded-lg text-sm" style={{ backgroundColor: 'color-mix(in oklab, var(--danger) 10%, transparent)', color: 'var(--danger)' }}>{error}</div>}
 
       {/* Summary hero card */}
       {lists.length > 0 && (
         <div className="rounded-xl p-5 relative overflow-hidden" style={{
-          background: 'linear-gradient(135deg, var(--bg-elevated) 0%, rgba(196,154,42,0.08) 100%)',
+          background: 'linear-gradient(135deg, var(--bg-elevated) 0%, color-mix(in oklab, var(--value) 8%, transparent) 100%)',
           border: '1px solid var(--border-norse)',
         }}>
           <p className="text-xs font-semibold uppercase tracking-widest mb-1" style={{ color: 'var(--text-tertiary)' }}>Сборка</p>
@@ -144,12 +144,12 @@ export default function FieldPacking() {
             {totalPacked} из {totalItems} позиций собрано
           </p>
           {/* Progress bar */}
-          <div className="mt-2 rounded" style={{ background: 'rgba(255,255,255,0.08)', height: '6px', overflow: 'hidden' }}>
-            <div className="rounded" style={{ height: '100%', width: `${pct}%`, background: 'linear-gradient(90deg, var(--gold), #f5c542)', transition: 'width 0.8s ease' }} />
+          <div className="mt-2 rounded" style={{ background: 'color-mix(in oklab, var(--text-primary) 8%, transparent)', height: '6px', overflow: 'hidden' }}>
+            <div className="rounded" style={{ height: '100%', width: `${pct}%`, background: 'linear-gradient(90deg, var(--gold), var(--value))', transition: 'width 0.8s ease' }} />
           </div>
           <div className="flex justify-center gap-6 mt-3">
-            <span className="text-xs font-semibold" style={{ color: '#f59e0b' }}>🔥 Активных: {totalActive}</span>
-            <span className="text-xs font-semibold" style={{ color: '#22c55e' }}>✅ Завершено: {totalCompleted}</span>
+            <span className="text-xs font-semibold" style={{ color: 'var(--value)' }}>🔥 Активных: {totalActive}</span>
+            <span className="text-xs font-semibold" style={{ color: 'var(--ok)' }}>✅ Завершено: {totalCompleted}</span>
           </div>
         </div>
       )}
@@ -208,7 +208,7 @@ export default function FieldPacking() {
                       return (
                         <div key={item.id} className="flex items-center gap-3 p-2 rounded-lg" style={{ backgroundColor: 'var(--bg-primary)' }}>
                           <button onClick={() => toggleItem(list.id, item.id, item.status)} className="flex-shrink-0">
-                            {isPacked ? <CheckCircle size={18} style={{ color: '#22c55e' }} /> : item.status === 'shortage' ? <AlertTriangle size={18} style={{ color: '#ef4444' }} /> : <Circle size={18} style={{ color: 'var(--text-tertiary)' }} />}
+                            {isPacked ? <CheckCircle size={18} style={{ color: 'var(--ok)' }} /> : item.status === 'shortage' ? <AlertTriangle size={18} style={{ color: 'var(--danger)' }} /> : <Circle size={18} style={{ color: 'var(--text-tertiary)' }} />}
                           </button>
                           <div className="flex-1 min-w-0">
                             <span className="text-sm" style={{ color: isPacked ? 'var(--text-tertiary)' : 'var(--text-primary)', textDecoration: isPacked ? 'line-through' : 'none' }}>
@@ -232,7 +232,7 @@ export default function FieldPacking() {
                           {list.status === 'in_progress' && !isPacked && item.status !== 'shortage' && (
                             <button onClick={() => setShortageForm({ listId: list.id, itemId: item.id })}
                               className="p-1 flex-shrink-0" title="Недостача">
-                              <AlertTriangle size={14} style={{ color: '#ef4444' }} />
+                              <AlertTriangle size={14} style={{ color: 'var(--danger)' }} />
                             </button>
                           )}
                         </div>
@@ -245,12 +245,12 @@ export default function FieldPacking() {
                           (field_packing_lists.status — canon draft/sent/in_progress/completed/shipped, V061:84-85;
                           'active' бэкенд не записывает). */}
                       {list.status === 'sent' && (
-                        <button onClick={() => startList(list.id)} className="flex-1 py-2 rounded-lg text-xs font-medium flex items-center justify-center gap-1" style={{ backgroundColor: '#3b82f620', color: '#3b82f6' }}>
+                        <button onClick={() => startList(list.id)} className="flex-1 py-2 rounded-lg text-xs font-medium flex items-center justify-center gap-1" style={{ backgroundColor: '#3b82f620', color: 'var(--acc)' }}>
                           <PlayCircle size={14} /> Начать сборку
                         </button>
                       )}
                       {list.status === 'in_progress' && packed === total && total > 0 && (
-                        <button onClick={() => completeList(list.id)} className="flex-1 py-2 rounded-lg text-xs font-medium flex items-center justify-center gap-1" style={{ backgroundColor: '#22c55e20', color: '#22c55e' }}>
+                        <button onClick={() => completeList(list.id)} className="flex-1 py-2 rounded-lg text-xs font-medium flex items-center justify-center gap-1" style={{ backgroundColor: '#22c55e20', color: 'var(--ok)' }}>
                           <CheckCircle size={14} /> Завершить
                         </button>
                       )}
@@ -265,7 +265,7 @@ export default function FieldPacking() {
 
       {/* Shortage report form */}
       {shortageForm && (
-        <div className="fixed inset-0 z-50 flex items-end justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.5)' }} onClick={() => setShortageForm(null)}>
+        <div className="fixed inset-0 z-50 flex items-end justify-center" style={{ backgroundColor: 'color-mix(in oklab, var(--bg-primary) 50%, transparent)' }} onClick={() => setShortageForm(null)}>
           <div className="w-full max-w-md rounded-t-2xl p-5 space-y-3" style={{ backgroundColor: 'var(--bg-primary)' }} onClick={e => e.stopPropagation()}>
             <h2 className="text-base font-bold" style={{ color: 'var(--text-primary)' }}>Отчёт о недостаче</h2>
             <textarea value={shortageNote} onChange={e => setShortageNote(e.target.value)} rows={2} placeholder="Описание проблемы"
@@ -282,7 +282,7 @@ export default function FieldPacking() {
                 style={{ backgroundColor: 'var(--bg-elevated)', color: 'var(--text-secondary)' }}>Отмена</button>
               <button onClick={() => reportShortage(shortageForm.listId, shortageForm.itemId)}
                 className="flex-1 py-2.5 rounded-lg text-sm font-semibold text-white"
-                style={{ backgroundColor: '#ef4444' }}>Недостача</button>
+                style={{ backgroundColor: 'var(--danger)' }}>Недостача</button>
             </div>
           </div>
         </div>

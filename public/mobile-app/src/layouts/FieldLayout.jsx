@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react';
 import { Outlet, Navigate } from 'react-router-dom';
 import { useFieldAuthStore } from '@/stores/fieldAuthStore';
-import { UpdateChangelogModal, PwaInstallBanner, PushPermissionBanner } from '@/components/field/AcademyBanners';
+import {
+  RedesignAnnouncement, UpdateChangelogModal, PwaInstallBanner, PushPermissionBanner,
+} from '@/components/field/AcademyBanners';
 
 function hasPinLocal() {
   return localStorage.getItem('field_has_pin') === '1';
@@ -30,6 +32,8 @@ export default function FieldLayout() {
       <div className="flex-1 overflow-auto">
         <Outlet />
       </div>
+      {/* Баннер обновлений: анонс редизайна + светлой темы (один раз), затем серверный чеинжлог */}
+      <RedesignAnnouncement />
       <UpdateChangelogModal />
       <PwaInstallBanner />
       <PushPermissionBanner />

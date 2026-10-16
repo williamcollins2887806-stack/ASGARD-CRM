@@ -79,9 +79,9 @@ export default function FieldReport() {
         Отчёт за {new Date().toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' })}
       </p>
 
-      {error && <div className="p-3 rounded-lg text-sm" style={{ backgroundColor: 'rgba(239,68,68,0.1)', color: '#ef4444' }}>{error}</div>}
+      {error && <div className="p-3 rounded-lg text-sm" style={{ backgroundColor: 'color-mix(in oklab, var(--danger) 10%, transparent)', color: 'var(--danger)' }}>{error}</div>}
       {success && (
-        <div className="p-3 rounded-lg text-sm flex items-center gap-2" style={{ backgroundColor: 'rgba(34,197,94,0.1)', color: '#22c55e' }}>
+        <div className="p-3 rounded-lg text-sm flex items-center gap-2" style={{ backgroundColor: 'color-mix(in oklab, var(--ok) 10%, transparent)', color: 'var(--ok)' }}>
           <CheckCircle size={16} /> Отчёт отправлен
         </div>
       )}
@@ -130,7 +130,7 @@ export default function FieldReport() {
                     {(field.options || []).map(opt => (
                       <button key={opt} onClick={() => setFormData({ ...formData, [fKey]: opt })}
                         className="px-3 py-1.5 rounded-full text-xs font-medium"
-                        style={{ backgroundColor: formData[fKey] === opt ? 'var(--gold)' : 'var(--bg-primary)', color: formData[fKey] === opt ? '#000' : 'var(--text-secondary)', border: '1px solid var(--border-norse)' }}>
+                        style={{ backgroundColor: formData[fKey] === opt ? 'var(--gold)' : 'var(--bg-primary)', color: formData[fKey] === opt ? 'var(--bg-primary)' : 'var(--text-secondary)', border: '1px solid var(--border-norse)' }}>
                         {opt}
                       </button>
                     ))}
@@ -189,7 +189,7 @@ export default function FieldReport() {
               <div key={r.id} className="rounded-lg p-3" style={{ backgroundColor: 'var(--bg-elevated)', border: '1px solid var(--border-norse)' }}>
                 <div className="flex justify-between">
                   <span className="text-xs" style={{ color: 'var(--text-tertiary)' }}>{new Date(r.created_at).toLocaleDateString('ru-RU')}</span>
-                  <CheckCircle size={14} style={{ color: '#22c55e' }} />
+                  <CheckCircle size={14} style={{ color: 'var(--ok)' }} />
                 </div>
                 {r.data?.summary && <p className="text-sm mt-1 line-clamp-2" style={{ color: 'var(--text-secondary)' }}>{r.data.summary}</p>}
               </div>

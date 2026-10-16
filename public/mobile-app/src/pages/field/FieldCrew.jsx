@@ -97,13 +97,13 @@ export default function FieldCrew() {
         </p>
       )}
 
-      {error && <div className="p-3 rounded-lg text-sm" style={{ backgroundColor: 'rgba(239,68,68,0.1)', color: '#ef4444' }}>{error}</div>}
+      {error && <div className="p-3 rounded-lg text-sm" style={{ backgroundColor: 'color-mix(in oklab, var(--danger) 10%, transparent)', color: 'var(--danger)' }}>{error}</div>}
 
       {/* Stats — 4 columns matching vanilla */}
       <div className="grid grid-cols-4 gap-2">
         <StatBox label="Всего" value={data?.total || 0} color="var(--text-secondary)" />
-        <StatBox label="На объекте" value={onSite.length} color="#22c55e" />
-        <StatBox label="Нет чекина" value={notCheckedIn.length} color="#f59e0b" />
+        <StatBox label="На объекте" value={onSite.length} color="var(--ok)" />
+        <StatBox label="Нет чекина" value={notCheckedIn.length} color="var(--value)" />
         <StatBox label="Уехали" value={leftSite.length} color="var(--text-tertiary)" />
       </div>
 
@@ -207,7 +207,7 @@ function CrewCard({ member: m }) {
   if (m.checkin_status === 'completed' && m.amount_earned) meta.push(fmt(parseFloat(m.amount_earned)));
   if (!m.is_active && m.date_to) meta.push('до ' + new Date(m.date_to).toLocaleDateString('ru-RU'));
 
-  const borderColor = m.checkin_status === 'active' ? 'rgba(52,199,89,0.2)' : 'var(--border-norse)';
+  const borderColor = m.checkin_status === 'active' ? 'color-mix(in oklab, var(--ok) 20%, transparent)' : 'var(--border-norse)';
 
   return (
     <div
@@ -223,7 +223,7 @@ function CrewCard({ member: m }) {
           <p className="text-sm font-medium truncate" style={{ color: 'var(--text-primary)' }}>{m.fio || 'Сотрудник'}</p>
           {isMasterRole && (
             <span className="text-xs font-semibold px-1.5 py-0.5 rounded flex-shrink-0"
-              style={{ color: 'var(--gold)', backgroundColor: 'rgba(212,168,67,0.12)' }}>
+              style={{ color: 'var(--gold)', backgroundColor: 'color-mix(in oklab, var(--value) 12%, transparent)' }}>
               {ROLE_LABELS[m.field_role] || 'Рабочий'}
             </span>
           )}

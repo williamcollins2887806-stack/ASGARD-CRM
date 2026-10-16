@@ -4966,7 +4966,9 @@ window.AsgardFieldTab = (function () {
         type: type,
         amount: amount,
         payment_method: method,
-        note: note
+        note: note,
+        pay_year: __ppYear(),
+        pay_month: __ppMonth()
       };
 
       try {
@@ -4993,6 +4995,19 @@ window.AsgardFieldTab = (function () {
   // уже есть выплата того же `type` за тот же месяц. Показываем confirm:
   // согласие → повтор с `confirm_duplicate:true`; отказ → null.
   // Возвращает: { ...payload } при успехе, null если пользователь отказался.
+  //
+  // ⚠️ V392: период выплаты. Гейт согласования сверяет выплату с ОДОБРЕННЫМ
+  // периодом, поэтому серверу нужно его передать. Полевой табель платит за
+  // ПРОШЛЫЙ календарный месяц (как и десктопные «Выплаты»): в октябре — за
+  // сентябрь. Считаем здесь, чтобы не зависеть от внутренних переменных экрана.
+  function __ppYear() {
+    var n = new Date();
+    return n.getMonth() === 0 ? n.getFullYear() - 1 : n.getFullYear();
+  }
+  function __ppMonth() {
+    var n = new Date().getMonth(); // 0-based → это уже «предыдущий» в 1-based
+    return n === 0 ? 12 : n;
+  }
   async function submitPayWorker(payload) {
     var resp = await fetch('/api/worker-payments/pay-worker', {
       method: 'POST', headers: hdr(),

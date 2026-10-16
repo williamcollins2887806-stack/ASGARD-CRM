@@ -11,134 +11,151 @@ import { normalizeMobileNavUrl, savePinReturnTo } from '@/lib/navUrl';
 import PresenceGateMobile from '@/components/PresenceGateMobile';
 import PayoutStatementBanner from '@/components/PayoutStatementBanner';
 import FieldLayout from '@/layouts/FieldLayout';
-import FieldWelcome from '@/pages/field/FieldWelcome';
-import FieldLogin from '@/pages/field/FieldLogin';
-import FieldPinSetup from '@/pages/field/FieldPinSetup';
-import FieldPinEntry from '@/pages/field/FieldPinEntry';
-import FieldHome from '@/pages/field/FieldHome';
-import FieldShift from '@/pages/field/FieldShift';
-import FieldTimesheet from '@/pages/field/FieldTimesheet';
-import FieldProfile from '@/pages/field/FieldProfile';
-import FieldMyWorks from '@/pages/field/FieldMyWorks';
-import FieldMoney from '@/pages/field/FieldMoney';
-import FieldEarnings from '@/pages/field/FieldEarnings';
-import FieldFunds from '@/pages/field/FieldFunds';
-import FieldLogistics from '@/pages/field/FieldLogistics';
-import FieldCrew from '@/pages/field/FieldCrew';
-import FieldReport from '@/pages/field/FieldReport';
-import FieldIncidents from '@/pages/field/FieldIncidents';
-import FieldPhotos from '@/pages/field/FieldPhotos';
-import FieldPacking from '@/pages/field/FieldPacking';
-import FieldStages from '@/pages/field/FieldStages';
-import FieldCrewStages from '@/pages/field/FieldCrewStages';
-import FieldAchievements from '@/pages/field/FieldAchievements';
-import FieldLeaderboard from '@/pages/field/FieldLeaderboard';
-import FieldHall from '@/pages/field/FieldHall';
-import WheelOfNorns from '@/pages/field/WheelOfNorns';
-import FieldShop from '@/pages/field/FieldShop';
-import FieldInventory from '@/pages/field/FieldInventory';
-import FieldAssembly from '@/pages/field/FieldAssembly';
-import FieldPalletBuilder from '@/pages/field/FieldPalletBuilder';
-import FieldReceiving from '@/pages/field/FieldReceiving';
-import FieldQuests from '@/pages/field/FieldQuests';
-import FieldJourney from '@/pages/field/FieldJourney';
-import FieldAcademy from '@/pages/field/FieldAcademy';
-import FieldLesson from '@/pages/field/FieldLesson';
-import FieldAcademyQuiz from '@/pages/field/FieldAcademyQuiz';
-import FieldAcademyLibrary from '@/pages/field/FieldAcademyLibrary';
-import FieldEarningsMonthly from '@/pages/field/FieldEarningsMonthly';
-import FieldSeasonal from '@/pages/field/FieldSeasonal';
-import FieldDiary from '@/pages/field/FieldDiary';
-import FieldReadiness from '@/pages/field/FieldReadiness';
-import PipelineGame from '@/pages/field/PipelineGame';
-import ChemLabGame from '@/pages/field/ChemLabGame';
-import PmDashboard from '@/pages/pm/PmDashboard';
-import PmWorkers from '@/pages/pm/PmWorkers';
-import PmWorkerProfile from '@/pages/pm/PmWorkerProfile';
-import PmTimesheet from '@/pages/pm/PmTimesheet';
-import PmPayments from '@/pages/pm/PmPayments';
-import PmAcademy from '@/pages/pm/PmAcademy';
-import Welcome from '@/pages/Welcome';
-import Login from '@/pages/Login';
-import PinEntry from '@/pages/PinEntry';
-import Home from '@/pages/Home';
-import Tasks from '@/pages/Tasks';
-import HelpTasks from '@/pages/HelpTasks';
-import Chat from '@/pages/Chat';
-import ChatView from '@/pages/ChatView';
-import Mimir from '@/pages/Mimir';
-import Works from '@/pages/Works';
-import Contracts from '@/pages/Contracts';
-import Customers from '@/pages/Customers';
-import Tenders from '@/pages/Tenders';
-import PlatformTenders from '@/pages/tenders/PlatformTenders';
-import TenderGuruSettings from '@/pages/tenders/TenderGuruSettings';
-import Personnel from '@/pages/Personnel';
-import Profile from '@/pages/Profile';
-import Finances from '@/pages/Finances';
-import Approvals from '@/pages/Approvals';
-import Settings from '@/pages/Settings';
-import Correspondence from '@/pages/Correspondence';
-import Alerts from '@/pages/Alerts';
-import Meetings from '@/pages/Meetings';
-import Cash from '@/pages/Cash';
-import Acts from '@/pages/Acts';
-import Invoices from '@/pages/Invoices';
-import HrRequests from '@/pages/HrRequests';
-import Travel from '@/pages/Travel';
-import Procurement from '@/pages/Procurement';
-import Permits from '@/pages/Permits';
-import Proxies from '@/pages/Proxies';
-import AllEstimates from '@/pages/AllEstimates';
-import PmCalcs from '@/pages/PmCalcs';
-import PmDuty from '@/pages/pm/PmDuty';
-import ToCalcs from '@/pages/ToCalcs';
-import HeadToApprovals from '@/pages/HeadToApprovals';
-import Payroll from '@/pages/Payroll';
-import OfficeExpenses from '@/pages/OfficeExpenses';
-import CashAdmin from '@/pages/CashAdmin';
-import TasksAdmin from '@/pages/TasksAdmin';
-import Warehouse from '@/pages/Warehouse';
-import Assembly from '@/pages/Assembly';
-import Gantt from '@/pages/Gantt';
-import WorkersSchedule from '@/pages/WorkersSchedule';
-import WorkerProfile from '@/pages/WorkerProfile';
-import ApprovalPayment from '@/pages/ApprovalPayment';
-import MyEquipment from '@/pages/MyEquipment';
-import MyMail from '@/pages/MyMail';
-import Seals from '@/pages/Seals';
-import Diag from '@/pages/Diag';
-import Training from '@/pages/Training';
-import OfficeAcademy from '@/pages/OfficeAcademy';
-import OfficeLesson from '@/pages/OfficeLesson';
-import OfficeAcademyQuiz from '@/pages/OfficeAcademyQuiz';
-import OfficeAcademyAdmin from '@/pages/OfficeAcademyAdmin';
-import Integrations from '@/pages/Integrations';
-import More from '@/pages/More';
-import GlobalTimesheet from '@/pages/GlobalTimesheet';
-import TimesheetWarehouse from '@/pages/TimesheetWarehouse';
-import TimesheetMedical from '@/pages/TimesheetMedical';
-import TimesheetTravel from '@/pages/TimesheetTravel';
-import PayrollDashboard from '@/pages/PayrollDashboard';
-import OfficialEmployees from '@/pages/OfficialEmployees';
-import TrainingBoard from '@/pages/TrainingBoard';
-import StaffRequests from '@/pages/StaffRequests';
-import PmBalance from '@/pages/PmBalance';
-import CallAnalytics from '@/pages/CallAnalytics';
-import TelephonyHome from '@/pages/TelephonyHome';
-import TelephonyMissed from '@/pages/TelephonyMissed';
-import TelephonyHistory from '@/pages/TelephonyHistory';
-import TelephonyCallDetail from '@/pages/TelephonyCallDetail';
-import EstimateReport from '@/pages/EstimateReport';
-import MimirAutoEstimate from '@/pages/MimirAutoEstimate';
-import HuginnEstimateChat from '@/pages/HuginnEstimateChat';
-import ExpenseChat from '@/pages/ExpenseChat';
-import DirectorApprovals from '@/pages/director/Approvals';
-import DirectorTenderApprovals from '@/pages/director/TenderApprovals';
-import MarketplaceMobile from '@/pages/MarketplaceMobile';
+import DirectorHome from '@/components/layout/DirectorHome';
+
+/* S2: телефония (jssip, ~220 КБ) — не нужна на каждом экране и не нужна полевым
+   рабочим вообще. Грузим её отдельным чанком, вне критического пути.
+   ВАЖНО: SoftphoneProvider — ИМЕНОВАННЫЙ экспорт, lazy ждёт { default },
+   поэтому маппим .then(m => ({ default: m.SoftphoneProvider })). */
+const SoftphoneProvider = lazy(() =>
+  import('@/components/telephony/SoftphoneProvider').then((m) => ({ default: m.SoftphoneProvider })));
+
+/* ─── S2: роут-сплиттинг ────────────────────────────────────────────────────
+   Раньше здесь было ~126 статических import'ов страниц: Vite собирал их все в
+   один чанк 2.36 МБ, который грузился при первом открытии → долгая загрузка на
+   мобильной сети. Теперь каждая страница — отдельный чанк, подгружается по
+   требованию. Каркас (FieldLayout), гейт роли (DirectorHome) и мелкие утилиты
+   остаются статичными. Роль/секция по-прежнему проверяются ProtectedRoute. */
+const lazyPage = (loader) => lazy(loader);
+
+const FieldWelcome = lazyPage(() => import('@/pages/field/FieldWelcome'));
+const FieldLogin = lazyPage(() => import('@/pages/field/FieldLogin'));
+const FieldPinSetup = lazyPage(() => import('@/pages/field/FieldPinSetup'));
+const FieldPinEntry = lazyPage(() => import('@/pages/field/FieldPinEntry'));
+const FieldHome = lazyPage(() => import('@/pages/field/FieldHome'));
+const FieldShift = lazyPage(() => import('@/pages/field/FieldShift'));
+const FieldTimesheet = lazyPage(() => import('@/pages/field/FieldTimesheet'));
+const FieldProfile = lazyPage(() => import('@/pages/field/FieldProfile'));
+const FieldMyWorks = lazyPage(() => import('@/pages/field/FieldMyWorks'));
+const FieldMoney = lazyPage(() => import('@/pages/field/FieldMoney'));
+const FieldEarnings = lazyPage(() => import('@/pages/field/FieldEarnings'));
+const FieldFunds = lazyPage(() => import('@/pages/field/FieldFunds'));
+const FieldLogistics = lazyPage(() => import('@/pages/field/FieldLogistics'));
+const FieldCrew = lazyPage(() => import('@/pages/field/FieldCrew'));
+const FieldReport = lazyPage(() => import('@/pages/field/FieldReport'));
+const FieldIncidents = lazyPage(() => import('@/pages/field/FieldIncidents'));
+const FieldPhotos = lazyPage(() => import('@/pages/field/FieldPhotos'));
+const FieldPacking = lazyPage(() => import('@/pages/field/FieldPacking'));
+const FieldStages = lazyPage(() => import('@/pages/field/FieldStages'));
+const FieldCrewStages = lazyPage(() => import('@/pages/field/FieldCrewStages'));
+const FieldAchievements = lazyPage(() => import('@/pages/field/FieldAchievements'));
+const FieldLeaderboard = lazyPage(() => import('@/pages/field/FieldLeaderboard'));
+const FieldHall = lazyPage(() => import('@/pages/field/FieldHall'));
+const WheelOfNorns = lazyPage(() => import('@/pages/field/WheelOfNorns'));
+const FieldShop = lazyPage(() => import('@/pages/field/FieldShop'));
+const FieldInventory = lazyPage(() => import('@/pages/field/FieldInventory'));
+const FieldAssembly = lazyPage(() => import('@/pages/field/FieldAssembly'));
+const FieldPalletBuilder = lazyPage(() => import('@/pages/field/FieldPalletBuilder'));
+const FieldReceiving = lazyPage(() => import('@/pages/field/FieldReceiving'));
+const FieldQuests = lazyPage(() => import('@/pages/field/FieldQuests'));
+const FieldJourney = lazyPage(() => import('@/pages/field/FieldJourney'));
+const FieldAcademy = lazyPage(() => import('@/pages/field/FieldAcademy'));
+const FieldLesson = lazyPage(() => import('@/pages/field/FieldLesson'));
+const FieldAcademyQuiz = lazyPage(() => import('@/pages/field/FieldAcademyQuiz'));
+const FieldAcademyLibrary = lazyPage(() => import('@/pages/field/FieldAcademyLibrary'));
+const FieldEarningsMonthly = lazyPage(() => import('@/pages/field/FieldEarningsMonthly'));
+const FieldSeasonal = lazyPage(() => import('@/pages/field/FieldSeasonal'));
+const FieldDiary = lazyPage(() => import('@/pages/field/FieldDiary'));
+const FieldReadiness = lazyPage(() => import('@/pages/field/FieldReadiness'));
+const PipelineGame = lazyPage(() => import('@/pages/field/PipelineGame'));
+const ChemLabGame = lazyPage(() => import('@/pages/field/ChemLabGame'));
+const PmDashboard = lazyPage(() => import('@/pages/pm/PmDashboard'));
+const PmWorkers = lazyPage(() => import('@/pages/pm/PmWorkers'));
+const PmWorkerProfile = lazyPage(() => import('@/pages/pm/PmWorkerProfile'));
+const PmTimesheet = lazyPage(() => import('@/pages/pm/PmTimesheet'));
+const PmPayments = lazyPage(() => import('@/pages/pm/PmPayments'));
+const PmPayoutCart = lazyPage(() => import('@/pages/pm/PmPayoutCart'));
+const PmAcademy = lazyPage(() => import('@/pages/pm/PmAcademy'));
+const Welcome = lazyPage(() => import('@/pages/Welcome'));
+const Login = lazyPage(() => import('@/pages/Login'));
+const PinEntry = lazyPage(() => import('@/pages/PinEntry'));
+const Home = lazyPage(() => import('@/pages/Home'));
+const Tasks = lazyPage(() => import('@/pages/Tasks'));
+const HelpTasks = lazyPage(() => import('@/pages/HelpTasks'));
+const Chat = lazyPage(() => import('@/pages/Chat'));
+const ChatView = lazyPage(() => import('@/pages/ChatView'));
+const Mimir = lazyPage(() => import('@/pages/Mimir'));
+const Works = lazyPage(() => import('@/pages/Works'));
+const Contracts = lazyPage(() => import('@/pages/Contracts'));
+const Customers = lazyPage(() => import('@/pages/Customers'));
+const Tenders = lazyPage(() => import('@/pages/Tenders'));
+const PlatformTenders = lazyPage(() => import('@/pages/tenders/PlatformTenders'));
+const TenderGuruSettings = lazyPage(() => import('@/pages/tenders/TenderGuruSettings'));
+const Personnel = lazyPage(() => import('@/pages/Personnel'));
+const Profile = lazyPage(() => import('@/pages/Profile'));
+const Finances = lazyPage(() => import('@/pages/Finances'));
+const Approvals = lazyPage(() => import('@/pages/Approvals'));
+const Settings = lazyPage(() => import('@/pages/Settings'));
+const Correspondence = lazyPage(() => import('@/pages/Correspondence'));
+const Alerts = lazyPage(() => import('@/pages/Alerts'));
+const Meetings = lazyPage(() => import('@/pages/Meetings'));
+const Cash = lazyPage(() => import('@/pages/Cash'));
+const Acts = lazyPage(() => import('@/pages/Acts'));
+const Invoices = lazyPage(() => import('@/pages/Invoices'));
+const HrRequests = lazyPage(() => import('@/pages/HrRequests'));
+const Travel = lazyPage(() => import('@/pages/Travel'));
+const Procurement = lazyPage(() => import('@/pages/Procurement'));
+const Permits = lazyPage(() => import('@/pages/Permits'));
+const Proxies = lazyPage(() => import('@/pages/Proxies'));
+const AllEstimates = lazyPage(() => import('@/pages/AllEstimates'));
+const PmCalcs = lazyPage(() => import('@/pages/PmCalcs'));
+const PmDuty = lazyPage(() => import('@/pages/pm/PmDuty'));
+const ToCalcs = lazyPage(() => import('@/pages/ToCalcs'));
+const HeadToApprovals = lazyPage(() => import('@/pages/HeadToApprovals'));
+const Payroll = lazyPage(() => import('@/pages/Payroll'));
+const OfficeExpenses = lazyPage(() => import('@/pages/OfficeExpenses'));
+const CashAdmin = lazyPage(() => import('@/pages/CashAdmin'));
+const TasksAdmin = lazyPage(() => import('@/pages/TasksAdmin'));
+const Warehouse = lazyPage(() => import('@/pages/Warehouse'));
+const Assembly = lazyPage(() => import('@/pages/Assembly'));
+const Gantt = lazyPage(() => import('@/pages/Gantt'));
+const WorkersSchedule = lazyPage(() => import('@/pages/WorkersSchedule'));
+const WorkerProfile = lazyPage(() => import('@/pages/WorkerProfile'));
+const ApprovalPayment = lazyPage(() => import('@/pages/ApprovalPayment'));
+const MyEquipment = lazyPage(() => import('@/pages/MyEquipment'));
+const MyMail = lazyPage(() => import('@/pages/MyMail'));
+const Seals = lazyPage(() => import('@/pages/Seals'));
+const Diag = lazyPage(() => import('@/pages/Diag'));
+const Training = lazyPage(() => import('@/pages/Training'));
+const OfficeAcademy = lazyPage(() => import('@/pages/OfficeAcademy'));
+const OfficeLesson = lazyPage(() => import('@/pages/OfficeLesson'));
+const OfficeAcademyQuiz = lazyPage(() => import('@/pages/OfficeAcademyQuiz'));
+const OfficeAcademyAdmin = lazyPage(() => import('@/pages/OfficeAcademyAdmin'));
+const Integrations = lazyPage(() => import('@/pages/Integrations'));
+const More = lazyPage(() => import('@/pages/More'));
+const GlobalTimesheet = lazyPage(() => import('@/pages/GlobalTimesheet'));
+const TimesheetWarehouse = lazyPage(() => import('@/pages/TimesheetWarehouse'));
+const TimesheetMedical = lazyPage(() => import('@/pages/TimesheetMedical'));
+const TimesheetTravel = lazyPage(() => import('@/pages/TimesheetTravel'));
+const PayrollDashboard = lazyPage(() => import('@/pages/PayrollDashboard'));
+const OfficialEmployees = lazyPage(() => import('@/pages/OfficialEmployees'));
+const TrainingBoard = lazyPage(() => import('@/pages/TrainingBoard'));
+const StaffRequests = lazyPage(() => import('@/pages/StaffRequests'));
+const PmBalance = lazyPage(() => import('@/pages/PmBalance'));
+const CallAnalytics = lazyPage(() => import('@/pages/CallAnalytics'));
+const TelephonyHome = lazyPage(() => import('@/pages/TelephonyHome'));
+const TelephonyMissed = lazyPage(() => import('@/pages/TelephonyMissed'));
+const TelephonyHistory = lazyPage(() => import('@/pages/TelephonyHistory'));
+const TelephonyCallDetail = lazyPage(() => import('@/pages/TelephonyCallDetail'));
+const EstimateReport = lazyPage(() => import('@/pages/EstimateReport'));
+const MimirAutoEstimate = lazyPage(() => import('@/pages/MimirAutoEstimate'));
+const HuginnEstimateChat = lazyPage(() => import('@/pages/HuginnEstimateChat'));
+const ExpenseChat = lazyPage(() => import('@/pages/ExpenseChat'));
+const DirectorApprovals = lazyPage(() => import('@/pages/director/Approvals'));
+const DirectorTenderApprovals = lazyPage(() => import('@/pages/director/TenderApprovals'));
+const MarketplaceMobile = lazyPage(() => import('@/pages/MarketplaceMobile'));
 import { Toaster } from '@/components/ui/sonner';
 import { usePushSubscription } from '@/hooks/usePushSubscription';
-import { SoftphoneProvider } from '@/components/telephony/SoftphoneProvider';
 
 const PersonalKanban       = lazy(() => import('@/pages/PersonalKanban'));
 const PersonalKanbanConfig = lazy(() => import('@/pages/PersonalKanbanConfig'));
@@ -190,8 +207,26 @@ function PinRoute() {
   return <PinEntry />;
 }
 
-function PinGuard({ children }) {
-  const pinStatus = useAuthStore((s) => s.pinStatus);
+/**
+ * PageFallback — S2: лёгкий скелетон вместо пустого экрана, пока грузится
+ * чанк страницы. Держим нарочно простым: он показывается на каждый навигационный
+ * переход, поэтому не должен тянуть ни иконок, ни glass/blur.
+ */
+function PageFallback() {
+  return (
+    <div style={{ padding: '72px 16px 24px' }} aria-busy="true" aria-live="polite">
+      <div className="skeleton" style={{ height: 26, width: '58%', borderRadius: 10 }} />
+      <div className="skeleton" style={{ height: 14, width: '34%', marginTop: 10, borderRadius: 8 }} />
+      <div style={{ marginTop: 22, display: 'grid', gap: 12 }}>
+        <div className="skeleton" style={{ height: 92, borderRadius: 16 }} />
+        <div className="skeleton" style={{ height: 92, borderRadius: 16 }} />
+        <div className="skeleton" style={{ height: 92, borderRadius: 16 }} />
+      </div>
+    </div>
+  );
+}
+
+function PinGuard({ children }) {  const pinStatus = useAuthStore((s) => s.pinStatus);
   const location = useLocation();
   if (pinStatus === 'need_pin' || pinStatus === 'need_setup') {
     const returnTo = `${location.pathname}${location.search || ''}`;
@@ -231,6 +266,7 @@ function AppLayout() {
   const location = useLocation();
   const incrementChat = useChatStore((s) => s.incrementChat);
   const userId = useAuthStore((s) => s.user?.id);
+  const userRole = useAuthStore((s) => s.user?.role);
 
   // Глобальный SSE: обновляет бейдж непрочитанных с любой страницы.
   // Chat.jsx и ChatView.jsx имеют свои useSSE для отображения сообщений —
@@ -258,8 +294,13 @@ function AppLayout() {
     location.pathname.startsWith('/field') ||
     location.pathname.startsWith('/pm');
 
-  // Гейт присутствия — только в офисном разделе (не на field/pm/логине). Сам себя гейтит по роли.
-  const showPresenceGate = !(
+  // Гейт присутствия — только для офисных ролей, и НЕ для директоров.
+  // V391: у директора на мобильном остаётся ТОЛЬКО экран согласований
+  // (заказчик 16.10.2026 — убрать отвлекающее). Гейт «отметься в дружину»
+  // перекрывал fixed-оверлеем весь экран и не давал согласовывать. Серверную
+  // логику не трогаем — на десктопе/в «Графике офиса» отметка остаётся.
+  const isDirector = ['DIRECTOR_COMM', 'DIRECTOR_GEN', 'DIRECTOR_DEV'].includes(userRole);
+  const showPresenceGate = !isDirector && !(
     ['/login', '/pin', '/welcome'].includes(location.pathname) ||
     location.pathname.startsWith('/field') ||
     location.pathname.startsWith('/pm')
@@ -268,9 +309,14 @@ function AppLayout() {
   return (
     <div className="h-full relative" style={{ backgroundColor: 'var(--bg-primary)' }}>
       {showPresenceGate && <PresenceGateMobile />}
-      <PayoutStatementBanner />
+      {/* Баннер «выплата получена» — только рабочим/полевым, не директору */}
+      {!isDirector && <PayoutStatementBanner />}
       <OfficePushBootstrap />
       <NotificationClickListener />
+      {/* S2: ленивый SoftphoneProvider ОБЯЗАН быть внутри Suspense — иначе React
+          выбрасывает на ближайший boundary выше (или валит дерево), и, в частности,
+          не выполняется initTheme → светлая тема не включается. */}
+      <Suspense fallback={null}>
       <SoftphoneProvider>
       <div
         key={location.pathname}
@@ -279,11 +325,12 @@ function AppLayout() {
           height: '100%',
         }}
       >
+      <Suspense fallback={<PageFallback />}>
         <Routes location={location}>
           <Route path="/welcome" element={<Welcome />} />
           <Route path="/login" element={<Login />} />
           <Route path="/pin" element={<PinRoute />} />
-          <Route path="/" element={<ProtectedRoute section="dashboard"><PinGuard><Home /></PinGuard></ProtectedRoute>} />
+          <Route path="/" element={<ProtectedRoute section="dashboard"><PinGuard><DirectorHome><Home /></DirectorHome></PinGuard></ProtectedRoute>} />
           <Route path="/tasks" element={<ProtectedRoute section="tasks"><PinGuard><Tasks /></PinGuard></ProtectedRoute>} />
           <Route path="/help" element={<ProtectedRoute section="tasks"><PinGuard><HelpTasks /></PinGuard></ProtectedRoute>} />
           <Route path="/chat" element={<ProtectedRoute section="chat"><PinGuard><Chat /></PinGuard></ProtectedRoute>} />
@@ -423,6 +470,7 @@ function AppLayout() {
           <Route path="/pm/workers/:id" element={<ProtectedRoute section="works"><PinGuard><PmWorkerProfile /></PinGuard></ProtectedRoute>} />
           <Route path="/pm/timesheet" element={<ProtectedRoute section="works"><PinGuard><PmTimesheet /></PinGuard></ProtectedRoute>} />
           <Route path="/pm/payments" element={<ProtectedRoute section="works"><PinGuard><PmPayments /></PinGuard></ProtectedRoute>} />
+          <Route path="/pm/payout-cart" element={<ProtectedRoute section="works"><PinGuard><PmPayoutCart /></PinGuard></ProtectedRoute>} />
           <Route path="/pm/academy" element={<ProtectedRoute section="works"><PinGuard><PmAcademy /></PinGuard></ProtectedRoute>} />
 
           {/* ═══ Field Worker routes (feature-flagged) ═══ */}
@@ -479,10 +527,12 @@ function AppLayout() {
 
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
+      </Suspense>
       </div>
       {!hideTabBar && <TabBar />}
       <Toaster position="top-center" richColors closeButton />
       </SoftphoneProvider>
+      </Suspense>
     </div>
   );
 }

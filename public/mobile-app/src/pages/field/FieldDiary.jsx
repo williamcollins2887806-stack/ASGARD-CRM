@@ -6,11 +6,11 @@ import { ArrowLeft, BookOpen, Star, Edit3, Check, X, ChevronDown } from 'lucide-
 import { formatMoney } from '@/lib/utils';
 
 const MOODS = [
-  { id: 'great',   emoji: '😄', label: 'Отлично',   color: '#22c55e' },
-  { id: 'good',    emoji: '🙂', label: 'Хорошо',    color: '#84cc16' },
-  { id: 'neutral', emoji: '😐', label: 'Нейтрально', color: '#f59e0b' },
-  { id: 'tired',   emoji: '😔', label: 'Устал',      color: '#f97316' },
-  { id: 'hard',    emoji: '😤', label: 'Тяжело',     color: '#ef4444' },
+  { id: 'great',   emoji: '😄', label: 'Отлично',   color: 'var(--ok)' },
+  { id: 'good',    emoji: '🙂', label: 'Хорошо',    color: 'var(--ok)' },
+  { id: 'neutral', emoji: '😐', label: 'Нейтрально', color: 'var(--value)' },
+  { id: 'tired',   emoji: '😔', label: 'Устал',      color: 'var(--value)' },
+  { id: 'hard',    emoji: '😤', label: 'Тяжело',     color: 'var(--danger)' },
 ];
 
 function fmt(dateStr) {
@@ -23,7 +23,7 @@ function Stars({ rating, onRate, size = 18 }) {
     <div className="flex gap-1">
       {[1, 2, 3, 4, 5].map((n) => (
         <button key={n} onClick={() => onRate && onRate(n)}
-          style={{ color: n <= rating ? '#fbbf24' : 'var(--border-norse)', fontSize: size, lineHeight: 1, background: 'none', border: 'none', cursor: onRate ? 'pointer' : 'default', padding: 0 }}>
+          style={{ color: n <= rating ? 'var(--value)' : 'var(--border-norse)', fontSize: size, lineHeight: 1, background: 'none', border: 'none', cursor: onRate ? 'pointer' : 'default', padding: 0 }}>
           ★
         </button>
       ))}
@@ -48,7 +48,7 @@ function DiaryModal({ shift, onClose, onSave }) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end" style={{ backgroundColor: 'rgba(0,0,0,0.6)' }} onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-end" style={{ backgroundColor: 'color-mix(in oklab, var(--bg-primary) 60%, transparent)' }} onClick={onClose}>
       <div className="w-full rounded-t-2xl p-5 space-y-4 max-h-[85vh] overflow-y-auto"
         style={{ backgroundColor: 'var(--bg-elevated)' }} onClick={(e) => e.stopPropagation()}>
 
@@ -110,7 +110,7 @@ function DiaryModal({ shift, onClose, onSave }) {
 
         <button onClick={save} disabled={saving}
           className="w-full py-3 rounded-xl font-bold text-sm flex items-center justify-center gap-2"
-          style={{ background: 'linear-gradient(135deg, var(--gold), #b8860b)', color: '#fff' }}>
+          style={{ background: 'linear-gradient(135deg, var(--gold), var(--value))', color: 'var(--text-primary)' }}>
           {saving ? 'Сохраняю...' : <><Check size={16} /> Сохранить запись</>}
         </button>
       </div>
@@ -242,7 +242,7 @@ export default function FieldDiary() {
             className="px-3 py-1.5 rounded-full text-xs font-medium"
             style={{
               backgroundColor: filter === val ? 'var(--gold)' : 'var(--bg-elevated)',
-              color: filter === val ? '#fff' : 'var(--text-secondary)',
+              color: filter === val ? 'var(--text-primary)' : 'var(--text-secondary)',
             }}>
             {label}
           </button>

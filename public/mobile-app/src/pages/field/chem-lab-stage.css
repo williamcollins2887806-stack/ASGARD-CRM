@@ -100,15 +100,15 @@
 .cl-hit-label strong {
   font-size: 11px;
   font-weight: 800;
-  color: rgba(245, 245, 247, 0.92);
+  color: color-mix(in oklab, var(--text-primary) 92%, transparent);
   letter-spacing: 0.02em;
-  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.65);
+  text-shadow: 0 1px 2px color-mix(in oklab, var(--bg-primary) 65%, transparent);
 }
 
 .cl-hit-label span {
   font-size: 9px;
   font-weight: 600;
-  color: rgba(245, 245, 247, 0.45);
+  color: color-mix(in oklab, var(--text-primary) 45%, transparent);
   max-width: 72px;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -137,7 +137,7 @@
 }
 
 .cl-hit--selected .cl-hit-label strong {
-  color: #e8a838;
+  color: var(--value);
 }
 
 .cl-stage-surface {
@@ -152,10 +152,10 @@
       90deg,
       transparent,
       transparent 4px,
-      rgba(255, 255, 255, 0.015) 4px,
-      rgba(255, 255, 255, 0.015) 5px
+      color-mix(in oklab, var(--text-primary) 2%, transparent) 4px,
+      color-mix(in oklab, var(--text-primary) 2%, transparent) 5px
     );
-  border-top: 1px solid rgba(232, 168, 56, 0.12);
+  border-top: 1px solid color-mix(in oklab, var(--danger) 12%, transparent);
   pointer-events: none;
   z-index: 0;
 }

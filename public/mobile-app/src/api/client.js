@@ -92,7 +92,12 @@ class ApiClient {
 
     if (!response.ok) {
       const error = await response.json().catch(() => ({}));
-      const err = new Error(error.message || error.error || `HTTP ${response.status}`);
+      // Человекочитаемое: «что случилось» + «что делать» (поле hint от сервера).
+      const parts = [];
+      if (error.message) parts.push(String(error.message));
+      else if (error.error && typeof error.error === 'string') parts.push(String(error.error));
+      if (error.hint) parts.push(String(error.hint));
+      const err = new Error(parts.length ? parts.join(' ') : `Ошибка запроса (${response.status}). Повторите действие.`);
       err.status = response.status;
       err.body = error;
       if (response.status >= 500) {
@@ -149,7 +154,11 @@ class ApiClient {
     }
     if (!response.ok) {
       const e = await response.json().catch(() => ({}));
-      const err = new Error(e.error || e.message || `HTTP ${response.status}`);
+      const parts = [];
+      if (e.message) parts.push(String(e.message));
+      else if (e.error && typeof e.error === 'string') parts.push(String(e.error));
+      if (e.hint) parts.push(String(e.hint));
+      const err = new Error(parts.length ? parts.join(' ') : `Ошибка запроса (${response.status}). Повторите действие.`);
       err.status = response.status;
       err.body = e;
       if (response.status >= 500) {

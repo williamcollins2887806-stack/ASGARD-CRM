@@ -3,7 +3,7 @@
  * Полноростовой персонаж, уровень, руны, снаряжение
  */
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Shield, ChevronDown, ChevronUp,
   LogOut, Sun, Moon, Edit3, Check, X, Briefcase, Award, Sparkles, ClipboardList, Calendar,
@@ -33,12 +33,12 @@ const ANIM_CSS = `
 }
 /* box-shadow only — CSS filter on WebGL parent blanks the canvas on mobile */
 @keyframes goldPulse {
-  0%,100% { box-shadow: 0 0 16px rgba(240,200,80,.25), 0 0 32px rgba(240,200,80,.1); }
-  50%     { box-shadow: 0 0 28px rgba(240,200,80,.55), 0 0 56px rgba(240,200,80,.22); }
+  0%,100% { box-shadow: 0 0 16px color-mix(in oklab, var(--value) 25%, transparent), 0 0 32px color-mix(in oklab, var(--value) 10%, transparent); }
+  50%     { box-shadow: 0 0 28px color-mix(in oklab, var(--value) 55%, transparent), 0 0 56px color-mix(in oklab, var(--value) 22%, transparent); }
 }
 @keyframes rankGlow {
-  0%,100% { text-shadow: 0 0 6px rgba(240,200,80,.3); }
-  50%     { text-shadow: 0 0 16px rgba(240,200,80,.95), 0 0 32px rgba(240,200,80,.5); }
+  0%,100% { text-shadow: 0 0 6px color-mix(in oklab, var(--value) 30%, transparent); }
+  50%     { text-shadow: 0 0 16px color-mix(in oklab, var(--value) 95%, transparent), 0 0 32px color-mix(in oklab, var(--value) 50%, transparent); }
 }
 @keyframes badgePop {
   0%  { transform: scale(0) rotate(-20deg); opacity:0; }
@@ -61,12 +61,12 @@ const ANIM_CSS = `
   from { width:0; }
 }
 @keyframes iceFrost {
-  0%,100%{ box-shadow: 0 0 12px rgba(140,200,255,.4), 0 0 28px rgba(100,160,255,.12); }
-  50%    { box-shadow: 0 0 22px rgba(140,200,255,.85), 0 0 48px rgba(100,160,255,.35); }
+  0%,100%{ box-shadow: 0 0 12px color-mix(in oklab, var(--acc) 40%, transparent), 0 0 28px color-mix(in oklab, var(--acc) 12%, transparent); }
+  50%    { box-shadow: 0 0 22px color-mix(in oklab, var(--acc) 85%, transparent), 0 0 48px color-mix(in oklab, var(--acc) 35%, transparent); }
 }
 @keyframes fireFrost {
-  0%,100%{ box-shadow: 0 0 12px rgba(255,120,30,.4), 0 0 28px rgba(255,80,0,.12); }
-  50%    { box-shadow: 0 0 22px rgba(255,80,0,.85), 0 0 48px rgba(255,120,30,.4); }
+  0%,100%{ box-shadow: 0 0 12px color-mix(in oklab, var(--danger) 40%, transparent), 0 0 28px color-mix(in oklab, var(--danger) 12%, transparent); }
+  50%    { box-shadow: 0 0 22px color-mix(in oklab, var(--danger) 85%, transparent), 0 0 48px color-mix(in oklab, var(--danger) 40%, transparent); }
 }
 `;
 
@@ -105,9 +105,9 @@ function expiryStatus(ds) {
   return diff < 0 ? 'expired' : diff < 30*86400000 ? 'expiring' : 'active';
 }
 const EXP_COLORS = {
-  active:   {bg:'#16a34a22',color:'#16a34a',label:'Действует'},
-  expiring: {bg:'#ca8a0422',color:'#ca8a04',label:'Истекает'},
-  expired:  {bg:'#dc262622',color:'#dc2626',label:'Просрочен'},
+  active:   {bg:'#16a34a22',color:'var(--ok)',label:'Действует'},
+  expiring: {bg:'#ca8a0422',color:'var(--value)',label:'Истекает'},
+  expired:  {bg:'#dc262622',color:'var(--danger)',label:'Просрочен'},
   unknown:  {bg:'#71717a22',color:'#71717a',label:''},
 };
 
@@ -116,10 +116,10 @@ const EXP_COLORS = {
 ═══════════════════════════════════════════════════════════════════ */
 const BADGE_SVGS = {
   'Бейдж "Берсерк"': `<svg viewBox="0 0 40 40" fill="none"><circle cx="20" cy="20" r="19" fill="#150808" stroke="#cc2222" stroke-width="1.5"/><line x1="20" y1="5" x2="20" y2="35" stroke="#6a3820" stroke-width="2.5" stroke-linecap="round"/><path d="M13 9 L19 7 L19 18 L13 20Z" fill="#cc2222"/><path d="M27 9 L21 7 L21 18 L27 20Z" fill="#aa1818"/><path d="M14 20 Q20 24 26 20 Q20 28 14 20Z" fill="#cc2222"/><text x="20" y="37" text-anchor="middle" font-size="4" fill="#cc4444" font-family="sans-serif" font-weight="700" letter-spacing=".3">БЕРСЕРК</text></svg>`,
-  'Бейдж "Скальд"': `<svg viewBox="0 0 40 40" fill="none"><circle cx="20" cy="20" r="19" fill="#141208" stroke="#F0C850" stroke-width="1.5"/><path d="M12 8 Q20 5 28 8 Q30 22 20 28 Q10 22 12 8Z" fill="#1e1a0a" stroke="#C8940A" stroke-width=".8"/><path d="M15 14 L25 14" stroke="#F0C850" stroke-width="1" stroke-linecap="round"/><path d="M14 18 L26 18" stroke="#F0C850" stroke-width="1" stroke-linecap="round"/><path d="M16 22 L24 22" stroke="#F0C850" stroke-width="1" stroke-linecap="round"/><circle cx="27" cy="11" r="3" fill="#1e1a0a" stroke="#F0C850" stroke-width=".8"/><line x1="27" y1="14" x2="27" y2="24" stroke="#F0C850" stroke-width="1"/><circle cx="27" cy="24" r="2.5" fill="#F0C850"/><text x="20" y="37" text-anchor="middle" font-size="4" fill="#C8A800" font-family="sans-serif" font-weight="700" letter-spacing=".3">СКАЛЬД</text></svg>`,
-  'Эффект "Молния"': `<svg viewBox="0 0 40 40" fill="none"><circle cx="20" cy="20" r="19" fill="#08081a" stroke="#F0C850" stroke-width="1.5"/><path d="M22 4 L16 20 L22 20 L18 36 L26 17 L20 17 Z" fill="#F0C850" stroke="#ff6a00" stroke-width=".5"/><circle cx="20" cy="20" r="15" fill="none" stroke="rgba(240,200,80,.15)" stroke-width=".5"/><text x="20" y="37" text-anchor="middle" font-size="4" fill="#C8A800" font-family="sans-serif" font-weight="700" letter-spacing=".3">МОЛНИЯ</text></svg>`,
-  'Бейдж "Страж"': `<svg viewBox="0 0 40 40" fill="none"><circle cx="20" cy="20" r="19" fill="#0a1220" stroke="#60a5fa" stroke-width="1.5"/><path d="M20 6 L32 12 V22 C32 30 20 35 20 35 C20 35 8 30 8 22 V12 Z" fill="#1e3a5f" stroke="#60a5fa" stroke-width="1.2"/><path d="M20 14 L26 17 V23 C26 27 20 30 20 30 C20 30 14 27 14 23 V17 Z" fill="#60a5fa" opacity=".85"/><text x="20" y="37" text-anchor="middle" font-size="4" fill="#93c5fd" font-family="sans-serif" font-weight="700">СТРАЖ</text></svg>`,
-  'Бейдж "Ярл"': `<svg viewBox="0 0 40 40" fill="none"><circle cx="20" cy="20" r="19" fill="#1a1408" stroke="#F0C850" stroke-width="1.5"/><path d="M10 18 L14 10 L20 14 L26 10 L30 18 L28 26 L12 26 Z" fill="#D4A843"/><circle cx="20" cy="18" r="3" fill="#1a1408"/><text x="20" y="37" text-anchor="middle" font-size="4" fill="#F0C850" font-family="sans-serif" font-weight="700">ЯРЛ</text></svg>`,
+  'Бейдж "Скальд"': `<svg viewBox="0 0 40 40" fill="none"><circle cx="20" cy="20" r="19" fill="#141208" stroke="var(--value)" stroke-width="1.5"/><path d="M12 8 Q20 5 28 8 Q30 22 20 28 Q10 22 12 8Z" fill="#1e1a0a" stroke="var(--value)" stroke-width=".8"/><path d="M15 14 L25 14" stroke="var(--value)" stroke-width="1" stroke-linecap="round"/><path d="M14 18 L26 18" stroke="var(--value)" stroke-width="1" stroke-linecap="round"/><path d="M16 22 L24 22" stroke="var(--value)" stroke-width="1" stroke-linecap="round"/><circle cx="27" cy="11" r="3" fill="#1e1a0a" stroke="var(--value)" stroke-width=".8"/><line x1="27" y1="14" x2="27" y2="24" stroke="var(--value)" stroke-width="1"/><circle cx="27" cy="24" r="2.5" fill="var(--value)"/><text x="20" y="37" text-anchor="middle" font-size="4" fill="#C8A800" font-family="sans-serif" font-weight="700" letter-spacing=".3">СКАЛЬД</text></svg>`,
+  'Эффект "Молния"': `<svg viewBox="0 0 40 40" fill="none"><circle cx="20" cy="20" r="19" fill="#08081a" stroke="var(--value)" stroke-width="1.5"/><path d="M22 4 L16 20 L22 20 L18 36 L26 17 L20 17 Z" fill="var(--value)" stroke="#ff6a00" stroke-width=".5"/><circle cx="20" cy="20" r="15" fill="none" stroke="color-mix(in oklab, var(--value) 15%, transparent)" stroke-width=".5"/><text x="20" y="37" text-anchor="middle" font-size="4" fill="#C8A800" font-family="sans-serif" font-weight="700" letter-spacing=".3">МОЛНИЯ</text></svg>`,
+  'Бейдж "Страж"': `<svg viewBox="0 0 40 40" fill="none"><circle cx="20" cy="20" r="19" fill="#0a1220" stroke="var(--acc)" stroke-width="1.5"/><path d="M20 6 L32 12 V22 C32 30 20 35 20 35 C20 35 8 30 8 22 V12 Z" fill="#1e3a5f" stroke="var(--acc)" stroke-width="1.2"/><path d="M20 14 L26 17 V23 C26 27 20 30 20 30 C20 30 14 27 14 23 V17 Z" fill="var(--acc)" opacity=".85"/><text x="20" y="37" text-anchor="middle" font-size="4" fill="var(--acc)" font-family="sans-serif" font-weight="700">СТРАЖ</text></svg>`,
+  'Бейдж "Ярл"': `<svg viewBox="0 0 40 40" fill="none"><circle cx="20" cy="20" r="19" fill="var(--bg-primary)" stroke="var(--value)" stroke-width="1.5"/><path d="M10 18 L14 10 L20 14 L26 10 L30 18 L28 26 L12 26 Z" fill="var(--value)"/><circle cx="20" cy="18" r="3" fill="var(--bg-primary)"/><text x="20" y="37" text-anchor="middle" font-size="4" fill="var(--value)" font-family="sans-serif" font-weight="700">ЯРЛ</text></svg>`,
   badge_berserk: null, // filled below via alias
   badge_skald: null,
   badge_guard: null,
@@ -143,7 +143,7 @@ function resolveBadgeSvg(activeBadge, assetKey) {
   // Generic fallback so any equipped badge still shows
   if (name) {
     const short = name.replace(/^Бейдж\s*[«"']?/i, '').replace(/[»"'].*$/, '').slice(0, 8).toUpperCase() || '★';
-    return `<svg viewBox="0 0 40 40" fill="none"><circle cx="20" cy="20" r="19" fill="#141828" stroke="#F0C850" stroke-width="1.5"/><text x="20" y="23" text-anchor="middle" font-size="7" fill="#F0C850" font-family="sans-serif" font-weight="800">${short}</text></svg>`;
+    return `<svg viewBox="0 0 40 40" fill="none"><circle cx="20" cy="20" r="19" fill="var(--field-card)" stroke="var(--value)" stroke-width="1.5"/><text x="20" y="23" text-anchor="middle" font-size="7" fill="var(--value)" font-family="sans-serif" font-weight="800">${short}</text></svg>`;
   }
   return null;
 }
@@ -152,7 +152,7 @@ function resolveFrameStyle(activeFrame, assetKey) {
   const s = `${activeFrame || ''} ${assetKey || ''}`.toLowerCase();
   if (s.includes('fire') || s.includes('огонь') || s.includes('тор')) return { kind: 'fire', color: '#ff8c30' };
   if (s.includes('ice') || s.includes('лёд') || s.includes('лед') || s.includes('мороз')) return { kind: 'ice', color: '#88ccff' };
-  if (activeFrame || assetKey) return { kind: 'gold', color: '#F0C850' };
+  if (activeFrame || assetKey) return { kind: 'gold', color: 'var(--value)' };
   return null;
 }
 
@@ -165,10 +165,10 @@ function resolveThemeStyle(activeTheme, assetKey) {
     return { accent: '#88ccff', bg: 'linear-gradient(180deg,#080e1a 0%,#0e1828 50%,#060c14 100%)', anim: 'iceFrost' };
   }
   if (s.includes('dark') || s.includes('тёмн') || s.includes('темн') || s.includes('berserk') || s.includes('берсерк')) {
-    return { accent: '#F0C850', bg: 'linear-gradient(180deg,#0a0a0a 0%,#100808 50%,#080808 100%)', anim: 'goldPulse' };
+    return { accent: 'var(--value)', bg: 'linear-gradient(180deg,var(--bg-primary) 0%,#100808 50%,#080808 100%)', anim: 'goldPulse' };
   }
   return {
-    accent: '#F0C850',
+    accent: 'var(--value)',
     bg: 'var(--field-hero-bg)',
     anim: 'goldPulse',
   };
@@ -189,7 +189,7 @@ function normalizeCosmeticName(s) {
 ═══════════════════════════════════════════════════════════════════ */
 const FRAME_RUNES = 'ᚠᚢᚦᚨᚱᚲᚷᚹᚺᚾᛁᛃᛈᛇᛉᛊ'.split('');
 
-function RuneOrbitRing({ size, color = '#F0C850' }) {
+function RuneOrbitRing({ size, color = 'var(--value)' }) {
   const R = size * 0.48;
   const C = size / 2;
   return (
@@ -260,8 +260,8 @@ function XpBar({ xpCurrent, xpNext, level }) {
       <div style={{ height: 6, borderRadius: 3, background: 'var(--field-hairline)', overflow: 'hidden' }}>
         <div ref={barRef} style={{
           height: '100%', borderRadius: 3, width: '0%',
-          background: 'linear-gradient(90deg, #F0C850, #ff8c00)',
-          boxShadow: '0 0 8px rgba(240,200,80,.5)',
+          background: 'linear-gradient(90deg, var(--value), #ff8c00)',
+          boxShadow: '0 0 8px color-mix(in oklab, var(--value) 50%, transparent)',
         }} />
       </div>
     </div>
@@ -275,7 +275,7 @@ function StatPill({ icon, value, label, delay = 0 }) {
   return (
     <div style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:2, animation:`statSlide .5s ease ${delay}s both` }}>
       <div style={{ display:'flex', alignItems:'baseline', gap:3 }}>
-        <span style={{ fontSize:14, color:'#F0C850', fontFamily:'serif' }}>{icon}</span>
+        <span style={{ fontSize:14, color:'var(--value)', fontFamily:'serif' }}>{icon}</span>
         <span style={{ fontSize:18, fontWeight:800, color:'var(--field-text)', letterSpacing:-.5 }}>{value}</span>
       </div>
       <span style={{ fontSize:10, color:'var(--field-text-3)', textTransform:'uppercase', letterSpacing:.8 }}>{label}</span>
@@ -356,7 +356,7 @@ function VikingHeroCard({ profile, runes, xp, level, totalShifts, cosmetics, tit
                 borderRadius: 14,
                 background: 'var(--field-overlay)',
                 border: `1.5px solid ${accent}`,
-                boxShadow: `0 0 16px ${accent}55, 0 4px 12px rgba(0,0,0,.45)`,
+                boxShadow: `0 0 16px ${accent}55, 0 4px 12px color-mix(in oklab, var(--bg-primary) 45%, transparent)`,
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
@@ -455,9 +455,9 @@ function SlotGrid({ slots, cosmetics, navigate, haptic }) {
             style={{
               display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4,
               padding: '10px 4px', borderRadius: 12,
-              background: val ? 'rgba(240,200,80,.07)' : 'var(--bg-surface-alt)',
+              background: val ? 'color-mix(in oklab, var(--value) 7%, transparent)' : 'var(--bg-surface-alt)',
               border: val
-                ? '1px solid rgba(240,200,80,.28)'
+                ? '1px solid color-mix(in oklab, var(--value) 28%, transparent)'
                 : '1.5px dashed var(--border-light)',
               cursor: 'pointer', WebkitTapHighlightColor: 'transparent',
             }}>
@@ -511,8 +511,8 @@ function EquipmentSlots({ cosmetics, navigate, haptic }) {
         onClick={() => { haptic.medium(); navigate('/field/inventory'); }}
         style={{
           width: 'calc(100% - 24px)', margin: '4px 12px 12px', padding: '11px 0', borderRadius: 12,
-          background: 'linear-gradient(135deg,rgba(240,200,80,.12),rgba(240,200,80,.04))',
-          border: '1px solid rgba(240,200,80,.25)',
+          background: 'linear-gradient(135deg,color-mix(in oklab, var(--value) 12%, transparent),color-mix(in oklab, var(--value) 4%, transparent))',
+          border: '1px solid color-mix(in oklab, var(--value) 25%, transparent)',
           color: 'var(--gold)', fontSize: 13, fontWeight: 600,
           display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, cursor: 'pointer',
           WebkitTapHighlightColor: 'transparent',
@@ -532,11 +532,11 @@ function Skeleton() {
   return (
     <div style={{ background: 'var(--field-hero-bg)', borderRadius: '0 0 28px 28px', padding: '32px 24px 28px' }}>
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12 }}>
-        <div style={{ width: 120, height: 170, borderRadius: 16, background: 'rgba(255,255,255,.06)', animation: 'statSlide 1s ease infinite alternate' }} />
-        <div style={{ width: 160, height: 16, borderRadius: 8, background: 'rgba(255,255,255,.06)' }} />
-        <div style={{ width: 100, height: 12, borderRadius: 6, background: 'rgba(255,255,255,.04)' }} />
+        <div style={{ width: 120, height: 170, borderRadius: 16, background: 'color-mix(in oklab, var(--text-primary) 6%, transparent)', animation: 'statSlide 1s ease infinite alternate' }} />
+        <div style={{ width: 160, height: 16, borderRadius: 8, background: 'color-mix(in oklab, var(--text-primary) 6%, transparent)' }} />
+        <div style={{ width: 100, height: 12, borderRadius: 6, background: 'color-mix(in oklab, var(--text-primary) 4%, transparent)' }} />
         <div style={{ display: 'flex', gap: 20, marginTop: 8 }}>
-          {[1,2,3].map(i=><div key={i} style={{ width: 50, height: 32, borderRadius: 8, background: 'rgba(255,255,255,.05)' }} />)}
+          {[1,2,3].map(i=><div key={i} style={{ width: 50, height: 32, borderRadius: 8, background: 'color-mix(in oklab, var(--text-primary) 5%, transparent)' }} />)}
         </div>
       </div>
     </div>
@@ -548,6 +548,7 @@ function Skeleton() {
 ═══════════════════════════════════════════════════════════════════ */
 export default function FieldProfile() {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const haptic = useHaptic();
   const employee = useFieldAuthStore((s) => s.employee);
   const [profile, setProfile] = useState(null);
@@ -558,6 +559,7 @@ export default function FieldProfile() {
   const [seasonalData, setSeasonalData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [personalOpen, setPersonalOpen] = useState(false);
+  const [highlightGroup, setHighlightGroup] = useState(null);
   const [editOpen, setEditOpen] = useState(false);
   const [editData, setEditData] = useState({});
   const [editErrors, setEditErrors] = useState({});
@@ -604,6 +606,51 @@ export default function FieldProfile() {
   useEffect(() => {
     loadProfile();
   }, [loadProfile]);
+
+  /* D-267: deep-link из модалки полноты анкеты.
+     `/field/profile?focus=ppe&edit=1` → раскрываем «Личные данные», сразу открываем
+     форму правки и прокручиваем к секции СИЗ с подсветкой, чтобы рабочий видел,
+     КУДА вводить размер, а не искал поля по всему профилю. */
+  const focus = searchParams.get('focus');
+  const wantEdit = searchParams.get('edit') === '1';
+  const deepLinkHandledRef = useRef(false);
+  // Намерение подсветки держим в состоянии, а НЕ в query: чистка URL не должна
+  // его гасить (иначе cleanup таймера отменял скролл к секции СИЗ).
+  const [pendingFocus, setPendingFocus] = useState(null);
+
+  // Шаг 1: прочитать намерение из URL и сразу почистить query.
+  useEffect(() => {
+    if (loading || !personal) return;
+    if (!focus && !wantEdit) return;
+    if (deepLinkHandledRef.current) return;
+    deepLinkHandledRef.current = true;
+
+    setPersonalOpen(true);
+    if (focus) setPendingFocus(focus);
+    if (wantEdit) startEdit();
+
+    const next = new URLSearchParams(searchParams);
+    next.delete('focus');
+    next.delete('edit');
+    setSearchParams(next, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading, personal, focus, wantEdit, searchParams]);
+
+  // Шаг 2: когда форма правки смонтирована — прокрутить к нужной секции и подсветить.
+  // Зависит только от намерения и факта открытия формы, не от URL.
+  useEffect(() => {
+    if (!pendingFocus || !editOpen) return undefined;
+    const t = setTimeout(() => {
+      const target = document.getElementById(`ppe-section-${pendingFocus}`);
+      if (target) {
+        target.scrollIntoView({ block: 'center', behavior: 'smooth' });
+        setHighlightGroup(pendingFocus);
+        setTimeout(() => setHighlightGroup(null), 2800);
+      }
+      setPendingFocus(null);
+    }, 300);
+    return () => clearTimeout(t);
+  }, [pendingFocus, editOpen]);
 
   useEffect(() => {
     const onVis = () => {
@@ -750,7 +797,7 @@ export default function FieldProfile() {
                         <span className="text-sm" style={{ color: 'var(--text-primary)' }}>{shortFio(m.fio)}</span>
                         {m.phone && (
                           <a href={`tel:${m.phone.replace(/[^\d+]/g, '')}`} className="px-3 py-1 rounded-lg text-xs font-medium"
-                            style={{ background: 'linear-gradient(135deg,var(--gold),#b8860b)', color: '#fff' }}>📞 Звонок</a>
+                            style={{ background: 'linear-gradient(135deg,var(--gold),var(--value))', color: 'var(--text-primary)' }}>📞 Звонок</a>
                         )}
                       </div>
                     ))}
@@ -763,7 +810,7 @@ export default function FieldProfile() {
                       <span className="text-sm" style={{ color: 'var(--text-primary)' }}>{shortFio(workData.pm.fio)}</span>
                       {workData.pm.phone && (
                         <a href={`tel:${workData.pm.phone.replace(/[^\d+]/g, '')}`} className="px-3 py-1 rounded-lg text-xs font-medium"
-                          style={{ background: 'linear-gradient(135deg,var(--gold),#b8860b)', color: '#fff' }}>📞 Звонок</a>
+                          style={{ background: 'linear-gradient(135deg,var(--gold),var(--value))', color: 'var(--text-primary)' }}>📞 Звонок</a>
                       )}
                     </div>
                   </div>
@@ -786,10 +833,10 @@ export default function FieldProfile() {
 
           {/* ═══ ПЛАНИРУЕМОЕ ПРИВЛЕЧЕНИЕ ═══════════════════════════════ */}
           {profile?.planned_engagement && (
-            <div className="rounded-xl p-4" style={{ backgroundColor: 'var(--bg-elevated)', border: '1px solid rgba(74,144,217,0.35)' }}>
+            <div className="rounded-xl p-4" style={{ backgroundColor: 'var(--bg-elevated)', border: '1px solid color-mix(in oklab, var(--acc) 35%, transparent)' }}>
               <div className="flex items-center gap-2 mb-3">
-                <ClipboardList size={15} style={{ color: '#4A90D9' }} />
-                <span className="text-xs font-semibold uppercase tracking-widest" style={{ color: '#4A90D9' }}>
+                <ClipboardList size={15} style={{ color: 'var(--acc)' }} />
+                <span className="text-xs font-semibold uppercase tracking-widest" style={{ color: 'var(--acc)' }}>
                   Планируемое привлечение
                 </span>
               </div>
@@ -876,7 +923,7 @@ export default function FieldProfile() {
                     <div className="h-full rounded-full transition-all"
                       style={{
                         width: `${achievementsData.total_count > 0 ? (achievementsData.earned_count / achievementsData.total_count * 100) : 0}%`,
-                        background: 'linear-gradient(90deg, var(--gold), #f59e0b)',
+                        background: 'linear-gradient(90deg, var(--gold), var(--value))',
                       }} />
                   </div>
                   <div className="flex justify-between mt-1">
@@ -903,7 +950,7 @@ export default function FieldProfile() {
                   return (
                     <div className="grid grid-cols-4 gap-2">
                       {display.map(a => {
-                        const tierColor = { cup: '#cd7f32', medal: '#c0c0c0', order: '#ffd700', legend: '#8b5cf6' }[a.tier] || '#6b7280';
+                        const tierColor = { cup: 'var(--value)', medal: 'var(--text-secondary)', order: 'var(--value)', legend: 'var(--acc)' }[a.tier] || 'var(--text-tertiary)';
                         return (
                           <button key={a.id}
                             onClick={() => { haptic.light(); navigate('/field/achievements'); }}
@@ -1057,6 +1104,7 @@ export default function FieldProfile() {
             editErrors={editErrors}
             saveError={saveError}
             saving={saving}
+            highlightGroup={highlightGroup}
             onClose={cancelEdit}
             onSave={saveEdit}
           />
@@ -1070,7 +1118,7 @@ export default function FieldProfile() {
 
           {/* ═══ LOGOUT ═══════════════════════════════════════════════ */}
           <button className="w-full flex items-center justify-center gap-2 rounded-xl p-4 font-medium text-sm"
-            style={{ backgroundColor: '#dc262615', color: '#dc2626', border: '1px solid #dc262630' }} onClick={handleLogout}>
+            style={{ backgroundColor: '#dc262615', color: 'var(--danger)', border: '1px solid #dc262630' }} onClick={handleLogout}>
             <LogOut size={18} /> Выйти из аккаунта
           </button>
 
@@ -1290,7 +1338,7 @@ function onFieldChange(f, raw, editData, setEditData) {
   setEditData({ ...editData, [f.key]: v });
 }
 
-function PersonalEditSheet({ open, editData, setEditData, editErrors, saveError, saving, onClose, onSave }) {
+function PersonalEditSheet({ open, editData, setEditData, editErrors, saveError, saving, highlightGroup, onClose, onSave }) {
   const inputStyle = {
     backgroundColor: 'var(--bg-primary)',
     border: '1px solid var(--border-norse)',
@@ -1327,17 +1375,38 @@ function PersonalEditSheet({ open, editData, setEditData, editErrors, saveError,
         {saveError && (
           <p className="text-sm rounded-lg px-3 py-2"
             style={{
-              color: 'var(--danger, #dc2626)',
-              background: 'color-mix(in srgb, var(--danger, #dc2626) 12%, transparent)',
-              border: '1px solid color-mix(in srgb, var(--danger, #dc2626) 30%, transparent)',
+              color: 'var(--danger, var(--danger))',
+              background: 'color-mix(in srgb, var(--danger, var(--danger)) 12%, transparent)',
+              border: '1px solid color-mix(in srgb, var(--danger, var(--danger)) 30%, transparent)',
             }}>
             {saveError}
           </p>
         )}
         {PERSONAL_GROUPS.map((group) => (
-          <div key={group.id} className="space-y-2">
+          <div
+            key={group.id}
+            id={`ppe-section-${group.id}`}
+            className="space-y-2 rounded-xl"
+            style={
+              highlightGroup === group.id
+                ? {
+                    padding: '10px 10px 12px',
+                    margin: '-10px -10px 0',
+                    background: 'color-mix(in srgb, var(--gold) 12%, transparent)',
+                    border: '1px solid color-mix(in srgb, var(--gold) 45%, transparent)',
+                    boxShadow: '0 0 0 3px color-mix(in srgb, var(--gold) 14%, transparent)',
+                    transition: 'background 0.3s ease, border-color 0.3s ease',
+                  }
+                : undefined
+            }
+          >
             <p className="text-xs font-semibold uppercase tracking-widest"
               style={{ color: 'var(--gold)' }}>{group.title}</p>
+            {highlightGroup === group.id && (
+              <p className="text-[11px] leading-snug" style={{ color: 'var(--text-secondary)' }}>
+                Заполни размеры — они нужны для выдачи СИЗ.
+              </p>
+            )}
             {group.fields.map((f) => {
               const err = editErrors?.[f.key];
               return (
@@ -1373,7 +1442,7 @@ function PersonalEditSheet({ open, editData, setEditData, editErrors, saveError,
                       className="w-full rounded-lg px-3 py-2.5 text-sm mt-0.5 outline-none"
                       style={{
                         ...inputStyle,
-                        borderColor: err ? 'var(--danger, #dc2626)' : 'var(--border-norse)',
+                        borderColor: err ? 'var(--danger, var(--danger))' : 'var(--border-norse)',
                       }}
                       value={editData[f.key] || ''}
                       onChange={(e) => setEditData({ ...editData, [f.key]: e.target.value })}
@@ -1387,7 +1456,7 @@ function PersonalEditSheet({ open, editData, setEditData, editErrors, saveError,
                       className="w-full rounded-lg px-3 py-2.5 text-sm mt-0.5 outline-none"
                       style={{
                         ...inputStyle,
-                        borderColor: err ? 'var(--danger, #dc2626)' : 'var(--border-norse)',
+                        borderColor: err ? 'var(--danger, var(--danger))' : 'var(--border-norse)',
                       }}
                       type={f.type === 'date' ? 'date' : f.type === 'number' ? 'number' : f.type === 'email' ? 'email' : 'text'}
                       inputMode={f.mask === 'phone' || f.mask === 'digits' || f.mask === 'snils' || f.mask?.startsWith('passport') ? 'numeric' : undefined}
@@ -1397,7 +1466,7 @@ function PersonalEditSheet({ open, editData, setEditData, editErrors, saveError,
                     />
                   )}
                   {err && (
-                    <p className="text-xs mt-0.5" style={{ color: 'var(--danger, #dc2626)' }}>{err}</p>
+                    <p className="text-xs mt-0.5" style={{ color: 'var(--danger, var(--danger))' }}>{err}</p>
                   )}
                 </div>
               );

@@ -4,7 +4,7 @@ import {
   Clock, Wallet, History, Users, Truck, UserCircle,
   MapPin, AlertCircle, RefreshCw, Play, Square,
   Phone, Briefcase, Camera, FileText, AlertTriangle, Package, DollarSign, Map,
-  Calendar, Shield, PackageCheck, ClipboardList, ScrollText,
+  Calendar, Shield, PackageCheck, ClipboardList, ScrollText, Sun, Moon,
 } from 'lucide-react';
 import { fieldApi } from '@/api/fieldClient';
 import { useFieldAuthStore } from '@/stores/fieldAuthStore';
@@ -13,6 +13,8 @@ import RankUpCeremony, { checkRankCeremony } from '@/components/field/RankUpCere
 import { getLevel, getRank, rankIndex } from '@/lib/fieldRanks';
 import { usePushSubscription } from '@/hooks/usePushSubscription';
 import { NornsPauseStrip, PAUSE_BADGE } from '@/components/field/NornsPauseBanner';
+import { useThemeStore } from '@/stores/themeStore';
+import { buildProfileHref, gapsContainPpe, FOCUS_PPE } from '@/lib/ppeField';
 
 const PUSH_DISMISSED_KEY = 'asgard_field_push_dismissed_v1';
 const IOS_HINT_DISMISSED_KEY = 'asgard_ios_hint_dismissed_v1';
@@ -20,10 +22,10 @@ const CHEMLAB_BANNER_KEY = 'asgard_chemlab_banner_v1';
 const CHEMLAB_FIXED_KEY = 'asgard_chemlab_fixed_v1';
 
 const GAMES_FOLDER = [
-  { emoji: '🎰', label: 'Рулетка', path: '/field/wheel', bg: 'linear-gradient(135deg,#3a0a10,#1a0508)', border: 'rgba(232,64,87,.35)', badge: PAUSE_BADGE },
-  { emoji: '🌊', label: 'Рунопровод', path: '/field/pipeline', bg: 'linear-gradient(135deg,#0a1a2a,#051018)', border: 'rgba(56,189,248,.4)' },
-  { emoji: '🧪', label: 'Химцех', path: '/field/chemlab', bg: 'linear-gradient(135deg,#1a1408,#0e0c08)', border: 'rgba(232,168,56,.45)', badge: 'NEW' },
-  { emoji: '＋', label: 'Скоро', path: null, bg: 'rgba(255,255,255,0.04)', border: 'rgba(255,255,255,0.1)', soon: true },
+  { emoji: '🎰', label: 'Рулетка', path: '/field/wheel', bg: 'linear-gradient(135deg,#3a0a10,#1a0508)', border: 'color-mix(in oklab, var(--danger) 35%, transparent)', badge: PAUSE_BADGE },
+  { emoji: '🌊', label: 'Рунопровод', path: '/field/pipeline', bg: 'linear-gradient(135deg,#0a1a2a,#051018)', border: 'color-mix(in oklab, var(--acc) 40%, transparent)' },
+  { emoji: '🧪', label: 'Химцех', path: '/field/chemlab', bg: 'linear-gradient(135deg,var(--bg-primary),#0e0c08)', border: 'color-mix(in oklab, var(--danger) 45%, transparent)', badge: 'NEW' },
+  { emoji: '＋', label: 'Скоро', path: null, bg: 'color-mix(in oklab, var(--text-primary) 4%, transparent)', border: 'color-mix(in oklab, var(--text-primary) 10%, transparent)', soon: true },
 ];
 
 // Detect iOS Safari (not standalone)
@@ -124,8 +126,8 @@ const STAGE_LABELS = {
 };
 
 const STAGE_COLORS = {
-  medical: '#9333EA', travel: '#3B82F6', waiting: '#F59E0B', warehouse: '#F97316',
-  day_off: '#9CA3AF', object: '#22C55E', ship: '#0EA5E9', helicopter: '#06B6D4', training: '#A855F7',
+  medical: 'var(--acc)', travel: 'var(--acc)', waiting: 'var(--value)', warehouse: 'var(--value)',
+  day_off: 'var(--text-secondary)', object: 'var(--ok)', ship: 'var(--acc)', helicopter: 'var(--acc)', training: 'var(--acc)',
 };
 const STAGE_ICONS = {
   medical: '🏥', travel: '✈️', waiting: '⏳', warehouse: '📦',
@@ -137,9 +139,9 @@ function MlspStayBanner({ stay }) {
   if (!stay?.is_open) return null;
   const hot = stay.is_overdue || (stay.days_left != null && stay.days_left <= 7);
   const warn = !hot && stay.days_left != null && stay.days_left <= 14;
-  const tone = hot ? 'var(--danger, #ef4444)' : warn ? 'var(--warning, #f59e0b)' : 'var(--success, #22c55e)';
-  const bg = hot ? 'rgba(239,68,68,0.12)' : warn ? 'rgba(245,158,11,0.12)' : 'rgba(34,197,94,0.10)';
-  const bd = hot ? 'rgba(239,68,68,0.35)' : warn ? 'rgba(245,158,11,0.35)' : 'rgba(34,197,94,0.3)';
+  const tone = hot ? 'var(--danger, var(--danger))' : warn ? 'var(--warning, var(--value))' : 'var(--success, var(--ok))';
+  const bg = hot ? 'color-mix(in oklab, var(--danger) 12%, transparent)' : warn ? 'color-mix(in oklab, var(--danger) 12%, transparent)' : 'color-mix(in oklab, var(--ok) 10%, transparent)';
+  const bd = hot ? 'color-mix(in oklab, var(--danger) 35%, transparent)' : warn ? 'color-mix(in oklab, var(--danger) 35%, transparent)' : 'color-mix(in oklab, var(--ok) 30%, transparent)';
   return (
     <div className="mt-3 rounded-lg px-3 py-2" style={{ backgroundColor: bg, border: `1px solid ${bd}` }}>
       <p className="text-xs font-semibold uppercase tracking-wide" style={{ color: tone }}>
@@ -161,20 +163,22 @@ function MlspStayBanner({ stay }) {
 }
 
 const GAMIFICATION_TILES = [
-  { emoji: '🎮', label: 'Игры', path: '__games_folder__', bg: 'linear-gradient(135deg,#1a1520,#0c0a12)', border: 'rgba(232,168,56,.35)', badge: 'NEW', folder: true },
-  { emoji: '🛍', label: 'Магазин', path: '/field/shop', bg: 'linear-gradient(135deg,#2a2008,#1a1505)', border: 'rgba(240,200,80,.25)' },
-  { emoji: '🎁', label: 'Инвентарь', path: '/field/inventory', bg: 'linear-gradient(135deg,#0a1a2a,#081020)', border: 'rgba(74,144,255,.25)' },
-  { emoji: '🏛️', label: 'Чертоги Мимира', path: '/field/academy', bg: 'linear-gradient(135deg,#1a0d2e,#0d0a1a)', border: 'rgba(123,97,255,.35)' },
-  { emoji: '⚔️', label: 'Квесты', path: '/field/quests', bg: 'linear-gradient(135deg,#1a0a2a,#100818)', border: 'rgba(165,110,255,.25)' },
-  { emoji: '🍂', label: 'Сезон', path: '/field/seasonal', bg: 'linear-gradient(135deg,#2a1208,#1a0c05)', border: 'rgba(234,88,12,.35)', badge: 'NEW' },
-  { emoji: '🏆', label: 'Рейтинг', path: '/field/leaderboard', bg: 'linear-gradient(135deg,#1a1400,#0e0c00)', border: 'rgba(212,168,67,.35)' },
-  { emoji: '🗺️', label: 'Подвиги', path: '/field/journey', bg: 'linear-gradient(135deg,#0a2020,#081818)', border: 'rgba(61,220,132,.25)' },
+  { emoji: '🎮', label: 'Игры', path: '__games_folder__', bg: 'linear-gradient(135deg,var(--bg-surface),#0c0a12)', border: 'color-mix(in oklab, var(--danger) 35%, transparent)', badge: 'NEW', folder: true },
+  { emoji: '🛍', label: 'Магазин', path: '/field/shop', bg: 'linear-gradient(135deg,var(--bg-surface),var(--bg-surface))', border: 'color-mix(in oklab, var(--value) 25%, transparent)' },
+  { emoji: '🎁', label: 'Инвентарь', path: '/field/inventory', bg: 'linear-gradient(135deg,#0a1a2a,#081020)', border: 'color-mix(in oklab, var(--acc) 25%, transparent)' },
+  { emoji: '🏛️', label: 'Чертоги Мимира', path: '/field/academy', bg: 'linear-gradient(135deg,var(--bg-surface),#0d0a1a)', border: 'color-mix(in oklab, var(--acc) 35%, transparent)' },
+  { emoji: '⚔️', label: 'Квесты', path: '/field/quests', bg: 'linear-gradient(135deg,#1a0a2a,#100818)', border: 'color-mix(in oklab, var(--acc) 25%, transparent)' },
+  { emoji: '🍂', label: 'Сезон', path: '/field/seasonal', bg: 'linear-gradient(135deg,#2a1208,#1a0c05)', border: 'color-mix(in oklab, var(--danger) 35%, transparent)', badge: 'NEW' },
+  { emoji: '🏆', label: 'Рейтинг', path: '/field/leaderboard', bg: 'linear-gradient(135deg,#1a1400,#0e0c00)', border: 'color-mix(in oklab, var(--value) 35%, transparent)' },
+  { emoji: '🗺️', label: 'Подвиги', path: '/field/journey', bg: 'linear-gradient(135deg,#0a2020,#081818)', border: 'color-mix(in oklab, var(--ok) 25%, transparent)' },
 ];
 
 export default function FieldHome() {
   const navigate = useNavigate();
   const haptic = useHaptic();
   const employee = useFieldAuthStore((s) => s.employee);
+  const theme = useThemeStore((s) => s.theme);
+  const toggleTheme = useThemeStore((s) => s.toggleTheme);
 
   const [data, setData] = useState(null);
   const [currentStage, setCurrentStage] = useState(null);
@@ -201,7 +205,6 @@ export default function FieldHome() {
   const [meCosmetics, setMeCosmetics] = useState({});
   const push = usePushSubscription();
   const timerRef = useRef(null);
-  const touchStartY = useRef(0);
   const [pulling, setPulling] = useState(false);
   const ceremonyShownRef = useRef(false);
 
@@ -441,16 +444,44 @@ export default function FieldHome() {
     }
   };
 
-  // Pull to refresh
-  const onTouchStart = (e) => { touchStartY.current = e.touches[0].clientY; };
-  const onTouchEnd = async (e) => {
-    if (pulling) return;
-    const diff = e.changedTouches[0].clientY - touchStartY.current;
-    if (diff > 80 && window.scrollY === 0) {
-      setPulling(true);
-      await Promise.all([fetchData(), fetchGamification()]);
-      setPulling(false);
+  // Pull to refresh — D-267: раньше условие было `window.scrollY === 0`, но скролл
+  // на этом экране идёт внутри контейнера FieldLayout (`flex-1 overflow-auto`),
+  // поэтому window.scrollY ВСЕГДА 0 → любой жест вниз >80px (в том числе при работе
+  // с полями и селектами) запускал двойной перезапрос с ретраями и «выкидывал» экран.
+  // Теперь: только когда прокрутка реально вверху, и только если жест начался НЕ на
+  // элементе управления (input/select/textarea/button).
+  const pullStartRef = useRef({ y: 0, armed: false });
+
+  const findScrollParent = (node) => {
+    let el = node?.parentElement;
+    while (el && el !== document.body) {
+      const oy = getComputedStyle(el).overflowY;
+      if ((oy === 'auto' || oy === 'scroll') && el.scrollHeight > el.clientHeight + 2) return el;
+      el = el.parentElement;
     }
+    return null;
+  };
+
+  const onTouchStart = (e) => {
+    const target = e.target;
+    const onControl = target?.closest?.('input,select,textarea,button,a,[role="button"]');
+    pullStartRef.current = {
+      y: e.touches[0].clientY,
+      armed: !onControl,
+    };
+  };
+  const onTouchEnd = async (e) => {
+    const { y: startY, armed } = pullStartRef.current;
+    pullStartRef.current = { y: 0, armed: false };
+    if (!armed || pulling) return;
+    const diff = e.changedTouches[0].clientY - startY;
+    if (diff <= 80) return;
+    const scroller = findScrollParent(e.target);
+    const atTop = scroller ? scroller.scrollTop <= 0 : (window.scrollY || 0) <= 0;
+    if (!atTop) return;
+    setPulling(true);
+    await Promise.all([fetchData(), fetchGamification()]);
+    setPulling(false);
   };
 
   // fio = "Фамилия Имя Отчество" → берём второе слово (Имя)
@@ -584,22 +615,37 @@ export default function FieldHome() {
         </div>
       )}
 
-      {/* Greeting + Viking quote */}
-      <div className="mb-5">
-        <h1 className="text-xl font-bold" style={{ color: 'var(--text-primary)' }}>{getGreeting()}, {firstName}, {vikingTitle}!</h1>
-        <p className="text-sm capitalize mt-0.5" style={{ color: 'var(--text-tertiary)' }}>{fmtDate()}</p>
-        <p className="text-xs italic mt-2" style={{ color: 'var(--text-tertiary)' }}>«{quote}»</p>
+      {/* Greeting + Viking quote + быстрый тумблер темы */}
+      <div className="mb-5" style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <h1 className="text-xl font-bold" style={{ color: 'var(--text-primary)' }}>{getGreeting()}, {firstName}, {vikingTitle}!</h1>
+          <p className="text-sm capitalize mt-0.5" style={{ color: 'var(--text-tertiary)' }}>{fmtDate()}</p>
+          <p className="text-xs italic mt-2" style={{ color: 'var(--text-tertiary)' }}>«{quote}»</p>
+        </div>
+        <button
+          type="button"
+          onClick={() => { haptic.light(); toggleTheme(); }}
+          aria-label={theme === 'light' ? 'Включить тёмную тему' : 'Включить светлую тему'}
+          className="haptic-press"
+          style={{
+            display: 'grid', placeItems: 'center', width: 40, height: 40, flexShrink: 0,
+            borderRadius: 999, cursor: 'pointer',
+            background: 'var(--bg-elevated)', border: '1px solid var(--border-norse)',
+            color: 'var(--text-secondary)',
+          }}
+        >
+          {theme === 'light' ? <Moon size={18} strokeWidth={2} /> : <Sun size={18} strokeWidth={2} />}
+        </button>
       </div>
-
       {/* Химцех — launch banner */}
       {showChemLabBanner && (
         <div style={{
           position: 'relative',
           display: 'flex', alignItems: 'center', gap: 14,
-          background: 'linear-gradient(135deg, rgba(232,168,56,0.28) 0%, rgba(245,158,11,0.1) 50%, rgba(20,24,32,0.5) 100%)',
-          border: '1.5px solid rgba(232,168,56,0.5)',
+          background: 'linear-gradient(135deg, color-mix(in oklab, var(--danger) 28%, transparent) 0%, color-mix(in oklab, var(--danger) 10%, transparent) 50%, rgba(20,24,32,0.5) 100%)',
+          border: '1.5px solid color-mix(in oklab, var(--danger) 50%, transparent)',
           borderRadius: 18, padding: '14px 16px', marginBottom: 20,
-          boxShadow: '0 8px 32px rgba(232,168,56,0.18), inset 0 1px 0 rgba(255,255,255,0.06)',
+          boxShadow: '0 8px 32px color-mix(in oklab, var(--danger) 18%, transparent), inset 0 1px 0 color-mix(in oklab, var(--text-primary) 6%, transparent)',
           animation: 'fadeInUp var(--motion-normal) var(--ease-spring) both',
         }}>
           <button
@@ -610,25 +656,25 @@ export default function FieldHome() {
             }}
             style={{
               position: 'absolute', top: 8, right: 10, background: 'none', border: 'none',
-              color: 'rgba(255,255,255,0.45)', fontSize: 20, cursor: 'pointer', lineHeight: 1, padding: 4,
+              color: 'color-mix(in oklab, var(--text-primary) 45%, transparent)', fontSize: 20, cursor: 'pointer', lineHeight: 1, padding: 4,
             }}
             aria-label="Закрыть"
           >×</button>
           <div style={{
             width: 52, height: 52, borderRadius: 16, flexShrink: 0,
-            background: 'linear-gradient(135deg, rgba(232,168,56,0.4), rgba(120,80,20,0.25))',
-            border: '1px solid rgba(232,168,56,0.55)',
+            background: 'linear-gradient(135deg, color-mix(in oklab, var(--danger) 40%, transparent), rgba(120,80,20,0.25))',
+            border: '1px solid color-mix(in oklab, var(--danger) 55%, transparent)',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
-            fontSize: 28, filter: 'drop-shadow(0 0 12px rgba(232,168,56,0.45))',
+            fontSize: 28, filter: 'drop-shadow(0 0 12px color-mix(in oklab, var(--danger) 45%, transparent))',
           }}>🧪</div>
           <div style={{ flex: 1, minWidth: 0, paddingRight: 20 }}>
-            <p style={{ fontSize: 10, fontWeight: 800, letterSpacing: '.14em', color: '#F0C850', marginBottom: 4 }}>
+            <p style={{ fontSize: 10, fontWeight: 800, letterSpacing: '.14em', color: 'var(--value)', marginBottom: 4 }}>
               НОВАЯ ИГРА · ХИМЦЕХ
             </p>
-            <p style={{ fontSize: 15, fontWeight: 800, color: '#fff', marginBottom: 4, lineHeight: 1.25 }}>
+            <p style={{ fontSize: 15, fontWeight: 800, color: 'var(--text-primary)', marginBottom: 4, lineHeight: 1.25 }}>
               Переливай реагенты по протоколу
             </p>
-            <p style={{ fontSize: 11, color: 'rgba(255,255,255,0.65)', lineHeight: 1.4 }}>
+            <p style={{ fontSize: 11, color: 'color-mix(in oklab, var(--text-primary) 65%, transparent)', lineHeight: 1.4 }}>
               Ошибка = взрыв на весь экран. Учись на реальных правилах смены
             </p>
           </div>
@@ -641,11 +687,11 @@ export default function FieldHome() {
               navigate('/field/chemlab');
             }}
             style={{
-              fontSize: 11, fontWeight: 900, color: '#0b0e1a',
-              background: 'linear-gradient(135deg, #F0C850, #e8a838)',
+              fontSize: 11, fontWeight: 900, color: 'var(--bg-primary)',
+              background: 'linear-gradient(135deg, var(--value), var(--value))',
               border: 'none', borderRadius: 12,
               padding: '12px 12px', whiteSpace: 'nowrap', flexShrink: 0, cursor: 'pointer',
-              boxShadow: '0 4px 18px rgba(240,200,80,0.4)',
+              boxShadow: '0 4px 18px color-mix(in oklab, var(--value) 40%, transparent)',
               letterSpacing: '0.02em',
             }}
           >
@@ -658,10 +704,10 @@ export default function FieldHome() {
       {showChemLabFixed && (
         <div style={{
           position: 'relative', display: 'flex', alignItems: 'center', gap: 14,
-          background: 'linear-gradient(135deg, rgba(45,134,89,0.28) 0%, rgba(45,134,89,0.08) 60%, rgba(20,24,32,0.4) 100%)',
-          border: '1.5px solid rgba(74,222,128,0.45)',
+          background: 'linear-gradient(135deg, color-mix(in oklab, var(--ok) 28%, transparent) 0%, color-mix(in oklab, var(--ok) 8%, transparent) 60%, rgba(20,24,32,0.4) 100%)',
+          border: '1.5px solid color-mix(in oklab, var(--ok) 45%, transparent)',
           borderRadius: 18, padding: '14px 16px', marginBottom: 20,
-          boxShadow: '0 8px 30px rgba(45,134,89,0.18), inset 0 1px 0 rgba(255,255,255,0.06)',
+          boxShadow: '0 8px 30px color-mix(in oklab, var(--ok) 18%, transparent), inset 0 1px 0 color-mix(in oklab, var(--text-primary) 6%, transparent)',
           animation: 'fadeInUp var(--motion-normal) var(--ease-spring) both',
         }}>
           <button
@@ -669,25 +715,25 @@ export default function FieldHome() {
             onClick={() => { localStorage.setItem(CHEMLAB_FIXED_KEY, '1'); setShowChemLabFixed(false); }}
             style={{
               position: 'absolute', top: 8, right: 10, background: 'none', border: 'none',
-              color: 'rgba(255,255,255,0.45)', fontSize: 20, cursor: 'pointer', lineHeight: 1, padding: 4,
+              color: 'color-mix(in oklab, var(--text-primary) 45%, transparent)', fontSize: 20, cursor: 'pointer', lineHeight: 1, padding: 4,
             }}
             aria-label="Свернуть"
           >×</button>
           <div style={{
             width: 48, height: 48, borderRadius: 14, flexShrink: 0,
-            background: 'linear-gradient(135deg, rgba(74,222,128,0.35), rgba(34,90,60,0.25))',
-            border: '1px solid rgba(74,222,128,0.5)',
+            background: 'linear-gradient(135deg, color-mix(in oklab, var(--ok) 35%, transparent), color-mix(in oklab, var(--ok) 25%, transparent))',
+            border: '1px solid color-mix(in oklab, var(--ok) 50%, transparent)',
             display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 26,
-            filter: 'drop-shadow(0 0 10px rgba(74,222,128,0.4))',
+            filter: 'drop-shadow(0 0 10px color-mix(in oklab, var(--ok) 40%, transparent))',
           }}>🧪</div>
           <div style={{ flex: 1, minWidth: 0, paddingRight: 20 }}>
-            <p style={{ fontSize: 10, fontWeight: 800, letterSpacing: '.14em', color: '#4ADE80', marginBottom: 4 }}>
+            <p style={{ fontSize: 10, fontWeight: 800, letterSpacing: '.14em', color: 'var(--ok)', marginBottom: 4 }}>
               ИГРА СНОВА РАБОТАЕТ
             </p>
-            <p style={{ fontSize: 15, fontWeight: 800, color: '#fff', marginBottom: 4, lineHeight: 1.25 }}>
+            <p style={{ fontSize: 15, fontWeight: 800, color: 'var(--text-primary)', marginBottom: 4, lineHeight: 1.25 }}>
               Химцех починен 🛠️
             </p>
-            <p style={{ fontSize: 11, color: 'rgba(255,255,255,0.65)', lineHeight: 1.4 }}>
+            <p style={{ fontSize: 11, color: 'color-mix(in oklab, var(--text-primary) 65%, transparent)', lineHeight: 1.4 }}>
               Открывал и вылетало — починили. Заходи и переливай реагенты
             </p>
           </div>
@@ -701,10 +747,10 @@ export default function FieldHome() {
             }}
             style={{
               fontSize: 11, fontWeight: 900, color: '#06210f',
-              background: 'linear-gradient(135deg, #4ADE80, #2D8659)',
+              background: 'linear-gradient(135deg, var(--ok), #2D8659)',
               border: 'none', borderRadius: 12, padding: '12px 12px',
               whiteSpace: 'nowrap', flexShrink: 0, cursor: 'pointer',
-              boxShadow: '0 4px 18px rgba(74,222,128,0.35)',
+              boxShadow: '0 4px 18px color-mix(in oklab, var(--ok) 35%, transparent)',
             }}
           >
             ОТКРЫТЬ
@@ -718,8 +764,8 @@ export default function FieldHome() {
           href="https://92.242.61.184/download"
           style={{
             display: 'flex', alignItems: 'center', gap: 14,
-            background: 'linear-gradient(135deg, rgba(200,168,78,0.18) 0%, rgba(200,168,78,0.08) 100%)',
-            border: '1px solid rgba(200,168,78,0.4)',
+            background: 'linear-gradient(135deg, color-mix(in oklab, var(--value) 18%, transparent) 0%, color-mix(in oklab, var(--value) 8%, transparent) 100%)',
+            border: '1px solid color-mix(in oklab, var(--value) 40%, transparent)',
             borderRadius: 16, padding: '14px 16px', marginBottom: 20,
             textDecoration: 'none',
             animation: 'fadeInUp var(--motion-normal) var(--ease-spring) both',
@@ -727,8 +773,8 @@ export default function FieldHome() {
         >
           <div style={{
             width: 46, height: 46, borderRadius: 12, flexShrink: 0,
-            background: 'linear-gradient(135deg, rgba(200,168,78,0.3), rgba(200,168,78,0.1))',
-            border: '1px solid rgba(200,168,78,0.5)',
+            background: 'linear-gradient(135deg, color-mix(in oklab, var(--value) 30%, transparent), color-mix(in oklab, var(--value) 10%, transparent))',
+            border: '1px solid color-mix(in oklab, var(--value) 50%, transparent)',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             fontSize: 24,
           }}>🛡️</div>
@@ -741,7 +787,7 @@ export default function FieldHome() {
             </p>
           </div>
           <div style={{
-            fontSize: 11, fontWeight: 700, color: '#0a0a0c',
+            fontSize: 11, fontWeight: 700, color: 'var(--bg-primary)',
             background: 'var(--gold)', borderRadius: 8,
             padding: '6px 12px', whiteSpace: 'nowrap', flexShrink: 0,
           }}>
@@ -755,17 +801,17 @@ export default function FieldHome() {
         <div style={{
           position: 'fixed', bottom: 80, left: 16, right: 16, zIndex: 500,
           background: 'var(--field-card)',
-          border: '1px solid rgba(200,168,78,0.4)',
+          border: '1px solid color-mix(in oklab, var(--value) 40%, transparent)',
           borderRadius: 18, padding: '16px',
-          boxShadow: '0 8px 32px rgba(0,0,0,0.5)',
+          boxShadow: '0 8px 32px color-mix(in oklab, var(--bg-primary) 50%, transparent)',
           animation: 'fadeInUp var(--motion-normal) var(--ease-spring) both',
         }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 }}>
-            <p style={{ fontSize: 14, fontWeight: 700, color: '#c8a84e' }}>📲 Добавь приложение на экран</p>
+            <p style={{ fontSize: 14, fontWeight: 700, color: 'var(--value)' }}>📲 Добавь приложение на экран</p>
             <button onClick={() => { setShowIOSHint(false); localStorage.setItem(IOS_HINT_DISMISSED_KEY, '1'); }}
-              style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.4)', fontSize: 18, cursor: 'pointer', padding: '0 4px' }}>×</button>
+              style={{ background: 'none', border: 'none', color: 'color-mix(in oklab, var(--text-primary) 40%, transparent)', fontSize: 18, cursor: 'pointer', padding: '0 4px' }}>×</button>
           </div>
-          <p style={{ fontSize: 12, color: 'rgba(255,255,255,0.6)', lineHeight: 1.5, marginBottom: 12 }}>
+          <p style={{ fontSize: 12, color: 'color-mix(in oklab, var(--text-primary) 60%, transparent)', lineHeight: 1.5, marginBottom: 12 }}>
             Работай как в приложении — без браузерных панелей.
           </p>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
@@ -775,13 +821,13 @@ export default function FieldHome() {
               { icon: '＋', label: '«На экран "Домой"»' },
             ].map((s, i) => (
               <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                {i > 0 && <span style={{ color: 'rgba(255,255,255,0.3)', fontSize: 12 }}>→</span>}
+                {i > 0 && <span style={{ color: 'color-mix(in oklab, var(--text-primary) 30%, transparent)', fontSize: 12 }}>→</span>}
                 <div style={{
-                  background: 'rgba(200,168,78,0.15)', border: '1px solid rgba(200,168,78,0.3)',
+                  background: 'color-mix(in oklab, var(--value) 15%, transparent)', border: '1px solid color-mix(in oklab, var(--value) 30%, transparent)',
                   borderRadius: 10, padding: '6px 10px', textAlign: 'center',
                 }}>
                   <div style={{ fontSize: 16, marginBottom: 2 }}>{s.icon}</div>
-                  {s.label && <div style={{ fontSize: 9, color: 'rgba(255,255,255,0.6)', lineHeight: 1.2 }}>{s.label}</div>}
+                  {s.label && <div style={{ fontSize: 9, color: 'color-mix(in oklab, var(--text-primary) 60%, transparent)', lineHeight: 1.2 }}>{s.label}</div>}
                 </div>
               </div>
             ))}
@@ -794,17 +840,17 @@ export default function FieldHome() {
         <div style={{
           position: 'fixed', bottom: 80, left: 16, right: 16, zIndex: 500,
           background: 'var(--field-card)',
-          border: '1px solid rgba(74,144,217,0.4)',
+          border: '1px solid color-mix(in oklab, var(--acc) 40%, transparent)',
           borderRadius: 18, padding: '16px',
-          boxShadow: '0 8px 32px rgba(0,0,0,0.5)',
+          boxShadow: '0 8px 32px color-mix(in oklab, var(--bg-primary) 50%, transparent)',
           animation: 'fadeInUp var(--motion-normal) var(--ease-spring) both',
         }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
-            <p style={{ fontSize: 14, fontWeight: 700, color: '#4A90D9' }}>🔔 Включи уведомления</p>
+            <p style={{ fontSize: 14, fontWeight: 700, color: 'var(--acc)' }}>🔔 Включи уведомления</p>
             <button onClick={() => { setShowPushPrompt(false); localStorage.setItem(PUSH_DISMISSED_KEY, '1'); }}
-              style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.4)', fontSize: 18, cursor: 'pointer', padding: '0 4px' }}>×</button>
+              style={{ background: 'none', border: 'none', color: 'color-mix(in oklab, var(--text-primary) 40%, transparent)', fontSize: 18, cursor: 'pointer', padding: '0 4px' }}>×</button>
           </div>
-          <p style={{ fontSize: 12, color: 'rgba(255,255,255,0.6)', lineHeight: 1.5, marginBottom: 14 }}>
+          <p style={{ fontSize: 12, color: 'color-mix(in oklab, var(--text-primary) 60%, transparent)', lineHeight: 1.5, marginBottom: 14 }}>
             Получай уведомления о выплатах, заданиях и изменениях в расписании прямо на экран.
           </p>
           <div style={{ display: 'flex', gap: 8 }}>
@@ -816,8 +862,8 @@ export default function FieldHome() {
               disabled={push.loading}
               style={{
                 flex: 1, padding: '11px', borderRadius: 12, border: 'none',
-                background: 'linear-gradient(135deg, #4A90D9, #3a7bc8)',
-                color: '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer',
+                background: 'linear-gradient(135deg, var(--acc), var(--acc-deep))',
+                color: 'var(--text-primary)', fontSize: 13, fontWeight: 700, cursor: 'pointer',
               }}
             >
               {push.loading ? '...' : '🔔 Включить'}
@@ -826,8 +872,8 @@ export default function FieldHome() {
               onClick={() => { setShowPushPrompt(false); localStorage.setItem(PUSH_DISMISSED_KEY, '1'); }}
               style={{
                 flex: 1, padding: '11px', borderRadius: 12,
-                background: 'transparent', border: '1px solid rgba(255,255,255,0.12)',
-                color: 'rgba(255,255,255,0.4)', fontSize: 13, fontWeight: 600, cursor: 'pointer',
+                background: 'transparent', border: '1px solid color-mix(in oklab, var(--text-primary) 12%, transparent)',
+                color: 'color-mix(in oklab, var(--text-primary) 40%, transparent)', fontSize: 13, fontWeight: 600, cursor: 'pointer',
               }}
             >
               Не сейчас
@@ -839,9 +885,9 @@ export default function FieldHome() {
       {/* Error toast */}
       {error && (
         <div className="flex items-center gap-2 rounded-xl px-4 py-3 mb-4"
-          style={{ backgroundColor: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.3)' }}>
-          <AlertCircle size={18} color="#ef4444" />
-          <span className="text-sm" style={{ color: '#ef4444' }}>{error}</span>
+          style={{ backgroundColor: 'color-mix(in oklab, var(--danger) 12%, transparent)', border: '1px solid color-mix(in oklab, var(--danger) 30%, transparent)' }}>
+          <AlertCircle size={18} color="var(--danger)" />
+          <span className="text-sm" style={{ color: 'var(--danger)' }}>{error}</span>
         </div>
       )}
 
@@ -908,10 +954,10 @@ export default function FieldHome() {
       {/* Планируемое привлечение */}
       {plannedEngagement && (
         <div className="rounded-xl p-4 mb-4"
-          style={{ backgroundColor: 'var(--bg-elevated)', border: '1px solid rgba(74,144,217,0.35)' }}>
+          style={{ backgroundColor: 'var(--bg-elevated)', border: '1px solid color-mix(in oklab, var(--acc) 35%, transparent)' }}>
           <div className="flex items-center gap-2 mb-2">
-            <ClipboardList size={16} style={{ color: '#4A90D9' }} />
-            <span className="text-xs font-medium uppercase tracking-wide" style={{ color: '#4A90D9' }}>
+            <ClipboardList size={16} style={{ color: 'var(--acc)' }} />
+            <span className="text-xs font-medium uppercase tracking-wide" style={{ color: 'var(--acc)' }}>
               Планируемое привлечение
             </span>
           </div>
@@ -941,16 +987,16 @@ export default function FieldHome() {
       {/* Постоянный баннер готовности — рабочий всегда видит свой статус и может сменить */}
       {readinessStatus && (() => {
         const RS = {
-          ready:     { ic: '⚔️', label: 'Готов к походу',      sub: 'Жду нового объекта',        col: '#22C55E' },
-          not_ready: { ic: '🛏', label: 'Пока отдыхаю',        sub: 'Не готов к выезду',          col: '#F59E0B' },
-          on_site:   { ic: '🚧', label: 'На объекте',          sub: 'В строю на работе',          col: '#3B82F6' },
-          archive:   { ic: '🗄', label: 'В архиве',            sub: '',                           col: '#6B7280' },
-          unknown:   { ic: '❔', label: 'Готов на объект?',    sub: 'Отметь свою готовность',     col: '#EF4444' },
+          ready:     { ic: '⚔️', label: 'Готов к походу',      sub: 'Жду нового объекта',        col: 'var(--ok)' },
+          not_ready: { ic: '🛏', label: 'Пока отдыхаю',        sub: 'Не готов к выезду',          col: 'var(--value)' },
+          on_site:   { ic: '🚧', label: 'На объекте',          sub: 'В строю на работе',          col: 'var(--acc)' },
+          archive:   { ic: '🗄', label: 'В архиве',            sub: '',                           col: 'var(--text-tertiary)' },
+          unknown:   { ic: '❔', label: 'Готов на объект?',    sub: 'Отметь свою готовность',     col: 'var(--danger)' },
         };
         const r = RS[readinessStatus] || RS.unknown;
         // Если чек-ин заблокирован непройденным уроком — не показываем «зелёное» противоречие
         const blockedByAcademy = academyAlert?.type === 'blocked' && !isActive;
-        const shown = blockedByAcademy ? { ...r, col: '#EF4444', sub: 'Пройди обязательный урок' } : r;
+        const shown = blockedByAcademy ? { ...r, col: 'var(--danger)', sub: 'Пройди обязательный урок' } : r;
         return (
           <button onClick={() => { haptic.light(); navigate('/field/readiness'); }}
             className="w-full rounded-xl p-4 mb-4 flex items-center gap-3 text-left"
@@ -971,8 +1017,8 @@ export default function FieldHome() {
       {currentStage && currentStage.stage_type && currentStage.stage_type !== 'object' && (
         <button onClick={() => navigate('/field/stages')}
           className="w-full rounded-xl p-4 mb-4 text-left"
-          style={{ backgroundColor: 'var(--bg-elevated)', border: `2px solid ${STAGE_COLORS[currentStage.stage_type] || '#3B82F6'}` }}>
-          <p className="font-semibold" style={{ color: STAGE_COLORS[currentStage.stage_type] || '#3B82F6' }}>
+          style={{ backgroundColor: 'var(--bg-elevated)', border: `2px solid ${STAGE_COLORS[currentStage.stage_type] || 'var(--acc)'}` }}>
+          <p className="font-semibold" style={{ color: STAGE_COLORS[currentStage.stage_type] || 'var(--acc)' }}>
             {STAGE_ICONS[currentStage.stage_type] || ''} {STAGE_LABELS[currentStage.stage_type] || currentStage.stage_type}
           </p>
           <p className="text-sm mt-1" style={{ color: 'var(--text-secondary)' }}>
@@ -985,7 +1031,7 @@ export default function FieldHome() {
       {/* "Left site" info card */}
       {project && !isActiveAssignment && (
         <div className="rounded-xl p-4 mb-4 text-center"
-          style={{ backgroundColor: 'rgba(255,165,0,0.08)', border: '1px solid rgba(255,165,0,0.2)' }}>
+          style={{ backgroundColor: 'color-mix(in oklab, var(--danger) 8%, transparent)', border: '1px solid color-mix(in oklab, var(--danger) 20%, transparent)' }}>
           <div className="text-2xl mb-1">🏠</div>
           <p className="font-semibold" style={{ color: 'var(--text-primary)' }}>Вы уехали с объекта</p>
           {(project.departure_date || project.date_to) && (
@@ -1011,11 +1057,11 @@ export default function FieldHome() {
           className="rounded-xl px-4 py-3 mb-3 flex items-start gap-3"
           style={{
             background: academyAlert.type === 'blocked'
-              ? 'rgba(239,68,68,0.10)'
-              : academyAlert.daysLeft <= 1 ? 'rgba(245,158,11,0.12)' : 'rgba(123,97,255,0.10)',
+              ? 'color-mix(in oklab, var(--danger) 10%, transparent)'
+              : academyAlert.daysLeft <= 1 ? 'color-mix(in oklab, var(--danger) 12%, transparent)' : 'color-mix(in oklab, var(--acc) 10%, transparent)',
             border: academyAlert.type === 'blocked'
-              ? '1px solid rgba(239,68,68,0.35)'
-              : academyAlert.daysLeft <= 1 ? '1px solid rgba(245,158,11,0.4)' : '1px solid rgba(123,97,255,0.3)',
+              ? '1px solid color-mix(in oklab, var(--danger) 35%, transparent)'
+              : academyAlert.daysLeft <= 1 ? '1px solid color-mix(in oklab, var(--danger) 40%, transparent)' : '1px solid color-mix(in oklab, var(--acc) 30%, transparent)',
             cursor: 'pointer',
           }}
         >
@@ -1024,7 +1070,7 @@ export default function FieldHome() {
           </span>
           <div style={{ flex: 1 }}>
             <div className="text-sm font-semibold" style={{
-              color: academyAlert.type === 'blocked' ? '#ef4444' : academyAlert.daysLeft <= 1 ? '#f59e0b' : '#a78bfa',
+              color: academyAlert.type === 'blocked' ? 'var(--danger)' : academyAlert.daysLeft <= 1 ? 'var(--value)' : 'var(--acc)',
             }}>
               {academyAlert.type === 'blocked'
                 ? 'Чекин заблокирован — пройди Испытание'
@@ -1058,7 +1104,7 @@ export default function FieldHome() {
               )}
               <button disabled={actionLoading || !shiftEndInfo.allowed} onClick={handleCheckout}
                 className="w-full py-3 rounded-xl font-semibold text-white text-sm disabled:opacity-50"
-                style={{ backgroundColor: shiftEndInfo.allowed ? '#ef4444' : 'var(--bg-elevated)', color: shiftEndInfo.allowed ? '#fff' : 'var(--text-tertiary)', border: shiftEndInfo.allowed ? 'none' : '1px solid var(--border-norse)' }}>
+                style={{ backgroundColor: shiftEndInfo.allowed ? 'var(--danger)' : 'var(--bg-elevated)', color: shiftEndInfo.allowed ? 'var(--text-primary)' : 'var(--text-tertiary)', border: shiftEndInfo.allowed ? 'none' : '1px solid var(--border-norse)' }}>
                 {actionLoading ? 'Завершаем...' : shiftEndInfo.allowed ? 'Завершить смену' : `Завершить в ${shiftEndInfo.endLabel}`}
               </button>
             </>
@@ -1066,7 +1112,7 @@ export default function FieldHome() {
             <>
               <button disabled={actionLoading || academyAlert?.type === 'blocked'} onClick={handleCheckin}
                 className="w-full py-3 rounded-xl font-semibold text-white text-sm disabled:opacity-50"
-                style={{ background: 'linear-gradient(135deg, var(--gold), #b8860b)' }}>
+                style={{ background: 'linear-gradient(135deg, var(--gold), var(--value))' }}>
                 {actionLoading ? 'Отмечаемся...' : academyAlert?.type === 'blocked' ? '🚫 Сначала пройди урок' : '⚔️ Начать смену'}
               </button>
             </>
@@ -1106,14 +1152,14 @@ export default function FieldHome() {
                 else navigate(path);
               }}
               className="flex items-center gap-3 p-4 rounded-2xl active:scale-95 transition-transform relative"
-              style={{ background: bg, border: `1.5px solid ${border}`, boxShadow: '0 4px 16px rgba(0,0,0,.2)' }}
+              style={{ background: bg, border: `1.5px solid ${border}`, boxShadow: '0 4px 16px color-mix(in oklab, var(--bg-primary) 20%, transparent)' }}
             >
               {badge && (
                 <span style={{
                   position: 'absolute', top: 8, right: 8, fontSize: 8, fontWeight: 800,
                   padding: '2px 6px', borderRadius: 6,
-                  background: badge === PAUSE_BADGE ? 'rgba(240,200,80,0.92)' : 'rgba(232,168,56,0.95)',
-                  color: '#0b0e1a',
+                  background: badge === PAUSE_BADGE ? 'color-mix(in oklab, var(--value) 92%, transparent)' : 'color-mix(in oklab, var(--danger) 95%, transparent)',
+                  color: 'var(--bg-primary)',
                   letterSpacing: '.06em',
                   maxWidth: '55%',
                   whiteSpace: 'nowrap',
@@ -1124,21 +1170,21 @@ export default function FieldHome() {
               {folder ? (
                 <div style={{
                   width: 40, height: 40, borderRadius: 10, flexShrink: 0,
-                  background: 'rgba(0,0,0,0.35)',
-                  border: '1px solid rgba(255,255,255,0.1)',
+                  background: 'color-mix(in oklab, var(--bg-primary) 35%, transparent)',
+                  border: '1px solid color-mix(in oklab, var(--text-primary) 10%, transparent)',
                   display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 2, padding: 4,
                 }}>
                   {['🎰', '🌊', '🧪', '·'].map((e, i) => (
                     <div key={i} style={{
                       borderRadius: 4, fontSize: 11, display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      background: 'rgba(255,255,255,0.06)',
+                      background: 'color-mix(in oklab, var(--text-primary) 6%, transparent)',
                     }}>{e}</div>
                   ))}
                 </div>
               ) : (
-                <span style={{ fontSize: 28, filter: 'drop-shadow(0 2px 6px rgba(0,0,0,.3))' }}>{emoji}</span>
+                <span style={{ fontSize: 28, filter: 'drop-shadow(0 2px 6px color-mix(in oklab, var(--bg-primary) 30%, transparent))' }}>{emoji}</span>
               )}
-              <span className="text-sm font-bold" style={{ color: '#fff' }}>{label}</span>
+              <span className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>{label}</span>
             </button>
           ))}
         </div>
@@ -1152,7 +1198,7 @@ export default function FieldHome() {
           onClick={() => setShowGamesFolder(false)}
           style={{
             position: 'fixed', inset: 0, zIndex: 80,
-            background: 'rgba(8,10,14,0.55)',
+            background: 'color-mix(in oklab, var(--bg-primary) 55%, transparent)',
             backdropFilter: 'blur(18px)',
             WebkitBackdropFilter: 'blur(18px)',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -1168,7 +1214,7 @@ export default function FieldHome() {
               padding: '22px 18px 18px',
               background: 'var(--field-card)',
               border: '1px solid var(--field-hairline)',
-              boxShadow: '0 24px 80px rgba(0,0,0,0.55)',
+              boxShadow: '0 24px 80px color-mix(in oklab, var(--bg-primary) 55%, transparent)',
             }}
           >
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16, padding: '0 4px' }}>
@@ -1205,15 +1251,15 @@ export default function FieldHome() {
                     background: g.bg, border: `1.5px solid ${g.border}`,
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
                     fontSize: 30,
-                    boxShadow: '0 8px 24px rgba(0,0,0,0.35)',
+                    boxShadow: '0 8px 24px color-mix(in oklab, var(--bg-primary) 35%, transparent)',
                   }}>
                     {g.emoji}
                     {g.badge && (
                       <span style={{
                         position: 'absolute', top: -4, right: -4, fontSize: 8, fontWeight: 800,
                         padding: '2px 5px', borderRadius: 6,
-                        background: g.badge === PAUSE_BADGE ? 'rgba(240,200,80,0.95)' : 'rgba(232,168,56,0.95)',
-                        color: '#0b0e1a',
+                        background: g.badge === PAUSE_BADGE ? 'color-mix(in oklab, var(--value) 95%, transparent)' : 'color-mix(in oklab, var(--danger) 95%, transparent)',
+                        color: 'var(--bg-primary)',
                       }}>{g.badge}</span>
                     )}
                   </div>
@@ -1228,13 +1274,13 @@ export default function FieldHome() {
       {/* Mimir tip */}
       {mimirTip && (
         <div className="mb-4 rounded-2xl p-4"
-          style={{ background: 'linear-gradient(135deg, rgba(74,144,255,.06), rgba(165,110,255,.04))',
-            border: '1px solid rgba(74,144,255,.15)', boxShadow: '0 4px 16px rgba(0,0,0,.15)' }}>
+          style={{ background: 'linear-gradient(135deg, color-mix(in oklab, var(--acc) 6%, transparent), color-mix(in oklab, var(--acc) 4%, transparent))',
+            border: '1px solid color-mix(in oklab, var(--acc) 15%, transparent)', boxShadow: '0 4px 16px color-mix(in oklab, var(--bg-primary) 15%, transparent)' }}>
           <div className="flex items-center gap-3">
-            <span style={{ fontSize: 28, filter: 'drop-shadow(0 2px 8px rgba(74,144,255,.3))' }}>{mimirTip.icon}</span>
+            <span style={{ fontSize: 28, filter: 'drop-shadow(0 2px 8px color-mix(in oklab, var(--acc) 30%, transparent))' }}>{mimirTip.icon}</span>
             <div className="flex-1">
-              <p className="text-xs font-bold uppercase tracking-wider mb-1" style={{ color: 'rgba(74,144,255,.7)', letterSpacing: '.1em' }}>Мимир говорит</p>
-              <p className="text-sm font-semibold" style={{ color: '#fff', lineHeight: 1.4 }}>{mimirTip.text}</p>
+              <p className="text-xs font-bold uppercase tracking-wider mb-1" style={{ color: 'color-mix(in oklab, var(--acc) 70%, transparent)', letterSpacing: '.1em' }}>Мимир говорит</p>
+              <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)', lineHeight: 1.4 }}>{mimirTip.text}</p>
             </div>
           </div>
         </div>
@@ -1244,19 +1290,19 @@ export default function FieldHome() {
       {myRank && (
         <button onClick={() => { haptic.medium(); navigate('/field/leaderboard'); }}
           className="w-full rounded-2xl p-4 mb-5 text-left active:scale-95 transition-transform"
-          style={{ background: 'var(--field-card)', border: '1.5px solid rgba(212,168,67,.4)', boxShadow: '0 4px 20px rgba(212,168,67,.08)' }}>
+          style={{ background: 'var(--field-card)', border: '1.5px solid color-mix(in oklab, var(--value) 40%, transparent)', boxShadow: '0 4px 20px color-mix(in oklab, var(--value) 8%, transparent)' }}>
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
               <span style={{ fontSize: 32 }}>🏆</span>
               <div>
-                <p className="text-xs font-semibold uppercase tracking-wide" style={{ color: 'rgba(212,168,67,.7)' }}>Мой рейтинг</p>
-                <p className="text-lg font-bold" style={{ color: '#D4A843' }}>#{myRank.rank} из {myRank.total}</p>
-                <p className="text-xs" style={{ color: 'rgba(255,255,255,.5)' }}>
+                <p className="text-xs font-semibold uppercase tracking-wide" style={{ color: 'color-mix(in oklab, var(--value) 70%, transparent)' }}>Мой рейтинг</p>
+                <p className="text-lg font-bold" style={{ color: 'var(--value)' }}>#{myRank.rank} из {myRank.total}</p>
+                <p className="text-xs" style={{ color: 'color-mix(in oklab, var(--text-primary) 50%, transparent)' }}>
                   {myRank.rank_title?.icon} {myRank.rank_title?.title} · {myRank.earned_runes} ᚱ заработано
                 </p>
               </div>
             </div>
-            <span style={{ color: 'rgba(212,168,67,.6)', fontSize: 18 }}>›</span>
+            <span style={{ color: 'color-mix(in oklab, var(--value) 60%, transparent)', fontSize: 18 }}>›</span>
           </div>
         </button>
       )}
@@ -1280,7 +1326,7 @@ export default function FieldHome() {
             role="presentation"
             style={{
               position: 'fixed', inset: 0, zIndex: 10050,
-              background: 'rgba(0,0,0,0.5)',
+              background: 'color-mix(in oklab, var(--bg-primary) 50%, transparent)',
             }}
             onClick={() => setShowReadinessPrompt(false)}
           />
@@ -1293,7 +1339,7 @@ export default function FieldHome() {
               borderTopLeftRadius: 24, borderTopRightRadius: 24,
               padding: '24px 20px 32px',
               paddingBottom: 'max(32px, env(safe-area-inset-bottom))',
-              boxShadow: '0 -8px 32px rgba(0,0,0,0.3)',
+              boxShadow: '0 -8px 32px color-mix(in oklab, var(--bg-primary) 30%, transparent)',
               animation: 'fadeInUp 300ms var(--ease-spring) both',
             }}
           >
@@ -1312,7 +1358,7 @@ export default function FieldHome() {
                 type="button"
                 onClick={() => { haptic.medium(); setShowReadinessPrompt(false); navigate('/field/readiness'); }}
                 className="flex-1 py-3.5 rounded-xl font-semibold text-sm active:scale-95 transition-transform"
-                style={{ background: 'linear-gradient(135deg, var(--green), #166534)', color: '#fff' }}
+                style={{ background: 'linear-gradient(135deg, var(--green), var(--ok))', color: 'var(--text-primary)' }}
               >
                 ⚔️ Готов
               </button>
@@ -1343,7 +1389,7 @@ export default function FieldHome() {
             role="presentation"
             style={{
               position: 'fixed', inset: 0, zIndex: 10050,
-              background: 'rgba(0,0,0,0.5)',
+              background: 'color-mix(in oklab, var(--bg-primary) 50%, transparent)',
             }}
             onClick={() => setShowProfileConfirm(false)}
           />
@@ -1356,7 +1402,7 @@ export default function FieldHome() {
               borderTopLeftRadius: 24, borderTopRightRadius: 24,
               padding: '24px 20px 32px',
               paddingBottom: 'max(32px, env(safe-area-inset-bottom))',
-              boxShadow: '0 -8px 32px rgba(0,0,0,0.3)',
+              boxShadow: '0 -8px 32px color-mix(in oklab, var(--bg-primary) 30%, transparent)',
               maxHeight: '85vh',
               overflowY: 'auto',
               animation: 'fadeInUp 300ms var(--ease-spring) both',
@@ -1378,10 +1424,10 @@ export default function FieldHome() {
             {profileCompleteness.criticalGaps?.length > 0 && (
               <div className="mb-3 rounded-xl p-3"
                 style={{
-                  background: 'color-mix(in srgb, var(--danger, #dc2626) 10%, transparent)',
-                  border: '1px solid color-mix(in srgb, var(--danger, #dc2626) 28%, transparent)',
+                  background: 'color-mix(in srgb, var(--danger, var(--danger)) 10%, transparent)',
+                  border: '1px solid color-mix(in srgb, var(--danger, var(--danger)) 28%, transparent)',
                 }}>
-                <p className="text-xs font-semibold mb-1" style={{ color: 'var(--danger, #dc2626)' }}>
+                <p className="text-xs font-semibold mb-1" style={{ color: 'var(--danger, var(--danger))' }}>
                   Обязательно заполнить
                 </p>
                 <ul className="text-sm space-y-0.5" style={{ color: 'var(--text-primary)' }}>
@@ -1395,10 +1441,10 @@ export default function FieldHome() {
             {profileCompleteness.softGaps?.length > 0 && (
               <div className="mb-4 rounded-xl p-3"
                 style={{
-                  background: 'color-mix(in srgb, var(--warn-t, #ca8a04) 10%, transparent)',
-                  border: '1px solid color-mix(in srgb, var(--warn-t, #ca8a04) 28%, transparent)',
+                  background: 'color-mix(in srgb, var(--warn-t, var(--value)) 10%, transparent)',
+                  border: '1px solid color-mix(in srgb, var(--warn-t, var(--value)) 28%, transparent)',
                 }}>
-                <p className="text-xs font-semibold mb-1" style={{ color: 'var(--warn-t, #ca8a04)' }}>
+                <p className="text-xs font-semibold mb-1" style={{ color: 'var(--warn-t, var(--value))' }}>
                   Желательно
                 </p>
                 <ul className="text-sm space-y-0.5" style={{ color: 'var(--text-secondary)' }}>
@@ -1428,7 +1474,7 @@ export default function FieldHome() {
                     }
                   }}
                   className="flex-1 py-3.5 rounded-xl font-semibold text-sm active:scale-95 transition-transform"
-                  style={{ background: 'linear-gradient(135deg, var(--green), #166534)', color: '#fff' }}
+                  style={{ background: 'linear-gradient(135deg, var(--green), var(--ok))', color: 'var(--text-primary)' }}
                 >
                   {profileConfirming ? '…' : 'Всё верно'}
                 </button>
@@ -1437,7 +1483,7 @@ export default function FieldHome() {
                   onClick={() => {
                     haptic.light();
                     setShowProfileConfirm(false);
-                    navigate('/field/profile');
+                    navigate(buildProfileHref(profileCompleteness.criticalGaps));
                   }}
                   className="flex-1 py-3.5 rounded-xl font-semibold text-sm active:scale-95 transition-transform"
                   style={{
@@ -1450,18 +1496,39 @@ export default function FieldHome() {
                 </button>
               </div>
             ) : (
-              <button
-                type="button"
-                onClick={() => {
-                  haptic.medium();
-                  setShowProfileConfirm(false);
-                  navigate('/field/profile');
-                }}
-                className="w-full py-3.5 rounded-xl font-semibold text-sm active:scale-95 transition-transform"
-                style={{ backgroundColor: 'var(--gold)', color: 'var(--bg-primary)' }}
-              >
-                Открыть профиль
-              </button>
+              <>
+                {/* D-267: отдельная кнопка «Внести размеры» — ведёт ПРЯМО к полям СИЗ
+                    с открытой формой и подсветкой, чтобы рабочий не искал их в профиле. */}
+                {gapsContainPpe(profileCompleteness.criticalGaps) && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      haptic.medium();
+                      setShowProfileConfirm(false);
+                      navigate(`/field/profile?focus=${FOCUS_PPE}&edit=1`);
+                    }}
+                    className="w-full mb-2 py-3.5 rounded-xl font-semibold text-sm active:scale-95 transition-transform"
+                    style={{ backgroundColor: 'var(--gold)', color: 'var(--bg-primary)' }}
+                  >
+                    👕 Внести размеры СИЗ
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => {
+                    haptic.medium();
+                    setShowProfileConfirm(false);
+                    navigate(buildProfileHref(profileCompleteness.criticalGaps));
+                  }}
+                  className="w-full py-3.5 rounded-xl font-semibold text-sm active:scale-95 transition-transform"
+                  style={{
+                    backgroundColor: 'var(--gold)',
+                    color: 'var(--bg-primary)',
+                  }}
+                >
+                  Заполнить анкету
+                </button>
+              </>
             )}
           </div>
         </>

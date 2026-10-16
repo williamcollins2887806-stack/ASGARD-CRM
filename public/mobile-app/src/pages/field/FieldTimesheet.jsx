@@ -167,7 +167,7 @@ function DaySheet({ day, onClose }) {
               <a
                 href={tel}
                 className="mt-3 flex items-center justify-center gap-2 w-full py-3 rounded-xl text-sm font-semibold"
-                style={{ background: 'linear-gradient(135deg, var(--gold), #b8860b)', color: '#fff' }}
+                style={{ background: 'linear-gradient(135deg, var(--gold), var(--value))', color: 'var(--text-primary)' }}
               >
                 <Phone size={16} />
                 Позвонить{contact?.phone ? ` · ${contact.phone}` : ''}
@@ -315,7 +315,7 @@ export default function FieldTimesheet() {
               type="button"
               onClick={() => load(year, month)}
               className="mt-3 px-4 py-2 rounded-lg text-sm font-medium"
-              style={{ background: 'linear-gradient(135deg,var(--gold),#b8860b)', color: '#fff' }}
+              style={{ background: 'linear-gradient(135deg,var(--gold),var(--value))', color: 'var(--text-primary)' }}
             >
               Повторить
             </button>
@@ -445,7 +445,7 @@ export default function FieldTimesheet() {
               </div>
 
               <div style={{ borderTop: '1px solid var(--border-norse)', paddingTop: 12 }}>
-                <p className="text-[11px] font-bold mb-1.5" style={{ color: '#f59e0b' }}>СУТОЧНЫЕ</p>
+                <p className="text-[11px] font-bold mb-1.5" style={{ color: 'var(--value)' }}>СУТОЧНЫЕ</p>
                 <div className="flex justify-between text-sm py-1">
                   <span style={{ color: 'var(--text-secondary)' }}>Начислено</span>
                   <span className="font-semibold tabular-nums" style={{ color: 'var(--text-primary)' }}>

@@ -37,9 +37,13 @@ export default function Home() {
   }, [showDuty, refreshKey]);
 
   const layoutIds = getLayout(role);
+  // ВАЖ: WIDGET_REGISTRY[id] может не существовать (id есть в layout роли, но
+  // виджет не зарегистрирован) — spread undefined падал с
+  // «Cannot read properties of undefined (reading 'map')». Фильтруем ДО spread.
   const widgets = layoutIds
-    .map(id => ({ id, ...WIDGET_REGISTRY[id] }))
-    .filter(w => w.component && roleMatch(role, w.roles));
+    .filter((id) => WIDGET_REGISTRY[id])
+    .map((id) => ({ id, ...WIDGET_REGISTRY[id] }))
+    .filter((w) => w.component && roleMatch(role, w.roles));
 
   const handleRefresh = useCallback(async () => {
     setRefreshKey(k => k + 1);

@@ -231,7 +231,7 @@ export default function ChemLabStage({
           const t = 1 - u;
           const px = t * t * x1 + 2 * t * u * mx + u * u * x2;
           const py = t * t * y1 + 2 * t * u * my + u * u * y2;
-          particles.current.spawnStreamMist?.(px, py, pourVisual.color || '#888');
+          particles.current.spawnStreamMist?.(px, py, pourVisual.color || 'var(--text-secondary)');
         }
       }
 

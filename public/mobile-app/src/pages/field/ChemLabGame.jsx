@@ -248,7 +248,7 @@ export default function ChemLabGame() {
       const b = toEl.getBoundingClientRect();
       tiltDir = (b.left + b.width / 2) >= (a.left + a.width / 2) ? 'right' : 'left';
     }
-    const color = res.color || '#888';
+    const color = res.color || 'var(--text-secondary)';
     const colorCode = topOf(cans[from]);
     const before = cloneCans(cans);
 
@@ -686,7 +686,7 @@ export default function ChemLabGame() {
           <div className="cl-card cl-card--passport" onClick={(e) => e.stopPropagation()}>
             <p className="cl-brief-title">ПАСПОРТ ВЕЩЕСТВА</p>
             <h2>{passport.reagent?.name || 'Паспорт'}</h2>
-            <p className="cl-pass-short" style={{ color: passport.reagent?.color || '#aaa' }}>
+            <p className="cl-pass-short" style={{ color: passport.reagent?.color || 'var(--text-secondary)' }}>
               {passport.reagent?.short}
               {passport.reagent?.hazard ? ' · опасно' : ''}
             </p>

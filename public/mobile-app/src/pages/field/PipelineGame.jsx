@@ -255,7 +255,7 @@ export default function PipelineGame() {
       top: 35 + Math.random() * 30,
       dx: `${(Math.random() - 0.5) * 160}px`,
       dy: `${-50 - Math.random() * 100}px`,
-      color: i % 3 === 0 ? '#F0C850' : i % 3 === 1 ? '#38bdf8' : '#a78bfa',
+      color: i % 3 === 0 ? 'var(--value)' : i % 3 === 1 ? 'var(--acc)' : 'var(--acc)',
     }));
     setParticles(items);
     setTimeout(() => setParticles([]), 800);
@@ -679,14 +679,14 @@ export default function PipelineGame() {
         <div className="pp-scroll">
           <header className="pp-top">
             <button type="button" className="pp-back" onClick={() => navigate(-1)} aria-label="Назад">
-              <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="rgba(255,255,255,.75)" strokeWidth="2.2"><path d="M15 18l-6-6 6-6" /></svg>
+              <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="color-mix(in oklab, var(--text-primary) 75%, transparent)" strokeWidth="2.2"><path d="M15 18l-6-6 6-6" /></svg>
             </button>
             <div style={{ flex: 1, textAlign: 'center' }}>
               <div className="pp-title">РУНОПРОВОД</div>
               <div className="pp-sub">ГИДРОМЕХАНИК АСГАРДА</div>
             </div>
             <button type="button" className="pp-restart" onClick={restartLevel} disabled={busy || flowing}>↻ Заново</button>
-            <div className="pp-wallet"><span style={{ fontSize: 11, fontWeight: 900, color: '#5a3e00' }}>ᚱ</span><span className="pp-bal">{wallet?.runes ?? '—'}</span></div>
+            <div className="pp-wallet"><span style={{ fontSize: 11, fontWeight: 900, color: 'var(--value)' }}>ᚱ</span><span className="pp-bal">{wallet?.runes ?? '—'}</span></div>
           </header>
 
           <div className="pp-hud">
@@ -855,8 +855,8 @@ export default function PipelineGame() {
               {world?.name} · Уровень {win.level}
             </div>
             <div style={{ display: 'flex', justifyContent: 'center', gap: 10, flexWrap: 'wrap' }}>
-              <div className="pp-reward" style={{ background: 'rgba(165,110,255,.16)', color: '#C4B5FD' }}>+{xpShown} XP</div>
-              <div className="pp-reward" style={{ background: 'rgba(240,200,80,.14)', color: 'var(--gold)' }}>+{runesShown} ᚱ</div>
+              <div className="pp-reward" style={{ background: 'color-mix(in oklab, var(--acc) 16%, transparent)', color: 'var(--acc)' }}>+{xpShown} XP</div>
+              <div className="pp-reward" style={{ background: 'color-mix(in oklab, var(--value) 14%, transparent)', color: 'var(--gold)' }}>+{runesShown} ᚱ</div>
             </div>
             {(win.bonus_xp > 0 || win.bonus_runes > 0) && (
               <div className="pp-bonus">

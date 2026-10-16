@@ -5,11 +5,12 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { fieldApi } from '@/api/fieldClient';
+import LessonInteractive from '@/components/field/LessonInteractive';
 
 const C = {
-  bg: 'var(--field-bg)', card: 'var(--field-card)', gold: '#c8a84b',
-  rune: '#7b61ff', green: '#22c55e', red: '#ef4444',
-  amber: '#f59e0b', text: 'var(--field-text)', muted: '#8E8E93',
+  bg: 'var(--field-bg)', card: 'var(--field-card)', gold: 'var(--value)',
+  rune: 'var(--acc)', green: 'var(--ok)', red: 'var(--danger)',
+  amber: 'var(--value)', text: 'var(--field-text)', muted: 'var(--text-secondary)',
 };
 
 /** Совпадает с MIN_READ_SECONDS в src/routes/field-academy.js */
@@ -24,7 +25,7 @@ function readStartKey(id) {
 function CoverBlock({ block }) {
   return (
     <div style={{
-      background: `linear-gradient(135deg, ${block.color || '#1a1a2e'} 0%, #0d0d12 100%)`,
+      background: `linear-gradient(135deg, ${block.color || 'var(--bg-surface)'} 0%, var(--bg-primary) 100%)`,
       padding: '40px 24px 32px', textAlign: 'center', marginBottom: 0,
     }}>
       <div style={{ fontSize: 64, marginBottom: 16, lineHeight: 1 }}>{block.icon}</div>
@@ -58,7 +59,7 @@ function IconGridBlock({ block }) {
         {(block.items || []).map((item, i) => (
           <div key={i} style={{
             background: C.card, borderRadius: 12, padding: '12px 10px',
-            border: '1px solid #ffffff11',
+            border: '1px solid color-mix(in oklab, var(--text-primary) 7%, transparent)',
           }}>
             <div style={{ fontSize: 28, marginBottom: 8 }}>{item.icon}</div>
             <div style={{ fontSize: 13, fontWeight: 700, color: C.text, marginBottom: 4 }}>{item.label}</div>
@@ -140,7 +141,43 @@ function FactCard({ block }) {
   );
 }
 
-function renderBlock(block, idx) {
+/**
+ * IllustrationBlock — картинка Руны (сцена с бригадой или схема).
+ * {type:'illustration', url, alt, caption, aspect, kind:'scene'|'diagram', badge}
+ */
+function IllustrationBlock({ block }) {
+  return (
+    <figure style={{
+      margin: '18px 0', borderRadius: 14, overflow: 'hidden',
+      border: '1px solid color-mix(in oklab, var(--text-primary) 10%, transparent)', background: '#f4f1ea', position: 'relative',
+    }}>
+      {block.badge && (
+        <span style={{
+          position: 'absolute', top: 10, left: 10, zIndex: 2,
+          background: '#1a1a2ee6', border: '1px solid #c8a84b77',
+          color: C.gold, fontSize: 10, fontWeight: 700,
+          padding: '4px 10px', borderRadius: 20, letterSpacing: 0.5,
+        }}>{block.badge}</span>
+      )}
+      <img
+        src={block.url}
+        alt={block.alt || ''}
+        loading="lazy"
+        style={{ width: '100%', display: 'block', aspectRatio: block.aspect || undefined }}
+      />
+      {block.caption && (
+        <figcaption style={{
+          background: '#141420', padding: '10px 12px', fontSize: 12,
+          color: '#e2e2ec', lineHeight: 1.5, borderTop: '1px solid color-mix(in oklab, var(--text-primary) 8%, transparent)',
+        }}>
+          {block.caption}
+        </figcaption>
+      )}
+    </figure>
+  );
+}
+
+function renderBlock(block, idx, lessonId) {
   switch (block.type) {
     case 'cover':     return <CoverBlock key={idx} block={block} />;
     case 'intro':     return <IntroBlock key={idx} block={block} />;
@@ -149,6 +186,8 @@ function renderBlock(block, idx) {
     case 'steps':     return <StepsBlock key={idx} block={block} />;
     case 'text_block':return <TextBlock key={idx} block={block} />;
     case 'fact_card': return <FactCard key={idx} block={block} />;
+    case 'illustration': return <IllustrationBlock key={idx} block={block} />;
+    case 'interactive':  return <LessonInteractive key={idx} block={block} lessonId={lessonId} index={idx} />;
     default:          return null;
   }
 }
@@ -159,7 +198,7 @@ export default function FieldLesson() {
   const navigate = useNavigate();
   const { lessonId } = useParams();
   const [lesson, setLesson] = useState(null);
-  const [progress, setProgress] = useState(null);
+  const [, setProgress] = useState(null);
   const [loading, setLoading] = useState(true);
   const [readCompleted, setReadCompleted] = useState(false);
   const [passed, setPassed] = useState(false);
@@ -286,7 +325,7 @@ export default function FieldLesson() {
       {/* Content blocks */}
       {blocks.map((block, i) => (
         <div key={i} style={block.type !== 'cover' ? { padding: '0 16px' } : {}}>
-          {renderBlock(block, i)}
+          {renderBlock(block, i, lessonId)}
         </div>
       ))}
 
@@ -311,8 +350,8 @@ export default function FieldLesson() {
                 onClick={() => navigate(`/field/academy/quiz/${lessonId}`)}
                 style={{
                   flex: 2, padding: '13px 0',
-                  background: `linear-gradient(90deg, ${C.rune}, #9b59b6)`,
-                  border: 'none', borderRadius: 12, color: '#fff',
+                  background: `linear-gradient(90deg, ${C.rune}, var(--acc))`,
+                  border: 'none', borderRadius: 12, color: 'var(--text-primary)',
                   fontSize: 14, fontWeight: 700, cursor: 'pointer',
                 }}
               >
@@ -327,10 +366,10 @@ export default function FieldLesson() {
             style={{
               width: '100%', padding: '14px 0',
               background: completing || remainSec > 0
-                ? '#ffffff22'
-                : `linear-gradient(90deg, ${C.gold}, #a87d20)`,
+                ? 'color-mix(in oklab, var(--text-primary) 13%, transparent)'
+                : `linear-gradient(90deg, ${C.gold}, var(--value))`,
               border: 'none', borderRadius: 12,
-              color: remainSec > 0 ? C.muted : '#000',
+              color: remainSec > 0 ? C.muted : 'var(--bg-primary)',
               fontSize: 15, fontWeight: 800,
               cursor: completing || remainSec > 0 ? 'default' : 'pointer',
             }}

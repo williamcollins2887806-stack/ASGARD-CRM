@@ -11,18 +11,18 @@ import { NornsPauseStrip } from '@/components/field/NornsPauseBanner';
 
 /* ═══ SVG ILLUSTRATIONS — 12 unique Norse geometric ═══ */
 const SVGS = {
-  tshirt: `<svg viewBox="0 0 80 80" fill="none"><defs><linearGradient id="ts1" x1="20" y1="10" x2="60" y2="70" gradientUnits="userSpaceOnUse"><stop offset="0%" stop-color="#2a2040"/><stop offset="100%" stop-color="#1a1530"/></linearGradient></defs><path d="M25 18L15 28L22 35L25 30V65H55V30L58 35L65 28L55 18H48L44 24H36L32 18Z" fill="url(#ts1)" stroke="#F0C850" stroke-width="1.5"/><path d="M36 24Q40 30 44 24" stroke="#F0C850" stroke-width="1" fill="none"/><text x="40" y="48" text-anchor="middle" font-family="Cinzel,serif" font-size="7" font-weight="900" fill="#F0C850" letter-spacing=".5">ASGARD</text><path d="M30 52H50" stroke="rgba(240,200,80,.3)" stroke-width=".5"/><path d="M33 56H47" stroke="rgba(240,200,80,.2)" stroke-width=".5"/><path d="M17 26L20 30" stroke="rgba(240,200,80,.4)" stroke-width="1" stroke-linecap="round"/><path d="M63 26L60 30" stroke="rgba(240,200,80,.4)" stroke-width="1" stroke-linecap="round"/></svg>`,
-  thermomug: `<svg viewBox="0 0 80 80" fill="none"><defs><linearGradient id="tm1" x1="25" y1="15" x2="55" y2="70" gradientUnits="userSpaceOnUse"><stop offset="0%" stop-color="#404858"/><stop offset="100%" stop-color="#2a3040"/></linearGradient></defs><rect x="24" y="18" width="32" height="50" rx="4" fill="url(#tm1)" stroke="#F0C850" stroke-width="1"/><rect x="22" y="14" width="36" height="8" rx="4" fill="#505868" stroke="#F0C850" stroke-width="1"/><circle cx="40" cy="18" r="3" fill="#606878" stroke="#F0C850" stroke-width=".8"/><path d="M56 30Q68 30 68 44Q68 58 56 58" stroke="#F0C850" stroke-width="2" fill="none" stroke-linecap="round"/><text x="40" y="48" text-anchor="middle" font-size="16" fill="rgba(240,200,80,.5)" font-family="serif">&#x16A0;</text><path d="M33 12Q35 6 33 2" stroke="rgba(255,255,255,.15)" stroke-width="1.5" fill="none" stroke-linecap="round"/><path d="M40 10Q42 4 40 0" stroke="rgba(255,255,255,.1)" stroke-width="1.5" fill="none" stroke-linecap="round"/><path d="M47 12Q49 6 47 2" stroke="rgba(255,255,255,.15)" stroke-width="1.5" fill="none" stroke-linecap="round"/><rect x="24" y="36" width="32" height="4" rx="2" fill="rgba(240,200,80,.15)"/></svg>`,
-  beanie: `<svg viewBox="0 0 80 80" fill="none"><defs><linearGradient id="bn1" x1="20" y1="20" x2="60" y2="70" gradientUnits="userSpaceOnUse"><stop offset="0%" stop-color="#1a2848"/><stop offset="100%" stop-color="#0e1830"/></linearGradient></defs><circle cx="40" cy="16" r="8" fill="#C8940A" stroke="#F0C850" stroke-width="1"/><circle cx="38" cy="14" r="2" fill="rgba(255,255,255,.2)"/><path d="M18 45Q18 22 40 18Q62 22 62 45V55Q62 62 40 65Q18 62 18 55Z" fill="url(#bn1)" stroke="#F0C850" stroke-width="1.2"/><path d="M18 45Q18 42 40 40Q62 42 62 45V55Q62 58 40 60Q18 58 18 55Z" fill="rgba(240,200,80,.06)"/><path d="M22 46V54" stroke="rgba(240,200,80,.15)" stroke-width="1"/><path d="M28 45V56" stroke="rgba(240,200,80,.15)" stroke-width="1"/><path d="M34 44V57" stroke="rgba(240,200,80,.15)" stroke-width="1"/><path d="M40 44V58" stroke="rgba(240,200,80,.15)" stroke-width="1"/><path d="M46 44V57" stroke="rgba(240,200,80,.15)" stroke-width="1"/><path d="M52 45V56" stroke="rgba(240,200,80,.15)" stroke-width="1"/><path d="M58 46V54" stroke="rgba(240,200,80,.15)" stroke-width="1"/><path d="M22 30Q28 28 34 30Q40 32 46 30Q52 28 58 30" stroke="rgba(240,200,80,.2)" stroke-width="1" fill="none"/><text x="40" y="52" text-anchor="middle" font-size="5" font-weight="800" fill="rgba(240,200,80,.5)" font-family="system-ui" letter-spacing="1">ASGARD</text></svg>`,
-  vipseat: `<svg viewBox="0 0 80 80" fill="none"><defs><linearGradient id="vs1" x1="15" y1="20" x2="65" y2="70" gradientUnits="userSpaceOnUse"><stop offset="0%" stop-color="#3a2008"/><stop offset="100%" stop-color="#1a1005"/></linearGradient></defs><path d="M15 20Q15 12 40 10Q65 12 65 20V50Q65 54 40 56Q15 54 15 50Z" fill="url(#vs1)" stroke="#F0C850" stroke-width="1.2"/><path d="M12 50Q12 46 40 44Q68 46 68 50V58Q68 62 40 64Q12 62 12 58Z" fill="#2a1808" stroke="#F0C850" stroke-width="1"/><path d="M20 62L16 74" stroke="#F0C850" stroke-width="2" stroke-linecap="round"/><path d="M60 62L64 74" stroke="#F0C850" stroke-width="2" stroke-linecap="round"/><path d="M28 24L32 18L36 24L40 16L44 24L48 18L52 24" stroke="#F0C850" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/><text x="40" y="40" text-anchor="middle" font-family="Cinzel,serif" font-size="8" font-weight="900" fill="#F0C850">VIP</text></svg>`,
-  hoodie: `<svg viewBox="0 0 80 80" fill="none"><defs><linearGradient id="hd1" x1="15" y1="10" x2="65" y2="75" gradientUnits="userSpaceOnUse"><stop offset="0%" stop-color="#1a1530"/><stop offset="100%" stop-color="#0e0a20"/></linearGradient></defs><path d="M22 25L12 35L20 42L22 38V70H58V38L60 42L68 35L58 25H50L46 30H34L30 25Z" fill="url(#hd1)" stroke="#F0C850" stroke-width="1.5"/><path d="M30 25Q30 12 40 10Q50 12 50 25" fill="rgba(26,21,48,.8)" stroke="#F0C850" stroke-width="1.2"/><path d="M34 24Q40 14 46 24" stroke="rgba(240,200,80,.3)" stroke-width=".8" fill="none"/><path d="M28 50H52V60Q52 62 40 63Q28 62 28 60Z" fill="rgba(255,255,255,.03)" stroke="rgba(240,200,80,.3)" stroke-width="1"/><text x="40" y="46" text-anchor="middle" font-family="Cinzel,serif" font-size="6" font-weight="900" fill="#F0C850" letter-spacing=".5">ASGARD</text><path d="M36 25L34 35" stroke="rgba(240,200,80,.4)" stroke-width=".8" stroke-linecap="round"/><path d="M44 25L46 35" stroke="rgba(240,200,80,.4)" stroke-width=".8" stroke-linecap="round"/></svg>`,
-  powerbank: `<svg viewBox="0 0 80 80" fill="none"><defs><linearGradient id="pb1" x1="22" y1="10" x2="58" y2="70" gradientUnits="userSpaceOnUse"><stop offset="0%" stop-color="#303848"/><stop offset="100%" stop-color="#1a2030"/></linearGradient></defs><rect x="22" y="12" width="36" height="56" rx="6" fill="url(#pb1)" stroke="#F0C850" stroke-width="1.2"/><rect x="22" y="12" width="36" height="10" rx="6" fill="rgba(255,255,255,.05)"/><rect x="35" y="14" width="10" height="4" rx="1.5" fill="#1a1828" stroke="rgba(240,200,80,.3)" stroke-width=".8"/><rect x="28" y="30" width="24" height="5" rx="2" fill="#22c55e" opacity=".8"/><rect x="28" y="38" width="24" height="5" rx="2" fill="#22c55e" opacity=".6"/><rect x="28" y="46" width="24" height="5" rx="2" fill="#22c55e" opacity=".4"/><rect x="28" y="54" width="24" height="5" rx="2" fill="rgba(255,255,255,.06)"/><text x="40" y="63" text-anchor="middle" font-size="5" font-weight="700" fill="rgba(240,200,80,.5)" font-family="system-ui">20000mAh</text><path d="M38 26L36 32H42L39 38" stroke="#F0C850" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
-  vikingmug: `<svg viewBox="0 0 80 80" fill="none"><defs><linearGradient id="vm1" x1="18" y1="20" x2="55" y2="70" gradientUnits="userSpaceOnUse"><stop offset="0%" stop-color="#5a3a18"/><stop offset="100%" stop-color="#3a2008"/></linearGradient></defs><path d="M18 25Q18 22 40 20Q62 22 62 25V60Q62 66 40 68Q18 66 18 60Z" fill="url(#vm1)" stroke="#F0C850" stroke-width="1.2"/><path d="M18 32Q40 30 62 32" stroke="#C8940A" stroke-width="2" fill="none"/><path d="M18 50Q40 48 62 50" stroke="#C8940A" stroke-width="2" fill="none"/><path d="M25 25V65" stroke="rgba(200,148,10,.15)" stroke-width=".5"/><path d="M33 23V67" stroke="rgba(200,148,10,.15)" stroke-width=".5"/><path d="M40 22V68" stroke="rgba(200,148,10,.15)" stroke-width=".5"/><path d="M47 23V67" stroke="rgba(200,148,10,.15)" stroke-width=".5"/><path d="M55 25V65" stroke="rgba(200,148,10,.15)" stroke-width=".5"/><path d="M62 32Q74 30 76 40Q76 52 62 50" stroke="#C8940A" stroke-width="3" fill="none" stroke-linecap="round"/><circle cx="33" cy="40" r="2" fill="rgba(240,200,80,.2)"/><circle cx="47" cy="40" r="2" fill="rgba(240,200,80,.2)"/><path d="M36 46Q40 50 44 46" stroke="rgba(240,200,80,.2)" stroke-width="1" fill="none"/><path d="M30 36L26 30" stroke="rgba(240,200,80,.3)" stroke-width="1.5" stroke-linecap="round"/><path d="M50 36L54 30" stroke="rgba(240,200,80,.3)" stroke-width="1.5" stroke-linecap="round"/><path d="M20 25Q30 22 40 24Q50 22 60 25" stroke="rgba(255,255,255,.2)" stroke-width="3" fill="none" stroke-linecap="round"/></svg>`,
-  backpack: `<svg viewBox="0 0 80 80" fill="none"><defs><linearGradient id="bp1" x1="18" y1="10" x2="62" y2="75" gradientUnits="userSpaceOnUse"><stop offset="0%" stop-color="#2a3040"/><stop offset="100%" stop-color="#1a1828"/></linearGradient></defs><path d="M20 24Q20 14 40 10Q60 14 60 24V68Q60 72 40 74Q20 72 20 68Z" fill="url(#bp1)" stroke="#F0C850" stroke-width="1.2"/><path d="M20 24Q20 20 40 18Q60 20 60 24V30Q60 33 40 35Q20 33 20 30Z" fill="rgba(255,255,255,.04)" stroke="rgba(240,200,80,.3)" stroke-width=".8"/><rect x="26" y="42" width="28" height="18" rx="4" fill="rgba(255,255,255,.03)" stroke="rgba(240,200,80,.3)" stroke-width="1"/><rect x="36" y="34" width="8" height="6" rx="2" fill="#C8940A" stroke="#F0C850" stroke-width=".8"/><path d="M28 24Q24 24 22 28L22 60" stroke="rgba(240,200,80,.4)" stroke-width="2.5" fill="none" stroke-linecap="round"/><path d="M52 24Q56 24 58 28L58 60" stroke="rgba(240,200,80,.4)" stroke-width="2.5" fill="none" stroke-linecap="round"/><rect x="30" y="46" width="20" height="10" rx="2" fill="rgba(240,200,80,.1)" stroke="rgba(240,200,80,.3)" stroke-width=".5"/><text x="40" y="53" text-anchor="middle" font-size="5" font-weight="800" fill="#F0C850" font-family="system-ui" letter-spacing=".3">ASGARD</text></svg>`,
-  keychain: `<svg viewBox="0 0 80 80" fill="none"><defs><linearGradient id="kc1" x1="30" y1="20" x2="55" y2="70" gradientUnits="userSpaceOnUse"><stop offset="0%" stop-color="#707880"/><stop offset="100%" stop-color="#404850"/></linearGradient></defs><circle cx="40" cy="18" r="8" fill="none" stroke="#C8940A" stroke-width="3"/><circle cx="40" cy="18" r="5" fill="none" stroke="rgba(240,200,80,.3)" stroke-width="1"/><ellipse cx="40" cy="30" rx="4" ry="3" fill="none" stroke="#888" stroke-width="1.5"/><ellipse cx="40" cy="36" rx="3" ry="3" fill="none" stroke="#888" stroke-width="1.5"/><rect x="37" y="40" width="6" height="14" rx="2" fill="url(#kc1)" stroke="#F0C850" stroke-width="1"/><rect x="26" y="54" width="28" height="14" rx="3" fill="url(#kc1)" stroke="#F0C850" stroke-width="1.2"/><path d="M33 57Q37 55 40 57Q43 59 47 57" stroke="rgba(240,200,80,.25)" stroke-width=".8" fill="none"/><path d="M33 63Q37 61 40 63Q43 65 47 63" stroke="rgba(240,200,80,.25)" stroke-width=".8" fill="none"/><text x="40" y="50" text-anchor="middle" font-size="6" fill="rgba(240,200,80,.4)">&#x16A6;</text></svg>`,
-  badge: `<svg viewBox="0 0 80 80" fill="none"><defs><linearGradient id="bd1" x1="20" y1="12" x2="60" y2="68" gradientUnits="userSpaceOnUse"><stop offset="0%" stop-color="#F0C850"/><stop offset="50%" stop-color="#C8940A"/><stop offset="100%" stop-color="#8B6914"/></linearGradient><linearGradient id="bd2" x1="40" y1="20" x2="40" y2="60" gradientUnits="userSpaceOnUse"><stop offset="0%" stop-color="#1a2040"/><stop offset="100%" stop-color="#0e1428"/></linearGradient></defs><path d="M40 10L60 18V44Q60 60 40 70Q20 60 20 44V18Z" fill="url(#bd1)" stroke="#FFE17A" stroke-width="1.5"/><path d="M40 16L54 22V44Q54 56 40 64Q26 56 26 44V22Z" fill="url(#bd2)"/><path d="M40 28L43 36H51L45 41L47 49L40 44L33 49L35 41L29 36H37Z" fill="#F0C850" stroke="#C8940A" stroke-width=".5"/><text x="40" y="58" text-anchor="middle" font-size="5" font-weight="800" fill="#F0C850" font-family="system-ui" letter-spacing=".5">ВЕТЕРАН</text></svg>`,
-  stickers: `<svg viewBox="0 0 80 80" fill="none"><defs><linearGradient id="st1" x1="10" y1="10" x2="70" y2="70" gradientUnits="userSpaceOnUse"><stop offset="0%" stop-color="#1a2848"/><stop offset="100%" stop-color="#0e1830"/></linearGradient></defs><rect x="22" y="8" width="40" height="40" rx="6" fill="#1a1530" stroke="rgba(240,200,80,.2)" stroke-width="1" transform="rotate(12 42 28)"/><rect x="14" y="22" width="40" height="40" rx="6" fill="#141828" stroke="rgba(240,200,80,.25)" stroke-width="1" transform="rotate(-8 34 42)"/><rect x="20" y="30" width="44" height="40" rx="6" fill="url(#st1)" stroke="#F0C850" stroke-width="1.2"/><text x="42" y="48" text-anchor="middle" font-family="Cinzel,serif" font-size="6" font-weight="900" fill="#F0C850" letter-spacing=".5">ASGARD</text><text x="42" y="56" text-anchor="middle" font-size="4" fill="rgba(240,200,80,.5)" font-family="system-ui">СЕРВИС</text><path d="M56 30L64 30L56 38Z" fill="rgba(255,255,255,.06)" stroke="rgba(240,200,80,.2)" stroke-width=".5"/></svg>`,
-  dayoff: `<svg viewBox="0 0 80 80" fill="none"><defs><linearGradient id="do1" x1="14" y1="14" x2="66" y2="70" gradientUnits="userSpaceOnUse"><stop offset="0%" stop-color="#2a2040"/><stop offset="100%" stop-color="#1a1530"/></linearGradient></defs><rect x="14" y="18" width="52" height="50" rx="6" fill="url(#do1)" stroke="#F0C850" stroke-width="1.2"/><rect x="14" y="18" width="52" height="14" rx="6" fill="rgba(240,200,80,.1)"/><rect x="14" y="26" width="52" height="6" fill="rgba(240,200,80,.1)"/><rect x="26" y="14" width="4" height="10" rx="2" fill="#C8940A" stroke="#F0C850" stroke-width=".5"/><rect x="50" y="14" width="4" height="10" rx="2" fill="#C8940A" stroke="#F0C850" stroke-width=".5"/><text x="40" y="52" text-anchor="middle" font-size="20" font-weight="900" fill="#F0C850" font-family="system-ui">+1</text><text x="40" y="62" text-anchor="middle" font-size="7" font-weight="700" fill="rgba(240,200,80,.6)" font-family="system-ui">ВЫХОДНОЙ</text></svg>`,
+  tshirt: `<svg viewBox="0 0 80 80" fill="none"><defs><linearGradient id="ts1" x1="20" y1="10" x2="60" y2="70" gradientUnits="userSpaceOnUse"><stop offset="0%" stop-color="#2a2040"/><stop offset="100%" stop-color="var(--bg-surface)"/></linearGradient></defs><path d="M25 18L15 28L22 35L25 30V65H55V30L58 35L65 28L55 18H48L44 24H36L32 18Z" fill="url(#ts1)" stroke="var(--value)" stroke-width="1.5"/><path d="M36 24Q40 30 44 24" stroke="var(--value)" stroke-width="1" fill="none"/><text x="40" y="48" text-anchor="middle" font-family="Cinzel,serif" font-size="7" font-weight="900" fill="var(--value)" letter-spacing=".5">ASGARD</text><path d="M30 52H50" stroke="color-mix(in oklab, var(--value) 30%, transparent)" stroke-width=".5"/><path d="M33 56H47" stroke="color-mix(in oklab, var(--value) 20%, transparent)" stroke-width=".5"/><path d="M17 26L20 30" stroke="color-mix(in oklab, var(--value) 40%, transparent)" stroke-width="1" stroke-linecap="round"/><path d="M63 26L60 30" stroke="color-mix(in oklab, var(--value) 40%, transparent)" stroke-width="1" stroke-linecap="round"/></svg>`,
+  thermomug: `<svg viewBox="0 0 80 80" fill="none"><defs><linearGradient id="tm1" x1="25" y1="15" x2="55" y2="70" gradientUnits="userSpaceOnUse"><stop offset="0%" stop-color="#404858"/><stop offset="100%" stop-color="#2a3040"/></linearGradient></defs><rect x="24" y="18" width="32" height="50" rx="4" fill="url(#tm1)" stroke="var(--value)" stroke-width="1"/><rect x="22" y="14" width="36" height="8" rx="4" fill="#505868" stroke="var(--value)" stroke-width="1"/><circle cx="40" cy="18" r="3" fill="#606878" stroke="var(--value)" stroke-width=".8"/><path d="M56 30Q68 30 68 44Q68 58 56 58" stroke="var(--value)" stroke-width="2" fill="none" stroke-linecap="round"/><text x="40" y="48" text-anchor="middle" font-size="16" fill="color-mix(in oklab, var(--value) 50%, transparent)" font-family="serif">&#x16A0;</text><path d="M33 12Q35 6 33 2" stroke="color-mix(in oklab, var(--text-primary) 15%, transparent)" stroke-width="1.5" fill="none" stroke-linecap="round"/><path d="M40 10Q42 4 40 0" stroke="color-mix(in oklab, var(--text-primary) 10%, transparent)" stroke-width="1.5" fill="none" stroke-linecap="round"/><path d="M47 12Q49 6 47 2" stroke="color-mix(in oklab, var(--text-primary) 15%, transparent)" stroke-width="1.5" fill="none" stroke-linecap="round"/><rect x="24" y="36" width="32" height="4" rx="2" fill="color-mix(in oklab, var(--value) 15%, transparent)"/></svg>`,
+  beanie: `<svg viewBox="0 0 80 80" fill="none"><defs><linearGradient id="bn1" x1="20" y1="20" x2="60" y2="70" gradientUnits="userSpaceOnUse"><stop offset="0%" stop-color="#1a2848"/><stop offset="100%" stop-color="#0e1830"/></linearGradient></defs><circle cx="40" cy="16" r="8" fill="var(--value)" stroke="var(--value)" stroke-width="1"/><circle cx="38" cy="14" r="2" fill="color-mix(in oklab, var(--text-primary) 20%, transparent)"/><path d="M18 45Q18 22 40 18Q62 22 62 45V55Q62 62 40 65Q18 62 18 55Z" fill="url(#bn1)" stroke="var(--value)" stroke-width="1.2"/><path d="M18 45Q18 42 40 40Q62 42 62 45V55Q62 58 40 60Q18 58 18 55Z" fill="color-mix(in oklab, var(--value) 6%, transparent)"/><path d="M22 46V54" stroke="color-mix(in oklab, var(--value) 15%, transparent)" stroke-width="1"/><path d="M28 45V56" stroke="color-mix(in oklab, var(--value) 15%, transparent)" stroke-width="1"/><path d="M34 44V57" stroke="color-mix(in oklab, var(--value) 15%, transparent)" stroke-width="1"/><path d="M40 44V58" stroke="color-mix(in oklab, var(--value) 15%, transparent)" stroke-width="1"/><path d="M46 44V57" stroke="color-mix(in oklab, var(--value) 15%, transparent)" stroke-width="1"/><path d="M52 45V56" stroke="color-mix(in oklab, var(--value) 15%, transparent)" stroke-width="1"/><path d="M58 46V54" stroke="color-mix(in oklab, var(--value) 15%, transparent)" stroke-width="1"/><path d="M22 30Q28 28 34 30Q40 32 46 30Q52 28 58 30" stroke="color-mix(in oklab, var(--value) 20%, transparent)" stroke-width="1" fill="none"/><text x="40" y="52" text-anchor="middle" font-size="5" font-weight="800" fill="color-mix(in oklab, var(--value) 50%, transparent)" font-family="system-ui" letter-spacing="1">ASGARD</text></svg>`,
+  vipseat: `<svg viewBox="0 0 80 80" fill="none"><defs><linearGradient id="vs1" x1="15" y1="20" x2="65" y2="70" gradientUnits="userSpaceOnUse"><stop offset="0%" stop-color="#3a2008"/><stop offset="100%" stop-color="#1a1005"/></linearGradient></defs><path d="M15 20Q15 12 40 10Q65 12 65 20V50Q65 54 40 56Q15 54 15 50Z" fill="url(#vs1)" stroke="var(--value)" stroke-width="1.2"/><path d="M12 50Q12 46 40 44Q68 46 68 50V58Q68 62 40 64Q12 62 12 58Z" fill="#2a1808" stroke="var(--value)" stroke-width="1"/><path d="M20 62L16 74" stroke="var(--value)" stroke-width="2" stroke-linecap="round"/><path d="M60 62L64 74" stroke="var(--value)" stroke-width="2" stroke-linecap="round"/><path d="M28 24L32 18L36 24L40 16L44 24L48 18L52 24" stroke="var(--value)" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/><text x="40" y="40" text-anchor="middle" font-family="Cinzel,serif" font-size="8" font-weight="900" fill="var(--value)">VIP</text></svg>`,
+  hoodie: `<svg viewBox="0 0 80 80" fill="none"><defs><linearGradient id="hd1" x1="15" y1="10" x2="65" y2="75" gradientUnits="userSpaceOnUse"><stop offset="0%" stop-color="var(--bg-surface)"/><stop offset="100%" stop-color="#0e0a20"/></linearGradient></defs><path d="M22 25L12 35L20 42L22 38V70H58V38L60 42L68 35L58 25H50L46 30H34L30 25Z" fill="url(#hd1)" stroke="var(--value)" stroke-width="1.5"/><path d="M30 25Q30 12 40 10Q50 12 50 25" fill="rgba(26,21,48,.8)" stroke="var(--value)" stroke-width="1.2"/><path d="M34 24Q40 14 46 24" stroke="color-mix(in oklab, var(--value) 30%, transparent)" stroke-width=".8" fill="none"/><path d="M28 50H52V60Q52 62 40 63Q28 62 28 60Z" fill="color-mix(in oklab, var(--text-primary) 3%, transparent)" stroke="color-mix(in oklab, var(--value) 30%, transparent)" stroke-width="1"/><text x="40" y="46" text-anchor="middle" font-family="Cinzel,serif" font-size="6" font-weight="900" fill="var(--value)" letter-spacing=".5">ASGARD</text><path d="M36 25L34 35" stroke="color-mix(in oklab, var(--value) 40%, transparent)" stroke-width=".8" stroke-linecap="round"/><path d="M44 25L46 35" stroke="color-mix(in oklab, var(--value) 40%, transparent)" stroke-width=".8" stroke-linecap="round"/></svg>`,
+  powerbank: `<svg viewBox="0 0 80 80" fill="none"><defs><linearGradient id="pb1" x1="22" y1="10" x2="58" y2="70" gradientUnits="userSpaceOnUse"><stop offset="0%" stop-color="#303848"/><stop offset="100%" stop-color="#1a2030"/></linearGradient></defs><rect x="22" y="12" width="36" height="56" rx="6" fill="url(#pb1)" stroke="var(--value)" stroke-width="1.2"/><rect x="22" y="12" width="36" height="10" rx="6" fill="color-mix(in oklab, var(--text-primary) 5%, transparent)"/><rect x="35" y="14" width="10" height="4" rx="1.5" fill="#1a1828" stroke="color-mix(in oklab, var(--value) 30%, transparent)" stroke-width=".8"/><rect x="28" y="30" width="24" height="5" rx="2" fill="var(--ok)" opacity=".8"/><rect x="28" y="38" width="24" height="5" rx="2" fill="var(--ok)" opacity=".6"/><rect x="28" y="46" width="24" height="5" rx="2" fill="var(--ok)" opacity=".4"/><rect x="28" y="54" width="24" height="5" rx="2" fill="color-mix(in oklab, var(--text-primary) 6%, transparent)"/><text x="40" y="63" text-anchor="middle" font-size="5" font-weight="700" fill="color-mix(in oklab, var(--value) 50%, transparent)" font-family="system-ui">20000mAh</text><path d="M38 26L36 32H42L39 38" stroke="var(--value)" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
+  vikingmug: `<svg viewBox="0 0 80 80" fill="none"><defs><linearGradient id="vm1" x1="18" y1="20" x2="55" y2="70" gradientUnits="userSpaceOnUse"><stop offset="0%" stop-color="#5a3a18"/><stop offset="100%" stop-color="#3a2008"/></linearGradient></defs><path d="M18 25Q18 22 40 20Q62 22 62 25V60Q62 66 40 68Q18 66 18 60Z" fill="url(#vm1)" stroke="var(--value)" stroke-width="1.2"/><path d="M18 32Q40 30 62 32" stroke="var(--value)" stroke-width="2" fill="none"/><path d="M18 50Q40 48 62 50" stroke="var(--value)" stroke-width="2" fill="none"/><path d="M25 25V65" stroke="color-mix(in oklab, var(--value) 15%, transparent)" stroke-width=".5"/><path d="M33 23V67" stroke="color-mix(in oklab, var(--value) 15%, transparent)" stroke-width=".5"/><path d="M40 22V68" stroke="color-mix(in oklab, var(--value) 15%, transparent)" stroke-width=".5"/><path d="M47 23V67" stroke="color-mix(in oklab, var(--value) 15%, transparent)" stroke-width=".5"/><path d="M55 25V65" stroke="color-mix(in oklab, var(--value) 15%, transparent)" stroke-width=".5"/><path d="M62 32Q74 30 76 40Q76 52 62 50" stroke="var(--value)" stroke-width="3" fill="none" stroke-linecap="round"/><circle cx="33" cy="40" r="2" fill="color-mix(in oklab, var(--value) 20%, transparent)"/><circle cx="47" cy="40" r="2" fill="color-mix(in oklab, var(--value) 20%, transparent)"/><path d="M36 46Q40 50 44 46" stroke="color-mix(in oklab, var(--value) 20%, transparent)" stroke-width="1" fill="none"/><path d="M30 36L26 30" stroke="color-mix(in oklab, var(--value) 30%, transparent)" stroke-width="1.5" stroke-linecap="round"/><path d="M50 36L54 30" stroke="color-mix(in oklab, var(--value) 30%, transparent)" stroke-width="1.5" stroke-linecap="round"/><path d="M20 25Q30 22 40 24Q50 22 60 25" stroke="color-mix(in oklab, var(--text-primary) 20%, transparent)" stroke-width="3" fill="none" stroke-linecap="round"/></svg>`,
+  backpack: `<svg viewBox="0 0 80 80" fill="none"><defs><linearGradient id="bp1" x1="18" y1="10" x2="62" y2="75" gradientUnits="userSpaceOnUse"><stop offset="0%" stop-color="#2a3040"/><stop offset="100%" stop-color="#1a1828"/></linearGradient></defs><path d="M20 24Q20 14 40 10Q60 14 60 24V68Q60 72 40 74Q20 72 20 68Z" fill="url(#bp1)" stroke="var(--value)" stroke-width="1.2"/><path d="M20 24Q20 20 40 18Q60 20 60 24V30Q60 33 40 35Q20 33 20 30Z" fill="color-mix(in oklab, var(--text-primary) 4%, transparent)" stroke="color-mix(in oklab, var(--value) 30%, transparent)" stroke-width=".8"/><rect x="26" y="42" width="28" height="18" rx="4" fill="color-mix(in oklab, var(--text-primary) 3%, transparent)" stroke="color-mix(in oklab, var(--value) 30%, transparent)" stroke-width="1"/><rect x="36" y="34" width="8" height="6" rx="2" fill="var(--value)" stroke="var(--value)" stroke-width=".8"/><path d="M28 24Q24 24 22 28L22 60" stroke="color-mix(in oklab, var(--value) 40%, transparent)" stroke-width="2.5" fill="none" stroke-linecap="round"/><path d="M52 24Q56 24 58 28L58 60" stroke="color-mix(in oklab, var(--value) 40%, transparent)" stroke-width="2.5" fill="none" stroke-linecap="round"/><rect x="30" y="46" width="20" height="10" rx="2" fill="color-mix(in oklab, var(--value) 10%, transparent)" stroke="color-mix(in oklab, var(--value) 30%, transparent)" stroke-width=".5"/><text x="40" y="53" text-anchor="middle" font-size="5" font-weight="800" fill="var(--value)" font-family="system-ui" letter-spacing=".3">ASGARD</text></svg>`,
+  keychain: `<svg viewBox="0 0 80 80" fill="none"><defs><linearGradient id="kc1" x1="30" y1="20" x2="55" y2="70" gradientUnits="userSpaceOnUse"><stop offset="0%" stop-color="#707880"/><stop offset="100%" stop-color="#404850"/></linearGradient></defs><circle cx="40" cy="18" r="8" fill="none" stroke="var(--value)" stroke-width="3"/><circle cx="40" cy="18" r="5" fill="none" stroke="color-mix(in oklab, var(--value) 30%, transparent)" stroke-width="1"/><ellipse cx="40" cy="30" rx="4" ry="3" fill="none" stroke="var(--text-secondary)" stroke-width="1.5"/><ellipse cx="40" cy="36" rx="3" ry="3" fill="none" stroke="var(--text-secondary)" stroke-width="1.5"/><rect x="37" y="40" width="6" height="14" rx="2" fill="url(#kc1)" stroke="var(--value)" stroke-width="1"/><rect x="26" y="54" width="28" height="14" rx="3" fill="url(#kc1)" stroke="var(--value)" stroke-width="1.2"/><path d="M33 57Q37 55 40 57Q43 59 47 57" stroke="color-mix(in oklab, var(--value) 25%, transparent)" stroke-width=".8" fill="none"/><path d="M33 63Q37 61 40 63Q43 65 47 63" stroke="color-mix(in oklab, var(--value) 25%, transparent)" stroke-width=".8" fill="none"/><text x="40" y="50" text-anchor="middle" font-size="6" fill="color-mix(in oklab, var(--value) 40%, transparent)">&#x16A6;</text></svg>`,
+  badge: `<svg viewBox="0 0 80 80" fill="none"><defs><linearGradient id="bd1" x1="20" y1="12" x2="60" y2="68" gradientUnits="userSpaceOnUse"><stop offset="0%" stop-color="var(--value)"/><stop offset="50%" stop-color="var(--value)"/><stop offset="100%" stop-color="var(--value)"/></linearGradient><linearGradient id="bd2" x1="40" y1="20" x2="40" y2="60" gradientUnits="userSpaceOnUse"><stop offset="0%" stop-color="var(--bg-surface-alt)"/><stop offset="100%" stop-color="#0e1428"/></linearGradient></defs><path d="M40 10L60 18V44Q60 60 40 70Q20 60 20 44V18Z" fill="url(#bd1)" stroke="color-mix(in oklab, var(--value) 45%, var(--text-primary))" stroke-width="1.5"/><path d="M40 16L54 22V44Q54 56 40 64Q26 56 26 44V22Z" fill="url(#bd2)"/><path d="M40 28L43 36H51L45 41L47 49L40 44L33 49L35 41L29 36H37Z" fill="var(--value)" stroke="var(--value)" stroke-width=".5"/><text x="40" y="58" text-anchor="middle" font-size="5" font-weight="800" fill="var(--value)" font-family="system-ui" letter-spacing=".5">ВЕТЕРАН</text></svg>`,
+  stickers: `<svg viewBox="0 0 80 80" fill="none"><defs><linearGradient id="st1" x1="10" y1="10" x2="70" y2="70" gradientUnits="userSpaceOnUse"><stop offset="0%" stop-color="#1a2848"/><stop offset="100%" stop-color="#0e1830"/></linearGradient></defs><rect x="22" y="8" width="40" height="40" rx="6" fill="var(--bg-surface)" stroke="color-mix(in oklab, var(--value) 20%, transparent)" stroke-width="1" transform="rotate(12 42 28)"/><rect x="14" y="22" width="40" height="40" rx="6" fill="var(--field-card)" stroke="color-mix(in oklab, var(--value) 25%, transparent)" stroke-width="1" transform="rotate(-8 34 42)"/><rect x="20" y="30" width="44" height="40" rx="6" fill="url(#st1)" stroke="var(--value)" stroke-width="1.2"/><text x="42" y="48" text-anchor="middle" font-family="Cinzel,serif" font-size="6" font-weight="900" fill="var(--value)" letter-spacing=".5">ASGARD</text><text x="42" y="56" text-anchor="middle" font-size="4" fill="color-mix(in oklab, var(--value) 50%, transparent)" font-family="system-ui">СЕРВИС</text><path d="M56 30L64 30L56 38Z" fill="color-mix(in oklab, var(--text-primary) 6%, transparent)" stroke="color-mix(in oklab, var(--value) 20%, transparent)" stroke-width=".5"/></svg>`,
+  dayoff: `<svg viewBox="0 0 80 80" fill="none"><defs><linearGradient id="do1" x1="14" y1="14" x2="66" y2="70" gradientUnits="userSpaceOnUse"><stop offset="0%" stop-color="#2a2040"/><stop offset="100%" stop-color="var(--bg-surface)"/></linearGradient></defs><rect x="14" y="18" width="52" height="50" rx="6" fill="url(#do1)" stroke="var(--value)" stroke-width="1.2"/><rect x="14" y="18" width="52" height="14" rx="6" fill="color-mix(in oklab, var(--value) 10%, transparent)"/><rect x="14" y="26" width="52" height="6" fill="color-mix(in oklab, var(--value) 10%, transparent)"/><rect x="26" y="14" width="4" height="10" rx="2" fill="var(--value)" stroke="var(--value)" stroke-width=".5"/><rect x="50" y="14" width="4" height="10" rx="2" fill="var(--value)" stroke="var(--value)" stroke-width=".5"/><text x="40" y="52" text-anchor="middle" font-size="20" font-weight="900" fill="var(--value)" font-family="system-ui">+1</text><text x="40" y="62" text-anchor="middle" font-size="7" font-weight="700" fill="color-mix(in oklab, var(--value) 60%, transparent)" font-family="system-ui">ВЫХОДНОЙ</text></svg>`,
 };
 
 /* Mock data removed — only real API data shown */
@@ -340,7 +340,7 @@ export default function FieldInventory() {
           <div className="finv-page" style={{ padding: '60px 16px' }}>
             {[1,2,3,4].map(i => (
               <div key={i} style={{ height: 100, borderRadius: 18, marginBottom: 10,
-                background: 'linear-gradient(90deg,#141828 25%,#1a2040 50%,#141828 75%)',
+                background: 'linear-gradient(90deg,var(--field-card) 25%,var(--bg-surface-alt) 50%,var(--field-card) 75%)',
                 backgroundSize: '200% 100%', animation: 'finv-shimmer 1.5s infinite' }} />
             ))}
           </div>
@@ -380,7 +380,7 @@ export default function FieldInventory() {
           {/* ═══ HEADER ═══ */}
           <div className="finv-header">
             <div className="finv-hdr-back" onClick={() => navigate(-1)}>
-              <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="rgba(255,255,255,.7)" strokeWidth="2.2" strokeLinecap="round"><path d="M15 18l-6-6 6-6" /></svg>
+              <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="color-mix(in oklab, var(--text-primary) 70%, transparent)" strokeWidth="2.2" strokeLinecap="round"><path d="M15 18l-6-6 6-6" /></svg>
             </div>
             <div className="finv-hdr-center">
               <div className="finv-hdr-title">СОКРОВИЩА ВОИНА</div>
@@ -429,10 +429,10 @@ export default function FieldInventory() {
           )}
           {/* ═══ DELIVERED BANNER — needs confirmation ═══ */}
           {counts.delivered > 0 && (!filter || filter === 'delivered') && (
-            <div className="finv-ready-banner" style={{ background: 'linear-gradient(135deg,rgba(74,222,128,.12),rgba(52,211,153,.06))', borderColor: 'rgba(74,222,128,.25)' }}>
+            <div className="finv-ready-banner" style={{ background: 'linear-gradient(135deg,color-mix(in oklab, var(--ok) 12%, transparent),color-mix(in oklab, var(--ok) 6%, transparent))', borderColor: 'color-mix(in oklab, var(--ok) 25%, transparent)' }}>
               <div className="finv-ready-banner-icon">{'\uD83C\uDF81'}</div>
               <div className="finv-ready-banner-text">
-                <div className="finv-ready-banner-title" style={{ color: '#4ade80' }}>{counts.delivered} {counts.delivered === 1 ? 'приз выдан' : 'приза выдано'}</div>
+                <div className="finv-ready-banner-title" style={{ color: 'var(--ok)' }}>{counts.delivered} {counts.delivered === 1 ? 'приз выдан' : 'приза выдано'}</div>
                 <div className="finv-ready-banner-sub">Нажми «Получил» чтобы подтвердить</div>
               </div>
             </div>
@@ -443,8 +443,8 @@ export default function FieldInventory() {
             <button className="finv-xp-forge-toggle" onClick={() => setShowXpForge(p => !p)}>
               <span>⚗️ Кузница XP</span>
               <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <span style={{ fontSize: 11, color: 'rgba(212,168,67,.7)' }}>{wallet.runes} ᚱ · {wallet.xp} XP</span>
-                <span style={{ transition: 'transform .3s', transform: showXpForge ? 'rotate(180deg)' : 'rotate(0deg)', fontSize: 10, color: 'rgba(255,255,255,.4)' }}>▼</span>
+                <span style={{ fontSize: 11, color: 'color-mix(in oklab, var(--value) 70%, transparent)' }}>{wallet.runes} ᚱ · {wallet.xp} XP</span>
+                <span style={{ transition: 'transform .3s', transform: showXpForge ? 'rotate(180deg)' : 'rotate(0deg)', fontSize: 10, color: 'color-mix(in oklab, var(--text-primary) 40%, transparent)' }}>▼</span>
               </span>
             </button>
             {showXpForge && (
@@ -455,14 +455,14 @@ export default function FieldInventory() {
                 <div className="finv-xp-forge-balances">
                   <div className="finv-xp-forge-bal">
                     <div style={{ fontSize: 20 }}>ᚱ</div>
-                    <div style={{ fontSize: 18, fontWeight: 800, color: '#D4A843' }}>{wallet.runes}</div>
-                    <div style={{ fontSize: 10, color: 'rgba(255,255,255,.4)' }}>Руны</div>
+                    <div style={{ fontSize: 18, fontWeight: 800, color: 'var(--value)' }}>{wallet.runes}</div>
+                    <div style={{ fontSize: 10, color: 'color-mix(in oklab, var(--text-primary) 40%, transparent)' }}>Руны</div>
                   </div>
-                  <div style={{ fontSize: 24, color: 'rgba(255,255,255,.2)' }}>→</div>
+                  <div style={{ fontSize: 24, color: 'color-mix(in oklab, var(--text-primary) 20%, transparent)' }}>→</div>
                   <div className="finv-xp-forge-bal">
                     <div style={{ fontSize: 20 }}>⚡</div>
                     <div style={{ fontSize: 18, fontWeight: 800, color: '#818cf8' }}>{wallet.xp}</div>
-                    <div style={{ fontSize: 10, color: 'rgba(255,255,255,.4)' }}>XP</div>
+                    <div style={{ fontSize: 10, color: 'color-mix(in oklab, var(--text-primary) 40%, transparent)' }}>XP</div>
                   </div>
                 </div>
                 <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
@@ -476,12 +476,12 @@ export default function FieldInventory() {
                     onChange={e => handleXpAmountChange(e.target.value)}
                     className="finv-xp-input"
                   />
-                  <div style={{ fontSize: 12, color: 'rgba(255,255,255,.4)', whiteSpace: 'nowrap' }}>
+                  <div style={{ fontSize: 12, color: 'color-mix(in oklab, var(--text-primary) 40%, transparent)', whiteSpace: 'nowrap' }}>
                     → {xpAmount && parseInt(xpAmount) >= 15 ? Math.floor(parseInt(xpAmount) / XP_RATE) : 0} XP
                   </div>
                 </div>
                 {xpError && (
-                  <div style={{ fontSize: 12, color: '#f87171', marginTop: 6 }}>{xpError}</div>
+                  <div style={{ fontSize: 12, color: 'var(--danger)', marginTop: 6 }}>{xpError}</div>
                 )}
                 {xpResult && (
                   <div className="finv-xp-result">
@@ -508,7 +508,7 @@ export default function FieldInventory() {
           {sellResult && (
             <div className="finv-sell-toast">
               💰 Продано: <strong>{sellResult.item_name}</strong> за <strong>{sellResult.sell_price} ᚱ</strong>
-              <button onClick={() => setSellResult(null)} style={{ marginLeft: 8, background: 'none', border: 'none', color: 'rgba(255,255,255,.5)', cursor: 'pointer', fontSize: 14 }}>✕</button>
+              <button onClick={() => setSellResult(null)} style={{ marginLeft: 8, background: 'none', border: 'none', color: 'color-mix(in oklab, var(--text-primary) 50%, transparent)', cursor: 'pointer', fontSize: 14 }}>✕</button>
             </div>
           )}
 
@@ -567,7 +567,7 @@ export default function FieldInventory() {
                         {item.pmPhone && item.status === 'ready' && (
                           <a href={`tel:${item.pmPhone}`} className="finv-item-pm-call"
                             onClick={e => e.stopPropagation()}>
-                            <svg viewBox="0 0 24 24" width="14" height="14" fill="#3b82f6">
+                            <svg viewBox="0 0 24 24" width="14" height="14" fill="var(--acc)">
                               <path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07 19.5 19.5 0 01-6-6 19.79 19.79 0 01-3.07-8.67A2 2 0 014.11 2h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L8.09 9.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 16.92z"/>
                             </svg>
                           </a>
@@ -597,7 +597,7 @@ export default function FieldInventory() {
                         <div className="finv-equipped-badge">{'\u2728'} Надета ✓</div>
                         <button
                           className="finv-action-btn"
-                          style={{ background: 'rgba(255,255,255,.08)', color: 'rgba(255,255,255,.5)', fontSize: 11 }}
+                          style={{ background: 'color-mix(in oklab, var(--text-primary) 8%, transparent)', color: 'color-mix(in oklab, var(--text-primary) 50%, transparent)', fontSize: 11 }}
                           disabled={isActing}
                           onClick={e => handleUnequip(item.id, e)}>
                           Снять
@@ -634,7 +634,7 @@ export default function FieldInventory() {
                     {/* Cancel delivery request */}
                     {item.isPhysical && item.status === 'requested' && (
                       <button
-                        style={{ background: 'rgba(156,163,175,.08)', border: '1px solid rgba(156,163,175,.15)', color: 'rgba(255,255,255,.45)', fontSize: 12, padding: '8px 12px', borderRadius: 10, cursor: 'pointer', marginTop: 4 }}
+                        style={{ background: 'rgba(156,163,175,.08)', border: '1px solid rgba(156,163,175,.15)', color: 'color-mix(in oklab, var(--text-primary) 45%, transparent)', fontSize: 12, padding: '8px 12px', borderRadius: 10, cursor: 'pointer', marginTop: 4 }}
                         disabled={isActing}
                         onClick={e => handleCancelRequest(item.id, e)}>
                         {isActing ? '...' : '✕ Отменить запрос'}
@@ -659,21 +659,21 @@ export default function FieldInventory() {
                 <div className="finv-modal-handle" />
                 <div style={{ textAlign: 'center', marginBottom: 16 }}>
                   <div style={{ fontSize: 36, marginBottom: 8 }}>💰</div>
-                  <div style={{ fontFamily: 'Cinzel,serif', fontSize: 17, fontWeight: 900, color: '#fff', marginBottom: 6 }}>
+                  <div style={{ fontFamily: 'Cinzel,serif', fontSize: 17, fontWeight: 900, color: 'var(--text-primary)', marginBottom: 6 }}>
                     Продать предмет?
                   </div>
-                  <div style={{ fontSize: 14, fontWeight: 700, color: '#D4A843', marginBottom: 4 }}>{sellItem.name}</div>
-                  <div style={{ fontSize: 12, color: 'rgba(255,255,255,.5)' }}>
+                  <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--value)', marginBottom: 4 }}>{sellItem.name}</div>
+                  <div style={{ fontSize: 12, color: 'color-mix(in oklab, var(--text-primary) 50%, transparent)' }}>
                     Цена продажи: ~50% от стоимости в магазине
                   </div>
                 </div>
                 <div style={{ display: 'flex', gap: 10 }}>
                   <button onClick={() => setSellItem(null)}
-                    style={{ flex: 1, padding: '14px 0', borderRadius: 14, border: '1.5px solid rgba(255,255,255,.1)', background: 'rgba(255,255,255,.04)', color: 'rgba(255,255,255,.7)', fontSize: 14, fontWeight: 700, cursor: 'pointer' }}>
+                    style={{ flex: 1, padding: '14px 0', borderRadius: 14, border: '1.5px solid color-mix(in oklab, var(--text-primary) 10%, transparent)', background: 'color-mix(in oklab, var(--text-primary) 4%, transparent)', color: 'color-mix(in oklab, var(--text-primary) 70%, transparent)', fontSize: 14, fontWeight: 700, cursor: 'pointer' }}>
                     Отмена
                   </button>
                   <button onClick={handleSell} disabled={sellLoading}
-                    style={{ flex: 2, padding: '14px 0', borderRadius: 14, border: 'none', background: 'linear-gradient(135deg,#C8940A,#F0C850)', color: '#1a1000', fontSize: 14, fontWeight: 800, cursor: 'pointer', opacity: sellLoading ? 0.6 : 1 }}>
+                    style={{ flex: 2, padding: '14px 0', borderRadius: 14, border: 'none', background: 'linear-gradient(135deg,var(--value),var(--value))', color: 'var(--text-on-gold)', fontSize: 14, fontWeight: 800, cursor: 'pointer', opacity: sellLoading ? 0.6 : 1 }}>
                     {sellLoading ? '⚗️ Продаём...' : '💰 Да, продать'}
                   </button>
                 </div>
@@ -689,7 +689,7 @@ export default function FieldInventory() {
           <div className="finv-modal-card" onClick={e => e.stopPropagation()}>
             <div className="finv-modal-handle" />
             <button className="finv-modal-close" onClick={closeModal}>
-              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="rgba(255,255,255,.7)" strokeWidth="2.5" strokeLinecap="round">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="color-mix(in oklab, var(--text-primary) 70%, transparent)" strokeWidth="2.5" strokeLinecap="round">
                 <path d="M18 6L6 18M6 6l12 12" />
               </svg>
             </button>
@@ -768,14 +768,14 @@ export default function FieldInventory() {
                   {isDigitalItem && !modalItem.isEquipped && (
                     <button
                       className="finv-modal-cta show"
-                      style={{ background: 'linear-gradient(135deg,#7c3aed,#a855f7)', boxShadow: '0 5px 0 #4c1d95,0 8px 20px rgba(168,85,247,.2)' }}
+                      style={{ background: 'linear-gradient(135deg,var(--acc),var(--acc))', boxShadow: '0 5px 0 var(--acc),0 8px 20px color-mix(in oklab, var(--acc) 20%, transparent)' }}
                       disabled={isActingModal}
                       onClick={() => { handleEquip(modalItem.id); closeModal(); }}>
                       {isActingModal ? '\u29D7 Надеваем...' : '\u2728 Надеть предмет'}
                     </button>
                   )}
                   {isDigitalItem && modalItem.isEquipped && (
-                    <div style={{ textAlign: 'center', padding: '16px 0', color: '#4ade80', fontWeight: 700, fontSize: 15 }}>
+                    <div style={{ textAlign: 'center', padding: '16px 0', color: 'var(--ok)', fontWeight: 700, fontSize: 15 }}>
                       {'\u2728'} Предмет активирован на вашем профиле
                     </div>
                   )}
@@ -784,7 +784,7 @@ export default function FieldInventory() {
                   {!isDigitalItem && modalItem.status === 'pending' && (
                     <button
                       className="finv-modal-cta show"
-                      style={{ background: 'linear-gradient(135deg,#C8940A,#F0C850)', color: '#1a1000', boxShadow: '0 5px 0 #8B6914,0 8px 20px rgba(240,200,80,.2)' }}
+                      style={{ background: 'linear-gradient(135deg,var(--value),var(--value))', color: 'var(--text-on-gold)', boxShadow: '0 5px 0 var(--value),0 8px 20px color-mix(in oklab, var(--value) 20%, transparent)' }}
                       disabled={isActingModal}
                       onClick={() => { handleRequest(modalItem.id); closeModal(); }}>
                       {isActingModal ? '\u29D7 Запрашиваем...' : '\uD83C\uDF81 Запросить выдачу'}
@@ -795,7 +795,7 @@ export default function FieldInventory() {
                   {!isDigitalItem && modalItem.status === 'delivered' && (
                     <button
                       className="finv-modal-cta show"
-                      style={{ background: 'linear-gradient(135deg,#166534,#22c55e)', boxShadow: '0 5px 0 #14532d,0 8px 20px rgba(34,197,94,.2)' }}
+                      style={{ background: 'linear-gradient(135deg,var(--ok),var(--ok))', boxShadow: '0 5px 0 var(--ok),0 8px 20px color-mix(in oklab, var(--ok) 20%, transparent)' }}
                       disabled={isActingModal}
                       onClick={() => { handleConfirm(modalItem.id); closeModal(); }}>
                       {isActingModal ? '\u29D7 Подтверждаем...' : '\u2705 Я получил приз'}
@@ -825,12 +825,12 @@ const INV_CSS = `
 /* Q10: Cinzel font loaded via index.html link — no @import FOUC */
 @keyframes finv-shimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}
 .finv{
-  --finv-bg:#0b0e1a;--finv-card:#141828;--finv-card2:#1a2040;
-  --finv-gold:#F0C850;--finv-gold-d:#C8940A;--finv-gold-l:#FFE17A;
-  --finv-red:#E84057;--finv-blue:#4A90FF;--finv-purple:#A56EFF;--finv-green:#3DDC84;
-  --finv-t1:#fff;--finv-t2:rgba(255,255,255,.7);--finv-t3:rgba(255,255,255,.4);
-  --finv-gold-warm:#f59e0b;--finv-rune-accent:#b45309;
-  --finv-status-grey:#6b7280;--finv-status-blue:#3b82f6;--finv-status-green:#22c55e;
+  --finv-bg:var(--bg-primary);--finv-card:var(--field-card);--finv-card2:var(--bg-surface-alt);
+  --finv-gold:var(--value);--finv-gold-d:var(--value);--finv-gold-l:color-mix(in oklab, var(--value) 45%, var(--text-primary));
+  --finv-red:var(--danger);--finv-blue:var(--acc);--finv-purple:var(--acc);--finv-green:var(--ok);
+  --finv-t1:var(--text-primary);--finv-t2:color-mix(in oklab, var(--text-primary) 70%, transparent);--finv-t3:color-mix(in oklab, var(--text-primary) 40%, transparent);
+  --finv-gold-warm:var(--value);--finv-rune-accent:#b45309;
+  --finv-status-grey:var(--text-tertiary);--finv-status-blue:var(--acc);--finv-status-green:var(--ok);
   position:relative;min-height:100dvh;width:100%;background:var(--finv-bg);color:var(--finv-t1);
   font-family:-apple-system,BlinkMacSystemFont,'SF Pro Round',system-ui,sans-serif;
   -webkit-user-select:none;user-select:none;overflow-x:hidden;overflow-y:auto;
@@ -842,10 +842,10 @@ const INV_CSS = `
 .finv-bg-glow.g2{width:250px;height:250px;bottom:-30px;right:-60px;background:var(--finv-purple)}
 .finv-bg-glow.g3{width:200px;height:200px;top:40%;left:50%;transform:translateX(-50%);background:var(--finv-gold);opacity:.08}
 .finv-bg-glow.g4{width:180px;height:180px;top:60%;left:20%;background:var(--finv-gold-warm);opacity:.06}
-.finv-stars{position:absolute;inset:0}.finv-s{position:absolute;background:#fff;border-radius:50%;animation:finv-tw 3s ease-in-out infinite alternate}
+.finv-stars{position:absolute;inset:0}.finv-s{position:absolute;background:var(--text-primary);border-radius:50%;animation:finv-tw 3s ease-in-out infinite alternate}
 @keyframes finv-tw{0%{opacity:.1;transform:scale(.8)}100%{opacity:.5;transform:scale(1.3)}}
 
-.finv-rune-float{position:fixed;font-size:28px;color:rgba(180,83,9,.08);pointer-events:none;z-index:0;
+.finv-rune-float{position:fixed;font-size:28px;color:color-mix(in oklab, var(--danger) 8%, transparent);pointer-events:none;z-index:0;
   font-family:'Cinzel',serif;animation:finv-runeFloat 20s linear infinite}
 @keyframes finv-runeFloat{0%{transform:translateY(100vh) rotate(0deg);opacity:0}10%{opacity:.08}90%{opacity:.08}100%{transform:translateY(-100px) rotate(360deg);opacity:0}}
 
@@ -856,48 +856,48 @@ const INV_CSS = `
 .finv-header{position:sticky;top:0;z-index:50;display:flex;align-items:center;justify-content:space-between;
   padding:10px 16px;padding-top:max(env(safe-area-inset-top),10px);
   background:linear-gradient(180deg,var(--finv-bg) 60%,transparent);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px)}
-.finv-hdr-back{width:36px;height:36px;border-radius:12px;background:rgba(255,255,255,.06);display:flex;align-items:center;justify-content:center;cursor:pointer;transition:background .2s;flex-shrink:0}
-.finv-hdr-back:active{background:rgba(255,255,255,.12)}
+.finv-hdr-back{width:36px;height:36px;border-radius:12px;background:color-mix(in oklab, var(--text-primary) 6%, transparent);display:flex;align-items:center;justify-content:center;cursor:pointer;transition:background .2s;flex-shrink:0}
+.finv-hdr-back:active{background:color-mix(in oklab, var(--text-primary) 12%, transparent)}
 .finv-hdr-center{text-align:center;flex:1;min-width:0}
-.finv-hdr-title{font-family:'Cinzel',serif;font-size:14px;font-weight:900;letter-spacing:.1em;color:var(--finv-gold);text-shadow:0 0 20px rgba(240,200,80,.2)}
+.finv-hdr-title{font-family:'Cinzel',serif;font-size:14px;font-weight:900;letter-spacing:.1em;color:var(--finv-gold);text-shadow:0 0 20px color-mix(in oklab, var(--value) 20%, transparent)}
 .finv-hdr-counter{display:flex;align-items:center;gap:5px;padding:5px 12px 5px 8px;
-  background:linear-gradient(135deg,#2a2008,#1a1505);border:1.5px solid rgba(240,200,80,.3);border-radius:20px;
-  box-shadow:0 2px 10px rgba(240,200,80,.1);font-size:13px;font-weight:700;color:var(--finv-gold);flex-shrink:0}
+  background:linear-gradient(135deg,var(--bg-surface),var(--bg-surface));border:1.5px solid color-mix(in oklab, var(--value) 30%, transparent);border-radius:20px;
+  box-shadow:0 2px 10px color-mix(in oklab, var(--value) 10%, transparent);font-size:13px;font-weight:700;color:var(--finv-gold);flex-shrink:0}
 .finv-hdr-counter-icon{font-size:16px}
 
 /* Status pills */
 .finv-status-bar{display:flex;gap:8px;padding:12px 16px 8px;justify-content:center}
 .finv-pill{display:flex;align-items:center;gap:5px;padding:8px 14px;border-radius:20px;font-size:12px;font-weight:700;
-  cursor:pointer;transition:all .3s ease;border:1.5px solid transparent;background:rgba(255,255,255,.04);color:var(--finv-t2);
+  cursor:pointer;transition:all .3s ease;border:1.5px solid transparent;background:color-mix(in oklab, var(--text-primary) 4%, transparent);color:var(--finv-t2);
   -webkit-tap-highlight-color:transparent}
 .finv-pill:active{transform:scale(.95)}
 .finv-pill-icon{font-size:14px}
 .finv-pill-count{min-width:20px;height:20px;border-radius:10px;display:flex;align-items:center;justify-content:center;
-  font-size:11px;font-weight:800;background:rgba(255,255,255,.08);color:var(--finv-t2)}
+  font-size:11px;font-weight:800;background:color-mix(in oklab, var(--text-primary) 8%, transparent);color:var(--finv-t2)}
 
 .finv-pill[data-filter="pending"]{border-color:rgba(107,114,128,.3)}
 .finv-pill[data-filter="pending"].active{background:rgba(107,114,128,.12);border-color:rgba(107,114,128,.5);color:#d1d5db}
-.finv-pill[data-filter="pending"].active .finv-pill-count{background:var(--finv-status-grey);color:#fff}
-.finv-pill[data-filter="ready"]{border-color:rgba(59,130,246,.3)}
-.finv-pill[data-filter="ready"].active{background:rgba(59,130,246,.12);border-color:rgba(59,130,246,.5);color:#93c5fd}
-.finv-pill[data-filter="ready"].active .finv-pill-count{background:var(--finv-status-blue);color:#fff}
+.finv-pill[data-filter="pending"].active .finv-pill-count{background:var(--finv-status-grey);color:var(--text-primary)}
+.finv-pill[data-filter="ready"]{border-color:color-mix(in oklab, var(--acc) 30%, transparent)}
+.finv-pill[data-filter="ready"].active{background:color-mix(in oklab, var(--acc) 12%, transparent);border-color:color-mix(in oklab, var(--acc) 50%, transparent);color:var(--acc)}
+.finv-pill[data-filter="ready"].active .finv-pill-count{background:var(--finv-status-blue);color:var(--text-primary)}
 .finv-pill[data-filter="ready"] .finv-pill-icon{animation:finv-pulseBlue 2s ease-in-out infinite}
-@keyframes finv-pulseBlue{0%,100%{opacity:.7}50%{opacity:1;text-shadow:0 0 8px rgba(59,130,246,.5)}}
-.finv-pill[data-filter="delivered"]{border-color:rgba(34,197,94,.3)}
-.finv-pill[data-filter="delivered"].active{background:rgba(34,197,94,.12);border-color:rgba(34,197,94,.5);color:#86efac}
-.finv-pill[data-filter="delivered"].active .finv-pill-count{background:var(--finv-status-green);color:#fff}
+@keyframes finv-pulseBlue{0%,100%{opacity:.7}50%{opacity:1;text-shadow:0 0 8px color-mix(in oklab, var(--acc) 50%, transparent)}}
+.finv-pill[data-filter="delivered"]{border-color:color-mix(in oklab, var(--ok) 30%, transparent)}
+.finv-pill[data-filter="delivered"].active{background:color-mix(in oklab, var(--ok) 12%, transparent);border-color:color-mix(in oklab, var(--ok) 50%, transparent);color:#86efac}
+.finv-pill[data-filter="delivered"].active .finv-pill-count{background:var(--finv-status-green);color:var(--text-primary)}
 
 /* Ready banner */
 .finv-ready-banner{margin:4px 16px 8px;padding:12px 16px;border-radius:16px;
-  background:linear-gradient(135deg,rgba(59,130,246,.12),rgba(59,130,246,.06));
-  border:1px solid rgba(59,130,246,.25);display:flex;align-items:center;gap:12px;
+  background:linear-gradient(135deg,color-mix(in oklab, var(--acc) 12%, transparent),color-mix(in oklab, var(--acc) 6%, transparent));
+  border:1px solid color-mix(in oklab, var(--acc) 25%, transparent);display:flex;align-items:center;gap:12px;
   animation:finv-bannerPulse 3s ease-in-out infinite}
-@keyframes finv-bannerPulse{0%,100%{box-shadow:0 0 0 0 rgba(59,130,246,0)}50%{box-shadow:0 0 20px 2px rgba(59,130,246,.15)}}
+@keyframes finv-bannerPulse{0%,100%{box-shadow:0 0 0 0 color-mix(in oklab, var(--acc) 0%, transparent)}50%{box-shadow:0 0 20px 2px color-mix(in oklab, var(--acc) 15%, transparent)}}
 .finv-ready-banner-icon{font-size:24px;flex-shrink:0}
 .finv-ready-banner-text{flex:1;min-width:0}
-.finv-ready-banner-title{font-size:13px;font-weight:700;color:#93c5fd}
+.finv-ready-banner-title{font-size:13px;font-weight:700;color:var(--acc)}
 .finv-ready-banner-sub{font-size:11px;color:var(--finv-t3);margin-top:2px}
-.finv-ready-banner-cta{padding:8px 16px;border-radius:12px;border:none;background:var(--finv-status-blue);color:#fff;
+.finv-ready-banner-cta{padding:8px 16px;border-radius:12px;border:none;background:var(--finv-status-blue);color:var(--text-primary);
   font-size:12px;font-weight:700;cursor:pointer;display:flex;align-items:center;gap:4px;flex-shrink:0;transition:transform .15s;text-decoration:none}
 .finv-ready-banner-cta:active{transform:scale(.95)}
 
@@ -906,17 +906,17 @@ const INV_CSS = `
 
 /* Item card */
 .finv-item-card{display:flex;gap:14px;padding:14px;border-radius:18px;background:var(--finv-card);
-  border:1.5px solid rgba(255,255,255,.04);cursor:pointer;transition:all .3s ease;position:relative;overflow:hidden;
+  border:1.5px solid color-mix(in oklab, var(--text-primary) 4%, transparent);cursor:pointer;transition:all .3s ease;position:relative;overflow:hidden;
   -webkit-tap-highlight-color:transparent;opacity:0;transform:translateY(20px)}
 .finv-item-card.visible{opacity:1;transform:translateY(0)}
 .finv-item-card:active{transform:scale(.98)!important}
 .finv-item-card[data-status="pending"].visible{opacity:.75}
 .finv-item-card[data-status="pending"] .finv-item-svg-wrap{filter:saturate(.5) brightness(.7)}
-.finv-item-card[data-status="ready"]{border-color:rgba(240,200,80,.25);
-  background:linear-gradient(135deg,rgba(240,200,80,.06),var(--finv-card));animation:finv-readyGlow 3s ease-in-out infinite}
-@keyframes finv-readyGlow{0%,100%{box-shadow:0 0 0 0 rgba(240,200,80,0),0 4px 15px rgba(0,0,0,.2)}
-  50%{box-shadow:0 0 20px 3px rgba(240,200,80,.12),0 4px 15px rgba(0,0,0,.2)}}
-.finv-item-card[data-status="delivered"]{border-color:rgba(34,197,94,.1)}
+.finv-item-card[data-status="ready"]{border-color:color-mix(in oklab, var(--value) 25%, transparent);
+  background:linear-gradient(135deg,color-mix(in oklab, var(--value) 6%, transparent),var(--finv-card));animation:finv-readyGlow 3s ease-in-out infinite}
+@keyframes finv-readyGlow{0%,100%{box-shadow:0 0 0 0 color-mix(in oklab, var(--value) 0%, transparent),0 4px 15px color-mix(in oklab, var(--bg-primary) 20%, transparent)}
+  50%{box-shadow:0 0 20px 3px color-mix(in oklab, var(--value) 12%, transparent),0 4px 15px color-mix(in oklab, var(--bg-primary) 20%, transparent)}}
+.finv-item-card[data-status="delivered"]{border-color:color-mix(in oklab, var(--ok) 10%, transparent)}
 
 /* SVG wrap */
 .finv-item-svg-wrap{width:80px;height:80px;flex-shrink:0;border-radius:16px;display:flex;align-items:center;justify-content:center;position:relative;overflow:visible}
@@ -924,21 +924,21 @@ const INV_CSS = `
 .finv-item-card[data-status="ready"] .finv-item-svg-glow{background:radial-gradient(circle,var(--finv-gold),transparent);opacity:.4;animation:finv-svgGlowPulse 3s ease-in-out infinite}
 @keyframes finv-svgGlowPulse{0%,100%{opacity:.3}50%{opacity:.5}}
 .finv-item-card[data-status="pending"] .finv-item-svg-glow{background:radial-gradient(circle,rgba(107,114,128,.4),transparent);opacity:.15}
-.finv-item-card[data-status="delivered"] .finv-item-svg-glow{background:radial-gradient(circle,rgba(34,197,94,.3),transparent);opacity:.2}
+.finv-item-card[data-status="delivered"] .finv-item-svg-glow{background:radial-gradient(circle,color-mix(in oklab, var(--ok) 30%, transparent),transparent);opacity:.2}
 
 /* Item info */
 .finv-item-info{flex:1;min-width:0;display:flex;flex-direction:column;gap:4px}
 .finv-item-name{font-size:15px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .finv-item-status-badge{display:inline-flex;align-items:center;gap:4px;padding:3px 10px;border-radius:8px;font-size:11px;font-weight:700;width:fit-content}
-.finv-item-status-badge.pending{background:rgba(107,114,128,.12);color:#9ca3af}
-.finv-item-status-badge.ready{background:rgba(59,130,246,.12);color:#60a5fa;animation:finv-badgePulseBlue 2s ease-in-out infinite}
-@keyframes finv-badgePulseBlue{0%,100%{box-shadow:0 0 0 0 rgba(59,130,246,0)}50%{box-shadow:0 0 8px 1px rgba(59,130,246,.2)}}
-.finv-item-status-badge.delivered{background:rgba(34,197,94,.12);color:#4ade80}
+.finv-item-status-badge.pending{background:rgba(107,114,128,.12);color:var(--text-secondary)}
+.finv-item-status-badge.ready{background:color-mix(in oklab, var(--acc) 12%, transparent);color:var(--acc);animation:finv-badgePulseBlue 2s ease-in-out infinite}
+@keyframes finv-badgePulseBlue{0%,100%{box-shadow:0 0 0 0 color-mix(in oklab, var(--acc) 0%, transparent)}50%{box-shadow:0 0 8px 1px color-mix(in oklab, var(--acc) 20%, transparent)}}
+.finv-item-status-badge.delivered{background:color-mix(in oklab, var(--ok) 12%, transparent);color:var(--ok)}
 .finv-item-sub{font-size:11px;color:var(--finv-t3);line-height:1.3}
 .finv-item-pm-row{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--finv-t2)}
-.finv-item-pm-call{width:28px;height:28px;border-radius:50%;background:rgba(59,130,246,.15);border:1px solid rgba(59,130,246,.3);
+.finv-item-pm-call{width:28px;height:28px;border-radius:50%;background:color-mix(in oklab, var(--acc) 15%, transparent);border:1px solid color-mix(in oklab, var(--acc) 30%, transparent);
   display:flex;align-items:center;justify-content:center;cursor:pointer;text-decoration:none;transition:all .2s;flex-shrink:0}
-.finv-item-pm-call:active{background:rgba(59,130,246,.3);transform:scale(.9)}
+.finv-item-pm-call:active{background:color-mix(in oklab, var(--acc) 30%, transparent);transform:scale(.9)}
 .finv-item-card[data-status="ready"] .finv-item-pm-call{animation:finv-phoneRing 3s ease-in-out infinite 1.5s}
 @keyframes finv-phoneRing{0%,8%,16%,100%{transform:rotate(0)}2%{transform:rotate(12deg)}4%{transform:rotate(-12deg)}6%{transform:rotate(10deg)}10%{transform:rotate(-8deg)}12%{transform:rotate(6deg)}14%{transform:rotate(-4deg)}}
 .finv-item-source{display:flex;align-items:center;gap:4px;font-size:11px;color:var(--finv-t3)}
@@ -947,26 +947,26 @@ const INV_CSS = `
 .finv-item-more{font-size:11px;font-weight:700;color:var(--finv-gold-warm);cursor:pointer;display:inline-flex;align-items:center;gap:2px;margin-top:2px}
 
 /* Modal overlay */
-.finv-modal-overlay{position:fixed;inset:0;z-index:200;background:rgba(0,0,0,0);pointer-events:none;transition:background .35s}
-.finv-modal-overlay.on{background:rgba(0,0,0,.7);pointer-events:auto;backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}
+.finv-modal-overlay{position:fixed;inset:0;z-index:200;background:color-mix(in oklab, var(--bg-primary) 0%, transparent);pointer-events:none;transition:background .35s}
+.finv-modal-overlay.on{background:color-mix(in oklab, var(--bg-primary) 70%, transparent);pointer-events:auto;backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}
 .finv-modal-sheet{position:fixed;left:50%;bottom:0;width:100%;max-width:430px;transform:translate(-50%,110%);z-index:201;
   transition:transform .5s cubic-bezier(.34,1.56,.64,1);max-height:92dvh;overflow-y:auto}
 .finv-modal-sheet.on{transform:translate(-50%,0)}
 .finv-modal-card{background:linear-gradient(180deg,var(--finv-card2),var(--finv-card));border-radius:28px 28px 0 0;
-  border:1px solid rgba(255,255,255,.06);border-bottom:none;padding:20px;
-  padding-bottom:max(env(safe-area-inset-bottom),28px);box-shadow:0 -10px 50px rgba(0,0,0,.5);position:relative}
-.finv-modal-handle{width:40px;height:4px;border-radius:2px;background:rgba(255,255,255,.12);margin:0 auto 16px}
+  border:1px solid color-mix(in oklab, var(--text-primary) 6%, transparent);border-bottom:none;padding:20px;
+  padding-bottom:max(env(safe-area-inset-bottom),28px);box-shadow:0 -10px 50px color-mix(in oklab, var(--bg-primary) 50%, transparent);position:relative}
+.finv-modal-handle{width:40px;height:4px;border-radius:2px;background:color-mix(in oklab, var(--text-primary) 12%, transparent);margin:0 auto 16px}
 .finv-modal-close{position:absolute;top:20px;right:20px;width:32px;height:32px;border-radius:50%;
-  background:rgba(255,255,255,.06);border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:background .2s;z-index:5}
-.finv-modal-close:active{background:rgba(255,255,255,.15)}
+  background:color-mix(in oklab, var(--text-primary) 6%, transparent);border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:background .2s;z-index:5}
+.finv-modal-close:active{background:color-mix(in oklab, var(--text-primary) 15%, transparent)}
 
 /* Modal SVG */
 .finv-modal-svg-area{text-align:center;position:relative;height:200px;margin-bottom:12px;display:flex;align-items:center;justify-content:center}
 .finv-modal-svg-glow{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:180px;height:180px;border-radius:50%;
-  background:radial-gradient(circle,rgba(240,200,80,.2),rgba(180,83,9,.1),transparent);filter:blur(20px);animation:finv-modalGlow 3s ease-in-out infinite alternate}
+  background:radial-gradient(circle,color-mix(in oklab, var(--value) 20%, transparent),color-mix(in oklab, var(--danger) 10%, transparent),transparent);filter:blur(20px);animation:finv-modalGlow 3s ease-in-out infinite alternate}
 @keyframes finv-modalGlow{0%{opacity:.5;transform:translate(-50%,-50%) scale(.9)}100%{opacity:.8;transform:translate(-50%,-50%) scale(1.1)}}
 .finv-modal-rune-ring{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:190px;height:190px;border-radius:50%;
-  border:1px solid rgba(180,83,9,.15);z-index:1;animation:finv-runeRingSpin 30s linear infinite}
+  border:1px solid color-mix(in oklab, var(--danger) 15%, transparent);z-index:1;animation:finv-runeRingSpin 30s linear infinite}
 @keyframes finv-runeRingSpin{0%{transform:translate(-50%,-50%) rotate(0deg)}100%{transform:translate(-50%,-50%) rotate(360deg)}}
 
 .finv-modal-name{font-family:'Cinzel',serif;font-size:22px;font-weight:900;text-align:center;color:var(--finv-t1);margin-bottom:4px}
@@ -974,7 +974,7 @@ const INV_CSS = `
 
 /* Modal grid */
 .finv-modal-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:16px}
-.finv-modal-grid-item{padding:10px 12px;border-radius:12px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.04)}
+.finv-modal-grid-item{padding:10px 12px;border-radius:12px;background:color-mix(in oklab, var(--text-primary) 3%, transparent);border:1px solid color-mix(in oklab, var(--text-primary) 4%, transparent)}
 .finv-modal-grid-item.full{grid-column:1/-1}
 .finv-modal-grid-label{font-size:10px;color:var(--finv-t3);text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px}
 .finv-modal-grid-value{font-size:13px;font-weight:600;color:var(--finv-t1)}
@@ -982,22 +982,22 @@ const INV_CSS = `
 /* Timeline */
 .finv-modal-timeline{display:flex;align-items:center;justify-content:center;gap:0;margin:20px 0;padding:0 20px}
 .finv-tl-dot{width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:800;position:relative;flex-shrink:0}
-.finv-tl-dot.filled{background:linear-gradient(135deg,var(--finv-gold-d),var(--finv-gold));color:#1a1000;box-shadow:0 2px 8px rgba(240,200,80,.25)}
-.finv-tl-dot.empty{background:rgba(255,255,255,.06);border:2px solid rgba(255,255,255,.12);color:var(--finv-t3)}
-.finv-tl-dot.current{background:linear-gradient(135deg,var(--finv-gold-d),var(--finv-gold));color:#1a1000;animation:finv-tlPulse 2s ease-in-out infinite}
-@keyframes finv-tlPulse{0%,100%{box-shadow:0 0 0 0 rgba(240,200,80,0)}50%{box-shadow:0 0 12px 4px rgba(240,200,80,.3)}}
+.finv-tl-dot.filled{background:linear-gradient(135deg,var(--finv-gold-d),var(--finv-gold));color:var(--text-on-gold);box-shadow:0 2px 8px color-mix(in oklab, var(--value) 25%, transparent)}
+.finv-tl-dot.empty{background:color-mix(in oklab, var(--text-primary) 6%, transparent);border:2px solid color-mix(in oklab, var(--text-primary) 12%, transparent);color:var(--finv-t3)}
+.finv-tl-dot.current{background:linear-gradient(135deg,var(--finv-gold-d),var(--finv-gold));color:var(--text-on-gold);animation:finv-tlPulse 2s ease-in-out infinite}
+@keyframes finv-tlPulse{0%,100%{box-shadow:0 0 0 0 color-mix(in oklab, var(--value) 0%, transparent)}50%{box-shadow:0 0 12px 4px color-mix(in oklab, var(--value) 30%, transparent)}}
 .finv-tl-line{flex:1;height:3px;border-radius:2px;min-width:30px}
 .finv-tl-line.filled{background:linear-gradient(90deg,var(--finv-gold-d),var(--finv-gold))}
-.finv-tl-line.empty{background:rgba(255,255,255,.08)}
+.finv-tl-line.empty{background:color-mix(in oklab, var(--text-primary) 8%, transparent)}
 .finv-tl-labels{display:flex;justify-content:space-between;padding:0 10px;margin-top:6px}
 .finv-tl-label{font-size:10px;color:var(--finv-t3);text-align:center;width:70px}
 .finv-tl-label.active{color:var(--finv-gold);font-weight:600}
 
 /* CTA */
 .finv-modal-cta{display:none;align-items:center;justify-content:center;gap:8px;width:100%;padding:16px;border-radius:16px;border:none;
-  font-size:15px;font-weight:800;color:#fff;cursor:pointer;background:linear-gradient(135deg,var(--finv-status-blue),#2563eb);
-  box-shadow:0 5px 0 #1d4ed8,0 8px 20px rgba(59,130,246,.2);margin-top:16px;transition:transform .1s;text-decoration:none}
-.finv-modal-cta:active{transform:translateY(3px);box-shadow:0 2px 0 #1d4ed8}
+  font-size:15px;font-weight:800;color:var(--text-primary);cursor:pointer;background:linear-gradient(135deg,var(--finv-status-blue),var(--acc));
+  box-shadow:0 5px 0 var(--acc),0 8px 20px color-mix(in oklab, var(--acc) 20%, transparent);margin-top:16px;transition:transform .1s;text-decoration:none}
+.finv-modal-cta:active{transform:translateY(3px);box-shadow:0 2px 0 var(--acc)}
 .finv-modal-cta.show{display:flex}
 
 /* Empty state */
@@ -1007,14 +1007,14 @@ const INV_CSS = `
 .finv-empty-title{font-family:'Cinzel',serif;font-size:20px;font-weight:700;color:var(--finv-t2);margin-bottom:8px}
 .finv-empty-sub{font-size:13px;color:var(--finv-t3);margin-bottom:24px;line-height:1.4}
 .finv-empty-btn{display:inline-flex;align-items:center;gap:8px;padding:14px 28px;border-radius:16px;border:none;
-  font-size:15px;font-weight:800;color:#fff;cursor:pointer;
+  font-size:15px;font-weight:800;color:var(--text-primary);cursor:pointer;
   background:linear-gradient(135deg,var(--finv-red),#c0243a,var(--finv-gold-d));
-  box-shadow:0 5px 0 #7a1a28,0 8px 20px rgba(232,64,87,.2);transition:transform .1s}
-.finv-empty-btn:active{transform:translateY(3px);box-shadow:0 2px 0 #7a1a28}
+  box-shadow:0 5px 0 var(--danger),0 8px 20px color-mix(in oklab, var(--danger) 20%, transparent);transition:transform .1s}
+.finv-empty-btn:active{transform:translateY(3px);box-shadow:0 2px 0 var(--danger)}
 
 .finv ::-webkit-scrollbar{width:3px}
 .finv ::-webkit-scrollbar-track{background:transparent}
-.finv ::-webkit-scrollbar-thumb{background:rgba(255,255,255,.1);border-radius:2px}
+.finv ::-webkit-scrollbar-thumb{background:color-mix(in oklab, var(--text-primary) 10%, transparent);border-radius:2px}
 
 /* Action buttons */
 .finv-action-btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;
@@ -1022,67 +1022,67 @@ const INV_CSS = `
   transition:all .15s;margin-top:6px;-webkit-tap-highlight-color:transparent}
 .finv-action-btn:active{transform:translateY(2px)}
 .finv-action-btn:disabled{opacity:.5;cursor:not-allowed}
-.finv-action-btn.equip{background:linear-gradient(135deg,#7c3aed,#a855f7);color:#fff;
-  box-shadow:0 3px 0 #4c1d95,0 4px 12px rgba(168,85,247,.2)}
-.finv-action-btn.equip:not(:disabled):active{box-shadow:0 1px 0 #4c1d95}
-.finv-action-btn.request{background:linear-gradient(135deg,#C8940A,#F0C850);color:#1a1000;
-  box-shadow:0 3px 0 #8B6914,0 4px 12px rgba(240,200,80,.2)}
-.finv-action-btn.request:not(:disabled):active{box-shadow:0 1px 0 #8B6914}
-.finv-action-btn.confirm{background:linear-gradient(135deg,#166534,#22c55e);color:#fff;
-  box-shadow:0 3px 0 #14532d,0 4px 12px rgba(34,197,94,.2)}
-.finv-action-btn.confirm:not(:disabled):active{box-shadow:0 1px 0 #14532d}
+.finv-action-btn.equip{background:linear-gradient(135deg,var(--acc),var(--acc));color:var(--text-primary);
+  box-shadow:0 3px 0 var(--acc),0 4px 12px color-mix(in oklab, var(--acc) 20%, transparent)}
+.finv-action-btn.equip:not(:disabled):active{box-shadow:0 1px 0 var(--acc)}
+.finv-action-btn.request{background:linear-gradient(135deg,var(--value),var(--value));color:var(--text-on-gold);
+  box-shadow:0 3px 0 var(--value),0 4px 12px color-mix(in oklab, var(--value) 20%, transparent)}
+.finv-action-btn.request:not(:disabled):active{box-shadow:0 1px 0 var(--value)}
+.finv-action-btn.confirm{background:linear-gradient(135deg,var(--ok),var(--ok));color:var(--text-primary);
+  box-shadow:0 3px 0 var(--ok),0 4px 12px color-mix(in oklab, var(--ok) 20%, transparent)}
+.finv-action-btn.confirm:not(:disabled):active{box-shadow:0 1px 0 var(--ok)}
 
 /* Equipped / Confirmed badges (inline) */
 .finv-equipped-badge{display:inline-flex;align-items:center;gap:4px;padding:5px 10px;
-  border-radius:8px;background:rgba(168,85,247,.12);color:#c084fc;font-size:11px;font-weight:700;
-  margin-top:6px;border:1px solid rgba(168,85,247,.2)}
+  border-radius:8px;background:color-mix(in oklab, var(--acc) 12%, transparent);color:var(--acc);font-size:11px;font-weight:700;
+  margin-top:6px;border:1px solid color-mix(in oklab, var(--acc) 20%, transparent)}
 .finv-confirmed-badge{display:inline-flex;align-items:center;gap:4px;padding:5px 10px;
-  border-radius:8px;background:rgba(74,222,128,.1);color:#4ade80;font-size:11px;font-weight:700;
-  margin-top:6px;border:1px solid rgba(74,222,128,.2)}
+  border-radius:8px;background:color-mix(in oklab, var(--ok) 10%, transparent);color:var(--ok);font-size:11px;font-weight:700;
+  margin-top:6px;border:1px solid color-mix(in oklab, var(--ok) 20%, transparent)}
 
 /* pill for requested status */
-.finv-pill[data-filter="requested"]{border-color:rgba(251,191,36,.3)}
-.finv-pill[data-filter="requested"].active{background:rgba(251,191,36,.12);border-color:rgba(251,191,36,.5);color:#fde68a}
-.finv-pill[data-filter="requested"].active .finv-pill-count{background:#fbbf24;color:#1a1000}
+.finv-pill[data-filter="requested"]{border-color:color-mix(in oklab, var(--value) 30%, transparent)}
+.finv-pill[data-filter="requested"].active{background:color-mix(in oklab, var(--value) 12%, transparent);border-color:color-mix(in oklab, var(--value) 50%, transparent);color:#fde68a}
+.finv-pill[data-filter="requested"].active .finv-pill-count{background:var(--value);color:var(--text-on-gold)}
 /* pill for digital status */
-.finv-pill[data-filter="digital"]{border-color:rgba(168,85,247,.3)}
-.finv-pill[data-filter="digital"].active{background:rgba(168,85,247,.12);border-color:rgba(168,85,247,.5);color:#c084fc}
-.finv-pill[data-filter="digital"].active .finv-pill-count{background:#a855f7;color:#fff}
+.finv-pill[data-filter="digital"]{border-color:color-mix(in oklab, var(--acc) 30%, transparent)}
+.finv-pill[data-filter="digital"].active{background:color-mix(in oklab, var(--acc) 12%, transparent);border-color:color-mix(in oklab, var(--acc) 50%, transparent);color:var(--acc)}
+.finv-pill[data-filter="digital"].active .finv-pill-count{background:var(--acc);color:var(--text-primary)}
 
 /* Sell button */
-.finv-action-btn.sell{background:rgba(200,148,10,.12);color:#D4A843;
-  border:1.5px solid rgba(200,148,10,.25);box-shadow:none}
-.finv-action-btn.sell:not(:disabled):active{background:rgba(200,148,10,.2)}
+.finv-action-btn.sell{background:color-mix(in oklab, var(--value) 12%, transparent);color:var(--value);
+  border:1.5px solid color-mix(in oklab, var(--value) 25%, transparent);box-shadow:none}
+.finv-action-btn.sell:not(:disabled):active{background:color-mix(in oklab, var(--value) 20%, transparent)}
 
 /* XP Forge */
 .finv-xp-forge-wrap{margin:4px 16px 8px;border-radius:16px;overflow:hidden;
-  border:1.5px solid rgba(212,168,67,.2);background:rgba(212,168,67,.04)}
-.finv-xp-forge-toggle{width:100%;padding:12px 16px;background:none;border:none;color:#D4A843;
+  border:1.5px solid color-mix(in oklab, var(--value) 20%, transparent);background:color-mix(in oklab, var(--value) 4%, transparent)}
+.finv-xp-forge-toggle{width:100%;padding:12px 16px;background:none;border:none;color:var(--value);
   font-size:13px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:space-between;
   font-family:inherit;-webkit-tap-highlight-color:transparent}
-.finv-xp-forge-toggle:active{background:rgba(212,168,67,.06)}
+.finv-xp-forge-toggle:active{background:color-mix(in oklab, var(--value) 6%, transparent)}
 .finv-xp-forge-body{padding:0 16px 16px;display:flex;flex-direction:column;gap:12px}
-.finv-xp-forge-rate{font-size:11px;color:rgba(255,255,255,.4);text-align:center;
-  padding:6px 12px;border-radius:8px;background:rgba(255,255,255,.03)}
+.finv-xp-forge-rate{font-size:11px;color:color-mix(in oklab, var(--text-primary) 40%, transparent);text-align:center;
+  padding:6px 12px;border-radius:8px;background:color-mix(in oklab, var(--text-primary) 3%, transparent)}
 .finv-xp-forge-balances{display:flex;align-items:center;justify-content:center;gap:20px}
 .finv-xp-forge-bal{display:flex;flex-direction:column;align-items:center;gap:2px;
-  padding:10px 20px;border-radius:12px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.04);min-width:80px}
-.finv-xp-input{flex:1;padding:12px 16px;border-radius:12px;border:1.5px solid rgba(212,168,67,.25);
-  background:rgba(255,255,255,.04);color:#fff;font-size:15px;font-weight:700;
+  padding:10px 20px;border-radius:12px;background:color-mix(in oklab, var(--text-primary) 3%, transparent);border:1px solid color-mix(in oklab, var(--text-primary) 4%, transparent);min-width:80px}
+.finv-xp-input{flex:1;padding:12px 16px;border-radius:12px;border:1.5px solid color-mix(in oklab, var(--value) 25%, transparent);
+  background:color-mix(in oklab, var(--text-primary) 4%, transparent);color:var(--text-primary);font-size:15px;font-weight:700;
   font-family:inherit;outline:none;-webkit-appearance:none}
-.finv-xp-input:focus{border-color:rgba(212,168,67,.5)}
-.finv-xp-input::placeholder{color:rgba(255,255,255,.25)}
+.finv-xp-input:focus{border-color:color-mix(in oklab, var(--value) 50%, transparent)}
+.finv-xp-input::placeholder{color:color-mix(in oklab, var(--text-primary) 25%, transparent)}
 .finv-xp-forge-btn{padding:14px;border-radius:14px;border:none;
-  background:linear-gradient(135deg,rgba(129,140,248,.8),rgba(99,102,241,.9));
-  color:#fff;font-size:14px;font-weight:800;cursor:pointer;
+  background:linear-gradient(135deg,color-mix(in oklab, var(--acc) 80%, transparent),color-mix(in oklab, var(--acc) 90%, transparent));
+  color:var(--text-primary);font-size:14px;font-weight:800;cursor:pointer;
   font-family:inherit;transition:opacity .2s;-webkit-tap-highlight-color:transparent}
 .finv-xp-forge-btn:disabled{opacity:.4;cursor:not-allowed}
 .finv-xp-forge-btn:not(:disabled):active{opacity:.8}
-.finv-xp-result{padding:10px 14px;border-radius:10px;background:rgba(74,222,128,.1);
-  border:1px solid rgba(74,222,128,.2);color:#4ade80;font-size:12px;font-weight:700;text-align:center}
+.finv-xp-result{padding:10px 14px;border-radius:10px;background:color-mix(in oklab, var(--ok) 10%, transparent);
+  border:1px solid color-mix(in oklab, var(--ok) 20%, transparent);color:var(--ok);font-size:12px;font-weight:700;text-align:center}
 
 /* Sell toast */
 .finv-sell-toast{margin:0 16px 8px;padding:10px 14px;border-radius:12px;
-  background:rgba(200,148,10,.12);border:1.5px solid rgba(200,148,10,.3);
-  color:#D4A843;font-size:12px;display:flex;align-items:center;gap:4px}
+  background:color-mix(in oklab, var(--value) 12%, transparent);border:1.5px solid color-mix(in oklab, var(--value) 30%, transparent);
+  color:var(--value);font-size:12px;display:flex;align-items:center;gap:4px}
 `;

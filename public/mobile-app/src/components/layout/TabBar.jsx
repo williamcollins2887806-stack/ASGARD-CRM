@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useHaptic } from '@/hooks/useHaptic';
+import { useAuthStore } from '@/stores/authStore';
 
 /**
  * SVG иконки для TabBar — filled (active) vs outlined (inactive)
@@ -40,6 +41,19 @@ const TabIcon = ({ name, active, size = 22 }) => {
         <circle cx="5" cy="12" r="1" fill={color} />
       </svg>
     ),
+    // V391: вкладки директора — только согласования и профиль
+    check: (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={sw} strokeLinecap="round" strokeLinejoin="round">
+        <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" fill={active ? 'currentColor' : 'none'} fillOpacity={active ? 0.15 : 0} />
+        <polyline points="22 4 12 14.01 9 11.01" />
+      </svg>
+    ),
+    user: (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={sw} strokeLinecap="round" strokeLinejoin="round">
+        <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+        <circle cx="12" cy="7" r="4" fill={active ? 'currentColor' : 'none'} fillOpacity={active ? 0.15 : 0} />
+      </svg>
+    ),
   };
 
   return icons[name] || null;
@@ -52,14 +66,29 @@ const TABS = [
   { path: '/more',  icon: 'more',  label: 'Ещё' },
 ];
 
+/** V391: у директора (коммерческого/генерального/технического) мобильный
+ *  арсенал СУЖЕН до согласований — остальные разделы дают лишний шум
+ *  (заказчик 15.10.2026). Десктоп при этом не трогаем: там всё видно. */
+const DIRECTOR_ROLES = ['DIRECTOR_COMM', 'DIRECTOR_GEN', 'DIRECTOR_DEV'];
+const DIRECTOR_TABS = [
+  { path: '/director-approvals', icon: 'check', label: 'Согласования' },
+  { path: '/profile',            icon: 'user',  label: 'Профиль' },
+];
+export function tabsForRole(role) {
+  return DIRECTOR_ROLES.includes(role) ? DIRECTOR_TABS : TABS;
+}
+
 export function TabBar() {
   const location = useLocation();
   const navigate = useNavigate();
   const haptic = useHaptic();
   const navRef = useRef(null);
   const [indicator, setIndicator] = useState({ left: 0, width: 0 });
+  // V391: состав вкладок зависит от роли (у директора — только согласования).
+  const role = useAuthStore((s) => s.user?.role) || '';
+  const tabs = tabsForRole(role);
 
-  const activeIndex = TABS.findIndex(({ path }) => {
+  const activeIndex = tabs.findIndex(({ path }) => {
     if (path === '/') return location.pathname === '/';
     return location.pathname.startsWith(path);
   });
@@ -110,7 +139,7 @@ export function TabBar() {
       />
 
       <div className="flex items-center justify-around h-full">
-        {TABS.map(({ path, icon, label }, i) => {
+        {tabs.map(({ path, icon, label }, i) => {
           const active = i === activeIndex;
           return (
             <button

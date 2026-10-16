@@ -14,10 +14,10 @@ import DisputeForm from '@/components/field/DisputeForm';
 import { formatMoney as fmtMoney } from '@/lib/utils';
 
 const C = {
-  bg: 'var(--field-bg)', card: 'var(--field-card)', gold: '#c8a84b',
-  green: '#22c55e', red: '#ef4444', amber: '#f59e0b',
-  blue: '#3b82f6', rune: '#7b61ff',
-  text: 'var(--field-text)', muted: '#8E8E93',
+  bg: 'var(--field-bg)', card: 'var(--field-card)', gold: 'var(--value)',
+  green: 'var(--ok)', red: 'var(--danger)', amber: 'var(--value)',
+  blue: 'var(--acc)', rune: 'var(--acc)',
+  text: 'var(--field-text)', muted: 'var(--text-secondary)',
 };
 
 const STATUS_CFG = {
@@ -95,7 +95,7 @@ function MonthCard({ m, onDispute, disputesByMonth }) {
   return (
     <div style={{
       background: C.card, borderRadius: 16, marginBottom: 12,
-      border: `1px solid ${salaryStatusKey === 'paid' ? C.green + '33' : salaryStatusKey === 'overdue' ? C.red + '33' : '#ffffff11'}`,
+      border: `1px solid ${salaryStatusKey === 'paid' ? C.green + '33' : salaryStatusKey === 'overdue' ? C.red + '33' : 'color-mix(in oklab, var(--text-primary) 7%, transparent)'}`,
       overflow: 'hidden',
     }}>
       {/* Header */}
@@ -137,7 +137,7 @@ function MonthCard({ m, onDispute, disputesByMonth }) {
 
       {/* Expanded detail */}
       {open && (
-        <div style={{ padding: '0 16px 16px', borderTop: '1px solid #ffffff08' }}>
+        <div style={{ padding: '0 16px 16px', borderTop: '1px solid color-mix(in oklab, var(--text-primary) 3%, transparent)' }}>
 
           {/* ═════════ ЗАРПЛАТА ЗА СМЕНЫ ═════════ */}
           <SectionTitle icon="💼" label="Зарплата за смены" color={C.gold} />
@@ -202,8 +202,8 @@ function MonthCard({ m, onDispute, disputesByMonth }) {
               onClick={() => onDispute(m)}
               style={{
                 width: '100%', padding: '10px 12px',
-                background: 'rgba(245,158,11,0.08)',
-                border: '1px solid rgba(245,158,11,0.3)',
+                background: 'color-mix(in oklab, var(--danger) 8%, transparent)',
+                border: '1px solid color-mix(in oklab, var(--danger) 30%, transparent)',
                 borderRadius: 10, color: C.amber,
                 fontSize: 13, fontWeight: 700,
                 cursor: 'pointer',
@@ -356,8 +356,8 @@ export default function FieldEarningsMonthly() {
         {/* Бейдж по открытым спорам */}
         {openDisputesCount > 0 && (
           <div style={{
-            background: 'rgba(245,158,11,0.08)',
-            border: '1px solid rgba(245,158,11,0.3)',
+            background: 'color-mix(in oklab, var(--danger) 8%, transparent)',
+            border: '1px solid color-mix(in oklab, var(--danger) 30%, transparent)',
             borderRadius: 12, padding: '10px 14px', marginBottom: 12,
             display: 'flex', alignItems: 'center', gap: 10,
           }}>
@@ -407,7 +407,7 @@ export default function FieldEarningsMonthly() {
       )}
       {disputeMonth && !activeWorkId && (
         <div onClick={() => setDisputeMonth(null)} style={{
-          position: 'fixed', inset: 0, zIndex: 9000, background: 'rgba(0,0,0,0.7)',
+          position: 'fixed', inset: 0, zIndex: 9000, background: 'color-mix(in oklab, var(--bg-primary) 70%, transparent)',
           display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20,
         }}>
           <div style={{ background: C.card, borderRadius: 16, padding: 20, maxWidth: 400, textAlign: 'center' }}>
@@ -419,7 +419,7 @@ export default function FieldEarningsMonthly() {
               Чтобы оставить разногласие — сначала зайдите в раздел «Сейчас» (выбрать активный проект).
             </div>
             <button onClick={() => setDisputeMonth(null)}
-              style={{ background: C.gold, color: '#0d0d12', border: 'none', borderRadius: 8, padding: '10px 20px', fontWeight: 700, cursor: 'pointer' }}>
+              style={{ background: C.gold, color: 'var(--bg-primary)', border: 'none', borderRadius: 8, padding: '10px 20px', fontWeight: 700, cursor: 'pointer' }}>
               Понятно
             </button>
           </div>

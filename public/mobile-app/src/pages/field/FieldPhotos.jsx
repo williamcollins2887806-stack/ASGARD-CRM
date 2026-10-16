@@ -11,10 +11,10 @@ import {
 // ── Constants ──────────────────────────────────────────────────────────
 const PHOTO_TYPES = [
   { val: 'all',      label: 'Все',       icon: null,   color: 'var(--gold)' },
-  { val: 'work',     label: 'Работа',    icon: '🔨',   color: '#60a5fa' },
-  { val: 'before',   label: 'До',        icon: '📋',   color: '#a78bfa' },
-  { val: 'after',    label: 'После',     icon: '✅',   color: '#34d399' },
-  { val: 'incident', label: 'Инцидент',  icon: '⚠️',  color: '#f87171' },
+  { val: 'work',     label: 'Работа',    icon: '🔨',   color: 'var(--acc)' },
+  { val: 'before',   label: 'До',        icon: '📋',   color: 'var(--acc)' },
+  { val: 'after',    label: 'После',     icon: '✅',   color: 'var(--ok)' },
+  { val: 'incident', label: 'Инцидент',  icon: '⚠️',  color: 'var(--danger)' },
 ];
 
 const UPLOAD_QUOTES = [
@@ -343,9 +343,9 @@ export default function FieldPhotos() {
             </div>
           </div>
           {geoCoords && (
-            <div className="flex items-center gap-1 px-2 py-1 rounded-lg" style={{ backgroundColor: 'rgba(52,211,153,0.15)' }}>
-              <MapPin size={12} style={{ color: '#34d399' }} />
-              <span className="text-xs" style={{ color: '#34d399' }}>GPS</span>
+            <div className="flex items-center gap-1 px-2 py-1 rounded-lg" style={{ backgroundColor: 'color-mix(in oklab, var(--ok) 15%, transparent)' }}>
+              <MapPin size={12} style={{ color: 'var(--ok)' }} />
+              <span className="text-xs" style={{ color: 'var(--ok)' }}>GPS</span>
             </div>
           )}
         </div>
@@ -353,7 +353,7 @@ export default function FieldPhotos() {
         {/* ── Upload area ── */}
         {project && (
           <div className="rounded-2xl overflow-hidden" style={{
-            background: 'linear-gradient(135deg, rgba(200,41,59,0.08) 0%, rgba(30,77,140,0.08) 100%)',
+            background: 'linear-gradient(135deg, color-mix(in oklab, var(--danger) 8%, transparent) 0%, color-mix(in oklab, var(--acc) 8%, transparent) 100%)',
             border: '1px solid var(--border-norse)',
           }}>
             {/* Camera + Gallery buttons */}
@@ -361,7 +361,7 @@ export default function FieldPhotos() {
               <button
                 onClick={() => cameraRef.current?.click()}
                 className="flex-1 flex flex-col items-center gap-2 py-4 rounded-xl active:scale-95 transition-transform"
-                style={{ background: 'var(--gold-gradient)', boxShadow: '0 4px 15px rgba(212,168,67,0.3)' }}
+                style={{ background: 'var(--gold-gradient)', boxShadow: '0 4px 15px color-mix(in oklab, var(--value) 30%, transparent)' }}
               >
                 <Camera size={28} className="text-white" />
                 <span className="text-sm font-semibold text-white">Сделать фото</span>
@@ -404,7 +404,7 @@ export default function FieldPhotos() {
                         <img src={pf.preview} alt="" className="w-full h-full object-cover" />
                         <button onClick={() => removePending(idx)}
                           className="absolute top-0.5 right-0.5 p-0.5 rounded-full"
-                          style={{ backgroundColor: 'rgba(0,0,0,0.6)' }}>
+                          style={{ backgroundColor: 'color-mix(in oklab, var(--bg-primary) 60%, transparent)' }}>
                           <X size={14} className="text-white" />
                         </button>
                       </div>
@@ -416,7 +416,7 @@ export default function FieldPhotos() {
                               className="px-2 py-1 rounded-md text-xs font-medium transition-colors"
                               style={{
                                 backgroundColor: pf.type === t.val ? t.color : 'var(--bg-primary)',
-                                color: pf.type === t.val ? '#fff' : 'var(--text-secondary)',
+                                color: pf.type === t.val ? 'var(--text-primary)' : 'var(--text-secondary)',
                                 border: `1px solid ${pf.type === t.val ? t.color : 'var(--border-norse)'}`,
                               }}>
                               {t.icon} {t.label}
@@ -444,7 +444,7 @@ export default function FieldPhotos() {
                   style={{
                     background: uploading ? 'var(--bg-elevated)' : 'var(--gold-gradient)',
                     opacity: uploading ? 0.6 : 1,
-                    boxShadow: uploading ? 'none' : '0 4px 15px rgba(212,168,67,0.3)',
+                    boxShadow: uploading ? 'none' : '0 4px 15px color-mix(in oklab, var(--value) 30%, transparent)',
                   }}
                 >
                   {uploading ? (
@@ -479,9 +479,9 @@ export default function FieldPhotos() {
         {lastQuote && (
           <div className="rounded-xl p-3 text-center text-sm font-medium animate-pulse"
             style={{
-              background: 'linear-gradient(135deg, rgba(212,168,67,0.15), rgba(212,168,67,0.05))',
+              background: 'linear-gradient(135deg, color-mix(in oklab, var(--value) 15%, transparent), color-mix(in oklab, var(--value) 5%, transparent))',
               color: 'var(--gold)',
-              border: '1px solid rgba(212,168,67,0.3)',
+              border: '1px solid color-mix(in oklab, var(--value) 30%, transparent)',
             }}>
             ⚔️ {lastQuote}
           </div>
@@ -490,10 +490,10 @@ export default function FieldPhotos() {
         {/* ── Error ── */}
         {error && (
           <div className="p-3 rounded-xl text-sm flex items-center gap-2"
-            style={{ backgroundColor: 'rgba(239,68,68,0.1)', color: '#ef4444', border: '1px solid rgba(239,68,68,0.2)' }}>
+            style={{ backgroundColor: 'color-mix(in oklab, var(--danger) 10%, transparent)', color: 'var(--danger)', border: '1px solid color-mix(in oklab, var(--danger) 20%, transparent)' }}>
             <AlertTriangle size={16} />
             <span className="flex-1">{error}</span>
-            <button onClick={() => setError(null)}><X size={14} style={{ color: '#ef4444' }} /></button>
+            <button onClick={() => setError(null)}><X size={14} style={{ color: 'var(--danger)' }} /></button>
           </div>
         )}
 
@@ -508,7 +508,7 @@ export default function FieldPhotos() {
                   className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-medium whitespace-nowrap transition-all"
                   style={{
                     backgroundColor: filterType === t.val ? (t.val === 'all' ? 'var(--gold)' : t.color) : 'var(--bg-elevated)',
-                    color: filterType === t.val ? '#fff' : 'var(--text-secondary)',
+                    color: filterType === t.val ? 'var(--text-primary)' : 'var(--text-secondary)',
                     border: `1px solid ${filterType === t.val ? 'transparent' : 'var(--border-norse)'}`,
                   }}>
                   {t.icon && <span>{t.icon}</span>}
@@ -524,7 +524,7 @@ export default function FieldPhotos() {
         {filtered.length === 0 ? (
           <div className="rounded-2xl p-10 text-center" style={{ backgroundColor: 'var(--bg-elevated)' }}>
             <div className="w-16 h-16 mx-auto mb-4 rounded-2xl flex items-center justify-center"
-              style={{ background: 'linear-gradient(135deg, rgba(212,168,67,0.15), rgba(30,77,140,0.1))' }}>
+              style={{ background: 'linear-gradient(135deg, color-mix(in oklab, var(--value) 15%, transparent), color-mix(in oklab, var(--acc) 10%, transparent))' }}>
               <Image size={32} style={{ color: 'var(--gold)' }} />
             </div>
             <p className="font-semibold mb-1" style={{ color: 'var(--text-primary)' }}>
@@ -565,7 +565,7 @@ export default function FieldPhotos() {
                       {/* Type badge */}
                       {photo.photo_type && photo.photo_type !== 'work' && badge && (
                         <span className="absolute top-1 left-1 text-xs px-1.5 py-0.5 rounded-md font-medium"
-                          style={{ backgroundColor: badge.color, color: '#fff', fontSize: '0.625rem' }}>
+                          style={{ backgroundColor: badge.color, color: 'var(--text-primary)', fontSize: '0.625rem' }}>
                           {badge.icon} {badge.label}
                         </span>
                       )}
@@ -573,8 +573,8 @@ export default function FieldPhotos() {
                       {isMaster && photo.author_name && (
                         <span className="absolute bottom-0 left-0 right-0 px-1 py-0.5 text-center truncate"
                           style={{
-                            backgroundColor: 'rgba(0,0,0,0.65)',
-                            color: '#fff',
+                            backgroundColor: 'color-mix(in oklab, var(--bg-primary) 65%, transparent)',
+                            color: 'var(--text-primary)',
                             fontSize: '0.5625rem',
                             backdropFilter: 'blur(4px)',
                           }}>
@@ -584,7 +584,7 @@ export default function FieldPhotos() {
                       {/* Caption indicator */}
                       {photo.caption && (
                         <div className="absolute top-1 right-1 w-4 h-4 rounded-full flex items-center justify-center"
-                          style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}>
+                          style={{ backgroundColor: 'color-mix(in oklab, var(--bg-primary) 50%, transparent)' }}>
                           <Eye size={8} className="text-white" />
                         </div>
                       )}
@@ -601,13 +601,13 @@ export default function FieldPhotos() {
       {viewPhoto && (
         <div
           className="fixed inset-0 z-50 flex flex-col"
-          style={{ backgroundColor: '#000' }}
+          style={{ backgroundColor: 'var(--bg-primary)' }}
           onTouchStart={onViewerTouchStart}
           onTouchEnd={onViewerTouchEnd}
         >
           {/* Top bar */}
           <div className="flex items-center justify-between px-4 py-3 safe-area-top"
-            style={{ background: 'linear-gradient(to bottom, rgba(0,0,0,0.8), transparent)' }}>
+            style={{ background: 'linear-gradient(to bottom, color-mix(in oklab, var(--bg-primary) 80%, transparent), transparent)' }}>
             <button onClick={() => { setViewIndex(-1); setShowDeleteConfirm(false); }} className="p-2">
               <X size={24} className="text-white" />
             </button>
@@ -616,7 +616,7 @@ export default function FieldPhotos() {
             </span>
             {canDeleteViewed && (
               <button onClick={() => setShowDeleteConfirm(true)} className="p-2">
-                <Trash2 size={20} style={{ color: '#f87171' }} />
+                <Trash2 size={20} style={{ color: 'var(--danger)' }} />
               </button>
             )}
           </div>
@@ -631,13 +631,13 @@ export default function FieldPhotos() {
             {/* Nav arrows */}
             {viewIndex > 0 && (
               <button onClick={() => setViewIndex(i => i - 1)}
-                className="absolute left-2 p-2 rounded-full" style={{ backgroundColor: 'rgba(255,255,255,0.15)' }}>
+                className="absolute left-2 p-2 rounded-full" style={{ backgroundColor: 'color-mix(in oklab, var(--text-primary) 15%, transparent)' }}>
                 <ChevronLeft size={24} className="text-white" />
               </button>
             )}
             {viewIndex < filtered.length - 1 && (
               <button onClick={() => setViewIndex(i => i + 1)}
-                className="absolute right-2 p-2 rounded-full" style={{ backgroundColor: 'rgba(255,255,255,0.15)' }}>
+                className="absolute right-2 p-2 rounded-full" style={{ backgroundColor: 'color-mix(in oklab, var(--text-primary) 15%, transparent)' }}>
                 <ChevronRight size={24} className="text-white" />
               </button>
             )}
@@ -645,13 +645,13 @@ export default function FieldPhotos() {
 
           {/* Bottom info */}
           <div className="px-4 py-4 safe-area-bottom"
-            style={{ background: 'linear-gradient(to top, rgba(0,0,0,0.8), transparent)' }}>
+            style={{ background: 'linear-gradient(to top, color-mix(in oklab, var(--bg-primary) 80%, transparent), transparent)' }}>
             {/* Type badge */}
             {viewPhoto.photo_type && viewPhoto.photo_type !== 'work' && (() => {
               const b = typeBadge(viewPhoto.photo_type);
               return b ? (
                 <span className="inline-block px-2 py-1 rounded-md text-xs font-medium mb-2"
-                  style={{ backgroundColor: b.color, color: '#fff' }}>
+                  style={{ backgroundColor: b.color, color: 'var(--text-primary)' }}>
                   {b.icon} {b.label}
                 </span>
               ) : null;
@@ -659,7 +659,7 @@ export default function FieldPhotos() {
             {viewPhoto.caption && (
               <p className="text-sm text-white mb-1">{viewPhoto.caption}</p>
             )}
-            <div className="flex items-center gap-3 text-xs" style={{ color: 'rgba(255,255,255,0.6)' }}>
+            <div className="flex items-center gap-3 text-xs" style={{ color: 'color-mix(in oklab, var(--text-primary) 60%, transparent)' }}>
               <span>{new Date(viewPhoto.created_at || viewPhoto.uploaded_at).toLocaleString('ru-RU')}</span>
               {viewPhoto.author_name && <span>&middot; {viewPhoto.author_name}</span>}
               {viewPhoto.lat && viewPhoto.lng && (
@@ -670,9 +670,9 @@ export default function FieldPhotos() {
 
           {/* Delete confirmation overlay */}
           {showDeleteConfirm && (
-            <div className="absolute inset-0 z-60 flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.7)' }}>
+            <div className="absolute inset-0 z-60 flex items-center justify-center" style={{ backgroundColor: 'color-mix(in oklab, var(--bg-primary) 70%, transparent)' }}>
               <div className="rounded-2xl p-6 mx-8 text-center" style={{ backgroundColor: 'var(--bg-elevated)' }}>
-                <Trash2 size={32} className="mx-auto mb-3" style={{ color: '#f87171' }} />
+                <Trash2 size={32} className="mx-auto mb-3" style={{ color: 'var(--danger)' }} />
                 <p className="font-semibold mb-1" style={{ color: 'var(--text-primary)' }}>Удалить фото?</p>
                 <p className="text-xs mb-4" style={{ color: 'var(--text-tertiary)' }}>Это действие нельзя отменить</p>
                 <div className="flex gap-3">
@@ -686,7 +686,7 @@ export default function FieldPhotos() {
                     onClick={() => handleDelete(viewPhoto.id)}
                     disabled={deleting}
                     className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-white"
-                    style={{ backgroundColor: '#ef4444', opacity: deleting ? 0.6 : 1 }}>
+                    style={{ backgroundColor: 'var(--danger)', opacity: deleting ? 0.6 : 1 }}>
                     {deleting ? 'Удаление...' : 'Удалить'}
                   </button>
                 </div>

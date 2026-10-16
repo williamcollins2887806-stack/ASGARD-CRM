@@ -45,8 +45,8 @@ const SHIFT_ICONS = {
   warehouse: '🏭', medical: '🏥', training: '📚', ship: '🚢', helicopter: '🚁', waiting: '⏳',
 };
 const SHIFT_COLORS = {
-  day: '#f59e0b', night: '#6366f1', road: '#3b82f6', travel: '#3b82f6', half: '#8b5cf6', standby: '#6b7280',
-  warehouse: '#0ea5e9', medical: '#22c55e', training: '#a855f7', ship: '#0284c7', helicopter: '#06b6d4', waiting: '#64748b',
+  day: 'var(--value)', night: 'var(--acc)', road: 'var(--acc)', travel: 'var(--acc)', half: 'var(--acc)', standby: 'var(--text-tertiary)',
+  warehouse: 'var(--acc)', medical: 'var(--ok)', training: 'var(--acc)', ship: 'var(--acc)', helicopter: 'var(--acc)', waiting: 'var(--text-tertiary)',
 };
 const ROLE_LABELS = { senior_master: 'Ст. мастер', shift_master: 'Мастер', worker: 'Рабочий' };
 
@@ -173,37 +173,37 @@ function HistoryDetail({ workId, onBack }) {
         {/* ─── Hero — total earned ──────────────────────────── */}
         <SlideIn delay={0}>
           <div className="rounded-2xl p-6 relative overflow-hidden" style={{
-            background: 'linear-gradient(135deg, #1a1a2e 0%, #16213e 40%, #0f3460 100%)',
+            background: 'linear-gradient(135deg, var(--bg-surface) 0%, #16213e 40%, #0f3460 100%)',
             backgroundSize: '200% 200%',
             animation: 'fieldHistGradShift 8s ease infinite',
-            border: '1px solid rgba(196,154,42,0.15)',
-            boxShadow: '0 8px 32px rgba(0,0,0,0.3)',
+            border: '1px solid color-mix(in oklab, var(--value) 15%, transparent)',
+            boxShadow: '0 8px 32px color-mix(in oklab, var(--bg-primary) 30%, transparent)',
           }}>
             {/* ASGARD watermark */}
             <div style={{ position: 'absolute', right: '-8px', top: '50%', transform: 'translateY(-50%)',
               fontSize: '4.5rem', fontWeight: 900, letterSpacing: '6px', pointerEvents: 'none',
               animation: 'fieldHistPulse 4s ease infinite',
-              color: 'rgba(255,255,255,0.04)',
+              color: 'color-mix(in oklab, var(--text-primary) 4%, transparent)',
             }}>ASGARD</div>
 
             <div style={{ position: 'relative', zIndex: 1 }}>
-              <p className="text-xs font-semibold uppercase tracking-widest" style={{ color: 'rgba(196,154,42,0.7)' }}>
+              <p className="text-xs font-semibold uppercase tracking-widest" style={{ color: 'color-mix(in oklab, var(--value) 70%, transparent)' }}>
                 Итого заработано
               </p>
               <HeroAmount target={totalEarned} />
               <div className="flex items-center justify-center gap-4 mt-3">
                 <div className="flex items-center gap-1.5">
-                  <Calendar size={13} style={{ color: 'rgba(255,255,255,0.4)' }} />
-                  <span className="text-xs font-medium" style={{ color: 'rgba(255,255,255,0.6)' }}>{totalDays} смен</span>
+                  <Calendar size={13} style={{ color: 'color-mix(in oklab, var(--text-primary) 40%, transparent)' }} />
+                  <span className="text-xs font-medium" style={{ color: 'color-mix(in oklab, var(--text-primary) 60%, transparent)' }}>{totalDays} смен</span>
                 </div>
                 <div className="flex items-center gap-1.5">
-                  <Zap size={13} style={{ color: 'rgba(255,255,255,0.4)' }} />
-                  <span className="text-xs font-medium" style={{ color: 'rgba(255,255,255,0.6)' }}>{fmtHours(totalHours)}</span>
+                  <Zap size={13} style={{ color: 'color-mix(in oklab, var(--text-primary) 40%, transparent)' }} />
+                  <span className="text-xs font-medium" style={{ color: 'color-mix(in oklab, var(--text-primary) 60%, transparent)' }}>{fmtHours(totalHours)}</span>
                 </div>
                 {dayRate > 0 && (
                   <div className="flex items-center gap-1.5">
-                    <TrendingUp size={13} style={{ color: 'rgba(255,255,255,0.4)' }} />
-                    <span className="text-xs font-medium" style={{ color: 'rgba(255,255,255,0.6)' }}>{fmtMoneyShort(dayRate)}/см</span>
+                    <TrendingUp size={13} style={{ color: 'color-mix(in oklab, var(--text-primary) 40%, transparent)' }} />
+                    <span className="text-xs font-medium" style={{ color: 'color-mix(in oklab, var(--text-primary) 60%, transparent)' }}>{fmtMoneyShort(dayRate)}/см</span>
                   </div>
                 )}
               </div>
@@ -251,10 +251,10 @@ function HistoryDetail({ workId, onBack }) {
         {locks.length > 0 && (
           <SlideIn delay={0.14}>
             <div className="rounded-xl px-4 py-3 flex items-center gap-2" style={{
-              backgroundColor: 'rgba(239,68,68,0.12)',
-              border: '1px solid rgba(239,68,68,0.3)',
+              backgroundColor: 'color-mix(in oklab, var(--danger) 12%, transparent)',
+              border: '1px solid color-mix(in oklab, var(--danger) 30%, transparent)',
             }}>
-              <Lock size={16} style={{ color: '#ef4444' }} />
+              <Lock size={16} style={{ color: 'var(--danger)' }} />
               <div className="flex-1 text-xs" style={{ color: 'var(--text-primary)' }}>
                 <span className="font-semibold">🔒 Месяц закрыт</span>
                 {locks[0]?.locked_by_fio && (
@@ -296,7 +296,7 @@ function HistoryDetail({ workId, onBack }) {
 
               {/* ─── Totals ─── */}
               <div className="mx-4 mt-1 mb-4 rounded-xl p-3 flex items-center justify-between"
-                style={{ background: 'linear-gradient(135deg, rgba(196,154,42,0.08), rgba(196,154,42,0.03))', border: '1px solid rgba(196,154,42,0.15)' }}>
+                style={{ background: 'linear-gradient(135deg, color-mix(in oklab, var(--value) 8%, transparent), color-mix(in oklab, var(--value) 3%, transparent))', border: '1px solid color-mix(in oklab, var(--value) 15%, transparent)' }}>
                 <div>
                   <span className="text-xs font-bold" style={{ color: 'var(--text-primary)' }}>ИТОГО</span>
                   <span className="text-xs ml-2" style={{ color: 'var(--text-tertiary)' }}>{totalDays} дн · {fmtHours(totalHours)}</span>
@@ -311,7 +311,7 @@ function HistoryDetail({ workId, onBack }) {
         <SlideIn delay={0.24}>
           <button onClick={() => navigate(`/field/money?detail=${workId}`)}
             className="w-full py-3.5 rounded-xl text-sm font-bold flex items-center justify-center gap-2"
-            style={{ background: 'linear-gradient(135deg, var(--gold), #b8860b)', color: '#000', boxShadow: '0 4px 16px rgba(196,154,42,0.25)' }}>
+            style={{ background: 'linear-gradient(135deg, var(--gold), var(--value))', color: 'var(--bg-primary)', boxShadow: '0 4px 16px color-mix(in oklab, var(--value) 25%, transparent)' }}>
             💰 Финансы проекта
           </button>
         </SlideIn>
@@ -324,7 +324,7 @@ function HistoryDetail({ workId, onBack }) {
             bottom: 'calc(env(safe-area-inset-bottom) + 24px)',
             backgroundColor: 'var(--bg-elevated)',
             border: '1px solid var(--border-norse)',
-            boxShadow: '0 8px 32px rgba(0,0,0,0.5)',
+            boxShadow: '0 8px 32px color-mix(in oklab, var(--bg-primary) 50%, transparent)',
           }}
         >
           <p className="text-xs font-semibold mb-0.5" style={{ color: 'var(--text-primary)' }}>
@@ -361,7 +361,7 @@ function DayRow({ day, idx, onLongPress }) {
   const shift = day.shift || 'day';
   const icon = SHIFT_ICONS[shift] || (day.entry_kind === 'stage' ? '📋' : '☀️');
   const label = SHIFT_LABELS[shift] || shift || 'День';
-  const color = SHIFT_COLORS[shift] || '#f59e0b';
+  const color = SHIFT_COLORS[shift] || 'var(--value)';
   const points = day.tariff_points != null
     ? Math.round(Number(day.tariff_points) || 0)
     : (day.day_rate ? Math.round(parseFloat(day.day_rate) / 500) : 0);
@@ -381,7 +381,7 @@ function DayRow({ day, idx, onLongPress }) {
   return (
     <div {...lp} className="flex items-center gap-2 px-2 py-2.5 rounded-lg mx-0"
       style={{
-        backgroundColor: isOdd ? 'rgba(255,255,255,0.02)' : 'transparent',
+        backgroundColor: isOdd ? 'color-mix(in oklab, var(--text-primary) 2%, transparent)' : 'transparent',
         minHeight: 44,
         userSelect: 'none',
         WebkitUserSelect: 'none',
@@ -405,7 +405,7 @@ function DayRow({ day, idx, onLongPress }) {
 function HeroAmount({ target }) {
   const val = useCountUp(target);
   return (
-    <p className="font-black mt-1" style={{ color: 'var(--gold)', fontSize: '2.75rem', lineHeight: 1.1, textShadow: '0 2px 20px rgba(196,154,42,0.3)' }}>
+    <p className="font-black mt-1" style={{ color: 'var(--gold)', fontSize: '2.75rem', lineHeight: 1.1, textShadow: '0 2px 20px color-mix(in oklab, var(--value) 30%, transparent)' }}>
       {fmtMoney(val)}
     </p>
   );
@@ -497,15 +497,15 @@ export default function FieldHistory() {
         ))}
       </div>
 
-      {error && <div className="p-3 rounded-lg text-sm" style={{ backgroundColor: 'rgba(239,68,68,0.1)', color: '#ef4444' }}>{error}</div>}
+      {error && <div className="p-3 rounded-lg text-sm" style={{ backgroundColor: 'color-mix(in oklab, var(--danger) 10%, transparent)', color: 'var(--danger)' }}>{error}</div>}
 
       {orphan && (
         <button
           onClick={() => { haptic.light(); setSearchParams({ detail: 'orphan' }); }}
           className="w-full rounded-xl p-4 text-left flex items-center gap-3"
-          style={{ backgroundColor: 'var(--bg-elevated)', border: '1px solid rgba(196,154,42,0.35)' }}
+          style={{ backgroundColor: 'var(--bg-elevated)', border: '1px solid color-mix(in oklab, var(--value) 35%, transparent)' }}
         >
-          <div className="w-10 h-10 rounded-lg flex items-center justify-center text-lg" style={{ background: 'rgba(196,154,42,0.15)' }}>📋</div>
+          <div className="w-10 h-10 rounded-lg flex items-center justify-center text-lg" style={{ background: 'color-mix(in oklab, var(--value) 15%, transparent)' }}>📋</div>
           <div className="flex-1 min-w-0">
             <p className="font-semibold text-sm" style={{ color: 'var(--text-primary)' }}>Без объекта</p>
             <p className="text-xs mt-0.5" style={{ color: 'var(--text-tertiary)' }}>
@@ -558,8 +558,8 @@ export default function FieldHistory() {
                   </div>
                   <div className="flex flex-col items-end gap-1.5 flex-shrink-0">
                     <span className="px-2 py-0.5 rounded-full text-xs font-medium" style={{
-                      backgroundColor: isActive ? 'rgba(34,197,94,0.15)' : 'rgba(156,163,175,0.1)',
-                      color: isActive ? '#22c55e' : 'var(--text-tertiary)'
+                      backgroundColor: isActive ? 'color-mix(in oklab, var(--ok) 15%, transparent)' : 'rgba(156,163,175,0.1)',
+                      color: isActive ? 'var(--ok)' : 'var(--text-tertiary)'
                     }}>{isActive ? 'Активный' : 'Завершён'}</span>
                     <ChevronRight size={14} style={{ color: 'var(--text-tertiary)' }} />
                   </div>

@@ -72,11 +72,11 @@ function MoneyDetail({ workId, onBack }) {
   const rows = [];
   rows.push({ label: `Базовая ставка (${data.days_worked || 0} см.)`, value: `${fmt(data.base_amount)}` });
   if (data.per_diem_total) rows.push({ label: `Пайковые (${data.per_diem_days || 0} дн. × ${fmt(data.per_diem_rate)})`, value: `${fmt(data.per_diem_total)}` });
-  if (data.bonuses) rows.push({ label: 'Бонусы', value: `+${fmt(data.bonuses)}`, color: '#22c55e' });
+  if (data.bonuses) rows.push({ label: 'Бонусы', value: `+${fmt(data.bonuses)}`, color: 'var(--ok)' });
   if (data.stages_earned) rows.push({ label: 'Маршрут до объекта', value: `+${fmt(data.stages_earned)}`, color: 'var(--gold)' });
-  if (data.penalties) rows.push({ label: 'Штрафы', value: `−${fmt(data.penalties)}`, color: '#ef4444' });
+  if (data.penalties) rows.push({ label: 'Штрафы', value: `−${fmt(data.penalties)}`, color: 'var(--danger)' });
   rows.push({ label: 'Итого начислено', value: `${fmt(data.total_earned)}`, bold: true, sep: true });
-  if (data.total_paid) rows.push({ label: 'Выплачено (авансы)', value: `−${fmt(data.total_paid)}`, color: '#ef4444' });
+  if (data.total_paid) rows.push({ label: 'Выплачено (авансы)', value: `−${fmt(data.total_paid)}`, color: 'var(--danger)' });
   rows.push({ label: 'К выплате', value: `${fmt(data.remaining)}`, bold: true, sep: true, color: 'var(--gold)' });
 
   return (
@@ -98,7 +98,7 @@ function MoneyDetail({ workId, onBack }) {
 
       {/* Tariff */}
       {data.tariff && (
-        <div className="rounded-xl p-4" style={{ backgroundColor: 'var(--bg-elevated)', border: '1px solid rgba(196,154,42,0.12)' }}>
+        <div className="rounded-xl p-4" style={{ backgroundColor: 'var(--bg-elevated)', border: '1px solid color-mix(in oklab, var(--value) 12%, transparent)' }}>
           <p className="text-xs font-semibold uppercase tracking-widest mb-2" style={{ color: 'var(--text-tertiary)' }}>Тарифная сетка</p>
           <div className="flex justify-between text-sm py-1">
             <span style={{ color: 'var(--text-secondary)' }}>{data.tariff.position_name}</span>
@@ -143,7 +143,7 @@ function MoneyDetail({ workId, onBack }) {
             <Row key={i}
               label={a.comment || `Начисление #${i + 1}`}
               value={a.advance_paid ? `−${fmt(a.advance_paid)}` : `${fmt(a.payout)}`}
-              color={a.advance_paid ? '#ef4444' : undefined}
+              color={a.advance_paid ? 'var(--danger)' : undefined}
             />
           ))}
         </div>
@@ -250,22 +250,22 @@ export default function FieldMoney() {
         <button
           onClick={() => { haptic.light(); navigate('/field/earnings/monthly'); }}
           className="ml-auto text-xs font-semibold px-3 py-1.5 rounded-lg"
-          style={{ backgroundColor: 'var(--bg-elevated)', color: 'var(--gold)', border: '1px solid rgba(200,168,75,0.3)' }}
+          style={{ backgroundColor: 'var(--bg-elevated)', color: 'var(--gold)', border: '1px solid color-mix(in oklab, var(--value) 30%, transparent)' }}
         >
           💰 По месяцам
         </button>
       </div>
 
       {error && (
-        <div className="p-3 rounded-lg text-sm" style={{ backgroundColor: 'rgba(239,68,68,0.1)', color: '#ef4444' }}>{error}</div>
+        <div className="p-3 rounded-lg text-sm" style={{ backgroundColor: 'color-mix(in oklab, var(--danger) 10%, transparent)', color: 'var(--danger)' }}>{error}</div>
       )}
 
       {/* ─── Hero card ──────────────────────────────────────── */}
       <div className="rounded-xl p-5 relative overflow-hidden" style={{
-        background: 'linear-gradient(135deg, var(--bg-elevated) 0%, rgba(196,154,42,0.08) 100%)',
+        background: 'linear-gradient(135deg, var(--bg-elevated) 0%, color-mix(in oklab, var(--value) 8%, transparent) 100%)',
         border: '1px solid var(--border-norse)',
       }}>
-        <div style={{ position: 'absolute', right: '-10px', top: '50%', transform: 'translateY(-50%)', fontSize: '4rem', fontWeight: 900, color: 'rgba(255,255,255,0.03)', letterSpacing: '4px', pointerEvents: 'none' }}>ASGARD</div>
+        <div style={{ position: 'absolute', right: '-10px', top: '50%', transform: 'translateY(-50%)', fontSize: '4rem', fontWeight: 900, color: 'color-mix(in oklab, var(--text-primary) 3%, transparent)', letterSpacing: '4px', pointerEvents: 'none' }}>ASGARD</div>
         <div style={{ position: 'relative', zIndex: 1 }}>
           {cur.work_title && (
             <p className="text-xs font-semibold uppercase tracking-widest mb-1" style={{ color: 'var(--text-tertiary)' }}>
@@ -278,8 +278,8 @@ export default function FieldMoney() {
             <>
               <p className="text-sm mt-2" style={{ color: 'var(--text-secondary)' }}>Отработано {daysWorked} смен</p>
               {/* Progress bar */}
-              <div className="mt-2 rounded" style={{ background: 'rgba(255,255,255,0.08)', height: '6px', overflow: 'hidden' }}>
-                <div className="rounded" style={{ height: '100%', width: `${pct}%`, background: 'linear-gradient(90deg, var(--gold), #f5c542)', transition: 'width 0.8s ease' }} />
+              <div className="mt-2 rounded" style={{ background: 'color-mix(in oklab, var(--text-primary) 8%, transparent)', height: '6px', overflow: 'hidden' }}>
+                <div className="rounded" style={{ height: '100%', width: `${pct}%`, background: 'linear-gradient(90deg, var(--gold), var(--value))', transition: 'width 0.8s ease' }} />
               </div>
               <p className="text-xs mt-1" style={{ color: 'var(--text-tertiary)' }}>{daysWorked} из {totalShifts} смен</p>
             </>
@@ -289,7 +289,7 @@ export default function FieldMoney() {
 
       {/* ─── Tariff card ─────────────────────────────────────── */}
       {(tariff.position_name || proj.day_rate) && (
-        <div className="rounded-xl p-4" style={{ backgroundColor: 'var(--bg-elevated)', border: '1px solid rgba(196,154,42,0.12)' }}>
+        <div className="rounded-xl p-4" style={{ backgroundColor: 'var(--bg-elevated)', border: '1px solid color-mix(in oklab, var(--value) 12%, transparent)' }}>
           <div className="flex items-center gap-2 mb-3">
             <Briefcase size={16} style={{ color: 'var(--gold)' }} />
             <span className="text-xs font-semibold uppercase tracking-widest" style={{ color: 'var(--text-tertiary)' }}>Тарифная сетка</span>
@@ -371,7 +371,7 @@ export default function FieldMoney() {
             }
             value={`${fmt(cur.per_diem_accrued)}`}
             bold
-            color="#f59e0b"
+            color="var(--value)"
           />
         )}
         {proj.per_diem_on_checkins === false && cur.per_diem_accrued > 0 && (
@@ -389,8 +389,8 @@ export default function FieldMoney() {
         onClick={() => { haptic.light(); navigate('/field/earnings/monthly'); }}
         className="w-full rounded-xl p-4 text-left flex items-center gap-3"
         style={{
-          background: 'linear-gradient(135deg, rgba(196,154,42,0.12), rgba(196,154,42,0.04))',
-          border: '1px solid rgba(196,154,42,0.35)',
+          background: 'linear-gradient(135deg, color-mix(in oklab, var(--value) 12%, transparent), color-mix(in oklab, var(--value) 4%, transparent))',
+          border: '1px solid color-mix(in oklab, var(--value) 35%, transparent)',
         }}
       >
         <span style={{ fontSize: '1.5rem' }}>💰</span>
@@ -541,19 +541,19 @@ function WorkerHandoversSection() {
     <div className="rounded-xl p-4" style={{
       backgroundColor: 'var(--bg-elevated)',
       // золотисто-оранжевый акцент (Stage W)
-      border: '1px solid rgba(255,152,0,0.25)',
-      background: 'linear-gradient(135deg, rgba(255,152,0,0.07) 0%, var(--bg-elevated) 100%)',
+      border: '1px solid color-mix(in oklab, var(--danger) 25%, transparent)',
+      background: 'linear-gradient(135deg, color-mix(in oklab, var(--danger) 7%, transparent) 0%, var(--bg-elevated) 100%)',
     }}>
       <div className="flex items-center gap-2 mb-3">
-        <Inbox size={16} style={{ color: '#FF9800' }} />
+        <Inbox size={16} style={{ color: 'var(--value)' }} />
         <span className="text-xs font-semibold uppercase tracking-widest" style={{ color: 'var(--text-tertiary)' }}>
           Передачи от рабочих
         </span>
         <span
           className="ml-auto px-2 py-0.5 rounded-full"
           style={{
-            background: 'rgba(255,152,0,0.18)',
-            color: '#FF9800',
+            background: 'color-mix(in oklab, var(--danger) 18%, transparent)',
+            color: 'var(--value)',
             fontSize: 11, fontWeight: 700,
           }}
         >
@@ -569,15 +569,15 @@ function WorkerHandoversSection() {
             className="w-full rounded-xl text-left flex items-center gap-3"
             style={{
               padding: '12px 14px',
-              background: 'rgba(255,255,255,0.03)',
-              border: '1px solid rgba(255,152,0,0.18)',
+              background: 'color-mix(in oklab, var(--text-primary) 3%, transparent)',
+              border: '1px solid color-mix(in oklab, var(--danger) 18%, transparent)',
             }}
           >
             <div
               style={{
                 width: 36, height: 36, borderRadius: 10,
-                background: 'rgba(255,152,0,0.18)',
-                color: '#FF9800',
+                background: 'color-mix(in oklab, var(--danger) 18%, transparent)',
+                color: 'var(--value)',
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                 fontSize: 16, fontWeight: 800, flexShrink: 0,
               }}
@@ -593,7 +593,7 @@ function WorkerHandoversSection() {
                 {h.work_title && ` · ${h.work_title}`}
               </p>
             </div>
-            <ChevronRight size={16} style={{ color: '#FF9800', flexShrink: 0 }} />
+            <ChevronRight size={16} style={{ color: 'var(--value)', flexShrink: 0 }} />
           </button>
         ))}
       </div>
@@ -621,15 +621,15 @@ function HandoverConfirmSheet({ handover, busy, onConfirm, onClose }) {
         <div
           className="rounded-xl px-4 py-3 flex items-center justify-between"
           style={{
-            background: 'rgba(255,152,0,0.08)',
-            border: '1px solid rgba(255,152,0,0.25)',
+            background: 'color-mix(in oklab, var(--danger) 8%, transparent)',
+            border: '1px solid color-mix(in oklab, var(--danger) 25%, transparent)',
           }}
         >
           <div>
             <p style={{ fontSize: 11, fontWeight: 700, letterSpacing: 0.4, color: 'var(--text-tertiary)', textTransform: 'uppercase' }}>
               Ожидаемая сумма
             </p>
-            <p style={{ fontSize: 22, fontWeight: 800, color: '#FF9800', marginTop: 2 }}>
+            <p style={{ fontSize: 22, fontWeight: 800, color: 'var(--value)', marginTop: 2 }}>
               {fmt(expected)}
             </p>
           </div>

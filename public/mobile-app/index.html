@@ -2,7 +2,10 @@
 <html lang="ru">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1, user-scalable=no" />
+  <!-- D-267: interactive-widget=resizes-content — чтобы на Android клавиатура сжимала
+       layout viewport, и нижние кнопки модалок не оставались под клавиатурой.
+       На iOS не поддерживается — там работаем через visualViewport. -->
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content, maximum-scale=1, user-scalable=no" />
   <meta name="theme-color" content="#0a0a0c" />
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -17,6 +20,10 @@
 </head>
 <body>
   <div id="root"></div>
+  <!-- D-267: портал для модалок/шторок. Лежит ВНЕ #root, поэтому не наследует
+       transform/filter от анимированных контейнеров роутов (иначе position: fixed
+       внутри них уезжает за пределы экрана). -->
+  <div id="modal-root"></div>
   <!-- Единый формат телефона по всей СРМ (в т.ч. мобильная): +7 (916) 061-48-09.
        Файл копируется из public/assets/js/phone_mask.js шагом prebuild
        (tools/sync-phone-mask.mjs) — единый источник истины. -->

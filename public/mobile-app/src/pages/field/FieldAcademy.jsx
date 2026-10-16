@@ -9,24 +9,24 @@ import { fieldApi } from '@/api/fieldClient';
 const COLORS = {
   bg: 'var(--field-bg)',
   card: 'var(--field-card)',
-  gold: '#c8a84b',
-  rune: '#7b61ff',
-  green: '#22c55e',
-  red: '#ef4444',
-  amber: '#f59e0b',
+  gold: 'var(--value)',
+  rune: 'var(--acc)',
+  green: 'var(--ok)',
+  red: 'var(--danger)',
+  amber: 'var(--value)',
   text: 'var(--field-text)',
-  muted: '#8E8E93',
+  muted: 'var(--text-secondary)',
 };
 
 const RANK_COLORS = {
-  'Новобранец': '#8E8E93',
-  'Дружинник':  '#3b82f6',
-  'Хирдман':    '#8b5cf6',
-  'Ярл':        '#c8a84b',
+  'Новобранец': 'var(--text-secondary)',
+  'Дружинник':  'var(--acc)',
+  'Хирдман':    'var(--acc)',
+  'Ярл':        'var(--value)',
 };
 
 function RankBadge({ rank, icon }) {
-  const color = RANK_COLORS[rank] || '#6b7280';
+  const color = RANK_COLORS[rank] || 'var(--text-tertiary)';
   return (
     <span style={{
       background: `${color}22`,
@@ -66,15 +66,15 @@ function DailyFactCard({ fact, onView }) {
   if (!fact) return null;
 
   const catColors = {
-    construction: '#f59e0b', history: '#8b5cf6', health: '#22c55e',
-    tool: '#3b82f6', law: '#6b7280', science: '#06b6d4',
-    geography: '#10b981', viking: '#c8a84b', general: '#6b7280',
+    construction: 'var(--value)', history: 'var(--acc)', health: 'var(--ok)',
+    tool: 'var(--acc)', law: 'var(--text-tertiary)', science: 'var(--acc)',
+    geography: 'var(--ok)', viking: 'var(--value)', general: 'var(--text-tertiary)',
   };
   const catColor = catColors[fact.category] || COLORS.muted;
 
   return (
     <div onClick={handleView} style={{
-      background: `linear-gradient(135deg, #1a1a2e 0%, #16161f 100%)`,
+      background: `linear-gradient(135deg, var(--bg-surface) 0%, var(--bg-surface) 100%)`,
       border: `1px solid ${catColor}44`,
       borderRadius: 16,
       padding: 16,
@@ -109,7 +109,7 @@ function CurrentLessonCard({ lesson, navigate, isOnboarding = false, isBlocking 
     return (
       <div style={{
         background: COLORS.card, borderRadius: 16, padding: 20,
-        border: '1px solid #ffffff11', textAlign: 'center',
+        border: '1px solid color-mix(in oklab, var(--text-primary) 7%, transparent)', textAlign: 'center',
         marginBottom: 16,
       }}>
         <div style={{ fontSize: 32, marginBottom: 8 }}>📖</div>
@@ -136,7 +136,7 @@ function CurrentLessonCard({ lesson, navigate, isOnboarding = false, isBlocking 
 
   return (
     <div style={{
-      background: `linear-gradient(135deg, ${lesson.cover_color || '#1a1a2e'} 0%, #0d0d12 100%)`,
+      background: `linear-gradient(135deg, ${lesson.cover_color || 'var(--bg-surface)'} 0%, var(--bg-primary) 100%)`,
       borderRadius: 16, padding: 20, marginBottom: 16,
       border: `1px solid ${isPassed ? COLORS.green + '44' : COLORS.gold + '33'}`,
       cursor: 'pointer',
@@ -173,8 +173,8 @@ function CurrentLessonCard({ lesson, navigate, isOnboarding = false, isBlocking 
           onClick={(e) => { e.stopPropagation(); navigate(`/field/academy/quiz/${lesson.id}`); }}
           style={{
             marginTop: 12, width: '100%', padding: '10px 0',
-            background: `linear-gradient(90deg, ${COLORS.rune}, #9b59b6)`,
-            border: 'none', borderRadius: 10, color: '#fff',
+            background: `linear-gradient(90deg, ${COLORS.rune}, var(--acc))`,
+            border: 'none', borderRadius: 10, color: 'var(--text-primary)',
             fontSize: 14, fontWeight: 700, cursor: 'pointer',
           }}
         >
@@ -187,8 +187,8 @@ function CurrentLessonCard({ lesson, navigate, isOnboarding = false, isBlocking 
           onClick={(e) => { e.stopPropagation(); navigate(`/field/academy/lesson/${lesson.id}`); }}
           style={{
             marginTop: 12, width: '100%', padding: '10px 0',
-            background: `linear-gradient(90deg, ${COLORS.gold}, #a87d20)`,
-            border: 'none', borderRadius: 10, color: '#000',
+            background: `linear-gradient(90deg, ${COLORS.gold}, var(--value))`,
+            border: 'none', borderRadius: 10, color: 'var(--bg-primary)',
             fontSize: 14, fontWeight: 700, cursor: 'pointer',
           }}
         >
@@ -205,7 +205,7 @@ function CurrentLessonCard({ lesson, navigate, isOnboarding = false, isBlocking 
       {!lesson.is_mandatory && !isPassed && (
         <div style={{
           marginTop: 10, fontSize: 11, color: COLORS.muted,
-          textAlign: 'center', background: '#ffffff08',
+          textAlign: 'center', background: 'color-mix(in oklab, var(--text-primary) 3%, transparent)',
           padding: '4px 8px', borderRadius: 8,
         }}>
           ⓘ Необязательная руна — за дополнительные XP/руны
@@ -239,7 +239,7 @@ function LessonRow({ lesson, navigate, primaryHint }) {
       onClick={() => navigate(`/field/academy/lesson/${lesson.id}`)}
       style={{
         background: COLORS.card, borderRadius: 12, padding: '12px 14px',
-        border: primaryHint ? `1px solid ${COLORS.gold}77` : '1px solid #ffffff11',
+        border: primaryHint ? `1px solid ${COLORS.gold}77` : '1px solid color-mix(in oklab, var(--text-primary) 7%, transparent)',
         marginBottom: 8, cursor: 'pointer',
         display: 'flex', gap: 12, alignItems: 'center',
         boxShadow: primaryHint ? `0 4px 14px ${COLORS.gold}22` : 'none',
@@ -247,7 +247,7 @@ function LessonRow({ lesson, navigate, primaryHint }) {
     >
       <div style={{
         width: 44, height: 44, borderRadius: 12,
-        background: `${lesson.cover_color || '#1a1a2e'}cc`,
+        background: `${lesson.cover_color || 'var(--bg-surface)'}cc`,
         display: 'flex', alignItems: 'center', justifyContent: 'center',
         fontSize: 22, flexShrink: 0,
       }}>
@@ -314,7 +314,7 @@ function StatsRow({ stats }) {
   return (
     <div style={{
       background: COLORS.card, borderRadius: 16, padding: 16,
-      border: '1px solid #ffffff11', marginBottom: 16,
+      border: '1px solid color-mix(in oklab, var(--text-primary) 7%, transparent)', marginBottom: 16,
     }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
         <span style={{ fontSize: 14, fontWeight: 700, color: COLORS.text }}>Твой путь</span>
@@ -327,7 +327,7 @@ function StatsRow({ stats }) {
           { label: 'Средний балл', value: `${stats.avg_score}%`, icon: '🎯' },
           { label: 'Руны заработано', value: stats.runes_total, icon: '🔮' },
         ].map((s) => (
-          <div key={s.label} style={{ flex: 1, background: '#ffffff08', borderRadius: 10, padding: '10px 8px', textAlign: 'center' }}>
+          <div key={s.label} style={{ flex: 1, background: 'color-mix(in oklab, var(--text-primary) 3%, transparent)', borderRadius: 10, padding: '10px 8px', textAlign: 'center' }}>
             <div style={{ fontSize: 18 }}>{s.icon}</div>
             <div style={{ fontSize: 16, fontWeight: 800, color: COLORS.text }}>{s.value}</div>
             <div style={{ fontSize: 10, color: COLORS.muted }}>{s.label}</div>
@@ -339,12 +339,12 @@ function StatsRow({ stats }) {
         <span style={{ fontSize: 12, color: COLORS.muted }}>Прогресс</span>
         <span style={{ fontSize: 12, color: COLORS.gold }}>{pct}%</span>
       </div>
-      <div style={{ height: 6, background: '#ffffff11', borderRadius: 3, overflow: 'hidden' }}>
+      <div style={{ height: 6, background: 'color-mix(in oklab, var(--text-primary) 7%, transparent)', borderRadius: 3, overflow: 'hidden' }}>
         <div style={{ height: '100%', width: `${pct}%`, background: `linear-gradient(90deg, ${COLORS.gold}, ${COLORS.rune})`, borderRadius: 3, transition: 'width 0.5s' }} />
       </div>
 
       {stats.streak > 0 && (
-        <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px solid #ffffff11' }}>
+        <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px solid color-mix(in oklab, var(--text-primary) 7%, transparent)' }}>
           <StreakBadge streak={stats.streak} />
         </div>
       )}
@@ -416,7 +416,7 @@ export default function FieldAcademy() {
       {/* Header */}
       <div style={{
         padding: '48px 20px 20px',
-        background: 'linear-gradient(180deg, #1a0d2e 0%, transparent 100%)',
+        background: 'linear-gradient(180deg, var(--bg-surface) 0%, transparent 100%)',
       }}>
         <div style={{ fontSize: 11, color: COLORS.muted, textTransform: 'uppercase', letterSpacing: 2, marginBottom: 4 }}>
           ᚱ ЧЕРТОГИ МИМИРА

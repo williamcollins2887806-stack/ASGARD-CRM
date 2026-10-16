@@ -2,7 +2,10 @@
 <html lang="ru">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1, user-scalable=no" />
+  <!-- D-267: interactive-widget=resizes-content — чтобы на Android клавиатура сжимала
+       layout viewport, и нижние кнопки модалок не оставались под клавиатурой.
+       На iOS не поддерживается — там работаем через visualViewport. -->
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content, maximum-scale=1, user-scalable=no" />
   <meta name="theme-color" content="#0a0a0c" />
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -14,17 +17,21 @@
   <link rel="apple-touch-icon" sizes="192x192" href="icon-192.png" />
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;700;900&display=swap" />
   <title>ASGARD CRM</title>
-  <script type="module" crossorigin src="/m/assets/index-C3U3AjKJ.js"></script>
+  <script type="module" crossorigin src="/m/assets/index-C5taVR0K.js"></script>
   <link rel="modulepreload" crossorigin href="/m/assets/react-DtrESx-C.js">
   <link rel="modulepreload" crossorigin href="/m/assets/client-L2R7AsKz.js">
   <link rel="modulepreload" crossorigin href="/m/assets/jsx-runtime-DqxsCgis.js">
-  <link rel="modulepreload" crossorigin href="/m/assets/dist-Ld5bwtmK.js">
+  <link rel="modulepreload" crossorigin href="/m/assets/dist-BMrNb_AN.js">
   <link rel="modulepreload" crossorigin href="/m/assets/react-BNBSt93f.js">
   <link rel="modulepreload" crossorigin href="/m/assets/authStore-ZNZF3Mf4.js">
-  <link rel="stylesheet" crossorigin href="/m/assets/index-CL9xG15z.css">
+  <link rel="stylesheet" crossorigin href="/m/assets/index-Dz88Otr4.css">
 </head>
 <body>
   <div id="root"></div>
+  <!-- D-267: портал для модалок/шторок. Лежит ВНЕ #root, поэтому не наследует
+       transform/filter от анимированных контейнеров роутов (иначе position: fixed
+       внутри них уезжает за пределы экрана). -->
+  <div id="modal-root"></div>
   <!-- Единый формат телефона по всей СРМ (в т.ч. мобильная): +7 (916) 061-48-09.
        Файл копируется из public/assets/js/phone_mask.js шагом prebuild
        (tools/sync-phone-mask.mjs) — единый источник истины. -->

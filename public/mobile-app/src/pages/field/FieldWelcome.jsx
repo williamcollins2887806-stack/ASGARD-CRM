@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useFieldAuthStore } from '@/stores/fieldAuthStore';
 import '@/styles/field-auth.css';
@@ -31,51 +31,17 @@ function playHammerStrike() {
   } catch (_) {}
 }
 
+/* ВАЖНО: логотип ASGARD CRM менять нельзя (заказчик 16.10.2026) — используется
+   официальный файл public/asgard-logo.png как есть. */
 function AsgardLogo({ size = 140 }) {
   return (
-    <div
-      className="fa-logo"
-      style={{
-        width: size,
-        filter: 'drop-shadow(0 0 24px rgba(200,41,59,0.35)) drop-shadow(0 0 48px rgba(30,77,140,0.25))',
-      }}
-    >
+    <div className="fa-logo" style={{ width: size }}>
       <img
         src={import.meta.env.BASE_URL + 'asgard-logo.png'}
         alt="ASGARD CRM"
         draggable={false}
         style={{ width: '100%', height: 'auto', userSelect: 'none' }}
       />
-    </div>
-  );
-}
-
-// Animated stars background
-function Stars() {
-  const stars = useRef(
-    Array.from({ length: 40 }, () => ({
-      x: Math.random() * 100,
-      y: Math.random() * 100,
-      size: Math.random() * 2 + 0.5,
-      delay: Math.random() * 4,
-      duration: 2 + Math.random() * 3,
-    }))
-  ).current;
-
-  return (
-    <div className="fa-stars">
-      {stars.map((s, i) => (
-        <div
-          key={i}
-          className="fa-star"
-          style={{
-            left: s.x + '%', top: s.y + '%',
-            width: s.size + 'px', height: s.size + 'px',
-            animationDelay: s.delay + 's',
-            animationDuration: s.duration + 's',
-          }}
-        />
-      ))}
     </div>
   );
 }
@@ -141,14 +107,6 @@ export default function FieldWelcome() {
 
   return (
     <div className="fa-welcome">
-      <Stars />
-
-      {/* Corner runes */}
-      <span className="fa-rune fa-rune-tl">ᚠ</span>
-      <span className="fa-rune fa-rune-tr">ᚱ</span>
-      <span className="fa-rune fa-rune-bl">ᚦ</span>
-      <span className="fa-rune fa-rune-br">ᛟ</span>
-
       <div className={`fa-welcome-content ${showContent ? 'fa-visible' : ''}`}>
         <AsgardLogo size={140} />
 

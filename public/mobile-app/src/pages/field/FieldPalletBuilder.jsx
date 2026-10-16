@@ -13,12 +13,12 @@ import {
 } from 'lucide-react';
 
 const SOURCE_META = {
-  reservation: { label: 'Резерв', icon: Layers, color: '#8b93a3' },
-  procurement_warehouse: { label: 'Склад', icon: Warehouse, color: '#5aa0e0' },
-  procurement_object: { label: 'Закупка', icon: ShoppingCart, color: '#5aa0e0' },
-  manual: { label: 'Вручную', icon: Hand, color: '#8b93a3' },
-  on_site_purchase: { label: 'Куплено на объекте', icon: ShoppingCart, color: '#ffb020' },
-  from_warehouse: { label: 'Со склада', icon: Warehouse, color: '#5aa0e0' },
+  reservation: { label: 'Резерв', icon: Layers, color: 'var(--text-secondary)' },
+  procurement_warehouse: { label: 'Склад', icon: Warehouse, color: 'var(--acc)' },
+  procurement_object: { label: 'Закупка', icon: ShoppingCart, color: 'var(--acc)' },
+  manual: { label: 'Вручную', icon: Hand, color: 'var(--text-secondary)' },
+  on_site_purchase: { label: 'Куплено на объекте', icon: ShoppingCart, color: 'var(--value)' },
+  from_warehouse: { label: 'Со склада', icon: Warehouse, color: 'var(--acc)' },
 };
 const SOURCE_OPTIONS = [
   { value: 'from_warehouse', label: 'Со склада', icon: Warehouse },
@@ -123,14 +123,14 @@ export default function FieldPalletBuilder() {
   if (loading) return <ScreenSkeleton onBack={() => nav(-1)} />;
 
   return (
-    <div className="min-h-screen" style={{ background: 'var(--bg-base,#0a0a14)', color: '#e6e9ef', paddingBottom: 'max(env(safe-area-inset-bottom), 24px)' }}>
+    <div className="min-h-screen" style={{ background: 'var(--bg-base,var(--bg-primary))', color: 'var(--text-primary)', paddingBottom: 'max(env(safe-area-inset-bottom), 24px)' }}>
       {/* Шапка */}
       <div className="sticky top-0 z-20 px-4 py-3"
-        style={{ background: 'rgba(10,10,20,.92)', backdropFilter: 'blur(12px)', borderBottom: '1px solid rgba(240,200,80,.15)', paddingTop: 'max(env(safe-area-inset-top), 12px)' }}>
+        style={{ background: 'color-mix(in oklab, var(--bg-primary) 92%, transparent)', backdropFilter: 'blur(12px)', borderBottom: '1px solid color-mix(in oklab, var(--value) 15%, transparent)', paddingTop: 'max(env(safe-area-inset-top), 12px)' }}>
         <div className="flex items-center gap-3">
           <button onClick={() => { haptic.light(); nav(-1); }} className="p-2 -ml-2 rounded-xl active:scale-90 transition"><ArrowLeft size={22} /></button>
           <div className="flex-1 min-w-0">
-            <div className="font-bold truncate" style={{ color: '#F0C850' }}>{order?.title || 'Сбор'}</div>
+            <div className="font-bold truncate" style={{ color: 'var(--value)' }}>{order?.title || 'Сбор'}</div>
             <div className="text-xs opacity-60 truncate">{order?.work_title}</div>
           </div>
           <button onClick={() => { haptic.light(); load(); loadLive(); }} className="p-2 rounded-xl active:scale-90 transition"><RefreshCw size={18} /></button>
@@ -138,9 +138,9 @@ export default function FieldPalletBuilder() {
         {/* Прогресс + кто собирает */}
         {live && (
           <div className="flex items-center gap-3 mt-2.5">
-            <div className="flex-1 h-1.5 rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,.08)' }}>
+            <div className="flex-1 h-1.5 rounded-full overflow-hidden" style={{ background: 'color-mix(in oklab, var(--text-primary) 8%, transparent)' }}>
               <div className="h-full rounded-full transition-all"
-                style={{ width: `${live.totals.total > 0 ? Math.round(live.totals.packed / live.totals.total * 100) : 0}%`, background: '#30d158' }} />
+                style={{ width: `${live.totals.total > 0 ? Math.round(live.totals.packed / live.totals.total * 100) : 0}%`, background: 'var(--ok)' }} />
             </div>
             <span className="text-[11px] opacity-70">{live.totals.packed}/{live.totals.total}</span>
             {live.by_user?.length > 0 && (
@@ -153,7 +153,7 @@ export default function FieldPalletBuilder() {
       </div>
 
       {!canPack && (
-        <div className="mx-4 mt-3 p-3 rounded-xl text-sm" style={{ background: 'rgba(255,176,32,.1)', color: '#ffb020' }}>
+        <div className="mx-4 mt-3 p-3 rounded-xl text-sm" style={{ background: 'color-mix(in oklab, var(--danger) 10%, transparent)', color: 'var(--value)' }}>
           {order?.status === 'draft' ? 'Ведомость ещё не подтверждена РП.' : `Статус: ${order?.status}. Сборка недоступна.`}
         </div>
       )}
@@ -165,7 +165,7 @@ export default function FieldPalletBuilder() {
             <div className="text-xs uppercase tracking-wide opacity-50 font-semibold">Паллеты</div>
             {canPack && (
               <button onClick={addPallet} className="flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-lg active:scale-95 transition"
-                style={{ background: 'rgba(240,200,80,.15)', color: '#F0C850' }}><Plus size={14} />Паллет</button>
+                style={{ background: 'color-mix(in oklab, var(--value) 15%, transparent)', color: 'var(--value)' }}><Plus size={14} />Паллет</button>
             )}
           </div>
           <div className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1">
@@ -176,8 +176,8 @@ export default function FieldPalletBuilder() {
               return (
                 <button key={p.id} onClick={() => { haptic.light(); setActivePallet(p.id); }}
                   className="flex-shrink-0 rounded-xl px-3.5 py-2.5 active:scale-95 transition text-center min-w-[78px]"
-                  style={{ background: active ? 'rgba(240,200,80,.18)' : 'rgba(255,255,255,.04)', border: `1px solid ${active ? '#F0C850' : 'rgba(255,255,255,.08)'}` }}>
-                  <Package size={18} className="mx-auto mb-1" style={{ color: active ? '#F0C850' : '#8b93a3' }} />
+                  style={{ background: active ? 'color-mix(in oklab, var(--value) 18%, transparent)' : 'color-mix(in oklab, var(--text-primary) 4%, transparent)', border: `1px solid ${active ? 'var(--value)' : 'color-mix(in oklab, var(--text-primary) 8%, transparent)'}` }}>
+                  <Package size={18} className="mx-auto mb-1" style={{ color: active ? 'var(--value)' : 'var(--text-secondary)' }} />
                   <div className="text-xs font-bold">№{p.pallet_number}</div>
                   <div className="text-[10px] opacity-60">{cnt} поз.</div>
                 </button>
@@ -227,7 +227,7 @@ export default function FieldPalletBuilder() {
       {canPack && (
         <button onClick={() => { haptic.light(); setShowAdd(true); }}
           className="fixed bottom-6 right-5 z-30 flex items-center gap-2 px-5 py-3.5 rounded-2xl font-bold shadow-2xl active:scale-95 transition"
-          style={{ background: '#F0C850', color: '#1a1408', boxShadow: '0 8px 30px rgba(240,200,80,.4)' }}>
+          style={{ background: 'var(--value)', color: 'var(--bg-primary)', boxShadow: '0 8px 30px color-mix(in oklab, var(--value) 40%, transparent)' }}>
           <Plus size={20} />Позиция
         </button>
       )}
@@ -241,9 +241,9 @@ export default function FieldPalletBuilder() {
       {/* Скрытый input для фото позиции (перенос из legacy «Сборы») */}
       <input ref={fileRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={onPhotoChosen} />
       {photoBusy && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ background: 'rgba(0,0,0,.5)' }}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ background: 'color-mix(in oklab, var(--bg-primary) 50%, transparent)' }}>
           <div className="flex items-center gap-3 px-5 py-3 rounded-xl" style={{ background: 'rgba(20,20,32,.95)' }}>
-            <Loader2 className="animate-spin" size={18} color="#F0C850" />
+            <Loader2 className="animate-spin" size={18} color="var(--value)" />
             <span className="text-sm">Загружаем фото…</span>
           </div>
         </div>
@@ -251,7 +251,7 @@ export default function FieldPalletBuilder() {
 
       {toastMsg && (
         <div className="fixed left-4 right-4 z-50 px-4 py-3 rounded-xl text-sm font-medium text-center"
-          style={{ bottom: 90, background: 'rgba(255,92,92,.95)', color: '#fff', boxShadow: '0 6px 24px rgba(0,0,0,.4)' }}>
+          style={{ bottom: 90, background: 'color-mix(in oklab, var(--danger) 95%, transparent)', color: 'var(--text-primary)', boxShadow: '0 6px 24px color-mix(in oklab, var(--bg-primary) 40%, transparent)' }}>
           {toastMsg}
         </div>
       )}
@@ -272,11 +272,11 @@ function ItemRow({ item, canPack, onPack, onAssign, assignLabel, onPhoto }) {
   const meta = SOURCE_META[item.source] || SOURCE_META.manual;
   return (
     <div className="rounded-xl p-3 flex items-center gap-3"
-      style={{ background: 'rgba(255,255,255,.04)', border: `1px solid ${item.packed ? 'rgba(48,209,88,.3)' : 'rgba(255,255,255,.07)'}` }}>
+      style={{ background: 'color-mix(in oklab, var(--text-primary) 4%, transparent)', border: `1px solid ${item.packed ? 'color-mix(in oklab, var(--ok) 30%, transparent)' : 'color-mix(in oklab, var(--text-primary) 7%, transparent)'}` }}>
       {/* чек собрано */}
       <button onClick={onPack} disabled={!canPack}
         className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 active:scale-90 transition"
-        style={{ background: item.packed ? '#30d158' : 'rgba(255,255,255,.06)', border: item.packed ? 'none' : '1px solid rgba(255,255,255,.15)' }}>
+        style={{ background: item.packed ? 'var(--ok)' : 'color-mix(in oklab, var(--text-primary) 6%, transparent)', border: item.packed ? 'none' : '1px solid color-mix(in oklab, var(--text-primary) 15%, transparent)' }}>
         {item.packed && <Check size={18} color="#08210f" strokeWidth={3} />}
       </button>
       <div className="flex-1 min-w-0">
@@ -284,19 +284,19 @@ function ItemRow({ item, canPack, onPack, onAssign, assignLabel, onPhoto }) {
         <div className="flex items-center gap-2 mt-0.5">
           <span className="text-xs opacity-70">{Number(item.quantity)} {item.unit}</span>
           <span className="text-[10px] px-1.5 py-0.5 rounded-full" style={{ background: `${meta.color}22`, color: meta.color }}>{meta.label}</span>
-          {item.over_received && <span className="text-[10px] px-1.5 py-0.5 rounded-full" style={{ background: 'rgba(255,176,32,.2)', color: '#ffb020' }}>излишек</span>}
-          {item.photo_filename && <span className="text-[10px] px-1.5 py-0.5 rounded-full" style={{ background: 'rgba(48,209,88,.15)', color: '#30d158' }}>фото</span>}
+          {item.over_received && <span className="text-[10px] px-1.5 py-0.5 rounded-full" style={{ background: 'color-mix(in oklab, var(--danger) 20%, transparent)', color: 'var(--value)' }}>излишек</span>}
+          {item.photo_filename && <span className="text-[10px] px-1.5 py-0.5 rounded-full" style={{ background: 'color-mix(in oklab, var(--ok) 15%, transparent)', color: 'var(--ok)' }}>фото</span>}
         </div>
       </div>
       {onPhoto && canPack && (
         <button onClick={onPhoto} className="p-2 rounded-lg flex-shrink-0 active:scale-95 transition"
-          style={{ background: 'rgba(255,255,255,.06)', color: item.photo_filename ? '#30d158' : '#8b93a3' }} title="Фото позиции">
+          style={{ background: 'color-mix(in oklab, var(--text-primary) 6%, transparent)', color: item.photo_filename ? 'var(--ok)' : 'var(--text-secondary)' }} title="Фото позиции">
           <Camera size={16} />
         </button>
       )}
       {onAssign && canPack && (
         <button onClick={onAssign} className="text-[11px] font-semibold px-2.5 py-1.5 rounded-lg flex-shrink-0 active:scale-95 transition"
-          style={{ background: 'rgba(240,200,80,.12)', color: '#F0C850' }}>{assignLabel}</button>
+          style={{ background: 'color-mix(in oklab, var(--value) 12%, transparent)', color: 'var(--value)' }}>{assignLabel}</button>
       )}
     </div>
   );
@@ -339,11 +339,11 @@ function AddItemSheet({ assemblyId, activePallet, pallets, onClose, onAdded, onE
   }
 
   return (
-    <div className="fixed inset-0 z-40 flex items-end" style={{ background: 'rgba(0,0,0,.6)' }} onClick={onClose}>
+    <div className="fixed inset-0 z-40 flex items-end" style={{ background: 'color-mix(in oklab, var(--bg-primary) 60%, transparent)' }} onClick={onClose}>
       <div className="w-full rounded-t-3xl p-5 pb-8 max-h-[88vh] overflow-y-auto" onClick={e => e.stopPropagation()}
-        style={{ background: '#12121e', border: '1px solid rgba(240,200,80,.2)', animation: 'sheetUp .25s ease' }}>
+        style={{ background: '#12121e', border: '1px solid color-mix(in oklab, var(--value) 20%, transparent)', animation: 'sheetUp .25s ease' }}>
         <div className="flex items-center justify-between mb-4">
-          <div className="font-bold text-lg" style={{ color: '#F0C850' }}>Добавить позицию</div>
+          <div className="font-bold text-lg" style={{ color: 'var(--value)' }}>Добавить позицию</div>
           <button onClick={onClose} className="p-1.5 rounded-lg active:scale-90"><X size={22} /></button>
         </div>
         {activePallet && (
@@ -353,14 +353,14 @@ function AddItemSheet({ assemblyId, activePallet, pallets, onClose, onAdded, onE
         {/* Поиск каталога */}
         <input autoFocus value={q} onChange={e => setQ(e.target.value)} placeholder="Что кладём? (поиск по каталогу)"
           className="w-full px-4 py-3 rounded-xl text-base outline-none mb-3"
-          style={{ background: 'rgba(255,255,255,.05)', border: '1px solid rgba(255,255,255,.12)', color: '#e6e9ef' }} />
+          style={{ background: 'color-mix(in oklab, var(--text-primary) 5%, transparent)', border: '1px solid color-mix(in oklab, var(--text-primary) 12%, transparent)', color: 'var(--text-primary)' }} />
 
         {/* кол-во + ед + источник */}
         <div className="flex gap-2 mb-3">
           <input value={qty} onChange={e => setQty(e.target.value)} type="number" inputMode="decimal" placeholder="Кол-во"
-            className="w-24 px-3 py-2.5 rounded-xl outline-none" style={{ background: 'rgba(255,255,255,.05)', border: '1px solid rgba(255,255,255,.12)', color: '#e6e9ef' }} />
+            className="w-24 px-3 py-2.5 rounded-xl outline-none" style={{ background: 'color-mix(in oklab, var(--text-primary) 5%, transparent)', border: '1px solid color-mix(in oklab, var(--text-primary) 12%, transparent)', color: 'var(--text-primary)' }} />
           <input value={unit} onChange={e => setUnit(e.target.value)} placeholder="ед"
-            className="w-20 px-3 py-2.5 rounded-xl outline-none" style={{ background: 'rgba(255,255,255,.05)', border: '1px solid rgba(255,255,255,.12)', color: '#e6e9ef' }} />
+            className="w-20 px-3 py-2.5 rounded-xl outline-none" style={{ background: 'color-mix(in oklab, var(--text-primary) 5%, transparent)', border: '1px solid color-mix(in oklab, var(--text-primary) 12%, transparent)', color: 'var(--text-primary)' }} />
         </div>
         <div className="flex gap-2 mb-4">
           {SOURCE_OPTIONS.map(o => {
@@ -368,9 +368,9 @@ function AddItemSheet({ assemblyId, activePallet, pallets, onClose, onAdded, onE
             return (
               <button key={o.value} onClick={() => { haptic.light(); setSource(o.value); }}
                 className="flex-1 flex flex-col items-center gap-1 py-2.5 rounded-xl active:scale-95 transition"
-                style={{ background: active ? 'rgba(240,200,80,.16)' : 'rgba(255,255,255,.04)', border: `1px solid ${active ? '#F0C850' : 'rgba(255,255,255,.08)'}` }}>
-                <Ic size={18} style={{ color: active ? '#F0C850' : '#8b93a3' }} />
-                <span className="text-[10px] leading-tight text-center" style={{ color: active ? '#F0C850' : '#8b93a3' }}>{o.label}</span>
+                style={{ background: active ? 'color-mix(in oklab, var(--value) 16%, transparent)' : 'color-mix(in oklab, var(--text-primary) 4%, transparent)', border: `1px solid ${active ? 'var(--value)' : 'color-mix(in oklab, var(--text-primary) 8%, transparent)'}` }}>
+                <Ic size={18} style={{ color: active ? 'var(--value)' : 'var(--text-secondary)' }} />
+                <span className="text-[10px] leading-tight text-center" style={{ color: active ? 'var(--value)' : 'var(--text-secondary)' }}>{o.label}</span>
               </button>
             );
           })}
@@ -381,12 +381,12 @@ function AddItemSheet({ assemblyId, activePallet, pallets, onClose, onAdded, onE
         {results.map(r => (
           <button key={r.id} onClick={() => add(r.name, r.id)} disabled={saving}
             className="w-full text-left rounded-xl px-4 py-3 mb-2 active:scale-[.98] transition flex items-center justify-between"
-            style={{ background: 'rgba(255,255,255,.04)', border: '1px solid rgba(255,255,255,.08)' }}>
+            style={{ background: 'color-mix(in oklab, var(--text-primary) 4%, transparent)', border: '1px solid color-mix(in oklab, var(--text-primary) 8%, transparent)' }}>
             <div>
               <div className="font-medium text-sm">{r.name}</div>
               <div className="text-xs opacity-50">{r.category_name || ''}{r.article ? ` • ${r.article}` : ''}</div>
             </div>
-            <Plus size={18} style={{ color: '#F0C850' }} />
+            <Plus size={18} style={{ color: 'var(--value)' }} />
           </button>
         ))}
 
@@ -394,7 +394,7 @@ function AddItemSheet({ assemblyId, activePallet, pallets, onClose, onAdded, onE
         {q.trim().length >= 2 && !results.some(r => r.name.toLowerCase() === q.trim().toLowerCase()) && (
           <button onClick={() => add(q.trim(), null)} disabled={saving}
             className="w-full rounded-xl px-4 py-3.5 mt-1 font-semibold active:scale-[.98] transition flex items-center gap-3"
-            style={{ background: 'rgba(48,209,88,.12)', border: '1px dashed rgba(48,209,88,.4)', color: '#30d158' }}>
+            style={{ background: 'color-mix(in oklab, var(--ok) 12%, transparent)', border: '1px dashed color-mix(in oklab, var(--ok) 40%, transparent)', color: 'var(--ok)' }}>
             <PackagePlus size={20} />
             <span>Создать «{q.trim()}» {qty} {unit}</span>
           </button>
@@ -407,12 +407,12 @@ function AddItemSheet({ assemblyId, activePallet, pallets, onClose, onAdded, onE
 
 function ScreenSkeleton({ onBack }) {
   return (
-    <div className="min-h-screen p-4" style={{ background: 'var(--bg-base,#0a0a14)', paddingTop: 'max(env(safe-area-inset-top), 16px)', paddingBottom: 'max(env(safe-area-inset-bottom), 16px)' }}>
+    <div className="min-h-screen p-4" style={{ background: 'var(--bg-base,var(--bg-primary))', paddingTop: 'max(env(safe-area-inset-top), 16px)', paddingBottom: 'max(env(safe-area-inset-bottom), 16px)' }}>
       <div className="flex items-center gap-3 mb-5">
-        <button onClick={onBack} className="p-2 -ml-2"><ArrowLeft size={22} color="#e6e9ef" /></button>
-        <div className="h-5 w-40 rounded animate-pulse" style={{ background: 'rgba(255,255,255,.08)' }} />
+        <button onClick={onBack} className="p-2 -ml-2"><ArrowLeft size={22} color="var(--text-primary)" /></button>
+        <div className="h-5 w-40 rounded animate-pulse" style={{ background: 'color-mix(in oklab, var(--text-primary) 8%, transparent)' }} />
       </div>
-      {[0, 1, 2, 3].map(i => <div key={i} className="h-16 rounded-xl mb-2 animate-pulse" style={{ background: 'rgba(255,255,255,.05)' }} />)}
+      {[0, 1, 2, 3].map(i => <div key={i} className="h-16 rounded-xl mb-2 animate-pulse" style={{ background: 'color-mix(in oklab, var(--text-primary) 5%, transparent)' }} />)}
     </div>
   );
 }

@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
+import { Building2 } from 'lucide-react';
 import { useFieldAuthStore } from '@/stores/fieldAuthStore';
 import '@/styles/field-auth.css';
 
@@ -246,14 +247,12 @@ export default function FieldLogin() {
           if (step === 'code' || step === 'choose') { setStep('phone'); setOtp(['','','','']); setCandidates(null); setChosenEmployeeId(null); clearError(); }
           else navigate('/field/welcome');
         }}>←</button>
+        {/* Логотип ASGARD CRM менять нельзя — официальный файл как есть */}
         <img
           src={import.meta.env.BASE_URL + 'asgard-logo.png'}
           alt="ASGARD"
           draggable={false}
-          style={{
-            height: 36, width: 'auto', userSelect: 'none',
-            filter: 'drop-shadow(0 0 8px rgba(200,41,59,0.3))',
-          }}
+          style={{ height: 36, width: 'auto', userSelect: 'none' }}
         />
       </div>
 
@@ -302,14 +301,14 @@ export default function FieldLogin() {
               type="button"
               onClick={() => navigate('/login')}
               style={{
-                background: 'rgba(255,255,255,0.04)',
-                border: '1px solid rgba(255,255,255,0.08)',
+                background: 'var(--bg-surface)',
+                border: '1px solid var(--border-norse)',
                 borderRadius: 12, padding: '10px 20px',
-                color: 'rgba(255,255,255,0.35)', fontSize: 12,
+                color: 'var(--text-tertiary)', fontSize: 12,
                 cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 8,
               }}
             >
-              <span>🏛️</span>
+              <Building2 size={14} strokeWidth={2} />
               <span>Вы из офиса? Войти в CRM</span>
               <span style={{ opacity: 0.5 }}>→</span>
             </button>

@@ -2,15 +2,15 @@
 
 .cl-root {
   --cl-bg: #0a0c10;
-  --cl-amber: #e8a838;
-  --cl-text: #f5f5f7;
-  --cl-muted: rgba(245, 245, 247, 0.55);
-  --cl-ok: #34d399;
-  --cl-danger: #f87171;
+  --cl-amber: var(--value);
+  --cl-text: var(--text-primary);
+  --cl-muted: color-mix(in oklab, var(--text-primary) 55%, transparent);
+  --cl-ok: var(--ok);
+  --cl-danger: var(--danger);
   min-height: 100vh;
   min-height: 100dvh;
   background:
-    radial-gradient(ellipse 110% 55% at 50% -8%, rgba(232, 168, 56, 0.16), transparent 52%),
+    radial-gradient(ellipse 110% 55% at 50% -8%, color-mix(in oklab, var(--danger) 16%, transparent), transparent 52%),
     radial-gradient(ellipse 50% 35% at 90% 95%, rgba(40, 28, 8, 0.35), transparent 55%),
     linear-gradient(180deg, #151922 0%, var(--cl-bg) 42%, #06070a 100%);
   color: var(--cl-text);
@@ -32,8 +32,8 @@
 
 .cl-back {
   width: 40px; height: 40px; border-radius: 12px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid color-mix(in oklab, var(--text-primary) 8%, transparent);
+  background: color-mix(in oklab, var(--text-primary) 5%, transparent);
   color: var(--cl-muted); font-size: 20px; cursor: pointer;
 }
 .cl-back:active { transform: scale(0.96); }
@@ -51,8 +51,8 @@
 
 .cl-pill {
   font-size: 11px; font-weight: 800; padding: 6px 10px; border-radius: 10px;
-  background: rgba(232, 168, 56, 0.14);
-  border: 1px solid rgba(232, 168, 56, 0.35);
+  background: color-mix(in oklab, var(--danger) 14%, transparent);
+  border: 1px solid color-mix(in oklab, var(--danger) 35%, transparent);
   color: var(--cl-amber);
   font-variant-numeric: tabular-nums;
 }
@@ -60,7 +60,7 @@
 .cl-star-hint {
   font-size: 10px;
   font-weight: 800;
-  color: rgba(232, 168, 56, 0.85);
+  color: color-mix(in oklab, var(--danger) 85%, transparent);
   letter-spacing: 0.02em;
 }
 
@@ -72,9 +72,9 @@
   margin-bottom: 8px;
   border-radius: 14px;
   background:
-    linear-gradient(120deg, rgba(232, 168, 56, 0.12), transparent 55%),
-    rgba(255, 255, 255, 0.035);
-  border: 1px solid rgba(255, 255, 255, 0.07);
+    linear-gradient(120deg, color-mix(in oklab, var(--danger) 12%, transparent), transparent 55%),
+    color-mix(in oklab, var(--text-primary) 4%, transparent);
+  border: 1px solid color-mix(in oklab, var(--text-primary) 7%, transparent);
   z-index: 4;
   animation: cl-chapter-in 0.45s ease-out both;
 }
@@ -103,15 +103,15 @@
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: rgba(255, 255, 255, 0.12);
+  background: color-mix(in oklab, var(--text-primary) 12%, transparent);
   display: block;
   transition: transform 0.25s ease, background 0.25s ease;
 }
-.cl-stages i.is-done { background: rgba(52, 211, 153, 0.75); }
+.cl-stages i.is-done { background: color-mix(in oklab, var(--ok) 75%, transparent); }
 .cl-stages i.is-now {
   background: var(--cl-amber);
   transform: scale(1.25);
-  box-shadow: 0 0 0 3px rgba(232, 168, 56, 0.22);
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--danger) 22%, transparent);
 }
 @keyframes cl-chapter-in {
   from { opacity: 0; transform: translateY(-6px); }
@@ -121,8 +121,8 @@
 .cl-goal {
   display: flex; flex-direction: column; gap: 2px;
   padding: 10px 12px; margin-bottom: 8px; border-radius: 14px;
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(255, 255, 255, 0.07);
+  background: color-mix(in oklab, var(--text-primary) 4%, transparent);
+  border: 1px solid color-mix(in oklab, var(--text-primary) 7%, transparent);
   z-index: 4;
 }
 .cl-goal-kicker {
@@ -130,27 +130,27 @@
   color: var(--cl-amber);
 }
 .cl-goal > span:nth-child(2) {
-  font-size: 13px; font-weight: 600; color: rgba(255,255,255,0.88); line-height: 1.35;
+  font-size: 13px; font-weight: 600; color: color-mix(in oklab, var(--text-primary) 88%, transparent); line-height: 1.35;
 }
 .cl-recipe {
   margin-top: 4px;
   font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.02em;
-  color: rgba(232, 168, 56, 0.9);
+  color: color-mix(in oklab, var(--danger) 90%, transparent);
 }
 .cl-move-bar {
   margin-top: 8px;
   height: 3px;
   border-radius: 99px;
-  background: rgba(255, 255, 255, 0.08);
+  background: color-mix(in oklab, var(--text-primary) 8%, transparent);
   overflow: hidden;
 }
 .cl-move-bar i {
   display: block;
   height: 100%;
   border-radius: inherit;
-  background: linear-gradient(90deg, #34d399, var(--cl-amber), #f87171);
+  background: linear-gradient(90deg, var(--ok), var(--cl-amber), var(--danger));
   transition: width 0.35s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
@@ -167,11 +167,11 @@
   border-radius: 18px;
   overflow: hidden;
   background:
-    radial-gradient(ellipse 80% 50% at 30% 0%, rgba(232, 168, 56, 0.1), transparent 55%),
+    radial-gradient(ellipse 80% 50% at 30% 0%, color-mix(in oklab, var(--danger) 10%, transparent), transparent 55%),
     radial-gradient(ellipse 60% 40% at 80% 100%, rgba(20, 28, 40, 0.5), transparent 50%),
-    linear-gradient(180deg, rgba(18, 22, 30, 0.65), rgba(8, 10, 14, 0.2));
-  border: 1px solid rgba(255, 255, 255, 0.05);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+    linear-gradient(180deg, rgba(18, 22, 30, 0.65), color-mix(in oklab, var(--bg-primary) 20%, transparent));
+  border: 1px solid color-mix(in oklab, var(--text-primary) 5%, transparent);
+  box-shadow: inset 0 1px 0 color-mix(in oklab, var(--text-primary) 4%, transparent);
 }
 
 /* ── Canister ── */
@@ -197,23 +197,23 @@
 
 .cl-can--valid .cl-can-shell {
   box-shadow:
-    0 0 0 2px rgba(52, 211, 153, 0.75),
-    0 0 22px rgba(52, 211, 153, 0.35),
-    0 14px 28px rgba(0,0,0,0.45);
+    0 0 0 2px color-mix(in oklab, var(--ok) 75%, transparent),
+    0 0 22px color-mix(in oklab, var(--ok) 35%, transparent),
+    0 14px 28px color-mix(in oklab, var(--bg-primary) 45%, transparent);
 }
 .cl-can--danger .cl-can-shell {
   box-shadow:
-    0 0 0 2px rgba(248, 113, 113, 0.7),
-    0 0 20px rgba(239, 68, 68, 0.35),
-    0 14px 28px rgba(0,0,0,0.45);
+    0 0 0 2px color-mix(in oklab, var(--danger) 70%, transparent),
+    0 0 20px color-mix(in oklab, var(--danger) 35%, transparent),
+    0 14px 28px color-mix(in oklab, var(--bg-primary) 45%, transparent);
 }
 
 .cl-can--hint .cl-can-shell {
   animation: cl-hint-ring 1s ease-in-out infinite;
 }
 @keyframes cl-hint-ring {
-  0%, 100% { box-shadow: 0 0 0 2px rgba(52,211,153,0.45), 0 0 14px rgba(52,211,153,0.25), 0 12px 28px rgba(0,0,0,0.45); }
-  50% { box-shadow: 0 0 0 4px rgba(52,211,153,0.95), 0 0 30px rgba(52,211,153,0.5), 0 12px 28px rgba(0,0,0,0.45); }
+  0%, 100% { box-shadow: 0 0 0 2px color-mix(in oklab, var(--ok) 45%, transparent), 0 0 14px color-mix(in oklab, var(--ok) 25%, transparent), 0 12px 28px color-mix(in oklab, var(--bg-primary) 45%, transparent); }
+  50% { box-shadow: 0 0 0 4px color-mix(in oklab, var(--ok) 95%, transparent), 0 0 30px color-mix(in oklab, var(--ok) 50%, transparent), 0 12px 28px color-mix(in oklab, var(--bg-primary) 45%, transparent); }
 }
 
 .cl-can--shake { animation: cl-can-shake 0.28s ease-in-out; }
@@ -257,7 +257,7 @@
   position: absolute;
   inset: -10px -6px 18px;
   border-radius: 28px;
-  background: radial-gradient(ellipse at 50% 40%, rgba(232,168,56,0.4), transparent 68%);
+  background: radial-gradient(ellipse at 50% 40%, color-mix(in oklab, var(--danger) 40%, transparent), transparent 68%);
   opacity: 0;
   transition: opacity 0.2s;
   pointer-events: none;
@@ -268,13 +268,13 @@
   border-radius: 8px 8px 3px 3px;
   background: linear-gradient(180deg, #7a8496 0%, #3e4656 55%, #2a303c 100%);
   border: 1.5px solid #505a6c;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.28);
+  box-shadow: 0 2px 4px color-mix(in oklab, var(--bg-primary) 45%, transparent), inset 0 1px 0 color-mix(in oklab, var(--text-primary) 28%, transparent);
   position: relative; z-index: 3;
 }
 .cl-can-cap::after {
   content: '';
   position: absolute; left: 8px; right: 8px; top: 3px; height: 3px;
-  border-radius: 2px; background: rgba(255,255,255,0.22);
+  border-radius: 2px; background: color-mix(in oklab, var(--text-primary) 22%, transparent);
 }
 
 .cl-can-shell {
@@ -282,13 +282,13 @@
   height: 148px;
   border-radius: 12px 12px 18px 18px;
   background:
-    linear-gradient(108deg, rgba(255,255,255,0.16) 0%, transparent 26%, transparent 70%, rgba(255,255,255,0.04) 100%),
+    linear-gradient(108deg, color-mix(in oklab, var(--text-primary) 16%, transparent) 0%, transparent 26%, transparent 70%, color-mix(in oklab, var(--text-primary) 4%, transparent) 100%),
     linear-gradient(180deg, #323948 0%, #1c212c 48%, #10141c 100%);
   border: 2px solid #4e586a;
   box-shadow:
-    inset 0 2px 10px rgba(255,255,255,0.09),
-    inset 0 -16px 26px rgba(0,0,0,0.5),
-    0 14px 30px rgba(0,0,0,0.48);
+    inset 0 2px 10px color-mix(in oklab, var(--text-primary) 9%, transparent),
+    inset 0 -16px 26px color-mix(in oklab, var(--bg-primary) 50%, transparent),
+    0 14px 30px color-mix(in oklab, var(--bg-primary) 48%, transparent);
   overflow: hidden;
   transition: box-shadow 0.2s;
 }
@@ -297,15 +297,15 @@
   position: absolute;
   inset: 5px 5px 6px;
   border-radius: 8px 8px 14px 14px;
-  background: linear-gradient(180deg, rgba(18,22,30,0.35), rgba(8,10,14,0.55));
-  border: 1px solid rgba(255,255,255,0.06);
+  background: linear-gradient(180deg, rgba(18,22,30,0.35), color-mix(in oklab, var(--bg-primary) 55%, transparent));
+  border: 1px solid color-mix(in oklab, var(--text-primary) 6%, transparent);
   overflow: hidden;
 }
 
 .cl-can-shine {
   position: absolute;
   left: 9%; top: 0; bottom: 0; width: 16%;
-  background: linear-gradient(90deg, rgba(255,255,255,0.14), transparent);
+  background: linear-gradient(90deg, color-mix(in oklab, var(--text-primary) 14%, transparent), transparent);
   pointer-events: none; z-index: 4;
 }
 
@@ -313,7 +313,7 @@
   position: absolute; inset: 0;
   display: flex; align-items: center; justify-content: center;
   font-size: 10px; font-weight: 700; letter-spacing: 0.08em;
-  color: rgba(255,255,255,0.18); text-transform: uppercase;
+  color: color-mix(in oklab, var(--text-primary) 18%, transparent); text-transform: uppercase;
 }
 
 .cl-layers {
@@ -333,7 +333,7 @@
 .cl-layer::before {
   content: '';
   position: absolute; left: 0; right: 0; top: 0; height: 42%;
-  background: linear-gradient(180deg, rgba(255,255,255,0.34), transparent);
+  background: linear-gradient(180deg, color-mix(in oklab, var(--text-primary) 34%, transparent), transparent);
 }
 .cl-layer--top::after {
   content: '';
@@ -352,7 +352,7 @@
 .cl-layer-bubbles span {
   position: absolute; bottom: 12%;
   width: 3px; height: 3px; border-radius: 50%;
-  background: rgba(255,255,255,0.4);
+  background: color-mix(in oklab, var(--text-primary) 40%, transparent);
   animation: cl-bubble 2.4s ease-in infinite;
 }
 @keyframes cl-bubble {
@@ -365,7 +365,7 @@
   position: absolute; top: 8px; right: 5px;
   width: 16px; height: 16px; z-index: 5;
   font-size: 10px; line-height: 16px; text-align: center;
-  filter: drop-shadow(0 1px 2px rgba(0,0,0,0.7));
+  filter: drop-shadow(0 1px 2px color-mix(in oklab, var(--bg-primary) 70%, transparent));
 }
 
 .cl-can-label {
@@ -374,7 +374,7 @@
   letter-spacing: 0.03em; line-height: 1.2; min-height: 28px;
 }
 .cl-can-label strong {
-  display: block; color: rgba(255,255,255,0.9); font-size: 11px; font-weight: 800;
+  display: block; color: color-mix(in oklab, var(--text-primary) 90%, transparent); font-size: 11px; font-weight: 800;
 }
 .cl-can-label span {
   display: block; font-size: 9px; opacity: 0.75; margin-top: 1px;
@@ -412,10 +412,10 @@
   animation: cl-soft-fade 0.55s ease-out forwards;
 }
 .cl-soft-pulse--foam {
-  background: radial-gradient(circle at 50% 55%, rgba(52,211,153,0.38), transparent 55%);
+  background: radial-gradient(circle at 50% 55%, color-mix(in oklab, var(--ok) 38%, transparent), transparent 55%);
 }
 .cl-soft-pulse--steam {
-  background: radial-gradient(circle at 50% 48%, rgba(255,255,255,0.24), transparent 50%);
+  background: radial-gradient(circle at 50% 48%, color-mix(in oklab, var(--text-primary) 24%, transparent), transparent 50%);
 }
 @keyframes cl-soft-fade {
   0% { opacity: 0; } 30% { opacity: 1; } 100% { opacity: 0; }
@@ -427,11 +427,11 @@
 }
 .cl-tool {
   flex: 1; padding: 11px 6px; border-radius: 14px;
-  border: 1px solid rgba(255,255,255,0.1);
+  border: 1px solid color-mix(in oklab, var(--text-primary) 10%, transparent);
   background: linear-gradient(180deg, #1e2430, #141820);
   color: var(--cl-text); font-size: 11px; font-weight: 800;
   cursor: pointer; display: flex; flex-direction: column; align-items: center; gap: 3px;
-  box-shadow: 0 4px 14px rgba(0,0,0,0.28);
+  box-shadow: 0 4px 14px color-mix(in oklab, var(--bg-primary) 28%, transparent);
 }
 .cl-tool:active:not(:disabled) { transform: scale(0.97); }
 .cl-tool:disabled { opacity: 0.32; cursor: not-allowed; }
@@ -442,35 +442,35 @@
   position: absolute; inset: 0; z-index: 50;
   display: flex; align-items: flex-end; justify-content: center;
   padding: 16px;
-  background: linear-gradient(180deg, rgba(0,0,0,0.15) 0%, rgba(0,0,0,0.72) 55%);
+  background: linear-gradient(180deg, color-mix(in oklab, var(--bg-primary) 15%, transparent) 0%, color-mix(in oklab, var(--bg-primary) 72%, transparent) 55%);
   animation: cl-overlay-in 0.28s ease-out;
 }
 
 .cl-brief {
   width: 100%; max-width: 360px;
   border-radius: 20px; padding: 18px 18px 16px;
-  background: linear-gradient(145deg, rgba(232, 168, 56, 0.18), rgba(16, 18, 24, 0.97));
-  border: 1px solid rgba(232, 168, 56, 0.4);
-  box-shadow: 0 20px 50px rgba(0,0,0,0.5);
+  background: linear-gradient(145deg, color-mix(in oklab, var(--danger) 18%, transparent), rgba(16, 18, 24, 0.97));
+  border: 1px solid color-mix(in oklab, var(--danger) 40%, transparent);
+  box-shadow: 0 20px 50px color-mix(in oklab, var(--bg-primary) 50%, transparent);
   animation: cl-card-pop 0.4s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 .cl-brief--danger {
-  background: linear-gradient(145deg, rgba(239, 68, 68, 0.22), rgba(16, 18, 24, 0.97));
-  border-color: rgba(239, 68, 68, 0.5);
+  background: linear-gradient(145deg, color-mix(in oklab, var(--danger) 22%, transparent), rgba(16, 18, 24, 0.97));
+  border-color: color-mix(in oklab, var(--danger) 50%, transparent);
 }
 .cl-brief-title {
   font-size: 11px; font-weight: 900; letter-spacing: 0.14em;
   text-transform: uppercase; color: var(--cl-amber); margin: 0 0 8px;
 }
-.cl-brief--danger .cl-brief-title { color: #f87171; }
+.cl-brief--danger .cl-brief-title { color: var(--danger); }
 .cl-brief-text {
-  font-size: 14px; line-height: 1.45; color: rgba(255,255,255,0.88); margin: 0 0 14px;
+  font-size: 14px; line-height: 1.45; color: color-mix(in oklab, var(--text-primary) 88%, transparent); margin: 0 0 14px;
 }
 
 /* ── Overlays ── */
 .cl-overlay {
   position: fixed; inset: 0; z-index: 150;
-  background: rgba(0, 0, 0, 0.45);
+  background: color-mix(in oklab, var(--bg-primary) 45%, transparent);
   display: flex; align-items: center; justify-content: center;
   padding: 24px;
   animation: cl-overlay-in 0.3s ease-out;
@@ -489,7 +489,7 @@
   font-size: 12px;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: rgba(255, 255, 255, 0.45);
+  color: color-mix(in oklab, var(--text-primary) 45%, transparent);
   text-align: center;
   animation: cl-overlay-in 0.4s ease-out;
 }
@@ -519,14 +519,14 @@
   font-size: 11px !important;
   font-weight: 800;
   letter-spacing: 0.04em;
-  color: #fbbf24 !important;
-  background: rgba(251, 191, 36, 0.12);
-  border: 1px solid rgba(251, 191, 36, 0.35);
+  color: var(--value) !important;
+  background: color-mix(in oklab, var(--value) 12%, transparent);
+  border: 1px solid color-mix(in oklab, var(--value) 35%, transparent);
   line-height: 1.35 !important;
 }
 .cl-pass-tip {
   margin: 0 0 14px !important;
-  color: rgba(255, 255, 255, 0.82) !important;
+  color: color-mix(in oklab, var(--text-primary) 82%, transparent) !important;
   font-size: 14px !important;
   line-height: 1.45 !important;
 }
@@ -551,25 +551,25 @@
   margin: 0 0 5px;
   font-size: 13px;
   line-height: 1.4;
-  color: rgba(255, 255, 255, 0.78);
+  color: color-mix(in oklab, var(--text-primary) 78%, transparent);
 }
 .cl-pass-block--ok {
-  background: rgba(52, 211, 153, 0.08);
-  border-color: rgba(52, 211, 153, 0.28);
+  background: color-mix(in oklab, var(--ok) 8%, transparent);
+  border-color: color-mix(in oklab, var(--ok) 28%, transparent);
 }
-.cl-pass-block--ok strong { color: #34d399; }
+.cl-pass-block--ok strong { color: var(--ok); }
 .cl-pass-block--no {
-  background: rgba(248, 113, 113, 0.08);
-  border-color: rgba(248, 113, 113, 0.3);
+  background: color-mix(in oklab, var(--danger) 8%, transparent);
+  border-color: color-mix(in oklab, var(--danger) 30%, transparent);
 }
-.cl-pass-block--no strong { color: #f87171; }
+.cl-pass-block--no strong { color: var(--danger); }
 @keyframes cl-overlay-in { from { opacity: 0; } to { opacity: 1; } }
 
 .cl-card {
   width: 100%; max-width: 340px; border-radius: 22px; padding: 26px 22px;
   background: linear-gradient(160deg, #1e2430, #0e1116);
-  border: 1px solid rgba(232, 168, 56, 0.4);
-  box-shadow: 0 24px 80px rgba(0,0,0,0.6), 0 0 40px rgba(232,168,56,0.1);
+  border: 1px solid color-mix(in oklab, var(--danger) 40%, transparent);
+  box-shadow: 0 24px 80px color-mix(in oklab, var(--bg-primary) 60%, transparent), 0 0 40px color-mix(in oklab, var(--danger) 10%, transparent);
   text-align: center;
   animation: cl-card-pop 0.45s cubic-bezier(0.22, 1, 0.36, 1) both;
   position: relative;
@@ -585,11 +585,11 @@
 .cl-stamp {
   display: inline-block;
   font-size: 12px; font-weight: 900; letter-spacing: 0.2em;
-  color: #e8a838; border: 3px solid #e8a838;
+  color: var(--value); border: 3px solid var(--value);
   padding: 8px 14px; border-radius: 6px;
   transform: rotate(-8deg); margin-bottom: 14px;
   animation: cl-stamp-slam 0.5s cubic-bezier(0.2, 1.4, 0.4, 1) both;
-  box-shadow: 0 0 24px rgba(232,168,56,0.35);
+  box-shadow: 0 0 24px color-mix(in oklab, var(--danger) 35%, transparent);
 }
 @keyframes cl-stamp-slam {
   0% { transform: rotate(-8deg) scale(2.2); opacity: 0; }
@@ -624,10 +624,10 @@
 
 .cl-win-sparks { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
 .cl-win-sparks i {
-  position: absolute; width: 3px; height: 3px; background: #fbbf24;
+  position: absolute; width: 3px; height: 3px; background: var(--value);
   border-radius: 1px; top: 42%; left: 50%;
   animation: cl-win-spark 0.95s ease-out forwards;
-  box-shadow: 0 0 6px #f59e0b;
+  box-shadow: 0 0 6px var(--value);
 }
 @keyframes cl-win-spark {
   0% { transform: translate(0,0) scale(1); opacity: 1; }
@@ -637,14 +637,14 @@
 .cl-btn {
   width: 100%; padding: 14px; border: none; border-radius: 14px;
   font-size: 14px; font-weight: 900; cursor: pointer;
-  background: linear-gradient(135deg, #e8a838, #f59e0b);
-  color: #0b0e1a; margin-top: 8px;
-  box-shadow: 0 6px 20px rgba(232,168,56,0.35);
+  background: linear-gradient(135deg, var(--value), var(--value));
+  color: var(--bg-primary); margin-top: 8px;
+  box-shadow: 0 6px 20px color-mix(in oklab, var(--danger) 35%, transparent);
 }
 .cl-btn:active { transform: scale(0.98); }
 .cl-btn--ghost {
   background: transparent;
-  border: 1px solid rgba(255,255,255,0.15);
+  border: 1px solid color-mix(in oklab, var(--text-primary) 15%, transparent);
   color: var(--cl-text); box-shadow: none;
 }
 
@@ -662,7 +662,7 @@
 .cl-loading-can::after {
   content: '';
   position: absolute; left: 0; right: 0; bottom: 0; height: 40%;
-  background: linear-gradient(180deg, #e8a838aa, #e8a838);
+  background: linear-gradient(180deg, #e8a838aa, var(--value));
   animation: cl-load-fill 1.2s ease-in-out infinite;
 }
 @keyframes cl-load-fill {
@@ -671,8 +671,8 @@
 
 .cl-error {
   display: block; width: 100%; text-align: left;
-  padding: 12px; border-radius: 12px; border: 1px solid rgba(239,68,68,0.35);
-  background: rgba(239,68,68,0.12); color: #f87171;
+  padding: 12px; border-radius: 12px; border: 1px solid color-mix(in oklab, var(--danger) 35%, transparent);
+  background: color-mix(in oklab, var(--danger) 12%, transparent); color: var(--danger);
   font-size: 13px; margin-bottom: 8px; cursor: pointer; z-index: 5;
 }
 

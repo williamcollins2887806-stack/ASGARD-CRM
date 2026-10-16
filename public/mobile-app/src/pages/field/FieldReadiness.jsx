@@ -310,7 +310,7 @@ export default function FieldReadiness() {
                   onClick={handleSubmit}
                   disabled={saving}
                   className="flex-1 py-3 rounded-xl font-semibold text-sm disabled:opacity-50 spring-tap"
-                  style={{ background: 'linear-gradient(135deg, var(--green), var(--ok))', color: '#fff' }}
+                  style={{ background: 'linear-gradient(135deg, var(--green), var(--ok))', color: 'var(--text-primary)' }}
                 >
                   {saving ? 'Сохраняю...' : '✅ Подтвердить'}
                 </button>
@@ -373,7 +373,7 @@ export default function FieldReadiness() {
                     background: reason
                       ? 'linear-gradient(135deg, var(--warn-t), var(--warn))'
                       : 'var(--bg-primary)',
-                    color: reason ? '#fff' : 'var(--text-tertiary)',
+                    color: reason ? 'var(--text-primary)' : 'var(--text-tertiary)',
                     border: reason ? 'none' : '1px solid var(--border-norse)',
                   }}
                 >

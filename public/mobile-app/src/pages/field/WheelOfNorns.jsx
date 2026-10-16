@@ -33,76 +33,77 @@ const VISIBLE = 3;
 
 // ═══ STYLES ═══
 const WHEEL_CSS = `
-.wn-root{--bg:#0b0e1a;--card:#141828;--card2:#1a2040;--gold:#F0C850;--gold-d:#C8940A;--gold-l:#FFE17A;
-  --red:#E84057;--blue:#4A90FF;--purple:#A56EFF;--green:#3DDC84;--t1:#fff;--t2:rgba(255,255,255,.7);--t3:rgba(255,255,255,.4);
+/* Палитра берётся ТОЛЬКО из токенов темы (index.css). Свой .light-override убран:
+   он инвертировал палитру (--card: var(--text-primary)) и ломал светлую тему. */
+.wn-root{--bg:var(--bg-primary);--card:var(--bg-surface);--card2:var(--bg-surface-alt);--gold:var(--value);--gold-d:var(--value);--gold-l:color-mix(in oklab, var(--value) 45%, var(--text-primary));
+  --red:var(--danger);--blue:var(--acc);--purple:var(--acc);--green:var(--ok);--t1:var(--text-primary);--t2:color-mix(in oklab, var(--text-primary) 70%, transparent);--t3:color-mix(in oklab, var(--text-primary) 40%, transparent);
   background:var(--bg);color:var(--t1);font-family:-apple-system,BlinkMacSystemFont,'SF Pro Round',system-ui,sans-serif;
   overflow:hidden;height:100%;width:100%;-webkit-user-select:none;user-select:none;position:relative}
-.light .wn-root{--bg:#F2F2F7;--card:#FFFFFF;--card2:#F7F7FA;--t1:#1C1C1E;--t2:#6C6C70;--t3:#8E8E93}
 .wn-bg{position:absolute;inset:0;z-index:0;overflow:hidden}
 .wn-glow{position:absolute;border-radius:50%;filter:blur(80px);opacity:.25}
 .wn-g1{width:300px;height:300px;top:-50px;left:-50px;background:var(--blue)}
 .wn-g2{width:250px;height:250px;bottom:-30px;right:-60px;background:var(--purple)}
 .wn-g3{width:200px;height:200px;top:40%;left:50%;transform:translateX(-50%);background:var(--gold);opacity:.08}
-.wn-stars{position:absolute;inset:0}.wn-s{position:absolute;background:#fff;border-radius:50%;animation:wnTw 3s ease-in-out infinite alternate}
+.wn-stars{position:absolute;inset:0}.wn-s{position:absolute;background:var(--text-primary);border-radius:50%;animation:wnTw 3s ease-in-out infinite alternate}
 @keyframes wnTw{0%{opacity:.1;transform:scale(.8)}100%{opacity:.5;transform:scale(1.3)}}
 .wn-page{position:relative;z-index:5;display:flex;flex-direction:column;height:100%;min-height:0;max-width:430px;margin:0 auto;overflow:hidden}
 /* Нижний блок (кнопка+награды) фиксируется снизу; центральная зона (викинг+рулетка) сжимается. */
 .wn-bottom{flex-shrink:0;position:relative;z-index:11}
 .wn-top{display:flex;align-items:center;justify-content:space-between;padding:10px 16px;padding-top:max(env(safe-area-inset-top),10px)}
-.wn-back{width:36px;height:36px;border-radius:12px;background:rgba(255,255,255,.06);display:flex;align-items:center;justify-content:center;cursor:pointer;border:none}
+.wn-back{width:36px;height:36px;border-radius:12px;background:color-mix(in oklab, var(--text-primary) 6%, transparent);display:flex;align-items:center;justify-content:center;cursor:pointer;border:none}
 .wn-title{font-size:15px;font-weight:800;letter-spacing:.08em;color:var(--gold)}
 .wn-sub{font-size:9px;color:var(--t3);letter-spacing:.15em;margin-top:1px;text-align:center}
-.wn-wallet{display:flex;align-items:center;gap:5px;padding:5px 12px 5px 8px;background:linear-gradient(135deg,#2a2008,#1a1505);
-  border:1.5px solid rgba(240,200,80,.3);border-radius:20px;box-shadow:0 2px 10px rgba(240,200,80,.1)}
+.wn-wallet{display:flex;align-items:center;gap:5px;padding:5px 12px 5px 8px;background:linear-gradient(135deg,var(--bg-surface),var(--bg-surface));
+  border:1.5px solid color-mix(in oklab, var(--value) 30%, transparent);border-radius:20px;box-shadow:0 2px 10px color-mix(in oklab, var(--value) 10%, transparent)}
 .wn-coin{width:22px;height:22px;border-radius:50%;background:radial-gradient(circle at 40% 35%,var(--gold-l),var(--gold),var(--gold-d));
-  box-shadow:0 2px 4px rgba(0,0,0,.4),inset 0 -2px 3px rgba(0,0,0,.2);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:900;color:#5a3e00}
+  box-shadow:0 2px 4px color-mix(in oklab, var(--bg-primary) 40%, transparent),inset 0 -2px 3px color-mix(in oklab, var(--bg-primary) 20%, transparent);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:900;color:var(--value)}
 .wn-bal{font-size:15px;font-weight:800;color:var(--gold);font-variant-numeric:tabular-nums}
 .wn-lvl{display:flex;align-items:center;gap:8px;margin:4px 16px 0}
-.wn-lvl-badge{padding:3px 10px;border-radius:10px;font-size:11px;font-weight:800;background:linear-gradient(135deg,var(--gold-d),var(--gold));color:#1a1000;box-shadow:0 2px 6px rgba(240,200,80,.25)}
-.wn-lvl-track{flex:1;height:10px;border-radius:5px;background:rgba(255,255,255,.06);overflow:hidden;box-shadow:inset 0 2px 4px rgba(0,0,0,.3)}
+.wn-lvl-badge{padding:3px 10px;border-radius:10px;font-size:11px;font-weight:800;background:linear-gradient(135deg,var(--gold-d),var(--gold));color:var(--text-on-gold);box-shadow:0 2px 6px color-mix(in oklab, var(--value) 25%, transparent)}
+.wn-lvl-track{flex:1;height:10px;border-radius:5px;background:color-mix(in oklab, var(--text-primary) 6%, transparent);overflow:hidden;box-shadow:inset 0 2px 4px color-mix(in oklab, var(--bg-primary) 30%, transparent)}
 .wn-lvl-fill{height:100%;border-radius:5px;background:linear-gradient(90deg,var(--gold-d),var(--gold),var(--gold-l));position:relative}
-.wn-lvl-fill::after{content:'';position:absolute;top:1px;left:4px;right:4px;height:4px;border-radius:3px;background:rgba(255,255,255,.3)}
+.wn-lvl-fill::after{content:'';position:absolute;top:1px;left:4px;right:4px;height:4px;border-radius:3px;background:color-mix(in oklab, var(--text-primary) 30%, transparent)}
 .wn-lvl-text{font-size:10px;color:var(--t3);font-weight:600;white-space:nowrap}
-.wn-streak{display:flex;align-items:center;gap:8px;margin:8px 16px 0;padding:10px 14px;background:var(--card);border-radius:16px;border:1px solid rgba(255,255,255,.04)}
-.wn-fire{font-size:28px;filter:drop-shadow(0 0 8px rgba(255,120,0,.5));animation:wnFlame .8s ease-in-out infinite alternate}
+.wn-streak{display:flex;align-items:center;gap:8px;margin:8px 16px 0;padding:10px 14px;background:var(--card);border-radius:16px;border:1px solid color-mix(in oklab, var(--text-primary) 4%, transparent)}
+.wn-fire{font-size:28px;filter:drop-shadow(0 0 8px color-mix(in oklab, var(--danger) 50%, transparent));animation:wnFlame .8s ease-in-out infinite alternate}
 @keyframes wnFlame{0%{transform:scale(1) rotate(-3deg)}100%{transform:scale(1.1) rotate(3deg)}}
 .wn-streak-info{flex:1}.wn-streak-title{font-size:13px;font-weight:700}
 .wn-dots{display:flex;gap:4px;margin-top:5px}
-.wn-dot{width:100%;height:7px;border-radius:4px;background:rgba(255,255,255,.06)}
+.wn-dot{width:100%;height:7px;border-radius:4px;background:color-mix(in oklab, var(--text-primary) 6%, transparent)}
 .wn-dot-on{background:linear-gradient(90deg,var(--gold-d),var(--gold));position:relative}
-.wn-dot-on::after{content:'';position:absolute;top:1px;left:2px;right:2px;height:3px;border-radius:2px;background:rgba(255,255,255,.3)}
+.wn-dot-on::after{content:'';position:absolute;top:1px;left:2px;right:2px;height:3px;border-radius:2px;background:color-mix(in oklab, var(--text-primary) 30%, transparent)}
 .wn-dot-now{border:1.5px solid var(--gold);animation:wnDotP 1.5s ease-in-out infinite}
 @keyframes wnDotP{0%,100%{box-shadow:0 0 3px var(--gold-d)}50%{box-shadow:0 0 10px var(--gold)}}
-.wn-mult{padding:4px 10px;border-radius:10px;font-size:12px;font-weight:800;background:linear-gradient(135deg,var(--red),#ff6b6b);color:#fff;box-shadow:0 2px 8px rgba(232,64,87,.3)}
+.wn-mult{padding:4px 10px;border-radius:10px;font-size:12px;font-weight:800;background:linear-gradient(135deg,var(--red),#ff6b6b);color:var(--text-primary);box-shadow:0 2px 8px color-mix(in oklab, var(--danger) 30%, transparent)}
 .wn-viking-area{position:relative;z-index:15;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;margin-top:4px;height:196px;min-height:0;flex-shrink:0;pointer-events:none}
 .wn-viking{position:relative;width:160px;height:160px;display:flex;align-items:center;justify-content:center}
-.wn-viking svg{width:100%;height:100%;overflow:visible;filter:drop-shadow(0 6px 15px rgba(0,0,0,.5))}
+.wn-viking svg{width:100%;height:100%;overflow:visible;filter:drop-shadow(0 6px 15px color-mix(in oklab, var(--bg-primary) 50%, transparent))}
 .wn-viking-3d{width:160px;height:160px;border-radius:20px;overflow:hidden;
-  background:radial-gradient(circle at 50% 30%,rgba(240,200,80,.12),transparent 65%),linear-gradient(180deg,rgba(20,24,40,.6),rgba(8,9,15,.2));
-  box-shadow:0 8px 28px rgba(0,0,0,.45),inset 0 0 0 1px rgba(240,200,80,.2);
+  background:radial-gradient(circle at 50% 30%,color-mix(in oklab, var(--value) 12%, transparent),transparent 65%),linear-gradient(180deg,rgba(20,24,40,.6),color-mix(in oklab, var(--bg-primary) 20%, transparent));
+  box-shadow:0 8px 28px color-mix(in oklab, var(--bg-primary) 45%, transparent),inset 0 0 0 1px color-mix(in oklab, var(--value) 20%, transparent);
   transition:box-shadow .3s ease}
 .wn-viking-3d.mood-spin{
-  box-shadow:0 0 24px rgba(232,64,87,.4),0 8px 28px rgba(0,0,0,.45),inset 0 0 0 1px rgba(232,64,87,.3)}
+  box-shadow:0 0 24px color-mix(in oklab, var(--danger) 40%, transparent),0 8px 28px color-mix(in oklab, var(--bg-primary) 45%, transparent),inset 0 0 0 1px color-mix(in oklab, var(--danger) 30%, transparent)}
 .wn-viking-3d.mood-look{
-  box-shadow:0 0 22px rgba(74,144,255,.4),0 8px 28px rgba(0,0,0,.45),inset 0 0 0 1px rgba(74,144,255,.3)}
+  box-shadow:0 0 22px color-mix(in oklab, var(--acc) 40%, transparent),0 8px 28px color-mix(in oklab, var(--bg-primary) 45%, transparent),inset 0 0 0 1px color-mix(in oklab, var(--acc) 30%, transparent)}
 .wn-viking-3d.mood-nod,.wn-viking-3d.mood-win{
-  box-shadow:0 0 28px rgba(61,220,132,.45),0 8px 28px rgba(0,0,0,.45),inset 0 0 0 1px rgba(61,220,132,.35)}
+  box-shadow:0 0 28px color-mix(in oklab, var(--ok) 45%, transparent),0 8px 28px color-mix(in oklab, var(--bg-primary) 45%, transparent),inset 0 0 0 1px color-mix(in oklab, var(--ok) 35%, transparent)}
 .wn-viking-3d.mood-epic{
-  box-shadow:0 0 36px rgba(240,200,80,.55),0 0 16px rgba(232,64,87,.3),0 8px 28px rgba(0,0,0,.45),inset 0 0 0 1px rgba(240,200,80,.45)}
+  box-shadow:0 0 36px color-mix(in oklab, var(--value) 55%, transparent),0 0 16px color-mix(in oklab, var(--danger) 30%, transparent),0 8px 28px color-mix(in oklab, var(--bg-primary) 45%, transparent),inset 0 0 0 1px color-mix(in oklab, var(--value) 45%, transparent)}
 /* no CSS filter — blanks WebGL avatar on mobile; glow via box-shadow on .wn-viking-3d */
-.wn-viking-area.engaged .wn-viking-3d{box-shadow:0 0 28px rgba(240,200,80,.35),0 8px 28px rgba(0,0,0,.45),inset 0 0 0 1px rgba(240,200,80,.35)}
+.wn-viking-area.engaged .wn-viking-3d{box-shadow:0 0 28px color-mix(in oklab, var(--value) 35%, transparent),0 8px 28px color-mix(in oklab, var(--bg-primary) 45%, transparent),inset 0 0 0 1px color-mix(in oklab, var(--value) 35%, transparent)}
 .wn-rank-badge{margin-top:6px;display:inline-flex;align-items:center;gap:6px;padding:3px 10px 3px 8px;border-radius:999px;
-  background:rgba(12,14,24,.72);border:1px solid rgba(255,255,255,.12);backdrop-filter:blur(8px);
+  background:rgba(12,14,24,.72);border:1px solid color-mix(in oklab, var(--text-primary) 12%, transparent);backdrop-filter:blur(8px);
   font-size:11px;font-weight:700;letter-spacing:.04em;pointer-events:none;position:relative;z-index:16}
 .wn-rank-rune{font-size:13px;line-height:1}
 .wn-rw-actions{display:flex;flex-direction:column;gap:8px;width:100%;margin-top:4px}
-.wn-rw-equip{width:100%;padding:12px 18px;border-radius:14px;border:1.5px solid rgba(240,200,80,.45);
-  background:linear-gradient(135deg,rgba(240,200,80,.18),rgba(200,148,10,.12));color:var(--gold);
+.wn-rw-equip{width:100%;padding:12px 18px;border-radius:14px;border:1.5px solid color-mix(in oklab, var(--value) 45%, transparent);
+  background:linear-gradient(135deg,color-mix(in oklab, var(--value) 18%, transparent),color-mix(in oklab, var(--value) 12%, transparent));color:var(--gold);
   font-size:14px;font-weight:800;cursor:pointer}
 .wn-rw-equip:disabled{opacity:.45}
 .wn-bubble{position:absolute;top:-8px;left:50%;transform:translateX(-50%) scale(.7);padding:5px 12px;border-radius:14px;background:var(--card2);
-  border:1px solid rgba(255,255,255,.08);font-size:12px;font-weight:700;white-space:nowrap;
-  box-shadow:0 4px 15px rgba(0,0,0,.4);opacity:0;transition:all .25s cubic-bezier(.34,1.56,.64,1);pointer-events:none;z-index:6}
+  border:1px solid color-mix(in oklab, var(--text-primary) 8%, transparent);font-size:12px;font-weight:700;white-space:nowrap;
+  box-shadow:0 4px 15px color-mix(in oklab, var(--bg-primary) 40%, transparent);opacity:0;transition:all .25s cubic-bezier(.34,1.56,.64,1);pointer-events:none;z-index:6}
 .wn-bubble::before{content:'';position:absolute;left:50%;bottom:-5px;transform:translateX(-50%);border:5px solid transparent;border-top-color:var(--card2)}
 .wn-bubble-on{opacity:1;transform:translateX(-50%) scale(1)}
 .wn-wheel{flex:1;min-height:0;display:flex;flex-direction:column;align-items:center;justify-content:center;position:relative;z-index:10;padding:10px 0 4px}
@@ -113,101 +114,101 @@ const WHEEL_CSS = `
 .wn-drum-wrap.wn-has3d .wn-frame,.wn-drum-wrap.wn-has3d .wn-vp-top,.wn-drum-wrap.wn-has3d .wn-vp-bot,.wn-drum-wrap.wn-has3d .wn-highlight,.wn-drum-wrap.wn-has3d .wn-ptr,.wn-drum-wrap.wn-has3d .wn-strip{opacity:0;pointer-events:none}
 .wn-frame{position:absolute;inset:-10px;border-radius:26px;
   background:linear-gradient(145deg,#5a4a22,#2a1f0e 38%,#120e08 62%,#3d2f12);
-  border:2px solid rgba(240,200,80,.55);
-  box-shadow:0 12px 36px rgba(0,0,0,.55),0 0 24px rgba(240,200,80,.12),inset 0 2px 0 rgba(255,255,255,.14),inset 0 -3px 8px rgba(0,0,0,.45)}
+  border:2px solid color-mix(in oklab, var(--value) 55%, transparent);
+  box-shadow:0 12px 36px color-mix(in oklab, var(--bg-primary) 55%, transparent),0 0 24px color-mix(in oklab, var(--value) 12%, transparent),inset 0 2px 0 color-mix(in oklab, var(--text-primary) 14%, transparent),inset 0 -3px 8px color-mix(in oklab, var(--bg-primary) 45%, transparent)}
 .wn-viewport{position:relative;width:100%;height:100%;overflow:hidden;border-radius:18px;background:linear-gradient(180deg,#080910,#14182a,#080910);
-  box-shadow:inset 0 0 40px rgba(0,0,0,.45)}
+  box-shadow:inset 0 0 40px color-mix(in oklab, var(--bg-primary) 45%, transparent)}
 .wn-highlight{position:absolute;top:50%;left:0;right:0;height:66px;transform:translateY(-50%);z-index:4;
-  border-top:2px solid rgba(240,200,80,.65);border-bottom:2px solid rgba(240,200,80,.65);
-  background:linear-gradient(90deg,transparent,rgba(240,200,80,.16),transparent);pointer-events:none;
-  box-shadow:0 0 28px rgba(240,200,80,.22);animation:wnHi 1.8s ease-in-out infinite}
+  border-top:2px solid color-mix(in oklab, var(--value) 65%, transparent);border-bottom:2px solid color-mix(in oklab, var(--value) 65%, transparent);
+  background:linear-gradient(90deg,transparent,color-mix(in oklab, var(--value) 16%, transparent),transparent);pointer-events:none;
+  box-shadow:0 0 28px color-mix(in oklab, var(--value) 22%, transparent);animation:wnHi 1.8s ease-in-out infinite}
 @keyframes wnHi{0%,100%{opacity:.85}50%{opacity:1}}
-.wn-item{display:flex;align-items:center;gap:14px;height:66px;padding:0 20px;border-bottom:1px solid rgba(255,255,255,.04)}
-.wn-di-icon.legendary{background:rgba(240,200,80,.14);border:1px solid rgba(240,200,80,.35);box-shadow:0 0 16px rgba(240,200,80,.2);animation:wnLeg 1.4s ease-in-out infinite}
+.wn-item{display:flex;align-items:center;gap:14px;height:66px;padding:0 20px;border-bottom:1px solid color-mix(in oklab, var(--text-primary) 4%, transparent)}
+.wn-di-icon.legendary{background:color-mix(in oklab, var(--value) 14%, transparent);border:1px solid color-mix(in oklab, var(--value) 35%, transparent);box-shadow:0 0 16px color-mix(in oklab, var(--value) 20%, transparent);animation:wnLeg 1.4s ease-in-out infinite}
 @keyframes wnLeg{0%,100%{filter:brightness(1)}50%{filter:brightness(1.25)}}
-.wn-frame::before{content:'ᚠ';position:absolute;top:10px;left:14px;font-size:15px;color:rgba(240,200,80,.28)}
-.wn-frame::after{content:'ᚱ';position:absolute;top:10px;right:14px;font-size:15px;color:rgba(240,200,80,.28)}
-.wn-vp-top{position:absolute;top:0;left:0;right:0;height:50px;z-index:5;background:linear-gradient(180deg,rgba(8,9,15,.95),transparent);pointer-events:none}
-.wn-vp-bot{position:absolute;bottom:0;left:0;right:0;height:50px;z-index:5;background:linear-gradient(0deg,rgba(8,9,15,.95),transparent);pointer-events:none}
+.wn-frame::before{content:'ᚠ';position:absolute;top:10px;left:14px;font-size:15px;color:color-mix(in oklab, var(--value) 28%, transparent)}
+.wn-frame::after{content:'ᚱ';position:absolute;top:10px;right:14px;font-size:15px;color:color-mix(in oklab, var(--value) 28%, transparent)}
+.wn-vp-top{position:absolute;top:0;left:0;right:0;height:50px;z-index:5;background:linear-gradient(180deg,color-mix(in oklab, var(--bg-primary) 95%, transparent),transparent);pointer-events:none}
+.wn-vp-bot{position:absolute;bottom:0;left:0;right:0;height:50px;z-index:5;background:linear-gradient(0deg,color-mix(in oklab, var(--bg-primary) 95%, transparent),transparent);pointer-events:none}
 .wn-strip{position:absolute;left:0;right:0;z-index:2;will-change:transform}
 .wn-ptr{position:absolute;top:50%;transform:translateY(-50%);z-index:6;width:14px;height:20px;
-  animation:wnPtr 1.4s ease-in-out infinite;filter:drop-shadow(0 0 6px rgba(240,200,80,.45))}
+  animation:wnPtr 1.4s ease-in-out infinite;filter:drop-shadow(0 0 6px color-mix(in oklab, var(--value) 45%, transparent))}
 @keyframes wnPtr{0%,100%{transform:translateY(-50%) scale(1)}50%{transform:translateY(-50%) scale(1.14)}}
 .wn-ptr-l{left:-1px}.wn-ptr-r{right:-1px}
 .wn-di-icon{font-size:30px;width:44px;height:44px;border-radius:12px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
 .wn-di-icon svg,.wn-lc-i svg,.wn-rw-emoji svg{width:30px;height:30px;display:block}
 .wn-rw-emoji svg{width:72px;height:72px}
-.wn-di-icon.common{background:rgba(61,220,132,.08);border:1px solid rgba(61,220,132,.15)}
-.wn-di-icon.rare{background:rgba(74,144,255,.08);border:1px solid rgba(74,144,255,.15)}
-.wn-di-icon.epic{background:rgba(165,110,255,.08);border:1px solid rgba(165,110,255,.15)}
-.wn-di-icon.legendary{background:rgba(240,200,80,.14);border:1px solid rgba(240,200,80,.35);box-shadow:0 0 16px rgba(240,200,80,.2);animation:wnLeg 1.4s ease-in-out infinite}
+.wn-di-icon.common{background:color-mix(in oklab, var(--ok) 8%, transparent);border:1px solid color-mix(in oklab, var(--ok) 15%, transparent)}
+.wn-di-icon.rare{background:color-mix(in oklab, var(--acc) 8%, transparent);border:1px solid color-mix(in oklab, var(--acc) 15%, transparent)}
+.wn-di-icon.epic{background:color-mix(in oklab, var(--acc) 8%, transparent);border:1px solid color-mix(in oklab, var(--acc) 15%, transparent)}
+.wn-di-icon.legendary{background:color-mix(in oklab, var(--value) 14%, transparent);border:1px solid color-mix(in oklab, var(--value) 35%, transparent);box-shadow:0 0 16px color-mix(in oklab, var(--value) 20%, transparent);animation:wnLeg 1.4s ease-in-out infinite}
 .wn-di-name{font-size:14px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--t1)}
 .wn-di-desc{font-size:11px;color:var(--t3);margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .wn-di-tag{flex-shrink:0;padding:3px 10px;border-radius:8px;font-size:10px;font-weight:700}
-.wn-di-tag.rare{background:rgba(74,144,255,.1);color:var(--blue)}
-.wn-di-tag.epic{background:rgba(165,110,255,.1);color:var(--purple)}
-.wn-di-tag.legendary{background:rgba(240,200,80,.1);color:var(--gold)}
+.wn-di-tag.rare{background:color-mix(in oklab, var(--acc) 10%, transparent);color:var(--blue)}
+.wn-di-tag.epic{background:color-mix(in oklab, var(--acc) 10%, transparent);color:var(--purple)}
+.wn-di-tag.legendary{background:color-mix(in oklab, var(--value) 10%, transparent);color:var(--gold)}
 .wn-spin-area{position:relative;z-index:10;padding:10px 16px 0;text-align:center}
 .wn-btn{display:inline-flex;align-items:center;justify-content:center;gap:10px;width:100%;max-width:360px;padding:16px 24px;border-radius:18px;border:none;
-  font-size:17px;font-weight:800;color:#fff;cursor:pointer;position:relative;overflow:hidden;
-  background:linear-gradient(135deg,var(--red),#c0243a,var(--gold-d));box-shadow:0 6px 0 #7a1a28,0 8px 25px rgba(232,64,87,.3);transition:all .1s}
-.wn-btn:active{transform:translateY(4px);box-shadow:0 2px 0 #7a1a28}
+  font-size:17px;font-weight:800;color:var(--text-primary);cursor:pointer;position:relative;overflow:hidden;
+  background:linear-gradient(135deg,var(--red),#c0243a,var(--gold-d));box-shadow:0 6px 0 var(--danger),0 8px 25px color-mix(in oklab, var(--danger) 30%, transparent);transition:all .1s}
+.wn-btn:active{transform:translateY(4px);box-shadow:0 2px 0 var(--danger)}
 .wn-btn-off{opacity:.35;pointer-events:none}
-.wn-btn::after{content:'';position:absolute;top:0;left:-100%;width:40%;height:100%;background:linear-gradient(90deg,transparent,rgba(255,255,255,.1),transparent);animation:wnShine 3s infinite}
+.wn-btn::after{content:'';position:absolute;top:0;left:-100%;width:40%;height:100%;background:linear-gradient(90deg,transparent,color-mix(in oklab, var(--text-primary) 10%, transparent),transparent);animation:wnShine 3s infinite}
 @keyframes wnShine{0%,100%{left:-100%}50%{left:150%}}
 .wn-btn-pulse{animation:wnBtnP 2s ease-in-out infinite}
-@keyframes wnBtnP{0%,100%{box-shadow:0 6px 0 #7a1a28,0 8px 25px rgba(232,64,87,.3)}50%{box-shadow:0 6px 0 #7a1a28,0 8px 35px rgba(232,64,87,.45)}}
+@keyframes wnBtnP{0%,100%{box-shadow:0 6px 0 var(--danger),0 8px 25px color-mix(in oklab, var(--danger) 30%, transparent)}50%{box-shadow:0 6px 0 var(--danger),0 8px 35px color-mix(in oklab, var(--danger) 45%, transparent)}}
 /* Заблокировано и «спины кончились» — нейтральная плашка, не путается с активным красным CTA */
-.wn-btn-disabled{background:linear-gradient(135deg,#3a3a44,#26262e)!important;box-shadow:0 6px 0 #16161c,0 8px 18px rgba(0,0,0,.35)!important;opacity:.75}
+.wn-btn-disabled{background:linear-gradient(135deg,#3a3a44,#26262e)!important;box-shadow:0 6px 0 #16161c,0 8px 18px color-mix(in oklab, var(--bg-primary) 35%, transparent)!important;opacity:.75}
 .wn-hint{text-align:center;font-size:12px;color:var(--t3);margin-top:6px;min-height:18px;position:relative;z-index:10}
 .wn-loot{padding:8px 16px;padding-bottom:max(env(safe-area-inset-bottom),14px);position:relative;z-index:10}
 .wn-loot-h{font-size:10px;font-weight:700;color:var(--t3);letter-spacing:.1em;text-transform:uppercase;margin-bottom:8px;text-align:center}
 .wn-loot-row{display:flex;gap:8px;justify-content:center;flex-wrap:wrap}
-.wn-lc{width:60px;padding:10px 4px 8px;border-radius:14px;text-align:center;background:var(--card);border:1px solid rgba(255,255,255,.04);box-shadow:0 4px 12px rgba(0,0,0,.2)}
+.wn-lc{width:60px;padding:10px 4px 8px;border-radius:14px;text-align:center;background:var(--card);border:1px solid color-mix(in oklab, var(--text-primary) 4%, transparent);box-shadow:0 4px 12px color-mix(in oklab, var(--bg-primary) 20%, transparent)}
 .wn-lc-i{font-size:22px;display:block;margin-bottom:3px}
 .wn-lc-n{font-size:8px;color:var(--t3);line-height:1.2}
-.wn-lc.leg{border-color:rgba(240,200,80,.2);background:linear-gradient(180deg,rgba(240,200,80,.08),var(--card))}
+.wn-lc.leg{border-color:color-mix(in oklab, var(--value) 20%, transparent);background:linear-gradient(180deg,color-mix(in oklab, var(--value) 8%, transparent),var(--card))}
 .wn-lc.leg .wn-lc-i{animation:wnLG 2s ease-in-out infinite alternate}
 @keyframes wnLG{0%{filter:brightness(1)}100%{filter:brightness(1.3) drop-shadow(0 0 4px var(--gold))}}
-.wn-lc.epc{border-color:rgba(165,110,255,.2);background:linear-gradient(180deg,rgba(165,110,255,.06),var(--card))}
-.wn-lc.rar{border-color:rgba(74,144,255,.15);background:linear-gradient(180deg,rgba(74,144,255,.05),var(--card))}
+.wn-lc.epc{border-color:color-mix(in oklab, var(--acc) 20%, transparent);background:linear-gradient(180deg,color-mix(in oklab, var(--acc) 6%, transparent),var(--card))}
+.wn-lc.rar{border-color:color-mix(in oklab, var(--acc) 15%, transparent);background:linear-gradient(180deg,color-mix(in oklab, var(--acc) 5%, transparent),var(--card))}
 .wn-fx{position:absolute;inset:0;z-index:150;pointer-events:none;opacity:0}
-.wn-fx-flash{background:radial-gradient(circle at 50% 50%,rgba(240,200,80,.35),transparent 70%);animation:wnFxO .5s forwards}
-.wn-fx-mega{background:radial-gradient(circle at 50% 50%,rgba(240,200,80,.6),rgba(232,64,87,.2) 50%,transparent 80%);animation:wnFxO .8s forwards}
+.wn-fx-flash{background:radial-gradient(circle at 50% 50%,color-mix(in oklab, var(--value) 35%, transparent),transparent 70%);animation:wnFxO .5s forwards}
+.wn-fx-mega{background:radial-gradient(circle at 50% 50%,color-mix(in oklab, var(--value) 60%, transparent),color-mix(in oklab, var(--danger) 20%, transparent) 50%,transparent 80%);animation:wnFxO .8s forwards}
 @keyframes wnFxO{from{opacity:1}to{opacity:0}}
 .wn-fx-zap{animation:wnZF .12s ease 3}
-@keyframes wnZF{0%{opacity:0}30%{opacity:1;background:rgba(240,200,80,.12)}60%{opacity:0}80%{opacity:.5;background:rgba(255,255,255,.08)}100%{opacity:0}}
-.wn-ov{position:absolute;inset:0;z-index:200;background:rgba(0,0,0,0);pointer-events:none;transition:background .4s}
-.wn-ov-on{background:rgba(0,0,0,.7);pointer-events:auto;backdrop-filter:blur(6px)}
+@keyframes wnZF{0%{opacity:0}30%{opacity:1;background:color-mix(in oklab, var(--value) 12%, transparent)}60%{opacity:0}80%{opacity:.5;background:color-mix(in oklab, var(--text-primary) 8%, transparent)}100%{opacity:0}}
+.wn-ov{position:absolute;inset:0;z-index:200;background:color-mix(in oklab, var(--bg-primary) 0%, transparent);pointer-events:none;transition:background .4s}
+.wn-ov-on{background:color-mix(in oklab, var(--bg-primary) 70%, transparent);pointer-events:auto;backdrop-filter:blur(6px)}
 .wn-rw{position:absolute;left:50%;bottom:0;width:100%;max-width:430px;transform:translate(-50%,110%);z-index:201;transition:transform .55s cubic-bezier(.34,1.56,.64,1)}
 .wn-rw-on{transform:translate(-50%,0)}
-.wn-rw-card{background:linear-gradient(180deg,var(--card2),var(--card));border-radius:28px 28px 0 0;border:1px solid rgba(255,255,255,.06);border-bottom:none;padding:20px;padding-bottom:max(env(safe-area-inset-bottom),28px);box-shadow:0 -10px 50px rgba(0,0,0,.5)}
-.wn-rw-handle{width:40px;height:4px;border-radius:2px;background:rgba(255,255,255,.12);margin:0 auto 16px}
+.wn-rw-card{background:linear-gradient(180deg,var(--card2),var(--card));border-radius:28px 28px 0 0;border:1px solid color-mix(in oklab, var(--text-primary) 6%, transparent);border-bottom:none;padding:20px;padding-bottom:max(env(safe-area-inset-bottom),28px);box-shadow:0 -10px 50px color-mix(in oklab, var(--bg-primary) 50%, transparent)}
+.wn-rw-handle{width:40px;height:4px;border-radius:2px;background:color-mix(in oklab, var(--text-primary) 12%, transparent);margin:0 auto 16px}
 .wn-rw-icon{text-align:center;position:relative;height:110px;margin-bottom:8px}
 .wn-rw-glow{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:140px;height:140px;border-radius:50%;filter:blur(20px)}
-.wn-rw-glow.common{background:rgba(61,220,132,.2)}.wn-rw-glow.rare{background:rgba(74,144,255,.25)}
-.wn-rw-glow.epic{background:rgba(165,110,255,.25)}.wn-rw-glow.legendary{background:rgba(240,200,80,.3)}
+.wn-rw-glow.common{background:color-mix(in oklab, var(--ok) 20%, transparent)}.wn-rw-glow.rare{background:color-mix(in oklab, var(--acc) 25%, transparent)}
+.wn-rw-glow.epic{background:color-mix(in oklab, var(--acc) 25%, transparent)}.wn-rw-glow.legendary{background:color-mix(in oklab, var(--value) 30%, transparent)}
 .wn-rw-emoji{position:relative;z-index:2;font-size:64px;line-height:110px;animation:wnRwB .7s cubic-bezier(.34,1.56,.64,1)}
 @keyframes wnRwB{0%{transform:scale(0) rotate(-15deg)}60%{transform:scale(1.2) rotate(5deg)}100%{transform:scale(1) rotate(0)}}
 .wn-rw-tag{display:inline-block;padding:4px 16px;border-radius:20px;font-size:10px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;margin-bottom:6px}
-.wn-rw-tag.common{background:rgba(61,220,132,.12);color:var(--green);border:1px solid rgba(61,220,132,.2)}
-.wn-rw-tag.rare{background:rgba(74,144,255,.12);color:var(--blue);border:1px solid rgba(74,144,255,.2)}
-.wn-rw-tag.epic{background:rgba(165,110,255,.12);color:var(--purple);border:1px solid rgba(165,110,255,.2)}
-.wn-rw-tag.legendary{background:rgba(240,200,80,.12);color:var(--gold);border:1px solid rgba(240,200,80,.25)}
+.wn-rw-tag.common{background:color-mix(in oklab, var(--ok) 12%, transparent);color:var(--green);border:1px solid color-mix(in oklab, var(--ok) 20%, transparent)}
+.wn-rw-tag.rare{background:color-mix(in oklab, var(--acc) 12%, transparent);color:var(--blue);border:1px solid color-mix(in oklab, var(--acc) 20%, transparent)}
+.wn-rw-tag.epic{background:color-mix(in oklab, var(--acc) 12%, transparent);color:var(--purple);border:1px solid color-mix(in oklab, var(--acc) 20%, transparent)}
+.wn-rw-tag.legendary{background:color-mix(in oklab, var(--value) 12%, transparent);color:var(--gold);border:1px solid color-mix(in oklab, var(--value) 25%, transparent)}
 .wn-rw-name{font-size:22px;font-weight:800;text-align:center}
 .wn-rw-desc{font-size:13px;color:var(--t2);text-align:center;margin:4px 0 14px}
 .wn-rw-val{display:flex;align-items:center;justify-content:center;gap:8px;padding:10px 24px;border-radius:16px;font-size:22px;font-weight:800;margin:0 auto;width:fit-content}
-.wn-rw-val.common{background:rgba(61,220,132,.1);color:var(--green)}
-.wn-rw-val.rare{background:rgba(74,144,255,.1);color:var(--blue)}
-.wn-rw-val.epic{background:rgba(165,110,255,.1);color:var(--purple)}
-.wn-rw-val.legendary{background:linear-gradient(135deg,rgba(240,200,80,.12),rgba(232,64,87,.06));color:var(--gold)}
-.wn-rw-btn{display:block;width:100%;margin-top:16px;padding:16px;border-radius:16px;border:none;font-size:16px;font-weight:800;color:#fff;cursor:pointer;position:relative;overflow:hidden}
+.wn-rw-val.common{background:color-mix(in oklab, var(--ok) 10%, transparent);color:var(--green)}
+.wn-rw-val.rare{background:color-mix(in oklab, var(--acc) 10%, transparent);color:var(--blue)}
+.wn-rw-val.epic{background:color-mix(in oklab, var(--acc) 10%, transparent);color:var(--purple)}
+.wn-rw-val.legendary{background:linear-gradient(135deg,color-mix(in oklab, var(--value) 12%, transparent),color-mix(in oklab, var(--danger) 6%, transparent));color:var(--gold)}
+.wn-rw-btn{display:block;width:100%;margin-top:16px;padding:16px;border-radius:16px;border:none;font-size:16px;font-weight:800;color:var(--text-primary);cursor:pointer;position:relative;overflow:hidden}
 .wn-rw-btn:active{transform:translateY(3px);box-shadow:none!important}
-.wn-rw-btn.common{background:linear-gradient(180deg,#3DDC84,#2a9d5e);box-shadow:0 5px 0 #1a7040}
-.wn-rw-btn.rare{background:linear-gradient(180deg,#4A90FF,#2a60cc);box-shadow:0 5px 0 #1a4099}
-.wn-rw-btn.epic{background:linear-gradient(180deg,#A56EFF,#7c3aed);box-shadow:0 5px 0 #5b21b6}
+.wn-rw-btn.common{background:linear-gradient(180deg,var(--ok),#2a9d5e);box-shadow:0 5px 0 #1a7040}
+.wn-rw-btn.rare{background:linear-gradient(180deg,var(--acc),#2a60cc);box-shadow:0 5px 0 #1a4099}
+.wn-rw-btn.epic{background:linear-gradient(180deg,var(--acc),var(--acc));box-shadow:0 5px 0 var(--acc)}
 .wn-rw-btn.legendary{background:linear-gradient(135deg,var(--red),var(--gold));box-shadow:0 5px 0 var(--gold-d)}
-.wn-rw-btn::after{content:'';position:absolute;top:0;left:-100%;width:50%;height:100%;background:linear-gradient(90deg,transparent,rgba(255,255,255,.12),transparent);animation:wnShine 3s infinite}
+.wn-rw-btn::after{content:'';position:absolute;top:0;left:-100%;width:50%;height:100%;background:linear-gradient(90deg,transparent,color-mix(in oklab, var(--text-primary) 12%, transparent),transparent);animation:wnShine 3s infinite}
 .wn-shake{animation:wnShake .2s ease}
 @keyframes wnShake{0%,100%{transform:translateX(0)}20%{transform:translateX(-4px)}40%{transform:translateX(4px)}60%{transform:translateX(-2px)}80%{transform:translateX(2px)}}
 `;
@@ -283,7 +284,7 @@ function goldDust(particles, x, y) {
     const dist = 30 + Math.random() * 20;
     particles.push(new Particle(
       x + Math.cos(angle) * dist, y + Math.sin(angle) * dist,
-      ['#F0C850', '#FFE17A', '#FFD700', '#C8940A'][Math.floor(Math.random() * 4)],
+      ['var(--value)', 'color-mix(in oklab, var(--value) 45%, var(--text-primary))', 'var(--value)', 'var(--value)'][Math.floor(Math.random() * 4)],
       1 + Math.random() * 2, Math.cos(angle) * 0.5, -1 - Math.random() * 2, 60 + Math.random() * 30
     ));
   }
@@ -781,8 +782,8 @@ export default function WheelOfNorns() {
     if (rect) {
       const bx = rect.left + rect.width / 2 - (rootRef.current?.getBoundingClientRect().left || 0);
       const by = rect.top + rect.height / 2 - (rootRef.current?.getBoundingClientRect().top || 0);
-      const colors = tier === 'legendary' ? ['#F0C850', '#FFE17A', '#E84057', '#FF8A8A', '#FFD700'] :
-        tier === 'epic' ? ['#A56EFF', '#C084FC', '#E0C3FC'] : tier === 'rare' ? ['#4A90FF', '#60A5FA', '#93C5FD'] : ['#3DDC84', '#86EFAC'];
+      const colors = tier === 'legendary' ? ['var(--value)', 'color-mix(in oklab, var(--value) 45%, var(--text-primary))', 'var(--danger)', '#FF8A8A', 'var(--value)'] :
+        tier === 'epic' ? ['var(--acc)', 'var(--acc)', '#E0C3FC'] : tier === 'rare' ? ['var(--acc)', 'var(--acc)', 'var(--acc)'] : ['var(--ok)', '#86EFAC'];
       explode(particles.current, bx, by, colors, tier === 'legendary' ? 80 : tier === 'epic' ? 50 : 25, tier === 'legendary' ? 12 : tier === 'epic' ? 8 : 4);
       if (tier === 'legendary') { setTimeout(() => { explode(particles.current, bx, by, colors, 40, 8); goldDust(particles.current, bx, by); }, 300); setTimeout(() => explode(particles.current, bx, by, colors, 25, 6), 650); }
       else if (tier === 'epic') goldDust(particles.current, bx, by); // BONUS: gold dust for epic too
@@ -857,7 +858,7 @@ export default function WheelOfNorns() {
         {/* TOP BAR */}
         <div className="wn-top">
           <button className="wn-back" onClick={() => navigate('/field/home')}>
-            <svg viewBox="0 0 24 24" width="20" height="20" stroke="rgba(255,255,255,.7)" fill="none" strokeWidth="2.2" strokeLinecap="round"><path d="M15 18l-6-6 6-6" /></svg>
+            <svg viewBox="0 0 24 24" width="20" height="20" stroke="color-mix(in oklab, var(--text-primary) 70%, transparent)" fill="none" strokeWidth="2.2" strokeLinecap="round"><path d="M15 18l-6-6 6-6" /></svg>
           </button>
           <div style={{ textAlign: 'center' }}>
             <div className="wn-title">КОЛЕСО НОРН</div>
@@ -870,14 +871,14 @@ export default function WheelOfNorns() {
                 display: 'flex', alignItems: 'center', gap: 4, padding: '5px 10px 5px 7px',
                 background: spinsLeft.total > 0
                   ? 'linear-gradient(135deg, #3a0a10, #1a0508)'
-                  : 'linear-gradient(135deg, #1a1a1a, #0a0a0a)',
-                border: `1.5px solid ${spinsLeft.total > 0 ? 'rgba(232,64,87,.4)' : 'rgba(255,255,255,.1)'}`,
-                borderRadius: 20, boxShadow: spinsLeft.total > 0 ? '0 2px 10px rgba(232,64,87,.15)' : 'none',
+                  : 'linear-gradient(135deg, #1a1a1a, var(--bg-primary))',
+                border: `1.5px solid ${spinsLeft.total > 0 ? 'color-mix(in oklab, var(--danger) 40%, transparent)' : 'color-mix(in oklab, var(--text-primary) 10%, transparent)'}`,
+                borderRadius: 20, boxShadow: spinsLeft.total > 0 ? '0 2px 10px color-mix(in oklab, var(--danger) 15%, transparent)' : 'none',
               }}>
                 <span style={{ fontSize: 16 }}>🎰</span>
                 <span style={{
                   fontSize: 15, fontWeight: 800, fontVariantNumeric: 'tabular-nums',
-                  color: spinsLeft.total > 0 ? '#E84057' : 'rgba(255,255,255,.3)',
+                  color: spinsLeft.total > 0 ? 'var(--danger)' : 'color-mix(in oklab, var(--text-primary) 30%, transparent)',
                 }}>×{spinsLeft.total}</span>
               </div>
             )}
@@ -920,7 +921,7 @@ export default function WheelOfNorns() {
             <span style={{ fontSize: 18 }}>{spinsLeft.title.icon}</span>
             <div style={{ flex: 1 }}>
               <span style={{ fontSize: 11, fontWeight: 700, color: spinsLeft.title.color }}>{spinsLeft.title.name}</span>
-              <span style={{ fontSize: 10, color: 'rgba(255,255,255,.4)', marginLeft: 6 }}>
+              <span style={{ fontSize: 10, color: 'color-mix(in oklab, var(--text-primary) 40%, transparent)', marginLeft: 6 }}>
                 редкий приз за {spinsLeft.title.pity_guarantee} спинов
               </span>
             </div>
@@ -955,62 +956,62 @@ export default function WheelOfNorns() {
             ) : (
               <svg viewBox="0 0 140 145" overflow="visible">
               <defs>
-                <linearGradient id="wn-hlm" x1="70" y1="15" x2="70" y2="55" gradientUnits="userSpaceOnUse"><stop offset="0%" stopColor="rgba(255,255,255,.25)" /><stop offset="100%" stopColor="transparent" /></linearGradient>
-                <linearGradient id="wn-armG" x1="70" y1="85" x2="70" y2="130" gradientUnits="userSpaceOnUse"><stop offset="0%" stopColor="rgba(255,255,255,.1)" /><stop offset="100%" stopColor="transparent" /></linearGradient>
-                <linearGradient id="wn-hornG" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#FFE17A" /><stop offset="40%" stopColor="#F0C850" /><stop offset="100%" stopColor="#A07010" /></linearGradient>
+                <linearGradient id="wn-hlm" x1="70" y1="15" x2="70" y2="55" gradientUnits="userSpaceOnUse"><stop offset="0%" stopColor="color-mix(in oklab, var(--text-primary) 25%, transparent)" /><stop offset="100%" stopColor="transparent" /></linearGradient>
+                <linearGradient id="wn-armG" x1="70" y1="85" x2="70" y2="130" gradientUnits="userSpaceOnUse"><stop offset="0%" stopColor="color-mix(in oklab, var(--text-primary) 10%, transparent)" /><stop offset="100%" stopColor="transparent" /></linearGradient>
+                <linearGradient id="wn-hornG" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="color-mix(in oklab, var(--value) 45%, var(--text-primary))" /><stop offset="40%" stopColor="var(--value)" /><stop offset="100%" stopColor="var(--value)" /></linearGradient>
                 <radialGradient id="wn-skinG" cx=".45" cy=".38" r=".55"><stop offset="0%" stopColor="#FFE8D4" /><stop offset="70%" stopColor="#F5D0A8" /><stop offset="100%" stopColor="#E0B888" /></radialGradient>
                 <radialGradient id="wn-noseG" cx=".45" cy=".35" r=".6"><stop offset="0%" stopColor="#F5C8A0" /><stop offset="100%" stopColor="#DDAA78" /></radialGradient>
-                <linearGradient id="wn-beardG" x1="70" y1="65" x2="70" y2="118" gradientUnits="userSpaceOnUse"><stop offset="0%" stopColor="#D08838" /><stop offset="100%" stopColor="#A06020" /></linearGradient>
+                <linearGradient id="wn-beardG" x1="70" y1="65" x2="70" y2="118" gradientUnits="userSpaceOnUse"><stop offset="0%" stopColor="#D08838" /><stop offset="100%" stopColor="var(--value)" /></linearGradient>
               </defs>
               <g ref={vBodyRef}>
                 {/* BODY/ARMOR */}
-                <path d="M42 98 Q45 86 56 82 L84 82 Q95 86 98 98 L102 132 Q70 138 38 132Z" fill="#5C2E10" />
+                <path d="M42 98 Q45 86 56 82 L84 82 Q95 86 98 98 L102 132 Q70 138 38 132Z" fill="var(--value)" />
                 <path d="M42 98 Q45 86 56 82 L84 82 Q95 86 98 98 L102 132 Q70 138 38 132Z" fill="url(#wn-armG)" />
-                <path d="M55 90 L55 120" stroke="rgba(0,0,0,.06)" strokeWidth="1" fill="none" /><path d="M65 88 L65 122" stroke="rgba(0,0,0,.06)" strokeWidth="1" fill="none" />
-                <path d="M75 88 L75 122" stroke="rgba(0,0,0,.06)" strokeWidth="1" fill="none" /><path d="M85 90 L85 120" stroke="rgba(0,0,0,.06)" strokeWidth="1" fill="none" />
+                <path d="M55 90 L55 120" stroke="color-mix(in oklab, var(--bg-primary) 6%, transparent)" strokeWidth="1" fill="none" /><path d="M65 88 L65 122" stroke="color-mix(in oklab, var(--bg-primary) 6%, transparent)" strokeWidth="1" fill="none" />
+                <path d="M75 88 L75 122" stroke="color-mix(in oklab, var(--bg-primary) 6%, transparent)" strokeWidth="1" fill="none" /><path d="M85 90 L85 120" stroke="color-mix(in oklab, var(--bg-primary) 6%, transparent)" strokeWidth="1" fill="none" />
                 <path d="M56 86 L70 96 L84 86" stroke="rgba(160,170,180,.18)" strokeWidth="8" fill="none" strokeLinejoin="round" />
                 <path d="M58 86 L70 94 L82 86" stroke="rgba(160,170,180,.08)" strokeWidth="4" fill="none" strokeLinejoin="round" />
                 <ellipse cx="44" cy="92" rx="8" ry="5" fill="#704218" /><ellipse cx="96" cy="92" rx="8" ry="5" fill="#704218" />
-                <ellipse cx="44" cy="91" rx="7" ry="4" fill="rgba(255,255,255,.06)" /><ellipse cx="96" cy="91" rx="7" ry="4" fill="rgba(255,255,255,.06)" />
-                <circle cx="44" cy="92" r="1.5" fill="#D4A843" /><circle cx="96" cy="92" r="1.5" fill="#D4A843" />
-                <rect x="40" y="110" width="60" height="8" rx="3.5" fill="#704010" /><rect x="40" y="110" width="60" height="4" rx="2" fill="rgba(255,255,255,.06)" />
-                <circle cx="48" cy="114" r="1.5" fill="#B08030" /><circle cx="56" cy="114" r="1.5" fill="#B08030" /><circle cx="84" cy="114" r="1.5" fill="#B08030" /><circle cx="92" cy="114" r="1.5" fill="#B08030" />
-                <path d="M63 108 L77 108 L77 118 L70 122 L63 118Z" fill="#D4A843" stroke="#8B6914" strokeWidth="1" />
-                <text x="70" y="117" textAnchor="middle" fontSize="6" fontWeight="900" fill="#5a3e00" fontFamily="system-ui" letterSpacing=".3">ΛS</text>
+                <ellipse cx="44" cy="91" rx="7" ry="4" fill="color-mix(in oklab, var(--text-primary) 6%, transparent)" /><ellipse cx="96" cy="91" rx="7" ry="4" fill="color-mix(in oklab, var(--text-primary) 6%, transparent)" />
+                <circle cx="44" cy="92" r="1.5" fill="var(--value)" /><circle cx="96" cy="92" r="1.5" fill="var(--value)" />
+                <rect x="40" y="110" width="60" height="8" rx="3.5" fill="#704010" /><rect x="40" y="110" width="60" height="4" rx="2" fill="color-mix(in oklab, var(--text-primary) 6%, transparent)" />
+                <circle cx="48" cy="114" r="1.5" fill="var(--value)" /><circle cx="56" cy="114" r="1.5" fill="var(--value)" /><circle cx="84" cy="114" r="1.5" fill="var(--value)" /><circle cx="92" cy="114" r="1.5" fill="var(--value)" />
+                <path d="M63 108 L77 108 L77 118 L70 122 L63 118Z" fill="var(--value)" stroke="var(--value)" strokeWidth="1" />
+                <text x="70" y="117" textAnchor="middle" fontSize="6" fontWeight="900" fill="var(--value)" fontFamily="system-ui" letterSpacing=".3">ΛS</text>
                 <ellipse cx="70" cy="84" rx="28" ry="11" fill="#8A6030" /><ellipse cx="70" cy="83" rx="26" ry="9" fill="#A07840" />
                 <ellipse cx="70" cy="82" rx="24" ry="7" fill="#B8904A" /><ellipse cx="70" cy="81" rx="22" ry="5" fill="#D0A858" />
                 <path d="M48 79 Q50 75 52 79 Q54 75 56 79 Q58 75 60 79 Q62 75 64 79 Q66 75 68 79 Q70 75 72 79 Q74 75 76 79 Q78 75 80 79 Q82 75 84 79 Q86 75 88 79 Q90 75 92 79" stroke="#A07030" strokeWidth="1.2" fill="none" />
                 {/* HEAD */}
                 <ellipse cx="70" cy="58" rx="27" ry="25" fill="url(#wn-skinG)" />
-                <path d="M46 64 Q70 78 94 64" stroke="rgba(180,140,100,.1)" strokeWidth="1" fill="none" />
+                <path d="M46 64 Q70 78 94 64" stroke="color-mix(in oklab, var(--value) 10%, transparent)" strokeWidth="1" fill="none" />
                 <ellipse cx="43" cy="56" rx="5" ry="8" fill="#F0C8A0" /><ellipse cx="43" cy="56" rx="3.5" ry="6" fill="#E8B890" />
-                <path d="M42 60 Q40 64 43 64" stroke="#D4A843" strokeWidth="1.5" fill="none" /><circle cx="43" cy="65" r="1.5" fill="#D4A843" />
+                <path d="M42 60 Q40 64 43 64" stroke="var(--value)" strokeWidth="1.5" fill="none" /><circle cx="43" cy="65" r="1.5" fill="var(--value)" />
                 <ellipse cx="97" cy="56" rx="5" ry="8" fill="#F0C8A0" /><ellipse cx="97" cy="56" rx="3.5" ry="6" fill="#E8B890" />
-                <path d="M98 60 Q100 64 97 64" stroke="#D4A843" strokeWidth="1.5" fill="none" /><circle cx="97" cy="65" r="1.5" fill="#D4A843" />
-                <ellipse cx="50" cy="63" rx="8" ry="4.5" fill="rgba(255,130,130,.15)" /><ellipse cx="90" cy="63" rx="8" ry="4.5" fill="rgba(255,130,130,.15)" />
+                <path d="M98 60 Q100 64 97 64" stroke="var(--value)" strokeWidth="1.5" fill="none" /><circle cx="97" cy="65" r="1.5" fill="var(--value)" />
+                <ellipse cx="50" cy="63" rx="8" ry="4.5" fill="color-mix(in oklab, var(--danger) 15%, transparent)" /><ellipse cx="90" cy="63" rx="8" ry="4.5" fill="color-mix(in oklab, var(--danger) 15%, transparent)" />
                 {/* EYES */}
-                <ellipse cx="57" cy="54" rx="10" ry="10" fill="rgba(160,120,80,.08)" /><ellipse cx="83" cy="54" rx="10" ry="10" fill="rgba(160,120,80,.08)" />
-                <ellipse className="v-eye-white" cx="57" cy="54" rx="9" ry="9" fill="white" stroke="rgba(0,0,0,.06)" strokeWidth=".5" />
-                <ellipse className="v-eye-white" cx="83" cy="54" rx="9" ry="9" fill="white" stroke="rgba(0,0,0,.06)" strokeWidth=".5" />
+                <ellipse cx="57" cy="54" rx="10" ry="10" fill="color-mix(in oklab, var(--value) 8%, transparent)" /><ellipse cx="83" cy="54" rx="10" ry="10" fill="color-mix(in oklab, var(--value) 8%, transparent)" />
+                <ellipse className="v-eye-white" cx="57" cy="54" rx="9" ry="9" fill="white" stroke="color-mix(in oklab, var(--bg-primary) 6%, transparent)" strokeWidth=".5" />
+                <ellipse className="v-eye-white" cx="83" cy="54" rx="9" ry="9" fill="white" stroke="color-mix(in oklab, var(--bg-primary) 6%, transparent)" strokeWidth=".5" />
                 <circle cx="59" cy="55" r="5.5" fill="#2860aa" /><circle cx="85" cy="55" r="5.5" fill="#2860aa" />
                 <circle cx="59" cy="55" r="4" fill="#1a4a8a" /><circle cx="85" cy="55" r="4" fill="#1a4a8a" />
                 <circle ref={pupilLRef} cx="60" cy="55.5" r="2.8" fill="#0a1428" /><circle ref={pupilRRef} cx="86" cy="55.5" r="2.8" fill="#0a1428" />
                 <circle cx="63" cy="52" r="2.2" fill="white" /><circle cx="89" cy="52" r="2.2" fill="white" />
-                <circle cx="57" cy="57" r="1.2" fill="rgba(255,255,255,.4)" /><circle cx="83" cy="57" r="1.2" fill="rgba(255,255,255,.4)" />
+                <circle cx="57" cy="57" r="1.2" fill="color-mix(in oklab, var(--text-primary) 40%, transparent)" /><circle cx="83" cy="57" r="1.2" fill="color-mix(in oklab, var(--text-primary) 40%, transparent)" />
                 <path d="M48 58 Q57 62 66 58" stroke="rgba(200,160,120,.15)" strokeWidth="1" fill="none" />
                 <path d="M74 58 Q83 62 92 58" stroke="rgba(200,160,120,.15)" strokeWidth="1" fill="none" />
                 {/* BROWS */}
                 <path ref={browLRef} d="M45 42 Q52 36 66 41" stroke="#6a3a10" strokeWidth="4" fill="none" strokeLinecap="round" />
                 <path ref={browRRef} d="M74 41 Q88 36 95 42" stroke="#6a3a10" strokeWidth="4" fill="none" strokeLinecap="round" />
-                <path d="M48 42 L46 39" stroke="#7a4a18" strokeWidth="1" fill="none" strokeLinecap="round" /><path d="M54 40 L53 37" stroke="#7a4a18" strokeWidth="1" fill="none" strokeLinecap="round" />
-                <path d="M86 40 L87 37" stroke="#7a4a18" strokeWidth="1" fill="none" strokeLinecap="round" /><path d="M92 42 L94 39" stroke="#7a4a18" strokeWidth="1" fill="none" strokeLinecap="round" />
-                <path d="M67 42 L70 40 L73 42" stroke="rgba(180,140,100,.12)" strokeWidth=".8" fill="none" />
+                <path d="M48 42 L46 39" stroke="var(--value)" strokeWidth="1" fill="none" strokeLinecap="round" /><path d="M54 40 L53 37" stroke="var(--value)" strokeWidth="1" fill="none" strokeLinecap="round" />
+                <path d="M86 40 L87 37" stroke="var(--value)" strokeWidth="1" fill="none" strokeLinecap="round" /><path d="M92 42 L94 39" stroke="var(--value)" strokeWidth="1" fill="none" strokeLinecap="round" />
+                <path d="M67 42 L70 40 L73 42" stroke="color-mix(in oklab, var(--value) 12%, transparent)" strokeWidth=".8" fill="none" />
                 {/* NOSE */}
                 <path d="M68 46 L66 58 Q70 65 74 58 L72 46" fill="url(#wn-noseG)" stroke="rgba(200,160,120,.1)" strokeWidth=".5" />
                 <ellipse cx="70" cy="62" rx="5.5" ry="4.5" fill="url(#wn-noseG)" />
                 <path d="M65 63 Q67 65 70 65 Q73 65 75 63" stroke="#C89868" strokeWidth="1" fill="none" />
                 <ellipse cx="67" cy="63.5" rx="1.5" ry="1" fill="rgba(160,100,60,.2)" /><ellipse cx="73" cy="63.5" rx="1.5" ry="1" fill="rgba(160,100,60,.2)" />
-                <ellipse cx="68" cy="58" rx="2" ry="3" fill="rgba(255,255,255,.12)" />
+                <ellipse cx="68" cy="58" rx="2" ry="3" fill="color-mix(in oklab, var(--text-primary) 12%, transparent)" />
                 <path d="M46 58 L50 64" stroke="rgba(200,160,130,.2)" strokeWidth="1.5" fill="none" strokeLinecap="round" />
                 {/* MOUTH */}
                 <path ref={mouthRef} d="M58 70 Q70 77 82 70" stroke="#7a3a10" strokeWidth="2.5" fill="none" strokeLinecap="round" />
@@ -1019,27 +1020,27 @@ export default function WheelOfNorns() {
                 {/* BEARD */}
                 <path d="M43 65 Q38 84 46 102 Q54 114 70 118 Q86 114 94 102 Q102 84 97 65" fill="url(#wn-beardG)" />
                 <path d="M43 65 Q40 80 46 98" stroke="rgba(255,220,160,.1)" strokeWidth="2" fill="none" /><path d="M97 65 Q100 80 94 98" stroke="rgba(255,220,160,.1)" strokeWidth="2" fill="none" />
-                <path d="M50 72 Q54 80 52 90 Q50 98 54 104" stroke="#A06020" strokeWidth="1.2" fill="none" opacity=".6" />
-                <path d="M56 74 Q60 82 58 92 Q56 100 60 108" stroke="#A06020" strokeWidth="1.2" fill="none" opacity=".5" />
-                <path d="M62 75 Q66 84 64 94 Q62 102 66 110" stroke="#A06020" strokeWidth="1.2" fill="none" opacity=".5" />
-                <path d="M70 76 L70 112" stroke="#A06020" strokeWidth="1.2" fill="none" opacity=".5" />
-                <path d="M78 75 Q74 84 76 94 Q78 102 74 110" stroke="#A06020" strokeWidth="1.2" fill="none" opacity=".5" />
-                <path d="M84 74 Q80 82 82 92 Q84 100 80 108" stroke="#A06020" strokeWidth="1.2" fill="none" opacity=".5" />
-                <path d="M90 72 Q86 80 88 90 Q90 98 86 104" stroke="#A06020" strokeWidth="1.2" fill="none" opacity=".6" />
+                <path d="M50 72 Q54 80 52 90 Q50 98 54 104" stroke="var(--value)" strokeWidth="1.2" fill="none" opacity=".6" />
+                <path d="M56 74 Q60 82 58 92 Q56 100 60 108" stroke="var(--value)" strokeWidth="1.2" fill="none" opacity=".5" />
+                <path d="M62 75 Q66 84 64 94 Q62 102 66 110" stroke="var(--value)" strokeWidth="1.2" fill="none" opacity=".5" />
+                <path d="M70 76 L70 112" stroke="var(--value)" strokeWidth="1.2" fill="none" opacity=".5" />
+                <path d="M78 75 Q74 84 76 94 Q78 102 74 110" stroke="var(--value)" strokeWidth="1.2" fill="none" opacity=".5" />
+                <path d="M84 74 Q80 82 82 92 Q84 100 80 108" stroke="var(--value)" strokeWidth="1.2" fill="none" opacity=".5" />
+                <path d="M90 72 Q86 80 88 90 Q90 98 86 104" stroke="var(--value)" strokeWidth="1.2" fill="none" opacity=".6" />
                 <path d="M58 68 Q52 70 48 68 Q46 66 48 64" stroke="#C88838" strokeWidth="3" fill="none" strokeLinecap="round" />
                 <path d="M82 68 Q88 70 92 68 Q94 66 92 64" stroke="#C88838" strokeWidth="3" fill="none" strokeLinecap="round" />
                 {/* Beard braids — left with wrapping */}
                 <path d="M52 100 Q48 106 46 114 Q45 118 46 120" stroke="#C07830" strokeWidth="4.5" strokeLinecap="round" fill="none" />
-                <path d="M48 108 L50 110 M47 112 L49 114" stroke="#A06020" strokeWidth="1" fill="none" />
-                <circle cx="46" cy="121" r="3.5" fill="#D4A843" stroke="#8B6914" strokeWidth="1" />
+                <path d="M48 108 L50 110 M47 112 L49 114" stroke="var(--value)" strokeWidth="1" fill="none" />
+                <circle cx="46" cy="121" r="3.5" fill="var(--value)" stroke="var(--value)" strokeWidth="1" />
                 {/* Beard braids — right with wrapping */}
                 <path d="M88 100 Q92 106 94 114 Q95 118 94 120" stroke="#C07830" strokeWidth="4.5" strokeLinecap="round" fill="none" />
-                <path d="M92 108 L90 110 M93 112 L91 114" stroke="#A06020" strokeWidth="1" fill="none" />
-                <circle cx="94" cy="121" r="3.5" fill="#D4A843" stroke="#8B6914" strokeWidth="1" />
+                <path d="M92 108 L90 110 M93 112 L91 114" stroke="var(--value)" strokeWidth="1" fill="none" />
+                <circle cx="94" cy="121" r="3.5" fill="var(--value)" stroke="var(--value)" strokeWidth="1" />
                 {/* Beard braids — center (longer) with wrapping */}
                 <path d="M70 112 L70 126" stroke="#C07830" strokeWidth="5" strokeLinecap="round" fill="none" />
-                <path d="M68 116 L72 118 M68 120 L72 122" stroke="#A06020" strokeWidth="1" fill="none" />
-                <circle cx="70" cy="127" r="4" fill="#D4A843" stroke="#8B6914" strokeWidth="1" /><circle cx="70" cy="127" r="2" fill="#F0C850" />
+                <path d="M68 116 L72 118 M68 120 L72 122" stroke="var(--value)" strokeWidth="1" fill="none" />
+                <circle cx="70" cy="127" r="4" fill="var(--value)" stroke="var(--value)" strokeWidth="1" /><circle cx="70" cy="127" r="2" fill="var(--value)" />
                 {/* HELMET */}
                 <path d="M38 50 Q38 22 70 16 Q102 22 102 50 L98 57 Q70 48 42 57Z" fill="#707880" />
                 <path d="M38 50 Q38 22 70 16 Q102 22 102 50 L98 57 Q70 48 42 57Z" fill="url(#wn-hlm)" />
@@ -1047,53 +1048,53 @@ export default function WheelOfNorns() {
                 <path d="M54 20 Q54 38 50 52" stroke="rgba(100,110,120,.15)" strokeWidth="1" fill="none" />
                 <path d="M86 20 Q86 38 90 52" stroke="rgba(100,110,120,.15)" strokeWidth="1" fill="none" />
                 {/* Helmet battle dents */}
-                <ellipse cx="55" cy="32" rx="3" ry="2" fill="rgba(0,0,0,.04)" />
-                <ellipse cx="82" cy="28" rx="2" ry="3" fill="rgba(0,0,0,.03)" />
-                <rect x="38" y="46" width="64" height="9" rx="4" fill="#D4A843" />
-                <rect x="38" y="46" width="64" height="5" rx="2.5" fill="rgba(255,255,255,.15)" />
+                <ellipse cx="55" cy="32" rx="3" ry="2" fill="color-mix(in oklab, var(--bg-primary) 4%, transparent)" />
+                <ellipse cx="82" cy="28" rx="2" ry="3" fill="color-mix(in oklab, var(--bg-primary) 3%, transparent)" />
+                <rect x="38" y="46" width="64" height="9" rx="4" fill="var(--value)" />
+                <rect x="38" y="46" width="64" height="5" rx="2.5" fill="color-mix(in oklab, var(--text-primary) 15%, transparent)" />
                 <path d="M44 50.5 Q48 48 52 50.5 Q56 53 60 50.5 Q64 48 68 50.5 Q72 53 76 50.5 Q80 48 84 50.5 Q88 53 92 50.5 Q96 48 100 50.5" stroke="rgba(139,105,20,.4)" strokeWidth="1" fill="none" />
-                <circle cx="46" cy="50.5" r="2.5" fill="#F0C850" stroke="#A07010" strokeWidth=".6" /><circle cx="58" cy="50.5" r="2.5" fill="#F0C850" stroke="#A07010" strokeWidth=".6" />
-                <circle cx="70" cy="50.5" r="3.2" fill="#F0C850" stroke="#A07010" strokeWidth=".6" /><circle cx="82" cy="50.5" r="2.5" fill="#F0C850" stroke="#A07010" strokeWidth=".6" />
-                <circle cx="94" cy="50.5" r="2.5" fill="#F0C850" stroke="#A07010" strokeWidth=".6" /><circle cx="70" cy="50.5" r="2" fill="#FFE17A" />
-                <rect x="59" y="32" width="22" height="12" rx="3" fill="#D4A843" stroke="#8B6914" strokeWidth="1" />
-                <rect x="59" y="32" width="22" height="6" rx="2" fill="rgba(255,255,255,.12)" />
+                <circle cx="46" cy="50.5" r="2.5" fill="var(--value)" stroke="var(--value)" strokeWidth=".6" /><circle cx="58" cy="50.5" r="2.5" fill="var(--value)" stroke="var(--value)" strokeWidth=".6" />
+                <circle cx="70" cy="50.5" r="3.2" fill="var(--value)" stroke="var(--value)" strokeWidth=".6" /><circle cx="82" cy="50.5" r="2.5" fill="var(--value)" stroke="var(--value)" strokeWidth=".6" />
+                <circle cx="94" cy="50.5" r="2.5" fill="var(--value)" stroke="var(--value)" strokeWidth=".6" /><circle cx="70" cy="50.5" r="2" fill="color-mix(in oklab, var(--value) 45%, var(--text-primary))" />
+                <rect x="59" y="32" width="22" height="12" rx="3" fill="var(--value)" stroke="var(--value)" strokeWidth="1" />
+                <rect x="59" y="32" width="22" height="6" rx="2" fill="color-mix(in oklab, var(--text-primary) 12%, transparent)" />
                 <text x="70" y="40.5" textAnchor="middle" fontSize="5.5" fontWeight="900" fill="#4a2e00" fontFamily="system-ui" letterSpacing=".3">ASGARD</text>
                 {/* Nose guard */}
                 <rect x="66" y="44" width="8" height="20" rx="3" fill="#8A9098" />
-                <rect x="66" y="44" width="4" height="20" rx="2" fill="rgba(255,255,255,.08)" />
-                <path d="M70 44 L70 64" stroke="rgba(255,255,255,.06)" strokeWidth="1" />
+                <rect x="66" y="44" width="4" height="20" rx="2" fill="color-mix(in oklab, var(--text-primary) 8%, transparent)" />
+                <path d="M70 44 L70 64" stroke="color-mix(in oklab, var(--text-primary) 6%, transparent)" strokeWidth="1" />
                 {/* HORNS */}
-                <path d="M38 46 Q24 30 14 6 Q10 -6 18 -2 Q28 4 34 24 Q38 36 40 46" fill="url(#wn-hornG)" stroke="#A07010" strokeWidth="1.2" />
-                <path d="M102 46 Q116 30 126 6 Q130 -6 122 -2 Q112 4 106 24 Q102 36 100 46" fill="url(#wn-hornG)" stroke="#A07010" strokeWidth="1.2" />
-                <path d="M36 40 Q30 32 24 18" stroke="rgba(255,255,255,.2)" strokeWidth="2.5" fill="none" strokeLinecap="round" />
-                <path d="M34 34 Q30 28 26 20" stroke="rgba(255,255,255,.1)" strokeWidth="1.5" fill="none" />
-                <path d="M32 28 Q28 22 26 16" stroke="rgba(255,255,255,.06)" strokeWidth="1" fill="none" />
-                <path d="M104 40 Q110 32 116 18" stroke="rgba(255,255,255,.2)" strokeWidth="2.5" fill="none" strokeLinecap="round" />
-                <path d="M106 34 Q110 28 114 20" stroke="rgba(255,255,255,.1)" strokeWidth="1.5" fill="none" />
-                <path d="M108 28 Q112 22 114 16" stroke="rgba(255,255,255,.06)" strokeWidth="1" fill="none" />
+                <path d="M38 46 Q24 30 14 6 Q10 -6 18 -2 Q28 4 34 24 Q38 36 40 46" fill="url(#wn-hornG)" stroke="var(--value)" strokeWidth="1.2" />
+                <path d="M102 46 Q116 30 126 6 Q130 -6 122 -2 Q112 4 106 24 Q102 36 100 46" fill="url(#wn-hornG)" stroke="var(--value)" strokeWidth="1.2" />
+                <path d="M36 40 Q30 32 24 18" stroke="color-mix(in oklab, var(--text-primary) 20%, transparent)" strokeWidth="2.5" fill="none" strokeLinecap="round" />
+                <path d="M34 34 Q30 28 26 20" stroke="color-mix(in oklab, var(--text-primary) 10%, transparent)" strokeWidth="1.5" fill="none" />
+                <path d="M32 28 Q28 22 26 16" stroke="color-mix(in oklab, var(--text-primary) 6%, transparent)" strokeWidth="1" fill="none" />
+                <path d="M104 40 Q110 32 116 18" stroke="color-mix(in oklab, var(--text-primary) 20%, transparent)" strokeWidth="2.5" fill="none" strokeLinecap="round" />
+                <path d="M106 34 Q110 28 114 20" stroke="color-mix(in oklab, var(--text-primary) 10%, transparent)" strokeWidth="1.5" fill="none" />
+                <path d="M108 28 Q112 22 114 16" stroke="color-mix(in oklab, var(--text-primary) 6%, transparent)" strokeWidth="1" fill="none" />
                 {/* Horn ring grooves */}
-                <path d="M30 30 Q28 32 30 34" stroke="rgba(160,112,16,.3)" strokeWidth="1.5" fill="none" />
-                <path d="M26 22 Q24 24 26 26" stroke="rgba(160,112,16,.3)" strokeWidth="1.5" fill="none" />
-                <path d="M110 30 Q112 32 110 34" stroke="rgba(160,112,16,.3)" strokeWidth="1.5" fill="none" />
-                <path d="M114 22 Q116 24 114 26" stroke="rgba(160,112,16,.3)" strokeWidth="1.5" fill="none" />
+                <path d="M30 30 Q28 32 30 34" stroke="color-mix(in oklab, var(--value) 30%, transparent)" strokeWidth="1.5" fill="none" />
+                <path d="M26 22 Q24 24 26 26" stroke="color-mix(in oklab, var(--value) 30%, transparent)" strokeWidth="1.5" fill="none" />
+                <path d="M110 30 Q112 32 110 34" stroke="color-mix(in oklab, var(--value) 30%, transparent)" strokeWidth="1.5" fill="none" />
+                <path d="M114 22 Q116 24 114 26" stroke="color-mix(in oklab, var(--value) 30%, transparent)" strokeWidth="1.5" fill="none" />
                 {/* Horn tips glow */}
-                <circle cx="15" cy="2" r="4" fill="rgba(240,200,80,.25)" /><circle cx="125" cy="2" r="4" fill="rgba(240,200,80,.25)" />
+                <circle cx="15" cy="2" r="4" fill="color-mix(in oklab, var(--value) 25%, transparent)" /><circle cx="125" cy="2" r="4" fill="color-mix(in oklab, var(--value) 25%, transparent)" />
                 <circle cx="15" cy="2" r="2" fill="rgba(255,225,122,.3)" /><circle cx="125" cy="2" r="2" fill="rgba(255,225,122,.3)" />
                 {/* ARMS */}
                 <path d="M38 96 Q28 102 22 114 Q20 120 24 126" stroke="#E8C0A0" strokeWidth="8" fill="none" strokeLinecap="round" />
-                <path d="M38 96 Q28 102 22 114" stroke="#5C2E10" strokeWidth="9" fill="none" strokeLinecap="round" opacity=".6" />
+                <path d="M38 96 Q28 102 22 114" stroke="var(--value)" strokeWidth="9" fill="none" strokeLinecap="round" opacity=".6" />
                 <path d="M102 96 Q112 102 118 114 Q120 120 116 126" stroke="#E8C0A0" strokeWidth="8" fill="none" strokeLinecap="round" />
-                <path d="M102 96 Q112 102 118 114" stroke="#5C2E10" strokeWidth="9" fill="none" strokeLinecap="round" opacity=".6" />
-                <rect x="19" y="113" width="12" height="9" rx="3.5" fill="#604018" stroke="#D4A843" strokeWidth="1" />
-                <rect x="19" y="113" width="12" height="4" rx="2" fill="rgba(255,255,255,.06)" />
-                <rect x="109" y="113" width="12" height="9" rx="3.5" fill="#604018" stroke="#D4A843" strokeWidth="1" />
-                <rect x="109" y="113" width="12" height="4" rx="2" fill="rgba(255,255,255,.06)" />
+                <path d="M102 96 Q112 102 118 114" stroke="var(--value)" strokeWidth="9" fill="none" strokeLinecap="round" opacity=".6" />
+                <rect x="19" y="113" width="12" height="9" rx="3.5" fill="#604018" stroke="var(--value)" strokeWidth="1" />
+                <rect x="19" y="113" width="12" height="4" rx="2" fill="color-mix(in oklab, var(--text-primary) 6%, transparent)" />
+                <rect x="109" y="113" width="12" height="9" rx="3.5" fill="#604018" stroke="var(--value)" strokeWidth="1" />
+                <rect x="109" y="113" width="12" height="4" rx="2" fill="color-mix(in oklab, var(--text-primary) 6%, transparent)" />
                 {/* Gloves */}
                 <path d="M22 124 Q20 130 24 132 Q28 134 30 130 Q32 126 28 124" fill="#4A2410" />
                 <path d="M118 124 Q120 130 116 132 Q112 134 110 130 Q108 126 112 124" fill="#4A2410" />
                 {/* Knuckle bumps */}
-                <circle cx="25" cy="128" r="1.5" fill="#5C2E10" /><circle cx="28" cy="129" r="1.5" fill="#5C2E10" />
-                <circle cx="115" cy="128" r="1.5" fill="#5C2E10" /><circle cx="112" cy="129" r="1.5" fill="#5C2E10" />
+                <circle cx="25" cy="128" r="1.5" fill="var(--value)" /><circle cx="28" cy="129" r="1.5" fill="var(--value)" />
+                <circle cx="115" cy="128" r="1.5" fill="var(--value)" /><circle cx="112" cy="129" r="1.5" fill="var(--value)" />
               </g>
             </svg>
             )}
@@ -1124,8 +1125,8 @@ export default function WheelOfNorns() {
               <div className="wn-vp-top" /><div className="wn-vp-bot" />
               <div className="wn-highlight" />
               <div ref={stripRef} className="wn-strip" />
-              <div className="wn-ptr wn-ptr-l"><svg viewBox="0 0 14 20"><path d="M0 10 L14 0 L14 20Z" fill="var(--gold)" stroke="var(--gold-d)" strokeWidth="1" /><path d="M0 10 L14 0 L14 10Z" fill="rgba(255,255,255,.15)" /></svg></div>
-              <div className="wn-ptr wn-ptr-r"><svg viewBox="0 0 14 20"><path d="M14 10 L0 0 L0 20Z" fill="var(--gold)" stroke="var(--gold-d)" strokeWidth="1" /><path d="M14 10 L0 0 L0 10Z" fill="rgba(255,255,255,.15)" /></svg></div>
+              <div className="wn-ptr wn-ptr-l"><svg viewBox="0 0 14 20"><path d="M0 10 L14 0 L14 20Z" fill="var(--gold)" stroke="var(--gold-d)" strokeWidth="1" /><path d="M0 10 L14 0 L14 10Z" fill="color-mix(in oklab, var(--text-primary) 15%, transparent)" /></svg></div>
+              <div className="wn-ptr wn-ptr-r"><svg viewBox="0 0 14 20"><path d="M14 10 L0 0 L0 20Z" fill="var(--gold)" stroke="var(--gold-d)" strokeWidth="1" /><path d="M14 10 L0 0 L0 10Z" fill="color-mix(in oklab, var(--text-primary) 15%, transparent)" /></svg></div>
             </div>
           </div>
         </div>
@@ -1155,7 +1156,7 @@ export default function WheelOfNorns() {
                 type="button"
                 className="wn-btn"
                 onClick={() => navigate('/field/academy')}
-                style={{ background: 'linear-gradient(135deg, var(--gold-dim), var(--gold))', color: 'var(--text-on-gold)', boxShadow: '0 6px 0 #7a5a12, 0 8px 25px rgba(240,200,80,.28)' }}
+                style={{ background: 'linear-gradient(135deg, var(--gold-dim), var(--gold))', color: 'var(--text-on-gold)', boxShadow: '0 6px 0 #7a5a12, 0 8px 25px color-mix(in oklab, var(--value) 28%, transparent)' }}
               >
                 📖 Пройти урок{blockedByLesson.title ? `: ${blockedByLesson.title}` : ''} →
               </button>

@@ -6,7 +6,7 @@ import { ArrowLeft, Trophy, Flame, Zap, Sword, Shield, Users, Star } from 'lucid
 /* ═══ CSS keyframes injected once ═══ */
 const CSS = `
 @keyframes lb-fire { 0%,100%{transform:translateY(0) scale(1);opacity:.9} 50%{transform:translateY(-8px) scale(1.2);opacity:.5} }
-@keyframes lb-gold-pulse { 0%,100%{box-shadow:0 0 12px rgba(212,168,67,.4),0 0 24px rgba(212,168,67,.15)} 50%{box-shadow:0 0 22px rgba(212,168,67,.75),0 0 44px rgba(212,168,67,.3)} }
+@keyframes lb-gold-pulse { 0%,100%{box-shadow:0 0 12px color-mix(in oklab, var(--value) 40%, transparent),0 0 24px color-mix(in oklab, var(--value) 15%, transparent)} 50%{box-shadow:0 0 22px color-mix(in oklab, var(--value) 75%, transparent),0 0 44px color-mix(in oklab, var(--value) 30%, transparent)} }
 @keyframes lb-silver-shimmer { 0%{background-position:-200% center} 100%{background-position:200% center} }
 @keytml lb-slide-up { from{transform:translateY(20px);opacity:0} to{transform:translateY(0);opacity:1} }
 @keyframes lb-slide-up { from{transform:translateY(20px);opacity:0} to{transform:translateY(0);opacity:1} }
@@ -14,7 +14,7 @@ const CSS = `
 @keyframes lb-count-pop { 0%{transform:scale(1)} 50%{transform:scale(1.18)} 100%{transform:scale(1)} }
 @keyframes lb-row-in { from{transform:translateX(-16px);opacity:0} to{transform:translateX(0);opacity:1} }
 @keyframes lb-bracket-draw { from{stroke-dashoffset:200} to{stroke-dashoffset:0} }
-@keyframes lb-champion-glow { 0%,100%{text-shadow:0 0 8px #FFD700,0 0 16px #FFD700} 50%{text-shadow:0 0 20px #FFD700,0 0 40px #fbbf24} }
+@keyframes lb-champion-glow { 0%,100%{text-shadow:0 0 8px var(--value),0 0 16px var(--value)} 50%{text-shadow:0 0 20px var(--value),0 0 40px var(--value)} }
 @keyframes lb-ping { 0%{transform:scale(1);opacity:.8} 100%{transform:scale(2.2);opacity:0} }
 `;
 
@@ -51,7 +51,7 @@ function FireParticles() {
           width: i % 2 === 0 ? 5 : 4,
           height: i % 2 === 0 ? 5 : 4,
           borderRadius: '50%',
-          background: ['#FFD700','#FF8C00','#FF4500','#FFD700','#FF6B00','#FFD700','#FF4500'][i],
+          background: ['var(--value)','#FF8C00','#FF4500','var(--value)','#FF6B00','var(--value)','#FF4500'][i],
           animation: `lb-fire ${0.7 + i * 0.15}s ease-in-out infinite`,
           animationDelay: `${i * 0.12}s`,
           opacity: 0.85,
@@ -63,17 +63,17 @@ function FireParticles() {
 
 /* ═══ Rank badge ═══ */
 const RANK_COLORS = {
-  'Трэль':     '#9ca3af',
-  'Карл':      '#a78bfa',
-  'Хускарл':   '#60a5fa',
-  'Дружинник': '#34d399',
-  'Витязь':    '#f97316',
-  'Ярл':       '#D4A843',
-  'Конунг':    '#ef4444',
+  'Трэль':     'var(--text-secondary)',
+  'Карл':      'var(--acc)',
+  'Хускарл':   'var(--acc)',
+  'Дружинник': 'var(--ok)',
+  'Витязь':    'var(--value)',
+  'Ярл':       'var(--value)',
+  'Конунг':    'var(--danger)',
 };
 
 function RankBadge({ title, icon, small }) {
-  const c = RANK_COLORS[title] || '#9ca3af';
+  const c = RANK_COLORS[title] || 'var(--text-secondary)';
   return (
     <span style={{
       fontSize: small ? 9 : 10,
@@ -96,7 +96,7 @@ function AvatarCircle({ fio, rank, size = 44, active_avatar }) {
   const parts = (fio || '').trim().split(' ').filter(Boolean);
   const initials = parts.map(w => w[0] || '').join('').slice(0, 2).toUpperCase();
   const isTop = rank <= 3;
-  const COLORS = { 1: '#FFD700', 2: '#C0C0C0', 3: '#CD7F32' };
+  const COLORS = { 1: 'var(--value)', 2: 'var(--text-secondary)', 3: 'var(--value)' };
   const c = COLORS[rank] || null;
   return (
     <div style={{
@@ -104,7 +104,7 @@ function AvatarCircle({ fio, rank, size = 44, active_avatar }) {
       display: 'flex', alignItems: 'center', justifyContent: 'center',
       fontSize: size * 0.32, fontWeight: 800,
       background: c ? `linear-gradient(135deg, ${c}, ${c}aa)` : 'linear-gradient(135deg, #1e1e3a, #2a2a4a)',
-      color: c ? '#000' : '#9ca3af',
+      color: c ? 'var(--bg-primary)' : 'var(--text-secondary)',
       border: c ? `2px solid ${c}` : '1px solid #2a2a4a',
       boxShadow: isTop ? `0 0 12px ${c}66` : 'none',
       position: 'relative',
@@ -118,15 +118,15 @@ function AvatarCircle({ fio, rank, size = 44, active_avatar }) {
 function XpBar({ xp }) {
   const pct = Math.min(100, ((parseInt(xp) || 0) % 100));
   return (
-    <div style={{ width: '100%', height: 3, borderRadius: 4, background: 'rgba(255,255,255,0.07)', marginTop: 3 }}>
-      <div style={{ width: `${pct}%`, height: '100%', borderRadius: 4, background: 'linear-gradient(90deg,#7c3aed,#a855f7)', transition: 'width 1s ease' }} />
+    <div style={{ width: '100%', height: 3, borderRadius: 4, background: 'color-mix(in oklab, var(--text-primary) 7%, transparent)', marginTop: 3 }}>
+      <div style={{ width: `${pct}%`, height: '100%', borderRadius: 4, background: 'linear-gradient(90deg,var(--acc),var(--acc))', transition: 'width 1s ease' }} />
     </div>
   );
 }
 
 /* ═══ Podium card ═══ */
 function PodiumCard({ player, rank, isSelf, countersActive, onOpen }) {
-  const COLORS = { 1: '#FFD700', 2: '#C0C0C0', 3: '#CD7F32' };
+  const COLORS = { 1: 'var(--value)', 2: 'var(--text-secondary)', 3: 'var(--value)' };
   const c = COLORS[rank];
   const height = rank === 1 ? 130 : rank === 2 ? 108 : 95;
   const power = useCountUp(player?.warrior_power, 1200, countersActive);
@@ -160,13 +160,13 @@ function PodiumCard({ player, rank, isSelf, countersActive, onOpen }) {
 
       <div style={{
         width: '100%', borderRadius: 12, padding: '8px 6px',
-        background: isSelf ? 'rgba(212,168,67,0.18)' : `${c}18`,
+        background: isSelf ? 'color-mix(in oklab, var(--value) 18%, transparent)' : `${c}18`,
         border: `1.5px solid ${c}55`,
         boxShadow: rank === 1 ? undefined : undefined,
         animation: rank === 1 ? 'lb-gold-pulse 2.5s ease-in-out infinite' : 'none',
         textAlign: 'center',
       }}>
-        <p style={{ fontSize: 11, fontWeight: 700, color: isSelf ? '#D4A843' : '#e2e8f0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+        <p style={{ fontSize: 11, fontWeight: 700, color: isSelf ? 'var(--value)' : 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
           {firstName}
         </p>
         <p style={{ fontSize: 13, fontWeight: 800, color: c, marginTop: 2 }}>
@@ -202,9 +202,9 @@ function PlayerRow({ player, isSelf, idx, visible, onOpen }) {
       style={{
       display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px',
       borderRadius: 14,
-      backgroundColor: isSelf ? 'rgba(212,168,67,0.1)' : isTop3 ? `rgba(255,255,255,0.04)` : 'rgba(255,255,255,0.025)',
-      border: isSelf ? '1.5px solid #D4A84388' : isTop3 ? '1px solid rgba(255,255,255,0.08)' : '1px solid rgba(255,255,255,0.05)',
-      boxShadow: isSelf ? '0 0 14px rgba(212,168,67,0.2)' : 'none',
+      backgroundColor: isSelf ? 'color-mix(in oklab, var(--value) 10%, transparent)' : isTop3 ? `color-mix(in oklab, var(--text-primary) 4%, transparent)` : 'color-mix(in oklab, var(--text-primary) 3%, transparent)',
+      border: isSelf ? '1.5px solid #D4A84388' : isTop3 ? '1px solid color-mix(in oklab, var(--text-primary) 8%, transparent)' : '1px solid color-mix(in oklab, var(--text-primary) 5%, transparent)',
+      boxShadow: isSelf ? '0 0 14px color-mix(in oklab, var(--value) 20%, transparent)' : 'none',
       animation: visible ? `lb-row-in 0.35s ease both` : 'none',
       animationDelay: `${idx * 0.04}s`,
       position: 'relative',
@@ -213,14 +213,14 @@ function PlayerRow({ player, isSelf, idx, visible, onOpen }) {
     }}>
       {/* Left ping for self */}
       {isSelf && (
-        <div style={{ position: 'absolute', left: 0, top: '50%', transform: 'translateY(-50%)', width: 3, height: '60%', background: '#D4A843', borderRadius: '0 3px 3px 0' }} />
+        <div style={{ position: 'absolute', left: 0, top: '50%', transform: 'translateY(-50%)', width: 3, height: '60%', background: 'var(--value)', borderRadius: '0 3px 3px 0' }} />
       )}
 
       {/* Rank number */}
       <div style={{ width: 28, textAlign: 'center', flexShrink: 0 }}>
         {isTop3
           ? <span style={{ fontSize: 18 }}>{MEDAL[rank]}</span>
-          : <span style={{ fontSize: 12, fontWeight: 700, color: '#8E8E93' }}>#{rank}</span>
+          : <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-secondary)' }}>#{rank}</span>
         }
       </div>
 
@@ -229,35 +229,35 @@ function PlayerRow({ player, isSelf, idx, visible, onOpen }) {
       {/* Name + rank + xp bar */}
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-          <span style={{ fontSize: 13, fontWeight: 700, color: isSelf ? '#D4A843' : '#e2e8f0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 90 }}>
+          <span style={{ fontSize: 13, fontWeight: 700, color: isSelf ? 'var(--value)' : 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 90 }}>
             {(player.fio || '').split(' ').slice(0, 2).join(' ')}
           </span>
           {player.title_icon && player.title_id !== 'recruit' && (
             <span style={{ fontSize: 11, padding: '1px 6px', borderRadius: 8, fontWeight: 700,
-              backgroundColor: (player.title_color || '#6b7280') + '20',
-              color: player.title_color || '#6b7280' }}>
+              backgroundColor: (player.title_color || 'var(--text-tertiary)') + '20',
+              color: player.title_color || 'var(--text-tertiary)' }}>
               {player.title_icon} {player.title_name}
             </span>
           )}
           <RankBadge title={rt.title} icon={rt.icon} small />
         </div>
         <div style={{ display: 'flex', gap: 8, marginTop: 2, flexWrap: 'wrap' }}>
-          <span style={{ fontSize: 10, color: '#8E8E93' }}>Ур.{player.level}</span>
-          <span style={{ fontSize: 10, color: '#8E8E93' }}>📅 {player.total_shifts} смен</span>
-          {player.streak > 0 && <span style={{ fontSize: 10, color: '#f97316' }}>🔥 {player.streak}</span>}
+          <span style={{ fontSize: 10, color: 'var(--text-secondary)' }}>Ур.{player.level}</span>
+          <span style={{ fontSize: 10, color: 'var(--text-secondary)' }}>📅 {player.total_shifts} смен</span>
+          {player.streak > 0 && <span style={{ fontSize: 10, color: 'var(--value)' }}>🔥 {player.streak}</span>}
         </div>
         <XpBar xp={player.xp} />
       </div>
 
       {/* Stats */}
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 3, flexShrink: 0 }}>
-        <span style={{ fontSize: 14, fontWeight: 800, color: '#f97316' }}>
+        <span style={{ fontSize: 14, fontWeight: 800, color: 'var(--value)' }}>
           {parseInt(player.warrior_power || 0).toLocaleString('ru-RU')} <span style={{ fontSize: 10, opacity: 0.7 }}>⚔️</span>
         </span>
-        <span style={{ fontSize: 11, fontWeight: 600, color: '#D4A843' }}>
+        <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--value)' }}>
           {parseInt(player.earned_runes || 0).toLocaleString('ru-RU')} <span style={{ fontSize: 9, opacity: 0.7 }}>ᚱ</span>
         </span>
-        <span style={{ fontSize: 8, color: '#8E8E93', marginTop: -2 }}>заработано</span>
+        <span style={{ fontSize: 8, color: 'var(--text-secondary)', marginTop: -2 }}>заработано</span>
       </div>
     </div>
   );
@@ -270,21 +270,21 @@ function MatchCard({ match, myId, small }) {
 
   function PlayerLine({ p, isWinner }) {
     if (!p) return (
-      <div style={{ padding: '5px 8px', color: '#4b5563', fontSize: 11, fontStyle: 'italic' }}>TBD</div>
+      <div style={{ padding: '5px 8px', color: 'var(--text-tertiary)', fontSize: 11, fontStyle: 'italic' }}>TBD</div>
     );
     const isMe = p.employee_id === myId;
     return (
       <div style={{
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
         padding: '5px 8px', gap: 6,
-        backgroundColor: isWinner ? 'rgba(212,168,67,0.12)' : 'transparent',
-        borderLeft: isWinner ? '2px solid #D4A843' : '2px solid transparent',
+        backgroundColor: isWinner ? 'color-mix(in oklab, var(--value) 12%, transparent)' : 'transparent',
+        borderLeft: isWinner ? '2px solid var(--value)' : '2px solid transparent',
         borderRadius: isWinner ? '0 6px 6px 0' : 0,
       }}>
-        <span style={{ fontSize: small ? 10 : 11, fontWeight: isMe ? 800 : 600, color: isWinner ? '#D4A843' : '#9ca3af', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 70 }}>
+        <span style={{ fontSize: small ? 10 : 11, fontWeight: isMe ? 800 : 600, color: isWinner ? 'var(--value)' : 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 70 }}>
           {isMe ? '⚡' : ''}{p.name}
         </span>
-        <span style={{ fontSize: small ? 9 : 10, color: isWinner ? '#f97316' : '#8E8E93', fontWeight: 700, flexShrink: 0 }}>
+        <span style={{ fontSize: small ? 9 : 10, color: isWinner ? 'var(--value)' : 'var(--text-secondary)', fontWeight: 700, flexShrink: 0 }}>
           {(parseInt(p.warrior_power)||0).toLocaleString('ru-RU')}⚔️
         </span>
       </div>
@@ -293,12 +293,12 @@ function MatchCard({ match, myId, small }) {
 
   return (
     <div style={{
-      border: '1px solid rgba(255,255,255,0.08)', borderRadius: 8, overflow: 'hidden',
-      backgroundColor: 'rgba(255,255,255,0.03)',
+      border: '1px solid color-mix(in oklab, var(--text-primary) 8%, transparent)', borderRadius: 8, overflow: 'hidden',
+      backgroundColor: 'color-mix(in oklab, var(--text-primary) 3%, transparent)',
       minWidth: small ? 100 : 120,
     }}>
       <PlayerLine p={p1} isWinner={winner_id === p1?.employee_id} />
-      <div style={{ height: 1, backgroundColor: 'rgba(255,255,255,0.06)' }} />
+      <div style={{ height: 1, backgroundColor: 'color-mix(in oklab, var(--text-primary) 6%, transparent)' }} />
       <PlayerLine p={p2} isWinner={winner_id === p2?.employee_id} />
     </div>
   );
@@ -322,16 +322,16 @@ function TournamentBracket({ tournament, myId }) {
     <div>
       {/* Header */}
       <div style={{ textAlign: 'center', marginBottom: 12 }}>
-        <div style={{ fontSize: 16, fontWeight: 800, color: '#D4A843', animation: 'lb-champion-glow 3s ease-in-out infinite' }}>
+        <div style={{ fontSize: 16, fontWeight: 800, color: 'var(--value)', animation: 'lb-champion-glow 3s ease-in-out infinite' }}>
           ⚔️ Битва за Вальхаллу
         </div>
         {weekLabel && (
-          <div style={{ fontSize: 11, color: '#8E8E93', marginTop: 2 }}>
+          <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 2 }}>
             {weekLabel} · {status === 'completed' ? '✅ Завершён' : '🔥 Идёт'}
           </div>
         )}
         {champion && (
-          <div style={{ marginTop: 6, fontSize: 12, color: '#D4A843', fontWeight: 700 }}>
+          <div style={{ marginTop: 6, fontSize: 12, color: 'var(--value)', fontWeight: 700 }}>
             👑 {status === 'completed' ? 'Чемпион' : 'Лидирует'}: {champion.name} ({(parseInt(champion.warrior_power)||0).toLocaleString('ru-RU')} ⚔️)
           </div>
         )}
@@ -342,7 +342,7 @@ function TournamentBracket({ tournament, myId }) {
         <div style={{ display: 'flex', gap: 0, minWidth: 'max-content' }}>
           {rounds.map((round, ri) => (
             <div key={ri} style={{ display: 'flex', flexDirection: 'column' }}>
-              <div style={{ textAlign: 'center', fontSize: 9, fontWeight: 700, color: '#8E8E93', padding: '0 8px', marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+              <div style={{ textAlign: 'center', fontSize: 9, fontWeight: 700, color: 'var(--text-secondary)', padding: '0 8px', marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.5 }}>
                 {ROUND_LABELS[ri]}
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-around', flex: 1, gap: 4, padding: '0 4px' }}>
@@ -360,7 +360,7 @@ function TournamentBracket({ tournament, myId }) {
         </div>
       </div>
 
-      <p style={{ fontSize: 10, color: '#4b5563', textAlign: 'center', marginTop: 8 }}>
+      <p style={{ fontSize: 10, color: 'var(--text-tertiary)', textAlign: 'center', marginTop: 8 }}>
         Победитель каждого матча — по Силе Воина ⚔️ за текущую неделю
       </p>
     </div>
@@ -375,22 +375,22 @@ function MyBanner({ me, total }) {
   return (
     <div style={{
       padding: '10px 14px', borderRadius: 14, marginBottom: 8,
-      background: 'linear-gradient(135deg, rgba(212,168,67,0.14), rgba(212,168,67,0.06))',
+      background: 'linear-gradient(135deg, color-mix(in oklab, var(--value) 14%, transparent), color-mix(in oklab, var(--value) 6%, transparent))',
       border: '1.5px solid #D4A84388',
-      boxShadow: '0 0 16px rgba(212,168,67,0.15)',
+      boxShadow: '0 0 16px color-mix(in oklab, var(--value) 15%, transparent)',
       display: 'flex', alignItems: 'center', gap: 12,
     }}>
       <div style={{ fontSize: 22, lineHeight: 1 }}>⚡</div>
       <div style={{ flex: 1 }}>
-        <div style={{ fontSize: 12, color: '#D4A843', fontWeight: 700 }}>Ваша позиция</div>
-        <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 1 }}>
+        <div style={{ fontSize: 12, color: 'var(--value)', fontWeight: 700 }}>Ваша позиция</div>
+        <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 1 }}>
           #{rank} из {total} · {me.rank_title?.icon} {me.rank_title?.title} · {me.total_shifts} смен
         </div>
       </div>
       <div style={{ textAlign: 'right' }}>
-        <div style={{ fontSize: 15, fontWeight: 800, color: '#f97316' }}>{parseInt(me.warrior_power || 0).toLocaleString('ru-RU')} ⚔️</div>
-        <div style={{ fontSize: 11, color: '#D4A843' }}>{parseInt(me.earned_runes || 0).toLocaleString('ru-RU')} ᚱ заработано</div>
-        <div style={{ fontSize: 10, color: '#9ca3af' }}>{parseInt(me.runes || 0).toLocaleString('ru-RU')} ᚱ в кошельке</div>
+        <div style={{ fontSize: 15, fontWeight: 800, color: 'var(--value)' }}>{parseInt(me.warrior_power || 0).toLocaleString('ru-RU')} ⚔️</div>
+        <div style={{ fontSize: 11, color: 'var(--value)' }}>{parseInt(me.earned_runes || 0).toLocaleString('ru-RU')} ᚱ заработано</div>
+        <div style={{ fontSize: 10, color: 'var(--text-secondary)' }}>{parseInt(me.runes || 0).toLocaleString('ru-RU')} ᚱ в кошельке</div>
       </div>
     </div>
   );
@@ -402,7 +402,7 @@ function Skeleton() {
     <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
       {[130, 100, 82, 82, 82, 82, 82].map((h, i) => (
         <div key={i} style={{
-          height: h, borderRadius: 14, backgroundColor: 'rgba(255,255,255,0.04)',
+          height: h, borderRadius: 14, backgroundColor: 'color-mix(in oklab, var(--text-primary) 4%, transparent)',
           animation: 'pulse 1.5s ease-in-out infinite',
           animationDelay: `${i * 0.1}s`,
         }} />
@@ -422,27 +422,27 @@ function PipelineRow({ player, isSelf, idx, visible }) {
     <div style={{
       display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px',
       borderRadius: 14,
-      backgroundColor: isSelf ? 'rgba(56,189,248,0.1)' : isTop3 ? 'rgba(255,255,255,0.04)' : 'rgba(255,255,255,0.025)',
-      border: isSelf ? '1.5px solid rgba(56,189,248,0.5)' : '1px solid rgba(255,255,255,0.05)',
+      backgroundColor: isSelf ? 'color-mix(in oklab, var(--acc) 10%, transparent)' : isTop3 ? 'color-mix(in oklab, var(--text-primary) 4%, transparent)' : 'color-mix(in oklab, var(--text-primary) 3%, transparent)',
+      border: isSelf ? '1.5px solid color-mix(in oklab, var(--acc) 50%, transparent)' : '1px solid color-mix(in oklab, var(--text-primary) 5%, transparent)',
       animation: visible ? `lb-row-in 0.35s ease both` : 'none',
       animationDelay: `${idx * 0.04}s`,
     }}>
       <div style={{ width: 28, textAlign: 'center', flexShrink: 0 }}>
-        {isTop3 ? <span style={{ fontSize: 18 }}>{MEDAL[rank]}</span> : <span style={{ fontSize: 12, fontWeight: 700, color: '#8E8E93' }}>#{rank}</span>}
+        {isTop3 ? <span style={{ fontSize: 18 }}>{MEDAL[rank]}</span> : <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-secondary)' }}>#{rank}</span>}
       </div>
       <AvatarCircle fio={player.fio} rank={rank} size={40} />
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontSize: 13, fontWeight: 700, color: isSelf ? '#38bdf8' : '#e2e8f0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+        <div style={{ fontSize: 13, fontWeight: 700, color: isSelf ? 'var(--acc)' : 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
           {firstName}
         </div>
         <div style={{ display: 'flex', gap: 8, marginTop: 2, flexWrap: 'wrap' }}>
-          <span style={{ fontSize: 10, color: '#8E8E93' }}>Макс ур. {player.max_level}</span>
-          {player.current_streak > 0 && <span style={{ fontSize: 10, color: '#f97316' }}>🔥 {player.current_streak}</span>}
+          <span style={{ fontSize: 10, color: 'var(--text-secondary)' }}>Макс ур. {player.max_level}</span>
+          {player.current_streak > 0 && <span style={{ fontSize: 10, color: 'var(--value)' }}>🔥 {player.current_streak}</span>}
         </div>
       </div>
       <div style={{ textAlign: 'right', flexShrink: 0 }}>
-        <div style={{ fontSize: 14, fontWeight: 800, color: '#D4A843' }}>⭐ {player.weekly_stars}</div>
-        <div style={{ fontSize: 10, color: '#8E8E93' }}>всего ⭐{player.total_stars}</div>
+        <div style={{ fontSize: 14, fontWeight: 800, color: 'var(--value)' }}>⭐ {player.weekly_stars}</div>
+        <div style={{ fontSize: 10, color: 'var(--text-secondary)' }}>всего ⭐{player.total_stars}</div>
       </div>
     </div>
   );
@@ -520,17 +520,17 @@ export default function FieldLeaderboard() {
       <div style={{
         position: 'sticky', top: 0, zIndex: 20, padding: '14px 16px 10px',
         paddingTop: 'max(env(safe-area-inset-top), 14px)',
-        background: 'linear-gradient(180deg, #080d1f 70%, rgba(8,13,31,0))',
-        borderBottom: '1px solid rgba(255,255,255,0.06)',
+        background: 'linear-gradient(180deg, var(--bg-primary) 70%, rgba(8,13,31,0))',
+        borderBottom: '1px solid color-mix(in oklab, var(--text-primary) 6%, transparent)',
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }}>
-          <button onClick={() => navigate('/field/achievements')} style={{ background: 'rgba(255,255,255,0.06)', border: 'none', borderRadius: 10, padding: 8, cursor: 'pointer', display: 'flex' }}>
-            <ArrowLeft size={20} color="#9ca3af" />
+          <button onClick={() => navigate('/field/achievements')} style={{ background: 'color-mix(in oklab, var(--text-primary) 6%, transparent)', border: 'none', borderRadius: 10, padding: 8, cursor: 'pointer', display: 'flex' }}>
+            <ArrowLeft size={20} color="var(--text-secondary)" />
           </button>
-          <Trophy size={22} color="#D4A843" />
+          <Trophy size={22} color="var(--value)" />
           <div style={{ flex: 1 }}>
-            <div style={{ fontSize: 16, fontWeight: 800, color: '#e2e8f0' }}>Зал Одина</div>
-            <div style={{ fontSize: 10, color: '#8E8E93' }}>
+            <div style={{ fontSize: 16, fontWeight: 800, color: 'var(--text-primary)' }}>Зал Одина</div>
+            <div style={{ fontSize: 10, color: 'var(--text-secondary)' }}>
               {totalWorkers} воинов · {totalRunes.toLocaleString('ru-RU')} ᚱ выдано суммарно
             </div>
           </div>
@@ -540,16 +540,16 @@ export default function FieldLeaderboard() {
         {/* Tab selector */}
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
           {[
-            { key: 'rating', label: '⚔️ Рейтинг', color: '#D4A843' },
-            { key: 'pipeline', label: '🌊 Трубы', color: '#38bdf8' },
-            { key: 'chemlab', label: '🧪 Химцех', color: '#e8a838' },
-            { key: 'tournament', label: '🏆 Турнир', color: '#D4A843' },
+            { key: 'rating', label: '⚔️ Рейтинг', color: 'var(--value)' },
+            { key: 'pipeline', label: '🌊 Трубы', color: 'var(--acc)' },
+            { key: 'chemlab', label: '🧪 Химцех', color: 'var(--value)' },
+            { key: 'tournament', label: '🏆 Турнир', color: 'var(--value)' },
           ].map(t => (
             <button key={t.key} onClick={() => setTab(t.key)} style={{
               flex: '1 1 40%', padding: '8px 0', borderRadius: 12, fontSize: 11, fontWeight: 700,
               border: 'none', cursor: 'pointer', transition: 'all .2s',
-              backgroundColor: tab === t.key ? t.color : 'rgba(255,255,255,0.06)',
-              color: tab === t.key ? '#000' : '#9ca3af',
+              backgroundColor: tab === t.key ? t.color : 'color-mix(in oklab, var(--text-primary) 6%, transparent)',
+              color: tab === t.key ? 'var(--bg-primary)' : 'var(--text-secondary)',
             }}>
               {t.label}
             </button>
@@ -560,7 +560,7 @@ export default function FieldLeaderboard() {
       <div style={{ padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 10 }}>
 
         {error && (
-          <div style={{ padding: 12, borderRadius: 12, background: 'rgba(239,68,68,0.1)', color: '#ef4444', fontSize: 13 }}>{error}</div>
+          <div style={{ padding: 12, borderRadius: 12, background: 'color-mix(in oklab, var(--danger) 10%, transparent)', color: 'var(--danger)', fontSize: 13 }}>{error}</div>
         )}
 
         {loading ? <Skeleton /> : (
@@ -571,20 +571,20 @@ export default function FieldLeaderboard() {
               {pipelineMyRank && (
                 <div style={{
                   padding: '10px 14px', borderRadius: 14, marginBottom: 8,
-                  background: 'linear-gradient(135deg, rgba(56,189,248,0.14), rgba(56,189,248,0.06))',
-                  border: '1.5px solid rgba(56,189,248,0.4)',
+                  background: 'linear-gradient(135deg, color-mix(in oklab, var(--acc) 14%, transparent), color-mix(in oklab, var(--acc) 6%, transparent))',
+                  border: '1.5px solid color-mix(in oklab, var(--acc) 40%, transparent)',
                   display: 'flex', alignItems: 'center', gap: 12,
                 }}>
                   <div style={{ fontSize: 22 }}>🌊</div>
                   <div style={{ flex: 1 }}>
-                    <div style={{ fontSize: 12, color: '#38bdf8', fontWeight: 700 }}>Ваша позиция в Рунопроводе</div>
-                    <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 1 }}>
+                    <div style={{ fontSize: 12, color: 'var(--acc)', fontWeight: 700 }}>Ваша позиция в Рунопроводе</div>
+                    <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 1 }}>
                       #{pipelineMyRank} · сортировка по ⭐ за неделю
                     </div>
                   </div>
                   <button onClick={() => navigate('/field/pipeline')} style={{
                     padding: '8px 12px', borderRadius: 10, border: 'none', cursor: 'pointer',
-                    background: '#38bdf8', color: '#000', fontSize: 11, fontWeight: 800,
+                    background: 'var(--acc)', color: 'var(--bg-primary)', fontSize: 11, fontWeight: 800,
                   }}>
                     Играть
                   </button>
@@ -593,17 +593,17 @@ export default function FieldLeaderboard() {
               {pipelineBoard.length === 0 ? (
                 <div style={{ textAlign: 'center', padding: 48 }}>
                   <span style={{ fontSize: 40 }}>🌊</span>
-                  <p style={{ color: '#8E8E93', marginTop: 10 }}>Пока никто не прошёл уровни</p>
+                  <p style={{ color: 'var(--text-secondary)', marginTop: 10 }}>Пока никто не прошёл уровни</p>
                   <button onClick={() => navigate('/field/pipeline')} style={{
                     marginTop: 12, padding: '10px 20px', borderRadius: 12, border: 'none',
-                    background: '#38bdf8', color: '#000', fontWeight: 800, cursor: 'pointer',
+                    background: 'var(--acc)', color: 'var(--bg-primary)', fontWeight: 800, cursor: 'pointer',
                   }}>
                     Быть первым!
                   </button>
                 </div>
               ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                  <p style={{ fontSize: 10, color: '#8E8E93', textAlign: 'center', marginBottom: 4 }}>
+                  <p style={{ fontSize: 10, color: 'var(--text-secondary)', textAlign: 'center', marginBottom: 4 }}>
                     Недельный рейтинг · ⭐ звёзды за прохождения
                   </p>
                   {pipelineBoard.map((player, idx) => (
@@ -618,20 +618,20 @@ export default function FieldLeaderboard() {
               {chemlabMyRank && (
                 <div style={{
                   padding: '10px 14px', borderRadius: 14, marginBottom: 8,
-                  background: 'linear-gradient(135deg, rgba(232,168,56,0.16), rgba(232,168,56,0.06))',
-                  border: '1.5px solid rgba(232,168,56,0.45)',
+                  background: 'linear-gradient(135deg, color-mix(in oklab, var(--danger) 16%, transparent), color-mix(in oklab, var(--danger) 6%, transparent))',
+                  border: '1.5px solid color-mix(in oklab, var(--danger) 45%, transparent)',
                   display: 'flex', alignItems: 'center', gap: 12,
                 }}>
                   <div style={{ fontSize: 22 }}>🧪</div>
                   <div style={{ flex: 1 }}>
-                    <div style={{ fontSize: 12, color: '#e8a838', fontWeight: 700 }}>Ваша позиция в Химцехе</div>
-                    <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 1 }}>
+                    <div style={{ fontSize: 12, color: 'var(--value)', fontWeight: 700 }}>Ваша позиция в Химцехе</div>
+                    <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 1 }}>
                       #{chemlabMyRank} · сортировка по ⭐ за неделю
                     </div>
                   </div>
                   <button onClick={() => navigate('/field/chemlab')} style={{
                     padding: '8px 12px', borderRadius: 10, border: 'none', cursor: 'pointer',
-                    background: '#e8a838', color: '#000', fontSize: 11, fontWeight: 800,
+                    background: 'var(--value)', color: 'var(--bg-primary)', fontSize: 11, fontWeight: 800,
                   }}>
                     Играть
                   </button>
@@ -640,17 +640,17 @@ export default function FieldLeaderboard() {
               {chemlabBoard.length === 0 ? (
                 <div style={{ textAlign: 'center', padding: 48 }}>
                   <span style={{ fontSize: 40 }}>🧪</span>
-                  <p style={{ color: '#8E8E93', marginTop: 10 }}>Пока никто не закрыл наряды</p>
+                  <p style={{ color: 'var(--text-secondary)', marginTop: 10 }}>Пока никто не закрыл наряды</p>
                   <button onClick={() => navigate('/field/chemlab')} style={{
                     marginTop: 12, padding: '10px 20px', borderRadius: 12, border: 'none',
-                    background: '#e8a838', color: '#000', fontWeight: 800, cursor: 'pointer',
+                    background: 'var(--value)', color: 'var(--bg-primary)', fontWeight: 800, cursor: 'pointer',
                   }}>
                     Быть первым!
                   </button>
                 </div>
               ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                  <p style={{ fontSize: 10, color: '#8E8E93', textAlign: 'center', marginBottom: 4 }}>
+                  <p style={{ fontSize: 10, color: 'var(--text-secondary)', textAlign: 'center', marginBottom: 4 }}>
                     Недельный рейтинг Химцеха · ⭐ за наряды
                   </p>
                   {chemlabBoard.map((player, idx) => (
@@ -662,12 +662,12 @@ export default function FieldLeaderboard() {
           ) : tab === 'tournament' ? (
             /* ══════════ TOURNAMENT TAB ══════════ */
             <div style={{
-              background: 'rgba(255,255,255,0.03)', borderRadius: 16, padding: 14,
-              border: '1px solid rgba(255,255,255,0.08)',
+              background: 'color-mix(in oklab, var(--text-primary) 3%, transparent)', borderRadius: 16, padding: 14,
+              border: '1px solid color-mix(in oklab, var(--text-primary) 8%, transparent)',
             }}>
               {tournament
                 ? <TournamentBracket tournament={tournament} myId={myId} />
-                : <div style={{ textAlign: 'center', color: '#8E8E93', padding: 40 }}>Недостаточно данных для турнира</div>
+                : <div style={{ textAlign: 'center', color: 'var(--text-secondary)', padding: 40 }}>Недостаточно данных для турнира</div>
               }
             </div>
           ) : (
@@ -679,15 +679,15 @@ export default function FieldLeaderboard() {
               {/* ── Podium top-3 ── */}
               {sorted.length >= 3 && (
                 <div style={{
-                  background: 'linear-gradient(180deg, rgba(212,168,67,0.06) 0%, rgba(255,255,255,0.025) 100%)',
-                  borderRadius: 18, padding: '20px 12px 0', border: '1px solid rgba(212,168,67,0.15)',
+                  background: 'linear-gradient(180deg, color-mix(in oklab, var(--value) 6%, transparent) 0%, color-mix(in oklab, var(--text-primary) 3%, transparent) 100%)',
+                  borderRadius: 18, padding: '20px 12px 0', border: '1px solid color-mix(in oklab, var(--value) 15%, transparent)',
                   position: 'relative', overflow: 'hidden',
                 }}>
                   {/* Rune watermark */}
-                  <div style={{ position: 'absolute', top: 8, left: '50%', transform: 'translateX(-50%)', fontSize: 9, letterSpacing: 4, color: 'rgba(212,168,67,0.15)', fontWeight: 700 }}>
+                  <div style={{ position: 'absolute', top: 8, left: '50%', transform: 'translateX(-50%)', fontSize: 9, letterSpacing: 4, color: 'color-mix(in oklab, var(--value) 15%, transparent)', fontWeight: 700 }}>
                     ᚠ ᚢ ᚦ ᚨ ᚱ ᚲ ᚷ ᚹ
                   </div>
-                  <div style={{ fontSize: 10, fontWeight: 700, color: 'rgba(212,168,67,0.5)', textAlign: 'center', marginBottom: 12, letterSpacing: 2 }}>
+                  <div style={{ fontSize: 10, fontWeight: 700, color: 'color-mix(in oklab, var(--value) 50%, transparent)', textAlign: 'center', marginBottom: 12, letterSpacing: 2 }}>
                     — ВАЛГАЛЛА —
                   </div>
                   <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8, justifyContent: 'center' }}>
@@ -701,15 +701,15 @@ export default function FieldLeaderboard() {
               {/* ── Sort pills ── */}
               <div style={{ display: 'flex', gap: 6 }}>
                 {[
-                  { key: 'power',  label: '⚔️ Сила',  color: '#f97316' },
-                  { key: 'runes',  label: 'ᚱ Заработано',   color: '#D4A843' },
-                  { key: 'shifts', label: '📅 Смены', color: '#60a5fa' },
+                  { key: 'power',  label: '⚔️ Сила',  color: 'var(--value)' },
+                  { key: 'runes',  label: 'ᚱ Заработано',   color: 'var(--value)' },
+                  { key: 'shifts', label: '📅 Смены', color: 'var(--acc)' },
                 ].map(s => (
                   <button key={s.key} onClick={() => setSortBy(s.key)} style={{
                     flex: 1, padding: '6px 0', borderRadius: 10, fontSize: 11, fontWeight: 700,
-                    border: `1px solid ${sortBy === s.key ? s.color + '88' : 'rgba(255,255,255,0.08)'}`,
-                    backgroundColor: sortBy === s.key ? `${s.color}22` : 'rgba(255,255,255,0.03)',
-                    color: sortBy === s.key ? s.color : '#8E8E93',
+                    border: `1px solid ${sortBy === s.key ? s.color + '88' : 'color-mix(in oklab, var(--text-primary) 8%, transparent)'}`,
+                    backgroundColor: sortBy === s.key ? `${s.color}22` : 'color-mix(in oklab, var(--text-primary) 3%, transparent)',
+                    color: sortBy === s.key ? s.color : 'var(--text-secondary)',
                     cursor: 'pointer', transition: 'all .2s',
                   }}>
                     {s.label}
@@ -721,7 +721,7 @@ export default function FieldLeaderboard() {
               {sorted.length === 0 ? (
                 <div style={{ textAlign: 'center', padding: 48 }}>
                   <Users size={40} color="#374151" style={{ margin: '0 auto 10px' }} />
-                  <p style={{ color: '#8E8E93' }}>Пока нет данных</p>
+                  <p style={{ color: 'var(--text-secondary)' }}>Пока нет данных</p>
                 </div>
               ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
@@ -738,9 +738,9 @@ export default function FieldLeaderboard() {
                   {!myInList && myRank && (
                     <>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0' }}>
-                        <div style={{ flex: 1, height: 1, backgroundColor: 'rgba(255,255,255,0.06)' }} />
-                        <span style={{ fontSize: 10, color: '#4b5563' }}>ваша позиция</span>
-                        <div style={{ flex: 1, height: 1, backgroundColor: 'rgba(255,255,255,0.06)' }} />
+                        <div style={{ flex: 1, height: 1, backgroundColor: 'color-mix(in oklab, var(--text-primary) 6%, transparent)' }} />
+                        <span style={{ fontSize: 10, color: 'var(--text-tertiary)' }}>ваша позиция</span>
+                        <div style={{ flex: 1, height: 1, backgroundColor: 'color-mix(in oklab, var(--text-primary) 6%, transparent)' }} />
                       </div>
                       <PlayerRow player={myRank} isSelf idx={999} visible={rowsVisible} onOpen={openHall} />
                     </>

@@ -16,8 +16,8 @@ const STAGE_ICONS = {
   waiting: '🟡', warehouse: '🟠', day_off: '⚪', object: '🟢',
 };
 const STAGE_COLORS = {
-  medical: '#9333EA', travel: '#3B82F6', ship: '#0EA5E9', helicopter: '#06B6D4',
-  training: '#A855F7', waiting: '#F59E0B', warehouse: '#F97316', day_off: '#9CA3AF', object: '#22C55E',
+  medical: 'var(--acc)', travel: 'var(--acc)', ship: 'var(--acc)', helicopter: 'var(--acc)',
+  training: 'var(--acc)', waiting: 'var(--value)', warehouse: 'var(--value)', day_off: 'var(--text-secondary)', object: 'var(--ok)',
 };
 
 // V255: 'ship' — медицинский scope (ставит ТО/HEAD_TO). В мобильном поле мастер сам
@@ -118,7 +118,7 @@ export default function FieldCrewStages() {
         <h1 className="text-lg font-bold" style={{ color: 'var(--text-primary)' }}>Маршруты бригады</h1>
       </div>
 
-      {error && <div className="p-3 rounded-lg text-sm" style={{ backgroundColor: 'rgba(239,68,68,0.1)', color: '#ef4444' }}>{error}</div>}
+      {error && <div className="p-3 rounded-lg text-sm" style={{ backgroundColor: 'color-mix(in oklab, var(--danger) 10%, transparent)', color: 'var(--danger)' }}>{error}</div>}
 
       {/* Search */}
       <div className="relative">
@@ -135,7 +135,7 @@ export default function FieldCrewStages() {
             className="px-3 py-1.5 rounded-full text-xs font-medium"
             style={{
               backgroundColor: filter === f.val ? 'var(--gold)' : 'var(--bg-elevated)',
-              color: filter === f.val ? '#000' : 'var(--text-secondary)',
+              color: filter === f.val ? 'var(--bg-primary)' : 'var(--text-secondary)',
               border: '1px solid var(--border-norse)',
             }}>{f.label}</button>
         ))}
@@ -177,7 +177,7 @@ export default function FieldCrewStages() {
 
       {/* On-behalf bottom sheet */}
       {showOnBehalf && (
-        <div className="fixed inset-0 z-50 flex items-end justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.5)' }} onClick={() => setShowOnBehalf(null)}>
+        <div className="fixed inset-0 z-50 flex items-end justify-center" style={{ backgroundColor: 'color-mix(in oklab, var(--bg-primary) 50%, transparent)' }} onClick={() => setShowOnBehalf(null)}>
           <div className="w-full max-w-md rounded-t-2xl p-5 space-y-3" style={{ backgroundColor: 'var(--bg-primary)' }} onClick={e => e.stopPropagation()}>
             <h2 className="text-base font-bold" style={{ color: 'var(--text-primary)' }}>Начать этап</h2>
             <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>Отметить за {showOnBehalf.fio}</p>
@@ -207,7 +207,7 @@ export default function FieldCrewStages() {
 
       {/* Correction bottom sheet */}
       {showCorrection && (
-        <div className="fixed inset-0 z-50 flex items-end justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.5)' }} onClick={() => setShowCorrection(false)}>
+        <div className="fixed inset-0 z-50 flex items-end justify-center" style={{ backgroundColor: 'color-mix(in oklab, var(--bg-primary) 50%, transparent)' }} onClick={() => setShowCorrection(false)}>
           <div className="w-full max-w-md rounded-t-2xl p-5 space-y-3" style={{ backgroundColor: 'var(--bg-primary)' }} onClick={e => e.stopPropagation()}>
             <h2 className="text-base font-bold" style={{ color: 'var(--text-primary)' }}>Запрос корректировки</h2>
             <select value={corrStageId} onChange={e => setCorrStageId(e.target.value)}
@@ -223,7 +223,7 @@ export default function FieldCrewStages() {
               style={{ backgroundColor: 'var(--bg-elevated)', border: '1px solid var(--border-norse)', color: 'var(--text-primary)' }} />
             <button onClick={submitCorrection} disabled={submitting || !corrStageId || !corrNote.trim()}
               className="w-full py-3 rounded-xl text-sm font-semibold text-white disabled:opacity-50"
-              style={{ background: 'linear-gradient(135deg, var(--gold), #b8860b)' }}>Отправить</button>
+              style={{ background: 'linear-gradient(135deg, var(--gold), var(--value))' }}>Отправить</button>
           </div>
         </div>
       )}

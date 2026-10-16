@@ -1,211 +1,176 @@
 /* ═══════════════════════════════════════════════════════════════
-   ASGARD Field Auth — Norse Epic Login
+   ASGARD Field Auth (Фаза 4) — на дизайн-токенах.
+   Было: палитра --fa-*, Cinzel, звёзды, руны, gold-градиенты.
+   Стало: токены темы (работает и в тёмной, и в светлой), без декора-шума.
+   Имена классов сохранены — JSX экранов входа не меняется.
    ═══════════════════════════════════════════════════════════════ */
 
-:root {
-  --fa-bg-deep: #050814;
-  --fa-bg-dark: #0a0f1e;
-  --fa-gold: #D4A843;
-  --fa-gold-bright: #F5D070;
-  --fa-gold-dim: #8B7030;
-  --fa-rune-color: rgba(212, 168, 67, 0.12);
-}
-
-/* ─── Welcome Screen ─────────────────────────────────────────── */
-.fa-welcome {
+/* ─── Каркас экрана входа ─────────────────────────────────────── */
+.fa-welcome,
+.fa-login {
   min-height: 100vh;
   min-height: 100dvh;
-  background: linear-gradient(170deg, var(--fa-bg-dark) 0%, var(--fa-bg-deep) 60%, #000 100%);
+  background: var(--bg-primary);
   display: flex;
   flex-direction: column;
-  align-items: center;
-  justify-content: center;
   position: relative;
   overflow: hidden;
-  padding: 40px 24px;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-family: inherit;
 }
+.fa-welcome {
+  align-items: center;
+  justify-content: center;
+  padding: calc(var(--safe-top) + 32px) 24px calc(var(--safe-bottom) + 32px);
+}
+.fa-login { padding: 0 24px; }
 
-/* ─── Stars ───────────────────────────────────────────────────── */
-.fa-stars { position: absolute; inset: 0; pointer-events: none; z-index: 0; }
-.fa-star {
+/* Мягкое свечение фона — один слой, без звёздного поля */
+.fa-welcome::before,
+.fa-login::before {
+  content: '';
   position: absolute;
-  background: var(--fa-gold-bright);
-  border-radius: 50%;
-  animation: fa-twinkle 3s ease-in-out infinite;
-}
-@keyframes fa-twinkle {
-  0%, 100% { opacity: 0.15; transform: scale(0.8); }
-  50% { opacity: 0.8; transform: scale(1.2); }
+  inset: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(70% 45% at 50% 0%, color-mix(in oklab, var(--acc) 16%, transparent), transparent 70%),
+    radial-gradient(60% 40% at 50% 100%, color-mix(in oklab, var(--gold) 10%, transparent), transparent 72%);
 }
 
-/* ─── Corner Runes ────────────────────────────────────────────── */
-.fa-rune {
-  position: absolute;
-  font-size: 36px;
-  color: var(--fa-rune-color);
-  z-index: 0;
-  animation: fa-rune-glow 4s ease-in-out infinite;
-  user-select: none;
-}
-.fa-rune-tl { top: 24px; left: 20px; }
-.fa-rune-tr { top: 24px; right: 20px; animation-delay: 1s; }
-.fa-rune-bl { bottom: 24px; left: 20px; animation-delay: 2s; }
-.fa-rune-br { bottom: 24px; right: 20px; animation-delay: 3s; }
-@keyframes fa-rune-glow {
-  0%, 100% { opacity: 0.1; text-shadow: none; }
-  50% { opacity: 0.25; text-shadow: 0 0 12px rgba(212,168,67,0.3); }
-}
+/* Звёзды/руны выключены (старая система). Если разметка осталась — прячем. */
+.fa-stars,
+.fa-star,
+.fa-rune { display: none !important; }
 
-/* ─── Logo ────────────────────────────────────────────────────── */
+/* ─── Логотип ─────────────────────────────────────────────────── */
 .fa-logo {
-  animation: fa-breathe 3s ease-in-out infinite;
-  filter: drop-shadow(0 0 20px rgba(212,168,67,0.25));
+  position: relative;
+  z-index: 1;
+  filter: drop-shadow(0 8px 24px color-mix(in oklab, var(--acc) 35%, transparent));
+  animation: fa-breathe 4s ease-in-out infinite;
 }
 @keyframes fa-breathe {
-  0%, 100% { transform: scale(1); filter: drop-shadow(0 0 20px rgba(212,168,67,0.25)); }
-  50% { transform: scale(1.03); filter: drop-shadow(0 0 30px rgba(212,168,67,0.4)); }
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.02); }
 }
 
-/* ─── Content ─────────────────────────────────────────────────── */
+/* ─── Контент ─────────────────────────────────────────────────── */
 .fa-welcome-content {
   position: relative;
   z-index: 1;
   text-align: center;
   opacity: 0;
-  transform: translateY(20px) scale(0.95);
-  transition: opacity 0.6s ease, transform 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+  transform: translateY(16px);
+  transition: opacity .5s var(--ease-smooth-out), transform .5s var(--ease-smooth-out);
 }
-.fa-welcome-content.fa-visible {
-  opacity: 1;
-  transform: translateY(0) scale(1);
-}
+.fa-welcome-content.fa-visible { opacity: 1; transform: none; }
 
 .fa-title {
-  font-family: 'Cinzel', 'Times New Roman', serif;
-  font-size: 48px;
-  font-weight: 700;
-  color: var(--fa-gold);
-  letter-spacing: 8px;
+  font-family: inherit;
+  font-size: 34px;
+  font-weight: 850;
+  color: var(--text-primary);
+  letter-spacing: -.02em;
   margin: 16px 0 4px;
-  text-shadow: 0 2px 20px rgba(212,168,67,0.3);
 }
-
 .fa-subtitle {
-  font-size: 18px;
-  color: var(--fa-gold-dim);
-  letter-spacing: 3px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--gold);
+  letter-spacing: .18em;
   text-transform: uppercase;
-  margin: 0 0 32px;
+  margin: 0 0 26px;
 }
-
 .fa-quote {
   font-style: italic;
-  font-size: 16px;
-  color: rgba(255,255,255,0.5);
+  font-size: 14.5px;
+  color: var(--text-secondary);
   max-width: 280px;
+  margin: 0 auto;
   line-height: 1.6;
   min-height: 52px;
 }
+.fa-cursor { animation: fa-blink .9s step-end infinite; color: var(--acc); font-style: normal; }
+@keyframes fa-blink { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
 
-.fa-cursor {
-  animation: fa-blink 0.8s step-end infinite;
-  color: var(--fa-gold);
-  font-style: normal;
-}
-@keyframes fa-blink {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0; }
-}
-
-/* ─── Bottom section ──────────────────────────────────────────── */
 .fa-welcome-bottom {
   position: relative;
   z-index: 1;
   width: 100%;
-  max-width: 320px;
-  margin-top: 40px;
+  max-width: 330px;
+  margin-top: 32px;
   opacity: 0;
-  transform: translateY(30px);
-  transition: opacity 0.5s ease, transform 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+  transform: translateY(20px);
+  transition: opacity .45s var(--ease-smooth-out), transform .45s var(--ease-smooth-out);
 }
-.fa-welcome-bottom.fa-visible {
-  opacity: 1;
-  transform: translateY(0);
-}
+.fa-welcome-bottom.fa-visible { opacity: 1; transform: none; }
 
-/* ─── Gold Button ─────────────────────────────────────────────── */
+/* ─── Кнопка (физическая «клавиша», как в дизайн-системе) ─────── */
 .fa-btn-gold {
   width: 100%;
-  padding: 16px 24px;
+  min-height: 54px;
+  padding: 0 22px;
   border: none;
-  border-radius: 14px;
-  background: linear-gradient(135deg, var(--fa-gold), var(--fa-gold-dim));
-  color: var(--fa-bg-deep);
-  font-size: 18px;
-  font-weight: 700;
-  font-family: 'Cinzel', serif;
-  letter-spacing: 1px;
+  border-radius: var(--btn-r);
   cursor: pointer;
-  position: relative;
-  overflow: hidden;
-  animation: fa-btn-pulse 2s ease-in-out infinite;
+  font-family: inherit;
+  font-size: 16px;
+  font-weight: 850;
+  color: #fff;
+  background: linear-gradient(in oklab 150deg, var(--acc), var(--acc-deep));
+  box-shadow:
+    0 5px 0 color-mix(in oklab, var(--acc-deep) 70%, #000),
+    0 12px 22px -6px color-mix(in oklab, var(--acc) 55%, transparent),
+    inset 0 1px 0 rgba(255, 255, 255, .5);
+  transition: transform .08s ease, box-shadow .08s ease;
   -webkit-tap-highlight-color: transparent;
 }
 .fa-btn-gold:active {
-  transform: scale(0.97);
-  filter: brightness(0.9);
+  transform: translateY(4px);
+  box-shadow:
+    0 1px 0 color-mix(in oklab, var(--acc-deep) 70%, #000),
+    0 4px 10px -4px color-mix(in oklab, var(--acc) 55%, transparent),
+    inset 0 1px 0 rgba(255, 255, 255, .4);
 }
-@keyframes fa-btn-pulse {
-  0%, 100% { box-shadow: 0 0 20px rgba(212,168,67,0.2), 0 4px 16px rgba(0,0,0,0.4); }
-  50% { box-shadow: 0 0 35px rgba(212,168,67,0.4), 0 4px 20px rgba(0,0,0,0.5); }
-}
+.fa-btn-gold:disabled { opacity: .45; box-shadow: none; transform: none; cursor: default; }
 
 .fa-footer {
   text-align: center;
   font-size: 12px;
-  color: rgba(255,255,255,0.2);
-  margin-top: 20px;
-  letter-spacing: 1px;
+  color: var(--text-tertiary);
+  margin-top: 18px;
 }
 
-/* ─── Login Screen (shared) ───────────────────────────────────── */
-.fa-login {
-  min-height: 100vh;
-  min-height: 100dvh;
-  background: linear-gradient(170deg, var(--fa-bg-dark) 0%, var(--fa-bg-deep) 60%, #000 100%);
-  display: flex;
-  flex-direction: column;
-  position: relative;
-  overflow: hidden;
-  padding: 0 24px;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-}
-
+/* ─── Шапка экрана входа ─────────────────────────────────────── */
 .fa-login-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 16px 0;
+  gap: 8px;
+  padding: calc(var(--safe-top) + 10px) 0 10px;
   position: relative;
   z-index: 1;
 }
-
 .fa-back-btn {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  margin-left: -10px;
   background: none;
   border: none;
-  color: var(--fa-gold);
-  font-size: 24px;
+  border-radius: 999px;
+  color: var(--text-primary);
+  font-size: 22px;
   cursor: pointer;
-  padding: 8px;
   -webkit-tap-highlight-color: transparent;
 }
-
+.fa-back-btn:active { background: color-mix(in oklab, var(--text-tertiary) 18%, transparent); }
 .fa-mini-logo {
-  font-family: 'Cinzel', serif;
-  font-size: 16px;
-  color: var(--fa-gold-dim);
-  letter-spacing: 3px;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--gold);
+  letter-spacing: .16em;
 }
 
 .fa-login-body {
@@ -216,107 +181,88 @@
   justify-content: center;
   position: relative;
   z-index: 1;
-  padding-bottom: 60px;
+  padding-bottom: calc(var(--safe-bottom) + 40px);
 }
-
 .fa-heading {
-  font-family: 'Cinzel', serif;
-  font-size: 28px;
-  font-weight: 700;
-  color: var(--fa-gold);
+  font-family: inherit;
+  font-size: 24px;
+  font-weight: 850;
+  color: var(--text-primary);
+  letter-spacing: -.02em;
   text-align: center;
-  margin-bottom: 8px;
-  line-height: 1.3;
+  margin: 0 0 8px;
+  line-height: 1.25;
 }
-
 .fa-desc {
-  font-size: 16px;
-  color: rgba(255,255,255,0.45);
+  font-size: 14px;
+  color: var(--text-secondary);
   text-align: center;
-  margin-bottom: 32px;
+  margin: 0 0 28px;
 }
 
-/* ─── Phone Input ─────────────────────────────────────────────── */
-.fa-phone-wrap {
-  width: 100%;
-  max-width: 320px;
-  position: relative;
-}
-
+/* ─── Поле телефона ──────────────────────────────────────────── */
+.fa-phone-wrap { width: 100%; max-width: 330px; position: relative; }
 .fa-phone-prefix {
   position: absolute;
   left: 16px;
   top: 50%;
   transform: translateY(-50%);
-  font-size: 20px;
-  font-weight: 700;
-  color: var(--fa-gold);
+  font-size: 18px;
+  font-weight: 750;
+  color: var(--text-secondary);
   pointer-events: none;
 }
-
 .fa-phone-input {
   width: 100%;
-  padding: 16px 16px 16px 50px;
-  background: rgba(255,255,255,0.04);
-  border: 1.5px solid rgba(212,168,67,0.2);
-  border-radius: 12px;
-  color: #fff;
-  font-size: 20px;
+  min-height: 56px;
+  padding: 0 16px 0 48px;
+  background: var(--bg-surface);
+  border: 1.5px solid var(--border-norse);
+  border-radius: 14px;
+  color: var(--text-primary);
+  font-size: 18px;
   font-family: inherit;
-  letter-spacing: 1px;
+  letter-spacing: .04em;
   outline: none;
-  transition: border-color 0.3s, box-shadow 0.3s;
+  transition: border-color .2s ease, box-shadow .2s ease;
   -webkit-appearance: none;
 }
 .fa-phone-input:focus {
-  border-color: var(--fa-gold);
-  box-shadow: 0 0 0 3px rgba(212,168,67,0.1), 0 0 20px rgba(212,168,67,0.1);
+  border-color: var(--acc);
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--acc) 18%, transparent);
 }
-.fa-phone-input::placeholder { color: rgba(255,255,255,0.2); }
+.fa-phone-input::placeholder { color: var(--text-tertiary); }
 
-/* ─── OTP Boxes ───────────────────────────────────────────────── */
-.fa-otp-wrap {
-  display: flex;
-  gap: 12px;
-  justify-content: center;
-  margin-bottom: 24px;
-}
-
+/* ─── OTP ────────────────────────────────────────────────────── */
+.fa-otp-wrap { display: flex; gap: 10px; justify-content: center; margin-bottom: 22px; }
 .fa-otp-box {
-  width: 60px;
-  height: 60px;
-  background: rgba(255,255,255,0.04);
-  border: 1.5px solid rgba(212,168,67,0.2);
-  border-radius: 12px;
-  color: var(--fa-gold);
-  font-family: 'Cinzel', serif;
-  font-size: 28px;
-  font-weight: 700;
+  width: 56px;
+  height: 56px;
+  background: var(--bg-surface);
+  border: 1.5px solid var(--border-norse);
+  border-radius: 14px;
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: 24px;
+  font-weight: 800;
   text-align: center;
   outline: none;
-  transition: border-color 0.3s, box-shadow 0.3s, background 0.3s;
+  transition: border-color .2s ease, box-shadow .2s ease;
   -webkit-appearance: none;
 }
 .fa-otp-box:focus {
-  border-color: var(--fa-gold);
-  box-shadow: 0 0 0 3px rgba(212,168,67,0.1);
-  background: rgba(212,168,67,0.05);
+  border-color: var(--acc);
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--acc) 18%, transparent);
 }
-
 .fa-otp-box.fa-otp-success {
-  border-color: var(--fa-gold-bright);
-  box-shadow: 0 0 20px rgba(212,168,67,0.4);
-  background: rgba(212,168,67,0.1);
+  border-color: var(--ok);
+  background: color-mix(in oklab, var(--ok) 12%, var(--bg-surface));
 }
 
-/* ─── Countdown ───────────────────────────────────────────────── */
-.fa-countdown {
-  font-size: 14px;
-  color: rgba(255,255,255,0.3);
-  text-align: center;
-}
+/* ─── Таймер ─────────────────────────────────────────────────── */
+.fa-countdown { font-size: 13px; color: var(--text-tertiary); text-align: center; }
 .fa-countdown-link {
-  color: var(--fa-gold);
+  color: var(--acc);
   cursor: pointer;
   background: none;
   border: none;
@@ -324,89 +270,81 @@
   padding: 0;
 }
 
-/* ─── Success animation ──────────────────────────────────────── */
+/* ─── Успех ──────────────────────────────────────────────────── */
 .fa-success-overlay {
   position: fixed;
   inset: 0;
-  background: var(--fa-bg-deep);
+  background: var(--bg-primary);
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   z-index: 100;
-  animation: fa-success-in 0.4s ease;
+  animation: fa-fade-in .3s ease;
 }
-@keyframes fa-success-in {
-  from { opacity: 0; }
-  to { opacity: 1; }
-}
-
+@keyframes fa-fade-in { from { opacity: 0; } to { opacity: 1; } }
 .fa-success-rune {
-  font-size: 72px;
-  color: var(--fa-gold);
-  animation: fa-rune-appear 0.6s cubic-bezier(0.16, 1, 0.3, 1);
-  text-shadow: 0 0 40px rgba(212,168,67,0.5);
+  font-size: 0;
+  width: 72px;
+  height: 72px;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  background: color-mix(in oklab, var(--ok) 16%, transparent);
+  color: var(--ok);
+  animation: fa-pop .5s var(--ease-spring) both;
 }
-@keyframes fa-rune-appear {
-  0% { transform: scale(0.3); opacity: 0; }
-  60% { transform: scale(1.3); }
+@keyframes fa-pop {
+  0% { transform: scale(.4); opacity: 0; }
+  62% { transform: scale(1.12); }
   100% { transform: scale(1); opacity: 1; }
 }
-
 .fa-success-text {
-  font-family: 'Cinzel', serif;
-  font-size: 24px;
-  color: var(--fa-gold);
+  font-family: inherit;
+  font-size: 20px;
+  font-weight: 850;
+  color: var(--text-primary);
   margin-top: 16px;
-  animation: fa-fade-up 0.5s ease 0.3s both;
+  animation: fa-fade-up .45s ease .2s both;
 }
 @keyframes fa-fade-up {
-  from { opacity: 0; transform: translateY(12px); }
-  to { opacity: 1; transform: translateY(0); }
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: none; }
 }
-
 .fa-success-name {
-  font-size: 16px;
-  color: rgba(255,255,255,0.4);
-  margin-top: 8px;
-  animation: fa-fade-up 0.5s ease 0.5s both;
+  font-size: 14px;
+  color: var(--text-secondary);
+  margin-top: 6px;
+  animation: fa-fade-up .45s ease .35s both;
 }
 
-/* ─── Loading ─────────────────────────────────────────────────── */
+/* ─── Загрузка / ошибка ──────────────────────────────────────── */
 .fa-loading-text {
-  font-size: 14px;
-  color: var(--fa-gold-dim);
+  font-size: 13px;
+  color: var(--text-tertiary);
   text-align: center;
   margin-top: 12px;
-  animation: fa-twinkle 1.5s ease-in-out infinite;
+  animation: fa-blink 1.6s ease-in-out infinite;
 }
-
-/* ─── Error ───────────────────────────────────────────────────── */
 .fa-error {
-  color: #e24b4a;
-  font-size: 14px;
+  color: var(--danger-ink);
+  font-size: 13.5px;
   text-align: center;
   margin-top: 12px;
-  animation: fa-shake 0.4s ease;
+  animation: fa-shake .35s ease;
 }
 @keyframes fa-shake {
   0%, 100% { transform: translateX(0); }
-  25% { transform: translateX(-6px); }
-  75% { transform: translateX(6px); }
+  25% { transform: translateX(-5px); }
+  75% { transform: translateX(5px); }
 }
 
-/* ─── Button Disabled ─────────────────────────────────────────── */
-.fa-btn-gold:disabled {
-  opacity: 0.4;
-  cursor: default;
-  animation: none;
-}
-
-/* ─── Transition ──────────────────────────────────────────────── */
-.fa-slide-in {
-  animation: fa-slide-in 0.3s ease;
-}
+.fa-slide-in { animation: fa-slide-in .28s ease; }
 @keyframes fa-slide-in {
-  from { opacity: 0; transform: translateX(40px); }
-  to { opacity: 1; transform: translateX(0); }
+  from { opacity: 0; transform: translateX(32px); }
+  to { opacity: 1; transform: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fa-logo, .fa-cursor, .fa-loading-text { animation: none; }
 }

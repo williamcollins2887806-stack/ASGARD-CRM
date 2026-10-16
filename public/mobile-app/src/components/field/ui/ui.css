@@ -1,0 +1,327 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   ASGARD Field — дизайн-система (Фаза 2). Только токены из index.css.
+   ЗАКОН: цвет = значение. accent=действие, value=заработано, danger=опасность,
+   status=только статус. Нет смысла — нейтраль.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ── Card ─────────────────────────────────────────────────────────────────── */
+.ui-card {
+  border-radius: var(--r-card);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-norse);
+  padding: 16px;
+}
+.ui-card--raised { box-shadow: var(--elevation-2); }
+.ui-card--flat { box-shadow: none; }
+.ui-card--nested {
+  background: var(--bg-surface-alt);
+  border-color: transparent;
+  box-shadow: none;
+}
+/* Тонированные карточки — цвет по смыслу, тинт 10-12% */
+.ui-card--accent { background: color-mix(in oklab, var(--acc) 9%, var(--bg-surface)); border-color: color-mix(in oklab, var(--acc) 30%, transparent); }
+.ui-card--value  { background: color-mix(in oklab, var(--value) 11%, var(--bg-surface)); border-color: color-mix(in oklab, var(--value) 32%, transparent); }
+.ui-card--danger { background: color-mix(in oklab, var(--danger) 9%, var(--bg-surface)); border-color: color-mix(in oklab, var(--danger) 30%, transparent); }
+.ui-card--status { background: color-mix(in oklab, var(--ok) 9%, var(--bg-surface)); border-color: color-mix(in oklab, var(--ok) 30%, transparent); }
+
+/* ── IconTile: один объёмный материал + 4 состояния ───────────────────────── */
+.ui-tile {
+  position: relative;
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  overflow: hidden;
+  border-radius: var(--r-tile);
+  color: var(--ink-icon);
+  background: linear-gradient(180deg, var(--tile-hi) 0%, var(--tile-bg) 46%, var(--tile-lo) 100%);
+  border: 1px solid var(--tile-brd);
+  box-shadow:
+    inset 0 1px 0 var(--tile-bevel),
+    inset 0 -2px 4px var(--tile-edge),
+    0 6px 14px -10px var(--tile-shadow);
+}
+.ui-tile::before {
+  content: '';
+  position: absolute;
+  left: 9%; right: 9%; top: 6%; height: 34%;
+  border-radius: 999px;
+  background: linear-gradient(rgba(255, 255, 255, var(--gloss)), transparent);
+  pointer-events: none;
+}
+.ui-tile > svg { position: relative; z-index: 1; }
+.ui-tile--circle { border-radius: 999px; }
+.ui-tile--accent { color: var(--acc);        background: color-mix(in oklab, var(--acc) 12%, var(--tile-bg)); }
+.ui-tile--value  { color: var(--value-ink);  background: color-mix(in oklab, var(--value) 15%, var(--tile-bg)); }
+.ui-tile--danger { color: var(--danger-ink); background: color-mix(in oklab, var(--danger) 12%, var(--tile-bg)); }
+.ui-tile--status { color: var(--ok);         background: color-mix(in oklab, var(--ok) 12%, var(--tile-bg)); }
+
+/* ── KeyButton: физическая «клавиша» ─────────────────────────────────────── */
+.ui-key {
+  appearance: none;
+  border: 0;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-weight: 800;
+  border-radius: var(--btn-r);
+  color: #fff;
+  transition: transform .08s ease, box-shadow .08s ease, filter .15s ease;
+  background: linear-gradient(in oklab 150deg, var(--acc), var(--acc-deep));
+  --edge: color-mix(in oklab, var(--acc-deep) 70%, #000);
+  --glow: color-mix(in oklab, var(--acc) 55%, transparent);
+  box-shadow:
+    0 5px 0 var(--edge),
+    0 12px 22px -6px var(--glow),
+    inset 0 1px 0 rgba(255, 255, 255, .5),
+    inset 0 -2px 3px rgba(0, 0, 0, .2);
+}
+.ui-key:active {
+  transform: translateY(4px);
+  box-shadow:
+    0 1px 0 var(--edge),
+    0 4px 10px -4px var(--glow),
+    inset 0 1px 0 rgba(255, 255, 255, .4);
+}
+.ui-key--value {
+  color: #2A1E03;
+  background: linear-gradient(in oklab 150deg, #FFE9A8, var(--value) 54%, #B8892B);
+  --edge: #6E4E0A;
+  --glow: color-mix(in oklab, var(--value) 55%, transparent);
+}
+.ui-key--danger {
+  background: linear-gradient(in oklab 150deg, #FF7A7A, var(--danger) 46%, #B0243A);
+  --edge: #7C1526;
+  --glow: color-mix(in oklab, var(--danger) 55%, transparent);
+}
+.ui-key--neutral {
+  color: var(--text-primary);
+  background: var(--bg-elevated);
+  --edge: color-mix(in oklab, #000 40%, var(--bg-elevated));
+  --glow: rgba(0, 0, 0, .28);
+  box-shadow:
+    0 4px 0 var(--edge), 0 10px 18px -8px var(--glow),
+    inset 0 1px 0 rgba(255, 255, 255, .14);
+}
+.ui-key--ghost {
+  color: var(--acc);
+  background: transparent;
+  box-shadow: none;
+  --edge: transparent; --glow: transparent;
+}
+.ui-key--ghost:active { transform: scale(.97); box-shadow: none; }
+.ui-key--sm { min-height: 38px; padding: 0 14px; font-size: 13px; border-radius: 11px; }
+.ui-key--md { min-height: 48px; padding: 0 18px; font-size: 15px; }
+.ui-key--lg { min-height: 54px; padding: 0 22px; font-size: 16px; }
+.ui-key--block { width: 100%; }
+
+/* ── SectionLabel ────────────────────────────────────────────────────────── */
+.ui-section {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 2px 4px;
+  font-size: 12px;
+  font-weight: 850;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+}
+.ui-section__action {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--acc);
+  background: none;
+  border: 0;
+  cursor: pointer;
+  padding: 4px 2px;
+}
+
+/* ── AppBar: шапка с чёлкой ──────────────────────────────────────────────── */
+.ui-appbar {
+  width: 100%;
+  background: var(--bg-primary);
+  padding-top: var(--safe-top);
+}
+.ui-appbar--plain { background: transparent; }
+.ui-appbar--sticky {
+  position: sticky; top: 0; z-index: var(--z-sticky);
+  background: color-mix(in oklab, var(--bg-primary) 88%, transparent);
+  -webkit-backdrop-filter: blur(14px) saturate(1.5);
+  backdrop-filter: blur(14px) saturate(1.5);
+  border-bottom: 1px solid var(--border-norse);
+}
+.ui-appbar__row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 52px;
+  padding: 6px 12px;
+}
+.ui-appbar__back {
+  display: grid; place-items: center;
+  width: 44px; height: 44px; margin-left: -8px;
+  border: 0; border-radius: 999px;
+  background: transparent; color: var(--text-primary);
+  cursor: pointer;
+}
+.ui-appbar__back:active { background: color-mix(in oklab, var(--text-tertiary) 18%, transparent); }
+.ui-appbar__titles { flex: 1; min-width: 0; }
+.ui-appbar__title {
+  margin: 0;
+  font-size: 19px;
+  font-weight: 850;
+  letter-spacing: -.02em;
+  color: var(--text-primary);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.ui-appbar__sub {
+  margin: 2px 0 0;
+  font-size: 12.5px;
+  color: var(--text-tertiary);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.ui-appbar__right { display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
+
+/* ── BottomBar: нижняя панель с safe-area ───────────────────────────────── */
+.ui-bottombar {
+  position: sticky;
+  bottom: 0;
+  z-index: var(--z-sticky);
+  padding: 12px 16px calc(var(--safe-bottom) + 12px);
+  background: color-mix(in oklab, var(--bg-primary) 92%, transparent);
+  -webkit-backdrop-filter: blur(14px) saturate(1.5);
+  backdrop-filter: blur(14px) saturate(1.5);
+  border-top: 1px solid var(--border-norse);
+}
+
+/* ── Banner ──────────────────────────────────────────────────────────────── */
+.ui-banner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 15px;
+  border-radius: var(--r-card);
+  background: color-mix(in oklab, var(--acc) 10%, var(--bg-surface));
+  border: 1px solid color-mix(in oklab, var(--acc) 28%, transparent);
+}
+.ui-banner--neutral { background: var(--bg-surface); border-color: var(--border-norse); }
+.ui-banner--value   { background: color-mix(in oklab, var(--value) 12%, var(--bg-surface)); border-color: color-mix(in oklab, var(--value) 30%, transparent); }
+.ui-banner--danger  { background: color-mix(in oklab, var(--danger) 10%, var(--bg-surface)); border-color: color-mix(in oklab, var(--danger) 30%, transparent); }
+.ui-banner--status  { background: color-mix(in oklab, var(--ok) 10%, var(--bg-surface)); border-color: color-mix(in oklab, var(--ok) 30%, transparent); }
+.ui-banner__icon {
+  display: grid; place-items: center;
+  width: 40px; height: 40px; flex-shrink: 0;
+  border-radius: 13px;
+  background: color-mix(in oklab, var(--acc) 18%, transparent);
+  color: var(--acc);
+}
+.ui-banner--value .ui-banner__icon  { background: color-mix(in oklab, var(--value) 18%, transparent); color: var(--value); }
+.ui-banner--danger .ui-banner__icon { background: color-mix(in oklab, var(--danger) 18%, transparent); color: var(--danger); }
+.ui-banner--status .ui-banner__icon { background: color-mix(in oklab, var(--ok) 18%, transparent); color: var(--ok); }
+.ui-banner__body { flex: 1; min-width: 0; }
+.ui-banner__title { margin: 0; font-size: 14.5px; font-weight: 800; color: var(--text-primary); }
+.ui-banner__text { margin: 3px 0 0; font-size: 12.5px; color: var(--text-secondary); }
+.ui-banner__action {
+  flex-shrink: 0;
+  padding: 9px 14px;
+  border: 0; border-radius: 11px;
+  font-size: 12.5px; font-weight: 800;
+  background: var(--acc); color: #fff; cursor: pointer;
+}
+.ui-banner__x {
+  display: grid; place-items: center;
+  width: 30px; height: 30px; flex-shrink: 0;
+  border: 0; border-radius: 999px;
+  background: color-mix(in oklab, var(--text-tertiary) 16%, transparent);
+  color: var(--text-secondary); cursor: pointer;
+}
+
+/* ── ListRow ─────────────────────────────────────────────────────────────── */
+.ui-row {
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  width: 100%;
+  padding: 12px 14px;
+  text-align: left;
+  background: var(--bg-surface);
+  border: 0;
+  border-bottom: 1px solid var(--border-norse);
+  color: var(--text-primary);
+}
+.ui-row:last-child { border-bottom: 0; }
+.ui-row--tap { cursor: pointer; }
+.ui-row--tap:active { background: var(--bg-surface-alt); }
+.ui-row__body { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.ui-row__title { font-size: 14.5px; font-weight: 700; }
+.ui-row__sub { font-size: 12.5px; color: var(--text-tertiary); margin-top: 2px; }
+.ui-row__value { font-size: 14px; font-weight: 750; color: var(--text-secondary); flex-shrink: 0; }
+.ui-row__chev { color: var(--text-tertiary); flex-shrink: 0; }
+
+/* ── Segmented ───────────────────────────────────────────────────────────── */
+.ui-seg {
+  display: flex;
+  gap: 4px;
+  padding: 4px;
+  border-radius: 13px;
+  background: var(--bg-surface-alt);
+  border: 1px solid var(--border-norse);
+}
+.ui-seg__item {
+  flex: 1;
+  min-height: 36px;
+  border: 0; border-radius: 10px;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 13px; font-weight: 700;
+  cursor: pointer;
+  transition: background .15s ease, color .15s ease;
+}
+.ui-seg__item.is-active {
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+  box-shadow: var(--elevation-1);
+}
+
+/* ── Chip ────────────────────────────────────────────────────────────────── */
+.ui-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 13px;
+  border-radius: 999px;
+  font-size: 12.5px;
+  font-weight: 650;
+  color: var(--text-secondary);
+  background: var(--bg-surface-alt);
+  border: 1px solid var(--border-norse);
+  cursor: pointer;
+}
+.ui-chip.is-active { color: var(--text-primary); border-color: var(--text-tertiary); }
+.ui-chip--accent.is-active { color: #fff; background: var(--acc); border-color: transparent; }
+
+/* ── Shield ──────────────────────────────────────────────────────────────── */
+.ui-shield { display: block; flex-shrink: 0; }
+
+/* ── Flash-анимации (без них «мёртвый» интерфейс; reduced-motion уважаем) ── */
+.ui-tile, .ui-card, .ui-banner { position: relative; }
+@keyframes uiSheen {
+  0% { transform: translateX(-130%); }
+  55%, 100% { transform: translateX(230%); }
+}
+@keyframes uiPop {
+  0% { transform: scale(.55); opacity: 0; }
+  62% { transform: scale(1.12); }
+  100% { transform: scale(1); opacity: 1; }
+}
+.ui-pop { animation: uiPop .45s cubic-bezier(.2, 1.4, .4, 1) both; }
+
+@media (prefers-reduced-motion: reduce) {
+  .ui-pop { animation: none; }
+  .ui-key { transition: none; }
+}

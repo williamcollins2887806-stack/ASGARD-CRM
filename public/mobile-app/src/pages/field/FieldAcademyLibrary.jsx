@@ -6,9 +6,9 @@ import { useNavigate } from 'react-router-dom';
 import { fieldApi } from '@/api/fieldClient';
 
 const C = {
-  bg: 'var(--field-bg)', card: 'var(--field-card)', gold: '#c8a84b',
-  rune: '#7b61ff', green: '#22c55e', red: '#ef4444',
-  amber: '#f59e0b', text: 'var(--field-text)', muted: '#8E8E93',
+  bg: 'var(--field-bg)', card: 'var(--field-card)', gold: 'var(--value)',
+  rune: 'var(--acc)', green: 'var(--ok)', red: 'var(--danger)',
+  amber: 'var(--value)', text: 'var(--field-text)', muted: 'var(--text-secondary)',
 };
 
 const TAG_LABELS = {
@@ -48,13 +48,13 @@ function LessonCard({ lesson, navigate }) {
       onClick={() => navigate(`/field/academy/lesson/${lesson.id}`)}
       style={{
         background: C.card, borderRadius: 14, padding: '14px 16px',
-        border: `1px solid ${isPassed ? C.green + '44' : '#ffffff11'}`,
+        border: `1px solid ${isPassed ? C.green + '44' : 'color-mix(in oklab, var(--text-primary) 7%, transparent)'}`,
         marginBottom: 10, cursor: 'pointer', display: 'flex', gap: 14, alignItems: 'center',
       }}
     >
       <div style={{
         width: 52, height: 52, borderRadius: 14,
-        background: `${lesson.cover_color || '#1a1a2e'}cc`,
+        background: `${lesson.cover_color || 'var(--bg-surface)'}cc`,
         display: 'flex', alignItems: 'center', justifyContent: 'center',
         fontSize: 28, flexShrink: 0,
       }}>
@@ -80,7 +80,7 @@ function LessonCard({ lesson, navigate }) {
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
           {(lesson.tags || []).slice(0, 2).map(tag => (
             <span key={tag} style={{
-              fontSize: 10, color: C.muted, background: '#ffffff08',
+              fontSize: 10, color: C.muted, background: 'color-mix(in oklab, var(--text-primary) 3%, transparent)',
               padding: '2px 6px', borderRadius: 8,
             }}>
               {TAG_LABELS[tag] || tag}
@@ -142,7 +142,7 @@ export default function FieldAcademyLibrary() {
   return (
     <div style={{ minHeight: '100dvh', background: C.bg, paddingTop: 'max(env(safe-area-inset-top), 16px)', paddingBottom: 'max(env(safe-area-inset-bottom), 24px)' }}>
       {/* Header */}
-      <div style={{ padding: '48px 16px 20px', background: 'linear-gradient(180deg, #1a0d2e 0%, transparent 100%)' }}>
+      <div style={{ padding: '48px 16px 20px', background: 'linear-gradient(180deg, var(--bg-surface) 0%, transparent 100%)' }}>
         <button
           onClick={() => navigate('/field/academy')}
           style={{ background: 'none', border: 'none', color: C.muted, cursor: 'pointer', fontSize: 14, marginBottom: 16, padding: 0 }}
@@ -171,8 +171,8 @@ export default function FieldAcademyLibrary() {
                 style={{
                   padding: '6px 14px', borderRadius: 20,
                   border: baseColor ? `1px solid ${baseColor}66` : 'none',
-                  background: isActive ? C.rune : '#ffffff11',
-                  color: isActive ? '#fff' : (baseColor || C.muted),
+                  background: isActive ? C.rune : 'color-mix(in oklab, var(--text-primary) 7%, transparent)',
+                  color: isActive ? 'var(--text-primary)' : (baseColor || C.muted),
                   fontSize: 13, fontWeight: isActive || baseColor ? 700 : 400,
                   cursor: 'pointer', flexShrink: 0, whiteSpace: 'nowrap',
                 }}

@@ -69,6 +69,10 @@ export const WIDGET_REGISTRY = {
 
 /** Дефолтный набор виджетов по роли */
 export const DEFAULT_LAYOUTS = {
+  // ВАЖ: сюда ходит getLayout() для ВСЕХ ролей DIRECTOR_* (см. ниже). Пока
+  // ключа ADMIN не было, getLayout возвращал undefined и Home падал на
+  // spread'е — «Cannot read properties of undefined (reading 'map')».
+  ADMIN:          ['welcome','academy','director_approvals','cash_balance','money_summary','my_mail','notifications'],
   CHIEF_ENGINEER: ['welcome','academy','equipment_value','equipment_alerts','my_mail','notifications'],
   HR:             ['welcome','academy','permits_expiry','birthdays','my_mail','notifications','calendar'],
   BUH:            ['welcome','telephony_status','academy','cash_balance','bank_summary','money_summary','my_mail','notifications'],

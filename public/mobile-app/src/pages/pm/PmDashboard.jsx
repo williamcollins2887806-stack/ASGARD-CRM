@@ -48,6 +48,7 @@ export default function PmDashboard() {
     { icon: '👷', label: 'Рабочие', path: '/pm/workers' },
     { icon: '📋', label: 'Табель', path: '/pm/timesheet' },
     { icon: '💰', label: 'Выплаты', path: '/pm/payments' },
+    { icon: '🛒', label: 'Корзина выплат', path: '/pm/payout-cart' },
     { icon: '🏛️', label: 'Мимир', path: '/pm/academy' },
   ];
 
