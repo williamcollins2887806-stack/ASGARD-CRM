@@ -440,7 +440,68 @@ async function saveEmail(account, msg, parsed) {
   // AI analysis is now decoupled — runs asynchronously after sync completes
   // (see processUnanalyzedEmails below)
 
+  // Часть II (V398): если это КОПИЯ на ящик CRM — сразу запускаем intake-контур
+  // согласования: письмо+счёт → заявка awaiting_dir + строка реестра. Не ждём
+  // общего AI-процессора (он классифицирует, но не создаёт заявок).
+  try {
+    const isCopy = await db.query('SELECT is_crm_copy FROM emails WHERE id=$1', [emailId]);
+    if (isCopy.rows[0] && isCopy.rows[0].is_crm_copy) {
+      await runDocIntakeForEmail(db, emailId).catch((e) => console.error('[IMAP] doc-intake failed:', e.message));
+    }
+  } catch (_) { /* intake не должен ломать sync */ }
+
   return { isNew: true, attachmentCount };
+}
+
+/**
+ * V398: intake-контур для письма-копии CRM.
+ * Собирает PDF/PNG/JPEG-вложения, прогоняет OCR (если нужно) и extractInvoice,
+ * затем doc-email-intake создаёт заявки/записи. Тело письма тоже проверяем
+ * (счёт может быть в тексте). Всё идемпотентно (антидубль по email+attachment).
+ * Экспортируется для тестов/ручного вызова.
+ */
+async function runDocIntakeForEmail(db, emailId) {
+  const fd = parseInt(process.env.DOC_INTAKE_ENABLED === '1' ? '1' : '0', 10);
+  const cfg = await db.query(`SELECT value_json FROM settings WHERE key='email_intake_enabled' LIMIT 1`).catch(() => ({ rows: [] }));
+  let enabled = fd === 1;
+  if (cfg.rows[0]) {
+    let v = cfg.rows[0].value_json; try { v = JSON.parse(v); } catch (_) {}
+    enabled = v === true || v === 'true';
+  }
+  if (!enabled) return { skipped: 'disabled' };
+
+  const { extractInvoice } = require('./invoice-extract');
+  const intake = require('./doc-email-intake');
+  const email = (await db.query(`SELECT id, body_text, from_email FROM emails WHERE id=$1`, [emailId])).rows[0];
+  if (!email) return { skipped: 'no_email' };
+
+  const atts = (await db.query(
+    `SELECT id, filename, mime_type, file_path, is_inline FROM email_attachments WHERE email_id=$1`, [emailId])).rows;
+  const invoiceAtts = atts.filter((a) => /pdf|image\//i.test(a.mime_type || '') && !a.is_inline);
+
+  // Проверяем: похоже ли хоть одно вложение/тело на счёт (дешёвый пре-фильтр,
+  // чтобы не гонять OCR на каждом письме).
+  const looksLikeInvoice = (txt) => /сч[её]т|инн|бИК|р\/с|к\/с|к оплате/i.test(String(txt || ''));
+  const invoices = [];
+  for (const a of invoiceAtts) {
+    let text = '';
+    try {
+      const full = resolveAttachmentPath ? resolveAttachmentPath(a.file_path) : a.file_path;
+      if (/pdf/i.test(a.mime_type || '')) {
+        const ocr = require('./pdf-ocr');
+        const res = await ocr.ocrPdfPath(full, a.filename);
+        text = res && res.text ? res.text : '';
+      }
+    } catch (e) { text = ''; }
+    if (!looksLikeInvoice(text)) continue;
+    invoices.push({ attachment: a, text });
+  }
+  // Счёт в теле письма.
+  if (!invoices.length && looksLikeInvoice(email.body_text)) {
+    invoices.push({ attachment: null, text: email.body_text });
+  }
+  if (!invoices.length) return { skipped: 'no_invoice_like' };
+  return intake.intakeEmail(db, { email, invoices, userId: null });
 }
 
 // ── Async AI processing (decoupled from sync loop) ──────────────────────
@@ -2170,6 +2231,7 @@ function stopPersonalPolling() {
 module.exports = {
   init,
   syncAccount,
+  runDocIntakeForEmail,
   manualSync,
   startPolling,
   stopPolling,
