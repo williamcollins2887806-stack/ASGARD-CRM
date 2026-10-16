@@ -10,6 +10,7 @@ const fs = require('fs');
 const fsp = require('fs').promises;
 const paymentMail = require('../services/payment-mail');
 const { createNotification } = require('../services/notify');
+const { stampExpiry } = require('../services/doc-approval-ttl');
 const { normalizeUploadUrl, uploadFsPath } = require('../utils/upload-url');
 const { enrichCatalogFromLines } = require('../services/catalog-from-invoice');
 
@@ -112,6 +113,10 @@ async function createFromProcurementWave(db, {
       timing
     ]
   );
+  // V398: TTL согласования директора (72ч) — на каждую новую заявку.
+  if (rows[0] && rows[0].status === 'awaiting_dir') {
+    try { await stampExpiry(db, rows[0].id); } catch (_) { /* не критично */ }
+  }
   return rows[0];
 }
 
@@ -230,8 +235,25 @@ async function routes(fastify) {
     if (isNaN(id)) return reply.code(400).send({ error: 'Неверный ID' });
     const { rows } = await db.query('SELECT * FROM payment_invoices WHERE id=$1', [id]);
     if (!rows[0]) return reply.code(404).send({ error: 'Не найдено' });
-    // `has_file` приходит из decoratePayment — здесь не дублируем.
-    return decoratePayment(rows[0]);
+    // 17.10: «от кого счёт» + связь с реестром/поставщиком — бухгалтеру и директору
+    // нужно видеть больше: кто инициатор, что за счёт, реквизиты контрагента.
+    const out = decoratePayment(rows[0]);
+    try {
+      if (rows[0].created_by) {
+        const u = await db.query(`SELECT name, role FROM users WHERE id=$1`, [rows[0].created_by]);
+        out.initiator_name = u.rows[0] ? u.rows[0].name : null;
+        out.initiator_role = u.rows[0] ? u.rows[0].role : null;
+      }
+      if (rows[0].supplier_id) {
+        const s = await db.query(`SELECT inn, kpp, ogrn, phone, email, address FROM suppliers WHERE id=$1`, [rows[0].supplier_id]);
+        out.supplier = s.rows[0] || null;
+      }
+      if (rows[0].doc_registry_id) {
+        const d = await db.query(`SELECT id, invoice_number, invoice_date, counterparty_inn, sf_basis, service_done_at, payment_kind FROM doc_registry WHERE id=$1`, [rows[0].doc_registry_id]);
+        out.registry_doc = d.rows[0] || null;
+      }
+    } catch (_) { /* доп. данные не критичны */ }
+    return out;
   });
 
   // Auth-gated file stream
@@ -314,6 +336,10 @@ async function routes(fastify) {
       ]
     );
     const pay = rows[0];
+    // V398: TTL согласования (72ч) на новую заявку.
+    if (pay && pay.status === 'awaiting_dir') {
+      try { await stampExpiry(db, pay.id); } catch (_) { /* не критично */ }
+    }
     try {
       await enrichCatalogFromLines(db, {
         lines: lines.length ? lines : [],

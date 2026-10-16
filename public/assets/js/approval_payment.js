@@ -183,14 +183,44 @@ window.AsgardApprovalPaymentPage = (function() {
   /**
    * 17.10: реестр БУХГАЛТЕРИИ — не «согласование», а конкретные выплаты.
    * Таблица: контрагент · сумма · от кого счёт · [Скачать счёт] · [Оплачено].
-   * Клик по строке открывает модалку с реквизитами для копирования в банк.
+   * Порядок (заказчик): СВЕРХУ те, что надо оплатить сразу/сегодня и просроченные,
+   * СНИЗУ постоплатные, по которым срок ещё не наступил.
    */
   function renderBuhTable(items) {
     const inv = items.filter((x) => x.entity_type === 'payment_invoices');
     const other = items.filter((x) => x.entity_type !== 'payment_invoices');
+    const todayYmd = new Date().toISOString().slice(0, 10);
+    const ymd = (v) => {
+      if (!v) return null;
+      if (v instanceof Date) return v.toISOString().slice(0, 10);
+      const m = String(v).match(/^(\d{4}-\d{2}-\d{2})/);
+      return m ? m[1] : null;
+    };
+    // Ранг: 0 — платить сейчас (immediate / просрочено / срок сегодня), 1 — срок впереди.
+    const rank = (it) => {
+      const d = ymd(it.due_date);
+      if (it.pay_timing === 'immediate') return 0;
+      if (!d) return 0;                       // без срока — «как можно раньше»
+      return d <= todayYmd ? 0 : 1;
+    };
+    inv.sort((a, b) => {
+      const ra = rank(a); const rb = rank(b);
+      if (ra !== rb) return ra - rb;          // сейчас — выше
+      const da = ymd(a.due_date) || '9999-99-99';
+      const db2 = ymd(b.due_date) || '9999-99-99';
+      return da < db2 ? -1 : da > db2 ? 1 : 0; // внутри группы — по дате
+    });
+    const dueLabel = (it) => {
+      const d = ymd(it.due_date);
+      if (it.pay_timing === 'immediate') return '<span style="color:var(--err,#d33);font-weight:600">оплатить сейчас</span>';
+      if (!d) return '<span style="color:var(--err,#d33)">без срока</span>';
+      if (d < todayYmd) return `<span style="color:var(--err,#d33);font-weight:600">просрочено · ${d.split('-').reverse().join('.')}</span>`;
+      if (d === todayYmd) return '<span style="color:var(--err,#d33);font-weight:600">оплатить сегодня</span>';
+      return `до ${d.split('-').reverse().join('.')}`;
+    };
     const rowInv = (it) => `<tr data-entity="${esc(it.entity_type)}" data-id="${it.id}" style="cursor:pointer">
       <td style="padding:10px 12px;border-bottom:1px solid var(--brd)">${esc(it.supplier_name || '—')}
-        ${it.due_date ? `<div class="help">срок ${new Date(it.due_date).toLocaleDateString('ru-RU')}</div>` : ''}</td>
+        <div class="help">${dueLabel(it)}</div></td>
       <td style="padding:10px 12px;border-bottom:1px solid var(--brd);text-align:right;font-weight:700;font-variant-numeric:tabular-nums">${money(it.amount)}</td>
       <td style="padding:10px 12px;border-bottom:1px solid var(--brd)">${esc(it.initiator_name || '—')}</td>
       <td style="padding:10px 12px;border-bottom:1px solid var(--brd);white-space:nowrap" class="ap-buh-actions">
@@ -208,13 +238,14 @@ window.AsgardApprovalPaymentPage = (function() {
       </td>
     </tr>`;
     const head = `<thead><tr>
-      <th style="text-align:left;padding:10px 12px">Контрагент / назначение</th>
+      <th style="text-align:left;padding:10px 12px">Контрагент / оплата</th>
       <th style="text-align:right;padding:10px 12px">Сумма</th>
       <th style="text-align:left;padding:10px 12px">От кого счёт</th>
       <th style="padding:10px 12px">Действия</th></tr></thead>`;
     let html = '';
     if (inv.length) {
-      html += `<div class="ap-buh-block"><div class="ap-buh-block__h">Счета к оплате · ${inv.length}</div>
+      const urgent = inv.filter((x) => rank(x) === 0).length;
+      html += `<div class="ap-buh-block"><div class="ap-buh-block__h">Счета к оплате · ${inv.length}${urgent ? ` · <span style="color:var(--err,#d33)">${urgent} срочных</span>` : ''}</div>
         <div style="overflow:auto"><table style="width:100%;border-collapse:collapse;background:var(--bg1);border:1px solid var(--brd);border-radius:10px">${head}<tbody>${inv.map(rowInv).join('')}</tbody></table></div></div>`;
     }
     if (other.length) {
@@ -283,13 +314,13 @@ window.AsgardApprovalPaymentPage = (function() {
           <button class="ap-tab" data-aptab="payouts">💰 Выплаты <span class="ap-tab__n ap-tab__n--zero" id="ap_n_payouts">0</span></button>
           <button class="ap-tab" data-aptab="cash">💵 Касса</button>
           <button class="ap-tab" data-aptab="plan">📋 Планирование на 1-е</button>
+          <button class="ap-tab" data-aptab="archive">🗄 Архив</button>
         </div>
         <div id="ap_panel"></div>
         <div id="ap_invoices_panel">` : `
         <div class="ap-tabs" id="ap_tabs">
           <button class="ap-tab is-on" data-aptab="invoices">📄 Счета к оплате</button>
           <button class="ap-tab" data-aptab="cash">💵 Касса</button>
-          <button class="ap-tab" data-aptab="se">💸 Переводы / СЗ</button>
           <button class="ap-tab" data-aptab="expenses">📑 Расходы BUH</button>
         </div>
         <div id="ap_panel"></div>
@@ -372,7 +403,6 @@ window.AsgardApprovalPaymentPage = (function() {
       if (tab === 'invoices') { panel.innerHTML = ''; return; }
       panel.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text-muted)">Загрузка…</div>';
       if (tab === 'cash') await renderBuhCashTab(panel);
-      else if (tab === 'se') await renderBuhSeTab(panel);
       else await renderBuhExpensesTab(panel);
     };
     Array.from(tabs.querySelectorAll('.ap-tab')).forEach((b) => {
@@ -467,26 +497,6 @@ window.AsgardApprovalPaymentPage = (function() {
     });
   }
 
-  /** Вкладка «Переводы / СЗ»: суммы к переводу (формулы с сервера, не пересчёт). */
-  async function renderBuhSeTab(panel) {
-    let rows = [];
-    try {
-      const r = await fetch('/api/payout-cart/pending', { headers: getHeaders() });
-      const j = r.ok ? await r.json() : {};
-      rows = j.items || j.rows || [];
-    } catch (_) { rows = []; }
-    panel.innerHTML = hero('💸', 'Переводы / СЗ', `К переводу · ${rows.length}`, 0, 'позиций')
-      + (rows.length ? rows.map((p) => `
-        <div class="card" style="padding:14px;margin-bottom:10px;border:1px solid var(--brd);border-radius:10px;background:var(--bg1)">
-          <div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap">
-            <div><div style="font-weight:600">${esc(p.fio || p.payee_name || ('#' + p.id))}</div>
-              <div class="help">${esc(p.kind_label || p.kind || '')} · ${esc(p.payee_type || '')}</div></div>
-            <div style="text-align:right"><div style="font-weight:700">${money(p.amount_to_transfer != null ? p.amount_to_transfer : p.amount)}</div>
-              ${p.amount_to_worker != null ? `<div class="help">человеку ${money(p.amount_to_worker)}</div>` : ''}</div>
-          </div>
-        </div>`).join('') : '<div style="text-align:center;padding:40px;color:var(--text-muted)">Нет позиций к переводу</div>');
-  }
-
   /** Вкладка «Расходы BUH». */
   async function renderBuhExpensesTab(panel) {
     let rows = [];
@@ -527,6 +537,7 @@ window.AsgardApprovalPaymentPage = (function() {
       panel.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text-muted)">Загрузка…</div>';
       if (tab === 'payouts') await renderPayoutsTab(panel);
       else if (tab === 'cash') await renderCashTab(panel);
+      else if (tab === 'archive') await renderArchiveTab(panel);
       else await renderPlanTab(panel);
     };
     Array.from(tabs.querySelectorAll('.ap-tab')).forEach((b) => {
@@ -678,6 +689,59 @@ window.AsgardApprovalPaymentPage = (function() {
         if (!v) { toast('Нужна причина', 'Без причины возврат запрещён', 'err'); return; }
         done(v);
       };
+    });
+  }
+
+  /** 17.10: вкладка «Архив» — согласовано/оплачено/выдано. Кто, кому, сколько, когда,
+   *  кто согласовал. Клик по записи открывает деталь (счёт — модалку, касса — карточку). */
+  async function renderArchiveTab(panel) {
+    let items = [];
+    try {
+      const r = await fetch('/api/approval/archive?limit=200', { headers: getHeaders() });
+      const j = r.ok ? await r.json() : {};
+      items = j.items || [];
+    } catch (_) { items = []; }
+    if (!items.length) {
+      panel.innerHTML = hero('🗄', 'Архив решений', 'Пока пусто', 0, 'записей');
+      return;
+    }
+    const kindLabel = (k) => ({ invoice: '📄 Счёт', cash: '💵 Касса', payout: '💰 Выплата' }[k] || k);
+    const stLabel = (s) => ({
+      paid: 'оплачено', pending_payment: 'согласовано', archived: 'в архиве', expired: 'истекло',
+      rejected: 'отклонено', money_issued: 'выдано', closed: 'закрыто', reporting: 'отчёт', received: 'получено'
+    }[s] || s);
+    const rows = items.map((it) => {
+      const at = it.at ? new Date(it.at).toLocaleString('ru-RU') : '—';
+      const chain = [
+        it.initiator ? `инициатор ${esc(it.initiator)}` : '',
+        it.approved_by ? `согласовал ${esc(it.approved_by)}${it.approved_at ? ' (' + new Date(it.approved_at).toLocaleDateString('ru-RU') + ')' : ''}` : '',
+        it.paid_by ? `оплатил ${esc(it.paid_by)}` : (it.issued_by ? `выдал ${esc(it.issued_by)}` : '')
+      ].filter(Boolean).join(' · ');
+      return `<tr ${it.kind === 'invoice' ? `data-entity="payment_invoices" data-id="${it.id}"` : `data-arch-cash="${it.id}"`} style="cursor:pointer">
+        <td style="padding:10px 12px;border-bottom:1px solid var(--brd)">${kindLabel(it.kind)}
+          <div class="help">${esc(it.file_name || it.purpose || '')}</div></td>
+        <td style="padding:10px 12px;border-bottom:1px solid var(--brd)">${esc(it.title || '')}
+          <div class="help">${chain || '—'}</div></td>
+        <td style="padding:10px 12px;border-bottom:1px solid var(--brd);text-align:right;font-weight:700">${money(it.amount)}</td>
+        <td style="padding:10px 12px;border-bottom:1px solid var(--brd)"><span class="badge">${esc(stLabel(it.status))}</span></td>
+        <td style="padding:10px 12px;border-bottom:1px solid var(--brd);white-space:nowrap" class="help">${at}</td>
+      </tr>`;
+    }).join('');
+    panel.innerHTML = `<div class="ap-card is-open"><div class="ap-card__hd">
+        <div class="ap-card__kind ap-card__kind--payout">🗄</div>
+        <div><div class="ap-card__t">Архив решений</div><div class="ap-card__s">${items.length} записей · кто, кому, сколько, когда, кто согласовал</div></div>
+      </div><div class="ap-card__body">
+      <div style="overflow:auto"><table style="width:100%;border-collapse:collapse">
+        <thead><tr>
+          <th style="text-align:left;padding:10px 12px">Тип</th>
+          <th style="text-align:left;padding:10px 12px">Кому / что</th>
+          <th style="text-align:right;padding:10px 12px">Сумма</th>
+          <th style="text-align:left;padding:10px 12px">Статус</th>
+          <th style="text-align:left;padding:10px 12px">Когда</th>
+        </tr></thead><tbody>${rows}</tbody></table></div>
+      </div></div>`;
+    panel.querySelectorAll('[data-entity]').forEach((tr) => {
+      tr.onclick = () => showPaymentInvoiceDirModal({ id: Number(tr.dataset.id), entity_type: 'payment_invoices' });
     });
   }
 
@@ -972,6 +1036,9 @@ window.AsgardApprovalPaymentPage = (function() {
               <span class="proc-pay-status proc-pay-status--pay">${esc(st)}</span>
               <dl class="proc-pay-modal__meta" style="margin-top:12px">
                 <dt>Поставщик</dt><dd>${esc(pay.supplier_name || '—')}</dd>
+                ${pay.supplier && pay.supplier.inn ? `<dt>ИНН / КПП</dt><dd>${esc(pay.supplier.inn)}${pay.supplier.kpp ? ' / ' + esc(pay.supplier.kpp) : ''}</dd>` : ''}
+                ${pay.initiator_name ? `<dt>От кого счёт</dt><dd>${esc(pay.initiator_name)}${pay.initiator_role ? ' · ' + esc(pay.initiator_role) : ''}</dd>` : ''}
+                ${pay.registry_doc && pay.registry_doc.invoice_number ? `<dt>Счёт №</dt><dd>${esc(pay.registry_doc.invoice_number)}${pay.registry_doc.invoice_date ? ' от ' + esc(String(pay.registry_doc.invoice_date).slice(0,10)) : ''}</dd>` : ''}
                 <dt>Основание</dt><dd>${esc(pay.basis_text || pay.basis_type || '—')}</dd>
                 <dt>Срок <span class="proc-tooltip" title="Крайний срок оплаты из заявки">?</span></dt>
                 <dd>${pay.due_date ? esc(String(pay.due_date).slice(0,10)) : '—'}</dd>

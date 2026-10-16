@@ -448,6 +448,75 @@ async function routes(fastify) {
     const balance = await approvalService.getCashBalance(db);
     return { balance };
   });
+
+  // ─── 17.10: АРХИВ решений — согласовано / оплачено / выдано ───
+  // Заказчик: «всё что согласовано — в архив, оплачено и выдано тоже; в архиве
+  // можно открыть и посмотреть, кто кому сколько и кто согласовал».
+  fastify.get('/archive', {
+    preHandler: [fastify.authenticate]
+  }, async (request) => {
+    const role = request.user.role;
+    if (!approvalService.isBuh(role) && !approvalService.isDirector(role) && role !== 'ADMIN') {
+      return { items: [] };
+    }
+    const limit = Math.min(Math.max(parseInt(request.query.limit, 10) || 100, 1), 300);
+    const kind = String(request.query.kind || '').toLowerCase();  // invoice|cash|payout|''
+    const items = [];
+
+    async function whoNames(ids) {
+      const uniq = [...new Set(ids.filter(Boolean).map(Number))];
+      if (!uniq.length) return {};
+      const r = await db.query(`SELECT id, name FROM users WHERE id = ANY($1::int[])`, [uniq]);
+      return Object.fromEntries(r.rows.map((x) => [Number(x.id), x.name]));
+    }
+
+    if (!kind || kind === 'invoice') {
+      const { rows } = await db.query(
+        `SELECT id, supplier_name, amount, status, payment_status, pay_timing,
+                created_by, dir_approved_by, dir_approved_at, buh_id, buh_acted_at,
+                archived_at, updated_at, file_name, doc_registry_id
+           FROM payment_invoices
+          WHERE status IN ('pending_payment','paid','archived','expired','rejected')
+          ORDER BY COALESCE(buh_acted_at, dir_approved_at, archived_at, updated_at) DESC
+          LIMIT $1`, [limit]);
+      const names = await whoNames(rows.flatMap((r) => [r.created_by, r.dir_approved_by, r.buh_id]));
+      for (const r of rows) {
+        items.push({
+          kind: 'invoice', id: r.id, title: r.supplier_name || ('Счёт #' + r.id),
+          amount: r.amount, status: r.status,
+          initiator: names[Number(r.created_by)] || null,
+          approved_by: names[Number(r.dir_approved_by)] || null,
+          approved_at: r.dir_approved_at,
+          paid_by: names[Number(r.buh_id)] || null,
+          paid_at: r.buh_acted_at,
+          archived_at: r.archived_at,
+          at: r.buh_acted_at || r.dir_approved_at || r.archived_at || r.updated_at,
+          file_name: r.file_name, doc_registry_id: r.doc_registry_id
+        });
+      }
+    }
+
+    if (!kind || kind === 'cash') {
+      const { rows } = await db.query(
+        `SELECT cr.id, cr.amount, cr.issued_amount, cr.status, cr.purpose,
+                cr.user_id, cr.issued_by, cr.issued_at, cr.created_at, cr.updated_at
+           FROM cash_requests cr
+          WHERE cr.status IN ('money_issued','closed','reporting','received')
+          ORDER BY COALESCE(cr.issued_at, cr.updated_at) DESC LIMIT $1`, [limit]).catch(() => ({ rows: [] }));
+      const names = await whoNames(rows.flatMap((r) => [r.user_id, r.issued_by]));
+      for (const r of rows) {
+        items.push({
+          kind: 'cash', id: r.id, title: names[Number(r.user_id)] || ('Заявка #' + r.id),
+          amount: r.issued_amount != null ? r.issued_amount : r.amount, status: r.status,
+          purpose: r.purpose, issued_by: names[Number(r.issued_by)] || null,
+          paid_at: r.issued_at, at: r.issued_at || r.updated_at
+        });
+      }
+    }
+
+    items.sort((a, b) => new Date(b.at || 0) - new Date(a.at || 0));
+    return { items: items.slice(0, limit) };
+  });
 }
 
 module.exports = routes;
