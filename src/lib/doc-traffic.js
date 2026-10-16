@@ -47,31 +47,49 @@ function nextScheduleDue(r) {
   let best = null;
   for (const st of sched) {
     if (!st || !st.due_at || st.paid_at) continue;
-    const d = String(st.due_at).slice(0, 10);
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) continue;
+    const d = toYmd(st.due_at);
+    if (!d) continue;
     if (!best || d < best) best = d;
   }
   return best;
 }
 
+/** Нормализовать дату (Date | ISO | 'YYYY-MM-DD' | ISO с временем) → 'YYYY-MM-DD' | null. */
+function toYmd(v) {
+  if (v == null) return null;
+  if (v instanceof Date) { const s = v.toISOString().slice(0, 10); return /^\d{4}-\d{2}-\d{2}$/.test(s) ? s : null; }
+  const s = String(v);
+  const m = s.match(/^(\d{4}-\d{2}-\d{2})/);
+  return m ? m[1] : null;
+}
+
 /**
  * Собрать список активных дедлайнов строки.
+ * ТОЧНОЕ зеркало trafficSql(): при payment_kind='partial' дедлайн оплаты берётся
+ * ТОЛЬКО из графика (пустой график → дедлайна оплаты нет), а срок СФ учитывается
+ * лишь пока ops_status ждёт СФ/закрывающие.
  * @returns {Array<{kind:string,date:string}>}
  */
 function activeDeadlines(r) {
   const out = [];
-  const schedDue = nextScheduleDue(r);
-  if (schedDue) out.push({ kind: 'pay', date: schedDue });
-  else if (r.payment_due_at && payDeadlineActive(r)) {
-    out.push({ kind: 'pay', date: String(r.payment_due_at).slice(0, 10) });
+  const isPartial = String(r.payment_kind || '') === 'partial';
+  if (isPartial) {
+    // ВАЖНО: при partial НЕ проваливаемся на payment_due_at (иначе расходимся с SQL).
+    const schedDue = nextScheduleDue(r);
+    if (schedDue) out.push({ kind: 'pay', date: schedDue });
+  } else {
+    const payDue = toYmd(r.payment_due_at);
+    if (payDue && payDeadlineActive(r)) out.push({ kind: 'pay', date: payDue });
   }
-  if (r.sf_due_at && !r.sf_received_at) {
-    out.push({ kind: 'sf', date: String(r.sf_due_at).slice(0, 10) });
+  const sfDue = toYmd(r.sf_due_at);
+  if (sfDue && !r.sf_received_at && ['wait_sf', 'wait_closing'].includes(r.ops_status)) {
+    out.push({ kind: 'sf', date: sfDue });
   }
-  if (r.recon_due_at && !r.recon_received_at) {
-    out.push({ kind: 'recon', date: String(r.recon_due_at).slice(0, 10) });
+  const reconDue = toYmd(r.recon_due_at);
+  if (reconDue && !r.recon_received_at) {
+    out.push({ kind: 'recon', date: reconDue });
   }
-  return out.filter((x) => /^\d{4}-\d{2}-\d{2}$/.test(x.date));
+  return out;
 }
 
 /** Рабочих дней от `from` (исключая) до `to` (включая) на JS — зеркало asgard_workdays_until. */
