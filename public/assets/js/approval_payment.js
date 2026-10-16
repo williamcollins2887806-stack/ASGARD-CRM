@@ -508,20 +508,21 @@ window.AsgardApprovalPaymentPage = (function() {
     });
   }
 
-  /** Вкладка «Расходы BUH». */
+  /** Вкладка «Расходы BUH» — офисные расходы к проведению. */
   async function renderBuhExpensesTab(panel) {
     let rows = [];
     try {
-      const r = await fetch('/api/office-expenses?status=pending', { headers: getHeaders() });
+      const r = await fetch('/api/expenses/office?status=pending&limit=100', { headers: getHeaders() });
       const j = r.ok ? await r.json() : {};
-      rows = j.items || j.expenses || j.rows || [];
+      // /api/expenses/office отдаёт { data: [...] } либо массив.
+      rows = Array.isArray(j) ? j : (j.data || j.items || j.expenses || j.rows || []);
     } catch (_) { rows = []; }
     panel.innerHTML = hero('📑', 'Расходы BUH', `На проведение · ${rows.length}`, 0, 'записей')
       + (rows.length ? rows.map((e) => `
         <div class="card" style="padding:14px;margin-bottom:10px;border:1px solid var(--brd);border-radius:10px;background:var(--bg1)">
           <div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap">
-            <div><div style="font-weight:600">${esc(e.category_name || e.category || ('#' + e.id))}</div>
-              <div class="help">${esc(e.description || e.comment || '')}</div></div>
+            <div><div style="font-weight:600">${esc(e.category || e.category_name || ('Расход #' + e.id))}</div>
+              <div class="help">${esc(e.description || e.notes || e.supplier || '')}${e.created_at ? ' · ' + new Date(e.created_at).toLocaleDateString('ru-RU') : ''}</div></div>
             <div style="text-align:right;font-weight:700">${money(e.amount)}</div>
           </div>
         </div>`).join('') : '<div style="text-align:center;padding:40px;color:var(--text-muted)">Нет расходов на проведение</div>');
