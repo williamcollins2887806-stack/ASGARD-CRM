@@ -92,9 +92,15 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     const r = await call(tokens.PM, 'GET', '/doc-registry?scope=all&limit=200');
     const ids = (r.d.items || []).map((x) => x.id);
     ok('PM scope=all не видит чужую строку', !ids.includes(foreignId), 'st=' + r.st);
-    // Привилегированный (BUH) со scope=all — видит.
-    const rb = await call(tokens.BUH, 'GET', '/doc-registry?scope=all&limit=200');
-    const idsB = (rb.d.items || []).map((x) => x.id);
+    // Привилегированный (BUH) со scope=all — видит. Ищем по ВСЕМ страницам:
+    // limit=200 мог не вместить свежую строку (в клоне >200 записей) → флейк.
+    const idsB = [];
+    for (let page = 1; page <= 10; page++) {
+      const rb = await call(tokens.BUH, 'GET', `/doc-registry?scope=all&limit=200&page=${page}`);
+      const chunk = (rb.d.items || []).map((x) => x.id);
+      idsB.push(...chunk);
+      if (chunk.length < 200 || idsB.includes(foreignId)) break;
+    }
     ok('BUH scope=all видит чужую строку', idsB.includes(foreignId));
     // WAREHOUSE не должен падать (42883) и не видит office-строку.
     const rw = await call(tokens.WAREHOUSE, 'GET', '/doc-registry?limit=200');

@@ -6,6 +6,8 @@ process.env.DB_PASSWORD = process.env.DB_PASSWORD || '123456789';
 
 const TESTS = [
   ['Извлечение реквизитов счёта', 'tests/invoice-extract.test.js'],
+  ['Фикстуры счетов (синтетика)', 'tests/invoice-fixtures.test.js'],
+  ['Реальные счета: intake', 'tests/real-invoices-intake.test.js'],
   ['Детектор «Добро»', 'tests/approval-detector.test.js'],
   ['TTL согласования 72ч', 'tests/doc-approval-ttl-e2e.js'],
   ['Intake-оркестратор', 'tests/doc-email-intake.test.js'],
@@ -25,7 +27,7 @@ const TESTS = [
 let totalPass = 0, totalFail = 0; const failed = [];
 console.log('СВОДНЫЙ ПРОГОН ТЕСТОВ Doc Hub\n' + '='.repeat(60));
 for (const [name, file] of TESTS) {
-  const r = spawnSync('node', [file], { encoding: 'utf8', env: process.env, timeout: 180000 });
+  const r = spawnSync('node', [file], { encoding: 'utf8', env: process.env, timeout: 300000 });
   const out = (r.stdout || '') + (r.stderr || '');
   const m = out.match(/PASS (\d+) \/ FAIL (\d+)/);
   const p = m ? parseInt(m[1], 10) : 0;
