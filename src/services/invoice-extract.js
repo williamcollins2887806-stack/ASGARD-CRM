@@ -78,19 +78,29 @@ function extractInvoice(text) {
   const bankM = t.match(/(ПАО|АО|ООО|ОАО|БАНК|ФИЛИАЛ)[^\n]{0,60}банк[^\n]{0,40}/i);
   if (bankM) { out.bank_name = bankM[0].trim().slice(0, 120); found(); }
 
-  // Номер и дата счёта. Номер может содержать пробелы, дефис, слэш (УТ 13028,
-  // АС-0209/1-25, ППУП-012128). Ищем в СТРОКЕ с «счёт», чтобы не утащить перенос.
+  // Номер и дата счёта. Реальные форматы: «Счёт на оплату № 1185 от 14.07.26»,
+  // «Счёт № 45 от 13.10.2026», «Счёт-договор № 20261006-05». Берём первую строку
+  // со словом «счёт», затем номер ПОСЛЕ «№» (или после «счёт», если «№» нет).
   const lineM = t.match(/[^\n]*сч[её]т[^\n]*/i);
   if (lineM) {
     const line = lineM[0];
-    const nm = line.match(/сч[её]т\s*№?\s*([^\n]*)$/i);
-    if (nm) {
-      let raw = nm[1];
+    let raw = null;
+    const hashM = line.match(/№\s*([^\n]*)$/i);
+    if (hashM) raw = hashM[1];
+    else {
+      const wordM = line.match(/сч[её]т(?:-договор)?\s+([^\n]*)$/i);
+      if (wordM) raw = wordM[1];
+    }
+    if (raw != null) {
       let dateStr = null;
       const dm = raw.match(/от\s*(\d{2}[.\-/]\d{2}[.\-/]\d{2,4})/i);
       if (dm) { dateStr = dm[1]; raw = raw.slice(0, raw.indexOf(dm[0])); }
-      let num = raw.replace(/№/g, '').replace(/\s+/g, ' ').trim().replace(/[.,\s]+$/, '');
-      if (num) out.invoice_number = num;
+      // Номер — до первых «служебных» слов (на оплату, имеет силу, действителен…).
+      let num = raw.replace(/№/g, '')
+        .replace(/\b(на\s+оплату|имеет\s+силу\s+\S*|действител\w*(\s+до)?|означает\S*|и\s+не\s+является\S*|в\s+один\s+клик\S*|от\s+\S+)\b.*$/i, '')
+        .replace(/\s+/g, ' ').trim().replace(/[.,\s]+$/, '');
+      // Отвергаем явные не-номера: длинные цифровые последовательности (счета/р/с).
+      if (num && !/^\d{15,}$/.test(num)) out.invoice_number = num;
       if (dateStr) {
         const p = dateStr.split(/[.\-/]/);
         if (p.length === 3) {
@@ -98,20 +108,31 @@ function extractInvoice(text) {
           out.invoice_date = `${yy}-${p[1].padStart(2, '0')}-${p[0].padStart(2, '0')}`;
         }
       }
-      if (num || dateStr) found();
+      if (out.invoice_number || dateStr) found();
     }
   }
 
   // Суммы: «Итого», «Всего к оплате», «НДС». Порядок ВАЖЕН: сначала gross,
   // затем НДС, затем нетто (иначе «Итого без НДС» перехватывает gross).
-  // «Всего к оплате» / «Итого к оплате» / «Сумма с НДС»
-  const grossM = t.match(/(?:всего\s+к\s+оплате|итого\s+к\s+оплате|сумма\s+с\s+НДС)[^\d]{0,20}([\d\s]{3,}[.,]?\d{0,2})/i);
+  // gross: «Всего к оплате», «Итого к оплате», «Сумма с НДС», «Всего с НДС»,
+  // «К оплате», «Итого с НДС». Сумма — с разделителями тысяч и копейками.
+  // Сумма: «1 234 567,89» (с группировкой пробелом) ИЛИ «1234,89»/«1200» (без).
+  // ВАЖНО: группа с пробелами требует хотя бы один пробел, иначе «1200,00»
+  // обрежется до «120».
+  const SUM_RE = '([\\d]{1,3}(?:[ \\u00a0]\\d{3})+(?:[.,]\\d{2})?|[\\d]+(?:[.,]\\d{2})?)';
+  const grossM = t.match(new RegExp('(?:всего\\s+к\\s+оплате|итого\\s+к\\s+оплате|сумма\\s+с\\s+НДС|всего\\s+с\\s+НДС|итого\\s+с\\s+НДС|к\\s+оплате)[^\\d]{0,25}' + SUM_RE, 'i'));
   if (grossM) { out.amount_gross = parseSum(grossM[1]); if (out.amount_gross != null) found(); }
-  // НДС — явно число после «НДС» (не «НДС не облагается»).
-  const vatM = t.match(/НДС(?:\s*\(?\s*\d+\s*%?\s*\)?)?[^\d]{0,12}(\d[\d\s]{1,}[.,]?\d{0,2})/i);
+  if (out.amount_gross == null) {
+    // Fallback: «Итого» / «Всего» без уточнения (но НЕ «Итого без НДС»).
+    const looseG = t.match(new RegExp('(?:итого|всего)(?!\\s+без\\s+НДС)[^\\d]{0,25}' + SUM_RE, 'i'));
+    if (looseG) { out.amount_gross = parseSum(looseG[1]); if (out.amount_gross != null) found(); }
+  }
+  // НДС — явно число после «НДС» (не «НДС не облагается», не «без НДС»),
+  // при этом пропускаем ставку («НДС 22%»), берём следующее число.
+  const vatM = t.match(new RegExp('НДС(?:\\(\\d+%\\)|\\s*\\d+\\s*%)?[^\\d]{0,12}' + SUM_RE, 'i'));
   if (vatM) { out.vat_amount = parseSum(vatM[1]); if (out.vat_amount != null) found(); }
   // Нетто: «без НДС», «стоимость без НДС», «нетто», «Итого без НДС».
-  const netM = t.match(/(?:итого\s+)?(?:без\s+НДС|стоимость\s+без\s+НДС|нетто)[^\d]{0,20}([\d\s]{3,}[.,]?\d{0,2})/i);
+  const netM = t.match(new RegExp('(?:итого\\s+)?(?:без\\s+НДС|стоимость\\s+без\\s+НДС|нетто)[^\\d]{0,20}' + SUM_RE, 'i'));
   if (netM) { out.amount_net = parseSum(netM[1]); if (out.amount_net != null) found(); }
 
   // Флаг НДС: «без НДС» / «НДС не облагается» — но ТОЛЬКО когда нет явного НДС-числа.

@@ -37,7 +37,7 @@ const { MODEL_FAST } = require('./ai-models');
 const OCR_MODEL = process.env.OCR_MODEL || 'google/gemini-3.1-flash-lite';
 // Vision-fallback: другая модель (не та же). 3.5-flash лучше переваривает TIFF/сканы.
 const OCR_FALLBACK_MODEL = process.env.OCR_FALLBACK_MODEL || 'google/gemini-3.5-flash';
-const CONVERT_BIN = process.env.IMAGEMAGICK_CONVERT || '/usr/bin/convert';
+const CONVERT_BIN = process.env.IMAGEMAGICK_CONVERT || (process.platform === 'win32' ? 'magick' : '/usr/bin/convert');
 // Transient Gemini/RouterAI 502 — повторы той же модели до смены fallback.
 const OCR_TRANSIENT_RETRIES = Math.max(0, parseInt(process.env.OCR_TRANSIENT_RETRIES || '2', 10));
 const OCR_MAX_IMAGE_EDGE = Math.max(1024, parseInt(process.env.OCR_MAX_IMAGE_EDGE || '3072', 10));
@@ -47,7 +47,45 @@ const OCR_MAX_IMAGE_BYTES = Math.max(512 * 1024, parseInt(process.env.OCR_MAX_IM
 // показывает прогресс, а реально PDF >50 стр почти всегда имеют text-layer
 // и идут через pdf-parse (быстро, без OCR).
 const OCR_MAX_PAGES = parseInt(process.env.OCR_MAX_PAGES || '150', 10);
-const PDFTOPPM_BIN = '/usr/bin/pdftoppm';
+
+/**
+ * FAIL F1 плана: пути к бинарям были захардкожены как `/usr/bin/*` — на Windows
+ * (локальный стенд) OCR падал на сканах. Теперь: ENV → автопоиск в типовых
+ * местах Windows (winget/Program Files) → системный PATH.
+ */
+function resolveBin(envKey, unixDefault, winNames) {
+  const fromEnv = process.env[envKey];
+  if (fromEnv) { try { if (fsSync.existsSync(fromEnv)) return fromEnv; } catch (_) {} }
+  if (process.platform === 'win32') {
+    const roots = [
+      process.env.LOCALAPPDATA && path.join(process.env.LOCALAPPDATA, 'Microsoft', 'WinGet', 'Packages'),
+      'C:\\Program Files', 'C:\\Program Files (x86)'
+    ].filter(Boolean);
+    for (const root of roots) {
+      try {
+        const stack = [{ dir: root, depth: 0 }];
+        while (stack.length) {
+          const { dir, depth } = stack.pop();
+          if (depth > 6) continue;
+          let entries = [];
+          try { entries = fsSync.readdirSync(dir, { withFileTypes: true }); } catch (_) { continue; }
+          for (const e of entries) {
+            if (e.isDirectory()) { stack.push({ dir: path.join(dir, e.name), depth: depth + 1 }); continue; }
+            for (const wn of winNames) {
+              if (e.name.toLowerCase() === wn.toLowerCase()) {
+                const p = path.join(dir, e.name);
+                if (/poppler|imagemagick|image-?magick|python/i.test(p)) return p;
+              }
+            }
+          }
+        }
+      } catch (_) { /* нет доступа */ }
+    }
+  }
+  return unixDefault;
+}
+const PDFTOPPM_BIN = resolveBin('PDFTOPPM_BIN', '/usr/bin/pdftoppm', ['pdftoppm.exe', 'pdftoppm']);
+const PYTHON3_BIN = resolveBin('PYTHON3_BIN', '/usr/bin/python3', ['python.exe', 'python3.exe']);
 
 // КРИТИЧНО: антигаллюцинационный промпт. Без него gemini-2.5-flash на повёрнутых
 // сканах придумывает "инструкции к приборам" вместо чтения. Принудительно требуем
@@ -308,7 +346,7 @@ async function _prepareVisionImage(srcPath, mimeHint) {
 
   // 1) Pillow — без лимита area ImageMagick (TIFF 27k×10k иначе падает)
   try {
-    await exec('/usr/bin/python3', ['-c',
+    await exec(PYTHON3_BIN, ['-c',
       'import sys\n'
       + 'from PIL import Image\n'
       + 'Image.MAX_IMAGE_PIXELS = None\n'

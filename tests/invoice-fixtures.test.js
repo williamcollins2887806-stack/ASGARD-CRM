@@ -19,7 +19,7 @@ const dir = path.join(__dirname, 'fixtures', 'test-invoices');
     const vatRate = c.vat === '22%' ? 0.22 : (c.vat === '20%' ? 0.2 : 0);
     const net = gross != null ? Math.round(gross / (1 + vatRate) * 100) / 100 : null;
     const vat = gross != null && net != null ? Math.round((gross - net) * 100) / 100 : 0;
-    const fmt = (n) => (n == null ? '' : String(n).replace('.', ','));
+    const fmt = (n) => (n == null ? '' : Number(n).toFixed(2).replace('.', ','));
     // Реалистичный счёт: ИНН берём валидный из списка (manifest содержит
     // демонстрационные ИНН без контрольной суммы — парсер их верно отвергает).
     const VALID_INNS = ['7721793895', '7712345671', '500100732259', '7736050003'];
@@ -35,7 +35,7 @@ const dir = path.join(__dirname, 'fixtures', 'test-invoices');
 Всего к оплате: ${fmt(gross)}`;
     const r = ex.extractInvoice(ocrText);
     const checks = [['ИНН', inn, r.inn], ['КПП', kpp, r.kpp]];
-    if (gross != null) checks.push(['сумма', gross, r.amount_gross]);
+    if (gross != null) checks.push(['сумма', Math.round(gross * 100) / 100, r.amount_gross]);
     // Номер «б/н» / «ППУП» / с пробелом и слэшем — должен извлечься непустым.
     if (c.n && !/б\/н/i.test(c.n)) checks.push(['номер непустой', true, !!(r.invoice_number && r.invoice_number.length)]);
     let ok = true;
