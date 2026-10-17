@@ -412,11 +412,15 @@ async function routes(fastify) {
       return reply.code(403).send({ error: 'Доступ только для директора' });
     }
     const { rows } = await db.query(`
-      SELECT id, supplier_name, amount, currency, basis_type, basis_text, work_id,
-             status, payment_status, pay_timing, created_at, updated_at, file_name
-        FROM payment_invoices
-       WHERE status = 'awaiting_dir'
-       ORDER BY created_at ASC
+      SELECT pi.id, pi.supplier_name, pi.amount, pi.currency, pi.basis_type, pi.basis_text, pi.work_id,
+             pi.status, pi.payment_status, pi.pay_timing, pi.created_at, pi.updated_at, pi.file_name,
+             pi.due_date, pi.approval_expires_at, pi.doc_registry_id,
+             u.name AS initiator_name, s.inn AS supplier_inn
+        FROM payment_invoices pi
+        LEFT JOIN users u ON u.id = pi.created_by
+        LEFT JOIN suppliers s ON s.id = pi.supplier_id
+       WHERE pi.status = 'awaiting_dir'
+       ORDER BY pi.created_at ASC
     `);
     const items = rows.map((r) => ({
       // ВАЖНО: ровно то же значение, что отдаёт очередь бухгалтерии ('payment_invoices').
@@ -434,6 +438,10 @@ async function routes(fastify) {
       payment_status: r.payment_status,
       pay_timing: r.pay_timing,
       file_name: r.file_name,
+      due_date: r.due_date,
+      approval_expires_at: r.approval_expires_at,
+      supplier_inn: r.supplier_inn,
+      initiator_name: r.initiator_name,
       created_at: r.created_at,
       updated_at: r.updated_at,
     }));

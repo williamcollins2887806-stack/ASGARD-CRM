@@ -166,18 +166,36 @@ window.AsgardApprovalPaymentPage = (function() {
       </div>`;
       return;
     }
-    list.innerHTML = _mode === 'dir' ? data.items.map(item => `
+    list.innerHTML = _mode === 'dir' ? data.items.map(item => {
+      // 17.10: карточке директора нужно больше контекста — TTL 72ч, ИНН, кто прислал, срок.
+      let ttl = '';
+      if (item.approval_expires_at) {
+        const left = new Date(item.approval_expires_at) - Date.now();
+        if (left <= 0) ttl = '<span style="color:var(--red,#d33);font-weight:600">⏱ срок истёк</span>';
+        else {
+          const h = Math.floor(left / 3600000); const m = Math.floor((left % 3600000) / 60000);
+          const urgent = h < 12;
+          ttl = `<span style="color:${urgent ? 'var(--red,#d33)' : 'var(--t3)'}">⏱ ${h} ч ${m} мин</span>`;
+        }
+      }
+      const chips = [
+        item.initiator_name ? `от ${esc(String(item.initiator_name).split(' ')[0])}` : '',
+        item.supplier_inn ? `ИНН ${esc(item.supplier_inn)}` : '',
+        item.due_date ? `оплатить до ${String(item.due_date).slice(0, 10).split('-').reverse().join('.')}` : ''
+      ].filter(Boolean);
+      return `
       <div class="card" style="padding:16px;margin-bottom:12px;border:1px solid var(--brd);border-radius:10px;background:var(--bg1);cursor:pointer" data-entity="${item.entity_type}" data-id="${item.id}">
         <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
-          <div>
+          <div style="min-width:0">
             <div style="font-weight:600">${esc(item.title || (item.label + ' #' + item.id))}</div>
             <div class="help" style="margin-top:4px">${item.basis_text ? esc(item.basis_text) + ' · ' : ''}${new Date(item.updated_at).toLocaleString('ru-RU')}</div>
+            ${chips.length || ttl ? `<div class="help" style="margin-top:4px;display:flex;gap:10px;flex-wrap:wrap">${chips.map((c) => `<span>${c}</span>`).join('')}${ttl ? '<span>' + ttl + '</span>' : ''}</div>` : ''}
             ${item.amount != null ? `<div style="margin-top:6px;font-size:18px;font-weight:700;font-variant-numeric:tabular-nums">${money(item.amount)}</div>` : ''}
           </div>
           ${pillFor(item)}
         </div>
-      </div>
-    `).join('') : renderBuhTable(data.items);
+      </div>`;
+    }).join('') : renderBuhTable(data.items);
   }
 
   /**
