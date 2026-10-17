@@ -127,9 +127,15 @@ function extractInvoice(text) {
     const looseG = t.match(new RegExp('(?:итого|всего)(?!\\s+без\\s+НДС)[^\\d]{0,25}' + SUM_RE, 'i'));
     if (looseG) { out.amount_gross = parseSum(looseG[1]); if (out.amount_gross != null) found(); }
   }
-  // НДС — явно число после «НДС» (не «НДС не облагается», не «без НДС»),
-  // при этом пропускаем ставку («НДС 22%»), берём следующее число.
-  const vatM = t.match(new RegExp('НДС(?:\\(\\d+%\\)|\\s*\\d+\\s*%)?[^\\d]{0,12}' + SUM_RE, 'i'));
+  if (out.amount_gross == null) {
+    // Fallback 2 (стандарт российских счетов и УПД):
+    // «Всего наименований 8, на сумму 205 280,00 руб.»
+    const nm = t.match(new RegExp('на\\s+сумму[^\\d]{0,10}' + SUM_RE + '\\s*руб', 'i'));
+    if (nm) { out.amount_gross = parseSum(nm[1]); if (out.amount_gross != null) found(); }
+  }
+  // НДС — явно число после «НДС»; поддержаны «НДС 22%», «в том числе НДС 22%:»,
+  // «НДС(22%)», «включая НДС …». Ставка пропускается, берётся следующее число.
+  const vatM = t.match(new RegExp('(?:в\\s+том\\s+числе\\s+)?(?:включая\\s+)?НДС(?:\\s*\\(?\\s*\\d+\\s*%?\\s*\\)?)?[^\\d]{0,14}' + SUM_RE, 'i'));
   if (vatM) { out.vat_amount = parseSum(vatM[1]); if (out.vat_amount != null) found(); }
   // Нетто: «без НДС», «стоимость без НДС», «нетто», «Итого без НДС».
   const netM = t.match(new RegExp('(?:итого\\s+)?(?:без\\s+НДС|стоимость\\s+без\\s+НДС|нетто)[^\\d]{0,20}' + SUM_RE, 'i'));
