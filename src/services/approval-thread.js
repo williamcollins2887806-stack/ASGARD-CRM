@@ -33,14 +33,28 @@ async function approverId(db) {
  * @param {object} email — строка emails (id, thread_id, in_reply_to, references_header, body_text, from_email)
  * @returns {Promise<{action:string, matched:number, applied:number, needs_manual?:boolean, ids?:number[], reason?:string}>}
  */
+/**
+ * Извлечь чистый email из строки (отсекает display-name и угловые скобки):
+ * «Олег Гажилиев <go@asgard-service.com>` → `go@asgard-service.com`.
+ * FAIL-2 (верификатор 17.10): раньше сравнивали подстрокой, и
+ * `go@asgard-service.com.evil.ru` проходил как согласующий.
+ */
+function extractEmail(raw) {
+  const s = String(raw || '').trim();
+  const inBrackets = s.match(/<([^>]+)>/);
+  const addr = (inBrackets ? inBrackets[1] : s).trim().toLowerCase();
+  const m = addr.match(/[a-z0-9._%+\-]+@[a-z0-9.\-]+\.[a-z]{2,}/i);
+  return m ? m[0].toLowerCase() : '';
+}
+
 async function handleApprovalReply(db, email) {
   const body = email.body_text || '';
   // F4 (верификатор 17.10): сервис сам проверяет отправителя — раньше фильтр
   // жил только в imap.js, и прямой вызов согласовывал от лица директора
-  // без проверки from_email. Настраиваемый список для отпуска/замещения.
-  const sender = String(email.from_email || '').toLowerCase().trim();
+  // без проверки from_email. Сравнение — ТОЧНЫМ адресом (не подстрокой!).
+  const sender = extractEmail(email.from_email);
   const allowed = await approverEmails(db);
-  if (allowed.length && !allowed.some((e) => sender.includes(e))) {
+  if (allowed.length && !allowed.includes(sender)) {
     return { action: 'none', matched: 0, applied: 0, reason: 'sender_not_approver', sender };
   }
   const appr = detectApproval(body);
@@ -132,7 +146,8 @@ async function approverEmails(db) {
       if (Array.isArray(v)) for (const e of v) if (e) out.add(String(e).toLowerCase().trim());
     }
   } catch (_) { /* нет настроек — вернём то, что есть */ }
-  return [...out].filter(Boolean);
+  // Нормализуем каждый адрес (display-name/скобки) — сравнение точное.
+  return [...out].map((e) => extractEmail(e)).filter(Boolean);
 }
 
-module.exports = { handleApprovalReply, approverId, approverEmails };
+module.exports = { handleApprovalReply, approverId, approverEmails, extractEmail };

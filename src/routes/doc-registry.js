@@ -718,9 +718,17 @@ module.exports = async function docRegistryRoutes(fastify) {
     const year = parseInt(q.year, 10) || new Date().getFullYear();
     const quarter = parseInt(q.quarter, 10) || 0;
     const cfg = await reconSettings();
-    const { rows: saved } = await db.query(
-      `SELECT * FROM doc_reconciliation_acts WHERE period_year=$1 AND period_quarter=$2 ORDER BY due_at NULLS LAST`,
-      [year, quarter]);
+    // FAIL-3 (верификатор 17.10): сохранённые акты содержат balance_rub и
+    // file_url подписанного файла — их видят ТОЛЬКО привилегированные роли
+    // (как и деталь). Раньше SELECT * отдавал чужой акт любому PM.
+    const canSeeSaved = canUseScopeAll(req.user.role);
+    let saved = [];
+    if (canSeeSaved) {
+      const sRes = await db.query(
+        `SELECT * FROM doc_reconciliation_acts WHERE period_year=$1 AND period_quarter=$2 ORDER BY due_at NULLS LAST`,
+        [year, quarter]);
+      saved = sRes.rows;
+    }
     // Кандидаты: контрагенты с документами (оплата/услуга) за период.
     const { from, to } = reconSvc.periodRange(year, quarter);
     const p = [from, to];

@@ -23,6 +23,13 @@ const APPROVE_WORDS = [
   'разрешаю', 'даю добро', 'можно оплачивать', 'ок на оплату'
 ];
 
+/** Явные негатив-токены (без одиночного «не» — он ловится отдельным паттерном). */
+const NEG_STRONG = [
+  'отмен', 'отклон', 'отказ', 'стоп', 'позже', 'отлож', 'запрещ', 'запрет',
+  'доработ', 'против', 'верни', 'вернуть', 'аннулир', 'пересмотр', 'погод',
+  'воздерж', 'снимаю', 'нельзя', 'невозможно', 'передум', 'пересмат'
+];
+
 // Негативные токены: если они в окне ПЕРЕД утвердительным словом — это не согласие.
 const NEG_TOKENS = [
   'не', 'ни', 'нельзя', 'невозможно', 'отказ', 'отклон', 'против', 'отмен',
@@ -91,12 +98,24 @@ function questionAfter(s, pos, len, window = 24) {
 /**
  * Есть ли утвердительное согласие в теле.
  * @param {string} body
- * @returns {{approve:boolean, word?:string, negative?:boolean, question?:boolean}}
+ * @returns {{approve:boolean, word?:string, negative?:boolean, question?:boolean, reason?:string}}
  */
 function detectApproval(body) {
   const s = stripQuotes(body).toLowerCase();
   if (!s) return { approve: false };
   for (const trap of FALSE_APPROVE) { if (trap.test(s)) return { approve: false, falsePositive: true }; }
+
+  // ВАЖНО (верификатор 17.10, обход №2): негатив/отмена в ЛЮБОМ предложении
+  // отменяет согласие. Раньше окно обрезалось по «.» — «Добро. Не оплачивайте.»
+  // проходило как согласие и РЕАЛЬНО согласовывало счёт. Теперь сильные
+  // негатив-токены проверяются по ВСЕМУ срезанному тексту, до поиска согласия.
+  const strong = NEG_STRONG.find((t) => new RegExp('(^|[^а-яё])' + t, 'i').test(s));
+  if (strong) return { approve: false, negative: true, reason: 'negation_or_cancel', word: strong };
+  // «не» + согласие-слово вплотную («не оплачивайте», «не даю добро»).
+  if (/(^|[^а-яё])не\s+(оплачива|согласов|согласен|утвержда|одобр|подтвержд|разреш|даю)/i.test(s)) {
+    return { approve: false, negative: true, reason: 'negated_approval' };
+  }
+
   const qHit = QUESTION_HINTS.find((q) => s.includes(q));
   if (qHit) return { approve: false, question: true, word: qHit };
 
@@ -105,7 +124,7 @@ function detectApproval(body) {
     let m;
     while ((m = re.exec(s)) !== null) {
       const pos = m.index + m[1].length;
-      // Негация перед словом, негатив после (в том же предложении) или вопрос — не согласие.
+      // Negation/вопрос в окне вокруг слова (короткая страховка).
       if (negativeBefore(s, pos)) continue;
       if (negativeAfter(s, pos, w.length)) continue;
       if (questionAfter(s, pos, w.length)) continue;
@@ -118,7 +137,8 @@ function detectApproval(body) {
 /** Явный отказ (для отдельного класса, не путать с «не согласие»). */
 function detectRejection(body) {
   const s = stripQuotes(body).toLowerCase();
-  const rej = ['отклоняю', 'отклонено', 'отклоняем', 'отказано', 'не согласовано', 'на доработку', 'верни на', 'вернуть', 'аннулиру', 'пересмотр'];
+  const rej = ['отклоняю', 'отклонено', 'отклоняем', 'отказано', 'не согласовано', 'на доработку',
+    'верни на', 'вернуть', 'аннулиру', 'пересмотр', 'отменяю', 'отмена', 'стоп'];
   const hit = rej.find((w) => s.includes(w));
   return hit ? { reject: true, word: hit } : { reject: false };
 }

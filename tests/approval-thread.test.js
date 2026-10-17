@@ -74,8 +74,33 @@ const bad = (m) => { fail++; console.log('  FAIL', m); };
   const st3 = (await db.query(`SELECT status FROM payment_invoices WHERE id=$1`, [pay3.id])).rows[0];
   (st3.status === 'awaiting_dir') ? ok('заявка не согласована чужаком') : bad('заявка изменилась: ' + st3.status);
 
+  console.log('\n=== F4 б: подделка адреса (обход includes) ===');
+  const spoofCases = [
+    ['go@asgard-service.com.evil-attacker.ru', 'суффикс-подделка'],
+    ['Олег Гажилиев <go@asgard-service.com.evil.ru>', 'display-name + чужой домен'],
+    ['notgo@asgard-service.com', 'другой логин того же домена']
+  ];
+  for (const [addr, label] of spoofCases) {
+    const payN = (await db.query(
+      `INSERT INTO payment_invoices(status, payment_status, supplier_name, amount, requires_payment, created_by, pay_timing, source_email_id, source_thread_key)
+       VALUES ('awaiting_dir','awaiting_dir',$1, 800, true, 1, 'immediate', $2, $3) RETURNING id`,
+      ['SPOOF-' + label, execEmail.id, srcMsgId])).rows[0];
+    const fr = await th.handleApprovalReply(db, { id: 0, thread_id: srcMsgId, in_reply_to: `<${srcMsgId}>`, references_header: `<${srcMsgId}>`, body_text: 'Добро', from_email: addr });
+    const stN = (await db.query(`SELECT status FROM payment_invoices WHERE id=$1`, [payN.id])).rows[0];
+    (fr.applied === 0 && stN.status === 'awaiting_dir') ? ok(`${label} отклонён`) : bad(`${label}: ${JSON.stringify(fr)} st=${stN.status}`);
+    await db.query(`DELETE FROM payment_invoices WHERE id=$1`, [payN.id]);
+  }
+  console.log('\n=== F4 в: настоящий адрес Гажилиева проходит ===');
+  const realPay = (await db.query(
+    `INSERT INTO payment_invoices(status, payment_status, supplier_name, amount, requires_payment, created_by, pay_timing, source_email_id, source_thread_key)
+     VALUES ('awaiting_dir','awaiting_dir','ТРЕД-REAL', 900, true, 1, 'immediate', $1, $2) RETURNING id`, [execEmail.id, srcMsgId])).rows[0];
+  const frReal = await th.handleApprovalReply(db, { id: 0, thread_id: srcMsgId, in_reply_to: `<${srcMsgId}>`, references_header: `<${srcMsgId}>`, body_text: 'Добро', from_email: 'Олег Гажилиев <go@asgard-service.com>' });
+  // applied может быть >1: в треде несколько заявок (норма — «Добро» применяется ко всем).
+  const stReal = (await db.query(`SELECT status FROM payment_invoices WHERE id=$1`, [realPay.id])).rows[0];
+  (frReal.applied >= 1 && stReal.status === 'pending_payment') ? ok('реальный адрес (с display-name) согласовал') : bad('реальный: ' + JSON.stringify(frReal) + ' st=' + stReal.status);
+
   // Уборка
-  const pays = [payId, pay2.id, pay3.id].filter(Boolean);
+  const pays = [payId, pay2.id, pay3.id, realPay.id].filter(Boolean);
   await db.query(`DELETE FROM doc_email_intake WHERE payment_invoice_id = ANY($1::int[])`, [pays]);
   await db.query(`DELETE FROM payment_invoices WHERE id = ANY($1::int[])`, [pays]);
   await db.query(`DELETE FROM doc_registry WHERE id=$1`, [r1.doc_id]);

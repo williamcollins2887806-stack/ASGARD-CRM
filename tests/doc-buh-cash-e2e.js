@@ -2,10 +2,22 @@ const BASE = 'http://127.0.0.1:3100';
 const { Pool } = require('pg');
 const db = new Pool({ host: '127.0.0.1', port: 5432, database: 'asgard_crm_test', user: 'asgard', password: '123456789' });
 async function login(l, p) {
-  const r = await fetch(BASE + '/api/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ login: l, password: p }) });
-  const d = await r.json(); let t = d.token;
-  if (d.status === 'need_pin') { for (const pin of ['0000', '1234']) { const r2 = await fetch(BASE + '/api/auth/verify-pin', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + t }, body: JSON.stringify({ pin }) }); const d2 = await r2.json(); if (d2.token) { t = d2.token; break; } } }
-  return t;
+  for (let attempt = 0; attempt < 4; attempt++) {
+    const r = await fetch(BASE + '/api/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ login: l, password: p }) });
+    const d = await r.json();
+    let t = d.token;
+    if (d.status === 'need_pin') {
+      for (const pin of ['0000', '1234']) {
+        const r2 = await fetch(BASE + '/api/auth/verify-pin', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + t }, body: JSON.stringify({ pin }) });
+        const d2 = await r2.json().catch(() => ({}));
+        if (d2.token) { t = d2.token; break; }
+      }
+    }
+    const probe = await fetch(BASE + '/api/doc-registry/kpi', { headers: { Authorization: 'Bearer ' + t } });
+    if (probe.status === 200) return t;
+    await new Promise((res) => setTimeout(res, 800));
+  }
+  throw new Error('login failed for ' + l);
 }
 const H = (t) => ({ 'Content-Type': 'application/json', Authorization: 'Bearer ' + t });
 let pass = 0, fail = 0;

@@ -1,11 +1,27 @@
 const BASE = 'http://127.0.0.1:3100';
 const { Pool } = require('pg');
 const db = new Pool({ host: '127.0.0.1', port: 5432, database: 'asgard_crm_test', user: 'asgard', password: '123456789' });
+// Логин устойчивый к накоплению состояния: verify-pin может не отдать новый
+// токен (лимит попыток/PIN-сессия), тогда переиспользуется pre-PIN токен → 403.
+// Проверяем рабочий токен на /api/auth/me и повторяем при неудаче.
 async function login(l, p) {
-  const r = await fetch(BASE + '/api/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ login: l, password: p }) });
-  const d = await r.json(); let t = d.token;
-  if (d.status === 'need_pin') { for (const pin of ['0000', '1234']) { const r2 = await fetch(BASE + '/api/auth/verify-pin', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + t }, body: JSON.stringify({ pin }) }); const d2 = await r2.json(); if (d2.token) { t = d2.token; break; } } }
-  return t;
+  for (let attempt = 0; attempt < 4; attempt++) {
+    const r = await fetch(BASE + '/api/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ login: l, password: p }) });
+    const d = await r.json();
+    let t = d.token;
+    if (d.status === 'need_pin') {
+      for (const pin of ['0000', '1234']) {
+        const r2 = await fetch(BASE + '/api/auth/verify-pin', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + t }, body: JSON.stringify({ pin }) });
+        const d2 = await r2.json().catch(() => ({}));
+        if (d2.token) { t = d2.token; break; }
+      }
+    }
+    // Проверяем, что токен проходит защищённую ручку (не pre-PIN).
+    const probe = await fetch(BASE + '/api/doc-registry/kpi', { headers: { Authorization: 'Bearer ' + t } });
+    if (probe.status === 200) return t;
+    await new Promise((res) => setTimeout(res, 800));
+  }
+  throw new Error('login failed for ' + l);
 }
 const H = (t) => ({ 'Content-Type': 'application/json', Authorization: 'Bearer ' + t });
 let pass = 0, fail = 0;
@@ -38,6 +54,20 @@ const bad = (m) => { fail++; console.log('  FAIL', m); };
 
   console.log('\n=== нет 500 (класс «no parameter $1») ===');
   (r1.status === 200 && r2.status === 200) ? ok('оба запроса 200 (нет конфликта параметров)') : bad('st=' + r1.status + '/' + r2.status);
+
+  console.log('\n=== FAIL-3: список /reconciliation не отдаёт чужой сохранённый акт ===');
+  // Сохранённый акт с секретными данными.
+  const act = (await db.query(
+    `INSERT INTO doc_reconciliation_acts(counterparty_inn, counterparty_name, period_year, period_quarter, status, balance_rub, file_url)
+     VALUES ('7722753969','СЕКРЕТ-АКТ',2026,4,'received', 9999999, 'uploads/doc-hub/secret-act-signed.pdf') RETURNING id`)).rows[0];
+  const lstPm = await (await fetch(`${BASE}/api/doc-registry/reconciliation?year=2026&quarter=4`, { headers: H(pmT) })).json();
+  const leakedAct = (lstPm.items || []).find((x) => x.act_id === act.id || Number(x.balance_rub) === 9999999);
+  (leakedAct == null) ? ok('PM не видит чужой сохранённый акт') : bad('УТЕЧКА: PM видит акт ' + JSON.stringify(leakedAct));
+  const lstBuh = await (await fetch(`${BASE}/api/doc-registry/reconciliation?year=2026&quarter=4`, { headers: H(buhT) })).json();
+  const wouldSee = (await db.query(`SELECT count(*)::int n FROM doc_reconciliation_acts WHERE id=$1`, [act.id])).rows[0].n;
+  // BUH список отдаётся (кандидаты могут быть пустыми, но запрос 200 и не падает).
+  (lstBuh && Array.isArray(lstBuh.items)) ? ok('BUH получает список (200, массив)') : bad('BUH список: ' + JSON.stringify(lstBuh).slice(0, 80));
+  await db.query(`DELETE FROM doc_reconciliation_acts WHERE id=$1`, [act.id]);
 
   await db.query(`DELETE FROM doc_registry WHERE id=$1`, [doc.id]);
   console.log('\n────────────────────────────────────────');

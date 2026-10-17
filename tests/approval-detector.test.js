@@ -41,6 +41,15 @@ t('«Добро!»', det.detectApproval('Добро!').approve, true);
 t('«Согласовано, оплачивайте»', det.detectApproval('Согласовано, оплачивайте').approve, true);
 t('«Даю добро»', det.detectApproval('Даю добро на оплату').approve, true);
 
+console.log('\n=== ОБХОД №2 ВЕРИФИКАТОРА: негатив в СЛЕДУЮЩЕМ предложении ===');
+t('«Добро. Не оплачивайте.»', det.detectApproval('Добро. Не оплачивайте.').approve, false);
+t('«Согласовано. Отменяю оплату.»', det.detectApproval('Согласовано. Отменяю оплату.').approve, false);
+t('«Утверждаю. Но оплату отложить.»', det.detectApproval('Утверждаю. Но оплату отложить.').approve, false);
+t('«Согласовано!\\nОтклоняю»', det.detectApproval('Согласовано!\nОтклоняю').approve, false);
+t('«Добро. Не оплачивайте этот счёт!»', det.detectApproval('Добро. Не оплачивайте этот счёт!').approve, false);
+t('«оплачивайте\\n\\nп.с. нет, стоп»', det.detectApproval('оплачивайте\n\nп.с. нет, стоп').approve, false);
+t('«Добро, но позже»', det.detectApproval('Добро, но позже').approve, false);
+
 console.log('\n=== вопрос НЕ считаем согласием ===');
 t('«Согласовать?»', det.detectApproval('Согласовать?').approve, false);
 t('«Оплачивать ли?»', det.detectApproval('Оплачивать ли этот счёт?').approve, false);
