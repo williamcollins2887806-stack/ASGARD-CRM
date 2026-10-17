@@ -609,6 +609,33 @@ a:hover { text-decoration: underline; }
 }
 .proc-pay-req__cp:hover { color: var(--gold); border-color: var(--gold); }
 
+/* ═══ U7: доступность Doc Hub ═══ */
+/* Видимый фокус для клавиатурной навигации (не мешает мыши). */
+.dh-app :is(button, a, input, select, textarea, [tabindex]):focus-visible {
+  outline: 2px solid var(--gold);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+/* Фокус-трап drawer: активный элемент внутри панели выделен сильнее. */
+.dh-drawer--portal :is(button, a, input, select, textarea):focus-visible {
+  outline: 2px solid var(--gold);
+  outline-offset: 2px;
+}
+/* Дальтоники: цвет светофора дублируется формой/иконкой (не только цветом). */
+.dh-tl__dot { position: relative; }
+.dh-tl--red .dh-tl__dot::after { content: ''; position: absolute; inset: 3px; border-radius: 50%; background: #fff; }
+.dh-tl--blue .dh-tl__dot { border-radius: 3px; }
+.dh-tl--yellow .dh-tl__dot { border-radius: 50% 50% 0 0; }
+/* Уважение «уменьшить движение». */
+@media (prefers-reduced-motion: reduce) {
+  .dh-app *, .dh-drawer--portal * {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
 /* ═══ V394: вкладка «Акты сверки» ═══ */
 .dh-arch__bar { display: flex; gap: 14px; align-items: center; flex-wrap: wrap; margin-bottom: 12px; }
 .dh-arch__bar label { display: flex; align-items: center; gap: 6px; color: var(--t2); font-size: 13px; }

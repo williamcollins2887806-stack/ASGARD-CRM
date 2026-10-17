@@ -3475,9 +3475,20 @@ window.AsgardDocHubPage = (function () {
     if (!window.__dhEscBound) {
       window.__dhEscBound = true;
       document.addEventListener('keydown', (e) => {
-        if (e.key !== 'Escape') return;
         const d = document.getElementById('dhDrawer');
-        if (d && !d.hidden) closeDrawer();
+        const open = d && !d.hidden;
+        if (e.key === 'Escape' && open) { closeDrawer(); return; }
+        // U7: фокус-трап — Tab внутри открытого drawer не уходит в фон.
+        if (e.key === 'Tab' && open) {
+          const nodes = Array.from(d.querySelectorAll(
+            'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+          )).filter((el) => el.offsetParent !== null);
+          if (!nodes.length) return;
+          const first = nodes[0];
+          const last = nodes[nodes.length - 1];
+          if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+          else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+        }
       });
     }
   }
