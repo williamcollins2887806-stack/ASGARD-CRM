@@ -78,18 +78,27 @@ function extractInvoice(text) {
   const bankM = t.match(/(ПАО|АО|ООО|ОАО|БАНК|ФИЛИАЛ)[^\n]{0,60}банк[^\n]{0,40}/i);
   if (bankM) { out.bank_name = bankM[0].trim().slice(0, 120); found(); }
 
-  // Номер и дата счёта.
-  const numM = t.match(/сч[её]т\s*№?\s*([\w\-/№]+)\s*(?:от\s*(\d{2}[.\-/]\d{2}[.\-/]\d{2,4}))?/i);
-  if (numM) {
-    out.invoice_number = String(numM[1]).replace(/№/g, '').trim();
-    found();
-    if (numM[2]) {
-      const p = numM[2].split(/[.\-/]/);
-      if (p.length === 3) {
-        const yy = p[2].length === 2 ? '20' + p[2] : p[2];
-        out.invoice_date = `${yy}-${p[1].padStart(2, '0')}-${p[0].padStart(2, '0')}`;
-        found();
+  // Номер и дата счёта. Номер может содержать пробелы, дефис, слэш (УТ 13028,
+  // АС-0209/1-25, ППУП-012128). Ищем в СТРОКЕ с «счёт», чтобы не утащить перенос.
+  const lineM = t.match(/[^\n]*сч[её]т[^\n]*/i);
+  if (lineM) {
+    const line = lineM[0];
+    const nm = line.match(/сч[её]т\s*№?\s*([^\n]*)$/i);
+    if (nm) {
+      let raw = nm[1];
+      let dateStr = null;
+      const dm = raw.match(/от\s*(\d{2}[.\-/]\d{2}[.\-/]\d{2,4})/i);
+      if (dm) { dateStr = dm[1]; raw = raw.slice(0, raw.indexOf(dm[0])); }
+      let num = raw.replace(/№/g, '').replace(/\s+/g, ' ').trim().replace(/[.,\s]+$/, '');
+      if (num) out.invoice_number = num;
+      if (dateStr) {
+        const p = dateStr.split(/[.\-/]/);
+        if (p.length === 3) {
+          const yy = p[2].length === 2 ? '20' + p[2] : p[2];
+          out.invoice_date = `${yy}-${p[1].padStart(2, '0')}-${p[0].padStart(2, '0')}`;
+        }
       }
+      if (num || dateStr) found();
     }
   }
 
