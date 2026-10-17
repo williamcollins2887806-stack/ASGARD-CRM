@@ -518,6 +518,10 @@ a:hover { text-decoration: underline; }
 .dh-table tbody tr.is-traffic-green {
   box-shadow: inset 3px 0 0 color-mix(in srgb, var(--green, #4caf50) 45%, transparent);
 }
+/* U3(д): исходящие строки — класс ставился из JS, но CSS не было. */
+.dh-table tbody tr.is-out {
+  border-left: 3px solid var(--gold);
+}
 
 /* Бейдж-светофор (первая колонка). */
 .dh-col-tl { width: 34px; text-align: center; }
