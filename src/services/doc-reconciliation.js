@@ -41,14 +41,24 @@ function periodDeadline(year, quarter, opts = {}) {
 /**
  * Кандидаты в акт: документы контрагента за период, где есть оплата
  * либо оказанная услуга. Возвращает { docs, paidSum, docsSum, balanceRub }.
+ * ВАЖНО (верификатор 17.10): матрица видимости применяется ЗДЕСЬ — внутри,
+ * после базовых params [from,to], чтобы нумерация $N не конфликтовала
+ * (иначе снова класс «there is no parameter $1»). Без неё деталь отдавала
+ * чужие суммы любому PM — список фильтровался, а деталь нет.
  * @param {object} db — pg pool/query
- * @param {{inn?:string, name?:string, year:number, quarter:number}} args
+ * @param {{inn?:string, name?:string, year:number, quarter:number,
+ *          role?:string, userId?:number, scope?:string}} args
  */
-async function buildReconciliation(db, { inn, name, year, quarter }) {
+async function buildReconciliation(db, { inn, name, year, quarter, role, userId, scope }) {
   const { from, to } = periodRange(year, quarter);
   const params = [from, to];
   let where = `WHERE d.deleted_at IS NULL AND d.dir = 'in'
     AND COALESCE(d.invoice_date, d.service_done_at) BETWEEN $1::date AND $2::date`;
+  // Матрица видимости — если переданы роль/пользователь.
+  if (role && userId != null) {
+    const { visibilitySql } = require('../lib/doc-visibility');
+    where += visibilitySql(params, role, userId, { scope });
+  }
   if (inn) { params.push(inn); where += ` AND d.counterparty_inn = $${params.length}`; }
   else if (name) { params.push(String(name).trim().toLowerCase()); where += ` AND lower(trim(d.counterparty_name)) = $${params.length}`; }
   else throw Object.assign(new Error('Нужен ИНН или название контрагента'), { statusCode: 400 });

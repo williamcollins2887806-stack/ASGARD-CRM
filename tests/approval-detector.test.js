@@ -20,6 +20,27 @@ t('«Отклоняю»', det.detectApproval('Отклоняю оплату').ap
 t('«против»', det.detectApproval('Я против этой оплаты').approve, false);
 t('«на доработку»', det.detectApproval('Отправляю на доработку').approve, false);
 
+console.log('\n=== ОБХОДЫ ВЕРИФИКАТОРА (17.10) — раньше согласовывали счёт ===');
+t('«Пока не оплачивайте»', det.detectApproval('Пока не оплачивайте').approve, false);
+t('«Не оплачивайте пока»', det.detectApproval('Не оплачивайте пока').approve, false);
+t('«Я не даю добро»', det.detectApproval('Я не даю добро').approve, false);
+t('«Добро, но не оплачивайте»', det.detectApproval('Добро, но не оплачивайте').approve, false);
+t('«Не подтверждаю оплату»', det.detectApproval('Не подтверждаю оплату').approve, false);
+t('«Оплачивайте позже»', det.detectApproval('Оплачивайте позже').approve, false);
+t('«Отложить оплату»', det.detectApproval('Отложить оплату').approve, false);
+t('«Запрещаю оплачивать»', det.detectApproval('Запрещаю оплачивать').approve, false);
+t('«Отмена, не оплачивайте»', det.detectApproval('Отмена, не оплачивайте').approve, false);
+t('«Добро пожаловать» (НЕ согласие)', det.detectApproval('Добро пожаловать в команду!').approve, false);
+t('«Оплачиваем?»', det.detectApproval('Оплачиваем?').approve, false);
+t('«Добро, так?»', det.detectApproval('Добро, так?').approve, false);
+t('Outlook-блок От/Кому с «добро» в цитате', det.detectApproval('См. ниже\nОт: X\nКому: Y\nДобро').approve, false);
+t('Отправлено: блок с «согласовано» в цитате', det.detectApproval('Пересылаю письмо\nОтправлено: вчера\nСогласовано').approve, false);
+// Положительные, которые ОБЯЗАНЫ остаться согласием:
+t('«Да, добро»', det.detectApproval('Да, добро').approve, true);
+t('«Добро!»', det.detectApproval('Добро!').approve, true);
+t('«Согласовано, оплачивайте»', det.detectApproval('Согласовано, оплачивайте').approve, true);
+t('«Даю добро»', det.detectApproval('Даю добро на оплату').approve, true);
+
 console.log('\n=== вопрос НЕ считаем согласием ===');
 t('«Согласовать?»', det.detectApproval('Согласовать?').approve, false);
 t('«Оплачивать ли?»', det.detectApproval('Оплачивать ли этот счёт?').approve, false);

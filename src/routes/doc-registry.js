@@ -765,8 +765,16 @@ module.exports = async function docRegistryRoutes(fastify) {
     const q = req.query || {};
     const year = parseInt(q.year, 10) || new Date().getFullYear();
     const quarter = parseInt(q.quarter, 10) || 0;
+    // Верификатор 17.10: деталь ДОЛЖНА уважать матрицу видимости — иначе PM
+    // получал обороты по чужим контрагентам (утечка сумм до ~5 млн ₽).
+    // Для привилегированных (BUH/ADMIN/директора) акт сверки — бухгалтерская
+    // функция по КОНТРАГЕНТУ, а не личный список: они видят период целиком
+    // (scope='all'). Не-привилегированные (PM/PROC/TO/WAREHOUSE) остаются
+    // ограничены своей матрицей независимо от scope.
+    const reconScope = canUseScopeAll(req.user.role) ? 'all' : (q.scope || 'mine');
     const detail = await reconSvc.buildReconciliation(db, {
-      inn: q.inn || null, name: q.name || null, year, quarter
+      inn: q.inn || null, name: q.name || null, year, quarter,
+      role: req.user.role, userId: req.user.id, scope: reconScope
     });
     const cfg = await reconSettings();
     return { ...detail, due_at: reconSvc.periodDeadline(year, quarter, cfg) };

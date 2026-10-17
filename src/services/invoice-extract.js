@@ -93,22 +93,35 @@ function extractInvoice(text) {
     }
     if (raw != null) {
       let dateStr = null;
-      const dm = raw.match(/от\s*(\d{2}[.\-/]\d{2}[.\-/]\d{2,4})/i);
-      if (dm) { dateStr = dm[1]; raw = raw.slice(0, raw.indexOf(dm[0])); }
-      // Номер — до первых «служебных» слов (на оплату, имеет силу, действителен…).
-      let num = raw.replace(/№/g, '')
-        .replace(/\b(на\s+оплату|имеет\s+силу\s+\S*|действител\w*(\s+до)?|означает\S*|и\s+не\s+является\S*|в\s+один\s+клик\S*|от\s+\S+)\b.*$/i, '')
-        .replace(/\s+/g, ' ').trim().replace(/[.,\s]+$/, '');
-      // Отвергаем явные не-номера: длинные цифровые последовательности (счета/р/с).
-      if (num && !/^\d{15,}$/.test(num)) out.invoice_number = num;
-      if (dateStr) {
+      // Дата может быть цифровой (14.07.26) ИЛИ текстовой (14 июля 2026 г.).
+      const dmNum = raw.match(/от\s*(\d{2}[.\-/]\d{2}[.\-/]\d{2,4})/i);
+      const dmText = raw.match(/от\s*(\d{1,2})\s+([а-яё]+)\s+(\d{4})/i);
+      if (dmNum) {
+        dateStr = dmNum[1];
         const p = dateStr.split(/[.\-/]/);
         if (p.length === 3) {
           const yy = p[2].length === 2 ? '20' + p[2] : p[2];
           out.invoice_date = `${yy}-${p[1].padStart(2, '0')}-${p[0].padStart(2, '0')}`;
         }
+        raw = raw.slice(0, raw.indexOf(dmNum[0]));
+      } else if (dmText) {
+        const MONTHS = { января: 1, февраля: 2, марта: 3, апреля: 4, мая: 5, июня: 6, июля: 7, августа: 8, сентября: 9, октября: 10, ноября: 11, декабря: 12 };
+        const mm = MONTHS[dmText[2].toLowerCase()];
+        if (mm) {
+          out.invoice_date = `${dmText[3]}-${String(mm).padStart(2, '0')}-${String(dmText[1]).padStart(2, '0')}`;
+        }
+        raw = raw.slice(0, raw.indexOf(dmText[0]));
       }
-      if (out.invoice_number || dateStr) found();
+      // Номер — до служебных слов; сами слова и длинные цифры (р/с) отсекаем.
+      let num = raw.replace(/№/g, '')
+        .replace(/\b(на\s+оплату|имеет\s+силу\s+\S*|действител\w*(\s+до)?|означает\S*|и\s+не\s+является\S*|в\s+один\s+клик\S*)\b.*$/i, '')
+        .replace(/\s+/g, ' ').trim().replace(/[.,\s]+$/, '');
+      // Отбрасываем не-номера: служебные фразы и длинные цифровые (р/с, счёт-карта).
+      const looksService = /^(имеет|действител|означает|в\s+один|на\s+оплату)/i.test(num);
+      if (num && !looksService && !/^\d{15,}$/.test(num) && num.length <= 32) {
+        out.invoice_number = num;
+      }
+      if (out.invoice_number || out.invoice_date) found();
     }
   }
 
