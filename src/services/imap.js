@@ -1846,6 +1846,17 @@ async function init() {
       return;
     }
 
+    // D-216: стенд (не-прод БД) не должен выкачивать БОЕВОЙ ящик. Даже если в
+    // клоне есть активные email_accounts (они приходят с pg_dump прода), синк
+    // опасен: выкачает реальную почту, разошлёт автоответы клиентам. Запускаем
+    // только на прод-БД либо при явном ALLOW_IMAP_ON_STAND=1.
+    const dbName = String(process.env.DB_NAME || 'asgard_crm');
+    const isProdDb = dbName === 'asgard_crm';
+    if (!isProdDb && process.env.ALLOW_IMAP_ON_STAND !== '1') {
+      console.log(`[IMAP] D-216: стенд (DB=${dbName}) — синк почты выключен, чтобы не выкачать боевой ящик. ALLOW_IMAP_ON_STAND=1 для переопределения.`);
+      return;
+    }
+
     // Auto-provision from ENV if no accounts exist
     await autoProvisionFromEnv();
 
@@ -2204,6 +2215,11 @@ async function startPersonalPolling() {
     // от выкачивания личной почты пользователей на стенде.
     if (process.env.IMAP_DISABLED === '1' || process.env.IMAP_DISABLED === 'true') {
       console.log('[IMAP-Personal] IMAP_DISABLED=1 — личный polling не запускается (режим просмотра)');
+      return;
+    }
+    // D-216: на не-прод БД личную почту сотрудников тоже НЕ выкачиваем.
+    if (String(process.env.DB_NAME || 'asgard_crm') !== 'asgard_crm' && process.env.ALLOW_IMAP_ON_STAND !== '1') {
+      console.log('[IMAP-Personal] D-216: стенд — личный polling отключён (не выкачивать боевые ящики). ALLOW_IMAP_ON_STAND=1 для переопределения.');
       return;
     }
     const accounts = await db.query('SELECT id, sync_interval_sec FROM user_email_accounts WHERE is_active = true');
