@@ -168,6 +168,28 @@ const BAD = /Ошибка сервера|Внутренняя ошибка се�
     noEng('doc-registry: без направления', await call('POST', '/api/doc-registry', {}), true);
   }
 
+  console.log('\n=== 7. ОЧЕРЕДИ ДИРЕКТОРА (виджеты мобильного, 17.10.2026) ===');
+  // Единый агрегат для мобильных виджетов: что ЖДЁТ решения (approvals)
+  // и что РЕШЕНО, но не выполнено (toExecute). Суммы должны сходиться с БД.
+  {
+    const q = await call('GET', '/api/director-summary/queues');
+    ok('GET /api/director-summary/queues → 200', q.st === 200, `[${q.st}]`);
+    const a = q.d && q.d.approvals;
+    const x = q.d && q.d.toExecute;
+    ok('есть блок approvals (счета/выплаты/касса)', !!(a && a.invoices && a.payouts && a.cash),
+      a ? Object.keys(a).join(',') : '—');
+    ok('есть блок toExecute (счета/выплаты/касса)', !!(x && x.invoices && x.payouts && x.cash),
+      x ? Object.keys(x).join(',') : '—');
+    const shape = (c) => c && typeof c.count === 'number' && typeof c.sum === 'number';
+    ok('у каждой очереди есть count и sum',
+      shape(a.invoices) && shape(a.payouts) && shape(a.cash) && shape(x.invoices) && shape(x.payouts) && shape(x.cash),
+      `approvals.invoices=${JSON.stringify(a.invoices)}`);
+    ok('итоги = сумма частей',
+      a.total_count === a.invoices.count + a.payouts.count + a.cash.count
+      && x.total_count === x.invoices.count + x.payouts.count + x.cash.count,
+      `approvals total=${a.total_count}, toExecute total=${x.total_count}`);
+  }
+
   await pool.end();
   console.log(`\n═══ ИТОГ: ${pass} PASS / ${fail} FAIL ═══`);
   if (fails.length) { console.log('ПРОВАЛЫ:'); fails.forEach((f) => console.log('  - ' + f)); }

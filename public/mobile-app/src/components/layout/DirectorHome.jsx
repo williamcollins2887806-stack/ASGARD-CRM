@@ -1,9 +1,11 @@
-import { Navigate } from 'react-router-dom';
 import { useAuthStore } from '@/stores/authStore';
 
-/** V391: у директора мобильный арсенал сужен до согласований (заказчик
- *  15.10.2026) — дашборд создаёт лишний шум. Домашний роут «/» уводим прямо
- *  на экран согласований. Десктоп не затрагивается: там у директора всё видно. */
+/** 17.10.2026 (заказчик): директору вернули главную страницу с виджетами —
+ *  «погорячился, когда сказал что директору закрываем все вкладки». Раньше
+ *  здесь был безусловный редирект на /director-approvals, из-за чего единый
+ *  виджет согласований и «К исполнению» на главной были не видны.
+ *  Теперь главная рендерится как есть; согласования доступны и вкладкой,
+ *  и тапом по виджету. Десктоп не затрагивается. */
 export const DIRECTOR_ROLES = ['DIRECTOR_COMM', 'DIRECTOR_GEN', 'DIRECTOR_DEV'];
 
 export function isDirectorRole(role) {
@@ -11,7 +13,8 @@ export function isDirectorRole(role) {
 }
 
 export default function DirectorHome({ children }) {
-  const role = useAuthStore((s) => s.user?.role);
-  if (isDirectorRole(role)) return <Navigate to="/director-approvals" replace />;
+  // Роль читаем, чтобы компонент оставался стабильным при смене пользователя,
+  // но больше НЕ редиректим: главная с виджетами — основной экран директора.
+  useAuthStore((s) => s.user?.role);
   return children;
 }

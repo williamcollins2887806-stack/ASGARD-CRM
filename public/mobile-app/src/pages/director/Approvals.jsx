@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuthStore } from '@/stores/authStore';
 import { useHaptic } from '@/hooks/useHaptic';
 import { api } from '@/api/client';
@@ -56,6 +56,10 @@ export default function DirectorApprovals() {
   const user      = useAuthStore((s) => s.user);
   const navigate  = useNavigate();
   const haptic    = useHaptic();
+  // 17.10.2026: тап по виджету на главной открывает нужную вкладку
+  // (/director-approvals?tab=payouts|cash|invoices|plan) — так «выплаты» из
+  // виджета ведут сразу к выплатам, а не на «Кассу» по умолчанию.
+  const [searchParams, setSearchParams] = useSearchParams();
 
   const [pending,     setPending]     = useState([]);
   const [balance,     setBalance]     = useState(null);
@@ -63,7 +67,12 @@ export default function DirectorApprovals() {
   const [opened,      setOpened]      = useState(null);
   const [actionBusy,  setActionBusy]  = useState(false);
   // V391: единый экран директора = 4 вкладки (заказчик 15.10.2026).
-  const [tab,         setTab]         = useState('cash');
+  // 17.10.2026: стартовую вкладку берём из URL (?tab=...) — тап по виджету
+  // на главной ведёт СРАЗУ на нужную очередь (счета/выплаты/касса/план).
+  const [tab,         setTab]         = useState(() => {
+    const t = searchParams.get('tab');
+    return ['cash', 'invoices', 'payouts', 'plan'].includes(t) ? t : 'cash';
+  });
   // Выплаты (корзина Димы)
   const [payBatch,    setPayBatch]    = useState([]);
   const [payBusy,     setPayBusy]     = useState(false);
@@ -111,6 +120,17 @@ export default function DirectorApprovals() {
   }, []);
 
   useEffect(() => { fetchData(); }, [fetchData]);
+
+  // 17.10.2026: синхронизируем вкладку с URL — при обновлении страницы и
+  // возврате «назад» директор попадает на ту же очередь, а не на «Кассу».
+  useEffect(() => {
+    const cur = searchParams.get('tab');
+    if (cur !== tab) {
+      const next = new URLSearchParams(searchParams);
+      next.set('tab', tab);
+      setSearchParams(next, { replace: true });
+    }
+  }, [tab, searchParams, setSearchParams]);
 
   /* ── Push-event subscription (asgard:cash:changed) ─────────── */
   useEffect(() => {

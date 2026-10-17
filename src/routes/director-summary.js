@@ -164,4 +164,72 @@ module.exports = async function (fastify, options) {
       return { error: 'director_summary_failed', message: e.message };
     }
   });
+
+  // ─── GET /queues — очереди согласования и исполнения для мобильных виджетов ───
+  // Заказчик 17.10.2026: нужен ОДИН источник правды вместо разрозненных запросов
+  // по вкладкам. Возвращаем два блока:
+  //   approvals — что ЖДЁТ РЕШЕНИЯ директора: счета (awaiting_dir), выплаты
+  //               (позиции списка в статусе pending), касса (cash_requests=requested);
+  //   toExecute — что РЕШЕНО, но ещё НЕ ВЫПОЛНЕНО: счета к оплате (pending_payment),
+  //               выплаты к выплате (approved, но факт перевода ещё не записан),
+  //               касса к выдаче (approved, но деньги ещё не выданы).
+  // Всё — с количеством и суммой, чтобы виджет был информативным.
+  fastify.get('/queues', {
+    preHandler: [fastify.requireRoles(ROLES)]
+  }, async (request, reply) => {
+    try {
+      const [invApp, payApp, cashApp, invPay, payToPay, cashIssue] = await Promise.all([
+        // Счета, ждущие решения директора
+        db.query(`SELECT COUNT(*)::int AS n, COALESCE(SUM(amount),0)::numeric AS s
+                    FROM payment_invoices WHERE status = 'awaiting_dir'`).catch(() => ({ rows: [{}] })),
+        // Выплаты (позиции списков), ждущие решения директора
+        db.query(`SELECT COUNT(*)::int AS n, COALESCE(SUM(i.pay_amount),0)::numeric AS s
+                    FROM payout_batch_items i
+                    JOIN payout_batches b ON b.id = i.batch_id
+                   WHERE i.approval_status = 'pending' AND b.status <> 'cancelled'`).catch(() => ({ rows: [{}] })),
+        // Касса: заявки, ждущие решения директора
+        db.query(`SELECT COUNT(*)::int AS n, COALESCE(SUM(amount),0)::numeric AS s
+                    FROM cash_requests WHERE status = 'requested'`).catch(() => ({ rows: [{}] })),
+        // Счета, одобренные директором и ожидающие оплаты бухгалтерией
+        db.query(`SELECT COUNT(*)::int AS n, COALESCE(SUM(amount),0)::numeric AS s
+                    FROM payment_invoices WHERE status = 'pending_payment'`).catch(() => ({ rows: [{}] })),
+        // Выплаты: согласованы, но факт перевода ещё не записан
+        db.query(`SELECT COUNT(*)::int AS n, COALESCE(SUM(i.pay_amount),0)::numeric AS s
+                    FROM payout_batch_items i
+                    JOIN payout_batches b ON b.id = i.batch_id
+                   WHERE i.approval_status = 'approved' AND b.status <> 'cancelled'
+                     AND NOT EXISTS (
+                       SELECT 1 FROM worker_payments wp
+                        WHERE wp.employee_id = i.employee_id
+                          AND wp.status IN ('paid','confirmed')
+                          AND COALESCE(wp.pay_year,  EXTRACT(YEAR  FROM wp.created_at)::int) = b.period_year
+                          AND COALESCE(wp.pay_month, EXTRACT(MONTH FROM wp.created_at)::int) = b.period_month)`).catch(() => ({ rows: [{}] })),
+        // Касса: одобрено, но деньги ещё не выданы
+        db.query(`SELECT COUNT(*)::int AS n, COALESCE(SUM(amount),0)::numeric AS s
+                    FROM cash_requests WHERE status = 'approved'`).catch(() => ({ rows: [{}] })),
+      ]);
+
+      const cell = (r) => ({ count: Number(r.rows[0] && r.rows[0].n) || 0, sum: Number(r.rows[0] && r.rows[0].s) || 0 });
+
+      const approvals = { invoices: cell(invApp), payouts: cell(payApp), cash: cell(cashApp) };
+      const toExecute = { invoices: cell(invPay), payouts: cell(payToPay), cash: cell(cashIssue) };
+
+      return {
+        approvals: {
+          ...approvals,
+          total_count: approvals.invoices.count + approvals.payouts.count + approvals.cash.count,
+          total_sum: approvals.invoices.sum + approvals.payouts.sum + approvals.cash.sum,
+        },
+        toExecute: {
+          ...toExecute,
+          total_count: toExecute.invoices.count + toExecute.payouts.count + toExecute.cash.count,
+          total_sum: toExecute.invoices.sum + toExecute.payouts.sum + toExecute.cash.sum,
+        },
+      };
+    } catch (e) {
+      request.log.error(e);
+      reply.code(500);
+      return { error: 'queues_failed', message: e.message };
+    }
+  });
 };

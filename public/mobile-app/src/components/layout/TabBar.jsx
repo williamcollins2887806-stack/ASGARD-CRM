@@ -66,13 +66,16 @@ const TABS = [
   { path: '/more',  icon: 'more',  label: 'Ещё' },
 ];
 
-/** V391: у директора (коммерческого/генерального/технического) мобильный
- *  арсенал СУЖЕН до согласований — остальные разделы дают лишний шум
- *  (заказчик 15.10.2026). Десктоп при этом не трогаем: там всё видно. */
+/** 17.10.2026 (заказчик): директору вернули часть разделов — «погорячился,
+ *  когда сказал что закрываем все вкладки». Главная и согласования остаются
+ *  первыми, но доступны и рабочие разделы: работы, финансы, «Ещё».
+ *  Десктоп не затрагивается. */
 const DIRECTOR_ROLES = ['DIRECTOR_COMM', 'DIRECTOR_GEN', 'DIRECTOR_DEV'];
 const DIRECTOR_TABS = [
+  { path: '/',                   icon: 'home',  label: 'Главная' },
   { path: '/director-approvals', icon: 'check', label: 'Согласования' },
-  { path: '/profile',            icon: 'user',  label: 'Профиль' },
+  { path: '/finances',           icon: 'works', label: 'Финансы' },
+  { path: '/more',               icon: 'more',  label: 'Ещё' },
 ];
 export function tabsForRole(role) {
   return DIRECTOR_ROLES.includes(role) ? DIRECTOR_TABS : TABS;
