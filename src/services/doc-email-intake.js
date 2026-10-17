@@ -131,6 +131,10 @@ async function intakeOne(db, { email, attachment, text, userId = null, dryRun = 
       paymentId = insPay.rows[0].id;
       // TTL 72ч.
       try { require('./doc-approval-ttl').stampExpiry(db, paymentId); } catch (_) {}
+      // Обратная связь в реестре: строка ↔ заявка (иначе карточка и архив не видят оплату).
+      try {
+        await db.query(`UPDATE doc_registry SET payment_invoice_id=$2, updated_at=NOW() WHERE id=$1 AND payment_invoice_id IS NULL`, [docId, paymentId]);
+      } catch (_) { /* не критично */ }
     }
   }
 
