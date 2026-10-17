@@ -71,9 +71,9 @@ function extractInvoice(text) {
   // Банк / БИК / счета.
   const bikM = t.match(/БИК[\s:№]*(\d{9})/i);
   if (bikM && validBik(bikM[1])) { out.bik = bikM[1]; found(); }
-  const rsM = t.match(/(?:р\/?с|расч[её]тн\w*\s+сч[её]т|сч[её]т\s*№?)[\s:]*(\d{20})/i);
+  const rsM = t.match(/(?:р\/?с|расч[её]тн\S*\s+сч[её]т)[\s:]*(\d{20})/i);
   if (rsM && validAccount(rsM[1])) { out.rs = rsM[1]; found(); }
-  const ksM = t.match(/(?:к\/?с|корр\w*\s+сч[её]т)[\s:]*(\d{20})/i);
+  const ksM = t.match(/(?:к\/?с|корр\S*\s+сч[её]т)[\s:]*(\d{20})/i);
   if (ksM && validAccount(ksM[1])) { out.ks = ksM[1]; found(); }
   const bankM = t.match(/(ПАО|АО|ООО|ОАО|БАНК|ФИЛИАЛ)[^\n]{0,60}банк[^\n]{0,40}/i);
   if (bankM) { out.bank_name = bankM[0].trim().slice(0, 120); found(); }
@@ -114,7 +114,7 @@ function extractInvoice(text) {
       }
       // Номер — до служебных слов; сами слова и длинные цифры (р/с) отсекаем.
       let num = raw.replace(/№/g, '')
-        .replace(/\b(на\s+оплату|имеет\s+силу\s+\S*|действител\w*(\s+до)?|означает\S*|и\s+не\s+является\S*|в\s+один\s+клик\S*)\b.*$/i, '')
+        .replace(/\b(на\s+оплату|имеет\s+силу\s+\S*|действител\S*(\s+до)?|означает\S*|и\s+не\s+является\S*|в\s+один\s+клик\S*)\b.*$/i, '')
         .replace(/\s+/g, ' ').trim().replace(/[.,\s]+$/, '');
       // Отбрасываем не-номера: служебные фразы и длинные цифровые (р/с, счёт-карта).
       const looksService = /^(имеет|действител|означает|в\s+один|на\s+оплату)/i.test(num);

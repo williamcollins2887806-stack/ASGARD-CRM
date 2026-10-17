@@ -16,6 +16,7 @@
  */
 
 const { extractInvoice } = require('./invoice-extract');
+const { classifyDocument } = require('./doc-classifier');
 
 /** Порог уверенности (настройка email_parse_confidence_min, fallback 0.7). */
 async function confidenceMin(db) {
@@ -41,8 +42,28 @@ function ids(email, attachment) {
  */
 async function intakeOne(db, { email, attachment, text, userId = null, dryRun = false }) {
   const { emailId, attachmentId } = ids(email, attachment);
+  // Замечание заказчика 17.10: в папке были НЕ только счета (сертификаты,
+  // заявки, счёта-договоры). Сначала определяем ТИП — платёжные документы
+  // идут в заявку и реестр, остальное НЕ попадает в очередь оплаты.
+  const cls = classifyDocument(text || '');
   const parsed = extractInvoice(text || '');
+  parsed._kind = cls.kind;
+  parsed._is_invoice = cls.is_invoice;
   const confMin = await confidenceMin(db);
+
+  // Не счёт (сертификат/акт/договор/УПД/накладная) — не создаём заявку.
+  if (!cls.is_invoice && cls.kind !== 'unknown') {
+    if (dryRun) return { status: 'skipped', kind: cls.kind, parsed, dry_run: true };
+    // Пишем в журнал как «не счёт» (для отладки), без заявки и реестра.
+    if (emailId && attachmentId) {
+      await db.query(
+        `INSERT INTO doc_email_intake(email_id, attachment_id, status, parse_raw, error)
+         VALUES ($1,$2,'rejected',$3::jsonb,$4)
+         ON CONFLICT (email_id, attachment_id) WHERE email_id IS NOT NULL AND attachment_id IS NOT NULL
+         DO NOTHING`, [emailId, attachmentId, JSON.stringify(parsed), 'not_invoice:' + cls.kind]);
+    }
+    return { status: 'not_invoice', kind: cls.kind, matched_rule: cls.reason, parsed };
+  }
 
   // Слой 1: уже обрабатывали эту пару письмо+вложение?
   if (emailId && attachmentId) {
