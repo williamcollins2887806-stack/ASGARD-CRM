@@ -34,16 +34,20 @@ async function approverId(db) {
  * @returns {Promise<{action:string, matched:number, applied:number, needs_manual?:boolean, ids?:number[], reason?:string}>}
  */
 /**
- * Извлечь чистый email из строки (отсекает display-name и угловые скобки):
- * «Олег Гажилиев <go@asgard-service.com>` → `go@asgard-service.com`.
- * FAIL-2 (верификатор 17.10): раньше сравнивали подстрокой, и
- * `go@asgard-service.com.evil.ru` проходил как согласующий.
+ * Извлечь чистый email из строки (отсекает display-name и угловые скобки).
+ * СТРОГО: ровно ОДИН «@», после которого домен вида `label(.label)+` из 2-24
+ * латинских букв — иначе '' (fail-closed). Ловит подделки
+ * `go@asgard-service.com@evil.ru` (два @) и `go@asgard-service.com.` (пустой TLD).
+ * FAIL-2 (верификатор 17.10).
  */
 function extractEmail(raw) {
   const s = String(raw || '').trim();
   const inBrackets = s.match(/<([^>]+)>/);
-  const addr = (inBrackets ? inBrackets[1] : s).trim().toLowerCase();
-  const m = addr.match(/[a-z0-9._%+\-]+@[a-z0-9.\-]+\.[a-z]{2,}/i);
+  const src = (inBrackets ? inBrackets[1] : s).trim();
+  // Ровно один @.
+  const atCount = (src.match(/@/g) || []).length;
+  if (atCount !== 1) return '';
+  const m = src.match(/^([a-z0-9._%+\-]{1,64})@([a-z0-9]([a-z0-9\-]{0,61}[a-z0-9])?)(\.[a-z0-9]([a-z0-9\-]{0,61}[a-z0-9])?)*\.([a-z]{2,24})$/i);
   return m ? m[0].toLowerCase() : '';
 }
 
@@ -52,9 +56,14 @@ async function handleApprovalReply(db, email) {
   // F4 (верификатор 17.10): сервис сам проверяет отправителя — раньше фильтр
   // жил только в imap.js, и прямой вызов согласовывал от лица директора
   // без проверки from_email. Сравнение — ТОЧНЫМ адресом (не подстрокой!).
+  // FAIL-3 (верификатор 17.10): FAIL-CLOSED — если список пуст (у согласующего
+  // нет email и нет заместителей), согласование НЕ выполняется (раньше пустой
+  // список отключал проверку и любой чужак согласовывал счёт).
   const sender = extractEmail(email.from_email);
+  if (!sender) return { action: 'none', matched: 0, applied: 0, reason: 'sender_unparsable', sender: email.from_email || null };
   const allowed = await approverEmails(db);
-  if (allowed.length && !allowed.includes(sender)) {
+  if (!allowed.length) return { action: 'none', matched: 0, applied: 0, reason: 'approver_list_empty', sender };
+  if (!allowed.includes(sender)) {
     return { action: 'none', matched: 0, applied: 0, reason: 'sender_not_approver', sender };
   }
   const appr = detectApproval(body);
