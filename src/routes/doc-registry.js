@@ -12,6 +12,7 @@ const excelSvc = require('../services/doc-registry-excel');
 const ExcelJS = require('exceljs');
 const { visibilitySql, assertDocVisible, canUseScopeAll } = require('../lib/doc-visibility');
 const traffic = require('../lib/doc-traffic');
+const { isTrafficLightEnabled } = require('../lib/feature-flags');
 const reconSvc = require('../services/doc-reconciliation');
 
 let normalizeUploadUrl = (p) => p;
@@ -446,6 +447,8 @@ function buildFilters(q, userId, role) {
   if (['red', 'blue', 'yellow', 'green'].includes(qColor)) {
     where += ` AND (${traffic.trafficSql('d')}) = '${qColor}'`;
   }
+  // План §12: фильтр/светофор за флагом. Флаг проверяется в роуте (buildFilters
+  // не async) — см. вызов в GET /; здесь только парсинг параметра.
   if (q.incomplete === '1' || q.incomplete === 'true') where += ' AND d.is_incomplete';
   if (q.no_onec === '1' || q.no_onec === 'true') where += ` AND (d.onec_id IS NULL OR trim(d.onec_id)='')`;
   const kpi = (q.kpi || '').toLowerCase();
@@ -511,7 +514,10 @@ module.exports = async function docRegistryRoutes(fastify) {
       db.query(`${JOIN_SQL.replace('SELECT d.*,', `SELECT d.*, (${traffic.trafficSql('d')}) AS traffic,`)}${where} ${orderSql} LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
         [...params, limit, (page - 1) * limit])
     ]);
-    return { items: list.rows.map(decorate), total: cnt.rows[0].n, page, limit, sort };
+    // План §12: флаг отдаётся фронту, чтобы UI показывал светофор/корректировки
+    // только когда фича включена. Данные (traffic) приходят всегда — их не жалко.
+    const enabled = await isTrafficLightEnabled(db);
+    return { items: list.rows.map(decorate), total: cnt.rows[0].n, page, limit, sort, traffic_light: enabled };
   });
 
   fastify.get('/kpi', auth, async (req) => {
@@ -1229,6 +1235,10 @@ module.exports = async function docRegistryRoutes(fastify) {
 
     // ── Корректировка: запросить / снять (BUH/ADMIN/DIRECTOR_*) ──────────────
     if (b.action === 'correction') {
+      // План §12: за фичефлагом. Выключен → старое поведение (действие недоступно).
+      if (!(await isTrafficLightEnabled(db))) {
+        return reply.code(409).send({ error: 'Корректировки выключены (фичефлаг feature_doc_traffic_light)', disabled: true });
+      }
       const corrRoles = new Set(['BUH', 'ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV', 'DIRECTOR']);
       if (!corrRoles.has(String(req.user.role || '').toUpperCase())) {
         return reply.code(403).send({ error: 'Запрашивать корректировку может только бухгалтерия, директор или админ' });
