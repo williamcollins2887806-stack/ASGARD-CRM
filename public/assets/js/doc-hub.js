@@ -664,6 +664,8 @@ window.AsgardDocHubPage = (function () {
       state.rows = list.items || list.rows || list.data || [];
       state.total = list.total != null ? list.total : state.rows.length;
       state.kpiData = kpi || {};
+      // План §12: признак фичефлага с бэка — UI светофора только когда включена.
+      state.trafficLight = list.traffic_light === true;
     } finally {
       state.loading = false;
     }
@@ -870,19 +872,19 @@ window.AsgardDocHubPage = (function () {
         if (qinfo) {
           const isTransition = prevKey && prevKey !== 'none';
           parts.push(`<tr class="dh-qtr-sep" data-qtr="${qinfo.q}" data-year="${qinfo.y}">
-            <td colspan="15"><div class="dh-qtr-sep__in ${isTransition ? 'is-next' : ''}">
+            <td colspan="${state.trafficLight ? 15 : 14}"><div class="dh-qtr-sep__in ${isTransition ? 'is-next' : ''}">
               ${isTransition ? '<span class="dh-qtr-sep__arrow">↓</span>' : ''}
               <strong>${esc(quarterLabel(qinfo.q, qinfo.y))}</strong>
               <span class="dh-qtr-sep__hint">по дате документа</span>
             </div></td>
           </tr>`);
         } else {
-          parts.push(`<tr class="dh-qtr-sep" data-qtr="0"><td colspan="15"><div class="dh-qtr-sep__in"><strong>Без даты документа</strong></div></td></tr>`);
+          parts.push(`<tr class="dh-qtr-sep" data-qtr="0"><td colspan="${state.trafficLight ? 15 : 14}"><div class="dh-qtr-sep__in"><strong>Без даты документа</strong></div></td></tr>`);
         }
         prevKey = key;
       }
       parts.push(`<tr class="${rowClass(r)}" data-id="${r.id}">
-        <td class="dh-col-tl">${trafficPill(r)}</td>
+        ${state.trafficLight ? `<td class="dh-col-tl">${trafficPill(r)}</td>` : ''}
         <td>${statusPill(r)}</td>
         <td><span class="dh-pill dh-pill--${r.dir === 'out' ? 'gold' : 'info'}">${r.dir === 'out' ? 'исх.' : 'вх.'}</span></td>
         <td>
@@ -916,7 +918,7 @@ window.AsgardDocHubPage = (function () {
     });
     return `<div class="dh-table-wrap" id="dhTableWrap"><table class="dh-table dh-table--rich">
       <thead><tr>
-        <th class="dh-col-tl" title="Светофор">⏱</th><th>Статус</th><th>Напр.</th><th>Счёт</th><th>Контрагент</th><th>Объект</th>
+        ${state.trafficLight ? '<th class="dh-col-tl" title="Светофор">⏱</th>' : ''}<th>Статус</th><th>Напр.</th><th>Счёт</th><th>Контрагент</th><th>Объект</th>
         <th>Договор</th><th>Получение</th><th>Назначение</th><th>Ответственные</th>
         <th>Сумма</th><th>НДС</th><th>Оплата</th><th>СФ/УПД</th><th class="dh-actions">Действия</th>
       </tr></thead>
@@ -1126,10 +1128,11 @@ window.AsgardDocHubPage = (function () {
             </div>
             <div class="dh-kpis" id="dhKpis">
               <button class="dh-kpi ${state.kpi === 'all' ? 'is-on' : ''}" type="button" data-kpi="all"><div class="k">Всего</div><div class="v">${kpiVal('all')}</div><div class="s">${esc(kpiSub('all'))}</div></button>
+              ${state.trafficLight ? `
               <button class="dh-kpi is-err ${state.kpi === 'tl-red' ? 'is-on' : ''}" type="button" data-kpi="tl-red"><div class="k">🔴 Красный</div><div class="v">${kpiVal('traffic_red')}</div><div class="s">${esc(kpiSub('tl-red'))}</div></button>
               <button class="dh-kpi is-info ${state.kpi === 'tl-blue' ? 'is-on' : ''}" type="button" data-kpi="tl-blue"><div class="k">🔵 Дозаполнить</div><div class="v">${kpiVal('traffic_blue')}</div><div class="s">${esc(kpiSub('tl-blue'))}</div></button>
               <button class="dh-kpi is-warn ${state.kpi === 'tl-yellow' ? 'is-on' : ''}" type="button" data-kpi="tl-yellow"><div class="k">🟡 Срок ≤ 5 раб. дн.</div><div class="v">${kpiVal('traffic_yellow')}</div><div class="s">${esc(kpiSub('tl-yellow'))}</div></button>
-              <button class="dh-kpi is-ok ${state.kpi === 'tl-green' ? 'is-on' : ''}" type="button" data-kpi="tl-green"><div class="k">🟢 В норме</div><div class="v">${kpiVal('traffic_green')}</div><div class="s">${esc(kpiSub('tl-green'))}</div></button>
+              <button class="dh-kpi is-ok ${state.kpi === 'tl-green' ? 'is-on' : ''}" type="button" data-kpi="tl-green"><div class="k">🟢 В норме</div><div class="v">${kpiVal('traffic_green')}</div><div class="s">${esc(kpiSub('tl-green'))}</div></button>` : ''}
               <button class="dh-kpi ${state.kpi === 'sf' ? 'is-on' : ''}" type="button" data-kpi="sf"><div class="k">Ждём СФ / УПД</div><div class="v">${kpiVal('sf')}</div><div class="s">${esc(kpiSub('sf'))}</div></button>
               <button class="dh-kpi is-info ${state.kpi === 'wh' ? 'is-on' : ''}" type="button" data-kpi="wh"><div class="k">У кладовщика</div><div class="v">${kpiVal('wh')}</div><div class="s">${esc(kpiSub('wh'))}</div></button>
             </div>
@@ -3719,6 +3722,7 @@ window.AsgardDocHubPage = (function () {
     state.view = 'registry';
     state.selectedId = null;
     state.coachOpen = true;
+    state.trafficLight = true;   // до ответа API считаем включённым (не мигаем)
     readHashFilters(); // scope/quarter/year from #/doc-hub?...
     // V394: вкладка актов сверки по #/doc-hub?tab=acts
     try {
