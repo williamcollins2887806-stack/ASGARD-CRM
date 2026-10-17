@@ -5434,16 +5434,17 @@
         <input id="hgInviteEmail" class="h-field" placeholder="Email" inputmode="email" autocomplete="email" />
       </div>
       <div class="hg-invite-modes" role="tablist" aria-label="Куда отправить">
-        <button type="button" class="hg-compose-mode is-active" data-ich="email" role="tab" aria-selected="true">На почту</button>
+        <button type="button" class="hg-compose-mode is-active" data-ich="auto" role="tab" aria-selected="true">Авто</button>
+        <button type="button" class="hg-compose-mode" data-ich="email" role="tab" aria-selected="false">На почту</button>
         <button type="button" class="hg-compose-mode" data-ich="sms" role="tab" aria-selected="false">По SMS</button>
         <button type="button" class="hg-compose-mode" data-ich="none" role="tab" aria-selected="false">Только ссылка</button>
       </div>
       <button type="button" class="hg-invite-submit" id="hgInviteSubmit">Отправить приглашение</button>
-      <div class="hg-invite-hint">Ссылка действует 24 часа. Гость войдёт по телефону + SMS-коду.</div>
+      <div class="hg-invite-hint">Ссылка действует 24 часа. «Авто»: MAX → SMS → почта. Ссылку всегда можно скопировать и переслать вручную.</div>
       <div class="hg-invite-result" id="hgInviteResult" hidden></div>`;
     host.appendChild(el);
     el.querySelector('#hgInviteClose').onclick = () => el.remove();
-  let channel = 'email';
+  let channel = 'auto';
   const ichBtns = Array.from(el.querySelectorAll('[data-ich]'));
   const modesEl = el.querySelector('.hg-invite-modes');
   if (modesEl) modesEl.style.setProperty('--hg-seg-n', String(ichBtns.length || 1));
@@ -5462,35 +5463,45 @@
       slideSeg(btn);
       const needEmail = channel === 'email';
       const needPhone = channel === 'sms';
+      // «Авто» пробует всё: подсвечиваем оба поля как активные.
       el.querySelector('#hgInviteEmail').style.opacity = needPhone ? '0.5' : '1';
       el.querySelector('#hgInvitePhone').style.opacity = needEmail ? '0.5' : '1';
     };
   });
     const submit = el.querySelector('#hgInviteSubmit');
     const resultBox = el.querySelector('#hgInviteResult');
-    const showResult = (fullUrl, delivery) => {
-      const sentText = delivery && delivery.sent
-        ? (delivery.channel === 'email' ? 'Письмо отправлено на ' + esc(delivery.to)
-          : 'SMS отправлено на ' + esc(delivery.to))
-        : (delivery && delivery.error ? ('Отправка не удалась: ' + esc(delivery.error)) : 'Ссылка готова');
+    const showResult = (fullUrl, delivery, inviteUrl) => {
+      const CH = { max: 'MAX', sms: 'SMS', email: 'почту', none: null };
+      let sentText;
+      if (delivery && delivery.sent) {
+        const chName = CH[delivery.channel] || delivery.channel;
+        sentText = 'Отправлено в ' + esc(chName) + (delivery.to ? ' на ' + esc(delivery.to) : '');
+      } else if (delivery && delivery.error) {
+        // Честно показываем, ЧТО пробовали: каскад мог не найти ни одного канала
+        // (номер не в MAX, Mango не подтверждает доставку, email не указан).
+        const tried = (delivery.attempts || []).map((a) => (CH[a.channel] || a.channel) + (a.ok ? '✓' : '✗')).join(' ');
+        sentText = 'Автодоставка не удалась' + (tried ? ' (' + esc(tried) + ')' : '') + '. Ссылку можно скопировать и переслать вручную.';
+      } else {
+        sentText = 'Ссылка готова — скопируйте и отправьте вручную.';
+      }
       resultBox.hidden = false;
+      // Ссылка показывается ВСЕГДА (раньше её видел только отправитель в чате):
+      // если SMS/MAX не дошли — можно переслать любым своим каналом.
       resultBox.innerHTML = `<div class="hg-invite-result-text">${sentText}</div>
-        <a class="hg-invite-download" href="${esc(fullUrl)}" download="huginn-invite.txt" target="_blank" rel="noopener">Скачать ссылку</a>
-        <button type="button" class="hg-invite-copy" id="hgInviteCopy">Скопировать</button>`;
+        <div class="hg-invite-link-row">
+          <input class="hg-invite-link-input h-field" id="hgInviteLinkInput" readonly value="${esc(fullUrl)}" />
+          <button type="button" class="hg-invite-copy" id="hgInviteCopy">Скопировать</button>
+        </div>`;
       const copy = resultBox.querySelector('#hgInviteCopy');
       if (copy) copy.onclick = async () => {
-        try { await navigator.clipboard.writeText(fullUrl); showToast('Ссылка скопирована'); } catch (_) {}
+        try { await navigator.clipboard.writeText(fullUrl); showToast('Ссылка скопирована'); } catch (_) {
+          const inp = resultBox.querySelector('#hgInviteLinkInput');
+          if (inp) { inp.focus(); inp.select(); try { document.execCommand('copy'); showToast('Ссылка скопирована'); } catch (_) {} }
+        }
       };
-      resultBox.querySelector('.hg-invite-download').onclick = () => {
-        try { URL.revokeObjectURL(resultBox.dataset.blob || ''); } catch (_) {}
-      };
-      // make the download a real blob so "скачать ссылку" works offline too
-      try {
-        const blob = new Blob([fullUrl + '\n'], { type: 'text/plain' });
-        const url = URL.createObjectURL(blob);
-        resultBox.dataset.blob = url;
-        resultBox.querySelector('.hg-invite-download').setAttribute('href', url);
-      } catch (_) {}
+      // Автовыделение ссылки по тапу — чтобы удобно было копировать на телефоне.
+      const linkInp = resultBox.querySelector('#hgInviteLinkInput');
+      if (linkInp) linkInp.onclick = () => { try { linkInp.select(); } catch (_) {} };
     };
     submit.onclick = async () => {
       const phone = (el.querySelector('#hgInvitePhone').value || '').trim();
@@ -5498,6 +5509,8 @@
       const displayName = (el.querySelector('#hgInviteName').value || '').trim() || phone || email || null;
       if (channel === 'email' && !email) { showToast('Укажите email'); return; }
       if (channel === 'sms' && !phone) { showToast('Укажите телефон'); return; }
+      // «Авто»: достаточно ЛЮБОГО контакта — каскад выберет доступный канал.
+      if (channel === 'auto' && !phone && !email) { showToast('Укажите телефон или email'); return; }
       if (channel === 'none' && !phone && !email) { showToast('Укажите телефон или email'); return; }
       submit.disabled = true;
       try {
@@ -5506,8 +5519,12 @@
         else if (state.chatId) body.chat_id = state.chatId;
         const data = await api('/api/chat-groups/invites', { method: 'POST', body });
         if (data.full_url) {
-          showResult(data.full_url, data.delivery);
-          showToast(data.delivery && data.delivery.sent ? 'Приглашение отправлено' : 'Ссылка готова');
+          showResult(data.full_url, data.delivery, data.invite_url);
+          const ch = data.delivery && data.delivery.channel;
+          const chHuman = { max: 'MAX', sms: 'SMS', email: 'почту' }[ch];
+          showToast(data.delivery && data.delivery.sent
+            ? ('Приглашение отправлено' + (chHuman ? ' в ' + chHuman : ''))
+            : 'Ссылка готова — скопируйте и перешлите');
           submit.disabled = false;
         } else {
           showToast(data.error || 'Не удалось создать приглашение');

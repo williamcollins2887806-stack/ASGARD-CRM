@@ -329,43 +329,54 @@ module.exports = async function registerHuginnExt(fastify, { db, uploadDir, getC
     const inviteUrl = `/h/?invite=${encodeURIComponent(token)}`;
     const fullUrl = baseUrl + inviteUrl;
 
-    // Optional delivery: channel = 'email' | 'sms' | 'none' (link only).
-    const channel = ['email', 'sms'].includes(String(body.channel || '')) ? String(body.channel) : 'none';
+    // Доставка приглашения — КАСКАД каналов (MAX → SMS → email).
+    //
+    // Раньше здесь жёстко выбирался ОДИН канал по полю `channel` от клиента, и
+    // доставка шла только через Mango SMS. Это и дало инцидент 17.10.2026:
+    // у Даши (89267638055) приглашение «ушло» (result 1000), но не дошло —
+    // Mango не подтверждает доставку ни разу за всю историю, а рабочий канал
+    // компании (MAX) Хугинн вообще не использовал.
+    //
+    // Теперь каскад сам выбирает первый рабочий канал, а `channel` уважается
+    // только как ЯВНОЕ пожелание: 'none' — вообще не доставлять (только ссылка).
     const who = displayName || 'коллега';
-    let delivery = { channel: 'none', sent: false };
     const msgText = `${who}, вас приглашают в мессенджер АСГАРД Хугинн. Установите приложение или откройте ссылку: ${fullUrl} (действует 24 часа)`;
+    const channelPref = String(body.channel || '').trim();
 
-    if (channel === 'email' && email) {
-      try {
-        const { sendCrmEmail } = require('../services/crm-mailer');
-        const html = `<p>Здравствуйте${displayName ? ', ' + displayName : ''}!</p>
+    let delivery = { channel: 'none', sent: false };
+    if (channelPref !== 'none') {
+      const huginnNotify = require('../services/huginn-notify');
+      // Явный выбор одного канала клиентом (старый контракт) — сохраняем.
+      // 'auto' (новый дефолт) = каскад MAX → SMS → email, email включается
+      // автоматически, если он указан (у приглашений адрес есть часто).
+      const order = channelPref === 'email' ? ['email']
+        : channelPref === 'sms' ? ['sms', 'email']
+          : (channelPref === 'none' ? ['none'] : ['max', 'sms', 'email']);
+
+      const emailHtml = `<p>Здравствуйте${displayName ? ', ' + displayName : ''}!</p>
 <p>${request.user.name || 'Коллега'} приглашает вас в корпоративный мессенджер <b>АСГАРД Хугинн</b>.</p>
 <p>Откройте ссылку с телефона — приложение установится на экран «Домой» и откроет чат:</p>
 <p><a href="${fullUrl}">${fullUrl}</a></p>
 <p>Ссылка действует 24 часа.</p>`;
-        await sendCrmEmail(db, request.user.id, {
-          to: email,
-          subject: 'Приглашение в АСГАРД Хугинн',
-          text: msgText,
-          html,
-          skipBcc: true
-        });
-        delivery = { channel: 'email', sent: true, to: email };
-      } catch (e) {
-        delivery = { channel: 'email', sent: false, error: e.message };
-      }
-    } else if (channel === 'sms' && phone) {
-      try {
-        const MangoService = require('../services/mango');
-        const client = new MangoService();
-        const digits = normPhone(phone);
-        // Раньше здесь читался MANGO_SMS_FROM (нет в .env) → from_extension='' →
-        // Mango «3103». Общий хелпер берёт MANGO_SMS_EXTENSION.
-        await client.sendSms(MangoService.smsSenderExtension(), digits, `ASGARD: ${msgText}`, process.env.MANGO_SMS_SENDER || '');
-        delivery = { channel: 'sms', sent: true, to: phone };
-      } catch (e) {
-        delivery = { channel: 'sms', sent: false, error: e.message };
-      }
+
+      const res = await huginnNotify.deliver(db, {
+        phone,
+        email,
+        text: msgText,
+        subject: 'Приглашение в АСГАРД Хугинн',
+        html: emailHtml,
+        order,
+        logger: fastify.log,
+        actorUserId: request.user.id,
+      });
+      delivery = {
+        channel: res.channel || 'none',
+        sent: !!res.ok,
+        to: res.channel === 'email' ? email : (res.channel === 'sms' || res.channel === 'max' ? phone : null),
+        attempts: res.attempts,
+        error: res.ok ? undefined : (res.error || 'ни один канал не сработал'),
+      };
+      if (!res.ok) fastify.log.warn(`[invites] доставка не удалась (${phone || email}): ${JSON.stringify(res.attempts)}`);
     }
 
     return {
@@ -1766,23 +1777,33 @@ module.exports = async function registerHuginnExt(fastify, { db, uploadDir, getC
       [phone, codeHash, String(LOGIN_CODE_TTL_MIN)]
     );
 
+    // Доставка кода — КАСКАД (MAX → SMS), как в field-auth.
+    //
+    // Раньше код шёл ТОЛЬКО через Mango SMS. Инцидент 17.10.2026: Даше и Косте
+    // код «уходил» (result 1000), но не приходил — Mango принимает отправку, но
+    // доставку не подтверждает ни разу за всю историю. Фактически рабочий канал
+    // в компании — MAX (Green API): твоему номеру idMessage приходит, а Mango
+    // молчит. Теперь сначала MAX (если номер заведён), затем SMS как резерв.
     let sent = false;
     let sendError = null;
     let commandId = null;
     let mangoRaw = null;
+    let channelUsed = null;
     try {
-      const MangoService = require('../services/mango');
-      const client = new MangoService();
-      const digits = String(phone).replace(/\D/g, '');
-      const resp = await client.sendSms(
-        MangoService.smsSenderExtension(),
-        digits,
-        `Kod vhoda Huginn: ${code}`,
-        process.env.MANGO_SMS_SENDER || ''
-      );
-      commandId = resp && resp.command_id ? resp.command_id : null;
-      mangoRaw = resp || null;
-      sent = true;
+      const huginnNotify = require('../services/huginn-notify');
+      const codeText = `Kod vhoda Huginn: ${code}`;
+      const res = await huginnNotify.deliver(db, {
+        phone,
+        text: codeText,
+        order: ['max', 'sms'],   // email тут не нужен: код входа по SMS/MAX
+        logger: request.log,
+      });
+      sent = !!res.ok;
+      channelUsed = res.channel;
+      const smsAttempt = (res.attempts || []).find((a) => a.channel === 'sms' && a.ok);
+      commandId = smsAttempt ? smsAttempt.detail : null;
+      mangoRaw = { attempts: res.attempts };
+      if (!res.ok) sendError = res.error || 'ни один канал не сработал';
     } catch (e) {
       sendError = e.message;
     }
@@ -1809,9 +1830,9 @@ module.exports = async function registerHuginnExt(fastify, { db, uploadDir, getC
     return {
       ok: true,
       sent,
-      channel: 'sms',
+      channel: channelUsed || 'none',
       expires_in: LOGIN_CODE_TTL_MIN * 60,
-      error: sent ? undefined : (sendError || 'Не удалось отправить SMS')
+      error: sent ? undefined : (sendError || 'Не удалось отправить код')
     };
   });
 
