@@ -64,8 +64,18 @@ const bad = (m) => { fail++; console.log('  FAIL', m); };
   const nomatch = await th.handleApprovalReply(db, { id: 0, thread_id: 'нет-такого', in_reply_to: '<x-нет>', references_header: '', body_text: 'Добро', from_email: 'go@asgard-service.com' });
   (nomatch.needs_manual === true) ? ok('неоднозначность → ручная привязка') : bad('номатч: ' + JSON.stringify(nomatch));
 
+  console.log('\n=== F4: чужой отправитель НЕ согласует ===');
+  const pay3 = (await db.query(
+    `INSERT INTO payment_invoices(status, payment_status, supplier_name, amount, requires_payment, created_by, pay_timing, source_email_id, source_thread_key)
+     VALUES ('awaiting_dir','awaiting_dir','ТРЕД-F4', 700, true, 1, 'immediate', $1, $2) RETURNING id`, [execEmail.id, srcMsgId])).rows[0];
+  const f4 = await th.handleApprovalReply(db, { id: 0, thread_id: srcMsgId, in_reply_to: `<${srcMsgId}>`, references_header: `<${srcMsgId}>`, body_text: 'Добро', from_email: 'random-attacker@example.com' });
+  console.log('  ' + JSON.stringify(f4));
+  (f4.reason === 'sender_not_approver' && f4.applied === 0) ? ok('чужой отправитель отклонён') : bad('F4: ' + JSON.stringify(f4));
+  const st3 = (await db.query(`SELECT status FROM payment_invoices WHERE id=$1`, [pay3.id])).rows[0];
+  (st3.status === 'awaiting_dir') ? ok('заявка не согласована чужаком') : bad('заявка изменилась: ' + st3.status);
+
   // Уборка
-  const pays = [payId, pay2.id].filter(Boolean);
+  const pays = [payId, pay2.id, pay3.id].filter(Boolean);
   await db.query(`DELETE FROM doc_email_intake WHERE payment_invoice_id = ANY($1::int[])`, [pays]);
   await db.query(`DELETE FROM payment_invoices WHERE id = ANY($1::int[])`, [pays]);
   await db.query(`DELETE FROM doc_registry WHERE id=$1`, [r1.doc_id]);

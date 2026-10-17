@@ -35,6 +35,14 @@ async function approverId(db) {
  */
 async function handleApprovalReply(db, email) {
   const body = email.body_text || '';
+  // F4 (верификатор 17.10): сервис сам проверяет отправителя — раньше фильтр
+  // жил только в imap.js, и прямой вызов согласовывал от лица директора
+  // без проверки from_email. Настраиваемый список для отпуска/замещения.
+  const sender = String(email.from_email || '').toLowerCase().trim();
+  const allowed = await approverEmails(db);
+  if (allowed.length && !allowed.some((e) => sender.includes(e))) {
+    return { action: 'none', matched: 0, applied: 0, reason: 'sender_not_approver', sender };
+  }
   const appr = detectApproval(body);
   const rej = detectRejection(body);
   if (rej.reject) return { action: 'reject', matched: 0, applied: 0, reason: 'rejection_word' };
@@ -109,4 +117,22 @@ function inReplyToClean(v) {
   return m ? m[0] : String(v).trim() || null;
 }
 
-module.exports = { handleApprovalReply, approverId };
+/** Список допустимых адресов согласующего (сам ящик + заместители из настроек). */
+async function approverEmails(db) {
+  const out = new Set();
+  try {
+    const id = await approverId(db);
+    const u = await db.query(`SELECT email FROM users WHERE id=$1`, [id]);
+    if (u.rows[0] && u.rows[0].email) out.add(String(u.rows[0].email).toLowerCase());
+    const s = await db.query(`SELECT value_json FROM settings WHERE key='doc_approver_emails' LIMIT 1`);
+    if (s.rows[0]) {
+      let v = s.rows[0].value_json;
+      try { v = JSON.parse(v); } catch (_) {}
+      if (typeof v === 'string') v = v.split(/[,\s;]+/);
+      if (Array.isArray(v)) for (const e of v) if (e) out.add(String(e).toLowerCase().trim());
+    }
+  } catch (_) { /* нет настроек — вернём то, что есть */ }
+  return [...out].filter(Boolean);
+}
+
+module.exports = { handleApprovalReply, approverId, approverEmails };
