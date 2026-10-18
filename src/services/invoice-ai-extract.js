@@ -108,7 +108,7 @@ function normalize(raw) {
     }
     return null;
   };
-  const lines = Array.isArray(o.lines) ? o.lines.map((l) => {
+  const rawLines = Array.isArray(o.lines) ? o.lines.map((l) => {
     const q = num(l && (l.quantity != null ? l.quantity : l.qty));
     const p = num(l && (l.unit_price != null ? l.unit_price : l.price));
     const s = num(l && l.sum);
@@ -120,6 +120,18 @@ function normalize(raw) {
       sum: s != null ? s : (p != null && q != null ? Math.round(p * q * 100) / 100 : null)
     };
   }).filter((l) => l.name && l.name.length >= 2) : [];
+
+  // FAIL-4 (верификатор 19.10.2026): ИИ мог вернуть ОДНУ позицию дважды — в
+  // `parsed_json` и сумме позиций она задваивалась. Схлопываем по имени+цене+кол-ву,
+  // как это делает детерминированный парсер (`seen`).
+  const seen = new Set();
+  const lines = [];
+  for (const l of rawLines) {
+    const key = [l.name.toLowerCase(), l.quantity, l.unit_price, l.sum].join('|');
+    if (seen.has(key)) continue;
+    seen.add(key);
+    lines.push(l);
+  }
 
   return {
     supplier_name: str(o.supplier_name, 200),
@@ -178,14 +190,32 @@ function validate(data) {
     d.amount_net = d.amount_gross;
   }
 
-  // 3. Согласованность флага НДС: есть НДС > 0 → has_vat=true; «без НДС» → false.
-  if (d.vat_amount != null && d.vat_amount > 0) d.has_vat = true;
-  else if (d.vat_amount === 0 && d.has_vat == null) d.has_vat = false;
+  // 3. Согласованность флага НДС: НЕ должно быть «НДС есть», когда суммы НДС нет.
+  // FAIL-6 (верификатор 19.10.2026): `has_vat=true` + `vat_amount=null` уводил в
+  // бухгалтерию счёт с флагом НДС без суммы НДС. Если нетто < суммы — выводим НДС;
+  // иначе флаг НДС, не подтверждённый числом, снимаем.
+  if (d.vat_amount != null && d.vat_amount > 0) {
+    d.has_vat = true;
+  } else if (d.vat_amount === 0) {
+    d.has_vat = false;
+  } else if (d.has_vat === true) {
+    if (d.amount_gross != null && d.amount_net != null && R(d.amount_gross - d.amount_net) > 0) {
+      d.vat_amount = R(d.amount_gross - d.amount_net);
+      warnings.push('vat_from_diff');
+    } else {
+      d.has_vat = null;
+      warnings.push('has_vat_unconfirmed');
+    }
+  }
 
   // 4. Позиции: пересчёт суммы и отбрасывание явных выдумок.
   const good = [];
   for (const l of (d.lines || [])) {
     let { quantity: q, unit_price: p, sum: s } = l;
+    // FAIL-2 (верификатор 19.10.2026): количество/цена 0 — не значение, а «не знаю».
+    // Такая строка не должна ни попадать в номенклатуру, ни перетирать арифметику.
+    if (q === 0) { q = null; warnings.push('line_qty_zero'); }
+    if (p === 0 && s != null && q != null) { p = R(s / q); warnings.push('line_price_from_sum'); }
     if (p != null && q != null && s != null) {
       const calc = R(p * q);
       if (Math.abs(calc - s) > Math.max(1, s * 0.02)) {
@@ -196,6 +226,11 @@ function validate(data) {
     } else if (s != null && p != null && q == null) {
       q = R(s / p);
       warnings.push('line_qty_from_sum');
+    } else if (s != null && p == null && q != null) {
+      // FAIL-5: «сумма без цены» раньше теряла unit_price → строка молча выкидывалась
+      // из номенклатуры (`price > 0` обязателен). Выводим цену из суммы и количества.
+      p = R(s / q);
+      warnings.push('line_price_from_sum');
     }
     good.push({ ...l, quantity: q, unit_price: p, sum: s });
   }
@@ -274,23 +309,35 @@ function mergeWithRegex(ai, rx) {
   const conflicts = [];
   if (!ai) return { parsed: out, conflicts };
 
-  // Запоминаем имена полей из схемы extractInvoice.
+  // FAIL-2 (верификатор 19.10.2026): `0` и `null` от ИИ — это «не знаю», НЕ значение.
+  // Раньше `pick()` пропускал `0`, и ИИ-ноль перетирал верную сумму из регулярок
+  // (счёт уходил в реестр с gross=0). Для чисел нулевая сумма — недействительна.
   const pick = (aiVal, rxVal) => (aiVal != null && aiVal !== '' ? aiVal : rxVal);
+  const pickPos = (aiVal, rxVal) => (aiVal != null && aiVal > 0 ? aiVal : rxVal);
 
   // Маркетплейс: ПЛАТИМ получателю платежа (у него банковские реквизиты в счёте),
   // а продавец товара может быть другим лицом. Для платёжки/реестра контрагент =
   // получатель платежа; продавца храним отдельно (история закупок «что почём»).
-  const payeeName = ai.payee_name || ai.supplier_name || null;
-  const payeeInn = ai.payee_inn || ai.supplier_inn || null;
-  out.counterparty_name = payeeName || base.counterparty_name || null;
-  out.inn = pick(payeeInn, base.inn);
-  // КПП обязан быть от ТОГО ЖЕ лица, что ИНН, иначе выходит «ИНН РВБ + КПП ВМПАВТО».
-  // Если ИИ дал ИНН получателя платежа — берём КПП получателя; если КПП у модели нет,
-  // оставляем пусто (честная пустота лучше чужого реквизита); регулярки подключаем
-  // только когда ИИ вообще не дал ИНН.
-  if (ai.payee_inn) out.kpp = ai.payee_kpp || null;
-  else if (ai.supplier_inn) out.kpp = ai.supplier_kpp || null;
-  else out.kpp = base.kpp || null;
+  //
+  // FAIL-3 (верификатор 19.10.2026): ИМЯ и РЕКВИЗИТЫ контрагента обязаны быть от
+  // ОДНОГО лица. Раньше имя бралось от получателя, а ИНН/КПП — фолбэком от продавца
+  // (при невалидном payee ИНН обнулялся в validate) → «ООО РВБ + ИНН ВМПАВТО».
+  // Решаем по паре «есть получатель платежа?» и берём ВСЮ тройку из одного источника.
+  const payeeConfirmed = !!(ai.payee_name && ai.payee_inn);
+  let cName, cInn, cKpp;
+  if (payeeConfirmed) {
+    cName = ai.payee_name; cInn = ai.payee_inn; cKpp = ai.payee_kpp || null;
+  } else if (ai.supplier_name && ai.supplier_inn) {
+    cName = ai.supplier_name; cInn = ai.supplier_inn; cKpp = ai.supplier_kpp || null;
+  } else {
+    // ИИ не дал согласованной пары «имя+ИНН» — отдаём имя как есть, реквизиты из регулярок.
+    cName = ai.payee_name || ai.supplier_name || base.counterparty_name || null;
+    cInn = base.inn || null;
+    cKpp = base.kpp || null;
+  }
+  out.counterparty_name = cName || base.counterparty_name || null;
+  out.inn = pick(cInn, base.inn);
+  out.kpp = cKpp || null;
   out.seller_name = ai.supplier_name || null;
   out.seller_inn = ai.supplier_inn || null;
   out.payee_name = ai.payee_name || null;
@@ -303,10 +350,13 @@ function mergeWithRegex(ai, rx) {
   out.ks = pick(ai.ks, base.ks);
   out.invoice_number = pick(ai.invoice_number, base.invoice_number);
   out.invoice_date = pick(ai.invoice_date, base.invoice_date);
-  out.amount_gross = pick(ai.amount_gross, base.amount_gross);
-  out.amount_net = pick(ai.amount_net, base.amount_net);
+  out.amount_gross = pickPos(ai.amount_gross, base.amount_gross);
+  out.amount_net = pickPos(ai.amount_net, base.amount_net);
   out.vat_amount = pick(ai.vat_amount, base.vat_amount);
-  if (ai.has_vat != null) out.has_vat = ai.has_vat;
+  // has_vat: ИИ-флаг принимаем, только если он подтверждён числом НДС или нетто≠сумма
+  // (иначе «НДС есть» без суммы — FAIL-6). Иначе — флаг из регулярок.
+  if (ai.has_vat != null && (ai.vat_amount != null || base.has_vat == null)) out.has_vat = ai.has_vat;
+  else if (ai.has_vat == null) out.has_vat = base.has_vat;
   out.payment_due_at = pick(ai.payment_due_at, base.payment_due_at);
   // Договор: ИИ отдаёт строку «номер», регулярки — объект {number,date,raw}.
   if (ai.contract_basis) {

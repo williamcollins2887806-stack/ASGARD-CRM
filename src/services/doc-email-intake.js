@@ -267,6 +267,17 @@ async function intakeOne(db, { email, attachment, text, userId = null, dryRun = 
         }
       } catch (_) { /* не критично */ }
     }
+    // FAIL-1 (верификатор 19.10.2026): продавец товара и получатель платежа — разные
+    // лица (маркетплейс). В номенклатуру («что почём купили») должен идти ПРОДАВЕЦ,
+    // а `supplierId` находился по ИНН получателя → история закупок писалась на чужую
+    // карточку. Если продавец отличается — ищем его карточку по seller_inn отдельно.
+    let sellerSupplierId = null;
+    if (parsed.seller_inn && parsed.seller_inn !== parsed.inn) {
+      try {
+        const s2 = await db.query(`SELECT id FROM suppliers WHERE inn=$1 AND deleted_at IS NULL LIMIT 1`, [parsed.seller_inn]);
+        if (s2.rows[0]) sellerSupplierId = s2.rows[0].id;
+      } catch (_) { /* не критично */ }
+    }
     const insDoc = await db.query(
       `INSERT INTO doc_registry(dir, package_type, ops_status, pay_status, invoice_number, invoice_date,
          counterparty_name, counterparty_inn, supplier_id, amount_gross, amount_net, vat_amount, has_vat,
@@ -466,7 +477,11 @@ async function intakeOne(db, { email, attachment, text, userId = null, dryRun = 
           // V409: в историю закупок («что почём купили») идёт ПРОДАВЕЦ товара,
           // а не получатель платежа (у маркетплейсов это разные лица).
           supplierName: parsed.seller_name || parsed.counterparty_name,
-          supplierId: parsed._supplierId || null,
+          // FAIL-1: у маркетплейса платим получателю, а покупаем у продавца — карточка
+          // поставщика должна быть продавца (иначе имя продавца + карточка получателя).
+          supplierId: (parsed.seller_inn && parsed.seller_inn !== parsed.inn)
+            ? (sellerSupplierId || null)
+            : (parsed._supplierId || null),
           userId: senderUserId,
           source: 'quote',
           docRegistryId: docId,

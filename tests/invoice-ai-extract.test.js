@@ -150,6 +150,48 @@ console.log('\n=== mergeWithRegex: полный отказ ИИ (null) → то�
 const m6 = ai.mergeWithRegex(null, { counterparty_name: 'ООО ТЕСТ', amount_gross: 5, lines: [] });
 ok(m6.parsed.counterparty_name === 'ООО ТЕСТ' && m6.parsed.amount_gross === 5, 'регулярки как единственный источник');
 
+// ═══ РЕГРЕССИЯ НА FAIL ВЕРИФИКАТОРА (19.10.2026, 6 находок) ═══════════════════
+console.log('\n=== FAIL-2: ИИ-ноль НЕ перетирает найденную сумму ===');
+const m7 = ai.mergeWithRegex(ai.validate(ai.normalize({ amount_gross: 0, supplier_name: 'X', lines: [] })).data, { counterparty_name: 'X', amount_gross: 120000, lines: [] });
+ok(m7.parsed.amount_gross === 120000, 'gross: ИИ-0 → фолбэк регулярки (' + m7.parsed.amount_gross + ')');
+
+console.log('\n=== FAIL-3: имя и реквизиты контрагента — от ОДНОГО лица ===');
+// payee_inn невалиден → validate его обнуляет; имя НЕ должно склеиться с ИНН продавца.
+const mixed2 = ai.validate(ai.normalize({
+  supplier_name: 'ООО «ВМПАВТО»', supplier_inn: '7814069526', supplier_kpp: '780501001',
+  payee_name: 'ООО РВБ', payee_inn: '999', amount_gross: 100, lines: []
+})).data;
+const m8 = ai.mergeWithRegex(mixed2, { lines: [] });
+ok(!(m8.parsed.counterparty_name === 'ООО РВБ' && m8.parsed.inn === '7814069526'),
+  'имя получателя не сочетается с ИНН продавца (' + m8.parsed.counterparty_name + ' / ' + m8.parsed.inn + ')');
+ok(m8.parsed.payee_inn === null || m8.parsed.payee_inn === undefined, 'невалидный ИНН получателя отброшен');
+
+console.log('\n=== FAIL-4: дубли позиций от ИИ схлопываются ===');
+const dup = ai.normalize({ lines: [
+  { name: 'Болт М8', quantity: 10, unit_price: 5, sum: 50 },
+  { name: 'Болт М8', quantity: 10, unit_price: 5, sum: 50 },
+  { name: 'Гайка М8', quantity: 4, unit_price: 2, sum: 8 }
+] });
+ok(dup.lines.length === 2, 'одна и та же позиция дважды → 2 строки, не 3 (' + dup.lines.length + ')');
+
+console.log('\n=== FAIL-5: «сумма без цены» → цена выводится, строка не теряется ===');
+const noPriceV = ai.validate(ai.normalize({ amount_gross: 500, lines: [{ name: 'Бур SDS', quantity: 4, sum: 500 }] }));
+ok(noPriceV.data.lines[0].unit_price === 125, 'цена = 500 / 4 = 125 (' + noPriceV.data.lines[0].unit_price + ')');
+ok(noPriceV.warnings.includes('line_price_from_sum'), 'предупреждение line_price_from_sum');
+
+console.log('\n=== FAIL-5b: количество 0 → «не знаю», не ноль ===');
+const zeroQtyV = ai.validate(ai.normalize({ amount_gross: 100, lines: [{ name: 'Позиция', quantity: 0, unit_price: 10, sum: 100 }] }));
+ok(zeroQtyV.data.lines[0].quantity === 10, 'кол-во 0 → выведено из суммы/цены (100/10=10)');
+ok(zeroQtyV.warnings.includes('line_qty_zero'), 'предупреждение line_qty_zero');
+
+console.log('\n=== FAIL-6: has_vat=true без суммы НДС не проходит ===');
+const vatNull = ai.validate(ai.normalize({ amount_gross: 1220, amount_net: 1000, has_vat: true, lines: [] }));
+// нетто ≠ сумма → НДС выводится из разницы (220), флаг подтверждён.
+ok(vatNull.data.vat_amount === 220 || vatNull.data.has_vat == null, 'НДС выведен из разницы либо флаг снят (' + vatNull.data.vat_amount + '/' + vatNull.data.has_vat + ')');
+const vatBad = ai.validate(ai.normalize({ amount_gross: 1000, amount_net: 1000, has_vat: true, lines: [] }));
+ok(vatBad.data.has_vat == null, 'флаг НДС без суммы и без разницы снят (' + vatBad.data.has_vat + ')');
+ok(vatBad.warnings.includes('has_vat_unconfirmed'), 'предупреждение has_vat_unconfirmed');
+
 console.log('\n────────────────────────────────────────');
 console.log('ИТОГ ИИ-извлечения: PASS ' + pass + ' / FAIL ' + fail);
 process.exit(fail ? 1 : 0);
