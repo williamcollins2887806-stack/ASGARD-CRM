@@ -185,11 +185,26 @@ function extractInvoice(text) {
   let score = 0;
   const found = () => { score++; };
 
-  // ИНН / КПП (берём ПЕРВЫЙ валидный — обычно поставщик).
-  for (const m of t.matchAll(/ИНН[\s:№]*(\d{10,12})/gi)) {
-    if (validInn(m[1])) { out.inn = m[1]; found(); break; }
+  // ИНН / КПП (приоритет — поставщик).
+  // V411: на живом скане ПЕРВЫМ в тексте идёт ИНН из банковской таблицы
+  // («| ИНН 2310155505 | КПП 234801001 |», банк) — он и попадал в поле.
+  // На самом деле ИНН поставщика тот же в этом счёте, но так бывает не всегда:
+  // сначала ищем ИНН в строке «Поставщик:», затем реквизиты ПОСЛЕ блока банка.
+  const suppLine = t.match(/Поставщик[^\n]{0,300}/i);
+  let inn = null;
+  if (suppLine) {
+    const m = suppLine[0].match(/ИНН[\s:№]*(\d{10,12})/i);
+    if (m && validInn(m[1])) inn = m[1];
   }
-  const kppM = t.match(/КПП[\s:№]*(\d{9})/i);
+  if (!inn) {
+    for (const m of t.matchAll(/ИНН[\s:№]*(\d{10,12})/gi)) {
+      if (validInn(m[1])) { inn = m[1]; break; }
+    }
+  }
+  if (inn) { out.inn = inn; found(); }
+  // КПП — из строки поставщика, иначе первый валидный.
+  const kppFromSupp = suppLine && suppLine[0].match(/КПП[\s:№]*(\d{9})/i);
+  const kppM = (kppFromSupp && kppFromSupp) || t.match(/КПП[\s:№]*(\d{9})/i);
   if (kppM && validKpp(kppM[1])) { out.kpp = kppM[1]; found(); }
 
   // Банк / БИК / счета.
@@ -368,27 +383,35 @@ function extractInvoice(text) {
   // V411 (живой скан 18.10.2026): на скане первым «ООО/ПАО» оказался БАНК
   // («Филиал Южный ПАО "БАНК УРАЛСИБ"») — он и попадал в контрагента вместо
   // поставщика, хотя в счёте явно есть «Поставщик: ООО ТД "Мир Химии"».
-  // Порядок: (1) явное «Поставщик: …», (2) иначе орг-форма без банковских слов.
-  const suppM = t.match(/(?:^|\n)\s*Поставщик\s*[:\-]?\s*((?:ООО|АО|ПАО|ЗАО|ОАО|ИП)\s*[«"']?[^\n,;]{2,80})/i);
-  if (suppM) {
-    out.counterparty_name = suppM[1].trim().replace(/[»"',;]+$/, '').slice(0, 160);
-    found();
-  } else {
+  // ВАЖНО: OCR склеивает абзацы, поэтому «Поставщик:» может НЕ быть в начале
+  // строки — ищем по всему тексту, а не по `^`.
+  const suppM = t.match(/Поставщик[^\n:]{0,4}[:\-]\s*((?:ООО|АО|ПАО|ЗАО|ОАО|ИП)\s*[«"']?[^\n,;]{2,80})/i);
+  if (suppM && suppM[1]) {
+    const nm = suppM[1].trim().replace(/[»"',;]+$/, '');
+    // Отсекаем «Асгард-Сервис» — это НАША компания (Покупатель), не контрагент.
+    if (nm.length >= 3 && !/АСГАРД|ASGARD/i.test(nm)) {
+      out.counterparty_name = nm.slice(0, 160);
+      found();
+    }
+  }
+  if (!out.counterparty_name) {
     // Банковские слова: строки с ними — не контрагент (это реквизиты банка).
-    const BANK_WORDS = /банк|филиал|бик|р\/с|к\/с|корр|сч\.|счет\s*№|расч[её]тн/i;
-    const orgLines = t.split(/\r?\n/).filter((l) => /(?:ООО|АО|ПАО|ЗАО|ОАО|ИП)\s*[«"']?/i.test(l));
-    const good = orgLines.find((l) => !BANK_WORDS.test(l) && !/АСГАРД|ASGARD/i.test(l));
+    const BANK_WORDS = /банк|филиал|БИК|р\/с|к\/с|корр|Сч\.\s*№|расч[её]тн/i;
+    const CUSTOMER = /АСГАРД|ASGARD|Покупатель|Грузополучатель/i;
+    const orgLines = t.split(/[\n|]/).map((x) => x.trim())
+      .filter((l) => /(?:ООО|АО|ПАО|ЗАО|ОАО|ИП)\s*[«"']?/i.test(l) && l.length > 6);
+    const good = orgLines.find((l) => !BANK_WORDS.test(l) && !CUSTOMER.test(l));
     if (good) {
-      const m = good.match(/(?:ООО|АО|ПАО|ЗАО|ОАО|ИП)\s*[«"']?[^\n«»"',;]{2,80}/i)
-        || good.match(/(?:ООО|АО|ПАО|ЗАО|ОАО|ИП)\s*[«"']?[^\n«»"',;]{2,80}/);
+      const m = good.match(/(?:ООО|АО|ПАО|ЗАО|ОАО|ИП)\s*[«"']?[^\n«»"',;|]{2,80}/i);
       if (m) {
         out.counterparty_name = m[0].trim().replace(/[»"',;]+$/, '').slice(0, 160);
         found();
       }
     }
   }
-  const orgM = t.match(/(?:ООО|АО|ПАО|ЗАО|ОАО|ИП)\s*[«"]?[^\n«»"]{2,80}[»"]?/);
-  if (orgM) { out.counterparty_name = orgM[0].trim().slice(0, 160); found(); }
+  // V411: старая «первая орг-форма» УБРАНА — она затирала правильно найденного
+  // поставщика банком (на живом скане первым идёт «ПАО "БАНК УРАЛСИБ"»).
+  // Контрагент теперь определяется выше: строка «Поставщик:» либо не-банковская строка.
 
   // V406: позиции счёта (FAIL верификатора 17.10 — номенклатура не наполнялась).
   out.lines = extractInvoiceLines(t);
