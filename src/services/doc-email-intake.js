@@ -30,6 +30,60 @@ async function confidenceMin(db) {
   return 0.7;
 }
 
+/**
+ * V407: определить инициатора заявки по адресу отправителя.
+ *
+ * Зачем: раньше во всех путях стояло `userId || 1` → ответственным за документ
+ * становился ADMIN, хотя письмо послал РП. Заказчик 18.10.2026: «это почта РП
+ * Андросова, по логике он должен быть ответственным за доки».
+ *
+ * ВАЖНО: одна и та же почта может быть у НЕСКОЛЬКИХ пользователей (в тестовой БД
+ * `n.androsov@asgard-service.com` есть у ADMIN, FIELD_WORKER и HEAD_TO).
+ * Поэтому выбор детерминированный и осмысленный:
+ *   1) пользователь с этой почтой, на которого заведены РАБОТЫ (pm_id) — он и есть РП;
+ *   2) иначе — самый «профильный» по роли (PM/HEAD_PM/PROC/TO → BUH → остальные);
+ *   3) иначе — самый ранний (самый старый аккаунт: обычно это основной сотрудник).
+ * Ничего не выдумываем: если почта чужая (внешний поставщик) — вернём null,
+ * и вызывающий код решит сам (заявку всё равно создадим).
+ */
+async function resolveSenderUserId(db, email) {
+  let from = String((email && (email.from_email || email.from)) || '').trim().toLowerCase();
+  // Подстраховка: объект письма может прийти без адреса отправителя (разные пути
+  // вызова передают то `email`, то только `email.id`). Тогда читаем из БД —
+  // иначе инициатор молча свалится в fallback и им станет админ.
+  if (!from && email && email.id) {
+    try {
+      const r = await db.query(`SELECT from_email FROM emails WHERE id=$1`, [email.id]);
+      if (r.rows[0]) from = String(r.rows[0].from_email || '').trim().toLowerCase();
+    } catch (_) { /* нет письма — работаем как есть */ }
+  }
+  const addr = (from.match(/<([^>]+)>/) || [null, from])[1];
+  if (!addr || !addr.includes('@')) return null;
+  try {
+    const { rows } = await db.query(
+      `SELECT u.id, u.role,
+              (SELECT count(*) FROM works w WHERE w.pm_id = u.id AND w.deleted_at IS NULL) AS works_cnt
+         FROM users u
+        WHERE lower(u.email) = $1 AND u.is_active IS NOT FALSE
+        ORDER BY works_cnt DESC, u.id ASC
+        LIMIT 10`,
+      [addr]
+    );
+    if (!rows.length) return null;
+    // 1) Есть работы — значит это РП (или иной владелец проектов).
+    const owner = rows.find((r) => Number(r.works_cnt) > 0);
+    if (owner) return owner.id;
+    // 2) Профильная роль: закупки/РП — те, кто инициирует оплаты.
+    const byRole = ['PM', 'HEAD_PM', 'PROC', 'TO', 'HEAD_TO', 'BUH', 'OFFICE_MANAGER']
+      .map((role) => rows.find((r) => String(r.role) === role)).find(Boolean);
+    if (byRole) return byRole.id;
+    // 3) Самый ранний аккаунт с этой почтой.
+    return rows[0].id;
+  } catch (_) {
+    return null;
+  }
+}
+
 /** Ссылка на email/attachment (можно передать как id, так и объекты). */
 function ids(email, attachment) {
   return {
@@ -52,6 +106,10 @@ async function intakeOne(db, { email, attachment, text, userId = null, dryRun = 
   const parsed = extractInvoice(text || '');
   parsed._kind = cls.kind;
   parsed._is_invoice = cls.is_invoice;
+  // V407 (тест заказчика 18.10.2026): инициатор — ТОТ, КТО ПРИСЛАЛ письмо,
+  // а не жёстко админ (`userId || 1`). Иначе ответственным за доки становился
+  // ADMIN, хотя письмо послал РП. Резолвим по from_email → users.email.
+  const senderUserId = userId || await resolveSenderUserId(db, email);
   // V404: срок из тела письма инициатора («оплати завтра / срочно / через 2 месяца»).
   // Текст письма и текст вложения могут отличаться — берём тело письма отдельно.
   const emailBody = email && (email.body_text || email.body) || '';
@@ -157,7 +215,7 @@ async function intakeOne(db, { email, attachment, text, userId = null, dryRun = 
                $12,$13,$14,$15::date,$16) RETURNING id`,
       [parsed.invoice_number, parsed.invoice_date, cpName, parsed.inn, supplierId,
         gross, net, vat, parsed.has_vat !== false,
-        userId, lowConfidence
+        senderUserId, lowConfidence
           ? 'Требует ручной проверки (не распознаны сумма или контрагент)'
           : (needsReview ? 'Распознано, проверьте реквизиты (банк не найден)' : null),
         // V404: договор-основание из счёта. Есть в CRM → linked, нет → once (подсветим).
@@ -203,7 +261,7 @@ async function intakeOne(db, { email, attachment, text, userId = null, dryRun = 
            work_hint, work_id, invoice_number, invoice_date, vat_amount)
          VALUES ('awaiting_dir','awaiting_dir',$1,$2,$3,true,$4,$5,$6::date,'other',$7,$8,$9,$10,
                  $11,$12,$13,$14::date,$15,$16,$17,$18,$19::date,$20) RETURNING id`,
-        [parsed.counterparty_name, parsed._supplierId || null, parsed.amount_gross, userId || 1,
+        [parsed.counterparty_name, parsed._supplierId || null, parsed.amount_gross, senderUserId || 1,
           timing, dueDate, basis, docId, emailId, attachmentId,
           intent.intent !== 'none' ? intent.intent : null,
           intent.matched || null,
@@ -255,7 +313,7 @@ async function intakeOne(db, { email, attachment, text, userId = null, dryRun = 
           lines,
           supplierName: parsed.counterparty_name,
           supplierId: parsed._supplierId || null,
-          userId,
+          userId: senderUserId,
           source: 'quote',
           docRegistryId: docId,
           invoiceDate: parsed.invoice_date,
@@ -313,4 +371,4 @@ async function intakeEmail(db, { email, invoices, userId = null }) {
   return { count: results.length, created, needs_manual: needsManual, already, results };
 }
 
-module.exports = { intakeOne, intakeEmail, confidenceMin };
+module.exports = { intakeOne, intakeEmail, confidenceMin, resolveSenderUserId };

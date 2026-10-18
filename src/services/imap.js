@@ -446,22 +446,26 @@ async function saveEmail(account, msg, parsed) {
   try {
     const isCopy = await db.query('SELECT is_crm_copy, from_email, body_text, thread_id, in_reply_to, references_header FROM emails WHERE id=$1', [emailId]);
     const row = isCopy.rows[0];
-    if (row && row.is_crm_copy) {
+    const thr = require('./approval-thread');
+    // Кто считается согласующим: основной ящик + заместители из настроек.
+    // V407: раньше проверяли ТОЛЬКО users.email основного согласующего — замена
+    // через `doc_approver_emails` не работала.
+    const allowedApprovers = await thr.approverEmails(db).catch(() => []);
+    const senderAddr = thr.extractEmail(row && row.from_email);
+    const isApproverSender = !!senderAddr && allowedApprovers.includes(senderAddr);
+
+    // V407 (тест заказчика 18.10.2026): согласующий ОТВЕЧАЕТ, CRM в копии → ответ
+    // приходит на ЯЩИК CRM и помечается `is_crm_copy=true`. Прежний код в этом
+    // случае шёл в intake и ветку согласования ПРОПУСКАЛ — «Добро» не срабатывало.
+    // Поэтому сначала: если отправитель — согласующий, обрабатываем как решение,
+    // независимо от того, копия это или нет.
+    if (isApproverSender) {
+      await thr.handleApprovalReply(db, { id: emailId, ...(row || {}) })
+        .then((r) => { if (r && (r.applied || r.needs_manual)) console.log('[IMAP] approval-thread:', JSON.stringify(r)); })
+        .catch((e) => console.error('[IMAP] approval-thread failed:', e.message));
+    } else if (row && row.is_crm_copy) {
+      // Копия письма со счётом (не ответ согласующего) → intake: заявка + реестр.
       await runDocIntakeForEmail(db, emailId).catch((e) => console.error('[IMAP] doc-intake failed:', e.message));
-    }
-    // Ответ СОГЛАСУЮЩЕГО (не копия): «Добро» в треде → согласование заявки.
-    if (row && !row.is_crm_copy) {
-      const thr = require('./approval-thread');
-      const aid = await thr.approverId(db).catch(() => null);
-      const sender = String(row.from_email || '').toLowerCase();
-      const fromApprover = aid && (await db.query(`SELECT email FROM users WHERE id=$1`, [aid])).rows[0];
-      const approverEmail = fromApprover && String(fromApprover.email || '').toLowerCase();
-      const looksLikeApprover = approverEmail ? sender === approverEmail : /gazhili|go@|director/i.test(sender);
-      if (looksLikeApprover) {
-        await thr.handleApprovalReply(db, { id: emailId, ...row })
-          .then((r) => { if (r && (r.applied || r.needs_manual)) console.log('[IMAP] approval-thread:', JSON.stringify(r)); })
-          .catch((e) => console.error('[IMAP] approval-thread failed:', e.message));
-      }
     }
   } catch (_) { /* intake не должен ломать sync */ }
 

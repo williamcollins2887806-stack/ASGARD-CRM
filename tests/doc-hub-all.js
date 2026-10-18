@@ -19,6 +19,8 @@ const TESTS = [
   ['Детектор «Добро»', 'tests/approval-detector.test.js'],
   ['TTL согласования 72ч', 'tests/doc-approval-ttl-e2e.js'],
   ['Intake-оркестратор', 'tests/doc-email-intake.test.js'],
+  ['Инициатор по почте отправителя', 'tests/intake-initiator.test.js'],
+  ['Контур теста заказчика (E2E)', 'tests/test-contour-e2e.js'],
   ['Intake из письма', 'tests/doc-intake-from-email.test.js'],
   ['«Добро» в треде', 'tests/approval-thread.test.js'],
   ['Сквозная цепочка CRM→CRM', 'tests/email-chain-e2e.js'],
