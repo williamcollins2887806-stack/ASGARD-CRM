@@ -24,31 +24,45 @@ function isEnabled() {
  * GREEN_API_MAX_INSTANCE / GREEN_API_MAX_TOKEN fallback to GREEN_API_* when empty
  * (shared console credentials).
  *
- * Хост MAX определяется ТАК (инцидент 10–14.10.2026): api.green-api.com/v3
- * оказался недоступен, а номерной хост инстанса (31xx → 3100.api.green-api.com,
- * 35xx → 3500.api.green-api.com) работал. Молчаливый fallback на мёртвый
- * api.green-api.com/v3 прятал сбой: коды в MAX не уходили НИКОМУ, а в журнале
- * было лишь «fetch failed» без адреса. Теперь:
- *   1) явный GREEN_API_MAX_URL — если задан;
- *   2) иначе ВЫВОДИМ хост из инстанса (31xx→3100, 35xx→3500, общий случай → XX00);
- *   3) и только если инстанс не распознан — дефолт 3100.api.green-api.com
- *      (рабочий номерной хост, НЕ удалённый api.green-api.com/v3).
+ * ⚠️ ИСТОРИЯ ХОСТА (18.10.2026). Панель Green API показывает для инстанса
+ * `apiUrl = https://api.green-api.com`, но в коде хост ВЫВОДИЛСЯ из номера
+ * инстанса (3100638228 → https://3100.api.green-api.com). Оба хоста отвечают,
+ * однако это РАСХОЖДЕНИЕ с панелью: если Green API отключит номерной хост,
+ * MAX отвалится молча. Теперь порядок такой:
+ *   1) явный GREEN_API_MAX_URL (если задан) — приоритет;
+ *   2) панельный хост https://api.green-api.com — ОСНОВНОЙ (как в панели);
+ *   3) номерной шард (3100/3500…) — РЕЗЕРВ, на него переходим при сбое сети/
+ *      авторизации у основного (см. gaMaxRequest).
+ * Это сохраняет совместимость с инцидентом 10–14.10.2026 (когда работал именно
+ * номерной хост) и убирает зависимость от одного адреса.
  */
+const GREEN_API_DEFAULT_HOST = 'https://api.green-api.com';
+
 function maxShardHost(instance) {
   const m = String(instance || '').match(/^(\d{2})\d{6,}$/);
   return m ? `https://${m[1]}00.api.green-api.com` : null;
 }
 
+/** Основной хост (панельный). Явный env перекрывает всё. */
 function maxApiBaseUrl(instance) {
   const explicit = (process.env.GREEN_API_MAX_URL || '').trim();
   if (explicit) return explicit.replace(/\/+$/, '');
-  return maxShardHost(instance) || 'https://3100.api.green-api.com';
+  return GREEN_API_DEFAULT_HOST;
+}
+
+/** Резервный хост — номерной шард инстанса (или null, если не выводится). */
+function maxFallbackBaseUrl(instance) {
+  const explicit = (process.env.GREEN_API_MAX_FALLBACK_URL || '').trim();
+  if (explicit) return explicit.replace(/\/+$/, '');
+  const shard = maxShardHost(instance);
+  return shard && shard !== maxApiBaseUrl(instance) ? shard : null;
 }
 
 function getMaxConfig() {
   const instance = process.env.GREEN_API_MAX_INSTANCE || process.env.GREEN_API_INSTANCE || '';
   return {
     apiUrl:   maxApiBaseUrl(instance),
+    fallbackUrl: maxFallbackBaseUrl(instance),
     instance,
     token:    process.env.GREEN_API_MAX_TOKEN || process.env.GREEN_API_TOKEN || '',
   };
@@ -118,31 +132,53 @@ async function findWhatsappPhone(phones) {
   return null;
 }
 
+/**
+ * Запрос к MAX с АВТОПЕРЕКЛЮЧЕНИЕМ хостов.
+ * Пробуем основной (панельный api.green-api.com), при сбое СЕТИ/5xx —
+ * резервный номерной шард. Так MAX не отвалится, если один из хостов
+ * недоступен (инцидент 10–14.10.2026: работал именно номерной, а панельный — нет;
+ * 18.10.2026: панель снова отдаёт apiUrl, поэтому порядок перевёрнут).
+ */
 async function gaMaxRequest(method, endpoint, body) {
-  const { apiUrl, instance, token } = getMaxConfig();
+  const { apiUrl, fallbackUrl, instance, token } = getMaxConfig();
   if (!instance || !token) throw new Error('GREEN_API_MAX_INSTANCE / GREEN_API_MAX_TOKEN (или GREEN_API_*) не заданы в .env');
-  const url = `${apiUrl}/waInstance${instance}/${endpoint}/${token}`;
-  const opts = { method, headers: { 'Content-Type': 'application/json' } };
-  if (body && method !== 'GET') opts.body = JSON.stringify(body);
-  let res;
-  try {
-    res = await fetch(url, opts);
-  } catch (e) {
-    // Диагностика (инцидент 10–14.10.2026): «fetch failed» без адреса не давал
-    // понять, что мёртв api.green-api.com, а не сам инстанс MAX. Явно логируем хост.
-    console.error(`[Green API Max] host=${apiUrl} instance=${instance} ${method} ${endpoint} → ${e.message}` +
-      (e.cause ? ` (${e.cause.code || e.cause.message})` : ''));
-    throw e;
+
+  const hosts = [apiUrl, fallbackUrl].filter(Boolean);
+  let lastErr = null;
+
+  for (const host of hosts) {
+    const url = `${host}/waInstance${instance}/${endpoint}/${token}`;
+    const opts = { method, headers: { 'Content-Type': 'application/json' } };
+    if (body && method !== 'GET') opts.body = JSON.stringify(body);
+    let res;
+    try {
+      res = await fetch(url, opts);
+    } catch (e) {
+      lastErr = e;
+      // Диагностика: «fetch failed» без адреса не давал понять, ЧТО мёртво — хост
+      // или сам инстанс. Логируем хост явно и идём на резервный.
+      console.error(`[Green API Max] host=${host} instance=${instance} ${method} ${endpoint} → ${e.message}` +
+        (e.cause ? ` (${e.cause.code || e.cause.message})` : '') + (hosts.indexOf(host) < hosts.length - 1 ? ' → пробуем резервный хост' : ''));
+      continue;
+    }
+    const text = await res.text();
+    let data;
+    try { data = JSON.parse(text); } catch { data = { raw: text }; }
+    if (!res.ok) {
+      const msg = data?.message || data?.error || text;
+      // 5xx — сервер хоста прилёг, есть смысл на резервный. 4xx (кроме 429) —
+      // это НЕ про хост (неверный токен/инстанс), повтор бессмысленен.
+      if (res.status >= 500 && hosts.indexOf(host) < hosts.length - 1) {
+        lastErr = new Error(`Green API Max ${method} ${endpoint} → ${res.status}: ${msg}`);
+        console.error(`[Green API Max] host=${host} ${method} ${endpoint} → ${res.status}: ${String(msg).slice(0, 200)} → пробуем резервный хост`);
+        continue;
+      }
+      console.error(`[Green API Max] host=${host} instance=${instance} ${method} ${endpoint} → ${res.status}: ${String(msg).slice(0, 200)}`);
+      throw new Error(`Green API Max ${method} ${endpoint} → ${res.status}: ${msg}`);
+    }
+    return data;
   }
-  const text = await res.text();
-  let data;
-  try { data = JSON.parse(text); } catch { data = { raw: text }; }
-  if (!res.ok) {
-    const msg = data?.message || data?.error || text;
-    console.error(`[Green API Max] host=${apiUrl} instance=${instance} ${method} ${endpoint} → ${res.status}: ${String(msg).slice(0, 200)}`);
-    throw new Error(`Green API Max ${method} ${endpoint} → ${res.status}: ${msg}`);
-  }
-  return data;
+  throw lastErr || new Error('Green API Max: все хосты недоступны');
 }
 
 /** CheckAccount v3 — есть ли аккаунт MAX у номера. Возвращает true/false.
@@ -310,6 +346,8 @@ async function getQR() {
 module.exports = {
   isEnabled,
   isMaxEnabled,
+  getConfig,
+  getMaxConfig,
   toDigits,
   normalizePhone,
   normalizeForCheck,
