@@ -33,18 +33,21 @@ const MIG_DIR = process.env.MIGRATIONS_DIR || path.join(ROOT, 'migrations');
 
 /**
  * Список согласован по ФАКТИЧЕСКОМУ состоянию схемы прода (проверено 18.10.2026),
- * а не по таблице `migrations`. Порядок = порядок применения.
- * V389/V393 уже применены и записаны — здесь их нет.
+ * а не по таблице `migrations` — она на проде неполная.
+ *
+ * ВАЖНО: V385, V387, V388, V389, V390, V393 прод УЖЕ ИМЕЕТ фактически
+ * (проверено по колонкам/констрейнтам/настройкам), хотя в таблице `migrations`
+ * записаны только V389 и V393. Поэтому их НЕ включаем — иначе платим за риск
+ * без пользы. Их _down намеренно оставлен в репо для ручного отката.
+ *
+ * Порядок = порядок применения. Повторный запуск пропускает записанные.
  */
 const TARGETS = [
-  'V385__payouts_worker_payments_fields',       // worker_payments: часть колонок есть, часть нет
-  'V387__payouts_settings_grant',               // settings: payout_manager_user_ids и др.
-  'V388__payout_code_channel_none',             // CHECK chk_pcc_channel + 'none'
   'V391__payout_batches_payees_plan',           // 4 таблицы выплат (D-281)
-  'V392__payout_kind_all_types',                // CHECK kind после V391
+  'V392__payout_kind_all_types',                // CHECK chk_pbi_kind — после V391
   'V394__doc_traffic_light_acts',               // doc_reconciliation_acts, doc_reminder_log, work_calendar
   'V395__doc_traffic_workdays_fn',              // функция asgard_workdays_until
-  'V396__doc_incomplete_recompute',             // функция doc_incomplete_recompute
+  'V396__doc_incomplete_recompute',             // правка данных (без своей функции)
   'V397__doc_cp_inn_fx',                        // doc_registry: counterparty_inn, fx_rate
   'V398__doc_email_chain',                      // doc_email_intake, email_threads, payment_invoices.*
   'V399__cash_issued_amount',                   // cash_requests.issued_amount
@@ -55,8 +58,8 @@ const TARGETS = [
   'V404__payment_invoice_initiator_context',    // payment_invoices.initiator_intent
   'V405__doc_reminder_log_null_dedup',          // ПОСЛЕ V394: дедуп + уникальный индекс
   'V406__director_dev_chat_perms',              // role_presets DIRECTOR_DEV: chat_groups
-  'V406__doc_deferred_approval',                // doc_approval_grant
-  'V407__field_tariff_grid_ceilings'            // потолки тарифов поля (D-282)
+  'V407__field_tariff_grid_ceilings',           // потолки тарифов поля (D-282)
+  'V408__doc_deferred_approval'                 // doc_approval_grant (переименована из V406 — коллизия номеров)
 ];
 
 const pool = new Pool({
