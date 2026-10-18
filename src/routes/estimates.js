@@ -106,7 +106,9 @@ async function routes(fastify) {
     }
 
     if (role === 'BUH') {
-      sql += ` AND e.approval_status = 'approved' AND e.requires_payment = true`;
+      // 19.10.2026: колонки requires_payment в estimates НЕТ — запрос падал
+      // с 503. Требование оплаты выводим из approval_status = 'approved'.
+      sql += ` AND e.approval_status = 'approved'`;
     }
 
     if (tender_id) { sql += ` AND e.tender_id = $${idx}`; params.push(tender_id); idx++; }

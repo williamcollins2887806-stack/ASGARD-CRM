@@ -7,6 +7,10 @@ import { useHaptic } from '@/hooks/useHaptic';
 import { useAuthStore } from '@/stores/authStore';
 
 const DONE_STATUSES = ['Работы сдали', 'Завершена', 'Закрыт', 'Выполнена', 'Выполнено'];
+// 19.10.2026: /api/works отдаёт work_status (а не status) и work_title (а не
+// title). Из-за этого виджет показывал все работы как «активные» и «Без названия».
+const wStatus = (w) => w.work_status ?? w.status ?? '';
+const wTitle = (w) => w.work_title || w.title || w.name || 'Без названия';
 
 function getStatusStyle(status) {
   const s = (status || '').toLowerCase();
@@ -39,7 +43,7 @@ export default function MyWorksWidget() {
           .filter(
             (w) =>
               w.pm_id === user?.id &&
-              !DONE_STATUSES.includes(w.status)
+              !DONE_STATUSES.includes(wStatus(w))
           )
           .slice(0, 5);
         setItems(myWorks);
@@ -69,7 +73,7 @@ export default function MyWorksWidget() {
         ) : (
           <div className="flex flex-col gap-2.5">
             {items.map((work) => {
-              const statusStyle = getStatusStyle(work.status);
+              const statusStyle = getStatusStyle(wStatus(work));
               const progress = Number(work.progress) || 0;
               const progressColor =
                 progress >= 80
@@ -91,10 +95,10 @@ export default function MyWorksWidget() {
                         lineHeight: 1.3,
                       }}
                     >
-                      {work.title || work.name || 'Без названия'}
+                      {wTitle(work)}
                     </span>
 
-                    {work.status && (
+                    {wStatus(work) && (
                       <span
                         className="flex-shrink-0 px-2 py-0.5 rounded-full"
                         style={{
@@ -105,7 +109,7 @@ export default function MyWorksWidget() {
                           whiteSpace: 'nowrap',
                         }}
                       >
-                        {work.status}
+                        {wStatus(work)}
                       </span>
                     )}
                   </div>

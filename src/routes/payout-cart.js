@@ -334,6 +334,39 @@ async function routes(fastify) {
     }
   });
 
+  // ─── GET /to-pay — одобрено, но ещё НЕ выплачено ─────────────────────────
+  // 19.10.2026: виджет «К исполнению» считает именно эти позиции (см.
+  // director-summary/queues → toExecute.payouts). Раньше мобильная вкладка
+  // «Выплаты» показывала только pending, поэтому цифры расходились: на главной
+  // «3 к выплате», а в списке — пусто. Теперь вкладка тянет этот же срез.
+  // Условие 1:1 как в виджете — approved + факт перевода ещё не записан.
+  fastify.get('/to-pay', approverAuth, async (request, reply) => {
+    try {
+      const { rows } = await db.query(`
+        SELECT i.id AS item_id, i.batch_id, i.employee_id, i.kind, i.pay_amount,
+               i.transfer_amount, i.info_amount, i.tax_amount, i.payee_employee_id,
+               i.official_transfer, i.comment, i.approved_at,
+               b.period_year, b.period_month,
+               COALESCE(NULLIF(TRIM(e.fio),''), NULLIF(TRIM(e.full_name),''), 'ID '||e.id) AS fio,
+               e.is_self_employed
+          FROM payout_batch_items i
+          JOIN payout_batches b ON b.id = i.batch_id
+          JOIN employees e ON e.id = i.employee_id
+         WHERE i.approval_status = 'approved' AND b.status <> 'cancelled'
+           AND NOT EXISTS (
+             SELECT 1 FROM worker_payments wp
+              WHERE wp.employee_id = i.employee_id
+                AND wp.status IN ('paid','confirmed')
+                AND COALESCE(wp.pay_year,  EXTRACT(YEAR  FROM wp.created_at)::int) = b.period_year
+                AND COALESCE(wp.pay_month, EXTRACT(MONTH FROM wp.created_at)::int) = b.period_month)
+         ORDER BY i.approved_at ASC NULLS LAST, i.id`);
+      return reply.send({ items: rows, count: rows.length });
+    } catch (err) {
+      logError(fastify, '[payout-cart] GET /to-pay error', err, request);
+      return sendHuman(reply, err);
+    }
+  });
+
   // ─── POST /items/:id/approve — одобрить позицию ──────────────────────────
   fastify.post('/items/:id/approve', approverAuth, async (request, reply) => {
     const id = parseInt(request.params.id, 10);

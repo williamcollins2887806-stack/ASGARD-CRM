@@ -20,6 +20,15 @@ const ok = (c, m) => { if (c) { pass++; console.log('  PASS ' + m); } else { fai
   await db.connect();
   const thr = require('../src/services/approval-thread');
 
+  // 19.10.2026: адрес согласующего НЕ хардкодим. Раньше тест слал с
+  // 'andr0sov.nikita@yandex.ru', а согласующий в настройках сейчас
+  // 'go@asgard-service.com' — тест падал (FAIL 5) на sender_not_approver,
+  // хотя механизм работал. Берём актуальный список из settings.
+  const allowed = await thr.approverEmails(db);
+  if (!allowed.length) { console.error('Нет согласующего в настройках (doc_approver_user_id/emails)'); process.exit(1); }
+  const APPROVER = allowed[0];
+  console.log('Согласующий (из настроек):', APPROVER);
+
   const stamp = Date.now();
   const threadKey = 'defer-mech-' + stamp;
   // Уникальный контрагент — чтобы НИЧЕГО из прошлых прогонов не пересеклось.
@@ -38,12 +47,12 @@ const ok = (c, m) => { if (c) { pass++; console.log('  PASS ' + m); } else { fai
   const em = (await db.query(
     `INSERT INTO emails(subject, body_text, from_email, is_crm_copy, message_id, thread_id, created_at)
      VALUES ('Re: счёт','Добро!',$1,true,$2,$3,NOW()) RETURNING id`,
-    ['andr0sov.nikita@yandex.ru', `<defer-mech-${stamp}@asgard>`, threadKey])).rows[0];
+    [APPROVER, `<defer-mech-${stamp}@asgard>`, threadKey])).rows[0];
 
   let crashed = null; let r1 = null;
   try {
     r1 = await thr.handleApprovalReply(db, {
-      id: em.id, from_email: 'andr0sov.nikita@yandex.ru', body_text: 'Добро!',
+      id: em.id, from_email: APPROVER, body_text: 'Добро!',
       thread_id: threadKey, in_reply_to: null, references_header: null
     });
   } catch (e) { crashed = e.message; }
@@ -90,9 +99,9 @@ const ok = (c, m) => { if (c) { pass++; console.log('  PASS ' + m); } else { fai
   const em2 = (await db.query(
     `INSERT INTO emails(subject,body_text,from_email,is_crm_copy,message_id,thread_id,created_at)
      VALUES ('Re: счёт','нет, не оплачивайте пока',$1,true,$2,$3,NOW()) RETURNING id`,
-    ['andr0sov.nikita@yandex.ru', `<defer-rej-${stamp}@asgard>`, thrKey2])).rows[0];
+    [APPROVER, `<defer-rej-${stamp}@asgard>`, thrKey2])).rows[0];
   await thr.handleApprovalReply(db, {
-    id: em2.id, from_email: 'andr0sov.nikita@yandex.ru', body_text: 'нет, не оплачивайте пока',
+    id: em2.id, from_email: APPROVER, body_text: 'нет, не оплачивайте пока',
     thread_id: thrKey2, in_reply_to: null, references_header: null
   });
   const g4 = (await db.query(`SELECT count(*)::int n FROM doc_approval_grant WHERE thread_key=$1`, [thrKey2])).rows[0].n;

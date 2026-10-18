@@ -22,8 +22,10 @@ export default function PayrollPendingWidget() {
         const pending = sheets.filter((s) => s.status === 'pending');
 
         setCount(pending.length);
+        // 19.10.2026: у payroll_sheets нет поля amount — сумма ведомости
+        // лежит в total_payout. Раньше «на сумму» всегда показывало 0 ₽.
         setTotal(
-          pending.reduce((sum, s) => sum + (Number(s.amount) || 0), 0)
+          pending.reduce((sum, s) => sum + (Number(s.total_payout) || 0), 0)
         );
       } catch {
         setCount(0);

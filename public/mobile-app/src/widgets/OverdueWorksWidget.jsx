@@ -3,6 +3,10 @@ import { api } from '@/api/client';
 import { WidgetShell } from './WidgetShell';
 
 const DONE_STATUSES = ['Работы сдали', 'Завершена', 'Закрыт', 'Выполнена', 'Выполнено'];
+// 19.10.2026: /api/works отдаёт work_status (а не status) и work_title.
+// Раньше «Просроченные» показывали закрытые работы и «Без названия».
+const wStatus = (w) => w.work_status ?? w.status ?? '';
+const wTitle = (w) => w.work_title || w.title || w.name || 'Без названия';
 
 function getOverdueDays(endPlan) {
   const now = new Date();
@@ -32,7 +36,7 @@ export default function OverdueWorksWidget() {
             (w) =>
               w.end_plan &&
               new Date(w.end_plan) < now &&
-              !DONE_STATUSES.includes(w.status)
+              !DONE_STATUSES.includes(wStatus(w))
           )
           .sort((a, b) => new Date(a.end_plan) - new Date(b.end_plan))
           .slice(0, 3);
@@ -85,7 +89,7 @@ export default function OverdueWorksWidget() {
                       lineHeight: 1.3,
                     }}
                   >
-                    {work.title || work.name || 'Без названия'}
+                    {wTitle(work)}
                   </span>
 
                   <span

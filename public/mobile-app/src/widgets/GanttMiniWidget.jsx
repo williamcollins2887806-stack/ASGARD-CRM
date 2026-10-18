@@ -4,6 +4,10 @@ import { WidgetShell } from './WidgetShell';
 import { formatDate } from '@/lib/utils';
 
 const DONE_STATUSES = ['Работы сдали', 'Завершена', 'Закрыт'];
+// 19.10.2026: /api/works отдаёт work_status (а не status) и work_title.
+// Раньше фильтр не срабатывал — в дедлайны попадали уже закрытые работы.
+const wStatus = (w) => w.work_status ?? w.status ?? '';
+const wTitle = (w) => w.work_title || w.title || w.name || 'Без названия';
 
 function getDaysUntil(dateStr) {
   const now = new Date();
@@ -38,7 +42,7 @@ export default function GanttMiniWidget() {
           .filter(
             (w) =>
               w.end_plan &&
-              !DONE_STATUSES.includes(w.status) &&
+              !DONE_STATUSES.includes(wStatus(w)) &&
               new Date(w.end_plan) >= now
           )
           .sort((a, b) => new Date(a.end_plan) - new Date(b.end_plan))
@@ -99,7 +103,7 @@ export default function GanttMiniWidget() {
                     color: 'var(--text-primary)',
                   }}
                 >
-                  {item.title || item.name || 'Без названия'}
+                  {wTitle(item)}
                 </span>
 
                 {/* Urgent badge: ≤ 7 days */}

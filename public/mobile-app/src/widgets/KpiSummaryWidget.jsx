@@ -36,8 +36,11 @@ export default function KpiSummaryWidget() {
         const yearEstimates = estimates.filter(isCurrentYear);
 
         // In-work statuses
+        // 19.10.2026: у works поле статуса называется work_status, а не status.
+        // Из-за этого «В работе» всегда показывало 0.
         const activeStatuses = ['В работе', 'Активна', 'В процессе', 'Назначена'];
-        const inWork = yearWorks.filter((w) => activeStatuses.includes(w.status));
+        const workStatus = (w) => w.work_status ?? w.status ?? '';
+        const inWork = yearWorks.filter((w) => activeStatuses.includes(workStatus(w)));
 
         // Average margin
         const margins = yearEstimates

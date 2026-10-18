@@ -21,7 +21,7 @@ export default function CashBalanceWidget() {
         const res = await api.get('/cash/balance');
 
         if (Array.isArray(res)) {
-          // Array of cash items — filter active, sum amounts
+          // Массив заявок — суммируем остаток по незакрытым
           const active = res.filter(
             (r) => r.status !== 'closed' && r.status !== 'returned'
           );
@@ -29,9 +29,12 @@ export default function CashBalanceWidget() {
           setSum(total);
           setCount(active.length);
         } else if (res && typeof res === 'object') {
-          // Object with balance/total/count
+          // 19.10.2026: /cash/balance отдаёт { balance, operations }.
+          // balance — ОСТАТОК в кассе, а не «выдано». Раньше виджет подписывал
+          // его «Выдано из кассы» и показывал 1 327 800 ₽ вместо 89 200 ₽.
           setSum(res.balance ?? res.total ?? 0);
-          setCount(res.count ?? 0);
+          const ops = Array.isArray(res.operations) ? res.operations : [];
+          setCount(ops.length);
         }
       } catch {
         setSum(0);
@@ -42,7 +45,9 @@ export default function CashBalanceWidget() {
     })();
   }, []);
 
-  const countLabel = `${count} ${plural(count, 'заявка', 'заявки', 'заявок')} в обработке`;
+  const countLabel = count > 0
+    ? `${count} ${plural(count, 'операция', 'операции', 'операций')} в кассе`
+    : '';
 
   return (
     <WidgetShell name="Баланс КАССА" icon="💵" loading={loading}>
@@ -53,7 +58,7 @@ export default function CashBalanceWidget() {
         <BigNumber
           value={sum}
           suffix="₽"
-          label="Выдано из кассы"
+          label="В кассе сейчас"
           icon="💵"
           format={(v) => v.toLocaleString('ru-RU')}
         />

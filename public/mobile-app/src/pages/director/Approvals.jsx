@@ -62,6 +62,8 @@ export default function DirectorApprovals() {
   const [searchParams, setSearchParams] = useSearchParams();
 
   const [pending,     setPending]     = useState([]);
+  // 19.10.2026: одобренные, но ещё не выданные заявки (виджет «К исполнению»).
+  const [cashToIssue, setCashToIssue] = useState([]);
   const [balance,     setBalance]     = useState(null);
   const [loading,     setLoading]     = useState(true);
   const [opened,      setOpened]      = useState(null);
@@ -75,10 +77,14 @@ export default function DirectorApprovals() {
   });
   // Выплаты (корзина Димы)
   const [payBatch,    setPayBatch]    = useState([]);
+  // 19.10.2026: одобрено, но не выплачено (виджет «Выплаты к выплате»).
+  const [payToPay,    setPayToPay]    = useState([]);
   const [payBusy,     setPayBusy]     = useState(false);
   // План на 1-е число
   const [plan,        setPlan]        = useState(null);
   const [invoices,    setInvoices]    = useState([]);
+  // 19.10.2026: счета, одобренные директором и ждущие оплаты бухгалтерией.
+  const [invoicesToPay, setInvoicesToPay] = useState([]);
   const [invBusy,     setInvBusy]     = useState(false);
   // V391: шторка причины возврата — вместо window.prompt (не премиум-уровень).
   // askReason = { title, onConfirm } | null
@@ -89,11 +95,22 @@ export default function DirectorApprovals() {
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
-      const [reqRes, balRes, payRes, invRes] = await Promise.all([
+      const [reqRes, approvedRes, balRes, payRes, invRes, invPaidRes, toPayRes] = await Promise.all([
         api.get('/cash/all?status=requested').catch(() => null),
+        // 19.10.2026: виджет «К исполнению» считает approved (одобрено → ждёт
+        // ВЫДАЧИ). Раньше вкладка их не показывала — директор видел на главной
+        // «2 к выдаче», а в очереди их не было. Теперь показываем обе секции.
+        api.get('/cash/all?status=approved').catch(() => null),
         api.get('/cash/balance').catch(() => null),
         api.get('/payout-cart/pending').catch(() => null),
         api.get('/payment-invoices?status=awaiting_dir').catch(() => null),
+        // 19.10.2026: одобренные директором счета, ждущие оплаты бухгалтерией —
+        // ровно то, что считает виджет «Счета к оплате» (toExecute.invoices).
+        api.get('/payment-invoices?status=pending_payment').catch(() => null),
+        // 19.10.2026: одобренные, но не выплаченные — ровно то, что считает
+        // виджет «Выплаты к выплате» (toExecute.payouts). Без этого цифры
+        // на главной и на вкладке расходились.
+        api.get('/payout-cart/to-pay').catch(() => null),
       ]);
 
       let rows = api.extractRows(reqRes) || [];
@@ -104,16 +121,36 @@ export default function DirectorApprovals() {
       // Интерпретируем как «давно ждут» = старые сверху (срочнее).
       rows.sort((a, b) => new Date(a.created_at || 0) - new Date(b.created_at || 0));
       setPending(rows);
+
+      // «К выдаче»: одобренные, но ещё не выданные — те же, что считает
+      // виджет «К исполнению» (director-summary/queues → toExecute.cash).
+      let toIssue = api.extractRows(approvedRes) || [];
+      toIssue = toIssue.filter((r) => r.status === 'approved');
+      toIssue.sort((a, b) => new Date(a.created_at || 0) - new Date(b.created_at || 0));
+      setCashToIssue(toIssue);
+
       setBalance(balRes);
       // V391: список выплат от Димы
       const payItems = (payRes && (payRes.items || payRes.rows)) || [];
       setPayBatch(Array.isArray(payItems) ? payItems : []);
+      // «К выплате»: одобрено, но перевод ещё не выполнен.
+      const toPayItems = (toPayRes && (toPayRes.items || toPayRes.rows)) || [];
+      setPayToPay(Array.isArray(toPayItems) ? toPayItems : []);
       // V391: счета, ждущие решения директора
       let inv = api.extractRows(invRes) || [];
       if (!inv.length && invRes && Array.isArray(invRes)) inv = invRes;
       setInvoices(Array.isArray(inv) ? inv : []);
+      // 19.10.2026: «Счета к оплате» из виджета «К исполнению» = одобрены
+      // директором и ждут оплаты бухгалтерией (pending_payment). Раньше на
+      // вкладке их не было — только awaiting_dir. Теперь показываем отдельно.
+      let toPayInv = api.extractRows(invPaidRes) || [];
+      if (!toPayInv.length && invPaidRes && Array.isArray(invPaidRes)) toPayInv = invPaidRes;
+      setInvoicesToPay(Array.isArray(toPayInv) ? toPayInv : []);
     } catch {
       setPending([]);
+      setCashToIssue([]);
+      setPayToPay([]);
+      setInvoicesToPay([]);
     } finally {
       setLoading(false);
     }
@@ -425,7 +462,7 @@ export default function DirectorApprovals() {
         {loading ? (
           <SkeletonList count={4} />
         ) : tab === 'cash' ? (
-          pending.length === 0 ? (
+          pending.length === 0 && cashToIssue.length === 0 ? (
             <EmptyState
               icon={Check}
               iconColor="var(--green)"
@@ -435,19 +472,69 @@ export default function DirectorApprovals() {
             />
           ) : (
             <div className="flex flex-col gap-2 pb-4">
-              {pending.map((req, i) => (
-                <RequestCard
-                  key={req.id}
-                  req={req}
-                  index={i}
-                  onTap={() => { haptic.light(); setOpened(req); }}
-                />
-              ))}
+              {/* 19.10.2026: секция «К выдаче» — одобрено, но деньги ещё не
+                  выданы. Это ровно то, что считает виджет «К исполнению»,
+                  поэтому цифры на главной и здесь теперь сходятся. */}
+              {cashToIssue.length > 0 && (
+                <div className="flex flex-col gap-2">
+                  <div
+                    className="px-1 pt-1 pb-0.5 flex items-center gap-2"
+                    style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-secondary)' }}
+                  >
+                    <span
+                      style={{
+                        width: 7, height: 7, borderRadius: 999,
+                        background: 'var(--orange, #ff9f0a)', display: 'inline-block',
+                      }}
+                    />
+                    К ВЫДАЧЕ · {cashToIssue.length}
+                    <span style={{ fontWeight: 500, opacity: 0.7 }}>
+                      на {formatMoney(cashToIssue.reduce((s, r) => s + Number(r.amount || 0), 0))}
+                    </span>
+                  </div>
+                  {cashToIssue.map((req, i) => (
+                    <RequestCard
+                      key={`issue-${req.id}`}
+                      req={req}
+                      index={i}
+                      onTap={() => { haptic.light(); setOpened(req); }}
+                    />
+                  ))}
+                </div>
+              )}
+
+              {pending.length > 0 && (
+                <div className="flex flex-col gap-2">
+                  {cashToIssue.length > 0 && (
+                    <div
+                      className="px-1 pt-2 pb-0.5 flex items-center gap-2"
+                      style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-secondary)' }}
+                    >
+                      <span
+                        style={{
+                          width: 7, height: 7, borderRadius: 999,
+                          background: 'var(--accent, #0a84ff)', display: 'inline-block',
+                        }}
+                      />
+                      ЖДУТ РЕШЕНИЯ · {pending.length}
+                    </div>
+                  )}
+                  {pending.map((req, i) => (
+                    <RequestCard
+                      key={req.id}
+                      req={req}
+                      index={i}
+                      onTap={() => { haptic.light(); setOpened(req); }}
+                    />
+                  ))}
+                </div>
+              )}
             </div>
           )
         ) : tab === 'payouts' ? (
           <PayoutsTab
             items={payBatch}
+            toPay={payToPay}
             busy={payBusy}
             onDecide={payDecide}
             onApproveAll={payApproveAll}
@@ -456,6 +543,7 @@ export default function DirectorApprovals() {
         ) : tab === 'invoices' ? (
           <InvoicesTab
             items={invoices}
+            toPay={invoicesToPay}
             busy={invBusy}
             onDecide={invoiceDecide}
           />
@@ -537,8 +625,9 @@ export default function DirectorApprovals() {
 /* ══════════════════════════════════════════════════════════════
    V391: Вкладка «Выплаты» — список от Димы Путкова
    ══════════════════════════════════════════════════════════════ */
-function PayoutsTab({ items, busy, onDecide, onApproveAll, onRejectAll }) {
-  if (!items || !items.length) {
+function PayoutsTab({ items, toPay, busy, onDecide, onApproveAll, onRejectAll }) {
+  const toPayList = Array.isArray(toPay) ? toPay : [];
+  if ((!items || !items.length) && !toPayList.length) {
     return (
       <div className="pb-4">
         <EmptyState
@@ -548,6 +637,15 @@ function PayoutsTab({ items, busy, onDecide, onApproveAll, onRejectAll }) {
           title="Всё согласовано"
           description="Дмитрий Путков ещё не отправлял новую корзину"
         />
+      </div>
+    );
+  }
+  // 19.10.2026: если на согласовании пусто, но есть одобренные-невыплаченные —
+  // показываем только секцию «К выплате», без пустой шапки «ждёт решения».
+  if (!items || !items.length) {
+    return (
+      <div className="flex flex-col gap-2 pb-4">
+        <PayoutToPaySection list={toPayList} />
       </div>
     );
   }
@@ -613,6 +711,71 @@ function PayoutsTab({ items, busy, onDecide, onApproveAll, onRejectAll }) {
       >
         Вернуть весь список
       </button>
+
+      {/* 19.10.2026: «К выплате» — одобрено, но перевод ещё не выполнен.
+          Это ровно те позиции, что считает виджет «К исполнению» на главной,
+          поэтому число на виджете и здесь теперь совпадает. */}
+      <PayoutToPaySection list={toPayList} />
+    </div>
+  );
+}
+
+/* ══════════════════════════════════════════════════════════════
+   19.10.2026: секция «К выплате» на вкладке «Выплаты».
+   Показывает позиции, которые директор уже одобрил, но деньги рабочим
+   ещё не переведены. Данные: GET /api/payout-cart/to-pay (тот же срез,
+   что toExecute.payouts в /director-summary/queues).
+   ══════════════════════════════════════════════════════════════ */
+function PayoutToPaySection({ list }) {
+  if (!list || !list.length) return null;
+  const total = list.reduce((s, x) => s + Number(x.pay_amount || 0), 0);
+  return (
+    <div className="flex flex-col gap-2 mt-3">
+      <div
+        className="px-1 flex items-center gap-2"
+        style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-secondary)' }}
+      >
+        <span
+          style={{
+            width: 7, height: 7, borderRadius: 999,
+            background: 'var(--orange, #ff9f0a)', display: 'inline-block',
+          }}
+        />
+        К ВЫПЛАТЕ · {list.length}
+        <span style={{ fontWeight: 500, opacity: 0.7 }}>на {formatMoney(total)}</span>
+      </div>
+      {list.map((it, i) => (
+        <div
+          key={it.item_id || it.id || i}
+          className="rounded-2xl"
+          style={{
+            background: 'color-mix(in srgb, var(--bg-surface) 92%, transparent)',
+            border: '0.5px solid color-mix(in srgb, var(--orange, #ff9f0a) 35%, var(--border-norse))',
+            padding: '12px 14px',
+            animation: `fadeInUp var(--motion-normal) var(--ease-spring) ${i * 35}ms both`,
+          }}
+        >
+          <div className="flex items-center justify-between gap-2">
+            <div className="min-w-0">
+              <p style={{ fontSize: 14.5, fontWeight: 700, color: 'var(--text-primary)', lineHeight: 1.2 }}>
+                {it.fio || `Сотрудник #${it.employee_id}`}
+              </p>
+              <p style={{ fontSize: 11, color: 'var(--text-tertiary)', marginTop: 2 }}>
+                {it.kind ? `Тип: ${it.kind} · ` : ''}
+                {it.period_month && it.period_year ? `за ${it.period_month}.${it.period_year} · ` : ''}
+                ждёт перевода
+              </p>
+            </div>
+            <span style={{ fontSize: 15.5, fontWeight: 800, color: 'var(--text-primary)', flexShrink: 0 }}>
+              {formatMoney(Number(it.pay_amount || 0))}
+            </span>
+          </div>
+        </div>
+      ))}
+      <p style={{ fontSize: 10.5, color: 'var(--text-tertiary)', padding: '0 4px', lineHeight: 1.4 }}>
+        Решение принято. Выплату выполняет сотрудник выплат — позиции исчезнут
+        отсюда после подтверждения перевода.
+      </p>
     </div>
   );
 }
@@ -759,8 +922,9 @@ function ttlBadge(expiresAt) {
   );
 }
 
-function InvoicesTab({ items, busy, onDecide }) {
-  if (!items || !items.length) {
+function InvoicesTab({ items, toPay, busy, onDecide }) {
+  const toPayList = Array.isArray(toPay) ? toPay : [];
+  if ((!items || !items.length) && !toPayList.length) {
     return (
       <div className="pb-4">
         <EmptyState
@@ -770,6 +934,15 @@ function InvoicesTab({ items, busy, onDecide }) {
           title="Нет счетов на согласовании"
           description="Все счета рассмотрены"
         />
+      </div>
+    );
+  }
+  // 19.10.2026: если на согласовании пусто, но есть счета к оплате (одобрены,
+  // ждут бухгалтерию) — показываем только их, без пустой шапки.
+  if (!items || !items.length) {
+    return (
+      <div className="flex flex-col gap-2 pb-4">
+        <InvoicesToPaySection list={toPayList} />
       </div>
     );
   }
@@ -839,6 +1012,69 @@ function InvoicesTab({ items, busy, onDecide }) {
           </div>
         </div>
       ))}
+
+      {/* 19.10.2026: счета, одобренные директором и ждущие оплаты бухгалтерией.
+          Ровно то, что считает виджет «Счета к оплате» на главной. */}
+      <InvoicesToPaySection list={toPayList} />
+    </div>
+  );
+}
+
+/* ══════════════════════════════════════════════════════════════
+   19.10.2026: секция «К оплате» на вкладке «Счета».
+   Одобрено директором → у бухгалтерии, деньги ещё не перечислены.
+   Данные: GET /api/payment-invoices?status=pending_payment
+   (тот же срез, что toExecute.invoices в /director-summary/queues).
+   ══════════════════════════════════════════════════════════════ */
+function InvoicesToPaySection({ list }) {
+  if (!list || !list.length) return null;
+  const total = list.reduce((s, x) => s + Number(x.amount || 0), 0);
+  return (
+    <div className="flex flex-col gap-2 mt-3">
+      <div
+        className="px-1 flex items-center gap-2"
+        style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-secondary)' }}
+      >
+        <span
+          style={{
+            width: 7, height: 7, borderRadius: 999,
+            background: 'var(--orange, #ff9f0a)', display: 'inline-block',
+          }}
+        />
+        К ОПЛАТЕ · {list.length}
+        <span style={{ fontWeight: 500, opacity: 0.7 }}>на {formatMoney(total)}</span>
+      </div>
+      {list.map((inv, i) => (
+        <div
+          key={inv.id || i}
+          className="rounded-2xl"
+          style={{
+            background: 'color-mix(in srgb, var(--bg-surface) 92%, transparent)',
+            border: '0.5px solid color-mix(in srgb, var(--orange, #ff9f0a) 35%, var(--border-norse))',
+            padding: '12px 14px',
+            animation: `fadeInUp var(--motion-normal) var(--ease-spring) ${i * 35}ms both`,
+          }}
+        >
+          <div className="flex items-center justify-between gap-2">
+            <div className="min-w-0">
+              <p style={{ fontSize: 14.5, fontWeight: 700, color: 'var(--text-primary)', lineHeight: 1.2 }}>
+                {inv.supplier_name || `Счёт #${inv.id}`}
+              </p>
+              <p style={{ fontSize: 11, color: 'var(--text-tertiary)', marginTop: 2 }}>
+                {inv.initiator_name ? `от ${String(inv.initiator_name).split(' ')[0]} · ` : ''}
+                одобрен, ждёт оплаты бухгалтерией
+              </p>
+            </div>
+            <span style={{ fontSize: 15.5, fontWeight: 800, color: 'var(--text-primary)', flexShrink: 0 }}>
+              {formatMoney(Number(inv.amount || 0))}
+            </span>
+          </div>
+        </div>
+      ))}
+      <p style={{ fontSize: 10.5, color: 'var(--text-tertiary)', padding: '0 4px', lineHeight: 1.4 }}>
+        Решение принято. Счёт оплачивает бухгалтерия — он исчезнет отсюда
+        после проведения платежа.
+      </p>
     </div>
   );
 }
