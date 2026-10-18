@@ -9,6 +9,7 @@
     "dev:audit": "node -r dotenv/config src/index.js dotenv_config_path=.env.audit",
     "migrate": "node migrations/run.js",
     "migrate:down": "node migrations/run.js down",
+    "verify:field-tariffs": "node tools/verify_field_tariff_ceilings.js",
     "seed": "node scripts/seed.js",
     "prepare:tender-import": "node scripts/prepare-tender-registry-import.js",
     "test": "node tests/runner.js --api --e2e",
