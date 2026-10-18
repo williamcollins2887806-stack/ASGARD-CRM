@@ -339,6 +339,7 @@ async function saveEmail(account, msg, parsed) {
   // оказался ПУСТЫМ (0 символов), хотя весь текст был в `body_html`. Из-за этого
   // не разобрались ни объект, ни просьба инициатора. Если plain-части нет,
   // извлекаем текст из HTML (убираем теги, склеиваем блоки, декодируем сущности).
+  const bodyHtmlRaw = parsed.html || '';
   let bodyText = parsed.text || '';
   if (!bodyText.trim() && bodyHtmlRaw) {
     bodyText = htmlToPlainText(bodyHtmlRaw);
