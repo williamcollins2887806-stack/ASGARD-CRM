@@ -492,9 +492,9 @@ export default function FieldQuests() {
               ) : (
                 <button style={{
                   width:'100%', padding:10, borderRadius:12, border:'none', fontSize:13, fontWeight:800,
-                  color:'var(--text-on-gold)', cursor:'pointer',
-                  background:'linear-gradient(135deg, var(--fq-gold-d), var(--fq-gold))',
-                  boxShadow:'0 3px 0 var(--value)',
+          color:'var(--text-on-gold)', cursor:'pointer',
+          background:'linear-gradient(135deg, var(--gold-fill), var(--gold-fill))',
+          boxShadow:'0 3px 0 var(--gold-fill)',
                 }} onClick={() => {
                   fieldApi.post(`/gamification/odin-challenge/${odinChallenge.id}/complete`, {}).then(() => {
                     setOdinChallenge(prev => ({ ...prev, my_completion: { reward_claimed: true } }));
@@ -888,11 +888,11 @@ const QUEST_CSS = `
 
 /* Claim button */
 .fq-qc-claim{display:flex;align-items:center;justify-content:center;gap:6px;width:100%;padding:11px;
-  border-radius:12px;border:none;font-size:14px;font-weight:800;color:var(--text-primary);cursor:pointer;
+  border-radius:12px;border:none;font-size:14px;font-weight:800;color:var(--text-on-gold);cursor:pointer;
   margin-top:10px;position:relative;overflow:hidden;
-  background:linear-gradient(135deg,var(--fq-gold-d),var(--fq-gold),var(--fq-gold-l));
-  box-shadow:0 4px 0 var(--value),0 6px 16px color-mix(in oklab, var(--value) 25%, transparent);animation:fq-claimPulse 2s ease-in-out infinite;transition:all .1s}
-.fq-qc-claim:active{transform:translateY(3px);box-shadow:0 1px 0 var(--value)}
+  background:var(--gold-fill);
+  box-shadow:0 4px 0 var(--gold-fill),0 6px 16px color-mix(in oklab, var(--gold-fill) 25%, transparent);animation:fq-claimPulse 2s ease-in-out infinite;transition:all .1s}
+.fq-qc-claim:active{transform:translateY(3px);box-shadow:0 1px 0 var(--gold-fill)}
 @keyframes fq-claimPulse{0%,100%{box-shadow:0 4px 0 var(--value),0 6px 16px color-mix(in oklab, var(--value) 20%, transparent)}50%{box-shadow:0 4px 0 var(--value),0 6px 28px color-mix(in oklab, var(--value) 40%, transparent)}}
 .fq-qc-claim::after{content:'';position:absolute;top:0;left:-100%;width:40%;height:100%;
   background:linear-gradient(90deg,transparent,color-mix(in oklab, var(--text-primary) 15%, transparent),transparent);animation:fq-claimShine 2.5s infinite}
@@ -947,9 +947,9 @@ const QUEST_CSS = `
 .fq-mr-icon{font-size:20px}
 .fq-modal-claim-btn{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;padding:16px;border-radius:16px;border:none;
   font-family:inherit,serif;font-size:16px;font-weight:900;color:var(--text-on-gold);cursor:pointer;position:relative;overflow:hidden;
-  background:linear-gradient(135deg,var(--fq-gold-d),var(--fq-gold),var(--fq-gold-l));
-  box-shadow:0 5px 0 var(--value),0 8px 24px color-mix(in oklab, var(--value) 30%, transparent);transition:all .1s}
-.fq-modal-claim-btn:active{transform:translateY(4px);box-shadow:0 1px 0 var(--value)}
+  background:linear-gradient(135deg,var(--gold-fill),var(--gold-fill),var(--gold-fill));
+  box-shadow:0 5px 0 var(--gold-fill),0 8px 24px color-mix(in oklab, var(--gold-fill) 30%, transparent);transition:all .1s}
+.fq-modal-claim-btn:active{transform:translateY(4px);box-shadow:0 1px 0 var(--gold-fill)}
 .fq-modal-claim-btn::after{content:'';position:absolute;top:0;left:-100%;width:50%;height:100%;
   background:linear-gradient(90deg,transparent,color-mix(in oklab, var(--text-primary) 20%, transparent),transparent);animation:fq-claimShine 3s infinite}
 .fq-modal-rune-l,.fq-modal-rune-r{position:absolute;font-size:64px;color:color-mix(in oklab, var(--danger) 5%, transparent);font-family:inherit,serif;pointer-events:none}

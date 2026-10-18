@@ -354,7 +354,7 @@ export default function StaffRequests() {
                     <span className="text-[10px] font-medium px-2 py-0.5 rounded-full shrink-0 ml-2"
                       style={{
                         background: `color-mix(in srgb, ${cfg.color} 15%, transparent)`,
-                        color: cfg.color,
+                        color: 'var(--text-primary)',
                       }}>
                       {cfg.label}
                     </span>
@@ -388,7 +388,7 @@ export default function StaffRequests() {
       {/* Error toast */}
       {actionError && (
         <div className="fixed top-4 left-4 right-4 z-50 rounded-xl px-4 py-3 flex items-center gap-2"
-          style={{ background: 'color-mix(in srgb, var(--err-t) 15%, var(--bg-elevated))', border: '1px solid color-mix(in srgb, var(--err-t) 40%, transparent)' }}
+          style={{ background: 'var(--bg-elevated)', border: '1px solid color-mix(in srgb, var(--err-t) 45%, transparent)', boxShadow: 'var(--shadow-lg, 0 8px 24px rgba(0,0,0,.35))' }}
           onClick={() => setActionError(null)}>
           <AlertTriangle size={16} style={{ color: 'var(--err-t)', flexShrink: 0 }} />
           <span className="text-sm" style={{ color: 'var(--err-t)' }}>{actionError}</span>
@@ -401,7 +401,7 @@ export default function StaffRequests() {
           style={{
             position: 'fixed', bottom: 80, right: 20, zIndex: 50,
             width: 56, height: 56, borderRadius: 16,
-            background: 'linear-gradient(135deg, var(--blue), var(--info))',
+            background: 'var(--blue-fill)',
             boxShadow: '0 4px 16px color-mix(in srgb, var(--blue) 40%, transparent)',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             color: '#fff',
@@ -472,7 +472,7 @@ export default function StaffRequests() {
               {isPM && (detail.status_v2 === 'draft' || detail.status_v2 === 'rework') && (
                 <button onClick={() => handleSubmit(detail.id)}
                   className="w-full py-2.5 rounded-xl text-sm font-semibold spring-tap"
-                  style={{ background: 'linear-gradient(135deg, var(--blue), var(--info))', color: '#fff' }}>
+                  style={{ background: 'var(--blue-fill)', color: '#fff' }}>
                   📨 Отправить HR
                 </button>
               )}
@@ -480,7 +480,7 @@ export default function StaffRequests() {
               {isPM && detail.status_v2 === 'approved' && (
                 <button onClick={() => handleAddToCrew(detail.id)}
                   className="w-full py-2.5 rounded-xl text-sm font-semibold spring-tap"
-                  style={{ background: 'linear-gradient(135deg, var(--green), var(--ok))', color: '#fff' }}>
+                  style={{ background: 'linear-gradient(135deg, var(--ok), var(--ok))', color: 'var(--on-ok)' }}>
                   👥 Добавить в бригаду
                 </button>
               )}
@@ -488,7 +488,7 @@ export default function StaffRequests() {
               {isHR && detail.status_v2 === 'new' && (
                 <button onClick={() => handleTake(detail.id)}
                   className="w-full py-2.5 rounded-xl text-sm font-semibold spring-tap"
-                  style={{ background: 'linear-gradient(135deg, var(--blue), var(--info))', color: '#fff' }}>
+                  style={{ background: 'var(--blue-fill)', color: '#fff' }}>
                   📋 Взять в работу
                 </button>
               )}
@@ -496,7 +496,7 @@ export default function StaffRequests() {
               {isHR && (detail.status_v2 === 'in_progress' || detail.status_v2 === 'sent_to_pm') && (
                 <button onClick={() => handleApprove(detail.id)}
                   className="w-full py-2.5 rounded-xl text-sm font-semibold spring-tap"
-                  style={{ background: 'linear-gradient(135deg, var(--green), var(--ok))', color: '#fff' }}>
+                  style={{ background: 'linear-gradient(135deg, var(--ok), var(--ok))', color: 'var(--on-ok)' }}>
                   ✅ Утвердить
                 </button>
               )}
@@ -542,7 +542,7 @@ export default function StaffRequests() {
                     <span className="text-sm font-semibold w-4 text-center c-primary">{formRoles[r.key] || 0}</span>
                     <button onClick={() => updateRoleCount(r.key, 1)}
                       className="w-6 h-6 rounded-full flex items-center justify-center text-sm font-bold spring-tap"
-                      style={{ background: 'color-mix(in srgb, var(--blue) 20%, transparent)', color: 'var(--blue)' }}>+</button>
+                      style={{ background: 'var(--soft-blue)', color: 'var(--on-soft-blue)' }}>+</button>
                   </div>
                 </div>
               ))}
@@ -601,7 +601,7 @@ export default function StaffRequests() {
                             </select>
                             <button onClick={() => addReq(b.key, selType[b.key])}
                               className="px-3 py-1.5 rounded-lg text-xs font-semibold spring-tap"
-                              style={{ background: 'color-mix(in srgb, var(--blue) 20%, transparent)', color: 'var(--blue)' }}>Добавить</button>
+                              style={{ background: 'var(--soft-blue)', color: 'var(--on-soft-blue)' }}>Добавить</button>
                           </div>
                           <div className="flex gap-1.5">
                             <input value={customName[b.key] || ''} onChange={e => setCustomName(prev => ({ ...prev, [b.key]: e.target.value }))}
@@ -669,7 +669,7 @@ export default function StaffRequests() {
             </button>
             <button onClick={() => handleSaveAndSubmit()} disabled={formSaving || !formWorkId}
               className="flex-1 py-3 rounded-xl font-semibold text-sm disabled:opacity-50 spring-tap"
-              style={{ background: 'linear-gradient(135deg, var(--blue), var(--info))', color: '#fff' }}>
+              style={{ background: 'var(--blue-fill)', color: '#fff' }}>
               {formSaving ? '...' : '📨 Отправить HR'}
             </button>
           </div>

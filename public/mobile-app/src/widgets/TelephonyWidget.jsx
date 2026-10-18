@@ -45,8 +45,8 @@ export default function TelephonyWidget() {
           style={{
             width: missed > 0 ? 40 : 32,
             height: missed > 0 ? 40 : 32,
-            backgroundColor: 'color-mix(in srgb, var(--gold) 12%, transparent)',
-            color: 'var(--gold)',
+            backgroundColor: 'var(--soft-value)',
+            color: 'var(--on-soft-value)',
           }}
         >
           <Phone size={missed > 0 ? 18 : 16} />

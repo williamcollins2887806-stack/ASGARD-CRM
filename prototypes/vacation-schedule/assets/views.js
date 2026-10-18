@@ -45,7 +45,7 @@
     editingId: null,
     hiddenGroups: {},
     hiddenPeople: {},
-    blocked: {},
+    blockedByEmp: {},       // empId -> { 'YYYY-MM-DD': true } — снятые директором дни, по сотруднику
     deptOnly: false,
     note: null,
     closed: false,
@@ -165,13 +165,18 @@
   function deadlineBanner() {
     var notFilled = D.ALL.filter(function (e) { return D.balance(e.id).plannedTotal === 0; });
     var pctFilled = Math.round((D.ALL.length - notFilled.length) / D.ALL.length * 100);
+    var dleft = D.daysToDeadline();
+    var open = D.windowOpen();
+    var stateCls = !open ? ' is-closed' : (dleft <= 7 ? ' is-soon' : '');
+    var stateTxt = !open
+      ? 'Окно внесения закрыто — правки только через директора'
+      : (dleft > 0 ? 'до закрытия ' + daysWord(dleft) : 'сегодня последний день');
     return '' +
-      '<div class="vs-deadline">' +
+      '<div class="vs-deadline' + stateCls + '">' +
         '<div class="vs-deadline__ic">' + IC.clock + '</div>' +
         '<div class="vs-deadline__tx">' +
-          '<div class="vs-deadline__t">График на ' + S.year + ' год — с <b>1 ноября</b> до <b>1 декабря ' + (S.year - 1) + '</b></div>' +
-          '<div class="vs-deadline__s">Внесли ' + (D.ALL.length - notFilled.length) + ' из ' + D.ALL.length + ' офисных сотрудников. ' +
-            'Согласовать нужно до 1 декабря; после — правки только через директора.</div>' +
+          '<div class="vs-deadline__t">График на ' + S.year + ' год — внесение с <b>1 ноября</b>, закрытие до <b>1 декабря ' + (S.year - 1) + '</b></div>' +
+          '<div class="vs-deadline__s">Внесли ' + (D.ALL.length - notFilled.length) + ' из ' + D.ALL.length + ' офисных сотрудников. ' + esc(stateTxt) + '.</div>' +
         '</div>' +
         '<div class="vs-deadline__prog">' +
           '<div class="vs-deadline__bar"><i style="width:' + pctFilled + '%"></i></div>' +
@@ -377,7 +382,7 @@
           var sel = !!S.sel[iso2] && (S.role === 'me' && isMine);
           var editable = S.role === 'me' && isMine && !S.closed;
           var st = cellState(emp.id, iso2);
-          var blocked = S.blocked && S.blocked[iso2] && isMine;
+          var blocked = isMine && D.isBlocked(emp.id, iso2);
           var c = cellCls(emp.id, iso2, isMine, sel, cell.wk);
           if (blocked) c += ' is-blocked';
           var attrs = editable ? ' data-day="' + iso2 + '" data-emp="' + emp.id + '" role="button" tabindex="0"' : '';
@@ -429,7 +434,7 @@
     var days = Object.keys(S.sel).filter(function (k) { return S.sel[k]; }).sort();
     if (!days.length) return '';
     var start = days[0], end = days[days.length - 1];
-    var v = D.validate(D.me.id, start, end, { ignoreId: S.editingId, blocked: D.blockedDays() });
+    var v = D.validate(D.me.id, start, end, { ignoreId: S.editingId, blocked: D.blockedDays(D.me.id) });
     var clashes = D.clashesWith(D.me.id, start, end);
     var clashHtml = clashes.length
       ? '<div class="vs-selbar__clash">' + ic('warn') +
@@ -825,6 +830,7 @@
         '<div class="doc-sec">А. ежегодный основной оплачиваемый отпуск на <b>' + r.days + '</b> календарных дней</div>' +
         '<div class="doc-range">с «<b>' + D.parseIso(r.start).d + '</b>» ' + D.MONTHS_GEN[D.parseIso(r.start).m] + ' ' + S.year + ' г. ' +
           'по «<b>' + D.parseIso(end).d + '</b>» ' + D.MONTHS_GEN[D.parseIso(end).m] + ' ' + S.year + ' г.</div>' +
+        '<div class="doc-sec doc-sec--b">Б. ежегодный дополнительный оплачиваемый отпуск, учебный, без сохранения заработной платы и другие (указать) — <b>не предоставляется</b></div>' +
         '<div class="doc-sec">В. Всего отпуск на <b>' + r.days + '</b> календарных дней</div>' +
         '<div class="doc-range">с «<b>' + D.parseIso(r.start).d + '</b>» ' + D.MONTHS_GEN[D.parseIso(r.start).m] + ' ' + S.year + ' г. ' +
           'по «<b>' + D.parseIso(end).d + '</b>» ' + D.MONTHS_GEN[D.parseIso(end).m] + ' ' + S.year + ' г.</div>' +
@@ -834,24 +840,26 @@
       '</div>';
   }
 
-  /** График отпусков Т-7 — таблица со всеми офисными сотрудниками. */
+  /** График отпусков Т-7 — таблица со всеми офисными сотрудниками (10 граф по форме 0301020). */
   function docT7() {
     var rows = D.GROUPS.map(function (g) {
-      return g.members.map(function (e, i) {
+      return g.members.map(function (e) {
         var rs = D.rangesOf(e.id).filter(function (r) { return r.status !== 'rejected'; })
           .slice().sort(function (a, b) { return a.start < b.start ? -1 : 1; });
         var first = rs.filter(function (r) { return r.days >= 14; })[0] || rs[0];
         var rest = rs.filter(function (r) { return r !== first; });
+        var pend = rs.some(function (r) { return r.status === 'pending'; });
         return '<tr>' +
-          '<td>' + esc(g.title) + '</td>' +
-          '<td>' + esc(D.roleRu(e.role)) + '</td>' +
-          '<td>' + esc(e.fio) + '</td>' +
-          '<td class="num">' + (2300 + e.id % 1000) + '</td>' +
-          '<td class="num">' + (first ? first.days : '') + '</td>' +
-          '<td>' + (first ? esc(fmtDot(first.start)) : '') + '</td>' +
-          '<td>' + (first ? esc(fmtDot(first.end)) : '') + '</td>' +
-          '<td>' + (rest.length ? esc(rest.map(function (r) { return r.days + ' дн. с ' + fmtDot(r.start); }).join('; ')) : '') + '</td>' +
-          '<td>' + (rs.some(function (r) { return r.status === 'pending'; }) ? 'на согласовании' : (rs.length ? 'согласовано' : '')) + '</td>' +
+          '<td>' + esc(g.title) + '</td>' +                                                   /* 1 */
+          '<td>' + esc(D.roleRu(e.role)) + '</td>' +                                          /* 2 */
+          '<td>' + esc(e.fio) + '</td>' +                                                     /* 3 */
+          '<td class="num">' + (2300 + e.id % 1000) + '</td>' +                               /* 4 */
+          '<td class="num">' + (first ? first.days : '') + '</td>' +                          /* 5 количество дней */
+          '<td>' + (first ? esc(fmtDot(first.start)) : '') + '</td>' +                        /* 6 запланированная */
+          '<td>' + (first ? esc(fmtDot(first.end)) : '') + '</td>' +                          /* 7 фактическая */
+          '<td>' + (rest.length ? esc(rest.map(function (r) { return r.days + ' дн. с ' + fmtDot(r.start); }).join('; ')) : '') + '</td>' + /* 8 основание */
+          '<td>' + (rest.length ? esc(fmtDot(rest[0].start)) : '') + '</td>' +                /* 9 дата предполагаемого */
+          '<td>' + (pend ? 'на согласовании' : (rs.length ? 'согласовано' : '')) + '</td>' +  /* 10 примечание */
         '</tr>';
       }).join('');
     }).join('');
@@ -866,11 +874,16 @@
         '</table>' +
         '<div class="doc-title2">ГРАФИК ОТПУСКОВ</div>' +
         '<table class="doc-t doc-t--grid">' +
-          '<thead><tr>' +
-            '<th rowspan="2">Структурное подразделение</th><th rowspan="2">Должность</th><th rowspan="2">Фамилия, имя, отчество</th>' +
-            '<th rowspan="2">Табельный номер</th><th colspan="3">ОТПУСК</th><th rowspan="2">перенесение отпуска</th><th rowspan="2">Примечание</th>' +
-          '</tr><tr><th>количество календарных дней</th><th>дата запланированная</th><th>дата фактическая</th></tr>' +
-          '<tr class="doc-nums"><td>1</td><td>2</td><td>3</td><td>4</td><td>5</td><td>6</td><td>7</td><td>8</td><td>9</td></tr></thead>' +
+          '<thead>' +
+            '<tr>' +
+              '<th rowspan="2">Структурное подразделение</th><th rowspan="2">Должность (специальность, профессия) по штатному расписанию</th>' +
+              '<th rowspan="2">Фамилия, имя, отчество</th><th rowspan="2">Табельный номер</th>' +
+              '<th>ОТПУСК</th><th colspan="3"></th>' +
+            '</tr>' +
+            '<tr><th>количество календарных дней</th><th>дата запланированная</th><th>дата фактическая</th>' +
+              '<th>перенесение отпуска · основание (документ)</th><th>дата предполагаемого отпуска</th><th>Примечание</th></tr>' +
+            '<tr class="doc-nums"><td>1</td><td>2</td><td>3</td><td>4</td><td>5</td><td>6</td><td>7</td><td>8</td><td>9</td><td>10</td></tr>' +
+          '</thead>' +
           '<tbody>' + rows + '</tbody>' +
         '</table>' +
         '<table class="doc-t doc-sign-t"><tr><td>Руководитель кадровой службы</td><td class="doc-b">Лебедева И. П.</td></tr>' +

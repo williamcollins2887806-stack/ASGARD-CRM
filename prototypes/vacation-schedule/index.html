@@ -14,28 +14,28 @@
     <!-- ── Сайдбар прототипа ─────────────────────────────────────────── -->
     <aside class="side">
       <div class="side__brand">
-        <div class="side__mark">⚔</div>
+        <div class="side__mark" id="vsBrandMark"></div>
         <div class="side__name">АСГАРД<i>прототип · отпуска</i></div>
       </div>
 
       <div class="side__sec">Как видит сотрудник</div>
-      <button class="side__item" data-nav="me"><em>🗓</em> Мои дни и отправка</button>
-      <button class="side__item" data-nav="office"><em>🏢</em> График офиса + отпуска</button>
+      <button class="side__item" data-nav="me"><em data-ic="cal"></em> Мои дни и отправка</button>
+      <button class="side__item" data-nav="office"><em data-ic="board"></em> График офиса + отпуска</button>
 
       <div class="side__sec">Как видят директора</div>
-      <button class="side__item" data-nav="director"><em>✓</em> Согласование<span class="side__badge" id="vsCartN">0</span></button>
-      <button class="side__item" data-nav="mail-dir"><em>📧</em> Письмо директору (за 15 дней)</button>
+      <button class="side__item" data-nav="director"><em data-ic="check"></em> Согласование<span class="side__badge" id="vsCartN">0</span></button>
+      <button class="side__item" data-nav="mail-dir"><em data-ic="bell"></em> Письмо директору (за 15 дней)</button>
 
       <div class="side__sec">Документы</div>
-      <button class="side__item" data-nav="docs"><em>📄</em> Заявление · Приказ · Т-7</button>
+      <button class="side__item" data-nav="docs"><em data-ic="doc"></em> Заявление · Приказ · Т-7</button>
 
       <div class="side__sec">Уведомления сотруднику</div>
-      <button class="side__item" data-nav="mail-ok"><em>✅</em> Письмо: согласован</button>
-      <button class="side__item" data-nav="mail-no"><em>⛔</em> Письмо: не согласован</button>
-      <button class="side__item" data-nav="mail-auto"><em>🕒</em> Письмо: автоснятие</button>
+      <button class="side__item" data-nav="mail-ok"><em data-ic="ok"></em> Письмо: согласован</button>
+      <button class="side__item" data-nav="mail-no"><em data-ic="x"></em> Письмо: не согласован</button>
+      <button class="side__item" data-nav="mail-auto"><em data-ic="clock"></em> Письмо: автоснятие</button>
 
       <div class="side__sec">Бухгалтерия</div>
-      <button class="side__item" data-nav="buh"><em>🧮</em> Настройка дней</button>
+      <button class="side__item" data-nav="buh"><em data-ic="gift"></em> Настройка дней</button>
 
       <div class="side__sec">Тема</div>
       <div class="seg" style="margin:0 6px">

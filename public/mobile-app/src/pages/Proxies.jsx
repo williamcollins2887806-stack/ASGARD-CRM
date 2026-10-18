@@ -12,7 +12,7 @@ import { fileDownloadUrl } from '@/lib/fileDownload';
 import AsgardSelect from '@/components/ui/AsgardSelect';
 
 function getProxyStatus(proxy) {
-  if (proxy.end_date && new Date(proxy.end_date) < new Date()) return { label: 'Истекла', color: 'var(--red-soft)' };
+  if (proxy.end_date && new Date(proxy.end_date) < new Date()) return { label: 'Истекла', color: 'var(--danger-ink)' };
   return { label: 'Действующая', color: 'var(--green)' };
 }
 
@@ -63,7 +63,7 @@ export default function Proxies() {
                   </div>
                   {(proxy.representative_name || proxy.trustee_name) && <p className="text-[12px] mt-0.5 truncate c-secondary">{proxy.representative_name || proxy.trustee_name}</p>}
                   <div className="flex items-center gap-1.5 mt-2 flex-wrap">
-                    <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold" style={{ background: `color-mix(in srgb, ${st.color} 15%, transparent)`, color: st.color }}>{st.label}</span>
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold" style={{ background: `color-mix(in srgb, ${st.color} 15%, transparent)`, color: 'var(--text-primary)' }}>{st.label}</span>
                     {proxy.template_name && <span className="text-[10px] c-tertiary">{proxy.template_name}</span>}
                     {proxy.end_date && <span className="text-[10px] c-tertiary">до {formatDate(proxy.end_date)}</span>}
                   </div>
@@ -97,7 +97,7 @@ function ProxyDetailSheet({ proxy, onClose }) {
   return (
     <BottomSheet open={!!proxy} onClose={onClose} title={p.title || p.number || 'Доверенность'}>
       <div className="flex flex-col gap-3 pb-4">
-        {fields.map((f, i) => <div key={i}><p className="text-[11px] font-semibold uppercase tracking-wider mb-0.5 c-tertiary">{f.label}</p>{f.color ? <span className="px-2.5 py-1 rounded-full text-[12px] font-semibold inline-block" style={{ background: `color-mix(in srgb, ${f.color} 15%, transparent)`, color: f.color }}>{f.value}</span> : <p className={`text-[14px] c-primary ${f.full ? 'whitespace-pre-wrap' : ''}`}>{f.value}</p>}</div>)}
+        {fields.map((f, i) => <div key={i}><p className="text-[11px] font-semibold uppercase tracking-wider mb-0.5 c-tertiary">{f.label}</p>{f.color ? <span className="px-2.5 py-1 rounded-full text-[12px] font-semibold inline-block" style={{ background: `color-mix(in srgb, ${f.color} 15%, transparent)`, color: 'var(--text-primary)' }}>{f.value}</span> : <p className={`text-[14px] c-primary ${f.full ? 'whitespace-pre-wrap' : ''}`}>{f.value}</p>}</div>)}
         {(p.file_url || p.scan_file) && <a href={fileDownloadUrl(p.file_url || p.scan_file)} target="_blank" rel="noopener noreferrer" className="flex items-center justify-center gap-2 py-3 rounded-xl font-semibold text-[14px] spring-tap mt-1 c-blue bg-elevated"><ExternalLink size={16} /> Скачать</a>}
       </div>
     </BottomSheet>

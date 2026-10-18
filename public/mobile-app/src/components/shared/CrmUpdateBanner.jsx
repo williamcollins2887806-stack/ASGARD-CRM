@@ -96,10 +96,10 @@ export function CrmUpdateBanner() {
             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
               <div style={{
                 width: 40, height: 40, borderRadius: 12,
-                background: 'color-mix(in srgb, var(--gold) 15%, transparent)',
+                background: 'var(--soft-value)',
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
               }}>
-                <Sparkles size={20} style={{ color: 'var(--gold)' }} />
+                <Sparkles size={20} style={{ color: 'var(--on-soft-value)' }} />
               </div>
               <div>
                 <p style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 2 }}>

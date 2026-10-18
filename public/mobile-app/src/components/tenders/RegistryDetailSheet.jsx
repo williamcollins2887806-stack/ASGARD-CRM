@@ -240,7 +240,7 @@ export default function RegistryDetailSheet({ tender, open, onClose, onChanged }
                 border: '0.5px solid color-mix(in srgb, var(--red, #ef4444) 35%, transparent)',
               }}
             >
-              <p className="font-semibold" style={{ color: 'var(--red, #ef4444)' }}>РП: не подаём</p>
+              <p className="font-semibold" style={{ color: 'var(--danger-ink)' }}>РП: не подаём</p>
               <p className="c-tertiary text-[11px]">Тендер остаётся в реестре, пока ТО не отправит в архив.</p>
               <button
                 type="button"

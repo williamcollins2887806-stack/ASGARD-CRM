@@ -70,7 +70,7 @@ export default function DocPreviewSheet({ open, onClose, tenderId, docId, title 
           </div>
         )}
         {err && (
-          <div className="absolute inset-0 flex items-center justify-center px-6 text-center text-[14px]" style={{ color: 'var(--danger)' }}>
+          <div className="absolute inset-0 flex items-center justify-center px-6 text-center text-[14px]" style={{ color: 'var(--danger-ink)' }}>
             {err}
           </div>
         )}

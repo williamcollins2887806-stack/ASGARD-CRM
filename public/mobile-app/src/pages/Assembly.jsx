@@ -97,7 +97,7 @@ export default function Assembly() {
                     <ChevronRight size={18} style={{ color: 'var(--text-secondary)', flexShrink: 0 }} />
                   </div>
                   <div className="flex items-center gap-2 mt-2.5">
-                    <span className="text-[11px] px-2 py-0.5 rounded-full font-bold" style={{ background: `color-mix(in oklab, ${meta.color} 22%, transparent)`, color: meta.color }}>{STATUS[a.status] || a.status}</span>
+                    <span className="text-[11px] px-2 py-0.5 rounded-full font-bold" style={{ background: `color-mix(in oklab, ${meta.color} 16%, transparent)`, color: 'var(--text-primary)' }}>{STATUS[a.status] || a.status}</span>
                     <span className="text-xs" style={{ color: 'var(--text-secondary)' }}>{a.items_count || 0} поз. • {a.pallets_count || 0} мест</span>
                   </div>
                   <div className="mt-2 flex items-center gap-2">
@@ -158,7 +158,7 @@ export default function Assembly() {
                   <button onClick={() => confirm(detail)} className="flex-1 py-3 rounded-xl font-semibold active:scale-95 transition" style={{ background: 'var(--gold-fill)', color: 'var(--text-on-gold)' }}>Подтвердить</button>
                 )}
                 {['confirmed', 'packing', 'packed'].includes(detailData.item.status) && (
-                  <button onClick={() => send(detail)} className="flex-1 py-3 rounded-xl font-semibold active:scale-95 transition" style={{ background: 'var(--blue)', color: 'var(--text-on-accent)' }}>Отправить</button>
+                  <button onClick={() => send(detail)} className="flex-1 py-3 rounded-xl font-semibold active:scale-95 transition" style={{ background: 'var(--blue-fill)', color: 'var(--text-on-accent)' }}>Отправить</button>
                 )}
               </div>
             </div>

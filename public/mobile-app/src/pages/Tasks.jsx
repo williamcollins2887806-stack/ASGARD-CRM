@@ -19,7 +19,7 @@ import { formatDate, relativeTime } from '@/lib/utils';
 
 // ─── Приоритеты ─────────────────────────────────────────────────────────────
 const PRIORITY = {
-  urgent: { label: 'Срочно',   color: 'var(--red-soft)',  bg: 'rgba(255,69,58,0.12)',   dot: '🔴' },
+  urgent: { label: 'Срочно',   color: 'var(--danger-ink)',  bg: 'rgba(255,69,58,0.12)',   dot: '🔴' },
   high:   { label: 'Высокий',  color: 'var(--gold)',      bg: 'rgba(200,168,78,0.12)',  dot: '🟡' },
   normal: { label: 'Обычный',  color: 'var(--blue)',      bg: 'rgba(74,144,217,0.12)', dot: '🔵' },
   low:    { label: 'Низкий',   color: 'var(--text-tertiary)', bg: 'rgba(142,142,147,0.1)', dot: '⚪' },
@@ -119,7 +119,7 @@ function TaskCard({ task, onOpen, delay }) {
       {isOverdue(task) && (
         <div
           className="mt-2 flex items-center gap-1.5 text-[11px] font-semibold"
-          style={{ color: 'var(--red-soft)' }}
+          style={{ color: 'var(--danger-ink)' }}
         >
           <AlertTriangle size={11} />
           Просрочена
@@ -169,7 +169,7 @@ function TaskDetail({ task, onClose, onRefresh, userId, role }) {
     actions.push({ id: 'complete', label: 'Выполнено', icon: CheckCircle2, color: 'var(--green)', bg: 'rgba(48,209,88,0.12)', needComment: true });
   }
   if (['new','accepted','in_progress'].includes(task.status) && (isCreator || isDirector)) {
-    actions.push({ id: 'cancel', label: 'Отменить',  icon: X,       color: 'var(--red-soft)', bg: 'rgba(255,69,58,0.10)', needComment: false });
+    actions.push({ id: 'cancel', label: 'Отменить',  icon: X,       color: 'var(--danger-ink)', bg: 'rgba(255,69,58,0.10)', needComment: false });
   }
 
   const handleAction = async (action) => {

@@ -15,7 +15,7 @@ function getPermitStatus(permit) {
   const now = new Date();
   const end = new Date(permit.valid_to);
   const daysLeft = Math.ceil((end - now) / 86400000);
-  if (daysLeft < 0) return { label: 'Просрочен', color: 'var(--red-soft)' };
+  if (daysLeft < 0) return { label: 'Просрочен', color: 'var(--danger-ink)' };
   if (daysLeft <= 30) return { label: `Истекает (${daysLeft} дн.)`, color: 'var(--gold)' };
   return { label: 'Действует', color: 'var(--green)' };
 }
@@ -94,7 +94,7 @@ export default function Permits() {
                   </div>
                   {empName && <p className="text-[12px] mt-0.5 truncate c-secondary">{empName}</p>}
                   <div className="flex items-center gap-1.5 mt-2 flex-wrap">
-                    <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold" style={{ background: `color-mix(in srgb, ${st.color} 15%, transparent)`, color: st.color }}>{st.label}</span>
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold" style={{ background: `color-mix(in srgb, ${st.color} 15%, transparent)`, color: 'var(--text-primary)' }}>{st.label}</span>
                     {permit.number && <span className="text-[10px] c-tertiary">№{permit.number}</span>}
                     {permit.valid_to && <span className="text-[10px] c-tertiary">до {formatDate(permit.valid_to)}</span>}
                   </div>
@@ -146,7 +146,7 @@ function PermitDetailSheet({ permit, onClose, employees }) {
             </div>
           </div>
         )}
-        {fields.map((f, i) => <div key={i}><p className="text-[11px] font-semibold uppercase tracking-wider mb-0.5 c-tertiary">{f.label}</p>{f.color ? <span className="px-2.5 py-1 rounded-full text-[12px] font-semibold inline-block" style={{ background: `color-mix(in srgb, ${f.color} 15%, transparent)`, color: f.color }}>{f.value}</span> : <p className="text-[14px] c-primary">{f.value}</p>}</div>)}
+        {fields.map((f, i) => <div key={i}><p className="text-[11px] font-semibold uppercase tracking-wider mb-0.5 c-tertiary">{f.label}</p>{f.color ? <span className="px-2.5 py-1 rounded-full text-[12px] font-semibold inline-block" style={{ background: `color-mix(in srgb, ${f.color} 15%, transparent)`, color: 'var(--text-primary)' }}>{f.value}</span> : <p className="text-[14px] c-primary">{f.value}</p>}</div>)}
         {p.scan_file && <a href={fileDownloadUrl(p.scan_file)} target="_blank" rel="noopener noreferrer" className="flex items-center justify-center gap-2 py-3 rounded-xl font-semibold text-[14px] spring-tap mt-1 c-blue bg-elevated"><ExternalLink size={16} /> Скачать скан</a>}
       </div>
     </BottomSheet>

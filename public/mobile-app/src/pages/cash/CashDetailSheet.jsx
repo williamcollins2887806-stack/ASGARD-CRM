@@ -12,11 +12,11 @@ const STATUS_MAP = {
   received:     { label: 'Получено',        color: 'var(--green)' },
   reporting:    { label: 'На отчёте',       color: 'var(--gold)' },
   closed:       { label: 'Закрыто',         color: 'var(--green)' },
-  rejected:     { label: 'Отклонено',       color: 'var(--red-soft)' },
+  rejected:     { label: 'Отклонено',       color: 'var(--danger-ink)' },
   question:     { label: 'Вопрос',          color: 'var(--gold)' },
   pending:      { label: 'Ожидает подтв.',  color: 'var(--blue)' },
   partial:      { label: 'Частично',        color: 'var(--gold)' },
-  not_received: { label: 'Не получено',     color: 'var(--red-soft)' },
+  not_received: { label: 'Не получено',     color: 'var(--danger-ink)' },
   cancelled:    { label: 'Отменено',        color: 'var(--text-tertiary)' },
 };
 
@@ -170,7 +170,7 @@ export default function CashDetailSheet({ item, onClose, onConfirm, onChanged })
             </p>
             <span
               className="px-3 py-1.5 rounded-full text-[13px] font-semibold inline-block"
-              style={{ background: `color-mix(in srgb, ${st.color} 14%, transparent)`, color: st.color }}
+              style={{ background: `color-mix(in srgb, ${st.color} 14%, transparent)`, color: 'var(--text-primary)' }}
             >
               {st.label}
             </span>
@@ -241,7 +241,7 @@ export default function CashDetailSheet({ item, onClose, onConfirm, onChanged })
                 }
               }}
               className="w-full flex items-center justify-center gap-2 py-3.5 rounded-2xl font-semibold text-[15px] spring-tap"
-              style={{ background: 'color-mix(in srgb, var(--green) 15%, transparent)', color: 'var(--green)' }}
+              style={{ background: 'var(--soft-ok)', color: 'var(--on-soft-ok)' }}
             >
               <Check size={18} />
               Подтвердить получение
@@ -253,7 +253,7 @@ export default function CashDetailSheet({ item, onClose, onConfirm, onChanged })
               <button
                 onClick={() => { haptic.light(); setView('expense'); }}
                 className="w-full flex items-center justify-center gap-2 py-3.5 rounded-2xl font-semibold text-[15px] spring-tap"
-                style={{ background: 'color-mix(in srgb, var(--blue) 15%, transparent)', color: 'var(--blue)' }}
+                style={{ background: 'var(--soft-blue)', color: 'var(--on-soft-blue)' }}
               >
                 <Camera size={18} />
                 Приложить чек
@@ -273,7 +273,7 @@ export default function CashDetailSheet({ item, onClose, onConfirm, onChanged })
                   }
                 }}
                 className="w-full flex items-center justify-center gap-2 py-3 rounded-2xl font-semibold text-[14px] spring-tap"
-                style={{ background: 'color-mix(in srgb, var(--gold) 14%, transparent)', color: 'var(--gold)' }}
+                style={{ background: 'var(--soft-value)', color: 'var(--on-soft-value)' }}
               >
                 <FileCheck size={16} />
                 Отчитаться
@@ -282,7 +282,7 @@ export default function CashDetailSheet({ item, onClose, onConfirm, onChanged })
                 <button
                   onClick={() => { haptic.light(); setView('return'); }}
                   className="w-full flex items-center justify-center gap-2 py-3 rounded-2xl font-semibold text-[14px] spring-tap"
-                  style={{ background: 'color-mix(in srgb, var(--gold) 14%, transparent)', color: 'var(--gold)' }}
+                  style={{ background: 'var(--soft-value)', color: 'var(--on-soft-value)' }}
                 >
                   <Undo2 size={16} />
                   Вернуть остаток в кассу
@@ -333,7 +333,7 @@ export default function CashDetailSheet({ item, onClose, onConfirm, onChanged })
                         <button
                           type="button"
                           className="spring-tap p-1"
-                          style={{ color: 'var(--red-soft)' }}
+                          style={{ color: 'var(--danger-ink)' }}
                           aria-label="Удалить расход"
                           onClick={async () => {
                             if (!window.confirm('Удалить этот расход?')) return;

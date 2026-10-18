@@ -466,7 +466,7 @@ function MessageBubble({ msg, onConfirm, onReject }) {
           <div className="flex" style={{ borderTop: '0.5px solid var(--border)' }}>
             <button
               className="flex-1 flex items-center justify-center gap-2 spring-tap"
-              style={{ padding: '12px', color: 'var(--red-soft)', fontSize: 14, fontWeight: 600 }}
+              style={{ padding: '12px', color: 'var(--danger-ink)', fontSize: 14, fontWeight: 600 }}
               onClick={() => onReject(msg.id)}
             >
               <X size={16} /> Отмена

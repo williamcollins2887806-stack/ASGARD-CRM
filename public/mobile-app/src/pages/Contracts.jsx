@@ -19,10 +19,10 @@ const STATUS_MAP = {
   signing:    { label: 'На подписании', color: 'var(--gold)' },
   draft:      { label: 'Черновик',      color: 'var(--text-tertiary)' },
   completed:  { label: 'Завершён',      color: 'var(--blue)' },
-  cancelled:  { label: 'Расторгнут',    color: 'var(--red-soft)' },
-  terminated: { label: 'Расторгнут',    color: 'var(--red-soft)' },
+  cancelled:  { label: 'Расторгнут',    color: 'var(--danger-ink)' },
+  terminated: { label: 'Расторгнут',    color: 'var(--danger-ink)' },
   expiring:   { label: 'Истекает',      color: 'var(--gold)' },
-  expired:    { label: 'Истёк',         color: 'var(--red-soft)' },
+  expired:    { label: 'Истёк',         color: 'var(--danger-ink)' },
 };
 
 function computeStatus(c) {
@@ -202,7 +202,7 @@ export default function Contracts() {
                   <div className="flex items-center gap-1.5 mt-2 flex-wrap">
                     <span
                       className="status-badge"
-                      style={{ background: `color-mix(in srgb, ${st.color} 15%, transparent)`, color: st.color }}
+                      style={{ background: `color-mix(in srgb, ${st.color} 15%, transparent)`, color: 'var(--text-primary)' }}
                     >
                       {st.label}
                     </span>
@@ -270,7 +270,7 @@ function ContractDetailSheet({ contract, onClose }) {
             {f.color ? (
               <span
                 className="status-badge px-2.5 py-1 text-[12px] inline-block"
-                style={{ background: `color-mix(in srgb, ${f.color} 15%, transparent)`, color: f.color }}
+                style={{ background: `color-mix(in srgb, ${f.color} 15%, transparent)`, color: 'var(--text-primary)' }}
               >
                 {f.value}
               </span>

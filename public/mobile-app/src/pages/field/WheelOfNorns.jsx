@@ -58,9 +58,9 @@ const WHEEL_CSS = `
 .wn-title{font-size:15px;font-weight:800;letter-spacing:.08em;color:var(--gold)}
 .wn-sub{font-size:9px;color:var(--t3);letter-spacing:.15em;margin-top:1px;text-align:center}
 .wn-wallet{display:flex;align-items:center;gap:5px;padding:5px 12px 5px 8px;background:linear-gradient(135deg,var(--bg-surface),var(--bg-surface));
-  border:1.5px solid color-mix(in oklab, var(--value) 30%, transparent);border-radius:20px;box-shadow:0 2px 10px color-mix(in oklab, var(--value) 10%, transparent)}
+  border:1.5px solid var(--soft-value);border-radius:20px;box-shadow:0 2px 10px color-mix(in oklab, var(--value) 10%, transparent)}
 .wn-coin{width:22px;height:22px;border-radius:50%;background:radial-gradient(circle at 40% 35%,var(--gold-l),var(--gold),var(--gold-d));
-  box-shadow:0 2px 4px color-mix(in oklab, var(--bg-primary) 40%, transparent),inset 0 -2px 3px color-mix(in oklab, var(--bg-primary) 20%, transparent);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:900;color:var(--value)}
+  box-shadow:0 2px 4px color-mix(in oklab, var(--bg-primary) 40%, transparent),inset 0 -2px 3px color-mix(in oklab, var(--bg-primary) 20%, transparent);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:900;color:var(--on-soft-value)}
 .wn-bal{font-size:15px;font-weight:800;color:var(--gold);font-variant-numeric:tabular-nums}
 .wn-lvl{display:flex;align-items:center;gap:8px;margin:4px 16px 0}
 .wn-lvl-badge{padding:3px 10px;border-radius:10px;font-size:11px;font-weight:800;background:linear-gradient(135deg,var(--chip-value-bg),var(--chip-value-bg));color:var(--chip-on-value);box-shadow:0 2px 6px color-mix(in oklab, var(--value) 25%, transparent)}

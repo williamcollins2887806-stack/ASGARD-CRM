@@ -121,7 +121,7 @@ export default function TelephonyHome() {
         ) : (
           <>
             {err && (
-              <p className="mb-3 text-sm" style={{ color: 'var(--red)' }}>{err}</p>
+              <p className="mb-3 text-sm" style={{ color: 'var(--danger-ink)' }}>{err}</p>
             )}
             <button
               type="button"
@@ -200,13 +200,13 @@ export default function TelephonyHome() {
                 }}
               >
                 <div className="flex items-center justify-between gap-2">
-                  <PhoneMissed size={18} style={{ color: 'var(--red)' }} />
+                  <PhoneMissed size={18} style={{ color: 'var(--danger-ink)' }} />
                   <span className="flex items-center gap-1" style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-secondary)' }}>
                     фильтр
                     <ChevronRight size={14} color="var(--gold)" />
                   </span>
                 </div>
-                <div className="mt-2" style={{ fontSize: 28, fontWeight: 800, letterSpacing: '-0.04em', color: 'var(--red)' }}>
+                <div className="mt-2" style={{ fontSize: 28, fontWeight: 800, letterSpacing: '-0.04em', color: 'var(--danger-ink)' }}>
                   {summary?.missed_unack ?? 0}
                 </div>
                 <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary)' }}>Пропущенные</div>

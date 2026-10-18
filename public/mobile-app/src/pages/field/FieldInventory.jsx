@@ -430,10 +430,10 @@ export default function FieldInventory() {
           )}
           {/* ═══ DELIVERED BANNER — needs confirmation ═══ */}
           {counts.delivered > 0 && (!filter || filter === 'delivered') && (
-            <div className="finv-ready-banner" style={{ background: 'linear-gradient(135deg,color-mix(in oklab, var(--ok) 12%, transparent),color-mix(in oklab, var(--ok) 6%, transparent))', borderColor: 'color-mix(in oklab, var(--ok) 25%, transparent)' }}>
+            <div className="finv-ready-banner" style={{ background: 'linear-gradient(135deg,var(--soft-ok),color-mix(in oklab, var(--ok) 6%, transparent))', borderColor: 'color-mix(in oklab, var(--ok) 25%, transparent)' }}>
               <div className="finv-ready-banner-icon">{''}</div>
               <div className="finv-ready-banner-text">
-                <div className="finv-ready-banner-title" style={{ color: 'var(--ok)' }}>{counts.delivered} {counts.delivered === 1 ? 'приз выдан' : 'приза выдано'}</div>
+                <div className="finv-ready-banner-title" style={{ color: 'var(--on-soft-ok)' }}>{counts.delivered} {counts.delivered === 1 ? 'приз выдан' : 'приза выдано'}</div>
                 <div className="finv-ready-banner-sub">Нажми «Получил» чтобы подтвердить</div>
               </div>
             </div>
@@ -482,7 +482,7 @@ export default function FieldInventory() {
                   </div>
                 </div>
                 {xpError && (
-                  <div style={{ fontSize: 12, color: 'var(--danger)', marginTop: 6 }}>{xpError}</div>
+                  <div style={{ fontSize: 12, color: 'var(--danger-ink)', marginTop: 6 }}>{xpError}</div>
                 )}
                 {xpResult && (
                   <div className="finv-xp-result">
@@ -879,8 +879,8 @@ const INV_CSS = `
 .finv-pill[data-filter="pending"]{border-color:rgba(107,114,128,.3)}
 .finv-pill[data-filter="pending"].active{background:rgba(107,114,128,.12);border-color:rgba(107,114,128,.5);color:#d1d5db}
 .finv-pill[data-filter="pending"].active .finv-pill-count{background:var(--finv-status-grey);color:var(--text-primary)}
-.finv-pill[data-filter="ready"]{border-color:color-mix(in oklab, var(--acc) 30%, transparent)}
-.finv-pill[data-filter="ready"].active{background:color-mix(in oklab, var(--acc) 12%, transparent);border-color:color-mix(in oklab, var(--acc) 50%, transparent);color:var(--acc)}
+.finv-pill[data-filter="ready"]{border-color:var(--soft-blue)}
+.finv-pill[data-filter="ready"].active{background:color-mix(in oklab, var(--acc) 12%, transparent);border-color:color-mix(in oklab, var(--acc) 50%, transparent);color:var(--on-soft-blue)}
 .finv-pill[data-filter="ready"].active .finv-pill-count{background:var(--finv-status-blue);color:var(--text-primary)}
 .finv-pill[data-filter="ready"] .finv-pill-icon{animation:finv-pulseBlue 2s ease-in-out infinite}
 @keyframes finv-pulseBlue{0%,100%{opacity:.7}50%{opacity:1;text-shadow:0 0 8px color-mix(in oklab, var(--acc) 50%, transparent)}}
@@ -893,10 +893,10 @@ const INV_CSS = `
   background:linear-gradient(135deg,color-mix(in oklab, var(--acc) 12%, transparent),color-mix(in oklab, var(--acc) 6%, transparent));
   border:1px solid color-mix(in oklab, var(--acc) 25%, transparent);display:flex;align-items:center;gap:12px;
   animation:finv-bannerPulse 3s ease-in-out infinite}
-@keyframes finv-bannerPulse{0%,100%{box-shadow:0 0 0 0 color-mix(in oklab, var(--acc) 0%, transparent)}50%{box-shadow:0 0 20px 2px color-mix(in oklab, var(--acc) 15%, transparent)}}
+@keyframes finv-bannerPulse{0%,100%{box-shadow:0 0 0 0 color-mix(in oklab, var(--acc) 0%, transparent)}50%{box-shadow:0 0 20px 2px var(--soft-blue)}}
 .finv-ready-banner-icon{font-size:24px;flex-shrink:0}
 .finv-ready-banner-text{flex:1;min-width:0}
-.finv-ready-banner-title{font-size:13px;font-weight:700;color:var(--acc)}
+.finv-ready-banner-title{font-size:13px;font-weight:700;color:var(--on-soft-blue)}
 .finv-ready-banner-sub{font-size:11px;color:var(--finv-t3);margin-top:2px}
 .finv-ready-banner-cta{padding:8px 16px;border-radius:12px;border:none;background:var(--finv-status-blue);color:var(--text-primary);
   font-size:12px;font-weight:700;cursor:pointer;display:flex;align-items:center;gap:4px;flex-shrink:0;transition:transform .15s;text-decoration:none}
@@ -932,9 +932,9 @@ const INV_CSS = `
 .finv-item-name{font-size:15px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .finv-item-status-badge{display:inline-flex;align-items:center;gap:4px;padding:3px 10px;border-radius:8px;font-size:11px;font-weight:700;width:fit-content}
 .finv-item-status-badge.pending{background:rgba(107,114,128,.12);color:var(--text-secondary)}
-.finv-item-status-badge.ready{background:color-mix(in oklab, var(--acc) 12%, transparent);color:var(--acc);animation:finv-badgePulseBlue 2s ease-in-out infinite}
+.finv-item-status-badge.ready{background:var(--soft-blue);color:var(--on-soft-blue);animation:finv-badgePulseBlue 2s ease-in-out infinite}
 @keyframes finv-badgePulseBlue{0%,100%{box-shadow:0 0 0 0 color-mix(in oklab, var(--acc) 0%, transparent)}50%{box-shadow:0 0 8px 1px color-mix(in oklab, var(--acc) 20%, transparent)}}
-.finv-item-status-badge.delivered{background:color-mix(in oklab, var(--ok) 12%, transparent);color:var(--ok)}
+.finv-item-status-badge.delivered{background:var(--soft-ok);color:var(--on-soft-ok)}
 .finv-item-sub{font-size:11px;color:var(--finv-t3);line-height:1.3}
 .finv-item-pm-row{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--finv-t2)}
 .finv-item-pm-call{width:28px;height:28px;border-radius:50%;background:color-mix(in oklab, var(--acc) 15%, transparent);border:1px solid color-mix(in oklab, var(--acc) 30%, transparent);
@@ -1035,10 +1035,10 @@ const INV_CSS = `
 
 /* Equipped / Confirmed badges (inline) */
 .finv-equipped-badge{display:inline-flex;align-items:center;gap:4px;padding:5px 10px;
-  border-radius:8px;background:color-mix(in oklab, var(--acc) 12%, transparent);color:var(--acc);font-size:11px;font-weight:700;
+  border-radius:8px;background:var(--soft-blue);color:var(--on-soft-blue);font-size:11px;font-weight:700;
   margin-top:6px;border:1px solid color-mix(in oklab, var(--acc) 20%, transparent)}
 .finv-confirmed-badge{display:inline-flex;align-items:center;gap:4px;padding:5px 10px;
-  border-radius:8px;background:color-mix(in oklab, var(--ok) 10%, transparent);color:var(--ok);font-size:11px;font-weight:700;
+  border-radius:8px;background:var(--soft-ok);color:var(--on-soft-ok);font-size:11px;font-weight:700;
   margin-top:6px;border:1px solid color-mix(in oklab, var(--ok) 20%, transparent)}
 
 /* pill for requested status */
@@ -1046,19 +1046,19 @@ const INV_CSS = `
 .finv-pill[data-filter="requested"].active{background:color-mix(in oklab, var(--value) 12%, transparent);border-color:color-mix(in oklab, var(--value) 50%, transparent);color:#fde68a}
 .finv-pill[data-filter="requested"].active .finv-pill-count{background:var(--gold-fill);color:var(--text-on-gold)}
 /* pill for digital status */
-.finv-pill[data-filter="digital"]{border-color:color-mix(in oklab, var(--acc) 30%, transparent)}
-.finv-pill[data-filter="digital"].active{background:color-mix(in oklab, var(--acc) 12%, transparent);border-color:color-mix(in oklab, var(--acc) 50%, transparent);color:var(--acc)}
+.finv-pill[data-filter="digital"]{border-color:var(--soft-blue)}
+.finv-pill[data-filter="digital"].active{background:color-mix(in oklab, var(--acc) 12%, transparent);border-color:color-mix(in oklab, var(--acc) 50%, transparent);color:var(--on-soft-blue)}
 .finv-pill[data-filter="digital"].active .finv-pill-count{background:var(--acc);color:var(--text-primary)}
 
 /* Sell button */
-.finv-action-btn.sell{background:color-mix(in oklab, var(--value) 12%, transparent);color:var(--value);
+.finv-action-btn.sell{background:var(--soft-value);color:var(--on-soft-value);
   border:1.5px solid color-mix(in oklab, var(--value) 25%, transparent);box-shadow:none}
 .finv-action-btn.sell:not(:disabled):active{background:color-mix(in oklab, var(--value) 20%, transparent)}
 
 /* XP Forge */
 .finv-xp-forge-wrap{margin:4px 16px 8px;border-radius:16px;overflow:hidden;
-  border:1.5px solid color-mix(in oklab, var(--value) 20%, transparent);background:color-mix(in oklab, var(--value) 4%, transparent)}
-.finv-xp-forge-toggle{width:100%;padding:12px 16px;background:none;border:none;color:var(--value);
+  border:1.5px solid var(--soft-value);background:color-mix(in oklab, var(--value) 4%, transparent)}
+.finv-xp-forge-toggle{width:100%;padding:12px 16px;background:none;border:none;color:var(--on-soft-value);
   font-size:13px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:space-between;
   font-family:inherit;-webkit-tap-highlight-color:transparent}
 .finv-xp-forge-toggle:active{background:color-mix(in oklab, var(--value) 6%, transparent)}
@@ -1079,11 +1079,11 @@ const INV_CSS = `
   font-family:inherit;transition:opacity .2s;-webkit-tap-highlight-color:transparent}
 .finv-xp-forge-btn:disabled{opacity:.4;cursor:not-allowed}
 .finv-xp-forge-btn:not(:disabled):active{opacity:.8}
-.finv-xp-result{padding:10px 14px;border-radius:10px;background:color-mix(in oklab, var(--ok) 10%, transparent);
-  border:1px solid color-mix(in oklab, var(--ok) 20%, transparent);color:var(--ok);font-size:12px;font-weight:700;text-align:center}
+.finv-xp-result{padding:10px 14px;border-radius:10px;background:var(--soft-ok);
+  border:1px solid color-mix(in oklab, var(--ok) 20%, transparent);color:var(--on-soft-ok);font-size:12px;font-weight:700;text-align:center}
 
 /* Sell toast */
 .finv-sell-toast{margin:0 16px 8px;padding:10px 14px;border-radius:12px;
-  background:color-mix(in oklab, var(--value) 12%, transparent);border:1.5px solid color-mix(in oklab, var(--value) 30%, transparent);
-  color:var(--value);font-size:12px;display:flex;align-items:center;gap:4px}
+  background:var(--soft-value);border:1.5px solid color-mix(in oklab, var(--value) 30%, transparent);
+  color:var(--on-soft-value);font-size:12px;display:flex;align-items:center;gap:4px}
 `;

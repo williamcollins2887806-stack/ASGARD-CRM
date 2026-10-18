@@ -252,9 +252,9 @@ export default function OfficeSchedule() {
             style={{
               marginRight: 12, padding: '7px 12px', borderRadius: 999,
               fontSize: 12, fontWeight: 700,
-              background: 'color-mix(in srgb, var(--gold) 16%, transparent)',
+              background: 'var(--soft-value)',
               border: '0.5px solid color-mix(in srgb, var(--gold) 40%, var(--border-norse))',
-              color: 'var(--gold)',
+              color: 'var(--on-soft-value)',
             }}
           >
             Сегодня

@@ -164,10 +164,10 @@ function CurrentLessonCard({ lesson, navigate, isOnboarding = false, isBlocking 
         {isPassed && (
           <div style={{
             width: 46, height: 46, borderRadius: 23,
-            background: 'color-mix(in oklab, var(--ok) 14%, transparent)',
+            background: 'var(--soft-ok)',
             border: '2px solid var(--ok)',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
-            color: 'var(--ok)', flexShrink: 0,
+            color: 'var(--on-soft-ok)', flexShrink: 0,
           }}><Check size={22} strokeWidth={2.6} /></div>
         )}
       </div>
@@ -178,7 +178,7 @@ function CurrentLessonCard({ lesson, navigate, isOnboarding = false, isBlocking 
           {isPassed ? statusText : statusText}
         </span>
         {daysLeft !== null && !isPassed && (
-          <span style={{ fontSize: 12, color: daysLeft <= 1 ? 'var(--danger)' : 'var(--text-tertiary)' }}>
+                <span style={{ fontSize: 12, color: daysLeft <= 1 ? 'var(--danger-ink)' : 'var(--text-secondary)' }}>
             {daysLeft <= 0 ? 'Сегодня дедлайн!' : `${daysLeft}д до дедлайна`}
           </span>
         )}
@@ -209,7 +209,7 @@ function CurrentLessonCard({ lesson, navigate, isOnboarding = false, isBlocking 
       )}
 
       {isBlocked && (
-        <div style={{ marginTop: 8, fontSize: 12, color: 'var(--danger)', textAlign: 'center' }}>
+        <div style={{ marginTop: 8, fontSize: 12, color: 'var(--danger-ink)', textAlign: 'center' }}>
           Прочитай внимательно — получишь 2 новые попытки
         </div>
       )}

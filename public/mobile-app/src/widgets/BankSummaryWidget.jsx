@@ -49,7 +49,7 @@ export default function BankSummaryWidget() {
                 ↑ {formatMoney(data.total_income || 0, { short: true })}
               </span>
               {/* Expense */}
-              <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--red)' }}>
+              <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--danger-ink)' }}>
                 ↓ {formatMoney(data.total_expense || 0, { short: true })}
               </span>
               {/* Unclassified */}

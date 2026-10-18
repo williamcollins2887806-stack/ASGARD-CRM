@@ -88,7 +88,7 @@ export function sentimentFromText(text) {
       level: 0,
       label: 'Напряжённо',
       caption: 'AI: клиент был настроен напряжённо',
-      color: 'var(--red)',
+      color: 'var(--danger-ink)',
     };
   }
   if (good.test(t)) {

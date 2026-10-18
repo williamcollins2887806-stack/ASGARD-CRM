@@ -15,7 +15,7 @@ const MOODS = [
   { id: 'good',    Icon: Smile, label: 'Хорошо',    color: 'var(--ok)' },
   { id: 'neutral', Icon: Meh,   label: 'Нейтрально', color: 'var(--value)' },
   { id: 'tired',   Icon: Frown, label: 'Устал',      color: 'var(--value)' },
-  { id: 'hard',    Icon: Angry, label: 'Тяжело',     color: 'var(--danger)' },
+  { id: 'hard',    Icon: Angry, label: 'Тяжело',     color: 'var(--danger-ink)' },
 ];
 
 function fmt(dateStr) {

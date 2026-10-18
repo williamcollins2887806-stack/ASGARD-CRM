@@ -116,10 +116,10 @@
   font-size: 16px;
   font-weight: 850;
   color: #fff;
-  background: linear-gradient(in oklab 150deg, var(--acc), var(--acc-deep));
+  background: linear-gradient(in oklab 150deg, var(--blue-fill), var(--acc-deep));
   box-shadow:
     0 5px 0 color-mix(in oklab, var(--acc-deep) 70%, #000),
-    0 12px 22px -6px color-mix(in oklab, var(--acc) 55%, transparent),
+    0 12px 22px -6px color-mix(in oklab, var(--blue-fill) 55%, transparent),
     inset 0 1px 0 rgba(255, 255, 255, .5);
   transition: transform .08s ease, box-shadow .08s ease;
   -webkit-tap-highlight-color: transparent;
@@ -128,7 +128,7 @@
   transform: translateY(4px);
   box-shadow:
     0 1px 0 color-mix(in oklab, var(--acc-deep) 70%, #000),
-    0 4px 10px -4px color-mix(in oklab, var(--acc) 55%, transparent),
+    0 4px 10px -4px color-mix(in oklab, var(--blue-fill) 55%, transparent),
     inset 0 1px 0 rgba(255, 255, 255, .4);
 }
 .fa-btn-gold:disabled { opacity: .45; box-shadow: none; transform: none; cursor: default; }
@@ -228,8 +228,8 @@
   -webkit-appearance: none;
 }
 .fa-phone-input:focus {
-  border-color: var(--acc);
-  box-shadow: 0 0 0 3px color-mix(in oklab, var(--acc) 18%, transparent);
+  border-color: var(--on-soft-blue);
+  box-shadow: 0 0 0 3px var(--soft-blue);
 }
 .fa-phone-input::placeholder { color: var(--text-tertiary); }
 
@@ -251,8 +251,8 @@
   -webkit-appearance: none;
 }
 .fa-otp-box:focus {
-  border-color: var(--acc);
-  box-shadow: 0 0 0 3px color-mix(in oklab, var(--acc) 18%, transparent);
+  border-color: var(--on-soft-blue);
+  box-shadow: 0 0 0 3px var(--soft-blue);
 }
 .fa-otp-box.fa-otp-success {
   border-color: var(--ok);
@@ -290,8 +290,8 @@
   border-radius: 999px;
   display: grid;
   place-items: center;
-  background: color-mix(in oklab, var(--ok) 16%, transparent);
-  color: var(--ok);
+  background: var(--soft-ok);
+  color: var(--on-soft-ok);
   animation: fa-pop .5s var(--ease-spring) both;
 }
 @keyframes fa-pop {

@@ -56,7 +56,7 @@ export default function ExpenseWalletWidget() {
           padding: '4px 10px', borderRadius: 20,
           background: avgMargin >= 20 ? 'rgba(63,185,80,0.1)' : 'rgba(248,81,73,0.1)',
         }}>
-          {avgMargin >= 20 ? <TrendingUp size={14} style={{ color: 'var(--green)' }} /> : <TrendingDown size={14} style={{ color: 'var(--red-soft)' }} />}
+          {avgMargin >= 20 ? <TrendingUp size={14} style={{ color: 'var(--green)' }} /> : <TrendingDown size={14} style={{ color: 'var(--danger-ink)' }} />}
           <span className="text-xs font-bold" style={{ color: avgMargin >= 20 ? 'var(--green)' : 'var(--red-soft)' }}>
             {avgMargin}%
           </span>

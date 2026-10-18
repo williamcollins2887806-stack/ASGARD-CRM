@@ -102,8 +102,8 @@ export default function MyCashBalanceWidget() {
           type="button"
           className="w-full mt-2 py-2 rounded-xl text-[13px] font-semibold spring-tap"
           style={{
-            background: 'color-mix(in srgb, var(--gold) 14%, transparent)',
-            color: 'var(--gold)',
+            background: 'var(--soft-value)',
+            color: 'var(--on-soft-value)',
           }}
           onClick={(e) => {
             e.stopPropagation();

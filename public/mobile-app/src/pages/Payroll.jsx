@@ -18,7 +18,7 @@ const STATUS_MAP = {
   approved: { label: 'Согласовано', color: 'var(--green)' },
   paid: { label: 'Оплачено', color: 'var(--green)' },
   rework: { label: 'На доработке', color: 'var(--gold)' },
-  rejected: { label: 'Отклонено', color: 'var(--red-soft)' },
+  rejected: { label: 'Отклонено', color: 'var(--danger-ink)' },
 };
 const FILTERS = [
   { id: 'all', label: 'Все' }, { id: 'draft', label: 'Черновики' },
@@ -91,7 +91,7 @@ export default function Payroll() {
                     <ChevronRight size={16} className="c-tertiary" style={{ flexShrink: 0, marginTop: 2 }} />
                   </div>
                   <div className="flex items-center gap-1.5 mt-2 flex-wrap">
-                    <span className="status-badge" style={{ background: `color-mix(in srgb, ${st.color} 15%, transparent)`, color: st.color }}>{st.label}</span>
+                    <span className="status-badge" style={{ background: `color-mix(in srgb, ${st.color} 15%, transparent)`, color: 'var(--text-primary)' }}>{st.label}</span>
                     {(sheet.period || sheet.month) && <span className="text-[10px] c-secondary">{sheet.period || sheet.month}</span>}
                     {Number(sheet.total_amount || sheet.amount || 0) > 0 && <span className="text-[10px] font-semibold c-gold">{formatMoney(sheet.total_amount || sheet.amount, { short: true })}</span>}
                     {(sheet.employee_count || sheet.items_count) && <span className="text-[10px] c-tertiary">{sheet.employee_count || sheet.items_count} чел.</span>}
@@ -122,7 +122,7 @@ function PayrollDetailSheet({ sheet, onClose, canApprove, onAction }) {
   return (
     <BottomSheet open={!!sheet} onClose={onClose} title={s.title || s.name || `Ведомость #${s.id}`}>
       <div className="flex flex-col gap-3 pb-4">
-        {fields.map((f, i) => <div key={i}><p className="input-label">{f.label}</p>{f.color ? <span className="px-2.5 py-1 rounded-full text-[12px] font-semibold inline-block" style={{ background: `color-mix(in srgb, ${f.color} 15%, transparent)`, color: f.color }}>{f.value}</span> : <p className="text-[14px] c-primary">{f.value}</p>}</div>)}
+        {fields.map((f, i) => <div key={i}><p className="input-label">{f.label}</p>{f.color ? <span className="px-2.5 py-1 rounded-full text-[12px] font-semibold inline-block" style={{ background: `color-mix(in srgb, ${f.color} 15%, transparent)`, color: 'var(--text-primary)' }}>{f.value}</span> : <p className="text-[14px] c-primary">{f.value}</p>}</div>)}
         {s.status === 'draft' && (
           <button onClick={() => onAction(s.id, 'submit')} className="btn-primary flex items-center justify-center gap-2 spring-tap mt-2">
             <Send size={16} /> Отправить на согласование

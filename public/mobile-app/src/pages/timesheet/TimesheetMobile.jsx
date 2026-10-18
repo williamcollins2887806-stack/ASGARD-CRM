@@ -625,8 +625,8 @@ export default function TimesheetMobile({ mode = 'global' }) {
           {rosterSummary && (
             <div className="text-xs px-3 py-2 rounded-xl"
               style={{
-                backgroundColor: 'color-mix(in srgb, var(--blue) 12%, transparent)',
-                color: 'var(--blue)',
+                backgroundColor: 'var(--soft-blue)',
+                color: 'var(--on-soft-blue)',
                 border: '1px solid color-mix(in srgb, var(--blue) 30%, transparent)',
               }}
             >
@@ -640,10 +640,10 @@ export default function TimesheetMobile({ mode = 'global' }) {
         {/* Lock badge */}
         {myLock && (
           <div className="rounded-xl p-3 mb-3 flex items-center gap-2" style={{
-            backgroundColor: 'color-mix(in srgb, var(--red-soft) 12%, transparent)',
+            backgroundColor: 'var(--soft-danger)',
             border: '1px solid color-mix(in srgb, var(--red-soft) 30%, transparent)',
           }}>
-            <Lock size={16} style={{ color: 'var(--red-soft)' }} />
+            <Lock size={16} style={{ color: 'var(--on-soft-danger)' }} />
             <div className="flex-1 text-xs" style={{ color: 'var(--text-primary)' }}>
               <span className="font-semibold">🔒 Месяц закрыт</span>
               {myLock.locked_by_fio && <span className="ml-2" style={{ color: 'var(--text-tertiary)' }}>
@@ -661,8 +661,8 @@ export default function TimesheetMobile({ mode = 'global' }) {
               <span
                 className="px-2.5 py-1 rounded-full text-xs font-medium flex items-center gap-1"
                 style={{
-                  backgroundColor: 'color-mix(in srgb, var(--gold) 14%, transparent)',
-                  color: 'var(--gold)',
+                  backgroundColor: 'var(--soft-value)',
+                  color: 'var(--on-soft-value)',
                   border: '1px solid color-mix(in srgb, var(--gold) 30%, transparent)',
                 }}
                 title="Сколько РП уже закрыли свой персональный период"
@@ -701,8 +701,8 @@ export default function TimesheetMobile({ mode = 'global' }) {
 
         {error && (
           <div className="rounded-xl p-3 mb-3 text-sm" style={{
-            backgroundColor: 'color-mix(in srgb, var(--red-soft) 12%, transparent)',
-            color: 'var(--red-soft)',
+            backgroundColor: 'var(--soft-danger)',
+            color: 'var(--on-soft-danger)',
           }}>
             {error}
           </div>
@@ -1403,8 +1403,8 @@ function EditCellSheet({ emp, day, year, month, current, mode, onSave, onClose }
           <button onClick={handleDelete} disabled={submitting}
             className="flex-1 spring-tap rounded-xl py-3 text-sm font-semibold"
             style={{
-              backgroundColor: 'color-mix(in srgb, var(--red-soft) 15%, transparent)',
-              color: 'var(--red-soft)',
+              backgroundColor: 'var(--soft-danger)',
+              color: 'var(--on-soft-danger)',
               minHeight: 44,
             }}
           >
@@ -1479,8 +1479,8 @@ function LockSheet({ mode, isLocked, monthName, year, onConfirm, onClose }) {
         <button onClick={handle} disabled={submitting}
           className="flex-1 spring-tap rounded-xl py-3 text-sm font-bold"
           style={{
-            background: isLocked ? 'var(--green)' : 'var(--red-soft)',
-            color: '#fff',
+            background: isLocked ? 'var(--ok)' : 'var(--red-soft)',
+            color: isLocked ? 'var(--on-ok)' : 'var(--on-red-soft)',
             minHeight: 44,
             opacity: submitting ? 0.6 : 1,
           }}

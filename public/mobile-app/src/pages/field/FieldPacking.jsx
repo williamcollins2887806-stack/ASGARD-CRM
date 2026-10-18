@@ -22,7 +22,7 @@ const STATUS_CONFIG = {
 const ITEM_STATUS = {
   pending: { label: 'Ожидает', color: 'var(--text-secondary)', Icon: Square },
   packed: { label: 'Собрано', color: 'var(--ok)', Icon: CheckCircle },
-  shortage: { label: 'Недостача', color: 'var(--danger)', Icon: AlertTriangle },
+  shortage: { label: 'Недостача', color: 'var(--danger-ink)', Icon: AlertTriangle },
   replaced: { label: 'Замена', color: 'var(--value-ink)', Icon: RotateCcw },
 };
 
@@ -245,7 +245,7 @@ export default function FieldPacking() {
                             {list.status === 'in_progress' && !isPacked && item.status !== 'shortage' && (
                               <button onClick={() => setShortageForm({ listId: list.id, itemId: item.id })}
                                 className="p-1 flex-shrink-0" title="Недостача" aria-label="Отметить недостачу">
-                                <AlertTriangle size={14} style={{ color: 'var(--danger)' }} />
+                                <AlertTriangle size={14} style={{ color: 'var(--danger-ink)' }} />
                               </button>
                             )}
                           </div>

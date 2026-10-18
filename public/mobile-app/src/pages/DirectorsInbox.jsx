@@ -163,7 +163,7 @@ export default function DirectorsInbox() {
                 <button
                   onClick={() => { haptic.medium(); setShowDirect(true); }}
                   className="rounded-xl px-5 py-2.5 text-[14px] font-semibold spring-tap"
-                  style={{ background: 'var(--gold-gradient)', color: '#fff' }}
+                  style={{ background: 'var(--gold-gradient)', color: 'var(--text-on-gold)' }}
                 >
                   + Прямая заявка от меня
                 </button>
@@ -200,7 +200,7 @@ export default function DirectorsInbox() {
             right: 16,
             bottom: 'calc(var(--tabbar-total) + 16px)',
             background: 'var(--gold-gradient)',
-            color: '#fff',
+            color: 'var(--text-on-gold)',
             fontWeight: 600,
             fontSize: 14,
             boxShadow: 'var(--shadow-lg), var(--shadow-gold)',
@@ -316,8 +316,8 @@ function ApplicationCard({ item, delayMs, onClick, onAssign }) {
               <span
                 className="text-[10px] px-1.5 py-0.5 rounded-full"
                 style={{
-                  background: 'color-mix(in srgb, var(--blue) 12%, transparent)',
-                  color: 'var(--blue)',
+                  background: 'var(--soft-blue)',
+                  color: 'var(--on-soft-blue)',
                 }}
               >
                 {kind}
@@ -339,8 +339,8 @@ function ApplicationCard({ item, delayMs, onClick, onAssign }) {
               <span
                 className="text-[10px] px-1.5 py-0.5 rounded-full"
                 style={{
-                  background: 'color-mix(in srgb, var(--green) 12%, transparent)',
-                  color: 'var(--green)',
+                  background: 'var(--soft-ok)',
+                  color: 'var(--on-soft-ok)',
                 }}
               >
                 назначено
@@ -355,9 +355,9 @@ function ApplicationCard({ item, delayMs, onClick, onAssign }) {
             className="spring-tap shrink-0 flex items-center justify-center"
             style={{
               width: 32, height: 32, borderRadius: 10,
-              background: 'color-mix(in srgb, var(--gold) 14%, transparent)',
+              background: 'var(--soft-value)',
               border: '0.5px solid color-mix(in srgb, var(--gold) 35%, transparent)',
-              color: 'var(--gold)',
+              color: 'var(--on-soft-value)',
             }}
           >
             <UserPlus size={16} />
@@ -474,7 +474,7 @@ function DetailSheet({ open, item, canAssign, onClose, onAssign, onShowEmail }) 
               className="flex-1 rounded-xl px-4 py-2.5 text-[13px] font-semibold spring-tap"
               style={{
                 background: 'var(--gold-gradient)',
-                color: '#fff',
+                color: 'var(--text-on-gold)',
               }}
             >
               <span className="inline-flex items-center gap-1.5">
@@ -486,8 +486,8 @@ function DetailSheet({ open, item, canAssign, onClose, onAssign, onShowEmail }) 
             <div
               className="flex-1 rounded-xl px-4 py-2.5 text-[13px] font-semibold text-center"
               style={{
-                background: 'color-mix(in srgb, var(--green) 12%, transparent)',
-                color: 'var(--green)',
+                background: 'var(--soft-ok)',
+                color: 'var(--on-soft-ok)',
                 border: '0.5px solid color-mix(in srgb, var(--green) 35%, transparent)',
               }}
             >
@@ -619,7 +619,7 @@ function AssignPmSheet({ open, item, onClose, onAssigned }) {
                   style={{
                     width: 34, height: 34, borderRadius: '50%',
                     background: 'var(--gold-gradient)',
-                    color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    color: 'var(--text-on-gold)', display: 'flex', alignItems: 'center', justifyContent: 'center',
                     fontWeight: 700, fontSize: 12, flexShrink: 0,
                   }}
                 >

@@ -120,8 +120,8 @@
 .fh-tile:active { transform: translateY(-1px) scale(.985); }
 .fh-tile__t { font-size: 13.5px; font-weight: 750; }
 .fh-tile--season { background: color-mix(in oklab, var(--acc) 10%, var(--bg-surface));
-  border-color: color-mix(in oklab, var(--acc) 30%, transparent); }
-.fh-tile--season .fh-tile__t { color: var(--acc); }
+  border-color: var(--soft-blue); }
+.fh-tile--season .fh-tile__t { color: var(--on-soft-blue); }
 .fh-tile__badge { position: absolute; top: 9px; right: 9px; font-size: 10px; font-weight: 800;
   padding: 3px 8px; border-radius: 999px; background: var(--gold-fill); color: var(--text-on-gold);
   animation: fhSoft 2.4s ease-in-out infinite; }
@@ -139,8 +139,8 @@
 .fh-mimir { position: relative; z-index: 5; display: flex; align-items: center; gap: 13px; padding: 14px 15px;
   margin-bottom: 14px; border-radius: var(--r-card);
   background: color-mix(in oklab, var(--acc) 10%, var(--bg-surface));
-  border: 1px solid color-mix(in oklab, var(--acc) 28%, transparent); box-shadow: var(--elevation-2); }
-.fh-mimir__k { font-size: 12px; font-weight: 850; letter-spacing: .1em; text-transform: uppercase; color: var(--acc); }
+  border: 1px solid var(--soft-blue); box-shadow: var(--elevation-2); }
+.fh-mimir__k { font-size: 12px; font-weight: 850; letter-spacing: .1em; text-transform: uppercase; color: var(--on-soft-blue); }
 .fh-mimir__t { font-size: 14px; font-weight: 700; margin-top: 3px; color: var(--text-primary); }
 
 .fh-rank { position: relative; z-index: 5; display: flex; align-items: center; gap: 13px; width: 100%;

@@ -785,10 +785,10 @@ const SHOP_CSS = `
 .fshop-modal-desc{font-size:12px;color:var(--fshop-t2);text-align:center;margin:4px 0 16px;line-height:1.5;white-space:pre-line}
 
 .fshop-modal-price-box{display:flex;align-items:center;justify-content:center;gap:8px;padding:12px 24px;
-  border-radius:16px;background:color-mix(in oklab, var(--value) 6%, transparent);border:1px solid color-mix(in oklab, var(--value) 10%, transparent);margin:0 auto;width:fit-content}
+  border-radius:16px;background:color-mix(in oklab, var(--value) 6%, transparent);border:1px solid var(--soft-value);margin:0 auto;width:fit-content}
 .fshop-mpb-coin{width:28px;height:28px;border-radius:50%;
   background:radial-gradient(circle at 40% 35%,var(--fshop-gold-l),var(--fshop-gold),var(--fshop-gold-d));
-  display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:900;color:var(--value);
+  display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:900;color:var(--on-soft-value);
   box-shadow:0 2px 4px color-mix(in oklab, var(--bg-primary) 30%, transparent),inset 0 -2px 3px color-mix(in oklab, var(--bg-primary) 20%, transparent)}
 .fshop-mpb-num{font-size:24px;font-weight:800;color:var(--fshop-gold);font-variant-numeric:tabular-nums}
 

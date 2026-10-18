@@ -11,7 +11,7 @@ import { WidgetShell } from '@/widgets/WidgetShell';
 
 const RANK_COLORS = {
   'Мастер': '#c8a84b',
-  'Воин': '#7b61ff',
+      'Воин': '#8B7CFF',
   'Страж': '#3b82f6',
   'Ученик': '#6b7280',
 };
@@ -71,7 +71,7 @@ export default function AcademyWidget() {
               borderRadius: 8, padding: '3px 10px',
             }}>
               <span style={{ fontSize: 14 }}>{rank.icon}</span>
-              <span style={{ fontSize: 12, fontWeight: 700, color: rankColor }}>{rank.name}</span>
+              <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-primary)' }}>{rank.name}</span>
             </div>
           )}
 
@@ -79,15 +79,15 @@ export default function AcademyWidget() {
             {streak > 0 && (
               <span style={{
                 fontSize: 11, fontWeight: 700,
-                color: streak >= 3 ? '#c8a84b' : 'var(--text-tertiary)',
-                background: streak >= 3 ? 'rgba(200,168,75,.12)' : 'rgba(255,255,255,.05)',
+                color: streak >= 3 ? 'var(--value-ink)' : 'var(--text-secondary)',
+                background: streak >= 3 ? 'var(--soft-value)' : 'var(--bg-secondary)',
                 borderRadius: 6, padding: '2px 7px',
               }}>🔥 {streak}</span>
             )}
             {totalXp > 0 && (
               <span style={{
-                fontSize: 11, fontWeight: 700, color: '#7b61ff',
-                background: 'rgba(123,97,255,.12)',
+                fontSize: 11, fontWeight: 700, color: 'var(--on-soft-blue)',
+                background: 'var(--soft-blue)',
                 borderRadius: 6, padding: '2px 7px',
               }}>⚡ {totalXp}</span>
             )}
@@ -102,7 +102,7 @@ export default function AcademyWidget() {
             </span>
             <span style={{
               fontSize: 12, fontWeight: 700,
-              color: pct >= 80 ? 'var(--green)' : pct >= 40 ? '#f59e0b' : 'var(--text-tertiary)',
+              color: pct >= 80 ? 'var(--ok)' : pct >= 40 ? 'var(--value-ink)' : 'var(--text-secondary)',
             }}>{pct}%</span>
           </div>
           <div style={{
@@ -122,13 +122,13 @@ export default function AcademyWidget() {
         {mandatoryPending > 0 && (
           <div style={{
             display: 'flex', alignItems: 'center', gap: 8,
-            background: 'rgba(239,68,68,.08)',
-            border: '1px solid rgba(239,68,68,.2)',
+            background: 'rgba(239,68,68,.12)',
+            border: '1px solid color-mix(in srgb, var(--danger) 30%, transparent)',
             borderRadius: 10, padding: '8px 10px', marginBottom: 8,
           }}>
             <span style={{ fontSize: 16 }}>⚠️</span>
             <div style={{ flex: 1 }}>
-              <div style={{ fontSize: 12, fontWeight: 700, color: '#ef4444' }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--danger-ink)' }}>
                 {mandatoryPending} обязательн{mandatoryPending === 1 ? 'ый свиток' : mandatoryPending < 5 ? 'ых свитка' : 'ых свитков'}
               </div>
               {firstMandatory && (
@@ -190,7 +190,7 @@ export default function AcademyWidget() {
         {/* CTA */}
         <div style={{
           marginTop: 10, textAlign: 'center',
-          fontSize: 12, fontWeight: 600, color: '#7b61ff',
+          fontSize: 12, fontWeight: 600, color: 'var(--on-soft-blue)',
         }}>
           Открыть Залы Асгарда →
         </div>

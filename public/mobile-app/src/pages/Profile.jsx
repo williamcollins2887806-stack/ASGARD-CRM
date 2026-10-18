@@ -291,7 +291,7 @@ function EditFieldSheet({ field, onClose, userId }) {
           onClick={handleSave}
           disabled={saving}
           className="w-full py-3 rounded-xl font-semibold text-[14px] spring-tap"
-          style={{ background: 'var(--gold-gradient)', color: '#fff', opacity: saving ? 0.6 : 1 }}
+          style={{ background: 'var(--gold-gradient)', color: 'var(--text-on-gold)', opacity: saving ? 0.6 : 1 }}
         >
           {saving ? 'Сохранение...' : 'Сохранить'}
         </button>

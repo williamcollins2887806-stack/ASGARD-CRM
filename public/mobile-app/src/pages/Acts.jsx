@@ -15,7 +15,7 @@ const STATUS_MAP = {
   signing: { label: 'На подписании', color: 'var(--gold)' },
   signed: { label: 'Подписан', color: 'var(--green)' },
   paid: { label: 'Оплачен', color: 'var(--blue)' },
-  cancelled: { label: 'Отменён', color: 'var(--red-soft)' },
+  cancelled: { label: 'Отменён', color: 'var(--danger-ink)' },
 };
 const FILTERS = [
   { id: 'all', label: 'Все' }, { id: 'draft', label: 'Черновик' },
@@ -78,7 +78,7 @@ export default function Acts() {
                   </div>
                   {act.work_title && <p className="text-[12px] mt-0.5 truncate c-secondary">{act.work_title}</p>}
                   <div className="flex items-center gap-1.5 mt-2 flex-wrap">
-                    <span className="status-badge" style={{ background: `color-mix(in srgb, ${st.color} 15%, transparent)`, color: st.color }}>{st.label}</span>
+                    <span className="status-badge" style={{ background: `color-mix(in srgb, ${st.color} 15%, transparent)`, color: 'var(--text-primary)' }}>{st.label}</span>
                     {Number(act.amount) > 0 && <span className="flex items-center gap-0.5 text-[10px] c-gold"><DollarSign size={10} />{formatMoney(act.amount, { short: true })}</span>}
                     {act.date && <span className="text-[10px] c-tertiary">{formatDate(act.date)}</span>}
                   </div>

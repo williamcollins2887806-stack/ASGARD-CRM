@@ -84,10 +84,10 @@ export default function Home() {
                   className="flex items-center justify-center shrink-0"
                   style={{
                     width: 36, height: 36, borderRadius: 10,
-                    background: 'color-mix(in srgb, var(--blue) 20%, transparent)',
+                    background: 'var(--soft-blue)',
                   }}
                 >
-                  <Shield size={18} style={{ color: 'var(--blue)' }} />
+                  <Shield size={18} style={{ color: 'var(--on-soft-blue)' }} />
                 </div>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text-primary)' }}>Панель РП</div>

@@ -18,7 +18,7 @@ const STATUS_MAP = {
   approved: { label: 'Одобрен', color: 'var(--green)' },
   rework: { label: 'Доработка', color: 'var(--gold)' },
   question: { label: 'Вопрос', color: 'var(--gold)' },
-  rejected: { label: 'Отклонён', color: 'var(--red-soft)' },
+  rejected: { label: 'Отклонён', color: 'var(--danger-ink)' },
 };
 const FILTERS = [
   { id: 'all', label: 'Все' }, { id: 'draft', label: 'Черновик' },
@@ -131,7 +131,7 @@ export default function AllEstimates() {
                     <p className="text-[12px] mt-0.5 truncate c-secondary">{tenders[est.tender_id]}</p>
                   )}
                   <div className="flex items-center gap-1.5 mt-2 flex-wrap">
-                    <span className="status-badge" style={{ background: `color-mix(in srgb, ${st.color} 15%, transparent)`, color: st.color }}>{st.label}</span>
+                    <span className="status-badge" style={{ background: `color-mix(in srgb, ${st.color} 15%, transparent)`, color: 'var(--text-primary)' }}>{st.label}</span>
                     {price > 0 && <span className="text-[10px] font-semibold c-blue">{formatMoney(price, { short: true })}</span>}
                     {margin > 0 && <span className="text-[10px] font-semibold" style={{ color: margin >= 15 ? 'var(--green)' : 'var(--gold)' }}>{margin}%</span>}
                     {est.created_at && <span className="text-[10px] c-tertiary">{relativeTime(est.created_at)}</span>}

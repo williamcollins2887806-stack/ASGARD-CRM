@@ -320,8 +320,8 @@ export function NewChatSheet({ open, onClose }) {
               disabled={selected.length < 2 || !groupName.trim() || creating}
               className="w-full flex items-center justify-center gap-2 py-3 rounded-xl text-[15px] font-semibold transition-opacity"
               style={{
-                background: 'var(--blue)',
-                color: '#fff',
+                background: 'var(--blue-fill)',
+                color: 'var(--text-on-accent)',
                 opacity: selected.length < 2 || !groupName.trim() || creating ? 0.4 : 1,
               }}
             >

@@ -34,14 +34,14 @@ const STATUS_MAP = {
   approved: { label: 'Согласован',      color: 'var(--green)' },
   rework:   { label: 'На доработке',    color: 'var(--gold)' },
   question: { label: 'Вопрос',          color: 'var(--gold)' },
-  rejected: { label: 'Отклонён',        color: 'var(--red-soft)' },
+  rejected: { label: 'Отклонён',        color: 'var(--danger-ink)' },
 };
 
 const DIRECTOR_ACTIONS = [
   { id: 'approve',  label: 'Согласовать',   icon: Check,       color: 'var(--green)',    needComment: false },
   { id: 'rework',   label: 'На доработку',  icon: RotateCcw,   color: 'var(--gold)',     needComment: true },
   { id: 'question', label: 'Задать вопрос', icon: HelpCircle,  color: 'var(--blue)',     needComment: true },
-  { id: 'reject',   label: 'Отклонить',     icon: X,           color: 'var(--red-soft)', needComment: true },
+  { id: 'reject',   label: 'Отклонить',     icon: X,           color: 'var(--danger-ink)', needComment: true },
 ];
 
 const ACTION_LABELS = {
@@ -370,7 +370,7 @@ export default function EstimateReport() {
               </button>
               <span
                 className="status-badge"
-                style={{ background: `color-mix(in srgb, ${status.color} 15%, transparent)`, color: status.color }}
+                style={{ background: `color-mix(in srgb, ${status.color} 15%, transparent)`, color: 'var(--text-primary)' }}
               >
                 {status.label}
               </span>
@@ -652,8 +652,8 @@ export default function EstimateReport() {
                         className="flex items-center justify-center shrink-0"
                         style={{
                           width: 32, height: 32, borderRadius: '50%',
-                          background: dir ? 'var(--hero-gradient)' : 'var(--blue)',
-                          color: '#fff', fontSize: 11, fontWeight: 700,
+                          background: dir ? 'var(--hero-gradient)' : 'var(--blue-fill)',
+                          color: 'var(--text-on-accent)', fontSize: 11, fontWeight: 700,
                         }}
                       >
                         {initials(c.user_name)}
@@ -770,7 +770,7 @@ export default function EstimateReport() {
                 className="w-full py-3 rounded-xl font-semibold flex items-center justify-center gap-2 spring-tap"
                 style={{
                   background: `color-mix(in srgb, ${action.color} 15%, transparent)`,
-                  color: action.color,
+                  color: 'var(--text-primary)',
                   opacity: disabled ? 0.4 : 1,
                 }}
               >
@@ -953,7 +953,7 @@ function CostBlockDetail({ block, calculation, canEdit, onBack, onUpdateRow }) {
                       {row.source && (
                         <span
                           className="status-badge text-[9px] shrink-0"
-                          style={{ background: 'color-mix(in srgb, var(--blue) 12%, transparent)', color: 'var(--blue)' }}
+                          style={{ background: 'var(--soft-blue)', color: 'var(--on-soft-blue)' }}
                         >
                           {row.source}
                         </span>

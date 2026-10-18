@@ -14,8 +14,8 @@ import './field-screens.css';
 
 const RETURN_OPTS = [
   { value: 'returning', label: 'Вернул', color: 'var(--ok)' },
-  { value: 'damaged', label: 'Сломано', color: 'var(--danger)' },
-  { value: 'lost', label: 'Утеряно', color: 'var(--danger)' },
+  { value: 'damaged', label: 'Сломано', color: 'var(--danger-ink)' },
+  { value: 'lost', label: 'Утеряно', color: 'var(--danger-ink)' },
   { value: 'consumed', label: 'Израсходовано', color: 'var(--value)' },
 ];
 
@@ -86,8 +86,8 @@ export default function FieldReceiving() {
         <div className="p-4">
           <button onClick={() => { haptic.light(); setScanning(true); }}
             className="w-full rounded-2xl py-10 flex flex-col items-center gap-3 active:scale-[.98] transition"
-            style={{ background: 'color-mix(in oklab, var(--value) 8%, transparent)', border: '2px dashed color-mix(in oklab, var(--value) 35%, transparent)' }}>
-            <ScanLine size={48} style={{ color: 'var(--value)' }} />
+            style={{ background: 'color-mix(in oklab, var(--value) 8%, transparent)', border: '2px dashed var(--soft-value)' }}>
+            <ScanLine size={48} style={{ color: 'var(--on-soft-value)' }} />
             <div className="font-semibold" style={{ color: 'var(--value)' }}>Сканировать QR паллета</div>
             <div className="text-xs opacity-60">Наведите камеру на этикетку</div>
           </button>

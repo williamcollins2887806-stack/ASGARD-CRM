@@ -77,7 +77,7 @@ export default function ProcRequests() {
                     <ChevronRight size={16} className="c-tertiary" style={{ flexShrink: 0, marginTop: 2 }} />
                   </div>
                   <div className="flex items-center gap-1.5 mt-2 flex-wrap">
-                    <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold" style={{ background: `color-mix(in srgb, ${st.color} 15%, transparent)`, color: st.color }}>{st.label}</span>
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold" style={{ background: `color-mix(in srgb, ${st.color} 15%, transparent)`, color: 'var(--text-primary)' }}>{st.label}</span>
                     {itemsCount > 0 && <span className="text-[10px] c-secondary">{itemsCount} поз.</span>}
                     {Number(req.total_sum) > 0 && <span className="text-[10px] font-semibold c-gold">{formatMoney(req.total_sum, { short: true })}</span>}
                     {req.pm_id && users[req.pm_id] && <span className="text-[10px] c-tertiary">{users[req.pm_id]}</span>}
@@ -111,7 +111,7 @@ function ProcDetailSheet({ request, onClose, users }) {
   return (
     <BottomSheet open={!!request} onClose={onClose} title={r.work_title || `Заявка #${r.id}`}>
       <div className="flex flex-col gap-3 pb-4">
-        {fields.map((f, i) => <div key={i}><p className="text-[11px] font-semibold uppercase tracking-wider mb-0.5 c-tertiary">{f.label}</p>{f.color ? <span className="px-2.5 py-1 rounded-full text-[12px] font-semibold inline-block" style={{ background: `color-mix(in srgb, ${f.color} 15%, transparent)`, color: f.color }}>{f.value}</span> : <p className={`text-[14px] c-primary ${f.full ? 'whitespace-pre-wrap' : ''}`}>{f.value}</p>}</div>)}
+        {fields.map((f, i) => <div key={i}><p className="text-[11px] font-semibold uppercase tracking-wider mb-0.5 c-tertiary">{f.label}</p>{f.color ? <span className="px-2.5 py-1 rounded-full text-[12px] font-semibold inline-block" style={{ background: `color-mix(in srgb, ${f.color} 15%, transparent)`, color: 'var(--text-primary)' }}>{f.value}</span> : <p className={`text-[14px] c-primary ${f.full ? 'whitespace-pre-wrap' : ''}`}>{f.value}</p>}</div>)}
         {items.length > 0 && (
           <div>
             <p className="text-[11px] font-semibold uppercase tracking-wider mb-1.5 c-tertiary">Состав ({items.length})</p>

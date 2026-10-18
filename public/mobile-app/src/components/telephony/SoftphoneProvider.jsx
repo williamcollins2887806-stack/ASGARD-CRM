@@ -83,8 +83,8 @@ function IncomingSheet({ incoming, onAnswer, onReject, answering }) {
               minHeight: 104,
               borderRadius: 999,
               background: 'linear-gradient(180deg, color-mix(in srgb, var(--red) 42%, var(--bg-primary)), color-mix(in srgb, var(--red) 22%, var(--bg-primary)))',
-              color: 'var(--red)',
-              boxShadow: '0 10px 28px color-mix(in srgb, var(--red) 32%, transparent)',
+              color: 'var(--on-soft-danger)',
+              boxShadow: '0 10px 28px var(--soft-danger)',
             }}
             onClick={() => { haptic.error(); onReject(); }}
             aria-label="Отклонить"

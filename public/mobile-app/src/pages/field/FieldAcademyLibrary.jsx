@@ -97,7 +97,7 @@ function LessonCard({ lesson, navigate }) {
             <span>{lesson.saga} · Неделя {lesson.week_number}</span>
             {isOptional && (
               <span style={{
-                fontSize: 9, color: 'var(--ok)', background: 'color-mix(in oklab, var(--ok) 14%, transparent)',
+                fontSize: 9, color: 'var(--on-soft-ok)', background: 'var(--soft-ok)',
                 padding: '1px 6px', borderRadius: 6, fontWeight: 700,
                 textTransform: 'uppercase', letterSpacing: 0.5,
               }}>

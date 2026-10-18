@@ -42,7 +42,7 @@ function resolveStatus(status) {
      'отменён', 'отменена', 'отменено', 'cancelled',
      'просроч', 'не принято'].some(k => s.includes(k))
   ) {
-    return { color: 'var(--red-soft)', bg: 'rgba(255,69,58,0.11)' };
+    return { color: 'var(--danger-ink)', bg: 'rgba(255,69,58,0.11)' };
   }
 
   return { color: 'var(--text-tertiary)', bg: 'rgba(142,142,147,0.10)' };

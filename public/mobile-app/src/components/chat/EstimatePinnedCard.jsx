@@ -113,7 +113,7 @@ export function EstimatePinnedCard({ metadata, flash }) {
             fontWeight: 600,
             padding: '2px 8px',
             borderRadius: 6,
-            background: `${st.color}18`,
+            background: `color-mix(in srgb, ${st.color} 9%, transparent)`,
             color: st.color,
           }}
         >

@@ -129,7 +129,7 @@ export default function Finances() {
                 <TrendingUp size={14} />
                 Выручка {formatMoney(stats.revenue, { short: true })}
               </span>
-              <span className="flex items-center gap-1 text-[12px]" style={{ color: 'var(--red-soft)' }}>
+              <span className="flex items-center gap-1 text-[12px]" style={{ color: 'var(--danger-ink)' }}>
                 <TrendingDown size={14} />
                 Расходы {formatMoney(stats.totalExp, { short: true })}
               </span>
@@ -209,7 +209,7 @@ export default function Finances() {
                       </p>
                     )}
                   </div>
-                  <span className="text-[15px] font-bold shrink-0" style={{ color: 'var(--red-soft)' }}>
+                  <span className="text-[15px] font-bold shrink-0" style={{ color: 'var(--danger-ink)' }}>
                     {formatMoney(exp.amount || 0)}
                   </span>
                 </div>

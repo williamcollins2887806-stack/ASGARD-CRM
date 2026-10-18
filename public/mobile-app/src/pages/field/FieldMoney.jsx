@@ -75,9 +75,9 @@ function MoneyDetail({ workId, onBack }) {
   if (data.per_diem_total) rows.push({ label: `Пайковые (${data.per_diem_days || 0} дн. × ${fmt(data.per_diem_rate)})`, value: `${fmt(data.per_diem_total)}` });
   if (data.bonuses) rows.push({ label: 'Бонусы', value: `+${fmt(data.bonuses)}`, color: 'var(--ok)' });
   if (data.stages_earned) rows.push({ label: 'Маршрут до объекта', value: `+${fmt(data.stages_earned)}`, color: 'var(--gold)' });
-  if (data.penalties) rows.push({ label: 'Штрафы', value: `−${fmt(data.penalties)}`, color: 'var(--danger)' });
+  if (data.penalties) rows.push({ label: 'Штрафы', value: `−${fmt(data.penalties)}`, color: 'var(--danger-ink)' });
   rows.push({ label: 'Итого начислено', value: `${fmt(data.total_earned)}`, bold: true, sep: true });
-  if (data.total_paid) rows.push({ label: 'Выплачено (авансы)', value: `−${fmt(data.total_paid)}`, color: 'var(--danger)' });
+  if (data.total_paid) rows.push({ label: 'Выплачено (авансы)', value: `−${fmt(data.total_paid)}`, color: 'var(--danger-ink)' });
   rows.push({ label: 'К выплате', value: `${fmt(data.remaining)}`, bold: true, sep: true, color: 'var(--gold)' });
 
   return (
@@ -645,8 +645,8 @@ function HandoverConfirmSheet({ handover, busy, onConfirm, onClose }) {
               className="spring-tap"
               style={{
                 minHeight: 56, borderRadius: 14, fontSize: 16, fontWeight: 700,
-                background: 'color-mix(in srgb, var(--green) 18%, transparent)',
-                color: 'var(--green)',
+                background: 'var(--soft-ok)',
+                color: 'var(--on-soft-ok)',
                 border: '0.5px solid color-mix(in srgb, var(--green) 30%, var(--border-norse))',
                 display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
                 opacity: busy ? 0.6 : 1,
@@ -661,8 +661,8 @@ function HandoverConfirmSheet({ handover, busy, onConfirm, onClose }) {
               className="spring-tap"
               style={{
                 minHeight: 56, borderRadius: 14, fontSize: 16, fontWeight: 700,
-                background: 'color-mix(in srgb, var(--gold) 14%, transparent)',
-                color: 'var(--gold)',
+                background: 'var(--soft-value)',
+                color: 'var(--on-soft-value)',
                 border: '0.5px solid color-mix(in srgb, var(--gold) 28%, var(--border-norse))',
                 display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
                 opacity: busy ? 0.6 : 1,
@@ -678,7 +678,7 @@ function HandoverConfirmSheet({ handover, busy, onConfirm, onClose }) {
               style={{
                 minHeight: 56, borderRadius: 14, fontSize: 16, fontWeight: 700,
                 background: 'color-mix(in srgb, var(--red-soft) 12%, transparent)',
-                color: 'var(--red)',
+                color: 'var(--danger-ink)',
                 border: '0.5px solid color-mix(in srgb, var(--red-soft) 25%, var(--border-norse))',
                 display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
                 opacity: busy ? 0.6 : 1,
@@ -718,8 +718,8 @@ function HandoverConfirmSheet({ handover, busy, onConfirm, onClose }) {
                 className="spring-tap"
                 style={{
                   flex: 2, minHeight: 50, borderRadius: 12, fontSize: 14, fontWeight: 700,
-                  background: 'color-mix(in srgb, var(--gold) 18%, transparent)',
-                  color: 'var(--gold)',
+                  background: 'var(--soft-value)',
+                  color: 'var(--on-soft-value)',
                   border: '0.5px solid color-mix(in srgb, var(--gold) 30%, var(--border-norse))',
                   opacity: (busy || !partial) ? 0.5 : 1,
                 }}

@@ -833,7 +833,7 @@ export default function PipelineGame() {
         <div className="pp-ov">
           <div className="pp-win fail">
             <div style={{ fontSize: 52 }}>💥</div>
-            <div className="pp-win-title" style={{ color: 'var(--red)' }}>ХОДЫ КОНЧИЛИСЬ</div>
+            <div className="pp-win-title" style={{ color: 'var(--danger-ink)' }}>ХОДЫ КОНЧИЛИСЬ</div>
             <div style={{ fontSize: 13, color: 'var(--t2)', marginBottom: 8 }}>
               Уровень ещё можно пройти — полный запас ходов ждёт.
             </div>
@@ -858,7 +858,7 @@ export default function PipelineGame() {
               {world?.name} · Уровень {win.level}
             </div>
             <div style={{ display: 'flex', justifyContent: 'center', gap: 10, flexWrap: 'wrap' }}>
-              <div className="pp-reward" style={{ background: 'color-mix(in oklab, var(--acc) 16%, transparent)', color: 'var(--acc)' }}>+{xpShown} XP</div>
+              <div className="pp-reward" style={{ background: 'var(--soft-blue)', color: 'var(--on-soft-blue)' }}>+{xpShown} XP</div>
               <div className="pp-reward" style={{ background: 'color-mix(in oklab, var(--value) 14%, transparent)', color: 'var(--gold)' }}>+{runesShown} ᚱ</div>
             </div>
             {(win.bonus_xp > 0 || win.bonus_runes > 0) && (

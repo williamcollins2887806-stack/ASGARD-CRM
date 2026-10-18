@@ -160,6 +160,11 @@ body.view-me .page, body.view-director .page, body.view-buh .page, body.view-doc
 .vs-deadline__bar { width: 170px; height: 8px; border-radius: var(--r-full); background: var(--bg4); overflow: hidden; }
 .vs-deadline__bar i { display: block; height: 100%; background: var(--grad-gold); border-radius: inherit; transition: width var(--slow); }
 .vs-deadline__prog span { font-size: 12px; font-weight: var(--fw-bold); color: var(--gold); }
+.vs-deadline.is-soon { border-color: var(--brd-err); background: linear-gradient(120deg, var(--err-bg), transparent 58%), var(--glass-bg-2); }
+.vs-deadline.is-soon .vs-deadline__t b, .vs-deadline.is-soon .vs-deadline__prog span { color: var(--err-t); }
+.vs-deadline.is-soon .vs-deadline__bar i { background: var(--grad-red); }
+.vs-deadline.is-closed { border-color: var(--brd); }
+.vs-deadline.is-closed .vs-deadline__ic { color: var(--t3); border-color: var(--brd); }
 
 /* ── Легенда ───────────────────────────────────────────────────────────── */
 .vs-legend { display: flex; gap: 15px; flex-wrap: wrap; align-items: center; padding: 12px var(--sp-5) 0; flex-shrink: 0; }

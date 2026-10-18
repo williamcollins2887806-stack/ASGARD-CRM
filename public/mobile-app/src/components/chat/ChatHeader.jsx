@@ -273,8 +273,8 @@ export function ChatHeader({ chat, members, onSearch }) {
             className="flex items-center gap-3 px-3 py-3 rounded-xl text-left active:bg-white/5"
             onClick={handleLeave}
           >
-            <LogOut size={20} style={{ color: 'var(--red-soft)' }} className="shrink-0" />
-            <span className="text-[15px]" style={{ color: 'var(--red-soft)' }}>Выйти из чата</span>
+            <LogOut size={20} style={{ color: 'var(--danger-ink)' }} className="shrink-0" />
+            <span className="text-[15px]" style={{ color: 'var(--danger-ink)' }}>Выйти из чата</span>
           </button>
         </div>
       </BottomSheet>

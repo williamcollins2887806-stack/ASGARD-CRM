@@ -144,8 +144,8 @@ export default function TelephonyCallDetail() {
                     minHeight: 44,
                     padding: '0 16px',
                     borderRadius: 12,
-                    backgroundColor: 'color-mix(in srgb, var(--gold) 16%, transparent)',
-                    color: 'var(--gold)',
+                    backgroundColor: 'var(--soft-value)',
+                    color: 'var(--on-soft-value)',
                   }}
                 >
                   Перезвонить

@@ -17,7 +17,7 @@ const PHOTO_TYPES = [
   { val: 'work',     label: 'Работа',    Icon: Hammer,        color: 'var(--acc)' },
   { val: 'before',   label: 'До',        Icon: ClipboardList, color: 'var(--acc)' },
   { val: 'after',    label: 'После',     Icon: CheckCircle,   color: 'var(--ok)' },
-  { val: 'incident', label: 'Инцидент',  Icon: AlertTriangle, color: 'var(--danger)' },
+  { val: 'incident', label: 'Инцидент',  Icon: AlertTriangle, color: 'var(--danger-ink)' },
 ];
 
 const UPLOAD_QUOTES = [
@@ -341,8 +341,8 @@ export default function FieldPhotos() {
             )}
           </div>
           {geoCoords && (
-            <span className="flex items-center gap-1 px-2 py-1 rounded-lg" style={{ backgroundColor: 'color-mix(in oklab, var(--ok) 15%, transparent)' }}>
-              <MapPin size={12} style={{ color: 'var(--ok)' }} />
+            <span className="flex items-center gap-1 px-2 py-1 rounded-lg" style={{ backgroundColor: 'var(--soft-ok)' }}>
+              <MapPin size={12} style={{ color: 'var(--on-soft-ok)' }} />
               <span className="text-xs font-semibold" style={{ color: 'var(--ok)' }}>GPS</span>
             </span>
           )}
@@ -559,7 +559,7 @@ export default function FieldPhotos() {
             </span>
             {canDeleteViewed && (
               <button onClick={() => setShowDeleteConfirm(true)} className="p-2">
-                <Trash2 size={20} style={{ color: 'var(--danger)' }} />
+                <Trash2 size={20} style={{ color: 'var(--danger-ink)' }} />
               </button>
             )}
           </div>
@@ -615,7 +615,7 @@ export default function FieldPhotos() {
           {showDeleteConfirm && (
             <div className="absolute inset-0 z-60 flex items-center justify-center" style={{ backgroundColor: 'color-mix(in oklab, var(--bg-primary) 70%, transparent)' }}>
               <div className="rounded-2xl p-6 mx-8 text-center" style={{ backgroundColor: 'var(--bg-elevated)' }}>
-                <Trash2 size={32} className="mx-auto mb-3" style={{ color: 'var(--danger)' }} />
+                <Trash2 size={32} className="mx-auto mb-3" style={{ color: 'var(--danger-ink)' }} />
                 <p className="font-semibold mb-1" style={{ color: 'var(--text-primary)' }}>Удалить фото?</p>
                 <p className="text-xs mb-4" style={{ color: 'var(--text-tertiary)' }}>Это действие нельзя отменить</p>
                 <div className="flex gap-3">

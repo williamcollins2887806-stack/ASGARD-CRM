@@ -395,9 +395,9 @@ function EmployeeDetailSheet({ employee, onClose, isHR, onStatusChange, saving }
                 disabled={saving}
                 className="flex-1 py-2.5 rounded-xl text-sm font-semibold disabled:opacity-50 spring-tap"
                 style={{
-                  background: 'color-mix(in srgb, var(--green) 15%, transparent)',
+                  background: 'var(--soft-ok)',
                   border: '1px solid color-mix(in srgb, var(--green) 35%, transparent)',
-                  color: 'var(--green)',
+                  color: 'var(--on-soft-ok)',
                 }}
               >
                 ⚔️ Готов

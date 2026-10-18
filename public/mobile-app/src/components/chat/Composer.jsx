@@ -231,7 +231,7 @@ export function Composer({
           <button
             onClick={() => stopRecording(true)}
             className="shrink-0 flex items-center justify-center spring-tap"
-            style={{ width: 36, height: 36, color: 'var(--red-soft)' }}
+            style={{ width: 36, height: 36, color: 'var(--danger-ink)' }}
           >
             <Trash2 size={20} />
           </button>
@@ -382,7 +382,7 @@ export function Composer({
               width: 36,
               height: 36,
               background: 'var(--gold-gradient)',
-              color: '#fff',
+              color: 'var(--text-on-gold)',
             }}
           >
             <Send size={18} className="ml-0.5" />

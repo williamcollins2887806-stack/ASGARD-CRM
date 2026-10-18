@@ -236,7 +236,7 @@ function DetailSheet({ row, open, onClose, onChanged, initialTab }) {
         <button
           type="button"
           className="btn"
-          style={{ minHeight: 52, background: 'var(--success)' }}
+          style={{ minHeight: 52, background: 'var(--ok)', color: 'var(--on-ok)' }}
           disabled={busy}
           onClick={() => decide('submit')}
         >

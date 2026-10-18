@@ -126,7 +126,7 @@ function ResultScreen({ result, lessonId, navigate }) {
             <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: ans.explanation ? 6 : 0 }}>
               {ans.is_correct
                 ? <Check size={16} strokeWidth={2.6} style={{ color: 'var(--ok)' }} />
-                : <XCircle size={16} strokeWidth={2.6} style={{ color: 'var(--danger)' }} />}
+                : <XCircle size={16} strokeWidth={2.6} style={{ color: 'var(--danger-ink)' }} />}
               <span style={{ fontSize: 12, color: C.muted }}>Вопрос {i + 1}</span>
             </div>
             {!ans.is_correct && ans.explanation && (

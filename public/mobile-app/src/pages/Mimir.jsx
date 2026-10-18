@@ -330,7 +330,7 @@ export default function Mimir() {
             background: text.trim()
               ? 'var(--gold-gradient)'
               : 'var(--bg-elevated)',
-            ...(text.trim() ? { color: '#fff' } : {}),
+            ...(text.trim() ? { color: 'var(--text-on-gold)' } : {}),
             opacity: loading ? 0.5 : 1,
           }}
         >

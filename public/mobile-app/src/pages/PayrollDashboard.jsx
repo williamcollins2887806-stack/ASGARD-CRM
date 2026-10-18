@@ -295,7 +295,7 @@ export default function PayrollDashboard() {
                       <button key={t.key} onClick={() => { haptic.light(); setCcTab(t.key); }}
                         className="px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap spring-tap"
                         style={ccTab === t.key
-                          ? { background: 'var(--blue)', color: 'var(--text-on-accent)' }
+                          ? { background: 'var(--blue-fill)', color: 'var(--text-on-accent)' }
                           : { backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-norse)', color: 'var(--text-secondary)' }}>
                         {t.label}
                       </button>
@@ -396,9 +396,9 @@ export default function PayrollDashboard() {
                     <button onClick={() => { haptic.medium(); setShowBulk(true); }}
                       className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold spring-tap"
                       style={{
-                        background: 'linear-gradient(135deg, var(--gold), var(--warn-t))',
-                        border: '1px solid color-mix(in srgb, var(--gold) 35%, transparent)',
-                        color: 'var(--text-on-gold)',
+        background: 'linear-gradient(135deg, var(--gold-fill), var(--gold-fill))',
+        border: '1px solid color-mix(in srgb, var(--gold-fill) 35%, transparent)',
+        color: 'var(--text-on-gold)',
                       }}>
                       <Rocket size={14} /> Массовая выплата
                     </button>
@@ -406,9 +406,9 @@ export default function PayrollDashboard() {
                   <button onClick={openCreate}
                     className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium spring-tap"
                     style={{
-                      background: 'color-mix(in srgb, var(--blue) 15%, transparent)',
+                      background: 'var(--soft-blue)',
                       border: '1px solid color-mix(in srgb, var(--blue) 35%, transparent)',
-                      color: 'var(--blue)',
+                      color: 'var(--on-soft-blue)',
                     }}>
                     <Plus size={14} /> По договорённости
                   </button>
@@ -446,9 +446,9 @@ export default function PayrollDashboard() {
                           disabled={confirmingId === t.id}
                           className="mt-2 flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium spring-tap disabled:opacity-50"
                           style={{
-                            background: 'color-mix(in srgb, var(--green) 15%, transparent)',
+                            background: 'var(--soft-ok)',
                             border: '1px solid color-mix(in srgb, var(--green) 35%, transparent)',
-                            color: 'var(--green)',
+                            color: 'var(--on-soft-ok)',
                           }}>
                           <CheckCircle size={14} /> Наличные получены
                         </button>
@@ -499,7 +499,7 @@ export default function PayrollDashboard() {
                             width: `${pct}%`,
                             background: danger
                               ? 'linear-gradient(90deg, var(--err-t), var(--warn-t))'
-                              : 'linear-gradient(90deg, var(--green), var(--blue))',
+                              : 'linear-gradient(90deg, var(--ok), var(--blue-fill))',
                             transition: 'width 0.5s ease',
                           }} />
                         </div>
@@ -548,7 +548,7 @@ export default function PayrollDashboard() {
           </div>
           <button onClick={handleCreate} disabled={formSaving || !formEmpId || !formAmount}
             className="w-full py-3 rounded-xl font-semibold text-sm disabled:opacity-50"
-            style={{ background: 'linear-gradient(135deg, var(--blue), var(--info))', color: 'var(--text-on-accent)' }}>
+            style={{ background: 'var(--blue-fill)', color: 'var(--text-on-accent)' }}>
             {formSaving ? 'Создаю...' : '📨 Создать перевод'}
           </button>
         </div>
@@ -575,7 +575,7 @@ export default function PayrollDashboard() {
           <p className="text-[10px] c-tertiary">Применяется ко всем самозанятым при расчёте остатка лимита.</p>
           <button onClick={handleSaveLimits} disabled={limSaving}
             className="w-full py-3 rounded-xl font-semibold text-sm disabled:opacity-50"
-            style={{ background: 'linear-gradient(135deg, var(--green), var(--blue))', color: 'var(--text-on-accent)' }}>
+            style={{ background: 'linear-gradient(135deg, var(--ok), var(--blue-fill))', color: 'var(--text-on-accent)' }}>
             {limSaving ? 'Сохраняю...' : '💾 Сохранить'}
           </button>
         </div>
@@ -890,7 +890,7 @@ function BulkSeTransferSheet({ open, onClose, year, month, seWorkers, cashCalc, 
               <button onClick={goToConfigure}
                 disabled={selectedCount === 0}
                 className="px-4 py-2 rounded-lg text-sm font-semibold disabled:opacity-50 flex items-center gap-1"
-                style={{ background: 'linear-gradient(135deg, var(--blue), var(--info))', color: 'var(--text-on-accent)' }}>
+                style={{ background: 'var(--blue-fill)', color: 'var(--text-on-accent)' }}>
                 Далее <ChevronRight size={16} />
               </button>
             </div>
@@ -913,7 +913,7 @@ function BulkSeTransferSheet({ open, onClose, year, month, seWorkers, cashCalc, 
                     onClick={() => { haptic.light(); setAccordionIdx(i); }}
                     className="shrink-0 px-2.5 py-1 rounded-lg text-[11px] font-semibold spring-tap flex items-center gap-1"
                     style={{
-                      background: isCur ? 'var(--blue)' : 'var(--bg-surface)',
+                      background: isCur ? 'var(--blue-fill)' : 'var(--bg-surface)',
                       color: isCur ? 'var(--text-on-accent)' : (err ? 'var(--err-t)' : 'var(--text-secondary)'),
                       border: '0.5px solid var(--border-norse)',
                     }}>
@@ -949,14 +949,14 @@ function BulkSeTransferSheet({ open, onClose, year, month, seWorkers, cashCalc, 
                 {accordionIdx < rows.length - 1 ? (
                   <button onClick={() => { haptic.light(); setAccordionIdx((i) => Math.min(rows.length - 1, i + 1)); }}
                     className="px-3 py-2 rounded-lg text-xs font-semibold"
-                    style={{ background: 'linear-gradient(135deg, var(--blue), var(--info))', color: 'var(--text-on-accent)' }}>
+                    style={{ background: 'var(--blue-fill)', color: 'var(--text-on-accent)' }}>
                     След. →
                   </button>
                 ) : (
                   <button onClick={() => { haptic.medium(); setStep(3); }}
                     disabled={!allValid}
                     className="px-3 py-2 rounded-lg text-xs font-semibold disabled:opacity-40"
-                    style={{ background: 'linear-gradient(135deg, var(--green), var(--blue))', color: 'var(--text-on-accent)' }}>
+                    style={{ background: 'linear-gradient(135deg, var(--ok), var(--blue-fill))', color: 'var(--text-on-accent)' }}>
                     К превью →
                   </button>
                 )}
@@ -1002,7 +1002,7 @@ function BulkSeTransferSheet({ open, onClose, year, month, seWorkers, cashCalc, 
               </button>
               <button onClick={handleSubmit} disabled={saving || !allValid}
                 className="px-4 py-2 rounded-lg text-sm font-semibold disabled:opacity-50 flex items-center gap-1"
-                style={{ background: 'linear-gradient(135deg, var(--green), var(--blue))', color: 'var(--text-on-accent)' }}>
+                style={{ background: 'linear-gradient(135deg, var(--ok), var(--blue-fill))', color: 'var(--text-on-accent)' }}>
                 <Rocket size={14} />
                 {saving ? 'Отправляю...' : `Создать ${rows.length} перевод(ов)`}
               </button>

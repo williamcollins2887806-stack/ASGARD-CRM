@@ -19,7 +19,7 @@ const STAGES = [
   { id: 'negotiation', label: 'Переговоры', color: 'var(--gold)', match: ['кп отправлено', 'ткп отправлено', 'согласование ткп', 'переговоры', 'на согласовании', 'ткп согласовано'] },
   { id: 'prep', label: 'Подготовка', color: '#7B68EE', match: ['выиграли', 'клиент согласился', 'контракт'] },
   { id: 'work', label: 'В работе', color: 'var(--green)', match: ['в работе', 'выполняется', 'мобилизация'] },
-  { id: 'lost', label: 'Проиграно', color: 'var(--red-soft)', match: ['проиграли', 'отказ', 'клиент отказался', 'отменён'] },
+  { id: 'lost', label: 'Проиграно', color: 'var(--danger-ink)', match: ['проиграли', 'отказ', 'клиент отказался', 'отменён'] },
 ];
 
 const TO_REGISTRY_STAGES = [
@@ -27,7 +27,7 @@ const TO_REGISTRY_STAGES = [
   { id: 'prep', key: 'готовим', label: 'Готовим', color: 'var(--blue)' },
   { id: 'submitted', key: 'подались', label: 'Подались', color: 'var(--gold)' },
   { id: 'won', key: 'выиграли', label: 'Выиграли', color: 'var(--green)' },
-  { id: 'lost', key: 'проиграли', label: 'Проиграли', color: 'var(--red-soft)' },
+  { id: 'lost', key: 'проиграли', label: 'Проиграли', color: 'var(--danger-ink)' },
   { id: 'cancel', key: 'отмена', label: 'Отмена', color: 'var(--text-tertiary)' },
 ];
 
@@ -161,7 +161,7 @@ function FunnelDetailSheet({ tender, onClose }) {
   return (
     <BottomSheet open={!!tender} onClose={onClose} title={t.customer_name || t.name || 'Тендер'}>
       <div className="flex flex-col gap-3 pb-4">
-        {fields.map((f, i) => <div key={i}><p className="input-label">{f.label}</p>{f.color ? <span className="px-2.5 py-1 rounded-full text-[12px] font-semibold inline-block" style={{ background: `color-mix(in srgb, ${f.color} 15%, transparent)`, color: f.color }}>{f.value}</span> : <p className={`text-[14px] c-primary ${f.full ? 'whitespace-pre-wrap' : ''}`}>{f.value}</p>}</div>)}
+        {fields.map((f, i) => <div key={i}><p className="input-label">{f.label}</p>{f.color ? <span className="px-2.5 py-1 rounded-full text-[12px] font-semibold inline-block" style={{ background: `color-mix(in srgb, ${f.color} 15%, transparent)`, color: 'var(--text-primary)' }}>{f.value}</span> : <p className={`text-[14px] c-primary ${f.full ? 'whitespace-pre-wrap' : ''}`}>{f.value}</p>}</div>)}
       </div>
     </BottomSheet>
   );

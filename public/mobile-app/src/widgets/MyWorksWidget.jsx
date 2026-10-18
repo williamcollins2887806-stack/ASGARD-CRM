@@ -11,7 +11,7 @@ const DONE_STATUSES = ['Работы сдали', 'Завершена', 'Зак�
 function getStatusStyle(status) {
   const s = (status || '').toLowerCase();
   if (s.includes('просрочен') || s.includes('overdue')) {
-    return { color: 'var(--red)', bg: 'rgba(220, 38, 38, 0.12)' };
+    return { color: 'var(--danger-ink)', bg: 'rgba(220, 38, 38, 0.12)' };
   }
   if (s.includes('предупреждение') || s.includes('warning') || s.includes('внимание')) {
     return { color: 'var(--gold)', bg: 'rgba(212, 168, 67, 0.12)' };

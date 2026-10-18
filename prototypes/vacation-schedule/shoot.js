@@ -169,7 +169,12 @@ function check(name, cond, extra) {
   await page.locator('#vsRejectText').fill('Сдача объекта, возьмите после 20 мая.');
   await page.locator('[data-vs-reject-confirm]').click();
   await page.waitForTimeout(600);
-  check('с комментарием — отклонено, дни заблокированы', await page.evaluate(() => Object.keys(window.VS_STATE.blocked || {}).length > 0));
+  check('с комментарием — отклонено, дни заблокированы у этого сотрудника', await page.evaluate(() => {
+    const S = window.VS_STATE;
+    const D = window.VS_DATA;
+    const emp = D.ALL.filter(e => D.rangesOf(e.id).some(r => r.status === 'rejected'))[0];
+    return !!emp && !!S.blockedByEmp && Object.keys(S.blockedByEmp[emp.id] || {}).length > 0;
+  }));
 
   /* ═══ 10. Согласовать всё → график закрывается ════════════════════════ */
   await page.locator('[data-vs-approve-all]').first().click();
@@ -208,13 +213,21 @@ function check(name, cond, extra) {
   await page.waitForTimeout(500);
   check('приказ Т-6: форма 0301005', /0301005/.test(await page.locator('.doc-sheet').innerText()));
   check('приказ Т-6: пункты А и В', /А\./.test(await page.locator('.doc-sheet').innerText()) && /В\./.test(await page.locator('.doc-sheet').innerText()));
+  check('приказ Т-6: пункт Б (доп. отпуск) присутствует', /Б\./.test(await page.locator('.doc-sheet').innerText()));
   await shot('11-doc-prikaz');
   await page.locator('[data-vs-doc-tab="t7"]').click();
   await page.waitForTimeout(500);
   const t7 = await page.locator('.doc-sheet').innerText();
   check('график Т-7: форма 0301020', /0301020/.test(t7));
   check('график Т-7: все офисные сотрудники', await page.locator('.doc-t--grid tbody tr').count() >= 14, 'rows=' + await page.locator('.doc-t--grid tbody tr').count());
-  check('график Т-7: 10 граф по форме', await page.locator('.doc-t--grid thead tr').count() >= 3);
+  check('график Т-7: 10 граф по форме 0301020', await page.evaluate(() => {
+    const nums = [...document.querySelectorAll('.doc-t--grid thead .doc-nums td')].map(t => t.textContent.trim());
+    const bodyCells = document.querySelectorAll('.doc-t--grid tbody tr:first-child td').length;
+    return nums.length === 10 && nums.join(',') === '1,2,3,4,5,6,7,8,9,10' && bodyCells === 10;
+  }), await page.evaluate(() => {
+    const nums = [...document.querySelectorAll('.doc-t--grid thead .doc-nums td')].map(t => t.textContent.trim());
+    return 'nums=' + nums.join(',') + ' bodyCells=' + document.querySelectorAll('.doc-t--grid tbody tr:first-child td').length;
+  }));
   await shot('12-doc-t7');
 
   /* ═══ 14. Письма ══════════════════════════════════════════════════════ */
@@ -233,10 +246,57 @@ function check(name, cond, extra) {
   check('письмо автоснятия: причина «3 напоминания»', /3 напоминания/i.test(await page.locator('.ml-body').innerText()));
   await shot('16-mail-auto');
 
-  /* ═══ 15. Вписывание в 1280×720 ═══════════════════════════════════════ */
+  /* ═══ 16. Краевые случаи (найдены верификатором) ═══════════════════════ */
+  check('край: отпуск на 0 оплачиваемых (только праздники) запрещён', await page.evaluate(() => {
+    const v = window.VS_DATA.validate(window.VS_DATA.me.id, '2027-01-01', '2027-01-08');
+    return v.ok === false && v.code === 'all_holidays';
+  }), await page.evaluate(() => JSON.stringify(window.VS_DATA.validate(window.VS_DATA.me.id, '2027-01-01', '2027-01-08'))));
+
+  check('край: конец периода за границей года запрещён', await page.evaluate(() => {
+    const v = window.VS_DATA.validate(5017, '2027-12-30', '2028-01-02');
+    return v.ok === false && v.code === 'year';
+  }), await page.evaluate(() => JSON.stringify(window.VS_DATA.validate(5017, '2027-12-30', '2028-01-02'))));
+
+  check('край: период 30.12–31.12 (внутри года) разрешён', await page.evaluate(() => {
+    const v = window.VS_DATA.validate(5017, '2027-12-30', '2027-12-31');
+    return v.ok === true && v.days === 2;
+  }));
+
+  check('край: снятые дни блокируются ПО СОТРУДНИКУ, а не глобально', await page.evaluate(() => {
+    const D = window.VS_DATA, S = window.VS_STATE;
+    S.blockedByEmp = { 5017: { '2027-10-05': true, '2027-10-06': true } };
+    const other = D.validate(5015, '2027-10-05', '2027-10-06', { blocked: D.blockedDays(5015) });
+    const same = D.validate(5017, '2027-10-05', '2027-10-06', { blocked: D.blockedDays(5017) });
+    return other.code === 'ok' && same.code === 'blocked';
+  }), await page.evaluate(() => {
+    const D = window.VS_DATA, S = window.VS_STATE;
+    S.blockedByEmp = { 5017: { '2027-10-05': true, '2027-10-06': true } };
+    return 'other=' + JSON.stringify(D.validate(5015, '2027-10-05', '2027-10-06', { blocked: D.blockedDays(5015) }).code) +
+           ' same=' + JSON.stringify(D.validate(5017, '2027-10-05', '2027-10-06', { blocked: D.blockedDays(5017) }).code);
+  }));
+
+  check('край: период без голосов трёх директоров не approved', await page.evaluate(() => {
+    const D = window.VS_DATA;
+    return D.ALL.every(e => D.rangesOf(e.id).every(r =>
+      r.status !== 'approved' || (r.approves || []).length === 0 || r.approves.length === D.DIRECTORS.length));
+  }));
+
+  check('в интерфейсе прототипа нет эмодзи (только SVG)', await page.evaluate(() => {
+    const re = /[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}\u{2B00}-\u{2BFF}]/u;
+    const zones = [document.querySelector('.side'), document.querySelector('.vs-modal'), document.querySelector('.os-wrap')];
+    for (const z of zones) { if (z && re.test(z.innerHTML)) return false; }
+    return true;
+  }), await page.evaluate(() => {
+    const re = /[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}\u{2B00}-\u{2BFF}]/gu;
+    const zones = [document.querySelector('.side'), document.querySelector('.vs-modal'), document.querySelector('.os-wrap')];
+    const found = [];
+    zones.forEach(z => { if (z) { const m = z.innerHTML.match(re); if (m) found.push(...m); } });
+    return found.length ? 'найдено: ' + [...new Set(found)].join(' ') : 'чисто';
+  }));
+
+  /* ═══ 17. Вписывание в 1280×720 ═══════════════════════════════════════ */
   await go('#me');
-  await page.setViewportSize({ width: 1280, height: 720 });
-  await page.evaluate(() => { const S = window.VS_STATE; S.closed = false; S.openMonth = 4; S.expansion = true; window.VS_APP.render(); });
+  await page.setViewportSize({ width: 1280, height: 720 });  await page.evaluate(() => { const S = window.VS_STATE; S.closed = false; S.openMonth = 4; S.expansion = true; window.VS_APP.render(); });
   await page.waitForTimeout(700);
   check('1280×720: месяц влезает без гориз. скролла таблицы', await page.evaluate(() => {
     const w = document.querySelector('.vs-tablewrap');

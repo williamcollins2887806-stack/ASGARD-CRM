@@ -33,9 +33,9 @@
   --value-ink: var(--gold);      /* золото ТЕКСТОМ (в светлой — темнее) */
   --danger: var(--red);          /* заливка/фон опасности */
   /* --danger-ink — КРАСНЫЙ ТЕКСТ. #c62828 как текст давал 2.82–3.52 на тёмных
-     поверхностях (провал). #ff453a — уже есть в палитре как --red-soft, даёт
-     4.65 минимум. Заливки продолжают работать через --danger. */
-  --danger-ink: var(--red-soft);
+     поверхностях (провал). #ff5b52 держит ≥4.69 и на самой тёмной поверхности,
+     и на danger-тинтах до 18 % (прежний #ff453a проседал до 4.21). */
+  --danger-ink: #ff5b52;
   --ok: var(--green);
   /* Текст НА заливке. В тёмной теме --green #30d158 яркая → нужен тёмный текст
      (белый давал 2.02 — провал WCAG). Раньше токена не было, и «на зелёном»
@@ -43,6 +43,16 @@
   --on-ok: #0B1F10;
   --on-danger: #FFFFFF;
   --on-red-soft: #2B0A0D;         /* --red-soft в тёмной теме яркая → тёмный текст */
+  /* Синий ЗАЛИВКА под белый текст. --acc/--blue (#4A90D9) — яркий «действие-текст»:
+     белым по нему 3.34 (провал). --blue-fill темнее → 5.37. */
+  --blue-fill: #2E6BB8;
+  /* «Мягкие» пары для бейджей/чипов: приглушённый фон + читаемый текст.
+     Раньше брали тинт акцента и этим же акцентом писали текст → 4.03–4.43
+     (провал мелким кеглем). Пары посчитаны с запасом (5.9–7.4). */
+  --soft-blue: color-mix(in oklab, #2E6BB8 22%, transparent);   --on-soft-blue: #7CBCFF;
+  --soft-ok: color-mix(in oklab, #1E7A44 22%, transparent);     --on-soft-ok: #4ADE80;
+  --soft-value: color-mix(in oklab, #7A5A10 22%, transparent);  --on-soft-value: #E0B95C;
+  --soft-danger: color-mix(in oklab, #7A1F26 22%, transparent); --on-soft-danger: #FF7A72;
   /* Золотая ЗАЛИВКА под тёмный текст (--text-on-gold). В тёмной теме --gold
      это #c8a84e — достаточно яркая, поэтому заливка совпадает с --gold.
      (Раньше токен был определён только в .light → в тёмной теме не существовал.) */
@@ -80,12 +90,15 @@
   --warning: var(--value);
   --error: var(--danger);
   --err-t: var(--danger-ink);
-  /* --err-bg / --success — это ФОН под текст, а не заливка под белый текст.
-     Раньше я определил их как сплошные --danger/--ok: красный текст на красном
-     фоне давал 1.21–1.65:1 (текст ошибки невидим). Делаем приглушённый тинт —
-     читается и с --err-t, и с унаследованным цветом (тема-независимо). */
+  /* --err-bg — это ФОН под текст ошибки (не заливка под белый текст).
+     Раньше я определил его как сплошной --danger: красный текст на красном
+     фоне давал 1.21–1.65:1 (текст ошибки невидим). Приглушённый тинт читается
+     и с --err-t, и с унаследованным цветом (тема-независимо). */
   --err-bg: color-mix(in oklab, var(--danger) 14%, transparent);
-  --success: color-mix(in oklab, var(--ok) 16%, transparent);
+  /* ВНИМАНИЕ: --success используется И как цвет ТЕКСТА (FieldHome.jsx:150,
+     баннер МЛСП), поэтому он обязан остаться сплошным цветом, а не тинтом.
+     Для заливок под текст есть парный --on-ok (см. ниже). */
+  --success: var(--ok);
   --bg-base: var(--bg-primary);
   --bg-2: var(--bg-surface-alt);
   --bg-card: var(--bg-surface);
@@ -137,7 +150,7 @@
   --field-card-3: #1e2550;
   --field-text: #FFFFFF;
   --field-text-2: rgba(255,255,255,0.7);
-  --field-text-3: rgba(255,255,255,0.4);
+  --field-text-3: rgba(255,255,255,0.62);
   --field-hairline: rgba(255,255,255,0.08);
   --field-overlay: rgba(10,14,24,0.88);
   --shadow-sm: 0 1px 2px rgba(0,0,0,0.3);
@@ -196,11 +209,14 @@
   --bg-surface-alt: #F7F7FA;
   --bg-elevated: #FFFFFF;
   --text-primary: #1C1C1E;
-  --text-secondary: #6C6C70;
-  /* --text-tertiary был #8E8E93 → 3.26 на белом и 2.92 на фоне #F2F2F7 (провал WCAG:
-     это обычный текст 10–14 px, не крупный). #6E6E73 даёт 4.54 на самом светлом
-     фоне и 5.07 на белом, оставаясь светлее вторичного — иерархия сохранена. */
-  --text-tertiary: #6E6E73;
+  /* --text-secondary/--text-tertiary: на БЕЛОМ прежние значения проходили, но на
+     тонированных плашках (тинт blue/ok/value 10–15 %) контраст падал до 4.01–4.48.
+     #636369 даёт ≥4.58 на самом тёмном из встречающихся фонов и сохраняет иерархию. */
+  --text-secondary: #636369;
+  /* --text-tertiary: как и вторичный, был на грани на тонированных плашках
+     (4.34–4.38). #636369 держит ≥4.58 и остаётся на ступень светлее... ниже
+     вторичного не опускаем — иерархия сохраняется за счёт размера/веса. */
+  --text-tertiary: #636369;
   /* On-color tokens stay the same in light theme — colored gradients
      (blue/green/gold) are bright in both modes, so contrast holds. */
   --text-on-accent: #FFFFFF;
@@ -232,6 +248,16 @@
   --on-ok: #FFFFFF;               /* тёмная зелёная заливка → белый текст */
   --on-danger: #FFFFFF;
   --on-red-soft: #FFFFFF;
+  --blue-fill: #1D4ED8;           /* синяя заливка под белый текст */
+  /* «Мягкие» пары (см. :root) — светлая тема: светлый фон + тёмный текст. */
+  --soft-blue: #DCE6FB;   --on-soft-blue: #1D4ED8;
+  --soft-ok: #DCF0E2;     --on-soft-ok: #0E7A3E;
+  --soft-value: #F5E7C8;  --on-soft-value: #6B4909;
+  --soft-danger: #FBE0E4; --on-soft-danger: #B01D33;
+  /* Золотой градиент светлой темы: раньше наследовался тёмный вариант
+     (#c8a84e→#a08030) — и белый текст на нём не читался (2.0–3.9).
+     Теперь светло-золотой под тёмный текст --text-on-gold. */
+  --gold-gradient: linear-gradient(135deg, #E8C868, #C9A03C);
   --ink-icon: #2F3E56;
   --tile-bg: #FFFFFF;
   --tile-hi: #FFFFFF;
@@ -264,7 +290,7 @@
   --secondary: #F7F7FA;
   --secondary-foreground: #1C1C1E;
   --muted: #F7F7FA;
-  --muted-foreground: #6C6C70;
+  --muted-foreground: #636369;
   --accent: #F7F7FA;
   --accent-foreground: #1C1C1E;
   --destructive: #c62828;
@@ -281,8 +307,8 @@
   --field-card-2: #F7F7FA;
   --field-card-3: #EFEFF4;
   --field-text: #1C1C1E;
-  --field-text-2: #6C6C70;
-  --field-text-3: #8E8E93;
+  --field-text-2: #636369;
+  --field-text-3: #636369;
   --field-hairline: rgba(0,0,0,0.08);
   --field-overlay: rgba(255,255,255,0.9);
 }

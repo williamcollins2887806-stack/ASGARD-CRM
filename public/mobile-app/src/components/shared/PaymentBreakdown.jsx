@@ -110,8 +110,8 @@ export function PaymentBreakdown({ open, onClose, worker, params }) {
           <div
             className="text-[12px] px-3 py-2 rounded-lg"
             style={{
-              background: 'color-mix(in srgb, var(--red-soft) 14%, transparent)',
-              color: 'var(--red-soft)',
+              background: 'var(--soft-danger)',
+              color: 'var(--on-soft-danger)',
             }}
           >
             {error}
@@ -336,7 +336,7 @@ export function PaymentBreakdown({ open, onClose, worker, params }) {
                             className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full"
                             style={{
                               background: `color-mix(in srgb, ${m.color} 14%, transparent)`,
-                              color: m.color,
+                              color: 'var(--text-primary)',
                             }}
                           >
                             {m.icon} {m.label}

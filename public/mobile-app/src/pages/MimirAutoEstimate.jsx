@@ -525,7 +525,7 @@ export default function MimirAutoEstimate() {
               border: '0.5px solid color-mix(in srgb, var(--red-soft) 35%, var(--border-norse))',
             }}
           >
-            <p className="text-[13px] font-semibold mb-1" style={{ color: 'var(--red-soft)' }}>Ошибка</p>
+            <p className="text-[13px] font-semibold mb-1" style={{ color: 'var(--danger-ink)' }}>Ошибка</p>
             <p className="text-[12px] c-secondary">{error}</p>
           </div>
         )}
@@ -586,7 +586,7 @@ export default function MimirAutoEstimate() {
               background: composerText.trim()
                 ? 'var(--gold-gradient)'
                 : 'var(--bg-elevated)',
-              color: '#fff',
+              color: 'var(--text-on-gold)',
               opacity: chatLoading ? 0.5 : 1,
             }}
           >

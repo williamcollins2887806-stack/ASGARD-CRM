@@ -21,9 +21,9 @@ import { SkeletonCard } from '@/components/shared/SkeletonKit';
  */
 
 const ROWS = [
-  { key: 'invoices', icon: '📄', label: 'Счета',   accent: 'var(--blue)' },
-  { key: 'payouts',  icon: '💰', label: 'Выплаты', accent: 'var(--gold)' },
-  { key: 'cash',     icon: '💵', label: 'Касса',   accent: 'var(--green)' },
+  { key: 'invoices', icon: '📄', label: 'Счета',   accent: 'var(--blue-fill)',  ink: 'var(--text-on-accent)' },
+  { key: 'payouts',  icon: '💰', label: 'Выплаты', accent: 'var(--gold-fill)',  ink: 'var(--text-on-gold)' },
+  { key: 'cash',     icon: '💵', label: 'Касса',   accent: 'var(--ok)',         ink: 'var(--on-ok)' },
 ];
 
 export default function DirectorQueuesWidget() {
@@ -172,7 +172,7 @@ export default function DirectorQueuesWidget() {
                   {has && (
                     <span style={{
                       minWidth: 18, height: 18, padding: '0 5px', borderRadius: 9,
-                      background: r.accent, color: '#0b0b0b',
+                      background: r.accent, color: r.ink,
                       fontSize: 11, fontWeight: 800,
                       display: 'grid', placeItems: 'center',
                     }}>

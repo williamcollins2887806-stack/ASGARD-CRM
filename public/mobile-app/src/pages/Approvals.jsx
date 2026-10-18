@@ -16,7 +16,7 @@ const ACTIONS = [
   { id: 'approved', label: 'Да', icon: Check, color: 'var(--green)', needComment: false },
   { id: 'rework',   label: 'Доработка', icon: RotateCcw, color: 'var(--gold)', needComment: true },
   { id: 'question', label: 'Вопрос', icon: HelpCircle, color: 'var(--blue)', needComment: true },
-  { id: 'rejected', label: 'Нет', icon: X, color: 'var(--red-soft)', needComment: true },
+  { id: 'rejected', label: 'Нет', icon: X, color: 'var(--danger-ink)', needComment: true },
 ];
 
 export default function Approvals() {
@@ -146,7 +146,7 @@ export default function Approvals() {
                         className="flex-1 flex items-center justify-center gap-1 py-2 rounded-xl text-[12px] font-semibold spring-tap"
                         style={{
                           background: `color-mix(in srgb, ${a.color} 12%, transparent)`,
-                          color: a.color,
+                          color: 'var(--text-primary)',
                         }}
                       >
                         <a.icon size={14} />
@@ -233,7 +233,7 @@ function ApprovalDetailSheet({ estimate, tender, onClose, onAction }) {
             {f.color ? (
               <span
                 className="status-badge px-2.5 py-1 text-[12px] inline-block"
-                style={{ background: `color-mix(in srgb, ${f.color} 15%, transparent)`, color: f.color }}
+                style={{ background: `color-mix(in srgb, ${f.color} 15%, transparent)`, color: 'var(--text-primary)' }}
               >
                 {f.value}
               </span>
@@ -252,7 +252,7 @@ function ApprovalDetailSheet({ estimate, tender, onClose, onAction }) {
               className="flex-1 flex items-center justify-center gap-1 py-2.5 rounded-xl text-[13px] font-semibold spring-tap"
               style={{
                 background: `color-mix(in srgb, ${a.color} 15%, transparent)`,
-                color: a.color,
+                color: 'var(--text-primary)',
               }}
             >
               <a.icon size={16} />

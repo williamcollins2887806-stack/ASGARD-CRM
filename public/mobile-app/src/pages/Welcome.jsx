@@ -147,7 +147,7 @@ export default function Welcome() {
             fontSize: 11,
             letterSpacing: 4,
             fontWeight: 500,
-            color: 'rgba(255,255,255,0.45)',
+            color: 'rgba(255,255,255,0.62)',
             textTransform: 'uppercase',
             opacity: mounted ? 1 : 0,
             transform: mounted ? 'translateY(0)' : 'translateY(12px)',
@@ -217,7 +217,7 @@ export default function Welcome() {
 
         <p
           className="text-[10px] font-medium tracking-wider uppercase mt-2"
-          style={{ color: 'rgba(255,255,255,0.15)' }}
+          style={{ color: 'rgba(255,255,255,0.6)' }}
         >
           ASGARD Mobile v2.0.0
         </p>
@@ -272,22 +272,20 @@ export default function Welcome() {
           0%, 100% { transform: scale(1); opacity: 0.5; }
           50%      { transform: scale(1.15); opacity: 0; }
         }
+        /* Экран входа — бренд-сплэш: он ТЁМНЫЙ в обеих темах (фон #050508 выше,
+           тексты жёстко белые). Светлая пастель заливала фон и делала белый текст
+           невидимым (1.12–1.54). В светлой теме лишь слегка проявляем орбы. */
         .light .welcome-aurora {
-          background: linear-gradient(-45deg,
-            #e8eaf6, #c5cae9, #e1bee7, #bbdefb,
-            #d1c4e9, #e8eaf6, #c5cae9, #e1bee7
-          );
-          background-size: 400% 400%;
-          animation: welcomeAuroraShift 25s ease infinite;
+          opacity: .55;
         }
         .light .welcome-orb-blue {
-          background: radial-gradient(circle, rgba(30,77,140,0.1), transparent 70%);
+          background: radial-gradient(circle, rgba(30,77,140,0.14), transparent 70%);
         }
         .light .welcome-orb-red {
-          background: radial-gradient(circle, rgba(200,41,59,0.07), transparent 70%);
+          background: radial-gradient(circle, rgba(200,41,59,0.1), transparent 70%);
         }
         .light .welcome-orb-gold {
-          background: radial-gradient(circle, rgba(212,168,67,0.1), transparent 70%);
+          background: radial-gradient(circle, rgba(212,168,67,0.14), transparent 70%);
         }
       `}</style>
     </div>

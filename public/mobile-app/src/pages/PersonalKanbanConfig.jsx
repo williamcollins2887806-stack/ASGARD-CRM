@@ -383,19 +383,19 @@ export default function PersonalKanbanConfig() {
           className="rounded-2xl p-3 mt-1"
           style={{
             background: 'color-mix(in srgb, var(--bg-surface) 70%, transparent)',
-            border: '0.5px solid color-mix(in srgb, var(--gold) 25%, transparent)',
+            border: '0.5px solid var(--soft-value)',
           }}
         >
           <div className="flex items-center gap-2 mb-2">
-            <Sparkles size={14} style={{ color: 'var(--gold)' }} />
+            <Sparkles size={14} style={{ color: 'var(--on-soft-value)' }} />
             <p className="text-[12px] font-semibold c-primary">Готовые шаблоны</p>
           </div>
           <button
             onClick={() => handleLoadTemplate('tkp_prep')}
             className="w-full rounded-xl px-3 py-2.5 text-[13px] font-medium spring-tap text-left"
             style={{
-              background: 'color-mix(in srgb, var(--gold) 12%, transparent)',
-              color: 'var(--gold)',
+              background: 'var(--soft-value)',
+              color: 'var(--on-soft-value)',
               border: '0.5px solid color-mix(in srgb, var(--gold) 35%, transparent)',
             }}
           >
@@ -489,7 +489,7 @@ export default function PersonalKanbanConfig() {
                         className="spring-tap flex items-center justify-center"
                         style={{
                           width: 30, height: 30, borderRadius: 8,
-                          color: 'var(--red-soft)',
+                          color: 'var(--danger-ink)',
                         }}
                       >
                         <Trash2 size={14} />

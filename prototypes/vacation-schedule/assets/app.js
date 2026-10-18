@@ -71,7 +71,7 @@
     var days = Object.keys(S.sel).filter(function (k) { return S.sel[k]; }).sort();
     if (!days.length) return;
     var start = days[0], end = days[days.length - 1];
-    var v = D.validate(D.me.id, start, end, { ignoreId: S.editingId, blocked: D.blockedDays() });
+    var v = D.validate(D.me.id, start, end, { ignoreId: S.editingId, blocked: D.blockedDays(D.me.id) });
     if (!v.ok) { V.toast('Нельзя поставить', v.msg, 'err'); return; }
 
     absorbRejected(start, end);
@@ -168,7 +168,7 @@
             '<button class="btn danger sm" data-vs-decide="' + empId + '|' + r.id + '|reject">' + V.ic('x') + 'Не согласовать</button>' +
           '</div>' : '') +
         '</div>';
-    }).join('') : '<div class="empty-state"><div class="icon">🌴</div><div class="title">Отпусков нет</div></div>';
+    }).join('') : '<div class="empty-state"><div class="icon">' + V.ic('cal') + '</div><div class="title">Отпусков нет</div><div class="hint">Сотрудник ещё не внёс периоды</div></div>';
 
     var ov = document.createElement('div');
     ov.className = 'vsp-ov';
@@ -248,8 +248,10 @@
     var r = list.filter(function (x) { return x.id === periodId; })[0];
     if (r) {
       var days = D.expand(r.start, r.end);
-      if (!S.blocked) S.blocked = {};
-      days.forEach(function (d) { S.blocked[d] = true; });
+      // Блокируем снятые дни ТОЛЬКО у этого сотрудника — чужие отпуска не задеты
+      if (!S.blockedByEmp) S.blockedByEmp = {};
+      if (!S.blockedByEmp[empId]) S.blockedByEmp[empId] = {};
+      days.forEach(function (d) { S.blockedByEmp[empId][d] = true; });
       r.status = 'rejected'; r.reason = txt; r.decided_by = 'Кудряшов О.С.';
       D.REJECTED.push({ empId: empId, periodId: periodId, days: days, reason: txt, by: 'Кудряшов О.С.', byId: D.ME_DIRECTOR, at: 'сегодня' });
     }
@@ -415,7 +417,18 @@
   try { savedTheme = localStorage.getItem('vs-theme') || 'dark'; } catch (_) {}
   setTheme(savedTheme);
   if (!location.hash) location.hash = '#me';
+  decorateSidebar();
   render();
+
+  /** Сайдбар прототипа: SVG-иконки вместо эмодзи. */
+  function decorateSidebar() {
+    var mark = document.getElementById('vsBrandMark');
+    if (mark) mark.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2.6 4.5 6v6.2c0 4.4 3.1 8 7.5 9.2 4.4-1.2 7.5-4.8 7.5-9.2V6z"/><path d="M12 8.2v5.4M9.3 10.9h5.4"/></svg>';
+    Array.prototype.forEach.call(document.querySelectorAll('.side__item [data-ic]'), function (el) {
+      el.innerHTML = V.IC[el.getAttribute('data-ic')] || '';
+      el.classList.add('vsp-ic');
+    });
+  }
 
   window.VS_APP = { setTheme: setTheme, render: render };
 })();

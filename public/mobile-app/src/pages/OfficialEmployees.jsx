@@ -23,6 +23,7 @@ export default function OfficialEmployees() {
   const [employees, setEmployees] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [actionError, setActionError] = useState(null);
   const [detail, setDetail] = useState(null);
 
   // Edit form
@@ -34,6 +35,7 @@ export default function OfficialEmployees() {
   const fetchData = useCallback(async () => {
     setLoading(true);
     setError(null);
+    setActionError(null);
     try {
       const res = await api.get('/payroll-dashboard/official-employees');
       setEmployees(api.extractRows(res) || []);
@@ -70,7 +72,7 @@ export default function OfficialEmployees() {
       await fetchData();
     } catch (e) {
       haptic.error();
-      setError(e.message);
+      setActionError(e.message || 'Не удалось сохранить');
     } finally {
       setSaving(false);
     }
@@ -79,6 +81,9 @@ export default function OfficialEmployees() {
   return (
     <PageShell title="Официально устроенные">
       <PullToRefresh onRefresh={fetchData}>
+        {actionError && (
+          <div className="mb-3 text-[12px] rounded-xl px-3 py-2" style={{ background: 'var(--err-bg)', color: 'var(--err-t)' }}>{actionError}</div>
+        )}
         {loading ? <SkeletonList count={5} /> : error ? (
           <EmptyState icon={ShieldAlert} iconColor="var(--err-t)" iconBg="color-mix(in srgb, var(--err-t) 10%, transparent)"
             title="Нет доступа или ошибка" description={String(error)} />
@@ -154,7 +159,7 @@ export default function OfficialEmployees() {
             </div>
             <button onClick={handleSave} disabled={saving}
               className="w-full py-3 rounded-xl font-semibold text-sm disabled:opacity-50"
-              style={{ background: 'linear-gradient(135deg, var(--green), var(--ok))', color: '#fff' }}>
+              style={{ background: 'linear-gradient(135deg, var(--ok), var(--ok))', color: 'var(--on-ok)' }}>
               {saving ? 'Сохраняю...' : '💾 Сохранить'}
             </button>
           </div>

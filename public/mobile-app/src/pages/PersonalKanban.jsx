@@ -514,7 +514,7 @@ export default function PersonalKanban() {
                 <button
                   onClick={() => { haptic.light(); navigate('/personal-kanban-config'); }}
                   className="spring-tap rounded-xl px-5 py-2.5 text-[14px] font-semibold"
-                  style={{ background: 'var(--gold-gradient)', color: '#fff' }}
+                  style={{ background: 'var(--gold-fill)', color: 'var(--text-on-gold)' }}
                 >
                   Создать подэтап →
                 </button>
@@ -678,7 +678,7 @@ export default function PersonalKanban() {
               right: 16,
               bottom: 'calc(var(--tabbar-total) + 16px)',
               background: 'var(--gold-gradient)',
-              color: '#fff',
+              color: 'var(--text-on-gold)',
               fontWeight: 600,
               fontSize: 14,
               boxShadow: 'var(--shadow-lg), var(--shadow-gold)',
@@ -838,8 +838,8 @@ function KanbanCardItem({ card, color, delayMs, onClick, onPressStart, onPressMo
               <span
                 className="text-[10px] px-1.5 py-0.5 rounded-full"
                 style={{
-                  background: 'color-mix(in srgb, var(--blue) 15%, transparent)',
-                  color: 'var(--blue)',
+                  background: 'var(--soft-blue)',
+                  color: 'var(--on-soft-blue)',
                 }}
               >
                 передано
@@ -903,11 +903,11 @@ function ActionMenuSheet({ open, card, onClose, onMove, onTransfer, onNote, onRe
               <div
                 style={{
                   width: 36, height: 36, borderRadius: 10,
-                  background: 'color-mix(in srgb, var(--gold) 12%, transparent)',
+                  background: 'var(--soft-value)',
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
                 }}
               >
-                <Icon size={18} style={{ color: 'var(--gold)' }} />
+                <Icon size={18} style={{ color: 'var(--on-soft-value)' }} />
               </div>
               <span className="flex-1 text-left text-[15px] font-medium c-primary">{it.label}</span>
               <ChevronRight size={16} className="c-tertiary" />
@@ -976,8 +976,8 @@ function MoveCardSheet({ open, card, substages, onClose, onMove }) {
                         <span
                           className="text-[10px] px-1.5 py-0.5 rounded-full"
                           style={{
-                            background: 'color-mix(in srgb, var(--blue) 15%, transparent)',
-                            color: 'var(--blue)',
+                            background: 'var(--soft-blue)',
+                            color: 'var(--on-soft-blue)',
                           }}
                         >
                           смена статуса
@@ -1122,7 +1122,7 @@ function TransferCardSheet({ open, card, onClose, onTransferred }) {
                   style={{
                     width: 32, height: 32, borderRadius: '50%',
                     background: 'var(--gold-gradient)',
-                    color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    color: 'var(--text-on-gold)', display: 'flex', alignItems: 'center', justifyContent: 'center',
                     fontWeight: 700, fontSize: 12, flexShrink: 0,
                   }}
                 >
@@ -1356,8 +1356,8 @@ function DetailSheet({ open, card, onClose, onMenu, onOpen }) {
             onClick={onMenu}
             className="flex-1 rounded-xl px-4 py-2.5 text-[13px] font-semibold spring-tap"
             style={{
-              background: 'color-mix(in srgb, var(--gold) 14%, transparent)',
-              color: 'var(--gold)',
+              background: 'var(--soft-value)',
+              color: 'var(--on-soft-value)',
               border: '0.5px solid color-mix(in srgb, var(--gold) 35%, transparent)',
             }}
           >
@@ -1492,11 +1492,11 @@ function InboxAppDetailSheet({ open, appId, onClose }) {
                 className="rounded-2xl p-3"
                 style={{
                   background: 'color-mix(in srgb, var(--gold) 7%, transparent)',
-                  border: '0.5px solid color-mix(in srgb, var(--gold) 25%, transparent)',
+                  border: '0.5px solid var(--soft-value)',
                 }}
               >
                 <div className="flex items-center justify-between mb-1.5">
-                  <p className="text-[11px] uppercase tracking-wider" style={{ color: 'var(--gold)' }}>
+                  <p className="text-[11px] uppercase tracking-wider" style={{ color: 'var(--on-soft-value)' }}>
                     Разбор AI
                   </p>
                   {item.ai_confidence != null && (
@@ -1520,13 +1520,13 @@ function InboxAppDetailSheet({ open, appId, onClose }) {
                   <div className="flex gap-2 mt-2 flex-wrap">
                     {item.ai_estimated_budget && (
                       <span className="text-[11px] px-2 py-1 rounded-full"
-                            style={{ background: 'color-mix(in srgb, var(--green) 12%, transparent)', color: 'var(--green)' }}>
+                            style={{ background: 'var(--soft-ok)', color: 'var(--on-soft-ok)' }}>
                         Бюджет: {item.ai_estimated_budget}
                       </span>
                     )}
                     {item.ai_estimated_days && (
                       <span className="text-[11px] px-2 py-1 rounded-full"
-                            style={{ background: 'color-mix(in srgb, var(--blue) 12%, transparent)', color: 'var(--blue)' }}>
+                            style={{ background: 'var(--soft-blue)', color: 'var(--on-soft-blue)' }}>
                         Срок: {item.ai_estimated_days}
                       </span>
                     )}

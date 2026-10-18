@@ -25,7 +25,7 @@ const ST = {
   active: { label: 'ДЕЙСТВУЕТ', color: 'var(--value)' },
   extended: { label: 'ПРОДЛЁН', color: 'var(--acc)' },
   closed: { label: 'ЗАКРЫТ', color: 'var(--text-tertiary)' },
-  cancelled: { label: 'АННУЛИРОВАН', color: 'var(--danger)' },
+  cancelled: { label: 'АННУЛИРОВАН', color: 'var(--danger-ink)' },
 };
 
 const READ_LABELS = {
@@ -127,7 +127,7 @@ export default function FieldPermitDetail() {
         <button type="button" onClick={() => navigate('/field/permits')} className="text-sm mb-4" style={{ color: 'var(--gold)' }}>
           ← Назад
         </button>
-        <div className="rounded-xl p-4 text-sm" style={{ background: 'color-mix(in oklab, var(--danger) 12%, transparent)', color: 'var(--danger)' }}>
+        <div className="rounded-xl p-4 text-sm" style={{ background: 'var(--soft-danger)', color: 'var(--on-soft-danger)' }}>
           {error || 'Наряд не найден'}
         </div>
       </div>
@@ -355,7 +355,7 @@ export default function FieldPermitDetail() {
                   <button
                     type="button"
                     className="text-[10px] font-black underline shrink-0"
-                    style={{ color: 'var(--danger)' }}
+                    style={{ color: 'var(--danger-ink)' }}
                     onClick={() => mark('risks')}
                   >
                     прочитано
@@ -534,9 +534,9 @@ export default function FieldPermitDetail() {
         {needsAck && (
           <div
             className="rounded-2xl p-3.5 space-y-2.5"
-            style={{ border: '1px solid color-mix(in oklab, var(--acc) 40%, transparent)', background: 'color-mix(in oklab, var(--acc) 8%, transparent)' }}
+            style={{ border: '1px solid var(--soft-blue)', background: 'color-mix(in oklab, var(--acc) 8%, transparent)' }}
           >
-            <div className="text-xs font-extrabold" style={{ color: 'var(--acc)' }}>
+            <div className="text-xs font-extrabold" style={{ color: 'var(--on-soft-blue)' }}>
               Обязательное ознакомление
             </div>
             <div className="text-xs leading-relaxed" style={{ color: 'var(--text-tertiary)' }}>
@@ -553,7 +553,7 @@ export default function FieldPermitDetail() {
               type="button"
               disabled={busy || !allRead}
               className="w-full rounded-xl py-3.5 text-sm font-bold flex items-center justify-center gap-2 disabled:opacity-40"
-              style={{ background: 'var(--acc)', color: '#fff' }}
+              style={{ background: 'var(--blue-fill)', color: 'var(--text-on-accent)' }}
               onClick={() =>
                 run(async () => {
                   await fieldApi.post(`/nd/${id}/ack`, {
@@ -630,7 +630,7 @@ export default function FieldPermitDetail() {
               type="button"
               disabled={busy}
               className="w-full rounded-xl py-2.5 text-xs font-bold"
-              style={{ background: 'color-mix(in oklab, var(--danger) 15%, transparent)', color: 'var(--danger)' }}
+              style={{ background: 'var(--soft-danger)', color: 'var(--on-soft-danger)' }}
               onClick={() =>
                 run(async () => {
                   try {
@@ -657,7 +657,7 @@ export default function FieldPermitDetail() {
             type="button"
             disabled={busy}
             className="w-full rounded-xl py-3 text-sm font-bold flex items-center justify-center gap-2"
-            style={{ background: 'color-mix(in oklab, var(--acc) 12%, transparent)', color: 'var(--acc)', border: '1px solid color-mix(in oklab, var(--acc) 30%, transparent)' }}
+            style={{ background: 'var(--soft-blue)', color: 'var(--on-soft-blue)', border: '1px solid color-mix(in oklab, var(--acc) 30%, transparent)' }}
             onClick={() => run(() => fieldApi.post(`/nd/${id}/extensions`, {}))}
           >
             <Clock size={16} /> Запросить продление
@@ -747,7 +747,7 @@ function fmt(v) {
 function SecHead({ n, title }) {
   return (
     <div className="flex items-baseline gap-2 mb-1">
-      <span className="text-[11px] font-black" style={{ color: 'var(--danger)' }}>
+      <span className="text-[11px] font-black" style={{ color: 'var(--danger-ink)' }}>
         {n}.
       </span>
       <span className="text-[10px] uppercase tracking-wider font-bold" style={{ color: 'var(--text-secondary)' }}>
@@ -764,7 +764,7 @@ function PaperSec({ n, title, text, gate, opened, onOpen }) {
       <div className="flex items-center justify-between gap-2 mb-1">
         <SecHead n={n} title={title} />
         {gate && !opened && (
-          <button type="button" className="text-[10px] font-black underline shrink-0" style={{ color: 'var(--danger)' }} onClick={onOpen}>
+          <button type="button" className="text-[10px] font-black underline shrink-0" style={{ color: 'var(--danger-ink)' }} onClick={onOpen}>
             открыть
           </button>
         )}

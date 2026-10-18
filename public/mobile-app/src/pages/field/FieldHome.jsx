@@ -147,9 +147,12 @@ function MlspStayBanner({ stay }) {
   if (!stay?.is_open) return null;
   const hot = stay.is_overdue || (stay.days_left != null && stay.days_left <= 7);
   const warn = !hot && stay.days_left != null && stay.days_left <= 14;
-  const tone = hot ? 'var(--danger, var(--danger))' : warn ? 'var(--warning, var(--value))' : 'var(--success, var(--ok))';
-  const bg = hot ? 'color-mix(in oklab, var(--danger) 12%, transparent)' : warn ? 'color-mix(in oklab, var(--danger) 12%, transparent)' : 'color-mix(in oklab, var(--ok) 10%, transparent)';
-  const bd = hot ? 'color-mix(in oklab, var(--danger) 35%, transparent)' : warn ? 'color-mix(in oklab, var(--danger) 35%, transparent)' : 'color-mix(in oklab, var(--ok) 30%, transparent)';
+  const tone = hot ? 'var(--danger-ink)' : warn ? 'var(--danger-ink)' : 'var(--ok)';
+  /* Сплошной фон вместо цветного тинта: тинт 12 % давал 4.23 в тёмной теме
+     (текст 12 px — порог 4.5). На --bg-elevated контраст 4.67/6.84 независимо
+     от того, что просвечивает сквозь карточку. Акцент — рамкой и цветом текста. */
+  const bg = 'var(--bg-elevated)';
+  const bd = hot ? 'color-mix(in oklab, var(--danger) 45%, transparent)' : warn ? 'color-mix(in oklab, var(--danger) 45%, transparent)' : 'color-mix(in oklab, var(--ok) 40%, transparent)';
   return (
     <div className="mt-3 rounded-lg px-3 py-2" style={{ backgroundColor: bg, border: `1px solid ${bd}` }}>
       <p className="text-xs font-semibold uppercase tracking-wide" style={{ color: tone }}>
@@ -700,12 +703,12 @@ export default function FieldHome() {
           >×</button>
           <div style={{
             width: 48, height: 48, borderRadius: 14, flexShrink: 0,
-            background: 'color-mix(in oklab, var(--ok) 18%, transparent)',
-            border: '1px solid color-mix(in oklab, var(--ok) 45%, transparent)',
-            display: 'grid', placeItems: 'center', color: 'var(--ok)',
+            background: 'var(--soft-ok)',
+            border: '1px solid var(--soft-ok)',
+            display: 'grid', placeItems: 'center', color: 'var(--on-soft-ok)',
           }}><Wrench size={24} strokeWidth={2} /></div>
           <div style={{ flex: 1, minWidth: 0, paddingRight: 20 }}>
-            <p style={{ fontSize: 11, fontWeight: 800, letterSpacing: '.14em', color: 'var(--ok)', marginBottom: 4 }}>
+            <p style={{ fontSize: 11, fontWeight: 800, letterSpacing: '.14em', color: 'var(--on-soft-ok)', marginBottom: 4 }}>
               ИГРА СНОВА РАБОТАЕТ
             </p>
             <p style={{ fontSize: 15, fontWeight: 800, color: 'var(--text-primary)', marginBottom: 4, lineHeight: 1.25 }}>
@@ -871,9 +874,9 @@ export default function FieldHome() {
       {/* Error toast */}
       {error && (
         <div className="flex items-center gap-2 rounded-xl px-4 py-3 mb-4"
-          style={{ backgroundColor: 'color-mix(in oklab, var(--danger) 12%, transparent)', border: '1px solid color-mix(in oklab, var(--danger) 30%, transparent)' }}>
+          style={{ backgroundColor: 'var(--soft-danger)', border: '1px solid color-mix(in oklab, var(--danger) 30%, transparent)' }}>
           <AlertCircle size={18} color="var(--danger)" />
-          <span className="text-sm" style={{ color: 'var(--danger)' }}>{error}</span>
+          <span className="text-sm" style={{ color: 'var(--on-soft-danger)' }}>{error}</span>
         </div>
       )}
 
@@ -940,9 +943,9 @@ export default function FieldHome() {
       {/* Планируемое привлечение */}
       {plannedEngagement && (
         <div className="rounded-xl p-4 mb-4"
-          style={{ backgroundColor: 'var(--bg-elevated)', border: '1px solid color-mix(in oklab, var(--acc) 35%, transparent)' }}>
+          style={{ backgroundColor: 'var(--bg-elevated)', border: '1px solid var(--soft-blue)' }}>
           <div className="flex items-center gap-2 mb-2">
-            <ClipboardList size={16} style={{ color: 'var(--acc)' }} />
+            <ClipboardList size={16} style={{ color: 'var(--on-soft-blue)' }} />
             <span className="text-xs font-medium uppercase tracking-wide" style={{ color: 'var(--acc)' }}>
               Планируемое привлечение
             </span>
@@ -977,12 +980,12 @@ export default function FieldHome() {
           not_ready: { ic: BedDouble, label: 'Пока отдыхаю',     sub: 'Не готов к выезду',          col: 'var(--value)' },
           on_site:   { ic: HardHat, label: 'На объекте',         sub: 'В строю на работе',          col: 'var(--acc)' },
           archive:   { ic: Archive, label: 'В архиве',           sub: '',                           col: 'var(--text-tertiary)' },
-          unknown:   { ic: HelpCircle, label: 'Готов на объект?', sub: 'Отметь свою готовность',    col: 'var(--danger)' },
+          unknown:   { ic: HelpCircle, label: 'Готов на объект?', sub: 'Отметь свою готовность',    col: 'var(--danger-ink)' },
         };
         const r = RS[readinessStatus] || RS.unknown;
         // Если чек-ин заблокирован непройденным уроком — не показываем «зелёное» противоречие
         const blockedByAcademy = academyAlert?.type === 'blocked' && !isActive;
-        const shown = blockedByAcademy ? { ...r, col: 'var(--danger)', sub: 'Пройди обязательный урок' } : r;
+        const shown = blockedByAcademy ? { ...r, col: 'var(--danger-ink)', sub: 'Пройди обязательный урок' } : r;
         return (
           <button onClick={() => { haptic.light(); navigate('/field/readiness'); }}
             className="w-full rounded-xl p-4 mb-4 flex items-center gap-3 text-left"
@@ -1280,8 +1283,8 @@ export default function FieldHome() {
             <div className="flex items-center gap-3">
                 <span style={{ color: 'var(--value-ink)' }}><TrophyIcon size={30} strokeWidth={2.1} aria-hidden /></span>
               <div>
-                <p className="text-xs font-semibold uppercase tracking-wide" style={{ color: 'color-mix(in oklab, var(--value) 70%, transparent)' }}>Мой рейтинг</p>
-                <p className="text-lg font-bold" style={{ color: 'var(--value)' }}>#{myRank.rank} из {myRank.total}</p>
+                <p className="text-xs font-semibold uppercase tracking-wide" style={{ color: 'var(--soft-value)' }}>Мой рейтинг</p>
+                <p className="text-lg font-bold" style={{ color: 'var(--on-soft-value)' }}>#{myRank.rank} из {myRank.total}</p>
                 <p className="text-xs" style={{ color: 'color-mix(in oklab, var(--text-primary) 50%, transparent)' }}>
                   {myRank.rank_title?.icon} {myRank.rank_title?.title} · {myRank.earned_runes} ᚱ заработано
                 </p>
@@ -1412,7 +1415,7 @@ export default function FieldHome() {
                   background: 'color-mix(in srgb, var(--danger, var(--danger)) 10%, transparent)',
                   border: '1px solid color-mix(in srgb, var(--danger, var(--danger)) 28%, transparent)',
                 }}>
-                <p className="text-xs font-semibold mb-1" style={{ color: 'var(--danger, var(--danger))' }}>
+                <p className="text-xs font-semibold mb-1" style={{ color: 'var(--danger-ink)' }}>
                   Обязательно заполнить
                 </p>
                 <ul className="text-sm space-y-0.5" style={{ color: 'var(--text-primary)' }}>
@@ -1472,9 +1475,9 @@ export default function FieldHome() {
                   }}
                   className="flex-1 py-3.5 rounded-xl font-semibold text-sm active:scale-95 transition-transform"
                   style={{
-                    background: 'color-mix(in srgb, var(--gold) 15%, transparent)',
+                    background: 'var(--soft-value)',
                     border: '1px solid color-mix(in srgb, var(--gold) 35%, transparent)',
-                    color: 'var(--gold)',
+                    color: 'var(--on-soft-value)',
                   }}
                 >
                   Есть изменения

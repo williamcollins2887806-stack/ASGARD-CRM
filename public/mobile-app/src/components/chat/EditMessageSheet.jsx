@@ -98,7 +98,7 @@ export function EditMessageSheet({ message, onSave, onClose }) {
             className="btn-action"
             style={{
               background: 'var(--gold-gradient)',
-              color: '#fff',
+              color: 'var(--text-on-gold)',
             }}
             disabled={!text.trim() || text.trim() === message?.message}
           >

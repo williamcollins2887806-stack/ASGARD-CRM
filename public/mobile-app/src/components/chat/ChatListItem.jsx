@@ -200,8 +200,8 @@ export function ChatListItem({ chat, onPin, onMute, onArchive }) {
                   minWidth: 20,
                   height: 20,
                   padding: '0 6px',
-                  background: chat.is_muted ? 'var(--text-tertiary)' : 'var(--blue)',
-                  color: '#fff',
+                  background: chat.is_muted ? 'var(--text-tertiary)' : 'var(--blue-fill)',
+                  color: 'var(--text-on-accent)',
                   justifyContent: 'center',
                 }}
               >

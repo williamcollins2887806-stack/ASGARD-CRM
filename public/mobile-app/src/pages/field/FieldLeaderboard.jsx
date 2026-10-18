@@ -595,7 +595,7 @@ export default function FieldLeaderboard() {
       <div style={{ padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 10 }}>
 
         {error && (
-          <div style={{ padding: 12, borderRadius: 12, background: 'color-mix(in oklab, var(--danger) 10%, transparent)', color: 'var(--danger)', fontSize: 13 }}>{error}</div>
+          <div style={{ padding: 12, borderRadius: 12, background: 'var(--soft-danger)', color: 'var(--on-soft-danger)', fontSize: 13 }}>{error}</div>
         )}
 
         {loading ? <Skeleton /> : (

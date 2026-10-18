@@ -22,12 +22,12 @@ const STATUS_MAP = {
   received:     { label: 'Получено',        color: 'var(--green)' },
   reporting:    { label: 'На отчёте',       color: 'var(--gold)' },
   closed:       { label: 'Закрыто',         color: 'var(--green)' },
-  rejected:     { label: 'Отклонено',       color: 'var(--red-soft)' },
+  rejected:     { label: 'Отклонено',       color: 'var(--danger-ink)' },
   question:     { label: 'Вопрос',          color: 'var(--gold)' },
   // handover-статусы:
   pending:      { label: 'Ожидает подтв.',  color: 'var(--blue)' },
   partial:      { label: 'Частично',        color: 'var(--gold)' },
-  not_received: { label: 'Не получено',     color: 'var(--red-soft)' },
+  not_received: { label: 'Не получено',     color: 'var(--danger-ink)' },
   cancelled:    { label: 'Отменено',        color: 'var(--text-tertiary)' },
 };
 
@@ -411,7 +411,7 @@ export default function Cash() {
                         className="px-2 py-0.5 rounded-full text-[10px] font-semibold"
                         style={{
                           background: `color-mix(in srgb, ${srcMeta.color} 14%, transparent)`,
-                          color: srcMeta.color,
+                          color: 'var(--text-primary)',
                         }}
                       >
                         {srcMeta.icon} {srcMeta.label}
@@ -422,7 +422,7 @@ export default function Cash() {
                       className="px-2 py-0.5 rounded-full text-[10px] font-semibold"
                       style={{
                         background: `color-mix(in srgb, ${st.color} 14%, transparent)`,
-                        color: st.color,
+                        color: 'var(--text-primary)',
                       }}
                     >
                       {st.label}
@@ -430,7 +430,7 @@ export default function Cash() {
                     {item.use_se_payee && (
                       <span
                         className="px-2 py-0.5 rounded-full text-[10px] font-semibold"
-                        style={{ background: 'color-mix(in srgb, var(--green) 14%, transparent)', color: 'var(--green)' }}
+                        style={{ background: 'var(--soft-ok)', color: 'var(--on-soft-ok)' }}
                       >
                         💳 через СЗ
                       </span>
@@ -443,7 +443,7 @@ export default function Cash() {
                     {isActionable && (
                       <span
                         className="px-2 py-0.5 rounded-full text-[10px] font-semibold"
-                        style={{ background: 'color-mix(in srgb, var(--gold) 14%, transparent)', color: 'var(--gold)' }}
+                        style={{ background: 'var(--soft-value)', color: 'var(--on-soft-value)' }}
                       >
                         Подтвердите получение
                       </span>
@@ -451,7 +451,7 @@ export default function Cash() {
                     {canCloseOut && (
                       <span
                         className="px-2 py-0.5 rounded-full text-[10px] font-semibold"
-                        style={{ background: 'color-mix(in srgb, var(--blue) 14%, transparent)', color: 'var(--blue)' }}
+                        style={{ background: 'var(--soft-blue)', color: 'var(--on-soft-blue)' }}
                       >
                         Чек или возврат
                       </span>
@@ -610,7 +610,7 @@ function ReceiveFromSeSheet({ open, onClose, onCreated }) {
       <div className="flex flex-col gap-3 pb-4">
         {warning && (
           <div className="text-[12px] px-3 py-2 rounded-lg"
-            style={{ backgroundColor: 'color-mix(in srgb, var(--gold) 14%, transparent)', color: 'var(--gold)' }}>
+            style={{ backgroundColor: 'var(--soft-value)', color: 'var(--on-soft-value)' }}>
             ⚠️ {warning}
           </div>
         )}
@@ -755,7 +755,7 @@ function ReceiveFromSeSheet({ open, onClose, onCreated }) {
           className="btn-primary spring-tap mt-1"
           style={{
             opacity: (!canSubmit || saving) ? 0.5 : 1,
-            background: 'linear-gradient(135deg, var(--green), var(--blue))',
+            background: 'linear-gradient(135deg, var(--ok), var(--blue-fill))',
             color: 'var(--text-on-accent)',
           }}
         >

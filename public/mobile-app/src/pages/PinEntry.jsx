@@ -138,7 +138,7 @@ export default function PinEntry() {
         {/* Error / Loading */}
         <div className="h-6 flex items-center">
           {error && (
-            <p className="text-sm" style={{ color: 'var(--red-soft)' }}>
+            <p className="text-sm" style={{ color: 'var(--danger-ink)' }}>
               {error}
             </p>
           )}
@@ -202,8 +202,8 @@ export default function PinEntry() {
           onClick={logout}
           className="flex items-center justify-center gap-2 w-full mt-6 py-3 spring-tap"
         >
-          <LogOut size={16} style={{ color: 'var(--red-soft)' }} />
-          <span className="text-sm font-medium" style={{ color: 'var(--red-soft)' }}>
+          <LogOut size={16} style={{ color: 'var(--danger-ink)' }} />
+          <span className="text-sm font-medium" style={{ color: 'var(--danger-ink)' }}>
             Сменить аккаунт
           </span>
         </button>

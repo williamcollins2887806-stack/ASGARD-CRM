@@ -56,9 +56,9 @@ export default function OfficeExpenses() {
           type="button"
           className="w-full text-left rounded-2xl px-4 py-3 mb-3 spring-tap"
           style={{
-            background: 'color-mix(in srgb, var(--gold) 12%, transparent)',
+            background: 'var(--soft-value)',
             border: '0.5px solid color-mix(in srgb, var(--gold) 28%, transparent)',
-            color: 'var(--gold)',
+            color: 'var(--on-soft-value)',
           }}
           onClick={() => { haptic.light(); navigate('/cash'); }}
         >
@@ -122,7 +122,7 @@ function ExpenseDetailSheet({ expense, onClose }) {
   return (
     <BottomSheet open={!!expense} onClose={onClose} title={e.description || 'Расход'}>
       <div className="flex flex-col gap-3 pb-4">
-        {fields.map((f, i) => <div key={i}><p className="input-label">{f.label}</p>{f.color ? <span className="px-2.5 py-1 rounded-full text-[12px] font-semibold inline-block" style={{ background: `color-mix(in srgb, ${f.color} 15%, transparent)`, color: f.color }}>{f.value}</span> : <p className={`text-[14px] c-primary ${f.full ? 'whitespace-pre-wrap' : ''}`}>{f.value}</p>}</div>)}
+        {fields.map((f, i) => <div key={i}><p className="input-label">{f.label}</p>{f.color ? <span className="px-2.5 py-1 rounded-full text-[12px] font-semibold inline-block" style={{ background: `color-mix(in srgb, ${f.color} 15%, transparent)`, color: 'var(--text-primary)' }}>{f.value}</span> : <p className={`text-[14px] c-primary ${f.full ? 'whitespace-pre-wrap' : ''}`}>{f.value}</p>}</div>)}
       </div>
     </BottomSheet>
   );

@@ -16,7 +16,7 @@ const STATUS_MAP = {
   received:     { label: 'Получено',        color: 'var(--blue)' },
   reporting:    { label: 'На отчёте',       color: 'var(--gold)' },
   closed:       { label: 'Закрыто',         color: 'var(--green)' },
-  rejected:     { label: 'Отклонено',       color: 'var(--red-soft)' },
+  rejected:     { label: 'Отклонено',       color: 'var(--danger-ink)' },
   question:     { label: 'Уточнение',       color: 'var(--gold)' },
 };
 
@@ -179,10 +179,10 @@ export default function CashAdmin() {
                     <ChevronRight size={16} className="c-tertiary" style={{ flexShrink: 0, marginTop: 2 }} />
                   </div>
                   <div className="flex items-center gap-1.5 mt-2 flex-wrap">
-                    <span className="status-badge" style={{ background: `color-mix(in srgb, ${st.color} 15%, transparent)`, color: st.color }}>{st.label}</span>
+                    <span className="status-badge" style={{ background: `color-mix(in srgb, ${st.color} 15%, transparent)`, color: 'var(--text-primary)' }}>{st.label}</span>
                     <span className="text-[12px] font-semibold c-gold">{formatMoney(req.amount || 0)}</span>
                     {req.use_se_payee && (
-                      <span className="status-badge" style={{ background: 'color-mix(in srgb, var(--green) 15%, transparent)', color: 'var(--green)' }}>
+                      <span className="status-badge" style={{ background: 'var(--soft-ok)', color: 'var(--on-soft-ok)' }}>
                         💳 СЗ
                       </span>
                     )}
@@ -257,7 +257,7 @@ function CashAdminDetailSheet({ request, cashBalance, onClose, onApprove, onReje
           <div key={i}>
             <p className="input-label">{f.label}</p>
             {f.color ? (
-              <span className="px-2.5 py-1 rounded-full text-[12px] font-semibold inline-block" style={{ background: `color-mix(in srgb, ${f.color} 15%, transparent)`, color: f.color }}>
+              <span className="px-2.5 py-1 rounded-full text-[12px] font-semibold inline-block" style={{ background: `color-mix(in srgb, ${f.color} 15%, transparent)`, color: 'var(--text-primary)' }}>
                 {f.value}
               </span>
             ) : (
@@ -322,7 +322,7 @@ function CashAdminDetailSheet({ request, cashBalance, onClose, onApprove, onReje
               </div>
             </div>
             {willBeNegative && !useSe && (
-              <div className="error mt-2 flex items-center gap-1.5" style={{ color: 'var(--red)', fontSize: 12, fontWeight: 600 }}>
+              <div className="error mt-2 flex items-center gap-1.5" style={{ color: 'var(--danger-ink)', fontSize: 12, fontWeight: 600 }}>
                 <AlertTriangle size={13} /> Не хватит в кассе!
               </div>
             )}

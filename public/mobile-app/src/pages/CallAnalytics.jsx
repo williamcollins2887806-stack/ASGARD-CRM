@@ -135,7 +135,7 @@ export default function CallAnalytics() {
               {[
                 { label: 'Всего', color: 'var(--blue)', data: chartData.map(d => d.total) },
                 { label: 'Целевые', color: 'var(--green)', data: chartData.map(d => d.target) },
-                { label: 'Пропущ.', color: 'var(--red)', data: chartData.map(d => d.missed) },
+                { label: 'Пропущ.', color: 'var(--danger-ink)', data: chartData.map(d => d.missed) },
               ].map((s, i) => (
                 <div key={i} className="flex items-center gap-1.5">
                   <div

@@ -133,19 +133,19 @@ export default function ToExecuteWidget() {
                   border: 'none',
                   borderTop: i > 0 ? '0.5px solid var(--border-norse)' : 'none',
                   background: 'transparent',
-                  opacity: has ? 1 : 0.62,
+                  opacity: has ? 1 : 0.9,
                 }}
               >
                 <span style={{ fontSize: 16, flexShrink: 0 }}>{r.icon}</span>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{
                     fontSize: 13.5, fontWeight: has ? 650 : 550,
-                    color: has ? 'var(--text-primary)' : 'var(--text-tertiary)',
+                    color: has ? 'var(--text-primary)' : 'var(--text-secondary)',
                     lineHeight: 1.2,
                   }}>
                     {r.label}
                   </div>
-                  <div style={{ fontSize: 11, color: 'var(--text-tertiary)', marginTop: 1 }}>
+                  <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 1 }}>
                     {has ? `${cell.count} · ${r.hint}` : 'нет'}
                   </div>
                 </div>

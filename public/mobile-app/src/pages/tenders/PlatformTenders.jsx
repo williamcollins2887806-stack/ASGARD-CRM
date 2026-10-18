@@ -94,12 +94,12 @@ export default function PlatformTenders() {
         </p>
 
         {apiOff && (
-          <div className="mb-3 rounded-xl px-3 py-2 text-[13px]" style={{ background: 'color-mix(in srgb, var(--gold) 12%, transparent)', color: 'var(--gold)' }}>
+          <div className="mb-3 rounded-xl px-3 py-2 text-[13px]" style={{ background: 'var(--soft-value)', color: 'var(--on-soft-value)' }}>
             TenderGuru API выключен администратором.
           </div>
         )}
         {noKey && (
-          <div className="mb-3 rounded-xl px-3 py-2 text-[13px]" style={{ background: 'color-mix(in srgb, var(--gold) 12%, transparent)', color: 'var(--gold)' }}>
+          <div className="mb-3 rounded-xl px-3 py-2 text-[13px]" style={{ background: 'var(--soft-value)', color: 'var(--on-soft-value)' }}>
             Не задан TENDERGURU_API_KEY на сервере.
           </div>
         )}

@@ -341,7 +341,7 @@ export default function FieldReadiness() {
       {/* Error message */}
       {error && (
         <Card variant="flat" tone="danger" className="p-4 mb-4 text-center" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-          <AlertTriangle size={24} style={{ color: 'var(--danger)', marginBottom: 8 }} />
+          <AlertTriangle size={24} style={{ color: 'var(--danger-ink)', marginBottom: 8 }} />
           <p className="text-sm font-medium" style={{ color: 'var(--danger-ink)' }}>{error}</p>
         </Card>
       )}

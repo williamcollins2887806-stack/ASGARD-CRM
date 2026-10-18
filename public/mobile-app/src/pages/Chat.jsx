@@ -106,7 +106,7 @@ function EstimateChatItem({ chat }) {
                 fontWeight: 600,
                 padding: '1px 6px',
                 borderRadius: 5,
-                background: `${borderColor}18`,
+                background: `color-mix(in srgb, ${borderColor} 9%, transparent)`,
                 color: borderColor,
                 whiteSpace: 'nowrap',
               }}
@@ -123,8 +123,8 @@ function EstimateChatItem({ chat }) {
                   borderRadius: 9,
                   fontSize: 11,
                   fontWeight: 700,
-                  background: 'var(--blue)',
-                  color: '#fff',
+                  background: 'var(--blue-fill)',
+                  color: 'var(--text-on-accent)',
                 }}
               >
                 {chat.unread_count > 99 ? '99+' : chat.unread_count}
@@ -159,8 +159,8 @@ function TabBar({ active, onSelect, unreadCounts }) {
             style={{
               fontSize: 13,
               fontWeight: isActive ? 700 : 500,
-              color: isActive ? color : 'var(--text-tertiary)',
-              background: isActive ? `${color}15` : 'transparent',
+              color: isActive ? 'var(--text-primary)' : 'var(--text-tertiary)',
+              background: isActive ? `color-mix(in srgb, ${color} 12%, transparent)` : 'transparent',
             }}
           >
             {tab.label}
@@ -173,8 +173,8 @@ function TabBar({ active, onSelect, unreadCounts }) {
                   borderRadius: 8,
                   fontSize: 10,
                   fontWeight: 700,
-                  background: tab.key === 'estimates' ? '#D4A843' : 'var(--blue)',
-                  color: '#fff',
+                  background: tab.key === 'estimates' ? 'var(--gold-fill)' : 'var(--blue-fill)',
+                  color: 'var(--text-on-accent)',
                   display: 'inline-flex',
                   alignItems: 'center',
                   justifyContent: 'center',

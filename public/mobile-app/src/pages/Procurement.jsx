@@ -31,7 +31,7 @@ const STATUS_MAP = {
   dir_approved:        { label: 'Директор ✓',         color: 'var(--green)' },
   dir_rework:          { label: 'На доработке',       color: 'var(--gold)' },
   dir_question:        { label: 'Вопрос',             color: 'var(--gold)' },
-  dir_rejected:        { label: 'Отклонена',          color: 'var(--red-soft)' },
+  dir_rejected:        { label: 'Отклонена',          color: 'var(--danger-ink)' },
   paid:                { label: 'Оплачено',           color: 'var(--blue)' },
   partially_delivered: { label: 'Частично',           color: 'var(--gold)' },
   delivered:           { label: 'Доставлено',         color: 'var(--green)' },
@@ -45,14 +45,14 @@ const ITEM_STATUS_MAP = {
   ordered:   { label: 'Заказана',     color: 'var(--blue)' },
   shipped:   { label: 'В пути',       color: 'var(--gold)' },
   delivered: { label: 'Доставлена',   color: 'var(--green)' },
-  cancelled: { label: 'Отменена',     color: 'var(--red-soft)' }
+  cancelled: { label: 'Отменена',     color: 'var(--danger-ink)' }
 };
 
 const PRIORITY_MAP = {
   low:    { label: 'Низкий',   color: 'var(--text-tertiary)' },
   normal: { label: 'Обычный',  color: 'var(--blue)' },
   high:   { label: 'Срочно',   color: 'var(--gold)' },
-  urgent: { label: 'Очень срочно', color: 'var(--red-soft)' },
+  urgent: { label: 'Очень срочно', color: 'var(--danger-ink)' },
 };
 
 // 23.06.2026 BUG-FIX (🟡 P-21): добавлен чип "Частично" — статус partially_delivered у
@@ -241,7 +241,7 @@ export default function Procurement() {
                       className="px-2 py-0.5 rounded-full text-[10px] font-semibold"
                       style={{
                         background: `color-mix(in srgb, ${st.color} 15%, transparent)`,
-                        color: st.color,
+                        color: 'var(--text-primary)',
                       }}
                     >
                       {st.label}
@@ -253,7 +253,7 @@ export default function Procurement() {
                         className="px-2 py-0.5 rounded-full text-[10px] font-semibold"
                         style={{
                           background: `color-mix(in srgb, ${pr.color} 15%, transparent)`,
-                          color: pr.color,
+                          color: 'var(--text-primary)',
                         }}
                       >
                         {pr.label}
@@ -556,7 +556,7 @@ function ProcDetailSheet({ request, onClose, userRole, onRefresh }) {
                     className="px-2.5 py-1 rounded-full text-[12px] font-semibold inline-block"
                     style={{
                       background: `color-mix(in srgb, ${f.color} 15%, transparent)`,
-                      color: f.color,
+                      color: 'var(--text-primary)',
                     }}
                   >
                     {f.value}
@@ -614,7 +614,7 @@ function ProcDetailSheet({ request, onClose, userRole, onRefresh }) {
                               className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full"
                               style={{
                                 background: `color-mix(in srgb, ${itSt.color} 15%, transparent)`,
-                                color: itSt.color,
+                                color: 'var(--text-primary)',
                               }}
                             >
                               {itSt.label}
@@ -629,7 +629,7 @@ function ProcDetailSheet({ request, onClose, userRole, onRefresh }) {
                             onClick={() => handleCancelItem(it)}
                             disabled={cancellingId === it.id}
                             className="spring-tap rounded-lg px-2 py-1 text-[10px] font-semibold flex items-center gap-1"
-                            style={{ background: 'rgba(255,92,92,.10)', color: 'var(--red, #ff5c5c)' }}
+                            style={{ background: 'rgba(255,92,92,.10)', color: 'var(--danger-ink)' }}
                           >
                             <X size={11} />
                             {cancellingId === it.id ? 'Отменяю…' : 'Отменить'}
@@ -809,7 +809,7 @@ function ProcDetailSheet({ request, onClose, userRole, onRefresh }) {
                 onClick={() => doActionAsk('dir-reject', 'Отклонить', 'Причина отклонения:')}
                 disabled={!!acting}
                 className="spring-tap rounded-xl px-3 py-2.5 text-[13px] font-semibold"
-                style={{ background: 'rgba(255,92,92,.14)', color: 'var(--red)' }}
+                style={{ background: 'rgba(255,92,92,.14)', color: 'var(--danger-ink)' }}
               >✕ Отклонить</button>
             </div>
           )}
@@ -1226,14 +1226,14 @@ function ReceiveSheet({ open, procId, items, onClose, onDone }) {
               )}
               {doneStats.failed > 0 && (
                 <div className="text-center">
-                  <p className="text-[20px] font-semibold" style={{ color: 'var(--red, #ff5c5c)' }}>{doneStats.failed}</p>
+                  <p className="text-[20px] font-semibold" style={{ color: 'var(--danger-ink)' }}>{doneStats.failed}</p>
                   <p className="text-[10px] c-tertiary">Ошибки</p>
                 </div>
               )}
             </div>
             {errors.length > 0 && (
               <div className="w-full rounded-xl px-3 py-2 text-left" style={{ background: 'rgba(255,92,92,.08)', border: '0.5px solid rgba(255,92,92,.25)' }}>
-                <p className="text-[11px] font-semibold mb-1" style={{ color: 'var(--red, #ff5c5c)' }}>Не приняты:</p>
+                <p className="text-[11px] font-semibold mb-1" style={{ color: 'var(--danger-ink)' }}>Не приняты:</p>
                 {errors.map((e, i) => (
                   <p key={i} className="text-[11px] c-secondary">• {e.name}: {e.err}</p>
                 ))}

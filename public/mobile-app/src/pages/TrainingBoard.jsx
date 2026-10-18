@@ -27,6 +27,7 @@ export default function TrainingBoard() {
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [actionError, setActionError] = useState(null);
   const [detail, setDetail] = useState(null);
   const [uploading, setUploading] = useState(false);
   const [completing, setCompleting] = useState(false);
@@ -34,6 +35,7 @@ export default function TrainingBoard() {
   const fetchData = useCallback(async () => {
     setLoading(true);
     setError(null);
+    setActionError(null);
     try {
       const res = await api.get('/training/pending');
       setItems(api.extractRows(res) || []);
@@ -75,7 +77,7 @@ export default function TrainingBoard() {
         }
       } catch (err) {
         haptic.error();
-        setError(err.message);
+        setActionError(err.message || 'Не удалось загрузить файл');
       } finally {
         setUploading(false);
       }
@@ -93,7 +95,7 @@ export default function TrainingBoard() {
       await fetchData();
     } catch (e) {
       haptic.error();
-      setError(e.message);
+      setActionError(e.message || 'Не удалось завершить обучение');
     } finally {
       setCompleting(false);
     }
@@ -102,6 +104,9 @@ export default function TrainingBoard() {
   return (
     <PageShell title="Обучение и допуски">
       <PullToRefresh onRefresh={fetchData}>
+        {actionError && (
+          <div className="mb-3 text-[12px] rounded-xl px-3 py-2" style={{ background: 'var(--err-bg)', color: 'var(--err-t)' }}>{actionError}</div>
+        )}
         {loading ? <SkeletonList count={5} /> : error ? (
           <EmptyState icon={ShieldAlert} iconColor="var(--err-t)" iconBg="color-mix(in srgb, var(--err-t) 10%, transparent)"
             title={error === 'Нет доступа' || /доступ|403|прав/i.test(String(error)) ? 'Нет доступа' : 'Ошибка загрузки'}
@@ -132,7 +137,7 @@ export default function TrainingBoard() {
                         <span className="text-[10px] font-medium px-2 py-0.5 rounded-full"
                           style={{
                             background: `color-mix(in srgb, ${cfg.color} 15%, transparent)`,
-                            color: cfg.color,
+                            color: 'var(--text-primary)',
                           }}>
                           {cfg.label}
                         </span>
@@ -190,18 +195,18 @@ export default function TrainingBoard() {
                 <button onClick={() => handleUpload(detail.id)} disabled={uploading}
                   className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-sm font-semibold disabled:opacity-50 spring-tap"
                   style={{
-                    background: 'color-mix(in srgb, var(--blue) 15%, transparent)',
+                    background: 'var(--soft-blue)',
                     border: '1px solid color-mix(in srgb, var(--blue) 35%, transparent)',
-                    color: 'var(--blue)',
+                    color: 'var(--on-soft-blue)',
                   }}>
                   <Upload size={16} /> {uploading ? 'Загрузка...' : 'Загрузить файл'}
                 </button>
                 <button onClick={() => handleComplete(detail.id)} disabled={completing}
                   className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-sm font-semibold disabled:opacity-50 spring-tap"
                   style={{
-                    background: 'color-mix(in srgb, var(--green) 15%, transparent)',
+                    background: 'var(--soft-ok)',
                     border: '1px solid color-mix(in srgb, var(--green) 35%, transparent)',
-                    color: 'var(--green)',
+                    color: 'var(--on-soft-ok)',
                   }}>
                   <CheckCircle size={16} /> {completing ? '...' : 'Завершить'}
                 </button>

@@ -10,10 +10,10 @@ import { CalendarDays, ChevronLeft, ChevronRight as ChevRight, Phone } from 'luc
 
 const KIND_MAP = {
   free: { label: 'Свободен', color: 'var(--text-tertiary)', bg: 'transparent' },
-  office: { label: 'Офис', color: 'var(--blue)', bg: 'color-mix(in srgb, var(--blue) 20%, transparent)' },
+  office: { label: 'Офис', color: 'var(--on-soft-blue)', bg: 'var(--soft-blue)' },
   trip: { label: 'Командировка', color: '#7B68EE', bg: 'color-mix(in srgb, #7B68EE 20%, transparent)' },
-  work: { label: 'Работа', color: 'var(--green)', bg: 'color-mix(in srgb, var(--green) 20%, transparent)' },
-  note: { label: 'Заметка', color: 'var(--gold)', bg: 'color-mix(in srgb, var(--gold) 20%, transparent)' },
+  work: { label: 'Работа', color: 'var(--on-soft-ok)', bg: 'var(--soft-ok)' },
+  note: { label: 'Заметка', color: 'var(--on-soft-value)', bg: 'var(--soft-value)' },
   reserve: { label: 'Бронь', color: '#7B68EE', bg: 'color-mix(in srgb, #7B68EE 20%, transparent)' },
 };
 
@@ -116,7 +116,7 @@ export default function WorkersSchedule() {
                     <div className="flex-1 min-w-0 text-left">
                       <p className="text-[13px] font-semibold truncate c-primary">{name}</p>
                     </div>
-                    {todayKind.label !== 'Свободен' && <span className="px-2 py-0.5 rounded-full text-[9px] font-semibold shrink-0" style={{ background: `color-mix(in srgb, ${todayKind.color} 15%, transparent)`, color: todayKind.color }}>{todayKind.label}</span>}
+                    {todayKind.label !== 'Свободен' && <span className="px-2 py-0.5 rounded-full text-[9px] font-semibold shrink-0" style={{ background: `color-mix(in srgb, ${todayKind.color} 15%, transparent)`, color: 'var(--text-primary)' }}>{todayKind.label}</span>}
                   </button>
                   {/* Calendar strip */}
                   <div className="overflow-x-auto no-scrollbar px-1 pb-1.5" ref={i === 0 ? scrollRef : undefined}>
@@ -160,7 +160,7 @@ function EmployeeScheduleSheet({ employee, onClose, days, scheduleMap }) {
           <div className="flex gap-2 flex-wrap">
             {Object.entries(counts).map(([k, v]) => {
               const km = KIND_MAP[k] || KIND_MAP.free;
-              return <span key={k} className="px-2.5 py-1 rounded-full text-[11px] font-semibold" style={{ background: `color-mix(in srgb, ${km.color} 15%, transparent)`, color: km.color }}>{km.label}: {v}</span>;
+              return <span key={k} className="px-2.5 py-1 rounded-full text-[11px] font-semibold" style={{ background: `color-mix(in srgb, ${km.color} 15%, transparent)`, color: 'var(--text-primary)' }}>{km.label}: {v}</span>;
             })}
           </div>
         )}
@@ -174,7 +174,7 @@ function EmployeeScheduleSheet({ employee, onClose, days, scheduleMap }) {
               return (
                 <div key={d.date} className="flex items-center justify-between px-3 py-2 rounded-xl" style={{ background: 'var(--bg-surface-alt)', border: '0.5px solid var(--border-norse)' }}>
                   <span className="text-[13px] font-semibold c-primary">{d.num}</span>
-                  <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold" style={{ background: `color-mix(in srgb, ${km.color} 15%, transparent)`, color: km.color }}>{km.label}</span>
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold" style={{ background: `color-mix(in srgb, ${km.color} 15%, transparent)`, color: 'var(--text-primary)' }}>{km.label}</span>
                 </div>
               );
             })}

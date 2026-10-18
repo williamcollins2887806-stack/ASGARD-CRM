@@ -195,11 +195,11 @@ export default function Tenders() {
           <div
             className="mb-3 rounded-xl px-3 py-2 flex items-center justify-between"
             style={{
-              background: 'color-mix(in srgb, var(--gold) 12%, transparent)',
+              background: 'var(--soft-value)',
               border: '0.5px solid color-mix(in srgb, var(--gold) 30%, transparent)',
             }}
           >
-            <span className="text-[13px] font-semibold" style={{ color: 'var(--gold)' }}>
+            <span className="text-[13px] font-semibold" style={{ color: 'var(--on-soft-value)' }}>
               🔥 Только горящие дедлайны
             </span>
             <button type="button" onClick={() => setBurnOnly(false)} className="text-[12px] c-secondary spring-tap">
@@ -242,7 +242,7 @@ export default function Tenders() {
             >
               {tab.label}
               {tab.id === 'submitted' && kpi.in_work > 0 && (
-                <span className="ml-1 px-1 rounded-full text-[10px]" style={{ background: 'var(--blue)', color: '#fff' }}>
+                <span className="ml-1 px-1 rounded-full text-[10px]" style={{ background: 'var(--blue-fill)', color: 'var(--text-on-accent)' }}>
                   {kpi.in_work}
                 </span>
               )}
@@ -324,7 +324,7 @@ export default function Tenders() {
                       <SourceBadge kind={tender.source_kind} label={tender.source_label} />
                     )}
                     {burning && (
-                      <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full" style={{ background: 'color-mix(in srgb, var(--gold) 20%, transparent)', color: 'var(--gold)' }}>
+                      <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full" style={{ background: 'var(--soft-value)', color: 'var(--on-soft-value)' }}>
                         🔥 ≤3д
                       </span>
                     )}

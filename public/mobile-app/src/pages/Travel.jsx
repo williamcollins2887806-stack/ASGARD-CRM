@@ -11,7 +11,7 @@ import { formatDate, formatMoney } from '@/lib/utils';
 import { StatCard, StatRow } from '@/components/shared/StatCard';
 
 function getTripStatus(trip) {
-  if (trip.status === 'cancelled') return { label: 'Отменена', color: 'var(--red-soft)' };
+  if (trip.status === 'cancelled') return { label: 'Отменена', color: 'var(--danger-ink)' };
   const now = new Date();
   const start = new Date(trip.start_date);
   const end = new Date(trip.end_date);
@@ -82,7 +82,7 @@ export default function Travel() {
                   </div>
                   {(trip.purpose || trip.object_name) && <p className="text-[12px] mt-0.5 truncate c-secondary">{trip.purpose || trip.object_name}</p>}
                   <div className="flex items-center gap-1.5 mt-2 flex-wrap">
-                    <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold" style={{ background: `color-mix(in srgb, ${st.color} 15%, transparent)`, color: st.color }}>{st.label}</span>
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold" style={{ background: `color-mix(in srgb, ${st.color} 15%, transparent)`, color: 'var(--text-primary)' }}>{st.label}</span>
                     <span className="flex items-center gap-0.5 text-[10px] c-tertiary"><Calendar size={10} />{formatDate(trip.start_date)} — {formatDate(trip.end_date)}</span>
                     {trip.employee_name && <span className="text-[10px] c-tertiary">{trip.employee_name}</span>}
                   </div>
@@ -116,7 +116,7 @@ function TripDetailSheet({ trip, onClose }) {
   return (
     <BottomSheet open={!!trip} onClose={onClose} title={trip.destination || trip.city || 'Командировка'}>
       <div className="flex flex-col gap-3 pb-4">
-        {fields.map((f, i) => <div key={i}><p className="text-[11px] font-semibold uppercase tracking-wider mb-0.5 c-tertiary">{f.label}</p>{f.color ? <span className="px-2.5 py-1 rounded-full text-[12px] font-semibold inline-block" style={{ background: `color-mix(in srgb, ${f.color} 15%, transparent)`, color: f.color }}>{f.value}</span> : <p className="text-[14px] c-primary">{f.value}</p>}</div>)}
+        {fields.map((f, i) => <div key={i}><p className="text-[11px] font-semibold uppercase tracking-wider mb-0.5 c-tertiary">{f.label}</p>{f.color ? <span className="px-2.5 py-1 rounded-full text-[12px] font-semibold inline-block" style={{ background: `color-mix(in srgb, ${f.color} 15%, transparent)`, color: 'var(--text-primary)' }}>{f.value}</span> : <p className="text-[14px] c-primary">{f.value}</p>}</div>)}
       </div>
     </BottomSheet>
   );

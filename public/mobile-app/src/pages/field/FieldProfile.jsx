@@ -107,7 +107,7 @@ function expiryStatus(ds) {
 const EXP_COLORS = {
   active:   {bg:'#16a34a22',color:'var(--ok)',label:'Действует'},
   expiring: {bg:'#ca8a0422',color:'var(--value)',label:'Истекает'},
-  expired:  {bg:'#dc262622',color:'var(--danger)',label:'Просрочен'},
+  expired:  {bg:'#dc262622',color:'var(--danger-ink)',label:'Просрочен'},
   unknown:  {bg:'#71717a22',color:'#71717a',label:''},
 };
 
@@ -834,9 +834,9 @@ export default function FieldProfile() {
 
           {/* ═══ ПЛАНИРУЕМОЕ ПРИВЛЕЧЕНИЕ ═══════════════════════════════ */}
           {profile?.planned_engagement && (
-            <div className="fs-card" style={{ padding: 16, borderColor: 'color-mix(in oklab, var(--acc) 35%, transparent)' }}>
+            <div className="fs-card" style={{ padding: 16, borderColor: 'var(--soft-blue)' }}>
               <div className="flex items-center gap-2 mb-3">
-                <ClipboardList size={15} style={{ color: 'var(--acc)' }} />
+                <ClipboardList size={15} style={{ color: 'var(--on-soft-blue)' }} />
                 <span className="text-xs font-semibold uppercase tracking-widest" style={{ color: 'var(--acc)' }}>
                   Планируемое привлечение
                 </span>
@@ -863,11 +863,11 @@ export default function FieldProfile() {
           <div className="rounded-xl p-4" style={{ backgroundColor: 'var(--bg-elevated)', border: '1px solid var(--border-norse)' }}>
             <div className="flex items-center justify-between mb-3">
               <div className="flex items-center gap-2">
-                <Award size={15} style={{ color: 'var(--gold)' }} />
+                <Award size={15} style={{ color: 'var(--on-soft-value)' }} />
                 <span className="text-xs font-semibold uppercase tracking-widest" style={{ color: 'var(--text-tertiary)' }}>Подвиги</span>
                 {achievementsData && (
                   <span className="text-xs px-1.5 py-0.5 rounded-full font-bold"
-                    style={{ background: 'color-mix(in srgb, var(--gold) 20%, transparent)', color: 'var(--gold)' }}>
+                    style={{ background: 'var(--soft-value)', color: 'var(--gold)' }}>
                     {achievementsData.earned_count}/{achievementsData.total_count}
                   </span>
                 )}
@@ -1119,7 +1119,7 @@ export default function FieldProfile() {
 
           {/* ═══ LOGOUT ═══════════════════════════════════════════════ */}
           <button className="w-full flex items-center justify-center gap-2 rounded-xl p-4 font-medium text-sm"
-            style={{ backgroundColor: '#dc262615', color: 'var(--danger)', border: '1px solid #dc262630' }} onClick={handleLogout}>
+            style={{ backgroundColor: '#dc262615', color: 'var(--danger-ink)', border: '1px solid #dc262630' }} onClick={handleLogout}>
             <LogOut size={18} /> Выйти из аккаунта
           </button>
 
@@ -1376,7 +1376,7 @@ function PersonalEditSheet({ open, editData, setEditData, editErrors, saveError,
         {saveError && (
           <p className="text-sm rounded-lg px-3 py-2"
             style={{
-              color: 'var(--danger, var(--danger))',
+              color: 'var(--danger-ink)',
               background: 'color-mix(in srgb, var(--danger, var(--danger)) 12%, transparent)',
               border: '1px solid color-mix(in srgb, var(--danger, var(--danger)) 30%, transparent)',
             }}>
@@ -1467,7 +1467,7 @@ function PersonalEditSheet({ open, editData, setEditData, editErrors, saveError,
                     />
                   )}
                   {err && (
-                    <p className="text-xs mt-0.5" style={{ color: 'var(--danger, var(--danger))' }}>{err}</p>
+                    <p className="text-xs mt-0.5" style={{ color: 'var(--danger-ink)' }}>{err}</p>
                   )}
                 </div>
               );

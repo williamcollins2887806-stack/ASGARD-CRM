@@ -11,7 +11,7 @@ import { formatDate, formatMoney } from '@/lib/utils';
 import { StatCard, StatRow } from '@/components/shared/StatCard';
 
 const STATUS_MAP = {
-  unpaid: { label: 'Неоплачен', color: 'var(--red-soft)' },
+  unpaid: { label: 'Неоплачен', color: 'var(--danger-ink)' },
   partial: { label: 'Частично', color: 'var(--gold)' },
   paid: { label: 'Оплачен', color: 'var(--green)' },
   cancelled: { label: 'Отменён', color: 'var(--text-tertiary)' },
@@ -80,7 +80,7 @@ export default function Invoices() {
                   </div>
                   {inv.work_title && <p className="text-[12px] mt-0.5 truncate c-secondary">{inv.work_title}</p>}
                   <div className="flex items-center gap-1.5 mt-2 flex-wrap">
-                    <span className="status-badge" style={{ background: `color-mix(in srgb, ${st.color} 15%, transparent)`, color: st.color }}>{st.label}</span>
+                    <span className="status-badge" style={{ background: `color-mix(in srgb, ${st.color} 15%, transparent)`, color: 'var(--text-primary)' }}>{st.label}</span>
                     {amount > 0 && <span className="flex items-center gap-0.5 text-[10px] c-gold"><DollarSign size={10} />{formatMoney(amount, { short: true })}</span>}
                     {inv.due_date && <span className="text-[10px] c-tertiary">до {formatDate(inv.due_date)}</span>}
                   </div>

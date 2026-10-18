@@ -57,6 +57,8 @@ a { color: var(--blue-l); text-decoration: none; }
   transition: background var(--fast), color var(--fast);
 }
 .side__item em { font-style: normal; font-size: 15px; width: 18px; text-align: center; opacity: .9; }
+.side__item em svg { width: 17px; height: 17px; display: block; }
+.side__mark svg { width: 20px; height: 20px; display: block; }
 .side__item:hover { background: var(--bg3); color: var(--t1); }
 .side__item.is-on {
   background: var(--blue-bg); color: var(--t1);

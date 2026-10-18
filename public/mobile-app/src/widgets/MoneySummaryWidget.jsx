@@ -147,7 +147,7 @@ export default function MoneySummaryWidget() {
 
       {/* Details row */}
       <div className="flex items-center gap-4 mt-3">
-        <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--red-soft)' }}>
+        <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--danger-ink)' }}>
           Расходы: {formatMoney(expenses, { short: true })}
         </span>
         <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--green)' }}>

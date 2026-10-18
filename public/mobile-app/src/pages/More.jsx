@@ -416,8 +416,8 @@ export default function More() {
           onClick={() => { haptic.medium(); logout(); navigate('/login'); }}
           className="w-full flex items-center justify-center gap-2 px-4 py-4 spring-tap"
         >
-          <LogOut size={18} style={{ color: 'var(--red-soft)' }} />
-          <span style={{ fontSize: 15, fontWeight: 600, color: 'var(--red-soft)' }}>
+          <LogOut size={18} style={{ color: 'var(--danger-ink)' }} />
+          <span style={{ fontSize: 15, fontWeight: 600, color: 'var(--danger-ink)' }}>
             Выйти из системы
           </span>
         </button>

@@ -112,7 +112,7 @@ export default function PayoutStatementBanner() {
         </div>
         <div style={{ fontSize: 12.5, color: 'var(--text-secondary)', marginBottom: 12 }}>
           Подтвердите получение — это ваша расписка.
-          {overdue && <span style={{ color: 'var(--red-soft)' }}> Срок (72 ч) истёк, подтвердите.</span>}
+          {overdue && <span style={{ color: 'var(--danger-ink)' }}> Срок (72 ч) истёк, подтвердите.</span>}
         </div>
 
         {/* Расчётная ведомость. По ТЗ заказчика рабочему показываем ТОЛЬКО
@@ -244,4 +244,4 @@ const input = {
   border: '1px solid var(--border-light)', fontSize: 15,
 };
 const lbl = { fontSize: 12, color: 'var(--text-secondary)' };
-const errBox = { color: 'var(--red-soft)', fontSize: 12.5, minHeight: 16, marginBottom: 6 };
+const errBox = { color: 'var(--danger-ink)', fontSize: 12.5, minHeight: 16, marginBottom: 6 };

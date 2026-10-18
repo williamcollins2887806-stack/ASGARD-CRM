@@ -377,7 +377,7 @@ export function MessageBubble({
                       style={{ borderTop: '0.5px solid var(--border-norse)' }}
                       onClick={() => { onDelete?.(msg.id); setShowMenu(false); }}
                     >
-                      <Trash2 size={16} style={{ color: 'var(--red-soft)' }} />
+                      <Trash2 size={16} style={{ color: 'var(--danger-ink)' }} />
                       Удалить
                     </button>
                   </>

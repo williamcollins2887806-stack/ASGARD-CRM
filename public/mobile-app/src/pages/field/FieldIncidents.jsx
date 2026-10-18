@@ -20,8 +20,8 @@ const TYPES = [
 const SEVERITY = [
   { value: 'low', label: 'Незначительный', color: 'var(--value)' },
   { value: 'medium', label: 'Средний', color: 'var(--value)' },
-  { value: 'high', label: 'Серьёзный', color: 'var(--danger)' },
-  { value: 'critical', label: 'Критический', color: 'var(--danger)' },
+  { value: 'high', label: 'Серьёзный', color: 'var(--danger-ink)' },
+  { value: 'critical', label: 'Критический', color: 'var(--danger-ink)' },
 ];
 
 export default function FieldIncidents() {

@@ -251,10 +251,10 @@ function HistoryDetail({ workId, onBack }) {
         {locks.length > 0 && (
           <SlideIn delay={0.14}>
             <div className="rounded-xl px-4 py-3 flex items-center gap-2" style={{
-              backgroundColor: 'color-mix(in oklab, var(--danger) 12%, transparent)',
+              backgroundColor: 'var(--soft-danger)',
               border: '1px solid color-mix(in oklab, var(--danger) 30%, transparent)',
             }}>
-              <Lock size={16} style={{ color: 'var(--danger)' }} />
+              <Lock size={16} style={{ color: 'var(--on-soft-danger)' }} />
               <div className="flex-1 text-xs" style={{ color: 'var(--text-primary)' }}>
                 <span className="font-semibold">🔒 Месяц закрыт</span>
                 {locks[0]?.locked_by_fio && (
@@ -502,7 +502,7 @@ export default function FieldHistory() {
             ))}
       </div>
 
-      {error && <div className="p-3 rounded-lg text-sm" style={{ backgroundColor: 'color-mix(in oklab, var(--danger) 10%, transparent)', color: 'var(--danger)' }}>{error}</div>}
+      {error && <div className="p-3 rounded-lg text-sm" style={{ backgroundColor: 'var(--soft-danger)', color: 'var(--on-soft-danger)' }}>{error}</div>}
 
       {orphan && (
         <button

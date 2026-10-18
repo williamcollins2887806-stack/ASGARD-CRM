@@ -437,7 +437,7 @@ function WorkDetailSheet({ work, onClose }) {
                       </p>
                     )}
                   </div>
-                  <p className="text-[13px] font-semibold shrink-0 ml-2" style={{ color: 'var(--red-soft)' }}>
+                  <p className="text-[13px] font-semibold shrink-0 ml-2" style={{ color: 'var(--danger-ink)' }}>
                     {formatMoney(exp.amount || 0)}
                   </p>
                 </div>

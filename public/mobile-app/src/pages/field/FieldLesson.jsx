@@ -157,14 +157,6 @@ function IllustrationBlock({ block }) {
       margin: '18px 0', borderRadius: 14, overflow: 'hidden',
       border: '1px solid color-mix(in oklab, var(--text-primary) 10%, transparent)', background: '#f4f1ea', position: 'relative',
     }}>
-      {block.badge && (
-        <span style={{
-          position: 'absolute', top: 10, left: 10, zIndex: 2,
-          background: '#1a1a2ee6', border: '1px solid #c8a84b77',
-          color: C.gold, fontSize: 10, fontWeight: 700,
-          padding: '4px 10px', borderRadius: 20, letterSpacing: 0.5,
-        }}>{block.badge}</span>
-      )}
       <img
         src={block.url}
         alt={block.alt || ''}

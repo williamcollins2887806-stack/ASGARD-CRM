@@ -18,7 +18,7 @@ const STATUS_MAP = {
   budget_approved: { label: 'Бюджет одобрен', color: 'var(--green)' },
   paid: { label: 'Оплачено', color: 'var(--green)' },
   completed: { label: 'Завершена', color: 'var(--green)' },
-  rejected: { label: 'Отклонена', color: 'var(--red-soft)' },
+  rejected: { label: 'Отклонена', color: 'var(--danger-ink)' },
 };
 const TYPE_MAP = { external: 'Внешнее', internal: 'Внутреннее', conference: 'Конференция', certification: 'Сертификация', online: 'Онлайн' };
 const FILTERS = [
@@ -73,7 +73,7 @@ export default function Training() {
                     <ChevronRight size={16} className="c-tertiary" style={{ flexShrink: 0, marginTop: 2 }} />
                   </div>
                   <div className="flex items-center gap-1.5 mt-2 flex-wrap">
-                    <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold" style={{ background: `color-mix(in srgb, ${st.color} 15%, transparent)`, color: st.color }}>{st.label}</span>
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold" style={{ background: `color-mix(in srgb, ${st.color} 15%, transparent)`, color: 'var(--text-primary)' }}>{st.label}</span>
                     {item.type && <span className="text-[10px] c-secondary">{TYPE_MAP[item.type] || item.type}</span>}
                     {Number(item.cost) > 0 && <span className="text-[10px] font-semibold c-gold">{formatMoney(item.cost, { short: true })}</span>}
                     {(item.employee_name || item.employee_fio) && <span className="text-[10px] c-tertiary">{item.employee_name || item.employee_fio}</span>}
@@ -106,7 +106,7 @@ function TrainingDetailSheet({ item, onClose, canApprove, onAction }) {
   return (
     <BottomSheet open={!!item} onClose={onClose} title={item.title || item.course_name || 'Обучение'}>
       <div className="flex flex-col gap-3 pb-4">
-        {fields.map((f, i) => <div key={i}><p className="text-[11px] font-semibold uppercase tracking-wider mb-0.5 c-tertiary">{f.label}</p>{f.color ? <span className="px-2.5 py-1 rounded-full text-[12px] font-semibold inline-block" style={{ background: `color-mix(in srgb, ${f.color} 15%, transparent)`, color: f.color }}>{f.value}</span> : <p className={`text-[14px] c-primary ${f.full ? 'whitespace-pre-wrap' : ''}`}>{f.value}</p>}</div>)}
+        {fields.map((f, i) => <div key={i}><p className="text-[11px] font-semibold uppercase tracking-wider mb-0.5 c-tertiary">{f.label}</p>{f.color ? <span className="px-2.5 py-1 rounded-full text-[12px] font-semibold inline-block" style={{ background: `color-mix(in srgb, ${f.color} 15%, transparent)`, color: 'var(--text-primary)' }}>{f.value}</span> : <p className={`text-[14px] c-primary ${f.full ? 'whitespace-pre-wrap' : ''}`}>{f.value}</p>}</div>)}
         {canApprove && item.status === 'pending_approval' && (
           <div className="flex gap-2 mt-2">
             <button onClick={() => onAction(item.id, 'approve')} className="btn-action spring-tap c-green" style={{ background: 'color-mix(in srgb, var(--green) 15%, transparent)' }}><Check size={16} /> Одобрить</button>

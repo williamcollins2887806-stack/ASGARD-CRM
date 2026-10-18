@@ -109,8 +109,8 @@ export default function GanttMiniWidget() {
                     style={{
                       fontSize: 11,
                       fontWeight: 700,
-                      color: 'var(--red)',
-                      backgroundColor: 'color-mix(in srgb, var(--red) 15%, transparent)',
+                      color: 'var(--on-soft-danger)',
+                      backgroundColor: 'var(--soft-danger)',
                       padding: '2px 8px',
                       borderRadius: 999,
                       whiteSpace: 'nowrap',

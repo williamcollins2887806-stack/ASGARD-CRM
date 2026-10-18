@@ -13,7 +13,7 @@ import './field-screens.css';
 
 const STATUS_MAP = {
   issued: { label: 'Выдан', bg: 'color-mix(in oklab, var(--value) 15%, transparent)', color: 'var(--value-ink)' },
-  confirmed: { label: 'Получено', bg: 'color-mix(in oklab, var(--acc) 15%, transparent)', color: 'var(--acc)' },
+  confirmed: { label: 'Получено', bg: 'var(--soft-blue)', color: 'var(--on-soft-blue)' },
   reporting: { label: 'Отчёт', bg: 'color-mix(in oklab, var(--danger) 15%, transparent)', color: 'var(--danger-ink)' },
   closed: { label: 'Закрыто', bg: 'var(--bg-surface-alt)', color: 'var(--text-secondary)' },
 };

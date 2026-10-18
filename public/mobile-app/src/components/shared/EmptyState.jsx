@@ -81,7 +81,7 @@ export function EmptyState({
           className="mt-4 px-4 py-1.5 rounded-full text-xs font-semibold"
           style={{
             background: 'var(--gold-gradient)',
-            color: '#fff',
+            color: 'var(--text-on-gold)',
             animation: 'fadeInUp var(--motion-slow) var(--ease-spring) 300ms both',
             boxShadow: '0 2px 12px rgba(200, 168, 78, 0.3)',
           }}

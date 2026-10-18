@@ -295,7 +295,7 @@ function ItemRow({ item, canPack, onPack, onAssign, assignLabel, onPhoto }) {
           <span className="text-xs" style={{ color: 'var(--text-tertiary)' }}>{Number(item.quantity)} {item.unit}</span>
           <span className="text-[10px] px-1.5 py-0.5 rounded-full" style={{ background: `color-mix(in oklab, ${meta.color} 13%, transparent)`, color: meta.color }}>{meta.label}</span>
           {item.over_received && <span className="text-[10px] px-1.5 py-0.5 rounded-full" style={{ background: 'color-mix(in oklab, var(--danger) 18%, transparent)', color: 'var(--danger-ink)' }}>излишек</span>}
-          {item.photo_filename && <span className="text-[10px] px-1.5 py-0.5 rounded-full" style={{ background: 'color-mix(in oklab, var(--ok) 15%, transparent)', color: 'var(--ok)' }}>фото</span>}
+          {item.photo_filename && <span className="text-[10px] px-1.5 py-0.5 rounded-full" style={{ background: 'var(--soft-ok)', color: 'var(--on-soft-ok)' }}>фото</span>}
         </div>
       </div>
       {onPhoto && canPack && (
@@ -402,7 +402,7 @@ function AddItemSheet({ assemblyId, activePallet, pallets, onClose, onAdded, onE
         {q.trim().length >= 2 && !results.some((r) => r.name.toLowerCase() === q.trim().toLowerCase()) && (
           <button onClick={() => add(q.trim(), null)} disabled={saving}
             className="w-full rounded-xl px-4 py-3.5 mt-1 font-semibold active:scale-[.98] transition flex items-center gap-3"
-            style={{ background: 'color-mix(in oklab, var(--ok) 12%, transparent)', border: '1px dashed color-mix(in oklab, var(--ok) 40%, transparent)', color: 'var(--ok)' }}>
+            style={{ background: 'var(--soft-ok)', border: '1px dashed color-mix(in oklab, var(--ok) 40%, transparent)', color: 'var(--on-soft-ok)' }}>
             <PackagePlus size={20} />
             <span>Создать «{q.trim()}» {qty} {unit}</span>
           </button>

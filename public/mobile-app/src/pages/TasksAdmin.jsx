@@ -15,13 +15,13 @@ const STATUS_MAP = {
   accepted: { label: 'Принята', color: 'var(--blue)' },
   in_progress: { label: 'В работе', color: 'var(--blue)' },
   done: { label: 'Выполнена', color: 'var(--green)' },
-  overdue: { label: 'Просрочена', color: 'var(--red-soft)' },
+  overdue: { label: 'Просрочена', color: 'var(--danger-ink)' },
 };
 const PRIORITY_MAP = {
   low: { label: 'Низкий', color: 'var(--text-tertiary)' },
   normal: { label: 'Обычный', color: 'var(--blue)' },
   high: { label: 'Высокий', color: 'var(--gold)' },
-  urgent: { label: 'Срочный', color: 'var(--red-soft)' },
+  urgent: { label: 'Срочный', color: 'var(--danger-ink)' },
 };
 const FILTERS = [
   { id: 'all', label: 'Все' }, { id: 'new', label: 'Новые' },
@@ -113,8 +113,8 @@ export default function TasksAdmin() {
                     <ChevronRight size={16} className="c-tertiary" style={{ flexShrink: 0, marginTop: 2 }} />
                   </div>
                   <div className="flex items-center gap-1.5 mt-2 flex-wrap">
-                    <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold" style={{ background: `color-mix(in srgb, ${st.color} 15%, transparent)`, color: st.color }}>{st.label}</span>
-                    {task.priority && task.priority !== 'normal' && <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold" style={{ background: `color-mix(in srgb, ${pr.color} 15%, transparent)`, color: pr.color }}>{pr.label}</span>}
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold" style={{ background: `color-mix(in srgb, ${st.color} 15%, transparent)`, color: 'var(--text-primary)' }}>{st.label}</span>
+                    {task.priority && task.priority !== 'normal' && <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold" style={{ background: `color-mix(in srgb, ${pr.color} 15%, transparent)`, color: 'var(--text-primary)' }}>{pr.label}</span>}
                     {task.assignee_name && <span className="text-[10px] c-tertiary">{task.assignee_name}</span>}
                     {task.deadline && <span className="text-[10px] c-tertiary">до {formatDate(task.deadline)}</span>}
                   </div>
@@ -146,7 +146,7 @@ function TaskAdminDetailSheet({ task, onClose, onComplete, onDelete }) {
   return (
     <BottomSheet open={!!task} onClose={onClose} title={t.title || t.text || `Задача #${t.id}`}>
       <div className="flex flex-col gap-3 pb-4">
-        {fields.map((f, i) => <div key={i}><p className="text-[11px] font-semibold uppercase tracking-wider mb-0.5 c-tertiary">{f.label}</p>{f.color ? <span className="px-2.5 py-1 rounded-full text-[12px] font-semibold inline-block" style={{ background: `color-mix(in srgb, ${f.color} 15%, transparent)`, color: f.color }}>{f.value}</span> : <p className={`text-[14px] c-primary ${f.full ? 'whitespace-pre-wrap' : ''}`}>{f.value}</p>}</div>)}
+        {fields.map((f, i) => <div key={i}><p className="text-[11px] font-semibold uppercase tracking-wider mb-0.5 c-tertiary">{f.label}</p>{f.color ? <span className="px-2.5 py-1 rounded-full text-[12px] font-semibold inline-block" style={{ background: `color-mix(in srgb, ${f.color} 15%, transparent)`, color: 'var(--text-primary)' }}>{f.value}</span> : <p className={`text-[14px] c-primary ${f.full ? 'whitespace-pre-wrap' : ''}`}>{f.value}</p>}</div>)}
         {!isDone && (
           <div className="flex gap-2 mt-2">
             <button onClick={() => onComplete(t.id)} className="flex-1 flex items-center justify-center gap-2 py-3 rounded-xl font-semibold text-[14px] spring-tap c-green" style={{ background: 'color-mix(in srgb, var(--green) 15%, transparent)' }}><Check size={16} /> Выполнено</button>

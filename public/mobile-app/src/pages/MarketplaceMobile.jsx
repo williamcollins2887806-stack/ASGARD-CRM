@@ -287,9 +287,9 @@ export default function MarketplaceMobile() {
             <div
               className="rounded-2xl p-3.5"
               style={{
-                background: 'color-mix(in srgb, var(--red-soft) 12%, transparent)',
+                background: 'var(--soft-danger)',
                 border: '0.5px solid color-mix(in srgb, var(--red-soft) 35%, transparent)',
-                color: 'var(--red-soft)',
+                color: 'var(--on-soft-danger)',
                 fontSize: 13,
               }}
             >

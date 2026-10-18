@@ -13,7 +13,7 @@ const ST = {
   active: { label: 'Действует', color: 'var(--value)' },
   extended: { label: 'Продлён', color: 'var(--acc)' },
   closed: { label: 'Закрыт', color: 'var(--text-tertiary)' },
-  cancelled: { label: 'Аннулирован', color: 'var(--danger)' },
+  cancelled: { label: 'Аннулирован', color: 'var(--danger-ink)' },
 };
 
 export default function FieldPermits() {
