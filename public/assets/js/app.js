@@ -311,8 +311,8 @@ console.log('[ASGARD] Global period functions loaded');
     {r:"/procurement",l:"Закупки",d:"Реестр заявок (закупщик)",
  roles:["ADMIN","PROC","BUH","DIRECTOR_GEN","DIRECTOR_COMM","DIRECTOR_DEV"],
  i:"approvals",p:"procurement",g:"resources"},
-    {r:"/my-procurement",l:"Мои заявки",d:"Мои заявки на закупку и их статусы",
- roles:["PM","HEAD_PM","WAREHOUSE"],
+    {r:"/my-procurement",l:"Мои заявки",d:"Заявки на закупку и счета на оплату — подача и статусы",
+ roles:["PM","HEAD_PM","WAREHOUSE","ADMIN","PROC","TO","HEAD_TO","BUH","OFFICE_MANAGER",...DIRECTOR_ROLES],
  i:"approvals",p:"procurement",g:"resources"},
     {r:"/suppliers-catalog",l:"Поставщики и цены",d:"Справочник поставщиков, каталог товаров, база цен",
  roles:["ADMIN","PROC","PM","HEAD_PM","BUH","DIRECTOR_GEN","DIRECTOR_COMM","DIRECTOR_DEV"],
@@ -2427,7 +2427,7 @@ var _setupPinKeypad = null;
     AsgardRouter.add("/pm-balance", ()=>AsgardPmBalancePage.render({layout, title:"Баланс подотчётников"}), {auth:true, roles:["ADMIN","BUH",...DIRECTOR_ROLES]});
     AsgardRouter.add("/pm-balance/:pm_id", ()=>AsgardPmBalancePage.renderDetail({layout, title:"Баланс подотчётников"}), {auth:true, roles:["ADMIN","BUH",...DIRECTOR_ROLES]});
     AsgardRouter.add("/procurement", ()=>AsgardProcurementPage.render({layout, title:"Закупки"}), {auth:true, roles:["ADMIN","PROC","BUH","PM","HEAD_PM","DIRECTOR_GEN","DIRECTOR_COMM","DIRECTOR_DEV"]});
-    AsgardRouter.add("/my-procurement", ()=>AsgardProcurementPage.render({layout, title:"Мои заявки", myScope:true}), {auth:true, roles:["PM","HEAD_PM","WAREHOUSE","ADMIN"]});
+    AsgardRouter.add("/my-procurement", ()=>AsgardProcurementPage.render({layout, title:"Мои заявки", myScope:true}), {auth:true, roles:["PM","HEAD_PM","WAREHOUSE","ADMIN","PROC","TO","HEAD_TO","BUH","OFFICE_MANAGER",...DIRECTOR_ROLES]});
     AsgardRouter.add("/suppliers-catalog", ()=>AsgardSuppliersPage.render({layout, title:"Поставщики и цены"}), {auth:true, roles:["ADMIN","PROC","PM","HEAD_PM","DIRECTOR_GEN","DIRECTOR_COMM","DIRECTOR_DEV","BUH"]});
 AsgardRouter.add("/assembly", () => {
       const h = String(location.hash || '');

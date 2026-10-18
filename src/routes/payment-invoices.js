@@ -240,11 +240,74 @@ async function routes(fastify) {
     return { items: q.rows.map(decoratePayment) };
   });
 
+  /**
+   * V411: «Мои счета на оплату» — для ИНИЦИАТОРА (любая роль).
+   * Заказчик 18.10.2026: сотрудник должен видеть, что стало с его счётом:
+   * у директора → согласован → у бухгалтерии → оплачен / возвращён.
+   * Раньше бэк был, а списка для инициатора НЕ было — он не знал результата.
+   */
+  fastify.get('/my', { preHandler: [fastify.authenticate] }, async (req) => {
+    const r = String(req.user.role || '');
+    const isPriv = ['ADMIN', 'BUH', 'PROC', 'HEAD_PM', 'HEAD_TO'].includes(r) || /^DIRECTOR/.test(r);
+    // Привилегированные видят все (им нужна сводка), остальные — только свои.
+    const all = String((req.query && req.query.all) || '') === '1' && isPriv;
+    const params = [];
+    let where = '';
+    if (!all) { params.push(req.user.id); where = ` WHERE pi.created_by = $1`; }
+    const { rows } = await db.query(
+      `SELECT pi.id, pi.supplier_name, pi.amount, pi.status, pi.payment_status, pi.pay_timing,
+              pi.due_date, pi.created_at, pi.updated_at, pi.invoice_number, pi.invoice_date,
+              pi.basis_text, pi.file_path, pi.file_name, pi.doc_registry_id,
+              pi.contract_basis_number, pi.contract_missing, pi.work_hint, pi.vat_amount,
+              pi.initiator_intent, pi.pp_number, pi.payee_requisites,
+              pi.approval_expires_at, pi.dir_approved_at, pi.buh_acted_at,
+              u.name AS initiator_name,
+              d.work_id AS registry_work_id, w.work_title AS work_title,
+              (SELECT count(*)::int FROM price_records pr WHERE pr.doc_registry_id = pi.doc_registry_id) AS lines_count
+         FROM payment_invoices pi
+         LEFT JOIN users u ON u.id = pi.created_by
+         LEFT JOIN doc_registry d ON d.id = pi.doc_registry_id
+         LEFT JOIN works w ON w.id = d.work_id
+         ${where}
+        ORDER BY
+          CASE pi.status WHEN 'awaiting_dir' THEN 0 WHEN 'pending_payment' THEN 1
+                         WHEN 'rejected' THEN 2 WHEN 'paid' THEN 3 ELSE 4 END,
+          pi.id DESC
+        LIMIT 200`, params);
+    // Человеческий статус для карточки инициатора.
+    const stage = (x) => {
+      if (x.status === 'awaiting_dir') return { code: 'dir', label: 'У директора', cls: 'warn' };
+      if (x.status === 'rejected') return { code: 'rejected', label: 'Возвращён', cls: 'err' };
+      if (x.status === 'expired' || x.status === 'archived') return { code: 'expired', label: 'В архиве (не согласован)', cls: 'muted' };
+      if (x.payment_status === 'paid' || x.status === 'paid') return { code: 'paid', label: 'Оплачен', cls: 'ok' };
+      if (x.status === 'pending_payment') return { code: 'buh', label: 'У бухгалтерии', cls: 'info' };
+      return { code: 'other', label: x.status || '—', cls: 'muted' };
+    };
+    return {
+      items: rows.map((x) => ({
+        ...decoratePayment(x),
+        stage: stage(x),
+        work_title: x.work_title || null,
+        lines_count: x.lines_count || 0,
+        is_mine: Number(x.created_by) === Number(req.user.id)
+      })),
+      total: rows.length
+    };
+  });
+
   fastify.get('/:id', { preHandler: [fastify.authenticate] }, async (req, reply) => {
     const id = parseInt(req.params.id);
     if (isNaN(id)) return reply.code(400).send({ error: 'Неверный ID' });
     const { rows } = await db.query('SELECT * FROM payment_invoices WHERE id=$1', [id]);
     if (!rows[0]) return reply.code(404).send({ error: 'Не найдено' });
+    const pay = rows[0];
+    // Доступ к карточке: автор заявки, директора, бухгалтерия, ADMIN (V411).
+    // Раньше карточку мог открыть любой авторизованный — теперь по принадлежности.
+    const r = String(req.user.role || '');
+    const isPriv = ['ADMIN', 'BUH', 'PROC', 'HEAD_PM', 'HEAD_TO'].includes(r) || /^DIRECTOR/.test(r);
+    if (!isPriv && Number(pay.created_by) !== Number(req.user.id)) {
+      return reply.code(403).send({ error: 'Нет доступа к этой заявке' });
+    }
     // 17.10: «от кого счёт» + связь с реестром/поставщиком — бухгалтеру и директору
     // нужно видеть больше: кто инициатор, что за счёт, реквизиты контрагента.
     const out = decoratePayment(rows[0]);

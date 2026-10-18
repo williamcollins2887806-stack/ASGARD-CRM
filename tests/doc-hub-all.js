@@ -39,6 +39,7 @@ const TESTS = [
   ['Реестр+архив бухгалтерии', 'tests/doc-buh-archive-e2e.js'],
   ['Счёт→заявка→номенклатура', 'tests/doc-hub-intake-nomenclature.js'],
   ['Расход по объекту без дублей', 'tests/expense-dedup.test.js'],
+  ['Мои счета на оплату (инициатор)', 'tests/my-payments.test.js'],
 ];
 
 let totalPass = 0, totalFail = 0; const failed = [];

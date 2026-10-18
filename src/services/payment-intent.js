@@ -89,7 +89,13 @@ function parsePaymentIntent(text, now = new Date()) {
   // и хвосты задаём явными классами, иначе «завтра»/«задерживайте» не находятся.
   const B = '(?:^|[^а-яё])';   // начало слова
   const E = '(?![а-яё])';      // конец слова
-  m = t.match(new RegExp(B + '(срочно|срочн[а-яё]*|как\\s+можно\\s+быстрее|не\\s+задержива[а-яё]*|в\\s+приоритете|немедленно)' + E, 'i'));
+  // V411 (живой счёт 18.10.2026): инициатор пишет «оплата сразу как можно скорее»,
+  // «как можно быстрее», «срочно надо». Прежний шаблон знал только точное «срочно».
+  m = t.match(new RegExp(B + '(срочно|срочн[а-яё]*|как\\s+можно\\s+скоро|как\\s+можно\\s+быстрее|поскорее|побыстрее|не\\s+задержива[а-яё]*|в\\s+приоритете|немедленно|без\\s+задержек)' + E, 'i'));
+  if (m) return set(m, { timing: 'immediate', urgent: true, intent: 'urgent' });
+
+  // V411: «оплата сразу», «оплатить сразу» — тоже немедленная оплата.
+  m = t.match(new RegExp(B + '(?:оплат[аиуыть]*|плат[её]ж)\\s+(?:сразу|немедленно|сегодня\\s+же)' + E, 'i'));
   if (m) return set(m, { timing: 'immediate', urgent: true, intent: 'urgent' });
 
   m = t.match(new RegExp(B + '(сегодня)' + E, 'i'));
@@ -123,6 +129,39 @@ function addRelative(d, n, unit) {
   return d;
 }
 
+/**
+ * V411 (живой счёт 18.10.2026): срок ДОСТАВКИ из тела письма.
+ * Инициатор пишет «доставка в краснодар будет 16.10 включена в стоимость».
+ * Это не срок оплаты — отдельное поле `delivery_due_at` в реестре.
+ * @param {string} text
+ * @param {Date} [now]
+ * @returns {{date:string|null, matched:string|null, note:string|null}}
+ */
+function parseDeliveryHint(text, now = new Date()) {
+  const raw = String(text || '');
+  const t = raw.split(/\n(?=>|—{2,}|_{2,}|От:|From:|Кому:|Тема:)/m)[0] || raw;
+  const out = { date: null, matched: null, note: null };
+  if (!t) return out;
+  // «доставка … 16.10», «поставка 16.10.2026», «товар 16 октября», «отгрузка 20.10».
+  const m = t.match(/(?:доставк[аиуы]|поставк[аиуы]|отгрузк[аиуы]|привез[её]м|прибудет)[^\n]{0,40}?(\d{1,2})[.\-/](\d{1,2})(?:[.\-/](\d{2,4}))?/i);
+  if (m) {
+    const yy = m[3] ? (m[3].length === 2 ? '20' + m[3] : m[3]) : String(now.getFullYear());
+    out.date = `${yy}-${String(m[2]).padStart(2, '0')}-${String(m[1]).padStart(2, '0')}`;
+    out.matched = m[0].trim().slice(0, 80);
+    return out;
+  }
+  const mt = t.match(/(?:доставк[аиуы]|поставк[аиуы]|отгрузк[аиуы])[^\n]{0,40}?(\d{1,2})\s+([а-яё]+)/i);
+  if (mt) {
+    const MON = { января: 1, февраля: 2, марта: 3, апреля: 4, мая: 5, июня: 6, июля: 7, августа: 8, сентября: 9, октября: 10, ноября: 11, декабря: 12 };
+    const mm = MON[mt[2].toLowerCase()];
+    if (mm) {
+      out.date = `${now.getFullYear()}-${String(mm).padStart(2, '0')}-${String(mt[1]).padStart(2, '0')}`;
+      out.matched = mt[0].trim().slice(0, 80);
+    }
+  }
+  return out;
+}
+
 /** Короткая человеческая подпись для карточки и письма бухгалтерии. */
 function intentLabel(intent) {
   return ({
@@ -137,4 +176,4 @@ function intentLabel(intent) {
   })[intent] || '—';
 }
 
-module.exports = { parsePaymentIntent, intentLabel };
+module.exports = { parsePaymentIntent, intentLabel, parseDeliveryHint };

@@ -73,16 +73,37 @@ function extractInvoiceLines(text) {
       const cells = line.split('|').map((x) => x.trim()).filter((x, i, arr) => !(x === '' && (i === 0 || i === arr.length - 1)));
       // Ждём минимум: наименование + кол-во + цена (+ сумма) — отбрасываем шапку таблицы.
       if (cells.length >= 4 && !/наименован|кол-?во|ед\.?\s*изм|цена|всего|ставка/i.test(line)) {
+        // V411: строки БАНКОВСКИХ реквизитов не являются позициями товара —
+        // на живом скане «| ИНН 2310155505 | КПП 234801001 | Сч. № | 40702… |»
+        // давало фальшивую 5-ю позицию с нулевой суммой.
+        if (/БИК|Сч\.\s*№|корр|расч[её]тн|банк|филиал|КПП|ИНН\s*\d/i.test(line)) continue;
+        if (/^\|?\s*[^|]*Поставщик|Грузоотправитель|Покупатель|Грузополучатель/i.test(line)) continue;
         const nums = cells.map((x) => x.replace(/[ \u00a0]/g, ''));
         const nameCell = cells.find((x) => /[а-яёa-z]{3,}/i.test(x) && !/^(шт|компл|кг|м|мм|см|л|уп|пач|рул|набор|ед|т|г|пар)$/i.test(x));
         // Номер строки в начале таблицы («1», «2») — НЕ количество: отбрасываем его.
         const hasLeadingNo = /^\d+[.)]?$/.test(cells[0] || '');
         const scanFrom = hasLeadingNo ? 1 : 0;
-        // Количество — первое целое ПОСЛЕ наименования (обычно перед единицей измерения).
+        // Единица измерения — надёжный ориентир: количество стоит СРАЗУ перед ней.
+        const UNIT_RE = /^(шт|компл|кг|м|мм|см|м2|м3|л|уп|пач|рул|набор|ед|т|г|пар)$/i;
+        const unitIdx = cells.findIndex((x) => UNIT_RE.test(x));
         let qtyIdx = -1;
-        for (let i = scanFrom; i < cells.length; i++) {
-          if (nameCell && cells[i] === nameCell) { continue; }
-          if (/^\d+(?:[.,]\d+)?$/.test(nums[i]) && !/%/.test(cells[i])) { qtyIdx = i; break; }
+        if (unitIdx > 0 && /^\d+(?:[.,]\d+)?$/.test(nums[unitIdx - 1]) && !/%/.test(cells[unitIdx - 1])) {
+          qtyIdx = unitIdx - 1;
+        } else {
+          // Фолбэк (нет единицы измерения): первое число после наименования,
+          // но НЕ код товара. V411 (живой скан 18.10.2026): в счетах есть колонка
+          // «Код» («04284») — она принималась за количество, и вся арифметика
+          // позиций разваливалась. Код распознаём по ведущему нулю / длине / ведущей
+          // позиции сразу после номера строки.
+          for (let i = scanFrom; i < cells.length; i++) {
+            if (nameCell && cells[i] === nameCell) continue;
+            const v = nums[i];
+            if (!/^\d+(?:[.,]\d+)?$/.test(v) || /%/.test(cells[i])) continue;
+            if (/^0\d/.test(v)) continue;              // 04284 — код, не количество
+            if (/^\d{5,}$/.test(v)) continue;          // длинный артикул
+            if (i === scanFrom && hasLeadingNo && cells.length > 5 && /^\d{3,}$/.test(v)) continue; // код сразу после №
+            qtyIdx = i; break;
+          }
         }
         // Цена и сумма — числа с копейками или разделителем тысяч; проценты НДС не берём.
         const moneyIdx = [];
@@ -100,7 +121,8 @@ function extractInvoiceLines(text) {
         const price = priceIdx != null ? parseSum(nums[priceIdx]) : null;
         const sum = sumIdx != null ? parseSum(nums[sumIdx]) : null;
         const name = (nameCell || '').trim().replace(/[.,;:]+$/, '');
-        if (name.length >= 3 && price > 0 && !seen.has(name.toLowerCase())) {
+        // Позиция без цены/суммы — не товар (артефакт таблицы).
+        if (name.length >= 3 && price > 0 && sum != null && sum > 0 && !seen.has(name.toLowerCase())) {
           const unitCell = cells.find((x) => /^(шт|компл|кг|м|мм|см|м2|м3|л|уп|пач|рул|набор|ед|т|г|пар)$/i.test(x));
           seen.add(name.toLowerCase());
           out.push({ name: name.slice(0, 300), quantity: qty, unit: unitCell || null, unit_price: price, sum });
@@ -183,7 +205,13 @@ function extractInvoice(text) {
   // Номер и дата счёта. Реальные форматы: «Счёт на оплату № 1185 от 14.07.26»,
   // «Счёт № 45 от 13.10.2026», «Счёт-договор № 20261006-05». Берём первую строку
   // со словом «счёт», затем номер ПОСЛЕ «№» (или после «счёт», если «№» нет).
-  const lineM = t.match(/[^\n]*сч[её]т[^\n]*/i);
+  // V411 (живой скан 18.10.2026): раньше брали ПЕРВУЮ строку со словом «счёт» — а на
+  // реальном скане это «Внимание! Оплата данного счета означает согласие…», из-за чего
+  // номер и дата НЕ находились вовсе. Теперь ищем ИМЕННО строку реквизитов счёта:
+  // «Счет на оплату № 58 от 13 октября 2026 г.», «Счёт № 45 от 13.10.2026».
+  const lineM = t.match(/[^\n]*(?:сч[её]т|invoice)\s*(?:на\s+оплату)?\s*[№N][^\n]*/i)
+    || t.match(/[^\n]*сч[её]т\s+покупателю[^\n]*/i)
+    || t.match(/[^\n]*сч[её]т[^\n]*/i);
   if (lineM) {
     const line = lineM[0];
     let raw = null;
@@ -195,7 +223,9 @@ function extractInvoice(text) {
     }
     if (raw != null) {
       let dateStr = null;
-      // Дата может быть цифровой (14.07.26) ИЛИ текстовой (14 июля 2026 г.).
+      // Дата может быть цифровой (14.07.26) ИЛИ текстовой (13 октября 2026 г.).
+      // V411: текстовая дата может заканчиваться «г.» — раньше требовалось ровно
+      // «число месяц год», и такая дата не распознавалась.
       const dmNum = raw.match(/от\s*(\d{2}[.\-/]\d{2}[.\-/]\d{2,4})/i);
       const dmText = raw.match(/от\s*(\d{1,2})\s+([а-яё]+)\s+(\d{4})/i);
       if (dmNum) {
@@ -334,7 +364,29 @@ function extractInvoice(text) {
     if (v.length >= 3) { out.work_hint = v.slice(0, 120); }
   }
 
-  // Контрагент: первая строка с организационной формой.
+  // Контрагент: строка с организационной формой, но НЕ банк.
+  // V411 (живой скан 18.10.2026): на скане первым «ООО/ПАО» оказался БАНК
+  // («Филиал Южный ПАО "БАНК УРАЛСИБ"») — он и попадал в контрагента вместо
+  // поставщика, хотя в счёте явно есть «Поставщик: ООО ТД "Мир Химии"».
+  // Порядок: (1) явное «Поставщик: …», (2) иначе орг-форма без банковских слов.
+  const suppM = t.match(/(?:^|\n)\s*Поставщик\s*[:\-]?\s*((?:ООО|АО|ПАО|ЗАО|ОАО|ИП)\s*[«"']?[^\n,;]{2,80})/i);
+  if (suppM) {
+    out.counterparty_name = suppM[1].trim().replace(/[»"',;]+$/, '').slice(0, 160);
+    found();
+  } else {
+    // Банковские слова: строки с ними — не контрагент (это реквизиты банка).
+    const BANK_WORDS = /банк|филиал|бик|р\/с|к\/с|корр|сч\.|счет\s*№|расч[её]тн/i;
+    const orgLines = t.split(/\r?\n/).filter((l) => /(?:ООО|АО|ПАО|ЗАО|ОАО|ИП)\s*[«"']?/i.test(l));
+    const good = orgLines.find((l) => !BANK_WORDS.test(l) && !/АСГАРД|ASGARD/i.test(l));
+    if (good) {
+      const m = good.match(/(?:ООО|АО|ПАО|ЗАО|ОАО|ИП)\s*[«"']?[^\n«»"',;]{2,80}/i)
+        || good.match(/(?:ООО|АО|ПАО|ЗАО|ОАО|ИП)\s*[«"']?[^\n«»"',;]{2,80}/);
+      if (m) {
+        out.counterparty_name = m[0].trim().replace(/[»"',;]+$/, '').slice(0, 160);
+        found();
+      }
+    }
+  }
   const orgM = t.match(/(?:ООО|АО|ПАО|ЗАО|ОАО|ИП)\s*[«"]?[^\n«»"]{2,80}[»"]?/);
   if (orgM) { out.counterparty_name = orgM[0].trim().slice(0, 160); found(); }
 

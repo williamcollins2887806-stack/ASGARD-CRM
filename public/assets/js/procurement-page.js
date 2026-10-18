@@ -8,6 +8,9 @@ window.AsgardProcurementPage = (function() {
 
   let currentFilters = {};
   let _myScope = false; // true на «Мои заявки» (#/my-procurement) — РП создаёт заявку здесь (E1)
+  // V411: вкладка внутри «Моих заявок»: 'proc' — закупки, 'pay' — счета на оплату.
+  let _tab = 'proc';
+  let _payRows = [];
   let _user = null;
   let _viewMode = localStorage.getItem('proc_view') || 'kanban'; // 'kanban' | 'table'
   let _groupMode = 'none'; // 'none' | 'category' | 'supplier' — группировка позиций в детали
@@ -562,38 +565,67 @@ window.AsgardProcurementPage = (function() {
     // корзины на складе. Закупщик заявки не создаёт — он их отрабатывает. Это реестр/просмотр.
     // E1 (21.09.2026): исключение — «Мои заявки» (#/my-procurement), где заявку создаёт РП
     // без захода на склад. Там кнопка есть, на «Закупках» её по-прежнему нет.
-    const canCreateHere = _myScope && ['PM', 'HEAD_PM'].includes(_user && _user.role);
+    const canCreateHere = _myScope && ['PM', 'HEAD_PM', 'ADMIN'].includes(_user && _user.role);
+    // V411 (заказчик 18.10.2026): на «Моих заявках» — ДВА потока в одной странице:
+    //   • Закупки — заявка идёт по канбану через закупщика;
+    //   • Счета на оплату — сразу директору, минуя закупщика.
+    // Не плодим страницы: всё на существующей, переключатель + свои статусы.
+    const showPayTab = _myScope;
     el.innerHTML = `<div class="proc-toolbar">
-      <div class="proc-viewtoggle">
+      ${showPayTab ? `<div class="proc-seg" id="proc-seg">
+        <button type="button" class="proc-seg__b ${_tab === 'proc' ? 'is-on' : ''}" data-tab="proc">Закупки</button>
+        <button type="button" class="proc-seg__b ${_tab === 'pay' ? 'is-on' : ''}" data-tab="pay">Счета на оплату <span class="proc-seg__n" id="proc-pay-n">0</span></button>
+      </div>` : ''}
+      <div class="proc-viewtoggle" id="proc-vt" style="display:${_tab === 'proc' ? '' : 'none'}">
         <button class="proc-vt ${_viewMode==='kanban'?'proc-vt--on':''}" data-vm="kanban">Канбан</button>
         <button class="proc-vt ${_viewMode==='table'?'proc-vt--on':''}" data-vm="table">Таблица</button>
       </div>
-      <div id="pf-status_w" style="display:${_viewMode==='table'?'inline-block':'none'};min-width:150px"></div>
+      <div id="pf-status_w" style="display:${_viewMode==='table'&&_tab==='proc'?'inline-block':'none'};min-width:150px"></div>
       <input type="text" id="pf-search" class="proc-toolbar__search" placeholder="Поиск по заявке, работе, РП…">
       <div class="proc-toolbar__acts">
-        ${canCreateHere ? '<button type="button" class="proc-act proc-act--primary" id="proc-new-req">+ Создать заявку</button>' : ''}
-        ${canCreateHere ? '<button type="button" class="proc-act" id="proc-new-req-cart">Собрать в корзине</button>' : ''}
-        <button type="button" class="proc-act" id="proc-new-pay">Новое согласование</button>
-        <button type="button" class="proc-act" id="proc-export-xl">Excel</button>
-        <button type="button" class="proc-act" id="proc-tpl-xl">Шаблон</button>
+        ${canCreateHere && _tab === 'proc' ? '<button type="button" class="proc-act proc-act--primary" id="proc-new-req">+ Создать заявку</button>' : ''}
+        ${canCreateHere && _tab === 'proc' ? '<button type="button" class="proc-act" id="proc-new-req-cart">Собрать в корзине</button>' : ''}
+        <button type="button" class="proc-act proc-act--primary" id="proc-new-pay">Новое согласование</button>
+        ${_tab === 'proc' ? '<button type="button" class="proc-act" id="proc-export-xl">Excel</button>' : ''}
+        ${_tab === 'proc' ? '<button type="button" class="proc-act" id="proc-tpl-xl">Шаблон</button>' : ''}
       </div>
-    </div>`;
-    el.querySelector('#proc-export-xl').onclick = () => window.open('/api/procurement/export/excel');
-    el.querySelector('#proc-tpl-xl').onclick = () => window.open('/api/procurement/template/excel');
+    </div>
+    <div id="proc-body"></div>`;
+    const xl = el.querySelector('#proc-export-xl');
+    if (xl) xl.onclick = () => window.open('/api/procurement/export/excel');
+    const tpl = el.querySelector('#proc-tpl-xl');
+    if (tpl) tpl.onclick = () => window.open('/api/procurement/template/excel');
     const newReqBtn = el.querySelector('#proc-new-req');
     if (newReqBtn) newReqBtn.onclick = () => openCreateModal(null);
     const cartBtn = el.querySelector('#proc-new-req-cart');
     if (cartBtn) cartBtn.onclick = () => { location.hash = '#/warehouse-v2'; };
     const newPayBtn = el.querySelector('#proc-new-pay');
     if (newPayBtn) newPayBtn.onclick = () => openStandalonePaymentModal();
+    // V411: переключатель «Закупки ↔ Счета на оплату».
+    // ВАЖНО: перерисовываем ТОЛЬКО тулбар целиком (через сам renderFilters) —
+    // но элементы, которых на текущей вкладке нет (Excel/Статус), уже отсутствуют,
+    // поэтому все обработчики ниже идут через проверку на null.
+    const seg = el.querySelector('#proc-seg');
+    if (seg) seg.querySelectorAll('[data-tab]').forEach((b) => b.addEventListener('click', () => {
+      _tab = b.getAttribute('data-tab');
+      try { sessionStorage.setItem('proc_tab', _tab); } catch (_) {}
+      const host = el.parentElement || el;
+      const fresh = document.createElement('div');
+      host.replaceChild(fresh, el);
+      renderFilters(fresh);
+      applyTab();
+    }));
     el.querySelectorAll('[data-vm]').forEach(b => b.onclick = () => {
       _viewMode = b.dataset.vm; localStorage.setItem('proc_view', _viewMode);
       el.querySelectorAll('[data-vm]').forEach(x => x.classList.toggle('proc-vt--on', x.dataset.vm === _viewMode));
-      el.querySelector('#pf-status_w').style.display = _viewMode === 'table' ? 'inline-block' : 'none';
+      const st = el.querySelector('#pf-status_w');
+      if (st) st.style.display = _viewMode === 'table' ? 'inline-block' : 'none';
       refresh();
     });
-    el.querySelector('#pf-status_w')?.appendChild(CRSelect.create({ id: 'pf-status', options: [{ value: '', label: 'Все статусы' }, ...Object.entries(STATUSES).map(([k,v])=>({ value: k, label: v.l }))], value: currentFilters.status || '', onChange: v => { currentFilters.status = v; refresh(); } }));
-    let tmr; el.querySelector('#pf-search').oninput = e => { clearTimeout(tmr); tmr = setTimeout(()=>{ currentFilters.search=e.target.value; refresh(); },300); };
+    const stW = el.querySelector('#pf-status_w');
+    if (stW) stW.appendChild(CRSelect.create({ id: 'pf-status', options: [{ value: '', label: 'Все статусы' }, ...Object.entries(STATUSES).map(([k,v])=>({ value: k, label: v.l }))], value: currentFilters.status || '', onChange: v => { currentFilters.status = v; refresh(); } }));
+    const sch = el.querySelector('#pf-search');
+    if (sch) { let tmr; sch.oninput = e => { clearTimeout(tmr); tmr = setTimeout(()=>{ currentFilters.search=e.target.value; if (_tab === 'pay') loadMyPayments(); else refresh(); },300); }; }
   }
 
   // -- Table --
@@ -1579,6 +1611,19 @@ window.AsgardProcurementPage = (function() {
 
   // -- Refresh --
   let _tableEl = null;
+  let _payEl = null;
+  // V411: показать выбранную вкладку «Моих заявок» (закупки / счета на оплату).
+  function applyTab() {
+    const tableEl = document.getElementById('proc-table');
+    const payEl = document.getElementById('proc-body');
+    const isPay = _myScope && _tab === 'pay';
+    if (tableEl) tableEl.style.display = isPay ? 'none' : '';
+    if (payEl) payEl.style.display = isPay ? '' : 'none';
+    const vt = document.getElementById('proc-vt');
+    if (vt) vt.style.display = isPay ? 'none' : '';
+    if (isPay) loadMyPayments(); else refresh();
+  }
+
   async function refresh() {
     if (!_tableEl) return;
     _tableEl.innerHTML = '<div class="proc-skel">' + Array.from({length:4}).map(()=>'<div class="proc-skel-row"></div>').join('') + '</div>';
@@ -1590,6 +1635,105 @@ window.AsgardProcurementPage = (function() {
     const items = d.items || [];
     if (_viewMode === 'kanban') renderKanban(items, _tableEl);
     else renderTable(items, _tableEl);
+  }
+
+  // ── V411: «Счета на оплату» — второй поток «Моих заявок» ─────────────────
+  // Заказчик 18.10.2026: счёт идёт СРАЗУ директору, минуя закупщика. Инициатор
+  // видит свою заявку и её стадию: у директора → у бухгалтерии → оплачен/возвращён.
+  const PAY_STAGES = [
+    { key: 'dir', label: 'У директора', cls: 'warn', hint: 'Ждёт решения директора' },
+    { key: 'buh', label: 'У бухгалтерии', cls: 'info', hint: 'Согласован, ждёт оплаты' },
+    { key: 'paid', label: 'Оплачен', cls: 'ok', hint: 'Оплата проведена' },
+    { key: 'rejected', label: 'Возвращён', cls: 'err', hint: 'Директор вернул на доработку' },
+    { key: 'expired', label: 'В архиве', cls: 'muted', hint: 'Не согласован за 72 часа' }
+  ];
+  async function loadMyPayments() {
+    const body = document.getElementById('proc-body');
+    if (!body) return;
+    body.innerHTML = '<div class="proc-skel">' + Array.from({ length: 3 }).map(() => '<div class="proc-skel-row"></div>').join('') + '</div>';
+    let d;
+    try { d = await apiFetch('/api/payment-invoices/my'); } catch (e) { body.innerHTML = `<div class="proc-empty">⚠️ ${esc(e.message)}</div>`; return; }
+    _payRows = d.items || [];
+    const n = document.getElementById('proc-pay-n');
+    if (n) n.textContent = String(_payRows.length);
+    renderPaymentsList(body, _payRows);
+  }
+
+  function renderPaymentsList(body, items) {
+    // Поиск по текущей вкладке «Счета» (номер, контрагент, объект).
+    const q = String((currentFilters && currentFilters.search) || '').trim().toLowerCase();
+    if (q) {
+      items = items.filter((x) => [x.supplier_name, x.invoice_number, x.work_title, x.work_hint, x.basis_text]
+        .filter(Boolean).some((v) => String(v).toLowerCase().includes(q)));
+    }
+    if (!items.length) {
+      body.innerHTML = `<div class="proc-pay-empty">
+        <div class="proc-pay-empty__ico">📄</div>
+        <div class="proc-pay-empty__t">Счетов на оплату пока нет</div>
+        <div class="proc-pay-empty__s">Нажмите «Новое согласование» — счёт уйдёт директору, минуя закупщика.</div>
+      </div>`;
+      return;
+    }
+    // Группируем по стадиям: сначала «у директора», потом «у бухгалтерии», «оплачен», «возвращён».
+    const groups = {};
+    for (const it of items) { const k = (it.stage && it.stage.code) || 'other'; (groups[k] = groups[k] || []).push(it); }
+    const order = PAY_STAGES.map((s) => s.key).filter((k) => groups[k] && groups[k].length);
+    if (groups.other && groups.other.length) order.push('other');
+
+    const card = (it) => {
+      const st = it.stage || { label: it.status, cls: 'muted' };
+      const num = it.invoice_number ? ('№ ' + it.invoice_number) : ('#' + it.id);
+      const due = it.due_date ? 'до ' + String(it.due_date).slice(0, 10).split('-').reverse().join('.') : '';
+      const intent = it.initiator_intent === 'urgent' ? '<span class="proc-pay-tag proc-pay-tag--hot">срочно</span>'
+        : it.initiator_intent ? '<span class="proc-pay-tag">' + esc(intentRu(it.initiator_intent)) + '</span>' : '';
+      const fileBtn = it.has_file ? `<button type="button" class="proc-pay__btn" data-file="${it.id}">Скачать счёт</button>` : '';
+      return `<article class="proc-pay__card" data-pay="${it.id}">
+        <div class="proc-pay__top">
+          <div class="proc-pay__sum">${money2(it.amount)}</div>
+          <span class="proc-pay__st proc-pay__st--${st.cls}">${esc(st.label)}</span>
+        </div>
+        <div class="proc-pay__sup">${esc(it.supplier_name || '—')}</div>
+        <div class="proc-pay__meta">
+          <span>${esc(num)}${it.invoice_date ? ' от ' + String(it.invoice_date).slice(0, 10).split('-').reverse().join('.') : ''}</span>
+          ${it.work_title ? `<span class="proc-pay__work" title="${esc(it.work_title)}">${esc(it.work_title.slice(0, 34))}</span>` : (it.work_hint ? `<span class="proc-pay__work">${esc(String(it.work_hint).slice(0, 34))}</span>` : '')}
+        </div>
+        <div class="proc-pay__foot">
+          ${intent}
+          ${due ? `<span class="proc-pay__due">${due}</span>` : ''}
+          <span class="proc-pay__grow"></span>
+          ${fileBtn}
+        </div>
+        ${it.lines_count ? `<div class="proc-pay__lines">${it.lines_count} поз.</div>` : ''}
+      </article>`;
+    };
+
+    const groupHtml = (key) => {
+      const list = groups[key] || [];
+      if (!list.length) return '';
+      const meta = PAY_STAGES.find((s) => s.key === key) || { label: 'Прочее', hint: '' };
+      return `<section class="proc-pay__group">
+        <header class="proc-pay__gh"><h3>${esc(meta.label)}</h3>
+          <span class="proc-pay__gn">${list.length}</span>
+          ${meta.hint ? `<span class="proc-pay__gh-hint">${esc(meta.hint)}</span>` : ''}</header>
+        <div class="proc-pay__grid">${list.map(card).join('')}</div>
+      </section>`;
+    };
+
+    body.innerHTML = order.map(groupHtml).join('');
+    body.querySelectorAll('[data-pay]').forEach((c) => c.addEventListener('click', (e) => {
+      if (e.target.closest('[data-file]')) return;
+      openPaymentInvoiceModal(+c.getAttribute('data-pay'));
+    }));
+    body.querySelectorAll('[data-file]').forEach((b) => b.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const id = +b.getAttribute('data-file');
+      window.open('/api/payment-invoices/' + id + '/file', '_blank');
+    }));
+  }
+
+  function intentRu(v) {
+    return ({ urgent: 'срочно', today: 'сегодня', tomorrow: 'завтра', explicit_date: 'к дате',
+      relative: 'отложенная', within: 'отложенная', after_delivery: 'после получения' })[v] || String(v || '');
   }
 
   // -- Kanban --
@@ -1714,6 +1858,9 @@ window.AsgardProcurementPage = (function() {
     _user = ud.user || ud;
     currentFilters = {};
     _myScope = !!myScope; // «Мои заявки»: РП создаёт здесь заявку без захода на склад (E1)
+    // V411: на «Моих заявках» сохраняем выбранную вкладку при перезаходе.
+    if (_myScope) { try { const t = sessionStorage.getItem('proc_tab'); if (t === 'pay' || t === 'proc') _tab = t; } catch (_) {} }
+    else _tab = 'proc';
 
     await layout('', { title: title || 'Закупки' });
     const layoutEl = document.getElementById('layout');
@@ -1722,12 +1869,16 @@ window.AsgardProcurementPage = (function() {
     const dashEl = document.createElement('div');
     const filtEl = document.createElement('div');
     _tableEl = document.createElement('div');
-    page.append(dashEl, filtEl, _tableEl);
+    // V411: контейнер вкладки «Счета на оплату» (второй поток «Моих заявок»).
+    _payEl = document.createElement('div');
+    _payEl.id = 'proc-body';
+    _tableEl.id = 'proc-table';
+    page.append(dashEl, filtEl, _tableEl, _payEl);
     layoutEl.appendChild(page);
 
     await renderDashboard(dashEl);
     renderFilters(filtEl);
-    await refresh();
+    applyTab();
     // deep-link #/procurement?id=NN → открыть карточку заявки
     try {
       const h = String(location.hash || '');

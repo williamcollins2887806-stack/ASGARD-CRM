@@ -17,7 +17,7 @@
 
 const { extractInvoice, extractInvoiceLines } = require('./invoice-extract');
 const { classifyDocument } = require('./doc-classifier');
-const { parsePaymentIntent } = require('./payment-intent');
+const { parsePaymentIntent, parseDeliveryHint } = require('./payment-intent');
 const { matchContract, matchWork } = require('./contract-match');
 const { enrichCatalogFromLines } = require('./catalog-from-invoice');
 
@@ -143,6 +143,10 @@ async function intakeOne(db, { email, attachment, text, userId = null, dryRun = 
   const emailSubject = (email && email.subject) || '';
   const intent = parsePaymentIntent(String(emailBody || emailSubject || text || ''));
   parsed._intent = intent;
+  // V411: срок ДОСТАВКИ из тела письма («доставка в краснодар будет 16.10») —
+  // это отдельное поле реестра `delivery_due_at`, не срок оплаты.
+  const delivery = parseDeliveryHint(String(emailBody || text || ''));
+  parsed._delivery = delivery;
   // Объект из темы, если в счёте его нет (типично для Wildberries/Ozon-счетов).
   if (!parsed.work_hint && emailSubject) {
     const hint = extractWorkHintFromSubject(emailSubject);
@@ -241,11 +245,11 @@ async function intakeOne(db, { email, attachment, text, userId = null, dryRun = 
     const insDoc = await db.query(
       `INSERT INTO doc_registry(dir, package_type, ops_status, pay_status, invoice_number, invoice_date,
          counterparty_name, counterparty_inn, supplier_id, amount_gross, amount_net, vat_amount, has_vat,
-         spend_kind, doc_owner_id, created_by, updated_by, receive_channel, comment_text,
-         contract_mode, contract_id, contract_label, payment_due_at, work_id)
+         spend_kind,          doc_owner_id, created_by, updated_by, receive_channel, comment_text,
+         contract_mode, contract_id, contract_label, payment_due_at, work_id, delivery_due_at)
        VALUES ('in','invoice','wait_sf','wait',$1,$2::date,$3,$4,$5,$6,$7,$8,$9,
                'other',$10,$10,$10,'email',$11,
-               $12,$13,$14,$15::date,$16) RETURNING id`,
+               $12,$13,$14,$15::date,$16,$17::date) RETURNING id`,
       [parsed.invoice_number, parsed.invoice_date, cpName, parsed.inn, supplierId,
         gross, net, vat, parsed.has_vat !== false,
         senderUserId, lowConfidence
@@ -256,7 +260,8 @@ async function intakeOne(db, { email, attachment, text, userId = null, dryRun = 
         contractInfo.found ? contractInfo.contract.id : null,
         parsed.contract_basis ? (parsed.contract_basis.number || parsed.contract_basis.raw) : null,
         parsed.payment_due_at || null,
-        workInfo.found ? workInfo.work.id : null]);
+        workInfo.found ? workInfo.work.id : null,
+        (parsed._delivery && parsed._delivery.date) || null]);
     docId = insDoc.rows[0].id;
     createdDoc = true;
     // Если договор не найден, но номер указан — пометим строку неполной (жёлтый/синий).
