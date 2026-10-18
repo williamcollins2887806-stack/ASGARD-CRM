@@ -99,6 +99,8 @@ const GROUPS = [
       { path: '/permits',          icon: ShieldCheck, label: 'Допуски',          section: 'personnel' },
       { path: '/proxies',          icon: Stamp,       label: 'Доверенности',     section: 'works' },
       { path: '/workers-schedule', icon: CalendarDays,label: 'График рабочих',   section: 'personnel' },
+      // 17.10.2026: офисный график (был только на десктопе) — кто сегодня где
+      { path: '/office-schedule',  icon: CalendarDays,label: 'График офиса',    section: 'personnel' },
     ],
   },
   {

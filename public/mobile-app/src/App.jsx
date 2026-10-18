@@ -67,6 +67,8 @@ const FieldEarningsMonthly = lazyPage(() => import('@/pages/field/FieldEarningsM
 const FieldSeasonal = lazyPage(() => import('@/pages/field/FieldSeasonal'));
 const FieldDiary = lazyPage(() => import('@/pages/field/FieldDiary'));
 const FieldReadiness = lazyPage(() => import('@/pages/field/FieldReadiness'));
+const FieldPermits = lazyPage(() => import('@/pages/field/FieldPermits'));
+const FieldPermitDetail = lazyPage(() => import('@/pages/field/FieldPermitDetail'));
 const PipelineGame = lazyPage(() => import('@/pages/field/PipelineGame'));
 const ChemLabGame = lazyPage(() => import('@/pages/field/ChemLabGame'));
 const PmDashboard = lazyPage(() => import('@/pages/pm/PmDashboard'));
@@ -122,6 +124,7 @@ const Gantt = lazyPage(() => import('@/pages/Gantt'));
 const WorkersSchedule = lazyPage(() => import('@/pages/WorkersSchedule'));
 const WorkerProfile = lazyPage(() => import('@/pages/WorkerProfile'));
 const ApprovalPayment = lazyPage(() => import('@/pages/ApprovalPayment'));
+const OfficeSchedule = lazyPage(() => import('@/pages/OfficeSchedule'));
 const MyEquipment = lazyPage(() => import('@/pages/MyEquipment'));
 const MyMail = lazyPage(() => import('@/pages/MyMail'));
 const Seals = lazyPage(() => import('@/pages/Seals'));
@@ -390,6 +393,8 @@ function AppLayout() {
           <Route path="/staff-requests" element={<ProtectedRoute section="works"><PinGuard><StaffRequests /></PinGuard></ProtectedRoute>} />
           <Route path="/worker-profile/:id" element={<ProtectedRoute section="personnel"><PinGuard><WorkerProfile /></PinGuard></ProtectedRoute>} />
           <Route path="/approval-payment" element={<ProtectedRoute section="finances"><PinGuard><ApprovalPayment /></PinGuard></ProtectedRoute>} />
+          {/* 17.10.2026: «График офиса» — на десктопе есть, в мобильном не было */}
+          <Route path="/office-schedule" element={<ProtectedRoute section="personnel"><PinGuard><OfficeSchedule /></PinGuard></ProtectedRoute>} />
           <Route path="/my-equipment" element={<ProtectedRoute section="profile"><PinGuard><MyEquipment /></PinGuard></ProtectedRoute>} />
           <Route path="/my-mail" element={<ProtectedRoute section="profile"><PinGuard><MyMail /></PinGuard></ProtectedRoute>} />
           <Route path="/seals" element={<ProtectedRoute section="works"><PinGuard><Seals /></PinGuard></ProtectedRoute>} />
@@ -514,6 +519,8 @@ function AppLayout() {
                 <Route path="seasonal" element={<FieldSeasonal />} />
                 <Route path="diary" element={<FieldDiary />} />
                 <Route path="readiness" element={<FieldReadiness />} />
+                <Route path="permits" element={<FieldPermits />} />
+                <Route path="permits/:id" element={<FieldPermitDetail />} />
                 <Route path="journey" element={<FieldJourney />} />
                 <Route path="academy" element={<FieldAcademy />} />
                 <Route path="academy/library" element={<FieldAcademyLibrary />} />
