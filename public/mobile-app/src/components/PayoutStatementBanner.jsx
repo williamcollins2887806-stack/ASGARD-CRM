@@ -71,6 +71,10 @@ export default function PayoutStatementBanner() {
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState(false);
   const [contacts, setContacts] = useState(null);
+  // Повторная отправка кода (заказчик 19.10.2026: рабочий должен уметь запросить
+  // код сам, а не ждать, пока это сделает Дима).
+  const [resendBusy, setResendBusy] = useState(false);
+  const [resendMsg, setResendMsg] = useState('');
 
   if (!ready || !items.length) return null;
   const p = items[0];
@@ -99,6 +103,22 @@ export default function PayoutStatementBanner() {
       setStep('dispute');
     } catch (e) { setErr(e.message || 'Ошибка'); }
     finally { setBusy(false); }
+  }
+
+  /** Запросить код повторно (рабочий сам, не через Диму). */
+  async function requestNewCode() {
+    if (resendBusy) return;
+    setResendBusy(true); setResendMsg(''); setErr('');
+    try {
+      const r = await apiReq('POST', `/my/${p.id}/resend-code`, {});
+      setResendMsg(r.message || 'Код отправлен. Проверьте SMS и чат MAX.');
+    } catch (e) {
+      // Кулдаун — не ошибка: показываем мягко, с остатком секунд.
+      const b = e.body || {};
+      setResendMsg(b.message || e.message || 'Не удалось отправить код');
+    } finally {
+      setResendBusy(false);
+    }
   }
 
   return createPortal(
@@ -157,7 +177,20 @@ export default function PayoutStatementBanner() {
             <button onClick={submitConfirm} disabled={busy} style={btnPrimary}>
               {busy ? 'Проверка…' : 'Подтвердить'}
             </button>
-            <button onClick={() => { setStep('view'); setErr(''); }} style={btnGhost}>Назад</button>
+            {/* Повторный запрос кода: рабочий сам, не дожидаясь Димы. */}
+            <button
+              onClick={requestNewCode}
+              disabled={resendBusy}
+              style={{ ...btnGhost, opacity: resendBusy ? 0.6 : 1 }}
+            >
+              {resendBusy ? 'Отправляем…' : 'Не пришёл код? Отправить ещё раз'}
+            </button>
+            {resendMsg && (
+              <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 6, marginBottom: 4, lineHeight: 1.35 }}>
+                {resendMsg}
+              </div>
+            )}
+            <button onClick={() => { setStep('view'); setErr(''); setResendMsg(''); }} style={btnGhost}>Назад</button>
           </>
         )}
 

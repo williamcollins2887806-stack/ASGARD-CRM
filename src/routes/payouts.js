@@ -781,6 +781,67 @@ async function routes(fastify, options) {
     }
   });
 
+  // ─── POST /my/:id/resend-code — рабочий САМ запрашивает новый код ──────────
+  // Заказчик 19.10.2026: «проверь, что рабочие могут подтвердить выплату и
+  // запросить новый код». Раньше повторная отправка была только у Димы/админа
+  // (payoutAuth), а рабочий, не получив код, ничего сделать не мог.
+  //
+  // Защита: только своя выплата, только в статусе paid/confirmed и только пока
+  // ждёт подтверждения. Кулдаун и лимит попыток — внутри sendPayoutCode.
+  fastify.post('/my/:id/resend-code', { preHandler: [fastify.fieldAuthenticate] }, async (request, reply) => {
+    const id = parseInt(request.params.id, 10);
+    if (!Number.isInteger(id) || id <= 0) return reply.code(400).send({ error: 'Некорректный id' });
+    try {
+      const empId = request.fieldEmployee ? request.fieldEmployee.id : null;
+      if (!empId) return reply.code(401).send({ error: 'Не авторизован' });
+
+      const { rows } = await db.query(
+        `SELECT id, employee_id, amount,
+                COALESCE(pay_year,  EXTRACT(YEAR  FROM created_at)::int) AS pay_year,
+                COALESCE(pay_month, EXTRACT(MONTH FROM created_at)::int) AS pay_month
+           FROM worker_payments
+          WHERE id = $1 AND employee_id = $2
+            AND status IN ('paid','confirmed')
+            AND confirmation_status = 'awaiting'`, [id, empId]);
+      if (!rows.length) {
+        return reply.code(404).send({
+          error: 'not_awaiting',
+          message: 'Выплата не найдена или уже подтверждена.',
+          hint: 'Обновите страницу — возможно, подтверждение уже прошло.',
+        });
+      }
+
+      const { sendPayoutCode } = require('../lib/payout-notify');
+      const r = await sendPayoutCode(fastify, db, {
+        paymentId: id,
+        employeeId: rows[0].employee_id,
+        amount: rows[0].amount,
+        period: { year: rows[0].pay_year, month: rows[0].pay_month },
+      });
+
+      // Кулдаун — не ошибка, а «подожди немного»: отдаём 429 с понятной подсказкой.
+      if (r && r.error === 'cooldown') {
+        return reply.code(429).send({
+          error: 'cooldown',
+          message: `Код уже отправлен. Повторить можно через ${r.retry_after || 60} сек.`,
+          hint: 'Проверьте SMS и чат MAX — код приходит в оба канала.',
+          retry_after: r.retry_after || 60,
+        });
+      }
+      if (!r || !r.ok) {
+        return reply.code(502).send({
+          error: 'send_failed',
+          message: 'Не удалось отправить код ни в MAX, ни в SMS.',
+          hint: 'Проверьте связь или обратитесь к руководителю — код можно отправить повторно.',
+        });
+      }
+      return reply.send({ ok: true, channel: r.channel, message: 'Код отправлен. Проверьте SMS и чат MAX.' });
+    } catch (err) {
+      logError(fastify, '[payouts] POST /my/resend-code error', err, request);
+      return sendHuman(reply, err);
+    }
+  });
+
   // ─── POST /my/:id/confirm — рабочий подтверждает получение ─────────────────
   fastify.post('/my/:id/confirm', { preHandler: [fastify.fieldAuthenticate] }, async (request, reply) => {
     const id = parseInt(request.params.id, 10);
