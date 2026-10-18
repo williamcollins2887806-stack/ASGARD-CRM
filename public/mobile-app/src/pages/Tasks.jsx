@@ -639,7 +639,7 @@ export default function Tasks() {
               {f.id === 'overdue' && stats?.overdue > 0 && (
                 <span
                   className="ml-1.5 inline-flex items-center justify-center rounded-full text-[10px] font-bold"
-                  style={{ minWidth: 16, height: 16, background: 'var(--red-soft)', color: '#fff', padding: '0 4px' }}
+                  style={{ minWidth: 16, height: 16, background: 'var(--red-soft)', color: 'var(--on-red-soft)', padding: '0 4px' }}
                 >
                   {stats.overdue}
                 </span>

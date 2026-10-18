@@ -121,7 +121,7 @@ const fmtDate = d => d ? String(d.getUTCDate()).padStart(2, '0') + '.' + String(
 const POLLER = new Set([
   '/api/command-map/live', '/api/sse/stream', '/api/chat-groups/events',
   '/api/chat-groups/presence/all', '/api/chat-groups/presence', '/api/version',
-  '/api/push/badge-count', '/api/hints', '/api/auth/me', '/api/data/users', '/api/users',
+  '/api/push/badge-count', '/api/hints', '/api/page-view', '/api/auth/me', '/api/data/users', '/api/users',
   '/api/settings/app', '/api/settings/core', '/api/settings/sync', '/api/settings/docs',
   '/api/mimir/suggestions', '/api/mimir/auto-estimate-active', '/api/daily-presence/today',
   '/api/data/notifications', '/api/health', '/api/data/reminders',

@@ -1289,6 +1289,7 @@ async function routes(fastify, options) {
                  NULL::timestamptz AS checkin_at,
                  NULL::timestamptz AS checkout_at,
                  tariff_points,
+                 direction,
                  'stage'::text AS entry_kind
           FROM field_trip_stages
           WHERE employee_id = $1
@@ -1382,6 +1383,7 @@ async function routes(fastify, options) {
                status,
                note,
                tariff_points,
+               direction,
                'stage'::text AS entry_kind
         FROM field_trip_stages
         WHERE employee_id = $1
@@ -1655,6 +1657,7 @@ async function routes(fastify, options) {
             work_title: workLabel,
             hours_worked: null,
             status: s.status || 'active',
+            direction: s.direction || null,
             entered_by_fio: author.fio,
             entered_by_role: author.role,
             entered_by_phone: author.phone,

@@ -12,33 +12,37 @@ import { useNavigate } from 'react-router-dom';
 import { fieldApi } from '@/api/fieldClient';
 import DisputeForm from '@/components/field/DisputeForm';
 import { formatMoney as fmtMoney } from '@/lib/utils';
+import {
+  ArrowLeft, Wallet, Briefcase, Moon, Star, Flag, Hourglass, CalendarClock, Check, AlertTriangle,
+  ListChecks, Zap,
+} from 'lucide-react';
+import { Card, IconTile, KeyButton, BottomSheet, SectionLabel, EmptyState } from '@/components/field/ui';
+import { SkeletonList } from '@/components/shared/SkeletonKit';
+import './field-screens.css';
 
 const C = {
-  bg: 'var(--field-bg)', card: 'var(--field-card)', gold: 'var(--value)',
-  green: 'var(--ok)', red: 'var(--danger)', amber: 'var(--value)',
+  bg: 'var(--bg-primary)', card: 'var(--bg-surface)', gold: 'var(--value-ink)',
+  green: 'var(--ok)', red: 'var(--danger-ink)', amber: 'var(--value-ink)',
   blue: 'var(--acc)', rune: 'var(--acc)',
-  text: 'var(--field-text)', muted: 'var(--text-secondary)',
+  text: 'var(--text-primary)', muted: 'var(--text-secondary)',
 };
 
 const STATUS_CFG = {
-  paid:      { label: 'Выплачено',           color: C.green,  icon: '✓' },
-  upcoming:  { label: 'Будет',               color: C.blue,   icon: '🗓' },
-  in_window: { label: 'Ожидайте перевод',    color: C.amber,  icon: '⏳' },
-  overdue:   { label: 'Задержана',           color: C.red,    icon: '⚠️' },
+  paid:      { label: 'Выплачено',        color: C.green,  Icon: Check },
+  upcoming:  { label: 'Будет',            color: C.blue,   Icon: CalendarClock },
+  in_window: { label: 'Ожидайте перевод', color: C.amber,  Icon: Hourglass },
+  overdue:   { label: 'Задержана',        color: C.red,    Icon: AlertTriangle },
 };
 
 /* ────────────────────────────────────────────────────────────── */
 
 function Row({ label, value, color, bold, sub, strike }) {
   return (
-    <div style={{
-      display: 'flex', justifyContent: 'space-between', alignItems: 'baseline',
-      padding: sub ? '3px 0 3px 12px' : '6px 0',
-      borderBottom: sub ? 'none' : '1px solid #ffffff07',
-    }}>
-      <span style={{ fontSize: sub ? 12 : 13, color: sub ? C.muted : C.text }}>{label}</span>
-      <span style={{
-        fontSize: sub ? 12 : 14, fontWeight: bold ? 700 : 400,
+    <div className="fs-row" style={{ padding: sub ? '3px 0 3px 12px' : '6px 0', borderTop: sub ? 'none' : undefined }}>
+      <span className="fs-row__k" style={{ fontSize: sub ? 12 : 13 }}>{label}</span>
+      <span className="fs-row__v" style={{
+        fontSize: sub ? 12 : 14,
+        fontWeight: bold ? 700 : 400,
         color: color || (sub ? C.muted : C.text),
         textDecoration: strike ? 'line-through' : 'none',
       }}>
@@ -48,7 +52,7 @@ function Row({ label, value, color, bold, sub, strike }) {
   );
 }
 
-function SectionTitle({ icon, label, color }) {
+function SectionTitle({ icon: Icon, label, color }) {
   return (
     <div style={{
       display: 'flex', alignItems: 'center', gap: 6,
@@ -56,7 +60,7 @@ function SectionTitle({ icon, label, color }) {
       textTransform: 'uppercase', letterSpacing: 1.2,
       marginTop: 14, marginBottom: 6, fontWeight: 700,
     }}>
-      <span style={{ fontSize: 14 }}>{icon}</span>
+      {Icon ? <Icon size={13} strokeWidth={2.5} aria-hidden /> : null}
       <span>{label}</span>
     </div>
   );
@@ -82,7 +86,7 @@ function MonthCard({ m, onDispute, disputesByMonth }) {
 
   // Открытые споры по месяцу
   const monthDisputes = disputesByMonth?.get(`${m.year}-${m.month}`) || [];
-  const openDisputes = monthDisputes.filter(d => d.status === 'open' || d.status === 'in_review');
+  const openDisputes = monthDisputes.filter((d) => d.status === 'open' || d.status === 'in_review');
 
   // Статус Зарплаты (учитываем только salary-поток)
   const salaryStatusKey = salaryRemaining === 0
@@ -91,16 +95,19 @@ function MonthCard({ m, onDispute, disputesByMonth }) {
   const salStatus = STATUS_CFG[salaryStatusKey] || STATUS_CFG.upcoming;
   const perDiemStatusKey = perDiemRemaining === 0 ? 'paid' : (perDiemAccrued > 0 ? 'in_window' : 'upcoming');
   const pdStatus = STATUS_CFG[perDiemStatusKey] || STATUS_CFG.upcoming;
+  const SalIcon = salStatus.Icon;
 
   return (
-    <div style={{
-      background: C.card, borderRadius: 16, marginBottom: 12,
-      border: `1px solid ${salaryStatusKey === 'paid' ? C.green + '33' : salaryStatusKey === 'overdue' ? C.red + '33' : 'color-mix(in oklab, var(--text-primary) 7%, transparent)'}`,
-      overflow: 'hidden',
+    <Card variant="raised" className="overflow-hidden p-0" style={{
+      borderColor: salaryStatusKey === 'paid'
+        ? 'color-mix(in oklab, var(--ok) 24%, transparent)'
+        : salaryStatusKey === 'overdue'
+          ? 'color-mix(in oklab, var(--danger) 24%, transparent)'
+          : undefined,
     }}>
       {/* Header */}
       <div
-        onClick={() => setOpen(o => !o)}
+        onClick={() => setOpen((o) => !o)}
         style={{ padding: '14px 16px', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
       >
         <div>
@@ -112,8 +119,9 @@ function MonthCard({ m, onDispute, disputesByMonth }) {
             {m.per_diem_days > 0 ? ` · ${m.per_diem_days} дн. суточных` : ''}
           </div>
           {openDisputes.length > 0 && (
-            <div style={{ fontSize: 11, color: C.amber, marginTop: 4, fontWeight: 700 }}>
-              ⚠️ {openDisputes.length} разногласи{openDisputes.length === 1 ? 'е' : 'я'} в работе
+            <div style={{ fontSize: 11, color: C.amber, marginTop: 4, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 4 }}>
+              <AlertTriangle size={11} strokeWidth={2.6} aria-hidden />
+              {openDisputes.length} разногласи{openDisputes.length === 1 ? 'е' : 'я'} в работе
             </div>
           )}
         </div>
@@ -127,9 +135,9 @@ function MonthCard({ m, onDispute, disputesByMonth }) {
           <div style={{
             display: 'inline-flex', alignItems: 'center', gap: 4, marginTop: 4,
             fontSize: 11, fontWeight: 700, color: salStatus.color,
-            background: `${salStatus.color}18`, borderRadius: 20, padding: '2px 8px',
+            background: `color-mix(in oklab, ${salStatus.color} 9%, transparent)`, borderRadius: 20, padding: '2px 8px',
           }}>
-            <span>{salStatus.icon}</span>
+            <SalIcon size={11} strokeWidth={2.6} aria-hidden />
             <span>{salStatus.label}</span>
           </div>
         </div>
@@ -137,10 +145,10 @@ function MonthCard({ m, onDispute, disputesByMonth }) {
 
       {/* Expanded detail */}
       {open && (
-        <div style={{ padding: '0 16px 16px', borderTop: '1px solid color-mix(in oklab, var(--text-primary) 3%, transparent)' }}>
+        <div style={{ padding: '0 16px 16px', borderTop: '1px solid var(--tile-brd)' }}>
 
           {/* ═════════ ЗАРПЛАТА ЗА СМЕНЫ ═════════ */}
-          <SectionTitle icon="💼" label="Зарплата за смены" color={C.gold} />
+          <SectionTitle icon={Briefcase} label="Зарплата за смены" color={C.gold} />
           <Row label={`Заработано (${m.shifts_count} см.)`} value={fmtMoney(salaryEarned)} color={C.text} bold />
 
           {salaryAdvance > 0 && (
@@ -151,7 +159,7 @@ function MonthCard({ m, onDispute, disputesByMonth }) {
           )}
 
           <Row
-            label={salaryRemaining > 0 ? 'К выплате' : '✓ Полностью выплачено'}
+            label={salaryRemaining > 0 ? 'К выплате' : 'Полностью выплачено'}
             value={salaryRemaining > 0 ? fmtMoney(salaryRemaining) : ''}
             color={salaryRemaining > 0
               ? (m.payment_status === 'overdue' ? C.red : C.gold)
@@ -160,16 +168,14 @@ function MonthCard({ m, onDispute, disputesByMonth }) {
           />
           {salaryRemaining > 0 && (
             <div style={{ fontSize: 11, color: C.muted, marginTop: 2, marginBottom: 6 }}>
-              {m.payment_status === 'paid'
-                ? '✓ Закрыто'
-                : `Выплата: ${m.pay_window}`}
+              {m.payment_status === 'paid' ? 'Закрыто' : `Выплата: ${m.pay_window}`}
             </div>
           )}
 
           {/* ═════════ СУТОЧНЫЕ ═════════ */}
           {perDiemAccrued > 0 && (
             <>
-              <SectionTitle icon="🌙" label="Суточные" color={C.amber} />
+              <SectionTitle icon={Moon} label="Суточные" color={C.amber} />
               <Row label={`Начислено (${m.per_diem_days} дн.)`} value={fmtMoney(perDiemAccrued)} color={C.text} bold />
               {perDiemPaid > 0 && (
                 <Row label="Получено" value={fmtMoney(perDiemPaid)} color={C.green} sub />
@@ -179,7 +185,7 @@ function MonthCard({ m, onDispute, disputesByMonth }) {
               )}
               {perDiemRemaining === 0 && perDiemAccrued > 0 && (
                 <div style={{ fontSize: 12, color: C.green, marginTop: 4, fontWeight: 600 }}>
-                  ✓ Суточные закрыты
+                  Суточные закрыты
                 </div>
               )}
             </>
@@ -188,30 +194,16 @@ function MonthCard({ m, onDispute, disputesByMonth }) {
           {/* ═════════ БОНУС ═════════ */}
           {bonusPaid > 0 && (
             <>
-              <SectionTitle icon="⭐" label="Бонус" color={C.rune} />
+              <SectionTitle icon={Star} label="Бонус" color={C.rune} />
               <Row label="Выплачено" value={fmtMoney(bonusPaid)} color={C.rune} bold />
             </>
           )}
 
           {/* ═════════ КНОПКА СПОРА ═════════ */}
-          <div style={{
-            marginTop: 16, paddingTop: 12,
-            borderTop: '1px solid #ffffff10',
-          }}>
-            <button
-              onClick={() => onDispute(m)}
-              style={{
-                width: '100%', padding: '10px 12px',
-                background: 'color-mix(in oklab, var(--danger) 8%, transparent)',
-                border: '1px solid color-mix(in oklab, var(--danger) 30%, transparent)',
-                borderRadius: 10, color: C.amber,
-                fontSize: 13, fontWeight: 700,
-                cursor: 'pointer',
-                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
-              }}
-            >
-              🚩 Я не согласен с этим месяцем
-            </button>
+          <div style={{ marginTop: 16, paddingTop: 12, borderTop: '1px solid var(--tile-brd)' }}>
+            <KeyButton tone="danger" block icon={Flag} onClick={() => onDispute(m)}>
+              Я не согласен с этим месяцем
+            </KeyButton>
             {openDisputes.length > 0 && (
               <div style={{ fontSize: 11, color: C.muted, marginTop: 6, textAlign: 'center' }}>
                 У вас {openDisputes.length} активных обращений по этому месяцу
@@ -220,7 +212,7 @@ function MonthCard({ m, onDispute, disputesByMonth }) {
           </div>
         </div>
       )}
-    </div>
+    </Card>
   );
 }
 
@@ -296,34 +288,34 @@ export default function FieldEarningsMonthly() {
   }
 
   return (
-    <div style={{ minHeight: '100dvh', background: C.bg, paddingTop: 'max(env(safe-area-inset-top), 16px)', paddingBottom: 'max(env(safe-area-inset-bottom), 24px)' }}>
-      {/* Header */}
-      <div style={{ padding: '48px 16px 16px', background: 'linear-gradient(180deg, #0d1a0d 0%, transparent 100%)' }}>
-        <button onClick={() => navigate(-1)}
-          style={{ background: 'none', border: 'none', color: C.muted, cursor: 'pointer', fontSize: 14, marginBottom: 12, padding: 0 }}>
-          ← Назад
-        </button>
-        <div style={{ fontSize: 22, fontWeight: 900, color: C.text }}>💰 Зарплата по месяцам</div>
-        <div style={{ fontSize: 13, color: C.muted, marginTop: 2 }}>
-          Выплата ЗП: 10–15 числа следующего месяца
-        </div>
-      </div>
+    <div className="fs-root" style={{ paddingBottom: 'max(env(safe-area-inset-bottom), 24px)' }}>
+      <div className="fs-scene" aria-hidden><span className="fs-orb fs-orb--a" /><span className="fs-orb fs-orb--b" /></div>
 
-      <div style={{ padding: '0 16px' }}>
+      <div className="fs-content">
+        {/* Header */}
+        <div className="fs-head">
+          <button onClick={() => navigate(-1)} className="fs-head__btn" aria-label="Назад">
+            <ArrowLeft size={20} strokeWidth={2.3} />
+          </button>
+          <IconTile icon={Wallet} tone="value" size={40} />
+          <div>
+            <h1 className="fs-head__title">Зарплата по месяцам</h1>
+            <p className="fs-head__sub">Выплата ЗП: 10–15 числа следующего месяца</p>
+          </div>
+        </div>
 
         {/* Сводная карточка — РАЗДЕЛЬНО ЗП и суточные */}
         {months.length > 0 && (
-          <div style={{
-            background: 'linear-gradient(135deg, #0d1a0d, #16201a)',
-            border: '1px solid #22c55e33',
-            borderRadius: 16, padding: 16, marginBottom: 12,
-          }}>
+          <Card variant="raised" tone="status" className="p-4 mb-3">
             <div style={{ fontSize: 12, color: C.muted, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 10 }}>
               За всё время
             </div>
 
             <div style={{ marginBottom: 12 }}>
-              <div style={{ fontSize: 11, color: C.gold, fontWeight: 700, marginBottom: 4 }}>💼 ЗАРПЛАТА</div>
+              <div style={{ fontSize: 11, color: C.gold, fontWeight: 700, marginBottom: 4, display: 'flex', alignItems: 'center', gap: 5 }}>
+                <Briefcase size={12} strokeWidth={2.5} aria-hidden />
+                ЗАРПЛАТА
+              </div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
                 <Tile label="Заработано" value={fmtMoney(totals.salary_earned)} color={C.gold} />
                 <Tile label="Выплачено"  value={fmtMoney(totals.salary_paid)}   color={C.green} />
@@ -335,7 +327,10 @@ export default function FieldEarningsMonthly() {
 
             {totals.per_diem_accrued > 0 && (
               <div>
-                <div style={{ fontSize: 11, color: C.amber, fontWeight: 700, marginBottom: 4 }}>🌙 СУТОЧНЫЕ</div>
+                <div style={{ fontSize: 11, color: C.amber, fontWeight: 700, marginBottom: 4, display: 'flex', alignItems: 'center', gap: 5 }}>
+                  <Moon size={12} strokeWidth={2.5} aria-hidden />
+                  СУТОЧНЫЕ
+                </div>
                 {perDiemStagesOnly && (
                   <p style={{ fontSize: 11, color: C.muted, margin: '0 0 8px' }}>
                     На текущем объекте — за дорогу и этапы, не за смены
@@ -350,18 +345,13 @@ export default function FieldEarningsMonthly() {
                 </div>
               </div>
             )}
-          </div>
+          </Card>
         )}
 
         {/* Бейдж по открытым спорам */}
         {openDisputesCount > 0 && (
-          <div style={{
-            background: 'color-mix(in oklab, var(--danger) 8%, transparent)',
-            border: '1px solid color-mix(in oklab, var(--danger) 30%, transparent)',
-            borderRadius: 12, padding: '10px 14px', marginBottom: 12,
-            display: 'flex', alignItems: 'center', gap: 10,
-          }}>
-            <span style={{ fontSize: 18 }}>⏳</span>
+          <Card variant="raised" tone="danger" className="p-3 mb-3 flex items-center gap-2.5">
+            <Hourglass size={18} strokeWidth={2.4} style={{ color: 'var(--value-ink)', flexShrink: 0 }} aria-hidden />
             <div style={{ flex: 1 }}>
               <div style={{ fontSize: 13, fontWeight: 700, color: C.amber }}>
                 У вас {openDisputesCount} активных обращений к РП
@@ -370,21 +360,18 @@ export default function FieldEarningsMonthly() {
                 РП получит уведомление и ответит вам здесь же
               </div>
             </div>
-          </div>
+          </Card>
         )}
 
         {/* Список месяцев */}
         {loading ? (
-          <div style={{ textAlign: 'center', padding: 60, color: C.gold, fontSize: 32 }}>⚡</div>
+          <SkeletonList count={3} />
         ) : error ? (
-          <div style={{ textAlign: 'center', padding: 40, color: C.red }}>{error}</div>
+          <Card variant="flat" tone="danger" className="p-3 text-sm" style={{ color: C.red }}>{error}</Card>
         ) : months.length === 0 ? (
-          <div style={{ textAlign: 'center', padding: 60, color: C.muted }}>
-            <div style={{ fontSize: 40, marginBottom: 12 }}>📋</div>
-            <div>Нет данных о сменах</div>
-          </div>
+          <EmptyState icon={ListChecks} title="Нет данных о сменах" description="История появится после первых смен" />
         ) : (
-          months.map(m => (
+          months.map((m) => (
             <MonthCard
               key={`${m.year}-${m.month}`}
               m={m}
@@ -405,26 +392,19 @@ export default function FieldEarningsMonthly() {
           onSubmitted={() => { setDisputeMonth(null); load(); }}
         />
       )}
-      {disputeMonth && !activeWorkId && (
-        <div onClick={() => setDisputeMonth(null)} style={{
-          position: 'fixed', inset: 0, zIndex: 9000, background: 'color-mix(in oklab, var(--bg-primary) 70%, transparent)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20,
-        }}>
-          <div style={{ background: C.card, borderRadius: 16, padding: 20, maxWidth: 400, textAlign: 'center' }}>
-            <div style={{ fontSize: 32, marginBottom: 10 }}>📋</div>
-            <div style={{ color: C.text, fontWeight: 700, marginBottom: 8 }}>
-              Не определена ваша текущая работа
-            </div>
-            <div style={{ color: C.muted, fontSize: 13, marginBottom: 14 }}>
-              Чтобы оставить разногласие — сначала зайдите в раздел «Сейчас» (выбрать активный проект).
-            </div>
-            <button onClick={() => setDisputeMonth(null)}
-              style={{ background: C.gold, color: 'var(--bg-primary)', border: 'none', borderRadius: 8, padding: '10px 20px', fontWeight: 700, cursor: 'pointer' }}>
-              Понятно
-            </button>
-          </div>
+      <BottomSheet
+        open={!!disputeMonth && !activeWorkId}
+        onClose={() => setDisputeMonth(null)}
+        title="Не определена ваша текущая работа"
+      >
+        <div className="text-center space-y-3 pb-2">
+          <IconTile icon={ListChecks} tone="neutral" size={56} iconSize={28} style={{ margin: '0 auto' }} />
+          <p style={{ color: C.muted, fontSize: 13 }}>
+            Чтобы оставить разногласие — сначала зайдите в раздел «Сейчас» (выбрать активный проект).
+          </p>
+          <KeyButton tone="value" block onClick={() => setDisputeMonth(null)}>Понятно</KeyButton>
         </div>
-      )}
+      </BottomSheet>
     </div>
   );
 }
@@ -432,7 +412,7 @@ export default function FieldEarningsMonthly() {
 function Tile({ label, value, color, span }) {
   return (
     <div style={{
-      background: '#ffffff07', borderRadius: 10, padding: '10px 12px',
+      background: 'var(--bg-surface-alt)', borderRadius: 10, padding: '10px 12px',
       gridColumn: span ? `span ${span}` : 'auto',
     }}>
       <div style={{ fontSize: 16, fontWeight: 800, color: color || C.text }}>{value}</div>

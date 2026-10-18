@@ -503,6 +503,133 @@ function nextReleaseMonday() {
   return nextMonday.toISOString().slice(0, 10);
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// ДОГОНЯЮЩИЙ МЕХАНИЗМ (catch-up)
+// ═══════════════════════════════════════════════════════════════════════════
+// Проблема (17.10.2026): воскресный крон делал 4 попытки за ~36 мин и сдавался
+// до СЛЕДУЮЩЕГО воскресенья. Если баланс AI кончился в воскресенье — лекция не
+// выходила 7 дней, а пропущенный слот потом «терялся» (getNextCurriculumEntry
+// берёт maxWeek+1, минуя дыру).
+//
+// Решение: КАЖДЫЙ ДЕНЬ проверяем — вышла ли лекция на актуальный слот. Если нет
+// (или она неполная: текст < 6000 / вопросов < 15) — пробуем снова. Догон идёт
+// сколько нужно дней/недель, пока лекция реально не выйдет. Никаких «сдался».
+
+const MIN_TEXT_CHARS = 6000;   // жёсткий лимит: не менее 6000 знаков
+const MIN_QUESTIONS = 15;      // жёсткий лимит: не менее 15 вопросов
+
+/**
+ * Найти слот, который НЕ закрыт: нет published-урока, или он неполный.
+ * (Диагностика; основную работу делает catchUpMissingLesson.)
+ */
+async function findPendingSlot() {
+  const { rows } = await db.query(`
+    SELECT al.week_number, al.id, al.status,
+           length(al.blocks::text) AS blocks_bytes,
+           (SELECT count(*) FROM academy_quiz_questions q WHERE q.lesson_id = al.id) AS nq
+    FROM academy_lessons al
+    WHERE al.status NOT IN ('rejected', 'archived')
+    ORDER BY al.week_number`);
+  const byWeek = new Map(rows.map((r) => [r.week_number, r]));
+  const maxWeek = rows.length ? Math.max(...rows.map((r) => r.week_number)) : 0;
+
+  // Слот текущей недели: maxWeek (последний созданный) — если он неполный
+  for (let w = 1; w <= maxWeek; w++) {
+    const r = byWeek.get(w);
+    if (!r) continue;  // дыру закроет следующий прогон (см. ниже)
+    if (r.status !== 'published') continue;
+    const qn = Number(r.nq) || 0;
+    if (qn < MIN_QUESTIONS) {
+      return { weekNumber: w, entry: curriculumEntryForWeek(w), reason: `вопросов ${qn} < ${MIN_QUESTIONS}` };
+    }
+  }
+  return null;
+}
+
+/** Запись учебной программы для абсолютной недели (цикл 48). */
+function curriculumEntryForWeek(weekNumber) {
+  const idx = ((weekNumber - 1) % CURRICULUM_48.length + CURRICULUM_48.length) % CURRICULUM_48.length;
+  return CURRICULUM_48[idx];
+}
+
+/**
+ * Догнать пропущенное: если на актуальный слот НЕТ published-лекции —
+ * сгенерировать её (без лимита по времени). Возвращает id или null.
+ *
+ * ВАЖНО (17.10.2026): НИКОГДА не архивируем рабочую published-лекцию.
+ * generateWeeklyLesson с replaceExisting сначала архивирует слот, и если
+ * генерация потом упадёт (нет денег) — лекция потеряна. Поэтому догон
+ * срабатывает ТОЛЬКО когда published-урока на слот нет вовсе.
+ */
+async function catchUpMissingLesson() {
+  const { rows: [mx] } = await db.query(
+    `SELECT COALESCE(MAX(week_number), 0)::int AS mx FROM academy_lessons WHERE status NOT IN ('rejected','archived')`
+  );
+
+  // Планируемая неделя = следующий слот (maxWeek + 1, минуя занятые)
+  const { rows: usedRows } = await db.query(
+    `SELECT week_number FROM academy_lessons WHERE status NOT IN ('rejected','archived') ORDER BY week_number`
+  );
+  const used = new Set(usedRows.map((r) => r.week_number));
+  let plannedWeek = (mx.mx || 0) + 1;
+  while (used.has(plannedWeek)) plannedWeek++;
+
+  // Есть ли уже лекция на plannedWeek (любого неархивного статуса)?
+  const { rows: existingRows } = await db.query(
+    `SELECT id, status FROM academy_lessons al
+     WHERE al.week_number = $1 AND al.status NOT IN ('rejected','archived')
+     ORDER BY al.id LIMIT 1`, [plannedWeek]
+  );
+  const existing = existingRows[0];
+
+  if (existing && existing.status === 'published') {
+    // Слот закрыт рабочей лекцией — НЕ архивируем её.
+    const { rows: [{ nq }] } = await db.query(
+      `SELECT count(*)::int nq FROM academy_quiz_questions WHERE lesson_id = $1`, [existing.id]
+    );
+    const { rows: [{ imgs }] } = await db.query(
+      `SELECT count(*)::int imgs FROM jsonb_array_elements((SELECT blocks FROM academy_lessons WHERE id=$1)) b WHERE b->>'type'='illustration'`,
+      [existing.id]
+    );
+    if (imgs === 0) {
+      // Текст есть, картинок нет (например, сгенерировали при сбое AI) — дорисовываем.
+      console.log(`[AcademyCron][catch-up] week ${plannedWeek}: лекция #${existing.id} без картинок — генерирую иллюстрации`);
+      try {
+        const { execFileSync } = require('child_process');
+        const pathMod = require('path');
+        const genScript = pathMod.join(__dirname, '..', '..', 'tools', 'academy-gen-images.js');
+        if (require('fs').existsSync(genScript)) {
+          execFileSync(process.execPath, [genScript, '--lesson', String(existing.id), '--apply'], {
+            cwd: pathMod.join(__dirname, '..', '..'), encoding: 'utf8', timeout: 20 * 60 * 1000, stdio: 'pipe',
+          });
+          console.log(`[AcademyCron][catch-up] иллюстрации для #${existing.id} готовы`);
+        }
+      } catch (e) {
+        console.warn(`[AcademyCron][catch-up] иллюстрации не удались (${(e.message || '').slice(0, 100)}) — попробуем завтра`);
+      }
+    } else if (Number(nq) < MIN_QUESTIONS) {
+      console.log(`[AcademyCron][catch-up] week ${plannedWeek}: есть published #${existing.id}, но вопросов ${nq} < ${MIN_QUESTIONS} — НЕ архивирую (отдельная задача на добивание)`);
+    }
+    return null;
+  }
+
+  if (existing) {
+    // Черновик (draft) на слоте — его архивировать безопасно, published нет.
+    console.log(`[AcademyCron][catch-up] week ${plannedWeek}: на слоте черновик #${existing.id} (${existing.status}) — перегенерирую`);
+  } else {
+    console.log(`[AcademyCron][catch-up] week ${plannedWeek}: лекции нет — генерирую`);
+  }
+
+  const entry = curriculumEntryForWeek(plannedWeek);
+  const id = await generateWeeklyLesson({
+    maxAttempts: 3,
+    forceEntry: entry,
+    forceWeek: plannedWeek,
+    replaceExisting: true,   // архивирует только draft/архивные, published исключён выше
+  });
+  return id || null;
+}
+
 function parseLessonJson(text) {
   let cleaned = (text || '').trim();
   cleaned = cleaned.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
@@ -542,7 +669,7 @@ function hardGateLesson(lesson) {
   if (qCount < 15) reasons.push(`вопросов ${qCount} < 15`);
   if (mins < 7 || mins > 10) reasons.push(`estimated_minutes ${mins} вне 7-10`);
   if (blocks.length < 12) reasons.push(`блоков ${blocks.length} < 12`);
-  if (chars < 5500) reasons.push(`текст ${chars} знаков < 5500`);
+  if (chars < MIN_TEXT_CHARS) reasons.push(`текст ${chars} знаков < ${MIN_TEXT_CHARS}`);
   if (factCards < 3) reasons.push(`fact_card ${factCards} < 3`);
   if (factish < 3) reasons.push('мало познавательных/фактовых блоков');
   // Quiz shape — до insert, чтобы битые options никогда не ушли в published
@@ -849,6 +976,28 @@ async function generateWeeklyLesson(opts = {}) {
     console.log(`[AcademyCron] Review id=${lessonId}: ${review.verdict} interest=${review.score_interest} edu=${review.score_edu} depth=${review.score_depth} — ${review.reasons || ''}`);
 
     if (review.verdict === 'OK') {
+      // ГЕНЕРАЦИЯ ИЛЛЮСТРАЦИЙ (сцепка с конвейером картинок, 17.10.2026).
+      // Делаем ДО публикации, но НЕ блокируем лекцию при неудаче: текст важнее,
+      // картинки — дополнение. Инструмент идемпотентен и помечает сомнительные
+      // сцены (needs_review) для выборочной проверки человеком.
+      try {
+        const { execFileSync } = require('child_process');
+        const pathMod = require('path');
+        const genScript = pathMod.join(__dirname, '..', '..', 'tools', 'academy-gen-images.js');
+        if (require('fs').existsSync(genScript)) {
+          console.log(`[AcademyCron] Иллюстрации: генерация для лекции #${lessonId}...`);
+          execFileSync(process.execPath, [genScript, '--lesson', String(lessonId), '--apply'], {
+            cwd: pathMod.join(__dirname, '..', '..'), encoding: 'utf8', timeout: 20 * 60 * 1000, stdio: 'pipe',
+          });
+          console.log(`[AcademyCron] Иллюстрации: готово для #${lessonId}`);
+        } else {
+          console.log('[AcademyCron] Иллюстрации: инструмент не найден — публикую без картинок');
+        }
+      } catch (e) {
+        // НЕ роняем публикацию из-за картинок — догон/повтор добавит их позже.
+        console.warn(`[AcademyCron] Иллюстрации НЕ сгенерированы (${(e.message || '').slice(0, 120)}) — лекция публикуется без них`);
+      }
+
       await setLessonStatus(lessonId, 'published');
       const mandatoryLabel = isMandatory ? ' [ОБЯЗАТЕЛЬНЫЙ]' : ' [необязательный]';
       console.log(`[AcademyCron] Lesson "${lesson.title}"${mandatoryLabel} PUBLISHED id=${lessonId}`);
@@ -1121,7 +1270,7 @@ async function regenerateBrokenCurriculumWeeks(opts = {}) {
 }
 
 function init() {
-  // Ежедневно в 07:00 MSK — факт дня + health-check квизов
+  // Ежедневно в 07:00 MSK — факт дня + health-check квизов + ДОГОН пропущенной лекции
   cron.schedule('0 4 * * *', async () => {
     console.log('[AcademyCron] Generating daily fact...');
     try {
@@ -1134,6 +1283,14 @@ function init() {
     } catch (e) {
       console.error('[AcademyCron] Quiz health error:', e.message);
     }
+    // ДОГОН: если лекция на актуальный слот не вышла (или неполная) —
+    // пробуем каждый день, пока не закроем. Баланс пополнят — лекция выйдет.
+    try {
+      const id = await catchUpMissingLesson();
+      if (id) console.log(`[AcademyCron] Catch-up: лекция #${id} закрыта`);
+    } catch (e) {
+      console.warn('[AcademyCron] Catch-up не удался (попробуем завтра):', e.message);
+    }
   }, { timezone: 'Europe/Moscow' });
 
   // Каждое воскресенье в 17:00 MSK — урок следующей недели (с retry-обёрткой)
@@ -1143,10 +1300,12 @@ function init() {
       await generateWeeklyLessonWithRetry();
     } catch (e) {
       console.error('[AcademyCron] Weekly lesson FINAL error (after all retries):', e.message);
+      // Догон подхватит завтра в 07:00 — не оставляем неделю без урока.
+      console.log('[AcademyCron] Догон возьмёт слот в следующий запуск (07:00).');
     }
   }, { timezone: 'Europe/Moscow' });
 
-  console.log('[AcademyCron] Scheduled: daily fact+quiz-health 07:00, weekly lesson Sunday 17:00 MSK');
+  console.log('[AcademyCron] Scheduled: daily fact+quiz-health+catchup 07:00, weekly lesson Sunday 17:00 MSK');
   console.log(`[AcademyCron] Curriculum: ${CURRICULUM_48.length} topics, ${CURRICULUM_48.filter(t => t.mandatory).length} mandatory`);
 }
 
@@ -1155,6 +1314,10 @@ module.exports = {
   generateDailyFact,
   generateWeeklyLesson,
   generateWeeklyLessonWithRetry,
+  catchUpMissingLesson,
+  findPendingSlot,
+  MIN_TEXT_CHARS,
+  MIN_QUESTIONS,
   generateMlspSeries,
   regenerateMlspWithNmd,
   regenerateBrokenCurriculumWeeks,

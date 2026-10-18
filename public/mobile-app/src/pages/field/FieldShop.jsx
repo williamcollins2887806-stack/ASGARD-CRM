@@ -287,13 +287,7 @@ export default function FieldShop() {
   /* ── Featured (banner) item ── */
   const featured = useMemo(() => items.find(i => i.limited && i.stock > 0) || items[0], [items]);
 
-  /* ── Stars data ── */
-  const stars = useMemo(() =>
-    Array.from({ length: 20 }, (_, i) => ({
-      left: Math.random() * 100, top: Math.random() * 40,
-      size: 1 + Math.random() * 2, delay: Math.random() * 3, dur: 2 + Math.random() * 2,
-    })),
-  []);
+  /* ── Звёздное поле удалено (старая система декора) ── */
 
   /* ── Skeleton loader ── */
   if (loading) {
@@ -328,14 +322,7 @@ export default function FieldShop() {
           <div className="fshop-bg-glow g1" />
           <div className="fshop-bg-glow g2" />
           <div className="fshop-bg-glow g3" />
-          <div className="fshop-stars">
-            {stars.map((s, i) => (
-              <div key={i} className="fshop-s" style={{
-                left: `${s.left}%`, top: `${s.top}%`, width: s.size, height: s.size,
-                animationDelay: `${s.delay}s`, animationDuration: `${s.dur}s`,
-              }} />
-            ))}
-          </div>
+          {/* Звёздное поле (старая система) удалено: 40 лишних DOM-узлов. */}
         </div>
 
         <canvas ref={canvasRef} className="fshop-confetti" />
@@ -353,7 +340,7 @@ export default function FieldShop() {
             </div>
             <div className="fshop-wallet">
               <div className="fshop-wallet-coin">ᚱ</div>
-              <span className="fshop-wallet-num" ref={balElRef}>{balance.toLocaleString('ru')}</span>
+              <span className="fshop-wallet-num" ref={balElRef}>{(balance || 0).toLocaleString('ru')}</span>
             </div>
           </div>
 
@@ -466,7 +453,7 @@ export default function FieldShop() {
                     <div className="fshop-card-price-row">
                       <div className="fshop-card-price">
                         <span className="fshop-cp-coin">ᚱ</span>
-                        <span className="fshop-cp-num">{item.price_runes.toLocaleString('ru')}</span>
+                        <span className="fshop-cp-num">{(item.price_runes || 0).toLocaleString('ru')}</span>
                       </div>
                       <button className={`fshop-card-buy${canAfford && !soldOut ? ' can' : ''}`}>
                         {soldOut ? 'Нет' : 'Купить'}
@@ -543,18 +530,18 @@ export default function FieldShop() {
                   </div>
                   <div className="fshop-modal-price-box">
                     <div className="fshop-mpb-coin">ᚱ</div>
-                    <span className="fshop-mpb-num">{selectedItem.price_runes.toLocaleString('ru')}</span>
+                    <span className="fshop-mpb-num">{(selectedItem.price_runes || 0).toLocaleString('ru')}</span>
                   </div>
                   <div className="fshop-modal-balance">
                     {canBuy
-                      ? <>После покупки: <b>{afterBal.toLocaleString('ru')} ᚱ</b></>
-                      : <span style={{ color: 'var(--fshop-red)' }}>Не хватает {(selectedItem.price_runes - balance).toLocaleString('ru')} ᚱ</span>
+                      ? <>После покупки: <b>{(afterBal || 0).toLocaleString('ru')} ᚱ</b></>
+                      : <span style={{ color: 'var(--fshop-red)' }}>Не хватает {((selectedItem.price_runes || 0) - balance).toLocaleString('ru')} ᚱ</span>
                     }
                   </div>
                   <button className="fshop-modal-confirm"
                     style={{ opacity: canBuy ? 1 : 0.35, pointerEvents: canBuy ? 'auto' : 'none' }}
                     onClick={confirmPurchase}>
-                    {canBuy ? `Купить за ${selectedItem.price_runes.toLocaleString('ru')} ᚱ` : 'Недостаточно рун'}
+                    {canBuy ? `Купить за ${(selectedItem.price_runes || 0).toLocaleString('ru')} ᚱ` : 'Недостаточно рун'}
                   </button>
                   <button className="fshop-modal-cancel" onClick={closeModal}>Отмена</button>
                 </div>
@@ -614,7 +601,8 @@ const SHOP_CSS = `
   font-family:-apple-system,BlinkMacSystemFont,'SF Pro Round',system-ui,sans-serif;
   -webkit-user-select:none;user-select:none;overflow-x:hidden;
 }
-.light .fshop{--fshop-bg:#F2F2F7;--fshop-card:var(--text-primary);--fshop-card2:#F7F7FA;--fshop-card3:#EFEFF4;--fshop-t1:#1C1C1E;--fshop-t2:#6C6C70;--fshop-t3:var(--text-secondary)}
+/* Палитра берётся ТОЛЬКО из токенов темы. Свой .light-override убран:
+   он инвертировал палитру (--fshop-card: var(--text-primary)) и ломал светлую тему. */
 @keyframes fshop-shimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}
 .fshop-skeleton{display:block}
 
@@ -624,9 +612,7 @@ const SHOP_CSS = `
 .fshop-bg-glow.g1{width:300px;height:300px;top:-80px;left:-60px;background:var(--fshop-gold)}
 .fshop-bg-glow.g2{width:250px;height:250px;bottom:10%;right:-80px;background:var(--fshop-purple)}
 .fshop-bg-glow.g3{width:200px;height:200px;top:50%;left:40%;background:var(--fshop-blue);opacity:.08}
-.fshop-stars{position:absolute;inset:0}
-.fshop-s{position:absolute;background:var(--text-primary);border-radius:50%;animation:fshop-tw 3s ease-in-out infinite alternate}
-@keyframes fshop-tw{0%{opacity:.1;transform:scale(.8)}100%{opacity:.5;transform:scale(1.3)}}
+/* .fshop-stars/.fshop-s (звёздное поле) удалены — старая система декора. */
 
 .fshop-page{position:relative;z-index:5;display:flex;flex-direction:column;min-height:100dvh;max-width:430px;margin:0 auto;
   padding-bottom:max(env(safe-area-inset-bottom),20px)}
@@ -690,19 +676,22 @@ const SHOP_CSS = `
 
 /* ═══ CARD ═══ */
 .fshop-card{position:relative;border-radius:var(--fshop-radius);overflow:hidden;
-  background:var(--fshop-card);border:1px solid var(--field-hairline);
-  display:flex;flex-direction:column;box-shadow:0 4px 16px color-mix(in oklab, var(--bg-primary) 20%, transparent);transition:all .3s cubic-bezier(.34,1.56,.64,1);cursor:pointer}
+  background:color-mix(in oklab, var(--fshop-card) 80%, transparent);border:1px solid var(--field-hairline);
+  -webkit-backdrop-filter:blur(12px) saturate(1.4);backdrop-filter:blur(12px) saturate(1.4);
+  display:flex;flex-direction:column;box-shadow:var(--elevation-2);transition:all .3s cubic-bezier(.34,1.56,.64,1);cursor:pointer}
 .fshop-card:active{transform:scale(.96)}
 @media(hover:hover){.fshop-card:hover{transform:translateY(-4px) scale(1.02);
   box-shadow:0 8px 30px color-mix(in oklab, var(--bg-primary) 35%, transparent);border-color:color-mix(in oklab, var(--text-primary) 8%, transparent)}}
 
 .fshop-card-img{position:relative;height:120px;display:flex;align-items:center;justify-content:center;overflow:hidden}
-.fshop-card-img::before{content:'';position:absolute;inset:0;opacity:.5}
-.fshop-card.food .fshop-card-img::before{background:linear-gradient(135deg,#1a1008,#0f180a)}
-.fshop-card.merch .fshop-card-img::before{background:linear-gradient(135deg,#1a1030,#0f1828)}
-.fshop-card.digital .fshop-card-img::before{background:linear-gradient(135deg,#0f1828,#0b1a20)}
-.fshop-card.privilege .fshop-card-img::before{background:linear-gradient(135deg,#1a1020,#1a0818)}
-.fshop-card.cosmetic .fshop-card-img::before{background:linear-gradient(135deg,#0e1520,#0b1a18)}
+.fshop-card-img::before{content:'';position:absolute;inset:0;opacity:.9}
+/* Тонирование категорий — от токенов темы (раньше тёмные литералы:
+   в светлой теме карточки оставались чёрными). */
+.fshop-card.food .fshop-card-img::before{background:linear-gradient(135deg,color-mix(in oklab, var(--ok) 18%, var(--fshop-card)),color-mix(in oklab, var(--ok) 6%, var(--fshop-card)))}
+.fshop-card.merch .fshop-card-img::before{background:linear-gradient(135deg,color-mix(in oklab, var(--value) 18%, var(--fshop-card)),color-mix(in oklab, var(--value) 6%, var(--fshop-card)))}
+.fshop-card.digital .fshop-card-img::before{background:linear-gradient(135deg,color-mix(in oklab, var(--acc) 18%, var(--fshop-card)),color-mix(in oklab, var(--acc) 6%, var(--fshop-card)))}
+.fshop-card.privilege .fshop-card-img::before{background:linear-gradient(135deg,color-mix(in oklab, var(--danger) 18%, var(--fshop-card)),color-mix(in oklab, var(--danger) 6%, var(--fshop-card)))}
+.fshop-card.cosmetic .fshop-card-img::before{background:linear-gradient(135deg,color-mix(in oklab, var(--acc) 14%, var(--fshop-card)),color-mix(in oklab, var(--acc) 5%, var(--fshop-card)))}
 .fshop-card-icon{position:relative;z-index:2;font-size:48px;
   filter:drop-shadow(0 4px 12px color-mix(in oklab, var(--bg-primary) 40%, transparent));transition:all .4s cubic-bezier(.34,1.56,.64,1);
   display:flex;align-items:center;justify-content:center}

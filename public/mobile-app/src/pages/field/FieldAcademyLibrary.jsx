@@ -3,101 +3,126 @@
  */
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
+import {
+  HardHat, Hand, Mountain, Flame, Biohazard, CircleDashed, Zap, Plane, BookOpen, Landmark,
+  ScrollText, Pill, Scale, Wrench, ArrowLeft, Library, Lock, Check, Swords, XCircle,
+} from 'lucide-react';
 import { fieldApi } from '@/api/fieldClient';
+import { Card, IconTile, KeyButton, Chip, EmptyState } from '@/components/field/ui';
+import { SkeletonList } from '@/components/shared/SkeletonKit';
+import './field-screens.css';
 
-const C = {
-  bg: 'var(--field-bg)', card: 'var(--field-card)', gold: 'var(--value)',
-  rune: 'var(--acc)', green: 'var(--ok)', red: 'var(--danger)',
-  amber: 'var(--value)', text: 'var(--field-text)', muted: 'var(--text-secondary)',
+const TAG_META = {
+  safety: { label: 'ТБ', icon: HardHat },
+  ppe: { label: 'СИЗ', icon: Hand },
+  height: { label: 'Высота', icon: Mountain },
+  fire: { label: 'Пожар', icon: Flame },
+  gas: { label: 'Газ', icon: Biohazard },
+  confined: { label: 'Замкнутые', icon: CircleDashed },
+  electrical: { label: 'Электро', icon: Zap },
+  helicopter: { label: 'Вертолёт', icon: Plane },
+  basiet: { label: 'БАСИЕТ', icon: Plane },
+  knowledge: { label: 'Знания', icon: BookOpen },
+  materials: { label: 'Материалы', icon: Landmark },
+  history: { label: 'История', icon: ScrollText },
+  health: { label: 'Здоровье', icon: Pill },
+  law: { label: 'Закон', icon: Scale },
+  tool: { label: 'Инструмент', icon: Wrench },
 };
 
-const TAG_LABELS = {
-  safety: '⛑️ ТБ', ppe: '🧤 СИЗ', height: '🏔️ Высота', fire: '🔥 Пожар',
-  gas: '☣️ Газ', confined: '🕳️ Замкнутые', electrical: '⚡ Электро',
-  helicopter: '🚁 Вертолёт', basiet: '✈️ БАСИЕТ',
-  knowledge: '📚 Знания', materials: '🏛️ Материалы', history: '📜 История',
-  health: '💊 Здоровье', law: '⚖️ Закон', tool: '🔧 Инструмент',
-};
+function Tag({ tag }) {
+  const meta = TAG_META[tag];
+  if (!meta) return null;
+  const Icon = meta.icon;
+  return (
+    <span style={{
+      display: 'inline-flex', alignItems: 'center', gap: 4,
+      fontSize: 10, color: 'var(--text-tertiary)', background: 'var(--bg-surface-alt)',
+      padding: '2px 7px', borderRadius: 8,
+    }}>
+      <Icon size={10} strokeWidth={2.4} aria-hidden />
+      {meta.label}
+    </span>
+  );
+}
 
 function LessonCard({ lesson, navigate }) {
   const isPassed = lesson.passed;
   const isRead = !!lesson.read_completed_at;
   const isOptional = lesson.is_mandatory === false; // явный false (true либо undefined = обязательная по умолчанию)
 
-  let statusIcon = '🔒';
-  let statusColor = C.muted;
+  let statusIcon = Lock;
+  let statusColor = 'var(--text-tertiary)';
   let statusText = 'Не начата';
 
   if (isPassed) {
-    statusIcon = '✓';
-    statusColor = C.green;
+    statusIcon = Check;
+    statusColor = 'var(--ok)';
     statusText = `${lesson.score}%`;
   } else if (isRead) {
-    statusIcon = '⚔️';
-    statusColor = C.amber;
+    statusIcon = Swords;
+    statusColor = 'var(--value-ink)';
     statusText = 'Прочитана';
   } else if (!isRead && lesson.attempts > 0) {
     // read_completed_at was reset after 2 failed attempts
-    statusIcon = '❌';
-    statusColor = C.red;
+    statusIcon = XCircle;
+    statusColor = 'var(--danger)';
     statusText = 'Перечитай';
   }
+  const StatusIcon = statusIcon;
 
   return (
-    <div
+    <Card
+      variant="raised"
       onClick={() => navigate(`/field/academy/lesson/${lesson.id}`)}
       style={{
-        background: C.card, borderRadius: 14, padding: '14px 16px',
-        border: `1px solid ${isPassed ? C.green + '44' : 'color-mix(in oklab, var(--text-primary) 7%, transparent)'}`,
-        marginBottom: 10, cursor: 'pointer', display: 'flex', gap: 14, alignItems: 'center',
+        marginBottom: 10, cursor: 'pointer',
+        borderColor: isPassed ? 'color-mix(in oklab, var(--ok) 30%, transparent)' : undefined,
       }}
     >
-      <div style={{
-        width: 52, height: 52, borderRadius: 14,
-        background: `${lesson.cover_color || 'var(--bg-surface)'}cc`,
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        fontSize: 28, flexShrink: 0,
-      }}>
-        {lesson.cover_icon}
-      </div>
+      <div style={{ display: 'flex', gap: 14, alignItems: 'center' }}>
+        <div style={{
+          width: 52, height: 52, borderRadius: 14,
+          background: lesson.cover_color
+            ? `color-mix(in oklab, ${lesson.cover_color} 40%, var(--bg-surface-alt))`
+            : 'var(--bg-surface-alt)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          fontSize: 26, flexShrink: 0,
+        }} aria-hidden>
+          {lesson.cover_icon || <Library size={22} color="var(--text-tertiary)" />}
+        </div>
 
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontSize: 11, color: C.muted, marginBottom: 2, display: 'flex', gap: 6, alignItems: 'center' }}>
-          <span>{lesson.saga} · Неделя {lesson.week_number}</span>
-          {isOptional && (
-            <span style={{
-              fontSize: 9, color: C.green, background: `${C.green}22`,
-              padding: '1px 6px', borderRadius: 6, fontWeight: 700,
-              textTransform: 'uppercase', letterSpacing: 0.5,
-            }}>
-              По желанию
-            </span>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 11, color: 'var(--text-tertiary)', marginBottom: 2, display: 'flex', gap: 6, alignItems: 'center' }}>
+            <span>{lesson.saga} · Неделя {lesson.week_number}</span>
+            {isOptional && (
+              <span style={{
+                fontSize: 9, color: 'var(--ok)', background: 'color-mix(in oklab, var(--ok) 14%, transparent)',
+                padding: '1px 6px', borderRadius: 6, fontWeight: 700,
+                textTransform: 'uppercase', letterSpacing: 0.5,
+              }}>
+                По желанию
+              </span>
+            )}
+          </div>
+          <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {lesson.title}
+          </div>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+            {(lesson.tags || []).slice(0, 2).map((tag) => <Tag key={tag} tag={tag} />)}
+            <span style={{ fontSize: 12, color: 'var(--text-tertiary)' }}>~{lesson.estimated_minutes} мин</span>
+          </div>
+        </div>
+
+        <div style={{ textAlign: 'center', flexShrink: 0 }}>
+          <StatusIcon size={20} strokeWidth={2.4} style={{ color: statusColor }} aria-hidden />
+          <div style={{ fontSize: 11, color: statusColor, fontWeight: 700 }}>{statusText}</div>
+          {lesson.runes_earned > 0 && (
+            <div style={{ fontSize: 10, color: 'var(--value-ink)', marginTop: 2 }}>+{lesson.runes_earned}</div>
           )}
         </div>
-        <div style={{ fontSize: 15, fontWeight: 700, color: C.text, marginBottom: 4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-          {lesson.title}
-        </div>
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-          {(lesson.tags || []).slice(0, 2).map(tag => (
-            <span key={tag} style={{
-              fontSize: 10, color: C.muted, background: 'color-mix(in oklab, var(--text-primary) 3%, transparent)',
-              padding: '2px 6px', borderRadius: 8,
-            }}>
-              {TAG_LABELS[tag] || tag}
-            </span>
-          ))}
-          <span style={{ fontSize: 12, color: C.muted }}>~{lesson.estimated_minutes} мин</span>
-        </div>
       </div>
-
-      <div style={{ textAlign: 'center', flexShrink: 0 }}>
-        <div style={{ fontSize: 20, marginBottom: 2, color: statusColor }}>{statusIcon}</div>
-        <div style={{ fontSize: 11, color: statusColor, fontWeight: 700 }}>{statusText}</div>
-        {lesson.runes_earned > 0 && (
-          <div style={{ fontSize: 10, color: C.rune, marginTop: 2 }}>+{lesson.runes_earned}🔮</div>
-        )}
-      </div>
-    </div>
+    </Card>
   );
 }
 
@@ -125,79 +150,62 @@ export default function FieldAcademyLibrary() {
   // отсортировать по week_number ↑ (то есть от старых к новым)
   const today = new Date().toISOString().split('T')[0];
   const catchupLessons = lessons
-    .filter(l => l.is_mandatory !== false && !l.passed && l.release_monday && l.release_monday <= today)
+    .filter((l) => l.is_mandatory !== false && !l.passed && l.release_monday && l.release_monday <= today)
     .sort((a, b) => a.week_number - b.week_number);
 
   const filtered = filter === 'catchup'
     ? catchupLessons
-    : lessons.filter(l => {
+    : lessons.filter((l) => {
         if (filter === 'passed') return l.passed;
         if (filter === 'unread') return !l.read_completed_at;
         return true;
       });
 
-  const passedCount = lessons.filter(l => l.passed).length;
+  const passedCount = lessons.filter((l) => l.passed).length;
   const totalCount = lessons.length;
 
   return (
-    <div style={{ minHeight: '100dvh', background: C.bg, paddingTop: 'max(env(safe-area-inset-top), 16px)', paddingBottom: 'max(env(safe-area-inset-bottom), 24px)' }}>
-      {/* Header */}
-      <div style={{ padding: '48px 16px 20px', background: 'linear-gradient(180deg, var(--bg-surface) 0%, transparent 100%)' }}>
-        <button
-          onClick={() => navigate('/field/academy')}
-          style={{ background: 'none', border: 'none', color: C.muted, cursor: 'pointer', fontSize: 14, marginBottom: 16, padding: 0 }}
-        >
-          ← Назад
-        </button>
-        <div style={{ fontSize: 22, fontWeight: 900, color: C.text, marginBottom: 4 }}>📚 Летопись</div>
-        <div style={{ fontSize: 13, color: C.muted }}>
-          Пройдено {passedCount} из {totalCount} Рун
+    <div className="fs-root" style={{ paddingBottom: 'max(env(safe-area-inset-bottom), 24px)' }}>
+      <div className="fs-scene" aria-hidden><span className="fs-orb fs-orb--a" /><span className="fs-orb fs-orb--b" /></div>
+
+      <div className="fs-content">
+        {/* Header */}
+        <div className="fs-head">
+          <button onClick={() => navigate('/field/academy')} className="fs-head__btn" aria-label="Назад">
+            <ArrowLeft size={20} strokeWidth={2.3} />
+          </button>
+          <IconTile icon={Library} tone="value" size={42} />
+          <div>
+            <h1 className="fs-head__title">Летопись</h1>
+            <p className="fs-head__sub">Пройдено {passedCount} из {totalCount} Рун</p>
+          </div>
         </div>
 
         {/* Filter tabs */}
-        <div style={{ display: 'flex', gap: 8, marginTop: 16, overflowX: 'auto', paddingBottom: 4 }}>
-          {[
-            { key: 'catchup', label: `Что догнать${catchupLessons.length ? ` (${catchupLessons.length})` : ''}`, accent: catchupLessons.length > 0 ? C.red : null },
-            { key: 'all', label: 'Все' },
-            { key: 'unread', label: 'Не прочитаны' },
-            { key: 'passed', label: 'Пройденные' },
-          ].map(tab => {
-            const isActive = filter === tab.key;
-            const baseColor = tab.accent && !isActive ? tab.accent : null;
-            return (
-              <button
-                key={tab.key}
-                onClick={() => setFilter(tab.key)}
-                style={{
-                  padding: '6px 14px', borderRadius: 20,
-                  border: baseColor ? `1px solid ${baseColor}66` : 'none',
-                  background: isActive ? C.rune : 'color-mix(in oklab, var(--text-primary) 7%, transparent)',
-                  color: isActive ? 'var(--text-primary)' : (baseColor || C.muted),
-                  fontSize: 13, fontWeight: isActive || baseColor ? 700 : 400,
-                  cursor: 'pointer', flexShrink: 0, whiteSpace: 'nowrap',
-                }}
-              >
-                {tab.label}
-              </button>
-            );
-          })}
+        <div style={{ display: 'flex', gap: 8, marginBottom: 14, overflowX: 'auto', paddingBottom: 4, scrollbarWidth: 'none' }}>
+          <Chip tone="danger" active={filter === 'catchup'} onClick={() => setFilter('catchup')}>
+            Что догнать{catchupLessons.length ? ` (${catchupLessons.length})` : ''}
+          </Chip>
+          <Chip tone="accent" active={filter === 'all'} onClick={() => setFilter('all')}>Все</Chip>
+          <Chip tone="accent" active={filter === 'unread'} onClick={() => setFilter('unread')}>Не прочитаны</Chip>
+          <Chip tone="status" active={filter === 'passed'} onClick={() => setFilter('passed')}>Пройденные</Chip>
         </div>
-      </div>
 
-      <div style={{ padding: '0 16px' }}>
-        {loading ? (
-          <div style={{ textAlign: 'center', padding: 40, color: C.gold, fontSize: 32 }}>⚡</div>
-        ) : filtered.length === 0 ? (
-          <div style={{ textAlign: 'center', padding: 40, color: C.muted }}>
-            {filter === 'catchup'
-              ? '🎉 Все обязательные руны сданы. Можно работать спокойно!'
-              : 'Нет Рун в этом разделе'}
-          </div>
-        ) : (
-          filtered.map(lesson => (
-            <LessonCard key={lesson.id} lesson={lesson} navigate={navigate} />
-          ))
-        )}
+        <div>
+          {loading ? (
+            <SkeletonList count={5} />
+          ) : filtered.length === 0 ? (
+            <EmptyState
+              icon={filter === 'catchup' ? Check : Library}
+              title={filter === 'catchup' ? 'Все обязательные руны сданы. Можно работать спокойно!' : 'Нет Рун в этом разделе'}
+              description={filter === 'catchup' ? '' : 'Попробуй другой фильтр'}
+            />
+          ) : (
+            filtered.map((lesson) => (
+              <LessonCard key={lesson.id} lesson={lesson} navigate={navigate} />
+            ))
+          )}
+        </div>
       </div>
     </div>
   );

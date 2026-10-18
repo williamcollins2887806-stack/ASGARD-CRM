@@ -80,7 +80,7 @@ function Shell({ block, done, onDone, children, footer }) {
           style={{
             width: '100%', padding: '12px 0', background: `${C.rune}22`,
             border: 'none', borderTop: `1px solid ${C.rune}44`,
-            color: '#cfc4ff', fontSize: 13, fontWeight: 700, cursor: 'pointer',
+            color: 'var(--text-secondary)', fontSize: 13, fontWeight: 700, cursor: 'pointer',
           }}
         >
           Отметить тренажёр пройденным
@@ -224,7 +224,7 @@ function HotspotsTrainer({ block }) {
         <div style={{ marginTop: 6, fontSize: 12, color: C.muted, lineHeight: 1.5 }}>{h.hint}</div>
       )}
       {allFound && h.explain && (
-        <div style={{ marginTop: 6, fontSize: 12, color: '#b0b0c0', lineHeight: 1.55 }}>{h.explain}</div>
+        <div style={{ marginTop: 6, fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.55 }}>{h.explain}</div>
       )}
     </div>
   );
@@ -274,7 +274,7 @@ function OrderTrainer({ block }) {
                 padding: '9px 12px', borderRadius: 10, fontSize: 12.5, fontWeight: isPicked ? 800 : 500,
                 background: isPicked ? `${C.rune}22` : '#ffffff0d',
                 border: `1px solid ${isPicked ? C.rune : '#ffffff1c'}`,
-                color: isPicked ? '#cfc4ff' : C.text, cursor: isPicked ? 'default' : 'pointer',
+                color: isPicked ? 'var(--acc)' : C.text, cursor: isPicked ? 'default' : 'pointer',
               }}
             >
               {isPicked ? `${pos + 1}. ` : ''}{it.label}
@@ -300,7 +300,7 @@ function OrderTrainer({ block }) {
             : `Выбрано ${picked.length} из ${items.length}`}
       </div>
       {isCorrect && o.explain && (
-        <div style={{ marginTop: 6, fontSize: 12, color: '#b0b0c0', lineHeight: 1.55 }}>{o.explain}</div>
+        <div style={{ marginTop: 6, fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.55 }}>{o.explain}</div>
       )}
     </div>
   );

@@ -322,8 +322,12 @@ const PLANNER_SYSTEM = `Ты — арт-директор Чертогов Мим
    ЗАПРЕЩЕНО планировать сцены вида "только руки", "только ноги", "со спины", "силуэт против света", "фигура в тумане" — по таким кадрам модель не может воспроизвести лицо/приметы, и герой не узнаётся.
    Если сюжет требует показать жест руками (например "палец вверх", "стоп") — покажи ЖЕСТ ЦЕЛИКОМ ЧЕРЕЗ ПЕРСОНАЖА: он стоит в кадре по грудь и делает этот жест. Так и замысел, и герой видны.
    Не проси текст/буквы/надписи на картинке.
-9. Промпт — ТОЛЬКО английский. Не пиши стиль/палитру/негатив (добавляются автоматически).
-10. slug: 01-cover, 02-..., 03-... по порядку.`;
+9. ОСОБО ПРО ФИНАЛЬНУЮ СЦЕНУ (slug 07-final, бейдж ФИНАЛ):
+   ЗАПРЕЩЕНО делать её абстрактной ("символ знания", "плакат с идеей", "свечение мудрости", "фигура в лучах"). По таким промптам модель рисует обобщённую картинку БЕЗ узнаваемых героев — это брак.
+   Финал ОБЯЗАН быть конкретной сценой с людьми: герой(и) в кадре крупно, в конкретном месте, с конкретным предметом, в узнаваемой позе (например: "Олав стоит у верстака, держит проверенный респиратор, за спиной бригада в касках, все показывают большой палец").
+   Формула финала: [кто] + [где] + [что делает] + [что в руках].
+10. Промпт — ТОЛЬКО английский. Не пиши стиль/палитру/негатив (добавляются автоматически).
+11. slug: 01-cover, 02-..., 03-... по порядку.`;
 
 async function planIllustrations(lesson) {
   const base = lesson._cleanBlocks || stripIllustrations(lesson.blocks);
@@ -386,6 +390,16 @@ ${blockList}
         if (im.kind === 'scene' && im.cast.length && noFace.test(im.prompt)) {
           console.log(`[plan] ${im.slug}: кадр без лица при наличии персонажа — добавляю требование показать героя в кадре`);
           im.prompt += ' The character is clearly visible: medium shot, upper body and face fully in frame, unmistakably shown.';
+        }
+        // Детерминированная защита ФИНАЛА: абстрактный финал = брак (подтверждено
+        // 5 раз: 07-final давал 38-46 против 72 у обычных сцен). Если в промпте
+        // финала нет конкретики (места/действия/предмета) — усиливаем его.
+        if (/final/i.test(im.slug) && im.kind === 'scene' && im.cast.length) {
+          const concrete = /\b(holds?|holding|stands?|standing|sits?|points?|shows?|checks?|inspects?|hands?|shakes?|carries|wears|at the|near the|by the|behind|beside)\b/i;
+          if (!concrete.test(im.prompt)) {
+            console.log(`[plan] ${im.slug}: абстрактный финал — добавляю конкретику (кто+где+что делает)`);
+            im.prompt += ' Make it a CONCRETE scene with people: the character stands in a specific place, holds a specific object, in a clear pose, upper body large in frame, other workers visible behind.';
+          }
         }
       }
       // дедуп slug
@@ -453,7 +467,7 @@ function buildBlocks(original, images) {
         url: im.url,
         alt: im.caption,
         caption: im.caption,
-        aspect: '16 / 9',
+        aspect: '16/9',
         badge: im.badge,
         slug: im.slug,
         cast: im.cast || [],
@@ -576,6 +590,32 @@ async function showStatus() {
   console.log(`\nЛекции с бэкапом blocks: ${bk.length}`);
 }
 
+// ── Отчёт качества: сомнительные сцены по всем лекциям ───────────────────────
+// Запуск: node tools/academy-gen-images.js --quality
+// Показывает, какие картинки помечены needs_review (арбитр < порога даже после
+// авто-перегенерации) — это и есть список «посмотреть глазами».
+async function qualityReport() {
+  const { rows } = await pool.query(`
+    SELECT al.id, al.week_number, al.title,
+           jsonb_array_length(al.blocks) AS blocks
+    FROM academy_lessons al
+    WHERE al.status='published'
+      AND EXISTS (
+        SELECT 1 FROM jsonb_array_elements(al.blocks) b
+        WHERE b->>'type'='illustration' AND (b->>'needs_review')='true'
+      )
+    ORDER BY al.week_number`);
+  if (!rows.length) { console.log('✅ Сомнительных сцен нет — все иллюстрации прошли порог.'); return; }
+  console.log(`⚠ Лекций с сомнительными сценами: ${rows.length}`);
+  for (const r of rows) {
+    const { rows: b } = await pool.query(`SELECT blocks FROM academy_lessons WHERE id=$1`, [r.id]);
+    const bad = b[0].blocks.filter((x) => x.type === 'illustration' && x.needs_review === true);
+    console.log(`  #${r.id} (w${r.week_number}) «${r.title}»:`);
+    for (const x of bad) console.log(`     • ${x.slug} — ${String(x.caption || '').slice(0, 60)}`);
+  }
+  console.log('\nПосмотреть: превью лекции или файлы uploads/academy/lesson-<id>/');
+}
+
 // ── main ────────────────────────────────────────────────────────────────────
 
 async function main() {
@@ -590,6 +630,7 @@ async function main() {
   if (!API_KEY && !doRollback && !doRecompress && !list) { console.error('Нет OPENAI_API_KEY (routerai)'); process.exit(1); }
 
   if (list) { await showStatus(); await pool.end(); return; }
+  if (args.includes('--quality')) { await qualityReport(); await pool.end(); return; }
   if (args.includes('--dump-plan')) {
     const { rows: lr } = await pool.query(`SELECT id, title, saga, tags, is_mandatory, blocks FROM academy_lessons WHERE id=$1`, [lessonId]);
     if (!lr.length) { console.error('нет лекции'); process.exit(1); }
@@ -725,8 +766,18 @@ async function main() {
     return;
   }
 
-  const newBlocks = buildBlocks(lesson.blocks, results);
-  const addedCount = newBlocks.length - lesson._cleanBlocks.length;
+    const newBlocks = buildBlocks(lesson.blocks, results);
+
+    // ВАЖНО (16.10.2026): помечаем в самих блоках сцены, которые НЕ прошли порог
+    // даже после авто-перегенерации. Иначе тихо-плохая картинка уходит в прод,
+    // и о ней никто не узнаёт (был класс: quality-пометка жила только в логе).
+    for (const r of results) {
+      if (!r._needsReview) continue;
+      const blk = newBlocks.find((b) => b.type === 'illustration' && b.slug === r.slug);
+      if (blk) { blk.needs_review = true; }
+    }
+
+    const addedCount = newBlocks.length - lesson._cleanBlocks.length;
 
   // Бэкап только если реально добавляем новые блоки (иначе повторный прогон
   // затирал бы хорошую версию своей же копией — B7c).

@@ -15,10 +15,13 @@
 // READINESS_ROLES — смена статуса готовности (запись).
 // 23.06.2026 BUG-FIX (D-09): HEAD_PM и OFFICE_MANAGER.
 // 08.09.2026: PM — РП ставит готов/не готов по своим рабочим в Дружине (анкету по-прежнему не правит).
-const READINESS_ROLES = ['ADMIN', 'HR', 'HR_MANAGER', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'HEAD_PM', 'OFFICE_MANAGER', 'TO', 'HEAD_TO', 'PM'];
+const READINESS_ROLES = ['ADMIN', 'HR', 'HR_MANAGER', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV', 'HEAD_PM', 'OFFICE_MANAGER', 'TO', 'HEAD_TO', 'PM'];
 // VIEW_ROLES — просмотр списка дружины. PM/HEAD_PM видят всех (свою бригаду — в полевом модуле).
 // OFFICE_MANAGER ведёт картотеку рабочих (телефоны, документы), нужен read-доступ к «Моей дружине».
-const VIEW_ROLES      = ['ADMIN', 'HR', 'HR_MANAGER', 'PM', 'HEAD_PM', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'TO', 'HEAD_TO', 'OFFICE_MANAGER'];
+// DIRECTOR_DEV: был пропущен, хотя DIRECTOR_GEN/DIRECTOR_COMM в списке. Мобильное меню
+// отдаёт ему «Персонал» (rbac.js), запрос падал 403 → api-клиент трактовал это как
+// «сессия истекла» и выбрасывал директора на /welcome. См. отчёт 17.10.2026.
+const VIEW_ROLES      = ['ADMIN', 'HR', 'HR_MANAGER', 'PM', 'HEAD_PM', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV', 'TO', 'HEAD_TO', 'OFFICE_MANAGER'];
 
 const EMPTY_GROUPS = {
   on_site: 0, approved: 0, ready: 0, not_ready: 0,

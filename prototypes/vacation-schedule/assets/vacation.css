@@ -1,0 +1,355 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   ASGARD CRM — прототип графика отпусков. Только токены дизайн-системы.
+   Тёмная (Nordic Dark) и светлая (Nordic Manuscript) — автоматически через tokens.css.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+:root {
+  --vs-name-w: 244px;
+  --vs-mini-w: 20px;
+  --vs-sel: var(--gold);
+  --vs-sel-bg: var(--gold-bg);
+}
+
+/* ── Полноэкранная модалка (занимает всю область CRM, навигацию не перекрывает) ── */
+body.view-me .page, body.view-director .page, body.view-buh .page { max-width: none; padding: 0; }
+.vs-stage {
+  min-height: calc(100vh - var(--pp-topbar)); z-index: 400;
+  background: var(--bg0); display: flex; align-items: stretch; justify-content: center;
+  padding: 12px; overflow: auto;
+}
+.vs-modal {
+  width: min(1500px, 100%); margin: auto;
+  background: var(--bg1); border: 1px solid var(--brd); border-radius: var(--r-xl);
+  box-shadow: var(--shadow-xl); display: flex; flex-direction: column;
+  overflow: hidden; min-height: 0; max-height: calc(100vh - var(--pp-topbar) - 24px);
+}
+.vs-modal--buh { width: min(1180px, 100%); }
+
+/* ── Шапка модалки ────────────────────────────────────────────────────── */
+.vs-mhead {
+  display: flex; align-items: center; gap: var(--sp-4);
+  padding: 14px var(--sp-5); border-bottom: 1px solid var(--brd);
+  background: linear-gradient(120deg, var(--bg2), var(--bg1));
+  flex-shrink: 0;
+}
+.vs-mhead__ic {
+  width: 42px; height: 42px; border-radius: var(--r-lg); flex-shrink: 0;
+  display: grid; place-items: center; font-size: 21px;
+  background: var(--gold-bg); border: 1px solid var(--brd-gold); color: var(--gold);
+}
+.vs-mhead__t { font-size: 18px; font-weight: var(--fw-extra); letter-spacing: -.2px; display: flex; align-items: center; gap: 8px; }
+.vs-mhead__s { font-size: 12px; color: var(--t3); margin-top: 2px; }
+.vs-mhead__acts { margin-left: auto; display: flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap; }
+
+/* ── Полоса баланса ───────────────────────────────────────────────────── */
+.vs-bal {
+  display: grid; grid-template-columns: 240px 240px 1fr; gap: var(--sp-3);
+  padding: var(--sp-4) var(--sp-5) 0; flex-shrink: 0;
+}
+@media (max-width: 1080px) { .vs-bal { grid-template-columns: 1fr 1fr; } }
+.vs-acc {
+  display: flex; align-items: center; gap: var(--sp-3);
+  background: var(--bg2); border: 1px solid var(--brd); border-radius: var(--r-lg);
+  padding: 12px var(--sp-4); position: relative; overflow: hidden;
+}
+.vs-acc::after { content: ''; position: absolute; left: 0; right: 0; top: 0; height: 2px; }
+.vs-acc--avail::after { background: var(--grad-blue); }
+.vs-acc--carry::after { background: var(--grad-gold); }
+.vs-acc--can { grid-column: 3 / -1; }
+@media (max-width: 1080px) { .vs-acc--can { grid-column: 1 / -1; } }
+.vs-acc__ic {
+  width: 34px; height: 34px; border-radius: var(--r-md); flex-shrink: 0;
+  display: grid; place-items: center; font-size: 17px; background: var(--bg3); border: 1px solid var(--brd);
+}
+.vs-acc--avail .vs-acc__ic { color: var(--blue-l); }
+.vs-acc--carry .vs-acc__ic { color: var(--gold); }
+.vs-acc__l { font-size: 10.5px; text-transform: uppercase; letter-spacing: .05em; color: var(--t3); font-weight: var(--fw-bold); }
+.vs-acc__v { font-size: 21px; font-weight: var(--fw-extra); letter-spacing: -.4px; }
+.vs-acc__v small { font-size: 11px; color: var(--t3); font-weight: var(--fw-med); }
+.vs-acc--can .vs-acc__v { color: var(--gold); }
+.vs-acc__bars { display: flex; height: 7px; border-radius: 4px; overflow: hidden; background: var(--bg4); margin: 6px 0 5px; gap: 1px; }
+.vs-acc__lg { display: flex; gap: 12px; flex-wrap: wrap; font-size: 10.5px; color: var(--t3); }
+.vs-acc__lg span { display: inline-flex; align-items: center; gap: 5px; }
+.vs-b { display: inline-block; height: 100%; border-radius: 2px; }
+.vs-b--ok { background: var(--ok-t); }
+.vs-b--pend { background: var(--gold); }
+.vs-b--free { background: var(--bg5); }
+.vs-b--bad { background: var(--err-t); }
+.vs-b--wk { background: var(--bg4); }
+.vs-b--blocked { background: var(--brd-err); border: 1px dashed var(--err-t); }
+
+/* ── Легенда / подсказки ──────────────────────────────────────────────── */
+.vs-legend { display: flex; gap: 16px; flex-wrap: wrap; padding: 12px var(--sp-5) 0; align-items: center; flex-shrink: 0; }
+.vs-lg { display: inline-flex; align-items: center; gap: 6px; font-size: 11.5px; color: var(--t2); }
+.vs-lg .vs-b { width: 13px; height: 13px; border-radius: 3px; }
+.vs-lg--hint { color: var(--t3); font-style: italic; margin-left: auto; }
+@media (max-width: 1200px) { .vs-lg--hint { margin-left: 0; width: 100%; } }
+.vs-hiddenbar { display: flex; gap: 6px; flex-wrap: wrap; padding: 10px var(--sp-5) 0; }
+
+/* ── Таблица ──────────────────────────────────────────────────────────── */
+.vs-tablewrap {
+  flex: 1; overflow: auto; margin: var(--sp-3) var(--sp-5) 0;
+  border: 1px solid var(--brd); border-radius: var(--r-lg); background: var(--bg2);
+  min-height: 0;
+}
+.vs-head, .vs-row { display: grid; align-items: stretch; }
+.vs-head { position: sticky; top: 0; z-index: 3; background: var(--bg4); border-bottom: 1px solid var(--brd); }
+.vs-name {
+  padding: 9px 14px; border-right: 1px solid var(--brd); min-width: 0;
+  display: flex; flex-direction: column; gap: 5px; justify-content: center;
+  position: sticky; left: 0; z-index: 2; background: inherit;
+}
+.vs-name--head { justify-content: center; gap: 2px; }
+.vs-name--head > span { font-size: 11px; font-weight: var(--fw-bold); text-transform: uppercase; letter-spacing: .05em; color: var(--t3); }
+.vs-name--head small { font-size: 10px; color: var(--t3); font-weight: var(--fw-med); }
+.vs-hideall {
+  margin-top: 4px; align-self: flex-start; cursor: pointer; font-family: inherit;
+  font-size: 10.5px; font-weight: var(--fw-semi); color: var(--blue-l);
+  background: var(--blue-bg); border: 1px solid var(--brd-info); border-radius: var(--r-full); padding: 2px 9px;
+}
+.vs-row { border-bottom: 1px solid var(--brd-m); }
+.vs-row:last-child { border-bottom: none; }
+.vs-row:hover > .vs-name { background: var(--bg3); }
+.vs-row.is-me > .vs-name { background: var(--blue-bg); box-shadow: inset 3px 0 0 var(--gold); }
+
+.vs-who { display: flex; align-items: center; gap: 9px; }
+.vs-ava {
+  width: 28px; height: 28px; border-radius: 50%; flex-shrink: 0;
+  display: grid; place-items: center; font-size: 11px; font-weight: var(--fw-extra);
+  background: linear-gradient(140deg, var(--bg4), var(--bg3)); border: 1px solid var(--brd); color: var(--t2);
+}
+.vs-who__tx { min-width: 0; flex: 1; }
+.vs-who__n { font-size: 12.5px; font-weight: var(--fw-semi); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.vs-who__r { font-size: 10.5px; color: var(--t3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.vs-you { font-size: 9.5px; font-weight: var(--fw-bold); color: var(--gold); background: var(--gold-bg); border-radius: var(--r-full); padding: 1px 7px; margin-left: 4px; }
+.vs-hide {
+  cursor: pointer; border: 1px solid var(--brd); background: var(--bg3); color: var(--t3);
+  width: 22px; height: 22px; border-radius: var(--r-sm); font-size: 11px; flex-shrink: 0;
+  transition: .15s;
+}
+.vs-hide:hover { color: var(--err-t); border-color: var(--brd-err); }
+.vs-hide--grp { width: auto; height: 19px; padding: 0 8px; margin-left: auto; font-size: 9.5px; border-radius: var(--r-full); }
+.vs-chips { display: flex; gap: 4px; flex-wrap: wrap; }
+.vs-chip {
+  display: inline-flex; align-items: center; gap: 3px; cursor: default;
+  font-size: 10px; font-weight: var(--fw-semi); padding: 1px 7px; border-radius: var(--r-full);
+  border: 1px solid var(--brd); background: var(--bg3); color: var(--t2); white-space: nowrap;
+}
+.vs-chip b { font-weight: var(--fw-bold); }
+.vs-chip--none { color: var(--t3); font-style: italic; cursor: pointer; }
+.vs-st--ok { border-color: var(--brd-ok); background: var(--ok-bg); color: var(--ok-t); }
+.vs-st--pend { border-color: var(--brd-gold); background: var(--gold-bg); color: var(--gold); }
+.vs-st--bad { border-color: var(--brd-err); background: var(--err-bg); color: var(--err-t); }
+.vs-st--draft { border-color: var(--brd-info); background: var(--info-bg); color: var(--info-t); }
+.vs-left { font-size: 10.5px; color: var(--t3); }
+.vs-left b { color: var(--t1); }
+.vs-left.is-neg b, .is-neg b { color: var(--err-t); }
+
+/* ── Группы отделов ───────────────────────────────────────────────────── */
+.vs-group {
+  display: flex; align-items: center; gap: 8px; padding: 7px 14px;
+  background: var(--bg3); border-bottom: 1px solid var(--brd);
+  position: sticky; left: 0;
+}
+.vs-group__t { font-size: 11px; font-weight: var(--fw-black); text-transform: uppercase; letter-spacing: .07em; color: var(--gold); }
+.vs-group__c { font-size: 10px; color: var(--t3); }
+
+/* ── Раскрытый месяц (ячейки дней) ────────────────────────────────────── */
+.vs-days { border-right: 1px solid var(--brd-m); display: flex; flex-direction: column; min-width: 0; }
+.vs-days--head { background: var(--bg4); cursor: pointer; justify-content: center; }
+.vs-days--head:hover { background: var(--bg5); }
+.vs-days__cap { font-size: 10.5px; font-weight: var(--fw-bold); text-transform: uppercase; letter-spacing: .05em; color: var(--gold); text-align: center; padding: 2px 0; }
+.vs-days__wd, .vs-days__nm { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; }
+.vs-body { min-height: 0; }
+.vs-body .vs-days { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; }
+.vs-d {
+  height: 24px; display: grid; place-items: center; font-size: 9.5px; color: var(--t3);
+  border-right: 1px solid var(--brd-m); border-top: 1px solid var(--brd-m);
+  cursor: default; position: relative; transition: background var(--fast);
+}
+.vs-d--wd, .vs-d--hd { border-top: none; }
+.vs-d--hd { font-size: 10px; font-weight: var(--fw-semi); color: var(--t2); }
+.vs-d.is-wk { background: var(--bg3); color: var(--t3); }
+.vs-d--hd.is-wk { color: var(--err-t); }
+.vs-d.is-mine[data-day] { cursor: pointer; }
+.vs-d.is-mine:hover { background: var(--blue-bg); }
+.vs-d.is-sel { background: var(--gold-bg) !important; box-shadow: inset 0 0 0 1px var(--gold); color: var(--gold); font-weight: var(--fw-bold); }
+.vs-d__dot { width: 6px; height: 6px; border-radius: 50%; }
+.vs-d.is-vac { font-weight: var(--fw-bold); }
+.vs-d.v-ok { background: color-mix(in srgb, var(--ok) 42%, transparent); color: var(--t1); }
+.vs-d.v-ok .vs-d__dot { background: var(--ok-t); }
+.vs-d.v-pend { background: color-mix(in srgb, var(--gold) 34%, transparent); color: var(--t1); }
+.vs-d.v-pend .vs-d__dot { background: var(--gold); }
+.vs-d.v-bad { background: color-mix(in srgb, var(--err) 34%, transparent); color: var(--t1); text-decoration: line-through; }
+.vs-d.v-bad .vs-d__dot { background: var(--err-t); }
+.vs-d.is-blocked { background-image: repeating-linear-gradient(45deg, transparent, transparent 4px, var(--brd-err) 4px, var(--brd-err) 8px); cursor: not-allowed; }
+
+/* ── Свёрнутый месяц ──────────────────────────────────────────────────── */
+.vs-mon {
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px;
+  border-right: 1px solid var(--brd-m); min-width: 0; cursor: pointer; transition: background var(--fast);
+}
+.vs-mon:hover { background: var(--blue-bg); }
+.vs-mon--head { background: var(--bg4); }
+.vs-body .vs-mon { min-height: 46px; }
+.vs-mon__n { font-size: 9px; color: var(--t3); text-transform: uppercase; letter-spacing: .02em; }
+.vs-mon__mk {
+  font-size: 9px; font-weight: var(--fw-black); border-radius: var(--r-full);
+  padding: 0 5px; line-height: 15px; min-width: 16px; text-align: center;
+}
+.vs-mon__mk.is-ok { background: var(--ok); color: var(--on-color); }
+.vs-mon__mk.is-pend { background: var(--gold); color: var(--on-gold); }
+.vs-mon__mk.is-bad { background: var(--err); color: var(--on-color); }
+.vs-mon.has-mark { background: color-mix(in srgb, var(--gold) 7%, transparent); }
+
+/* ── Панель выделения (диапазон) ──────────────────────────────────────── */
+.vs-selbar {
+  display: flex; align-items: center; gap: var(--sp-3); flex-wrap: wrap;
+  margin: var(--sp-3) var(--sp-5) 0; padding: 11px var(--sp-4);
+  background: linear-gradient(120deg, var(--gold-bg), transparent);
+  border: 1px solid var(--brd-gold); border-radius: var(--r-lg); flex-shrink: 0;
+}
+.vs-selbar__tx { flex: 1; min-width: 200px; }
+.vs-selbar__r { font-size: 14px; font-weight: var(--fw-extra); color: var(--gold); }
+.vs-selbar__d { font-size: 11.5px; color: var(--t2); margin-top: 2px; }
+.vs-bad { color: var(--err-t); }
+
+/* ── Подвал ───────────────────────────────────────────────────────────── */
+.vs-foot {
+  display: flex; align-items: center; gap: var(--sp-3); flex-wrap: wrap;
+  padding: var(--sp-4) var(--sp-5); flex-shrink: 0;
+}
+.vs-foot__tx { flex: 1; font-size: 11.5px; color: var(--t3); min-width: 220px; }
+.vs-closed, .vs-note {
+  margin: var(--sp-3) var(--sp-5) 0; padding: 11px var(--sp-4); border-radius: var(--r-md);
+  font-size: 12.5px; border-left: 3px solid var(--blue-l); background: var(--bg3); color: var(--t2);
+}
+.vs-closed { border-left-color: var(--gold); color: var(--gold); background: var(--gold-bg); }
+.vs-note--ok { border-left-color: var(--ok-t); background: var(--ok-bg); }
+.vs-note--err { border-left-color: var(--err-t); background: var(--err-bg); }
+
+/* ── Панель директора ─────────────────────────────────────────────────── */
+.vs-dirbar {
+  display: flex; align-items: center; gap: var(--sp-4); flex-wrap: wrap;
+  margin: var(--sp-3) var(--sp-5) 0; padding: 11px var(--sp-4);
+  background: var(--bg2); border: 1px solid var(--brd); border-radius: var(--r-lg); flex-shrink: 0;
+}
+.vs-dirbar__i { display: flex; align-items: baseline; gap: 7px; }
+.vs-dirbar__i b { font-size: 19px; font-weight: var(--fw-extra); color: var(--t1); }
+.vs-dirbar__i span { font-size: 11px; color: var(--t3); }
+.vs-dirbar__i--hot b { color: var(--gold); }
+.vs-dirbar__sep { width: 1px; height: 26px; background: var(--brd); }
+.vs-dirbar__hint { flex: 1; min-width: 220px; font-size: 11.5px; color: var(--t3); }
+.vs-dirbar__hint b { color: var(--t2); }
+
+/* ── Модалки-оверлеи (правила, карточка, отклонение) ──────────────────── */
+.vs-ov {
+  position: fixed; inset: 0; z-index: 600; background: var(--overlay);
+  backdrop-filter: blur(4px); display: grid; place-items: center; padding: 20px; overflow: auto;
+}
+.vs-rules, .vs-pc, .vs-reject {
+  width: min(620px, 100%); background: var(--bg1); border: 1px solid var(--brd);
+  border-radius: var(--r-xl); box-shadow: var(--shadow-xl); padding: var(--sp-5); margin: auto;
+}
+.vs-pc { width: min(560px, 100%); }
+.vs-reject { width: min(520px, 100%); }
+.vs-rules__h, .vs-reject__h { display: flex; align-items: center; margin-bottom: var(--sp-4); }
+.vs-rules__h b, .vs-reject__h b { font-size: 17px; font-weight: var(--fw-extra); }
+.vs-rules__h .pp-dr__x, .vs-reject__h .pp-dr__x { margin-left: auto; }
+.vs-rules__l { margin: 0; padding-left: 22px; display: flex; flex-direction: column; gap: 9px; }
+.vs-rules__l li { font-size: 13.5px; color: var(--t2); line-height: 1.5; }
+.vs-rules__l b { color: var(--t1); }
+
+/* Карточка сотрудника (директор) */
+.vs-pc__h { display: flex; align-items: center; gap: var(--sp-3); margin-bottom: var(--sp-4); }
+.vs-pc__n { font-size: 16px; font-weight: var(--fw-extra); }
+.vs-pc__r { font-size: 11.5px; color: var(--t3); margin-top: 2px; }
+.vs-pc__h .pp-dr__x { margin-left: auto; }
+.vs-pc__kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: var(--sp-2); margin-bottom: var(--sp-4); }
+.vs-pc__k { background: var(--bg2); border: 1px solid var(--brd); border-radius: var(--r-md); padding: 10px; text-align: center; }
+.vs-pc__k b { font-size: 19px; font-weight: var(--fw-extra); display: block; }
+.vs-pc__k.is-neg b { color: var(--err-t); }
+.vs-pc__k span { font-size: 9.5px; color: var(--t3); text-transform: uppercase; letter-spacing: .04em; }
+.vs-pc__body { display: flex; flex-direction: column; gap: var(--sp-2); max-height: 46vh; overflow: auto; }
+.vs-pc-line { background: var(--bg2); border: 1px solid var(--brd); border-radius: var(--r-md); padding: 11px 13px; }
+.vs-pc-line__t { font-size: 13px; font-weight: var(--fw-semi); display: flex; align-items: center; gap: 7px; flex-wrap: wrap; }
+.vs-pc-line__d { font-size: 11px; color: var(--t3); font-weight: var(--fw-med); }
+.vs-pc-line__r { font-size: 11.5px; color: var(--err-t); margin-top: 6px; }
+.vs-pc-line__acts { display: flex; gap: 8px; margin-top: 10px; }
+.vs-pc__foot { margin-top: var(--sp-4); }
+
+/* Отклонение */
+.vs-reject__who { font-size: 13px; color: var(--t2); margin-bottom: var(--sp-4); }
+.vs-reject__ta { resize: vertical; min-height: 74px; }
+.vs-reject__ta.is-err { border-color: var(--err); box-shadow: 0 0 0 3px var(--err-bg); }
+.vs-reject__hint { font-size: 11.5px; color: var(--t3); margin-top: 8px; }
+.vs-reject__acts { display: flex; gap: var(--sp-2); justify-content: flex-end; margin-top: var(--sp-4); }
+.btn.danger { background: transparent; }
+
+/* ── Бухгалтерия: настройка дней ──────────────────────────────────────── */
+.vs-modal--buh .vs-mhead { border-radius: var(--r-xl) var(--r-xl) 0 0; }
+.vs-buhnote { margin: var(--sp-4) var(--sp-5) 0; padding: 11px var(--sp-4); background: var(--blue-bg); border-left: 3px solid var(--info-t); border-radius: var(--r-md); font-size: 12.5px; color: var(--t2); }
+.vs-modal--buh .tablewrap { margin: var(--sp-4) var(--sp-5) var(--sp-5); overflow: auto; }
+.vs-inp { width: 96px; text-align: right; padding: 7px 10px; }
+.vs-inp__h { font-size: 9.5px; color: var(--t3); margin-top: 3px; text-align: right; }
+
+/* ═══ Экран «График офиса» (vanilla-оболочка + наложение) ═══════════════ */
+.os-wrap { display: flex; flex-direction: column; gap: 12px; }
+.os-top {
+  display: flex; align-items: center; gap: var(--sp-4); flex-wrap: wrap;
+  padding: 16px var(--sp-5); background: var(--card, var(--bg2)); border: 1px solid var(--brd); border-radius: var(--r-lg);
+}
+.os-top__t { font-size: 18px; font-weight: var(--fw-extra); }
+.os-top__s { font-size: 12px; color: var(--t3); margin-top: 3px; }
+.os-top .btn { margin-left: auto; }
+.os-legend { display: flex; gap: 14px; flex-wrap: wrap; padding: 10px 14px; background: var(--bg2); border: 1px solid var(--brd); border-radius: var(--r-md); }
+
+.sched-wrap { background: var(--bg2); border: 1px solid var(--brd); border-radius: var(--r-md); overflow: auto; }
+.sched-grid { min-width: max-content; }
+.sched-head { display: flex; background: var(--bg4); border-bottom: 1px solid var(--brd); position: sticky; top: 0; z-index: 2; }
+.sched-name { min-width: 220px; width: 220px; padding: 9px 14px; font-size: 12.5px; font-weight: var(--fw-semi); border-right: 1px solid var(--brd); display: flex; align-items: center; position: sticky; left: 0; background: inherit; z-index: 1; }
+.sched-name.head { text-transform: uppercase; letter-spacing: .06em; font-size: 10.5px; color: var(--t3); }
+.sched-days { display: flex; }
+.sched-day { width: 26px; min-width: 26px; text-align: center; padding: 9px 0; font-size: 11px; color: var(--t2); border-right: 1px solid var(--brd-m); }
+.sched-day.weekend { color: var(--err-t); background: var(--bg3); }
+.os-body { display: flex; flex-direction: column; }
+.os-g { padding: 6px 14px; font-size: 10.5px; font-weight: var(--fw-black); text-transform: uppercase; letter-spacing: .06em; color: var(--gold); background: var(--bg3); border-bottom: 1px solid var(--brd); position: sticky; left: 0; }
+.os-row { display: flex; border-bottom: 1px solid var(--brd-m); }
+.os-row .sched-name { background: var(--bg2); }
+.os-cells { display: flex; }
+.os-c { width: 26px; min-width: 26px; height: 28px; border-right: 1px solid var(--brd-m); background: transparent; }
+.os-c.weekend { background: var(--bg3); }
+.os-c.v-vac { background: color-mix(in srgb, var(--gold) 40%, transparent); display: grid; place-items: center; }
+.os-c.v-vac span { font-size: 7.5px; font-weight: var(--fw-black); color: var(--on-gold); letter-spacing: .02em; }
+
+/* ═══ Письма ═══════════════════════════════════════════════════════════ */
+.ml-wrap { display: flex; justify-content: center; padding: var(--sp-6) 0; }
+.ml-card {
+  width: min(720px, 100%); background: var(--bg2); border: 1px solid var(--brd);
+  border-radius: var(--r-lg); overflow: hidden; box-shadow: var(--shadow-md);
+}
+.ml-top { display: flex; align-items: center; gap: var(--sp-4); padding: 16px var(--sp-5); border-bottom: 1px solid var(--brd); }
+.ml-top__ic { width: 40px; height: 40px; border-radius: var(--r-md); display: grid; place-items: center; font-size: 20px; background: var(--bg3); border: 1px solid var(--brd); }
+.ml-top__t { font-size: 15px; font-weight: var(--fw-bold); }
+.ml-top__s { font-size: 11.5px; color: var(--t3); margin-top: 2px; }
+.ml-top .badge { margin-left: auto; }
+.ml-body { padding: var(--sp-5); font-size: 13.5px; color: var(--t2); line-height: 1.6; display: flex; flex-direction: column; gap: var(--sp-3); }
+.ml-tbl { width: 100%; border-collapse: collapse; background: var(--bg1); border: 1px solid var(--brd); border-radius: var(--r-md); overflow: hidden; }
+.ml-tbl td { padding: 9px var(--sp-4); border-bottom: 1px solid var(--brd-m); font-size: 13px; }
+.ml-tbl tr:last-child td { border-bottom: none; }
+.ml-tbl td:first-child { color: var(--t3); width: 190px; }
+.ml-dim { font-size: 12px; color: var(--t3); }
+.ml-foot { display: flex; align-items: center; gap: var(--sp-3); flex-wrap: wrap; padding: var(--sp-4) var(--sp-5); border-top: 1px solid var(--brd); background: var(--bg1); }
+.ml-foot__hint { font-size: 11px; color: var(--t3); }
+
+/* ── Адаптация под 12″ ноутбук: компактнее ────────────────────────────── */
+@media (max-width: 1400px) {
+  :root { --vs-name-w: 208px; --vs-mini-w: 18px; }
+  .vs-mhead__t { font-size: 16px; }
+  .vs-bal { grid-template-columns: 210px 210px 1fr; padding-top: 12px; }
+  .vs-acc__v { font-size: 19px; }
+}
+@media (max-width: 1180px) {
+  .vs-mhead { flex-wrap: wrap; }
+  .vs-mhead__acts { width: 100%; margin-left: 0; }
+}

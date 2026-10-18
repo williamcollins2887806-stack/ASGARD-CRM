@@ -412,11 +412,7 @@ export default function FieldQuests() {
     );
   }, [activeTab, tabQuests, seasonBanner, navigate]);
 
-  /* ── Stars ── */
-  const stars = useMemo(() => Array.from({ length: 30 }, () => ({
-    left: Math.random() * 100, top: Math.random() * 100,
-    size: 1 + Math.random() * 2, delay: Math.random() * 3, dur: 2 + Math.random() * 2,
-  })), []);
+  /* ── Звёздное поле удалено (старая система декора) ── */
 
   /* ── Skeleton ── */
   if (loading) {
@@ -442,12 +438,7 @@ export default function FieldQuests() {
       <div className={`fq${isNight ? ' night' : ''}`}>
         <div className="fq-bg">
           <div className="fq-bg-glow g1" /><div className="fq-bg-glow g2" /><div className="fq-bg-glow g3" />
-          <div className="fq-stars">
-            {stars.map((s, i) => <div key={i} className="fq-s" style={{
-              left: `${s.left}%`, top: `${s.top}%`, width: s.size, height: s.size,
-              animationDelay: `${s.delay}s`, animationDuration: `${s.dur}s`,
-            }} />)}
-          </div>
+          {/* Звёздное поле (старая система) удалено: 30 лишних DOM-узлов. */}
         </div>
         <canvas ref={canvasRef} className="fq-confetti" />
 
@@ -720,10 +711,10 @@ export default function FieldQuests() {
                 <path d="M75 8 L135 30 Q140 75 120 110 Q100 138 75 145 Q50 138 30 110 Q10 75 15 30Z" fill="url(#fqShieldG)" stroke="var(--value)" strokeWidth="2"/>
                 <path d="M75 22 L122 40 Q126 75 110 103 Q94 126 75 132 Q56 126 40 103 Q24 75 28 40Z" fill="url(#fqShieldInner)" stroke="color-mix(in oklab, var(--value) 30%, transparent)" strokeWidth="1"/>
                 <path d="M75 22 L122 40 Q126 75 110 103 Q94 126 75 132 Q56 126 40 103 Q24 75 28 40Z" fill="url(#fqShieldGlow)"/>
-                <text x="75" y="65" textAnchor="middle" fontFamily="Cinzel,serif" fontSize="18" fontWeight="900" fill="color-mix(in oklab, var(--value) 60%, transparent)" letterSpacing="3">{'\u16B1 \u16CF \u16A6'}</text>
+                <text x="75" y="65" textAnchor="middle" fontFamily="inherit" fontSize="18" fontWeight="900" fill="color-mix(in oklab, var(--value) 60%, transparent)" letterSpacing="3">{'\u16B1 \u16CF \u16A6'}</text>
                 <circle cx="75" cy="85" r="18" fill="none" stroke="color-mix(in oklab, var(--value) 20%, transparent)" strokeWidth="1.5"/>
                 <circle cx="75" cy="85" r="14" fill="none" stroke="color-mix(in oklab, var(--value) 15%, transparent)" strokeWidth="1"/>
-                <text x="75" y="92" textAnchor="middle" fontFamily="Cinzel,serif" fontSize="22" fontWeight="900" fill="var(--value)">
+                <text x="75" y="92" textAnchor="middle" fontFamily="inherit" fontSize="22" fontWeight="900" fill="var(--value)">
                   {claimingQuest ? TAB_RUNES[claimingQuest.type] || '\u16C9' : '\u16C9'}
                 </text>
                 <line x1="55" y1="40" x2="95" y2="40" stroke="color-mix(in oklab, var(--value) 10%, transparent)" strokeWidth="1"/>
@@ -754,7 +745,7 @@ export default function FieldQuests() {
    CSS — 1:1 from FIELD_QUESTS_RENDER.html
    ═══════════════════════════════════════════════════════════ */
 const QUEST_CSS = `
-/* Q10: Cinzel font loaded via index.html link — no @import FOUC */
+/* Q10: inherit font loaded via index.html link — no @import FOUC */
 @keyframes fq-shimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}
 .fq{
   --fq-bg:var(--bg-primary);--fq-card:var(--field-card);--fq-card2:var(--bg-surface-alt);
@@ -767,15 +758,14 @@ const QUEST_CSS = `
   font-family:-apple-system,BlinkMacSystemFont,'SF Pro Round',system-ui,sans-serif;
   -webkit-user-select:none;user-select:none;-webkit-tap-highlight-color:transparent;overflow:hidden;
 }
-/* Светлая тема: те же токены, но под .light — экран перекрашивается целиком */
-.light .fq{--fq-bg:#F2F2F7;--fq-card:var(--text-primary);--fq-card2:#F7F7FA;--fq-t1:#1C1C1E;--fq-t2:#6C6C70;--fq-t3:var(--text-secondary)}
+/* Палитра берётся ТОЛЬКО из токенов темы. Свой .light-override убран:
+   он инвертировал палитру (--fq-card: var(--text-primary)) и ломал светлую тему. */
 .fq-bg{position:fixed;inset:0;z-index:0;overflow:hidden}
 .fq-bg-glow{position:absolute;border-radius:50%;filter:blur(80px);opacity:.25;transition:opacity 1s}
 .fq-bg-glow.g1{width:300px;height:300px;top:-50px;left:-50px;background:var(--fq-blue)}
 .fq-bg-glow.g2{width:250px;height:250px;bottom:-30px;right:-60px;background:var(--fq-purple)}
 .fq-bg-glow.g3{width:200px;height:200px;top:40%;left:50%;transform:translateX(-50%);background:var(--fq-gold);opacity:.08}
-.fq-stars{position:absolute;inset:0}.fq-s{position:absolute;background:var(--text-primary);border-radius:50%;animation:fq-tw 3s ease-in-out infinite alternate}
-@keyframes fq-tw{0%{opacity:.1;transform:scale(.8)}100%{opacity:.5;transform:scale(1.3)}}
+/* .fq-stars/.fq-s (звёздное поле) удалены — старая система декора. */
 .fq-confetti{position:fixed;inset:0;z-index:250;pointer-events:none}
 .fq-page{position:relative;z-index:5;display:flex;flex-direction:column;height:100dvh;max-width:430px;margin:0 auto;overflow:hidden}
 
@@ -786,7 +776,7 @@ const QUEST_CSS = `
   -webkit-backdrop-filter:blur(12px);z-index:20;position:sticky;top:0}
 .fq-hdr-back{width:36px;height:36px;border-radius:12px;background:color-mix(in oklab, var(--text-primary) 6%, transparent);display:flex;align-items:center;justify-content:center;cursor:pointer;transition:background .2s}
 .fq-hdr-back:active{background:color-mix(in oklab, var(--text-primary) 12%, transparent)}
-.fq-hdr-title{font-family:'Cinzel',serif;font-size:16px;font-weight:900;letter-spacing:.12em;color:var(--fq-gold);text-shadow:0 0 20px color-mix(in oklab, var(--value) 20%, transparent)}
+.fq-hdr-title{font-family:inherit,serif;font-size:16px;font-weight:900;letter-spacing:.12em;color:var(--fq-gold);text-shadow:0 0 20px color-mix(in oklab, var(--value) 20%, transparent)}
 .fq-hdr-counter{display:flex;align-items:center;gap:5px;padding:5px 12px;border-radius:20px;
   background:linear-gradient(135deg,color-mix(in oklab, var(--danger) 10%, transparent),color-mix(in oklab, var(--value) 8%, transparent));border:1px solid color-mix(in oklab, var(--danger) 20%, transparent);
   font-size:13px;font-weight:700;color:var(--fq-gold-l)}
@@ -853,7 +843,7 @@ const QUEST_CSS = `
 .fq-quest-card.state-locked{opacity:.35;filter:saturate(.1);pointer-events:none}
 .fq-quest-card.state-locked::before{background:color-mix(in oklab, var(--text-primary) 8%, transparent)!important}
 
-.fq-rune-accent{position:absolute;font-size:48px;color:color-mix(in oklab, var(--danger) 6%, transparent);font-family:'Cinzel',serif;pointer-events:none;z-index:0}
+.fq-rune-accent{position:absolute;font-size:48px;color:color-mix(in oklab, var(--danger) 6%, transparent);font-family:inherit,serif;pointer-events:none;z-index:0}
 .fq-rune-accent.r1{bottom:4px;right:10px}
 
 /* Top row */
@@ -907,7 +897,7 @@ const QUEST_CSS = `
 .fq-qc-claim::after{content:'';position:absolute;top:0;left:-100%;width:40%;height:100%;
   background:linear-gradient(90deg,transparent,color-mix(in oklab, var(--text-primary) 15%, transparent),transparent);animation:fq-claimShine 2.5s infinite}
 @keyframes fq-claimShine{0%,100%{left:-100%}50%{left:150%}}
-.fq-claim-rune{font-family:'Cinzel',serif;font-size:16px}
+.fq-claim-rune{font-family:inherit,serif;font-size:16px}
 
 /* Lore expand */
 .fq-qc-expand{display:flex;align-items:center;gap:4px;margin-top:8px;font-size:11px;color:var(--fq-t3);cursor:pointer;font-weight:600;transition:color .2s}
@@ -928,7 +918,7 @@ const QUEST_CSS = `
 /* Empty */
 .fq-empty-state{display:flex;flex-direction:column;align-items:center;justify-content:center;padding:60px 30px;text-align:center;opacity:0;animation:fq-fadeUp .5s .2s forwards}
 @keyframes fq-fadeUp{to{opacity:1;transform:translateY(0)}}
-.fq-empty-rune{font-size:80px;color:color-mix(in oklab, var(--text-primary) 6%, transparent);margin-bottom:16px;font-family:'Cinzel',serif;animation:fq-runeFloat 4s ease-in-out infinite}
+.fq-empty-rune{font-size:80px;color:color-mix(in oklab, var(--text-primary) 6%, transparent);margin-bottom:16px;font-family:inherit,serif;animation:fq-runeFloat 4s ease-in-out infinite}
 @keyframes fq-runeFloat{0%,100%{transform:translateY(0)}50%{transform:translateY(-8px)}}
 .fq-empty-title{font-size:16px;font-weight:700;color:var(--fq-t2);margin-bottom:8px}
 .fq-empty-sub{font-size:13px;color:var(--fq-t3);line-height:1.4}
@@ -943,12 +933,12 @@ const QUEST_CSS = `
   border:1px solid color-mix(in oklab, var(--text-primary) 8%, transparent);border-bottom:none;padding:20px 24px;
   padding-bottom:max(env(safe-area-inset-bottom),28px);box-shadow:0 -10px 50px color-mix(in oklab, var(--bg-primary) 50%, transparent);text-align:center;position:relative;overflow:hidden}
 .fq-modal-handle{width:40px;height:4px;border-radius:2px;background:color-mix(in oklab, var(--text-primary) 12%, transparent);margin:0 auto 16px}
-.fq-modal-swords{font-family:'Cinzel',serif;font-size:14px;color:var(--fq-gold);letter-spacing:.15em;margin-bottom:12px;text-shadow:0 0 12px color-mix(in oklab, var(--value) 30%, transparent)}
+.fq-modal-swords{font-family:inherit,serif;font-size:14px;color:var(--fq-gold);letter-spacing:.15em;margin-bottom:12px;text-shadow:0 0 12px color-mix(in oklab, var(--value) 30%, transparent)}
 .fq-modal-shield{width:150px;height:150px;margin:0 auto 16px;position:relative}
 .fq-shield-glow{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:180px;height:180px;border-radius:50%;
   background:radial-gradient(circle,color-mix(in oklab, var(--value) 20%, transparent),transparent 70%);animation:fq-shieldGlow 2s ease-in-out infinite;pointer-events:none}
 @keyframes fq-shieldGlow{0%,100%{opacity:.5;transform:translate(-50%,-50%) scale(1)}50%{opacity:1;transform:translate(-50%,-50%) scale(1.1)}}
-.fq-modal-quest-name{font-family:'Cinzel',serif;font-size:20px;font-weight:900;color:var(--fq-gold);margin-bottom:8px;text-shadow:0 0 16px color-mix(in oklab, var(--value) 20%, transparent)}
+.fq-modal-quest-name{font-family:inherit,serif;font-size:20px;font-weight:900;color:var(--fq-gold);margin-bottom:8px;text-shadow:0 0 16px color-mix(in oklab, var(--value) 20%, transparent)}
 .fq-modal-lore{font-size:13px;color:var(--fq-t2);line-height:1.5;font-style:italic;margin-bottom:16px;max-width:300px;margin-left:auto;margin-right:auto}
 .fq-modal-reward-label{font-size:10px;font-weight:700;color:var(--fq-t3);letter-spacing:.15em;text-transform:uppercase;margin-bottom:8px}
 .fq-modal-rewards{display:flex;align-items:center;justify-content:center;gap:12px;margin-bottom:20px;flex-wrap:wrap}
@@ -956,13 +946,13 @@ const QUEST_CSS = `
   background:color-mix(in oklab, var(--value) 8%, transparent);border:1px solid color-mix(in oklab, var(--value) 15%, transparent);font-size:16px;font-weight:700;color:var(--fq-gold-l)}
 .fq-mr-icon{font-size:20px}
 .fq-modal-claim-btn{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;padding:16px;border-radius:16px;border:none;
-  font-family:'Cinzel',serif;font-size:16px;font-weight:900;color:var(--text-on-gold);cursor:pointer;position:relative;overflow:hidden;
+  font-family:inherit,serif;font-size:16px;font-weight:900;color:var(--text-on-gold);cursor:pointer;position:relative;overflow:hidden;
   background:linear-gradient(135deg,var(--fq-gold-d),var(--fq-gold),var(--fq-gold-l));
   box-shadow:0 5px 0 var(--value),0 8px 24px color-mix(in oklab, var(--value) 30%, transparent);transition:all .1s}
 .fq-modal-claim-btn:active{transform:translateY(4px);box-shadow:0 1px 0 var(--value)}
 .fq-modal-claim-btn::after{content:'';position:absolute;top:0;left:-100%;width:50%;height:100%;
   background:linear-gradient(90deg,transparent,color-mix(in oklab, var(--text-primary) 20%, transparent),transparent);animation:fq-claimShine 3s infinite}
-.fq-modal-rune-l,.fq-modal-rune-r{position:absolute;font-size:64px;color:color-mix(in oklab, var(--danger) 5%, transparent);font-family:'Cinzel',serif;pointer-events:none}
+.fq-modal-rune-l,.fq-modal-rune-r{position:absolute;font-size:64px;color:color-mix(in oklab, var(--danger) 5%, transparent);font-family:inherit,serif;pointer-events:none}
 .fq-modal-rune-l{top:20px;left:10px}.fq-modal-rune-r{bottom:40px;right:10px}
 
 /* Night mode */

@@ -7,13 +7,15 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { fieldApi } from '@/api/fieldClient';
 import { useHaptic } from '@/hooks/useHaptic';
-import { ArrowLeft, ScanLine, Check, AlertTriangle, Plus, X, PackageCheck, Camera } from 'lucide-react';
+import { ArrowLeft, ScanLine, Check, Plus, PackageCheck, X, ClipboardCheck, Trash2 } from 'lucide-react';
 import QRScanner from '@/components/field/QRScanner';
+import { Card, IconTile, KeyButton, EmptyState, SectionLabel } from '@/components/field/ui';
+import './field-screens.css';
 
 const RETURN_OPTS = [
   { value: 'returning', label: 'Вернул', color: 'var(--ok)' },
-  { value: 'damaged', label: 'Сломано', color: '#ff5c5c' },
-  { value: 'lost', label: 'Утеряно', color: '#ff5c5c' },
+  { value: 'damaged', label: 'Сломано', color: 'var(--danger)' },
+  { value: 'lost', label: 'Утеряно', color: 'var(--danger)' },
   { value: 'consumed', label: 'Израсходовано', color: 'var(--value)' },
 ];
 
@@ -62,13 +64,21 @@ export default function FieldReceiving() {
   }
 
   return (
-    <div className="min-h-screen" style={{ background: 'var(--bg-base,var(--bg-primary))', color: 'var(--text-primary)', paddingBottom: 'max(env(safe-area-inset-bottom), 24px)' }}>
-      <div className="sticky top-0 z-10 flex items-center gap-3 px-4 py-3"
-        style={{ background: 'color-mix(in oklab, var(--bg-primary) 92%, transparent)', backdropFilter: 'blur(12px)', borderBottom: '1px solid color-mix(in oklab, var(--value) 15%, transparent)', paddingTop: 'max(env(safe-area-inset-top), 12px)' }}>
-        <button onClick={() => nav(-1)} className="p-2 -ml-2 rounded-xl active:scale-90 transition"><ArrowLeft size={22} /></button>
-        <div className="flex-1">
-          <div className="font-bold" style={{ color: 'var(--value)' }}>Приёмка / разбор</div>
-          <div className="text-xs opacity-60">Отсканируйте паллет</div>
+    <div className="fs-root" style={{ paddingBottom: 'max(env(safe-area-inset-bottom), 24px)' }}>
+      <div className="fs-scene" aria-hidden><span className="fs-orb fs-orb--a" /><span className="fs-orb fs-orb--b" /></div>
+      <div className="flex items-center gap-3"
+        style={{
+          position: 'sticky', top: 0, zIndex: 20,
+          paddingTop: 'max(env(safe-area-inset-top), 12px)', paddingBottom: 12, paddingInline: 16,
+          background: 'color-mix(in oklab, var(--bg-primary) 88%, transparent)',
+          WebkitBackdropFilter: 'blur(14px) saturate(1.5)', backdropFilter: 'blur(14px) saturate(1.5)',
+          borderBottom: '1px solid var(--tile-brd)',
+        }}>
+        <button onClick={() => nav(-1)} className="fs-head__btn" aria-label="Назад" style={{ marginLeft: -8 }}><ArrowLeft size={20} strokeWidth={2.3} /></button>
+        <IconTile icon={ClipboardCheck} tone="value" size={38} />
+        <div className="flex-1 min-w-0">
+          <div className="fs-head__title" style={{ fontSize: 17 }}>Приёмка / разбор</div>
+          <div className="fs-head__sub">Отсканируйте паллет</div>
         </div>
       </div>
 
@@ -79,62 +89,79 @@ export default function FieldReceiving() {
             style={{ background: 'color-mix(in oklab, var(--value) 8%, transparent)', border: '2px dashed color-mix(in oklab, var(--value) 35%, transparent)' }}>
             <ScanLine size={48} style={{ color: 'var(--value)' }} />
             <div className="font-semibold" style={{ color: 'var(--value)' }}>Сканировать QR паллета</div>
-            <div className="text-xs opacity-50">Наведите камеру на этикетку</div>
+            <div className="text-xs opacity-60">Наведите камеру на этикетку</div>
           </button>
         </div>
       )}
 
       {pallet && (
-        <div className="p-4 space-y-4">
-          <div className="rounded-2xl p-4" style={{ background: 'color-mix(in oklab, var(--text-primary) 4%, transparent)', border: '1px solid color-mix(in oklab, var(--value) 15%, transparent)' }}>
+        <div className="p-4 space-y-3">
+          <Card variant="raised" className="p-4" style={{ borderColor: 'color-mix(in oklab, var(--ok) 24%, transparent)' }}>
             <div className="flex items-center gap-3">
-              <PackageCheck size={24} style={{ color: 'var(--ok)' }} />
-              <div><div className="font-bold">Паллет №{pallet.pallet_number}</div>
-                <div className="text-xs opacity-60">{items.length} позиций</div></div>
+              <IconTile icon={PackageCheck} tone="status" size={44} />
+              <div>
+                <div className="font-bold" style={{ color: 'var(--text-primary)' }}>Паллет №{pallet.pallet_number}</div>
+                <div className="text-xs" style={{ color: 'var(--text-tertiary)' }}>{items.length} позиций</div>
+              </div>
             </div>
-          </div>
+          </Card>
 
-          {items.map(it => {
+          {items.map((it) => {
             const m = marks[it.id] || {};
             const expected = Number(it.expected_quantity ?? it.quantity);
             const shortage = (m.received_qty != null && m.received_qty < expected);
             return (
-              <div key={it.id} className="rounded-xl p-3" style={{ background: 'color-mix(in oklab, var(--text-primary) 4%, transparent)', border: `1px solid ${shortage ? 'color-mix(in oklab, var(--danger) 30%, transparent)' : 'color-mix(in oklab, var(--text-primary) 7%, transparent)'}` }}>
-                <div className="font-medium text-sm mb-2">{it.name} <span className="opacity-50">· план {expected} {it.unit}</span></div>
+              <Card key={it.id} variant="raised" className="p-3" style={{
+                borderColor: shortage ? 'color-mix(in oklab, var(--danger) 30%, transparent)' : undefined,
+              }}>
+                <div className="font-medium text-sm mb-2" style={{ color: 'var(--text-primary)' }}>
+                  {it.name} <span style={{ color: 'var(--text-tertiary)' }}>· план {expected} {it.unit}</span>
+                </div>
                 <div className="flex gap-2 mb-2 flex-wrap">
-                  {RETURN_OPTS.map(o => (
+                  {RETURN_OPTS.map((o) => (
                     <button key={o.value} onClick={() => { haptic.light(); setMark(it.id, { return_status: o.value }); }}
                       className="text-[11px] font-semibold px-2.5 py-1.5 rounded-lg active:scale-95 transition"
-                      style={{ background: m.return_status === o.value ? `${o.color}28` : 'color-mix(in oklab, var(--text-primary) 5%, transparent)', color: m.return_status === o.value ? o.color : 'var(--text-secondary)', border: `1px solid ${m.return_status === o.value ? o.color : 'transparent'}` }}>
+                      style={{
+                        background: m.return_status === o.value ? `color-mix(in oklab, ${o.color} 16%, transparent)` : 'var(--bg-surface-alt)',
+                        color: m.return_status === o.value ? o.color : 'var(--text-secondary)',
+                        border: `1px solid ${m.return_status === o.value ? o.color : 'transparent'}`,
+                      }}>
                       {o.label}
                     </button>
                   ))}
                 </div>
                 <div className="flex items-center gap-2">
-                  <span className="text-xs opacity-60">Фактически:</span>
-                  <input type="number" inputMode="decimal" value={m.received_qty ?? ''} onChange={e => setMark(it.id, { received_qty: e.target.value === '' ? null : parseFloat(e.target.value) })}
-                    className="w-24 px-3 py-1.5 rounded-lg outline-none text-sm" style={{ background: 'color-mix(in oklab, var(--text-primary) 5%, transparent)', border: '1px solid color-mix(in oklab, var(--text-primary) 12%, transparent)', color: 'var(--text-primary)' }} />
-                  <span className="text-xs opacity-60">{it.unit}</span>
-                  {shortage && <span className="text-[11px]" style={{ color: '#ff5c5c' }}>недостача!</span>}
+                  <span className="text-xs" style={{ color: 'var(--text-tertiary)' }}>Фактически:</span>
+                  <input type="number" inputMode="decimal" value={m.received_qty ?? ''} onChange={(e) => setMark(it.id, { received_qty: e.target.value === '' ? null : parseFloat(e.target.value) })}
+                    className="w-24 px-3 py-1.5 rounded-lg outline-none text-sm"
+                    style={{ background: 'var(--bg-surface-alt)', border: '1px solid var(--tile-brd)', color: 'var(--text-primary)' }} />
+                  <span className="text-xs" style={{ color: 'var(--text-tertiary)' }}>{it.unit}</span>
+                  {shortage && <span className="text-[11px] font-semibold" style={{ color: 'var(--danger-ink)' }}>недостача!</span>}
                 </div>
-              </div>
+              </Card>
             );
           })}
 
           {/* Излишки / неизвестное */}
           <div>
             <div className="flex items-center justify-between mb-2">
-              <div className="text-xs uppercase tracking-wide opacity-50 font-semibold">Приехало лишнее / не из списка</div>
+              <span className="text-xs uppercase tracking-wide font-semibold" style={{ color: 'var(--text-tertiary)' }}>Приехало лишнее / не из списка</span>
               <button onClick={() => { haptic.light(); addExtra(); }} className="flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-lg active:scale-95 transition"
-                style={{ background: 'color-mix(in oklab, var(--danger) 15%, transparent)', color: 'var(--value)' }}><Plus size={14} />Добавить</button>
+                style={{ background: 'color-mix(in oklab, var(--value) 14%, transparent)', color: 'var(--value-ink)' }}>
+                <Plus size={14} />Добавить
+              </button>
             </div>
             {extras.map((ex, i) => (
               <div key={i} className="flex gap-2 mb-2 items-center">
-                <input value={ex.name} onChange={e => setExtra(i, { name: e.target.value })} placeholder="Что приехало?"
-                  className="flex-1 px-3 py-2 rounded-lg outline-none text-sm" style={{ background: 'color-mix(in oklab, var(--text-primary) 5%, transparent)', border: '1px solid color-mix(in oklab, var(--text-primary) 12%, transparent)', color: 'var(--text-primary)' }} />
-                <input type="number" value={ex.quantity} onChange={e => setExtra(i, { quantity: parseFloat(e.target.value) || 1 })}
-                  className="w-16 px-2 py-2 rounded-lg outline-none text-sm" style={{ background: 'color-mix(in oklab, var(--text-primary) 5%, transparent)', border: '1px solid color-mix(in oklab, var(--text-primary) 12%, transparent)', color: 'var(--text-primary)' }} />
-                <button onClick={() => delExtra(i)} className="p-2 active:scale-90"><X size={18} className="opacity-60" /></button>
+                <input value={ex.name} onChange={(e) => setExtra(i, { name: e.target.value })} placeholder="Что приехало?"
+                  className="flex-1 px-3 py-2 rounded-lg outline-none text-sm"
+                  style={{ background: 'var(--bg-surface-alt)', border: '1px solid var(--tile-brd)', color: 'var(--text-primary)' }} />
+                <input type="number" value={ex.quantity} onChange={(e) => setExtra(i, { quantity: parseFloat(e.target.value) || 1 })}
+                  className="w-16 px-2 py-2 rounded-lg outline-none text-sm"
+                  style={{ background: 'var(--bg-surface-alt)', border: '1px solid var(--tile-brd)', color: 'var(--text-primary)' }} />
+                <button onClick={() => delExtra(i)} className="p-2 active:scale-90" aria-label="Удалить">
+                  <Trash2 size={18} style={{ color: 'var(--text-tertiary)' }} />
+                </button>
               </div>
             ))}
           </div>
@@ -142,18 +169,23 @@ export default function FieldReceiving() {
       )}
 
       {pallet && (
-        <button onClick={submit} disabled={saving}
-          className="fixed bottom-6 inset-x-5 z-30 py-4 rounded-2xl font-bold active:scale-95 transition flex items-center justify-center gap-2"
-          style={{ background: 'var(--ok)', color: '#08210f', boxShadow: '0 8px 30px color-mix(in oklab, var(--ok) 40%, transparent)' }}>
-          <Check size={20} />{saving ? 'Сохранение…' : 'Принять'}
-        </button>
+        <div style={{ position: 'fixed', bottom: 24, left: 20, right: 20, zIndex: 30 }}>
+          <KeyButton tone="status" block icon={Check} onClick={submit} disabled={saving}>
+            {saving ? 'Сохранение…' : 'Принять'}
+          </KeyButton>
+        </div>
       )}
 
       {scanning && <QRScanner onScan={onScan} onClose={() => setScanning(false)} />}
 
       {toastMsg && (
         <div className="fixed left-4 right-4 z-50 px-4 py-3 rounded-xl text-sm font-medium text-center"
-          style={{ bottom: 90, background: toastMsg.ok ? 'color-mix(in oklab, var(--ok) 95%, transparent)' : 'color-mix(in oklab, var(--danger) 95%, transparent)', color: 'var(--text-primary)', boxShadow: '0 6px 24px color-mix(in oklab, var(--bg-primary) 40%, transparent)' }}>
+          style={{
+            bottom: 90,
+            background: toastMsg.ok ? 'var(--ok)' : 'var(--danger)',
+            color: toastMsg.ok ? 'var(--value-ink)' : '#fff',
+            boxShadow: '0 6px 24px color-mix(in oklab, var(--bg-primary) 40%, transparent)',
+          }}>
           {toastMsg.text}
         </div>
       )}

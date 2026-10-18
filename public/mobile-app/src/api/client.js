@@ -31,7 +31,8 @@ function handleAuthFailure(clearTokenFn, status, options = {}) {
   throw err;
 }
 
-/** 403 «нужен PIN» — не сбрасываем сессию; 401 / прочий 403 — wipe + welcome. */
+/** 403 «нужен PIN» — уводим на /pin без сброса сессии; прочий 403 — просто
+ *  «нет прав» на модуль (токен валиден). Сессию сбрасываем ТОЛЬКО на 401. */
 async function handleUnauthorizedResponse(response, clearTokenFn, options = {}) {
   const skipRedirect = options.skipAuthRedirect === true || isFieldSurface();
 
@@ -55,7 +56,16 @@ async function handleUnauthorizedResponse(response, clearTokenFn, options = {}) 
       err.code = 'NEED_PIN';
       throw err;
     }
-    handleAuthFailure(clearTokenFn, 403, options);
+    // ВАЖНО (17.10.2026): 403 — это НЕ истёкшая сессия, а валидный токен без прав
+    // на конкретный модуль/роль. Истёкший или отозванный токен сервер отдаёт как 401
+    // (fastify.authenticate → catch → 401), поэтому стирать токен и выбрасывать на
+    // /m/welcome здесь нельзя. Иначе один экран без прав для роли (например
+    // /api/payroll-dashboard/* для DIRECTOR_DEV) разлогинивал пользователя целиком.
+    // Отдаём ошибку вызывающему коду — он показывает пустое состояние/заглушку.
+    const err = new Error(body.message || body.error || 'Недостаточно прав');
+    err.status = 403;
+    err.body = body;
+    throw err;
   }
 }
 

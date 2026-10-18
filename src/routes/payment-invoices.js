@@ -173,6 +173,10 @@ async function autoWorkExpense(db, payment, docRow) {
   if (docRow && docRow.work_expense_id) return docRow.work_expense_id; // ручная запись уже есть
   try {
     const { insertWorkExpense } = require('../services/work-expense-writer');
+    // ЕДИНЫЙ ключ расхода по счёту (expense-dedup-object, 17.10.2026): до этого
+    // link-expense писал 'doc_registry:<id>', а здесь — '<payId>' → один счёт давал
+    // ДВА расхода по объекту. Когда есть карточка реестра — ключ по её id.
+    const dedupKey = docRow && docRow.id ? `invoice:${docRow.id}` : `payment:${payment.id}`;
     // Категория по умолчанию — «материалы (безнал)»: счёт поставщику. Это ВИД расхода, а не основание
     // (основание — work_id, см. блок G). Бухгалтер правит категорию в расходах, если закупка иная.
     const expense = await insertWorkExpense(db, {
@@ -185,8 +189,9 @@ async function autoWorkExpense(db, payment, docRow) {
       supplier: payment.supplier_name || null,
       doc_number: docRow && docRow.invoice_number ? docRow.invoice_number : null,
       payment_method: 'bank',
-      source_table: 'payment_invoices',
-      source_key: String(payment.id),
+      source_table: 'doc_registry',
+      source_id: docRow && docRow.id ? docRow.id : null,
+      source_key: dedupKey,
       created_by: payment.buh_id || payment.dir_approved_by || payment.created_by || null
     });
     if (docRow && docRow.id && expense && expense.id) {
@@ -257,8 +262,115 @@ async function routes(fastify) {
         const d = await db.query(`SELECT id, invoice_number, invoice_date, counterparty_inn, sf_basis, service_done_at, payment_kind FROM doc_registry WHERE id=$1`, [rows[0].doc_registry_id]);
         out.registry_doc = d.rows[0] || null;
       }
+      // Название привязанной работы — модалка инициатора показывает, что уже выбрано.
+      if (rows[0].work_id) {
+        const w = await db.query(`SELECT id, work_title, object_name, city, address FROM works WHERE id=$1`, [rows[0].work_id]);
+        if (w.rows[0]) {
+          out.work_label = w.rows[0].work_title || w.rows[0].object_name || ('Работа #' + w.rows[0].id);
+          out.work_obj = w.rows[0];
+        }
+      }
     } catch (_) { /* доп. данные не критичны */ }
     return out;
+  });
+
+  /**
+   * Поиск работ (объектов) для выбора вручную — когда автоподбор не сработал.
+   * Заказчик 18.10.2026: «показывать инициатору список работ на выбор — да».
+   *
+   * ВАЖНО: объявлен ДО `/:id`, иначе Fastify примет «work-search» за id.
+   * Если передан `hint` (подсказка из счёта) — работаем тем же сопоставителем
+   * (`matchWork`), что и авто-привязка: он вернёт либо единственную работу,
+   * либо список кандидатов с оценкой. Это гарантирует, что ручной выбор и
+   * автопривязка видят ОДНИ и те же варианты.
+   */
+  fastify.get('/work-search', { preHandler: [fastify.authenticate] }, async (req) => {
+    const q = String((req.query && req.query.q) || '').trim();
+    const hint = String((req.query && req.query.hint) || '').trim();
+    const limit = Math.min(parseInt((req.query && req.query.limit) || '20', 10) || 20, 50);
+    const { matchWork } = require('../services/contract-match');
+    const map = (w) => ({
+      id: w.id,
+      label: w.work_title || w.object_name || ('Работа #' + w.id),
+      object_name: w.object_name || null,
+      address: w.address || w.object_address || null,
+      city: w.city || null,
+      customer: w.customer_name || null,
+      status: w.work_status || null,
+      score: w._score != null ? w._score : undefined
+    });
+
+    // 1. Подсказка из счёта: используем тот же движок, что и авто-привязка.
+    if (hint) {
+      const m = await matchWork(db, hint).catch(() => ({ found: false, candidates: [] }));
+      const cands = m.found ? [m.work, ...(m.candidates || [])] : (m.candidates || []);
+      if (cands.length) {
+        return {
+          items: cands.map(map),
+          suggested_id: m.found && m.work ? m.work.id : null,
+          reason: m.reason
+        };
+      }
+      // Ничего похожего — падаем в обычный поиск по строке подсказки.
+      q2Search(hint.replace(/^объект[а-яё]*\s*[:\-—]?\s*/i, '').trim());
+    }
+    // 2. Свободный поиск по строке.
+    const { rows } = await q2Search(q, limit);
+    return { items: rows.map(map), suggested_id: null };
+
+    async function q2Search(term, lim = limit) {
+      const t = String(term || '').trim();
+      const params = [];
+      let where = 'deleted_at IS NULL';
+      if (t) {
+        params.push('%' + t + '%');
+        where += ` AND (work_title ILIKE $1 OR object_name ILIKE $1 OR address ILIKE $1
+                   OR object_address ILIKE $1 OR customer_name ILIKE $1 OR city ILIKE $1 OR work_number ILIKE $1)`;
+      }
+      const r = await db.query(
+        `SELECT id, work_title, object_name, address, object_address, city, customer_name, work_status
+           FROM works WHERE ${where}
+          ORDER BY (work_status = 'active') DESC NULLS LAST, id DESC
+          LIMIT ${lim}`, params
+      ).catch(() => ({ rows: [] }));
+      return r;
+    }
+  });
+
+  /**
+   * Привязать объект (работу) к заявке — когда автоподбор не сработал.
+   * Заказчик (18.10.2026): показывать инициатору список работ на выбор.
+   * Права: инициатор заявки, PROC/TO/PROC-пул или привилегированные роли.
+   * Менять можно только до решения директора (awaiting_dir): после согласования
+   * объект влияет на расходы — там уже нельзя молча перевешивать.
+   */
+  fastify.post('/:id/work', { preHandler: [fastify.authenticate] }, async (req, reply) => {
+    const id = parseInt(req.params.id, 10);
+    if (isNaN(id)) return reply.code(400).send({ error: 'Неверный ID' });
+    const b = req.body || {};
+    const { rows } = await db.query('SELECT * FROM payment_invoices WHERE id=$1', [id]);
+    const pay = rows[0];
+    if (!pay) return reply.code(404).send({ error: 'Не найдено' });
+    const r = String(req.user.role || '');
+    const isOwner = Number(pay.created_by) === Number(req.user.id);
+    const isPriv = ['ADMIN', 'BUH', 'PROC', 'HEAD_PM', 'HEAD_TO'].includes(r) || /^DIRECTOR/.test(r);
+    if (!isOwner && !isPriv) return reply.code(403).send({ error: 'Привязать объект может инициатор счёта или закупки' });
+    if (pay.status !== 'awaiting_dir') {
+      return reply.code(409).send({ error: 'Счёт уже рассмотрен директором — объект не меняем', status: pay.status });
+    }
+    const workId = b.work_id == null || b.work_id === '' ? null : parseInt(b.work_id, 10);
+    if (workId != null && !Number.isFinite(workId)) return reply.code(400).send({ error: 'Неверный work_id' });
+    if (workId != null) {
+      const w = await db.query('SELECT id, work_title, object_name FROM works WHERE id=$1 AND deleted_at IS NULL', [workId]);
+      if (!w.rows[0]) return reply.code(404).send({ error: 'Объект не найден' });
+    }
+    const { rows: upd } = await db.query(
+      `UPDATE payment_invoices SET work_id=$2, updated_at=NOW() WHERE id=$1 RETURNING *`, [id, workId]);
+    // Синхронизируем карточку реестра (иначе расход по объекту не создастся).
+    if (pay.doc_registry_id) {
+      await db.query(`UPDATE doc_registry SET work_id=$2, updated_at=NOW() WHERE id=$1`, [pay.doc_registry_id, workId]).catch(() => {});
+    }
+    return { ok: true, work_id: upd[0].work_id, payment: decoratePayment(upd[0]) };
   });
 
   // Auth-gated file stream
@@ -316,13 +428,31 @@ async function routes(fastify) {
     const lines = Array.isArray(b.line_items) ? b.line_items : [];
     const sum = amount > 0 ? amount : lines.reduce((s, l) => s + num(l.unit_price) * num(l.qty || l.quantity || 1), 0);
     const timing = b.pay_timing === 'deferred' ? 'deferred' : 'immediate';
+    // V404: автоподбор договора-основания из реестра + объект/работа.
+    // Заказчик: «договора в счёте нет в CRM — как подсветится?» → помечаем
+    // contract_missing, договор молча НЕ создаём.
+    let contractId = b.contract_id || null;
+    let contractMissing = false;
+    if (!contractId && b.contract_basis_number) {
+      try {
+        const { matchContract, matchWork } = require('../services/contract-match');
+        const cm = await matchContract(db, { number: b.contract_basis_number, counterpartyName: b.supplier_name });
+        if (cm.found) contractId = cm.contract.id; else contractMissing = true;
+        if (!b.work_id && b.work_hint) {
+          const wm = await matchWork(db, b.work_hint);
+          if (wm.found) b.work_id = wm.work.id;
+        }
+      } catch (e) { fastify.log.warn('[payment-invoices] contract match: ' + e.message); }
+    }
     const { rows } = await db.query(
       `INSERT INTO payment_invoices(
          status, supplier_name, supplier_id, amount, due_date, file_path, file_name,
-         basis_type, basis_text, work_id, contract_id, line_items_json, requires_payment, created_by, pay_timing
+         basis_type, basis_text, work_id, contract_id, line_items_json, requires_payment, created_by, pay_timing,
+         contract_basis_number, contract_missing, work_hint, invoice_number, invoice_date
        ) VALUES(
          'awaiting_dir', $1, $2, $3, $4, $5, $6,
-         $7, $8, $9, $10, $11::jsonb, true, $12, $13
+         $7, $8, $9, $10, $11::jsonb, true, $12, $13,
+         $14, $15, $16, $17, $18
        ) RETURNING *`,
       [
         b.supplier_name || null,
@@ -334,10 +464,15 @@ async function routes(fastify) {
         b.basis_type || 'other',
         b.basis_text || null,
         b.work_id || null,
-        b.contract_id || null,
+        contractId,
         JSON.stringify(lines),
         req.user.id,
-        timing
+        timing,
+        b.contract_basis_number || null,
+        contractMissing,
+        b.work_hint || null,
+        b.invoice_number || null,
+        b.invoice_date || null
       ]
     );
     const pay = rows[0];

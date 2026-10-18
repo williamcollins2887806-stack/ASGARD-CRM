@@ -123,7 +123,7 @@
   border-color: color-mix(in oklab, var(--acc) 30%, transparent); }
 .fh-tile--season .fh-tile__t { color: var(--acc); }
 .fh-tile__badge { position: absolute; top: 9px; right: 9px; font-size: 10px; font-weight: 800;
-  padding: 3px 8px; border-radius: 999px; background: var(--value); color: var(--text-on-gold);
+  padding: 3px 8px; border-radius: 999px; background: var(--gold-fill); color: var(--text-on-gold);
   animation: fhSoft 2.4s ease-in-out infinite; }
 @keyframes fhSoft { 0%,100% { opacity: .8; } 50% { opacity: 1; } }
 

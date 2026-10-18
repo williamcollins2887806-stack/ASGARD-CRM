@@ -5,6 +5,7 @@
  */
 
 const path = require('path');
+const fs = require('fs');
 const fsp = require('fs').promises;
 const { randomUUID } = require('crypto');
 const { enrichCatalogFromLines } = require('../services/catalog-from-invoice');
@@ -145,7 +146,51 @@ function calcIncomplete(row) {
   return { is_incomplete: r.length > 0, incomplete_reasons: r };
 }
 
+/**
+ * P0 (верификатор 17.10.2026): файлы актов сверки — конфиденциальные (суммы,
+ * печати, реквизиты). Раньше они лежали в `uploads/doc-hub/`, а весь `uploads/`
+ * раздаётся статикой БЕЗ авторизации → файл акта выкачивался анонимом по
+ * предсказуемому URL, ACL-прокси обходился.
+ * Здесь — приватный подкаталог, который статика не отдаёт вовсе (см. onRequest
+ * барьер в src/index.js); доступ только через ACL-роут.
+ */
+const PRIVATE_UPLOAD_SUBDIR = 'private';
+const RECON_SUBDIR = 'recon';
+function reconPrivateDir() {
+  return path.join(process.env.UPLOAD_DIR || './uploads', PRIVATE_UPLOAD_SUBDIR, RECON_SUBDIR);
+}
+
 function normPath(p) { return normalizeUploadUrl(p) || p; }
+
+/**
+ * P0 (верификатор 17.10.2026): безопасный путь к файлу внутри uploads.
+ * Класс дефекта — path traversal: `file_url = 'uploads/../.env'` читал ЛЮБОЙ файл
+ * от имени бухгалтера (JWT_SECRET, DB_PASSWORD) мимо ACL и whitelist типов.
+ * Здесь жёстко:
+ *   • отбрасываем ведущее `uploads/` и любой абсолютный/дисковый префикс;
+ *   • запрещаем `..` и NUL;
+ *   • resolve и проверка, что итог ЛЕЖИТ ВНУТРИ uploads (а не просто «начинается с»);
+ *   • необязательно — ограничение подкаталогом (doc-hub).
+ * @returns {string|null} абсолютный путь или null, если путь недопустим
+ */
+function safeUploadPath(fileUrl, opts = {}) {
+  const raw = String(fileUrl || '').trim();
+  if (!raw || raw.includes('\u0000')) return null;
+  // Убираем схему, ведущие слэши и префикс uploads/ — путь должен быть относительным.
+  let rel = raw.replace(/^[a-z][a-z0-9+.-]*:\/\//i, '').replace(/^[\\/]+/, '').replace(/^uploads[\\/]/i, '');
+  if (/^[a-z]:/i.test(rel)) return null;            // дисковый путь Windows (C:...)
+  rel = rel.replace(/\\/g, '/');
+  if (rel.split('/').some((seg) => seg === '..')) return null;  // никакого выхода наверх
+  const base = path.resolve(process.env.UPLOAD_DIR || './uploads');
+  const full = path.resolve(base, rel);
+  // Строгая проверка границы: внутри base (а не «начинается с base»).
+  if (full !== base && !full.startsWith(base + path.sep)) return null;
+  if (opts.subdir) {
+    const sub = path.resolve(base, String(opts.subdir));
+    if (full !== sub && !full.startsWith(sub + path.sep)) return null;
+  }
+  return full;
+}
 
 /**
  * S4: текстовые поля реестра приходят из писем/ИИ и видны другим (баннер, дайджест).
@@ -246,7 +291,8 @@ function fireCatalog(fastify, db, doc, userId) {
   if (!lines.length) return;
   Promise.resolve()
     .then(() => enrichCatalogFromLines(db, {
-      lines, supplierName: doc.counterparty_name, supplierId: doc.supplier_id, userId, source: 'quote'
+      lines, supplierName: doc.counterparty_name, supplierId: doc.supplier_id, userId, source: 'quote',
+      docRegistryId: doc.id, invoiceDate: doc.invoice_date, invoiceNumber: doc.invoice_number
     }))
     .catch((e) => fastify.log.warn('[doc-registry] catalog: ' + (e && e.message)));
 }
@@ -302,7 +348,8 @@ async function runParseCatalog(db, doc, opts = {}) {
       supplierName: supplierHint || doc.counterparty_name,
       supplierId: doc.supplier_id,
       userId: opts.userId,
-      source: 'quote'
+      source: 'quote',
+      docRegistryId: doc.id, invoiceDate: doc.invoice_date, invoiceNumber: doc.invoice_number
     });
     const reasons = (Array.isArray(doc.incomplete_reasons) ? doc.incomplete_reasons : [])
       .filter((x) => x !== 'catalog_parse_pending');
@@ -732,10 +779,17 @@ module.exports = async function docRegistryRoutes(fastify) {
     // Кандидаты: контрагенты с документами (оплата/услуга) за период.
     const { from, to } = reconSvc.periodRange(year, quarter);
     const p = [from, to];
-    const vis = visibilitySql(p, req.user.role, req.user.id, { scope: q.scope });
+    // ВАЖНО (найдено 17.10 при проверке в браузере): акт сверки — бухгалтерская
+    // функция по КОНТРАГЕНТУ, а не личный список. С scope='mine' бухгалтер видел
+    // ПУСТОЙ список (строки заведены не им), хотя в детали суммы были. Для
+    // привилегированных — всегда period целиком, как уже сделано в /detail.
+    const listScope = canUseScopeAll(req.user.role) ? 'all' : (q.scope || 'mine');
+    const vis = visibilitySql(p, req.user.role, req.user.id, { scope: listScope });
+    // Кандидаты по ИНН.
     const { rows: cands } = await db.query(
       `SELECT d.counterparty_inn AS inn, max(d.counterparty_name) AS name,
-              count(*)::int AS docs, sum(d.amount_gross)::numeric AS amount
+              count(*)::int AS docs, sum(d.amount_gross)::numeric AS amount,
+              sum(CASE WHEN d.pay_status IN ('paid','n_a') THEN d.amount_gross ELSE 0 END)::numeric AS paid_sum
          FROM doc_registry d
         WHERE d.deleted_at IS NULL AND d.dir='in'
           AND COALESCE(d.invoice_date, d.service_done_at) BETWEEN $1::date AND $2::date
@@ -744,20 +798,61 @@ module.exports = async function docRegistryRoutes(fastify) {
         ORDER BY 4 DESC NULLS LAST LIMIT 500`,
       p
     ).catch(() => ({ rows: [] }));
+    // P2 (верификатор 17.10): контрагенты БЕЗ ИНН раньше выпадали из списка
+    // (HAVING отсекал пустой ИНН) — вкладка была пуста, хотя деталь по имени
+    // работала. Добавляем вторую группу: по нормализованному имени.
+    const { rows: candsByName } = await db.query(
+      `SELECT max(d.counterparty_inn) AS inn, max(d.counterparty_name) AS name,
+              count(*)::int AS docs, sum(d.amount_gross)::numeric AS amount,
+              sum(CASE WHEN d.pay_status IN ('paid','n_a') THEN d.amount_gross ELSE 0 END)::numeric AS paid_sum
+         FROM doc_registry d
+        WHERE d.deleted_at IS NULL AND d.dir='in'
+          AND COALESCE(d.invoice_date, d.service_done_at) BETWEEN $1::date AND $2::date
+          AND (d.pay_status IN ('paid','n_a') OR d.service_done_at IS NOT NULL)${vis}
+          AND (d.counterparty_inn IS NULL OR d.counterparty_inn = '')
+          AND COALESCE(trim(d.counterparty_name),'') <> ''
+        GROUP BY lower(trim(d.counterparty_name))
+        ORDER BY 4 DESC NULLS LAST LIMIT 500`,
+      p
+    ).catch(() => ({ rows: [] }));
+    for (const c of candsByName) cands.push(c);
+    // Сумма взаимозачётов по актам периода — чтобы баланс в СПИСКЕ совпадал
+    // с балансом в детали (раньше в списке стояло «—», а внутри были суммы).
+    const adjByInn = new Map();
+    const adjByName = new Map();
+    for (const s of saved) {
+      const list = Array.isArray(s.manual_adjustments) ? s.manual_adjustments : [];
+      const sum = list.reduce((a, x) => a + (Number(x && x.amount) || 0), 0);
+      if (s.counterparty_inn) adjByInn.set(s.counterparty_inn, Math.round(sum * 100) / 100);
+      else if (s.counterparty_name) adjByName.set(String(s.counterparty_name).trim().toLowerCase(), Math.round(sum * 100) / 100);
+    }
     const byKey = new Map();
     for (const c of cands) {
-      byKey.set(c.inn, {
-        inn: c.inn, name: c.name, docs: c.docs, amount: Number(c.amount) || 0,
+      const paidSum = Number(c.paid_sum) || 0;
+      const docsSum = Number(c.amount) || 0;
+      // Ключ: при наличии ИНН — по ИНН, иначе по нормализованному имени (как в saved).
+      const key = c.inn ? c.inn : ('name:' + String(c.name || '').trim().toLowerCase());
+      const adj = adjByInn.get(c.inn) || adjByName.get(String(c.name || '').trim().toLowerCase()) || 0;
+      byKey.set(key, {
+        inn: c.inn || null, name: c.name, docs: c.docs, amount: docsSum, paid_sum: paidSum,
+        balance_rub: Math.round((paidSum - docsSum + adj) * 100) / 100,
         due_at: reconSvc.periodDeadline(year, quarter, cfg),
-        status: null, received_at: null, balance_rub: null
+        status: null, received_at: null
       });
     }
     for (const s of saved) {
       const k = s.counterparty_inn || ('name:' + String(s.counterparty_name || '').toLowerCase());
-      const cur = byKey.get(k) || { inn: s.counterparty_inn, name: s.counterparty_name, docs: 0, amount: 0 };
+      const cur = byKey.get(k) || {
+        inn: s.counterparty_inn, name: s.counterparty_name, docs: 0, amount: 0, paid_sum: 0,
+        balance_rub: Math.round((adjByName.get(String(s.counterparty_name || '').trim().toLowerCase()) || 0) * 100) / 100
+      };
       cur.due_at = s.due_at || cur.due_at;
-      cur.status = s.status; cur.received_at = s.received_at; cur.file_url = s.file_url;
-      cur.balance_rub = s.balance_rub != null ? Number(s.balance_rub) : null;
+      cur.status = s.status; cur.received_at = s.received_at;
+      // file_url отдаём флагом (есть/нет) + имя файла; сам файл — через ACL-прокси по act_id,
+      // прямые /uploads/ не авторизованы (см. /reconciliation/:id/file).
+      cur.has_file = !!s.file_url;
+      cur.file_name = (s.file_meta && s.file_meta.name) || null;
+      cur.adjustments_count = Array.isArray(s.manual_adjustments) ? s.manual_adjustments.length : 0;
       cur.act_id = s.id;
       byKey.set(k, cur);
     }
@@ -780,12 +875,30 @@ module.exports = async function docRegistryRoutes(fastify) {
     // (scope='all'). Не-привилегированные (PM/PROC/TO/WAREHOUSE) остаются
     // ограничены своей матрицей независимо от scope.
     const reconScope = canUseScopeAll(req.user.role) ? 'all' : (q.scope || 'mine');
+    // act_id (если акт уже сохранён) — чтобы учесть взаимозачёты в балансе.
+    let actId = null;
+    if (q.inn) {
+      const a = await db.query(`SELECT id FROM doc_reconciliation_acts WHERE counterparty_inn=$1 AND period_year=$2 AND period_quarter=$3`, [q.inn, year, quarter]).catch(() => ({ rows: [] }));
+      actId = a.rows[0] ? a.rows[0].id : null;
+    } else if (q.name) {
+      const a = await db.query(`SELECT id FROM doc_reconciliation_acts WHERE lower(trim(counterparty_name))=$1 AND period_year=$2 AND period_quarter=$3`, [String(q.name).trim().toLowerCase(), year, quarter]).catch(() => ({ rows: [] }));
+      actId = a.rows[0] ? a.rows[0].id : null;
+    }
     const detail = await reconSvc.buildReconciliation(db, {
-      inn: q.inn || null, name: q.name || null, year, quarter,
+      inn: q.inn || null, name: q.name || null, year, quarter, actId,
       role: req.user.role, userId: req.user.id, scope: reconScope
     });
     const cfg = await reconSettings();
-    return { ...detail, due_at: reconSvc.periodDeadline(year, quarter, cfg) };
+    // Флаг наличия файла акта + имя — для кнопки скачивания (сам файл через ACL).
+    let has_file = false; let file_name = null;
+    if (actId) {
+      const fm = await db.query(`SELECT file_url, file_meta FROM doc_reconciliation_acts WHERE id=$1`, [actId]).catch(() => ({ rows: [] }));
+      if (fm.rows[0] && fm.rows[0].file_url) {
+        has_file = true;
+        file_name = (fm.rows[0].file_meta && fm.rows[0].file_meta.name) || null;
+      }
+    }
+    return { ...detail, act_id: actId, has_file, file_name, due_at: reconSvc.periodDeadline(year, quarter, cfg) };
   });
 
   /** Отметить «запрошен» / «получен» + приложить файл от контрагента. */
@@ -813,8 +926,15 @@ module.exports = async function docRegistryRoutes(fastify) {
       due_at: dueAt, status,
       received_at: status === 'received' ? new Date().toISOString() : null,
       received_by: status === 'received' ? req.user.id : null,
-      file_url: b.file_url || null, comment: sanitizeText(String(b.comment || ''), 2000)
+      // P0 (верификатор 17.10): file_url принимаем ТОЛЬКО если он безопасен (внутри
+      // uploads). Иначе значение вида `uploads/../.env` отравило бы базу и дало
+      // чтение произвольных файлов при скачивании.
+      file_url: b.file_url ? (() => { const p = safeUploadPath(b.file_url); return p ? normPath(b.file_url) : null; })() : null,
+      comment: sanitizeText(String(b.comment || ''), 2000)
     };
+    // гарантируем, что requested_at выставлен при первом запросе
+    fields.requested_at = b.requested_at || new Date().toISOString().slice(0, 10);
+    fields.requested_by = req.user.id;
     let actId;
     if (existing.rows[0]) {
       const set = Object.keys(fields).map((k, i) => `${k}=$${i + 1}`).join(', ');
@@ -830,7 +950,200 @@ module.exports = async function docRegistryRoutes(fastify) {
       actId = rows[0].id;
     }
     await audit(db, actId, req.user.id, 'recon_' + status, { inn, name, year, quarter });
+    // A2 (светофор по актам): поле recon_due_at в doc_registry до этого НИКТО не
+    // заполнял — ветка «акт не получен → красный/жёлтый» в doc-traffic.js была мёртвой.
+    // Теперь при запросе акта помечаем документы контрагента за период: срок + запрос.
+    // При получении — снимаем срок (акт закрыт). Это делает светофор живым.
+    try {
+      const { from, to } = reconSvc.periodRange(year, quarter);
+      const mp = [from, to];
+      let mw = `deleted_at IS NULL AND dir='in'
+        AND COALESCE(invoice_date, service_done_at) BETWEEN $1::date AND $2::date`;
+      if (inn) { mp.push(inn); mw += ` AND counterparty_inn=$${mp.length}`; }
+      else { mp.push(String(name).trim().toLowerCase()); mw += ` AND lower(trim(counterparty_name))=$${mp.length}`; }
+      if (status === 'received') {
+        await db.query(
+          `UPDATE doc_registry SET recon_received_at=CURRENT_DATE, recon_due_at=NULL, updated_at=NOW()
+            WHERE ${mw} AND (recon_received_at IS NULL OR recon_received_at < CURRENT_DATE)`, mp);
+      } else {
+        mp.push(dueAt);
+        await db.query(
+          `UPDATE doc_registry SET recon_due_at=$${mp.length}::date,
+             recon_requested_at=COALESCE(recon_requested_at, CURRENT_DATE), updated_at=NOW()
+            WHERE ${mw} AND recon_received_at IS NULL`, mp);
+      }
+    } catch (e) {
+      fastify.log.warn('[doc-registry] recon traffic mark: ' + (e && e.message));
+    }
     return { ok: true, act_id: actId, status };
+  });
+
+  /**
+   * Загрузка файла акта от контрагента (бухгалтерия).
+   * Безопасность — класс D-220: расширение из белого списка (не из имени клиента),
+   * лимит размера, файл кладём в uploads/doc-hub/, раздаём только через ACL-прокси.
+   */
+  fastify.post('/reconciliation/file', auth, async (req, reply) => {
+    if (!RECON_ROLES.has(String(req.user.role || '').toUpperCase())) {
+      return reply.code(403).send({ error: 'Загружать акт может бухгалтерия, офис и директора' });
+    }
+    const b = {};
+    let filePart = null;
+    if (typeof req.isMultipart === 'function' && req.isMultipart()) {
+      for await (const part of req.parts()) {
+        if (part.type === 'file' && !filePart) {
+          filePart = { buffer: await part.toBuffer(), filename: part.filename, mimetype: part.mimetype };
+        } else if (part.fieldname) b[part.fieldname] = part.value;
+      }
+    } else {
+      Object.assign(b, req.body || {});
+    }
+    const year = parseInt(b.year, 10);
+    const quarter = parseInt(b.quarter, 10) || 0;
+    const inn = b.inn || null;
+    const name = b.name || null;
+    if (!year) return reply.code(400).send({ error: 'year обязателен' });
+    if (!inn && !name) return reply.code(400).send({ error: 'inn или name обязательны' });
+    if (!filePart || !filePart.buffer) return reply.code(400).send({ error: 'Файл не загружен' });
+    if (filePart.buffer.length > 20 * 1024 * 1024) return reply.code(413).send({ error: 'Файл больше 20 МБ' });
+
+    const { safeStoredExt, safeContentType } = require('../lib/upload-ext');
+    const ext = safeStoredExt(filePart.mimetype, filePart.filename, { allow: 'doc' });
+    if (!ext) return reply.code(415).send({ error: 'Недопустимый тип файла' });
+
+    const dir = reconPrivateDir();
+    await fsp.mkdir(dir, { recursive: true }, { mode: 0o700 });
+    const fname = `recon_${year}_${quarter || 'y'}_${randomUUID()}${ext}`;
+    await fsp.writeFile(path.join(dir, fname), filePart.buffer, { mode: 0o600 });
+    // Путь храним БЕЗ публичного префикса uploads/ — файл вне статики; ACL-роут
+    // собирает путь через safeUploadPath и знает про private/recon.
+    const url = `${PRIVATE_UPLOAD_SUBDIR}/${RECON_SUBDIR}/${fname}`;
+
+    const cfg = await reconSettings();
+    const dueAt = reconSvc.periodDeadline(year, quarter, cfg);
+    const fileMeta = {
+      name: String(b.name_file || filePart.filename || fname).replace(/[<>"'`]/g, '').slice(0, 200),
+      size: filePart.buffer.length,
+      mimetype: safeContentType(ext, filePart.mimetype),
+      uploaded_at: new Date().toISOString(),
+      by: req.user.id
+    };
+    {
+      const existing = await db.query(
+        inn
+          ? `SELECT id FROM doc_reconciliation_acts WHERE counterparty_inn=$1 AND period_year=$2 AND period_quarter=$3`
+          : `SELECT id FROM doc_reconciliation_acts WHERE lower(trim(counterparty_name))=$1 AND period_year=$2 AND period_quarter=$3`,
+        [inn || String(name).trim().toLowerCase(), year, quarter]);
+      let actId;
+      if (existing.rows[0]) {
+        const { rows } = await db.query(
+          `UPDATE doc_reconciliation_acts
+              SET file_url=$2, file_meta=$3::jsonb, status='received', received_at=NOW(), received_by=$4, updated_at=NOW()
+            WHERE id=$1 RETURNING *`,
+          [existing.rows[0].id, url, JSON.stringify(fileMeta), req.user.id]);
+        actId = rows[0].id;
+      } else {
+        const { rows } = await db.query(
+          `INSERT INTO doc_reconciliation_acts
+             (counterparty_inn, counterparty_name, period_year, period_quarter, due_at,
+              status, file_url, file_meta, received_at, received_by)
+           VALUES ($1,$2,$3,$4,$5::date,'received',$6,$7::jsonb,NOW(),$8) RETURNING *`,
+          [inn, name, year, quarter, dueAt, url, JSON.stringify(fileMeta), req.user.id]);
+        actId = rows[0].id;
+      }
+      // Светофор: помечаем получение акта на всех документах контрагента за период,
+      // чтобы просрочка акта исчезла из красных строк (поле читает doc-traffic.js).
+      const { from, to } = reconSvc.periodRange(year, quarter);
+      const markParams = [from, to];
+      let markWhere = `deleted_at IS NULL AND dir='in' AND COALESCE(invoice_date, service_done_at) BETWEEN $1::date AND $2::date`;
+      if (inn) { markParams.push(inn); markWhere += ` AND counterparty_inn=$${markParams.length}`; }
+      else { markParams.push(String(name).trim().toLowerCase()); markWhere += ` AND lower(trim(counterparty_name))=$${markParams.length}`; }
+      await db.query(
+        `UPDATE doc_registry SET recon_received_at=CURRENT_DATE, recon_due_at=NULL, updated_at=NOW()
+          WHERE ${markWhere} AND (recon_received_at IS NULL OR recon_received_at < CURRENT_DATE)`,
+        markParams).catch(() => {});
+      await audit(db, actId, req.user.id, 'recon_file_upload', { year, quarter, inn, name, size: fileMeta.size });
+      return { ok: true, act_id: actId, file_url: url, file_name: fileMeta.name, status: 'received' };
+    }
+  });
+
+  /** Скачивание файла акта — только через ACL (прямой /uploads/ не авторизован). */
+  fastify.get('/reconciliation/:id/file', auth, async (req, reply) => {
+    if (!RECON_ROLES.has(String(req.user.role || '').toUpperCase())) {
+      return reply.code(403).send({ error: 'Файл акта доступен бухгалтерии, офису и директорам' });
+    }
+    const id = parseInt(req.params.id, 10);
+    if (!Number.isFinite(id)) return reply.code(400).send({ error: 'Неверный ID' });
+    const { rows } = await db.query(`SELECT file_url, file_meta, counterparty_name FROM doc_reconciliation_acts WHERE id=$1`, [id]);
+    if (!rows[0] || !rows[0].file_url) return reply.code(404).send({ error: 'Файл не найден' });
+    // P0 (верификатор 17.10.2026): path traversal. Раньше путь склеивался напрямую,
+    // и file_url вида `uploads/../.env` читал ЛЮБОЙ файл от имени бухгалтера
+    // (JWT_SECRET, DB_PASSWORD…). Теперь: resolve + проверка границы каталога.
+    // Файлы актов лежат в приватном private/recon (вне статики) — ограничиваем и им.
+    const fsPath = safeUploadPath(rows[0].file_url, { subdir: path.join(PRIVATE_UPLOAD_SUBDIR, RECON_SUBDIR) })
+      || safeUploadPath(rows[0].file_url, { subdir: 'doc-hub' })
+      || safeUploadPath(rows[0].file_url);
+    if (!fsPath) return reply.code(400).send({ error: 'Недопустимый путь к файлу' });
+    if (!fs.existsSync(fsPath)) return reply.code(404).send({ error: 'Файл отсутствует на диске' });
+    const ext = path.extname(fsPath).toLowerCase();
+    const { safeContentType } = require('../lib/upload-ext');
+    const ct = safeContentType(ext, null);
+    const name = (rows[0].file_meta && rows[0].file_meta.name) || path.basename(fsPath);
+    reply.header('Content-Type', ct);
+    reply.header('Content-Disposition', `${ct === 'application/octet-stream' ? 'attachment' : 'inline'}; filename="${encodeURIComponent(name)}"`);
+    return reply.send(fs.createReadStream(fsPath));
+  });
+
+  /**
+   * Взаимозачёты акта (manual_adjustments): добавить/удалить ручную корректировку.
+   * Влияет на баланс: Σ оплат − Σ документов + Σ корректировок.
+   */
+  fastify.post('/reconciliation/adjustment', auth, async (req, reply) => {
+    if (!RECON_ROLES.has(String(req.user.role || '').toUpperCase())) {
+      return reply.code(403).send({ error: 'Взаимозачёты ведёт бухгалтерия, офис и директора' });
+    }
+    const b = req.body || {};
+    const year = parseInt(b.year, 10);
+    const quarter = parseInt(b.quarter, 10) || 0;
+    const inn = b.inn || null;
+    const name = b.name || null;
+    const actIdIn = parseInt(b.act_id, 10);
+    // Находим акт: по переданному id либо по контрагенту+периоду. Если акта ещё
+    // нет, а бухгалтер добавляет взаимозачёт — акт создаём (он и так нужен).
+    let actId = Number.isFinite(actIdIn) ? actIdIn : null;
+    if (!actId) {
+      if (!year || (!inn && !name)) return reply.code(400).send({ error: 'Нужен act_id либо year + inn/name' });
+      const cfg = await reconSettings();
+      const dueAt = reconSvc.periodDeadline(year, quarter, cfg);
+      const found = await db.query(
+        inn
+          ? `SELECT id FROM doc_reconciliation_acts WHERE counterparty_inn=$1 AND period_year=$2 AND period_quarter=$3`
+          : `SELECT id FROM doc_reconciliation_acts WHERE lower(trim(counterparty_name))=$1 AND period_year=$2 AND period_quarter=$3`,
+        [inn || String(name).trim().toLowerCase(), year, quarter]);
+      actId = found.rows[0] ? found.rows[0].id : (await db.query(
+        `INSERT INTO doc_reconciliation_acts (counterparty_inn, counterparty_name, period_year, period_quarter, due_at, status, requested_at, requested_by)
+         VALUES ($1,$2,$3,$4,$5::date,'planned',CURRENT_DATE,$6) RETURNING id`,
+        [inn, name, year, quarter, dueAt, req.user.id])).rows[0].id;
+    }
+    const { rows: act } = await db.query(`SELECT id, manual_adjustments FROM doc_reconciliation_acts WHERE id=$1`, [actId]);
+    if (!act[0]) return reply.code(404).send({ error: 'Акт не найден' });
+    const list = Array.isArray(act[0].manual_adjustments) ? [...act[0].manual_adjustments] : [];
+    if (b.remove_at != null) {
+      const idx = parseInt(b.remove_at, 10);
+      if (!Number.isFinite(idx) || idx < 0 || idx >= list.length) return reply.code(400).send({ error: 'Неверный индекс корректировки' });
+      list.splice(idx, 1);
+    } else {
+      const amount = Number(b.amount);
+      if (!Number.isFinite(amount) || amount === 0) return reply.code(400).send({ error: 'amount — ненулевое число' });
+      const note = sanitizeText(String(b.note || '').trim(), 500);
+      if (!note) return reply.code(400).send({ error: 'Комментарий обязателен: что за взаимозачёт' });
+      list.push({ amount: Math.round(amount * 100) / 100, note, at: new Date().toISOString(), by: req.user.id });
+    }
+    const { rows } = await db.query(
+      `UPDATE doc_reconciliation_acts SET manual_adjustments=$2::jsonb, updated_at=NOW() WHERE id=$1 RETURNING *`,
+      [actId, JSON.stringify(list)]);
+    await audit(db, actId, req.user.id, 'recon_adjustment', { removed: b.remove_at != null });
+    return { ok: true, act_id: actId, manual_adjustments: rows[0].manual_adjustments };
   });
 
   fastify.post('/check-duplicate', auth, async (req) => {
@@ -1242,7 +1555,20 @@ module.exports = async function docRegistryRoutes(fastify) {
     const id = parseInt(req.params.id, 10);
     const b = req.body || {};
     if (isNaN(id) || !b.action) return reply.code(400).send({ error: 'id + action' });
-    if (!(await assertDocVisible(db, { role: req.user.role, userId: req.user.id }, id))) {
+    // V394: кладовщик отмечает получение СФ по ВСЕЙ входящей почте, а матрица
+    // видимости WAREHOUSE сужает его до «складского» (офисные/клиентские строки
+    // он не видит) — иначе экран «Входящие СФ» был бы нерабочим (план §9.1).
+    // Поэтому для receive_sf проверяем право экрана, а не общую видимость строки.
+    if (b.action === 'receive_sf') {
+      if (!WH_ROLES.has(req.user.role)) {
+        return reply.code(403).send({ error: 'Отмечать получение СФ может только склад, бухгалтерия или админ' });
+      }
+      const eligible = await db.query(
+        `SELECT 1 FROM doc_registry
+          WHERE id=$1 AND deleted_at IS NULL AND dir='in'
+            AND (ops_status IN ('wait_sf','wait_closing') OR sf_received_at IS NOT NULL) LIMIT 1`, [id]);
+      if (!eligible.rows.length) return reply.code(404).send({ error: 'Не найдено' });
+    } else if (!(await assertDocVisible(db, { role: req.user.role, userId: req.user.id }, id))) {
       return reply.code(404).send({ error: 'Не найдено' });
     }
     const { rows: found } = await db.query('SELECT * FROM doc_registry WHERE id=$1 AND deleted_at IS NULL', [id]);
@@ -1547,6 +1873,26 @@ module.exports = async function docRegistryRoutes(fastify) {
     }
     if (!doc.work_id) return reply.code(400).send({ error: 'Нужен work_id' });
     const { insertWorkExpense } = require('../services/work-expense-writer');
+    // expense-dedup-object (17.10.2026): ключ `invoice:<id>` ловит дубль между
+    // ручной привязкой и авто-расходом после оплаты. Но у старых записей ключ
+    // другой (`doc_registry:<id>`) — дополнительно проверяем по работе+сумме+номеру,
+    // чтобы не задвоить уже существующий расход.
+    // ВАЖНО: у work_expenses НЕТ deleted_at — фильтровать по нему нельзя (упало бы и молча съелось).
+    const dup = await db.query(
+      `SELECT id FROM work_expenses
+        WHERE work_id=$1
+          AND COALESCE(source_key,'') <> $2
+          AND ABS(amount - $3::numeric) < 0.01
+          AND ($4::varchar IS NULL OR doc_number IS NULL OR doc_number = $4)
+        LIMIT 1`,
+      [doc.work_id, `invoice:${doc.id}`, num(doc.amount_gross) || num(b.amount) || 0, doc.invoice_number || null]
+    ).catch(() => ({ rows: [] }));
+    if (dup.rows[0]) {
+      await db.query(`UPDATE doc_registry SET work_expense_id=$2, updated_by=$3, updated_at=NOW() WHERE id=$1 AND work_expense_id IS NULL`,
+        [id, dup.rows[0].id, req.user.id]).catch(() => {});
+      await audit(db, id, req.user.id, 'link_expense_found', { work_expense_id: dup.rows[0].id });
+      return { work_expense_id: dup.rows[0].id, existing: true, found_by_match: true };
+    }
     const expense = await insertWorkExpense(db, {
       work_id: doc.work_id,
       category: b.category || 'materials',
@@ -1562,7 +1908,10 @@ module.exports = async function docRegistryRoutes(fastify) {
       payment_method: b.payment_method || 'bank',
       source_table: 'doc_registry',
       source_id: doc.id,
-      source_key: `doc_registry:${doc.id}`,
+      // ЕДИНЫЙ ключ расхода по счёту (см. expense-dedup-object, 17.10.2026):
+      // тот же ключ ставит autoWorkExpense после оплаты. Иначе один счёт давал
+      // ДВА расхода по объекту (ручная привязка + авто-после-оплаты).
+      source_key: `invoice:${doc.id}`,
       status: 'pending',
       created_by: req.user.id
     });

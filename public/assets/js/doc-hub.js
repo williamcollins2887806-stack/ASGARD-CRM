@@ -78,6 +78,10 @@ window.AsgardDocHubPage = (function () {
     facetIncomplete: false,
     quarter: '',
     year: '',
+    actsTab: false,      // V394: вкладка «Акты сверки»
+    archiveTab: false,   // паритет с «Выплатами»: вкладка «Архив»
+    sfTab: false,        // V394: экран «Входящие СФ» (кладовщик)
+    sfOnlyPending: true, // на экране СФ по умолчанию только те, что ждут получения
     facets: { counterparties: [] },
     rows: [],
     total: 0,
@@ -131,6 +135,8 @@ window.AsgardDocHubPage = (function () {
     }
   }
   function canWh() { return WH_ROLES.includes(role()); }
+  // Акты сверки ведёт бухгалтерия/офис/директора — зеркало RECON_ROLES на бэке.
+  function canReconAct() { return ['BUH', 'ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV', 'DIRECTOR', 'OFFICE_MANAGER'].includes(role()); }
   function canCorrect() { return CORR_ROLES.includes(role()); }
 
   /** API GET /api/users → { users: [...] }; never return a bare object. */
@@ -1185,6 +1191,7 @@ window.AsgardDocHubPage = (function () {
               ${isWizard
                 ? '<button class="dh-btn dh-btn--ghost" type="button" id="dhWizToRegistry">К реестру</button>'
                 : `<button class="dh-btn dh-btn--ghost ${state.actsTab ? 'is-on' : ''}" type="button" id="dhBtnActs">Акты сверки</button>
+              <button class="dh-btn dh-btn--ghost ${state.sfTab ? 'is-on' : ''}" type="button" id="dhBtnSf">Входящие СФ</button>
               <button class="dh-btn dh-btn--ghost ${state.archiveTab ? 'is-on' : ''}" type="button" id="dhBtnArchive">Архив</button>
               <button class="dh-btn dh-btn--ghost ${isGuide ? 'is-on' : ''}" type="button" id="dhBtnGuide">${isGuide ? 'К реестру' : 'Справка'}</button>
               <button class="dh-btn dh-btn--ghost" type="button" id="dhBtnHelp" title="Подсказка">?</button>
@@ -1197,8 +1204,9 @@ window.AsgardDocHubPage = (function () {
           <main class="dh-main">
             ${isGuide ? renderGuideView() : (isWizard ? '<div class="dh-wizard-page" id="dhWizardHost"></div>'
               : (state.actsTab ? '<div class="dh-acts" id="dhActsHost"><div class="dh-empty">Загрузка актов сверки…</div></div>'
+                : (state.sfTab ? '<div class="dh-sf" id="dhSfHost"><div class="dh-empty">Загрузка входящих СФ…</div></div>'
                 : (state.archiveTab ? '<div class="dh-archive" id="dhArchiveHost"><div class="dh-empty">Загрузка архива…</div></div>'
-                  : registryMainHtml(scopeAll))))}
+                  : registryMainHtml(scopeAll)))))}
           </main>
         </div>
         <div class="dh-overlay" id="dhOverlay" hidden></div>
@@ -2255,27 +2263,43 @@ window.AsgardDocHubPage = (function () {
     const y = state.actsYear || new Date().getFullYear();
     const q = state.actsQuarter != null ? state.actsQuarter : Math.floor(new Date().getMonth() / 3) + 1;
     try {
-      const data = await api(`/reconciliation?year=${y}&quarter=${q}&scope=${encodeURIComponent(state.scope)}`);
+      // Акты сверки — по контрагенту за период, а не «мои строки»: всегда scope=all
+      // (сервер для привилегированных всё равно форсит период целиком).
+      const data = await api(`/reconciliation?year=${y}&quarter=${q}&scope=all`);
       const items = data.items || [];
+      const today = new Date().toISOString().slice(0, 10);
       const rows = items.length ? items.map((it) => {
         const bal = it.balance_rub != null ? Number(it.balance_rub) : null;
         const balCls = bal == null ? 'muted' : bal > 0 ? 'ok' : bal < 0 ? 'err' : 'muted';
         const balTxt = bal == null ? '—'
           : (bal === 0 ? 'сошлось' : (bal > 0 ? `в нашу пользу ${money(bal)}` : `мы должны ${money(Math.abs(bal))}`));
-        const st = it.status === 'received' ? '<span class="dh-pill dh-pill--ok">получен</span>'
-          : it.status === 'requested' ? '<span class="dh-pill dh-pill--warn">запрошен</span>'
-            : '<span class="dh-pill dh-pill--muted">нужно запросить</span>';
-        return `<tr>
-          <td><div class="dh-stack"><span class="a">${esc(it.name || '—')}</span><span class="b dh-muted">ИНН ${esc(String(it.inn || '—'))}</span></div></td>
+        // Статус акта + светофор: получен (зелёный) / запрошен (жёлтый) /
+        // нужно запросить (серый) / просрочен (красный — дедлайн прошёл, акта нет).
+        const dueYmd = it.due_at ? String(it.due_at).slice(0, 10) : null;
+        const overdue = !it.received_at && dueYmd && dueYmd < today;
+        const st = it.received_at
+          ? '<span class="dh-pill dh-pill--ok">получен</span>'
+          : overdue ? '<span class="dh-pill dh-pill--err">просрочен</span>'
+            : it.status === 'requested' ? '<span class="dh-pill dh-pill--warn">запрошен</span>'
+              : '<span class="dh-pill dh-pill--muted">нужно запросить</span>';
+        const actsBadge = (it.adjustments_count || 0) > 0
+          ? `<span class="dh-flag is-on" title="Взаимозачётов: ${it.adjustments_count}">↔ ${it.adjustments_count}</span>` : '';
+        const fileBtn = it.has_file
+          ? `<a class="dh-btn dh-btn--ghost dh-btn--sm" href="/api/doc-registry/reconciliation/${it.act_id}/file" target="_blank" rel="noopener" title="Файл акта от контрагента">${esc((it.file_name || 'файл').slice(0, 14))}</a>`
+          : '';
+        return `<tr${overdue ? ' class="is-overdue-pay"' : ''}>
+          <td><div class="dh-stack"><span class="a">${esc(it.name || '—')}</span><span class="b dh-muted">ИНН ${esc(String(it.inn || '—'))} ${actsBadge}</span></div></td>
           <td>${it.docs || 0}</td>
           <td class="dh-money">${it.amount ? money(it.amount) : '—'}</td>
-          <td>${fmtDate(it.due_at) || '—'}</td>
+          <td><div class="dh-stack"><span class="a">${fmtDate(it.due_at) || '—'}</span>${overdue ? '<span class="b dh-money--err">срок прошёл</span>' : ''}</div></td>
           <td>${st}</td>
           <td class="dh-money dh-money--${balCls}">${esc(balTxt)}</td>
           <td class="dh-actions"><div class="dh-qa">
             <button type="button" data-act="detail" data-inn="${esc(String(it.inn || ''))}" data-name="${esc(it.name || '')}" title="Детали и баланс">${qaIcons().open}</button>
-            <button type="button" data-act="requested" data-inn="${esc(String(it.inn || ''))}" data-name="${esc(it.name || '')}" title="Запросить акт">↗</button>
+            ${fileBtn}
+            ${it.received_at ? '' : `<button type="button" data-act="requested" data-inn="${esc(String(it.inn || ''))}" data-name="${esc(it.name || '')}" title="Запросить акт у контрагента">↗</button>`}
             <button type="button" data-act="received" data-inn="${esc(String(it.inn || ''))}" data-name="${esc(it.name || '')}" title="Отметить полученным">✓</button>
+            ${canReconAct() ? `<button type="button" data-act="upload" data-inn="${esc(String(it.inn || ''))}" data-name="${esc(it.name || '')}" data-year="${y}" data-quarter="${q}" title="Загрузить файл акта от контрагента">📎</button>` : ''}
           </div></td>
         </tr>`;
       }).join('') : '<tr><td colspan="7"><div class="dh-empty dh-empty--sm"><div class="dh-empty__t">За период оборотов нет</div><p>Смените период или дождитесь оплат/оказанных услуг.</p></div></td></tr>';
@@ -2310,6 +2334,7 @@ window.AsgardDocHubPage = (function () {
           const act = b.getAttribute('data-act');
           const inn = b.getAttribute('data-inn'); const name = b.getAttribute('data-name');
           if (act === 'detail') return renderActDetail(inn, name, y, q);
+          if (act === 'upload') return pickReconFile(inn, name, y, q);
           try {
             await api('/reconciliation/status', { method: 'POST', body: JSON.stringify({ inn: inn || null, name, year: y, quarter: q, status: act }) });
             toast('Акт сверки', act === 'received' ? 'Отмечен полученным' : 'Запрошен', 'ok');
@@ -2320,6 +2345,72 @@ window.AsgardDocHubPage = (function () {
     } catch (e) {
       host.innerHTML = `<div class="dh-empty"><div class="dh-empty__t">Не удалось загрузить</div><p>${esc(e.message || '')}</p></div>`;
     }
+  }
+
+  /** Выбор файла акта от контрагента и загрузка (multipart, whitelist на бэке). */
+  function pickReconFile(inn, name, year, quarter) {
+    const inp = document.createElement('input');
+    inp.type = 'file';
+    inp.accept = '.pdf,.jpg,.jpeg,.png,.xls,.xlsx,.doc,.docx';
+    inp.style.display = 'none';
+    document.body.appendChild(inp);
+    inp.onchange = async () => {
+      const f = inp.files && inp.files[0];
+      inp.remove();
+      if (!f) return;
+      if (f.size > 20 * 1024 * 1024) { toast('Акт сверки', 'Файл больше 20 МБ', 'err'); return; }
+      const fd = new FormData();
+      fd.append('file', f);
+      fd.append('inn', inn || '');
+      fd.append('name', name || '');
+      fd.append('year', String(year));
+      fd.append('quarter', String(quarter));
+      try {
+        await api('/reconciliation/file', { method: 'POST', body: fd, json: false });
+        toast('Акт сверки', 'Файл акта загружен — статус «получен»', 'ok');
+        renderActsTab();
+      } catch (e) { toast('Ошибка', e.message || 'не удалось загрузить', 'err'); }
+    };
+    inp.click();
+  }
+
+  /** Модалка добавления взаимозачёта (ручная корректировка баланса). */
+  function openAdjModal(inn, name, year, quarter) {
+    const host = document.getElementById('dhModal');
+    if (!host) return;
+    host.hidden = false;
+    host.innerHTML = `
+      <div class="dh-modal__card">
+        <header class="dh-modal__head"><h2>Взаимозачёт · ${esc(name || ('ИНН ' + inn))}</h2>
+          <button type="button" class="dh-modal__x" id="dhAdjX" aria-label="Закрыть">✕</button></header>
+        <div class="dh-modal__body">
+          <p class="dh-hint">Сумма со знаком: плюс — уменьшает наш долг, минус — увеличивает. Отразится в балансе акта.</p>
+          <label class="dh-field"><span>Сумма, ₽</span>
+            <input class="input" id="dhAdjAmt" type="number" step="0.01" placeholder="Например: -12000 или 5000"></label>
+          <label class="dh-field"><span>Комментарий (обязателен)</span>
+            <input class="input" id="dhAdjNote" placeholder="Например: зачёт за бой товара по акту №…"></label>
+        </div>
+        <footer class="dh-modal__foot">
+          <button type="button" class="dh-btn dh-btn--ghost" id="dhAdjCancel">Отмена</button>
+          <button type="button" class="dh-btn dh-btn--primary" id="dhAdjSave">Добавить</button>
+        </footer>
+      </div>`;
+    const close = () => { host.hidden = true; host.innerHTML = ''; };
+    host.querySelector('#dhAdjX').onclick = close;
+    host.querySelector('#dhAdjCancel').onclick = close;
+    host.querySelector('#dhAdjSave').onclick = async () => {
+      const amount = parseFloat(host.querySelector('#dhAdjAmt').value);
+      const note = host.querySelector('#dhAdjNote').value.trim();
+      if (!Number.isFinite(amount) || amount === 0) { toast('Взаимозачёт', 'Укажите сумму (не 0)', 'err'); return; }
+      if (!note) { toast('Взаимозачёт', 'Комментарий обязателен', 'err'); return; }
+      try {
+        await api('/reconciliation/adjustment', { method: 'POST', body: JSON.stringify({ inn, name, year, quarter, amount, note }) });
+        toast('Взаимозачёт', 'Добавлен', 'ok');
+        close();
+        renderActDetail(inn, name, year, quarter);
+        renderActsTab();
+      } catch (e) { toast('Ошибка', e.message || 'не удалось', 'err'); }
+    };
   }
 
   async function renderActDetail(inn, name, year, quarter) {
@@ -2336,6 +2427,14 @@ window.AsgardDocHubPage = (function () {
         <td>${x.paid ? '<span class="dh-pill dh-pill--ok">оплачен</span>' : '<span class="dh-pill dh-pill--muted">не оплачен</span>'}</td>
       </tr>`).join('');
       const bal = Number(d.balanceRub) || 0;
+      const adj = Array.isArray(d.adjustments) ? d.adjustments : [];
+      const adjRows = adj.length ? adj.map((a, i) => `<tr>
+          <td>${esc(a.note || '—')}</td>
+          <td class="dh-money">${money(Number(a.amount) || 0)}</td>
+          <td class="dh-muted">${fmtDate(a.at) || ''}</td>
+          <td class="dh-actions">${canReconAct() ? `<button type="button" class="dh-btn dh-btn--ghost dh-btn--sm" data-adj-remove="${i}" title="Удалить взаимозачёт">✕</button>` : ''}</td>
+        </tr>`).join('') : '<tr><td colspan="4" class="dh-muted">Взаимозачётов нет</td></tr>';
+      const actFile = !!d.act_id;
       host.innerHTML = `
         <div class="dh-card">
           <div class="dh-card__head"><h2>${esc(name || ('ИНН ' + inn))} · ${esc(periodLabel(year, quarter))}</h2>
@@ -2346,9 +2445,28 @@ window.AsgardDocHubPage = (function () {
           </table></div>
           <div class="dh-act-balance ${bal > 0 ? 'is-pos' : bal < 0 ? 'is-neg' : ''}">
             Баланс: <strong>${bal > 0 ? ('в нашу пользу ' + money(bal)) : bal < 0 ? ('мы должны ' + money(Math.abs(bal))) : 'сошлось'}</strong>
-            <span class="dh-muted">· оплаты ${money(d.paidSum)} − документы ${money(d.docsSum)}</span>
+            <span class="dh-muted">· оплаты ${money(d.paidSum)} − документы ${money(d.docsSum)}${adj.length ? ` + взаимозачёты ${money(adj.reduce((s, x) => s + (Number(x.amount) || 0), 0))}` : ''}</span>
           </div>
+        </div>
+        <div class="dh-card">
+          <div class="dh-card__head"><h2>Взаимозачёты</h2>
+            ${canReconAct() ? '<button type="button" class="dh-btn dh-btn--ghost dh-btn--sm" id="dhAdjAdd">＋ Добавить</button>' : ''}
+          </div>
+          <div class="dh-table-wrap"><table class="dh-table">
+            <thead><tr><th>Комментарий</th><th>Сумма</th><th>Дата</th><th class="dh-actions"></th></tr></thead>
+            <tbody>${adjRows}</tbody>
+          </table></div>
         </div>`;
+      host.querySelector('#dhAdjAdd')?.addEventListener('click', () => openAdjModal(inn, name, year, quarter));
+      host.querySelectorAll('[data-adj-remove]').forEach((b) => b.addEventListener('click', async () => {
+        const idx = parseInt(b.getAttribute('data-adj-remove'), 10);
+        try {
+          await api('/reconciliation/adjustment', { method: 'POST', body: JSON.stringify({ act_id: null, inn, name, year, quarter, remove_at: idx, amount: 1, note: 'удаление' }) });
+          toast('Взаимозачёт', 'Удалён', 'ok');
+          renderActDetail(inn, name, year, quarter);
+          renderActsTab();
+        } catch (e) { toast('Ошибка', e.message || 'не удалось', 'err'); }
+      }));
     } catch (e) {
       host.innerHTML = `<div class="dh-empty"><div class="dh-empty__t">Не удалось загрузить детали</div><p>${esc(e.message || '')}</p></div>`;
     }
@@ -2404,6 +2522,86 @@ window.AsgardDocHubPage = (function () {
             <td class="dh-money">${money(Number(r.amount) || 0)}</td>
             <td>${r.red}</td><td>${r.blue}</td><td>${r.yellow}</td><td>${r.green}</td></tr>`).join('')}</tbody>
         </table></div></div>`;
+    } catch (e) {
+      body.innerHTML = `<div class="dh-empty"><div class="dh-empty__t">Ошибка загрузки</div><p>${esc(e.message || '')}</p></div>`;
+    }
+  }
+
+  /**
+   * V394: экран «Входящие СФ» для кладовщика (can_mark_sf_received).
+   * Минимум полей: контрагент, № и дата счёта, сумма, срок СФ, скан.
+   * Двухшаговое подтверждение: склад отмечает получение → владелец/бух подтверждает.
+   */
+  async function renderSfTab() {
+    const host = document.getElementById('dhSfHost');
+    if (!host) return;
+    host.innerHTML = `
+      <div class="dh-sf__bar">
+        <label class="dh-sf__chk"><input type="checkbox" id="dhSfPending" ${state.sfOnlyPending ? 'checked' : ''}> Только ждущие получения</label>
+        <span class="dh-muted" id="dhSfCount"></span>
+      </div>
+      <div id="dhSfBody"><div class="dh-empty dh-empty--sm">Загрузка…</div></div>`;
+    host.querySelector('#dhSfPending').onchange = (e) => {
+      state.sfOnlyPending = !!e.target.checked;
+      loadSfList(host);
+    };
+    await loadSfList(host);
+  }
+
+  async function loadSfList(host) {
+    const body = host.querySelector('#dhSfBody');
+    const cnt = host.querySelector('#dhSfCount');
+    try {
+      const d = await api(`/incoming-sf?scope=${encodeURIComponent(state.scope)}${state.sfOnlyPending ? '&only_pending=1' : ''}`);
+      const items = d.items || [];
+      if (cnt) cnt.textContent = `Всего: ${d.total != null ? d.total : items.length}`;
+      if (!items.length) {
+        body.innerHTML = state.sfOnlyPending
+          ? '<div class="dh-empty"><div class="dh-empty__t">Ждущих получения СФ нет</div><p>Снимите галочку «Только ждущие получения», чтобы увидеть уже отмеченные.</p></div>'
+          : '<div class="dh-empty"><div class="dh-empty__t">Входящих СФ нет</div><p>Появятся, когда по счёту наступит срок закрывающих (СФ/УПД).</p></div>';
+        return;
+      }
+      const today = new Date().toISOString().slice(0, 10);
+      body.innerHTML = `<div class="dh-card"><div class="dh-table-wrap"><table class="dh-table">
+        <thead><tr><th>Контрагент</th><th>Счёт</th><th>Сумма</th><th>Срок СФ</th><th>Статус</th><th class="dh-actions">Действия</th></tr></thead>
+        <tbody>${items.map((it) => {
+          const overdue = it.sf_due_at && !it.sf_received_at && String(it.sf_due_at).slice(0, 10) < today;
+          const st = it.sf_received_at
+            ? '<span class="dh-pill dh-pill--ok">склад отметил</span>'
+            : overdue ? '<span class="dh-pill dh-pill--err">просрочен</span>'
+              : '<span class="dh-pill dh-pill--warn">ждём получения</span>';
+          const scan = it.scan
+            ? `<a class="dh-btn dh-btn--ghost dh-btn--sm" href="${esc(it.scan)}" target="_blank" rel="noopener">Скачать</a>`
+            : '<span class="dh-muted">нет</span>';
+          return `<tr>
+            <td><div class="dh-stack"><span class="a">${esc(it.counterparty_name || '—')}</span><span class="b dh-muted">${esc(it.owner_name || 'без ответственного')}</span></div></td>
+            <td><div class="dh-stack"><span class="a">${esc(it.invoice_number || 'б/н')}</span><span class="b dh-muted">${fmtDate(it.invoice_date)}</span></div></td>
+            <td class="dh-money">${money(it.amount)}</td>
+            <td>${fmtDate(it.sf_due_at)}</td>
+            <td>${st}</td>
+            <td class="dh-actions"><div class="dh-qa">
+              ${scan}
+              ${it.sf_received_at
+                ? '<span class="dh-muted dh-sf__done">✔ отмечено</span>'
+                : `<button type="button" class="dh-btn dh-btn--primary dh-btn--sm" data-sf="${it.id}">СФ получена</button>`}
+            </div></td>
+          </tr>`;
+        }).join('')}</tbody>
+      </table></div></div>`;
+      body.querySelectorAll('[data-sf]').forEach((b) => {
+        b.addEventListener('click', async () => {
+          const id = Number(b.getAttribute('data-sf'));
+          b.disabled = true;
+          try {
+            await api(`/${id}/quick`, { method: 'POST', body: JSON.stringify({ action: 'receive_sf' }) });
+            toast('СФ', 'Отмечено получение. Ответственный подтвердит.', 'ok');
+            await loadSfList(host);
+          } catch (e) {
+            b.disabled = false;
+            toast('Ошибка', e.message || 'Не удалось отметить', 'err');
+          }
+        });
+      });
     } catch (e) {
       body.innerHTML = `<div class="dh-empty"><div class="dh-empty__t">Ошибка загрузки</div><p>${esc(e.message || '')}</p></div>`;
     }
@@ -3386,8 +3584,19 @@ window.AsgardDocHubPage = (function () {
     root.querySelector('#dhBtnActs')?.addEventListener('click', async () => {
       state.view = 'registry';
       state.archiveTab = false;
+      state.sfTab = false;
       state.actsTab = !state.actsTab;
       const hash = state.actsTab ? '#/doc-hub?tab=acts' : '#/doc-hub';
+      if (location.hash !== hash) { location.hash = hash; return; }
+      await paint(window.__docHubLayout || window.layout);
+    });
+    // V394: экран «Входящие СФ» (кладовщик).
+    root.querySelector('#dhBtnSf')?.addEventListener('click', async () => {
+      state.view = 'registry';
+      state.actsTab = false;
+      state.archiveTab = false;
+      state.sfTab = !state.sfTab;
+      const hash = state.sfTab ? '#/doc-hub?tab=sf' : '#/doc-hub';
       if (location.hash !== hash) { location.hash = hash; return; }
       await paint(window.__docHubLayout || window.layout);
     });
@@ -3395,6 +3604,7 @@ window.AsgardDocHubPage = (function () {
     root.querySelector('#dhBtnArchive')?.addEventListener('click', async () => {
       state.view = 'registry';
       state.actsTab = false;
+      state.sfTab = false;
       state.archiveTab = !state.archiveTab;
       const hash = state.archiveTab ? '#/doc-hub?tab=archive' : '#/doc-hub';
       if (location.hash !== hash) { location.hash = hash; return; }
@@ -3684,12 +3894,15 @@ window.AsgardDocHubPage = (function () {
       await window.layout(html, { title: state.view === 'wizard' ? 'Внести документ' : 'Реестр документов' });
     }
     bind(document);
-    if (state.view === 'registry' && !state.actsTab && !state.archiveTab) {
+    if (state.view === 'registry' && !state.actsTab && !state.archiveTab && !state.sfTab) {
       bindQuarterLive();
       bindHScroll();
     }
     if (state.actsTab) {
       await renderActsTab();
+    }
+    if (state.sfTab) {
+      await renderSfTab();
     }
     if (state.archiveTab) {
       await renderArchiveTab();
@@ -3723,13 +3936,22 @@ window.AsgardDocHubPage = (function () {
     state.selectedId = null;
     state.coachOpen = true;
     state.trafficLight = true;   // до ответа API считаем включённым (не мигаем)
+    // Вкладки сбрасываем: единственный источник истины — hash (иначе залипнут).
+    state.actsTab = false;
+    state.archiveTab = false;
+    state.sfTab = false;
     readHashFilters(); // scope/quarter/year from #/doc-hub?...
     // V394: вкладка актов сверки по #/doc-hub?tab=acts
     try {
       const tab = (new URLSearchParams((location.hash.split('?')[1] || ''))).get('tab');
       if (tab === 'acts') state.actsTab = true;
       if (tab === 'archive') state.archiveTab = true;
+      if (tab === 'sf') state.sfTab = true;
     } catch (_) { /* ignore */ }
+    // Кладовщик живёт на экране «Входящие СФ» — это его рабочий стол (канонический доступ).
+    if (user.role === 'WAREHOUSE' && !state.actsTab && !state.archiveTab && !state.sfTab) {
+      state.sfTab = true;
+    }
     await paint(layoutFn || window.layout);
     try {
       const q = new URLSearchParams((location.hash.split('?')[1] || ''));

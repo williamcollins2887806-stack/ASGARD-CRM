@@ -8,20 +8,21 @@ import { useNavigate } from 'react-router-dom';
 import { fieldApi } from '@/api/fieldClient';
 import { useHaptic } from '@/hooks/useHaptic';
 import { NornsPauseStrip } from '@/components/field/NornsPauseBanner';
+import { FlaskConical, Zap, Coins } from 'lucide-react';
 
 /* ═══ SVG ILLUSTRATIONS — 12 unique Norse geometric ═══ */
 const SVGS = {
-  tshirt: `<svg viewBox="0 0 80 80" fill="none"><defs><linearGradient id="ts1" x1="20" y1="10" x2="60" y2="70" gradientUnits="userSpaceOnUse"><stop offset="0%" stop-color="#2a2040"/><stop offset="100%" stop-color="var(--bg-surface)"/></linearGradient></defs><path d="M25 18L15 28L22 35L25 30V65H55V30L58 35L65 28L55 18H48L44 24H36L32 18Z" fill="url(#ts1)" stroke="var(--value)" stroke-width="1.5"/><path d="M36 24Q40 30 44 24" stroke="var(--value)" stroke-width="1" fill="none"/><text x="40" y="48" text-anchor="middle" font-family="Cinzel,serif" font-size="7" font-weight="900" fill="var(--value)" letter-spacing=".5">ASGARD</text><path d="M30 52H50" stroke="color-mix(in oklab, var(--value) 30%, transparent)" stroke-width=".5"/><path d="M33 56H47" stroke="color-mix(in oklab, var(--value) 20%, transparent)" stroke-width=".5"/><path d="M17 26L20 30" stroke="color-mix(in oklab, var(--value) 40%, transparent)" stroke-width="1" stroke-linecap="round"/><path d="M63 26L60 30" stroke="color-mix(in oklab, var(--value) 40%, transparent)" stroke-width="1" stroke-linecap="round"/></svg>`,
+  tshirt: `<svg viewBox="0 0 80 80" fill="none"><defs><linearGradient id="ts1" x1="20" y1="10" x2="60" y2="70" gradientUnits="userSpaceOnUse"><stop offset="0%" stop-color="#2a2040"/><stop offset="100%" stop-color="var(--bg-surface)"/></linearGradient></defs><path d="M25 18L15 28L22 35L25 30V65H55V30L58 35L65 28L55 18H48L44 24H36L32 18Z" fill="url(#ts1)" stroke="var(--value)" stroke-width="1.5"/><path d="M36 24Q40 30 44 24" stroke="var(--value)" stroke-width="1" fill="none"/><text x="40" y="48" text-anchor="middle"  font-size="7" font-weight="900" fill="var(--value)" letter-spacing=".5">ASGARD</text><path d="M30 52H50" stroke="color-mix(in oklab, var(--value) 30%, transparent)" stroke-width=".5"/><path d="M33 56H47" stroke="color-mix(in oklab, var(--value) 20%, transparent)" stroke-width=".5"/><path d="M17 26L20 30" stroke="color-mix(in oklab, var(--value) 40%, transparent)" stroke-width="1" stroke-linecap="round"/><path d="M63 26L60 30" stroke="color-mix(in oklab, var(--value) 40%, transparent)" stroke-width="1" stroke-linecap="round"/></svg>`,
   thermomug: `<svg viewBox="0 0 80 80" fill="none"><defs><linearGradient id="tm1" x1="25" y1="15" x2="55" y2="70" gradientUnits="userSpaceOnUse"><stop offset="0%" stop-color="#404858"/><stop offset="100%" stop-color="#2a3040"/></linearGradient></defs><rect x="24" y="18" width="32" height="50" rx="4" fill="url(#tm1)" stroke="var(--value)" stroke-width="1"/><rect x="22" y="14" width="36" height="8" rx="4" fill="#505868" stroke="var(--value)" stroke-width="1"/><circle cx="40" cy="18" r="3" fill="#606878" stroke="var(--value)" stroke-width=".8"/><path d="M56 30Q68 30 68 44Q68 58 56 58" stroke="var(--value)" stroke-width="2" fill="none" stroke-linecap="round"/><text x="40" y="48" text-anchor="middle" font-size="16" fill="color-mix(in oklab, var(--value) 50%, transparent)" font-family="serif">&#x16A0;</text><path d="M33 12Q35 6 33 2" stroke="color-mix(in oklab, var(--text-primary) 15%, transparent)" stroke-width="1.5" fill="none" stroke-linecap="round"/><path d="M40 10Q42 4 40 0" stroke="color-mix(in oklab, var(--text-primary) 10%, transparent)" stroke-width="1.5" fill="none" stroke-linecap="round"/><path d="M47 12Q49 6 47 2" stroke="color-mix(in oklab, var(--text-primary) 15%, transparent)" stroke-width="1.5" fill="none" stroke-linecap="round"/><rect x="24" y="36" width="32" height="4" rx="2" fill="color-mix(in oklab, var(--value) 15%, transparent)"/></svg>`,
   beanie: `<svg viewBox="0 0 80 80" fill="none"><defs><linearGradient id="bn1" x1="20" y1="20" x2="60" y2="70" gradientUnits="userSpaceOnUse"><stop offset="0%" stop-color="#1a2848"/><stop offset="100%" stop-color="#0e1830"/></linearGradient></defs><circle cx="40" cy="16" r="8" fill="var(--value)" stroke="var(--value)" stroke-width="1"/><circle cx="38" cy="14" r="2" fill="color-mix(in oklab, var(--text-primary) 20%, transparent)"/><path d="M18 45Q18 22 40 18Q62 22 62 45V55Q62 62 40 65Q18 62 18 55Z" fill="url(#bn1)" stroke="var(--value)" stroke-width="1.2"/><path d="M18 45Q18 42 40 40Q62 42 62 45V55Q62 58 40 60Q18 58 18 55Z" fill="color-mix(in oklab, var(--value) 6%, transparent)"/><path d="M22 46V54" stroke="color-mix(in oklab, var(--value) 15%, transparent)" stroke-width="1"/><path d="M28 45V56" stroke="color-mix(in oklab, var(--value) 15%, transparent)" stroke-width="1"/><path d="M34 44V57" stroke="color-mix(in oklab, var(--value) 15%, transparent)" stroke-width="1"/><path d="M40 44V58" stroke="color-mix(in oklab, var(--value) 15%, transparent)" stroke-width="1"/><path d="M46 44V57" stroke="color-mix(in oklab, var(--value) 15%, transparent)" stroke-width="1"/><path d="M52 45V56" stroke="color-mix(in oklab, var(--value) 15%, transparent)" stroke-width="1"/><path d="M58 46V54" stroke="color-mix(in oklab, var(--value) 15%, transparent)" stroke-width="1"/><path d="M22 30Q28 28 34 30Q40 32 46 30Q52 28 58 30" stroke="color-mix(in oklab, var(--value) 20%, transparent)" stroke-width="1" fill="none"/><text x="40" y="52" text-anchor="middle" font-size="5" font-weight="800" fill="color-mix(in oklab, var(--value) 50%, transparent)" font-family="system-ui" letter-spacing="1">ASGARD</text></svg>`,
-  vipseat: `<svg viewBox="0 0 80 80" fill="none"><defs><linearGradient id="vs1" x1="15" y1="20" x2="65" y2="70" gradientUnits="userSpaceOnUse"><stop offset="0%" stop-color="#3a2008"/><stop offset="100%" stop-color="#1a1005"/></linearGradient></defs><path d="M15 20Q15 12 40 10Q65 12 65 20V50Q65 54 40 56Q15 54 15 50Z" fill="url(#vs1)" stroke="var(--value)" stroke-width="1.2"/><path d="M12 50Q12 46 40 44Q68 46 68 50V58Q68 62 40 64Q12 62 12 58Z" fill="#2a1808" stroke="var(--value)" stroke-width="1"/><path d="M20 62L16 74" stroke="var(--value)" stroke-width="2" stroke-linecap="round"/><path d="M60 62L64 74" stroke="var(--value)" stroke-width="2" stroke-linecap="round"/><path d="M28 24L32 18L36 24L40 16L44 24L48 18L52 24" stroke="var(--value)" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/><text x="40" y="40" text-anchor="middle" font-family="Cinzel,serif" font-size="8" font-weight="900" fill="var(--value)">VIP</text></svg>`,
-  hoodie: `<svg viewBox="0 0 80 80" fill="none"><defs><linearGradient id="hd1" x1="15" y1="10" x2="65" y2="75" gradientUnits="userSpaceOnUse"><stop offset="0%" stop-color="var(--bg-surface)"/><stop offset="100%" stop-color="#0e0a20"/></linearGradient></defs><path d="M22 25L12 35L20 42L22 38V70H58V38L60 42L68 35L58 25H50L46 30H34L30 25Z" fill="url(#hd1)" stroke="var(--value)" stroke-width="1.5"/><path d="M30 25Q30 12 40 10Q50 12 50 25" fill="rgba(26,21,48,.8)" stroke="var(--value)" stroke-width="1.2"/><path d="M34 24Q40 14 46 24" stroke="color-mix(in oklab, var(--value) 30%, transparent)" stroke-width=".8" fill="none"/><path d="M28 50H52V60Q52 62 40 63Q28 62 28 60Z" fill="color-mix(in oklab, var(--text-primary) 3%, transparent)" stroke="color-mix(in oklab, var(--value) 30%, transparent)" stroke-width="1"/><text x="40" y="46" text-anchor="middle" font-family="Cinzel,serif" font-size="6" font-weight="900" fill="var(--value)" letter-spacing=".5">ASGARD</text><path d="M36 25L34 35" stroke="color-mix(in oklab, var(--value) 40%, transparent)" stroke-width=".8" stroke-linecap="round"/><path d="M44 25L46 35" stroke="color-mix(in oklab, var(--value) 40%, transparent)" stroke-width=".8" stroke-linecap="round"/></svg>`,
+  vipseat: `<svg viewBox="0 0 80 80" fill="none"><defs><linearGradient id="vs1" x1="15" y1="20" x2="65" y2="70" gradientUnits="userSpaceOnUse"><stop offset="0%" stop-color="#3a2008"/><stop offset="100%" stop-color="#1a1005"/></linearGradient></defs><path d="M15 20Q15 12 40 10Q65 12 65 20V50Q65 54 40 56Q15 54 15 50Z" fill="url(#vs1)" stroke="var(--value)" stroke-width="1.2"/><path d="M12 50Q12 46 40 44Q68 46 68 50V58Q68 62 40 64Q12 62 12 58Z" fill="#2a1808" stroke="var(--value)" stroke-width="1"/><path d="M20 62L16 74" stroke="var(--value)" stroke-width="2" stroke-linecap="round"/><path d="M60 62L64 74" stroke="var(--value)" stroke-width="2" stroke-linecap="round"/><path d="M28 24L32 18L36 24L40 16L44 24L48 18L52 24" stroke="var(--value)" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/><text x="40" y="40" text-anchor="middle"  font-size="8" font-weight="900" fill="var(--value)">VIP</text></svg>`,
+  hoodie: `<svg viewBox="0 0 80 80" fill="none"><defs><linearGradient id="hd1" x1="15" y1="10" x2="65" y2="75" gradientUnits="userSpaceOnUse"><stop offset="0%" stop-color="var(--bg-surface)"/><stop offset="100%" stop-color="#0e0a20"/></linearGradient></defs><path d="M22 25L12 35L20 42L22 38V70H58V38L60 42L68 35L58 25H50L46 30H34L30 25Z" fill="url(#hd1)" stroke="var(--value)" stroke-width="1.5"/><path d="M30 25Q30 12 40 10Q50 12 50 25" fill="rgba(26,21,48,.8)" stroke="var(--value)" stroke-width="1.2"/><path d="M34 24Q40 14 46 24" stroke="color-mix(in oklab, var(--value) 30%, transparent)" stroke-width=".8" fill="none"/><path d="M28 50H52V60Q52 62 40 63Q28 62 28 60Z" fill="color-mix(in oklab, var(--text-primary) 3%, transparent)" stroke="color-mix(in oklab, var(--value) 30%, transparent)" stroke-width="1"/><text x="40" y="46" text-anchor="middle"  font-size="6" font-weight="900" fill="var(--value)" letter-spacing=".5">ASGARD</text><path d="M36 25L34 35" stroke="color-mix(in oklab, var(--value) 40%, transparent)" stroke-width=".8" stroke-linecap="round"/><path d="M44 25L46 35" stroke="color-mix(in oklab, var(--value) 40%, transparent)" stroke-width=".8" stroke-linecap="round"/></svg>`,
   powerbank: `<svg viewBox="0 0 80 80" fill="none"><defs><linearGradient id="pb1" x1="22" y1="10" x2="58" y2="70" gradientUnits="userSpaceOnUse"><stop offset="0%" stop-color="#303848"/><stop offset="100%" stop-color="#1a2030"/></linearGradient></defs><rect x="22" y="12" width="36" height="56" rx="6" fill="url(#pb1)" stroke="var(--value)" stroke-width="1.2"/><rect x="22" y="12" width="36" height="10" rx="6" fill="color-mix(in oklab, var(--text-primary) 5%, transparent)"/><rect x="35" y="14" width="10" height="4" rx="1.5" fill="#1a1828" stroke="color-mix(in oklab, var(--value) 30%, transparent)" stroke-width=".8"/><rect x="28" y="30" width="24" height="5" rx="2" fill="var(--ok)" opacity=".8"/><rect x="28" y="38" width="24" height="5" rx="2" fill="var(--ok)" opacity=".6"/><rect x="28" y="46" width="24" height="5" rx="2" fill="var(--ok)" opacity=".4"/><rect x="28" y="54" width="24" height="5" rx="2" fill="color-mix(in oklab, var(--text-primary) 6%, transparent)"/><text x="40" y="63" text-anchor="middle" font-size="5" font-weight="700" fill="color-mix(in oklab, var(--value) 50%, transparent)" font-family="system-ui">20000mAh</text><path d="M38 26L36 32H42L39 38" stroke="var(--value)" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
   vikingmug: `<svg viewBox="0 0 80 80" fill="none"><defs><linearGradient id="vm1" x1="18" y1="20" x2="55" y2="70" gradientUnits="userSpaceOnUse"><stop offset="0%" stop-color="#5a3a18"/><stop offset="100%" stop-color="#3a2008"/></linearGradient></defs><path d="M18 25Q18 22 40 20Q62 22 62 25V60Q62 66 40 68Q18 66 18 60Z" fill="url(#vm1)" stroke="var(--value)" stroke-width="1.2"/><path d="M18 32Q40 30 62 32" stroke="var(--value)" stroke-width="2" fill="none"/><path d="M18 50Q40 48 62 50" stroke="var(--value)" stroke-width="2" fill="none"/><path d="M25 25V65" stroke="color-mix(in oklab, var(--value) 15%, transparent)" stroke-width=".5"/><path d="M33 23V67" stroke="color-mix(in oklab, var(--value) 15%, transparent)" stroke-width=".5"/><path d="M40 22V68" stroke="color-mix(in oklab, var(--value) 15%, transparent)" stroke-width=".5"/><path d="M47 23V67" stroke="color-mix(in oklab, var(--value) 15%, transparent)" stroke-width=".5"/><path d="M55 25V65" stroke="color-mix(in oklab, var(--value) 15%, transparent)" stroke-width=".5"/><path d="M62 32Q74 30 76 40Q76 52 62 50" stroke="var(--value)" stroke-width="3" fill="none" stroke-linecap="round"/><circle cx="33" cy="40" r="2" fill="color-mix(in oklab, var(--value) 20%, transparent)"/><circle cx="47" cy="40" r="2" fill="color-mix(in oklab, var(--value) 20%, transparent)"/><path d="M36 46Q40 50 44 46" stroke="color-mix(in oklab, var(--value) 20%, transparent)" stroke-width="1" fill="none"/><path d="M30 36L26 30" stroke="color-mix(in oklab, var(--value) 30%, transparent)" stroke-width="1.5" stroke-linecap="round"/><path d="M50 36L54 30" stroke="color-mix(in oklab, var(--value) 30%, transparent)" stroke-width="1.5" stroke-linecap="round"/><path d="M20 25Q30 22 40 24Q50 22 60 25" stroke="color-mix(in oklab, var(--text-primary) 20%, transparent)" stroke-width="3" fill="none" stroke-linecap="round"/></svg>`,
   backpack: `<svg viewBox="0 0 80 80" fill="none"><defs><linearGradient id="bp1" x1="18" y1="10" x2="62" y2="75" gradientUnits="userSpaceOnUse"><stop offset="0%" stop-color="#2a3040"/><stop offset="100%" stop-color="#1a1828"/></linearGradient></defs><path d="M20 24Q20 14 40 10Q60 14 60 24V68Q60 72 40 74Q20 72 20 68Z" fill="url(#bp1)" stroke="var(--value)" stroke-width="1.2"/><path d="M20 24Q20 20 40 18Q60 20 60 24V30Q60 33 40 35Q20 33 20 30Z" fill="color-mix(in oklab, var(--text-primary) 4%, transparent)" stroke="color-mix(in oklab, var(--value) 30%, transparent)" stroke-width=".8"/><rect x="26" y="42" width="28" height="18" rx="4" fill="color-mix(in oklab, var(--text-primary) 3%, transparent)" stroke="color-mix(in oklab, var(--value) 30%, transparent)" stroke-width="1"/><rect x="36" y="34" width="8" height="6" rx="2" fill="var(--value)" stroke="var(--value)" stroke-width=".8"/><path d="M28 24Q24 24 22 28L22 60" stroke="color-mix(in oklab, var(--value) 40%, transparent)" stroke-width="2.5" fill="none" stroke-linecap="round"/><path d="M52 24Q56 24 58 28L58 60" stroke="color-mix(in oklab, var(--value) 40%, transparent)" stroke-width="2.5" fill="none" stroke-linecap="round"/><rect x="30" y="46" width="20" height="10" rx="2" fill="color-mix(in oklab, var(--value) 10%, transparent)" stroke="color-mix(in oklab, var(--value) 30%, transparent)" stroke-width=".5"/><text x="40" y="53" text-anchor="middle" font-size="5" font-weight="800" fill="var(--value)" font-family="system-ui" letter-spacing=".3">ASGARD</text></svg>`,
   keychain: `<svg viewBox="0 0 80 80" fill="none"><defs><linearGradient id="kc1" x1="30" y1="20" x2="55" y2="70" gradientUnits="userSpaceOnUse"><stop offset="0%" stop-color="#707880"/><stop offset="100%" stop-color="#404850"/></linearGradient></defs><circle cx="40" cy="18" r="8" fill="none" stroke="var(--value)" stroke-width="3"/><circle cx="40" cy="18" r="5" fill="none" stroke="color-mix(in oklab, var(--value) 30%, transparent)" stroke-width="1"/><ellipse cx="40" cy="30" rx="4" ry="3" fill="none" stroke="var(--text-secondary)" stroke-width="1.5"/><ellipse cx="40" cy="36" rx="3" ry="3" fill="none" stroke="var(--text-secondary)" stroke-width="1.5"/><rect x="37" y="40" width="6" height="14" rx="2" fill="url(#kc1)" stroke="var(--value)" stroke-width="1"/><rect x="26" y="54" width="28" height="14" rx="3" fill="url(#kc1)" stroke="var(--value)" stroke-width="1.2"/><path d="M33 57Q37 55 40 57Q43 59 47 57" stroke="color-mix(in oklab, var(--value) 25%, transparent)" stroke-width=".8" fill="none"/><path d="M33 63Q37 61 40 63Q43 65 47 63" stroke="color-mix(in oklab, var(--value) 25%, transparent)" stroke-width=".8" fill="none"/><text x="40" y="50" text-anchor="middle" font-size="6" fill="color-mix(in oklab, var(--value) 40%, transparent)">&#x16A6;</text></svg>`,
   badge: `<svg viewBox="0 0 80 80" fill="none"><defs><linearGradient id="bd1" x1="20" y1="12" x2="60" y2="68" gradientUnits="userSpaceOnUse"><stop offset="0%" stop-color="var(--value)"/><stop offset="50%" stop-color="var(--value)"/><stop offset="100%" stop-color="var(--value)"/></linearGradient><linearGradient id="bd2" x1="40" y1="20" x2="40" y2="60" gradientUnits="userSpaceOnUse"><stop offset="0%" stop-color="var(--bg-surface-alt)"/><stop offset="100%" stop-color="#0e1428"/></linearGradient></defs><path d="M40 10L60 18V44Q60 60 40 70Q20 60 20 44V18Z" fill="url(#bd1)" stroke="color-mix(in oklab, var(--value) 45%, var(--text-primary))" stroke-width="1.5"/><path d="M40 16L54 22V44Q54 56 40 64Q26 56 26 44V22Z" fill="url(#bd2)"/><path d="M40 28L43 36H51L45 41L47 49L40 44L33 49L35 41L29 36H37Z" fill="var(--value)" stroke="var(--value)" stroke-width=".5"/><text x="40" y="58" text-anchor="middle" font-size="5" font-weight="800" fill="var(--value)" font-family="system-ui" letter-spacing=".5">ВЕТЕРАН</text></svg>`,
-  stickers: `<svg viewBox="0 0 80 80" fill="none"><defs><linearGradient id="st1" x1="10" y1="10" x2="70" y2="70" gradientUnits="userSpaceOnUse"><stop offset="0%" stop-color="#1a2848"/><stop offset="100%" stop-color="#0e1830"/></linearGradient></defs><rect x="22" y="8" width="40" height="40" rx="6" fill="var(--bg-surface)" stroke="color-mix(in oklab, var(--value) 20%, transparent)" stroke-width="1" transform="rotate(12 42 28)"/><rect x="14" y="22" width="40" height="40" rx="6" fill="var(--field-card)" stroke="color-mix(in oklab, var(--value) 25%, transparent)" stroke-width="1" transform="rotate(-8 34 42)"/><rect x="20" y="30" width="44" height="40" rx="6" fill="url(#st1)" stroke="var(--value)" stroke-width="1.2"/><text x="42" y="48" text-anchor="middle" font-family="Cinzel,serif" font-size="6" font-weight="900" fill="var(--value)" letter-spacing=".5">ASGARD</text><text x="42" y="56" text-anchor="middle" font-size="4" fill="color-mix(in oklab, var(--value) 50%, transparent)" font-family="system-ui">СЕРВИС</text><path d="M56 30L64 30L56 38Z" fill="color-mix(in oklab, var(--text-primary) 6%, transparent)" stroke="color-mix(in oklab, var(--value) 20%, transparent)" stroke-width=".5"/></svg>`,
+  stickers: `<svg viewBox="0 0 80 80" fill="none"><defs><linearGradient id="st1" x1="10" y1="10" x2="70" y2="70" gradientUnits="userSpaceOnUse"><stop offset="0%" stop-color="#1a2848"/><stop offset="100%" stop-color="#0e1830"/></linearGradient></defs><rect x="22" y="8" width="40" height="40" rx="6" fill="var(--bg-surface)" stroke="color-mix(in oklab, var(--value) 20%, transparent)" stroke-width="1" transform="rotate(12 42 28)"/><rect x="14" y="22" width="40" height="40" rx="6" fill="var(--field-card)" stroke="color-mix(in oklab, var(--value) 25%, transparent)" stroke-width="1" transform="rotate(-8 34 42)"/><rect x="20" y="30" width="44" height="40" rx="6" fill="url(#st1)" stroke="var(--value)" stroke-width="1.2"/><text x="42" y="48" text-anchor="middle"  font-size="6" font-weight="900" fill="var(--value)" letter-spacing=".5">ASGARD</text><text x="42" y="56" text-anchor="middle" font-size="4" fill="color-mix(in oklab, var(--value) 50%, transparent)" font-family="system-ui">СЕРВИС</text><path d="M56 30L64 30L56 38Z" fill="color-mix(in oklab, var(--text-primary) 6%, transparent)" stroke="color-mix(in oklab, var(--value) 20%, transparent)" stroke-width=".5"/></svg>`,
   dayoff: `<svg viewBox="0 0 80 80" fill="none"><defs><linearGradient id="do1" x1="14" y1="14" x2="66" y2="70" gradientUnits="userSpaceOnUse"><stop offset="0%" stop-color="#2a2040"/><stop offset="100%" stop-color="var(--bg-surface)"/></linearGradient></defs><rect x="14" y="18" width="52" height="50" rx="6" fill="url(#do1)" stroke="var(--value)" stroke-width="1.2"/><rect x="14" y="18" width="52" height="14" rx="6" fill="color-mix(in oklab, var(--value) 10%, transparent)"/><rect x="14" y="26" width="52" height="6" fill="color-mix(in oklab, var(--value) 10%, transparent)"/><rect x="26" y="14" width="4" height="10" rx="2" fill="var(--value)" stroke="var(--value)" stroke-width=".5"/><rect x="50" y="14" width="4" height="10" rx="2" fill="var(--value)" stroke="var(--value)" stroke-width=".5"/><text x="40" y="52" text-anchor="middle" font-size="20" font-weight="900" fill="var(--value)" font-family="system-ui">+1</text><text x="40" y="62" text-anchor="middle" font-size="7" font-weight="700" fill="color-mix(in oklab, var(--value) 60%, transparent)" font-family="system-ui">ВЫХОДНОЙ</text></svg>`,
 };
 
@@ -79,9 +80,9 @@ export default function FieldInventory() {
         xp: d.xp || 0,
         runes_daily_remaining: d.runes_daily_remaining ?? XP_DAILY_CAP,
         runes_convert_max: d.runes_convert_max ?? 0
-      });
-    }).catch(() => {});
-  }, []);
+ });
+ }).catch(() => {});
+ }, []);
 
   useEffect(() => { fetchWallet(); }, [fetchWallet]);
 
@@ -97,7 +98,7 @@ export default function FieldInventory() {
           status: it.delivery_status || (DIGITAL_CATEGORIES.includes(cat) ? 'digital' : 'pending'),
           svg: it.svg_key || 'tshirt', source: it.source_type || 'shop',
           sourceLabel: it.source_type === 'spin' ? 'Рулетка' : it.source_type === 'shop' ? 'Магазин' : 'Ачивка',
-          sourceIcon: it.source_type === 'spin' ? '\uD83C\uDFB0' : it.source_type === 'shop' ? '\uD83D\uDECD' : '\uD83C\uDFC6',
+          sourceIcon: it.source_type === 'spin' ? '' : it.source_type === 'shop' ? '\uD83D\uDECD' : '\uD83C\uDFC6',
           date: new Date(it.acquired_at).toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric' }),
           deliveredDate: it.delivered_at ? new Date(it.delivered_at).toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric' }) : null,
           pm: it.pm_name || null, pmPhone: it.pm_phone || null, object: it.work_name || null,
@@ -108,12 +109,12 @@ export default function FieldInventory() {
           isPhysical: PHYSICAL_CATEGORIES.includes(cat),
           hasFulfillment: it.has_fulfillment || false,
           fulfillmentStatus: it.delivery_status || null,
-        };
-      });
+ };
+ });
       setItems(mapped);
-    }).catch(() => setItems([]))
+ }).catch(() => setItems([]))
       .finally(() => setLoading(false));
-  }, []);
+ }, []);
 
   useEffect(() => { loadInventory(); }, [loadInventory]);
 
@@ -126,12 +127,12 @@ export default function FieldInventory() {
       await fieldApi.post(`/gamification/inventory/${itemId}/equip`, {});
       haptic.success();
       loadInventory();
-    } catch {
+ } catch {
       haptic.error();
-    } finally {
+ } finally {
       setActionLoading(null);
-    }
-  }, [haptic, loadInventory]);
+ }
+ }, [haptic, loadInventory]);
 
   const handleUnequip = useCallback(async (itemId, e) => {
     e?.stopPropagation();
@@ -141,12 +142,12 @@ export default function FieldInventory() {
       await fieldApi.post(`/gamification/inventory/${itemId}/unequip`, {});
       haptic.success();
       loadInventory();
-    } catch {
+ } catch {
       haptic.error();
-    } finally {
+ } finally {
       setActionLoading(null);
-    }
-  }, [haptic, loadInventory]);
+ }
+ }, [haptic, loadInventory]);
 
   const handleRequest = useCallback(async (itemId, e) => {
     e?.stopPropagation();
@@ -156,12 +157,12 @@ export default function FieldInventory() {
       await fieldApi.post(`/gamification/inventory/${itemId}/request`, {});
       haptic.success();
       loadInventory();
-    } catch {
+ } catch {
       haptic.error();
-    } finally {
+ } finally {
       setActionLoading(null);
-    }
-  }, [haptic, loadInventory]);
+ }
+ }, [haptic, loadInventory]);
 
   const handleConfirm = useCallback(async (itemId, e) => {
     e?.stopPropagation();
@@ -171,12 +172,12 @@ export default function FieldInventory() {
       await fieldApi.post(`/gamification/inventory/${itemId}/confirm`);
       haptic.success();
       loadInventory();
-    } catch {
+ } catch {
       haptic.error();
-    } finally {
+ } finally {
       setActionLoading(null);
-    }
-  }, [haptic, loadInventory]);
+ }
+ }, [haptic, loadInventory]);
 
   const handleCancelRequest = useCallback(async (itemId, e) => {
     e?.stopPropagation();
@@ -186,12 +187,12 @@ export default function FieldInventory() {
       await fieldApi.post(`/gamification/inventory/${itemId}/cancel-request`, {});
       haptic.success();
       loadInventory();
-    } catch {
+ } catch {
       haptic.error();
-    } finally {
+ } finally {
       setActionLoading(null);
-    }
-  }, [haptic, loadInventory]);
+ }
+ }, [haptic, loadInventory]);
 
   const handleSell = useCallback(async () => {
     if (!sellItem) return;
@@ -204,14 +205,14 @@ export default function FieldInventory() {
       setSellItem(null);
       loadInventory();
       fetchWallet();
-    } catch (err) {
+ } catch (err) {
       haptic.error();
       setSellItem(null);
       loadInventory();
-    } finally {
+ } finally {
       setSellLoading(false);
-    }
-  }, [sellItem, haptic, loadInventory, fetchWallet]);
+ }
+ }, [sellItem, haptic, loadInventory, fetchWallet]);
 
   const handleXpAmountChange = useCallback((value) => {
     const digits = String(value).replace(/\D/g, '');
@@ -219,22 +220,22 @@ export default function FieldInventory() {
       setXpAmount('');
       setXpError('');
       return;
-    }
+ }
     const n = Math.min(parseInt(digits, 10), xpConvertMax);
     setXpAmount(String(n));
     setXpError('');
-  }, [xpConvertMax]);
+ }, [xpConvertMax]);
 
   const handleXpExchange = useCallback(async () => {
     const amount = parseInt(xpAmount, 10);
     if (!amount || amount < 15) {
       setXpError('Минимум 15 рун');
       return;
-    }
+ }
     if (amount > xpConvertMax) {
       setXpError(`Максимум ${xpConvertMax} рун (лимит 1000/день или баланс)`);
       return;
-    }
+ }
     setXpLoading(true);
     setXpError('');
     haptic.medium();
@@ -245,13 +246,13 @@ export default function FieldInventory() {
       setXpAmount('');
       fetchWallet();
       setTimeout(() => setXpResult(null), 4000);
-    } catch (err) {
+ } catch (err) {
       haptic.error();
       setXpError(err?.message || err?.error || 'Не удалось переплавить руны');
-    } finally {
+ } finally {
       setXpLoading(false);
-    }
-  }, [xpAmount, xpConvertMax, haptic, fetchWallet]);
+ }
+ }, [xpAmount, xpConvertMax, haptic, fetchWallet]);
 
   /* ── Stagger animation ── */
   useEffect(() => {
@@ -261,21 +262,21 @@ export default function FieldInventory() {
       setTimeout(() => setVisibleCards(prev => new Set(prev).add(item.id)), 80 + idx * 70)
     );
     return () => timeouts.forEach(t => clearTimeout(t));
-  }, [items, loading]);
+ }, [items, loading]);
 
   /* ── Counts ── */
   const counts = useMemo(() => {
     const c = { pending: 0, requested: 0, ready: 0, delivered: 0, confirmed: 0, digital: 0 };
     items.forEach(i => { if (c[i.status] !== undefined) c[i.status]++; });
     return c;
-  }, [items]);
+ }, [items]);
 
   /* ── Filtered & sorted ── */
   const sorted = useMemo(() => {
     const s = [...items].sort((a, b) => STATUS_ORDER[a.status] - STATUS_ORDER[b.status]);
     if (!filter) return s;
     return s.filter(i => i.status === filter);
-  }, [items, filter]);
+ }, [items, filter]);
 
   /* ── Ready PM info ── */
   const readyItems = useMemo(() => items.filter(i => i.status === 'ready' || i.status === 'delivered'), [items]);
@@ -285,51 +286,51 @@ export default function FieldInventory() {
   /* ── Toggle filter ── */
   const toggleFilter = useCallback((f) => {
     setFilter(prev => prev === f ? null : f);
-  }, []);
+ }, []);
 
   /* ── Modal ── */
   const openModal = useCallback((item) => {
     setModalItem(item);
     setShowModal(true);
-  }, []);
+ }, []);
 
   const closeModal = useCallback(() => {
     setShowModal(false);
     setTimeout(() => setModalItem(null), 400);
-  }, []);
+ }, []);
 
   // Body overflow managed via effect (cleanup on unmount)
   useEffect(() => {
     if (showModal) { document.body.style.overflow = 'hidden'; }
     else { document.body.style.overflow = ''; }
     return () => { document.body.style.overflow = ''; };
-  }, [showModal]);
+ }, [showModal]);
 
   /* ── Swipe to close ── */
   const handleTouchStart = useCallback((e) => { touchStartY.current = e.touches[0].clientY; }, []);
   const handleTouchMove = useCallback((e) => {
     if (e.touches[0].clientY - touchStartY.current > 80) closeModal();
-  }, [closeModal]);
+ }, [closeModal]);
 
   /* ── Stars ── */
   const stars = useMemo(() => Array.from({ length: 30 }, () => ({
     left: Math.random() * 100, top: Math.random() * 100,
     size: 1 + Math.random() * 2, delay: Math.random() * 3, dur: 2 + Math.random() * 2,
-  })), []);
+ })), []);
 
   /* ── Floating runes ── */
   const floatingRunes = useMemo(() => Array.from({ length: 6 }, () => ({
     char: FUTHARK[Math.floor(Math.random() * FUTHARK.length)],
     left: 5 + Math.random() * 90, delay: Math.random() * 20, dur: 15 + Math.random() * 15,
     size: 20 + Math.random() * 20,
-  })), []);
+ })), []);
 
   /* ── Timeline for modal ── */
   const getTimeline = useCallback((status) => {
     if (status === 'pending') return { dots: ['current','empty','empty'], lines: ['empty','empty'], labels: ['active','',''] };
     if (status === 'ready') return { dots: ['filled','current','empty'], lines: ['filled','empty'], labels: ['active','active',''] };
     return { dots: ['filled','filled','filled'], lines: ['filled','filled'], labels: ['active','active','active'] };
-  }, []);
+ }, []);
 
   /* ── Skeleton ── */
   if (loading) {
@@ -347,7 +348,7 @@ export default function FieldInventory() {
         </div>
       </>
     );
-  }
+ }
 
   return (
     <>
@@ -362,7 +363,7 @@ export default function FieldInventory() {
               <div key={i} className="finv-s" style={{
                 left: `${s.left}%`, top: `${s.top}%`, width: s.size, height: s.size,
                 animationDelay: `${s.delay}s`, animationDuration: `${s.dur}s`,
-              }} />
+ }} />
             ))}
           </div>
         </div>
@@ -372,7 +373,7 @@ export default function FieldInventory() {
           <div key={i} className="finv-rune-float" style={{
             left: `${r.left}%`, animationDelay: `${r.delay}s`,
             animationDuration: `${r.dur}s`, fontSize: r.size,
-          }}>{r.char}</div>
+ }}>{r.char}</div>
         ))}
 
         <div className="finv-page">
@@ -386,7 +387,7 @@ export default function FieldInventory() {
               <div className="finv-hdr-title">СОКРОВИЩА ВОИНА</div>
             </div>
             <div className="finv-hdr-counter">
-              <span className="finv-hdr-counter-icon">{'\uD83D\uDDDD'}</span>
+              <span className="finv-hdr-counter-icon">{''}</span>
               <span>{items.length} предметов</span>
             </div>
           </div>
@@ -397,10 +398,10 @@ export default function FieldInventory() {
           <div className="finv-status-bar">
             {[
               { key: 'pending', icon: '\u23F3', label: 'Готовят' },
-              { key: 'requested', icon: '\uD83D\uDCE9', label: 'Запрошен' },
-              { key: 'ready', icon: '\uD83D\uDCE6', label: 'Готовы' },
-              { key: 'delivered', icon: '\uD83C\uDF81', label: 'Выдан' },
-              { key: 'digital', icon: '\u2728', label: 'Надеть' },
+              { key: 'requested', icon: '', label: 'Запрошен' },
+              { key: 'ready', icon: '', label: 'Готовы' },
+              { key: 'delivered', icon: '', label: 'Выдан' },
+              { key: 'digital', icon: '', label: 'Надеть' },
             ].filter(p => counts[p.key] > 0 || filter === p.key).map(p => (
               <div key={p.key} className={`finv-pill${filter === p.key ? ' active' : ''}`}
                 data-filter={p.key} onClick={() => toggleFilter(p.key)}>
@@ -414,7 +415,7 @@ export default function FieldInventory() {
           {/* ═══ READY BANNER ═══ */}
           {counts.ready > 0 && (!filter || filter === 'ready') && (
             <div className="finv-ready-banner">
-              <div className="finv-ready-banner-icon">{'\uD83D\uDCE6'}</div>
+              <div className="finv-ready-banner-icon">{''}</div>
               <div className="finv-ready-banner-text">
                 <div className="finv-ready-banner-title">{counts.ready} {counts.ready === 1 ? 'приз ждёт' : 'приза ждут'} тебя</div>
                 <div className="finv-ready-banner-sub">у РП {readyPm || ''}</div>
@@ -422,7 +423,7 @@ export default function FieldInventory() {
               {readyPhone && (
                 <a href={`tel:${readyPhone}`} className="finv-ready-banner-cta"
                   onClick={e => e.stopPropagation()}>
-                  {'\uD83D\uDCDE'} Позвонить
+                  {''} Позвонить
                 </a>
               )}
             </div>
@@ -430,7 +431,7 @@ export default function FieldInventory() {
           {/* ═══ DELIVERED BANNER — needs confirmation ═══ */}
           {counts.delivered > 0 && (!filter || filter === 'delivered') && (
             <div className="finv-ready-banner" style={{ background: 'linear-gradient(135deg,color-mix(in oklab, var(--ok) 12%, transparent),color-mix(in oklab, var(--ok) 6%, transparent))', borderColor: 'color-mix(in oklab, var(--ok) 25%, transparent)' }}>
-              <div className="finv-ready-banner-icon">{'\uD83C\uDF81'}</div>
+              <div className="finv-ready-banner-icon">{''}</div>
               <div className="finv-ready-banner-text">
                 <div className="finv-ready-banner-title" style={{ color: 'var(--ok)' }}>{counts.delivered} {counts.delivered === 1 ? 'приз выдан' : 'приза выдано'}</div>
                 <div className="finv-ready-banner-sub">Нажми «Получил» чтобы подтвердить</div>
@@ -441,7 +442,7 @@ export default function FieldInventory() {
           {/* ═══ XP FORGE (Кузница рун) ═══ */}
           <div className="finv-xp-forge-wrap">
             <button className="finv-xp-forge-toggle" onClick={() => setShowXpForge(p => !p)}>
-              <span>⚗️ Кузница XP</span>
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><FlaskConical size={14} strokeWidth={2.4} aria-hidden />Кузница XP</span>
               <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <span style={{ fontSize: 11, color: 'color-mix(in oklab, var(--value) 70%, transparent)' }}>{wallet.runes} ᚱ · {wallet.xp} XP</span>
                 <span style={{ transition: 'transform .3s', transform: showXpForge ? 'rotate(180deg)' : 'rotate(0deg)', fontSize: 10, color: 'color-mix(in oklab, var(--text-primary) 40%, transparent)' }}>▼</span>
@@ -460,7 +461,7 @@ export default function FieldInventory() {
                   </div>
                   <div style={{ fontSize: 24, color: 'color-mix(in oklab, var(--text-primary) 20%, transparent)' }}>→</div>
                   <div className="finv-xp-forge-bal">
-                    <div style={{ fontSize: 20 }}>⚡</div>
+                    <div style={{ color: 'var(--acc)' }}><Zap size={20} strokeWidth={2.4} aria-hidden /></div>
                     <div style={{ fontSize: 18, fontWeight: 800, color: '#818cf8' }}>{wallet.xp}</div>
                     <div style={{ fontSize: 10, color: 'color-mix(in oklab, var(--text-primary) 40%, transparent)' }}>XP</div>
                   </div>
@@ -485,7 +486,7 @@ export default function FieldInventory() {
                 )}
                 {xpResult && (
                   <div className="finv-xp-result">
-                    ✅ Переплавлено {xpResult.runes_spent} ᚱ → +{xpResult.xp_gained} XP! Уровень: {xpResult.new_level}
+                    Переплавлено {xpResult.runes_spent} ᚱ → +{xpResult.xp_gained} XP! Уровень: {xpResult.new_level}
                   </div>
                 )}
                 <button
@@ -496,9 +497,9 @@ export default function FieldInventory() {
                     || parseInt(xpAmount, 10) < 15
                     || parseInt(xpAmount, 10) > xpConvertMax
                     || xpConvertMax < 15
-                  }
+ }
                   onClick={handleXpExchange}>
-                  {xpLoading ? '⚗️ Переплавка...' : '⚗️ Переплавить руны в XP'}
+                  {xpLoading ? 'Переплавка…' : 'Переплавить руны в XP'}
                 </button>
               </div>
             )}
@@ -507,7 +508,7 @@ export default function FieldInventory() {
           {/* Sell result toast */}
           {sellResult && (
             <div className="finv-sell-toast">
-              💰 Продано: <strong>{sellResult.item_name}</strong> за <strong>{sellResult.sell_price} ᚱ</strong>
+              Продано: <strong>{sellResult.item_name}</strong> за <strong>{sellResult.sell_price} ᚱ</strong>
               <button onClick={() => setSellResult(null)} style={{ marginLeft: 8, background: 'none', border: 'none', color: 'color-mix(in oklab, var(--text-primary) 50%, transparent)', cursor: 'pointer', fontSize: 14 }}>✕</button>
             </div>
           )}
@@ -529,23 +530,23 @@ export default function FieldInventory() {
               let statusIcon, statusText, statusClass, subText;
 
               if (item.isDigital) {
-                statusIcon = item.isEquipped ? '\u2728' : '\uD83C\uDFAD';
+                statusIcon = item.isEquipped ? '' : '';
                 statusText = item.isEquipped ? 'Надет' : 'Косметика';
                 statusClass = item.isEquipped ? 'delivered' : 'pending';
                 subText = item.isEquipped ? 'Активирован на профиле' : 'Нажми "Надеть" чтобы активировать';
-              } else if (item.status === 'pending') {
+ } else if (item.status === 'pending') {
                 statusIcon = '\u23F3'; statusText = 'Готовят'; statusClass = 'pending'; subText = 'Ожидайте, заказ в обработке';
-              } else if (item.status === 'requested') {
-                statusIcon = '\uD83D\uDCE9'; statusText = 'Запрошен'; statusClass = 'ready'; subText = 'РП получил запрос, ожидайте выдачи';
-              } else if (item.status === 'ready') {
-                statusIcon = '\uD83D\uDCE6'; statusText = 'Готов к выдаче'; statusClass = 'ready'; subText = 'Подойдите к РП на объекте';
-              } else if (item.status === 'delivered') {
-                statusIcon = '\uD83C\uDF81'; statusText = 'Выдан'; statusClass = 'ready'; subText = 'Подтвердите получение';
-              } else if (item.status === 'confirmed') {
-                statusIcon = '\u2705'; statusText = 'Получен'; statusClass = 'delivered'; subText = 'Получено ' + (item.deliveredDate || '');
-              } else {
-                statusIcon = '\u2705'; statusText = 'Получен'; statusClass = 'delivered'; subText = 'Выдано ' + (item.deliveredDate || '');
-              }
+ } else if (item.status === 'requested') {
+                statusIcon = ''; statusText = 'Запрошен'; statusClass = 'ready'; subText = 'РП получил запрос, ожидайте выдачи';
+ } else if (item.status === 'ready') {
+                statusIcon = ''; statusText = 'Готов к выдаче'; statusClass = 'ready'; subText = 'Подойдите к РП на объекте';
+ } else if (item.status === 'delivered') {
+                statusIcon = ''; statusText = 'Выдан'; statusClass = 'ready'; subText = 'Подтвердите получение';
+ } else if (item.status === 'confirmed') {
+                statusIcon = ''; statusText = 'Получен'; statusClass = 'delivered'; subText = 'Получено ' + (item.deliveredDate || '');
+ } else {
+                statusIcon = ''; statusText = 'Получен'; statusClass = 'delivered'; subText = 'Выдано ' + (item.deliveredDate || '');
+ }
 
               return (
                 <div key={`${item.id}-${i}`}
@@ -563,7 +564,7 @@ export default function FieldInventory() {
                     <div className="finv-item-sub">{subText}</div>
                     {item.pm && (item.status === 'ready' || item.status === 'delivered') && (
                       <div className="finv-item-pm-row">
-                        <span>{'\uD83D\uDC64'} {item.pm}</span>
+                        <span>{''} {item.pm}</span>
                         {item.pmPhone && item.status === 'ready' && (
                           <a href={`tel:${item.pmPhone}`} className="finv-item-pm-call"
                             onClick={e => e.stopPropagation()}>
@@ -575,7 +576,7 @@ export default function FieldInventory() {
                       </div>
                     )}
                     {item.pm && item.status === 'confirmed' && (
-                      <div className="finv-item-pm-row"><span>{'\uD83D\uDC64'} {item.pm}</span></div>
+                      <div className="finv-item-pm-row"><span>{''} {item.pm}</span></div>
                     )}
                     <div className="finv-item-source">
                       <span className="finv-item-source-icon">{item.sourceIcon}</span>
@@ -589,12 +590,12 @@ export default function FieldInventory() {
                         className="finv-action-btn equip"
                         disabled={isActing}
                         onClick={e => handleEquip(item.id, e)}>
-                        {isActing ? '\u29D7 ...' : '\u2728 Надеть'}
+                        {isActing ? '…' : 'Надеть'}
                       </button>
                     )}
                     {item.isDigital && item.isEquipped && (
                       <>
-                        <div className="finv-equipped-badge">{'\u2728'} Надета ✓</div>
+                        <div className="finv-equipped-badge">Надета </div>
                         <button
                           className="finv-action-btn"
                           style={{ background: 'color-mix(in oklab, var(--text-primary) 8%, transparent)', color: 'color-mix(in oklab, var(--text-primary) 50%, transparent)', fontSize: 11 }}
@@ -609,7 +610,7 @@ export default function FieldInventory() {
                         className="finv-action-btn request"
                         disabled={isActing}
                         onClick={e => handleRequest(item.id, e)}>
-                        {isActing ? '\u29D7 ...' : '📦 Запросить доставку'}
+                        {isActing ? '…' : 'Запросить доставку'}
                       </button>
                     )}
                     {item.isPhysical && item.status === 'delivered' && (
@@ -617,18 +618,18 @@ export default function FieldInventory() {
                         className="finv-action-btn confirm"
                         disabled={isActing}
                         onClick={e => handleConfirm(item.id, e)}>
-                        {isActing ? '\u29D7 ...' : '\u2705 Получил'}
+                        {isActing ? '...' : 'Получил'}
                       </button>
                     )}
                     {item.status === 'confirmed' && (
-                      <div className="finv-confirmed-badge">{'\u2705'} Получено</div>
+                      <div className="finv-confirmed-badge">{''} Получено</div>
                     )}
 
                     {/* Sell: while pending (before requesting delivery), or digital not equipped */}
                     {((item.isPhysical && item.status === 'pending') || (item.isDigital && !item.isEquipped)) && (
                       <button className="finv-action-btn sell"
                         onClick={e => { e.stopPropagation(); haptic.light(); setSellItem(item); }}>
-                        💰 Продать
+                        Продать
                       </button>
                     )}
                     {/* Cancel delivery request */}
@@ -637,7 +638,7 @@ export default function FieldInventory() {
                         style={{ background: 'rgba(156,163,175,.08)', border: '1px solid rgba(156,163,175,.15)', color: 'color-mix(in oklab, var(--text-primary) 45%, transparent)', fontSize: 12, padding: '8px 12px', borderRadius: 10, cursor: 'pointer', marginTop: 4 }}
                         disabled={isActing}
                         onClick={e => handleCancelRequest(item.id, e)}>
-                        {isActing ? '...' : '✕ Отменить запрос'}
+                        {isActing ? '…' : 'Отменить запрос'}
                       </button>
                     )}
 
@@ -645,7 +646,7 @@ export default function FieldInventory() {
                   </div>
                 </div>
               );
-            })}
+ })}
           </div>
 
         </div>
@@ -658,8 +659,8 @@ export default function FieldInventory() {
               <div className="finv-modal-card" onClick={e => e.stopPropagation()}>
                 <div className="finv-modal-handle" />
                 <div style={{ textAlign: 'center', marginBottom: 16 }}>
-                  <div style={{ fontSize: 36, marginBottom: 8 }}>💰</div>
-                  <div style={{ fontFamily: 'Cinzel,serif', fontSize: 17, fontWeight: 900, color: 'var(--text-primary)', marginBottom: 6 }}>
+                  <div style={{ marginBottom: 8, color: 'var(--value-ink)' }}><Coins size={36} strokeWidth={2.1} aria-hidden /></div>
+                  <div style={{ fontSize: 17, fontWeight: 900, color: 'var(--text-primary)', marginBottom: 6 }}>
                     Продать предмет?
                   </div>
                   <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--value)', marginBottom: 4 }}>{sellItem.name}</div>
@@ -673,8 +674,8 @@ export default function FieldInventory() {
                     Отмена
                   </button>
                   <button onClick={handleSell} disabled={sellLoading}
-                    style={{ flex: 2, padding: '14px 0', borderRadius: 14, border: 'none', background: 'linear-gradient(135deg,var(--value),var(--value))', color: 'var(--text-on-gold)', fontSize: 14, fontWeight: 800, cursor: 'pointer', opacity: sellLoading ? 0.6 : 1 }}>
-                    {sellLoading ? '⚗️ Продаём...' : '💰 Да, продать'}
+                    style={{ flex: 2, padding: '14px 0', borderRadius: 14, border: 'none', background: 'linear-gradient(135deg,var(--gold-fill),var(--gold-fill))', color: 'var(--text-on-gold)', fontSize: 14, fontWeight: 800, cursor: 'pointer', opacity: sellLoading ? 0.6 : 1 }}>
+                    {sellLoading ? 'Продаём…' : 'Да, продать'}
                   </button>
                 </div>
               </div>
@@ -702,12 +703,12 @@ export default function FieldInventory() {
               );
               const isActingModal = actionLoading === modalItem.id;
               const modalStatusLabel =
-                isDigitalItem ? (modalItem.isEquipped ? '\u2728 Надет' : '\uD83C\uDFAD Косметика') :
+                isDigitalItem ? (modalItem.isEquipped ? 'Надет' : 'Косметика') :
                 modalItem.status === 'pending' ? '\u23F3 Готовят' :
-                modalItem.status === 'requested' ? '\uD83D\uDCE9 Запрошен' :
-                modalItem.status === 'ready' ? '\uD83D\uDCE6 Готов к выдаче' :
-                modalItem.status === 'delivered' ? '\uD83C\uDF81 Выдан — подтвердите получение' :
-                '\u2705 Получен ' + (modalItem.deliveredDate || '');
+                modalItem.status === 'requested' ? 'Запрошен' :
+                modalItem.status === 'ready' ? 'Готов к выдаче' :
+                modalItem.status === 'delivered' ? 'Выдан — подтвердите получение' :
+                'Получен ' + (modalItem.deliveredDate || '');
               return (
                 <>
                   <div className="finv-modal-svg-area">
@@ -735,13 +736,13 @@ export default function FieldInventory() {
                     {modalItem.pm && (
                       <div className="finv-modal-grid-item">
                         <div className="finv-modal-grid-label">Руководитель проекта</div>
-                        <div className="finv-modal-grid-value">{'\uD83D\uDC64'} {modalItem.pm}</div>
+                        <div className="finv-modal-grid-value">{''} {modalItem.pm}</div>
                       </div>
                     )}
                     {modalItem.object && (
                       <div className="finv-modal-grid-item full">
                         <div className="finv-modal-grid-label">Объект</div>
-                        <div className="finv-modal-grid-value">{'\uD83D\uDDFA'} {modalItem.object}</div>
+                        <div className="finv-modal-grid-value">{''} {modalItem.object}</div>
                       </div>
                     )}
                   </div>
@@ -752,9 +753,9 @@ export default function FieldInventory() {
                       <div className="finv-modal-timeline">
                         <div className={`finv-tl-dot ${tl.dots[0]}`}>{'\u23F3'}</div>
                         <div className={`finv-tl-line ${tl.lines[0]}`} />
-                        <div className={`finv-tl-dot ${tl.dots[1]}`}>{'\uD83D\uDCE6'}</div>
+                        <div className={`finv-tl-dot ${tl.dots[1]}`}>{''}</div>
                         <div className={`finv-tl-line ${tl.lines[1]}`} />
-                        <div className={`finv-tl-dot ${tl.dots[2]}`}>{'\u2705'}</div>
+                        <div className={`finv-tl-dot ${tl.dots[2]}`}>{''}</div>
                       </div>
                       <div className="finv-tl-labels">
                         <div className={`finv-tl-label ${tl.labels[0]}`}>Готовят</div>
@@ -771,12 +772,12 @@ export default function FieldInventory() {
                       style={{ background: 'linear-gradient(135deg,var(--acc),var(--acc))', boxShadow: '0 5px 0 var(--acc),0 8px 20px color-mix(in oklab, var(--acc) 20%, transparent)' }}
                       disabled={isActingModal}
                       onClick={() => { handleEquip(modalItem.id); closeModal(); }}>
-                      {isActingModal ? '\u29D7 Надеваем...' : '\u2728 Надеть предмет'}
+                      {isActingModal ? '…' : 'Надеть предмет'}
                     </button>
                   )}
                   {isDigitalItem && modalItem.isEquipped && (
                     <div style={{ textAlign: 'center', padding: '16px 0', color: 'var(--ok)', fontWeight: 700, fontSize: 15 }}>
-                      {'\u2728'} Предмет активирован на вашем профиле
+                      {''} Предмет активирован на вашем профиле
                     </div>
                   )}
 
@@ -784,10 +785,10 @@ export default function FieldInventory() {
                   {!isDigitalItem && modalItem.status === 'pending' && (
                     <button
                       className="finv-modal-cta show"
-                      style={{ background: 'linear-gradient(135deg,var(--value),var(--value))', color: 'var(--text-on-gold)', boxShadow: '0 5px 0 var(--value),0 8px 20px color-mix(in oklab, var(--value) 20%, transparent)' }}
+                      style={{ background: 'linear-gradient(135deg,var(--gold-fill),var(--gold-fill))', color: 'var(--text-on-gold)', boxShadow: '0 5px 0 var(--gold-fill),0 8px 20px color-mix(in oklab, var(--gold-fill) 20%, transparent)' }}
                       disabled={isActingModal}
                       onClick={() => { handleRequest(modalItem.id); closeModal(); }}>
-                      {isActingModal ? '\u29D7 Запрашиваем...' : '\uD83C\uDF81 Запросить выдачу'}
+                      {isActingModal ? 'Запрашиваем...' : 'Запросить выдачу'}
                     </button>
                   )}
 
@@ -798,19 +799,19 @@ export default function FieldInventory() {
                       style={{ background: 'linear-gradient(135deg,var(--ok),var(--ok))', boxShadow: '0 5px 0 var(--ok),0 8px 20px color-mix(in oklab, var(--ok) 20%, transparent)' }}
                       disabled={isActingModal}
                       onClick={() => { handleConfirm(modalItem.id); closeModal(); }}>
-                      {isActingModal ? '\u29D7 Подтверждаем...' : '\u2705 Я получил приз'}
+                      {isActingModal ? 'Подтверждаем...' : 'Я получил приз'}
                     </button>
                   )}
 
                   {/* CTA — physical ready: call PM */}
                   {!isDigitalItem && modalItem.status === 'ready' && modalItem.pmPhone && (
                     <a href={`tel:${modalItem.pmPhone}`} className="finv-modal-cta show">
-                      {'\uD83D\uDCDE'} Позвонить РП {modalItem.pm}
+                      {''} Позвонить РП {modalItem.pm}
                     </a>
                   )}
                 </>
               );
-            })()}
+ })()}
           </div>
         </div>
       </div>
@@ -846,7 +847,7 @@ const INV_CSS = `
 @keyframes finv-tw{0%{opacity:.1;transform:scale(.8)}100%{opacity:.5;transform:scale(1.3)}}
 
 .finv-rune-float{position:fixed;font-size:28px;color:color-mix(in oklab, var(--danger) 8%, transparent);pointer-events:none;z-index:0;
-  font-family:'Cinzel',serif;animation:finv-runeFloat 20s linear infinite}
+  animation:finv-runeFloat 20s linear infinite}
 @keyframes finv-runeFloat{0%{transform:translateY(100vh) rotate(0deg);opacity:0}10%{opacity:.08}90%{opacity:.08}100%{transform:translateY(-100px) rotate(360deg);opacity:0}}
 
 .finv-page{position:relative;z-index:5;max-width:430px;margin:0 auto;min-height:100dvh;
@@ -859,7 +860,7 @@ const INV_CSS = `
 .finv-hdr-back{width:36px;height:36px;border-radius:12px;background:color-mix(in oklab, var(--text-primary) 6%, transparent);display:flex;align-items:center;justify-content:center;cursor:pointer;transition:background .2s;flex-shrink:0}
 .finv-hdr-back:active{background:color-mix(in oklab, var(--text-primary) 12%, transparent)}
 .finv-hdr-center{text-align:center;flex:1;min-width:0}
-.finv-hdr-title{font-family:'Cinzel',serif;font-size:14px;font-weight:900;letter-spacing:.1em;color:var(--finv-gold);text-shadow:0 0 20px color-mix(in oklab, var(--value) 20%, transparent)}
+.finv-hdr-title{font-size:14px;font-weight:900;letter-spacing:.1em;color:var(--finv-gold);text-shadow:0 0 20px color-mix(in oklab, var(--value) 20%, transparent)}
 .finv-hdr-counter{display:flex;align-items:center;gap:5px;padding:5px 12px 5px 8px;
   background:linear-gradient(135deg,var(--bg-surface),var(--bg-surface));border:1.5px solid color-mix(in oklab, var(--value) 30%, transparent);border-radius:20px;
   box-shadow:0 2px 10px color-mix(in oklab, var(--value) 10%, transparent);font-size:13px;font-weight:700;color:var(--finv-gold);flex-shrink:0}
@@ -969,7 +970,7 @@ const INV_CSS = `
   border:1px solid color-mix(in oklab, var(--danger) 15%, transparent);z-index:1;animation:finv-runeRingSpin 30s linear infinite}
 @keyframes finv-runeRingSpin{0%{transform:translate(-50%,-50%) rotate(0deg)}100%{transform:translate(-50%,-50%) rotate(360deg)}}
 
-.finv-modal-name{font-family:'Cinzel',serif;font-size:22px;font-weight:900;text-align:center;color:var(--finv-t1);margin-bottom:4px}
+.finv-modal-name{font-size:22px;font-weight:900;text-align:center;color:var(--finv-t1);margin-bottom:4px}
 .finv-modal-desc{font-size:13px;color:var(--finv-t2);text-align:center;margin-bottom:16px;line-height:1.4}
 
 /* Modal grid */
@@ -1003,8 +1004,8 @@ const INV_CSS = `
 /* Empty state */
 .finv-empty-state{display:none;flex-direction:column;align-items:center;justify-content:center;padding:60px 32px;text-align:center}
 .finv-empty-state.show{display:flex}
-.finv-empty-rune{font-size:80px;color:rgba(107,114,128,.2);font-family:'Cinzel',serif;margin-bottom:16px;text-shadow:0 0 30px rgba(107,114,128,.1)}
-.finv-empty-title{font-family:'Cinzel',serif;font-size:20px;font-weight:700;color:var(--finv-t2);margin-bottom:8px}
+.finv-empty-rune{font-size:80px;color:rgba(107,114,128,.2);margin-bottom:16px;text-shadow:0 0 30px rgba(107,114,128,.1)}
+.finv-empty-title{font-size:20px;font-weight:700;color:var(--finv-t2);margin-bottom:8px}
 .finv-empty-sub{font-size:13px;color:var(--finv-t3);margin-bottom:24px;line-height:1.4}
 .finv-empty-btn{display:inline-flex;align-items:center;gap:8px;padding:14px 28px;border-radius:16px;border:none;
   font-size:15px;font-weight:800;color:var(--text-primary);cursor:pointer;
@@ -1025,7 +1026,7 @@ const INV_CSS = `
 .finv-action-btn.equip{background:linear-gradient(135deg,var(--acc),var(--acc));color:var(--text-primary);
   box-shadow:0 3px 0 var(--acc),0 4px 12px color-mix(in oklab, var(--acc) 20%, transparent)}
 .finv-action-btn.equip:not(:disabled):active{box-shadow:0 1px 0 var(--acc)}
-.finv-action-btn.request{background:linear-gradient(135deg,var(--value),var(--value));color:var(--text-on-gold);
+.finv-action-btn.request{background:linear-gradient(135deg,var(--gold-fill),var(--gold-fill));color:var(--text-on-gold);
   box-shadow:0 3px 0 var(--value),0 4px 12px color-mix(in oklab, var(--value) 20%, transparent)}
 .finv-action-btn.request:not(:disabled):active{box-shadow:0 1px 0 var(--value)}
 .finv-action-btn.confirm{background:linear-gradient(135deg,var(--ok),var(--ok));color:var(--text-primary);
@@ -1043,7 +1044,7 @@ const INV_CSS = `
 /* pill for requested status */
 .finv-pill[data-filter="requested"]{border-color:color-mix(in oklab, var(--value) 30%, transparent)}
 .finv-pill[data-filter="requested"].active{background:color-mix(in oklab, var(--value) 12%, transparent);border-color:color-mix(in oklab, var(--value) 50%, transparent);color:#fde68a}
-.finv-pill[data-filter="requested"].active .finv-pill-count{background:var(--value);color:var(--text-on-gold)}
+.finv-pill[data-filter="requested"].active .finv-pill-count{background:var(--gold-fill);color:var(--text-on-gold)}
 /* pill for digital status */
 .finv-pill[data-filter="digital"]{border-color:color-mix(in oklab, var(--acc) 30%, transparent)}
 .finv-pill[data-filter="digital"].active{background:color-mix(in oklab, var(--acc) 12%, transparent);border-color:color-mix(in oklab, var(--acc) 50%, transparent);color:var(--acc)}

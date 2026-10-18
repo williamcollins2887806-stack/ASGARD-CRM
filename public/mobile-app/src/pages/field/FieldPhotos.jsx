@@ -5,16 +5,19 @@ import { useHaptic } from '@/hooks/useHaptic';
 import {
   ArrowLeft, Camera, ImagePlus, X, Image, Trash2,
   ChevronLeft, ChevronRight, Filter, CheckCircle, MapPin,
-  Upload, AlertTriangle, Eye,
+  Upload, AlertTriangle, Eye, Hammer, ClipboardList, Swords,
 } from 'lucide-react';
+import { Card, IconTile, KeyButton, Chip, ProgressBar, EmptyState, SectionLabel } from '@/components/field/ui';
+import { SkeletonList } from '@/components/shared/SkeletonKit';
+import './field-screens.css';
 
 // ── Constants ──────────────────────────────────────────────────────────
 const PHOTO_TYPES = [
-  { val: 'all',      label: 'Все',       icon: null,   color: 'var(--gold)' },
-  { val: 'work',     label: 'Работа',    icon: '🔨',   color: 'var(--acc)' },
-  { val: 'before',   label: 'До',        icon: '📋',   color: 'var(--acc)' },
-  { val: 'after',    label: 'После',     icon: '✅',   color: 'var(--ok)' },
-  { val: 'incident', label: 'Инцидент',  icon: '⚠️',  color: 'var(--danger)' },
+  { val: 'all',      label: 'Все',       Icon: null,          color: 'var(--value)' },
+  { val: 'work',     label: 'Работа',    Icon: Hammer,        color: 'var(--acc)' },
+  { val: 'before',   label: 'До',        Icon: ClipboardList, color: 'var(--acc)' },
+  { val: 'after',    label: 'После',     Icon: CheckCircle,   color: 'var(--ok)' },
+  { val: 'incident', label: 'Инцидент',  Icon: AlertTriangle, color: 'var(--danger)' },
 ];
 
 const UPLOAD_QUOTES = [
@@ -30,8 +33,8 @@ function randomQuote() {
 }
 
 function typeBadge(type) {
-  const t = PHOTO_TYPES.find(p => p.val === type);
-  return t ? { label: t.label, color: t.color, icon: t.icon } : null;
+  const t = PHOTO_TYPES.find((p) => p.val === type);
+  return t ? { label: t.label, color: t.color, Icon: t.Icon } : null;
 }
 
 // ── Main Component ─────────────────────────────────────────────────────
@@ -297,12 +300,8 @@ export default function FieldPhotos() {
   // ── Loading skeleton ──
   if (loading) {
     return (
-      <div className="p-4 space-y-4 animate-pulse" style={{ backgroundColor: 'var(--bg-primary)', minHeight: '100dvh' }}>
-        <div className="h-12 rounded-xl" style={{ backgroundColor: 'var(--bg-elevated)' }} />
-        <div className="h-24 rounded-2xl" style={{ backgroundColor: 'var(--bg-elevated)' }} />
-        <div className="grid grid-cols-3 gap-2">
-          {[1,2,3,4,5,6].map(i => <div key={i} className="aspect-square rounded-xl" style={{ backgroundColor: 'var(--bg-elevated)' }} />)}
-        </div>
+      <div className="fs-root p-4" style={{ paddingTop: 'max(env(safe-area-inset-top), 12px)' }}>
+        <SkeletonList count={4} />
       </div>
     );
   }
@@ -310,77 +309,63 @@ export default function FieldPhotos() {
   return (
     <div
       ref={containerRef}
-      style={{ backgroundColor: 'var(--bg-primary)', minHeight: '100dvh', overflowY: 'auto', paddingTop: 'max(env(safe-area-inset-top), 12px)', paddingBottom: 'max(env(safe-area-inset-bottom), 16px)' }}
+      className="fs-root"
+      style={{ overflowY: 'auto' }}
       onTouchStart={onTouchStart}
       onTouchMove={onTouchMove}
       onTouchEnd={onTouchEnd}
     >
+      <div className="fs-scene" aria-hidden><span className="fs-orb fs-orb--a" /><span className="fs-orb fs-orb--b" /></div>
+
       {/* Pull-to-refresh indicator */}
       {pullY > 10 && (
         <div className="flex justify-center py-2 transition-all" style={{ transform: `translateY(${pullY * 0.3}px)`, opacity: pullY / 80 }}>
           <div className={`w-6 h-6 border-2 rounded-full ${refreshing ? 'animate-spin' : ''}`}
-            style={{ borderColor: 'var(--gold)', borderTopColor: 'transparent' }} />
+            style={{ borderColor: 'var(--value)', borderTopColor: 'transparent' }} />
         </div>
       )}
 
-      <div className="p-4 space-y-4">
+      <div className="fs-content space-y-4">
         {/* ── Header ── */}
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <button onClick={() => navigate('/field/home')} className="p-2 rounded-xl"
-              style={{ backgroundColor: 'var(--bg-elevated)' }}>
-              <ArrowLeft size={20} style={{ color: 'var(--text-primary)' }} />
-            </button>
-            <div>
-              <h1 className="text-lg font-bold" style={{ color: 'var(--text-primary)' }}>
-                Фотохроники
-              </h1>
-              {stats && (
-                <p className="text-xs" style={{ color: 'var(--text-tertiary)' }}>
-                  Сегодня: {stats.today || 0} &middot; Всего: {stats.total || 0}
-                </p>
-              )}
-            </div>
+        <div className="fs-head">
+          <button onClick={() => navigate('/field/home')} className="fs-head__btn" aria-label="Назад">
+            <ArrowLeft size={20} strokeWidth={2.3} />
+          </button>
+          <IconTile icon={Camera} tone="accent" size={40} />
+          <div style={{ flex: 1 }}>
+            <h1 className="fs-head__title">Фотохроники</h1>
+            {stats && (
+              <p className="fs-head__sub">
+                Сегодня: {stats.today || 0} · Всего: {stats.total || 0}
+              </p>
+            )}
           </div>
           {geoCoords && (
-            <div className="flex items-center gap-1 px-2 py-1 rounded-lg" style={{ backgroundColor: 'color-mix(in oklab, var(--ok) 15%, transparent)' }}>
+            <span className="flex items-center gap-1 px-2 py-1 rounded-lg" style={{ backgroundColor: 'color-mix(in oklab, var(--ok) 15%, transparent)' }}>
               <MapPin size={12} style={{ color: 'var(--ok)' }} />
-              <span className="text-xs" style={{ color: 'var(--ok)' }}>GPS</span>
-            </div>
+              <span className="text-xs font-semibold" style={{ color: 'var(--ok)' }}>GPS</span>
+            </span>
           )}
         </div>
 
         {/* ── Upload area ── */}
         {project && (
-          <div className="rounded-2xl overflow-hidden" style={{
-            background: 'linear-gradient(135deg, color-mix(in oklab, var(--danger) 8%, transparent) 0%, color-mix(in oklab, var(--acc) 8%, transparent) 100%)',
-            border: '1px solid var(--border-norse)',
-          }}>
+          <Card variant="raised" tone="danger" className="overflow-hidden p-0">
             {/* Camera + Gallery buttons */}
             <div className="p-4 flex gap-3">
-              <button
-                onClick={() => cameraRef.current?.click()}
-                className="flex-1 flex flex-col items-center gap-2 py-4 rounded-xl active:scale-95 transition-transform"
-                style={{ background: 'var(--gold-gradient)', boxShadow: '0 4px 15px color-mix(in oklab, var(--value) 30%, transparent)' }}
-              >
-                <Camera size={28} className="text-white" />
-                <span className="text-sm font-semibold text-white">Сделать фото</span>
-              </button>
-              <button
-                onClick={() => galleryRef.current?.click()}
-                className="flex-1 flex flex-col items-center gap-2 py-4 rounded-xl active:scale-95 transition-transform"
-                style={{ backgroundColor: 'var(--bg-elevated)', border: '1px solid var(--border-norse)' }}
-              >
-                <ImagePlus size={28} style={{ color: 'var(--gold)' }} />
-                <span className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>Из галереи</span>
-              </button>
+              <KeyButton tone="value" icon={Camera} style={{ flex: 1, height: 64 }} onClick={() => cameraRef.current?.click()}>
+                Сделать фото
+              </KeyButton>
+              <KeyButton tone="neutral" icon={ImagePlus} style={{ flex: 1, height: 64 }} onClick={() => galleryRef.current?.click()}>
+                Из галереи
+              </KeyButton>
             </div>
 
             {/* Hidden inputs */}
             <input ref={cameraRef} type="file" accept="image/*" capture="environment"
-              onChange={e => handleFileSelect(e, true)} className="hidden" />
+              onChange={(e) => handleFileSelect(e, true)} className="hidden" />
             <input ref={galleryRef} type="file" accept="image/*" multiple
-              onChange={e => handleFileSelect(e, false)} className="hidden" />
+              onChange={(e) => handleFileSelect(e, false)} className="hidden" />
 
             {/* ── Pending files preview ── */}
             {pendingFiles.length > 0 && (
@@ -389,7 +374,7 @@ export default function FieldPhotos() {
                   <span className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
                     Выбрано: {pendingFiles.length}
                   </span>
-                  <button onClick={() => { pendingFiles.forEach(pf => URL.revokeObjectURL(pf.preview)); setPendingFiles([]); }}
+                  <button onClick={() => { pendingFiles.forEach((pf) => URL.revokeObjectURL(pf.preview)); setPendingFiles([]); }}
                     className="text-xs px-2 py-1 rounded-lg" style={{ color: 'var(--text-tertiary)' }}>
                     Очистить
                   </button>
@@ -398,12 +383,13 @@ export default function FieldPhotos() {
                 {/* Thumbnails with type selector */}
                 <div className="space-y-3">
                   {pendingFiles.map((pf, idx) => (
-                    <div key={idx} className="flex gap-3 rounded-xl p-2" style={{ backgroundColor: 'var(--bg-elevated)' }}>
+                    <div key={idx} className="flex gap-3 rounded-xl p-2" style={{ backgroundColor: 'var(--bg-surface-alt)' }}>
                       {/* Preview thumb */}
                       <div className="relative w-20 h-20 flex-shrink-0 rounded-lg overflow-hidden">
                         <img src={pf.preview} alt="" className="w-full h-full object-cover" />
                         <button onClick={() => removePending(idx)}
                           className="absolute top-0.5 right-0.5 p-0.5 rounded-full"
+                          aria-label="Убрать фото"
                           style={{ backgroundColor: 'color-mix(in oklab, var(--bg-primary) 60%, transparent)' }}>
                           <X size={14} className="text-white" />
                         </button>
@@ -411,15 +397,16 @@ export default function FieldPhotos() {
                       {/* Type + caption */}
                       <div className="flex-1 min-w-0 flex flex-col gap-1.5">
                         <div className="flex gap-1 flex-wrap">
-                          {PHOTO_TYPES.filter(t => t.val !== 'all').map(t => (
+                          {PHOTO_TYPES.filter((t) => t.val !== 'all').map((t) => (
                             <button key={t.val} onClick={() => updatePendingType(idx, t.val)}
-                              className="px-2 py-1 rounded-md text-xs font-medium transition-colors"
+                              className="px-2 py-1 rounded-md text-xs font-medium transition-colors flex items-center gap-1"
                               style={{
-                                backgroundColor: pf.type === t.val ? t.color : 'var(--bg-primary)',
-                                color: pf.type === t.val ? 'var(--text-primary)' : 'var(--text-secondary)',
-                                border: `1px solid ${pf.type === t.val ? t.color : 'var(--border-norse)'}`,
+                                backgroundColor: pf.type === t.val ? t.color : 'var(--bg-surface)',
+                                color: pf.type === t.val ? 'var(--bg-primary)' : 'var(--text-secondary)',
+                                border: `1px solid ${pf.type === t.val ? t.color : 'var(--tile-brd)'}`,
                               }}>
-                              {t.icon} {t.label}
+                              {t.Icon ? <t.Icon size={11} strokeWidth={2.4} aria-hidden /> : null}
+                              {t.label}
                             </button>
                           ))}
                         </div>
@@ -427,9 +414,9 @@ export default function FieldPhotos() {
                           type="text"
                           placeholder="Подпись..."
                           value={pf.caption}
-                          onChange={e => updatePendingCaption(idx, e.target.value)}
+                          onChange={(e) => updatePendingCaption(idx, e.target.value)}
                           className="w-full px-2 py-1.5 rounded-lg text-xs"
-                          style={{ backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-norse)', color: 'var(--text-primary)' }}
+                          style={{ backgroundColor: 'var(--bg-surface)', border: '1px solid var(--tile-brd)', color: 'var(--text-primary)' }}
                         />
                       </div>
                     </div>
@@ -437,84 +424,45 @@ export default function FieldPhotos() {
                 </div>
 
                 {/* Upload button */}
-                <button
-                  onClick={handleUploadAll}
-                  disabled={uploading}
-                  className="w-full py-3 rounded-xl font-semibold text-white flex items-center justify-center gap-2 active:scale-98 transition-transform"
-                  style={{
-                    background: uploading ? 'var(--bg-elevated)' : 'var(--gold-gradient)',
-                    opacity: uploading ? 0.6 : 1,
-                    boxShadow: uploading ? 'none' : '0 4px 15px color-mix(in oklab, var(--value) 30%, transparent)',
-                  }}
-                >
-                  {uploading ? (
-                    <>
-                      <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                      <span>Загрузка {uploadProgress}/{uploadTotal}...</span>
-                    </>
-                  ) : (
-                    <>
-                      <Upload size={18} />
-                      <span>Загрузить {pendingFiles.length > 1 ? `(${pendingFiles.length})` : ''}</span>
-                    </>
-                  )}
-                </button>
+                <KeyButton tone="value" block icon={Upload} onClick={handleUploadAll} disabled={uploading}>
+                  {uploading
+                    ? `Загрузка ${uploadProgress}/${uploadTotal}...`
+                    : `Загрузить${pendingFiles.length > 1 ? ` (${pendingFiles.length})` : ''}`}
+                </KeyButton>
 
                 {/* Upload progress bar */}
-                {uploading && (
-                  <div className="h-1.5 rounded-full overflow-hidden" style={{ backgroundColor: 'var(--bg-primary)' }}>
-                    <div className="h-full rounded-full transition-all duration-300"
-                      style={{
-                        width: `${(uploadProgress / uploadTotal) * 100}%`,
-                        background: 'var(--gold-gradient)',
-                      }} />
-                  </div>
-                )}
+                {uploading && <ProgressBar value={uploadProgress} max={uploadTotal} color="var(--value)" />}
               </div>
             )}
-          </div>
+          </Card>
         )}
 
         {/* ── Success quote ── */}
         {lastQuote && (
-          <div className="rounded-xl p-3 text-center text-sm font-medium animate-pulse"
-            style={{
-              background: 'linear-gradient(135deg, color-mix(in oklab, var(--value) 15%, transparent), color-mix(in oklab, var(--value) 5%, transparent))',
-              color: 'var(--gold)',
-              border: '1px solid color-mix(in oklab, var(--value) 30%, transparent)',
-            }}>
-            ⚔️ {lastQuote}
-          </div>
+          <Card variant="raised" tone="value" className="p-3 text-center text-sm font-medium">
+            {lastQuote}
+          </Card>
         )}
 
         {/* ── Error ── */}
         {error && (
-          <div className="p-3 rounded-xl text-sm flex items-center gap-2"
-            style={{ backgroundColor: 'color-mix(in oklab, var(--danger) 10%, transparent)', color: 'var(--danger)', border: '1px solid color-mix(in oklab, var(--danger) 20%, transparent)' }}>
+          <Card variant="flat" tone="danger" className="p-3 text-sm flex items-center gap-2" style={{ color: 'var(--danger-ink)' }}>
             <AlertTriangle size={16} />
             <span className="flex-1">{error}</span>
-            <button onClick={() => setError(null)}><X size={14} style={{ color: 'var(--danger)' }} /></button>
-          </div>
+            <button onClick={() => setError(null)} aria-label="Скрыть ошибку"><X size={14} style={{ color: 'var(--danger-ink)' }} /></button>
+          </Card>
         )}
 
         {/* ── Filter tabs ── */}
         {photos.length > 0 && (
           <div className="flex gap-1.5 overflow-x-auto pb-1" style={{ scrollbarWidth: 'none' }}>
-            {PHOTO_TYPES.map(t => {
-              const count = t.val === 'all' ? photos.length : photos.filter(p => p.photo_type === t.val).length;
+            {PHOTO_TYPES.map((t) => {
+              const count = t.val === 'all' ? photos.length : photos.filter((p) => p.photo_type === t.val).length;
               if (t.val !== 'all' && count === 0) return null;
               return (
-                <button key={t.val} onClick={() => setFilterType(t.val)}
-                  className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-medium whitespace-nowrap transition-all"
-                  style={{
-                    backgroundColor: filterType === t.val ? (t.val === 'all' ? 'var(--gold)' : t.color) : 'var(--bg-elevated)',
-                    color: filterType === t.val ? 'var(--text-primary)' : 'var(--text-secondary)',
-                    border: `1px solid ${filterType === t.val ? 'transparent' : 'var(--border-norse)'}`,
-                  }}>
-                  {t.icon && <span>{t.icon}</span>}
-                  <span>{t.label}</span>
-                  <span className="opacity-70">({count})</span>
-                </button>
+                <Chip key={t.val} tone="value" active={filterType === t.val} icon={t.Icon} onClick={() => setFilterType(t.val)}>
+                  {t.label} ({count})
+                </Chip>
               );
             })}
           </div>
@@ -522,39 +470,33 @@ export default function FieldPhotos() {
 
         {/* ── Photo grid ── */}
         {filtered.length === 0 ? (
-          <div className="rounded-2xl p-10 text-center" style={{ backgroundColor: 'var(--bg-elevated)' }}>
-            <div className="w-16 h-16 mx-auto mb-4 rounded-2xl flex items-center justify-center"
-              style={{ background: 'linear-gradient(135deg, color-mix(in oklab, var(--value) 15%, transparent), color-mix(in oklab, var(--acc) 10%, transparent))' }}>
-              <Image size={32} style={{ color: 'var(--gold)' }} />
-            </div>
-            <p className="font-semibold mb-1" style={{ color: 'var(--text-primary)' }}>
-              {filterType !== 'all' ? 'Нет фото в этой категории' : 'Хроники пусты'}
-            </p>
-            <p className="text-xs" style={{ color: 'var(--text-tertiary)' }}>
-              {filterType !== 'all'
-                ? 'Попробуйте другую категорию'
-                : 'Сделайте фото, чтобы начать летопись объекта'}
-            </p>
-          </div>
+          <EmptyState
+            icon={Image}
+            title={filterType !== 'all' ? 'Нет фото в этой категории' : 'Хроники пусты'}
+            description={filterType !== 'all'
+              ? 'Попробуйте другую категорию'
+              : 'Сделайте фото, чтобы начать летопись объекта'}
+          />
         ) : (
           Object.entries(grouped).map(([date, items]) => (
             <div key={date}>
-              <div className="flex items-center gap-2 mb-2 px-1">
-                <p className="text-xs font-semibold" style={{ color: 'var(--text-tertiary)' }}>{date}</p>
-                <span className="text-xs px-1.5 py-0.5 rounded-md" style={{
-                  backgroundColor: 'var(--bg-elevated)', color: 'var(--text-tertiary)',
-                }}>{items.length}</span>
-              </div>
+              <SectionLabel>
+                <span className="inline-flex items-center gap-2">
+                  {date}
+                  <span className="text-xs px-1.5 py-0.5 rounded-md" style={{ backgroundColor: 'var(--bg-surface-alt)', color: 'var(--text-tertiary)' }}>{items.length}</span>
+                </span>
+              </SectionLabel>
               <div className="grid grid-cols-3 gap-1.5">
                 {items.map((photo) => {
                   const flatIdx = filtered.indexOf(photo);
                   const badge = typeBadge(photo.photo_type);
+                  const BadgeIcon = badge?.Icon;
                   return (
                     <button
                       key={photo.id}
                       onClick={() => { setViewIndex(flatIdx); haptic.light(); }}
                       className="aspect-square rounded-xl overflow-hidden relative group active:scale-95 transition-transform"
-                      style={{ backgroundColor: 'var(--bg-elevated)' }}
+                      style={{ backgroundColor: 'var(--bg-surface-alt)' }}
                     >
                       <img
                         src={photo.url || photo.file_url || `/api/field/photos/${photo.id}/thumb`}
@@ -564,9 +506,10 @@ export default function FieldPhotos() {
                       />
                       {/* Type badge */}
                       {photo.photo_type && photo.photo_type !== 'work' && badge && (
-                        <span className="absolute top-1 left-1 text-xs px-1.5 py-0.5 rounded-md font-medium"
-                          style={{ backgroundColor: badge.color, color: 'var(--text-primary)', fontSize: '0.625rem' }}>
-                          {badge.icon} {badge.label}
+                        <span className="absolute top-1 left-1 text-xs px-1.5 py-0.5 rounded-md font-medium flex items-center gap-1"
+                          style={{ backgroundColor: badge.color, color: 'var(--bg-primary)', fontSize: '0.625rem' }}>
+                          {BadgeIcon ? <BadgeIcon size={9} strokeWidth={2.8} aria-hidden /> : null}
+                          {badge.label}
                         </span>
                       )}
                       {/* Author for masters */}

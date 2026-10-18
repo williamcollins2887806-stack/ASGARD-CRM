@@ -415,12 +415,18 @@ async function routes(fastify) {
       SELECT pi.id, pi.supplier_name, pi.amount, pi.currency, pi.basis_type, pi.basis_text, pi.work_id,
              pi.status, pi.payment_status, pi.pay_timing, pi.created_at, pi.updated_at, pi.file_name,
              pi.due_date, pi.approval_expires_at, pi.doc_registry_id,
+             pi.initiator_intent, pi.initiator_note, pi.contract_basis_number, pi.contract_basis_date,
+             pi.contract_missing, pi.work_hint, pi.invoice_number, pi.invoice_date, pi.vat_amount,
              u.name AS initiator_name, s.inn AS supplier_inn
         FROM payment_invoices pi
         LEFT JOIN users u ON u.id = pi.created_by
         LEFT JOIN suppliers s ON s.id = pi.supplier_id
        WHERE pi.status = 'awaiting_dir'
-       ORDER BY pi.created_at ASC
+       ORDER BY
+         -- V404: срочное — наверх (бух и директор видят первым делом).
+         CASE WHEN pi.pay_timing = 'immediate' OR pi.initiator_intent IN ('urgent','today','tomorrow') THEN 0 ELSE 1 END,
+         COALESCE(pi.due_date, DATE '9999-12-31') ASC,
+         pi.created_at ASC
     `);
     const items = rows.map((r) => ({
       // ВАЖНО: ровно то же значение, что отдаёт очередь бухгалтерии ('payment_invoices').
@@ -442,6 +448,16 @@ async function routes(fastify) {
       approval_expires_at: r.approval_expires_at,
       supplier_inn: r.supplier_inn,
       initiator_name: r.initiator_name,
+      // V404: контекст, которого не хватало директору (просьба инициатора, договор, объект).
+      initiator_intent: r.initiator_intent,
+      initiator_note: r.initiator_note,
+      contract_basis_number: r.contract_basis_number,
+      contract_basis_date: r.contract_basis_date,
+      contract_missing: r.contract_missing,
+      work_hint: r.work_hint,
+      invoice_number: r.invoice_number,
+      invoice_date: r.invoice_date,
+      vat_amount: r.vat_amount,
       created_at: r.created_at,
       updated_at: r.updated_at,
     }));

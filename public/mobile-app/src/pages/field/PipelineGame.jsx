@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { Wrench, Waves, Zap, Hammer, Wind, Brain, X } from 'lucide-react';
 import { fieldApi } from '@/api/fieldClient';
 import { useHaptic } from '@/hooks/useHaptic';
 import { createPipelineBoard3D } from '@/lib/game3d/pipelineBoard3D';
@@ -11,15 +12,15 @@ const DIRS = [[-1, 0, 1, 4], [0, 1, 2, 8], [1, 0, 4, 1], [0, -1, 8, 2]];
 
 const TUTORIAL_KEY = 'pipeline_tutorial_v2';
 const TUTORIAL_STEPS = [
-  { icon: '🔧', title: 'Поворачивай трубы', text: 'Тап по секции — поворот. Соедини 💧 с 🏆 жирным металлическим путём.' },
-  { icon: '🌊', title: 'Пусти поток', text: 'Когда путь готов — жми «Пустить поток» и смотри, как бежит вода.' },
-  { icon: '⚡', title: 'Силы богов', text: 'Тор чинит, Фрейя показывает путь, Один подсвечивает клетку.' },
+  { Icon: Wrench, title: 'Поворачивай трубы', text: 'Тап по секции — поворот. Соедини исток со сливом жирным металлическим путём.' },
+  { Icon: Waves, title: 'Пусти поток', text: 'Когда путь готов — жми «Пустить поток» и смотри, как бежит вода.' },
+  { Icon: Zap, title: 'Силы богов', text: 'Тор чинит, Фрейя показывает путь, Один подсвечивает клетку.' },
 ];
 
 const GODS = {
-  thor: { emoji: '🔨', name: 'ТОР', line: 'Мьёльнир крушит препятствия!' },
-  heim: { emoji: '🌀', name: 'ФРЕЙЯ', line: 'Видит истинный путь потока' },
-  odin: { emoji: '🧠', name: 'ОДИН', line: 'Шепчет, куда крутить' },
+  thor: { Icon: Hammer, name: 'ТОР', line: 'Мьёльнир крушит препятствия!' },
+  heim: { Icon: Wind, name: 'ФРЕЙЯ', line: 'Видит истинный путь потока' },
+  odin: { Icon: Brain, name: 'ОДИН', line: 'Шепчет, куда крутить' },
 };
 
 function worldClass(name = '') {
@@ -819,7 +820,9 @@ export default function PipelineGame() {
       {godFx && GODS[godFx] && (
         <div className="pp-god">
           <div className="pp-god-card">
-            <span className="pp-god-emoji">{GODS[godFx].emoji}</span>
+            <span className="pp-god-emoji">
+              {(() => { const G = GODS[godFx].Icon; return <G size={30} strokeWidth={2.2} aria-hidden />; })()}
+            </span>
             <div className="pp-god-name">{GODS[godFx].name}</div>
             <div className="pp-god-line">{GODS[godFx].line}</div>
           </div>
@@ -877,7 +880,9 @@ export default function PipelineGame() {
       {showTut && (
         <div className="pp-tut">
           <div className="pp-tut-card">
-            <div style={{ fontSize: 42, marginBottom: 8 }}>{TUTORIAL_STEPS[tutStep].icon}</div>
+            <div style={{ marginBottom: 8, color: 'var(--value-ink)' }}>
+              {(() => { const T = TUTORIAL_STEPS[tutStep].Icon; return <T size={42} strokeWidth={2} aria-hidden />; })()}
+            </div>
             <h3>{TUTORIAL_STEPS[tutStep].title}</h3>
             <p>{TUTORIAL_STEPS[tutStep].text}</p>
             <button

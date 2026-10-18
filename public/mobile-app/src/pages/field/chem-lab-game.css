@@ -97,6 +97,9 @@
   font-size: 13px;
   font-weight: 800;
   letter-spacing: 0.01em;
+  /* Явный цвет: без него `strong` наследовал цвет от тёмной подложки главы
+     и превращался в тёмный-на-тёмном. */
+  color: var(--text-primary);
 }
 .cl-chapter-meta span {
   font-size: 10px;
@@ -467,7 +470,10 @@
 }
 .cl-brief-title {
   font-size: 11px; font-weight: 900; letter-spacing: 0.14em;
-  text-transform: uppercase; color: var(--cl-amber); margin: 0 0 8px;
+  /* Фон карточки — всегда тёмный арт (rgba(16,18,24,.97)), а --gold в СВЕТЛОЙ теме
+     тёмный (#8A5E0B) и на нём даёт 3.29:1. Поэтому здесь литерал светлого золота,
+     одинаково читаемый в обеих темах (8.17:1). */
+  text-transform: uppercase; color: #E8C86A; margin: 0 0 8px;
 }
 .cl-brief--danger .cl-brief-title { color: var(--danger); }
 .cl-brief-text {

@@ -15,8 +15,11 @@
  *   • реестр — со статусом «дозаполнить» (is_incomplete = true там, где нужно).
  */
 
-const { extractInvoice } = require('./invoice-extract');
+const { extractInvoice, extractInvoiceLines } = require('./invoice-extract');
 const { classifyDocument } = require('./doc-classifier');
+const { parsePaymentIntent } = require('./payment-intent');
+const { matchContract, matchWork } = require('./contract-match');
+const { enrichCatalogFromLines } = require('./catalog-from-invoice');
 
 /** Порог уверенности (настройка email_parse_confidence_min, fallback 0.7). */
 async function confidenceMin(db) {
@@ -49,6 +52,11 @@ async function intakeOne(db, { email, attachment, text, userId = null, dryRun = 
   const parsed = extractInvoice(text || '');
   parsed._kind = cls.kind;
   parsed._is_invoice = cls.is_invoice;
+  // V404: срок из тела письма инициатора («оплати завтра / срочно / через 2 месяца»).
+  // Текст письма и текст вложения могут отличаться — берём тело письма отдельно.
+  const emailBody = email && (email.body_text || email.body) || '';
+  const intent = parsePaymentIntent(String(emailBody || text || ''));
+  parsed._intent = intent;
   const confMin = await confidenceMin(db);
 
   // Не счёт (сертификат/акт/договор/УПД/накладная) — не создаём заявку.
@@ -75,8 +83,15 @@ async function intakeOne(db, { email, attachment, text, userId = null, dryRun = 
     }
   }
 
-  const lowConfidence = parsed.confidence < confMin || (parsed.amount_gross == null);
-  if (dryRun) return { status: lowConfidence ? 'needs_manual' : 'ok', parsed, dry_run: true };
+  // Замечание заказчика 17.10.2026: «все счета должны обрабатываться».
+  // Прежний критерий (общая уверенность >= 0.7) блокировал заявку, если в счёте
+  // не было банковских реквизитов (БИК/р-с) — хотя это НЕ повод не платить:
+  // реквизиты бухгалтерия дозаполнит. Заявку создаём, когда есть то, без чего
+  // платить нельзя: СУММА и контрагент (имя или ИНН). Остальное — на вычитку.
+  const hasCore = parsed.amount_gross != null && !!(parsed.counterparty_name || parsed.inn);
+  const lowConfidence = !hasCore;
+  const needsReview = hasCore && parsed.confidence < confMin;
+  if (dryRun) return { status: lowConfidence ? 'needs_manual' : 'ok', parsed, needs_review: needsReview, dry_run: true };
 
   // Слой 2: есть ли уже такая строка в реестре (по ИНН+номер+дата+сумма)?
   let docId = null;
@@ -90,6 +105,19 @@ async function intakeOne(db, { email, attachment, text, userId = null, dryRun = 
   }
 
   let createdDoc = false;
+  // V404: сопоставляем основание из счёта с договором в CRM и объект с работами.
+  let contractInfo = { found: false, reason: 'none' };
+  if (parsed.contract_basis && parsed.contract_basis.number) {
+    contractInfo = await matchContract(db, {
+      number: parsed.contract_basis.number,
+      counterpartyInn: parsed.inn,
+      counterpartyName: parsed.counterparty_name
+    }).catch(() => ({ found: false, reason: 'error' }));
+  }
+  let workInfo = { found: false, reason: 'none' };
+  if (parsed.work_hint) {
+    workInfo = await matchWork(db, parsed.work_hint).catch(() => ({ found: false, reason: 'error' }));
+  }
   if (!docId) {
     // counterparty_name/amount_gross NOT NULL — при неудачном разборе подставляем
     // читаемые заглушки, чтобы строка всё равно попала в реестр (needs_manual).
@@ -122,14 +150,35 @@ async function intakeOne(db, { email, attachment, text, userId = null, dryRun = 
     const insDoc = await db.query(
       `INSERT INTO doc_registry(dir, package_type, ops_status, pay_status, invoice_number, invoice_date,
          counterparty_name, counterparty_inn, supplier_id, amount_gross, amount_net, vat_amount, has_vat,
-         spend_kind, doc_owner_id, created_by, updated_by, receive_channel, comment_text)
+         spend_kind, doc_owner_id, created_by, updated_by, receive_channel, comment_text,
+         contract_mode, contract_id, contract_label, payment_due_at, work_id)
        VALUES ('in','invoice','wait_sf','wait',$1,$2::date,$3,$4,$5,$6,$7,$8,$9,
-               'other',$10,$10,$10,'email',$11) RETURNING id`,
+               'other',$10,$10,$10,'email',$11,
+               $12,$13,$14,$15::date,$16) RETURNING id`,
       [parsed.invoice_number, parsed.invoice_date, cpName, parsed.inn, supplierId,
         gross, net, vat, parsed.has_vat !== false,
-        userId, lowConfidence ? 'Требует ручной проверки (низкая уверенность разбора)' : null]);
+        userId, lowConfidence
+          ? 'Требует ручной проверки (не распознаны сумма или контрагент)'
+          : (needsReview ? 'Распознано, проверьте реквизиты (банк не найден)' : null),
+        // V404: договор-основание из счёта. Есть в CRM → linked, нет → once (подсветим).
+        parsed.contract_basis ? (contractInfo.found ? 'linked' : 'once') : 'none',
+        contractInfo.found ? contractInfo.contract.id : null,
+        parsed.contract_basis ? (parsed.contract_basis.number || parsed.contract_basis.raw) : null,
+        parsed.payment_due_at || null,
+        workInfo.found ? workInfo.work.id : null]);
     docId = insDoc.rows[0].id;
     createdDoc = true;
+    // Если договор не найден, но номер указан — пометим строку неполной (жёлтый/синий).
+    if (parsed.contract_basis && !contractInfo.found) {
+      try {
+        await db.query(
+          `UPDATE doc_registry
+             SET is_incomplete=true,
+                 incomplete_reasons=(SELECT array_agg(DISTINCT x) FROM unnest(
+                   COALESCE(incomplete_reasons,'{}'::text[]) || ARRAY['contract_not_found']) AS x)
+           WHERE id=$1`, [docId]);
+      } catch (_) { /* не критично */ }
+    }
     // Запоминаем supplier_id для заявки.
     if (supplierId) parsed._supplierId = supplierId;
   }
@@ -144,11 +193,28 @@ async function intakeOne(db, { email, attachment, text, userId = null, dryRun = 
       const basis = parsed.invoice_number
         ? `Счёт ${parsed.invoice_number}${parsed.invoice_date ? ' от ' + parsed.invoice_date : ''}`
         : 'Счёт из письма';
+      // V404: срок оплаты — приоритет у просьбы инициатора из письма, затем у счёта.
+      const timing = intent.timing === 'deferred' ? 'deferred' : 'immediate';
+      const dueDate = intent.due_date || parsed.payment_due_at || null;
       const insPay = await db.query(
         `INSERT INTO payment_invoices(status, payment_status, supplier_name, supplier_id, amount, requires_payment,
-           created_by, pay_timing, basis_type, basis_text, doc_registry_id, source_email_id, source_attachment_id)
-         VALUES ('awaiting_dir','awaiting_dir',$1,$2,$3,true,$4,'immediate','other',$5,$6,$7,$8) RETURNING id`,
-        [parsed.counterparty_name, parsed._supplierId || null, parsed.amount_gross, userId || 1, basis, docId, emailId, attachmentId]);
+           created_by, pay_timing, due_date, basis_type, basis_text, doc_registry_id, source_email_id, source_attachment_id,
+           initiator_intent, initiator_note, contract_basis_number, contract_basis_date, contract_missing,
+           work_hint, work_id, invoice_number, invoice_date, vat_amount)
+         VALUES ('awaiting_dir','awaiting_dir',$1,$2,$3,true,$4,$5,$6::date,'other',$7,$8,$9,$10,
+                 $11,$12,$13,$14::date,$15,$16,$17,$18,$19::date,$20) RETURNING id`,
+        [parsed.counterparty_name, parsed._supplierId || null, parsed.amount_gross, userId || 1,
+          timing, dueDate, basis, docId, emailId, attachmentId,
+          intent.intent !== 'none' ? intent.intent : null,
+          intent.matched || null,
+          parsed.contract_basis ? parsed.contract_basis.number : null,
+          parsed.contract_basis ? parsed.contract_basis.date : null,
+          !!(parsed.contract_basis && !contractInfo.found),
+          parsed.work_hint || null,
+          workInfo.found ? workInfo.work.id : null,
+          parsed.invoice_number || null,
+          parsed.invoice_date || null,
+          parsed.vat_amount != null ? parsed.vat_amount : null]);
       paymentId = insPay.rows[0].id;
       // TTL 72ч.
       try { require('./doc-approval-ttl').stampExpiry(db, paymentId); } catch (_) {}
@@ -172,11 +238,64 @@ async function intakeOne(db, { email, attachment, text, userId = null, dryRun = 
       parsed.amount_gross, parsed.confidence, JSON.stringify(parsed),
       lowConfidence ? 'needs_manual' : 'parsed']);
 
+  // V406 (FAIL верификатора 17.10.2026): позиции счёта ОБЯЗАНЫ попадать в
+  // номенклатуру автоматически, а не по ручному вызову. Заказчик: «все счета
+  // должны наполнять номенклатуру: позиции, количество, цена, дата, поставщик».
+  // Позиции берём детерминированным парсером; если он ничего не нашёл — AI-fallback
+  // (тот же, что у кнопки «В каталог»). Ошибка парсинга не должна съесть заявку.
+  let catalog = null;
+  if (docId && !parsed._lines_done) {
+    try {
+      let lines = Array.isArray(parsed.lines) ? parsed.lines : [];
+      if (!lines.length) {
+        lines = await aiLines(String(text || '').slice(0, 14000)).catch(() => []);
+      }
+      if (lines.length) {
+        catalog = await enrichCatalogFromLines(db, {
+          lines,
+          supplierName: parsed.counterparty_name,
+          supplierId: parsed._supplierId || null,
+          userId,
+          source: 'quote',
+          docRegistryId: docId,
+          invoiceDate: parsed.invoice_date,
+          invoiceNumber: parsed.invoice_number
+        });
+        // Строка документа: сохраняем позиции и снимаем пометку «ждём разбора».
+        await db.query(
+          `UPDATE doc_registry SET parsed_json=$2::jsonb, updated_at=NOW() WHERE id=$1`,
+          [docId, JSON.stringify(lines)]);
+      }
+    } catch (e) {
+      // Номенклатура — не блокер платежа: фиксируем и идём дальше.
+      try { await db.query(`UPDATE doc_registry SET incomplete_reasons=(SELECT array_agg(DISTINCT x) FROM unnest(COALESCE(incomplete_reasons,'{}'::text[]) || ARRAY['catalog_parse_pending']) AS x), is_incomplete=true WHERE id=$1`, [docId]); } catch (_) {}
+    }
+  }
+
   return {
     status: lowConfidence ? 'needs_manual' : 'created',
     intake_id: journal.rows[0] ? journal.rows[0].id : null,
-    doc_id: docId, created_doc: createdDoc, payment_invoice_id: paymentId, parsed
+    doc_id: docId, created_doc: createdDoc, payment_invoice_id: paymentId, parsed, catalog
   };
+}
+
+/** AI-разбор позиций (fallback, когда детерминированный парсер не сработал). */
+async function aiLines(text) {
+  if (!String(text || '').trim()) return [];
+  try {
+    const aiProvider = require('./ai-provider');
+    const r = await aiProvider.complete({
+      system: 'Извлеки из текста счёта список позиций. Верни СТРОГО JSON {"items":[{"name":"","article":"","quantity":1,"unit":"шт","unit_price":0}]} без markdown.',
+      messages: [{ role: 'user', content: 'Счёт:\n\n' + text }],
+      maxTokens: 4000,
+      temperature: 0.1
+    });
+    const m = (r && r.text || '').match(/\{[\s\S]*\}/);
+    const j = m ? JSON.parse(m[0]) : null;
+    return j && Array.isArray(j.items) ? j.items : [];
+  } catch (_) {
+    return [];
+  }
 }
 
 /**

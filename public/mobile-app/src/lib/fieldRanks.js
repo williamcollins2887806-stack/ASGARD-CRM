@@ -8,14 +8,21 @@ export const XP_PER_LEVEL = 100;
 export const XP_LEVELS = Array.from({ length: 50 }, (_, i) => i * XP_PER_LEVEL);
 
 export const RANKS = [
-  { min: 1, max: 2, title: 'Трэль', rune: 'ᚦ', key: 'thrall', color: '#9ca3af' },
-  { min: 3, max: 4, title: 'Карл', rune: 'ᚲ', key: 'karl', color: '#a78bfa' },
-  { min: 5, max: 7, title: 'Хускарл', rune: 'ᚹ', key: 'huskarl', color: '#60a5fa' },
-  { min: 8, max: 11, title: 'Дружинник', rune: 'ᛏ', key: 'druzhina', color: '#34d399' },
-  { min: 12, max: 15, title: 'Витязь', rune: 'ᛒ', key: 'vityaz', color: '#f97316' },
-  { min: 16, max: 19, title: 'Ярл', rune: 'ᛖ', key: 'jarl', color: '#D4A843' },
-  { min: 20, max: Infinity, title: 'Конунг', rune: 'ᛟ', key: 'konung', color: '#ef4444' },
+  { min: 1, max: 2, title: 'Трэль', rune: 'ᚦ', key: 'thrall', color: '#9ca3af', colorLight: '#4B5563' },
+  { min: 3, max: 4, title: 'Карл', rune: 'ᚲ', key: 'karl', color: '#a78bfa', colorLight: '#5B34C4' },
+  { min: 5, max: 7, title: 'Хускарл', rune: 'ᚹ', key: 'huskarl', color: '#60a5fa', colorLight: '#1D4ED8' },
+  { min: 8, max: 11, title: 'Дружинник', rune: 'ᛏ', key: 'druzhina', color: '#34d399', colorLight: '#0E7A3E' },
+  { min: 12, max: 15, title: 'Витязь', rune: 'ᛒ', key: 'vityaz', color: '#f97316', colorLight: '#B45309' },
+  { min: 16, max: 19, title: 'Ярл', rune: 'ᛖ', key: 'jarl', color: '#D4A843', colorLight: '#8A5E0B' },
+  { min: 20, max: Infinity, title: 'Конунг', rune: 'ᛟ', key: 'konung', color: '#ef4444', colorLight: '#C8203A' },
 ];
+
+/** Цвет ранга под текущую тему: на тёмном арте — яркий, на светлом фоне — тёмный
+ *  (яркие оттенки давали 1.92–3.76 на белом). */
+export function rankColor(rank, theme = 'dark') {
+  if (!rank) return 'var(--text-secondary)';
+  return theme === 'light' ? (rank.colorLight || rank.color) : rank.color;
+}
 
 export function getLevel(xp = 0) {
   const n = Math.max(0, Math.floor(Number(xp) || 0));

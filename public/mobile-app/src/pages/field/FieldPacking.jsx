@@ -2,11 +2,17 @@ import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { fieldApi } from '@/api/fieldClient';
 import { useHaptic } from '@/hooks/useHaptic';
-import { ArrowLeft, Package, CheckCircle, Circle, PlayCircle, AlertTriangle, RefreshCw, Camera } from 'lucide-react';
+import {
+  ArrowLeft, Package, CheckCircle, Circle, PlayCircle, AlertTriangle, Camera, PackageCheck,
+  RotateCcw, Square, ImagePlus,
+} from 'lucide-react';
+import { Card, IconTile, KeyButton, BottomSheet, ProgressBar, SectionLabel, EmptyState } from '@/components/field/ui';
+import { SkeletonList } from '@/components/shared/SkeletonKit';
+import './field-screens.css';
 
 const STATUS_CONFIG = {
   draft: { label: 'Черновик', color: 'var(--text-secondary)' },
-  sent: { label: 'Назначен', color: 'var(--value)' },
+  sent: { label: 'Назначен', color: 'var(--value-ink)' },
   active: { label: 'Активный', color: 'var(--acc)' },
   in_progress: { label: 'В сборке', color: 'var(--acc)' },
   completed: { label: 'Собран', color: 'var(--ok)' },
@@ -14,10 +20,10 @@ const STATUS_CONFIG = {
 };
 
 const ITEM_STATUS = {
-  pending: { label: 'Ожидает', color: 'var(--text-secondary)', icon: '⬜' },
-  packed: { label: 'Собрано', color: 'var(--ok)', icon: '✅' },
-  shortage: { label: 'Недостача', color: 'var(--danger)', icon: '⚠️' },
-  replaced: { label: 'Замена', color: 'var(--value)', icon: '🔄' },
+  pending: { label: 'Ожидает', color: 'var(--text-secondary)', Icon: Square },
+  packed: { label: 'Собрано', color: 'var(--ok)', Icon: CheckCircle },
+  shortage: { label: 'Недостача', color: 'var(--danger)', Icon: AlertTriangle },
+  replaced: { label: 'Замена', color: 'var(--value-ink)', Icon: RotateCcw },
 };
 
 const fmtDate = (d) => d ? new Date(d).toLocaleDateString('ru-RU') : '';
@@ -103,8 +109,8 @@ export default function FieldPacking() {
 
   if (loading) {
     return (
-      <div className="p-4 space-y-4 animate-pulse">
-        {[1, 2, 3].map(i => <div key={i} className="h-24 rounded-xl" style={{ backgroundColor: 'var(--bg-elevated)' }} />)}
+      <div className="fs-root p-4" style={{ paddingTop: 'max(env(safe-area-inset-top), 16px)' }}>
+        <SkeletonList count={3} />
       </div>
     );
   }
@@ -120,173 +126,175 @@ export default function FieldPacking() {
   const pct = totalItems > 0 ? Math.round((totalPacked / totalItems) * 100) : 0;
 
   return (
-    <div className="p-4 space-y-4" style={{ backgroundColor: 'var(--bg-primary)', paddingTop: 'max(env(safe-area-inset-top), 16px)', paddingBottom: 'max(env(safe-area-inset-bottom), 24px)' }}>
-      {/* Header */}
-      <div className="flex items-center gap-3">
-        <button onClick={() => navigate('/field/home')} className="p-2 rounded-lg" style={{ backgroundColor: 'var(--bg-elevated)' }}>
-          <ArrowLeft size={20} style={{ color: 'var(--text-primary)' }} />
-        </button>
-        <Package size={22} style={{ color: 'var(--gold)' }} />
-        <h1 className="text-lg font-bold" style={{ color: 'var(--text-primary)' }}>Сборы</h1>
-      </div>
+    <div className="fs-root" style={{ paddingBottom: 'max(env(safe-area-inset-bottom), 24px)' }}>
+      <div className="fs-scene" aria-hidden><span className="fs-orb fs-orb--a" /><span className="fs-orb fs-orb--b" /></div>
 
-      {error && <div className="p-3 rounded-lg text-sm" style={{ backgroundColor: 'color-mix(in oklab, var(--danger) 10%, transparent)', color: 'var(--danger)' }}>{error}</div>}
-
-      {/* Summary hero card */}
-      {lists.length > 0 && (
-        <div className="rounded-xl p-5 relative overflow-hidden" style={{
-          background: 'linear-gradient(135deg, var(--bg-elevated) 0%, color-mix(in oklab, var(--value) 8%, transparent) 100%)',
-          border: '1px solid var(--border-norse)',
-        }}>
-          <p className="text-xs font-semibold uppercase tracking-widest mb-1" style={{ color: 'var(--text-tertiary)' }}>Сборка</p>
-          <p className="text-3xl font-bold" style={{ color: 'var(--gold)' }}>{pct}%</p>
-          <p className="text-sm mt-1" style={{ color: 'var(--text-secondary)' }}>
-            {totalPacked} из {totalItems} позиций собрано
-          </p>
-          {/* Progress bar */}
-          <div className="mt-2 rounded" style={{ background: 'color-mix(in oklab, var(--text-primary) 8%, transparent)', height: '6px', overflow: 'hidden' }}>
-            <div className="rounded" style={{ height: '100%', width: `${pct}%`, background: 'linear-gradient(90deg, var(--gold), var(--value))', transition: 'width 0.8s ease' }} />
-          </div>
-          <div className="flex justify-center gap-6 mt-3">
-            <span className="text-xs font-semibold" style={{ color: 'var(--value)' }}>🔥 Активных: {totalActive}</span>
-            <span className="text-xs font-semibold" style={{ color: 'var(--ok)' }}>✅ Завершено: {totalCompleted}</span>
-          </div>
+      <div className="fs-content space-y-4">
+        {/* Header */}
+        <div className="fs-head">
+          <button onClick={() => navigate('/field/home')} className="fs-head__btn" aria-label="Назад">
+            <ArrowLeft size={20} strokeWidth={2.3} />
+          </button>
+          <IconTile icon={Package} tone="value" size={40} />
+          <h1 className="fs-head__title">Сборы</h1>
         </div>
-      )}
 
-      {lists.length === 0 ? (
-        <div className="rounded-xl p-8 text-center" style={{ backgroundColor: 'var(--bg-elevated)' }}>
-          <Package size={32} className="mx-auto mb-2" style={{ color: 'var(--text-tertiary)' }} />
-          <p style={{ color: 'var(--text-tertiary)' }}>Нет назначенных листов сборки</p>
-        </div>
-      ) : (
-        <div className="space-y-3">
-          {lists.map((list) => {
-            const cfg = STATUS_CONFIG[list.status] || STATUS_CONFIG.draft;
-            const items = list.items || [];
-            const packed = list.items_packed || items.filter(it => it.is_packed || it.status === 'packed').length;
-            const total = list.items_total || items.length;
-            const listPct = total > 0 ? Math.round((packed / total) * 100) : 0;
-            const isExpanded = expandedId === list.id;
+        {error && (
+          <Card variant="flat" tone="danger" className="p-3 text-sm" style={{ color: 'var(--danger-ink)' }}>{error}</Card>
+        )}
 
-            return (
-              <div key={list.id} className="rounded-xl overflow-hidden" style={{ backgroundColor: 'var(--bg-elevated)', border: '1px solid var(--border-norse)' }}>
-                {/* Header */}
-                <button onClick={() => setExpandedId(isExpanded ? null : list.id)} className="w-full p-4 text-left">
-                  <div className="flex items-center justify-between">
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-semibold truncate" style={{ color: 'var(--text-primary)' }}>{list.title || list.purpose || 'Лист сборки'}</p>
-                      {list.work_title && (
-                        <p className="text-xs mt-0.5 truncate" style={{ color: 'var(--text-tertiary)' }}>{list.work_title}</p>
-                      )}
-                      <div className="flex items-center gap-2 mt-0.5">
-                        <span className="text-xs" style={{ color: 'var(--text-tertiary)' }}>{packed}/{total} собрано</span>
-                        {list.due_date && (
-                          <span className="text-xs" style={{ color: 'var(--text-tertiary)' }}>· Срок: {fmtDate(list.due_date)}</span>
+        {/* Summary hero card */}
+        {lists.length > 0 && (
+          <Card variant="raised" className="p-5 relative overflow-hidden">
+            <p className="text-xs font-semibold uppercase tracking-widest mb-1" style={{ color: 'var(--text-tertiary)' }}>Сборка</p>
+            <p className="text-3xl font-bold" style={{ color: 'var(--value-ink)' }}>{pct}%</p>
+            <p className="text-sm mt-1" style={{ color: 'var(--text-secondary)' }}>
+              {totalPacked} из {totalItems} позиций собрано
+            </p>
+            {/* Progress bar */}
+            <div className="mt-2">
+              <ProgressBar value={pct} color="linear-gradient(90deg, var(--value), var(--acc))" />
+            </div>
+            <div className="flex justify-center gap-6 mt-3">
+              <span className="text-xs font-semibold flex items-center gap-1.5" style={{ color: 'var(--value-ink)' }}>
+                <Package size={13} strokeWidth={2.4} /> Активных: {totalActive}
+              </span>
+              <span className="text-xs font-semibold flex items-center gap-1.5" style={{ color: 'var(--ok)' }}>
+                <CheckCircle size={13} strokeWidth={2.4} /> Завершено: {totalCompleted}
+              </span>
+            </div>
+          </Card>
+        )}
+
+        {lists.length === 0 ? (
+          <EmptyState icon={Package} title="Нет назначенных листов сборки" description="Листы появятся, когда РП назначит сбор" />
+        ) : (
+          <div className="space-y-3">
+            {lists.map((list) => {
+              const cfg = STATUS_CONFIG[list.status] || STATUS_CONFIG.draft;
+              const items = list.items || [];
+              const packed = list.items_packed || items.filter((it) => it.is_packed || it.status === 'packed').length;
+              const total = list.items_total || items.length;
+              const listPct = total > 0 ? Math.round((packed / total) * 100) : 0;
+              const isExpanded = expandedId === list.id;
+
+              return (
+                <Card key={list.id} variant="raised" className="overflow-hidden p-0">
+                  {/* Header */}
+                  <button onClick={() => setExpandedId(isExpanded ? null : list.id)} className="w-full p-4 text-left">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-semibold truncate" style={{ color: 'var(--text-primary)' }}>{list.title || list.purpose || 'Лист сборки'}</p>
+                        {list.work_title && (
+                          <p className="text-xs mt-0.5 truncate" style={{ color: 'var(--text-tertiary)' }}>{list.work_title}</p>
+                        )}
+                        <div className="flex items-center gap-2 mt-0.5">
+                          <span className="text-xs" style={{ color: 'var(--text-tertiary)' }}>{packed}/{total} собрано</span>
+                          {list.due_date && (
+                            <span className="text-xs" style={{ color: 'var(--text-tertiary)' }}>· Срок: {fmtDate(list.due_date)}</span>
+                          )}
+                        </div>
+                      </div>
+                      <span className="text-xs px-2 py-0.5 rounded-full flex-shrink-0" style={{ backgroundColor: `color-mix(in oklab, ${cfg.color} 13%, transparent)`, color: cfg.color }}>{cfg.label}</span>
+                    </div>
+                    {list.description && (
+                      <p className="text-xs mt-2 line-clamp-2" style={{ color: 'var(--text-tertiary)' }}>{list.description}</p>
+                    )}
+                    {/* Progress bar */}
+                    {total > 0 && (
+                      <div className="mt-2">
+                        <ProgressBar value={listPct} color={cfg.color} />
+                      </div>
+                    )}
+                  </button>
+
+                  {/* Expanded items */}
+                  {isExpanded && (
+                    <div className="px-4 pb-4 space-y-2">
+                      {items.map((item) => {
+                        const st = ITEM_STATUS[item.status] || ITEM_STATUS.pending;
+                        const StatusIcon = st.Icon;
+                        const isPacked = item.status === 'packed' || item.status === 'replaced';
+                        return (
+                          <div key={item.id} className="flex items-center gap-3 p-2 rounded-lg" style={{ backgroundColor: 'var(--bg-surface-alt)' }}>
+                            <button onClick={() => toggleItem(list.id, item.id, item.status)} className="flex-shrink-0" aria-label="Отметить собранным">
+                              <StatusIcon size={18} strokeWidth={2.3} style={{ color: st.color }} />
+                            </button>
+                            <div className="flex-1 min-w-0">
+                              <span className="text-sm" style={{ color: isPacked ? 'var(--text-tertiary)' : 'var(--text-primary)', textDecoration: isPacked ? 'line-through' : 'none' }}>
+                                {item.name || item.title}
+                              </span>
+                              {/* Category + unit */}
+                              <div className="flex items-center gap-2">
+                                {item.item_category && (
+                                  <span className="text-xs" style={{ color: 'var(--text-tertiary)' }}>{item.item_category}</span>
+                                )}
+                                {item.quantity > 1 && (
+                                  <span className="text-xs" style={{ color: 'var(--text-tertiary)' }}>x{item.quantity} {item.unit || 'шт'}</span>
+                                )}
+                              </div>
+                              {/* Status badge for shortage/replaced */}
+                              {(item.status === 'shortage' || item.status === 'replaced') && (
+                                <span className="text-xs font-medium flex items-center gap-1" style={{ color: st.color }}>
+                                  <StatusIcon size={11} strokeWidth={2.4} aria-hidden />
+                                  {st.label}
+                                </span>
+                              )}
+                            </div>
+                            {/* Shortage button */}
+                            {list.status === 'in_progress' && !isPacked && item.status !== 'shortage' && (
+                              <button onClick={() => setShortageForm({ listId: list.id, itemId: item.id })}
+                                className="p-1 flex-shrink-0" title="Недостача" aria-label="Отметить недостачу">
+                                <AlertTriangle size={14} style={{ color: 'var(--danger)' }} />
+                              </button>
+                            )}
+                          </div>
+                        );
+                      })}
+
+                      {/* Actions */}
+                      <div className="flex gap-2 mt-2">
+                        {/* 23.06.2026 BUG-FIX (🟡 S-FIELD-06): убрана мёртвая ветка status==='active'
+                            (field_packing_lists.status — canon draft/sent/in_progress/completed/shipped, V061:84-85;
+                            'active' бэкенд не записывает). */}
+                        {list.status === 'sent' && (
+                          <KeyButton tone="accent" size="sm" icon={PlayCircle} style={{ flex: 1 }} onClick={() => startList(list.id)}>
+                            Начать сборку
+                          </KeyButton>
+                        )}
+                        {list.status === 'in_progress' && packed === total && total > 0 && (
+                          <KeyButton tone="status" size="sm" icon={PackageCheck} style={{ flex: 1 }} onClick={() => completeList(list.id)}>
+                            Завершить
+                          </KeyButton>
                         )}
                       </div>
                     </div>
-                    <span className="text-xs px-2 py-0.5 rounded-full flex-shrink-0" style={{ backgroundColor: cfg.color + '20', color: cfg.color }}>{cfg.label}</span>
-                  </div>
-                  {list.description && (
-                    <p className="text-xs mt-2 line-clamp-2" style={{ color: 'var(--text-tertiary)' }}>{list.description}</p>
                   )}
-                  {/* Progress bar */}
-                  {total > 0 && (
-                    <div className="mt-2 h-1.5 rounded-full overflow-hidden" style={{ backgroundColor: 'var(--bg-primary)' }}>
-                      <div className="h-full rounded-full transition-all" style={{ width: `${listPct}%`, backgroundColor: cfg.color }} />
-                    </div>
-                  )}
-                </button>
+                </Card>
+              );
+            })}
+          </div>
+        )}
+      </div>
 
-                {/* Expanded items */}
-                {isExpanded && (
-                  <div className="px-4 pb-4 space-y-2">
-                    {items.map((item) => {
-                      const st = ITEM_STATUS[item.status] || ITEM_STATUS.pending;
-                      const isPacked = item.status === 'packed' || item.status === 'replaced';
-                      return (
-                        <div key={item.id} className="flex items-center gap-3 p-2 rounded-lg" style={{ backgroundColor: 'var(--bg-primary)' }}>
-                          <button onClick={() => toggleItem(list.id, item.id, item.status)} className="flex-shrink-0">
-                            {isPacked ? <CheckCircle size={18} style={{ color: 'var(--ok)' }} /> : item.status === 'shortage' ? <AlertTriangle size={18} style={{ color: 'var(--danger)' }} /> : <Circle size={18} style={{ color: 'var(--text-tertiary)' }} />}
-                          </button>
-                          <div className="flex-1 min-w-0">
-                            <span className="text-sm" style={{ color: isPacked ? 'var(--text-tertiary)' : 'var(--text-primary)', textDecoration: isPacked ? 'line-through' : 'none' }}>
-                              {item.name || item.title}
-                            </span>
-                            {/* Category + unit */}
-                            <div className="flex items-center gap-2">
-                              {item.item_category && (
-                                <span className="text-xs" style={{ color: 'var(--text-tertiary)' }}>{item.item_category}</span>
-                              )}
-                              {item.quantity > 1 && (
-                                <span className="text-xs" style={{ color: 'var(--text-tertiary)' }}>x{item.quantity} {item.unit || 'шт'}</span>
-                              )}
-                            </div>
-                            {/* Status badge for shortage/replaced */}
-                            {(item.status === 'shortage' || item.status === 'replaced') && (
-                              <span className="text-xs font-medium" style={{ color: st.color }}>{st.icon} {st.label}</span>
-                            )}
-                          </div>
-                          {/* Shortage button */}
-                          {list.status === 'in_progress' && !isPacked && item.status !== 'shortage' && (
-                            <button onClick={() => setShortageForm({ listId: list.id, itemId: item.id })}
-                              className="p-1 flex-shrink-0" title="Недостача">
-                              <AlertTriangle size={14} style={{ color: 'var(--danger)' }} />
-                            </button>
-                          )}
-                        </div>
-                      );
-                    })}
-
-                    {/* Actions */}
-                    <div className="flex gap-2 mt-2">
-                      {/* 23.06.2026 BUG-FIX (🟡 S-FIELD-06): убрана мёртвая ветка status==='active'
-                          (field_packing_lists.status — canon draft/sent/in_progress/completed/shipped, V061:84-85;
-                          'active' бэкенд не записывает). */}
-                      {list.status === 'sent' && (
-                        <button onClick={() => startList(list.id)} className="flex-1 py-2 rounded-lg text-xs font-medium flex items-center justify-center gap-1" style={{ backgroundColor: '#3b82f620', color: 'var(--acc)' }}>
-                          <PlayCircle size={14} /> Начать сборку
-                        </button>
-                      )}
-                      {list.status === 'in_progress' && packed === total && total > 0 && (
-                        <button onClick={() => completeList(list.id)} className="flex-1 py-2 rounded-lg text-xs font-medium flex items-center justify-center gap-1" style={{ backgroundColor: '#22c55e20', color: 'var(--ok)' }}>
-                          <CheckCircle size={14} /> Завершить
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </div>
-      )}
-
-      {/* Shortage report form */}
-      {shortageForm && (
-        <div className="fixed inset-0 z-50 flex items-end justify-center" style={{ backgroundColor: 'color-mix(in oklab, var(--bg-primary) 50%, transparent)' }} onClick={() => setShortageForm(null)}>
-          <div className="w-full max-w-md rounded-t-2xl p-5 space-y-3" style={{ backgroundColor: 'var(--bg-primary)' }} onClick={e => e.stopPropagation()}>
-            <h2 className="text-base font-bold" style={{ color: 'var(--text-primary)' }}>Отчёт о недостаче</h2>
-            <textarea value={shortageNote} onChange={e => setShortageNote(e.target.value)} rows={2} placeholder="Описание проблемы"
-              className="w-full px-3 py-2.5 rounded-lg text-sm outline-none resize-none"
-              style={{ backgroundColor: 'var(--bg-elevated)', border: '1px solid var(--border-norse)', color: 'var(--text-primary)' }} />
-            <label className="flex items-center gap-2 p-3 rounded-lg cursor-pointer"
-              style={{ backgroundColor: 'var(--bg-elevated)', border: '1px dashed var(--border-norse)' }}>
-              <Camera size={16} style={{ color: 'var(--gold)' }} />
-              <span className="text-xs" style={{ color: 'var(--text-secondary)' }}>Фото недостачи</span>
-              <input ref={fileRef} type="file" accept="image/*" className="hidden" />
-            </label>
-            <div className="flex gap-2">
-              <button onClick={() => setShortageForm(null)} className="flex-1 py-2.5 rounded-lg text-sm"
-                style={{ backgroundColor: 'var(--bg-elevated)', color: 'var(--text-secondary)' }}>Отмена</button>
-              <button onClick={() => reportShortage(shortageForm.listId, shortageForm.itemId)}
-                className="flex-1 py-2.5 rounded-lg text-sm font-semibold text-white"
-                style={{ backgroundColor: 'var(--danger)' }}>Недостача</button>
-            </div>
+      {/* Shortage report sheet */}
+      <BottomSheet open={!!shortageForm} onClose={() => setShortageForm(null)} title="Отчёт о недостаче">
+        <div className="space-y-3 pb-2">
+          <textarea value={shortageNote} onChange={(e) => setShortageNote(e.target.value)} rows={2} placeholder="Описание проблемы"
+            className="w-full px-3 py-2.5 rounded-lg text-sm outline-none resize-none"
+            style={{ backgroundColor: 'var(--bg-surface-alt)', border: '1px solid var(--tile-brd)', color: 'var(--text-primary)' }} />
+          <label className="flex items-center gap-2 p-3 rounded-lg cursor-pointer"
+            style={{ backgroundColor: 'var(--bg-surface-alt)', border: '1px dashed var(--tile-brd)' }}>
+            <Camera size={16} style={{ color: 'var(--value-ink)' }} />
+            <span className="text-xs" style={{ color: 'var(--text-secondary)' }}>Фото недостачи</span>
+            <input ref={fileRef} type="file" accept="image/*" className="hidden" />
+          </label>
+          <div className="flex gap-2">
+            <KeyButton tone="neutral" style={{ flex: 1 }} onClick={() => setShortageForm(null)}>Отмена</KeyButton>
+            <KeyButton tone="danger" style={{ flex: 1 }} onClick={() => reportShortage(shortageForm?.listId, shortageForm?.itemId)}>Недостача</KeyButton>
           </div>
         </div>
-      )}
+      </BottomSheet>
     </div>
   );
 }

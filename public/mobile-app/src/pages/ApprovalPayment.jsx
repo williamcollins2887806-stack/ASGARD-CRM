@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useHaptic } from '@/hooks/useHaptic';
 import { api } from '@/api/client';
+import { useAuthStore } from '@/stores/authStore';
 import { PageShell } from '@/components/layout/PageShell';
 import { BottomSheet } from '@/components/shared/BottomSheet';
 import { EmptyState } from '@/components/shared/EmptyState';
@@ -9,8 +10,19 @@ import { PullToRefresh } from '@/components/shared/PullToRefresh';
 import { CreditCard, ChevronRight } from 'lucide-react';
 import { formatMoney, relativeTime } from '@/lib/utils';
 
+/* Очередь «на оплату» у бухгалтерии и у директора — РАЗНЫЕ эндпоинты.
+   /approval/pending-buh отдаёт 403 всем, кроме BUH/ADMIN (approvalService.isBuh);
+   директору его звать нельзя: api-клиент трактует такой 403 как «сессия истекла»,
+   стирает токен и выбрасывает на /welcome. Директор читает свой срез — /approval/pending-dir. */
+const BUH_ROLES = ['BUH', 'ADMIN'];
+const DIRECTOR_ROLES = ['ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV'];
+
 export default function ApprovalPayment() {
   const haptic = useHaptic();
+  const user = useAuthStore((s) => s.user);
+  const role = user?.role;
+  const isBuh = BUH_ROLES.includes(role);
+  const isDirector = DIRECTOR_ROLES.includes(role);
   const [items, setItems] = useState([]);
   const [cashBalance, setCashBalance] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -19,16 +31,27 @@ export default function ApprovalPayment() {
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await api.get('/approval/pending-buh');
-      setItems(res?.items || []);
-      setCashBalance(res?.cash_balance || 0);
+      if (isBuh) {
+        const res = await api.get('/approval/pending-buh');
+        setItems(res?.items || []);
+        setCashBalance(res?.cash_balance || 0);
+      } else if (isDirector) {
+        const [pending, bal] = await Promise.all([
+          api.get('/approval/pending-dir'),
+          api.get('/approval/cash-balance').catch(() => null),
+        ]);
+        setItems(pending?.items || []);
+        setCashBalance(bal?.balance || 0);
+      } else {
+        setItems([]);
+      }
     } catch { setItems([]); }
     finally { setLoading(false); }
-  }, []);
+  }, [isBuh, isDirector]);
   useEffect(() => { fetchData(); }, [fetchData]);
 
   return (
-    <PageShell title="Оплаты">
+    <PageShell title={isBuh ? 'Оплаты' : 'Согласование счетов'}>
       <PullToRefresh onRefresh={fetchData}>
         {!loading && (
           <div className="card-hero mb-3" style={{ animation: 'fadeInUp var(--motion-normal) var(--ease-spring) forwards' }}>
@@ -38,7 +61,7 @@ export default function ApprovalPayment() {
           </div>
         )}
         {loading ? <SkeletonList count={4} /> : items.length === 0 ? (
-          <EmptyState icon={CreditCard} iconColor="var(--green)" iconBg="rgba(48,209,88,0.1)" title="Нет платежей" description="Очередь оплат пуста" />
+          <EmptyState icon={CreditCard} iconColor="var(--green)" iconBg="rgba(48,209,88,0.1)" title={isBuh ? 'Нет платежей' : 'Нет счетов на согласовании'} description={isBuh ? 'Очередь оплат пуста' : 'Новые счета появятся здесь'} />
         ) : (
           <div className="flex flex-col gap-2 pb-4">
             {items.map((item, i) => (

@@ -423,7 +423,7 @@ export default function FieldHome() {
       // Academy block — special UI
       if (e.message?.includes('Чертогах Мимира') || e.message?.includes('ACADEMY_BLOCKED') || e.message?.includes('Испытание')) {
         haptic.error();
-        setError('🏛️ ' + (e.message || 'Пройди Испытание недели в Чертогах Мимира'));
+                setError((e.message || 'Пройди Испытание недели в Чертогах Мимира'));
         setActionLoading(false);
         return;
       }
@@ -753,9 +753,11 @@ export default function FieldHome() {
             width: 46, height: 46, borderRadius: 12, flexShrink: 0,
             background: 'linear-gradient(135deg, color-mix(in oklab, var(--value) 30%, transparent), color-mix(in oklab, var(--value) 10%, transparent))',
             border: '1px solid color-mix(in oklab, var(--value) 50%, transparent)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            fontSize: 24,
-          }}>🛡️</div>
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                fontSize: 24,
+                }}>
+                  <Shield size={22} strokeWidth={2.2} aria-hidden />
+                </div>
           <div style={{ flex: 1, minWidth: 0 }}>
             <p style={{ fontSize: 13, fontWeight: 700, color: 'var(--gold)', marginBottom: 2 }}>
               Скачать приложение ASGARD
@@ -785,7 +787,10 @@ export default function FieldHome() {
           animation: 'fadeInUp var(--motion-normal) var(--ease-spring) both',
         }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 }}>
-            <p style={{ fontSize: 14, fontWeight: 700, color: 'var(--value)' }}>📲 Добавь приложение на экран</p>
+            <p style={{ fontSize: 14, fontWeight: 700, color: 'var(--value-ink)', display: 'flex', alignItems: 'center', gap: 6 }}>
+              <Smartphone size={15} strokeWidth={2.4} aria-hidden />
+              Добавь приложение на экран
+            </p>
             <button onClick={() => { setShowIOSHint(false); localStorage.setItem(IOS_HINT_DISMISSED_KEY, '1'); }}
               style={{ background: 'none', border: 'none', color: 'color-mix(in oklab, var(--text-primary) 40%, transparent)', fontSize: 18, cursor: 'pointer', padding: '0 4px' }}>×</button>
           </div>
@@ -824,7 +829,10 @@ export default function FieldHome() {
           animation: 'fadeInUp var(--motion-normal) var(--ease-spring) both',
         }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
-            <p style={{ fontSize: 14, fontWeight: 700, color: 'var(--acc)' }}>🔔 Включи уведомления</p>
+            <p style={{ fontSize: 14, fontWeight: 700, color: 'var(--acc)', display: 'flex', alignItems: 'center', gap: 6 }}>
+              <Bell size={15} strokeWidth={2.4} aria-hidden />
+              Включи уведомления
+            </p>
             <button onClick={() => { setShowPushPrompt(false); localStorage.setItem(PUSH_DISMISSED_KEY, '1'); }}
               style={{ background: 'none', border: 'none', color: 'color-mix(in oklab, var(--text-primary) 40%, transparent)', fontSize: 18, cursor: 'pointer', padding: '0 4px' }}>×</button>
           </div>
@@ -844,7 +852,7 @@ export default function FieldHome() {
                 color: 'var(--text-primary)', fontSize: 13, fontWeight: 700, cursor: 'pointer',
               }}
             >
-              {push.loading ? '...' : '🔔 Включить'}
+                {push.loading ? '…' : 'Включить'}
             </button>
             <button
               onClick={() => { setShowPushPrompt(false); localStorage.setItem(PUSH_DISMISSED_KEY, '1'); }}
@@ -876,7 +884,7 @@ export default function FieldHome() {
           <div className="flex items-center gap-2 mb-2">
             <MapPin size={16} style={{ color: 'var(--gold)' }} />
             <span className="text-xs font-medium uppercase tracking-wide" style={{ color: 'var(--text-tertiary)' }}>
-              {isActiveAssignment ? '▶ Активный проект' : '✔ Завершён'}
+              {isActiveAssignment ? 'Активный проект' : 'Завершён'}
             </span>
           </div>
           <p className="font-semibold" style={{ color: 'var(--text-primary)' }}>{project.work_title || project.title || project.object_name}</p>
@@ -1011,7 +1019,7 @@ export default function FieldHome() {
       {project && !isActiveAssignment && (
         <div className="rounded-xl p-4 mb-4 text-center"
           style={{ backgroundColor: 'color-mix(in oklab, var(--danger) 8%, transparent)', border: '1px solid color-mix(in oklab, var(--danger) 20%, transparent)' }}>
-          <div className="text-2xl mb-1">🏠</div>
+              <div className="text-2xl mb-1"><HomeIcon size={24} strokeWidth={2.2} aria-hidden /></div>
           <p className="font-semibold" style={{ color: 'var(--text-primary)' }}>Вы уехали с объекта</p>
           {(project.departure_date || project.date_to) && (
             <p className="text-xs mt-1" style={{ color: 'var(--text-secondary)' }}>
@@ -1270,7 +1278,7 @@ export default function FieldHome() {
           style={{ background: 'var(--field-card)', border: '1.5px solid color-mix(in oklab, var(--value) 40%, transparent)', boxShadow: '0 4px 20px color-mix(in oklab, var(--value) 8%, transparent)' }}>
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <span style={{ fontSize: 32 }}>🏆</span>
+                <span style={{ color: 'var(--value-ink)' }}><TrophyIcon size={30} strokeWidth={2.1} aria-hidden /></span>
               <div>
                 <p className="text-xs font-semibold uppercase tracking-wide" style={{ color: 'color-mix(in oklab, var(--value) 70%, transparent)' }}>Мой рейтинг</p>
                 <p className="text-lg font-bold" style={{ color: 'var(--value)' }}>#{myRank.rank} из {myRank.total}</p>
@@ -1336,9 +1344,9 @@ export default function FieldHome() {
                 onClick={() => { haptic.medium(); setShowReadinessPrompt(false); navigate('/field/readiness'); }}
                 className="flex-1 py-3.5 rounded-xl font-semibold text-sm active:scale-95 transition-transform"
                 style={{ background: 'linear-gradient(135deg, var(--green), var(--ok))', color: 'var(--text-primary)' }}
-              >
-                ⚔️ Готов
-              </button>
+                >
+                  Готов
+                </button>
               <button
                 type="button"
                 onClick={() => { haptic.light(); setShowReadinessPrompt(false); navigate('/field/readiness'); }}
@@ -1348,9 +1356,9 @@ export default function FieldHome() {
                   border: '1px solid color-mix(in srgb, var(--warn-t) 35%, transparent)',
                   color: 'var(--warn-t)',
                 }}
-              >
-                🛏 Отдыхаю
-              </button>
+                >
+                  Отдыхаю
+                </button>
             </div>
           </div>
         </>

@@ -660,7 +660,11 @@ export default function ChemLabGame() {
             <div className="cl-stamp">НАРЯД ЗАКРЫТ</div>
             <div className="cl-stars">
               {[1, 2, 3].map((n) => (
-                <span key={n}>{n <= (winResult.stars || 1) ? '⭐' : '☆'}</span>
+                    <span key={n}>
+                      {n <= (winResult.stars || 1)
+                        ? <Star size={16} strokeWidth={2.2} fill="currentColor" style={{ color: 'var(--value-ink)' }} aria-hidden />
+                        : <Star size={16} strokeWidth={2.2} style={{ color: 'var(--text-tertiary)', opacity: 0.4 }} aria-hidden />}
+                    </span>
               ))}
             </div>
             <p className="cl-rating">

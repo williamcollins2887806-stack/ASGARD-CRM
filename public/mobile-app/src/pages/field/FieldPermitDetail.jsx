@@ -12,7 +12,12 @@ import {
   Play,
   Square,
   Clock,
+  ClipboardList,
 } from 'lucide-react';
+import { Card, IconTile, KeyButton, SectionLabel } from '@/components/field/ui';
+import './field-screens.css';
+
+const PAPER_INK = '#1a1205';
 
 const ST = {
   draft: { label: 'ЧЕРНОВИК', color: 'var(--text-secondary)' },
@@ -110,7 +115,7 @@ export default function FieldPermitDetail() {
 
   if (!permit && !error) {
     return (
-      <div className="min-h-screen flex items-center justify-center text-sm" style={{ background: 'var(--field-bg-3)', color: 'var(--field-text-3)' }}>
+      <div className="min-h-screen flex items-center justify-center text-sm" style={{ background: 'var(--bg-primary)', color: 'var(--text-tertiary)' }}>
         Загрузка наряда…
       </div>
     );
@@ -118,7 +123,7 @@ export default function FieldPermitDetail() {
 
   if (!permit) {
     return (
-      <div className="min-h-screen p-6" style={{ background: 'var(--field-bg-3)' }}>
+      <div className="min-h-screen p-6" style={{ background: 'var(--bg-primary)' }}>
         <button type="button" onClick={() => navigate('/field/permits')} className="text-sm mb-4" style={{ color: 'var(--gold)' }}>
           ← Назад
         </button>
@@ -145,28 +150,31 @@ export default function FieldPermitDetail() {
   };
 
   return (
-    <div className="min-h-screen" style={{ background: 'var(--field-bg-3)', paddingBottom: 'max(env(safe-area-inset-bottom), 24px)' }}>
+    <div className="fs-root" style={{ paddingBottom: 'max(env(safe-area-inset-bottom), 24px)' }}>
+      <div className="fs-scene" aria-hidden><span className="fs-orb fs-orb--a" /><span className="fs-orb fs-orb--b" /></div>
       <div
-        className="sticky top-0 z-20 px-4 py-3 flex items-center gap-3"
+        className="flex items-center gap-3"
         style={{
-          background: 'color-mix(in oklab, var(--bg-primary) 94%, transparent)',
-          backdropFilter: 'blur(14px)',
-          borderBottom: '1px solid color-mix(in oklab, var(--value) 28%, transparent)',
+          position: 'sticky', top: 0, zIndex: 20,
+          paddingTop: 'max(env(safe-area-inset-top), 12px)', paddingBottom: 12, paddingInline: 16,
+          background: 'color-mix(in oklab, var(--bg-primary) 88%, transparent)',
+          WebkitBackdropFilter: 'blur(14px) saturate(1.5)', backdropFilter: 'blur(14px) saturate(1.5)',
+          borderBottom: '1px solid color-mix(in oklab, var(--value) 24%, transparent)',
         }}
       >
         <button
           type="button"
           onClick={() => navigate('/field/permits')}
-          className="p-2 rounded-xl"
-          style={{ background: 'color-mix(in oklab, var(--text-primary) 5%, transparent)' }}
+          className="fs-head__btn" aria-label="Назад" style={{ marginLeft: -8 }}
         >
-          <ArrowLeft size={18} style={{ color: 'var(--gold)' }} />
+          <ArrowLeft size={20} strokeWidth={2.3} />
         </button>
+        <IconTile icon={ClipboardList} tone="value" size={38} />
         <div className="flex-1 min-w-0">
-          <div className="text-[10px] font-mono truncate" style={{ color: 'var(--gold)' }}>
+          <div className="text-[10px] font-mono truncate" style={{ color: 'var(--value-ink)' }}>
             {permit.number || `черновик #${id}`}
           </div>
-          <div className="font-extrabold text-sm truncate" style={{ color: 'color-mix(in oklab, var(--value) 25%, var(--text-primary))' }}>
+          <div className="font-extrabold text-sm truncate" style={{ color: 'var(--text-primary)' }}>
             {permit.form_title}
           </div>
         </div>
@@ -180,11 +188,11 @@ export default function FieldPermitDetail() {
 
       <div style={{ height: 5, background: 'repeating-linear-gradient(-45deg,var(--bg-primary) 0 8px,var(--value) 8px 16px)' }} />
 
-      <div className="p-4 space-y-3">
+      <div className="fs-content p-4 space-y-3" style={{ paddingTop: 12 }}>
         {error && (
-          <div className="rounded-xl p-3 text-sm" style={{ background: 'color-mix(in oklab, var(--danger) 12%, transparent)', color: 'var(--danger)' }}>
+          <Card variant="flat" tone="danger" className="p-3 text-sm" style={{ color: 'var(--danger-ink)' }}>
             {error}
-          </div>
+          </Card>
         )}
 
         {/* Official paper */}
@@ -192,7 +200,7 @@ export default function FieldPermitDetail() {
           className="rounded-lg overflow-hidden"
           style={{
             background: 'linear-gradient(180deg,#fbf6ea,#efe6d2)',
-            color: 'var(--bg-surface)',
+            color: '#1a1205',
             boxShadow: '0 16px 48px color-mix(in oklab, var(--bg-primary) 50%, transparent)',
           }}
         >
@@ -380,7 +388,7 @@ export default function FieldPermitDetail() {
                         type="button"
                         disabled={busy}
                         className="mt-2 text-[11px] font-bold px-2.5 py-1.5 rounded-md"
-                        style={{ background: closed ? '#334155' : 'var(--ok)', color: 'var(--text-primary)' }}
+                          style={{ background: closed ? 'var(--bg-surface-alt)' : 'var(--ok)', color: closed ? 'var(--text-primary)' : 'var(--on-ok)' }}
                         onClick={() =>
                           run(async () => {
                             if (closed) await fieldApi.post(`/nd/${id}/risks/${r.id}/reopen`);
@@ -418,14 +426,14 @@ export default function FieldPermitDetail() {
             <div className="grid grid-cols-2 gap-3 mt-5 pt-3 border-t border-black/15 text-[10px]" style={{ color: '#5c5346' }}>
               <div>
                 Выдал (РП)
-                <div className="mt-1 font-semibold text-xs" style={{ color: 'var(--bg-surface)' }}>
+                <div className="mt-1 font-semibold text-xs" style={{ color: PAPER_INK }}>
                   {permit.created_by_name || '—'}
                 </div>
                 <div className="border-b border-black/40 mt-2 h-4" />
               </div>
               <div>
                 Утвердил (мастер)
-                <div className="mt-1 font-semibold text-xs" style={{ color: 'var(--bg-surface)' }}>
+                <div className="mt-1 font-semibold text-xs" style={{ color: PAPER_INK }}>
                   {permit.issued_by_name || '—'}
                 </div>
                 <div className="border-b border-black/40 mt-2 h-4" />
@@ -504,7 +512,7 @@ export default function FieldPermitDetail() {
               type="button"
               disabled={busy}
               className="w-full rounded-xl py-3.5 text-sm font-black flex items-center justify-center gap-2"
-              style={{ background: 'linear-gradient(135deg,#e0b34a,var(--value))', color: '#1a1205' }}
+              style={{ background: 'linear-gradient(135deg, var(--gold-fill), var(--gold-fill))', color: 'var(--text-on-gold)' }}
               onClick={() =>
                 run(async () => {
                   await fieldApi.put(`/nd/${id}`, {
@@ -528,7 +536,7 @@ export default function FieldPermitDetail() {
             className="rounded-2xl p-3.5 space-y-2.5"
             style={{ border: '1px solid color-mix(in oklab, var(--acc) 40%, transparent)', background: 'color-mix(in oklab, var(--acc) 8%, transparent)' }}
           >
-            <div className="text-xs font-extrabold" style={{ color: '#7dd3fc' }}>
+            <div className="text-xs font-extrabold" style={{ color: 'var(--acc)' }}>
               Обязательное ознакомление
             </div>
             <div className="text-xs leading-relaxed" style={{ color: 'var(--text-tertiary)' }}>
@@ -545,7 +553,7 @@ export default function FieldPermitDetail() {
               type="button"
               disabled={busy || !allRead}
               className="w-full rounded-xl py-3.5 text-sm font-bold flex items-center justify-center gap-2 disabled:opacity-40"
-              style={{ background: '#0369a1', color: 'var(--text-primary)' }}
+              style={{ background: 'var(--acc)', color: '#fff' }}
               onClick={() =>
                 run(async () => {
                   await fieldApi.post(`/nd/${id}/ack`, {
@@ -573,7 +581,7 @@ export default function FieldPermitDetail() {
                 type="button"
                 disabled={busy}
                 className="rounded-xl py-2.5 text-xs font-bold flex items-center justify-center gap-1"
-                style={{ background: 'var(--ok)', color: 'var(--text-primary)' }}
+                style={{ background: 'var(--ok)', color: 'var(--on-ok)' }}
                 onClick={() => run(() => fieldApi.post(`/nd/${id}/daily`, { action: 'start' }))}
               >
                 <Play size={14} /> Допуск на день
@@ -582,8 +590,8 @@ export default function FieldPermitDetail() {
                 type="button"
                 disabled={busy}
                 className="rounded-xl py-2.5 text-xs font-bold flex items-center justify-center gap-1"
-                style={{ background: '#334155', color: 'var(--text-primary)' }}
-                onClick={() => run(() => fieldApi.post(`/nd/${id}/daily`, { action: 'end' }))}
+            style={{ background: closed ? 'var(--bg-surface-alt)' : 'var(--ok)', color: closed ? 'var(--text-primary)' : 'var(--on-ok)' }}
+            onClick={() => run(() => fieldApi.post(`/nd/${id}/daily`, { action: 'end' }))}
               >
                 <Square size={14} /> Окончание дня
               </button>
@@ -597,7 +605,7 @@ export default function FieldPermitDetail() {
                     <button
                       type="button"
                       className="flex-1 py-2 rounded-lg font-bold"
-                      style={{ background: 'var(--ok)', color: 'var(--text-primary)' }}
+                      style={{ background: 'var(--ok)', color: 'var(--on-ok)' }}
                       onClick={() => run(() => fieldApi.post(`/nd/${id}/extensions/${e.id}/decide`, { approve: true }))}
                     >
                       Одобрить
@@ -605,7 +613,7 @@ export default function FieldPermitDetail() {
                     <button
                       type="button"
                       className="flex-1 py-2 rounded-lg font-bold"
-                      style={{ background: 'var(--danger)', color: 'var(--text-primary)' }}
+                      style={{ background: 'var(--danger)', color: 'var(--on-danger)' }}
                       onClick={() => run(() => fieldApi.post(`/nd/${id}/extensions/${e.id}/decide`, { approve: false }))}
                     >
                       Отклонить
@@ -649,7 +657,7 @@ export default function FieldPermitDetail() {
             type="button"
             disabled={busy}
             className="w-full rounded-xl py-3 text-sm font-bold flex items-center justify-center gap-2"
-            style={{ background: 'color-mix(in oklab, var(--acc) 12%, transparent)', color: '#7dd3fc', border: '1px solid color-mix(in oklab, var(--acc) 30%, transparent)' }}
+            style={{ background: 'color-mix(in oklab, var(--acc) 12%, transparent)', color: 'var(--acc)', border: '1px solid color-mix(in oklab, var(--acc) 30%, transparent)' }}
             onClick={() => run(() => fieldApi.post(`/nd/${id}/extensions`, {}))}
           >
             <Clock size={16} /> Запросить продление
@@ -692,7 +700,7 @@ export default function FieldPermitDetail() {
               type="button"
               disabled={busy || !emailTo.trim()}
               className="px-4 rounded-xl font-bold text-sm"
-              style={{ background: 'var(--gold)', color: '#1a1205' }}
+              style={{ background: 'var(--gold-fill)', color: 'var(--text-on-gold)' }}
               onClick={() =>
                 run(async () => {
                   await fieldApi.post(`/nd/${id}/email`, { to: emailTo.trim() });
@@ -716,9 +724,9 @@ export default function FieldPermitDetail() {
 }
 
 const fieldStyle = {
-  background: '#121820',
+  background: 'var(--bg-surface-alt)',
   color: 'var(--text-primary)',
-  border: '1px solid #2c3648',
+  border: '1px solid var(--tile-brd)',
 };
 
 function fmt(v) {

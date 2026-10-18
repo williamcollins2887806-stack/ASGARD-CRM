@@ -13,7 +13,7 @@
  *            travel, worker_profiles, employee_collections, stories,
  *            geo, push, files, integrations, sse, inbox_applications_ai
  */
-const { api, assert, assertOk, assertStatus, assertForbidden, skip } = require('../config');
+const { api, assert, assertOk, assertStatus, assertForbidden, skip, rawFetch } = require('../config');
 
 // Shared state between tests
 const S = {};
@@ -539,6 +539,36 @@ module.exports = {
           const hints = resp.data?.hints || [];
           assert(Array.isArray(hints), 'Should return empty array for unknown page');
         }
+      }
+    },
+
+    // ── D-274: учёт заходов на страницы (лёгкий эндпоинт вместо тяжёлого /api/hints) ──
+    {
+      name: 'PAGE-VIEW: valid page key returns ok + valid=true',
+      run: async () => {
+        const resp = await api('GET', '/api/page-view?page=pm-calculations', { role: 'PM' });
+        if (resp.status === 404) skip('page-view not available');
+        assertOk(resp, 'page-view valid key');
+        assert(resp.data?.ok === true, 'Must return ok:true');
+        assert(resp.data?.valid === true, 'Valid key must yield valid:true');
+      }
+    },
+    {
+      name: 'PAGE-VIEW: garbage page key returns valid=false, not 500',
+      run: async () => {
+        const resp = await api('GET',
+          '/api/page-view?page=' + encodeURIComponent('<script>alert(1)</script>'), { role: 'PM' });
+        if (resp.status === 404) skip('page-view not available');
+        assert(resp.status !== 500, `Garbage key must not 500, got ${resp.status}`);
+        if (resp.ok) assert(resp.data?.valid === false, 'Garbage key must yield valid:false');
+      }
+    },
+    {
+      name: 'PAGE-VIEW: requires auth (401 without token)',
+      run: async () => {
+        const resp = await rawFetch('GET', '/api/page-view?page=home');
+        if (resp.status === 404) skip('page-view not available');
+        assertStatus(resp, 401, 'page-view must require authentication');
       }
     },
 

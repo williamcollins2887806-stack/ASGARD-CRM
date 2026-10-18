@@ -94,7 +94,7 @@ export default function Alerts() {
       <PullToRefresh onRefresh={fetchNotifications}>
         {unreadCount > 0 && (
           <div className="flex items-center gap-2 px-2 pb-3" style={{ animation: 'fadeInUp var(--motion-normal) var(--ease-spring) forwards' }}>
-            <span className="flex items-center justify-center w-6 h-6 rounded-full text-[11px] font-bold" style={{ background: 'var(--red-soft)', color: '#fff' }}>{unreadCount}</span>
+            <span className="flex items-center justify-center w-6 h-6 rounded-full text-[11px] font-bold" style={{ background: 'var(--red-soft)', color: 'var(--on-red-soft)' }}>{unreadCount}</span>
             <span className="text-[13px] c-secondary">непрочитанных</span>
           </div>
         )}

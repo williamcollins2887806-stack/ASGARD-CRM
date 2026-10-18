@@ -115,7 +115,7 @@ export default function DirectorQueuesWidget() {
             <span style={{
               position: 'absolute', top: -5, right: -5,
               minWidth: 20, height: 20, padding: '0 6px', borderRadius: 10,
-              background: 'var(--red)', color: '#fff',
+              background: 'var(--danger)', color: 'var(--on-danger)',
               fontSize: 11, fontWeight: 800,
               display: 'grid', placeItems: 'center',
               boxShadow: '0 2px 6px rgba(0,0,0,0.25)',

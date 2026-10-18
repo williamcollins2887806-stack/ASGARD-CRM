@@ -31,9 +31,22 @@
   --acc-deep: #2d5a8a;
   --value: var(--gold);          /* заработано */
   --value-ink: var(--gold);      /* золото ТЕКСТОМ (в светлой — темнее) */
-  --danger: var(--red);
-  --danger-ink: var(--red);
+  --danger: var(--red);          /* заливка/фон опасности */
+  /* --danger-ink — КРАСНЫЙ ТЕКСТ. #c62828 как текст давал 2.82–3.52 на тёмных
+     поверхностях (провал). #ff453a — уже есть в палитре как --red-soft, даёт
+     4.65 минимум. Заливки продолжают работать через --danger. */
+  --danger-ink: var(--red-soft);
   --ok: var(--green);
+  /* Текст НА заливке. В тёмной теме --green #30d158 яркая → нужен тёмный текст
+     (белый давал 2.02 — провал WCAG). Раньше токена не было, и «на зелёном»
+     брали --text-primary/--text-on-accent, что ловило провал в одной из тем. */
+  --on-ok: #0B1F10;
+  --on-danger: #FFFFFF;
+  --on-red-soft: #2B0A0D;         /* --red-soft в тёмной теме яркая → тёмный текст */
+  /* Золотая ЗАЛИВКА под тёмный текст (--text-on-gold). В тёмной теме --gold
+     это #c8a84e — достаточно яркая, поэтому заливка совпадает с --gold.
+     (Раньше токен был определён только в .light → в тёмной теме не существовал.) */
+  --gold-fill: #c8a84e;
   --ink-icon: #C3D0E4;           /* нейтральная иконка */
   --tile-bg: #141A26;            /* нейтральная плитка */
   --tile-hi: #26303F;
@@ -46,6 +59,39 @@
   --r-card: 18px;                /* радиус карточки */
   --r-tile: 16px;                /* радиус плитки/иконки */
   --btn-r: 14px;                 /* радиус кнопки */
+
+  /* Активный чип «ценность»: тёмная тема — светлое золото + почти чёрный текст
+     (8.06:1); светлая — золото темнее, поэтому заливка светлая, а текст тёмно-
+     золотой (4.65:1). Иначе тёмный текст ложился на тёмное золото = 3.24:1. */
+  --chip-value-bg: var(--value);
+  --chip-on-value: var(--text-on-gold);
+
+  /* === Алиасы легаси-имён (совместимость) ===
+     Дефект: в 40+ местах использовались `var(--info-t)`, `var(--warn-t)`,
+     `var(--err-t)`, `var(--error)`, `var(--success)`, `var(--warning)`,
+     `var(--info)`, `var(--warn)`, `var(--bg-base)`, `var(--border-mid)`
+     и др., но НИ ОДНА из них не была определена — CSS молча отбрасывал
+     свойство, и цвет (рамка, фон, текст статуса) просто пропадал.
+     Здесь имена сводятся к семантическому слою: смысл сохраняется. */
+  --info: var(--acc);
+  --info-t: var(--acc);
+  --warn: var(--value);
+  --warn-t: var(--value-ink);
+  --warning: var(--value);
+  --error: var(--danger);
+  --err-t: var(--danger-ink);
+  --err-bg: var(--danger);
+  --success: var(--ok);
+  --bg-base: var(--bg-primary);
+  --bg-2: var(--bg-surface-alt);
+  --bg-card: var(--bg-surface);
+  --bg-secondary: var(--bg-surface-alt);
+  --brd: var(--border-norse);
+  --border-mid: var(--border-light);
+  --accent-gold: var(--value);
+  --c-green: var(--ok);
+  --c-tertiary: var(--text-tertiary);
+  --ui-card-value-bg: var(--bg-surface-alt);
 
   /* Accents */
   --gold: #c8a84e;
@@ -147,7 +193,10 @@
   --bg-elevated: #FFFFFF;
   --text-primary: #1C1C1E;
   --text-secondary: #6C6C70;
-  --text-tertiary: #8E8E93;
+  /* --text-tertiary был #8E8E93 → 3.26 на белом и 2.92 на фоне #F2F2F7 (провал WCAG:
+     это обычный текст 10–14 px, не крупный). #6E6E73 даёт 4.54 на самом светлом
+     фоне и 5.07 на белом, оставаясь светлее вторичного — иерархия сохранена. */
+  --text-tertiary: #6E6E73;
   /* On-color tokens stay the same in light theme — colored gradients
      (blue/green/gold) are bright in both modes, so contrast holds. */
   --text-on-accent: #FFFFFF;
@@ -164,6 +213,11 @@
   --green: #0E7A3E;       /* 5.15 на #FFFFFF — только статус */
   --gold-fill: #A87A16;   /* золотая ЗАЛИВКА (не текст) */
 
+  /* Чип «ценность» в светлой теме: светлая золотая заливка + тёмно-золотой текст
+     (4.65:1). Насыщенное золото #8A5E0B с тёмным текстом давало 3.24:1. */
+  --chip-value-bg: #F5E7C8;
+  --chip-on-value: #6B4909;
+
   --acc: var(--blue);
   --acc-deep: #0A46C2;
   --value: var(--gold);
@@ -171,6 +225,9 @@
   --danger: var(--red);
   --danger-ink: #B01D33;
   --ok: var(--green);
+  --on-ok: #FFFFFF;               /* тёмная зелёная заливка → белый текст */
+  --on-danger: #FFFFFF;
+  --on-red-soft: #FFFFFF;
   --ink-icon: #2F3E56;
   --tile-bg: #FFFFFF;
   --tile-hi: #FFFFFF;

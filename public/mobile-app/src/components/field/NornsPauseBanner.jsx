@@ -23,8 +23,8 @@ const STRIP_CSS = `
   border:1px solid rgba(240,200,80,.28);
   display:flex;gap:10px;align-items:flex-start;
 }
-.norns-pause-strip-icon{font-size:18px;line-height:1.2;flex-shrink:0}
-.norns-pause-strip-text{font-size:12px;line-height:1.4;color:rgba(255,255,255,.78);font-weight:600}
+.norns-pause-strip-icon{font-size:18px;line-height:1.2;flex-shrink:0;color:var(--value-ink)}
+.norns-pause-strip-text{font-size:12px;line-height:1.4;color:var(--text-secondary);font-weight:600}
 .norns-pause-modal-backdrop{
   position:fixed;inset:0;z-index:200;background:rgba(0,0,0,.72);
   display:flex;align-items:flex-end;justify-content:center;

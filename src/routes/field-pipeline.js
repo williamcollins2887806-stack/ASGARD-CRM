@@ -150,19 +150,29 @@ async function routes(fastify) {
 
   fastify.get('/leaderboard', { preHandler: [fastify.fieldAuthenticate] }, async (req) => {
     const eid = req.fieldEmployee.id;
+    // См. комментарий в field-chemlab: мёртвые weekly_stars (week_start не текущая
+    // неделя) обнуляем на чтении, чтобы не висели в топе недели незаслуженно.
     const { rows } = await db.query(
-      `SELECT e.id AS employee_id, e.fio, s.max_level, s.weekly_stars, s.current_streak,
-              s.best_streak, s.total_stars, s.total_levels
+      `WITH cur AS (SELECT date_trunc('week', NOW() AT TIME ZONE 'Europe/Moscow')::date AS monday)
+       SELECT e.id AS employee_id, e.fio, s.max_level,
+              CASE WHEN s.week_start = cur.monday THEN s.weekly_stars ELSE 0 END AS weekly_stars,
+              s.current_streak, s.best_streak, s.total_stars, s.total_levels
        FROM gamification_pipeline_stats s
        JOIN employees e ON e.id = s.employee_id
+       CROSS JOIN cur
        WHERE s.max_level > 0
-       ORDER BY s.weekly_stars DESC, s.max_level DESC, s.total_stars DESC
+       ORDER BY weekly_stars DESC, s.max_level DESC, s.total_stars DESC
        LIMIT 50`
     );
     const { rows: [myRank] } = await db.query(
-      `SELECT rn FROM (
-         SELECT employee_id, ROW_NUMBER() OVER (ORDER BY weekly_stars DESC, max_level DESC, total_stars DESC) AS rn
-         FROM gamification_pipeline_stats WHERE max_level > 0
+      `WITH cur AS (SELECT date_trunc('week', NOW() AT TIME ZONE 'Europe/Moscow')::date AS monday)
+       SELECT rn FROM (
+         SELECT s.employee_id,
+                ROW_NUMBER() OVER (
+                  ORDER BY (CASE WHEN s.week_start = cur.monday THEN s.weekly_stars ELSE 0 END) DESC,
+                           s.max_level DESC, s.total_stars DESC
+                ) AS rn
+         FROM gamification_pipeline_stats s CROSS JOIN cur WHERE s.max_level > 0
        ) x WHERE employee_id = $1`,
       [eid]
     );

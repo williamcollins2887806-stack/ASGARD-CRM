@@ -144,17 +144,20 @@ export function ListRow({ icon: Icon, tone = 'neutral', title, sub, value, chevr
 }
 
 /* ══ Segmented ═════════════════════════════════════════════════════════════
-   Внутренние табы/фильтр. Заменяет 4 самодельных реестра табов.             */
+   Внутренние табы/фильтр. Заменяет 4 самодельных реестра табов.
+   ВАЖНО: значение элемента берём из `id` ИЛИ `value` — экраны исторически
+   передают `{value,label}`, и при чтении только `id` активный таб никогда не
+   подсвечивался, а клик возвращал `undefined` (табы были «мёртвые»).          */
 export function Segmented({ items = [], value, onChange, className = '' }) {
   return (
     <div className={`ui-seg ${className}`} role="tablist">
-      {items.map((it) => {
-        const id = typeof it === 'string' ? it : it.id;
+      {items.map((it, i) => {
+        const id = typeof it === 'string' ? it : (it.id ?? it.value ?? i);
         const label = typeof it === 'string' ? it : it.label;
         const active = id === value;
         return (
           <button
-            key={id}
+            key={String(id)}
             type="button"
             role="tab"
             aria-selected={active}

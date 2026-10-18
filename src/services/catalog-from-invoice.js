@@ -10,6 +10,25 @@ function num(v) {
   return Number.isFinite(n) ? n : 0;
 }
 
+/** Дата из Postgres (Date) или строки → 'YYYY-MM-DD' | null. */
+function toIsoDate(v) {
+  if (!v) return null;
+  if (v instanceof Date && !isNaN(v.getTime())) {
+    // Локальные компоненты, а не UTC: date-колонка приходит как полночь локального пояса.
+    const p = (x) => String(x).padStart(2, '0');
+    return `${v.getFullYear()}-${p(v.getMonth() + 1)}-${p(v.getDate())}`;
+  }
+  const s = String(v);
+  const m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (m) return `${m[1]}-${m[2]}-${m[3]}`;
+  const d = new Date(s);
+  if (!isNaN(d.getTime())) {
+    const p = (x) => String(x).padStart(2, '0');
+    return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+  }
+  return null;
+}
+
 async function ensureSupplier(db, { supplierId, supplierName }) {
   if (supplierId) {
     const { rows } = await db.query('SELECT id, name FROM suppliers WHERE id=$1', [supplierId]);
@@ -77,6 +96,9 @@ async function findOrCreateProduct(db, { name, article, unit, userId }) {
  * @param {number} [opts.userId]
  * @param {string} [opts.source] - quote|procurement|manual (CHECK constraint)
  * @param {number} [opts.procurementItemId]
+ * @param {number} [opts.docRegistryId]    - источник: документ реестра
+ * @param {string} [opts.invoiceDate]      - дата счёта (день закупки)
+ * @param {string} [opts.invoiceNumber]    - номер счёта
  */
 async function enrichCatalogFromLines(db, opts = {}) {
   const lines = Array.isArray(opts.lines) ? opts.lines : [];
@@ -86,12 +108,18 @@ async function enrichCatalogFromLines(db, opts = {}) {
     supplierId: opts.supplierId,
     supplierName: opts.supplierName
   });
+  // Дата счёта → день закупки (для временных рядов цен). Пусто → NULL (не выдумываем).
+  // ВАЖНО: из Postgres дата приходит как Date-объект — String() даёт «Tue Jul 14 2026»,
+  // и проверка на YYYY-MM-DD не срабатывает. Нормализуем оба вида.
+  const invDate = toIsoDate(opts.invoiceDate);
+  const invNo = opts.invoiceNumber ? String(opts.invoiceNumber).slice(0, 64) : null;
   let created = 0;
   let priced = 0;
   for (const line of lines) {
     const name = line.name || line.invoice_name || line.item_name;
     const price = num(line.unit_price);
     if (!name || !(price > 0)) continue;
+    const qty = num(line.quantity != null ? line.quantity : (line.qty != null ? line.qty : line.need_qty)) || null;
     const product = await findOrCreateProduct(db, {
       name,
       article: line.article,
@@ -103,8 +131,10 @@ async function enrichCatalogFromLines(db, opts = {}) {
     await db.query(
       `INSERT INTO price_records(
          product_id, product_category_id, item_name, article, unit,
-         supplier_id, supplier_name, unit_price, source, procurement_item_id, recorded_by, recorded_at
-       ) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,NOW())`,
+         supplier_id, supplier_name, unit_price, quantity, total,
+         invoice_date, invoice_number, doc_registry_id,
+         source, procurement_item_id, recorded_by, recorded_at
+       ) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11::date,$12,$13,$14,$15,$16,NOW())`,
       [
         product.id,
         product.category_id || null,
@@ -114,6 +144,11 @@ async function enrichCatalogFromLines(db, opts = {}) {
         supplier?.id || null,
         supplier?.name || opts.supplierName || null,
         price,
+        qty,
+        qty ? Math.round(price * qty * 100) / 100 : null,
+        invDate,
+        invNo,
+        opts.docRegistryId || null,
         source,
         opts.procurementItemId || line.item_id || null,
         opts.userId || null
@@ -131,14 +166,19 @@ async function enrichCatalogFromLines(db, opts = {}) {
     if (product) {
       await db.query(
         `INSERT INTO price_records(
-           product_id, item_name, supplier_id, supplier_name, unit_price, source, recorded_by, recorded_at
-         ) VALUES($1,$2,$3,$4,$5,$6,$7,NOW())`,
+           product_id, item_name, supplier_id, supplier_name, unit_price, total,
+           invoice_date, invoice_number, doc_registry_id, source, recorded_by, recorded_at
+         ) VALUES($1,$2,$3,$4,$5,$6,$7::date,$8,$9,$10,$11,NOW())`,
         [
           product.id,
           label,
           supplier?.id || null,
           supplier?.name || opts.supplierName || null,
           num(opts.headerAmount),
+          num(opts.headerAmount),
+          invDate,
+          invNo,
+          opts.docRegistryId || null,
           source,
           opts.userId || null
         ]

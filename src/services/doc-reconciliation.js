@@ -49,7 +49,7 @@ function periodDeadline(year, quarter, opts = {}) {
  * @param {{inn?:string, name?:string, year:number, quarter:number,
  *          role?:string, userId?:number, scope?:string}} args
  */
-async function buildReconciliation(db, { inn, name, year, quarter, role, userId, scope }) {
+async function buildReconciliation(db, { inn, name, year, quarter, role, userId, scope, actId }) {
   const { from, to } = periodRange(year, quarter);
   const params = [from, to];
   let where = `WHERE d.deleted_at IS NULL AND d.dir = 'in'
@@ -71,25 +71,56 @@ async function buildReconciliation(db, { inn, name, year, quarter, role, userId,
 
   let paidSum = 0;
   let docsSum = 0;
-  const docs = rows.map((r) => {
+  // ВАЖНО (верификатор 17.10): суммируем ТОЛЬКО включённые документы (оплата или
+  // оказанная услуга). Раньше docsSum копился до .filter(included), из-за чего в
+  // деталь попадали неоплаченные счета без услуги — баланс детали расходился со
+  // списком (деталь: «мы должны 999 999», список: «сошлось»).
+  const docs = [];
+  for (const r of rows) {
     const gross = Number(r.amount_gross) || 0;
     const paid = ['paid', 'n_a'].includes(String(r.pay_status || ''));
+    const included = paid || !!r.service_done_at;
+    if (!included) continue;
     docsSum += gross;
     if (paid) paidSum += gross;
-    return {
+    docs.push({
       id: r.id, invoice_number: r.invoice_number, invoice_date: r.invoice_date,
       service_done_at: r.service_done_at, amount: gross, paid,
       sf_received: !!r.sf_received_at, currency: r.currency || 'RUB',
-      included: paid || !!r.service_done_at
-    };
-  }).filter((d) => d.included);
+      included: true
+    });
+  }
+
+  // Взаимозачёты: если акт уже сохранён, подтягиваем ручные корректировки и
+  // учитываем их в балансе (баланс = оплаты − документы + корректировки).
+  let adjustments = [];
+  if (actId) {
+    try {
+      const a = await db.query(`SELECT manual_adjustments FROM doc_reconciliation_acts WHERE id=$1`, [actId]);
+      if (a.rows[0] && Array.isArray(a.rows[0].manual_adjustments)) adjustments = a.rows[0].manual_adjustments;
+    } catch (_) { /* необязательно */ }
+  }
+  const baseBalance = Math.round((paidSum - docsSum) * 100) / 100;
+  const balanceRub = Math.round((baseBalance + adjustments.reduce((s, x) => s + (Number(x && x.amount) || 0), 0)) * 100) / 100;
 
   return {
     period: { year: Number(year), quarter: Number(quarter), ...periodRange(year, quarter) },
     due_at: periodDeadline(year, quarter),
-    docs, paidSum, docsSum, balanceRub: Math.round((paidSum - docsSum) * 100) / 100,
+    docs, paidSum, docsSum, adjustments, baseBalance, balanceRub,
     note: 'Предварительный расчёт — подтверждает контрагент файлом акта.'
   };
 }
 
-module.exports = { periodRange, periodDeadline, buildReconciliation };
+/**
+ * Знак баланса для акта: Σ оплат − Σ документов + взаимозачёты.
+ * Взаимозачёты (manual_adjustments) — ручные корректировки от бухгалтерии:
+ *   [{ amount: number, note: string, at: ISO, by: userId }], amount может быть
+ *   отрицательным (наше обязательство растёт). Знак сохраняем как есть.
+ */
+function applyAdjustments(base, adjustments) {
+  const list = Array.isArray(adjustments) ? adjustments : [];
+  const delta = list.reduce((s, a) => s + (Number(a && a.amount) || 0), 0);
+  return Math.round((Number(base || 0) + delta) * 100) / 100;
+}
+
+module.exports = { periodRange, periodDeadline, buildReconciliation, applyAdjustments };

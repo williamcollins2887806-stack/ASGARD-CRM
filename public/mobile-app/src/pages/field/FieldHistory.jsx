@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { ArrowLeft, Briefcase, ChevronRight, TrendingUp, Calendar, Zap, Lock } from 'lucide-react';
+import { ArrowLeft, Briefcase, ChevronRight, TrendingUp, Calendar, Zap, Lock, Sun, Moon, Car, Plane, CircleHalf, Hourglass, ClipboardList, Swords, Banknote } from 'lucide-react';
 import { fieldApi } from '@/api/fieldClient';
 import { useHaptic } from '@/hooks/useHaptic';
 import { formatMoney as fmtMoney, formatMoneyShort as fmtMoneyShort } from '@/lib/utils';
@@ -41,7 +41,7 @@ const SHIFT_LABELS = {
   day_off: 'Выходной', object: 'Объект',
 };
 const SHIFT_ICONS = {
-  day: '☀️', night: '🌙', road: '🚗', travel: '✈️', half: '½', standby: '⏳',
+  day: Sun, night: Moon, road: Car, travel: Plane, half: CircleHalf, standby: Hourglass,
   warehouse: '🏭', medical: '🏥', training: '📚', ship: '🚢', helicopter: '🚁', waiting: '⏳',
 };
 const SHIFT_COLORS = {
@@ -327,10 +327,10 @@ function HistoryDetail({ workId, onBack }) {
             boxShadow: '0 8px 32px color-mix(in oklab, var(--bg-primary) 50%, transparent)',
           }}
         >
-          <p className="text-xs font-semibold mb-0.5" style={{ color: 'var(--text-primary)' }}>
-            {fmtDate(tooltip.date)}
-            {tooltip.shift && ` · ${SHIFT_ICONS[tooltip.shift] || ''} ${SHIFT_LABELS[tooltip.shift] || ''}`}
-          </p>
+                <p className="text-xs font-semibold mb-0.5" style={{ color: 'var(--text-primary)' }}>
+                  {fmtDate(tooltip.date)}
+                  {tooltip.shift && ` · ${SHIFT_LABELS[tooltip.shift] || ''}`}
+                </p>
           {tooltip.entered_by_fio ? (
             <p className="text-xs" style={{ color: 'var(--text-tertiary)' }}>
               {/* FIX 8 — телефон автора, если backend его прислал */}
@@ -359,7 +359,7 @@ function HistoryDetail({ workId, onBack }) {
 /* DayRow — строка в табеле с поддержкой long-press tooltip */
 function DayRow({ day, idx, onLongPress }) {
   const shift = day.shift || 'day';
-  const icon = SHIFT_ICONS[shift] || (day.entry_kind === 'stage' ? '📋' : '☀️');
+  const Icon = SHIFT_ICONS[shift] || (day.entry_kind === 'stage' ? ClipboardList : Sun);
   const label = SHIFT_LABELS[shift] || shift || 'День';
   const color = SHIFT_COLORS[shift] || 'var(--value)';
   const points = day.tariff_points != null
@@ -388,7 +388,9 @@ function DayRow({ day, idx, onLongPress }) {
         WebkitTouchCallout: 'none',
       }}>
       <span className="text-xs font-medium w-11 flex-shrink-0" style={{ color: 'var(--text-secondary)' }}>{fmtDateShort(day.date)}</span>
-      <span className="w-7 text-center text-base flex-shrink-0">{icon}</span>
+        <span className="w-7 text-center flex-shrink-0 flex items-center justify-center">
+          <Icon size={15} strokeWidth={2.3} style={{ color }} aria-hidden />
+        </span>
       <div className="flex-1 min-w-0">
         <span className="text-xs font-medium" style={{ color }}>{label}</span>
       </div>
@@ -485,16 +487,19 @@ export default function FieldHistory() {
 
       {/* Stats */}
       <div className="grid grid-cols-3 gap-2">
-        {[
-          { icon: '📅', label: 'Проекты', val: totalProjects },
-          { icon: '⚔️', label: 'Смены', val: totalShifts },
-          { icon: '💰', label: 'Заработок', val: fmtMoney(totalEarned) },
-        ].map(s => (
-          <div key={s.label} className="rounded-xl p-3 text-center" style={{ backgroundColor: 'var(--bg-elevated)', border: '1px solid var(--border-norse)' }}>
-            <p className="text-xs" style={{ color: 'var(--text-tertiary)' }}>{s.icon} {s.label}</p>
-            <p className="font-bold text-sm mt-1" style={{ color: 'var(--gold)' }}>{s.val}</p>
-          </div>
-        ))}
+            {[
+              { Icon: Calendar, label: 'Проекты', val: totalProjects },
+              { Icon: Swords, label: 'Смены', val: totalShifts },
+              { Icon: Banknote, label: 'Заработок', val: fmtMoney(totalEarned) },
+            ].map((s) => (
+              <div key={s.label} className="rounded-xl p-3 text-center" style={{ backgroundColor: 'var(--bg-elevated)', border: '1px solid var(--border-norse)' }}>
+                <p className="text-xs flex items-center justify-center gap-1.5" style={{ color: 'var(--text-tertiary)' }}>
+                  <s.Icon size={12} strokeWidth={2.4} aria-hidden />
+                  {s.label}
+                </p>
+                <p className="font-bold text-sm mt-1" style={{ color: 'var(--gold)' }}>{s.val}</p>
+              </div>
+            ))}
       </div>
 
       {error && <div className="p-3 rounded-lg text-sm" style={{ backgroundColor: 'color-mix(in oklab, var(--danger) 10%, transparent)', color: 'var(--danger)' }}>{error}</div>}
@@ -552,7 +557,7 @@ export default function FieldHistory() {
                       ].filter(Boolean).join(' · ')}
                     </p>
                     <div className="flex items-center gap-3 mt-1.5 text-xs" style={{ color: 'var(--text-secondary)' }}>
-                      <span>⚔️ {p.shifts_count || 0} смен</span>
+                      <Swords size={12} strokeWidth={2.4} aria-hidden /> {p.shifts_count || 0} смен
                       <span className="font-semibold" style={{ color: 'var(--gold)' }}>{fmtMoney(p.total_earned)}</span>
                     </div>
                   </div>

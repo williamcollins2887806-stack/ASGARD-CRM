@@ -312,7 +312,7 @@ function VikingHeroCard({ profile, runes, xp, level, totalShifts, cosmetics, tit
       {/* Floating background runes */}
       {['ᚠ','ᚢ','ᚨ','ᚱ','ᛟ'].map((r, i) => (
         <div key={i} style={{
-          position: 'absolute', fontSize: 20, color: `${accent}22`,
+          position: 'absolute', fontSize: 20, color: `color-mix(in oklab, ${accent} 13%, transparent)`,
           top: `${8 + i * 16}%`, ...(i % 2 === 0 ? { left: `${4 + i * 3}%` } : { right: `${4 + i * 3}%` }),
           animation: `runeFloat ${5 + i * 1.4}s ease-in-out ${i * 0.7}s infinite`,
           pointerEvents: 'none', fontFamily: 'serif', userSelect: 'none',
@@ -331,7 +331,7 @@ function VikingHeroCard({ profile, runes, xp, level, totalShifts, cosmetics, tit
             animation: `${frameAnim} 3s ease-in-out infinite`,
             /* static glow lives in keyframes — do not put filter here (kills WebGL) */
             boxShadow: hasFrame
-              ? `0 0 24px ${accent}60, 0 0 50px ${accent}20`
+              ? `0 0 24px color-mix(in oklab, ${accent} 38%, transparent), 0 0 50px color-mix(in oklab, ${accent} 13%, transparent)`
               : undefined,
           }}>
             <VikingAvatarLazy
@@ -356,7 +356,7 @@ function VikingHeroCard({ profile, runes, xp, level, totalShifts, cosmetics, tit
                 borderRadius: 14,
                 background: 'var(--field-overlay)',
                 border: `1.5px solid ${accent}`,
-                boxShadow: `0 0 16px ${accent}55, 0 4px 12px color-mix(in oklab, var(--bg-primary) 45%, transparent)`,
+                boxShadow: `0 0 16px color-mix(in oklab, ${accent} 33%, transparent), 0 4px 12px color-mix(in oklab, var(--bg-primary) 45%, transparent)`,
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
@@ -381,27 +381,27 @@ function VikingHeroCard({ profile, runes, xp, level, totalShifts, cosmetics, tit
         {/* Rank badge */}
         <div style={{
           marginTop: 10, display: 'flex', alignItems: 'center', gap: 7,
-          background: `${accent}18`, border: `1px solid ${accent}40`,
+          background: `color-mix(in oklab, ${accent} 9%, transparent)`, border: `1px solid color-mix(in oklab, ${accent} 25%, transparent)`,
           borderRadius: 20, padding: '6px 14px',
         }}>
           <span style={{ fontSize: 17, fontFamily: 'serif', color: accent, animation: 'rankGlow 2.5s ease-in-out infinite' }}>
             {rank.rune}
           </span>
           <span style={{ fontSize: 14, fontWeight: 800, color: accent, letterSpacing: .5 }}>{rank.title}</span>
-          <span style={{ fontSize: 11, color: `${accent}80` }}>· Ур.{level}</span>
+          <span style={{ fontSize: 11, color: `color-mix(in oklab, ${accent} 50%, transparent)` }}>· Ур.{level}</span>
         </div>
 
         {/* Title badge — earned from achievements */}
         {title && (
           <div style={{
             marginTop: 6, display: 'flex', alignItems: 'center', gap: 6,
-            background: `${title.color}15`, border: `1px solid ${title.color}50`,
+            background: `color-mix(in oklab, ${title.color} 8%, transparent)`, border: `1px solid color-mix(in oklab, ${title.color} 31%, transparent)`,
             borderRadius: 20, padding: '4px 12px',
           }}>
             <span style={{ fontSize: 13 }}>{title.icon}</span>
             <span style={{ fontSize: 12, fontWeight: 700, color: title.color }}>{title.name}</span>
             {title.next_title && (
-              <span style={{ fontSize: 10, color: `${title.color}70` }}>
+              <span style={{ fontSize: 10, color: `color-mix(in oklab, ${title.color} 44%, transparent)` }}>
                 · +{title.next_title.needed} до {title.next_title.name}
               </span>
             )}
@@ -755,7 +755,8 @@ export default function FieldProfile() {
           onClose={() => setRankCeremony(null)}
         />
       )}
-      <div style={{ backgroundColor: 'var(--bg-primary)', minHeight: '100%', paddingBottom: 'max(env(safe-area-inset-bottom), 24px)' }}>
+      <div className="fs-root" style={{ paddingBottom: 'max(env(safe-area-inset-bottom), 24px)' }}>
+        <div className="fs-scene" aria-hidden><span className="fs-orb fs-orb--a" /><span className="fs-orb fs-orb--b" /></div>
 
         {/* ═══ HERO CARD ══════════════════════════════════════════════ */}
         <VikingHeroCard
@@ -765,13 +766,13 @@ export default function FieldProfile() {
           title={profile?.title || achievementsData?.title || null}
         />
 
-        <div className="space-y-3 p-4 pt-3">
+        <div className="space-y-3 p-4 pt-3" style={{ position: 'relative', zIndex: 5 }}>
 
           {/* ═══ EQUIPMENT SLOTS ══════════════════════════════════════ */}
           <EquipmentSlots cosmetics={cosmetics} navigate={navigate} haptic={haptic} />
 
           {/* ═══ ACTIVE WORK ══════════════════════════════════════════ */}
-          <div className="rounded-xl p-4" style={{ backgroundColor: 'var(--bg-elevated)', border: '1px solid var(--border-norse)' }}>
+          <div className="fs-card" style={{ padding: 16 }}>
             <div className="flex items-center gap-2 mb-3">
               <Briefcase size={15} style={{ color: 'var(--gold)' }} />
               <span className="text-xs font-semibold uppercase tracking-widest" style={{ color: 'var(--text-tertiary)' }}>Моя работа</span>
@@ -833,7 +834,7 @@ export default function FieldProfile() {
 
           {/* ═══ ПЛАНИРУЕМОЕ ПРИВЛЕЧЕНИЕ ═══════════════════════════════ */}
           {profile?.planned_engagement && (
-            <div className="rounded-xl p-4" style={{ backgroundColor: 'var(--bg-elevated)', border: '1px solid color-mix(in oklab, var(--acc) 35%, transparent)' }}>
+            <div className="fs-card" style={{ padding: 16, borderColor: 'color-mix(in oklab, var(--acc) 35%, transparent)' }}>
               <div className="flex items-center gap-2 mb-3">
                 <ClipboardList size={15} style={{ color: 'var(--acc)' }} />
                 <span className="text-xs font-semibold uppercase tracking-widest" style={{ color: 'var(--acc)' }}>
@@ -892,7 +893,7 @@ export default function FieldProfile() {
                   {/* Title progress strip */}
                   {achievementsData.title && (
                     <div className="flex items-center gap-2 mb-2 p-2 rounded-lg"
-                      style={{ backgroundColor: achievementsData.title.color + '12', border: `1px solid ${achievementsData.title.color}30` }}>
+                      style={{ backgroundColor: `color-mix(in oklab, ${achievementsData.title.color} 7%, transparent)`, border: `1px solid color-mix(in oklab, ${achievementsData.title.color} 19%, transparent)` }}>
                       <span style={{ fontSize: 16 }}>{achievementsData.title.icon}</span>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center justify-between">
@@ -957,7 +958,7 @@ export default function FieldProfile() {
                             className="flex flex-col items-center gap-1 p-2 rounded-lg"
                             style={{
                               backgroundColor: 'var(--bg-primary)',
-                              border: `1px solid ${a.earned ? tierColor + '50' : 'transparent'}`,
+                              border: `1px solid ${a.earned ? `color-mix(in oklab, ${tierColor} 31%, transparent)` : 'transparent'}`,
                               opacity: a.earned ? 1 : 0.5,
                               filter: a.earned ? 'none' : 'grayscale(0.6)',
                             }}>
@@ -994,8 +995,8 @@ export default function FieldProfile() {
               <button
                 onClick={() => { haptic.light(); navigate('/field/seasonal'); }}
                 className="w-full text-left rounded-xl p-4 space-y-2"
-                style={{ backgroundColor: 'var(--bg-elevated)', border: `1px solid ${ch.color}40`,
-                  background: `linear-gradient(135deg, ${ch.color}12 0%, var(--bg-elevated) 60%)` }}>
+                style={{ backgroundColor: 'var(--bg-elevated)', border: `1px solid color-mix(in oklab, ${ch.color} 25%, transparent)`,
+                  background: `linear-gradient(135deg, color-mix(in oklab, ${ch.color} 7%, transparent) 0%, var(--bg-elevated) 60%)` }}>
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <span className="text-xl">{ch.icon}</span>
@@ -1004,7 +1005,7 @@ export default function FieldProfile() {
                     </span>
                     {ch.fully_completed && (
                       <span className="text-xs px-1.5 py-0.5 rounded-full font-medium"
-                        style={{ backgroundColor: ch.color + '25', color: ch.color }}>✓</span>
+                        style={{ backgroundColor: `color-mix(in oklab, ${ch.color} 15%, transparent)`, color: ch.color }}>✓</span>
                     )}
                   </div>
                   <div className="flex items-center gap-1" style={{ color: ch.color }}>
@@ -1022,7 +1023,7 @@ export default function FieldProfile() {
                       style={{ width: `${pct}%`, backgroundColor: ch.color }} />
                   </div>
                 </div>
-                <p className="text-xs" style={{ color: ch.color + 'cc' }}>
+                <p className="text-xs" style={{ color: `color-mix(in oklab, ${ch.color} 80%, transparent)` }}>
                   Награда: {ch.reward_label || (
                     `${ch.reward_value} ${ch.reward_type === 'runes' ? 'рун' : ch.reward_type === 'xp' ? 'XP' : 'очков'}`
                   )}

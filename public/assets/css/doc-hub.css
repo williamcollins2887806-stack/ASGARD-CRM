@@ -660,6 +660,17 @@ a:hover { text-decoration: underline; }
   padding: 6px 8px; border-radius: 8px; border: 1px solid var(--brd);
   background: var(--bg2); color: var(--t1); font: inherit;
 }
+/* V394: экран «Входящие СФ» (кладовщик). Минимум полей, двухшаговый флоу. */
+.dh-sf__bar {
+  display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+.dh-sf__chk {
+  display: flex; align-items: center; gap: 6px;
+  color: var(--t2); font-size: 13px; cursor: pointer;
+}
+.dh-sf__chk input { accent-color: var(--gold, #d4a017); }
+.dh-sf__done { font-size: 13px; white-space: nowrap; }
 .dh-act-balance {
   padding: 12px 16px; margin: 0; border-top: 1px solid var(--brd);
   font-size: 14px; display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap;

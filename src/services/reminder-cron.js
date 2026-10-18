@@ -447,7 +447,12 @@ async function sendDailyDigests(db, log) {
     // антидубль: какие из задач уже слали сегодня
     const fresh = [];
     for (const it of items) {
-      const key = [it.doc_id, userId, it.kind, it.due_date];
+      // V405: у корректировок нет срока → due_date NULL, а NULL-ы в UNIQUE-индексе
+      // Postgres считаются РАЗНЫМИ, из-за чего ON CONFLICT не ловил дубль и задача
+      // уходила в дайджест повторно. Приводим NULL к сентинелу 9999-12-31 — тот же,
+      // что в уникальном индексе uq_doc_reminder_log_task (миграция V405).
+      const dueForLog = it.due_date || '9999-12-31';
+      const key = [it.doc_id, userId, it.kind, dueForLog];
       const ins = await db.query(
         `INSERT INTO doc_reminder_log (doc_id, user_id, kind, due_date, sent_at, attempts)
          VALUES ($1,$2,$3,$4,NOW(),0) ON CONFLICT (doc_id,user_id,kind,due_date) DO NOTHING RETURNING id`, key);

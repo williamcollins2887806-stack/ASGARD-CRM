@@ -2,15 +2,20 @@ import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { fieldApi } from '@/api/fieldClient';
 import { useHaptic } from '@/hooks/useHaptic';
-import { ArrowLeft, BookOpen, Star, Edit3, Check, X, ChevronDown } from 'lucide-react';
+import {
+  ArrowLeft, BookOpen, Star, Edit3, Check, ChevronDown, Moon, Sun, Laugh, Smile, Meh, Frown, Angry, NotebookPen,
+} from 'lucide-react';
+import { Card, IconTile, KeyButton, Chip, Segmented, EmptyState, BottomSheet, SectionLabel } from '@/components/field/ui';
+import { SkeletonList } from '@/components/shared/SkeletonKit';
 import { formatMoney } from '@/lib/utils';
+import './field-screens.css';
 
 const MOODS = [
-  { id: 'great',   emoji: '😄', label: 'Отлично',   color: 'var(--ok)' },
-  { id: 'good',    emoji: '🙂', label: 'Хорошо',    color: 'var(--ok)' },
-  { id: 'neutral', emoji: '😐', label: 'Нейтрально', color: 'var(--value)' },
-  { id: 'tired',   emoji: '😔', label: 'Устал',      color: 'var(--value)' },
-  { id: 'hard',    emoji: '😤', label: 'Тяжело',     color: 'var(--danger)' },
+  { id: 'great',   Icon: Laugh, label: 'Отлично',   color: 'var(--ok)' },
+  { id: 'good',    Icon: Smile, label: 'Хорошо',    color: 'var(--ok)' },
+  { id: 'neutral', Icon: Meh,   label: 'Нейтрально', color: 'var(--value)' },
+  { id: 'tired',   Icon: Frown, label: 'Устал',      color: 'var(--value)' },
+  { id: 'hard',    Icon: Angry, label: 'Тяжело',     color: 'var(--danger)' },
 ];
 
 function fmt(dateStr) {
@@ -23,8 +28,14 @@ function Stars({ rating, onRate, size = 18 }) {
     <div className="flex gap-1">
       {[1, 2, 3, 4, 5].map((n) => (
         <button key={n} onClick={() => onRate && onRate(n)}
-          style={{ color: n <= rating ? 'var(--value)' : 'var(--border-norse)', fontSize: size, lineHeight: 1, background: 'none', border: 'none', cursor: onRate ? 'pointer' : 'default', padding: 0 }}>
-          ★
+          aria-label={`Оценка ${n}`}
+          style={{
+            color: n <= rating ? 'var(--value-ink)' : 'var(--text-tertiary)',
+            lineHeight: 1, background: 'none', border: 'none',
+            cursor: onRate ? 'pointer' : 'default', padding: 0,
+            opacity: n <= rating ? 1 : 0.35,
+          }}>
+          <Star size={size} strokeWidth={2.2} fill={n <= rating ? 'currentColor' : 'none'} />
         </button>
       ))}
     </div>
@@ -48,35 +59,25 @@ function DiaryModal({ shift, onClose, onSave }) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end" style={{ backgroundColor: 'color-mix(in oklab, var(--bg-primary) 60%, transparent)' }} onClick={onClose}>
-      <div className="w-full rounded-t-2xl p-5 space-y-4 max-h-[85vh] overflow-y-auto"
-        style={{ backgroundColor: 'var(--bg-elevated)' }} onClick={(e) => e.stopPropagation()}>
-
-        <div className="flex items-center justify-between">
-          <div>
-            <h3 className="font-bold text-base" style={{ color: 'var(--text-primary)' }}>Запись в дневник</h3>
-            <p className="text-xs" style={{ color: 'var(--text-tertiary)' }}>
-              {fmt(shift.date)} · {shift.work_title || shift.object_name || ''}
-            </p>
-          </div>
-          <button onClick={onClose} className="p-2 rounded-lg" style={{ backgroundColor: 'var(--bg-primary)', color: 'var(--text-tertiary)' }}>
-            <X size={18} />
-          </button>
-        </div>
+    <BottomSheet open onClose={onClose} title="Запись в дневник">
+      <div className="space-y-4 pb-2">
+        <p className="text-xs" style={{ color: 'var(--text-tertiary)' }}>
+          {fmt(shift.date)} · {shift.work_title || shift.object_name || ''}
+        </p>
 
         {/* Mood */}
         <div>
-          <p className="text-xs font-semibold mb-2" style={{ color: 'var(--text-tertiary)' }}>КАК ПРОШЛА СМЕНА?</p>
+          <SectionLabel>Как прошла смена?</SectionLabel>
           <div className="flex gap-2 flex-wrap">
             {MOODS.map((m) => (
               <button key={m.id}
                 onClick={() => { haptic.light(); setMood(mood === m.id ? null : m.id); }}
                 className="flex flex-col items-center px-3 py-2 rounded-xl transition-all"
                 style={{
-                  backgroundColor: mood === m.id ? m.color + '20' : 'var(--bg-primary)',
-                  border: `1.5px solid ${mood === m.id ? m.color : 'var(--border-norse)'}`,
+                  backgroundColor: mood === m.id ? `color-mix(in oklab, ${m.color} 13%, transparent)` : 'var(--bg-surface-alt)',
+                  border: `1.5px solid ${mood === m.id ? m.color : 'var(--tile-brd)'}`,
                 }}>
-                <span style={{ fontSize: 22 }}>{m.emoji}</span>
+                <m.Icon size={22} strokeWidth={2.2} style={{ color: mood === m.id ? m.color : 'var(--text-tertiary)' }} />
                 <span style={{ fontSize: 9, color: mood === m.id ? m.color : 'var(--text-tertiary)', marginTop: 2 }}>{m.label}</span>
               </button>
             ))}
@@ -85,13 +86,13 @@ function DiaryModal({ shift, onClose, onSave }) {
 
         {/* Rating */}
         <div>
-          <p className="text-xs font-semibold mb-2" style={{ color: 'var(--text-tertiary)' }}>ОЦЕНКА СМЕНЫ</p>
+          <SectionLabel>Оценка смены</SectionLabel>
           <Stars rating={rating} onRate={(n) => { haptic.light(); setRating(n === rating ? 0 : n); }} size={28} />
         </div>
 
         {/* Text */}
         <div>
-          <p className="text-xs font-semibold mb-2" style={{ color: 'var(--text-tertiary)' }}>ЗАМЕТКИ</p>
+          <SectionLabel>Заметки</SectionLabel>
           <textarea
             value={text}
             onChange={(e) => setText(e.target.value)}
@@ -99,8 +100,8 @@ function DiaryModal({ shift, onClose, onSave }) {
             rows={4}
             className="w-full rounded-xl p-3 text-sm resize-none"
             style={{
-              backgroundColor: 'var(--bg-primary)',
-              border: '1px solid var(--border-norse)',
+              backgroundColor: 'var(--bg-surface-alt)',
+              border: '1px solid var(--tile-brd)',
               color: 'var(--text-primary)',
               outline: 'none',
             }}
@@ -108,13 +109,11 @@ function DiaryModal({ shift, onClose, onSave }) {
           <p className="text-xs mt-1 text-right" style={{ color: 'var(--text-tertiary)' }}>{text.length}/500</p>
         </div>
 
-        <button onClick={save} disabled={saving}
-          className="w-full py-3 rounded-xl font-bold text-sm flex items-center justify-center gap-2"
-          style={{ background: 'linear-gradient(135deg, var(--gold), var(--value))', color: 'var(--text-primary)' }}>
-          {saving ? 'Сохраняю...' : <><Check size={16} /> Сохранить запись</>}
-        </button>
+        <KeyButton tone="value" block icon={Check} onClick={save} disabled={saving}>
+          {saving ? 'Сохраняю...' : 'Сохранить запись'}
+        </KeyButton>
       </div>
-    </div>
+    </BottomSheet>
   );
 }
 
@@ -124,14 +123,15 @@ function ShiftCard({ shift, onEdit }) {
   const hasDiary = shift.diary_text || shift.diary_mood || shift.diary_rating;
 
   return (
-    <div className="rounded-xl overflow-hidden" style={{
-      backgroundColor: 'var(--bg-elevated)',
-      border: hasDiary ? `1px solid ${mood?.color || 'var(--gold)'}40` : '1px solid var(--border-norse)',
+    <Card variant="raised" className="overflow-hidden" style={{
+      borderColor: hasDiary ? `color-mix(in oklab, ${mood?.color || 'var(--value)'} 25%, transparent)` : undefined,
     }}>
       {/* Shift header */}
       <div className="flex items-center justify-between p-3">
         <div className="flex items-center gap-2">
-          <span style={{ fontSize: 16 }}>{shift.shift === 'night' ? '🌙' : '☀️'}</span>
+          {shift.shift === 'night'
+            ? <IconTile icon={Moon} tone="neutral" size={32} />
+            : <IconTile icon={Sun} tone="value" size={32} />}
           <div>
             <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>{fmt(shift.date)}</p>
             <p className="text-xs" style={{ color: 'var(--text-tertiary)' }}>
@@ -142,14 +142,14 @@ function ShiftCard({ shift, onEdit }) {
           </div>
         </div>
         <div className="flex items-center gap-2">
-          {mood && <span style={{ fontSize: 20 }}>{mood.emoji}</span>}
+          {mood && <mood.Icon size={20} strokeWidth={2.2} style={{ color: mood.color }} aria-label={mood.label} />}
           {shift.diary_rating > 0 && (
             <Stars rating={shift.diary_rating} size={13} />
           )}
           <button onClick={() => { haptic.light(); onEdit(shift); }}
-            className="p-1.5 rounded-lg"
-            style={{ backgroundColor: hasDiary ? 'var(--bg-primary)' : 'var(--gold)' + '20',
-              color: hasDiary ? 'var(--text-tertiary)' : 'var(--gold)' }}>
+            className="p-1.5 rounded-lg" aria-label="Редактировать запись"
+            style={{ backgroundColor: hasDiary ? 'var(--bg-surface-alt)' : 'color-mix(in oklab, var(--value) 13%, transparent)',
+              color: hasDiary ? 'var(--text-tertiary)' : 'var(--value-ink)' }}>
             <Edit3 size={14} />
           </button>
         </div>
@@ -167,12 +167,13 @@ function ShiftCard({ shift, onEdit }) {
       {/* Empty hint */}
       {!hasDiary && (
         <button onClick={() => { haptic.light(); onEdit(shift); }}
-          className="w-full px-3 pb-3 text-xs text-left"
+          className="w-full px-3 pb-3 text-xs text-left flex items-center gap-1.5"
           style={{ color: 'var(--text-tertiary)', background: 'none', border: 'none', cursor: 'pointer' }}>
-          ✏️ Добавить запись о смене...
+          <NotebookPen size={12} strokeWidth={2.4} aria-hidden />
+          Добавить запись о смене...
         </button>
       )}
-    </div>
+    </Card>
   );
 }
 
@@ -212,72 +213,64 @@ export default function FieldDiary() {
 
   if (loading) {
     return (
-      <div className="p-4 space-y-3 animate-pulse">
-        <div className="h-12 rounded-xl" style={{ backgroundColor: 'var(--bg-elevated)' }} />
-        {[...Array(5)].map((_, i) => (
-          <div key={i} className="h-20 rounded-xl" style={{ backgroundColor: 'var(--bg-elevated)' }} />
-        ))}
+      <div className="fs-root p-4" style={{ paddingTop: 'max(env(safe-area-inset-top), 16px)' }}>
+        <SkeletonList count={5} />
       </div>
     );
   }
 
   return (
-    <div className="p-4 space-y-3" style={{ backgroundColor: 'var(--bg-primary)', minHeight: '100dvh', paddingTop: 'max(env(safe-area-inset-top), 16px)', paddingBottom: 'max(env(safe-area-inset-bottom), 24px)' }}>
-      {/* Header */}
-      <div className="flex items-center gap-3">
-        <button onClick={() => navigate('/field/profile')} className="p-2 rounded-lg" style={{ backgroundColor: 'var(--bg-elevated)' }}>
-          <ArrowLeft size={20} style={{ color: 'var(--text-primary)' }} />
-        </button>
-        <BookOpen size={22} style={{ color: 'var(--gold)' }} />
-        <div>
-          <h1 className="text-lg font-bold" style={{ color: 'var(--text-primary)' }}>Дневник смен</h1>
-          <p className="text-xs" style={{ color: 'var(--text-tertiary)' }}>{total} смен · {withNotes} с записями</p>
-        </div>
-      </div>
+    <div className="fs-root" style={{ paddingBottom: 'max(env(safe-area-inset-bottom), 24px)' }}>
+      <div className="fs-scene" aria-hidden><span className="fs-orb fs-orb--a" /><span className="fs-orb fs-orb--b" /></div>
 
-      {/* Filter */}
-      <div className="flex gap-2">
-        {[['all', 'Все смены'], ['with_notes', 'С записями']].map(([val, label]) => (
-          <button key={val} onClick={() => { haptic.light(); setFilter(val); }}
-            className="px-3 py-1.5 rounded-full text-xs font-medium"
-            style={{
-              backgroundColor: filter === val ? 'var(--gold)' : 'var(--bg-elevated)',
-              color: filter === val ? 'var(--text-primary)' : 'var(--text-secondary)',
-            }}>
-            {label}
+      <div className="fs-content space-y-3">
+        {/* Header */}
+        <div className="fs-head">
+          <button onClick={() => navigate('/field/profile')} className="fs-head__btn" aria-label="Назад">
+            <ArrowLeft size={20} strokeWidth={2.3} />
           </button>
-        ))}
+          <IconTile icon={BookOpen} tone="value" size={42} />
+          <div>
+            <h1 className="fs-head__title">Дневник смен</h1>
+            <p className="fs-head__sub">{total} смен · {withNotes} с записями</p>
+          </div>
+        </div>
+
+        {/* Filter */}
+        <Segmented
+          items={[{ value: 'all', label: 'Все смены' }, { value: 'with_notes', label: 'С записями' }]}
+          value={filter}
+          onChange={(v) => { haptic.light(); setFilter(v); }}
+        />
+
+        {/* Shifts */}
+        {displayed.length === 0 ? (
+          <EmptyState
+            icon={BookOpen}
+            title={filter === 'with_notes' ? 'Нет смен с записями' : 'Нет завершённых смен'}
+            description="Нажми карандаш у любой смены, чтобы добавить запись"
+          />
+        ) : (
+          displayed.map((s) => (
+            <ShiftCard key={s.id} shift={s} onEdit={setEditing} />
+          ))
+        )}
+
+        {/* Load more */}
+        {filter === 'all' && shifts.length < total && (
+          <KeyButton
+            tone="neutral"
+            block
+            icon={ChevronDown}
+            onClick={() => { haptic.light(); load(shifts.length, true); }}
+            disabled={loadingMore}
+          >
+            {loadingMore ? 'Загружаю...' : `Ещё смены (${total - shifts.length})`}
+          </KeyButton>
+        )}
       </div>
 
-      {/* Shifts */}
-      {displayed.length === 0 ? (
-        <div className="text-center py-16">
-          <span className="text-4xl">📖</span>
-          <p className="mt-3 font-medium" style={{ color: 'var(--text-secondary)' }}>
-            {filter === 'with_notes' ? 'Нет смен с записями' : 'Нет завершённых смен'}
-          </p>
-          <p className="text-sm mt-1" style={{ color: 'var(--text-tertiary)' }}>
-            Нажми ✏️ на любой смене чтобы добавить запись
-          </p>
-        </div>
-      ) : (
-        displayed.map((s) => (
-          <ShiftCard key={s.id} shift={s} onEdit={setEditing} />
-        ))
-      )}
-
-      {/* Load more */}
-      {filter === 'all' && shifts.length < total && (
-        <button onClick={() => { haptic.light(); load(shifts.length, true); }}
-          disabled={loadingMore}
-          className="w-full flex items-center justify-center gap-2 py-3 rounded-xl text-sm"
-          style={{ backgroundColor: 'var(--bg-elevated)', color: 'var(--text-secondary)', border: '1px solid var(--border-norse)' }}>
-          <ChevronDown size={16} className={loadingMore ? 'animate-spin' : ''} />
-          {loadingMore ? 'Загружаю...' : `Ещё смены (${total - shifts.length})`}
-        </button>
-      )}
-
-      {/* Edit modal */}
+      {/* Edit sheet */}
       {editing && (
         <DiaryModal shift={editing} onClose={() => setEditing(null)} onSave={handleSave} />
       )}

@@ -11,6 +11,9 @@ import {
   ArrowLeft, Plus, Check, Package, PackagePlus, Layers, X,
   ShoppingCart, Warehouse, Hand, Users, RefreshCw, Camera, Loader2,
 } from 'lucide-react';
+import { Card, IconTile, KeyButton, BottomSheet, ProgressBar, SectionLabel, EmptyState } from '@/components/field/ui';
+import { SkeletonList } from '@/components/shared/SkeletonKit';
+import './field-screens.css';
 
 const SOURCE_META = {
   reservation: { label: 'Резерв', icon: Layers, color: 'var(--text-secondary)' },
@@ -123,29 +126,33 @@ export default function FieldPalletBuilder() {
   if (loading) return <ScreenSkeleton onBack={() => nav(-1)} />;
 
   return (
-    <div className="min-h-screen" style={{ background: 'var(--bg-base,var(--bg-primary))', color: 'var(--text-primary)', paddingBottom: 'max(env(safe-area-inset-bottom), 24px)' }}>
+    <div className="fs-root" style={{ paddingBottom: 'max(env(safe-area-inset-bottom), 24px)' }}>
+      <div className="fs-scene" aria-hidden><span className="fs-orb fs-orb--a" /><span className="fs-orb fs-orb--b" /></div>
       {/* Шапка */}
       <div className="sticky top-0 z-20 px-4 py-3"
-        style={{ background: 'color-mix(in oklab, var(--bg-primary) 92%, transparent)', backdropFilter: 'blur(12px)', borderBottom: '1px solid color-mix(in oklab, var(--value) 15%, transparent)', paddingTop: 'max(env(safe-area-inset-top), 12px)' }}>
+        style={{ background: 'color-mix(in oklab, var(--bg-primary) 88%, transparent)', WebkitBackdropFilter: 'blur(14px) saturate(1.5)', backdropFilter: 'blur(14px) saturate(1.5)', borderBottom: '1px solid var(--tile-brd)', paddingTop: 'max(env(safe-area-inset-top), 12px)' }}>
         <div className="flex items-center gap-3">
-          <button onClick={() => { haptic.light(); nav(-1); }} className="p-2 -ml-2 rounded-xl active:scale-90 transition"><ArrowLeft size={22} /></button>
+          <button onClick={() => { haptic.light(); nav(-1); }} className="fs-head__btn" aria-label="Назад" style={{ marginLeft: -8 }}><ArrowLeft size={20} strokeWidth={2.3} /></button>
+          <IconTile icon={Package} tone="value" size={38} />
           <div className="flex-1 min-w-0">
-            <div className="font-bold truncate" style={{ color: 'var(--value)' }}>{order?.title || 'Сбор'}</div>
-            <div className="text-xs opacity-60 truncate">{order?.work_title}</div>
+            <div className="font-bold truncate" style={{ color: 'var(--value-ink)' }}>{order?.title || 'Сбор'}</div>
+            <div className="text-xs truncate" style={{ color: 'var(--text-tertiary)' }}>{order?.work_title}</div>
           </div>
-          <button onClick={() => { haptic.light(); load(); loadLive(); }} className="p-2 rounded-xl active:scale-90 transition"><RefreshCw size={18} /></button>
+          <button onClick={() => { haptic.light(); load(); loadLive(); }} className="fs-head__btn" aria-label="Обновить"><RefreshCw size={18} strokeWidth={2.3} /></button>
         </div>
         {/* Прогресс + кто собирает */}
         {live && (
           <div className="flex items-center gap-3 mt-2.5">
-            <div className="flex-1 h-1.5 rounded-full overflow-hidden" style={{ background: 'color-mix(in oklab, var(--text-primary) 8%, transparent)' }}>
-              <div className="h-full rounded-full transition-all"
-                style={{ width: `${live.totals.total > 0 ? Math.round(live.totals.packed / live.totals.total * 100) : 0}%`, background: 'var(--ok)' }} />
+            <div className="flex-1">
+              <ProgressBar
+                value={live.totals.total > 0 ? Math.round(live.totals.packed / live.totals.total * 100) : 0}
+                color="var(--ok)"
+              />
             </div>
-            <span className="text-[11px] opacity-70">{live.totals.packed}/{live.totals.total}</span>
+            <span className="text-[11px]" style={{ color: 'var(--text-tertiary)' }}>{live.totals.packed}/{live.totals.total}</span>
             {live.by_user?.length > 0 && (
-              <span className="flex items-center gap-1 text-[11px] opacity-60">
-                <Users size={13} />{live.by_user.length}
+              <span className="flex items-center gap-1 text-[11px]" style={{ color: 'var(--text-tertiary)' }}>
+                <Users size={13} strokeWidth={2.3} aria-hidden />{live.by_user.length}
               </span>
             )}
           </div>
@@ -153,33 +160,35 @@ export default function FieldPalletBuilder() {
       </div>
 
       {!canPack && (
-        <div className="mx-4 mt-3 p-3 rounded-xl text-sm" style={{ background: 'color-mix(in oklab, var(--danger) 10%, transparent)', color: 'var(--value)' }}>
+        <Card variant="flat" tone="danger" className="mx-4 mt-3 p-3 text-sm" style={{ color: 'var(--value-ink)' }}>
           {order?.status === 'draft' ? 'Ведомость ещё не подтверждена РП.' : `Статус: ${order?.status}. Сборка недоступна.`}
-        </div>
+        </Card>
       )}
 
-      <div className="p-4 space-y-4">
+      <div className="fs-content space-y-4" style={{ paddingTop: 16 }}>
         {/* Выбор активного паллета (куда кладём) */}
         <div>
           <div className="flex items-center justify-between mb-2">
-            <div className="text-xs uppercase tracking-wide opacity-50 font-semibold">Паллеты</div>
+            <SectionLabel>Паллеты</SectionLabel>
             {canPack && (
-              <button onClick={addPallet} className="flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-lg active:scale-95 transition"
-                style={{ background: 'color-mix(in oklab, var(--value) 15%, transparent)', color: 'var(--value)' }}><Plus size={14} />Паллет</button>
+              <KeyButton tone="value" size="sm" icon={Plus} onClick={addPallet}>Паллет</KeyButton>
             )}
           </div>
           <div className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1">
-            {pallets.length === 0 && <div className="text-sm opacity-50 py-2">Нет паллет. Создайте первый.</div>}
-            {pallets.map(p => {
+            {pallets.length === 0 && <div className="text-sm py-2" style={{ color: 'var(--text-tertiary)' }}>Нет паллет. Создайте первый.</div>}
+            {pallets.map((p) => {
               const cnt = byPallet(p.id).length;
               const active = activePallet === p.id;
               return (
                 <button key={p.id} onClick={() => { haptic.light(); setActivePallet(p.id); }}
                   className="flex-shrink-0 rounded-xl px-3.5 py-2.5 active:scale-95 transition text-center min-w-[78px]"
-                  style={{ background: active ? 'color-mix(in oklab, var(--value) 18%, transparent)' : 'color-mix(in oklab, var(--text-primary) 4%, transparent)', border: `1px solid ${active ? 'var(--value)' : 'color-mix(in oklab, var(--text-primary) 8%, transparent)'}` }}>
-                  <Package size={18} className="mx-auto mb-1" style={{ color: active ? 'var(--value)' : 'var(--text-secondary)' }} />
-                  <div className="text-xs font-bold">№{p.pallet_number}</div>
-                  <div className="text-[10px] opacity-60">{cnt} поз.</div>
+                  style={{
+                    background: active ? 'color-mix(in oklab, var(--value) 18%, transparent)' : 'var(--bg-surface-alt)',
+                    border: `1px solid ${active ? 'var(--value)' : 'var(--tile-brd)'}`,
+                  }}>
+                  <Package size={18} className="mx-auto mb-1" style={{ color: active ? 'var(--value-ink)' : 'var(--text-secondary)' }} />
+                  <div className="text-xs font-bold" style={{ color: 'var(--text-primary)' }}>№{p.pallet_number}</div>
+                  <div className="text-[10px]" style={{ color: 'var(--text-tertiary)' }}>{cnt} поз.</div>
                 </button>
               );
             })}
@@ -189,23 +198,23 @@ export default function FieldPalletBuilder() {
         {/* Не распределённые позиции */}
         {unassigned.length > 0 && (
           <Section title={`Не на паллете (${unassigned.length})`}>
-            {unassigned.map(it => (
+            {unassigned.map((it) => (
               <ItemRow key={it.id} item={it} canPack={canPack}
                 onPack={() => togglePack(it)}
                 onPhoto={() => pickPhoto(it)}
                 onAssign={activePallet ? () => assignToPallet(it, activePallet) : null}
-                assignLabel={activePallet ? `→ №${pallets.find(p => p.id === activePallet)?.pallet_number}` : null} />
+                assignLabel={activePallet ? `→ №${pallets.find((p) => p.id === activePallet)?.pallet_number}` : null} />
             ))}
           </Section>
         )}
 
         {/* Позиции по паллетам */}
-        {pallets.map(p => {
+        {pallets.map((p) => {
           const list = byPallet(p.id);
           if (!list.length) return null;
           return (
             <Section key={p.id} title={`Паллет №${p.pallet_number} (${list.length})`}>
-              {list.map(it => (
+              {list.map((it) => (
                 <ItemRow key={it.id} item={it} canPack={canPack}
                   onPack={() => togglePack(it)}
                   onPhoto={() => pickPhoto(it)}
@@ -216,18 +225,15 @@ export default function FieldPalletBuilder() {
         })}
 
         {items.length === 0 && (
-          <div className="text-center py-12 opacity-50">
-            <PackagePlus size={48} className="mx-auto mb-3 opacity-40" />
-            <div className="text-sm">Позиций нет. Добавьте первую кнопкой ниже.</div>
-          </div>
+          <EmptyState icon={PackagePlus} title="Позиций нет" description="Добавьте первую кнопкой ниже" />
         )}
       </div>
 
       {/* FAB добавить позицию */}
       {canPack && (
         <button onClick={() => { haptic.light(); setShowAdd(true); }}
-          className="fixed bottom-6 right-5 z-30 flex items-center gap-2 px-5 py-3.5 rounded-2xl font-bold shadow-2xl active:scale-95 transition"
-          style={{ background: 'var(--value)', color: 'var(--bg-primary)', boxShadow: '0 8px 30px color-mix(in oklab, var(--value) 40%, transparent)' }}>
+          className="fixed bottom-6 right-5 z-30 flex items-center gap-2 px-5 py-3.5 rounded-2xl font-bold active:scale-95 transition"
+          style={{ background: 'var(--gold-fill)', color: 'var(--text-on-gold)', boxShadow: '0 8px 30px color-mix(in oklab, var(--gold-fill) 40%, transparent)' }}>
           <Plus size={20} />Позиция
         </button>
       )}
@@ -242,16 +248,16 @@ export default function FieldPalletBuilder() {
       <input ref={fileRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={onPhotoChosen} />
       {photoBusy && (
         <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ background: 'color-mix(in oklab, var(--bg-primary) 50%, transparent)' }}>
-          <div className="flex items-center gap-3 px-5 py-3 rounded-xl" style={{ background: 'rgba(20,20,32,.95)' }}>
+          <div className="flex items-center gap-3 px-5 py-3 rounded-xl" style={{ background: 'var(--bg-surface)', border: '1px solid var(--tile-brd)' }}>
             <Loader2 className="animate-spin" size={18} color="var(--value)" />
-            <span className="text-sm">Загружаем фото…</span>
+            <span className="text-sm" style={{ color: 'var(--text-primary)' }}>Загружаем фото…</span>
           </div>
         </div>
       )}
 
       {toastMsg && (
         <div className="fixed left-4 right-4 z-50 px-4 py-3 rounded-xl text-sm font-medium text-center"
-          style={{ bottom: 90, background: 'color-mix(in oklab, var(--danger) 95%, transparent)', color: 'var(--text-primary)', boxShadow: '0 6px 24px color-mix(in oklab, var(--bg-primary) 40%, transparent)' }}>
+          style={{ bottom: 90, background: 'var(--danger)', color: 'var(--on-danger)', boxShadow: '0 6px 24px color-mix(in oklab, var(--bg-primary) 40%, transparent)' }}>
           {toastMsg}
         </div>
       )}
@@ -262,7 +268,7 @@ export default function FieldPalletBuilder() {
 function Section({ title, children }) {
   return (
     <div>
-      <div className="text-xs uppercase tracking-wide opacity-50 font-semibold mb-2">{title}</div>
+      <SectionLabel>{title}</SectionLabel>
       <div className="space-y-2">{children}</div>
     </div>
   );
@@ -271,34 +277,38 @@ function Section({ title, children }) {
 function ItemRow({ item, canPack, onPack, onAssign, assignLabel, onPhoto }) {
   const meta = SOURCE_META[item.source] || SOURCE_META.manual;
   return (
-    <div className="rounded-xl p-3 flex items-center gap-3"
-      style={{ background: 'color-mix(in oklab, var(--text-primary) 4%, transparent)', border: `1px solid ${item.packed ? 'color-mix(in oklab, var(--ok) 30%, transparent)' : 'color-mix(in oklab, var(--text-primary) 7%, transparent)'}` }}>
+    <Card variant="raised" className="p-3 flex items-center gap-3" style={{
+      borderColor: item.packed ? 'color-mix(in oklab, var(--ok) 30%, transparent)' : undefined,
+    }}>
       {/* чек собрано */}
-      <button onClick={onPack} disabled={!canPack}
+      <button onClick={onPack} disabled={!canPack} aria-label="Отметить собранным"
         className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 active:scale-90 transition"
-        style={{ background: item.packed ? 'var(--ok)' : 'color-mix(in oklab, var(--text-primary) 6%, transparent)', border: item.packed ? 'none' : '1px solid color-mix(in oklab, var(--text-primary) 15%, transparent)' }}>
+        style={{
+          background: item.packed ? 'var(--ok)' : 'var(--bg-surface-alt)',
+          border: item.packed ? 'none' : '1px solid var(--tile-brd)',
+        }}>
         {item.packed && <Check size={18} color="#08210f" strokeWidth={3} />}
       </button>
       <div className="flex-1 min-w-0">
-        <div className={`font-medium text-sm truncate ${item.packed ? 'line-through opacity-60' : ''}`}>{item.name}</div>
-        <div className="flex items-center gap-2 mt-0.5">
-          <span className="text-xs opacity-70">{Number(item.quantity)} {item.unit}</span>
-          <span className="text-[10px] px-1.5 py-0.5 rounded-full" style={{ background: `${meta.color}22`, color: meta.color }}>{meta.label}</span>
-          {item.over_received && <span className="text-[10px] px-1.5 py-0.5 rounded-full" style={{ background: 'color-mix(in oklab, var(--danger) 20%, transparent)', color: 'var(--value)' }}>излишек</span>}
+        <div className={`font-medium text-sm truncate ${item.packed ? 'line-through' : ''}`} style={{ color: item.packed ? 'var(--text-tertiary)' : 'var(--text-primary)' }}>{item.name}</div>
+        <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+          <span className="text-xs" style={{ color: 'var(--text-tertiary)' }}>{Number(item.quantity)} {item.unit}</span>
+          <span className="text-[10px] px-1.5 py-0.5 rounded-full" style={{ background: `color-mix(in oklab, ${meta.color} 13%, transparent)`, color: meta.color }}>{meta.label}</span>
+          {item.over_received && <span className="text-[10px] px-1.5 py-0.5 rounded-full" style={{ background: 'color-mix(in oklab, var(--danger) 18%, transparent)', color: 'var(--danger-ink)' }}>излишек</span>}
           {item.photo_filename && <span className="text-[10px] px-1.5 py-0.5 rounded-full" style={{ background: 'color-mix(in oklab, var(--ok) 15%, transparent)', color: 'var(--ok)' }}>фото</span>}
         </div>
       </div>
       {onPhoto && canPack && (
         <button onClick={onPhoto} className="p-2 rounded-lg flex-shrink-0 active:scale-95 transition"
-          style={{ background: 'color-mix(in oklab, var(--text-primary) 6%, transparent)', color: item.photo_filename ? 'var(--ok)' : 'var(--text-secondary)' }} title="Фото позиции">
+          style={{ background: 'var(--bg-surface-alt)', border: '1px solid var(--tile-brd)', color: item.photo_filename ? 'var(--ok)' : 'var(--text-secondary)' }} title="Фото позиции" aria-label="Фото позиции">
           <Camera size={16} />
         </button>
       )}
       {onAssign && canPack && (
         <button onClick={onAssign} className="text-[11px] font-semibold px-2.5 py-1.5 rounded-lg flex-shrink-0 active:scale-95 transition"
-          style={{ background: 'color-mix(in oklab, var(--value) 12%, transparent)', color: 'var(--value)' }}>{assignLabel}</button>
+          style={{ background: 'color-mix(in oklab, var(--value) 12%, transparent)', color: 'var(--value-ink)' }}>{assignLabel}</button>
       )}
-    </div>
+    </Card>
   );
 }
 
@@ -339,59 +349,57 @@ function AddItemSheet({ assemblyId, activePallet, pallets, onClose, onAdded, onE
   }
 
   return (
-    <div className="fixed inset-0 z-40 flex items-end" style={{ background: 'color-mix(in oklab, var(--bg-primary) 60%, transparent)' }} onClick={onClose}>
-      <div className="w-full rounded-t-3xl p-5 pb-8 max-h-[88vh] overflow-y-auto" onClick={e => e.stopPropagation()}
-        style={{ background: '#12121e', border: '1px solid color-mix(in oklab, var(--value) 20%, transparent)', animation: 'sheetUp .25s ease' }}>
-        <div className="flex items-center justify-between mb-4">
-          <div className="font-bold text-lg" style={{ color: 'var(--value)' }}>Добавить позицию</div>
-          <button onClick={onClose} className="p-1.5 rounded-lg active:scale-90"><X size={22} /></button>
-        </div>
+    <BottomSheet open onClose={onClose} title="Добавить позицию">
+      <div className="space-y-3 pb-2">
         {activePallet && (
-          <div className="text-xs opacity-60 mb-3">На паллет №{pallets.find(p => p.id === activePallet)?.pallet_number}</div>
+          <div className="text-xs" style={{ color: 'var(--text-tertiary)' }}>На паллет №{pallets.find((p) => p.id === activePallet)?.pallet_number}</div>
         )}
 
         {/* Поиск каталога */}
-        <input autoFocus value={q} onChange={e => setQ(e.target.value)} placeholder="Что кладём? (поиск по каталогу)"
-          className="w-full px-4 py-3 rounded-xl text-base outline-none mb-3"
-          style={{ background: 'color-mix(in oklab, var(--text-primary) 5%, transparent)', border: '1px solid color-mix(in oklab, var(--text-primary) 12%, transparent)', color: 'var(--text-primary)' }} />
+        <input autoFocus value={q} onChange={(e) => setQ(e.target.value)} placeholder="Что кладём? (поиск по каталогу)"
+          className="w-full px-4 py-3 rounded-xl text-base outline-none"
+          style={{ background: 'var(--bg-surface-alt)', border: '1px solid var(--tile-brd)', color: 'var(--text-primary)' }} />
 
         {/* кол-во + ед + источник */}
-        <div className="flex gap-2 mb-3">
-          <input value={qty} onChange={e => setQty(e.target.value)} type="number" inputMode="decimal" placeholder="Кол-во"
-            className="w-24 px-3 py-2.5 rounded-xl outline-none" style={{ background: 'color-mix(in oklab, var(--text-primary) 5%, transparent)', border: '1px solid color-mix(in oklab, var(--text-primary) 12%, transparent)', color: 'var(--text-primary)' }} />
-          <input value={unit} onChange={e => setUnit(e.target.value)} placeholder="ед"
-            className="w-20 px-3 py-2.5 rounded-xl outline-none" style={{ background: 'color-mix(in oklab, var(--text-primary) 5%, transparent)', border: '1px solid color-mix(in oklab, var(--text-primary) 12%, transparent)', color: 'var(--text-primary)' }} />
+        <div className="flex gap-2">
+          <input value={qty} onChange={(e) => setQty(e.target.value)} type="number" inputMode="decimal" placeholder="Кол-во"
+            className="w-24 px-3 py-2.5 rounded-xl outline-none" style={{ background: 'var(--bg-surface-alt)', border: '1px solid var(--tile-brd)', color: 'var(--text-primary)' }} />
+          <input value={unit} onChange={(e) => setUnit(e.target.value)} placeholder="ед"
+            className="w-20 px-3 py-2.5 rounded-xl outline-none" style={{ background: 'var(--bg-surface-alt)', border: '1px solid var(--tile-brd)', color: 'var(--text-primary)' }} />
         </div>
-        <div className="flex gap-2 mb-4">
-          {SOURCE_OPTIONS.map(o => {
+        <div className="flex gap-2">
+          {SOURCE_OPTIONS.map((o) => {
             const Ic = o.icon; const active = source === o.value;
             return (
               <button key={o.value} onClick={() => { haptic.light(); setSource(o.value); }}
                 className="flex-1 flex flex-col items-center gap-1 py-2.5 rounded-xl active:scale-95 transition"
-                style={{ background: active ? 'color-mix(in oklab, var(--value) 16%, transparent)' : 'color-mix(in oklab, var(--text-primary) 4%, transparent)', border: `1px solid ${active ? 'var(--value)' : 'color-mix(in oklab, var(--text-primary) 8%, transparent)'}` }}>
-                <Ic size={18} style={{ color: active ? 'var(--value)' : 'var(--text-secondary)' }} />
-                <span className="text-[10px] leading-tight text-center" style={{ color: active ? 'var(--value)' : 'var(--text-secondary)' }}>{o.label}</span>
+                style={{
+                  background: active ? 'color-mix(in oklab, var(--value) 16%, transparent)' : 'var(--bg-surface-alt)',
+                  border: `1px solid ${active ? 'var(--value)' : 'var(--tile-brd)'}`,
+                }}>
+                <Ic size={18} style={{ color: active ? 'var(--value-ink)' : 'var(--text-secondary)' }} />
+                <span className="text-[10px] leading-tight text-center" style={{ color: active ? 'var(--value-ink)' : 'var(--text-secondary)' }}>{o.label}</span>
               </button>
             );
           })}
         </div>
 
         {/* Результаты каталога */}
-        {searching && <div className="text-sm opacity-50 py-2">Поиск…</div>}
-        {results.map(r => (
+        {searching && <div className="text-sm py-2" style={{ color: 'var(--text-tertiary)' }}>Поиск…</div>}
+        {results.map((r) => (
           <button key={r.id} onClick={() => add(r.name, r.id)} disabled={saving}
             className="w-full text-left rounded-xl px-4 py-3 mb-2 active:scale-[.98] transition flex items-center justify-between"
-            style={{ background: 'color-mix(in oklab, var(--text-primary) 4%, transparent)', border: '1px solid color-mix(in oklab, var(--text-primary) 8%, transparent)' }}>
+            style={{ background: 'var(--bg-surface-alt)', border: '1px solid var(--tile-brd)' }}>
             <div>
-              <div className="font-medium text-sm">{r.name}</div>
-              <div className="text-xs opacity-50">{r.category_name || ''}{r.article ? ` • ${r.article}` : ''}</div>
+              <div className="font-medium text-sm" style={{ color: 'var(--text-primary)' }}>{r.name}</div>
+              <div className="text-xs" style={{ color: 'var(--text-tertiary)' }}>{r.category_name || ''}{r.article ? ` • ${r.article}` : ''}</div>
             </div>
-            <Plus size={18} style={{ color: 'var(--value)' }} />
+            <Plus size={18} style={{ color: 'var(--value-ink)' }} />
           </button>
         ))}
 
         {/* Создать новую «за 10 сек» */}
-        {q.trim().length >= 2 && !results.some(r => r.name.toLowerCase() === q.trim().toLowerCase()) && (
+        {q.trim().length >= 2 && !results.some((r) => r.name.toLowerCase() === q.trim().toLowerCase()) && (
           <button onClick={() => add(q.trim(), null)} disabled={saving}
             className="w-full rounded-xl px-4 py-3.5 mt-1 font-semibold active:scale-[.98] transition flex items-center gap-3"
             style={{ background: 'color-mix(in oklab, var(--ok) 12%, transparent)', border: '1px dashed color-mix(in oklab, var(--ok) 40%, transparent)', color: 'var(--ok)' }}>
@@ -400,19 +408,17 @@ function AddItemSheet({ assemblyId, activePallet, pallets, onClose, onAdded, onE
           </button>
         )}
       </div>
-      <style>{`@keyframes sheetUp{from{transform:translateY(100%)}to{transform:none}}`}</style>
-    </div>
+    </BottomSheet>
   );
 }
 
 function ScreenSkeleton({ onBack }) {
   return (
-    <div className="min-h-screen p-4" style={{ background: 'var(--bg-base,var(--bg-primary))', paddingTop: 'max(env(safe-area-inset-top), 16px)', paddingBottom: 'max(env(safe-area-inset-bottom), 16px)' }}>
+    <div className="fs-root p-4" style={{ paddingTop: 'max(env(safe-area-inset-top), 16px)' }}>
       <div className="flex items-center gap-3 mb-5">
-        <button onClick={onBack} className="p-2 -ml-2"><ArrowLeft size={22} color="var(--text-primary)" /></button>
-        <div className="h-5 w-40 rounded animate-pulse" style={{ background: 'color-mix(in oklab, var(--text-primary) 8%, transparent)' }} />
+        <button onClick={onBack} className="fs-head__btn" aria-label="Назад"><ArrowLeft size={20} strokeWidth={2.3} /></button>
       </div>
-      {[0, 1, 2, 3].map(i => <div key={i} className="h-16 rounded-xl mb-2 animate-pulse" style={{ background: 'color-mix(in oklab, var(--text-primary) 5%, transparent)' }} />)}
+      <SkeletonList count={4} />
     </div>
   );
 }

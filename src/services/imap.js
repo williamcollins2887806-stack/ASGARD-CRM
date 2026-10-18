@@ -506,6 +506,17 @@ async function runDocIntakeForEmail(db, emailId) {
         const ocr = require('./pdf-ocr');
         const res = await ocr.ocrPdfPath(full, a.filename);
         text = res && res.text ? res.text : '';
+      } else if (/image\//i.test(a.mime_type || '')) {
+        // FAIL верификатора 17.10.2026: счета-СКАНЫ (JPEG/PNG) не обрабатывались
+        // вовсе — OCR вызывался только для PDF, а картинка молча пропускалась.
+        // Часть «ВСЕ счета должны обрабатываться» не выполнялась.
+        const ocr = require('./pdf-ocr');
+        const fs = require('fs');
+        if (full && fs.existsSync(full)) {
+          const buf = fs.readFileSync(full);
+          const res = await ocr.ocrImageBuffer(buf, a.mime_type || 'image/jpeg', a.filename);
+          text = res && res.text ? res.text : '';
+        }
       }
     } catch (e) { text = ''; }
     if (!looksLikeInvoice(text)) continue;

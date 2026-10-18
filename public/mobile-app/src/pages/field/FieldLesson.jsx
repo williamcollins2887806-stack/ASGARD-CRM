@@ -4,13 +4,16 @@
  */
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
+import { Zap, ScrollText, ArrowLeft, Check, Swords, Timer } from 'lucide-react';
 import { fieldApi } from '@/api/fieldClient';
 import LessonInteractive from '@/components/field/LessonInteractive';
+import { Card, IconTile, KeyButton } from '@/components/field/ui';
+import './field-screens.css';
 
 const C = {
-  bg: 'var(--field-bg)', card: 'var(--field-card)', gold: 'var(--value)',
+  bg: 'var(--bg-primary)', card: 'var(--bg-surface)', gold: 'var(--value)',
   rune: 'var(--acc)', green: 'var(--ok)', red: 'var(--danger)',
-  amber: 'var(--value)', text: 'var(--field-text)', muted: 'var(--text-secondary)',
+  amber: 'var(--value)', text: 'var(--text-primary)', muted: 'var(--text-secondary)',
 };
 
 /** Совпадает с MIN_READ_SECONDS в src/routes/field-academy.js */
@@ -38,7 +41,7 @@ function CoverBlock({ block }) {
 function IntroBlock({ block }) {
   return (
     <div style={{
-      background: `${C.rune}11`, borderLeft: `3px solid ${C.rune}`,
+      background: `color-mix(in oklab, ${C.rune} 9%, var(--bg-surface))`, borderLeft: `3px solid ${C.rune}`,
       borderRadius: '0 12px 12px 0', padding: 16, margin: '16px 0',
       fontSize: 15, color: C.text, lineHeight: 1.65,
     }}>
@@ -74,14 +77,16 @@ function IconGridBlock({ block }) {
 function WarningBlock({ block }) {
   const isDanger = block.level === 'danger';
   const color = isDanger ? C.red : C.amber;
-  const icon = isDanger ? '⛔' : '⚠️';
   return (
     <div style={{
-      background: `${color}11`, border: `1px solid ${color}44`,
+      background: `color-mix(in oklab, ${color} 8%, var(--bg-surface))`,
+      border: `1px solid color-mix(in oklab, ${color} 26%, transparent)`,
       borderRadius: 12, padding: 14, margin: '16px 0',
       display: 'flex', gap: 10, alignItems: 'flex-start',
     }}>
-      <div style={{ fontSize: 20, flexShrink: 0 }}>{icon}</div>
+      <div style={{ fontSize: 20, flexShrink: 0, lineHeight: 1.2 }} aria-hidden>
+        {isDanger ? '⛔' : '⚠️'}
+      </div>
       <div style={{ fontSize: 14, color, lineHeight: 1.55, fontWeight: isDanger ? 700 : 400 }}>
         {block.text}
       </div>
@@ -102,8 +107,9 @@ function StepsBlock({ block }) {
           display: 'flex', gap: 12, marginBottom: 10, alignItems: 'flex-start',
         }}>
           <div style={{
-            width: 28, height: 28, borderRadius: 14, background: `${C.rune}33`,
-            border: `1px solid ${C.rune}66`, color: C.rune,
+            width: 28, height: 28, borderRadius: 14,
+            background: `color-mix(in oklab, ${C.rune} 16%, transparent)`,
+            border: `1px solid color-mix(in oklab, ${C.rune} 34%, transparent)`, color: C.rune,
             fontSize: 13, fontWeight: 800, display: 'flex', alignItems: 'center',
             justifyContent: 'center', flexShrink: 0,
           }}>
@@ -122,7 +128,7 @@ function TextBlock({ block }) {
       {block.title && (
         <div style={{ fontSize: 15, fontWeight: 700, color: C.text, marginBottom: 8 }}>{block.title}</div>
       )}
-      <div style={{ fontSize: 14, color: '#b0b0c0', lineHeight: 1.65 }}>{block.text}</div>
+      <div style={{ fontSize: 14, color: C.muted, lineHeight: 1.65 }}>{block.text}</div>
     </div>
   );
 }
@@ -130,8 +136,8 @@ function TextBlock({ block }) {
 function FactCard({ block }) {
   return (
     <div style={{
-      background: `linear-gradient(135deg, #1a2d3a 0%, ${C.card} 100%)`,
-      border: `1px solid #3b82f644`,
+      background: 'color-mix(in oklab, var(--acc) 10%, var(--bg-surface))',
+      border: '1px solid color-mix(in oklab, var(--acc) 28%, transparent)',
       borderRadius: 12, padding: 14, margin: '16px 0',
       display: 'flex', gap: 12, alignItems: 'flex-start',
     }}>
@@ -163,7 +169,13 @@ function IllustrationBlock({ block }) {
         src={block.url}
         alt={block.alt || ''}
         loading="lazy"
-        style={{ width: '100%', display: 'block', aspectRatio: block.aspect || undefined }}
+        style={{
+          width: '100%', display: 'block',
+          // ВАЖНО: aspect из данных может прийти как '16 / 9' (с пробелами) —
+          // это НЕВАЛИДНЫЙ CSS, браузер его игнорирует и картинка раздувается,
+          // «съедая» экран. Нормализуем на клиенте.
+          aspectRatio: block.aspect ? String(block.aspect).replace(/\s+/g, '') : undefined,
+        }}
       />
       {block.caption && (
         <figcaption style={{
@@ -287,20 +299,18 @@ export default function FieldLesson() {
 
   if (loading) {
     return (
-      <div style={{ minHeight: '100dvh', background: C.bg, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <div style={{ color: C.gold, fontSize: 32 }}>⚡</div>
+      <div className="fs-root" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <Zap size={32} strokeWidth={2.2} style={{ color: C.gold }} />
       </div>
     );
   }
 
   if (!lesson) {
     return (
-      <div style={{ minHeight: '100dvh', background: C.bg, padding: '80px 20px', textAlign: 'center' }}>
-        <div style={{ fontSize: 48, marginBottom: 16 }}>📜</div>
+      <div className="fs-root" style={{ padding: '80px 20px', textAlign: 'center' }}>
+        <IconTile icon={ScrollText} tone="value" size={72} iconSize={34} style={{ margin: '0 auto 16px' }} />
         <div style={{ color: C.muted }}>Руна не найдена</div>
-        <button onClick={() => navigate(-1)} style={{ marginTop: 20, color: C.gold, background: 'none', border: 'none', cursor: 'pointer' }}>
-          ← Назад
-        </button>
+        <KeyButton tone="value" icon={ArrowLeft} className="mt-5" onClick={() => navigate(-1)}>Назад</KeyButton>
       </div>
     );
   }
@@ -308,78 +318,78 @@ export default function FieldLesson() {
   const blocks = lesson.blocks || [];
 
   return (
-    <div style={{ minHeight: '100dvh', background: C.bg, paddingTop: 'max(env(safe-area-inset-top), 16px)', paddingBottom: 'max(env(safe-area-inset-bottom), 24px)' }}>
+    <div className="fs-root" style={{ paddingBottom: 'max(env(safe-area-inset-bottom), 24px)' }}>
+      <div className="fs-scene" aria-hidden><span className="fs-orb fs-orb--a" /><span className="fs-orb fs-orb--b" /></div>
+
       {/* Back button */}
       <button
         onClick={() => navigate(-1)}
+        aria-label="Назад"
         style={{
-          position: 'fixed', top: 48, left: 16, zIndex: 100,
-          background: '#00000088', border: 'none', borderRadius: 20,
-          padding: '6px 14px', color: C.text, fontSize: 14, cursor: 'pointer',
-          backdropFilter: 'blur(8px)',
+          position: 'fixed', top: 'max(env(safe-area-inset-top), 16px)', left: 16, zIndex: 100,
+          background: 'color-mix(in oklab, var(--bg-primary) 78%, transparent)',
+          WebkitBackdropFilter: 'blur(10px)', backdropFilter: 'blur(10px)',
+          border: '1px solid var(--tile-brd)', borderRadius: 20,
+          padding: '7px 13px', color: 'var(--text-primary)', cursor: 'pointer',
+          display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, fontWeight: 700,
         }}
       >
-        ← Назад
+        <ArrowLeft size={16} strokeWidth={2.5} />
+        Назад
       </button>
 
       {/* Content blocks */}
-      {blocks.map((block, i) => (
-        <div key={i} style={block.type !== 'cover' ? { padding: '0 16px' } : {}}>
-          {renderBlock(block, i, lessonId)}
-        </div>
-      ))}
+      <div style={{ position: 'relative', zIndex: 5 }}>
+        {blocks.map((block, i) => (
+          <div key={i} style={block.type !== 'cover' ? { padding: '0 16px' } : {}}>
+            {renderBlock(block, i, lessonId)}
+          </div>
+        ))}
+      </div>
 
       {/* Bottom action */}
       <div style={{
-        position: 'fixed', bottom: 0, left: 0, right: 0,
-        padding: '16px 16px 32px',
-        background: `linear-gradient(transparent, ${C.bg} 30%)`,
+        position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 20,
+        padding: '16px 16px calc(env(safe-area-inset-bottom, 0px) + 18px)',
+        background: 'linear-gradient(transparent, var(--bg-primary) 30%)',
       }}>
         {readCompleted ? (
           <div style={{ display: 'flex', gap: 10 }}>
             <div style={{
-              flex: 1, padding: '13px 0', background: `${C.green}22`,
-              border: `1px solid ${C.green}44`, borderRadius: 12,
+              flex: 1, padding: '13px 0',
+              background: 'color-mix(in oklab, var(--ok) 12%, var(--bg-surface))',
+              border: '1px solid color-mix(in oklab, var(--ok) 28%, transparent)', borderRadius: 12,
               color: C.green, fontSize: 14, fontWeight: 700,
-              textAlign: 'center',
+              textAlign: 'center', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
             }}>
-              {passed ? '✓ Испытание пройдено' : '✓ Прочитано'}
+              <Check size={16} strokeWidth={2.6} />
+              {passed ? 'Испытание пройдено' : 'Прочитано'}
             </div>
             {!passed && (
-              <button
+              <KeyButton
+                tone="accent"
+                icon={Swords}
+                style={{ flex: 2 }}
                 onClick={() => navigate(`/field/academy/quiz/${lessonId}`)}
-                style={{
-                  flex: 2, padding: '13px 0',
-                  background: `linear-gradient(90deg, ${C.rune}, var(--acc))`,
-                  border: 'none', borderRadius: 12, color: 'var(--text-primary)',
-                  fontSize: 14, fontWeight: 700, cursor: 'pointer',
-                }}
               >
-                ⚔️ Пройти Испытание
-              </button>
+                Пройти Испытание
+              </KeyButton>
             )}
           </div>
         ) : (
-          <button
+          <KeyButton
+            tone="value"
+            block
+            icon={Timer}
             onClick={handleComplete}
             disabled={completing || remainSec > 0}
-            style={{
-              width: '100%', padding: '14px 0',
-              background: completing || remainSec > 0
-                ? 'color-mix(in oklab, var(--text-primary) 13%, transparent)'
-                : `linear-gradient(90deg, ${C.gold}, var(--value))`,
-              border: 'none', borderRadius: 12,
-              color: remainSec > 0 ? C.muted : 'var(--bg-primary)',
-              fontSize: 15, fontWeight: 800,
-              cursor: completing || remainSec > 0 ? 'default' : 'pointer',
-            }}
           >
             {completing
               ? 'Сохраняем...'
               : remainSec > 0
                 ? `Читай ещё ${remainSec} сек`
-                : '✓ Прочитал — к Испытанию'}
-          </button>
+                : 'Прочитал — к Испытанию'}
+          </KeyButton>
         )}
       </div>
     </div>

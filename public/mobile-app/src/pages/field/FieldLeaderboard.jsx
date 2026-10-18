@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { fieldApi } from '@/api/fieldClient';
-import { ArrowLeft, Trophy, Flame, Zap, Sword, Shield, Users, Star } from 'lucide-react';
+import { ArrowLeft, Trophy, Flame, Zap, Shield, Users, Star, Swords, Waves, FlaskConical, Crown, Medal } from 'lucide-react';
+import './field-screens.css';
 
 /* ═══ CSS keyframes injected once ═══ */
 const CSS = `
@@ -52,7 +53,10 @@ function FireParticles() {
           height: i % 2 === 0 ? 5 : 4,
           borderRadius: '50%',
           background: ['var(--value)','#FF8C00','#FF4500','var(--value)','#FF6B00','var(--value)','#FF4500'][i],
-          animation: `lb-fire ${0.7 + i * 0.15}s ease-in-out infinite`,
+          animationName: 'lb-fire',
+          animationDuration: `${0.7 + i * 0.15}s`,
+          animationTimingFunction: 'ease-in-out',
+          animationIterationCount: 'infinite',
           animationDelay: `${i * 0.12}s`,
           opacity: 0.85,
         }} />
@@ -78,8 +82,8 @@ function RankBadge({ title, icon, small }) {
     <span style={{
       fontSize: small ? 9 : 10,
       color: c,
-      backgroundColor: `${c}22`,
-      border: `1px solid ${c}55`,
+      backgroundColor: `color-mix(in oklab, ${c} 13%, transparent)`,
+      border: `1px solid color-mix(in oklab, ${c} 33%, transparent)`,
       borderRadius: 6,
       padding: small ? '1px 4px' : '2px 6px',
       fontWeight: 700,
@@ -103,10 +107,10 @@ function AvatarCircle({ fio, rank, size = 44, active_avatar }) {
       width: size, height: size, borderRadius: '50%', flexShrink: 0,
       display: 'flex', alignItems: 'center', justifyContent: 'center',
       fontSize: size * 0.32, fontWeight: 800,
-      background: c ? `linear-gradient(135deg, ${c}, ${c}aa)` : 'linear-gradient(135deg, #1e1e3a, #2a2a4a)',
+      background: c ? `linear-gradient(135deg, ${c}, color-mix(in oklab, ${c} 67%, transparent))` : 'linear-gradient(135deg, var(--bg-surface-alt), var(--bg-elevated))',
       color: c ? 'var(--bg-primary)' : 'var(--text-secondary)',
-      border: c ? `2px solid ${c}` : '1px solid #2a2a4a',
-      boxShadow: isTop ? `0 0 12px ${c}66` : 'none',
+      border: c ? `2px solid ${c}` : '1px solid var(--border-norse)',
+      boxShadow: isTop ? `0 0 12px color-mix(in oklab, ${c} 40%, transparent)` : 'none',
       position: 'relative',
     }}>
       {initials || '?'}
@@ -149,19 +153,29 @@ function PodiumCard({ player, rank, isSelf, countersActive, onOpen }) {
     }}>
       {rank === 1 && (
         <>
-          <div style={{ fontSize: 22, position: 'absolute', top: -8, animation: 'lb-crown-bob 2s ease-in-out infinite' }}>👑</div>
+          <div style={{ position: 'absolute', top: -10, color: 'var(--value-ink)', animation: 'lb-crown-bob 2s ease-in-out infinite' }}>
+            <Crown size={22} strokeWidth={2.2} fill="currentColor" aria-hidden />
+          </div>
           <FireParticles />
         </>
       )}
-      {rank === 2 && <div style={{ fontSize: 18, position: 'absolute', top: 0 }}>🥈</div>}
-      {rank === 3 && <div style={{ fontSize: 18, position: 'absolute', top: 0 }}>🥉</div>}
+      {rank === 2 && (
+        <div style={{ position: 'absolute', top: 0, color: 'var(--text-secondary)' }}>
+          <Medal size={18} strokeWidth={2.3} aria-label="2 место" />
+        </div>
+      )}
+      {rank === 3 && (
+        <div style={{ position: 'absolute', top: 0, color: 'var(--value-ink)' }}>
+          <Medal size={18} strokeWidth={2.3} aria-label="3 место" />
+        </div>
+      )}
 
       <AvatarCircle fio={player.fio} rank={rank} size={rank === 1 ? 52 : 42} />
 
       <div style={{
         width: '100%', borderRadius: 12, padding: '8px 6px',
-        background: isSelf ? 'color-mix(in oklab, var(--value) 18%, transparent)' : `${c}18`,
-        border: `1.5px solid ${c}55`,
+        background: isSelf ? 'color-mix(in oklab, var(--value) 18%, transparent)' : `color-mix(in oklab, ${c} 9%, transparent)`,
+        border: `1.5px solid color-mix(in oklab, ${c} 33%, transparent)`,
         boxShadow: rank === 1 ? undefined : undefined,
         animation: rank === 1 ? 'lb-gold-pulse 2.5s ease-in-out infinite' : 'none',
         textAlign: 'center',
@@ -179,8 +193,8 @@ function PodiumCard({ player, rank, isSelf, countersActive, onOpen }) {
       <div style={{
         width: '90%', height: rank === 1 ? 18 : rank === 2 ? 12 : 8,
         borderRadius: '6px 6px 0 0',
-        background: `linear-gradient(180deg, ${c}88, ${c}44)`,
-        border: `1px solid ${c}66`,
+        background: `linear-gradient(180deg, color-mix(in oklab, ${c} 53%, transparent), color-mix(in oklab, ${c} 27%, transparent))`,
+        border: `1px solid color-mix(in oklab, ${c} 40%, transparent)`,
       }} />
     </div>
   );
@@ -190,7 +204,7 @@ function PodiumCard({ player, rank, isSelf, countersActive, onOpen }) {
 function PlayerRow({ player, isSelf, idx, visible, onOpen }) {
   const rank = parseInt(player.rank);
   const isTop3 = rank <= 3;
-  const MEDAL = { 1: '🥇', 2: '🥈', 3: '🥉' };
+  const RANK_STEP = { 1: 0, 2: 1, 3: 2 };
   const rt = player.rank_title || {};
 
   return (
@@ -205,7 +219,10 @@ function PlayerRow({ player, isSelf, idx, visible, onOpen }) {
       backgroundColor: isSelf ? 'color-mix(in oklab, var(--value) 10%, transparent)' : isTop3 ? `color-mix(in oklab, var(--text-primary) 4%, transparent)` : 'color-mix(in oklab, var(--text-primary) 3%, transparent)',
       border: isSelf ? '1.5px solid #D4A84388' : isTop3 ? '1px solid color-mix(in oklab, var(--text-primary) 8%, transparent)' : '1px solid color-mix(in oklab, var(--text-primary) 5%, transparent)',
       boxShadow: isSelf ? '0 0 14px color-mix(in oklab, var(--value) 20%, transparent)' : 'none',
-      animation: visible ? `lb-row-in 0.35s ease both` : 'none',
+      animationName: visible ? 'lb-row-in' : 'none',
+      animationDuration: '0.35s',
+      animationTimingFunction: 'ease',
+      animationFillMode: 'both',
       animationDelay: `${idx * 0.04}s`,
       position: 'relative',
       overflow: 'hidden',
@@ -219,7 +236,9 @@ function PlayerRow({ player, isSelf, idx, visible, onOpen }) {
       {/* Rank number */}
       <div style={{ width: 28, textAlign: 'center', flexShrink: 0 }}>
         {isTop3
-          ? <span style={{ fontSize: 18 }}>{MEDAL[rank]}</span>
+          ? <span style={{ color: rank === 1 ? 'var(--value-ink)' : 'var(--text-secondary)', display: 'inline-flex' }}>
+              <Medal size={18} strokeWidth={2.3} aria-label={`${rank} место`} />
+            </span>
           : <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-secondary)' }}>#{rank}</span>
         }
       </div>
@@ -361,7 +380,7 @@ function TournamentBracket({ tournament, myId }) {
       </div>
 
       <p style={{ fontSize: 10, color: 'var(--text-tertiary)', textAlign: 'center', marginTop: 8 }}>
-        Победитель каждого матча — по Силе Воина ⚔️ за текущую неделю
+        Победитель каждого матча — по Силе Воина за текущую неделю
       </p>
     </div>
   );
@@ -403,7 +422,10 @@ function Skeleton() {
       {[130, 100, 82, 82, 82, 82, 82].map((h, i) => (
         <div key={i} style={{
           height: h, borderRadius: 14, backgroundColor: 'color-mix(in oklab, var(--text-primary) 4%, transparent)',
-          animation: 'pulse 1.5s ease-in-out infinite',
+          animationName: 'pulse',
+          animationDuration: '1.5s',
+          animationTimingFunction: 'ease-in-out',
+          animationIterationCount: 'infinite',
           animationDelay: `${i * 0.1}s`,
         }} />
       ))}
@@ -414,7 +436,7 @@ function Skeleton() {
 /* ═══ Pipeline leaderboard row ═══ */
 function PipelineRow({ player, isSelf, idx, visible }) {
   const rank = parseInt(player.rank);
-  const MEDAL = { 1: '🥇', 2: '🥈', 3: '🥉' };
+  const RANK_STEP = { 1: 0, 2: 1, 3: 2 };
   const isTop3 = rank <= 3;
   const firstName = (player.fio || '').split(' ')[0] || '?';
 
@@ -424,11 +446,18 @@ function PipelineRow({ player, isSelf, idx, visible }) {
       borderRadius: 14,
       backgroundColor: isSelf ? 'color-mix(in oklab, var(--acc) 10%, transparent)' : isTop3 ? 'color-mix(in oklab, var(--text-primary) 4%, transparent)' : 'color-mix(in oklab, var(--text-primary) 3%, transparent)',
       border: isSelf ? '1.5px solid color-mix(in oklab, var(--acc) 50%, transparent)' : '1px solid color-mix(in oklab, var(--text-primary) 5%, transparent)',
-      animation: visible ? `lb-row-in 0.35s ease both` : 'none',
+      animationName: visible ? 'lb-row-in' : 'none',
+      animationDuration: '0.35s',
+      animationTimingFunction: 'ease',
+      animationFillMode: 'both',
       animationDelay: `${idx * 0.04}s`,
     }}>
       <div style={{ width: 28, textAlign: 'center', flexShrink: 0 }}>
-        {isTop3 ? <span style={{ fontSize: 18 }}>{MEDAL[rank]}</span> : <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-secondary)' }}>#{rank}</span>}
+          {isTop3
+            ? <span style={{ color: rank === 1 ? 'var(--value-ink)' : 'var(--text-secondary)', display: 'inline-flex' }}>
+                <Medal size={18} strokeWidth={2.3} aria-label={`${rank} место`} />
+              </span>
+            : <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-secondary)' }}>#{rank}</span>}
       </div>
       <AvatarCircle fio={player.fio} rank={rank} size={40} />
       <div style={{ flex: 1, minWidth: 0 }}>
@@ -436,13 +465,14 @@ function PipelineRow({ player, isSelf, idx, visible }) {
           {firstName}
         </div>
         <div style={{ display: 'flex', gap: 8, marginTop: 2, flexWrap: 'wrap' }}>
-          <span style={{ fontSize: 10, color: 'var(--text-secondary)' }}>Макс ур. {player.max_level}</span>
+          <span style={{ fontSize: 10, color: 'var(--text-secondary)' }}>уровней: {player.max_level}</span>
           {player.current_streak > 0 && <span style={{ fontSize: 10, color: 'var(--value)' }}>🔥 {player.current_streak}</span>}
         </div>
       </div>
       <div style={{ textAlign: 'right', flexShrink: 0 }}>
         <div style={{ fontSize: 14, fontWeight: 800, color: 'var(--value)' }}>⭐ {player.weekly_stars}</div>
-        <div style={{ fontSize: 10, color: 'var(--text-secondary)' }}>всего ⭐{player.total_stars}</div>
+        <div style={{ fontSize: 9, color: 'var(--text-secondary)' }}>за неделю</div>
+        <div style={{ fontSize: 9, color: 'var(--text-tertiary)' }}>всего {player.total_stars}</div>
       </div>
     </div>
   );
@@ -513,44 +543,49 @@ export default function FieldLeaderboard() {
   const totalRunes = useCountUp(totalRunesSum, 1400, countersActive);
 
   return (
-    <div style={{ backgroundColor: 'var(--field-bg-2)', minHeight: '100dvh', paddingBottom: 'max(env(safe-area-inset-bottom), 24px)' }}>
+    <div className="fs-root" style={{ paddingBottom: 'max(env(safe-area-inset-bottom), 24px)' }}>
+      <div className="fs-scene" aria-hidden><span className="fs-orb fs-orb--a" /><span className="fs-orb fs-orb--b" /></div>
       <style>{CSS}</style>
 
       {/* ── STICKY HEADER ── */}
       <div style={{
         position: 'sticky', top: 0, zIndex: 20, padding: '14px 16px 10px',
         paddingTop: 'max(env(safe-area-inset-top), 14px)',
-        background: 'linear-gradient(180deg, var(--bg-primary) 70%, rgba(8,13,31,0))',
-        borderBottom: '1px solid color-mix(in oklab, var(--text-primary) 6%, transparent)',
+        background: 'color-mix(in oklab, var(--bg-primary) 88%, transparent)',
+        WebkitBackdropFilter: 'blur(14px) saturate(1.5)', backdropFilter: 'blur(14px) saturate(1.5)',
+        borderBottom: '1px solid var(--border-norse)',
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }}>
-          <button onClick={() => navigate('/field/achievements')} style={{ background: 'color-mix(in oklab, var(--text-primary) 6%, transparent)', border: 'none', borderRadius: 10, padding: 8, cursor: 'pointer', display: 'flex' }}>
-            <ArrowLeft size={20} color="var(--text-secondary)" />
+          <button onClick={() => navigate('/field/achievements')} className="fs-head__btn" aria-label="Назад">
+            <ArrowLeft size={20} strokeWidth={2.3} />
           </button>
           <Trophy size={22} color="var(--value)" />
           <div style={{ flex: 1 }}>
             <div style={{ fontSize: 16, fontWeight: 800, color: 'var(--text-primary)' }}>Зал Одина</div>
-            <div style={{ fontSize: 10, color: 'var(--text-secondary)' }}>
+            <div style={{ fontSize: 11, color: 'var(--text-secondary)' }}>
               {totalWorkers} воинов · {totalRunes.toLocaleString('ru-RU')} ᚱ выдано суммарно
             </div>
           </div>
-          <span style={{ fontSize: 20 }}>⚡</span>
+          <Zap size={20} color="var(--value)" strokeWidth={2.2} />
         </div>
 
         {/* Tab selector */}
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
           {[
-            { key: 'rating', label: '⚔️ Рейтинг', color: 'var(--value)' },
-            { key: 'pipeline', label: '🌊 Трубы', color: 'var(--acc)' },
-            { key: 'chemlab', label: '🧪 Химцех', color: 'var(--value)' },
-            { key: 'tournament', label: '🏆 Турнир', color: 'var(--value)' },
+            { key: 'rating', label: 'Рейтинг', icon: Swords, color: 'var(--value)' },
+            { key: 'pipeline', label: 'Трубы', icon: Waves, color: 'var(--acc)' },
+            { key: 'chemlab', label: 'Химцех', icon: FlaskConical, color: 'var(--value)' },
+            { key: 'tournament', label: 'Турнир', icon: Trophy, color: 'var(--value)' },
           ].map(t => (
             <button key={t.key} onClick={() => setTab(t.key)} style={{
-              flex: '1 1 40%', padding: '8px 0', borderRadius: 12, fontSize: 11, fontWeight: 700,
+              flex: '1 1 40%', padding: '9px 0', borderRadius: 12, fontSize: 11.5, fontWeight: 700,
               border: 'none', cursor: 'pointer', transition: 'all .2s',
-              backgroundColor: tab === t.key ? t.color : 'color-mix(in oklab, var(--text-primary) 6%, transparent)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+              backgroundColor: tab === t.key ? t.color : 'var(--tile-bg)',
               color: tab === t.key ? 'var(--bg-primary)' : 'var(--text-secondary)',
+              boxShadow: tab === t.key ? 'var(--tile-shadow)' : 'none',
             }}>
+              <t.icon size={14} strokeWidth={2.4} />
               {t.label}
             </button>
           ))}
@@ -701,14 +736,14 @@ export default function FieldLeaderboard() {
               {/* ── Sort pills ── */}
               <div style={{ display: 'flex', gap: 6 }}>
                 {[
-                  { key: 'power',  label: '⚔️ Сила',  color: 'var(--value)' },
+                  { key: 'power',  label: 'Сила',  color: 'var(--value)' },
                   { key: 'runes',  label: 'ᚱ Заработано',   color: 'var(--value)' },
                   { key: 'shifts', label: '📅 Смены', color: 'var(--acc)' },
                 ].map(s => (
                   <button key={s.key} onClick={() => setSortBy(s.key)} style={{
                     flex: 1, padding: '6px 0', borderRadius: 10, fontSize: 11, fontWeight: 700,
-                    border: `1px solid ${sortBy === s.key ? s.color + '88' : 'color-mix(in oklab, var(--text-primary) 8%, transparent)'}`,
-                    backgroundColor: sortBy === s.key ? `${s.color}22` : 'color-mix(in oklab, var(--text-primary) 3%, transparent)',
+                    border: `1px solid ${sortBy === s.key ? `color-mix(in oklab, ${s.color} 53%, transparent)` : 'color-mix(in oklab, var(--text-primary) 8%, transparent)'}`,
+                    backgroundColor: sortBy === s.key ? `color-mix(in oklab, ${s.color} 13%, transparent)` : 'color-mix(in oklab, var(--text-primary) 3%, transparent)',
                     color: sortBy === s.key ? s.color : 'var(--text-secondary)',
                     cursor: 'pointer', transition: 'all .2s',
                   }}>

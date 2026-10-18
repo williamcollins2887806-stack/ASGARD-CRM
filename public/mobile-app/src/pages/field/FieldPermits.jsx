@@ -3,6 +3,9 @@ import { useNavigate } from 'react-router-dom';
 import { fieldApi } from '@/api/fieldClient';
 import { useHaptic } from '@/hooks/useHaptic';
 import { ArrowLeft, ScrollText, RefreshCw, ShieldAlert, CheckCircle2, Bell } from 'lucide-react';
+import { Card, IconTile, KeyButton, SectionLabel } from '@/components/field/ui';
+import { SkeletonList } from '@/components/shared/SkeletonKit';
+import './field-screens.css';
 
 const ST = {
   draft: { label: 'Черновик', color: 'var(--text-secondary)' },
@@ -52,49 +55,36 @@ export default function FieldPermits() {
   }
 
   return (
-    <div
-      style={{
-        minHeight: '100dvh',
-        paddingTop: 'max(env(safe-area-inset-top), 16px)',
-        paddingBottom: 'max(env(safe-area-inset-bottom), 24px)',
-        background:
-          'radial-gradient(ellipse 90% 50% at 50% -10%, color-mix(in oklab, var(--value) 12%, transparent), transparent 55%), linear-gradient(180deg,var(--bg-primary) 0%,#10161f 45%,var(--bg-primary) 100%)',
-      }}
-    >
+    <div className="fs-root" style={{ paddingBottom: 'max(env(safe-area-inset-bottom), 24px)' }}>
+      <div className="fs-scene" aria-hidden><span className="fs-orb fs-orb--a" /><span className="fs-orb fs-orb--b" /></div>
+
       <div
-        className="sticky top-0 z-20 px-4 py-3 flex items-center gap-3"
+        className="flex items-center gap-3"
         style={{
-          background: 'color-mix(in oklab, var(--bg-primary) 92%, transparent)',
-          backdropFilter: 'blur(14px)',
-          borderBottom: '1px solid color-mix(in oklab, var(--value) 28%, transparent)',
+          position: 'sticky', top: 0, zIndex: 20,
+          paddingTop: 'max(env(safe-area-inset-top), 12px)', paddingBottom: 12, paddingInline: 16,
+          background: 'color-mix(in oklab, var(--bg-primary) 88%, transparent)',
+          WebkitBackdropFilter: 'blur(14px) saturate(1.5)', backdropFilter: 'blur(14px) saturate(1.5)',
+          borderBottom: '1px solid color-mix(in oklab, var(--value) 24%, transparent)',
         }}
       >
-        <button
-          type="button"
-          onClick={() => navigate('/field/home')}
-          className="p-2 rounded-xl"
-          style={{ background: 'color-mix(in oklab, var(--text-primary) 5%, transparent)' }}
-        >
-          <ArrowLeft size={18} style={{ color: 'var(--gold)' }} />
+        <button onClick={() => navigate('/field/home')} className="fs-head__btn" aria-label="Назад" style={{ marginLeft: -8 }}>
+          <ArrowLeft size={20} strokeWidth={2.3} />
         </button>
+        <IconTile icon={ShieldAlert} tone="value" size={38} />
         <div className="flex-1 min-w-0">
-          <div className="text-[10px] tracking-[0.2em] font-extrabold" style={{ color: 'var(--gold)' }}>
+          <div className="text-[10px] tracking-[0.2em] font-extrabold" style={{ color: 'var(--value-ink)' }}>
             ОТ · ПБ · ASGARD
           </div>
-          <div className="font-extrabold text-base truncate" style={{ color: 'color-mix(in oklab, var(--value) 25%, var(--text-primary))' }}>
+          <div className="font-extrabold text-base truncate" style={{ color: 'var(--text-primary)' }}>
             Электронные наряды
           </div>
         </div>
         <button
-          type="button"
-          onClick={() => {
-            haptic.light();
-            load();
-          }}
-          className="p-2 rounded-xl"
-          style={{ background: 'color-mix(in oklab, var(--text-primary) 5%, transparent)' }}
+          onClick={() => { haptic.light(); load(); }}
+          className="fs-head__btn" aria-label="Обновить"
         >
-          <RefreshCw size={16} style={{ color: 'var(--text-tertiary)' }} />
+          <RefreshCw size={16} strokeWidth={2.3} />
         </button>
       </div>
 
@@ -105,37 +95,31 @@ export default function FieldPermits() {
         }}
       />
 
-      <div className="p-4 space-y-4">
+      <div className="fs-content space-y-4" style={{ paddingTop: 16 }}>
         {error && (
-          <div
-            className="rounded-xl p-3 text-sm"
-            style={{ background: 'color-mix(in oklab, var(--danger) 12%, transparent)', color: 'var(--danger)', border: '1px solid color-mix(in oklab, var(--danger) 30%, transparent)' }}
-          >
+          <Card variant="flat" tone="danger" className="p-3 text-sm" style={{ color: 'var(--danger-ink)' }}>
             {error}
-          </div>
+          </Card>
         )}
 
         {inbox.length > 0 && (
-          <div
-            className="rounded-2xl p-3 space-y-2"
-            style={{ border: '1px solid color-mix(in oklab, var(--value) 40%, transparent)', background: 'color-mix(in oklab, var(--value) 8%, transparent)' }}
-          >
-            <div className="text-xs font-extrabold flex items-center gap-1.5" style={{ color: 'var(--gold)' }}>
-              <Bell size={13} /> Уведомления
+          <Card variant="raised" tone="value" className="p-3 space-y-2">
+            <div className="text-xs font-extrabold flex items-center gap-1.5" style={{ color: 'var(--value-ink)' }}>
+              <Bell size={13} strokeWidth={2.5} /> Уведомления
             </div>
             {inbox.map((i) => (
               <button
                 key={i.id}
                 type="button"
                 className="w-full text-left rounded-xl p-2.5"
-                style={{ background: 'color-mix(in oklab, var(--bg-primary) 28%, transparent)' }}
+                style={{ background: 'var(--bg-surface-alt)' }}
                 onClick={async () => {
                   await fieldApi.post(`/nd/inbox/${i.id}/read`).catch(() => {});
                   if (i.permit_id) open(i.permit_id);
                   else load();
                 }}
               >
-                <div className="text-sm font-semibold" style={{ color: 'color-mix(in oklab, var(--value) 25%, var(--text-primary))' }}>
+                <div className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
                   {i.title}
                 </div>
                 {i.body && (
@@ -145,23 +129,21 @@ export default function FieldPermits() {
                 )}
               </button>
             ))}
-          </div>
+          </Card>
         )}
 
         {loading ? (
-          <div className="py-20 text-center text-sm" style={{ color: 'var(--text-tertiary)' }}>
-            Загрузка нарядов…
-          </div>
+          <SkeletonList count={4} />
         ) : (
           <>
             {isMaster && (
               <section>
-                <div className="flex items-center gap-2 mb-2.5">
-                  <ShieldAlert size={16} style={{ color: 'var(--value)' }} />
-                  <h2 className="text-sm font-extrabold" style={{ color: 'color-mix(in oklab, var(--value) 25%, var(--text-primary))' }}>
+                <SectionLabel>
+                  <span className="inline-flex items-center gap-1.5">
+                    <ShieldAlert size={12} strokeWidth={2.5} style={{ color: 'var(--value-ink)' }} aria-hidden />
                     На утверждении ({drafts.length})
-                  </h2>
-                </div>
+                  </span>
+                </SectionLabel>
                 {drafts.length === 0 ? (
                   <Empty hint="Нет черновиков от РП. Когда РП создаст наряд в CRM — он появится здесь." />
                 ) : (
@@ -175,12 +157,12 @@ export default function FieldPermits() {
             )}
 
             <section>
-              <div className="flex items-center gap-2 mb-2.5 mt-1">
-                <ScrollText size={16} style={{ color: 'var(--gold)' }} />
-                <h2 className="text-sm font-extrabold" style={{ color: 'color-mix(in oklab, var(--value) 25%, var(--text-primary))' }}>
+              <SectionLabel>
+                <span className="inline-flex items-center gap-1.5">
+                  <ScrollText size={12} strokeWidth={2.5} style={{ color: 'var(--value-ink)' }} aria-hidden />
                   {isMaster ? 'Утверждённые' : 'Мои наряды'} ({permits.length})
-                </h2>
-              </div>
+                </span>
+              </SectionLabel>
               {permits.length === 0 ? (
                 <Empty hint={isMaster ? 'После утверждения наряды появятся здесь' : 'Утверждённых нарядов пока нет'} />
               ) : (
@@ -208,7 +190,7 @@ function Empty({ hint }) {
   return (
     <div
       className="rounded-2xl p-5 text-sm text-center leading-relaxed"
-      style={{ color: 'var(--text-tertiary)', border: '1px dashed color-mix(in oklab, var(--value) 28%, transparent)', background: 'color-mix(in oklab, var(--text-primary) 2%, transparent)' }}
+      style={{ color: 'var(--text-tertiary)', border: '1px dashed color-mix(in oklab, var(--value) 28%, transparent)', background: 'var(--bg-surface-alt)' }}
     >
       {hint}
     </div>
@@ -218,24 +200,24 @@ function Empty({ hint }) {
 function PermitCard({ p, onOpen, badge, ack, urgent }) {
   const st = ST[p.status] || ST.draft;
   return (
-    <button
-      type="button"
+    <Card
+      as="button"
+      variant="raised"
       onClick={onOpen}
-      className="w-full text-left rounded-2xl p-3.5 active:scale-[0.99] transition-transform"
+      className="w-full text-left p-3.5 active:scale-[0.99]"
       style={{
-        background: urgent
-          ? 'linear-gradient(145deg, color-mix(in oklab, var(--danger) 14%, transparent), rgba(14,18,24,.98))'
-          : 'linear-gradient(145deg, rgba(30,36,48,.95), rgba(14,18,24,.98))',
-        border: urgent ? '1px solid color-mix(in oklab, var(--danger) 45%, transparent)' : '1px solid color-mix(in oklab, var(--value) 22%, transparent)',
-        boxShadow: '0 10px 28px color-mix(in oklab, var(--bg-primary) 38%, transparent)',
+        borderColor: urgent
+          ? 'color-mix(in oklab, var(--danger) 42%, transparent)'
+          : 'color-mix(in oklab, var(--value) 24%, transparent)',
+        boxShadow: 'var(--tile-shadow)',
       }}
     >
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
-          <div className="text-[10px] font-mono tracking-wide" style={{ color: 'var(--gold)' }}>
+          <div className="text-[10px] font-mono tracking-wide" style={{ color: 'var(--value-ink)' }}>
             {p.number || `черновик #${p.id}`}
           </div>
-          <div className="font-bold text-sm mt-0.5 truncate" style={{ color: 'color-mix(in oklab, var(--value) 25%, var(--text-primary))' }}>
+          <div className="font-bold text-sm mt-0.5 truncate" style={{ color: 'var(--text-primary)' }}>
             {p.form_title || p.form_code}
           </div>
           <div className="text-xs mt-1.5 line-clamp-2 leading-snug" style={{ color: 'var(--text-tertiary)' }}>
@@ -251,7 +233,7 @@ function PermitCard({ p, onOpen, badge, ack, urgent }) {
       </div>
       <div className="flex items-center gap-2 mt-2.5 flex-wrap">
         {badge && (
-          <span className="text-[11px] font-bold" style={{ color: urgent ? 'var(--value)' : 'var(--value)' }}>
+          <span className="text-[11px] font-bold" style={{ color: 'var(--value-ink)' }}>
             {badge}
           </span>
         )}
@@ -261,6 +243,6 @@ function PermitCard({ p, onOpen, badge, ack, urgent }) {
           </span>
         )}
       </div>
-    </button>
+    </Card>
   );
 }

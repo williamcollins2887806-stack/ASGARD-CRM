@@ -32,8 +32,11 @@ const cron = require('../src/services/reminder-cron');
   console.log(`  ${pass1} дайджест сформирован (письмо ушло либо ошибка SMTP в логе)`);
   console.log(`  ${pass2} повтор не дублирует (антидубль doc_reminder_log)`);
   console.log(`  ${pass3} в логе ровно 3 задачи`);
+  const passed = [pass1, pass2, pass3].filter((x) => x === 'PASS').length;
+  // Сводка в формате сводного прогона (tests/doc-hub-all.js ищет «PASS N / FAIL N»).
+  console.log(`PASS ${passed} / FAIL ${3 - passed}`);
   await db.query(`DELETE FROM doc_reminder_log WHERE doc_id = ANY($1::int[])`, [ids]);
   await db.query(`DELETE FROM doc_registry WHERE id = ANY($1::int[])`, [ids]);
   await db.end();
-  process.exit(pass1 === 'PASS' && pass2 === 'PASS' && pass3 === 'PASS' ? 0 : 1);
+  process.exit(passed === 3 ? 0 : 1);
 })().catch((e) => { console.error('CRASH', e.message); process.exit(1); });

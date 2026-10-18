@@ -495,10 +495,24 @@ fastify.addHook('onSend', async (request, reply) => {
 //   1) белый список расширений на входе (src/lib/upload-ext.js) в каждом загрузчике;
 //   2) здесь — принудительный безопасный Content-Type по расширению сохранённого файла;
 //   3) nosniff как дополнительный слой.
+// Барьер: /uploads/private/** НЕ раздаётся статикой — только через ACL-роуты.
+// Хук на КОРНЕВОМ инстансе: дочерний плагин не покрыл бы маршруты статики.
+fastify.addHook('onRequest', (req, reply, next) => {
+  const url = String(req.raw.url || '');
+  if (/^\/uploads\/private(\/|$)/i.test(url)) {
+    return reply.code(404).send({ error: 'Не найдено' });
+  }
+  next();
+});
+
 fastify.register(require('@fastify/static'), {
   root: path.join(__dirname, '../uploads'),
   prefix: '/uploads/',
   decorateReply: false,
+  // P0 (верификатор 17.10.2026): приватные подкаталоги (private/) НЕ раздаются
+  // статикой вовсе — файлы актов сверки доступны только через ACL-роут.
+  // Барьер на уровне сервера, а не по одному файлу: класс дефекта «утечка через
+  // предсказуемый URL» закрывается целиком.
   setHeaders: (res, filePath) => {
     const { isDangerousExt, safeContentType } = require('./lib/upload-ext');
     const ext = path.extname(filePath || '').toLowerCase();
@@ -861,6 +875,7 @@ fastify.register(require('./routes/mimir'), { prefix: '/api/mimir' });
 fastify.register(require('./routes/mimir-conductor'), { prefix: '/api/mimir' });
 fastify.register(require('./routes/mimir-letter'), { prefix: '/api/mimir' });
 fastify.register(require('./routes/hints'), { prefix: '/api' });
+fastify.register(require('./routes/page-view'), { prefix: '/api' });
 fastify.register(require('./routes/geo'), { prefix: '/api/geo' });
 fastify.register(require('./routes/email'), { prefix: '/api/email' });
 fastify.register(require('./routes/acts'), { prefix: '/api/acts' });
@@ -1621,7 +1636,14 @@ fastify.setNotFoundHandler((request, reply) => {
 // Error Handler
 // ─────────────────────────────────────────────────────────────────────────────
 fastify.setErrorHandler((error, request, reply) => {
-  const statusCode = error.statusCode || 500;
+  // Статус считаем ЧЕРЕЗ словарь humanError, а не по одному error.statusCode:
+  // ошибки Postgres приходят без statusCode (только `code`, напр. 42P01 —
+  // нет таблицы), из-за чего класс «раздел недоступен» уходил как 500, хотя
+  // словарь для него уже знает 503. Один и тот же сбой отдавался разными
+  // кодами на разных ручках — клиент не мог отличить «сломалось» от «не готово».
+  const { humanError } = require('./lib/human-error');
+  const human = humanError(error);
+  const statusCode = error.statusCode || (human && human.statusCode) || 500;
 
   if (statusCode < 500) {
     fastify.log.warn(
@@ -1644,8 +1666,7 @@ fastify.setErrorHandler((error, request, reply) => {
     // Правило продукта: любая ошибка говорит пользователю ЧТО случилось и ЧТО
     // делать. Для 5xx — нейтральный безопасный текст + подсказка; для 4xx —
     // текст ошибки + универсальная подсказка (если ручка не дала свою).
-    const { humanError } = require('./lib/human-error');
-    const h = humanError(error);
+    const h = human;
     // Если Fastify-валидация рун уже дала точное сообщение — оставляем его.
     const runesMsg = /рун/.test(String(message));
     if (!runesMsg) message = h.message;

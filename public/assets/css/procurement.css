@@ -226,6 +226,24 @@ button.proc-cover{cursor:pointer}
 .proc-pay-modal__meta{display:grid;grid-template-columns:120px 1fr;gap:8px 12px;font-size:13px;margin-bottom:14px}
 .proc-pay-modal__meta dt{color:var(--t2);font-size:12px}
 .proc-pay-modal__meta dd{margin:0;color:var(--t1);font-weight:500}
+/* V404: плашки «договор есть/нет в CRM», «объект не привязан» — только токены темы. */.ap-flag{display:inline-block;margin-left:6px;padding:1px 7px;border-radius:999px;font-size:11px;font-weight:600;line-height:1.5;white-space:nowrap}
+.ap-flag--err{color:var(--err);background:color-mix(in srgb,var(--err) 14%,transparent);border:1px solid color-mix(in srgb,var(--err) 40%,transparent)}
+.ap-flag--ok{color:var(--ok);background:color-mix(in srgb,var(--ok) 14%,transparent);border:1px solid color-mix(in srgb,var(--ok) 40%,transparent)}
+.ap-flag--warn{color:var(--warn);background:color-mix(in srgb,var(--warn) 14%,transparent);border:1px solid color-mix(in srgb,var(--warn) 40%,transparent)}
+/* Подбор объекта (работы) в модалке заявки — заказчик 18.10.2026. Только токены темы. */
+.pi-work-list{display:flex;flex-direction:column;gap:6px;margin-top:8px;max-height:260px;overflow:auto}
+.pi-work-chip{display:flex;flex-direction:column;gap:2px;align-items:flex-start;width:100%;text-align:left;
+  padding:8px 10px;border:1px solid var(--brd);border-radius:10px;background:var(--bg2);color:var(--t1);
+  font:inherit;cursor:pointer;transition:border-color .15s,background .15s}
+.pi-work-chip:hover{border-color:color-mix(in srgb,var(--gold) 55%,var(--brd));background:color-mix(in srgb,var(--gold) 6%,var(--bg2))}
+.pi-work-chip strong{font-size:13px;font-weight:600}
+.pi-work-chip span{font-size:11.5px;color:var(--t2)}
+.pi-work-chip__meta{opacity:.85}
+.pi-work-chip.is-sug{border-color:color-mix(in srgb,var(--ok) 45%,var(--brd))}
+.pi-work-chip em{font-size:11px;font-style:normal;color:var(--ok);font-weight:600}
+.pi-work-cur{display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid var(--brd);border-radius:10px;background:var(--bg2)}
+.pi-work-cur__ok{font-size:11px;font-weight:600;color:var(--ok);padding:1px 7px;border-radius:999px;
+  background:color-mix(in srgb,var(--ok) 14%,transparent);border:1px solid color-mix(in srgb,var(--ok) 40%,transparent)}
 .proc-pay-modal__layout{display:grid;grid-template-columns:minmax(0,1.05fr) minmax(280px,.95fr);gap:20px;align-items:start}
 @media(max-width:860px){.proc-pay-modal__layout{grid-template-columns:1fr}}
 .proc-pay-modal__main{min-width:0}

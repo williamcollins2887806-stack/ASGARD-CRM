@@ -32,6 +32,57 @@ function shuffleQuizOptions(options) {
   }));
 }
 
+/**
+ * Детерминированный seed из строки (FNV-1a) — для персонального перемешивания.
+ */
+function seedFromString(s) {
+  let h = 0x811c9dc5;
+  const str = String(s);
+  for (let i = 0; i < str.length; i++) {
+    h ^= str.charCodeAt(i);
+    h = Math.imul(h, 0x01000193) >>> 0;
+  }
+  return h >>> 0;
+}
+
+/** Детерминированный ГПСЧ (mulberry32) — стабильный порядок для одного seed. */
+function mulberry32(seed) {
+  let a = seed >>> 0;
+  return function () {
+    a = (a + 0x6D2B79F5) >>> 0;
+    let t = a;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+/**
+ * Персональное перемешивание вариантов: у каждого рабочего свой порядок ответов,
+ * НО стабильный — при повторном открытии того же теста тем же рабочим порядок
+ * не меняется (иначе правильный ответ «перескакивает» посреди прохождения).
+ *
+ * seed = questionId + employeeId + соль (соль меняется раз в неделю, чтобы
+ * со временем раскладка тоже обновлялась).
+ *
+ * @param {Array} options  — варианты (без is_correct на клиенте; на сервере с ним)
+ * @param {string|number} seedKey — например `${qId}:${employeeId}:${weekSalt}`
+ * @returns {Array} — те же варианты, перемешанные детерминированно, с новыми id
+ */
+function personalShuffleOptions(options, seedKey) {
+  const arr = Array.isArray(options) ? options.slice() : [];
+  if (arr.length < 2) return arr;
+  const rand = mulberry32(seedFromString(seedKey));
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(rand() * (i + 1));
+    const tmp = arr[i]; arr[i] = arr[j]; arr[j] = tmp;
+  }
+  return arr.map((o, idx) => ({
+    ...o,
+    id: LETTERS[idx] || String(idx + 1),
+  }));
+}
+
 function normalizeQuizOptions(rawOptions, questionType) {
   const arr = Array.isArray(rawOptions) ? rawOptions : [];
   if (arr.length === 0) return [];
@@ -191,6 +242,9 @@ const BROKEN_OFFICE_QUIZ_SQL = `
 module.exports = {
   normalizeQuizOptions,
   shuffleQuizOptions,
+  personalShuffleOptions,
+  seedFromString,
+  mulberry32,
   assertQuizQuestionShape,
   normalizeQuestions,
   assertAllQuestions,

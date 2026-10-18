@@ -1,7 +1,13 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { fieldApi } from '@/api/fieldClient';
-import { ArrowLeft, Plane, Building, Car, FileText, Shield, Eye, Download, ExternalLink } from 'lucide-react';
+import {
+  ArrowLeft, Plane, Building, Car, FileText, Shield, Eye, Download, ExternalLink,
+  MapPin, Route as RouteIcon, Stethoscope, Calendar, PlaneTakeoff, PlaneLanding, Phone,
+} from 'lucide-react';
+import { Card, IconTile, KeyButton, Chip, Segmented, SectionLabel, EmptyState } from '@/components/field/ui';
+import { SkeletonList } from '@/components/shared/SkeletonKit';
+import './field-screens.css';
 
 const TYPE_CONFIG = {
   ticket_to:    { label: 'Билет туда',      Icon: Plane,     group: 'tickets' },
@@ -21,10 +27,10 @@ const TYPE_CONFIG = {
 
 const TAB_GROUPS = [
   { id: 'all',        label: 'Все' },
-  { id: 'tickets',    label: '✈️ Билеты' },
-  { id: 'housing',    label: '🏠 Жильё' },
-  { id: 'directives', label: '📋 МО' },
-  { id: 'training',   label: '📚 Обучение' },
+  { id: 'tickets',    label: 'Билеты' },
+  { id: 'housing',    label: 'Жильё' },
+  { id: 'directives', label: 'МО' },
+  { id: 'training',   label: 'Обучение' },
 ];
 
 // Канон бэка field_logistics.status (V183 + field-logistics.js): pending → purchased → ready → sent.
@@ -70,65 +76,49 @@ export default function FieldLogistics() {
 
   if (loading) {
     return (
-      <div className="p-4 space-y-4 animate-pulse">
-        {[1, 2, 3].map((i) => <div key={i} className="h-24 rounded-xl" style={{ backgroundColor: 'var(--bg-elevated)' }} />)}
+      <div className="fs-root p-4" style={{ paddingTop: 'max(env(safe-area-inset-top), 16px)' }}>
+        <SkeletonList count={3} />
       </div>
     );
   }
 
   return (
-    <div className="p-4 space-y-4" style={{ backgroundColor: 'var(--bg-primary)', paddingTop: 'max(env(safe-area-inset-top), 16px)', paddingBottom: 'max(env(safe-area-inset-bottom), 24px)' }}>
-      {/* Header */}
-      <div className="flex items-center gap-3">
-        <button onClick={() => navigate('/field/home')} className="p-2 rounded-lg" style={{ backgroundColor: 'var(--bg-elevated)' }}>
-          <ArrowLeft size={20} style={{ color: 'var(--text-primary)' }} />
-        </button>
-        <h1 className="text-lg font-bold" style={{ color: 'var(--text-primary)' }}>Поездки и направления</h1>
-      </div>
+    <div className="fs-root" style={{ paddingBottom: 'max(env(safe-area-inset-bottom), 24px)' }}>
+      <div className="fs-scene" aria-hidden><span className="fs-orb fs-orb--a" /><span className="fs-orb fs-orb--b" /></div>
 
-      {error && <div className="p-3 rounded-lg text-sm" style={{ backgroundColor: 'color-mix(in oklab, var(--danger) 10%, transparent)', color: 'var(--danger)' }}>{error}</div>}
-
-      {/* Current / History tabs */}
-      <div className="flex gap-2">
-        {['current', 'history'].map((t) => (
-          <button
-            key={t}
-            onClick={() => setTab(t)}
-            className="flex-1 py-2 rounded-lg text-sm font-medium transition-colors"
-            style={{
-              backgroundColor: tab === t ? 'var(--gold)' : 'var(--bg-elevated)',
-              color: tab === t ? 'var(--text-primary)' : 'var(--text-secondary)',
-            }}
-          >
-            {t === 'current' ? 'Текущие' : 'Архив'}
+      <div className="fs-content space-y-4">
+        {/* Header */}
+        <div className="fs-head">
+          <button onClick={() => navigate('/field/home')} className="fs-head__btn" aria-label="Назад">
+            <ArrowLeft size={20} strokeWidth={2.3} />
           </button>
-        ))}
-      </div>
+          <IconTile icon={Plane} tone="accent" size={40} />
+          <h1 className="fs-head__title">Поездки и направления</h1>
+        </div>
 
-      {/* Group filter tabs */}
-      <div className="flex gap-1.5 overflow-x-auto no-scrollbar pb-1">
-        {TAB_GROUPS.map((g) => (
-          <button
-            key={g.id}
-            onClick={() => setGroupTab(g.id)}
-            className="py-1.5 px-3 rounded-lg text-xs font-semibold whitespace-nowrap transition-colors"
-            style={{
-              backgroundColor: groupTab === g.id ? 'rgba(242,208,138,0.2)' : 'var(--bg-elevated)',
-              color: groupTab === g.id ? 'var(--gold)' : 'var(--text-secondary)',
-              border: groupTab === g.id ? '1px solid var(--gold)' : '1px solid transparent',
-            }}
-          >
-            {g.label}
-          </button>
-        ))}
-      </div>
+        {error && (
+          <Card variant="flat" tone="danger" className="p-3 text-sm" style={{ color: 'var(--danger-ink)' }}>{error}</Card>
+        )}
+
+        {/* Current / History tabs */}
+        <Segmented
+          items={[{ value: 'current', label: 'Текущие' }, { value: 'history', label: 'Архив' }]}
+          value={tab}
+          onChange={setTab}
+        />
+
+        {/* Group filter tabs */}
+        <div className="flex gap-1.5 overflow-x-auto pb-1" style={{ scrollbarWidth: 'none' }}>
+          {TAB_GROUPS.map((g) => (
+            <Chip key={g.id} tone="value" active={groupTab === g.id} onClick={() => setGroupTab(g.id)}>
+              {g.label}
+            </Chip>
+          ))}
+        </div>
 
       {/* Items */}
       {items.length === 0 ? (
-        <div className="rounded-xl p-8 text-center" style={{ backgroundColor: 'var(--bg-elevated)' }}>
-          <Plane size={32} className="mx-auto mb-2" style={{ color: 'var(--text-tertiary)' }} />
-          <p style={{ color: 'var(--text-tertiary)' }}>Нет записей</p>
-        </div>
+        <EmptyState icon={Plane} title="Нет записей" description="Поездки и направления появятся здесь" />
       ) : (
         <div className="space-y-3">
           {items.map((item) => {
@@ -136,15 +126,13 @@ export default function FieldLogistics() {
             const Icon = cfg.Icon;
             const statusColor = STATUS_COLORS[item.status] || 'var(--text-tertiary)';
             return (
-              <div key={item.id} className="rounded-xl p-4" style={{ backgroundColor: 'var(--bg-elevated)', border: '1px solid var(--border-norse)' }}>
+              <Card key={item.id} variant="raised" className="p-4">
                 <div className="flex items-start gap-3">
-                  <div className="w-10 h-10 rounded-lg flex items-center justify-center" style={{ backgroundColor: statusColor + '15' }}>
-                    <Icon size={18} style={{ color: statusColor }} />
-                  </div>
+                  <IconTile icon={Icon} tone="neutral" size={40} style={{ color: statusColor }} />
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center justify-between">
+                    <div className="flex items-center justify-between gap-2">
                       <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>{item.title || cfg.label}</p>
-                      <span className="text-xs px-2 py-0.5 rounded-full" style={{ backgroundColor: statusColor + '20', color: statusColor }}>
+                      <span className="text-xs px-2 py-0.5 rounded-full flex-shrink-0" style={{ backgroundColor: `color-mix(in oklab, ${statusColor} 13%, transparent)`, color: statusColor }}>
                         {STATUS_LABELS[item.status] || item.status}
                       </span>
                     </div>
@@ -153,17 +141,40 @@ export default function FieldLogistics() {
                       {item.work_title && <p className="font-medium">{item.work_title}</p>}
                       {item.description && <p>{item.description}</p>}
                       {(item.departure || item.details?.departure) && <p>Отправление: {item.departure || item.details?.departure}</p>}
-                      {item.departure_at && <p>🛫 Вылет: {new Date(item.departure_at).toLocaleString('ru-RU', { dateStyle: 'short', timeStyle: 'short' })}</p>}
-                      {item.arrival_at && <p>🛬 Прилёт: {new Date(item.arrival_at).toLocaleString('ru-RU', { dateStyle: 'short', timeStyle: 'short' })}</p>}
+                      {item.departure_at && (
+                        <p style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                          <PlaneTakeoff size={12} strokeWidth={2.3} aria-hidden />
+                          Вылет: {new Date(item.departure_at).toLocaleString('ru-RU', { dateStyle: 'short', timeStyle: 'short' })}
+                        </p>
+                      )}
+                      {item.arrival_at && (
+                        <p style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                          <PlaneLanding size={12} strokeWidth={2.3} aria-hidden />
+                          Прилёт: {new Date(item.arrival_at).toLocaleString('ru-RU', { dateStyle: 'short', timeStyle: 'short' })}
+                        </p>
+                      )}
                       {item.transport_no && <p>№ рейса/поезда: {item.transport_no}</p>}
-                      {item.route && <p>{item.route}</p>}
+                      {item.route && <p style={{ display: 'flex', alignItems: 'center', gap: 4 }}><RouteIcon size={12} strokeWidth={2.3} aria-hidden />{item.route}</p>}
                       {item.carrier && <p>{item.carrier}</p>}
                       {item.hotel_name && <p>{item.hotel_name}</p>}
-                      {item.hotel_address && <p>📍 {item.hotel_address}</p>}
+                      {item.hotel_address && (
+                        <p style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                          <MapPin size={12} strokeWidth={2.3} aria-hidden />
+                          {item.hotel_address}
+                        </p>
+                      )}
                       {item.address && <p>{item.address}</p>}
-                      {item.referral_at && <p>🩺 Направление выдано: {fmtDate(item.referral_at)}</p>}
+                      {item.referral_at && (
+                        <p style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                          <Stethoscope size={12} strokeWidth={2.3} aria-hidden />
+                          Направление выдано: {fmtDate(item.referral_at)}
+                        </p>
+                      )}
                       {item.date_from && (
-                        <p>📅 {fmtDate(item.date_from)}{item.date_to ? ' — ' + fmtDate(item.date_to) : ''}</p>
+                        <p style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                          <Calendar size={12} strokeWidth={2.3} aria-hidden />
+                          {fmtDate(item.date_from)}{item.date_to ? ' — ' + fmtDate(item.date_to) : ''}
+                        </p>
                       )}
                       {item.flight_number && <p>Рейс: {item.flight_number}</p>}
                     </div>
@@ -177,7 +188,7 @@ export default function FieldLogistics() {
                       return (
                         <div className="mt-2 flex items-center gap-3">
                           <button onClick={() => window.open(fieldUrl, '_blank')}
-                            className="flex items-center gap-1 text-xs font-medium" style={{ color: 'var(--gold)' }}>
+                            className="flex items-center gap-1 text-xs font-medium" style={{ color: 'var(--value-ink)' }}>
                             <Eye size={14} /> Открыть
                           </button>
                           <a href={fieldUrl} download className="flex items-center gap-1 text-xs font-medium" style={{ color: 'var(--text-secondary)' }}>
@@ -187,26 +198,28 @@ export default function FieldLogistics() {
                       );
                     })()}
                     {item.driver_phone && (
-                      <a href={`tel:${item.driver_phone}`} className="mt-1 flex items-center gap-1 text-xs" style={{ color: 'var(--gold)' }}>
-                        <ExternalLink size={12} /> 📞 Водитель: {item.driver_phone}
+                      <a href={`tel:${item.driver_phone}`} className="mt-1 flex items-center gap-1 text-xs" style={{ color: 'var(--value-ink)' }}>
+                        <Phone size={12} strokeWidth={2.3} aria-hidden />
+                        Водитель: {item.driver_phone}
                       </a>
                     )}
                     {item.hotel_address && (
                       <a
                         href={`https://yandex.ru/maps/?text=${encodeURIComponent(item.hotel_address)}`}
                         target="_blank" rel="noreferrer"
-                        className="mt-1 flex items-center gap-1 text-xs" style={{ color: 'var(--gold)' }}
+                        className="mt-1 flex items-center gap-1 text-xs" style={{ color: 'var(--value-ink)' }}
                       >
                         <ExternalLink size={12} /> Открыть на карте
                       </a>
                     )}
                   </div>
                 </div>
-              </div>
+              </Card>
             );
           })}
         </div>
       )}
+      </div>
     </div>
   );
 }

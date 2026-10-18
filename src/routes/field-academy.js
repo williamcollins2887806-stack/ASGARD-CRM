@@ -298,10 +298,13 @@ async function routes(fastify) {
     `, [lessonId]);
 
     // Убираем is_correct из вариантов (клиент не должен знать ответ).
-    const { sanitizeOptionsForClient } = require('../lib/academy-quiz-shape');
+    // ПЛЮС: персональное перемешивание — у каждого рабочего свой порядок ответов.
+    // Seed стабильный (вопрос+рабочий), поэтому порядок не «перескакивает»
+    // при переоткрытии теста. На POST применяем ТОТ ЖЕ seed → ответы сверятся верно.
+    const { sanitizeOptionsForClient, personalShuffleOptions } = require('../lib/academy-quiz-shape');
     const sanitized = questions.map(q => ({
       ...q,
-      options: sanitizeOptionsForClient(q.options),
+      options: sanitizeOptionsForClient(personalShuffleOptions(q.options, `${q.id}:${eid}`)),
     }));
 
     return {
@@ -346,12 +349,15 @@ async function routes(fastify) {
       FROM academy_quiz_questions WHERE lesson_id = $1
     `, [lessonId]);
 
-    // Проверить ответы
+    // Проверить ответы. ВАЖНО: варианты у рабочего перемешаны персонально,
+    // поэтому id правильного ответа пересчитываем тем же seed (см. GET /quiz).
+    const { personalShuffleOptions } = require('../lib/academy-quiz-shape');
     let correct = 0;
     const resultAnswers = answers.map(ans => {
-      const q = questions.find(q => q.id === ans.question_id);
+      const q = questions.find(x => x.id === ans.question_id);
       if (!q) return { question_id: ans.question_id, is_correct: false };
-      const correctOpt = (q.options || []).find(o => o.is_correct);
+      const shuffled = personalShuffleOptions(q.options, `${q.id}:${eid}`);
+      const correctOpt = shuffled.find(o => o.is_correct);
       const isCorrect = correctOpt && correctOpt.id === ans.selected_option_id;
       if (isCorrect) correct++;
       return {

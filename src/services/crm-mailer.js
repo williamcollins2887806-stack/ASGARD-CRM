@@ -183,6 +183,12 @@ async function getCrmCopyAddress(db) {
  * @returns {Promise<Object>} { success, messageId, from }
  */
 async function sendCrmEmail(db, userId, mailOptions) {
+  // D-216-класс: на стенде (asgard_crm_test) не выходим в боевой SMTP — тест сводного
+  // прогона висел на реальной отправке. SMTP_DISABLED=1 → имитируем отправку,
+  // возвращаем dry-run ответ. Боевой код ветку не задействует.
+  if (process.env.SMTP_DISABLED === '1' || process.env.SMTP_DISABLED === 'true') {
+    return { dry_run: true, skipped: 'smtp_disabled', to: mailOptions && mailOptions.to, subject: mailOptions && mailOptions.subject };
+  }
   const { transport, fromEmail, fromName, isPersonal } = await getTransportForUser(db, userId);
 
   const from = fromName ? `"${fromName}" <${fromEmail}>` : fromEmail;

@@ -1,9 +1,12 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Briefcase, MapPin, Phone, ArrowRight, ClipboardList } from 'lucide-react';
+import { Briefcase, MapPin, Phone, ArrowRight, ArrowLeft, ClipboardList, Calendar, Users, Banknote, UserRound } from 'lucide-react';
 import { fieldApi } from '@/api/fieldClient';
 import { useHaptic } from '@/hooks/useHaptic';
 import { formatMoney } from '@/lib/utils';
+import { Card, IconTile, KeyButton, SectionLabel, EmptyState } from '@/components/field/ui';
+import { SkeletonList } from '@/components/shared/SkeletonKit';
+import './field-screens.css';
 
 function shortenName(fio) {
   if (!fio) return '';
@@ -14,19 +17,15 @@ function shortenName(fio) {
 }
 function Skeleton() {
   return (
-    <div className="p-4 space-y-4 animate-pulse">
-      <div className="h-6 w-36 rounded" style={{ backgroundColor: 'var(--border-norse)' }} />
-      <div className="flex gap-3">
-        {[1, 2, 3].map(i => <div key={i} className="flex-1 h-14 rounded-lg" style={{ backgroundColor: 'var(--border-norse)' }} />)}
-      </div>
-      {[1, 2].map(i => <div key={i} className="h-36 rounded-xl" style={{ backgroundColor: 'var(--border-norse)' }} />)}
+    <div className="fs-root p-4" style={{ paddingTop: 'max(env(safe-area-inset-top), 16px)' }}>
+      <SkeletonList count={3} />
     </div>
   );
 }
 
 function ProjectCard({ project, isActive, navigate, haptic }) {
   return (
-    <div className="rounded-xl p-4 space-y-3" style={{ backgroundColor: 'var(--bg-elevated)', border: '1px solid var(--border-norse)' }}>
+    <Card variant="raised" className="p-4 space-y-3">
       <div>
         <h3 className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>{project.object_name || project.name}</h3>
         <div className="flex items-center gap-1 mt-1">
@@ -36,7 +35,8 @@ function ProjectCard({ project, isActive, navigate, haptic }) {
           </span>
         </div>
         {(project.date_from || project.date_to) && (
-          <p className="text-xs mt-0.5" style={{ color: 'var(--text-tertiary)' }}>
+          <p className="text-xs mt-0.5 flex items-center gap-1" style={{ color: 'var(--text-tertiary)' }}>
+            <Calendar size={11} strokeWidth={2.4} aria-hidden />
             {project.date_from ? new Date(project.date_from).toLocaleDateString('ru-RU') : '?'} — {project.date_to ? new Date(project.date_to).toLocaleDateString('ru-RU') : '...'}
           </p>
         )}
@@ -51,19 +51,19 @@ function ProjectCard({ project, isActive, navigate, haptic }) {
         {project.total_earned != null && (
           <div>
             <p className="text-xs" style={{ color: 'var(--text-tertiary)' }}>Заработано</p>
-            <p className="text-sm font-medium" style={{ color: 'var(--gold)' }}>{formatMoney(project.total_earned)}</p>
+            <p className="text-sm font-medium" style={{ color: 'var(--value-ink)' }}>{formatMoney(project.total_earned)}</p>
           </div>
         )}
       </div>
       {/* Contacts */}
       {(project.pm_name || project.master_name) && (
-        <div className="flex flex-wrap gap-x-4 gap-y-1 pt-1 border-t" style={{ borderColor: 'var(--border-norse)' }}>
+        <div className="flex flex-wrap gap-x-4 gap-y-1 pt-1" style={{ borderTop: '1px solid var(--tile-brd)' }}>
           {project.pm_name && (
             <div className="flex items-center gap-1">
               <span className="text-xs" style={{ color: 'var(--text-tertiary)' }}>РП:</span>
               <span className="text-xs" style={{ color: 'var(--text-secondary)' }}>{shortenName(project.pm_name)}</span>
               {project.pm_phone && (
-                <a href={`tel:${project.pm_phone}`} className="ml-1"><Phone size={12} style={{ color: 'var(--gold)' }} /></a>
+                <a href={`tel:${project.pm_phone}`} className="ml-1" aria-label="Позвонить РП"><Phone size={12} style={{ color: 'var(--value-ink)' }} /></a>
               )}
             </div>
           )}
@@ -72,7 +72,7 @@ function ProjectCard({ project, isActive, navigate, haptic }) {
               <span className="text-xs" style={{ color: 'var(--text-tertiary)' }}>Мастер:</span>
               <span className="text-xs" style={{ color: 'var(--text-secondary)' }}>{shortenName(m.fio || m.name)}</span>
               {(m.phone) && (
-                <a href={`tel:${m.phone}`} className="ml-1"><Phone size={12} style={{ color: 'var(--gold)' }} /></a>
+                <a href={`tel:${m.phone}`} className="ml-1" aria-label="Позвонить мастеру"><Phone size={12} style={{ color: 'var(--value-ink)' }} /></a>
               )}
             </div>
           )) : project.master_name ? (
@@ -80,7 +80,7 @@ function ProjectCard({ project, isActive, navigate, haptic }) {
               <span className="text-xs" style={{ color: 'var(--text-tertiary)' }}>Мастер:</span>
               <span className="text-xs" style={{ color: 'var(--text-secondary)' }}>{shortenName(project.master_name)}</span>
               {project.master_phone && (
-                <a href={`tel:${project.master_phone}`} className="ml-1"><Phone size={12} style={{ color: 'var(--gold)' }} /></a>
+                <a href={`tel:${project.master_phone}`} className="ml-1" aria-label="Позвонить мастеру"><Phone size={12} style={{ color: 'var(--value-ink)' }} /></a>
               )}
             </div>
           ) : null}
@@ -88,23 +88,15 @@ function ProjectCard({ project, isActive, navigate, haptic }) {
       )}
       {/* Action */}
       {isActive ? (
-        <button
-          className="w-full flex items-center justify-center gap-2 rounded-lg py-2.5 text-sm font-medium"
-          style={{ backgroundColor: 'var(--gold)', color: 'var(--bg-primary)' }}
-          onClick={() => { haptic.medium(); navigate('/field/shift'); }}
-        >
-          На смену <ArrowRight size={16} />
-        </button>
+        <KeyButton tone="value" block icon={ArrowRight} onClick={() => { haptic.medium(); navigate('/field/shift'); }}>
+          На смену
+        </KeyButton>
       ) : (
-        <button
-          className="w-full flex items-center justify-center gap-2 rounded-lg py-2.5 text-sm font-medium"
-          style={{ border: '1px solid var(--border-norse)', color: 'var(--text-secondary)' }}
-          onClick={() => { haptic.light(); navigate('/field/timesheet'); }}
-        >
-          <ClipboardList size={16} /> Табель
-        </button>
+        <KeyButton tone="neutral" block icon={ClipboardList} onClick={() => { haptic.light(); navigate('/field/timesheet'); }}>
+          Табель
+        </KeyButton>
       )}
-    </div>
+    </Card>
   );
 }
 
@@ -132,58 +124,69 @@ export default function FieldMyWorks() {
   const totalEarned = projects.reduce((s, p) => s + (parseFloat(p.total_earned) || 0), 0);
 
   return (
-    <div className="p-4 space-y-4" style={{ paddingTop: 'max(env(safe-area-inset-top), 16px)', paddingBottom: 'max(env(safe-area-inset-bottom), 24px)' }}>
-      {/* Header */}
-      <div className="flex items-center gap-3">
-        <Briefcase size={22} style={{ color: 'var(--gold)' }} />
-        <h1 className="text-lg font-bold" style={{ color: 'var(--text-primary)' }}>Мои проекты</h1>
-      </div>
+    <div className="fs-root" style={{ paddingBottom: 'max(env(safe-area-inset-bottom), 24px)' }}>
+      <div className="fs-scene" aria-hidden><span className="fs-orb fs-orb--a" /><span className="fs-orb fs-orb--b" /></div>
 
-      {/* Stats */}
-      <div className="grid grid-cols-3 gap-2">
-        <div className="rounded-lg p-3 text-center" style={{ backgroundColor: 'var(--bg-elevated)', border: '1px solid var(--border-norse)' }}>
-          <p className="text-lg font-bold" style={{ color: 'var(--text-primary)' }}>{projects.length}</p>
-          <p className="text-xs" style={{ color: 'var(--text-tertiary)' }}>Объекты</p>
+      <div className="fs-content space-y-4">
+        {/* Header */}
+        <div className="fs-head">
+          <button onClick={() => navigate(-1)} className="fs-head__btn" aria-label="Назад">
+            <ArrowLeft size={20} strokeWidth={2.3} />
+          </button>
+          <IconTile icon={Briefcase} tone="value" size={40} />
+          <h1 className="fs-head__title">Мои проекты</h1>
         </div>
-        <div className="rounded-lg p-3 text-center" style={{ backgroundColor: 'var(--bg-elevated)', border: '1px solid var(--border-norse)' }}>
-          <p className="text-lg font-bold" style={{ color: 'var(--text-primary)' }}>{totalShifts}</p>
-          <p className="text-xs" style={{ color: 'var(--text-tertiary)' }}>Смены</p>
-        </div>
-        <div className="rounded-lg p-3 text-center" style={{ backgroundColor: 'var(--bg-elevated)', border: '1px solid var(--border-norse)' }}>
-          <p className="text-lg font-bold" style={{ color: 'var(--gold)' }}>{formatMoney(totalEarned)}</p>
-          <p className="text-xs" style={{ color: 'var(--text-tertiary)' }}>Заработано</p>
-        </div>
-      </div>
 
-      {/* Active */}
-      {active.length > 0 && (
-        <div className="space-y-3">
-          <div className="flex items-center gap-2">
-            <span className="w-2 h-2 rounded-full" style={{ backgroundColor: 'var(--ok)' }} />
-            <span className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>Активные</span>
+        {/* Stats */}
+        <div className="grid grid-cols-3 gap-2">
+          <Card variant="raised" className="p-3 text-center" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
+            <IconTile icon={Briefcase} tone="neutral" size={30} />
+            <p className="text-lg font-bold" style={{ color: 'var(--text-primary)' }}>{projects.length}</p>
+            <p className="text-xs" style={{ color: 'var(--text-tertiary)' }}>Объекты</p>
+          </Card>
+          <Card variant="raised" className="p-3 text-center" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
+            <IconTile icon={Users} tone="accent" size={30} />
+            <p className="text-lg font-bold" style={{ color: 'var(--text-primary)' }}>{totalShifts}</p>
+            <p className="text-xs" style={{ color: 'var(--text-tertiary)' }}>Смены</p>
+          </Card>
+          <Card variant="raised" className="p-3 text-center" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
+            <IconTile icon={Banknote} tone="value" size={30} />
+            <p className="text-lg font-bold" style={{ color: 'var(--value-ink)' }}>{formatMoney(totalEarned)}</p>
+            <p className="text-xs" style={{ color: 'var(--text-tertiary)' }}>Заработано</p>
+          </Card>
+        </div>
+
+        {/* Active */}
+        {active.length > 0 && (
+          <div className="space-y-3">
+            <SectionLabel>
+              <span className="inline-flex items-center gap-1.5">
+                <span style={{ width: 7, height: 7, borderRadius: '50%', background: 'var(--ok)', display: 'inline-block' }} />
+                Активные
+              </span>
+            </SectionLabel>
+            {active.map((p, i) => <ProjectCard key={p.id || i} project={p} isActive navigate={navigate} haptic={haptic} />)}
           </div>
-          {active.map((p, i) => <ProjectCard key={p.id || i} project={p} isActive navigate={navigate} haptic={haptic} />)}
-        </div>
-      )}
+        )}
 
-      {/* Completed */}
-      {completed.length > 0 && (
-        <div className="space-y-3">
-          <div className="flex items-center gap-2">
-            <span className="w-2 h-2 rounded-full" style={{ backgroundColor: 'var(--text-tertiary)' }} />
-            <span className="text-sm font-semibold" style={{ color: 'var(--text-secondary)' }}>Завершённые</span>
+        {/* Completed */}
+        {completed.length > 0 && (
+          <div className="space-y-3">
+            <SectionLabel>
+              <span className="inline-flex items-center gap-1.5">
+                <span style={{ width: 7, height: 7, borderRadius: '50%', background: 'var(--text-tertiary)', display: 'inline-block' }} />
+                Завершённые
+              </span>
+            </SectionLabel>
+            {completed.map((p, i) => <ProjectCard key={p.id || i} project={p} isActive={false} navigate={navigate} haptic={haptic} />)}
           </div>
-          {completed.map((p, i) => <ProjectCard key={p.id || i} project={p} isActive={false} navigate={navigate} haptic={haptic} />)}
-        </div>
-      )}
+        )}
 
-      {/* Empty state */}
-      {projects.length === 0 && (
-        <div className="rounded-xl p-6 text-center" style={{ backgroundColor: 'var(--bg-elevated)', border: '1px solid var(--border-norse)' }}>
-          <Briefcase size={32} className="mx-auto mb-2" style={{ color: 'var(--text-tertiary)' }} />
-          <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>У вас пока нет проектов</p>
-        </div>
-      )}
+        {/* Empty state */}
+        {projects.length === 0 && (
+          <EmptyState icon={Briefcase} title="У вас пока нет проектов" description="Проекты появятся после назначения" />
+        )}
+      </div>
     </div>
   );
 }

@@ -43,6 +43,61 @@ function parseSum(v) {
 }
 
 /**
+ * V406 (FAIL верификатора 17.10.2026): извлечь ПОЗИЦИИ счёта детерминированно,
+ * без AI. Классический формат российского счёта (одна строка = позиция):
+ *   «1. Дрель аккумуляторная Makita DDF482 2 шт x 8 000,00 = 16 000,00»
+ *   «Бур SDS-plus 8x160   10   шт   300,00   3 000,00»
+ *   «Кабель ВВГ 3х2,5   м   120,50   12 050,00»
+ * Возвращаем [{name, quantity, unit, unit_price, sum}]. Суммы не выдумываем:
+ * нет цены — строка не берётся (номенклатура без цены бесполезна для поиска).
+ * @param {string} text
+ * @returns {Array<{name:string, quantity:number|null, unit:string|null, unit_price:number, sum:number|null}>}
+ */
+function extractInvoiceLines(text) {
+  const t = String(text || '');
+  const out = [];
+  const seen = new Set();
+  const UNIT = '(?:шт|компл|кг|м|мм|см|м2|м3|л|уп|пач|рул|набор|ед|пог\\.?\\s*м|т|г|пар)';
+  // Число с группировкой тысяч пробелом/неразрывом и копейками.
+  const NUM = '\\d{1,3}(?:[ \\u00a0]\\d{3})*(?:[.,]\\d{1,2})?';
+  for (const rawLine of t.split(/\r?\n/)) {
+    const line = rawLine.trim();
+    if (line.length < 6 || line.length > 400) continue;
+    // Служебные строки итогов/шапки не позиции.
+    if (/^(итого|всего|ндс|сумма|в том числе|к оплате|всего к оплате|на сумму)/i.test(line)) continue;
+    // Паттерн A: «… <qty> <unit> x <price> = <sum>»
+    let m = line.match(new RegExp('^(?:\\d+[.)]\\s*)?(.+?)\\s+(\\d+(?:[.,]\\d+)?)\\s*' + UNIT + '?\\s*[xх×*]\\s*(' + NUM + ')\\s*(?:=|—|-)?\\s*(' + NUM + ')?\\s*$', 'i'));
+    if (!m) {
+      // Паттерн B: «… <unit> <qty> <price> <sum>» (табличная форма без «x»)
+      m = line.match(new RegExp('^(?:\\d+[.)]\\s*)?(.+?)\\s+' + UNIT + '\\s+(\\d+(?:[.,]\\d+)?)\\s+(' + NUM + ')\\s+(' + NUM + ')\\s*$', 'i'));
+      if (m) {
+        const name = m[1].trim().replace(/[.,;:]+$/, '');
+        const qty = parseSum(m[2]);
+        const price = parseSum(m[3]);
+        const sum = parseSum(m[4]);
+        if (name.length >= 3 && price > 0 && !seen.has(name.toLowerCase())) {
+          seen.add(name.toLowerCase());
+          out.push({ name: name.slice(0, 300), quantity: qty, unit: null, unit_price: price, sum });
+        }
+      }
+      continue;
+    }
+    const name = m[1].trim().replace(/[.,;:]+$/, '');
+    const qty = parseSum(m[2]);
+    const price = parseSum(m[3]);
+    const sum = m[4] ? parseSum(m[4]) : null;
+    // Отбрасываем мусор: имя-число, служебные слова, цена 0.
+    if (name.length < 3 || /^\d+$/.test(name) || /^(итого|всего|ндс)/i.test(name)) continue;
+    if (!(price > 0)) continue;
+    if (seen.has(name.toLowerCase())) continue;
+    seen.add(name.toLowerCase());
+    const unitM = line.match(new RegExp('\\d+(?:[.,]\\d+)?\\s*(' + UNIT + ')\\b', 'i'));
+    out.push({ name: name.slice(0, 300), quantity: qty, unit: unitM ? unitM[1] : null, unit_price: price, sum });
+  }
+  return out;
+}
+
+/**
  * Извлечь реквизиты из текста счёта.
  * @param {string} text
  * @returns {{inn:string|null,kpp:string|null,bik:string|null,rs:string|null,ks:string|null,
@@ -56,7 +111,10 @@ function extractInvoice(text) {
     inn: null, kpp: null, bik: null, rs: null, ks: null, bank_name: null,
     invoice_number: null, invoice_date: null,
     amount_gross: null, amount_net: null, vat_amount: null, has_vat: null,
-    counterparty_name: null, confidence: 0
+    counterparty_name: null, confidence: 0,
+    contract_basis: null,   // «Основание: Договор № … от …» из счёта
+    payment_due_at: null,   // «Оплата до 20.10.2026»
+    work_hint: null         // объект/работа, если явно указан в счёте
   };
   let score = 0;
   const found = () => { score++; };
@@ -174,13 +232,65 @@ function extractInvoice(text) {
     }
   }
 
+  // ── Основание / договор (замечание заказчика 17.10.2026) ──────────────────
+  // В счёте пишут: «Основание: Договор № 123 от 01.02.2026», «Оплата по договору
+  // № АБ-12», «Счёт-договор № …». Нужно, чтобы заявка и реестр подтянули договор
+  // и подсветили, если такого договора в CRM нет.
+  const basisM = t.match(/(?:основание|оплата\s+по|по\s+договору|в\s+соответствии\s+с\s+договором)[^\n]{0,80}/i);
+  if (basisM) {
+    const seg = basisM[0].replace(/^[^:]*:\s*/, '').trim();
+    const noM = seg.match(/(?:договор[а-я]*|контракт[а-я]*)?\s*№\s*([\wА-Яа-яёЁ\-/№.]+)(?:\s+от\s+(\d{2}[.\-/]\d{2}[.\-/]\d{2,4}))?/i);
+    if (noM && noM[1] && noM[1].length <= 40) {
+      let dt = null;
+      if (noM[2]) {
+        const p = noM[2].split(/[.\-/]/);
+        if (p.length === 3) { const yy = p[2].length === 2 ? '20' + p[2] : p[2]; dt = `${yy}-${p[1].padStart(2, '0')}-${p[0].padStart(2, '0')}`; }
+      }
+      out.contract_basis = { number: noM[1].replace(/^№/, ''), date: dt, raw: seg.slice(0, 120) };
+    } else if (seg) {
+      out.contract_basis = { number: null, date: null, raw: seg.slice(0, 120) };
+    }
+  }
+
+  // ── Срок оплаты из счёта: «Оплата до 20.10.2026», «действителен до …» ─────
+  // НЕ путать с датой счёта и со сроком действия предложения (это разные вещи),
+  // поэтому берём только явные формулировки про ОПЛАТУ.
+  const dueM = t.match(/(?:оплат[ауы]\s+(?:до|не\s+позднее)|срок\s+оплаты[^\d]{0,12}|оплатить\s+до|предоплат[ауы]\s+до)[^\d]{0,10}(\d{2}[.\-/]\d{2}[.\-/]\d{2,4})/i);
+  if (dueM) {
+    const p = dueM[1].split(/[.\-/]/);
+    if (p.length === 3) {
+      const yy = p[2].length === 2 ? '20' + p[2] : p[2];
+      out.payment_due_at = `${yy}-${p[1].padStart(2, '0')}-${p[0].padStart(2, '0')}`;
+    }
+  } else {
+    const dueText = t.match(/(?:оплат[ауы]\s+до|оплатить\s+до)\s*(\d{1,2})\s+([а-яё]+)/i);
+    if (dueText) {
+      const MON2 = { января: 1, февраля: 2, марта: 3, апреля: 4, мая: 5, июня: 6, июля: 7, августа: 8, сентября: 9, октября: 10, ноября: 11, декабря: 12 };
+      const mm = MON2[dueText[2].toLowerCase()];
+      if (mm) {
+        const yy = new Date().getFullYear();
+        out.payment_due_at = `${yy}-${String(mm).padStart(2, '0')}-${String(dueText[1]).padStart(2, '0')}`;
+      }
+    }
+  }
+
+  // ── Объект / работа: «Объект: …», «На объект …» (подтянется к work_id) ────
+  const objM = t.match(/(?:объект|на\s+объект[е]?)[\s:]*([^\n]{3,90})/i);
+  if (objM) {
+    const v = objM[1].trim().replace(/[.,;]+$/, '');
+    if (v.length >= 3) { out.work_hint = v.slice(0, 120); }
+  }
+
   // Контрагент: первая строка с организационной формой.
   const orgM = t.match(/(?:ООО|АО|ПАО|ЗАО|ОАО|ИП)\s*[«"]?[^\n«»"]{2,80}[»"]?/);
   if (orgM) { out.counterparty_name = orgM[0].trim().slice(0, 160); found(); }
+
+  // V406: позиции счёта (FAIL верификатора 17.10 — номенклатура не наполнялась).
+  out.lines = extractInvoiceLines(t);
 
   // Уверенность = доля найденных ключевых полей (из 9), не больше 1.
   out.confidence = Math.min(1, Math.round((score / 9) * 1000) / 1000);
   return out;
 }
 
-module.exports = { extractInvoice, validInn, validKpp, validBik, validAccount, parseSum };
+module.exports = { extractInvoice, extractInvoiceLines, validInn, validKpp, validBik, validAccount, parseSum };

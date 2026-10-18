@@ -268,6 +268,18 @@ window.AsgardProcurementPage = (function() {
             </select>
             <label class="proc-pay-modal__label" for="sp-basis">Кратко: на что оплата <span class="proc-tooltip" title="Это увидит директор в письме и в CRM">?</span></label>
             <input id="sp-basis" class="proc-pay-modal__field" placeholder="Например: предоплата по ТО …">
+            <label class="proc-pay-modal__label" for="sp-contract">Номер договора-основания <span class="proc-tooltip" title="Если укажете, CRM подтянет договор из реестра и подсветит, что его нет">?</span></label>
+            <input id="sp-contract" class="proc-pay-modal__field" placeholder="Например: ДП-2025/01">
+            <div id="sp-contract-hint" class="proc-pay-modal__hint" style="display:none"></div>
+            <label class="proc-pay-modal__label" for="sp-object">Объект / работа</label>
+            <input id="sp-object" class="proc-pay-modal__field" placeholder="Например: ЖК Северный, корпус 3">
+          </div>
+          <div class="proc-pay-modal__section">
+            <div class="proc-pay-modal__section-title">Счёт и срок</div>
+            <label class="proc-pay-modal__label" for="sp-invno">Номер счёта</label>
+            <input id="sp-invno" class="proc-pay-modal__field" placeholder="Например: 1185">
+            <label class="proc-pay-modal__label" for="sp-invdate">Дата счёта</label>
+            <input id="sp-invdate" class="proc-pay-modal__field" type="date">
             <label class="proc-pay-modal__label" for="sp-due">Срок оплаты</label>
             <input id="sp-due" class="proc-pay-modal__field" type="date">
           </div>
@@ -326,7 +338,12 @@ window.AsgardProcurementPage = (function() {
           due_date: document.getElementById('sp-due').value || null,
           file_path: uj.file_path,
           file_name: uj.file_name,
-          pay_timing: timing
+          pay_timing: timing,
+          // V404: контекст, который нужен бухгалтерии (договор, объект, №/дата счёта).
+          contract_basis_number: (document.getElementById('sp-contract').value || '').trim() || null,
+          work_hint: (document.getElementById('sp-object').value || '').trim() || null,
+          invoice_number: (document.getElementById('sp-invno').value || '').trim() || null,
+          invoice_date: document.getElementById('sp-invdate').value || null
         };
         const r = await fetch('/api/payment-invoices', { method: 'POST', headers: hdr(), body: JSON.stringify(body) });
         const j = await r.json();
@@ -336,6 +353,111 @@ window.AsgardProcurementPage = (function() {
         if (j.mail && j.mail.dry_run && j.mail.link) console.info('[payment-mail dry-run]', j.mail.link, j.mail.to);
       } catch (e) { toast('Ошибка', e.message, 'err'); }
     };
+  }
+
+  /** Кто может привязать объект к заявке (зеркало бэка: инициатор или закупки/дирекция). */
+  function canEditWork(pay) {
+    if (!pay || pay.status !== 'awaiting_dir') return false;
+    const r = (_user && _user.role) || '';
+    if (!r) return false;
+    if (['ADMIN', 'BUH', 'PROC', 'HEAD_PM', 'HEAD_TO'].includes(r) || /^DIRECTOR/.test(r)) return true;
+    return Number(pay.created_by) === Number(_user && _user.id);
+  }
+
+  /**
+   * Блок «Объект» в модалке заявки. Заказчик 18.10.2026: если автопривязка не
+   * сработала — показать список работ на выбор. Подбираем через /work-search с
+   * `hint` (подсказка из счёта), чтобы кандидаты совпадали с авто-привязкой.
+   */
+  function workBlock(pay, canEdit) {
+    const cur = pay.work_id ? `#${pay.work_id}` : null;
+    const hint = pay.work_hint || '';
+    return `<div class="proc-pay-modal__section" id="pi-work-section">
+      <div class="proc-pay-modal__section-title">Объект (работа)
+        <span class="proc-tooltip" title="К чему отнести расход. Если не привязан — расход по объекту не создастся">?</span></div>
+      ${hint && !cur ? `<p class="proc-pay-modal__hint">Из счёта: <strong>${esc(hint)}</strong> — работа не найдена автоматически. Выберите вручную:</p>` : ''}
+      <div id="pi-work-body"><div class="proc-pay-modal__hint">${cur ? 'Привязан: ' + esc(cur) : 'Загрузка вариантов…'}</div></div>
+      ${canEdit ? `<label class="proc-pay-modal__label" for="pi-work-q">Найти объект</label>
+        <input id="pi-work-q" class="proc-pay-modal__field" placeholder="Название, адрес, город, номер или заказчик" autocomplete="off">
+        <div id="pi-work-list" class="pi-work-list"></div>
+        <div style="margin-top:8px"><button type="button" class="btn ghost" id="pi-work-clear">Убрать привязку</button></div>` : ''}
+    </div>`;
+  }
+
+  /** Загрузить и отрисовать кандидатов работ (по hint или по строке поиска). */
+  async function loadWorkOptions(payId, hintOrQuery, useHint) {
+    const body = document.getElementById('pi-work-body');
+    const list = document.getElementById('pi-work-list');
+    if (!body) return;
+    try {
+      const qs = useHint ? ('hint=' + encodeURIComponent(hintOrQuery || '')) : ('q=' + encodeURIComponent(hintOrQuery || ''));
+      const d = await apiFetch('/api/payment-invoices/work-search?' + qs);
+      const items = d.items || [];
+      const sug = d.suggested_id;
+      if (!items.length) {
+        body.innerHTML = '<div class="proc-pay-modal__hint">Ничего не нашлось. Уточните строку поиска.</div>';
+        if (list) list.innerHTML = '';
+        return;
+      }
+      const chip = (w, isSug) => `<button type="button" class="pi-work-chip${isSug ? ' is-sug' : ''}" data-wid="${w.id}">
+          <strong>${esc(w.label)}</strong>
+          ${w.object_name && w.object_name !== w.label ? `<span>${esc(w.object_name)}</span>` : ''}
+          ${w.city || w.address ? `<span class="pi-work-chip__meta">${esc([w.city, w.address].filter(Boolean).join(', '))}</span>` : ''}
+          ${w.customer ? `<span class="pi-work-chip__meta">${esc(w.customer)}</span>` : ''}
+          ${isSug ? '<em>похоже на объект из счёта</em>' : ''}
+        </button>`;
+      body.innerHTML = `<div class="pi-work-list">${items.map((w, i) => chip(w, Number(w.id) === Number(sug) || (!sug && i === 0 && useHint))).join('')}</div>`;
+      if (list) list.innerHTML = '';
+      body.querySelectorAll('[data-wid]').forEach((b) => b.addEventListener('click', () => attachWork(payId, Number(b.getAttribute('data-wid')))));
+    } catch (e) {
+      body.innerHTML = `<div class="proc-pay-modal__hint">Не удалось загрузить варианты: ${esc(e.message || '')}</div>`;
+    }
+  }
+
+  /** Привязать работу к заявке и обновить блок. */
+  async function attachWork(payId, workId) {
+    try {
+      await apiFetch(`/api/payment-invoices/${payId}/work`, { method: 'POST', body: JSON.stringify({ work_id: workId }) });
+      toast('Объект', workId ? 'Привязан' : 'Привязка снята', 'ok');
+      const pay = await apiFetch('/api/payment-invoices/' + payId);
+      const sec = document.getElementById('pi-work-section');
+      if (sec) {
+        const wrap = document.createElement('div');
+        wrap.innerHTML = workBlock(pay, canEditWork(pay));
+        sec.replaceWith(wrap.firstElementChild);
+        bindWorkBlock(payId, pay);
+      }
+    } catch (e) { toast('Объект', e.message || 'не удалось', 'err'); }
+  }
+
+  /** Навесить обработчики блока «Объект». */
+  function bindWorkBlock(payId, pay) {
+    const cur = pay.work_id;
+    const hint = pay.work_hint || '';
+    const body = document.getElementById('pi-work-body');
+    if (cur) {
+      // Уже привязано — показываем текущую работу; кандидатов не грузим (нечего выбирать).
+      if (body) {
+        const label = pay.work_label || pay.work_title
+          || (hint && !pay.work_hint_mismatch ? hint : null)
+          || ('Работа #' + cur);
+        body.innerHTML = `<div class="pi-work-cur"><strong>${esc(label)}</strong>
+          <span class="pi-work-cur__ok">привязано</span></div>`;
+      }
+    } else {
+      // Не привязано — подбираем по подсказке из счёта (те же кандидаты, что у авто-привязки).
+      loadWorkOptions(payId, hint, !!hint);
+    }
+    const q = document.getElementById('pi-work-q');
+    if (q) {
+      let tmr = null;
+      q.addEventListener('input', () => {
+        clearTimeout(tmr);
+        tmr = setTimeout(() => loadWorkOptions(payId, q.value.trim(), false), 250);
+      });
+    }
+    const clr = document.getElementById('pi-work-clear');
+    if (clr) clr.addEventListener('click', () => attachWork(payId, null));
   }
 
   async function openPaymentInvoiceModal(payId) {
@@ -368,6 +490,7 @@ window.AsgardProcurementPage = (function() {
                 <dt>Оплата</dt><dd>${pay.pay_timing==='deferred'?'Отложенная':'Сразу'}</dd>
               </dl>
             </div>
+            ${workBlock(pay, canEditWork(pay))}
             ${lineRows?`<div class="proc-pay-modal__section"><div class="proc-pay-modal__section-title">Позиции</div>
               <table class="proc-items-table"><thead><tr><th>Позиция</th><th>Кол-во</th><th>Цена</th></tr></thead><tbody>${lineRows}</tbody></table></div>`:''}
             ${isDIR && pay.status==='awaiting_dir' ? `<div class="proc-pay-modal__section">
@@ -387,6 +510,8 @@ window.AsgardProcurementPage = (function() {
       </div>`;
       showModal({ title: `Счёт на оплату #${pay.id}`, html });
       bindPayPreview(document);
+      // Блок «Объект»: подбор работы вручную, если автопривязка не сработала.
+      if (document.getElementById('pi-work-section')) bindWorkBlock(pay.id, pay);
       const timingBox = document.getElementById('pi-timing');
       if (timingBox) timingBox.onclick = (e) => {
         const btn = e.target.closest('[data-t]');

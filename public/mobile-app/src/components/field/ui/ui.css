@@ -304,6 +304,9 @@
 }
 .ui-chip.is-active { color: var(--text-primary); border-color: var(--text-tertiary); }
 .ui-chip--accent.is-active { color: #fff; background: var(--acc); border-color: transparent; }
+.ui-chip--value.is-active { color: var(--chip-on-value); background: var(--chip-value-bg); border-color: transparent; }
+.ui-chip--danger.is-active { color: var(--on-danger); background: var(--danger); border-color: transparent; }
+.ui-chip--status.is-active { color: var(--on-ok); background: var(--ok); border-color: transparent; }
 
 /* ── Shield ──────────────────────────────────────────────────────────────── */
 .ui-shield { display: block; flex-shrink: 0; }

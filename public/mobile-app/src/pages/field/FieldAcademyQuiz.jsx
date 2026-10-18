@@ -4,12 +4,17 @@
  */
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
+import {
+  Zap, Timer, Ban, Check, XCircle, BookOpen, Landmark, ArrowLeft, Swords, Shield, Gem, Flame, GraduationCap,
+} from 'lucide-react';
 import { fieldApi } from '@/api/fieldClient';
+import { Card, IconTile, KeyButton, ProgressBar as UiProgress } from '@/components/field/ui';
+import './field-screens.css';
 
 const C = {
-  bg: 'var(--field-bg)', card: 'var(--field-card)', gold: 'var(--value)',
+  bg: 'var(--bg-primary)', card: 'var(--bg-surface)', gold: 'var(--value)',
   rune: 'var(--acc)', green: 'var(--ok)', red: 'var(--danger)',
-  amber: 'var(--value)', text: 'var(--field-text)', muted: 'var(--text-secondary)',
+  amber: 'var(--value)', text: 'var(--text-primary)', muted: 'var(--text-secondary)',
 };
 
 const TIME_LIMIT = 20 * 60; // 20 minutes in seconds
@@ -39,66 +44,72 @@ function ResultScreen({ result, lessonId, navigate }) {
   const color = isPassed ? C.green : C.red;
 
   return (
-    <div style={{
-      minHeight: '100dvh', background: C.bg,
+    <div className="fs-root" style={{
       display: 'flex', flexDirection: 'column', alignItems: 'center',
       justifyContent: 'center', padding: 24,
+      paddingTop: 'max(env(safe-area-inset-top), 24px)',
+      paddingBottom: 'max(env(safe-area-inset-bottom), 24px)',
     }}>
-      <div style={{ fontSize: 80, marginBottom: 16 }}>
-        {isPassed ? '⚔️' : '🛡️'}
-      </div>
+      <div className="fs-scene" aria-hidden><span className="fs-orb fs-orb--a" /><span className="fs-orb fs-orb--b" /></div>
 
-      <div style={{ fontSize: 24, fontWeight: 900, color, marginBottom: 8, textAlign: 'center' }}>
-        {isPassed ? 'Испытание пройдено!' : 'Ещё не готов...'}
-      </div>
+      <div style={{ position: 'relative', zIndex: 5, width: '100%', maxWidth: 430, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+        <IconTile icon={isPassed ? Swords : Shield} tone={isPassed ? 'status' : 'danger'} size={84} iconSize={40} />
 
-      <div style={{ fontSize: 56, fontWeight: 900, color, marginBottom: 4 }}>
-        {result.score}%
-      </div>
+        <div style={{ fontSize: 24, fontWeight: 900, color, margin: '16px 0 8px', textAlign: 'center' }}>
+          {isPassed ? 'Испытание пройдено!' : 'Ещё не готов...'}
+        </div>
 
-      <div style={{ fontSize: 14, color: C.muted, marginBottom: 24, textAlign: 'center' }}>
-        {result.correct} из {result.total} правильных ответов
-      </div>
+        <div style={{ fontSize: 56, fontWeight: 900, color, marginBottom: 4 }}>
+          {result.score}%
+        </div>
 
-      {isPassed && result.reward && (
-        <div style={{
-          background: `${C.gold}11`, border: `1px solid ${C.gold}44`,
-          borderRadius: 16, padding: 16, marginBottom: 24, width: '100%',
-          textAlign: 'center',
-        }}>
-          <div style={{ fontSize: 13, color: C.muted, marginBottom: 4 }}>Награда</div>
-          <div style={{ display: 'flex', justifyContent: 'center', gap: 20 }}>
-            <div>
-              <div style={{ fontSize: 24, fontWeight: 800, color: C.rune }}>+{result.reward.runes}</div>
-              <div style={{ fontSize: 11, color: C.muted }}>🔮 Руны</div>
-            </div>
-            <div>
-              <div style={{ fontSize: 24, fontWeight: 800, color: C.amber }}>+{result.reward.xp}</div>
-              <div style={{ fontSize: 11, color: C.muted }}>⚡ XP</div>
-            </div>
-            {result.reward.streak_bonus && (
+        <div style={{ fontSize: 14, color: C.muted, marginBottom: 24, textAlign: 'center' }}>
+          {result.correct} из {result.total} правильных ответов
+        </div>
+
+        {isPassed && result.reward && (
+          <Card variant="raised" tone="value" className="text-center" style={{ marginBottom: 24, width: '100%' }}>
+            <div style={{ fontSize: 13, color: C.muted, marginBottom: 4 }}>Награда</div>
+            <div style={{ display: 'flex', justifyContent: 'center', gap: 20 }}>
               <div>
-                <div style={{ fontSize: 24, fontWeight: 800, color: C.gold }}>🔥</div>
-                <div style={{ fontSize: 11, color: C.muted }}>Стрик!</div>
+                <div style={{ fontSize: 24, fontWeight: 800, color: 'var(--acc)', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                  <Gem size={18} strokeWidth={2.3} />+{result.reward.runes}
+                </div>
+                <div style={{ fontSize: 11, color: C.muted }}>Руны</div>
               </div>
-            )}
-          </div>
-        </div>
-      )}
+              <div>
+                <div style={{ fontSize: 24, fontWeight: 800, color: 'var(--value-ink)', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                  <Zap size={18} strokeWidth={2.3} />+{result.reward.xp}
+                </div>
+                <div style={{ fontSize: 11, color: C.muted }}>XP</div>
+              </div>
+              {result.reward.streak_bonus && (
+                <div>
+                  <div style={{ fontSize: 24, fontWeight: 800, color: 'var(--value-ink)' }} role="img" aria-label="Стрик">
+                    <Flame size={22} strokeWidth={2.3} />
+                  </div>
+                  <div style={{ fontSize: 11, color: C.muted }}>Стрик!</div>
+                </div>
+              )}
+            </div>
+          </Card>
+        )}
 
-      {!isPassed && (
-        <div style={{
-          background: `${needReread ? C.red : C.amber}11`,
-          border: `1px solid ${needReread ? C.red : C.amber}33`,
-          borderRadius: 12, padding: 14, marginBottom: 24, width: '100%',
-          fontSize: 13, color: needReread ? C.red : C.amber,
-          lineHeight: 1.5, textAlign: 'center',
-        }}>
-          {needReread
-            ? 'Попытки исчерпаны. Перечитай Руну внимательно — получишь 2 новые попытки сразу.'
-            : `У тебя ещё ${result.attempts_left} попытка. Перечитай Руну и возвращайся.`}
-        </div>
-      )}
+        {!isPassed && (
+          <div style={{
+            background: needReread
+              ? 'color-mix(in oklab, var(--danger) 9%, var(--bg-surface))'
+              : 'color-mix(in oklab, var(--value) 9%, var(--bg-surface))',
+            border: `1px solid ${needReread ? 'color-mix(in oklab, var(--danger) 26%, transparent)' : 'color-mix(in oklab, var(--value) 26%, transparent)'}`,
+            borderRadius: 12, padding: 14, marginBottom: 24, width: '100%',
+            fontSize: 13, color: needReread ? C.red : 'var(--value-ink)',
+            lineHeight: 1.5, textAlign: 'center',
+          }}>
+            {needReread
+              ? 'Попытки исчерпаны. Перечитай Руну внимательно — получишь 2 новые попытки сразу.'
+              : `У тебя ещё ${result.attempts_left} попытка. Перечитай Руну и возвращайся.`}
+          </div>
+        )}
 
       {/* Answers review */}
       <div style={{ width: '100%', marginBottom: 24 }}>
@@ -106,38 +117,33 @@ function ResultScreen({ result, lessonId, navigate }) {
           Разбор ответов
         </div>
         {(result.answers || []).map((ans, i) => (
-          <div key={i} style={{
-            background: C.card, borderRadius: 10, padding: 12, marginBottom: 8,
-            border: `1px solid ${ans.is_correct ? C.green + '44' : C.red + '44'}`,
+          <Card key={i} variant="raised" style={{
+            padding: 12, marginBottom: 8,
+            borderColor: ans.is_correct
+              ? 'color-mix(in oklab, var(--ok) 30%, transparent)'
+              : 'color-mix(in oklab, var(--danger) 30%, transparent)',
           }}>
             <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: ans.explanation ? 6 : 0 }}>
-              <span style={{ fontSize: 16 }}>{ans.is_correct ? '✅' : '❌'}</span>
+              {ans.is_correct
+                ? <Check size={16} strokeWidth={2.6} style={{ color: 'var(--ok)' }} />
+                : <XCircle size={16} strokeWidth={2.6} style={{ color: 'var(--danger)' }} />}
               <span style={{ fontSize: 12, color: C.muted }}>Вопрос {i + 1}</span>
             </div>
             {!ans.is_correct && ans.explanation && (
-              <div style={{ fontSize: 12, color: '#a0a0b0', lineHeight: 1.5, paddingLeft: 24 }}>
+              <div style={{ fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.5, paddingLeft: 24 }}>
                 {ans.explanation}
               </div>
             )}
-          </div>
+          </Card>
         ))}
       </div>
 
       {needReread ? (
         // После 2 провалов — одна большая кнопка, ведёт сразу на лекцию
         <div style={{ width: '100%' }}>
-          <button
-            onClick={() => navigate(`/field/academy/lesson/${lessonId}`)}
-            style={{
-              width: '100%', padding: '16px 0',
-              background: `linear-gradient(90deg, ${C.gold}, var(--value))`,
-              border: 'none', borderRadius: 12, color: 'var(--bg-primary)',
-              fontSize: 15, fontWeight: 800, cursor: 'pointer',
-              boxShadow: `0 4px 14px ${C.gold}33`,
-            }}
-          >
-            📖 Перечитать Руну и попробовать снова
-          </button>
+          <KeyButton tone="value" block icon={BookOpen} onClick={() => navigate(`/field/academy/lesson/${lessonId}`)}>
+            Перечитать Руну и попробовать снова
+          </KeyButton>
           <button
             onClick={() => navigate('/field/academy')}
             style={{
@@ -146,39 +152,32 @@ function ResultScreen({ result, lessonId, navigate }) {
               color: C.muted, fontSize: 13, cursor: 'pointer',
             }}
           >
-            ← Вернуться в Чертоги
+            Вернуться в Чертоги
           </button>
         </div>
       ) : (
         <div style={{ display: 'flex', gap: 10, width: '100%' }}>
           {!isPassed && result.attempts_left > 0 && (
-            <button
+            <KeyButton
+              tone="value"
+              icon={BookOpen}
+              style={{ flex: 1 }}
               onClick={() => navigate(`/field/academy/lesson/${lessonId}`)}
-              style={{
-                flex: 1, padding: '13px 0',
-                background: `${C.amber}22`, border: `1px solid ${C.amber}44`,
-                borderRadius: 12, color: C.amber, fontSize: 14, fontWeight: 700, cursor: 'pointer',
-              }}
             >
-              📖 Перечитать
-            </button>
+              Перечитать
+            </KeyButton>
           )}
-          <button
+          <KeyButton
+            tone={isPassed ? 'status' : 'neutral'}
+            icon={isPassed ? Landmark : ArrowLeft}
+            style={{ flex: 1 }}
             onClick={() => navigate('/field/academy')}
-            style={{
-              flex: 1, padding: '13px 0',
-              background: isPassed
-                ? `linear-gradient(90deg, ${C.green}, var(--ok))`
-                : `${C.card}`,
-              border: isPassed ? 'none' : `1px solid color-mix(in oklab, var(--text-primary) 13%, transparent)`,
-              borderRadius: 12, color: isPassed ? 'var(--bg-primary)' : C.text,
-              fontSize: 14, fontWeight: 700, cursor: 'pointer',
-            }}
           >
-            {isPassed ? '🏛️ В Чертоги' : '← Назад'}
-          </button>
+            {isPassed ? 'В Чертоги' : 'Назад'}
+          </KeyButton>
         </div>
       )}
+      </div>
     </div>
   );
 }
@@ -281,20 +280,18 @@ export default function FieldAcademyQuiz() {
 
   if (loading) {
     return (
-      <div style={{ minHeight: '100dvh', background: C.bg, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <div style={{ color: C.gold, fontSize: 32 }}>⚡</div>
+      <div className="fs-root" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <Zap size={32} strokeWidth={2.2} style={{ color: C.gold }} />
       </div>
     );
   }
 
   if (error) {
     return (
-      <div style={{ minHeight: '100dvh', background: C.bg, padding: '80px 20px', textAlign: 'center' }}>
-        <div style={{ fontSize: 48, marginBottom: 16 }}>⛔</div>
+      <div className="fs-root" style={{ padding: '80px 20px', textAlign: 'center' }}>
+        <IconTile icon={Ban} tone="danger" size={72} iconSize={34} style={{ margin: '0 auto 16px' }} />
         <div style={{ color: C.red, marginBottom: 16 }}>{error}</div>
-        <button onClick={() => navigate(-1)} style={{ color: C.gold, background: 'none', border: 'none', cursor: 'pointer', fontSize: 15 }}>
-          ← Назад
-        </button>
+        <KeyButton tone="value" icon={ArrowLeft} onClick={() => navigate(-1)}>Назад</KeyButton>
       </div>
     );
   }
@@ -312,41 +309,40 @@ export default function FieldAcademyQuiz() {
   const isLast = current === totalQ - 1;
 
   return (
-    <div style={{ minHeight: '100dvh', background: C.bg, display: 'flex', flexDirection: 'column' }}>
+    <div className="fs-root" style={{ display: 'flex', flexDirection: 'column' }}>
       {/* Header */}
       <div style={{
-        padding: '48px 16px 12px',
-        background: 'linear-gradient(180deg, var(--bg-surface) 0%, transparent 100%)',
-        position: 'sticky', top: 0, zIndex: 10, backdropFilter: 'blur(8px)',
+        paddingTop: 'max(env(safe-area-inset-top), 14px)', paddingInline: 16, paddingBottom: 12,
+        background: 'color-mix(in oklab, var(--bg-primary) 88%, transparent)',
+        WebkitBackdropFilter: 'blur(12px) saturate(1.5)', backdropFilter: 'blur(12px) saturate(1.5)',
+        position: 'sticky', top: 0, zIndex: 10,
       }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
           <div style={{ fontSize: 13, color: C.muted }}>
             Вопрос {current + 1} из {totalQ}
           </div>
-          <div style={{ fontSize: 14, fontWeight: 700, color: timeColor }}>
-            ⏱ {formatTime(timeLeft)}
+          <div style={{ fontSize: 14, fontWeight: 700, color: timeColor, display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+            <Timer size={14} strokeWidth={2.4} />
+            {formatTime(timeLeft)}
           </div>
         </div>
-        <ProgressBar current={current + 1} total={totalQ} />
+        <UiProgress value={current + 1} max={totalQ} color="var(--acc)" />
       </div>
 
       {/* Question */}
-      <div style={{ flex: 1, padding: '16px 16px 120px' }}>
-        <div style={{
-          background: C.card, borderRadius: 16, padding: 20,
-          border: '1px solid color-mix(in oklab, var(--text-primary) 7%, transparent)', marginBottom: 16,
-        }}>
+      <div style={{ flex: 1, padding: '16px 16px 120px', position: 'relative', zIndex: 5 }}>
+        <Card variant="raised" style={{ marginBottom: 16 }}>
           {q.image_url && (
             <img src={q.image_url} alt="" style={{ width: '100%', borderRadius: 10, marginBottom: 12, objectFit: 'cover', maxHeight: 200 }} />
           )}
-          <div style={{ fontSize: 11, color: C.rune, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8 }}>
+          <div style={{ fontSize: 11, color: 'var(--acc)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8 }}>
             {q.question_type === 'truefalse' ? 'Верно или Неверно' :
              q.question_type === 'scenario' ? 'Разбор ситуации' : 'Выбери ответ'}
           </div>
           <div style={{ fontSize: 16, fontWeight: 700, color: C.text, lineHeight: 1.55 }}>
             {q.question_text}
           </div>
-        </div>
+        </Card>
 
         {/* Options */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -358,19 +354,20 @@ export default function FieldAcademyQuiz() {
                 onClick={() => selectOption(q.id, opt.id)}
                 style={{
                   width: '100%', textAlign: 'left', padding: '14px 16px',
-                  background: isSelected ? `${C.rune}22` : C.card,
-                  border: `2px solid ${isSelected ? C.rune : 'color-mix(in oklab, var(--text-primary) 7%, transparent)'}`,
-                  borderRadius: 12, color: isSelected ? C.text : '#b0b0c0',
+                  background: isSelected ? 'var(--ui-card-value-bg, var(--bg-surface-alt))' : 'var(--bg-surface)',
+                  border: `2px solid ${isSelected ? 'var(--acc)' : 'var(--tile-brd)'}`,
+                  borderRadius: 12, color: isSelected ? 'var(--text-primary)' : 'var(--text-secondary)',
                   fontSize: 14, fontWeight: isSelected ? 700 : 400,
                   cursor: 'pointer', lineHeight: 1.45,
-                  transition: 'all 0.15s',
+                  transition: 'all .15s',
+                  boxShadow: isSelected ? '0 4px 14px color-mix(in oklab, var(--acc) 24%, transparent)' : 'none',
                 }}
               >
                 <span style={{
                   display: 'inline-block', width: 22, height: 22,
-                  borderRadius: 11, border: `2px solid ${isSelected ? C.rune : 'color-mix(in oklab, var(--text-primary) 20%, transparent)'}`,
+                  borderRadius: 11, border: `2px solid ${isSelected ? 'var(--acc)' : 'var(--border-mid)'}`,
                   marginRight: 10, verticalAlign: 'middle',
-                  background: isSelected ? C.rune : 'transparent',
+                  background: isSelected ? 'var(--acc)' : 'transparent',
                   flexShrink: 0,
                 }} />
                 {opt.text}
@@ -383,8 +380,8 @@ export default function FieldAcademyQuiz() {
       {/* Navigation */}
       <div style={{
         position: 'fixed', bottom: 0, left: 0, right: 0,
-        padding: '12px 16px 32px',
-        background: `linear-gradient(transparent, ${C.bg} 30%)`,
+        padding: '12px 16px calc(env(safe-area-inset-bottom, 0px) + 18px)',
+        background: 'linear-gradient(transparent, var(--bg-primary) 30%)',
       }}>
         {/* Answer count */}
         <div style={{ textAlign: 'center', fontSize: 12, color: C.muted, marginBottom: 8 }}>
@@ -393,42 +390,30 @@ export default function FieldAcademyQuiz() {
 
         <div style={{ display: 'flex', gap: 10 }}>
           {current > 0 && (
-            <button onClick={prevQuestion} style={{
-              padding: '13px 20px', background: 'color-mix(in oklab, var(--text-primary) 7%, transparent)',
-              border: 'none', borderRadius: 12, color: C.text,
-              fontSize: 14, cursor: 'pointer',
-            }}>←</button>
+            <KeyButton tone="neutral" icon={ArrowLeft} onClick={prevQuestion} aria-label="Предыдущий вопрос" />
           )}
 
           {!isLast ? (
-            <button
+            <KeyButton
+              tone="accent"
+              block
               onClick={nextQuestion}
-              style={{
-                flex: 1, padding: '13px 0',
-                background: answers[q.id]
-                  ? `linear-gradient(90deg, ${C.rune}, var(--acc))`
-                  : 'color-mix(in oklab, var(--text-primary) 7%, transparent)',
-                border: 'none', borderRadius: 12, color: 'var(--text-primary)',
-                fontSize: 14, fontWeight: 700, cursor: 'pointer',
-              }}
+              style={{ flex: 1 }}
+              disabled={!answers[q.id]}
             >
-              Далее →
-            </button>
+              Далее
+            </KeyButton>
           ) : (
-            <button
+            <KeyButton
+              tone="value"
+              block
+              icon={Swords}
               onClick={() => handleSubmit()}
               disabled={submitting}
-              style={{
-                flex: 1, padding: '13px 0',
-                background: submitting
-                  ? 'color-mix(in oklab, var(--text-primary) 13%, transparent)'
-                  : `linear-gradient(90deg, ${C.gold}, var(--value))`,
-                border: 'none', borderRadius: 12, color: 'var(--bg-primary)',
-                fontSize: 15, fontWeight: 800, cursor: submitting ? 'default' : 'pointer',
-              }}
+              style={{ flex: 1 }}
             >
-              {submitting ? 'Отправляем...' : `⚔️ Сдать Испытание (${answeredCount}/${totalQ})`}
-            </button>
+              {submitting ? 'Отправляем...' : `Сдать Испытание (${answeredCount}/${totalQ})`}
+            </KeyButton>
           )}
         </div>
       </div>

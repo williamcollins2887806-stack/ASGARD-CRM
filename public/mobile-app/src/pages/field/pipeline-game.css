@@ -62,7 +62,7 @@
 }
 .pp-back { width: 36px; display: flex; align-items: center; justify-content: center; }
 .pp-restart { padding: 0 10px; font-size: 11px; font-weight: 800; }
-.pp-title { font-family: Cinzel, serif; font-size: 15px; font-weight: 900; letter-spacing: 0.14em; color: var(--gold); text-shadow: 0 0 18px color-mix(in oklab, var(--value) 35%, transparent); }
+.pp-title { font-size: 15px; font-weight: 900; letter-spacing: 0.14em; color: var(--gold); text-shadow: 0 0 18px color-mix(in oklab, var(--value) 35%, transparent); }
 .pp-sub { font-size: 8px; color: var(--t3); letter-spacing: 0.18em; text-align: center; margin-top: 2px; }
 .pp-wallet {
   display: flex; align-items: center; gap: 5px; padding: 5px 11px;
@@ -85,8 +85,14 @@
   color: #031018; background: linear-gradient(135deg, var(--world-accent), #fff8);
   box-shadow: 0 0 16px color-mix(in srgb, var(--world-accent) 45%, transparent);
 }
+/* Светлая тема: --world-accent здесь тёмный, и тёмный текст #031018 ложился на
+   него как 2.87:1. Тонируем светлым, акцент переносим в текст. */
+.light .pp-world-pill {
+  color: var(--world-accent);
+  background: linear-gradient(135deg, color-mix(in oklab, var(--world-accent) 18%, #fff), #eef6ff);
+}
 .pp-lvl {
-  font-family: Cinzel, serif; font-size: 18px; font-weight: 900; color: var(--gold);
+  font-size: 18px; font-weight: 900; color: var(--value-ink);
   letter-spacing: 0.06em; text-shadow: 0 2px 0 color-mix(in oklab, var(--bg-primary) 35%, transparent);
 }
 .pp-star { font-size: 18px; opacity: 0.18; filter: grayscale(1); transition: all 0.35s; }
@@ -100,7 +106,16 @@
   display: grid; place-items: center;
   box-shadow: 0 0 14px color-mix(in srgb, var(--world-accent) 30%, transparent);
 }
-.pp-gauge-dial span { font-size: 9px; font-weight: 900; color: var(--world-accent); }
+/* Светлая тема: тёмная воронка делала подпись невидимой на акценте. */
+.light .pp-gauge-dial {
+  background:
+    conic-gradient(var(--world-accent) calc(var(--p, 0) * 1%), color-mix(in oklab, var(--text-primary) 14%, transparent) 0),
+    radial-gradient(circle at 50% 50%, #ffffff 58%, transparent 60%);
+}
+/* Подпись внутри воронки: акцентный текст на акцентной дуге не читается
+   (тёмная 2.44, светлая 2.84). Цвет — контрастный к ядру воронки в каждой теме. */
+.pp-gauge-dial span { font-size: 9px; font-weight: 900; color: #ffffff; text-shadow: 0 1px 2px rgba(0,0,0,.55); }
+.light .pp-gauge-dial span { color: #10203a; text-shadow: none; }
 .pp-gauge-meta { flex: 1; font-size: 11px; color: var(--t3); line-height: 1.35; }
 .pp-gauge-meta b { color: var(--t1); font-weight: 800; }
 
@@ -109,7 +124,7 @@
   background: color-mix(in oklab, var(--bg-primary) 35%, transparent); border: 1px solid color-mix(in oklab, var(--text-primary) 8%, transparent);
   font-size: 12px; color: var(--t2); font-weight: 600;
 }
-.pp-hint.err { border-color: color-mix(in oklab, var(--danger) 55%, transparent); color: #fecaca; background: color-mix(in oklab, var(--danger) 10%, transparent); }
+.pp-hint.err { border-color: color-mix(in oklab, var(--danger) 55%, transparent); color: var(--danger-ink); background: color-mix(in oklab, var(--danger) 10%, transparent); }
 .pp-hint.ok { border-color: color-mix(in srgb, var(--world-accent) 55%, transparent); color: #e0f2fe; }
 
 .pp-game { display: flex; align-items: center; justify-content: center; padding: 4px 14px 10px; }
@@ -170,7 +185,13 @@
   border: 1px solid color-mix(in oklab, var(--text-primary) 14%, transparent); color: var(--text-primary);
   box-shadow: 0 6px 16px color-mix(in oklab, var(--bg-primary) 35%, transparent);
 }
-.pp-moves.low { border-color: color-mix(in oklab, var(--danger) 65%, transparent); color: #fecaca; animation: ppPulseSoft 0.9s ease infinite; }
+.pp-moves.low { border-color: color-mix(in oklab, var(--danger) 65%, transparent); color: var(--danger-ink); animation: ppPulseSoft 0.9s ease infinite; }
+/* Светлая тема: тёмная подложка + красный текст = 2.38:1. Фон светлый, текст тёмный. */
+.light .pp-moves {
+  background: linear-gradient(135deg, #ffffff, #eef2f8);
+  border-color: color-mix(in oklab, var(--text-primary) 16%, transparent);
+  box-shadow: 0 6px 16px color-mix(in oklab, var(--text-primary) 14%, transparent);
+}
 @keyframes ppPulseSoft { 50% { transform: scale(1.05); } }
 
 .pp-grid { width: 100%; height: 100%; display: grid; gap: 3px; border-radius: 14px; position: relative; z-index: 3; }
@@ -351,6 +372,13 @@
   box-shadow: 0 5px 0 color-mix(in srgb, var(--world-accent) 40%, var(--bg-primary)), 0 0 24px color-mix(in srgb, var(--world-accent) 35%, transparent);
 }
 .pp-btn:disabled { opacity: 0.4; pointer-events: none; }
+/* Светлая тема: акцент тёмный + светлый хвост градиента → тёмный текст не держал
+   контраст (2.87:1). Инвертируем: насыщенная заливка, белый текст. */
+.light .pp-btn {
+  color: #ffffff;
+  background: linear-gradient(135deg, var(--world-accent), color-mix(in oklab, var(--world-accent) 72%, #000));
+  box-shadow: 0 5px 0 color-mix(in srgb, var(--world-accent) 55%, #000), 0 0 20px color-mix(in srgb, var(--world-accent) 28%, transparent);
+}
 .pp-btn:active:not(:disabled) { transform: translateY(3px); box-shadow: 0 2px 0 color-mix(in srgb, var(--world-accent) 40%, var(--bg-primary)); }
 
 .pp-ov {
@@ -367,7 +395,7 @@
   border-top: 1px solid color-mix(in oklab, var(--value) 25%, transparent);
 }
 .pp-win.fail { border-top-color: color-mix(in oklab, var(--danger) 45%, transparent); }
-.pp-win-title { font-family: Cinzel, serif; font-size: 24px; font-weight: 900; color: var(--gold); margin: 8px 0; }
+.pp-win-title { font-size: 24px; font-weight: 900; color: var(--gold); margin: 8px 0; }
 .pp-win-btn {
   width: 100%; margin-top: 14px; padding: 16px; border-radius: 16px; border: none;
   font-size: 16px; font-weight: 900; color: #1a1200; cursor: pointer;
@@ -437,7 +465,7 @@
   margin-bottom: 6px;
 }
 .pp-intro-lvl {
-  font-family: Cinzel, serif; font-size: 42px; font-weight: 900; color: var(--text-primary);
+  font-size: 42px; font-weight: 900; color: var(--text-primary);
   text-shadow: 0 4px 0 color-mix(in oklab, var(--bg-primary) 35%, transparent), 0 0 30px color-mix(in srgb, var(--world-accent) 50%, transparent);
 }
 @keyframes ppIntroSlam {
@@ -464,7 +492,7 @@
   animation: ppGodIn 0.35s cubic-bezier(0.22, 1.4, 0.36, 1) both;
 }
 .pp-god-emoji { font-size: 56px; display: block; margin-bottom: 4px; }
-.pp-god-name { font-family: Cinzel, serif; font-size: 22px; font-weight: 900; color: var(--gold); letter-spacing: 0.12em; }
+.pp-god-name { font-size: 22px; font-weight: 900; color: var(--gold); letter-spacing: 0.12em; }
 .pp-god-line { font-size: 12px; color: var(--t2); margin-top: 4px; font-weight: 700; }
 @keyframes ppGodIn { from { opacity: 0; transform: scale(0.7); } to { opacity: 1; transform: scale(1); } }
 @keyframes ppGodOut { 0%, 55% { opacity: 1; } 100% { opacity: 0; } }
@@ -488,5 +516,5 @@
   text-align: center;
   box-shadow: 0 0 40px color-mix(in srgb, var(--world-accent) 25%, transparent);
 }
-.pp-tut-card h3 { margin: 0 0 8px; font-size: 20px; color: var(--gold); font-family: Cinzel, serif; }
+.pp-tut-card h3 { margin: 0 0 8px; font-size: 20px; color: var(--value-ink); }
 .pp-tut-card p { margin: 0 0 16px; font-size: 14px; color: var(--t2); line-height: 1.45; }

@@ -14,9 +14,9 @@ import { PullToRefresh } from '@/components/shared/PullToRefresh';
 import { Boxes, Truck, RefreshCw, ChevronRight, Check, Package } from 'lucide-react';
 
 const TYPE = {
-  mobilization: { label: 'Мобилизация', color: '#D4A843' },
-  demobilization: { label: 'Демобилизация', color: '#4A90D9' },
-  transfer: { label: 'Перемещение', color: '#30d158' },
+  mobilization: { label: 'Мобилизация', color: 'var(--value)' },
+  demobilization: { label: 'Демобилизация', color: 'var(--blue)' },
+  transfer: { label: 'Перемещение', color: 'var(--ok)' },
 };
 const STATUS = {
   draft: 'Черновик', confirmed: 'К сборке', packing: 'Сборка', packed: 'Собрано',
@@ -69,7 +69,7 @@ export default function Assembly() {
             {[{ v: 'active', l: 'Активные' }, { v: 'all', l: 'Все' }].map(f => (
               <button key={f.v} onClick={() => { haptic.light(); setFilter(f.v); }}
                 className="text-xs font-semibold px-3 py-1.5 rounded-lg transition"
-                style={{ background: filter === f.v ? 'rgba(212,168,67,.16)' : 'var(--bg-elevated,#161a22)', color: filter === f.v ? '#D4A843' : 'var(--t2,#8b93a3)', border: `1px solid ${filter === f.v ? '#D4A843' : 'var(--border,#262c38)'}` }}>{f.l}</button>
+                style={{ background: filter === f.v ? 'var(--chip-value-bg)' : 'var(--bg-elevated)', color: filter === f.v ? 'var(--chip-on-value)' : 'var(--text-secondary)', border: `1px solid ${filter === f.v ? 'var(--value)' : 'var(--border-norse)'}` }}>{f.l}</button>
             ))}
           </div>
         )}
@@ -85,26 +85,26 @@ export default function Assembly() {
               return (
                 <button key={a.id} onClick={() => openDetail(a.id)}
                   className="w-full text-left rounded-2xl p-4 active:scale-[.98] transition"
-                  style={{ background: 'var(--bg-elevated,#161a22)', border: '1px solid var(--border,#262c38)' }}>
+                  style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border-norse)' }}>
                   <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0" style={{ background: `${meta.color}22` }}>
+                    <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0" style={{ background: `color-mix(in oklab, ${meta.color} 18%, transparent)` }}>
                       <Truck size={20} style={{ color: meta.color }} />
                     </div>
                     <div className="flex-1 min-w-0">
-                      <div className="font-semibold truncate" style={{ color: 'var(--t1,#e6e9ef)' }}>{a.title || meta.label}</div>
-                      <div className="text-xs truncate" style={{ color: 'var(--t2,#8b93a3)' }}>{a.work_title || ''}</div>
+            <div className="font-semibold truncate" style={{ color: 'var(--text-primary)' }}>{a.title || meta.label}</div>
+            <div className="text-xs truncate" style={{ color: 'var(--text-secondary)' }}>{a.work_title || ''}</div>
                     </div>
-                    <ChevronRight size={18} style={{ color: 'var(--t2,#8b93a3)', flexShrink: 0 }} />
+                    <ChevronRight size={18} style={{ color: 'var(--text-secondary)', flexShrink: 0 }} />
                   </div>
                   <div className="flex items-center gap-2 mt-2.5">
-                    <span className="text-[11px] px-2 py-0.5 rounded-full font-bold" style={{ background: `${meta.color}22`, color: meta.color }}>{STATUS[a.status] || a.status}</span>
-                    <span className="text-xs" style={{ color: 'var(--t2,#8b93a3)' }}>{a.items_count || 0} поз. • {a.pallets_count || 0} мест</span>
+                    <span className="text-[11px] px-2 py-0.5 rounded-full font-bold" style={{ background: `color-mix(in oklab, ${meta.color} 22%, transparent)`, color: meta.color }}>{STATUS[a.status] || a.status}</span>
+                    <span className="text-xs" style={{ color: 'var(--text-secondary)' }}>{a.items_count || 0} поз. • {a.pallets_count || 0} мест</span>
                   </div>
                   <div className="mt-2 flex items-center gap-2">
-                    <div className="flex-1 h-1.5 rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,.08)' }}>
+                    <div className="flex-1 h-1.5 rounded-full overflow-hidden" style={{ background: 'var(--bg-secondary)' }}>
                       <div className="h-full rounded-full" style={{ width: `${pct}%`, background: meta.color }} />
                     </div>
-                    <span className="text-[11px]" style={{ color: 'var(--t2,#8b93a3)' }}>{pct}%</span>
+                    <span className="text-[11px]" style={{ color: 'var(--text-secondary)' }}>{pct}%</span>
                   </div>
                 </button>
               );
@@ -118,20 +118,20 @@ export default function Assembly() {
           {detailError ? (
             <div className="p-6 text-center space-y-3">
               <div className="opacity-70 text-sm">{detailError}</div>
-              <button onClick={() => openDetail(detail)} className="px-5 py-2.5 rounded-xl font-semibold" style={{ background: '#D4A843', color: '#1a1408' }}>Повторить</button>
+              <button onClick={() => openDetail(detail)} className="px-5 py-2.5 rounded-xl font-semibold" style={{ background: 'var(--gold-fill)', color: 'var(--text-on-gold)' }}>Повторить</button>
             </div>
           ) : !detailData ? <div className="p-6 text-center opacity-60">Загрузка…</div> : (
             <div className="p-4 space-y-4">
-              <div className="text-sm" style={{ color: 'var(--t2,#8b93a3)' }}>
+              <div className="text-sm" style={{ color: 'var(--text-secondary)' }}>
                 {detailData.item.work_title} • {STATUS[detailData.item.status]}
               </div>
-              {actionErr && <div className="text-sm rounded-xl p-3" style={{ background: 'rgba(255,92,92,.12)', color: '#ff5c5c' }}>{actionErr}</div>}
+              {actionErr && <div className="text-sm rounded-xl p-3" style={{ background: 'var(--err-bg)', color: 'var(--err-t)' }}>{actionErr}</div>}
               {/* паллеты */}
               {detailData.pallets?.length > 0 && (
                 <div className="flex gap-2 flex-wrap">
                   {detailData.pallets.map(p => (
-                    <div key={p.id} className="rounded-xl px-3 py-2 text-center" style={{ background: 'var(--bg-elevated,#161a22)', border: '1px solid var(--border,#262c38)' }}>
-                      <Package size={16} className="mx-auto mb-1" style={{ color: '#D4A843' }} />
+                    <div key={p.id} className="rounded-xl px-3 py-2 text-center" style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border-norse)' }}>
+                      <Package size={16} className="mx-auto mb-1" style={{ color: 'var(--value)' }} />
                       <div className="text-xs font-bold">№{p.pallet_number}</div>
                     </div>
                   ))}
@@ -140,14 +140,14 @@ export default function Assembly() {
               {/* позиции */}
               <div className="space-y-2 max-h-72 overflow-y-auto">
                 {(detailData.items || []).map(it => (
-                  <div key={it.id} className="flex items-center gap-3 rounded-xl p-3" style={{ background: 'var(--bg-elevated,#161a22)' }}>
+                  <div key={it.id} className="flex items-center gap-3 rounded-xl p-3" style={{ background: 'var(--bg-elevated)' }}>
                     <div className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0"
-                      style={{ background: it.packed ? '#30d158' : 'rgba(255,255,255,.06)' }}>
-                      {it.packed && <Check size={16} color="#08210f" strokeWidth={3} />}
+                      style={{ background: it.packed ? 'var(--ok)' : 'var(--bg-secondary)' }}>
+                      {it.packed && <Check size={16} color="var(--text-on-accent)" strokeWidth={3} />}
                     </div>
                     <div className="flex-1 min-w-0">
-                      <div className={`text-sm truncate ${it.packed ? 'opacity-60 line-through' : ''}`} style={{ color: 'var(--t1,#e6e9ef)' }}>{it.name}</div>
-                      <div className="text-xs" style={{ color: 'var(--t2,#8b93a3)' }}>{Number(it.quantity)} {it.unit}</div>
+                      <div className={`text-sm truncate ${it.packed ? 'opacity-60 line-through' : ''}`} style={{ color: 'var(--text-primary)' }}>{it.name}</div>
+                      <div className="text-xs" style={{ color: 'var(--text-secondary)' }}>{Number(it.quantity)} {it.unit}</div>
                     </div>
                   </div>
                 ))}
@@ -155,10 +155,10 @@ export default function Assembly() {
               {/* действия */}
               <div className="flex gap-2">
                 {detailData.item.status === 'draft' && (
-                  <button onClick={() => confirm(detail)} className="flex-1 py-3 rounded-xl font-semibold active:scale-95 transition" style={{ background: '#D4A843', color: '#1a1408' }}>✅ Подтвердить</button>
+                  <button onClick={() => confirm(detail)} className="flex-1 py-3 rounded-xl font-semibold active:scale-95 transition" style={{ background: 'var(--gold-fill)', color: 'var(--text-on-gold)' }}>Подтвердить</button>
                 )}
                 {['confirmed', 'packing', 'packed'].includes(detailData.item.status) && (
-                  <button onClick={() => send(detail)} className="flex-1 py-3 rounded-xl font-semibold active:scale-95 transition" style={{ background: '#4A90D9', color: '#fff' }}>🚛 Отправить</button>
+                  <button onClick={() => send(detail)} className="flex-1 py-3 rounded-xl font-semibold active:scale-95 transition" style={{ background: 'var(--blue)', color: 'var(--text-on-accent)' }}>Отправить</button>
                 )}
               </div>
             </div>

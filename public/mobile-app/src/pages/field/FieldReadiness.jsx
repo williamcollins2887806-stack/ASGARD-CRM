@@ -5,8 +5,11 @@ import { useFieldAuthStore } from '@/stores/fieldAuthStore';
 import { useHaptic } from '@/hooks/useHaptic';
 import {
   Shield, CheckCircle, XCircle, Calendar, ChevronLeft,
-  AlertTriangle, FileWarning, Clock,
+  AlertTriangle, FileWarning, Clock, Ban, Swords, BedDouble, Building2, CircleDashed, PackageCheck,
 } from 'lucide-react';
+import { Card, IconTile, KeyButton, Chip, SectionLabel } from '@/components/field/ui';
+import { SkeletonList } from '@/components/shared/SkeletonKit';
+import './field-screens.css';
 
 const REASONS = [
   { key: 'illness',    label: 'Болезнь' },
@@ -22,11 +25,11 @@ const REASONS = [
 ];
 
 const STATUS_CONFIG = {
-  ready:     { label: 'Готов к походу',   color: 'var(--green)',  icon: CheckCircle, emoji: '⚔️' },
-  not_ready: { label: 'Отдыхаю',         color: 'var(--warn-t)', icon: XCircle,     emoji: '🛏' },
-  on_site:   { label: 'На объекте',       color: 'var(--blue)',   icon: Shield,      emoji: '🏗' },
-  unknown:   { label: 'Без статуса',      color: 'var(--text-tertiary)', icon: Shield, emoji: '○' },
-  archive:   { label: 'Архив',            color: 'var(--text-tertiary)', icon: Shield, emoji: '📦' },
+  ready:     { label: 'Готов к походу',   color: 'var(--ok)',         Icon: Swords },
+  not_ready: { label: 'Отдыхаю',         color: 'var(--value-ink)', Icon: BedDouble },
+  on_site:   { label: 'На объекте',       color: 'var(--acc)',        Icon: Building2 },
+  unknown:   { label: 'Без статуса',      color: 'var(--text-tertiary)', Icon: CircleDashed },
+  archive:   { label: 'Архив',            color: 'var(--text-tertiary)', Icon: PackageCheck },
 };
 
 function fmtDate(d) {
@@ -130,39 +133,34 @@ export default function FieldReadiness() {
 
   const currentStatus = readiness?.readiness_status || 'unknown';
   const cfg = STATUS_CONFIG[currentStatus] || STATUS_CONFIG.unknown;
-  const StatusIcon = cfg.icon;
+  const StatusIcon = cfg.Icon;
 
   if (loading) {
     return (
-      <div className="p-4 space-y-4">
-        {[1, 2, 3].map(i => (
-          <div key={i} className="rounded-xl h-20 animate-pulse" style={{ backgroundColor: 'var(--bg-elevated)' }} />
-        ))}
+      <div className="fs-root p-4" style={{ paddingTop: 'max(env(safe-area-inset-top), 16px)' }}>
+        <SkeletonList count={3} />
       </div>
     );
   }
 
   return (
-    <div className="p-4" style={{ backgroundColor: 'var(--bg-primary)', minHeight: '100dvh', paddingTop: 'max(env(safe-area-inset-top), 16px)', paddingBottom: 'max(env(safe-area-inset-bottom), 24px)' }}>
-      {/* Header */}
-      <div className="flex items-center gap-3 mb-5">
-        <button onClick={() => navigate(-1)} className="p-1">
-          <ChevronLeft size={24} style={{ color: 'var(--text-primary)' }} />
-        </button>
-        <h1 className="text-lg font-bold" style={{ color: 'var(--text-primary)' }}>Готовность</h1>
-      </div>
+    <div className="fs-root" style={{ paddingBottom: 'max(env(safe-area-inset-bottom), 24px)' }}>
+      <div className="fs-scene" aria-hidden><span className="fs-orb fs-orb--a" /><span className="fs-orb fs-orb--b" /></div>
+
+      <div className="fs-content">
+        {/* Header */}
+        <div className="fs-head">
+          <button onClick={() => navigate(-1)} className="fs-head__btn" aria-label="Назад">
+            <ChevronLeft size={22} strokeWidth={2.3} />
+          </button>
+          <IconTile icon={Shield} tone="accent" size={40} />
+          <h1 className="fs-head__title">Готовность</h1>
+        </div>
 
       {/* Current status badge */}
-      <div
-        className="rounded-2xl p-5 mb-4 text-center"
-        style={{
-          backgroundColor: 'var(--bg-elevated)',
-          border: `2px solid ${cfg.color}`,
-        }}
-      >
-        <div className="text-4xl mb-2">{cfg.emoji}</div>
-        <StatusIcon size={28} style={{ color: cfg.color, margin: '0 auto 8px' }} />
-        <p className="text-lg font-bold" style={{ color: cfg.color }}>{cfg.label}</p>
+      <Card variant="raised" className="p-5 mb-4 text-center" style={{ border: `2px solid ${cfg.color}`, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+        <IconTile icon={StatusIcon} tone={currentStatus === 'ready' ? 'status' : currentStatus === 'not_ready' ? 'value' : 'neutral'} size={56} iconSize={28} />
+        <p className="text-lg font-bold" style={{ color: cfg.color, marginTop: 8 }}>{cfg.label}</p>
         {readiness?.readiness_date && currentStatus === 'ready' && (
           <p className="text-sm mt-1" style={{ color: 'var(--text-secondary)' }}>
             Готов с {fmtDate(readiness.readiness_date)}
@@ -170,7 +168,7 @@ export default function FieldReadiness() {
         )}
         {readiness?.readiness_reason && currentStatus === 'not_ready' && (
           <p className="text-sm mt-1" style={{ color: 'var(--text-secondary)' }}>
-            {REASONS.find(r => r.key === readiness.readiness_reason)?.label || readiness.readiness_reason}
+            {REASONS.find((r) => r.key === readiness.readiness_reason)?.label || readiness.readiness_reason}
           </p>
         )}
         {readiness?.readiness_comment && (
@@ -179,25 +177,19 @@ export default function FieldReadiness() {
           </p>
         )}
         {readiness?.readiness_updated_at && (
-          <p className="text-xs mt-2" style={{ color: 'var(--text-tertiary)' }}>
-            <Clock size={12} className="inline mr-1" />
+          <p className="text-xs mt-2 flex items-center gap-1" style={{ color: 'var(--text-tertiary)' }}>
+            <Clock size={12} strokeWidth={2.4} aria-hidden />
             Обновлено {fmtDate(readiness.readiness_updated_at)}
           </p>
         )}
-      </div>
+      </Card>
 
       {/* Expiring documents warning */}
       {expiringDocs.length > 0 && (
-        <div
-          className="rounded-xl p-4 mb-4"
-          style={{
-            background: 'color-mix(in srgb, var(--warn-t) 10%, transparent)',
-            border: '1px solid color-mix(in srgb, var(--warn-t) 30%, transparent)',
-          }}
-        >
+        <Card variant="raised" tone="value" className="p-4 mb-4">
           <div className="flex items-center gap-2 mb-2">
-            <FileWarning size={18} style={{ color: 'var(--warn-t)' }} />
-            <p className="text-sm font-semibold" style={{ color: 'var(--warn-t)' }}>
+            <FileWarning size={18} style={{ color: 'var(--value-ink)' }} />
+            <p className="text-sm font-semibold" style={{ color: 'var(--value-ink)' }}>
               Документы истекают
             </p>
           </div>
@@ -208,70 +200,54 @@ export default function FieldReadiness() {
                 <span className="text-sm" style={{ color: 'var(--text-primary)' }}>
                   {doc.permit_name || doc.type_name || 'Документ'}
                 </span>
-                <span
-                  className="text-xs font-medium"
-                  style={{ color: expired ? 'var(--err-t)' : 'var(--warn-t)' }}
-                >
-                  {expired ? '⛔ Просрочен' : `⚠️ до ${fmtDate(doc.expiry_date)}`}
+                <span className="text-xs font-medium flex items-center gap-1" style={{ color: expired ? 'var(--danger-ink)' : 'var(--value-ink)' }}>
+                  {expired
+                    ? <><Ban size={11} strokeWidth={2.6} aria-hidden />Просрочен</>
+                    : <><AlertTriangle size={11} strokeWidth={2.6} aria-hidden />до {fmtDate(doc.expiry_date)}</>}
                 </span>
               </div>
             );
           })}
-        </div>
+        </Card>
       )}
 
       {/* Action buttons — only if can update and not on_site */}
       {currentStatus !== 'on_site' && (
         <>
           {!canUpdate ? (
-            <div
-              className="rounded-xl p-4 mb-4 text-center"
-              style={{
-                backgroundColor: 'var(--bg-elevated)',
-                border: '1px solid var(--border-norse)',
-              }}
-            >
-              <AlertTriangle size={24} style={{ color: 'var(--warn-t)', margin: '0 auto 8px' }} />
+            <Card variant="raised" className="p-4 mb-4 text-center" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+              <AlertTriangle size={24} style={{ color: 'var(--value-ink)', marginBottom: 8 }} />
               <p className="text-sm font-medium" style={{ color: 'var(--text-secondary)' }}>
                 Статус можно обновить 1 раз в день
               </p>
               <p className="text-xs mt-1" style={{ color: 'var(--text-tertiary)' }}>
                 Приходи завтра!
               </p>
-            </div>
+            </Card>
           ) : mode === null ? (
             <div className="flex gap-3 mb-4">
-              <button
+              <KeyButton
+                tone="status"
+                icon={Swords}
+                style={{ flex: 1, height: 56 }}
                 onClick={() => { haptic.light(); setMode('ready'); }}
-                className="flex-1 py-4 rounded-xl font-semibold text-sm active:scale-95 transition-transform"
-                style={{
-                  background: 'linear-gradient(135deg, color-mix(in srgb, var(--green) 20%, transparent), color-mix(in srgb, var(--green) 10%, transparent))',
-                  border: '1.5px solid color-mix(in srgb, var(--green) 40%, transparent)',
-                  color: 'var(--green)',
-                }}
               >
-                ⚔️ Готов к походу!
-              </button>
-              <button
+                Готов к походу!
+              </KeyButton>
+              <KeyButton
+                tone="value"
+                icon={BedDouble}
+                style={{ flex: 1, height: 56 }}
                 onClick={() => { haptic.light(); setMode('not_ready'); }}
-                className="flex-1 py-4 rounded-xl font-semibold text-sm active:scale-95 transition-transform"
-                style={{
-                  background: 'linear-gradient(135deg, color-mix(in srgb, var(--warn-t) 15%, transparent), color-mix(in srgb, var(--warn-t) 8%, transparent))',
-                  border: '1.5px solid color-mix(in srgb, var(--warn-t) 35%, transparent)',
-                  color: 'var(--warn-t)',
-                }}
               >
-                🛏 Пока отдыхаю
-              </button>
+                Пока отдыхаю
+              </KeyButton>
             </div>
           ) : null}
 
           {/* Ready form */}
           {mode === 'ready' && (
-            <div
-              className="rounded-xl p-4 mb-4"
-              style={{ backgroundColor: 'var(--bg-elevated)', border: '1px solid var(--border-norse)' }}
-            >
+            <Card variant="raised" className="p-4 mb-4">
               <p className="text-sm font-semibold mb-3" style={{ color: 'var(--text-primary)' }}>
                 С какого числа готов?
               </p>
@@ -281,10 +257,10 @@ export default function FieldReadiness() {
                   className="px-4 py-2 rounded-lg text-sm font-medium active:scale-95 transition-transform"
                   style={{
                     background: readyDate === todayISO()
-                      ? 'color-mix(in srgb, var(--green) 20%, transparent)'
-                      : 'var(--bg-primary)',
-                    border: `1px solid ${readyDate === todayISO() ? 'var(--green)' : 'var(--border-norse)'}`,
-                    color: readyDate === todayISO() ? 'var(--green)' : 'var(--text-secondary)',
+                      ? 'color-mix(in oklab, var(--ok) 16%, transparent)'
+                      : 'var(--bg-surface-alt)',
+                    border: `1px solid ${readyDate === todayISO() ? 'var(--ok)' : 'var(--tile-brd)'}`,
+                    color: readyDate === todayISO() ? 'var(--ok)' : 'var(--text-secondary)',
                   }}
                 >
                   Сегодня
@@ -298,58 +274,35 @@ export default function FieldReadiness() {
                     min={todayISO()}
                     className="w-full pl-9 pr-3 py-2 rounded-lg text-sm"
                     style={{
-                      backgroundColor: 'var(--bg-primary)',
-                      border: '1px solid var(--border-norse)',
+                      backgroundColor: 'var(--bg-surface-alt)',
+                      border: '1px solid var(--tile-brd)',
                       color: 'var(--text-primary)',
                     }}
                   />
                 </div>
               </div>
               <div className="flex gap-2">
-                <button
-                  onClick={handleSubmit}
-                  disabled={saving}
-                  className="flex-1 py-3 rounded-xl font-semibold text-sm disabled:opacity-50 spring-tap"
-                  style={{ background: 'linear-gradient(135deg, var(--green), var(--ok))', color: 'var(--text-primary)' }}
-                >
-                  {saving ? 'Сохраняю...' : '✅ Подтвердить'}
-                </button>
-                <button
-                  onClick={() => setMode(null)}
-                  className="px-4 py-3 rounded-xl text-sm"
-                  style={{ backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-norse)', color: 'var(--text-secondary)' }}
-                >
+                <KeyButton tone="status" icon={CheckCircle} style={{ flex: 1 }} onClick={handleSubmit} disabled={saving}>
+                  {saving ? 'Сохраняю...' : 'Подтвердить'}
+                </KeyButton>
+                <KeyButton tone="neutral" onClick={() => setMode(null)}>
                   Отмена
-                </button>
+                </KeyButton>
               </div>
-            </div>
+            </Card>
           )}
 
           {/* Not ready form */}
           {mode === 'not_ready' && (
-            <div
-              className="rounded-xl p-4 mb-4"
-              style={{ backgroundColor: 'var(--bg-elevated)', border: '1px solid var(--border-norse)' }}
-            >
+            <Card variant="raised" className="p-4 mb-4">
               <p className="text-sm font-semibold mb-3" style={{ color: 'var(--text-primary)' }}>
                 Причина
               </p>
               <div className="flex flex-wrap gap-2 mb-3">
-                {REASONS.map(r => (
-                  <button
-                    key={r.key}
-                    onClick={() => { haptic.light(); setReason(r.key); }}
-                    className="px-3 py-1.5 rounded-lg text-xs font-medium active:scale-95 transition-transform"
-                    style={{
-                      background: reason === r.key
-                        ? 'color-mix(in srgb, var(--warn-t) 20%, transparent)'
-                        : 'var(--bg-primary)',
-                      border: `1px solid ${reason === r.key ? 'var(--warn-t)' : 'var(--border-norse)'}`,
-                      color: reason === r.key ? 'var(--warn-t)' : 'var(--text-secondary)',
-                    }}
-                  >
+                {REASONS.map((r) => (
+                  <Chip key={r.key} tone="value" active={reason === r.key} onClick={() => { haptic.light(); setReason(r.key); }}>
                     {r.label}
-                  </button>
+                  </Chip>
                 ))}
               </div>
               <textarea
@@ -359,66 +312,40 @@ export default function FieldReadiness() {
                 rows={2}
                 className="w-full px-3 py-2 rounded-lg text-sm mb-3 resize-none"
                 style={{
-                  backgroundColor: 'var(--bg-primary)',
-                  border: '1px solid var(--border-norse)',
+                  backgroundColor: 'var(--bg-surface-alt)',
+                  border: '1px solid var(--tile-brd)',
                   color: 'var(--text-primary)',
                 }}
               />
               <div className="flex gap-2">
-                <button
-                  onClick={handleSubmit}
-                  disabled={saving || !reason}
-                  className="flex-1 py-3 rounded-xl font-semibold text-sm disabled:opacity-50 spring-tap"
-                  style={{
-                    background: reason
-                      ? 'linear-gradient(135deg, var(--warn-t), var(--warn))'
-                      : 'var(--bg-primary)',
-                    color: reason ? 'var(--text-primary)' : 'var(--text-tertiary)',
-                    border: reason ? 'none' : '1px solid var(--border-norse)',
-                  }}
-                >
-                  {saving ? 'Сохраняю...' : '💤 Подтвердить'}
-                </button>
-                <button
-                  onClick={() => setMode(null)}
-                  className="px-4 py-3 rounded-xl text-sm"
-                  style={{ backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-norse)', color: 'var(--text-secondary)' }}
-                >
+                <KeyButton tone="value" icon={BedDouble} style={{ flex: 1 }} onClick={handleSubmit} disabled={saving || !reason}>
+                  {saving ? 'Сохраняю...' : 'Подтвердить'}
+                </KeyButton>
+                <KeyButton tone="neutral" onClick={() => setMode(null)}>
                   Отмена
-                </button>
+                </KeyButton>
               </div>
-            </div>
+            </Card>
           )}
         </>
       )}
 
       {/* Success message */}
       {success && (
-        <div
-          className="rounded-xl p-4 mb-4 text-center"
-          style={{
-            background: 'color-mix(in srgb, var(--green) 10%, transparent)',
-            border: '1px solid color-mix(in srgb, var(--green) 30%, transparent)',
-          }}
-        >
-          <CheckCircle size={24} style={{ color: 'var(--green)', margin: '0 auto 8px' }} />
-          <p className="text-sm font-medium" style={{ color: 'var(--green)' }}>{success}</p>
-        </div>
+        <Card variant="flat" tone="status" className="p-4 mb-4 text-center" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+          <CheckCircle size={24} style={{ color: 'var(--ok)', marginBottom: 8 }} />
+          <p className="text-sm font-medium" style={{ color: 'var(--ok)' }}>{success}</p>
+        </Card>
       )}
 
       {/* Error message */}
       {error && (
-        <div
-          className="rounded-xl p-4 mb-4 text-center"
-          style={{
-            background: 'color-mix(in srgb, var(--err-t) 10%, transparent)',
-            border: '1px solid color-mix(in srgb, var(--err-t) 30%, transparent)',
-          }}
-        >
-          <AlertTriangle size={24} style={{ color: 'var(--err-t)', margin: '0 auto 8px' }} />
-          <p className="text-sm font-medium" style={{ color: 'var(--err-t)' }}>{error}</p>
-        </div>
+        <Card variant="flat" tone="danger" className="p-4 mb-4 text-center" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+          <AlertTriangle size={24} style={{ color: 'var(--danger)', marginBottom: 8 }} />
+          <p className="text-sm font-medium" style={{ color: 'var(--danger-ink)' }}>{error}</p>
+        </Card>
       )}
+      </div>
     </div>
   );
 }

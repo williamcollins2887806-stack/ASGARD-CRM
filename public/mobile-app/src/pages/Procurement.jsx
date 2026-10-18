@@ -786,7 +786,7 @@ function ProcDetailSheet({ request, onClose, userRole, onRefresh }) {
                 onClick={() => doAction('dir-approve', 'Согласовать')}
                 disabled={!!acting}
                 className="btn-primary spring-tap flex items-center justify-center gap-2"
-                style={{ background: 'var(--green)', color: '#04210d' }}
+                style={{ background: 'var(--ok)', color: 'var(--on-ok)' }}
               >
                 <Check size={16} />
                 {acting === 'dir-approve' ? 'Согласовываю...' : '✓ Согласовать'}
@@ -821,7 +821,7 @@ function ProcDetailSheet({ request, onClose, userRole, onRefresh }) {
               <button
                 onClick={() => { haptic.light(); setShowReceive(true); }}
                 className="btn-primary spring-tap flex items-center justify-center gap-2"
-                style={{ background: 'var(--green)', color: '#04210d' }}
+                style={{ background: 'var(--ok)', color: 'var(--on-ok)' }}
               >
                 <ArrowDownToLine size={16} /> Принять позиции
               </button>
@@ -1125,7 +1125,7 @@ function ReceiveSheet({ open, procId, items, onClose, onDone }) {
                           marginTop: 2,
                         }}
                       >
-                        {checked && <Check size={13} style={{ color: '#04210d' }} />}
+                        {checked && <Check size={13} style={{ color: 'var(--on-ok)' }} />}
                       </div>
                       <div className="flex-1 min-w-0">
                         <p className="text-[13px] font-medium c-primary leading-tight truncate">
@@ -1191,7 +1191,7 @@ function ReceiveSheet({ open, procId, items, onClose, onDone }) {
                 onClick={submit}
                 disabled={busy || selected.size === 0}
                 className="btn-primary flex-1 spring-tap rounded-xl px-3 py-2.5 text-[13px] font-semibold flex items-center justify-center gap-1.5"
-                style={{ background: 'var(--green)', color: '#04210d' }}
+                style={{ background: 'var(--ok)', color: 'var(--on-ok)' }}
               >
                 <ArrowDownToLine size={14} />
                 {busy ? `${progress}%` : `Принять (${selected.size})`}

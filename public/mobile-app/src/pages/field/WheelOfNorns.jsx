@@ -2,9 +2,10 @@ import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { fieldApi } from '@/api/fieldClient';
 import VikingAvatar3D, { canUseWebGL } from '@/components/field/VikingAvatar3D';
-import { getRank } from '@/lib/fieldRanks';
+import { getRank, rankColor } from '@/lib/fieldRanks';
 import WheelReel3D from './WheelReel3D';
 import { prizeIconHtml } from '@/lib/prizeToken';
+import { useThemeStore } from '@/stores/themeStore';
 import {
   NornsPauseStrip,
   NornsPauseModal,
@@ -36,7 +37,10 @@ const WHEEL_CSS = `
 /* Палитра берётся ТОЛЬКО из токенов темы (index.css). Свой .light-override убран:
    он инвертировал палитру (--card: var(--text-primary)) и ломал светлую тему. */
 .wn-root{--bg:var(--bg-primary);--card:var(--bg-surface);--card2:var(--bg-surface-alt);--gold:var(--value);--gold-d:var(--value);--gold-l:color-mix(in oklab, var(--value) 45%, var(--text-primary));
-  --red:var(--danger);--blue:var(--acc);--purple:var(--acc);--green:var(--ok);--t1:var(--text-primary);--t2:color-mix(in oklab, var(--text-primary) 70%, transparent);--t3:color-mix(in oklab, var(--text-primary) 40%, transparent);
+  --red:var(--danger);--blue:var(--acc);--purple:var(--acc);--green:var(--ok);--t1:var(--text-primary);--t2:color-mix(in oklab, var(--text-primary) 78%, transparent);
+  /* --t3 = третичный текст. Было 40% прозрачности → 2.28:1 в светлой теме (провал).
+     62% даёт ≥4.5 на светлом фоне, оставаясь заметно бледнее --t2. */
+  --t3:color-mix(in oklab, var(--text-primary) 62%, transparent);
   background:var(--bg);color:var(--t1);font-family:-apple-system,BlinkMacSystemFont,'SF Pro Round',system-ui,sans-serif;
   overflow:hidden;height:100%;width:100%;-webkit-user-select:none;user-select:none;position:relative}
 .wn-bg{position:absolute;inset:0;z-index:0;overflow:hidden}
@@ -59,7 +63,7 @@ const WHEEL_CSS = `
   box-shadow:0 2px 4px color-mix(in oklab, var(--bg-primary) 40%, transparent),inset 0 -2px 3px color-mix(in oklab, var(--bg-primary) 20%, transparent);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:900;color:var(--value)}
 .wn-bal{font-size:15px;font-weight:800;color:var(--gold);font-variant-numeric:tabular-nums}
 .wn-lvl{display:flex;align-items:center;gap:8px;margin:4px 16px 0}
-.wn-lvl-badge{padding:3px 10px;border-radius:10px;font-size:11px;font-weight:800;background:linear-gradient(135deg,var(--gold-d),var(--gold));color:var(--text-on-gold);box-shadow:0 2px 6px color-mix(in oklab, var(--value) 25%, transparent)}
+.wn-lvl-badge{padding:3px 10px;border-radius:10px;font-size:11px;font-weight:800;background:linear-gradient(135deg,var(--chip-value-bg),var(--chip-value-bg));color:var(--chip-on-value);box-shadow:0 2px 6px color-mix(in oklab, var(--value) 25%, transparent)}
 .wn-lvl-track{flex:1;height:10px;border-radius:5px;background:color-mix(in oklab, var(--text-primary) 6%, transparent);overflow:hidden;box-shadow:inset 0 2px 4px color-mix(in oklab, var(--bg-primary) 30%, transparent)}
 .wn-lvl-fill{height:100%;border-radius:5px;background:linear-gradient(90deg,var(--gold-d),var(--gold),var(--gold-l));position:relative}
 .wn-lvl-fill::after{content:'';position:absolute;top:1px;left:4px;right:4px;height:4px;border-radius:3px;background:color-mix(in oklab, var(--text-primary) 30%, transparent)}
@@ -74,7 +78,7 @@ const WHEEL_CSS = `
 .wn-dot-on::after{content:'';position:absolute;top:1px;left:2px;right:2px;height:3px;border-radius:2px;background:color-mix(in oklab, var(--text-primary) 30%, transparent)}
 .wn-dot-now{border:1.5px solid var(--gold);animation:wnDotP 1.5s ease-in-out infinite}
 @keyframes wnDotP{0%,100%{box-shadow:0 0 3px var(--gold-d)}50%{box-shadow:0 0 10px var(--gold)}}
-.wn-mult{padding:4px 10px;border-radius:10px;font-size:12px;font-weight:800;background:linear-gradient(135deg,var(--red),#ff6b6b);color:var(--text-primary);box-shadow:0 2px 8px color-mix(in oklab, var(--danger) 30%, transparent)}
+.wn-mult{padding:4px 10px;border-radius:10px;font-size:12px;font-weight:800;background:linear-gradient(135deg,#B91C2C,#8E1220);color:#ffffff;box-shadow:0 2px 8px color-mix(in oklab, var(--danger) 30%, transparent)}
 .wn-viking-area{position:relative;z-index:15;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;margin-top:4px;height:196px;min-height:0;flex-shrink:0;pointer-events:none}
 .wn-viking{position:relative;width:160px;height:160px;display:flex;align-items:center;justify-content:center}
 .wn-viking svg{width:100%;height:100%;overflow:visible;filter:drop-shadow(0 6px 15px color-mix(in oklab, var(--bg-primary) 50%, transparent))}
@@ -93,8 +97,12 @@ const WHEEL_CSS = `
 /* no CSS filter — blanks WebGL avatar on mobile; glow via box-shadow on .wn-viking-3d */
 .wn-viking-area.engaged .wn-viking-3d{box-shadow:0 0 28px color-mix(in oklab, var(--value) 35%, transparent),0 8px 28px color-mix(in oklab, var(--bg-primary) 45%, transparent),inset 0 0 0 1px color-mix(in oklab, var(--value) 35%, transparent)}
 .wn-rank-badge{margin-top:6px;display:inline-flex;align-items:center;gap:6px;padding:3px 10px 3px 8px;border-radius:999px;
+  /* Фон бейджа — всегда тёмный арт (rgba(12,14,24,.72)), цвет ранга приходит из
+     данных (для низких рангов это серый #9CA3AF → 2.28:1). Поэтому в светлой теме
+     уводим фон в белый: тогда любой ранг читается. */
   background:rgba(12,14,24,.72);border:1px solid color-mix(in oklab, var(--text-primary) 12%, transparent);backdrop-filter:blur(8px);
   font-size:11px;font-weight:700;letter-spacing:.04em;pointer-events:none;position:relative;z-index:16}
+.light .wn-rank-badge{background:rgba(255,255,255,.92);border-color:color-mix(in oklab, var(--text-primary) 18%, transparent)}
 .wn-rank-rune{font-size:13px;line-height:1}
 .wn-rw-actions{display:flex;flex-direction:column;gap:8px;width:100%;margin-top:4px}
 .wn-rw-equip{width:100%;padding:12px 18px;border-radius:14px;border:1.5px solid color-mix(in oklab, var(--value) 45%, transparent);
@@ -116,8 +124,17 @@ const WHEEL_CSS = `
   background:linear-gradient(145deg,#5a4a22,#2a1f0e 38%,#120e08 62%,#3d2f12);
   border:2px solid color-mix(in oklab, var(--value) 55%, transparent);
   box-shadow:0 12px 36px color-mix(in oklab, var(--bg-primary) 55%, transparent),0 0 24px color-mix(in oklab, var(--value) 12%, transparent),inset 0 2px 0 color-mix(in oklab, var(--text-primary) 14%, transparent),inset 0 -3px 8px color-mix(in oklab, var(--bg-primary) 45%, transparent)}
+/* Светлая тема: тёмное дерево читалось как «дыра» в светлом UI — рама из светлого
+   дерева с латунным кантом. Рисунок (градиенты/рельеф) тот же, меняется палитра. */
+.light .wn-frame{
+  background:linear-gradient(145deg,#e8d8ae,#d9c48c 38%,#c9b075 62%,#e2d0a4);
+  box-shadow:0 12px 30px color-mix(in oklab, var(--text-primary) 18%, transparent),0 0 20px color-mix(in oklab, var(--value) 16%, transparent),inset 0 2px 0 color-mix(in oklab, #ffffff 70%, transparent),inset 0 -3px 8px color-mix(in oklab, var(--text-primary) 14%, transparent)}
+.light .wn-frame::before,.light .wn-frame::after{color:color-mix(in oklab, var(--value) 55%, transparent)}
 .wn-viewport{position:relative;width:100%;height:100%;overflow:hidden;border-radius:18px;background:linear-gradient(180deg,#080910,#14182a,#080910);
-  box-shadow:inset 0 0 40px color-mix(in oklab, var(--bg-primary) 45%, transparent)}
+box-shadow:inset 0 0 40px color-mix(in oklab, var(--bg-primary) 45%, transparent)}
+/* Светлая тема: тёмный «колодец» под барабаном выглядел бы дырой на светлом UI. */
+.light .wn-viewport{background:linear-gradient(180deg,#efeae0,#e2dbcd,#efeae0);
+box-shadow:inset 0 0 32px color-mix(in oklab, var(--text-primary) 8%, transparent)}
 .wn-highlight{position:absolute;top:50%;left:0;right:0;height:66px;transform:translateY(-50%);z-index:4;
   border-top:2px solid color-mix(in oklab, var(--value) 65%, transparent);border-bottom:2px solid color-mix(in oklab, var(--value) 65%, transparent);
   background:linear-gradient(90deg,transparent,color-mix(in oklab, var(--value) 16%, transparent),transparent);pointer-events:none;
@@ -130,6 +147,9 @@ const WHEEL_CSS = `
 .wn-frame::after{content:'ᚱ';position:absolute;top:10px;right:14px;font-size:15px;color:color-mix(in oklab, var(--value) 28%, transparent)}
 .wn-vp-top{position:absolute;top:0;left:0;right:0;height:50px;z-index:5;background:linear-gradient(180deg,color-mix(in oklab, var(--bg-primary) 95%, transparent),transparent);pointer-events:none}
 .wn-vp-bot{position:absolute;bottom:0;left:0;right:0;height:50px;z-index:5;background:linear-gradient(0deg,color-mix(in oklab, var(--bg-primary) 95%, transparent),transparent);pointer-events:none}
+/* В светлой теме «затенение краёв» должно быть от цвета светлого колодца, не от тёмного фона. */
+.light .wn-vp-top{background:linear-gradient(180deg,color-mix(in oklab, #efeae0 96%, transparent),transparent)}
+.light .wn-vp-bot{background:linear-gradient(0deg,color-mix(in oklab, #efeae0 96%, transparent),transparent)}
 .wn-strip{position:absolute;left:0;right:0;z-index:2;will-change:transform}
 .wn-ptr{position:absolute;top:50%;transform:translateY(-50%);z-index:6;width:14px;height:20px;
   animation:wnPtr 1.4s ease-in-out infinite;filter:drop-shadow(0 0 6px color-mix(in oklab, var(--value) 45%, transparent))}
@@ -150,9 +170,9 @@ const WHEEL_CSS = `
 .wn-di-tag.legendary{background:color-mix(in oklab, var(--value) 10%, transparent);color:var(--gold)}
 .wn-spin-area{position:relative;z-index:10;padding:10px 16px 0;text-align:center}
 .wn-btn{display:inline-flex;align-items:center;justify-content:center;gap:10px;width:100%;max-width:360px;padding:16px 24px;border-radius:18px;border:none;
-  font-size:17px;font-weight:800;color:var(--text-primary);cursor:pointer;position:relative;overflow:hidden;
-  background:linear-gradient(135deg,var(--red),#c0243a,var(--gold-d));box-shadow:0 6px 0 var(--danger),0 8px 25px color-mix(in oklab, var(--danger) 30%, transparent);transition:all .1s}
-.wn-btn:active{transform:translateY(4px);box-shadow:0 2px 0 var(--danger)}
+  font-size:17px;font-weight:800;color:#ffffff;cursor:pointer;position:relative;overflow:hidden;
+  background:linear-gradient(135deg,#B91C2C,#8E1220 55%,#6E4E0A);box-shadow:0 6px 0 #6E1220,0 8px 25px color-mix(in oklab, var(--danger) 30%, transparent);transition:all .1s}
+.wn-btn:active{transform:translateY(4px);box-shadow:0 2px 0 #6E1220}
 .wn-btn-off{opacity:.35;pointer-events:none}
 .wn-btn::after{content:'';position:absolute;top:0;left:-100%;width:40%;height:100%;background:linear-gradient(90deg,transparent,color-mix(in oklab, var(--text-primary) 10%, transparent),transparent);animation:wnShine 3s infinite}
 @keyframes wnShine{0%,100%{left:-100%}50%{left:150%}}
@@ -160,6 +180,9 @@ const WHEEL_CSS = `
 @keyframes wnBtnP{0%,100%{box-shadow:0 6px 0 var(--danger),0 8px 25px color-mix(in oklab, var(--danger) 30%, transparent)}50%{box-shadow:0 6px 0 var(--danger),0 8px 35px color-mix(in oklab, var(--danger) 45%, transparent)}}
 /* Заблокировано и «спины кончились» — нейтральная плашка, не путается с активным красным CTA */
 .wn-btn-disabled{background:linear-gradient(135deg,#3a3a44,#26262e)!important;box-shadow:0 6px 0 #16161c,0 8px 18px color-mix(in oklab, var(--bg-primary) 35%, transparent)!important;opacity:.75}
+/* Светлая тема: тёмная «заглушка» + тёмный --text-primary = 1.51:1 (нечитаемо).
+   В светлой теме это светло-серая кнопка с тёмным текстом. */
+.light .wn-btn-disabled{background:linear-gradient(135deg,#d5d5da,#c2c2c9)!important;box-shadow:0 6px 0 #b0b0b8,0 8px 18px color-mix(in oklab, var(--text-primary) 12%, transparent)!important;color:#5c5c62!important;opacity:1}
 .wn-hint{text-align:center;font-size:12px;color:var(--t3);margin-top:6px;min-height:18px;position:relative;z-index:10}
 .wn-loot{padding:8px 16px;padding-bottom:max(env(safe-area-inset-bottom),14px);position:relative;z-index:10}
 .wn-loot-h{font-size:10px;font-weight:700;color:var(--t3);letter-spacing:.1em;text-transform:uppercase;margin-bottom:8px;text-align:center}
@@ -323,6 +346,7 @@ function buildStripHTML(items) {
 // ═══ MAIN COMPONENT ═══
 export default function WheelOfNorns() {
   const navigate = useNavigate();
+  const theme = useThemeStore((s) => s.theme);
   const rootRef = useRef(null);
   const stripRef = useRef(null);
   const canvasRef = useRef(null);
@@ -869,16 +893,18 @@ export default function WheelOfNorns() {
             {spinsLeft != null && (
               <div style={{
                 display: 'flex', alignItems: 'center', gap: 4, padding: '5px 10px 5px 7px',
+                /* Тёмная подложка хардкодом + var(--danger) текстом давала 3.27 (светлая)
+                   и 3.28 (тёмная). Светлая тема: светлая плашка, красный текст темнее. */
                 background: spinsLeft.total > 0
-                  ? 'linear-gradient(135deg, #3a0a10, #1a0508)'
-                  : 'linear-gradient(135deg, #1a1a1a, var(--bg-primary))',
+                  ? 'color-mix(in oklab, var(--danger) 14%, var(--bg-surface))'
+                  : 'var(--bg-surface-alt)',
                 border: `1.5px solid ${spinsLeft.total > 0 ? 'color-mix(in oklab, var(--danger) 40%, transparent)' : 'color-mix(in oklab, var(--text-primary) 10%, transparent)'}`,
                 borderRadius: 20, boxShadow: spinsLeft.total > 0 ? '0 2px 10px color-mix(in oklab, var(--danger) 15%, transparent)' : 'none',
               }}>
-                <span style={{ fontSize: 16 }}>🎰</span>
+                <span style={{ fontSize: 16, lineHeight: 1 }} aria-hidden>🎰</span>
                 <span style={{
                   fontSize: 15, fontWeight: 800, fontVariantNumeric: 'tabular-nums',
-                  color: spinsLeft.total > 0 ? 'var(--danger)' : 'color-mix(in oklab, var(--text-primary) 30%, transparent)',
+                  color: spinsLeft.total > 0 ? 'var(--danger-ink)' : 'var(--text-tertiary)',
                 }}>×{spinsLeft.total}</span>
               </div>
             )}
@@ -914,8 +940,8 @@ export default function WheelOfNorns() {
           <div style={{
             display: 'flex', alignItems: 'center', gap: 8,
             margin: '6px 16px 0', padding: '8px 12px',
-            background: `${spinsLeft.title.color}12`,
-            border: `1px solid ${spinsLeft.title.color}40`,
+            background: `color-mix(in oklab, ${spinsLeft.title.color} 7%, transparent)`,
+            border: `1px solid color-mix(in oklab, ${spinsLeft.title.color} 25%, transparent)`,
             borderRadius: 12,
           }}>
             <span style={{ fontSize: 18 }}>{spinsLeft.title.icon}</span>
@@ -925,7 +951,7 @@ export default function WheelOfNorns() {
                 редкий приз за {spinsLeft.title.pity_guarantee} спинов
               </span>
             </div>
-            <div style={{ fontSize: 10, padding: '2px 8px', borderRadius: 8, background: `${spinsLeft.title.color}25`, color: spinsLeft.title.color, fontWeight: 700 }}>
+            <div style={{ fontSize: 10, padding: '2px 8px', borderRadius: 8, background: `color-mix(in oklab, ${spinsLeft.title.color} 15%, transparent)`, color: spinsLeft.title.color, fontWeight: 700 }}>
               -{50 - spinsLeft.title.pity_guarantee} пити
             </div>
           </div>
@@ -1100,26 +1126,27 @@ export default function WheelOfNorns() {
             )}
             <div ref={bubbleRef} className="wn-bubble">Крути, воин! ⚔️</div>
           </div>
-          <div className="wn-rank-badge" style={{ color: rank.color, borderColor: `${rank.color}55` }}>
+          <div className="wn-rank-badge" style={{ color: rankColor(rank, theme), borderColor: `color-mix(in oklab, ${rankColor(rank, theme)} 33%, transparent)` }}>
             <span className="wn-rank-rune">{rank.rune}</span>
             <span>{rank.title}</span>
-            <span style={{ opacity: 0.55, fontWeight: 600 }}>· ур. {level}</span>
+            <span style={{ fontWeight: 600, color: 'var(--text-tertiary)' }}>· ур. {level}</span>
           </div>
         </div>
 
         {/* DRUM */}
         <div className="wn-wheel">
           <div className={`wn-drum-wrap${reel3d ? ' wn-has3d' : ''}`}>
-            {reel3d && (
-              <WheelReel3D
-                ref={reelRef}
-                onReady={() => {
-                  setReel3d(true);
-                  reelRef.current?.setItems(reelItemsRef.current);
-                }}
-                onFail={() => setReel3d(false)}
-              />
-            )}
+          {reel3d && (
+            <WheelReel3D
+              ref={reelRef}
+              theme={theme}
+              onReady={() => {
+                setReel3d(true);
+                reelRef.current?.setItems(reelItemsRef.current);
+              }}
+              onFail={() => setReel3d(false)}
+            />
+          )}
             <div className="wn-frame" />
             <div className="wn-viewport">
               <div className="wn-vp-top" /><div className="wn-vp-bot" />

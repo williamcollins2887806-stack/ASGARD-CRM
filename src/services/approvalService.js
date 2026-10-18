@@ -1277,7 +1277,7 @@ async function getPendingForBuh(db) {
   for (const table of tables) {
     try {
       const extra = table === 'payment_invoices'
-        ? ', amount, supplier_name, basis_text, basis_type, file_name, file_path, due_date, work_id, procurement_id, invoice_import_id, line_items_json, payment_doc_id, created_by'
+        ? ', amount, supplier_name, basis_text, basis_type, file_name, file_path, due_date, work_id, procurement_id, invoice_import_id, line_items_json, payment_doc_id, created_by, pay_timing, initiator_intent, initiator_note, contract_basis_number, contract_missing, work_hint, invoice_number, invoice_date, vat_amount, doc_registry_id'
         : '';
       const result = await db.query(
         `SELECT id, payment_status, requires_payment, updated_at${extra} FROM ${table}
@@ -1310,7 +1310,25 @@ async function getPendingForBuh(db) {
     }
   }
 
-  return items.sort((a, b) => new Date(b.updated_at) - new Date(a.updated_at));
+  // V404: срочное — наверх, затем по сроку оплаты. Бухгалтерии важно видеть
+  // первым делом то, что просили оплатить «срочно/сегодня/завтра» или уже просрочено.
+  return items.sort((a, b) => {
+    const rank = (x) => {
+      if (x.entity_type !== 'payment_invoices') return 1;
+      if (x.pay_timing === 'immediate' && ['urgent', 'today', 'tomorrow'].includes(x.initiator_intent)) return 0;
+      if (x.due_date && new Date(x.due_date) < new Date(new Date().toDateString())) return 0;
+      if (['urgent', 'today', 'tomorrow'].includes(x.initiator_intent)) return 0;
+      return 1;
+    };
+    const ra = rank(a); const rb = rank(b);
+    if (ra !== rb) return ra - rb;
+    if (ra === 0) {
+      const da = a.due_date ? new Date(a.due_date).getTime() : Number.MAX_SAFE_INTEGER;
+      const db2 = b.due_date ? new Date(b.due_date).getTime() : Number.MAX_SAFE_INTEGER;
+      if (da !== db2) return da - db2;
+    }
+    return new Date(b.updated_at) - new Date(a.updated_at);
+  });
 }
 
 // ─────────────────────────────────────────────────────────────────

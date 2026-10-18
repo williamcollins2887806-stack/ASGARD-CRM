@@ -5,7 +5,7 @@
  */
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, ChevronLeft, ChevronRight, Phone, Sun, Moon, Plane, Factory, Stethoscope, GraduationCap, Ship, Truck, Hourglass, BedDouble, Building2, CircleDot, Circle } from 'lucide-react';
+import { ArrowLeft, ArrowRight, ChevronLeft, ChevronRight, Phone, Sun, Moon, Plane, Factory, Stethoscope, GraduationCap, Ship, Helicopter, Hourglass, BedDouble, Building2, CircleDot, Circle } from 'lucide-react';
 import { fieldApi } from '@/api/fieldClient';
 import { useHaptic } from '@/hooks/useHaptic';
 import { formatMoney as fmtMoney, plural } from '@/lib/utils';
@@ -21,7 +21,7 @@ const TYPE_META = {
   medical:    { Icon: Stethoscope,  label: 'Медосмотр', bg: 'var(--ts-medical-bg)',    fg: 'var(--ts-medical-fg)' },
   training:   { Icon: GraduationCap, label: 'Обучение', bg: 'var(--ts-training-bg)',   fg: 'var(--ts-training-fg)' },
   ship:       { Icon: Ship,         label: 'Корабль',   bg: 'var(--ts-ship-bg)',       fg: 'var(--ts-ship-fg)' },
-  helicopter: { Icon: Truck,        label: 'Вертолёт',  bg: 'var(--ts-helicopter-bg)', fg: 'var(--ts-helicopter-fg)' },
+  helicopter: { Icon: Helicopter, label: 'Вертолёт', bg: 'var(--ts-helicopter-bg)', fg: 'var(--ts-helicopter-fg)' },
   waiting:    { Icon: Hourglass,    label: 'Ожидание',  bg: 'var(--ts-waiting-bg)',    fg: 'var(--ts-waiting-fg)' },
   standby:    { Icon: Hourglass,    label: 'Дежурство', bg: 'var(--ts-waiting-bg)',    fg: 'var(--ts-waiting-fg)' },
   day_off:    { Icon: BedDouble,    label: 'Выходной',  bg: 'var(--ts-dayoff-bg, color-mix(in srgb, var(--text-tertiary) 14%, transparent))', fg: 'var(--ts-dayoff-fg, var(--text-tertiary))' },
@@ -123,6 +123,16 @@ function DaySheet({ day, onClose }) {
             <p className="text-xs mt-1 truncate" style={{ color: 'var(--text-tertiary)' }}>
               {e.work_title || (e.work_id ? 'Объект' : 'Вне объекта')}
             </p>
+            {/* Направление поездки: было в старом табеле и в Excel-выгрузке
+                (cell.direction === 'to_site' | 'from_site'), в мобильном табеле
+                потерялось. Возвращаем: куда ехал человек. */}
+            {e.direction && (
+              <p className="text-xs mt-1 inline-flex items-center gap-1.5" style={{ color: 'var(--text-secondary)' }}>
+                {e.direction === 'to_site'
+                  ? <><ArrowRight size={12} strokeWidth={2.5} aria-hidden />Туда (на объект)</>
+                  : <><ArrowLeft size={12} strokeWidth={2.5} aria-hidden />Обратно (с объекта)</>}
+              </p>
+            )}
           </div>
         ))}
 
@@ -385,11 +395,14 @@ export default function FieldTimesheet() {
                       >
                         {cell.dayNum}
                       </span>
-                      {meta && (
-                        <span className="text-sm leading-none mt-0.5" aria-hidden>
-                          {meta.icon}
-                        </span>
-                      )}
+                      {meta && (() => {
+                        const DayIcon = meta.Icon;
+                        return (
+                          <span className="leading-none mt-0.5" aria-hidden>
+                            <DayIcon size={13} strokeWidth={2.3} style={{ color: meta.fg }} />
+                          </span>
+                        );
+                      })()}
                       {pe && pe.points > 0 && (
                         <span
                           className="text-[10px] font-bold tabular-nums leading-none mt-0.5"

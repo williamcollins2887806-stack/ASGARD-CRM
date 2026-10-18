@@ -1,6 +1,6 @@
 #!/bin/bash
 # Пересъёмка журналов: только УСПЕШНЫЕ (HTTP 200) GET-запросы.
-# 1) API-эндпоинты: сколько + даты  2) рендеры страниц (page= из /api/hints)
+# 1) API-эндпоинты: сколько + даты  2) рендеры страниц (page= из /api/page-view)
 cd /var/log/nginx || exit 1
 
 {
@@ -33,10 +33,12 @@ END { for (k in cnt) printf "%d\t%s\t%s\t%s\n", cnt[k], k, loS[k], hiS[k] }
 } | awk '
 BEGIN { split("Jan Feb Mar Apr May Jun Jul Aug Sep Oct Nov Dec", mn, " "); for (i in mn) M[mn[i]] = i }
 {
-  if (match($0, /GET \/api\/hints\?page=[A-Za-z0-9_%-]+/)) {
+  # page-view — текущий сигнал (D-274); hints — прежний, до выкатки 16.10.2026.
+  # Матчим оба, чтобы окно наблюдения не рвалось на дате перехода.
+  if (match($0, /GET \/api\/(page-view|hints)\?page=[A-Za-z0-9_%-]+/)) {
     pre = substr($0, RSTART, RLENGTH);
     if ($0 !~ / HTTP\/[0-9.]+" 200 /) next;   # только успешные рендеры
-    s = pre; sub(/^GET \/api\/hints\?page=/, "", s);
+    s = pre; sub(/^GET \/api\/(page-view|hints)\?page=/, "", s);
     cnt[s]++;
     if (match($0, /\[([0-9]{2})\/([A-Za-z]{3})\/([0-9]{4}):/, d)) {
       key = d[3]*10000 + M[d[2]]*100 + d[1]; lab = d[1] "." (M[d[2]]+0);

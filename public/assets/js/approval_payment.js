@@ -843,6 +843,15 @@ window.AsgardApprovalPaymentPage = (function() {
     return `<dt>Срок</dt><dd style="color:${color}">осталось ${h} ч ${m} мин</dd>`;
   }
 
+  // V404: просьба инициатора человеческим языком для карточки директора/бухгалтера.
+  function intentRu(v) {
+    return ({
+      urgent: 'Срочно', today: 'Просили оплатить сегодня', tomorrow: 'Просили оплатить завтра',
+      explicit_date: 'К указанной дате', relative: 'Отложенная (срок из письма)',
+      within: 'Отложенная (срок из письма)', after_delivery: 'После получения груза', none: '—'
+    })[v] || String(v || '—');
+  }
+
   // Отдельная модалка от бухгалтерской: у директора ДРУГОЕ действие (согласовать/вернуть),
   // и он не видит баланс кассы. Переиспользует те же proc-pay-* классы (правило: без новых модалок).
   //
@@ -889,6 +898,10 @@ window.AsgardApprovalPaymentPage = (function() {
                 ${pay.registry_doc && pay.registry_doc.invoice_number ? `<dt>Счёт №</dt><dd>${esc(pay.registry_doc.invoice_number)}${pay.registry_doc.invoice_date ? ' от ' + esc(String(pay.registry_doc.invoice_date).slice(0,10)) : ''}</dd>` : ''}
                 ${lines.length ? `<dt>Позиций</dt><dd>${lines.length}</dd>` : ''}
                 <dt>Основание</dt><dd>${esc(pay.basis_text || pay.basis_type || '—')}</dd>
+                ${pay.contract_basis_number ? `<dt>Договор</dt><dd>${esc(pay.contract_basis_number)}${pay.contract_missing ? ' <span class="ap-flag ap-flag--err" title="Такого договора нет в реестре CRM — проверьте перед оплатой">нет в CRM</span>' : ' <span class="ap-flag ap-flag--ok">есть в CRM</span>'}</dd>` : ''}
+                ${pay.work_hint ? `<dt>Объект</dt><dd>${esc(pay.work_hint)}${pay.work_id ? '' : ' <span class="ap-flag ap-flag--warn">не привязан</span>'}</dd>` : ''}
+                ${pay.initiator_intent && pay.initiator_intent !== 'none' ? `<dt>Просьба инициатора</dt><dd><strong>${esc(intentRu(pay.initiator_intent))}</strong>${pay.initiator_note ? ' · «' + esc(pay.initiator_note) + '»' : ''}</dd>` : ''}
+                ${pay.vat_amount != null ? `<dt>НДС</dt><dd>${money2(pay.vat_amount)}</dd>` : ''}
                 <dt>Файл</dt><dd>${hasFile ? esc(fileName) : 'файл не приложен'}</dd>
                 ${ttlLine(pay)}
               </dl>
@@ -1101,6 +1114,9 @@ window.AsgardApprovalPaymentPage = (function() {
                 ${pay.initiator_name ? `<dt>От кого счёт</dt><dd>${esc(pay.initiator_name)}${pay.initiator_role ? ' · ' + esc(pay.initiator_role) : ''}</dd>` : ''}
                 ${pay.registry_doc && pay.registry_doc.invoice_number ? `<dt>Счёт №</dt><dd>${esc(pay.registry_doc.invoice_number)}${pay.registry_doc.invoice_date ? ' от ' + esc(String(pay.registry_doc.invoice_date).slice(0,10)) : ''}</dd>` : ''}
                 <dt>Основание</dt><dd>${esc(pay.basis_text || pay.basis_type || '—')}</dd>
+                ${pay.contract_basis_number ? `<dt>Договор</dt><dd>${esc(pay.contract_basis_number)}${pay.contract_missing ? ' <span class="ap-flag ap-flag--err" title="Такого договора нет в реестре CRM — проверьте перед оплатой">нет в CRM</span>' : ' <span class="ap-flag ap-flag--ok">есть в CRM</span>'}</dd>` : ''}
+                ${pay.work_hint && !pay.work_id ? `<dt>Объект из счёта</dt><dd>${esc(pay.work_hint)} <span class="ap-flag ap-flag--warn">не привязан</span></dd>` : ''}
+                ${pay.initiator_note ? `<dt>Просьба инициатора</dt><dd>«${esc(pay.initiator_note)}»</dd>` : ''}
                 <dt>Срок <span class="proc-tooltip" title="Крайний срок оплаты из заявки">?</span></dt>
                 <dd>${pay.due_date ? esc(String(pay.due_date).slice(0,10)) : '—'}</dd>
                 ${pay.procurement_id ? `<dt>Заявка</dt><dd>#${pay.procurement_id}</dd>` : ''}

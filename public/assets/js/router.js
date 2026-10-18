@@ -42,13 +42,14 @@ window.AsgardRouter=(function(){
   // Учёт заходов на страницу для аналитики (tools/pages-inventory).
   // Ключ = хэш-роут без ведущего «/» (например /pm-calculations → pm-calculations),
   // nginx пишет его в access.log, extract-logs.sh считает по page=.
+  // Лёгкий /api/page-view: только проверка токена, без SQL (D-274).
   // Fire-and-forget: ошибка учёта никогда не должна ломать рендер.
   function trackPageView(page){
     try{
       if(!page) return;
       const token=localStorage.getItem('asgard_token');
       if(!token) return;
-      fetch('/api/hints?page='+encodeURIComponent(page),{headers:{Authorization:'Bearer '+token}})
+      fetch('/api/page-view?page='+encodeURIComponent(page),{headers:{Authorization:'Bearer '+token}})
         .catch(function(){});
     }catch(_){}
   }

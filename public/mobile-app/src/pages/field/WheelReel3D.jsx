@@ -7,9 +7,10 @@ const CARD_COUNT = 12;
 const ITEM_H = 66;
 const RADIUS = 0.92;
 
-const WheelReel3D = forwardRef(function WheelReel3D({ onReady, onFail }, ref) {
+const WheelReel3D = forwardRef(function WheelReel3D({ onReady, onFail, theme = 'dark' }, ref) {
   const canvasRef = useRef(null);
   const apiRef = useRef(null);
+  const matRef = useRef(null);
 
   useImperativeHandle(ref, () => ({
     setItems(items) { apiRef.current?.setItems(items); },
@@ -17,6 +18,28 @@ const WheelReel3D = forwardRef(function WheelReel3D({ onReady, onFail }, ref) {
     flash(tier) { apiRef.current?.flash(tier); },
     land() { apiRef.current?.land(); },
   }));
+
+  /* Тема меняется БЕЗ пересборки сцены: WebGL-контекст дорого поднимать заново,
+     а на слабом телефоне пересоздание даёт заметный провал кадра. Поэтому
+     палитра света/пыли/лена живёт в одном объекте, а эффект применяется
+     императивно при смене `theme`. */
+  useEffect(() => {
+    const m = matRef.current;
+    if (!m) return;
+    const L = theme === 'light';
+    m.key.color.set(L ? 0xffffff : 0xfff0d0);
+    m.key.intensity = L ? 1.75 : 2.4;
+    m.rim.color.set(L ? 0xb98520 : 0xf0c850);
+    m.rim.baseIntensity = L ? 1.35 : 2.2;
+    m.fill.color.set(L ? 0x6a86c8 : 0x4a70ff);
+    m.fill.intensity = L ? 0.5 : 0.9;
+    m.ambient.color.set(L ? 0xd8d2c8 : 0x2a2430);
+    m.ambient.intensity = L ? 0.85 : 0.55;
+    m.exposure = L ? 1.02 : 1.22;
+    m.spark.color.set(L ? 0xb98520 : 0xffe17a);
+    m.floor.color.set(L ? 0xd6cbb8 : 0x1a1208);
+    if (m.apply) m.apply(L);
+  }, [theme]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -121,13 +144,32 @@ const WheelReel3D = forwardRef(function WheelReel3D({ onReady, onFail }, ref) {
       key.shadow.camera.near = 0.5;
       key.shadow.camera.far = 12;
       scene.add(key);
-      scene.add(new THREE.AmbientLight(0x2a2430, 0.55));
+      const ambient = new THREE.AmbientLight(0x2a2430, 0.55);
+      scene.add(ambient);
       const rim = new THREE.PointLight(0xf0c850, 2.2, 8);
       rim.position.set(-1.4, 0.8, 1.6);
       scene.add(rim);
       const fill = new THREE.PointLight(0x4a70ff, 0.9, 7);
       fill.position.set(1.8, -0.2, 1.2);
       scene.add(fill);
+
+      /* Палитра света для переключения темы без пересборки сцены.
+         Экспозиция рендера сцене не принадлежит — выставляем в обоих местах. */
+      const applyTheme = (L) => {
+        key.color.set(L ? 0xffffff : 0xfff0d0);
+        key.intensity = L ? 1.75 : 2.4;
+        rim.color.set(L ? 0xb98520 : 0xf0c850);
+        rim.baseIntensity = L ? 1.35 : 2.2;
+        rim.intensity = rim.baseIntensity;
+        fill.color.set(L ? 0x6a86c8 : 0x4a70ff);
+        fill.intensity = L ? 0.5 : 0.9;
+        ambient.color.set(L ? 0xd8d2c8 : 0x2a2430);
+        ambient.intensity = L ? 0.85 : 0.55;
+        floor.material.color.set(L ? 0xd6cbb8 : 0x1a1208);
+        renderer.toneMappingExposure = L ? 1.02 : 1.22;
+      };
+      matRef.current = { key, rim, fill, ambient, floor: floor.material, spark: null, apply: applyTheme };
+      applyTheme(theme === 'light');
 
       const reel = new THREE.Group();
       root.add(reel);
@@ -161,6 +203,7 @@ const WheelReel3D = forwardRef(function WheelReel3D({ onReady, onFail }, ref) {
       const sparkMat = new THREE.PointsMaterial({
         color: 0xffe17a, size: 0.045, transparent: true, opacity: 0, depthWrite: false,
       });
+      if (matRef.current) matRef.current.spark = sparkMat;
       const sparks = new THREE.Points(sparkGeo, sparkMat);
       scene.add(sparks);
       let sparkLife = 0;
@@ -284,7 +327,7 @@ const WheelReel3D = forwardRef(function WheelReel3D({ onReady, onFail }, ref) {
         root.rotation.y = Math.sin(time * 0.35) * 0.06;
         root.rotation.x = Math.sin(time * 0.22) * 0.02;
         if (flashT > 0) flashT = Math.max(0, flashT - dt * 1.1);
-        rim.intensity = 2.2 + flashT * 8;
+        rim.intensity = (rim.baseIntensity || 2.2) + flashT * 8;
         brass.emissive.setRGB(0.94 * flashT, 0.78 * flashT, 0.31 * flashT);
         if (sparkLife > 0) {
           sparkLife = Math.max(0, sparkLife - dt * 0.85);
@@ -310,6 +353,7 @@ const WheelReel3D = forwardRef(function WheelReel3D({ onReady, onFail }, ref) {
       disposed = true;
       cancelAnimationFrame(raf);
       apiRef.current = null;
+      matRef.current = null;
     };
   }, [onFail, onReady]);
 

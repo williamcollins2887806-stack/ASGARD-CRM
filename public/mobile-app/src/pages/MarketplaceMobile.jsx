@@ -117,6 +117,10 @@ function StatsBadge({ active, limit }) {
 
 export default function MarketplaceMobile() {
   const user = useAuthStore((s) => s.user);
+  // Маркетплейс заявок — рабочий инструмент РП: забирать может только PM/HEAD_PM/ADMIN
+  // (совпадает с PM_ROLES_MARKETPLACE на бэке). Директор/руководитель открывает экран
+  // для контроля: /my-stats ему закрыт (403), поэтому бейдж лимита не запрашиваем.
+  const canClaim = ['ADMIN', 'PM', 'HEAD_PM'].includes(user?.role);
   const haptic = useHaptic();
   const [items, setItems] = useState([]);
   const [stats, setStats] = useState({ active_count: 0, limit: MARKETPLACE_LIMIT, can_claim: true });
@@ -130,7 +134,12 @@ export default function MarketplaceMobile() {
   const refresh = useCallback(async (opts = {}) => {
     if (opts.silent) setRefreshing(true); else setLoading(true);
     try {
-      const [list, st] = await Promise.all([loadMarketplaceList(), loadMyStats()]);
+      // /my-stats доступен только РП — остальным (директор, наблюдатели) не запрашиваем:
+      // 403 мгновенно разлогинивал бы сессию (api-клиент трактует любой 403 как «сессия истекла»).
+      const [list, st] = await Promise.all([
+        loadMarketplaceList(),
+        canClaim ? loadMyStats() : Promise.resolve({ active_count: 0, limit: MARKETPLACE_LIMIT, can_claim: false }),
+      ]);
       setItems(list);
       setStats(st);
     } catch (e) {
@@ -138,7 +147,7 @@ export default function MarketplaceMobile() {
     } finally {
       if (opts.silent) setRefreshing(false); else setLoading(false);
     }
-  }, []);
+  }, [canClaim]);
 
   useEffect(() => { refresh(); }, [refresh]);
 
@@ -245,11 +254,11 @@ export default function MarketplaceMobile() {
     }
   };
 
-  const limitReached = stats.active_count >= stats.limit;
+  const limitReached = canClaim && stats.active_count >= stats.limit;
 
   const headerRight = useMemo(() => (
     <div className="flex items-center gap-2">
-      <StatsBadge active={stats.active_count} limit={stats.limit} />
+      {canClaim && <StatsBadge active={stats.active_count} limit={stats.limit} />}
       <button
         onClick={() => { haptic.light(); refresh({ silent: true }); }}
         disabled={refreshing}
@@ -266,7 +275,7 @@ export default function MarketplaceMobile() {
         <RefreshCw size={16} style={{ color: 'var(--gold)' }} />
       </button>
     </div>
-  ), [stats, refreshing, haptic, refresh]);
+  ), [stats, refreshing, haptic, refresh, canClaim]);
 
   return (
     <PageShell title="🎯 Маркетплейс" headerRight={headerRight}>
@@ -309,7 +318,8 @@ export default function MarketplaceMobile() {
                 <PreTenderCard
                   key={it.id}
                   item={it}
-                  disabled={limitReached || claimingId != null}
+                  canClaim={canClaim}
+                  disabled={!canClaim || limitReached || claimingId != null}
                   claiming={claimingId === it.id}
                   onClaim={() => onClaim(it)}
                 />
@@ -324,7 +334,7 @@ export default function MarketplaceMobile() {
 
 /* ────────────────────────────────────────────────────────────────────────── */
 
-function PreTenderCard({ item, disabled, claiming, onClaim }) {
+function PreTenderCard({ item, disabled, claiming, onClaim, canClaim = true }) {
   const col = aiColorTokens(item.ai_color);
   const title = item.customer_name
     || (item.work_description ? item.work_description.slice(0, 60) : '')
@@ -446,9 +456,11 @@ function PreTenderCard({ item, disabled, claiming, onClaim }) {
           cursor: disabled ? 'not-allowed' : 'pointer',
           display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
         }}
-        title={disabled && !claiming ? `Достигнут лимит ${MARKETPLACE_LIMIT}` : ''}
+        title={!canClaim
+          ? 'Забирать заявки могут только РП'
+          : (disabled && !claiming ? `Достигнут лимит ${MARKETPLACE_LIMIT}` : '')}
       >
-        {claiming ? '⏳ Забираю…' : <>🎯 Забрать</>}
+        {claiming ? '⏳ Забираю…' : (canClaim ? <>🎯 Забрать</> : 'Только просмотр')}
       </button>
     </div>
   );
