@@ -581,11 +581,11 @@ window.AsgardProcurementPage = (function() {
         <button class="proc-vt ${_viewMode==='table'?'proc-vt--on':''}" data-vm="table">Таблица</button>
       </div>
       <div id="pf-status_w" style="display:${_viewMode==='table'&&_tab==='proc'?'inline-block':'none'};min-width:150px"></div>
-      <input type="text" id="pf-search" class="proc-toolbar__search" placeholder="Поиск по заявке, работе, РП…">
+      <input type="text" id="pf-search" class="proc-toolbar__search" placeholder="${_tab === 'pay' ? 'Поиск по счёту, контрагенту, объекту…' : 'Поиск по заявке, работе, РП…'}">
       <div class="proc-toolbar__acts">
         ${canCreateHere && _tab === 'proc' ? '<button type="button" class="proc-act proc-act--primary" id="proc-new-req">+ Создать заявку</button>' : ''}
         ${canCreateHere && _tab === 'proc' ? '<button type="button" class="proc-act" id="proc-new-req-cart">Собрать в корзине</button>' : ''}
-        <button type="button" class="proc-act proc-act--primary" id="proc-new-pay">Новое согласование</button>
+        <button type="button" class="proc-act proc-act--primary" id="proc-new-pay">${_tab === 'pay' ? '+ Новое согласование' : 'Новое согласование'}</button>
         ${_tab === 'proc' ? '<button type="button" class="proc-act" id="proc-export-xl">Excel</button>' : ''}
         ${_tab === 'proc' ? '<button type="button" class="proc-act" id="proc-tpl-xl">Шаблон</button>' : ''}
       </div>
@@ -1647,6 +1647,8 @@ window.AsgardProcurementPage = (function() {
     { key: 'rejected', label: 'Возвращён', cls: 'err', hint: 'Директор вернул на доработку' },
     { key: 'expired', label: 'В архиве', cls: 'muted', hint: 'Не согласован за 72 часа' }
   ];
+  let _payStage = 'all'; // Фильтр стадий вкладки «Счета на оплату»: all|dir|buh|paid|rejected|expired
+
   async function loadMyPayments() {
     const body = document.getElementById('proc-body');
     if (!body) return;
@@ -1656,78 +1658,145 @@ window.AsgardProcurementPage = (function() {
     _payRows = d.items || [];
     const n = document.getElementById('proc-pay-n');
     if (n) n.textContent = String(_payRows.length);
-    renderPaymentsList(body, _payRows);
+    renderPayShell(body);
   }
 
-  function renderPaymentsList(body, items) {
-    // Поиск по текущей вкладке «Счета» (номер, контрагент, объект).
+  /** Пользовательская подпись стадии (человеческим языком). */
+  function payStageOf(it) {
+    const code = (it.stage && it.stage.code) || 'other';
+    const meta = PAY_STAGES.find((s) => s.key === code) || { label: (it.stage && it.stage.label) || 'Прочее', cls: 'muted', hint: '' };
+    return { code, ...meta };
+  }
+
+  /** Премиум-оболочка вкладки «Счета на оплату»: hero → KPI → фильтр стадий → карточки. */
+  function renderPayShell(body) {
+    const rows = _payRows || [];
+    const sum = (arr) => arr.reduce((a, r) => a + Number(r.amount || 0), 0);
+    const byCode = {};
+    rows.forEach((r) => { const c = payStageOf(r).code; (byCode[c] = byCode[c] || []).push(r); });
+    const urgent = rows.filter((r) => r.initiator_intent === 'urgent');
+    const mine = rows.filter((r) => r.is_mine !== false);
+
+    const kpi = [
+      { key: 'all', label: 'Всего счетов', val: rows.length, sub: money(sum(rows)), cls: '' },
+      { key: 'dir', label: 'У директора', val: (byCode.dir || []).length, sub: money(sum(byCode.dir || [])), cls: 'proc-pay-kpi--warn' },
+      { key: 'buh', label: 'К оплате · бух.', val: (byCode.buh || []).length, sub: money(sum(byCode.buh || [])), cls: 'proc-pay-kpi--info' },
+      { key: 'paid', label: 'Оплачено', val: (byCode.paid || []).length, sub: money(sum(byCode.paid || [])), cls: 'proc-pay-kpi--ok' },
+      { key: 'urgent', label: 'Срочные', val: urgent.length, sub: urgent.length ? 'требуют внимания' : 'нет', cls: 'proc-pay-kpi--err' }
+    ];
+
+    const rail = [{ key: 'all', label: 'Все', n: rows.length }]
+      .concat(PAY_STAGES.map((s) => ({ key: s.key, label: s.label, n: (byCode[s.key] || []).length })));
+
+    // Поиск по вкладке «Счета» (номер, контрагент, объект) — общий с тулбаром.
     const q = String((currentFilters && currentFilters.search) || '').trim().toLowerCase();
+    let list = rows;
+    if (_payStage !== 'all') list = list.filter((r) => payStageOf(r).code === _payStage);
     if (q) {
-      items = items.filter((x) => [x.supplier_name, x.invoice_number, x.work_title, x.work_hint, x.basis_text]
+      list = list.filter((x) => [x.supplier_name, x.invoice_number, x.work_title, x.work_hint, x.basis_text, x.initiator_name]
         .filter(Boolean).some((v) => String(v).toLowerCase().includes(q)));
     }
-    if (!items.length) {
-      body.innerHTML = `<div class="proc-pay-empty">
+
+    const stageHint = (PAY_STAGES.find((s) => s.key === _payStage) || {}).hint || '';
+    const head = `<div class="proc-pay-hero">
+      <div class="proc-pay-hero__main">
+        <div class="proc-pay-hero__t">Счета на оплату</div>
+        <div class="proc-pay-hero__s">${rows.length
+          ? `Ваши заявки на оплату: у директора → у бухгалтерии → оплачено. Счёт идёт директору сразу, минуя закупщика.`
+          : 'Подайте счёт — он уйдёт директору на согласование, затем в бухгалтерию на оплату.'}</div>
+      </div>
+      <div class="proc-pay-hero__acts">
+        <span class="proc-pay-hero__pip" title="Оплачено за всё время">${money(sum(byCode.paid || []))}</span>
+      </div>
+    </div>
+    <div class="proc-pay-kpis">${kpi.map((k) => `<button type="button" class="proc-pay-kpi ${k.cls} ${_payStage === k.key ? 'is-on' : ''}" data-stage="${k.key}">
+        <span class="proc-pay-kpi__lab">${esc(k.label)}</span>
+        <span class="proc-pay-kpi__val">${k.val}</span>
+        <span class="proc-pay-kpi__sub">${esc(k.sub)}</span>
+      </button>`).join('')}</div>
+    ${rows.length ? `<div class="proc-pay-rail" role="tablist" aria-label="Стадии оплаты">
+      ${rail.map((s) => `<button type="button" class="proc-pay-rail__b ${_payStage === s.key ? 'is-on' : ''}" role="tab" data-stage="${s.key}" ${s.n === 0 && s.key !== 'all' ? 'disabled' : ''}>${esc(s.label)}<span class="proc-pay-rail__n">${s.n}</span></button>`).join('')}
+      ${stageHint ? `<span class="proc-pay-rail__hint">${esc(stageHint)}</span>` : ''}
+    </div>` : ''}`;
+
+    if (!rows.length) {
+      body.innerHTML = head + `<div class="proc-pay-empty">
         <div class="proc-pay-empty__ico">📄</div>
         <div class="proc-pay-empty__t">Счетов на оплату пока нет</div>
         <div class="proc-pay-empty__s">Нажмите «Новое согласование» — счёт уйдёт директору, минуя закупщика.</div>
       </div>`;
+      bindPayShell(body);
       return;
     }
-    // Группируем по стадиям: сначала «у директора», потом «у бухгалтерии», «оплачен», «возвращён».
-    const groups = {};
-    for (const it of items) { const k = (it.stage && it.stage.code) || 'other'; (groups[k] = groups[k] || []).push(it); }
-    const order = PAY_STAGES.map((s) => s.key).filter((k) => groups[k] && groups[k].length);
-    if (groups.other && groups.other.length) order.push('other');
 
-    const card = (it) => {
-      const st = it.stage || { label: it.status, cls: 'muted' };
-      const num = it.invoice_number ? ('№ ' + it.invoice_number) : ('#' + it.id);
-      const due = it.due_date ? 'до ' + String(it.due_date).slice(0, 10).split('-').reverse().join('.') : '';
-      const intent = it.initiator_intent === 'urgent' ? '<span class="proc-pay-tag proc-pay-tag--hot">срочно</span>'
-        : it.initiator_intent ? '<span class="proc-pay-tag">' + esc(intentRu(it.initiator_intent)) + '</span>' : '';
-      const fileBtn = it.has_file ? `<button type="button" class="proc-pay__btn" data-file="${it.id}">Скачать счёт</button>` : '';
-      return `<article class="proc-pay__card" data-pay="${it.id}">
-        <div class="proc-pay__top">
-          <div class="proc-pay__sum">${money2(it.amount)}</div>
-          <span class="proc-pay__st proc-pay__st--${st.cls}">${esc(st.label)}</span>
-        </div>
-        <div class="proc-pay__sup">${esc(it.supplier_name || '—')}</div>
-        <div class="proc-pay__meta">
-          <span>${esc(num)}${it.invoice_date ? ' от ' + String(it.invoice_date).slice(0, 10).split('-').reverse().join('.') : ''}</span>
-          ${it.work_title ? `<span class="proc-pay__work" title="${esc(it.work_title)}">${esc(it.work_title.slice(0, 34))}</span>` : (it.work_hint ? `<span class="proc-pay__work">${esc(String(it.work_hint).slice(0, 34))}</span>` : '')}
-        </div>
-        <div class="proc-pay__foot">
-          ${intent}
-          ${due ? `<span class="proc-pay__due">${due}</span>` : ''}
-          <span class="proc-pay__grow"></span>
-          ${fileBtn}
-        </div>
-        ${it.lines_count ? `<div class="proc-pay__lines">${it.lines_count} поз.</div>` : ''}
-      </article>`;
-    };
+    if (!list.length) {
+      body.innerHTML = head + `<div class="proc-pay-empty">
+        <div class="proc-pay-empty__ico">🔎</div>
+        <div class="proc-pay-empty__t">Ничего не найдено</div>
+        <div class="proc-pay-empty__s">${q ? 'По запросу «' + esc(q) + '» нет счетов на этой стадии.' : 'На этой стадии пока нет счетов.'}</div>
+      </div>`;
+      bindPayShell(body);
+      return;
+    }
 
-    const groupHtml = (key) => {
-      const list = groups[key] || [];
-      if (!list.length) return '';
-      const meta = PAY_STAGES.find((s) => s.key === key) || { label: 'Прочее', hint: '' };
-      return `<section class="proc-pay__group">
-        <header class="proc-pay__gh"><h3>${esc(meta.label)}</h3>
-          <span class="proc-pay__gn">${list.length}</span>
-          ${meta.hint ? `<span class="proc-pay__gh-hint">${esc(meta.hint)}</span>` : ''}</header>
-        <div class="proc-pay__grid">${list.map(card).join('')}</div>
-      </section>`;
-    };
+    const grid = `<div class="proc-pay-grid">${list.map(payCard).join('')}</div>`;
+    body.innerHTML = head + grid;
+    bindPayShell(body);
+  }
 
-    body.innerHTML = order.map(groupHtml).join('');
-    body.querySelectorAll('[data-pay]').forEach((c) => c.addEventListener('click', (e) => {
-      if (e.target.closest('[data-file]')) return;
-      openPaymentInvoiceModal(+c.getAttribute('data-pay'));
+  /** Карточка счёта (премиум): стадия, сумма, контрагент, мета, подвал. */
+  function payCard(it) {
+    const st = payStageOf(it);
+    const num = it.invoice_number ? ('№ ' + it.invoice_number) : ('#' + it.id);
+    const niceDate = (d) => d ? String(d).slice(0, 10).split('-').reverse().join('.') : '';
+    const due = it.due_date ? 'до ' + niceDate(it.due_date) : '';
+    const intentTag = it.initiator_intent === 'urgent'
+      ? '<span class="proc-pay-tag proc-pay-tag--hot">⚡ срочно</span>'
+      : it.initiator_intent ? '<span class="proc-pay-tag">' + esc(intentRu(it.initiator_intent)) + '</span>' : '';
+    const fileBtn = it.has_file ? `<button type="button" class="proc-pay__btn" data-file="${it.id}" title="Скачать счёт">PDF</button>` : '';
+    const contractBadge = it.contract_missing
+      ? '<span class="proc-pay-tag proc-pay-tag--warn" title="Договор-основание не найден в CRM">нет договора</span>' : '';
+    const work = it.work_title
+      ? `<span class="proc-pay__work" title="${esc(it.work_title)}">🏗 ${esc(it.work_title.slice(0, 30))}</span>`
+      : (it.work_hint ? `<span class="proc-pay__work" title="${esc(it.work_hint)}">🏗 ${esc(String(it.work_hint).slice(0, 30))}</span>` : '');
+    const vat = Number(it.vat_amount) > 0 ? `<span>НДС ${money(it.vat_amount)}</span>` : '';
+    return `<article class="proc-pay-card proc-pay-card--${st.cls}" data-pay="${it.id}" tabindex="0" role="button" aria-label="Счёт ${esc(num)} на ${money(it.amount)}">
+      <div class="proc-pay-card__bar"></div>
+      <div class="proc-pay-card__top">
+        <div class="proc-pay-card__sum">${money2(it.amount)}</div>
+        <span class="proc-pay__st proc-pay__st--${st.cls}">${esc(st.label)}</span>
+      </div>
+      <div class="proc-pay-card__sup" title="${esc(it.supplier_name || '')}">${esc(it.supplier_name || 'Контрагент не распознан')}</div>
+      <div class="proc-pay-card__meta">
+        <span>${esc(num)}${it.invoice_date ? ' от ' + niceDate(it.invoice_date) : ''}</span>
+        ${vat}
+        ${work}
+      </div>
+      <div class="proc-pay-card__foot">
+        ${intentTag}
+        ${contractBadge}
+        ${due ? `<span class="proc-pay__due">${due}</span>` : ''}
+        <span class="proc-pay__grow"></span>
+        ${it.lines_count ? `<span class="proc-pay-card__lines" title="Позиции в номенклатуре">${it.lines_count} поз.</span>` : ''}
+        ${fileBtn}
+      </div>
+    </article>`;
+  }
+
+  /** Обработчики премиум-оболочки: фильтр стадий, открытие карточки, скачивание. */
+  function bindPayShell(body) {
+    body.querySelectorAll('[data-stage]').forEach((b) => b.addEventListener('click', () => {
+      const s = b.getAttribute('data-stage');
+      _payStage = (_payStage === s && s !== 'all') ? 'all' : s;
+      renderPayShell(body);
     }));
+    body.querySelectorAll('[data-pay]').forEach((c) => {
+      c.addEventListener('click', (e) => { if (e.target.closest('[data-file]')) return; openPaymentInvoiceModal(+c.getAttribute('data-pay')); });
+      c.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openPaymentInvoiceModal(+c.getAttribute('data-pay')); } });
+    });
     body.querySelectorAll('[data-file]').forEach((b) => b.addEventListener('click', (e) => {
       e.stopPropagation();
-      const id = +b.getAttribute('data-file');
-      window.open('/api/payment-invoices/' + id + '/file', '_blank');
+      window.open('/api/payment-invoices/' + b.getAttribute('data-file') + '/file', '_blank');
     }));
   }
 
